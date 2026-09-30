@@ -159,12 +159,19 @@
       this.result = null;
 
       // Standard RA code configuration
+      /** @type {int32} */
       this._repetitionFactor = 3; // q=3 (rate 1/3)
+      /** @type {int32[]} */
       this._interleaver = null; // Random interleaver pattern
+      /** @type {int32} */
       this._iterations = 10; // Iterative decoding iterations
+      /** @type {int32} */
       this._seed = 42; // PRNG seed for reproducible interleaver
     }
 
+    /**
+     * @param {int32} value - Repetition factor q (2..10)
+     */
     set repetitionFactor(value) {
       if (value < 2 || value > 10) {
         throw new Error('RepeatAccumulateCodeInstance.repetitionFactor: Must be between 2 and 10');
@@ -172,10 +179,16 @@
       this._repetitionFactor = value;
     }
 
+    /**
+     * @returns {int32} Repetition factor q
+     */
     get repetitionFactor() {
       return this._repetitionFactor;
     }
 
+    /**
+     * @param {int32} value - Decoder iterations (1..50)
+     */
     set iterations(value) {
       if (value < 1 || value > 50) {
         throw new Error('RepeatAccumulateCodeInstance.iterations: Must be between 1 and 50');
@@ -183,14 +196,23 @@
       this._iterations = value;
     }
 
+    /**
+     * @returns {int32} Decoder iterations
+     */
     get iterations() {
       return this._iterations;
     }
 
+    /**
+     * @param {int32} value - Interleaver seed
+     */
     set seed(value) {
       this._seed = value;
     }
 
+    /**
+     * @returns {int32} Interleaver seed
+     */
     get seed() {
       return this._seed;
     }
@@ -253,50 +275,63 @@
       const n = k * this._repetitionFactor; // Code length
 
       // Step 1: Repetition - repeat each bit q times
+      /** @type {uint8[]} */
       const repeated = this.repeat(data, this._repetitionFactor);
 
       // Step 2: Interleave - apply random permutation
       this._interleaver = this.generateInterleaver(n, this._seed);
+      /** @type {uint8[]} */
       const interleaved = this.interleave(repeated, this._interleaver);
 
       // Step 3: Accumulate - mod-2 differential encoding
+      /** @type {uint8[]} */
       const encoded = this.accumulate(interleaved);
 
       return encoded;
     }
 
+    /**
+     * @param {uint8[]} data - Bits
+     * @param {int32} q - Repetition factor
+     * @returns {uint8[]} Each bit repeated q times
+     */
     repeat(data, q) {
       // Repeat each bit q times: [a,b] → [a,a,a,b,b,b] for q=3
       /** @type {uint8[]} */
       const repeated = [];
       for (let i = 0; i < data.length; ++i) {
         for (let j = 0; j < q; ++j) {
-          repeated.push(data[i]&1); // Ensure single bit
+          repeated.push(OpCodes.And32(data[i], 1)); // Ensure single bit
         }
       }
       return repeated;
     }
 
+    /**
+     * @param {int32} length - Permutation length
+     * @param {int32} seed - LCG seed
+     * @returns {int32[]} Permutation
+     */
     generateInterleaver(length, seed) {
       // Generate pseudo-random interleaver using seeded PRNG
       // For production: use S-random or dithered relative prime interleaver
       // Educational implementation: Fisher-Yates shuffle with LCG
 
-      /** @type {uint8[]} */
+      /** @type {int32[]} */
       const interleaver = [];
       for (let i = 0; i < length; ++i) {
         interleaver[i] = i;
       }
 
       // Seeded pseudo-random shuffle (LCG-based Fisher-Yates)
-      let state = seed;
-      const lcg = () => {
-        state = (state * 1103515245 + 12345)&0x7FFFFFFF; // LCG with modulo 2^31
-        return state;
-      };
+      // (the product is formed in double precision, as before, then reduced modulo 2^31)
+      /** @type {float64} */
+      let lcgState = seed;
 
       for (let i = length - 1; i > 0; --i) {
-        const j = lcg() % (i + 1);
+        lcgState = OpCodes.And32(lcgState * 1103515245 + 12345, 0x7FFFFFFF); // LCG with modulo 2^31
+        /** @type {int32} */
+        const j = lcgState % (i + 1);
         const temp = interleaver[i];
         interleaver[i] = interleaver[j];
         interleaver[j] = temp;
@@ -305,8 +340,14 @@
       return interleaver;
     }
 
+    /**
+     * @param {uint8[]} data - Bits
+     * @param {int32[]} pattern - Permutation
+     * @returns {uint8[]} output[i] = data[pattern[i]]
+     */
     interleave(data, pattern) {
       // Apply permutation: output[i] = input[pattern[i]]
+      /** @type {uint8[]} */
       const result = new Array(data.length);
       for (let i = 0; i < pattern.length; ++i) {
         result[i] = data[pattern[i]];
@@ -314,8 +355,14 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Bits
+     * @param {int32[]} pattern - Permutation
+     * @returns {uint8[]} output[pattern[i]] = data[i]
+     */
     deinterleave(data, pattern) {
       // Inverse permutation: output[pattern[i]] = input[i]
+      /** @type {uint8[]} */
       const result = new Array(data.length);
       for (let i = 0; i < pattern.length; ++i) {
         result[pattern[i]] = data[i];
@@ -323,36 +370,51 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Bits
+     * @returns {uint8[]} Running XOR
+     */
     accumulate(data) {
       // Mod-2 accumulator (differential encoder)
       // Output: [u₁, u₁⊕u₂, u₁⊕u₂⊕u₃, ...]
       // This is a rate-1 convolutional code with transfer function 1/(1+D)
 
+      /** @type {uint8[]} */
       const accumulated = new Array(data.length);
-      let state = 0; // Initial state
+      /** @type {int32} */
+      let parity = 0; // Initial state
 
       for (let i = 0; i < data.length; ++i) {
-        state = state^data[i]; // XOR current bit with state (mod-2 addition)
-        accumulated[i] = state;
+        parity = OpCodes.ToInt(OpCodes.Xor32(parity, data[i])); // XOR current bit with state (mod-2 addition)
+        accumulated[i] = parity;
       }
 
       return accumulated;
     }
 
+    /**
+     * @param {uint8[]} data - Accumulated bits
+     * @returns {uint8[]} Differences
+     */
     deaccumulate(data) {
       // Inverse of accumulator (differential decoder)
       // Input: [c₁, c₂, c₃, ...] → Output: [c₁, c₁⊕c₂, c₂⊕c₃, ...]
 
+      /** @type {uint8[]} */
       const deaccumulated = new Array(data.length);
       deaccumulated[0] = data[0];
 
       for (let i = 1; i < data.length; ++i) {
-        deaccumulated[i] = data[i]^data[i - 1]; // Differential decoding (mod-2)
+        deaccumulated[i] = OpCodes.ToInt(OpCodes.Xor32(data[i], data[i - 1])); // Differential decoding (mod-2)
       }
 
       return deaccumulated;
     }
 
+    /**
+     * @param {uint8[]} received - Code bits
+     * @returns {uint8[]} Information bits
+     */
     decode(received) {
       // Simplified iterative RA decoder
       // Full implementation would use belief propagation on factor graph
@@ -369,25 +431,36 @@
       this._interleaver = this.generateInterleaver(n, this._seed);
 
       // Step 1: Deaccumulate (inverse of differential encoder)
+      /** @type {uint8[]} */
       const deaccumulated = this.deaccumulate(received);
 
       // Step 2: Deinterleave
+      /** @type {uint8[]} */
       const deinterleaved = this.deinterleave(deaccumulated, this._interleaver);
 
       // Step 3: Inverse repetition - majority vote decoding
+      /** @type {uint8[]} */
       const decoded = this.majorityVote(deinterleaved, this._repetitionFactor);
 
       return decoded;
     }
 
+    /**
+     * @param {uint8[]} data - Repeated bits
+     * @param {int32} q - Repetition factor
+     * @returns {uint8[]} Majority bits
+     */
     majorityVote(data, q) {
       // Decode repetition code by majority voting
       // Group into blocks of q bits and vote
 
+      /** @type {float64} */
       const k = data.length / q;
+      /** @type {uint8[]} */
       const decoded = new Array(k);
 
       for (let i = 0; i < k; ++i) {
+        /** @type {int32} */
         let sum = 0;
         for (let j = 0; j < q; ++j) {
           sum += data[i * q + j];
@@ -400,6 +473,11 @@
     }
 
     // Advanced iterative decoder (educational version)
+    /**
+     * @param {uint8[]} received - Code bits
+     * @param {int32} maxIterations - Iteration limit
+     * @returns {uint8[]} Hard decisions
+     */
     iterativeDecode(received, maxIterations) {
       // Simplified message-passing decoder on RA code factor graph
       // Real implementation would use sum-product algorithm with LLRs
@@ -408,7 +486,9 @@
       const k = n / this._repetitionFactor;
 
       // Initialize LLR (log-likelihood ratio) messages
-      const llr = received.map(bit => bit ? 1.0 : -1.0);
+      /** @type {float64[]} */
+      const llr = [];
+      for (let i = 0; i < received.length; ++i) llr.push(received[i] ? 1.0 : -1.0);
 
       // Iterative message passing (simplified)
       for (let iter = 0; iter < maxIterations; ++iter) {
@@ -418,7 +498,11 @@
       }
 
       // Hard decision
-      const decoded = llr.slice(0, k).map(val => val > 0 ? 1 : 0);
+      /** @type {float64[]} */
+      const head = llr.slice(0, k);
+      /** @type {uint8[]} */
+      const decoded = [];
+      for (let i = 0; i < head.length; ++i) decoded.push(head[i] > 0 ? 1 : 0);
       return decoded;
     }
   }

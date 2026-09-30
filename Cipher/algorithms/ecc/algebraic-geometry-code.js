@@ -44,6 +44,19 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  // GF(4) multiplication table (primitive polynomial x^2 + x + 1; α = 2, α+1 = 3):
+  // α^2 = α+1 = 3, α*(α+1) = α^2 + α = 1, (α+1)^2 = α
+  /** @type {uint8[]} */
+  const GF4_TIMES_0 = [0, 0, 0, 0]; // 0 * {0, 1, α, α+1}
+  /** @type {uint8[]} */
+  const GF4_TIMES_1 = [0, 1, 2, 3]; // 1 * {0, 1, α, α+1}
+  /** @type {uint8[]} */
+  const GF4_TIMES_2 = [0, 2, 3, 1]; // α * {0, 1, α, α+1}
+  /** @type {uint8[]} */
+  const GF4_TIMES_3 = [0, 3, 1, 2]; // α+1 * {0, 1, α, α+1}
+  /** @type {uint8[][]} */
+  const GF4_MUL_TABLE = [GF4_TIMES_0, GF4_TIMES_1, GF4_TIMES_2, GF4_TIMES_3];
+
   class AlgebraicGeometryCodeAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
       super();
@@ -207,22 +220,30 @@
       // Each row i is evaluation of basis function f_i at the 8 points
       // Codeword c = m*G where m is message vector
       // Basis functions: {1, x, y, x^2} from space L(D)
-      this.generatorMatrix = [
-        [1, 1, 1, 1, 1, 1, 1, 1], // f = 1 (constant)
-        [0, 0, 1, 1, 2, 2, 3, 3], // f = x (x-coordinate)
-        [0, 1, 0, 1, 2, 3, 2, 3], // f = y (y-coordinate)
-        [0, 0, 1, 1, 3, 3, 2, 2]  // f = x^2 (polynomial in x)
-      ];
+      /** @type {uint8[]} */
+      const fOne = [1, 1, 1, 1, 1, 1, 1, 1]; // f = 1 (constant)
+      /** @type {uint8[]} */
+      const fX = [0, 0, 1, 1, 2, 2, 3, 3];   // f = x (x-coordinate)
+      /** @type {uint8[]} */
+      const fY = [0, 1, 0, 1, 2, 3, 2, 3];   // f = y (y-coordinate)
+      /** @type {uint8[]} */
+      const fX2 = [0, 0, 1, 1, 3, 3, 2, 2];  // f = x^2 (polynomial in x)
+      /** @type {uint8[][]} */
+      this.generatorMatrix = [fOne, fX, fY, fX2];
 
       // Parity check matrix H (from dual code construction)
       // H*c^T = 0 for valid codewords
       // Used for syndrome computation and error detection
-      this.parityCheckMatrix = [
-        [1, 1, 1, 1, 1, 1, 1, 1],
-        [0, 0, 1, 1, 2, 2, 3, 3],
-        [0, 1, 0, 1, 2, 3, 2, 3],
-        [0, 1, 1, 0, 0, 1, 1, 0]
-      ];
+      /** @type {uint8[]} */
+      const h0 = [1, 1, 1, 1, 1, 1, 1, 1];
+      /** @type {uint8[]} */
+      const h1 = [0, 0, 1, 1, 2, 2, 3, 3];
+      /** @type {uint8[]} */
+      const h2 = [0, 1, 0, 1, 2, 3, 2, 3];
+      /** @type {uint8[]} */
+      const h3 = [0, 1, 1, 0, 0, 1, 1, 0];
+      /** @type {uint8[][]} */
+      this.parityCheckMatrix = [h0, h1, h2, h3];
     }
 
     /**
@@ -261,9 +282,9 @@
     /**
      * Addition in GF(2^m) is component-wise XOR
      * GF(4) addition is simply XOR in the polynomial representation
-     * @param {number} a - First GF(4) element
-     * @param {number} b - Second GF(4) element
-     * @returns {number} Sum in GF(4)
+     * @param {uint8} a - First GF(4) element
+     * @param {uint8} b - Second GF(4) element
+     * @returns {uint8} Sum in GF(4)
      */
     gf4Add(a, b) {
       // XOR is the fundamental GF(2) addition operation
@@ -274,9 +295,9 @@
     /**
      * Multiplication in GF(4) using lookup table
      * GF(4) = {0, 1, α, α+1} with α^2 = α+1
-     * @param {number} a - First GF(4) element
-     * @param {number} b - Second GF(4) element
-     * @returns {number} Product in GF(4)
+     * @param {uint8} a - First GF(4) element
+     * @param {uint8} b - Second GF(4) element
+     * @returns {uint8} Product in GF(4)
      */
     gf4Multiply(a, b) {
       if (a === 0 || b === 0) return 0;
@@ -284,21 +305,13 @@
       // Multiplication table for GF(4)
       // Primitive polynomial: x^2 + x + 1
       // α = 2 (polynomial 'x'), α+1 = 3 (polynomial 'x+1')
-      // α^2 = α+1 = 3, α*(α+1) = α^2 + α = 1, (α+1)^2 = α
-      const mulTable = [
-        [0, 0, 0, 0], // 0 * {0, 1, α, α+1}
-        [0, 1, 2, 3], // 1 * {0, 1, α, α+1}
-        [0, 2, 3, 1], // α * {0, 1, α, α+1}
-        [0, 3, 1, 2]  // α+1 * {0, 1, α, α+1}
-      ];
-
-      return mulTable[a % 4][b % 4];
+      return GF4_MUL_TABLE[a % 4][b % 4];
     }
 
     /**
      * Multiplicative inverse in GF(4)
-     * @param {number} a - GF(4) element to invert
-     * @returns {number} Multiplicative inverse
+     * @param {uint8} a - GF(4) element to invert
+     * @returns {uint8} Multiplicative inverse
      */
     gf4Inverse(a) {
       if (a === 0) {
@@ -313,19 +326,24 @@
 
     /**
      * Power operation in GF(4)
-     * @param {number} base - GF(4) base element
-     * @param {number} exp - Non-negative integer exponent
-     * @returns {number} base^exp in GF(4)
+     * @param {uint8} base - GF(4) base element
+     * @param {int32} exp - Non-negative integer exponent
+     * @returns {uint8} base^exp in GF(4)
      */
     gf4Power(base, exp) {
       if (exp === 0) return 1;
       if (exp === 1) return base;
       if (base === 0) return 0;
-      if (base === 1) return 1;
+      if (base === 1) {
+        return 1;
+      }
 
       // For small fields, use successive squaring
+      /** @type {uint8} */
       let result = 1;
+      /** @type {uint8} */
       let b = base;
+      /** @type {int32} */
       let e = exp;
 
       while (e > 0) {
@@ -344,8 +362,8 @@
     /**
      * Encodes message using evaluation AG code construction
      * Implements C_L(X, P, D) evaluation map: f → (f(P1), ..., f(Pn))
-     * @param {Array} message - k message symbols from GF(4)
-     * @returns {Array} n codeword symbols
+     * @param {uint8[]} message - k message symbols from GF(4)
+     * @returns {uint8[]} n codeword symbols
      */
     encode(message) {
       if (message.length !== this.k) {
@@ -366,8 +384,10 @@
       // Each codeword symbol is linear combination of message symbols
       // evaluated at corresponding curve point
       for (let j = 0; j < this.n; ++j) {
+        /** @type {uint8} */
         let sum = 0;
         for (let i = 0; i < this.k; ++i) {
+          /** @type {uint8} */
           const product = this.gf4Multiply(message[i], this.generatorMatrix[i][j]);
           sum = this.gf4Add(sum, product);
         }
@@ -383,8 +403,8 @@
      * - Syndrome computation
      * - Error locator polynomials via AG divisor theory
      * - Guruswami-Sudan list decoding for better error correction
-     * @param {Array} received - n received symbols (possibly with errors)
-     * @returns {Array} k decoded message symbols
+     * @param {uint8[]} received - n received symbols (possibly with errors)
+     * @returns {uint8[]} k decoded message symbols
      */
     decode(received) {
       if (received.length !== this.n) {
@@ -399,8 +419,9 @@
       }
 
       // Check for errors using syndrome
+      /** @type {uint8[]} */
       const syndrome = this.computeSyndrome(received);
-      const hasErrors = syndrome.some(s => s !== 0);
+      const hasErrors = this._hasNonZero(syndrome);
 
       if (!hasErrors) {
         // No errors detected - extract message directly
@@ -414,6 +435,7 @@
       // 1. Berlekamp-Massey-Sakata algorithm (generalization for AG codes)
       // 2. Guruswami-Sudan list decoding
       // 3. Fundamental polytope decoding
+      /** @type {float64} */
       let minDistance = Infinity;
       /** @type {uint8[]} */
       let bestMessage = OpCodes.CreateArray(this.k, 0);
@@ -430,7 +452,9 @@
           temp = Math.floor(temp / 4);
         }
 
+        /** @type {uint8[]} */
         const testCodeword = this.encode(message);
+        /** @type {int32} */
         const distance = this.hammingDistance(received, testCodeword);
 
         if (distance < minDistance) {
@@ -445,8 +469,8 @@
     /**
      * Extracts message from valid codeword
      * For general AG codes, requires solving linear system
-     * @param {Array} codeword - Valid codeword
-     * @returns {Array} Message symbols
+     * @param {uint8[]} codeword - Valid codeword
+     * @returns {uint8[]} Message symbols
      */
     extractMessage(codeword) {
       // For this implementation, use exhaustive search to find message
@@ -462,6 +486,7 @@
           temp = Math.floor(temp / 4);
         }
 
+        /** @type {uint8[]} */
         const testCodeword = this.encode(message);
         if (this.arraysEqual(testCodeword, codeword)) {
           return message;
@@ -475,8 +500,8 @@
     /**
      * Computes syndrome for error detection
      * S = H * r^T where H is parity check matrix
-     * @param {Array} received - Received codeword
-     * @returns {Array} Syndrome vector
+     * @param {uint8[]} received - Received codeword
+     * @returns {uint8[]} Syndrome vector
      */
     computeSyndrome(received) {
       const syndromeLength = this.parityCheckMatrix.length;
@@ -484,8 +509,10 @@
       const syndrome = OpCodes.CreateArray(syndromeLength, 0);
 
       for (let i = 0; i < syndromeLength; ++i) {
+        /** @type {uint8} */
         let sum = 0;
         for (let j = 0; j < this.n; ++j) {
+          /** @type {uint8} */
           const product = this.gf4Multiply(received[j], this.parityCheckMatrix[i][j]);
           sum = this.gf4Add(sum, product);
         }
@@ -497,9 +524,9 @@
 
     /**
      * Computes Hamming distance between two codewords
-     * @param {Array} codeword1 - First codeword
-     * @param {Array} codeword2 - Second codeword
-     * @returns {number} Number of differing positions
+     * @param {uint8[]} codeword1 - First codeword
+     * @param {uint8[]} codeword2 - Second codeword
+     * @returns {int32} Number of differing positions
      */
     hammingDistance(codeword1, codeword2) {
       let distance = 0;
@@ -513,8 +540,8 @@
 
     /**
      * Checks if two arrays are equal
-     * @param {Array} arr1 - First array
-     * @param {Array} arr2 - Second array
+     * @param {uint8[]} arr1 - First array
+     * @param {uint8[]} arr2 - Second array
      * @returns {boolean} True if arrays are identical
      */
     arraysEqual(arr1, arr2) {
@@ -541,12 +568,21 @@
         }
       }
 
-      try {
-        const syndrome = this.computeSyndrome(data);
-        return syndrome.some(s => s !== 0);
-      } catch (e) {
-        return true;
+      // (validated GF(4) symbols of the right length cannot make the syndrome throw)
+      /** @type {uint8[]} */
+      const syndrome = this.computeSyndrome(data);
+      return this._hasNonZero(syndrome);
+    }
+
+    /**
+     * @param {uint8[]} values - Symbols
+     * @returns {boolean} True when any symbol is non-zero
+     */
+    _hasNonZero(values) {
+      for (let i = 0; i < values.length; ++i) {
+        if (values[i] !== 0) return true;
       }
+      return false;
     }
   }
 
