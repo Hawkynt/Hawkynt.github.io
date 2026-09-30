@@ -1085,6 +1085,14 @@
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f10111213"),
           iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           expected: OpCodes.Hex8ToBytes("bb3a598264069344c7a3d1c0d6b6eb4f7eb4098e7fb2135053c9edde467f33c5cd2d8364a1f38307ade7a8a365b589fee90c2d0ee81e790d06875b6c7d6d867accaea351d4819026740ebe2e4cd31837458b48d77fa991823defb988a7602e2be25815cded92720379bfa7709f80926ff5153a5f8b2c6c05f95c4d1e07fb8ed2")
+        },
+        {
+          text: "DarkCrypt ZK-Crypt v3 — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c3956"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e33587da2c7ec11365b80a5ca"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457aafe4194e83b8ed22578cc1f6"),
+          expected: OpCodes.Hex8ToBytes("4404bd80ff85e990ecb75ea0007e84abac45c680890392bf5fcacfb60cf478c05a22e3e5845f33ce30f44ba9fc31f2ca")
         }
       ];
     }
@@ -1135,9 +1143,10 @@
      */
     set iv(ivBytes) {
       if (!ivBytes) { this._iv = null; return; }
-      if (ivBytes.length !== 16)
-        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. ZK-Crypt v3 (DarkCrypt) requires exactly 16 bytes");
-      this._iv = [...ivBytes];
+      // The plugin hands over a 20-byte IV buffer but reads only its first 16 bytes
+      if (ivBytes.length < 16 || ivBytes.length > 20)
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. ZK-Crypt v3 (DarkCrypt) requires 16 to 20 bytes");
+      this._iv = ivBytes.slice(0, 16);
       this._tryInit();
     }
     /**
