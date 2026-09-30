@@ -52,22 +52,31 @@
   // ===== SECP256K1 CURVE CONSTANTS =====
 
   // Field size (prime modulus)
+  /** @type {BigInt} */
   const P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2Fn;
 
   // Curve order (number of points)
+  /** @type {BigInt} */
   const N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141n;
 
   // Generator point G coordinates
+  /** @type {BigInt} */
   const GX = 0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798n;
+  /** @type {BigInt} */
   const GY = 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8n;
 
   // Curve equation: y^2 = x^3 + 7 (a=0, b=7)
+  /** @type {BigInt} */
   const B = 7n;
 
   // ===== MODULAR ARITHMETIC =====
 
   /**
    * Modular addition
+   * @param {BigInt} a - a
+   * @param {BigInt} b - b
+   * @param {BigInt} mod - mod
+   * @returns {BigInt} Result
    */
   function modAdd(a, b, mod) {
     return (a + b) % mod;
@@ -75,6 +84,10 @@
 
   /**
    * Modular subtraction
+   * @param {BigInt} a - a
+   * @param {BigInt} b - b
+   * @param {BigInt} mod - mod
+   * @returns {BigInt} Result
    */
   function modSub(a, b, mod) {
     return ((a - b) % mod + mod) % mod;
@@ -82,6 +95,10 @@
 
   /**
    * Modular multiplication
+   * @param {BigInt} a - a
+   * @param {BigInt} b - b
+   * @param {BigInt} mod - mod
+   * @returns {BigInt} Result
    */
   function modMul(a, b, mod) {
     return (a * b) % mod;
@@ -89,13 +106,22 @@
 
   /**
    * Modular inverse using Extended Euclidean Algorithm
+   * @param {BigInt} a - a
+   * @param {BigInt} mod - mod
+   * @returns {BigInt} Result
    */
   function modInv(a, mod) {
     a = ((a % mod) + mod) % mod;
     if (a === 0n) throw new Error('Cannot compute inverse of 0');
 
-    let [t, newT] = [0n, 1n];
-    let [r, newR] = [mod, a];
+    /** @type {BigInt} */
+    let t = 0n;
+    /** @type {BigInt} */
+    let newT = 1n;
+    /** @type {BigInt} */
+    let r = mod;
+    /** @type {BigInt} */
+    let newR = a;
 
     while (newR !== 0n) {
       const quotient = r / newR;
@@ -111,11 +137,16 @@
 
   /**
    * Modular exponentiation
+   * @param {BigInt} base - base
+   * @param {BigInt} exp - exp
+   * @param {BigInt} mod - mod
+   * @returns {BigInt} Result
    */
   function modPow(base, exp, mod) {
     if (exp === 0n) return 1n;
     if (exp === 1n) return base % mod;
 
+    /** @type {BigInt} */
     let result = 1n;
     base = base % mod;
 
@@ -134,16 +165,31 @@
    * Elliptic Curve Point (affine coordinates)
    */
   class ECPoint {
+    /**
+     * @param {BigInt} x - x
+     * @param {BigInt} y - y
+     * @param {boolean} isInfinity - isInfinity
+     */
     constructor(x, y, isInfinity = false) {
+      /** @type {BigInt} */
       this.x = x;
+      /** @type {BigInt} */
       this.y = y;
+      /** @type {boolean} */
       this.isInfinity = isInfinity;
     }
 
+    /**
+     * @returns {ECPoint} Result
+     */
     static infinity() {
       return new ECPoint(0n, 0n, true);
     }
 
+    /**
+     * @param {ECPoint} other - other
+     * @returns {boolean} Result
+     */
     equals(other) {
       if (this.isInfinity && other.isInfinity) return true;
       if (this.isInfinity || other.isInfinity) return false;
@@ -152,12 +198,23 @@
   }
 
   /**
+   * The neutral element, the point at infinity.
+   * @returns {ECPoint} a fresh point at infinity
+   */
+  function pointAtInfinity() {
+    return new ECPoint(0n, 0n, true);
+  }
+
+  /**
    * Check if point is on secp256k1 curve: y^2 = x^3 + 7
+   * @param {ECPoint} point - point
+   * @returns {boolean} Result
    */
   function isOnCurve(point) {
     if (point.isInfinity) return true;
 
-    const { x, y } = point;
+    const x = point.x;
+    const y = point.y;
     const left = modMul(y, y, P);
     const right = (modMul(modMul(x, x, P), x, P) + B) % P;
 
@@ -166,6 +223,9 @@
 
   /**
    * Point addition on secp256k1
+   * @param {ECPoint} P1 - P1
+   * @param {ECPoint} P2 - P2
+   * @returns {ECPoint} Result
    */
   function pointAdd(P1, P2) {
     if (P1.isInfinity) return P2;
@@ -175,7 +235,7 @@
       if (P1.y === P2.y) {
         return pointDouble(P1);
       } else {
-        return ECPoint.infinity();
+        return pointAtInfinity();
       }
     }
 
@@ -195,10 +255,12 @@
 
   /**
    * Point doubling on secp256k1
+   * @param {ECPoint} P1 - P1
+   * @returns {ECPoint} Result
    */
   function pointDouble(P1) {
     if (P1.isInfinity) return P1;
-    if (P1.y === 0n) return ECPoint.infinity();
+    if (P1.y === 0n) return pointAtInfinity();
 
     // λ = 3x^2 / 2y mod p (since a=0 for secp256k1)
     const numerator = modMul(3n, modMul(P1.x, P1.x, P), P);
@@ -216,13 +278,18 @@
 
   /**
    * Scalar multiplication using double-and-add algorithm
+   * @param {BigInt} k - k
+   * @param {ECPoint} point - point
+   * @returns {ECPoint} Result
    */
   function pointMultiply(k, point) {
-    if (k === 0n) return ECPoint.infinity();
+    if (k === 0n) return pointAtInfinity();
     if (k === 1n) return point;
     if (k < 0n) throw new Error('Negative scalar not supported');
 
-    let result = ECPoint.infinity();
+    /** @type {ECPoint} */
+    let result = pointAtInfinity();
+    /** @type {ECPoint} */
     let addend = point;
 
     while (k > 0n) {
@@ -238,6 +305,8 @@
 
   /**
    * Check if Y coordinate is even (BIP-340 requirement)
+   * @param {ECPoint} point - point
+   * @returns {boolean} Result
    */
   function hasEvenY(point) {
     if (point.isInfinity) return false;
@@ -247,6 +316,8 @@
   /**
    * Lift X coordinate to point with even Y (BIP-340 operation)
    * Returns point if x is valid X coordinate, null otherwise
+   * @param {BigInt} x - x
+   * @returns {ECPoint|null} Result
    */
   function liftX(x) {
     if (x >= P) return null;
@@ -269,8 +340,11 @@
 
   /**
    * Convert 32-byte array to BigInt (big-endian)
+   * @param {uint8[]} bytes - bytes
+   * @returns {BigInt} Result
    */
   function bytesToBigInt(bytes) {
+    /** @type {BigInt} */
     let result = 0n;
     for (let i = 0; i < bytes.length; ++i) {
       result = OpCodes.OrN(OpCodes.ShiftLn(result, 8n), BigInt(bytes[i]));
@@ -280,11 +354,17 @@
 
   /**
    * Convert BigInt to 32-byte array (big-endian)
+   * @param {BigInt} value - value
+   * @param {int32} length - length
+   * @returns {uint8[]} Result
    */
   function bigIntToBytes(value, length = 32) {
+    /** @type {uint8[]} */
     const result = new Array(length);
     for (let i = length - 1; i >= 0; --i) {
-      result[i] = Number(OpCodes.AndN(value, 0xFFn));
+      /** @type {uint8} */
+      const octet = Number(OpCodes.AndN(value, 0xFFn));
+      result[i] = octet;
       value = OpCodes.ShiftRn(value, 8n);
     }
     return result;
@@ -292,6 +372,8 @@
 
   /**
    * Convert point X coordinate to 32 bytes (BIP-340 encoding)
+   * @param {ECPoint} point - point
+   * @returns {uint8[]} Result
    */
   function pointToBytes(point) {
     if (point.isInfinity) throw new Error('Cannot encode point at infinity');
@@ -310,15 +392,17 @@
   // register SHA-224 and SHA-256 while this file was loading, and every tool
   // that attributes an algorithm to whichever file was loading when it
   // registered would then file both of them under asymmetric ciphers.
+  /** @type {Algorithm} */
   let sha256Algorithm = null;
 
   /**
    * Resolve the registered SHA-256, once.
-   * @returns {Object} The SHA-256 algorithm
+   * @returns {Algorithm} The SHA-256 algorithm
    */
   function sha256Implementation() {
     if (sha256Algorithm) return sha256Algorithm;
 
+    /** @type {Algorithm} */
     let found = AlgorithmFramework.Find ? AlgorithmFramework.Find('SHA-256') : null;
 
     if (!found) {
@@ -342,23 +426,30 @@
 
   /**
    * SHA-256 hash function using the proven implementation from algorithms/hash/sha256.js
-   * @param {Array<number>} data - Input data as byte array
-   * @returns {Array<number>} - 32-byte hash output
+   * @param {uint8[]} data - Input data as byte array
+   * @returns {uint8[]} - 32-byte hash output
    */
   function sha256(data) {
+    /** @type {IHashFunctionInstance} */
     const instance = sha256Implementation().CreateInstance();
     instance.Feed(data);
-    return instance.Result();
+    /** @type {uint8[]} */
+    const digest = instance.Result();
+    return digest;
   }
 
   /**
    * BIP-340 tagged hash: hash_tag(x) = SHA256(SHA256(tag) || SHA256(tag) || x)
+   * @param {string} tag - tag
+   * @param {uint8[]} data - data
+   * @returns {uint8[]} Result
    */
   function taggedHash(tag, data) {
     const tagBytes = OpCodes.AnsiToBytes(tag);
     const tagHash = sha256(tagBytes);
 
     // Concatenate: tagHash || tagHash || data
+    /** @type {uint8[]} */
     const combined = [...tagHash, ...tagHash, ...data];
 
     return sha256(combined);
@@ -370,6 +461,8 @@
    * BIP-340 Public Key Generation
    * Input: 32-byte secret key
    * Output: 32-byte X-only public key
+   * @param {uint8[]} secretKey - secretKey
+   * @returns {uint8[]} Result
    */
   function generatePublicKey(secretKey) {
     if (secretKey.length !== 32) {
@@ -391,6 +484,10 @@
    * BIP-340 Schnorr Signature Generation
    * Inputs: secretKey (32 bytes), message (any length), auxRand (32 bytes, optional)
    * Output: 64-byte signature
+   * @param {uint8[]} secretKey - secretKey
+   * @param {uint8[]} message - message
+   * @param {uint8[]|null} auxRand - auxRand
+   * @returns {uint8[]} Result
    */
   function sign(secretKey, message, auxRand = null) {
     if (secretKey.length !== 32) {
@@ -399,7 +496,10 @@
 
     // Default aux_rand to zeros if not provided
     if (!auxRand) {
-      auxRand = new Array(32).fill(0);
+      /** @type {uint8[]} */
+      const zeros = new Array(32);
+      zeros.fill(0);
+      auxRand = zeros;
     }
 
     if (auxRand.length !== 32) {
@@ -428,6 +528,7 @@
 
     // Step 5: Let rand = hash_BIP0340/nonce(t || bytes(P) || m)
     const PBytes = pointToBytes(P);
+    /** @type {uint8[]} */
     const nonceInput = [...t, ...PBytes, ...message];
     const rand = taggedHash('BIP0340/nonce', nonceInput);
 
@@ -447,6 +548,7 @@
 
     // Step 9: Let e = int(hash_BIP0340/challenge(bytes(R) || bytes(P) || m)) mod n
     const RBytes = pointToBytes(R);
+    /** @type {uint8[]} */
     const challengeInput = [...RBytes, ...PBytes, ...message];
     const eHash = taggedHash('BIP0340/challenge', challengeInput);
     const e = bytesToBigInt(eHash) % N;
@@ -455,13 +557,19 @@
     const s = (k + e * d) % N;
     const sBytes = bigIntToBytes(s, 32);
 
-    return [...RBytes, ...sBytes];
+    /** @type {uint8[]} */
+    const signature = [...RBytes, ...sBytes];
+    return signature;
   }
 
   /**
    * BIP-340 Schnorr Signature Verification
    * Inputs: publicKey (32 bytes), message (any length), signature (64 bytes)
    * Output: true if valid, false otherwise
+   * @param {uint8[]} publicKey - publicKey
+   * @param {uint8[]} message - message
+   * @param {uint8[]} signature - signature
+   * @returns {boolean} Result
    */
   function verify(publicKey, message, signature) {
     if (publicKey.length !== 32) {
@@ -494,6 +602,7 @@
     // Step 4: Let e = int(hash_BIP0340/challenge(bytes(r) || bytes(pubPoint) || m)) mod n
     const rBytes = bigIntToBytes(r, 32);
     const pubBytes = pointToBytes(pubPoint);
+    /** @type {uint8[]} */
     const challengeInput = [...rBytes, ...pubBytes, ...message];
     const eHash = taggedHash('BIP0340/challenge', challengeInput);
     const e = bytesToBigInt(eHash) % N;
@@ -566,17 +675,8 @@
       ];
 
       // BIP-340 official test vectors
-      this.tests = this._loadBIP340TestVectors();
-    }
-
-    /**
-     * Load BIP-340 official test vectors from reference CSV
-     */
-    _loadBIP340TestVectors() {
-      const vectors = [];
-
-      // Test vector 0: Basic signing test
-      vectors.push({
+      this.tests = [
+      {
         text: "BIP-340 Vector #0 - Basic signature",
         uri: "https://github.com/bitcoin/bips/blob/master/bip-0340/test-vectors.csv",
         secretKey: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000003"),
@@ -584,10 +684,8 @@
         auxRand: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
         input: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
         expected: OpCodes.Hex8ToBytes("E907831F80848D1069A5371B402410364BDF1C5F8307B0084C55F1CE2DCA821525F66A4A85EA8B71E482A74F382D2CE5EBEEE8FDB2172F477DF4900D310536C0")
-      });
-
-      // Test vector 1: Signature with non-zero key and message
-      vectors.push({
+      },
+      {
         text: "BIP-340 Vector #1 - Non-zero signature",
         uri: "https://github.com/bitcoin/bips/blob/master/bip-0340/test-vectors.csv",
         secretKey: OpCodes.Hex8ToBytes("B7E151628AED2A6ABF7158809CF4F3C762E7160F38B4DA56A784D9045190CFEF"),
@@ -595,10 +693,8 @@
         auxRand: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000001"),
         input: OpCodes.Hex8ToBytes("243F6A8885A308D313198A2E03707344A4093822299F31D0082EFA98EC4E6C89"),
         expected: OpCodes.Hex8ToBytes("6896BD60EEAE296DB48A229FF71DFE071BDE413E6D43F917DC8DCF8C78DE33418906D11AC976ABCCB20B091292BFF4EA897EFCB639EA871CFA95F6DE339E4B0A")
-      });
-
-      // Test vector 2: Test with different aux_rand
-      vectors.push({
+      },
+      {
         text: "BIP-340 Vector #2 - Different aux_rand",
         uri: "https://github.com/bitcoin/bips/blob/master/bip-0340/test-vectors.csv",
         secretKey: OpCodes.Hex8ToBytes("C90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B14E5C9"),
@@ -606,10 +702,8 @@
         auxRand: OpCodes.Hex8ToBytes("C87AA53824B4D7AE2EB035A2B5BBBCCC080E76CDC6D1692C4B0B62D798E6D906"),
         input: OpCodes.Hex8ToBytes("7E2D58D8B3BCDF1ABADEC7829054F90DDA9805AAB56C77333024B9D0A508B75C"),
         expected: OpCodes.Hex8ToBytes("5831AAEED7B44BB74E5EAB94BA9D4294C49BCF2A60728D8B4C200F50DD313C1BAB745879A5AD954A72C45A91C3A51D3C7ADEA98D82F8481E0E1E03674A6F3FB7")
-      });
-
-      // Test vector 3: Test with all 0xFF values
-      vectors.push({
+      },
+      {
         text: "BIP-340 Vector #3 - Maximum values test",
         uri: "https://github.com/bitcoin/bips/blob/master/bip-0340/test-vectors.csv",
         secretKey: OpCodes.Hex8ToBytes("0B432B2677937381AEF05BB02A66ECD012773062CF3FA2549E44F58ED2401710"),
@@ -617,10 +711,13 @@
         auxRand: OpCodes.Hex8ToBytes("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"),
         input: OpCodes.Hex8ToBytes("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"),
         expected: OpCodes.Hex8ToBytes("7EB0509757E246F19449885651611CB965ECC1A187DD51B64FDA1EDC9637D5EC97582B9CB13DB3933705B32BA982AF5AF25FD78881EBB32771FC5922EFC66EA3")
-      });
-
-      return vectors;
+      }
+      ];
     }
+
+    /**
+     * Load BIP-340 official test vectors from reference CSV
+     */
 
     /**
    * Create new cipher instance
@@ -640,16 +737,27 @@
    * Schnorr Algorithm Instance
    */
   class SchnorrInstance extends IAlgorithmInstance {
+    /**
+     * @param {SchnorrAlgorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]|null} */
       this._secretKey = null;
+      /** @type {uint8[]|null} */
       this._publicKey = null;
+      /** @type {uint8[]|null} */
       this._auxRand = null;
+      /** @type {uint8[]|null} */
       this._message = null;
+      /** @type {uint8[]|null} */
       this._signature = null;
     }
 
     // Property: secretKey
+    /**
+     * @param {uint8[]|null} keyBytes - keyBytes
+     */
     set secretKey(keyBytes) {
       if (!keyBytes || keyBytes.length === 0) {
         this._secretKey = null;
@@ -660,17 +768,30 @@
         throw new Error('Secret key must be 32 bytes');
       }
 
-      this._secretKey = [...keyBytes];
+      /** @type {uint8[]} */
+      const copy = [...keyBytes];
+      this._secretKey = copy;
 
       // Auto-generate public key
       this._publicKey = generatePublicKey(this._secretKey);
     }
 
+    /**
+     * @returns {uint8[]|null} Result
+     */
     get secretKey() {
-      return this._secretKey ? [...this._secretKey] : null;
+      if (!this._secretKey) {
+        return null;
+      }
+      /** @type {uint8[]} */
+      const copy = [...this._secretKey];
+      return copy;
     }
 
     // Property: publicKey
+    /**
+     * @param {uint8[]|null} keyBytes - keyBytes
+     */
     set publicKey(keyBytes) {
       if (!keyBytes || keyBytes.length === 0) {
         this._publicKey = null;
@@ -681,14 +802,27 @@
         throw new Error('Public key must be 32 bytes');
       }
 
-      this._publicKey = [...keyBytes];
+      /** @type {uint8[]} */
+      const copy = [...keyBytes];
+      this._publicKey = copy;
     }
 
+    /**
+     * @returns {uint8[]|null} Result
+     */
     get publicKey() {
-      return this._publicKey ? [...this._publicKey] : null;
+      if (!this._publicKey) {
+        return null;
+      }
+      /** @type {uint8[]} */
+      const copy = [...this._publicKey];
+      return copy;
     }
 
     // Property: auxRand (auxiliary randomness for signing)
+    /**
+     * @param {uint8[]|null} randBytes - randBytes
+     */
     set auxRand(randBytes) {
       if (!randBytes || randBytes.length === 0) {
         this._auxRand = null;
@@ -699,11 +833,21 @@
         throw new Error('Auxiliary randomness must be 32 bytes');
       }
 
-      this._auxRand = [...randBytes];
+      /** @type {uint8[]} */
+      const copy = [...randBytes];
+      this._auxRand = copy;
     }
 
+    /**
+     * @returns {uint8[]|null} Result
+     */
     get auxRand() {
-      return this._auxRand ? [...this._auxRand] : null;
+      if (!this._auxRand) {
+        return null;
+      }
+      /** @type {uint8[]} */
+      const copy = [...this._auxRand];
+      return copy;
     }
 
     /**
@@ -744,7 +888,9 @@
         this._signature = null;
 
         // Return verification result as bytes (1 = valid, 0 = invalid)
-        return [isValid ? 1 : 0];
+        /** @type {uint8[]} */
+        const verdict = [isValid ? 1 : 0];
+        return verdict;
       }
 
       // Otherwise, generate signature

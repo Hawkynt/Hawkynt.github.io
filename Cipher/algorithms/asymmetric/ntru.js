@@ -86,8 +86,8 @@
    * Resolving on demand leaves sha3.js to register itself when the walk
    * reaches it.
    *
-   * @param {number[]} data - input bytes
-   * @returns {number[]} 32 digest bytes
+   * @param {int32[]} data - input bytes
+   * @returns {int32[]} 32 digest bytes
    */
   function sha3_256(data) {
     if (!sha3Algorithm) {
@@ -110,70 +110,129 @@
 
     const instance = sha3Algorithm.CreateInstance();
     instance.Feed(data);
-    return instance.Result();
+    /** @type {uint8[]} */
+    const digest = instance.Result();
+    return digest;
   }
 
   // ===== PARAMETER SETS =====
 
-  const PARAMETER_SETS = (() => {
-    const build = (name, n, logq) => {
-      const P = { name: name, n: n, logq: logq };
-      P.q = Math.pow(2, logq);
-      P.weight = P.q / 8 - 2;                             // number of non-zero coefficients
-      P.packDeg = n - 1;
-      P.trinaryBytes = Math.floor((P.packDeg + 4) / 5);   // five trits to a byte
-      P.messageBytes = 2 * P.trinaryBytes;
-      P.publicKeySize = Math.floor((logq * P.packDeg + 7) / 8);
-      P.ciphertextSize = P.publicKeySize;
-      P.owcpaSecretKeySize = 2 * P.trinaryBytes + P.publicKeySize;
-      P.prfKeyBytes = 32;
-      P.privateKeySize = P.owcpaSecretKeySize + P.prfKeyBytes;
-      P.sharedSecretSize = 32;
-      P.iidBytes = n - 1;
-      P.fixedTypeBytes = Math.floor((30 * (n - 1) + 7) / 8);
-      P.keySeedSize = P.iidBytes + P.fixedTypeBytes;      // Sample_fg input
-      P.messageSeedSize = P.keySeedSize;                  // Sample_rm input
-      return P;
-    };
-
-    const sets = {};
-    for (const set of [build('ntruhps2048509', 509, 11),
-                       build('ntruhps2048677', 677, 11),
-                       build('ntruhps4096821', 821, 12)])
-      sets[set.name] = set;
-    return sets;
-  })();
-
-  const PARAMETER_SET_ALIASES = (() => {
-    const map = {};
-    for (const set of Object.values(PARAMETER_SETS)) {
-      map[set.name] = set;
-      map[String(set.n)] = set;
-      map['NTRU-HPS-' + set.q + '-' + set.n] = set;
+  class NtruParams {
+    /**
+     * @param {string} name - 'ntruhps2048509', ...
+     * @param {int32} n - ring degree
+     * @param {int32} logq - log2 of the modulus q
+     */
+    constructor(name, n, logq) {
+      /** @type {string} */
+      this.name = name;
+      /** @type {int32} */
+      this.n = n;
+      /** @type {int32} */
+      this.logq = logq;
+      /** @type {int32} */
+      this.q = Math.pow(2, logq);
+      /** @type {int32} */
+      this.weight = this.q / 8 - 2;                             // number of non-zero coefficients
+      /** @type {int32} */
+      this.packDeg = n - 1;
+      /** @type {int32} */
+      this.trinaryBytes = Math.floor((this.packDeg + 4) / 5);   // five trits to a byte
+      /** @type {int32} */
+      this.messageBytes = 2 * this.trinaryBytes;
+      /** @type {int32} */
+      this.publicKeySize = Math.floor((logq * this.packDeg + 7) / 8);
+      /** @type {int32} */
+      this.ciphertextSize = this.publicKeySize;
+      /** @type {int32} */
+      this.owcpaSecretKeySize = 2 * this.trinaryBytes + this.publicKeySize;
+      /** @type {int32} */
+      this.prfKeyBytes = 32;
+      /** @type {int32} */
+      this.privateKeySize = this.owcpaSecretKeySize + this.prfKeyBytes;
+      /** @type {int32} */
+      this.sharedSecretSize = 32;
+      /** @type {int32} */
+      this.iidBytes = n - 1;
+      /** @type {int32} */
+      this.fixedTypeBytes = Math.floor((30 * (n - 1) + 7) / 8);
+      /** @type {int32} */
+      this.keySeedSize = this.iidBytes + this.fixedTypeBytes;   // Sample_fg input
+      /** @type {int32} */
+      this.messageSeedSize = this.keySeedSize;                  // Sample_rm input
     }
-    return map;
-  })();
+  }
+
+  const NTRU_HPS_2048_509 = new NtruParams('ntruhps2048509', 509, 11);
+  const NTRU_HPS_2048_677 = new NtruParams('ntruhps2048677', 677, 11);
+  const NTRU_HPS_4096_821 = new NtruParams('ntruhps4096821', 821, 12);
+
+  /** @type {NtruParams[]} */
+  const PARAMETER_SET_LIST = [NTRU_HPS_2048_509, NTRU_HPS_2048_677, NTRU_HPS_4096_821];
+
+  const PARAMETER_SETS = {
+    'ntruhps2048509': NTRU_HPS_2048_509,
+    'ntruhps2048677': NTRU_HPS_2048_677,
+    'ntruhps4096821': NTRU_HPS_4096_821
+  };
+
+  // Every accepted label: the name, the degree and the NTRU-HPS-q-n form.
+  const PARAMETER_SET_ALIASES = {
+    'ntruhps2048509': NTRU_HPS_2048_509,
+    '509': NTRU_HPS_2048_509,
+    'NTRU-HPS-2048-509': NTRU_HPS_2048_509,
+    'ntruhps2048677': NTRU_HPS_2048_677,
+    '677': NTRU_HPS_2048_677,
+    'NTRU-HPS-2048-677': NTRU_HPS_2048_677,
+    'ntruhps4096821': NTRU_HPS_4096_821,
+    '821': NTRU_HPS_4096_821,
+    'NTRU-HPS-4096-821': NTRU_HPS_4096_821
+  };
+
+  /**
+   * The alias table entry for a label. A plain property read, so a label is
+   * accepted exactly when the table has a truthy property of it.
+   * @param {string} key - the label
+   * @returns {NtruParams} the entry, or a falsy value
+   */
+  function AliasEntry(key) {
+    /** @type {NtruParams} */
+    const entry = PARAMETER_SET_ALIASES[key];
+    return entry;
+  }
 
   /**
    * Look a parameter set up by any of its accepted names.
    * @param {string|number} label - 'ntruhps2048509', 'NTRU-HPS-2048-509', 509
-   * @returns {object|null} The parameter set, or null when unrecognised
+   * @returns {NtruParams|null} The parameter set, or null when unrecognised
    */
   function findParameterSet(label) {
-    if (label === null || label === undefined) return null;
+    if (label === null || label === undefined) {
+      return null;
+    }
+    /** @type {string} */
     const key = String(label).trim();
-    return PARAMETER_SET_ALIASES[key] || PARAMETER_SET_ALIASES[key.toLowerCase()] || null;
+    const exact = AliasEntry(key);
+    if (exact) return exact;
+    const lower = AliasEntry(key.toLowerCase());
+    if (lower) return lower;
+    return null;
   }
 
   /**
    * Identify a parameter set from the length of one of its encoded values.
-   * @param {number} length - byte length
+   * @param {int32} length - byte length
    * @param {string} field - 'publicKeySize', 'privateKeySize' or 'ciphertextSize'
-   * @returns {object|null} The parameter set, or null
+   * @returns {NtruParams|null} The parameter set, or null
    */
   function parameterSetByLength(length, field) {
-    for (const set of Object.values(PARAMETER_SETS))
-      if (set[field] === length) return set;
+    for (let i = 0; i < PARAMETER_SET_LIST.length; i++) {
+      const set = PARAMETER_SET_LIST[i];
+      const size = field === 'privateKeySize' ? set.privateKeySize
+        : field === 'ciphertextSize' ? set.ciphertextSize
+        : set.publicKeySize;
+      if (size === length) return set;
+    }
     return null;
   }
 
@@ -184,33 +243,53 @@
 
   /**
    * Append every element of source to target.
-   * @param {number[]} target - array appended to, modified in place
-   * @param {number[]} source - array read from
-   * @returns {number[]} target
+   * @param {int32[]} target - array appended to, modified in place
+   * @param {int32[]} source - array read from
+   * @returns {int32[]} target
    */
   function appendAll(target, source) {
     for (let i = 0; i < source.length; i++) target.push(source[i]);
     return target;
   }
 
-  /** @param {number} count - length @returns {number[]} a zero-filled array */
+  /**
+   * @param {int32} count - length
+   * @returns {int32[]} a zero-filled array
+   */
   function zeros(count) {
-    return new Array(count).fill(0);
+    /** @type {int32[]} */
+    const out = new Array(count).fill(0);
+    return out;
   }
 
-  const POW2 = (() => {
+  /**
+   * @returns {int64[]} 2^0 .. 2^32
+   */
+  function PowersOfTwo() {
+    /** @type {int64[]} */
     const table = new Array(33);
     table[0] = 1;
     for (let i = 1; i < 33; i++) table[i] = table[i - 1] * 2;
     return table;
-  })();
+  }
+
+  const POW2 = PowersOfTwo();
+
+  /**
+   * Read an unsigned 32 bit quantity as signed.
+   * @param {int64} v - value in [0, 2^32)
+   * @returns {int32} v, or v - 2^32 when v is 2^31 or more
+   */
+  function ToSigned32(v) {
+    return v >= POW2[31] ? v - POW2[32] : v;
+  }
 
   // ===== COEFFICIENT ARITHMETIC =====
 
   /**
    * Least non-negative residue modulo 3.
-   * @param {number} a - any integer
-   * @returns {number} a mod 3
+   * @param {int32} a - any integer
+   * @returns {int32} a mod 3
    */
   function mod3(a) {
     const r = a % 3;
@@ -219,9 +298,9 @@
 
   /**
    * Least non-negative residue modulo q.
-   * @param {number} a - any integer
-   * @param {object} P - parameter set
-   * @returns {number} a mod q
+   * @param {int32} a - any integer
+   * @param {NtruParams} P - parameter set
+   * @returns {int32} a mod q
    */
   function modQ(a, P) {
     const r = a % P.q;
@@ -237,10 +316,10 @@
 
   /**
    * Product in R_q = Z_q[x]/(x^n - 1).
-   * @param {number[]} a - n coefficients
-   * @param {number[]} b - n coefficients
-   * @param {object} P - parameter set
-   * @returns {number[]} the product
+   * @param {int32[]} a - n coefficients
+   * @param {int32[]} b - n coefficients
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} the product
    */
   function rqMultiply(a, b, P) {
     const n = P.n;
@@ -261,9 +340,9 @@
 
   /**
    * Reduce modulo Phi_n with coefficients modulo q, in place.
-   * @param {number[]} r - n coefficients
-   * @param {object} P - parameter set
-   * @returns {number[]} r
+   * @param {int32[]} r - n coefficients
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} r
    */
   function modQPhiN(r, P) {
     const last = r[P.n - 1];
@@ -273,9 +352,9 @@
 
   /**
    * Reduce modulo Phi_n with coefficients modulo 3, in place.
-   * @param {number[]} r - n coefficients
-   * @param {object} P - parameter set
-   * @returns {number[]} r
+   * @param {int32[]} r - n coefficients
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} r
    */
   function mod3PhiN(r, P) {
     const last = r[P.n - 1];
@@ -285,10 +364,10 @@
 
   /**
    * Product in S_q = Z_q[x]/Phi_n.
-   * @param {number[]} a - n coefficients
-   * @param {number[]} b - n coefficients
-   * @param {object} P - parameter set
-   * @returns {number[]} the product
+   * @param {int32[]} a - n coefficients
+   * @param {int32[]} b - n coefficients
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} the product
    */
   function sqMultiply(a, b, P) {
     return modQPhiN(rqMultiply(a, b, P), P);
@@ -296,10 +375,10 @@
 
   /**
    * Product in S_3 = Z_3[x]/Phi_n.
-   * @param {number[]} a - n coefficients
-   * @param {number[]} b - n coefficients
-   * @param {object} P - parameter set
-   * @returns {number[]} the product
+   * @param {int32[]} a - n coefficients
+   * @param {int32[]} b - n coefficients
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} the product
    */
   function s3Multiply(a, b, P) {
     const n = P.n;
@@ -325,9 +404,9 @@
 
   /**
    * Degree of a polynomial over a prime field, or -1 when it is zero.
-   * @param {number[]} p - coefficients
-   * @param {number} modulus - 2 or 3
-   * @returns {number} the degree
+   * @param {int32[]} p - coefficients
+   * @param {int32} modulus - 2 or 3
+   * @returns {int32} the degree
    */
   function degreeOf(p, modulus) {
     for (let i = p.length - 1; i >= 0; i--)
@@ -336,9 +415,41 @@
   }
 
   /**
+   * destination += source * x^shift over F_2, in place, within destination.
+   * @param {int32[]} destination - coefficients, modified
+   * @param {int32[]} source - coefficients
+   * @param {int32} shift - power of x
+   */
+  function AddShiftedMod2(destination, source, shift) {
+    for (let i = 0; i + shift < destination.length && i < source.length; i++)
+      destination[i + shift] = (destination[i + shift] + source[i]) % 2;
+  }
+
+  /**
+   * The inverse of a non-zero residue modulo 3.
+   * @param {int32} v - a residue
+   * @returns {int32} 1 for 1, otherwise 2; 1 and 2 are self-inverse modulo 3
+   */
+  function Mod3Inverse(v) {
+    return mod3(v) === 1 ? 1 : 2;
+  }
+
+  /**
+   * destination += factor * source * x^shift over F_3, in place.
+   * @param {int32[]} destination - coefficients, modified
+   * @param {int32[]} source - coefficients
+   * @param {int32} factor - multiplier
+   * @param {int32} shift - power of x
+   */
+  function AddScaledShiftedMod3(destination, source, factor, shift) {
+    for (let i = 0; i + shift < destination.length && i < source.length; i++)
+      destination[i + shift] = mod3(destination[i + shift] + factor * source[i]);
+  }
+
+  /**
    * Inverse in F_2[x]/Phi_n, by the extended Euclidean algorithm.
-   * @param {number[]} a - n coefficients
-   * @param {object} P - parameter set
+   * @param {int32[]} a - n coefficients
+   * @param {NtruParams} P - parameter set
    * @returns {number[]|null} the inverse, or null when a is not invertible
    */
   function r2Inverse(a, P) {
@@ -355,18 +466,13 @@
     let cofactorLow = zeros(n + 1);
     cofactorLow[0] = 1;
 
-    const addShifted = (destination, source, shift) => {
-      for (let i = 0; i + shift < destination.length && i < source.length; i++)
-        destination[i + shift] = (destination[i + shift] + source[i]) % 2;
-    };
-
     while (degreeOf(remainderLow, 2) > 0) {
       const lowDegree = degreeOf(remainderLow, 2);
       let highDegree = degreeOf(remainderHigh, 2);
 
       while (highDegree >= lowDegree) {
-        addShifted(remainderHigh, remainderLow, highDegree - lowDegree);
-        addShifted(cofactorHigh, cofactorLow, highDegree - lowDegree);
+        AddShiftedMod2(remainderHigh, remainderLow, highDegree - lowDegree);
+        AddShiftedMod2(cofactorHigh, cofactorLow, highDegree - lowDegree);
         const reduced = degreeOf(remainderHigh, 2);
         if (reduced >= highDegree) return null;            // no progress: not invertible
         highDegree = reduced;
@@ -399,8 +505,8 @@
    * that sum, and n is odd while q is a power of two, so exactly one
    * representative of the coset sums to zero and both parties compute it.
    *
-   * @param {number[]} a - n coefficients
-   * @param {object} P - parameter set
+   * @param {int32[]} a - n coefficients
+   * @param {NtruParams} P - parameter set
    * @returns {number[]|null} the inverse, or null when a is not invertible
    */
   function rqInverse(a, P) {
@@ -422,8 +528,8 @@
 
   /**
    * Inverse in S_3 = Z_3[x]/Phi_n, by the extended Euclidean algorithm.
-   * @param {number[]} a - n coefficients
-   * @param {object} P - parameter set
+   * @param {int32[]} a - n coefficients
+   * @param {NtruParams} P - parameter set
    * @returns {number[]|null} the inverse, or null when a is not invertible
    */
   function s3Inverse(a, P) {
@@ -440,21 +546,15 @@
     let cofactorLow = zeros(n + 1);
     cofactorLow[0] = 1;
 
-    const inverseOf = v => (mod3(v) === 1 ? 1 : 2);        // 1 and 2 are self-inverse modulo 3
-    const addScaledShifted = (destination, source, factor, shift) => {
-      for (let i = 0; i + shift < destination.length && i < source.length; i++)
-        destination[i + shift] = mod3(destination[i + shift] + factor * source[i]);
-    };
-
     while (degreeOf(remainderLow, 3) > 0) {
       const lowDegree = degreeOf(remainderLow, 3);
       const lowLeading = mod3(remainderLow[lowDegree]);
       let highDegree = degreeOf(remainderHigh, 3);
 
       while (highDegree >= lowDegree) {
-        const factor = mod3(-mod3(remainderHigh[highDegree]) * inverseOf(lowLeading));
-        addScaledShifted(remainderHigh, remainderLow, factor, highDegree - lowDegree);
-        addScaledShifted(cofactorHigh, cofactorLow, factor, highDegree - lowDegree);
+        const factor = mod3(-mod3(remainderHigh[highDegree]) * Mod3Inverse(lowLeading));
+        AddScaledShiftedMod3(remainderHigh, remainderLow, factor, highDegree - lowDegree);
+        AddScaledShiftedMod3(cofactorHigh, cofactorLow, factor, highDegree - lowDegree);
         const reduced = degreeOf(remainderHigh, 3);
         if (reduced >= highDegree) return null;            // no progress: not invertible
         highDegree = reduced;
@@ -467,7 +567,7 @@
 
     if (degreeOf(remainderLow, 3) !== 0) return null;
 
-    const scale = inverseOf(remainderLow[0]);
+    const scale = Mod3Inverse(remainderLow[0]);
     const out = zeros(n);
     for (let i = 0; i < n; i++) out[i] = mod3(cofactorLow[i] * scale);
     return mod3PhiN(out, P);
@@ -477,9 +577,9 @@
 
   /**
    * Map ternary coefficients {0, 1, 2} onto {0, 1, q-1}, in place.
-   * @param {number[]} r - n coefficients
-   * @param {object} P - parameter set
-   * @returns {number[]} r
+   * @param {int32[]} r - n coefficients
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} r
    */
   function z3ToZq(r, P) {
     for (let i = 0; i < P.n; i++)
@@ -489,33 +589,34 @@
 
   /**
    * Map coefficients {0, 1, q-1} back onto {0, 1, 2}, in place.
-   * @param {number[]} r - n coefficients
-   * @param {object} P - parameter set
-   * @returns {number[]} r
+   * @param {int32[]} r - n coefficients
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} r
    */
   function trinaryZqToZ3(r, P) {
     for (let i = 0; i < P.n; i++) {
       const c = modQ(r[i], P);
-      r[i] = OpCodes.AndN(OpCodes.XorN(c, OpCodes.Shr32(c, P.logq - 1)), 3);
+      r[i] = OpCodes.And32(OpCodes.Xor32(c, OpCodes.Shr32(c, P.logq - 1)), 3);
     }
     return r;
   }
 
   /**
    * Centre R_q coefficients about zero and reduce modulo 3 and Phi_n.
-   * @param {number[]} a - n coefficients
-   * @param {object} P - parameter set
-   * @returns {number[]} the S_3 element
+   * @param {int32[]} a - n coefficients
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} the S_3 element
    */
   function rqToS3(a, P) {
     const r = zeros(P.n);
     // Centring subtracts q from any coefficient at or above q/2, and
     // -q = -2^logq is 1 modulo 3 when logq is odd and 2 when it is even.
+    /** @type {int32} */
     const carry = POW2[1 - (P.logq % 2)];
 
     for (let i = 0; i < P.n; i++) {
       const c = modQ(a[i], P);
-      r[i] = c + OpCodes.Shr32(c, P.logq - 1) * carry;
+      r[i] = OpCodes.Add32(c, OpCodes.Mul32(OpCodes.Shr32(c, P.logq - 1), carry));
     }
 
     return mod3PhiN(r, P);
@@ -524,9 +625,9 @@
   /**
    * The lifting map. For NTRU-HPS it is the identity on ternary coefficients,
    * read into Z_q.
-   * @param {number[]} a - n ternary coefficients
-   * @param {object} P - parameter set
-   * @returns {number[]} the lift
+   * @param {int32[]} a - n ternary coefficients
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} the lift
    */
   function lift(a, P) {
     return z3ToZq(a.slice(), P);
@@ -536,9 +637,9 @@
 
   /**
    * Pack ternary coefficients, five to a byte, base three.
-   * @param {number[]} a - n coefficients in {0, 1, 2}
-   * @param {object} P - parameter set
-   * @returns {number[]} trinaryBytes bytes
+   * @param {int32[]} a - n coefficients in {0, 1, 2}
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} trinaryBytes bytes
    */
   function s3ToBytes(a, P) {
     const out = zeros(P.trinaryBytes);
@@ -561,9 +662,9 @@
 
   /**
    * Unpack ternary coefficients written by s3ToBytes.
-   * @param {number[]} msg - packed bytes
-   * @param {object} P - parameter set
-   * @returns {number[]} n coefficients
+   * @param {int32[]} msg - packed bytes
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} n coefficients
    */
   function s3FromBytes(msg, P) {
     const r = zeros(P.n);
@@ -591,10 +692,10 @@
 
   /**
    * Pack coefficients as a little-endian bit stream of fixed width.
-   * @param {number[]} a - coefficients
-   * @param {number} count - how many to write
-   * @param {number} bits - width of each
-   * @returns {number[]} the packed bytes
+   * @param {int32[]} a - coefficients
+   * @param {int32} count - how many to write
+   * @param {int32} bits - width of each
+   * @returns {int32[]} the packed bytes
    */
   function packCoefficients(a, count, bits) {
     const out = zeros(Math.floor((count * bits + 7) / 8));
@@ -602,9 +703,9 @@
 
     for (let i = 0; i < count; i++) {
       for (let t = 0; t < bits; t++) {
-        if (OpCodes.AndN(OpCodes.Shr32(a[i], t), 1) === 1) {
+        if (OpCodes.And32(OpCodes.Shr32(a[i], t), 1) === 1) {
           const index = Math.floor(bitPosition / 8);
-          out[index] = OpCodes.OrN(out[index], POW2[bitPosition % 8]);
+          out[index] = OpCodes.Or32(out[index], POW2[bitPosition % 8]);
         }
         bitPosition++;
       }
@@ -615,21 +716,24 @@
 
   /**
    * Read back a bit stream written by packCoefficients.
-   * @param {number[]} bytes - packed bytes
-   * @param {number} count - how many coefficients to read
-   * @param {number} bits - width of each
-   * @returns {number[]} the coefficients
+   * @param {int32[]} bytes - packed bytes
+   * @param {int32} count - how many coefficients to read
+   * @param {int32} bits - width of each
+   * @returns {int32[]} the coefficients
    */
   function unpackCoefficients(bytes, count, bits) {
     const out = zeros(count);
     let bitPosition = 0;
 
     for (let i = 0; i < count; i++) {
+      /** @type {int32} */
       let value = 0;
       for (let t = 0; t < bits; t++) {
         const index = Math.floor(bitPosition / 8);
-        if (OpCodes.AndN(OpCodes.Shr32(bytes[index], bitPosition % 8), 1) === 1)
-          value += POW2[t];
+        /** @type {int32} */
+        const weight = POW2[t];
+        if (OpCodes.And32(OpCodes.Shr32(bytes[index], bitPosition % 8), 1) === 1)
+          value += weight;
         bitPosition++;
       }
       out[i] = value;
@@ -638,13 +742,21 @@
     return out;
   }
 
-  const sqToBytes = (a, P) => packCoefficients(a, P.packDeg, P.logq);
+  /**
+   * Pack an S_q element.
+   * @param {int32[]} a - n coefficients
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} packed bytes
+   */
+  function sqToBytes(a, P) {
+    return packCoefficients(a, P.packDeg, P.logq);
+  }
 
   /**
    * Unpack an S_q element.
-   * @param {number[]} bytes - packed bytes
-   * @param {object} P - parameter set
-   * @returns {number[]} n coefficients, the last zero
+   * @param {int32[]} bytes - packed bytes
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} n coefficients, the last zero
    */
   function sqFromBytes(bytes, P) {
     const r = zeros(P.n);
@@ -654,14 +766,22 @@
     return r;
   }
 
-  const rqSumZeroToBytes = (a, P) => packCoefficients(a, P.packDeg, P.logq);
+  /**
+   * Pack an R_q element whose coefficients sum to zero; the last is implied.
+   * @param {int32[]} a - n coefficients
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} packed bytes
+   */
+  function rqSumZeroToBytes(a, P) {
+    return packCoefficients(a, P.packDeg, P.logq);
+  }
 
   /**
    * Unpack an R_q element whose coefficients are known to sum to zero, so that
    * the final coefficient need not be transmitted.
-   * @param {number[]} bytes - packed bytes
-   * @param {object} P - parameter set
-   * @returns {number[]} n coefficients
+   * @param {int32[]} bytes - packed bytes
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} n coefficients
    */
   function rqSumZeroFromBytes(bytes, P) {
     const r = zeros(P.n);
@@ -681,10 +801,10 @@
 
   /**
    * Sample_iid: a ternary polynomial, one coefficient per input byte.
-   * @param {number[]} bytes - source bytes
-   * @param {number} offset - where to start reading
-   * @param {object} P - parameter set
-   * @returns {number[]} n coefficients, the last zero
+   * @param {int32[]} bytes - source bytes
+   * @param {int32} offset - where to start reading
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} n coefficients, the last zero
    */
   function sampleIid(bytes, offset, P) {
     const r = zeros(P.n);
@@ -694,67 +814,146 @@
   }
 
   /**
+   * Ascending numeric order for Array.prototype.sort.
+   * @param {int32} x - left
+   * @param {int32} y - right
+   * @returns {int32} negative, zero or positive
+   */
+  function CompareNumbers(x, y) {
+    return x - y;
+  }
+
+  /**
    * Sample_fixed_type: a ternary polynomial with exactly weight/2 coefficients
    * equal to 1 and weight/2 equal to -1, obtained by tagging the low two bits
    * of thirty bit random words and sorting.
-   * @param {number[]} u - source bytes
-   * @param {number} offset - where to start reading
-   * @param {object} P - parameter set
-   * @returns {number[]} n coefficients, the last zero
+   * @param {int32[]} u - source bytes
+   * @param {int32} offset - where to start reading
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} n coefficients, the last zero
    */
   function sampleFixedType(u, offset, P) {
     const count = P.n - 1;
+    /** @type {int32[]} */
     const s = new Array(count);
 
     // Four words out of every fifteen bytes, thirty bits each. The words are
-    // assembled as unsigned 32 bit quantities and then read as signed, because
-    // the sort that follows is a signed one.
-    const toSigned = v => (v >= POW2[31] ? v - POW2[32] : v);
+    // assembled as unsigned 32 bit quantities (the parts summed modulo 2^32)
+    // and then read as signed, because the sort that follows is a signed one.
     const groups = Math.floor(count / 4);
 
     for (let i = 0; i < groups; i++) {
       const b = offset + 15 * i;
-      s[4 * i + 0] = toSigned((OpCodes.Shl32(u[b + 0], 2) + OpCodes.Shl32(u[b + 1], 10)
-        + OpCodes.Shl32(u[b + 2], 18) + OpCodes.Shl32(u[b + 3], 26)) % POW2[32]);
-      s[4 * i + 1] = toSigned((OpCodes.Shr32(OpCodes.AndN(u[b + 3], 0xc0), 4) + OpCodes.Shl32(u[b + 4], 4)
-        + OpCodes.Shl32(u[b + 5], 12) + OpCodes.Shl32(u[b + 6], 20)
-        + OpCodes.Shl32(u[b + 7], 28)) % POW2[32]);
-      s[4 * i + 2] = toSigned((OpCodes.Shr32(OpCodes.AndN(u[b + 7], 0xf0), 2) + OpCodes.Shl32(u[b + 8], 6)
-        + OpCodes.Shl32(u[b + 9], 14) + OpCodes.Shl32(u[b + 10], 22)
-        + OpCodes.Shl32(u[b + 11], 30)) % POW2[32]);
-      s[4 * i + 3] = toSigned((OpCodes.AndN(u[b + 11], 0xfc) + OpCodes.Shl32(u[b + 12], 8)
-        + OpCodes.Shl32(u[b + 13], 16) + OpCodes.Shl32(u[b + 14], 24)) % POW2[32]);
+      s[4 * i + 0] = ToSigned32(OpCodes.Add32(OpCodes.Add32(OpCodes.Shl32(u[b + 0], 2), OpCodes.Shl32(u[b + 1], 10)),
+        OpCodes.Add32(OpCodes.Shl32(u[b + 2], 18), OpCodes.Shl32(u[b + 3], 26))));
+      s[4 * i + 1] = ToSigned32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Shr32(OpCodes.And32(u[b + 3], 0xc0), 4), OpCodes.Shl32(u[b + 4], 4)),
+        OpCodes.Add32(OpCodes.Shl32(u[b + 5], 12), OpCodes.Shl32(u[b + 6], 20))),
+        OpCodes.Shl32(u[b + 7], 28)));
+      s[4 * i + 2] = ToSigned32(OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Shr32(OpCodes.And32(u[b + 7], 0xf0), 2), OpCodes.Shl32(u[b + 8], 6)),
+        OpCodes.Add32(OpCodes.Shl32(u[b + 9], 14), OpCodes.Shl32(u[b + 10], 22))),
+        OpCodes.Shl32(u[b + 11], 30)));
+      s[4 * i + 3] = ToSigned32(OpCodes.Add32(OpCodes.Add32(OpCodes.And32(u[b + 11], 0xfc), OpCodes.Shl32(u[b + 12], 8)),
+        OpCodes.Add32(OpCodes.Shl32(u[b + 13], 16), OpCodes.Shl32(u[b + 14], 24))));
     }
 
-    for (let i = 0; i < P.weight / 2; i++) s[i] = OpCodes.OrN(s[i], 1);
-    for (let i = P.weight / 2; i < P.weight; i++) s[i] = OpCodes.OrN(s[i], 2);
+    // Each word is a signed 32 bit value, so setting a tag bit on the
+    // unsigned form and reading it back as signed is the signed OR.
+    for (let i = 0; i < P.weight / 2; i++) s[i] = ToSigned32(OpCodes.Or32(s[i], 1));
+    for (let i = P.weight / 2; i < P.weight; i++) s[i] = ToSigned32(OpCodes.Or32(s[i], 2));
 
-    s.sort((x, y) => x - y);
+    s.sort(CompareNumbers);
 
     const r = zeros(P.n);
-    for (let i = 0; i < count; i++) r[i] = OpCodes.AndN(s[i], 3);
+    for (let i = 0; i < count; i++) r[i] = OpCodes.And32(s[i], 3);
     r[P.n - 1] = 0;
     return r;
   }
 
   /**
    * Sample_fg: the two key polynomials.
-   * @param {number[]} bytes - keySeedSize bytes
-   * @param {object} P - parameter set
-   * @returns {object} { f, g }
+   * @param {int32[]} bytes - keySeedSize bytes
+   * @param {NtruParams} P - parameter set
+   * @returns {NtruFg} { f, g }
    */
   function sampleFg(bytes, P) {
-    return { f: sampleIid(bytes, 0, P), g: sampleFixedType(bytes, P.iidBytes, P) };
+    return new NtruFg(sampleIid(bytes, 0, P), sampleFixedType(bytes, P.iidBytes, P));
   }
 
   /**
    * Sample_rm: the blinding polynomial and the message polynomial.
-   * @param {number[]} bytes - messageSeedSize bytes
-   * @param {object} P - parameter set
-   * @returns {object} { r, m }
+   * @param {int32[]} bytes - messageSeedSize bytes
+   * @param {NtruParams} P - parameter set
+   * @returns {NtruRm} { r, m }
    */
   function sampleRm(bytes, P) {
-    return { r: sampleIid(bytes, 0, P), m: sampleFixedType(bytes, P.iidBytes, P) };
+    return new NtruRm(sampleIid(bytes, 0, P), sampleFixedType(bytes, P.iidBytes, P));
+  }
+
+  // ===== RESULT RECORDS =====
+
+  class NtruFg {
+    /**
+     * @param {int32[]} f - the secret polynomial f
+     * @param {int32[]} g - the secret polynomial g
+     */
+    constructor(f, g) {
+      /** @type {int32[]} */
+      this.f = f;
+      /** @type {int32[]} */
+      this.g = g;
+    }
+  }
+
+  class NtruRm {
+    /**
+     * @param {int32[]} r - the blinding polynomial
+     * @param {int32[]} m - the message polynomial
+     */
+    constructor(r, m) {
+      /** @type {int32[]} */
+      this.r = r;
+      /** @type {int32[]} */
+      this.m = m;
+    }
+  }
+
+  class NtruKeyPair {
+    /**
+     * @param {int32[]} publicKey - encoded public key
+     * @param {int32[]} secretKey - encoded secret key
+     */
+    constructor(publicKey, secretKey) {
+      /** @type {int32[]} */
+      this.publicKey = publicKey;
+      /** @type {int32[]} */
+      this.secretKey = secretKey;
+    }
+  }
+
+  class NtruEncapsulation {
+    /**
+     * @param {int32[]} ciphertext - the ciphertext
+     * @param {int32[]} sharedSecret - the 32 byte shared secret
+     */
+    constructor(ciphertext, sharedSecret) {
+      /** @type {int32[]} */
+      this.ciphertext = ciphertext;
+      /** @type {int32[]} */
+      this.sharedSecret = sharedSecret;
+    }
+  }
+
+  class NtruDecryption {
+    /**
+     * @param {int32[]} rm - packed r and m
+     * @param {int32} fail - 1 when the ciphertext was not a genuine encryption
+     */
+    constructor(rm, fail) {
+      /** @type {int32[]} */
+      this.rm = rm;
+      /** @type {int32} */
+      this.fail = fail;
+    }
   }
 
   // ===== ONE-WAY CPA SCHEME =====
@@ -765,9 +964,9 @@
    * h = g/f and its inverse f/g are both formed from one inversion of g*f,
    * which is why a single modular inverse in R_q suffices.
    *
-   * @param {number[]} seed - keySeedSize bytes
-   * @param {object} P - parameter set
-   * @returns {object|null} { publicKey, secretKey }, or null when f or g*f is
+   * @param {int32[]} seed - keySeedSize bytes
+   * @param {NtruParams} P - parameter set
+   * @returns {NtruKeyPair|null} { publicKey, secretKey }, or null when f or g*f is
    *                        not invertible and the seed must be rejected
    */
   function owcpaKeypair(seed, P) {
@@ -797,16 +996,16 @@
 
     const h = rqMultiply(rqMultiply(gfInverse, gq, P), gq, P);
 
-    return { publicKey: rqSumZeroToBytes(h, P), secretKey: secretKey };
+    return new NtruKeyPair(rqSumZeroToBytes(h, P), secretKey);
   }
 
   /**
    * Encrypt under the one-way CPA scheme: c = r*h + Lift(m).
-   * @param {number[]} r - blinding polynomial, already in Z_q
-   * @param {number[]} m - message polynomial, ternary
-   * @param {number[]} pk - public key bytes
-   * @param {object} P - parameter set
-   * @returns {number[]} the ciphertext
+   * @param {int32[]} r - blinding polynomial, already in Z_q
+   * @param {int32[]} m - message polynomial, ternary
+   * @param {int32[]} pk - public key bytes
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} the ciphertext
    */
   function owcpaEncrypt(r, m, pk, P) {
     const h = rqSumZeroFromBytes(pk, P);
@@ -820,30 +1019,30 @@
   /**
    * Are the bits past the last packed coefficient of the final ciphertext byte
    * clear? A ciphertext that carries anything there is not a valid encoding.
-   * @param {number[]} ciphertext - the ciphertext
-   * @param {object} P - parameter set
-   * @returns {number} 0 when well formed, 1 otherwise
+   * @param {int32[]} ciphertext - the ciphertext
+   * @param {NtruParams} P - parameter set
+   * @returns {int32} 0 when well formed, 1 otherwise
    */
   function checkCiphertext(ciphertext, P) {
     const usedBits = (P.logq * P.packDeg) % 8;
     if (usedBits === 0) return 0;
-    return OpCodes.AndN(ciphertext[P.ciphertextSize - 1], OpCodes.AndN(OpCodes.Shl32(0xff, 8 - usedBits), 0xff)) === 0 ? 0 : 1;
+    return OpCodes.And32(ciphertext[P.ciphertextSize - 1], OpCodes.And32(OpCodes.Shl32(0xff, 8 - usedBits), 0xff)) === 0 ? 0 : 1;
   }
 
   /**
    * Is m in the message space, that is exactly weight/2 coefficients equal to
    * 1 and weight/2 equal to 2?
-   * @param {number[]} m - n coefficients
-   * @param {object} P - parameter set
-   * @returns {number} 0 when in the space, 1 otherwise
+   * @param {int32[]} m - n coefficients
+   * @param {NtruParams} P - parameter set
+   * @returns {int32} 0 when in the space, 1 otherwise
    */
   function checkMessage(m, P) {
     let ones = 0;
     let twos = 0;
 
     for (let i = 0; i < P.n; i++) {
-      ones += OpCodes.AndN(m[i], 1);
-      twos += OpCodes.AndN(m[i], 2) / 2;
+      ones += OpCodes.And32(m[i], 1);
+      twos += OpCodes.And32(m[i], 2) / 2;
     }
 
     return ones === P.weight / 2 && twos === P.weight / 2 ? 0 : 1;
@@ -851,17 +1050,17 @@
 
   /**
    * Does r have coefficients in {0, 1, q-1} with a zero final coefficient?
-   * @param {number[]} r - n coefficients
-   * @param {object} P - parameter set
-   * @returns {number} 0 when valid, 1 otherwise
+   * @param {int32[]} r - n coefficients
+   * @param {NtruParams} P - parameter set
+   * @returns {int32} 0 when valid, 1 otherwise
    */
   function checkBlinder(r, P) {
     let bad = 0;
 
     for (let i = 0; i < P.n - 1; i++) {
       const c = r[i];
-      if (OpCodes.AndN(c + 1, P.q - 4) !== 0) bad = 1;
-      if (OpCodes.AndN(c + 2, 4) !== 0) bad = 1;
+      if (OpCodes.And32(c + 1, P.q - 4) !== 0) bad = 1;
+      if (OpCodes.And32(c + 2, 4) !== 0) bad = 1;
     }
 
     if (r[P.n - 1] !== 0) bad = 1;
@@ -873,10 +1072,10 @@
    * a genuine encryption. Recovering r as (c - Lift(m))/h modulo Phi_n and
    * checking that r and m lie in their spaces is equivalent to re-encrypting,
    * which is what makes the KEM around it chosen-ciphertext secure.
-   * @param {number[]} ciphertext - the ciphertext
-   * @param {number[]} secretKey - the secret key
-   * @param {object} P - parameter set
-   * @returns {object} { rm, fail }
+   * @param {int32[]} ciphertext - the ciphertext
+   * @param {int32[]} secretKey - the secret key
+   * @param {NtruParams} P - parameter set
+   * @returns {NtruDecryption} { rm, fail }
    */
   function owcpaDecrypt(ciphertext, secretKey, P) {
     const c = rqSumZeroFromBytes(ciphertext, P);
@@ -901,17 +1100,17 @@
     const rm = s3ToBytes(trinaryZqToZ3(r, P), P);
     appendAll(rm, s3ToBytes(m, P));
 
-    return { rm: rm, fail: fail };
+    return new NtruDecryption(rm, fail);
   }
 
   // ===== KEY ENCAPSULATION =====
 
   /**
    * Generate a KEM key pair.
-   * @param {number[]} seed - keySeedSize bytes
-   * @param {number[]} prfKey - 32 bytes used for implicit rejection
-   * @param {object} P - parameter set
-   * @returns {object|null} { publicKey, secretKey }, or null for a rejected seed
+   * @param {int32[]} seed - keySeedSize bytes
+   * @param {int32[]} prfKey - 32 bytes used for implicit rejection
+   * @param {NtruParams} P - parameter set
+   * @returns {NtruKeyPair|null} { publicKey, secretKey }, or null for a rejected seed
    */
   function kemKeypair(seed, prfKey, P) {
     const pair = owcpaKeypair(seed, P);
@@ -922,15 +1121,15 @@
 
     const secretKey = pair.secretKey.slice();
     appendAll(secretKey, prfKey);
-    return { publicKey: pair.publicKey, secretKey: secretKey };
+    return new NtruKeyPair(pair.publicKey, secretKey);
   }
 
   /**
    * Encapsulate to a ciphertext and a shared secret.
-   * @param {number[]} pk - the public key
-   * @param {number[]} seed - messageSeedSize bytes
-   * @param {object} P - parameter set
-   * @returns {object} { ciphertext, sharedSecret }
+   * @param {int32[]} pk - the public key
+   * @param {int32[]} seed - messageSeedSize bytes
+   * @param {NtruParams} P - parameter set
+   * @returns {NtruEncapsulation} { ciphertext, sharedSecret }
    */
   function kemEncapsulate(pk, seed, P) {
     if (pk.length !== P.publicKeySize)
@@ -945,7 +1144,7 @@
     const sharedSecret = sha3_256(rm);
     const rq = z3ToZq(sampled.r.slice(), P);
 
-    return { ciphertext: owcpaEncrypt(rq, sampled.m, pk, P), sharedSecret: sharedSecret };
+    return new NtruEncapsulation(owcpaEncrypt(rq, sampled.m, pk, P), sharedSecret);
   }
 
   /**
@@ -955,10 +1154,10 @@
    * derived from the rejection key instead of an error, so that a decapsulating
    * party reveals nothing about why it failed.
    *
-   * @param {number[]} ciphertext - the ciphertext
-   * @param {number[]} secretKey - the secret key
-   * @param {object} P - parameter set
-   * @returns {number[]} the 32 byte shared secret
+   * @param {int32[]} ciphertext - the ciphertext
+   * @param {int32[]} secretKey - the secret key
+   * @param {NtruParams} P - parameter set
+   * @returns {int32[]} the 32 byte shared secret
    */
   function kemDecapsulate(ciphertext, secretKey, P) {
     if (secretKey.length !== P.privateKeySize)
@@ -1398,119 +1597,6 @@
 
   const KAT821_SS = OpCodes.Hex8ToBytes("293992000DC288E8152F9451F06DD835C75EA008662BACE0FB97A97B3AFB54E4");
 
-  const VECTORS = [
-    {
-      text: "NTRU PQCkemKAT_935.rsp record 0: expanded seed to public key (ntruhps2048509)",
-      uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
-      keyGeneration: true,
-      parameterSet: 'ntruhps2048509',
-      keyGenerationOutput: 'publicKey',
-      input: KAT509_KEYSEED,
-      expected: KAT509_PK
-    },
-    {
-      text: "NTRU PQCkemKAT_935.rsp record 0: expanded seed and rejection key to secret key",
-      uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
-      keyGeneration: true,
-      parameterSet: 'ntruhps2048509',
-      keyGenerationOutput: 'privateKey',
-      rejectionKey: KAT509_REJECTIONKEY,
-      input: KAT509_KEYSEED,
-      expected: KAT509_SK
-    },
-    {
-      text: "NTRU PQCkemKAT_935.rsp record 0: encapsulation ciphertext",
-      uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
-      publicKey: KAT509_PK,
-      encapsulationOutput: 'ciphertext',
-      input: KAT509_MSGSEED,
-      expected: KAT509_CT
-    },
-    {
-      text: "NTRU PQCkemKAT_935.rsp record 0: encapsulated shared secret",
-      uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
-      publicKey: KAT509_PK,
-      encapsulationOutput: 'sharedSecret',
-      input: KAT509_MSGSEED,
-      expected: KAT509_SS
-    },
-    {
-      text: "NTRU PQCkemKAT_935.rsp record 0: decapsulation recovers the shared secret",
-      uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
-      inverse: true,
-      privateKey: KAT509_SK,
-      input: KAT509_CT,
-      expected: KAT509_SS
-    },
-    {
-      // Setting sharedSecret turns the result into a verdict, so that the
-      // rejection cases below can assert a mismatch without naming the value
-      // the rejection branch produces.
-      text: "NTRU PQCkemKAT_935.rsp record 0: the recovered secret is the published one",
-      uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
-      inverse: true,
-      privateKey: KAT509_SK,
-      sharedSecret: KAT509_SS,
-      input: KAT509_CT,
-      expected: [1]
-    },
-    {
-      // One byte of the ciphertext moved. NTRU answers a ciphertext it did not
-      // produce with a secret derived from the rejection key instead of an
-      // error, so the property to assert is that the published secret does not
-      // come back.
-      text: "NTRU PQCkemKAT_935.rsp record 0: a modified ciphertext must not decapsulate to the published secret",
-      uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
-      inverse: true,
-      privateKey: KAT509_SK,
-      sharedSecret: KAT509_SS,
-      input: KAT509_CT_CORRUPTED,
-      expected: [0]
-    },
-    {
-      text: "NTRU PQCkemKAT_935.rsp: record 0's ciphertext under record 1's secret key must not recover record 0's secret",
-      uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
-      inverse: true,
-      privateKey: KAT509_SK_OTHER,
-      sharedSecret: KAT509_SS,
-      input: KAT509_CT,
-      expected: [0]
-    },
-    {
-      text: "NTRU PQCkemKAT_1234.rsp record 0: expanded seed to public key (ntruhps2048677)",
-      uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
-      keyGeneration: true,
-      parameterSet: 'ntruhps2048677',
-      keyGenerationOutput: 'publicKey',
-      input: KAT677_KEYSEED,
-      expected: KAT677_PK
-    },
-    {
-      text: "NTRU PQCkemKAT_1234.rsp record 0: decapsulation recovers the shared secret (ntruhps2048677)",
-      uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
-      inverse: true,
-      privateKey: KAT677_SK,
-      input: KAT677_CT,
-      expected: KAT677_SS
-    },
-    {
-      text: "NTRU PQCkemKAT_1590.rsp record 0: expanded seed to public key (ntruhps4096821)",
-      uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
-      keyGeneration: true,
-      parameterSet: 'ntruhps4096821',
-      keyGenerationOutput: 'publicKey',
-      input: KAT821_KEYSEED,
-      expected: KAT821_PK
-    },
-    {
-      text: "NTRU PQCkemKAT_1590.rsp record 0: decapsulation recovers the shared secret (ntruhps4096821)",
-      uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
-      inverse: true,
-      privateKey: KAT821_SK,
-      input: KAT821_CT,
-      expected: KAT821_SS
-    }
-  ];
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -1550,7 +1636,119 @@
         new LinkItem("Schanck, Improving NTRU", "https://eprint.iacr.org/2018/1174")
       ];
 
-      this.tests = VECTORS;
+      this.tests = [
+        {
+          text: "NTRU PQCkemKAT_935.rsp record 0: expanded seed to public key (ntruhps2048509)",
+          uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
+          keyGeneration: true,
+          parameterSet: 'ntruhps2048509',
+          keyGenerationOutput: 'publicKey',
+          input: KAT509_KEYSEED,
+          expected: KAT509_PK
+        },
+        {
+          text: "NTRU PQCkemKAT_935.rsp record 0: expanded seed and rejection key to secret key",
+          uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
+          keyGeneration: true,
+          parameterSet: 'ntruhps2048509',
+          keyGenerationOutput: 'privateKey',
+          rejectionKey: KAT509_REJECTIONKEY,
+          input: KAT509_KEYSEED,
+          expected: KAT509_SK
+        },
+        {
+          text: "NTRU PQCkemKAT_935.rsp record 0: encapsulation ciphertext",
+          uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
+          publicKey: KAT509_PK,
+          encapsulationOutput: 'ciphertext',
+          input: KAT509_MSGSEED,
+          expected: KAT509_CT
+        },
+        {
+          text: "NTRU PQCkemKAT_935.rsp record 0: encapsulated shared secret",
+          uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
+          publicKey: KAT509_PK,
+          encapsulationOutput: 'sharedSecret',
+          input: KAT509_MSGSEED,
+          expected: KAT509_SS
+        },
+        {
+          text: "NTRU PQCkemKAT_935.rsp record 0: decapsulation recovers the shared secret",
+          uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
+          inverse: true,
+          privateKey: KAT509_SK,
+          input: KAT509_CT,
+          expected: KAT509_SS
+        },
+        {
+          // Setting sharedSecret turns the result into a verdict, so that the
+          // rejection cases below can assert a mismatch without naming the value
+          // the rejection branch produces.
+          text: "NTRU PQCkemKAT_935.rsp record 0: the recovered secret is the published one",
+          uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
+          inverse: true,
+          privateKey: KAT509_SK,
+          sharedSecret: KAT509_SS,
+          input: KAT509_CT,
+          expected: [1]
+        },
+        {
+          // One byte of the ciphertext moved. NTRU answers a ciphertext it did not
+          // produce with a secret derived from the rejection key instead of an
+          // error, so the property to assert is that the published secret does not
+          // come back.
+          text: "NTRU PQCkemKAT_935.rsp record 0: a modified ciphertext must not decapsulate to the published secret",
+          uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
+          inverse: true,
+          privateKey: KAT509_SK,
+          sharedSecret: KAT509_SS,
+          input: KAT509_CT_CORRUPTED,
+          expected: [0]
+        },
+        {
+          text: "NTRU PQCkemKAT_935.rsp: record 0's ciphertext under record 1's secret key must not recover record 0's secret",
+          uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
+          inverse: true,
+          privateKey: KAT509_SK_OTHER,
+          sharedSecret: KAT509_SS,
+          input: KAT509_CT,
+          expected: [0]
+        },
+        {
+          text: "NTRU PQCkemKAT_1234.rsp record 0: expanded seed to public key (ntruhps2048677)",
+          uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
+          keyGeneration: true,
+          parameterSet: 'ntruhps2048677',
+          keyGenerationOutput: 'publicKey',
+          input: KAT677_KEYSEED,
+          expected: KAT677_PK
+        },
+        {
+          text: "NTRU PQCkemKAT_1234.rsp record 0: decapsulation recovers the shared secret (ntruhps2048677)",
+          uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
+          inverse: true,
+          privateKey: KAT677_SK,
+          input: KAT677_CT,
+          expected: KAT677_SS
+        },
+        {
+          text: "NTRU PQCkemKAT_1590.rsp record 0: expanded seed to public key (ntruhps4096821)",
+          uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
+          keyGeneration: true,
+          parameterSet: 'ntruhps4096821',
+          keyGenerationOutput: 'publicKey',
+          input: KAT821_KEYSEED,
+          expected: KAT821_PK
+        },
+        {
+          text: "NTRU PQCkemKAT_1590.rsp record 0: decapsulation recovers the shared secret (ntruhps4096821)",
+          uri: "https://ntru.org/release/NIST-PQ-Submission-NTRU-20201016.tar.gz",
+          inverse: true,
+          privateKey: KAT821_SK,
+          input: KAT821_CT,
+          expected: KAT821_SS
+        }
+      ];
     }
 
     /**
@@ -1581,7 +1779,7 @@
    */
   class NTRUInstance extends IAlgorithmInstance {
     /**
-     * @param {object} algorithm - Parent algorithm instance
+     * @param {NTRUCipher} algorithm - Parent algorithm instance
      * @param {boolean} [isInverse=false] - decapsulation mode
      */
     constructor(algorithm, isInverse = false) {
@@ -1592,7 +1790,7 @@
 
       // Declared here so that the test engine, which only assigns properties
       // that already exist on the instance, can set any of them from a vector.
-      this._parameterSet = PARAMETER_SETS['ntruhps2048509'];
+      this._parameterSet = NTRU_HPS_2048_509;
       this._publicKey = null;
       this._privateKey = null;
       this._sharedSecret = null;
@@ -1618,6 +1816,7 @@
     /**
      * The public key. Its length selects the parameter set, the encoded
      * lengths across the three sets being pairwise distinct.
+     * @param {int32[]} keyBytes - the encoded public key; falsy clears it
      */
     set publicKey(keyBytes) {
       if (!keyBytes) {
@@ -1637,6 +1836,10 @@
       return this._publicKey ? this._publicKey.slice() : null;
     }
 
+    /**
+     * The secret key. Its length selects the parameter set.
+     * @param {int32[]} keyBytes - the encoded secret key; falsy clears it
+     */
     set privateKey(keyBytes) {
       if (!keyBytes) {
         this._privateKey = null;
@@ -1660,6 +1863,7 @@
      * Result report agreement as [1] or [0] rather than returning the secret,
      * so that a vector can assert a rejection without naming the value the
      * rejection produces.
+     * @param {int32[]} secretBytes - the expected secret; falsy clears it
      */
     set sharedSecret(secretBytes) {
       this._sharedSecret = secretBytes ? secretBytes.slice() : null;
@@ -1690,6 +1894,7 @@
       if (!Array.isArray(keyData) && !ArrayBuffer.isView(keyData))
         throw new Error('Invalid NTRU key data format');
 
+      /** @type {int32[]} */
       const bytes = Array.from(keyData);
 
       if (parameterSetByLength(bytes.length, 'privateKeySize')) {
@@ -1717,14 +1922,14 @@
     /**
      * Feed input bytes. Repeated calls append, so feeding in pieces is the same
      * as feeding whole.
-     * @param {number[]} data - input bytes
+     * @param {int32[]} data - input bytes
      */
     Feed(data) {
       if (data === null || data === undefined) return;
 
       if (typeof data === 'string') {
         for (let i = 0; i < data.length; i++)
-          this.inputBuffer.push(OpCodes.AndN(data.charCodeAt(i), 0xFF));
+          this.inputBuffer.push(OpCodes.And32(data.charCodeAt(i), 0xFF));
         return;
       }
 
@@ -1738,7 +1943,7 @@
 
     /**
      * Produce the key, the ciphertext, the shared secret, or the verdict.
-     * @returns {number[]} the result bytes
+     * @returns {int32[]} the result bytes
      */
     Result() {
       const input = this.inputBuffer;
@@ -1773,9 +1978,9 @@
 
     /**
      * Generate a key pair from an expanded seed.
-     * @param {number[]} seed - keySeedSize bytes
-     * @param {number[]} [prfKey] - 32 byte rejection key
-     * @returns {object} { publicKey, secretKey }
+     * @param {int32[]} seed - keySeedSize bytes
+     * @param {int32[]} [prfKey] - 32 byte rejection key
+     * @returns {NtruKeyPair} { publicKey, secretKey }
      */
     GenerateKeyPair(seed, prfKey) {
       const pair = kemKeypair(Array.from(seed), prfKey ? Array.from(prfKey) : this.rejectionKey, this._parameterSet);
@@ -1783,13 +1988,13 @@
 
       this._publicKey = pair.publicKey;
       this._privateKey = pair.secretKey;
-      return { publicKey: pair.publicKey.slice(), secretKey: pair.secretKey.slice() };
+      return new NtruKeyPair(pair.publicKey.slice(), pair.secretKey.slice());
     }
 
     /**
      * Encapsulate to the configured public key.
-     * @param {number[]} seed - messageSeedSize bytes
-     * @returns {object} { ciphertext, sharedSecret }
+     * @param {int32[]} seed - messageSeedSize bytes
+     * @returns {NtruEncapsulation} { ciphertext, sharedSecret }
      */
     Encapsulate(seed) {
       if (!this._publicKey) throw new Error('NTRU encapsulation needs a public key');
@@ -1798,8 +2003,8 @@
 
     /**
      * Decapsulate with the configured secret key.
-     * @param {number[]} ciphertext - the ciphertext
-     * @returns {number[]} the shared secret
+     * @param {int32[]} ciphertext - the ciphertext
+     * @returns {int32[]} the shared secret
      */
     Decapsulate(ciphertext) {
       if (!this._privateKey) throw new Error('NTRU decapsulation needs a secret key');
