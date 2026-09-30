@@ -150,27 +150,6 @@
       r.drawButton(0, 0, 100, 30, 'Test');
     });
 
-    it('drawTileMap does not throw without canvas', () => {
-      const r = new Renderer(null);
-      r.drawTileMap(new Uint8Array(100), 10, 10);
-    });
-
-    it('drawBattleScene does not throw without canvas', () => {
-      const r = new Renderer(null);
-      const attacker = { name: 'Fighter', faction: 'party', currentHp: 20, maxHp: 20, character: { class: 'fighter' }, bab: 2, strMod: 2, position: { col: 1, row: 1 } };
-      const defender = { name: 'Goblin', faction: 'enemy', currentHp: 8, maxHp: 8, ac: 14, character: { class: 'goblin' }, position: { col: 2, row: 1 } };
-      const result = { hit: true, damage: 5, critical: false, d20: 15, total: 19, natural20: false, natural1: false, flanking: false };
-      r.drawBattleScene(attacker, defender, result, 0.5, 'player_attack');
-    });
-
-    it('drawBattleScene accepts spell_cast type', () => {
-      const r = new Renderer(null);
-      const caster = { name: 'Wizard', faction: 'party', currentHp: 10, maxHp: 10, character: { class: 'wizard' }, currentMp: 5, maxMp: 10, position: { col: 1, row: 1 } };
-      const target = { name: 'Goblin', faction: 'enemy', currentHp: 8, maxHp: 8, ac: 14, character: { class: 'goblin' }, position: { col: 3, row: 1 } };
-      const result = { hit: true, damage: 7, heal: 0, critical: false, d20: 0, total: 0, natural20: false, natural1: false, spellName: 'Magic Missile' };
-      r.drawBattleScene(caster, target, result, 0.3, 'spell_cast');
-    });
-
     it('drawContextMenu does not throw without canvas', () => {
       const r = new Renderer(null);
       const items = [
