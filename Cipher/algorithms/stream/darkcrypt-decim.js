@@ -134,6 +134,14 @@
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           expected: OpCodes.Hex8ToBytes("53569be2c204fdab682ca204e2e3dcf1c763d6ec2f5d22006fe69a686244d1aacbef20177786f4e89a7542a2bf36429ecc7473a5a82ac0753e2e5d067bda45ab")
+        },
+        {
+          text: "DarkCrypt Decim — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c3956"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e33587da2c7ec1136"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457aafe4194e83b8ed22"),
+          expected: OpCodes.Hex8ToBytes("2f4c1ad6d5531fab2b1038c8c7bbada4319eeb78ff89d07df1fdee992f94393173738121332bf38dbc162908afc81ed9")
         }
       ];
     }
@@ -278,14 +286,17 @@
       }
 
       // Reset ABSG automaton and FIFO after warm-up, then fill the FIFO to capacity
-      // using the real ABSG-mediated path.
+      // using the real ABSG-mediated path. The fill runs in whole groups of 4 clocks,
+      // like crypt(): the group that fills the FIFO is completed, dropping any further
+      // accepted bits, so the LFSR always leaves setup on a 4-clock boundary.
       this._c = 0; this._p = 0; this._n = 0; this._out = 0;
       this._queue.fill(0);
       this._queueCount = 0;
       this._bitCount = 0;
       this._accByte = 0;
 
-      while (this._queueCount < QUEUE_LEN) this._absgEnqueueClock();
+      while (this._queueCount < QUEUE_LEN)
+        for (let i = 0; i < 4; i++) this._absgEnqueueClock();
 
       this._bitCount = 0;
       this._accByte = 0;

@@ -230,6 +230,14 @@
           iv: OpCodes.Hex8ToBytes("0000000000000000000000000000"),
           input: (() => { const a = []; for (let i = 0; i < 64; i++) a.push(i); return a; })(),
           expected: OpCodes.Hex8ToBytes("e5d6f5c39f1a1b386f2b1ce8ef1d31c11608f936d8f56a14bae1a472393995f47df71c832e26ae7c2ae0515c8699199682551e3e4cf0ebf37b8570133f12457b")
+        },
+        {
+          text: "DarkCrypt Pomaranch — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c3956"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e33587da2c7ec1136"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457aafe4194e83b8"),
+          expected: OpCodes.Hex8ToBytes("c9c10581135a21435880aecbe7328c273cb76acc2090f6c4412e35601f3318b23eff1a07ef4f3db5d46619ff2867a156")
         }
       ];
     }

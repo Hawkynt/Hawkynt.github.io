@@ -43,7 +43,7 @@
 
 ## Test vectors
 
-5 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
+6 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
 
 **Vector 1** — [eSTREAM Moustique testvalues.txt - zero key, zero starting value, zero plaintext](https://web.archive.org/web/20070326181649if_/http://www.ecrypt.eu.org:80/stream/svn/viewcvs.cgi/ecrypt/trunk/submissions/mosquito/moustique.tar.gz?view=tar)
 
@@ -89,6 +89,15 @@
 | `iv` | `00000000000000000000000000` |
 | `input` | `000102030405060708090a0b0c0d0e0f 101112131415161718191a1b1c1d1e1f 202122232425262728292a2b2c2d2e2f 303132333435363738393a3b3c3d3e3f` |
 | `expected` | `0001021c69bbf834446db204fe215faa 5c9dcebd7d420f1b95b50687eb641265 064b1664db647d5976dd3d4ebd7542a1 1fff0fb491ca8ff9686f5d094d72fb33` |
+
+**Vector 6** — [DarkCrypt Moustique — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)](https://totalcmd.net/plugring/darkcrypttc.html)
+
+| Field | Value |
+| --- | --- |
+| `key` | `0b30557a9fc4e90e33587da2` |
+| `iv` | `073c71a6db10457aafe4194e83` |
+| `input` | `03203d5a7794b1ceeb0825425f7c99b6 d3f00d2a4764819ebbd8f5122f4c6986 a3c0ddfa1734516e8ba8c5e2ff1c3956` |
+| `expected` | `81632d46f6435a5c08e47baaae51d874 e2d49eeedde551c6bcce0155d033e763 60bd7aa1b8ae485fadcb6267aa5fe928` |
 
 ---
 
