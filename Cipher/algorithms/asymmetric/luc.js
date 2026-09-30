@@ -82,8 +82,12 @@
 
     // Binary method for Lucas sequence computation
     // Start from most significant bit
-    let bitLength = e.toString(2).length;
+    /** @type {string} */
+    const binary = e.toString(2);
+    let bitLength = binary.length;
+    /** @type {BigInt} */
     let v = p;           // V_1
+    /** @type {BigInt} */
     let v1 = (p * p - 2n) % n; // V_2 = p^2 - 2
 
     if (v1 < 0n) v1 += n;
@@ -92,6 +96,7 @@
     for (let i = bitLength - 2; i >= 0; i--) {
       if (OpCodes.AndN(OpCodes.ShiftRn(e, BigInt(i)), 1n)) {
         // Bit is 1: v_{2k+1} = v_k * v_{k+1} - p, v_{2k+2} = v_{k+1}^2 - 2
+        /** @type {BigInt} */
         let temp = (v * v1 - p) % n;
         if (temp < 0n) temp += n;
         v = temp;
@@ -101,6 +106,7 @@
         v1 = temp;
       } else {
         // Bit is 0: v_{2k} = v_k^2 - 2, v_{2k+1} = v_k * v_{k+1} - p
+        /** @type {BigInt} */
         let temp = (v * v1 - p) % n;
         if (temp < 0n) temp += n;
         v1 = temp;
@@ -150,7 +156,7 @@
    * Jacobi symbol calculation
    * @param {BigInt} a - First parameter
    * @param {BigInt} b - Second parameter (must be odd)
-   * @returns {number} Jacobi symbol value (-1, 0, or 1)
+   * @returns {int32} Jacobi symbol value (-1, 0, or 1)
    */
   function Jacobi(a, b) {
     if (b <= 0n || OpCodes.AndN(b, 1n) === 0n) {
@@ -216,8 +222,14 @@
   function modInverse(a, m) {
     a = ((a % m) + m) % m;
 
-    let [oldR, r] = [a, m];
-    let [oldS, s] = [1n, 0n];
+    /** @type {BigInt} */
+    let oldR = a;
+    /** @type {BigInt} */
+    let r = m;
+    /** @type {BigInt} */
+    let oldS = 1n;
+    /** @type {BigInt} */
+    let s = 0n;
 
     while (r !== 0n) {
       const quotient = oldR / r;
@@ -240,9 +252,12 @@
    * @returns {BigInt} Parsed value
    */
   function hexToBigInt(hex) {
+    /** @type {BigInt} */
     let value = 0n;
     for (let i = 0; i < hex.length; ++i) {
-      value = value * 16n + BigInt(parseInt(hex.charAt(i), 16));
+      /** @type {int32} */
+      const digit = parseInt(hex.charAt(i), 16);
+      value = value * 16n + BigInt(digit);
     }
     return value;
   }
@@ -253,6 +268,7 @@
    * @returns {BigInt} Corresponding integer
    */
   function OS2IP(octets) {
+    /** @type {BigInt} */
     let value = 0n;
     for (let i = 0; i < octets.length; ++i) {
       value = value * 256n + BigInt(octets[i]);
@@ -267,7 +283,7 @@
    * needs fewer than xLen octets is left-padded rather than shortened.
    *
    * @param {BigInt} value - Integer to convert
-   * @param {number} xLen - Intended length of the octet string
+   * @param {int32} xLen - Intended length of the octet string
    * @returns {uint8[]} Big-endian octet string of exactly xLen bytes
    */
   function I2OSP(value, xLen) {
@@ -275,10 +291,13 @@
       throw new Error('I2OSP: integer must be non-negative');
     }
 
+    /** @type {uint8[]} */
     const octets = new Array(xLen);
     let remaining = value;
     for (let i = xLen - 1; i >= 0; --i) {
-      octets[i] = Number(remaining % 256n);
+      /** @type {uint8} */
+      const octet = Number(remaining % 256n);
+      octets[i] = octet;
       remaining = remaining / 256n;
     }
 
@@ -292,7 +311,7 @@
   /**
    * Collect cryptographically strong random bytes, falling back to a weaker
    * source only where no such generator exists.
-   * @param {number} count - Number of bytes required
+   * @param {int32} count - Number of bytes required
    * @returns {uint8[]} Random bytes
    */
   function randomBytes(count) {
@@ -317,6 +336,7 @@
       }
     }
 
+    /** @type {uint8[]} */
     const result = new Array(count);
     for (let i = 0; i < count; ++i) {
       result[i] = buffer[i];
@@ -327,10 +347,11 @@
   /**
    * Generate a padding string of pseudo-randomly chosen non-zero octets
    * (RFC 8017 Section 7.2.1 step 2).
-   * @param {number} count - Length of the padding string
+   * @param {int32} count - Length of the padding string
    * @returns {uint8[]} Non-zero octets
    */
   function nonZeroPadding(count) {
+    /** @type {uint8[]} */
     const padding = new Array(count);
     let produced = 0;
 
@@ -355,7 +376,7 @@
    * message that begins with zero octets come back unchanged.
    *
    * @param {uint8[]} message - Message octets
-   * @param {number} emLen - Length of the encoded message
+   * @param {int32} emLen - Length of the encoded message
    * @returns {uint8[]} Encoded message of exactly emLen octets
    */
   function emeEncode(message, emLen) {
@@ -364,6 +385,7 @@
     }
 
     const padding = nonZeroPadding(emLen - message.length - 3);
+    /** @type {uint8[]} */
     const encoded = new Array(emLen);
     encoded[0] = 0x00;
     encoded[1] = 0x02;
@@ -420,80 +442,101 @@
   // modulo q, and gcd(e, p^2 - 1) = gcd(e, q^2 - 1) = 1, which is the LUC key
   // condition that makes e invertible modulo p - (D/p) and q - (D/q) whichever
   // way the Jacobi symbols fall.
-  const LUC_KEYS = {
-    1024: {
-      n: 'b49c852e399ebc43bad4149d5470fbccb896862285405ef16cbf73203dd73f34' +
-         '01a2c61069938456974305f6b87bb91e88b36e020174f47735e1978d3d1f8073' +
-         'dae83dd3f74b62f2d1d73144ccfe2f99bebd785009a1ab8a537bba4f1f3eb233' +
-         '3bee012ef64aa0f308d3b8a7ec666e17fbea4f43c4635c491717078e80026019',
-      e: '010001',
-      p: 'c7aa501634fde3c768ca6eab1bc8ad69cd662fe7b78dffeb5e49cf42487cab60' +
-         'c669b5a768b60a1fdbe1a842d3d63263ab30c29b02daef3c86cb27a4fae12669',
-      q: 'e791f57705a7ba31ad18afe90d8ceb711c1d9506a0cfce7bfab5ccd8b586bccd' +
-         '198069f704a6d6c13b1d66eb692ca19f41796cdcbadd9447b9588d09c3151631',
-      u: '41bb3b62203c0c89af0407af5e7b9bedbbab825c5a42715fa6c1dcadc2fa93bc' +
-         'db911a46c5edbc782ca3825fe79b4daa5e3e499cd2bb7140bf8b3e0bc795efa7'
-    },
-    2048: {
-      n: 'e616b0b5a95bde1d001cc148d56f133afd54bb5dd62b9407f4a597acefd05ee4' +
-         '07152ad0edbbe1b637a4b974befbfdd690b3541705f4a9301560692f1ec03b7c' +
-         '35bdf2afeac3e504b9a6786db58bf2fc9afc2fc77762b5edc98a3c353b4f31e6' +
-         '37a0433e66b16648c075743f8bfbe30560b5e6b88b53084a84a3be094e7ad66b' +
-         '20e6cc313533b0b3ab96178eb53d9d4f2315fe3a94ac7145276c55b13231568f' +
-         'af30e423ad4a4c998367b8acefd50d6d096da7c51e01f88f628101e416a1b2bf' +
-         '4f1243442612f6252391dfebb0753146bb9feddc300f675e26551bdd77596074' +
-         'f9fa9fdfceaf0b934b85d9f24877748045e1664e45ef3478dbaee430cf85d3e9',
-      e: '010001',
-      p: 'e837b7f02b2d95d4831258d22c6a0c0fc2b2920c0ef24d8dcaa867714b0dede8' +
-         '4973de08b150c60bd6e72af3f86f6936d47b9d64b937422fe48a5ed976a8f90d' +
-         'e10524bbc63eb34a1ecbf89955db200b19ff6f49d57742d41fc89934b207f494' +
-         '833989192e3f181df0d7fcae9194c3d65a5f50710b6edab6b79c0f6bd566e335',
-      q: 'fda7273922d23cc1d8306f7c1212d2782acadfa9eed486d74fad5ccdfe6e46f3' +
-         'ca94705ccc568e163262d08b329938c5f2fa20979fc2b2784c56c5857936cadb' +
-         '3bd00c9e3f791d2d592ef0fdf604bf7e8500329ea790678b87c2573f5bf18006' +
-         '76129c4077b7f8f60bc5b6cd750b6e202cc879770b395c38c21799fb224b7065',
-      u: '32152ae5bfd97411ab802b49a53e11183738655578c86585a0edddc6cca645a1' +
-         '4353741692478cf40c2cdc2fe8771c04d56dbbaffa45f9a4860a7628b16bf835' +
-         'b20ae4b1f2d8460b61a5846f012a20ae49e45a544fbc29ffaebd25b1280b7357' +
-         'd5d3067dbc29d3b0316d60afa46b8fcd6037193caa5784703180a2091d99a62e'
-    }
-  };
-
+  /** @type {int32[]} */
   const SUPPORTED_KEY_SIZES = [1024, 2048];
+
+  // Key columns, one entry per size of SUPPORTED_KEY_SIZES.
+  /** @type {string[]} */
+  const LUC_KEYS_N = [
+    'b49c852e399ebc43bad4149d5470fbccb896862285405ef16cbf73203dd73f34' +
+    '01a2c61069938456974305f6b87bb91e88b36e020174f47735e1978d3d1f8073' +
+    'dae83dd3f74b62f2d1d73144ccfe2f99bebd785009a1ab8a537bba4f1f3eb233' +
+    '3bee012ef64aa0f308d3b8a7ec666e17fbea4f43c4635c491717078e80026019',
+    'e616b0b5a95bde1d001cc148d56f133afd54bb5dd62b9407f4a597acefd05ee4' +
+    '07152ad0edbbe1b637a4b974befbfdd690b3541705f4a9301560692f1ec03b7c' +
+    '35bdf2afeac3e504b9a6786db58bf2fc9afc2fc77762b5edc98a3c353b4f31e6' +
+    '37a0433e66b16648c075743f8bfbe30560b5e6b88b53084a84a3be094e7ad66b' +
+    '20e6cc313533b0b3ab96178eb53d9d4f2315fe3a94ac7145276c55b13231568f' +
+    'af30e423ad4a4c998367b8acefd50d6d096da7c51e01f88f628101e416a1b2bf' +
+    '4f1243442612f6252391dfebb0753146bb9feddc300f675e26551bdd77596074' +
+    'f9fa9fdfceaf0b934b85d9f24877748045e1664e45ef3478dbaee430cf85d3e9'
+  ];
+  /** @type {string[]} */
+  const LUC_KEYS_E = [
+    '010001',
+    '010001'
+  ];
+  /** @type {string[]} */
+  const LUC_KEYS_P = [
+    'c7aa501634fde3c768ca6eab1bc8ad69cd662fe7b78dffeb5e49cf42487cab60' +
+    'c669b5a768b60a1fdbe1a842d3d63263ab30c29b02daef3c86cb27a4fae12669',
+    'e837b7f02b2d95d4831258d22c6a0c0fc2b2920c0ef24d8dcaa867714b0dede8' +
+    '4973de08b150c60bd6e72af3f86f6936d47b9d64b937422fe48a5ed976a8f90d' +
+    'e10524bbc63eb34a1ecbf89955db200b19ff6f49d57742d41fc89934b207f494' +
+    '833989192e3f181df0d7fcae9194c3d65a5f50710b6edab6b79c0f6bd566e335'
+  ];
+  /** @type {string[]} */
+  const LUC_KEYS_Q = [
+    'e791f57705a7ba31ad18afe90d8ceb711c1d9506a0cfce7bfab5ccd8b586bccd' +
+    '198069f704a6d6c13b1d66eb692ca19f41796cdcbadd9447b9588d09c3151631',
+    'fda7273922d23cc1d8306f7c1212d2782acadfa9eed486d74fad5ccdfe6e46f3' +
+    'ca94705ccc568e163262d08b329938c5f2fa20979fc2b2784c56c5857936cadb' +
+    '3bd00c9e3f791d2d592ef0fdf604bf7e8500329ea790678b87c2573f5bf18006' +
+    '76129c4077b7f8f60bc5b6cd750b6e202cc879770b395c38c21799fb224b7065'
+  ];
+  /** @type {string[]} */
+  const LUC_KEYS_U = [
+    '41bb3b62203c0c89af0407af5e7b9bedbbab825c5a42715fa6c1dcadc2fa93bc' +
+    'db911a46c5edbc782ca3825fe79b4daa5e3e499cd2bb7140bf8b3e0bc795efa7',
+    '32152ae5bfd97411ab802b49a53e11183738655578c86585a0edddc6cca645a1' +
+    '4353741692478cf40c2cdc2fe8771c04d56dbbaffa45f9a4860a7628b16bf835' +
+    'b20ae4b1f2d8460b61a5846f012a20ae49e45a544fbc29ffaebd25b1280b7357' +
+    'd5d3067dbc29d3b0316d60afa46b8fcd6037193caa5784703180a2091d99a62e'
+  ];
 
   /**
    * Read a key size selector from whatever the caller supplied. Both spellings
    * used across this collection are accepted: decimal digits in ASCII, and a
    * big-endian 16-bit count of bits.
    * @param {uint8[]|string|number} keyData - Key selector
-   * @returns {number} Key size in bits
+   * @returns {int32} Key size in bits
    */
   function parseKeySize(keyData) {
     if (typeof keyData === 'number') {
-      return keyData;
+      /** @type {int32} */
+      const bits = keyData;
+      return bits;
     }
 
     if (typeof keyData === 'string') {
-      return parseInt(keyData, 10);
+      /** @type {string} */
+      const text = keyData;
+      /** @type {int32} */
+      const parsed = parseInt(text, 10);
+      return parsed;
     }
 
     if (keyData && typeof keyData.length === 'number') {
+      /** @type {uint8[]} */
+      const bytes = keyData;
       let digits = '';
-      let allDigits = keyData.length > 0;
-      for (let i = 0; i < keyData.length; ++i) {
-        if (keyData[i] < 0x30 || keyData[i] > 0x39) {
+      let allDigits = bytes.length > 0;
+      for (let i = 0; i < bytes.length; ++i) {
+        if (bytes[i] < 0x30 || bytes[i] > 0x39) {
           allDigits = false;
           break;
         }
-        digits += String.fromCharCode(keyData[i]);
+        digits += String.fromCharCode(bytes[i]);
       }
 
       if (allDigits) {
-        return parseInt(digits, 10);
+        /** @type {int32} */
+        const size = parseInt(digits, 10);
+        return size;
       }
 
-      if (keyData.length >= 2) {
-        return OpCodes.Pack16BE(keyData[0], keyData[1]);
+      if (bytes.length >= 2) {
+        return OpCodes.Pack16BE(bytes[0], bytes[1]);
       }
     }
 
@@ -583,21 +626,27 @@
   class LUCInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LUCCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {int32} */
       this.keySize = 1024;
       this._publicKey = null;
       this._privateKey = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._keyData = null;
     }
 
     // Property setter for key (for test suite compatibility)
+    /**
+     * @param {uint8[]} keyData - Key size selector (see parseKeySize)
+     */
     set key(keyData) {
       this.KeySetup(keyData);
     }
@@ -629,6 +678,10 @@
     }
 
     // Initialize LUC with specified key size
+    /**
+     * @param {int32} keySize - Modulus size in bits
+     * @returns {boolean} True once the size is accepted
+     */
     Init(keySize) {
       if (!SUPPORTED_KEY_SIZES.includes(keySize)) {
         throw new Error('LUC: no demonstration key of ' + keySize + ' bits. Use ' + SUPPORTED_KEY_SIZES.join(' or ') + ', or set publicKey/privateKey directly.');
@@ -647,7 +700,9 @@
 
     Feed(data) {
       if (typeof data === 'string') {
-        for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data.charCodeAt(i) % 256);
+        /** @type {string} */
+        const text = data;
+        for (let i = 0; i < text.length; ++i) this.inputBuffer.push(text.charCodeAt(i) % 256);
       } else if (data && typeof data.length === 'number') {
         for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data[i]);
       } else {
@@ -664,10 +719,13 @@
 
     Result() {
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
       try {
+        /** @type {uint8[]} */
         let result;
         if (this.isInverse) {
           result = this._decrypt(this.inputBuffer);
@@ -675,23 +733,24 @@
           result = this._encrypt(this.inputBuffer);
         }
 
-        this.inputBuffer = [];
         return result;
-      } catch (error) {
+      } finally {
         this.inputBuffer = [];
-        throw error;
       }
     }
 
     // Set up keys
+    /**
+     * @param {uint8[]} keyData - Key size selector (see parseKeySize)
+     */
     KeySetup(keyData) {
       this._keyData = keyData;
 
       this.Init(parseKeySize(keyData));
 
-      const material = LUC_KEYS[this.keySize];
-      const n = hexToBigInt(material.n);
-      const e = hexToBigInt(material.e);
+      const index = SUPPORTED_KEY_SIZES.indexOf(this.keySize);
+      const n = hexToBigInt(LUC_KEYS_N[index]);
+      const e = hexToBigInt(LUC_KEYS_E[index]);
 
       this._publicKey = {
         n: n,
@@ -702,9 +761,9 @@
       this._privateKey = {
         n: n,
         e: e,
-        p: hexToBigInt(material.p),
-        q: hexToBigInt(material.q),
-        u: hexToBigInt(material.u),
+        p: hexToBigInt(LUC_KEYS_P[index]),
+        q: hexToBigInt(LUC_KEYS_Q[index]),
+        u: hexToBigInt(LUC_KEYS_U[index]),
         keySize: this.keySize
       };
     }
@@ -712,7 +771,7 @@
     /**
      * Number of octets in the modulus.
      * @param {BigInt} n - Modulus
-     * @returns {number} Octet length
+     * @returns {int32} Octet length
      */
     _modulusLength(n) {
       let octets = 0;
@@ -738,7 +797,10 @@
         throw new Error('LUC public key not set. Assign a key first.');
       }
 
-      const { n, e } = this._publicKey;
+      /** @type {BigInt} */
+      const n = this._publicKey.n;
+      /** @type {BigInt} */
+      const e = this._publicKey.e;
       const k = this._modulusLength(n);
 
       const encoded = emeEncode(message, k - 1);
@@ -762,7 +824,16 @@
         throw new Error('LUC private key not set. Assign a key first.');
       }
 
-      const { n, e, p, q, u } = this._privateKey;
+      /** @type {BigInt} */
+      const n = this._privateKey.n;
+      /** @type {BigInt} */
+      const e = this._privateKey.e;
+      /** @type {BigInt} */
+      const p = this._privateKey.p;
+      /** @type {BigInt} */
+      const q = this._privateKey.q;
+      /** @type {BigInt} */
+      const u = this._privateKey.u;
       const k = this._modulusLength(n);
 
       if (ciphertext.length !== k) {
