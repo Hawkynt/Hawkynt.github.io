@@ -41,7 +41,7 @@
 
 ## Test vectors
 
-2 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
+3 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
 
 **Vector 1** — [DarkCrypt Sfinks — keystream from incrementing key, zero IV, zero input](https://totalcmd.net/plugring/darkcrypttc.html)
 
@@ -60,6 +60,15 @@
 | `iv` | `00000000000000000000` |
 | `input` | `000102030405060708090a0b0c0d0e0f 101112131415161718191a1b1c1d1e1f 202122232425262728292a2b2c2d2e2f 303132333435363738393a3b3c3d3e3f` |
 | `expected` | `46aac4a1d3d7214b6b6393a537043593 b2da0d358a596f0a652bbfe613f24cae 726b1f029bdcf05e8d1c94deae095c25 8265180339e6bbd71dffff29e9991409` |
+
+**Vector 3** — [DarkCrypt Sfinks — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)](https://totalcmd.net/plugring/darkcrypttc.html)
+
+| Field | Value |
+| --- | --- |
+| `key` | `0b30557a9fc4e90e3358` |
+| `iv` | `073c71a6db10457aafe4` |
+| `input` | `03203d5a7794b1ceeb0825425f7c99b6 d3f00d2a4764819ebbd8f5122f4c6986 a3c0ddfa1734516e8ba8c5e2ff1c3956` |
+| `expected` | `a2edc639a765c3aef0e1d119dddaa469 13c0369c6511247017a16f405bdfee53 a942fd6889309f14ba261965975d0838` |
 
 ---
 

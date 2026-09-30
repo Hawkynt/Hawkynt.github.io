@@ -160,6 +160,14 @@
           key: OpCodes.Hex8ToBytes("00010203040506070809"),
           iv: OpCodes.Hex8ToBytes("00000000000000000000"),
           expected: OpCodes.Hex8ToBytes("46aac4a1d3d7214b6b6393a537043593b2da0d358a596f0a652bbfe613f24cae726b1f029bdcf05e8d1c94deae095c258265180339e6bbd71dffff29e9991409")
+        },
+        {
+          text: "DarkCrypt Sfinks — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c3956"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e3358"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457aafe4"),
+          expected: OpCodes.Hex8ToBytes("a2edc639a765c3aef0e1d119dddaa46913c0369c6511247017a16f405bdfee53a942fd6889309f14ba261965975d0838")
         }
       ];
     }
