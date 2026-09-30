@@ -23,8 +23,8 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| [Common digraph patterns in plaintext create patterns in ciphertext, enabling cryptanalysis](https://en.wikipedia.org/wiki/Frequency_analysis) | — | Educational use only - use modern ciphers for real security |
-| [If plaintext-ciphertext pairs are known, key matrix can be reconstructed](https://en.wikipedia.org/wiki/Known-plaintext_attack) | — | Avoid using with predictable or repeated messages |
+| [Digraph Frequency Analysis](https://en.wikipedia.org/wiki/Frequency_analysis) | Common digraph patterns in plaintext create patterns in ciphertext, enabling cryptanalysis | Educational use only - use modern ciphers for real security |
+| [Known Plaintext Attack](https://en.wikipedia.org/wiki/Known-plaintext_attack) | If plaintext-ciphertext pairs are known, key matrix can be reconstructed | Avoid using with predictable or repeated messages |
 
 ## Documentation
 

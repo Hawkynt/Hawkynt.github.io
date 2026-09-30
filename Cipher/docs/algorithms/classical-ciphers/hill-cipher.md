@@ -23,8 +23,8 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| [If enough plaintext-ciphertext pairs are known, the key matrix can be recovered using linear algebra](https://en.wikipedia.org/wiki/Known-plaintext_attack) | — | Requires n known plaintext blocks for n×n matrix, but still vulnerable |
-| [While more resistant than monoalphabetic ciphers, still vulnerable to advanced frequency analysis](https://en.wikipedia.org/wiki/Frequency_analysis) | — | Educational use only - modern ciphers provide much better security |
+| [Known Plaintext Attack](https://en.wikipedia.org/wiki/Known-plaintext_attack) | If enough plaintext-ciphertext pairs are known, the key matrix can be recovered using linear algebra | Requires n known plaintext blocks for n×n matrix, but still vulnerable |
+| [Frequency Analysis](https://en.wikipedia.org/wiki/Frequency_analysis) | While more resistant than monoalphabetic ciphers, still vulnerable to advanced frequency analysis | Educational use only - modern ciphers provide much better security |
 
 ## Documentation
 
