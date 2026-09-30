@@ -197,6 +197,62 @@ test('Brotli: given an empty input, when compressed, then node\'s zlib decodes t
   if (decoded.length !== 0) throw new Error(`node decoded ${decoded.length} byte(s), expected none`);
 });
 
+// ---------------------------------------------------------------- Zstandard
+// RFC 8878 4.2.1.3: a Huffman tree description never transmits the last
+// symbol's weight; the decoder derives it from the power-of-2 sum. The encoder
+// used to write that weight and the decoder used to expect it, so Huffman-coded
+// literals over small alphabets broke interoperability in both directions. The
+// oracle is node's own Zstandard codec, never our encoder's output.
+function smallAlphabetInputs() {
+  const inputs = [];
+  let seed = 20260930;
+  const next = () => (seed = (seed * 1103515245 + 12345) % 2147483648);
+  for (const symbols of [2, 3, 4, 7, 16])
+    for (const length of [16, 31, 100, 1000, 4096, 20000]) {
+      const data = [];
+      for (let i = 0; i < length; ++i) data.push(Math.floor(next() / 65536) % symbols); // an LCG's low bits have short periods
+      inputs.push({ label: `${symbols} symbols x ${length}`, data });
+    }
+  return inputs;
+}
+function zstandard() {
+  require(path.join(CIPHER_ROOT, 'algorithms', 'compression', 'zstd.js'));
+  return global.AlgorithmFramework.Algorithms.find(a => a.name === 'Zstandard');
+}
+function zstdPass(algorithm, inverse, bytes) {
+  const instance = algorithm.CreateInstance(inverse);
+  instance.Feed(bytes);
+  return instance.Result();
+}
+
+test('Zstandard: given small-alphabet inputs, when compressed, then node\'s zlib decodes every stream to the input', () => {
+  const zlib = require('zlib');
+  if (typeof zlib.zstdDecompressSync !== 'function') return; // no reference decoder in this node build
+  const algorithm = zstandard();
+  const failures = [];
+  for (const { label, data } of smallAlphabetInputs()) {
+    let decoded = null;
+    try { decoded = [...zlib.zstdDecompressSync(Buffer.from(zstdPass(algorithm, false, data)))]; }
+    catch (error) { failures.push(`${label}: node rejected the stream (${error.message})`); continue; }
+    if (hex(decoded) !== hex(data)) failures.push(`${label}: node decoded different bytes`);
+  }
+  if (failures.length) throw new Error(`${failures.length} case(s): ${failures.slice(0, 4).join('; ')}`);
+});
+
+test('Zstandard: given small-alphabet streams from node\'s zlib, when decompressed, then every stream yields the input', () => {
+  const zlib = require('zlib');
+  if (typeof zlib.zstdCompressSync !== 'function') return; // no reference encoder in this node build
+  const algorithm = zstandard();
+  const failures = [];
+  for (const { label, data } of smallAlphabetInputs()) {
+    let decoded = null;
+    try { decoded = zstdPass(algorithm, true, [...zlib.zstdCompressSync(Buffer.from(data))]); }
+    catch (error) { failures.push(`${label}: threw ${error.message}`); continue; }
+    if (hex(decoded) !== hex(data)) failures.push(`${label}: decoded different bytes`);
+  }
+  if (failures.length) throw new Error(`${failures.length} case(s): ${failures.slice(0, 4).join('; ')}`);
+});
+
 /**
  * Run every algorithm regression case.
  * @param {object} options - { verbose }
