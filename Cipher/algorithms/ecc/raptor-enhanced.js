@@ -52,7 +52,7 @@
           TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   // Extract foundation utilities
-  const { GaloisField, SparseMatrix, BipartiteGraph, DegreeDistribution,
+  const { GaloisField, SparseMatrix,
           SeededRandom, PerformanceProfiler } = FountainFoundation;
 
   // ===== RFC 5053 FIXED PARAMETERS =====
@@ -61,6 +61,7 @@
    * RFC 5053 Section 5.6 - Fixed Random Number Tables
    * These MUST be available to both sender and receiver
    */
+  /** @type {uint8[]} */
   const RFC5053_V0 = [
     251, 0, 255, 8, 0, 43, 0, 0, 247, 0, 0, 150, 0, 0, 0, 191,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -80,6 +81,7 @@
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
   ];
 
+  /** @type {uint8[]} */
   const RFC5053_V1 = [
     122, 62, 97, 75, 86, 69, 70, 89, 105, 90, 123, 78, 90, 97, 99, 108,
     88, 106, 91, 99, 85, 115, 93, 82, 90, 77, 119, 94, 77, 98, 86, 90,
@@ -103,27 +105,68 @@
    * RFC 5053 Section 5.7 - Systematic Index J(K) for small K values
    * Maps source block size K to systematic index
    */
-  const RFC5053_SYSTEMATIC_INDEX = {
-    4: 10, 5: 38, 6: 4, 7: 13, 8: 11, 9: 20, 10: 1, 11: 8,
-    12: 10, 13: 11, 14: 6, 15: 5, 16: 12, 17: 7, 18: 10, 19: 7,
-    20: 18, 21: 14, 22: 20, 23: 10, 24: 11, 25: 3, 26: 13, 27: 2,
-    28: 10, 29: 8, 30: 15, 31: 2, 32: 10, 33: 4, 34: 16, 35: 3,
-    36: 17, 37: 13, 38: 2, 39: 11, 40: 20, 41: 9, 42: 4, 43: 3,
-    44: 11, 45: 2, 46: 7, 47: 1, 48: 11, 49: 7, 50: 9
-  };
+  // Indexed by K; K = 0..3 have no entry (-1)
+  /** @type {int32[]} */
+  const RFC5053_SYSTEMATIC_INDEX = [
+    -1, -1, -1, -1, 10, 38, 4, 13, 11, 20, 1, 8,
+    10, 11, 6, 5, 12, 7, 10, 7,
+    18, 14, 20, 10, 11, 3, 13, 2,
+    10, 8, 15, 2, 10, 4, 16, 3,
+    17, 13, 2, 11, 20, 9, 4, 3,
+    11, 2, 7, 1, 11, 7, 9
+  ];
 
   /**
    * RFC 5053 Section 5.4.4.2 - Degree Distribution for LT Codes
    * Optimized Soliton distribution parameters
    */
+  /**
+   * One degree-distribution interval: values f in [f[0], f[1]) map to degree d
+   * @class
+   */
+  class DegreeInterval {
+    /**
+     * @param {int32} low - Inclusive lower bound
+     * @param {int32} high - Exclusive upper bound
+     * @param {int32} d - Degree
+     */
+    constructor(low, high, d) {
+      /** @type {int32[]} */
+      this.f = [low, high];
+      /** @type {int32} */
+      this.d = d;
+    }
+  }
+
+  /** @type {DegreeInterval[]} */
   const RFC5053_DEGREE_DIST = [
-    { f: [0, 10241], d: 1 },
-    { f: [10241, 491582], d: 2 },
-    { f: [491582, 712794], d: 3 },
-    { f: [712794, 831695], d: 4 },
-    { f: [831695, 948446], d: 10 },
-    { f: [948446, 1048576], d: 11 }
+    new DegreeInterval(0, 10241, 1),
+    new DegreeInterval(10241, 491582, 2),
+    new DegreeInterval(491582, 712794, 3),
+    new DegreeInterval(712794, 831695, 4),
+    new DegreeInterval(831695, 948446, 10),
+    new DegreeInterval(948446, 1048576, 11)
   ];
+
+  /**
+   * An RFC 5053 (d, a, b) triple
+   * @class
+   */
+  class Triple {
+    /**
+     * @param {int32} d - Degree
+     * @param {float64} a - Step
+     * @param {float64} b - Start
+     */
+    constructor(d, a, b) {
+      /** @type {int32} */
+      this.d = d;
+      /** @type {float64} */
+      this.a = a;
+      /** @type {float64} */
+      this.b = b;
+    }
+  }
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -206,7 +249,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {RaptorEnhancedInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -225,17 +268,21 @@
   class RaptorEnhancedInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {RaptorEnhancedAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
 
       // Input/Output state
+      /** @type {uint8[]} */
       this.sourceSymbols = null;
+      /** @type {uint8[]} */
       this.encodedSymbols = [];
+      /** @type {uint8[]} */
       this.decodedSymbols = null;
 
       // RFC 5053 Parameters
@@ -244,12 +291,19 @@
       this.targetOverhead = 0.05;     // Target overhead epsilon
 
       // Internal structures
+      /** @type {uint8[]} */
       this.intermediateSymbols = null; // L intermediate symbols
+      /** @type {int32} */
       this.L = 0;                      // Number of intermediate symbols
+      /** @type {int32} */
       this.S = 0;                      // S parameter from RFC 5053
+      /** @type {int32} */
       this.H = 0;                      // H parameter from RFC 5053
+      /** @type {int32} */
       this.W = 0;                      // W parameter from RFC 5053
+      /** @type {int32} */
       this.P = 0;                      // P parameter (LDPC parity symbols)
+      /** @type {int32} */
       this.U = 0;                      // U parameter (LDPC overhead)
 
       // Matrices and graphs
@@ -264,31 +318,53 @@
 
     // ===== PROPERTY SETTERS =====
 
+    /**
+     * @param {int32} value - Number of source symbols K
+     */
     set k(value) {
+      /** @type {int32} */
       this._k = value;
       if (value > 0) {
         this._calculateParameters();
       }
     }
 
+    /**
+     * @returns {int32} Number of source symbols K
+     */
     get k() { return this._k; }
 
+    /**
+     * @param {float64} value - Target overhead epsilon
+     */
     set targetOverhead(value) {
+      /** @type {float64} */
       this._targetOverhead = value;
     }
 
+    /**
+     * @returns {float64} Target overhead epsilon
+     */
     get targetOverhead() { return this._targetOverhead; }
 
+    /**
+     * @param {int32} value - Bytes per symbol T
+     */
     set symbolSize(value) {
+      /** @type {int32} */
       this._symbolSize = value;
     }
 
+    /**
+     * @returns {int32} Bytes per symbol T
+     */
     get symbolSize() { return this._symbolSize; }
 
     // ===== RFC 5053 PARAMETER CALCULATION =====
 
     /**
      * Calculate intermediate parameters per RFC 5053 Section 5.4.2.1
+     * @returns {void}
      */
     _calculateParameters() {
       const K = this.k;
@@ -315,6 +391,8 @@
 
     /**
      * Find smallest X where X*(X-1) >= 2*K
+     * @param {int32} K - Source symbols
+     * @returns {int32} X
      */
     _findSmallestX(K) {
       let X = 2;
@@ -327,6 +405,8 @@
     /**
      * Calculate S parameter (number of LDPC symbols)
      * From RFC 5053 Section 5.4.2.3 - typically S = 2
+     * @param {int32} K - Source symbols
+     * @returns {int32} S
      */
     _calculateS(K) {
       // For simplicity, use S = 2 for all K as suggested in RFC
@@ -336,6 +416,9 @@
     /**
      * Calculate H parameter (number of half symbols)
      * From RFC 5053 Section 5.4.2.3
+     * @param {int32} K - Source symbols
+     * @param {int32} S - LDPC symbols
+     * @returns {int32} H
      */
     _calculateH(K, S) {
       // H should be chosen such that H*(H-1)/2 >= K+S
@@ -348,6 +431,8 @@
 
     /**
      * Find U parameter ensuring (W-2) divisible by U
+     * @param {int32} W - LDPC symbol count
+     * @returns {int32} U
      */
     _findU(W) {
       const target = W - 2;
@@ -361,6 +446,8 @@
 
     /**
      * Find smallest prime >= n
+     * @param {int32} n - Lower bound
+     * @returns {int32} Prime
      */
     _findSmallestPrime(n) {
       if (n <= 2) return 2;
@@ -374,6 +461,8 @@
 
     /**
      * Check if n is prime
+     * @param {int32} n - Candidate
+     * @returns {boolean} True when prime
      */
     _isPrime(n) {
       if (n <= 1) return false;
@@ -410,7 +499,11 @@
         // pre-code matrix are derived from the complete block in Result(),
         // since a partition computed from one call's share of the message
         // describes a different code from the one the whole message asks for.
-        if (!this.sourceSymbols) this.sourceSymbols = [];
+        if (!this.sourceSymbols) {
+          /** @type {uint8[]} */
+          const empty = [];
+          this.sourceSymbols = empty;
+        }
         for (let i = 0; i < data.length; i++) this.sourceSymbols.push(data[i]);
       }
     }
@@ -433,6 +526,10 @@
       return this._encode();
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       try {
         this.Feed(data);
@@ -445,6 +542,10 @@
 
     // ===== ENCODING IMPLEMENTATION =====
 
+    /**
+     * Build the pre-code and intermediate symbols
+     * @returns {void}
+     */
     _initializeEncoding() {
       this.profiler.startTimer('initialization');
 
@@ -460,6 +561,7 @@
     /**
      * Build constraint matrix A per RFC 5053 Section 5.4.2
      * A is L×L matrix defining LDPC pre-code
+     * @returns {void}
      */
     _buildConstraintMatrix() {
       this.profiler.startTimer('constraint_matrix');
@@ -487,7 +589,9 @@
       for (let row = 0; row < H; row++) {
         const rowIdx = S + row;
         // Connect pairs of symbols based on systematic structure
+        /** @type {int32} */
         const idx1 = this._rfc5053Triple(K, rowIdx, 0).d;
+        /** @type {int32} */
         const idx2 = this._rfc5053Triple(K, rowIdx, 1).d;
         this.constraintMatrix.set(rowIdx, idx1 % L, 1);
         this.constraintMatrix.set(rowIdx, idx2 % L, 1);
@@ -504,6 +608,10 @@
     /**
      * RFC 5053 Section 5.4.4.4 - Triple generator
      * Generates (d, a, b) triple for encoding symbol ESI
+     * @param {int32} K - Source symbols
+     * @param {int32} X - Encoding symbol id
+     * @param {int32} index - Table index
+     * @returns {Triple} The (d, a, b) triple
      */
     _rfc5053Triple(K, X, index) {
       const L = this.L;
@@ -518,17 +626,21 @@
       const B = OpCodes.RotL32(OpCodes.Add32(OpCodes.Add32(J, v1), X), 7);
 
       const d = this._getDegree(A % 1048576);
+      /** @type {float64} */
       const a = 1 + (A % (L - 1));
+      /** @type {float64} */
       const b = B % L;
 
-      return { d: d, a: a, b: b };
+      return new Triple(d, a, b);
     }
 
     /**
      * Get systematic index J(K) from RFC 5053 Section 5.7
+     * @param {int32} K - Source symbols
+     * @returns {int32} Systematic index
      */
     _getSystematicIndex(K) {
-      if (K in RFC5053_SYSTEMATIC_INDEX) {
+      if (K >= 4 && K < RFC5053_SYSTEMATIC_INDEX.length && Math.floor(K) === K) {
         return RFC5053_SYSTEMATIC_INDEX[K];
       }
       // For K > 50, use formula: J(K) = K % 256
@@ -537,9 +649,13 @@
 
     /**
      * Get encoding symbol degree from RFC 5053 degree distribution
+     * @param {uint32} f - Uniform value in [0, 2^20)
+     * @returns {int32} Degree
      */
     _getDegree(f) {
-      for (const entry of RFC5053_DEGREE_DIST) {
+      for (let e = 0; e < RFC5053_DEGREE_DIST.length; ++e) {
+        /** @type {DegreeInterval} */
+        const entry = RFC5053_DEGREE_DIST[e];
         if (f >= entry.f[0] && f < entry.f[1]) {
           return entry.d;
         }
@@ -550,6 +666,7 @@
     /**
      * Generate intermediate symbols by solving A*C = D
      * Where D = [S, H, source symbols, padding]
+     * @returns {void}
      */
     _generateIntermediateSymbols() {
       this.profiler.startTimer('intermediate_symbols');
@@ -558,7 +675,8 @@
       const K = this.k;
 
       // Construct D vector: [LDPC constraints, source symbols]
-      const D = new Array(L).fill(0);
+      /** @type {uint8[]} */
+      const D = OpCodes.CreateArray(L, 0);
 
       // Copy source symbols
       for (let i = 0; i < K; i++) {
@@ -578,16 +696,25 @@
     /**
      * Solve linear system A*x = b in GF(256)
      * Uses Gaussian elimination with partial pivoting
+     * @param {SparseMatrix} A - Coefficient matrix
+     * @param {uint8[]} b - Right-hand side
+     * @param {int32} n - System size
+     * @returns {uint8[]} Solution
      */
     _solveLinearSystem(A, b, n) {
       // Create augmented matrix [A|b]
+      /** @type {uint8[][]} */
       const augmented = [];
       for (let i = 0; i < n; i++) {
-        augmented[i] = [];
+        /** @type {uint8[]} */
+        const row = [];
+        augmented[i] = row;
         for (let j = 0; j < n; j++) {
-          augmented[i][j] = A.get(i, j);
+          /** @type {uint8} */
+          const cell = A.get(i, j);
+          row[j] = cell;
         }
-        augmented[i][n] = b[i];
+        row[n] = b[i];
       }
 
       // Gaussian elimination
@@ -611,33 +738,42 @@
         if (augmented[col][col] === 0) continue;
 
         // Eliminate column
+        /** @type {uint8} */
         const pivot = augmented[col][col];
         for (let row = col + 1; row < n; row++) {
           if (augmented[row][col] === 0) continue;
 
+          /** @type {uint8} */
           const factor = this.gf.divide(augmented[row][col], pivot);
           for (let j = col; j <= n; j++) {
-            augmented[row][j] = this.gf.subtract(
-              augmented[row][j],
-              this.gf.multiply(factor, augmented[col][j])
-            );
+            /** @type {uint8} */
+            const product = this.gf.multiply(factor, augmented[col][j]);
+            /** @type {uint8} */
+            const reduced = this.gf.subtract(augmented[row][j], product);
+            augmented[row][j] = reduced;
           }
         }
       }
 
       // Back substitution
-      const x = new Array(n).fill(0);
+      /** @type {uint8[]} */
+      const x = OpCodes.CreateArray(n, 0);
       for (let i = n - 1; i >= 0; i--) {
         if (augmented[i][i] === 0) {
           x[i] = 0;
           continue;
         }
 
+        /** @type {uint8} */
         let sum = augmented[i][n];
         for (let j = i + 1; j < n; j++) {
-          sum = this.gf.subtract(sum, this.gf.multiply(augmented[i][j], x[j]));
+          /** @type {uint8} */
+          const product = this.gf.multiply(augmented[i][j], x[j]);
+          sum = this.gf.subtract(sum, product);
         }
-        x[i] = this.gf.divide(sum, augmented[i][i]);
+        /** @type {uint8} */
+        const quotient = this.gf.divide(sum, augmented[i][i]);
+        x[i] = quotient;
       }
 
       return x;
@@ -645,6 +781,7 @@
 
     /**
      * Encode to produce systematic + repair symbols
+     * @returns {uint8[]} Systematic symbols followed by repair symbols
      */
     _encode() {
       if (!this.sourceSymbols || this.k === 0) {
@@ -657,6 +794,7 @@
       const numRepair = Math.ceil(this.k * this.targetOverhead);
       const totalSymbols = this.k + numRepair;
 
+      /** @type {uint8[]} */
       const result = [];
 
       // Systematic part: Copy source symbols
@@ -664,6 +802,7 @@
 
       // Repair symbols: Generate using LT encoding of intermediate symbols
       for (let esi = this.k; esi < totalSymbols; esi++) {
+        /** @type {uint8} */
         const repairSymbol = this._generateEncodingSymbol(esi);
         result.push(repairSymbol);
       }
@@ -674,17 +813,27 @@
 
     /**
      * Generate encoding symbol for ESI (Encoding Symbol ID)
+     * @param {int32} esi - Encoding symbol id
+     * @returns {uint8} Repair symbol
      */
     _generateEncodingSymbol(esi) {
+      /** @type {Triple} */
       const triple = this._rfc5053Triple(this.k, esi, 0);
-      const { d, a, b } = triple;
+      /** @type {int32} */
+      const d = triple.d;
+      /** @type {float64} */
+      const a = triple.a;
 
       // XOR intermediate symbols according to LT encoding
+      /** @type {uint8} */
       let symbol = 0;
-      let idx = b;
+      /** @type {float64} */
+      let idx = triple.b;
 
       for (let i = 0; i < d; i++) {
-        symbol = this.gf.add(symbol, this.intermediateSymbols[idx % this.L]);
+        /** @type {uint8} */
+        const sum = this.gf.add(symbol, this.intermediateSymbols[idx % this.L]);
+        symbol = sum;
         idx = (idx + a) % this.L;
       }
 
@@ -696,6 +845,7 @@
     /**
      * Decode received symbols using inactivation decoding
      * RFC 5053 Section 5.5
+     * @returns {uint8[]} Decoded source symbols
      */
     _decode() {
       if (this.encodedSymbols.length < this.k) {
@@ -705,6 +855,7 @@
       this.profiler.startTimer('decoding');
 
       // Extract systematic symbols if available
+      /** @type {uint8[]} */
       const systematic = this.encodedSymbols.slice(0, this.k);
 
       // Check if we have clean systematic symbols
@@ -723,6 +874,8 @@
 
     /**
      * Check if systematic symbols are uncorrupted
+     * @param {uint8[]} symbols - Systematic symbols
+     * @returns {boolean} True when complete
      */
     _checkSystematic(symbols) {
       // For now, assume systematic symbols are first K symbols
@@ -733,6 +886,7 @@
     /**
      * Inactivation decoding algorithm (RFC 5053 Section 5.5)
      * Handles cases where some symbols are erased or corrupted
+     * @returns {uint8[]} Decoded source symbols
      */
     _inactivationDecode() {
       const n = Math.min(this.encodedSymbols.length, this.k +
@@ -740,14 +894,20 @@
 
       // Build decoding matrix from received symbols
       const decodingMatrix = new SparseMatrix(n, this.L);
+      /** @type {uint8[]} */
       const received = this.encodedSymbols.slice(0, n);
 
       // Populate decoding matrix using encoding relationships
       for (let i = 0; i < n; i++) {
+        /** @type {Triple} */
         const triple = this._rfc5053Triple(this.k, i, 0);
-        const { d, a, b } = triple;
+        /** @type {int32} */
+        const d = triple.d;
+        /** @type {float64} */
+        const a = triple.a;
 
-        let idx = b;
+        /** @type {float64} */
+        let idx = triple.b;
         for (let j = 0; j < d; j++) {
           decodingMatrix.set(i, idx % this.L, 1);
           idx = (idx + a) % this.L;
@@ -762,6 +922,7 @@
       );
 
       // Extract source symbols from intermediate symbols
+      /** @type {uint8[]} */
       const decoded = [];
       for (let i = 0; i < this.k; i++) {
         const esi = this.S + this.H + i;

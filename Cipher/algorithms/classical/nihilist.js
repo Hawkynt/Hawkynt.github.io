@@ -113,9 +113,11 @@
       ];
 
       // For test suite compatibility
+      /** @type {TestCase[]} */
       this.testVectors = this.tests;
 
       // Standard Polybius Square (I/J combined)
+      /** @type {string[][]} */
       this.STANDARD_SQUARE = [
         ['A', 'B', 'C', 'D', 'E'],
         ['F', 'G', 'H', 'I', 'K'], // I/J combined as I
@@ -128,7 +130,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {NihilistInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -145,17 +147,24 @@
   class NihilistInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {NihilistCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {string[]} */
       this.inputBuffer = [];
+      /** @type {string|null} */
       this._key = null;
+      /** @type {string[][]} */
+      this.standardSquare = algorithm.STANDARD_SQUARE;
+      /** @type {string[][]} */
+      this.square = [];
 
-      this.setupSquare();
+      this.setupSquare('');
     }
 
     /**
@@ -166,20 +175,29 @@
      * @param {uint8[]|string} keyData - Key bytes or string
      */
     set key(keyData) {
+      /** @type {string} */
       let keyString = '';
       if (typeof keyData === 'string') {
         keyString = keyData;
       } else if (Array.isArray(keyData)) {
-        keyString = String.fromCharCode(...keyData);
+        /** @type {uint8[]} */
+        const bytes = keyData;
+        keyString = String.fromCharCode(...bytes);
       }
 
+      /** @type {string[]} */
       const parts = keyString.split(',');
+      /** @type {string} */
       const squareKeyword = parts.length >= 2 ? parts[0] : '';
+      /** @type {string} */
       const additive = parts.length >= 2 ? parts.slice(1).join(',') : parts[0];
 
       this.setupSquare(squareKeyword);
 
-      this.keyText = additive.toUpperCase().replace(/[^A-Z]/g, ''); // Remove non-letters
+      /** @type {string} */
+      const upper = additive.toUpperCase();
+      /** @type {string} */
+      this.keyText = upper.replace(/[^A-Z]/g, ''); // Remove non-letters
       if (this.keyText.length === 0) {
         throw new Error('Nihilist: Key must contain at least one letter');
       }
@@ -189,8 +207,8 @@
     }
 
     /**
-   * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * Get the key text
+   * @returns {string|null} Key text or null
    */
 
     get key() {
@@ -199,7 +217,7 @@
 
     /**
    * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
+   * @param {string|uint8[]} data - Input text, or its bytes
    * @throws {Error} If key not set
    */
 
@@ -207,11 +225,14 @@
       if (!data || data.length === 0) return;
 
       // Convert bytes to string for classical cipher
+      /** @type {string} */
       let text = '';
       if (typeof data === 'string') {
         text = data;
       } else {
-        text = String.fromCharCode(...data);
+        /** @type {uint8[]} */
+        const bytes = data;
+        text = String.fromCharCode(...bytes);
       }
 
       this.inputBuffer.push(text);
@@ -224,66 +245,100 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) return [];
+      /** @type {uint8[]} */
+      const output = [];
+      if (this.inputBuffer.length === 0) return output;
 
+      /** @type {string} */
       const text = this.inputBuffer.join('');
       this.inputBuffer = [];
 
-      const result = this.isInverse ? 
-        this.decrypt(text) : 
+      /** @type {string} */
+      const result = this.isInverse ?
+        this.decrypt(text) :
         this.encrypt(text);
 
-      // Convert string result to bytes
-      return Array.from(result).map(c => c.charCodeAt(0));
+      // Convert string result to bytes (digits, spaces, letters and '?')
+      for (let i = 0; i < result.length; i++) output.push(result.charCodeAt(i));
+      return output;
     }
 
     /**
      * Build the Polybius square: the keyword's own letters in order and
      * without repeats, then the letters it did not use. J shares I's cell.
-     * @param {string} [keyword] - Square keyword, empty for the plain A-Z square
+     * @param {string} keyword - Square keyword, empty for the plain A-Z square
+     * @returns {void}
      */
     setupSquare(keyword) {
-      const letters = String(keyword || '').toUpperCase().replace(/[^A-Z]/g, '').replace(/J/g, 'I');
+      /** @type {string} */
+      const upper = String(keyword ? keyword : '').toUpperCase();
+      /** @type {string} */
+      const letters = upper.replace(/[^A-Z]/g, '').replace(/J/g, 'I');
 
       if (letters.length === 0) {
         // Use standard Polybius square
-        this.square = this.algorithm.STANDARD_SQUARE.map(row => row.slice());
+        /** @type {string[][]} */
+        const copy = [];
+        for (let r = 0; r < this.standardSquare.length; r++) copy.push(this.standardSquare[r].slice());
+        this.square = copy;
       } else {
+        /** @type {string} */
         let mixed = '';
-        for (const char of letters)
+        for (let i = 0; i < letters.length; i++) {
+          /** @type {string} */
+          const char = letters.charAt(i);
           if (!mixed.includes(char)) mixed += char;
-        for (const char of 'ABCDEFGHIKLMNOPQRSTUVWXYZ')
-          if (!mixed.includes(char)) mixed += char;
-
-        this.square = [];
-        for (let row = 0; row < 5; row++)
-          this.square.push(mixed.slice(row * 5, row * 5 + 5).split(''));
-      }
-
-      // Create coordinate lookup for letters
-      this.letterToCoords = {};
-      this.coordsToLetter = {};
-
-      for (let row = 0; row < 5; row++) {
-        for (let col = 0; col < 5; col++) {
-          const letter = this.square[row][col];
-          const coords = (row + 1) * 10 + (col + 1); // 11, 12, 13, etc.
-          this.letterToCoords[letter] = coords;
-          this.coordsToLetter[coords] = letter;
         }
-      }
+        /** @type {string} */
+        const alphabet = 'ABCDEFGHIKLMNOPQRSTUVWXYZ';
+        for (let i = 0; i < alphabet.length; i++) {
+          /** @type {string} */
+          const char = alphabet.charAt(i);
+          if (!mixed.includes(char)) mixed += char;
+        }
 
-      // Handle I/J combination
-      this.letterToCoords['J'] = this.letterToCoords['I'];
+        /** @type {string[][]} */
+        const rows = [];
+        for (let row = 0; row < 5; row++) {
+          /** @type {string} */
+          const line = mixed.slice(row * 5, row * 5 + 5);
+          rows.push(line.split(''));
+        }
+        this.square = rows;
+      }
     }
 
-    // Prepare the key by converting to coordinate numbers
+    /**
+     * Polybius coordinates of a letter, row digit then column digit (J as I)
+     * @param {string} letter - Letter
+     * @returns {int32} 11..55, or 0 when the square lacks it
+     */
+    _coordsOf(letter) {
+      /** @type {string} */
+      const cell = letter === 'J' ? 'I' : letter;
+      /** @type {int32} */
+      let found = 0;
+      for (let row = 0; row < 5; row++) {
+        for (let col = 0; col < 5; col++) {
+          // the last cell holding the letter wins, as a table built in order would
+          if (this.square[row][col] === cell) found = (row + 1) * 10 + (col + 1);
+        }
+      }
+      return found;
+    }
+
+    /**
+     * Prepare the key by converting to coordinate numbers
+     * @returns {void}
+     */
     prepareKey() {
+      /** @type {int32[]} */
       this.keyCoords = [];
       for (let i = 0; i < this.keyText.length; i++) {
-        const letter = this.keyText[i];
-        if (this.letterToCoords[letter]) {
-          this.keyCoords.push(this.letterToCoords[letter]);
+        /** @type {int32} */
+        const coords = this._coordsOf(this.keyText.charAt(i));
+        if (coords) {
+          this.keyCoords.push(coords);
         }
       }
 
@@ -292,51 +347,79 @@
       }
     }
 
-    // Encrypt function
+    /**
+     * Encrypt function
+     * @param {string} plaintext - Text; only its letters count
+     * @returns {string} Space-separated sums
+     */
     encrypt(plaintext) {
-      const text = plaintext.toUpperCase().replace(/[^A-Z]/g, '');
+      /** @type {string} */
+      const upper = plaintext.toUpperCase();
+      /** @type {string} */
+      const text = upper.replace(/[^A-Z]/g, '');
+      /** @type {string[]} */
       const result = [];
 
       for (let i = 0; i < text.length; i++) {
-        const letter = text[i];
+        /** @type {string} */
+        const letter = text.charAt(i);
 
         // Convert letter to Polybius coordinates
-        const letterCoords = this.letterToCoords[letter] || this.letterToCoords['I']; // J maps to I
+        /** @type {int32} */
+        const own = this._coordsOf(letter);
+        /** @type {int32} */
+        const letterCoords = own ? own : this._coordsOf('I'); // J maps to I
 
         // Get corresponding key coordinate (cycling through key)
+        /** @type {int32} */
         const keyCoords = this.keyCoords[i % this.keyCoords.length];
 
         // Add coordinates (Nihilist addition)
+        /** @type {int32} */
         const sum = letterCoords + keyCoords;
-        result.push(sum.toString());
+        result.push('' + sum);
       }
 
       return result.join(' ');
     }
 
-    // Decrypt function
+    /**
+     * Decrypt function
+     * @param {string} ciphertext - Space-separated sums
+     * @returns {string} Letters, '?' for impossible sums
+     */
     decrypt(ciphertext) {
       // Parse numbers from ciphertext
-      const numbers = ciphertext.trim().split(/\s+/).map(n => parseInt(n));
+      /** @type {string} */
+      const trimmed = ciphertext.trim();
+      /** @type {string[]} */
+      const numbers = trimmed.split(/\s+/);
+      /** @type {string[]} */
       const result = [];
 
       for (let i = 0; i < numbers.length; i++) {
-        const sum = numbers[i];
+        /** @type {int32} */
+        const sum = parseInt(numbers[i]);
 
         // Get corresponding key coordinate
+        /** @type {int32} */
         const keyCoords = this.keyCoords[i % this.keyCoords.length];
 
         // Subtract key from sum to get original letter coordinates
+        /** @type {int32} */
         const letterCoords = sum - keyCoords;
 
         // Validate coordinates are in valid Polybius range
+        /** @type {int32} */
         const row = Math.floor(letterCoords / 10);
+        /** @type {int32} */
         const col = letterCoords % 10;
 
         if (row >= 1 && row <= 5 && col >= 1 && col <= 5) {
-          const coords = row * 10 + col;
-          if (this.coordsToLetter[coords]) {
-            result.push(this.coordsToLetter[coords]);
+          /** @type {string} */
+          const letter = this.square[row - 1][col - 1];
+          if (letter) {
+            result.push(letter);
           } else {
             result.push('?'); // Invalid coordinates
           }
@@ -348,39 +431,60 @@
       return result.join('');
     }
 
-    // Return the Polybius square for educational purposes
+    /**
+     * Return the Polybius square for educational purposes
+     * @returns {string[][]} Copy of the square
+     */
     getSquare() {
-      return this.square.map(row => row.slice());
+      /** @type {string[][]} */
+      const copy = [];
+      for (let r = 0; r < this.square.length; r++) copy.push(this.square[r].slice());
+      return copy;
     }
 
-    // Display the encryption process for educational purposes
+    /**
+     * Display the encryption process for educational purposes
+     * @param {string} plaintext - Text
+     * @returns {string} Worked example
+     */
     showEncryption(plaintext) {
-      const text = plaintext.toUpperCase().replace(/[^A-Z]/g, '');
-      let display = `Nihilist Cipher Encryption:\n`;
-      display += `Plaintext: ${text}\n`;
-      display += `Key: ${this.keyText}\n\n`;
-      display += `Polybius Square:\n`;
-      display += `  1 2 3 4 5\n`;
+      /** @type {string} */
+      const upper = plaintext.toUpperCase();
+      /** @type {string} */
+      const text = upper.replace(/[^A-Z]/g, '');
+      /** @type {string} */
+      let display = "Nihilist Cipher Encryption:\n";
+      display += "Plaintext: " + text + "\n";
+      display += "Key: " + this.keyText + "\n\n";
+      display += "Polybius Square:\n";
+      display += "  1 2 3 4 5\n";
       for (let i = 0; i < 5; i++) {
-        display += `${i + 1} `;
+        display += (i + 1) + " ";
         for (let j = 0; j < 5; j++) {
-          display += `${this.square[i][j]} `;
+          display += this.square[i][j] + " ";
         }
-        display += `\n`;
+        display += "\n";
       }
-      display += `\nEncryption process:\n`;
+      display += "\nEncryption process:\n";
 
       for (let i = 0; i < text.length; i++) {
-        const letter = text[i];
-        const letterCoords = this.letterToCoords[letter] || this.letterToCoords['I'];
+        /** @type {string} */
+        const letter = text.charAt(i);
+        /** @type {int32} */
+        const own = this._coordsOf(letter);
+        /** @type {int32} */
+        const letterCoords = own ? own : this._coordsOf('I');
+        /** @type {string} */
         const keyLetter = this.keyText[i % this.keyText.length];
+        /** @type {int32} */
         const keyCoords = this.keyCoords[i % this.keyCoords.length];
+        /** @type {int32} */
         const sum = letterCoords + keyCoords;
 
-        display += `${letter}(${letterCoords}) + ${keyLetter}(${keyCoords}) = ${sum}\n`;
+        display += letter + "(" + letterCoords + ") + " + keyLetter + "(" + keyCoords + ") = " + sum + "\n";
       }
 
-      display += `\nResult: ${this.encrypt(plaintext)}`;
+      display += "\nResult: " + this.encrypt(plaintext);
       return display;
     }
   }

@@ -124,7 +124,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {FishAlgorithmInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -141,28 +141,44 @@
   class FishAlgorithmInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {FishAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
+      this._key = null;
       this.key = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this.KeySize = 0;
 
       // FISH-specific state
-      this.fibonacciRegister = null;
-      this.shrinkingRegister = null;
+      /** @type {uint32[]} */
+      this.fibonacciRegister = [];
+      /** @type {uint32[]} */
+      this.shrinkingRegister = [];
+      /** @type {int32} */
       this.fibPos = 0;
+      /** @type {int32} */
       this.shrinkPos = 0;
+      /** @type {uint32} */
       this.currentWord = 0;
+      /** @type {int32} */
       this.wordBytesUsed = 4; // Force generation of new word
 
       // FISH constants
+      /** @type {int32} */
       this.LAG_P = 17;
+      /** @type {int32} */
       this.LAG_Q = 5;
+      /** @type {int32} */
       this.REGISTER_SIZE = 17;
     }
 
@@ -176,24 +192,27 @@
       if (!keyBytes) {
         this._key = null;
         this.KeySize = 0;
-        // Clear sensitive data
-        if (this._key && global.OpCodes) {
-          global.OpCodes.ClearArray(this._key);
-        }
         return;
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks => 
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
-        (keyBytes.length - ks.minSize) % ks.stepSize === 0
-      );
-
-      if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+      /** @type {boolean} */
+      let isValidSize = false;
+      for (let k = 0; k < this.keySizeList.length; k++) {
+        /** @type {KeySize} */
+        const ks = this.keySizeList[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize &&
+            (keyBytes.length - ks.minSize) % ks.stepSize === 0) {
+          isValidSize = true;
+          break;
+        }
       }
 
-      this._key = [...keyBytes];
+      if (!isValidSize) {
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
+      }
+
+      this._key = keyBytes.slice();
       this.KeySize = keyBytes.length;
 
       // Algorithm-specific key setup
@@ -206,7 +225,7 @@
    */
 
     get key() {
-      return this._key ? [...this._key] : null;
+      return this._key ? this._key.slice() : null;
     }
 
     /**
@@ -217,7 +236,7 @@
 
     Feed(data) {
       if (!data || data.length === 0) return;
-      if (!this.key) throw new Error("Key not set");
+      if (!this._key) throw new Error("Key not set");
 
       for (let _i = 0; _i < data.length; _i++) this.inputBuffer.push(data[_i]);
     }
@@ -229,14 +248,16 @@
    */
 
     Result() {
-      if (!this.key) throw new Error("Key not set");
+      if (!this._key) throw new Error("Key not set");
 
+      /** @type {uint8[]} */
       const output = new Array(this.inputBuffer.length);
 
       // Generate keystream and XOR with input (stream cipher)
       for (let i = 0; i < this.inputBuffer.length; i++) {
+        /** @type {uint8} */
         const keystreamByte = this._generateKeystreamByte();
-        output[i] = OpCodes.XorN(this.inputBuffer[i], keystreamByte);
+        output[i] = OpCodes.Xor8(this.inputBuffer[i], keystreamByte);
       }
 
       // Clear input buffer for next operation
@@ -245,46 +266,52 @@
       return output;
     }
 
+    /**
+     * Load both registers from the key and warm the generators up
+     * @returns {void}
+     */
     _initializeRegisters() {
       if (!this._key) return;
 
       // Initialize Lagged Fibonacci register with key material
       this.fibonacciRegister = new Array(this.REGISTER_SIZE);
       for (let i = 0; i < this.REGISTER_SIZE; i++) {
+        /** @type {uint32} */
         let word = 0;
 
         // Pack 4 key bytes into each 32-bit word
         for (let j = 0; j < 4; j++) {
-          const keyIndex = (i * 4 + j) % this._key.length;
-          word = OpCodes.ToUint32(OpCodes.OrN(word, OpCodes.Shl32(this._key[keyIndex], j * 8)));
+          /** @type {int32} */
+          const byteIndex = (i * 4 + j) % this._key.length;
+          word = OpCodes.Or32(word, OpCodes.Shl32(this._key[byteIndex], j * 8));
         }
 
         // Ensure non-zero values in register
         if (word === 0) {
-          const initBytes = [0x12, 0x34, 0x56, 0x78];
-          word = OpCodes.Pack32BE(initBytes[0], initBytes[1], initBytes[2], initBytes[3]) + i;
+          word = OpCodes.Add32(OpCodes.Pack32BE(0x12, 0x34, 0x56, 0x78), i);
         }
 
-        this.fibonacciRegister[i] = OpCodes.ToUint32(word); // Ensure 32-bit unsigned
+        this.fibonacciRegister[i] = word; // 32-bit unsigned
       }
 
       // Initialize shrinking register differently
       this.shrinkingRegister = new Array(this.REGISTER_SIZE);
       for (let i = 0; i < this.REGISTER_SIZE; i++) {
+        /** @type {uint32} */
         let word = 0;
 
         // Use different key pattern for shrinking register
         for (let j = 0; j < 4; j++) {
-          const keyIndex = (i * 4 + j + Math.floor(this._key.length / 2)) % this._key.length;
-          word = OpCodes.ToUint32(OpCodes.OrN(word, OpCodes.Shl32(this._key[keyIndex], j * 8)));
+          /** @type {int32} */
+          const byteIndex = (i * 4 + j + Math.floor(this._key.length / 2)) % this._key.length;
+          word = OpCodes.Or32(word, OpCodes.Shl32(this._key[byteIndex], j * 8));
         }
 
         if (word === 0) {
-          const initBytes = [0x87, 0x65, 0x43, 0x21];
-          word = OpCodes.Pack32BE(initBytes[0], initBytes[1], initBytes[2], initBytes[3]) + i;
+          word = OpCodes.Add32(OpCodes.Pack32BE(0x87, 0x65, 0x43, 0x21), i);
         }
 
-        this.shrinkingRegister[i] = OpCodes.ToUint32(word);
+        this.shrinkingRegister[i] = word;
       }
 
       // Reset positions
@@ -299,12 +326,19 @@
       }
     }
 
+    /**
+     * Clock the lagged Fibonacci generator
+     * @returns {uint32} New register word
+     */
     _clockFibonacci() {
       // Lagged Fibonacci generator: X[n] = X[n-p] + X[n-q] (mod 2^32)
+      /** @type {int32} */
       const pos_p = (this.fibPos - this.LAG_P + this.REGISTER_SIZE) % this.REGISTER_SIZE;
+      /** @type {int32} */
       const pos_q = (this.fibPos - this.LAG_Q + this.REGISTER_SIZE) % this.REGISTER_SIZE;
 
-      const newValue = OpCodes.ToUint32(this.fibonacciRegister[pos_p] + this.fibonacciRegister[pos_q]);
+      /** @type {uint32} */
+      const newValue = OpCodes.Add32(this.fibonacciRegister[pos_p], this.fibonacciRegister[pos_q]);
 
       this.fibonacciRegister[this.fibPos] = newValue;
       this.fibPos = (this.fibPos + 1) % this.REGISTER_SIZE;
@@ -312,12 +346,19 @@
       return newValue;
     }
 
+    /**
+     * Clock the shrinking control generator
+     * @returns {uint32} New register word
+     */
     _clockShrinking() {
       // Shrinking generator control sequence
+      /** @type {int32} */
       const pos_p = (this.shrinkPos - this.LAG_P + this.REGISTER_SIZE) % this.REGISTER_SIZE;
+      /** @type {int32} */
       const pos_q = (this.shrinkPos - this.LAG_Q + this.REGISTER_SIZE) % this.REGISTER_SIZE;
 
-      const newValue = OpCodes.ToUint32(OpCodes.XorN(this.shrinkingRegister[pos_p], this.shrinkingRegister[pos_q]));
+      /** @type {uint32} */
+      const newValue = OpCodes.Xor32(this.shrinkingRegister[pos_p], this.shrinkingRegister[pos_q]);
 
       this.shrinkingRegister[this.shrinkPos] = newValue;
       this.shrinkPos = (this.shrinkPos + 1) % this.REGISTER_SIZE;
@@ -325,18 +366,27 @@
       return newValue;
     }
 
+    /**
+     * @returns {uint32} Next keystream word
+     */
     _generateKeystreamWord() {
       // FISH shrinking principle: generate Fibonacci values until shrinking bit is 1
-      let fibValue, shrinkValue;
+      /** @type {uint32} */
+      let fibValue = 0;
+      /** @type {uint32} */
+      let shrinkValue = 0;
 
       do {
         fibValue = this._clockFibonacci();
         shrinkValue = this._clockShrinking();
-      } while (OpCodes.ToUint32(OpCodes.AndN(shrinkValue, 1)) === 0); // Continue until LSB of shrinking value is 1
+      } while (OpCodes.And32(shrinkValue, 1) === 0); // Continue until LSB of shrinking value is 1
 
       return fibValue;
     }
 
+    /**
+     * @returns {uint8} Next keystream byte
+     */
     _generateKeystreamByte() {
       // Generate a 32-bit keystream word if needed
       if (this.wordBytesUsed >= 4) {
@@ -345,7 +395,8 @@
       }
 
       // Extract next byte from current word
-      const byte = OpCodes.ToUint32(OpCodes.AndN(OpCodes.Shr32(this.currentWord, this.wordBytesUsed * 8), 0xFF));
+      /** @type {uint8} */
+      const byte = OpCodes.And32(OpCodes.Shr32(this.currentWord, this.wordBytesUsed * 8), 0xFF);
       this.wordBytesUsed++;
 
       return byte;

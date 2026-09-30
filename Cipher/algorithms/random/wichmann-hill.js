@@ -145,7 +145,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {WichmannHillInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -163,22 +163,36 @@
  */
 
   class WichmannHillInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {WichmannHillAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Large primes near 2^64 (matching C# implementation)
+      /** @type {BigInt} */
       this.MODULUS_X = 18446744073709551557n; // 2^64 - 59
+      /** @type {BigInt} */
       this.MODULUS_Y = 18446744073709551533n; // 2^64 - 83
+      /** @type {BigInt} */
       this.MODULUS_Z = 18446744073709551521n; // 2^64 - 95
 
       // Multipliers (matching C# implementation)
+      /** @type {BigInt} */
       this.MULTIPLIER_X = 6364136223846793005n;
+      /** @type {BigInt} */
       this.MULTIPLIER_Y = 1442695040888963407n;
+      /** @type {BigInt} */
       this.MULTIPLIER_Z = 1229782938247303441n;
 
       // State variables (BigInt for 64-bit+ arithmetic)
+      /** @type {BigInt} */
       this._x = 0n;
+      /** @type {BigInt} */
       this._y = 0n;
+      /** @type {BigInt} */
       this._z = 0n;
 
       // Ready flag
@@ -187,6 +201,7 @@
 
     /**
      * Set seed value
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -195,6 +210,7 @@
       }
 
       // Convert seed bytes to BigInt (big-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8n), BigInt(seedBytes[i]));
@@ -202,6 +218,7 @@
 
       // Seed the three LCGs using division method (matching C# implementation)
       // C# UInt128: ~0 gives max value (0xFFFFFFFFFFFFFFFF for 64-bit portion)
+      /** @type {BigInt} */
       const MAX_U64 = 0xFFFFFFFFFFFFFFFFn;
 
       // First: X = seed % MODULUS_X (or MAX_U64 if 0)
@@ -221,12 +238,16 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null;
     }
 
     /**
      * Generate next 64-bit value
+     * @returns {BigInt} Next output
      */
     _next() {
       if (!this._ready) {
@@ -245,6 +266,7 @@
       // Combine: result = X + Y + Z
       // JavaScript BigInt naturally wraps at arbitrary precision, but we
       // want to simulate ulong overflow behavior from C#, so mask to 64 bits
+      /** @type {BigInt} */
       const result = OpCodes.AndN(this._x + this._y + this._z, 0xFFFFFFFFFFFFFFFFn);
 
       return result;
@@ -252,6 +274,8 @@
 
     /**
      * Generate random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -259,18 +283,24 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       while (output.length < length) {
+        /** @type {BigInt} */
         const value = this._next();
 
         // Pack as 64-bit value (big-endian)
         for (let i = 56; i >= 0; i -= 8) {
           if (output.length < length) {
-            output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, BigInt(i)), 0xFFn)));
+            /** @type {uint8} */
+            const b = Number(OpCodes.AndN(OpCodes.ShiftRn(value, i), 0xFFn));
+            output.push(b);
           }
         }
       }
@@ -297,19 +327,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 

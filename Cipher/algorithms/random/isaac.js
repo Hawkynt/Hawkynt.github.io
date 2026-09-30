@@ -257,7 +257,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {IsaacInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -275,8 +275,13 @@
  */
 
   class IsaacInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {IsaacAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // ISAAC internal state
       this.engineState = new Uint32Array(STATE_ARRAY_SIZE); // mm[] - memory
@@ -289,11 +294,13 @@
       this.keyStream = new Uint8Array(KEYSTREAM_SIZE);
       this.index = 0;
       this.initialised = false;
+      /** @type {uint8[]} */
+      this._inputBuffer = null;
     }
 
     /**
      * Set seed/key for the PRNG
-     * @param {Array} keyBytes - Seed material (0-1024 bytes)
+     * @param {uint8[]} keyBytes - Seed material (0-1024 bytes)
      */
     set seed(keyBytes) {
       if (!keyBytes || keyBytes.length === 0) {
@@ -305,6 +312,9 @@
       this._initState(new Uint8Array(keyBytes));
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -312,6 +322,8 @@
     /**
      * Initialize ISAAC state with seed
      * Based on BouncyCastle setKey() method
+     * @param {uint8[]} keyBytes - Seed bytes
+     * @returns {void}
      */
     _initState(keyBytes) {
       // Reset state arrays
@@ -324,7 +336,8 @@
 
       // Convert key bytes to 32-bit little-endian words in results array
       // Pad to multiple of 4 if needed
-      const paddedLength = keyBytes.length + OpCodes.AndN(keyBytes.length, 3);
+      /** @type {int32} */
+      const paddedLength = OpCodes.ToInt(OpCodes.Add32(keyBytes.length, OpCodes.And32(keyBytes.length, 3)));
       const paddedKey = new Uint8Array(paddedLength);
       paddedKey.set(keyBytes);
 
@@ -374,21 +387,24 @@
     /**
      * Mix function for initialization
      * Based on BouncyCastle mix() method
+     * @param {uint32[]} x - Eight working words, mixed in place
+     * @returns {void}
      */
     _mix(x) {
-      x[0] = OpCodes.ToUint32(OpCodes.XorN(x[0], OpCodes.Shl32(x[1], 11))); x[3] = OpCodes.ToUint32(x[3] + x[0]); x[1] = OpCodes.ToUint32(x[1] + x[2]);
-      x[1] = OpCodes.ToUint32(OpCodes.XorN(x[1], OpCodes.Shr32(x[2], 2))); x[4] = OpCodes.ToUint32(x[4] + x[1]); x[2] = OpCodes.ToUint32(x[2] + x[3]);
-      x[2] = OpCodes.ToUint32(OpCodes.XorN(x[2], OpCodes.Shl32(x[3], 8)));  x[5] = OpCodes.ToUint32(x[5] + x[2]); x[3] = OpCodes.ToUint32(x[3] + x[4]);
-      x[3] = OpCodes.ToUint32(OpCodes.XorN(x[3], OpCodes.Shr32(x[4], 16))); x[6] = OpCodes.ToUint32(x[6] + x[3]); x[4] = OpCodes.ToUint32(x[4] + x[5]);
-      x[4] = OpCodes.ToUint32(OpCodes.XorN(x[4], OpCodes.Shl32(x[5], 10))); x[7] = OpCodes.ToUint32(x[7] + x[4]); x[5] = OpCodes.ToUint32(x[5] + x[6]);
-      x[5] = OpCodes.ToUint32(OpCodes.XorN(x[5], OpCodes.Shr32(x[6], 4)));  x[0] = OpCodes.ToUint32(x[0] + x[5]); x[6] = OpCodes.ToUint32(x[6] + x[7]);
-      x[6] = OpCodes.ToUint32(OpCodes.XorN(x[6], OpCodes.Shl32(x[7], 8)));  x[1] = OpCodes.ToUint32(x[1] + x[6]); x[7] = OpCodes.ToUint32(x[7] + x[0]);
-      x[7] = OpCodes.ToUint32(OpCodes.XorN(x[7], OpCodes.Shr32(x[0], 9)));  x[2] = OpCodes.ToUint32(x[2] + x[7]); x[0] = OpCodes.ToUint32(x[0] + x[1]);
+      x[0] = OpCodes.ToUint32(OpCodes.Xor32(x[0], OpCodes.Shl32(x[1], 11))); x[3] = OpCodes.ToUint32(x[3] + x[0]); x[1] = OpCodes.ToUint32(x[1] + x[2]);
+      x[1] = OpCodes.ToUint32(OpCodes.Xor32(x[1], OpCodes.Shr32(x[2], 2))); x[4] = OpCodes.ToUint32(x[4] + x[1]); x[2] = OpCodes.ToUint32(x[2] + x[3]);
+      x[2] = OpCodes.ToUint32(OpCodes.Xor32(x[2], OpCodes.Shl32(x[3], 8)));  x[5] = OpCodes.ToUint32(x[5] + x[2]); x[3] = OpCodes.ToUint32(x[3] + x[4]);
+      x[3] = OpCodes.ToUint32(OpCodes.Xor32(x[3], OpCodes.Shr32(x[4], 16))); x[6] = OpCodes.ToUint32(x[6] + x[3]); x[4] = OpCodes.ToUint32(x[4] + x[5]);
+      x[4] = OpCodes.ToUint32(OpCodes.Xor32(x[4], OpCodes.Shl32(x[5], 10))); x[7] = OpCodes.ToUint32(x[7] + x[4]); x[5] = OpCodes.ToUint32(x[5] + x[6]);
+      x[5] = OpCodes.ToUint32(OpCodes.Xor32(x[5], OpCodes.Shr32(x[6], 4)));  x[0] = OpCodes.ToUint32(x[0] + x[5]); x[6] = OpCodes.ToUint32(x[6] + x[7]);
+      x[6] = OpCodes.ToUint32(OpCodes.Xor32(x[6], OpCodes.Shl32(x[7], 8)));  x[1] = OpCodes.ToUint32(x[1] + x[6]); x[7] = OpCodes.ToUint32(x[7] + x[0]);
+      x[7] = OpCodes.ToUint32(OpCodes.Xor32(x[7], OpCodes.Shr32(x[0], 9)));  x[2] = OpCodes.ToUint32(x[2] + x[7]); x[0] = OpCodes.ToUint32(x[0] + x[1]);
     }
 
     /**
      * Core ISAAC generation function
      * Based on BouncyCastle isaac() method
+     * @returns {void}
      */
     _isaac() {
       this.b = OpCodes.ToUint32(this.b + (++this.c));
@@ -397,19 +413,20 @@
         const x = this.engineState[i];
 
         // Choose operation based on i AND 3
-        switch (OpCodes.AndN(i, 3)) {
-          case 0: this.a = OpCodes.ToUint32(OpCodes.XorN(this.a, OpCodes.Shl32(this.a, 13))); break;
-          case 1: this.a = OpCodes.ToUint32(OpCodes.XorN(this.a, OpCodes.Shr32(this.a, 6))); break;
-          case 2: this.a = OpCodes.ToUint32(OpCodes.XorN(this.a, OpCodes.Shl32(this.a, 2))); break;
-          case 3: this.a = OpCodes.ToUint32(OpCodes.XorN(this.a, OpCodes.Shr32(this.a, 16))); break;
+        switch (OpCodes.And32(i, 3)) {
+          case 0: this.a = OpCodes.ToUint32(OpCodes.Xor32(this.a, OpCodes.Shl32(this.a, 13))); break;
+          case 1: this.a = OpCodes.ToUint32(OpCodes.Xor32(this.a, OpCodes.Shr32(this.a, 6))); break;
+          case 2: this.a = OpCodes.ToUint32(OpCodes.Xor32(this.a, OpCodes.Shl32(this.a, 2))); break;
+          case 3: this.a = OpCodes.ToUint32(OpCodes.Xor32(this.a, OpCodes.Shr32(this.a, 16))); break;
         }
 
-        this.a = OpCodes.ToUint32(this.a + this.engineState[OpCodes.AndN(i + 128, 0xFF)]);
+        this.a = OpCodes.ToUint32(this.a + this.engineState[OpCodes.And32(i + 128, 0xFF)]);
 
-        const y = OpCodes.ToUint32(this.engineState[OpCodes.AndN(OpCodes.Shr32(x, 2), 0xFF)] + this.a + this.b);
+        /** @type {uint32} */
+        const y = OpCodes.Add32(OpCodes.Add32(this.engineState[OpCodes.And32(OpCodes.Shr32(x, 2), 0xFF)], this.a), this.b);
         this.engineState[i] = y;
 
-        this.b = OpCodes.ToUint32(this.engineState[OpCodes.AndN(OpCodes.Shr32(y, 10), 0xFF)] + x);
+        this.b = OpCodes.ToUint32(this.engineState[OpCodes.And32(OpCodes.Shr32(y, 10), 0xFF)] + x);
         this.results[i] = this.b;
       }
 
@@ -426,14 +443,15 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this.initialised) {
         throw new Error("ISAAC not initialised");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       for (let i = 0; i < length; ++i) {
@@ -442,7 +460,7 @@
         }
 
         output.push(this.keyStream[this.index]);
-        this.index = OpCodes.AndN(this.index + 1, 1023); // Wrap at 1024
+        this.index = OpCodes.And32(this.index + 1, 1023); // Wrap at 1024
       }
 
       return output;
@@ -451,6 +469,8 @@
     /**
      * Process a single byte (stream cipher operation)
      * XORs input with keystream
+     * @param {uint8} input - Input byte
+     * @returns {uint8} Input XOR keystream byte
      */
     returnByte(input) {
       if (!this.initialised) {
@@ -461,8 +481,8 @@
         this._isaac();
       }
 
-      const output = OpCodes.XorN(this.keyStream[this.index], input);
-      this.index = OpCodes.AndN(this.index + 1, 1023);
+      const output = OpCodes.Xor32(this.keyStream[this.index], input);
+      this.index = OpCodes.And32(this.index + 1, 1023);
 
       return output;
     }
@@ -484,7 +504,9 @@
         return;
       }
 
-      this._inputBuffer = this._inputBuffer || [];
+      if (!this._inputBuffer) {
+        this._inputBuffer = [];
+      }
       for (let _i = 0; _i < data.length; _i++) this._inputBuffer.push(data[_i]);
     }
 
@@ -501,6 +523,7 @@
 
       // If we have input buffer (stream cipher mode), XOR with keystream
       if (this._inputBuffer && this._inputBuffer.length > 0) {
+        /** @type {uint8[]} */
         const output = [];
         for (let i = 0; i < this._inputBuffer.length; ++i) {
           output.push(this.returnByte(this._inputBuffer[i]));
@@ -510,19 +533,24 @@
       }
 
       // Otherwise, generate random bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 

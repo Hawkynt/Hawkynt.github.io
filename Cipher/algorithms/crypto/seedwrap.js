@@ -52,16 +52,17 @@
   // ===== CONSTANTS =====
 
   // Default Initial Value for RFC 3394 key wrap (A6A6A6A6A6A6A6A6)
-  const DEFAULT_IV = Object.freeze([0xa6, 0xa6, 0xa6, 0xa6, 0xa6, 0xa6, 0xa6, 0xa6]);
+  /** @type {uint8[]} */
+  const DEFAULT_IV = [0xa6, 0xa6, 0xa6, 0xa6, 0xa6, 0xa6, 0xa6, 0xa6];
 
   // ===== HELPER FUNCTIONS =====
 
   /**
    * Process 16-byte block with SEED cipher
-   * @param {Array<number>} kek - Key Encryption Key bytes
+   * @param {uint8[]} kek - Key Encryption Key bytes
    * @param {boolean} forEncryption - true for encryption, false for decryption
-   * @param {Array<number>} input - 16-byte input block
-   * @returns {Array<number>} 16-byte output block
+   * @param {uint8[]} input - 16-byte input block
+   * @returns {uint8[]} 16-byte output block
    */
   function processBlock(kek, forEncryption, input) {
     if (input.length !== 16) {
@@ -75,20 +76,23 @@
     }
 
     // Create fresh instance for each block to avoid state accumulation
+    /** @type {IBlockCipherInstance} */
     const seedInstance = seedAlg.CreateInstance(!forEncryption);
     seedInstance.key = kek;
     seedInstance.Feed(input);
-    return seedInstance.Result();
+    /** @type {uint8[]} */
+    const output = seedInstance.Result();
+    return output;
   }
 
   // ===== KEY WRAP ALGORITHM (RFC 3394 with SEED) =====
 
   /**
    * Wrap key data using SEED cipher (RFC 3394 algorithm)
-   * @param {Array<number>} kek - Key Encryption Key
-   * @param {Array<number>} keyToWrap - Key data to wrap (must be multiple of 8 bytes)
-   * @param {Array<number>} iv - Initial value (8 bytes, defaults to A6A6A6A6A6A6A6A6)
-   * @returns {Array<number>} Wrapped key data
+   * @param {uint8[]} kek - Key Encryption Key
+   * @param {uint8[]} keyToWrap - Key data to wrap (must be multiple of 8 bytes)
+   * @param {uint8[]} iv - Initial value (8 bytes, defaults to A6A6A6A6A6A6A6A6)
+   * @returns {uint8[]} Wrapped key data
    */
   function wrapKey(kek, keyToWrap, iv) {
     if (!iv) {
@@ -103,9 +107,11 @@
       throw new Error("Wrap data must be a multiple of 8 bytes");
     }
 
+    /** @type {int32} */
     const n = keyToWrap.length / 8;
 
     // Create output buffer: IV + wrapped key
+    /** @type {uint8[]} */
     const block = new Array(keyToWrap.length + iv.length);
 
     // Copy IV to start
@@ -120,11 +126,13 @@
 
     // Special case: single 64-bit block
     if (n === 1) {
-      const encrypted = processBlock(kek, true, block);
-      return encrypted;
+      /** @type {uint8[]} */
+      const single = processBlock(kek, true, block);
+      return single;
     }
 
     // Standard RFC 3394 algorithm: 6 * n iterations
+    /** @type {uint8[]} */
     const buf = new Array(8 + iv.length);
 
     for (let j = 0; j < 6; ++j) {
@@ -138,18 +146,21 @@
         }
 
         // Encrypt the block
+        /** @type {uint8[]} */
         const encrypted = processBlock(kek, true, buf);
         for (let k = 0; k < encrypted.length; ++k) {
           buf[k] = encrypted[k];
         }
 
         // Calculate t = (n*j) + i
+        /** @type {uint32} */
         let t = n * j + i;
 
         // XOR t into the last bytes of A (MSB first)
         for (let k = 1; t !== 0; ++k) {
-          const v = OpCodes.AndN(t, 0xff);
-          buf[iv.length - k] = OpCodes.XorN(buf[iv.length - k], v);
+          /** @type {uint8} */
+          const v = OpCodes.And32(t, 0xff);
+          buf[iv.length - k] = OpCodes.Xor8(buf[iv.length - k], v);
           t = OpCodes.Shr32(t, 8);
         }
 
@@ -168,10 +179,10 @@
 
   /**
    * Unwrap key data using SEED cipher (RFC 3394 algorithm)
-   * @param {Array<number>} kek - Key Encryption Key
-   * @param {Array<number>} wrappedKey - Wrapped key data (must be multiple of 8 bytes, minimum 16)
-   * @param {Array<number>} iv - Expected initial value (8 bytes, defaults to A6A6A6A6A6A6A6A6)
-   * @returns {Array<number>} Unwrapped key data
+   * @param {uint8[]} kek - Key Encryption Key
+   * @param {uint8[]} wrappedKey - Wrapped key data (must be multiple of 8 bytes, minimum 16)
+   * @param {uint8[]} iv - Expected initial value (8 bytes, defaults to A6A6A6A6A6A6A6A6)
+   * @returns {uint8[]} Unwrapped key data
    * @throws {Error} If integrity check fails
    */
   function unwrapKey(kek, wrappedKey, iv) {
@@ -187,15 +198,20 @@
       throw new Error("Unwrap data must be a multiple of 8 bytes");
     }
 
+    /** @type {int32} */
     let n = wrappedKey.length / 8;
     n = n - 1; // Subtract IV block
 
+    /** @type {uint8[]} */
     const block = new Array(wrappedKey.length - iv.length);
+    /** @type {uint8[]} */
     const a = new Array(iv.length);
+    /** @type {uint8[]} */
     const buf = new Array(8 + iv.length);
 
     // Special case: single 64-bit block
     if (n === 1) {
+      /** @type {uint8[]} */
       const decrypted = processBlock(kek, false, wrappedKey);
 
       // Extract A and plaintext
@@ -228,16 +244,19 @@
           }
 
           // Calculate t = (n*j) + i
+          /** @type {uint32} */
           let t = n * j + i;
 
           // XOR t from the last bytes of A (MSB first)
           for (let k = 1; t !== 0; ++k) {
-            const v = OpCodes.AndN(t, 0xff);
-            buf[iv.length - k] = OpCodes.XorN(buf[iv.length - k], v);
+            /** @type {uint8} */
+            const v = OpCodes.And32(t, 0xff);
+            buf[iv.length - k] = OpCodes.Xor8(buf[iv.length - k], v);
             t = OpCodes.Shr32(t, 8);
           }
 
           // Decrypt the block
+          /** @type {uint8[]} */
           const decrypted = processBlock(kek, false, buf);
           for (let k = 0; k < decrypted.length; ++k) {
             buf[k] = decrypted[k];
@@ -326,7 +345,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SeedWrapInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -343,15 +362,19 @@
   class SeedWrapInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SeedWrapAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -370,7 +393,7 @@
 
       // Validate key size (SEED only supports 128-bit keys)
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes. SEED-WRAP requires 128-bit (16 byte) keys.`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes. SEED-WRAP requires 128-bit (16 byte) keys.");
       }
 
       this._key = [...keyBytes];
@@ -399,7 +422,7 @@
       }
 
       if (ivBytes.length !== 8) {
-        throw new Error(`Invalid IV size: ${ivBytes.length} bytes. IV must be 8 bytes.`);
+        throw new Error("Invalid IV size: " + ivBytes.length + " bytes. IV must be 8 bytes.");
       }
 
       this._iv = [...ivBytes];
@@ -439,10 +462,11 @@
       if (!this._key) throw new Error("Key not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
+      const iv = this._iv ? this._iv : [...DEFAULT_IV];
+      /** @type {uint8[]} */
+      let result = [];
       try {
-        const iv = this._iv || [...DEFAULT_IV];
-        let result;
-
         if (this.isInverse) {
           // Unwrap operation
           result = unwrapKey(this._key, this.inputBuffer, iv);
@@ -450,16 +474,12 @@
           // Wrap operation
           result = wrapKey(this._key, this.inputBuffer, iv);
         }
-
-        // Clear input buffer
+      } finally {
+        // Clear input buffer, also when the operation throws
         this.inputBuffer = [];
-
-        return result;
-      } catch (error) {
-        // Clear input buffer on error
-        this.inputBuffer = [];
-        throw error;
       }
+
+      return result;
     }
   }
 

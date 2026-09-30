@@ -75,6 +75,7 @@
       this.complexity = ComplexityType.INTERMEDIATE;
       this.country = CountryCode.UA;
 
+      /** @type {int32[]} */
       this.SupportedBlockSizes = [128, 256, 512]; // Kalyna block sizes in bits
       this.SupportedKeySizes = [
         new KeySize(16, 32, 8),   // 128-bit Kalyna: 128/256-bit keys
@@ -129,7 +130,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {KalynaWrapInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -144,17 +145,36 @@
   class KalynaWrapInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {KalynaWrap} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {int32} */
       this._blockSize = 128; // Default to 128-bit blocks
+      /** @type {IBlockCipherInstance|null} */
       this.kalynaInstance = null;
+    }
+
+    /**
+     * Create the Kalyna encryptor for the current block size and key
+     * @returns {void}
+     */
+    _createEngine() {
+      /** @type {IBlockCipherInstance} */
+      const engine = KalynaAlgorithm.CreateInstance(false);
+      engine.blockSize = this._blockSize;
+      engine.key = this._key;
+      this.kalynaInstance = engine;
     }
 
     /**
@@ -171,20 +191,25 @@
       }
 
       // Validate key size
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize
-      );
+      /** @type {boolean} */
+      let isValidSize = false;
+      for (let k = 0; k < this.keySizeList.length; k++) {
+        /** @type {KeySize} */
+        const ks = this.keySizeList[k];
+        if (keyBytes.length >= ks.minSize && keyBytes.length <= ks.maxSize) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes");
       }
 
       this._key = [...keyBytes];
 
       // Create Kalyna instance for the current block size
-      this.kalynaInstance = KalynaAlgorithm.CreateInstance(false);
-      this.kalynaInstance.blockSize = this._blockSize;
-      this.kalynaInstance.key = this._key;
+      this._createEngine();
     }
 
     /**
@@ -196,20 +221,24 @@
       return this._key ? [...this._key] : null;
     }
 
+    /**
+     * @param {int32} bits - Kalyna block size: 128, 256 or 512
+     */
     set blockSize(bits) {
-      if (![128, 256, 512].includes(bits)) {
-        throw new Error(`Invalid block size: ${bits} bits. Must be 128, 256, or 512`);
+      if (bits !== 128 && bits !== 256 && bits !== 512) {
+        throw new Error("Invalid block size: " + bits + " bits. Must be 128, 256, or 512");
       }
       this._blockSize = bits;
 
       // Recreate Kalyna instance if key is already set
       if (this._key) {
-        this.kalynaInstance = KalynaAlgorithm.CreateInstance(false);
-        this.kalynaInstance.blockSize = this._blockSize;
-        this.kalynaInstance.key = this._key;
+        this._createEngine();
       }
     }
 
+    /**
+     * @returns {int32} Kalyna block size in bits
+     */
     get blockSize() {
       return this._blockSize;
     }
@@ -242,14 +271,16 @@
         throw new Error("No data fed");
       }
 
+      /** @type {int32} */
       const blockBytes = this._blockSize / 8;
 
       // Validate input length
       if (this.inputBuffer.length % blockBytes !== 0) {
-        throw new Error(`Input must be a multiple of ${blockBytes} bytes (${this._blockSize}-bit blocks)`);
+        throw new Error("Input must be a multiple of " + blockBytes + " bytes (" + this._blockSize + "-bit blocks)");
       }
 
-      let result;
+      /** @type {uint8[]} */
+      let result = [];
       if (this.isInverse) {
         result = this._unwrap(this.inputBuffer, blockBytes);
       } else {
@@ -262,18 +293,24 @@
 
     /**
      * Wrap operation following DSTU 7624 specification
-     * @param {Array<number>} plaintext - Input bytes to wrap
-     * @param {number} blockBytes - Block size in bytes
-     * @returns {Array<number>} Wrapped ciphertext
+     * @param {uint8[]} plaintext - Input bytes to wrap
+     * @param {int32} blockBytes - Block size in bytes
+     * @returns {uint8[]} Wrapped ciphertext
      */
     _wrap(plaintext, blockBytes) {
+      /** @type {int32} */
       const halfBlock = blockBytes / 2;
 
       // Calculate n and V according to DSTU 7624
+      /** @type {int32} */
       const n = 2 * (1 + plaintext.length / blockBytes);
+      /** @type {int32} */
       const V = (n - 1) * 6;
+      /** @type {IBlockCipherInstance} */
+      const engine = this.kalynaInstance;
 
       // Initialize wrapped buffer
+      /** @type {uint8[]} */
       const wrappedBuffer = new Array(plaintext.length + blockBytes);
       for (let i = 0; i < plaintext.length; ++i) {
         wrappedBuffer[i] = plaintext[i];
@@ -283,14 +320,17 @@
       }
 
       // Initialize B (first half-block)
+      /** @type {uint8[]} */
       const B = new Array(halfBlock);
       for (let i = 0; i < halfBlock; ++i) {
         B[i] = wrappedBuffer[i];
       }
 
       // Initialize Btemp array of half-blocks
+      /** @type {uint8[][]} */
       const Btemp = [];
       for (let pos = halfBlock; pos < wrappedBuffer.length; pos += halfBlock) {
+        /** @type {uint8[]} */
         const temp = new Array(halfBlock);
         for (let i = 0; i < halfBlock; ++i) {
           temp[i] = wrappedBuffer[pos + i];
@@ -299,7 +339,9 @@
       }
 
       // Working buffer for encryption
+      /** @type {uint8[]} */
       const encBuffer = new Array(blockBytes);
+      /** @type {uint8[]} */
       const intArray = new Array(4);
 
       // Main wrapping loop
@@ -311,8 +353,9 @@
         }
 
         // Encrypt using Kalyna
-        this.kalynaInstance.Feed(encBuffer);
-        const encrypted = this.kalynaInstance.Result();
+        engine.Feed(encBuffer);
+        /** @type {uint8[]} */
+        const encrypted = engine.Result();
         for (let i = 0; i < blockBytes; ++i) {
           encBuffer[i] = encrypted[i];
         }
@@ -322,7 +365,7 @@
 
         // XOR second half with iteration counter
         for (let byteNum = 0; byteNum < 4; ++byteNum) {
-          encBuffer[halfBlock + byteNum] ^= intArray[byteNum];
+          encBuffer[halfBlock + byteNum] = OpCodes.Xor8(encBuffer[halfBlock + byteNum], intArray[byteNum]);
         }
 
         // Update B with second half
@@ -344,11 +387,13 @@
       }
 
       // Construct final output
+      /** @type {uint8[]} */
       const output = new Array(wrappedBuffer.length);
       for (let i = 0; i < halfBlock; ++i) {
         output[i] = B[i];
       }
 
+      /** @type {int32} */
       let bufOff = halfBlock;
       for (let i = 0; i < n - 1; ++i) {
         for (let k = 0; k < halfBlock; ++k) {
@@ -361,29 +406,36 @@
 
     /**
      * Unwrap operation following DSTU 7624 specification
-     * @param {Array<number>} ciphertext - Wrapped bytes to unwrap
-     * @param {number} blockBytes - Block size in bytes
-     * @returns {Array<number>} Unwrapped plaintext
+     * @param {uint8[]} ciphertext - Wrapped bytes to unwrap
+     * @param {int32} blockBytes - Block size in bytes
+     * @returns {uint8[]} Unwrapped plaintext
      */
     _unwrap(ciphertext, blockBytes) {
+      /** @type {int32} */
       const halfBlock = blockBytes / 2;
 
       // Calculate n and V
+      /** @type {int32} */
       const n = 2 * ciphertext.length / blockBytes;
+      /** @type {int32} */
       const V = (n - 1) * 6;
 
       // Initialize buffer
+      /** @type {uint8[]} */
       const buffer = [...ciphertext];
 
       // Initialize B (first half-block)
+      /** @type {uint8[]} */
       const B = new Array(halfBlock);
       for (let i = 0; i < halfBlock; ++i) {
         B[i] = buffer[i];
       }
 
       // Initialize Btemp array
+      /** @type {uint8[][]} */
       const Btemp = [];
       for (let pos = halfBlock; pos < buffer.length; pos += halfBlock) {
+        /** @type {uint8[]} */
         const temp = new Array(halfBlock);
         for (let i = 0; i < halfBlock; ++i) {
           temp[i] = buffer[pos + i];
@@ -392,7 +444,9 @@
       }
 
       // Working buffer
+      /** @type {uint8[]} */
       const decBuffer = new Array(blockBytes);
+      /** @type {uint8[]} */
       const intArray = new Array(4);
 
       // Main unwrapping loop (reverse order)
@@ -408,14 +462,16 @@
 
         // XOR second half with iteration counter
         for (let byteNum = 0; byteNum < 4; ++byteNum) {
-          decBuffer[halfBlock + byteNum] ^= intArray[byteNum];
+          decBuffer[halfBlock + byteNum] = OpCodes.Xor8(decBuffer[halfBlock + byteNum], intArray[byteNum]);
         }
 
         // Decrypt using Kalyna
+        /** @type {IBlockCipherInstance} */
         const kalynaDecrypt = KalynaAlgorithm.CreateInstance(true);
         kalynaDecrypt.blockSize = this._blockSize;
         kalynaDecrypt.key = this._key;
         kalynaDecrypt.Feed(decBuffer);
+        /** @type {uint8[]} */
         const decrypted = kalynaDecrypt.Result();
         for (let i = 0; i < blockBytes; ++i) {
           decBuffer[i] = decrypted[i];
@@ -444,6 +500,7 @@
         buffer[i] = B[i];
       }
 
+      /** @type {int32} */
       let bufOff = halfBlock;
       for (let i = 0; i < n - 1; ++i) {
         for (let k = 0; k < halfBlock; ++k) {
@@ -452,6 +509,7 @@
       }
 
       // Verify checksum (last block should be zeros)
+      /** @type {int32} */
       const checksumStart = buffer.length - blockBytes;
       for (let i = checksumStart; i < buffer.length; ++i) {
         if (buffer[i] !== 0) {
@@ -465,14 +523,14 @@
 
     /**
      * Convert integer to 4 bytes (big-endian)
-     * @param {number} num - Integer to convert
-     * @param {Array<number>} bytes - Output byte array
+     * @param {int32} num - Integer to convert (the iteration counter, always positive)
+     * @param {uint8[]} bytes - Output byte array
+     * @returns {void}
      */
     _intToBytes(num, bytes) {
       // Use OpCodes to unpack 32-bit integer into bytes (big-endian)
-      // Ensure positive integer by using modulo for large numbers
-      if (num < 0) num = 0x100000000 + num;
-      const unpacked = OpCodes.Unpack32BE(num);
+      /** @type {uint8[]} */
+      const unpacked = OpCodes.Unpack32BE(OpCodes.ToDWord(num));
       bytes[0] = unpacked[3]; // Least significant byte
       bytes[1] = unpacked[2];
       bytes[2] = unpacked[1];

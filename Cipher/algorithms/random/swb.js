@@ -187,7 +187,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SubtractWithBorrowInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -205,22 +205,33 @@
  */
 
   class SubtractWithBorrowInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {SubtractWithBorrowAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // SplitMix64 constants for state initialization
+      /** @type {BigInt} */
       this.GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
+      /** @type {BigInt} */
       this.MIX_CONST_1 = 0xBF58476D1CE4E5B9n;
+      /** @type {BigInt} */
       this.MIX_CONST_2 = 0x94D049BB133111EBn;
 
       // SWB parameters (standard configuration)
+      /** @type {BigInt} */
       this.M = 0xFFFFFFFFFFFFFFFFn; // ulong.MaxValue = 2^64 - 1 (matches C# const)
       this.S = 63;    // Short lag
       this.L = 4093;  // Long lag
       this.R = 4096;  // State size (lag parameter r)
 
       // Generator state
+      /** @type {BigInt[]} */
       this._state = null;         // State array (64-bit BigInt values)
+      /** @type {BigInt} */
       this._carry = 0n;           // Borrow bit
       this._index = 0;            // Current position in circular buffer
       this._ready = false;        // Initialization status
@@ -229,6 +240,7 @@
     /**
      * Initialize generator with seed value (1-8 bytes)
      * State is initialized using SplitMix64 algorithm
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -237,13 +249,14 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (big-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length && i < 8; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8), BigInt(seedBytes[i]));
       }
 
       // Initialize state array using SplitMix64
-      this._state = new Array(this.R);
+      this._state = OpCodes.CreateArray(this.R, 0n);
       for (let i = 0; i < this.R; ++i) {
         this._state[i] = this._splitmix64Next(seedValue);
         seedValue = this._state[i]; // Use output as next seed
@@ -257,6 +270,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -264,13 +280,17 @@
     /**
      * SplitMix64 next function for state initialization
      * This matches the C# reference implementation exactly
+     * @param {BigInt} z - State before the step
+     * @returns {BigInt} Mixed output
      */
     _splitmix64Next(z) {
       // Add golden gamma to state
-      z = OpCodes.AndN(z + this.GOLDEN_GAMMA, 0xFFFFFFFFFFFFFFFFn);
+      /** @type {BigInt} */
+      const advanced = OpCodes.AndN(z + this.GOLDEN_GAMMA, 0xFFFFFFFFFFFFFFFFn);
 
       // Mix function (Stafford variant 13)
-      let result = z;
+      /** @type {BigInt} */
+      let result = advanced;
       result = OpCodes.AndN(OpCodes.XorN(result, OpCodes.ShiftRn(result, 30)) * this.MIX_CONST_1, 0xFFFFFFFFFFFFFFFFn);
       result = OpCodes.AndN(OpCodes.XorN(result, OpCodes.ShiftRn(result, 27)) * this.MIX_CONST_2, 0xFFFFFFFFFFFFFFFFn);
       result = OpCodes.AndN(OpCodes.XorN(result, OpCodes.ShiftRn(result, 31)), 0xFFFFFFFFFFFFFFFFn);
@@ -292,6 +312,7 @@
      * state[index] = (ulong)t;
      * this._index = index;
      * return (ulong)t;
+     * @returns {BigInt} Next 64-bit output
      */
     _next64() {
       if (!this._ready) {
@@ -307,6 +328,7 @@
 
       // Perform subtraction with borrow: t = state[j] - state[k] - carry
       // Using signed arithmetic to detect negative results (matches C# Int128 behavior)
+      /** @type {BigInt} */
       let t = this._state[j] - this._state[k] - this._carry;
 
       // Update carry: if result is negative, set carry to 1, otherwise 0
@@ -336,8 +358,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -345,9 +367,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesRemaining = length;
 
@@ -358,6 +383,7 @@
         // Extract bytes (big-endian order - most significant byte first)
         const bytesToExtract = Math.min(bytesRemaining, 8);
         for (let i = 0; i < bytesToExtract; ++i) {
+          /** @type {uint8} */
           const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, (7 - i) * 8), 0xFFn));
           output.push(byte);
         }
@@ -389,19 +415,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 
