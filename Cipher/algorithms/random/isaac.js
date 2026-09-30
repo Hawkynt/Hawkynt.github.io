@@ -257,7 +257,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {IsaacInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -275,8 +275,13 @@
  */
 
   class IsaacInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {IsaacAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // ISAAC internal state
       this.engineState = new Uint32Array(STATE_ARRAY_SIZE); // mm[] - memory
@@ -305,6 +310,9 @@
       this._initState(new Uint8Array(keyBytes));
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -426,14 +434,15 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this.initialised) {
         throw new Error("ISAAC not initialised");
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       for (let i = 0; i < length; ++i) {
@@ -501,6 +510,7 @@
 
       // If we have input buffer (stream cipher mode), XOR with keystream
       if (this._inputBuffer && this._inputBuffer.length > 0) {
+        /** @type {uint8[]} */
         const output = [];
         for (let i = 0; i < this._inputBuffer.length; ++i) {
           output.push(this.returnByte(this._inputBuffer[i]));
@@ -510,19 +520,24 @@
       }
 
       // Otherwise, generate random bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 

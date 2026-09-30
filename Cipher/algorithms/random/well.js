@@ -170,7 +170,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {WellInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -188,6 +188,9 @@
  */
 
   class WellInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {WellAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
 
@@ -202,7 +205,7 @@
      * Initialize the generator with a seed
      * Uses SplitMix64 to expand seed into full state array
      *
-     * @param {Array} seedBytes - Variable length seed (1-128 bytes)
+     * @param {uint8[]|null} seedBytes - Variable length seed (1-128 bytes)
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -228,6 +231,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -379,8 +385,8 @@
      * Generate random bytes
      * Outputs bytes in little-endian order (LSB first)
      *
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -388,9 +394,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Generate complete 32-bit words
@@ -440,11 +449,15 @@
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
       return this._outputSize;
     }

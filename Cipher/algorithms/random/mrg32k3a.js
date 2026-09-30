@@ -182,7 +182,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MRG32k3aInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -200,8 +200,13 @@
  */
 
   class MRG32k3aInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {MRG32k3aAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._skip = 0;
 
       // MRG32k3a state: two 3-component vectors
       // State vectors hold [newest, middle, oldest] values following Rosetta Code convention
@@ -221,7 +226,7 @@
      *   - 4 bytes: single uint32 seed expanded to [seed, 0, 0] for both components (Rosetta Code style)
      *   - 24 bytes: 6 uint32 values for explicit state initialization [x1[0], x1[1], x1[2], x2[0], x2[1], x2[2]]
      *
-     * @param {Array} seedBytes - 4-byte or 24-byte array containing seed values
+     * @param {uint8[]|null} seedBytes - 4-byte or 24-byte array containing seed values
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -278,6 +283,9 @@
       throw new Error('MRG32k3a seed must be 4 bytes (single seed) or 24 bytes (6 values)');
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -337,8 +345,8 @@
      * Generate random bytes
      * Outputs uint32 values in little-endian order
      *
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._initialized) {
@@ -346,9 +354,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Generate complete 32-bit words
@@ -405,11 +416,15 @@
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
       return this._outputSize;
     }

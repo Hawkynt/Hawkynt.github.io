@@ -189,7 +189,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {YarrowInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -207,6 +207,9 @@
  */
 
   class YarrowInstance extends IAlgorithmInstance {
+    /**
+     * @param {YarrowAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
 
@@ -227,6 +230,9 @@
       this._outputSize = 32;         // Default: 32 bytes
     }
 
+    /**
+     * @param {uint8[]|null} seedBytes - Seed bytes
+     */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
         return;
@@ -241,6 +247,9 @@
       }
     }
 
+    /**
+     * @param {int32} size - Bytes returned by Result()
+     */
     set outputSize(size) {
       if (size < 1 || size > 1048576) {
         throw new Error("Output size must be between 1 and 1048576 bytes");
@@ -248,6 +257,9 @@
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
       return this._outputSize;
     }
@@ -302,6 +314,7 @@
         throw new Error("PRNG not seeded - call Feed() with entropy first");
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let remaining = this._outputSize;
 

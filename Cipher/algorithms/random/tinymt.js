@@ -178,7 +178,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TinyMTInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -196,8 +196,13 @@
  */
 
   class TinyMTInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {TinyMTAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._skip = 0;
 
       // TinyMT32 state (127 bits = 4 x 32-bit words)
       this._status = new Array(4);  // Internal state vector
@@ -213,7 +218,7 @@
      * Initialize the generator with a 32-bit seed
      * Based on RFC 8682 tinymt32_init() function
      *
-     * @param {Array} seedBytes - 4-byte array containing 32-bit seed (little-endian)
+     * @param {uint8[]|null} seedBytes - 4-byte array containing 32-bit seed (little-endian)
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -256,6 +261,9 @@
       this._initialized = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -351,8 +359,8 @@
      * Generate random bytes
      * Outputs bytes in little-endian order (LSB first)
      *
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._initialized) {
@@ -360,9 +368,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Generate complete 32-bit words
@@ -419,11 +430,15 @@
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
       return this._outputSize;
     }
