@@ -44,7 +44,7 @@
 
 ## Test vectors
 
-4 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
+5 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
 
 **Vector 1** — [BouncyCastle Test Vector - First 256 bytes (verified against Java implementation)](https://github.com/bcgit/bc-java/blob/main/core/src/test/java/org/bouncycastle/crypto/test/VMPCTest.java)
 
@@ -81,6 +81,15 @@
 | `iv` | `00` |
 | `input` | `000102030405060708090a0b0c0d0e0f 101112131415161718191a1b1c1d1e1f 202122232425262728292a2b2c2d2e2f 303132333435363738393a3b3c3d3e3f` |
 | `expected` | `291724fb1390b08e56c19744ded6bf16 4bb1bb12020ea7ad13972545dd5c99b1 b48aadc1cd80429fc1e81e77d2f339b9 ba8b021a2736118ac6fb8c7a2f760efc` |
+
+**Vector 5** — [DarkCrypt Vmpc — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)](https://totalcmd.net/plugring/darkcrypttc.html)
+
+| Field | Value |
+| --- | --- |
+| `key` | `0b30557a9fc4e90e33587da2c7ec1136 5b80a5caef14395e83a8cdf2173c6186 abd0f51a3f6489aed3f81d42678cb1d6 fb20456a8fb4d9fe23486d92b7dc0126` |
+| `iv` | `073c71a6db10457aafe4194e83b8ed22 578cc1f62b6095caff34699ed3083d72 a7dc11467bb0e51a4f84b9ee23588dc2 f72c6196cb00356a9fd4093e73a8dd12` |
+| `input` | `03203d5a7794b1ceeb0825425f7c99b6 d3f00d2a4764819ebbd8f5122f4c6986 a3c0ddfa1734516e8ba8c5e2ff1c3956` |
+| `expected` | `c4365bcbc4afff16c2e6ef01dc25a3d0 354d744c52312cba6b4297a736f5197a 3b70e4e504ab039e6d06883f72b47475` |
 
 ---
 
