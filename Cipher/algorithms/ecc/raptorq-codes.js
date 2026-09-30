@@ -64,22 +64,22 @@
    */
   class RFC6330Compliance {
     /**
-     * @param {boolean} maxSourceSymbols - K within the algorithm limit
-     * @param {boolean} validSymbolSize - 1 <= T <= 1024
-     * @param {boolean} validAlignment - 1 <= Al <= 8
-     * @param {boolean} parametersCalculated - S, H and L derived
+     * @param {boolean} isSourceLimitValid - K within the algorithm limit
+     * @param {boolean} isSymbolWidthValid - 1 <= T <= 1024
+     * @param {boolean} isAlignmentValid - 1 <= Al <= 8
+     * @param {boolean} isCalculated - S, H and L derived
      */
-    constructor(maxSourceSymbols, validSymbolSize, validAlignment, parametersCalculated) {
+    constructor(isSourceLimitValid, isSymbolWidthValid, isAlignmentValid, isCalculated) {
       /** @type {boolean} */
-      this.maxSourceSymbols = maxSourceSymbols;
+      this.validSourceLimit = isSourceLimitValid;
       /** @type {boolean} */
-      this.validSymbolSize = validSymbolSize;
+      this.validSymbolWidth = isSymbolWidthValid;
       /** @type {boolean} */
-      this.validAlignment = validAlignment;
+      this.validAlignment = isAlignmentValid;
       /** @type {boolean} */
-      this.parametersCalculated = parametersCalculated;
+      this.parametersCalculated = isCalculated;
       /** @type {boolean} */
-      this.isCompliant = maxSourceSymbols && validSymbolSize && validAlignment && parametersCalculated;
+      this.isCompliant = isSourceLimitValid && isSymbolWidthValid && isAlignmentValid && isCalculated;
     }
   }
 
@@ -89,29 +89,29 @@
    */
   class RFC6330Parameters {
     /**
-     * @param {int32} K - Source symbols
-     * @param {int32} S - LDPC symbols
-     * @param {int32} H - HDPC symbols
-     * @param {int32} W - Intermediate symbols
-     * @param {int32} L - Pre-coding symbols
-     * @param {int32} T - Symbol size
-     * @param {int32} Al - Alignment
+     * @param {int32} sourceCount - Source symbols (K)
+     * @param {int32} ldpcCount - LDPC symbols (S)
+     * @param {int32} hdpcCount - HDPC symbols (H)
+     * @param {int32} intermediateCount - Intermediate symbols (W)
+     * @param {int32} precodeCount - Pre-coding symbols (L)
+     * @param {int32} symbolSize - Symbol size (T)
+     * @param {int32} alignment - Alignment (Al)
      */
-    constructor(K, S, H, W, L, T, Al) {
+    constructor(sourceCount, ldpcCount, hdpcCount, intermediateCount, precodeCount, symbolSize, alignment) {
       /** @type {int32} */
-      this.K = K;
+      this.K = sourceCount;
       /** @type {int32} */
-      this.S = S;
+      this.S = ldpcCount;
       /** @type {int32} */
-      this.H = H;
+      this.H = hdpcCount;
       /** @type {int32} */
-      this.W = W;
+      this.W = intermediateCount;
       /** @type {int32} */
-      this.L = L;
+      this.L = precodeCount;
       /** @type {int32} */
-      this.T = T;
+      this.T = symbolSize;
       /** @type {int32} */
-      this.Al = Al;
+      this.Al = alignment;
     }
   }
 
@@ -121,16 +121,16 @@
    */
   class MemoryUsage {
     /**
-     * @param {int32} matrixBytes - Constraint matrix estimate
-     * @param {int32} symbolBytes - Symbol storage estimate
+     * @param {int32} matrixSize - Constraint matrix estimate in bytes
+     * @param {int32} symbolSize - Symbol storage estimate in bytes
      */
-    constructor(matrixBytes, symbolBytes) {
+    constructor(matrixSize, symbolSize) {
       /** @type {int32} */
-      this.matrixBytes = matrixBytes;
+      this.matrixBytes = matrixSize;
       /** @type {int32} */
-      this.symbolBytes = symbolBytes;
+      this.symbolBytes = symbolSize;
       /** @type {int32} */
-      this.totalBytes = matrixBytes + symbolBytes;
+      this.totalBytes = matrixSize + symbolSize;
     }
   }
 
