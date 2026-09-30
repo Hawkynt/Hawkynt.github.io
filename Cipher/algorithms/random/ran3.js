@@ -177,7 +177,8 @@
       this.FAC = 1.0 / this.MBIG;       // Scaling factor
 
       // State variables
-      this._ma = new Array(56).fill(0); // State array (1-indexed, 0 unused)
+      /** @type {int32[]} */
+      this._ma = OpCodes.CreateArray(56, 0); // State array (1-indexed, 0 unused)
       this._inext = 0;                  // First circular index
       this._inextp = 0;                 // Second circular index (offset by 31)
       this._iff = 0;                    // Initialization flag
@@ -201,7 +202,7 @@
       // Convert seed bytes to integer (big-endian)
       let seedValue = 0;
       for (let i = 0; i < seedBytes.length; ++i) {
-        seedValue = OpCodes.OrN(seedValue * 256, seedBytes[i]);
+        seedValue = OpCodes.ToInt(OpCodes.Or32(seedValue * 256, seedBytes[i]));
       }
 
       // Ensure seed is valid
@@ -225,6 +226,7 @@
     /**
      * Initialize the Ran3 generator
      * Based on the reference implementation from Numerical Recipes
+     * @returns {void}
      */
     _initialize() {
       // Negate seed for initialization (Ran3 convention)
@@ -277,6 +279,7 @@
     /**
      * Generate next random value (single precision float)
      * Returns value in range [0.0, 1.0)
+     * @returns {float64} Uniform deviate in [0, 1)
      */
     _next() {
       if (!this._ready) {

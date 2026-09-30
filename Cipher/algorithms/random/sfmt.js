@@ -199,13 +199,14 @@
       this._skip = 0;
 
       // SFMT state - array of 128-bit integers represented as 4x32-bit words
-      this._state = new Array(N32);      // State array (628 uint32 values)
-      for (let i = 0; i < N32; ++i) {
-        this._state[i] = 0;
-      }
+      /** @type {uint32[]} */
+      this._state = OpCodes.CreateArray(N32, 0);      // State array (628 uint32 values)
 
+      /** @type {int32} */
       this._index = N32;                 // Index into state array (N32 means uninitialized)
+      /** @type {int32} */
       this._outputSize = 32;             // Default output size in bytes
+      /** @type {int32} */
       this._skipBytes = 0;               // Number of bytes to skip before generating output
     }
 
@@ -222,6 +223,7 @@
       }
 
       // Convert seed bytes to 32-bit unsigned integer (little-endian)
+      /** @type {uint32} */
       let seedValue = 0;
       for (let i = 0; i < Math.min(seedBytes.length, 4); ++i) {
         seedValue = OpCodes.Or32(seedValue, OpCodes.Shl32(seedBytes[i], i * 8));
@@ -232,11 +234,14 @@
       this._state[0] = seedValue;
 
       for (let i = 1; i< N32; ++i) {
+        /** @type {uint32} */
         const prev = this._state[i - 1];
+        /** @type {uint32} */
         const xored = OpCodes.Xor32(prev, OpCodes.Shr32(prev, 30));
-        // 32-bit multiplication using BigInt to avoid overflow
-        const product = Number((BigInt(INIT_MULTIPLIER) * BigInt(xored))&0xFFFFFFFFn);
-        this._state[i] = OpCodes.ToUint32(product + i);
+        // low 32 bits of the product
+        /** @type {uint32} */
+        const product = OpCodes.Mul32(INIT_MULTIPLIER, xored);
+        this._state[i] = OpCodes.Add32(product, i);
       }
 
       // Period certification (ensures non-degenerate state)
@@ -256,9 +261,12 @@
     /**
      * Period certification - ensures state has full period
      * Based on SFMT period_certification function
+     * @returns {void}
      */
     _periodCertification() {
+      /** @type {uint32[]} */
       const parity = [PARITY1, PARITY2, PARITY3, PARITY4];
+      /** @type {uint32} */
       let inner = 0;
 
       // Compute inner product
@@ -267,14 +275,17 @@
       }
 
       // Reduce to single bit
-      for (let i = 16; i> 0; i = OpCodes.Shr32(i, 1)) {
-        inner = OpCodes.Xor32(inner, OpCodes.Shr32(inner, i));
+      /** @type {uint32} */
+      let fold = 16;
+      for (; fold > 0; fold = OpCodes.Shr32(fold, 1)) {
+        inner = OpCodes.Xor32(inner, OpCodes.Shr32(inner, fold));
       }
       inner = OpCodes.And32(inner, 1);
 
       // If inner is 0, modify state to ensure full period
       if (inner === 0) {
         for (let i = 0; i< 4; ++i) {
+          /** @type {uint32} */
           let work = 1;
           for (let j = 0; j< 32; ++j) {
             if (OpCodes.And32(work, parity[i]) !== 0) {
@@ -300,27 +311,33 @@
      *   out->u[3] = (uint32_t)(oh right-shift 32);
      *   out->u[2] = (uint32_t)oh;
      *
-     * @param {Array} block - 4x32-bit block [u0, u1, u2, u3]
-     * @returns {Array} Shifted block
+     * @param {uint32[]} block - 4x32-bit block [u0, u1, u2, u3]
+     * @returns {uint32[]} Shifted block
      */
     _lshift128(block) {
+      /** @type {int32} */
       const shiftBits = SL2 * 8;
 
       // Build 64-bit values exactly as C code does
-      const th = OpCodes.ShiftLn(BigInt(OpCodes.ToUint32(block[3])), 32)|BigInt(OpCodes.ToUint32(block[2]));
-      const tl = OpCodes.ShiftLn(BigInt(OpCodes.ToUint32(block[1])), 32)|BigInt(OpCodes.ToUint32(block[0]));
+      /** @type {BigInt} */
+      const th = OpCodes.OrN(OpCodes.ShiftLn(BigInt(OpCodes.ToUint32(block[3])), 32), BigInt(OpCodes.ToUint32(block[2])));
+      /** @type {BigInt} */
+      const tl = OpCodes.OrN(OpCodes.ShiftLn(BigInt(OpCodes.ToUint32(block[1])), 32), BigInt(OpCodes.ToUint32(block[0])));
 
       // Shift
-      let oh = OpCodes.ShiftLn(th, shiftBits)&0xFFFFFFFFFFFFFFFFn;
-      let ol = OpCodes.ShiftLn(tl, shiftBits)&0xFFFFFFFFFFFFFFFFn;
-      oh |= OpCodes.ShiftRn(tl, 64 - shiftBits);
+      /** @type {BigInt} */
+      let oh = OpCodes.AndN(OpCodes.ShiftLn(th, shiftBits), 0xFFFFFFFFFFFFFFFFn);
+      /** @type {BigInt} */
+      const ol = OpCodes.AndN(OpCodes.ShiftLn(tl, shiftBits), 0xFFFFFFFFFFFFFFFFn);
+      oh = OpCodes.OrN(oh, OpCodes.ShiftRn(tl, 64 - shiftBits));
 
       // Unpack exactly as C code does
+      /** @type {uint32[]} */
       const result = [0, 0, 0, 0];
-      result[1] = OpCodes.ToUint32(Number(OpCodes.ShiftRn(ol, 32)&0xFFFFFFFFn));
-      result[0] = OpCodes.ToUint32(Number(ol&0xFFFFFFFFn));
-      result[3] = OpCodes.ToUint32(Number(OpCodes.ShiftRn(oh, 32)&0xFFFFFFFFn));
-      result[2] = OpCodes.ToUint32(Number(oh&0xFFFFFFFFn));
+      result[1] = OpCodes.ToUint32(Number(OpCodes.AndN(OpCodes.ShiftRn(ol, 32), 0xFFFFFFFFn)));
+      result[0] = OpCodes.ToUint32(Number(OpCodes.AndN(ol, 0xFFFFFFFFn)));
+      result[3] = OpCodes.ToUint32(Number(OpCodes.AndN(OpCodes.ShiftRn(oh, 32), 0xFFFFFFFFn)));
+      result[2] = OpCodes.ToUint32(Number(OpCodes.AndN(oh, 0xFFFFFFFFn)));
 
       return result;
     }
@@ -338,27 +355,33 @@
      *   out->u[3] = (uint32_t)(oh right-shift 32);
      *   out->u[2] = (uint32_t)oh;
      *
-     * @param {Array} block - 4x32-bit block [u0, u1, u2, u3]
-     * @returns {Array} Shifted block
+     * @param {uint32[]} block - 4x32-bit block [u0, u1, u2, u3]
+     * @returns {uint32[]} Shifted block
      */
     _rshift128(block) {
+      /** @type {int32} */
       const shiftBits = SR2 * 8;
 
       // Build 64-bit values exactly as C code does
-      const th = OpCodes.ShiftLn(BigInt(OpCodes.ToUint32(block[3])), 32)|BigInt(OpCodes.ToUint32(block[2]));
-      const tl = OpCodes.ShiftLn(BigInt(OpCodes.ToUint32(block[1])), 32)|BigInt(OpCodes.ToUint32(block[0]));
+      /** @type {BigInt} */
+      const th = OpCodes.OrN(OpCodes.ShiftLn(BigInt(OpCodes.ToUint32(block[3])), 32), BigInt(OpCodes.ToUint32(block[2])));
+      /** @type {BigInt} */
+      const tl = OpCodes.OrN(OpCodes.ShiftLn(BigInt(OpCodes.ToUint32(block[1])), 32), BigInt(OpCodes.ToUint32(block[0])));
 
       // Shift
-      let oh = OpCodes.ShiftRn(th, shiftBits);
+      /** @type {BigInt} */
+      const oh = OpCodes.ShiftRn(th, shiftBits);
+      /** @type {BigInt} */
       let ol = OpCodes.ShiftRn(tl, shiftBits);
-      ol |= OpCodes.ShiftLn(th, 64 - shiftBits)&0xFFFFFFFFFFFFFFFFn;
+      ol = OpCodes.OrN(ol, OpCodes.AndN(OpCodes.ShiftLn(th, 64 - shiftBits), 0xFFFFFFFFFFFFFFFFn));
 
       // Unpack exactly as C code does
+      /** @type {uint32[]} */
       const result = [0, 0, 0, 0];
-      result[1] = OpCodes.ToUint32(Number(OpCodes.ShiftRn(ol, 32)&0xFFFFFFFFn));
-      result[0] = OpCodes.ToUint32(Number(ol&0xFFFFFFFFn));
-      result[3] = OpCodes.ToUint32(Number(OpCodes.ShiftRn(oh, 32)&0xFFFFFFFFn));
-      result[2] = OpCodes.ToUint32(Number(oh&0xFFFFFFFFn));
+      result[1] = OpCodes.ToUint32(Number(OpCodes.AndN(OpCodes.ShiftRn(ol, 32), 0xFFFFFFFFn)));
+      result[0] = OpCodes.ToUint32(Number(OpCodes.AndN(ol, 0xFFFFFFFFn)));
+      result[3] = OpCodes.ToUint32(Number(OpCodes.AndN(OpCodes.ShiftRn(oh, 32), 0xFFFFFFFFn)));
+      result[2] = OpCodes.ToUint32(Number(OpCodes.AndN(oh, 0xFFFFFFFFn)));
 
       return result;
     }
@@ -367,17 +390,21 @@
      * SFMT recursion formula
      * Based on SFMT do_recursion function
      *
-     * @param {Array} a - Current state block (4x32)
-     * @param {Array} b - State block at position+POS1 (4x32)
-     * @param {Array} c - Previous state block (4x32)
-     * @param {Array} d - Two-blocks-ago state block (4x32)
-     * @returns {Array} New state block (4x32)
+     * @param {uint32[]} a - Current state block (4x32)
+     * @param {uint32[]} b - State block at position+POS1 (4x32)
+     * @param {uint32[]} c - Previous state block (4x32)
+     * @param {uint32[]} d - Two-blocks-ago state block (4x32)
+     * @returns {uint32[]} New state block (4x32)
      */
     _doRecursion(a, b, c, d) {
+      /** @type {uint32[]} */
       const result = [0, 0, 0, 0];
+      /** @type {uint32[]} */
       const masks = [MSK1, MSK2, MSK3, MSK4];
 
+      /** @type {uint32[]} */
       const x = this._lshift128(a);
+      /** @type {uint32[]} */
       const y = this._rshift128(c);
 
       for (let i = 0; i< 4; ++i) {
@@ -405,6 +432,7 @@
      *     r1 = r2;
      *     r2 = &sfmt->state[i];
      * }
+     * @returns {void}
      */
     _genRandAll() {
       // r1 and r2 initially point to last two 128-bit blocks (N-2 and N-1)
@@ -418,11 +446,16 @@
         const idx = i * 4;           // Convert block index to 32-bit word index
         const bIdx = (i + POS1) * 4; // Block i+POS1 in 32-bit words
 
+        /** @type {uint32[]} */
         const a = [this._state[idx], this._state[idx + 1], this._state[idx + 2], this._state[idx + 3]];
+        /** @type {uint32[]} */
         const b = [this._state[bIdx], this._state[bIdx + 1], this._state[bIdx + 2], this._state[bIdx + 3]];
+        /** @type {uint32[]} */
         const c = [this._state[r1Idx], this._state[r1Idx + 1], this._state[r1Idx + 2], this._state[r1Idx + 3]];
+        /** @type {uint32[]} */
         const d = [this._state[r2Idx], this._state[r2Idx + 1], this._state[r2Idx + 2], this._state[r2Idx + 3]];
 
+        /** @type {uint32[]} */
         const newBlock = this._doRecursion(a, b, c, d);
         this._state[idx] = newBlock[0];
         this._state[idx + 1] = newBlock[1];
@@ -439,11 +472,16 @@
         const idx = i * 4;                    // Convert block index to 32-bit word index
         const bIdx = (i + POS1 - N) * 4;     // Wrap around: block (i+POS1-N) in 32-bit words
 
+        /** @type {uint32[]} */
         const a = [this._state[idx], this._state[idx + 1], this._state[idx + 2], this._state[idx + 3]];
+        /** @type {uint32[]} */
         const b = [this._state[bIdx], this._state[bIdx + 1], this._state[bIdx + 2], this._state[bIdx + 3]];
+        /** @type {uint32[]} */
         const c = [this._state[r1Idx], this._state[r1Idx + 1], this._state[r1Idx + 2], this._state[r1Idx + 3]];
+        /** @type {uint32[]} */
         const d = [this._state[r2Idx], this._state[r2Idx + 1], this._state[r2Idx + 2], this._state[r2Idx + 3]];
 
+        /** @type {uint32[]} */
         const newBlock = this._doRecursion(a, b, c, d);
         this._state[idx] = newBlock[0];
         this._state[idx + 1] = newBlock[1];
@@ -460,7 +498,7 @@
     /**
      * Generate the next 32-bit random value
      *
-     * @returns {number} 32-bit unsigned random value
+     * @returns {uint32} 32-bit unsigned random value
      */
     _next32() {
       if (this._index >= N32) {

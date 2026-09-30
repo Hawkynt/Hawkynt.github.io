@@ -60,7 +60,9 @@
   const WORD_SIZE = 48;               // w: word size in bits
   const SHORT_LAG = 5;                // s: short lag parameter
   const LONG_LAG = 12;                // r: long lag parameter
+  /** @type {BigInt} */
   const MODULUS_48 = 281474976710656n; // 2^48 as BigInt
+  /** @type {BigInt} */
   const MASK_48BIT = 0xFFFFFFFFFFFFn;  // 48-bit mask as BigInt
   const DEFAULT_SEED = 19780503;       // C++ standard library default seed
 
@@ -226,17 +228,25 @@
       this._skip = 0;
 
       // RANLUX48_BASE state (subtract-with-carry engine)
+      /** @type {uint64[]} */
       this._state = new Array(LONG_LAG);  // r=12 state values (48-bit BigInts)
+      /** @type {BigInt} */
       this._carry = 0n;                   // Carry bit (0 or 1 as BigInt)
+      /** @type {int32} */
       this._index = 0;                    // Current index in state array
+      /** @type {boolean} */
       this._initialized = false;
 
       // RANLUX48 luxury level state (discard_block_engine)
+      /** @type {int32} */
       this._blockPosition = 0;            // Position within current block (0-388)
+      /** @type {int32} */
       this._usedCount = 0;                // Count of used values in current block (0-10)
 
       // Output control
+      /** @type {int32} */
       this._outputSize = 32;              // Default output size in bytes
+      /** @type {int32} */
       this._skipBytes = 0;                // Number of bytes to skip before generating output
     }
 
@@ -254,6 +264,7 @@
       }
 
       // Convert seed bytes to 32-bit unsigned integer (little-endian)
+      /** @type {uint32} */
       let seedValue = 0;
       for (let i = 0; i < Math.min(seedBytes.length, 4); ++i) {
         seedValue = OpCodes.Or32(seedValue, OpCodes.Shl32(seedBytes[i], i * 8));
@@ -262,10 +273,13 @@
 
       // Initialize state using linear congruential generator
       // C++ uses: linear_congruential_engine<result_type, 40014u, 0u, 2147483563u>
+      /** @type {BigInt} */
       const LCG_A = 40014n;
+      /** @type {BigInt} */
       const LCG_M = 2147483563n;
 
       // Special case: if seed is 0, use default_seed (C++ standard behavior)
+      /** @type {BigInt} */
       let lcgState = BigInt(seedValue === 0 ? DEFAULT_SEED : seedValue);
 
       // For w=48, __n = (48 + 31) / 32 = 2
@@ -274,7 +288,9 @@
       const n = Math.floor((WORD_SIZE + 31) / 32);
 
       for (let i = 0; i < LONG_LAG; ++i) {
+        /** @type {BigInt} */
         let sum = 0n;
+        /** @type {BigInt} */
         let factor = 1n;
 
         for (let j = 0; j < n; ++j) {
@@ -324,19 +340,25 @@
       }
 
       // Subtract-with-borrow algorithm
+      /** @type {BigInt} */
+      const lagged = this._state[ps];
+      /** @type {BigInt} */
+      const current = this._state[this._index];
+      /** @type {BigInt} */
       let xi;
-      if (this._state[ps] >= this._state[this._index] + this._carry) {
+      if (lagged >= current + this._carry) {
         // No borrow needed
-        xi = this._state[ps] - this._state[this._index] - this._carry;
+        xi = lagged - current - this._carry;
         this._carry = 0n;
       } else {
         // Borrow from modulus
-        xi = MODULUS_48 - this._state[this._index] - this._carry + this._state[ps];
+        xi = MODULUS_48 - current - this._carry + lagged;
         this._carry = 1n;
       }
 
       // Update state and get result
       this._state[this._index] = OpCodes.AndN(xi, MASK_48BIT);
+      /** @type {BigInt} */
       const result = this._state[this._index];
 
       // Advance index (circular)
@@ -396,22 +418,25 @@
       // Generate complete 48-bit values (6 bytes each)
       const fullValues = Math.floor(length / 6);
       for (let i = 0; i < fullValues; ++i) {
+        /** @type {BigInt} */
         const value = this._next48();
         // Output in little-endian format (6 bytes)
-        output.push(Number(OpCodes.AndN(value, 0xFFn)));
-        output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 8), 0xFFn)));
-        output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 16), 0xFFn)));
-        output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 24), 0xFFn)));
-        output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 32), 0xFFn)));
-        output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, 40), 0xFFn)));
+        for (let j = 0; j < 6; ++j) {
+          /** @type {uint8} */
+          const b = Number(OpCodes.AndN(OpCodes.ShiftRn(value, j * 8), 0xFFn));
+          output.push(b);
+        }
       }
 
       // Handle remaining bytes (if length not multiple of 6)
       const remainingBytes = length % 6;
       if (remainingBytes > 0) {
+        /** @type {BigInt} */
         const value = this._next48();
         for (let i = 0; i < remainingBytes; ++i) {
-          output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, i * 8), 0xFFn)));
+          /** @type {uint8} */
+          const b = Number(OpCodes.AndN(OpCodes.ShiftRn(value, i * 8), 0xFFn));
+          output.push(b);
         }
       }
 
@@ -464,11 +489,15 @@
     /**
      * Set number of bytes to skip before generating output
      * Used for testing specific positions in the output stream
+     * @param {int32} count - Bytes to skip
      */
     set skipBytes(count) {
       this._skipBytes = count;
     }
 
+    /**
+     * @returns {int32} Bytes skipped before output
+     */
     get skipBytes() {
       return this._skipBytes;
     }

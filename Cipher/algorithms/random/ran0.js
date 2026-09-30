@@ -218,7 +218,7 @@
       // Convert seed bytes to 32-bit integer (big-endian)
       let seedValue = 0;
       for (let i = 0; i < seedBytes.length && i < 4; ++i) {
-        seedValue = OpCodes.OrN(seedValue * 256, seedBytes[i]);
+        seedValue = OpCodes.ToInt(OpCodes.Or32(seedValue * 256, seedBytes[i]));
       }
 
       // Ensure seed is in valid range [1, IM-1]
@@ -239,13 +239,14 @@
 
     /**
      * Set count parameter for skipping to nth value (testing purposes)
+     * @param {int32} value - Values to skip
      */
     set count(value) {
       this._skipCount = value;
     }
 
     get count() {
-      return this._skipCount || 0;
+      return (this._skipCount ? this._skipCount : 0);
     }
 
     /**
@@ -257,7 +258,7 @@
      *
      * For Ran0: a=16807, m=2147483647, q=127773, r=2836
      *
-     * @returns {number} Random float in range [0.0, 1.0)
+     * @returns {float64} Random float in range [0.0, 1.0)
      */
     _next() {
       if (!this._ready) {

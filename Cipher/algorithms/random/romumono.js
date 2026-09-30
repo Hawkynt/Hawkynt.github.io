@@ -46,19 +46,24 @@
    * SplitMix64 seeding algorithm
    * Used to initialize RomuMono state from a single 64-bit seed
    * Based on standard SplitMix64 implementation
+   * @param {BigInt} seedState - State before the step
+   * @returns {BigInt} Mixed output of the advanced state
    */
-  function SplitMix64(state) {
+  function SplitMix64(seedState) {
+    /** @type {BigInt} */
     const GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
-    state = OpCodes.ToQWord(state + GOLDEN_GAMMA);
+    /** @type {BigInt} */
+    const advanced = OpCodes.ToQWord(seedState + GOLDEN_GAMMA);
 
-    let z = state;
+    /** @type {BigInt} */
+    let z = advanced;
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 30));
     z = OpCodes.ToQWord(z * 0xBF58476D1CE4E5B9n);
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 27));
     z = OpCodes.ToQWord(z * 0x94D049BB133111EBn);
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 31));
 
-    return { value: z, nextState: state };
+    return z;
   }
 
   class RomuMonoAlgorithm extends RandomGenerationAlgorithm {
@@ -195,9 +200,11 @@
       this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // RomuMono algorithm constant
+      /** @type {BigInt} */
       this.ROMU_MULTIPLIER = 0xD3833E804F4C574Bn; // 15241094284759029579
 
       // RomuMono state: single 64-bit value (using BigInt)
+      /** @type {BigInt} */
       this._xState = 0n;
       this._ready = false;
     }
@@ -214,6 +221,7 @@
       }
 
       // Initialize state from seed bytes (little-endian)
+      /** @type {BigInt} */
       this._xState = 0n;
       for (let i = 0; i < Math.min(8, seedBytes.length); ++i) {
         this._xState = OpCodes.OrN(this._xState, OpCodes.ShiftLn(BigInt(seedBytes[i]), i * 8));
@@ -279,11 +287,13 @@
 
       while (bytesGenerated < length) {
         // Generate next 64-bit value
+        /** @type {BigInt} */
         const value64 = this._next64();
 
         // Extract bytes in little-endian order
         for (let i = 0; i < 8 && bytesGenerated < length; ++i) {
           const shifted = OpCodes.ShiftRn(value64, i * 8);
+          /** @type {uint8} */
           const byteVal = Number(OpCodes.AndN(shifted, 0xFFn));
           output.push(byteVal);
           ++bytesGenerated;

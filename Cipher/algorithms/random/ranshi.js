@@ -225,6 +225,7 @@
         );
       } else {
         // For seeds < 4 bytes, pad with zeros
+        /** @type {uint8[]} */
         const bytes = [0, 0, 0, 0];
         for (let i = 0; i < seedBytes.length; ++i) {
           bytes[i] = seedBytes[i];
@@ -258,6 +259,7 @@
      *
      * Using parameters inspired by common hardware PRNG designs:
      * a = 13, b = 17, c = 5
+     * @returns {uint32} Next 32-bit output
      */
     _next32() {
       if (!this._ready) {

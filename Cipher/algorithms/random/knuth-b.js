@@ -172,24 +172,30 @@
       this._skip = 0;
 
       // Base minstd_rand0 (Lehmer) state
+      /** @type {int32} */
       this._state = 1;
 
       // Shuffle table (256 entries)
-      this._table = new Array(TABLE_SIZE);
+      /** @type {int32[]} */
+      this._table = OpCodes.CreateArray(TABLE_SIZE, 0);
 
       // Current table index for next output
+      /** @type {int32} */
       this._y = 0;
 
       // Ready flag
+      /** @type {boolean} */
       this._ready = false;
 
       // Optional count for skipping ahead to nth value
+      /** @type {int32} */
       this._skipCount = null;
     }
 
     /**
      * minstd_rand0 next value using Schrage's method
      * This is the base engine that fills the shuffle table
+     * @returns {int32} Next base value
      */
     _nextBase() {
       // Schrage's method to compute (16807 × state) mod 2147483647
@@ -209,6 +215,7 @@
 
     /**
      * Initialize shuffle table with base engine values
+     * @returns {void}
      */
     _initializeTable() {
       // Fill table with initial values from base engine
@@ -231,11 +238,13 @@
       }
 
       // Convert seed bytes to 32-bit integer (big-endian) using OpCodes
+      /** @type {uint32} */
       let seedValue;
       if (seedBytes.length >= 4) {
         seedValue = OpCodes.Pack32BE(seedBytes[0], seedBytes[1], seedBytes[2], seedBytes[3]);
       } else {
         // Handle shorter seeds by zero-padding
+        /** @type {uint8[]} */
         const padded = [0, 0, 0, 0];
         for (let i = 0; i < seedBytes.length; ++i) {
           padded[4 - seedBytes.length + i] = seedBytes[i];
@@ -262,13 +271,17 @@
 
     /**
      * Set count parameter (for skipping ahead to nth value)
+     * @param {int32} skipCount - Output index to start at
      */
     set count(skipCount) {
       this._skipCount = skipCount;
     }
 
+    /**
+     * @returns {int32} Output index to start at
+     */
     get count() {
-      return this._skipCount || 0;
+      return (this._skipCount ? this._skipCount : 0);
     }
 
     /**
@@ -285,7 +298,7 @@
      * The clever part: using the output as the next y creates a feedback loop
      * where each output influences which table entry is selected next.
      *
-     * @returns {number} Next shuffled random value
+     * @returns {int32} Next shuffled random value
      */
     _next() {
       if (!this._ready) {
@@ -297,9 +310,11 @@
       const j = Math.floor((this._y * TABLE_SIZE) / MODULUS);
 
       // Step 2: Retrieve value from table - this is our result
+      /** @type {int32} */
       const result = this._table[j];
 
       // Step 3: Generate new base value
+      /** @type {int32} */
       const newValue = this._nextBase();
 
       // Step 4: Store new value in table at same index

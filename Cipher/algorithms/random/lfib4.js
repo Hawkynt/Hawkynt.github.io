@@ -212,12 +212,17 @@
       this.LAG_4 = 256;           // Fourth lag (n-256)
 
       // SplitMix64 constants for state initialization
+      /** @type {BigInt} */
       this.GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
+      /** @type {BigInt} */
       this.MIX_CONST_1 = 0xBF58476D1CE4E5B9n;
+      /** @type {BigInt} */
       this.MIX_CONST_2 = 0x94D049BB133111EBn;
 
       // Generator state
+      /** @type {uint32[]} */
       this._state = null;         // State array (256 × 32-bit values)
+      /** @type {int32} */
       this._counter = 0;          // Current index (0-255, wraps with byte overflow)
       this._ready = false;        // Initialization status
     }
@@ -234,6 +239,7 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (big-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length && i < 32; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8), BigInt(seedBytes[i]));
@@ -241,14 +247,17 @@
 
       // Initialize state array using SplitMix64
       // Generate 256 × 32-bit values (128 × 64-bit values split into high/low)
-      this._state = new Array(this.STATE_SIZE);
+      this._state = OpCodes.CreateArray(this.STATE_SIZE, 0);
 
       for (let i = 0; i < this.STATE_SIZE; i += 2) {
+        /** @type {BigInt} */
         const value64 = this._splitmix64Next(seedValue);
         seedValue = value64; // Use output as next seed
 
         // Split 64-bit value into two 32-bit values (big-endian order)
+        /** @type {uint32} */
         const high = Number(OpCodes.AndN(OpCodes.ShiftRn(value64, 32), 0xFFFFFFFFn));
+        /** @type {uint32} */
         const low = Number(OpCodes.AndN(value64, 0xFFFFFFFFn));
 
         this._state[i] = high;
@@ -270,13 +279,17 @@
 
     /**
      * SplitMix64 next function for state initialization
+     * @param {BigInt} z - State before the step
+     * @returns {BigInt} Mixed output
      */
     _splitmix64Next(z) {
       // Add golden gamma to state
-      z = OpCodes.AndN(z + this.GOLDEN_GAMMA, 0xFFFFFFFFFFFFFFFFn);
+      /** @type {BigInt} */
+      const advanced = OpCodes.AndN(z + this.GOLDEN_GAMMA, 0xFFFFFFFFFFFFFFFFn);
 
       // Mix function (Stafford variant 13)
-      let result = z;
+      /** @type {BigInt} */
+      let result = advanced;
       result = OpCodes.AndN(OpCodes.XorN(result, OpCodes.ShiftRn(result, 30)) * this.MIX_CONST_1, 0xFFFFFFFFFFFFFFFFn);
       result = OpCodes.AndN(OpCodes.XorN(result, OpCodes.ShiftRn(result, 27)) * this.MIX_CONST_2, 0xFFFFFFFFFFFFFFFFn);
       result = OpCodes.AndN(OpCodes.XorN(result, OpCodes.ShiftRn(result, 31)), 0xFFFFFFFFFFFFFFFFn);
@@ -297,24 +310,31 @@
         throw new Error('LFIB4 not initialized: set seed first');
       }
 
+      /** @type {int32} */
       const c = this._counter;
-      const state = this._state;
+      /** @type {uint32[]} */
+      const words = this._state;
 
       // Calculate lagged indices with byte wrapping (0-255)
       // In circular buffer: (c - lag) mod 256 = (c + (256 - lag)) mod 256
-      const idx1 = OpCodes.AndN(c + 201, 0xFF);  // c - 55 mod 256
-      const idx2 = OpCodes.AndN(c + 137, 0xFF);  // c - 119 mod 256
-      const idx3 = OpCodes.AndN(c + 77, 0xFF);   // c - 179 mod 256
+      /** @type {int32} */
+      const idx1 = OpCodes.And32(c + 201, 0xFF);  // c - 55 mod 256
+      /** @type {int32} */
+      const idx2 = OpCodes.And32(c + 137, 0xFF);  // c - 119 mod 256
+      /** @type {int32} */
+      const idx3 = OpCodes.And32(c + 77, 0xFF);   // c - 179 mod 256
+      /** @type {int32} */
       const idx4 = c;                            // c - 256 mod 256 = c
 
       // LFIB4 recurrence: sum four lagged values (mod 2^32)
-      const sum = OpCodes.ToUint32(state[idx1] + state[idx2] + state[idx3] + state[idx4]);
+      /** @type {uint32} */
+      const sum = OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(words[idx1], words[idx2]), words[idx3]), words[idx4]);
 
       // Store result back in state array at current position
-      state[c] = sum;
+      words[c] = sum;
 
       // Increment counter with byte wrap (0-255)
-      this._counter = OpCodes.AndN(c + 1, 0xFF);
+      this._counter = OpCodes.And32(c + 1, 0xFF);
 
       return sum;
     }
@@ -346,7 +366,8 @@
         // Extract bytes (big-endian order - most significant byte first)
         const bytesToExtract = Math.min(bytesRemaining, 4);
         for (let i = 0; i < bytesToExtract; ++i) {
-          const byte = OpCodes.AndN(OpCodes.Shr32(value, 24 - i * 8), 0xFF);
+          /** @type {uint8} */
+          const byte = OpCodes.And32(OpCodes.Shr32(value, 24 - i * 8), 0xFF);
           output.push(byte);
         }
 

@@ -258,6 +258,7 @@
       }
 
       // Convert seed bytes to 32-bit value (big-endian)
+      /** @type {uint32} */
       let seedValue = 0;
       if (seedBytes.length >= 4) {
         seedValue = OpCodes.Pack32BE(
@@ -331,7 +332,7 @@
       const e = OpCodes.ToUint32(this._a - OpCodes.RotL32(this._b, 27));
 
       // Step 2: a = b XOR ROL(c, 17)
-      this._a = OpCodes.ToUint32(OpCodes.XorN(this._b, OpCodes.RotL32(this._c, 17)));
+      this._a = OpCodes.ToUint32(OpCodes.Xor32(this._b, OpCodes.RotL32(this._c, 17)));
 
       // Step 3: b = c + d
       this._b = OpCodes.ToUint32(this._c + this._d);

@@ -249,17 +249,20 @@
       }
 
       // Pack seed bytes into 64-bit value (little-endian)
+      /** @type {uint32} */
       let seed_low = 0;
+      /** @type {uint32} */
       let seed_high = 0;
 
       if (seedBytes.length >= 4) {
         seed_low = OpCodes.Pack32LE(
-          seedBytes[0] || 0,
-          seedBytes[1] || 0,
-          seedBytes[2] || 0,
-          seedBytes[3] || 0
+          (seedBytes[0] ? seedBytes[0] : 0),
+          (seedBytes[1] ? seedBytes[1] : 0),
+          (seedBytes[2] ? seedBytes[2] : 0),
+          (seedBytes[3] ? seedBytes[3] : 0)
         );
       } else if (seedBytes.length > 0) {
+        /** @type {uint8[]} */
         const bytes = [0, 0, 0, 0];
         for (let i = 0; i < seedBytes.length; ++i) {
           bytes[i] = seedBytes[i];
@@ -269,10 +272,10 @@
 
       if (seedBytes.length >= 8) {
         seed_high = OpCodes.Pack32LE(
-          seedBytes[4] || 0,
-          seedBytes[5] || 0,
-          seedBytes[6] || 0,
-          seedBytes[7] || 0
+          (seedBytes[4] ? seedBytes[4] : 0),
+          (seedBytes[5] ? seedBytes[5] : 0),
+          (seedBytes[6] ? seedBytes[6] : 0),
+          (seedBytes[7] ? seedBytes[7] : 0)
         );
       }
 
@@ -297,6 +300,10 @@
 
     /**
      * 64-bit right shift
+     * @param {uint32} low - Low word
+     * @param {uint32} high - High word
+     * @param {int32} shift - Shift amount
+     * @returns {uint32[]} [low, high] of the result
      */
     _shr64(low, high, shift) {
       low = OpCodes.ToUint32(low);
@@ -316,6 +323,10 @@
 
     /**
      * 64-bit left shift
+     * @param {uint32} low - Low word
+     * @param {uint32} high - High word
+     * @param {int32} shift - Shift amount
+     * @returns {uint32[]} [low, high] of the result
      */
     _shl64(low, high, shift) {
       low = OpCodes.ToUint32(low);
@@ -335,6 +346,11 @@
 
     /**
      * 64-bit XOR
+     * @param {uint32} low1 - Low word of the first operand
+     * @param {uint32} high1 - High word of the first operand
+     * @param {uint32} low2 - Low word of the second operand
+     * @param {uint32} high2 - High word of the second operand
+     * @returns {uint32[]} [low, high] of the result
      */
     _xor64(low1, high1, low2, high2) {
       return [OpCodes.ToUint32(OpCodes.Xor32(low1, low2)), OpCodes.ToUint32(OpCodes.Xor32(high1, high2))];
@@ -342,6 +358,11 @@
 
     /**
      * 64-bit multiplication (keeping low 64 bits)
+     * @param {uint32} aLow - Low word of a
+     * @param {uint32} aHigh - High word of a
+     * @param {uint32} bLow - Low word of b
+     * @param {uint32} bHigh - High word of b
+     * @returns {uint32[]} [low, high] of the low 64 bits of a * b
      */
     _mul64(aLow, aHigh, bLow, bHigh) {
       aLow = OpCodes.ToUint32(aLow);
@@ -361,31 +382,37 @@
       const b48 = OpCodes.Shr32(bHigh, 16);
 
       // Multiply 16-bit chunks
-      let c00 = a00 * b00;
+      // (every partial product of two 16-bit chunks fits in 32 bits)
+      /** @type {uint32} */
+      let c00 = OpCodes.Mul32(a00, b00);
+      /** @type {uint32} */
       let c16 = OpCodes.Shr32(c00, 16);
       c00 = OpCodes.And32(c00, 0xFFFF);
 
-      c16 += a16 * b00;
+      c16 = OpCodes.Add32(c16, OpCodes.Mul32(a16, b00));
+      /** @type {uint32} */
       let c32 = OpCodes.Shr32(c16, 16);
       c16 = OpCodes.And32(c16, 0xFFFF);
 
-      c16 += a00 * b16;
-      c32 += OpCodes.Shr32(c16, 16);
+      c16 = OpCodes.Add32(c16, OpCodes.Mul32(a00, b16));
+      c32 = OpCodes.Add32(c32, OpCodes.Shr32(c16, 16));
       c16 = OpCodes.And32(c16, 0xFFFF);
 
-      c32 += a32 * b00;
+      c32 = OpCodes.Add32(c32, OpCodes.Mul32(a32, b00));
+      /** @type {uint32} */
       let c48 = OpCodes.Shr32(c32, 16);
       c32 = OpCodes.And32(c32, 0xFFFF);
 
-      c32 += a16 * b16;
-      c48 += OpCodes.Shr32(c32, 16);
+      c32 = OpCodes.Add32(c32, OpCodes.Mul32(a16, b16));
+      c48 = OpCodes.Add32(c48, OpCodes.Shr32(c32, 16));
       c32 = OpCodes.And32(c32, 0xFFFF);
 
-      c32 += a00 * b32;
-      c48 += OpCodes.Shr32(c32, 16);
+      c32 = OpCodes.Add32(c32, OpCodes.Mul32(a00, b32));
+      c48 = OpCodes.Add32(c48, OpCodes.Shr32(c32, 16));
       c32 = OpCodes.And32(c32, 0xFFFF);
 
-      c48 += a48 * b00 + a32 * b16 + a16 * b32 + a00 * b48;
+      // only the low 16 bits of this sum survive, so wrapping at 2^32 is harmless
+      c48 = OpCodes.Add32(c48, OpCodes.Add32(OpCodes.Add32(OpCodes.Add32(OpCodes.Mul32(a48, b00), OpCodes.Mul32(a32, b16)), OpCodes.Mul32(a16, b32)), OpCodes.Mul32(a00, b48)));
       c48 = OpCodes.And32(c48, 0xFFFF);
 
       const c16Shl = OpCodes.Shl32(c16, 16);
@@ -403,26 +430,33 @@
      * s = XOR(s, right_shift(s, 27));
      * this._state = s;
      * return multiply(s, _MULTIPLICATOR);
+     * @returns {uint32[]} [low, high] of the next 64-bit output
      */
     _next64() {
       if (!this._ready) {
         throw new Error('XorShift* not initialized: set seed first');
       }
 
-      let s_low = this._s_low;
-      let s_high = this._s_high;
+      /** @type {uint32[]} */
+      let s = [this._s_low, this._s_high];
 
       // s ^= s >> 12
-      let temp = this._shr64(s_low, s_high, 12);
-      [s_low, s_high] = this._xor64(s_low, s_high, temp[0], temp[1]);
+      /** @type {uint32[]} */
+      let temp = this._shr64(s[0], s[1], 12);
+      s = this._xor64(s[0], s[1], temp[0], temp[1]);
 
       // s ^= OpCodes.Shl32(s, 25)
-      temp = this._shl64(s_low, s_high, 25);
-      [s_low, s_high] = this._xor64(s_low, s_high, temp[0], temp[1]);
+      temp = this._shl64(s[0], s[1], 25);
+      s = this._xor64(s[0], s[1], temp[0], temp[1]);
 
       // s ^= s >> 27
-      temp = this._shr64(s_low, s_high, 27);
-      [s_low, s_high] = this._xor64(s_low, s_high, temp[0], temp[1]);
+      temp = this._shr64(s[0], s[1], 27);
+      s = this._xor64(s[0], s[1], temp[0], temp[1]);
+
+      /** @type {uint32} */
+      const s_low = s[0];
+      /** @type {uint32} */
+      const s_high = s[1];
 
       // Update state
       this._s_low = s_low;
@@ -453,7 +487,12 @@
       let bytesRemaining = length;
 
       while (bytesRemaining > 0) {
-        const [low, high] = this._next64();
+        /** @type {uint32[]} */
+        const word = this._next64();
+        /** @type {uint32} */
+        const low = word[0];
+        /** @type {uint32} */
+        const high = word[1];
 
         const bytesToExtract = Math.min(bytesRemaining, 8);
 
@@ -493,7 +532,7 @@
    */
 
     Result() {
-      const size = this._outputSize || 64;
+      const size = (this._outputSize ? this._outputSize : 64);
 
       if (this._skip && this._skip > 0) {
         for (let i = 0; i < this._skip; ++i) {
@@ -516,7 +555,7 @@
      * @returns {int32} Bytes returned by Result()
      */
     get outputSize() {
-      return this._outputSize || 64;
+      return (this._outputSize ? this._outputSize : 64);
     }
 
     /**
