@@ -184,6 +184,13 @@
           input: OpCodes.Hex8ToBytes("0001020304050607"),
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f"),
           expected: OpCodes.Hex8ToBytes("722ddbe59d2ad932")
+        },
+        {
+          text: "DarkCrypt Pes — random key/plaintext (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("fc0d3cc6a6b8e6aa"),
+          key: OpCodes.Hex8ToBytes("9171a8c51545e90a32f8680f716e4cc7"),
+          expected: OpCodes.Hex8ToBytes("5d8831507b5ba3b7")
         }
       ];
     }

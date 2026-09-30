@@ -106,6 +106,14 @@
           input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
           key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c"),
           expected: OpCodes.Hex8ToBytes("455291d62e31b03112052d0373e019cf")
+        },
+        {
+          // This key expands to a multiplication key word whose top bits are a long run of zeros.
+          text: "DarkCrypt Mars1248 — key word with a long top bit run (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("83a5333e8a0872ef2e85603589da0f9e"),
+          key: OpCodes.Hex8ToBytes("0296a089294f95187e6fa2c18d8a1653a8568b1bff997e69806774dbc575e508018d46baa4bc4b101baf51dd9b2337d138731e6f0540e0e9001a1cc454559ab5e3249f3fa21173129389a643881e0e0d4db52c29bec3b80521fff6f8fc81da4167b37e5b98e44ec275ad2e78755e120acfe3633e9c2a60be0d4907d8d3eb4a005e8430071fdcbb9b73279bf4745fa8fafe2caa789520a60189d00c41"),
+          expected: OpCodes.Hex8ToBytes("cbb4fc0b91e25f527473625709e8a3f2")
         }
       ];
     }
@@ -263,7 +271,7 @@
     }
 
     // Generalized multiplication-keyword mask: finds a run of >=10 identical bits
-    // (excluding the two LSBs) in w and builds a 4-bit-aligned mask covering it,
+    // (marking bits 2..30 only) in w and builds a mask covering it,
     // so the later XOR with a rotated B[] constant breaks up long bit runs.
     // Ported unchanged (bit-exact) from the official MARS key-tweak logic.
     /**
@@ -280,9 +288,8 @@
       a = OpCodes.Or32(OpCodes.Add32(a, a), OpCodes.Shl32(a, 2));
       a = OpCodes.Or32(a, OpCodes.Shl32(a, 2));
       a = OpCodes.Or32(a, OpCodes.Shl32(a, 4));
-      const edx = OpCodes.And32(OpCodes.And32(notw, OpCodes.Add32(a, a)), 0x80000000);
-      a = OpCodes.Or32(a, edx);
-      return OpCodes.And32(a, 0xFFFFFFFC);
+      // Only bits 2..30 may be marked: the top bit of a run reaching bit 31 stays unmasked.
+      return OpCodes.And32(a, 0x7FFFFFFC);
     }
 
     // Generalized MARS key expansion: official E-box stirring over a 40-word
