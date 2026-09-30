@@ -117,6 +117,14 @@
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
           iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
           expected: OpCodes.Hex8ToBytes("0ee3118c4017828fca4b0578e85be6c98b993472d9afc24e87e85f17efd91ae171c5268e60f39f392b1280589aa32c8b29d5bb3131276c7a80bae428b794aa20")
+        },
+        {
+          text: "DarkCrypt Shannon — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("03203d5a7794b1ceeb0825425f7c99b6d3f00d2a4764819ebbd8f5122f4c6986a3c0ddfa1734516e8ba8c5e2ff1c3956"),
+          key: OpCodes.Hex8ToBytes("0b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c6186"),
+          iv: OpCodes.Hex8ToBytes("073c71a6db10457aafe4194e83b8ed22"),
+          expected: OpCodes.Hex8ToBytes("54f4cf98a4d8edaef4456c73136a5e59c9a6bac3ccbe8e2ad28f1331b2bed69c4ba38bfb36b1b3906727dd0d4597eb14")
         }
       ];
     }
