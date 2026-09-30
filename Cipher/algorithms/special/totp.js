@@ -199,28 +199,31 @@
 
       /**
        * Secret key for HMAC computation
-       * @type {Uint8Array|null}
+       * @type {uint8[]|null}
        * @private
        */
       this._key = null;
 
       /**
        * Unix timestamp in seconds for OTP generation
-       * @type {number}
+       * @type {float64}
        * @private
        */
-      this._timestamp = Math.floor(Date.now() / 1000); // Current Unix timestamp
+      this._timestamp = 0;
+      /** @type {float64} */
+      const nowMs = Date.now();
+      this._timestamp = Math.floor(nowMs / 1000); // Current Unix timestamp
 
       /**
        * Time step window in seconds (typically 30)
-       * @type {number}
+       * @type {uint32}
        * @private
        */
       this._timestep = 30;  // Default 30-second time step
 
       /**
        * Number of digits in generated OTP (6-10)
-       * @type {number}
+       * @type {int32}
        * @private
        */
       this._digits = 8;  // Default 8-digit OTP
@@ -234,7 +237,7 @@
 
       /**
        * Initial counter time (Unix epoch start, typically 0)
-       * @type {number}
+       * @type {float64}
        * @private
        */
       this._t0 = 0;  // Default Unix epoch start
@@ -243,7 +246,7 @@
     /**
      * Sets the secret key for TOTP generation
      *
-     * @param {Uint8Array} keyBytes - Secret key as byte array (typically 20 bytes for SHA-1,
+     * @param {uint8[]} keyBytes - Secret key as byte array (typically 20 bytes for SHA-1,
      *                                 32 bytes for SHA-256, 64 bytes for SHA-512)
      * @throws {Error} If keyBytes is not a valid byte array
      * @example
@@ -253,22 +256,22 @@
       if (!keyBytes || !Array.isArray(keyBytes)) {
         throw new Error("Key must be a byte array");
       }
-      this._key = [...keyBytes];
+      this._key = keyBytes.slice();
     }
 
     /**
      * Gets a copy of the secret key
      *
-     * @returns {Uint8Array|null} Copy of the secret key, or null if not set
+     * @returns {uint8[]|null} Copy of the secret key, or null if not set
      */
     get key() {
-      return this._key ? [...this._key] : null;
+      return this._key ? this._key.slice() : null;
     }
 
     /**
      * Sets the Unix timestamp for TOTP calculation
      *
-     * @param {number} value - Unix timestamp in seconds (uint64, non-negative integer)
+     * @param {float64} value - Unix timestamp in seconds (uint64, non-negative integer)
      * @throws {Error} If value is not a non-negative integer
      * @example
      * instance.timestamp = 59; // January 1, 1970 00:00:59 UTC
@@ -283,7 +286,7 @@
     /**
      * Gets the current Unix timestamp used for TOTP calculation
      *
-     * @returns {number} Unix timestamp in seconds (uint64)
+     * @returns {float64} Unix timestamp in seconds (uint64)
      */
     get timestamp() {
       return this._timestamp;
@@ -292,7 +295,7 @@
     /**
      * Sets the time step duration for TOTP windows
      *
-     * @param {number} value - Time step in seconds (uint32, positive integer, typically 30)
+     * @param {uint32} value - Time step in seconds (uint32, positive integer, typically 30)
      * @throws {Error} If value is not a positive integer
      * @example
      * instance.timestep = 30; // Standard 30-second window
@@ -307,7 +310,7 @@
     /**
      * Gets the current time step duration
      *
-     * @returns {number} Time step in seconds (uint32)
+     * @returns {uint32} Time step in seconds (uint32)
      */
     get timestep() {
       return this._timestep;
@@ -316,7 +319,7 @@
     /**
      * Sets the number of digits in the generated OTP
      *
-     * @param {number} value - Number of digits (uint8, range 6-10, typically 6 or 8)
+     * @param {int32} value - Number of digits (uint8, range 6-10, typically 6 or 8)
      * @throws {Error} If value is not between 6 and 10
      * @example
      * instance.digits = 6; // Standard 6-digit OTP (Google Authenticator)
@@ -331,7 +334,7 @@
     /**
      * Gets the number of digits in the generated OTP
      *
-     * @returns {number} Number of OTP digits (uint8, 6-10)
+     * @returns {int32} Number of OTP digits (uint8, 6-10)
      */
     get digits() {
       return this._digits;
@@ -364,7 +367,7 @@
     /**
      * Sets the initial counter time (T0)
      *
-     * @param {number} value - Initial counter time as Unix timestamp (uint64, typically 0 for Unix epoch)
+     * @param {float64} value - Initial counter time as Unix timestamp (uint64, typically 0 for Unix epoch)
      * @throws {Error} If value is not a non-negative integer
      * @example
      * instance.t0 = 0; // Start counting from Unix epoch (standard)
@@ -379,7 +382,7 @@
     /**
      * Gets the initial counter time (T0)
      *
-     * @returns {number} Initial counter time as Unix timestamp (uint64)
+     * @returns {float64} Initial counter time as Unix timestamp (uint64)
      */
     get t0() {
       return this._t0;
@@ -391,7 +394,8 @@
      * TOTP does not use streaming input. All parameters are provided via properties
      * (key, timestamp, timestep, digits, hashAlgorithm, t0) before calling Result().
      *
-     * @param {Uint8Array} data - Ignored for TOTP (not used)
+     * @param {uint8[]} data - Ignored for TOTP (not used)
+     * @returns {void}
      */
     Feed(data) {
       // TOTP doesn't use streaming input
@@ -408,7 +412,7 @@
      * 4. Compute OTP = truncated_value mod 10^digits
      * 5. Format as zero-padded ASCII string
      *
-     * @returns {Uint8Array} TOTP value as ASCII-encoded byte array (e.g., "123456" -> [49,50,51,52,53,54])
+     * @returns {uint8[]} TOTP value as ASCII-encoded byte array (e.g., "123456" -> [49,50,51,52,53,54])
      * @throws {Error} If key is not set
      * @example
      * instance.key = OpCodes.Hex8ToBytes("3132333435363738393031323334353637383930");
@@ -423,27 +427,37 @@
       }
 
       // Step 1: Calculate counter T = floor((Current Unix time - T0) / X)
+      /** @type {float64} */
       const counter = Math.floor((this._timestamp - this._t0) / this._timestep);
 
       // Step 2: Generate HMAC(key, counter)
+      /** @type {uint8[]} */
       const counterBytes = this._encodeCounter(counter);
+      /** @type {uint8[]} */
       const hmacResult = this._hmac(this._key, counterBytes);
 
       // Step 3: Dynamic Truncation (DT) - same as HOTP
-      const offset = OpCodes.AndN(hmacResult[hmacResult.length - 1], 0x0F);
+      /** @type {int32} */
+      const offset = OpCodes.And32(hmacResult[hmacResult.length - 1], 0x0F);
+      /** @type {uint32} */
       const binaryCode =
-        OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(
-          OpCodes.Shl32(OpCodes.AndN(hmacResult[offset], 0x7F), 24),
-          OpCodes.Shl32(OpCodes.AndN(hmacResult[offset + 1], 0xFF), 16)),
-          OpCodes.Shl32(OpCodes.AndN(hmacResult[offset + 2], 0xFF), 8)),
-          OpCodes.AndN(hmacResult[offset + 3], 0xFF));
+        OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(
+          OpCodes.Shl32(OpCodes.And32(hmacResult[offset], 0x7F), 24),
+          OpCodes.Shl32(OpCodes.And32(hmacResult[offset + 1], 0xFF), 16)),
+          OpCodes.Shl32(OpCodes.And32(hmacResult[offset + 2], 0xFF), 8)),
+          OpCodes.And32(hmacResult[offset + 3], 0xFF));
 
       // Step 4: Compute OTP = binaryCode mod 10^digits
-      const modulus = Math.pow(10, this._digits);
+      /** @type {uint64} */
+      let modulus = 1;
+      for (let d = 0; d < this._digits; d++) modulus = modulus * 10;
+      /** @type {uint64} */
       const otp = binaryCode % modulus;
 
       // Step 5: Convert to string with leading zeros
-      const otpString = otp.toString().padStart(this._digits, '0');
+      /** @type {string} */
+      let otpString = String(otp);
+      while (otpString.length < this._digits) otpString = '0' + otpString;
 
       // Return as byte array (ASCII encoding)
       return OpCodes.AnsiToBytes(otpString);
@@ -456,16 +470,19 @@
      * according to RFC 6238 specification.
      *
      * @private
-     * @param {number} counter - Counter value (uint64, T = floor((timestamp - T0) / timestep))
-     * @returns {Uint8Array} 8-byte big-endian representation of counter
+     * @param {float64} counter - Counter value (T = floor((timestamp - T0) / timestep); negative before T0)
+     * @returns {uint8[]} 8-byte big-endian two's-complement representation of counter
      * @example
      * _encodeCounter(1) // Returns [0,0,0,0,0,0,0,1]
      */
     _encodeCounter(counter) {
-      const result = new Array(8).fill(0);
+      /** @type {uint8[]} */
+      const result = OpCodes.CreateArray(8, 0);
+      /** @type {float64} */
+      let rest = counter;
       for (let i = 7; i >= 0; i--) {
-        result[i] = OpCodes.AndN(counter, 0xFF);
-        counter = Math.floor(counter / 256);
+        result[i] = ((rest % 256) + 256) % 256;
+        rest = Math.floor(rest / 256);
       }
       return result;
     }
@@ -477,14 +494,15 @@
      * Supports SHA-1, SHA-256, and SHA-512 hash algorithms.
      *
      * @private
-     * @param {Uint8Array} key - Secret key for HMAC computation
-     * @param {Uint8Array} message - Message to authenticate (8-byte counter value)
-     * @returns {Uint8Array} HMAC result as byte array (20 bytes for SHA-1, 32 for SHA-256, 64 for SHA-512)
+     * @param {uint8[]} key - Secret key for HMAC computation
+     * @param {uint8[]} message - Message to authenticate (8-byte counter value)
+     * @returns {uint8[]} HMAC result as byte array (20 bytes for SHA-1, 32 for SHA-256, 64 for SHA-512)
      * @throws {Error} If hash algorithm is unsupported or no crypto library is available
      * @example
      * const hmac = _hmac([0x31,0x32,...], [0,0,0,0,0,0,0,1]); // HMAC-SHA1 of counter=1
      */
     _hmac(key, message) {
+      /** @type {string} */
       const hashAlgo = this._hashAlgorithm.toUpperCase();
 
       // Try using Node.js crypto if available
@@ -500,7 +518,7 @@
           } else if (hashAlgo === 'SHA-512' || hashAlgo === 'SHA512') {
             hashName = 'sha512';
           } else {
-            throw new Error(`Unsupported hash algorithm: ${hashAlgo}`);
+            throw new Error("Unsupported hash algorithm: " + hashAlgo);
           }
 
           const hmac = crypto.createHmac(hashName, Buffer.from(key));
@@ -511,13 +529,8 @@
         }
       }
 
-      // Check if we have HMAC in OpCodes
-      if (OpCodes && OpCodes.HMAC) {
-        return OpCodes.HMAC(key, message, hashAlgo);
-      }
-
       throw new Error(
-        `Cannot compute HMAC: No crypto library available (requires Node.js crypto or Web Crypto API)`
+        "Cannot compute HMAC: No crypto library available (requires Node.js crypto or Web Crypto API)"
       );
     }
   }
