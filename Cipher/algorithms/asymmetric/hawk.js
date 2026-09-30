@@ -97,12 +97,6 @@
           AsymmetricCipherAlgorithm, IAlgorithmInstance,
           LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
-  const XOR = OpCodes.Xor32;
-  const AND = OpCodes.And32;
-  const OR = OpCodes.Or32;
-  const SHL = OpCodes.Shl32;
-  const SHR = OpCodes.Shr32;
-
   // ===== SHAKE256 =====
   //
   // HAWK uses SHAKE256 everywhere: to expand the key seed into (f, g), to hash
@@ -110,6 +104,7 @@
   // Gaussian sampler. The sampler forks one partially absorbed state four
   // times, so the sponge here can be cloned before it is finalised.
 
+  /** @type {uint32[]} */
   const KECCAK_RC_LOW = [
     0x00000001, 0x00008082, 0x0000808A, 0x80008000, 0x0000808B, 0x80000001,
     0x80008081, 0x00008009, 0x0000008A, 0x00000088, 0x80008009, 0x8000000A,
@@ -117,6 +112,7 @@
     0x0000800A, 0x8000000A, 0x80008081, 0x00008080, 0x80000001, 0x80008008
   ];
 
+  /** @type {uint32[]} */
   const KECCAK_RC_HIGH = [
     0x00000000, 0x00000000, 0x80000000, 0x80000000, 0x00000000, 0x00000000,
     0x80000000, 0x80000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
@@ -124,18 +120,25 @@
     0x00000000, 0x80000000, 0x80000000, 0x80000000, 0x00000000, 0x80000000
   ];
 
+  /** @type {int32[]} */
   const KECCAK_ROTATION = [
      0,  1, 62, 28, 27, 36, 44,  6, 55, 20,  3, 10, 43,
     25, 39, 41, 45, 15, 21,  8, 18,  2, 61, 56, 14
   ];
 
-  const KECCAK_TARGET = (function () {
+  /**
+   * @returns {int32[]} where the pi step moves each lane
+   */
+  function BuildKeccakTarget() {
+    /** @type {int32[]} */
     const t = new Array(25);
     for (let x = 0; x < 5; ++x)
       for (let y = 0; y < 5; ++y)
         t[x + 5 * y] = y + 5 * ((2 * x + 3 * y) % 5);
     return t;
-  })();
+  }
+
+  const KECCAK_TARGET = BuildKeccakTarget();
 
   const SHAKE256_RATE = 136;
 
@@ -149,37 +152,42 @@
 
     for (let round = 0; round < 24; ++round) {
       for (let x = 0; x < 5; ++x) {
-        c[2 * x] = XOR(XOR(XOR(s[2 * x], s[2 * x + 10]), XOR(s[2 * x + 20], s[2 * x + 30])), s[2 * x + 40]);
-        c[2 * x + 1] = XOR(XOR(XOR(s[2 * x + 1], s[2 * x + 11]), XOR(s[2 * x + 21], s[2 * x + 31])), s[2 * x + 41]);
+        c[2 * x] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s[2 * x], s[2 * x + 10]), OpCodes.Xor32(s[2 * x + 20], s[2 * x + 30])), s[2 * x + 40]);
+        c[2 * x + 1] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s[2 * x + 1], s[2 * x + 11]), OpCodes.Xor32(s[2 * x + 21], s[2 * x + 31])), s[2 * x + 41]);
       }
 
       for (let x = 0; x < 5; ++x) {
         const nx = (x + 1) % 5;
         const px = (x + 4) % 5;
-        const lo = XOR(c[2 * px], OR(SHL(c[2 * nx], 1), SHR(c[2 * nx + 1], 31)));
-        const hi = XOR(c[2 * px + 1], OR(SHL(c[2 * nx + 1], 1), SHR(c[2 * nx], 31)));
+        const lo = OpCodes.Xor32(c[2 * px], OpCodes.Or32(OpCodes.Shl32(c[2 * nx], 1), OpCodes.Shr32(c[2 * nx + 1], 31)));
+        const hi = OpCodes.Xor32(c[2 * px + 1], OpCodes.Or32(OpCodes.Shl32(c[2 * nx + 1], 1), OpCodes.Shr32(c[2 * nx], 31)));
         for (let y = 0; y < 25; y += 5) {
-          s[2 * (x + y)] = XOR(s[2 * (x + y)], lo);
-          s[2 * (x + y) + 1] = XOR(s[2 * (x + y) + 1], hi);
+          s[2 * (x + y)] = OpCodes.Xor32(s[2 * (x + y)], lo);
+          s[2 * (x + y) + 1] = OpCodes.Xor32(s[2 * (x + y) + 1], hi);
         }
       }
 
       for (let i = 0; i < 25; ++i) {
         const r = KECCAK_ROTATION[i];
+        /** @type {uint32} */
         const lo = s[2 * i];
+        /** @type {uint32} */
         const hi = s[2 * i + 1];
-        let nlo, nhi;
+        /** @type {uint32} */
+        let nlo = 0;
+        /** @type {uint32} */
+        let nhi = 0;
         if (r === 0) {
           nlo = lo; nhi = hi;
         } else if (r < 32) {
-          nlo = OR(SHL(lo, r), SHR(hi, 32 - r));
-          nhi = OR(SHL(hi, r), SHR(lo, 32 - r));
+          nlo = OpCodes.Or32(OpCodes.Shl32(lo, r), OpCodes.Shr32(hi, 32 - r));
+          nhi = OpCodes.Or32(OpCodes.Shl32(hi, r), OpCodes.Shr32(lo, 32 - r));
         } else if (r === 32) {
           nlo = hi; nhi = lo;
         } else {
           const q = r - 32;
-          nlo = OR(SHL(hi, q), SHR(lo, 32 - q));
-          nhi = OR(SHL(lo, q), SHR(hi, 32 - q));
+          nlo = OpCodes.Or32(OpCodes.Shl32(hi, q), OpCodes.Shr32(lo, 32 - q));
+          nhi = OpCodes.Or32(OpCodes.Shl32(lo, q), OpCodes.Shr32(hi, 32 - q));
         }
         const t = KECCAK_TARGET[i];
         b[2 * t] = nlo;
@@ -191,12 +199,12 @@
           const i = x + y;
           const i1 = ((x + 1) % 5) + y;
           const i2 = ((x + 2) % 5) + y;
-          s[2 * i] = XOR(b[2 * i], AND(OpCodes.Not32(b[2 * i1]), b[2 * i2]));
-          s[2 * i + 1] = XOR(b[2 * i + 1], AND(OpCodes.Not32(b[2 * i1 + 1]), b[2 * i2 + 1]));
+          s[2 * i] = OpCodes.Xor32(b[2 * i], OpCodes.And32(OpCodes.Not32(b[2 * i1]), b[2 * i2]));
+          s[2 * i + 1] = OpCodes.Xor32(b[2 * i + 1], OpCodes.And32(OpCodes.Not32(b[2 * i1 + 1]), b[2 * i2 + 1]));
         }
 
-      s[0] = XOR(s[0], KECCAK_RC_LOW[round]);
-      s[1] = XOR(s[1], KECCAK_RC_HIGH[round]);
+      s[0] = OpCodes.Xor32(s[0], KECCAK_RC_LOW[round]);
+      s[1] = OpCodes.Xor32(s[1], KECCAK_RC_HIGH[round]);
     }
   }
 
@@ -205,12 +213,19 @@
    */
   class Shake256 {
     constructor() {
+      /** @type {Uint32Array} */
       this.state = new Uint32Array(50);
+      /** @type {Uint8Array} */
       this.buffer = new Uint8Array(SHAKE256_RATE);
+      /** @type {int32} */
       this.position = 0;
+      /** @type {boolean} */
       this.squeezing = false;
     }
 
+    /**
+     * @returns {Shake256} an independent copy of this sponge
+     */
     Clone() {
       const copy = new Shake256();
       copy.state.set(this.state);
@@ -220,12 +235,14 @@
       return copy;
     }
 
+    /**
+     */
     _absorbBuffer() {
       const q = this.buffer;
       const s = this.state;
       for (let i = 0; i < SHAKE256_RATE / 8; ++i) {
-        s[2 * i] = XOR(s[2 * i], OpCodes.Pack32LE(q[8 * i], q[8 * i + 1], q[8 * i + 2], q[8 * i + 3]));
-        s[2 * i + 1] = XOR(s[2 * i + 1], OpCodes.Pack32LE(q[8 * i + 4], q[8 * i + 5], q[8 * i + 6], q[8 * i + 7]));
+        s[2 * i] = OpCodes.Xor32(s[2 * i], OpCodes.Pack32LE(q[8 * i], q[8 * i + 1], q[8 * i + 2], q[8 * i + 3]));
+        s[2 * i + 1] = OpCodes.Xor32(s[2 * i + 1], OpCodes.Pack32LE(q[8 * i + 4], q[8 * i + 5], q[8 * i + 6], q[8 * i + 7]));
       }
       KeccakPermute(s);
     }
@@ -264,8 +281,8 @@
      */
     Flip() {
       this.buffer.fill(0, this.position);
-      this.buffer[this.position] = XOR(this.buffer[this.position], 0x1F);
-      this.buffer[SHAKE256_RATE - 1] = XOR(this.buffer[SHAKE256_RATE - 1], 0x80);
+      this.buffer[this.position] = OpCodes.Xor32(this.buffer[this.position], 0x1F);
+      this.buffer[SHAKE256_RATE - 1] = OpCodes.Xor32(this.buffer[SHAKE256_RATE - 1], 0x80);
       this._absorbBuffer();
       this._stateToBuffer();
       this.position = 0;
@@ -274,7 +291,7 @@
     }
 
     /**
-     * @param {number} count - octets wanted
+     * @param {int32} count - octets wanted
      * @returns {Uint8Array} the next count octets of output
      */
     Extract(count) {
@@ -293,8 +310,8 @@
 
   /**
    * SHAKE256 over the concatenation of the given parts.
-   * @param {Array} parts - octet arrays
-   * @param {number} count - output length
+   * @param {uint8[][]} parts - octet arrays
+   * @param {int32} count - output length
    * @returns {Uint8Array} the digest
    */
   function Shake(parts, count) {
@@ -303,8 +320,14 @@
     return sc.Flip().Extract(count);
   }
 
+  /**
+   * @param {uint32} value - a 32 bit word
+   * @returns {uint8[]} its little-endian octets
+   */
   function Le32(value) {
-    return OpCodes.Unpack32LE(value);
+    /** @type {uint8[]} */
+    const octets = OpCodes.Unpack32LE(value);
+    return octets;
   }
 
   // ===== the NIST generator =====
@@ -334,13 +357,23 @@
     return aesAlgorithm;
   }
 
+  /**
+   * @param {Uint8Array} key - 32 key octets
+   * @param {Uint8Array} block - 16 plaintext octets
+   * @returns {uint8[]} 16 ciphertext octets
+   */
   function Aes256Ecb(key, block) {
     const instance = FindAes().CreateInstance(false);
     instance.key = Array.from(key);
     instance.Feed(Array.from(block));
-    return instance.Result();
+    /** @type {uint8[]} */
+    const output = instance.Result();
+    return output;
   }
 
+  /**
+   * @param {Uint8Array} v - 16 octet big-endian counter, incremented in place
+   */
   function IncrementCounter(v) {
     for (let j = 15; j >= 0; --j) {
       if (v[j] === 0xFF) v[j] = 0;
@@ -365,7 +398,7 @@
         for (let j = 0; j < 16; ++j) temp[i * 16 + j] = block[j];
       }
       if (providedData)
-        for (let i = 0; i < 48; ++i) temp[i] = XOR(temp[i], providedData[i]);
+        for (let i = 0; i < 48; ++i) temp[i] = OpCodes.Xor32(temp[i], providedData[i]);
       for (let i = 0; i < 32; ++i) key[i] = temp[i];
       for (let i = 0; i < 16; ++i) v[i] = temp[32 + i];
     };
@@ -387,7 +420,7 @@
 
   /**
    * The randomness used when no generator seed is configured.
-   * @param {number} count - octets wanted
+   * @param {int32} count - octets wanted
    * @returns {Uint8Array} zeros
    */
   function ZeroRng(count) {
@@ -438,76 +471,207 @@
   // feed the fixed-point approximation. They are the reference's measured
   // bounds, and they decide both where values are truncated and which words
   // the approximations read, so they are part of the key generation.
-  const SOLVER_PROFILES = {
-    8: {
-      small: [1, 1, 1, 2, 3, 5, 9, 17, 34, 0, 0],
-      large: [1, 1, 2, 4, 7, 13, 26, 50, 0, 0],
-      window: [1, 1, 1, 2, 3, 3, 3, 4, 0, 0],
-      reduceBits: 20
-    },
-    9: {
-      small: [1, 1, 1, 2, 3, 6, 11, 21, 41, 82, 0],
-      large: [1, 2, 3, 5, 8, 16, 31, 61, 121, 0],
-      window: [1, 1, 1, 2, 2, 3, 3, 4, 6, 0],
-      reduceBits: 15
-    },
-    10: {
-      small: [1, 1, 2, 2, 4, 7, 13, 25, 48, 96, 191],
-      large: [1, 2, 3, 5, 10, 19, 37, 72, 143, 284],
-      window: [1, 1, 2, 2, 3, 3, 3, 4, 4, 7],
-      reduceBits: 12
+  /** The NTRU solver's word budgets for one degree. */
+  class HawkSolverProfile {
+    /**
+     * @param {int32[]} small - words of (f, g) per depth
+     * @param {int32[]} large - words of unreduced (F, G) per depth
+     * @param {int32[]} window - top words feeding the approximation per depth
+     * @param {int32} reduceBits - scale step of the Babai reduction
+     */
+    constructor(small, large, window, reduceBits) {
+      /** @type {int32[]} */
+      this.small = small;
+      /** @type {int32[]} */
+      this.large = large;
+      /** @type {int32[]} */
+      this.window = window;
+      /** @type {int32} */
+      this.reduceBits = reduceBits;
     }
-  };
-
-  function BuildParams(name, logn) {
-    const n = Math.pow(2, logn);
-    const p = {
-      name: name,
-      logn: logn,
-      n: n,
-      seedLen: 8 + n / 32,
-      hpubLen: n / 16,
-      skSize: 8 + 11 * (n / 32),
-      pkSize: { 8: 450, 9: 1024, 10: 2440 }[logn],
-      sigSize: { 8: 249, 9: 555, 10: 1221 }[logn],
-      saltLen: { 8: 14, 9: 24, 10: 40 }[logn],
-      maxXnorm: { 8: 2223, 9: 8317, 10: 20218 }[logn],
-      maxTnorm: { 8: 2223, 9: 8317, 10: 20218 }[logn],
-      l2low: { 8: 556, 9: 2080, 10: 7981 }[logn],
-      d0high: { 8: 17179869n, 9: 4294967n, 10: 1431655n }[logn],
-      bitsLim00: { 8: 9, 9: 9, 10: 10 }[logn],
-      bitsLim01: { 8: 11, 9: 12, 10: 14 }[logn],
-      bitsLim11: { 8: 13, 9: 15, 10: 17 }[logn],
-      bitsLimS0: { 8: 12, 9: 13, 10: 14 }[logn],
-      bitsLimS1: { 8: 9, 9: 9, 10: 10 }[logn],
-      low00: { 8: 5, 9: 5, 10: 6 }[logn],
-      low01: { 8: 8, 9: 9, 10: 10 }[logn],
-      lowS1: { 8: 5, 9: 5, 10: 6 }[logn],
-      gaussHi: GAUSS_HI[logn],
-      gaussLo: GAUSS_LO[logn].map(function (h) {
-        return [parseInt(h.slice(0, 8), 16), parseInt(h.slice(8), 16)];
-      }),
-      profile: SOLVER_PROFILES[logn]
-    };
-    p.eb00Len = 16 - p.bitsLim00;
-    return p;
   }
 
-  const PARAMETER_SETS = {
-    'HAWK-256': BuildParams('HAWK-256', 8),
-    'HAWK-512': BuildParams('HAWK-512', 9),
-    'HAWK-1024': BuildParams('HAWK-1024', 10)
+  const SOLVER_PROFILES = {
+    8: new HawkSolverProfile(
+      [1, 1, 1, 2, 3, 5, 9, 17, 34, 0, 0],
+      [1, 1, 2, 4, 7, 13, 26, 50, 0, 0],
+      [1, 1, 1, 2, 3, 3, 3, 4, 0, 0],
+      20),
+    9: new HawkSolverProfile(
+      [1, 1, 1, 2, 3, 6, 11, 21, 41, 82, 0],
+      [1, 2, 3, 5, 8, 16, 31, 61, 121, 0],
+      [1, 1, 1, 2, 2, 3, 3, 4, 6, 0],
+      15),
+    10: new HawkSolverProfile(
+      [1, 1, 2, 2, 4, 7, 13, 25, 48, 96, 191],
+      [1, 2, 3, 5, 10, 19, 37, 72, 143, 284],
+      [1, 1, 2, 2, 3, 3, 3, 4, 4, 7],
+      12)
   };
 
+  /** A parameter set, in the field order the plain object always had. */
+  class HawkParams {
+    /**
+     * @param {string} name - 'HAWK-256', 'HAWK-512' or 'HAWK-1024'
+     * @param {int32} logn - 8, 9 or 10
+     * @param {int32} pkSize - public key octets
+     * @param {int32} sigSize - signature octets
+     * @param {int32} saltLen - salt octets
+     * @param {int32} maxNorm - bound on the sampled and the verified norm
+     * @param {int32} l2low - lower bound on the norm of (f, g)
+     * @param {BigInt} d0high - bound on the constant term of 1/q00
+     * @param {int32[]} bits - bitsLim00, bitsLim01, bitsLim11, bitsLimS0, bitsLimS1
+     * @param {int32[]} lows - low00, low01, lowS1
+     */
+    constructor(name, logn, pkSize, sigSize, saltLen, maxNorm, l2low, d0high, bits, lows) {
+      const n = Math.pow(2, logn);
+      /** @type {string} */
+      this.name = name;
+      /** @type {int32} */
+      this.logn = logn;
+      /** @type {int32} */
+      this.n = n;
+      /** @type {int32} */
+      this.seedLen = 8 + n / 32;
+      /** @type {int32} */
+      this.hpubLen = n / 16;
+      /** @type {int32} */
+      this.skSize = 8 + 11 * (n / 32);
+      /** @type {int32} */
+      this.pkSize = pkSize;
+      /** @type {int32} */
+      this.sigSize = sigSize;
+      /** @type {int32} */
+      this.saltLen = saltLen;
+      /** @type {int32} */
+      this.maxXnorm = maxNorm;
+      /** @type {int32} */
+      this.maxTnorm = maxNorm;
+      /** @type {int32} */
+      this.l2low = l2low;
+      /** @type {BigInt} */
+      this.d0high = d0high;
+      /** @type {int32} */
+      this.bitsLim00 = bits[0];
+      /** @type {int32} */
+      this.bitsLim01 = bits[1];
+      /** @type {int32} */
+      this.bitsLim11 = bits[2];
+      /** @type {int32} */
+      this.bitsLimS0 = bits[3];
+      /** @type {int32} */
+      this.bitsLimS1 = bits[4];
+      /** @type {int32} */
+      this.low00 = lows[0];
+      /** @type {int32} */
+      this.low01 = lows[1];
+      /** @type {int32} */
+      this.lowS1 = lows[2];
+      /** @type {int32[]} */
+      this.gaussHi = GaussHi(logn);
+      /** @type {uint32[][]} */
+      this.gaussLo = GaussLoPairs(logn);
+      /** @type {HawkSolverProfile} */
+      this.profile = SolverProfile(logn);
+      /** @type {int32} */
+      this.eb00Len = 16 - this.bitsLim00;
+    }
+  }
+
+  /**
+   * @param {int32} logn - 8, 9 or 10
+   * @returns {int32[]} the high parts of the sampler table
+   */
+  function GaussHi(logn) {
+    /** @type {int32[]} */
+    const table = GAUSS_HI[logn];
+    return table;
+  }
+
+  /**
+   * The low parts of the sampler table as [high 31 bits, low 32 bits] pairs.
+   * @param {int32} logn - 8, 9 or 10
+   * @returns {uint32[][]} the pairs
+   */
+  function GaussLoPairs(logn) {
+    /** @type {string[]} */
+    const hex = GAUSS_LO[logn];
+    /** @type {uint32[][]} */
+    const pairs = new Array(hex.length);
+    for (let i = 0; i < hex.length; ++i) {
+      const h = hex[i];
+      /** @type {uint32[]} */
+      const pair = [parseInt(h.slice(0, 8), 16), parseInt(h.slice(8), 16)];
+      pairs[i] = pair;
+    }
+    return pairs;
+  }
+
+  /**
+   * @param {int32} logn - 8, 9 or 10
+   * @returns {HawkSolverProfile} the solver's word budgets
+   */
+  function SolverProfile(logn) {
+    /** @type {HawkSolverProfile} */
+    const profile = SOLVER_PROFILES[logn];
+    return profile;
+  }
+
+  /** @type {int32[]} */
+  const BITS_256 = [9, 11, 13, 12, 9];
+  /** @type {int32[]} */
+  const BITS_512 = [9, 12, 15, 13, 9];
+  /** @type {int32[]} */
+  const BITS_1024 = [10, 14, 17, 14, 10];
+  /** @type {int32[]} */
+  const LOWS_256 = [5, 8, 5];
+  /** @type {int32[]} */
+  const LOWS_512 = [5, 9, 5];
+  /** @type {int32[]} */
+  const LOWS_1024 = [6, 10, 6];
+
+  /** @type {HawkParams[]} */
+  const PARAMETER_SET_LIST = [
+    new HawkParams('HAWK-256', 8, 450, 249, 14, 2223, 556, 17179869n, BITS_256, LOWS_256),
+    new HawkParams('HAWK-512', 9, 1024, 555, 24, 8317, 2080, 4294967n, BITS_512, LOWS_512),
+    new HawkParams('HAWK-1024', 10, 2440, 1221, 40, 20218, 7981, 1431655n, BITS_1024, LOWS_1024)
+  ];
+
+  const PARAMETER_SETS = {
+    'HAWK-256': PARAMETER_SET_LIST[0],
+    'HAWK-512': PARAMETER_SET_LIST[1],
+    'HAWK-1024': PARAMETER_SET_LIST[2]
+  };
+
+  /**
+   * The table entry under a name. A plain property read, so a name is
+   * accepted exactly when the table has a truthy property of it.
+   * @param {string} name - the name
+   * @returns {HawkParams} the entry, or a falsy value
+   */
+  function ParameterSetEntry(name) {
+    /** @type {HawkParams} */
+    const entry = PARAMETER_SETS[name];
+    return entry;
+  }
+
+  /**
+   * @param {int32} size - secret key octets
+   * @returns {HawkParams|null} the set with that key size
+   */
   function ParamsBySkSize(size) {
-    for (const name of Object.keys(PARAMETER_SETS))
-      if (PARAMETER_SETS[name].skSize === size) return PARAMETER_SETS[name];
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i)
+      if (PARAMETER_SET_LIST[i].skSize === size) return PARAMETER_SET_LIST[i];
     return null;
   }
 
+  /**
+   * @param {int32} size - public key octets
+   * @returns {HawkParams|null} the set with that key size
+   */
   function ParamsByPkSize(size) {
-    for (const name of Object.keys(PARAMETER_SETS))
-      if (PARAMETER_SETS[name].pkSize === size) return PARAMETER_SETS[name];
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i)
+      if (PARAMETER_SET_LIST[i].pkSize === size) return PARAMETER_SET_LIST[i];
     return null;
   }
 
@@ -521,22 +685,46 @@
   const P1 = 2147473409;
   const P2 = 2147389441;
 
+  /**
+   * @param {int32} a - a
+   * @param {int32} b - b
+   * @param {int32} p - p
+   * @returns {int32} Result
+   */
   function MulMod(a, b, p) {
     const bh = Math.floor(b / 65536);
     const bl = b - bh * 65536;
     return (((a * bh) % p) * 65536 + a * bl) % p;
   }
 
+  /**
+   * @param {int32} a - a
+   * @param {int32} b - b
+   * @param {int32} p - p
+   * @returns {int32} Result
+   */
   function AddMod(a, b, p) {
     const s = a + b;
     return s >= p ? s - p : s;
   }
 
+  /**
+   * @param {int32} a - a
+   * @param {int32} b - b
+   * @param {int32} p - p
+   * @returns {int32} Result
+   */
   function SubMod(a, b, p) {
     const s = a - b;
     return s < 0 ? s + p : s;
   }
 
+  /**
+   * @param {int32} a - a
+   * @param {int32} e - e
+   * @param {int32} p - p
+   * @returns {int32} Result
+   */
   function PowMod(a, e, p) {
     let r = 1;
     let x = a % p;
@@ -548,27 +736,79 @@
     return r;
   }
 
+  /**
+   * @param {int32} a - a
+   * @param {int32} p - p
+   * @returns {int32} Result
+   */
   function InvMod(a, p) {
     return a === 0 ? 0 : PowMod(a, p - 2, p);
   }
 
+  /**
+   * @param {int32} v - v
+   * @param {int32} p - p
+   * @returns {int32} Result
+   */
   function ToMod(v, p) {
     const r = v % p;
     return r < 0 ? r + p : r;
   }
 
+  /**
+   * @param {int32} v - v
+   * @param {int32} p - p
+   * @returns {int32} Result
+   */
   function Centered(v, p) {
     return v > (p - 1) / 2 ? v - p : v;
   }
 
   const nttCache = {};
 
+  /** Evaluation tables for X^n+1 modulo a prime. */
+  class HawkNttTables {
+    /**
+     * @param {int32} n - degree
+     * @param {int32} p - the prime
+     * @param {int32[]} psiPow - powers of psi
+     * @param {int32[]} psiInvPow - powers of 1/psi
+     * @param {int32[]} rev - bit-reversal permutation
+     * @param {int32} omega - psi^2
+     * @param {int32} omegaInv - 1/omega
+     * @param {int32} nInv - 1/n
+     */
+    constructor(n, p, psiPow, psiInvPow, rev, omega, omegaInv, nInv) {
+      /** @type {int32} */
+      this.n = n;
+      /** @type {int32} */
+      this.p = p;
+      /** @type {int32[]} */
+      this.psiPow = psiPow;
+      /** @type {int32[]} */
+      this.psiInvPow = psiInvPow;
+      /** @type {int32[]} */
+      this.rev = rev;
+      /** @type {int32} */
+      this.omega = omega;
+      /** @type {int32} */
+      this.omegaInv = omegaInv;
+      /** @type {int32} */
+      this.nInv = nInv;
+    }
+  }
+
   /**
    * Evaluation tables for X^n+1 modulo p: psi is a primitive 2n-th root.
+   * @param {int32} logn - logn
+   * @param {int32} p - p
+   * @returns {HawkNttTables} Result
    */
   function NttTables(logn, p) {
     const key = p + ':' + logn;
-    if (nttCache[key]) return nttCache[key];
+    /** @type {HawkNttTables} */
+    const cached = nttCache[key];
+    if (cached) return cached;
 
     const n = Math.pow(2, logn);
     let psi = 0;
@@ -577,7 +817,9 @@
       if (PowMod(psi, n, p) === p - 1) break;
     }
     const omega = MulMod(psi, psi, p);
+    /** @type {int32[]} */
     const psiPow = new Array(n);
+    /** @type {int32[]} */
     const psiInvPow = new Array(n);
     const psiInv = InvMod(psi, p);
     psiPow[0] = 1;
@@ -586,6 +828,7 @@
       psiPow[i] = MulMod(psiPow[i - 1], psi, p);
       psiInvPow[i] = MulMod(psiInvPow[i - 1], psiInv, p);
     }
+    /** @type {int32[]} */
     const rev = new Array(n);
     for (let i = 0; i < n; ++i) {
       let r = 0;
@@ -596,22 +839,27 @@
       }
       rev[i] = r;
     }
-    const tables = {
-      n: n, p: p, psiPow: psiPow, psiInvPow: psiInvPow, rev: rev,
-      omega: omega, omegaInv: InvMod(omega, p), nInv: InvMod(n, p)
-    };
+    const tables = new HawkNttTables(n, p, psiPow, psiInvPow, rev, omega, InvMod(omega, p), InvMod(n, p));
     nttCache[key] = tables;
     return tables;
   }
 
+  /**
+   * @param {int32[]} a - a
+   * @param {HawkNttTables} T - T
+   * @param {int32} root - root
+   * @returns {int32[]} Result
+   */
   function CyclicTransform(a, T, root) {
     const n = T.n;
     const p = T.p;
+    /** @type {int32[]} */
     const x = new Array(n);
     for (let i = 0; i < n; ++i) x[T.rev[i]] = a[i];
     for (let len = 2; len <= n; len *= 2) {
       const w = PowMod(root, n / len, p);
       const half = len / 2;
+      /** @type {int32[]} */
       const tw = new Array(half);
       tw[0] = 1;
       for (let k = 1; k < half; ++k) tw[k] = MulMod(tw[k - 1], w, p);
@@ -629,7 +877,10 @@
   /**
    * Values of a polynomial modulo (X^n+1, p) at psi^(2j+1), j = 0..n-1.
    * Entries j and n-1-j are at conjugate (inverse) roots.
-   * @param {number[]} a - integer coefficients (any sign)
+   * @param {int32[]} a - integer coefficients (any sign)
+   * @param {int32} logn - logn
+   * @param {int32} p - p
+   * @returns {int32[]} Result
    */
   function Ntt(a, logn, p) {
     const T = NttTables(logn, p);
@@ -640,6 +891,10 @@
 
   /**
    * Inverse of Ntt, with coefficients returned in [0, p).
+   * @param {int32[]} A - A
+   * @param {int32} logn - logn
+   * @param {int32} p - p
+   * @returns {int32[]} Result
    */
   function InverseNtt(A, logn, p) {
     const T = NttTables(logn, p);
@@ -655,16 +910,28 @@
   // degrees, from limbs small enough that the convolutions of limbs stay exact
   // in double precision.
 
+  /**
+   * @param {BigInt} v - v
+   * @returns {BigInt} Result
+   */
   function BigAbs(v) {
     return v < 0n ? -v : v;
   }
 
+  /**
+   * @param {BigInt} v - v
+   * @returns {int32} Result
+   */
   function BitLength(v) {
     if (v < 0n) v = -v;
     if (v === 0n) return 0;
     return v.toString(2).length;
   }
 
+  /**
+   * @param {BigInt[]} a - a
+   * @returns {int32} Result
+   */
   function MaxBits(a) {
     let m = 0n;
     for (let i = 0; i < a.length; ++i) {
@@ -674,6 +941,12 @@
     return BitLength(m);
   }
 
+  /**
+   * @param {Float64Array} A - A
+   * @param {Float64Array} B - B
+   * @param {int32} m - m
+   * @returns {Float64Array} Result
+   */
   function ConvNeg(A, B, m) {
     const R = new Float64Array(m);
     for (let i = 0; i < m; ++i) {
@@ -686,9 +959,16 @@
     return R;
   }
 
+  /**
+   * @param {BigInt[]} a - a
+   * @param {int32} limbBits - limbBits
+   * @param {int32} count - count
+   * @returns {Float64Array[]} Result
+   */
   function SplitLimbs(a, limbBits, count) {
     const m = a.length;
     const mask = OpCodes.ShiftLn(1n, limbBits) - 1n;
+    /** @type {Float64Array[]} */
     const limbs = [];
     for (let k = 0; k < count; ++k) limbs.push(new Float64Array(m));
     for (let i = 0; i < m; ++i) {
@@ -711,6 +991,7 @@
    */
   function MulNeg(a, b) {
     const m = a.length;
+    /** @type {BigInt[]} */
     const out = new Array(m);
 
     if (m <= 32) {
@@ -755,14 +1036,23 @@
     return out;
   }
 
-  /** f(-X) */
+  /**
+   * f(-X)
+   * @param {BigInt[]} a - a
+   * @returns {BigInt[]} Result
+   */
   function NegX(a) {
+    /** @type {BigInt[]} */
     const out = new Array(a.length);
     for (let i = 0; i < a.length; ++i) out[i] = (i % 2 === 1) ? -a[i] : a[i];
     return out;
   }
 
-  /** f(X^2), of twice the degree */
+  /**
+   * f(X^2), of twice the degree
+   * @param {BigInt[]} a - a
+   * @returns {BigInt[]} Result
+   */
   function Expand2(a) {
     const out = new Array(2 * a.length);
     for (let i = 0; i < a.length; ++i) {
@@ -772,10 +1062,16 @@
     return out;
   }
 
-  /** The field norm N(f) = f(X)*f(-X), expressed in Y = X^2. */
+  /**
+   * The field norm N(f) = f(X)*f(-X), expressed in Y = X^2.
+   * @param {BigInt[]} f - f
+   * @returns {BigInt[]} Result
+   */
   function FieldNorm(f) {
     const hn = f.length / 2;
+    /** @type {BigInt[]} */
     const fe = new Array(hn);
+    /** @type {BigInt[]} */
     const fo = new Array(hn);
     for (let i = 0; i < hn; ++i) {
       fe[i] = f[2 * i];
@@ -783,6 +1079,7 @@
     }
     const e2 = MulNeg(fe, fe);
     const o2 = MulNeg(fo, fo);
+    /** @type {BigInt[]} */
     const out = new Array(hn);
     // Y*o2 modulo Y^hn+1 moves every coefficient up one and wraps the top.
     out[0] = e2[0] + o2[hn - 1];
@@ -790,6 +1087,11 @@
     return out;
   }
 
+  /**
+   * @param {BigInt[]} a - a
+   * @param {int32} bits - bits
+   * @returns {boolean} Result
+   */
   function FitsSigned(a, bits) {
     const lim = OpCodes.ShiftLn(1n, bits - 1);
     for (let i = 0; i < a.length; ++i)
@@ -797,6 +1099,11 @@
     return true;
   }
 
+  /**
+   * @param {BigInt[]} a - a
+   * @param {BigInt} modulus - modulus
+   * @returns {boolean} Result
+   */
   function WithinCentered(a, modulus) {
     const lim = (modulus - 1n) / 2n;
     for (let i = 0; i < a.length; ++i)
@@ -804,6 +1111,11 @@
     return true;
   }
 
+  /**
+   * @param {BigInt} a - a
+   * @param {BigInt} m - m
+   * @returns {BigInt|null} Result
+   */
   function ModInverseBig(a, m) {
     let r0 = m, r1 = a % m;
     let t0 = 0n, t1 = 1n;
@@ -827,13 +1139,49 @@
 
   const TWO32 = 4294967296n;
 
+  /**
+   * @param {BigInt} a - a
+   * @param {BigInt} b - b
+   * @returns {BigInt} Result
+   */
   function FxAdd(a, b) { return BigInt.asIntN(64, a + b); }
+  /**
+   * @param {BigInt} a - a
+   * @param {BigInt} b - b
+   * @returns {BigInt} Result
+   */
   function FxSub(a, b) { return BigInt.asIntN(64, a - b); }
+  /**
+   * @param {BigInt} a - a
+   * @returns {BigInt} Result
+   */
   function FxNeg(a) { return BigInt.asIntN(64, -a); }
+  /**
+   * @param {BigInt} a - a
+   * @param {BigInt} b - b
+   * @returns {BigInt} Result
+   */
   function FxMul(a, b) { return BigInt.asIntN(64, OpCodes.ShiftRn(a * b, 32)); }
+  /**
+   * @param {BigInt} a - a
+   * @returns {BigInt} Result
+   */
   function FxHalf(a) { return OpCodes.ShiftRn(BigInt.asIntN(64, a + 1n), 1); }
+  /**
+   * @param {BigInt} a - a
+   * @param {int32} e - e
+   * @returns {BigInt} Result
+   */
   function FxMul2e(a, e) { return BigInt.asIntN(64, OpCodes.ShiftLn(a, e)); }
+  /**
+   * @param {int32} j - j
+   * @returns {BigInt} Result
+   */
   function FxOf(j) { return BigInt.asIntN(64, BigInt(j) * TWO32); }
+  /**
+   * @param {BigInt} a - a
+   * @returns {int32} Result
+   */
   function FxRound(a) { return Number(OpCodes.ShiftRn(BigInt.asIntN(64, a + 2147483648n), 32)); }
 
   const U64 = 18446744073709551616n;
@@ -842,16 +1190,23 @@
    * The reference's 64-bit fixed-point division: |x|*2^32/|y| bit by bit,
    * rounded, with the sign of x*y. Where the quotient cannot fit the long
    * division misbehaves in a specific way, which is reproduced literally.
+   * @param {BigInt} x - x
+   * @param {BigInt} y - y
+   * @returns {BigInt} Result
    */
   function FxDiv(x, y) {
+    /** @type {BigInt} */
     let ux = BigInt.asUintN(64, x);
+    /** @type {BigInt} */
     let uy = BigInt.asUintN(64, y);
     const sx = ux >= 9223372036854775808n;
     const sy = uy >= 9223372036854775808n;
     if (sx) ux = BigInt.asUintN(64, U64 - ux);
     if (sy) uy = BigInt.asUintN(64, U64 - uy);
 
-    let q;
+    /** @type {BigInt} */
+    let q = 0n;
+    /** @type {BigInt} */
     let num = OpCodes.ShiftRn(ux, 31);
     if (uy !== 0n && num < 2n * uy) {
       const scaled = ux * TWO32;
@@ -883,8 +1238,14 @@
   // precision: no scaled value lies within 4*10^-5 of a half, a hundred times
   // the error of the double computation, and both tables built this way equal
   // the reference's GM_TAB and FX32_GM entry for entry.
+  /**
+   * @param {int32} scale - scale
+   * @returns {HawkRoots} Result
+   */
   function RootTable(scale) {
+    /** @type {int32[]} */
     const re = new Array(1024);
+    /** @type {int32[]} */
     const im = new Array(1024);
     re[0] = scale; im[0] = 0;
     for (let k = 1; k < 1024; ++k) {
@@ -900,26 +1261,70 @@
       re[k] = Math.round(scale * Math.cos(angle));
       im[k] = Math.round(scale * Math.sin(angle));
     }
-    return { re: re, im: im };
+    return new HawkRoots(re, im);
   }
 
-  const GM64 = (function () {
+  /** Roots of unity scaled to integers. */
+  class HawkRoots {
+    /**
+     * @param {int32[]} re - real parts
+     * @param {int32[]} im - imaginary parts
+     */
+    constructor(re, im) {
+      /** @type {int32[]} */
+      this.re = re;
+      /** @type {int32[]} */
+      this.im = im;
+    }
+  }
+
+  /** Roots of unity scaled to BigInt fixed point. */
+  class HawkRoots64 {
+    /**
+     * @param {BigInt[]} re - real parts
+     * @param {BigInt[]} im - imaginary parts
+     */
+    constructor(re, im) {
+      /** @type {BigInt[]} */
+      this.re = re;
+      /** @type {BigInt[]} */
+      this.im = im;
+    }
+  }
+
+  /**
+   * @returns {HawkRoots64} the key generation's 32.32 roots
+   */
+  function BuildGM64() {
     const t = RootTable(4294967296);
-    return { re: t.re.map(BigInt), im: t.im.map(BigInt) };
-  })();
+    return new HawkRoots64(t.re.map(BigInt), t.im.map(BigInt));
+  }
+
+  const GM64 = BuildGM64();
 
   const GM32 = RootTable(2147483648);
 
+  /**
+   * @param {BigInt} are - are
+   * @param {BigInt} aim - aim
+   * @param {BigInt} bre - bre
+   * @param {BigInt} bim - bim
+   * @returns {BigInt[]} Result
+   */
   function FxcMul(are, aim, bre, bim) {
     const z0 = FxMul(are, bre);
     const z1 = FxMul(aim, bim);
     const z2 = FxMul(FxAdd(are, aim), FxAdd(bre, bim));
-    return [FxSub(z0, z1), FxSub(z2, FxAdd(z0, z1))];
+    /** @type {BigInt[]} */
+    const product = [FxSub(z0, z1), FxSub(z2, FxAdd(z0, z1))];
+    return product;
   }
 
   /**
    * FFT of a real polynomial of degree n in fixed point; the result holds the
    * n/2 complex values, real parts first.
+   * @param {int32} logn - logn
+   * @param {BigInt[]} f - f
    */
   function VectFFT(logn, f) {
     const hn = Math.pow(2, logn - 1);
@@ -947,6 +1352,10 @@
     }
   }
 
+  /**
+   * @param {int32} logn - logn
+   * @param {BigInt[]} f - f
+   */
   function VectIFFT(logn, f) {
     const hn = Math.pow(2, logn - 1);
     let ht = 1;
@@ -981,6 +1390,12 @@
   // complement. Two functions read those words: the bit length used for
   // scaling, and the extraction of three words into a fixed-point value.
 
+  /**
+   * @param {BigInt} value - value
+   * @param {int32} len - len
+   * @param {int32} index - index
+   * @returns {int32} Result
+   */
   function Word31(value, len, index) {
     if (index < 0) return 0;
     if (index >= len) return value < 0n ? 0x7FFFFFFF : 0;
@@ -991,6 +1406,8 @@
   /**
    * The largest bit length of a coefficient, with negative values measured
    * as their one's complement (poly_max_bitlength).
+   * @param {BigInt[]} a - a
+   * @returns {int32} Result
    */
   function MaxBitlength(a) {
     let best = 0;
@@ -1005,6 +1422,10 @@
   /**
    * poly_big_to_fixed for one coefficient: the value over 2^sc in 32.32,
    * assembled from the three 31-bit words around bit sc.
+   * @param {BigInt} value - value
+   * @param {int32} len - len
+   * @param {int32} sc - sc
+   * @returns {BigInt} Result
    */
   function BigToFixed(value, len, sc) {
     if (len <= 0) return 0n;
@@ -1017,9 +1438,9 @@
     const w0 = Word31(value, len, sch - 1);
     const w1 = Word31(value, len, sch);
     let w2 = Word31(value, len, sch + 1);
-    w2 = OR(w2, SHL(AND(w2, 0x40000000), 1));
-    const xl = OR(SHR(w0, scl - 1), SHL(w1, 32 - scl));
-    const xh = OR(SHR(w1, scl), SHL(w2, 31 - scl));
+    w2 = OpCodes.Or32(w2, OpCodes.Shl32(OpCodes.And32(w2, 0x40000000), 1));
+    const xl = OpCodes.Or32(OpCodes.Shr32(w0, scl - 1), OpCodes.Shl32(w1, 32 - scl));
+    const xh = OpCodes.Or32(OpCodes.Shr32(w1, scl), OpCodes.Shl32(w2, 31 - scl));
     return BigInt.asIntN(64, BigInt(xh) * TWO32 + BigInt(xl));
   }
 
@@ -1030,11 +1451,19 @@
   /**
    * Depth 1 subtracts through two primes and keeps the centred residue, so a
    * coefficient must lie within half the product of the primes in use.
+   * @param {int32} len - len
+   * @returns {BigInt} Result
    */
   function Depth1Modulus(len) {
     return len === 1 ? BigInt(P1) : BigInt(P1) * BigInt(P2);
   }
 
+  /**
+   * @param {BigInt[]} F - F
+   * @param {int32} depth - depth
+   * @param {int32} len - len
+   * @returns {boolean} Result
+   */
   function FitsAtDepth(F, depth, len) {
     if (!FitsSigned(F, 31 * len)) return false;
     if (depth === 1 && !WithinCentered(F, Depth1Modulus(len))) return false;
@@ -1044,6 +1473,13 @@
   /**
    * One intermediate level: lift (F, G) from the level below and reduce them
    * against (f, g) with the reference's fixed-point Babai rounding.
+   * @param {HawkParams} P - P
+   * @param {int32} depth - depth
+   * @param {BigInt[]} f - f
+   * @param {BigInt[]} g - g
+   * @param {BigInt[]} Fd - Fd
+   * @param {BigInt[]} Gd - Gd
+   * @returns {BigInt[][]|null} Result
    */
   function SolveIntermediate(P, depth, f, g, Fd, Gd) {
     const prof = P.profile;
@@ -1074,6 +1510,7 @@
     const rt4 = gtb.map(function (v) { return BigToFixed(v, rlen, scdiff); });
     VectFFT(logn, rt3);
     VectFFT(logn, rt4);
+    /** @type {BigInt[]} */
     const rt1 = new Array(hn);
     for (let u = 0; u < hn; ++u)
       rt1[u] = FxAdd(FxAdd(FxMul(rt3[u], rt3[u]), FxMul(rt3[u + hn], rt3[u + hn])),
@@ -1129,6 +1566,12 @@
 
   /**
    * The top level, which the reference computes modulo p1 alone.
+   * @param {HawkParams} P - P
+   * @param {int32[]} f - f
+   * @param {int32[]} g - g
+   * @param {BigInt[]} Fd - Fd
+   * @param {BigInt[]} Gd - Gd
+   * @returns {int32[][]|null} Result
    */
   function SolveDepth0(P, f, g, Fd, Gd) {
     const logn = P.logn;
@@ -1138,13 +1581,17 @@
 
     const Fdn = Fd.map(Number);
     const Gdn = Gd.map(Number);
+    /** @type {int32[]} */
     const fx2 = new Array(n);
+    /** @type {int32[]} */
     const gx2 = new Array(n);
     for (let i = 0; i < n; ++i) {
       fx2[i] = (i % 2 === 1) ? -f[i] : f[i];
       gx2[i] = (i % 2 === 1) ? -g[i] : g[i];
     }
+    /** @type {int32[]} */
     const Fe = new Array(n).fill(0);
+    /** @type {int32[]} */
     const Ge = new Array(n).fill(0);
     for (let i = 0; i < hn; ++i) {
       Fe[2 * i] = Fdn[i];
@@ -1162,7 +1609,9 @@
       Gp[u] = MulMod(Gp[u], nfm[u], p);
     }
 
+    /** @type {int32[]} */
     const t1 = new Array(n);
+    /** @type {int32[]} */
     const t2 = new Array(n);
     for (let u = 0; u < n; ++u) {
       const af = nf[n - 1 - u];
@@ -1198,6 +1647,12 @@
     return [F, G];
   }
 
+  /**
+   * @param {int32[]} poly - poly
+   * @param {int32} logn - logn
+   * @param {int32} p - p
+   * @returns {boolean} Result
+   */
   function IsInvertibleMod(poly, logn, p) {
     const t = Ntt(poly, logn, p);
     for (let u = 0; u < t.length; ++u)
@@ -1207,7 +1662,10 @@
 
   /**
    * Solve f*G - g*F = 1 for small (F, G), or report failure.
-   * @returns {Array|null} [F, G] as small integer arrays
+   * @param {HawkParams} P - P
+   * @param {int32[]} f - f
+   * @param {int32[]} g - g
+   * @returns {int32[][]|null} [F, G] as small integer arrays
    */
   function SolveNTRU(P, f, g) {
     const prof = P.profile;
@@ -1256,7 +1714,11 @@
 
   // ===== key generation =====
 
-  const POPCOUNT8 = (function () {
+  /**
+   * @returns {int32[]} the number of set bits of every octet
+   */
+  function BuildPopcount8() {
+    /** @type {int32[]} */
     const t = new Array(256);
     for (let i = 0; i < 256; ++i) {
       let c = 0;
@@ -1268,28 +1730,149 @@
       t[i] = c;
     }
     return t;
-  })();
+  }
+
+  const POPCOUNT8 = BuildPopcount8();
+
+  // ===== result records =====
+
+  class HawkFG {
+    /**
+     * @param {int32[]} f - the secret f
+     * @param {int32[]} g - the secret g
+     */
+    constructor(f, g) {
+      /** @type {int32[]} */
+      this.f = f;
+      /** @type {int32[]} */
+      this.g = g;
+    }
+  }
+
+  class HawkKeyAttempt {
+    /**
+     * @param {int32[]} f - f
+     * @param {int32[]} g - g
+     * @param {int32[]} F - F
+     * @param {int32[]} G - G
+     * @param {int32[]} q00 - q00
+     * @param {int32[]} q01 - q01
+     */
+    constructor(f, g, F, G, q00, q01) {
+      /** @type {int32[]} */
+      this.f = f;
+      /** @type {int32[]} */
+      this.g = g;
+      /** @type {int32[]} */
+      this.F = F;
+      /** @type {int32[]} */
+      this.G = G;
+      /** @type {int32[]} */
+      this.q00 = q00;
+      /** @type {int32[]} */
+      this.q01 = q01;
+    }
+  }
+
+  class HawkEncoded {
+    /**
+     * @param {int32} length - octets written
+     * @param {int32} ignored - unused bits of the last one
+     */
+    constructor(length, ignored) {
+      /** @type {int32} */
+      this.length = length;
+      /** @type {int32} */
+      this.ignored = ignored;
+    }
+  }
+
+  class HawkDecoded {
+    /**
+     * @param {int32[]} values - the values
+     * @param {int32} length - octets read
+     * @param {int32} ignored - unused bits of the last one
+     */
+    constructor(values, length, ignored) {
+      /** @type {int32[]} */
+      this.values = values;
+      /** @type {int32} */
+      this.length = length;
+      /** @type {int32} */
+      this.ignored = ignored;
+    }
+  }
+
+  class HawkDecodedQ00 {
+    /**
+     * @param {int32[]} values - q00
+     * @param {int32} length - octets read
+     */
+    constructor(values, length) {
+      /** @type {int32[]} */
+      this.values = values;
+      /** @type {int32} */
+      this.length = length;
+    }
+  }
+
+  class HawkKeyPair {
+    /**
+     * @param {Uint8Array} sk - encoded secret key
+     * @param {Uint8Array} pk - encoded public key
+     */
+    constructor(sk, pk) {
+      /** @type {Uint8Array} */
+      this.sk = sk;
+      /** @type {Uint8Array} */
+      this.pk = pk;
+    }
+  }
+
+  class HawkSample {
+    /**
+     * @param {int32[]} x - the sampled vector
+     * @param {int32} norm - its squared norm
+     */
+    constructor(x, norm) {
+      /** @type {int32[]} */
+      this.x = x;
+      /** @type {int32} */
+      this.norm = norm;
+    }
+  }
+
+  // Stream bits per coefficient of (f, g), by logn.
+  const FG_BITS = { 8: 4, 9: 8, 10: 16 };
 
   /**
    * Hawk_regen_fg: four SHAKE256 streams over the seed; each coefficient is a
    * centred binomial sample, the popcount of 4, 8 or 16 stream bits.
+   * @param {HawkParams} P - P
+   * @param {Uint8Array} seed - seed
+   * @returns {HawkFG} Result
    */
   function RegenFG(P, seed) {
     const n = P.n;
+    /** @type {int32[]} */
     const f = new Array(n);
+    /** @type {int32[]} */
     const g = new Array(n);
-    const bits = { 8: 4, 9: 8, 10: 16 }[P.logn];
+    /** @type {int32} */
+    const bits = FG_BITS[P.logn];
     const perChunk = 64 / bits;
     const step = 4 * perChunk;
     for (let j = 0; j < 4; ++j) {
-      const sc = new Shake256().Inject(seed).Inject([j]).Flip();
+      /** @type {uint8[]} */
+      const index = [j];
+      const sc = new Shake256().Inject(seed).Inject(index).Flip();
       for (let u = 0; u < 2 * n; u += step) {
         const q = sc.Extract(8);
         for (let i = 0; i < perChunk; ++i) {
           let c;
           if (bits === 4) {
             const byte = q[Math.floor(i / 2)];
-            c = POPCOUNT8[(i % 2 === 0) ? AND(byte, 15) : SHR(byte, 4)] - 2;
+            c = POPCOUNT8[(i % 2 === 0) ? OpCodes.And32(byte, 15) : OpCodes.Shr32(byte, 4)] - 2;
           } else if (bits === 8) {
             c = POPCOUNT8[q[i]] - 4;
           } else {
@@ -1301,10 +1884,17 @@
         }
       }
     }
-    return { f: f, g: g };
+    return new HawkFG(f, g);
   }
 
-  /** f*adj(f) + g*adj(g) (or any such pairing) as exact small integers. */
+  /**
+   * f*adj(f) + g*adj(g) (or any such pairing) as exact small integers.
+   * @param {int32[]} a - a
+   * @param {int32[]} b - b
+   * @param {int32[]} c - c
+   * @param {int32[]} d - d
+   * @returns {int32[]} Result
+   */
   function PairProduct(a, b, c, d) {
     const n = a.length;
     const out = new Array(n).fill(0);
@@ -1328,6 +1918,9 @@
   /**
    * One key-generation attempt from a seed, screened as Hawk_keygen screens
    * it. Returns null when the reference would draw another seed.
+   * @param {HawkParams} P - P
+   * @param {Uint8Array} seed - seed
+   * @returns {HawkKeyAttempt|null} Result
    */
   function KeygenAttempt(P, seed) {
     const n = P.n;
@@ -1378,7 +1971,7 @@
       if (q01[u] <= -lim01 || q01[u] >= lim01) return null;
     }
 
-    return { f: f, g: g, F: F, G: G, q00: q00, q01: q01 };
+    return new HawkKeyAttempt(f, g, F, G, q00, q01);
   }
 
   // ===== encodings =====
@@ -1388,6 +1981,12 @@
    * bits of each magnitude, then the high parts in unary. Returns the number
    * of octets written and the unused bits of the last one, or null when the
    * room runs out.
+   * @param {int32[]} values - values
+   * @param {int32} low - low
+   * @param {Uint8Array} dst - dst
+   * @param {int32} off - off
+   * @param {int32} room - room
+   * @returns {HawkEncoded|null} Result
    */
   function EncodeGR(values, low, dst, off, room) {
     const n = values.length;
@@ -1397,7 +1996,7 @@
     for (let u = 0; u < n; u += 8) {
       let x = 0;
       for (let v = 0; v < 8; ++v)
-        if (values[u + v] < 0) x = OR(x, SHL(1, v));
+        if (values[u + v] < 0) x = OpCodes.Or32(x, OpCodes.Shl32(1, v));
       dst[pos++] = x;
     }
 
@@ -1407,7 +2006,7 @@
       let accLen = 0;
       for (let v = 0; v < 8; ++v) {
         const w = values[u + v] < 0 ? -values[u + v] - 1 : values[u + v];
-        acc += AND(w, mask) * Math.pow(2, accLen);
+        acc += OpCodes.And32(w, mask) * Math.pow(2, accLen);
         accLen += low;
         while (accLen >= 8) {
           dst[pos++] = acc % 256;
@@ -1438,9 +2037,13 @@
       dst[pos++] = acc % 256;
       --left;
     }
-    return { length: pos - off, ignored: (8 - accLen) % 8 };
+    return new HawkEncoded(pos - off, (8 - accLen) % 8);
   }
 
+  /**
+   * @param {int32} x - x
+   * @returns {int32} Result
+   */
   function TrailingZeros8(x) {
     if (x === 0) return 8;
     let k = 0;
@@ -1453,11 +2056,18 @@
 
   /**
    * decode_gr: the inverse of EncodeGR with the reference's bounds checks.
-   * @returns {object|null} { values, length, ignored }
+   * @param {int32} n - n
+   * @param {int32} low - low
+   * @param {int32} limBits - limBits
+   * @param {Uint8Array} buf - buf
+   * @param {int32} off - off
+   * @param {int32} bufLen - bufLen
+   * @returns {HawkDecoded|null} { values, length, ignored }
    */
   function DecodeGR(n, low, limBits, buf, off, bufLen) {
     if (bufLen < (low + 1) * (n / 8)) return null;
     let voff = (low + 1) * (n / 8);
+    /** @type {int32[]} */
     const d = new Array(n);
 
     let acc = 0;
@@ -1467,16 +2077,16 @@
       while (acc === 0) {
         if (accOff >= limHi) return null;
         if (voff >= bufLen) return null;
-        acc = OR(acc, SHL(buf[off + voff++], accOff));
+        acc = OpCodes.Or32(acc, OpCodes.Shl32(buf[off + voff++], accOff));
         accOff += 8;
       }
-      let k = TrailingZeros8(AND(acc, 0xFF));
+      let k = TrailingZeros8(OpCodes.And32(acc, 0xFF));
       if (k === 8) {
-        k += TrailingZeros8(AND(SHR(acc, 8), 0xFF));
+        k += TrailingZeros8(OpCodes.And32(OpCodes.Shr32(acc, 8), 0xFF));
         if (k >= limHi) return null;
       }
       d[u] = k * Math.pow(2, low);
-      acc = SHR(acc, k + 1);
+      acc = OpCodes.Shr32(acc, k + 1);
       accOff -= k + 1;
     }
     const ignored = accOff;
@@ -1497,16 +2107,19 @@
         bitsAcc = Math.floor(bitsAcc / (mask + 1));
         bitsLen -= low;
         const v = d[u + i] + lp;
-        d[u + i] = (AND(SHR(sbb, i), 1) === 1) ? -v - 1 : v;
+        d[u + i] = (OpCodes.And32(OpCodes.Shr32(sbb, i), 1) === 1) ? -v - 1 : v;
       }
       loff += low;
     }
 
-    return { values: d, length: voff, ignored: ignored };
+    return new HawkDecoded(d, voff, ignored);
   }
 
   /**
    * encode_public: q00 (half, with its constant term split), q01, zero pad.
+   * @param {HawkParams} P - P
+   * @param {int32[]} q00 - q00
+   * @param {int32[]} q01 - q01
    * @returns {Uint8Array|null}
    */
   function EncodePublic(P, q00, q01) {
@@ -1524,11 +2137,11 @@
     const ni = r00.ignored;
     const eb00 = q0 - half[0] * Math.pow(2, eb);
     if (eb <= ni) {
-      buf[len00 - 1] = OR(buf[len00 - 1], AND(SHL(eb00, 8 - ni), 0xFF));
+      buf[len00 - 1] = OpCodes.Or32(buf[len00 - 1], OpCodes.And32(OpCodes.Shl32(eb00, 8 - ni), 0xFF));
     } else {
       if (len00 >= P.pkSize) return null;
-      buf[len00 - 1] = OR(buf[len00 - 1], AND(SHL(eb00, 8 - ni), 0xFF));
-      buf[len00] = SHR(eb00, ni);
+      buf[len00 - 1] = OpCodes.Or32(buf[len00 - 1], OpCodes.And32(OpCodes.Shl32(eb00, 8 - ni), 0xFF));
+      buf[len00] = OpCodes.Shr32(eb00, ni);
       ++len00;
     }
 
@@ -1537,14 +2150,26 @@
     return buf;
   }
 
-  /** extract_lowbit: coefficients modulo 2, packed LSB first. */
+  /**
+   * extract_lowbit: coefficients modulo 2, packed LSB first.
+   * @param {int32[]} a - a
+   * @returns {Uint8Array} Result
+   */
   function LowBits(a) {
     const out = new Uint8Array(a.length / 8);
     for (let u = 0; u < a.length; ++u)
-      if (Math.abs(a[u] % 2) === 1) out[Math.floor(u / 8)] = OR(out[Math.floor(u / 8)], SHL(1, u % 8));
+      if (Math.abs(a[u] % 2) === 1) out[Math.floor(u / 8)] = OpCodes.Or32(out[Math.floor(u / 8)], OpCodes.Shl32(1, u % 8));
     return out;
   }
 
+  /**
+   * @param {HawkParams} P - P
+   * @param {Uint8Array} seed - seed
+   * @param {int32[]} F - F
+   * @param {int32[]} G - G
+   * @param {Uint8Array} pub - pub
+   * @returns {Uint8Array} Result
+   */
   function EncodePrivate(P, seed, F, G, pub) {
     const sk = new Uint8Array(P.skSize);
     sk.set(seed, 0);
@@ -1557,6 +2182,9 @@
   /**
    * hawk_keygen driven by a random source: draw seeds until one survives the
    * screening, the solver and the public-key encoding.
+   * @param {HawkParams} P - P
+   * @param {function} rng - rng
+   * @returns {HawkKeyPair} Result
    */
   function Keygen(P, rng) {
     for (let attempts = 0; attempts < 100000; ++attempts) {
@@ -1565,7 +2193,7 @@
       if (!key) continue;
       const pub = EncodePublic(P, key.q00, key.q01);
       if (!pub) continue;
-      return { sk: EncodePrivate(P, seed, key.F, key.G, pub), pk: pub };
+      return new HawkKeyPair(EncodePrivate(P, seed, key.F, key.G, pub), pub);
     }
     throw new Error(P.name + ': key generation did not converge');
   }
@@ -1573,6 +2201,9 @@
   /**
    * Rebuild the public key belonging to a secret key, from its seed, and check
    * that it is the one the secret key was made with.
+   * @param {HawkParams} P - P
+   * @param {Uint8Array} sk - sk
+   * @returns {Uint8Array} Result
    */
   function PublicKeyFromSecret(P, sk) {
     const seed = sk.slice(0, P.seedLen);
@@ -1589,28 +2220,38 @@
 
   // ===== signing =====
 
-  /** The four-instance SHAKE256 Gaussian sampler (sig_gauss). */
+  /**
+   * The four-instance SHAKE256 Gaussian sampler (sig_gauss).
+   * @param {HawkParams} P - P
+   * @param {function} rng - rng
+   * @param {Shake256} base - base
+   * @param {int32[]} t - t
+   * @returns {HawkSample} Result
+   */
   function SampleGauss(P, rng, base, t) {
     const n = P.n;
     const hi = P.gaussHi;
     const lo = P.gaussLo;
     const hiLen = hi.length;
     const loLen = lo.length;
+    /** @type {int32[]} */
     const x = new Array(2 * n);
     const seed = rng(40);
     let sn = 0;
 
     for (let j = 0; j < 4; ++j) {
-      const sc = base.Clone().Inject(seed).Inject([j]).Flip();
+      /** @type {uint8[]} */
+      const index = [j];
+      const sc = base.Clone().Inject(seed).Inject(index).Flip();
       for (let u = 0; u < 2 * n; u += 16) {
         const buf = sc.Extract(40);
         for (let k = 0; k < 4; ++k) {
           const v = u + 4 * j + k;
           const loL = OpCodes.Pack32LE(buf[8 * k], buf[8 * k + 1], buf[8 * k + 2], buf[8 * k + 3]);
           let loH = OpCodes.Pack32LE(buf[8 * k + 4], buf[8 * k + 5], buf[8 * k + 6], buf[8 * k + 7]);
-          const neg = SHR(loH, 31) === 1;
-          loH = AND(loH, 0x7FFFFFFF);
-          const h = AND(buf[32 + 2 * k] + 256 * buf[33 + 2 * k], 0x7FFF);
+          const neg = OpCodes.Shr32(loH, 31) === 1;
+          loH = OpCodes.And32(loH, 0x7FFFFFFF);
+          const h = OpCodes.And32(buf[32 + 2 * k] + 256 * buf[33 + 2 * k], 0x7FFF);
           const odd = t[v];
 
           let r = 0;
@@ -1632,10 +2273,15 @@
         }
       }
     }
-    return { x: x, norm: sn };
+    return new HawkSample(x, sn);
   }
 
-  /** Product modulo 2 and X^n+1 (which is cyclic), bits as 0/1 arrays. */
+  /**
+   * Product modulo 2 and X^n+1 (which is cyclic), bits as 0/1 arrays.
+   * @param {int32[]} out - out
+   * @param {int32[]} a - a
+   * @param {int32[]} b - b
+   */
   function BinMulAdd(out, a, b) {
     const n = a.length;
     for (let i = 0; i < n; ++i) {
@@ -1648,12 +2294,25 @@
     }
   }
 
+  /**
+   * @param {Uint8Array} bytes - bytes
+   * @param {int32} off - off
+   * @param {int32} n - n
+   * @returns {int32[]} Result
+   */
   function UnpackBits(bytes, off, n) {
+    /** @type {int32[]} */
     const out = new Array(n);
-    for (let u = 0; u < n; ++u) out[u] = AND(SHR(bytes[off + Math.floor(u / 8)], u % 8), 1);
+    for (let u = 0; u < n; ++u) out[u] = OpCodes.And32(OpCodes.Shr32(bytes[off + Math.floor(u / 8)], u % 8), 1);
     return out;
   }
 
+  /**
+   * @param {HawkParams} P - P
+   * @param {Uint8Array} salt - salt
+   * @param {int32[]} s1 - s1
+   * @returns {Uint8Array|null} Result
+   */
   function EncodeSignature(P, salt, s1) {
     const n = P.n;
     const low = P.lowS1;
@@ -1667,7 +2326,7 @@
 
   /**
    * hawk_sign_finish.
-   * @param {object} P - parameter set
+   * @param {HawkParams} P - parameter set
    * @param {Uint8Array} sk - encoded secret key
    * @param {uint8[]} message - message octets
    * @param {function} rng - random source
@@ -1695,7 +2354,9 @@
       const h0 = UnpackBits(h, 0, n);
       const h1 = UnpackBits(h, n / 8, n);
 
+      /** @type {int32[]} */
       const t0 = new Array(n).fill(0);
+      /** @type {int32[]} */
       const t1 = new Array(n).fill(0);
       BinMulAdd(t0, h0, f2);
       BinMulAdd(t0, h1, F2);
@@ -1709,6 +2370,7 @@
 
       // w = f*x1 - g*x0 (x holds twice the sampled vector), reduced as the
       // reference reduces it: modulo 18433, centred.
+      /** @type {int32[]} */
       const w = new Array(n).fill(0);
       for (let i = 0; i < n; ++i) {
         const fi = f[i];
@@ -1731,6 +2393,7 @@
 
       // sym-break: s1 = (h1 - w)/2 when the first non-zero w is positive,
       // (h1 + w)/2 otherwise.
+      /** @type {int32[]} */
       const s1 = new Array(n);
       let ok = true;
       for (let u = 0; u < n; ++u) {
@@ -1749,18 +2412,36 @@
 
   // ===== verification =====
 
+  /**
+   * @param {BigInt} v - v
+   * @returns {int32} Result
+   */
   function Int32(v) {
     return Number(BigInt.asIntN(32, v));
   }
 
+  /**
+   * @param {int32} a - a
+   * @param {int32} sh - sh
+   * @returns {int32} Result
+   */
   function Fx32Of(a, sh) {
-    return OpCodes.ToInt(SHL(a, sh));
+    return OpCodes.ToInt(OpCodes.Shl32(a, sh));
   }
 
+  /**
+   * @param {int32} a - a
+   * @param {int32} sh - sh
+   * @returns {int32} Result
+   */
   function Fx32Rint(a, sh) {
     return OpCodes.Shr32Signed(OpCodes.ToInt(a + Math.pow(2, sh - 1)), sh);
   }
 
+  /**
+   * @param {int32} logn - logn
+   * @param {int32[]} a - a
+   */
   function Fx32FFT(logn, a) {
     const hn = Math.pow(2, logn - 1);
     let t = hn;
@@ -1790,6 +2471,10 @@
     }
   }
 
+  /**
+   * @param {int32} logn - logn
+   * @param {int32[]} a - a
+   */
   function Fx32IFFT(logn, a) {
     const hn = Math.pow(2, logn - 1);
     let ht = 1;
@@ -1821,41 +2506,66 @@
     }
   }
 
+  /**
+   * @param {Uint8Array} buf - buf
+   * @param {int32} off - off
+   * @param {int32} len - len
+   * @returns {boolean} Result
+   */
   function AllZero(buf, off, len) {
     for (let i = 0; i < len; ++i)
       if (buf[off + i] !== 0) return false;
     return true;
   }
 
-  /** decode_q00, as crypto_sign_open reaches it (one octet short of the key). */
+  /**
+   * decode_q00, as crypto_sign_open reaches it (one octet short of the key).
+   * @param {HawkParams} P - P
+   * @param {Uint8Array} pk - pk
+   * @param {int32} bufLen - bufLen
+   * @returns {HawkDecodedQ00|null} Result
+   */
   function DecodeQ00(P, pk, bufLen) {
     const r = DecodeGR(P.n / 2, P.low00, P.bitsLim00, pk, 0, bufLen);
     if (!r) return null;
     const eb = P.eb00Len;
     const ni = r.ignored;
     let len = r.length;
-    let eb00, last;
+    /** @type {uint32} */
+    let eb00 = 0;
+    /** @type {uint32} */
+    let last = 0;
     if (eb <= ni) {
-      last = SHR(pk[len - 1], 8 - ni);
+      last = OpCodes.Shr32(pk[len - 1], 8 - ni);
       eb00 = last;
-      last = SHR(last, eb);
+      last = OpCodes.Shr32(last, eb);
     } else {
       if (len >= bufLen) return null;
-      eb00 = SHR(pk[len - 1], 8 - ni);
+      eb00 = OpCodes.Shr32(pk[len - 1], 8 - ni);
       last = pk[len++];
-      eb00 = OR(eb00, SHL(last, ni));
-      last = SHR(last, eb - ni);
+      eb00 = OpCodes.Or32(eb00, OpCodes.Shl32(last, ni));
+      last = OpCodes.Shr32(last, eb - ni);
     }
     if (last !== 0) return null;
     const q00 = r.values;
     q00[0] = Number(BigInt.asIntN(16, BigInt(q00[0] * Math.pow(2, eb) + eb00)));
-    return { values: q00, length: len };
+    return new HawkDecodedQ00(q00, len);
   }
 
+  /**
+   * @param {HawkParams} P - P
+   * @param {int32} n - n
+   * @param {int32} low - low
+   * @param {int32} limBits - limBits
+   * @param {Uint8Array} buf - buf
+   * @param {int32} off - off
+   * @param {int32} bufLen - bufLen
+   * @returns {int32[]|null} Result
+   */
   function DecodeTail(P, n, low, limBits, buf, off, bufLen) {
     const r = DecodeGR(n, low, limBits, buf, off, bufLen);
     if (!r) return null;
-    if (SHR(buf[off + r.length - 1], 8 - r.ignored) !== 0) return null;
+    if (OpCodes.Shr32(buf[off + r.length - 1], 8 - r.ignored) !== 0) return null;
     if (!AllZero(buf, off + r.length, bufLen - r.length)) return null;
     return r.values;
   }
@@ -1864,10 +2574,18 @@
    * Half the trace of Q applied to t, modulo p, as the reference computes it:
    * with d = t1/q00 and e = t0 + q01*d, sum over one root of each conjugate
    * pair of q00*e*adj(e) + t1*adj(t1)/q00.
+   * @param {HawkParams} P - P
+   * @param {int32[]} q00 - q00
+   * @param {int32[]} q01 - q01
+   * @param {int32[]} t0 - t0
+   * @param {int32[]} t1 - t1
+   * @param {int32} p - p
+   * @returns {int32} Result
    */
   function QNormMod(P, q00, q01, t0, t1, p) {
     const n = P.n;
     const hn = n / 2;
+    /** @type {int32[]} */
     const full = new Array(n).fill(0);
     full[0] = q00[0];
     for (let u = 1; u < hn; ++u) {
@@ -1898,6 +2616,10 @@
 
   /**
    * crypto_sign_open's verification of one signature.
+   * @param {HawkParams} P - P
+   * @param {Uint8Array} pk - pk
+   * @param {uint8[]} message - message
+   * @param {Uint8Array} sig - sig
    * @returns {boolean}
    */
   function Verify(P, pk, message, sig) {
@@ -1920,7 +2642,9 @@
     const shQ01 = 29 - P.bitsLim01;
     const shT1 = 29 - (1 + P.bitsLimS1);
 
+    /** @type {int32[]} */
     const t1 = new Array(n);
+    /** @type {int32[]} */
     const ft1 = new Array(n);
     let seen = 0;
     for (let u = 0; u < n; ++u) {
@@ -1940,6 +2664,7 @@
     const q00 = d00.values;
     if (q00[0] < 0) return false;
 
+    /** @type {int32[]} */
     const fq00 = new Array(n).fill(0);
     for (let u = 1; u < hn; ++u) {
       const z = Fx32Of(q00[u], shQ00);
@@ -1953,7 +2678,7 @@
     const fq01 = q01.map(function (v) { return Fx32Of(v, shQ01); });
     Fx32FFT(logn, fq01);
 
-    const cstup = SHL(q00[0], shQ00 - (logn - 1));
+    const cstup = OpCodes.Shl32(q00[0], shQ00 - (logn - 1));
     for (let u = 0; u < hn; ++u) {
       const qre = BigInt(fq01[u]);
       const qim = BigInt(fq01[u + hn]);
@@ -1976,6 +2701,7 @@
 
     const shS0 = shT1 + shQ01 - shQ00 - (logn - 1);
     const lims0 = Math.pow(2, P.bitsLimS0);
+    /** @type {int32[]} */
     const t0 = new Array(n);
     for (let u = 0; u < n; ++u) {
       const w = OpCodes.ToInt(Fx32Of(h0[u], shS0) + fq01[u]);
@@ -2334,10 +3060,15 @@
     ]
   };
 
-  /** A copy of the octets with one of them inverted. */
+  /**
+   * A copy of the octets with one of them inverted.
+   * @param {uint8[]} bytes - bytes
+   * @param {int32} index - index
+   * @returns {uint8[]} Result
+   */
   function FlipOctet(bytes, index) {
     const out = bytes.slice();
-    out[index] = XOR(out[index], 0xFF);
+    out[index] = OpCodes.Xor32(out[index], 0xFF);
     return out;
   }
 
@@ -2539,10 +3270,16 @@
    * @extends {IAlgorithmInstance}
    */
   class HawkInstance extends IAlgorithmInstance {
+    /**
+     * @param {HawkAlgorithm} algorithm - parent algorithm instance
+     * @param {boolean} [isInverse=false] - verification mode
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {HawkParams|null} */
       this._params = null;
+      /** @type {uint8[]|null} */
       this._keyData = null;
       this._publicKeyData = null;
       this._derivedPublicKey = null;
@@ -2584,7 +3321,7 @@
     }
 
     set parameterSet(name) {
-      const P = PARAMETER_SETS[name];
+      const P = ParameterSetEntry(name);
       if (!P) throw new Error('HAWK: unknown parameter set ' + name);
       if (this._keyData && this._keyData.length !== P.skSize)
         throw new Error('HAWK: the configured key does not belong to ' + name);
