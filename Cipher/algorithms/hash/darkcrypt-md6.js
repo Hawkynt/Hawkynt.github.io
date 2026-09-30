@@ -2,40 +2,23 @@
  * MD6 (DarkCrypt) - AlgorithmFramework Implementation
  * (c)2006-2025 Hawkynt
  *
- * MD6 (Rivest et al., NIST SHA-3 round 1/2 submission) as implemented in the
- * DarkCrypt Total Commander plugin. The implementation's call shape is 1:1
- * with the public MIT reference implementation of MD6 (files md6.h /
- * md6_compress.c / md6_mode.c): it hardcodes a digest-size constant of 512
- * bits before calling md6_init(state, d), then md6_update(state, data,
- * bitlen), then md6_final(state, hashval) -- same argument counts/order as
- * the reference source. The default-rounds computation reproduces the
- * reference's exact "r = 40 + floor(d/4), clamped to >=80 only if keylen>0"
- * arithmetic. Since this implementation never supplies a key (keylen is
- * always 0), the clamp never triggers; for the hardcoded d=512 that yields
- * r=168.
+ * MD6-512 (Rivest et al., NIST SHA-3 round 1 submission, October 2008) as
+ * used by the DarkCrypt Total Commander plugin: the MIT reference MD6 with
+ * d=512, r=168 (40 + d/4, no key), L=64 (fully hierarchical tree mode) and
+ * no key. All constants follow the published reference: the Q table (15
+ * words), the tap positions (17/18/21/31/67/89), the 16-step shift schedule,
+ * the control word (r@48|L@40|z@36|p@20|keylen@12|d@0), the node ID
+ * (ell@56|i) and the big-endian loading of message words.
  *
- * Every constant matches the published MD6 reference byte-for-byte: the Q
- * table (all 15 words), the tap positions (17/18/21/31/67/89), the full
- * 16-step (right-shift, left-shift) schedule, the control-word field
- * widths/order (r@48|L@40|z@36|p@20|keylen@12|d@0), and the node-ID packing
- * (ell@56|i). So is the little-endian byte-reversal applied to leaf message
- * data before compression. Fixed parameters: d=512 bits (ignores the
- * caller's length argument), r=168 (default_r(512, keylen=0)), L=64
- * (md6_default_L; fully hierarchical/tree mode), no key.
- *
- * This implementation differs from the current published MD6 reference in
- * one respect: it predates a fix made to the reference's md6_final() on
- * 4/15/2009, where the two final steps (trim_hashval(st) and the memcpy of
- * the hash value to the caller's output buffer) were in the wrong order, so
- * a caller reading the output-parameter hash value -- rather than
- * st->hashval -- got "the first d bits of the final root chaining value
- * rather than the last d bits". This implementation reproduces that pre-fix
- * behavior: the digest is the FIRST d bits of the 16-word (1024-bit) final
- * chaining value, not the last d bits as the corrected reference (and every
- * MD6 implementation released after April 2009) computes. Everything else
- * about this implementation is standard, unmodified MD6. Validated
- * end-to-end against the DarkCrypt implementation's output for the empty
- * string, "abc", and a 64-byte incrementing pattern.
+ * It is the reference as submitted to round 1, before the fix of 15 April
+ * 2009 to md6_final(), whose last two steps (trim_hashval and the copy to the
+ * caller's buffer) ran in the wrong order, so a caller reading the output
+ * parameter got "the first d bits of the final root chaining value rather
+ * than the last d bits". The digest here is therefore the FIRST 512 bits of
+ * the 1024-bit final chaining value, as in the round 1 known-answer tests
+ * (ShortMsgKAT_512, LongMsgKAT_512), every byte-aligned entry of which it
+ * matches; the corrected reference and later MD6 implementations output the
+ * last 512 bits. Test vectors verified against the DarkCrypt implementation.
  */
 
 (function (root, factory) {
@@ -439,7 +422,7 @@
       super();
 
       this.name = "MD6 (DarkCrypt)";
-      this.description = "Standard MD6-512 hash function as used by the DarkCrypt Total Commander plugin: the unmodified MIT reference MD6 implementation, hardcoded to digest size d=512 bits, r=168 rounds, mode parameter L=64 (fully hierarchical), and no key.";
+      this.description = "MD6-512 as used by the DarkCrypt Total Commander plugin: the MIT reference MD6 as submitted to SHA-3 round 1 (d=512, r=168, L=64, no key), which outputs the first rather than the last 512 bits of the final chaining value, a reference bug fixed in April 2009. Matches the published round 1 known-answer tests.";
       this.inventor = "Ronald L. Rivest, Benjamin Agre, Daniel V. Bailey, Christopher Crutchfield, Yevgeniy Dodis, Kermin Fleming, Asif Khan, Jayant Krishnamurthy, Yuncheng Lin, Leo Reyzin, Emily Shen, Jim Sutherland, Eran Tromer, Yiqun Lisa Yin";
       this.year = 2008;
       this.category = CategoryType.HASH;
@@ -448,13 +431,14 @@
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.US;
 
-      this.SupportedOutputSizes = [new KeySize(64, 64, 1)]; // 512 bits (digest size hardcoded by the DarkCrypt implementation)
+      this.SupportedOutputSizes = [new KeySize(64, 64, 1)]; // 512 bits, the only size DarkCrypt uses
       this.blockSize = 512;             // 64 words * 8 bytes per compression block
       this.outputSize = 64;
 
       this.documentation = [
         new LinkItem("The MD6 Hash Function (NIST SHA-3 submission)", "https://groups.csail.mit.edu/cis/md6/"),
         new LinkItem("MD6 reference source (md6.h / md6_compress.c / md6_mode.c)", "https://groups.csail.mit.edu/cis/md6/docs/md6_report.pdf"),
+        new LinkItem("NIST SHA-3 round 1 MD6 submission package (known-answer tests)", "https://web.archive.org/web/2017/http://csrc.nist.gov/groups/ST/hash/sha-3/Round1/documents/MD6.zip"),
         new LinkItem("DarkCrypt plugin (Total Commander PlugRing)", "https://totalcmd.net/plugring/darkcrypttc.html")
       ];
 
@@ -462,15 +446,27 @@
         new LinkItem("DarkCrypt Total Commander plugin", "https://github.com/Zdimon/DarkCryptTC")
       ];
 
-      // Vectors generated from the DarkCrypt implementation's hashnow(inPtr, outPtr,
-      // lenBytes) export; empty/"abc"/incr64 (bytes 0x00..0x3F) inputs, each producing
-      // a 64-byte (512-bit) digest.
+      // Round 1 known-answer tests from the NIST submission package (the 571-byte
+      // message spans two leaves of the tree) and further test vectors verified
+      // against the DarkCrypt implementation.
       this.tests = [
         new TestCase(
           OpCodes.Hex8ToBytes(""),
           OpCodes.Hex8ToBytes("e3bde7f708d2006335b09d95a0e8648a87f782e7a1ef17d676d84cc91fe006331749fcf14bf2a4c80ae1aeb52ed0799c8fc9420c59344d4731690e18f7a2cef3"),
-          "DarkCrypt MD6 empty string",
-          "https://github.com/Zdimon/DarkCryptTC"
+          "MD6 round 1 ShortMsgKAT_512 - Len = 0",
+          "https://web.archive.org/web/2017/http://csrc.nist.gov/groups/ST/hash/sha-3/Round1/documents/MD6.zip"
+        ),
+        new TestCase(
+          OpCodes.Hex8ToBytes("cc"),
+          OpCodes.Hex8ToBytes("0f953eba85b343063d9d9151fda0d12a527ef8bbf3dbefb8da5e11f0c4d7359e76058ed60c29fa1f8c33e87fdc5dde1250e3fcffd247561cef5b70df3d55fb25"),
+          "MD6 round 1 ShortMsgKAT_512 - Len = 8",
+          "https://web.archive.org/web/2017/http://csrc.nist.gov/groups/ST/hash/sha-3/Round1/documents/MD6.zip"
+        ),
+        new TestCase(
+          OpCodes.Hex8ToBytes("fe06a4706468b369f7624f62d04f9fac020f05152f13e350016b2a29efff9a393940c138553356b0e2848c01b622b95ffa11ab07585f7dcbbf90e9f8ec5fa2fb7b4cee0d0a4e8d33490abd058cf3bb85f0cd9b1bd3e9823082d70b1a92aca6f2c87216b4ba09feddcaa4cf254336146cc75604fb1f286918fa2434ca36be2621049438a400bdeea6c657f0301503cd7e6e38350838f60ea7f001755da4142ce4579b39029da83f1646b7ecb9947ee89aba377099b82026960b9ee600779bf00d6eb0cd09226db6915a7aded27e6749e2cbc2c8b030ce1850ebfbe24c0658f29e9e709cd10db8a77efdefc90fdd7b9ad7a7e0334412a53d248c4c12bf2987b7accd2a8a602f184583aa560c016093b56b100154477b834664e6b85a19f8dc909b4d79816af12266c731e29a304e9bed8ef1c8030365b7deaf3d436957308117c7c5767e0cda6e342ddaf824233cbf4e699dc667357cb35c602ac6bddee71b352af55cb93941a1a6301a9904447af9ee486114d57ae03901f10084adc0096e465e2ead2496273112f2fae626e230d42ec22ea10a8289b3e35eee42150769d6e663a3ca29174316ec93a24f148d984053b8f98664eaca3e0dea0b42e8ee30f81a2cd6e42c189a25fecb6e643e693e1f8871b837c3f5ff2aafd1650a465dc8e5c1993be65cffd87f2c680c86b0ad3118834a5f2e490015137ba945c2775dbd77fb3e5c67819a9a7a94a656fc4761659c5b30ed2ac55a6d249b700bc9c93d590490aaaaa75a9fc34a90d5a9106f2860bde19fe5815436068a7f8ea4636a"),
+          OpCodes.Hex8ToBytes("d7e8e9ce8252ff4dc9ffedc6d8e771c8e2d456bc959fc71003b4d0af9d392c40e9c02f2954756b5c6648af50fca073d37c63ee99c1f6891fda081db2e9574c45"),
+          "MD6 round 1 LongMsgKAT_512 - Len = 4568 (two leaves)",
+          "https://web.archive.org/web/2017/http://csrc.nist.gov/groups/ST/hash/sha-3/Round1/documents/MD6.zip"
         ),
         new TestCase(
           OpCodes.AnsiToBytes("abc"),

@@ -80,35 +80,107 @@
   // addition table looks redundant - addition in characteristic two is the
   // exclusive or - but the inner loops below run tens of millions of times per
   // signature, and a table lookup is what keeps them to array indexing.
-  const GF_MUL = new Uint8Array(256);
-  const GF_ADD = new Uint8Array(256);
+  /**
+   * The addition table, a * 16 + b to a + b.
+   * @returns {Uint8Array} 256 entries
+   */
+  function BuildAddTable() {
+    const table = new Uint8Array(256);
+    for (let a = 0; a < 16; ++a)
+      for (let b = 0; b < 16; ++b)
+        table[a * 16 + b] = OpCodes.Xor32(a, b);
+    return table;
+  }
 
-  (function buildTables() {
+  /**
+   * The multiplication table, a * 16 + b to a * b.
+   * @returns {Uint8Array} 256 entries
+   */
+  function BuildMulTable() {
+    const table = new Uint8Array(256);
     for (let a = 0; a < 16; ++a) {
       for (let b = 0; b < 16; ++b) {
-        GF_ADD[a * 16 + b] = OpCodes.XorN(a, b);
-
         // Carry-less multiply, reducing by x^4 + x + 1 (the nibble 0x13).
+        /** @type {uint32} */
         let x = a;
         let y = b;
+        /** @type {uint32} */
         let product = 0;
         for (let i = 0; i < 4; ++i) {
-          if (y % 2 === 1) product = OpCodes.XorN(product, x);
+          if (y % 2 === 1) product = OpCodes.Xor32(product, x);
           y = Math.floor(y / 2);
           x = x * 2;
-          if (x >= 16) x = OpCodes.XorN(x, 0x13);
+          if (x >= 16) x = OpCodes.Xor32(x, 0x13);
         }
-        GF_MUL[a * 16 + b] = product;
+        table[a * 16 + b] = product;
       }
     }
-  })();
+    return table;
+  }
 
-  // The multiplicative inverse, for the pivot normalisation of the solver.
-  const GF_INV = new Uint8Array(16);
-  for (let a = 1; a < 16; ++a) {
-    for (let b = 1; b < 16; ++b) {
-      if (GF_MUL[a * 16 + b] === 1) GF_INV[a] = b;
+  const GF_MUL = BuildMulTable();
+  const GF_ADD = BuildAddTable();
+
+  /**
+   * The multiplicative inverse, for the pivot normalisation of the solver.
+   * @returns {Uint8Array} 16 entries, zero for zero
+   */
+  function BuildInverseTable() {
+    const table = new Uint8Array(16);
+    for (let a = 1; a < 16; ++a) {
+      for (let b = 1; b < 16; ++b) {
+        if (GF_MUL[a * 16 + b] === 1) table[a] = b;
+      }
     }
+    return table;
+  }
+
+  const GF_INV = BuildInverseTable();
+
+  /**
+   * Field addition by table.
+   * @param {uint8} a - element
+   * @param {uint8} b - element
+   * @returns {uint8} a + b
+   */
+  function GfAdd(a, b) {
+    /** @type {uint8} */
+    const sum = GF_ADD[a * 16 + b];
+    return sum;
+  }
+
+  /**
+   * Field multiplication by table.
+   * @param {uint8} a - element
+   * @param {uint8} b - element
+   * @returns {uint8} a * b
+   */
+  function GfMul(a, b) {
+    /** @type {uint8} */
+    const product = GF_MUL[a * 16 + b];
+    return product;
+  }
+
+  /**
+   * Field multiplication by table, the first factor already scaled to its row.
+   * @param {int32} row - 16 times the first factor
+   * @param {uint8} b - element
+   * @returns {uint8} the product
+   */
+  function GfMulRow(row, b) {
+    /** @type {uint8} */
+    const product = GF_MUL[row + b];
+    return product;
+  }
+
+  /**
+   * @param {uint8} a - non-zero element
+   * @returns {uint8} 1 / a
+   */
+  function GfInv(a) {
+    /** @type {uint8} */
+    const inverse = GF_INV[a];
+    return inverse;
   }
 
   // ===== PARAMETER SETS =====
@@ -116,11 +188,57 @@
   // The four sets of the round-three specification. tail holds f(z) as its four
   // low coefficients, so that f(z) = z^m + tail[3]z^3 + tail[2]z^2 + tail[1]z
   // + tail[0]; whip names the schedule below.
+  class MayoParams {
+    /**
+     * @param {int32} n - variables
+     * @param {int32} m - equations
+     * @param {int32} o - oil space dimension
+     * @param {int32} k - whipping factor
+     * @param {int32} saltBytes - salt octets
+     * @param {int32} digestBytes - message digest octets
+     * @param {int32} pkSeedBytes - public seed octets
+     * @param {int32[]} tail - the four low coefficients of f(z)
+     * @param {int32} whip - which whipping schedule
+     * @param {int32} level - NIST security level
+     */
+    constructor(n, m, o, k, saltBytes, digestBytes, pkSeedBytes, tail, whip, level) {
+      /** @type {int32} */
+      this.n = n;
+      /** @type {int32} */
+      this.m = m;
+      /** @type {int32} */
+      this.o = o;
+      /** @type {int32} */
+      this.k = k;
+      /** @type {int32} */
+      this.saltBytes = saltBytes;
+      /** @type {int32} */
+      this.digestBytes = digestBytes;
+      /** @type {int32} */
+      this.pkSeedBytes = pkSeedBytes;
+      /** @type {int32[]} */
+      this.tail = tail;
+      /** @type {int32} */
+      this.whip = whip;
+      /** @type {int32} */
+      this.level = level;
+    }
+  }
+
+  /** @type {int32[]} */
+  const TAIL_1 = [2, 0, 4, 2];
+  /** @type {int32[]} */
+  const TAIL_2 = [8, 0, 2, 8];
+  /** @type {int32[]} */
+  const TAIL_3 = [8, 0, 1, 7];
+  /** @type {int32[]} */
+  const TAIL_5 = [4, 0, 8, 1];
+
   const PARAMETER_SETS = {
-    'MAYO-1': { n: 88,  m: 80,  o: 8,  k: 10, saltBytes: 24, digestBytes: 32, pkSeedBytes: 16, tail: [2, 0, 4, 2], whip: 10, level: 1 },
-    'MAYO-2': { n: 86,  m: 64,  o: 13, k: 5,  saltBytes: 24, digestBytes: 32, pkSeedBytes: 16, tail: [8, 0, 2, 8], whip: 5,  level: 1 },
-    'MAYO-3': { n: 118, m: 108, o: 10, k: 11, saltBytes: 32, digestBytes: 48, pkSeedBytes: 16, tail: [8, 0, 1, 7], whip: 11, level: 3 },
-    'MAYO-5': { n: 154, m: 142, o: 12, k: 12, saltBytes: 40, digestBytes: 64, pkSeedBytes: 16, tail: [4, 0, 8, 1], whip: 12, level: 5 }
+    'MAYO-1': new MayoParams(88,  80,  8,  10, 24, 32, 16, TAIL_1, 10, 1),
+    'MAYO-2': new MayoParams(86,  64,  13, 5,  24, 32, 16, TAIL_2, 5,  1),
+    'MAYO-3': new MayoParams(118, 108, 10, 11, 32, 48, 16, TAIL_3, 11, 3),
+    'MAYO-5': new MayoParams(154, 142, 12, 12, 40, 64, 16, TAIL_5, 12, 5)
   };
 
   // The whipping schedules. Entry l of a table is the (row, column) position of
@@ -144,24 +262,145 @@
          2,2, 9,6, 11,11, 8,7, 10,4, 10,1, 5,1, 8,0, 11,6, 9,8, 11,8, 11,3, 4,2, 10,6]
   };
 
+  /** Derived byte counts for a parameter set. */
+  class MayoSizes {
+    /**
+     * @param {int32} v - vinegar variables, n - o
+     * @param {int32} oBytes - octets of O
+     * @param {int32} vBytes - octets of one vinegar vector
+     * @param {int32} p1Bytes - octets of P1
+     * @param {int32} p2Bytes - octets of P2
+     * @param {int32} p3Bytes - octets of P3
+     * @param {int32} cskBytes - compact secret key octets
+     * @param {int32} cpkBytes - compact public key octets
+     * @param {int32} sigBytes - signature octets
+     */
+    constructor(v, oBytes, vBytes, p1Bytes, p2Bytes, p3Bytes, cskBytes, cpkBytes, sigBytes) {
+      /** @type {int32} */
+      this.v = v;
+      /** @type {int32} */
+      this.oBytes = oBytes;
+      /** @type {int32} */
+      this.vBytes = vBytes;
+      /** @type {int32} */
+      this.p1Bytes = p1Bytes;
+      /** @type {int32} */
+      this.p2Bytes = p2Bytes;
+      /** @type {int32} */
+      this.p3Bytes = p3Bytes;
+      /** @type {int32} */
+      this.cskBytes = cskBytes;
+      /** @type {int32} */
+      this.cpkBytes = cpkBytes;
+      /** @type {int32} */
+      this.sigBytes = sigBytes;
+    }
+  }
+
   /**
    * Derived byte counts for a parameter set.
-   * @param {Object} P - A parameter set
-   * @returns {Object} The sizes the algorithms refer to
+   * @param {MayoParams} P - A parameter set
+   * @returns {MayoSizes} The sizes the algorithms refer to
    */
   function sizesOf(P) {
     const v = P.n - P.o;
-    return {
-      v: v,
-      oBytes: Math.ceil(v * P.o / 2),
-      vBytes: Math.ceil(v / 2),
-      p1Bytes: P.m * v * (v + 1) / 4,
-      p2Bytes: P.m * v * P.o / 2,
-      p3Bytes: P.m * P.o * (P.o + 1) / 4,
-      cskBytes: P.saltBytes,
-      cpkBytes: P.pkSeedBytes + P.m * P.o * (P.o + 1) / 4,
-      sigBytes: Math.ceil(P.n * P.k / 2) + P.saltBytes
-    };
+    return new MayoSizes(
+      v,
+      Math.ceil(v * P.o / 2),
+      Math.ceil(v / 2),
+      P.m * v * (v + 1) / 4,
+      P.m * v * P.o / 2,
+      P.m * P.o * (P.o + 1) / 4,
+      P.saltBytes,
+      P.pkSeedBytes + P.m * P.o * (P.o + 1) / 4,
+      Math.ceil(P.n * P.k / 2) + P.saltBytes);
+  }
+
+  /** An expanded secret key: everything signing and verifying need. */
+  class MayoSecretKey {
+    /**
+     * @param {MayoParams} P - parameter set
+     * @param {MayoSizes} S - its sizes
+     * @param {uint8[]} seedsk - compact secret key
+     * @param {uint8[]} seedpk - public seed
+     * @param {Uint8Array} O - the oil space
+     * @param {Uint8Array[]} P1 - the P1 matrices
+     * @param {Uint8Array[]} P2 - the P2 matrices
+     * @param {Uint8Array[]} P3 - the P3 matrices
+     * @param {Uint8Array[]} L - the L matrices
+     * @param {uint8[]} cpk - compact public key
+     * @param {Int32Array} labels - whipping labels
+     */
+    constructor(P, S, seedsk, seedpk, O, P1, P2, P3, L, cpk, labels) {
+      /** @type {MayoParams} */
+      this.P = P;
+      /** @type {MayoSizes} */
+      this.S = S;
+      /** @type {uint8[]} */
+      this.seedsk = seedsk;
+      /** @type {uint8[]} */
+      this.seedpk = seedpk;
+      /** @type {Uint8Array} */
+      this.O = O;
+      /** @type {Uint8Array[]} */
+      this.P1 = P1;
+      /** @type {Uint8Array[]} */
+      this.P2 = P2;
+      /** @type {Uint8Array[]} */
+      this.P3 = P3;
+      /** @type {Uint8Array[]} */
+      this.L = L;
+      /** @type {uint8[]} */
+      this.cpk = cpk;
+      /** @type {Int32Array} */
+      this.labels = labels;
+    }
+  }
+
+  /** An expanded public key: what verification needs. */
+  class MayoPublicKey {
+    /**
+     * @param {MayoParams} P - parameter set
+     * @param {MayoSizes} S - its sizes
+     * @param {uint8[]} seedpk - public seed
+     * @param {Uint8Array[]} P1 - the P1 matrices
+     * @param {Uint8Array[]} P2 - the P2 matrices
+     * @param {Uint8Array[]} P3 - the P3 matrices
+     * @param {uint8[]} cpk - compact public key
+     * @param {Int32Array} labels - whipping labels
+     */
+    constructor(P, S, seedpk, P1, P2, P3, cpk, labels) {
+      /** @type {MayoParams} */
+      this.P = P;
+      /** @type {MayoSizes} */
+      this.S = S;
+      /** @type {uint8[]} */
+      this.seedpk = seedpk;
+      /** @type {Uint8Array[]} */
+      this.P1 = P1;
+      /** @type {Uint8Array[]} */
+      this.P2 = P2;
+      /** @type {Uint8Array[]} */
+      this.P3 = P3;
+      /** @type {uint8[]} */
+      this.cpk = cpk;
+      /** @type {Int32Array} */
+      this.labels = labels;
+    }
+  }
+
+  /** The target vector and the linear term's columns. */
+  class MayoTarget {
+    /**
+     * @param {Uint8Array} t - target, m entries
+     * @param {Uint8Array[]} lambda - column c of the m by n matrix
+     */
+    constructor(t, lambda) {
+      /** @type {Uint8Array} */
+      this.t = t;
+      /** @type {Uint8Array[]} */
+      this.lambda = lambda;
+    }
   }
 
   // ===== PRIMITIVES =====
@@ -195,7 +434,7 @@
   /**
    * Look up a registered algorithm, complaining usefully when it is absent.
    * @param {string} name - Registered algorithm name
-   * @returns {Object} The algorithm
+   * @returns {Algorithm} The algorithm
    */
   function requireAlgorithm(name) {
     loadPrimitives();
@@ -214,7 +453,7 @@
    * expansion of MAYO-5 at 924 octets.
    *
    * @param {uint8[]} input - Input octets
-   * @param {number} length - Output length in octets
+   * @param {int32} length - Output length in octets
    * @returns {uint8[]} The digest
    */
   function shake256(input, length) {
@@ -222,7 +461,9 @@
     const instance = algorithm.CreateInstance();
     instance.outputSize = length;
     instance.Feed(input);
-    return instance.Result();
+    /** @type {uint8[]} */
+    const output = instance.Result();
+    return output;
   }
 
   /**
@@ -231,11 +472,12 @@
    * with the block counter written as a 16-octet big-endian integer.
    * @param {uint8[]} key - The 16-octet seed, used as the AES key
    * @param {uint8[]|null} iv - The 16-octet iv, or null for an all-zero one
-   * @param {number} length - Output length in octets
+   * @param {int32} length - Output length in octets
    * @returns {uint8[]} The keystream
    */
   function aes128ctr(key, iv, length) {
     const blocks = Math.ceil(length / 16);
+    /** @type {uint8[]} */
     const input = new Array(blocks * 16);
 
     for (let block = 0; block < blocks; ++block) {
@@ -243,7 +485,7 @@
       const base = block * 16;
       for (let i = 0; i < 12; ++i) input[base + i] = iv ? iv[i] : 0;
       for (let i = 0; i < 4; ++i) {
-        input[base + 12 + i] = iv ? OpCodes.XorN(iv[12 + i], counter[i]) : counter[i];
+        input[base + 12 + i] = iv ? OpCodes.Xor32(iv[12 + i], counter[i]) : counter[i];
       }
     }
 
@@ -251,6 +493,7 @@
     const instance = algorithm.CreateInstance(false);
     instance.key = key;
     instance.Feed(input);
+    /** @type {uint8[]} */
     const stream = instance.Result();
     return stream.slice(0, length);
   }
@@ -260,14 +503,15 @@
   /**
    * Decode a vector of field elements from packed nibbles. The element with an
    * even index occupies the low nibble of its octet.
-   * @param {number} count - Number of elements
+   * @param {int32} count - Number of elements
    * @param {uint8[]} bytes - Source octets
-   * @param {number} offset - Where the vector starts
+   * @param {int32} offset - Where the vector starts
    * @returns {Uint8Array} The elements
    */
   function decodeVec(count, bytes, offset) {
     const out = new Uint8Array(count);
     for (let i = 0; i < count; ++i) {
+      /** @type {uint8} */
       const octet = bytes[offset + Math.floor(i / 2)];
       out[i] = (i % 2 === 0) ? (octet % 16) : Math.floor(octet / 16);
     }
@@ -276,12 +520,14 @@
 
   /**
    * Pack a vector of field elements into nibbles, padding with a zero nibble.
-   * @param {Uint8Array|number[]} values - The elements
+   * @param {Uint8Array} values - The elements
    * @returns {uint8[]} The octets
    */
   function encodeVec(values) {
+    /** @type {uint8[]} */
     const out = new Array(Math.ceil(values.length / 2));
     for (let i = 0; i < out.length; ++i) {
+      /** @type {uint8} */
       const low = values[2 * i];
       const high = (2 * i + 1 < values.length) ? values[2 * i + 1] : 0;
       out[i] = low + high * 16;
@@ -294,15 +540,16 @@
    * first m nibbles are the top-left entries of all m matrices, then the m
    * entries one position along, and so on, skipping the lower triangle when the
    * matrices are triangular.
-   * @param {number} rows - Rows of each matrix
-   * @param {number} cols - Columns of each matrix
-   * @param {number} m - How many matrices
+   * @param {int32} rows - Rows of each matrix
+   * @param {int32} cols - Columns of each matrix
+   * @param {int32} m - How many matrices
    * @param {boolean} triangular - Whether the lower triangle is omitted
    * @param {uint8[]} bytes - Source octets
-   * @param {number} offset - Where the encoding starts
+   * @param {int32} offset - Where the encoding starts
    * @returns {Uint8Array[]} The matrices, each in row-major order
    */
   function decodeMatrices(rows, cols, m, triangular, bytes, offset) {
+    /** @type {Uint8Array[]} */
     const matrices = new Array(m);
     for (let s = 0; s < m; ++s) matrices[s] = new Uint8Array(rows * cols);
 
@@ -323,19 +570,21 @@
 
   /**
    * The inverse of decodeMatrices.
-   * @param {number} rows - Rows of each matrix
-   * @param {number} cols - Columns of each matrix
-   * @param {number} m - How many matrices
+   * @param {int32} rows - Rows of each matrix
+   * @param {int32} cols - Columns of each matrix
+   * @param {int32} m - How many matrices
    * @param {boolean} triangular - Whether the lower triangle is omitted
    * @param {Uint8Array[]} matrices - The matrices
    * @returns {uint8[]} The encoding
    */
   function encodeMatrices(rows, cols, m, triangular, matrices) {
+    /** @type {uint8[]} */
     const out = [];
     for (let i = 0; i < rows; ++i) {
       for (let j = 0; j < cols; ++j) {
         if (triangular && i > j) continue;
         for (let s = 0; s < m; s += 2) {
+          /** @type {uint8} */
           const low = matrices[s][i * cols + j];
           const high = (s + 1 < m) ? matrices[s + 1][i * cols + j] : 0;
           out.push(low + high * 16);
@@ -349,16 +598,18 @@
 
   /**
    * Build a lookup from a pair (i, j) to the power of z that E_ij represents.
-   * @param {number} k - The whipping factor
+   * @param {int32} k - The whipping factor
    * @returns {Int32Array} labels[i*k + j]
    */
   function whipLabels(k) {
+    /** @type {int32[]} */
     const table = WHIP_POSITIONS[k];
     if (!table) throw new Error('MAYO: no whipping schedule for k = ' + k);
 
     const labels = new Int32Array(k * k).fill(-1);
     for (let label = 0; 2 * label + 1 < table.length; ++label) {
       const row = table[2 * label];
+      /** @type {Uint8Array} */
       const column = table[2 * label + 1];
       labels[row * k + column] = label;
       labels[column * k + row] = label;
@@ -374,8 +625,8 @@
    * Reduce a polynomial accumulator modulo f(z), in place, leaving the result
    * in its first m coefficients.
    * @param {Uint8Array} accumulator - Coefficients, low degree first
-   * @param {number} m - The degree of f
-   * @param {number[]} tail - The four low coefficients of f
+   * @param {int32} m - The degree of f
+   * @param {int32[]} tail - The four low coefficients of f
    * @returns {void}
    */
   function reduceModF(accumulator, m, tail) {
@@ -383,14 +634,16 @@
     // down into degrees d-m through d-m+3. Working downwards means each is
     // folded once.
     for (let degree = accumulator.length - 1; degree >= m; --degree) {
+      /** @type {uint8} */
       const coefficient = accumulator[degree];
       if (coefficient === 0) continue;
       accumulator[degree] = 0;
       const base = degree - m;
+      /** @type {int32} */
       const row = coefficient * 16;
       for (let t = 0; t < 4; ++t) {
         if (tail[t] === 0) continue;
-        accumulator[base + t] = GF_ADD[accumulator[base + t] * 16 + GF_MUL[row + tail[t]]];
+        accumulator[base + t] = GfAdd(accumulator[base + t], GfMulRow(row, tail[t]));
       }
     }
   }
@@ -408,9 +661,9 @@
    * MAYO.ExpandSK, together with the public key MAYO.CompactKeyGen derives from
    * the same seed.
    *
-   * @param {Object} P - Parameter set
+   * @param {MayoParams} P - Parameter set
    * @param {uint8[]} seedsk - The compact secret key
-   * @returns {Object} Everything signing and verifying need
+   * @returns {MayoSecretKey} Everything signing and verifying need
    */
   function expandKey(P, seedsk) {
     const S = sizesOf(P);
@@ -433,40 +686,50 @@
     // L_i = (P1_i + P1_i^T) O + P2_i, and P3_i = Upper(-O^T P1_i O - O^T P2_i).
     // The field has characteristic two, so the sign in the specification makes
     // no difference and subtraction is addition.
+    /** @type {Uint8Array[]} */
     const L = new Array(P.m);
+    /** @type {Uint8Array[]} */
     const P3 = new Array(P.m);
 
     for (let a = 0; a < P.m; ++a) {
+      /** @type {Uint8Array} */
       const p1 = P1[a];
+      /** @type {Uint8Array} */
       const p2 = P2[a];
 
       // X = P1_a O + P2_a, which is the (n-o) by o block both results need.
       const X = new Uint8Array(S.v * P.o);
       for (let i = 0; i < S.v; ++i) {
         for (let t = i; t < S.v; ++t) {
+          /** @type {uint8} */
           const coefficient = p1[i * S.v + t];
           if (coefficient === 0) continue;
+          /** @type {int32} */
           const row = coefficient * 16;
           for (let j = 0; j < P.o; ++j) {
+            /** @type {uint8} */
             const entry = O[t * P.o + j];
             if (entry === 0) continue;
-            X[i * P.o + j] = GF_ADD[X[i * P.o + j] * 16 + GF_MUL[row + entry]];
+            X[i * P.o + j] = GfAdd(X[i * P.o + j], GfMulRow(row, entry));
           }
         }
       }
-      for (let i = 0; i < S.v * P.o; ++i) X[i] = GF_ADD[X[i] * 16 + p2[i]];
+      for (let i = 0; i < S.v * P.o; ++i) X[i] = GfAdd(X[i], p2[i]);
 
       // Y = O^T X, then the upper-triangular fold.
       const Y = new Uint8Array(P.o * P.o);
       for (let i = 0; i < S.v; ++i) {
         for (let a2 = 0; a2 < P.o; ++a2) {
+          /** @type {uint8} */
           const left = O[i * P.o + a2];
           if (left === 0) continue;
+          /** @type {int32} */
           const row = left * 16;
           for (let b = 0; b < P.o; ++b) {
+            /** @type {uint8} */
             const right = X[i * P.o + b];
             if (right === 0) continue;
-            Y[a2 * P.o + b] = GF_ADD[Y[a2 * P.o + b] * 16 + GF_MUL[row + right]];
+            Y[a2 * P.o + b] = GfAdd(Y[a2 * P.o + b], GfMulRow(row, right));
           }
         }
       }
@@ -474,7 +737,7 @@
       for (let i = 0; i < P.o; ++i) {
         upper[i * P.o + i] = Y[i * P.o + i];
         for (let j = i + 1; j < P.o; ++j) {
-          upper[i * P.o + j] = GF_ADD[Y[i * P.o + j] * 16 + Y[j * P.o + i]];
+          upper[i * P.o + j] = GfAdd(Y[i * P.o + j], Y[j * P.o + i]);
         }
       }
       P3[a] = upper;
@@ -487,32 +750,34 @@
         for (let t = 0; t < S.v; ++t) {
           const upperPart = (i <= t) ? p1[i * S.v + t] : 0;
           const lowerPart = (t <= i) ? p1[t * S.v + i] : 0;
-          const coefficient = GF_ADD[upperPart * 16 + lowerPart];
+          const coefficient = GfAdd(upperPart, lowerPart);
           if (coefficient === 0) continue;
+          /** @type {int32} */
           const row = coefficient * 16;
           for (let j = 0; j < P.o; ++j) {
+            /** @type {uint8} */
             const entry = O[t * P.o + j];
             if (entry === 0) continue;
-            Li[i * P.o + j] = GF_ADD[Li[i * P.o + j] * 16 + GF_MUL[row + entry]];
+            Li[i * P.o + j] = GfAdd(Li[i * P.o + j], GfMulRow(row, entry));
           }
         }
       }
-      for (let i = 0; i < S.v * P.o; ++i) Li[i] = GF_ADD[Li[i] * 16 + p2[i]];
+      for (let i = 0; i < S.v * P.o; ++i) Li[i] = GfAdd(Li[i], p2[i]);
       L[a] = Li;
     }
 
     const cpk = seedpk.concat(encodeMatrices(P.o, P.o, P.m, true, P3));
 
-    const key = { P, S, seedsk, seedpk, O, P1, P2, P3, L, cpk, labels: whipLabels(P.k) };
+    const key = new MayoSecretKey(P, S, seedsk, seedpk, O, P1, P2, P3, L, cpk, whipLabels(P.k));
     KEY_CACHE.set(cacheKey, key);
     return key;
   }
 
   /**
    * MAYO.ExpandPK, for a verifier that holds only the compact public key.
-   * @param {Object} P - Parameter set
+   * @param {MayoParams} P - Parameter set
    * @param {uint8[]} cpk - The compact public key
-   * @returns {Object} The public material verification needs
+   * @returns {MayoPublicKey} The public material verification needs
    */
   function expandPublicKey(P, cpk) {
     const S = sizesOf(P);
@@ -524,14 +789,12 @@
 
     const seedpk = cpk.slice(0, P.pkSeedBytes);
     const expanded = aes128ctr(seedpk, null, S.p1Bytes + S.p2Bytes);
-    const key = {
-      P, S, seedpk,
-      P1: decodeMatrices(S.v, S.v, P.m, true, expanded, 0),
-      P2: decodeMatrices(S.v, P.o, P.m, false, expanded, S.p1Bytes),
-      P3: decodeMatrices(P.o, P.o, P.m, true, cpk, P.pkSeedBytes),
+    const key = new MayoPublicKey(P, S, seedpk,
+      decodeMatrices(S.v, S.v, P.m, true, expanded, 0),
+      decodeMatrices(S.v, P.o, P.m, false, expanded, S.p1Bytes),
+      decodeMatrices(P.o, P.o, P.m, true, cpk, P.pkSeedBytes),
       cpk,
-      labels: whipLabels(P.k)
-    };
+      whipLabels(P.k));
     KEY_CACHE.set(cacheKey, key);
     return key;
   }
@@ -541,10 +804,10 @@
   /**
    * Derive the target t and the linear term's coefficients from a digest and a
    * salt. Both directions of the scheme need exactly this.
-   * @param {Object} P - Parameter set
+   * @param {MayoParams} P - Parameter set
    * @param {uint8[]} messageDigest - SHAKE256 of the message
    * @param {uint8[]} salt - The salt carried in the signature
-   * @returns {Object} { t, lambda } where lambda[c] is column c of the m by n matrix
+   * @returns {MayoTarget} { t, lambda } where lambda[c] is column c of the m by n matrix
    */
   function targetAndLinear(P, messageDigest, salt) {
     const hash = shake256(messageDigest.concat(salt), P.m / 2 + 32);
@@ -557,12 +820,13 @@
     );
 
     // Lambda is parsed column-major, unlike everything else here.
+    /** @type {Uint8Array[]} */
     const lambda = new Array(P.n);
     for (let column = 0; column < P.n; ++column) {
       lambda[column] = decodeVec(P.m, lambdaBytes, column * P.m / 2);
     }
 
-    return { t, lambda };
+    return new MayoTarget(t, lambda);
   }
 
   // ===== SOLVER =====
@@ -573,8 +837,8 @@
    * @param {Uint8Array} A - m by ko, row-major
    * @param {Uint8Array} y - Target, m entries
    * @param {Uint8Array} r - Randomness, ko entries
-   * @param {number} m - Rows
-   * @param {number} ko - Columns
+   * @param {int32} m - Rows
+   * @param {int32} ko - Columns
    * @returns {Uint8Array|null} The solution, or null
    */
   function sampleSolution(A, y, r, m, ko) {
@@ -583,14 +847,16 @@
     // y <- y - A r, so that what is solved for is the correction to r.
     const target = Uint8Array.from(y);
     for (let row = 0; row < m; ++row) {
+      /** @type {uint8} */
       let accumulator = 0;
       const base = row * ko;
       for (let c = 0; c < ko; ++c) {
+        /** @type {uint8} */
         const a = A[base + c];
         if (a === 0 || r[c] === 0) continue;
-        accumulator = GF_ADD[accumulator * 16 + GF_MUL[a * 16 + r[c]]];
+        accumulator = GfAdd(accumulator, GfMul(a, r[c]));
       }
-      target[row] = GF_ADD[target[row] * 16 + accumulator];
+      target[row] = GfAdd(target[row], accumulator);
     }
 
     // Echelon form with leading ones over the augmented matrix.
@@ -612,23 +878,26 @@
 
       if (next !== pivotRow) {
         for (let c = 0; c < cols; ++c) {
+          /** @type {uint8} */
           const swap = B[pivotRow * cols + c];
           B[pivotRow * cols + c] = B[next * cols + c];
           B[next * cols + c] = swap;
         }
       }
 
-      const inverse = GF_INV[B[pivotRow * cols + pivotColumn]] * 16;
+      const inverse = GfInv(B[pivotRow * cols + pivotColumn]) * 16;
       for (let c = 0; c < cols; ++c) {
-        B[pivotRow * cols + c] = GF_MUL[inverse + B[pivotRow * cols + c]];
+        B[pivotRow * cols + c] = GfMulRow(inverse, B[pivotRow * cols + c]);
       }
 
       for (let row = next + 1; row < m; ++row) {
+        /** @type {uint8} */
         const factor = B[row * cols + pivotColumn];
         if (factor === 0) continue;
+        /** @type {int32} */
         const scale = factor * 16;
         for (let c = 0; c < cols; ++c) {
-          B[row * cols + c] = GF_ADD[B[row * cols + c] * 16 + GF_MUL[scale + B[pivotRow * cols + c]]];
+          B[row * cols + c] = GfAdd(B[row * cols + c], GfMulRow(scale, B[pivotRow * cols + c]));
         }
       }
 
@@ -651,14 +920,17 @@
       }
       if (leading < 0 || leading >= ko) continue;
 
+      /** @type {uint8} */
       const value = B[row * cols + ko];
-      x[leading] = GF_ADD[x[leading] * 16 + value];
+      x[leading] = GfAdd(x[leading], value);
       if (value === 0) continue;
+      /** @type {int32} */
       const scale = value * 16;
       for (let other = 0; other < m; ++other) {
+        /** @type {uint8} */
         const a = B[other * cols + leading];
         if (a === 0) continue;
-        B[other * cols + ko] = GF_ADD[B[other * cols + ko] * 16 + GF_MUL[scale + a]];
+        B[other * cols + ko] = GfAdd(B[other * cols + ko], GfMulRow(scale, a));
       }
     }
 
@@ -669,44 +941,61 @@
 
   /**
    * MAYO.Sign.
-   * @param {Object} key - From expandKey
+   * @param {MayoSecretKey} key - From expandKey
    * @param {uint8[]} message - Message octets
    * @param {uint8[]} R - The optional randomiser, salt_bytes octets
    * @returns {uint8[]} The signature
    */
   function signMessage(key, message, R) {
-    const { P, S, O, P1, L, seedsk, labels } = key;
+    const P = key.P;
+    const S = key.S;
+    const O = key.O;
+    const P1 = key.P1;
+    const L = key.L;
+    const seedsk = key.seedsk;
+    const labels = key.labels;
     const ko = P.k * P.o;
     const maxLabel = P.k * (P.k + 1) / 2 - 1;
     const extended = P.m + maxLabel + 1;
 
     const messageDigest = shake256(message, P.digestBytes);
     const salt = shake256(messageDigest.concat(R).concat(seedsk), P.saltBytes);
-    const { t, lambda } = targetAndLinear(P, messageDigest, salt);
+    const target = targetAndLinear(P, messageDigest, salt);
+    const t = target.t;
+    const lambda = target.lambda;
 
     for (let counter = 0; counter < 256; ++counter) {
       // Vinegar values and the solver's randomness.
       const needed = P.k * S.vBytes + Math.ceil(ko / 2);
-      const V = shake256(messageDigest.concat(salt).concat(seedsk).concat([counter]), needed);
+      /** @type {uint8[]} */
+      const counterOctet = [counter];
+      const V = shake256(messageDigest.concat(salt).concat(seedsk).concat(counterOctet), needed);
+      /** @type {Uint8Array[]} */
       const vinegar = new Array(P.k);
       for (let i = 0; i < P.k; ++i) vinegar[i] = decodeVec(S.v, V, i * S.vBytes);
       const r = decodeVec(ko, V, P.k * S.vBytes);
 
       // M_i, whose j-th row is v_i^T L_j.
+      /** @type {Uint8Array[]} */
       const Ms = new Array(P.k);
       for (let i = 0; i < P.k; ++i) {
         const Mi = new Uint8Array(P.m * P.o);
+        /** @type {Uint8Array} */
         const vi = vinegar[i];
         for (let j = 0; j < P.m; ++j) {
+          /** @type {Uint8Array} */
           const Lj = L[j];
           for (let row = 0; row < S.v; ++row) {
+            /** @type {uint8} */
             const left = vi[row];
             if (left === 0) continue;
+            /** @type {int32} */
             const scale = left * 16;
             for (let c = 0; c < P.o; ++c) {
+              /** @type {uint8} */
               const right = Lj[row * P.o + c];
               if (right === 0) continue;
-              Mi[j * P.o + c] = GF_ADD[Mi[j * P.o + c] * 16 + GF_MUL[scale + right]];
+              Mi[j * P.o + c] = GfAdd(Mi[j * P.o + c], GfMulRow(scale, right));
             }
           }
         }
@@ -715,37 +1004,47 @@
 
       // M_0 <- M_0 + Lambda_v O + Lambda_o
       {
+        /** @type {Uint8Array} */
         const M0 = Ms[0];
         for (let j = 0; j < P.m; ++j) {
           for (let c = 0; c < P.o; ++c) {
             let accumulator = lambda[S.v + c][j];
             for (let row = 0; row < S.v; ++row) {
+              /** @type {uint8} */
               const left = lambda[row][j];
+              /** @type {uint8} */
               const right = O[row * P.o + c];
               if (left === 0 || right === 0) continue;
-              accumulator = GF_ADD[accumulator * 16 + GF_MUL[left * 16 + right]];
+              accumulator = GfAdd(accumulator, GfMul(left, right));
             }
-            M0[j * P.o + c] = GF_ADD[M0[j * P.o + c] * 16 + accumulator];
+            M0[j * P.o + c] = GfAdd(M0[j * P.o + c], accumulator);
           }
         }
       }
 
       // v_i^T P1_a, reused by every pair the vinegar appears in.
+      /** @type {Uint8Array[][]} */
       const VP = new Array(P.k);
       for (let i = 0; i < P.k; ++i) {
+        /** @type {Uint8Array} */
         const vi = vinegar[i];
+        /** @type {Uint8Array[]} */
         const rows = new Array(P.m);
         for (let a = 0; a < P.m; ++a) {
+          /** @type {Uint8Array} */
           const p1 = P1[a];
           const out = new Uint8Array(S.v);
           for (let row = 0; row < S.v; ++row) {
+            /** @type {uint8} */
             const left = vi[row];
             if (left === 0) continue;
+            /** @type {int32} */
             const scale = left * 16;
             for (let c = row; c < S.v; ++c) {
+              /** @type {uint8} */
               const right = p1[row * S.v + c];
               if (right === 0) continue;
-              out[c] = GF_ADD[out[c] * 16 + GF_MUL[scale + right]];
+              out[c] = GfAdd(out[c], GfMulRow(scale, right));
             }
           }
           rows[a] = out;
@@ -756,76 +1055,94 @@
       // y and each column of A accumulate in K = F_16[z]/(f(z)).
       const yAccumulator = new Uint8Array(extended);
       for (let a = 0; a < P.m; ++a) yAccumulator[a] = t[a];
+      /** @type {Uint8Array[]} */
       const columns = new Array(ko);
       for (let c = 0; c < ko; ++c) columns[c] = new Uint8Array(extended);
 
       for (let i = 0; i < P.k; ++i) {
+        /** @type {Uint8Array} */
         const vi = vinegar[i];
 
         // y <- y - E_{i,0} Lambda_v v_i
         {
           const product = new Uint8Array(P.m);
           for (let column = 0; column < S.v; ++column) {
+            /** @type {uint8} */
             const left = vi[column];
             if (left === 0) continue;
+            /** @type {int32} */
             const scale = left * 16;
+            /** @type {Uint8Array} */
             const source = lambda[column];
             for (let a = 0; a < P.m; ++a) {
+              /** @type {uint8} */
               const right = source[a];
               if (right === 0) continue;
-              product[a] = GF_ADD[product[a] * 16 + GF_MUL[scale + right]];
+              product[a] = GfAdd(product[a], GfMulRow(scale, right));
             }
           }
+          /** @type {int32} */
           const shift = labels[i * P.k];
           for (let a = 0; a < P.m; ++a) {
             if (product[a] === 0) continue;
-            yAccumulator[shift + a] = GF_ADD[yAccumulator[shift + a] * 16 + product[a]];
+            yAccumulator[shift + a] = GfAdd(yAccumulator[shift + a], product[a]);
           }
         }
 
         for (let j = i; j < P.k; ++j) {
+          /** @type {Uint8Array} */
           const vj = vinegar[j];
           const u = new Uint8Array(P.m);
           for (let a = 0; a < P.m; ++a) {
+            /** @type {uint8} */
             let accumulator = 0;
+            /** @type {Uint8Array} */
             const rowI = VP[i][a];
             for (let c = 0; c < S.v; ++c) {
               if (rowI[c] === 0 || vj[c] === 0) continue;
-              accumulator = GF_ADD[accumulator * 16 + GF_MUL[rowI[c] * 16 + vj[c]]];
+              accumulator = GfAdd(accumulator, GfMul(rowI[c], vj[c]));
             }
             if (i !== j) {
+              /** @type {Uint8Array} */
               const rowJ = VP[j][a];
               for (let c = 0; c < S.v; ++c) {
                 if (rowJ[c] === 0 || vi[c] === 0) continue;
-                accumulator = GF_ADD[accumulator * 16 + GF_MUL[rowJ[c] * 16 + vi[c]]];
+                accumulator = GfAdd(accumulator, GfMul(rowJ[c], vi[c]));
               }
             }
             u[a] = accumulator;
           }
 
+          /** @type {int32} */
           const shift = labels[i * P.k + j];
           for (let a = 0; a < P.m; ++a) {
             if (u[a] === 0) continue;
-            yAccumulator[shift + a] = GF_ADD[yAccumulator[shift + a] * 16 + u[a]];
+            yAccumulator[shift + a] = GfAdd(yAccumulator[shift + a], u[a]);
           }
 
           for (let c = 0; c < P.o; ++c) {
+            /** @type {Uint8Array} */
             const destination = columns[i * P.o + c];
+            /** @type {Uint8Array} */
             const Mj = Ms[j];
             for (let a = 0; a < P.m; ++a) {
+              /** @type {uint8} */
               const value = Mj[a * P.o + c];
               if (value === 0) continue;
-              destination[shift + a] = GF_ADD[destination[shift + a] * 16 + value];
+              destination[shift + a] = GfAdd(destination[shift + a], value);
             }
           }
           if (i !== j) {
             for (let c = 0; c < P.o; ++c) {
+              /** @type {Uint8Array} */
               const destination = columns[j * P.o + c];
+              /** @type {Uint8Array} */
               const Mi = Ms[i];
               for (let a = 0; a < P.m; ++a) {
+                /** @type {uint8} */
                 const value = Mi[a * P.o + c];
                 if (value === 0) continue;
-                destination[shift + a] = GF_ADD[destination[shift + a] * 16 + value];
+                destination[shift + a] = GfAdd(destination[shift + a], value);
               }
             }
           }
@@ -847,14 +1164,17 @@
       // s_i = (v_i + O x_i) || x_i
       const s = new Uint8Array(P.k * P.n);
       for (let i = 0; i < P.k; ++i) {
+        /** @type {Uint8Array} */
         const vi = vinegar[i];
         for (let row = 0; row < S.v; ++row) {
           let accumulator = vi[row];
           for (let c = 0; c < P.o; ++c) {
+            /** @type {uint8} */
             const left = O[row * P.o + c];
+            /** @type {uint8} */
             const right = x[i * P.o + c];
             if (left === 0 || right === 0) continue;
-            accumulator = GF_ADD[accumulator * 16 + GF_MUL[left * 16 + right]];
+            accumulator = GfAdd(accumulator, GfMul(left, right));
           }
           s[i * P.n + row] = accumulator;
         }
@@ -871,13 +1191,18 @@
 
   /**
    * MAYO.Verify.
-   * @param {Object} key - From expandKey or expandPublicKey
+   * @param {MayoPublicKey} key - From expandKey or expandPublicKey; both carry these fields
    * @param {uint8[]} message - Message octets
    * @param {uint8[]} signature - The signature
    * @returns {boolean} Whether the signature is valid
    */
   function verifyMessage(key, message, signature) {
-    const { P, S, P1, P2, P3, labels } = key;
+    const P = key.P;
+    const S = key.S;
+    const P1 = key.P1;
+    const P2 = key.P2;
+    const P3 = key.P3;
+    const labels = key.labels;
     if (!signature || signature.length !== S.sigBytes) return false;
 
     const packed = Math.ceil(P.n * P.k / 2);
@@ -885,42 +1210,56 @@
     const salt = signature.slice(packed, packed + P.saltBytes);
 
     const messageDigest = shake256(message, P.digestBytes);
-    const { t, lambda } = targetAndLinear(P, messageDigest, salt);
+    const target = targetAndLinear(P, messageDigest, salt);
+    const t = target.t;
+    const lambda = target.lambda;
 
     // s_i^T P_a, where P_a is the block matrix [[P1_a, P2_a], [0, P3_a]].
+    /** @type {Uint8Array[][]} */
     const SP = new Array(P.k);
     for (let i = 0; i < P.k; ++i) {
       const si = s.subarray(i * P.n, (i + 1) * P.n);
+      /** @type {Uint8Array[]} */
       const rows = new Array(P.m);
       for (let a = 0; a < P.m; ++a) {
+        /** @type {Uint8Array} */
         const p1 = P1[a];
+        /** @type {Uint8Array} */
         const p2 = P2[a];
+        /** @type {Uint8Array} */
         const p3 = P3[a];
         const out = new Uint8Array(P.n);
 
         for (let row = 0; row < S.v; ++row) {
+          /** @type {uint8} */
           const left = si[row];
           if (left === 0) continue;
+          /** @type {int32} */
           const scale = left * 16;
           for (let c = row; c < S.v; ++c) {
+            /** @type {uint8} */
             const right = p1[row * S.v + c];
             if (right === 0) continue;
-            out[c] = GF_ADD[out[c] * 16 + GF_MUL[scale + right]];
+            out[c] = GfAdd(out[c], GfMulRow(scale, right));
           }
           for (let c = 0; c < P.o; ++c) {
+            /** @type {uint8} */
             const right = p2[row * P.o + c];
             if (right === 0) continue;
-            out[S.v + c] = GF_ADD[out[S.v + c] * 16 + GF_MUL[scale + right]];
+            out[S.v + c] = GfAdd(out[S.v + c], GfMulRow(scale, right));
           }
         }
         for (let row = 0; row < P.o; ++row) {
+          /** @type {uint8} */
           const left = si[S.v + row];
           if (left === 0) continue;
+          /** @type {int32} */
           const scale = left * 16;
           for (let c = row; c < P.o; ++c) {
+            /** @type {uint8} */
             const right = p3[row * P.o + c];
             if (right === 0) continue;
-            out[S.v + c] = GF_ADD[out[S.v + c] * 16 + GF_MUL[scale + right]];
+            out[S.v + c] = GfAdd(out[S.v + c], GfMulRow(scale, right));
           }
         }
         rows[a] = out;
@@ -938,20 +1277,25 @@
       {
         const product = new Uint8Array(P.m);
         for (let column = 0; column < P.n; ++column) {
+          /** @type {uint8} */
           const left = si[column];
           if (left === 0) continue;
+          /** @type {int32} */
           const scale = left * 16;
+          /** @type {Uint8Array} */
           const source = lambda[column];
           for (let a = 0; a < P.m; ++a) {
+            /** @type {uint8} */
             const right = source[a];
             if (right === 0) continue;
-            product[a] = GF_ADD[product[a] * 16 + GF_MUL[scale + right]];
+            product[a] = GfAdd(product[a], GfMulRow(scale, right));
           }
         }
+        /** @type {int32} */
         const shift = labels[i * P.k];
         for (let a = 0; a < P.m; ++a) {
           if (product[a] === 0) continue;
-          accumulator[shift + a] = GF_ADD[accumulator[shift + a] * 16 + product[a]];
+          accumulator[shift + a] = GfAdd(accumulator[shift + a], product[a]);
         }
       }
 
@@ -959,25 +1303,29 @@
         const sj = s.subarray(j * P.n, (j + 1) * P.n);
         const u = new Uint8Array(P.m);
         for (let a = 0; a < P.m; ++a) {
+          /** @type {uint8} */
           let value = 0;
+          /** @type {Uint8Array} */
           const rowI = SP[i][a];
           for (let c = 0; c < P.n; ++c) {
             if (rowI[c] === 0 || sj[c] === 0) continue;
-            value = GF_ADD[value * 16 + GF_MUL[rowI[c] * 16 + sj[c]]];
+            value = GfAdd(value, GfMul(rowI[c], sj[c]));
           }
           if (i !== j) {
+            /** @type {Uint8Array} */
             const rowJ = SP[j][a];
             for (let c = 0; c < P.n; ++c) {
               if (rowJ[c] === 0 || si[c] === 0) continue;
-              value = GF_ADD[value * 16 + GF_MUL[rowJ[c] * 16 + si[c]]];
+              value = GfAdd(value, GfMul(rowJ[c], si[c]));
             }
           }
           u[a] = value;
         }
+        /** @type {int32} */
         const shift = labels[i * P.k + j];
         for (let a = 0; a < P.m; ++a) {
           if (u[a] === 0) continue;
-          accumulator[shift + a] = GF_ADD[accumulator[shift + a] * 16 + u[a]];
+          accumulator[shift + a] = GfAdd(accumulator[shift + a], u[a]);
         }
       }
     }
@@ -1310,18 +1658,26 @@
    */
   class MAYOInstance extends IAlgorithmInstance {
     /**
-     * @param {Object} algorithm - Parent algorithm instance
+     * @param {MAYOAlgorithm} algorithm - Parent algorithm instance
      * @param {boolean} [isInverse=false] - Verification mode flag
      */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {MayoParams} */
       this.parameters = algorithm.parameters;
+      /** @type {MayoSizes} */
       this.sizes = algorithm.sizes;
+      /** @type {MayoPublicKey|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._keyData = null;
+      /** @type {uint8[]|null} */
       this._publicKeyData = null;
+      /** @type {uint8[]|null} */
       this._randomizer = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -1356,6 +1712,7 @@
         throw new Error(this.parameters.name + ': the public key is '
           + this.sizes.cpkBytes + ' octets, not ' + cpk.length);
       }
+      /** @type {uint8[]} */
       const copy = new Array(cpk.length);
       for (let i = 0; i < cpk.length; ++i) copy[i] = cpk[i];
       this._publicKeyData = copy;
@@ -1382,6 +1739,7 @@
         throw new Error(this.parameters.name + ': the randomiser is '
           + this.parameters.saltBytes + ' octets, not ' + value.length);
       }
+      /** @type {uint8[]} */
       const copy = new Array(value.length);
       for (let i = 0; i < value.length; ++i) copy[i] = value[i];
       this._randomizer = copy;
@@ -1401,6 +1759,7 @@
           + this.sizes.cskBytes + ' octets');
       }
 
+      /** @type {uint8[]} */
       const seed = new Array(this.sizes.cskBytes);
       for (let i = 0; i < seed.length; ++i) seed[i] = keyData[i];
 
@@ -1456,7 +1815,8 @@
         throw new Error(this.parameters.name + ' secret key not set. Assign a key first.');
       }
 
-      const R = this._randomizer || new Array(this.parameters.saltBytes).fill(0);
+      /** @type {uint8[]} */
+      const R = this._randomizer ? this._randomizer : new Array(this.parameters.saltBytes).fill(0);
       const signature = signMessage(this._key, message, R);
 
       // A signer that hands out a value it has not checked is how a scheme ends
@@ -1466,6 +1826,7 @@
         throw new Error(this.parameters.name + ': internal error, the computed signature does not verify');
       }
 
+      /** @type {uint8[]} */
       const out = new Array(signature.length + message.length);
       for (let i = 0; i < signature.length; ++i) out[i] = signature[i];
       for (let i = 0; i < message.length; ++i) out[signature.length + i] = message[i];
@@ -1508,7 +1869,8 @@
       if (!this._key || !this._key.seedsk) {
         throw new Error(this.parameters.name + ' secret key not set. Assign a key first.');
       }
-      const R = this._randomizer || new Array(this.parameters.saltBytes).fill(0);
+      /** @type {uint8[]} */
+      const R = this._randomizer ? this._randomizer : new Array(this.parameters.saltBytes).fill(0);
       return signMessage(this._key, message, R);
     }
 

@@ -118,7 +118,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {RepetitionCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -135,17 +135,24 @@
   class RepetitionCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {RepetitionCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
       this._repetitions = 3; // Default (3,1) code
     }
 
+    /**
+     * @param {int32} n - Odd repetition count 3..15
+     */
     set repetitions(n) {
       if (n < 3 || n > 15 || n % 2 === 0) {
         throw new Error('RepetitionCodeInstance.repetitions: Must be odd number between 3 and 15');
@@ -153,6 +160,9 @@
       this._repetitions = n;
     }
 
+    /**
+     * @returns {int32} Repetition count
+     */
     get repetitions() {
       return this._repetitions;
     }
@@ -193,8 +203,13 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Repeat each bit n times
+      /** @type {uint8[]} */
       const encoded = [];
       for (let i = 0; i < data.length; ++i) {
         for (let j = 0; j < this._repetitions; ++j) {
@@ -204,15 +219,21 @@
       return encoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       // Majority voting decoding
       const n = this._repetitions;
 
       if (data.length % n !== 0) {
-        throw new Error(`Repetition decode: Input length must be multiple of ${n}`);
+        throw new Error("Repetition decode: Input length must be multiple of " + n);
       }
 
+      /** @type {uint8[]} */
       const decoded = [];
+      /** @type {int32} */
       const threshold = Math.floor(n / 2) + 1;
 
       for (let i = 0; i < data.length; i += n) {
@@ -229,13 +250,17 @@
 
         // Error detection
         if (onesCount !== 0 && onesCount !== n) {
-          console.log(`Repetition: Error detected in block ${i / n} (${onesCount}/${n} ones)`);
+          console.log("Repetition: Error detected in block " + (i / n) + " (" + onesCount + "/" + n + " ones)");
         }
       }
 
       return decoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       const n = this._repetitions;
       if (data.length % n !== 0) return true;

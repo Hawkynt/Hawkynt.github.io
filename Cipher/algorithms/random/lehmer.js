@@ -42,9 +42,11 @@
           RandomGenerationAlgorithm, IRandomGeneratorInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   // MINSTD constants (Park-Miller minimal standard)
+  /** @type {int32} */
   const MULTIPLIER = 16807;      // a = 7^5
   const MODULUS = 2147483647;    // m = 2^31 - 1 (Mersenne prime M31)
   const QUOTIENT = 127773;       // q = m div a
+  /** @type {int32} */
   const REMAINDER = 2836;        // r = m mod a
 
   class LehmerAlgorithm extends RandomGenerationAlgorithm {
@@ -156,7 +158,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LehmerInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -174,8 +176,15 @@
  */
 
   class LehmerInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {LehmerAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
+      /** @type {int32} */
+      this._skip = 0;
 
       // Lehmer RNG state (must be in range [1, MODULUS-1])
       this._state = 1;
@@ -187,6 +196,7 @@
 
     /**
      * Set seed value (must be 1 to 2147483646)
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -195,6 +205,7 @@
       }
 
       // Convert seed bytes to 32-bit integer (big-endian)
+      /** @type {uint32} */
       let seedValue = 0;
       for (let i = 0; i < seedBytes.length && i < 4; ++i) {
         seedValue = OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(seedValue, 8), seedBytes[i]));
@@ -209,6 +220,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -216,12 +230,15 @@
     /**
      * Set count parameter (for skipping ahead to nth value)
      */
+    /**
+     * @param {int32} skipCount - Values to skip
+     */
     set count(skipCount) {
       this._skipCount = skipCount;
     }
 
     get count() {
-      return this._skipCount || 0;
+      return (this._skipCount ? this._skipCount : 0);
     }
 
     /**
@@ -233,7 +250,7 @@
      *
      * For MINSTD: a=16807, m=2147483647, q=127773, r=2836
      *
-     * @returns {number} Next random value in range [1, 2147483646]
+     * @returns {int32} Next random value in range [1, 2147483646]
      */
     _next() {
       if (!this._ready) {
@@ -241,9 +258,12 @@
       }
 
       // Schrage's method to compute (16807 × state) mod 2147483647
+      /** @type {int32} */
       const hi = Math.floor(this._state / QUOTIENT); // ⌊state/q⌋ using integer truncation
+      /** @type {int32} */
       const lo = this._state % QUOTIENT;       // state mod q
 
+      /** @type {int32} */
       let test = MULTIPLIER * lo - REMAINDER * hi; // a×lo - r×hi
 
       if (test > 0) {
@@ -259,8 +279,8 @@
      * Generate random bytes
      * Outputs 32-bit values (big-endian) in range [1, 2147483646]
      *
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -268,7 +288,9 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
       // If count is set, skip ahead to the nth value
@@ -279,6 +301,7 @@
         this._skipCount = null; // Clear after use
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Generate values and pack as 32-bit big-endian
@@ -314,19 +337,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 

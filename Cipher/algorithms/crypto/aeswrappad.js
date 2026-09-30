@@ -48,9 +48,12 @@
           CryptoAlgorithm, KeySize, LinkItem, IAlgorithmInstance } = AlgorithmFramework;
 
   // Alternative IV for RFC 5649 (high 32 bits)
+  /** @type {uint8[]} */
   const DEFAULT_AIV_HIGH = [0xA6, 0x59, 0x59, 0xA6];
 
-  // Helper function to get Rijndael algorithm (registry-first, plain require fallback)
+  /**
+   * Get the Rijndael algorithm (registry-first, plain require fallback)
+   */
   function getRijndaelAlgorithm() {
     let rijndael = AlgorithmFramework.Find('Rijndael (AES)');
     if (!rijndael && typeof require !== 'undefined') {
@@ -60,6 +63,23 @@
     if (!rijndael)
       throw new Error("Rijndael (AES) not available — load algorithms/block/rijndael.js first");
     return rijndael;
+  }
+
+  /**
+   * Result of an RFC 3394 unwrap before the IV check
+   * @class
+   */
+  class UnwrapResult {
+    /**
+     * @param {uint8[]} aiv - Recovered 8-byte integrity value
+     * @param {uint8[]} plaintext - Recovered (padded) plaintext
+     */
+    constructor(aiv, plaintext) {
+      /** @type {uint8[]} */
+      this.aiv = aiv;
+      /** @type {uint8[]} */
+      this.plaintext = plaintext;
+    }
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -116,7 +136,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {AesKeyWrapPadInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -133,16 +153,23 @@
   class AesKeyWrapPadInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {AesKeyWrapPadAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this._aivHigh = [...DEFAULT_AIV_HIGH];
+      /** @type {IBlockCipherInstance|null} */
       this.aesInstance = null;
     }
 
@@ -160,11 +187,18 @@
       }
 
       // Validate key size (must be 128, 192, or 256 bits)
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize &&
-        keyBytes.length <= ks.maxSize &&
-        (keyBytes.length - ks.minSize) % ks.stepSize === 0
-      );
+      /** @type {boolean} */
+      let isValidSize = false;
+      for (let k = 0; k < this.keySizeList.length; k++) {
+        /** @type {KeySize} */
+        const ks = this.keySizeList[k];
+        if (keyBytes.length >= ks.minSize &&
+            keyBytes.length <= ks.maxSize &&
+            (keyBytes.length - ks.minSize) % ks.stepSize === 0) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
         throw new Error('Invalid key size: ' + keyBytes.length + ' bytes (must be 16, 24, or 32)');
@@ -228,6 +262,7 @@
         throw new Error('No data fed');
       }
 
+      /** @type {uint8[]} */
       const result = this.isInverse ? this._unwrap() : this._wrap();
       this.inputBuffer = [];
       return result;
@@ -235,23 +270,33 @@
 
     /**
      * Pads plaintext to multiple of 8 bytes as per RFC 5649 Section 4.1
+     * @param {uint8[]} plaintext - Key data
+     * @returns {uint8[]} Zero-padded copy
      */
     _padPlaintext(plaintext) {
+      /** @type {int32} */
       const plaintextLength = plaintext.length;
+      /** @type {int32} */
       const numZeros = (8 - (plaintextLength % 8)) % 8;
 
       if (numZeros === 0) {
-        return [...plaintext];
+        return plaintext.slice();
       }
 
-      const paddedPlaintext = [...plaintext];
+      /** @type {uint8[]} */
+      const paddedPlaintext = plaintext.slice();
       for (let i = 0; i < numZeros; ++i) {
         paddedPlaintext.push(0);
       }
       return paddedPlaintext;
     }
 
+    /**
+     * Wrap the buffered key data (RFC 5649 section 4.1)
+     * @returns {uint8[]} Wrapped data
+     */
     _wrap() {
+      /** @type {uint8[]} */
       const plaintext = this.inputBuffer;
 
       // Validate input length (must be at least 1 byte)
@@ -260,36 +305,53 @@
       }
 
       // Build AIV: AIV_high (4 bytes) || MLI (4 bytes, big-endian)
+      /** @type {uint32} */
       const mli = plaintext.length;
+      /** @type {uint8[]} */
       const mliBytes = OpCodes.Unpack32BE(mli);
+      /** @type {uint8[]} */
       const aiv = [...this._aivHigh, ...mliBytes];
 
       // Pad plaintext to multiple of 8 bytes
+      /** @type {uint8[]} */
       const paddedPlaintext = this._padPlaintext(plaintext);
 
       // Initialize AES instance if not already done
       if (!this.aesInstance) {
         const RijndaelAlgorithm = getRijndaelAlgorithm();
-        this.aesInstance = RijndaelAlgorithm.CreateInstance(false);
-        this.aesInstance.key = this._key;
+        /** @type {IBlockCipherInstance} */
+        const aes = RijndaelAlgorithm.CreateInstance(false);
+        aes.key = this._key;
+        this.aesInstance = aes;
       }
 
       // Special case: exactly 8 bytes of padded plaintext
       if (paddedPlaintext.length === 8) {
         // Prepend AIV and encrypt as single block
+        /** @type {uint8[]} */
         const block = [...aiv, ...paddedPlaintext];
-        this.aesInstance.Feed(block);
-        return this.aesInstance.Result();
+        /** @type {IBlockCipherInstance} */
+        const aesSingle = this.aesInstance;
+        aesSingle.Feed(block);
+        /** @type {uint8[]} */
+        const single = aesSingle.Result();
+        return single;
       }
 
       // General case: Use RFC 3394 wrapping with AIV
       return this._rfc3394Wrap(paddedPlaintext, aiv);
     }
 
+    /**
+     * Unwrap the buffered data (RFC 5649 section 4.2)
+     * @returns {uint8[]} Unwrapped key data
+     */
     _unwrap() {
+      /** @type {uint8[]} */
       const ciphertext = this.inputBuffer;
 
       // Validate input length (must be at least 16 bytes, multiple of 8)
+      /** @type {float64} */
       const n = ciphertext.length / 8;
 
       if (ciphertext.length < 16) {
@@ -307,15 +369,19 @@
       // Get Rijndael algorithm
       const RijndaelAlgorithm = getRijndaelAlgorithm();
 
-      let extractedAIV;
-      let paddedPlaintext;
+      /** @type {uint8[]} */
+      let extractedAIV = [];
+      /** @type {uint8[]} */
+      let paddedPlaintext = [];
 
       // Special case: exactly 2 blocks (16 bytes)
       if (n === 2) {
         // Decrypt as single AES block
+        /** @type {IBlockCipherInstance} */
         const aesDecrypt = RijndaelAlgorithm.CreateInstance(true);
         aesDecrypt.key = this._key;
         aesDecrypt.Feed(ciphertext);
+        /** @type {uint8[]} */
         const decrypted = aesDecrypt.Result();
 
         // Extract AIV and padded plaintext
@@ -323,16 +389,20 @@
         paddedPlaintext = decrypted.slice(8, 16);
       } else {
         // General case: Use RFC 3394 unwrapping
+        /** @type {UnwrapResult} */
         const result = this._rfc3394UnwrapNoIvCheck(ciphertext);
         extractedAIV = result.aiv;
         paddedPlaintext = result.plaintext;
       }
 
       // Decompose AIV: high 4 bytes || MLI (4 bytes)
+      /** @type {uint8[]} */
       const extractedAIVHigh = extractedAIV.slice(0, 4);
+      /** @type {uint32} */
       const mli = OpCodes.Pack32BE(extractedAIV[4], extractedAIV[5], extractedAIV[6], extractedAIV[7]);
 
       // Constant-time validation to prevent timing attacks
+      /** @type {boolean} */
       let isValid = true;
 
       // Check AIV high portion
@@ -340,23 +410,21 @@
         isValid = false;
       }
 
-      // Check MLI bounds
+      // Check MLI bounds: upperBound - 8 < MLI <= upperBound, which also
+      // bounds the number of padding zeros, upperBound - MLI, to 0..7
+      /** @type {int32} */
       const upperBound = paddedPlaintext.length;
+      /** @type {int32} */
       const lowerBound = upperBound - 8;
 
       if (mli <= lowerBound || mli > upperBound) {
         isValid = false;
       }
 
-      // Check padding zeros
-      const expectedZeros = upperBound - mli;
-      if (expectedZeros >= 8 || expectedZeros < 0) {
-        isValid = false;
-      }
-
       // Verify padding is all zeros
-      if (isValid && expectedZeros > 0) {
-        const paddingStart = paddedPlaintext.length - expectedZeros;
+      if (isValid && mli < upperBound) {
+        /** @type {int32} */
+        const paddingStart = OpCodes.ToInt(mli);
         for (let i = paddingStart; i < paddedPlaintext.length; ++i) {
           if (paddedPlaintext[i] !== 0) {
             isValid = false;
@@ -375,12 +443,20 @@
 
     /**
      * RFC 3394 wrap implementation with custom IV
+     * @param {uint8[]} plaintext - Padded plaintext, a multiple of 8 bytes
+     * @param {uint8[]} iv - 8-byte initial value
+     * @returns {uint8[]} Wrapped data
      */
     _rfc3394Wrap(plaintext, iv) {
+      /** @type {int32} */
       const n = plaintext.length / 8;
+      /** @type {IBlockCipherInstance} */
+      const aesEncrypt = this.aesInstance;
 
       // Initialize variables
+      /** @type {uint8[]} */
       let A = [...iv];
+      /** @type {uint8[][]} */
       const R = [];
 
       // Copy input into R[0]...R[n-1]
@@ -393,8 +469,9 @@
         for (let i = 0; i < n; ++i) {
           // B = AES(K, A|R[i])
           const block = [...A, ...R[i]];
-          this.aesInstance.Feed(block);
-          const B = this.aesInstance.Result();
+          aesEncrypt.Feed(block);
+          /** @type {uint8[]} */
+          const B = aesEncrypt.Result();
 
           // A = MSB(64, B) XOR t (where t = n*j + i + 1)
           A = B.slice(0, 8);
@@ -402,7 +479,7 @@
 
           // XOR the counter t into the last 4 bytes of A (big-endian)
           for (let k = 1; t !== 0 && k <= 4; ++k) {
-            A[8 - k] = OpCodes.XorN(A[8 - k], OpCodes.AndN(OpCodes.Shr32(t, (k - 1) * 8), 0xFF));
+            A[8 - k] = OpCodes.Xor8(A[8 - k], OpCodes.GetByte(t, k - 1));
           }
 
           // R[i] = LSB(64, B)
@@ -411,9 +488,10 @@
       }
 
       // Output is A|R[0]|R[1]|...|R[n-1]
+      /** @type {uint8[]} */
       const output = [...A];
       for (let i = 0; i < n; ++i) {
-        output.push(...R[i]);
+        for (let b = 0; b < R[i].length; ++b) output.push(R[i][b]);
       }
 
       return output;
@@ -422,12 +500,17 @@
     /**
      * RFC 3394 unwrap implementation without IV checking
      * Returns both AIV and plaintext for separate validation
+     * @param {uint8[]} ciphertext - Wrapped data, a multiple of 8 bytes
+     * @returns {UnwrapResult} Recovered AIV and padded plaintext
      */
     _rfc3394UnwrapNoIvCheck(ciphertext) {
+      /** @type {int32} */
       const n = (ciphertext.length / 8) - 1;
 
       // Initialize variables
+      /** @type {uint8[]} */
       let A = ciphertext.slice(0, 8);
+      /** @type {uint8[][]} */
       const R = [];
 
       // Copy ciphertext into R[0]...R[n-1]
@@ -437,6 +520,7 @@
 
       // Get Rijndael algorithm for decryption
       const RijndaelAlgorithm = getRijndaelAlgorithm();
+      /** @type {IBlockCipherInstance} */
       const aesDecrypt = RijndaelAlgorithm.CreateInstance(true);
       aesDecrypt.key = this._key;
 
@@ -449,12 +533,13 @@
           // XOR t into A (reverse the operation from wrapping)
           const A_copy = [...A];
           for (let k = 1; t !== 0 && k <= 4; ++k) {
-            A_copy[8 - k] = OpCodes.XorN(A_copy[8 - k], OpCodes.AndN(OpCodes.Shr32(t, (k - 1) * 8), 0xFF));
+            A_copy[8 - k] = OpCodes.Xor8(A_copy[8 - k], OpCodes.GetByte(t, k - 1));
           }
 
           // B = AES_Decrypt(K, (A XOR t)|R[i])
           const block = [...A_copy, ...R[i]];
           aesDecrypt.Feed(block);
+          /** @type {uint8[]} */
           const B = aesDecrypt.Result();
 
           // A = MSB(64, B)
@@ -466,15 +551,13 @@
       }
 
       // Return AIV and plaintext separately
+      /** @type {uint8[]} */
       const plaintext = [];
       for (let i = 0; i < n; ++i) {
-        plaintext.push(...R[i]);
+        for (let b = 0; b < R[i].length; ++b) plaintext.push(R[i][b]);
       }
 
-      return {
-        aiv: A,
-        plaintext: plaintext
-      };
+      return new UnwrapResult(A, plaintext);
     }
   }
 

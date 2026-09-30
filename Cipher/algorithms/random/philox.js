@@ -59,6 +59,9 @@
   /**
    * Single Philox4x32 round function
    * Implements the Feistel-like network with multiplication and XOR
+   * @param {uint32[]} counter - Four counter words
+   * @param {uint32[]} key - Two key words
+   * @returns {uint32[]} Four output words
    */
   function philox4x32Round(counter, key) {
     // counter is [c0, c1, c2, c3]
@@ -72,15 +75,17 @@
 
     // Feistel-like mixing with key
     return [
-      OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(hi1, counter[1]), key[0])),
+      OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(hi1, counter[1]), key[0])),
       OpCodes.ToUint32(lo1),
-      OpCodes.ToUint32(OpCodes.XorN(OpCodes.XorN(hi0, counter[3]), key[1])),
+      OpCodes.ToUint32(OpCodes.Xor32(OpCodes.Xor32(hi0, counter[3]), key[1])),
       OpCodes.ToUint32(lo0)
     ];
   }
 
   /**
    * Bump key (Weyl sequence for key schedule)
+   * @param {uint32[]} key - Two key words
+   * @returns {uint32[]} Next round key
    */
   function philox4x32BumpKey(key) {
     return [
@@ -91,10 +96,15 @@
 
   /**
    * Philox4x32-10: 10 rounds of the Philox transformation
+   * @param {uint32[]} counter - Four counter words
+   * @param {uint32[]} key - Two key words
+   * @returns {uint32[]} Four output words
    */
   function philox4x32_10(counter, key) {
-    let ctr = [...counter];
-    let k = [...key];
+    /** @type {uint32[]} */
+    let ctr = counter.slice();
+    /** @type {uint32[]} */
+    let k = key.slice();
 
     // Apply 10 rounds
     for (let i = 0; i < 10; ++i) {
@@ -222,7 +232,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {PhiloxInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -240,23 +250,34 @@
  */
 
   class PhiloxInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {PhiloxAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Key (2x 32-bit words)
+      /** @type {uint32[]} */
       this._key = [0, 0];
+      /** @type {boolean} */
       this._ready = false;
 
       // Counter state (4x 32-bit words)
+      /** @type {uint32[]} */
       this._counter = [0, 0, 0, 0];
 
       // Buffer for partial output
+      /** @type {uint8[]} */
       this._buffer = [];
+      /** @type {int32} */
       this._bufferPos = 0;
     }
 
     /**
      * Set key value (8 bytes = 2x 32-bit words, little-endian)
+     * @param {uint8[]|null} keyBytes - 8-byte key
      */
     set key(keyBytes) {
       if (!keyBytes || keyBytes.length === 0) {
@@ -265,7 +286,7 @@
       }
 
       if (keyBytes.length !== 8) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 8 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 8 bytes)");
       }
 
       // Parse key as little-endian 32-bit words
@@ -286,15 +307,18 @@
     /**
      * Set counter value (16 bytes = 4x 32-bit words, little-endian)
      * For counter-based PRNGs, the "seed" is actually the initial counter value
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
-        this._counter = [0, 0, 0, 0];
+        /** @type {uint32[]} */
+        const zero = [0, 0, 0, 0];
+        this._counter = zero;
         return;
       }
 
       if (seedBytes.length !== 16) {
-        throw new Error(`Invalid counter size: ${seedBytes.length} bytes (expected 16 bytes)`);
+        throw new Error("Invalid counter size: " + seedBytes.length + " bytes (expected 16 bytes)");
       }
 
       // Parse counter as little-endian 32-bit words
@@ -308,12 +332,16 @@
       this._bufferPos = 0;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed/counter
     }
 
     /**
      * Increment the counter (for sequential generation)
+     * @returns {void}
      */
     _incrementCounter() {
       // Increment as a 128-bit little-endian integer
@@ -331,6 +359,7 @@
 
     /**
      * Generate one block (16 bytes) from current counter
+     * @returns {uint8[]} 16 output bytes
      */
     _generateBlock() {
       if (!this._ready) {
@@ -338,9 +367,11 @@
       }
 
       // Apply Philox4x32-10 to current counter
+      /** @type {uint32[]} */
       const result = philox4x32_10(this._counter, this._key);
 
       // Convert result to bytes (little-endian)
+      /** @type {uint8[]} */
       const bytes = [];
       for (let i = 0; i < 4; ++i) {
         const wordBytes = OpCodes.Unpack32LE(result[i]);
@@ -355,6 +386,8 @@
 
     /**
      * Generate random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -362,9 +395,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let remaining = length;
 
@@ -410,16 +446,22 @@
    */
 
     Result() {
-      const size = this._outputSize || 16; // Default to one block
+      const size = (this._outputSize ? this._outputSize : 16); // Default to one block
       return this.NextBytes(size);
     }
 
+    /**
+     * @param {int32} size - Bytes returned by Result()
+     */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 16;
+      return (this._outputSize ? this._outputSize : 16);
     }
   }
 

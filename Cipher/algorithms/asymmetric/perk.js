@@ -99,7 +99,7 @@
    * directory and drop them from the hash index.
    *
    * @param {string} name - the registered name
-   * @returns {object} the algorithm
+   * @returns {Algorithm} the algorithm
    */
   function findHash(name) {
     if (hashAlgorithms[name]) return hashAlgorithms[name];
@@ -125,13 +125,15 @@
   /**
    * A fixed-length SHA-3 digest.
    * @param {string} name - SHA-3-256, SHA-3-384 or SHA-3-512
-   * @param {number[]} data - the input
-   * @returns {number[]} the digest
+   * @param {uint8[]} data - the input
+   * @returns {uint8[]} the digest
    */
   function sha3(name, data) {
     const instance = findHash(name).CreateInstance();
     instance.Feed(data);
-    return Array.from(instance.Result());
+    /** @type {uint8[]} */
+    const digest = Array.from(instance.Result());
+    return digest;
   }
 
   //#endregion
@@ -153,10 +155,16 @@
 
   // Rho offsets and the destination of the pi permutation, both indexed by the
   // lane number x + 5y. Pi sends (x, y) to (y, 2x + 3y).
+  /** @type {int32[]} */
   const RHO_OFFSETS = [0, 1, 62, 28, 27, 36, 44, 6, 55, 20, 3, 10, 43,
                        25, 39, 41, 45, 15, 21, 8, 18, 2, 61, 56, 14];
 
-  const PI_DESTINATION = (() => {
+  /**
+   * The destination lane of the pi step for every source lane.
+   * @returns {int32[]} 25 entries
+   */
+  function BuildPiDestination() {
+    /** @type {int32[]} */
     const table = new Array(25);
     for (let i = 0; i < 25; i++) {
       const x = i % 5;
@@ -164,55 +172,77 @@
       table[i] = y + 5 * ((2 * x + 3 * y) % 5);
     }
     return table;
-  })();
+  }
+
+  const PI_DESTINATION = BuildPiDestination();
 
   // The round constants are the standard FIPS 202 ones, derived from the
   // eight bit linear feedback shift register the standard defines rather than
   // transcribed, so the table cannot disagree with its own definition.
-  const ROUND_CONSTANTS = (() => {
-    const bit = t => {
-      const steps = t % 255;
-      if (steps === 0) return 1;
-      let register = 1;
-      for (let i = 1; i <= steps; i++) {
-        register = register * 2;
-        if (register >= 0x100) register = OpCodes.Xor32(register, 0x171);
-      }
-      return OpCodes.And32(register, 1);
-    };
-
-    const low = new Array(KECCAK_ROUNDS);
-    const high = new Array(KECCAK_ROUNDS);
-    for (let round = 0; round < KECCAK_ROUNDS; round++) {
-      let lo = 0;
-      let hi = 0;
-      for (let j = 0; j <= 6; j++) {
-        if (!bit(j + 7 * round)) continue;
-        const position = Math.pow(2, j) - 1;
-        if (position < 32) lo = OpCodes.Or32(lo, OpCodes.Shl32(1, position));
-        else hi = OpCodes.Or32(hi, OpCodes.Shl32(1, position - 32));
-      }
-      low[round] = lo;
-      high[round] = hi;
+  /**
+   * Output bit t of the FIPS 202 round-constant LFSR.
+   * @param {int32} t - the step
+   * @returns {uint32} the bit
+   */
+  function RoundConstantBit(t) {
+    const steps = t % 255;
+    if (steps === 0) return 1;
+    /** @type {uint32} */
+    let register = 1;
+    for (let i = 1; i <= steps; i++) {
+      register = register * 2;
+      if (register >= 0x100) register = OpCodes.Xor32(register, 0x171);
     }
-    return { low: low, high: high };
-  })();
+    return OpCodes.And32(register, 1);
+  }
+
+  /** The 24 round constants as low and high halves. */
+  class PerkRoundConstants {
+    constructor() {
+      /** @type {uint32[]} */
+      this.low = new Array(KECCAK_ROUNDS);
+      /** @type {uint32[]} */
+      this.high = new Array(KECCAK_ROUNDS);
+      for (let round = 0; round < KECCAK_ROUNDS; round++) {
+        /** @type {uint32} */
+        let lo = 0;
+        /** @type {uint32} */
+        let hi = 0;
+        for (let j = 0; j <= 6; j++) {
+          if (!RoundConstantBit(j + 7 * round)) continue;
+          const position = Math.pow(2, j) - 1;
+          if (position < 32) lo = OpCodes.Or32(lo, OpCodes.Shl32(1, position));
+          else hi = OpCodes.Or32(hi, OpCodes.Shl32(1, position - 32));
+        }
+        this.low[round] = lo;
+        this.high[round] = hi;
+      }
+    }
+  }
+
+  const ROUND_CONSTANTS = new PerkRoundConstants();
 
   /**
    * The Keccak-f[1600] permutation, in place.
-   * @param {number[]} lo - the 25 low halves
-   * @param {number[]} hi - the 25 high halves
+   * @param {uint32[]} lo - the 25 low halves
+   * @param {uint32[]} hi - the 25 high halves
    */
   function keccakPermute(lo, hi) {
+    /** @type {uint32[]} */
     const columnLo = new Array(5);
+    /** @type {uint32[]} */
     const columnHi = new Array(5);
+    /** @type {uint32[]} */
     const rotatedLo = new Array(25);
+    /** @type {uint32[]} */
     const rotatedHi = new Array(25);
 
     for (let round = 0; round < KECCAK_ROUNDS; round++) {
       // theta
       for (let x = 0; x < 5; x++) {
+        /** @type {uint32} */
         let l = lo[x];
+        /** @type {uint32} */
         let h = hi[x];
         for (let y = 1; y < 5; y++) {
           l = OpCodes.Xor32(l, lo[x + 5 * y]);
@@ -280,12 +310,15 @@
    */
   class ShakeStream {
     /**
-     * @param {number} rate - the rate in bytes, 168 for SHAKE128 and 136 for SHAKE256
-     * @param {number[]} input - the message, absorbed in full
+     * @param {int32} rate - the rate in bytes, 168 for SHAKE128 and 136 for SHAKE256
+     * @param {uint8[]} input - the message, absorbed in full
      */
     constructor(rate, input) {
+      /** @type {int32} */
       this.rate = rate;
+      /** @type {uint32[]} */
       this.lo = zeros(25);
+      /** @type {uint32[]} */
       this.hi = zeros(25);
 
       const padded = input.slice();
@@ -296,7 +329,9 @@
       for (let block = 0; block < padded.length; block += rate) {
         for (let i = 0; i < rate; i += 8) {
           const laneIndex = Math.floor(i / 8);
+          /** @type {uint32} */
           let l = 0;
+          /** @type {uint32} */
           let h = 0;
           for (let j = 3; j >= 0; j--) l = OpCodes.Or32(OpCodes.Shl32(l, 8), padded[block + i + j]);
           for (let j = 7; j >= 4; j--) h = OpCodes.Or32(OpCodes.Shl32(h, 8), padded[block + i + j]);
@@ -306,12 +341,18 @@
         keccakPermute(this.lo, this.hi);
       }
 
+      /** @type {uint8[]} */
       this.block = this._extract();
+      /** @type {int32} */
       this.offset = 0;
     }
 
-    /** The current state's first `rate` bytes. */
+    /**
+     * The current state's first `rate` bytes.
+     * @returns {uint8[]} the block
+     */
     _extract() {
+      /** @type {uint8[]} */
       const out = new Array(this.rate);
       for (let i = 0; i < this.rate; i += 8) {
         const laneIndex = Math.floor(i / 8);
@@ -327,10 +368,11 @@
 
     /**
      * Squeeze the next `count` bytes.
-     * @param {number} count - how many bytes
-     * @returns {number[]} the bytes
+     * @param {int32} count - how many bytes
+     * @returns {uint8[]} the bytes
      */
     Squeeze(count) {
+      /** @type {uint8[]} */
       const out = new Array(count);
       for (let i = 0; i < count; i++) {
         if (this.offset === this.rate) {
@@ -364,135 +406,381 @@
   // the fast sets pack two coefficients into one small field, while the short
   // sets - which run many more rounds and so pay for every byte - rank the
   // permutation into a factorial-base integer.
-  const RAW_PARAMETERS = {
-    'perk-128-fast-3':  { security: 16, n1: 79,  m: 35, t: 3, tau: 30, N: 32,  permBits: 13 },
-    'perk-128-fast-5':  { security: 16, n1: 83,  m: 36, t: 5, tau: 28, N: 32,  permBits: 13 },
-    'perk-128-short-3': { security: 16, n1: 79,  m: 35, t: 3, tau: 20, N: 256, ranked: true },
-    'perk-128-short-5': { security: 16, n1: 83,  m: 36, t: 5, tau: 18, N: 256, ranked: true },
-    'perk-192-fast-3':  { security: 24, n1: 112, m: 54, t: 3, tau: 46, N: 32,  permBits: 14 },
-    'perk-192-fast-5':  { security: 24, n1: 116, m: 55, t: 5, tau: 43, N: 32,  permBits: 14 },
-    'perk-192-short-3': { security: 24, n1: 112, m: 54, t: 3, tau: 31, N: 256, ranked: true },
-    'perk-192-short-5': { security: 24, n1: 116, m: 55, t: 5, tau: 28, N: 256, ranked: true },
-    'perk-256-fast-3':  { security: 32, n1: 146, m: 75, t: 3, tau: 61, N: 32,  permBits: 15 },
-    'perk-256-fast-5':  { security: 32, n1: 150, m: 76, t: 5, tau: 57, N: 32,  permBits: 15 },
-    'perk-256-short-3': { security: 32, n1: 146, m: 75, t: 3, tau: 41, N: 256, ranked: true },
-    'perk-256-short-5': { security: 32, n1: 150, m: 76, t: 5, tau: 37, N: 256, ranked: true }
-  };
+  /**
+   * A parameter set with everything the specification leaves implicit. The
+   * ranked (short) sets carry three more fields than the packed (fast) ones,
+   * in the same position they always had.
+   */
+  class PerkParams {
+    /**
+     * @param {string} name - the set name
+     * @param {int32} security - security level in bytes
+     * @param {int32} n1 - permutation length
+     * @param {int32} m - rows of H
+     * @param {int32} t - how many x vectors
+     * @param {int32} tau - rounds
+     * @param {int32} N - shares per round
+     * @param {int32} permBits - packed width of two coefficients, fast sets only
+     * @param {boolean} ranked - whether the opened permutation is ranked
+     */
+    constructor(name, security, n1, m, t, tau, N, permBits, ranked) {
+      /** @type {string} */
+      this.name = name;
+      /** @type {int32} */
+      this.securityBytes = security;
+      /** @type {int32} */
+      this.n1 = n1;
+      /** @type {int32} */
+      this.m = m;
+      /** @type {int32} */
+      this.t = t;
+      /** @type {int32} */
+      this.tau = tau;
+      /** @type {int32} */
+      this.N = N;
+      /** @type {boolean} */
+      this.ranked = ranked === true;
+      /** @type {int32} */
+      this.permBits = permBits;
+      /** @type {int32} */
+      this.permRadix = PermRadix(permBits);
+
+      if (this.ranked) {
+        // The rank is a number below n1!, and the counting tree it is built with
+        // is a complete binary tree with at least n1 leaves.
+        /** @type {BigInt[]} */
+        this.factorials = new Array(this.n1 + 1);
+        this.factorials[0] = 1n;
+        for (let i = 1; i <= this.n1; i++) this.factorials[i] = this.factorials[i - 1] * BigInt(i);
+        /** @type {int32} */
+        this.rankBits = Math.ceil(Math.log(this.n1) / Math.log(2));
+        /** @type {string} */
+        const binary = this.factorials[this.n1].toString(2);
+        /** @type {int32} */
+        this.rankedBytes = Math.floor((binary.length - 1) / 8) + 1;
+      }
+
+      /** @type {int32} */
+      this.seedBytes = this.securityBytes;
+      /** @type {int32} */
+      this.saltBytes = 2 * this.securityBytes;
+      /** @type {int32} */
+      this.hashBytes = 2 * this.securityBytes;
+      /** @type {int32} */
+      this.commitmentBytes = this.hashBytes;
+      /** @type {int32} */
+      this.treeLevels = Math.round(Math.log(this.N) / Math.log(2));
+      /** @type {int32} */
+      this.nMask = this.N - 1;
+
+      // SHAKE128 at the lowest level, SHAKE256 above it; the SHA-3 digest is the
+      // one whose output is exactly two seeds wide.
+      /** @type {int32} */
+      this.shakeRate = this.securityBytes === 16 ? 168 : 136;
+      /** @type {string} */
+      this.sha3 = this.securityBytes === 16 ? 'SHA-3-256' : (this.securityBytes === 24 ? 'SHA-3-384' : 'SHA-3-512');
+
+      /** @type {int32} */
+      this.publicKeyBytes = this.seedBytes + Math.floor((this.m * PARAM_Q_BITS * this.t + 7) / 8);
+      /** @type {int32} */
+      this.privateKeyBytes = this.seedBytes + this.publicKeyBytes;
+
+      /** @type {int32} */
+      this.z1Bytes = Math.floor((this.tau * this.n1 * PARAM_Q_BITS + 7) / 8);
+      /** @type {int32} */
+      this.z2Bytes = this.ranked
+        ? this.rankedBytes * this.tau
+        : Math.floor((this.tau * this.n1 * this.permBits / 2 + 7) / 8);
+      /** @type {int32} */
+      this.signatureBytes = this.saltBytes + 2 * this.commitmentBytes
+        + (this.commitmentBytes + this.seedBytes * this.treeLevels) * this.tau
+        + this.z1Bytes + this.z2Bytes;
+
+      // The encoder writes whole bytes, so the last byte of each packed block
+      // carries bits the decoder must see as zero.
+      /** @type {int32} */
+      this.z1UnusedMask = 0xFF - (Math.pow(2, ((this.tau * this.n1 * PARAM_Q_BITS + 7) % 8) + 1) - 1);
+      /** @type {int32} */
+      this.z2UnusedMask = this.ranked
+        ? 0
+        : 0xFF - (Math.pow(2, ((this.tau * this.n1 * this.permBits / 2 + 7) % 8) + 1) - 1);
+    }
+  }
 
   // Two permutation coefficients share one field of permBits bits, written as
   // c1 * radix + c0. Fourteen bits is the one case where the two halves are
   // simply seven bits each, which is the same rule with a radix of 128.
   const PERM_RADIX = { 13: 90, 14: 128, 15: 181 };
 
-  /** Fill in everything the specification leaves implicit for one set. */
-  function deriveParameters(name) {
-    const raw = RAW_PARAMETERS[name];
-    const P = {
-      name: name,
-      securityBytes: raw.security,
-      n1: raw.n1,
-      m: raw.m,
-      t: raw.t,
-      tau: raw.tau,
-      N: raw.N,
-      ranked: raw.ranked === true,
-      permBits: raw.permBits,
-      permRadix: PERM_RADIX[raw.permBits]
-    };
-
-    if (P.ranked) {
-      // The rank is a number below n1!, and the counting tree it is built with
-      // is a complete binary tree with at least n1 leaves.
-      P.factorials = new Array(P.n1 + 1);
-      P.factorials[0] = 1n;
-      for (let i = 1; i <= P.n1; i++) P.factorials[i] = P.factorials[i - 1] * BigInt(i);
-      P.rankBits = Math.ceil(Math.log(P.n1) / Math.log(2));
-      P.rankedBytes = Math.floor((P.factorials[P.n1].toString(2).length - 1) / 8) + 1;
-    }
-
-    P.seedBytes = P.securityBytes;
-    P.saltBytes = 2 * P.securityBytes;
-    P.hashBytes = 2 * P.securityBytes;
-    P.commitmentBytes = P.hashBytes;
-    P.treeLevels = Math.round(Math.log(P.N) / Math.log(2));
-    P.nMask = P.N - 1;
-
-    // SHAKE128 at the lowest level, SHAKE256 above it; the SHA-3 digest is the
-    // one whose output is exactly two seeds wide.
-    P.shakeRate = P.securityBytes === 16 ? 168 : 136;
-    P.sha3 = P.securityBytes === 16 ? 'SHA-3-256' : (P.securityBytes === 24 ? 'SHA-3-384' : 'SHA-3-512');
-
-    P.publicKeyBytes = P.seedBytes + Math.floor((P.m * PARAM_Q_BITS * P.t + 7) / 8);
-    P.privateKeyBytes = P.seedBytes + P.publicKeyBytes;
-
-    P.z1Bytes = Math.floor((P.tau * P.n1 * PARAM_Q_BITS + 7) / 8);
-    P.z2Bytes = P.ranked
-      ? P.rankedBytes * P.tau
-      : Math.floor((P.tau * P.n1 * P.permBits / 2 + 7) / 8);
-    P.signatureBytes = P.saltBytes + 2 * P.commitmentBytes
-      + (P.commitmentBytes + P.seedBytes * P.treeLevels) * P.tau
-      + P.z1Bytes + P.z2Bytes;
-
-    // The encoder writes whole bytes, so the last byte of each packed block
-    // carries bits the decoder must see as zero.
-    P.z1UnusedMask = 0xFF - (Math.pow(2, ((P.tau * P.n1 * PARAM_Q_BITS + 7) % 8) + 1) - 1);
-    P.z2UnusedMask = P.ranked
-      ? 0
-      : 0xFF - (Math.pow(2, ((P.tau * P.n1 * P.permBits / 2 + 7) % 8) + 1) - 1);
-
-    return P;
+  /**
+   * The radix for a packed width, undefined for the ranked sets.
+   * @param {int32} permBits - the packed width
+   * @returns {int32} the radix
+   */
+  function PermRadix(permBits) {
+    /** @type {int32} */
+    const radix = PERM_RADIX[permBits];
+    return radix;
   }
 
-  const PARAMETER_SETS = {};
-  for (const name of Object.keys(RAW_PARAMETERS)) PARAMETER_SETS[name] = deriveParameters(name);
+  /** @type {PerkParams[]} */
+  const PARAMETER_SET_LIST = [
+    new PerkParams('perk-128-fast-3',  16, 79,  35, 3, 30, 32,  13, false),
+    new PerkParams('perk-128-fast-5',  16, 83,  36, 5, 28, 32,  13, false),
+    new PerkParams('perk-128-short-3', 16, 79,  35, 3, 20, 256, undefined, true),
+    new PerkParams('perk-128-short-5', 16, 83,  36, 5, 18, 256, undefined, true),
+    new PerkParams('perk-192-fast-3',  24, 112, 54, 3, 46, 32,  14, false),
+    new PerkParams('perk-192-fast-5',  24, 116, 55, 5, 43, 32,  14, false),
+    new PerkParams('perk-192-short-3', 24, 112, 54, 3, 31, 256, undefined, true),
+    new PerkParams('perk-192-short-5', 24, 116, 55, 5, 28, 256, undefined, true),
+    new PerkParams('perk-256-fast-3',  32, 146, 75, 3, 61, 32,  15, false),
+    new PerkParams('perk-256-fast-5',  32, 150, 76, 5, 57, 32,  15, false),
+    new PerkParams('perk-256-short-3', 32, 146, 75, 3, 41, 256, undefined, true),
+    new PerkParams('perk-256-short-5', 32, 150, 76, 5, 37, 256, undefined, true)
+  ];
+
+  const PARAMETER_SETS = {
+    'perk-128-fast-3': PARAMETER_SET_LIST[0],
+    'perk-128-fast-5': PARAMETER_SET_LIST[1],
+    'perk-128-short-3': PARAMETER_SET_LIST[2],
+    'perk-128-short-5': PARAMETER_SET_LIST[3],
+    'perk-192-fast-3': PARAMETER_SET_LIST[4],
+    'perk-192-fast-5': PARAMETER_SET_LIST[5],
+    'perk-192-short-3': PARAMETER_SET_LIST[6],
+    'perk-192-short-5': PARAMETER_SET_LIST[7],
+    'perk-256-fast-3': PARAMETER_SET_LIST[8],
+    'perk-256-fast-5': PARAMETER_SET_LIST[9],
+    'perk-256-short-3': PARAMETER_SET_LIST[10],
+    'perk-256-short-5': PARAMETER_SET_LIST[11]
+  };
+
+  /**
+   * The table entry under a name. A plain property read, so a name is
+   * accepted exactly when the table has a truthy property of it.
+   * @param {string} name - the name
+   * @returns {PerkParams} the entry, or a falsy value
+   */
+  function ParameterSetEntry(name) {
+    /** @type {PerkParams} */
+    const entry = PARAMETER_SETS[name];
+    return entry;
+  }
 
   /**
    * Look up a parameter set by name, tolerating the spellings people use.
-   * @param {string|number} label - a set name
-   * @returns {object|null} the parameter set
+   * @param {string|int32} label - a set name
+   * @returns {PerkParams|null} the parameter set
    */
   function findParameterSet(label) {
+    /** @type {string} */
     const text = String(label).trim();
-    if (PARAMETER_SETS[text]) return PARAMETER_SETS[text];
+    const exact = ParameterSetEntry(text);
+    if (exact) return exact;
 
+    /** @type {string} */
     const lower = text.toLowerCase().replace(/^perk[-_]?/, '');
-    for (const name of Object.keys(PARAMETER_SETS)) {
-      if (name.slice(5) === lower) return PARAMETER_SETS[name];
+    for (let i = 0; i < PARAMETER_SET_LIST.length; i++) {
+      if (PARAMETER_SET_LIST[i].name.slice(5) === lower) return PARAMETER_SET_LIST[i];
     }
     return null;
   }
 
   /**
    * Look up a parameter set by the encoded length of one of its objects.
-   * @param {number} length - the byte length seen
-   * @param {string} field - which size to match
-   * @returns {object|null} the parameter set
+   * @param {int32} length - the byte length seen
+   * @param {string} field - 'publicKeyBytes' or 'privateKeyBytes'
+   * @returns {PerkParams|null} the parameter set
    */
   function parameterSetByLength(length, field) {
-    for (const name of Object.keys(PARAMETER_SETS)) {
-      if (PARAMETER_SETS[name][field] === length) return PARAMETER_SETS[name];
+    for (let i = 0; i < PARAMETER_SET_LIST.length; i++) {
+      const set = PARAMETER_SET_LIST[i];
+      const size = field === 'privateKeyBytes' ? set.privateKeyBytes : set.publicKeyBytes;
+      if (size === length) return set;
     }
     return null;
+  }
+
+  // ===== RESULT RECORDS =====
+
+  /** A PERK pseudorandom generator: a SHAKE stream squeezed on demand. */
+  class PerkGenerator {
+    /**
+     * @param {ShakeStream} stream - the absorbed sponge
+     */
+    constructor(stream) {
+      /** @type {ShakeStream} */
+      this.stream = stream;
+    }
+  }
+
+  class PerkExpandedSeed {
+    /**
+     * @param {int32[][]} H - the m by n1 matrix
+     * @param {int32[][]} x - the t vectors
+     */
+    constructor(H, x) {
+      /** @type {int32[][]} */
+      this.H = H;
+      /** @type {int32[][]} */
+      this.x = x;
+    }
+  }
+
+  class PerkRoundShares {
+    /**
+     * @param {int32[][]} shares - the N share permutations, entry 0 unset
+     * @param {int32[][]} masks - the N masking vectors
+     */
+    constructor(shares, masks) {
+      /** @type {int32[][]} */
+      this.shares = shares;
+      /** @type {int32[][]} */
+      this.masks = masks;
+    }
+  }
+
+  class PerkKeyPair {
+    /**
+     * @param {uint8[]} publicKey - encoded public key
+     * @param {uint8[]} privateKey - encoded private key
+     */
+    constructor(publicKey, privateKey) {
+      /** @type {uint8[]} */
+      this.publicKey = publicKey;
+      /** @type {uint8[]} */
+      this.privateKey = privateKey;
+    }
+  }
+
+  class PerkPublicKey {
+    /**
+     * @param {uint8[]} seed - the public seed
+     * @param {int32[][]} H - the matrix
+     * @param {int32[][]} x - the t vectors
+     * @param {int32[][]} y - the t targets
+     */
+    constructor(seed, H, x, y) {
+      /** @type {uint8[]} */
+      this.seed = seed;
+      /** @type {int32[][]} */
+      this.H = H;
+      /** @type {int32[][]} */
+      this.x = x;
+      /** @type {int32[][]} */
+      this.y = y;
+    }
+  }
+
+  class PerkFirstHash {
+    /**
+     * @param {uint8[]} h1 - the hash
+     * @param {uint8[]} prefix - salt, message and public key
+     */
+    constructor(h1, prefix) {
+      /** @type {uint8[]} */
+      this.h1 = h1;
+      /** @type {uint8[]} */
+      this.prefix = prefix;
+    }
+  }
+
+  /** One round of the proof, as the challenge hashes read it. */
+  class PerkRound {
+    /**
+     * @param {uint8[][]|null} tree - the seed tree, signing only
+     * @param {int32[][]|null} shares - the share permutations, signing only
+     * @param {int32[][]|null} masks - the masking vectors, signing only
+     * @param {uint8[][]} commitments - the N commitments, reversed
+     * @param {uint8[]} aggregateCommitment - the commitment to H v
+     * @param {int32[][]|null} states - the state chain, filled in later when signing
+     */
+    constructor(tree, shares, masks, commitments, aggregateCommitment, states) {
+      /** @type {uint8[][]|null} */
+      this.tree = tree;
+      /** @type {int32[][]|null} */
+      this.shares = shares;
+      /** @type {int32[][]|null} */
+      this.masks = masks;
+      /** @type {uint8[][]} */
+      this.commitments = commitments;
+      /** @type {uint8[]} */
+      this.aggregateCommitment = aggregateCommitment;
+      /** @type {int32[][]|null} */
+      this.states = states;
+    }
+  }
+
+  /** One round's response, in the order the decoder has always listed it. */
+  class PerkResponse {
+    /**
+     * @param {uint8[]} commitment - the withheld share's commitment
+     * @param {uint8[][]} z2Seeds - the sibling seeds
+     * @param {int32[]} z1 - the opened state
+     * @param {int32[]} z2Permutation - the opened first share
+     */
+    constructor(commitment, z2Seeds, z1, z2Permutation) {
+      /** @type {uint8[]} */
+      this.commitment = commitment;
+      /** @type {uint8[][]} */
+      this.z2Seeds = z2Seeds;
+      /** @type {int32[]} */
+      this.z1 = z1;
+      /** @type {int32[]} */
+      this.z2Permutation = z2Permutation;
+    }
+  }
+
+  class PerkSignature {
+    /**
+     * @param {uint8[]} salt - the salt
+     * @param {uint8[]} h1 - the first challenge hash
+     * @param {uint8[]} h2 - the second challenge hash
+     * @param {PerkResponse[]} responses - the tau responses
+     */
+    constructor(salt, h1, h2, responses) {
+      /** @type {uint8[]} */
+      this.salt = salt;
+      /** @type {uint8[]} */
+      this.h1 = h1;
+      /** @type {uint8[]} */
+      this.h2 = h2;
+      /** @type {PerkResponse[]} */
+      this.responses = responses;
+    }
   }
 
   //#endregion
 
   //#region ===== SMALL HELPERS =====
 
-  /** An array of `n` zeros. */
+  /**
+   * An array of `n` zeros.
+   * @param {int32} n - length
+   * @returns {int32[]} the zeros
+   */
   function zeros(n) {
+    /** @type {int32[]} */
     const out = new Array(n);
     for (let i = 0; i < n; i++) out[i] = 0;
     return out;
   }
 
-  /** Append every element of `source` to `target`. */
+  /**
+   * Append every element of `source` to `target`.
+   * @param {int32[]} target - target
+   * @param {int32[]} source - source
+   * @returns {int32[]} Result
+   */
   function appendAll(target, source) {
     for (let i = 0; i < source.length; i++) target.push(source[i]);
     return target;
   }
 
-  /** Encode an array of values below 65536 as little-endian 16 bit words. */
+  /**
+   * Encode an array of values below 65536 as little-endian 16 bit words.
+   * @param {int32[]} values - values
+   * @returns {uint8[]} Result
+   */
   function toLittleEndian16(values) {
     const out = new Array(values.length * 2);
     for (let i = 0; i < values.length; i++) {
@@ -504,11 +792,11 @@
 
   /**
    * Read the `index`-th field of `bits` bits from an LSB-first bit stream.
-   * @param {number[]} bytes - the packed bytes
-   * @param {number} offset - where the stream starts
-   * @param {number} index - which field
-   * @param {number} bits - the field width
-   * @returns {number} the value
+   * @param {uint8[]} bytes - the packed bytes
+   * @param {int32} offset - where the stream starts
+   * @param {int32} index - which field
+   * @param {int32} bits - the field width
+   * @returns {int32} the value
    */
   function getBits(bytes, offset, index, bits) {
     let position = index * bits;
@@ -533,11 +821,11 @@
   /**
    * Write the `index`-th field of `bits` bits into an LSB-first bit stream.
    * Fields must be written in increasing order into a zeroed buffer.
-   * @param {number[]} bytes - the packed bytes
-   * @param {number} offset - where the stream starts
-   * @param {number} index - which field
-   * @param {number} bits - the field width
-   * @param {number} value - the value to store
+   * @param {uint8[]} bytes - the packed bytes
+   * @param {int32} offset - where the stream starts
+   * @param {int32} index - which field
+   * @param {int32} bits - the field width
+   * @param {int32} value - the value to store
    */
   function putBits(bytes, offset, index, bits, value) {
     let position = index * bits;
@@ -567,39 +855,40 @@
    * SHAKE output is a stream whose prefixes are stable, so an exhausted buffer
    * is refilled by asking for more of the same stream rather than by chaining.
    *
-   * @param {object} P - parameter set
-   * @param {number} domain - the domain separator byte
-   * @param {number[]|null} salt - absorbed first when present
-   * @param {number[]|null} seed - absorbed next when present
-   * @returns {object} a generator with bytes(n) and word16()
+   * @param {PerkParams} P - parameter set
+   * @param {int32} domain - the domain separator byte
+   * @param {uint8[]|null} salt - absorbed first when present
+   * @param {uint8[]|null} seed - absorbed next when present
+   * @returns {PerkGenerator} a generator read with GeneratorBytes and GeneratorWord16
    */
   function makeGenerator(P, domain, salt, seed) {
+    /** @type {uint8[]} */
     const input = [];
     if (salt) appendAll(input, salt);
     if (seed) appendAll(input, seed);
     input.push(domain);
 
-    const stream = new ShakeStream(P.shakeRate, input);
+    return new PerkGenerator(new ShakeStream(P.shakeRate, input));
+  }
 
-    return {
-      /**
-       * Take the next `count` bytes of the stream.
-       * @param {number} count - how many bytes
-       * @returns {number[]} the bytes
-       */
-      bytes: function(count) {
-        return stream.Squeeze(count);
-      },
+  /**
+   * Take the next `count` bytes of a generator's stream.
+   * @param {PerkGenerator} generator - the generator
+   * @param {int32} count - how many bytes
+   * @returns {uint8[]} the bytes
+   */
+  function GeneratorBytes(generator, count) {
+    return generator.stream.Squeeze(count);
+  }
 
-      /**
-       * Take the next little-endian 16 bit word of the stream.
-       * @returns {number} the word
-       */
-      word16: function() {
-        const pair = stream.Squeeze(2);
-        return pair[0] + 256 * pair[1];
-      }
-    };
+  /**
+   * Take the next little-endian 16 bit word of a generator's stream.
+   * @param {PerkGenerator} generator - the generator
+   * @returns {int32} the word
+   */
+  function GeneratorWord16(generator) {
+    const pair = generator.stream.Squeeze(2);
+    return pair[0] + 256 * pair[1];
   }
 
   /**
@@ -608,12 +897,12 @@
    * Every one of them absorbs the salt, then up to two counter bytes, then the
    * message, then the domain byte.
    *
-   * @param {object} P - parameter set
-   * @param {number[]} salt - the salt
-   * @param {number[]} counters - zero, one or two counter bytes
-   * @param {number[][]} parts - the message pieces
-   * @param {number} domain - the domain separator byte
-   * @returns {number[]} the digest
+   * @param {PerkParams} P - parameter set
+   * @param {uint8[]} salt - the salt
+   * @param {uint8[]} counters - zero, one or two counter bytes
+   * @param {uint8[][]} parts - the message pieces
+   * @param {int32} domain - the domain separator byte
+   * @returns {uint8[]} the digest
    */
   function keyedDigest(P, salt, counters, parts, domain) {
     const input = salt.slice();
@@ -632,20 +921,36 @@
   // payload; sorting index pairs by (key, index) is the same order and is
   // written out directly here.
 
-  /** Sort the indices 0..n-1 by key, ties broken by the index itself. */
+  /**
+   * Sort the indices 0..n-1 by key, ties broken by the index itself.
+   * @param {int32[]} keys - keys
+   * @returns {int32[]} Result
+   */
   function rankByKey(keys) {
+    /** @type {int32[]} */
     const order = new Array(keys.length);
     for (let i = 0; i < keys.length; i++) order[i] = i;
-    order.sort((a, b) => (keys[a] - keys[b]) || (a - b));
+    /**
+     * By key, ties by index; the keys are 16 bit words, so a zero difference
+     * is the only falsy one.
+     * @param {int32} a - left index
+     * @param {int32} b - right index
+     * @returns {int32} negative, zero or positive
+     */
+    function CompareKeys(a, b) {
+      const difference = keys[a] - keys[b];
+      return difference !== 0 ? difference : a - b;
+    }
+    order.sort(CompareKeys);
     return order;
   }
 
   /**
    * Turn n1 sampled 16 bit words into a permutation, refusing the draw when
    * two of them collide.
-   * @param {number[]} words - the sampled words
-   * @param {object} P - parameter set
-   * @returns {number[]|null} the permutation, or null when the draw collided
+   * @param {int32[]} words - the sampled words
+   * @param {PerkParams} P - parameter set
+   * @returns {int32[]|null} the permutation, or null when the draw collided
    */
   function permutationFromWords(words, P) {
     const order = rankByKey(words);
@@ -657,55 +962,89 @@
 
   /**
    * Draw a permutation from a generator, redrawing on a collision.
-   * @param {object} generator - the generator to draw from
-   * @param {object} P - parameter set
-   * @returns {number[]} the permutation
+   * @param {PerkGenerator} generator - the generator to draw from
+   * @param {PerkParams} P - parameter set
+   * @returns {int32[]} the permutation
    */
   function samplePermutation(generator, P) {
     for (;;) {
+      /** @type {int32[]} */
       const words = new Array(P.n1);
-      for (let i = 0; i < P.n1; i++) words[i] = generator.word16();
+      for (let i = 0; i < P.n1; i++) words[i] = GeneratorWord16(generator);
       const permutation = permutationFromWords(words, P);
       if (permutation) return permutation;
     }
   }
 
-  /** Apply a permutation to a vector: out[p[i]] = in[i]. */
+  /**
+   * Apply a permutation to a vector: out[p[i]] = in[i].
+   * @param {int32[]} p - p
+   * @param {int32[]} input - input
+   * @returns {int32[]} Result
+   */
   function permuteVector(p, input) {
+    /** @type {int32[]} */
     const out = new Array(input.length);
     for (let i = 0; i < input.length; i++) out[p[i]] = input[i];
     return out;
   }
 
-  /** The inverse permutation. */
+  /**
+   * The inverse permutation.
+   * @param {int32[]} p - p
+   * @returns {int32[]} Result
+   */
   function invertPermutation(p) {
+    /** @type {int32[]} */
     const out = new Array(p.length);
     for (let i = 0; i < p.length; i++) out[p[i]] = i;
     return out;
   }
 
-  /** The composition p1 after p2: out[i] = p1[p2[i]]. */
+  /**
+   * The composition p1 after p2: out[i] = p1[p2[i]].
+   * @param {int32[]} p1 - p1
+   * @param {int32[]} p2 - p2
+   * @returns {int32[]} Result
+   */
   function composePermutations(p1, p2) {
+    /** @type {int32[]} */
     const out = new Array(p1.length);
     for (let i = 0; i < p1.length; i++) out[i] = p1[p2[i]];
     return out;
   }
 
-  /** The composition p1 after the inverse of p2: out[p2[i]] = p1[i]. */
+  /**
+   * The composition p1 after the inverse of p2: out[p2[i]] = p1[i].
+   * @param {int32[]} p1 - p1
+   * @param {int32[]} p2 - p2
+   * @returns {int32[]} Result
+   */
   function composeWithInverse(p1, p2) {
+    /** @type {int32[]} */
     const out = new Array(p1.length);
     for (let i = 0; i < p1.length; i++) out[p2[i]] = p1[i];
     return out;
   }
 
-  /** The identity permutation on n1 points. */
+  /**
+   * The identity permutation on n1 points.
+   * @param {PerkParams} P - P
+   * @returns {int32[]} Result
+   */
   function identityPermutation(P) {
+    /** @type {int32[]} */
     const out = new Array(P.n1);
     for (let i = 0; i < P.n1; i++) out[i] = i;
     return out;
   }
 
-  /** Is this array a permutation of 0..n1-1? */
+  /**
+   * Is this array a permutation of 0..n1-1?
+   * @param {int32[]} p - p
+   * @param {PerkParams} P - P
+   * @returns {boolean} Result
+   */
   function permutationValid(p, P) {
     const seen = zeros(P.n1);
     for (let i = 0; i < P.n1; i++) {
@@ -724,9 +1063,9 @@
    * and a complete binary counting tree over the points supplies that count in
    * logarithmic time. The digits are then read as a mixed-radix number.
    *
-   * @param {number[]} p - the permutation
-   * @param {object} P - parameter set
-   * @returns {number[]} the ranked bytes, little endian
+   * @param {int32[]} p - the permutation
+   * @param {PerkParams} P - parameter set
+   * @returns {uint8[]} the ranked bytes, little endian
    */
   function rankPermutation(p, P) {
     const counts = zeros(Math.pow(2, P.rankBits + 1) - 1);
@@ -755,10 +1094,10 @@
 
   /**
    * Recover a permutation from its factorial-base rank.
-   * @param {number[]} bytes - the ranked bytes
-   * @param {number} offset - where they start
-   * @param {object} P - parameter set
-   * @returns {number[]|null} the permutation, or null when the rank is too big
+   * @param {uint8[]} bytes - the ranked bytes
+   * @param {int32} offset - where they start
+   * @param {PerkParams} P - parameter set
+   * @returns {int32[]|null} the permutation, or null when the rank is too big
    */
   function unrankPermutation(bytes, offset, P) {
     let code = 0n;
@@ -767,6 +1106,7 @@
     }
     if (code >= P.factorials[P.n1]) return null;
 
+    /** @type {int32[]} */
     const digits = new Array(P.n1);
     for (let i = 0; i < P.n1; i++) {
       const radix = P.factorials[P.n1 - 1 - i];
@@ -774,6 +1114,7 @@
       code = code % radix;
     }
 
+    /** @type {int32[]} */
     const counts = new Array(Math.pow(2, P.rankBits + 1) - 1);
     for (let level = 0; level <= P.rankBits; level++) {
       const width = Math.pow(2, level);
@@ -801,8 +1142,8 @@
 
   /**
    * Derive pi_1 so that the composition of all N shares is the secret pi.
-   * @param {number[][]} shares - the N share permutations, entry 0 unset
-   * @param {number[]} pi - the secret permutation
+   * @param {int32[][]} shares - the N share permutations, entry 0 unset
+   * @param {int32[]} pi - the secret permutation
    */
   function derivateFirstShare(shares, pi) {
     let first = invertPermutation(shares[1]);
@@ -814,7 +1155,12 @@
 
   //#region ===== ARITHMETIC OVER F_1021 =====
 
-  /** Componentwise sum of two reduced vectors. */
+  /**
+   * Componentwise sum of two reduced vectors.
+   * @param {int32[]} a - a
+   * @param {int32[]} b - b
+   * @returns {int32[]} Result
+   */
   function vectorAdd(a, b) {
     const out = new Array(a.length);
     for (let i = 0; i < a.length; i++) {
@@ -824,7 +1170,12 @@
     return out;
   }
 
-  /** Componentwise difference of two reduced vectors. */
+  /**
+   * Componentwise difference of two reduced vectors.
+   * @param {int32[]} a - a
+   * @param {int32[]} b - b
+   * @returns {int32[]} Result
+   */
   function vectorSubtract(a, b) {
     const out = new Array(a.length);
     for (let i = 0; i < a.length; i++) {
@@ -834,14 +1185,26 @@
     return out;
   }
 
-  /** A vector scaled by a field element. */
+  /**
+   * A vector scaled by a field element.
+   * @param {int32} scalar - scalar
+   * @param {int32[]} v - v
+   * @returns {int32[]} Result
+   */
   function vectorScale(scalar, v) {
+    /** @type {int32[]} */
     const out = new Array(v.length);
     for (let i = 0; i < v.length; i++) out[i] = (scalar * v[i]) % PARAM_Q;
     return out;
   }
 
-  /** The matrix-vector product H * v over F_1021. */
+  /**
+   * The matrix-vector product H * v over F_1021.
+   * @param {int32[][]} H - H
+   * @param {int32[]} v - v
+   * @param {PerkParams} P - P
+   * @returns {int32[]} Result
+   */
   function matrixVectorMultiply(H, v, P) {
     const out = new Array(P.m);
     for (let i = 0; i < P.m; i++) {
@@ -853,7 +1216,11 @@
     return out;
   }
 
-  /** The inverse of a non-zero field element. */
+  /**
+   * The inverse of a non-zero field element.
+   * @param {int32} a - a
+   * @returns {int32} Result
+   */
   function fieldInverse(a) {
     let result = 1;
     let base = a;
@@ -874,11 +1241,12 @@
    * what has to agree with the submission is which draws it rejects rather
    * than the rank of anything.
    *
-   * @param {number[][]} vectors - the t vectors
-   * @param {object} P - parameter set
-   * @returns {number} the computed rank
+   * @param {int32[][]} vectors - the t vectors
+   * @param {PerkParams} P - parameter set
+   * @returns {int32} the computed rank
    */
   function computeRank(vectors, P) {
+    /** @type {int32[][]} */
     const x = [];
     for (let i = 0; i < P.t; i++) x.push(vectors[i].slice());
 
@@ -915,12 +1283,12 @@
 
   /**
    * Draw one field element by rejection from a generator.
-   * @param {object} generator - the generator
-   * @returns {number} a value below 1021
+   * @param {PerkGenerator} generator - the generator
+   * @returns {int32} a value below 1021
    */
   function sampleFieldElement(generator) {
     for (;;) {
-      const candidate = OpCodes.And16(generator.word16(), 0x3FF);
+      const candidate = OpCodes.And16(GeneratorWord16(generator), 0x3FF);
       if (candidate < PARAM_Q) return candidate;
     }
   }
@@ -932,10 +1300,10 @@
    * reached. The abandoned tail matters - the next thing drawn from the same
    * generator starts on a block boundary, not where this left off.
    *
-   * @param {object} generator - the generator
-   * @param {number} count - how many elements
-   * @param {object} P - parameter set
-   * @returns {number[]} the elements
+   * @param {PerkGenerator} generator - the generator
+   * @param {int32} count - how many elements
+   * @param {PerkParams} P - parameter set
+   * @returns {int32[]} the elements
    */
   function sampleBlockwise(generator, count, P) {
     const wordsPerBlock = Math.floor(P.shakeRate / 2);
@@ -943,7 +1311,7 @@
     let produced = 0;
 
     while (produced < count) {
-      const block = generator.bytes(P.shakeRate);
+      const block = GeneratorBytes(generator, P.shakeRate);
       let word = 0;
       while (produced < count && word < wordsPerBlock) {
         const candidate = OpCodes.And16(block[2 * word] + 256 * block[2 * word + 1], 0x3FF);
@@ -955,8 +1323,15 @@
     return out;
   }
 
-  /** Cut a flat run of elements into rows of n1. */
+  /**
+   * Cut a flat run of elements into rows of n1.
+   * @param {int32[]} values - values
+   * @param {int32} rows - rows
+   * @param {PerkParams} P - P
+   * @returns {int32[][]} Result
+   */
   function intoRows(values, rows, P) {
+    /** @type {int32[][]} */
     const out = new Array(rows);
     for (let i = 0; i < rows; i++) out[i] = values.slice(i * P.n1, (i + 1) * P.n1);
     return out;
@@ -964,9 +1339,9 @@
 
   /**
    * Expand a public seed into the matrix H and the t vectors x.
-   * @param {number[]} seed - the public seed
-   * @param {object} P - parameter set
-   * @returns {object} { H, x }
+   * @param {uint8[]} seed - the public seed
+   * @param {PerkParams} P - parameter set
+   * @returns {PerkExpandedSeed} { H, x }
    */
   function expandPublicSeed(seed, P) {
     const generator = makeGenerator(P, DOMAIN_PRG1, null, seed);
@@ -982,7 +1357,7 @@
     if (computeRank(x, P) !== P.t)
       throw new Error('PERK: the sampled x vectors are not independent');
 
-    return { H: H, x: x };
+    return new PerkExpandedSeed(H, x);
   }
 
   //#endregion
@@ -996,12 +1371,13 @@
 
   /**
    * Grow the whole tree from its root.
-   * @param {number[]} salt - the signature salt
-   * @param {number[]} root - the root seed
-   * @param {object} P - parameter set
-   * @returns {number[][]} the 2N-1 nodes, leaves last
+   * @param {uint8[]} salt - the signature salt
+   * @param {uint8[]} root - the root seed
+   * @param {PerkParams} P - parameter set
+   * @returns {uint8[][]} the 2N-1 nodes, leaves last
    */
   function expandSeedTree(salt, root, P) {
+    /** @type {uint8[][]} */
     const tree = new Array(2 * P.N - 1);
     tree[0] = root.slice();
 
@@ -1016,10 +1392,10 @@
 
   /**
    * The sibling seeds that let a verifier rebuild every leaf but `alpha`.
-   * @param {number[][]} tree - the complete tree
-   * @param {number} alpha - the withheld leaf, counted from zero
-   * @param {object} P - parameter set
-   * @returns {number[][]} one seed per level
+   * @param {uint8[][]} tree - the complete tree
+   * @param {int32} alpha - the withheld leaf, counted from zero
+   * @param {PerkParams} P - parameter set
+   * @returns {uint8[][]} one seed per level
    */
   function siblingSeeds(tree, alpha, P) {
     const out = new Array(P.treeLevels);
@@ -1033,13 +1409,14 @@
 
   /**
    * Rebuild every leaf but `alpha` from the sibling seeds.
-   * @param {number[]} salt - the signature salt
-   * @param {number[][]} seeds - one seed per level
-   * @param {number} alpha - the withheld leaf, counted from zero
-   * @param {object} P - parameter set
-   * @returns {number[][]} the partially filled tree
+   * @param {uint8[]} salt - the signature salt
+   * @param {uint8[][]} seeds - one seed per level
+   * @param {int32} alpha - the withheld leaf, counted from zero
+   * @param {PerkParams} P - parameter set
+   * @returns {uint8[][]} the partially filled tree
    */
   function expandPartialSeedTree(salt, seeds, alpha, P) {
+    /** @type {uint8[][]} */
     const tree = new Array(2 * P.N - 1);
     for (let i = 0; i < tree.length; i++) tree[i] = zeros(P.seedBytes);
 
@@ -1071,7 +1448,11 @@
 
   //#region ===== ONE ROUND OF THE PROOF =====
 
-  /** The offset at which the leaf seeds start inside a tree. */
+  /**
+   * The offset at which the leaf seeds start inside a tree.
+   * @param {PerkParams} P - P
+   * @returns {int32} Result
+   */
   function leafOffset(P) {
     return P.N - 1;
   }
@@ -1079,13 +1460,15 @@
   /**
    * Draw the N share permutations and the N masking vectors of one round.
    * Share 0's permutation is not drawn: it is derived from the secret.
-   * @param {number[]} salt - the signature salt
-   * @param {number[][]} tree - the round's seed tree
-   * @param {object} P - parameter set
-   * @returns {object} { shares, masks }
+   * @param {uint8[]} salt - the signature salt
+   * @param {uint8[][]} tree - the round's seed tree
+   * @param {PerkParams} P - parameter set
+   * @returns {PerkRoundShares} { shares, masks }
    */
   function expandRoundShares(salt, tree, P) {
+    /** @type {int32[][]} */
     const shares = new Array(P.N);
+    /** @type {int32[][]} */
     const masks = new Array(P.N);
     const offset = leafOffset(P);
 
@@ -1100,16 +1483,16 @@
       masks[i] = sampleBlockwise(maskGenerator, P.n1, P);
     }
 
-    return { shares: shares, masks: masks };
+    return new PerkRoundShares(shares, masks);
   }
 
   /**
    * The aggregate masking vector the prover commits to.
-   * @param {number[][]} shares - the N share permutations
-   * @param {number[][]} masks - the N masking vectors
-   * @param {number[]} pi - the secret permutation
-   * @param {object} P - parameter set
-   * @returns {number[]} the aggregate
+   * @param {int32[][]} shares - the N share permutations
+   * @param {int32[][]} masks - the N masking vectors
+   * @param {int32[]} pi - the secret permutation
+   * @param {PerkParams} P - parameter set
+   * @returns {int32[]} the aggregate
    */
   function aggregateMask(shares, masks, pi, P) {
     let composed = composeWithInverse(pi, shares[0]);
@@ -1129,12 +1512,12 @@
    * The commitments are stored in reverse order, from share N-1 down to share
    * 0, which is the order the challenge hash absorbs them in.
    *
-   * @param {number[]} salt - the signature salt
-   * @param {number} round - which round
-   * @param {number[][]} tree - the round's seed tree
-   * @param {number[]} firstShare - the derived permutation of share 0
-   * @param {object} P - parameter set
-   * @returns {number[][]} the N commitments, reversed
+   * @param {uint8[]} salt - the signature salt
+   * @param {int32} round - which round
+   * @param {uint8[][]} tree - the round's seed tree
+   * @param {int32[]} firstShare - the derived permutation of share 0
+   * @param {PerkParams} P - parameter set
+   * @returns {uint8[][]} the N commitments, reversed
    */
   function commitToShares(salt, round, tree, firstShare, P) {
     const out = new Array(P.N);
@@ -1143,6 +1526,7 @@
     for (let i = 0; i < P.N; i++) {
       const counters = [OpCodes.And8(round, 0xFF), OpCodes.And8(i, 0xFF)];
       if (i === 0) {
+        /** @type {uint8[]} */
         const permutationBytes = new Array(P.n1);
         for (let j = 0; j < P.n1; j++) permutationBytes[j] = OpCodes.And8(firstShare[j], 0xFF);
         out[P.N - 1] = keyedDigest(P, salt, counters, [permutationBytes, tree[offset]], DOMAIN_H0);
@@ -1160,10 +1544,10 @@
 
   /**
    * Build a key pair from the two drawn seeds.
-   * @param {number[]} publicSeed - seedBytes of randomness
-   * @param {number[]} privateSeed - seedBytes of randomness
-   * @param {object} P - parameter set
-   * @returns {object} { publicKey, privateKey }
+   * @param {uint8[]} publicSeed - seedBytes of randomness
+   * @param {uint8[]} privateSeed - seedBytes of randomness
+   * @param {PerkParams} P - parameter set
+   * @returns {PerkKeyPair} { publicKey, privateKey }
    */
   function generateKeyPair(publicSeed, privateSeed, P) {
     if (publicSeed.length !== P.seedBytes || privateSeed.length !== P.seedBytes)
@@ -1172,6 +1556,7 @@
     const pi = samplePermutation(makeGenerator(P, DOMAIN_PRG1, null, privateSeed), P);
     const expanded = expandPublicSeed(publicSeed, P);
 
+    /** @type {int32[][]} */
     const y = new Array(P.t);
     for (let i = 0; i < P.t; i++) {
       y[i] = matrixVectorMultiply(expanded.H, permuteVector(pi, expanded.x[i]), P);
@@ -1187,17 +1572,18 @@
     const privateKey = privateSeed.slice();
     appendAll(privateKey, publicKey);
 
-    return { publicKey: publicKey, privateKey: privateKey };
+    return new PerkKeyPair(publicKey, privateKey);
   }
 
   /**
    * Expand an encoded public key.
-   * @param {number[]} bytes - the encoded key
-   * @param {object} P - parameter set
-   * @returns {object|null} { seed, H, x, y }, or null when it is malformed
+   * @param {uint8[]} bytes - the encoded key
+   * @param {PerkParams} P - parameter set
+   * @returns {PerkPublicKey|null} { seed, H, x, y }, or null when it is malformed
    */
   function decodePublicKey(bytes, P) {
     const seed = bytes.slice(0, P.seedBytes);
+    /** @type {int32[][]} */
     const y = new Array(P.t);
     for (let i = 0; i < P.t; i++) y[i] = new Array(P.m);
 
@@ -1208,7 +1594,7 @@
     }
 
     const expanded = expandPublicSeed(seed, P);
-    return { seed: seed, H: expanded.H, x: expanded.x, y: y };
+    return new PerkPublicKey(seed, expanded.H, expanded.x, y);
   }
 
   //#endregion
@@ -1218,9 +1604,9 @@
   /**
    * Derive the first challenge - a non-zero coefficient vector per round -
    * from the first challenge hash.
-   * @param {number[]} h1 - the hash
-   * @param {object} P - parameter set
-   * @returns {number[][]} tau coefficient vectors
+   * @param {uint8[]} h1 - the hash
+   * @param {PerkParams} P - parameter set
+   * @returns {int32[][]} tau coefficient vectors
    */
   function firstChallenge(h1, P) {
     // Only the first seedBytes of the hash seed the generator. The hash is
@@ -1250,26 +1636,27 @@
   /**
    * Derive the second challenge - which share each round withholds - from the
    * second challenge hash.
-   * @param {number[]} h2 - the hash
-   * @param {object} P - parameter set
-   * @returns {number[]} tau indices in 1..N
+   * @param {uint8[]} h2 - the hash
+   * @param {PerkParams} P - parameter set
+   * @returns {int32[]} tau indices in 1..N
    */
   function secondChallenge(h2, P) {
     // Truncated to a seed for the same reason as the first challenge.
     const generator = makeGenerator(P, DOMAIN_PRG1, null, h2.slice(0, P.seedBytes));
+    /** @type {int32[]} */
     const out = new Array(P.tau);
-    for (let i = 0; i < P.tau; i++) out[i] = OpCodes.And16(generator.word16(), P.nMask) + 1;
+    for (let i = 0; i < P.tau; i++) out[i] = OpCodes.And16(GeneratorWord16(generator), P.nMask) + 1;
     return out;
   }
 
   /**
    * The hash that fixes the first challenge.
-   * @param {number[]} salt - the signature salt
-   * @param {number[]} message - the message
-   * @param {number[]} publicKeyBytes - the encoded public key
-   * @param {object[]} rounds - the tau rounds, each with commitments and cmt1
-   * @param {object} P - parameter set
-   * @returns {object} { h1, prefix }
+   * @param {uint8[]} salt - the signature salt
+   * @param {uint8[]} message - the message
+   * @param {uint8[]} publicKeyBytes - the encoded public key
+   * @param {PerkRound[]} rounds - the tau rounds, each with commitments and cmt1
+   * @param {PerkParams} P - parameter set
+   * @returns {PerkFirstHash} { h1, prefix }
    */
   function computeFirstHash(salt, message, publicKeyBytes, rounds, P) {
     const prefix = salt.slice();
@@ -1283,16 +1670,16 @@
     }
     input.push(DOMAIN_H1);
 
-    return { h1: sha3(P.sha3, input), prefix: prefix };
+    return new PerkFirstHash(sha3(P.sha3, input), prefix);
   }
 
   /**
    * The hash that fixes the second challenge.
-   * @param {number[]} prefix - salt, message and public key, already absorbed
-   * @param {number[]} h1 - the first hash
-   * @param {object[]} rounds - the tau rounds, each with its state chain
-   * @param {object} P - parameter set
-   * @returns {number[]} the hash
+   * @param {uint8[]} prefix - salt, message and public key, already absorbed
+   * @param {uint8[]} h1 - the first hash
+   * @param {PerkRound[]} rounds - the tau rounds, each with its state chain
+   * @param {PerkParams} P - parameter set
+   * @returns {uint8[]} the hash
    */
   function computeSecondHash(prefix, h1, rounds, P) {
     const input = prefix.slice();
@@ -1310,11 +1697,11 @@
 
   /**
    * Sign a message.
-   * @param {number[]} message - the message
-   * @param {number[]} privateKey - the encoded private key
-   * @param {number[]} randomness - seedBytes + saltBytes of drawn randomness
-   * @param {object} P - parameter set
-   * @returns {number[]} the encoded signature
+   * @param {uint8[]} message - the message
+   * @param {uint8[]} privateKey - the encoded private key
+   * @param {uint8[]} randomness - seedBytes + saltBytes of drawn randomness
+   * @param {PerkParams} P - parameter set
+   * @returns {uint8[]} the encoded signature
    */
   function sign(message, privateKey, randomness, P) {
     if (privateKey.length !== P.privateKeyBytes)
@@ -1334,9 +1721,10 @@
     const rootGenerator = makeGenerator(P, DOMAIN_PRG1, salt, masterSeed);
 
     // --- commitment ---
+    /** @type {PerkRound[]} */
     const rounds = new Array(P.tau);
     for (let i = 0; i < P.tau; i++) {
-      const tree = expandSeedTree(salt, rootGenerator.bytes(P.seedBytes), P);
+      const tree = expandSeedTree(salt, GeneratorBytes(rootGenerator, P.seedBytes), P);
       const expanded = expandRoundShares(salt, tree, P);
       derivateFirstShare(expanded.shares, pi);
 
@@ -1345,14 +1733,7 @@
       const aggregateCommitment = keyedDigest(P, salt, [OpCodes.And8(i, 0xFF)],
         [toLittleEndian16(matrixVectorMultiply(publicKey.H, v, P))], DOMAIN_H0);
 
-      rounds[i] = {
-        tree: tree,
-        shares: expanded.shares,
-        masks: expanded.masks,
-        commitments: commitments,
-        aggregateCommitment: aggregateCommitment,
-        states: null
-      };
+      rounds[i] = new PerkRound(tree, expanded.shares, expanded.masks, commitments, aggregateCommitment, null);
     }
 
     // --- first challenge and first response ---
@@ -1360,6 +1741,7 @@
     const kappa = firstChallenge(first.h1, P);
 
     for (let i = 0; i < P.tau; i++) {
+      /** @type {int32[][]} */
       const states = new Array(P.N + 1);
       states[0] = vectorScale(kappa[i][0], publicKey.x[0]);
       for (let j = 1; j < P.t; j++) {
@@ -1375,14 +1757,14 @@
     const h2 = computeSecondHash(first.prefix, first.h1, rounds, P);
     const alpha = secondChallenge(h2, P);
 
+    /** @type {PerkResponse[]} */
     const responses = new Array(P.tau);
     for (let i = 0; i < P.tau; i++) {
-      responses[i] = {
-        z1: rounds[i].states[alpha[i]],
-        z2Permutation: alpha[i] !== 1 ? rounds[i].shares[0] : identityPermutation(P),
-        z2Seeds: siblingSeeds(rounds[i].tree, alpha[i] - 1, P),
-        commitment: rounds[i].commitments[P.N - 1 - (alpha[i] - 1)]
-      };
+      const z1 = rounds[i].states[alpha[i]];
+      const z2Permutation = alpha[i] !== 1 ? rounds[i].shares[0] : identityPermutation(P);
+      const z2Seeds = siblingSeeds(rounds[i].tree, alpha[i] - 1, P);
+      const commitment = rounds[i].commitments[P.N - 1 - (alpha[i] - 1)];
+      responses[i] = new PerkResponse(commitment, z2Seeds, z1, z2Permutation);
     }
 
     return encodeSignature(salt, first.h1, h2, responses, P);
@@ -1394,10 +1776,10 @@
 
   /**
    * Check a signature.
-   * @param {number[]} message - the message
-   * @param {number[]} signatureBytes - the encoded signature
-   * @param {number[]} publicKeyBytes - the encoded public key
-   * @param {object} P - parameter set
+   * @param {uint8[]} message - the message
+   * @param {uint8[]} signatureBytes - the encoded signature
+   * @param {uint8[]} publicKeyBytes - the encoded public key
+   * @param {PerkParams} P - parameter set
    * @returns {boolean} whether the signature is valid
    */
   function verify(message, signatureBytes, publicKeyBytes, P) {
@@ -1422,6 +1804,7 @@
     const publicKey = decodePublicKey(publicKeyBytes, P);
     if (!publicKey) return false;
 
+    /** @type {PerkRound[]} */
     const rounds = new Array(P.tau);
     for (let i = 0; i < P.tau; i++) {
       const response = signature.responses[i];
@@ -1429,6 +1812,7 @@
       const expanded = expandRoundShares(signature.salt, tree, P);
       expanded.shares[0] = alpha[i] !== 1 ? response.z2Permutation : zeros(P.n1);
 
+      /** @type {int32[][]} */
       const states = new Array(P.N + 1);
       states[0] = vectorScale(kappa[i][0], publicKey.x[0]);
       for (let j = 1; j < P.t; j++) {
@@ -1440,6 +1824,7 @@
       // state is the one the response supplies, and the chain runs on from it.
       for (let j = 0; j < P.N; j++) {
         if (j + 1 === alpha[i]) continue;
+        /** @type {int32[]} */
         const scattered = new Array(P.n1);
         for (let k = 0; k < P.n1; k++) scattered[expanded.shares[j][k]] = states[j][k];
         states[j + 1] = vectorAdd(scattered, expanded.masks[j]);
@@ -1456,7 +1841,7 @@
       const aggregateCommitment = keyedDigest(P, signature.salt, [OpCodes.And8(i, 0xFF)],
         [toLittleEndian16(difference)], DOMAIN_H0);
 
-      rounds[i] = { commitments: commitments, aggregateCommitment: aggregateCommitment, states: states };
+      rounds[i] = new PerkRound(null, null, null, commitments, aggregateCommitment, states);
     }
 
     const first = computeFirstHash(signature.salt, message, publicKeyBytes, rounds, P);
@@ -1472,12 +1857,12 @@
 
   /**
    * Encode a signature.
-   * @param {number[]} salt - the salt
-   * @param {number[]} h1 - the first challenge hash
-   * @param {number[]} h2 - the second challenge hash
-   * @param {object[]} responses - the tau responses
-   * @param {object} P - parameter set
-   * @returns {number[]} the encoded signature
+   * @param {uint8[]} salt - the salt
+   * @param {uint8[]} h1 - the first challenge hash
+   * @param {uint8[]} h2 - the second challenge hash
+   * @param {PerkResponse[]} responses - the tau responses
+   * @param {PerkParams} P - parameter set
+   * @returns {uint8[]} the encoded signature
    */
   function encodeSignature(salt, h1, h2, responses, P) {
     const out = [];
@@ -1516,9 +1901,9 @@
 
   /**
    * Decode a signature.
-   * @param {number[]} bytes - the encoded signature
-   * @param {object} P - parameter set
-   * @returns {object|null} the signature, or null when it is malformed
+   * @param {uint8[]} bytes - the encoded signature
+   * @param {PerkParams} P - parameter set
+   * @returns {PerkSignature|null} the signature, or null when it is malformed
    */
   function decodeSignature(bytes, P) {
     let offset = 0;
@@ -1529,16 +1914,18 @@
     const h2 = bytes.slice(offset, offset + P.hashBytes);
     offset += P.hashBytes;
 
+    /** @type {PerkResponse[]} */
     const responses = new Array(P.tau);
     for (let i = 0; i < P.tau; i++) {
       const commitment = bytes.slice(offset, offset + P.commitmentBytes);
       offset += P.commitmentBytes;
+      /** @type {uint8[][]} */
       const z2Seeds = new Array(P.treeLevels);
       for (let j = 0; j < P.treeLevels; j++) {
         z2Seeds[j] = bytes.slice(offset, offset + P.seedBytes);
         offset += P.seedBytes;
       }
-      responses[i] = { commitment: commitment, z2Seeds: z2Seeds, z1: new Array(P.n1), z2Permutation: new Array(P.n1) };
+      responses[i] = new PerkResponse(commitment, z2Seeds, new Array(P.n1), new Array(P.n1));
     }
 
     for (let i = 0; i < P.tau * P.n1; i++) {
@@ -1555,7 +1942,7 @@
         if (!recovered) return null;
         responses[i].z2Permutation = recovered;
       }
-      return { salt: salt, h1: h1, h2: h2, responses: responses };
+      return new PerkSignature(salt, h1, h2, responses);
     }
 
     for (let i = 0; i < (P.tau * P.n1) / 2; i++) {
@@ -1573,7 +1960,7 @@
       if (!permutationValid(responses[i].z2Permutation, P)) return null;
     }
 
-    return { salt: salt, h1: h1, h2: h2, responses: responses };
+    return new PerkSignature(salt, h1, h2, responses);
   }
 
   //#endregion
@@ -1599,20 +1986,30 @@
   // signatures are named below are the ones cheap enough to re-derive inside a
   // test run, and the other nine are gated here on key generation alone.
 
-  const PERK_128_FAST_3 = {
-    katFile: 'PQCsignKAT_164.rsp',
-    keySeeds: '7C9935A0B07694AA0C6D10E4DB6B1ADD91282214654CB55E7C2CACD53919604D',
-    publicKey:
+  /** @type {string} */
+  const PERK_128_FAST_3_KAT_FILE =
+      'PQCsignKAT_164.rsp';
+  /** @type {string} */
+  const PERK_128_FAST_3_KEY_SEEDS =
+      '7C9935A0B07694AA0C6D10E4DB6B1ADD91282214654CB55E7C2CACD53919604D';
+  /** @type {string} */
+  const PERK_128_FAST_3_PUBLIC_KEY =
       '7C9935A0B07694AA0C6D10E4DB6B1ADDAB066E720DB3A9DF62AD80C8F24BFE9040ACA485C56C4A0B4E71733C44BD4782887D601D57DE29D6' +
       'C8A8F7C7CAF177077A11BB3F14024390B448632BAFAA0F1F86AEBDA57B7A703C83260265118735E79DAB33649E9199B5D187C02435C69DB3' +
-      '6918EF7DE373C0A5451C86B901B884648010499D95B9802D7ACB2E53CEF16E7CFE7DB001',
-    signRandomness: '4249E0458B874D2CF0EE707DE4068E75F217BB8E877219832DFCEDF6AB029AE7D0B4E078D60D8467D1884563CCFD66D8',
-    privateKey:
+      '6918EF7DE373C0A5451C86B901B884648010499D95B9802D7ACB2E53CEF16E7CFE7DB001';
+  /** @type {string} */
+  const PERK_128_FAST_3_SIGN_RANDOMNESS =
+      '4249E0458B874D2CF0EE707DE4068E75F217BB8E877219832DFCEDF6AB029AE7D0B4E078D60D8467D1884563CCFD66D8';
+  /** @type {string} */
+  const PERK_128_FAST_3_PRIVATE_KEY =
       '91282214654CB55E7C2CACD53919604D7C9935A0B07694AA0C6D10E4DB6B1ADDAB066E720DB3A9DF62AD80C8F24BFE9040ACA485C56C4A0B' +
       '4E71733C44BD4782887D601D57DE29D6C8A8F7C7CAF177077A11BB3F14024390B448632BAFAA0F1F86AEBDA57B7A703C83260265118735E7' +
-      '9DAB33649E9199B5D187C02435C69DB36918EF7DE373C0A5451C86B901B884648010499D95B9802D7ACB2E53CEF16E7CFE7DB001',
-    message: 'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8',
-    signature:
+      '9DAB33649E9199B5D187C02435C69DB36918EF7DE373C0A5451C86B901B884648010499D95B9802D7ACB2E53CEF16E7CFE7DB001';
+  /** @type {string} */
+  const PERK_128_FAST_3_MESSAGE =
+      'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8';
+  /** @type {string} */
+  const PERK_128_FAST_3_SIGNATURE =
       'F217BB8E877219832DFCEDF6AB029AE7D0B4E078D60D8467D1884563CCFD66D8C09C9219A82FA6F896D0E9DDEB0D7E276418A3BD9AF3D904' +
       'CD8F520023B040A5CAB48695A7039189FBB25D8F88EB113B374AF696DCF4C8B7D9BBBAF2E425F9BCFD1CAF79910A686100325FBE301AACD4' +
       'A7055D66C73015B4A929FC4B203A0AC3F19FACD11B155A75382F6856616C7CC43897257D3B1939D5618BEA4D87B096161F7B7E0C2262B6B8' +
@@ -1762,31 +2159,41 @@
       '11E9B7C60789C731C5E20E1F852298BFACBA9F3E22FDD219687A3CE38131D254C8E9122A746E97A52D3758B71DBDB378FA26C941C7462282' +
       '4B8805A2675A72383466C55449060AA3056ADD1F67862E78BE644D979FA5FA4C00088DF59204096D8258375229914F4F86D18B3682744E21' +
       '48C97F6DF843E835E029018E52A5B65843135A8FA1F41A331A6E1EBDBBCDE307921FC4F8E6A216705CACCD243B59E609DD5311DE3CA8A083' +
-      '01',
-    publicKeyOfRecord1:
+      '01';
+  /** @type {string} */
+  const PERK_128_FAST_3_PUBLIC_KEY_OF_RECORD1 =
       '4B622DE1350119C45A9F2E2EF3DC5DF507F763D0E573CC275A30483C17AD2EF9692B40593B0D87E2931812832C223C7F0CD53B798C4D98E0' +
       'C12A12E54129C8B0AB4405ED448B1A5C1EAE2D351281FE0A8584DA5EF8A06DE853E472384C8E5916CDCD17E2B966D18711CC3F5B55A960D7' +
-      '180BB86F9F3525B2506A549F73377086A097C8049851F1C0BC6B1B0D121506CC10085C02'
-  };
+      '180BB86F9F3525B2506A549F73377086A097C8049851F1C0BC6B1B0D121506CC10085C02';
 
-  const PERK_128_FAST_5 = {
-    katFile: 'PQCsignKAT_257.rsp',
-    keySeeds: '7C9935A0B07694AA0C6D10E4DB6B1ADD91282214654CB55E7C2CACD53919604D',
-    publicKey:
+  /** @type {string} */
+  const PERK_128_FAST_5_KAT_FILE =
+      'PQCsignKAT_257.rsp';
+  /** @type {string} */
+  const PERK_128_FAST_5_KEY_SEEDS =
+      '7C9935A0B07694AA0C6D10E4DB6B1ADD91282214654CB55E7C2CACD53919604D';
+  /** @type {string} */
+  const PERK_128_FAST_5_PUBLIC_KEY =
       '7C9935A0B07694AA0C6D10E4DB6B1ADD59BCFF353C091F9C56165035E67CBA7A9A175C360357D2450BBBF2CE13133992A2E8F6DB40255FD9' +
       '7D0B5A4115CC6A1B36B26B63AFB32B4A1F97C996A920F1633DED3D856C33B4378547545FF86264E6F81D123DC49218367EDF45D76F933A60' +
       '2DF68CDA3FF13FBC58AD246746C03CDAB06AC518B22260E5F79F2ED12B3F39EA4DF8946A53CE4184F970BF66FBFD7824574EE4090634A301' +
       '26064B4858EF3773438381EF847B61CF1717B2A326C503617C940E80F016995B04B7CB42351F4DB7DF5A5DD655DC3CD90930BDEE008F2293' +
-      'C5A7C116F7D2E1B3785BC6383661EDE8B8',
-    signRandomness: '4249E0458B874D2CF0EE707DE4068E75F217BB8E877219832DFCEDF6AB029AE7D0B4E078D60D8467D1884563CCFD66D8',
-    privateKey:
+      'C5A7C116F7D2E1B3785BC6383661EDE8B8';
+  /** @type {string} */
+  const PERK_128_FAST_5_SIGN_RANDOMNESS =
+      '4249E0458B874D2CF0EE707DE4068E75F217BB8E877219832DFCEDF6AB029AE7D0B4E078D60D8467D1884563CCFD66D8';
+  /** @type {string} */
+  const PERK_128_FAST_5_PRIVATE_KEY =
       '91282214654CB55E7C2CACD53919604D7C9935A0B07694AA0C6D10E4DB6B1ADD59BCFF353C091F9C56165035E67CBA7A9A175C360357D245' +
       '0BBBF2CE13133992A2E8F6DB40255FD97D0B5A4115CC6A1B36B26B63AFB32B4A1F97C996A920F1633DED3D856C33B4378547545FF86264E6' +
       'F81D123DC49218367EDF45D76F933A602DF68CDA3FF13FBC58AD246746C03CDAB06AC518B22260E5F79F2ED12B3F39EA4DF8946A53CE4184' +
       'F970BF66FBFD7824574EE4090634A30126064B4858EF3773438381EF847B61CF1717B2A326C503617C940E80F016995B04B7CB42351F4DB7' +
-      'DF5A5DD655DC3CD90930BDEE008F2293C5A7C116F7D2E1B3785BC6383661EDE8B8',
-    message: 'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8',
-    signature:
+      'DF5A5DD655DC3CD90930BDEE008F2293C5A7C116F7D2E1B3785BC6383661EDE8B8';
+  /** @type {string} */
+  const PERK_128_FAST_5_MESSAGE =
+      'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8';
+  /** @type {string} */
+  const PERK_128_FAST_5_SIGNATURE =
       'F217BB8E877219832DFCEDF6AB029AE7D0B4E078D60D8467D1884563CCFD66D8A8F57A24FE26180F7A4B690F7C38155585A5A94BA7A7C1DC' +
       'F738B9ED9C24D8D22FF84FDDC0381D302922A3BDAD33A8DBEFFBE099FFA717658C39D554D98F50EA14552310758F38287CE9E9A503E8EE35' +
       '9D7C3989CA9FB253E92BAC2A73DE197AF19FACD11B155A75382F6856616C7CC4195CE892A368B645C465598DB06D8656AA6D8E52C5600CA9' +
@@ -1930,23 +2337,32 @@
       '177B4507EA14736629A82A1A98F7E4E6D1B8B83C8D69432AE89D41A94D2A1C7A19EB660B5A7B3FB63554895D2EC103CE13E855B32CD952D0' +
       'A073ABD8B69F129F9C23AAE4E86BC6526BBDC5C34A3C0F713C9C904069C4A02BE48E4CA1E5483CD43C233B8D625C82DE40DAF49E842AC702' +
       '4A232B25633D74307C8F037D3BA1B18C1222909945AABE2648AF056A290CE65D76E9FAEEABD3B678783E1C2F8CD499F1E63F74B263121BAE' +
-      '368CEEC5081F82D66FD974AFDAAB0473E401'
-  };
+      '368CEEC5081F82D66FD974AFDAAB0473E401';
 
-  const PERK_128_SHORT_3 = {
-    katFile: 'PQCsignKAT_164.rsp',
-    keySeeds: '7C9935A0B07694AA0C6D10E4DB6B1ADD91282214654CB55E7C2CACD53919604D',
-    publicKey:
+  /** @type {string} */
+  const PERK_128_SHORT_3_KAT_FILE =
+      'PQCsignKAT_164.rsp';
+  /** @type {string} */
+  const PERK_128_SHORT_3_KEY_SEEDS =
+      '7C9935A0B07694AA0C6D10E4DB6B1ADD91282214654CB55E7C2CACD53919604D';
+  /** @type {string} */
+  const PERK_128_SHORT_3_PUBLIC_KEY =
       '7C9935A0B07694AA0C6D10E4DB6B1ADDAB066E720DB3A9DF62AD80C8F24BFE9040ACA485C56C4A0B4E71733C44BD4782887D601D57DE29D6' +
       'C8A8F7C7CAF177077A11BB3F14024390B448632BAFAA0F1F86AEBDA57B7A703C83260265118735E79DAB33649E9199B5D187C02435C69DB3' +
-      '6918EF7DE373C0A5451C86B901B884648010499D95B9802D7ACB2E53CEF16E7CFE7DB001',
-    signRandomness: '4249E0458B874D2CF0EE707DE4068E75F217BB8E877219832DFCEDF6AB029AE7D0B4E078D60D8467D1884563CCFD66D8',
-    privateKey:
+      '6918EF7DE373C0A5451C86B901B884648010499D95B9802D7ACB2E53CEF16E7CFE7DB001';
+  /** @type {string} */
+  const PERK_128_SHORT_3_SIGN_RANDOMNESS =
+      '4249E0458B874D2CF0EE707DE4068E75F217BB8E877219832DFCEDF6AB029AE7D0B4E078D60D8467D1884563CCFD66D8';
+  /** @type {string} */
+  const PERK_128_SHORT_3_PRIVATE_KEY =
       '91282214654CB55E7C2CACD53919604D7C9935A0B07694AA0C6D10E4DB6B1ADDAB066E720DB3A9DF62AD80C8F24BFE9040ACA485C56C4A0B' +
       '4E71733C44BD4782887D601D57DE29D6C8A8F7C7CAF177077A11BB3F14024390B448632BAFAA0F1F86AEBDA57B7A703C83260265118735E7' +
-      '9DAB33649E9199B5D187C02435C69DB36918EF7DE373C0A5451C86B901B884648010499D95B9802D7ACB2E53CEF16E7CFE7DB001',
-    message: 'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8',
-    signature:
+      '9DAB33649E9199B5D187C02435C69DB36918EF7DE373C0A5451C86B901B884648010499D95B9802D7ACB2E53CEF16E7CFE7DB001';
+  /** @type {string} */
+  const PERK_128_SHORT_3_MESSAGE =
+      'D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8';
+  /** @type {string} */
+  const PERK_128_SHORT_3_SIGNATURE =
       'F217BB8E877219832DFCEDF6AB029AE7D0B4E078D60D8467D1884563CCFD66D8D80641754000787F27FC012140D5F8705BC52514F6E33554' +
       'A9C522A7BBC0B7788B466D190DF308603791068377C5CDEA24B43803E535C37B080ADBA28A2152C0B9077FED52E570D9F9A63204063CF86A' +
       'A02198CE76D11671F1A618649768C49876233830EDDD1BF4DB0B71B38B61DE639ACCF32C82478C437247A73735E2DA8F5203BED37395E07A' +
@@ -2058,84 +2474,105 @@
       'DBCBF6E58B0E16ED7B2D6926DE4AB6C3CA5E93D51319FF9E44093B8F75CD306E37B4157E6E581D21CDBFD0912D95768CB937286FE4BA0D03' +
       'E10F33C6DE03B68A741701B697FC08D54096DFBFB7807F2265FBC6DEC556D8309D25263B1E3C56F41DFEC13C14C52C6B09DF260EE3156355' +
       '8A2183217F3A722A84D441A1BDD5E56E964047F9A55E3898FC2649EBBC718606F50BA3A0D7C8BDC8B7069CA4D53A99EF8EE06586509066A7' +
-      '8FBE719B0AC56AD787F1E034D4C4278E5929395A0ECFDA86FA480BCED02DEFDF786008'
-  };
+      '8FBE719B0AC56AD787F1E034D4C4278E5929395A0ECFDA86FA480BCED02DEFDF786008';
 
-  const PERK_128_SHORT_5 = {
-    katFile: 'PQCsignKAT_257.rsp',
-    keySeeds: '7C9935A0B07694AA0C6D10E4DB6B1ADD91282214654CB55E7C2CACD53919604D',
-    publicKey:
+  /** @type {string} */
+  const PERK_128_SHORT_5_KAT_FILE =
+      'PQCsignKAT_257.rsp';
+  /** @type {string} */
+  const PERK_128_SHORT_5_KEY_SEEDS =
+      '7C9935A0B07694AA0C6D10E4DB6B1ADD91282214654CB55E7C2CACD53919604D';
+  /** @type {string} */
+  const PERK_128_SHORT_5_PUBLIC_KEY =
       '7C9935A0B07694AA0C6D10E4DB6B1ADD59BCFF353C091F9C56165035E67CBA7A9A175C360357D2450BBBF2CE13133992A2E8F6DB40255FD9' +
       '7D0B5A4115CC6A1B36B26B63AFB32B4A1F97C996A920F1633DED3D856C33B4378547545FF86264E6F81D123DC49218367EDF45D76F933A60' +
       '2DF68CDA3FF13FBC58AD246746C03CDAB06AC518B22260E5F79F2ED12B3F39EA4DF8946A53CE4184F970BF66FBFD7824574EE4090634A301' +
       '26064B4858EF3773438381EF847B61CF1717B2A326C503617C940E80F016995B04B7CB42351F4DB7DF5A5DD655DC3CD90930BDEE008F2293' +
-      'C5A7C116F7D2E1B3785BC6383661EDE8B8'
-  };
+      'C5A7C116F7D2E1B3785BC6383661EDE8B8';
 
-  const PERK_192_FAST_3 = {
-    katFile: 'PQCsignKAT_251.rsp',
-    keySeeds: '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148038626ED79D451140800E03B59B956F8210E556067407D13DC',
-    publicKey:
+  /** @type {string} */
+  const PERK_192_FAST_3_KAT_FILE =
+      'PQCsignKAT_251.rsp';
+  /** @type {string} */
+  const PERK_192_FAST_3_KEY_SEEDS =
+      '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148038626ED79D451140800E03B59B956F8210E556067407D13DC';
+  /** @type {string} */
+  const PERK_192_FAST_3_PUBLIC_KEY =
       '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB14803E92380F3DC00284E8067C4BB0A24FD733CBF502F9B338A4A8C1EA4DEE6924452' +
       'B526B061E87ECC0C0A8C8A67627F319B536DED4051CF5308319C8D5DF3149306D5F77D7DEFC4863302CE71685BC990C92EF73DF7009794F3' +
       '63188B23967715D29AC7AA2902DCFA12E496AC605CA8F9E1F8543A472EADA917E9B30D5D3DC12093D1296B258E499BC24730526EFA138A30' +
       'D73FE3E817319EE68FBFAD4F878DC9F776B3B6026C3909F07ED186AB2545E890AFA492A0EF1E5DDD8F2E267BC105021D083332C1DE51AF6F' +
-      'C8770C'
-  };
+      'C8770C';
 
-  const PERK_192_FAST_5 = {
-    katFile: 'PQCsignKAT_392.rsp',
-    keySeeds: '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148038626ED79D451140800E03B59B956F8210E556067407D13DC',
-    publicKey:
+  /** @type {string} */
+  const PERK_192_FAST_5_KAT_FILE =
+      'PQCsignKAT_392.rsp';
+  /** @type {string} */
+  const PERK_192_FAST_5_KEY_SEEDS =
+      '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148038626ED79D451140800E03B59B956F8210E556067407D13DC';
+  /** @type {string} */
+  const PERK_192_FAST_5_PUBLIC_KEY =
       '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB14803F73F0EBACA0109202EC4211BD22C6C6F84C6B1C28B523113AFBBC29E7ABD514F' +
       'CE33572EB295E0F4A186E1A0E75624257E242DE91A18133F3FB83E878AB11B0309069B84D1570C11FB9A0046A1F6C5507016AC520B785644' +
       'EFC99D658C34F89C5F5283D0745600D7B3A113AFE1E210CD8030170D2FC5C9B5F88F77D69E050B909B34D9A93052C6AC7EE1C7E1F63DA5B5' +
       'A1EC00145ED2D11533CB07CCF12F1FFC7CB04FC75376B39BF44F6E5D0B7906F39B5F5EFA6437F9C5C33BA3BC029522E88D3322FA9F0827BF' +
       '58E9B0A39A1928D20106A7E755999245FA875243B37933BA3C63F90E3F489F24117FC790632A9EE558249F16508BF71EAC89150CBC07EF2F' +
       'D5B82ACAE225605D698E2A943EFB3F2768F6CB8AFC41D8B5FCBDDB5F3A058745D6548C17AF3D17A26D6BF994F46EED3B06C7EC10772D28E2' +
-      '5389FB428BCAD7765BC5A0EF247A2F3C2F1E5AC0A23D7DB18D8E4D2DED2B1D0A'
-  };
+      '5389FB428BCAD7765BC5A0EF247A2F3C2F1E5AC0A23D7DB18D8E4D2DED2B1D0A';
 
-  const PERK_192_SHORT_3 = {
-    katFile: 'PQCsignKAT_251.rsp',
-    keySeeds: '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148038626ED79D451140800E03B59B956F8210E556067407D13DC',
-    publicKey:
+  /** @type {string} */
+  const PERK_192_SHORT_3_KAT_FILE =
+      'PQCsignKAT_251.rsp';
+  /** @type {string} */
+  const PERK_192_SHORT_3_KEY_SEEDS =
+      '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148038626ED79D451140800E03B59B956F8210E556067407D13DC';
+  /** @type {string} */
+  const PERK_192_SHORT_3_PUBLIC_KEY =
       '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB14803E92380F3DC00284E8067C4BB0A24FD733CBF502F9B338A4A8C1EA4DEE6924452' +
       'B526B061E87ECC0C0A8C8A67627F319B536DED4051CF5308319C8D5DF3149306D5F77D7DEFC4863302CE71685BC990C92EF73DF7009794F3' +
       '63188B23967715D29AC7AA2902DCFA12E496AC605CA8F9E1F8543A472EADA917E9B30D5D3DC12093D1296B258E499BC24730526EFA138A30' +
       'D73FE3E817319EE68FBFAD4F878DC9F776B3B6026C3909F07ED186AB2545E890AFA492A0EF1E5DDD8F2E267BC105021D083332C1DE51AF6F' +
-      'C8770C'
-  };
+      'C8770C';
 
-  const PERK_192_SHORT_5 = {
-    katFile: 'PQCsignKAT_392.rsp',
-    keySeeds: '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148038626ED79D451140800E03B59B956F8210E556067407D13DC',
-    publicKey:
+  /** @type {string} */
+  const PERK_192_SHORT_5_KAT_FILE =
+      'PQCsignKAT_392.rsp';
+  /** @type {string} */
+  const PERK_192_SHORT_5_KEY_SEEDS =
+      '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148038626ED79D451140800E03B59B956F8210E556067407D13DC';
+  /** @type {string} */
+  const PERK_192_SHORT_5_PUBLIC_KEY =
       '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB14803F73F0EBACA0109202EC4211BD22C6C6F84C6B1C28B523113AFBBC29E7ABD514F' +
       'CE33572EB295E0F4A186E1A0E75624257E242DE91A18133F3FB83E878AB11B0309069B84D1570C11FB9A0046A1F6C5507016AC520B785644' +
       'EFC99D658C34F89C5F5283D0745600D7B3A113AFE1E210CD8030170D2FC5C9B5F88F77D69E050B909B34D9A93052C6AC7EE1C7E1F63DA5B5' +
       'A1EC00145ED2D11533CB07CCF12F1FFC7CB04FC75376B39BF44F6E5D0B7906F39B5F5EFA6437F9C5C33BA3BC029522E88D3322FA9F0827BF' +
       '58E9B0A39A1928D20106A7E755999245FA875243B37933BA3C63F90E3F489F24117FC790632A9EE558249F16508BF71EAC89150CBC07EF2F' +
       'D5B82ACAE225605D698E2A943EFB3F2768F6CB8AFC41D8B5FCBDDB5F3A058745D6548C17AF3D17A26D6BF994F46EED3B06C7EC10772D28E2' +
-      '5389FB428BCAD7765BC5A0EF247A2F3C2F1E5AC0A23D7DB18D8E4D2DED2B1D0A'
-  };
+      '5389FB428BCAD7765BC5A0EF247A2F3C2F1E5AC0A23D7DB18D8E4D2DED2B1D0A';
 
-  const PERK_256_FAST_3 = {
-    katFile: 'PQCsignKAT_346.rsp',
-    keySeeds: '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148032DCD739936737F2D8626ED79D451140800E03B59B956F8210E556067407D13DC90FA9E8B872BFB8F',
-    publicKey:
+  /** @type {string} */
+  const PERK_256_FAST_3_KAT_FILE =
+      'PQCsignKAT_346.rsp';
+  /** @type {string} */
+  const PERK_256_FAST_3_KEY_SEEDS =
+      '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148032DCD739936737F2D8626ED79D451140800E03B59B956F8210E556067407D13DC90FA9E8B872BFB8F';
+  /** @type {string} */
+  const PERK_256_FAST_3_PUBLIC_KEY =
       '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148032DCD739936737F2D8A8E11FA43A9E54DC3A97B684DF755ECA1FB75E272CF97BF' +
       '5A663A8C961AF7EF6721970EAD6CCD5CC78BD728AA7741A2B06C6894367F0E0FFC28AA180CD3E88278A94BAB5D8CB67841ACA5235BDF5542' +
       '9C6F3FB482E057DBF1B028EF8C7880E3D33D03D351BEA85F86A45E0579FD9DCA4B9337B48D14A4211C1B920C78C9025196CA00EB2AD0BC64' +
       'F07D6F0E58B791E45B234989E3A77CBC1C28135E5D482FBE920004C0519007C373C9349C7D3BCC8A64AFB4114F7C67002F2938F02EDCECAB' +
       '2DD66D80A72A32A1FC4FE451CFEA492ED3D59E83C849A077C5FBAAB03C984C98F27799A5751C4E15707CE42DE717CC05C9C95B3909938638' +
-      '372750036897AE893F4C74A113F045DA39D5FD797EB4BBA103064733AA6771802100'
-  };
+      '372750036897AE893F4C74A113F045DA39D5FD797EB4BBA103064733AA6771802100';
 
-  const PERK_256_FAST_5 = {
-    katFile: 'PQCsignKAT_539.rsp',
-    keySeeds: '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148032DCD739936737F2D8626ED79D451140800E03B59B956F8210E556067407D13DC90FA9E8B872BFB8F',
-    publicKey:
+  /** @type {string} */
+  const PERK_256_FAST_5_KAT_FILE =
+      'PQCsignKAT_539.rsp';
+  /** @type {string} */
+  const PERK_256_FAST_5_KEY_SEEDS =
+      '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148032DCD739936737F2D8626ED79D451140800E03B59B956F8210E556067407D13DC90FA9E8B872BFB8F';
+  /** @type {string} */
+  const PERK_256_FAST_5_PUBLIC_KEY =
       '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148032DCD739936737F2D52983C39C13E764E56329D2894E1B44EBE4C20364E34A0E8' +
       '0AAFB13EC47DD37C4528BAD6C4285BC7CDF55536BD1E02F6B887D3DDDA71CC4FE93C2F9EE9BE93C18F923E91BFC6AE7047832EFF703DBBD6' +
       '1DE6E84DCBDCF7190DB137E627573C110F51AD8EF4171C484C88C5BBCAAE6CC6917E84B1F453FE1DAF055AD780CD6B27CBB9D98ED4B29979' +
@@ -2145,25 +2582,31 @@
       'CAD1F90B31479F5216041909F58709F86A2BE9562146CD169E6556914C1E381CC2C748B6872D138451AFFC88C2A73E3EB0F6B1CA921A6E44' +
       'B8648EC7D5B17CB099163B5300A93FC1273FFE9264AC25472CDA60FE08EF59A4D2256FBE20D2C66C3D150049277C6C6746E2CA0CF5090DE1' +
       '119EB9EEF90F613F78906C293D685727F2F1D545BEDEB17B798B47CA700511FA23CEFC3CE114B5052A6ECDB25105D90D29C6AB92B12FB405' +
-      '867E86'
-  };
+      '867E86';
 
-  const PERK_256_SHORT_3 = {
-    katFile: 'PQCsignKAT_346.rsp',
-    keySeeds: '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148032DCD739936737F2D8626ED79D451140800E03B59B956F8210E556067407D13DC90FA9E8B872BFB8F',
-    publicKey:
+  /** @type {string} */
+  const PERK_256_SHORT_3_KAT_FILE =
+      'PQCsignKAT_346.rsp';
+  /** @type {string} */
+  const PERK_256_SHORT_3_KEY_SEEDS =
+      '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148032DCD739936737F2D8626ED79D451140800E03B59B956F8210E556067407D13DC90FA9E8B872BFB8F';
+  /** @type {string} */
+  const PERK_256_SHORT_3_PUBLIC_KEY =
       '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148032DCD739936737F2D8A8E11FA43A9E54DC3A97B684DF755ECA1FB75E272CF97BF' +
       '5A663A8C961AF7EF6721970EAD6CCD5CC78BD728AA7741A2B06C6894367F0E0FFC28AA180CD3E88278A94BAB5D8CB67841ACA5235BDF5542' +
       '9C6F3FB482E057DBF1B028EF8C7880E3D33D03D351BEA85F86A45E0579FD9DCA4B9337B48D14A4211C1B920C78C9025196CA00EB2AD0BC64' +
       'F07D6F0E58B791E45B234989E3A77CBC1C28135E5D482FBE920004C0519007C373C9349C7D3BCC8A64AFB4114F7C67002F2938F02EDCECAB' +
       '2DD66D80A72A32A1FC4FE451CFEA492ED3D59E83C849A077C5FBAAB03C984C98F27799A5751C4E15707CE42DE717CC05C9C95B3909938638' +
-      '372750036897AE893F4C74A113F045DA39D5FD797EB4BBA103064733AA6771802100'
-  };
+      '372750036897AE893F4C74A113F045DA39D5FD797EB4BBA103064733AA6771802100';
 
-  const PERK_256_SHORT_5 = {
-    katFile: 'PQCsignKAT_539.rsp',
-    keySeeds: '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148032DCD739936737F2D8626ED79D451140800E03B59B956F8210E556067407D13DC90FA9E8B872BFB8F',
-    publicKey:
+  /** @type {string} */
+  const PERK_256_SHORT_5_KAT_FILE =
+      'PQCsignKAT_539.rsp';
+  /** @type {string} */
+  const PERK_256_SHORT_5_KEY_SEEDS =
+      '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148032DCD739936737F2D8626ED79D451140800E03B59B956F8210E556067407D13DC90FA9E8B872BFB8F';
+  /** @type {string} */
+  const PERK_256_SHORT_5_PUBLIC_KEY =
       '7C9935A0B07694AA0C6D10E4DB6B1ADD2FD81A25CCB148032DCD739936737F2D52983C39C13E764E56329D2894E1B44EBE4C20364E34A0E8' +
       '0AAFB13EC47DD37C4528BAD6C4285BC7CDF55536BD1E02F6B887D3DDDA71CC4FE93C2F9EE9BE93C18F923E91BFC6AE7047832EFF703DBBD6' +
       '1DE6E84DCBDCF7190DB137E627573C110F51AD8EF4171C484C88C5BBCAAE6CC6917E84B1F453FE1DAF055AD780CD6B27CBB9D98ED4B29979' +
@@ -2173,14 +2616,13 @@
       'CAD1F90B31479F5216041909F58709F86A2BE9562146CD169E6556914C1E381CC2C748B6872D138451AFFC88C2A73E3EB0F6B1CA921A6E44' +
       'B8648EC7D5B17CB099163B5300A93FC1273FFE9264AC25472CDA60FE08EF59A4D2256FBE20D2C66C3D150049277C6C6746E2CA0CF5090DE1' +
       '119EB9EEF90F613F78906C293D685727F2F1D545BEDEB17B798B47CA700511FA23CEFC3CE114B5052A6ECDB25105D90D29C6AB92B12FB405' +
-      '867E86'
-  };
+      '867E86';
 
   /**
    * Flip one bit of a published hex string, for the rejection cases.
    * @param {string} hex - the published value
-   * @param {number} index - which byte to disturb
-   * @returns {number[]} the disturbed bytes
+   * @param {int32} index - which byte to disturb
+   * @returns {int32[]} the disturbed bytes
    */
   function disturb(hex, index) {
     const bytes = OpCodes.Hex8ToBytes(hex);
@@ -2190,197 +2632,6 @@
 
   const KAT_URI = 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip';
 
-  const VECTORS = [
-    {
-      text: 'PERK PQCsignKAT_164.rsp record 0: drawn seeds to public key (perk-128-fast-3)',
-      uri: KAT_URI,
-      keyGeneration: true,
-      parameterSet: 'perk-128-fast-3',
-      keyGenerationOutput: 'publicKey',
-      input: OpCodes.Hex8ToBytes(PERK_128_FAST_3.keySeeds),
-      expected: OpCodes.Hex8ToBytes(PERK_128_FAST_3.publicKey)
-    },
-    {
-      text: 'PERK PQCsignKAT_164.rsp record 0: drawn seeds to private key (perk-128-fast-3)',
-      uri: KAT_URI,
-      keyGeneration: true,
-      parameterSet: 'perk-128-fast-3',
-      keyGenerationOutput: 'privateKey',
-      input: OpCodes.Hex8ToBytes(PERK_128_FAST_3.keySeeds),
-      expected: OpCodes.Hex8ToBytes(PERK_128_FAST_3.privateKey)
-    },
-    {
-      text: 'PERK PQCsignKAT_164.rsp record 0: the published signed message (perk-128-fast-3)',
-      uri: KAT_URI,
-      parameterSet: 'perk-128-fast-3',
-      privateKey: OpCodes.Hex8ToBytes(PERK_128_FAST_3.privateKey),
-      signingRandomness: OpCodes.Hex8ToBytes(PERK_128_FAST_3.signRandomness),
-      input: OpCodes.Hex8ToBytes(PERK_128_FAST_3.message),
-      expected: OpCodes.Hex8ToBytes(PERK_128_FAST_3.signature + PERK_128_FAST_3.message)
-    },
-    {
-      // Setting a signature alongside the public key turns the result into a
-      // verdict, so the rejections below can assert a refusal rather than
-      // naming what a refusal produces.
-      text: 'PERK PQCsignKAT_164.rsp record 0: the published signature verifies (perk-128-fast-3)',
-      uri: KAT_URI,
-      parameterSet: 'perk-128-fast-3',
-      publicKey: OpCodes.Hex8ToBytes(PERK_128_FAST_3.publicKey),
-      signature: OpCodes.Hex8ToBytes(PERK_128_FAST_3.signature),
-      input: OpCodes.Hex8ToBytes(PERK_128_FAST_3.message),
-      expected: [1]
-    },
-    {
-      text: 'PERK PQCsignKAT_164.rsp record 0: one bit of the message flipped must not verify',
-      uri: KAT_URI,
-      parameterSet: 'perk-128-fast-3',
-      publicKey: OpCodes.Hex8ToBytes(PERK_128_FAST_3.publicKey),
-      signature: OpCodes.Hex8ToBytes(PERK_128_FAST_3.signature),
-      input: disturb(PERK_128_FAST_3.message, 7),
-      expected: [0]
-    },
-    {
-      text: 'PERK PQCsignKAT_164.rsp record 0: one bit of the opened share must not verify',
-      uri: KAT_URI,
-      parameterSet: 'perk-128-fast-3',
-      publicKey: OpCodes.Hex8ToBytes(PERK_128_FAST_3.publicKey),
-      signature: disturb(PERK_128_FAST_3.signature, 5000),
-      input: OpCodes.Hex8ToBytes(PERK_128_FAST_3.message),
-      expected: [0]
-    },
-    {
-      text: "PERK PQCsignKAT_164.rsp: record 0's signature must not verify under record 1's public key",
-      uri: KAT_URI,
-      parameterSet: 'perk-128-fast-3',
-      publicKey: OpCodes.Hex8ToBytes(PERK_128_FAST_3.publicKeyOfRecord1),
-      signature: OpCodes.Hex8ToBytes(PERK_128_FAST_3.signature),
-      input: OpCodes.Hex8ToBytes(PERK_128_FAST_3.message),
-      expected: [0]
-    },
-
-    {
-      text: 'PERK PQCsignKAT_257.rsp record 0: drawn seeds to public key (perk-128-fast-5)',
-      uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
-      keyGeneration: true,
-      parameterSet: 'perk-128-fast-5',
-      keyGenerationOutput: 'publicKey',
-      input: OpCodes.Hex8ToBytes(PERK_128_FAST_5.keySeeds),
-      expected: OpCodes.Hex8ToBytes(PERK_128_FAST_5.publicKey)
-    },
-    {
-      text: 'PERK PQCsignKAT_257.rsp record 0: the published signature verifies (perk-128-fast-5)',
-      uri: KAT_URI,
-      parameterSet: 'perk-128-fast-5',
-      publicKey: OpCodes.Hex8ToBytes(PERK_128_FAST_5.publicKey),
-      signature: OpCodes.Hex8ToBytes(PERK_128_FAST_5.signature),
-      input: OpCodes.Hex8ToBytes(PERK_128_FAST_5.message),
-      expected: [1]
-    },
-
-    {
-      text: 'PERK PQCsignKAT_164.rsp record 0: drawn seeds to public key (perk-128-short-3)',
-      uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
-      keyGeneration: true,
-      parameterSet: 'perk-128-short-3',
-      keyGenerationOutput: 'publicKey',
-      input: OpCodes.Hex8ToBytes(PERK_128_SHORT_3.keySeeds),
-      expected: OpCodes.Hex8ToBytes(PERK_128_SHORT_3.publicKey)
-    },
-    {
-      // The short sets rank the opened permutation into a factorial-base
-      // integer rather than packing pairs of coefficients, so this case is
-      // what gates that encoding inside a test run.
-      text: 'PERK PQCsignKAT_164.rsp record 0: the published signature verifies (perk-128-short-3)',
-      uri: KAT_URI,
-      parameterSet: 'perk-128-short-3',
-      publicKey: OpCodes.Hex8ToBytes(PERK_128_SHORT_3.publicKey),
-      signature: OpCodes.Hex8ToBytes(PERK_128_SHORT_3.signature),
-      input: OpCodes.Hex8ToBytes(PERK_128_SHORT_3.message),
-      expected: [1]
-    },
-
-    {
-      text: 'PERK PQCsignKAT_257.rsp record 0: drawn seeds to public key (perk-128-short-5)',
-      uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
-      keyGeneration: true,
-      parameterSet: 'perk-128-short-5',
-      keyGenerationOutput: 'publicKey',
-      input: OpCodes.Hex8ToBytes(PERK_128_SHORT_5.keySeeds),
-      expected: OpCodes.Hex8ToBytes(PERK_128_SHORT_5.publicKey)
-    },
-    {
-      text: 'PERK PQCsignKAT_251.rsp record 0: drawn seeds to public key (perk-192-fast-3)',
-      uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
-      keyGeneration: true,
-      parameterSet: 'perk-192-fast-3',
-      keyGenerationOutput: 'publicKey',
-      input: OpCodes.Hex8ToBytes(PERK_192_FAST_3.keySeeds),
-      expected: OpCodes.Hex8ToBytes(PERK_192_FAST_3.publicKey)
-    },
-    {
-      text: 'PERK PQCsignKAT_392.rsp record 0: drawn seeds to public key (perk-192-fast-5)',
-      uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
-      keyGeneration: true,
-      parameterSet: 'perk-192-fast-5',
-      keyGenerationOutput: 'publicKey',
-      input: OpCodes.Hex8ToBytes(PERK_192_FAST_5.keySeeds),
-      expected: OpCodes.Hex8ToBytes(PERK_192_FAST_5.publicKey)
-    },
-    {
-      text: 'PERK PQCsignKAT_251.rsp record 0: drawn seeds to public key (perk-192-short-3)',
-      uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
-      keyGeneration: true,
-      parameterSet: 'perk-192-short-3',
-      keyGenerationOutput: 'publicKey',
-      input: OpCodes.Hex8ToBytes(PERK_192_SHORT_3.keySeeds),
-      expected: OpCodes.Hex8ToBytes(PERK_192_SHORT_3.publicKey)
-    },
-    {
-      text: 'PERK PQCsignKAT_392.rsp record 0: drawn seeds to public key (perk-192-short-5)',
-      uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
-      keyGeneration: true,
-      parameterSet: 'perk-192-short-5',
-      keyGenerationOutput: 'publicKey',
-      input: OpCodes.Hex8ToBytes(PERK_192_SHORT_5.keySeeds),
-      expected: OpCodes.Hex8ToBytes(PERK_192_SHORT_5.publicKey)
-    },
-    {
-      text: 'PERK PQCsignKAT_346.rsp record 0: drawn seeds to public key (perk-256-fast-3)',
-      uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
-      keyGeneration: true,
-      parameterSet: 'perk-256-fast-3',
-      keyGenerationOutput: 'publicKey',
-      input: OpCodes.Hex8ToBytes(PERK_256_FAST_3.keySeeds),
-      expected: OpCodes.Hex8ToBytes(PERK_256_FAST_3.publicKey)
-    },
-    {
-      text: 'PERK PQCsignKAT_539.rsp record 0: drawn seeds to public key (perk-256-fast-5)',
-      uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
-      keyGeneration: true,
-      parameterSet: 'perk-256-fast-5',
-      keyGenerationOutput: 'publicKey',
-      input: OpCodes.Hex8ToBytes(PERK_256_FAST_5.keySeeds),
-      expected: OpCodes.Hex8ToBytes(PERK_256_FAST_5.publicKey)
-    },
-    {
-      text: 'PERK PQCsignKAT_346.rsp record 0: drawn seeds to public key (perk-256-short-3)',
-      uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
-      keyGeneration: true,
-      parameterSet: 'perk-256-short-3',
-      keyGenerationOutput: 'publicKey',
-      input: OpCodes.Hex8ToBytes(PERK_256_SHORT_3.keySeeds),
-      expected: OpCodes.Hex8ToBytes(PERK_256_SHORT_3.publicKey)
-    },
-    {
-      text: 'PERK PQCsignKAT_539.rsp record 0: drawn seeds to public key (perk-256-short-5)',
-      uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
-      keyGeneration: true,
-      parameterSet: 'perk-256-short-5',
-      keyGenerationOutput: 'publicKey',
-      input: OpCodes.Hex8ToBytes(PERK_256_SHORT_5.keySeeds),
-      expected: OpCodes.Hex8ToBytes(PERK_256_SHORT_5.publicKey)
-    }
-  ];
 
   //#endregion
 
@@ -2416,7 +2667,197 @@
         new LinkItem('The permuted kernel problem (Shamir, CRYPTO 1989)', 'https://link.springer.com/chapter/10.1007/0-387-34805-0_54')
       ];
 
-      this.tests = VECTORS;
+      this.tests = [
+        {
+          text: 'PERK PQCsignKAT_164.rsp record 0: drawn seeds to public key (perk-128-fast-3)',
+          uri: KAT_URI,
+          keyGeneration: true,
+          parameterSet: 'perk-128-fast-3',
+          keyGenerationOutput: 'publicKey',
+          input: OpCodes.Hex8ToBytes(PERK_128_FAST_3_KEY_SEEDS),
+          expected: OpCodes.Hex8ToBytes(PERK_128_FAST_3_PUBLIC_KEY)
+        },
+        {
+          text: 'PERK PQCsignKAT_164.rsp record 0: drawn seeds to private key (perk-128-fast-3)',
+          uri: KAT_URI,
+          keyGeneration: true,
+          parameterSet: 'perk-128-fast-3',
+          keyGenerationOutput: 'privateKey',
+          input: OpCodes.Hex8ToBytes(PERK_128_FAST_3_KEY_SEEDS),
+          expected: OpCodes.Hex8ToBytes(PERK_128_FAST_3_PRIVATE_KEY)
+        },
+        {
+          text: 'PERK PQCsignKAT_164.rsp record 0: the published signed message (perk-128-fast-3)',
+          uri: KAT_URI,
+          parameterSet: 'perk-128-fast-3',
+          privateKey: OpCodes.Hex8ToBytes(PERK_128_FAST_3_PRIVATE_KEY),
+          signingRandomness: OpCodes.Hex8ToBytes(PERK_128_FAST_3_SIGN_RANDOMNESS),
+          input: OpCodes.Hex8ToBytes(PERK_128_FAST_3_MESSAGE),
+          expected: OpCodes.Hex8ToBytes(PERK_128_FAST_3_SIGNATURE + PERK_128_FAST_3_MESSAGE)
+        },
+        {
+          // Setting a signature alongside the public key turns the result into a
+          // verdict, so the rejections below can assert a refusal rather than
+          // naming what a refusal produces.
+          text: 'PERK PQCsignKAT_164.rsp record 0: the published signature verifies (perk-128-fast-3)',
+          uri: KAT_URI,
+          parameterSet: 'perk-128-fast-3',
+          publicKey: OpCodes.Hex8ToBytes(PERK_128_FAST_3_PUBLIC_KEY),
+          signature: OpCodes.Hex8ToBytes(PERK_128_FAST_3_SIGNATURE),
+          input: OpCodes.Hex8ToBytes(PERK_128_FAST_3_MESSAGE),
+          expected: [1]
+        },
+        {
+          text: 'PERK PQCsignKAT_164.rsp record 0: one bit of the message flipped must not verify',
+          uri: KAT_URI,
+          parameterSet: 'perk-128-fast-3',
+          publicKey: OpCodes.Hex8ToBytes(PERK_128_FAST_3_PUBLIC_KEY),
+          signature: OpCodes.Hex8ToBytes(PERK_128_FAST_3_SIGNATURE),
+          input: disturb(PERK_128_FAST_3_MESSAGE, 7),
+          expected: [0]
+        },
+        {
+          text: 'PERK PQCsignKAT_164.rsp record 0: one bit of the opened share must not verify',
+          uri: KAT_URI,
+          parameterSet: 'perk-128-fast-3',
+          publicKey: OpCodes.Hex8ToBytes(PERK_128_FAST_3_PUBLIC_KEY),
+          signature: disturb(PERK_128_FAST_3_SIGNATURE, 5000),
+          input: OpCodes.Hex8ToBytes(PERK_128_FAST_3_MESSAGE),
+          expected: [0]
+        },
+        {
+          text: "PERK PQCsignKAT_164.rsp: record 0's signature must not verify under record 1's public key",
+          uri: KAT_URI,
+          parameterSet: 'perk-128-fast-3',
+          publicKey: OpCodes.Hex8ToBytes(PERK_128_FAST_3_PUBLIC_KEY_OF_RECORD1),
+          signature: OpCodes.Hex8ToBytes(PERK_128_FAST_3_SIGNATURE),
+          input: OpCodes.Hex8ToBytes(PERK_128_FAST_3_MESSAGE),
+          expected: [0]
+        },
+
+        {
+          text: 'PERK PQCsignKAT_257.rsp record 0: drawn seeds to public key (perk-128-fast-5)',
+          uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
+          keyGeneration: true,
+          parameterSet: 'perk-128-fast-5',
+          keyGenerationOutput: 'publicKey',
+          input: OpCodes.Hex8ToBytes(PERK_128_FAST_5_KEY_SEEDS),
+          expected: OpCodes.Hex8ToBytes(PERK_128_FAST_5_PUBLIC_KEY)
+        },
+        {
+          text: 'PERK PQCsignKAT_257.rsp record 0: the published signature verifies (perk-128-fast-5)',
+          uri: KAT_URI,
+          parameterSet: 'perk-128-fast-5',
+          publicKey: OpCodes.Hex8ToBytes(PERK_128_FAST_5_PUBLIC_KEY),
+          signature: OpCodes.Hex8ToBytes(PERK_128_FAST_5_SIGNATURE),
+          input: OpCodes.Hex8ToBytes(PERK_128_FAST_5_MESSAGE),
+          expected: [1]
+        },
+
+        {
+          text: 'PERK PQCsignKAT_164.rsp record 0: drawn seeds to public key (perk-128-short-3)',
+          uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
+          keyGeneration: true,
+          parameterSet: 'perk-128-short-3',
+          keyGenerationOutput: 'publicKey',
+          input: OpCodes.Hex8ToBytes(PERK_128_SHORT_3_KEY_SEEDS),
+          expected: OpCodes.Hex8ToBytes(PERK_128_SHORT_3_PUBLIC_KEY)
+        },
+        {
+          // The short sets rank the opened permutation into a factorial-base
+          // integer rather than packing pairs of coefficients, so this case is
+          // what gates that encoding inside a test run.
+          text: 'PERK PQCsignKAT_164.rsp record 0: the published signature verifies (perk-128-short-3)',
+          uri: KAT_URI,
+          parameterSet: 'perk-128-short-3',
+          publicKey: OpCodes.Hex8ToBytes(PERK_128_SHORT_3_PUBLIC_KEY),
+          signature: OpCodes.Hex8ToBytes(PERK_128_SHORT_3_SIGNATURE),
+          input: OpCodes.Hex8ToBytes(PERK_128_SHORT_3_MESSAGE),
+          expected: [1]
+        },
+
+        {
+          text: 'PERK PQCsignKAT_257.rsp record 0: drawn seeds to public key (perk-128-short-5)',
+          uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
+          keyGeneration: true,
+          parameterSet: 'perk-128-short-5',
+          keyGenerationOutput: 'publicKey',
+          input: OpCodes.Hex8ToBytes(PERK_128_SHORT_5_KEY_SEEDS),
+          expected: OpCodes.Hex8ToBytes(PERK_128_SHORT_5_PUBLIC_KEY)
+        },
+        {
+          text: 'PERK PQCsignKAT_251.rsp record 0: drawn seeds to public key (perk-192-fast-3)',
+          uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
+          keyGeneration: true,
+          parameterSet: 'perk-192-fast-3',
+          keyGenerationOutput: 'publicKey',
+          input: OpCodes.Hex8ToBytes(PERK_192_FAST_3_KEY_SEEDS),
+          expected: OpCodes.Hex8ToBytes(PERK_192_FAST_3_PUBLIC_KEY)
+        },
+        {
+          text: 'PERK PQCsignKAT_392.rsp record 0: drawn seeds to public key (perk-192-fast-5)',
+          uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
+          keyGeneration: true,
+          parameterSet: 'perk-192-fast-5',
+          keyGenerationOutput: 'publicKey',
+          input: OpCodes.Hex8ToBytes(PERK_192_FAST_5_KEY_SEEDS),
+          expected: OpCodes.Hex8ToBytes(PERK_192_FAST_5_PUBLIC_KEY)
+        },
+        {
+          text: 'PERK PQCsignKAT_251.rsp record 0: drawn seeds to public key (perk-192-short-3)',
+          uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
+          keyGeneration: true,
+          parameterSet: 'perk-192-short-3',
+          keyGenerationOutput: 'publicKey',
+          input: OpCodes.Hex8ToBytes(PERK_192_SHORT_3_KEY_SEEDS),
+          expected: OpCodes.Hex8ToBytes(PERK_192_SHORT_3_PUBLIC_KEY)
+        },
+        {
+          text: 'PERK PQCsignKAT_392.rsp record 0: drawn seeds to public key (perk-192-short-5)',
+          uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
+          keyGeneration: true,
+          parameterSet: 'perk-192-short-5',
+          keyGenerationOutput: 'publicKey',
+          input: OpCodes.Hex8ToBytes(PERK_192_SHORT_5_KEY_SEEDS),
+          expected: OpCodes.Hex8ToBytes(PERK_192_SHORT_5_PUBLIC_KEY)
+        },
+        {
+          text: 'PERK PQCsignKAT_346.rsp record 0: drawn seeds to public key (perk-256-fast-3)',
+          uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
+          keyGeneration: true,
+          parameterSet: 'perk-256-fast-3',
+          keyGenerationOutput: 'publicKey',
+          input: OpCodes.Hex8ToBytes(PERK_256_FAST_3_KEY_SEEDS),
+          expected: OpCodes.Hex8ToBytes(PERK_256_FAST_3_PUBLIC_KEY)
+        },
+        {
+          text: 'PERK PQCsignKAT_539.rsp record 0: drawn seeds to public key (perk-256-fast-5)',
+          uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
+          keyGeneration: true,
+          parameterSet: 'perk-256-fast-5',
+          keyGenerationOutput: 'publicKey',
+          input: OpCodes.Hex8ToBytes(PERK_256_FAST_5_KEY_SEEDS),
+          expected: OpCodes.Hex8ToBytes(PERK_256_FAST_5_PUBLIC_KEY)
+        },
+        {
+          text: 'PERK PQCsignKAT_346.rsp record 0: drawn seeds to public key (perk-256-short-3)',
+          uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
+          keyGeneration: true,
+          parameterSet: 'perk-256-short-3',
+          keyGenerationOutput: 'publicKey',
+          input: OpCodes.Hex8ToBytes(PERK_256_SHORT_3_KEY_SEEDS),
+          expected: OpCodes.Hex8ToBytes(PERK_256_SHORT_3_PUBLIC_KEY)
+        },
+        {
+          text: 'PERK PQCsignKAT_539.rsp record 0: drawn seeds to public key (perk-256-short-5)',
+          uri: 'https://pqc-perk.org/assets/downloads/perk-v2.0.0.zip',
+          keyGeneration: true,
+          parameterSet: 'perk-256-short-5',
+          keyGenerationOutput: 'publicKey',
+          input: OpCodes.Hex8ToBytes(PERK_256_SHORT_5_KEY_SEEDS),
+          expected: OpCodes.Hex8ToBytes(PERK_256_SHORT_5_PUBLIC_KEY)
+        }
+      ];
     }
 
     CreateInstance(isInverse = false) {
@@ -2432,11 +2873,15 @@
    * signed message and returns the message it carries, or refuses.
    */
   class PERKInstance extends IAlgorithmInstance {
+    /**
+     * @param {PERKAlgorithm} algorithm - parent algorithm instance
+     * @param {boolean} [isInverse=false] - verification mode
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
       this.inputBuffer = [];
-      this._parameterSet = PARAMETER_SETS['perk-128-fast-3'];
+      this._parameterSet = PARAMETER_SET_LIST[0];
       this._publicKey = null;
       this._privateKey = null;
       this._keyData = null;
@@ -2459,6 +2904,9 @@
       return this._parameterSet.name;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - the encoded public key; falsy clears it
+     */
     set publicKey(keyBytes) {
       if (!keyBytes) {
         this._publicKey = null;
@@ -2478,6 +2926,9 @@
       return this._publicKey ? this._publicKey.slice() : null;
     }
 
+    /**
+     * @param {uint8[]} keyBytes - the encoded private key; falsy clears it
+     */
     set privateKey(keyBytes) {
       if (!keyBytes) {
         this._privateKey = null;
@@ -2494,7 +2945,10 @@
       return this._privateKey ? this._privateKey.slice() : null;
     }
 
-    /** A signature to check, when the message rather than the pair is fed. */
+    /**
+     * A signature to check, when the message rather than the pair is fed.
+     * @param {uint8[]} signatureBytes - the signature; falsy clears it
+     */
     set signature(signatureBytes) {
       this._signature = signatureBytes ? Array.from(signatureBytes) : null;
     }
@@ -2520,6 +2974,7 @@
       if (!Array.isArray(keyData) && !ArrayBuffer.isView(keyData))
         throw new Error('Invalid PERK key data format');
 
+      /** @type {uint8[]} */
       const bytes = Array.from(keyData);
       if (parameterSetByLength(bytes.length, 'privateKeyBytes')) {
         this.privateKey = bytes;
@@ -2544,7 +2999,7 @@
     /**
      * Feed input bytes. Repeated calls append, so feeding in pieces is the same
      * as feeding whole.
-     * @param {number[]} data - input bytes
+     * @param {int32[]} data - input bytes
      */
     Feed(data) {
       if (data === null || data === undefined) return;
@@ -2566,7 +3021,7 @@
     /**
      * Produce the key, the signed message, or the message a signed message
      * carries.
-     * @returns {number[]} the result bytes
+     * @returns {int32[]} the result bytes
      */
     Result() {
       const input = this.inputBuffer;
@@ -2616,8 +3071,8 @@
 
     /**
      * Generate a key pair from drawn randomness.
-     * @param {number[]} randomness - two seeds, public then private
-     * @returns {object} { publicKey, privateKey }
+     * @param {uint8[]} randomness - two seeds, public then private
+     * @returns {PerkKeyPair} { publicKey, privateKey }
      */
     GenerateKeyPair(randomness) {
       const P = this._parameterSet;
@@ -2625,14 +3080,14 @@
       const pair = generateKeyPair(bytes.slice(0, P.seedBytes), bytes.slice(P.seedBytes, 2 * P.seedBytes), P);
       this._publicKey = pair.publicKey;
       this._privateKey = pair.privateKey;
-      return { publicKey: pair.publicKey.slice(), privateKey: pair.privateKey.slice() };
+      return new PerkKeyPair(pair.publicKey.slice(), pair.privateKey.slice());
     }
 
     /**
      * Sign a message with the configured private key.
-     * @param {number[]} message - the message
-     * @param {number[]} randomness - seedBytes + saltBytes of randomness
-     * @returns {number[]} the signature
+     * @param {uint8[]} message - the message
+     * @param {uint8[]} randomness - seedBytes + saltBytes of randomness
+     * @returns {uint8[]} the signature
      */
     Sign(message, randomness) {
       if (!this._privateKey) throw new Error('PERK signing needs a private key');
@@ -2641,8 +3096,8 @@
 
     /**
      * Check a signature with the configured public key.
-     * @param {number[]} message - the message
-     * @param {number[]} signatureBytes - the signature
+     * @param {uint8[]} message - the message
+     * @param {uint8[]} signatureBytes - the signature
      * @returns {boolean} whether it verifies
      */
     Verify(message, signatureBytes) {

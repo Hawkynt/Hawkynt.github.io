@@ -199,7 +199,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CMWCInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -217,23 +217,55 @@
  */
 
   class CMWCInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {CMWCAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // CMWC4096 constants (from Marsaglia's specification)
       this.R = 4096;                                  // Array size
+      /** @type {BigInt} */
       this.A = 6364136223846793005n;                 // Multiplier (0x5851F42D4C957F2D)
 
       // Generator state
-      this._state = new Array(this.R);               // State array Q[0..R-1]
+      /** @type {BigInt[]} */
+      this._state = OpCodes.CreateArray(this.R, 0n);               // State array Q[0..R-1]
+      /** @type {BigInt} */
       this._carry = 0n;                              // Carry value
+      /** @type {int32} */
       this._index = this.R - 1;                      // Current index
+      /** @type {boolean} */
       this._ready = false;
+    }
+
+    /**
+     * SplitMix64.Next(ref z) function (mimics C# implementation)
+     * @param {BigInt} z - State before the step
+     * @returns {BigInt} New state, which is also the output
+     */
+    _splitmix64Next(z) {
+      /** @type {BigInt} */
+      const GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
+      /** @type {BigInt} */
+      const MIX_CONST_1 = 0xBF58476D1CE4E5B9n;
+      /** @type {BigInt} */
+      const MIX_CONST_2 = 0x94D049BB133111EBn;
+      /** @type {BigInt} */
+      let local = z;
+      local = OpCodes.AndN(local + GOLDEN_GAMMA, 0xFFFFFFFFFFFFFFFFn);
+      local = OpCodes.AndN(OpCodes.XorN(local, OpCodes.ShiftRn(local, 30)) * MIX_CONST_1, 0xFFFFFFFFFFFFFFFFn);
+      local = OpCodes.AndN(OpCodes.XorN(local, OpCodes.ShiftRn(local, 27)) * MIX_CONST_2, 0xFFFFFFFFFFFFFFFFn);
+      local = OpCodes.AndN(OpCodes.XorN(local, OpCodes.ShiftRn(local, 31)), 0xFFFFFFFFFFFFFFFFn);
+      return local;  // Returns new state AND updates z in C# via ref
     }
 
     /**
      * Seed using SplitMix64 to initialize state array
      * This matches the C# implementation which uses SplitMix64.Next() for seeding
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -242,6 +274,7 @@
       }
 
       // Convert seed bytes to 64-bit value for SplitMix64
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length && i < 8; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8), BigInt(seedBytes[i]));
@@ -250,30 +283,20 @@
       // Use SplitMix64 to initialize state array (matches C# implementation)
       // NOTE: C# uses SplitMix64.Next(ref seed) which modifies seed in place!
       // We need to simulate this behavior by tracking the advancing state
-      const GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
-      const MIX_CONST_1 = 0xBF58476D1CE4E5B9n;
-      const MIX_CONST_2 = 0x94D049BB133111EBn;
-
-      // SplitMix64.Next(ref z) function (mimics C# implementation)
-      const splitmix64Next = (z) => {
-        let local = z;
-        local = OpCodes.AndN(local + GOLDEN_GAMMA, 0xFFFFFFFFFFFFFFFFn);
-        local = OpCodes.AndN(OpCodes.XorN(local, OpCodes.ShiftRn(local, 30n)) * MIX_CONST_1, 0xFFFFFFFFFFFFFFFFn);
-        local = OpCodes.AndN(OpCodes.XorN(local, OpCodes.ShiftRn(local, 27n)) * MIX_CONST_2, 0xFFFFFFFFFFFFFFFFn);
-        local = OpCodes.AndN(OpCodes.XorN(local, OpCodes.ShiftRn(local, 31n)), 0xFFFFFFFFFFFFFFFFn);
-        return local;  // Returns new state AND updates z in C# via ref
-      };
 
       // Initialize state array using SplitMix64
+      /** @type {BigInt} */
       let currentSeed = seedValue;
       for (let i = 0; i < this.R; ++i) {
-        const value = splitmix64Next(currentSeed);
+        /** @type {BigInt} */
+        const value = this._splitmix64Next(currentSeed);
         currentSeed = value;  // Update seed for next iteration (simulates C# ref behavior)
         this._state[i] = value;
       }
 
       // Initialize carry using SplitMix64
-      const carry = splitmix64Next(currentSeed);
+      /** @type {BigInt} */
+      const carry = this._splitmix64Next(currentSeed);
       this._carry = carry;
 
       this._index = this.R - 1;
@@ -281,6 +304,9 @@
     }
 
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -294,6 +320,7 @@
      * 3. carry = t shr 64 (high 64 bits)
      * 4. state[index] = t AND 0xFFFFFFFFFFFFFFFF (low 64 bits)
      * 5. return 2^64 - 1 - state[index] (complement)
+     * @returns {BigInt} Next 64-bit output
      */
     _next64() {
       if (!this._ready) {
@@ -304,6 +331,7 @@
       this._index = (this._index + 1) % this.R;
 
       // Step 2: t = A * state[index] + carry (128-bit arithmetic)
+      /** @type {BigInt} */
       const t = OpCodes.AndN(this.A * this._state[this._index] + this._carry, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFn);
 
       // Step 3: Extract carry (high 64 bits)
@@ -318,8 +346,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -327,19 +355,24 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesRemaining = length;
 
       while (bytesRemaining > 0) {
         // Generate next 64-bit value
+        /** @type {BigInt} */
         const value = this._next64();
 
         // Extract bytes (big-endian order - most significant byte first)
         const bytesToExtract = Math.min(bytesRemaining, 8);
         for (let i = 0; i < bytesToExtract; ++i) {
+          /** @type {uint8} */
           const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, (7 - i) * 8), 0xFFn));
           output.push(byte);
         }
@@ -370,19 +403,23 @@
 
     Result() {
       // Use specified output size or default to 64 bytes
-      const size = this._outputSize || 64;
+      const size = (this._outputSize ? this._outputSize : 64);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 64;
+      return (this._outputSize ? this._outputSize : 64);
     }
   }
 

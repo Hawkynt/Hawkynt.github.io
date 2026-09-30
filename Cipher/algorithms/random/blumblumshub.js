@@ -42,13 +42,17 @@
    * Calculate bit precision (number of bits that can be extracted per squaring)
    * Based on Crypto++ implementation: BitPrecision(n.BitCount()) - 1
    * This ensures cryptographic security by limiting extraction to provably secure bits
+   * @param {int32} bitCount - Bit length of the modulus
+   * @returns {int32} Bits extracted per squaring
    */
   function CalculateBitPrecision(bitCount) {
     // Conservative extraction: log2(bitCount) - 1
     // For a 1024-bit modulus, this gives ~9 bits per iteration
     if (bitCount <= 1) return 1;
 
+    /** @type {int32} */
     let precision = 0;
+    /** @type {int32} */
     let temp = bitCount;
 
     while (temp > 1) {
@@ -157,7 +161,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BlumBlumShubInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -175,8 +179,13 @@
  */
 
   class BlumBlumShubInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {BlumBlumShubAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // BBS state
       this._p = null;           // First prime factor
@@ -186,6 +195,7 @@
       this._current = null;     // Current state x_i
       this._maxBits = 0;        // Bits extracted per iteration
       this._bitsLeft = 0;       // Bits remaining in current iteration
+      /** @type {BigInt} */
       this._bitBuffer = 0n;     // Current bit buffer
       this._ready = false;      // Generator ready flag
     }
@@ -193,6 +203,7 @@
     /**
      * Set the two prime factors p and q
      * Both must be congruent to 3 mod 4 (Blum primes)
+     * @param {BigInt} value - Prime p (a number is accepted too)
      */
     set p(value) {
       if (typeof value === 'number') {
@@ -207,10 +218,16 @@
       this._updateModulus();
     }
 
+    /**
+     * @returns {BigInt} Prime p
+     */
     get p() {
       return this._p;
     }
 
+    /**
+     * @param {BigInt} value - Prime q (a number is accepted too)
+     */
     set q(value) {
       if (typeof value === 'number') {
         value = BigInt(value);
@@ -224,6 +241,9 @@
       this._updateModulus();
     }
 
+    /**
+     * @returns {BigInt} Prime q
+     */
     get q() {
       return this._q;
     }
@@ -244,6 +264,7 @@
     /**
      * Set seed value
      * Seed must be relatively prime to n (gcd(seed, n) = 1)
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -256,6 +277,7 @@
       }
 
       // Convert seed bytes to BigInt
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8), BigInt(seedBytes[i]));
@@ -286,6 +308,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -318,6 +343,7 @@
      * Based on Crypto++ PublicBlumBlumShub::GenerateByte()
      */
     _generateByte() {
+      /** @type {uint8} */
       let byte = 0;
 
       for (let i = 0; i < 8; ++i) {
@@ -331,8 +357,8 @@
      * Generate random bytes
      * Based on Crypto++ PublicBlumBlumShub::GenerateBlock()
      *
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -340,9 +366,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       for (let i = 0; i < length; ++i) {
@@ -373,19 +402,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 

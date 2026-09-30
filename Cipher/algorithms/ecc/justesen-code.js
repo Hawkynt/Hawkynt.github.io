@@ -115,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {JustesenCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -132,13 +132,15 @@
   class JustesenCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {JustesenCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Simplified Justesen code construction
@@ -179,6 +181,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Simplified Justesen encoding
       // Real implementation: RS outer code + Wozencraft inner codes
@@ -189,64 +195,96 @@
 
       // Simplified concatenated structure
       // Each input symbol encoded by different inner code from Wozencraft ensemble
+      /** @type {uint8[]} */
       const codeword = [];
 
       // Apply inner encoding to each symbol pair
+      /** @type {uint8[]} */
       const sym1 = [data[0], data[1]];
+      /** @type {uint8[]} */
       const sym2 = [data[2], data[3]];
 
       // Inner code 1 (identity + repetition)
-      codeword.push(sym1[0], sym1[1], sym1[0], sym1[1]);
+      codeword.push(sym1[0]);
+      codeword.push(sym1[1]);
+      codeword.push(sym1[0]);
+      codeword.push(sym1[1]);
 
       // Inner code 2 (parity + modified)
-      const parity = OpCodes.XorN(sym2[0], sym2[1]);
-      codeword.push(sym2[0], sym2[1], parity, OpCodes.XorN(parity, sym2[0]));
+      /** @type {uint32} */
+      const parity = OpCodes.Xor32(sym2[0], sym2[1]);
+      codeword.push(sym2[0]);
+      codeword.push(sym2[1]);
+      codeword.push(parity);
+      codeword.push(OpCodes.Xor32(parity, sym2[0]));
 
       return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       if (data.length !== 8) {
         throw new Error('Justesen decode: Input must be exactly 8 bits');
       }
 
       // Simplified maximum likelihood decoding
+      /** @type {uint8[]} */
       const decoded = [];
 
       // Decode first symbol (bits 0-3)
+      /** @type {uint8[]} */
       const blk1 = data.slice(0, 4);
-      const maj1_0 = (blk1[0] + blk1[2]) >= 1 ? 1 : 0; // Majority vote
-      const maj1_1 = (blk1[1] + blk1[3]) >= 1 ? 1 : 0;
-      decoded.push(maj1_0, maj1_1);
+      /** @type {int32} */
+      const sum0 = blk1[0] + blk1[2];
+      /** @type {int32} */
+      const sum1 = blk1[1] + blk1[3];
+      /** @type {uint8} */
+      const maj1_0 = sum0 >= 1 ? 1 : 0; // Majority vote
+      /** @type {uint8} */
+      const maj1_1 = sum1 >= 1 ? 1 : 0;
+      decoded.push(maj1_0);
+      decoded.push(maj1_1);
 
       // Decode second symbol (bits 4-7)
+      /** @type {uint8[]} */
       const blk2 = data.slice(4, 8);
       // Simplified decoding using syndrome
-      decoded.push(blk2[0], blk2[1]);
+      decoded.push(blk2[0]);
+      decoded.push(blk2[1]);
 
       return decoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
-      if (data.length !== 8) return true;
-
-      try {
-        const decoded = this.decode(data);
-        const reencoded = this.encode(decoded);
-
-        // Check Hamming distance
-        let distance = 0;
-        for (let i = 0; i < 8; ++i) {
-          if (data[i] !== reencoded[i]) {
-            ++distance;
-          }
-        }
-
-        // Error detected if distance beyond threshold
-        return distance > 2;
-      } catch (e) {
+      // decode() and encode() only throw for lengths other than 8 and 4,
+      // which this check and decode() rule out
+      if (data.length !== 8) {
         return true;
       }
+
+      /** @type {uint8[]} */
+      const decoded = this.decode(data);
+      /** @type {uint8[]} */
+      const reencoded = this.encode(decoded);
+
+      // Check Hamming distance
+      /** @type {int32} */
+      let distance = 0;
+      for (let i = 0; i < 8; ++i) {
+        if (data[i] !== reencoded[i]) {
+          ++distance;
+        }
+      }
+
+      // Error detected if distance beyond threshold
+      return distance > 2;
     }
   }
 
