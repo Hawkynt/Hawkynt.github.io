@@ -52,7 +52,6 @@
           AsymmetricCipherAlgorithm, IAlgorithmInstance,
           LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
-  const XOR = OpCodes.XorN;
 
   // ===== borrowed primitives =====
   //
@@ -67,6 +66,9 @@
   let aesAlgorithm = null;
   const shaAlgorithms = {};
 
+  /**
+   * @returns {Algorithm} Result
+   */
   function FindAes() {
     if (aesAlgorithm) return aesAlgorithm;
 
@@ -88,6 +90,10 @@
   const SHA_NAMES = { 32: 'SHA-256', 48: 'SHA-384', 64: 'SHA-512' };
   const SHA_MODULES = { 32: '../hash/sha256.js', 48: '../hash/sha512.js', 64: '../hash/sha512.js' };
 
+  /**
+   * @param {int32} length - length
+   * @returns {Algorithm} Result
+   */
   function FindSha(length) {
     if (shaAlgorithms[length]) return shaAlgorithms[length];
 
@@ -112,6 +118,11 @@
   let aesInstance = null;
   let aesInstanceKey = null;
 
+  /**
+   * @param {Uint8Array} key - 32 key octets
+   * @param {Uint8Array} block - 16 plaintext octets
+   * @returns {uint8[]} 16 ciphertext octets
+   */
   function Aes256Ecb(key, block) {
     let sameKey = aesInstanceKey !== null;
     if (sameKey)
@@ -125,13 +136,22 @@
     }
 
     aesInstance.Feed(Array.from(block));
-    return aesInstance.Result();
+    /** @type {uint8[]} */
+    const output = aesInstance.Result();
+    return output;
   }
 
+  /**
+   * @param {int32} length - digest octets: 32, 48 or 64
+   * @param {Uint8Array} data - message octets
+   * @returns {Uint8Array} the SHA-2 digest
+   */
   function Sha2(length, data) {
     const instance = FindSha(length).CreateInstance(false);
     instance.Feed(Array.from(data));
-    return Uint8Array.from(instance.Result());
+    /** @type {uint8[]} */
+    const digest = instance.Result();
+    return Uint8Array.from(digest);
   }
 
   // ===== the two towers =====
@@ -159,16 +179,17 @@
   const GF16_BYTE_MUL = new Uint8Array(4096);
   const GF256_BYTE_MUL = GF256_MUL;
 
-  (function BuildFieldTables() {
+  /** Fill the field tables above from the tower. */
+  function BuildFieldTables() {
     for (let a = 0; a < 16; ++a) {
       const a0 = a % 4, a1 = (a - a0) / 4;
       for (let b = 0; b < 16; ++b) {
         const b0 = b % 4, b1 = (b - b0) / 4;
         const p00 = GF4_MUL[a0 * 4 + b0];
         const p11 = GF4_MUL[a1 * 4 + b1];
-        const mid = XOR(XOR(GF4_MUL[XOR(a0, a1) * 4 + XOR(b0, b1)], p00), p11);
+        const mid = OpCodes.Xor32(OpCodes.Xor32(GF4_MUL[OpCodes.Xor32(a0, a1) * 4 + OpCodes.Xor32(b0, b1)], p00), p11);
         // y^2 = y + x, so the constant term gains x times a1 b1.
-        GF16_MUL[a * 16 + b] = XOR(XOR(mid, p11) * 4, XOR(p00, GF4_MUL[p11 * 4 + 2]));
+        GF16_MUL[a * 16 + b] = OpCodes.Xor32(OpCodes.Xor32(mid, p11) * 4, OpCodes.Xor32(p00, GF4_MUL[p11 * 4 + 2]));
       }
     }
 
@@ -178,9 +199,9 @@
         const b0 = b % 16, b1 = (b - b0) / 16;
         const p00 = GF16_MUL[a0 * 16 + b0];
         const p11 = GF16_MUL[a1 * 16 + b1];
-        const mid = XOR(XOR(GF16_MUL[XOR(a0, a1) * 16 + XOR(b0, b1)], p00), p11);
+        const mid = OpCodes.Xor32(OpCodes.Xor32(GF16_MUL[OpCodes.Xor32(a0, a1) * 16 + OpCodes.Xor32(b0, b1)], p00), p11);
         // X^2 = X + xy, and xy is the GF(16) element 8.
-        GF256_MUL[a * 256 + b] = XOR(XOR(mid, p11) * 16, XOR(p00, GF16_MUL[p11 * 16 + 8]));
+        GF256_MUL[a * 256 + b] = OpCodes.Xor32(OpCodes.Xor32(mid, p11) * 16, OpCodes.Xor32(p00, GF16_MUL[p11 * 16 + 8]));
       }
     }
 
@@ -196,7 +217,9 @@
         const lo = v % 16, hi = (v - lo) / 16;
         GF16_BYTE_MUL[b * 256 + v] = GF16_MUL[b * 16 + lo] + GF16_MUL[b * 16 + hi] * 16;
       }
-  })();
+  }
+
+  BuildFieldTables();
 
   // ===== the NIST generator =====
   //
@@ -205,6 +228,9 @@
   // and once, with a private state, as the key expander that turns a 32 octet
   // seed into a secret key of a hundred kilobytes or more.
 
+  /**
+   * @param {Uint8Array} v - v
+   */
   function IncrementCounter(v) {
     for (let j = 15; j >= 0; --j) {
       if (v[j] === 0xFF) v[j] = 0;
@@ -229,7 +255,7 @@
         for (let j = 0; j < 16; ++j) temp[i * 16 + j] = block[j];
       }
       if (providedData)
-        for (let i = 0; i < 48; ++i) temp[i] = XOR(temp[i], providedData[i]);
+        for (let i = 0; i < 48; ++i) temp[i] = OpCodes.Xor32(temp[i], providedData[i]);
       for (let i = 0; i < 32; ++i) key[i] = temp[i];
       for (let i = 0; i < 16; ++i) v[i] = temp[32 + i];
     };
@@ -265,6 +291,12 @@
   // appended; the target vector of a signature is produced that way whenever
   // the number of equations exceeds the digest length.
 
+  /**
+   * @param {int32} hashLen - hashLen
+   * @param {int32} outLen - outLen
+   * @param {Uint8Array} first - first
+   * @returns {Uint8Array} Result
+   */
   function ExpandHash(hashLen, outLen, first) {
     const digest = new Uint8Array(outLen);
     if (hashLen >= outLen) {
@@ -288,6 +320,12 @@
     return digest;
   }
 
+  /**
+   * @param {int32} hashLen - hashLen
+   * @param {int32} outLen - outLen
+   * @param {Uint8Array} message - message
+   * @returns {Uint8Array} Result
+   */
   function HashMsg(hashLen, outLen, message) {
     return ExpandHash(hashLen, outLen, Sha2(hashLen, message));
   }
@@ -295,9 +333,9 @@
   /**
    * Seed a private instance of the generator. The 48 octets it wants are the
    * seed, padded out with a hash of the seed when the seed is shorter.
-   * @param {int} hashLen - the parameter set's digest length
-   * @param {uint8[]} seed - the seed octets
-   * @returns {object} the generator
+   * @param {int32} hashLen - the parameter set's digest length
+   * @param {Uint8Array} seed - the seed octets
+   * @returns {Object} the generator
    */
   function PrngSet(hashLen, seed) {
     const material = new Uint8Array(48);
@@ -313,10 +351,22 @@
 
   // ===== vectors over the field =====
 
+  /**
+   * @param {Uint8Array} dst - dst
+   * @param {int32} dOff - dOff
+   * @param {Uint8Array} src - src
+   * @param {int32} sOff - sOff
+   * @param {int32} n - n
+   */
   function VecAdd(dst, dOff, src, sOff, n) {
-    for (let i = 0; i < n; ++i) dst[dOff + i] = XOR(dst[dOff + i], src[sOff + i]);
+    for (let i = 0; i < n; ++i) dst[dOff + i] = OpCodes.Xor32(dst[dOff + i], src[sOff + i]);
   }
 
+  /**
+   * @param {Uint8Array} dst - dst
+   * @param {int32} dOff - dOff
+   * @param {int32} n - n
+   */
   function VecZero(dst, dOff, n) {
     for (let i = 0; i < n; ++i) dst[dOff + i] = 0;
   }
@@ -347,7 +397,7 @@
         if (scalar === 0) return;
         const base = scalar * 256;
         for (let i = 0; i < n; ++i)
-          dst[dOff + i] = XOR(dst[dOff + i], GF16_BYTE_MUL[base + src[sOff + i]]);
+          dst[dOff + i] = OpCodes.XorN(dst[dOff + i], GF16_BYTE_MUL[base + src[sOff + i]]);
       },
       mulScalar: function (a, off, b, n) {
         const base = (b % 16) * 256;
@@ -367,7 +417,7 @@
         if (b === 0) return;
         const base = b * 256;
         for (let i = 0; i < n; ++i)
-          dst[dOff + i] = XOR(dst[dOff + i], GF256_BYTE_MUL[base + src[sOff + i]]);
+          dst[dOff + i] = OpCodes.XorN(dst[dOff + i], GF256_BYTE_MUL[base + src[sOff + i]]);
       },
       mulScalar: function (a, off, b, n) {
         const base = b * 256;
@@ -382,14 +432,34 @@
   // element for each polynomial of the layer, so a whole layer is multiplied at
   // once. A "tri" matrix is stored as its upper triangle, row by row.
 
+  /**
+   * @param {int32} row - row
+   * @param {int32} col - col
+   * @param {int32} dim - dim
+   * @returns {int32} Result
+   */
   function IdxOfTrimat(row, col, dim) {
     return (dim + dim - row + 1) * row / 2 + col - row;
   }
 
+  /**
+   * @param {int32} row - row
+   * @param {int32} col - col
+   * @param {int32} dim - dim
+   * @returns {int32} Result
+   */
   function IdxOf2Trimat(row, col, dim) {
     return (row > col) ? IdxOfTrimat(col, row, dim) : IdxOfTrimat(row, col, dim);
   }
 
+  /**
+   * @param {Uint8Array} triC - triC
+   * @param {int32} cOff - cOff
+   * @param {Uint8Array} a - a
+   * @param {int32} aOff - aOff
+   * @param {int32} width - width
+   * @param {int32} sizeBatch - sizeBatch
+   */
   function UpperTrianglize(triC, cOff, a, aOff, width, sizeBatch) {
     let running = cOff;
     for (let i = 0; i < width; ++i) {
@@ -402,6 +472,19 @@
   }
 
   // bC += btriA * B
+  /**
+   * @param {Object} F - F
+   * @param {Uint8Array} c - c
+   * @param {int32} cOff - cOff
+   * @param {Uint8Array} triA - triA
+   * @param {int32} aOff - aOff
+   * @param {Uint8Array} b - b
+   * @param {int32} bOff - bOff
+   * @param {int32} bHeight - bHeight
+   * @param {int32} bColVec - bColVec
+   * @param {int32} bWidth - bWidth
+   * @param {int32} sizeBatch - sizeBatch
+   */
   function BatchTrimatMadd(F, c, cOff, triA, aOff, b, bOff, bHeight, bColVec, bWidth, sizeBatch) {
     let co = cOff, ao = aOff;
     for (let i = 0; i < bHeight; ++i) {
@@ -415,6 +498,19 @@
   }
 
   // bC += btriA^T * B
+  /**
+   * @param {Object} F - F
+   * @param {Uint8Array} c - c
+   * @param {int32} cOff - cOff
+   * @param {Uint8Array} triA - triA
+   * @param {int32} aOff - aOff
+   * @param {Uint8Array} b - b
+   * @param {int32} bOff - bOff
+   * @param {int32} bHeight - bHeight
+   * @param {int32} bColVec - bColVec
+   * @param {int32} bWidth - bWidth
+   * @param {int32} sizeBatch - sizeBatch
+   */
   function BatchTrimatTrMadd(F, c, cOff, triA, aOff, b, bOff, bHeight, bColVec, bWidth, sizeBatch) {
     let co = cOff;
     for (let i = 0; i < bHeight; ++i) {
@@ -428,6 +524,19 @@
   }
 
   // bC += (btriA + btriA^T) * B
+  /**
+   * @param {Object} F - F
+   * @param {Uint8Array} c - c
+   * @param {int32} cOff - cOff
+   * @param {Uint8Array} triA - triA
+   * @param {int32} aOff - aOff
+   * @param {Uint8Array} b - b
+   * @param {int32} bOff - bOff
+   * @param {int32} bHeight - bHeight
+   * @param {int32} bColVec - bColVec
+   * @param {int32} bWidth - bWidth
+   * @param {int32} sizeBatch - sizeBatch
+   */
   function Batch2TrimatMadd(F, c, cOff, triA, aOff, b, bOff, bHeight, bColVec, bWidth, sizeBatch) {
     let co = cOff;
     for (let i = 0; i < bHeight; ++i) {
@@ -443,6 +552,20 @@
   }
 
   // bC += A^T * bB
+  /**
+   * @param {Object} F - F
+   * @param {Uint8Array} c - c
+   * @param {int32} cOff - cOff
+   * @param {Uint8Array} a - a
+   * @param {int32} aOff - aOff
+   * @param {int32} aHeight - aHeight
+   * @param {int32} aColVec - aColVec
+   * @param {int32} aWidth - aWidth
+   * @param {Uint8Array} b - b
+   * @param {int32} bOff - bOff
+   * @param {int32} bWidth - bWidth
+   * @param {int32} sizeBatch - sizeBatch
+   */
   function BatchMatTrMadd(F, c, cOff, a, aOff, aHeight, aColVec, aWidth, b, bOff, bWidth, sizeBatch) {
     let co = cOff;
     for (let i = 0; i < aWidth; ++i) {
@@ -454,6 +577,20 @@
   }
 
   // bC += bA^T * B
+  /**
+   * @param {Object} F - F
+   * @param {Uint8Array} c - c
+   * @param {int32} cOff - cOff
+   * @param {Uint8Array} a - a
+   * @param {int32} aOff - aOff
+   * @param {int32} aWidth - aWidth
+   * @param {Uint8Array} b - b
+   * @param {int32} bOff - bOff
+   * @param {int32} bHeight - bHeight
+   * @param {int32} bColVec - bColVec
+   * @param {int32} bWidth - bWidth
+   * @param {int32} sizeBatch - sizeBatch
+   */
   function BatchBmatTrMadd(F, c, cOff, a, aOff, aWidth, b, bOff, bHeight, bColVec, bWidth, sizeBatch) {
     let co = cOff;
     for (let i = 0; i < aWidth; ++i) {
@@ -467,6 +604,20 @@
   }
 
   // bC += bA * B
+  /**
+   * @param {Object} F - F
+   * @param {Uint8Array} c - c
+   * @param {int32} cOff - cOff
+   * @param {Uint8Array} a - a
+   * @param {int32} aOff - aOff
+   * @param {int32} aHeight - aHeight
+   * @param {Uint8Array} b - b
+   * @param {int32} bOff - bOff
+   * @param {int32} bHeight - bHeight
+   * @param {int32} bColVec - bColVec
+   * @param {int32} bWidth - bWidth
+   * @param {int32} sizeBatch - sizeBatch
+   */
   function BatchMatMadd(F, c, cOff, a, aOff, aHeight, b, bOff, bHeight, bColVec, bWidth, sizeBatch) {
     let co = cOff, ao = aOff;
     for (let i = 0; i < aHeight; ++i) {
@@ -480,6 +631,17 @@
   }
 
   // y = x^T * trimat * x, one field element for each polynomial of the batch.
+  /**
+   * @param {Object} F - F
+   * @param {Uint8Array} y - y
+   * @param {int32} yOff - yOff
+   * @param {Uint8Array} triMat - triMat
+   * @param {int32} mOff - mOff
+   * @param {Uint8Array} x - x
+   * @param {int32} xOff - xOff
+   * @param {int32} dim - dim
+   * @param {int32} sizeBatch - sizeBatch
+   */
   function BatchQuadTrimatEval(F, y, yOff, triMat, mOff, x, xOff, dim, sizeBatch) {
     const xs = new Uint8Array(dim);
     for (let i = 0; i < dim; ++i) xs[i] = F.getEle(x, xOff, i);
@@ -498,6 +660,17 @@
   }
 
   // c = matA * b, with matA held column by column.
+  /**
+   * @param {Object} F - F
+   * @param {Uint8Array} c - c
+   * @param {int32} cOff - cOff
+   * @param {Uint8Array} matA - matA
+   * @param {int32} aOff - aOff
+   * @param {int32} colVecBytes - colVecBytes
+   * @param {int32} width - width
+   * @param {Uint8Array} b - b
+   * @param {int32} bOff - bOff
+   */
   function GfMatProd(F, c, cOff, matA, aOff, colVecBytes, width, b, bOff) {
     VecZero(c, cOff, colVecBytes);
     for (let i = 0; i < width; ++i)
@@ -513,6 +686,13 @@
   // time and only while the pivot is still zero, which is a data independent
   // stand-in for a row exchange.
 
+  /**
+   * @param {Object} F - F
+   * @param {Uint8Array} mat - mat
+   * @param {int32} h - h
+   * @param {int32} wByte - wByte
+   * @returns {int32} Result
+   */
   function GaussElim(F, mat, h, wByte) {
     let ok = 1;
     for (let i = 0; i < h; ++i) {
@@ -536,7 +716,12 @@
 
   /**
    * The inverse of an n by n matrix held column by column.
-   * @returns {int} 1 when it exists, 0 when the matrix is singular
+   * @param {Object} F - F
+   * @param {Uint8Array} invA - invA
+   * @param {Uint8Array} a - a
+   * @param {int32} aOff - aOff
+   * @param {int32} n - n
+   * @returns {int32} 1 when it exists, 0 when the matrix is singular
    */
   function MatInv(F, invA, a, aOff, n) {
     const srcRowBytes = F.bytesFor(n);
@@ -556,7 +741,15 @@
 
   /**
    * Solves inpMat * sol = cTerms, with inpMat held column by column.
-   * @returns {int} 1 on success, 0 when the system is singular
+   * @param {Object} F - F
+   * @param {Uint8Array} sol - sol
+   * @param {int32} solOff - solOff
+   * @param {Uint8Array} inpMat - inpMat
+   * @param {int32} mOff - mOff
+   * @param {Uint8Array} cTerms - cTerms
+   * @param {int32} cOff - cOff
+   * @param {int32} n - n
+   * @returns {int32} 1 on success, 0 when the system is singular
    */
   function MatSolve(F, sol, solOff, inpMat, mOff, cTerms, cOff, n) {
     const nb = F.bytesFor(n);
@@ -579,84 +772,332 @@
   // which are declared with one octet alignment, so the offsets below are the
   // running sums of the field sizes.
 
+  /**
+   * A parameter set with its key layouts, in the field order the plain object
+   * always had: the offsets and sizes are the running sums of the submission's
+   * one-octet-aligned structs.
+   */
+  class RainbowParams {
+    /**
+     * @param {string} name - set name
+     * @param {int32} gfSize - 16 or 256
+     * @param {int32} v1 - vinegar variables
+     * @param {int32} o1 - first-layer oil variables
+     * @param {int32} o2 - second-layer oil variables
+     * @param {int32} hashLen - digest octets
+     */
+    constructor(name, gfSize, v1, o1, o2, hashLen) {
+      /** @type {string} */
+      this.name = name;
+      /** @type {int32} */
+      this.gfSize = gfSize;
+      /** @type {int32} */
+      this.v1 = v1;
+      /** @type {int32} */
+      this.o1 = o1;
+      /** @type {int32} */
+      this.o2 = o2;
+      /** @type {int32} */
+      this.hashLen = hashLen;
+      /** @type {int32} */
+      this.v2 = v1 + o1;
+      /** @type {int32} */
+      this.n = v1 + o1 + o2;
+      /** @type {int32} */
+      this.m = o1 + o2;
+
+      const per = (gfSize === 16) ? 2 : 1;
+      /** @type {int32} */
+      this.v1b = v1 / per;
+      /** @type {int32} */
+      this.v2b = this.v2 / per;
+      /** @type {int32} */
+      this.o1b = o1 / per;
+      /** @type {int32} */
+      this.o2b = o2 / per;
+      /** @type {int32} */
+      this.nb = this.n / per;
+      /** @type {int32} */
+      this.mb = this.m / per;
+
+      /** @type {int32} */
+      this.saltBytes = 16;
+      /** @type {int32} */
+      this.seedBytes = 32;
+      /** @type {int32} */
+      this.sigBytes = this.nb + this.saltBytes;
+
+      /** @type {int32} */
+      this.triV1 = Triangle(v1);
+      /** @type {int32} */
+      this.triO1 = Triangle(o1);
+      /** @type {int32} */
+      this.triO2 = Triangle(o2);
+      /** @type {int32} */
+      this.triN = Triangle(this.n);
+
+      // The full secret key: the seed it came from, the non-trivial blocks of S
+      // and T, and the seven blocks of the central map.
+      let off = 0;
+      /** @type {int32} */
+      this.skSeed = off;
+      /** @type {int32} */
+      this.skSeedSize = 32;
+      off += this.skSeedSize;
+      /** @type {int32} */
+      this.s1 = off;
+      /** @type {int32} */
+      this.s1Size = this.o1b * o2;
+      off += this.s1Size;
+      /** @type {int32} */
+      this.t1 = off;
+      /** @type {int32} */
+      this.t1Size = this.v1b * o1;
+      off += this.t1Size;
+      /** @type {int32} */
+      this.t4 = off;
+      /** @type {int32} */
+      this.t4Size = this.v1b * o2;
+      off += this.t4Size;
+      /** @type {int32} */
+      this.t3 = off;
+      /** @type {int32} */
+      this.t3Size = this.o1b * o2;
+      off += this.t3Size;
+      /** @type {int32} */
+      this.l1F1 = off;
+      /** @type {int32} */
+      this.l1F1Size = this.o1b * this.triV1;
+      off += this.l1F1Size;
+      /** @type {int32} */
+      this.l1F2 = off;
+      /** @type {int32} */
+      this.l1F2Size = this.o1b * v1 * o1;
+      off += this.l1F2Size;
+      /** @type {int32} */
+      this.l2F1 = off;
+      /** @type {int32} */
+      this.l2F1Size = this.o2b * this.triV1;
+      off += this.l2F1Size;
+      /** @type {int32} */
+      this.l2F2 = off;
+      /** @type {int32} */
+      this.l2F2Size = this.o2b * v1 * o1;
+      off += this.l2F2Size;
+      /** @type {int32} */
+      this.l2F3 = off;
+      /** @type {int32} */
+      this.l2F3Size = this.o2b * v1 * o2;
+      off += this.l2F3Size;
+      /** @type {int32} */
+      this.l2F5 = off;
+      /** @type {int32} */
+      this.l2F5Size = this.o2b * this.triO1;
+      off += this.l2F5Size;
+      /** @type {int32} */
+      this.l2F6 = off;
+      /** @type {int32} */
+      this.l2F6Size = this.o2b * o1 * o2;
+      off += this.l2F6Size;
+      /** @type {int32} */
+      this.skSize = off;
+
+      // The cyclic public key: a seed for the blocks that can be regenerated,
+      // and the blocks that cannot.
+      off = 0;
+      /** @type {int32} */
+      this.pkSeed = off;
+      /** @type {int32} */
+      this.pkSeedSize = 32;
+      off += this.pkSeedSize;
+      /** @type {int32} */
+      this.cQ3 = off;
+      /** @type {int32} */
+      this.cQ3Size = this.o1b * v1 * o2;
+      off += this.cQ3Size;
+      /** @type {int32} */
+      this.cQ5 = off;
+      /** @type {int32} */
+      this.cQ5Size = this.o1b * this.triO1;
+      off += this.cQ5Size;
+      /** @type {int32} */
+      this.cQ6 = off;
+      /** @type {int32} */
+      this.cQ6Size = this.o1b * o1 * o2;
+      off += this.cQ6Size;
+      /** @type {int32} */
+      this.cQ9 = off;
+      /** @type {int32} */
+      this.cQ9Size = this.o1b * this.triO2;
+      off += this.cQ9Size;
+      /** @type {int32} */
+      this.cl2Q9 = off;
+      /** @type {int32} */
+      this.cl2Q9Size = this.o2b * this.triO2;
+      off += this.cl2Q9Size;
+      /** @type {int32} */
+      this.cpkSize = off;
+
+      /** @type {int32} */
+      this.cskSize = 64;
+      /** @type {int32} */
+      this.pkSize = this.mb * this.triN;
+
+      // The internal full public key, before it is flattened.
+      off = 0;
+      /** @type {int32} */
+      this.eL1Q1 = off;
+      /** @type {int32} */
+      this.eL1Q1Size = this.o1b * this.triV1;
+      off += this.eL1Q1Size;
+      /** @type {int32} */
+      this.eL1Q2 = off;
+      /** @type {int32} */
+      this.eL1Q2Size = this.o1b * v1 * o1;
+      off += this.eL1Q2Size;
+      /** @type {int32} */
+      this.eL1Q3 = off;
+      /** @type {int32} */
+      this.eL1Q3Size = this.o1b * v1 * o2;
+      off += this.eL1Q3Size;
+      /** @type {int32} */
+      this.eL1Q5 = off;
+      /** @type {int32} */
+      this.eL1Q5Size = this.o1b * this.triO1;
+      off += this.eL1Q5Size;
+      /** @type {int32} */
+      this.eL1Q6 = off;
+      /** @type {int32} */
+      this.eL1Q6Size = this.o1b * o1 * o2;
+      off += this.eL1Q6Size;
+      /** @type {int32} */
+      this.eL1Q9 = off;
+      /** @type {int32} */
+      this.eL1Q9Size = this.o1b * this.triO2;
+      off += this.eL1Q9Size;
+      /** @type {int32} */
+      this.eL2Q1 = off;
+      /** @type {int32} */
+      this.eL2Q1Size = this.o2b * this.triV1;
+      off += this.eL2Q1Size;
+      /** @type {int32} */
+      this.eL2Q2 = off;
+      /** @type {int32} */
+      this.eL2Q2Size = this.o2b * v1 * o1;
+      off += this.eL2Q2Size;
+      /** @type {int32} */
+      this.eL2Q3 = off;
+      /** @type {int32} */
+      this.eL2Q3Size = this.o2b * v1 * o2;
+      off += this.eL2Q3Size;
+      /** @type {int32} */
+      this.eL2Q5 = off;
+      /** @type {int32} */
+      this.eL2Q5Size = this.o2b * this.triO1;
+      off += this.eL2Q5Size;
+      /** @type {int32} */
+      this.eL2Q6 = off;
+      /** @type {int32} */
+      this.eL2Q6Size = this.o2b * o1 * o2;
+      off += this.eL2Q6Size;
+      /** @type {int32} */
+      this.eL2Q9 = off;
+      /** @type {int32} */
+      this.eL2Q9Size = this.o2b * this.triO2;
+      off += this.eL2Q9Size;
+      /** @type {int32} */
+      this.extSize = off;
+    }
+  }
+
+  /**
+   * @param {int32} k - side of a triangle
+   * @returns {int32} k (k + 1) / 2
+   */
+  function Triangle(k) {
+    return k * (k + 1) / 2;
+  }
+
+  /**
+   * @param {string} name - set name
+   * @param {int32} gfSize - 16 or 256
+   * @param {int32} v1 - vinegar variables
+   * @param {int32} o1 - first-layer oil variables
+   * @param {int32} o2 - second-layer oil variables
+   * @param {int32} hashLen - digest octets
+   * @returns {RainbowParams} the parameter set with its layouts
+   */
   function BuildParams(name, gfSize, v1, o1, o2, hashLen) {
-    const p = { name: name, gfSize: gfSize, v1: v1, o1: o1, o2: o2, hashLen: hashLen };
-    p.v2 = v1 + o1;
-    p.n = v1 + o1 + o2;
-    p.m = o1 + o2;
+    return new RainbowParams(name, gfSize, v1, o1, o2, hashLen);
+  }
 
-    const per = (gfSize === 16) ? 2 : 1;
-    p.v1b = v1 / per; p.v2b = p.v2 / per; p.o1b = o1 / per; p.o2b = o2 / per;
-    p.nb = p.n / per; p.mb = p.m / per;
-
-    p.saltBytes = 16;
-    p.seedBytes = 32;
-    p.sigBytes = p.nb + p.saltBytes;
-
-    const tri = function (k) { return k * (k + 1) / 2; };
-    p.triV1 = tri(v1); p.triO1 = tri(o1); p.triO2 = tri(o2); p.triN = tri(p.n);
-
-    // The full secret key: the seed it came from, the non-trivial blocks of S
-    // and T, and the seven blocks of the central map.
-    let off = 0;
-    const skField = function (key, size) { p[key] = off; p[key + 'Size'] = size; off += size; };
-    skField('skSeed', 32);
-    skField('s1', p.o1b * o2);
-    skField('t1', p.v1b * o1);
-    skField('t4', p.v1b * o2);
-    skField('t3', p.o1b * o2);
-    skField('l1F1', p.o1b * p.triV1);
-    skField('l1F2', p.o1b * v1 * o1);
-    skField('l2F1', p.o2b * p.triV1);
-    skField('l2F2', p.o2b * v1 * o1);
-    skField('l2F3', p.o2b * v1 * o2);
-    skField('l2F5', p.o2b * p.triO1);
-    skField('l2F6', p.o2b * o1 * o2);
-    p.skSize = off;
-
-    // The cyclic public key: a seed for the blocks that can be regenerated,
-    // and the blocks that cannot.
-    off = 0;
-    const cpkField = function (key, size) { p[key] = off; p[key + 'Size'] = size; off += size; };
-    cpkField('pkSeed', 32);
-    cpkField('cQ3', p.o1b * v1 * o2);
-    cpkField('cQ5', p.o1b * p.triO1);
-    cpkField('cQ6', p.o1b * o1 * o2);
-    cpkField('cQ9', p.o1b * p.triO2);
-    cpkField('cl2Q9', p.o2b * p.triO2);
-    p.cpkSize = off;
-
-    p.cskSize = 64;
-    p.pkSize = p.mb * p.triN;
-
-    // The internal full public key, before it is flattened.
-    off = 0;
-    const extField = function (key, size) { p[key] = off; p[key + 'Size'] = size; off += size; };
-    extField('eL1Q1', p.o1b * p.triV1);
-    extField('eL1Q2', p.o1b * v1 * o1);
-    extField('eL1Q3', p.o1b * v1 * o2);
-    extField('eL1Q5', p.o1b * p.triO1);
-    extField('eL1Q6', p.o1b * o1 * o2);
-    extField('eL1Q9', p.o1b * p.triO2);
-    extField('eL2Q1', p.o2b * p.triV1);
-    extField('eL2Q2', p.o2b * v1 * o1);
-    extField('eL2Q3', p.o2b * v1 * o2);
-    extField('eL2Q5', p.o2b * p.triO1);
-    extField('eL2Q6', p.o2b * o1 * o2);
-    extField('eL2Q9', p.o2b * p.triO2);
-    p.extSize = off;
-
-    return p;
+  /** The published constants of one registered set. */
+  class RainbowSetSpec {
+    /**
+     * @param {int32} gfSize - 16 or 256
+     * @param {int32} v1 - vinegar variables
+     * @param {int32} o1 - first-layer oil variables
+     * @param {int32} o2 - second-layer oil variables
+     * @param {int32} hashLen - digest octets
+     * @param {int32} level - NIST level
+     * @param {string} label - the submission's label
+     */
+    constructor(gfSize, v1, o1, o2, hashLen, level, label) {
+      /** @type {int32} */
+      this.gfSize = gfSize;
+      /** @type {int32} */
+      this.v1 = v1;
+      /** @type {int32} */
+      this.o1 = o1;
+      /** @type {int32} */
+      this.o2 = o2;
+      /** @type {int32} */
+      this.hashLen = hashLen;
+      /** @type {int32} */
+      this.level = level;
+      /** @type {string} */
+      this.label = label;
+    }
   }
 
   const PARAMETER_SETS = {
-    'Rainbow-I': { gfSize: 16, v1: 36, o1: 32, o2: 32, hashLen: 32, level: 1, label: 'Ia' },
-    'Rainbow-III': { gfSize: 256, v1: 68, o1: 32, o2: 48, hashLen: 48, level: 3, label: 'IIIc' },
-    'Rainbow-V': { gfSize: 256, v1: 96, o1: 36, o2: 64, hashLen: 64, level: 5, label: 'Vc' }
+    'Rainbow-I': new RainbowSetSpec(16, 36, 32, 32, 32, 1, 'Ia'),
+    'Rainbow-III': new RainbowSetSpec(256, 68, 32, 48, 48, 3, 'IIIc'),
+    'Rainbow-V': new RainbowSetSpec(256, 96, 36, 64, 64, 5, 'Vc')
   };
+
+  /**
+   * The table entry under a name. A plain property read.
+   * @param {string} name - the name
+   * @returns {RainbowSetSpec} the entry, or a falsy value
+   */
+  function ParameterSetEntry(name) {
+    /** @type {RainbowSetSpec} */
+    const entry = PARAMETER_SETS[name];
+    return entry;
+  }
+
+  /** A key pair. */
+  class RainbowKeyPair {
+    /**
+     * @param {Uint8Array} publicKey - the public key
+     * @param {Uint8Array} secretKey - the secret key
+     */
+    constructor(publicKey, secretKey) {
+      /** @type {Uint8Array} */
+      this.publicKey = publicKey;
+      /** @type {Uint8Array} */
+      this.secretKey = secretKey;
+    }
+  }
 
   // ===== key generation =====
 
+  /**
+   * @param {RainbowParams} p - p
+   * @param {Uint8Array} sk - sk
+   * @param {Object} prng - prng
+   */
   function GenerateST(p, sk, prng) {
     prng.readInto(sk, p.s1, p.s1Size);
     prng.readInto(sk, p.t1, p.t1Size);
@@ -664,6 +1105,12 @@
     prng.readInto(sk, p.t3, p.t3Size);
   }
 
+  /**
+   * @param {RainbowParams} p - p
+   * @param {Uint8Array} buf - buf
+   * @param {int32} base - base
+   * @param {Object} prng - prng
+   */
   function GenerateB1B2(p, buf, base, prng) {
     let off = base;
     prng.readInto(buf, off, p.l1F1Size); off += p.l1F1Size;
@@ -677,6 +1124,11 @@
 
   // t4 <- t2 + t1 t3. The map is its own inverse, which is how the reference
   // moves the field between its two meanings.
+  /**
+   * @param {Object} F - F
+   * @param {RainbowParams} p - p
+   * @param {Uint8Array} sk - sk
+   */
   function CalculateT4(F, p, sk) {
     const temp = new Uint8Array(p.v1b);
     for (let i = 0; i < p.o2; ++i) {
@@ -687,6 +1139,16 @@
 
   // S mixes the second layer into the first, so every layer-one public block
   // carries an s1 multiple of the matching layer-two block.
+  /**
+   * @param {Object} F - F
+   * @param {RainbowParams} p - p
+   * @param {Uint8Array} l1 - l1
+   * @param {int32} l1Off - l1Off
+   * @param {Uint8Array} l2 - l2
+   * @param {int32} l2Off - l2Off
+   * @param {int32} nTerms - nTerms
+   * @param {Uint8Array} sk - sk
+   */
   function ObfuscateL1(F, p, l1, l1Off, l2, l2Off, nTerms, sk) {
     const temp = new Uint8Array(p.o1b);
     let a = l1Off, b = l2Off;
@@ -699,6 +1161,12 @@
   }
 
   // The public map of the central map composed with T, before S is applied.
+  /**
+   * @param {Object} F - F
+   * @param {RainbowParams} p - p
+   * @param {Uint8Array} Q - Q
+   * @param {Uint8Array} sk - sk
+   */
   function CalculateQFromF(F, p, Q, sk) {
     const t2 = p.t4;
 
@@ -766,6 +1234,12 @@
   // The cyclic direction. The first public blocks are fixed by the public seed
   // and the central map is recovered from them, which is what lets a cyclic
   // public key be so much smaller than a flat one.
+  /**
+   * @param {Object} F - F
+   * @param {RainbowParams} p - p
+   * @param {Uint8Array} sk - sk
+   * @param {Uint8Array} Qs - Qs
+   */
   function CalculateFFromQ(F, p, sk, Qs) {
     for (let i = 0; i < p.l1F1Size; ++i) sk[p.l1F1 + i] = Qs[p.l1F1 + i];
 
@@ -795,6 +1269,12 @@
   }
 
   // The blocks of a cyclic public key that its seed does not fix.
+  /**
+   * @param {Object} F - F
+   * @param {RainbowParams} p - p
+   * @param {Uint8Array} cpk - cpk
+   * @param {Uint8Array} sk - sk
+   */
   function CalculateQFromFCyclic(F, p, cpk, sk) {
     const t2 = p.t4;
 
@@ -843,31 +1323,52 @@
 
   // The flat public key is the upper triangle of the whole quadratic map, each
   // entry carrying one field element for every equation.
-  function ExtCpkToPk(p, pk, Q) {
-    const put = function (l1Start, l2Start, iFrom, iTo, jFrom, jTo, triangular) {
-      let a = l1Start, b = l2Start;
-      for (let i = iFrom; i < iTo; ++i) {
-        const jStart = triangular ? i : jFrom;
-        for (let j = jStart; j < jTo; ++j) {
-          const base = p.mb * IdxOfTrimat(i, j, p.n);
-          for (let k = 0; k < p.o1b; ++k) pk[base + k] = Q[a + k];
-          for (let k = 0; k < p.o2b; ++k) pk[base + p.o1b + k] = Q[b + k];
-          a += p.o1b;
-          b += p.o2b;
-        }
+  /**
+   * Copy one block pair of the extended public key into the flat one.
+   * @param {RainbowParams} p - parameter set
+   * @param {Uint8Array} pk - the flat public key
+   * @param {Uint8Array} Q - the extended public key
+   * @param {int32} l1Start - offset of the layer-one block
+   * @param {int32} l2Start - offset of the layer-two block
+   * @param {int32} iFrom - first row
+   * @param {int32} iTo - end row
+   * @param {int32} jFrom - first column, when not triangular
+   * @param {int32} jTo - end column
+   * @param {boolean} triangular - whether column starts at the row
+   */
+  function PutBlocks(p, pk, Q, l1Start, l2Start, iFrom, iTo, jFrom, jTo, triangular) {
+    let a = l1Start, b = l2Start;
+    for (let i = iFrom; i < iTo; ++i) {
+      const jStart = triangular ? i : jFrom;
+      for (let j = jStart; j < jTo; ++j) {
+        const base = p.mb * IdxOfTrimat(i, j, p.n);
+        for (let k = 0; k < p.o1b; ++k) pk[base + k] = Q[a + k];
+        for (let k = 0; k < p.o2b; ++k) pk[base + p.o1b + k] = Q[b + k];
+        a += p.o1b;
+        b += p.o2b;
       }
-    };
-    put(p.eL1Q1, p.eL2Q1, 0, p.v1, 0, p.v1, true);
-    put(p.eL1Q2, p.eL2Q2, 0, p.v1, p.v1, p.v2, false);
-    put(p.eL1Q3, p.eL2Q3, 0, p.v1, p.v2, p.n, false);
-    put(p.eL1Q5, p.eL2Q5, p.v1, p.v2, 0, p.v2, true);
-    put(p.eL1Q6, p.eL2Q6, p.v1, p.v2, p.v2, p.n, false);
-    put(p.eL1Q9, p.eL2Q9, p.v2, p.n, 0, p.n, true);
+    }
+  }
+
+  /**
+   * @param {RainbowParams} p - p
+   * @param {Uint8Array} pk - pk
+   * @param {Uint8Array} Q - Q
+   */
+  function ExtCpkToPk(p, pk, Q) {
+    PutBlocks(p, pk, Q, p.eL1Q1, p.eL2Q1, 0, p.v1, 0, p.v1, true);
+    PutBlocks(p, pk, Q, p.eL1Q2, p.eL2Q2, 0, p.v1, p.v1, p.v2, false);
+    PutBlocks(p, pk, Q, p.eL1Q3, p.eL2Q3, 0, p.v1, p.v2, p.n, false);
+    PutBlocks(p, pk, Q, p.eL1Q5, p.eL2Q5, p.v1, p.v2, 0, p.v2, true);
+    PutBlocks(p, pk, Q, p.eL1Q6, p.eL2Q6, p.v1, p.v2, p.v2, p.n, false);
+    PutBlocks(p, pk, Q, p.eL1Q9, p.eL2Q9, p.v2, p.n, 0, p.n, true);
   }
 
   /**
    * The classic secret key: everything comes from one seed.
-   * @param {uint8[]} skSeed - 32 octets
+   * @param {Uint8Array} skSeed - 32 octets
+   * @param {Object} F - F
+   * @param {RainbowParams} p - p
    * @returns {Uint8Array} the secret key, with t4 in its signing form
    */
   function GenerateSecretKeyClassic(F, p, skSeed) {
@@ -882,6 +1383,10 @@
 
   /**
    * The classic key pair. The public key is the flat quadratic map.
+   * @param {Object} F - F
+   * @param {RainbowParams} p - p
+   * @param {Uint8Array} skSeed - skSeed
+   * @returns {RainbowKeyPair} Result
    */
   function GenerateKeypairClassic(F, p, skSeed) {
     const sk = new Uint8Array(p.skSize);
@@ -904,12 +1409,17 @@
 
     const pk = new Uint8Array(p.pkSize);
     ExtCpkToPk(p, pk, Q);
-    return { publicKey: pk, secretKey: sk };
+    return new RainbowKeyPair(pk, sk);
   }
 
   /**
    * The secret key of the cyclic and compressed forms, from the two seeds.
    * Signing needs only this, not the public key.
+   * @param {Object} F - F
+   * @param {RainbowParams} p - p
+   * @param {Uint8Array} pkSeed - pkSeed
+   * @param {Uint8Array} skSeed - skSeed
+   * @returns {Uint8Array} Result
    */
   function GenerateSecretKeyCyclic(F, p, pkSeed, skSeed) {
     const sk = new Uint8Array(p.skSize);
@@ -931,6 +1441,11 @@
 
   /**
    * The cyclic key pair: the full secret key and the small public key.
+   * @param {Object} F - F
+   * @param {RainbowParams} p - p
+   * @param {Uint8Array} pkSeed - pkSeed
+   * @param {Uint8Array} skSeed - skSeed
+   * @returns {RainbowKeyPair} Result
    */
   function GenerateKeypairCyclic(F, p, pkSeed, skSeed) {
     const sk = new Uint8Array(p.skSize);
@@ -965,7 +1480,7 @@
     ObfuscateL1(F, p, cpk, p.cQ6, Qs, p.l2F6, p.o1 * p.o2, sk);
     ObfuscateL1(F, p, cpk, p.cQ9, cpk, p.cl2Q9, p.triO2, sk);
 
-    return { publicKey: cpk, secretKey: sk };
+    return new RainbowKeyPair(cpk, sk);
   }
 
   // ===== signing =====
@@ -978,6 +1493,13 @@
 
   const MAX_ATTEMPTS = 128;
 
+  /**
+   * @param {Object} F - F
+   * @param {RainbowParams} p - p
+   * @param {Uint8Array} sk - sk
+   * @param {Uint8Array} digest - digest
+   * @returns {Uint8Array|null} Result
+   */
   function RainbowSign(F, p, sk, digest) {
     const matL1 = new Uint8Array(p.o1 * p.o1b);
     const matL2 = new Uint8Array(p.o2 * p.o2b);
@@ -1079,6 +1601,17 @@
   // Evaluating the public map is the sum over i <= j of x_i x_j times the block
   // of coefficients at (i, j).
 
+  /**
+   * @param {Object} F - F
+   * @param {Uint8Array} y - y
+   * @param {int32} yOff - yOff
+   * @param {Uint8Array} tri - tri
+   * @param {int32} tOff - tOff
+   * @param {Uint8Array} x - x
+   * @param {int32} xFrom - xFrom
+   * @param {int32} dim - dim
+   * @param {int32} vecLen - vecLen
+   */
   function EvalQuadTri(F, y, yOff, tri, tOff, x, xFrom, dim, vecLen) {
     let off = tOff;
     for (let i = 0; i < dim; ++i)
@@ -1088,6 +1621,20 @@
       }
   }
 
+  /**
+   * @param {Object} F - F
+   * @param {Uint8Array} y - y
+   * @param {int32} yOff - yOff
+   * @param {Uint8Array} mat - mat
+   * @param {int32} mOff - mOff
+   * @param {Uint8Array} xa - xa
+   * @param {int32} aFrom - aFrom
+   * @param {int32} dimA - dimA
+   * @param {Uint8Array} xb - xb
+   * @param {int32} bFrom - bFrom
+   * @param {int32} dimB - dimB
+   * @param {int32} vecLen - vecLen
+   */
   function EvalQuadRect(F, y, yOff, mat, mOff, xa, aFrom, dimA, xb, bFrom, dimB, vecLen) {
     let off = mOff;
     for (let i = 0; i < dimA; ++i)
@@ -1097,6 +1644,13 @@
       }
   }
 
+  /**
+   * @param {Object} F - F
+   * @param {RainbowParams} p - p
+   * @param {Uint8Array} pk - pk
+   * @param {Uint8Array} w - w
+   * @returns {Uint8Array} Result
+   */
   function RainbowPublicMap(F, p, pk, w) {
     const x = new Uint8Array(p.n);
     for (let i = 0; i < p.n; ++i) x[i] = F.getEle(w, 0, i);
@@ -1107,6 +1661,13 @@
 
   // The cyclic public key regenerates its first blocks from its seed, so
   // evaluating it means expanding them again in the same order.
+  /**
+   * @param {Object} F - F
+   * @param {RainbowParams} p - p
+   * @param {Uint8Array} cpk - cpk
+   * @param {Uint8Array} w - w
+   * @returns {Uint8Array} Result
+   */
   function RainbowPublicMapCyclic(F, p, cpk, w) {
     const x = new Uint8Array(p.n);
     for (let i = 0; i < p.n; ++i) x[i] = F.getEle(w, 0, i);
@@ -1144,6 +1705,13 @@
   /**
    * A signature is valid when the public map of its vector reproduces the
    * hash of the digest and the salt the signature carries.
+   * @param {Object} F - F
+   * @param {RainbowParams} p - p
+   * @param {Uint8Array} publicKey - publicKey
+   * @param {boolean} cyclic - cyclic
+   * @param {Uint8Array} digest - digest
+   * @param {Uint8Array} signature - signature
+   * @returns {boolean} Result
    */
   function RainbowVerify(F, p, publicKey, cyclic, digest, signature) {
     const w = signature.subarray(0, p.nb);
@@ -1155,8 +1723,9 @@
     for (let i = 0; i < p.saltBytes; ++i) digestSalt[p.hashLen + i] = signature[p.nb + i];
     const correct = HashMsg(p.hashLen, p.mb, digestSalt);
 
+    /** @type {uint32} */
     let diff = 0;
-    for (let i = 0; i < p.mb; ++i) diff = OpCodes.Or32(diff, XOR(check[i], correct[i]));
+    for (let i = 0; i < p.mb; ++i) diff = OpCodes.Or32(diff, OpCodes.Xor32(check[i], correct[i]));
     return diff === 0;
   }
 
@@ -1327,7 +1896,7 @@
     constructor(setName) {
       super();
 
-      const spec = PARAMETER_SETS[setName];
+      const spec = ParameterSetEntry(setName);
       const p = BuildParams(setName, spec.gfSize, spec.v1, spec.o1, spec.o2, spec.hashLen);
       this.parameters = p;
       this.field = MakeField(spec.gfSize);
@@ -1474,12 +2043,13 @@
    */
   class RainbowInstance extends IAlgorithmInstance {
     /**
-     * @param {Object} algorithm - Parent algorithm instance
+     * @param {RainbowAlgorithm} algorithm - Parent algorithm instance
      * @param {boolean} [isInverse=false] - verification mode flag
      */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {RainbowParams} */
       this.parameters = algorithm.parameters;
       this.field = algorithm.field;
       this._keyData = null;
@@ -1503,6 +2073,7 @@
           + ' octet compressed secret key');
       }
 
+      /** @type {uint8[]} */
       const copy = new Array(keyData.length);
       for (let i = 0; i < keyData.length; ++i) copy[i] = keyData[i];
       this._keyData = copy;
@@ -1637,6 +2208,7 @@
       if (!signature)
         throw new Error(p.name + ': the central map stayed singular for ' + MAX_ATTEMPTS + ' attempts');
 
+      /** @type {uint8[]} */
       const out = new Array(message.length + p.sigBytes);
       for (let i = 0; i < message.length; ++i) out[i] = message[i];
       for (let i = 0; i < p.sigBytes; ++i) out[message.length + i] = signature[i];

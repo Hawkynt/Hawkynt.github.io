@@ -89,6 +89,7 @@
   // checked by the published Known Answer Tests, which do not agree unless the
   // hashed point is right.
 
+  /** @type {uint32[]} */
   const KECCAK_RC_LOW = [
     0x00000001, 0x00008082, 0x0000808A, 0x80008000, 0x0000808B, 0x80000001,
     0x80008081, 0x00008009, 0x0000008A, 0x00000088, 0x80008009, 0x8000000A,
@@ -96,6 +97,7 @@
     0x0000800A, 0x8000000A, 0x80008081, 0x00008080, 0x80000001, 0x80008008
   ];
 
+  /** @type {uint32[]} */
   const KECCAK_RC_HIGH = [
     0x00000000, 0x00000000, 0x80000000, 0x80000000, 0x00000000, 0x00000000,
     0x80000000, 0x80000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
@@ -103,6 +105,7 @@
     0x00000000, 0x80000000, 0x80000000, 0x80000000, 0x00000000, 0x80000000
   ];
 
+  /** @type {int32[]} */
   const KECCAK_ROTATION = [
      0,  1, 62, 28, 27, 36, 44,  6, 55, 20,  3, 10, 43,
     25, 39, 41, 45, 15, 21,  8, 18,  2, 61, 56, 14
@@ -113,7 +116,8 @@
   /**
    * One Keccak-f[1600] permutation over a state held as 25 pairs of 32 bit
    * halves, low half first.
-   * @param {Int32Array} state - 50 words, modified in place
+   * @param {int32[]} state - 50 words, modified in place
+   * @returns {void} Result
    */
   function KeccakPermute(state) {
     const b = new Int32Array(50);
@@ -122,7 +126,10 @@
 
     for (let round = 0; round < 24; ++round) {
       for (let x = 0; x < 5; ++x) {
-        let low = 0, high = 0;
+        /** @type {uint32} */
+        let low = 0;
+        /** @type {uint32} */
+        let high = 0;
         for (let y = 0; y < 5; ++y) {
           low = OpCodes.Xor32(low, state[2 * (x + 5 * y)]);
           high = OpCodes.Xor32(high, state[2 * (x + 5 * y) + 1]);
@@ -153,7 +160,10 @@
           const rotation = KECCAK_ROTATION[i];
           const low = state[2 * i];
           const high = state[2 * i + 1];
-          let newLow, newHigh;
+          /** @type {uint32} */
+          let newLow;
+          /** @type {uint32} */
+          let newHigh;
           if (rotation === 0) {
             newLow = low;
             newHigh = high;
@@ -187,11 +197,19 @@
     }
   }
 
+  /**
+   * @param {int32[]} state - state
+   * @param {uint8[]} block - block
+   * @returns {void} Result
+   */
   function AbsorbInto(state, block) {
     for (let i = 0; i < SHAKE256_RATE; ++i) {
+      /** @type {int32} */
       const word = OpCodes.Shr32(i, 3);
       const byteInWord = OpCodes.And32(i, 7);
-      const index = 2 * word + OpCodes.Shr32(byteInWord, 2);
+      /** @type {int32} */
+      const halfWord = OpCodes.Shr32(byteInWord, 2);
+      const index = 2 * word + halfWord;
       state[index] = OpCodes.Xor32(state[index], OpCodes.Shl32(block[i], 8 * OpCodes.And32(byteInWord, 3)));
     }
     KeccakPermute(state);
@@ -200,10 +218,11 @@
   /**
    * A SHAKE-256 reader over the concatenation of its inputs, squeezed on demand.
    * @param {uint8[][]} parts - the byte strings to absorb in order
-   * @returns {object} a reader with read(count)
+   * @returns {FalconShakeReader} a reader with read(count)
    */
   function Shake256Reader(parts) {
-    const state = new Int32Array(50);
+    const reader = new FalconShakeReader();
+    const state = reader.state;
     const block = new Uint8Array(SHAKE256_RATE);
 
     let filled = 0;
@@ -225,38 +244,65 @@
     block[SHAKE256_RATE - 1] = OpCodes.Xor32(block[SHAKE256_RATE - 1], 0x80);
     AbsorbInto(state, block);
 
-    const buffered = new Uint8Array(SHAKE256_RATE);
-    let available = 0;
-
-    const refill = () => {
-      for (let i = 0; i < SHAKE256_RATE; ++i) {
-        const word = OpCodes.Shr32(i, 3);
-        const byteInWord = OpCodes.And32(i, 7);
-        const index = 2 * word + OpCodes.Shr32(byteInWord, 2);
-        buffered[i] = OpCodes.And32(OpCodes.Shr32(state[index], 8 * OpCodes.And32(byteInWord, 3)), 0xFF);
-      }
-      available = SHAKE256_RATE;
-    };
-
     // the first block is already in the state after the padding permutation
-    refill();
+    ShakeRefill(reader);
 
-    return {
-      read: function (count) {
-        const out = new Uint8Array(count);
-        let produced = 0;
-        while (produced < count) {
-          if (available === 0) {
-            KeccakPermute(state);
-            refill();
-          }
-          out[produced] = buffered[SHAKE256_RATE - available];
-          --available;
-          ++produced;
-        }
-        return out;
+    return reader;
+  }
+
+  /**
+   * The sponge of a SHAKE-256 reader and the squeezed block it is reading.
+   */
+  class FalconShakeReader {
+    constructor() {
+      /** @type {int32[]} */
+      this.state = new Int32Array(50);
+      /** @type {uint8[]} */
+      this.buffered = new Uint8Array(SHAKE256_RATE);
+      /** @type {int32} */
+      this.available = 0;
+    }
+  }
+
+  /**
+   * Squeeze the next block out of the sponge into the reader's buffer.
+   * @param {FalconShakeReader} reader - the reader
+   * @returns {void}
+   */
+  function ShakeRefill(reader) {
+    const state = reader.state;
+    const buffered = reader.buffered;
+    for (let i = 0; i < SHAKE256_RATE; ++i) {
+      /** @type {int32} */
+      const word = OpCodes.Shr32(i, 3);
+      const byteInWord = OpCodes.And32(i, 7);
+      /** @type {int32} */
+      const halfWord = OpCodes.Shr32(byteInWord, 2);
+      const index = 2 * word + halfWord;
+      buffered[i] = OpCodes.And32(OpCodes.Shr32(state[index], 8 * OpCodes.And32(byteInWord, 3)), 0xFF);
+    }
+    reader.available = SHAKE256_RATE;
+  }
+
+  /**
+   * Read the next count bytes of the squeeze.
+   * @param {FalconShakeReader} reader - the reader
+   * @param {int32} count - bytes wanted
+   * @returns {uint8[]} count bytes
+   */
+  function ShakeRead(reader, count) {
+    const out = new Uint8Array(count);
+    let produced = 0;
+    while (produced < count) {
+      if (reader.available === 0) {
+        KeccakPermute(reader.state);
+        ShakeRefill(reader);
       }
-    };
+      out[produced] = reader.buffered[SHAKE256_RATE - reader.available];
+      --reader.available;
+      ++produced;
+    }
+    return out;
   }
 
   // ===== PARAMETER SETS =====
@@ -267,44 +313,125 @@
   const Q = 12289;
   const NONCE_LENGTH = 40;
 
-  const PARAMETER_SETS = (() => {
-    const build = (name, logn, publicKeySize, maxSignatureSize, normBound) => ({
-      name: name,
-      logn: logn,
-      n: OpCodes.Shl32(1, logn),
-      q: Q,
-      publicKeySize: publicKeySize,
-      maxSignatureSize: maxSignatureSize,
-      normBound: normBound
-    });
+  /**
+   * One FALCON parameter set.
+   */
+  class FalconParams {
+    /**
+     * @param {string} name - 'FALCON-512' or 'FALCON-1024'
+     * @param {int32} logn - log2 of the ring degree
+     * @param {int32} publicKeySize - encoded public key bytes
+     * @param {int32} maxSignatureSize - largest encoded signature
+     * @param {int32} normBound - largest accepted squared norm
+     */
+    constructor(name, logn, publicKeySize, maxSignatureSize, normBound) {
+      /** @type {string} */
+      this.name = name;
+      /** @type {int32} */
+      this.logn = logn;
+      /** @type {int32} */
+      this.n = OpCodes.Shl32(1, logn);
+      /** @type {int32} */
+      this.q = Q;
+      /** @type {int32} */
+      this.publicKeySize = publicKeySize;
+      /** @type {int32} */
+      this.maxSignatureSize = maxSignatureSize;
+      /** @type {int32} */
+      this.normBound = normBound;
+    }
+  }
 
-    const sets = {};
-    for (const set of [
-      build('FALCON-512', 9, 897, 690, 34034726),
-      build('FALCON-1024', 10, 1793, 1330, 70265242)
-    ]) sets[set.name] = set;
-    return sets;
-  })();
+  /** @type {FalconParams[]} */
+  const PARAMETER_SET_LIST = [
+    new FalconParams('FALCON-512', 9, 897, 690, 34034726),
+    new FalconParams('FALCON-1024', 10, 1793, 1330, 70265242)
+  ];
 
+  /**
+   * The parameter set with exactly this name.
+   * @param {string} name - upper-case name such as 'FALCON-512'
+   * @returns {FalconParams|null} the parameter set, or null
+   */
+  function ParameterSetByName(name) {
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i) {
+      if (PARAMETER_SET_LIST[i].name === name) return PARAMETER_SET_LIST[i];
+    }
+    return null;
+  }
+
+  /**
+   * Look a parameter set up by its name or its degree.
+   * @param {string} label - 'FALCON-512', '1024', ...
+   * @returns {FalconParams|null} the parameter set, or null
+   */
   function FindParameterSet(label) {
-    if (label === null || label === undefined) return null;
+    if (label === null || label === undefined) {
+      return null;
+    }
+    /** @type {string} */
     const text = String(label).toUpperCase();
-    if (PARAMETER_SETS[text]) return PARAMETER_SETS[text];
-    if (text.indexOf('1024') >= 0) return PARAMETER_SETS['FALCON-1024'];
-    if (text.indexOf('512') >= 0) return PARAMETER_SETS['FALCON-512'];
+    /** @type {FalconParams|null} */
+    const named = ParameterSetByName(text);
+    if (named) return named;
+    if (text.indexOf('1024') >= 0) return PARAMETER_SET_LIST[1];
+    if (text.indexOf('512') >= 0) return PARAMETER_SET_LIST[0];
     return null;
   }
 
+  /**
+   * The parameter set whose public key has this length.
+   * @param {int32} length - encoded public key bytes
+   * @returns {FalconParams|null} the parameter set, or null
+   */
   function ParameterSetByPublicKeyLength(length) {
-    for (const name of Object.keys(PARAMETER_SETS))
-      if (PARAMETER_SETS[name].publicKeySize === length) return PARAMETER_SETS[name];
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i)
+      if (PARAMETER_SET_LIST[i].publicKeySize === length) return PARAMETER_SET_LIST[i];
     return null;
   }
 
+  /**
+   * The parameter set of a ring degree 2^logn.
+   * @param {int32} logn - log2 of the ring degree
+   * @returns {FalconParams|null} the parameter set, or null
+   */
   function ParameterSetByLogn(logn) {
-    for (const name of Object.keys(PARAMETER_SETS))
-      if (PARAMETER_SETS[name].logn === logn) return PARAMETER_SETS[name];
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i)
+      if (PARAMETER_SET_LIST[i].logn === logn) return PARAMETER_SET_LIST[i];
     return null;
+  }
+
+  /**
+   * Decoded public key coefficients, or signature coefficients, and the bytes
+   * they took.
+   */
+  class FalconDecoded {
+    /**
+     * @param {int32[]} coefficients - the decoded coefficients
+     * @param {int32} length - bytes consumed
+     */
+    constructor(coefficients, length) {
+      /** @type {int32[]} */
+      this.coefficients = coefficients;
+      /** @type {int32} */
+      this.length = length;
+    }
+  }
+
+  /**
+   * The outcome of the norm check.
+   */
+  class FalconNormVerdict {
+    /**
+     * @param {boolean} accepted - whether the norm is within the bound
+     * @param {int32} norm - the squared norm, or where accumulation stopped
+     */
+    constructor(accepted, norm) {
+      /** @type {boolean} */
+      this.accepted = accepted;
+      /** @type {int32} */
+      this.norm = norm;
+    }
   }
 
   // ===== decoding =====
@@ -313,17 +440,22 @@
    * Unpack a public key: n coefficients of 14 bits each, most significant bit
    * first, every one of them below q, and no stray bits left over.
    * @param {uint8[]} bytes - the encoded key
-   * @param {number} offset - where the coefficients start
-   * @param {object} set - the parameter set
-   * @returns {Uint16Array|null} the coefficients, or null if malformed
+   * @param {int32} offset - where the coefficients start
+   * @param {FalconParams} set - the parameter set
+   * @returns {FalconDecoded|null} the coefficients, or null if malformed
    */
   function DecodePublicKey(bytes, offset, set) {
     const n = set.n;
+    /** @type {int32} */
     const length = OpCodes.Shr32(n * 14 + 7, 3);
     if (offset + length > bytes.length) return null;
 
     const out = new Uint16Array(n);
-    let accumulator = 0, accumulated = 0, produced = 0, cursor = offset;
+    /** @type {uint32} */
+    let accumulator = 0;
+    let accumulated = 0;
+    let produced = 0;
+    let cursor = offset;
 
     while (produced < n) {
       accumulator = OpCodes.Or32(OpCodes.Shl32(accumulator, 8), bytes[cursor]);
@@ -339,7 +471,7 @@
     }
 
     if (OpCodes.And32(accumulator, OpCodes.Shl32(1, accumulated) - 1) !== 0) return null;
-    return { coefficients: out, length: length };
+    return new FalconDecoded(out, length);
   }
 
   /**
@@ -347,15 +479,18 @@
    * followed by the high bits in unary. A negative zero and an over-long
    * coefficient are both rejected, as is any stray bit in the last byte.
    * @param {uint8[]} bytes - the signed message
-   * @param {number} offset - where the encoded signature starts
-   * @param {number} maxLength - how many bytes it may occupy
-   * @param {object} set - the parameter set
-   * @returns {object|null} { coefficients, length }, or null if malformed
+   * @param {int32} offset - where the encoded signature starts
+   * @param {int32} maxLength - how many bytes it may occupy
+   * @param {FalconParams} set - the parameter set
+   * @returns {FalconDecoded|null} { coefficients, length }, or null if malformed
    */
   function DecodeSignature(bytes, offset, maxLength, set) {
     const n = set.n;
     const out = new Int16Array(n);
-    let accumulator = 0, accumulated = 0, consumed = 0;
+    /** @type {uint32} */
+    let accumulator = 0;
+    let accumulated = 0;
+    let consumed = 0;
 
     for (let u = 0; u < n; ++u) {
       if (consumed >= maxLength) return null;
@@ -383,7 +518,7 @@
     }
 
     if (OpCodes.And32(accumulator, OpCodes.Shl32(1, accumulated) - 1) !== 0) return null;
-    return { coefficients: out, length: consumed };
+    return new FalconDecoded(out, consumed);
   }
 
   // ===== hashing a message to a point of the ring =====
@@ -393,8 +528,8 @@
    * rejecting the draws that would bias the result.
    * @param {uint8[]} nonce - the 40 octet nonce
    * @param {uint8[]} message - the message
-   * @param {object} set - the parameter set
-   * @returns {Uint16Array} the hashed point
+   * @param {FalconParams} set - the parameter set
+   * @returns {int32[]} the hashed point
    */
   function HashToPoint(nonce, message, set) {
     const reader = Shake256Reader([nonce, message]);
@@ -402,8 +537,12 @@
     let produced = 0;
 
     while (produced < set.n) {
-      const pair = reader.read(2);
-      let w = pair[0] * 256 + pair[1];
+      const pair = ShakeRead(reader, 2);
+      /** @type {int32} */
+      const high = pair[0];
+      /** @type {int32} */
+      const low = pair[1];
+      let w = high * 256 + low;
       // 61445 is the largest multiple of q below 2^16, so anything at or above
       // it would make the low residues more likely than the high ones
       if (w < 61445) {
@@ -421,10 +560,10 @@
   /**
    * Multiply modulo x^n + 1 over Z_q. The wrap is negacyclic, so a term that
    * passes degree n comes back with its sign flipped.
-   * @param {Uint16Array} a - first operand
-   * @param {Uint16Array} b - second operand
-   * @param {number} n - the ring degree
-   * @returns {Uint16Array} the product
+   * @param {int32[]} a - first operand
+   * @param {int32[]} b - second operand
+   * @param {int32} n - the ring degree
+   * @returns {int32[]} the product
    */
   function RingMultiply(a, b, n) {
     const accumulator = new Int32Array(n);
@@ -447,11 +586,11 @@
   /**
    * Accept when the signature is short enough: recover s1 from the hashed
    * point, the public key and s2, then measure the norm of the pair.
-   * @param {Uint16Array} point - the hashed message
-   * @param {Int16Array} s2 - the signature coefficients
-   * @param {Uint16Array} publicKey - the public key coefficients
-   * @param {object} set - the parameter set
-   * @returns {object} { accepted, norm }
+   * @param {int32[]} point - the hashed message
+   * @param {int32[]} s2 - the signature coefficients
+   * @param {int32[]} publicKey - the public key coefficients
+   * @param {FalconParams} set - the parameter set
+   * @returns {FalconNormVerdict} { accepted, norm }
    */
   function VerifyRaw(point, s2, publicKey, set) {
     const n = set.n;
@@ -471,10 +610,10 @@
       norm += w * w + s2[i] * s2[i];
       // a forged signature can make this enormous, so stop before it stops
       // being an exact integer rather than wrapping quietly
-      if (norm > set.normBound) return { accepted: false, norm: norm };
+      if (norm > set.normBound) return new FalconNormVerdict(false, norm);
     }
 
-    return { accepted: norm <= set.normBound, norm: norm };
+    return new FalconNormVerdict(norm <= set.normBound, norm);
   }
 
   // ===== the signed message =====
@@ -484,48 +623,63 @@
    * and return the message it carries.
    * @param {uint8[]} signedMessage - the bundle
    * @param {uint8[]} publicKey - the encoded public key
-   * @returns {object} { accepted, message, reason }
+   * @returns {Object} { accepted, message, reason }
    */
   function SignOpen(signedMessage, publicKey) {
-    if (!publicKey || publicKey.length < 1)
+    if (!publicKey || publicKey.length < 1) {
       return { accepted: false, reason: 'no public key' };
+    }
 
+    /** @type {int32} */
     const logn = OpCodes.And32(publicKey[0], 0x0F);
     const set = ParameterSetByLogn(logn);
-    if (OpCodes.And32(publicKey[0], 0xF0) !== 0 || !set)
+    if (OpCodes.And32(publicKey[0], 0xF0) !== 0 || !set) {
       return { accepted: false, reason: 'the public key header names no FALCON parameter set' };
+    }
     if (publicKey.length !== set.publicKeySize)
       return { accepted: false, reason: 'a ' + set.name + ' public key is ' + set.publicKeySize + ' bytes, got ' + publicKey.length };
 
     const decodedKey = DecodePublicKey(publicKey, 1, set);
-    if (!decodedKey || decodedKey.length !== publicKey.length - 1)
+    if (!decodedKey || decodedKey.length !== publicKey.length - 1) {
       return { accepted: false, reason: 'the public key body is malformed' };
+    }
 
-    if (signedMessage.length < 2 + NONCE_LENGTH)
+    if (signedMessage.length < 2 + NONCE_LENGTH) {
       return { accepted: false, reason: 'the signed message is too short to hold a nonce' };
+    }
 
-    const signatureLength = signedMessage[0] * 256 + signedMessage[1];
-    if (signatureLength > signedMessage.length - 2 - NONCE_LENGTH || signatureLength < 1)
+    /** @type {int32} */
+    const lengthHigh = signedMessage[0];
+    /** @type {int32} */
+    const lengthLow = signedMessage[1];
+    const signatureLength = lengthHigh * 256 + lengthLow;
+    if (signatureLength > signedMessage.length - 2 - NONCE_LENGTH || signatureLength < 1) {
       return { accepted: false, reason: 'the declared signature length does not fit' };
+    }
 
     const messageLength = signedMessage.length - 2 - NONCE_LENGTH - signatureLength;
     const signatureOffset = 2 + NONCE_LENGTH + messageLength;
-    if (signedMessage[signatureOffset] !== 0x20 + logn)
+    if (signedMessage[signatureOffset] !== 0x20 + logn) {
       return { accepted: false, reason: 'the signature header does not match the public key' };
+    }
 
     const decodedSignature = DecodeSignature(signedMessage, signatureOffset + 1, signatureLength - 1, set);
-    if (!decodedSignature || decodedSignature.length !== signatureLength - 1)
+    if (!decodedSignature || decodedSignature.length !== signatureLength - 1) {
       return { accepted: false, reason: 'the signature body is malformed' };
+    }
 
+    /** @type {uint8[]} */
     const nonce = [];
     for (let i = 0; i < NONCE_LENGTH; ++i) nonce.push(signedMessage[2 + i]);
+    /** @type {uint8[]} */
     const message = [];
     for (let i = 0; i < messageLength; ++i) message.push(signedMessage[2 + NONCE_LENGTH + i]);
 
     const point = HashToPoint(nonce, message, set);
     const verdict = VerifyRaw(point, decodedSignature.coefficients, decodedKey.coefficients, set);
-    if (!verdict.accepted)
+    if (!verdict.accepted) {
       return { accepted: false, reason: 'the signature is not short enough', norm: verdict.norm };
+    }
 
     return { accepted: true, message: message, norm: verdict.norm, parameterSet: set };
   }
@@ -685,93 +839,6 @@
       "3085070E9FC2A05489F336C433CF970D937235152ECA89548EE551AF8F421948C2561F07F3EDE6BCB9DB4AAC15148862BB6659F6D7A15438F39881248F2BC7AD" +
       "397801B89446F6CDDD62FE56696C7CBC6473E95A8D03C573E0");
 
-  const VECTORS = [
-    {
-      text: "FALCON-512 falcon512-KAT.rsp record 0: the published signature verifies and yields its message",
-      uri: "https://falcon-sign.info/falcon-round3.zip",
-      inverse: true,
-      publicKey: FALCON512_PK,
-      input: FALCON512_SM,
-      expected: FALCON512_MSG
-    },
-    {
-      // Setting message turns the result into a verdict, so that the negative
-      // cases below can assert a rejection without naming a recovered message
-      // that a rejection never produces.
-      text: "FALCON-512 falcon512-KAT.rsp record 0: the verdict on the published signature is acceptance",
-      uri: "https://falcon-sign.info/falcon-round3.zip",
-      inverse: true,
-      publicKey: FALCON512_PK,
-      message: FALCON512_MSG,
-      input: FALCON512_SM,
-      expected: [1]
-    },
-    {
-      text: "FALCON-512 falcon512-KAT.rsp record 1: the published signature verifies and yields its message",
-      uri: "https://falcon-sign.info/falcon-round3.zip",
-      inverse: true,
-      publicKey: FALCON512_PK_RECORD1,
-      input: FALCON512_SM_RECORD1,
-      expected: FALCON512_MSG_RECORD1
-    },
-    {
-      text: "FALCON-1024 falcon1024-KAT.rsp record 0: the published signature verifies and yields its message",
-      uri: "https://falcon-sign.info/falcon-round3.zip",
-      inverse: true,
-      publicKey: FALCON1024_PK,
-      input: FALCON1024_SM,
-      expected: FALCON1024_MSG
-    },
-    {
-      text: "FALCON-1024 falcon1024-KAT.rsp record 0: the verdict on the published signature is acceptance",
-      uri: "https://falcon-sign.info/falcon-round3.zip",
-      inverse: true,
-      publicKey: FALCON1024_PK,
-      message: FALCON1024_MSG,
-      input: FALCON1024_SM,
-      expected: [1]
-    },
-    {
-      // One bit of the signed message's payload moved. The nonce and the
-      // signature are untouched, so this is the case where the signature is
-      // genuine but no longer speaks for this message.
-      text: "FALCON-512: a modified message must not verify under its own signature",
-      uri: "https://falcon-sign.info/falcon-round3.zip",
-      inverse: true,
-      publicKey: FALCON512_PK,
-      message: FALCON512_MSG,
-      input: FALCON512_SM_MESSAGE_MODIFIED,
-      expected: [0]
-    },
-    {
-      // One bit of the encoded signature moved.
-      text: "FALCON-512: a modified signature must not verify",
-      uri: "https://falcon-sign.info/falcon-round3.zip",
-      inverse: true,
-      publicKey: FALCON512_PK,
-      message: FALCON512_MSG,
-      input: FALCON512_SM_SIGNATURE_MODIFIED,
-      expected: [0]
-    },
-    {
-      text: "FALCON-512: record 0's signature must not verify under record 1's public key",
-      uri: "https://falcon-sign.info/falcon-round3.zip",
-      inverse: true,
-      publicKey: FALCON512_PK_RECORD1,
-      message: FALCON512_MSG,
-      input: FALCON512_SM,
-      expected: [0]
-    },
-    {
-      text: "FALCON-1024: a FALCON-512 signature must not verify under a FALCON-1024 public key",
-      uri: "https://falcon-sign.info/falcon-round3.zip",
-      inverse: true,
-      publicKey: FALCON1024_PK,
-      message: FALCON512_MSG,
-      input: FALCON512_SM,
-      expected: [0]
-    }
-  ];
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -822,7 +889,93 @@
           "Treat this as a reference implementation of verification rather than a hardened one.")
       ];
 
-      this.tests = VECTORS;
+      this.tests = [
+        {
+          text: "FALCON-512 falcon512-KAT.rsp record 0: the published signature verifies and yields its message",
+          uri: "https://falcon-sign.info/falcon-round3.zip",
+          inverse: true,
+          publicKey: FALCON512_PK,
+          input: FALCON512_SM,
+          expected: FALCON512_MSG
+        },
+        {
+          // Setting message turns the result into a verdict, so that the negative
+          // cases below can assert a rejection without naming a recovered message
+          // that a rejection never produces.
+          text: "FALCON-512 falcon512-KAT.rsp record 0: the verdict on the published signature is acceptance",
+          uri: "https://falcon-sign.info/falcon-round3.zip",
+          inverse: true,
+          publicKey: FALCON512_PK,
+          message: FALCON512_MSG,
+          input: FALCON512_SM,
+          expected: [1]
+        },
+        {
+          text: "FALCON-512 falcon512-KAT.rsp record 1: the published signature verifies and yields its message",
+          uri: "https://falcon-sign.info/falcon-round3.zip",
+          inverse: true,
+          publicKey: FALCON512_PK_RECORD1,
+          input: FALCON512_SM_RECORD1,
+          expected: FALCON512_MSG_RECORD1
+        },
+        {
+          text: "FALCON-1024 falcon1024-KAT.rsp record 0: the published signature verifies and yields its message",
+          uri: "https://falcon-sign.info/falcon-round3.zip",
+          inverse: true,
+          publicKey: FALCON1024_PK,
+          input: FALCON1024_SM,
+          expected: FALCON1024_MSG
+        },
+        {
+          text: "FALCON-1024 falcon1024-KAT.rsp record 0: the verdict on the published signature is acceptance",
+          uri: "https://falcon-sign.info/falcon-round3.zip",
+          inverse: true,
+          publicKey: FALCON1024_PK,
+          message: FALCON1024_MSG,
+          input: FALCON1024_SM,
+          expected: [1]
+        },
+        {
+          // One bit of the signed message's payload moved. The nonce and the
+          // signature are untouched, so this is the case where the signature is
+          // genuine but no longer speaks for this message.
+          text: "FALCON-512: a modified message must not verify under its own signature",
+          uri: "https://falcon-sign.info/falcon-round3.zip",
+          inverse: true,
+          publicKey: FALCON512_PK,
+          message: FALCON512_MSG,
+          input: FALCON512_SM_MESSAGE_MODIFIED,
+          expected: [0]
+        },
+        {
+          // One bit of the encoded signature moved.
+          text: "FALCON-512: a modified signature must not verify",
+          uri: "https://falcon-sign.info/falcon-round3.zip",
+          inverse: true,
+          publicKey: FALCON512_PK,
+          message: FALCON512_MSG,
+          input: FALCON512_SM_SIGNATURE_MODIFIED,
+          expected: [0]
+        },
+        {
+          text: "FALCON-512: record 0's signature must not verify under record 1's public key",
+          uri: "https://falcon-sign.info/falcon-round3.zip",
+          inverse: true,
+          publicKey: FALCON512_PK_RECORD1,
+          message: FALCON512_MSG,
+          input: FALCON512_SM,
+          expected: [0]
+        },
+        {
+          text: "FALCON-1024: a FALCON-512 signature must not verify under a FALCON-1024 public key",
+          uri: "https://falcon-sign.info/falcon-round3.zip",
+          inverse: true,
+          publicKey: FALCON1024_PK,
+          message: FALCON512_MSG,
+          input: FALCON512_SM,
+          expected: [0]
+        }
+      ];
     }
 
     /**
@@ -840,30 +993,40 @@
 
   class FalconInstance extends IAlgorithmInstance {
     /**
-     * @param {object} algorithm - parent algorithm instance
+     * @param {FalconAlgorithm} algorithm - parent algorithm instance
      */
     constructor(algorithm) {
       super(algorithm);
 
       this.isInverse = true;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Declared here so that the test engine, which only assigns properties
       // that already exist on the instance, can set any of them from a vector.
-      this._parameterSet = PARAMETER_SETS['FALCON-512'];
+      /** @type {FalconParams} */
+      this._parameterSet = PARAMETER_SET_LIST[0];
+      /** @type {uint8[]|null} */
       this._publicKey = null;
+      /** @type {uint8[]|null} */
       this._message = null;
       this._keyData = null;
     }
 
     // ---- configuration ----
 
+    /**
+     * @param {string} label - parameter set name, or its degree
+     */
     set parameterSet(label) {
       const found = FindParameterSet(label);
       if (!found) throw new Error('Unknown FALCON parameter set: ' + label);
       this._parameterSet = found;
     }
 
+    /**
+     * @returns {string} name of the current parameter set
+     */
     get parameterSet() {
       return this._parameterSet.name;
     }
@@ -871,6 +1034,7 @@
     /**
      * The public key. Its length selects the parameter set, and its first byte
      * has to agree with that.
+     * @param {uint8[]|null} keyBytes - encoded public key
      */
     set publicKey(keyBytes) {
       if (!keyBytes) {
@@ -883,10 +1047,15 @@
         throw new Error('A FALCON public key is 897 or 1793 bytes, got ' + keyBytes.length);
 
       this._parameterSet = found;
-      this._publicKey = [];
+      /** @type {uint8[]} */
+      const copy = [];
+      this._publicKey = copy;
       for (let i = 0; i < keyBytes.length; ++i) this._publicKey.push(keyBytes[i]);
     }
 
+    /**
+     * @returns {uint8[]|null} copy of the public key
+     */
     get publicKey() {
       return this._publicKey ? this._publicKey.slice() : null;
     }
@@ -896,16 +1065,22 @@
      * report a verdict as [1] or [0] rather than returning the message, so that
      * a vector can assert a rejection without naming a message that a rejected
      * signature never yields.
+     * @param {uint8[]|null} messageBytes - the expected message
      */
     set message(messageBytes) {
       if (!messageBytes) {
         this._message = null;
         return;
       }
-      this._message = [];
+      /** @type {uint8[]} */
+      const copy = [];
+      this._message = copy;
       for (let i = 0; i < messageBytes.length; ++i) this._message.push(messageBytes[i]);
     }
 
+    /**
+     * @returns {uint8[]|null} copy of the expected message
+     */
     get message() {
       return this._message ? this._message.slice() : null;
     }
@@ -949,14 +1124,16 @@
     /**
      * Feed the signed message. Repeated calls append, so feeding in pieces is
      * the same as feeding whole.
-     * @param {number[]} data - input bytes
+     * @param {uint8[]} data - input bytes
      */
     Feed(data) {
       if (data === null || data === undefined) return;
 
       if (typeof data === 'string') {
-        for (let i = 0; i < data.length; ++i)
-          this.inputBuffer.push(OpCodes.And32(data.charCodeAt(i), 0xFF));
+        /** @type {string} */
+        const text = data;
+        for (let i = 0; i < text.length; ++i)
+          this.inputBuffer.push(OpCodes.And32(text.charCodeAt(i), 0xFF));
         return;
       }
 
@@ -971,7 +1148,7 @@
     /**
      * Verify the fed signed message and produce the message it carries, or the
      * verdict when one was named to compare against.
-     * @returns {number[]} the message, or the verdict
+     * @returns {uint8[]} the message, or the verdict
      */
     Result() {
       const input = this.inputBuffer;
@@ -982,8 +1159,11 @@
 
       const outcome = SignOpen(input, this._publicKey);
 
-      if (this._message)
-        return [(outcome.accepted && OpCodes.SecureCompare(outcome.message, this._message)) ? 1 : 0];
+      if (this._message) {
+        /** @type {uint8[]} */
+        const verdict = [(outcome.accepted && OpCodes.SecureCompare(outcome.message, this._message)) ? 1 : 0];
+        return verdict;
+      }
 
       if (!outcome.accepted)
         throw new Error('FALCON signature rejected: ' + outcome.reason);
@@ -995,13 +1175,14 @@
 
     /**
      * Verify a signed message against a public key.
-     * @param {number[]} signedMessage - the bundle
-     * @param {number[]} [publicKey] - the key, defaulting to the configured one
-     * @returns {object} { accepted, message, reason }
+     * @param {uint8[]} signedMessage - the bundle
+     * @param {uint8[]} [publicKey] - the key, defaulting to the configured one
+     * @returns {Object} { accepted, message, reason }
      */
     Verify(signedMessage, publicKey) {
-      const key = publicKey || this._publicKey;
+      const key = publicKey ? publicKey : this._publicKey;
       if (!key) throw new Error('FALCON verification needs a public key');
+      /** @type {uint8[]} */
       const bundle = [];
       for (let i = 0; i < signedMessage.length; ++i) bundle.push(signedMessage[i]);
       return SignOpen(bundle, key);
