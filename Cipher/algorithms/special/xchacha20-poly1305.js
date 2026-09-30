@@ -537,7 +537,6 @@
      * @returns {uint8[]} 16-byte tag
      */
     _poly1305(key, data) {
-      /** @type {Algorithm} */
       const poly1305Alg = AlgorithmFramework.Find('Poly1305');
       if (!poly1305Alg) {
         throw new Error('Poly1305 algorithm not found in framework');
