@@ -182,7 +182,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {XorShiftPlusInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -200,8 +200,15 @@
  */
 
   class XorShiftPlusInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {XorShiftPlusAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
+      /** @type {int32} */
+      this._skip = 0;
 
       // XorShift+ uses 2x 64-bit state variables (x, y)
       // JavaScript doesn't have native 64-bit integers, so we use pairs of 32-bit values
@@ -215,6 +222,7 @@
     /**
      * Set seed value (1-8 bytes)
      * Matches C# logic: x = seed (or 1 if seed==0), y = ~seed (or 1 if ~seed==0)
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -274,6 +282,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -390,6 +401,8 @@
 
     /**
      * Generate random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -397,9 +410,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesRemaining = length;
 
@@ -456,20 +472,32 @@
       return this.NextBytes(size);
     }
 
+    /**
+     * @param {int32} size - Bytes returned by Result()
+     */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
       return this._outputSize || 64;
     }
 
+    /**
+     * @param {int32} count - Outputs to discard before the next Result()
+     */
     set skip(count) {
       this._skip = count;
     }
 
+    /**
+     * @returns {int32} Outputs still to discard
+     */
     get skip() {
-      return this._skip || 0;
+      return this._skip ? this._skip : 0;
     }
   }
 

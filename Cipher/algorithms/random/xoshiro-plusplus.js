@@ -288,7 +288,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {XoshiroPlusPlusInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -304,8 +304,13 @@
    * Implements both 32-bit and 64-bit variants based on algorithm.bitWidth
    */
   class XoshiroPlusPlusInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {XoshiroPlusPlusAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       this.bitWidth = algorithm.bitWidth;
 
@@ -330,6 +335,7 @@
      * Set seed value
      * For 128-bit: 1-4 bytes (32-bit seed)
      * For 256-bit: 8 bytes (64-bit seed)
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -391,6 +397,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -459,8 +468,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -469,9 +478,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesGenerated = 0;
 
@@ -529,19 +541,24 @@
       // Use specified output size or default based on variant
       // 32 bytes = 8 x 32-bit values for 128-bit variant
       // 32 bytes = 4 x 64-bit values for 256-bit variant
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
 
     /**
