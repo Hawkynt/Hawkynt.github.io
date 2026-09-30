@@ -74,6 +74,7 @@
   // is trained-model data owned by the Shoco project, not part of the
   // algorithm's specification -- so a local model is trained here instead,
   // exactly as the C# reference does.
+  /** @type {string} */
   const TRAINING_CORPUS =
     "the quick brown fox jumps over the lazy dog, and then it runs back home " +
     "through the forest near the river; while thinking about all the things " +
@@ -89,84 +90,173 @@
   // character field followed by each successor-rank field. This exact shape
   // (2/4/8 characters packed into 1/2/4 bytes, with these specific per-position
   // bit widths) mirrors the reference's default packs[] table.
-  const PACKS = [
-    { headerOnes: 1, fieldBits: [4, 2] },
-    { headerOnes: 2, fieldBits: [4, 3, 3, 3] },
-    { headerOnes: 3, fieldBits: [5, 4, 4, 4, 3, 3, 3, 2] }
+  /** @type {int32[]} */
+  const PACK_HEADER_ONES = [1, 2, 3];
+  /** @type {int32[][]} */
+  const PACK_FIELD_BITS = [
+    [4, 2],
+    [4, 3, 3, 3],
+    [5, 4, 4, 4, 3, 3, 3, 2]
   ];
 
-  function totalBits(pack) {
-    let sum = pack.headerOnes + 1;
-    for (const bits of pack.fieldBits) sum += bits;
+  /**
+   * @param {int32} packIndex - Pack tier
+   * @returns {int32} Header plus field bits of the tier
+   */
+  function totalBits(packIndex) {
+    /** @type {int32[]} */
+    const fieldBits = PACK_FIELD_BITS[packIndex];
+    /** @type {int32} */
+    let sum = PACK_HEADER_ONES[packIndex] + 1;
+    for (let k = 0; k < fieldBits.length; k++) {
+      sum += fieldBits[k];
+    }
     return sum;
   }
 
-  const MAX_CHAIN_LENGTH = PACKS[PACKS.length - 1].fieldBits.length;
+  /** @type {int32} */
+  const MAX_CHAIN_LENGTH = PACK_FIELD_BITS[PACK_FIELD_BITS.length - 1].length;
+
+  /**
+   * Trained alphabet and successor tables
+   */
+  class ShocoModel {
+    constructor() {
+      /** @type {uint8[]} */
+      this.alphabet = [];
+      /** @type {int32[]} */
+      this.charIdOf = [];
+      /** @type {int32[][]} */
+      this.successorIdAt = [];
+      /** @type {int32[][]} */
+      this.successorRankOf = [];
+    }
+  }
 
   // Train alphabet: top 32 most frequent bytes in the (lowercased) corpus,
   // ties broken by ascending byte value -- matches the reference's
   // OrderByDescending(unigram).ThenBy(byteValue).Take(32).
+  /**
+   * @param {string} corpus - Training text
+   * @returns {ShocoModel} Model
+   */
   function trainModel(corpus) {
+    /** @type {string} */
     const lower = corpus.toLowerCase();
 
-    const unigram = new Array(256).fill(0);
+    /** @type {int32[]} */
+    const unigram = new Int32Array(256);
     for (let i = 0; i < lower.length; ++i) {
+      /** @type {int32} */
       const code = lower.charCodeAt(i);
-      if (code < 256) unigram[code]++;
+      if (code < 256) {
+        unigram[code]++;
+      }
     }
 
+    // Candidates by descending count, equal counts by ascending byte value
+    // (a total order, sorted here by insertion).
+    /** @type {int32[]} */
     const candidates = [];
-    for (let b = 0; b < 256; ++b)
-      if (unigram[b] > 0) candidates.push(b);
+    for (let b = 0; b < 256; ++b) {
+      if (unigram[b] > 0) {
+        /** @type {int32} */
+        let at = candidates.length;
+        candidates.push(b);
+        while (at > 0 && unigram[candidates[at - 1]] < unigram[b]) {
+          candidates[at] = candidates[at - 1];
+          at--;
+        }
+        candidates[at] = b;
+      }
+    }
 
-    candidates.sort((a, b) => {
-      const diff = unigram[b] - unigram[a];
-      return diff !== 0 ? diff : a - b;
-    });
+    /** @type {ShocoModel} */
+    const model = new ShocoModel();
+    /** @type {int32} */
+    const n = Math.min(32, candidates.length);
+    for (let id = 0; id < n; ++id) {
+      model.alphabet.push(candidates[id]);
+    }
 
-    const alphabet = candidates.slice(0, 32);
-    const n = alphabet.length;
+    for (let b = 0; b < 256; ++b) {
+      model.charIdOf.push(-1);
+    }
+    for (let id = 0; id < n; ++id) {
+      model.charIdOf[model.alphabet[id]] = id;
+    }
 
-    const charIdOf = new Array(256).fill(-1);
-    for (let id = 0; id < n; ++id)
-      charIdOf[alphabet[id]] = id;
-
+    /** @type {int32[][]} */
     const bigram = [];
-    for (let i = 0; i < n; ++i) bigram.push(new Array(n).fill(0));
+    for (let i = 0; i < n; ++i) {
+      bigram.push(new Int32Array(n));
+    }
 
     for (let i = 0; i + 1 < lower.length; ++i) {
+      /** @type {int32} */
       const a = lower.charCodeAt(i);
+      /** @type {int32} */
       const b = lower.charCodeAt(i + 1);
-      if (a >= 256 || b >= 256) continue;
-      const aId = charIdOf[a];
-      const bId = charIdOf[b];
-      if (aId >= 0 && bId >= 0) bigram[aId][bId]++;
+      if (a >= 256 || b >= 256) {
+        continue;
+      }
+      /** @type {int32} */
+      const aId = model.charIdOf[a];
+      /** @type {int32} */
+      const bId = model.charIdOf[b];
+      if (aId >= 0 && bId >= 0) {
+        /** @type {int32[]} */
+        const row = bigram[aId];
+        row[bId]++;
+      }
     }
 
-    const successorIdAt = [];
-    const successorRankOf = [];
     for (let c = 0; c < n; ++c) {
+      /** @type {int32[]} */
+      const counts = bigram[c];
+      // Successors by descending bigram count, then descending unigram count,
+      // then ascending id (a total order, sorted here by insertion).
+      /** @type {int32[]} */
       const order = [];
-      for (let next = 0; next < n; ++next) order.push(next);
+      for (let next = 0; next < n; ++next) {
+        /** @type {int32} */
+        let at = order.length;
+        order.push(next);
+        while (at > 0) {
+          /** @type {int32} */
+          const before = order[at - 1];
+          /** @type {boolean} */
+          let moves = false;
+          if (counts[next] !== counts[before]) {
+            moves = counts[next] > counts[before];
+          } else {
+            moves = unigram[model.alphabet[next]] > unigram[model.alphabet[before]];
+          }
+          if (!moves) {
+            break;
+          }
+          order[at] = before;
+          at--;
+        }
+        order[at] = next;
+      }
 
-      order.sort((x, y) => {
-        const byBigram = bigram[c][y] - bigram[c][x];
-        if (byBigram !== 0) return byBigram;
-        const byUnigram = unigram[alphabet[y]] - unigram[alphabet[x]];
-        if (byUnigram !== 0) return byUnigram;
-        return x - y;
-      });
-
-      successorIdAt.push(order);
-      const rankOf = new Array(n).fill(0);
-      for (let rank = 0; rank < n; ++rank)
+      model.successorIdAt.push(order);
+      /** @type {int32[]} */
+      const rankOf = new Array(n);
+      for (let rank = 0; rank < n; ++rank) {
+        rankOf[rank] = 0;
+      }
+      for (let rank = 0; rank < n; ++rank) {
         rankOf[order[rank]] = rank;
-      successorRankOf.push(rankOf);
+      }
+      model.successorRankOf.push(rankOf);
     }
 
-    return { alphabet, charIdOf, successorIdAt, successorRankOf };
+    return model;
   }
 
+  /** @type {ShocoModel} */
   const MODEL = trainModel(TRAINING_CORPUS);
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -254,51 +344,80 @@
   class ShocoInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Shoco} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
       if (this.isInverse) {
-        if (this.inputBuffer.length === 0) return [];
-        const result = this._decompress(this.inputBuffer);
-        this.inputBuffer = [];
-        return result;
+        if (this.inputBuffer.length === 0) {
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
+        }
+        /** @type {uint8[]} */
+        const decoded = this._decompress(this.inputBuffer);
+        /** @type {uint8[]} */
+        const freshAfterDecode = [];
+        this.inputBuffer = freshAfterDecode;
+        return decoded;
       }
 
       // Even empty input produces a fixed 4-byte header (matches the
       // C# reference, which always writes the original length).
+      /** @type {uint8[]} */
       const result = this._compress(this.inputBuffer);
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} Size header, packs and literals
+     */
     _compress(data) {
+      /** @type {uint8[]} */
       const output = OpCodes.Unpack32LE(data.length);
-      if (data.length === 0) return output;
+      if (data.length === 0) {
+        return output;
+      }
 
-      const { charIdOf, successorRankOf } = MODEL;
+      /** @type {int32[]} */
+      const charIdOf = MODEL.charIdOf;
+      /** @type {int32[][]} */
+      const successorRankOf = MODEL.successorRankOf;
 
+      /** @type {int32} */
       let i = 0;
       while (i < data.length) {
+        /** @type {uint8} */
         const b = data[i];
 
         if (b === 0 || b >= 0x80) {
           // Escape: byte value 0 and anything with the high bit set (which
           // would otherwise be mistaken for a pack header) is emitted
           // verbatim, behind a 0x00 sentinel.
-          output.push(0x00, b);
+          output.push(0x00);
+          output.push(b);
           i++;
           continue;
         }
 
+        /** @type {int32} */
         const firstId = charIdOf[b];
         if (firstId < 0) {
           // Not in the trained alphabet, but safely representable as-is (bit 7 clear).
@@ -309,21 +428,34 @@
 
         // Greedily extend a chain of leader + successor ranks, exactly as
         // the reference's shoco_compress does, up to the largest pack's capacity.
-        const chain = new Array(MAX_CHAIN_LENGTH).fill(0);
+        /** @type {int32[]} */
+        const chain = new Int32Array(MAX_CHAIN_LENGTH);
         chain[0] = firstId;
+        /** @type {int32} */
         let count = 1;
+        /** @type {int32} */
         let prevId = firstId;
+        /** @type {int32} */
         let j = i + 1;
         while (count < MAX_CHAIN_LENGTH && j < data.length) {
+          /** @type {uint8} */
           const next = data[j];
-          if (next === 0 || next >= 0x80) break;
+          if (next === 0 || next >= 0x80) {
+            break;
+          }
+          /** @type {int32} */
           const nextId = charIdOf[next];
-          if (nextId < 0) break;
-          chain[count++] = successorRankOf[prevId][nextId];
+          if (nextId < 0) {
+            break;
+          }
+          /** @type {int32[]} */
+          const ranks = successorRankOf[prevId];
+          chain[count++] = ranks[nextId];
           prevId = nextId;
           j++;
         }
 
+        /** @type {int32} */
         const packIndex = this._findBestPack(chain, count);
         if (packIndex < 0) {
           // No pack fits (including the case of a lone, unextended leader
@@ -334,22 +466,36 @@
         }
 
         this._emitPack(output, packIndex, chain);
-        i += PACKS[packIndex].fieldBits.length;
+        i += PACK_FIELD_BITS[packIndex].length;
       }
 
       return output;
     }
 
+    /**
+     * @param {uint8[]} data - Size header, packs and literals
+     * @returns {uint8[]} Decoded bytes
+     */
     _decompress(data) {
+      /** @type {uint32} */
       const originalLength = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
-      if (originalLength === 0) return [];
-
-      const { alphabet, successorIdAt } = MODEL;
+      /** @type {uint8[]} */
       const result = new Array(originalLength);
+      if (originalLength === 0) {
+        return result;
+      }
+
+      /** @type {uint8[]} */
+      const alphabet = MODEL.alphabet;
+      /** @type {int32[][]} */
+      const successorIdAt = MODEL.successorIdAt;
+      /** @type {int32} */
       let outPos = 0;
+      /** @type {int32} */
       let pos = 4;
 
       while (outPos < originalLength) {
+        /** @type {uint8} */
         const first = data[pos];
 
         if (first === 0x00) {
@@ -364,23 +510,38 @@
           continue;
         }
 
+        /** @type {int32} */
         const packIndex = this._decodeHeaderTier(first);
-        const pack = PACKS[packIndex];
-        const bytesPacked = totalBits(pack) / 8;
+        /** @type {int32[]} */
+        const fieldBits = PACK_FIELD_BITS[packIndex];
+        /** @type {int32} */
+        const bytesPacked = totalBits(packIndex) / 8;
 
+        /** @type {uint32} */
         let acc = 0;
-        for (let k = 0; k < bytesPacked; k++)
-          acc = OpCodes.OrN(OpCodes.Shl32(acc, 8), data[pos + k]);
+        for (let k = 0; k < bytesPacked; k++) {
+          acc = OpCodes.Or32(OpCodes.Shl32(acc, 8), data[pos + k]);
+        }
         pos += bytesPacked;
 
-        let remainingBits = totalBits(pack) - (pack.headerOnes + 1);
-        const fieldBits = pack.fieldBits;
+        /** @type {int32} */
+        let remainingBits = totalBits(packIndex) - (PACK_HEADER_ONES[packIndex] + 1);
+        /** @type {int32} */
         let prevId = -1;
         for (let k = 0; k < fieldBits.length; k++) {
           remainingBits -= fieldBits[k];
-          const value = OpCodes.AndN(OpCodes.Shr32(acc, remainingBits), OpCodes.Shl32(1, fieldBits[k]) - 1);
+          /** @type {uint32} */
+          const mask = OpCodes.Shl32(1, fieldBits[k]) - 1;
+          /** @type {uint32} */
+          const value = OpCodes.And32(OpCodes.Shr32(acc, remainingBits), mask);
 
-          const id = k === 0 ? value : successorIdAt[prevId][value];
+          /** @type {int32} */
+          let id = value;
+          if (k !== 0) {
+            /** @type {int32[]} */
+            const successors = successorIdAt[prevId];
+            id = successors[value];
+          }
 
           result[outPos++] = alphabet[id];
           prevId = id;
@@ -394,58 +555,93 @@
     // chain length and whose every field value fits that tier's bit widths,
     // matching the reference's find_best_encoding (search from largest to
     // smallest, first fit wins).
-    // @private
+    /**
+     * @private
+     * @param {int32[]} chain - Leader id and successor ranks
+     * @param {int32} chainLength - Entries of chain in use
+     * @returns {int32} Pack tier, or -1 when none fits
+     */
     _findBestPack(chain, chainLength) {
-      for (let p = PACKS.length - 1; p >= 0; p--) {
-        const fieldBits = PACKS[p].fieldBits;
-        if (chainLength < fieldBits.length) continue;
+      for (let p = PACK_FIELD_BITS.length - 1; p >= 0; p--) {
+        /** @type {int32[]} */
+        const fieldBits = PACK_FIELD_BITS[p];
+        if (chainLength < fieldBits.length) {
+          continue;
+        }
 
+        /** @type {boolean} */
         let fits = true;
         for (let k = 0; k < fieldBits.length; k++) {
-          if (chain[k] < OpCodes.Shl32(1, fieldBits[k])) continue;
+          if (chain[k] < OpCodes.Shl32(1, fieldBits[k])) {
+            continue;
+          }
           fits = false;
           break;
         }
 
-        if (fits) return p;
+        if (fits) {
+          return p;
+        }
       }
 
       return -1;
     }
 
-    // @private
+    /**
+     * @private
+     * @param {uint8[]} output - Output
+     * @param {int32} packIndex - Pack tier
+     * @param {int32[]} chain - Leader id and successor ranks
+     */
     _emitPack(output, packIndex, chain) {
-      const pack = PACKS[packIndex];
-      const fieldBits = pack.fieldBits;
-      const bits = totalBits(pack);
+      /** @type {int32[]} */
+      const fieldBits = PACK_FIELD_BITS[packIndex];
+      /** @type {int32} */
+      const bits = totalBits(packIndex);
 
-      let acc = OpCodes.Shl32(OpCodes.Shl32(1, pack.headerOnes) - 1, 1); // e.g. 2 ones -> 0b110
+      /** @type {uint32} */
+      let acc = OpCodes.Shl32(OpCodes.Shl32(1, PACK_HEADER_ONES[packIndex]) - 1, 1); // e.g. 2 ones -> 0b110
 
-      for (let k = 0; k < fieldBits.length; k++)
-        acc = OpCodes.OrN(OpCodes.Shl32(acc, fieldBits[k]), chain[k]);
+      for (let k = 0; k < fieldBits.length; k++) {
+        acc = OpCodes.Or32(OpCodes.Shl32(acc, fieldBits[k]), chain[k]);
+      }
 
-      for (let byteIndex = OpCodes.Shr32(bits, 3) - 1; byteIndex >= 0; byteIndex--)
-        output.push(OpCodes.AndN(OpCodes.Shr32(acc, 8 * byteIndex), 0xFF));
+      /** @type {int32} */
+      const byteCount = OpCodes.Shr32(bits, 3);
+      for (let byteIndex = byteCount - 1; byteIndex >= 0; byteIndex--) {
+        output.push(OpCodes.And32(OpCodes.Shr32(acc, 8 * byteIndex), 0xFF));
+      }
     }
 
     // Mirrors the reference's decode_header: counts the leading one-bits of
     // the first byte of a pack (a leading zero-bit, handled by the caller
     // before this is invoked, means "plain literal").
-    // @private
+    /**
+     * @private
+     * @param {uint8} first - First byte of the pack
+     * @returns {int32} Pack tier
+     */
     _decodeHeaderTier(first) {
+      /** @type {int32} */
       let ones = 0;
+      /** @type {uint32} */
       let b = OpCodes.Shl32(first, 24);
-      while (OpCodes.AndN(b, 0x80000000) !== 0) {
+      while (OpCodes.And32(b, 0x80000000) !== 0) {
         ones++;
         b = OpCodes.Shl32(b, 1);
       }
 
+      /** @type {int32} */
       const packIndex = ones - 1;
-      if (packIndex < 0 || packIndex >= PACKS.length)
-        throw new Error('Shoco: unrecognized pack header (0x' + first.toString(16) + ')');
+      if (packIndex < 0 || packIndex >= PACK_FIELD_BITS.length) {
+        /** @type {string} */
+        const hex = first.toString(16);
+        throw new Error('Shoco: unrecognized pack header (0x' + hex + ')');
+      }
       return packIndex;
     }
   }
+
 
   // Register algorithm (guard against double registration)
   const algorithmInstance = new Shoco();

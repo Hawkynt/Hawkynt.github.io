@@ -94,31 +94,57 @@
   // a 30-bit-precision bit-level arithmetic coder with the classic
   // Witten/Neal/Cleary underflow (E3) handling.
 
+  /** @type {int32} */
   const AC_PRECISION_BITS = 30;
+  /** @type {int32} */
   const AC_FULL_RANGE = OpCodes.Shl32(1, AC_PRECISION_BITS);
+  /** @type {int32} */
   const AC_HALF_RANGE = OpCodes.Shl32(1, AC_PRECISION_BITS - 1);
+  /** @type {int32} */
   const AC_QUARTER_RANGE = OpCodes.Shl32(1, AC_PRECISION_BITS - 2);
 
+  // The bounds stay below 2^30, but range * prob0 needs up to 46 bits: it
+  // is computed in float64 (exact), as the plain number arithmetic was.
+
   class ArithmeticEncoder {
+    /**
+     * @param {uint8[]} output - Byte array the coded bytes are appended to
+     */
     constructor(output) {
+      /** @type {uint8[]} */
       this.output = output;
+      /** @type {int32} */
       this.low = 0;
+      /** @type {int32} */
       this.high = AC_FULL_RANGE - 1;
+      /** @type {int32} */
       this.pendingBits = 0;
+      /** @type {uint32} */
       this.bitBuffer = 0;
+      /** @type {int32} */
       this.bitsInBuffer = 0;
     }
 
+    /**
+     * @param {int32} bit - Bit to code
+     * @param {int32} prob0 - Probability of a zero bit, scaled by 65536
+     */
     encodeBit(bit, prob0) {
+      /** @type {float64} */
       const range = this.high - this.low + 1;
+      /** @type {int32} */
       const mid = this.low + Math.floor((range * prob0) / 65536) - 1;
 
-      if (bit === 0) this.high = mid;
-      else this.low = mid + 1;
+      if (bit === 0) {
+        this.high = mid;
+      } else {
+        this.low = mid + 1;
+      }
 
       this._normalize();
     }
 
+    /** Output the final disambiguating bits and the partial last byte */
     finish() {
       this.pendingBits++;
       this._writeBitAndPending(this.low >= AC_QUARTER_RANGE ? 1 : 0);
@@ -129,6 +155,7 @@
       }
     }
 
+    /** Shift out settled bits (with E3 underflow handling) */
     _normalize() {
       for (;;) {
         if (this.high < AC_HALF_RANGE) {
@@ -150,8 +177,12 @@
       }
     }
 
+    /**
+     * @param {int32} bit - Bit, followed by the pending opposite bits
+     */
     _writeBitAndPending(bit) {
       this._writeBit(bit);
+      /** @type {int32} */
       const opposite = 1 - bit;
       while (this.pendingBits > 0) {
         this._writeBit(opposite);
@@ -159,10 +190,15 @@
       }
     }
 
+    /**
+     * @param {int32} bit - Bit
+     */
     _writeBit(bit) {
       this.bitBuffer = OpCodes.Or32(OpCodes.Shl32(this.bitBuffer, 1), bit);
       this.bitsInBuffer++;
-      if (this.bitsInBuffer !== 8) return;
+      if (this.bitsInBuffer !== 8) {
+        return;
+      }
 
       this.output.push(OpCodes.And32(this.bitBuffer, 0xFF));
       this.bitBuffer = 0;
@@ -171,23 +207,42 @@
   }
 
   class ArithmeticDecoder {
+    /**
+     * @param {uint8[]} input - Coded bytes (zero bits past the end)
+     */
     constructor(input) {
+      /** @type {uint8[]} */
       this.input = input;
+      /** @type {int32} */
       this.pos = 0;
+      /** @type {int32} */
       this.low = 0;
+      /** @type {int32} */
       this.high = AC_FULL_RANGE - 1;
+      /** @type {uint8} */
       this.bitBuffer = 0;
+      /** @type {int32} */
       this.bitsRemaining = 0;
 
+      /** @type {int32} */
       this.code = 0;
-      for (let i = 0; i < AC_PRECISION_BITS; ++i) this.code = OpCodes.Or32(OpCodes.Shl32(this.code, 1), this._readBit());
+      for (let i = 0; i < AC_PRECISION_BITS; ++i) {
+        this.code = OpCodes.Or32(OpCodes.Shl32(this.code, 1), this._readBit());
+      }
     }
 
+    /**
+     * @param {int32} prob0 - Probability of a zero bit, scaled by 65536
+     * @returns {int32} Decoded bit
+     */
     decodeBit(prob0) {
+      /** @type {float64} */
       const range = this.high - this.low + 1;
+      /** @type {int32} */
       const mid = this.low + Math.floor((range * prob0) / 65536) - 1;
 
-      let bit;
+      /** @type {int32} */
+      let bit = 0;
       if (this.code <= mid) {
         bit = 0;
         this.high = mid;
@@ -200,6 +255,7 @@
       return bit;
     }
 
+    /** Shift in bits as the interval narrows (with E3 underflow handling) */
     _normalize() {
       for (;;) {
         if (this.high < AC_HALF_RANGE) {
@@ -222,6 +278,9 @@
       }
     }
 
+    /**
+     * @returns {uint32} Next bit, 0 past the end
+     */
     _readBit() {
       if (this.bitsRemaining === 0) {
         this.bitBuffer = this.pos < this.input.length ? this.input[this.pos++] : 0;
@@ -235,49 +294,92 @@
 
   // ===== CONTEXT TREE WEIGHTING MODEL =====
 
+  /** @type {int32} */
   const CONTEXT_DEPTH_BITS = 16;
+  /** @type {float64} */
   const LOG_HALF = -0.6931471805599453; // Math.log(0.5)
 
+  /**
+   * @param {float64} a - Log value
+   * @param {float64} b - Log value
+   * @returns {float64} log(exp(a) + exp(b))
+   */
   function logAddExp(a, b) {
-    if (a > b) return a + Math.log(1.0 + Math.exp(b - a));
+    if (a > b) {
+      return a + Math.log(1.0 + Math.exp(b - a));
+    }
     return b + Math.log(1.0 + Math.exp(a - b));
   }
 
   class CtwNode {
     constructor() {
+      /** @type {int32} */
       this.count0 = 0;
+      /** @type {int32} */
       this.count1 = 0;
+      /** @type {float64} */
       this.logPe = 0;
+      /** @type {float64} */
       this.logPw = 0;
+      /** @type {CtwNode|null} */
       this.child0 = null;
+      /** @type {CtwNode|null} */
       this.child1 = null;
     }
   }
 
   class CtwTree {
+    /**
+     * @param {int32} depth - Context depth in bits
+     */
     constructor(depth) {
+      /** @type {int32} */
       this.depth = depth;
+      /** @type {int32} */
       this.historyMask = OpCodes.Shl32(1, depth) - 1;
+      /** @type {CtwNode} */
       this.root = new CtwNode();
-      this.path = new Array(depth + 1).fill(null);
-      this.logPe0 = new Array(depth + 1).fill(0);
-      this.logPe1 = new Array(depth + 1).fill(0);
-      this.logPw0 = new Array(depth + 1).fill(0);
-      this.logPw1 = new Array(depth + 1).fill(0);
+      /** @type {CtwNode[]} */
+      this.path = new Array(depth + 1);
+      /** @type {float64[]} */
+      this.logPe0 = new Array(depth + 1);
+      /** @type {float64[]} */
+      this.logPe1 = new Array(depth + 1);
+      /** @type {float64[]} */
+      this.logPw0 = new Array(depth + 1);
+      /** @type {float64[]} */
+      this.logPw1 = new Array(depth + 1);
+      for (let i = 0; i <= depth; i++) {
+        this.path[i] = null;
+        this.logPe0[i] = 0;
+        this.logPe1[i] = 0;
+        this.logPw0[i] = 0;
+        this.logPw1[i] = 0;
+      }
+      /** @type {uint32} */
       this.history = 0;
     }
 
+    /**
+     * @returns {float64} Probability that the next bit is 1
+     */
     predictProbabilityOfOne() {
       // Phase 1: materialise the path root..leaf for the current context.
       this.path[0] = this.root;
+      /** @type {CtwNode} */
       let cur = this.root;
       for (let level = 1; level <= this.depth; ++level) {
+        /** @type {uint32} */
         const contextBit = OpCodes.And32(OpCodes.Shr32(this.history, level - 1), 1);
         if (contextBit === 0) {
-          if (!cur.child0) cur.child0 = new CtwNode();
+          if (!cur.child0) {
+            cur.child0 = new CtwNode();
+          }
           cur = cur.child0;
         } else {
-          if (!cur.child1) cur.child1 = new CtwNode();
+          if (!cur.child1) {
+            cur.child1 = new CtwNode();
+          }
           cur = cur.child1;
         }
         this.path[level] = cur;
@@ -285,7 +387,9 @@
 
       // Phase 2: per-node hypothetical KT increments (own counts only).
       for (let level = 0; level <= this.depth; ++level) {
+        /** @type {CtwNode} */
         const node = this.path[level];
+        /** @type {int32} */
         const total = node.count0 + node.count1;
         this.logPe0[level] = node.logPe + Math.log((node.count0 + 0.5) / (total + 1));
         this.logPe1[level] = node.logPe + Math.log((node.count1 + 0.5) / (total + 1));
@@ -295,22 +399,33 @@
       this.logPw0[this.depth] = this.logPe0[this.depth];
       this.logPw1[this.depth] = this.logPe1[this.depth];
       for (let level = this.depth - 1; level >= 0; --level) {
+        /** @type {CtwNode} */
         const node = this.path[level];
+        /** @type {CtwNode} */
         const child = this.path[level + 1];
+        /** @type {CtwNode|null} */
         const sibling = child === node.child0 ? node.child1 : node.child0;
+        /** @type {float64} */
         const siblingLogPw = sibling ? sibling.logPw : 0.0;
 
         this.logPw0[level] = logAddExp(this.logPe0[level] + LOG_HALF, this.logPw0[level + 1] + siblingLogPw + LOG_HALF);
         this.logPw1[level] = logAddExp(this.logPe1[level] + LOG_HALF, this.logPw1[level + 1] + siblingLogPw + LOG_HALF);
       }
 
+      /** @type {float64} */
       const logPwRoot0 = this.logPw0[0];
+      /** @type {float64} */
       const logPwRoot1 = this.logPw1[0];
       return 1.0 / (1.0 + Math.exp(logPwRoot0 - logPwRoot1));
     }
 
+    /**
+     * Commit the observed bit along the current path
+     * @param {int32} bit - Observed bit
+     */
     update(bit) {
       for (let level = 0; level <= this.depth; ++level) {
+        /** @type {CtwNode} */
         const node = this.path[level];
         if (bit === 0) {
           node.logPe = this.logPe0[level];
@@ -327,26 +442,44 @@
     }
   }
 
+  /**
+   * @param {float64} p1 - Probability of a one bit
+   * @returns {int32} Probability of a zero bit scaled by 65536, in 1..65535
+   */
   function toProb0(p1) {
+    /** @type {int32} */
     const prob0 = Math.round((1.0 - p1) * 65536.0);
     return Math.max(1, Math.min(65535, prob0));
   }
 
   // ===== CTW (WILLEMS) CODEC =====
 
+  /**
+   * @param {uint8[]} data - Input bytes
+   * @returns {uint8[]} Length header and coded bits
+   */
   function ctwCompress(data) {
-    const output = [];
-    { const _src = OpCodes.Unpack32LE(data.length); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
+    /** @type {uint8[]} */
+    const output = OpCodes.Unpack32LE(data.length);
 
-    if (data.length === 0) return output;
+    if (data.length === 0) {
+      return output;
+    }
 
+    /** @type {ArithmeticEncoder} */
     const encoder = new ArithmeticEncoder(output);
+    /** @type {CtwTree} */
     const tree = new CtwTree(CONTEXT_DEPTH_BITS);
 
-    for (const value of data) {
+    for (let k = 0; k < data.length; k++) {
+      /** @type {uint8} */
+      const value = data[k];
       for (let bit = 7; bit >= 0; --bit) {
+        /** @type {int32} */
         const bitVal = OpCodes.And32(OpCodes.Shr32(value, bit), 1);
+        /** @type {float64} */
         const p1 = tree.predictProbabilityOfOne();
+        /** @type {int32} */
         const prob0 = toProb0(p1);
         encoder.encodeBit(bitVal, prob0);
         tree.update(bitVal);
@@ -357,19 +490,33 @@
     return output;
   }
 
+  /**
+   * @param {uint8[]} data - Length header and coded bits
+   * @returns {uint8[]} Decoded bytes
+   */
   function ctwDecompress(data) {
+    /** @type {uint32} */
     const size = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
-    if (size === 0) return [];
+    /** @type {uint8[]} */
+    const result = new Array(size);
+    if (size === 0) {
+      return result;
+    }
 
+    /** @type {ArithmeticDecoder} */
     const decoder = new ArithmeticDecoder(data.slice(4));
+    /** @type {CtwTree} */
     const tree = new CtwTree(CONTEXT_DEPTH_BITS);
 
-    const result = new Array(size);
     for (let i = 0; i < size; ++i) {
+      /** @type {uint32} */
       let value = 0;
       for (let bit = 7; bit >= 0; --bit) {
+        /** @type {float64} */
         const p1 = tree.predictProbabilityOfOne();
+        /** @type {int32} */
         const prob0 = toProb0(p1);
+        /** @type {int32} */
         const bitVal = decoder.decodeBit(prob0);
         tree.update(bitVal);
         value = OpCodes.Or32(OpCodes.Shl32(value, 1), bitVal);
@@ -467,25 +614,46 @@
         this.testVectors = this.tests;
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True for the inverse transform
+       * @returns {CTWWillemsInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new CTWWillemsInstance(this, isInverse);
       }
     }
 
     class CTWWillemsInstance extends IAlgorithmInstance {
+      /**
+       * @param {CTWWillemsAlgorithm} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse; // true = decompress, false = compress
+        /** @type {uint8[]} */
         this.inputBuffer = [];
       }
 
 
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
-        const result = this.isInverse ?
-          ctwDecompress(this.inputBuffer) :
-          ctwCompress(this.inputBuffer);
+        /** @type {uint8[]} */
+        let result;
+        if (this.isInverse) {
+          result = ctwDecompress(this.inputBuffer);
+        } else {
+          result = ctwCompress(this.inputBuffer);
+        }
 
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return result;
       }
     }

@@ -62,10 +62,15 @@
       this.country = CountryCode.DE;
 
       // LZF Configuration Constants (matching liblzf)
+      /** @type {int32} */
       this.HLOG = 13;                          // Hash table size: 2^13 = 8192 entries
+      /** @type {int32} */
       this.HSIZE = OpCodes.Shl32(1, this.HLOG); // 8192 hash table entries
+      /** @type {int32} */
       this.MAX_LIT = 32;                       // Maximum literal run length
+      /** @type {int32} */
       this.MAX_OFF = 8191;                     // Maximum offset (13-bit: 2^13 - 1)
+      /** @type {int32} */
       this.MAX_REF = 263;                      // Maximum reference length (255 + 8): the extended
                                                 // length byte is a single octet, so the long-form
                                                 // encoding "len - 8" must not exceed 255.
@@ -163,7 +168,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LZFInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -180,18 +185,25 @@
   class LZFInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LZFCompression} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this.hlog = algorithm.HLOG;
+      /** @type {int32} */
       this.hsize = algorithm.HSIZE;
+      /** @type {int32} */
       this.maxLit = algorithm.MAX_LIT;
+      /** @type {int32} */
       this.maxOff = algorithm.MAX_OFF;
+      /** @type {int32} */
       this.maxRef = algorithm.MAX_REF;
     }
 
@@ -205,7 +217,9 @@
     Result() {
       if (this.isInverse) {
         if (this.inputBuffer.length === 0) {
-          return [];
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
         }
         return this._decompress();
       }
@@ -215,52 +229,79 @@
       return this._compress();
     }
 
+    /**
+     * Compress the collected input
+     * @returns {uint8[]} 4-byte LE length followed by LZF literal runs and references
+     */
     _compress() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
+      /** @type {uint8[]} */
       const header = OpCodes.Unpack32LE(input.length);
+      /** @type {uint8[]} */
       const output = [];
-      const htab = new Array(this.hsize); // Hash table storing positions
+      // Hash table storing positions (-1 = empty slot)
+      /** @type {int32[]} */
+      const htab = new Array(this.hsize);
+      for (let i = 0; i < this.hsize; i++) {
+        htab[i] = -1;
+      }
 
+      /** @type {int32} */
       let ip = 0;          // Input position
+      /** @type {int32} */
       let lit = 0;         // Literal run start position
+      /** @type {int32} */
       const iend = input.length;
 
       if (iend < 3) {
         // Too small to compress - output as literals
         this._flushLiterals(output, input, 0, iend);
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return header.concat(output);
       }
 
       // Initialize hash value with first two bytes
+      /** @type {uint16} */
       let hval = OpCodes.Or16(OpCodes.Shl16(input[0], 8), input[1]);
 
       while (ip < iend - 2) {
         // Compute hash from current 3-byte sequence
         // Hash function: XOR the 16-bit value with itself shifted right 8 bits, then add byte3
         hval = OpCodes.Or16(OpCodes.Shl16(input[ip], 8), input[ip + 1]);
+        /** @type {uint16} */
         const hidx = OpCodes.And16(
-          (OpCodes.Xor16(hval, OpCodes.Shr16(hval, 8)) + input[ip + 2]),
+          OpCodes.Add32(OpCodes.Xor16(hval, OpCodes.Shr16(hval, 8)), input[ip + 2]),
           this.hsize - 1
         );
+        /** @type {int32} */
         const ref = htab[hidx];
 
         // Store current position in hash table
         htab[hidx] = ip;
 
+        /** @type {int32} */
         let off = 0;
 
         // Check for valid match (need at least 2 bytes matching for LZF)
         // LZF uses 2-byte minimum match (vs LZFX's 3-byte)
-        if (ref !== undefined &&
-            ref >= 0 &&
-            ref < ip &&
-            (off = ip - ref - 1) <= this.maxOff &&
+        /** @type {boolean} */
+        let isMatch = false;
+        if (ref >= 0 && ref < ip) {
+          off = ip - ref - 1;
+          isMatch = off <= this.maxOff &&
             input[ref] === input[ip] &&
-            input[ref + 1] === input[ip + 1]) {
+            input[ref + 1] === input[ip + 1];
+        }
+
+        if (isMatch) {
 
           // Found a match - determine length
+          /** @type {int32} */
           let len = 2;
+          /** @type {int32} */
           const maxlen = Math.min(this.maxRef, iend - ip);
 
           // Extend match as far as possible
@@ -275,6 +316,7 @@
 
           // Encode back reference
           // LZF format: len - 1 (minimum match is 2, encoded as 1)
+          /** @type {int32} */
           const encodedLen = len - 1;
 
           if (encodedLen < 7) {
@@ -317,14 +359,27 @@
         this._flushLiterals(output, input, lit, iend);
       }
 
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return header.concat(output);
     }
 
+    /**
+     * Emit input[start..end) as literal runs of at most maxLit bytes
+     * @param {uint8[]} output - Destination
+     * @param {uint8[]} input - Source
+     * @param {int32} start - First literal
+     * @param {int32} end - End of the literals (exclusive)
+     */
     _flushLiterals(output, input, start, end) {
+      /** @type {int32} */
       let len = end - start;
+      /** @type {int32} */
+      let at = start;
 
       while (len > 0) {
+        /** @type {int32} */
         const chunk = Math.min(len, this.maxLit);
 
         // Encode literal: 000LLLLL where LLLLL = chunk - 1
@@ -332,36 +387,51 @@
 
         // Copy literal bytes
         for (let i = 0; i < chunk; ++i) {
-          output.push(input[start + i]);
+          output.push(input[at + i]);
         }
 
-        start += chunk;
+        at += chunk;
         len -= chunk;
       }
     }
 
+    /**
+     * Decompress the collected input
+     * @returns {uint8[]} Original bytes
+     */
     _decompress() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
+      /** @type {uint8[]} */
+      const output = [];
       if (input.length < 4) {
-        this.inputBuffer = [];
-        return [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
+        return output;
       }
 
+      /** @type {uint32} */
       const originalLength = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
       if (originalLength === 0) {
-        this.inputBuffer = [];
-        return [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
+        return output;
       }
 
-      const output = [];
+      /** @type {int32} */
       let ip = 4;
+      /** @type {int32} */
       const iend = input.length;
 
       while (output.length < originalLength) {
+        /** @type {uint8} */
         const ctrl = input[ip++];
 
         if (ctrl < 32) {
           // Literal run: 000LLLLL <L+1 bytes>
+          /** @type {int32} */
           const len = ctrl + 1;
 
           if (ip + len > iend) {
@@ -373,8 +443,10 @@
           }
         } else {
           // Back reference
+          /** @type {int32} */
           let len = OpCodes.Shr8(ctrl, 5);
-          let off;
+          /** @type {int32} */
+          let off = 0;
 
           if (len === 7) {
             // Long reference: 111ooooo LLLLLLLL oooooooo
@@ -398,10 +470,11 @@
 
           // Validate reference
           if (off > output.length) {
-            throw new Error(`LZF decompression error: invalid offset ${off} at output position ${output.length}`);
+            throw new Error("LZF decompression error: invalid offset " + off + " at output position " + output.length);
           }
 
           // Copy referenced bytes
+          /** @type {int32} */
           const ref = output.length - off;
           for (let i = 0; i < len; ++i) {
             output.push(output[ref + i]);
@@ -409,7 +482,9 @@
         }
       }
 
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return output;
     }
   }

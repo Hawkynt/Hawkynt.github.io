@@ -71,19 +71,35 @@
   // Elias-gamma data bits. Everything else, including the constants below, is
   // shared verbatim with zx0.js's reference building block.
   const INVERT_MODE = true;
+  /** @type {int32} */
   const INITIAL_OFFSET = 1;
   // Largest offset whose Elias-coded MSB stays below the 256 end-of-stream
   // sentinel: (32640-1)/128+1 === 255. This is the reference MAX_OFFSET.
+  /** @type {int32} */
   const MAX_OFFSET = 0x7F80;
+  /** @type {int32} */
   const MIN_MATCH_LENGTH = 2;
+  /** @type {int32} */
   const HASH_BITS = 16;
+  /** @type {int32} */
   const HASH_SIZE = OpCodes.Shl32(1, HASH_BITS);
+  /** @type {int32} */
   const CHAIN_LIMIT = 64;
 
+  /**
+   * @param {uint8[]} data - Bytes
+   * @param {int32} pos - Position hashed
+   * @returns {uint32} 16-bit hash of up to three bytes
+   */
   function hash(data, pos) {
-    if (pos + 1 >= data.length) return OpCodes.And32(data[pos], 0xFFFF);
+    if (pos + 1 >= data.length) {
+      return OpCodes.And32(data[pos], 0xFFFF);
+    }
+    /** @type {uint32} */
     const h1 = OpCodes.Shl32(data[pos], 8);
+    /** @type {uint32} */
     const h2 = OpCodes.Shl32(data[pos + 1], 4);
+    /** @type {uint8} */
     const h3 = pos + 2 < data.length ? data[pos + 2] : 0;
     return OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(h1, h2), h3), 0xFFFF);
   }
@@ -95,43 +111,75 @@
   // invertMode also applies to the offset-MSB Elias-gamma's data bits.
 
   class Zx0Encoder {
+    /**
+     * @param {boolean} invertMode - Invert the offset-MSB Elias data bits
+     */
     constructor(invertMode) {
+      /** @type {uint8[]} */
       this.out = [];
+      /** @type {boolean} */
       this.invertMode = invertMode;
+      /** @type {uint32} */
       this.bitMask = 0;
+      /** @type {int32} */
       this.bitIndex = 0;
+      /** @type {boolean} */
       this.backtrack = true;
     }
 
+    /**
+     * @param {uint8[]} data - Source bytes
+     * @param {int32} start - First literal
+     * @param {int32} length - Number of literals
+     */
     emitLiterals(data, start, length) {
-      if (length <= 0) return;
+      if (length <= 0) {
+        return;
+      }
       this.writeBit(0);
       this._writeInterlacedEliasGamma(length, false);
-      for (let i = 0; i < length; i++) this.writeByte(data[start + i]);
+      for (let i = 0; i < length; i++) {
+        this.writeByte(data[start + i]);
+      }
     }
 
+    /**
+     * @param {int32} length - Match length at the last offset
+     */
     emitRepMatch(length) {
       this.writeBit(0);
       this._writeInterlacedEliasGamma(length, false);
     }
 
+    /**
+     * @param {int32} offset - Match distance
+     * @param {int32} length - Match length
+     */
     emitNewOffsetMatch(offset, length) {
       this.writeBit(1);
       this._writeInterlacedEliasGamma(Math.floor((offset - 1) / 128) + 1, this.invertMode);
       // LSB byte: bit 0 reserved for the length Elias-gamma's first bit (patched by backtrack).
-      this.writeByte(OpCodes.And32(OpCodes.Shl32(127 - (offset - 1) % 128, 1), 0xFF));
+      /** @type {int32} */
+      const lowPart = 127 - (offset - 1) % 128;
+      this.writeByte(OpCodes.And32(OpCodes.Shl32(lowPart, 1), 0xFF));
       this.backtrack = true;
       this._writeInterlacedEliasGamma(length - 1, false);
     }
 
+    /** Write the end-of-stream marker */
     emitEnd() {
       this.writeBit(1);
       this._writeInterlacedEliasGamma(256, this.invertMode);
     }
 
+    /**
+     * @param {int32} value - Bit (any non-zero value is a 1)
+     */
     writeBit(value) {
       if (this.backtrack) {
-        if (value !== 0) this.out[this.out.length - 1] = OpCodes.Or32(this.out[this.out.length - 1], 1);
+        if (value !== 0) {
+          this.out[this.out.length - 1] = OpCodes.Or32(this.out[this.out.length - 1], 1);
+        }
         this.backtrack = false;
         return;
       }
@@ -140,20 +188,37 @@
         this.bitIndex = this.out.length;
         this.out.push(0);
       }
-      if (value !== 0) this.out[this.bitIndex] = OpCodes.Or32(this.out[this.bitIndex], this.bitMask);
+      if (value !== 0) {
+        this.out[this.bitIndex] = OpCodes.Or32(this.out[this.bitIndex], this.bitMask);
+      }
       this.bitMask = OpCodes.Shr32(this.bitMask, 1);
     }
 
-    writeByte(value) { this.out.push(value); }
+    /**
+     * @param {uint8} value - Byte appended at the current position
+     */
+    writeByte(value) {
+      this.out.push(value);
+    }
 
+    /**
+     * @param {int32} value - Value (at least 1)
+     * @param {boolean} invertMode - Invert the data bits
+     */
     _writeInterlacedEliasGamma(value, invertMode) {
+      /** @type {uint32} */
       let i = 2;
-      while (i <= value) i = OpCodes.Shl32(i, 1);
+      while (i <= value) {
+        i = OpCodes.Shl32(i, 1);
+      }
       i = OpCodes.Shr32(i, 1);
       for (;;) {
         i = OpCodes.Shr32(i, 1);
-        if (i === 0) break;
+        if (i === 0) {
+          break;
+        }
         this.writeBit(0);
+        /** @type {int32} */
         const dataBit = OpCodes.And32(value, i) !== 0 ? 1 : 0;
         this.writeBit(invertMode ? 1 - dataBit : dataBit);
       }
@@ -164,35 +229,62 @@
   // ── Decoder ─────────────────────────────────────────────────────────────
 
   class Zx0Decoder {
+    /**
+     * @param {uint8[]} data - Compressed stream (without the size header)
+     */
     constructor(data) {
+      /** @type {uint8[]} */
       this.data = data;
+      /** @type {int32} */
       this.pos = 0;
+      /** @type {uint32} */
       this.bits = 0;
+      /** @type {uint32} */
       this.bitMask = 0;
     }
 
+    /**
+     * @returns {int32} Next bit
+     */
     readBit() {
       if (this.bitMask === 0) {
-        if (this.pos >= this.data.length) throw new Error("Salvador: unexpected end of bit stream.");
+        if (this.pos >= this.data.length) {
+          throw new Error("Salvador: unexpected end of bit stream.");
+        }
         this.bits = this.data[this.pos++];
         this.bitMask = 128;
       }
+      /** @type {int32} */
       const bit = OpCodes.And32(this.bits, 128) !== 0 ? 1 : 0;
       this.bits = OpCodes.And32(OpCodes.Shl32(this.bits, 1), 0xFF);
       this.bitMask = OpCodes.Shr32(this.bitMask, 1);
       return bit;
     }
 
+    /**
+     * @returns {uint8} Next byte
+     */
     readByte() {
-      if (this.pos >= this.data.length) throw new Error("Salvador: unexpected end of byte stream.");
+      if (this.pos >= this.data.length) {
+        throw new Error("Salvador: unexpected end of byte stream.");
+      }
       return this.data[this.pos++];
     }
 
+    /**
+     * @param {int32} initial - Starting value
+     * @param {boolean} invertMode - Invert the data bits
+     * @returns {uint32} Decoded value
+     */
     readElias(initial, invertMode) {
+      /** @type {uint32} */
       let value = initial;
       while (this.readBit() === 0) {
+        /** @type {int32} */
         let dataBit = this.readBit();
-        if (invertMode) dataBit = 1 - dataBit;
+        if (invertMode) {
+          dataBit = 1 - dataBit;
+        }
         value = OpCodes.Or32(OpCodes.Shl32(value, 1), dataBit);
       }
       return value;
@@ -200,15 +292,27 @@
 
     // Elias-gamma read where the caller supplies the first control bit
     // (usually bit 0 of the offset LSB byte).
+    /**
+     * @param {int32} initial - Starting value
+     * @param {boolean} invertMode - Invert the data bits
+     * @param {uint32} firstBit - First control bit
+     * @returns {uint32} Decoded value
+     */
     readEliasPrefix(initial, invertMode, firstBit) {
+      /** @type {uint32} */
       let value = initial;
       if (firstBit === 0) {
+        /** @type {int32} */
         let dataBit = this.readBit();
-        if (invertMode) dataBit = 1 - dataBit;
+        if (invertMode) {
+          dataBit = 1 - dataBit;
+        }
         value = OpCodes.Or32(OpCodes.Shl32(value, 1), dataBit);
         while (this.readBit() === 0) {
           dataBit = this.readBit();
-          if (invertMode) dataBit = 1 - dataBit;
+          if (invertMode) {
+            dataBit = 1 - dataBit;
+          }
           value = OpCodes.Or32(OpCodes.Shl32(value, 1), dataBit);
         }
       }
@@ -218,30 +322,71 @@
 
   // ── Bare stream compress/decompress (shared shape with zx0.js) ───────────
 
+  /**
+   * @param {uint8[]} data - Input bytes
+   * @param {int32} pos - Position of the match
+   * @param {int32} count - Match length
+   * @param {int32[]} head - Hash chain heads
+   * @param {int32[]} prev - Hash chain links
+   * @param {int32} n - Input length
+   */
+  function insertCovered(data, pos, count, head, prev, n) {
+    for (let j = 1; j < count && pos + j + MIN_MATCH_LENGTH <= n; j++) {
+      /** @type {uint32} */
+      const h = hash(data, pos + j);
+      prev[pos + j] = head[h];
+      head[h] = pos + j;
+    }
+  }
+
+  /**
+   * @param {uint8[]} data - Input bytes
+   * @param {boolean} invertMode - Invert the offset-MSB Elias data bits
+   * @returns {uint8[]} Bare compressed stream
+   */
   function compressBare(data, invertMode) {
+    /** @type {Zx0Encoder} */
     const enc = new Zx0Encoder(invertMode);
+    /** @type {int32} */
     const n = data.length;
+    /** @type {int32[]} */
     const head = new Int32Array(HASH_SIZE).fill(-1);
+    /** @type {int32[]} */
     const prev = new Int32Array(n);
 
+    /** @type {int32} */
     let pos = 0;
+    /** @type {int32} */
     let literalStart = 0;
+    /** @type {int32} */
     let lastOffset = INITIAL_OFFSET;
 
     while (pos < n) {
-      let bestLen = 0, bestOff = 0;
+      /** @type {int32} */
+      let bestLen = 0;
+      /** @type {int32} */
+      let bestOff = 0;
 
       if (pos + MIN_MATCH_LENGTH <= n) {
+        /** @type {uint32} */
         const h = hash(data, pos);
+        /** @type {int32} */
         let chainLen = 0;
+        /** @type {int32} */
         const minPos = Math.max(0, pos - MAX_OFFSET);
+        /** @type {int32} */
         let idx = head[h];
         while (idx >= minPos && chainLen < CHAIN_LIMIT) {
+          /** @type {int32} */
           const off = pos - idx;
           if (off >= 1 && off <= MAX_OFFSET && data[idx] === data[pos]) {
+            /** @type {int32} */
             const maxLen = Math.min(n - pos, 0x10000);
+            /** @type {int32} */
             let len = 0;
-            while (len < maxLen && data[idx + len] === data[pos + len]) len++;
+            while (len < maxLen && data[idx + len] === data[pos + len]) {
+              len++;
+            }
             if (len >= MIN_MATCH_LENGTH && len > bestLen) {
               bestLen = len;
               bestOff = off;
@@ -256,10 +401,14 @@
 
       // Rep-match opportunity: reusing the last offset is cheaper than a
       // fresh one, so prefer it whenever it ties or beats the best new match.
+      /** @type {int32} */
       let repLen = 0;
       if (pos >= lastOffset && lastOffset >= 1) {
+        /** @type {int32} */
         const maxRep = Math.min(n - pos, 0x10000);
-        while (repLen < maxRep && data[pos - lastOffset + repLen] === data[pos + repLen]) repLen++;
+        while (repLen < maxRep && data[pos - lastOffset + repLen] === data[pos + repLen]) {
+          repLen++;
+        }
       }
 
       if (repLen >= MIN_MATCH_LENGTH && repLen >= bestLen) {
@@ -275,11 +424,7 @@
           // match, which is legal in every state.
           enc.emitNewOffsetMatch(lastOffset, repLen);
         }
-        for (let j = 1; j < repLen && pos + j + MIN_MATCH_LENGTH <= n; j++) {
-          const h = hash(data, pos + j);
-          prev[pos + j] = head[h];
-          head[h] = pos + j;
-        }
+        insertCovered(data, pos, repLen, head, prev, n);
         pos += repLen;
         literalStart = pos;
       } else if (bestLen >= MIN_MATCH_LENGTH) {
@@ -289,11 +434,7 @@
         }
         enc.emitNewOffsetMatch(bestOff, bestLen);
         lastOffset = bestOff;
-        for (let j = 1; j < bestLen && pos + j + MIN_MATCH_LENGTH <= n; j++) {
-          const h = hash(data, pos + j);
-          prev[pos + j] = head[h];
-          head[h] = pos + j;
-        }
+        insertCovered(data, pos, bestLen, head, prev, n);
         pos += bestLen;
         literalStart = pos;
       } else {
@@ -301,47 +442,84 @@
       }
     }
 
-    if (pos > literalStart) enc.emitLiterals(data, literalStart, pos - literalStart);
+    if (pos > literalStart) {
+      enc.emitLiterals(data, literalStart, pos - literalStart);
+    }
     enc.emitEnd();
     return enc.out;
   }
 
+  /**
+   * @param {uint8[]} compressed - Bare compressed stream
+   * @param {uint32} targetSize - Decompressed size
+   * @param {boolean} invertMode - Invert the offset-MSB Elias data bits
+   * @returns {uint8[]} Decoded bytes
+   */
   function decompressCore(compressed, targetSize, invertMode) {
+    /** @type {uint8[]} */
     const output = new Array(targetSize);
+    /** @type {Zx0Decoder} */
     const dec = new Zx0Decoder(compressed);
+    /** @type {int32} */
     let op = 0;
+    // A corrupt offset can reach 2^32, so the offset is kept as an exact float64.
+    /** @type {float64} */
     let lastOffset = INITIAL_OFFSET;
+    /** @type {boolean} */
     let isFirstCommand = true;
 
     while (op < output.length) {
-      let isMatchWithOffset;
+      /** @type {boolean} */
+      let isMatchWithOffset = false;
       if (isFirstCommand) {
         isFirstCommand = false;
         isMatchWithOffset = false; // first command is always literals.
       } else {
-        isMatchWithOffset = dec.readBit() !== 0;
+        /** @type {int32} */
+        const flag = dec.readBit();
+        isMatchWithOffset = flag !== 0;
       }
 
       if (!isMatchWithOffset) {
+        /** @type {uint32} */
         const nLiterals = dec.readElias(1, false);
         for (let i = 0; i < nLiterals; i++) {
-          if (op >= output.length) throw new Error("Salvador: literal run exceeds output size.");
-          output[op++] = dec.readByte();
+          if (op >= output.length) {
+            throw new Error("Salvador: literal run exceeds output size.");
+          }
+          /** @type {uint8} */
+          const literal = dec.readByte();
+          output[op++] = literal;
         }
-        if (op >= output.length) return output;
-        isMatchWithOffset = dec.readBit() !== 0;
+        if (op >= output.length) {
+          return output;
+        }
+        /** @type {int32} */
+        const afterLiterals = dec.readBit();
+        isMatchWithOffset = afterLiterals !== 0;
       }
 
-      let matchLen;
+      /** @type {float64} */
+      let matchLen = 0;
       if (isMatchWithOffset) {
+        /** @type {uint32} */
         const hiValue = dec.readElias(1, invertMode);
-        if (hiValue === 256) break; // end marker.
+        if (hiValue === 256) {
+          break; // end marker.
+        }
+        /** @type {int32} */
         const hi = hiValue - 1; // 0-based MSB.
 
+        /** @type {uint8} */
         const lo = dec.readByte();
-        let offset = OpCodes.Or32(OpCodes.Shl32(hi, 7), 127 - OpCodes.Shr32(lo, 1));
+        /** @type {int32} */
+        const lowPart = 127 - OpCodes.Shr32(lo, 1);
+        /** @type {float64} */
+        let offset = OpCodes.Or32(OpCodes.Shl32(hi, 7), lowPart);
         offset++;
-        if (offset <= 0) throw new Error("Salvador: non-positive offset.");
+        if (offset <= 0) {
+          throw new Error("Salvador: non-positive offset.");
+        }
 
         // Length Elias-gamma starts with lo&1 as its prefix bit.
         matchLen = dec.readEliasPrefix(1, false, OpCodes.And32(lo, 1));
@@ -352,9 +530,14 @@
         matchLen = dec.readElias(1, false);
       }
 
-      if (lastOffset > op) throw new Error("Salvador: offset points before start of output.");
+      if (lastOffset > op) {
+        throw new Error("Salvador: offset points before start of output.");
+      }
+      /** @type {int32} */
       const src = op - lastOffset;
-      for (let i = 0; i < matchLen && op < output.length; i++) output[op++] = output[src + i];
+      for (let i = 0; i < matchLen && op < output.length; i++) {
+        output[op++] = output[src + i];
+      }
     }
 
     return output;
@@ -363,10 +546,18 @@
   // ===== ALGORITHM IMPLEMENTATION =====
 
   // Builds `length` bytes of a repeating pangram, for the large round-trip vector.
+  /**
+   * @param {int32} length - Number of bytes
+   * @returns {uint8[]} Repeated pangram
+   */
   function repeatText(length) {
+    /** @type {uint8[]} */
     const unit = OpCodes.AnsiToBytes("the quick brown fox jumps over the lazy dog. ");
+    /** @type {uint8[]} */
     const out = new Array(length);
-    for (let i = 0; i < length; i++) out[i] = unit[i % unit.length];
+    for (let i = 0; i < length; i++) {
+      out[i] = unit[i % unit.length];
+    }
     return out;
   }
 
@@ -425,38 +616,88 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {SalvadorInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new SalvadorInstance(this, isInverse);
     }
   }
 
   class SalvadorInstance extends IAlgorithmInstance {
+    /**
+     * @param {SalvadorCompression} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
-      const result = this.isInverse ? this._decompress(this.inputBuffer) : this._compress(this.inputBuffer);
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      let result;
+      if (this.isInverse) {
+        result = this._decompress(this.inputBuffer);
+      } else {
+        result = this._compress(this.inputBuffer);
+      }
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return result;
     }
 
+    /**
+     * @param {uint8[]} input - Input bytes
+     * @returns {uint8[]} Size header and compressed stream
+     */
     _compress(input) {
+      /** @type {int32} */
       const n = input.length;
+      /** @type {uint8[]} */
       const header = OpCodes.Unpack32LE(n);
-      if (n === 0) return header;
-      return header.concat(compressBare(input, INVERT_MODE));
+      if (n === 0) {
+        return header;
+      }
+      /** @type {uint8[]} */
+      const body = compressBare(input, INVERT_MODE);
+      for (let i = 0; i < body.length; i++) {
+        header.push(body[i]);
+      }
+      return header;
     }
 
+    /**
+     * @param {uint8[]} input - Size header and compressed stream
+     * @returns {uint8[]} Decoded bytes
+     */
     _decompress(input) {
-      if (input.length < 4) throw new Error("Salvador: input smaller than 4-byte header.");
+      if (input.length < 4) {
+        throw new Error("Salvador: input smaller than 4-byte header.");
+      }
+      /** @type {uint32} */
       const targetSize = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
-      if (targetSize < 0) throw new Error("Salvador: negative decompressed size.");
-      if (targetSize === 0) return [];
-      return decompressCore(input.slice(4), targetSize, INVERT_MODE);
+      if (targetSize < 0) {
+        throw new Error("Salvador: negative decompressed size.");
+      }
+      if (targetSize === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
+      /** @type {uint8[]} */
+      const decoded = decompressCore(input.slice(4), targetSize, INVERT_MODE);
+      return decoded;
     }
   }
 

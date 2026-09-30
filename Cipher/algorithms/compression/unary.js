@@ -115,20 +115,33 @@
           }
         ];
       }
-
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {UnaryInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new UnaryInstance(this, isInverse);
       }
     }
 
     class UnaryInstance extends IAlgorithmInstance {
+      /**
+       * @param {UnaryCompression} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
         if (this.isInverse) {
           return this._decompress();
@@ -137,6 +150,9 @@
         }
       }
 
+      /**
+       * @returns {uint8[]} Symbol count header followed by the unary codewords
+       */
       _compress() {
         // Header: 4-byte little-endian symbol count, so the decoder knows
         // exactly how many codewords to decode and never has to guess where
@@ -147,37 +163,67 @@
         // Encode each byte value b (0-255) directly as b one-bits followed
         // by a terminating zero-bit. Every byte maps to a distinct,
         // self-terminating, prefix-free codeword.
-        for (const byte of this.inputBuffer) {
-          for (let i = 0; i < byte; i++) bitStream.writeBit(1);
+        for (let k = 0; k < this.inputBuffer.length; k++) {
+          /** @type {uint8} */
+          const byte = this.inputBuffer[k];
+          for (let i = 0; i < byte; i++) {
+            bitStream.writeBit(1);
+          }
           bitStream.writeBit(0);
         }
 
+        /** @type {uint8[]} */
         const bytes = bitStream.toArray();
 
         // Clear input buffer
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
 
         return bytes;
       }
 
+      /**
+       * @returns {uint8[]} Decoded bytes
+       */
       _decompress() {
+        /** @type {uint8[]} */
+        const result = [];
         if (this.inputBuffer.length < 4) {
-          this.inputBuffer = [];
-          return [];
+          /** @type {uint8[]} */
+          const none = [];
+          this.inputBuffer = none;
+          return result;
         }
 
         const bitStream = OpCodes.CreateBitStream(this.inputBuffer);
-        const symbolCount = OpCodes.Pack32LE(bitStream.readByte(), bitStream.readByte(), bitStream.readByte(), bitStream.readByte());
+        /** @type {uint8} */
+        const c0 = bitStream.readByte();
+        /** @type {uint8} */
+        const c1 = bitStream.readByte();
+        /** @type {uint8} */
+        const c2 = bitStream.readByte();
+        /** @type {uint8} */
+        const c3 = bitStream.readByte();
+        /** @type {uint32} */
+        const symbolCount = OpCodes.Pack32LE(c0, c1, c2, c3);
 
-        const result = [];
         while (result.length < symbolCount) {
+          /** @type {int32} */
           let ones = 0;
-          while (bitStream.readBit() === 1) ones++;
+          /** @type {uint32} */
+          let bit = bitStream.readBit();
+          while (bit === 1) {
+            ones++;
+            bit = bitStream.readBit();
+          }
           result.push(ones);
         }
 
         // Clear input buffer
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
 
         return result;
       }

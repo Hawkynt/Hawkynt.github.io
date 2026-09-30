@@ -105,7 +105,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ManchesterInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -122,14 +122,18 @@
   class ManchesterInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ManchesterAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.processedData = null;
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
     }
 
     /**
@@ -148,8 +152,14 @@
       // own, because the coder groups whole units of input and emits padding and
       // framing at the end of the message, so the bytes are collected here and
       // converted once, in Result().
-      if (!this._feedBuffer) this._feedBuffer = [];
-      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
+      if (!this._feedBuffer) {
+        /** @type {uint8[]} */
+        const fresh = [];
+        this._feedBuffer = fresh;
+      }
+      for (let i = 0; i < data.length; i++) {
+        this._feedBuffer.push(data[i]);
+      }
     }
 
     /**
@@ -162,31 +172,42 @@
       if (!this._feedBuffer) {
         throw new Error('ManchesterInstance.Result: No data processed. Call Feed() first.');
       }
-      this.processedData = this.isInverse
-        ? this.decode(this._feedBuffer)
-        : this.encode(this._feedBuffer);
+      if (this.isInverse) {
+        this.processedData = this.decode(this._feedBuffer);
+      } else {
+        this.processedData = this.encode(this._feedBuffer);
+      }
       return this.processedData;
     }
 
+    /**
+     * Manchester-encode bytes, one output value (0 or 1) per half bit
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} Half-bit levels, MSB of each byte first
+     */
     encode(data) {
+      /** @type {uint8[]} */
+      const result = [];
       if (data.length === 0) {
-        return [];
+        return result;
       }
 
-      const result = [];
-
       for (let byteIdx = 0; byteIdx < data.length; byteIdx++) {
+        /** @type {uint8} */
         const byte = data[byteIdx];
 
         // Process each bit from MSB to LSB
         for (let bitIdx = 7; bitIdx >= 0; bitIdx--) {
-          const bit = OpCodes.AndN(OpCodes.Shr32(byte, bitIdx), 1);
+          /** @type {uint32} */
+          const bit = OpCodes.And32(OpCodes.Shr32(byte, bitIdx), 1);
 
           // Manchester encoding: 0 -> 01 (low to high), 1 -> 10 (high to low)
           if (bit === 0) {
-            result.push(0, 1);
+            result.push(0);
+            result.push(1);
           } else {
-            result.push(1, 0);
+            result.push(1);
+            result.push(0);
           }
         }
       }
@@ -194,9 +215,16 @@
       return result;
     }
 
+    /**
+     * Decode Manchester half-bit levels to bytes
+     * @param {uint8[]} data - Half-bit levels (pairs 01 or 10)
+     * @returns {uint8[]} Decoded bytes
+     */
     decode(data) {
+      /** @type {uint8[]} */
+      const result = [];
       if (data.length === 0) {
-        return [];
+        return result;
       }
 
       // Manchester encoded data should have even length (2 transitions per bit)
@@ -204,24 +232,28 @@
         throw new Error('Manchester: Invalid encoded data length (must be even)');
       }
 
-      const result = [];
+      /** @type {uint32} */
       let currentByte = 0;
+      /** @type {int32} */
       let bitCount = 0;
 
       for (let i = 0; i < data.length; i += 2) {
+        /** @type {uint8} */
         const first = data[i];
+        /** @type {uint8} */
         const second = data[i + 1];
 
-        let bit;
+        /** @type {uint32} */
+        let bit = 0;
         if (first === 0 && second === 1) {
           bit = 0; // 01 -> 0
         } else if (first === 1 && second === 0) {
           bit = 1; // 10 -> 1
         } else {
-          throw new Error(`Manchester: Invalid transition pair ${first}${second}`);
+          throw new Error("Manchester: Invalid transition pair " + first + second);
         }
 
-        currentByte = OpCodes.OrN(OpCodes.Shl32(currentByte, 1), bit);
+        currentByte = OpCodes.Or32(OpCodes.Shl32(currentByte, 1), bit);
         bitCount++;
 
         if (bitCount === 8) {

@@ -97,47 +97,95 @@
 
   // Witten-Neal-Cleary register layout: 16-bit code values, so the largest
   // frequency total that cannot overflow the narrowing arithmetic is 2^14 - 1.
+  /** @type {int32} */
   const MAX_ORDER = 3;
+  /** @type {int32} */
   const NUM_SYMBOLS = 256;
+  /** @type {int32} */
   const CODE_BITS = 16;
+  /** @type {int32} */
   const TOP_VALUE = 65535;
+  /** @type {int32} */
   const FIRST_QUARTER = 16384;
+  /** @type {int32} */
   const HALF = 32768;
+  /** @type {int32} */
   const THIRD_QUARTER = 49152;
+  /** @type {int32} */
   const MAX_FREQUENCY = 16383;
 
   // ===== MODEL =====
+
+  /**
+   * Results reported by the context queries (a reusable out-parameter record)
+   */
+  class PpmScratch {
+    constructor() {
+      /** @type {int32} */
+      this.frequency = 0;
+      /** @type {int32} */
+      this.cumulative = 0;
+      /** @type {int32} */
+      this.excludedCount = 0;
+      /** @type {int32} */
+      this.escape = 0;
+      /** @type {int32} */
+      this.symbolTotal = 0;
+    }
+  }
 
   // One finite context: the symbols seen after it, in first-seen order, with
   // their occurrence counts. First-seen order is part of the wire format,
   // because it fixes where each symbol sits in the coder's frequency range.
   class Context {
     constructor() {
+      /** @type {int32[]} */
       this.symbols = [];
+      /** @type {int32[]} */
       this.counts = [];
+      /** @type {int32} */
       this.total = 0;
     }
 
     // Splits the frequency mass into (escape frequency, sum of symbol
     // frequencies) under the current exclusion set.
-    effectiveTotals(excluded) {
+    /**
+     * @param {boolean[]} excluded - Symbols ruled out
+     * @param {PpmScratch} out - Receives escape and symbolTotal
+     */
+    effectiveTotals(excluded, out) {
+      /** @type {int32} */
       let escape = 0;
+      /** @type {int32} */
       let sum = 0;
       for (let k = 0; k < this.symbols.length; ++k) {
-        if (excluded[this.symbols[k]]) continue;
+        if (excluded[this.symbols[k]]) {
+          continue;
+        }
         sum += this.counts[k];
         ++escape;
       }
-      return { escape: escape, symbolTotal: sum };
+      out.escape = escape;
+      out.symbolTotal = sum;
     }
 
     // Sums the frequencies of the non-excluded symbols preceding symbol, and
     // reports its own frequency (0 when absent or excluded).
+    /**
+     * @param {int32} symbol - Symbol
+     * @param {boolean[]} excluded - Symbols ruled out
+     * @param {PpmScratch} out - Receives frequency
+     * @returns {int32} Cumulative frequency below the symbol
+     */
     cumulativeBefore(symbol, excluded, out) {
+      /** @type {int32} */
       let cumulative = 0;
       for (let k = 0; k < this.symbols.length; ++k) {
+        /** @type {int32} */
         const s = this.symbols[k];
-        if (excluded[s]) continue;
+        if (excluded[s]) {
+          continue;
+        }
         if (s === symbol) {
           out.frequency = this.counts[k];
           return cumulative;
@@ -150,11 +198,22 @@
 
     // Finds the non-excluded symbol whose frequency range contains target,
     // or -1 when none does.
+    /**
+     * @param {int32} target - Frequency position
+     * @param {boolean[]} excluded - Symbols ruled out
+     * @param {PpmScratch} out - Receives cumulative and frequency
+     * @returns {int32} Symbol or -1
+     */
     symbolAt(target, excluded, out) {
+      /** @type {int32} */
       let running = 0;
       for (let k = 0; k < this.symbols.length; ++k) {
+        /** @type {int32} */
         const s = this.symbols[k];
-        if (excluded[s]) continue;
+        if (excluded[s]) {
+          continue;
+        }
+        /** @type {int32} */
         const count = this.counts[k];
         if (target < running + count) {
           out.cumulative = running;
@@ -170,10 +229,17 @@
 
     // Rules out every symbol this context predicts, because escaping from it
     // proved the symbol is none of them.
+    /**
+     * @param {boolean[]} excluded - Symbols ruled out (extended)
+     * @param {PpmScratch} out - excludedCount is increased
+     */
     exclude(excluded, out) {
       for (let k = 0; k < this.symbols.length; ++k) {
+        /** @type {int32} */
         const s = this.symbols[k];
-        if (excluded[s]) continue;
+        if (excluded[s]) {
+          continue;
+        }
         excluded[s] = true;
         ++out.excludedCount;
       }
@@ -181,9 +247,14 @@
 
     // Increments the count for symbol, appending it when first seen, and halves
     // the table when it would outgrow the coder.
+    /**
+     * @param {int32} symbol - Symbol seen
+     */
     increment(symbol) {
       for (let k = 0; k < this.symbols.length; ++k) {
-        if (this.symbols[k] !== symbol) continue;
+        if (this.symbols[k] !== symbol) {
+          continue;
+        }
         ++this.counts[k];
         ++this.total;
         this._rescaleIfNeeded();
@@ -197,8 +268,11 @@
     }
 
     _rescaleIfNeeded() {
-      if (this.total + this.symbols.length <= MAX_FREQUENCY) return;
+      if (this.total + this.symbols.length <= MAX_FREQUENCY) {
+        return;
+      }
 
+      /** @type {int32} */
       let total = 0;
       for (let k = 0; k < this.counts.length; ++k) {
         // Round up so no symbol is ever forgotten; a count of one stays one.
@@ -209,40 +283,154 @@
     }
   }
 
+  /**
+   * Contexts of one order, keyed by the packed context bytes (an open-
+   * addressing hash table; lookups never depend on insertion order)
+   */
+  class ContextTable {
+    constructor() {
+      /** @type {int32[]} */
+      this.keys = new Int32Array(64);
+      /** @type {Context[]} */
+      this.values = new Array(64);
+      for (let i = 0; i < 64; i++) {
+        this.values[i] = null;
+      }
+      /** @type {int32} */
+      this.mask = 63;
+      /** @type {int32} */
+      this.count = 0;
+    }
+
+    /**
+     * @param {int32} key - Packed context bytes
+     * @returns {int32} Slot holding the key, or the empty slot where it belongs
+     */
+    _slot(key) {
+      /** @type {int32} */
+      let slot = OpCodes.And32(OpCodes.Shr32(OpCodes.Mul32(key, 0x9E3779B1), 7), this.mask);
+      while (this.values[slot] !== null && this.keys[slot] !== key) {
+        slot = OpCodes.And32(slot + 1, this.mask);
+      }
+      return slot;
+    }
+
+    /**
+     * @param {int32} key - Packed context bytes
+     * @returns {Context} Context, or null when never seen
+     */
+    get(key) {
+      return this.values[this._slot(key)];
+    }
+
+    /**
+     * @param {int32} key - Packed context bytes
+     * @param {Context} context - New context for the key
+     */
+    add(key, context) {
+      /** @type {int32} */
+      const slot = this._slot(key);
+      this.keys[slot] = key;
+      this.values[slot] = context;
+      ++this.count;
+      if (this.count * 2 > this.mask) {
+        this._grow();
+      }
+    }
+
+    /** Double the table and re-insert every context */
+    _grow() {
+      /** @type {int32[]} */
+      const oldKeys = this.keys;
+      /** @type {Context[]} */
+      const oldValues = this.values;
+      /** @type {int32} */
+      const size = (this.mask + 1) * 2;
+      this.keys = new Int32Array(size);
+      this.values = new Array(size);
+      for (let i = 0; i < size; i++) {
+        this.values[i] = null;
+      }
+      this.mask = size - 1;
+      for (let i = 0; i < oldValues.length; i++) {
+        if (oldValues[i] !== null) {
+          /** @type {int32} */
+          const slot = this._slot(oldKeys[i]);
+          this.keys[slot] = oldKeys[i];
+          this.values[slot] = oldValues[i];
+        }
+      }
+    }
+  }
+
   // The set of contexts of every order the model keeps, keyed by the packed
   // context bytes.
   class Model {
     constructor() {
+      /** @type {ContextTable[]} */
       this.byOrder = [];
-      for (let order = 0; order <= MAX_ORDER; ++order) this.byOrder.push(new Map());
+      for (let order = 0; order <= MAX_ORDER; ++order) {
+        this.byOrder.push(new ContextTable());
+      }
     }
 
     // Packs the `order` bytes preceding `position` into a context key.
+    /**
+     * @param {int32} order - Context length
+     * @param {uint8[]} history - Bytes so far
+     * @param {int32} position - Current position
+     * @returns {int32} Packed key
+     */
     static keyOf(order, history, position) {
+      /** @type {int32} */
       let key = 0;
-      for (let k = order; k >= 1; --k) key = key * 256 + history[position - k];
+      for (let k = order; k >= 1; --k) {
+        key = key * 256 + history[position - k];
+      }
       return key;
     }
 
     // Returns the context of the given order at the given position, or null
     // when it has never been seen.
+    /**
+     * @param {int32} order - Context length
+     * @param {uint8[]} history - Bytes so far
+     * @param {int32} position - Current position
+     * @returns {Context} Context or null
+     */
     find(order, history, position) {
-      if (order > MAX_ORDER || position < order) return null;
-      const context = this.byOrder[order].get(Model.keyOf(order, history, position));
-      return context === undefined ? null : context;
+      if (order > MAX_ORDER || position < order) {
+        return null;
+      }
+      /** @type {int32} */
+      const key = Model.keyOf(order, history, position);
+      /** @type {ContextTable} */
+      const table = this.byOrder[order];
+      /** @type {Context} */
+      const context = table.get(key);
+      return context;
     }
 
     // Records symbol in every context of order 0..MAX_ORDER that applies at
     // position.
+    /**
+     * @param {uint8[]} history - Bytes so far
+     * @param {int32} position - Current position
+     * @param {int32} symbol - Symbol seen
+     */
     update(history, position, symbol) {
+      /** @type {int32} */
       const highestOrder = Math.min(MAX_ORDER, position);
       for (let order = 0; order <= highestOrder; ++order) {
+        /** @type {ContextTable} */
         const table = this.byOrder[order];
+        /** @type {int32} */
         const key = Model.keyOf(order, history, position);
+        /** @type {Context} */
         let context = table.get(key);
-        if (context === undefined) {
+        if (context === null) {
           context = new Context();
-          table.set(key, context);
+          table.add(key, context);
         }
         context.increment(symbol);
       }
@@ -255,19 +443,36 @@
   // 16-bit interval renormalised a bit at a time, with straddling (underflow)
   // intervals counted rather than emitted until their direction is known.
   class ArithmeticEncoder {
+    /**
+     * @param {uint8[]} header - Bytes the output starts with
+     */
     constructor(header) {
+      /** @type {uint8[]} */
       this.output = [];
-      for (let i = 0; i < header.length; ++i) this.output.push(header[i]);
+      for (let i = 0; i < header.length; ++i) {
+        this.output.push(header[i]);
+      }
+      /** @type {int32} */
       this.low = 0;
+      /** @type {int32} */
       this.high = TOP_VALUE;
+      /** @type {int32} */
       this.pending = 0;
+      /** @type {int32} */
       this.bitBuffer = 0;
+      /** @type {int32} */
       this.bitCount = 0;
     }
 
     // Narrows the interval to the sub-range [cumulativeLow, cumulativeHigh) out
     // of `total`.
+    /**
+     * @param {int32} cumulativeLow - Range start
+     * @param {int32} cumulativeHigh - Range end
+     * @param {int32} total - Frequency total
+     */
     encode(cumulativeLow, cumulativeHigh, total) {
+      /** @type {int32} */
       const range = this.high - this.low + 1;
       this.high = this.low + Math.floor(range * cumulativeHigh / total) - 1;
       this.low = this.low + Math.floor(range * cumulativeLow / total);
@@ -294,15 +499,24 @@
 
     // Disambiguates the final interval, flushes the bit buffer and returns the
     // complete stream.
+    /**
+     * @returns {uint8[]} Complete stream
+     */
     finish() {
       ++this.pending;
       this._emitWithPending(this.low < FIRST_QUARTER ? 0 : 1);
-      while (this.bitCount !== 0) this._putBit(0);
+      while (this.bitCount !== 0) {
+        this._putBit(0);
+      }
       return this.output;
     }
 
+    /**
+     * @param {int32} bit - Bit, followed by the pending opposite bits
+     */
     _emitWithPending(bit) {
       this._putBit(bit);
+      /** @type {int32} */
       const opposite = 1 - bit;
       while (this.pending > 0) {
         this._putBit(opposite);
@@ -310,9 +524,14 @@
       }
     }
 
+    /**
+     * @param {int32} bit - Bit
+     */
     _putBit(bit) {
       this.bitBuffer = this.bitBuffer * 2 + bit;
-      if (++this.bitCount !== 8) return;
+      if (++this.bitCount !== 8) {
+        return;
+      }
       this.output.push(this.bitBuffer);
       this.bitBuffer = 0;
       this.bitCount = 0;
@@ -322,27 +541,53 @@
   // The decoding half of the same coder; bits past the end of the stream read
   // as zero.
   class ArithmeticDecoder {
+    /**
+     * @param {uint8[]} data - Coded bytes
+     * @param {int32} offset - Position of the first coded byte
+     */
     constructor(data, offset) {
+      /** @type {uint8[]} */
       this.data = data;
+      /** @type {int32} */
       this.position = offset;
+      /** @type {uint8} */
       this.bitBuffer = 0;
+      /** @type {int32} */
       this.bitCount = 0;
+      /** @type {int32} */
       this.low = 0;
+      /** @type {int32} */
       this.high = TOP_VALUE;
+      /** @type {int32} */
       this.value = 0;
-      for (let i = 0; i < CODE_BITS; ++i) this.value = this.value * 2 + this._getBit();
+      for (let i = 0; i < CODE_BITS; ++i) {
+        /** @type {uint32} */
+        const bit = this._getBit();
+        this.value = this.value * 2 + bit;
+      }
     }
 
     // Reports which of `total` equal slices of the current interval the encoded
     // value falls in.
+    /**
+     * @param {int32} total - Frequency total
+     * @returns {int32} Frequency position of the coded value
+     */
     target(total) {
+      /** @type {int32} */
       const range = this.high - this.low + 1;
       return Math.floor(((this.value - this.low + 1) * total - 1) / range);
     }
 
     // Narrows the interval exactly as the encoder did, consuming the symbol
     // just identified.
+    /**
+     * @param {int32} cumulativeLow - Range start
+     * @param {int32} cumulativeHigh - Range end
+     * @param {int32} total - Frequency total
+     */
     update(cumulativeLow, cumulativeHigh, total) {
+      /** @type {int32} */
       const range = this.high - this.low + 1;
       this.high = this.low + Math.floor(range * cumulativeHigh / total) - 1;
       this.low = this.low + Math.floor(range * cumulativeLow / total);
@@ -364,10 +609,15 @@
 
         this.low = this.low * 2;
         this.high = this.high * 2 + 1;
-        this.value = this.value * 2 + this._getBit();
+        /** @type {uint32} */
+        const bit = this._getBit();
+        this.value = this.value * 2 + bit;
       }
     }
 
+    /**
+     * @returns {uint32} Next bit, 0 past the end
+     */
     _getBit() {
       if (this.bitCount === 0) {
         this.bitBuffer = this.position < this.data.length ? this.data[this.position++] : 0;
@@ -481,55 +731,112 @@
       this.testVectors = this.tests;
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {PPMInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new PPMInstance(this, isInverse);
     }
   }
 
+  /**
+   * @param {boolean[]} excluded - Exclusion flags, all cleared
+   */
+  function clearExclusions(excluded) {
+    for (let s = 0; s < NUM_SYMBOLS; ++s) {
+      excluded[s] = false;
+    }
+  }
+
   class PPMInstance extends IAlgorithmInstance {
+    /**
+     * @param {PPMAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse; // true = decompress, false = compress
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
-      const result = this.isInverse ?
-        this.decompress(this.inputBuffer) :
-        this.compress(this.inputBuffer);
-
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      let result;
+      if (this.isInverse) {
+        result = this.decompress(this.inputBuffer);
+      } else {
+        result = this.compress(this.inputBuffer);
+      }
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Input bytes (a missing array counts as empty)
+     * @returns {uint8[]} Order byte, size and coded stream
+     */
     compress(data) {
-      data = data || [];
+      /** @type {uint8[]} */
+      let input = data;
+      if (!input) {
+        input = [];
+      }
 
-      const lengthBytes = OpCodes.Unpack32LE(OpCodes.ToUint32(data.length));
+      /** @type {uint8[]} */
+      const lengthBytes = OpCodes.Unpack32LE(OpCodes.ToUint32(input.length));
+      /** @type {uint8[]} */
       const header = [MAX_ORDER, lengthBytes[0], lengthBytes[1], lengthBytes[2], lengthBytes[3]];
-      if (data.length === 0) return header;
+      if (input.length === 0) {
+        return header;
+      }
 
+      /** @type {Model} */
       const model = new Model();
+      /** @type {ArithmeticEncoder} */
       const encoder = new ArithmeticEncoder(header);
-      const excluded = new Array(NUM_SYMBOLS).fill(false);
-      const out = { frequency: 0, cumulative: 0, excludedCount: 0 };
+      /** @type {boolean[]} */
+      const excluded = new Array(NUM_SYMBOLS);
+      clearExclusions(excluded);
+      /** @type {PpmScratch} */
+      const out = new PpmScratch();
 
-      for (let i = 0; i < data.length; ++i) {
-        const symbol = OpCodes.And32(data[i], 0xFF);
-        for (let s = 0; s < NUM_SYMBOLS; ++s) excluded[s] = false;
+      for (let i = 0; i < input.length; ++i) {
+        /** @type {uint32} */
+        const symbol = OpCodes.And32(input[i], 0xFF);
+        clearExclusions(excluded);
         out.excludedCount = 0;
 
+        /** @type {boolean} */
         let coded = false;
+        /** @type {int32} */
         const highestOrder = Math.min(MAX_ORDER, i);
         for (let order = highestOrder; order >= 0; --order) {
-          const context = model.find(order, data, i);
-          if (context === null) continue;
+          /** @type {Context} */
+          const context = model.find(order, input, i);
+          if (context === null) {
+            continue;
+          }
 
-          const totals = context.effectiveTotals(excluded);
-          if (totals.escape === 0) continue;
+          context.effectiveTotals(excluded, out);
+          if (out.escape === 0) {
+            continue;
+          }
+          /** @type {int32} */
+          const symbolTotal = out.symbolTotal;
 
-          const total = totals.symbolTotal + totals.escape;
+          /** @type {int32} */
+          const total = symbolTotal + out.escape;
+          /** @type {int32} */
           const cumulative = context.cumulativeBefore(symbol, excluded, out);
           if (out.frequency > 0) {
             encoder.encode(cumulative, cumulative + out.frequency, total);
@@ -538,82 +845,135 @@
           }
 
           // Escape occupies the top of the range, above every predicted symbol.
-          encoder.encode(totals.symbolTotal, total, total);
+          encoder.encode(symbolTotal, total, total);
           context.exclude(excluded, out);
         }
 
         if (!coded) {
           // Order -1: every byte value the shorter contexts have not ruled out.
+          /** @type {int32} */
           const total = NUM_SYMBOLS - out.excludedCount;
+          /** @type {int32} */
           let cumulative = 0;
-          for (let s = 0; s < symbol; ++s) if (!excluded[s]) ++cumulative;
+          for (let s = 0; s < symbol; ++s) {
+            if (!excluded[s]) {
+              ++cumulative;
+            }
+          }
           encoder.encode(cumulative, cumulative + 1, total);
         }
 
-        model.update(data, i, symbol);
+        model.update(input, i, symbol);
       }
 
-      return encoder.finish();
+      /** @type {uint8[]} */
+      const coded = encoder.finish();
+      return coded;
     }
 
+    /**
+     * @param {uint8[]} data - Order byte, size and coded stream (a missing array counts as empty)
+     * @returns {uint8[]} Decoded bytes
+     */
     decompress(data) {
-      data = data || [];
-      if (data.length === 0) return [];
-      if (data.length < 5) throw new Error('PPM: truncated header');
+      /** @type {uint8[]} */
+      let input = data;
+      if (!input) {
+        input = [];
+      }
+      if (input.length === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
+      if (input.length < 5) {
+        throw new Error('PPM: truncated header');
+      }
 
-      const maxOrder = data[0];
-      if (maxOrder !== MAX_ORDER)
+      /** @type {uint8} */
+      const maxOrder = input[0];
+      if (maxOrder !== MAX_ORDER) {
         throw new Error('PPM: stream declares order ' + maxOrder + ', this model is order ' + MAX_ORDER);
+      }
 
-      const originalSize = OpCodes.Pack32LE(data[1], data[2], data[3], data[4]);
-      if (originalSize === 0) return [];
-
-      const model = new Model();
-      const decoder = new ArithmeticDecoder(data, 5);
-      const excluded = new Array(NUM_SYMBOLS).fill(false);
-      const out = { frequency: 0, cumulative: 0, excludedCount: 0 };
+      /** @type {uint32} */
+      const originalSize = OpCodes.Pack32LE(input[1], input[2], input[3], input[4]);
+      /** @type {uint8[]} */
       const result = new Array(originalSize);
+      if (originalSize === 0) {
+        return result;
+      }
+
+      /** @type {Model} */
+      const model = new Model();
+      /** @type {ArithmeticDecoder} */
+      const decoder = new ArithmeticDecoder(input, 5);
+      /** @type {boolean[]} */
+      const excluded = new Array(NUM_SYMBOLS);
+      clearExclusions(excluded);
+      /** @type {PpmScratch} */
+      const out = new PpmScratch();
 
       for (let i = 0; i < originalSize; ++i) {
-        for (let s = 0; s < NUM_SYMBOLS; ++s) excluded[s] = false;
+        clearExclusions(excluded);
         out.excludedCount = 0;
+        /** @type {int32} */
         let symbol = -1;
 
+        /** @type {int32} */
         const highestOrder = Math.min(MAX_ORDER, i);
         for (let order = highestOrder; order >= 0; --order) {
+          /** @type {Context} */
           const context = model.find(order, result, i);
-          if (context === null) continue;
+          if (context === null) {
+            continue;
+          }
 
-          const totals = context.effectiveTotals(excluded);
-          if (totals.escape === 0) continue;
+          context.effectiveTotals(excluded, out);
+          if (out.escape === 0) {
+            continue;
+          }
+          /** @type {int32} */
+          const symbolTotal = out.symbolTotal;
 
-          const total = totals.symbolTotal + totals.escape;
+          /** @type {int32} */
+          const total = symbolTotal + out.escape;
+          /** @type {int32} */
           const target = decoder.target(total);
-          if (target >= totals.symbolTotal) {
-            decoder.update(totals.symbolTotal, total, total);
+          if (target >= symbolTotal) {
+            decoder.update(symbolTotal, total, total);
             context.exclude(excluded, out);
             continue;
           }
 
           symbol = context.symbolAt(target, excluded, out);
-          if (symbol < 0) throw new Error('PPM: corrupt arithmetic-coded stream');
+          if (symbol < 0) {
+            throw new Error('PPM: corrupt arithmetic-coded stream');
+          }
           decoder.update(out.cumulative, out.cumulative + out.frequency, total);
           break;
         }
 
         if (symbol < 0) {
+          /** @type {int32} */
           const total = NUM_SYMBOLS - out.excludedCount;
+          /** @type {int32} */
           const target = decoder.target(total);
+          /** @type {int32} */
           let cumulative = 0;
           for (let s = 0; s < NUM_SYMBOLS; ++s) {
-            if (excluded[s]) continue;
+            if (excluded[s]) {
+              continue;
+            }
             if (cumulative === target) {
               symbol = s;
               break;
             }
             ++cumulative;
           }
-          if (symbol < 0) throw new Error('PPM: corrupt arithmetic-coded stream');
+          if (symbol < 0) {
+            throw new Error('PPM: corrupt arithmetic-coded stream');
+          }
           decoder.update(cumulative, cumulative + 1, total);
         }
 
@@ -624,6 +984,7 @@
       return result;
     }
   }
+
 
   // ===== REGISTRATION =====
 

@@ -61,7 +61,9 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /** @type {int32} */
   const CODE_BITS = 12; // fixed codeword width -> up to 4096 dictionary entries
+  /** @type {int32} */
   const MAX_ENTRIES = OpCodes.Shl32(1, CODE_BITS);
 
   /**
@@ -131,22 +133,130 @@
         ];
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {TunstallInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new TunstallInstance(this, isInverse);
       }
     }
 
+    /**
+     * One dictionary phrase and its probability
+     */
+    class TunstallEntry {
+      /**
+       * @param {uint8[]} phrase - Input bytes the codeword stands for
+       * @param {float64} prob - Probability of the phrase
+       */
+      constructor(phrase, prob) {
+        /** @type {uint8[]} */
+        this.phrase = phrase;
+        /** @type {float64} */
+        this.prob = prob;
+      }
+    }
+
+    /**
+     * Phrase order: shorter first, equal lengths lexicographically by content
+     * @param {uint8[]} a - First phrase
+     * @param {uint8[]} b - Second phrase
+     * @returns {int32} Negative, zero or positive as a sorts before, with or after b
+     */
+    function comparePhrases(a, b) {
+      /** @type {int32} */
+      const lenCmp = a.length - b.length;
+      if (lenCmp !== 0) {
+        return lenCmp;
+      }
+      for (let i = 0; i < a.length; i++) {
+        /** @type {int32} */
+        const cmp = a[i] - b[i];
+        if (cmp !== 0) {
+          return cmp;
+        }
+      }
+      return 0;
+    }
+
+    /**
+     * Sort entries by phrase (stable merge sort). The phrases are distinct and
+     * the order is total, so the result is the one any correct sort yields.
+     * @param {TunstallEntry[]} entries - Entries, sorted in place
+     */
+    function sortEntriesByPhrase(entries) {
+      /** @type {int32} */
+      const n = entries.length;
+      /** @type {TunstallEntry[]} */
+      let src = entries.slice();
+      /** @type {TunstallEntry[]} */
+      let dst = new Array(n);
+      for (let width = 1; width < n; width *= 2) {
+        for (let lo = 0; lo < n; lo += 2 * width) {
+          /** @type {int32} */
+          const mid = Math.min(lo + width, n);
+          /** @type {int32} */
+          const hi = Math.min(lo + 2 * width, n);
+          /** @type {int32} */
+          let i = lo;
+          /** @type {int32} */
+          let j = mid;
+          /** @type {int32} */
+          let k = lo;
+          while (i < mid && j < hi) {
+            if (comparePhrases(src[j].phrase, src[i].phrase) < 0) {
+              dst[k++] = src[j++];
+            } else {
+              dst[k++] = src[i++];
+            }
+          }
+          while (i < mid) {
+            dst[k++] = src[i++];
+          }
+          while (j < hi) {
+            dst[k++] = src[j++];
+          }
+        }
+        /** @type {TunstallEntry[]} */
+        const swap = src;
+        src = dst;
+        dst = swap;
+      }
+      for (let i = 0; i < n; i++) {
+        entries[i] = src[i];
+      }
+    }
+
     class TunstallInstance extends IAlgorithmInstance {
+      /**
+       * @param {TunstallCompression} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
-        const result = this.isInverse ? this._decompress(this.inputBuffer) : this._compress(this.inputBuffer);
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        let result;
+        if (this.isInverse) {
+          result = this._decompress(this.inputBuffer);
+        } else {
+          result = this._compress(this.inputBuffer);
+        }
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return result;
       }
 
@@ -161,82 +271,149 @@
 
       // ----- Shared: build a byte-alphabet Tunstall dictionary -----
 
+      /**
+       * @param {float64[]} prob - Probability of every byte value
+       * @returns {uint8[][]} Phrases, indexed by codeword
+       */
       _buildDictionary(prob) {
         // Start with 256 single-byte phrases (one per symbol).
-        let entries = [];
-        for (let i = 0; i < 256; i++) entries.push({ phrase: [i], prob: prob[i] });
+        /** @type {TunstallEntry[]} */
+        const entries = [];
+        for (let i = 0; i < 256; i++) {
+          /** @type {uint8[]} */
+          const single = [];
+          single.push(i);
+          entries.push(new TunstallEntry(single, prob[i]));
+        }
 
         // Extend the highest-probability leaf until we reach MAX_ENTRIES.
         while (entries.length + 255 <= MAX_ENTRIES) {
+          /** @type {int32} */
           let bestIdx = 0;
+          /** @type {float64} */
           let bestProb = entries[0].prob;
           for (let i = 1; i < entries.length; i++) {
-            if (entries[i].prob > bestProb) { bestProb = entries[i].prob; bestIdx = i; }
+            if (entries[i].prob > bestProb) {
+              bestProb = entries[i].prob;
+              bestIdx = i;
+            }
           }
 
-          if (bestProb <= 0) break;
+          if (bestProb <= 0) {
+            break;
+          }
 
           // Replace the leaf with 256 children (leaf + each possible next byte).
+          /** @type {TunstallEntry} */
           const parent = entries[bestIdx];
           entries.splice(bestIdx, 1);
 
-          for (let c = 0; c < 256; c++)
-            entries.push({ phrase: parent.phrase.concat([c]), prob: parent.prob * prob[c] });
+          for (let c = 0; c < 256; c++) {
+            /** @type {uint8[]} */
+            const extended = parent.phrase.slice();
+            extended.push(c);
+            entries.push(new TunstallEntry(extended, parent.prob * prob[c]));
+          }
         }
 
         // Ensure all 256 single-byte entries exist (splitting may have removed some).
-        const hasSingleByte = new Array(256).fill(false);
-        for (const e of entries) if (e.phrase.length === 1) hasSingleByte[e.phrase[0]] = true;
-        for (let i = 0; i < 256; i++)
-          if (!hasSingleByte[i]) entries.push({ phrase: [i], prob: prob[i] });
+        /** @type {boolean[]} */
+        const hasSingleByte = new Array(256);
+        for (let i = 0; i < 256; i++) {
+          hasSingleByte[i] = false;
+        }
+        for (let k = 0; k < entries.length; k++) {
+          if (entries[k].phrase.length === 1) {
+            hasSingleByte[entries[k].phrase[0]] = true;
+          }
+        }
+        for (let i = 0; i < 256; i++) {
+          if (!hasSingleByte[i]) {
+            /** @type {uint8[]} */
+            const single = [];
+            single.push(i);
+            entries.push(new TunstallEntry(single, prob[i]));
+          }
+        }
 
         // Sort by phrase for deterministic ordering: lexicographic on (length, content).
-        entries.sort((a, b) => {
-          const lenCmp = a.phrase.length - b.phrase.length;
-          if (lenCmp !== 0) return lenCmp;
-          for (let i = 0; i < a.phrase.length; i++) {
-            const cmp = a.phrase[i] - b.phrase[i];
-            if (cmp !== 0) return cmp;
-          }
-          return 0;
-        });
+        sortEntriesByPhrase(entries);
 
-        return entries.map(e => e.phrase);
+        /** @type {uint8[][]} */
+        const phrases = [];
+        for (let k = 0; k < entries.length; k++) {
+          phrases.push(entries[k].phrase);
+        }
+        return phrases;
       }
 
       // ----- Compression -----
 
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @returns {uint8[]} Length, frequency table and codewords
+       */
       _compress(data) {
         const bitStream = OpCodes.CreateBitStream();
         bitStream.writeUint32LE(data.length);
 
-        if (data.length === 0) return bitStream.toArray();
+        if (data.length === 0) {
+          /** @type {uint8[]} */
+          const headerOnly = bitStream.toArray();
+          return headerOnly;
+        }
 
-        const freq = new Array(256).fill(0);
-        for (const b of data) freq[b]++;
+        /** @type {int32[]} */
+        const freq = new Array(256);
+        for (let i = 0; i < 256; i++) {
+          freq[i] = 0;
+        }
+        for (let k = 0; k < data.length; k++) {
+          freq[data[k]]++;
+        }
 
+        /** @type {float64[]} */
         const prob = new Array(256);
-        for (let i = 0; i < 256; i++) prob[i] = freq[i] / data.length;
+        for (let i = 0; i < 256; i++) {
+          prob[i] = freq[i] / data.length;
+        }
 
-        for (let i = 0; i < 256; i++) bitStream.writeUint32LE(freq[i]);
+        for (let i = 0; i < 256; i++) {
+          bitStream.writeUint32LE(freq[i]);
+        }
 
+        /** @type {uint8[][]} */
         const dictionary = this._buildDictionary(prob);
 
         // Encode: greedily match the longest dictionary phrase at each position.
+        /** @type {int32} */
         let pos = 0;
         while (pos < data.length) {
-          let bestCode = -1, bestLen = 0;
+          /** @type {int32} */
+          let bestCode = -1;
+          /** @type {int32} */
+          let bestLen = 0;
 
           for (let d = 0; d < dictionary.length; d++) {
+            /** @type {uint8[]} */
             const phrase = dictionary[d];
-            if (phrase.length <= bestLen || pos + phrase.length > data.length) continue;
-
-            let match = true;
-            for (let j = 0; j < phrase.length; j++) {
-              if (data[pos + j] !== phrase[j]) { match = false; break; }
+            if (phrase.length <= bestLen || pos + phrase.length > data.length) {
+              continue;
             }
 
-            if (match) { bestCode = d; bestLen = phrase.length; }
+            /** @type {boolean} */
+            let match = true;
+            for (let j = 0; j < phrase.length; j++) {
+              if (data[pos + j] !== phrase[j]) {
+                match = false;
+                break;
+              }
+            }
+
+            if (match) {
+              bestCode = d;
+              bestLen = phrase.length;
+            }
           }
 
           if (bestCode < 0) {
@@ -249,41 +426,88 @@
           pos += bestLen;
         }
 
-        return bitStream.toArray();
+        /** @type {uint8[]} */
+        const packed = bitStream.toArray();
+        return packed;
       }
 
       // ----- Decompression -----
 
+      /**
+       * @param {uint8[]} data - Length, frequency table and codewords
+       * @returns {uint8[]} Decoded bytes
+       */
       _decompress(data) {
-        if (data.length < 4) return [];
+        /** @type {uint8[]} */
+        const result = [];
+        if (data.length < 4) {
+          return result;
+        }
 
         const bitStream = OpCodes.CreateBitStream(data);
-        const originalSize = OpCodes.Pack32LE(bitStream.readByte(), bitStream.readByte(), bitStream.readByte(), bitStream.readByte());
-        if (originalSize === 0) return [];
+        /** @type {uint32} */
+        const originalSize = this._readUint32LE(bitStream);
+        if (originalSize === 0) {
+          return result;
+        }
 
+        /** @type {float64[]} */
         const freq = new Array(256);
-        for (let i = 0; i < 256; i++)
-          freq[i] = OpCodes.Pack32LE(bitStream.readByte(), bitStream.readByte(), bitStream.readByte(), bitStream.readByte());
+        for (let i = 0; i < 256; i++) {
+          freq[i] = this._readUint32LE(bitStream);
+        }
 
+        /** @type {float64} */
         let total = 0;
-        for (let i = 0; i < 256; i++) total += freq[i];
+        for (let i = 0; i < 256; i++) {
+          total += freq[i];
+        }
 
-        const prob = new Array(256).fill(0);
-        if (total > 0) for (let i = 0; i < 256; i++) prob[i] = freq[i] / total;
+        /** @type {float64[]} */
+        const prob = new Array(256);
+        for (let i = 0; i < 256; i++) {
+          prob[i] = 0;
+        }
+        if (total > 0) {
+          for (let i = 0; i < 256; i++) {
+            prob[i] = freq[i] / total;
+          }
+        }
 
+        /** @type {uint8[][]} */
         const dictionary = this._buildDictionary(prob);
 
-        const result = [];
         while (result.length < originalSize) {
+          /** @type {uint32} */
           const code = bitStream.readBits(CODE_BITS);
-          if (code >= dictionary.length)
-            throw new Error(`Tunstall codeword ${code} exceeds dictionary size ${dictionary.length}.`);
+          if (code >= dictionary.length) {
+            throw new Error("Tunstall codeword " + code + " exceeds dictionary size " + dictionary.length + ".");
+          }
 
+          /** @type {uint8[]} */
           const phrase = dictionary[code];
-          for (let j = 0; j < phrase.length && result.length < originalSize; j++) result.push(phrase[j]);
+          for (let j = 0; j < phrase.length && result.length < originalSize; j++) {
+            result.push(phrase[j]);
+          }
         }
 
         return result;
+      }
+
+      /**
+       * @param {_BitStream} bitStream - Input bits
+       * @returns {uint32} Next four bytes as a little-endian value
+       */
+      _readUint32LE(bitStream) {
+        /** @type {uint8} */
+        const c0 = bitStream.readByte();
+        /** @type {uint8} */
+        const c1 = bitStream.readByte();
+        /** @type {uint8} */
+        const c2 = bitStream.readByte();
+        /** @type {uint8} */
+        const c3 = bitStream.readByte();
+        return OpCodes.Pack32LE(c0, c1, c2, c3);
       }
     }
 
