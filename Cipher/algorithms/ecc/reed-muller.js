@@ -109,7 +109,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ReedMullerInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -126,13 +126,15 @@
   class ReedMullerInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ReedMullerAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
       this._m = 3; // Default RM(1,3) - [8,4,4] code
     }
@@ -179,13 +181,17 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       const m = this._m;
       const n = OpCodes.Shl32(1, m); // 2^m
       const k = 1 + m; // First-order RM has k = 1 + m data bits
 
       if (data.length !== k) {
-        throw new Error(`Reed-Muller encode: Input must be exactly ${k} bits for RM(1,${m})`);
+        throw new Error("Reed-Muller encode: Input must be exactly " + k + " bits for RM(1," + m + ")");
       }
 
       // RM(1,m) generator matrix construction
@@ -197,7 +203,7 @@
       // Constant term (data[0])
       if (data[0] === 1) {
         for (let i = 0; i < n; ++i) {
-          codeword[i] = OpCodes.XorN(codeword[i], 1);
+          codeword[i] = OpCodes.Xor32(codeword[i], 1);
         }
       }
 
@@ -206,8 +212,8 @@
         if (data[1 + var_idx] === 1) {
           // For variable var_idx, set bits where that variable is 1
           for (let i = 0; i < n; ++i) {
-            if (OpCodes.AndN(OpCodes.Shr32(i, m - 1 - var_idx), 1)) {
-              codeword[i] = OpCodes.XorN(codeword[i], 1);
+            if (OpCodes.And32(OpCodes.Shr32(i, m - 1 - var_idx), 1)) {
+              codeword[i] = OpCodes.Xor32(codeword[i], 1);
             }
           }
         }
@@ -216,13 +222,17 @@
       return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       const m = this._m;
       const n = OpCodes.Shl32(1, m);
       const k = 1 + m;
 
       if (data.length !== n) {
-        throw new Error(`Reed-Muller decode: Input must be exactly ${n} bits for RM(1,${m})`);
+        throw new Error("Reed-Muller decode: Input must be exactly " + n + " bits for RM(1," + m + ")");
       }
 
       const decoded = new Array(k).fill(0);
@@ -272,12 +282,16 @@
       // The mask bits are the linear coefficients, in the same bit order the
       // encoder used when it built the indicator rows
       for (let var_idx = 0; var_idx < m; ++var_idx) {
-        decoded[1 + var_idx] = OpCodes.AndN(OpCodes.Shr32(bestIndex, m - 1 - var_idx), 1);
+        decoded[1 + var_idx] = OpCodes.And32(OpCodes.Shr32(bestIndex, m - 1 - var_idx), 1);
       }
 
       return decoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       const n = OpCodes.Shl32(1, this._m);
       if (data.length !== n) return true;

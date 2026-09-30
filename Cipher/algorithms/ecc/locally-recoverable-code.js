@@ -122,7 +122,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LocallyRecoverableCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -139,13 +139,15 @@
   class LocallyRecoverableCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LocallyRecoverableCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // [6,3,3] LRC with locality r=2
@@ -206,6 +208,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Encode k=3 information bits to n=6 codeword
       if (data.length !== 3) {
@@ -216,6 +222,7 @@
       const codeword = new Array(6).fill(0);
 
       for (let i = 0; i < 6; ++i) {
+        /** @type {uint32} */
         let sum = 0;
         for (let j = 0; j < 3; ++j) {
           sum = OpCodes.Xor32(sum, (data[j]&this.generator[j][i]));
@@ -226,6 +233,10 @@
       return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       if (data.length !== 6) {
         throw new Error('LRC decode: Input must be exactly 6 bits');
@@ -282,6 +293,10 @@
       return syndromes;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (data.length !== 6) return true;
 

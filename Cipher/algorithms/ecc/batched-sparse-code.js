@@ -159,7 +159,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BATSCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -176,12 +176,13 @@
   class BATSCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BATSCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
 
       // Input/Output
@@ -246,6 +247,10 @@
       return this._encode();
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       try {
         this.Feed(data);
@@ -421,7 +426,7 @@
 
     _gfAdd(a, b) {
       // GF(256) addition is XOR
-      return OpCodes.ToByte(OpCodes.XorN(a, b));
+      return OpCodes.ToByte(OpCodes.Xor32(a, b));
     }
 
     _gfMultiply(a, b) {
@@ -435,22 +440,25 @@
     _gfMultiply256(a, b) {
       // GF(256) multiplication using lookup table approach (simplified)
       // For production: use precomputed log/exp tables
-      if (a === 0 || b === 0) return 0;
+      if (a === 0 || b === 0) {
+        return 0;
+      }
 
       // Simplified polynomial multiplication in GF(256)
-      // Using irreducible polynomial: OpCodes.XorN(x, 8) + OpCodes.XorN(x, 4) + OpCodes.XorN(x, 3) + OpCodes.XorN(x, 2) + 1
+      // Using irreducible polynomial: OpCodes.Xor32(x, 8) + OpCodes.Xor32(x, 4) + OpCodes.Xor32(x, 3) + OpCodes.Xor32(x, 2) + 1
+      /** @type {uint32} */
       let result = 0;
       let bb = b;
 
       while (a !== 0) {
-        if ((OpCodes.AndN(a, 1)) !== 0) {
-          result = OpCodes.XorN(result, bb);
+        if ((OpCodes.And32(a, 1)) !== 0) {
+          result = OpCodes.Xor32(result, bb);
         }
         a = OpCodes.Shr32(a, 1);
         const msb = OpCodes.GetBit(bb, 7);
         bb = OpCodes.Shl32(bb, 1);
         if (msb) {
-          bb = OpCodes.XorN(bb, 0x1B); // Irreducible polynomial
+          bb = OpCodes.Xor32(bb, 0x1B); // Irreducible polynomial
         }
       }
 
@@ -570,7 +578,7 @@
       }
 
       // For GF(256): use extended Euclidean algorithm
-      // Simplified: OpCodes.XorN(a, 254) = a^-1 in GF(256)
+      // Simplified: OpCodes.Xor32(a, 254) = a^-1 in GF(256)
       if (this.fieldSize === 256) {
         return this._gfPower(a, 254);
       }
@@ -583,7 +591,7 @@
       base = OpCodes.ToByte(base);
 
       while (exp > 0) {
-        if ((OpCodes.AndN(exp, 1)) !== 0) {
+        if ((OpCodes.And32(exp, 1)) !== 0) {
           result = this._gfMultiply(result, base);
         }
         base = this._gfMultiply(base, base);
@@ -617,7 +625,7 @@
           batchIndex: i,
           sourceSymbols: this.batches[i].length,
           encodedSymbols: this.encodedBatches[i] ? this.encodedBatches[i].length : 0,
-          matrixDimension: this.generationMatrices[i] ? `${this.generationMatrices[i].length}x${this.generationMatrices[i][0]?.length}` : 'N/A'
+          matrixDimension: this.generationMatrices[i] ? "" + (this.generationMatrices[i].length) + "x" + (this.generationMatrices[i][0]?.length) : 'N/A'
         });
       }
 

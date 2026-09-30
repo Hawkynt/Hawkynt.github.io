@@ -119,7 +119,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CSSQuantumCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -136,13 +136,15 @@
   class CSSQuantumCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CSSQuantumCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Steane [[7,1,3]] code parameters
@@ -223,7 +225,7 @@
      */
     encode(logicalQubit) {
       if (logicalQubit.length !== this.k) {
-        throw new Error(`CSS encode: Input must be exactly ${this.k} logical qubit (as classical bit)`);
+        throw new Error("CSS encode: Input must be exactly " + this.k + " logical qubit (as classical bit)");
       }
 
       const logical = logicalQubit[0];
@@ -244,7 +246,7 @@
      */
     decode(physicalQubits) {
       if (physicalQubits.length !== this.n) {
-        throw new Error(`CSS decode: Input must be exactly ${this.n} physical qubits (as classical bits)`);
+        throw new Error("CSS decode: Input must be exactly " + this.n + " physical qubits (as classical bits)");
       }
 
       // Copy to avoid modifying input
@@ -258,7 +260,7 @@
 
       // Correct the error if detected
       if (errorPosition !== -1) {
-        received[errorPosition] = OpCodes.XorN(received[errorPosition], 1); // Flip the erroneous bit
+        received[errorPosition] = OpCodes.Xor32(received[errorPosition], 1); // Flip the erroneous bit
       }
 
       // Extract logical qubit (majority vote for classical simulation)
@@ -276,10 +278,11 @@
       const syndrome = new Array(3).fill(0);
 
       for (let i = 0; i < 3; ++i) {
+        /** @type {uint32} */
         let parity = 0;
         for (let j = 0; j < this.n; ++j) {
           if (this.H[i][j] === 1) {
-            parity = OpCodes.XorN(parity, qubits[j]);
+            parity = OpCodes.Xor32(parity, qubits[j]);
           }
         }
         syndrome[i] = parity;
@@ -294,7 +297,7 @@
      * helper is used rather than the BigInt one.
      */
     syndromeValue(syndrome) {
-      return OpCodes.OrN(OpCodes.OrN(syndrome[2], OpCodes.Shl32(syndrome[1], 1)), OpCodes.Shl32(syndrome[0], 2));
+      return OpCodes.Or32(OpCodes.Or32(syndrome[2], OpCodes.Shl32(syndrome[1], 1)), OpCodes.Shl32(syndrome[0], 2));
     }
 
     /**
@@ -335,6 +338,8 @@
 
     /**
      * Detect if error is present (public API for testing)
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
      */
     DetectError(data) {
       if (data.length !== this.n) {
@@ -353,7 +358,7 @@
      */
     IntroduceError(qubits, errorType, position) {
       if (position < 0 || position >= this.n) {
-        throw new Error(`Error position must be between 0 and ${this.n - 1}`);
+        throw new Error("Error position must be between 0 and " + (this.n - 1));
       }
 
       const result = [...qubits];
@@ -361,7 +366,7 @@
       switch (errorType) {
         case 'bit-flip':
           // X gate: bit-flip (swaps qubit states 0 and 1)
-          result[position] = OpCodes.XorN(result[position], 1);
+          result[position] = OpCodes.Xor32(result[position], 1);
           break;
 
         case 'phase-flip':
@@ -372,11 +377,11 @@
 
         case 'both':
           // Y gate: both bit-flip and phase-flip
-          result[position] = OpCodes.XorN(result[position], 1);
+          result[position] = OpCodes.Xor32(result[position], 1);
           break;
 
         default:
-          throw new Error(`Unknown error type: ${errorType}`);
+          throw new Error("Unknown error type: " + errorType);
       }
 
       return result;

@@ -123,7 +123,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LexicographicCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -140,13 +140,15 @@
   class LexicographicCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LexicographicCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
       this._n = 7; // Default: length 7
       this._d = 3; // Default: minimum distance 3
@@ -167,7 +169,7 @@
 
     set d(value) {
       if (value < 1 || value > this._n) {
-        throw new Error(`LexicographicCodeInstance.d: Must be between 1 and ${this._n}`);
+        throw new Error("LexicographicCodeInstance.d: Must be between 1 and " + this._n);
       }
       this._d = value;
       this.codebook = null; // Invalidate codebook
@@ -227,7 +229,7 @@
         // Convert candidate to bit array
         const codeword = [];
         for (let i = n - 1; i >= 0; --i) {
-          codeword.push(OpCodes.AndN(OpCodes.Shr32(candidate, i), 1));
+          codeword.push(OpCodes.And32(OpCodes.Shr32(candidate, i), 1));
         }
 
         // Check if this codeword has minimum distance d from all existing codewords
@@ -256,6 +258,10 @@
       return distance;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       if (!this.codebook) {
         this.codebook = this.generateCodebook();
@@ -265,29 +271,34 @@
       const k = Math.floor(Math.log2(this.codebook.length));
 
       if (data.length !== k) {
-        throw new Error(`Lexicographic encode: Input must be exactly ${k} bits for (${this._n}, ${this._d}) code`);
+        throw new Error("Lexicographic encode: Input must be exactly " + k + " bits for (" + this._n + ", " + this._d + ") code");
       }
 
       // Convert data to index
+      /** @type {uint32} */
       let index = 0;
       for (let i = 0; i < k; ++i) {
-        index = OpCodes.OrN(OpCodes.Shl32(index, 1), data[i]);
+        index = OpCodes.Or32(OpCodes.Shl32(index, 1), data[i]);
       }
 
       if (index >= this.codebook.length) {
-        throw new Error(`Lexicographic encode: Index ${index} out of range (codebook size: ${this.codebook.length})`);
+        throw new Error("Lexicographic encode: Index " + index + " out of range (codebook size: " + this.codebook.length + ")");
       }
 
       return [...this.codebook[index]];
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       if (!this.codebook) {
         this.codebook = this.generateCodebook();
       }
 
       if (data.length !== this._n) {
-        throw new Error(`Lexicographic decode: Input must be exactly ${this._n} bits`);
+        throw new Error("Lexicographic decode: Input must be exactly " + this._n + " bits");
       }
 
       // Minimum distance decoding
@@ -306,12 +317,16 @@
       const k = Math.floor(Math.log2(this.codebook.length));
       const decoded = [];
       for (let i = k - 1; i >= 0; --i) {
-        decoded.push(OpCodes.AndN(OpCodes.Shr32(bestIndex, i), 1));
+        decoded.push(OpCodes.And32(OpCodes.Shr32(bestIndex, i), 1));
       }
 
       return decoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!this.codebook) {
         this.codebook = this.generateCodebook();

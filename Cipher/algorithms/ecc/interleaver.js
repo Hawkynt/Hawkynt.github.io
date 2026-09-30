@@ -114,7 +114,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {InterleaverInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -131,13 +131,17 @@
   class InterleaverInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {InterleaverAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
       this._rows = 4; // Default 4x4 interleaving
       this._cols = 4;
@@ -207,7 +211,7 @@
       const blockSize = this._rows * this._cols;
 
       if (data.length % blockSize !== 0) {
-        throw new Error(`Interleaver: Input length must be multiple of ${blockSize} (rows=${this._rows} × cols=${this._cols})`);
+        throw new Error("Interleaver: Input length must be multiple of " + blockSize + " (rows=" + this._rows + " × cols=" + this._cols + ")");
       }
 
       const result = new Array(data.length);
@@ -234,7 +238,7 @@
       const blockSize = this._rows * this._cols;
 
       if (data.length % blockSize !== 0) {
-        throw new Error(`Deinterleaver: Input length must be multiple of ${blockSize} (rows=${this._rows} × cols=${this._cols})`);
+        throw new Error("Deinterleaver: Input length must be multiple of " + blockSize + " (rows=" + this._rows + " × cols=" + this._cols + ")");
       }
 
       const result = new Array(data.length);

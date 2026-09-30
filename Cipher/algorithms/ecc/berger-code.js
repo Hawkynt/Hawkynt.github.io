@@ -141,7 +141,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BergerCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -158,13 +158,15 @@
   class BergerCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BergerCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
       this._dataLength = 8; // Default k=8 data bits
       this._checkLength = 4; // Default r=4 check bits (for k=8)
@@ -229,18 +231,18 @@
     /**
      * Encode data by appending Berger check bits
      * Uses B0 scheme: binary representation of zero count
-     * @param {Array} data - Binary data bits (length k)
-     * @returns {Array} Encoded codeword with check bits (length k+r)
+     * @param {uint8[]} data - Binary data bits (length k)
+     * @returns {uint8[]} Encoded codeword with check bits (length k+r)
      */
     encode(data) {
       if (data.length !== this._dataLength) {
-        throw new Error(`BergerCodeInstance.encode: Expected ${this._dataLength} data bits, got ${data.length}`);
+        throw new Error("BergerCodeInstance.encode: Expected " + this._dataLength + " data bits, got " + data.length);
       }
 
       // Validate binary input
       for (let i = 0; i < data.length; ++i) {
         if (data[i] !== 0 && data[i] !== 1) {
-          throw new Error(`BergerCodeInstance.encode: Non-binary value at position ${i}: ${data[i]}`);
+          throw new Error("BergerCodeInstance.encode: Non-binary value at position " + i + ": " + data[i]);
         }
       }
 
@@ -267,13 +269,13 @@
     decode(codeword) {
       const expectedLength = this._dataLength + this._checkLength;
       if (codeword.length !== expectedLength) {
-        throw new Error(`BergerCodeInstance.decode: Expected ${expectedLength} bits, got ${codeword.length}`);
+        throw new Error("BergerCodeInstance.decode: Expected " + expectedLength + " bits, got " + codeword.length);
       }
 
       // Validate binary input
       for (let i = 0; i < codeword.length; ++i) {
         if (codeword[i] !== 0 && codeword[i] !== 1) {
-          throw new Error(`BergerCodeInstance.decode: Non-binary value at position ${i}: ${codeword[i]}`);
+          throw new Error("BergerCodeInstance.decode: Non-binary value at position " + i + ": " + codeword[i]);
         }
       }
 
@@ -325,7 +327,7 @@
     intToBinary(value, length) {
       const bits = [];
       for (let i = length - 1; i >= 0; --i) {
-        bits.push(OpCodes.AndN(OpCodes.Shr32(value, i), 1));
+        bits.push(OpCodes.And32(OpCodes.Shr32(value, i), 1));
       }
       return bits;
     }
@@ -336,9 +338,10 @@
      * @returns {number} Integer value
      */
     binaryToInt(bits) {
+      /** @type {uint32} */
       let value = 0;
       for (let i = 0; i < bits.length; ++i) {
-        value = OpCodes.OrN(OpCodes.Shl32(value, 1), bits[i]);
+        value = OpCodes.Or32(OpCodes.Shl32(value, 1), bits[i]);
       }
       return value;
     }

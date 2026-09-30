@@ -105,7 +105,7 @@
           "Reference implementation test vector"
         ),
         new TestCase(
-          Array.from({length: 64}, (_, i) => OpCodes.AndN(i, 0xFF)), // Sequential bytes
+          Array.from({length: 64}, (_, i) => OpCodes.And32(i, 0xFF)), // Sequential bytes
           [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F, 0x33, 0x3E, 0x1E, 0x19, 0x1E, 0x11, 0x07, 0x01], // With repair symbols
           "Raptor encoding test with 64 source symbols",
           "Reference implementation test vector"
@@ -127,7 +127,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {RaptorCodesInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -144,12 +144,13 @@
   class RaptorCodesInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {RaptorCodesAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
 
       // Input/Output
@@ -213,6 +214,10 @@
       return this._encode();
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       try {
         this.Feed(data);
@@ -350,22 +355,24 @@
 
       // Calculate parity symbols using LDPC matrix
       for (let parityIdx = this.k; parityIdx < n; parityIdx++) {
+        /** @type {uint32} */
         let paritySymbol = 0;
 
         // For each row in the pre-code matrix that affects this parity symbol
         for (let row = 0; row < this.preCodeMatrix.rows; row++) {
           if (this.preCodeMatrix.get(row, parityIdx) === 1) {
             // Calculate this parity check equation
+            /** @type {uint32} */
             let checkValue = 0;
             const rowNonZeros = this.preCodeMatrix.getRowNonZeros(row);
 
             for (const col of rowNonZeros) {
               if (col < parityIdx) { // Only include already calculated symbols
-                checkValue = OpCodes.XorN(checkValue, intermediate[col]);
+                checkValue = OpCodes.Xor32(checkValue, intermediate[col]);
               }
             }
 
-            paritySymbol = OpCodes.XorN(paritySymbol, checkValue);
+            paritySymbol = OpCodes.Xor32(paritySymbol, checkValue);
           }
         }
 
@@ -381,11 +388,12 @@
 
       for (let ltIdx = this.intermediateSymbolsCount; ltIdx < this.ltGraph.rightNodes; ltIdx++) {
         const neighbors = this.ltGraph.getNeighbors(ltIdx);
+        /** @type {uint32} */
         let ltSymbol = 0;
 
         // XOR all connected intermediate symbols
         for (const intIdx of neighbors) {
-          ltSymbol = OpCodes.XorN(ltSymbol, this.intermediateSymbols[intIdx]);
+          ltSymbol = OpCodes.Xor32(ltSymbol, this.intermediateSymbols[intIdx]);
         }
 
         ltSymbols.push(ltSymbol);
@@ -447,7 +455,7 @@
 
     // Belief propagation decoder for non-systematic reception
     _beliefPropagationDecode(receivedSymbols) {
-      const maxIterations = this.algorithm.maxDecodingIterations || 100;
+      const maxIterations = (this.algorithm.maxDecodingIterations ? this.algorithm.maxDecodingIterations : 100);
       let iteration = 0;
       let converged = false;
 

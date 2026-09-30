@@ -164,7 +164,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TopologicalSurfaceCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -181,13 +181,17 @@
   class TopologicalSurfaceCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TopologicalSurfaceCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Default configuration: Distance-3 planar surface code [[17,1,3]]
@@ -370,6 +374,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Encode logical qubit(s) into surface code
       const numPhysicalQubits = this._numQubits;
@@ -408,14 +416,18 @@
       }
 
       // If data doesn't match expected size, throw error
-      throw new Error(`encode: Invalid input size ${data.length}, expected 1 or ${numPhysicalQubits} (currently ${numPhysicalQubits})`);
+      throw new Error("encode: Invalid input size " + data.length + ", expected 1 or " + numPhysicalQubits + " (currently " + numPhysicalQubits + ")");
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       const numPhysicalQubits = this._numQubits;
 
       if (data.length !== numPhysicalQubits) {
-        throw new Error(`decode: Input must be ${numPhysicalQubits} bits for distance-${this._distance} code`);
+        throw new Error("decode: Input must be " + numPhysicalQubits + " bits for distance-" + this._distance + " code");
       }
 
       // Create working copy
@@ -435,7 +447,7 @@
       // Apply corrections for all detected errors
       for (const errorLocation of errorLocations) {
         if (errorLocation >= 0 && errorLocation < state.length) {
-          state[errorLocation] = OpCodes.XorN(state[errorLocation], 1); // Flip bit
+          state[errorLocation] = OpCodes.Xor32(state[errorLocation], 1); // Flip bit
         }
       }
 
@@ -449,10 +461,11 @@
 
       for (let s of stabilizers) {
         // Measure stabilizer (parity of qubits)
+        /** @type {uint32} */
         let measurement = 0;
         for (let qubit of s) {
           if (qubit < state.length) {
-            measurement = OpCodes.XorN(measurement, state[qubit]); // XOR parity
+            measurement = OpCodes.Xor32(measurement, state[qubit]); // XOR parity
           }
         }
         syndrome.push(measurement);
@@ -530,6 +543,10 @@
       return 0;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (data.length !== this._numQubits) {
         return true; // Invalid size indicates error
@@ -553,7 +570,7 @@
       const k = 1; // Single logical qubit
       const d = this._distance;
 
-      return { n, k, d, description: `[[${n},${k},${d}]]` };
+      return { n, k, d, description: "[[" + n + "," + k + "," + d + "]]" };
     }
   }
 

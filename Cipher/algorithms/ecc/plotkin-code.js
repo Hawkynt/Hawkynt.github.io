@@ -198,7 +198,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {PlotkinCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -215,13 +215,15 @@
   class PlotkinCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {PlotkinCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
       this._level = 1; // Default [4,3,2] code (level 1)
     }
@@ -278,11 +280,15 @@
       return { n, k, d };
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       const { n, k } = this.getParameters();
 
       if (data.length !== k) {
-        throw new Error(`Plotkin encode: Input must be exactly ${k} bits for level ${this._level}`);
+        throw new Error("Plotkin encode: Input must be exactly " + k + " bits for level " + this._level);
       }
 
       // Base case: level 0 is [2,2,1] repetition code (identity - just pass through)
@@ -336,17 +342,21 @@
 
       // Second half: u+v (XOR)
       for (let i = 0; i < uEncoded.length; ++i) {
-        codeword.push(OpCodes.XorN(uEncoded[i], vEncoded[i]));
+        codeword.push(OpCodes.Xor32(uEncoded[i], vEncoded[i]));
       }
 
       return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       const { n, k } = this.getParameters();
 
       if (data.length !== n) {
-        throw new Error(`Plotkin decode: Input must be exactly ${n} bits for level ${this._level}`);
+        throw new Error("Plotkin decode: Input must be exactly " + n + " bits for level " + this._level);
       }
 
       // Base case: level 0 is [2,2,1] (identity)
@@ -363,7 +373,7 @@
       const uReceived = [...r1];
       const vReceived = [];
       for (let i = 0; i < halfN; ++i) {
-        vReceived.push(OpCodes.XorN(r1[i], r2[i]));
+        vReceived.push(OpCodes.Xor32(r1[i], r2[i]));
       }
 
       // Recursively decode u and v
@@ -394,6 +404,10 @@
       return decoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       const { n } = this.getParameters();
       if (data.length !== n) return true;

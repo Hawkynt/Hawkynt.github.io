@@ -157,7 +157,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {AlgebraicGeometryCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -174,13 +174,15 @@
   class AlgebraicGeometryCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {AlgebraicGeometryCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // AG [8,4] code over GF(4) from elliptic curve
@@ -266,7 +268,7 @@
     gf4Add(a, b) {
       // XOR is the fundamental GF(2) addition operation
       // Using OpCodes for consistency with codebase standards
-      return OpCodes.XorN(a, b);
+      return OpCodes.Xor32(a, b);
     }
 
     /**
@@ -346,13 +348,13 @@
      */
     encode(message) {
       if (message.length !== this.k) {
-        throw new Error(`AG code encode: Input must be exactly ${this.k} symbols`);
+        throw new Error("AG code encode: Input must be exactly " + this.k + " symbols");
       }
 
       // Validate message symbols in GF(4)
       for (let i = 0; i < message.length; ++i) {
         if (message[i] < 0 || message[i] > 3 || !Number.isInteger(message[i])) {
-          throw new Error(`AG code encode: Symbol ${i} value ${message[i]} must be in GF(4) = {0,1,2,3}`);
+          throw new Error("AG code encode: Symbol " + i + " value " + message[i] + " must be in GF(4) = {0,1,2,3}");
         }
       }
 
@@ -384,13 +386,13 @@
      */
     decode(received) {
       if (received.length !== this.n) {
-        throw new Error(`AG code decode: Input must be exactly ${this.n} symbols`);
+        throw new Error("AG code decode: Input must be exactly " + this.n + " symbols");
       }
 
       // Validate received symbols in GF(4)
       for (let i = 0; i < received.length; ++i) {
         if (received[i] < 0 || received[i] > 3 || !Number.isInteger(received[i])) {
-          throw new Error(`AG code decode: Symbol ${i} value ${received[i]} must be in GF(4) = {0,1,2,3}`);
+          throw new Error("AG code decode: Symbol " + i + " value " + received[i] + " must be in GF(4) = {0,1,2,3}");
         }
       }
 
@@ -520,7 +522,7 @@
     /**
      * Detects if received data contains errors
      * Uses syndrome computation - non-zero syndrome indicates errors
-     * @param {Array} data - Received codeword
+     * @param {uint8[]} data - Received codeword
      * @returns {boolean} True if errors detected
      */
     DetectError(data) {

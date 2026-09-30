@@ -128,7 +128,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {FoldedReedSolomonInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -145,13 +145,15 @@
   class FoldedReedSolomonInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {FoldedReedSolomonAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Folded Reed-Solomon parameters
@@ -209,6 +211,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!Array.isArray(data)) {
         throw new Error('FoldedReedSolomonInstance.DetectError: Input must be symbol array');
@@ -220,6 +226,10 @@
       return syndromes.some(s => s !== 0);
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Folded RS encoding
       // Input: k=8 GF(256) data symbols (foldedK=4 super-symbols of size s=2)
@@ -229,13 +239,13 @@
       // codeword can be interpreted as 8 super-symbols of 2 base symbols each
 
       if (data.length !== this.k) {
-        throw new Error(`Folded RS encode: Input must be exactly ${this.k} symbols (${this.foldedK} super-symbols of size ${this.superSymbolSize})`);
+        throw new Error("Folded RS encode: Input must be exactly " + this.k + " symbols (" + this.foldedK + " super-symbols of size " + this.superSymbolSize + ")");
       }
 
       // Validate symbols are in field range
       for (let i = 0; i < data.length; ++i) {
         if (data[i] < 0 || data[i] >= this.field) {
-          throw new Error(`Folded RS: Symbol ${data[i]} at position ${i} out of range [0, ${this.field-1}]`);
+          throw new Error("Folded RS: Symbol " + data[i] + " at position " + i + " out of range [0, " + (this.field-1) + "]");
         }
       }
 
@@ -247,19 +257,23 @@
       return rsEncoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       // Folded RS decoding with error detection
       // Input: n=16 GF(256) symbols (foldedN=8 super-symbols)
       // Output: k=8 GF(256) data symbols (foldedK=4 super-symbols)
 
       if (data.length !== this.n) {
-        throw new Error(`Folded RS decode: Input must be exactly ${this.n} symbols (${this.foldedN} super-symbols)`);
+        throw new Error("Folded RS decode: Input must be exactly " + this.n + " symbols (" + this.foldedN + " super-symbols)");
       }
 
       // Validate symbols
       for (let i = 0; i < data.length; ++i) {
         if (data[i] < 0 || data[i] >= this.field) {
-          throw new Error(`Folded RS: Symbol ${data[i]} at position ${i} out of range [0, ${this.field-1}]`);
+          throw new Error("Folded RS: Symbol " + data[i] + " at position " + i + " out of range [0, " + (this.field-1) + "]");
         }
       }
 
@@ -289,13 +303,14 @@
       this.gfLog = new Array(this.field);
       this.gfAntilog = new Array(this.field);
 
+      /** @type {uint32} */
       let x = 1;
       for (let i = 0; i < this.field - 1; ++i) {
         this.gfAntilog[i] = x;
         this.gfLog[x] = i;
         x = OpCodes.Shl32(x, 1);
-        if (OpCodes.AndN(x, this.field)) {
-          x = OpCodes.XorN(x, this.primitive);
+        if (OpCodes.And32(x, this.field)) {
+          x = OpCodes.Xor32(x, this.primitive);
         }
       }
       this.gfLog[0] = this.field - 1; // Special case for zero
@@ -316,7 +331,7 @@
 
     gfAdd(a, b) {
       // Addition in GF(2^m) is XOR
-      return OpCodes.XorN(a, b);
+      return OpCodes.Xor32(a, b);
     }
 
     gfPower(base, exponent) {
@@ -422,7 +437,7 @@
 
           const testSyndromes = this.calculateSyndromes(testReceived);
           if (testSyndromes.every(s => s === 0)) {
-            console.log(`Folded RS: Corrected error at position ${pos}`);
+            console.log("Folded RS: Corrected error at position " + pos);
             return testReceived;
           }
         }

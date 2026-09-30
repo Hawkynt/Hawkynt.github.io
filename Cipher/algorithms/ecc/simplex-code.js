@@ -115,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SimplexCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -132,13 +132,15 @@
   class SimplexCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SimplexCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
       this._m = 3; // Default: Simplex (7,3)
     }
@@ -185,12 +187,16 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       const m = this._m;
       const n = (OpCodes.Shl32(1, m)) - 1; // 2^m - 1
 
       if (data.length !== m) {
-        throw new Error(`Simplex encode: Input must be exactly ${m} bits for Simplex(${n},${m})`);
+        throw new Error("Simplex encode: Input must be exactly " + m + " bits for Simplex(" + n + "," + m + ")");
       }
 
       // Simplex code generator matrix is the transpose of Hamming parity-check matrix
@@ -204,7 +210,7 @@
           for (let j = 0; j < n; ++j) {
             const position = j + 1;
             // Check if bit i is set in position
-            if (OpCodes.AndN(OpCodes.Shr32(position, i), 1)) {
+            if (OpCodes.And32(OpCodes.Shr32(position, i), 1)) {
               codeword[j] ^= 1;
             }
           }
@@ -214,12 +220,16 @@
       return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       const m = this._m;
       const n = (OpCodes.Shl32(1, m)) - 1;
 
       if (data.length !== n) {
-        throw new Error(`Simplex decode: Input must be exactly ${n} bits for Simplex(${n},${m})`);
+        throw new Error("Simplex decode: Input must be exactly " + n + " bits for Simplex(" + n + "," + m + ")");
       }
 
       const decoded = new Array(m).fill(0);
@@ -232,10 +242,10 @@
         // Generate codeword for this message
         const testCodeword = new Array(n).fill(0);
         for (let i = 0; i < m; ++i) {
-          if (OpCodes.AndN(OpCodes.Shr32(msg, i), 1)) {
+          if (OpCodes.And32(OpCodes.Shr32(msg, i), 1)) {
             for (let j = 0; j < n; ++j) {
               const position = j + 1;
-              if (OpCodes.AndN(OpCodes.Shr32(position, i), 1)) {
+              if (OpCodes.And32(OpCodes.Shr32(position, i), 1)) {
                 testCodeword[j] ^= 1;
               }
             }
@@ -256,12 +266,16 @@
 
       // Convert bestMessage to bit array
       for (let i = 0; i < m; ++i) {
-        decoded[i] = OpCodes.AndN(OpCodes.Shr32(bestMessage, i), 1);
+        decoded[i] = OpCodes.And32(OpCodes.Shr32(bestMessage, i), 1);
       }
 
       return decoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       const n = (OpCodes.Shl32(1, this._m)) - 1;
       if (data.length !== n) return true;

@@ -149,7 +149,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ZigzagCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -166,13 +166,17 @@
   class ZigzagCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ZigzagCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
       this._rows = 4; // Default 4x4 matrix
       this._cols = 4;
@@ -253,7 +257,7 @@
       const blockSize = this._rows * this._cols;
 
       if (data.length % blockSize !== 0) {
-        throw new Error(`Zigzag Code: Input length must be multiple of ${blockSize} (rows=${this._rows} × cols=${this._cols})`);
+        throw new Error("Zigzag Code: Input length must be multiple of " + blockSize + " (rows=" + this._rows + " × cols=" + this._cols + ")");
       }
 
       const result = [];
@@ -286,7 +290,7 @@
       const blockSize = this._rows * this._cols;
 
       if (data.length % blockSize !== 0) {
-        throw new Error(`Zigzag Decode: Input length must be multiple of ${blockSize} (rows=${this._rows} × cols=${this._cols})`);
+        throw new Error("Zigzag Decode: Input length must be multiple of " + blockSize + " (rows=" + this._rows + " × cols=" + this._cols + ")");
       }
 
       const result = [];
@@ -442,6 +446,10 @@
       }
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       // Zigzag interleaving doesn't detect errors by itself
       // It only redistributes them for use with inner error correction code

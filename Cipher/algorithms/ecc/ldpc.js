@@ -108,7 +108,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LDPCInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -125,13 +125,15 @@
   class LDPCInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LDPCAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Simple (7,4) parity-check matrix in systematic form H = [P | I].
@@ -184,19 +186,27 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!Array.isArray(data) || data.length !== this.n) {
-        throw new Error(`LDPCInstance.DetectError: Input must be ${this.n}-bit array`);
+        throw new Error("LDPCInstance.DetectError: Input must be " + this.n + "-bit array");
       }
 
       const syndrome = this.calculateSyndrome(data);
       return !this.isZeroVector(syndrome);
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Simplified LDPC systematic encoding
       if (data.length !== this.k) {
-        throw new Error(`LDPC encode: Input must be exactly ${this.k} bits`);
+        throw new Error("LDPC encode: Input must be exactly " + this.k + " bits");
       }
 
       const encoded = new Array(this.n);
@@ -208,9 +218,10 @@
 
       // Calculate parity bits using simplified method
       for (let i = 0; i < this.n - this.k; i++) {
+        /** @type {uint32} */
         let parity = 0;
         for (let j = 0; j < this.k; j++) {
-          parity = OpCodes.XorN(parity, (this.parityMatrix[i][j] * data[j]));
+          parity = OpCodes.Xor32(parity, (this.parityMatrix[i][j] * data[j]));
         }
         encoded[this.k + i] = parity;
       }
@@ -218,10 +229,14 @@
       return encoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       // Simplified LDPC decoding (not full belief propagation)
       if (data.length !== this.n) {
-        throw new Error(`LDPC decode: Input must be exactly ${this.n} bits`);
+        throw new Error("LDPC decode: Input must be exactly " + this.n + " bits");
       }
 
       const received = [...data];
@@ -248,7 +263,7 @@
         throw new Error('LDPC decode: syndrome does not identify a correctable error pattern; the received word is uncorrectable');
       }
 
-      received[errorPosition] = OpCodes.XorN(received[errorPosition], 1);
+      received[errorPosition] = OpCodes.Xor32(received[errorPosition], 1);
 
       return received.slice(0, this.k); // Extract information bits
     }
@@ -257,9 +272,10 @@
       const syndrome = new Array(this.parityMatrix.length);
 
       for (let i = 0; i < this.parityMatrix.length; i++) {
+        /** @type {uint32} */
         let sum = 0;
         for (let j = 0; j < this.n; j++) {
-          sum = OpCodes.XorN(sum, (this.parityMatrix[i][j] * data[j]));
+          sum = OpCodes.Xor32(sum, (this.parityMatrix[i][j] * data[j]));
         }
         syndrome[i] = sum;
       }

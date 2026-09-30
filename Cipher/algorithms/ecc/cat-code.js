@@ -331,7 +331,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CatCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -348,13 +348,17 @@
   class CatCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CatCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Cat code parameters
@@ -475,7 +479,7 @@
       for (let i = 0; i < logicalBits.length; ++i) {
         const bit = logicalBits[i];
         if (bit !== 0 && bit !== 1) {
-          throw new Error(`encode: Invalid logical bit ${bit} at position ${i}`);
+          throw new Error("encode: Invalid logical bit " + bit + " at position " + i);
         }
 
         // Create cat state: +1 for even (|0⟩), -1 for odd (|1⟩)
@@ -497,7 +501,7 @@
           // Compute fidelity with ideal state
           const fid = fidelity(finalState, catState);
           if (fid < this._minFidelity) {
-            throw new Error(`Fidelity ${fid.toFixed(4)} below threshold ${this._minFidelity}`);
+            throw new Error("Fidelity " + (fid.toFixed(4)) + " below threshold " + this._minFidelity);
           }
           encodedBits.push(bit); // Pass through on success
         } else {
@@ -535,6 +539,8 @@
     /**
      * Detect errors by measuring stabilizers (photon parity)
      * Returns true if error detected (parity flipped)
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
      */
     DetectError(data) {
       if (!Array.isArray(data) || data.length === 0) {
@@ -572,7 +578,7 @@
         bitFlipSuppression: Math.exp(-2 * this._alpha * this._alpha),
         avgPhotonNumber: this._alpha * this._alpha,
         fockTruncation: this._truncation,
-        description: `Two-component cat code with α=${this._alpha.toFixed(2)}`
+        description: "Two-component cat code with α=" + (this._alpha.toFixed(2))
       };
     }
 

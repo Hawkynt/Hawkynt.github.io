@@ -164,7 +164,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MultiEdgeLDPCInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -181,13 +181,15 @@
   class MultiEdgeLDPCInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {MultiEdgeLDPCAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Multi-Edge Type LDPC Parameters
@@ -231,7 +233,7 @@
      * Build parity-check matrix with multiple edge types
      * Each edge type has different connection patterns and degree distributions
      *
-     * Structure: H = [OpCodes.OrN(H1, H2)] where:
+     * Structure: H = [OpCodes.Or32(H1, H2)] where:
      *   H1: m x k submatrix for edge type 1 (information bits)
      *   H2: m x (n-k) submatrix for edge type 2 (parity bits)
      */
@@ -343,14 +345,14 @@
 
     /**
      * Transform parity-check matrix to systematic form for efficient encoding
-     * Uses row operations to convert H to [OpCodes.XorN(P, T)|I] form, then G = [OpCodes.OrN(I, P)]
+     * Uses row operations to convert H to [OpCodes.Xor32(P, T)|I] form, then G = [OpCodes.Or32(I, P)]
      */
     transformToSystematicForm() {
-      // For LDPC codes, we need to solve H*OpCodes.XorN(c, T) = 0 for encoding
+      // For LDPC codes, we need to solve H*OpCodes.Xor32(c, T) = 0 for encoding
       // We'll transform H into systematic form using Gaussian elimination
-      // Goal: H = [OpCodes.OrN(A, B)] where B is invertible (usually identity or near-identity)
-      // Then for codeword c = [OpCodes.OrN(s, p)] (OpCodes.OrN(systematic, parity)):
-      // H*OpCodes.XorN(c, T) = A*OpCodes.XorN(s, T) + B*OpCodes.XorN(p, T) = 0  =>  OpCodes.XorN(p, T) = B^(-1) * A * OpCodes.XorN(s, T)
+      // Goal: H = [OpCodes.Or32(A, B)] where B is invertible (usually identity or near-identity)
+      // Then for codeword c = [OpCodes.Or32(s, p)] (OpCodes.Or32(systematic, parity)):
+      // H*OpCodes.Xor32(c, T) = A*OpCodes.Xor32(s, T) + B*OpCodes.Xor32(p, T) = 0  =>  OpCodes.Xor32(p, T) = B^(-1) * A * OpCodes.Xor32(s, T)
 
       // Make a copy of parity check matrix to transform
       const H_copy = [];
@@ -358,9 +360,9 @@
         H_copy[i] = [...this.parityCheckMatrix[i]];
       }
 
-      // Try to get H into form [OpCodes.OrN(A, I)] using column swaps and row operations
+      // Try to get H into form [OpCodes.Or32(A, I)] using column swaps and row operations
       // For educational simplicity, we'll use a robust encoding approach:
-      // Solve H*OpCodes.XorN(c, T) = 0 directly for each basis vector
+      // Solve H*OpCodes.Xor32(c, T) = 0 directly for each basis vector
 
       this.encodingMatrix = [];
 
@@ -405,7 +407,7 @@
       const m = A.length;
       const n = A[0].length;
 
-      // Create augmented matrix [OpCodes.OrN(A, b)]
+      // Create augmented matrix [OpCodes.Or32(A, b)]
       const aug = [];
       for (let i = 0; i < m; ++i) {
         aug[i] = [...A[i], b[i]];
@@ -435,7 +437,7 @@
         for (let row = pivotRow + 1; row < m; ++row) {
           if (aug[row][col] === 1) {
             for (let c = 0; c <= n; ++c) {
-              aug[row][c] = OpCodes.XorN(aug[row][c], aug[pivotRow][c]);
+              aug[row][c] = OpCodes.Xor32(aug[row][c], aug[pivotRow][c]);
             }
           }
         }
@@ -461,7 +463,7 @@
         // Solve for this variable
         let value = aug[row][n]; // RHS
         for (let col = leadCol + 1; col < n; ++col) {
-          value = OpCodes.XorN(value, OpCodes.AndN(aug[row][col], solution[col]));
+          value = OpCodes.Xor32(value, OpCodes.And32(aug[row][col], solution[col]));
         }
         solution[leadCol] = value;
       }
@@ -502,6 +504,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!Array.isArray(data) || data.length !== this.n) {
         throw new Error('MultiEdgeLDPCInstance.DetectError: Input must be ' + this.n + '-bit array');
@@ -513,7 +519,7 @@
 
     /**
      * Encode information bits using multi-edge LDPC structure
-     * Systematic encoding: codeword = [OpCodes.OrN(info_bits, parity_bits)]
+     * Systematic encoding: codeword = [OpCodes.Or32(info_bits, parity_bits)]
      */
     encode(infoBits) {
       if (infoBits.length !== this.k) {
@@ -524,17 +530,18 @@
 
       // Copy information bits (systematic part)
       for (let i = 0; i < this.k; ++i) {
-        codeword[i] = OpCodes.AndN(infoBits[i], 1);
+        codeword[i] = OpCodes.And32(infoBits[i], 1);
       }
 
       // Compute parity bits using precomputed encoding matrix
       // Each parity bit is XOR of subset of information bits
       for (let parityPos = 0; parityPos < (this.n - this.k); ++parityPos) {
+        /** @type {uint32} */
         let parityBit = 0;
 
         for (let infoPos = 0; infoPos < this.k; ++infoPos) {
           if (infoBits[infoPos] === 1 && this.encodingMatrix[infoPos][parityPos] === 1) {
-            parityBit = OpCodes.XorN(parityBit, 1);
+            parityBit = OpCodes.Xor32(parityBit, 1);
           }
         }
 
@@ -684,17 +691,18 @@
     }
 
     /**
-     * Calculate syndrome: s = H * OpCodes.XorN(c, T) (mod 2)
+     * Calculate syndrome: s = H * OpCodes.Xor32(c, T) (mod 2)
      */
     calculateSyndrome(codeword) {
       const syndrome = new Array(this.m);
 
       for (let check = 0; check < this.m; ++check) {
+        /** @type {uint32} */
         let sum = 0;
         for (let bit = 0; bit < this.n; ++bit) {
-          sum = OpCodes.XorN(sum, OpCodes.AndN(this.parityCheckMatrix[check][bit], codeword[bit]));
+          sum = OpCodes.Xor32(sum, OpCodes.And32(this.parityCheckMatrix[check][bit], codeword[bit]));
         }
-        syndrome[check] = OpCodes.AndN(sum, 1);
+        syndrome[check] = OpCodes.And32(sum, 1);
       }
 
       return syndrome;

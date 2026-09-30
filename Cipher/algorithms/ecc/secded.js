@@ -115,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SECDEDInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -132,13 +132,15 @@
   class SECDEDInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SECDEDAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
     }
 
@@ -173,6 +175,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!Array.isArray(data) || data.length !== 8) {
         throw new Error('SECDEDInstance.DetectError: Input must be 8-bit array');
@@ -189,6 +195,10 @@
       return syndrome !== 0 || overallParity !== 0;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // SECDED (8,4) encoding - Extended Hamming (7,4) + overall parity
       if (data.length !== 4) {
@@ -206,17 +216,21 @@
       encoded[7] = d4; // position 8 in SECDED (position 7 in Hamming)
 
       // Hamming parity bits at positions 1, 2, 4 (1-indexed in Hamming)
-      encoded[1] = OpCodes.XorN(OpCodes.XorN(d1, d2), d4); // position 2 in SECDED (p1 in Hamming)
-      encoded[2] = OpCodes.XorN(OpCodes.XorN(d1, d3), d4); // position 3 in SECDED (p2 in Hamming)
-      encoded[4] = OpCodes.XorN(OpCodes.XorN(d2, d3), d4); // position 5 in SECDED (p4 in Hamming)
+      encoded[1] = OpCodes.Xor32(OpCodes.Xor32(d1, d2), d4); // position 2 in SECDED (p1 in Hamming)
+      encoded[2] = OpCodes.Xor32(OpCodes.Xor32(d1, d3), d4); // position 3 in SECDED (p2 in Hamming)
+      encoded[4] = OpCodes.Xor32(OpCodes.Xor32(d2, d3), d4); // position 5 in SECDED (p4 in Hamming)
 
       // Overall parity bit at position 0 (covers all 7 Hamming bits)
-      encoded[0] = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(encoded[1], encoded[2]), encoded[3]), encoded[4]),
+      encoded[0] = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(encoded[1], encoded[2]), encoded[3]), encoded[4]),
                    encoded[5]), encoded[6]), encoded[7]);
 
       return encoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       // SECDED (8,4) decoding with single error correction and double error detection
       if (data.length !== 8) {
@@ -232,15 +246,15 @@
       } else if (syndrome === 0 && overallParity !== 0) {
         // Error in overall parity bit (position 0)
         console.log('SECDED: Parity bit error detected and corrected');
-        received[0] = OpCodes.XorN(received[0], 1);
+        received[0] = OpCodes.Xor32(received[0], 1);
       } else if (syndrome !== 0 && overallParity !== 0) {
         // Single bit error in Hamming portion (correctable)
         // Syndrome indicates position in 1-indexed Hamming code
         // Map to SECDED positions: 1->1, 2->2, 3->3, 4->4, 5->5, 6->6, 7->7
         const errorPos = syndrome;
-        console.log(`SECDED: Single error at position ${errorPos + 1}, correcting...`);
+        console.log("SECDED: Single error at position " + (errorPos + 1) + ", correcting...");
         if (errorPos >= 1 && errorPos <= 7) {
-          received[errorPos] = OpCodes.XorN(received[errorPos], 1);
+          received[errorPos] = OpCodes.Xor32(received[errorPos], 1);
         }
       } else if (syndrome !== 0 && overallParity === 0) {
         // Double bit error detected (cannot correct)
@@ -253,9 +267,9 @@
 
     calculateSyndrome(data) {
       // Calculate Hamming syndrome from positions 1-7 (indices 1-7)
-      const s1 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(data[1], data[3]), data[5]), data[7]); // p1 XOR positions 3,5,7
-      const s2 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(data[2], data[3]), data[6]), data[7]); // p2 XOR positions 3,6,7
-      const s4 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(data[4], data[5]), data[6]), data[7]); // p4 XOR positions 5,6,7
+      const s1 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(data[1], data[3]), data[5]), data[7]); // p1 XOR positions 3,5,7
+      const s2 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(data[2], data[3]), data[6]), data[7]); // p2 XOR positions 3,6,7
+      const s4 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(data[4], data[5]), data[6]), data[7]); // p4 XOR positions 5,6,7
 
       // Syndrome indicates error position in Hamming code (1-indexed)
       return s1 + OpCodes.Shl32(s2, 1) + OpCodes.Shl32(s4, 2);
@@ -263,7 +277,10 @@
 
     calculateOverallParity(data) {
       // XOR all bits including overall parity bit
-      return data.reduce((parity, bit) => OpCodes.XorN(parity, bit), 0);
+      /** @type {uint32} */
+      let parity = 0;
+      for (let pi = 0; pi < data.length; ++pi) parity = OpCodes.Xor32(parity, data[pi]);
+      return parity;
     }
   }
 

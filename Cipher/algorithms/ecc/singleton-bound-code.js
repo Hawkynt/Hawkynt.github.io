@@ -144,7 +144,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SingletonBoundCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -163,13 +163,15 @@
   class SingletonBoundCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SingletonBoundCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // MDS code parameters (6,4) over GF(256)
@@ -218,12 +220,12 @@
 
     /**
      * Detect if codeword has errors (MDS property check)
-     * @param {Array<number>} data - Received codeword
+     * @param {uint8[]} data - Received codeword
      * @returns {boolean} True if errors detected
      */
     DetectError(data) {
       if (!Array.isArray(data) || data.length !== this.n) {
-        throw new Error(`SingletonBoundCodeInstance.DetectError: Input must be ${this.n}-symbol array`);
+        throw new Error("SingletonBoundCodeInstance.DetectError: Input must be " + this.n + "-symbol array");
       }
 
       // For MDS codes, we check if parity symbols match computed values
@@ -247,13 +249,13 @@
      */
     encode(message) {
       if (message.length !== this.k) {
-        throw new Error(`MDS encode: Input must be exactly ${this.k} symbols`);
+        throw new Error("MDS encode: Input must be exactly " + this.k + " symbols");
       }
 
       // Validate symbols in field range
       for (let symbol of message) {
         if (symbol < 0 || symbol >= this.field) {
-          throw new Error(`MDS: Symbol ${symbol} out of range [0, ${this.field-1}]`);
+          throw new Error("MDS: Symbol " + symbol + " out of range [0, " + (this.field-1) + "]");
         }
       }
 
@@ -281,7 +283,7 @@
      */
     decode(received) {
       if (received.length !== this.n) {
-        throw new Error(`MDS decode: Input must be exactly ${this.n} symbols`);
+        throw new Error("MDS decode: Input must be exactly " + this.n + " symbols");
       }
 
       // Count erasures (marked as null or -1)
@@ -294,7 +296,7 @@
 
       // MDS codes can correct up to (n - k) erasures
       if (erasures.length > this.r) {
-        throw new Error(`MDS decode: Too many erasures (${erasures.length} > ${this.r})`);
+        throw new Error("MDS decode: Too many erasures (" + erasures.length + " > " + this.r + ")");
       }
 
       // If no erasures, just extract message
@@ -320,10 +322,11 @@
 
       // Parity matrix is rows k..n-1 of Cauchy matrix
       for (let i = 0; i < this.r; ++i) {
+        /** @type {uint32} */
         let sum = 0;
         for (let j = 0; j < this.k; ++j) {
           const matrixElement = this.cauchyMatrix[this.k + i][j];
-          sum = OpCodes.XorN(sum, this.gfMultiply(matrixElement, message[j]));
+          sum = OpCodes.Xor32(sum, this.gfMultiply(matrixElement, message[j]));
         }
         parity[i] = sum;
       }
@@ -377,9 +380,10 @@
       // Multiply inverse by surviving symbols: message = inverse * codeword_partial
       const message = new Array(this.k);
       for (let i = 0; i < this.k; ++i) {
+        /** @type {uint32} */
         let sum = 0;
         for (let j = 0; j < this.k; ++j) {
-          sum = OpCodes.XorN(sum, this.gfMultiply(inverse[i][j], survivingValues[j]));
+          sum = OpCodes.Xor32(sum, this.gfMultiply(inverse[i][j], survivingValues[j]));
         }
         message[i] = sum;
       }
@@ -423,7 +427,7 @@
         const row = [];
         for (let j = 0; j < this.k; ++j) {
           // C[i,j] = 1/(x[i] + y[j]) in GF(256)
-          const denominator = OpCodes.XorN(x[i], y[j]); // Addition in GF(256) is XOR
+          const denominator = OpCodes.Xor32(x[i], y[j]); // Addition in GF(256) is XOR
           if (denominator === 0) {
             throw new Error('Cauchy matrix: x_i + y_j = 0 not allowed');
           }
@@ -505,7 +509,7 @@
           if (row !== col && augmented[row][col] !== 0) {
             const factor = augmented[row][col];
             for (let j = 0; j < 2 * k; ++j) {
-              augmented[row][j] = OpCodes.XorN(augmented[row][j], this.gfMultiply(factor, augmented[col][j]));
+              augmented[row][j] = OpCodes.Xor32(augmented[row][j], this.gfMultiply(factor, augmented[col][j]));
             }
           }
         }
@@ -527,13 +531,14 @@
       this.gfLog = new Array(this.field);
       this.gfAntilog = new Array(this.field);
 
+      /** @type {uint32} */
       let x = 1;
       for (let i = 0; i < this.field - 1; ++i) {
         this.gfAntilog[i] = x;
         this.gfLog[x] = i;
         x = OpCodes.Shl32(x, 1);
-        if (OpCodes.AndN(x, this.field)) {
-          x = OpCodes.XorN(x, this.primitive);
+        if (OpCodes.And32(x, this.field)) {
+          x = OpCodes.Xor32(x, this.primitive);
         }
       }
       this.gfLog[0] = this.field - 1; // Special case for zero
