@@ -237,7 +237,8 @@
       }
 
       // Copy to avoid modifying input
-      const received = [...physicalQubits];
+      /** @type {uint8[]} */
+      const received = physicalQubits.slice();
 
       // Measure Z-stabilizers to detect X errors (bit-flips)
       const syndromeX = this.measureSyndrome(received, this.H_Z);
@@ -271,7 +272,8 @@
      * Utilizes low-density property for efficient computation
      */
     measureSyndrome(qubits, parityMatrix) {
-      const syndrome = new Array(parityMatrix.length).fill(0);
+      /** @type {uint8[]} */
+      const syndrome = OpCodes.CreateArray(parityMatrix.length, 0);
 
       for (let i = 0; i < parityMatrix.length; ++i) {
         /** @type {uint32} */
@@ -367,7 +369,8 @@
         throw new Error("Error position must be between 0 and " + (this.n - 1));
       }
 
-      const result = [...qubits];
+      /** @type {uint8[]} */
+      const result = qubits.slice();
 
       switch (errorType) {
         case 'X':

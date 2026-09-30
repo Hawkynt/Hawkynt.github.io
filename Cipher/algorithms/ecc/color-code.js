@@ -222,9 +222,11 @@
 
       // Logical operators (stabilizer-commuting operators)
       // Logical X operator: X̄ acts on qubits forming a path through lattice
+      /** @type {uint8[]} */
       this.logicalX = [1, 1, 1, 1, 1, 1, 1]; // All qubits (for [[7,1,3]] simplex code)
 
       // Logical Z operator: Z̄ anticommutes with X̄
+      /** @type {uint8[]} */
       this.logicalZ = [1, 1, 1, 1, 1, 1, 1]; // All qubits (dual structure)
     }
 
@@ -292,7 +294,8 @@
       }
 
       // Copy to avoid modifying input
-      const received = [...physicalQubits];
+      /** @type {uint8[]} */
+      const received = physicalQubits.slice();
 
       // Measure Z-stabilizers (detect X errors / bit-flips)
       const syndromeZ = this.measureStabilizers(received, this.stabilizerGeneratorsZ);
@@ -317,6 +320,7 @@
      * Returns syndrome (array of measurement outcomes)
      */
     measureStabilizers(qubits, stabilizers) {
+      /** @type {uint8[]} */
       const syndrome = [];
 
       for (let i = 0; i < stabilizers.length; ++i) {
@@ -348,6 +352,7 @@
       // Find qubit position that matches syndrome
       for (let pos = 0; pos < this.n; ++pos) {
         // Calculate expected syndrome for error at position pos
+        /** @type {uint8[]} */
         const expectedSyndrome = [];
         for (let i = 0; i < stabilizers.length; ++i) {
           expectedSyndrome.push(stabilizers[i][pos]);
@@ -417,7 +422,8 @@
         throw new Error("Error position must be between 0 and " + (this.n - 1));
       }
 
-      const result = [...qubits];
+      /** @type {uint8[]} */
+      const result = qubits.slice();
 
       switch (errorType) {
         case 'X':

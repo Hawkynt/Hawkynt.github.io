@@ -157,6 +157,7 @@
 
       // Input/Output
       this.sourceSymbols = null;
+      /** @type {uint8[]} */
       this.encodedSymbols = [];
       this.decodedSymbols = null;
 
@@ -346,6 +347,7 @@
 
     _getLDPCConnections(s) {
       // RFC 6330 specific LDPC connection pattern
+      /** @type {uint8[]} */
       const connections = [];
       const B = this.W;
 
@@ -361,6 +363,7 @@
 
     _getHDPCConnections(h) {
       // RFC 6330 HDPC connection pattern
+      /** @type {uint8[]} */
       const connections = [];
       const startCol = this.K + this.S;
 
@@ -409,7 +412,8 @@
 
     _calculateIntermediateSymbols() {
       // Solve A * x = b where b contains source symbols
-      const b = new Array(this.L).fill(0);
+      /** @type {uint8[]} */
+      const b = OpCodes.CreateArray(this.L, 0);
 
       // Fill source symbols into b
       for (let i = 0; i < this.K; i++) {
@@ -454,6 +458,7 @@
     _getTuple(ESI) {
       // RFC 6330 tuple generation for encoding symbol ESI
       // Simplified implementation of the complex tuple calculation
+      /** @type {uint8[]} */
       const tuple = [];
       const degree = ((ESI % 4) + 1); // Simple degree distribution
 

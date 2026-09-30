@@ -255,7 +255,8 @@
 
       // Standard Hamming encoding
       const fullN = OpCodes.Shl32(1, r) - 1;
-      const encoded = new Array(fullN).fill(0);
+      /** @type {uint8[]} */
+      const encoded = OpCodes.CreateArray(fullN, 0);
 
       // Place data bits (skipping power-of-2 positions)
       let dataIdx = 0;
@@ -373,6 +374,7 @@
       }
 
       // Extract data bits (skip power-of-2 positions)
+      /** @type {uint8[]} */
       const result = [];
       const fullN = OpCodes.Shl32(1, r) - 1;
       for (let i = 1; i <= fullN && result.length < data.length - (this._extended ? 1 : 0) - r; ++i) {

@@ -289,6 +289,7 @@
       }
 
       // Check for erasures (represented as -1 or null)
+      /** @type {uint8[]} */
       const erasures = [];
       for (let i = 0; i < data.length; ++i) {
         if (data[i] === null || data[i] === undefined || data[i] < 0) {
@@ -311,6 +312,7 @@
         // Check if erasure is in a local group
         for (let g = 0; g < this.localGroups.length; ++g) {
           const group = this.localGroups[g];
+          /** @type {int32[]} */
           const groupIndices = [...group.dataIndices, group.parityIndex];
 
           if (groupIndices.includes(erasedIdx)) {
@@ -416,6 +418,7 @@
       // Find which local group contains the erased block
       for (let g = 0; g < this.localGroups.length; ++g) {
         const group = this.localGroups[g];
+        /** @type {int32[]} */
         const groupIndices = [...group.dataIndices, group.parityIndex];
 
         if (groupIndices.includes(erasedIndex)) {
@@ -449,6 +452,7 @@
 
         for (let g = 0; g < this.localGroups.length; ++g) {
           const group = this.localGroups[g];
+          /** @type {int32[]} */
           const groupIndices = [...group.dataIndices, group.parityIndex];
 
           if (groupIndices.includes(erasedIdx)) {

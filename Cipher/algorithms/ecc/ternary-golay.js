@@ -213,7 +213,8 @@
       }
 
       // Matrix multiplication: c = m * G (mod 3)
-      const codeword = new Array(11).fill(0);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(11, 0);
 
       for (let i = 0; i < 11; ++i) {
         let sum = 0;
@@ -236,7 +237,8 @@
       }
 
       // Calculate syndrome: s = H * r^T (mod 3)
-      const syndrome = new Array(5).fill(0);
+      /** @type {uint8[]} */
+      const syndrome = OpCodes.CreateArray(5, 0);
 
       for (let i = 0; i < 5; ++i) {
         let sum = 0;
@@ -277,7 +279,8 @@
       }
 
       // Calculate syndrome
-      const syndrome = new Array(5).fill(0);
+      /** @type {uint8[]} */
+      const syndrome = OpCodes.CreateArray(5, 0);
 
       for (let i = 0; i < 5; ++i) {
         let sum = 0;

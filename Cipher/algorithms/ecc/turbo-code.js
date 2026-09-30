@@ -232,6 +232,7 @@
       const parity2 = this.rscEncode(interleaved);
 
       // Combine into rate 1/3 output: systematic + parity1 + parity2
+      /** @type {uint8[]} */
       const encoded = [];
       for (let i = 0; i < n; ++i) {
         encoded.push(systematic[i], parity1[i], parity2[i]);
@@ -243,6 +244,7 @@
     rscEncode(data) {
       // Recursive Systematic Convolutional encoder
       // Using generators (13, 15) octal for K=4
+      /** @type {uint8[]} */
       const parity = [];
       /** @type {uint32} */
       let state = 0; // K-1 = 3 bits of state
@@ -286,6 +288,7 @@
       // For educational purposes, using simple block interleaver
       // In 3GPP LTE, QPP (Quadratic Permutation Polynomial) is used
 
+      /** @type {uint8[]} */
       const interleaver = [];
       const rows = Math.ceil(Math.sqrt(length));
       const cols = Math.ceil(length / rows);
@@ -331,8 +334,11 @@
       const n = received.length / 3;
 
       // Extract systematic, parity1, and parity2 streams
+      /** @type {uint8[]} */
       const systematic = [];
+      /** @type {uint8[]} */
       const parity1 = [];
+      /** @type {uint8[]} */
       const parity2 = [];
 
       for (let i = 0; i < n; ++i) {
@@ -346,7 +352,8 @@
 
       // Iterative decoding (simplified)
       let decoded = [...systematic]; // Start with systematic bits
-      let extrinsic = new Array(n).fill(0); // Extrinsic information
+      /** @type {uint8[]} */
+      let extrinsic = OpCodes.CreateArray(n, 0); // Extrinsic information
 
       for (let iter = 0; iter < this._iterations; ++iter) {
         // Decoder 1: use systematic + parity1 + extrinsic from decoder 2

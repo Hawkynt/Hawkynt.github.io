@@ -201,6 +201,7 @@
       /** @type {boolean} */
       this.isInverse = isInverse;
       this.sourceSymbols = null;
+      /** @type {uint8[]} */
       this.encodedSymbols = [];
       this.decodedSymbols = null;
 
@@ -211,10 +212,13 @@
       this.seed = 42;           // Random seed
 
       // Internal state
+      /** @type {uint8[]} */
       this.graphs = [];         // Array of graphs for each stage
+      /** @type {uint8[][]} */
       this.stageSymbols = [];   // Intermediate symbols at each stage
       this.rng = null;
       this.profiler = new PerformanceProfiler();
+      /** @type {int32[]} */
       this.degreeDistributions = [];
     }
 
@@ -285,8 +289,11 @@
 
     _initializeEncoding() {
       this.rng = new SeededRandom(this.seed);
+      /** @type {uint8[]} */
       this.graphs = [];
+      /** @type {uint8[][]} */
       this.stageSymbols = [];
+      /** @type {int32[]} */
       this.degreeDistributions = [];
 
       this.profiler.startTimer('initialization');
@@ -433,7 +440,9 @@
     // Multi-stage belief propagation decoder
     _multiStageDecode(receivedSymbols) {
       const maxIterations = this.k * 2;
+      /** @type {uint8[]} */
       const decoded = new Array(this.k).fill(null);
+      /** @type {boolean[]} */
       const symbolStatus = new Array(this.k).fill(false);
 
       let decodedCount = 0;
@@ -520,10 +529,12 @@
     getStageStats() {
       if (this.graphs.length === 0) return null;
 
+      /** @type {uint8[]} */
       const stats = [];
 
       for (let stage = 0; stage < this.graphs.length; stage++) {
         const graph = this.graphs[stage];
+        /** @type {int32[]} */
         const degrees = [];
 
         for (let i = 0; i < graph.rightNodes; i++) {

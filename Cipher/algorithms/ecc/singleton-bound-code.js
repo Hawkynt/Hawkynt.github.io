@@ -287,6 +287,7 @@
       }
 
       // Count erasures (marked as null or -1)
+      /** @type {uint8[]} */
       const erasures = [];
       for (let i = 0; i < this.n; ++i) {
         if (received[i] === null || received[i] === -1 || received[i] === undefined) {
@@ -342,6 +343,7 @@
      */
     erasureDecode(received, erasures) {
       // Select k surviving symbols
+      /** @type {uint8[]} */
       const surviving = [];
       for (let i = 0; i < this.n; ++i) {
         if (!erasures.includes(i)) {
@@ -398,6 +400,7 @@
      * @returns {Array<Array<number> >} n×k generator matrix in systematic form
      */
     generateCauchyMatrix() {
+      /** @type {uint8[][]} */
       const matrix = [];
 
       // First k rows: Identity matrix [I_k combined with parity]
@@ -412,11 +415,13 @@
       // Last r rows: Cauchy parity matrix
       // Choose distinct x and y values for Cauchy construction
       // x = [0, 1, ..., r-1], y = [r, r+1, ..., r+k-1]
+      /** @type {uint8[]} */
       const x = [];
       for (let i = 0; i < this.r; ++i) {
         x.push(i);
       }
 
+      /** @type {uint8[]} */
       const y = [];
       for (let j = 0; j < this.k; ++j) {
         y.push(this.r + j);
@@ -424,6 +429,7 @@
 
       // Compute Cauchy parity rows
       for (let i = 0; i < this.r; ++i) {
+        /** @type {int32[]} */
         const row = [];
         for (let j = 0; j < this.k; ++j) {
           // C[i,j] = 1/(x[i] + y[j]) in GF(256)
@@ -446,8 +452,10 @@
      * @returns {Array<Array<number> >} k×k submatrix
      */
     extractSubmatrix(rows) {
+      /** @type {uint8[][]} */
       const submatrix = [];
       for (let i = 0; i < this.k; ++i) {
+        /** @type {int32[]} */
         const row = [];
         for (let j = 0; j < this.k; ++j) {
           row.push(this.cauchyMatrix[rows[i]][j]);
@@ -466,6 +474,7 @@
       const k = matrix.length;
 
       // Create augmented matrix [A I] where A is matrix to invert, I is identity
+      /** @type {uint8[][]} */
       const augmented = [];
       for (let i = 0; i < k; ++i) {
         const row = [...matrix[i]];
@@ -516,6 +525,7 @@
       }
 
       // Extract inverse from augmented matrix
+      /** @type {uint8[][]} */
       const inverse = [];
       for (let i = 0; i < k; ++i) {
         inverse.push(augmented[i].slice(k));

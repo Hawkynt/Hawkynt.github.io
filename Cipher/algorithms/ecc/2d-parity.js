@@ -220,7 +220,8 @@
       }
 
       // Create (rows+1) x (cols+1) output grid
-      const encoded = new Array((rows + 1) * (cols + 1)).fill(0);
+      /** @type {uint8[]} */
+      const encoded = OpCodes.CreateArray((rows + 1) * (cols + 1), 0);
 
       // Copy data into grid
       for (let r = 0; r < rows; ++r) {
@@ -310,6 +311,7 @@
       }
 
       // Extract data (remove parity bits)
+      /** @type {uint8[]} */
       const decoded = [];
       for (let r = 0; r < rows; ++r) {
         for (let c = 0; c < cols; ++c) {

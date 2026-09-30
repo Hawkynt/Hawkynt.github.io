@@ -181,6 +181,7 @@
     generateCodebook() {
       // Nordstrom-Robinson code as union of cosets of first-order Reed-Muller code
       // We use a construction based on the (16,5,8) Hadamard code
+      /** @type {uint8[]} */
       const codebook = [];
 
       // Generate first coset: RM(1,4) - First-order Reed-Muller code [16,5,8]
@@ -191,6 +192,7 @@
 
       // Generate second coset: RM(1,4) + v where v is a specific coset leader
       // Use v = [0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1] (codeword of (8,4,4) RM)
+      /** @type {uint8[]} */
       const cosetLeader = [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1];
 
       for (let msg = 0; msg < 32; ++msg) {
@@ -200,6 +202,7 @@
       }
 
       // Generate third coset
+      /** @type {uint8[]} */
       const cosetLeader2 = [0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1];
       for (let msg = 0; msg < 32; ++msg) {
         const rmWord = this.rmEncode(msg);
@@ -208,6 +211,7 @@
       }
 
       // Generate fourth coset
+      /** @type {uint8[]} */
       const cosetLeader3 = [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1];
       for (let msg = 0; msg < 32; ++msg) {
         const rmWord = this.rmEncode(msg);
@@ -216,6 +220,7 @@
       }
 
       // Generate fifth coset
+      /** @type {uint8[]} */
       const cosetLeader4 = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1];
       for (let msg = 0; msg < 32; ++msg) {
         const rmWord = this.rmEncode(msg);
@@ -224,6 +229,7 @@
       }
 
       // Generate sixth coset
+      /** @type {uint8[]} */
       const cosetLeader5 = [0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0];
       for (let msg = 0; msg < 32; ++msg) {
         const rmWord = this.rmEncode(msg);
@@ -232,6 +238,7 @@
       }
 
       // Generate seventh coset
+      /** @type {uint8[]} */
       const cosetLeader6 = [0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0];
       for (let msg = 0; msg < 32; ++msg) {
         const rmWord = this.rmEncode(msg);
@@ -240,6 +247,7 @@
       }
 
       // Generate eighth coset
+      /** @type {uint8[]} */
       const cosetLeader7 = [0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0];
       for (let msg = 0; msg < 32; ++msg) {
         const rmWord = this.rmEncode(msg);
@@ -255,7 +263,8 @@
       // Message format: [a0, a1, a2, a3, a4] where a0 is constant term
       const m = 4;
       const n = 16;
-      const codeword = new Array(n).fill(0);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(n, 0);
 
       // Constant term
       if ((msg&1) !== 0) {

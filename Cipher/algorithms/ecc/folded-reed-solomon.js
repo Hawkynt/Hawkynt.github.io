@@ -344,11 +344,13 @@
     computeGenerator() {
       // Compute generator polynomial (x-α^0)(x-α^1)...(x-α^(n-k-1))
       // For [8,4] code, we need (n-k) = 4 roots
+      /** @type {uint8[]} */
       let gen = [1]; // Start with polynomial "1"
 
       for (let i = 0; i < this.n - this.k; ++i) {
         const alpha_i = this.gfAntilog[i % (this.field - 1)];
-        const newGen = new Array(gen.length + 1).fill(0);
+        /** @type {uint8[]} */
+        const newGen = OpCodes.CreateArray(gen.length + 1, 0);
 
         // Multiply by (x - α^i)
         for (let j = 0; j < gen.length; ++j) {
@@ -385,7 +387,8 @@
       // Calculate parity symbols using polynomial division
       // For [n,k] code, we have (n-k) parity symbols
       const parityCount = this.n - this.k;
-      const parity = new Array(parityCount).fill(0);
+      /** @type {uint8[]} */
+      const parity = OpCodes.CreateArray(parityCount, 0);
 
       // Process each data symbol
       for (let i = 0; i < this.k; ++i) {
@@ -432,7 +435,8 @@
         // This is a simplified approach - real list decoding is more complex
         for (let pos = 0; pos < received.length; ++pos) {
           // Try correcting at this position
-          const testReceived = [...received];
+          /** @type {uint8[]} */
+          const testReceived = received.slice();
           testReceived[pos] = this.gfAdd(testReceived[pos], syndromes[0]);
 
           const testSyndromes = this.calculateSyndromes(testReceived);

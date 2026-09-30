@@ -267,6 +267,7 @@
 
     repeat(data, q) {
       // Repeat each bit q times: [a,b] → [a,a,a,b,b,b] for q=3
+      /** @type {uint8[]} */
       const repeated = [];
       for (let i = 0; i < data.length; ++i) {
         for (let j = 0; j < q; ++j) {
@@ -281,6 +282,7 @@
       // For production: use S-random or dithered relative prime interleaver
       // Educational implementation: Fisher-Yates shuffle with LCG
 
+      /** @type {uint8[]} */
       const interleaver = [];
       for (let i = 0; i < length; ++i) {
         interleaver[i] = i;

@@ -55,8 +55,95 @@
           TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   // Extract foundation utilities
-  const { BipartiteGraph, SparseMatrix, GaloisField, DegreeDistribution,
+  const { BipartiteGraph, SparseMatrix, DegreeDistribution,
           SeededRandom, PerformanceProfiler } = FountainFoundation;
+
+  /**
+   * Degree and neighbour list recorded for one encoded symbol
+   * @class
+   */
+  class EncodingRecord {
+    /**
+     * @param {int32} degree - Number of source neighbours
+     * @param {int32[]} neighbors - Source symbol indices
+     */
+    constructor(degree, neighbors) {
+      /** @type {int32} */
+      this.degree = degree;
+      /** @type {int32[]} */
+      this.neighbors = neighbors;
+    }
+  }
+
+  /**
+   * Encoding parameters as reported by getPerformanceReport()
+   * @class
+   */
+  class LTParameters {
+    /**
+     * @param {int32} k - Source symbols
+     * @param {float64} overhead - Overhead factor
+     * @param {float64} c - Robust Soliton c
+     * @param {float64} delta - Failure probability
+     * @param {boolean} systematic - Systematic encoding
+     * @param {boolean} useInactivation - Inactivation decoding enabled
+     */
+    constructor(k, overhead, c, delta, systematic, useInactivation) {
+      /** @type {int32} */
+      this.k = k;
+      /** @type {float64} */
+      this.overhead = overhead;
+      /** @type {float64} */
+      this.c = c;
+      /** @type {float64} */
+      this.delta = delta;
+      /** @type {boolean} */
+      this.systematic = systematic;
+      /** @type {boolean} */
+      this.useInactivation = useInactivation;
+    }
+  }
+
+  /**
+   * Encoding-graph statistics
+   * @class
+   */
+  class GraphStatistics {
+    /**
+     * @param {int32} totalEdges - Edge count
+     * @param {float64} averageDegree - Mean encoded-symbol degree
+     * @param {int32} minDegree - Smallest degree
+     * @param {int32} maxDegree - Largest degree
+     * @param {int32} medianDegree - Median degree
+     * @param {float64} graphDensity - Edges over possible edges
+     */
+    constructor(totalEdges, averageDegree, minDegree, maxDegree, medianDegree, graphDensity) {
+      /** @type {int32} */
+      this.totalEdges = totalEdges;
+      /** @type {float64} */
+      this.averageDegree = averageDegree;
+      /** @type {int32} */
+      this.minDegree = minDegree;
+      /** @type {int32} */
+      this.maxDegree = maxDegree;
+      /** @type {int32} */
+      this.medianDegree = medianDegree;
+      /** @type {float64} */
+      this.graphDensity = graphDensity;
+    }
+  }
+
+  /**
+   * The indices 0 .. count-1
+   * @param {int32} count - Number of indices
+   * @returns {int32[]} Index list
+   */
+  function indexRange(count) {
+    /** @type {int32[]} */
+    const indices = [];
+    for (let i = 0; i < count; ++i) indices.push(i);
+    return indices;
+  }
 
   // ===== ENHANCED LT CODES ALGORITHM =====
 
@@ -186,21 +273,33 @@
       this.isInverse = isInverse;
 
       // Data buffers
+      /** @type {uint8[]} */
       this.sourceSymbols = null;
+      /** @type {uint8[]} */
       this.encodedSymbols = [];
+      /** @type {uint8[]} */
       this.decodedSymbols = null;
 
       // Encoding/decoding parameters
+      /** @type {int32} */
       this.k = 0;                  // Number of source symbols
+      /** @type {float64} */
       this.overhead = 0.5;         // Overhead factor (0.5 = 50% overhead)
+      /** @type {float64} */
       this.c = 0.1;               // Robust Soliton parameter c
+      /** @type {float64} */
       this.delta = 0.5;           // Failure probability
+      /** @type {int32} */
       this.seed = 12345;          // Random seed for reproducibility
+      /** @type {boolean} */
       this.systematic = true;      // Use systematic encoding
 
       // Advanced features
+      /** @type {boolean} */
       this.usePreCoding = false;   // Pre-coding layer (LDPC-like)
+      /** @type {boolean} */
       this.useInactivation = true; // Inactivation decoding for difficult symbols
+      /** @type {int32} */
       this.maxIterations = 1000;   // Max belief propagation iterations
 
       // Internal state
@@ -210,6 +309,7 @@
       this.profiler = new PerformanceProfiler();
 
       // Encoding metadata
+      /** @type {EncodingRecord[]} */
       this.encodingMetadata = [];  // Store degree and neighbors for each encoded symbol
     }
 
@@ -237,7 +337,11 @@
         // encoding graph are derived from the complete block in Result(), since
         // a partition computed from one call's share of the message describes a
         // different code from the one the whole message asks for.
-        if (!this.sourceSymbols) this.sourceSymbols = [];
+        if (!this.sourceSymbols) {
+          /** @type {uint8[]} */
+          const empty = [];
+          this.sourceSymbols = empty;
+        }
         for (let i = 0; i < data.length; i++) this.sourceSymbols.push(data[i]);
       }
     }
@@ -267,7 +371,9 @@
       try {
         const originalInverse = this.isInverse;
         this.isInverse = true;
-        this.encodedSymbols = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.encodedSymbols = fresh;
         this.Feed(data);
         const result = this.Result();
         this.isInverse = originalInverse;
@@ -279,6 +385,10 @@
 
     // ===== ENCODING IMPLEMENTATION =====
 
+    /**
+     * Set up the generator and degree distribution for decoding
+     * @returns {void}
+     */
     _initializeDecoding() {
       this.profiler.startTimer('initialization');
 
@@ -289,6 +399,10 @@
       this.profiler.endTimer('initialization');
     }
 
+    /**
+     * Set up the generator, distribution and graph for encoding
+     * @returns {void}
+     */
     _initializeEncoding() {
       this.profiler.startTimer('initialization');
 
@@ -306,15 +420,27 @@
       this.profiler.endTimer('initialization');
     }
 
+    /**
+     * Sample degrees and neighbours for every encoded symbol
+     * @returns {void}
+     */
     _constructEncodingGraph() {
       this.profiler.startTimer('graph_construction');
 
       // Build cumulative distribution function for faster sampling
+      /** @type {float64[]} */
       const cdf = this.degreeDistribution.buildCumulativeDistribution(this.c, this.delta);
-      this.encodingMetadata = [];
+      /** @type {EncodingRecord[]} */
+      const records = [];
+      this.encodingMetadata = records;
 
-      for (let encodedIdx = 0; encodedIdx < this.graph.rightNodes; encodedIdx++) {
-        let degree, neighbors;
+      /** @type {int32} */
+      const rightNodes = this.graph.rightNodes;
+      for (let encodedIdx = 0; encodedIdx < rightNodes; encodedIdx++) {
+        /** @type {int32} */
+        let degree;
+        /** @type {int32[]} */
+        let neighbors;
 
         if (this.systematic && encodedIdx < this.k) {
           // Systematic part: degree-1 symbols pointing to themselves
@@ -322,45 +448,55 @@
           neighbors = [encodedIdx];
         } else {
           // Random part: sample degree from Robust Soliton distribution
-          degree = this.degreeDistribution.sampleDegreeFromCDF(cdf, this.rng);
+          /** @type {int32} */
+          const sampled = this.degreeDistribution.sampleDegreeFromCDF(cdf, this.rng);
+          degree = sampled;
 
           // Sample neighbors uniformly at random without replacement
-          const sourceIndices = Array.from({length: this.k}, (_, i) => i);
-          neighbors = this.rng.sample(sourceIndices, Math.min(degree, this.k));
+          /** @type {int32[]} */
+          const sourceIndices = indexRange(this.k);
+          /** @type {int32[]} */
+          const picked = this.rng.sample(sourceIndices, Math.min(degree, this.k));
+          neighbors = picked;
         }
 
         // Store metadata for this encoded symbol
-        this.encodingMetadata.push({
-          degree: degree,
-          neighbors: neighbors
-        });
+        this.encodingMetadata.push(new EncodingRecord(degree, neighbors));
 
         // Add edges to bipartite graph
-        for (const sourceIdx of neighbors) {
-          this.graph.addEdge(sourceIdx, encodedIdx);
+        for (let n = 0; n < neighbors.length; ++n) {
+          this.graph.addEdge(neighbors[n], encodedIdx);
         }
       }
 
       this.profiler.endTimer('graph_construction');
     }
 
+    /**
+     * XOR the neighbours of every encoded symbol
+     * @returns {uint8[]} Encoded symbols
+     */
     _encode() {
       if (!this.sourceSymbols || this.k === 0) {
         throw new Error('No source symbols to encode');
       }
 
       this.profiler.startTimer('encoding');
+      /** @type {uint8[]} */
       const result = [];
 
       // Generate encoded symbols
-      for (let encodedIdx = 0; encodedIdx < this.graph.rightNodes; encodedIdx++) {
+      /** @type {int32} */
+      const rightNodes = this.graph.rightNodes;
+      for (let encodedIdx = 0; encodedIdx < rightNodes; encodedIdx++) {
+        /** @type {int32[]} */
         const neighbors = this.graph.getNeighbors(encodedIdx);
         /** @type {uint32} */
         let encodedSymbol = 0;
 
         // XOR all connected source symbols
-        for (const sourceIdx of neighbors) {
-          encodedSymbol = OpCodes.Xor32(encodedSymbol, this.sourceSymbols[sourceIdx]);
+        for (let n = 0; n < neighbors.length; ++n) {
+          encodedSymbol = OpCodes.Xor32(encodedSymbol, this.sourceSymbols[neighbors[n]]);
         }
 
         result.push(encodedSymbol);
@@ -373,6 +509,10 @@
 
     // ===== ENHANCED DECODING IMPLEMENTATION =====
 
+    /**
+     * Belief propagation, then inactivation decoding
+     * @returns {uint8[]} Decoded source symbols
+     */
     _decode() {
       if (this.encodedSymbols.length === 0) {
         throw new Error('No encoded symbols to decode');
@@ -381,6 +521,7 @@
       this.profiler.startTimer('decoding');
 
       // Attempt belief propagation decoding first
+      /** @type {uint8[]} */
       let decoded = this._beliefPropagationDecode();
 
       // If BP fails and inactivation is enabled, try inactivation decoding
@@ -399,6 +540,10 @@
       return decoded;
     }
 
+    /**
+     * Peeling decoder over degree-one symbols
+     * @returns {uint8[]} Decoded source symbols, or null when stuck
+     */
     _beliefPropagationDecode() {
       this.profiler.startTimer('belief_propagation');
 
@@ -411,13 +556,21 @@
       }
 
       // Initialize decoding state
-      const decoded = new Array(this.k).fill(null);
-      const symbolStatus = new Array(this.k).fill(false); // false = unknown, true = decoded
+      /** @type {uint8[]} */
+      const decoded = [];
+      /** @type {boolean[]} */
+      const symbolStatus = []; // false = unknown, true = decoded
+      for (let i = 0; i < this.k; ++i) {
+        decoded.push(null);
+        symbolStatus.push(false);
+      }
 
       // Create working copy of received symbols
-      const workingSymbols = [...this.encodedSymbols];
+      /** @type {uint8[]} */
+      const workingSymbols = this.encodedSymbols.slice();
 
       // Build decoding graph (reconstruct from encoding parameters)
+      /** @type {BipartiteGraph} */
       const workingGraph = this._reconstructDecodingGraph(numReceived);
 
       let decodedCount = 0;
@@ -430,18 +583,25 @@
         progress = false;
 
         // Find all degree-1 encoded symbols (ripple)
+        /** @type {int32[]} */
         const degreeOneSymbols = [];
         for (let encodedIdx = 0; encodedIdx < numReceived; encodedIdx++) {
-          if (workingGraph.getDegree(encodedIdx) === 1) {
+          /** @type {int32} */
+          const degree = workingGraph.getDegree(encodedIdx);
+          if (degree === 1) {
             degreeOneSymbols.push(encodedIdx);
           }
         }
 
         // Process all degree-1 symbols
-        for (const encodedIdx of degreeOneSymbols) {
+        for (let q = 0; q < degreeOneSymbols.length; ++q) {
+          /** @type {int32} */
+          const encodedIdx = degreeOneSymbols[q];
+          /** @type {int32[]} */
           const neighbors = workingGraph.getNeighbors(encodedIdx);
 
           if (neighbors.length === 1) {
+            /** @type {int32} */
             const sourceIdx = neighbors[0];
 
             if (!symbolStatus[sourceIdx]) {
@@ -454,8 +614,11 @@
               this.profiler.incrementCounter('bp_decoded_symbols');
 
               // Update all encoded symbols connected to this source
+              /** @type {int32[]} */
               const connectedEncoded = workingGraph.getReverseNeighbors(sourceIdx);
-              for (const connectedIdx of connectedEncoded) {
+              for (let r = 0; r < connectedEncoded.length; ++r) {
+                /** @type {int32} */
+                const connectedIdx = connectedEncoded[r];
                 if (connectedIdx !== encodedIdx) {
                   // XOR out the decoded symbol
                   workingSymbols[connectedIdx] = OpCodes.Xor32(workingSymbols[connectedIdx], decoded[sourceIdx]);
@@ -478,6 +641,10 @@
       return decodedCount === this.k ? decoded : null;
     }
 
+    /**
+     * Gaussian elimination over GF(2) on the full system
+     * @returns {uint8[]} Decoded source symbols, or null when underdetermined
+     */
     _inactivationDecode() {
       this.profiler.startTimer('inactivation_decoding');
 
@@ -485,18 +652,22 @@
 
       // Build sparse matrix representation for Gaussian elimination
       const matrix = new SparseMatrix(numReceived, this.k);
-      const receivedVector = [...this.encodedSymbols];
+      /** @type {uint8[]} */
+      const receivedVector = this.encodedSymbols.slice();
 
       // Populate matrix from encoding graph
+      /** @type {BipartiteGraph} */
       const decodingGraph = this._reconstructDecodingGraph(numReceived);
       for (let encodedIdx = 0; encodedIdx < numReceived; encodedIdx++) {
+        /** @type {int32[]} */
         const neighbors = decodingGraph.getNeighbors(encodedIdx);
-        for (const sourceIdx of neighbors) {
-          matrix.set(encodedIdx, sourceIdx, 1); // Binary matrix
+        for (let n = 0; n < neighbors.length; ++n) {
+          matrix.set(encodedIdx, neighbors[n], 1); // Binary matrix
         }
       }
 
       // Perform Gaussian elimination in GF(2)
+      /** @type {uint8[]} */
       const decoded = this._gaussianEliminationGF2(matrix, receivedVector);
 
       this.profiler.endTimer('inactivation_decoding');
@@ -504,13 +675,24 @@
       return decoded;
     }
 
+    /**
+     * Solve matrix * x = vector over GF(2)
+     * @param {SparseMatrix} matrix - Binary coefficient matrix (modified)
+     * @param {uint8[]} vector - Right-hand side
+     * @returns {uint8[]} Solution, or null when underdetermined
+     */
     _gaussianEliminationGF2(matrix, vector) {
       this.profiler.startTimer('gaussian_elimination');
 
+      /** @type {int32} */
       const rows = matrix.rows;
+      /** @type {int32} */
       const cols = matrix.cols;
+      /** @type {uint8[]} */
       const augmented = vector.slice();
-      const pivot = new Array(cols).fill(-1); // Pivot row for each column
+      /** @type {int32[]} */
+      const pivot = []; // Pivot row for each column
+      for (let c = 0; c < cols; ++c) pivot.push(-1);
 
       // Forward elimination
       let currentRow = 0;
@@ -518,7 +700,9 @@
         // Find pivot
         let pivotRow = -1;
         for (let row = currentRow; row < rows; row++) {
-          if (matrix.get(row, col) === 1) {
+          /** @type {uint8} */
+          const cell = matrix.get(row, col);
+          if (cell === 1) {
             pivotRow = row;
             break;
           }
@@ -531,8 +715,11 @@
         // Swap rows if needed
         if (pivotRow !== currentRow) {
           for (let c = 0; c < cols; c++) {
+            /** @type {uint8} */
             const temp = matrix.get(currentRow, c);
-            matrix.set(currentRow, c, matrix.get(pivotRow, c));
+            /** @type {uint8} */
+            const other = matrix.get(pivotRow, c);
+            matrix.set(currentRow, c, other);
             matrix.set(pivotRow, c, temp);
           }
           const tempVal = augmented[currentRow];
@@ -544,10 +731,17 @@
 
         // Eliminate
         for (let row = 0; row < rows; row++) {
-          if (row !== currentRow && matrix.get(row, col) === 1) {
+          if (row === currentRow) continue;
+          /** @type {uint8} */
+          const lead = matrix.get(row, col);
+          if (lead === 1) {
             // XOR this row with current row
             for (let c = 0; c < cols; c++) {
-              matrix.set(row, c, OpCodes.Xor32(matrix.get(row, c), matrix.get(currentRow, c)));
+              /** @type {uint8} */
+              const a = matrix.get(row, c);
+              /** @type {uint8} */
+              const b = matrix.get(currentRow, c);
+              matrix.set(row, c, OpCodes.Xor32(a, b));
             }
             augmented[row] = OpCodes.Xor32(augmented[row], augmented[currentRow]);
           }
@@ -557,7 +751,9 @@
       }
 
       // Back substitution
-      const solution = new Array(cols).fill(null);
+      /** @type {uint8[]} */
+      const solution = [];
+      for (let c = 0; c < cols; ++c) solution.push(null);
       for (let col = 0; col < cols; col++) {
         if (pivot[col] !== -1) {
           solution[col] = augmented[pivot[col]];
@@ -572,26 +768,40 @@
       return solution;
     }
 
+    /**
+     * Rebuild the encoding graph from the shared seed
+     * @param {int32} numReceived - Encoded symbols received
+     * @returns {BipartiteGraph} Encoding graph
+     */
     _reconstructDecodingGraph(numReceived) {
       // Reconstruct the encoding graph for received symbols
       const graph = new BipartiteGraph(this.k, numReceived);
       const rng = new SeededRandom(this.seed);
+      /** @type {float64[]} */
       const cdf = this.degreeDistribution.buildCumulativeDistribution(this.c, this.delta);
 
       for (let encodedIdx = 0; encodedIdx < numReceived; encodedIdx++) {
-        let degree, neighbors;
+        /** @type {int32} */
+        let degree;
+        /** @type {int32[]} */
+        let neighbors;
 
         if (this.systematic && encodedIdx < this.k) {
           degree = 1;
           neighbors = [encodedIdx];
         } else {
-          degree = this.degreeDistribution.sampleDegreeFromCDF(cdf, rng);
-          const sourceIndices = Array.from({length: this.k}, (_, i) => i);
-          neighbors = rng.sample(sourceIndices, Math.min(degree, this.k));
+          /** @type {int32} */
+          const sampled = this.degreeDistribution.sampleDegreeFromCDF(cdf, rng);
+          degree = sampled;
+          /** @type {int32[]} */
+          const sourceIndices = indexRange(this.k);
+          /** @type {int32[]} */
+          const picked = rng.sample(sourceIndices, Math.min(degree, this.k));
+          neighbors = picked;
         }
 
-        for (const sourceIdx of neighbors) {
-          graph.addEdge(sourceIdx, encodedIdx);
+        for (let n = 0; n < neighbors.length; ++n) {
+          graph.addEdge(neighbors[n], encodedIdx);
         }
       }
 
@@ -603,40 +813,49 @@
     getPerformanceReport() {
       return {
         ...this.profiler.getReport(),
-        parameters: {
-          k: this.k,
-          overhead: this.overhead,
-          c: this.c,
-          delta: this.delta,
-          systematic: this.systematic,
-          useInactivation: this.useInactivation
-        },
+        parameters: new LTParameters(this.k, this.overhead, this.c, this.delta, this.systematic, this.useInactivation),
         graphStats: this._getGraphStatistics()
       };
     }
 
+    /**
+     * @returns {GraphStatistics} Encoding-graph statistics, or null before encoding
+     */
     _getGraphStatistics() {
-      if (!this.graph) return null;
+      if (!this.graph) {
+        return null;
+      }
 
+      /** @type {int32[]} */
       const degrees = [];
+      /** @type {int32} */
       let totalEdges = 0;
+      /** @type {int32} */
+      const rightNodes = this.graph.rightNodes;
+      /** @type {int32} */
+      const leftNodes = this.graph.leftNodes;
 
-      for (let i = 0; i < this.graph.rightNodes; i++) {
+      for (let i = 0; i < rightNodes; i++) {
+        /** @type {int32} */
         const degree = this.graph.getDegree(i);
         degrees.push(degree);
         totalEdges += degree;
       }
 
-      degrees.sort((a, b) => a - b);
+      // numeric ascending sort
+      for (let i = 1; i < degrees.length; ++i) {
+        /** @type {int32} */
+        const value = degrees[i];
+        let j = i - 1;
+        while (j >= 0 && degrees[j] > value) {
+          degrees[j + 1] = degrees[j];
+          --j;
+        }
+        degrees[j + 1] = value;
+      }
 
-      return {
-        totalEdges: totalEdges,
-        averageDegree: totalEdges / this.graph.rightNodes,
-        minDegree: degrees[0],
-        maxDegree: degrees[degrees.length - 1],
-        medianDegree: degrees[Math.floor(degrees.length / 2)],
-        graphDensity: totalEdges / (this.graph.leftNodes * this.graph.rightNodes)
-      };
+      return new GraphStatistics(totalEdges, totalEdges / rightNodes, degrees[0], degrees[degrees.length - 1],
+        degrees[Math.floor(degrees.length / 2)], totalEdges / (leftNodes * rightNodes));
     }
 
     getDegreeDistributionStats() {
@@ -644,16 +863,20 @@
         return null;
       }
 
+      /** @type {int32} */
+      let degreeSum = 0;
       const degreeCount = {};
-      for (const metadata of this.encodingMetadata) {
-        const deg = metadata.degree;
+      for (let i = 0; i < this.encodingMetadata.length; ++i) {
+        /** @type {int32} */
+        const deg = this.encodingMetadata[i].degree;
         degreeCount[deg] = ((degreeCount[deg] ? degreeCount[deg] : 0)) + 1;
+        degreeSum += deg;
       }
 
       return {
         distribution: degreeCount,
         totalSymbols: this.encodingMetadata.length,
-        averageDegree: this.encodingMetadata.reduce((sum, m) => sum + m.degree, 0) / this.encodingMetadata.length
+        averageDegree: degreeSum / this.encodingMetadata.length
       };
     }
   }

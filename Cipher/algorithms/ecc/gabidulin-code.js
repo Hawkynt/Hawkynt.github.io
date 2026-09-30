@@ -273,7 +273,8 @@
         }
       }
 
-      const codeword = new Array(this.n).fill(0);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(this.n, 0);
 
       // Matrix-vector multiplication over GF(4)
       // c = m * G where m is message vector, G is generator matrix
@@ -310,12 +311,14 @@
       // Real Gabidulin decoding uses Welch-Berlekamp-like algorithms for rank metric
 
       let minRankDistance = Infinity;
-      let bestMessage = new Array(this.k).fill(0);
+      /** @type {float64[]} */
+      let bestMessage = OpCodes.CreateArray(this.k, 0);
 
       // Try all 4^k possible messages (feasible for small k)
       const totalMessages = Math.pow(4, this.k);
 
       for (let msgIndex = 0; msgIndex < totalMessages; ++msgIndex) {
+        /** @type {float64[]} */
         const message = [];
         let temp = msgIndex;
 
