@@ -154,6 +154,7 @@
 
       // Hamming [7,4] generator matrix for CSS construction
       // This is the classical code C1 used to protect against bit-flip errors
+      /** @type {uint8[][]} */
       this.G = [
         [1, 1, 0, 1, 0, 0, 0],
         [1, 0, 1, 0, 1, 0, 0],
@@ -163,6 +164,7 @@
 
       // Hamming [7,4] parity check matrix
       // Used for syndrome measurement
+      /** @type {uint8[][]} */
       this.H = [
         [0, 0, 0, 1, 1, 1, 1],
         [0, 1, 1, 0, 0, 1, 1],
@@ -171,6 +173,7 @@
 
       // Steane code stabilizer generators (for reference)
       // X-type stabilizers (detect phase-flip errors)
+      /** @type {uint8[][]} */
       this.stabilizerX = [
         [1, 1, 1, 1, 0, 0, 0],
         [1, 1, 0, 0, 1, 1, 0],
@@ -178,6 +181,7 @@
       ];
 
       // Z-type stabilizers (detect bit-flip errors)
+      /** @type {uint8[][]} */
       this.stabilizerZ = [
         [1, 1, 1, 1, 0, 0, 0],
         [1, 1, 0, 0, 1, 1, 0],
@@ -222,19 +226,24 @@
      * Encode logical qubit to 7 physical qubits using Steane [[7,1,3]] code
      * For classical simulation: state 0 maps to all-zeros, state 1 maps to all-ones
      * Real quantum encoding would preserve superposition with linear combinations of these basis states
+     * @param {uint8[]} logicalQubit - One logical bit
+     * @returns {uint8[]} Seven physical bits
      */
     encode(logicalQubit) {
       if (logicalQubit.length !== this.k) {
         throw new Error("CSS encode: Input must be exactly " + this.k + " logical qubit (as classical bit)");
       }
 
+      /** @type {uint8} */
       const logical = logicalQubit[0];
 
       // Steane code logical codewords
       // Logical qubit state 0 encoded as all-zeros codeword (all qubits in ground state)
       // Logical qubit state 1 encoded as all-ones codeword (all qubits in excited state)
       // This is the standard CSS construction using dual Hamming codes
-      const encoded = new Array(this.n).fill(logical);
+      /** @type {uint8[]} */
+      const encoded = [];
+      for (let i = 0; i < this.n; ++i) encoded.push(logical);
 
       return encoded;
     }
@@ -243,6 +252,8 @@
      * Decode physical qubits with error correction
      * Measures Z-stabilizers to detect bit-flip errors
      * In classical simulation, this corrects single bit-flip errors
+     * @param {uint8[]} physicalQubits - Seven physical bits
+     * @returns {uint8[]} One logical bit
      */
     decode(physicalQubits) {
       if (physicalQubits.length !== this.n) {
@@ -254,9 +265,11 @@
       const received = physicalQubits.slice();
 
       // Measure Z-stabilizers (detect bit-flip errors)
+      /** @type {uint8[]} */
       const syndrome = this.measureSyndrome(received);
 
       // Calculate error position from syndrome
+      /** @type {int32} */
       const errorPosition = this.syndromeToErrorPosition(syndrome);
 
       // Correct the error if detected
@@ -266,14 +279,19 @@
 
       // Extract logical qubit (majority vote for classical simulation)
       // Real quantum decoding would measure logical observable
+      /** @type {uint8} */
       const logicalQubit = this.extractLogicalQubit(received);
 
-      return [logicalQubit];
+      /** @type {uint8[]} */
+      const decoded = [logicalQubit];
+      return decoded;
     }
 
     /**
      * Measure syndrome using parity check matrix
      * Returns 3-bit syndrome indicating error location
+     * @param {uint8[]} qubits - Physical bits
+     * @returns {uint8[]} Three syndrome bits
      */
     measureSyndrome(qubits) {
       /** @type {uint8[]} */
@@ -297,6 +315,8 @@
      * Combine the three syndrome bits into a single integer, row 0 being the
      * most significant bit. The bits are plain numbers, so the 32-bit shift
      * helper is used rather than the BigInt one.
+     * @param {uint8[]} syndrome - Three syndrome bits
+     * @returns {uint32} Syndrome as integer, row 0 most significant
      */
     syndromeValue(syndrome) {
       return OpCodes.Or32(OpCodes.Or32(syndrome[2], OpCodes.Shl32(syndrome[1], 1)), OpCodes.Shl32(syndrome[0], 2));
@@ -306,12 +326,15 @@
      * Convert syndrome to error position using Hamming code lookup
      * Syndrome = 0 means no error
      * Syndrome = position in binary for single-bit error
+     * @param {uint8[]} syndrome - Three syndrome bits
+     * @returns {int32} Error position, -1 for none
      */
     syndromeToErrorPosition(syndrome) {
       // Convert syndrome to integer.
       // Column j of H holds the binary representation of position j+1 with row 0
       // as the most significant bit, so the syndrome must be assembled MSB-first
       // for its value to name the erroneous qubit directly.
+      /** @type {uint32} */
       const syndromeValue = this.syndromeValue(syndrome);
 
       if (syndromeValue === 0) {
@@ -320,15 +343,18 @@
 
       // Syndrome directly gives error position in Hamming code
       // Positions: 1,2,3,4,5,6,7 (1-indexed in theory, 0-indexed in array)
-      return syndromeValue - 1;
+      return OpCodes.ToInt(syndromeValue) - 1;
     }
 
     /**
      * Extract logical qubit using majority vote (classical approximation)
      * Real quantum systems would measure logical observable operators
+     * @param {uint8[]} qubits - Physical bits
+     * @returns {uint8} Majority bit
      */
     extractLogicalQubit(qubits) {
       // Count ones
+      /** @type {int32} */
       let ones = 0;
       for (let i = 0; i < this.n; ++i) {
         ones += qubits[i];
@@ -348,6 +374,7 @@
         return true; // Invalid length is an error
       }
 
+      /** @type {uint8[]} */
       const syndrome = this.measureSyndrome(data);
 
       return this.syndromeValue(syndrome) !== 0;
@@ -357,6 +384,10 @@
      * Introduce error for testing (educational purposes)
      * errorType: 'bit-flip' (X gate), 'phase-flip' (Z gate), 'both' (Y gate)
      * position: qubit index 0-6
+     * @param {uint8[]} qubits - Physical bits
+     * @param {string} errorType - 'bit-flip', 'phase-flip' or 'both'
+     * @param {int32} position - Qubit index
+     * @returns {uint8[]} Bits with the error applied
      */
     IntroduceError(qubits, errorType, position) {
       if (position < 0 || position >= this.n) {
