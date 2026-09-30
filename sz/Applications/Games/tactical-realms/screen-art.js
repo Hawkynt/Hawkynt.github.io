@@ -167,10 +167,53 @@
   // the upper body fills a portrait whatever the race's height.
   function bustFootY(ch, top, height, pad) {
     const BS = TR.BattleSprites;
-    const look = BS ? BS.lookFor(asUnit(ch)) : null;
+    const unit = ch && ch.character ? ch : asUnit(ch);
+    const look = BS ? BS.lookFor(unit) : null;
     const scale = look ? look.scale || 1 : 1;
     const k = Math.max(1, Math.round(height / (BS ? BS.ART_H : 72)));
     return top + pad + 58 * scale * k;
+  }
+
+  // Cached portrait image for HTML widgets (combat HUD); null until the
+  // unit's art is available.
+  const _portraits = new Map();
+
+  function portraitURL(unit, size = 40) {
+    const BS = TR.BattleSprites;
+    if (!BS || !unit || typeof document === 'undefined')
+      return null;
+    const ch = unit.character || {};
+    const key = `${unit.faction}|${ch.class}|${ch.race || ''}|${size}`;
+    if (_portraits.has(key))
+      return _portraits.get(key);
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    if (!ctx || typeof c.toDataURL !== 'function')
+      return null;
+    const g = ctx.createLinearGradient(0, 0, 0, size);
+    g.addColorStop(0, unit.faction === 'party' ? '#2a3a6a' : '#6a2a2a');
+    g.addColorStop(1, '#10121e');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+    let drawn;
+    if (BS.hasDoll(unit))
+      drawn = BS.draw(ctx, unit, 'idle', 0, size / 2, bustFootY(unit, 0, size * 2.4, size * 0.07), size * 2.4, 1);
+    else {
+      // icons: fill the frame whatever the creature's size
+      const scale = BS.sizeScale ? BS.sizeScale(ch) : 0.8;
+      drawn = BS.draw(ctx, unit, 'idle', 0, size / 2, size * 0.98, size * 0.96 / scale, 1);
+    }
+    if (!drawn || drawn.kind === 'circle')
+      return null;
+    let url = null;
+    try {
+      url = c.toDataURL();
+    } catch (_) {
+      url = null;          // tainted canvas when opened from file://
+    }
+    _portraits.set(key, url);
+    return url;
   }
 
   // --- widgets -------------------------------------------------------------------
@@ -370,7 +413,7 @@
 
   TR.ScreenArt = Object.freeze({
     itemIcon,
-    W, H, asUnit, bustFootY, stage, vignette, campfire, partyLine, portrait,
+    W, H, asUnit, bustFootY, portraitURL, stage, vignette, campfire, partyLine, portrait,
     frame, banner, rosterPanel, menu, button, reveal, confetti,
   });
 })();
