@@ -150,11 +150,17 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this.result = null;
+      /** @type {int32} */
       this._n = 7; // Default: length 7
+      /** @type {int32} */
       this._d = 3; // Default: minimum distance 3
+      /** @type {uint8[][]} */
       this.codebook = null;
     }
 
+    /**
+     * @param {int32} value - Code length (3..16)
+     */
     set n(value) {
       if (value < 3 || value > 16) {
         throw new Error('LexicographicCodeInstance.n: Must be between 3 and 16');
@@ -163,10 +169,16 @@
       this.codebook = null; // Invalidate codebook
     }
 
+    /**
+     * @returns {int32} Code length
+     */
     get n() {
       return this._n;
     }
 
+    /**
+     * @param {int32} value - Minimum distance (1..n)
+     */
     set d(value) {
       if (value < 1 || value > this._n) {
         throw new Error("LexicographicCodeInstance.d: Must be between 1 and " + this._n);
@@ -175,6 +187,9 @@
       this.codebook = null; // Invalidate codebook
     }
 
+    /**
+     * @returns {int32} Minimum distance
+     */
     get d() {
       return this._d;
     }
@@ -215,6 +230,9 @@
       return this.result;
     }
 
+    /**
+     * @returns {uint8[][]} Greedy lexicode codewords in lexicographic order
+     */
     generateCodebook() {
       // Greedy lexicographic construction
       /** @type {uint8[][]} */
@@ -223,7 +241,10 @@
       const d = this._d;
 
       // Always include all-zeros codeword
-      codebook.push(new Array(n).fill(0));
+      /** @type {uint8[]} */
+      const zeros = [];
+      for (let i = 0; i < n; ++i) zeros.push(0);
+      codebook.push(zeros);
 
       // Try adding codewords in lexicographic order
       for (let candidate = 1; candidate < OpCodes.Shl32(1, n); ++candidate) {
@@ -236,8 +257,9 @@
 
         // Check if this codeword has minimum distance d from all existing codewords
         let validCodeword = true;
-        for (let existing of codebook) {
-          const distance = this.hammingDistance(codeword, existing);
+        for (let e = 0; e < codebook.length; ++e) {
+          /** @type {int32} */
+          const distance = this.hammingDistance(codeword, codebook[e]);
           if (distance < d) {
             validCodeword = false;
             break;
@@ -252,7 +274,13 @@
       return codebook;
     }
 
+    /**
+     * @param {uint8[]} a - First word
+     * @param {uint8[]} b - Second word
+     * @returns {int32} Number of differing positions
+     */
     hammingDistance(a, b) {
+      /** @type {int32} */
       let distance = 0;
       for (let i = 0; i < a.length; ++i) {
         if (a[i] !== b[i]) ++distance;
@@ -287,7 +315,9 @@
         throw new Error("Lexicographic encode: Index " + index + " out of range (codebook size: " + this.codebook.length + ")");
       }
 
-      return [...this.codebook[index]];
+      /** @type {uint8[]} */
+      const codeword = this.codebook[index].slice();
+      return codeword;
     }
 
     /**
@@ -304,10 +334,13 @@
       }
 
       // Minimum distance decoding
+      /** @type {float64} */
       let minDistance = Infinity;
+      /** @type {int32} */
       let bestIndex = 0;
 
       for (let i = 0; i < this.codebook.length; ++i) {
+        /** @type {int32} */
         const distance = this.hammingDistance(data, this.codebook[i]);
         if (distance < minDistance) {
           minDistance = distance;
@@ -338,7 +371,9 @@
       if (data.length !== this._n) return true;
 
       // Check if received word is valid codeword
-      for (let codeword of this.codebook) {
+      for (let w = 0; w < this.codebook.length; ++w) {
+        /** @type {uint8[]} */
+        const codeword = this.codebook[w];
         let matches = true;
         for (let i = 0; i < this._n; ++i) {
           if (data[i] !== codeword[i]) {

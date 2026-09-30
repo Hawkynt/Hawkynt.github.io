@@ -146,6 +146,7 @@
 
       // Generator matrix for ternary Golay [11,6,5] code
       // G = [I_6|P] where I_6 is identity and P is parity matrix
+      /** @type {uint8[][]} */
       this.generator = [
         [1, 0, 0, 0, 0, 0, 1, 1, 2, 2, 1],
         [0, 1, 0, 0, 0, 0, 1, 2, 1, 1, 2],
@@ -156,6 +157,7 @@
       ];
 
       // Parity check matrix H = [-P^T|I_5]
+      /** @type {uint8[][]} */
       this.parityCheck = [
         [2, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0],
         [2, 1, 1, 2, 2, 1, 0, 1, 0, 0, 0],
@@ -177,7 +179,9 @@
       }
 
       // Validate ternary symbols
-      for (let symbol of data) {
+      for (let s = 0; s < data.length; ++s) {
+        /** @type {float64} */
+        const symbol = data[s];
         if (symbol < 0 || symbol > 2 || symbol !== Math.floor(symbol)) {
           throw new Error("TernaryGolayInstance.Feed: All symbols must be 0, 1, or 2 (got " + symbol + ")");
         }
@@ -217,9 +221,12 @@
       const codeword = OpCodes.CreateArray(11, 0);
 
       for (let i = 0; i < 11; ++i) {
+        /** @type {float64} */
         let sum = 0;
         for (let j = 0; j < 6; ++j) {
-          sum += data[j] * this.generator[j][i];
+          /** @type {float64} */
+          const symbol = data[j];
+          sum += symbol * this.generator[j][i];
         }
         codeword[i] = sum % 3;
       }
@@ -241,15 +248,22 @@
       const syndrome = OpCodes.CreateArray(5, 0);
 
       for (let i = 0; i < 5; ++i) {
+        /** @type {float64} */
         let sum = 0;
         for (let j = 0; j < 11; ++j) {
-          sum += this.parityCheck[i][j] * data[j];
+          /** @type {float64} */
+          const symbol = data[j];
+          sum += this.parityCheck[i][j] * symbol;
         }
         syndrome[i] = sum % 3;
       }
 
       // Check if syndrome is zero (no errors)
-      const hasError = syndrome.some(s => s !== 0);
+      /** @type {boolean} */
+      let hasError = false;
+      for (let i = 0; i < syndrome.length; ++i) {
+        if (syndrome[i] !== 0) hasError = true;
+      }
 
       if (!hasError) {
         // No errors, extract message (first 6 symbols)
@@ -272,7 +286,9 @@
       if (data.length !== 11) return true;
 
       // Validate ternary symbols
-      for (let symbol of data) {
+      for (let s = 0; s < data.length; ++s) {
+        /** @type {float64} */
+        const symbol = data[s];
         if (symbol < 0 || symbol > 2 || symbol !== Math.floor(symbol)) {
           return true;
         }
@@ -283,14 +299,20 @@
       const syndrome = OpCodes.CreateArray(5, 0);
 
       for (let i = 0; i < 5; ++i) {
+        /** @type {float64} */
         let sum = 0;
         for (let j = 0; j < 11; ++j) {
-          sum += this.parityCheck[i][j] * data[j];
+          /** @type {float64} */
+          const symbol = data[j];
+          sum += this.parityCheck[i][j] * symbol;
         }
         syndrome[i] = sum % 3;
       }
 
-      return syndrome.some(s => s !== 0);
+      for (let i = 0; i < syndrome.length; ++i) {
+        if (syndrome[i] !== 0) return true;
+      }
+      return false;
     }
   }
 
