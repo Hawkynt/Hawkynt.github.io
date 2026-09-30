@@ -102,9 +102,9 @@
    * array into a call: push(...source) overflows the argument limit at exactly
    * these sizes.
    *
-   * @param {number[]} target - array appended to, modified in place
-   * @param {number[]} source - array read from
-   * @returns {number[]} target
+   * @param {uint8[]} target - array appended to, modified in place
+   * @param {uint8[]} source - array read from
+   * @returns {uint8[]} target
    */
   function appendAll(target, source) {
     for (let i = 0; i < source.length; i++) target.push(source[i]);
@@ -126,7 +126,7 @@
    * file. Resolving on demand leaves dilithium.js to register itself when the
    * walk reaches it.
    *
-   * @returns {object} the exports of dilithium.js
+   * @returns {Object} the exports of dilithium.js
    */
   function core() {
     if (cachedCore) return cachedCore;
@@ -150,11 +150,36 @@
 
   /**
    * The parameter set an instance is currently working under.
-   * @param {object|null} chosen - an already resolved set, or null
-   * @returns {object} the parameter set
+   * @param {DilithiumParams|null} chosen - an already resolved set, or null
+   * @returns {DilithiumParams} the parameter set
    */
   function parameterSetOrDefault(chosen) {
-    return chosen || core().PARAMETER_SETS['ML-DSA-44'];
+    if (chosen) {
+      return chosen;
+    }
+    /** @type {Object} */
+    const exported = core();
+    /** @type {Object} */
+    const sets = exported.PARAMETER_SETS;
+    /** @type {DilithiumParams} */
+    const fallback = sets['ML-DSA-44'];
+    return fallback;
+  }
+
+  /**
+   * An encoded key pair handed back by GenerateKeyPair.
+   */
+  class MLDSAKeyPair {
+    /**
+     * @param {uint8[]} publicKey - encoded public key
+     * @param {uint8[]} privateKey - encoded private key
+     */
+    constructor(publicKey, privateKey) {
+      /** @type {uint8[]} */
+      this.publicKey = publicKey;
+      /** @type {uint8[]} */
+      this.privateKey = privateKey;
+    }
   }
 
   // ===== PRE-HASH (FIPS 204 SECTION 5.4) =====
@@ -180,49 +205,90 @@
 
   /**
    * DER encode 2.16.840.1.101.3.4.2.n for a single digit final component.
-   * @param {number} component - the last arc component, 1 to 12
+   * @param {int32} component - the last arc component, 1 to 12
    * @returns {string} the encoding as hex
    */
   function hashOid(component) {
-    return NIST_HASH_ARC + component.toString(16).padStart(2, '0').toUpperCase();
+    /** @type {string} */
+    const last = component.toString(16).padStart(2, '0').toUpperCase();
+    return NIST_HASH_ARC + last;
+  }
+
+  /**
+   * One approved HashML-DSA pre-hash function.
+   */
+  class PreHashSpec {
+    /**
+     * @param {string} algorithm - registered algorithm name
+     * @param {string} module - hash module file that registers it
+     * @param {int32} digestSize - digest length in bytes
+     * @param {boolean} extendable - whether it is an XOF read at digestSize
+     * @param {string} oid - DER encoding of its object identifier, as hex
+     */
+    constructor(algorithm, module, digestSize, extendable, oid) {
+      /** @type {string} */
+      this.algorithm = algorithm;
+      /** @type {string} */
+      this.module = module;
+      /** @type {int32} */
+      this.digestSize = digestSize;
+      /** @type {boolean} */
+      this.extendable = extendable;
+      /** @type {string} */
+      this.oid = oid;
+    }
   }
 
   const PRE_HASH = {
-    'SHA2-256':     { algorithm: 'SHA-256',     module: 'sha256', digestSize: 32, extendable: false, oid: hashOid(1) },
-    'SHA2-384':     { algorithm: 'SHA-384',     module: 'sha512', digestSize: 48, extendable: false, oid: hashOid(2) },
-    'SHA2-512':     { algorithm: 'SHA-512',     module: 'sha512', digestSize: 64, extendable: false, oid: hashOid(3) },
-    'SHA2-224':     { algorithm: 'SHA-224',     module: 'sha256', digestSize: 28, extendable: false, oid: hashOid(4) },
-    'SHA2-512/224': { algorithm: 'SHA-512/224', module: 'sha512', digestSize: 28, extendable: false, oid: hashOid(5) },
-    'SHA2-512/256': { algorithm: 'SHA-512/256', module: 'sha512', digestSize: 32, extendable: false, oid: hashOid(6) },
-    'SHA3-224':     { algorithm: 'SHA-3-224',   module: 'sha3',   digestSize: 28, extendable: false, oid: hashOid(7) },
-    'SHA3-256':     { algorithm: 'SHA-3-256',   module: 'sha3',   digestSize: 32, extendable: false, oid: hashOid(8) },
-    'SHA3-384':     { algorithm: 'SHA-3-384',   module: 'sha3',   digestSize: 48, extendable: false, oid: hashOid(9) },
-    'SHA3-512':     { algorithm: 'SHA-3-512',   module: 'sha3',   digestSize: 64, extendable: false, oid: hashOid(10) },
-    'SHAKE-128':    { algorithm: 'SHAKE128',    module: 'shake',  digestSize: 32, extendable: true,  oid: hashOid(11) },
-    'SHAKE-256':    { algorithm: 'SHAKE256',    module: 'shake',  digestSize: 64, extendable: true,  oid: hashOid(12) }
+    'SHA2-256':     new PreHashSpec('SHA-256',     'sha256', 32, false, hashOid(1)),
+    'SHA2-384':     new PreHashSpec('SHA-384',     'sha512', 48, false, hashOid(2)),
+    'SHA2-512':     new PreHashSpec('SHA-512',     'sha512', 64, false, hashOid(3)),
+    'SHA2-224':     new PreHashSpec('SHA-224',     'sha256', 28, false, hashOid(4)),
+    'SHA2-512/224': new PreHashSpec('SHA-512/224', 'sha512', 28, false, hashOid(5)),
+    'SHA2-512/256': new PreHashSpec('SHA-512/256', 'sha512', 32, false, hashOid(6)),
+    'SHA3-224':     new PreHashSpec('SHA-3-224',   'sha3',   28, false, hashOid(7)),
+    'SHA3-256':     new PreHashSpec('SHA-3-256',   'sha3',   32, false, hashOid(8)),
+    'SHA3-384':     new PreHashSpec('SHA-3-384',   'sha3',   48, false, hashOid(9)),
+    'SHA3-512':     new PreHashSpec('SHA-3-512',   'sha3',   64, false, hashOid(10)),
+    'SHAKE-128':    new PreHashSpec('SHAKE128',    'shake',  32, true,  hashOid(11)),
+    'SHAKE-256':    new PreHashSpec('SHAKE256',    'shake',  64, true,  hashOid(12))
   };
 
-  // Both the ACVP spelling and this collection's own algorithm name are
-  // accepted, so a caller can ask for 'SHA2-256' or 'SHA-256' and mean it.
-  const PRE_HASH_ALIASES = (() => {
+  /**
+   * Both the ACVP spelling and this collection's own algorithm name are
+   * accepted, so a caller can ask for 'SHA2-256' or 'SHA-256' and mean it.
+   * @returns {Object} upper-cased spelling to pre-hash specification
+   */
+  function buildPreHashAliases() {
     const map = {};
-    for (const label of Object.keys(PRE_HASH)) {
-      map[label.toUpperCase()] = PRE_HASH[label];
-      map[PRE_HASH[label].algorithm.toUpperCase()] = PRE_HASH[label];
+    /** @type {string[]} */
+    const labels = Object.keys(PRE_HASH);
+    for (let i = 0; i < labels.length; i++) {
+      const label = labels[i];
+      /** @type {PreHashSpec} */
+      const spec = PRE_HASH[label];
+      map[label.toUpperCase()] = spec;
+      map[spec.algorithm.toUpperCase()] = spec;
     }
     return map;
-  })();
+  }
+
+  const PRE_HASH_ALIASES = buildPreHashAliases();
 
   /**
    * Look a pre-hash function up by either of its accepted names.
    * @param {string} label - 'SHA2-256', 'SHA-256', 'SHAKE-128', ...
-   * @returns {object} the pre-hash specification
+   * @returns {PreHashSpec} the pre-hash specification
    * @throws {Error} when the name is not one of the twelve approved functions
    */
   function findPreHash(label) {
-    const found = label === null || label === undefined
-      ? null
-      : PRE_HASH_ALIASES[String(label).trim().toUpperCase()];
+    /** @type {PreHashSpec} */
+    let found = null;
+    if (!(label === null || label === undefined)) {
+      /** @type {string} */
+      const key = String(label).trim().toUpperCase();
+      found = PRE_HASH_ALIASES[key];
+    }
 
     if (!found)
       throw new Error('HashML-DSA pre-hash must be one of ' + Object.keys(PRE_HASH).join(', ') + ', got ' + label);
@@ -238,11 +304,12 @@
    * The hash modules are resolved from the registry on demand, for the same
    * load-order reason the core is, and cached once found.
    *
-   * @param {object} spec - an entry of PRE_HASH
-   * @param {number[]} message - the message to digest
-   * @returns {number[]} spec.digestSize bytes
+   * @param {PreHashSpec} spec - an entry of PRE_HASH
+   * @param {uint8[]} message - the message to digest
+   * @returns {uint8[]} spec.digestSize bytes
    */
   function preHashDigest(spec, message) {
+    /** @type {Algorithm} */
     let algorithm = hashAlgorithms[spec.algorithm];
 
     if (!algorithm) {
@@ -263,10 +330,13 @@
       hashAlgorithms[spec.algorithm] = algorithm;
     }
 
+    /** @type {IHashFunctionInstance} */
     const instance = algorithm.CreateInstance();
     if (spec.extendable) instance.outputSize = spec.digestSize;
     instance.Feed(message);
-    return instance.Result();
+    /** @type {uint8[]} */
+    const digest = instance.Result();
+    return digest;
   }
 
   /**
@@ -274,10 +344,10 @@
    * context, the hash function's object identifier and then the digest.
    * FIPS 204 section 5.4.
    *
-   * @param {number[]} message - the message
-   * @param {number[]} context - the application context, at most 255 bytes
+   * @param {uint8[]} message - the message
+   * @param {uint8[]} context - the application context, at most 255 bytes
    * @param {string} label - which pre-hash function to use
-   * @returns {number[]} M'
+   * @returns {uint8[]} M'
    */
   function preHashMessageRepresentative(message, context, label) {
     if (context.length > 255)
@@ -285,6 +355,7 @@
 
     const spec = findPreHash(label);
 
+    /** @type {uint8[]} */
     const out = [1, context.length];
     appendAll(out, context);
     appendAll(out, OpCodes.Hex8ToBytes(spec.oid));
@@ -1643,181 +1714,6 @@
 
   const SV_PURE_BADH_44_MSG = OpCodes.Hex8ToBytes("3F");
 
-  const VECTORS = [
-    {
-      text: "ACVP ML-DSA-keyGen-FIPS204, ML-DSA-44 tcId 3: seed to public key",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-keyGen-FIPS204/internalProjection.json",
-      parameterSet: 'ML-DSA-44',
-      keyGeneration: true,
-      keyGenerationOutput: 'publicKey',
-      keySeed: KG44_SEED,
-      input: [],
-      expected: KG44_PK
-    },
-    {
-      text: "ACVP ML-DSA-keyGen-FIPS204, ML-DSA-65 tcId 31: seed to private key",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-keyGen-FIPS204/internalProjection.json",
-      parameterSet: 'ML-DSA-65',
-      keyGeneration: true,
-      keyGenerationOutput: 'privateKey',
-      keySeed: KG65_SEED,
-      input: [],
-      expected: KG65_SK
-    },
-    {
-      text: "ACVP ML-DSA-keyGen-FIPS204, ML-DSA-87 tcId 55: seed to public key",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-keyGen-FIPS204/internalProjection.json",
-      parameterSet: 'ML-DSA-87',
-      keyGeneration: true,
-      keyGenerationOutput: 'publicKey',
-      keySeed: KG87_SEED,
-      input: [],
-      expected: KG87_PK
-    },
-    {
-      text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-65 tcId 41: pure external interface with a context string",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
-      parameterSet: 'ML-DSA-65',
-      privateKey: SG_PURE_65_SK,
-      messageEncoding: 'pure',
-      context: SG_PURE_65_CTX,
-      input: SG_PURE_65_MSG,
-      expected: SG_PURE_65_SIG
-    },
-    {
-      text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-65 tcId 57: pre-hash HashML-DSA with SHA2-256, the default pre-hash function",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
-      parameterSet: 'ML-DSA-65',
-      privateKey: SG_PH256_65_SK,
-      messageEncoding: 'preHash',
-      preHashAlgorithm: 'SHA2-256',
-      context: SG_PH256_65_CTX,
-      input: SG_PH256_65_MSG,
-      expected: SG_PH256_65_SIG
-    },
-    {
-      text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-65 tcId 53: pre-hash HashML-DSA with SHA2-224",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
-      parameterSet: 'ML-DSA-65',
-      privateKey: SG_PH224_65_SK,
-      messageEncoding: 'preHash',
-      preHashAlgorithm: 'SHA2-224',
-      context: SG_PH224_65_CTX,
-      input: SG_PH224_65_MSG,
-      expected: SG_PH224_65_SIG
-    },
-    {
-      text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-65 tcId 60: pre-hash HashML-DSA with SHAKE-128, the extendable-output branch",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
-      parameterSet: 'ML-DSA-65',
-      privateKey: SG_PHSHAKE_65_SK,
-      messageEncoding: 'preHash',
-      preHashAlgorithm: 'SHAKE-128',
-      context: SG_PHSHAKE_65_CTX,
-      input: SG_PHSHAKE_65_MSG,
-      expected: SG_PHSHAKE_65_SIG
-    },
-    {
-      text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-44 tcId 207: hedged pre-hash HashML-DSA with SHA3-384",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
-      parameterSet: 'ML-DSA-44',
-      privateKey: SG_PH3384_44_SK,
-      messageEncoding: 'preHash',
-      preHashAlgorithm: 'SHA3-384',
-      context: SG_PH3384_44_CTX,
-      input: SG_PH3384_44_MSG,
-      signRandomness: SG_PH3384_44_RND,
-      expected: SG_PH3384_44_SIG
-    },
-    {
-      text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-44 tcId 91: ExternalMu-ML-DSA, deterministic",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
-      parameterSet: 'ML-DSA-44',
-      privateKey: SG_EXTMU_44_SK,
-      messageEncoding: 'externalMu',
-      input: SG_EXTMU_44_MU,
-      expected: SG_EXTMU_44_SIG
-    },
-    {
-      text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-87 tcId 331: ExternalMu-ML-DSA, hedged",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
-      parameterSet: 'ML-DSA-87',
-      privateKey: SG_EXTMU_87_SK,
-      messageEncoding: 'externalMu',
-      input: SG_EXTMU_87_MU,
-      signRandomness: SG_EXTMU_87_RND,
-      expected: SG_EXTMU_87_SIG
-    },
-    {
-      text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-44 tcId 91: ExternalMu-ML-DSA, valid signature",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
-      parameterSet: 'ML-DSA-44',
-      publicKey: SV_EXTMU_OK_44_PK,
-      signature: SV_EXTMU_OK_44_SIG,
-      messageEncoding: 'externalMu',
-      input: SV_EXTMU_OK_44_MU,
-      expected: [1]
-    },
-    {
-      text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-44 tcId 92: ExternalMu-ML-DSA, modified signature - z, must not verify",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
-      parameterSet: 'ML-DSA-44',
-      publicKey: SV_EXTMU_BADZ_44_PK,
-      signature: SV_EXTMU_BADZ_44_SIG,
-      messageEncoding: 'externalMu',
-      input: SV_EXTMU_BADZ_44_MU,
-      expected: [0]
-    },
-    {
-      text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-65 tcId 123: ExternalMu-ML-DSA, modified signature - commitment, must not verify",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
-      parameterSet: 'ML-DSA-65',
-      publicKey: SV_EXTMU_BADC_65_PK,
-      signature: SV_EXTMU_BADC_65_SIG,
-      messageEncoding: 'externalMu',
-      input: SV_EXTMU_BADC_65_MU,
-      expected: [0]
-    },
-    {
-      text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-44 tcId 25: pre-hash HashML-DSA with SHA2-224, valid signature",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
-      parameterSet: 'ML-DSA-44',
-      publicKey: SV_PH_OK_44_PK,
-      signature: SV_PH_OK_44_SIG,
-      messageEncoding: 'preHash',
-      preHashAlgorithm: 'SHA2-224',
-      context: SV_PH_OK_44_CTX,
-      input: SV_PH_OK_44_MSG,
-      expected: [1]
-    },
-    {
-      text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-44 tcId 9: pure external interface, modified signature - hint, must not verify",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
-      parameterSet: 'ML-DSA-44',
-      publicKey: SV_PURE_BADH_44_PK,
-      signature: SV_PURE_BADH_44_SIG,
-      messageEncoding: 'pure',
-      context: SV_PURE_BADH_44_CTX,
-      input: SV_PURE_BADH_44_MSG,
-      expected: [0]
-    },
-    {
-      // tcId 25 above is a valid signature over its message and context and
-      // verifies. Presented against a different published public key it must not.
-      // Both keys and the signature are ACVP data and the expected value is the
-      // rejection, so nothing here was produced by this file.
-      text: "ACVP ML-DSA-sigVer-FIPS204: tcId 25's valid signature under tcId 9's public key must not verify",
-      uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
-      parameterSet: 'ML-DSA-44',
-      publicKey: SV_PURE_BADH_44_PK,
-      signature: SV_PH_OK_44_SIG,
-      messageEncoding: 'preHash',
-      preHashAlgorithm: 'SHA2-224',
-      context: SV_PH_OK_44_CTX,
-      input: SV_PH_OK_44_MSG,
-      expected: [0]
-    }
-  ];
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -1858,7 +1754,181 @@
         new LinkItem("Lattice-Based Cryptography", "https://en.wikipedia.org/wiki/Lattice-based_cryptography")
       ];
 
-      this.tests = VECTORS;
+      this.tests = [
+        {
+          text: "ACVP ML-DSA-keyGen-FIPS204, ML-DSA-44 tcId 3: seed to public key",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-keyGen-FIPS204/internalProjection.json",
+          parameterSet: 'ML-DSA-44',
+          keyGeneration: true,
+          keyGenerationOutput: 'publicKey',
+          keySeed: KG44_SEED,
+          input: [],
+          expected: KG44_PK
+        },
+        {
+          text: "ACVP ML-DSA-keyGen-FIPS204, ML-DSA-65 tcId 31: seed to private key",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-keyGen-FIPS204/internalProjection.json",
+          parameterSet: 'ML-DSA-65',
+          keyGeneration: true,
+          keyGenerationOutput: 'privateKey',
+          keySeed: KG65_SEED,
+          input: [],
+          expected: KG65_SK
+        },
+        {
+          text: "ACVP ML-DSA-keyGen-FIPS204, ML-DSA-87 tcId 55: seed to public key",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-keyGen-FIPS204/internalProjection.json",
+          parameterSet: 'ML-DSA-87',
+          keyGeneration: true,
+          keyGenerationOutput: 'publicKey',
+          keySeed: KG87_SEED,
+          input: [],
+          expected: KG87_PK
+        },
+        {
+          text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-65 tcId 41: pure external interface with a context string",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
+          parameterSet: 'ML-DSA-65',
+          privateKey: SG_PURE_65_SK,
+          messageEncoding: 'pure',
+          context: SG_PURE_65_CTX,
+          input: SG_PURE_65_MSG,
+          expected: SG_PURE_65_SIG
+        },
+        {
+          text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-65 tcId 57: pre-hash HashML-DSA with SHA2-256, the default pre-hash function",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
+          parameterSet: 'ML-DSA-65',
+          privateKey: SG_PH256_65_SK,
+          messageEncoding: 'preHash',
+          preHashAlgorithm: 'SHA2-256',
+          context: SG_PH256_65_CTX,
+          input: SG_PH256_65_MSG,
+          expected: SG_PH256_65_SIG
+        },
+        {
+          text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-65 tcId 53: pre-hash HashML-DSA with SHA2-224",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
+          parameterSet: 'ML-DSA-65',
+          privateKey: SG_PH224_65_SK,
+          messageEncoding: 'preHash',
+          preHashAlgorithm: 'SHA2-224',
+          context: SG_PH224_65_CTX,
+          input: SG_PH224_65_MSG,
+          expected: SG_PH224_65_SIG
+        },
+        {
+          text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-65 tcId 60: pre-hash HashML-DSA with SHAKE-128, the extendable-output branch",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
+          parameterSet: 'ML-DSA-65',
+          privateKey: SG_PHSHAKE_65_SK,
+          messageEncoding: 'preHash',
+          preHashAlgorithm: 'SHAKE-128',
+          context: SG_PHSHAKE_65_CTX,
+          input: SG_PHSHAKE_65_MSG,
+          expected: SG_PHSHAKE_65_SIG
+        },
+        {
+          text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-44 tcId 207: hedged pre-hash HashML-DSA with SHA3-384",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
+          parameterSet: 'ML-DSA-44',
+          privateKey: SG_PH3384_44_SK,
+          messageEncoding: 'preHash',
+          preHashAlgorithm: 'SHA3-384',
+          context: SG_PH3384_44_CTX,
+          input: SG_PH3384_44_MSG,
+          signRandomness: SG_PH3384_44_RND,
+          expected: SG_PH3384_44_SIG
+        },
+        {
+          text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-44 tcId 91: ExternalMu-ML-DSA, deterministic",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
+          parameterSet: 'ML-DSA-44',
+          privateKey: SG_EXTMU_44_SK,
+          messageEncoding: 'externalMu',
+          input: SG_EXTMU_44_MU,
+          expected: SG_EXTMU_44_SIG
+        },
+        {
+          text: "ACVP ML-DSA-sigGen-FIPS204, ML-DSA-87 tcId 331: ExternalMu-ML-DSA, hedged",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigGen-FIPS204/internalProjection.json",
+          parameterSet: 'ML-DSA-87',
+          privateKey: SG_EXTMU_87_SK,
+          messageEncoding: 'externalMu',
+          input: SG_EXTMU_87_MU,
+          signRandomness: SG_EXTMU_87_RND,
+          expected: SG_EXTMU_87_SIG
+        },
+        {
+          text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-44 tcId 91: ExternalMu-ML-DSA, valid signature",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
+          parameterSet: 'ML-DSA-44',
+          publicKey: SV_EXTMU_OK_44_PK,
+          signature: SV_EXTMU_OK_44_SIG,
+          messageEncoding: 'externalMu',
+          input: SV_EXTMU_OK_44_MU,
+          expected: [1]
+        },
+        {
+          text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-44 tcId 92: ExternalMu-ML-DSA, modified signature - z, must not verify",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
+          parameterSet: 'ML-DSA-44',
+          publicKey: SV_EXTMU_BADZ_44_PK,
+          signature: SV_EXTMU_BADZ_44_SIG,
+          messageEncoding: 'externalMu',
+          input: SV_EXTMU_BADZ_44_MU,
+          expected: [0]
+        },
+        {
+          text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-65 tcId 123: ExternalMu-ML-DSA, modified signature - commitment, must not verify",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
+          parameterSet: 'ML-DSA-65',
+          publicKey: SV_EXTMU_BADC_65_PK,
+          signature: SV_EXTMU_BADC_65_SIG,
+          messageEncoding: 'externalMu',
+          input: SV_EXTMU_BADC_65_MU,
+          expected: [0]
+        },
+        {
+          text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-44 tcId 25: pre-hash HashML-DSA with SHA2-224, valid signature",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
+          parameterSet: 'ML-DSA-44',
+          publicKey: SV_PH_OK_44_PK,
+          signature: SV_PH_OK_44_SIG,
+          messageEncoding: 'preHash',
+          preHashAlgorithm: 'SHA2-224',
+          context: SV_PH_OK_44_CTX,
+          input: SV_PH_OK_44_MSG,
+          expected: [1]
+        },
+        {
+          text: "ACVP ML-DSA-sigVer-FIPS204, ML-DSA-44 tcId 9: pure external interface, modified signature - hint, must not verify",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
+          parameterSet: 'ML-DSA-44',
+          publicKey: SV_PURE_BADH_44_PK,
+          signature: SV_PURE_BADH_44_SIG,
+          messageEncoding: 'pure',
+          context: SV_PURE_BADH_44_CTX,
+          input: SV_PURE_BADH_44_MSG,
+          expected: [0]
+        },
+        {
+          // tcId 25 above is a valid signature over its message and context and
+          // verifies. Presented against a different published public key it must not.
+          // Both keys and the signature are ACVP data and the expected value is the
+          // rejection, so nothing here was produced by this file.
+          text: "ACVP ML-DSA-sigVer-FIPS204: tcId 25's valid signature under tcId 9's public key must not verify",
+          uri: "https://github.com/usnistgov/ACVP-Server/blob/master/gen-val/json-files/ML-DSA-sigVer-FIPS204/internalProjection.json",
+          parameterSet: 'ML-DSA-44',
+          publicKey: SV_PURE_BADH_44_PK,
+          signature: SV_PH_OK_44_SIG,
+          messageEncoding: 'preHash',
+          preHashAlgorithm: 'SHA2-224',
+          context: SV_PH_OK_44_CTX,
+          input: SV_PH_OK_44_MSG,
+          expected: [0]
+        }
+      ];
     }
 
     /**
@@ -1895,45 +1965,68 @@
    */
   class MLDSAInstance extends IAlgorithmInstance {
     /**
-     * @param {object} algorithm - Parent algorithm instance
+     * @param {MLDSAAlgorithm} algorithm - Parent algorithm instance
      */
     constructor(algorithm) {
       super(algorithm);
 
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Declared here so that the test engine, which only assigns properties
       // that already exist on the instance, can set any of them from a vector.
+      /** @type {DilithiumParams|null} */
       this._parameterSet = null;
+      /** @type {uint8[]|null} */
       this._privateKey = null;
+      /** @type {uint8[]|null} */
       this._publicKey = null;
+      /** @type {uint8[]|null} */
       this._signature = null;
       this._keyData = null;
+      /** @type {uint8[]|null} */
       this._keySeed = null;
+      /** @type {boolean} */
       this.keyGeneration = false;
+      /** @type {string} */
       this.keyGenerationOutput = 'publicKey';
+      /** @type {uint8[]} */
       this.context = [];
+      /** @type {string} */
       this.messageEncoding = 'pure';
+      /** @type {string} */
       this.preHashAlgorithm = 'SHA2-256';
-      this.signRandomness = new Array(SEED_BYTES).fill(0);
+      /** @type {uint8[]} */
+      this.signRandomness = new Array(SEED_BYTES);
+      this.signRandomness.fill(0);
     }
 
     // ---- configuration ----
 
-    /** The parameter set, by any of its accepted names. */
+    /**
+     * The parameter set, by any of its accepted names.
+     * @param {string} label - parameter set name, or its number
+     */
     set parameterSet(label) {
+      /** @type {DilithiumParams|null} */
       const found = core().findParameterSet(label);
       if (!found) throw new Error('Unknown ML-DSA parameter set: ' + label);
       this._parameterSet = found;
     }
 
+    /**
+     * @returns {string} name of the current parameter set
+     */
     get parameterSet() {
-      return parameterSetOrDefault(this._parameterSet).name;
+      /** @type {string} */
+      const name = parameterSetOrDefault(this._parameterSet).name;
+      return name;
     }
 
     /**
      * The private key. Its length selects the parameter set, the nine encoded
      * lengths across the three sets being pairwise distinct.
+     * @param {uint8[]|null} keyBytes - encoded private key
      */
     set privateKey(keyBytes) {
       if (!keyBytes) {
@@ -1941,6 +2034,7 @@
         return;
       }
 
+      /** @type {DilithiumParams|null} */
       const found = core().parameterSetByLength(keyBytes.length, 'privateKeySize');
       if (!found)
         throw new Error('An ML-DSA private key is 2560, 4032 or 4896 bytes, got ' + keyBytes.length);
@@ -1949,16 +2043,23 @@
       this._privateKey = Array.from(keyBytes);
     }
 
+    /**
+     * @returns {uint8[]|null} copy of the private key
+     */
     get privateKey() {
       return this._privateKey ? this._privateKey.slice() : null;
     }
 
+    /**
+     * @param {uint8[]|null} keyBytes - encoded public key
+     */
     set publicKey(keyBytes) {
       if (!keyBytes) {
         this._publicKey = null;
         return;
       }
 
+      /** @type {DilithiumParams|null} */
       const found = core().parameterSetByLength(keyBytes.length, 'publicKeySize');
       if (!found)
         throw new Error('An ML-DSA public key is 1312, 1952 or 2592 bytes, got ' + keyBytes.length);
@@ -1967,24 +2068,39 @@
       this._publicKey = Array.from(keyBytes);
     }
 
+    /**
+     * @returns {uint8[]|null} copy of the public key
+     */
     get publicKey() {
       return this._publicKey ? this._publicKey.slice() : null;
     }
 
-    /** Setting a signature puts the instance into verification mode. */
+    /**
+     * Setting a signature puts the instance into verification mode.
+     * @param {uint8[]|null} signatureBytes - signature to verify
+     */
     set signature(signatureBytes) {
       this._signature = signatureBytes ? Array.from(signatureBytes) : null;
     }
 
+    /**
+     * @returns {uint8[]|null} copy of the signature
+     */
     get signature() {
       return this._signature ? this._signature.slice() : null;
     }
 
-    /** A 32 byte seed to generate a key pair from. */
+    /**
+     * A 32 byte seed to generate a key pair from.
+     * @param {uint8[]|null} seedBytes - generation seed
+     */
     set keySeed(seedBytes) {
       this._keySeed = seedBytes ? Array.from(seedBytes) : null;
     }
 
+    /**
+     * @returns {uint8[]|null} copy of the generation seed
+     */
     get keySeed() {
       return this._keySeed ? this._keySeed.slice() : null;
     }
@@ -2010,14 +2126,20 @@
       if (!Array.isArray(keyData) && !ArrayBuffer.isView(keyData))
         throw new Error('Invalid ML-DSA key data format');
 
+      /** @type {uint8[]} */
       const bytes = Array.from(keyData);
+      /** @type {Object} */
       const C = core();
 
-      if (C.parameterSetByLength(bytes.length, 'privateKeySize')) {
+      /** @type {DilithiumParams|null} */
+      const privateSet = C.parameterSetByLength(bytes.length, 'privateKeySize');
+      if (privateSet) {
         this.privateKey = bytes;
         return;
       }
-      if (C.parameterSetByLength(bytes.length, 'publicKeySize')) {
+      /** @type {DilithiumParams|null} */
+      const publicSet = C.parameterSetByLength(bytes.length, 'publicKeySize');
+      if (publicSet) {
         this.publicKey = bytes;
         return;
       }
@@ -2042,14 +2164,16 @@
     /**
      * Feed message bytes. Repeated calls append, so feeding a message in pieces
      * is the same as feeding it whole.
-     * @param {number[]} data - input bytes
+     * @param {uint8[]} data - input bytes
      */
     Feed(data) {
       if (data === null || data === undefined) return;
 
       if (typeof data === 'string') {
-        for (let i = 0; i < data.length; i++)
-          this.inputBuffer.push(OpCodes.AndN(data.charCodeAt(i), 0xFF));
+        /** @type {string} */
+        const text = data;
+        for (let i = 0; i < text.length; i++)
+          this.inputBuffer.push(OpCodes.And32(text.charCodeAt(i), 0xFF));
         return;
       }
 
@@ -2064,17 +2188,22 @@
     /**
      * Turn the fed bytes into the representative FIPS 204 signs, according to
      * messageEncoding.
-     * @param {number[]} message - the fed bytes
-     * @returns {number[]} M'
+     * @param {uint8[]} message - the fed bytes
+     * @returns {uint8[]} M'
      */
     _representative(message) {
+      /** @type {uint8[]} */
+      const noContext = [];
       switch (this.messageEncoding) {
         case 'internal':
           return message;
         case 'preHash':
-          return preHashMessageRepresentative(message, this.context || [], this.preHashAlgorithm);
-        case 'pure':
-          return core().pureMessageRepresentative(message, this.context || []);
+          return preHashMessageRepresentative(message, this.context ? this.context : noContext, this.preHashAlgorithm);
+        case 'pure': {
+          /** @type {uint8[]} */
+          const representative = core().pureMessageRepresentative(message, this.context ? this.context : noContext);
+          return representative;
+        }
         default:
           throw new Error("ML-DSA messageEncoding must be 'pure', 'preHash', 'internal' or 'externalMu', got " + this.messageEncoding);
       }
@@ -2082,19 +2211,25 @@
 
     /**
      * Produce the key, the signature, or the verification verdict.
-     * @returns {number[]} key bytes, signature bytes, or [1] / [0]
+     * @returns {uint8[]} key bytes, signature bytes, or [1] / [0]
      */
     Result() {
       const message = this.inputBuffer;
       this.inputBuffer = [];
 
+      /** @type {Object} */
       const C = core();
       const P = parameterSetOrDefault(this._parameterSet);
 
       if (this.keyGeneration) {
         const seed = this._keySeed && this._keySeed.length === SEED_BYTES ? this._keySeed : message;
+        /** @type {DilithiumKeyPair} */
         const pair = C.keyGenInternal(seed, P);
-        return this.keyGenerationOutput === 'privateKey' ? pair.privateKey : pair.publicKey;
+        /** @type {uint8[]} */
+        const generatedPrivate = pair.privateKey;
+        /** @type {uint8[]} */
+        const generatedPublic = pair.publicKey;
+        return this.keyGenerationOutput === 'privateKey' ? generatedPrivate : generatedPublic;
       }
 
       // Under ExternalMu-ML-DSA the fed bytes are mu itself, so there is no
@@ -2104,41 +2239,58 @@
         throw new Error('ML-DSA external mu must be ' + MU_BYTES + ' bytes, got ' + message.length);
 
       const externalMu = external ? message : null;
-      const representative = external ? [] : this._representative(message);
+      /** @type {uint8[]} */
+      const noMessage = [];
+      const representative = external ? noMessage : this._representative(message);
 
       if (this._signature) {
         if (!this._publicKey)
           throw new Error('ML-DSA verification needs a public key');
-        return [C.verifyInternal(this._publicKey, representative, this._signature, P, externalMu) ? 1 : 0];
+        /** @type {boolean} */
+        const valid = C.verifyInternal(this._publicKey, representative, this._signature, P, externalMu);
+        /** @type {uint8[]} */
+        const verdict = [valid ? 1 : 0];
+        return verdict;
       }
 
       if (!this._privateKey) {
         if (!this._keySeed)
           throw new Error('ML-DSA signing needs a private key or a generation seed');
-        this.privateKey = C.keyGenInternal(this._keySeed, P).privateKey;
+        /** @type {DilithiumKeyPair} */
+        const generated = C.keyGenInternal(this._keySeed, P);
+        /** @type {uint8[]} */
+        const generatedPrivate = generated.privateKey;
+        this.privateKey = generatedPrivate;
       }
 
-      return C.signInternal(this._privateKey, representative, this.signRandomness, P, externalMu);
+      /** @type {uint8[]} */
+      const signature = C.signInternal(this._privateKey, representative, this.signRandomness, P, externalMu);
+      return signature;
     }
 
     // ---- convenience ----
 
     /**
      * Generate a key pair from a seed.
-     * @param {number[]} seed - 32 bytes
-     * @returns {object} { publicKey, privateKey }
+     * @param {uint8[]} seed - 32 bytes
+     * @returns {MLDSAKeyPair} { publicKey, privateKey }
      */
     GenerateKeyPair(seed) {
+      /** @type {DilithiumKeyPair} */
       const pair = core().keyGenInternal(Array.from(seed), parameterSetOrDefault(this._parameterSet));
-      this._publicKey = pair.publicKey;
-      this._privateKey = pair.privateKey;
-      return { publicKey: pair.publicKey.slice(), privateKey: pair.privateKey.slice() };
+      /** @type {uint8[]} */
+      const generatedPublic = pair.publicKey;
+      /** @type {uint8[]} */
+      const generatedPrivate = pair.privateKey;
+      this._publicKey = generatedPublic;
+      this._privateKey = generatedPrivate;
+      return new MLDSAKeyPair(generatedPublic.slice(), generatedPrivate.slice());
     }
 
     /**
      * Sign a message with the configured private key.
-     * @param {number[]} message - the message
-     * @returns {number[]} the signature
+     * @param {uint8[]} message - the message
+     * @returns {uint8[]} the signature
      */
     Sign(message) {
       this.inputBuffer = [];
@@ -2149,8 +2301,8 @@
 
     /**
      * Verify a signature over a message with the configured public key.
-     * @param {number[]} message - the message
-     * @param {number[]} signatureBytes - the signature
+     * @param {uint8[]} message - the message
+     * @param {uint8[]} signatureBytes - the signature
      * @returns {boolean} whether it verifies
      */
     Verify(message, signatureBytes) {

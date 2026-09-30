@@ -182,7 +182,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MRG32k3aInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -200,8 +200,13 @@
  */
 
   class MRG32k3aInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {MRG32k3aAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._skip = 0;
 
       // MRG32k3a state: two 3-component vectors
       // State vectors hold [newest, middle, oldest] values following Rosetta Code convention
@@ -221,7 +226,7 @@
      *   - 4 bytes: single uint32 seed expanded to [seed, 0, 0] for both components (Rosetta Code style)
      *   - 24 bytes: 6 uint32 values for explicit state initialization [x1[0], x1[1], x1[2], x2[0], x2[1], x2[2]]
      *
-     * @param {Array} seedBytes - 4-byte or 24-byte array containing seed values
+     * @param {uint8[]|null} seedBytes - 4-byte or 24-byte array containing seed values
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -278,6 +283,9 @@
       throw new Error('MRG32k3a seed must be 4 bytes (single seed) or 24 bytes (6 values)');
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -291,7 +299,7 @@
      * Component 2: x2i = (527612*x2[0] + 0*x2[1] - 1370589*x2[2]) mod m2
      * Output: ((x1i - x2i) mod m1) + 1
      *
-     * @returns {number} 32-bit unsigned random integer in [1, M1+1]
+     * @returns {uint32} 32-bit unsigned random integer in [1, M1+1]
      */
     _nextInt() {
       if (!this._initialized) {
@@ -299,13 +307,17 @@
       }
 
       // Component 1: x1i = (0*x1[0] + 1403580*x1[1] - 810728*x1[2]) mod m1
-      let x1i = (0 * this._x1[0] + A12 * this._x1[1] - A13N * this._x1[2]);
+      // (the zero-coefficient x1[0] term is omitted: adding zero leaves the sum unchanged)
+      /** @type {float64} */
+      let x1i = (A12 * this._x1[1] - A13N * this._x1[2]);
 
       // Python-style modular reduction (always returns positive result)
       x1i = ((x1i % M1) + M1) % M1;
 
       // Component 2: x2i = (527612*x2[0] + 0*x2[1] - 1370589*x2[2]) mod m2
-      let x2i = (A21 * this._x2[0] + 0 * this._x2[1] - A23N * this._x2[2]);
+      // (the zero-coefficient x2[1] term is omitted: adding zero leaves the sum unchanged)
+      /** @type {float64} */
+      let x2i = (A21 * this._x2[0] - A23N * this._x2[2]);
 
       // Python-style modular reduction (always returns positive result)
       x2i = ((x2i % M2) + M2) % M2;
@@ -327,18 +339,20 @@
 
     /**
      * Generate the next floating-point random value in [0, 1)
-     * @returns {number} Random float in [0, 1)
+     * @returns {float64} Random float in [0, 1)
      */
     _nextFloat() {
-      return (this._nextInt() - 1) * NORM;
+      /** @type {float64} */
+      const value = this._nextInt();
+      return (value - 1) * NORM;
     }
 
     /**
      * Generate random bytes
      * Outputs uint32 values in little-endian order
      *
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._initialized) {
@@ -346,9 +360,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Generate complete 32-bit words
@@ -405,11 +422,15 @@
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
       return this._outputSize;
     }
@@ -417,11 +438,15 @@
     /**
      * Set number of bytes to skip before generating output
      * Used for testing specific positions in the output stream
+     * @param {int32} count - Bytes to skip
      */
     set skipBytes(count) {
       this._skipBytes = count;
     }
 
+    /**
+     * @returns {int32} Bytes skipped before output
+     */
     get skipBytes() {
       return this._skipBytes;
     }

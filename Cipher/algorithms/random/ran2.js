@@ -144,7 +144,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Ran2Instance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -162,8 +162,13 @@
  */
 
   class Ran2Instance extends IRandomGeneratorInstance {
+    /**
+     * @param {Ran2Algorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Ran2 constants from Numerical Recipes
       this.IM1 = 2147483563;      // First modulus
@@ -185,7 +190,8 @@
       this._idum = 0;             // Primary LCG state
       this._idum2 = 123456789;    // Secondary LCG state
       this._iy = 0;               // Last output from shuffle table
-      this._iv = new Array(this.NTAB).fill(0); // Shuffle table
+      /** @type {int32[]} */
+      this._iv = OpCodes.CreateArray(this.NTAB, 0); // Shuffle table
 
       this._initialized = false;
       this._ready = false;
@@ -195,6 +201,7 @@
      * Set seed value
      * Note: Ran2 uses NEGATIVE seeds for initialization
      * Positive seed value here will be negated during initialization
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -205,7 +212,7 @@
       // Convert seed bytes to integer (big-endian)
       let seedValue = 0;
       for (let i = 0; i < seedBytes.length; ++i) {
-        seedValue = OpCodes.OrN(seedValue * 256, seedBytes[i]);
+        seedValue = OpCodes.ToInt(OpCodes.Or32(seedValue * 256, seedBytes[i]));
       }
 
       // Ensure seed is valid (Ran2 expects negative for init, but we store positive)
@@ -219,6 +226,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -226,6 +236,7 @@
     /**
      * Initialize the Ran2 generator
      * Based on the reference implementation from Numerical Recipes
+     * @returns {void}
      */
     _initialize() {
       // Negate seed for initialization (Ran2 convention)
@@ -261,6 +272,7 @@
     /**
      * Generate next random value (double precision)
      * Returns value in range [0.0, 1.0)
+     * @returns {float64} Uniform deviate in (0, 1)
      */
     _next() {
       if (!this._ready) {
@@ -311,6 +323,8 @@
     /**
      * Generate random bytes
      * Outputs double-precision IEEE 754 values (8 bytes each)
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -318,9 +332,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Generate double-precision values (8 bytes each)
@@ -361,19 +378,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 

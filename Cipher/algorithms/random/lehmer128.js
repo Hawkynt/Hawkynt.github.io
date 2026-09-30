@@ -45,15 +45,21 @@
 
   // Lehmer128 multiplier constant (from PCG research - excellent spectral properties)
   // M8=0.71005, M16=0.66094, M24=0.61455
+  /** @type {BigInt} */
   const MULTIPLIER = 0x0fc94e3bf4e9ab32866458cd56f5e605n;
 
   // Mask for 128-bit arithmetic
+  /** @type {BigInt} */
   const MASK_128 = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFn;
+  /** @type {BigInt} */
   const MASK_64 = 0xFFFFFFFFFFFFFFFFn;
 
   // SplitMix64 constants for seeding (matching Lehmer64 implementation)
+  /** @type {BigInt} */
   const GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
+  /** @type {BigInt} */
   const MIX_CONST_1 = 0xBF58476D1CE4E5B9n;
+  /** @type {BigInt} */
   const MIX_CONST_2 = 0x94D049BB133111EBn;
 
   class Lehmer128Algorithm extends RandomGenerationAlgorithm {
@@ -185,7 +191,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Lehmer128Instance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -203,10 +209,16 @@
  */
 
   class Lehmer128Instance extends IRandomGeneratorInstance {
+    /**
+     * @param {Lehmer128Algorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Lehmer128 state (128-bit BigInt)
+      /** @type {BigInt} */
       this._state = 0n;
       this._ready = false;
     }
@@ -216,7 +228,7 @@
      * Matches reference implementation initialization
      *
      * @param {BigInt} seed - Seed value
-     * @param {number} index - Index (0 or 1 for high/low 64-bit parts)
+     * @param {int32} index - Index (0 or 1 for high/low 64-bit parts)
      * @returns {BigInt} 64-bit output
      */
     _splitmix64_stateless(seed, index) {
@@ -234,6 +246,7 @@
     /**
      * Set seed value (1-8 bytes for 64-bit seed, or use state property for full 128-bit)
      * Uses SplitMix64 to initialize 128-bit state from 64-bit seed (matching Lehmer64)
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -242,6 +255,7 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (big-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length && i < 8; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8), BigInt(seedBytes[i]));
@@ -258,6 +272,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -265,6 +282,7 @@
     /**
      * Set state directly (for testing with specific 128-bit values)
      * Allows setting full 128-bit state instead of using seed initialization
+     * @param {uint8[]} stateBytes - State, big-endian
      */
     set state(stateBytes) {
       if (!stateBytes || stateBytes.length === 0) {
@@ -273,6 +291,7 @@
       }
 
       // Convert state bytes to 128-bit BigInt (big-endian)
+      /** @type {BigInt} */
       let stateValue = 0n;
       for (let i = 0; i < stateBytes.length && i < 16; ++i) {
         stateValue = OpCodes.OrN(OpCodes.ShiftLn(stateValue, 8), BigInt(stateBytes[i]));
@@ -306,8 +325,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -315,20 +334,25 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesRemaining = length;
 
       while (bytesRemaining > 0) {
         // Generate next 64-bit value
+        /** @type {BigInt} */
         const value = this._next64();
 
         // Extract bytes (big-endian order - most significant byte first)
         const bytesToExtract = Math.min(bytesRemaining, 8);
         for (let i = 0; i < bytesToExtract; ++i) {
           const shiftAmount = (7 - i) * 8;
+          /** @type {uint8} */
           const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, BigInt(shiftAmount)), 0xFFn));
           output.push(byte);
         }
@@ -360,19 +384,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 

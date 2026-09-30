@@ -57,19 +57,32 @@
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           RandomGenerationAlgorithm, IRandomGeneratorInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
+  /**
+   * SplitMix32 state advance: add the golden gamma
+   * @param {int32} current - State before the step
+   * @returns {int32} Advanced state
+   */
+  function SplitMix32Advance(current) {
+    /** @type {uint32} */
+    const GOLDEN_GAMMA = 0x9E3779B9;
+    return OpCodes.ToInt(OpCodes.Add32(current, GOLDEN_GAMMA));
+  }
 
   /**
    * SplitMix32 seeding algorithm (improved variant)
    * Used to initialize xoshiro128** state from a single 32-bit seed
    * Based on MurmurHash3 fmix32 with improved mixing constants
+   * @param {int32} advanced - Advanced state (see SplitMix32Advance)
+   * @returns {uint32} Mixed output
    */
-  function SplitMix32(state) {
-    const GOLDEN_GAMMA = 0x9E3779B9;
+  function SplitMix32Mix(advanced) {
+    /** @type {uint32} */
     const MIX_CONST_1 = 0x21f0aaad;
+    /** @type {uint32} */
     const MIX_CONST_2 = 0x735a2d97;
 
-    state = OpCodes.ToInt(state + GOLDEN_GAMMA);
-    let z = state;
+    /** @type {uint32} */
+    let z = OpCodes.ToDWord(advanced);
 
     z = Math.imul(OpCodes.Xor32(z, OpCodes.Shr32(z, 16)), MIX_CONST_1);
     z = OpCodes.ToDWord(z);
@@ -77,7 +90,7 @@
     z = OpCodes.ToDWord(z);
     z = OpCodes.Xor32(z, OpCodes.Shr32(z, 15));
 
-    return { value: OpCodes.ToDWord(z), nextState: state };
+    return OpCodes.ToDWord(z);
   }
 
   class Xoshiro128StarStarAlgorithm extends RandomGenerationAlgorithm {
@@ -181,7 +194,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Xoshiro128StarStarInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -199,8 +212,13 @@
  */
 
   class Xoshiro128StarStarInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {Xoshiro128StarStarAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Xoshiro128** state: four 32-bit values
       this._s0 = 0;
@@ -213,6 +231,7 @@
     /**
      * Set seed value (1-4 bytes for 32-bit seed)
      * Uses SplitMix32 to initialize the four state values
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -221,6 +240,7 @@
       }
 
       // Convert seed bytes to 32-bit value (little-endian)
+      /** @type {uint32} */
       let seedValue = 0;
       for (let i = 0; i < Math.min(4, seedBytes.length); ++i) {
         seedValue = OpCodes.Or32(seedValue, OpCodes.Shl32(seedBytes[i], i * 8));
@@ -228,26 +248,27 @@
       seedValue = OpCodes.ToDWord(seedValue);
 
       // Initialize state using SplitMix32
-      let state = seedValue;
+      /** @type {int32} */
+      let mixState = OpCodes.ToInt(seedValue);
 
-      let result = SplitMix32(state);
-      this._s0 = result.value;
-      state = result.nextState;
+      mixState = SplitMix32Advance(mixState);
+      this._s0 = SplitMix32Mix(mixState);
 
-      result = SplitMix32(state);
-      this._s1 = result.value;
-      state = result.nextState;
+      mixState = SplitMix32Advance(mixState);
+      this._s1 = SplitMix32Mix(mixState);
 
-      result = SplitMix32(state);
-      this._s2 = result.value;
-      state = result.nextState;
+      mixState = SplitMix32Advance(mixState);
+      this._s2 = SplitMix32Mix(mixState);
 
-      result = SplitMix32(state);
-      this._s3 = result.value;
+      mixState = SplitMix32Advance(mixState);
+      this._s3 = SplitMix32Mix(mixState);
 
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -255,7 +276,7 @@
     /**
      * Generate next 32-bit random value
      * Implements the xoshiro128** algorithm with multiplication scrambler
-     * @returns {number} 32-bit random value
+     * @returns {uint32} 32-bit random value
      */
     _next32() {
       if (!this._ready) {
@@ -289,8 +310,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -298,9 +319,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesGenerated = 0;
 
@@ -341,19 +365,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes (8 x 32-bit values)
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
 
     /**
@@ -363,11 +392,16 @@
      */
     jump() {
       // Jump polynomial coefficients (from official implementation)
+      /** @type {uint32[]} */
       const JUMP = [0x8764000b, 0xf542d2d3, 0x6fa035c3, 0x77f2db5b];
 
+      /** @type {uint32} */
       let s0 = 0;
+      /** @type {uint32} */
       let s1 = 0;
+      /** @type {uint32} */
       let s2 = 0;
+      /** @type {uint32} */
       let s3 = 0;
 
       for (let i = 0; i < JUMP.length; ++i) {
@@ -395,11 +429,16 @@
      */
     longJump() {
       // Long jump polynomial coefficients (from official implementation)
+      /** @type {uint32[]} */
       const LONG_JUMP = [0xb523952e, 0x0b6f099f, 0xccf5a0ef, 0x1c580662];
 
+      /** @type {uint32} */
       let s0 = 0;
+      /** @type {uint32} */
       let s1 = 0;
+      /** @type {uint32} */
       let s2 = 0;
+      /** @type {uint32} */
       let s3 = 0;
 
       for (let i = 0; i < LONG_JUMP.length; ++i) {

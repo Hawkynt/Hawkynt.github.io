@@ -58,6 +58,102 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * RFC 6330 compliance flags as reported by validateRFC6330Compliance()
+   * @class
+   */
+  class RFC6330Compliance {
+    /**
+     * @param {boolean} isSourceLimitValid - K within the algorithm limit
+     * @param {boolean} isSymbolWidthValid - 1 <= T <= 1024
+     * @param {boolean} isAlignmentValid - 1 <= Al <= 8
+     * @param {boolean} isCalculated - S, H and L derived
+     */
+    constructor(isSourceLimitValid, isSymbolWidthValid, isAlignmentValid, isCalculated) {
+      /** @type {boolean} */
+      this.validSourceLimit = isSourceLimitValid;
+      /** @type {boolean} */
+      this.validSymbolWidth = isSymbolWidthValid;
+      /** @type {boolean} */
+      this.validAlignment = isAlignmentValid;
+      /** @type {boolean} */
+      this.parametersCalculated = isCalculated;
+      /** @type {boolean} */
+      this.isCompliant = isSourceLimitValid && isSymbolWidthValid && isAlignmentValid && isCalculated;
+    }
+  }
+
+  /**
+   * Derived parameters as reported by getPerformanceReport()
+   * @class
+   */
+  class RFC6330Parameters {
+    /**
+     * @param {int32} sourceCount - Source symbols (K)
+     * @param {int32} ldpcCount - LDPC symbols (S)
+     * @param {int32} hdpcCount - HDPC symbols (H)
+     * @param {int32} intermediateCount - Intermediate symbols (W)
+     * @param {int32} precodeCount - Pre-coding symbols (L)
+     * @param {int32} symbolSize - Symbol size (T)
+     * @param {int32} alignment - Alignment (Al)
+     */
+    constructor(sourceCount, ldpcCount, hdpcCount, intermediateCount, precodeCount, symbolSize, alignment) {
+      /** @type {int32} */
+      this.K = sourceCount;
+      /** @type {int32} */
+      this.S = ldpcCount;
+      /** @type {int32} */
+      this.H = hdpcCount;
+      /** @type {int32} */
+      this.W = intermediateCount;
+      /** @type {int32} */
+      this.L = precodeCount;
+      /** @type {int32} */
+      this.T = symbolSize;
+      /** @type {int32} */
+      this.Al = alignment;
+    }
+  }
+
+  /**
+   * Memory estimate as reported by _estimateMemoryUsage()
+   * @class
+   */
+  class MemoryUsage {
+    /**
+     * @param {int32} matrixSize - Constraint matrix estimate in bytes
+     * @param {int32} symbolSize - Symbol storage estimate in bytes
+     */
+    constructor(matrixSize, symbolSize) {
+      /** @type {int32} */
+      this.matrixBytes = matrixSize;
+      /** @type {int32} */
+      this.symbolBytes = symbolSize;
+      /** @type {int32} */
+      this.totalBytes = matrixSize + symbolSize;
+    }
+  }
+
+  /**
+   * Rate figures as reported by getEfficiency()
+   * @class
+   */
+  class CodeEfficiency {
+    /**
+     * @param {float64} codeRate - K over symbols
+     * @param {float64} overhead - Extra symbols over K
+     * @param {float64} efficiency - K over symbols
+     */
+    constructor(codeRate, overhead, efficiency) {
+      /** @type {float64} */
+      this.codeRate = codeRate;
+      /** @type {float64} */
+      this.overhead = overhead;
+      /** @type {float64} */
+      this.efficiency = efficiency;
+    }
+  }
+
   class RaptorQCodesAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
       super();
@@ -107,7 +203,7 @@
           "https://tools.ietf.org/rfc/rfc6330.txt"
         ),
         new TestCase(
-          Array.from({length: 100}, (_, i) => OpCodes.AndN(i, 0xFF)), // 100 sequential symbols
+          Array.from({length: 100}, (_, i) => OpCodes.And32(i, 0xFF)), // 100 sequential symbols
           [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F, 0x60, 0x61, 0x62, 0x63, 0x00, 0x19, 0x7B, 0x48, 0x34, 0x19, 0x56, 0x10, 0x00, 0x04], // + 10 repair symbols
           "RaptorQ RFC 6330 test vector - 100 symbols",
           "https://tools.ietf.org/rfc/rfc6330.txt"
@@ -129,7 +225,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {RaptorQCodesInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -146,31 +242,45 @@
   class RaptorQCodesInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {RaptorQCodesAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
 
       // Input/Output
+      /** @type {uint8[]} */
       this.sourceSymbols = null;
+      /** @type {uint8[]} */
       this.encodedSymbols = [];
+      /** @type {uint8[]} */
       this.decodedSymbols = null;
 
       // RFC 6330 Parameters
+      /** @type {int32} */
       this.K = 0;                     // Number of source symbols
+      /** @type {int32} */
       this.T = 1;                     // Symbol size in bytes
+      /** @type {int32} */
       this.Al = 4;                    // Symbol alignment
+      /** @type {int32} */
       this.WS = 8;                    // Working symbol size
 
       // Derived parameters
+      /** @type {int32} */
       this.S = 0;                     // Number of LDPC symbols
+      /** @type {int32} */
       this.H = 0;                     // Number of HDPC symbols
+      /** @type {int32} */
       this.W = 0;                     // Number of intermediate symbols
+      /** @type {int32} */
       this.L = 0;                     // Number of pre-coding symbols
+      /** @type {int32} */
       this.P = 0;                     // Total number of PI symbols
+      /** @type {int32} */
       this.U = 0;                     // Number of source symbols in first sub-block
 
       // Matrices and structures
@@ -202,7 +312,11 @@
         // parameters derived from it are computed over the complete block in
         // Result(), since a K taken from one call's share of the message
         // describes a different code from the one the whole message asks for.
-        if (!this.sourceSymbols) this.sourceSymbols = [];
+        if (!this.sourceSymbols) {
+          /** @type {uint8[]} */
+          const empty = [];
+          this.sourceSymbols = empty;
+        }
         for (let i = 0; i < data.length; i++) this.sourceSymbols.push(data[i]);
       }
     }
@@ -223,6 +337,10 @@
       return this._encode();
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       try {
         this.Feed(data);
@@ -234,6 +352,12 @@
     }
 
     // Set RFC 6330 parameters
+    /**
+     * @param {int32} K - Source symbols
+     * @param {int32} [T=1] - Symbol size
+     * @param {int32} [Al=4] - Alignment
+     * @returns {void}
+     */
     setParameters(K, T = 1, Al = 4) {
       this.K = K;
       this.T = T;
@@ -242,6 +366,9 @@
       this._initializeRFC6330Parameters();
     }
 
+    /**
+     * @returns {void}
+     */
     _initializeRFC6330Parameters() {
       this.profiler.startTimer('parameter_initialization');
 
@@ -254,6 +381,9 @@
       this.profiler.endTimer('parameter_initialization');
     }
 
+    /**
+     * @returns {void}
+     */
     _calculateSystemParameters() {
       // RFC 6330 parameter calculation
       const K = this.K;
@@ -282,9 +412,12 @@
       // For single sub-block case
       this.U = this.K;
 
-      console.log(`RaptorQ Parameters: K=${this.K}, S=${this.S}, H=${this.H}, W=${this.W}, L=${this.L}`);
+      console.log("RaptorQ Parameters: K=" + this.K + ", S=" + this.S + ", H=" + this.H + ", W=" + this.W + ", L=" + this.L);
     }
 
+    /**
+     * @returns {void}
+     */
     _buildConstraintMatrix() {
       this.profiler.startTimer('matrix_construction');
 
@@ -299,12 +432,18 @@
       this.profiler.endTimer('matrix_construction');
     }
 
+    /**
+     * @returns {void}
+     */
     _buildLDPCConstraints() {
       // LDPC constraints (first S rows) - RFC 6330 Section 5.3.3.4.1
       for (let s = 0; s < this.S; s++) {
         // Each LDPC constraint connects to specific intermediate symbols
+        /** @type {int32[]} */
         const connections = this._getLDPCConnections(s);
-        for (const col of connections) {
+        for (let c = 0; c < connections.length; ++c) {
+          /** @type {int32} */
+          const col = connections[c];
           if (col < this.L) {
             this.A.set(s, col, 1);
           }
@@ -312,14 +451,21 @@
       }
     }
 
+    /**
+     * @returns {void}
+     */
     _buildHDPCConstraints() {
       // HDPC constraints (next H rows) - RFC 6330 Section 5.3.3.4.2
       for (let h = 0; h < this.H; h++) {
         const row = this.S + h;
+        /** @type {int32[]} */
         const connections = this._getHDPCConnections(h);
-        for (const col of connections) {
+        for (let c = 0; c < connections.length; ++c) {
+          /** @type {int32} */
+          const col = connections[c];
           if (col < this.L) {
             // HDPC uses GF(256) operations, not just XOR
+            /** @type {uint8} */
             const value = this._getHDPCValue(h, col);
             this.A.set(row, col, value);
           }
@@ -327,6 +473,9 @@
       }
     }
 
+    /**
+     * @returns {void}
+     */
     _buildMTConstraints() {
       // MT constraints (remaining rows) - RFC 6330 Section 5.3.3.4.3
       const mtRows = this.L - this.S - this.H;
@@ -339,8 +488,13 @@
       }
     }
 
+    /**
+     * @param {int32} s - LDPC row
+     * @returns {int32[]} Connected columns
+     */
     _getLDPCConnections(s) {
       // RFC 6330 specific LDPC connection pattern
+      /** @type {int32[]} */
       const connections = [];
       const B = this.W;
 
@@ -354,8 +508,13 @@
       return connections;
     }
 
+    /**
+     * @param {int32} h - HDPC row
+     * @returns {int32[]} Connected columns
+     */
     _getHDPCConnections(h) {
       // RFC 6330 HDPC connection pattern
+      /** @type {int32[]} */
       const connections = [];
       const startCol = this.K + this.S;
 
@@ -372,12 +531,20 @@
       return connections;
     }
 
+    /**
+     * @param {int32} h - HDPC row
+     * @param {int32} col - Column
+     * @returns {uint8} Non-zero field element
+     */
     _getHDPCValue(h, col) {
       // RFC 6330 specifies specific GF(256) values for HDPC
       // Simplified calculation for this implementation
       return ((h + col + 1) % 255) + 1; // Non-zero GF(256) element
     }
 
+    /**
+     * @returns {uint8[]} Source symbols followed by repair symbols
+     */
     _encode() {
       if (!this.sourceSymbols || this.K === 0) {
         throw new Error('No source symbols to encode');
@@ -386,14 +553,17 @@
       this.profiler.startTimer('encoding');
 
       // Step 1: Calculate intermediate symbols
+      /** @type {uint8[]} */
       const intermediateSymbols = this._calculateIntermediateSymbols();
 
       // Step 2: Generate encoding symbols (systematic)
-      const encodingSymbols = [...this.sourceSymbols];
+      /** @type {uint8[]} */
+      const encodingSymbols = this.sourceSymbols.slice();
 
       // Step 3: Generate additional repair symbols as needed
       const numRepairSymbols = Math.ceil(this.K * 0.1); // 10% overhead
       for (let i = 0; i < numRepairSymbols; i++) {
+        /** @type {uint8} */
         const repairSymbol = this._generateRepairSymbol(i + this.K, intermediateSymbols);
         encodingSymbols.push(repairSymbol);
       }
@@ -402,9 +572,13 @@
       return encodingSymbols;
     }
 
+    /**
+     * @returns {uint8[]} Intermediate symbols
+     */
     _calculateIntermediateSymbols() {
       // Solve A * x = b where b contains source symbols
-      const b = new Array(this.L).fill(0);
+      /** @type {uint8[]} */
+      const b = OpCodes.CreateArray(this.L, 0);
 
       // Fill source symbols into b
       for (let i = 0; i < this.K; i++) {
@@ -415,9 +589,14 @@
       return this._gaussianElimination(b);
     }
 
+    /**
+     * @param {uint8[]} b - Right-hand side
+     * @returns {uint8[]} Solution
+     */
     _gaussianElimination(b) {
       // Simplified Gaussian elimination for demonstration
       // RFC 6330 specifies optimized inactivation decoding
+      /** @type {uint8[]} */
       const solution = new Array(this.L);
 
       // Forward elimination
@@ -428,26 +607,40 @@
       return solution;
     }
 
+    /**
+     * @param {int32} ESI - Encoding symbol id
+     * @param {uint8[]} intermediateSymbols - Intermediate symbols
+     * @returns {uint8} Repair symbol
+     */
     _generateRepairSymbol(ESI, intermediateSymbols) {
       // Generate repair symbol with Encoding Symbol ID (ESI)
       // This involves the LTEnc function from RFC 6330
 
+      /** @type {uint32} */
       let repairSymbol = 0;
+      /** @type {int32[]} */
       const tuple = this._getTuple(ESI);
 
       // XOR intermediate symbols according to tuple
-      for (const index of tuple) {
+      for (let t = 0; t < tuple.length; ++t) {
+        /** @type {int32} */
+        const index = tuple[t];
         if (index < intermediateSymbols.length) {
-          repairSymbol = OpCodes.XorN(repairSymbol, intermediateSymbols[index]);
+          repairSymbol = OpCodes.Xor32(repairSymbol, intermediateSymbols[index]);
         }
       }
 
       return repairSymbol;
     }
 
+    /**
+     * @param {int32} ESI - Encoding symbol id
+     * @returns {int32[]} Intermediate symbol indices
+     */
     _getTuple(ESI) {
       // RFC 6330 tuple generation for encoding symbol ESI
       // Simplified implementation of the complex tuple calculation
+      /** @type {int32[]} */
       const tuple = [];
       const degree = ((ESI % 4) + 1); // Simple degree distribution
 
@@ -459,6 +652,9 @@
       return tuple;
     }
 
+    /**
+     * @returns {uint8[]} Decoded source symbols
+     */
     _decode() {
       if (this.encodedSymbols.length < this.K) {
         throw new Error('Insufficient symbols for decoding');
@@ -467,10 +663,11 @@
       this.profiler.startTimer('decoding');
 
       // Extract systematic symbols if available
+      /** @type {uint8[]} */
       const systematicSymbols = this.encodedSymbols.slice(0, this.K);
 
       // For systematic codes with sufficient symbols, direct recovery
-      this.decodedSymbols = [...systematicSymbols];
+      this.decodedSymbols = systematicSymbols.slice();
 
       // In case of erasures, would use inactivation decoding algorithm
       // from RFC 6330 Section 5.4
@@ -480,67 +677,79 @@
     }
 
     // RFC 6330 compliance validation
+    /**
+     * @returns {RFC6330Compliance} Compliance flags
+     */
     validateRFC6330Compliance() {
-      const compliance = {
-        maxSourceSymbols: this.K <= this.algorithm.maxSourceSymbols,
-        validSymbolSize: this.T >= 1 && this.T <= 1024,
-        validAlignment: this.Al >= 1 && this.Al <= 8,
-        parametersCalculated: this.S > 0 && this.H > 0 && this.L > 0
-      };
-
-      compliance.isCompliant = Object.values(compliance).every(v => v);
-      return compliance;
+      /** @type {int32} */
+      const maxSourceSymbols = this.algorithm.maxSourceSymbols;
+      return new RFC6330Compliance(
+        this.K <= maxSourceSymbols,
+        this.T >= 1 && this.T <= 1024,
+        this.Al >= 1 && this.Al <= 8,
+        this.S > 0 && this.H > 0 && this.L > 0);
     }
 
     // Performance analysis
     getPerformanceReport() {
       return {
         ...this.profiler.getReport(),
-        rfc6330Parameters: {
-          K: this.K,
-          S: this.S,
-          H: this.H,
-          W: this.W,
-          L: this.L,
-          T: this.T,
-          Al: this.Al
-        },
+        rfc6330Parameters: new RFC6330Parameters(this.K, this.S, this.H, this.W, this.L, this.T, this.Al),
         compliance: this.validateRFC6330Compliance(),
         matrixDensity: this._calculateMatrixDensity(),
         memoryUsage: this._estimateMemoryUsage()
       };
     }
 
+    /**
+     * @returns {float64} Constraint matrix density
+     */
     _calculateMatrixDensity() {
-      if (!this.A) return 0;
-
-      let nonZeros = 0;
-      for (let row = 0; row < this.A.rows; row++) {
-        nonZeros += this.A.getRowDegree(row);
+      if (!this.A) {
+        return 0;
       }
 
-      const totalElements = this.A.rows * this.A.cols;
+      /** @type {int32} */
+      let nonZeros = 0;
+      /** @type {int32} */
+      const rows = this.A.rows;
+      /** @type {int32} */
+      const cols = this.A.cols;
+      for (let row = 0; row < rows; row++) {
+        /** @type {int32} */
+        const degree = this.A.getRowDegree(row);
+        nonZeros += degree;
+      }
+
+      const totalElements = rows * cols;
       return nonZeros / totalElements;
     }
 
+    /**
+     * @returns {MemoryUsage} Memory estimate
+     */
     _estimateMemoryUsage() {
-      const matrixMemory = this.A ? this.A.data.size * 16 : 0; // Approximate bytes per entry
-      const symbolMemory = (this.K + (this.encodedSymbols?.length || 0)) * this.T;
-      return {
-        matrixBytes: matrixMemory,
-        symbolBytes: symbolMemory,
-        totalBytes: matrixMemory + symbolMemory
-      };
+      /** @type {int32} */
+      let matrixMemory = 0;
+      if (this.A) {
+        /** @type {int32} */
+        const entries = this.A.nonZeroCount();
+        matrixMemory = entries * 16; // Approximate bytes per entry
+      }
+      /** @type {int32} */
+      const encodedCount = (this.encodedSymbols ? this.encodedSymbols.length : 0);
+      const symbolMemory = (this.K + encodedCount) * this.T;
+      return new MemoryUsage(matrixMemory, symbolMemory);
     }
 
     // Get encoding efficiency
+    /**
+     * @returns {CodeEfficiency} Rate figures
+     */
     getEfficiency() {
-      const totalSymbols = this.encodedSymbols.length || (this.K * 1.1); // Assume 10% overhead
-      return {
-        codeRate: this.K / totalSymbols,
-        overhead: (totalSymbols - this.K) / this.K,
-        efficiency: this.K / totalSymbols
-      };
+      /** @type {float64} */
+      const totalSymbols = (this.encodedSymbols.length ? this.encodedSymbols.length : (this.K * 1.1)); // Assume 10% overhead
+      return new CodeEfficiency(this.K / totalSymbols, (totalSymbols - this.K) / this.K, this.K / totalSymbols);
     }
   }
 

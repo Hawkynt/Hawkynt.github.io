@@ -170,7 +170,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ShishuaInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -188,20 +188,29 @@
  */
 
   class ShishuaInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {ShishuaAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // SHISHUA state: 16 x 64-bit values (4 lanes of 4 values each)
-      this._state = new Array(16).fill(0n);
+      /** @type {BigInt[]} */
+      this._state = OpCodes.CreateArray(16, 0n);
 
       // Output buffer: 16 x 64-bit values
-      this._output = new Array(16).fill(0n);
+      /** @type {BigInt[]} */
+      this._output = OpCodes.CreateArray(16, 0n);
 
       // Counter: 4 x 64-bit values (1 lane)
-      this._counter = new Array(4).fill(0n);
+      /** @type {BigInt[]} */
+      this._counter = OpCodes.CreateArray(4, 0n);
 
       // Phi constants: hex digits of golden ratio (Φ)
       // "Nothing up my sleeve" numbers from reference implementation
+      /** @type {BigInt[]} */
       this.PHI = [
         0x9E3779B97F4A7C15n, 0xF39CC0605CEDC834n, 0x1082276BF3A27251n, 0xF86C6A11D0C18E95n,
         0x2767F0B153D27B7Fn, 0x0347045B5BF1827Fn, 0x01886F0928403002n, 0xC1D64BA40F335E36n,
@@ -212,6 +221,7 @@
       // Shuffle offsets for 32-bit lane rotation
       // Even lanes rotate by 5 (x32), odd lanes by 3 (x32)
       // Implements 96-bit and 160-bit rotations at 256-bit level
+      /** @type {int32[]} */
       this.SHUFFLE_OFFSETS = [
         2, 3, 0, 1, 5, 6, 7, 4,  // left side offsets
         3, 0, 1, 2, 6, 7, 4, 5   // right side offsets
@@ -223,6 +233,7 @@
     /**
      * Set seed value (256-bit = 32 bytes = 4 x 64-bit values)
      * Seeds are applied as 4 x 64-bit values in little-endian byte order
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -231,15 +242,21 @@
       }
 
       // Pad seed to 32 bytes if needed
-      const paddedSeed = [...seedBytes];
+      /** @type {uint8[]} */
+      const paddedSeed = [];
+      for (let i = 0; i < seedBytes.length; ++i) {
+        paddedSeed.push(seedBytes[i]);
+      }
       while (paddedSeed.length < 32) {
         paddedSeed.push(0);
       }
 
       // Convert seed bytes to 4 x 64-bit values (big-endian)
       // Each 8 bytes forms one 64-bit value, most significant byte first
+      /** @type {BigInt[]} */
       const seed64 = [];
       for (let i = 0; i < 4; ++i) {
+        /** @type {BigInt} */
         let value = 0n;
         for (let j = 0; j < 8; ++j) {
           const byteIndex = i * 8 + j;
@@ -265,7 +282,9 @@
       }
 
       // Reset counter
-      this._counter = [0n, 0n, 0n, 0n];
+      /** @type {BigInt[]} */
+      const zeroCounter = [0n, 0n, 0n, 0n];
+      this._counter = zeroCounter;
 
       // Run initialization: 13 rounds of generation without output
       const ROUNDS = 13;
@@ -284,6 +303,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -291,6 +313,7 @@
     /**
      * Generate one 128-byte block (16 x 64-bit values)
      * Implements the core SHISHUA algorithm: shift-shuffle-add pattern
+     * @returns {void}
      */
     _generateBlock() {
       // Process two half-blocks (2 lanes each)
@@ -309,9 +332,12 @@
 
         // Shuffle: 32-bit lane permutation implementing bit rotation
         // Creates temporary shuffled values for mixing
-        const temp = new Array(8);
+        /** @type {BigInt[]} */
+        const temp = OpCodes.CreateArray(8, 0n);
         for (let k = 0; k < 8; ++k) {
+          /** @type {int32} */
           const leftIdx = this.SHUFFLE_OFFSETS[k];
+          /** @type {int32} */
           const rightIdx = this.SHUFFLE_OFFSETS[k + 8];
 
           // Funnel shift: combines two 64-bit values at 32-bit boundary
@@ -324,7 +350,9 @@
         // Shift-Add: main diffusion mechanism
         for (let k = 0; k < 4; ++k) {
           // Shift by odd amounts (1 and 3) to ensure full bit coverage
+          /** @type {BigInt} */
           const u_lo = OpCodes.ShiftRn(this._state[sOffset + k + 0], 1);
+          /** @type {BigInt} */
           const u_hi = OpCodes.ShiftRn(this._state[sOffset + k + 4], 3);
 
           // Add shifted values with shuffled temps (main diffusion)
@@ -354,8 +382,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -363,9 +391,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const result = [];
       let bytesRemaining = length;
       let needsGeneration = false;
@@ -386,6 +417,7 @@
           const bytesToExtract = Math.min(8, bytesRemaining);
           for (let j = 0; j < bytesToExtract; ++j) {
             const shifted = OpCodes.ShiftRn(value, j * 8);
+            /** @type {uint8} */
             const byte = Number(OpCodes.AndN(shifted, 0xFFn));
             result.push(byte);
             --bytesRemaining;
@@ -420,19 +452,23 @@
 
     Result() {
       // Use specified output size or default to 128 bytes (one block)
-      const size = this._outputSize || 128;
+      const size = (this._outputSize ? this._outputSize : 128);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 128;
+      return (this._outputSize ? this._outputSize : 128);
     }
   }
 

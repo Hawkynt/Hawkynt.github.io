@@ -47,19 +47,28 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           CryptoAlgorithm, LinkItem, IAlgorithmInstance } = AlgorithmFramework;
 
-  // Secure random number generator for padding
-  // Uses crypto.getRandomValues in browser or crypto.randomBytes in Node.js
+  /**
+   * Secure random number generator for padding
+   * Uses crypto.getRandomValues in browser or crypto.randomBytes in Node.js
+   * @param {int32} length - Number of bytes (at most a block)
+   * @returns {uint8[]} Random bytes
+   */
   function getSecureRandomBytes(length) {
+    /** @type {uint8[]} */
     const bytes = new Array(length);
 
-    // Browser/Worker environment
-    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    // Browser/Worker environment (and Node.js, which has the same global);
+    // a missing global crypto or getRandomValues throws and falls through
+    try {
+      /** @type {uint8[]} */
       const buffer = new Uint8Array(length);
       crypto.getRandomValues(buffer);
       for (let i = 0; i < length; ++i) {
         bytes[i] = buffer[i];
       }
       return bytes;
+    } catch (e) {
+      // No Web Crypto API: try the Node.js module
     }
 
     // Node.js environment
@@ -78,20 +87,27 @@
 
     // Deterministic fallback for testing (NOT cryptographically secure)
     // Uses a simple PRNG seeded with timestamp
-    let seed = Date.now()&0xFFFFFFFF;
+    /** @type {float64} */
+    const now = Date.now();
+    /** @type {int32} */
+    let seed = OpCodes.ToInt(now);
     for (let i = 0; i < length; ++i) {
-      seed = (seed * 1103515245 + 12345)&0x7FFFFFFF;
+      /** @type {float64} */
+      const next = seed * 1103515245 + 12345;
+      seed = OpCodes.ToInt(OpCodes.And32(next, 0x7FFFFFFF));
       // Extract high byte without bit shift operator (avoid optimization check)
-      bytes[i] = Math.floor(seed / 65536)&0xFF;
+      bytes[i] = OpCodes.And32(Math.floor(seed / 65536), 0xFF);
     }
     return bytes;
   }
 
-  // Helper to get cipher algorithm by name (registry-first, plain require fallback)
-  function getCipherAlgorithm(cipherName) {
-    let cipher = AlgorithmFramework.Find(cipherName);
-
-    if (!cipher && typeof require !== 'undefined') {
+  /**
+   * Make sure a cipher is registered: registry first, plain require fallback
+   * @param {string} cipherName - Registered name
+   * @returns {void}
+   */
+  function loadCipherAlgorithm(cipherName) {
+    if (!AlgorithmFramework.Find(cipherName) && typeof require !== 'undefined') {
       const cipherPaths = {
         'DES': '../block/des.js',
         'Triple DES': '../block/3des.js',
@@ -101,40 +117,59 @@
 
       const relativePath = cipherPaths[cipherName];
       if (relativePath) {
-        try { require(relativePath); } catch (e) { /* not found — return null below */ }
-        cipher = AlgorithmFramework.Find(cipherName);
+        try { require(relativePath); } catch (e) { /* not found — the lookup finds nothing */ }
       }
     }
-
-    return cipher;
   }
 
   // ===== CBC MODE HELPER CLASS =====
   // Implements stateful CBC mode that processes blocks in-place
   class CBCModeEngine {
+    /**
+     * @param {IBlockCipherInstance} cipherInstance - Keyed block cipher
+     * @param {uint8[]} iv - IV, one block long
+     * @param {boolean} isEncrypt - True to encrypt
+     */
     constructor(cipherInstance, iv, isEncrypt) {
+      /** @type {IBlockCipherInstance} */
       this.cipherInstance = cipherInstance;
-      this.iv = [...iv];
+      /** @type {uint8[]} */
+      this.iv = iv.slice();
+      /** @type {int32} */
       this.blockSize = iv.length;
+      /** @type {boolean} */
       this.isEncrypt = isEncrypt;
-      this.chainBlock = [...iv];
+      /** @type {uint8[]} */
+      this.chainBlock = iv.slice();
     }
 
-    // Reset CBC state with new IV
+    /**
+     * Reset CBC state with new IV
+     * @param {uint8[]} newIV - IV
+     * @returns {void}
+     */
     reset(newIV) {
-      this.chainBlock = [...newIV];
+      this.chainBlock = newIV.slice();
     }
 
-    // Process a single block in-place
+    /**
+     * Process a single block in-place
+     * @param {uint8[]} data - Buffer
+     * @param {int32} inOff - Offset of the input block
+     * @param {int32} outOff - Offset the output block is written to
+     * @returns {void}
+     */
     processBlock(data, inOff, outOff) {
       if (this.isEncrypt) {
         // CBC Encryption: XOR with chain, then encrypt
+        /** @type {uint8[]} */
         const block = [];
         for (let i = 0; i < this.blockSize; ++i) {
-          block[i] = data[inOff + i]^this.chainBlock[i];
+          block[i] = OpCodes.Xor8(data[inOff + i], this.chainBlock[i]);
         }
 
         this.cipherInstance.Feed(block);
+        /** @type {uint8[]} */
         const encrypted = this.cipherInstance.Result();
 
         for (let i = 0; i < this.blockSize; ++i) {
@@ -145,13 +180,15 @@
         this.chainBlock = encrypted;
       } else{
         // CBC Decryption: Decrypt, then XOR with chain
+        /** @type {uint8[]} */
         const block = data.slice(inOff, inOff + this.blockSize);
 
         this.cipherInstance.Feed(block);
+        /** @type {uint8[]} */
         const decrypted = this.cipherInstance.Result();
 
         for (let i = 0; i < this.blockSize; ++i) {
-          data[outOff + i] = decrypted[i]^this.chainBlock[i];
+          data[outOff + i] = OpCodes.Xor8(decrypted[i], this.chainBlock[i]);
         }
 
         // Update chain block (use original ciphertext)
@@ -216,7 +253,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {RFC3211WrapInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -233,17 +270,23 @@
   class RFC3211WrapInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {RFC3211WrapAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._iv = null;
+      /** @type {string} */
       this._cipherName = 'DES'; // Default to DES
+      /** @type {uint8[]|null} */
       this._random = null; // For testing with fixed random bytes
     }
 
@@ -293,20 +336,32 @@
       return this._iv ? [...this._iv] : null;
     }
 
-    // For selecting the underlying cipher (DES, Triple DES, AES)
+    /**
+     * Select the underlying cipher (DES, Triple DES, AES)
+     * @param {string} name - Registered cipher name
+     */
     set cipherName(name) {
       this._cipherName = name;
     }
 
+    /**
+     * @returns {string} Registered name of the underlying cipher
+     */
     get cipherName() {
       return this._cipherName;
     }
 
-    // For testing: set fixed random bytes instead of using crypto RNG
+    /**
+     * For testing: set fixed random bytes instead of using crypto RNG
+     * @param {uint8[]|null} randomBytes - Padding bytes, or null for the RNG
+     */
     set random(randomBytes) {
-      this._random = randomBytes ? [...randomBytes] : null;
+      this._random = randomBytes ? randomBytes.slice() : null;
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the fixed padding bytes or null
+     */
     get random() {
       return this._random ? [...this._random] : null;
     }
@@ -331,13 +386,20 @@
         throw new Error('No data fed');
       }
 
+      /** @type {uint8[]} */
       const result = this.isInverse ? this._unwrap() : this._wrap();
       this.inputBuffer = [];
       return result;
     }
 
+    /**
+     * RFC 3211 wrap
+     * @returns {uint8[]} Wrapped key
+     */
     _wrap() {
+      /** @type {uint8[]} */
       const plaintext = this.inputBuffer;
+      /** @type {int32} */
       const blockSize = this._iv.length;
 
       // Validate input length (RFC 3211 allows 0-255 bytes)
@@ -346,25 +408,29 @@
       }
 
       // Get cipher algorithm
-      const CipherAlgorithm = getCipherAlgorithm(this._cipherName);
+      loadCipherAlgorithm(this._cipherName);
+      const CipherAlgorithm = AlgorithmFramework.Find(this._cipherName);
       if (!CipherAlgorithm) {
         throw new Error('Cipher algorithm not found: ' + this._cipherName);
       }
 
       // Calculate padded block size (minimum 2 blocks)
-      let cekBlockSize;
+      /** @type {int32} */
+      let cekBlockSize = 0;
       if (plaintext.length + 4 < blockSize * 2) {
         cekBlockSize = blockSize * 2;
       } else {
+        /** @type {int32} */
         const needed = plaintext.length + 4;
         cekBlockSize = needed % blockSize === 0 ? needed : (Math.floor(needed / blockSize) + 1) * blockSize;
       }
 
       // Build CEK block: [length][check1][check2][check3][plaintext][padding]
+      /** @type {uint8[]} */
       const cekBlock = new Array(cekBlockSize);
 
       // Byte 0: length of plaintext
-      cekBlock[0] = plaintext.length&0xFF;
+      cekBlock[0] = OpCodes.ToByte(plaintext.length);
 
       // Bytes 4...: plaintext
       for (let i = 0; i < plaintext.length; ++i) {
@@ -372,24 +438,28 @@
       }
 
       // Padding with random bytes
+      /** @type {int32} */
       const padLength = cekBlockSize - (plaintext.length + 4);
       if (padLength > 0) {
-        const padBytes = this._random || getSecureRandomBytes(padLength);
+        /** @type {uint8[]} */
+        const padBytes = this._random ? this._random : getSecureRandomBytes(padLength);
         for (let i = 0; i < padLength; ++i) {
           cekBlock[plaintext.length + 4 + i] = padBytes[i];
         }
       }
 
       // Bytes 1-3: checksum (inverted first 3 bytes of plaintext)
-      cekBlock[1] = (~cekBlock[4])&0xFF;
-      cekBlock[2] = (~cekBlock[5])&0xFF;
-      cekBlock[3] = (~cekBlock[6])&0xFF;
+      cekBlock[1] = OpCodes.Not8(cekBlock[4]);
+      cekBlock[2] = OpCodes.Not8(cekBlock[5]);
+      cekBlock[3] = OpCodes.Not8(cekBlock[6]);
 
       // Create cipher instance for encryption
+      /** @type {IBlockCipherInstance} */
       const cipherInstance = CipherAlgorithm.CreateInstance(false);
       cipherInstance.key = this._key;
 
       // Create CBC engine
+      /** @type {CBCModeEngine} */
       const cbcEngine = new CBCModeEngine(cipherInstance, this._iv, true);
 
       // First pass: CBC encrypt all blocks in-place
@@ -406,8 +476,14 @@
       return cekBlock;
     }
 
+    /**
+     * RFC 3211 unwrap
+     * @returns {uint8[]} Unwrapped key
+     */
     _unwrap() {
+      /** @type {uint8[]} */
       const ciphertext = this.inputBuffer;
+      /** @type {int32} */
       const blockSize = this._iv.length;
 
       // Validate input length (minimum 2 blocks)
@@ -420,7 +496,8 @@
       }
 
       // Get cipher algorithm
-      const CipherAlgorithm = getCipherAlgorithm(this._cipherName);
+      loadCipherAlgorithm(this._cipherName);
+      const CipherAlgorithm = AlgorithmFramework.Find(this._cipherName);
       if (!CipherAlgorithm) {
         throw new Error('Cipher algorithm not found: ' + this._cipherName);
       }
@@ -430,32 +507,40 @@
       // 2. Use last decrypted block as new IV, decrypt first block
       // 3. Standard CBC decrypt all blocks with original IV
 
+      /** @type {uint8[]} */
       const cekBlock = [...ciphertext];
+      /** @type {uint8[]} */
       const firstBlockIV = ciphertext.slice(0, blockSize);
 
       // Create cipher instance for decryption
+      /** @type {IBlockCipherInstance} */
       const decryptInstance = CipherAlgorithm.CreateInstance(true);
       decryptInstance.key = this._key;
 
       // Step 1: Decrypt blocks 1..n (skip first block) with IV = first block
+      /** @type {CBCModeEngine} */
       const cbcEngine1 = new CBCModeEngine(decryptInstance, firstBlockIV, false);
       for (let i = blockSize; i < cekBlock.length; i += blockSize) {
         cbcEngine1.processBlock(cekBlock, i, i);
       }
 
       // Step 2: Use last decrypted block as new IV, decrypt first block
+      /** @type {uint8[]} */
       const newIV = cekBlock.slice(cekBlock.length - blockSize);
+      /** @type {CBCModeEngine} */
       const cbcEngine2 = new CBCModeEngine(decryptInstance, newIV, false);
       cbcEngine2.processBlock(cekBlock, 0, 0);
 
       // Step 3: Full CBC decrypt with original IV
+      /** @type {CBCModeEngine} */
       const cbcEngine3 = new CBCModeEngine(decryptInstance, this._iv, false);
       for (let i = 0; i < cekBlock.length; i += blockSize) {
         cbcEngine3.processBlock(cekBlock, i, i);
       }
 
       // Extract and validate
-      const length = cekBlock[0]&0xFF;
+      /** @type {int32} */
+      const length = OpCodes.ToByte(cekBlock[0]);
 
       // Check length validity
       if (length > cekBlock.length - 4) {
@@ -464,10 +549,14 @@
       }
 
       // Verify checksum (constant-time comparison)
-      let checksumValid = 1;
-      checksumValid &= ((~cekBlock[1]&0xFF) === (cekBlock[4]&0xFF)) ? 1 : 0;
-      checksumValid &= ((~cekBlock[2]&0xFF) === (cekBlock[5]&0xFF)) ? 1 : 0;
-      checksumValid &= ((~cekBlock[3]&0xFF) === (cekBlock[6]&0xFF)) ? 1 : 0;
+      /** @type {boolean} */
+      const check1 = OpCodes.Not8(cekBlock[1]) === OpCodes.ToByte(cekBlock[4]);
+      /** @type {boolean} */
+      const check2 = OpCodes.Not8(cekBlock[2]) === OpCodes.ToByte(cekBlock[5]);
+      /** @type {boolean} */
+      const check3 = OpCodes.Not8(cekBlock[3]) === OpCodes.ToByte(cekBlock[6]);
+      /** @type {boolean} */
+      const checksumValid = check1 && check2 && check3;
 
       if (!checksumValid) {
         OpCodes.ClearArray(cekBlock);
@@ -475,6 +564,7 @@
       }
 
       // Extract plaintext
+      /** @type {uint8[]} */
       const plaintext = cekBlock.slice(4, 4 + length);
 
       // Clear sensitive data

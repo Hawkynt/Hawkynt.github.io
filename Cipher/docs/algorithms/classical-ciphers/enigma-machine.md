@@ -24,8 +24,8 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| [No letter can encrypt to itself due to reflector design, reducing key space](https://en.wikipedia.org/wiki/Enigma_machine#Reflector) | — | Historical design flaw - avoid for real cryptography |
-| [Predictable rotor advancement patterns enable statistical cryptanalysis](https://en.wikipedia.org/wiki/Cryptanalysis_of_the_Enigma) | — | Educational use only - demonstrates importance of proper design |
+| [No Self-Encryption](https://en.wikipedia.org/wiki/Enigma_machine#Reflector) | No letter can encrypt to itself due to reflector design, reducing key space | Historical design flaw - avoid for real cryptography |
+| [Rotor Stepping Patterns](https://en.wikipedia.org/wiki/Cryptanalysis_of_the_Enigma) | Predictable rotor advancement patterns enable statistical cryptanalysis | Educational use only - demonstrates importance of proper design |
 
 ## Documentation
 

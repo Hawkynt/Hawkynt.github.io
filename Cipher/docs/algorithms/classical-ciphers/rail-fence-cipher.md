@@ -23,8 +23,8 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| [Very limited key space (number of rails), easily brute forced even by hand](https://en.wikipedia.org/wiki/Rail_fence_cipher) | — | None - cipher is fundamentally insecure |
-| [Character frequencies preserved, making statistical analysis possible](http://practicalcryptography.com/ciphers/classical-era/rail-fence/) | — | Use only for educational demonstrations |
+| [Brute Force Attack](https://en.wikipedia.org/wiki/Rail_fence_cipher) | Very limited key space (number of rails), easily brute forced even by hand | None - cipher is fundamentally insecure |
+| [Frequency Analysis](http://practicalcryptography.com/ciphers/classical-era/rail-fence/) | Character frequencies preserved, making statistical analysis possible | Use only for educational demonstrations |
 
 ## Documentation
 

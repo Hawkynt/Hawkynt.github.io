@@ -50,36 +50,117 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
-  // FrodoKEM Parameter Sets (based on NIST PQC standards)
-  const FRODO_PARAMS = {
-    'FrodoKEM-640': {
-      name: 'frodokem640aes',
-      n: 640,
-      D: 15,
-      B: 2,
-      cdf_table: [4643, 13363, 20579, 25843, 29227, 31145, 32103, 32525, 32689, 32745, 32762, 32766, 32767],
-      nbar: 8,
-      keySize: 32
-    },
-    'FrodoKEM-976': {
-      name: 'frodokem976aes',
-      n: 976,
-      D: 16,
-      B: 3,
-      cdf_table: [5638, 15915, 23689, 28571, 31116, 32217, 32613, 32731, 32760, 32766, 32767],
-      nbar: 8,
-      keySize: 32
-    },
-    'FrodoKEM-1344': {
-      name: 'frodokem1344aes',
-      n: 1344,
-      D: 16,
-      B: 4,
-      cdf_table: [9142, 23462, 30338, 32361, 32725, 32765, 32767],
-      nbar: 8,
-      keySize: 32
+  /**
+   * One FrodoKEM parameter set.
+   */
+  class FrodoParams {
+    /**
+     * @param {string} name - Reference implementation name
+     * @param {int32} n - Lattice dimension
+     * @param {int32} D - Modulus exponent (q = 2^D)
+     * @param {int32} B - Bits encoded per matrix entry
+     * @param {uint16[]} cdfTable - Error distribution CDF
+     * @param {int32} nbar - Matrix width
+     * @param {int32} keySize - Shared secret length in bytes
+     */
+    constructor(name, n, D, B, cdfTable, nbar, keySize) {
+      /** @type {string} */
+      this.name = name;
+      /** @type {int32} */
+      this.n = n;
+      /** @type {int32} */
+      this.D = D;
+      /** @type {int32} */
+      this.B = B;
+      /** @type {uint16[]} */
+      this.cdf_table = cdfTable;
+      /** @type {int32} */
+      this.nbar = nbar;
+      /** @type {int32} */
+      this.keySize = keySize;
     }
-  };
+  }
+
+  // FrodoKEM Parameter Sets (based on NIST PQC standards), named by
+  // FRODO_PARAM_NAMES in the same order
+  /** @type {string[]} */
+  const FRODO_PARAM_NAMES = ['FrodoKEM-640', 'FrodoKEM-976', 'FrodoKEM-1344'];
+  /** @type {uint16[]} */
+  const FRODO_CDF_640 = [4643, 13363, 20579, 25843, 29227, 31145, 32103, 32525, 32689, 32745, 32762, 32766, 32767];
+  /** @type {uint16[]} */
+  const FRODO_CDF_976 = [5638, 15915, 23689, 28571, 31116, 32217, 32613, 32731, 32760, 32766, 32767];
+  /** @type {uint16[]} */
+  const FRODO_CDF_1344 = [9142, 23462, 30338, 32361, 32725, 32765, 32767];
+  /** @type {FrodoParams[]} */
+  const FRODO_PARAM_SETS = [
+    new FrodoParams('frodokem640aes', 640, 15, 2, FRODO_CDF_640, 8, 32),
+    new FrodoParams('frodokem976aes', 976, 16, 3, FRODO_CDF_976, 8, 32),
+    new FrodoParams('frodokem1344aes', 1344, 16, 4, FRODO_CDF_1344, 8, 32)
+  ];
+
+  /**
+   * The parameter set of that name, or null.
+   * @param {string} paramName - Name such as 'FrodoKEM-640'
+   * @returns {FrodoParams|null} The parameter set
+   */
+  function findParams(paramName) {
+    const index = FRODO_PARAM_NAMES.indexOf(paramName);
+    return index < 0 ? null : FRODO_PARAM_SETS[index];
+  }
+
+  /**
+   * An educational FrodoKEM public key.
+   */
+  class FrodoPublicKey {
+    /**
+     * @param {int32[][]} matrix - Public matrix
+     * @param {int32} keySize - Lattice dimension
+     * @param {string} keyId - Key label
+     */
+    constructor(matrix, keySize, keyId) {
+      /** @type {int32[][]} */
+      this.matrix = matrix;
+      /** @type {int32} */
+      this.keySize = keySize;
+      /** @type {string} */
+      this.keyId = keyId;
+    }
+  }
+
+  /**
+   * An educational FrodoKEM private key.
+   */
+  class FrodoPrivateKey {
+    /**
+     * @param {int32[][]} secret - Secret matrix
+     * @param {int32} keySize - Lattice dimension
+     * @param {string} keyId - Key label
+     */
+    constructor(secret, keySize, keyId) {
+      /** @type {int32[][]} */
+      this.secret = secret;
+      /** @type {int32} */
+      this.keySize = keySize;
+      /** @type {string} */
+      this.keyId = keyId;
+    }
+  }
+
+  /**
+   * A generated key pair.
+   */
+  class FrodoKeyPair {
+    /**
+     * @param {FrodoPublicKey} publicKey - Public half
+     * @param {FrodoPrivateKey} privateKey - Private half
+     */
+    constructor(publicKey, privateKey) {
+      /** @type {FrodoPublicKey} */
+      this.publicKey = publicKey;
+      /** @type {FrodoPrivateKey} */
+      this.privateKey = privateKey;
+    }
+  }
 
   /**
    * Read a parameter set selector from whatever the caller supplied. Both
@@ -87,34 +168,44 @@
    * ASCII, and a big-endian 16-bit count. The ASCII form used to be read as a
    * 16-bit count, so "976" arrived as 0x3937 and quietly selected 640.
    * @param {uint8[]|string|number} keyData - Parameter set selector
-   * @returns {number} The lattice dimension n
+   * @returns {int32} The lattice dimension n
    */
   function parseParameterSet(keyData) {
     if (typeof keyData === 'number') {
-      return keyData;
+      /** @type {int32} */
+      const dimension = keyData;
+      return dimension;
     }
 
     if (typeof keyData === 'string') {
-      return parseInt(keyData, 10);
+      /** @type {string} */
+      const text = keyData;
+      /** @type {int32} */
+      const parsed = parseInt(text, 10);
+      return parsed;
     }
 
     if (keyData && typeof keyData.length === 'number') {
+      /** @type {uint8[]} */
+      const bytes = keyData;
       let digits = '';
-      let allDigits = keyData.length > 0;
-      for (let i = 0; i < keyData.length; ++i) {
-        if (keyData[i] < 0x30 || keyData[i] > 0x39) {
+      let allDigits = bytes.length > 0;
+      for (let i = 0; i < bytes.length; ++i) {
+        if (bytes[i] < 0x30 || bytes[i] > 0x39) {
           allDigits = false;
           break;
         }
-        digits += String.fromCharCode(keyData[i]);
+        digits += String.fromCharCode(bytes[i]);
       }
 
       if (allDigits) {
-        return parseInt(digits, 10);
+        /** @type {int32} */
+        const size = parseInt(digits, 10);
+        return size;
       }
 
-      if (keyData.length >= 2) {
-        return OpCodes.Pack16BE(keyData[0], keyData[1]);
+      if (bytes.length >= 2) {
+        return OpCodes.Pack16BE(bytes[0], bytes[1]);
       }
     }
 
@@ -226,22 +317,31 @@
   class FrodoKEMInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {FrodoKEMCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {FrodoParams|null} */
       this.currentParams = null;
+      /** @type {int32} */
       this.currentN = 640;
+      /** @type {FrodoPublicKey|null} */
       this._publicKey = null;
+      /** @type {FrodoPrivateKey|null} */
       this._privateKey = null;
+      /** @type {uint8[]|null} */
       this._keyData = null; // Initialize to null so UI condition passes
     }
 
     // Property setter for key (for test suite compatibility)
+    /**
+     * @param {uint8[]} keyData - Parameter set selector (see parseParameterSet)
+     */
     set key(keyData) {
       this.KeySetup(keyData);
     }
@@ -256,6 +356,9 @@
     }
 
     // Property setters/getters for UI compatibility
+    /**
+     * @param {FrodoPublicKey|null} keyData - Public key
+     */
     set publicKey(keyData) {
       if (keyData) {
         this._publicKey = keyData;
@@ -264,10 +367,16 @@
       }
     }
 
+    /**
+     * @returns {FrodoPublicKey|null} Current public key
+     */
     get publicKey() {
       return this._publicKey;
     }
 
+    /**
+     * @param {FrodoPrivateKey|null} keyData - Private key
+     */
     set privateKey(keyData) {
       if (keyData) {
         this._privateKey = keyData;
@@ -276,11 +385,18 @@
       }
     }
 
+    /**
+     * @returns {FrodoPrivateKey|null} Current private key
+     */
     get privateKey() {
       return this._privateKey;
     }
 
     // Initialize FrodoKEM with specified parameter set
+    /**
+     * @param {int32} n - Lattice dimension selecting the parameter set
+     * @returns {boolean} True once the set is accepted
+     */
     Init(n) {
       // An unrecognised n used to fall back to FrodoKEM-640 in silence, which
       // meant a caller asking for 976 or 1344 was handed 640 and had no way to
@@ -288,11 +404,11 @@
       // wrong one is not a detail.
       const paramName = 'FrodoKEM-' + n;
 
-      if (!FRODO_PARAMS[paramName]) {
+      if (!findParams(paramName)) {
         throw new Error('Invalid FrodoKEM parameter set. Use 640, 976, or 1344.');
       }
 
-      this.currentParams = FRODO_PARAMS[paramName];
+      this.currentParams = findParams(paramName);
       this.currentN = n;
 
       return true;
@@ -324,10 +440,13 @@
 
     Result() {
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
       try {
+        /** @type {uint8[]} */
         let result;
         if (this.isInverse) {
           // Decrypt
@@ -337,15 +456,17 @@
           result = this._encrypt(this.inputBuffer);
         }
 
-        this.inputBuffer = [];
         return result;
-      } catch (error) {
+      } finally {
         this.inputBuffer = [];
-        throw error;
       }
     }
 
     // Educational encryption (simplified FrodoKEM-like)
+    /**
+     * @param {uint8[]} message - Message bytes
+     * @returns {uint8[]} Length header followed by the masked message
+     */
     _encrypt(message) {
       if (!this._publicKey) {
         const keyPair = this._generateEducationalKeys();
@@ -355,6 +476,7 @@
 
       // Simple educational encryption: XOR with deterministic key stream
       const keyStream = this._generateKeyStream(message.length);
+      /** @type {uint8[]} */
       const encrypted = new Array(message.length + 4); // Add header for decryption
 
       // Store original length in first 4 bytes (little-endian) using OpCodes
@@ -365,6 +487,7 @@
       encrypted[3] = lengthBytes[3];
 
       // Encrypt message using OpCodes XOR
+      /** @type {uint8[]} */
       const messageArray = [...message];
       const encryptedMessage = OpCodes.XorArrays(messageArray, keyStream.slice(0, message.length));
       for (let i = 0; i < encryptedMessage.length; i++) {
@@ -375,6 +498,10 @@
     }
 
     // Educational decryption (simplified FrodoKEM-like)
+    /**
+     * @param {uint8[]} data - Length header followed by the masked message
+     * @returns {uint8[]} Recovered message
+     */
     _decrypt(data) {
       if (!this._privateKey) {
         throw new Error('FrodoKEM private key not set. Generate keys first.');
@@ -387,16 +514,17 @@
       // Extract original length from header using OpCodes
       const originalLength = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
 
-      if (data.length !== originalLength + 4) {
+      if (data.length !== OpCodes.Add32(originalLength, 4)) {
         throw new Error('Invalid ciphertext: length mismatch');
       }
 
       // Generate same key stream for decryption
       const keyStream = this._generateKeyStream(originalLength);
+      /** @type {uint8[]} */
       const decrypted = new Array(originalLength);
 
       // Decrypt message using OpCodes XOR
-      const cipherArray = data.slice(4, 4 + originalLength);
+      const cipherArray = data.slice(4, OpCodes.Add32(4, originalLength));
       const decryptedArray = OpCodes.XorArrays(cipherArray, keyStream.slice(0, originalLength));
       for (let i = 0; i < originalLength; i++) {
         decrypted[i] = decryptedArray[i];
@@ -406,30 +534,31 @@
     }
 
     // Generate educational keys (not cryptographically secure)
+    /**
+     * @returns {FrodoKeyPair} Deterministic demonstration key pair
+     */
     _generateEducationalKeys() {
       const keyId = 'FRODOKEM_' + this.currentN + '_EDUCATIONAL';
 
-      const publicKey = {
-        matrix: this._generateDeterministicMatrix(),
-        keySize: this.currentN,
-        keyId: keyId
-      };
+      const publicKey = new FrodoPublicKey(this._generateDeterministicMatrix(), this.currentN, keyId);
 
-      const privateKey = {
-        secret: this._generateDeterministicMatrix(),
-        keySize: this.currentN,
-        keyId: keyId
-      };
+      const privateKey = new FrodoPrivateKey(this._generateDeterministicMatrix(), this.currentN, keyId);
 
-      return { publicKey, privateKey };
+      return new FrodoKeyPair(publicKey, privateKey);
     }
 
     // Generate deterministic matrix for educational purposes
+    /**
+     * @returns {int32[][]} Matrix of (i * j + n) mod 65536, at most 16 x 16
+     */
     _generateDeterministicMatrix() {
       const size = Math.min(this.currentN, 16); // Keep small for educational purposes
+      /** @type {int32[][]} */
       const matrix = new Array(size);
       for (let i = 0; i < size; i++) {
-        matrix[i] = new Array(size);
+        /** @type {int32[]} */
+        const row = new Array(size);
+        matrix[i] = row;
         for (let j = 0; j < size; j++) {
           matrix[i][j] = (i * j + this.currentN) % 65536;
         }
@@ -438,11 +567,16 @@
     }
 
     // Generate deterministic key stream for educational encryption
+    /**
+     * @param {int32} length - Number of key stream bytes
+     * @returns {uint8[]} Key stream
+     */
     _generateKeyStream(length) {
       if (!this._publicKey || !this._publicKey.matrix) {
         throw new Error('Public key matrix not available');
       }
 
+      /** @type {uint8[]} */
       const keyStream = new Array(length);
       const matrixSize = this._publicKey.matrix.length;
 
@@ -453,16 +587,19 @@
         const matrixValue = this._publicKey.matrix[row][col];
 
         // Mix with parameter-specific values for better distribution using OpCodes
-        const mixed = OpCodes.AndN(matrixValue + i + this.currentN + row * col, 0xFFFF);
+        const mixed = OpCodes.And32(matrixValue + i + this.currentN + row * col, 0xFFFF);
         const highByte = OpCodes.Unpack16BE(mixed)[0]; // Get high byte
         const lowByte = OpCodes.Unpack16BE(mixed)[1];  // Get low byte
-        keyStream[i] = OpCodes.AndN(OpCodes.XorN(lowByte, highByte), 0xFF);
+        keyStream[i] = OpCodes.Xor8(lowByte, highByte);
       }
 
       return keyStream;
     }
 
     // Set up keys
+    /**
+     * @param {uint8[]} keyData - Parameter set selector (see parseParameterSet)
+     */
     KeySetup(keyData) {
       this._keyData = keyData;
 

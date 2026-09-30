@@ -172,7 +172,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SplitMix64Instance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -190,21 +190,31 @@
  */
 
   class SplitMix64Instance extends IRandomGeneratorInstance {
+    /**
+     * @param {SplitMix64Algorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // SplitMix64 constants
+      /** @type {BigInt} */
       this.GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;  // Scaled golden ratio
+      /** @type {BigInt} */
       this.MIX_CONST_1 = 0xBF58476D1CE4E5B9n;   // Stafford variant 13
+      /** @type {BigInt} */
       this.MIX_CONST_2 = 0x94D049BB133111EBn;
 
       // Generator state
+      /** @type {BigInt} */
       this._state = 0n;
       this._ready = false;
     }
 
     /**
      * Set seed value (1-8 bytes)
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -213,6 +223,7 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (big-endian - most significant byte first)
+      /** @type {BigInt} */
       this._state = 0n;
       for (let i = 0; i < seedBytes.length && i < 8; ++i) {
         this._state = OpCodes.OrN(OpCodes.ShiftLn(this._state, 8), BigInt(seedBytes[i]));
@@ -221,6 +232,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -235,6 +249,7 @@
      * 3. z = (z XOR (z shr 30)) * MIX_CONST_1
      * 4. z = (z XOR (z shr 27)) * MIX_CONST_2
      * 5. return z XOR (z shr 31)
+     * @returns {BigInt} Next 64-bit output
      */
     _next64() {
       if (!this._ready) {
@@ -255,8 +270,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -264,19 +279,24 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesRemaining = length;
 
       while (bytesRemaining > 0) {
         // Generate next 64-bit value
+        /** @type {BigInt} */
         const value = this._next64();
 
         // Extract bytes (big-endian order - most significant byte first)
         const bytesToExtract = Math.min(bytesRemaining, 8);
         for (let i = 0; i < bytesToExtract; ++i) {
+          /** @type {uint8} */
           const byte = Number(OpCodes.AndN(OpCodes.ShiftRn(value, (7 - i) * 8), 0xFFn));
           output.push(byte);
         }
@@ -308,19 +328,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 

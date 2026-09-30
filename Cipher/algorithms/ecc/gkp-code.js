@@ -42,6 +42,52 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * Code parameters as reported by GetCodeParameters()
+   * @class
+   */
+  class GKPParameters {
+    /**
+     * @param {float64} latticeSpacing - Lattice spacing
+     * @param {float64} alpha - Position stabilizer parameter
+     * @param {float64} beta - Momentum stabilizer parameter
+     * @param {float64} epsilon - Finite-energy parameter
+     * @param {int32} gridSize - Grid size
+     * @param {float64} correctionBound - Correctable displacement
+     * @param {string} description - Summary
+     */
+    constructor(latticeSpacing, alpha, beta, epsilon, gridSize, correctionBound, description) {
+      /** @type {string} */
+      this.latticeType = 'square';
+      /** @type {float64} */
+      this.latticeSpacing = latticeSpacing;
+      /** @type {float64} */
+      this.alpha = alpha;
+      /** @type {float64} */
+      this.beta = beta;
+      /** @type {float64} */
+      this.epsilon = epsilon;
+      /** @type {int32} */
+      this.gridSize = gridSize;
+      /** @type {float64} */
+      this.correctionBound = correctionBound;
+      /** @type {string} */
+      this.description = description;
+    }
+  }
+
+  /**
+   * True when any entry is non-zero
+   * @param {uint8[]} grid - Grid occupation
+   * @returns {boolean} Whether a peak is present
+   */
+  function hasAnyPeak(grid) {
+    for (let i = 0; i < grid.length; ++i) {
+      if (grid[i] !== 0) return true;
+    }
+    return false;
+  }
+
   class GKPCodeAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
       super();
@@ -215,7 +261,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {GKPCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -232,37 +278,56 @@
   class GKPCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {GKPCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // GKP code parameters
+      /** @type {int32} */
       this._logicalState = 0;
+      /** @type {int32} */
       this._gridSize = 5; // Discrete grid representation size
+      /** @type {float64} */
       this._latticeSpacing = 2.507; // Normalized discrete spacing (~2*sqrt(pi)/sqrt(2))
+      /** @type {float64} */
       this._epsilon = 0.0; // Finite-energy parameter (0 = ideal)
+      /** @type {float64} */
       this._alpha = 3.545; // Position stabilizer parameter (2*sqrt(pi))
+      /** @type {float64} */
       this._beta = 3.545; // Momentum stabilizer parameter (2*sqrt(pi))
 
       // Operation modes
+      /** @type {string} */
       this._displacementType = null; // 'position' or 'momentum'
+      /** @type {float64} */
       this._displacementAmount = 0;
+      /** @type {string} */
       this._gateType = null; // 'X', 'Z', 'H', etc.
+      /** @type {string} */
       this._measureStabilizer = null; // 'position' or 'momentum'
+      /** @type {boolean} */
       this._roundTrip = false;
+      /** @type {boolean} */
       this._injectError = false;
 
       // Constants
+      /** @type {float64} */
       this._sqrtPi = 1.772; // sqrt(pi)
+      /** @type {float64} */
       this._twoSqrtPi = 3.545; // 2*sqrt(pi) - lattice spacing
     }
 
     // Configuration properties
+    /**
+     * @param {int32} state - 0, 1 or null
+     */
     set logicalState(state) {
       if (state !== 0 && state !== 1 && state !== null) {
         throw new Error('GKPCodeInstance.logicalState: Must be 0, 1, or null');
@@ -270,10 +335,16 @@
       this._logicalState = state;
     }
 
+    /**
+     * @returns {int32} 0, 1 or null
+     */
     get logicalState() {
       return this._logicalState;
     }
 
+    /**
+     * @param {int32} size - Odd grid size 3..15
+     */
     set gridSize(size) {
       if (size < 3 || size > 15 || size % 2 === 0) {
         throw new Error('GKPCodeInstance.gridSize: Must be odd integer between 3 and 15');
@@ -281,10 +352,16 @@
       this._gridSize = size;
     }
 
+    /**
+     * @returns {int32} Grid size
+     */
     get gridSize() {
       return this._gridSize;
     }
 
+    /**
+     * @param {float64} spacing - Positive spacing
+     */
     set latticeSpacing(spacing) {
       if (spacing <= 0) {
         throw new Error('GKPCodeInstance.latticeSpacing: Must be positive');
@@ -292,10 +369,16 @@
       this._latticeSpacing = spacing;
     }
 
+    /**
+     * @returns {float64} Lattice spacing
+     */
     get latticeSpacing() {
       return this._latticeSpacing;
     }
 
+    /**
+     * @param {float64} eps - Finite-energy parameter in [0, 1]
+     */
     set epsilon(eps) {
       if (eps < 0 || eps > 1) {
         throw new Error('GKPCodeInstance.epsilon: Must be between 0 and 1');
@@ -303,26 +386,44 @@
       this._epsilon = eps;
     }
 
+    /**
+     * @returns {float64} Finite-energy parameter
+     */
     get epsilon() {
       return this._epsilon;
     }
 
+    /**
+     * @param {float64} value - Position stabilizer parameter
+     */
     set alpha(value) {
       this._alpha = value;
     }
 
+    /**
+     * @returns {float64} Position stabilizer parameter
+     */
     get alpha() {
       return this._alpha;
     }
 
+    /**
+     * @param {float64} value - Momentum stabilizer parameter
+     */
     set beta(value) {
       this._beta = value;
     }
 
+    /**
+     * @returns {float64} Momentum stabilizer parameter
+     */
     get beta() {
       return this._beta;
     }
 
+    /**
+     * @param {string} type - "position", "momentum" or null
+     */
     set displacementType(type) {
       if (type !== null && type !== 'position' && type !== 'momentum') {
         throw new Error('GKPCodeInstance.displacementType: Must be "position", "momentum", or null');
@@ -330,26 +431,44 @@
       this._displacementType = type;
     }
 
+    /**
+     * @returns {string} Displacement type
+     */
     get displacementType() {
       return this._displacementType;
     }
 
+    /**
+     * @param {float64} amount - Displacement
+     */
     set displacementAmount(amount) {
       this._displacementAmount = amount;
     }
 
+    /**
+     * @returns {float64} Displacement
+     */
     get displacementAmount() {
       return this._displacementAmount;
     }
 
+    /**
+     * @param {string} type - Gate name
+     */
     set gateType(type) {
       this._gateType = type;
     }
 
+    /**
+     * @returns {string} Gate name
+     */
     get gateType() {
       return this._gateType;
     }
 
+    /**
+     * @param {string} type - "position", "momentum" or null
+     */
     set measureStabilizer(type) {
       if (type !== null && type !== 'position' && type !== 'momentum') {
         throw new Error('GKPCodeInstance.measureStabilizer: Must be "position", "momentum", or null');
@@ -357,22 +476,37 @@
       this._measureStabilizer = type;
     }
 
+    /**
+     * @returns {string} Stabilizer to measure
+     */
     get measureStabilizer() {
       return this._measureStabilizer;
     }
 
+    /**
+     * @param {boolean} value - Encode and decode in one call
+     */
     set roundTrip(value) {
       this._roundTrip = !!value;
     }
 
+    /**
+     * @returns {boolean} Round-trip mode
+     */
     get roundTrip() {
       return this._roundTrip;
     }
 
+    /**
+     * @param {boolean} value - Displace during round trips
+     */
     set injectError(value) {
       this._injectError = !!value;
     }
 
+    /**
+     * @returns {boolean} Error injection
+     */
     get injectError() {
       return this._injectError;
     }
@@ -417,6 +551,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Logical bit or physical grid
+     * @returns {uint8[]} Grid
+     */
     _encode(data) {
       // Encode logical qubit into GKP grid state
       if (data.length === 1) {
@@ -426,13 +564,18 @@
         return this._correctDisplacementErrors(data);
       }
 
-      throw new Error(`_encode: Invalid input size ${data.length}, expected 1 or ${this._gridSize * this._gridSize}`);
+      throw new Error("_encode: Invalid input size " + data.length + ", expected 1 or " + (this._gridSize * this._gridSize));
     }
 
+    /**
+     * @param {uint8} bit - Logical bit
+     * @returns {uint8[]} Grid
+     */
     _encodeLogicalBit(bit) {
       const gridSize = this._gridSize;
       const totalQubits = gridSize * gridSize;
-      const grid = new Array(totalQubits).fill(0);
+      /** @type {uint8[]} */
+      const grid = OpCodes.CreateArray(totalQubits, 0);
       const center = Math.floor(gridSize / 2);
 
       // GKP |0> state: peaks at even multiples of sqrt(pi)
@@ -459,29 +602,41 @@
       return grid;
     }
 
+    /**
+     * @param {uint8[]} data - Grid
+     * @returns {uint8[]} Logical bit
+     */
     _decode(data) {
       const gridSize = this._gridSize;
 
       if (data.length !== gridSize * gridSize) {
-        throw new Error(`_decode: Expected ${gridSize * gridSize} bytes for grid size ${gridSize}`);
+        throw new Error("_decode: Expected " + (gridSize * gridSize) + " bytes for grid size " + gridSize);
       }
 
       // Apply error correction first
+      /** @type {uint8[]} */
       const corrected = this._correctDisplacementErrors(data);
 
       // Extract logical bit via homodyne measurement and binning
+      /** @type {uint8} */
       const logicalBit = this._extractLogicalBit(corrected);
 
-      return [logicalBit];
+      /** @type {uint8[]} */
+      const decoded = [logicalBit];
+      return decoded;
     }
 
+    /**
+     * @param {uint8[]} grid - Corrected grid
+     * @returns {uint8} Logical bit
+     */
     _extractLogicalBit(grid) {
       // Simulate homodyne measurement by finding position of main peak
       const gridSize = this._gridSize;
       const center = Math.floor(gridSize / 2);
 
       // Check if grid is all zeros (indicates |0> state)
-      const hasNonZero = grid.some(v => v !== 0);
+      const hasNonZero = hasAnyPeak(grid);
 
       if (!hasNonZero) {
         // All zeros represents ideal GKP |0> state
@@ -512,13 +667,18 @@
       return displacement >= 1 ? 1 : 0;
     }
 
+    /**
+     * @param {uint8[]} grid - Grid
+     * @returns {uint8[]} Corrected grid
+     */
     _correctDisplacementErrors(grid) {
       // Correct small displacement errors using stabilizer measurements
       // For GKP codes, errors appear as displaced peaks in phase space
 
       const gridSize = this._gridSize;
       const center = Math.floor(gridSize / 2);
-      const corrected = new Array(grid.length).fill(0);
+      /** @type {uint8[]} */
+      const corrected = OpCodes.CreateArray(grid.length, 0);
 
       // The two logical basis states occupy distinct lattice sites: |0> leaves the
       // grid unmarked (peak at the centre), while |1> carries its peak one grid
@@ -571,6 +731,10 @@
       return grid;
     }
 
+    /**
+     * @param {uint8[]} grid - Grid
+     * @returns {int32} Column offset of the first peak
+     */
     _computePositionSyndrome(grid) {
       // Measure S_q(2α) = exp(-2iα p̂) stabilizer
       // In discrete simulation, check if grid peaks align with expected positions
@@ -590,6 +754,10 @@
       return 0;
     }
 
+    /**
+     * @param {uint8[]} grid - Grid
+     * @returns {int32} Momentum syndrome
+     */
     _computeMomentumSyndrome(grid) {
       // Measure S_p(2β) = exp(2iβ x̂) stabilizer
       // In discrete representation, approximate using Fourier approach
@@ -601,6 +769,11 @@
       return 0; // Assume momentum errors negligible for this simulation
     }
 
+    /**
+     * @param {uint8[]} grid - Grid
+     * @param {float64} syndrome - Position syndrome
+     * @returns {uint8[]} Corrected grid
+     */
     _applyPositionCorrection(grid, syndrome) {
       // Apply position displacement to correct error
       // For small displacements, shift grid pattern
@@ -609,7 +782,8 @@
 
       if (shiftAmount === 0) return grid;
 
-      const corrected = new Array(grid.length).fill(0);
+      /** @type {uint8[]} */
+      const corrected = OpCodes.CreateArray(grid.length, 0);
 
       for (let i = 0; i < grid.length; ++i) {
         const row = Math.floor(i / gridSize);
@@ -622,10 +796,15 @@
       return corrected;
     }
 
+    /**
+     * @param {uint8[]} grid - Grid
+     * @returns {uint8[]} Damped grid
+     */
     _applyFiniteEnergyDamping(grid) {
       // Apply finite-energy damping: exp(-ε n̂)
       // Each peak gets exponentially damped based on photon number
-      const damped = [...grid];
+      /** @type {uint8[]} */
+      const damped = grid.slice();
       const center = Math.floor(this._gridSize / 2);
 
       for (let i = 0; i < damped.length; ++i) {
@@ -647,6 +826,10 @@
       return damped;
     }
 
+    /**
+     * @param {uint8[]} data - Logical bit
+     * @returns {uint8[]} Grid
+     */
     _applyGate(data) {
       // Apply quantum gates via CV displacements
       // For Pauli X gate, just flip the logical bit
@@ -668,10 +851,15 @@
           return this._encodeLogicalBit(0);
 
         default:
-          throw new Error(`_applyGate: Unsupported gate type ${this._gateType}`);
+          throw new Error("_applyGate: Unsupported gate type " + this._gateType);
       }
     }
 
+    /**
+     * @param {uint8[]} grid - Grid
+     * @param {float64} displacement - Displacement
+     * @returns {uint8[]} Shifted grid
+     */
     _applyPositionDisplacement(grid, displacement) {
       // Displace grid in position direction.
       // Adjacent lattice sites are one sqrt(pi) apart, so a displacement only
@@ -688,7 +876,8 @@
         return grid.slice();
       }
 
-      const shifted = new Array(grid.length).fill(0);
+      /** @type {uint8[]} */
+      const shifted = OpCodes.CreateArray(grid.length, 0);
 
       // Find non-zero positions and shift them
       for (let i = 0; i < grid.length; ++i) {
@@ -702,7 +891,7 @@
       }
 
       // If grid was all zeros (|0> state), create displaced peak
-      const hasNonZero = grid.some(v => v !== 0);
+      const hasNonZero = hasAnyPeak(grid);
       if (!hasNonZero) {
         const centerIndex = center * gridSize + center + shiftAmount;
         shifted[centerIndex] = 1;
@@ -711,11 +900,17 @@
       return shifted;
     }
 
+    /**
+     * @param {uint8[]} grid - Grid
+     * @param {float64} angle - Rotation angle
+     * @returns {uint8[]} Rotated grid
+     */
     _applyPhaseSpaceRotation(grid, angle) {
       // Rotate grid in phase space (position-momentum space)
       // Simplified: Hadamard swaps position and momentum
       const gridSize = this._gridSize;
-      const rotated = new Array(grid.length).fill(0);
+      /** @type {uint8[]} */
+      const rotated = OpCodes.CreateArray(grid.length, 0);
       const center = Math.floor(gridSize / 2);
 
       for (let i = 0; i < grid.length; ++i) {
@@ -738,30 +933,48 @@
       return rotated;
     }
 
+    /**
+     * @param {uint8[]} data - Grid
+     * @returns {uint8[]} Single outcome bit
+     */
     _measureStabilizerOperation(data) {
       // Measure stabilizer eigenvalue
       const gridSize = this._gridSize;
 
       if (data.length !== gridSize * gridSize) {
-        throw new Error(`_measureStabilizerOperation: Expected ${gridSize * gridSize} bytes`);
+        throw new Error("_measureStabilizerOperation: Expected " + (gridSize * gridSize) + " bytes");
       }
 
       if (this._measureStabilizer === 'position') {
+        /** @type {int32} */
         const syndrome = this._computePositionSyndrome(data);
         // Return +1 if syndrome near zero (stabilizer satisfied), -1 otherwise
-        return [Math.abs(syndrome) < 0.1 ? 1 : 0];
+        /** @type {uint8[]} */
+        const outcome = [Math.abs(syndrome) < 0.1 ? 1 : 0];
+        return outcome;
       } else if (this._measureStabilizer === 'momentum') {
+        /** @type {int32} */
         const syndrome = this._computeMomentumSyndrome(data);
-        return [Math.abs(syndrome) < 0.1 ? 1 : 0];
+        /** @type {uint8[]} */
+        const outcome = [Math.abs(syndrome) < 0.1 ? 1 : 0];
+        return outcome;
       }
 
-      return [0];
+      /** @type {uint8[]} */
+      const zero = [0];
+      return zero;
     }
 
+    /**
+     * @param {uint8[]} data - Logical bit
+     * @returns {uint8[]} Decoded logical bit
+     */
     _roundTripOperation(data) {
       // Encode, optionally inject error, decode
+      /** @type {uint8[]} */
       const encoded = this._encodeLogicalBit(data[0]);
 
+      /** @type {uint8[]} */
       let processed = encoded;
 
       // Inject displacement error if requested
@@ -773,13 +986,19 @@
       return this._decode(processed);
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       // Detect if displacement error exceeds correction bound
       if (data.length !== this._gridSize * this._gridSize) {
         return true; // Invalid size indicates error
       }
 
+      /** @type {int32} */
       const positionSyndrome = this._computePositionSyndrome(data);
+      /** @type {int32} */
       const momentumSyndrome = this._computeMomentumSyndrome(data);
 
       // Error detectable if syndrome exceeds sqrt(pi)/2
@@ -788,18 +1007,15 @@
       return Math.abs(positionSyndrome) > threshold || Math.abs(momentumSyndrome) > threshold;
     }
 
+    /**
+     * @returns {GKPParameters} Code parameters
+     */
     GetCodeParameters() {
       // Return GKP code parameters
-      return {
-        latticeType: 'square',
-        latticeSpacing: this._twoSqrtPi,
-        alpha: this._alpha,
-        beta: this._beta,
-        epsilon: this._epsilon,
-        gridSize: this._gridSize,
-        correctionBound: this._sqrtPi / 2,
-        description: `Square-lattice GKP code with spacing ${this._twoSqrtPi.toFixed(3)}`
-      };
+      /** @type {string} */
+      const spacing = this._twoSqrtPi.toFixed(3);
+      return new GKPParameters(this._twoSqrtPi, this._alpha, this._beta, this._epsilon, this._gridSize,
+        this._sqrtPi / 2, "Square-lattice GKP code with spacing " + spacing);
     }
   }
 

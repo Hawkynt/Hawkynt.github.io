@@ -77,18 +77,18 @@
       ];
 
       this.knownVulnerabilities = [
-        {
-          type: "Kasiski Examination",
-          text: "Repeated patterns in ciphertext reveal key length, enabling frequency analysis like Vigenère",
-          uri: "https://en.wikipedia.org/wiki/Kasiski_examination",
-          mitigation: "None - fundamental weakness of polyalphabetic substitution"
-        },
-        {
-          type: "Reduced Key Space", 
-          text: "Only 10 possible shifts (0-9) compared to 26 for Vigenère, making brute force easier",
-          uri: "http://practicalcryptography.com/ciphers/classical-era/gronsfeld/",
-          mitigation: "Use only for educational demonstrations"
-        }
+        new Vulnerability(
+          "Kasiski Examination",
+          "Repeated patterns in ciphertext reveal key length, enabling frequency analysis like Vigenère",
+          "None - fundamental weakness of polyalphabetic substitution",
+          "https://en.wikipedia.org/wiki/Kasiski_examination"
+        ),
+        new Vulnerability(
+          "Reduced Key Space",
+          "Only 10 possible shifts (0-9) compared to 26 for Vigenère, making brute force easier",
+          "Use only for educational demonstrations",
+          "http://practicalcryptography.com/ciphers/classical-era/gronsfeld/"
+        )
       ];
 
       // Test vectors using byte arrays (corrected with actual Gronsfeld outputs)
@@ -130,7 +130,8 @@
         }
       ];
 
-      // For the test suite compatibility 
+      // For the test suite compatibility
+      /** @type {TestCase[]} */
       this.testVectors = this.tests;
     }
 
@@ -138,7 +139,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {GronsfeldCipherInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -156,26 +157,37 @@
   class GronsfeldCipherInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {GronsfeldCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
-      this.key = [];
+      /** @type {string} */
+      this._processedKey = "12345";
+      /** @type {uint8[]} */
+      const noKey = [];
+      this.key = noKey;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Character sets
+      /** @type {string} */
       this.ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     }
 
-    // Property setter for key
+    /**
+     * Numeric key; only its digits count
+     * @param {uint8[]|null} keyData - Key bytes, or null/empty for "12345"
+     */
     set key(keyData) {
       if (!keyData || keyData.length === 0) {
         this._processedKey = "12345"; // Default key
       } else {
         // Convert key bytes to numeric string, keep only digits
+        /** @type {string} */
         const keyStr = String.fromCharCode.apply(null, keyData);
         this._processedKey = keyStr.replace(/[^0-9]/g, '');
         if (this._processedKey.length === 0) {
@@ -185,12 +197,12 @@
     }
 
     /**
-   * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * Get the digit key
+   * @returns {string} Key digits
    */
 
     get key() {
-      return this._processedKey || "12345";
+      return this._processedKey ? this._processedKey : "12345";
     }
 
     // Feed data to the cipher
@@ -203,28 +215,42 @@
    */
 
     Result() {
+      /** @type {uint8[]} */
+      const output = [];
       if (this.inputBuffer.length === 0) {
-        return [];
+        return output;
       }
 
-      const output = [];
-      const processedKey = this.key;
+      /** @type {string} */
+      const processedKey = this._processedKey ? this._processedKey : "12345";
+      /** @type {int32} */
       let keyIndex = 0;
 
       // Process each byte
-      for (const byte of this.inputBuffer) {
+      for (let b = 0; b < this.inputBuffer.length; b++) {
+        /** @type {uint8} */
+        const byte = this.inputBuffer[b];
+        /** @type {string} */
         const char = String.fromCharCode(byte);
 
         if (/[A-Za-z]/.test(char)) {
           // Get shift from key (cycle through key)
-          const shift = parseInt(processedKey[keyIndex % processedKey.length]);
+          /** @type {string} */
+          const digit = processedKey.charAt(keyIndex % processedKey.length);
+          /** @type {int32} */
+          const shift = parseInt(digit);
+          /** @type {int32} */
           const effectiveShift = this.isInverse ? -shift : shift;
 
+          /** @type {boolean} */
           const isUpperCase = char >= 'A' && char <= 'Z';
+          /** @type {int32} */
           const baseCode = isUpperCase ? 65 : 97; // 'A' or 'a'
+          /** @type {int32} */
           const charCode = char.charCodeAt(0);
 
           // Apply shift with modular arithmetic
+          /** @type {int32} */
           const shiftedCode = ((charCode - baseCode + effectiveShift + 26) % 26) + baseCode;
           output.push(shiftedCode);
           keyIndex++;

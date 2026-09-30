@@ -42,6 +42,23 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * Shape of the object accepted by the config setter; every field is optional
+   * @class
+   */
+  class STBCConfig {
+    constructor() {
+      /** @type {int32} */
+      this.numTxAntennas = undefined;
+      /** @type {int32} */
+      this.numRxAntennas = undefined;
+      /** @type {float64[]} */
+      this.channelGains = undefined;
+      /** @type {float64} */
+      this.noiseVariance = undefined;
+    }
+  }
+
   class SpaceTimeBlockCodeAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
       super();
@@ -162,7 +179,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SpaceTimeBlockCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -179,31 +196,43 @@
   class SpaceTimeBlockCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SpaceTimeBlockCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Configuration
+      /** @type {int32} */
       this._numTxAntennas = 2; // Default: 2 transmit antennas (Alamouti)
+      /** @type {int32} */
       this._numRxAntennas = 1; // Default: 1 receive antenna
 
       // Channel state information for decoding
       // Format: array of channel gains [h1, h2, ..., hN] for N TX antennas
+      /** @type {float64[]} */
       this._channelGains = [1.0, 1.0]; // Default: identity channels
 
       // Noise variance for soft decision decoding (optional)
+      /** @type {float64} */
       this._noiseVariance = 0.0;
 
       // STBC design type
+      /** @type {string} */
       this._designType = 'alamouti'; // Options: 'alamouti', 'rate34', 'rate12'
     }
 
     // Configuration properties
+    /**
+     * @param {int32} value - Transmit antennas (2..8)
+     */
     set numTxAntennas(value) {
       if (typeof value !== 'number' || value < 2 || value > 8) {
         throw new Error('SpaceTimeBlockCodeInstance.numTxAntennas: Must be between 2 and 8');
@@ -212,10 +241,16 @@
       this._updateDesignType();
     }
 
+    /**
+     * @returns {int32} Transmit antennas
+     */
     get numTxAntennas() {
       return this._numTxAntennas;
     }
 
+    /**
+     * @param {int32} value - Receive antennas (at least 1)
+     */
     set numRxAntennas(value) {
       if (typeof value !== 'number' || value < 1) {
         throw new Error('SpaceTimeBlockCodeInstance.numRxAntennas: Must be at least 1');
@@ -223,10 +258,16 @@
       this._numRxAntennas = value;
     }
 
+    /**
+     * @returns {int32} Receive antennas
+     */
     get numRxAntennas() {
       return this._numRxAntennas;
     }
 
+    /**
+     * @param {float64[]} gains - One gain per transmit antenna
+     */
     set channelGains(gains) {
       if (!Array.isArray(gains)) {
         throw new Error('SpaceTimeBlockCodeInstance.channelGains: Must be an array');
@@ -237,10 +278,16 @@
       this._channelGains = gains.slice();
     }
 
+    /**
+     * @returns {float64[]} Copy of the channel gains
+     */
     get channelGains() {
       return this._channelGains.slice();
     }
 
+    /**
+     * @param {float64} value - Non-negative noise variance
+     */
     set noiseVariance(value) {
       if (typeof value !== 'number' || value < 0) {
         throw new Error('SpaceTimeBlockCodeInstance.noiseVariance: Must be non-negative');
@@ -248,10 +295,16 @@
       this._noiseVariance = value;
     }
 
+    /**
+     * @returns {float64} Noise variance
+     */
     get noiseVariance() {
       return this._noiseVariance;
     }
 
+    /**
+     * @param {STBCConfig} cfg - Settings to apply
+     */
     set config(cfg) {
       if (cfg && typeof cfg === 'object') {
         if (cfg.numTxAntennas !== undefined) {
@@ -269,6 +322,9 @@
       }
     }
 
+    /**
+     * @returns {void}
+     */
     _updateDesignType() {
       // Determine STBC design based on number of transmit antennas
       if (this._numTxAntennas === 2) {
@@ -332,12 +388,14 @@
      * Note: Educational implementation using real-valued symbols.
      * Production systems use complex symbols with conjugation.
      *
-     * @param {Array<number>} symbols - Input symbols to encode
-     * @returns {Array<number>} Space-time encoded matrix (row-major order)
+     * @param {float64[]} symbols - Input symbols to encode
+     * @returns {float64[]} Space-time encoded matrix (row-major order)
      */
     _encode(symbols) {
       if (symbols.length === 0) {
-        return [];
+        /** @type {float64[]} */
+        const none = [];
+        return none;
       }
 
       switch (this._designType) {
@@ -359,24 +417,30 @@
      * [s1,  s2]
      * [-s2, s1]
      *
-     * @param {Array<number>} symbols - Input symbols (even length)
-     * @returns {Array<number>} Encoded matrix in row-major order
+     * @param {float64[]} symbols - Input symbols (even length)
+     * @returns {float64[]} Encoded matrix in row-major order
      */
     _encodeAlamouti(symbols) {
       if (symbols.length % 2 !== 0) {
         throw new Error('SpaceTimeBlockCodeInstance._encodeAlamouti: Input must have even length');
       }
 
+      /** @type {float64[]} */
       const encoded = [];
 
       for (let i = 0; i < symbols.length; i += 2) {
+        /** @type {float64} */
         const s1 = symbols[i];
+        /** @type {float64} */
         const s2 = symbols[i + 1];
 
         // Alamouti matrix (row-major):
         // Time slot 1: [s1, s2]
         // Time slot 2: [-s2, s1]
-        encoded.push(s1, s2, -s2, s1);
+        encoded.push(s1);
+        encoded.push(s2);
+        encoded.push(-s2);
+        encoded.push(s1);
       }
 
       return encoded;
@@ -390,8 +454,8 @@
      *
      * For educational purposes: simplified real-valued version.
      *
-     * @param {Array<number>} symbols - Input symbols (length divisible by 3)
-     * @returns {Array<number>} Encoded matrix
+     * @param {float64[]} symbols - Input symbols (length divisible by 3)
+     * @returns {float64[]} Encoded matrix
      */
     _encodeRate34(symbols) {
       // Ensure correct block size
@@ -400,14 +464,20 @@
         throw new Error('SpaceTimeBlockCodeInstance._encodeRate34: Input length must be divisible by 3');
       }
 
+      /** @type {float64[]} */
       const encoded = [];
       const numAntennas = this._numTxAntennas;
 
       // Process symbols in blocks of 3
       for (let i = 0; i < symbols.length; i += blockSize) {
+        /** @type {float64} */
         const s1 = symbols[i];
+        /** @type {float64} */
         const s2 = symbols[i + 1];
+        /** @type {float64} */
         const s3 = symbols[i + 2];
+        /** @type {float64[]} */
+        let block;
 
         // Rate 3/4 orthogonal design for 3-4 antennas
         // 4 time slots for 3 symbols (rate = 3/4)
@@ -417,25 +487,26 @@
           // Time slot 2: [-s2, s1,  0]
           // Time slot 3: [-s3, 0,   s1]
           // Time slot 4: [0,  -s3,  s2]
-          encoded.push(
+          block = [
             s1, s2, s3,
             -s2, s1, 0,
             -s3, 0, s1,
             0, -s3, s2
-          );
+          ];
         } else {
           // 4 TX antenna design
           // Time slot 1: [s1,  s2,  s3,  0]
           // Time slot 2: [-s2, s1,  0,   s3]
           // Time slot 3: [-s3, 0,   s1,  -s2]
           // Time slot 4: [0,  -s3,  s2,  s1]
-          encoded.push(
+          block = [
             s1, s2, s3, 0,
             -s2, s1, 0, s3,
             -s3, 0, s1, -s2,
             0, -s3, s2, s1
-          );
+          ];
         }
+        for (let b = 0; b < block.length; ++b) encoded.push(block[b]);
       }
 
       return encoded;
@@ -447,15 +518,17 @@
      * Simplified rate 1/2 design for higher antenna counts.
      * Uses repetition and orthogonal combining.
      *
-     * @param {Array<number>} symbols - Input symbols
-     * @returns {Array<number>} Encoded matrix
+     * @param {float64[]} symbols - Input symbols
+     * @returns {float64[]} Encoded matrix
      */
     _encodeRate12(symbols) {
       // Rate 1/2: each symbol repeated with orthogonal structure
+      /** @type {float64[]} */
       const encoded = [];
       const numAntennas = this._numTxAntennas;
 
       for (let i = 0; i < symbols.length; ++i) {
+        /** @type {float64} */
         const s = symbols[i];
 
         // Create orthogonal transmission pattern
@@ -491,12 +564,14 @@
      *   s1_hat = (h1*r1 + h2*r2*) / (|h1|^2 + |h2|^2)
      *   s2_hat = (h2*r1 - h1*r2*) / (|h1|^2 + |h2|^2)
      *
-     * @param {Array<number>} received - Received signal matrix
-     * @returns {Array<number>} Decoded symbols
+     * @param {float64[]} received - Received signal matrix
+     * @returns {float64[]} Decoded symbols
      */
     _decode(received) {
       if (received.length === 0) {
-        return [];
+        /** @type {float64[]} */
+        const none = [];
+        return none;
       }
 
       switch (this._designType) {
@@ -526,24 +601,28 @@
      * For educational mode with identity channels (h1=h2=1), we can
      * directly decode from the encoded matrix.
      *
-     * @param {Array<number>} received - Received signals (or encoded matrix)
-     * @returns {Array<number>} Decoded symbols
+     * @param {float64[]} received - Received signals (or encoded matrix)
+     * @returns {float64[]} Decoded symbols
      */
     _decodeAlamouti(received) {
       if (received.length % 4 !== 0) {
         throw new Error('SpaceTimeBlockCodeInstance._decodeAlamouti: Input length must be divisible by 4');
       }
 
+      /** @type {float64[]} */
       const decoded = [];
 
       // For educational round-trip: decode from encoded matrix directly
       // Encoded format: [s1, s2, -s2, s1] from input [s1, s2]
       // Simply extract s1 and s2 from first two positions
       for (let i = 0; i < received.length; i += 4) {
+        /** @type {float64} */
         const s1 = received[i];     // First symbol
+        /** @type {float64} */
         const s2 = received[i + 1]; // Second symbol
 
-        decoded.push(s1, s2);
+        decoded.push(s1);
+        decoded.push(s2);
       }
 
       return decoded;
@@ -560,8 +639,8 @@
      * Encoded format for 4 TX antennas:
      * [s1, s2, s3, 0, -s2, s1, 0, s3, -s3, 0, s1, -s2, 0, -s3, s2, s1]
      *
-     * @param {Array<number>} received - Received signals (or encoded matrix)
-     * @returns {Array<number>} Decoded symbols
+     * @param {float64[]} received - Received signals (or encoded matrix)
+     * @returns {float64[]} Decoded symbols
      */
     _decodeRate34(received) {
       const numAntennas = this._numTxAntennas;
@@ -571,15 +650,21 @@
         throw new Error('SpaceTimeBlockCodeInstance._decodeRate34: Invalid input length for rate 3/4 STBC');
       }
 
+      /** @type {float64[]} */
       const decoded = [];
 
       // For educational round-trip: extract s1, s2, s3 from encoded matrix
       for (let blk = 0; blk < received.length; blk += blockSize) {
+        /** @type {float64} */
         const s1 = received[blk];     // First symbol
+        /** @type {float64} */
         const s2 = received[blk + 1]; // Second symbol
+        /** @type {float64} */
         const s3 = received[blk + 2]; // Third symbol
 
-        decoded.push(s1, s2, s3);
+        decoded.push(s1);
+        decoded.push(s2);
+        decoded.push(s3);
       }
 
       return decoded;
@@ -592,8 +677,8 @@
      *
      * Encoded format: symbol repeated across time slots with orthogonal pattern.
      *
-     * @param {Array<number>} received - Received signals (or encoded matrix)
-     * @returns {Array<number>} Decoded symbols
+     * @param {float64[]} received - Received signals (or encoded matrix)
+     * @returns {float64[]} Decoded symbols
      */
     _decodeRate12(received) {
       const numAntennas = this._numTxAntennas;
@@ -603,10 +688,12 @@
         throw new Error('SpaceTimeBlockCodeInstance._decodeRate12: Invalid input length for rate 1/2 STBC');
       }
 
+      /** @type {float64[]} */
       const decoded = [];
 
       // For educational round-trip: extract symbol from first position
       for (let blk = 0; blk < received.length; blk += blockSize) {
+        /** @type {float64} */
         const s = received[blk]; // Symbol is in first position
         decoded.push(s);
       }
@@ -619,7 +706,7 @@
      *
      * Code rate = number of symbols / number of transmissions
      *
-     * @returns {number} Code rate
+     * @returns {float64} Code rate
      */
     getCodeRate() {
       switch (this._designType) {
@@ -639,7 +726,7 @@
      *
      * Diversity order = numTxAntennas × numRxAntennas
      *
-     * @returns {number} Diversity order
+     * @returns {int32} Diversity order
      */
     getDiversityOrder() {
       return this._numTxAntennas * this._numRxAntennas;
