@@ -151,10 +151,15 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this.result = null;
+      /** @type {int32} */
       this._n = 7; // Default length
+      /** @type {int32} */
       this._a = 0; // Default parameter (0 gives highest rate)
     }
 
+    /**
+     * @param {int32} value - Code length (1..31)
+     */
     set n(value) {
       if (value < 1 || value > 31) {
         throw new Error('VarshamovTenengoltsInstance.n: Must be between 1 and 31');
@@ -162,10 +167,16 @@
       this._n = value;
     }
 
+    /**
+     * @returns {int32} Code length
+     */
     get n() {
       return this._n;
     }
 
+    /**
+     * @param {int32} value - Residue parameter a (0..n)
+     */
     set a(value) {
       if (value < 0 || value >= this._n + 1) {
         throw new Error("VarshamovTenengoltsInstance.a: Must be between 0 and " + this._n);
@@ -173,6 +184,9 @@
       this._a = value;
     }
 
+    /**
+     * @returns {int32} Residue parameter a
+     */
     get a() {
       return this._a;
     }
@@ -208,11 +222,18 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Word
+     * @returns {float64} Sum of (i+1)*x[i] modulo n+1
+     */
     calculateChecksum(data) {
       // VT checksum: sum of (i+1) * x[i] mod (n+1)
+      /** @type {float64} */
       let sum = 0;
       for (let i = 0; i < data.length; ++i) {
-        sum += (i + 1) * data[i];
+        /** @type {float64} */
+        const symbol = data[i];
+        sum += (i + 1) * symbol;
       }
       return sum % (this._n + 1);
     }
@@ -227,6 +248,7 @@
       }
 
       // Check if data satisfies VT constraint
+      /** @type {float64} */
       const checksum = this.calculateChecksum(data);
 
       if (checksum !== this._a) {
@@ -234,7 +256,9 @@
       }
 
       // VT codes are systematic - codeword equals message
-      return [...data];
+      /** @type {uint8[]} */
+      const codeword = data.slice();
+      return codeword;
     }
 
     /**
@@ -245,6 +269,7 @@
       // For VT codes, decoding handles insertion/deletion errors
       // Simplified implementation: verify checksum
 
+      /** @type {float64} */
       const checksum = this.calculateChecksum(data);
 
       if (checksum !== this._a) {
@@ -252,7 +277,9 @@
       }
 
       // Return received word (real decoder would correct insertion/deletion)
-      return [...data];
+      /** @type {uint8[]} */
+      const received = data.slice();
+      return received;
     }
 
     /**
@@ -261,6 +288,7 @@
      */
     DetectError(data) {
       // Check if checksum matches parameter a
+      /** @type {float64} */
       const checksum = this.calculateChecksum(data);
       return (checksum !== this._a);
     }

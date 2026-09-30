@@ -146,12 +146,15 @@
       // two different codes: 12 of the 16 codewords the encoder emitted had a
       // non-zero syndrome, so the decoder declared errors in error-free words
       // and "corrected" them into different messages.
+      /** @type {uint8[][]} */
       this.parityMatrix = [
         [1, 1, 1, 0, 1, 0, 0],
         [1, 0, 0, 1, 0, 1, 0],
         [0, 1, 0, 1, 0, 0, 1]
       ];
+      /** @type {int32} */
       this.n = 7; // code length
+      /** @type {int32} */
       this.k = 4; // information length
     }
 
@@ -195,6 +198,7 @@
         throw new Error("LDPCInstance.DetectError: Input must be " + this.n + "-bit array");
       }
 
+      /** @type {uint8[]} */
       const syndrome = this.calculateSyndrome(data);
       return !this.isZeroVector(syndrome);
     }
@@ -209,6 +213,7 @@
         throw new Error("LDPC encode: Input must be exactly " + this.k + " bits");
       }
 
+      /** @type {uint8[]} */
       const encoded = new Array(this.n);
 
       // Copy information bits to systematic positions
@@ -221,7 +226,7 @@
         /** @type {uint32} */
         let parity = 0;
         for (let j = 0; j < this.k; j++) {
-          parity = OpCodes.Xor32(parity, (this.parityMatrix[i][j] * data[j]));
+          parity = OpCodes.Xor32(parity, this.parityMatrix[i][j] === 1 ? data[j] : 0);
         }
         encoded[this.k + i] = parity;
       }
@@ -239,7 +244,9 @@
         throw new Error("LDPC decode: Input must be exactly " + this.n + " bits");
       }
 
-      const received = [...data];
+      /** @type {uint8[]} */
+      const received = data.slice();
+      /** @type {uint8[]} */
       const syndrome = this.calculateSyndrome(received);
 
       if (this.isZeroVector(syndrome)) {
@@ -253,6 +260,7 @@
       // instead flipped the first bit participating in each violated check,
       // which is not a decoder at all: it returned whatever bits that walk
       // happened to produce and presented them as a corrected message.
+      /** @type {int32} */
       const errorPosition = this._locateSingleError(syndrome);
 
       if (errorPosition < 0) {
@@ -268,14 +276,19 @@
       return received.slice(0, this.k); // Extract information bits
     }
 
+    /**
+     * @param {uint8[]} data - Codeword bits
+     * @returns {uint8[]} Syndrome bits
+     */
     calculateSyndrome(data) {
+      /** @type {uint8[]} */
       const syndrome = new Array(this.parityMatrix.length);
 
       for (let i = 0; i < this.parityMatrix.length; i++) {
         /** @type {uint32} */
         let sum = 0;
         for (let j = 0; j < this.n; j++) {
-          sum = OpCodes.Xor32(sum, (this.parityMatrix[i][j] * data[j]));
+          sum = OpCodes.Xor32(sum, this.parityMatrix[i][j] === 1 ? data[j] : 0);
         }
         syndrome[i] = sum;
       }
@@ -283,14 +296,21 @@
       return syndrome;
     }
 
+    /**
+     * @param {uint8[]} vector - Bits
+     * @returns {boolean} True when every entry is zero
+     */
     isZeroVector(vector) {
-      return vector.every(bit => bit === 0);
+      for (let i = 0; i < vector.length; ++i) {
+        if (vector[i] !== 0) return false;
+      }
+      return true;
     }
 
     /**
    * Match a syndrome against the columns of the parity-check matrix.
    * @param {uint8[]} syndrome - Syndrome vector
-   * @returns {number} Index of the single flipped bit, or -1 when the syndrome
+   * @returns {int32} Index of the single flipped bit, or -1 when the syndrome
    *   matches no column or matches several and is therefore ambiguous.
    */
 

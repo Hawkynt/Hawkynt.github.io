@@ -151,12 +151,19 @@
       this.result = null;
 
       // Default: K=3, rate 1/2, generators (7,5) octal = (111, 101) binary
+      /** @type {int32} */
       this._constraintLength = 3;
+      /** @type {int32} */
       this._rate = 2; // 1/2 rate (2 output bits per input bit)
+      /** @type {uint32} */
       this._generator1 = 0b111; // Octal 7
+      /** @type {uint32} */
       this._generator2 = 0b101; // Octal 5
     }
 
+    /**
+     * @param {int32} k - Constraint length (2..7)
+     */
     set constraintLength(k) {
       if (k < 2 || k > 7) {
         throw new Error('ConvolutionalViterbiInstance.constraintLength: Must be between 2 and 7');
@@ -164,6 +171,9 @@
       this._constraintLength = k;
     }
 
+    /**
+     * @returns {int32} Constraint length
+     */
     get constraintLength() {
       return this._constraintLength;
     }
@@ -216,7 +226,8 @@
       /** @type {uint8[]} */
       const output = [];
       const constraintLength = this._constraintLength;
-      const stateMask = OpCodes.Shl32(1, constraintLength - 1) - 1;
+      /** @type {uint32} */
+      const stateMask = OpCodes.Sub32(OpCodes.Shl32(1, constraintLength - 1), 1);
       /** @type {uint32} */
       let state = 0; // The K-1 preceding input bits, most recent first
 
@@ -225,10 +236,13 @@
 
         // Present the input bit alongside the history, then emit the parities
         const fullRegister = OpCodes.Or32(OpCodes.Shl32(inputBit, constraintLength - 1), state);
+        /** @type {uint32} */
         const out1 = this.convolve(fullRegister, this._generator1);
+        /** @type {uint32} */
         const out2 = this.convolve(fullRegister, this._generator2);
 
-        output.push(out1, out2);
+        output.push(out1);
+        output.push(out2);
 
         // Advance the register; the oldest bit falls off the end
         state = OpCodes.And32(OpCodes.Shr32(fullRegister, 1), stateMask);
@@ -237,6 +251,11 @@
       return output;
     }
 
+    /**
+     * @param {uint32} state - Register contents
+     * @param {uint32} generator - Tap mask
+     * @returns {uint32} Parity of the tapped bits
+     */
     convolve(state, generator) {
       // XOR all bits where generator polynomial is 1
       /** @type {uint32} */
@@ -251,6 +270,10 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} received - Code bits, two per information bit
+     * @returns {uint8[]} Most likely information bits
+     */
     viterbiDecode(received) {
       // Maximum likelihood decoding over the trellis: an add-compare-select
       // forward pass that records one survivor decision per state per stage,
@@ -262,10 +285,11 @@
       const numBits = received.length / this._rate;
       const constraintLength = this._constraintLength;
       const numStates = OpCodes.Shl32(1, constraintLength - 1);
-      const stateMask = numStates - 1;
+      /** @type {uint32} */
+      const stateMask = OpCodes.Sub32(numStates, 1);
 
       /** @type {float64[]} */
-      let pathMetrics = new Array(numStates).fill(Infinity);
+      let pathMetrics = this._infinities(numStates);
       pathMetrics[0] = 0; // The encoder starts in the all-zero state
 
       // Survivor decisions: for each stage, the input bit that entered a state
@@ -276,11 +300,13 @@
       const decisionFrom = [];
 
       for (let t = 0; t < numBits; ++t) {
+        /** @type {uint32} */
         const r1 = OpCodes.And32(received[t * this._rate], 1);
+        /** @type {uint32} */
         const r2 = OpCodes.And32(received[t * this._rate + 1], 1);
 
         /** @type {float64[]} */
-        const nextMetrics = new Array(numStates).fill(Infinity);
+        const nextMetrics = this._infinities(numStates);
         /** @type {uint8[]} */
         const enteredWith = OpCodes.CreateArray(numStates, 0);
         /** @type {uint8[]} */
@@ -299,7 +325,8 @@
             const e2 = this.convolve(fullRegister, this._generator2);
 
             // Branch metric is the Hamming distance to the received symbol
-            const branchMetric = OpCodes.Xor32(r1, e1) + OpCodes.Xor32(r2, e2);
+            /** @type {uint32} */
+            const branchMetric = OpCodes.Add32(OpCodes.Xor32(r1, e1), OpCodes.Xor32(r2, e2));
             const candidate = pathMetrics[state] + branchMetric;
 
             // Keep the better of the two paths merging into nextState
@@ -330,13 +357,25 @@
       // Trace the survivor path back to recover the information bits
       /** @type {uint8[]} */
       const decoded = OpCodes.CreateArray(numBits, 0);
-      let state = bestState;
+      /** @type {int32} */
+      let traceState = bestState;
       for (let t = numBits - 1; t >= 0; --t) {
-        decoded[t] = decisionBit[t][state];
-        state = decisionFrom[t][state];
+        decoded[t] = decisionBit[t][traceState];
+        traceState = decisionFrom[t][traceState];
       }
 
       return decoded;
+    }
+
+    /**
+     * @param {uint32} count - Length
+     * @returns {float64[]} Array of Infinity
+     */
+    _infinities(count) {
+      /** @type {float64[]} */
+      const values = [];
+      for (let i = 0; i < count; ++i) values.push(Infinity);
+      return values;
     }
   }
 
