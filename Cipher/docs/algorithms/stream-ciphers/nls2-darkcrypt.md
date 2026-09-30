@@ -40,7 +40,7 @@ No vulnerabilities are recorded for this implementation.
 
 ## Test vectors
 
-2 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
+3 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
 
 **Vector 1** — [DarkCrypt Nls2lib — sequential key/IV, 128 zero bytes](https://totalcmd.net/plugring/darkcrypttc.html)
 
@@ -59,6 +59,15 @@ No vulnerabilities are recorded for this implementation.
 | `iv` | `00000000000000000000000000000000` |
 | `input` | `000102030405060708090a0b0c0d0e0f 101112131415161718191a1b1c1d1e1f 202122232425262728292a2b2c2d2e2f 303132333435363738393a3b3c3d3e3f` |
 | `expected` | `f68bb5ba91e2587184c8bc2b8ee73f18 b79c9f48c41d0db705b7f7ca79df360c eab2972d7db4e353ac94a1ea93da27ad b2d7b964181ecd4debb905c9642e7aca` |
+
+**Vector 3** — [DarkCrypt Nls2lib — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)](https://totalcmd.net/plugring/darkcrypttc.html)
+
+| Field | Value |
+| --- | --- |
+| `key` | `0b30557a9fc4e90e33587da2c7ec1136` |
+| `iv` | `073c71a6db10457aafe4194e83b8ed22` |
+| `input` | `03203d5a7794b1ceeb0825425f7c99b6 d3f00d2a4764819ebbd8f5122f4c6986 a3c0ddfa1734516e8ba8c5e2ff1c3956` |
+| `expected` | `d117766fec9449b87bb8a94f91182173 a2ad79e5405797bffe7d7a8bbc68d3fa 40df73adb3a8b903840eabd1cc68011f` |
 
 ---
 

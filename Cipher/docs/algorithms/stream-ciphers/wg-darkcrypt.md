@@ -39,7 +39,7 @@
 
 ## Test vectors
 
-2 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
+3 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
 
 **Vector 1** — [DarkCrypt Wg — keystream from incrementing key, zero IV, zero input](https://totalcmd.net/plugring/darkcrypttc.html)
 
@@ -58,6 +58,15 @@
 | `iv` | `00000000000000000000000000000000` |
 | `input` | `000102030405060708090a0b0c0d0e0f 101112131415161718191a1b1c1d1e1f 202122232425262728292a2b2c2d2e2f 303132333435363738393a3b3c3d3e3f` |
 | `expected` | `ae0823bb22d5594af91eea84ca6d95eb 52f62f9597e3ad4a287dd5f89ba9145f 0c75d654081fd3771372558b6de58d73 f5883c648804dc910b184c315f163182` |
+
+**Vector 3** — [DarkCrypt Wg — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)](https://totalcmd.net/plugring/darkcrypttc.html)
+
+| Field | Value |
+| --- | --- |
+| `key` | `0b30557a9fc4e90e33587da2c7ec1136` |
+| `iv` | `073c71a6db10457aafe4194e83b8ed22` |
+| `input` | `03203d5a7794b1ceeb0825425f7c99b6 d3f00d2a4764819ebbd8f5122f4c6986 a3c0ddfa1734516e8ba8c5e2ff1c3956` |
+| `expected` | `299f3e49ff5277cacff07d90b2a78dbd 37db99097024cbbb7fea22580ea666bd 80ad32bd6c3bab73ee7135a0e1094fa8` |
 
 ---
 
