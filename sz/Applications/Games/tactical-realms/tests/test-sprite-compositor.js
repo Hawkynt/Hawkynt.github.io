@@ -57,6 +57,16 @@
       assert.equal(sc.stats().misses, 2);
     });
 
+    it('different images with the same rect produce different keys', () => {
+      const sc = new SpriteCompositor();
+      const fakeCtx = makeFakeCtx();
+      const rect = { x: 0, y: 0, w: 32, h: 32 };
+      sc.drawComposite(fakeCtx, [{ img: {}, rect, tint: 'rgba(0,0,0,0.3)' }], 32, 0, 0);
+      sc.drawComposite(fakeCtx, [{ img: {}, rect, tint: 'rgba(0,0,0,0.3)' }], 32, 0, 0);
+      assert.equal(sc.stats().misses, 2);
+      assert.equal(sc.stats().size, 2);
+    });
+
     it('tint differentiates entries', () => {
       const sc = new SpriteCompositor();
       const fakeCtx = makeFakeCtx();
