@@ -135,53 +135,95 @@
         this.testVectors = this.tests;
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True for the inverse transform
+       * @returns {MTFInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new MTFInstance(this, isInverse);
       }
     }
 
     class MTFInstance extends IAlgorithmInstance {
+      /**
+       * @param {MTFAlgorithm} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True for the inverse transform
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse; // true = inverse transform, false = forward transform
+        /** @type {uint8[]} */
         this.inputBuffer = [];
 
         // MTF parameters
+        /** @type {int32} */
         this.ALPHABET_SIZE = 256; // Standard byte alphabet
       }
 
-
+      /**
+       * Transform the collected input
+       * @returns {uint8[]} Transformed bytes
+       */
       Result() {
-        if (this.inputBuffer.length === 0) return [];
+        /** @type {uint8[]} */
+        let result = [];
+        if (this.inputBuffer.length === 0) {
+          return result;
+        }
 
-        const result = this.isInverse ? 
-          this.inverseTransform(this.inputBuffer) : 
-          this.forwardTransform(this.inputBuffer);
+        if (this.isInverse) {
+          result = this.inverseTransform(this.inputBuffer);
+        } else {
+          result = this.forwardTransform(this.inputBuffer);
+        }
 
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return result;
       }
 
-      forwardTransform(data) {
-        if (!data || data.length === 0) return [];
-
-        // Initialize alphabet with all possible byte values in order
+      /**
+       * Initial alphabet: every byte value in order
+       * @returns {uint8[]} 0..ALPHABET_SIZE-1
+       */
+      _initialAlphabet() {
+        /** @type {uint8[]} */
         const alphabet = [];
         for (let i = 0; i < this.ALPHABET_SIZE; i++) {
           alphabet.push(i);
         }
+        return alphabet;
+      }
 
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @returns {uint8[]} MTF positions
+       */
+      forwardTransform(data) {
+        /** @type {uint8[]} */
         const output = [];
+        if (!data || data.length === 0) {
+          return output;
+        }
+
+        // Initialize alphabet with all possible byte values in order
+        /** @type {uint8[]} */
+        const alphabet = this._initialAlphabet();
 
         for (let i = 0; i < data.length; i++) {
+          /** @type {uint8} */
           const symbol = data[i];
 
           // Find position of symbol in current alphabet
+          /** @type {int32} */
           const position = alphabet.indexOf(symbol);
 
           if (position === -1) {
             // This shouldn't happen for valid byte data
-            throw new Error(`Symbol ${symbol} not found in alphabet`);
+            throw new Error("Symbol " + symbol + " not found in alphabet");
           }
 
           // Output the position
@@ -197,26 +239,32 @@
         return output;
       }
 
+      /**
+       * @param {uint8[]} data - MTF positions
+       * @returns {uint8[]} Restored bytes
+       */
       inverseTransform(data) {
-        if (!data || data.length === 0) return [];
-
-        // Initialize alphabet with all possible byte values in order
-        const alphabet = [];
-        for (let i = 0; i < this.ALPHABET_SIZE; i++) {
-          alphabet.push(i);
+        /** @type {uint8[]} */
+        const output = [];
+        if (!data || data.length === 0) {
+          return output;
         }
 
-        const output = [];
+        // Initialize alphabet with all possible byte values in order
+        /** @type {uint8[]} */
+        const alphabet = this._initialAlphabet();
 
         for (let i = 0; i < data.length; i++) {
+          /** @type {int32} */
           const position = data[i];
 
           // Validate position
           if (position < 0 || position >= this.ALPHABET_SIZE) {
-            throw new Error(`Invalid MTF position: ${position}`);
+            throw new Error("Invalid MTF position: " + position);
           }
 
           // Get symbol at this position
+          /** @type {uint8} */
           const symbol = alphabet[position];
           output.push(symbol);
 

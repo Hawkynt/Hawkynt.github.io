@@ -52,9 +52,13 @@
   // Snappy-shaped literal tags plus a 3-byte-offset copy tier with 62/63 length-escape
   // values in place of Snappy's 4-byte tier.
 
+  /** @type {int32} */
   const PITHY_LITERAL = 0;          // Tag type 00: literal bytes
+  /** @type {int32} */
   const PITHY_COPY_1_BYTE = 1;      // Tag type 01: copy with 1-byte offset
+  /** @type {int32} */
   const PITHY_COPY_2_BYTE = 2;      // Tag type 10: copy with 2-byte offset
+  /** @type {int32} */
   const PITHY_COPY_3_BYTE = 3;      // Tag type 11: copy with 3-byte offset
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -165,6 +169,22 @@
     }
   }
 
+  /**
+   * Match found by the hash-chain search
+   */
+  class PithyMatch {
+    /**
+     * @param {int32} length - Match length (0 when none)
+     * @param {int32} offset - Distance back to the match source
+     */
+    constructor(length, offset) {
+      /** @type {int32} */
+      this.length = length;
+      /** @type {int32} */
+      this.offset = offset;
+    }
+  }
+
   // Pithy compression instance - production implementation
   /**
  * Pithy cipher instance implementing Feed/Result pattern
@@ -175,28 +195,46 @@
   class PithyInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {PithyCompression} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Pithy parameters, matching CompressionWorkbench's PithyBuildingBlock
+      /** @type {int32} */
       this.MIN_MATCH = 4;
+      /** @type {int32} */
       this.MAX_COPY1_OFFSET = 2047;       // 11-bit offset
+      /** @type {int32} */
       this.MAX_COPY1_LENGTH = 11;
+      /** @type {int32} */
       this.MAX_COPY2_OFFSET = 65535;      // 16-bit offset
+      /** @type {int32} */
       this.MAX_COPY3_OFFSET = 16777215;   // 24-bit offset
+      /** @type {int32} */
       this.COPY23_LEN_ESCAPE1 = 62;       // Field value: one more byte holds (length - 63)
+      /** @type {int32} */
       this.COPY23_LEN_ESCAPE2 = 63;       // Field value: two more bytes hold the raw 16-bit length
+      /** @type {int32} */
       this.MAX_COPY23_ESCAPE1_LENGTH = 63 + 255;
+      /** @type {int32} */
       this.MAX_COPY23_LENGTH = 65535;
+      /** @type {int32} */
       this.HASH_BITS = 16;
+      /** @type {int32} */
       this.HASH_SIZE = OpCodes.Shl32(1, this.HASH_BITS);
+      /** @type {int32} */
       this.MAX_CHAIN_STEPS = 64;
+
+      // Read position in the stream being decompressed
+      /** @type {int32} */
+      this.readPos = 0;
     }
 
 
@@ -207,28 +245,55 @@
    */
 
     Result() {
-      const result = this.isInverse ? this._decompress(new Uint8Array(this.inputBuffer)) : this._compress(new Uint8Array(this.inputBuffer));
-      this.inputBuffer = [];
-      return Array.from(result);
+      /** @type {uint8[]} */
+      let result;
+      if (this.isInverse) {
+        result = this._decompress(new Uint8Array(this.inputBuffer));
+      } else {
+        result = this._compress(new Uint8Array(this.inputBuffer));
+      }
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
+      /** @type {uint8[]} */
+      const bytes = [];
+      for (let i = 0; i < result.length; i++) {
+        bytes.push(result[i]);
+      }
+      return bytes;
     }
 
     // ===== COMPRESSION =====
 
+    /**
+     * @param {uint8[]} input - Input bytes
+     * @returns {uint8[]} Varint size and tagged stream
+     */
     _compress(input) {
+      /** @type {uint8[]} */
       const output = [];
       this._writeVarint(output, input.length);
 
+      /** @type {int32} */
       const n = input.length;
-      if (n === 0)
-        return new Uint8Array(output);
+      if (n === 0) {
+        /** @type {uint8[]} */
+        const header = new Uint8Array(output);
+        return header;
+      }
 
+      /** @type {int32[]} */
       const hashHead = new Int32Array(this.HASH_SIZE).fill(-1);
+      /** @type {int32[]} */
       const chain = new Int32Array(n);
 
+      /** @type {int32} */
       let pos = 0;
+      /** @type {int32} */
       let litStart = 0;
 
       while (pos + this.MIN_MATCH <= n) {
+        /** @type {PithyMatch} */
         const match = this._findMatch(input, pos, hashHead, chain);
         this._insertHash(input, pos, hashHead, chain);
 
@@ -237,65 +302,112 @@
           continue;
         }
 
-        if (pos > litStart)
+        if (pos > litStart) {
           this._emitLiterals(output, input, litStart, pos - litStart);
+        }
 
+        /** @type {int32} */
         const end = Math.min(pos + match.length, n - 2);
-        for (let i = pos + 1; i < end; ++i)
+        for (let i = pos + 1; i < end; ++i) {
           this._insertHash(input, i, hashHead, chain);
+        }
 
         this._emitCopy(output, match.offset, match.length);
         pos += match.length;
         litStart = pos;
       }
 
-      if (litStart < n)
+      if (litStart < n) {
         this._emitLiterals(output, input, litStart, n - litStart);
+      }
 
-      return new Uint8Array(output);
+      /** @type {uint8[]} */
+      const packed = new Uint8Array(output);
+      return packed;
     }
 
+    /**
+     * @param {uint8[]} src - Input bytes
+     * @param {int32} pos - Position to match
+     * @param {int32[]} hashHead - Chain heads
+     * @param {int32[]} chain - Chain links
+     * @returns {PithyMatch} Longest match (length 0 when none)
+     */
     _findMatch(src, pos, hashHead, chain) {
+      /** @type {uint32} */
       const h = this._hash4(src, pos);
+      /** @type {int32} */
       let candidate = hashHead[h];
+      /** @type {int32} */
       const minPos = Math.max(0, pos - this.MAX_COPY3_OFFSET);
+      /** @type {int32} */
       const maxLen = src.length - pos;
+      /** @type {int32} */
       let bestLen = 0;
+      /** @type {int32} */
       let bestOff = 0;
+      /** @type {int32} */
       let steps = this.MAX_CHAIN_STEPS;
 
       while (candidate >= minPos && steps-- > 0) {
-        if (bestLen === 0 || (candidate + bestLen < src.length && src[candidate + bestLen] === src[pos + bestLen])) {
+        /** @type {boolean} */
+        let worthMeasuring = bestLen === 0;
+        if (!worthMeasuring && candidate + bestLen < src.length) {
+          worthMeasuring = src[candidate + bestLen] === src[pos + bestLen];
+        }
+        if (worthMeasuring) {
+          /** @type {int32} */
           let len = 0;
-          while (len < maxLen && src[candidate + len] === src[pos + len])
+          while (len < maxLen && src[candidate + len] === src[pos + len]) {
             ++len;
+          }
 
           if (len > bestLen) {
             bestLen = len;
             bestOff = pos - candidate;
-            if (bestLen >= maxLen)
+            if (bestLen >= maxLen) {
               break;
+            }
           }
         }
 
+        /** @type {int32} */
         const prev = chain[candidate];
-        if (prev >= candidate)
+        if (prev >= candidate) {
           break;
+        }
         candidate = prev;
       }
 
-      return bestLen >= this.MIN_MATCH ? { length: bestLen, offset: bestOff } : { length: 0, offset: 0 };
+      if (bestLen >= this.MIN_MATCH) {
+        return new PithyMatch(bestLen, bestOff);
+      }
+      return new PithyMatch(0, 0);
     }
 
+    /**
+     * @param {uint8[]} src - Input bytes
+     * @param {int32} pos - Position to insert
+     * @param {int32[]} hashHead - Chain heads
+     * @param {int32[]} chain - Chain links
+     */
     _insertHash(src, pos, hashHead, chain) {
-      if (pos + 4 > src.length)
+      if (pos + 4 > src.length) {
         return;
+      }
+      /** @type {uint32} */
       const h = this._hash4(src, pos);
       chain[pos] = hashHead[h];
       hashHead[h] = pos;
     }
 
+    /**
+     * @param {uint8[]} data - Bytes
+     * @param {int32} pos - Position of the four hashed bytes
+     * @returns {uint32} Bucket
+     */
     _hash4(data, pos) {
+      /** @type {uint32} */
       const val = OpCodes.Pack32LE(
         OpCodes.ToByte(data[pos]), OpCodes.ToByte(data[pos + 1]),
         OpCodes.ToByte(data[pos + 2]), OpCodes.ToByte(data[pos + 3])
@@ -303,52 +415,81 @@
       return OpCodes.Shr32(OpCodes.Mul32(val, 2654435761), 32 - this.HASH_BITS);
     }
 
+    /**
+     * @param {uint8[]} output - Output
+     * @param {uint8[]} bytes - Bytes appended in order
+     * @param {int32} count - Number of leading bytes appended
+     */
+    _pushSome(output, bytes, count) {
+      for (let i = 0; i < count; i++) {
+        output.push(bytes[i]);
+      }
+    }
+
+    /**
+     * @param {uint8[]} output - Output
+     * @param {uint8[]} src - Input bytes
+     * @param {int32} start - First literal
+     * @param {int32} length - Number of literals
+     */
     _emitLiterals(output, src, start, length) {
+      /** @type {int32} */
       const n = length - 1;
-      if (n < 60)
+      if (n < 60) {
         output.push(OpCodes.ToByte(OpCodes.Or8(PITHY_LITERAL, OpCodes.Shl8(n, 2))));
-      else if (n < 0x100) {
+      } else if (n < 0x100) {
         output.push(OpCodes.ToByte(OpCodes.Or8(PITHY_LITERAL, OpCodes.Shl8(60, 2))));
         output.push(OpCodes.ToByte(n));
       } else if (n < 0x10000) {
         output.push(OpCodes.ToByte(OpCodes.Or8(PITHY_LITERAL, OpCodes.Shl8(61, 2))));
-        const [b0, b1] = OpCodes.Unpack16LE(n);
-        output.push(b0, b1);
+        this._pushSome(output, OpCodes.Unpack16LE(n), 2);
       } else if (n < 0x1000000) {
         output.push(OpCodes.ToByte(OpCodes.Or8(PITHY_LITERAL, OpCodes.Shl8(62, 2))));
-        const [b0, b1, b2] = OpCodes.Unpack32LE(n);
-        output.push(b0, b1, b2);
+        this._pushSome(output, OpCodes.Unpack32LE(n), 3);
       } else {
         output.push(OpCodes.ToByte(OpCodes.Or8(PITHY_LITERAL, OpCodes.Shl8(63, 2))));
-        const [b0, b1, b2, b3] = OpCodes.Unpack32LE(n);
-        output.push(b0, b1, b2, b3);
+        this._pushSome(output, OpCodes.Unpack32LE(n), 4);
       }
 
-      for (let i = 0; i < length; ++i)
+      for (let i = 0; i < length; ++i) {
         output.push(OpCodes.ToByte(src[start + i]));
+      }
     }
 
     // Matches the reference's chunking: 63+-byte runs use the "greater than 63"
     // tag shape (62/63 length-escape values); the final remainder under 63 bytes
     // uses the "less than 63" shape, preferring the compact copy-1 tag.
+    /**
+     * @param {uint8[]} output - Output
+     * @param {int32} offset - Match distance
+     * @param {int32} length - Match length
+     */
     _emitCopy(output, offset, length) {
-      while (length >= 63) {
-        let chunk;
-        if (length <= this.MAX_COPY23_LENGTH)
-          chunk = length;
-        else if (length - this.MAX_COPY23_LENGTH < this.MIN_MATCH)
-          chunk = length - this.MIN_MATCH;
-        else
-          chunk = this.MAX_COPY23_LENGTH;
+      /** @type {int32} */
+      let remaining = length;
+      while (remaining >= 63) {
+        /** @type {int32} */
+        let chunk = this.MAX_COPY23_LENGTH;
+        if (remaining <= this.MAX_COPY23_LENGTH) {
+          chunk = remaining;
+        } else if (remaining - this.MAX_COPY23_LENGTH < this.MIN_MATCH) {
+          chunk = remaining - this.MIN_MATCH;
+        }
 
         this._emitCopyGreaterThan63(output, offset, chunk);
-        length -= chunk;
+        remaining -= chunk;
       }
 
-      if (length > 0)
-        this._emitCopyLessThan63(output, offset, length);
+      if (remaining > 0) {
+        this._emitCopyLessThan63(output, offset, remaining);
+      }
     }
 
+    /**
+     * @param {uint8[]} output - Output
+     * @param {int32} offset - Match distance
+     * @param {int32} length - Match length (below 63)
+     */
     _emitCopyLessThan63(output, offset, length) {
       if (length < this.MAX_COPY1_LENGTH + 1 && offset <= this.MAX_COPY1_OFFSET) {
         output.push(OpCodes.ToByte(OpCodes.Or32(OpCodes.Or32(PITHY_COPY_1_BYTE, OpCodes.Shl32(length - 4, 2)), OpCodes.Shl32(OpCodes.Shr32(offset, 8), 5))));
@@ -356,12 +497,19 @@
         return;
       }
 
+      /** @type {int32} */
       const type = offset <= this.MAX_COPY2_OFFSET ? PITHY_COPY_2_BYTE : PITHY_COPY_3_BYTE;
       output.push(OpCodes.ToByte(OpCodes.Or32(type, OpCodes.Shl32(length - 1, 2))));
       this._writeCopyOffset(output, offset, type);
     }
 
+    /**
+     * @param {uint8[]} output - Output
+     * @param {int32} offset - Match distance
+     * @param {int32} length - Match length (63 or more)
+     */
     _emitCopyGreaterThan63(output, offset, length) {
+      /** @type {int32} */
       const type = offset <= this.MAX_COPY2_OFFSET ? PITHY_COPY_2_BYTE : PITHY_COPY_3_BYTE;
 
       if (length <= this.MAX_COPY23_ESCAPE1_LENGTH) {
@@ -376,45 +524,79 @@
       }
     }
 
+    /**
+     * @param {uint8[]} output - Output
+     * @param {int32} offset - Match distance
+     * @param {int32} type - Copy tag type (2 or 3 offset bytes)
+     */
     _writeCopyOffset(output, offset, type) {
       output.push(OpCodes.ToByte(offset));
       output.push(OpCodes.ToByte(OpCodes.Shr32(offset, 8)));
-      if (type === PITHY_COPY_3_BYTE)
+      if (type === PITHY_COPY_3_BYTE) {
         output.push(OpCodes.ToByte(OpCodes.Shr32(offset, 16)));
+      }
     }
 
     // ===== DECOMPRESSION =====
 
-    _decompress(input) {
-      const iRef = { i: 0 };
-      const originalSize = this._readVarint(input, iRef);
+    /**
+     * @returns {uint8} Next byte of the stream (0 past the end), advancing readPos
+     * @param {uint8[]} input - Compressed bytes
+     */
+    _nextByte(input) {
+      return OpCodes.ToByte(input[this.readPos++]);
+    }
 
+    /**
+     * @param {uint8[]} input - Varint size and tagged stream
+     * @returns {uint8[]} Decoded bytes
+     */
+    _decompress(input) {
+      this.readPos = 0;
+      /** @type {uint32} */
+      const originalSize = this._readVarint(input);
+
+      /** @type {uint8[]} */
       const output = [];
+      // Lengths can reach 2^32 on a corrupt stream, so positions are float64.
+      /** @type {float64} */
       let pos = 0;
 
       while (pos < originalSize) {
-        const tag = OpCodes.ToByte(input[iRef.i++]);
+        /** @type {uint8} */
+        const tag = this._nextByte(input);
+        /** @type {uint8} */
         const type = OpCodes.And8(tag, 0x3);
 
         if (type === PITHY_LITERAL) {
-          const len = this._readLiteralLength(input, iRef, OpCodes.Shr8(tag, 2));
-          for (let k = 0; k < len; ++k)
-            output.push(OpCodes.ToByte(input[iRef.i + k]));
-          iRef.i += len;
+          /** @type {float64} */
+          const len = this._readLiteralLength(input, OpCodes.Shr8(tag, 2));
+          for (let k = 0; k < len; ++k) {
+            output.push(OpCodes.ToByte(input[this.readPos + k]));
+          }
+          this.readPos += len;
           pos += len;
         } else if (type === PITHY_COPY_1_BYTE) {
+          /** @type {int32} */
           const len = OpCodes.And32(OpCodes.Shr8(tag, 2), 0x7) + 4;
-          const offset = OpCodes.Or32(OpCodes.Shl32(OpCodes.Shr8(tag, 5), 8), OpCodes.ToByte(input[iRef.i++]));
+          /** @type {uint8} */
+          const low = this._nextByte(input);
+          /** @type {uint32} */
+          const offset = OpCodes.Or32(OpCodes.Shl32(OpCodes.Shr8(tag, 5), 8), low);
           pos = this._copyMatch(output, pos, offset, len, originalSize);
         } else if (type === PITHY_COPY_2_BYTE) {
-          const offset = OpCodes.Pack16LE(OpCodes.ToByte(input[iRef.i]), OpCodes.ToByte(input[iRef.i + 1]));
-          iRef.i += 2;
-          const len = this._readCopy23Length(input, iRef, OpCodes.Shr8(tag, 2));
+          /** @type {uint16} */
+          const offset = OpCodes.Pack16LE(OpCodes.ToByte(input[this.readPos]), OpCodes.ToByte(input[this.readPos + 1]));
+          this.readPos += 2;
+          /** @type {int32} */
+          const len = this._readCopy23Length(input, OpCodes.Shr8(tag, 2));
           pos = this._copyMatch(output, pos, offset, len, originalSize);
         } else { // PITHY_COPY_3_BYTE
-          const offset = OpCodes.Or32(OpCodes.Or32(OpCodes.ToByte(input[iRef.i]), OpCodes.Shl32(OpCodes.ToByte(input[iRef.i + 1]), 8)), OpCodes.Shl32(OpCodes.ToByte(input[iRef.i + 2]), 16));
-          iRef.i += 3;
-          const len = this._readCopy23Length(input, iRef, OpCodes.Shr8(tag, 2));
+          /** @type {uint32} */
+          const offset = OpCodes.Or32(OpCodes.Or32(OpCodes.ToByte(input[this.readPos]), OpCodes.Shl32(OpCodes.ToByte(input[this.readPos + 1]), 8)), OpCodes.Shl32(OpCodes.ToByte(input[this.readPos + 2]), 16));
+          this.readPos += 3;
+          /** @type {int32} */
+          const len = this._readCopy23Length(input, OpCodes.Shr8(tag, 2));
           pos = this._copyMatch(output, pos, offset, len, originalSize);
         }
       }
@@ -422,73 +604,122 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} output - Decoded bytes so far
+     * @param {float64} pos - Current output position
+     * @param {uint32} offset - Match distance
+     * @param {int32} length - Match length
+     * @param {uint32} limit - Output size
+     * @returns {float64} New output position
+     */
     _copyMatch(output, pos, offset, length, limit) {
-      if (offset <= 0 || offset > pos)
-        throw new Error(`Pithy: match offset ${offset} invalid at position ${pos}.`);
+      if (offset <= 0 || offset > pos) {
+        throw new Error("Pithy: match offset " + offset + " invalid at position " + pos + ".");
+      }
 
-      for (let k = 0; k < length && pos < limit; ++k, ++pos)
-        output.push(output[pos - offset]);
+      /** @type {float64} */
+      let at = pos;
+      for (let k = 0; k < length && at < limit; ++k) {
+        output.push(output[at - offset]);
+        ++at;
+      }
 
-      return pos;
+      return at;
     }
 
-    _readLiteralLength(input, iRef, n) {
-      if (n < 60)
+    /**
+     * @param {uint8[]} input - Compressed bytes
+     * @param {int32} n - Literal length field of the tag
+     * @returns {float64} Literal run length
+     */
+    _readLiteralLength(input, n) {
+      if (n < 60) {
         return n + 1;
-      if (n === 60)
-        return OpCodes.ToByte(input[iRef.i++]) + 1;
+      }
+      if (n === 60) {
+        /** @type {int32} */
+        const one = this._nextByte(input);
+        return one + 1;
+      }
       if (n === 61) {
-        const v = OpCodes.Pack16LE(OpCodes.ToByte(input[iRef.i]), OpCodes.ToByte(input[iRef.i + 1]));
-        iRef.i += 2;
+        /** @type {int32} */
+        const v = OpCodes.Pack16LE(OpCodes.ToByte(input[this.readPos]), OpCodes.ToByte(input[this.readPos + 1]));
+        this.readPos += 2;
         return v + 1;
       }
       if (n === 62) {
-        const v = OpCodes.Or32(OpCodes.Or32(OpCodes.ToByte(input[iRef.i]), OpCodes.Shl32(OpCodes.ToByte(input[iRef.i + 1]), 8)), OpCodes.Shl32(OpCodes.ToByte(input[iRef.i + 2]), 16));
-        iRef.i += 3;
-        return v + 1;
+        /** @type {uint32} */
+        const v = OpCodes.Or32(OpCodes.Or32(OpCodes.ToByte(input[this.readPos]), OpCodes.Shl32(OpCodes.ToByte(input[this.readPos + 1]), 8)), OpCodes.Shl32(OpCodes.ToByte(input[this.readPos + 2]), 16));
+        this.readPos += 3;
+        /** @type {float64} */
+        const wide = v;
+        return wide + 1;
       }
+      /** @type {uint32} */
       const v = OpCodes.Pack32LE(
-        OpCodes.ToByte(input[iRef.i]), OpCodes.ToByte(input[iRef.i + 1]),
-        OpCodes.ToByte(input[iRef.i + 2]), OpCodes.ToByte(input[iRef.i + 3])
+        OpCodes.ToByte(input[this.readPos]), OpCodes.ToByte(input[this.readPos + 1]),
+        OpCodes.ToByte(input[this.readPos + 2]), OpCodes.ToByte(input[this.readPos + 3])
       );
-      iRef.i += 4;
-      return v + 1;
+      this.readPos += 4;
+      /** @type {float64} */
+      const wide = v;
+      return wide + 1;
     }
 
-    _readCopy23Length(input, iRef, field) {
-      if (field < this.COPY23_LEN_ESCAPE1)
+    /**
+     * @param {uint8[]} input - Compressed bytes
+     * @param {int32} field - Length field of the tag
+     * @returns {int32} Copy length
+     */
+    _readCopy23Length(input, field) {
+      if (field < this.COPY23_LEN_ESCAPE1) {
         return field + 1;
-      if (field === this.COPY23_LEN_ESCAPE1)
-        return OpCodes.ToByte(input[iRef.i++]) + 63;
-      const v = OpCodes.Pack16LE(OpCodes.ToByte(input[iRef.i]), OpCodes.ToByte(input[iRef.i + 1]));
-      iRef.i += 2;
+      }
+      if (field === this.COPY23_LEN_ESCAPE1) {
+        /** @type {int32} */
+        const one = this._nextByte(input);
+        return one + 63;
+      }
+      /** @type {uint16} */
+      const v = OpCodes.Pack16LE(OpCodes.ToByte(input[this.readPos]), OpCodes.ToByte(input[this.readPos + 1]));
+      this.readPos += 2;
       return v;
     }
 
     /**
      * Write variable-length integer (varint) to output
      * 7 bits per byte, LSB first, continuation bit
+     * @param {uint8[]} output - Output
+     * @param {uint32} value - Value
      */
     _writeVarint(output, value) {
-      while (value >= 128) {
-        output.push(OpCodes.Or32(OpCodes.And32(value, 0x7F), 0x80));
-        value = OpCodes.Shr32(value, 7);
+      /** @type {uint32} */
+      let rest = value;
+      while (rest >= 128) {
+        output.push(OpCodes.Or32(OpCodes.And32(rest, 0x7F), 0x80));
+        rest = OpCodes.Shr32(rest, 7);
       }
-      output.push(OpCodes.And32(value, 0x7F));
+      output.push(OpCodes.And32(rest, 0x7F));
     }
 
     /**
-     * Read a variable-length integer (varint), advancing iRef.i
+     * Read a variable-length integer (varint), advancing readPos
+     * @param {uint8[]} input - Compressed bytes
+     * @returns {uint32} Value
      */
-    _readVarint(input, iRef) {
+    _readVarint(input) {
+      /** @type {uint32} */
       let result = 0;
+      /** @type {int32} */
       let shift = 0;
 
       for (;;) {
-        const byte = OpCodes.ToByte(input[iRef.i++]);
+        /** @type {uint8} */
+        const byte = this._nextByte(input);
         result = OpCodes.Or32(result, OpCodes.Shl32(OpCodes.And32(byte, 0x7F), shift));
-        if (OpCodes.And32(byte, 0x80) === 0)
+        if (OpCodes.And32(byte, 0x80) === 0) {
           return result;
+        }
         shift += 7;
       }
     }

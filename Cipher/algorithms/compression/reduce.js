@@ -68,23 +68,36 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /** @type {uint8} */
   const DLE = 0x90;
+  /** @type {int32} */
   const FACTOR = 4; // methods 2-5 == factor 1-4; 4 (strongest) is what ZIP method 5 uses.
+  /** @type {int32} */
   const MAX_FOLLOWER_SET = 32;
 
   // ----- Bit-level stream helpers (LSB-first within each byte) -----
 
   class BitWriter {
     constructor() {
+      /** @type {uint8[]} */
       this.bytes = [];
+      /** @type {uint32} */
       this.cur = 0;
+      /** @type {int32} */
       this.bitPos = 0;
     }
 
+    /**
+     * @param {uint32} value - Value
+     * @param {int32} count - Number of bits, least significant first
+     */
     writeBits(value, count) {
       for (let i = 0; i < count; ++i) {
-        const bit = OpCodes.AndN(OpCodes.Shr32(value, i), 1);
-        if (bit === 1) this.cur = OpCodes.OrN(this.cur, OpCodes.Shl32(1, this.bitPos));
+        /** @type {uint32} */
+        const bit = OpCodes.And32(OpCodes.Shr32(value, i), 1);
+        if (bit === 1) {
+          this.cur = OpCodes.Or32(this.cur, OpCodes.Shl32(1, this.bitPos));
+        }
         ++this.bitPos;
         if (this.bitPos === 8) {
           this.bytes.push(this.cur);
@@ -94,6 +107,9 @@
       }
     }
 
+    /**
+     * @returns {uint8[]} All bytes, the last one zero-padded
+     */
     finish() {
       if (this.bitPos > 0) {
         this.bytes.push(this.cur);
@@ -105,23 +121,39 @@
   }
 
   class BitReader {
+    /**
+     * @param {uint8[]} bytes - Source bytes
+     */
     constructor(bytes) {
+      /** @type {uint8[]} */
       this.bytes = bytes;
+      /** @type {int32} */
       this.pos = 0; // bit position
+      /** @type {int32} */
       this.totalBits = bytes.length * 8;
     }
 
     // Mirrors the reference's ReadBits: silently stops (without advancing
     // past the end) once the underlying byte array is exhausted, returning
     // whatever bits were assembled so far rather than throwing.
+    /**
+     * @param {int32} count - Number of bits, least significant first
+     * @returns {uint32} Value read
+     */
     readBits(count) {
+      /** @type {uint32} */
       let result = 0;
       for (let i = 0; i < count; ++i) {
+        /** @type {int32} */
         const byteIdx = Math.floor(this.pos / 8);
-        if (byteIdx >= this.bytes.length) return result;
+        if (byteIdx >= this.bytes.length) {
+          return result;
+        }
+        /** @type {int32} */
         const bitIdx = this.pos % 8;
-        const bit = OpCodes.AndN(OpCodes.Shr32(this.bytes[byteIdx], bitIdx), 1);
-        result = OpCodes.OrN(result, OpCodes.Shl32(bit, i));
+        /** @type {uint32} */
+        const bit = OpCodes.And32(OpCodes.Shr32(this.bytes[byteIdx], bitIdx), 1);
+        result = OpCodes.Or32(result, OpCodes.Shl32(bit, i));
         ++this.pos;
       }
       return result;
@@ -129,11 +161,22 @@
   }
 
   // Minimal number of bits needed to represent values 0..(n-1).
+  /**
+   * @param {int32} n - Number of values
+   * @returns {int32} Bits needed
+   */
   function bitsFor(n) {
-    if (n <= 1) return 0;
+    if (n <= 1) {
+      return 0;
+    }
+    /** @type {int32} */
     let bits = 0;
+    /** @type {uint32} */
     let val = n - 1;
-    while (val > 0) { val = OpCodes.Shr32(val, 1); ++bits; }
+    while (val > 0) {
+      val = OpCodes.Shr32(val, 1);
+      ++bits;
+    }
     return bits;
   }
 
@@ -204,46 +247,88 @@
         ];
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {ReduceInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new ReduceInstance(this, isInverse);
       }
     }
 
     class ReduceInstance extends IAlgorithmInstance {
+      /**
+       * @param {ReduceCompression} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
+        /** @type {uint8[]} */
         const data = this.inputBuffer;
-        this.inputBuffer = [];
-        return this.isInverse ? this._decompress(data) : this._compress(data);
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
+        if (this.isInverse) {
+          return this._decompress(data);
+        }
+        return this._compress(data);
       }
 
       // ----- Stage 1: DLE-escaped LZ77 pre-pass -----
 
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @param {int32} factor - Reduction factor 1..4
+       * @returns {uint8[]} DLE-escaped intermediate stream
+       */
       _dleEncode(data, factor) {
+        /** @type {uint8[]} */
         const out = [];
+        /** @type {int32} */
         const distanceBits = 8 - factor;
+        /** @type {int32} */
         const lenBits = factor;
+        /** @type {int32} */
         const maxLenField = OpCodes.Shl32(1, lenBits) - 1;
+        /** @type {int32} */
         const windowSize = OpCodes.Shl32(1, 8 + distanceBits);
+        /** @type {int32} */
         const distanceMask = OpCodes.Shl32(1, distanceBits) - 1;
 
+        /** @type {int32} */
         let i = 0;
         while (i < data.length) {
-          let bestLen = 0, bestDist = 0;
+          /** @type {int32} */
+          let bestLen = 0;
+          /** @type {int32} */
+          let bestDist = 0;
+          /** @type {int32} */
           const searchStart = Math.max(0, i - windowSize);
+          /** @type {int32} */
           const maxMatchLen = maxLenField + 255 + 3;
 
           for (let j = searchStart; j < i; ++j) {
+            /** @type {int32} */
             let len = 0;
+            /** @type {int32} */
             const maxLen = Math.min(data.length - i, maxMatchLen);
+            /** @type {int32} */
             const span = i - j;
-            while (len < maxLen && data[j + (len % span)] === data[i + len]) ++len;
+            while (len < maxLen && data[j + (len % span)] === data[i + len]) {
+              ++len;
+            }
             if (len > bestLen && len >= 3) {
               bestLen = len;
               bestDist = i - j - 1;
@@ -251,8 +336,11 @@
           }
 
           if (bestLen >= 3) {
-            let adjLen = bestLen - 3;
-            let lenField = Math.min(adjLen, maxLenField);
+            /** @type {int32} */
+            const adjLen = bestLen - 3;
+            /** @type {int32} */
+            const lenField = Math.min(adjLen, maxLenField);
+            /** @type {int32} */
             let extraLen = adjLen - lenField;
 
             if (lenField === maxLenField && extraLen > 255) {
@@ -260,14 +348,19 @@
               bestLen = maxLenField + extraLen + 3;
             }
 
-            const lowBits = OpCodes.AndN(bestDist, distanceMask);
+            /** @type {uint32} */
+            const lowBits = OpCodes.And32(bestDist, distanceMask);
+            /** @type {uint32} */
             const highBits = OpCodes.Shr32(bestDist, distanceBits);
-            const v = OpCodes.OrN(OpCodes.Shl32(lenField, distanceBits), lowBits);
+            /** @type {uint32} */
+            const v = OpCodes.Or32(OpCodes.Shl32(lenField, distanceBits), lowBits);
 
             if (v === 0) {
               // V=0 is reserved for the literal-DLE escape; skip this match.
               out.push(data[i]);
-              if (data[i] === DLE) out.push(0);
+              if (data[i] === DLE) {
+                out.push(0);
+              }
               ++i;
               continue;
             }
@@ -275,13 +368,18 @@
             out.push(DLE);
             out.push(v);
             out.push(highBits);
-            if (lenField === maxLenField) out.push(extraLen);
+            if (lenField === maxLenField) {
+              out.push(extraLen);
+            }
 
             i += bestLen;
           } else {
+            /** @type {uint8} */
             const b = data[i];
             out.push(b);
-            if (b === DLE) out.push(0);
+            if (b === DLE) {
+              out.push(0);
+            }
             ++i;
           }
         }
@@ -289,38 +387,72 @@
         return out;
       }
 
+      /**
+       * @param {uint8[]} intermediate - DLE-escaped stream
+       * @param {int32} originalSize - Size from the header (negative decodes nothing)
+       * @param {int32} factor - Reduction factor from the header
+       * @returns {uint8[]} Decoded bytes
+       */
       _dleDecode(intermediate, originalSize, factor) {
+        /** @type {int32} */
         const distanceBits = 8 - factor;
+        /** @type {int32} */
         const maxLenField = OpCodes.Shl32(1, factor) - 1;
+        /** @type {int32} */
         const distanceMask = OpCodes.Shl32(1, distanceBits) - 1;
 
+        /** @type {uint8[]} */
         const output = [];
+        /** @type {int32} */
         let inPos = 0;
 
         while (output.length < originalSize && inPos < intermediate.length) {
+          /** @type {uint8} */
           const cur = intermediate[inPos++];
-          if (cur !== DLE) { output.push(cur); continue; }
+          if (cur !== DLE) {
+            output.push(cur);
+            continue;
+          }
 
-          if (inPos >= intermediate.length) break;
+          if (inPos >= intermediate.length) {
+            break;
+          }
+          /** @type {uint8} */
           const v = intermediate[inPos++];
-          if (v === 0) { output.push(DLE); continue; }
+          if (v === 0) {
+            output.push(DLE);
+            continue;
+          }
 
-          if (inPos >= intermediate.length) break;
+          if (inPos >= intermediate.length) {
+            break;
+          }
+          /** @type {uint8} */
           const distHigh = intermediate[inPos++];
 
-          const distLow = OpCodes.AndN(v, distanceMask);
-          const distance = OpCodes.OrN(OpCodes.Shl32(distHigh, distanceBits), distLow);
-          let lenField = OpCodes.Shr32(v, distanceBits);
+          /** @type {uint32} */
+          const distLow = OpCodes.And32(v, distanceMask);
+          // Signed 32-bit OR as in the reference: a high part reaching bit 31
+          // yields a negative distance, which copies zeros.
+          /** @type {int32} */
+          const distance = OpCodes.ToInt(OpCodes.Or32(OpCodes.Shl32(distHigh, distanceBits), distLow));
+          /** @type {int32} */
+          const lenField = OpCodes.Shr32(v, distanceBits);
+          /** @type {int32} */
           let length = lenField;
 
           if (lenField === maxLenField) {
-            if (inPos >= intermediate.length) break;
+            if (inPos >= intermediate.length) {
+              break;
+            }
             length += intermediate[inPos++];
           }
           length += 3;
 
+          /** @type {int32} */
           const srcBase = output.length - distance - 1;
           for (let j = 0; j < length && output.length < originalSize; ++j) {
+            /** @type {int32} */
             const src = srcBase + j;
             output.push(src >= 0 && src < output.length ? output[src] : 0);
           }
@@ -331,57 +463,120 @@
 
       // ----- Stage 2: static frequency-ranked follower sets -----
 
+      /**
+       * @param {uint8[]} data - Intermediate stream
+       * @returns {uint8[][]} Follower set per preceding byte
+       */
       _buildFollowerSets(data) {
+        /** @type {int32[][]} */
         const pairCount = [];
-        for (let i = 0; i < 256; ++i) pairCount.push(new Array(256).fill(0));
-        for (let i = 1; i < data.length; ++i) ++pairCount[data[i - 1]][data[i]];
+        for (let i = 0; i < 256; ++i) {
+          pairCount.push(new Int32Array(256));
+        }
+        for (let i = 1; i < data.length; ++i) {
+          /** @type {int32[]} */
+          const row = pairCount[data[i - 1]];
+          ++row[data[i]];
+        }
 
+        /** @type {uint8[][]} */
         const followers = [];
         for (let i = 0; i < 256; ++i) {
-          const entries = [];
-          for (let j = 0; j < 256; ++j) if (pairCount[i][j] > 0) entries.push({ count: pairCount[i][j], value: j });
+          /** @type {int32[]} */
+          const counts = pairCount[i];
           // Most frequent follower first. Followers of equal count are ordered
           // by ascending byte value, so which 32 followers survive the cut and
-          // the index each one gets are a function of the data alone. The
-          // comparison never returns 0 for two different followers, so the
-          // result does not depend on whether the host sort is stable.
-          entries.sort((a, b) => a.count !== b.count ? b.count - a.count : a.value - b.value);
-          const setSize = Math.min(entries.length, MAX_FOLLOWER_SET);
+          // the index each one gets are a function of the data alone. Values
+          // are taken in ascending order and an insertion sort only moves a
+          // follower past strictly less frequent ones, which gives exactly
+          // that total order.
+          /** @type {int32[]} */
+          const ranked = [];
+          for (let j = 0; j < 256; ++j) {
+            if (counts[j] > 0) {
+              /** @type {int32} */
+              let at = ranked.length;
+              ranked.push(j);
+              while (at > 0 && counts[ranked[at - 1]] < counts[j]) {
+                ranked[at] = ranked[at - 1];
+                at--;
+              }
+              ranked[at] = j;
+            }
+          }
+          /** @type {int32} */
+          const setSize = Math.min(ranked.length, MAX_FOLLOWER_SET);
+          /** @type {uint8[]} */
           const set = new Array(setSize);
-          for (let k = 0; k < setSize; ++k) set[k] = entries[k].value;
+          for (let k = 0; k < setSize; ++k) {
+            set[k] = ranked[k];
+          }
           followers.push(set);
         }
         return followers;
       }
 
+      /**
+       * @param {BitWriter} writer - Output bits
+       * @param {uint8[][]} followers - Follower set per preceding byte
+       */
       _writeFollowerSets(writer, followers) {
         for (let ctx = 255; ctx >= 0; --ctx) {
+          /** @type {uint8[]} */
           const set = followers[ctx];
           writer.writeBits(set.length, 6);
-          for (let i = 0; i < set.length; ++i) writer.writeBits(set[i], 8);
+          for (let i = 0; i < set.length; ++i) {
+            writer.writeBits(set[i], 8);
+          }
         }
       }
 
+      /**
+       * @param {BitReader} reader - Input bits
+       * @returns {uint8[][]} Follower set per preceding byte
+       */
       _readFollowerSets(reader) {
+        /** @type {uint8[][]} */
         const followers = new Array(256);
         for (let ctx = 255; ctx >= 0; --ctx) {
+          /** @type {int32} */
           const count = reader.readBits(6);
+          /** @type {uint8[]} */
           const set = new Array(count);
-          for (let i = 0; i < count; ++i) set[i] = reader.readBits(8);
+          for (let i = 0; i < count; ++i) {
+            /** @type {uint8} */
+            const value = reader.readBits(8);
+            set[i] = value;
+          }
           followers[ctx] = set;
         }
         return followers;
       }
 
+      /**
+       * @param {uint8[]} intermediate - Intermediate stream
+       * @param {uint8[][]} followers - Follower set per preceding byte
+       * @param {BitWriter} writer - Output bits
+       */
       _probEncode(intermediate, followers, writer) {
+        /** @type {uint8} */
         let last = 0;
         for (let i = 0; i < intermediate.length; ++i) {
+          /** @type {uint8} */
           const b = intermediate[i];
+          /** @type {uint8[]} */
           const set = followers[last];
           if (set.length === 0) {
             writer.writeBits(b, 8);
           } else {
-            const idx = set.indexOf(b);
+            /** @type {int32} */
+            let idx = -1;
+            for (let k = 0; k < set.length; ++k) {
+              if (set[k] === b) {
+                idx = k;
+                break;
+              }
+            }
             if (idx < 0) {
               writer.writeBits(1, 1);
               writer.writeBits(b, 8);
@@ -394,26 +589,49 @@
         }
       }
 
+      /**
+       * @param {BitReader} reader - Input bits
+       * @param {uint8[][]} followers - Follower set per preceding byte
+       * @returns {uint8[]} Intermediate stream
+       */
       _probDecode(reader, followers) {
+        /** @type {uint8[]} */
         const intermediate = [];
+        /** @type {uint8} */
         let last = 0;
 
         while (reader.pos < reader.totalBits) {
+          /** @type {uint8[]} */
           const set = followers[last];
-          let b;
+          /** @type {uint8} */
+          let b = 0;
           if (set.length === 0) {
-            if (reader.pos + 8 > reader.totalBits) break;
+            if (reader.pos + 8 > reader.totalBits) {
+              break;
+            }
             b = reader.readBits(8);
           } else {
+            /** @type {uint32} */
             const bit = reader.readBits(1);
             if (bit === 1) {
-              if (reader.pos + 8 > reader.totalBits) break;
+              if (reader.pos + 8 > reader.totalBits) {
+                break;
+              }
               b = reader.readBits(8);
             } else {
+              /** @type {int32} */
               const bitsNeeded = bitsFor(set.length);
-              if (bitsNeeded > 0 && reader.pos + bitsNeeded > reader.totalBits) break;
-              const idx = bitsNeeded > 0 ? reader.readBits(bitsNeeded) : 0;
-              if (idx >= set.length) break;
+              if (bitsNeeded > 0 && reader.pos + bitsNeeded > reader.totalBits) {
+                break;
+              }
+              /** @type {int32} */
+              let idx = 0;
+              if (bitsNeeded > 0) {
+                idx = reader.readBits(bitsNeeded);
+              }
+              if (idx >= set.length) {
+                break;
+              }
               b = set[idx];
             }
           }
@@ -426,44 +644,85 @@
 
       // ----- Compression -----
 
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @returns {uint8[]} Follower sets and coded intermediate stream
+       */
+      _encodeBody(data) {
+        /** @type {uint8[]} */
+        const intermediate = this._dleEncode(data, FACTOR);
+        /** @type {uint8[][]} */
+        const followers = this._buildFollowerSets(intermediate);
+
+        /** @type {BitWriter} */
+        const writer = new BitWriter();
+        this._writeFollowerSets(writer, followers);
+        this._probEncode(intermediate, followers, writer);
+        /** @type {uint8[]} */
+        const bits = writer.finish();
+        return bits;
+      }
+
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @returns {uint8[]} Size, factor and body
+       */
       _compress(data) {
-        const body = data.length === 0 ? [] : (() => {
-          const intermediate = this._dleEncode(data, FACTOR);
-          const followers = this._buildFollowerSets(intermediate);
+        /** @type {uint8[]} */
+        let body = [];
+        if (data.length !== 0) {
+          body = this._encodeBody(data);
+        }
 
-          const writer = new BitWriter();
-          this._writeFollowerSets(writer, followers);
-          this._probEncode(intermediate, followers, writer);
-          return writer.finish();
-        })();
-
+        /** @type {uint8[]} */
         const output = [];
+        /** @type {uint32} */
         const len32 = OpCodes.ToUint32(data.length);
-        output.push(OpCodes.AndN(len32, 0xFF));
-        output.push(OpCodes.AndN(OpCodes.Shr32(len32, 8), 0xFF));
-        output.push(OpCodes.AndN(OpCodes.Shr32(len32, 16), 0xFF));
-        output.push(OpCodes.AndN(OpCodes.Shr32(len32, 24), 0xFF));
+        output.push(OpCodes.And32(len32, 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(len32, 8), 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(len32, 16), 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(len32, 24), 0xFF));
         output.push(FACTOR);
-        for (let i = 0; i < body.length; ++i) output.push(body[i]);
+        for (let i = 0; i < body.length; ++i) {
+          output.push(body[i]);
+        }
         return output;
       }
 
       // ----- Decompression -----
 
+      /**
+       * @param {uint8[]} data - Size, factor and body
+       * @returns {uint8[]} Decoded bytes
+       */
       _decompress(data) {
-        if (data.length < 5) throw new Error('Reduce: input smaller than 5-byte header');
-        const size = OpCodes.OrN(
-          OpCodes.OrN(OpCodes.OrN(data[0], OpCodes.Shl32(data[1], 8)), OpCodes.Shl32(data[2], 16)),
+        if (data.length < 5) {
+          throw new Error('Reduce: input smaller than 5-byte header');
+        }
+        // The size is read as a signed 32-bit value, as in the reference.
+        /** @type {int32} */
+        const size = OpCodes.ToInt(OpCodes.Or32(
+          OpCodes.Or32(OpCodes.Or32(data[0], OpCodes.Shl32(data[1], 8)), OpCodes.Shl32(data[2], 16)),
           OpCodes.Shl32(data[3], 24)
-        );
+        ));
+        /** @type {uint8} */
         const factor = data[4];
-        if (size === 0) return [];
+        if (size === 0) {
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
+        }
 
+        /** @type {BitReader} */
         const reader = new BitReader(data.slice(5));
+        /** @type {uint8[][]} */
         const followers = this._readFollowerSets(reader);
+        /** @type {uint8[]} */
         const intermediate = this._probDecode(reader, followers);
 
-        return this._dleDecode(intermediate, size, factor);
+        /** @type {uint8[]} */
+        const decoded = this._dleDecode(intermediate, size, factor);
+        return decoded;
       }
     }
 

@@ -75,21 +75,30 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           CompressionAlgorithm, IAlgorithmInstance, LinkItem } = AlgorithmFramework;
 
+  /** @type {int32} */
   const MAX_BITS = 16;
+  /** @type {int32} */
   const MAX_DICT_SIZE = 65536; // 2 raised to the power of MAX_BITS
+  /** @type {int32} */
   const MAX_DIGRAMS = 128;
 
   // ===== BIT-LEVEL I/O (MSB-first) =====
 
   class BitWriter {
     constructor() {
+      /** @type {uint8[]} */
       this.bytes = [];
+      /** @type {uint32} */
       this.buffer = 0;
+      /** @type {int32} */
       this.bitCount = 0;
     }
 
+    /**
+     * @param {uint32} bit - 0 or 1
+     */
     writeBit(bit) {
-      this.buffer = this.buffer * 2 + bit;
+      this.buffer = OpCodes.Or32(OpCodes.Shl32(this.buffer, 1), bit);
       ++this.bitCount;
       if (this.bitCount === 8) {
         this.bytes.push(this.buffer);
@@ -98,11 +107,17 @@
       }
     }
 
+    /**
+     * @param {uint32} value - Value
+     * @param {int32} count - Number of low bits written, most significant first
+     */
     writeBits(value, count) {
-      for (let i = count - 1; i >= 0; --i)
+      for (let i = count - 1; i >= 0; --i) {
         this.writeBit(OpCodes.GetBit(value, i) ? 1 : 0);
+      }
     }
 
+    /** Append the partial last byte, zero padded, if any */
     flush() {
       if (this.bitCount > 0) {
         this.buffer = OpCodes.Shl8(this.buffer, 8 - this.bitCount);
@@ -114,23 +129,81 @@
   }
 
   class BitReader {
+    /**
+     * @param {uint8[]} bytes - Bytes to read
+     */
     constructor(bytes) {
+      /** @type {uint8[]} */
       this.bytes = bytes;
+      /** @type {int32} */
       this.bitIndex = 0;
     }
 
+    /**
+     * @param {int32} count - Number of bits
+     * @returns {uint32} Their value, first bit most significant
+     */
     readBits(count) {
+      /** @type {uint32} */
       let value = 0;
       for (let i = 0; i < count; ++i) {
+        /** @type {int32} */
         const byteIndex = Math.floor(this.bitIndex / 8);
-        if (byteIndex >= this.bytes.length)
+        if (byteIndex >= this.bytes.length) {
           throw new Error('Unexpected end of LZWL bitstream.');
+        }
+        /** @type {int32} */
         const bitInByte = this.bitIndex - byteIndex * 8;
+        /** @type {uint32} */
         const bit = OpCodes.GetBit(this.bytes[byteIndex], 7 - bitInByte) ? 1 : 0;
         ++this.bitIndex;
-        value = value * 2 + bit;
+        value = OpCodes.Or32(OpCodes.Shl32(value, 1), bit);
       }
       return value;
+    }
+  }
+
+  /**
+   * Encoder lookup trie: every code's children as a linked list of
+   * (next-sibling, byte) nodes. Child codes are always >= 256, so 0 marks
+   * "no child"/"no sibling".
+   */
+  class LzwlTrie {
+    constructor() {
+      /** @type {int32[]} */
+      this.firstChild = new Int32Array(MAX_DICT_SIZE);
+      /** @type {int32[]} */
+      this.nextSibling = new Int32Array(MAX_DICT_SIZE);
+      /** @type {uint8[]} */
+      this.childByte = new Uint8Array(MAX_DICT_SIZE);
+    }
+
+    /**
+     * @param {int32} code - Parent code
+     * @param {uint8} value - Following byte
+     * @returns {int32} The child code, or -1 when there is none
+     */
+    find(code, value) {
+      /** @type {int32} */
+      let child = this.firstChild[code];
+      while (child !== 0) {
+        if (this.childByte[child] === value) {
+          return child;
+        }
+        child = this.nextSibling[child];
+      }
+      return -1;
+    }
+
+    /**
+     * @param {int32} code - Parent code
+     * @param {uint8} value - Following byte
+     * @param {int32} child - New code for code + value
+     */
+    add(code, value, child) {
+      this.childByte[child] = value;
+      this.nextSibling[child] = this.firstChild[code];
+      this.firstChild[code] = child;
     }
   }
 
@@ -208,34 +281,64 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {LZWLInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new LZWLInstance(this, isInverse);
     }
   }
 
   class LZWLInstance extends IAlgorithmInstance {
+    /**
+     * @param {LZWLCompression} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
-      const result = this.isInverse ? this._decompress(this.inputBuffer) : this._compress(this.inputBuffer);
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      let result;
+      if (this.isInverse) {
+        result = this._decompress(this.inputBuffer);
+      } else {
+        result = this._compress(this.inputBuffer);
+      }
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} Size, digram table and LZW codes
+     */
     _compress(data) {
+      /** @type {uint8[]} */
       const output = OpCodes.Unpack32LE(data.length);
 
-      if (data.length === 0)
+      if (data.length === 0) {
         return output;
+      }
 
       // Analyze digram (overlapping consecutive byte pair) frequencies.
-      const digramFreq = new Array(65536).fill(0);
+      /** @type {int32[]} */
+      const digramFreq = new Int32Array(65536);
       for (let i = 0; i < data.length - 1; ++i) {
+        /** @type {uint16} */
         const d = OpCodes.Pack16BE(data[i], data[i + 1]);
         ++digramFreq[d];
       }
@@ -244,61 +347,94 @@
       // frequent first, digrams of equal frequency by ascending 16-bit digram
       // value (first byte high, second byte low). Which 128 digrams survive
       // the cut and the code each one gets are therefore a function of the
-      // data alone; the comparison never returns 0 for two different digrams,
-      // so the result does not depend on whether the host sort is stable.
-      let topDigrams = [];
+      // data alone. The order is a numeric sort of one key per digram,
+      // (data.length - frequency) * 65536 + digram: every key is distinct
+      // (it contains the digram), so there are no ties to resolve.
+      /** @type {int32} */
+      let candidateCount = 0;
       for (let d = 0; d < 65536; ++d) {
-        if (digramFreq[d] >= 2)
-          topDigrams.push(d);
+        if (digramFreq[d] >= 2) {
+          ++candidateCount;
+        }
       }
-      topDigrams.sort((a, b) => digramFreq[a] !== digramFreq[b] ? digramFreq[b] - digramFreq[a] : a - b);
-      if (topDigrams.length > MAX_DIGRAMS)
-        topDigrams = topDigrams.slice(0, MAX_DIGRAMS);
+      /** @type {float64[]} */
+      const sortKeys = new Float64Array(candidateCount);
+      /** @type {int32} */
+      let keyCount = 0;
+      for (let d = 0; d < 65536; ++d) {
+        if (digramFreq[d] >= 2) {
+          sortKeys[keyCount++] = (data.length - digramFreq[d]) * 65536 + d;
+        }
+      }
+      sortKeys.sort();
+      /** @type {int32} */
+      const keptCount = Math.min(candidateCount, MAX_DIGRAMS);
+      /** @type {int32[]} */
+      const topDigrams = new Array(keptCount);
+      for (let k = 0; k < keptCount; ++k) {
+        topDigrams[k] = sortKeys[k] % 65536;
+      }
 
       // Write digram table.
-      for (let i = 0; i < 2; ++i) output.push(0); // placeholder, filled below
+      /** @type {uint8[]} */
       const countBytes = OpCodes.Unpack16LE(topDigrams.length);
-      output[output.length - 2] = countBytes[0];
-      output[output.length - 1] = countBytes[1];
-      for (const d of topDigrams) {
-        const pair = OpCodes.Unpack16BE(d);
-        output.push(pair[0], pair[1]);
+      output.push(countBytes[0]);
+      output.push(countBytes[1]);
+      for (let k = 0; k < topDigrams.length; ++k) {
+        /** @type {uint8[]} */
+        const pair = OpCodes.Unpack16BE(topDigrams[k]);
+        output.push(pair[0]);
+        output.push(pair[1]);
       }
 
       // Build initial dictionary as a trie: (parentCode, childByte) -> code.
       // Codes 0-255 = single bytes. Codes 256..256+N-1 = digrams. Code
       // 256+N = stop code.
-      const trie = new Map();
+      /** @type {LzwlTrie} */
+      const trie = new LzwlTrie();
+      /** @type {int32} */
       let trieNextCode = 256;
 
-      for (const d of topDigrams) {
-        const pair = OpCodes.Unpack16BE(d);
-        const key = pair[0] * 256 + pair[1];
-        if (!trie.has(key))
-          trie.set(key, trieNextCode);
+      for (let k = 0; k < topDigrams.length; ++k) {
+        /** @type {uint8[]} */
+        const pair = OpCodes.Unpack16BE(topDigrams[k]);
+        /** @type {int32} */
+        const known = trie.find(pair[0], pair[1]);
+        if (known < 0) {
+          trie.add(pair[0], pair[1], trieNextCode);
+        }
         ++trieNextCode;
       }
 
+      /** @type {int32} */
       const stopCode = trieNextCode;
       ++trieNextCode;
+      /** @type {int32} */
       let decoderNextCode = trieNextCode;
+      /** @type {boolean} */
       let hasPrevious = false;
 
+      /** @type {int32} */
       let codeWidth = 9;
-      while (OpCodes.Shl32(1, codeWidth) < trieNextCode)
+      while (OpCodes.Shl32(1, codeWidth) < trieNextCode) {
         ++codeWidth;
+      }
 
       // LZW encode using the trie.
+      /** @type {BitWriter} */
       const writer = new BitWriter();
+      /** @type {int32} */
       let currentCode = data[0];
+      /** @type {int32} */
       let i = 1;
 
       while (i < data.length) {
+        /** @type {uint8} */
         const nextByte = data[i];
-        const key = currentCode * 256 + nextByte;
-        const existingCode = trie.get(key);
+        /** @type {int32} */
+        const existingCode = trie.find(currentCode, nextByte);
 
-        if (existingCode !== undefined) {
+        if (existingCode >= 0) {
           currentCode = existingCode;
           ++i;
           continue;
@@ -307,15 +443,16 @@
         writer.writeBits(currentCode, codeWidth);
 
         if (trieNextCode < MAX_DICT_SIZE) {
-          trie.set(key, trieNextCode);
+          trie.add(currentCode, nextByte, trieNextCode);
           ++trieNextCode;
         }
 
         if (hasPrevious) {
           if (decoderNextCode < MAX_DICT_SIZE) {
             ++decoderNextCode;
-            if (decoderNextCode >= OpCodes.Shl32(1, codeWidth) && codeWidth < MAX_BITS)
+            if (decoderNextCode >= OpCodes.Shl32(1, codeWidth) && codeWidth < MAX_BITS) {
               ++codeWidth;
+            }
           }
         }
         hasPrevious = true;
@@ -328,84 +465,133 @@
 
       if (hasPrevious && decoderNextCode < MAX_DICT_SIZE) {
         ++decoderNextCode;
-        if (decoderNextCode >= OpCodes.Shl32(1, codeWidth) && codeWidth < MAX_BITS)
+        if (decoderNextCode >= OpCodes.Shl32(1, codeWidth) && codeWidth < MAX_BITS) {
           ++codeWidth;
+        }
       }
 
       writer.writeBits(stopCode, codeWidth);
       writer.flush();
 
-      for (let k = 0; k < writer.bytes.length; ++k) output.push(writer.bytes[k]);
+      for (let k = 0; k < writer.bytes.length; ++k) {
+        output.push(writer.bytes[k]);
+      }
 
       return output;
     }
 
+    /**
+     * @param {uint8[]} input - Size, digram table and LZW codes
+     * @returns {uint8[]} Decoded bytes
+     */
     _decompress(input) {
+      /** @type {uint8[]} */
+      const result = [];
+      /** @type {uint32} */
       const originalSize = OpCodes.Pack32LE(input[0], input[1], input[2], input[3]);
-      if (originalSize === 0)
-        return [];
+      if (originalSize === 0) {
+        return result;
+      }
 
+      /** @type {int32} */
       let offset = 4;
+      /** @type {int32} */
       const digramCount = OpCodes.Pack16LE(input[offset], input[offset + 1]);
       offset += 2;
 
+      // Entries are appended in code order, so a code is known exactly when
+      // it is below dict.length
+      /** @type {uint8[][]} */
       const dict = [];
+      /** @type {int32} */
       let nextCode = 0;
-      for (let i = 0; i < 256; ++i)
-        dict[nextCode++] = [i];
-
-      for (let i = 0; i < digramCount; ++i) {
-        const a = input[offset++];
-        const b = input[offset++];
-        dict[nextCode++] = [a, b];
+      for (let i = 0; i < 256; ++i) {
+        /** @type {uint8[]} */
+        const single = [];
+        single.push(i);
+        dict.push(single);
+        ++nextCode;
       }
 
+      for (let i = 0; i < digramCount; ++i) {
+        /** @type {uint8[]} */
+        const pair = [];
+        pair.push(input[offset++]);
+        pair.push(input[offset++]);
+        dict.push(pair);
+        ++nextCode;
+      }
+
+      /** @type {int32} */
       const stopCode = nextCode++;
+      // The stop code's slot holds no entry (the code ends the stream before
+      // any lookup); a placeholder keeps later entries at their code
+      /** @type {uint8[]} */
+      const stopPlaceholder = [];
+      dict.push(stopPlaceholder);
 
+      /** @type {int32} */
       let codeWidth = 9;
-      while (OpCodes.Shl32(1, codeWidth) < nextCode)
+      while (OpCodes.Shl32(1, codeWidth) < nextCode) {
         ++codeWidth;
+      }
 
+      /** @type {BitReader} */
       const reader = new BitReader(input.slice(offset));
-      const result = [];
 
+      /** @type {uint32} */
       const firstCode = reader.readBits(codeWidth);
-      if (firstCode === stopCode || dict[firstCode] === undefined)
+      if (firstCode === stopCode || firstCode >= dict.length) {
         return result;
+      }
 
+      /** @type {uint8[]} */
       let prevEntry = dict[firstCode];
-      for (let k = 0; k < prevEntry.length; ++k) result.push(prevEntry[k]);
+      for (let k = 0; k < prevEntry.length; ++k) {
+        result.push(prevEntry[k]);
+      }
 
       while (result.length < originalSize) {
+        /** @type {uint32} */
         const code = reader.readBits(codeWidth);
-        if (code === stopCode)
+        if (code === stopCode) {
           break;
+        }
 
+        /** @type {uint8[]} */
         let entry;
-        if (dict[code] !== undefined) {
+        if (code < dict.length) {
           entry = dict[code];
         } else if (code === nextCode) {
           // Classic LZW "KwKwK" case: the code refers to the entry that is
           // about to be created from the still-pending phrase.
-          entry = prevEntry.concat([prevEntry[0]]);
+          entry = prevEntry.slice();
+          entry.push(prevEntry[0]);
         } else {
-          throw new Error(`LZWL: unknown code ${code} at position ${result.length}.`);
+          throw new Error("LZWL: unknown code " + code + " at position " + result.length + ".");
         }
 
-        for (let k = 0; k < entry.length; ++k) result.push(entry[k]);
+        for (let k = 0; k < entry.length; ++k) {
+          result.push(entry[k]);
+        }
 
         if (nextCode < MAX_DICT_SIZE) {
-          dict[nextCode] = prevEntry.concat([entry[0]]);
+          /** @type {uint8[]} */
+          const newEntry = prevEntry.slice();
+          newEntry.push(entry[0]);
+          dict.push(newEntry);
           ++nextCode;
-          if (nextCode >= OpCodes.Shl32(1, codeWidth) && codeWidth < MAX_BITS)
+          if (nextCode >= OpCodes.Shl32(1, codeWidth) && codeWidth < MAX_BITS) {
             ++codeWidth;
+          }
         }
 
         prevEntry = entry;
       }
 
-      if (result.length > originalSize)
-        result.length = originalSize;
+      if (result.length > originalSize) {
+        return result.slice(0, originalSize);
+      }
 
       return result;
     }

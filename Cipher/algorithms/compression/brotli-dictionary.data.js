@@ -1430,6 +1430,12 @@
     6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7
   ];
 
+  // Returns the table of this module with the given property name, so a
+  // consumer can bind it to a local of the element type it documents.
+  function Table(name) {
+    return BrotliDictionary[name];
+  }
+
   const BrotliDictionary = {
     DICT: DICT,
     CONTEXT_LUT0: CONTEXT_LUT0,
@@ -1440,7 +1446,8 @@
     DOFFSET: DOFFSET,
     TRANSFORMS: TRANSFORMS,
     ApplyTransform: ApplyTransform,
-    LookupWord: LookupWord
+    LookupWord: LookupWord,
+    Table: Table
   };
 
   return BrotliDictionary;

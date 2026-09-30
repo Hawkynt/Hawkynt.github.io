@@ -77,18 +77,18 @@
       ];
 
       this.knownVulnerabilities = [
-        {
-          type: "Frequency Analysis",
-          text: "Simple substitution cipher vulnerable to frequency analysis - letter frequencies preserved",
-          uri: "https://en.wikipedia.org/wiki/Frequency_analysis",
-          mitigation: "Educational use only - easily broken by frequency analysis"
-        },
-        {
-          type: "Pattern Recognition",
-          text: "Fixed transformation pattern makes it vulnerable to pattern recognition attacks",
-          uri: "https://en.wikipedia.org/wiki/Substitution_cipher",
-          mitigation: "Combine with other techniques or use for educational purposes only"
-        }
+        new Vulnerability(
+          "Frequency Analysis",
+          "Simple substitution cipher vulnerable to frequency analysis - letter frequencies preserved",
+          "Educational use only - easily broken by frequency analysis",
+          "https://en.wikipedia.org/wiki/Frequency_analysis"
+        ),
+        new Vulnerability(
+          "Pattern Recognition",
+          "Fixed transformation pattern makes it vulnerable to pattern recognition attacks",
+          "Combine with other techniques or use for educational purposes only",
+          "https://en.wikipedia.org/wiki/Substitution_cipher"
+        )
       ];
 
       // Test vectors using byte arrays - bit-perfect results from implementation
@@ -124,7 +124,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {AtbashCipherInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -142,19 +142,25 @@
   class AtbashCipherInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {AtbashCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse; // Not used for Atbash as it's self-inverse
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Character sets
+      /** @type {string} */
       this.UPPERCASE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      /** @type {string} */
       this.LOWERCASE = 'abcdefghijklmnopqrstuvwxyz';
+      /** @type {string} */
       this.UPPER_REVERSE = 'ZYXWVUTSRQPONMLKJIHGFEDCBA';
+      /** @type {string} */
       this.LOWER_REVERSE = 'zyxwvutsrqponmlkjihgfedcba';
     }
 
@@ -182,23 +188,27 @@
    */
 
     Result() {
+      /** @type {uint8[]} */
+      const output = [];
       if (this.inputBuffer.length === 0) {
-        return [];
+        return output;
       }
 
-      const output = [];
-
       // Process each byte
-      for (const byte of this.inputBuffer) {
-        const char = String.fromCharCode(byte);
+      for (let i = 0; i < this.inputBuffer.length; i++) {
+        /** @type {string} */
+        const char = String.fromCharCode(this.inputBuffer[i]);
+        /** @type {string} */
         let transformedChar = char; // Default: don't change non-alphabetic characters
 
         // Handle uppercase letters
+        /** @type {int32} */
         const upperIndex = this.UPPERCASE.indexOf(char);
         if (upperIndex !== -1) {
           transformedChar = this.UPPER_REVERSE.charAt(upperIndex);
         } else {
           // Handle lowercase letters
+          /** @type {int32} */
           const lowerIndex = this.LOWERCASE.indexOf(char);
           if (lowerIndex !== -1) {
             transformedChar = this.LOWER_REVERSE.charAt(lowerIndex);
@@ -210,7 +220,9 @@
       }
 
       // Clear input buffer for next operation
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
 
       return output;
     }

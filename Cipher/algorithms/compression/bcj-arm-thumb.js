@@ -108,22 +108,40 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True for the inverse transform
+     * @returns {BcjArmThumbInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new BcjArmThumbInstance(this, isInverse);
     }
   }
 
   class BcjArmThumbInstance extends IAlgorithmInstance {
+    /**
+     * @param {BcjArmThumb} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True for the inverse transform
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
 
+    /**
+     * Transform the collected input
+     * @returns {uint8[]} Transformed bytes
+     */
     Result() {
+      /** @type {uint8[]} */
       const output = this._transform(this.inputBuffer, !this.isInverse);
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return output;
     }
 
@@ -132,6 +150,11 @@
     // and halfword 2 has its top 5 bits equal to 11111 (byte[i+3]&0xF8===0xF8).
     // Neither identifying nibble is touched by the offset rewrite, so encode and
     // decode agree on which halfword pairs are BL instructions.
+    /**
+     * @param {uint8[]} bytes - Input bytes
+     * @param {boolean} encode - True to encode, false to decode
+     * @returns {uint8[]} Transformed copy
+     */
     _transform(bytes, encode) {
       const data = bytes.slice();
       const n = data.length;

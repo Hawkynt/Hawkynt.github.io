@@ -129,7 +129,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Base32Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -146,22 +146,22 @@
   class Base32Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Base32Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {string} */
       this.alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+      /** @type {string} */
       this.paddingChar = "=";
+      /** @type {uint8[]|null} */
       this.processedData = null;
-
-      // Create decode lookup table
-      this.decodeTable = {};
-      for (let i = 0; i < this.alphabet.length; i++) {
-        this.decodeTable[this.alphabet[i]] = i;
-      }
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
     }
 
     /**
@@ -180,8 +180,14 @@
       // own, because the coder groups whole units of input and emits padding and
       // framing at the end of the message, so the bytes are collected here and
       // converted once, in Result().
-      if (!this._feedBuffer) this._feedBuffer = [];
-      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
+      if (!this._feedBuffer) {
+        /** @type {uint8[]} */
+        const fresh = [];
+        this._feedBuffer = fresh;
+      }
+      for (let i = 0; i < data.length; i++) {
+        this._feedBuffer.push(data[i]);
+      }
     }
 
     /**
@@ -194,75 +200,99 @@
       if (!this._feedBuffer) {
         throw new Error('Base32Instance.Result: No data processed. Call Feed() first.');
       }
-      this.processedData = this.isInverse
-        ? this.decode(this._feedBuffer)
-        : this.encode(this._feedBuffer);
+      if (this.isInverse) {
+        this.processedData = this.decode(this._feedBuffer);
+      } else {
+        this.processedData = this.encode(this._feedBuffer);
+      }
       return this.processedData;
     }
 
+    /**
+     * Encode bytes as padded Base32 text
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} ASCII Base32 characters
+     */
     encode(data) {
+      /** @type {uint8[]} */
+      const resultBytes = [];
       if (data.length === 0) {
-        return [];
+        return resultBytes;
       }
 
+      /** @type {string} */
       let result = "";
+      // Bit buffer: only its low bits are ever read, so it may wrap
+      /** @type {uint32} */
       let buffer = 0;
+      /** @type {int32} */
       let bufferBits = 0;
 
       for (let i = 0; i < data.length; i++) {
-        buffer = OpCodes.OrN(OpCodes.Shl32(buffer, 8), data[i]);
+        buffer = OpCodes.Or32(OpCodes.Shl32(buffer, 8), data[i]);
         bufferBits += 8;
 
         while (bufferBits >= 5) {
-          result += this.alphabet[OpCodes.AndN(OpCodes.Shr32(buffer, bufferBits - 5), 31)];
+          result += this.alphabet.charAt(OpCodes.And32(OpCodes.Shr32(buffer, bufferBits - 5), 31));
           bufferBits -= 5;
         }
       }
 
       // Handle remaining bits
       if (bufferBits > 0) {
-        result += this.alphabet[OpCodes.AndN(OpCodes.Shl32(buffer, 5 - bufferBits), 31)];
+        result += this.alphabet.charAt(OpCodes.And32(OpCodes.Shl32(buffer, 5 - bufferBits), 31));
       }
 
       // Add padding
+      /** @type {int32} */
       const padding = (8 - (result.length % 8)) % 8;
       for (let i = 0; i < padding; i++) {
         result += this.paddingChar;
       }
 
-      const resultBytes = [];
       for (let i = 0; i < result.length; i++) {
         resultBytes.push(result.charCodeAt(i));
       }
       return resultBytes;
     }
 
+    /**
+     * Decode Base32 text to bytes (case-insensitive, other characters ignored)
+     * @param {uint8[]} data - ASCII Base32 characters
+     * @returns {uint8[]} Decoded bytes
+     */
     decode(data) {
+      /** @type {uint8[]} */
+      const result = [];
       if (data.length === 0) {
-        return [];
+        return result;
       }
 
+      /** @type {string} */
       const input = OpCodes.BytesToChars(data).toUpperCase();
+      /** @type {string} */
       let cleanInput = input.replace(/[^A-Z2-7]/g, "");
 
       // Remove padding
       cleanInput = cleanInput.replace(/=+$/, "");
 
-      const result = [];
+      /** @type {uint32} */
       let buffer = 0;
+      /** @type {int32} */
       let bufferBits = 0;
 
       for (let i = 0; i < cleanInput.length; i++) {
-        const value = this.decodeTable[cleanInput[i]];
-        if (value === undefined) {
-          throw new Error(`Invalid Base32 character: ${cleanInput[i]}`);
+        /** @type {int32} */
+        const value = this.alphabet.indexOf(cleanInput.charAt(i));
+        if (value < 0) {
+          throw new Error("Invalid Base32 character: " + cleanInput.charAt(i));
         }
 
-        buffer = OpCodes.OrN(OpCodes.Shl32(buffer, 5), value);
+        buffer = OpCodes.Or32(OpCodes.Shl32(buffer, 5), value);
         bufferBits += 5;
 
         if (bufferBits >= 8) {
-          result.push(OpCodes.AndN(OpCodes.Shr32(buffer, bufferBits - 8), 255));
+          result.push(OpCodes.And32(OpCodes.Shr32(buffer, bufferBits - 8), 255));
           bufferBits -= 8;
         }
       }
@@ -271,14 +301,29 @@
     }
 
     // Utility methods
+
+    /**
+     * Encode a string (one byte per character) as Base32 text
+     * @param {string} str - Input text
+     * @returns {string} Base32 text
+     */
     encodeString(str) {
+      /** @type {uint8[]} */
       const bytes = OpCodes.AnsiToBytes(str);
+      /** @type {uint8[]} */
       const encoded = this.encode(bytes);
       return OpCodes.BytesToChars(encoded);
     }
 
+    /**
+     * Decode Base32 text to a string (one character per byte)
+     * @param {string} str - Base32 text
+     * @returns {string} Decoded text
+     */
     decodeString(str) {
+      /** @type {uint8[]} */
       const bytes = OpCodes.AnsiToBytes(str);
+      /** @type {uint8[]} */
       const decoded = this.decode(bytes);
       return OpCodes.BytesToChars(decoded);
     }
