@@ -56,12 +56,15 @@
 
   // ===== FORMAT CONSTANTS =====
 
+  /** @type {int32} */
   const MAX_DEPTH = 2;
 
   // Context identifier spaces: order-0 occupies id 0, order-1 occupies
   // 0x100..0x1FF and order-2 occupies 0x10100..0x200FF, so the three orders
   // never collide inside the single context dictionary.
+  /** @type {int32} */
   const CTX_ORDER1_BASE = 0x100;
+  /** @type {int32} */
   const CTX_ORDER2_BASE = 0x10100;
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -166,175 +169,313 @@
         this.testVectors = this.tests;
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {CTWInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new CTWInstance(this, isInverse);
       }
     }
 
+    /** @type {int32} */
+    const CONTEXT_ID_COUNT = CTX_ORDER2_BASE + 0x10000; // ids 0 .. 0x200FF
+
     /**
-     * Frequency table for one context, preserving first-seen order so that ties
-     * between equally frequent symbols always resolve to the earliest observed
-     * one (JavaScript Map iterates in insertion order).
+     * Symbol counts of one context, with the symbols kept in first-seen order
+     * so that ties between equally frequent symbols always resolve to the
+     * earliest observed one.
+     */
+    class ContextFrequencies {
+      constructor() {
+        /** @type {uint8[]} */
+        this.symbols = [];
+        /** @type {int32[]} */
+        this.counts = new Int32Array(256);
+      }
+    }
+
+    /**
+     * Frequency table for every context, preserving first-seen order so that
+     * ties between equally frequent symbols always resolve to the earliest
+     * observed one.
      */
     class ContextModel {
       constructor() {
-        this.contexts = new Map();
+        /** @type {ContextFrequencies[]} */
+        this.contexts = new Array(CONTEXT_ID_COUNT);
+        for (let i = 0; i < CONTEXT_ID_COUNT; i++) {
+          this.contexts[i] = null;
+        }
       }
 
-      /** Returns the most frequent symbol of a context, or -1 when unseen. */
+      /**
+       * Returns the most frequent symbol of a context, or -1 when unseen.
+       * @param {int32} contextId - Context identifier
+       * @returns {int32} Symbol, or -1
+       */
       mostFrequent(contextId) {
-        const freqs = this.contexts.get(contextId);
-        if (freqs === undefined || freqs.size === 0)
+        /** @type {ContextFrequencies} */
+        const freqs = this.contexts[contextId];
+        if (freqs === null || freqs.symbols.length === 0) {
           return -1;
+        }
 
+        /** @type {int32} */
         let bestSymbol = -1;
+        /** @type {int32} */
         let bestCount = 0;
-        for (const entry of freqs)
-          if (entry[1] > bestCount) {
-            bestCount = entry[1];
-            bestSymbol = entry[0];
+        for (let k = 0; k < freqs.symbols.length; k++) {
+          /** @type {uint8} */
+          const symbol = freqs.symbols[k];
+          if (freqs.counts[symbol] > bestCount) {
+            bestCount = freqs.counts[symbol];
+            bestSymbol = symbol;
           }
+        }
 
         return bestSymbol;
       }
 
+      /**
+       * Count one more occurrence of a symbol in a context
+       * @param {int32} contextId - Context identifier
+       * @param {uint8} symbol - Observed symbol
+       */
       update(contextId, symbol) {
-        let freqs = this.contexts.get(contextId);
-        if (freqs === undefined) {
-          freqs = new Map();
-          this.contexts.set(contextId, freqs);
+        /** @type {ContextFrequencies} */
+        let freqs = this.contexts[contextId];
+        if (freqs === null) {
+          freqs = new ContextFrequencies();
+          this.contexts[contextId] = freqs;
         }
-        const current = freqs.get(symbol);
-        freqs.set(symbol, (current === undefined ? 0 : current) + 1);
+        if (freqs.counts[symbol] === 0) {
+          freqs.symbols.push(symbol);
+        }
+        freqs.counts[symbol] = freqs.counts[symbol] + 1;
       }
     }
 
     class CTWInstance extends IAlgorithmInstance {
+      /**
+       * @param {CTWAlgorithm} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse; // true = decompress, false = compress
+        /** @type {uint8[]} */
         this.inputBuffer = [];
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
-        const result = this.isInverse
-          ? this.decompress(this.inputBuffer)
-          : this.compress(this.inputBuffer);
+        /** @type {uint8[]} */
+        let result;
+        if (this.isInverse) {
+          result = this.decompress(this.inputBuffer);
+        } else {
+          result = this.compress(this.inputBuffer);
+        }
 
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return result;
       }
 
+      /**
+       * @param {uint8[]} data - Input bytes (a missing array counts as empty)
+       * @returns {uint8[]} Header, hit flags and mispredicted bytes
+       */
       compress(data) {
-        const src = data || [];
+        /** @type {uint8[]} */
+        let src = data;
+        if (!src) {
+          src = [];
+        }
+        /** @type {int32} */
         const n = src.length;
-        const output = [];
 
         // Header: 4-byte little-endian original size, 1-byte maximum order.
-        output.push(n&0xFF);
-        output.push(OpCodes.Shr32(n, 8)&0xFF);
-        output.push(OpCodes.Shr32(n, 16)&0xFF);
-        output.push(OpCodes.Shr32(n, 24)&0xFF);
+        /** @type {uint8[]} */
+        const output = OpCodes.Unpack32LE(n);
         output.push(MAX_DEPTH);
 
-        if (n === 0)
+        if (n === 0) {
           return output;
+        }
 
+        /** @type {ContextModel} */
         const model = new ContextModel();
+        /** @type {uint8[]} */
         const hits = new Uint8Array(n);
+        /** @type {uint8[]} */
         const missSymbols = [];
 
         for (let i = 0; i < n; ++i) {
+          /** @type {uint8} */
           const symbol = src[i];
+          /** @type {int32} */
           const predicted = this._predict(model, src, i);
 
-          if (predicted === symbol)
+          if (predicted === symbol) {
             hits[i] = 1;
-          else
+          } else {
             missSymbols.push(symbol);
+          }
 
-          model.update(0, symbol);
-          if (i >= 1) model.update(CTX_ORDER1_BASE + src[i - 1], symbol);
-          if (i >= 2) model.update(CTX_ORDER2_BASE + src[i - 2] * 256 + src[i - 1], symbol);
+          this._learn(model, src, i, symbol);
         }
 
         // Pack the hit/miss flags, MSB first within each byte.
+        /** @type {int32} */
         const flagByteCount = Math.floor((n + 7) / 8);
         for (let byteIdx = 0; byteIdx < flagByteCount; ++byteIdx) {
+          /** @type {uint32} */
           let flagByte = 0;
           for (let bit = 0; bit < 8; ++bit) {
+            /** @type {int32} */
             const srcIdx = byteIdx * 8 + bit;
-            if (srcIdx < n && hits[srcIdx] === 1)
-              flagByte = OpCodes.Or32(flagByte, OpCodes.Shr32(0x80, bit))&0xFF;
+            if (srcIdx < n && hits[srcIdx] === 1) {
+              flagByte = OpCodes.And32(OpCodes.Or32(flagByte, OpCodes.Shr32(0x80, bit)), 0xFF);
+            }
           }
           output.push(flagByte);
         }
 
-        for (let _i = 0; _i < missSymbols.length; _i++) output.push(missSymbols[_i]);
+        for (let k = 0; k < missSymbols.length; k++) {
+          output.push(missSymbols[k]);
+        }
 
         return output;
       }
 
+      /**
+       * @param {uint8[]} data - Header, hit flags and mispredicted bytes
+       * @returns {uint8[]} Decoded bytes
+       */
       decompress(data) {
-        const bytes = data || [];
-        if (bytes.length < 5)
-          return [];
+        /** @type {uint8[]} */
+        let bytes = data;
+        if (!bytes) {
+          bytes = [];
+        }
+        /** @type {uint8[]} */
+        const dst = [];
+        if (bytes.length < 5) {
+          return dst;
+        }
 
+        // float64: the size may be up to 2^32 - 1 and the flag count adds 7 to it
+        /** @type {float64} */
         const originalSize = OpCodes.Pack32LE(bytes[0], bytes[1], bytes[2], bytes[3]);
         // bytes[4] carries the maximum context order (currently always 2).
-        if (originalSize === 0)
-          return [];
+        if (originalSize === 0) {
+          return dst;
+        }
 
+        /** @type {int32} */
         const base = 5;
+        /** @type {int32} */
         const flagByteCount = Math.floor((originalSize + 7) / 8);
-        if (bytes.length - base < flagByteCount)
+        if (bytes.length - base < flagByteCount) {
           throw new Error('Unexpected end of context-predictor flag data');
+        }
 
+        /** @type {ContextModel} */
         const model = new ContextModel();
-        const dst = [];
+        /** @type {int32} */
         let missPos = base + flagByteCount;
 
         for (let i = 0; i < originalSize; ++i) {
+          /** @type {int32} */
           const byteIdx = base + Math.floor(i / 8);
+          /** @type {int32} */
           const bitIdx = i % 8;
+          /** @type {boolean} */
           const isHit = OpCodes.And32(bytes[byteIdx], OpCodes.Shr32(0x80, bitIdx)) !== 0;
 
-          let symbol;
+          /** @type {int32} */
+          let symbol = 0;
           if (isHit) {
             symbol = this._predict(model, dst, dst.length);
           } else {
-            if (missPos >= bytes.length)
+            if (missPos >= bytes.length) {
               throw new Error('Unexpected end of context-predictor miss data');
+            }
             symbol = bytes[missPos++];
           }
 
           dst.push(symbol);
 
-          const idx = dst.length - 1;
-          model.update(0, symbol);
-          if (idx >= 1) model.update(CTX_ORDER1_BASE + dst[idx - 1], symbol);
-          if (idx >= 2) model.update(CTX_ORDER2_BASE + dst[idx - 2] * 256 + dst[idx - 1], symbol);
+          this._learn(model, dst, dst.length - 1, symbol);
         }
 
         return dst;
       }
 
       /**
+       * Count the byte at position idx in its order-0, order-1 and order-2
+       * contexts (as far as the data before it reaches).
+       * @param {ContextModel} model - Model
+       * @param {uint8[]} data - Bytes up to at least idx
+       * @param {int32} idx - Position of the byte
+       * @param {uint8} symbol - The byte
+       */
+      _learn(model, data, idx, symbol) {
+        model.update(0, symbol);
+        if (idx >= 1) {
+          /** @type {int32} */
+          const prev1 = data[idx - 1];
+          model.update(CTX_ORDER1_BASE + prev1, symbol);
+          if (idx >= 2) {
+            /** @type {int32} */
+            const prev2 = data[idx - 2];
+            model.update(CTX_ORDER2_BASE + prev2 * 256 + prev1, symbol);
+          }
+        }
+      }
+
+      /**
        * Predicts the byte at position pos from the deepest context that has
        * already been observed: order-2, then order-1, then order-0, then zero.
+       * @param {ContextModel} model - Model
+       * @param {uint8[]} data - Bytes before pos
+       * @param {int32} pos - Position to predict
+       * @returns {int32} Predicted byte
        */
       _predict(model, data, pos) {
         if (pos >= 2) {
-          const pred = model.mostFrequent(CTX_ORDER2_BASE + data[pos - 2] * 256 + data[pos - 1]);
-          if (pred >= 0) return pred;
+          /** @type {int32} */
+          const prev2 = data[pos - 2];
+          /** @type {int32} */
+          const prev1 = data[pos - 1];
+          /** @type {int32} */
+          const pred2 = model.mostFrequent(CTX_ORDER2_BASE + prev2 * 256 + prev1);
+          if (pred2 >= 0) {
+            return pred2;
+          }
         }
         if (pos >= 1) {
-          const pred = model.mostFrequent(CTX_ORDER1_BASE + data[pos - 1]);
-          if (pred >= 0) return pred;
+          /** @type {int32} */
+          const prev1 = data[pos - 1];
+          /** @type {int32} */
+          const pred1 = model.mostFrequent(CTX_ORDER1_BASE + prev1);
+          if (pred1 >= 0) {
+            return pred1;
+          }
         }
+        /** @type {int32} */
         const pred = model.mostFrequent(0);
-        if (pred >= 0) return pred;
+        if (pred >= 0) {
+          return pred;
+        }
 
         return 0;
       }

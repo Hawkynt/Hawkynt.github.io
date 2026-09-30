@@ -155,16 +155,16 @@
      */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {string} */
       this.alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+      /** @type {string} */
       this.paddingChar = "=";
+      /** @type {uint8[]|null} */
       this.processedData = null;
-
-      // Create decode lookup table
-      this.decodeTable = {};
-      for (let i = 0; i < this.alphabet.length; i++) {
-        this.decodeTable[this.alphabet[i]] = i;
-      }
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
     }
 
     /**
@@ -182,8 +182,14 @@
       // own, because the coder groups whole units of input and emits padding and
       // framing at the end of the message, so the bytes are collected here and
       // converted once, in Result().
-      if (!this._feedBuffer) this._feedBuffer = [];
-      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
+      if (!this._feedBuffer) {
+        /** @type {uint8[]} */
+        const fresh = [];
+        this._feedBuffer = fresh;
+      }
+      for (let i = 0; i < data.length; i++) {
+        this._feedBuffer.push(data[i]);
+      }
     }
 
     /**
@@ -195,9 +201,11 @@
       if (!this._feedBuffer) {
         throw new Error('Base64Instance.Result: No data processed. Call Feed() first.');
       }
-      this.processedData = this.isInverse
-        ? this.decode(this._feedBuffer)
-        : this.encode(this._feedBuffer);
+      if (this.isInverse) {
+        this.processedData = this.decode(this._feedBuffer);
+      } else {
+        this.processedData = this.encode(this._feedBuffer);
+      }
       return this.processedData;
     }
 
@@ -207,27 +215,36 @@
      * @returns {uint8[]} Base64-encoded bytes
      */
     encode(data) {
+      /** @type {uint8[]} */
+      const resultBytes = [];
       if (data.length === 0) {
-        return [];
+        return resultBytes;
       }
 
+      /** @type {string} */
       let result = "";
+      /** @type {int32} */
       let i = 0;
 
       while (i < data.length) {
+        /** @type {uint8} */
         const a = data[i++];
+        /** @type {uint8} */
         const b = i < data.length ? data[i++] : 0;
+        /** @type {uint8} */
         const c = i < data.length ? data[i++] : 0;
 
-        const combined = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(a, 16), OpCodes.Shl32(b, 8)), c);
+        /** @type {uint32} */
+        const combined = OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(a, 16), OpCodes.Shl32(b, 8)), c);
 
-        result += this.alphabet[OpCodes.AndN(OpCodes.Shr32(combined, 18), 63)];
-        result += this.alphabet[OpCodes.AndN(OpCodes.Shr32(combined, 12), 63)];
-        result += this.alphabet[OpCodes.AndN(OpCodes.Shr32(combined, 6), 63)];
-        result += this.alphabet[OpCodes.AndN(combined, 63)];
+        result += this.alphabet.charAt(OpCodes.And32(OpCodes.Shr32(combined, 18), 63));
+        result += this.alphabet.charAt(OpCodes.And32(OpCodes.Shr32(combined, 12), 63));
+        result += this.alphabet.charAt(OpCodes.And32(OpCodes.Shr32(combined, 6), 63));
+        result += this.alphabet.charAt(OpCodes.And32(combined, 63));
       }
 
       // Add padding
+      /** @type {int32} */
       const padding = data.length % 3;
       if (padding === 1) {
         result = result.slice(0, -2) + this.paddingChar + this.paddingChar;
@@ -235,11 +252,21 @@
         result = result.slice(0, -1) + this.paddingChar;
       }
 
-      const resultBytes = [];
-      for (let i = 0; i < result.length; i++) {
-        resultBytes.push(result.charCodeAt(i));
+      for (let k = 0; k < result.length; k++) {
+        resultBytes.push(result.charCodeAt(k));
       }
       return resultBytes;
+    }
+
+    /**
+     * Value of a Base64 character; anything outside the alphabet counts as 0
+     * @param {string} ch - Character
+     * @returns {int32} Its 6-bit value
+     */
+    charValue(ch) {
+      /** @type {int32} */
+      const value = this.alphabet.indexOf(ch);
+      return value < 0 ? 0 : value;
     }
 
     /**
@@ -248,54 +275,71 @@
      * @returns {uint8[]} Decoded binary bytes
      */
     decode(data) {
+      /** @type {uint8[]} */
+      const result = [];
       if (data.length === 0) {
-        return [];
+        return result;
       }
 
+      /** @type {string} */
       const input = OpCodes.BytesToChars(data);
+      /** @type {string} */
       let cleanInput = input.replace(/[^A-Za-z0-9+\/=]/g, "");
 
       // Count padding characters
-      const paddingMatch = cleanInput.match(/=+$/);
-      const paddingCount = paddingMatch ? paddingMatch[0].length : 0;
+      /** @type {int32} */
+      let paddingCount = 0;
+      while (paddingCount < cleanInput.length && cleanInput.charAt(cleanInput.length - 1 - paddingCount) === '=') {
+        paddingCount++;
+      }
 
       // Remove padding for processing
-      cleanInput = cleanInput.replace(/=+$/, "");
+      cleanInput = cleanInput.substring(0, cleanInput.length - paddingCount);
 
-      const result = [];
+      /** @type {int32} */
       let i = 0;
 
       // Process in groups of 4 characters
       while (i + 3 < cleanInput.length) {
-        const a = this.decodeTable[cleanInput[i++]] || 0;
-        const b = this.decodeTable[cleanInput[i++]] || 0;
-        const c = this.decodeTable[cleanInput[i++]] || 0;
-        const d = this.decodeTable[cleanInput[i++]] || 0;
+        /** @type {int32} */
+        const a = this.charValue(cleanInput.charAt(i++));
+        /** @type {int32} */
+        const b = this.charValue(cleanInput.charAt(i++));
+        /** @type {int32} */
+        const c = this.charValue(cleanInput.charAt(i++));
+        /** @type {int32} */
+        const d = this.charValue(cleanInput.charAt(i++));
 
-        const combined = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(a, 18), OpCodes.Shl32(b, 12)), OpCodes.Shl32(c, 6)), d);
+        /** @type {uint32} */
+        const combined = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(a, 18), OpCodes.Shl32(b, 12)), OpCodes.Shl32(c, 6)), d);
 
-        result.push(OpCodes.AndN(OpCodes.Shr32(combined, 16), 255));
-        result.push(OpCodes.AndN(OpCodes.Shr32(combined, 8), 255));
-        result.push(OpCodes.AndN(combined, 255));
+        result.push(OpCodes.And32(OpCodes.Shr32(combined, 16), 255));
+        result.push(OpCodes.And32(OpCodes.Shr32(combined, 8), 255));
+        result.push(OpCodes.And32(combined, 255));
       }
 
       // Handle remaining characters (incomplete group)
       if (i < cleanInput.length) {
-        const a = this.decodeTable[cleanInput[i++]] || 0;
-        const b = i < cleanInput.length ? (this.decodeTable[cleanInput[i++]] || 0) : 0;
-        const c = i < cleanInput.length ? (this.decodeTable[cleanInput[i++]] || 0) : 0;
-        const d = i < cleanInput.length ? (this.decodeTable[cleanInput[i++]] || 0) : 0;
+        /** @type {int32} */
+        const a = this.charValue(cleanInput.charAt(i++));
+        /** @type {int32} */
+        const b = i < cleanInput.length ? this.charValue(cleanInput.charAt(i++)) : 0;
+        /** @type {int32} */
+        const c = i < cleanInput.length ? this.charValue(cleanInput.charAt(i++)) : 0;
+        /** @type {int32} */
+        const d = i < cleanInput.length ? this.charValue(cleanInput.charAt(i++)) : 0;
 
-        const combined = OpCodes.OrN(OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(a, 18), OpCodes.Shl32(b, 12)), OpCodes.Shl32(c, 6)), d);
+        /** @type {uint32} */
+        const combined = OpCodes.Or32(OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(a, 18), OpCodes.Shl32(b, 12)), OpCodes.Shl32(c, 6)), d);
 
-        result.push(OpCodes.AndN(OpCodes.Shr32(combined, 16), 255));
+        result.push(OpCodes.And32(OpCodes.Shr32(combined, 16), 255));
 
         if (paddingCount < 2) {
-          result.push(OpCodes.AndN(OpCodes.Shr32(combined, 8), 255));
+          result.push(OpCodes.And32(OpCodes.Shr32(combined, 8), 255));
         }
 
         if (paddingCount === 0) {
-          result.push(OpCodes.AndN(combined, 255));
+          result.push(OpCodes.And32(combined, 255));
         }
       }
 
@@ -308,7 +352,9 @@
      * @returns {string} Base64-encoded string
      */
     encodeString(str) {
+      /** @type {uint8[]} */
       const bytes = OpCodes.AnsiToBytes(str);
+      /** @type {uint8[]} */
       const encoded = this.encode(bytes);
       return OpCodes.BytesToAnsi(encoded);
     }
@@ -319,7 +365,9 @@
      * @returns {string} Decoded ASCII string
      */
     decodeString(str) {
+      /** @type {uint8[]} */
       const bytes = OpCodes.AnsiToBytes(str);
+      /** @type {uint8[]} */
       const decoded = this.decode(bytes);
       return OpCodes.BytesToAnsi(decoded);
     }

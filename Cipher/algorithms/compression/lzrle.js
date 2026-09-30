@@ -69,15 +69,25 @@
       // LZRLE parameters, matching CompressionWorkbench's LzrleBuildingBlock (the
       // authoritative reference): a clean-room literal/match/run token design, NOT
       // a reproduction of LZO1X's opcode table (see LzrleConstants.cs remarks).
+      /** @type {int32} */
       this.MIN_MATCH = 4;           // Minimum dictionary match length
+      /** @type {int32} */
       this.MIN_RUN = 4;             // Minimum repeated-byte run length
+      /** @type {int32} */
       this.TYPE_LITERAL = 0;
+      /** @type {int32} */
       this.TYPE_MATCH = 1;
+      /** @type {int32} */
       this.TYPE_RUN = 2;
+      /** @type {int32} */
       this.LENGTH_FIELD_BITS = 6;
+      /** @type {int32} */
       this.LENGTH_FIELD_MAX = OpCodes.Shl32(1, this.LENGTH_FIELD_BITS) - 1; // 63
+      /** @type {int32} */
       this.HASH_BITS = 15;
+      /** @type {int32} */
       this.HASH_SIZE = OpCodes.Shl32(1, this.HASH_BITS);
+      /** @type {int32} */
       this.MAX_CHAIN_DEPTH = 128;
 
       // Documentation and references
@@ -143,23 +153,35 @@
   class LZRLEInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LZRLECompression} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {int32} */
       this.MIN_MATCH = algorithm.MIN_MATCH;
+      /** @type {int32} */
       this.MIN_RUN = algorithm.MIN_RUN;
+      /** @type {int32} */
       this.TYPE_LITERAL = algorithm.TYPE_LITERAL;
+      /** @type {int32} */
       this.TYPE_MATCH = algorithm.TYPE_MATCH;
+      /** @type {int32} */
       this.TYPE_RUN = algorithm.TYPE_RUN;
+      /** @type {int32} */
       this.LENGTH_FIELD_BITS = algorithm.LENGTH_FIELD_BITS;
+      /** @type {int32} */
       this.LENGTH_FIELD_MAX = algorithm.LENGTH_FIELD_MAX;
+      /** @type {int32} */
       this.HASH_BITS = algorithm.HASH_BITS;
+      /** @type {int32} */
       this.HASH_SIZE = algorithm.HASH_SIZE;
+      /** @type {int32} */
       this.MAX_CHAIN_DEPTH = algorithm.MAX_CHAIN_DEPTH;
     }
 
@@ -171,38 +193,59 @@
    */
 
     Result() {
-      const result = this.isInverse ? this._decompress() : this._compress();
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      let result;
+      if (this.isInverse) {
+        result = this._decompress();
+      } else {
+        result = this._compress();
+      }
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return result;
     }
 
     // ===== COMPRESSION =====
 
+    /**
+     * @returns {uint8[]} Size header and token stream
+     */
     _compress() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
+      /** @type {uint8[]} */
       const output = OpCodes.Unpack32LE(data.length);
 
-      if (data.length === 0)
+      if (data.length === 0) {
         return output;
+      }
 
+      /** @type {LZRLEHashChainFinder} */
       const finder = new LZRLEHashChainFinder(Math.max(data.length, 1), this.HASH_BITS, this.MAX_CHAIN_DEPTH);
 
+      /** @type {int32} */
       let pos = 0;
+      /** @type {int32} */
       let literalStart = 0;
 
       while (pos < data.length) {
         // 1. Repeated-byte run detection (cheapest to encode when it applies)
+        /** @type {uint8} */
         const runValue = data[pos];
+        /** @type {int32} */
         let runLen = 1;
-        while (pos + runLen < data.length && data[pos + runLen] === runValue)
+        while (pos + runLen < data.length && data[pos + runLen] === runValue) {
           ++runLen;
+        }
 
         if (runLen >= this.MIN_RUN) {
           this._flushLiterals(output, data, literalStart, pos - literalStart);
           this._writeToken(output, this.TYPE_RUN, runLen, this.MIN_RUN);
           output.push(OpCodes.ToByte(runValue));
-          for (let i = 1; i < runLen; ++i)
+          for (let i = 1; i < runLen; ++i) {
             finder.insertPosition(data, pos + i);
+          }
           pos += runLen;
           literalStart = pos;
           continue;
@@ -210,13 +253,19 @@
 
         // 2. Dictionary match search
         if (pos + this.MIN_MATCH <= data.length) {
+          /** @type {LzrleMatch} */
           const match = finder.findMatch(data, pos, data.length, data.length - pos, this.MIN_MATCH);
           if (match.length >= this.MIN_MATCH) {
             this._flushLiterals(output, data, literalStart, pos - literalStart);
             this._writeToken(output, this.TYPE_MATCH, match.length, this.MIN_MATCH);
-            { const _src = OpCodes.Unpack32LE(match.distance); for (let _i = 0; _i < _src.length; _i++) output.push(_src[_i]); }
-            for (let i = 1; i < match.length; ++i)
+            /** @type {uint8[]} */
+            const distanceBytes = OpCodes.Unpack32LE(match.distance);
+            for (let i = 0; i < distanceBytes.length; i++) {
+              output.push(distanceBytes[i]);
+            }
+            for (let i = 1; i < match.length; ++i) {
               finder.insertPosition(data, pos + i);
+            }
             pos += match.length;
             literalStart = pos;
             continue;
@@ -231,16 +280,31 @@
       return output;
     }
 
+    /**
+     * @param {uint8[]} output - Token stream
+     * @param {uint8[]} data - Source bytes
+     * @param {int32} start - First pending literal
+     * @param {int32} count - Number of pending literals
+     */
     _flushLiterals(output, data, start, count) {
-      if (count === 0)
+      if (count === 0) {
         return;
+      }
 
       this._writeToken(output, this.TYPE_LITERAL, count, 0);
-      for (let i = 0; i < count; ++i)
+      for (let i = 0; i < count; ++i) {
         output.push(OpCodes.ToByte(data[start + i]));
+      }
     }
 
+    /**
+     * @param {uint8[]} output - Token stream
+     * @param {int32} type - Token type (2 bits)
+     * @param {int32} length - Length described by the token
+     * @param {int32} baseValue - Smallest length of this type
+     */
     _writeToken(output, type, length, baseValue) {
+      /** @type {int32} */
       const field = length - baseValue;
       if (field < this.LENGTH_FIELD_MAX) {
         output.push(OpCodes.ToByte(OpCodes.Or32(OpCodes.Shl32(type, this.LENGTH_FIELD_BITS), field)));
@@ -248,6 +312,7 @@
       }
 
       output.push(OpCodes.ToByte(OpCodes.Or32(OpCodes.Shl32(type, this.LENGTH_FIELD_BITS), this.LENGTH_FIELD_MAX)));
+      /** @type {int32} */
       let remainder = field - this.LENGTH_FIELD_MAX;
       while (remainder >= 255) {
         output.push(255);
@@ -258,33 +323,47 @@
 
     // ===== DECOMPRESSION =====
 
+    /**
+     * @returns {uint8[]} Decoded bytes
+     */
     _decompress() {
+      /** @type {uint8[]} */
       const compressed = this.inputBuffer;
-      if (compressed.length < 4)
-        return [];
+      /** @type {uint8[]} */
+      const output = [];
+      if (compressed.length < 4) {
+        return output;
+      }
 
+      /** @type {uint32} */
       const originalLength = OpCodes.Pack32LE(
         OpCodes.ToByte(compressed[0]), OpCodes.ToByte(compressed[1]),
         OpCodes.ToByte(compressed[2]), OpCodes.ToByte(compressed[3])
       );
-      const output = [];
-      if (originalLength === 0)
+      if (originalLength === 0) {
         return output;
+      }
 
+      /** @type {uint8[]} */
       const data = compressed.slice(4);
+      /** @type {int32} */
       let pos = 0;
 
       while (output.length < originalLength) {
+        /** @type {uint8} */
         const token = OpCodes.ToByte(data[pos++]);
+        /** @type {uint8} */
         const type = OpCodes.Shr8(token, this.LENGTH_FIELD_BITS);
+        /** @type {uint8} */
         const field = OpCodes.And8(token, this.LENGTH_FIELD_MAX);
 
-        let raw;
-        if (field < this.LENGTH_FIELD_MAX)
-          raw = field;
-        else {
+        /** @type {int32} */
+        let raw = field;
+        if (field >= this.LENGTH_FIELD_MAX) {
+          /** @type {int32} */
           let sum = 0;
-          let b;
+          /** @type {uint8} */
+          let b = 0;
           do {
             b = OpCodes.ToByte(data[pos++]);
             sum += b;
@@ -293,31 +372,58 @@
         }
 
         if (type === this.TYPE_LITERAL) {
+          /** @type {int32} */
           const count = raw;
-          for (let i = 0; i < count; ++i)
+          for (let i = 0; i < count; ++i) {
             output.push(OpCodes.ToByte(data[pos++]));
+          }
         } else if (type === this.TYPE_MATCH) {
+          /** @type {int32} */
           const length = raw + this.MIN_MATCH;
+          /** @type {uint32} */
           const distance = OpCodes.Pack32LE(
             OpCodes.ToByte(data[pos]), OpCodes.ToByte(data[pos + 1]),
             OpCodes.ToByte(data[pos + 2]), OpCodes.ToByte(data[pos + 3])
           );
           pos += 4;
-          if (distance === 0 || distance > output.length)
-            throw new Error(`LZRLE: match references invalid distance ${distance}.`);
+          if (distance === 0 || distance > output.length) {
+            throw new Error("LZRLE: match references invalid distance " + distance + ".");
+          }
+          /** @type {int32} */
           const srcPos = output.length - distance;
-          for (let i = 0; i < length; ++i)
+          for (let i = 0; i < length; ++i) {
             output.push(output[srcPos + i]);
+          }
         } else if (type === this.TYPE_RUN) {
+          /** @type {int32} */
           const length = raw + this.MIN_RUN;
+          /** @type {uint8} */
           const value = OpCodes.ToByte(data[pos++]);
-          for (let i = 0; i < length; ++i)
+          for (let i = 0; i < length; ++i) {
             output.push(value);
-        } else
-          throw new Error(`LZRLE: stream contains reserved token type ${type}.`);
+          }
+        } else {
+          throw new Error("LZRLE: stream contains reserved token type " + type + ".");
+        }
       }
 
       return output;
+    }
+  }
+
+  /**
+   * Match found by the hash-chain search
+   */
+  class LzrleMatch {
+    /**
+     * @param {int32} distance - Distance back to the match source (0 when none)
+     * @param {int32} length - Match length (0 when none)
+     */
+    constructor(distance, length) {
+      /** @type {int32} */
+      this.distance = distance;
+      /** @type {int32} */
+      this.length = length;
     }
   }
 
@@ -326,32 +432,67 @@
   // deliberately non-power-of-two-safe index mask (candidate & (prev.length-1))
   // that must be reproduced bit-for-bit, not "fixed" to a true modulo.
   class LZRLEHashChainFinder {
+    /**
+     * @param {int32} windowSize - Chain ring size
+     * @param {int32} hashBits - log2 of the hash table size
+     * @param {int32} maxChainDepth - Maximum chain nodes visited per search
+     */
     constructor(windowSize, hashBits, maxChainDepth) {
+      /** @type {int32} */
       this.maxChainDepth = maxChainDepth;
+      /** @type {int32} */
       this.hashMask = OpCodes.Shl32(1, hashBits) - 1;
+      /** @type {int32[]} */
       this.head = new Int32Array(OpCodes.Shl32(1, hashBits)).fill(-1);
+      /** @type {int32[]} */
       this.prev = new Int32Array(windowSize);
     }
 
+    /**
+     * @param {uint8[]} data - Bytes
+     * @param {int32} pos - Position of the three hashed bytes
+     * @returns {uint32} Bucket
+     */
     _hash(data, pos) {
+      /** @type {uint32} */
       const v = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(data[pos], 10), OpCodes.Shl32(data[pos + 1], 5)), data[pos + 2]);
       return OpCodes.And32(v, this.hashMask);
     }
 
+    /**
+     * @param {int32} pos - Position
+     * @returns {uint32} Chain ring index
+     */
     _prevIndex(pos) {
       return OpCodes.And32(pos, this.prev.length - 1);
     }
 
+    /**
+     * Find the longest match at position and insert the position
+     * @param {uint8[]} data - Bytes
+     * @param {int32} position - Position to match
+     * @param {int32} maxDistance - Largest allowed distance
+     * @param {int32} maxLength - Largest match length
+     * @param {int32} minLength - Smallest useful match length
+     * @returns {LzrleMatch} Best match, or distance 0 and length 0
+     */
     findMatch(data, position, maxDistance, maxLength, minLength) {
-      if (position + 2 >= data.length)
-        return { distance: 0, length: 0 };
+      if (position + 2 >= data.length) {
+        return new LzrleMatch(0, 0);
+      }
 
+      /** @type {int32} */
       let bestDistance = 0;
+      /** @type {int32} */
       let bestLength = 0;
 
+      /** @type {uint32} */
       const hash = this._hash(data, position);
+      /** @type {int32} */
       let candidate = this.head[hash];
+      /** @type {int32} */
       let chainCount = 0;
+      /** @type {int32} */
       const windowStart = Math.max(0, position - maxDistance);
 
       while (candidate >= windowStart && chainCount < this.maxChainDepth) {
@@ -361,38 +502,53 @@
           continue;
         }
 
+        /** @type {int32} */
         const distance = position - candidate;
+        /** @type {int32} */
         const limit = Math.min(maxLength, Math.min(data.length - position, data.length - candidate));
 
         if (bestLength === 0 || (bestLength < limit && data[candidate + bestLength] === data[position + bestLength])) {
+          /** @type {int32} */
           let length = 0;
-          while (length < limit && data[candidate + length] === data[position + length])
+          while (length < limit && data[candidate + length] === data[position + length]) {
             ++length;
+          }
 
           if (length >= minLength && length > bestLength) {
             bestLength = length;
             bestDistance = distance;
-            if (bestLength >= maxLength)
+            if (bestLength >= maxLength) {
               break;
+            }
           }
         }
 
         candidate = this.prev[this._prevIndex(candidate)];
-        if (candidate <= windowStart)
+        if (candidate <= windowStart) {
           break;
+        }
         ++chainCount;
       }
 
       this.prev[this._prevIndex(position)] = this.head[hash];
       this.head[hash] = position;
 
-      return bestLength >= minLength ? { distance: bestDistance, length: bestLength } : { distance: 0, length: 0 };
+      if (bestLength >= minLength) {
+        return new LzrleMatch(bestDistance, bestLength);
+      }
+      return new LzrleMatch(0, 0);
     }
 
+    /**
+     * @param {uint8[]} data - Bytes
+     * @param {int32} position - Position to insert
+     */
     insertPosition(data, position) {
-      if (position + 2 >= data.length)
+      if (position + 2 >= data.length) {
         return;
+      }
 
+      /** @type {uint32} */
       const hash = this._hash(data, position);
       this.prev[this._prevIndex(position)] = this.head[hash];
       this.head[hash] = position;

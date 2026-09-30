@@ -83,27 +83,50 @@
 
   // ===== CODER CONSTANTS =====
 
+  // The coder's low end needs 33 bits (it may carry past 2^32) and the
+  // decoder's code word may briefly exceed 32 bits, so the coder state is kept
+  // as exact integer-valued float64 (JavaScript numbers), as it always was.
+
+  /** @type {float64} */
   const TOP = 4294967296;          // 2^32
+  /** @type {float64} */
   const RANGE_MAX = 4294967295;    // 2^32 - 1, the initial range
+  /** @type {int32} */
   const RANGE_MIN = 16777216;      // 2^24, the renormalization threshold
+  /** @type {int32} */
   const TOP_BYTE = 16777216;       // 2^24, the place value of the top byte
+  /** @type {float64} */
   const CARRY_EDGE = 4278190080;   // 0xFF000000, above which a carry still ripples
+  /** @type {int32} */
   const BYTE_BASE = 256;
+  /** @type {int32} */
   const PROB_SCALE = 65536;        // probabilities are fractions of 2^16
+  /** @type {int32} */
   const PROB_HALF = 32768;
+  /** @type {int32} */
   const PROB_MIN = 1;
+  /** @type {int32} */
   const PROB_MAX = 65535;
+  /** @type {int32} */
   const FLUSH_BYTES = 5;
 
   // ===== MODEL CONSTANTS =====
 
+  /** @type {int32} */
   const ORDERS = 4;                // context models over orders 1..4
+  /** @type {int32} */
   const TABLE_SIZE = 65536;        // counters per model
+  /** @type {int32} */
   const ADAPT_DIVISOR = 16;        // one sixteenth of the remaining error per observation
+  /** @type {int32} */
   const HASH_ADDEND = 512;         // the addend of ZPAQ's HASH step
+  /** @type {int32} */
   const HASH_MULTIPLIER = 773;     // the multiplier of ZPAQ's HASH step
+  /** @type {uint32} */
   const PARTIAL_MULTIPLIER = 2654435761; // 0x9E3779B1, spreads the partly coded byte
+  /** @type {int32} */
   const HISTORY_SIZE = 65536;      // ring of recent bytes the order hashes read
+  /** @type {int32} */
   const HEADER_BYTES = 4;
 
   // ===== CONTEXT MODEL =====
@@ -114,17 +137,23 @@
    */
   class ContextMixingModel {
     constructor() {
+      /** @type {uint16[][]} */
       this.tables = [];
       for (let i = 0; i < ORDERS; i++) {
+        /** @type {uint16[]} */
         const table = new Uint16Array(TABLE_SIZE);
         table.fill(PROB_HALF);
         this.tables.push(table);
       }
       // Before the first byte no order hash has been computed, so every context
       // is zero and all four models address the same counter value, one half.
+      /** @type {uint32[]} */
       this.contexts = new Uint32Array(ORDERS);
+      /** @type {int32[]} */
       this.slots = new Int32Array(ORDERS);
+      /** @type {uint8[]} */
       this.history = new Uint8Array(HISTORY_SIZE);
+      /** @type {int32} */
       this.cursor = 0;
     }
 
@@ -132,26 +161,34 @@
      * Probability that the next bit is 1, given the bits of the current byte
      * seen so far. `partial` starts at 1 and takes on one more bit each time,
      * so it identifies both the bit position and the prefix.
-     * @param {number} partial - leading 1 followed by the bits coded so far
-     * @returns {number} probability of a 1 bit, in 1..65535
+     * @param {int32} partial - leading 1 followed by the bits coded so far
+     * @returns {int32} probability of a 1 bit, in 1..65535
      */
     predict(partial) {
       // A single odd multiple of the prefix offsets all four hashes. It is odd,
       // so distinct prefixes never land on the same counter within one model.
+      /** @type {uint32} */
       const spread = OpCodes.Mul32(partial, PARTIAL_MULTIPLIER);
 
+      /** @type {int32} */
       let total = 0;
       for (let i = 0; i < ORDERS; i++) {
         // The low 16 bits of the offset hash. They survive the wrap at 32 bits
         // untouched, so no separate reduction is needed before taking them.
-        const slot = (this.contexts[i] + spread) % TABLE_SIZE;
+        /** @type {int32} */
+        const slot = OpCodes.And32(OpCodes.Add32(this.contexts[i], spread), TABLE_SIZE - 1);
         this.slots[i] = slot;
         total += this.tables[i][slot];
       }
 
+      /** @type {int32} */
       let combined = Math.floor(total / ORDERS);
-      if (combined < PROB_MIN) combined = PROB_MIN;
-      if (combined > PROB_MAX) combined = PROB_MAX;
+      if (combined < PROB_MIN) {
+        combined = PROB_MIN;
+      }
+      if (combined > PROB_MAX) {
+        combined = PROB_MAX;
+      }
       return combined;
     }
 
@@ -160,12 +197,15 @@
      * observed bit by one sixteenth of the remaining error. The division rounds
      * towards minus infinity, which is what lets a counter reach 0 exactly
      * while it only ever approaches 65535.
-     * @param {number} bit - the observed bit, 0 or 1
+     * @param {int32} bit - the observed bit, 0 or 1
      */
     update(bit) {
+      /** @type {int32} */
       const target = bit === 1 ? PROB_MAX : 0;
       for (let i = 0; i < ORDERS; i++) {
+        /** @type {int32} */
         const slot = this.slots[i];
+        /** @type {int32} */
         const current = this.tables[i][slot];
         this.tables[i][slot] = current + Math.floor((target - current) / ADAPT_DIVISOR);
       }
@@ -174,7 +214,7 @@
     /**
      * Appends a finished byte to the history ring and rebuilds the four order
      * hashes from it with ZPAQ's HASH step.
-     * @param {number} value - the byte just coded
+     * @param {uint8} value - the byte just coded
      */
     pushByte(value) {
       this.history[this.cursor] = value;
@@ -184,11 +224,13 @@
       // further order, so order n is the hash of the last n bytes. The ring is
       // far longer than the deepest order and starts as zeros, so positions
       // before the start of the message read as zero and never alias.
+      /** @type {uint32} */
       let hash = 0;
       for (let order = 1; order <= ORDERS; order++) {
+        /** @type {int32} */
         const back = (this.cursor + HISTORY_SIZE - order) % HISTORY_SIZE;
         hash = OpCodes.Mul32(
-          OpCodes.ToUint32(hash + this.history[back] + HASH_ADDEND),
+          OpCodes.Add32(OpCodes.Add32(hash, this.history[back]), HASH_ADDEND),
           HASH_MULTIPLIER
         );
         this.contexts[order - 1] = hash;
@@ -201,14 +243,19 @@
   /**
    * Splits the range between the two bit values. See the file header for the
    * invariant that keeps both subranges at least 256 wide.
-   * @param {number} range - the current range, at least 2^24
-   * @param {number} probabilityOfOne - probability of a 1 bit
-   * @returns {number} the width of the 1 subrange
+   * @param {float64} range - the current range, at least 2^24
+   * @param {int32} probabilityOfOne - probability of a 1 bit
+   * @returns {float64} the width of the 1 subrange
    */
   function splitRange(range, probabilityOfOne) {
+    /** @type {int32} */
     let p = probabilityOfOne;
-    if (p < PROB_MIN) p = PROB_MIN;
-    if (p > PROB_MAX) p = PROB_MAX;
+    if (p < PROB_MIN) {
+      p = PROB_MIN;
+    }
+    if (p > PROB_MAX) {
+      p = PROB_MAX;
+    }
     return Math.floor(range / PROB_SCALE) * p;
   }
 
@@ -218,14 +265,24 @@
    */
   class RangeEncoder {
     constructor() {
+      /** @type {float64} */
       this.low = 0;
+      /** @type {float64} */
       this.range = RANGE_MAX;
+      /** @type {int32} */
       this.cache = 0;
+      /** @type {int32} */
       this.pending = 1;
+      /** @type {uint8[]} */
       this.bytes = [];
     }
 
+    /**
+     * @param {int32} bit - Bit to code
+     * @param {int32} probabilityOfOne - Probability of a 1 bit
+     */
     encodeBit(bit, probabilityOfOne) {
+      /** @type {float64} */
       const bound = splitRange(this.range, probabilityOfOne);
       if (bit === 1) {
         this.range = bound;
@@ -244,10 +301,13 @@
     // arrives that either cannot carry or has just carried, the whole run is
     // resolved at once.
     shiftLow() {
+      /** @type {int32} */
       const carry = this.low >= TOP ? 1 : 0;
+      /** @type {float64} */
       const value = this.low - carry * TOP;
 
       if (value < CARRY_EDGE || carry === 1) {
+        /** @type {int32} */
         let held = this.cache;
         do {
           this.bytes.push((held + carry) % BYTE_BASE);
@@ -261,8 +321,13 @@
       this.low = (value % TOP_BYTE) * BYTE_BASE;
     }
 
+    /**
+     * @returns {uint8[]} All coded bytes, including the flush
+     */
     finish() {
-      for (let i = 0; i < FLUSH_BYTES; i++) this.shiftLow();
+      for (let i = 0; i < FLUSH_BYTES; i++) {
+        this.shiftLow();
+      }
       return this.bytes;
     }
   }
@@ -272,27 +337,47 @@
    * @class
    */
   class RangeDecoder {
+    /**
+     * @param {uint8[]} data - Coded stream
+     * @param {int32} offset - Index of its first byte
+     */
     constructor(data, offset) {
+      /** @type {uint8[]} */
       this.data = data;
+      /** @type {int32} */
       this.position = offset;
+      /** @type {float64} */
       this.range = RANGE_MAX;
+      /** @type {float64} */
       this.code = 0;
       // The encoder's first flushed byte is always its initially empty cache,
       // so the code word is the five leading bytes read big-endian into 32 bits.
-      for (let i = 0; i < FLUSH_BYTES; i++)
+      for (let i = 0; i < FLUSH_BYTES; i++) {
         this.code = OpCodes.ToUint32(this.code * BYTE_BASE) + this.nextByte();
+      }
     }
 
     // Past the end of the stream the flush has already pinned every remaining
     // bit, so the padding value only has to agree with the encoder's.
+    /**
+     * @returns {uint8} Next byte, 0 past the end
+     */
     nextByte() {
-      if (this.position >= this.data.length) return 0;
+      if (this.position >= this.data.length) {
+        return 0;
+      }
       return this.data[this.position++];
     }
 
+    /**
+     * @param {int32} probabilityOfOne - Probability of a 1 bit
+     * @returns {int32} Decoded bit
+     */
     decodeBit(probabilityOfOne) {
+      /** @type {float64} */
       const bound = splitRange(this.range, probabilityOfOne);
-      let bit;
+      /** @type {int32} */
+      let bit = 0;
       if (this.code < bound) {
         bit = 1;
         this.range = bound;
@@ -380,77 +465,136 @@
       // For test suite compatibility
       this.testVectors = this.tests;
     }
-
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {ZPAQInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new ZPAQInstance(this, isInverse);
     }
   }
 
   class ZPAQInstance extends IAlgorithmInstance {
+    /**
+     * @param {ZPAQAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
-
+    /**
+     * Compress or decompress the collected input
+     * @returns {uint8[]} Output bytes
+     */
     Result() {
       if (this.isInverse) {
         // A compressed stream always carries at least the 4-byte length
         // header, so an empty buffer is not a valid compressed message.
-        if (this.inputBuffer.length === 0) return [];
+        if (this.inputBuffer.length === 0) {
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
+        }
         return this._decompress();
       }
       return this._compress();
     }
 
+    /**
+     * @returns {uint8[]} 4-byte LE length followed by the range-coded bits
+     */
     _compress() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
 
+      /** @type {uint8[]} */
       const output = OpCodes.Unpack32LE(OpCodes.ToUint32(data.length));
-      if (data.length === 0) return output;
+      if (data.length === 0) {
+        return output;
+      }
 
+      /** @type {ContextMixingModel} */
       const model = new ContextMixingModel();
+      /** @type {RangeEncoder} */
       const encoder = new RangeEncoder();
 
       for (let i = 0; i < data.length; i++) {
+        /** @type {uint8} */
         const value = data[i];
+        /** @type {int32} */
         let partial = 1;
         for (let b = 7; b >= 0; b--) {
+          /** @type {int32} */
           const bit = OpCodes.GetBit(value, b) ? 1 : 0;
-          encoder.encodeBit(bit, model.predict(partial));
+          /** @type {int32} */
+          const probability = model.predict(partial);
+          encoder.encodeBit(bit, probability);
           model.update(bit);
           partial = partial * 2 + bit;
         }
         model.pushByte(value);
       }
 
+      /** @type {uint8[]} */
       const payload = encoder.finish();
-      for (let i = 0; i < payload.length; i++) output.push(payload[i]);
+      for (let i = 0; i < payload.length; i++) {
+        output.push(payload[i]);
+      }
       return output;
     }
 
+    /**
+     * @returns {uint8[]} Decoded bytes
+     */
     _decompress() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
 
-      if (data.length < HEADER_BYTES) return [];
+      if (data.length < HEADER_BYTES) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
+      /** @type {uint32} */
       const originalLength = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
-      if (originalLength === 0) return [];
+      if (originalLength === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {ContextMixingModel} */
       const model = new ContextMixingModel();
+      /** @type {RangeDecoder} */
       const decoder = new RangeDecoder(data, HEADER_BYTES);
+      /** @type {uint8[]} */
       const output = new Array(originalLength);
 
       for (let i = 0; i < originalLength; i++) {
+        /** @type {int32} */
         let partial = 1;
         for (let b = 0; b < 8; b++) {
-          const bit = decoder.decodeBit(model.predict(partial));
+          /** @type {int32} */
+          const probability = model.predict(partial);
+          /** @type {int32} */
+          const bit = decoder.decodeBit(probability);
           model.update(bit);
           partial = partial * 2 + bit;
         }
         // The leading 1 that started `partial` has been carried to bit 8.
+        /** @type {uint8} */
         const value = partial - 256;
         output[i] = value;
         model.pushByte(value);

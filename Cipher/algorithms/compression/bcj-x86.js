@@ -113,22 +113,40 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True for the inverse transform
+     * @returns {BcjX86Instance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new BcjX86Instance(this, isInverse);
     }
   }
 
   class BcjX86Instance extends IAlgorithmInstance {
+    /**
+     * @param {BcjX86} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True for the inverse transform
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
 
+    /**
+     * Transform the collected input
+     * @returns {uint8[]} Transformed bytes
+     */
     Result() {
+      /** @type {uint8[]} */
       const output = this._transform(this.inputBuffer, !this.isInverse);
-      this.inputBuffer = [];
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
       return output;
     }
 
@@ -136,6 +154,11 @@
     // encode=false reverses absolute back to relative. Both directions scan for
     // the same 0xE8/0xE9 opcode bytes, which are never modified by the address
     // rewrite, so the scan finds matches at identical positions in both directions.
+    /**
+     * @param {uint8[]} bytes - Input bytes
+     * @param {boolean} encode - True to encode, false to decode
+     * @returns {uint8[]} Transformed copy
+     */
     _transform(bytes, encode) {
       const data = bytes.slice();
       const n = data.length;

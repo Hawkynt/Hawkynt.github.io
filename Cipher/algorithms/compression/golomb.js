@@ -146,6 +146,11 @@
         ];
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {GolombInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new GolombInstance(this, isInverse);
       }
@@ -158,28 +163,57 @@
     // value (no offset shift) is coded as a unary quotient plus a truncated
     // binary remainder, MSB-first, zero-padded to a byte boundary.
     class GolombInstance extends IAlgorithmInstance {
+      /**
+       * @param {GolombCompression} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
+        /** @type {int32} */
         this.parameter = 1; // M parameter, auto-selected on compress or read from the header on decompress
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
-        const result = this.isInverse ? this._decode(this.inputBuffer) : this._encode(this.inputBuffer);
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        let result;
+        if (this.isInverse) {
+          result = this._decode(this.inputBuffer);
+        } else {
+          result = this._encode(this.inputBuffer);
+        }
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
         return result;
       }
 
+      /**
+       * @param {uint8[]} values - Input bytes
+       * @returns {uint8[]} Header and Golomb codes
+       */
       _encode(values) {
+        /** @type {int32} */
         let m = 1;
         if (values.length > 0) {
+          /** @type {int32} */
           let sum = 0;
-          for (const b of values) sum += b;
+          for (let i = 0; i < values.length; i++) {
+            sum += values[i];
+          }
+          /** @type {float64} */
           const mean = sum / values.length;
           m = Math.max(1, this._roundHalfToEven(mean * Math.LN2));
-          if (m > 255) m = 255;
+          if (m > 255) {
+            m = 255;
+          }
         }
         this.parameter = m;
 
@@ -187,67 +221,125 @@
         bitStream.writeByte(m);
         bitStream.writeUint32LE(values.length);
 
-        for (const value of values) {
-          if (value < 0) throw new Error("Golomb coding requires non-negative integers");
+        for (let i = 0; i < values.length; i++) {
+          /** @type {int32} */
+          const value = values[i];
+          if (value < 0) {
+            throw new Error("Golomb coding requires non-negative integers");
+          }
           this._encodeValue(bitStream, value, m);
         }
 
-        return bitStream.toArray();
+        /** @type {uint8[]} */
+        const bytes = bitStream.toArray();
+        return bytes;
       }
 
+      /**
+       * @param {uint8[]} data - Header and Golomb codes
+       * @returns {uint8[]} Decoded bytes
+       */
       _decode(data) {
-        if (data.length < 5) return [];
+        /** @type {uint8[]} */
+        const values = [];
+        if (data.length < 5) {
+          return values;
+        }
 
         const bitStream = OpCodes.CreateBitStream(data);
+        /** @type {int32} */
         const m = bitStream.readByte();
-        const length = OpCodes.Pack32LE(bitStream.readByte(), bitStream.readByte(), bitStream.readByte(), bitStream.readByte());
+        /** @type {uint8} */
+        const c0 = bitStream.readByte();
+        /** @type {uint8} */
+        const c1 = bitStream.readByte();
+        /** @type {uint8} */
+        const c2 = bitStream.readByte();
+        /** @type {uint8} */
+        const c3 = bitStream.readByte();
+        /** @type {uint32} */
+        const length = OpCodes.Pack32LE(c0, c1, c2, c3);
         this.parameter = m;
 
-        if (length === 0) return [];
+        if (length === 0) {
+          return values;
+        }
 
-        const values = [];
-        for (let i = 0; i < length; i++) values.push(this._decodeValue(bitStream, m));
+        for (let i = 0; i < length; i++) {
+          values.push(this._decodeValue(bitStream, m));
+        }
 
         return values;
       }
 
+      /**
+       * @param {_BitStream} bitStream - Output bits
+       * @param {int32} value - Non-negative value
+       * @param {int32} m - Golomb parameter
+       */
       _encodeValue(bitStream, value, m) {
+        /** @type {int32} */
         const quotient = Math.floor(value / m);
+        /** @type {int32} */
         const remainder = value % m;
 
         // Unary: quotient 1-bits followed by a zero-bit.
-        for (let i = 0; i < quotient; i++) bitStream.writeBit(1);
+        for (let i = 0; i < quotient; i++) {
+          bitStream.writeBit(1);
+        }
         bitStream.writeBit(0);
 
         // Truncated binary encoding of the remainder.
-        if (m === 1) return;
+        if (m === 1) {
+          return;
+        }
 
+        /** @type {int32} */
         const k = this._floorLog2(m);
+        /** @type {int32} */
         const c = OpCodes.Shl32(1, k + 1) - m;
 
         if (remainder < c) {
-          for (let i = k - 1; i >= 0; i--) bitStream.writeBit(OpCodes.And32(OpCodes.Shr32(remainder, i), 1));
+          for (let i = k - 1; i >= 0; i--) {
+            bitStream.writeBit(OpCodes.And32(OpCodes.Shr32(remainder, i), 1));
+          }
         } else {
+          /** @type {int32} */
           const adjusted = remainder + c;
-          for (let i = k; i >= 0; i--) bitStream.writeBit(OpCodes.And32(OpCodes.Shr32(adjusted, i), 1));
+          for (let i = k; i >= 0; i--) {
+            bitStream.writeBit(OpCodes.And32(OpCodes.Shr32(adjusted, i), 1));
+          }
         }
       }
 
+      /**
+       * @param {_BitStream} bitStream - Input bits
+       * @param {int32} m - Golomb parameter
+       * @returns {int32} Decoded value
+       */
       _decodeValue(bitStream, m) {
         // Unary quotient: count 1-bits until a 0-bit.
+        /** @type {int32} */
         let quotient = 0;
-        while (bitStream.readBit() === 1) quotient++;
+        /** @type {uint32} */
+        let bit = bitStream.readBit();
+        while (bit === 1) {
+          quotient++;
+          bit = bitStream.readBit();
+        }
 
         // Truncated binary remainder.
-        let remainder;
-        if (m === 1) {
-          remainder = 0;
-        } else {
+        /** @type {int32} */
+        let remainder = 0;
+        if (m !== 1) {
+          /** @type {int32} */
           const k = this._floorLog2(m);
+          /** @type {int32} */
           const c = OpCodes.Shl32(1, k + 1) - m;
 
-          remainder = 0;
-          for (let i = 0; i < k; i++) remainder = OpCodes.Or32(OpCodes.Shl32(remainder, 1), bitStream.readBit());
+          for (let i = 0; i < k; i++) {
+            remainder = OpCodes.Or32(OpCodes.Shl32(remainder, 1), bitStream.readBit());
+          }
           if (remainder >= c) {
             remainder = OpCodes.Or32(OpCodes.Shl32(remainder, 1), bitStream.readBit());
             remainder -= c;
@@ -257,19 +349,39 @@
         return quotient * m + remainder;
       }
 
+      /**
+       * @param {int32} value - Positive value
+       * @returns {int32} floor(log2(value))
+       */
       _floorLog2(value) {
-        let result = 0, v = value;
-        while (v > 1) { result++; v = Math.floor(v / 2); }
+        /** @type {int32} */
+        let result = 0;
+        /** @type {int32} */
+        let v = value;
+        while (v > 1) {
+          result++;
+          v = Math.floor(v / 2);
+        }
         return result;
       }
 
       // Matches .NET's Math.Round default (MidpointRounding.ToEven / banker's
       // rounding), which the reference implementation relies on for M selection.
+      /**
+       * @param {float64} x - Value to round
+       * @returns {int32} x rounded to the nearest integer, ties to even
+       */
       _roundHalfToEven(x) {
+        /** @type {int32} */
         const floor = Math.floor(x);
+        /** @type {float64} */
         const diff = x - floor;
-        if (diff < 0.5) return floor;
-        if (diff > 0.5) return floor + 1;
+        if (diff < 0.5) {
+          return floor;
+        }
+        if (diff > 0.5) {
+          return floor + 1;
+        }
         return (floor % 2 === 0) ? floor : floor + 1;
       }
     }

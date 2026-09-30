@@ -54,14 +54,19 @@
   // ===== ALGORITHM IMPLEMENTATION =====
 
   // rANS constants (match the CompressionWorkbench reference exactly).
+  /** @type {int32} */
   const SCALE_BITS = 12;
+  /** @type {int32} */
   const SCALE = 4096;         // 1 << 12: normalized frequency total
+  /** @type {int32} */
   const RANS_L = 8388608;     // 1 << 23: renormalization lower bound
+  /** @type {int32} */
   const RENORM_SHIFT = 2048;  // RansL >> ScaleBits (8388608 >> 12), kept as its
                                // own constant so the renormalization threshold
                                // is computed the same way as the reference
                                // (f * RENORM_SHIFT * 256) rather than simplified
                                // algebraically.
+  /** @type {int32} */
   const RENORM_BYTE = 256;    // 1 << 8
 
   // Scales raw (exact) symbol frequencies to sum to exactly SCALE, giving
@@ -71,51 +76,95 @@
   // order (ascending byte value via the `used` list), tie-breaking (strict
   // > / < comparisons keep the first-found index), and floating-point operand
   // order are all preserved so the result matches bit-for-bit.
+  /**
+   * @param {int32[]} freq - Symbol counts
+   * @param {int32} totalCount - Sum of the counts
+   * @returns {int32[]} Frequencies summing to SCALE
+   */
   function normalizeFrequencies(freq, totalCount) {
-    const norm = new Array(256).fill(0);
+    /** @type {int32[]} */
+    const norm = new Int32Array(256);
+    /** @type {int32} */
     let assigned = 0;
+    /** @type {int32[]} */
     const used = [];
 
     for (let i = 0; i < 256; i++) {
-      if (freq[i] === 0) continue;
+      if (freq[i] === 0) {
+        continue;
+      }
       used.push(i);
+      /** @type {int32} */
       let nf = Math.floor(freq[i] * SCALE / totalCount);
-      if (nf < 1) nf = 1;
+      if (nf < 1) {
+        nf = 1;
+      }
       norm[i] = nf;
       assigned += nf;
     }
 
     while (assigned !== SCALE) {
       if (assigned < SCALE) {
+        /** @type {int32} */
         let bestIdx = used[0];
+        /** @type {float64} */
         let bestError = -Infinity;
-        for (const idx of used) {
+        for (let u = 0; u < used.length; u++) {
+          /** @type {int32} */
+          const idx = used[u];
+          /** @type {float64} */
           const ideal = freq[idx] * SCALE / totalCount;
+          /** @type {float64} */
           const error = ideal - norm[idx];
-          if (error > bestError) { bestError = error; bestIdx = idx; }
+          if (error > bestError) {
+            bestError = error;
+            bestIdx = idx;
+          }
         }
         norm[bestIdx]++;
         assigned++;
       } else {
+        /** @type {int32} */
         let bestIdx = used[0];
+        /** @type {float64} */
         let bestError = Infinity;
-        for (const idx of used) {
-          if (norm[idx] <= 1) continue;
+        for (let u = 0; u < used.length; u++) {
+          /** @type {int32} */
+          const idx = used[u];
+          if (norm[idx] <= 1) {
+            continue;
+          }
+          /** @type {float64} */
           const ideal = freq[idx] * SCALE / totalCount;
+          /** @type {float64} */
           const error = ideal - norm[idx];
-          if (error < bestError) { bestError = error; bestIdx = idx; }
+          if (error < bestError) {
+            bestError = error;
+            bestIdx = idx;
+          }
         }
-        if (norm[bestIdx] > 1) { norm[bestIdx]--; assigned--; }
-        else break;
+        if (norm[bestIdx] > 1) {
+          norm[bestIdx]--;
+          assigned--;
+        } else {
+          break;
+        }
       }
     }
 
     return norm;
   }
 
+  /**
+   * @param {int32[]} normFreq - Symbol frequencies
+   * @returns {int32[]} cumFreq[i] = sum of normFreq[0..i-1], for i = 0..256
+   */
   function buildCumulativeFrequencies(normFreq) {
-    const cumFreq = new Array(257).fill(0);
-    for (let i = 0; i < 256; i++) cumFreq[i + 1] = cumFreq[i] + normFreq[i];
+    /** @type {int32[]} */
+    const cumFreq = new Int32Array(257);
+    for (let i = 0; i < 256; i++) {
+      cumFreq[i + 1] = cumFreq[i] + normFreq[i];
+    }
     return cumFreq;
   }
 
@@ -124,28 +173,49 @@
   // appends the final 4-byte state (little-endian) and reverses the whole
   // byte list so the decoder can read the state from the front and consume
   // renormalization bytes forward. Mirrors RansEncoder.Encode.
+  // The state transition is computed in float64 (exact below 2^53) and
+  // reduced by ToUint32, as the plain JavaScript arithmetic always was.
+  /**
+   * @param {uint8[]} data - Input bytes
+   * @param {int32[]} normFreq - Normalized symbol frequencies
+   * @returns {uint8[]} State and renormalization bytes, front to back
+   */
   function encodeRans(data, normFreq) {
+    /** @type {int32[]} */
     const cumFreq = buildCumulativeFrequencies(normFreq);
 
+    /** @type {uint8[]} */
     const outputBytes = [];
+    /** @type {uint32} */
     let state = RANS_L;
 
     for (let i = data.length - 1; i >= 0; i--) {
+      /** @type {uint8} */
       const sym = data[i];
+      /** @type {int32} */
       const f = normFreq[sym];
+      /** @type {int32} */
       const c = cumFreq[sym];
 
+      /** @type {float64} */
       const xMax = f * RENORM_SHIFT * RENORM_BYTE;
       while (state >= xMax) {
         outputBytes.push(OpCodes.GetByte(state, 0));
         state = OpCodes.Shr32(state, 8);
       }
 
-      state = OpCodes.ToUint32(Math.floor(state / f) * SCALE + (state % f) + c);
+      /** @type {float64} */
+      const s = state;
+      /** @type {float64} */
+      const next = Math.floor(s / f) * SCALE + (s % f) + c;
+      state = OpCodes.ToUint32(next);
     }
 
+    /** @type {uint8[]} */
     const stateBytes = OpCodes.Unpack32LE(state);
-    for (let i = 0; i < 4; i++) outputBytes.push(stateBytes[i]);
+    for (let i = 0; i < 4; i++) {
+      outputBytes.push(stateBytes[i]);
+    }
 
     outputBytes.reverse();
     return outputBytes;
@@ -157,31 +227,53 @@
   // then repeatedly extracts a symbol from state % SCALE, updates state, and
   // renormalizes by reading more bytes while state is below RANS_L. Mirrors
   // RansDecoder.Decode.
+  /**
+   * @param {uint8[]} encoded - State and renormalization bytes
+   * @param {uint32} originalSize - Number of symbols to decode
+   * @param {int32[]} normFreq - Normalized symbol frequencies
+   * @returns {uint8[]} Decoded bytes
+   */
   function decodeRans(encoded, originalSize, normFreq) {
+    /** @type {int32[]} */
     const cumFreq = buildCumulativeFrequencies(normFreq);
 
+    /** @type {uint8[]} */
     const lookup = new Array(SCALE);
-    for (let sym = 0; sym < 256; sym++)
-      for (let j = cumFreq[sym]; j < cumFreq[sym + 1]; j++) lookup[j] = sym;
+    for (let sym = 0; sym < 256; sym++) {
+      for (let j = cumFreq[sym]; j < cumFreq[sym + 1]; j++) {
+        lookup[j] = sym;
+      }
+    }
 
+    /** @type {int32} */
     let pos = 0;
+    /** @type {uint32} */
     let state = OpCodes.Pack32BE(encoded[pos], encoded[pos + 1], encoded[pos + 2], encoded[pos + 3]);
     pos += 4;
 
+    /** @type {uint8[]} */
     const output = new Array(originalSize);
 
     for (let i = 0; i < originalSize; i++) {
-      const cumVal = state % SCALE;
+      /** @type {float64} */
+      const s = state;
+      /** @type {int32} */
+      const cumVal = s % SCALE;
+      /** @type {uint8} */
       const sym = lookup[cumVal];
       output[i] = sym;
 
+      /** @type {float64} */
       const f = normFreq[sym];
+      /** @type {float64} */
       const c = cumFreq[sym];
 
-      state = OpCodes.ToUint32(f * Math.floor(state / SCALE) + (state % SCALE) - c);
+      /** @type {float64} */
+      const next = f * Math.floor(s / SCALE) + (s % SCALE) - c;
+      state = OpCodes.ToUint32(next);
 
       while (state < RANS_L && pos < encoded.length) {
-        state = OpCodes.ToUint32(OpCodes.OrN(OpCodes.Shl32(state, 8), encoded[pos++]));
+        state = OpCodes.Or32(OpCodes.Shl32(state, 8), encoded[pos++]);
       }
     }
 
@@ -244,25 +336,43 @@
         this.testVectors = this.tests;
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {RANSInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new RANSInstance(this, isInverse);
       }
     }
 
     class RANSInstance extends IAlgorithmInstance {
+      /**
+       * @param {RANSAlgorithm} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
         if (this.isInverse) {
           // A compressed stream always carries at least the 4-byte length
           // header, so an empty buffer here is not a valid compressed
           // empty message.
-          if (this.inputBuffer.length === 0) return [];
+          if (this.inputBuffer.length === 0) {
+            /** @type {uint8[]} */
+            const empty = [];
+            return empty;
+          }
           return this._decompress();
         }
 
@@ -271,74 +381,127 @@
         return this._compress();
       }
 
+      /**
+       * @returns {uint8[]} Length, frequency table and rANS payload
+       */
       _compress() {
+        /** @type {uint8[]} */
         const data = this.inputBuffer;
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
 
         // Header: 4-byte LE original length.
+        /** @type {uint8[]} */
         const output = OpCodes.Unpack32LE(OpCodes.ToUint32(data.length));
 
-        if (data.length === 0) return output;
+        if (data.length === 0) {
+          return output;
+        }
 
         // Count frequencies and normalize to sum to SCALE.
-        const freq = new Array(256).fill(0);
-        for (let i = 0; i < data.length; i++) freq[data[i]]++;
+        /** @type {int32[]} */
+        const freq = new Int32Array(256);
+        for (let i = 0; i < data.length; i++) {
+          freq[data[i]]++;
+        }
 
+        /** @type {int32[]} */
         const normFreq = normalizeFrequencies(freq, data.length);
 
         // Frequency table: 2-byte LE used-symbol count, then (symbol byte,
         // 2-byte LE normFreq) pairs in ascending byte order.
+        /** @type {int32} */
         let used = 0;
-        for (let i = 0; i < 256; i++) if (normFreq[i] > 0) used++;
+        for (let i = 0; i < 256; i++) {
+          if (normFreq[i] > 0) {
+            used++;
+          }
+        }
 
+        /** @type {uint8[]} */
         const usedBytes = OpCodes.Unpack16LE(used);
-        output.push(usedBytes[0], usedBytes[1]);
+        output.push(usedBytes[0]);
+        output.push(usedBytes[1]);
 
         for (let i = 0; i < 256; i++) {
-          if (normFreq[i] === 0) continue;
+          if (normFreq[i] === 0) {
+            continue;
+          }
           output.push(i);
+          /** @type {uint8[]} */
           const fb = OpCodes.Unpack16LE(normFreq[i]);
-          output.push(fb[0], fb[1]);
+          output.push(fb[0]);
+          output.push(fb[1]);
         }
 
         // Encode, then write 4-byte LE encoded length + encoded bytes.
+        /** @type {uint8[]} */
         const encoded = encodeRans(data, normFreq);
 
+        /** @type {uint8[]} */
         const lenBytes = OpCodes.Unpack32LE(OpCodes.ToUint32(encoded.length));
-        output.push(lenBytes[0], lenBytes[1], lenBytes[2], lenBytes[3]);
-        for (let i = 0; i < encoded.length; i++) output.push(encoded[i]);
+        for (let i = 0; i < 4; i++) {
+          output.push(lenBytes[i]);
+        }
+        for (let i = 0; i < encoded.length; i++) {
+          output.push(encoded[i]);
+        }
 
         return output;
       }
 
+      /**
+       * @returns {uint8[]} Decoded bytes
+       */
       _decompress() {
+        /** @type {uint8[]} */
         const data = this.inputBuffer;
-        this.inputBuffer = [];
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
+        /** @type {int32} */
         let offset = 0;
 
         // Header: 4-byte LE original length.
+        /** @type {uint32} */
         const originalSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
         offset += 4;
 
-        if (originalSize === 0) return [];
+        if (originalSize === 0) {
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
+        }
 
         // Frequency table: 2-byte LE used-symbol count, then (symbol byte,
         // 2-byte LE normFreq) pairs.
+        /** @type {int32} */
         const usedCount = OpCodes.Pack16LE(data[offset], data[offset + 1]);
         offset += 2;
 
-        const normFreq = new Array(256).fill(0);
+        /** @type {int32[]} */
+        const normFreq = new Array(256);
+        for (let i = 0; i < 256; i++) {
+          normFreq[i] = 0;
+        }
         for (let i = 0; i < usedCount; i++) {
+          /** @type {uint8} */
           const sym = data[offset++];
           normFreq[sym] = OpCodes.Pack16LE(data[offset], data[offset + 1]);
           offset += 2;
         }
 
         // Encoded payload: 4-byte LE length + that many bytes.
+        /** @type {uint32} */
         const encodedLen = OpCodes.Pack32LE(data[offset], data[offset + 1], data[offset + 2], data[offset + 3]);
         offset += 4;
 
-        const encoded = data.slice(offset, offset + encodedLen);
+        // float64: a corrupt length may run past 2^31
+        /** @type {float64} */
+        const payloadEnd = offset + encodedLen;
+        /** @type {uint8[]} */
+        const encoded = data.slice(offset, payloadEnd);
 
         return decodeRans(encoded, originalSize, normFreq);
       }

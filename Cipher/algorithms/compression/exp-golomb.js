@@ -63,17 +63,27 @@
   // ===== PARAMETERS =====
 
   // Order of the exp-Golomb code. Order 0 is the ue(v) mapping of H.264/H.265.
+  /** @type {int32} */
   const ORDER = 0;
+  /** @type {int32} */
+  const ORDER_OFFSET = OpCodes.Shl32(1, ORDER) - 1; // 2^ORDER - 1
 
   // ===== BIT STREAM HELPERS (MSB-first) =====
 
   class MsbBitWriter {
     constructor() {
+      /** @type {uint8[]} */
       this.bytes = [];
+      /** @type {uint32} */
       this.buf = 0;
+      /** @type {int32} */
       this.nBits = 0;
     }
 
+    /**
+     * Append one bit
+     * @param {uint32} bit - Bit (only the lowest bit is used)
+     */
     writeBit(bit) {
       this.buf = OpCodes.Or32(OpCodes.Shl32(this.buf, 1), OpCodes.And32(bit, 1));
       this.nBits++;
@@ -84,6 +94,10 @@
       }
     }
 
+    /**
+     * Pad the last byte with zero bits
+     * @returns {uint8[]} All bytes written
+     */
     flush() {
       if (this.nBits > 0) {
         this.buf = OpCodes.Shl32(this.buf, 8 - this.nBits);
@@ -96,16 +110,30 @@
   }
 
   class MsbBitReader {
+    /**
+     * @param {uint8[]} bytes - Bytes to read
+     * @param {int32} startByte - Index of the first byte
+     */
     constructor(bytes, startByte) {
+      /** @type {uint8[]} */
       this.bytes = bytes;
+      /** @type {int32} */
       this.bitPos = startByte * 8;
     }
 
+    /**
+     * Read one bit
+     * @returns {uint32} 0 or 1
+     */
     readBit() {
+      /** @type {int32} */
       const byteIndex = Math.floor(this.bitPos / 8);
-      if (byteIndex >= this.bytes.length)
+      if (byteIndex >= this.bytes.length) {
         throw new Error('Exp-Golomb: unexpected end of bitstream');
+      }
+      /** @type {int32} */
       const shift = 7 - (this.bitPos % 8);
+      /** @type {uint32} */
       const bit = OpCodes.And32(OpCodes.Shr32(this.bytes[byteIndex], shift), 1);
       this.bitPos++;
       return bit;
@@ -194,80 +222,151 @@
       ];
     }
 
+    /**
+     * Create a new instance
+     * @param {boolean} [isInverse=false] - True to decompress
+     * @returns {ExpGolombInstance} New instance
+     */
     CreateInstance(isInverse = false) {
       return new ExpGolombInstance(this, isInverse);
     }
   }
 
   class ExpGolombInstance extends IAlgorithmInstance {
+    /**
+     * @param {ExpGolombCompression} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - True to decompress
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
 
     Result() {
+      /** @type {uint8[]} */
       const input = this.inputBuffer;
-      this.inputBuffer = [];
-      return this.isInverse ? this._decompress(input) : this._compress(input);
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
+      if (this.isInverse) {
+        return this._decompress(input);
+      }
+      return this._compress(input);
     }
 
+    /**
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} Length header and Exp-Golomb codes
+     */
     _compress(data) {
-      const out = [
-        OpCodes.And32(data.length, 0xFF),
-        OpCodes.And32(OpCodes.Shr32(data.length, 8), 0xFF),
-        OpCodes.And32(OpCodes.Shr32(data.length, 16), 0xFF),
-        OpCodes.And32(OpCodes.Shr32(data.length, 24), 0xFF)
-      ];
+      /** @type {uint8[]} */
+      const out = OpCodes.Unpack32LE(data.length);
 
-      if (data.length === 0) return out;
+      if (data.length === 0) {
+        return out;
+      }
 
+      /** @type {MsbBitWriter} */
       const writer = new MsbBitWriter();
-      for (let i = 0; i < data.length; i++) this._encodeValue(writer, data[i]);
+      for (let i = 0; i < data.length; i++) {
+        this._encodeValue(writer, data[i]);
+      }
+      /** @type {uint8[]} */
       const bits = writer.flush();
-      for (let i = 0; i < bits.length; i++) out.push(bits[i]);
+      for (let i = 0; i < bits.length; i++) {
+        out.push(bits[i]);
+      }
 
       return out;
     }
 
+    /**
+     * @param {uint8[]} data - Length header and Exp-Golomb codes
+     * @returns {uint8[]} Decoded bytes
+     */
     _decompress(data) {
-      if (data.length < 4) return [];
+      if (data.length < 4) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {uint32} */
       const originalSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
-      if (originalSize === 0) return [];
+      if (originalSize === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {MsbBitReader} */
       const reader = new MsbBitReader(data, 4);
+      /** @type {uint8[]} */
       const result = new Array(originalSize);
-      for (let i = 0; i < originalSize; i++) result[i] = OpCodes.And32(this._decodeValue(reader), 0xFF);
+      for (let i = 0; i < originalSize; i++) {
+        result[i] = OpCodes.And32(this._decodeValue(reader), 0xFF);
+      }
 
       return result;
     }
 
     // Order-k codes (value + 2^k - 1) as an order-0 codeword. Order 0 leaves
     // the value unchanged.
+    /**
+     * @param {MsbBitWriter} writer - Output bits
+     * @param {uint8} value - Value to encode
+     */
     _encodeValue(writer, value) {
-      const adjusted = value + OpCodes.Shl32(1, ORDER) - 1;
+      /** @type {int32} */
+      const adjusted = value + ORDER_OFFSET;
+      /** @type {int32} */
       const n1 = adjusted + 1;
 
+      /** @type {int32} */
       let bits = 0;
+      /** @type {int32} */
       let temp = n1;
-      while (temp > 1) { bits++; temp = Math.floor(temp / 2); }
+      while (temp > 1) {
+        bits++;
+        temp = Math.floor(temp / 2);
+      }
 
-      for (let i = 0; i < bits; i++) writer.writeBit(0);
-      for (let i = bits; i >= 0; i--) writer.writeBit(OpCodes.And32(OpCodes.Shr32(n1, i), 1));
+      for (let i = 0; i < bits; i++) {
+        writer.writeBit(0);
+      }
+      for (let i = bits; i >= 0; i--) {
+        writer.writeBit(OpCodes.And32(OpCodes.Shr32(n1, i), 1));
+      }
     }
 
+    /**
+     * @param {MsbBitReader} reader - Input bits
+     * @returns {int32} Decoded value
+     */
     _decodeValue(reader) {
+      /** @type {int32} */
       let zeros = 0;
-      while (reader.readBit() === 0) zeros++;
+      /** @type {uint32} */
+      let bit = reader.readBit();
+      while (bit === 0) {
+        zeros++;
+        bit = reader.readBit();
+      }
 
       // The leading one bit was already consumed by the loop above.
+      /** @type {uint32} */
       let value = 1;
-      for (let i = 0; i < zeros; i++) value = OpCodes.Or32(OpCodes.Shl32(value, 1), reader.readBit());
+      for (let i = 0; i < zeros; i++) {
+        value = OpCodes.Or32(OpCodes.Shl32(value, 1), reader.readBit());
+      }
 
+      /** @type {int32} */
       const adjusted = value - 1;
-      return adjusted - (OpCodes.Shl32(1, ORDER) - 1);
+      return adjusted - ORDER_OFFSET;
     }
   }
 

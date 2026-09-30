@@ -80,16 +80,7 @@
       this.knownVulnerabilities = [];
 
       // Test vectors with bit-perfect accuracy
-      this.tests = this.createTestVectors();
-    }
-
-    createTestVectors() {
-      // Ensure OpCodes is available
-      if (!OpCodes) {
-        return [];
-      }
-
-      return [
+      this.tests = [
         new TestCase(
           OpCodes.AnsiToBytes(""),
           OpCodes.AnsiToBytes(""),
@@ -138,7 +129,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Base91Instance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -155,12 +146,13 @@
   class Base91Instance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {Base91Algorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
 
       // Base91 alphabet (91 printable ASCII characters excluding space and the
@@ -170,21 +162,41 @@
       // entries) means the encoder's highest digit value has no character to
       // map to, producing an out-of-range array read that silently becomes
       // NaN and corrupts the output stream.
+      /** @type {uint8[]} */
       this.alphabet = OpCodes.AnsiToBytes("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,./:;<=>?@[]^_`{|}~\"");
+      /** @type {int32} */
       this.base = 91;
+      /** @type {uint8[]|null} */
       this.processedData = null;
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
 
-      // Create decode lookup table
-      this.decodeTable = {};
-      const alphabetStr = String.fromCharCode(...this.alphabet);
-      for (let i = 0; i < alphabetStr.length; i++) {
-        this.decodeTable[alphabetStr[i]] = i;
+      // Decode lookup table indexed by character code: the digit value, or -1
+      // for a character outside the alphabet
+      /** @type {int32[]} */
+      this.decodeTable = new Array(256);
+      for (let i = 0; i < 256; i++) {
+        this.decodeTable[i] = -1;
+      }
+      for (let i = 0; i < this.alphabet.length; i++) {
+        this.decodeTable[this.alphabet[i]] = i;
       }
 
-      // Initialize encoder/decoder state
-      this.resetState();
+      // Encoder state
+      /** @type {uint32} */
+      this.ebq = 0;      // Bit queue
+      /** @type {int32} */
+      this.en = 0;       // Number of bits in queue
+      // Decoder state
+      /** @type {uint32} */
+      this.dq = 0;       // Decode queue
+      /** @type {int32} */
+      this.dn = 0;       // Number of bits
+      /** @type {int32} */
+      this.dv = -1;      // Decode value
     }
 
+    /** Clear the encoder and decoder bit queues */
     resetState() {
       // Encoder state
       this.ebq = 0;      // Bit queue
@@ -212,8 +224,14 @@
       // own, because the coder groups whole units of input and emits padding and
       // framing at the end of the message, so the bytes are collected here and
       // converted once, in Result().
-      if (!this._feedBuffer) this._feedBuffer = [];
-      for (let i = 0; i < data.length; i++) this._feedBuffer.push(data[i]);
+      if (!this._feedBuffer) {
+        /** @type {uint8[]} */
+        const fresh = [];
+        this._feedBuffer = fresh;
+      }
+      for (let i = 0; i < data.length; i++) {
+        this._feedBuffer.push(data[i]);
+      }
     }
 
     /**
@@ -226,77 +244,83 @@
       if (!this._feedBuffer) {
         throw new Error('Base91Instance.Result: No data processed. Call Feed() first.');
       }
+
       // The bit queue belongs to one conversion, so it is cleared here rather
       // than in Feed: the conversion now happens in Result, and leaving the queue
       // where the previous one finished would make a second Result disagree with
       // the first.
       this.resetState();
-      this.processedData = this.isInverse
-        ? this.decode(this._feedBuffer)
-        : this.encode(this._feedBuffer);
+      if (this.isInverse) {
+        this.processedData = this.decode(this._feedBuffer);
+      } else {
+        this.processedData = this.encode(this._feedBuffer);
+      }
       return this.processedData;
     }
 
+    /**
+     * Encode bytes as basE91 characters
+     * @param {uint8[]} data - Input bytes
+     * @returns {uint8[]} ASCII basE91 characters
+     */
     encode(data) {
+      /** @type {uint8[]} */
+      const result = [];
       if (data.length === 0) {
-        return [];
+        return result;
       }
 
-      const result = [];
-      const alphabetStr = String.fromCharCode(...this.alphabet);
-
+      // The queue never holds more than 21 bits, so the 32-bit helpers are exact
       for (let i = 0; i < data.length; i++) {
-        this.ebq = OpCodes.OrN(this.ebq, OpCodes.Shl32(OpCodes.AndN(data[i], 255), this.en));
+        this.ebq = OpCodes.Or32(this.ebq, OpCodes.Shl32(OpCodes.And32(data[i], 255), this.en));
         this.en += 8;
-
         if (this.en > 13) {
-          let ev = OpCodes.AndN(this.ebq, 8191);
-
+          /** @type {uint32} */
+          let ev = OpCodes.And32(this.ebq, 8191);
           if (ev > 88) {
             this.ebq = OpCodes.Shr32(this.ebq, 13);
             this.en -= 13;
           } else {
-            ev = OpCodes.AndN(this.ebq, 16383);
+            ev = OpCodes.And32(this.ebq, 16383);
             this.ebq = OpCodes.Shr32(this.ebq, 14);
             this.en -= 14;
           }
-
-          const idx1 = ev % 91;
-          const idx2 = Math.floor(ev / 91);
-          result.push(alphabetStr.charCodeAt(idx1));
-          result.push(alphabetStr.charCodeAt(idx2));
+          result.push(this.alphabet[ev % 91]);
+          result.push(this.alphabet[Math.floor(ev / 91)]);
         }
       }
 
       // Encode remaining bits
       if (this.en > 0) {
-        result.push(alphabetStr.charCodeAt(this.ebq % 91));
-
+        result.push(this.alphabet[this.ebq % 91]);
         if (this.en > 7 || this.ebq > 90) {
-          const idx = Math.floor(this.ebq / 91);
-          result.push(alphabetStr.charCodeAt(idx));
+          result.push(this.alphabet[Math.floor(this.ebq / 91)]);
         }
       }
 
       return result;
     }
 
+    /**
+     * Decode basE91 characters to bytes
+     * @param {uint8[]} data - ASCII basE91 characters
+     * @returns {uint8[]} Decoded bytes
+     */
     decode(data) {
+      /** @type {uint8[]} */
+      const result = [];
       if (data.length === 0) {
-        return [];
+        return result;
       }
 
-      const input = OpCodes.BytesToChars(data);
-      const result = [];
-
-      for (let i = 0; i < input.length; i++) {
-        const c = input[i];
-
-        if (!(c in this.decodeTable)) {
-          throw new Error(`Base91Instance.decode: Invalid character '${c}'`);
+      for (let i = 0; i < data.length; i++) {
+        /** @type {int32} */
+        const code = data[i];
+        /** @type {int32} */
+        const charValue = code >= 0 && code < 256 ? this.decodeTable[code] : -1;
+        if (charValue < 0) {
+          throw new Error("Base91Instance.decode: Invalid character '" + String.fromCharCode(code) + "'");
         }
-
-        const charValue = this.decodeTable[c];
 
         if (this.dv === -1) {
           this.dv = charValue;
@@ -304,8 +328,7 @@
         }
 
         this.dv += charValue * 91;
-        this.dq = OpCodes.OrN(this.dq, OpCodes.Shl32(this.dv, this.dn));
-
+        this.dq = OpCodes.Or32(this.dq, OpCodes.Shl32(this.dv, this.dn));
         // Must branch on the low 13 bits of dv, not dv itself: dv ranges up
         // to 8280 (90 + 90*91), which can exceed the 8191 (13-bit) mask
         // encode() used to pick this same branch. Comparing raw dv against
@@ -317,20 +340,19 @@
         } else {
           this.dn += 14;
         }
-
         this.dv = -1;
 
         while (this.dn > 7) {
-          result.push(OpCodes.AndN(this.dq, 255));
+          result.push(OpCodes.And32(this.dq, 255));
           this.dq = OpCodes.Shr32(this.dq, 8);
           this.dn -= 8;
         }
       }
 
       if (this.dv >= 0) {
-        this.dq = OpCodes.OrN(this.dq, OpCodes.Shl32(this.dv, this.dn));
+        this.dq = OpCodes.Or32(this.dq, OpCodes.Shl32(this.dv, this.dn));
         if (this.dn > 0) {
-          result.push(OpCodes.AndN(this.dq, 255));
+          result.push(OpCodes.And32(this.dq, 255));
         }
       }
 
@@ -338,14 +360,29 @@
     }
 
     // Utility methods for string encoding
+
+    /**
+     * Encode a string (one byte per character) as basE91 text
+     * @param {string} str - Input text
+     * @returns {string} basE91 text
+     */
     encodeString(str) {
+      /** @type {uint8[]} */
       const bytes = OpCodes.AnsiToBytes(str);
+      /** @type {uint8[]} */
       const encoded = this.encode(bytes);
       return OpCodes.BytesToChars(encoded);
     }
 
+    /**
+     * Decode basE91 text to a string (one character per byte)
+     * @param {string} str - basE91 text
+     * @returns {string} Decoded text
+     */
     decodeString(str) {
+      /** @type {uint8[]} */
       const bytes = OpCodes.AnsiToBytes(str);
+      /** @type {uint8[]} */
       const decoded = this.decode(bytes);
       return OpCodes.BytesToChars(decoded);
     }
