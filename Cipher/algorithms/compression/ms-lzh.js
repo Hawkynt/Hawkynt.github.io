@@ -94,64 +94,152 @@
 
   // RFC 1951 section 3.2.5 length codes: base length and extra-bit count for
   // symbols 257..285. Symbol 285 is special-cased to exactly MAX_MATCH.
-  const LENGTH_CODES = [
-    [3, 0], [4, 0], [5, 0], [6, 0], [7, 0], [8, 0],
-    [9, 0], [10, 0],
-    [11, 1], [13, 1], [15, 1], [17, 1],
-    [19, 2], [23, 2], [27, 2], [31, 2],
-    [35, 3], [43, 3], [51, 3], [59, 3],
-    [67, 0],
-    [67, 0], [67, 0], [67, 0],
-    [67, 0], [67, 0], [67, 0], [67, 0],
-    [64, 0]
+  /** @type {int32[]} */
+  const LENGTH_BASE = [
+    3, 4, 5, 6, 7, 8,
+    9, 10,
+    11, 13, 15, 17,
+    19, 23, 27, 31,
+    35, 43, 51, 59,
+    67,
+    67, 67, 67,
+    67, 67, 67, 67,
+    64
+  ];
+  /** @type {int32[]} */
+  const LENGTH_EXTRA = [
+    0, 0, 0, 0, 0, 0,
+    0, 0,
+    1, 1, 1, 1,
+    2, 2, 2, 2,
+    3, 3, 3, 3,
+    0,
+    0, 0, 0,
+    0, 0, 0, 0,
+    0
   ];
 
   // RFC 1951 section 3.2.5 distance codes: base distance and extra-bit count
   // for symbols 0..29. The 4 KiB window only ever reaches symbol 23.
-  const DISTANCE_CODES = [
-    [1, 0], [2, 0], [3, 0], [4, 0],
-    [5, 1], [7, 1], [9, 2], [13, 2],
-    [17, 3], [25, 3], [33, 4], [49, 4],
-    [65, 5], [97, 5], [129, 6], [193, 6],
-    [257, 7], [385, 7], [513, 8], [769, 8],
-    [1025, 9], [1537, 9], [2049, 10], [3073, 10],
-    [4097, 11], [6145, 11], [8193, 12], [12289, 12],
-    [16385, 13], [24577, 13]
+  /** @type {int32[]} */
+  const DISTANCE_BASE = [
+    1, 2, 3, 4,
+    5, 7, 9, 13,
+    17, 25, 33, 49,
+    65, 97, 129, 193,
+    257, 385, 513, 769,
+    1025, 1537, 2049, 3073,
+    4097, 6145, 8193, 12289,
+    16385, 24577
+  ];
+  /** @type {int32[]} */
+  const DISTANCE_EXTRA = [
+    0, 0, 0, 0,
+    1, 1, 2, 2,
+    3, 3, 4, 4,
+    5, 5, 6, 6,
+    7, 7, 8, 8,
+    9, 9, 10, 10,
+    11, 11, 12, 12,
+    13, 13
   ];
 
   // RFC 1951 section 3.2.7 permutation for the code-length alphabet.
+  /** @type {int32[]} */
   const CODE_LENGTH_ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
 
+  /**
+   * @param {int32} size - Number of entries
+   * @returns {int32[]} Plain array of zeros
+   */
+  function zeroArray(size) {
+    /** @type {int32[]} */
+    const arr = new Array(size);
+    for (let i = 0; i < size; ++i) {
+      arr[i] = 0;
+    }
+    return arr;
+  }
+
+  /**
+   * Symbol plus extra bits encoding one length or distance.
+   */
+  class SymbolCode {
+    /**
+     * @param {int32} symbol - Alphabet symbol
+     * @param {int32} extraBits - Extra-bit count
+     * @param {int32} extraValue - Extra-bit value
+     */
+    constructor(symbol, extraBits, extraValue) {
+      /** @type {int32} */
+      this.symbol = symbol;
+      /** @type {int32} */
+      this.extraBits = extraBits;
+      /** @type {int32} */
+      this.extraValue = extraValue;
+    }
+  }
+
+  /**
+   * @param {int32} length - Match length
+   * @returns {SymbolCode} Length symbol and extra bits
+   */
   function encodeLength(length) {
-    if (length === MAX_MATCH)
-      return { symbol: 285, extraBits: 0, extraValue: 0 };
-
-    for (let s = 0; s < LENGTH_CODES.length - 1; ++s) {
-      const baseLen = LENGTH_CODES[s][0], extraBits = LENGTH_CODES[s][1];
-      const maxLen = baseLen + OpCodes.Shl32(1, extraBits) - 1;
-      if (length >= baseLen && length <= maxLen)
-        return { symbol: FIRST_LENGTH_SYMBOL + s, extraBits: extraBits, extraValue: length - baseLen };
+    if (length === MAX_MATCH) {
+      return new SymbolCode(285, 0, 0);
     }
 
-    return { symbol: 285, extraBits: 0, extraValue: 0 };
+    for (let s = 0; s < LENGTH_BASE.length - 1; ++s) {
+      /** @type {int32} */
+      const baseLen = LENGTH_BASE[s];
+      /** @type {int32} */
+      const extraBits = LENGTH_EXTRA[s];
+      /** @type {int32} */
+      const span = OpCodes.Shl32(1, extraBits);
+      /** @type {int32} */
+      const maxLen = baseLen + span - 1;
+      if (length >= baseLen && length <= maxLen) {
+        return new SymbolCode(FIRST_LENGTH_SYMBOL + s, extraBits, length - baseLen);
+      }
+    }
+
+    return new SymbolCode(285, 0, 0);
   }
 
+  /**
+   * @param {int32} distance - Match distance
+   * @returns {SymbolCode} Distance symbol and extra bits
+   */
   function encodeDistance(distance) {
-    for (let s = 0; s < DISTANCE_CODES.length; ++s) {
-      const baseDist = DISTANCE_CODES[s][0], extraBits = DISTANCE_CODES[s][1];
-      const maxDist = baseDist + OpCodes.Shl32(1, extraBits) - 1;
-      if (distance >= baseDist && distance <= maxDist)
-        return { symbol: s, extraBits: extraBits, extraValue: distance - baseDist };
+    for (let s = 0; s < DISTANCE_BASE.length; ++s) {
+      /** @type {int32} */
+      const baseDist = DISTANCE_BASE[s];
+      /** @type {int32} */
+      const extraBits = DISTANCE_EXTRA[s];
+      /** @type {int32} */
+      const span = OpCodes.Shl32(1, extraBits);
+      /** @type {int32} */
+      const maxDist = baseDist + span - 1;
+      if (distance >= baseDist && distance <= maxDist) {
+        return new SymbolCode(s, extraBits, distance - baseDist);
+      }
     }
 
-    return { symbol: 0, extraBits: 0, extraValue: 0 };
+    return new SymbolCode(0, 0, 0);
   }
 
+  /**
+   * @param {int32} symbol - Length symbol 257..285
+   * @param {uint32} extraValue - Extra-bit value
+   * @returns {float64} Match length, capped at MAX_MATCH
+   */
   function decodeLength(symbol, extraValue) {
-    if (symbol === 285)
+    if (symbol === 285) {
       return MAX_MATCH;
+    }
 
-    const len = LENGTH_CODES[symbol - FIRST_LENGTH_SYMBOL][0] + extraValue;
+    /** @type {float64} */
+    const len = LENGTH_BASE[symbol - FIRST_LENGTH_SYMBOL] + extraValue;
     return len > MAX_MATCH ? MAX_MATCH : len;
   }
 
@@ -159,30 +247,43 @@
 
   class MsbBitWriter {
     constructor() {
+      /** @type {uint8[]} */
       this.bytes = [];
+      /** @type {uint32} */
       this.buffer = 0;
+      /** @type {int32} */
       this.bitsInBuffer = 0;
     }
 
+    /**
+     * @param {uint32} bit - Bit to append (low bit used)
+     */
     writeBit(bit) {
       this.buffer = OpCodes.Or32(this.buffer, OpCodes.Shl32(OpCodes.And32(bit, 1), 7 - this.bitsInBuffer));
       ++this.bitsInBuffer;
-      if (this.bitsInBuffer !== 8)
+      if (this.bitsInBuffer !== 8) {
         return;
+      }
 
       this.bytes.push(OpCodes.And32(this.buffer, 0xFF));
       this.buffer = 0;
       this.bitsInBuffer = 0;
     }
 
+    /**
+     * @param {uint32} value - Value whose low count bits are written
+     * @param {int32} count - Bit count, most significant first
+     */
     writeBits(value, count) {
-      for (let i = 0; i < count; ++i)
+      for (let i = 0; i < count; ++i) {
         this.writeBit(OpCodes.And32(OpCodes.Shr32(value, count - 1 - i), 1));
+      }
     }
 
     flush() {
-      if (this.bitsInBuffer <= 0)
+      if (this.bitsInBuffer <= 0) {
         return;
+      }
 
       this.bytes.push(OpCodes.And32(this.buffer, 0xFF));
       this.buffer = 0;
@@ -191,27 +292,52 @@
   }
 
   class MsbBitReader {
+    /**
+     * @param {uint8[]} bytes - Input
+     * @param {int32} start - First byte of the bit stream
+     */
     constructor(bytes, start) {
+      /** @type {uint8[]} */
       this.bytes = bytes;
+      /** @type {int32} */
       this.pos = start;
+      /** @type {uint32} */
       this.buffer = 0;
+      /** @type {int32} */
       this.bitsInBuffer = 0;
     }
 
+    /**
+     * @returns {uint32} Next bit; zero past the end of input
+     */
     readBit() {
       if (this.bitsInBuffer === 0) {
-        this.buffer = this.pos < this.bytes.length ? this.bytes[this.pos++] : 0;
+        /** @type {uint32} */
+        let next = 0;
+        if (this.pos < this.bytes.length) {
+          next = this.bytes[this.pos++];
+        }
+        this.buffer = next;
         this.bitsInBuffer = 8;
       }
+      /** @type {uint32} */
       const bit = OpCodes.And32(OpCodes.Shr32(this.buffer, this.bitsInBuffer - 1), 1);
       --this.bitsInBuffer;
       return bit;
     }
 
+    /**
+     * @param {int32} count - Bit count, most significant first
+     * @returns {uint32} Bits read
+     */
     readBits(count) {
+      /** @type {uint32} */
       let result = 0;
-      for (let i = 0; i < count; ++i)
-        result = OpCodes.Or32(OpCodes.Shl32(result, 1), this.readBit());
+      for (let i = 0; i < count; ++i) {
+        /** @type {uint32} */
+        const bit = this.readBit();
+        result = OpCodes.Or32(OpCodes.Shl32(result, 1), bit);
+      }
       return result;
     }
   }
@@ -221,23 +347,41 @@
   // Canonical assignment per RFC 1951 section 3.2.2: shortest codes first,
   // symbols of equal length in ascending symbol order.
   class CanonicalHuffman {
+    /**
+     * @param {int32[]} codeLengths - Code length per symbol, 0 when unused
+     */
     constructor(codeLengths) {
+      /** @type {int32[]} */
       this.lengths = codeLengths;
+      /** @type {int32} */
       this.maxCodeLength = 0;
-      for (let i = 0; i < codeLengths.length; ++i)
-        if (codeLengths[i] > this.maxCodeLength) this.maxCodeLength = codeLengths[i];
+      for (let i = 0; i < codeLengths.length; ++i) {
+        if (codeLengths[i] > this.maxCodeLength) {
+          this.maxCodeLength = codeLengths[i];
+        }
+      }
 
-      this.codes = new Array(codeLengths.length).fill(0);
+      /** @type {int32[]} */
+      this.codes = zeroArray(codeLengths.length);
+      /** @type {int32[]} */
       this.firstCode = [];
+      /** @type {int32[][]} */
       this.symbolsByLength = [];
-      if (this.maxCodeLength === 0)
+      if (this.maxCodeLength === 0) {
         return;
+      }
 
-      const blCount = new Array(this.maxCodeLength + 1).fill(0);
-      for (let i = 0; i < codeLengths.length; ++i)
-        if (codeLengths[i] > 0) ++blCount[codeLengths[i]];
+      /** @type {int32[]} */
+      const blCount = zeroArray(this.maxCodeLength + 1);
+      for (let i = 0; i < codeLengths.length; ++i) {
+        if (codeLengths[i] > 0) {
+          ++blCount[codeLengths[i]];
+        }
+      }
 
-      const nextCode = new Array(this.maxCodeLength + 1).fill(0);
+      /** @type {int32[]} */
+      const nextCode = zeroArray(this.maxCodeLength + 1);
+      /** @type {int32} */
       let code = 0;
       for (let b = 1; b <= this.maxCodeLength; ++b) {
         code = OpCodes.Shl32(code + blCount[b - 1], 1);
@@ -245,32 +389,46 @@
       }
 
       this.firstCode = nextCode.slice();
-      for (let b = 0; b <= this.maxCodeLength; ++b) this.symbolsByLength.push([]);
+      for (let b = 0; b <= this.maxCodeLength; ++b) {
+        /** @type {int32[]} */
+        const bucket = [];
+        this.symbolsByLength.push(bucket);
+      }
 
       for (let sym = 0; sym < codeLengths.length; ++sym) {
+        /** @type {int32} */
         const len = codeLengths[sym];
-        if (len <= 0) continue;
+        if (len <= 0) {
+          continue;
+        }
         this.codes[sym] = nextCode[len]++;
         this.symbolsByLength[len].push(sym);
       }
     }
 
-    getCode(symbol) {
-      return { code: this.codes[symbol], length: this.lengths[symbol] };
-    }
-
+    /**
+     * @param {MsbBitReader} reader - Input bit stream
+     * @returns {int32} Decoded symbol
+     */
     decodeSymbol(reader) {
-      if (this.maxCodeLength === 0)
+      if (this.maxCodeLength === 0) {
         throw new Error('MS LZH: empty Huffman table');
+      }
 
+      /** @type {int32} */
       let code = 0;
       for (let len = 1; len <= this.maxCodeLength; ++len) {
-        code = OpCodes.Or32(OpCodes.Shl32(code, 1), reader.readBit());
+        /** @type {uint32} */
+        const bit = reader.readBit();
+        code = OpCodes.Or32(OpCodes.Shl32(code, 1), bit);
+        /** @type {int32[]} */
         const list = this.symbolsByLength[len];
         if (list.length > 0) {
+          /** @type {int32} */
           const index = code - this.firstCode[len];
-          if (index >= 0 && index < list.length)
+          if (index >= 0 && index < list.length) {
             return list[index];
+          }
         }
       }
       throw new Error('MS LZH: invalid Huffman code');
@@ -279,19 +437,43 @@
 
   // Fixed tables: RFC 1951 section 3.2.6 shape over this codec's 286-symbol
   // literal/length alphabet and a flat 5-bit distance alphabet.
-  const FIXED_LITLEN_LENGTHS = (() => {
-    const lengths = new Array(LITLEN_ALPHABET_SIZE).fill(0);
-    for (let i = 0; i <= 143; ++i) lengths[i] = 8;
-    for (let i = 144; i <= 255; ++i) lengths[i] = 9;
-    for (let i = 256; i <= 279; ++i) lengths[i] = 7;
-    for (let i = 280; i <= 285; ++i) lengths[i] = 8;
+  /**
+   * @returns {int32[]} Fixed literal/length code lengths
+   */
+  function buildFixedLitLenLengths() {
+    /** @type {int32[]} */
+    const lengths = zeroArray(LITLEN_ALPHABET_SIZE);
+    for (let i = 0; i <= 143; ++i) {
+      lengths[i] = 8;
+    }
+    for (let i = 144; i <= 255; ++i) {
+      lengths[i] = 9;
+    }
+    for (let i = 256; i <= 279; ++i) {
+      lengths[i] = 7;
+    }
+    for (let i = 280; i <= 285; ++i) {
+      lengths[i] = 8;
+    }
     return lengths;
-  })();
+  }
 
-  const FIXED_DISTANCE_LENGTHS = new Array(DISTANCE_ALPHABET_SIZE).fill(5);
+  /**
+   * @returns {int32[]} Fixed distance code lengths
+   */
+  function buildFixedDistanceLengths() {
+    /** @type {int32[]} */
+    const lengths = zeroArray(DISTANCE_ALPHABET_SIZE);
+    for (let i = 0; i < DISTANCE_ALPHABET_SIZE; ++i) {
+      lengths[i] = 5;
+    }
+    return lengths;
+  }
 
-  const FIXED_LITLEN = new CanonicalHuffman(FIXED_LITLEN_LENGTHS);
-  const FIXED_DISTANCE = new CanonicalHuffman(FIXED_DISTANCE_LENGTHS);
+  /** @type {CanonicalHuffman} */
+  const FIXED_LITLEN = new CanonicalHuffman(buildFixedLitLenLengths());
+  /** @type {CanonicalHuffman} */
+  const FIXED_DISTANCE = new CanonicalHuffman(buildFixedDistanceLengths());
 
   // ===== ALGORITHM =====
 
@@ -422,23 +604,69 @@
     }
   }
 
+  /**
+   * Best match found by the greedy parser.
+   */
+  class MatchCandidate {
+    /**
+     * @param {int32} length - Match length, 0 when none
+     * @param {int32} offset - Backward distance
+     */
+    constructor(length, offset) {
+      /** @type {int32} */
+      this.length = length;
+      /** @type {int32} */
+      this.offset = offset;
+    }
+  }
+
+  /**
+   * Huffman tables announced by a dynamic block header.
+   */
+  class DynamicTables {
+    /**
+     * @param {CanonicalHuffman} litLen - Literal/length table
+     * @param {CanonicalHuffman} distance - Distance table
+     */
+    constructor(litLen, distance) {
+      /** @type {CanonicalHuffman} */
+      this.litLen = litLen;
+      /** @type {CanonicalHuffman} */
+      this.distance = distance;
+    }
+  }
+
   class MSLZHInstance extends IAlgorithmInstance {
+    /**
+     * @param {MSLZHAlgorithm} algorithm - Owning algorithm
+     * @param {boolean} isInverse - True for decompression
+     */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
 
+    /**
+     * @returns {uint8[]} Compressed or decompressed bytes
+     */
     Result() {
       if (this.isInverse) {
-        if (this.inputBuffer.length === 0)
-          return [];
+        if (this.inputBuffer.length === 0) {
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
+        }
+        /** @type {uint8[]} */
         const decoded = this._decompress();
         this.inputBuffer = [];
         return decoded;
       }
 
+      /** @type {uint8[]} */
       const encoded = this._compress();
       this.inputBuffer = [];
       return encoded;
@@ -446,24 +674,37 @@
 
     // ===== COMPRESSION (greedy parse, fixed tables) =====
 
+    /**
+     * @returns {uint8[]} Size header followed by one fixed block
+     */
     _compress() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
+      /** @type {uint8[]} */
       const out = OpCodes.Unpack32LE(data.length);
-      if (data.length === 0)
+      if (data.length === 0) {
         return out;
+      }
 
+      /** @type {MsbBitWriter} */
       const writer = new MsbBitWriter();
       writer.writeBit(BLOCK_TYPE_FIXED);
       MSLZHInstance._encodeBodyGreedyFixed(data, writer);
 
-      const eof = FIXED_LITLEN.getCode(END_OF_BLOCK_SYMBOL);
-      writer.writeBits(eof.code, eof.length);
+      writer.writeBits(FIXED_LITLEN.codes[END_OF_BLOCK_SYMBOL], FIXED_LITLEN.lengths[END_OF_BLOCK_SYMBOL]);
       writer.flush();
 
-      for (let i = 0; i < writer.bytes.length; ++i) out.push(writer.bytes[i]);
+      for (let i = 0; i < writer.bytes.length; ++i) {
+        out.push(writer.bytes[i]);
+      }
       return out;
     }
 
+    /**
+     * @param {uint8[]} data - Input
+     * @param {int32} pos - Position of the three hashed bytes
+     * @returns {uint32} Hash bucket
+     */
     static _hash3(data, pos) {
       return OpCodes.And32(
         OpCodes.Xor32(
@@ -474,107 +715,165 @@
       );
     }
 
+    /**
+     * @param {uint8[]} data - Input
+     * @param {MsbBitWriter} writer - Output bit stream
+     */
     static _encodeBodyGreedyFixed(data, writer) {
+      /** @type {int32[]} */
       const hashHead = new Int32Array(HASH_SIZE_GREEDY).fill(-1);
+      /** @type {int32[]} */
       const hashNext = new Int32Array(data.length).fill(-1);
 
+      /** @type {int32} */
       let pos = 0;
       while (pos < data.length) {
         if (pos + 2 < data.length) {
+          /** @type {int32} */
           const h = MSLZHInstance._hash3(data, pos);
           hashNext[pos] = hashHead[h];
           hashHead[h] = pos;
         }
 
+        /** @type {MatchCandidate} */
         const best = MSLZHInstance._findBestMatch(data, pos, hashHead, hashNext, MIN_MATCH, MAX_CHAIN_GREEDY);
 
         if (best.length >= MIN_MATCH) {
           MSLZHInstance._writeMatchFixed(writer, best.length, best.offset);
 
+          /** @type {int32} */
           const insertEnd = Math.min(pos + best.length, data.length - 2);
           for (let j = pos + 1; j < insertEnd; ++j) {
+            /** @type {int32} */
             const h = MSLZHInstance._hash3(data, j);
             hashNext[j] = hashHead[h];
             hashHead[h] = j;
           }
           pos += best.length;
         } else {
-          const lit = FIXED_LITLEN.getCode(data[pos]);
-          writer.writeBits(lit.code, lit.length);
+          /** @type {uint8} */
+          const literal = data[pos];
+          writer.writeBits(FIXED_LITLEN.codes[literal], FIXED_LITLEN.lengths[literal]);
           ++pos;
         }
       }
     }
 
+    /**
+     * @param {uint8[]} data - Input
+     * @param {int32} pos - Current position
+     * @param {int32[]} hashHead - Bucket heads
+     * @param {int32[]} hashNext - Chain links
+     * @param {int32} minMatch - Shortest usable match
+     * @param {int32} maxChainLen - Chain walk limit
+     * @returns {MatchCandidate} Longest (earliest on ties) match
+     */
     static _findBestMatch(data, pos, hashHead, hashNext, minMatch, maxChainLen) {
-      if (pos + minMatch > data.length)
-        return { length: 0, offset: 0 };
+      if (pos + minMatch > data.length) {
+        return new MatchCandidate(0, 0);
+      }
 
+      /** @type {int32} */
       let bestLen = 0;
+      /** @type {int32} */
       let bestOff = 0;
+      /** @type {int32} */
       const minPos = Math.max(0, pos - WINDOW_SIZE);
+      /** @type {int32} */
       let idx = hashNext[pos];
+      /** @type {int32} */
       let chainLen = 0;
+      /** @type {int32} */
       const maxLen = Math.min(data.length - pos, MAX_MATCH);
 
       while (idx >= minPos && idx < pos && chainLen < maxChainLen) {
         if (data[idx] === data[pos]
             && data[idx + 1] === data[pos + 1]
             && data[idx + 2] === data[pos + 2]) {
+          /** @type {int32} */
           let len = 3;
-          while (len < maxLen && data[idx + len] === data[pos + len])
+          while (len < maxLen && data[idx + len] === data[pos + len]) {
             ++len;
+          }
           if (len > bestLen && len >= minMatch) {
             bestLen = len;
             bestOff = pos - idx;
-            if (bestLen >= maxLen)
+            if (bestLen >= maxLen) {
               break;
+            }
           }
         }
         idx = hashNext[idx];
         ++chainLen;
       }
 
-      return { length: bestLen, offset: bestOff };
+      return new MatchCandidate(bestLen, bestOff);
     }
 
+    /**
+     * @param {MsbBitWriter} writer - Output bit stream
+     * @param {int32} length - Match length
+     * @param {int32} distance - Match distance
+     */
     static _writeMatchFixed(writer, length, distance) {
+      /** @type {SymbolCode} */
       const len = encodeLength(length);
-      const lenCode = FIXED_LITLEN.getCode(len.symbol);
-      writer.writeBits(lenCode.code, lenCode.length);
-      if (len.extraBits > 0)
+      writer.writeBits(FIXED_LITLEN.codes[len.symbol], FIXED_LITLEN.lengths[len.symbol]);
+      if (len.extraBits > 0) {
         writer.writeBits(len.extraValue, len.extraBits);
+      }
 
+      /** @type {SymbolCode} */
       const dist = encodeDistance(distance);
-      const distCode = FIXED_DISTANCE.getCode(dist.symbol);
-      writer.writeBits(distCode.code, distCode.length);
-      if (dist.extraBits > 0)
+      writer.writeBits(FIXED_DISTANCE.codes[dist.symbol], FIXED_DISTANCE.lengths[dist.symbol]);
+      if (dist.extraBits > 0) {
         writer.writeBits(dist.extraValue, dist.extraBits);
+      }
     }
 
     // ===== DECOMPRESSION =====
 
+    /**
+     * @returns {uint8[]} Decompressed bytes
+     */
     _decompress() {
+      /** @type {uint8[]} */
       const data = this.inputBuffer;
-      if (data.length < 4)
+      if (data.length < 4) {
         throw new Error('MS LZH: input too small for header');
+      }
 
+      /** @type {uint32} */
       const originalSize = OpCodes.Pack32LE(data[0], data[1], data[2], data[3]);
-      if (originalSize === 0)
-        return [];
+      if (originalSize === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {MsbBitReader} */
       const reader = new MsbBitReader(data, 4);
+      /** @type {uint8[]} */
       const output = new Array(originalSize);
+      /** @type {float64} */
       let pos = 0;
-      let safety = originalSize * 8 + 1024;
+      /** @type {float64} */
+      const sizeValue = originalSize;
+      /** @type {float64} */
+      let safety = sizeValue * 8 + 1024;
 
       while (pos < originalSize) {
+        /** @type {uint32} */
         const blockType = reader.readBit();
-        let litLenHuf, distHuf;
+        /** @type {CanonicalHuffman} */
+        let litLenHuf = FIXED_LITLEN;
+        /** @type {CanonicalHuffman} */
+        let distHuf = FIXED_DISTANCE;
         if (blockType === BLOCK_TYPE_FIXED) {
           litLenHuf = FIXED_LITLEN;
           distHuf = FIXED_DISTANCE;
         } else if (blockType === BLOCK_TYPE_DYNAMIC) {
+          /** @type {DynamicTables} */
           const tables = MSLZHInstance._readDynamicHeader(reader);
           litLenHuf = tables.litLen;
           distHuf = tables.distance;
@@ -583,99 +882,170 @@
         }
 
         while (pos < originalSize && safety-- > 0) {
+          /** @type {int32} */
           const symbol = litLenHuf.decodeSymbol(reader);
           if (symbol < 256) {
             output[pos++] = symbol;
             continue;
           }
-          if (symbol === END_OF_BLOCK_SYMBOL)
+          if (symbol === END_OF_BLOCK_SYMBOL) {
             break;
-          if (symbol > 285)
+          }
+          if (symbol > 285) {
             throw new Error('MS LZH: invalid literal/length symbol ' + symbol);
+          }
 
-          const lenExtraBits = LENGTH_CODES[symbol - FIRST_LENGTH_SYMBOL][1];
-          const lenExtraValue = lenExtraBits > 0 ? reader.readBits(lenExtraBits) : 0;
+          /** @type {int32} */
+          const lenExtraBits = LENGTH_EXTRA[symbol - FIRST_LENGTH_SYMBOL];
+          /** @type {uint32} */
+          let lenExtraValue = 0;
+          if (lenExtraBits > 0) {
+            lenExtraValue = reader.readBits(lenExtraBits);
+          }
+          /** @type {float64} */
           const length = decodeLength(symbol, lenExtraValue);
 
+          /** @type {int32} */
           const distSym = distHuf.decodeSymbol(reader);
-          if (distSym < 0 || distSym >= DISTANCE_ALPHABET_SIZE)
+          if (distSym < 0 || distSym >= DISTANCE_ALPHABET_SIZE) {
             throw new Error('MS LZH: invalid distance symbol ' + distSym);
+          }
 
-          const distExtraBits = DISTANCE_CODES[distSym][1];
-          const distExtraValue = distExtraBits > 0 ? reader.readBits(distExtraBits) : 0;
-          const distance = DISTANCE_CODES[distSym][0] + distExtraValue;
+          /** @type {int32} */
+          const distExtraBits = DISTANCE_EXTRA[distSym];
+          /** @type {uint32} */
+          let distExtraValue = 0;
+          if (distExtraBits > 0) {
+            distExtraValue = reader.readBits(distExtraBits);
+          }
+          /** @type {float64} */
+          const distance = DISTANCE_BASE[distSym] + distExtraValue;
 
-          if (distance < 1 || distance > pos)
+          if (distance < 1 || distance > pos) {
             throw new Error('MS LZH: invalid distance ' + distance + ' at pos ' + pos);
-          if (pos + length > originalSize)
+          }
+          if (pos + length > originalSize) {
             throw new Error('MS LZH: match would overrun output');
+          }
 
+          /** @type {float64} */
           const srcPos = pos - distance;
-          for (let j = 0; j < length; ++j)
+          for (let j = 0; j < length; ++j) {
             output[pos + j] = output[srcPos + j];
+          }
           pos += length;
         }
 
-        if (safety <= 0)
+        if (safety <= 0) {
           throw new Error('MS LZH: decoder safety counter exhausted');
+        }
       }
 
-      if (pos !== originalSize)
+      if (pos !== originalSize) {
         throw new Error('MS LZH: output underrun');
+      }
 
       return output;
     }
 
     // Reads the RFC 1951 section 3.2.7 style dynamic-block header.
+    /**
+     * @param {MsbBitReader} reader - Input bit stream
+     * @returns {DynamicTables} Literal/length and distance tables
+     */
     static _readDynamicHeader(reader) {
-      const hlit = reader.readBits(5) + 257;
-      const hdist = reader.readBits(5) + 1;
-      const hclen = reader.readBits(4) + 4;
+      /** @type {int32} */
+      const hlitField = reader.readBits(5);
+      /** @type {int32} */
+      const hdistField = reader.readBits(5);
+      /** @type {int32} */
+      const hclenField = reader.readBits(4);
+      /** @type {int32} */
+      const hlit = hlitField + 257;
+      /** @type {int32} */
+      const hdist = hdistField + 1;
+      /** @type {int32} */
+      const hclen = hclenField + 4;
 
-      if (hlit > LITLEN_ALPHABET_SIZE)
+      if (hlit > LITLEN_ALPHABET_SIZE) {
         throw new Error('MS LZH: dynamic block HLIT ' + hlit + ' exceeds literal/length alphabet');
-      if (hdist > DISTANCE_ALPHABET_SIZE)
+      }
+      if (hdist > DISTANCE_ALPHABET_SIZE) {
         throw new Error('MS LZH: dynamic block HDIST ' + hdist + ' exceeds distance alphabet');
-      if (hclen > CODE_LENGTH_ALPHABET_SIZE)
+      }
+      if (hclen > CODE_LENGTH_ALPHABET_SIZE) {
         throw new Error('MS LZH: dynamic block HCLEN ' + hclen + ' exceeds code-length alphabet');
+      }
 
-      const clLengths = new Array(CODE_LENGTH_ALPHABET_SIZE).fill(0);
-      for (let k = 0; k < hclen; ++k)
-        clLengths[CODE_LENGTH_ORDER[k]] = reader.readBits(3);
+      /** @type {int32[]} */
+      const clLengths = zeroArray(CODE_LENGTH_ALPHABET_SIZE);
+      for (let k = 0; k < hclen; ++k) {
+        /** @type {int32} */
+        const bits = reader.readBits(3);
+        clLengths[CODE_LENGTH_ORDER[k]] = bits;
+      }
 
+      /** @type {CanonicalHuffman} */
       const clHuf = new CanonicalHuffman(clLengths);
-      if (clHuf.maxCodeLength === 0)
+      if (clHuf.maxCodeLength === 0) {
         throw new Error('MS LZH: dynamic block code-length table is empty');
+      }
 
-      const merged = new Array(hlit + hdist).fill(0);
+      /** @type {int32[]} */
+      const merged = zeroArray(hlit + hdist);
+      /** @type {int32} */
       let idx = 0;
       while (idx < merged.length) {
+        /** @type {int32} */
         const sym = clHuf.decodeSymbol(reader);
         if (sym <= 15) {
           merged[idx++] = sym;
         } else if (sym === 16) {
-          if (idx === 0)
+          if (idx === 0) {
             throw new Error('MS LZH: dynamic block code-length symbol 16 at start of list');
-          let repeat = reader.readBits(2) + 3;
+          }
+          /** @type {int32} */
+          const repeatField = reader.readBits(2);
+          /** @type {int32} */
+          let repeat = repeatField + 3;
+          /** @type {int32} */
           const prev = merged[idx - 1];
-          while (repeat-- > 0 && idx < merged.length) merged[idx++] = prev;
+          while (repeat-- > 0 && idx < merged.length) {
+            merged[idx++] = prev;
+          }
         } else if (sym === 17) {
-          let repeat = reader.readBits(3) + 3;
-          while (repeat-- > 0 && idx < merged.length) merged[idx++] = 0;
+          /** @type {int32} */
+          const repeatField = reader.readBits(3);
+          /** @type {int32} */
+          let repeat = repeatField + 3;
+          while (repeat-- > 0 && idx < merged.length) {
+            merged[idx++] = 0;
+          }
         } else if (sym === 18) {
-          let repeat = reader.readBits(7) + 11;
-          while (repeat-- > 0 && idx < merged.length) merged[idx++] = 0;
+          /** @type {int32} */
+          const repeatField = reader.readBits(7);
+          /** @type {int32} */
+          let repeat = repeatField + 11;
+          while (repeat-- > 0 && idx < merged.length) {
+            merged[idx++] = 0;
+          }
         } else {
           throw new Error('MS LZH: dynamic block code-length symbol ' + sym + ' unrecognised');
         }
       }
 
-      const litLenLengths = new Array(LITLEN_ALPHABET_SIZE).fill(0);
-      for (let i = 0; i < hlit; ++i) litLenLengths[i] = merged[i];
-      const distLengths = new Array(DISTANCE_ALPHABET_SIZE).fill(0);
-      for (let i = 0; i < hdist; ++i) distLengths[i] = merged[hlit + i];
+      /** @type {int32[]} */
+      const litLenLengths = zeroArray(LITLEN_ALPHABET_SIZE);
+      for (let i = 0; i < hlit; ++i) {
+        litLenLengths[i] = merged[i];
+      }
+      /** @type {int32[]} */
+      const distLengths = zeroArray(DISTANCE_ALPHABET_SIZE);
+      for (let i = 0; i < hdist; ++i) {
+        distLengths[i] = merged[hlit + i];
+      }
 
-      return { litLen: new CanonicalHuffman(litLenLengths), distance: new CanonicalHuffman(distLengths) };
+      return new DynamicTables(new CanonicalHuffman(litLenLengths), new CanonicalHuffman(distLengths));
     }
   }
 
