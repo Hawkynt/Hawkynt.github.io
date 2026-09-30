@@ -39,7 +39,7 @@ No vulnerabilities are recorded for this implementation.
 
 ## Test vectors
 
-3 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
+4 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
 
 **Vector 1** — [LibTomCrypt Test Vector - 128-bit key, 4-byte IV](https://github.com/libtom/libtomcrypt/blob/develop/src/stream/sober128/sober128_test.c)
 
@@ -67,6 +67,15 @@ No vulnerabilities are recorded for this implementation.
 | `iv` | `00000000000000000000000000000000` |
 | `input` | `000102030405060708090a0b0c0d0e0f 101112131415161718191a1b1c1d1e1f 202122232425262728292a2b2c2d2e2f 303132333435363738393a3b3c3d3e3f` |
 | `expected` | `f0358083f35a4656b17341aeca5e5c0b b355f42a0518e368ed0cd9b40d6a7198 c9ddacb9423bd2ce0f05245af4bc97b8 8a528810a694ec75320a556f4f033fa8` |
+
+**Vector 4** — [DarkCrypt Sober-128 — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)](https://totalcmd.net/plugring/darkcrypttc.html)
+
+| Field | Value |
+| --- | --- |
+| `key` | `0b30557a9fc4e90e33587da2c7ec1136` |
+| `iv` | `073c71a6db10457aafe4194e83b8ed22` |
+| `input` | `03203d5a7794b1ceeb0825425f7c99b6 d3f00d2a4764819ebbd8f5122f4c6986 a3c0ddfa1734516e8ba8c5e2ff1c3956` |
+| `expected` | `5151082d2cfaea538cfab05da62df5ca 34be696dce37f701b5d640ce7fe7ab59 c4181db3c5b8038221167a9b28dda377` |
 
 ---
 

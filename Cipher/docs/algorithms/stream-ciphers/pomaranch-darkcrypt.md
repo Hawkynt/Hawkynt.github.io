@@ -39,7 +39,7 @@ No vulnerabilities are recorded for this implementation.
 
 ## Test vectors
 
-2 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
+3 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
 
 **Vector 1** — [DarkCrypt Pomaranch - 128-bit key, zero IV keystream](https://totalcmd.net/plugring/darkcrypttc.html)
 
@@ -58,6 +58,15 @@ No vulnerabilities are recorded for this implementation.
 | `iv` | `0000000000000000000000000000` |
 | `input` | `000102030405060708090a0b0c0d0e0f 101112131415161718191a1b1c1d1e1f 202122232425262728292a2b2c2d2e2f 303132333435363738393a3b3c3d3e3f` |
 | `expected` | `e5d6f5c39f1a1b386f2b1ce8ef1d31c1 1608f936d8f56a14bae1a472393995f4 7df71c832e26ae7c2ae0515c86991996 82551e3e4cf0ebf37b8570133f12457b` |
+
+**Vector 3** — [DarkCrypt Pomaranch — non-zero key and IV, 48-byte message (verified against the DarkCrypt implementation)](https://totalcmd.net/plugring/darkcrypttc.html)
+
+| Field | Value |
+| --- | --- |
+| `key` | `0b30557a9fc4e90e33587da2c7ec1136` |
+| `iv` | `073c71a6db10457aafe4194e83b8` |
+| `input` | `03203d5a7794b1ceeb0825425f7c99b6 d3f00d2a4764819ebbd8f5122f4c6986 a3c0ddfa1734516e8ba8c5e2ff1c3956` |
+| `expected` | `c9c10581135a21435880aecbe7328c27 3cb76acc2090f6c4412e35601f3318b2 3eff1a07ef4f3db5d46619ff2867a156` |
 
 ---
 
