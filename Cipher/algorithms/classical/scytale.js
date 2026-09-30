@@ -99,7 +99,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ScytaleInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -116,34 +116,48 @@
   class ScytaleInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ScytaleCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {string|null} */
       this._key = null;
+      /** @type {int32} */
       this.circumference = 3; // Default circumference
     }
 
+    /**
+     * Circumference as decimal text, given as a string or as its ASCII bytes
+     * @param {string|uint8[]} keyData - Key; anything unparsable selects 3
+     */
     set key(keyData) {
+      /** @type {string} */
       let keyString = '';
       if (typeof keyData === 'string') {
         keyString = keyData;
       } else if (Array.isArray(keyData)) {
-        keyString = String.fromCharCode(...keyData);
+        /** @type {uint8[]} */
+        const bytes = keyData;
+        keyString = String.fromCharCode(...bytes);
       }
 
-      const circumference = parseInt(keyString) || 3;
+      /** @type {int32} */
+      const parsed = parseInt(keyString);
+      /** @type {int32} */
+      const circumference = parsed ? parsed : 3;
       this.circumference = Math.max(1, circumference);
       this._key = keyString;
     }
 
     /**
-   * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * Get the key text
+   * @returns {string|null} Key text or null
    */
 
     get key() {
@@ -158,8 +172,13 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) return [];
+      if (this.inputBuffer.length === 0) {
+        /** @type {uint8[]} */
+        const empty = [];
+        return empty;
+      }
 
+      /** @type {uint8[]} */
       const message = this.inputBuffer;
       this.inputBuffer = [];
 
@@ -175,10 +194,14 @@
      * @returns {uint8[]} Transposed bytes
      */
     wind(plaintext) {
+      /** @type {int32} */
       const columns = this.circumference;
+      /** @type {int32} */
       const rows = Math.ceil(plaintext.length / columns);
+      /** @type {uint8[]} */
       const result = new Array(plaintext.length);
 
+      /** @type {int32} */
       let position = 0;
       for (let c = 0; c < columns; c++) {
         for (let r = 0; r < rows; r++) {
@@ -198,11 +221,16 @@
      * @returns {uint8[]} Original bytes
      */
     unwind(ciphertext) {
+      /** @type {int32} */
       const columns = this.circumference;
+      /** @type {int32} */
       const fullRows = Math.floor(ciphertext.length / columns);
+      /** @type {int32} */
       const remainder = ciphertext.length % columns;
+      /** @type {uint8[]} */
       const result = new Array(ciphertext.length);
 
+      /** @type {int32} */
       let position = 0;
       for (let c = 0; c < columns; c++) {
         const height = fullRows + (c < remainder ? 1 : 0);

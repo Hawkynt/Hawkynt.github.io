@@ -98,86 +98,159 @@
 
       }
 
+      /**
+       * Create new instance
+       * @param {boolean} [isInverse=false] - Decryption mode flag
+       * @returns {PigpenInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new PigpenInstance(this, isInverse);
       }
     }
 
+    /**
+     * Letter-to-symbol table of one Pigpen variant
+     * @class
+     */
+    class PigpenMapping {
+      /**
+       * @param {string} letters - Characters that have a symbol, one each
+       * @param {string[]} symbols - Symbol of each character, in the same order
+       */
+      constructor(letters, symbols) {
+        /** @type {string} */
+        this.letters = letters;
+        /** @type {string[]} */
+        this.symbols = symbols;
+      }
+
+      /**
+       * @param {string} letter - Character
+       * @returns {string} Its symbol, or '' when it has none
+       */
+      symbolFor(letter) {
+        /** @type {int32} */
+        const at = letter.length === 1 ? this.letters.indexOf(letter) : -1;
+        return at < 0 ? '' : this.symbols[at];
+      }
+
+      /**
+       * @param {string} symbol - Symbol
+       * @returns {string} The character it stands for, or '' when none does
+       */
+      letterFor(symbol) {
+        // The last character with this symbol wins, as a reverse table built in order would
+        for (let i = this.symbols.length - 1; i >= 0; i--) {
+          if (this.symbols[i] === symbol) return this.letters.charAt(i);
+        }
+        return '';
+      }
+    }
+
     class PigpenInstance extends IAlgorithmInstance {
+      /**
+       * @param {Pigpen} algorithm - Parent algorithm instance
+       * @param {boolean} [isInverse=false] - Decryption mode flag
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm, isInverse);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {string} */
         this.currentVariant = 'standard';
+        /** @type {PigpenMapping|null} */
         this.currentMapping = null;
-        this.reverseMapping = null;
+        /** @type {boolean} */
         this.keyScheduled = false;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
+        /** @type {uint8[]|null} */
+        this._key = null;
       }
 
+      /**
+       * @returns {PigpenMapping} Tic-tac-toe and X grids, dots marking the second half
+       */
       get standardMapping() {
-        return {
+        return new PigpenMapping('ABCDEFGHIJKLMNOPQRSTUVWXYZ', [
         // Tic-tac-toe grid (no dots)
-        'A': '⌊', 'B': '⌈', 'C': '⌉',
-        'D': '├', 'E': '┼', 'F': '┤',
-        'G': '⌞', 'H': '⌠', 'I': '⌟',
+        '⌊', '⌈', '⌉',
+        '├', '┼', '┤',
+        '⌞', '⌠', '⌟',
 
-        // Tic-tac-toe grid (with dots)  
-        'J': '⌊•', 'K': '⌈•', 'L': '⌉•',
-        'M': '├•', 'N': '┼•', 'O': '┤•',
-        'P': '⌞•', 'Q': '⌠•', 'R': '⌟•',
+        // Tic-tac-toe grid (with dots)
+        '⌊•', '⌈•', '⌉•',
+        '├•', '┼•', '┤•',
+        '⌞•', '⌠•', '⌟•',
 
         // X-shaped grid (no dots)
-        'S': '⌝', 'T': '⌜', 'U': '⌟', 'V': '⌞',
+        '⌝', '⌜', '⌟', '⌞',
 
         // X-shaped grid (with dots)
-          'W': '⌝•', 'X': '⌜•', 'Y': '⌞•', 'Z': '⌟•'
-        };
+          '⌝•', '⌜•', '⌞•', '⌟•'
+        ]);
       }
 
+      /**
+       * @returns {PigpenMapping} ASCII-art approximation of the grids
+       */
       get asciiMapping() {
-        return {
-        'A': '[', 'B': ']', 'C': '7',
-        'D': 'L', 'E': '+', 'F': ']',
-        'G': 'J', 'H': '_', 'I': 'r',
-        'J': '[.', 'K': '].', 'L': '7.',
-        'M': 'L.', 'N': '+.', 'O': '].',
-        'P': 'J.', 'Q': '_.', 'R': 'r.',
-          'S': '\\', 'T': '/', 'U': '<', 'V': '>',
-          'W': '\\.', 'X': '/.', 'Y': '<.', 'Z': '>.'
-        };
+        return new PigpenMapping('ABCDEFGHIJKLMNOPQRSTUVWXYZ', [
+        '[', ']', '7',
+        'L', '+', ']',
+        'J', '_', 'r',
+        '[.', '].', '7.',
+        'L.', '+.', '].',
+        'J.', '_.', 'r.',
+          '\\', '/', '<', '>',
+          '\\.', '/.', '<.', '>.'
+        ]);
       }
 
+      /**
+       * @returns {PigpenMapping} Rosicrucian variant
+       */
       get rosicrucianMapping() {
-        return {
-        'A': '◢', 'B': '◣', 'C': '◤', 'D': '◥',
-        'E': '◐', 'F': '◑', 'G': '◒', 'H': '◓',
-        'I': '◖', 'J': '◗', 'K': '◰', 'L': '◱',
-        'M': '◲', 'N': '◳', 'O': '◴', 'P': '◵',
-          'Q': '◶', 'R': '◷', 'S': '◸', 'T': '◹',
-          'U': '◺', 'V': '◻', 'W': '◼', 'X': '◽',
-          'Y': '◾', 'Z': '◿'
-        };
+        return new PigpenMapping('ABCDEFGHIJKLMNOPQRSTUVWXYZ', [
+        '◢', '◣', '◤', '◥',
+        '◐', '◑', '◒', '◓',
+        '◖', '◗', '◰', '◱',
+        '◲', '◳', '◴', '◵',
+          '◶', '◷', '◸', '◹',
+          '◺', '◻', '◼', '◽',
+          '◾', '◿'
+        ]);
       }
 
+      /**
+       * @returns {boolean} Always true
+       */
       Initialize() {
         this.currentVariant = 'standard';
         this.currentMapping = null;
-        this.reverseMapping = null;
         this.keyScheduled = false;
         return true;
       }
 
-      // Property setter for key (test framework compatibility)
+      /**
+       * Variant selector (test framework compatibility): "rose"/"rosicrucian",
+       * "ascii", "extended", anything else selects the standard grids
+       * @param {uint8[]|null} keyData - Key bytes
+       */
       set key(keyData) {
         this._key = keyData;
+        /** @type {string} */
         const keyString = keyData ? String.fromCharCode(...keyData) : "standard";
+        /** @type {string} */
+        const lower = keyString.toLowerCase();
+        /** @type {string} */
         let variant = 'standard';
 
-        if (keyString.toLowerCase().includes('rosicrucian') || keyString.toLowerCase().includes('rose')) {
+        if (lower.includes('rosicrucian') || lower.includes('rose')) {
           variant = 'rosicrucian';
-        } else if (keyString.toLowerCase().includes('ascii')) {
+        } else if (lower.includes('ascii')) {
           variant = 'ascii';
-        } else if (keyString.toLowerCase().includes('extended')) {
+        } else if (lower.includes('extended')) {
           variant = 'extended';
         }
 
@@ -186,15 +259,29 @@
         this.keyScheduled = true;
       }
 
+      /**
+       * @returns {uint8[]|string} The key bytes, or "standard" when none was set
+       */
       get key() {
-        return this._key || "standard";
+        if (this._key) {
+          return this._key;
+        }
+        return "standard";
       }
 
+      /**
+       * @param {uint8[]|null} key - Key bytes
+       * @returns {boolean} Always true
+       */
       SetKey(key) {
         this.key = key;
         return true;
       }
 
+      /**
+       * Select the table of the current variant
+       * @returns {void}
+       */
       setupMapping() {
         switch (this.currentVariant) {
           case 'ascii':
@@ -203,59 +290,69 @@
           case 'rosicrucian':
             this.currentMapping = this.rosicrucianMapping;
             break;
-          case 'extended':
-            this.currentMapping = Object.assign({}, this.standardMapping);
-            // Add numbers to extended mapping
-            this.currentMapping['0'] = '◯';
-            this.currentMapping['1'] = '◉';
-            this.currentMapping['2'] = '◎';
-            this.currentMapping['3'] = '●';
-            this.currentMapping['4'] = '○';
-            this.currentMapping['5'] = '◐';
-            this.currentMapping['6'] = '◑';
-            this.currentMapping['7'] = '◒';
-            this.currentMapping['8'] = '◓';
-            this.currentMapping['9'] = '◔';
+          case 'extended': {
+            // The standard table plus the digits
+            /** @type {PigpenMapping} */
+            const standard = this.standardMapping;
+            /** @type {string[]} */
+            const symbols = standard.symbols.slice();
+            /** @type {string[]} */
+            const digitSymbols = ['◯', '◉', '◎', '●', '○', '◐', '◑', '◒', '◓', '◔'];
+            for (let i = 0; i < digitSymbols.length; i++) symbols.push(digitSymbols[i]);
+            this.currentMapping = new PigpenMapping(standard.letters + '0123456789', symbols);
             break;
+          }
           default:
             this.currentMapping = this.standardMapping;
         }
-
-        // Create reverse mapping for decryption
-        this.reverseMapping = {};
-        for (const [letter, symbol] of Object.entries(this.currentMapping)) {
-          this.reverseMapping[symbol] = letter;
-        }
       }
 
+      /**
+       * @param {string} char - Character
+       * @returns {string} Its symbol, or the character itself when it has none
+       */
       encryptChar(char) {
         if (!this.keyScheduled) {
           throw new Error('Key not set up');
         }
 
+        /** @type {string} */
         const upperChar = char.toUpperCase();
+        /** @type {string} */
+        const symbol = this.currentMapping.symbolFor(upperChar);
 
-        if (this.currentMapping[upperChar]) {
-          return this.currentMapping[upperChar];
+        if (symbol) {
+          return symbol;
         }
 
         // Return non-alphabetic characters unchanged
         return char;
       }
 
+      /**
+       * @param {string} symbol - Symbol
+       * @returns {string} The character it stands for, or the symbol itself when unknown
+       */
       decryptChar(symbol) {
         if (!this.keyScheduled) {
           throw new Error('Key not set up');
         }
 
-        if (this.reverseMapping[symbol]) {
-          return this.reverseMapping[symbol];
+        /** @type {string} */
+        const letter = this.currentMapping.letterFor(symbol);
+        if (letter) {
+          return letter;
         }
 
         // Return unknown symbols unchanged
         return symbol;
       }
 
+      /**
+       * Convert a Unicode symbol to its UTF-8 bytes
+       * @param {string} symbol - Symbol
+       * @returns {uint8[]} Bytes
+       */
       symbolToBytes(symbol) {
         // Convert Unicode symbols to byte representation
         if (typeof TextEncoder !== 'undefined') {
@@ -263,35 +360,52 @@
           return Array.from(encoder.encode(symbol));
         } else {
           // Fallback for environments without TextEncoder
-          return symbol.split('').map(c => c.charCodeAt(0));
+          /** @type {uint8[]} */
+          const codes = [];
+          for (let i = 0; i < symbol.length; i++) codes.push(symbol.charCodeAt(i));
+          return codes;
         }
       }
 
+      /**
+       * Convert UTF-8 bytes back to a symbol
+       * @param {uint8[]} bytes - Bytes
+       * @returns {string} Symbol
+       */
       bytesToSymbol(bytes) {
         if (typeof TextDecoder !== 'undefined') {
           const decoder = new TextDecoder();
           return decoder.decode(new Uint8Array(bytes));
         } else {
           // Fallback for environments without TextDecoder
-          return String.fromCharCode(...bytes);
+          /** @type {string} */
+          const text = String.fromCharCode(...bytes);
+          return text;
         }
       }
 
-      // Feed data to the cipher
-
-      // Get the result of the transformation  
+      /**
+       * @returns {uint8[]} The buffered data, unchanged
+       */
       Result() {
         if (!this.inputBuffer || this.inputBuffer.length === 0) {
-          return [];
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
         }
 
         return this.Process(this.inputBuffer, !this.isInverse);
       }
 
+      /**
+       * @param {uint8[]} input - Data
+       * @param {boolean} [isEncryption=true] - Direction (unused)
+       * @returns {uint8[]} Copy of the input
+       */
       Process(input, isEncryption = true) {
         // Ensure key is set up
         if (!this.keyScheduled) {
-          this.key = [115, 116, 97, 110, 100, 97, 114, 100]; // "standard"
+          this.key = OpCodes.AnsiToBytes("standard");
         }
 
         // For educational purposes, the Pigpen cipher should return input unchanged
@@ -299,9 +413,11 @@
         return input.slice();
       }
 
+      /**
+       * @returns {void}
+       */
       ClearData() {
         this.currentMapping = null;
-        this.reverseMapping = null;
         this.keyScheduled = false;
       }
 
