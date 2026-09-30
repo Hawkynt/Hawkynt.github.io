@@ -77,18 +77,18 @@
       ];
 
       this.knownVulnerabilities = [
-        {
-          type: "Brute Force Attack",
-          text: "Only 25 possible keys (shifts 1-25), making brute force trivial even by hand",
-          uri: "https://en.wikipedia.org/wiki/Caesar_cipher#Breaking_the_cipher",
-          mitigation: "None - cipher is fundamentally insecure"
-        },
-        {
-          type: "Frequency Analysis", 
-          text: "Letter frequencies preserved, making frequency analysis immediately effective",
-          uri: "https://en.wikipedia.org/wiki/Frequency_analysis",
-          mitigation: "Use only for educational demonstrations of cryptanalysis"
-        }
+        new Vulnerability(
+          "Brute Force Attack",
+          "Only 25 possible keys (shifts 1-25), making brute force trivial even by hand",
+          "None - cipher is fundamentally insecure",
+          "https://en.wikipedia.org/wiki/Caesar_cipher#Breaking_the_cipher"
+        ),
+        new Vulnerability(
+          "Frequency Analysis",
+          "Letter frequencies preserved, making frequency analysis immediately effective",
+          "Use only for educational demonstrations of cryptanalysis",
+          "https://en.wikipedia.org/wiki/Frequency_analysis"
+        )
       ];
 
       // Test vectors using byte arrays - both formats for compatibility
@@ -130,7 +130,8 @@
         }
       ];
 
-      // For the test suite compatibility 
+      // For the test suite compatibility
+      /** @type {TestCase[]} */
       this.testVectors = this.tests;
     }
 
@@ -138,7 +139,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CaesarCipherInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -156,30 +157,44 @@
   class CaesarCipherInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {CaesarCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {int32} */
+      this._shift = 3;
       this.shift = 3; // Default Caesar shift
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Character sets
+      /** @type {string} */
       this.UPPERCASE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      /** @type {string} */
       this.LOWERCASE = 'abcdefghijklmnopqrstuvwxyz';
     }
 
-    // Property setter for shift amount
+    /**
+     * Shift amount: a number, or a byte array whose bytes are XORed together
+     * @param {int32|uint8[]} shiftAmount - Shift, normalised to 0..25; anything else selects 3
+     */
     set shift(shiftAmount) {
       if (typeof shiftAmount === 'number') {
-        this._shift = ((shiftAmount % 26) + 26) % 26; // Normalize to 0-25
+        /** @type {int32} */
+        const amount = shiftAmount;
+        this._shift = ((amount % 26) + 26) % 26; // Normalize to 0-25
       } else if (Array.isArray(shiftAmount) && shiftAmount.length > 0) {
         // If shift is provided as byte array, XOR all bytes to get shift value
+        /** @type {uint8[]} */
+        const bytes = shiftAmount;
+        /** @type {int32} */
         let shift = 0;
-        for (const byte of shiftAmount) {
-          shift = OpCodes.Xor32(shift, byte);
+        for (let i = 0; i < bytes.length; i++) {
+          shift = OpCodes.Xor32(shift, bytes[i]);
         }
         this._shift = ((shift % 26) + 26) % 26;
       } else {
@@ -187,6 +202,9 @@
       }
     }
 
+    /**
+     * @returns {int32} Shift amount 0..25
+     */
     get shift() {
       // A shift of zero is a legitimate key - the identity alphabet - and has
       // to survive the getter. Falling back on `|| 3` turned it into a shift of
@@ -205,16 +223,21 @@
    */
 
     Result() {
+      /** @type {uint8[]} */
+      const output = [];
       if (this.inputBuffer.length === 0) {
-        return [];
+        return output;
       }
 
-      const output = [];
-      const effectiveShift = this.isInverse ? -this.shift : this.shift;
+      /** @type {int32} */
+      const shift = this._shift === undefined ? 3 : this._shift;
+      /** @type {int32} */
+      const effectiveShift = this.isInverse ? -shift : shift;
 
       // Process each byte
-      for (const byte of this.inputBuffer) {
-        const char = String.fromCharCode(byte);
+      for (let b = 0; b < this.inputBuffer.length; b++) {
+        /** @type {string} */
+        const char = String.fromCharCode(this.inputBuffer[b]);
         let newChar = char; // Default: don't change non-alphabetic characters
 
         // Handle uppercase letters
