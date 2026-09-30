@@ -118,7 +118,7 @@
   // ===== FIELD ARITHMETIC (Modulo P = 2^255 - 19) =====
 
   /**
-   * * Modular reduction modulo P = 2^255 - 19
+   * Modular reduction modulo P = 2^255 - 19
    * @param {BigInt} x - x
    * @returns {BigInt} Result
    */
@@ -129,7 +129,7 @@
   }
 
   /**
-   * * Modular inverse using Fermat's little theorem: a^(p-2) mod p
+   * Modular inverse using Fermat's little theorem: a^(p-2) mod p
    * @param {BigInt} x - x
    * @returns {BigInt} Result
    */
@@ -138,7 +138,7 @@
   }
 
   /**
-   * * Modular exponentiation: base^exp mod mod
+   * Modular exponentiation: base^exp mod mod
    * @param {BigInt} base - base
    * @param {BigInt} exp - exp
    * @param {BigInt} mod - mod
@@ -159,7 +159,7 @@
   // ===== SCALAR ARITHMETIC (Modulo L = group order) =====
 
   /**
-   * * Modular reduction modulo L (group order)
+   * Modular reduction modulo L (group order)
    * @param {BigInt} x - x
    * @returns {BigInt} Result
    */
@@ -172,7 +172,7 @@
   // ===== ENCODING/DECODING =====
 
   /**
-   * * Encode integer as little-endian byte array
+   * Encode integer as little-endian byte array
    * @param {BigInt} value - value
    * @param {int32} length - length
    * @returns {uint8[]} Result
@@ -190,7 +190,7 @@
   }
 
   /**
-   * * Decode little-endian byte array to BigInt
+   * Decode little-endian byte array to BigInt
    * @param {uint8[]} bytes - bytes
    * @returns {BigInt} Result
    */
@@ -223,7 +223,7 @@
   }
 
   /**
-   * * Decode 32-byte compressed point format (RFC 8032)
+   * Decode 32-byte compressed point format (RFC 8032)
    * @param {uint8[]} bytes - bytes
    * @returns {EdAffinePoint} Result
    */
@@ -361,7 +361,7 @@
   }
 
   /**
-   * * Convert extended coordinates to affine
+   * Convert extended coordinates to affine
    * @param {EdExtendedPoint} p - p
    * @returns {EdAffinePoint} Result
    */
@@ -418,7 +418,7 @@
   }
 
   /**
-   * * Scalar multiplication by base point: k * B
+   * Scalar multiplication by base point: k * B
    * @param {BigInt} k - k
    * @returns {EdAffinePoint} Result
    */
@@ -466,7 +466,7 @@
   }
 
   /**
-   * * Hash data using SHA-512
+   * Hash data using SHA-512
    * @param {uint8[]} data - data
    * @returns {uint8[]} Result
    */
@@ -481,7 +481,7 @@
   // ===== ED25519 CORE OPERATIONS =====
 
   /**
-   * * Generate public key from secret key (32 bytes)
+   * Generate public key from secret key (32 bytes)
    * @param {uint8[]} secretKey - secretKey
    * @returns {uint8[]} Result
    */
