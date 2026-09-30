@@ -105,6 +105,14 @@
           input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
           key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40"),
           expected: OpCodes.Hex8ToBytes("9a1d3b13f9027ee033cb11ed176fb7e2")
+        },
+        {
+          // This key expands to a multiplication key word whose top bits are a long run of zeros.
+          text: "DarkCrypt Mars-512 — key word with a long top bit run (verified against the DarkCrypt implementation)",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("b2eed2e17c4fcdada8cf1d6e6b825050"),
+          key: OpCodes.Hex8ToBytes("5d9cebee6e1463b6751ff5c878dcb89c4ecb59c89be600b164927e782e96ead26e531237dcea7abd5071a9da47589ee439dbe6db5b269a0f30c6028159e5028c"),
+          expected: OpCodes.Hex8ToBytes("ae7eff91b80ed63e6e278d6825116396")
         }
       ];
     }
@@ -265,7 +273,7 @@
     }
 
     // Generalized multiplication-keyword mask: finds a run of >=10 identical bits
-    // (excluding the two LSBs) in w and builds a 4-bit-aligned mask covering it,
+    // (marking bits 2..30 only) in w and builds a mask covering it,
     // so the later XOR with a rotated B[] constant breaks up long bit runs.
     // Ported unchanged (bit-exact) from the official MARS key-tweak logic.
     /**
@@ -282,9 +290,8 @@
       a = OpCodes.Or32(OpCodes.Add32(a, a), OpCodes.Shl32(a, 2));
       a = OpCodes.Or32(a, OpCodes.Shl32(a, 2));
       a = OpCodes.Or32(a, OpCodes.Shl32(a, 4));
-      const edx = OpCodes.And32(OpCodes.And32(notw, OpCodes.Add32(a, a)), 0x80000000);
-      a = OpCodes.Or32(a, edx);
-      return OpCodes.And32(a, 0xFFFFFFFC);
+      // Only bits 2..30 may be marked: the top bit of a run reaching bit 31 stays unmasked.
+      return OpCodes.And32(a, 0x7FFFFFFC);
     }
 
     // Generalized MARS key expansion: official E-box stirring over a 40-word
