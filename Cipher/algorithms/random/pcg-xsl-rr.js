@@ -134,11 +134,14 @@
       this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // PCG state (64-bit)
+      /** @type {BigInt} */
       this._state = 0n;
 
       // PCG constants for 64-bit LCG (from Abseil pcg32_2018_engine)
       // These are the standard PCG multiplier and increment
+      /** @type {BigInt} */
       this.MULTIPLIER = 0x5851f42d4c957f2dn; // 64-bit multiplier
+      /** @type {BigInt} */
       this.INCREMENT = 0x14057b7ef767814fn; // 64-bit increment (must be odd)
 
       this._ready = false;
@@ -156,6 +159,7 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (big-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < Math.min(seedBytes.length, 8); ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8n), BigInt(seedBytes[i]));
@@ -167,6 +171,7 @@
       this._state = (tmp + this.INCREMENT) * this.MULTIPLIER + this.INCREMENT;
 
       // Mask to 64 bits
+      /** @type {BigInt} */
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
       this._state = OpCodes.AndN(this._state, mask64);
 
@@ -188,6 +193,7 @@
      * 1. Extract rotation count from top 5 bits (shift right 59)
      * 2. XOR-shift-high: shift right 18, XOR with state, shift right 27
      * 3. Random rotation: rotate right by extracted count
+     * @returns {uint32} Next output
      */
     _next32() {
       if (!this._ready) {
@@ -195,17 +201,19 @@
       }
 
       // Advance LCG state: state = state * MULTIPLIER + INCREMENT
-      let state = this._state;
-      state = state * this.MULTIPLIER + this.INCREMENT;
+      /** @type {BigInt} */
+      let s = this._state;
+      s = s * this.MULTIPLIER + this.INCREMENT;
 
       // Mask to 64 bits
+      /** @type {BigInt} */
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
-      state = OpCodes.AndN(state, mask64);
+      s = OpCodes.AndN(s, mask64);
 
-      this._state = state;
+      this._state = s;
 
       // Apply XSH-RR permutation (from Abseil pcg_xsh_rr_64_32)
-      return this._permute(state);
+      return this._permute(s);
     }
 
     /**
@@ -214,17 +222,24 @@
      *
      * Reference: absl/random/internal/pcg_engine.h lines 260-267
      * Uses rotate-right on XOR-shifted state with top bits as rotation count
+     * @param {BigInt} s - LCG state
+     * @returns {uint32} 32-bit output
      */
-    _permute(state) {
+    _permute(s) {
       // Extract rotation count from top 5 bits (shift right 59)
-      const rotate = Number(OpCodes.ShiftRn(state, 59n));
+      /** @type {int32} */
+      const rotate = Number(OpCodes.ShiftRn(s, 59));
 
       // XOR-shift-high: shift 18, XOR, shift 27
-      const shifted18 = OpCodes.ShiftRn(state, 18n);
-      const xorred = OpCodes.XorN(shifted18, state);
-      const shifted27 = OpCodes.ShiftRn(xorred, 27n);
+      /** @type {BigInt} */
+      const shifted18 = OpCodes.ShiftRn(s, 18);
+      /** @type {BigInt} */
+      const xorred = OpCodes.XorN(shifted18, s);
+      /** @type {BigInt} */
+      const shifted27 = OpCodes.ShiftRn(xorred, 27);
 
       // Extract lower 32 bits as the xorshifted value
+      /** @type {uint32} */
       const xorshifted = Number(OpCodes.AndN(shifted27, 0xFFFFFFFFn));
 
       // Rotate right by 'rotate' bits using OpCodes

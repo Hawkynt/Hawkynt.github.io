@@ -141,21 +141,27 @@
       super(algorithm);
 
       // PCG64-DXSM state (128-bit)
+      /** @type {BigInt} */
       this._state = 0n;
 
       // PCG64-DXSM increment (128-bit, must be odd)
+      /** @type {BigInt} */
       this._increment = 1n; // Default odd increment
 
       // PCG constants for DXSM variant
       // This is the "cheap multiplier" - 64-bit value used for both LCG and output mixing
+      /** @type {BigInt} */
       this.MULTIPLIER_64 = 0xda942042e4dd58b5n;
 
       // 128-bit LCG multiplier (standard PCG 128-bit multiplier)
+      /** @type {BigInt} */
       this.MULTIPLIER_128 = 0x2360ed051fc65da44385df649fccf645n;
 
       // Masks
+      /** @type {BigInt} */
       this.MASK_64 = 0xFFFFFFFFFFFFFFFFn;
-      this.MASK_128 = (OpCodes.ShiftLn(1n, 128n)) - 1n;
+      /** @type {BigInt} */
+      this.MASK_128 = (OpCodes.ShiftLn(1n, 128)) - 1n;
 
       this._ready = false;
 
@@ -175,12 +181,14 @@
       }
 
       // Pad or truncate seed to 128 bits (16 bytes)
-      const seed128 = new Array(16).fill(0);
+      /** @type {uint8[]} */
+      const seed128 = OpCodes.CreateArray(16, 0);
       for (let i = 0; i < Math.min(seedBytes.length, 16); ++i) {
         seed128[i] = seedBytes[i];
       }
 
       // Convert seed bytes to 128-bit BigInt (big-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < 16; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, BigInt(8)), BigInt(seed128[i]));
@@ -203,10 +211,14 @@
      */
     get seed() {
       // Return current state as seed (for inspection)
+      /** @type {uint8[]} */
       const stateBytes = [];
+      /** @type {BigInt} */
       let s = this._state;
       for (let i = 0; i < 16; ++i) {
-        stateBytes.unshift(Number(OpCodes.AndN(s, 0xFFn)));
+        /** @type {uint8} */
+        const b = Number(OpCodes.AndN(s, 0xFFn));
+        stateBytes.unshift(b);
         s = OpCodes.ShiftRn(s, 8n);
       }
       return stateBytes;
@@ -215,10 +227,13 @@
     /**
      * LCG step function: state = state * multiplier + increment (mod 2^128)
      * PCG64-DXSM uses the "cheap multiplier" (64-bit) for both LCG and output mixing
+     * @param {BigInt} s - Current state
+     * @returns {BigInt} Next state
      */
-    _lcgStep(state) {
+    _lcgStep(s) {
       // Use 64-bit "cheap" multiplier for LCG (not 128-bit!)
-      const result = OpCodes.AndN(state * this.MULTIPLIER_64 + this._increment, this.MASK_128);
+      /** @type {BigInt} */
+      const result = OpCodes.AndN(s * this.MULTIPLIER_64 + this._increment, this.MASK_128);
       return result;
     }
 
@@ -233,11 +248,15 @@
      * 4. hi ^= right shift hi by 48 bits
      * 5. hi *= (lo|1)  // Ensure lo is odd for full-period mixing
      * 6. Return hi
+     * @param {BigInt} s - 128-bit state
+     * @returns {BigInt} 64-bit output
      */
-    _dxsmOutput(state) {
+    _dxsmOutput(s) {
       // Split 128-bit state into high and low 64-bit parts
-      let hi = OpCodes.AndN(OpCodes.ShiftRn(state, BigInt(64)), this.MASK_64);
-      const lo = OpCodes.AndN(state, this.MASK_64);
+      /** @type {BigInt} */
+      let hi = OpCodes.AndN(OpCodes.ShiftRn(s, 64), this.MASK_64);
+      /** @type {BigInt} */
+      const lo = OpCodes.AndN(s, this.MASK_64);
 
       // First xorshift (32-bit shift)
       hi = OpCodes.AndN(OpCodes.XorN(hi, OpCodes.ShiftRn(hi, BigInt(32))), this.MASK_64);
@@ -249,6 +268,7 @@
       hi = OpCodes.AndN(OpCodes.XorN(hi, OpCodes.ShiftRn(hi, BigInt(48))), this.MASK_64);
 
       // Final multiply with low bits (ensure odd)
+      /** @type {BigInt} */
       const loOdd = OpCodes.OrN(lo, 1n);
       hi = OpCodes.AndN(hi * loOdd, this.MASK_64);
 
@@ -257,6 +277,7 @@
 
     /**
      * Generate next random 64-bit value
+     * @returns {BigInt} Next 64-bit output
      */
     _next64() {
       if (!this._ready) {
@@ -264,6 +285,7 @@
       }
 
       // PCG64-DXSM outputs BEFORE advancing (unlike standard PCG which advances first)
+      /** @type {BigInt} */
       const output = this._dxsmOutput(this._state);
 
       // Advance state
@@ -295,17 +317,24 @@
       }
 
       // Respect outputSize if set
-      const outputSize = this.outputSize || 8;
+      /** @type {int32} */
+      const outputSize = (this.outputSize ? this.outputSize : 8);
+      /** @type {uint8[]} */
       const result = [];
 
       while (result.length < outputSize) {
         // Generate 64-bit random value and convert to 8 bytes (big-endian)
+        /** @type {BigInt} */
         const value64 = this._next64();
 
+        /** @type {uint8[]} */
         const bytes = [];
+        /** @type {BigInt} */
         let v = value64;
         for (let i = 0; i < 8; ++i) {
-          bytes.unshift(Number(OpCodes.AndN(v, 0xFFn)));
+          /** @type {uint8} */
+          const b = Number(OpCodes.AndN(v, 0xFFn));
+          bytes.unshift(b);
           v = OpCodes.ShiftRn(v, BigInt(8));
         }
         for (let _i = 0; _i < bytes.length; _i++) result.push(bytes[_i]);

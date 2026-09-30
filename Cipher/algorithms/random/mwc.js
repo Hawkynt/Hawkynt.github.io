@@ -199,6 +199,23 @@
  * @extends {IBlockCipherInstance}
  */
 
+  /**
+   * A 64-bit output as two 32-bit halves
+   * @class
+   */
+  class MwcWord {
+    /**
+     * @param {uint32} low - Low 32 bits
+     * @param {uint32} high - High 32 bits
+     */
+    constructor(low, high) {
+      /** @type {uint32} */
+      this.low = low;
+      /** @type {uint32} */
+      this.high = high;
+    }
+  }
+
   class MWCInstance extends IRandomGeneratorInstance {
     /**
      * @param {MWCAlgorithm} algorithm - Parent algorithm
@@ -319,6 +336,7 @@
      * NOTE: This function uses native bit operations (>>>, <<, &, |) for 64-bit
      * arithmetic simulation. OpCodes does not provide 64-bit or 128-bit operations,
      * and these are essential for correct MWC implementation.
+     * @returns {MwcWord} Next 64-bit output
      */
     _next64() {
       if (!this._ready) {
@@ -335,29 +353,49 @@
       // Result is 96 bits max (64-bit * 32-bit)
 
       // Low part: xLow * a (produces up to 64 bits)
+      // (the double-precision products below round above 2^53 exactly as before)
+      /** @type {int32} */
       const lowMul = Math.imul(xLow, a);  // Low 32 bits of xLow * a
-      const lowCarry = Math.floor((xLow * a) / 0x100000000); // High 32 bits
+      /** @type {float64} */
+      const lowProduct = xLow * a;
+      /** @type {float64} */
+      const lowCarry = Math.floor(lowProduct / 0x100000000); // High 32 bits
 
       // High part: xHigh * a (produces up to 64 bits, but we only need 32+32)
+      /** @type {int32} */
       const highMul = Math.imul(xHigh, a);  // Low 32 bits of xHigh * a
-      const highCarry = Math.floor((xHigh * a) / 0x100000000); // High 32 bits
+      /** @type {float64} */
+      const highProduct = xHigh * a;
+      /** @type {float64} */
+      const highCarry = Math.floor(highProduct / 0x100000000); // High 32 bits
 
       // Combine: result = lowMul + (lowCarry + highMul) * 2^32 + highCarry * 2^64
       // We track as [result0, result1, result2, result3] each 32-bit
+      /** @type {float64} */
+      const middle = lowCarry + highMul;
+      /** @type {uint32} */
       let r0 = (OpCodes.ToUint32(lowMul));
-      let r1 = OpCodes.ToUint32(((lowCarry + highMul)));
-      let r2 = (OpCodes.ToUint32(highCarry)) + Math.floor((lowCarry + highMul) / 0x100000000);
-      let r3 = Math.floor(r2 / 0x100000000);
-      r2 = OpCodes.ToUint32(r2);
+      /** @type {uint32} */
+      let r1 = OpCodes.ToUint32(middle);
+      /** @type {float64} */
+      const r2Wide = OpCodes.ToUint32(highCarry) + Math.floor(middle / 0x100000000);
+      /** @type {float64} */
+      const r3Wide = Math.floor(r2Wide / 0x100000000);
+      /** @type {uint32} */
+      let r2 = OpCodes.ToUint32(r2Wide);
 
       // Add carry (64-bit)
-      r0 = OpCodes.ToUint32((r0 + this._carryLow));
+      r0 = OpCodes.Add32(r0, this._carryLow);
+      /** @type {uint32} */
       const carryAdd = (r0< this._carryLow) ? 1 : 0;
-      r1 = OpCodes.ToUint32((r1 + this._carryHigh + carryAdd));
+      r1 = OpCodes.Add32(OpCodes.Add32(r1, this._carryHigh), carryAdd);
+      /** @type {uint32} */
       const carry1 = ((r1< this._carryHigh)|| (r1 === this._carryHigh && carryAdd> 0)) ? 1 : 0;
-      r2 = OpCodes.ToUint32((r2 + carry1));
+      r2 = OpCodes.Add32(r2, carry1);
+      /** @type {uint32} */
       const carry2 = (r2< carry1) ? 1 : 0;
-      r3 = OpCodes.ToUint32((r3 + carry2));
+      /** @type {uint32} */
+      const r3 = OpCodes.ToUint32(r3Wide + carry2);
 
       // New state is low 64 bits (r0, r1)
       this._stateLow = r0;
@@ -367,7 +405,7 @@
       this._carryLow = r2;
       this._carryHigh = r3;
 
-      return {low: this._stateLow, high: this._stateHigh};
+      return new MwcWord(this._stateLow, this._stateHigh);
     }
 
     /**
@@ -392,19 +430,20 @@
 
       while (bytesRemaining > 0) {
         // Generate next 64-bit value
+        /** @type {MwcWord} */
         const value = this._next64();
 
         // Extract bytes (little-endian order)
         const bytesToExtract = Math.min(bytesRemaining, 8);
 
-        if (bytesToExtract >= 1) output.push(value.low&0xFF);
-        if (bytesToExtract >= 2) output.push((OpCodes.Shr32(value.low, 8))&0xFF);
-        if (bytesToExtract >= 3) output.push((OpCodes.Shr32(value.low, 16))&0xFF);
-        if (bytesToExtract >= 4) output.push((OpCodes.Shr32(value.low, 24))&0xFF);
-        if (bytesToExtract >= 5) output.push(value.high&0xFF);
-        if (bytesToExtract >= 6) output.push((OpCodes.Shr32(value.high, 8))&0xFF);
-        if (bytesToExtract >= 7) output.push((OpCodes.Shr32(value.high, 16))&0xFF);
-        if (bytesToExtract >= 8) output.push((OpCodes.Shr32(value.high, 24))&0xFF);
+        if (bytesToExtract >= 1) output.push(OpCodes.And32(value.low, 0xFF));
+        if (bytesToExtract >= 2) output.push(OpCodes.And32(OpCodes.Shr32(value.low, 8), 0xFF));
+        if (bytesToExtract >= 3) output.push(OpCodes.And32(OpCodes.Shr32(value.low, 16), 0xFF));
+        if (bytesToExtract >= 4) output.push(OpCodes.And32(OpCodes.Shr32(value.low, 24), 0xFF));
+        if (bytesToExtract >= 5) output.push(OpCodes.And32(value.high, 0xFF));
+        if (bytesToExtract >= 6) output.push(OpCodes.And32(OpCodes.Shr32(value.high, 8), 0xFF));
+        if (bytesToExtract >= 7) output.push(OpCodes.And32(OpCodes.Shr32(value.high, 16), 0xFF));
+        if (bytesToExtract >= 8) output.push(OpCodes.And32(OpCodes.Shr32(value.high, 24), 0xFF));
 
         bytesRemaining -= bytesToExtract;
       }
@@ -432,7 +471,7 @@
 
     Result() {
       // Use specified output size or default to 64 bytes
-      const size = this._outputSize || 64;
+      const size = (this._outputSize ? this._outputSize : 64);
       return this.NextBytes(size);
     }
 
@@ -448,7 +487,7 @@
      * @returns {int32} Bytes returned by Result()
      */
     get outputSize() {
-      return this._outputSize || 64;
+      return (this._outputSize ? this._outputSize : 64);
     }
   }
 

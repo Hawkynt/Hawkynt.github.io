@@ -169,6 +169,7 @@
 
       // PRNG state
       this._key = null;
+      /** @type {BigInt} */
       this._counter = 0n; // 64-bit counter
       this._ready = false;
 
@@ -190,11 +191,12 @@
 
       // Validate seed size (must be 16 bytes for TEA key)
       if (seedBytes.length !== 16) {
-        throw new Error(`Invalid seed size: ${seedBytes.length} bytes. TEA-PRNG requires exactly 16 bytes`);
+        throw new Error("Invalid seed size: " + seedBytes.length + " bytes. TEA-PRNG requires exactly 16 bytes");
       }
 
       // Store key and reset counter
       this._key = [...seedBytes];
+      /** @type {BigInt} */
       this._counter = 0n;
       this._ready = true;
     }
@@ -209,11 +211,13 @@
     /**
      * Encrypt a 64-bit block using TEA cipher
      * @param {BigInt} counterValue - 64-bit counter to encrypt
-     * @returns {Array} 8-byte encrypted block
+     * @returns {uint8[]} 8-byte encrypted block
      */
     _encryptCounter(counterValue) {
       // Convert counter to two 32-bit words (big-endian)
-      let v0 = Number(OpCodes.AndN(OpCodes.ShiftRn(counterValue, 32n), 0xFFFFFFFFn));
+      /** @type {uint32} */
+      let v0 = Number(OpCodes.AndN(OpCodes.ShiftRn(counterValue, 32), 0xFFFFFFFFn));
+      /** @type {uint32} */
       let v1 = Number(OpCodes.AndN(counterValue, 0xFFFFFFFFn));
 
       // Extract key as four 32-bit words (big-endian)
@@ -222,20 +226,27 @@
       const k2 = OpCodes.Pack32BE(this._key[8], this._key[9], this._key[10], this._key[11]);
       const k3 = OpCodes.Pack32BE(this._key[12], this._key[13], this._key[14], this._key[15]);
 
+      /** @type {uint32} */
       let sum = 0;
 
       // 32 rounds of TEA encryption using OpCodes
       for (let i = 0; i < this.ROUNDS; ++i) {
         sum = OpCodes.Add32(sum, this.DELTA);
-        v0 = OpCodes.Add32(v0, OpCodes.Add32(OpCodes.Shl32(v1, 4), k0)^OpCodes.Add32(v1, sum)^OpCodes.Add32(OpCodes.Shr32(v1, 5), k1));
-        v1 = OpCodes.Add32(v1, OpCodes.Add32(OpCodes.Shl32(v0, 4), k2)^OpCodes.Add32(v0, sum)^OpCodes.Add32(OpCodes.Shr32(v0, 5), k3));
+        v0 = OpCodes.Add32(v0, OpCodes.Xor32(OpCodes.Xor32(OpCodes.Add32(OpCodes.Shl32(v1, 4), k0), OpCodes.Add32(v1, sum)), OpCodes.Add32(OpCodes.Shr32(v1, 5), k1)));
+        v1 = OpCodes.Add32(v1, OpCodes.Xor32(OpCodes.Xor32(OpCodes.Add32(OpCodes.Shl32(v0, 4), k2), OpCodes.Add32(v0, sum)), OpCodes.Add32(OpCodes.Shr32(v0, 5), k3)));
       }
 
       // Convert back to bytes (big-endian)
+      /** @type {uint8[]} */
       const v0Bytes = OpCodes.Unpack32BE(v0);
+      /** @type {uint8[]} */
       const v1Bytes = OpCodes.Unpack32BE(v1);
 
-      return [...v0Bytes, ...v1Bytes];
+      /** @type {uint8[]} */
+      const block = [];
+      for (let i = 0; i < v0Bytes.length; ++i) block.push(v0Bytes[i]);
+      for (let i = 0; i < v1Bytes.length; ++i) block.push(v1Bytes[i]);
+      return block;
     }
 
     /**
@@ -260,6 +271,7 @@
       // Generate blocks until we have enough bytes
       while (output.length < length) {
         // Encrypt current counter value
+        /** @type {uint8[]} */
         const block = this._encryptCounter(this._counter);
 
         // Increment counter for next block using OpCodes

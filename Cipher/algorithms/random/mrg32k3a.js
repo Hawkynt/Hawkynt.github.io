@@ -299,7 +299,7 @@
      * Component 2: x2i = (527612*x2[0] + 0*x2[1] - 1370589*x2[2]) mod m2
      * Output: ((x1i - x2i) mod m1) + 1
      *
-     * @returns {number} 32-bit unsigned random integer in [1, M1+1]
+     * @returns {uint32} 32-bit unsigned random integer in [1, M1+1]
      */
     _nextInt() {
       if (!this._initialized) {
@@ -307,13 +307,17 @@
       }
 
       // Component 1: x1i = (0*x1[0] + 1403580*x1[1] - 810728*x1[2]) mod m1
-      let x1i = (0 * this._x1[0] + A12 * this._x1[1] - A13N * this._x1[2]);
+      // (the zero-coefficient x1[0] term is omitted: adding zero leaves the sum unchanged)
+      /** @type {float64} */
+      let x1i = (A12 * this._x1[1] - A13N * this._x1[2]);
 
       // Python-style modular reduction (always returns positive result)
       x1i = ((x1i % M1) + M1) % M1;
 
       // Component 2: x2i = (527612*x2[0] + 0*x2[1] - 1370589*x2[2]) mod m2
-      let x2i = (A21 * this._x2[0] + 0 * this._x2[1] - A23N * this._x2[2]);
+      // (the zero-coefficient x2[1] term is omitted: adding zero leaves the sum unchanged)
+      /** @type {float64} */
+      let x2i = (A21 * this._x2[0] - A23N * this._x2[2]);
 
       // Python-style modular reduction (always returns positive result)
       x2i = ((x2i % M2) + M2) % M2;
@@ -335,10 +339,12 @@
 
     /**
      * Generate the next floating-point random value in [0, 1)
-     * @returns {number} Random float in [0, 1)
+     * @returns {float64} Random float in [0, 1)
      */
     _nextFloat() {
-      return (this._nextInt() - 1) * NORM;
+      /** @type {float64} */
+      const value = this._nextInt();
+      return (value - 1) * NORM;
     }
 
     /**
@@ -432,11 +438,15 @@
     /**
      * Set number of bytes to skip before generating output
      * Used for testing specific positions in the output stream
+     * @param {int32} count - Bytes to skip
      */
     set skipBytes(count) {
       this._skipBytes = count;
     }
 
+    /**
+     * @returns {int32} Bytes skipped before output
+     */
     get skipBytes() {
       return this._skipBytes;
     }

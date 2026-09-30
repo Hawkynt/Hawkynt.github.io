@@ -181,8 +181,11 @@
       this._skip = 0;
 
       // XOR4096 uses 128 × 32-bit state words (4096 bits total)
-      this._state = new Array(128);
+      /** @type {uint32[]} */
+      this._state = OpCodes.CreateArray(128, 0);
+      /** @type {int32} */
       this._position = 0;
+      /** @type {boolean} */
       this._ready = false;
 
       // Optimized shift parameters from Brent's research
@@ -226,6 +229,7 @@
         const remaining = seedBytes.length % 4;
         if (remaining > 0) {
           const offset = seedBytes.length - remaining;
+          /** @type {uint8[]} */
           const bytes = [0, 0, 0, 0];
           for (let i = 0; i < remaining; ++i) {
             bytes[i] = seedBytes[offset + i];
@@ -240,10 +244,11 @@
       // Using 0x9e3779b9 = floor(2^32 / phi) as Weyl constant
       if (wordCount < 128) {
         const weylConstant = 0x9e3779b9;
-        let weylState = this._state[wordCount - 1] || 1;
+        /** @type {uint32} */
+        let weylState = (this._state[wordCount - 1] ? this._state[wordCount - 1] : 1);
 
         for (let i = wordCount; i < 128; ++i) {
-          weylState = OpCodes.ToUint32(weylState + weylConstant);
+          weylState = OpCodes.Add32(weylState, weylConstant);
           this._state[i] = weylState;
         }
       }

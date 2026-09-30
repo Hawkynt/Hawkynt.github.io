@@ -46,20 +46,44 @@
    * SplitMix64 seeding algorithm
    * Used to initialize biski64 state from a single 64-bit seed
    * Based on reference implementation at https://github.com/danielcota/biski64
+   * @param {BigInt} seedState - State before the step
+   * @returns {SplitMix64Step} Output and advanced state
    */
   function SplitMix64Next(seedState) {
+    /** @type {BigInt} */
     const GOLDEN_GAMMA = 0x9E3779B97F4A7C15n;
+    /** @type {BigInt} */
     const MIX_CONST_1 = 0xBF58476D1CE4E5B9n;
+    /** @type {BigInt} */
     const MIX_CONST_2 = 0x94D049BB133111EBn;
 
-    seedState = OpCodes.ToQWord(seedState + GOLDEN_GAMMA);
+    /** @type {BigInt} */
+    const advanced = OpCodes.ToQWord(seedState + GOLDEN_GAMMA);
 
-    let z = seedState;
+    /** @type {BigInt} */
+    let z = advanced;
     z = OpCodes.ToQWord(OpCodes.XorN(z, OpCodes.ShiftRn(z, 30)) * MIX_CONST_1);
     z = OpCodes.ToQWord(OpCodes.XorN(z, OpCodes.ShiftRn(z, 27)) * MIX_CONST_2);
     z = OpCodes.XorN(z, OpCodes.ShiftRn(z, 31));
 
-    return { value: z, nextState: seedState };
+    return new SplitMix64Step(z, advanced);
+  }
+
+  /**
+   * One SplitMix64 step: the output and the advanced state
+   * @class
+   */
+  class SplitMix64Step {
+    /**
+     * @param {BigInt} value - Output
+     * @param {BigInt} nextState - Advanced state
+     */
+    constructor(value, nextState) {
+      /** @type {BigInt} */
+      this.value = value;
+      /** @type {BigInt} */
+      this.nextState = nextState;
+    }
   }
 
   class Biski64Algorithm extends RandomGenerationAlgorithm {
@@ -192,11 +216,15 @@
       this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // biski64 constants
+      /** @type {BigInt} */
       this.WEYL_CONSTANT = 0x9999999999999999n;  // Additive constant for Weyl sequence
 
       // biski64 state: three 64-bit values (using BigInt)
+      /** @type {BigInt} */
       this._fast_loop = 0n;  // Weyl sequence component
+      /** @type {BigInt} */
       this._mix = 0n;        // Mixed state component
+      /** @type {BigInt} */
       this._loop_mix = 0n;   // Loop mixed component
       this._ready = false;
     }
@@ -213,23 +241,26 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (little-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < Math.min(8, seedBytes.length); ++i) {
         seedValue = OpCodes.OrN(seedValue, OpCodes.ShiftLn(BigInt(seedBytes[i]), i * 8));
       }
 
       // Initialize state using SplitMix64 (matching C reference implementation)
-      let state = seedValue;
+      /** @type {BigInt} */
+      let mixState = seedValue;
 
-      let result = SplitMix64Next(state);
+      /** @type {SplitMix64Step} */
+      let result = SplitMix64Next(mixState);
       this._mix = result.value;
-      state = result.nextState;
+      mixState = result.nextState;
 
-      result = SplitMix64Next(state);
+      result = SplitMix64Next(mixState);
       this._loop_mix = result.value;
-      state = result.nextState;
+      mixState = result.nextState;
 
-      result = SplitMix64Next(state);
+      result = SplitMix64Next(mixState);
       this._fast_loop = result.value;
 
       // Mark as ready before warmup so _next64() doesn't throw
@@ -308,11 +339,13 @@
 
       while (bytesGenerated < length) {
         // Generate next 64-bit value
+        /** @type {BigInt} */
         const value64 = this._next64();
 
         // Extract bytes in little-endian order (matching test vectors)
         for (let i = 0; i < 8 && bytesGenerated < length; ++i) {
           const shifted = OpCodes.ShiftRn(value64, BigInt(i * 8));
+          /** @type {uint8} */
           const byteVal = Number(OpCodes.AndN(shifted, 0xFFn));
           output.push(byteVal);
           ++bytesGenerated;
@@ -368,8 +401,9 @@
      * Spaces out fast_loop values across multiple streams
      * Based on reference implementation biski64_stream()
      *
-     * @param {number} streamIndex - Index of this stream (0-based)
-     * @param {number} totalNumStreams - Total number of parallel streams
+     * @param {int32} streamIndex - Index of this stream (0-based)
+     * @param {int32} totalNumStreams - Total number of parallel streams
+     * @returns {void}
      */
     initializeStream(streamIndex, totalNumStreams) {
       if (totalNumStreams === 1) {
@@ -379,6 +413,7 @@
 
       // Calculate cycles per stream and offset fast_loop
       // This ensures non-overlapping sequences across parallel streams
+      /** @type {BigInt} */
       const cyclesPerStream = 0xFFFFFFFFFFFFFFFFn / BigInt(totalNumStreams);
       this._fast_loop = OpCodes.ToQWord(
         BigInt(streamIndex) * cyclesPerStream * this.WEYL_CONSTANT

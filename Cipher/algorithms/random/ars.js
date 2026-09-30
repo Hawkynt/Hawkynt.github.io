@@ -74,9 +74,12 @@
   /**
    * Apply AES SubBytes transformation to 16-byte state
    * Substitutes each byte using the AES S-box
+   * @param {uint8[]} state - 16-byte block
+   * @returns {uint8[]} Substituted block
    */
   function subBytes(state) {
-    const result = new Array(16);
+    /** @type {uint8[]} */
+    const result = OpCodes.CreateArray(16, 0);
     for (let i = 0; i < 16; ++i) {
       result[i] = AES_SBOX[state[i]];
     }
@@ -96,9 +99,12 @@
    * Row 1: shift left 1 position
    * Row 2: shift left 2 positions
    * Row 3: shift left 3 positions
+   * @param {uint8[]} state - 16-byte block, updated in place
+   * @returns {void}
    */
   function shiftRows(state) {
     // Row 1: shift left 1
+    /** @type {uint8} */
     let temp = state[1];
     state[1] = state[5];
     state[5] = state[9];
@@ -124,6 +130,8 @@
   /**
    * Apply AES MixColumns transformation to 16-byte state (in-place)
    * Operates on columns using Galois Field multiplication
+   * @param {uint8[]} state - 16-byte block, updated in place
+   * @returns {void}
    */
   function mixColumns(state) {
     for (let col = 0; col < 4; ++col) {
@@ -133,17 +141,17 @@
       const s2 = state[base + 2];
       const s3 = state[base + 3];
 
-      state[base] = OpCodes.AndN(
-        OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(s0, 2), OpCodes.GF256Mul(s1, 3)), OpCodes.XorN(s2, s3)),
+      state[base] = OpCodes.And32(
+        OpCodes.Xor32(OpCodes.Xor32(OpCodes.GF256Mul(s0, 2), OpCodes.GF256Mul(s1, 3)), OpCodes.Xor32(s2, s3)),
         0xFF);
-      state[base + 1] = OpCodes.AndN(
-        OpCodes.XorN(OpCodes.XorN(s0, OpCodes.GF256Mul(s1, 2)), OpCodes.XorN(OpCodes.GF256Mul(s2, 3), s3)),
+      state[base + 1] = OpCodes.And32(
+        OpCodes.Xor32(OpCodes.Xor32(s0, OpCodes.GF256Mul(s1, 2)), OpCodes.Xor32(OpCodes.GF256Mul(s2, 3), s3)),
         0xFF);
-      state[base + 2] = OpCodes.AndN(
-        OpCodes.XorN(OpCodes.XorN(s0, s1), OpCodes.XorN(OpCodes.GF256Mul(s2, 2), OpCodes.GF256Mul(s3, 3))),
+      state[base + 2] = OpCodes.And32(
+        OpCodes.Xor32(OpCodes.Xor32(s0, s1), OpCodes.Xor32(OpCodes.GF256Mul(s2, 2), OpCodes.GF256Mul(s3, 3))),
         0xFF);
-      state[base + 3] = OpCodes.AndN(
-        OpCodes.XorN(OpCodes.XorN(OpCodes.GF256Mul(s0, 3), s1), OpCodes.XorN(s2, OpCodes.GF256Mul(s3, 2))),
+      state[base + 3] = OpCodes.And32(
+        OpCodes.Xor32(OpCodes.Xor32(OpCodes.GF256Mul(s0, 3), s1), OpCodes.Xor32(s2, OpCodes.GF256Mul(s3, 2))),
         0xFF);
     }
   }
@@ -151,6 +159,10 @@
   /**
    * Apply AES round function (SubBytes + ShiftRows + MixColumns + AddRoundKey)
    * This is the full AES round, not simplified
+   * @param {uint8[]} state - 16-byte block, updated in place
+   * @param {uint8[]} roundKey - 16-byte round key
+   * @param {boolean} isFinal - True for the last round (no MixColumns)
+   * @returns {void}
    */
   function aesRound(state, roundKey, isFinal) {
     // Apply SubBytes (S-box substitution)
@@ -168,7 +180,7 @@
 
     // XOR with round key (AddRoundKey)
     for (let i = 0; i < 16; ++i) {
-      state[i] = OpCodes.XorN(state[i], roundKey[i]);
+      state[i] = OpCodes.Xor32(state[i], roundKey[i]);
     }
   }
 
@@ -177,6 +189,7 @@
    * Based on golden ratio and sqrt(3)-1
    * These are 64-bit constants, stored as 8 bytes each in little-endian
    */
+  /** @type {uint8[]} */
   const WEYL_CONSTANT = [
     // 0x9E3779B97F4A7C15 (golden ratio * 2^64)
     0x15, 0x7C, 0x4A, 0x7F, 0xB9, 0x79, 0x37, 0x9E,
@@ -186,23 +199,29 @@
 
   /**
    * Add Weyl constant to key (treat as two 64-bit integers, little-endian)
+   * @param {uint8[]} key - 16-byte round key
+   * @returns {uint8[]} Next round key
    */
   function addWeylConstant(key) {
-    const result = new Array(16);
+    /** @type {uint8[]} */
+    const result = OpCodes.CreateArray(16, 0);
 
     // Add first 64-bit word (bytes 0-7)
+    /** @type {uint32} */
     let carry = 0;
     for (let i = 0; i < 8; ++i) {
-      const sum = key[i] + WEYL_CONSTANT[i] + carry;
-      result[i] = OpCodes.AndN(sum, 0xFF);
+      /** @type {uint32} */
+      const sum = OpCodes.Add32(OpCodes.Add32(key[i], WEYL_CONSTANT[i]), carry);
+      result[i] = OpCodes.And32(sum, 0xFF);
       carry = OpCodes.Shr32(sum, 8);
     }
 
     // Add second 64-bit word (bytes 8-15)
     carry = 0;
     for (let i = 8; i < 16; ++i) {
-      const sum = key[i] + WEYL_CONSTANT[i] + carry;
-      result[i] = OpCodes.AndN(sum, 0xFF);
+      /** @type {uint32} */
+      const sum = OpCodes.Add32(OpCodes.Add32(key[i], WEYL_CONSTANT[i]), carry);
+      result[i] = OpCodes.And32(sum, 0xFF);
       carry = OpCodes.Shr32(sum, 8);
     }
 
@@ -212,20 +231,22 @@
   /**
    * ARS transformation with specified number of rounds
    *
-   * @param {Array} counter - 16-byte counter value
-   * @param {Array} key - 16-byte key value
-   * @param {number} numRounds - Number of rounds (typically 5 or 7)
-   * @returns {Array} 16-byte output
+   * @param {uint8[]} counter - 16-byte counter value
+   * @param {uint8[]} key - 16-byte key value
+   * @param {int32} numRounds - Number of rounds (typically 5 or 7)
+   * @returns {uint8[]} 16-byte output
    */
   function ars(counter, key, numRounds) {
     // Initialize state with counter XOR key (initial whitening)
-    const state = new Array(16);
+    /** @type {uint8[]} */
+    const state = OpCodes.CreateArray(16, 0);
     for (let i = 0; i < 16; ++i) {
-      state[i] = OpCodes.XorN(counter[i], key[i]);
+      state[i] = OpCodes.Xor32(counter[i], key[i]);
     }
 
     // Current round key starts with the input key
-    let currentKey = [...key];
+    /** @type {uint8[]} */
+    let currentKey = OpCodes.CopyArray(key);
 
     // Apply rounds
     for (let round = 0; round < numRounds; ++round) {
@@ -372,22 +393,29 @@
       this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Key (16 bytes)
-      this._key = new Array(16).fill(0);
+      /** @type {uint8[]} */
+      this._key = OpCodes.CreateArray(16, 0);
+      /** @type {boolean} */
       this._ready = false;
 
       // Counter state (16 bytes)
-      this._counter = new Array(16).fill(0);
+      /** @type {uint8[]} */
+      this._counter = OpCodes.CreateArray(16, 0);
 
       // Number of rounds (default 7, Random123 typically uses 7 or 10)
+      /** @type {int32} */
       this._rounds = 7;
 
       // Buffer for partial output
+      /** @type {uint8[]} */
       this._buffer = [];
+      /** @type {int32} */
       this._bufferPos = 0;
     }
 
     /**
      * Set key value (16 bytes)
+     * @param {uint8[]|null} keyBytes - 16-byte key
      */
     set key(keyBytes) {
       if (!keyBytes || keyBytes.length === 0) {
@@ -396,11 +424,11 @@
       }
 
       if (keyBytes.length !== 16) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 16 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 16 bytes)");
       }
 
       // Copy key bytes
-      this._key = [...keyBytes];
+      this._key = OpCodes.CopyArray(keyBytes);
       this._ready = true;
     }
 
@@ -420,16 +448,16 @@
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
-        this._counter = new Array(16).fill(0);
+        this._counter = OpCodes.CreateArray(16, 0);
         return;
       }
 
       if (seedBytes.length !== 16) {
-        throw new Error(`Invalid counter size: ${seedBytes.length} bytes (expected 16 bytes)`);
+        throw new Error("Invalid counter size: " + seedBytes.length + " bytes (expected 16 bytes)");
       }
 
       // Copy counter bytes
-      this._counter = [...seedBytes];
+      this._counter = OpCodes.CopyArray(seedBytes);
 
       // Clear buffer when counter changes
       this._buffer = [];
@@ -445,25 +473,30 @@
 
     /**
      * Set number of rounds (1-10, typically 7 or 10)
+     * @param {int32} numRounds - Round count
      */
     set rounds(numRounds) {
       if (numRounds < 1 || numRounds > 10) {
-        throw new Error(`Invalid rounds: ${numRounds} (expected 1-10)`);
+        throw new Error("Invalid rounds: " + numRounds + " (expected 1-10)");
       }
       this._rounds = numRounds;
     }
 
+    /**
+     * @returns {int32} Round count
+     */
     get rounds() {
       return this._rounds;
     }
 
     /**
      * Increment the counter (for sequential generation)
+     * @returns {void}
      */
     _incrementCounter() {
       // Increment as a 128-bit little-endian integer
       for (let i = 0; i < 16; ++i) {
-        this._counter[i] = OpCodes.AndN(this._counter[i] + 1, 0xFF);
+        this._counter[i] = OpCodes.And32(this._counter[i] + 1, 0xFF);
         if (this._counter[i] !== 0) {
           break; // No carry, done
         }
@@ -473,6 +506,7 @@
 
     /**
      * Generate one block (16 bytes) from current counter
+     * @returns {uint8[]} 16 output bytes
      */
     _generateBlock() {
       if (!this._ready) {
@@ -480,6 +514,7 @@
       }
 
       // Apply ARS transformation to current counter
+      /** @type {uint8[]} */
       const result = ars(this._counter, this._key, this._rounds);
 
       // Increment counter for next block
@@ -550,7 +585,7 @@
    */
 
     Result() {
-      const size = this._outputSize || 16; // Default to one block
+      const size = (this._outputSize ? this._outputSize : 16); // Default to one block
       return this.NextBytes(size);
     }
 
@@ -565,7 +600,7 @@
      * @returns {int32} Bytes returned by Result()
      */
     get outputSize() {
-      return this._outputSize || 16;
+      return (this._outputSize ? this._outputSize : 16);
     }
   }
 

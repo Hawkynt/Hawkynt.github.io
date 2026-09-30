@@ -55,6 +55,7 @@
           RandomGenerationAlgorithm, IRandomGeneratorInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
   // 64-bit mask for proper wrapping (JavaScript BigInt arithmetic)
+  /** @type {BigInt} */
   const MASK64 = 0xFFFFFFFFFFFFFFFFn;
 
   /**
@@ -63,7 +64,7 @@
    *
    * @param {bigint} counter - 64-bit counter value
    * @param {bigint} key - 64-bit key value
-   * @returns {number} 32-bit random output
+   * @returns {uint32} 32-bit random output
    */
   function squares32(counter, key) {
     let x, y, z;
@@ -82,7 +83,9 @@
 
     // Round 3: x = (x*x + y) mod 2^64, output upper 32 bits
     x = ((x * x)&MASK64) + y&MASK64;
-    return Number(OpCodes.AndN(OpCodes.ShiftRn(x, 32), 0xFFFFFFFFn));
+    /** @type {uint32} */
+    const out = Number(OpCodes.AndN(OpCodes.ShiftRn(x, 32), 0xFFFFFFFFn));
+    return out;
   }
 
   /**
@@ -91,7 +94,7 @@
    *
    * @param {bigint} counter - 64-bit counter value
    * @param {bigint} key - 64-bit key value
-   * @returns {number} 32-bit random output
+   * @returns {uint32} 32-bit random output
    */
   function squares32_4round(counter, key) {
     let x, y, z;
@@ -113,7 +116,9 @@
 
     // Round 4: output upper 32 bits
     x = ((x * x)&MASK64) + z&MASK64;
-    return Number(OpCodes.AndN(OpCodes.ShiftRn(x, 32), 0xFFFFFFFFn));
+    /** @type {uint32} */
+    const out = Number(OpCodes.AndN(OpCodes.ShiftRn(x, 32), 0xFFFFFFFFn));
+    return out;
   }
 
   class SquaresAlgorithm extends RandomGenerationAlgorithm {
@@ -259,25 +264,33 @@
 
       // Default key from FlorisSteenkamp reference implementation
       // This key was chosen to have good statistical properties
+      /** @type {BigInt} */
       this._defaultKey = 0xea3742c76bf95d47n;
 
       // 64-bit key (stored as BigInt)
+      /** @type {BigInt} */
       this._key = this._defaultKey;
+      /** @type {boolean} */
       this._ready = true; // Ready by default with default key
 
       // 64-bit counter (stored as BigInt)
+      /** @type {BigInt} */
       this._counter = 0n;
 
       // Buffer for partial output
+      /** @type {uint8[]} */
       this._buffer = [];
+      /** @type {int32} */
       this._bufferPos = 0;
 
       // Use 3-round version by default (faster, sufficient for most uses)
+      /** @type {int32} */
       this._rounds = 3;
     }
 
     /**
      * Set key value (8 bytes = 64-bit, little-endian)
+     * @param {uint8[]|null} keyBytes - 8-byte key
      */
     set key(keyBytes) {
       if (!keyBytes || keyBytes.length === 0) {
@@ -288,10 +301,11 @@
       }
 
       if (keyBytes.length !== 8) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (expected 8 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (expected 8 bytes)");
       }
 
       // Parse as little-endian 64-bit BigInt
+      /** @type {BigInt} */
       this._key = 0n;
       for (let i = 0; i < 8; ++i) {
         this._key = OpCodes.OrN(this._key, OpCodes.ShiftLn(BigInt(keyBytes[i]), i * 8));
@@ -316,15 +330,17 @@
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
+        /** @type {BigInt} */
         this._counter = 0n;
         return;
       }
 
       if (seedBytes.length !== 8) {
-        throw new Error(`Invalid counter size: ${seedBytes.length} bytes (expected 8 bytes)`);
+        throw new Error("Invalid counter size: " + seedBytes.length + " bytes (expected 8 bytes)");
       }
 
       // Parse as little-endian 64-bit BigInt
+      /** @type {BigInt} */
       this._counter = 0n;
       for (let i = 0; i < 8; ++i) {
         this._counter = OpCodes.OrN(this._counter, OpCodes.ShiftLn(BigInt(seedBytes[i]), i * 8));
@@ -344,26 +360,32 @@
 
     /**
      * Set number of rounds (3 or 4)
+     * @param {int32} numRounds - Round count
      */
     set rounds(numRounds) {
       if (numRounds !== 3 && numRounds !== 4) {
-        throw new Error(`Invalid rounds: ${numRounds} (expected 3 or 4)`);
+        throw new Error("Invalid rounds: " + numRounds + " (expected 3 or 4)");
       }
       this._rounds = numRounds;
     }
 
+    /**
+     * @returns {int32} Round count
+     */
     get rounds() {
       return this._rounds;
     }
 
     /**
      * Generate one 32-bit value from current counter
+     * @returns {uint32} Next output
      */
     _generateValue() {
       if (!this._ready) {
         throw new Error('Squares not initialized: set key first');
       }
 
+      /** @type {uint32} */
       let result;
       if (this._rounds === 4) {
         result = squares32_4round(this._counter, this._key);
@@ -372,7 +394,7 @@
       }
 
       // Increment counter for next generation
-      this._counter = (this._counter + 1n)&MASK64;
+      this._counter = OpCodes.AndN(this._counter + 1n, MASK64);
 
       return result;
     }
@@ -443,7 +465,7 @@
    */
 
     Result() {
-      const size = this._outputSize || 4; // Default to one 32-bit value
+      const size = (this._outputSize ? this._outputSize : 4); // Default to one 32-bit value
       return this.NextBytes(size);
     }
 
@@ -458,7 +480,7 @@
      * @returns {int32} Bytes returned by Result()
      */
     get outputSize() {
-      return this._outputSize || 4;
+      return (this._outputSize ? this._outputSize : 4);
     }
   }
 

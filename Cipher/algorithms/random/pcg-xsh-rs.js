@@ -144,11 +144,13 @@
       this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // PCG state (64-bit)
+      /** @type {BigInt} */
       this._state = 0n;
       this._increment = null; // Will be set on seed or increment property
 
       // PCG constants for 64-bit LCG (standard PCG multiplier)
       // Same as used in pcg32 variants
+      /** @type {BigInt} */
       this.MULTIPLIER = 0x5851f42d4c957f2dn; // 64-bit multiplier
 
       this._ready = false;
@@ -158,14 +160,17 @@
      * Set increment value
      * Note: Increment should be odd for full period LCG, but we allow any value
      * This allows configuring the sequence stream
+     * @param {uint8[]} incrementBytes - Increment, big-endian
      */
     set increment(incrementBytes) {
       if (!incrementBytes || incrementBytes.length === 0) {
+        /** @type {BigInt} */
         this._increment = 1n; // Default to 1 (odd)
         return;
       }
 
       // Convert increment bytes to 64-bit BigInt (big-endian)
+      /** @type {BigInt} */
       let incrementValue = 0n;
       for (let i = 0; i < Math.min(incrementBytes.length, 8); ++i) {
         incrementValue = OpCodes.OrN(OpCodes.ShiftLn(incrementValue, 8n), BigInt(incrementBytes[i]));
@@ -191,6 +196,7 @@
       }
 
       // Convert seed bytes to 64-bit BigInt (big-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < Math.min(seedBytes.length, 8); ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8n), BigInt(seedBytes[i]));
@@ -198,6 +204,7 @@
 
       // Set default increment if not already set
       if (this._increment === null) {
+        /** @type {BigInt} */
         this._increment = 1n; // Default increment (odd)
       }
 
@@ -207,6 +214,7 @@
       this._state = (tmp + this._increment) * this.MULTIPLIER + this._increment;
 
       // Mask to 64 bits
+      /** @type {BigInt} */
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
       this._state = OpCodes.AndN(this._state, mask64);
 
@@ -231,6 +239,7 @@
      * 2. Random shift: extract shift amount from top 3 bits, add 22
      * 3. Shift the XOR result right by the random shift amount
      * 4. Extract lower 32 bits as output
+     * @returns {uint32} Next output
      */
     _next32() {
       if (!this._ready) {
@@ -238,17 +247,19 @@
       }
 
       // Advance LCG state: state = state * MULTIPLIER + INCREMENT
-      let state = this._state;
-      state = state * this.MULTIPLIER + this._increment;
+      /** @type {BigInt} */
+      let s = this._state;
+      s = s * this.MULTIPLIER + this._increment;
 
       // Mask to 64 bits
+      /** @type {BigInt} */
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
-      state = OpCodes.AndN(state, mask64);
+      s = OpCodes.AndN(s, mask64);
 
-      this._state = state;
+      this._state = s;
 
       // Apply XSH-RS permutation
-      return this._permute(state);
+      return this._permute(s);
     }
 
     /**
@@ -258,19 +269,28 @@
      * - XOR-shift-high reduces 64 bits down while mixing
      * - Random shift amount from top 3 bits provides additional mixing
      * - Final result is 32 bits extracted from the shifted value
+     * @param {BigInt} s - LCG state
+     * @returns {uint32} 32-bit output
      */
-    _permute(state) {
+    _permute(s) {
       // Step 1: XOR-shift-high (shift right 22, XOR with original)
-      const shifted22 = OpCodes.ShiftRn(state, 22n);
-      const xorred = OpCodes.XorN(shifted22, state);
+      /** @type {BigInt} */
+      const shifted22 = OpCodes.ShiftRn(s, 22);
+      /** @type {BigInt} */
+      const xorred = OpCodes.XorN(shifted22, s);
 
       // Step 2: Extract random shift amount from top 3 bits (state shr 61)
-      const shiftAmount = Number(OpCodes.ShiftRn(state, 61n)) + 22;
+      /** @type {int32} */
+      const top = Number(OpCodes.ShiftRn(s, 61));
+      /** @type {int32} */
+      const shiftAmount = top + 22;
 
       // Step 3: Apply random shift
-      const randomShifted = OpCodes.ShiftRn(xorred, BigInt(shiftAmount));
+      /** @type {BigInt} */
+      const randomShifted = OpCodes.ShiftRn(xorred, shiftAmount);
 
       // Step 4: Extract lower 32 bits as output
+      /** @type {uint32} */
       const result = Number(OpCodes.AndN(randomShifted, 0xFFFFFFFFn));
 
       return OpCodes.ToDWord(result); // Ensure unsigned 32-bit
