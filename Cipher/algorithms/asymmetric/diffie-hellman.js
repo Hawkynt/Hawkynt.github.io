@@ -68,7 +68,58 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
-  const H = hex => BigInt('0x' + hex);
+  /**
+   * Parse hexadecimal digits into a BigInt.
+   * @param {string} hex - Hexadecimal digits, no prefix
+   * @returns {BigInt} The value
+   */
+  function H(hex) {
+    return BigInt('0x' + hex);
+  }
+
+  /**
+   * One published MODP group.
+   */
+  class DHGroup {
+    /**
+     * @param {string} groupName - Name of the group in its specification
+     * @param {string} source - Specification and section
+     * @param {int32} bitLength - Modulus size in bits
+     * @param {BigInt} g - Generator
+     * @param {BigInt|null} q - Prime order of the subgroup g generates, where published
+     * @param {BigInt} p - Prime modulus
+     */
+    constructor(groupName, source, bitLength, g, q, p) {
+      /** @type {string} */
+      this.groupName = groupName;
+      /** @type {string} */
+      this.source = source;
+      /** @type {int32} */
+      this.bitLength = bitLength;
+      /** @type {BigInt} */
+      this.g = g;
+      /** @type {BigInt|null} */
+      this.q = q;
+      /** @type {BigInt} */
+      this.p = p;
+    }
+  }
+
+  /**
+   * A generated key pair.
+   */
+  class DHKeyPair {
+    /**
+     * @param {BigInt} privateKey - Private exponent
+     * @param {BigInt} publicKey - Public value g^x mod p
+     */
+    constructor(privateKey, publicKey) {
+      /** @type {BigInt} */
+      this.privateKey = privateKey;
+      /** @type {BigInt} */
+      this.publicKey = publicKey;
+    }
+  }
 
   // ===== PUBLISHED MODP GROUPS =====
   //
@@ -85,31 +136,30 @@
   // is what stops small subgroup confinement.
 
   const DH_GROUPS = {
-
     // 1536-bit MODP group, RFC 3526 Group 5
-    modp1536: {
-      groupName: 'RFC 3526 Group 5',
-      source: 'RFC 3526',
-      bitLength: 1536,
-      g: 2n,
-      q: null,
-      p: H(
+    modp1536: new DHGroup(
+      'RFC 3526 Group 5',
+      'RFC 3526',
+      1536,
+      2n,
+      null,
+      H(
         'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
         '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
         '4FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED' +
         'EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF05' +
         '98DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB' +
-        '9ED529077096966D670C354E4ABC9804F1746C08CA237327FFFFFFFFFFFFFFFF')
-    },
+        '9ED529077096966D670C354E4ABC9804F1746C08CA237327FFFFFFFFFFFFFFFF')),
+
 
     // 2048-bit MODP group, RFC 3526 Group 14
-    modp2048: {
-      groupName: 'RFC 3526 Group 14',
-      source: 'RFC 3526',
-      bitLength: 2048,
-      g: 2n,
-      q: null,
-      p: H(
+    modp2048: new DHGroup(
+      'RFC 3526 Group 14',
+      'RFC 3526',
+      2048,
+      2n,
+      null,
+      H(
         'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
         '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
         '4FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED' +
@@ -117,17 +167,17 @@
         '98DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB' +
         '9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3B' +
         'E39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF695581718' +
-        '3995497CEA956AE515D2261898FA051015728E5A8AACAA68FFFFFFFFFFFFFFFF')
-    },
+        '3995497CEA956AE515D2261898FA051015728E5A8AACAA68FFFFFFFFFFFFFFFF')),
+
 
     // 3072-bit MODP group, RFC 3526 Group 15
-    modp3072: {
-      groupName: 'RFC 3526 Group 15',
-      source: 'RFC 3526',
-      bitLength: 3072,
-      g: 2n,
-      q: null,
-      p: H(
+    modp3072: new DHGroup(
+      'RFC 3526 Group 15',
+      'RFC 3526',
+      3072,
+      2n,
+      null,
+      H(
         'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
         '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
         '4FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED' +
@@ -139,17 +189,17 @@
         'A85521ABDF1CBA64ECFB850458DBEF0A8AEA71575D060C7DB3970F85A6E1E4C7' +
         'ABF5AE8CDB0933D71E8C94E04A25619DCEE3D2261AD2EE6BF12FFA06D98A0864' +
         'D87602733EC86A64521F2B18177B200CBBE117577A615D6C770988C0BAD946E2' +
-        '08E24FA074E5AB3143DB5BFCE0FD108E4B82D120A93AD2CAFFFFFFFFFFFFFFFF')
-    },
+        '08E24FA074E5AB3143DB5BFCE0FD108E4B82D120A93AD2CAFFFFFFFFFFFFFFFF')),
+
 
     // 4096-bit MODP group, RFC 3526 Group 16
-    modp4096: {
-      groupName: 'RFC 3526 Group 16',
-      source: 'RFC 3526',
-      bitLength: 4096,
-      g: 2n,
-      q: null,
-      p: H(
+    modp4096: new DHGroup(
+      'RFC 3526 Group 16',
+      'RFC 3526',
+      4096,
+      2n,
+      null,
+      H(
         'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
         '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
         '4FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED' +
@@ -165,17 +215,17 @@
         '88719A10BDBA5B2699C327186AF4E23C1A946834B6150BDA2583E9CA2AD44CE8' +
         'DBBBC2DB04DE8EF92E8EFC141FBECAA6287C59474E6BC05D99B2964FA090C3A2' +
         '233BA186515BE7ED1F612970CEE2D7AFB81BDD762170481CD0069127D5B05AA9' +
-        '93B4EA988D8FDDC186FFB7DC90A6C08F4DF435C934063199FFFFFFFFFFFFFFFF')
-    },
+        '93B4EA988D8FDDC186FFB7DC90A6C08F4DF435C934063199FFFFFFFFFFFFFFFF')),
+
 
     // 6144-bit MODP group, RFC 3526 Group 17
-    modp6144: {
-      groupName: 'RFC 3526 Group 17',
-      source: 'RFC 3526',
-      bitLength: 6144,
-      g: 2n,
-      q: null,
-      p: H(
+    modp6144: new DHGroup(
+      'RFC 3526 Group 17',
+      'RFC 3526',
+      6144,
+      2n,
+      null,
+      H(
         'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
         '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
         '4FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED' +
@@ -199,17 +249,17 @@
         '59E7C97FBEC7E8F323A97A7E36CC88BE0F1D45B7FF585AC54BD407B22B4154AA' +
         'CC8F6D7EBF48E1D814CC5ED20F8037E0A79715EEF29BE32806A1D58BB7C5DA76' +
         'F550AA3D8A1FBFF0EB19CCB1A313D55CDA56C9EC2EF29632387FE8D76E3C0468' +
-        '043E8F663F4860EE12BF2D5B0B7474D6E694F91E6DCC4024FFFFFFFFFFFFFFFF')
-    },
+        '043E8F663F4860EE12BF2D5B0B7474D6E694F91E6DCC4024FFFFFFFFFFFFFFFF')),
+
 
     // 8192-bit MODP group, RFC 3526 Group 18
-    modp8192: {
-      groupName: 'RFC 3526 Group 18',
-      source: 'RFC 3526',
-      bitLength: 8192,
-      g: 2n,
-      q: null,
-      p: H(
+    modp8192: new DHGroup(
+      'RFC 3526 Group 18',
+      'RFC 3526',
+      8192,
+      2n,
+      null,
+      H(
         'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
         '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
         '4FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED' +
@@ -241,36 +291,34 @@
         '6D2A13F83F44F82DDF310EE074AB6A364597E899A0255DC164F31CC50846851D' +
         'F9AB48195DED7EA1B1D510BD7EE74D73FAF36BC31ECFA268359046F4EB879F92' +
         '4009438B481C6CD7889A002ED5EE382BC9190DA6FC026E479558E4475677E9AA' +
-        '9E3050E2765694DFC81F56E880B96E7160C980DD98EDD3DFFFFFFFFFFFFFFFFF')
-    },
+        '9E3050E2765694DFC81F56E880B96E7160C980DD98EDD3DFFFFFFFFFFFFFFFFF')),
+
 
     // 1024-bit MODP Group with 160-bit Prime Order Subgroup, RFC 5114 Group 22 (RFC 5114 section 2.1)
-    modp1024s160: {
-      groupName: 'RFC 5114 Group 22',
-      source: 'RFC 5114 section 2.1',
-      bitLength: 1024,
-      q: H(
-        'F518AA8781A8DF278ABA4E7D64B7CB9D49462353'),
-      g: H(
+    modp1024s160: new DHGroup(
+      'RFC 5114 Group 22',
+      'RFC 5114 section 2.1',
+      1024,
+      H(
         'A4D1CBD5C3FD34126765A442EFB99905F8104DD258AC507FD6406CFF14266D31' +
         '266FEA1E5C41564B777E690F5504F213160217B4B01B886A5E91547F9E2749F4' +
         'D7FBD7D3B9A92EE1909D0D2263F80A76A6A24C087A091F531DBF0A0169B6A28A' +
         'D662A4D18E73AFA32D779D5918D08BC8858F4DCEF97C2A24855E6EEB22B3B2E5'),
-      p: H(
+      H(
+        'F518AA8781A8DF278ABA4E7D64B7CB9D49462353'),
+      H(
         'B10B8F96A080E01DDE92DE5EAE5D54EC52C99FBCFB06A3C69A6A9DCA52D23B61' +
         '6073E28675A23D189838EF1E2EE652C013ECB4AEA906112324975C3CD49B83BF' +
         'ACCBDD7D90C4BD7098488E9C219A73724EFFD6FAE5644738FAA31A4FF55BCCC0' +
-        'A151AF5F0DC8B4BD45BF37DF365C1A65E68CFDA76D4DA708DF1FB2BC2E4A4371')
-    },
+        'A151AF5F0DC8B4BD45BF37DF365C1A65E68CFDA76D4DA708DF1FB2BC2E4A4371')),
+
 
     // 2048-bit MODP Group with 224-bit Prime Order Subgroup, RFC 5114 Group 23 (RFC 5114 section 2.2)
-    modp2048s224: {
-      groupName: 'RFC 5114 Group 23',
-      source: 'RFC 5114 section 2.2',
-      bitLength: 2048,
-      q: H(
-        '801C0D34C58D93FE997177101F80535A4738CEBCBF389A99B36371EB'),
-      g: H(
+    modp2048s224: new DHGroup(
+      'RFC 5114 Group 23',
+      'RFC 5114 section 2.2',
+      2048,
+      H(
         'AC4032EF4F2D9AE39DF30B5C8FFDAC506CDEBE7B89998CAF74866A08CFE4FFE3' +
         'A6824A4E10B9A6F0DD921F01A70C4AFAAB739D7700C29F52C57DB17C620A8652' +
         'BE5E9001A8D66AD7C17669101999024AF4D027275AC1348BB8A762D0521BC98A' +
@@ -279,7 +327,9 @@
         'B70A8137150B8EEB10E183EDD19963DDD9E263E4770589EF6AA21E7F5F2FF381' +
         'B539CCE3409D13CD566AFBB48D6C019181E1BCFE94B30269EDFE72FE9B6AA4BD' +
         '7B5A0F1C71CFFF4C19C418E1F6EC017981BC087F2A7065B384B890D3191F2BFA'),
-      p: H(
+      H(
+        '801C0D34C58D93FE997177101F80535A4738CEBCBF389A99B36371EB'),
+      H(
         'AD107E1E9123A9D0D660FAA79559C51FA20D64E5683B9FD1B54B1597B61D0A75' +
         'E6FA141DF95A56DBAF9A3C407BA1DF15EB3D688A309C180E1DE6B85A1274A0A6' +
         '6D3F8152AD6AC2129037C9EDEFDA4DF8D91E8FEF55B7394B7AD5B7D0B6C12207' +
@@ -287,17 +337,15 @@
         '81286130BC8985DB1602E714415D9330278273C7DE31EFDC7310F7121FD5A074' +
         '15987D9ADC0A486DCDF93ACC44328387315D75E198C641A480CD86A1B9E587E8' +
         'BE60E69CC928B2B9C52172E413042E9B23F10B0E16E79763C9B53DCF4BA80A29' +
-        'E3FB73C16B8E75B97EF363E2FFA31F71CF9DE5384E71B81C0AC4DFFE0C10E64F')
-    },
+        'E3FB73C16B8E75B97EF363E2FFA31F71CF9DE5384E71B81C0AC4DFFE0C10E64F')),
+
 
     // 2048-bit MODP Group with 256-bit Prime Order Subgroup, RFC 5114 Group 24 (RFC 5114 section 2.3)
-    modp2048s256: {
-      groupName: 'RFC 5114 Group 24',
-      source: 'RFC 5114 section 2.3',
-      bitLength: 2048,
-      q: H(
-        '8CF83642A709A097B447997640129DA299B1A47D1EB3750BA308B0FE64F5FBD3'),
-      g: H(
+    modp2048s256: new DHGroup(
+      'RFC 5114 Group 24',
+      'RFC 5114 section 2.3',
+      2048,
+      H(
         '3FB32C9B73134D0B2E77506660EDBD484CA7B18F21EF205407F4793A1A0BA125' +
         '10DBC15077BE463FFF4FED4AAC0BB555BE3A6C1B0C6B47B1BC3773BF7E8C6F62' +
         '901228F8C28CBB18A55AE31341000A650196F931C77A57F2DDF463E5E9EC144B' +
@@ -306,7 +354,9 @@
         'DB2A3B7313D3FE14C8484B1E052588B9B7D2BBD2DF016199ECD06E1557CD0915' +
         'B3353BBB64E0EC377FD028370DF92B52C7891428CDC67EB6184B523D1DB246C3' +
         '2F63078490F00EF8D647D148D47954515E2327CFEF98C582664B4C0F6CC41659'),
-      p: H(
+      H(
+        '8CF83642A709A097B447997640129DA299B1A47D1EB3750BA308B0FE64F5FBD3'),
+      H(
         '87A8E61DB4B6663CFFBBD19C651959998CEEF608660DD0F25D2CEED4435E3B00' +
         'E00DF8F1D61957D4FAF7DF4561B2AA3016C3D91134096FAA3BF4296D830E9A7C' +
         '209E0C6497517ABD5A8A9D306BCF67ED91F9E6725B4758C022E0B1EF4275BF7B' +
@@ -314,40 +364,66 @@
         'B63ACAE1CAA6B7902D52526735488A0EF13C6D9A51BFA4AB3AD8347796524D8E' +
         'F6A167B5A41825D967E144E5140564251CCACB83E6B486F6B3CA3F7971506026' +
         'C0B857F689962856DED4010ABD0BE621C3A3960A54E710C375F26375D7014103' +
-        'A4B54330C198AF126116D2276E11715F693877FAD7EF09CADB094AE91E1A1597')
-    }
+        'A4B54330C198AF126116D2276E11715F693877FAD7EF09CADB094AE91E1A1597'))
   };
 
   // Selecting a group by modulus size alone is how RFC 3526 is usually cited,
   // so a bare bit length keeps working and resolves to the RFC 3526 group.
-  const GROUP_BY_SIZE = {
-    1536: 'modp1536',
-    2048: 'modp2048',
-    3072: 'modp3072',
-    4096: 'modp4096',
-    6144: 'modp6144',
-    8192: 'modp8192'
-  };
+  /** @type {int32[]} */
+  const GROUP_SIZES = [1536, 2048, 3072, 4096, 6144, 8192];
+  /** @type {string[]} */
+  const GROUP_SIZE_NAMES = ['modp1536', 'modp2048', 'modp3072', 'modp4096', 'modp6144', 'modp8192'];
+
+  /**
+   * The RFC 3526 group key for a modulus size.
+   * @param {int32} bits - Modulus size in bits
+   * @returns {string|null} Group key, or null for any other size
+   */
+  function groupBySize(bits) {
+    const index = GROUP_SIZES.indexOf(bits);
+    return index < 0 ? null : GROUP_SIZE_NAMES[index];
+  }
 
   /**
    * Resolve a group selector to its parameters.
    * @param {string|number} selector - Group key such as 'modp2048' or 'modp2048s256', or a modulus bit length
-   * @returns {object} The group parameters
+   * @returns {DHGroup} The group parameters
    * @throws {Error} If the selector names no known group
    */
   function resolveGroup(selector) {
-    if (selector !== null && typeof selector === 'object' && selector.p !== undefined) return selector;
+    if (selector !== null && typeof selector === 'object' && selector.p !== undefined) {
+      /** @type {DHGroup} */
+      const custom = selector;
+      return custom;
+    }
 
     if (typeof selector === 'number') {
-      const bySize = GROUP_BY_SIZE[selector];
-      if (bySize) return DH_GROUPS[bySize];
+      /** @type {int32} */
+      const bits = selector;
+      const bySize = groupBySize(bits);
+      if (bySize) {
+        /** @type {DHGroup} */
+        const sized = DH_GROUPS[bySize];
+        return sized;
+      }
     }
 
     if (typeof selector === 'string') {
-      const trimmed = selector.trim();
-      if (DH_GROUPS[trimmed]) return DH_GROUPS[trimmed];
+      /** @type {string} */
+      const text = selector;
+      const trimmed = text.trim();
+      if (DH_GROUPS[trimmed]) {
+        /** @type {DHGroup} */
+        const named = DH_GROUPS[trimmed];
+        return named;
+      }
+      /** @type {int32} */
       const parsed = parseInt(trimmed, 10);
-      if (!isNaN(parsed) && GROUP_BY_SIZE[parsed]) return DH_GROUPS[GROUP_BY_SIZE[parsed]];
+      if (!isNaN(parsed) && groupBySize(parsed)) {
+        /** @type {DHGroup} */
+        const sized = DH_GROUPS[groupBySize(parsed)];
+        return sized;
+      }
     }
 
     throw new Error('Unknown Diffie-Hellman group: ' + selector
@@ -690,34 +766,51 @@
    */
   class DiffieHellmanInstance extends IAlgorithmInstance {
     /**
-     * @param {Object} algorithm - Parent algorithm instance
+     * @param {DiffieHellmanKE} algorithm - Parent algorithm instance
      * @param {boolean} [isInverse=false] - Inverse direction flag
      */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {DHGroup} */
       this._group = DH_GROUPS.modp2048; // RFC 3526 Group 14, the recommended minimum
+      /** @type {BigInt|null} */
       this._privateKey = null;
+      /** @type {BigInt|null} */
       this._otherPublicKey = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._keyData = null;
     }
 
     //#region ===== configuration =====
 
+    /**
+     * @param {string|int32|DHGroup} selector - Group key, modulus size or group parameters
+     */
     set group(selector) {
       this._group = resolveGroup(selector);
     }
 
+    /**
+     * @returns {DHGroup} Current group
+     */
     get group() {
       return this._group;
     }
 
     // RFC 3526 is normally cited by modulus size, so that spelling works too.
+    /**
+     * @param {int32} bits - RFC 3526 modulus size
+     */
     set groupSize(bits) {
       this._group = resolveGroup(bits);
     }
 
+    /**
+     * @returns {int32} Modulus size of the current group
+     */
     get groupSize() {
       return this._group.bitLength;
     }
@@ -733,7 +826,13 @@
         return;
       }
       this._privateKey = this._toBigInt(value, 'private exponent');
-      this._keyData = Array.isArray(value) ? value.slice() : null;
+      if (Array.isArray(value)) {
+        /** @type {uint8[]} */
+        const bytes = value;
+        this._keyData = bytes.slice();
+      } else {
+        this._keyData = null;
+      }
     }
 
     get privateKey() {
@@ -783,14 +882,14 @@
      * cryptographically secure source, by rejection sampling so the draw stays
      * uniform over its range.
      * @param {uint8[]|BigInt|null} [privateValue=null] - Private exponent to use, or null to generate one
-     * @returns {{privateKey: BigInt, publicKey: BigInt}} The generated pair
+     * @returns {DHKeyPair} The generated pair
      */
     GenerateKeyPair(privateValue = null) {
       this._privateKey = privateValue === null
         ? this._randomPrivateExponent()
         : this._toBigInt(privateValue, 'private exponent');
       this._keyData = null;
-      return { privateKey: this._privateKey, publicKey: this._computePublicValue() };
+      return new DHKeyPair(this._privateKey, this._computePublicValue());
     }
 
     /**
@@ -873,7 +972,7 @@
 
     /**
      * Width of the current modulus in bytes.
-     * @returns {number} Byte count
+     * @returns {int32} Byte count
      */
     _modulusBytes() {
       return Math.ceil(this._group.bitLength / 8);
@@ -886,15 +985,23 @@
      * @returns {BigInt} The value as a BigInt
      */
     _toBigInt(value, what) {
-      if (typeof value === 'bigint') return value;
+      if (typeof value === 'bigint') {
+        /** @type {BigInt} */
+        const big = value;
+        return big;
+      }
       if (typeof value === 'number') {
-        if (!Number.isInteger(value) || value < 0) {
+        /** @type {float64} */
+        const number = value;
+        if (!Number.isInteger(number) || number < 0) {
           throw new Error('Diffie-Hellman ' + what + ' must be a non-negative integer');
         }
-        return BigInt(value);
+        return BigInt(number);
       }
       if (Array.isArray(value) || (value && typeof value.length === 'number' && typeof value !== 'string')) {
-        return this._bytesToBigInt(value);
+        /** @type {uint8[]} */
+        const bytes = value;
+        return this._bytesToBigInt(bytes);
       }
       throw new Error('Invalid Diffie-Hellman ' + what + ' format: expected big-endian bytes or a BigInt');
     }
@@ -905,6 +1012,7 @@
      * @returns {BigInt} The value
      */
     _bytesToBigInt(bytes) {
+      /** @type {BigInt} */
       let value = 0n;
       for (let i = 0; i < bytes.length; i++) {
         const octet = bytes[i];
@@ -919,16 +1027,19 @@
     /**
      * BigInt to big-endian bytes, left-padded to a fixed width.
      * @param {BigInt} value - The value
-     * @param {number} length - Required byte count
+     * @param {int32} length - Required byte count
      * @returns {uint8[]} Big-endian bytes
      */
     _bigIntToBytes(value, length) {
       if (value < 0n) throw new Error('Diffie-Hellman value must not be negative');
 
+      /** @type {uint8[]} */
       const bytes = new Array(length);
       let remaining = value;
       for (let i = length - 1; i >= 0; i--) {
-        bytes[i] = Number(remaining % 256n);
+        /** @type {uint8} */
+        const octet = Number(remaining % 256n);
+        bytes[i] = octet;
         remaining = remaining / 256n;
       }
 
@@ -947,8 +1058,12 @@
       const group = this._group;
       // SP 800-56A: the exponent lives in the subgroup order where one is
       // published, and otherwise below the modulus.
-      const upper = (group.q === null ? group.p : group.q) - 2n;
-      let digits = upper.toString(16).length;
+      /** @type {BigInt} */
+      const order = group.q === null ? group.p : group.q;
+      const upper = order - 2n;
+      /** @type {string} */
+      const upperHex = upper.toString(16);
+      let digits = upperHex.length;
       if (digits % 2 === 1) digits += 1;
       const width = digits / 2;
 
@@ -961,11 +1076,12 @@
 
     /**
      * Cryptographically secure random bytes.
-     * @param {number} count - Number of bytes
+     * @param {int32} count - Number of bytes
      * @returns {uint8[]} Random bytes
      * @throws {Error} If no secure source is available
      */
     _randomBytes(count) {
+      /** @type {uint8[]} */
       const out = new Array(count);
 
       const host = (typeof globalThis !== 'undefined') ? globalThis : null;

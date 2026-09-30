@@ -56,9 +56,12 @@
    * @returns {BigInt} Parsed value
    */
   function hexToBigInt(hex) {
+    /** @type {BigInt} */
     let value = 0n;
     for (let i = 0; i < hex.length; ++i) {
-      value = value * 16n + BigInt(parseInt(hex.charAt(i), 16));
+      /** @type {int32} */
+      const digit = parseInt(hex.charAt(i), 16);
+      value = value * 16n + BigInt(digit);
     }
     return value;
   }
@@ -69,6 +72,7 @@
    * @returns {BigInt} Corresponding integer
    */
   function OS2IP(octets) {
+    /** @type {BigInt} */
     let value = 0n;
     for (let i = 0; i < octets.length; ++i) {
       value = value * 256n + BigInt(octets[i]);
@@ -83,7 +87,7 @@
    * needs fewer than xLen octets is left-padded rather than shortened.
    *
    * @param {BigInt} value - Integer to convert
-   * @param {number} xLen - Intended length of the octet string
+   * @param {int32} xLen - Intended length of the octet string
    * @returns {uint8[]} Big-endian octet string of exactly xLen bytes
    */
   function I2OSP(value, xLen) {
@@ -91,10 +95,13 @@
       throw new Error('I2OSP: integer must be non-negative');
     }
 
+    /** @type {uint8[]} */
     const octets = new Array(xLen);
     let remaining = value;
     for (let i = xLen - 1; i >= 0; --i) {
-      octets[i] = Number(remaining % 256n);
+      /** @type {uint8} */
+      const octet = Number(remaining % 256n);
+      octets[i] = octet;
       remaining = remaining / 256n;
     }
 
@@ -108,7 +115,7 @@
   /**
    * Collect cryptographically strong random bytes, falling back to a weaker
    * source only where no such generator exists.
-   * @param {number} count - Number of bytes required
+   * @param {int32} count - Number of bytes required
    * @returns {uint8[]} Random bytes
    */
   function randomBytes(count) {
@@ -133,6 +140,7 @@
       }
     }
 
+    /** @type {uint8[]} */
     const result = new Array(count);
     for (let i = 0; i < count; ++i) {
       result[i] = buffer[i];
@@ -143,10 +151,11 @@
   /**
    * Generate a padding string of pseudo-randomly chosen non-zero octets
    * (RFC 8017 Section 7.2.1 step 2).
-   * @param {number} count - Length of the padding string
+   * @param {int32} count - Length of the padding string
    * @returns {uint8[]} Non-zero octets
    */
   function nonZeroPadding(count) {
+    /** @type {uint8[]} */
     const padding = new Array(count);
     let produced = 0;
 
@@ -171,7 +180,7 @@
    * message that begins with zero octets survives the round trip untouched.
    *
    * @param {uint8[]} message - Message octets
-   * @param {number} k - Length of the encoded message (modulus length in octets)
+   * @param {int32} k - Length of the encoded message (modulus length in octets)
    * @returns {uint8[]} Encoded message of exactly k octets
    */
   function emeEncode(message, k) {
@@ -180,6 +189,7 @@
     }
 
     const padding = nonZeroPadding(k - message.length - 3);
+    /** @type {uint8[]} */
     const encoded = new Array(k);
     encoded[0] = 0x00;
     encoded[1] = 0x02;
@@ -264,59 +274,83 @@
   //
   // Independently confirmed: n = p * q, both factors prime, and d * e is
   // congruent to 1 modulo lcm(p - 1, q - 1).
-  const RSA_KEYS = {
-    1024: {
-      n: 'a8b3b284af8eb50b387034a860f146c4919f318763cd6c5598c8ae4811a1e0ab' +
-         'c4c7e0b082d693a5e7fced675cf4668512772c0cbc64a742c6c630f533c8cc72' +
-         'f62ae833c40bf25842e984bb78bdbf97c0107d55bdb662f5c4e0fab9845cb514' +
-         '8ef7392dd3aaff93ae1e6b667bb3d4247616d4f5ba10d4cfd226de88d39f16fb',
-      e: '010001',
-      d: '53339cfdb79fc8466a655c7316aca85c55fd8f6dd898fdaf119517ef4f52e8fd' +
-         '8e258df93fee180fa0e4ab29693cd83b152a553d4ac4d1812b8b9fa5af0e7f55' +
-         'fe7304df41570926f3311f15c4d65a732c483116ee3d3d2d0af3549ad9bf7cbf' +
-         'b78ad884f84d5beb04724dc7369b31def37d0cf539e9cfcdd3de653729ead5d1',
-      p: 'd32737e7267ffe1341b2d5c0d150a81b586fb3132bed2f8d5262864a9cb9f30a' +
-         'f38be448598d413a172efb802c21acf1c11c520c2f26a471dcad212eac7ca39d',
-      q: 'cc8853d1d54da630fac004f471f281c7b8982d8224a490edbeb33d3e3d5cc93c' +
-         '4765703d1dd791642f1f116a0dd852be2419b2af72bfe9a030e860b0288b5d77'
-    }
-  };
-
+  /** @type {int32[]} */
   const SUPPORTED_KEY_SIZES = [1024];
+
+  // Key material, one column per entry of SUPPORTED_KEY_SIZES: modulus n,
+  // public exponent e, private exponent d and the prime factors p and q.
+  /** @type {string[]} */
+  const RSA_N = [
+    'a8b3b284af8eb50b387034a860f146c4919f318763cd6c5598c8ae4811a1e0ab' +
+    'c4c7e0b082d693a5e7fced675cf4668512772c0cbc64a742c6c630f533c8cc72' +
+    'f62ae833c40bf25842e984bb78bdbf97c0107d55bdb662f5c4e0fab9845cb514' +
+    '8ef7392dd3aaff93ae1e6b667bb3d4247616d4f5ba10d4cfd226de88d39f16fb'
+  ];
+  /** @type {string[]} */
+  const RSA_E = [
+    '010001'
+  ];
+  /** @type {string[]} */
+  const RSA_D = [
+    '53339cfdb79fc8466a655c7316aca85c55fd8f6dd898fdaf119517ef4f52e8fd' +
+    '8e258df93fee180fa0e4ab29693cd83b152a553d4ac4d1812b8b9fa5af0e7f55' +
+    'fe7304df41570926f3311f15c4d65a732c483116ee3d3d2d0af3549ad9bf7cbf' +
+    'b78ad884f84d5beb04724dc7369b31def37d0cf539e9cfcdd3de653729ead5d1'
+  ];
+  /** @type {string[]} */
+  const RSA_P = [
+    'd32737e7267ffe1341b2d5c0d150a81b586fb3132bed2f8d5262864a9cb9f30a' +
+    'f38be448598d413a172efb802c21acf1c11c520c2f26a471dcad212eac7ca39d'
+  ];
+  /** @type {string[]} */
+  const RSA_Q = [
+    'cc8853d1d54da630fac004f471f281c7b8982d8224a490edbeb33d3e3d5cc93c' +
+    '4765703d1dd791642f1f116a0dd852be2419b2af72bfe9a030e860b0288b5d77'
+  ];
 
   /**
    * Read a key size selector from whatever the caller supplied. Both spellings
    * used across this collection are accepted: decimal digits in ASCII, and a
    * big-endian 16-bit count of bits.
    * @param {uint8[]|string|number} keyData - Key selector
-   * @returns {number} Key size in bits
+   * @returns {int32} Key size in bits
    */
   function parseKeySize(keyData) {
     if (typeof keyData === 'number') {
-      return keyData;
+      /** @type {int32} */
+      const bits = keyData;
+      return bits;
     }
 
     if (typeof keyData === 'string') {
-      return parseInt(keyData, 10);
+      /** @type {string} */
+      const text = keyData;
+      /** @type {int32} */
+      const parsed = parseInt(text, 10);
+      return parsed;
     }
 
     if (keyData && typeof keyData.length === 'number') {
+      /** @type {uint8[]} */
+      const bytes = keyData;
       let digits = '';
-      let allDigits = keyData.length > 0;
-      for (let i = 0; i < keyData.length; ++i) {
-        if (keyData[i] < 0x30 || keyData[i] > 0x39) {
+      let allDigits = bytes.length > 0;
+      for (let i = 0; i < bytes.length; ++i) {
+        if (bytes[i] < 0x30 || bytes[i] > 0x39) {
           allDigits = false;
           break;
         }
-        digits += String.fromCharCode(keyData[i]);
+        digits += String.fromCharCode(bytes[i]);
       }
 
       if (allDigits) {
-        return parseInt(digits, 10);
+        /** @type {int32} */
+        const size = parseInt(digits, 10);
+        return size;
       }
 
-      if (keyData.length >= 2) {
-        return OpCodes.Pack16BE(keyData[0], keyData[1]);
+      if (bytes.length >= 2) {
+        return OpCodes.Pack16BE(bytes[0], bytes[1]);
       }
     }
 
@@ -431,21 +465,27 @@
   class RSAInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {RSACipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {int32} */
       this.keySize = 2048;
       this._publicKey = null;
       this._privateKey = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._keyData = null;
     }
 
     // Property setter for key (for test suite compatibility)
+    /**
+     * @param {uint8[]} keyData - Key size selector (see parseKeySize)
+     */
     set key(keyData) {
       this.KeySetup(keyData);
     }
@@ -477,6 +517,10 @@
     }
 
     // Initialize RSA with specified key size
+    /**
+     * @param {int32} keySize - Modulus size in bits
+     * @returns {boolean} True once the size is accepted
+     */
     Init(keySize) {
       if (!SUPPORTED_KEY_SIZES.includes(keySize)) {
         throw new Error('RSA: no demonstration key of ' + keySize + ' bits. Use ' + SUPPORTED_KEY_SIZES.join(' or ') + ', or set publicKey/privateKey directly.');
@@ -494,7 +538,9 @@
 
     Feed(data) {
       if (typeof data === 'string') {
-        for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data.charCodeAt(i) % 256);
+        /** @type {string} */
+        const text = data;
+        for (let i = 0; i < text.length; ++i) this.inputBuffer.push(text.charCodeAt(i) % 256);
       } else if (data && typeof data.length === 'number') {
         for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data[i]);
       } else {
@@ -511,7 +557,9 @@
 
     Result() {
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
       try {
@@ -519,23 +567,24 @@
           ? this._decrypt(this.inputBuffer)
           : this._encrypt(this.inputBuffer);
 
-        this.inputBuffer = [];
         return result;
-      } catch (error) {
+      } finally {
         this.inputBuffer = [];
-        throw error;
       }
     }
 
     // Set up keys
+    /**
+     * @param {uint8[]} keyData - Key size selector (see parseKeySize)
+     */
     KeySetup(keyData) {
       this._keyData = keyData; // Store for getter
 
       this.Init(parseKeySize(keyData));
 
-      const material = RSA_KEYS[this.keySize];
-      const n = hexToBigInt(material.n);
-      const e = hexToBigInt(material.e);
+      const index = SUPPORTED_KEY_SIZES.indexOf(this.keySize);
+      const n = hexToBigInt(RSA_N[index]);
+      const e = hexToBigInt(RSA_E[index]);
 
       this._publicKey = {
         n: n,
@@ -546,9 +595,9 @@
       this._privateKey = {
         n: n,
         e: e,
-        d: hexToBigInt(material.d),
-        p: hexToBigInt(material.p),
-        q: hexToBigInt(material.q),
+        d: hexToBigInt(RSA_D[index]),
+        p: hexToBigInt(RSA_P[index]),
+        q: hexToBigInt(RSA_Q[index]),
         keySize: this.keySize
       };
     }
@@ -556,7 +605,7 @@
     /**
      * Number of octets in the modulus, k in RFC 8017 terms.
      * @param {BigInt} n - Modulus
-     * @returns {number} Octet length
+     * @returns {int32} Octet length
      */
     _modulusLength(n) {
       let octets = 0;
@@ -578,7 +627,10 @@
         throw new Error('RSA public key not set. Assign a key first.');
       }
 
-      const { n, e } = this._publicKey;
+      /** @type {BigInt} */
+      const n = this._publicKey.n;
+      /** @type {BigInt} */
+      const e = this._publicKey.e;
       const k = this._modulusLength(n);
 
       // Step 1-2: EME-PKCS1-v1_5 encoding
@@ -605,7 +657,10 @@
         throw new Error('RSA private key not set. Assign a key first.');
       }
 
-      const { n, d } = this._privateKey;
+      /** @type {BigInt} */
+      const n = this._privateKey.n;
+      /** @type {BigInt} */
+      const d = this._privateKey.d;
       const k = this._modulusLength(n);
 
       // Step 1: length check

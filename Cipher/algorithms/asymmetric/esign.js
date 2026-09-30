@@ -110,6 +110,7 @@
 
   // LOW_BIT_MASK[i] keeps the 8-i low bits of an octet and clears the rest, so
   // that a representative can be cut to a width that is not a whole octet.
+  /** @type {uint8[]} */
   const LOW_BIT_MASK = [0xFF, 0x7F, 0x3F, 0x1F, 0x0F, 0x07, 0x03, 0x01];
 
   /**
@@ -120,24 +121,29 @@
   function digest(bytes) {
     loadHashes();
 
+    /** @type {Algorithm} */
     const algorithm = AlgorithmFramework.Find(HASH_NAME);
     if (!algorithm) {
       throw new Error('ESIGN requires the hash ' + HASH_NAME + ', which is not registered');
     }
 
+    /** @type {IHashFunctionInstance} */
     const instance = algorithm.CreateInstance();
     instance.Feed(bytes);
-    return instance.Result();
+    /** @type {uint8[]} */
+    const hash = instance.Result();
+    return hash;
   }
 
   /**
    * MGF1 mask generation (RFC 8017 Appendix B.2.1), over SHA-1, counting from
    * zero. This is the mask function both EMSA5 and the ESIGN-D derandomiser use.
    * @param {uint8[]} seed - Seed octets
-   * @param {number} maskLen - Requested mask length in octets
+   * @param {int32} maskLen - Requested mask length in octets
    * @returns {uint8[]} Mask of exactly maskLen octets
    */
   function mgf1(seed, maskLen) {
+    /** @type {uint8[]} */
     const mask = [];
     const blocks = Math.ceil(maskLen / HASH_LENGTH);
 
@@ -145,6 +151,7 @@
       // I2OSP(counter, 4), big-endian
       const suffix = OpCodes.Unpack32BE(counter);
 
+      /** @type {uint8[]} */
       const block = new Array(seed.length + 4);
       for (let i = 0; i < seed.length; ++i) block[i] = seed[i];
       for (let i = 0; i < 4; ++i) block[seed.length + i] = suffix[i];
@@ -164,9 +171,12 @@
    * @returns {BigInt} Parsed value
    */
   function hexToBigInt(hex) {
+    /** @type {BigInt} */
     let value = 0n;
     for (let i = 0; i < hex.length; ++i) {
-      value = value * 16n + BigInt(parseInt(hex.charAt(i), 16));
+      /** @type {int32} */
+      const digit = parseInt(hex.charAt(i), 16);
+      value = value * 16n + BigInt(digit);
     }
     return value;
   }
@@ -177,6 +187,7 @@
    * @returns {BigInt} Corresponding integer
    */
   function OS2IP(octets) {
+    /** @type {BigInt} */
     let value = 0n;
     for (let i = 0; i < octets.length; ++i) {
       value = value * 256n + BigInt(octets[i]);
@@ -187,7 +198,7 @@
   /**
    * I2OSP - Non-negative integer to octet string (RFC 8017 Section 4.1)
    * @param {BigInt} value - Integer to convert
-   * @param {number} xLen - Intended length of the octet string
+   * @param {int32} xLen - Intended length of the octet string
    * @returns {uint8[]} Big-endian octet string of exactly xLen octets
    */
   function I2OSP(value, xLen) {
@@ -195,10 +206,13 @@
       throw new Error('I2OSP: integer must be non-negative');
     }
 
+    /** @type {uint8[]} */
     const octets = new Array(xLen);
     let remaining = value;
     for (let i = xLen - 1; i >= 0; --i) {
-      octets[i] = Number(remaining % 256n);
+      /** @type {uint8} */
+      const octet = Number(remaining % 256n);
+      octets[i] = octet;
       remaining = remaining / 256n;
     }
 
@@ -212,11 +226,15 @@
   /**
    * Number of bits in a non-negative BigInt.
    * @param {BigInt} value - The number
-   * @returns {number} Bit length, zero for zero
+   * @returns {int32} Bit length, zero for zero
    */
   function bitCount(value) {
-    if (value === 0n) return 0;
-    return value.toString(2).length;
+    if (value === 0n) {
+      return 0;
+    }
+    /** @type {string} */
+    const binary = value.toString(2);
+    return binary.length;
   }
 
   /**
@@ -279,7 +297,7 @@
    * is p^2*q with both factors the same width, so its bit length is three times
    * this and is necessarily a multiple of three.
    * @param {BigInt} n - The modulus
-   * @returns {number} pLen
+   * @returns {int32} pLen
    */
   function getPLen(n) {
     const bits = bitCount(n);
@@ -326,6 +344,7 @@
     for (let counter = 1; counter < 4294967296; ++counter) {
       // r = MGF1( seed || I2OSP(f, fOctets) || I2OSP(counter, 4) )
       const suffix = OpCodes.Unpack32BE(counter);
+      /** @type {uint8[]} */
       const mgfInput = new Array(seed.length + fOctets + 4);
       for (let i = 0; i < seed.length; ++i) mgfInput[i] = seed[i];
       for (let i = 0; i < fOctets; ++i) mgfInput[seed.length + i] = fBytes[i];
@@ -350,6 +369,7 @@
       const denominator = ((e % p) * modPow(r, e - 1n, p)) % p;
       if (denominator === 0n) continue;
 
+      /** @type {BigInt} */
       let t;
       try {
         t = ((w0 % p) * modInverse(denominator, p)) % p;
@@ -388,103 +408,175 @@
   // because the generator wrote them as integers rather than as fixed-width
   // octet strings. Neither of those two keys is used here, and the four below
   // are transcribed at their full width.
-  const ESIGN_KEYS = {
-    'NESSIE-1536-0': {
-      n: 'e6755c83eb4a23269d342e6ec74e632e593bdb345206d7b7697a4940df800ae4' +
-         '7e866ee0368e7c1ed5d31d0d8629d691855b823bb3d2576eacb7311cdddc4815' +
-         '0ac15beac84209e1fe5f8504677a154192dbe8da75f84e4749273619ccdb243f' +
-         'b308970ad0c70f911c05502786138650b4546d7662a1ba18473a61daf364e44b' +
-         'a758b88a40b203f064a8ebb90d6a505eaf781ee8a70a43731edaa000104461f2' +
-         '8992d4d5cda20b001e0f5f1bad81d22f26005226a012a745b8c6aec5bc0915dd',
-      e: '10001',
-      p: 'f816b36a63ba7b53cb75f9a74fa9cc032fd8c00f6beb24885a16950fe7ef54d5' +
-         'e474582a4a7512c1379c05081ed1c056e500e19ba1882419ab751573e9c1a1cb',
-      q: 'f5641a315c2fdc59f81630130f32cb3923cbbaefebf230b9e23edc7e51e7f068' +
-         'bc82ab8d28362a738fcdf274ab2ae9f0bd9991bcf7a092b7f743f0c3211a1b05',
-      seed: 'e8e57c5ea7f687b32ae45218627222ab2a9b8298493ab5520e78d77979c2a078' +
-            'a0d2c8f2363a4a58c5334d16ed7243a74a329cd8e0ba5dbe41522feb984d5a3b' +
-            '3f1bee209a5032ab5a7b8ed61a3f53e3cfb94ecb3f5a52af19e164e20cd7df17' +
-            'c8dc76ee632a7ee4b679a4f03c3511e933f949a14f1354571d45c0a8dfd64677'
-    },
-    'NESSIE-1536-4': {
-      n: '91b6a444d9f130241f4c109510cd05cc3a5503f4f75342eec90ba4edc5fedc44' +
-         'bfe57809e86ba189fcdd6386ca67d1debd65e42a3511c89aa811365df8c8a61d' +
-         '3ecd129cc04ae9c7067c9281c71fe299039b17afc7611ac07255e30a3413ac71' +
-         '9403f8cebc29716305298fab90a9370efdc9bc7d017c1537708b82ff7a6afed5' +
-         '352a557d19ddf8ee895ca4edcc37aa255530daf798312153c45c098886d94e3b' +
-         '3f97efebcbb3914a6166684b652fa949f3d089f37a3cf3539b3856aa753d86ab',
-      e: '10001',
-      p: 'eb9b71f5421c036b87860aea1defe10c18a3275acaafc5cb831ca960fe92b416' +
-         '895cd79133a0057310d28c366248db92b738d54e4ca64846a5ce9cee50458d1f',
-      q: 'ac077fe0f98bc439995577a9564d38df63a5081ec0b88b7c97a40d14ca696050' +
-         '3da6ca796bead0891c094dd2c0fe1b61e1815644a670ab068654883c2997d36b',
-      seed: '1920c44dd8ba2d4f2127a5ad224ff7062bb4412aeba984bcb036892a0ac829b6' +
-            '725745b55532cbc66617e8c2967595f3a5352bffa2283aa0f8f98f75da9ce587' +
-            'c661a8c10dda5fa8b28b32436d7657e08fd438c774d309c04c63117f612c5fd4' +
-            'a6dbb071cfcf20f55e606c0f40ef8a84ff88860b39dc93d64da8189e5881a418'
-    },
-    'NESSIE-3072-10': {
-      n: 'a720c94a5f564c0d9e8061416384741ceb3fd3bb6cadc04c5fd684cac23fe7b6' +
-         'aef8117c311ae09210a61f513296d6c8a65e20d1d0f109be26bc8f725026843d' +
-         '3df60150efc3a29a1acf7c2c57455c0ac4b9f2588f4f73fcb55b86d3d56c9d14' +
-         '5bb06180adf818a53ed92c8b40acdfd2f8a81f39ac0798adb103b773d4d157d1' +
-         '32e2234329fb0b77d69a0f4578cf564f43d762c59fbcc6fa0fd3bef58cd6bfe1' +
-         '2c8a5e1bfa6231c63a691ae87b97cbceac17338387cc3c3254ac32a65e6c81c3' +
-         'adf4a884f0d6c9c91f4c9d6ce6dc5d638a37a76ec9c557d15a03d9ad2718a08a' +
-         'c7b65fc71c54e5bfa983e6815eb0e2e237ce68ef9c572af926e0689b22e28293' +
-         '0d162b691c2ad90620abe6cf454fa82df8c192ca15717ab6cbcba1df765f4893' +
-         'cd7fe47bed63aa8729afc9edd9afc3b1969034fccc544c0c5c30542860941c51' +
-         '9fe8feba4632b30b687f8abf443a08c34f2c52357cb01945d69e604292ae9dfd' +
-         '47a6bfdef6e803a0aacd71ca9f60443448cbed31e25f4d0d7c88d1249bc79981',
-      e: '10001',
-      p: 'd990ccd887c6739ae307259f06482c00927a28e084ef8ecb6d2ebc98483c3dff' +
-         'b91edfb8b287c865379e7d820bb6e609017da9ac0de50123b617a2bd91247859' +
-         '581ed1701ef1b6d0f51e3712d11408e61034077c3235167ddb037947da6f39ed' +
-         '53c7b8f56a360afb14d7008d5e491aa1a1fb9f3593044b7d95c43637dab32071',
-      q: 'e7646935d82a56d826ddacca5f898be8217a14b67cde3f326af95a3c727c9636' +
-         '3d71aa6c3b7c426c8cddfe55bd5d06c893505189f37ee5b063ea260c38bdfe13' +
-         'be22e937f374235c139628279361a5c69eb0d55ceb5601c39331c600def6928d' +
-         '34fb3730d6d16fa8c21e4fef6a01827ce6b1fac1197b1bfcfb6f6977dc035ba1',
-      seed: '170c1c8be7642e4af1d7ca007df4aa8795f4b2f71ee7f4e6a3bef306b9f97b13' +
-            '5df1922aaa70701b644fcb50583b16aa6e458d8db8eb0b1a7b689c777d0705ed' +
-            '5cd0836dc81c1ae66642bbb2a584d0c445f0424e97aeaa2dfd98abd1e0fae54d' +
-            '57ec79ac27eef0341fd7f8f06c8dc02b1f0747b3e30109f7ddc64918d75fc087' +
-            'b53b269497523f2d36dbb88f7bc7080213fdda5eb792620097a188c406a85e0b' +
-            '39e651f8ef8599859f8a94e7fb08b95cb90076f002660c3ffc41d31ba994124f' +
-            '41b6b2640d3ecf311179fddb5cc2d339c316813f0aff1ff62de710ea6a17f90f' +
-            '6b9881686ce7b3989e693e36c15a09e1931fd8485b55c48e0214bf31bb2873a5'
-    },
-    'NESSIE-3072-12': {
-      n: '84c133e09ed5c096f79b5758cd1d1b468a469c448f0351f9916a5c0c9ea39f1a' +
-         '6e893f23fc08f037c64ba49c1edd0972719efded27f864fd4748d1794906c16b' +
-         'cda105c54cf9f70260eadf7f84c53b7ff851a9566251d959ec1ce375e9092a8e' +
-         '5af2389c0b2e8e3998fb01c632fc194b5c54f94bd21cf18ec9b7a45d1cb2173a' +
-         'b866d0f20a66da60e4e1b4317c04fa331d4aa8246509ff3f840b460aa6baaeb1' +
-         'e657492575ea21da794fe3da3eba467b31f8cc9a6fda9d243bff35408842cb3b' +
-         '6ad9c5a9a8c9aea704f90df681e9b28a88bdb77f0722950b3fdb935da349e7fd' +
-         '21ccbb7f26265ea75221b3903fbca8743c41841fb094b074770fb36418248cdc' +
-         'b30073dc3f5c4f3f52e920a6123af895c09ba8bb1ef328c06c6f6a4c52012f79' +
-         'f95227432ea051f60c3901b9a80d08e5c6e6d603c7e9e5ecbb75bde5eb9dd6b6' +
-         'f2f65a81d06feb133d5e851d9c45db1577566f121915e5597fa9cc6a357c92ed' +
-         '9f1fafa681a4bfd86363a25fac0c7c4e61bd25c219e38fbeb1945baf8b917cd7',
-      e: '10001',
-      p: 'fb11ae1f56da6304942adb575d64750dc9268a6c827a551b01cb9e85f315816b' +
-         'e158e0735422b38217626c8c6eb3990b4cb0d6ce18b5897eb52fb1677f6a8e00' +
-         '013c8765227b7fcf0699145a08a98f71dbfc59ba3c26e13f59b4ca232265d642' +
-         '72f8f919ee362d2914dd00d7e4254ca7833b77d676a7a16849b48843a840ae51',
-      q: '8a053bebd427ab6b34dd020fd40825e34fb0c01f07a9566e799cb81cb0fbcb5a' +
-         'b1bf1a3e15f408f7ee82ffa7baaeb2f00498cc96adeec50bf7a60b75d8d2e5de' +
-         '6a4d4020ba85df7597594db21c9639985690142a31349209f311ee1d2702e368' +
-         '7ce09970b29fc0a29dd7e3430fa9b7e5bb52a4e8bdfe27b769af7d6384222f77',
-      seed: 'ff1a0e5f7bd48b7fd7950f758cee1a11b2f4442e5a047055f5f5498e1741c3a2' +
-            '0703e6e904024a3315c9b4971676e303b7334016d0c513a9bcad6cd49f04377d' +
-            '55563d1e72fb111ba44ac5e883ba25621984d84b04e6f399ef566dd28ad3e66a' +
-            '7189eee59b52b5cf34c328c049ed9a5ddbe26871089fbd3f877384dd8afea9fe' +
-            '6728ce8ec45d43ed8afb2bdc15e6bc094b2f46c3a5cfb6109be23f2145070538' +
-            '36faf27a1dde03ef4b31f17f24fb7e0a035f2887f7a91da21502211a1c072bd5' +
-            '19330257735bc143d9ca58764db19790435ac33540f79e7798383c8329e17ac5' +
-            '6261abba9ac621fe25ccc37d37c7878e4b4c28c3f3d1ac07d62e6de2f686c540'
+  /**
+   * One published ESIGN-D key pair, as hexadecimal digits.
+   */
+  class ESIGNKeyMaterial {
+    /**
+     * @param {string} n - Modulus p^2 * q
+     * @param {string} e - Public exponent
+     * @param {string} p - First prime factor
+     * @param {string} q - Second prime factor
+     * @param {string} seed - Secret derandomisation seed
+     */
+    constructor(n, e, p, q, seed) {
+      /** @type {string} */
+      this.n = n;
+      /** @type {string} */
+      this.e = e;
+      /** @type {string} */
+      this.p = p;
+      /** @type {string} */
+      this.q = q;
+      /** @type {string} */
+      this.seed = seed;
     }
+  }
+
+  /**
+   * An ESIGN public key.
+   */
+  class ESIGNPublicKey {
+    /**
+     * @param {BigInt} n - Modulus
+     * @param {BigInt} e - Public exponent
+     * @param {int32} keySize - Modulus size in bits
+     */
+    constructor(n, e, keySize) {
+      /** @type {BigInt} */
+      this.n = n;
+      /** @type {BigInt} */
+      this.e = e;
+      /** @type {int32} */
+      this.keySize = keySize;
+    }
+  }
+
+  /**
+   * An ESIGN private key.
+   */
+  class ESIGNPrivateKey {
+    /**
+     * @param {BigInt} n - Modulus
+     * @param {BigInt} e - Public exponent
+     * @param {BigInt} p - First prime factor
+     * @param {BigInt} q - Second prime factor
+     * @param {uint8[]} seed - Secret derandomisation seed
+     * @param {int32} keySize - Modulus size in bits
+     */
+    constructor(n, e, p, q, seed, keySize) {
+      /** @type {BigInt} */
+      this.n = n;
+      /** @type {BigInt} */
+      this.e = e;
+      /** @type {BigInt} */
+      this.p = p;
+      /** @type {BigInt} */
+      this.q = q;
+      /** @type {uint8[]} */
+      this.seed = seed;
+      /** @type {int32} */
+      this.keySize = keySize;
+    }
+  }
+
+  const ESIGN_KEYS = {
+    'NESSIE-1536-0': new ESIGNKeyMaterial(
+      'e6755c83eb4a23269d342e6ec74e632e593bdb345206d7b7697a4940df800ae4' +
+      '7e866ee0368e7c1ed5d31d0d8629d691855b823bb3d2576eacb7311cdddc4815' +
+      '0ac15beac84209e1fe5f8504677a154192dbe8da75f84e4749273619ccdb243f' +
+      'b308970ad0c70f911c05502786138650b4546d7662a1ba18473a61daf364e44b' +
+      'a758b88a40b203f064a8ebb90d6a505eaf781ee8a70a43731edaa000104461f2' +
+      '8992d4d5cda20b001e0f5f1bad81d22f26005226a012a745b8c6aec5bc0915dd',
+      '10001',
+      'f816b36a63ba7b53cb75f9a74fa9cc032fd8c00f6beb24885a16950fe7ef54d5' +
+      'e474582a4a7512c1379c05081ed1c056e500e19ba1882419ab751573e9c1a1cb',
+      'f5641a315c2fdc59f81630130f32cb3923cbbaefebf230b9e23edc7e51e7f068' +
+      'bc82ab8d28362a738fcdf274ab2ae9f0bd9991bcf7a092b7f743f0c3211a1b05',
+      'e8e57c5ea7f687b32ae45218627222ab2a9b8298493ab5520e78d77979c2a078' +
+      'a0d2c8f2363a4a58c5334d16ed7243a74a329cd8e0ba5dbe41522feb984d5a3b' +
+      '3f1bee209a5032ab5a7b8ed61a3f53e3cfb94ecb3f5a52af19e164e20cd7df17' +
+      'c8dc76ee632a7ee4b679a4f03c3511e933f949a14f1354571d45c0a8dfd64677'
+    ),
+    'NESSIE-1536-4': new ESIGNKeyMaterial(
+      '91b6a444d9f130241f4c109510cd05cc3a5503f4f75342eec90ba4edc5fedc44' +
+      'bfe57809e86ba189fcdd6386ca67d1debd65e42a3511c89aa811365df8c8a61d' +
+      '3ecd129cc04ae9c7067c9281c71fe299039b17afc7611ac07255e30a3413ac71' +
+      '9403f8cebc29716305298fab90a9370efdc9bc7d017c1537708b82ff7a6afed5' +
+      '352a557d19ddf8ee895ca4edcc37aa255530daf798312153c45c098886d94e3b' +
+      '3f97efebcbb3914a6166684b652fa949f3d089f37a3cf3539b3856aa753d86ab',
+      '10001',
+      'eb9b71f5421c036b87860aea1defe10c18a3275acaafc5cb831ca960fe92b416' +
+      '895cd79133a0057310d28c366248db92b738d54e4ca64846a5ce9cee50458d1f',
+      'ac077fe0f98bc439995577a9564d38df63a5081ec0b88b7c97a40d14ca696050' +
+      '3da6ca796bead0891c094dd2c0fe1b61e1815644a670ab068654883c2997d36b',
+      '1920c44dd8ba2d4f2127a5ad224ff7062bb4412aeba984bcb036892a0ac829b6' +
+      '725745b55532cbc66617e8c2967595f3a5352bffa2283aa0f8f98f75da9ce587' +
+      'c661a8c10dda5fa8b28b32436d7657e08fd438c774d309c04c63117f612c5fd4' +
+      'a6dbb071cfcf20f55e606c0f40ef8a84ff88860b39dc93d64da8189e5881a418'
+    ),
+    'NESSIE-3072-10': new ESIGNKeyMaterial(
+      'a720c94a5f564c0d9e8061416384741ceb3fd3bb6cadc04c5fd684cac23fe7b6' +
+      'aef8117c311ae09210a61f513296d6c8a65e20d1d0f109be26bc8f725026843d' +
+      '3df60150efc3a29a1acf7c2c57455c0ac4b9f2588f4f73fcb55b86d3d56c9d14' +
+      '5bb06180adf818a53ed92c8b40acdfd2f8a81f39ac0798adb103b773d4d157d1' +
+      '32e2234329fb0b77d69a0f4578cf564f43d762c59fbcc6fa0fd3bef58cd6bfe1' +
+      '2c8a5e1bfa6231c63a691ae87b97cbceac17338387cc3c3254ac32a65e6c81c3' +
+      'adf4a884f0d6c9c91f4c9d6ce6dc5d638a37a76ec9c557d15a03d9ad2718a08a' +
+      'c7b65fc71c54e5bfa983e6815eb0e2e237ce68ef9c572af926e0689b22e28293' +
+      '0d162b691c2ad90620abe6cf454fa82df8c192ca15717ab6cbcba1df765f4893' +
+      'cd7fe47bed63aa8729afc9edd9afc3b1969034fccc544c0c5c30542860941c51' +
+      '9fe8feba4632b30b687f8abf443a08c34f2c52357cb01945d69e604292ae9dfd' +
+      '47a6bfdef6e803a0aacd71ca9f60443448cbed31e25f4d0d7c88d1249bc79981',
+      '10001',
+      'd990ccd887c6739ae307259f06482c00927a28e084ef8ecb6d2ebc98483c3dff' +
+      'b91edfb8b287c865379e7d820bb6e609017da9ac0de50123b617a2bd91247859' +
+      '581ed1701ef1b6d0f51e3712d11408e61034077c3235167ddb037947da6f39ed' +
+      '53c7b8f56a360afb14d7008d5e491aa1a1fb9f3593044b7d95c43637dab32071',
+      'e7646935d82a56d826ddacca5f898be8217a14b67cde3f326af95a3c727c9636' +
+      '3d71aa6c3b7c426c8cddfe55bd5d06c893505189f37ee5b063ea260c38bdfe13' +
+      'be22e937f374235c139628279361a5c69eb0d55ceb5601c39331c600def6928d' +
+      '34fb3730d6d16fa8c21e4fef6a01827ce6b1fac1197b1bfcfb6f6977dc035ba1',
+      '170c1c8be7642e4af1d7ca007df4aa8795f4b2f71ee7f4e6a3bef306b9f97b13' +
+      '5df1922aaa70701b644fcb50583b16aa6e458d8db8eb0b1a7b689c777d0705ed' +
+      '5cd0836dc81c1ae66642bbb2a584d0c445f0424e97aeaa2dfd98abd1e0fae54d' +
+      '57ec79ac27eef0341fd7f8f06c8dc02b1f0747b3e30109f7ddc64918d75fc087' +
+      'b53b269497523f2d36dbb88f7bc7080213fdda5eb792620097a188c406a85e0b' +
+      '39e651f8ef8599859f8a94e7fb08b95cb90076f002660c3ffc41d31ba994124f' +
+      '41b6b2640d3ecf311179fddb5cc2d339c316813f0aff1ff62de710ea6a17f90f' +
+      '6b9881686ce7b3989e693e36c15a09e1931fd8485b55c48e0214bf31bb2873a5'
+    ),
+    'NESSIE-3072-12': new ESIGNKeyMaterial(
+      '84c133e09ed5c096f79b5758cd1d1b468a469c448f0351f9916a5c0c9ea39f1a' +
+      '6e893f23fc08f037c64ba49c1edd0972719efded27f864fd4748d1794906c16b' +
+      'cda105c54cf9f70260eadf7f84c53b7ff851a9566251d959ec1ce375e9092a8e' +
+      '5af2389c0b2e8e3998fb01c632fc194b5c54f94bd21cf18ec9b7a45d1cb2173a' +
+      'b866d0f20a66da60e4e1b4317c04fa331d4aa8246509ff3f840b460aa6baaeb1' +
+      'e657492575ea21da794fe3da3eba467b31f8cc9a6fda9d243bff35408842cb3b' +
+      '6ad9c5a9a8c9aea704f90df681e9b28a88bdb77f0722950b3fdb935da349e7fd' +
+      '21ccbb7f26265ea75221b3903fbca8743c41841fb094b074770fb36418248cdc' +
+      'b30073dc3f5c4f3f52e920a6123af895c09ba8bb1ef328c06c6f6a4c52012f79' +
+      'f95227432ea051f60c3901b9a80d08e5c6e6d603c7e9e5ecbb75bde5eb9dd6b6' +
+      'f2f65a81d06feb133d5e851d9c45db1577566f121915e5597fa9cc6a357c92ed' +
+      '9f1fafa681a4bfd86363a25fac0c7c4e61bd25c219e38fbeb1945baf8b917cd7',
+      '10001',
+      'fb11ae1f56da6304942adb575d64750dc9268a6c827a551b01cb9e85f315816b' +
+      'e158e0735422b38217626c8c6eb3990b4cb0d6ce18b5897eb52fb1677f6a8e00' +
+      '013c8765227b7fcf0699145a08a98f71dbfc59ba3c26e13f59b4ca232265d642' +
+      '72f8f919ee362d2914dd00d7e4254ca7833b77d676a7a16849b48843a840ae51',
+      '8a053bebd427ab6b34dd020fd40825e34fb0c01f07a9566e799cb81cb0fbcb5a' +
+      'b1bf1a3e15f408f7ee82ffa7baaeb2f00498cc96adeec50bf7a60b75d8d2e5de' +
+      '6a4d4020ba85df7597594db21c9639985690142a31349209f311ee1d2702e368' +
+      '7ce09970b29fc0a29dd7e3430fa9b7e5bb52a4e8bdfe27b769af7d6384222f77',
+      'ff1a0e5f7bd48b7fd7950f758cee1a11b2f4442e5a047055f5f5498e1741c3a2' +
+      '0703e6e904024a3315c9b4971676e303b7334016d0c513a9bcad6cd49f04377d' +
+      '55563d1e72fb111ba44ac5e883ba25621984d84b04e6f399ef566dd28ad3e66a' +
+      '7189eee59b52b5cf34c328c049ed9a5ddbe26871089fbd3f877384dd8afea9fe' +
+      '6728ce8ec45d43ed8afb2bdc15e6bc094b2f46c3a5cfb6109be23f2145070538' +
+      '36faf27a1dde03ef4b31f17f24fb7e0a035f2887f7a91da21502211a1c072bd5' +
+      '19330257735bc143d9ca58764db19790435ac33540f79e7798383c8329e17ac5' +
+      '6261abba9ac621fe25ccc37d37c7878e4b4c28c3f3d1ac07d62e6de2f686c540'
+    )
   };
 
   /**
@@ -495,23 +587,33 @@
    * @returns {string} The key name
    */
   function parseKeySelector(keyData) {
-    if (typeof keyData === 'number') return findFirstOfSize(keyData);
+    if (typeof keyData === 'number') {
+      /** @type {int32} */
+      const bits = keyData;
+      return findFirstOfSize(bits);
+    }
     if (typeof keyData === 'string') {
-      if (ESIGN_KEYS[keyData]) return keyData;
-      return findFirstOfSize(parseInt(keyData, 10));
+      /** @type {string} */
+      const text = keyData;
+      if (ESIGN_KEYS[text]) return text;
+      return findFirstOfSize(parseInt(text, 10));
     }
 
     if (keyData && typeof keyData.length === 'number') {
+      /** @type {uint8[]} */
+      const bytes = keyData;
       let digits = '';
-      let allDigits = keyData.length > 0;
-      for (let i = 0; i < keyData.length; ++i) {
-        if (keyData[i] < 0x30 || keyData[i] > 0x39) { allDigits = false; break; }
-        digits += String.fromCharCode(keyData[i]);
+      let allDigits = bytes.length > 0;
+      for (let i = 0; i < bytes.length; ++i) {
+        if (bytes[i] < 0x30 || bytes[i] > 0x39) { allDigits = false; break; }
+        digits += String.fromCharCode(bytes[i]);
       }
       if (allDigits) return findFirstOfSize(parseInt(digits, 10));
 
-      if (keyData.length >= 2) {
-        const name = 'NESSIE-' + (keyData[0] * 256) + '-' + keyData[1];
+      if (bytes.length >= 2) {
+        /** @type {int32} */
+        const sizeBits = bytes[0] * 256;
+        const name = 'NESSIE-' + sizeBits + '-' + bytes[1];
         if (ESIGN_KEYS[name]) return name;
         throw new Error('ESIGN: no published key ' + name);
       }
@@ -522,11 +624,14 @@
 
   /**
    * The first published key of a given modulus size.
-   * @param {number} bits - Modulus size in bits
+   * @param {int32} bits - Modulus size in bits
    * @returns {string} The key name
    */
   function findFirstOfSize(bits) {
-    for (const name of Object.keys(ESIGN_KEYS)) {
+    /** @type {string[]} */
+    const names = Object.keys(ESIGN_KEYS);
+    for (let i = 0; i < names.length; ++i) {
+      const name = names[i];
       if (name.indexOf('NESSIE-' + bits + '-') === 0) return name;
     }
     throw new Error('ESIGN: no published key of ' + bits + ' bits');
@@ -702,20 +807,27 @@
    */
   class ESIGNInstance extends IAlgorithmInstance {
     /**
-     * @param {Object} algorithm - Parent algorithm instance
+     * @param {ESIGNCipher} algorithm - Parent algorithm instance
      * @param {boolean} [isInverse=false] - Verification mode flag
      */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {int32} */
       this.keySize = 1536;
+      /** @type {ESIGNPublicKey|null} */
       this._publicKey = null;
+      /** @type {ESIGNPrivateKey|null} */
       this._privateKey = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this._keyData = null;
     }
 
     // Property setter for key (for test suite compatibility)
+    /**
+     * @param {uint8[]} keyData - Key selector (see parseKeySelector)
+     */
     set key(keyData) {
       this.KeySetup(keyData);
     }
@@ -728,18 +840,30 @@
       return this._keyData;
     }
 
+    /**
+     * @param {ESIGNPublicKey|null} keyData - Public key
+     */
     set publicKey(keyData) {
       this._publicKey = keyData ? keyData : null;
     }
 
+    /**
+     * @returns {ESIGNPublicKey|null} Current public key
+     */
     get publicKey() {
       return this._publicKey;
     }
 
+    /**
+     * @param {ESIGNPrivateKey|null} keyData - Private key
+     */
     set privateKey(keyData) {
       this._privateKey = keyData ? keyData : null;
     }
 
+    /**
+     * @returns {ESIGNPrivateKey|null} Current private key
+     */
     get privateKey() {
       return this._privateKey;
     }
@@ -751,7 +875,9 @@
      */
     Feed(data) {
       if (typeof data === 'string') {
-        for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data.charCodeAt(i) % 256);
+        /** @type {string} */
+        const text = data;
+        for (let i = 0; i < text.length; ++i) this.inputBuffer.push(text.charCodeAt(i) % 256);
       } else if (data && typeof data.length === 'number') {
         for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data[i]);
       } else {
@@ -766,7 +892,9 @@
      */
     Result() {
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
       try {
@@ -774,11 +902,9 @@
           ? this._open(this.inputBuffer)
           : this._sign(this.inputBuffer);
 
-        this.inputBuffer = [];
         return result;
-      } catch (error) {
+      } finally {
         this.inputBuffer = [];
-        throw error;
       }
     }
 
@@ -789,27 +915,28 @@
     KeySetup(keyData) {
       this._keyData = keyData;
 
+      /** @type {ESIGNKeyMaterial} */
       const material = ESIGN_KEYS[parseKeySelector(keyData)];
       const n = hexToBigInt(material.n);
       const e = hexToBigInt(material.e);
       this.keySize = bitCount(n);
 
-      this._publicKey = { n: n, e: e, keySize: this.keySize };
-      this._privateKey = {
-        n: n,
-        e: e,
-        p: hexToBigInt(material.p),
-        q: hexToBigInt(material.q),
-        seed: OpCodes.Hex8ToBytes(material.seed),
-        keySize: this.keySize
-      };
+      this._publicKey = new ESIGNPublicKey(n, e, this.keySize);
+      this._privateKey = new ESIGNPrivateKey(
+        n,
+        e,
+        hexToBigInt(material.p),
+        hexToBigInt(material.q),
+        OpCodes.Hex8ToBytes(material.seed),
+        this.keySize
+      );
     }
 
     /**
      * Number of octets a signature occupies. The specification fixes the
      * modulus at exactly 3*pLen bits, so this is that many octets.
      * @param {BigInt} n - Modulus
-     * @returns {number} Octet length
+     * @returns {int32} Octet length
      */
     _signatureLength(n) {
       return bitCount(n) / 8;
@@ -826,7 +953,7 @@
      * so every message is signable.
      *
      * @param {uint8[]} message - Message octets
-     * @param {number} pLen - The prime width of the key
+     * @param {int32} pLen - The prime width of the key
      * @returns {BigInt} Representative in [0, 2^(pLen-1))
      */
     _representative(message, pLen) {
@@ -853,7 +980,11 @@
         throw new Error('ESIGN private key not set. Assign a key first.');
       }
 
-      const { n, e, p, q, seed } = this._privateKey;
+      const n = this._privateKey.n;
+      const e = this._privateKey.e;
+      const p = this._privateKey.p;
+      const q = this._privateKey.q;
+      const seed = this._privateKey.seed;
       const pLen = getPLen(n);
       const f = this._representative(message, pLen);
 
@@ -867,6 +998,7 @@
       }
 
       const signature = I2OSP(s, this._signatureLength(n));
+      /** @type {uint8[]} */
       const out = new Array(signature.length + message.length);
       for (let i = 0; i < signature.length; ++i) out[i] = signature[i];
       for (let i = 0; i < message.length; ++i) out[signature.length + i] = message[i];
@@ -884,7 +1016,8 @@
         throw new Error('ESIGN public key not set. Assign a key first.');
       }
 
-      const { n, e } = this._publicKey;
+      const n = this._publicKey.n;
+      const e = this._publicKey.e;
       const sigLen = this._signatureLength(n);
 
       if (signed.length < sigLen) {
@@ -922,6 +1055,7 @@
      * @returns {uint8[]} Signature octets
      */
     Sign(message) {
+      /** @type {uint8[]} */
       const bytes = typeof message === 'string' ? this._stringToBytes(message) : message;
       return this._sign(bytes).slice(0, this._signatureLength(this._privateKey.n));
     }
@@ -933,7 +1067,9 @@
      * @returns {boolean} Whether the signature verifies
      */
     Verify(message, signature) {
+      /** @type {uint8[]} */
       const bytes = typeof message === 'string' ? this._stringToBytes(message) : message;
+      /** @type {uint8[]} */
       const signed = new Array(signature.length + bytes.length);
       for (let i = 0; i < signature.length; ++i) signed[i] = signature[i];
       for (let i = 0; i < bytes.length; ++i) signed[signature.length + i] = bytes[i];
@@ -952,6 +1088,7 @@
      * @returns {uint8[]} Octets
      */
     _stringToBytes(text) {
+      /** @type {uint8[]} */
       const out = new Array(text.length);
       for (let i = 0; i < text.length; ++i) out[i] = text.charCodeAt(i) % 256;
       return out;
