@@ -160,6 +160,7 @@
       // Row 1: [0, 1, 0, 1, 1, 1]  - info bit 1, contributes to local parity p1, local parity p2, global parity p3
       // Row 2: [0, 0, 1, 0, 1, 1]  - info bit 2, contributes to local parity p2 and global parity p3
 
+      /** @type {uint8[][]} */
       this.generator = [
         [1, 0, 0, 1, 0, 1],  // c0 = m0, c3 = m0^m1, c5 = m0^m1^m2
         [0, 1, 0, 1, 1, 1],  // c1 = m1, c3 = m0^m1, c4 = m1^m2, c5 = m0^m1^m2
@@ -226,7 +227,7 @@
         /** @type {uint32} */
         let sum = 0;
         for (let j = 0; j < 3; ++j) {
-          sum = OpCodes.Xor32(sum, (data[j]&this.generator[j][i]));
+          sum = OpCodes.Xor32(sum, OpCodes.And32(data[j], this.generator[j][i]));
         }
         codeword[i] = sum;
       }
@@ -244,18 +245,28 @@
       }
 
       // Check local parity constraints
+      /** @type {uint8[]} */
       const syndromes = this.computeSyndromes(data);
 
       // If no errors, extract information symbols
-      if (syndromes.every(s => s === 0)) {
-        return [data[0], data[1], data[2]];
+      /** @type {boolean} */
+      let clean = true;
+      for (let i = 0; i < syndromes.length; ++i) {
+        if (syndromes[i] !== 0) clean = false;
+      }
+      if (clean) {
+        /** @type {uint8[]} */
+        const info = [data[0], data[1], data[2]];
+        return info;
       }
 
       // Attempt local recovery using locality property
-      const corrected = [...data];
+      /** @type {uint8[]} */
+      const corrected = data.slice();
 
       // Check local group 1: {c0, c1, c3}
-      const localParity1 = data[0]^data[1]^data[3];
+      /** @type {int32} */
+      const localParity1 = OpCodes.ToInt(OpCodes.Xor32(OpCodes.ToInt(OpCodes.Xor32(data[0], data[1])), data[3]));
       if (localParity1 !== 0) {
         // Error in local group 1 - use locality to recover
         // In simplified version, we'll attempt single error correction
@@ -263,34 +274,42 @@
       }
 
       // Check local group 2: {c1, c2, c4}
-      const localParity2 = data[1]^data[2]^data[4];
+      /** @type {int32} */
+      const localParity2 = OpCodes.ToInt(OpCodes.Xor32(OpCodes.ToInt(OpCodes.Xor32(data[1], data[2])), data[4]));
       if (localParity2 !== 0) {
         console.warn('LRC: Error detected in local group 2');
       }
 
       // Check global parity: c5 = c0 XOR c1 XOR c2
-      const globalParity = data[0]^data[1]^data[2]^data[5];
+      /** @type {int32} */
+      const globalParity = OpCodes.ToInt(OpCodes.Xor32(OpCodes.ToInt(OpCodes.Xor32(OpCodes.ToInt(OpCodes.Xor32(data[0], data[1])), data[2])), data[5]));
       if (globalParity !== 0) {
         console.warn('LRC: Global parity error detected');
       }
 
       // Extract information symbols (even if errors detected)
-      return [corrected[0], corrected[1], corrected[2]];
+      /** @type {uint8[]} */
+      const info = [corrected[0], corrected[1], corrected[2]];
+      return info;
     }
 
+    /**
+     * @param {uint8[]} data - Codeword bits
+     * @returns {uint8[]} Two local and one global syndrome
+     */
     computeSyndromes(data) {
       // Compute syndrome vector for error detection
       /** @type {uint8[]} */
       const syndromes = [];
 
       // Local parity 1: c3 = c0 XOR c1
-      syndromes.push(data[0]^data[1]^data[3]);
+      syndromes.push(OpCodes.ToInt(OpCodes.Xor32(OpCodes.ToInt(OpCodes.Xor32(data[0], data[1])), data[3])));
 
       // Local parity 2: c4 = c1 XOR c2
-      syndromes.push(data[1]^data[2]^data[4]);
+      syndromes.push(OpCodes.ToInt(OpCodes.Xor32(OpCodes.ToInt(OpCodes.Xor32(data[1], data[2])), data[4])));
 
       // Global parity: c5 = c0 XOR c1 XOR c2
-      syndromes.push(data[0]^data[1]^data[2]^data[5]);
+      syndromes.push(OpCodes.ToInt(OpCodes.Xor32(OpCodes.ToInt(OpCodes.Xor32(OpCodes.ToInt(OpCodes.Xor32(data[0], data[1])), data[2])), data[5])));
 
       return syndromes;
     }
@@ -303,15 +322,24 @@
       if (data.length !== 6) return true;
 
       try {
+        /** @type {uint8[]} */
         const syndromes = this.computeSyndromes(data);
         // Error detected if any syndrome is non-zero
-        return syndromes.some(s => s !== 0);
+        for (let i = 0; i < syndromes.length; ++i) {
+          if (syndromes[i] !== 0) return true;
+        }
+        return false;
       } catch (e) {
         return true;
       }
     }
 
     // Additional method to demonstrate locality property
+    /**
+     * @param {uint8[]} data - Codeword bits
+     * @param {int32} position - Position to recover (0..5)
+     * @returns {uint8} Recovered symbol
+     */
     recoverSymbol(data, position) {
       // Recover symbol at given position using locality
       if (data.length !== 6) {
@@ -325,17 +353,17 @@
       // Demonstrate locality r=2 recovery
       switch (position) {
         case 0: // c0 = c1 XOR c3
-          return data[1]^data[3];
+          return OpCodes.ToInt(OpCodes.Xor32(data[1], data[3]));
         case 1: // c1 = c0 XOR c3
-          return data[0]^data[3];
+          return OpCodes.ToInt(OpCodes.Xor32(data[0], data[3]));
         case 2: // c2 = c1 XOR c4
-          return data[1]^data[4];
+          return OpCodes.ToInt(OpCodes.Xor32(data[1], data[4]));
         case 3: // c3 = c0 XOR c1
-          return data[0]^data[1];
+          return OpCodes.ToInt(OpCodes.Xor32(data[0], data[1]));
         case 4: // c4 = c1 XOR c2
-          return data[1]^data[2];
+          return OpCodes.ToInt(OpCodes.Xor32(data[1], data[2]));
         case 5: // c5 = c0 XOR c1 XOR c2
-          return data[0]^data[1]^data[2];
+          return OpCodes.ToInt(OpCodes.Xor32(OpCodes.ToInt(OpCodes.Xor32(data[0], data[1])), data[2]));
         default:
           throw new Error('Invalid position');
       }

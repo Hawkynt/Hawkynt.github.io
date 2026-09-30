@@ -151,16 +151,21 @@
       this.result = null;
 
       // Default parameters for (16,8) code - educational implementation
+      /** @type {int32} */
       this.n = 16; // Codeword length
+      /** @type {int32} */
       this.k = 8;  // Information bits
 
       // Hierarchical structure: 3 layers
+      /** @type {int32} */
       this.numLayers = 3;
       /** @type {int32[]} */
       this.layerSizes = [8, 12, 16]; // Layer 0: input, Layer 1: hidden, Layer 2: output
 
       // Sparse connectivity matrices between layers
       // Sparsity inspired by neural network connectivity (approx 30% connections)
+      /** @type {uint8[][][]} */
+      this.connectivity = [];
       this.initializeSparseConnectivity();
 
       // Belief propagation parameters
@@ -171,24 +176,26 @@
     /**
      * Initialize sparse connectivity matrices between layers
      * Uses pseudo-random but deterministic pattern for reproducibility
+     * @returns {void}
      */
     initializeSparseConnectivity() {
-      /** @type {uint8[][]} */
-      this.connectivity = [];
+      /** @type {uint8[][][]} */
+      const layers = [];
 
       // Layer 0 -> Layer 1 connectivity (8x12 sparse matrix)
-      this.connectivity[0] = this._createSparseMatrix(
+      layers.push(this._createSparseMatrix(
         this.layerSizes[0],
         this.layerSizes[1],
         0x12345678 // Seed for deterministic pattern
-      );
+      ));
 
       // Layer 1 -> Layer 2 connectivity (12x16 sparse matrix)
-      this.connectivity[1] = this._createSparseMatrix(
+      layers.push(this._createSparseMatrix(
         this.layerSizes[1],
         this.layerSizes[2],
         0x87654321 // Seed for deterministic pattern
-      );
+      ));
+      this.connectivity = layers;
     }
 
     /**
@@ -196,14 +203,15 @@
      * Uses LFSR for deterministic pseudo-random pattern generation
      * Note: Bitwise operations here are for LFSR state generation (structural),
      * not for cryptographic data processing. This is acceptable for ECC code construction.
-     * @param {number} rows - Number of rows
-     * @param {number} cols - Number of columns
-     * @param {number} seed - Seed for deterministic pattern
-     * @returns {Array<Array<number>>} - Sparse binary matrix
+     * @param {int32} rows - Number of rows
+     * @param {int32} cols - Number of columns
+     * @param {uint32} seed - Seed for deterministic pattern
+     * @returns {uint8[][]} - Sparse binary matrix
      */
     _createSparseMatrix(rows, cols, seed) {
       /** @type {uint8[][]} */
       const matrix = [];
+      /** @type {uint32} */
       let lfsr = seed;
 
       // Ensure each column has at least 2 connections (for error correction)
@@ -222,12 +230,13 @@
         for (let row = 0; row < rows; ++row) {
           // LFSR step (Galois LFSR with polynomial x^32 + x^31 + x^29 + x + 1)
           // Bitwise operations for LFSR state update (structural, not cryptographic data)
-          const feedback = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shr32(lfsr, 0), OpCodes.Shr32(lfsr, 1)), OpCodes.Shr32(lfsr, 3)), OpCodes.Shr32(lfsr, 31))&1;
+          /** @type {uint32} */
+          const feedback = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shr32(lfsr, 0), OpCodes.Shr32(lfsr, 1)), OpCodes.Shr32(lfsr, 3)), OpCodes.Shr32(lfsr, 31)), 1);
           lfsr = OpCodes.RotR32(lfsr, 1);
-          lfsr = (lfsr&0x7FFFFFFF)|(OpCodes.Shl32(feedback, 31)); // Mask and set feedback bit
+          lfsr = OpCodes.Or32(OpCodes.And32(lfsr, 0x7FFFFFFF), OpCodes.Shl32(feedback, 31)); // Mask and set feedback bit
 
           // Approximately 30% connection probability
-          if ((lfsr&0xFF) < 77) { // Extract low byte for comparison (structural)
+          if (OpCodes.And32(lfsr, 0xFF) < 77) { // Extract low byte for comparison (structural)
             matrix[row][col] = 1;
             ++connections;
           }
@@ -235,6 +244,7 @@
 
         // Ensure minimum connections per column
         while (connections < minColConnections) {
+          /** @type {int32} */
           const row = (OpCodes.ToUint32(lfsr)) % rows; // Convert to unsigned for modulo (structural)
           lfsr = OpCodes.RotR32(lfsr, 1);
           if (matrix[row][col] === 0) {
@@ -252,6 +262,7 @@
         }
 
         while (connections < minRowConnections && cols > 0) {
+          /** @type {int32} */
           const col = (OpCodes.ToUint32(lfsr)) % cols; // Convert to unsigned for modulo (structural)
           lfsr = OpCodes.RotR32(lfsr, 1);
           if (matrix[row][col] === 0) {
@@ -305,7 +316,9 @@
       }
 
       try {
+        /** @type {uint8[]} */
         const decoded = this.decode(data);
+        /** @type {uint8[]} */
         const reencoded = this.encode(decoded);
 
         // Check if re-encoding matches received codeword
@@ -322,8 +335,8 @@
 
     /**
      * Encode information bits using hierarchical sparse connections
-     * @param {Array<number>} infoBits - K information bits
-     * @returns {Array<number>} - N encoded bits
+     * @param {uint8[]} infoBits - K information bits
+     * @returns {uint8[]} - N encoded bits
      */
     encode(infoBits) {
       if (infoBits.length !== this.k) {
@@ -331,7 +344,8 @@
       }
 
       // Layer 0: Input layer (information bits)
-      let activations = [...infoBits];
+      /** @type {uint8[]} */
+      let activations = infoBits.slice();
 
       // Forward propagation through layers
       for (let layer = 0; layer < this.numLayers - 1; ++layer) {
@@ -343,12 +357,13 @@
 
     /**
      * Forward propagation through one layer
-     * @param {Array<number>} input - Input activations
-     * @param {Array<Array<number>>} connectivity - Sparse connectivity matrix
-     * @returns {Array<number>} - Output activations
+     * @param {uint8[]} input - Input activations
+     * @param {uint8[][]} connectivity - Sparse connectivity matrix
+     * @returns {uint8[]} - Output activations
      */
     _forwardLayer(input, connectivity) {
       const outputSize = connectivity[0].length;
+      /** @type {uint8[]} */
       const output = new Array(outputSize);
 
       // For each output neuron
@@ -372,9 +387,9 @@
     /**
      * Backward propagation through one layer (inverse of forward)
      * Uses Gaussian elimination in GF(2) to solve the linear system
-     * @param {Array<number>} output - Output activations (what we received)
-     * @param {Array<Array<number>>} connectivity - Sparse connectivity matrix
-     * @returns {Array<number>} - Input activations (decoded)
+     * @param {uint8[]} output - Output activations (what we received)
+     * @param {uint8[][]} connectivity - Sparse connectivity matrix
+     * @returns {uint8[]} - Input activations (decoded)
      */
     _backwardLayer(output, connectivity) {
       const inputSize = connectivity.length;
@@ -389,7 +404,7 @@
       /** @type {uint8[][]} */
       const augmented = [];
       for (let j = 0; j < outputSize; ++j) {
-        /** @type {int32[]} */
+        /** @type {uint8[]} */
         const row = [];
         for (let i = 0; i < inputSize; ++i) {
           row.push(connectivity[i][j]);
@@ -401,6 +416,7 @@
       // Gaussian elimination in GF(2)
       for (let col = 0; col < inputSize && col < outputSize; ++col) {
         // Find pivot
+        /** @type {int32} */
         let pivotRow = -1;
         for (let row = col; row < outputSize; ++row) {
           if (augmented[row][col] === 1) {
@@ -415,6 +431,7 @@
 
         // Swap rows if needed
         if (pivotRow !== col && col < outputSize) {
+          /** @type {uint8[]} */
           const temp = augmented[col];
           augmented[col] = augmented[pivotRow];
           augmented[pivotRow] = temp;
@@ -440,6 +457,7 @@
         for (let row = 0; row < outputSize; ++row) {
           if (augmented[row][i] === 1) {
             // Compute input[i] from this row
+            /** @type {uint32} */
             let sum = augmented[row][inputSize]; // RHS value
             for (let j = i + 1; j < inputSize; ++j) {
               if (augmented[row][j] === 1) {
@@ -459,8 +477,8 @@
      * Decode received bits using backward propagation
      * For error-free channels (educational implementation), we can invert
      * the hierarchical sparse encoding by backward propagation
-     * @param {Array<number>} receivedBits - N received bits (possibly with errors)
-     * @returns {Array<number>} - K decoded information bits
+     * @param {uint8[]} receivedBits - N received bits (possibly with errors)
+     * @returns {uint8[]} - K decoded information bits
      */
     decode(receivedBits) {
       if (receivedBits.length !== this.n) {
@@ -469,7 +487,8 @@
 
       // For error-free decoding, propagate backward through layers
       // Start from output layer (received bits)
-      let activations = [...receivedBits];
+      /** @type {uint8[]} */
+      let activations = receivedBits.slice();
 
       // Backward propagation through layers (in reverse order)
       for (let layer = this.numLayers - 2; layer >= 0; --layer) {
@@ -482,42 +501,44 @@
 
     /**
      * Initialize belief values from received bits
-     * @param {Array<number>} receivedBits - Received bits
-     * @returns {Array<Array<number>>} - Beliefs for each layer
+     * @param {uint8[]} receivedBits - Received bits
+     * @returns {float64[][]} - Beliefs for each layer
      */
     _initializeBeliefs(receivedBits) {
       /** @type {float64[][]} */
       const beliefs = [];
 
       // Layer 0: Unknown (to be decoded)
-      beliefs[0] = new Array(this.layerSizes[0]).fill(0.5);
+      beliefs[0] = this._filled(this.layerSizes[0], 0.5);
 
       // Layer 1: Unknown (to be decoded)
-      beliefs[1] = new Array(this.layerSizes[1]).fill(0.5);
+      beliefs[1] = this._filled(this.layerSizes[1], 0.5);
 
       // Layer 2: Known from received bits
-      beliefs[2] = receivedBits.map(bit => bit); // Hard decision: 0 or 1
+      beliefs[2] = this._toBeliefs(receivedBits); // Hard decision: 0 or 1
 
       return beliefs;
     }
 
     /**
      * Perform one iteration of belief propagation
-     * @param {Array<Array<number>>} beliefs - Current beliefs
-     * @param {Array<number>} receivedBits - Received bits for evidence
-     * @returns {Array<Array<number>>} - Updated beliefs
+     * @param {float64[][]} beliefs - Current beliefs
+     * @param {uint8[]} receivedBits - Received bits for evidence
+     * @returns {float64[][]} - Updated beliefs
      */
     _beliefPropagationIteration(beliefs, receivedBits) {
       /** @type {float64[][]} */
       const newBeliefs = [];
 
       // Layer 2 is fixed by received bits
-      newBeliefs[2] = [...receivedBits];
+      /** @type {float64[]} */
+      const received = this._toBeliefs(receivedBits);
+      newBeliefs[2] = received;
 
       // Backward messages: Layer 2 -> Layer 1
       newBeliefs[1] = this._backwardMessages(
         beliefs[1],
-        receivedBits,
+        received,
         this.connectivity[1]
       );
 
@@ -533,16 +554,19 @@
 
     /**
      * Compute backward messages in belief propagation
-     * @param {Array<number>} currentBeliefs - Current layer beliefs
-     * @param {Array<number>} nextBeliefs - Next layer beliefs
-     * @param {Array<Array<number>>} connectivity - Connectivity matrix
-     * @returns {Array<number>} - Updated beliefs
+     * @param {float64[]} currentBeliefs - Current layer beliefs
+     * @param {float64[]} nextBeliefs - Next layer beliefs
+     * @param {uint8[][]} connectivity - Connectivity matrix
+     * @returns {float64[]} - Updated beliefs
      */
     _backwardMessages(currentBeliefs, nextBeliefs, connectivity) {
+      /** @type {float64[]} */
       const updated = new Array(currentBeliefs.length);
 
       for (let i = 0; i < currentBeliefs.length; ++i) {
+        /** @type {int32} */
         let vote0 = 0; // Votes for bit = 0
+        /** @type {int32} */
         let vote1 = 0; // Votes for bit = 1
 
         // Collect messages from connected output neurons
@@ -571,8 +595,8 @@
 
     /**
      * Check if belief propagation has converged
-     * @param {Array<Array<number>>} oldBeliefs - Previous beliefs
-     * @param {Array<Array<number>>} newBeliefs - Current beliefs
+     * @param {float64[][]} oldBeliefs - Previous beliefs
+     * @param {float64[][]} newBeliefs - Current beliefs
      * @returns {boolean} - True if converged
      */
     _hasConverged(oldBeliefs, newBeliefs) {
@@ -589,19 +613,48 @@
 
     /**
      * Extract information bits from final beliefs
-     * @param {Array<Array<number>>} beliefs - Final beliefs
-     * @returns {Array<number>} - Decoded information bits
+     * @param {float64[][]} beliefs - Final beliefs
+     * @returns {uint8[]} - Decoded information bits
      */
     _extractInformationBits(beliefs) {
       // Information bits are in layer 0
-      return beliefs[0].map(b => b >= 0.5 ? 1 : 0);
+      /** @type {float64[]} */
+      const layer0 = beliefs[0];
+      /** @type {uint8[]} */
+      const bits = [];
+      for (let i = 0; i < layer0.length; ++i) bits.push(layer0[i] >= 0.5 ? 1 : 0);
+      return bits;
+    }
+
+    /**
+     * @param {int32} count - Length
+     * @param {float64} value - Fill value
+     * @returns {float64[]} count copies of value
+     */
+    _filled(count, value) {
+      /** @type {float64[]} */
+      const values = [];
+      for (let i = 0; i < count; ++i) values.push(value);
+      return values;
+    }
+
+    /**
+     * @param {uint8[]} bits - Hard bits
+     * @returns {float64[]} The same values as beliefs
+     */
+    _toBeliefs(bits) {
+      /** @type {float64[]} */
+      const values = [];
+      for (let i = 0; i < bits.length; ++i) values.push(bits[i]);
+      return values;
     }
 
     /**
      * Set custom Cortex code parameters
-     * @param {number} n - Codeword length
-     * @param {number} k - Information bits
-     * @param {number} numLayers - Number of hierarchical layers
+     * @param {int32} n - Codeword length
+     * @param {int32} k - Information bits
+     * @param {int32} [numLayers=3] - Number of hierarchical layers
+     * @returns {void}
      */
     setParameters(n, k, numLayers = 3) {
       if (k <= 0 || k >= n) {
@@ -620,7 +673,9 @@
       /** @type {int32[]} */
       this.layerSizes = [];
       for (let i = 0; i < numLayers; ++i) {
+        /** @type {float64} */
         const ratio = i / (numLayers - 1);
+        /** @type {int32} */
         const size = Math.round(k + ratio * (n - k));
         this.layerSizes.push(size);
       }
