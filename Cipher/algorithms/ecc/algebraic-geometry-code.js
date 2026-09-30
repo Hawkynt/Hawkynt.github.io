@@ -220,30 +220,24 @@
       // Each row i is evaluation of basis function f_i at the 8 points
       // Codeword c = m*G where m is message vector
       // Basis functions: {1, x, y, x^2} from space L(D)
-      /** @type {uint8[]} */
-      const fOne = [1, 1, 1, 1, 1, 1, 1, 1]; // f = 1 (constant)
-      /** @type {uint8[]} */
-      const fX = [0, 0, 1, 1, 2, 2, 3, 3];   // f = x (x-coordinate)
-      /** @type {uint8[]} */
-      const fY = [0, 1, 0, 1, 2, 3, 2, 3];   // f = y (y-coordinate)
-      /** @type {uint8[]} */
-      const fX2 = [0, 0, 1, 1, 3, 3, 2, 2];  // f = x^2 (polynomial in x)
       /** @type {uint8[][]} */
-      this.generatorMatrix = [fOne, fX, fY, fX2];
+      this.generatorMatrix = [
+        [1, 1, 1, 1, 1, 1, 1, 1], // f = 1 (constant)
+        [0, 0, 1, 1, 2, 2, 3, 3], // f = x (x-coordinate)
+        [0, 1, 0, 1, 2, 3, 2, 3], // f = y (y-coordinate)
+        [0, 0, 1, 1, 3, 3, 2, 2]  // f = x^2 (polynomial in x)
+      ];
 
       // Parity check matrix H (from dual code construction)
       // H*c^T = 0 for valid codewords
       // Used for syndrome computation and error detection
-      /** @type {uint8[]} */
-      const h0 = [1, 1, 1, 1, 1, 1, 1, 1];
-      /** @type {uint8[]} */
-      const h1 = [0, 0, 1, 1, 2, 2, 3, 3];
-      /** @type {uint8[]} */
-      const h2 = [0, 1, 0, 1, 2, 3, 2, 3];
-      /** @type {uint8[]} */
-      const h3 = [0, 1, 1, 0, 0, 1, 1, 0];
       /** @type {uint8[][]} */
-      this.parityCheckMatrix = [h0, h1, h2, h3];
+      this.parityCheckMatrix = [
+        [1, 1, 1, 1, 1, 1, 1, 1],
+        [0, 0, 1, 1, 2, 2, 3, 3],
+        [0, 1, 0, 1, 2, 3, 2, 3],
+        [0, 1, 1, 0, 0, 1, 1, 0]
+      ];
     }
 
     /**
