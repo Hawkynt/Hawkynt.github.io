@@ -124,7 +124,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TrellisCodedModulationInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -141,13 +141,17 @@
   class TrellisCodedModulationInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TrellisCodedModulationAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._feedBuffer = null;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // 4-state 8-PSK TCM parameters (rate 2/3, K=3)
@@ -222,7 +226,7 @@
      */
     encode(inputBits) {
       if (inputBits.length % this._inputBitsPerSymbol !== 0) {
-        throw new Error(`TCM encode: Input length must be multiple of ${this._inputBitsPerSymbol} bits`);
+        throw new Error("TCM encode: Input length must be multiple of " + this._inputBitsPerSymbol + " bits");
       }
 
       const encoded = [];
@@ -275,7 +279,7 @@
      */
     decode(receivedBits) {
       if (receivedBits.length % this._outputBitsPerSymbol !== 0) {
-        throw new Error(`TCM decode: Input length must be multiple of ${this._outputBitsPerSymbol} bits`);
+        throw new Error("TCM decode: Input length must be multiple of " + this._outputBitsPerSymbol + " bits");
       }
 
       const numSymbols = receivedBits.length / this._outputBitsPerSymbol;

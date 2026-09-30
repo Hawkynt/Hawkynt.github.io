@@ -181,7 +181,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {StabilizerQuantumCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -198,12 +198,13 @@
   class StabilizerQuantumCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {StabilizerQuantumCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
       this.inputBuffer = [];
     }
@@ -313,6 +314,7 @@
 
     // Pack 5-bit array into integer
     _packBits(bits) {
+      /** @type {uint32} */
       let result = 0;
       for (let i = 0; i < Math.min(5, bits.length); i++) {
         result = OpCodes.ToUint32(OpCodes.Shl32(result, 1)|OpCodes.ToByte(bits[i]));
@@ -324,6 +326,7 @@
     // Measures all stabilizer generators to compute syndrome
 
     _measureSyndrome(codeword) {
+      /** @type {uint32} */
       let syndrome = 0;
 
       for (let i = 0; i < STABILIZERS_5_1_3.length; i++) {
@@ -346,6 +349,7 @@
 
     // Compute parity of bits selected by mask
     _computeParity(value, mask) {
+      /** @type {uint32} */
       let result = 0;
       let masked = OpCodes.ToUint32(value&mask);
 
@@ -406,6 +410,10 @@
 
     // ===== ERROR DETECTION =====
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!data || data.length === 0) return false;
 
@@ -442,7 +450,7 @@
         name: s.name,
         x: s.x.toString(2).padStart(5, '0'),
         z: s.z.toString(2).padStart(5, '0'),
-        description: `X on qubits: ${this._getBitPositions(s.x)}, Z on qubits: ${this._getBitPositions(s.z)}`
+        description: "X on qubits: " + (this._getBitPositions(s.x)) + ", Z on qubits: " + (this._getBitPositions(s.z))
       }));
     }
 

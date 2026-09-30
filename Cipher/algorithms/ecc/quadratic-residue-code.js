@@ -115,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {QuadraticResidueCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -132,13 +132,15 @@
   class QuadraticResidueCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {QuadraticResidueCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
       this._p = 7; // Default: (7,4) QR code
 
@@ -150,7 +152,7 @@
       // Check if p is prime and p ≡ ±1 (mod 8)
       const validPrimes = [7, 17, 23, 31, 41, 47];
       if (!validPrimes.includes(value)) {
-        throw new Error(`QuadraticResidueCodeInstance.p: Must be a prime ≡ ±1 (mod 8). Valid values: ${validPrimes.join(', ')}`);
+        throw new Error("QuadraticResidueCodeInstance.p: Must be a prime ≡ ±1 (mod 8). Valid values: " + (validPrimes.join(', ')));
       }
       this._p = value;
       this.updateGenerator();
@@ -221,12 +223,16 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       const p = this._p;
       const k = Math.floor((p + 1) / 2);
 
       if (data.length !== k) {
-        throw new Error(`QR encode: Input must be exactly ${k} bits for (${p},${k}) code`);
+        throw new Error("QR encode: Input must be exactly " + k + " bits for (" + p + "," + k + ") code");
       }
 
       // Cyclic code encoding using polynomial division
@@ -244,12 +250,16 @@
       return [...message, ...remainder];
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       const p = this._p;
       const k = Math.floor((p + 1) / 2);
 
       if (data.length !== p) {
-        throw new Error(`QR decode: Input must be exactly ${p} bits for (${p},${k}) code`);
+        throw new Error("QR decode: Input must be exactly " + p + " bits for (" + p + "," + k + ") code");
       }
 
       // Calculate syndrome
@@ -280,6 +290,10 @@
       return quotient.slice(-(divisorLen - 1));
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       const p = this._p;
       if (data.length !== p) return true;

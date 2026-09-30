@@ -136,7 +136,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ProductCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -153,13 +153,15 @@
   class ProductCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ProductCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
       this._rows = 4; // Default 4x4 matrix
       this._cols = 4;
@@ -218,12 +220,16 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       const rows = this._rows + 1;
       const cols = this._cols + 1;
 
       if (!Array.isArray(data) || data.length !== rows * cols) {
-        throw new Error(`ProductCodeInstance.DetectError: Input must be ${rows}x${cols} bit array`);
+        throw new Error("ProductCodeInstance.DetectError: Input must be " + rows + "x" + cols + " bit array");
       }
 
       // Check row parities
@@ -247,6 +253,10 @@
       return false;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Encode data matrix with row and column parity
       const dataRows = this._rows;
@@ -255,7 +265,7 @@
       const encodedCols = dataCols + 1;
 
       if (data.length !== dataRows * dataCols) {
-        throw new Error(`Product code encode: Input must be ${dataRows}x${dataCols} = ${dataRows * dataCols} bits`);
+        throw new Error("Product code encode: Input must be " + dataRows + "x" + dataCols + " = " + (dataRows * dataCols) + " bits");
       }
 
       const encoded = new Array(encodedRows * encodedCols).fill(0);
@@ -295,6 +305,10 @@
       return encoded;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       const encodedRows = this._rows + 1;
       const encodedCols = this._cols + 1;
@@ -302,7 +316,7 @@
       const dataCols = this._cols;
 
       if (data.length !== encodedRows * encodedCols) {
-        throw new Error(`Product code decode: Input must be ${encodedRows}x${encodedCols} = ${encodedRows * encodedCols} bits`);
+        throw new Error("Product code decode: Input must be " + encodedRows + "x" + encodedCols + " = " + (encodedRows * encodedCols) + " bits");
       }
 
       const received = [...data];
@@ -349,7 +363,7 @@
 
       // Correct single bit error if found
       if (errorRow >= 0 && errorCol >= 0 && errorRow < encodedRows && errorCol < encodedCols) {
-        console.log(`Product code: Error at row ${errorRow}, col ${errorCol} - correcting`);
+        console.log("Product code: Error at row " + errorRow + ", col " + errorCol + " - correcting");
         received[errorRow * encodedCols + errorCol] ^= 1;
       } else if (errorRow >= 0 || errorCol >= 0) {
         if (errorRow === -2 || errorCol === -2) {

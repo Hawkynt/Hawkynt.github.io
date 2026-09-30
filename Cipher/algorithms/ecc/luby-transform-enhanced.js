@@ -157,7 +157,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {LubyTransformEnhancedInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -176,12 +176,13 @@
   class LubyTransformEnhancedInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {LubyTransformEnhancedAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
 
       // Data buffers
@@ -257,6 +258,10 @@
       return this._encode();
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       // For fountain codes, error detection is based on successful decoding
       try {
@@ -350,11 +355,12 @@
       // Generate encoded symbols
       for (let encodedIdx = 0; encodedIdx < this.graph.rightNodes; encodedIdx++) {
         const neighbors = this.graph.getNeighbors(encodedIdx);
+        /** @type {uint32} */
         let encodedSymbol = 0;
 
         // XOR all connected source symbols
         for (const sourceIdx of neighbors) {
-          encodedSymbol = OpCodes.XorN(encodedSymbol, this.sourceSymbols[sourceIdx]);
+          encodedSymbol = OpCodes.Xor32(encodedSymbol, this.sourceSymbols[sourceIdx]);
         }
 
         result.push(encodedSymbol);
@@ -452,7 +458,7 @@
               for (const connectedIdx of connectedEncoded) {
                 if (connectedIdx !== encodedIdx) {
                   // XOR out the decoded symbol
-                  workingSymbols[connectedIdx] = OpCodes.XorN(workingSymbols[connectedIdx], decoded[sourceIdx]);
+                  workingSymbols[connectedIdx] = OpCodes.Xor32(workingSymbols[connectedIdx], decoded[sourceIdx]);
                 }
                 // Remove edge from graph
                 workingGraph.removeEdge(sourceIdx, connectedIdx);
@@ -541,9 +547,9 @@
           if (row !== currentRow && matrix.get(row, col) === 1) {
             // XOR this row with current row
             for (let c = 0; c < cols; c++) {
-              matrix.set(row, c, OpCodes.XorN(matrix.get(row, c), matrix.get(currentRow, c)));
+              matrix.set(row, c, OpCodes.Xor32(matrix.get(row, c), matrix.get(currentRow, c)));
             }
-            augmented[row] = OpCodes.XorN(augmented[row], augmented[currentRow]);
+            augmented[row] = OpCodes.Xor32(augmented[row], augmented[currentRow]);
           }
         }
 
@@ -641,7 +647,7 @@
       const degreeCount = {};
       for (const metadata of this.encodingMetadata) {
         const deg = metadata.degree;
-        degreeCount[deg] = (degreeCount[deg] || 0) + 1;
+        degreeCount[deg] = ((degreeCount[deg] ? degreeCount[deg] : 0)) + 1;
       }
 
       return {

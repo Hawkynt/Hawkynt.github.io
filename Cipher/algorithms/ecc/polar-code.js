@@ -134,7 +134,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {PolarCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -151,13 +151,15 @@
   class PolarCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {PolarCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Default parameters for (8,4) polar code - educational implementation
@@ -210,9 +212,13 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!Array.isArray(data) || data.length !== this.N) {
-        throw new Error(`PolarCodeInstance.DetectError: Input must be ${this.N}-bit array`);
+        throw new Error("PolarCodeInstance.DetectError: Input must be " + this.N + "-bit array");
       }
 
       // For polar codes, error detection is implicit in the decoding process
@@ -241,7 +247,7 @@
      */
     encode(infoBits) {
       if (infoBits.length !== this.K) {
-        throw new Error(`Polar encode: Input must be exactly ${this.K} bits`);
+        throw new Error("Polar encode: Input must be exactly " + this.K + " bits");
       }
 
       // Create input vector u with frozen and information bits
@@ -270,7 +276,7 @@
      */
     decode(receivedBits) {
       if (receivedBits.length !== this.N) {
-        throw new Error(`Polar decode: Input must be exactly ${this.N} bits`);
+        throw new Error("Polar decode: Input must be exactly " + this.N + " bits");
       }
 
       // For error-free channels (educational implementation),
@@ -304,7 +310,7 @@
       let u = [...x];
 
       // Apply log2(N) stages in reverse order
-      // Polar transform is self-inverse (OpCodes.XorN(F, 2) = I in GF(2))
+      // Polar transform is self-inverse (OpCodes.Xor32(F, 2) = I in GF(2))
       for (let stage = this.n - 1; stage >= 0; stage--) {
         const stepSize = OpCodes.Shl32(1, stage);
         const numGroups = OpCodes.Shr32(this.N, (stage + 1));
@@ -319,7 +325,7 @@
             // Inverse butterfly: [a, b] -> [a⊕b, b]
             const a = u[idx1];
             const b = u[idx2];
-            u[idx1] = OpCodes.XorN(a, b);
+            u[idx1] = OpCodes.Xor32(a, b);
             // u[idx2] remains b
           }
         }
@@ -342,7 +348,7 @@
       // Apply log2(N) stages of butterfly operations
       // Bitwise shifts used for efficient index calculations (not cryptographic data)
       for (let stage = 0; stage < this.n; stage++) {
-        const stepSize = OpCodes.Shl32(1, stage); // OpCodes.XorN(2, stage) - structural calculation
+        const stepSize = OpCodes.Shl32(1, stage); // OpCodes.Xor32(2, stage) - structural calculation
         const numGroups = OpCodes.Shr32(this.N, (stage + 1)); // N / 2^(stage+1) - structural calculation
 
         for (let group = 0; group < numGroups; group++) {
@@ -355,7 +361,7 @@
             // Butterfly operation: [a, b] -> [a+b, b] (in GF(2), + is XOR)
             const a = x[idx1];
             const b = x[idx2];
-            x[idx1] = OpCodes.XorN(a, b); // GF(2) addition (XOR is the field operation)
+            x[idx1] = OpCodes.Xor32(a, b); // GF(2) addition (XOR is the field operation)
             // x[idx2] remains b
           }
         }
@@ -409,7 +415,7 @@
     _isConnected(i, j) {
       // Simplified connectivity check based on polar graph structure
       // In actual polar graph, connectivity is determined by Kronecker structure
-      return OpCodes.AndN(i, j) === i; // Bitwise AND for structural graph connectivity
+      return OpCodes.And32(i, j) === i; // Bitwise AND for structural graph connectivity
     }
 
     /**
@@ -423,10 +429,11 @@
       const permutation = new Array(n);
 
       for (let i = 0; i < n; i++) {
+        /** @type {uint32} */
         let reversed = 0;
         for (let b = 0; b < bits; b++) {
           // Bit reversal: extract bit b from i, place in position (bits-1-b) in reversed
-          reversed = OpCodes.OrN(OpCodes.Shl32(reversed, 1), OpCodes.AndN(OpCodes.Shr32(i, b), 1)); // Structural bit manipulation
+          reversed = OpCodes.Or32(OpCodes.Shl32(reversed, 1), OpCodes.And32(OpCodes.Shr32(i, b), 1)); // Structural bit manipulation
         }
         permutation[i] = reversed;
       }
@@ -443,7 +450,7 @@
      */
     setParameters(N, K, frozenPositions = null) {
       // Validate N is power of 2 using bitwise trick: (N&(N-1)) == 0
-      if (OpCodes.AndN(N, N - 1) !== 0 || N < 2) {
+      if (OpCodes.And32(N, N - 1) !== 0 || N < 2) {
         throw new Error('Polar code length N must be a power of 2');
       }
 

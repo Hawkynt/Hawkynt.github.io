@@ -124,7 +124,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ExpanderCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -141,13 +141,15 @@
   class ExpanderCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ExpanderCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // (3,6)-regular bipartite expander graph parameters
@@ -227,9 +229,13 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!Array.isArray(data) || data.length !== this.n) {
-        throw new Error(`ExpanderCodeInstance.DetectError: Input must be ${this.n}-bit array`);
+        throw new Error("ExpanderCodeInstance.DetectError: Input must be " + this.n + "-bit array");
       }
 
       // Compute syndrome using expander graph
@@ -265,13 +271,13 @@
      */
     encode(infoBits) {
       if (infoBits.length !== this.k) {
-        throw new Error(`Expander encode: Input must be exactly ${this.k} bits`);
+        throw new Error("Expander encode: Input must be exactly " + this.k + " bits");
       }
 
       // Validate bits are binary
       for (let i = 0; i < infoBits.length; ++i) {
         if (infoBits[i] !== 0 && infoBits[i] !== 1) {
-          throw new Error(`Expander encode: Bit ${i} must be 0 or 1`);
+          throw new Error("Expander encode: Bit " + i + " must be 0 or 1");
         }
       }
 
@@ -372,13 +378,13 @@
      */
     decode(receivedBits) {
       if (receivedBits.length !== this.n) {
-        throw new Error(`Expander decode: Input must be exactly ${this.n} bits`);
+        throw new Error("Expander decode: Input must be exactly " + this.n + " bits");
       }
 
       // Validate bits are binary
       for (let i = 0; i < receivedBits.length; ++i) {
         if (receivedBits[i] !== 0 && receivedBits[i] !== 1) {
-          throw new Error(`Expander decode: Bit ${i} must be 0 or 1`);
+          throw new Error("Expander decode: Bit " + i + " must be 0 or 1");
         }
       }
 

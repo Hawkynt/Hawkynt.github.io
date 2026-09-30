@@ -170,7 +170,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {OnlineCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -187,12 +187,13 @@
   class OnlineCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {OnlineCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
 
       // Input/Output
@@ -256,6 +257,10 @@
       return this._encode();
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       try {
         this.Feed(data);
@@ -504,7 +509,7 @@
         q: this.q,
         sourceSymbols: this.k,
         auxiliarySymbols: this.auxiliaryCount,
-        compositeBlockSize: this.k + (this.auxiliaryCount || 0),
+        compositeBlockSize: this.k + ((this.auxiliaryCount ? this.auxiliaryCount : 0)),
         outerCodeDensity: this._calculateOuterCodeDensity(),
         innerCodeDensity: this._calculateInnerCodeDensity()
       };

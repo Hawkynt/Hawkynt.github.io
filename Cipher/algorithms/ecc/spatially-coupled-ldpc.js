@@ -139,7 +139,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SpatiallyCoupledLDPCInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -156,13 +156,15 @@
   class SpatiallyCoupledLDPCInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SpatiallyCoupledLDPCAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Spatially coupled (3,6)-regular LDPC parameters
@@ -279,9 +281,13 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!Array.isArray(data) || data.length !== this.n) {
-        throw new Error(`SpatiallyCoupledLDPCInstance.DetectError: Input must be ${this.n}-bit array`);
+        throw new Error("SpatiallyCoupledLDPCInstance.DetectError: Input must be " + this.n + "-bit array");
       }
 
       const syndrome = this.calculateSyndrome(data);
@@ -295,10 +301,12 @@
      * NOTE: This is an educational implementation. Full SC-LDPC encoding
      * requires solving H*c = 0 using Gaussian elimination or iterative methods.
      * This simplified version demonstrates the spatial coupling concept.
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
      */
     encode(data) {
       if (data.length !== this.k) {
-        throw new Error(`SC-LDPC encode: Input must be exactly ${this.k} bits`);
+        throw new Error("SC-LDPC encode: Input must be exactly " + this.k + " bits");
       }
 
       const encoded = new Array(this.n).fill(0);
@@ -311,12 +319,13 @@
       // Calculate parity bits using spatially coupled structure
       // Each parity bit is computed from information bits and coupling
       for (let p = 0; p < (this.n - this.k); p++) {
+        /** @type {uint32} */
         let parity = 0;
 
         // Sum over information bits according to the generator's parity part
         for (let j = 0; j < this.k; j++) {
           if (this.parityGenerator[j][p] === 1) {
-            parity = OpCodes.XorN(parity, data[j]);
+            parity = OpCodes.Xor32(parity, data[j]);
           }
         }
 
@@ -329,10 +338,12 @@
     /**
      * Decode using windowed belief propagation
      * Simplified implementation of sliding window decoding
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
      */
     decode(data) {
       if (data.length !== this.n) {
-        throw new Error(`SC-LDPC decode: Input must be exactly ${this.n} bits`);
+        throw new Error("SC-LDPC decode: Input must be exactly " + this.n + " bits");
       }
 
       const received = [...data];
@@ -367,10 +378,11 @@
       const syndrome = [];
 
       for (let i = 0; i < this.numChecks; i++) {
+        /** @type {uint32} */
         let sum = 0;
         for (let j = 0; j < this.numVars; j++) {
           if (this.parityCheckMatrix[i][j] === 1) {
-            sum = OpCodes.XorN(sum, codeword[j]);
+            sum = OpCodes.Xor32(sum, codeword[j]);
           }
         }
         syndrome.push(sum);

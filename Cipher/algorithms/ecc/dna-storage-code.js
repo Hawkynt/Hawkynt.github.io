@@ -170,7 +170,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {DNAStorageInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -187,13 +187,15 @@
   class DNAStorageInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {DNAStorageAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // RS(7,3) parameters for GF(4)
@@ -263,7 +265,7 @@
      */
     gfMultiply(a, b) {
       if (a < 0 || a >= this.field || b < 0 || b >= this.field) {
-        throw new Error(`DNAStorage: Invalid GF(4) elements: ${a}, ${b}`);
+        throw new Error("DNAStorage: Invalid GF(4) elements: " + a + ", " + b);
       }
       return this.mulTable[a][b];
     }
@@ -274,7 +276,7 @@
      * Using OpCodes for consistency with codebase standards
      */
     gfAdd(a, b) {
-      return OpCodes.XorN(a, b); // Galois Field addition using OpCodes
+      return OpCodes.Xor32(a, b); // Galois Field addition using OpCodes
     }
 
     /**
@@ -328,7 +330,7 @@
       // Validate symbols are in GF(4) range
       for (let i = 0; i < data.length; ++i) {
         if (data[i] < 0 || data[i] >= this.field) {
-          throw new Error(`DNAStorage: Symbol ${data[i]} out of GF(4) range [0-3]`);
+          throw new Error("DNAStorage: Symbol " + data[i] + " out of GF(4) range [0-3]");
         }
       }
 
@@ -355,12 +357,12 @@
      * Encode data using RS(7,3) over GF(4)
      * Systematic encoding: output = [data|parity]
      *
-     * @param {Array} data - k=3 data symbols
-     * @returns {Array} n=7 encoded symbols
+     * @param {uint8[]} data - k=3 data symbols
+     * @returns {uint8[]} n=7 encoded symbols
      */
     encode(data) {
       if (data.length !== this.k) {
-        throw new Error(`DNAStorage.encode: Input must be ${this.k} symbols`);
+        throw new Error("DNAStorage.encode: Input must be " + this.k + " symbols");
       }
 
       // Allocate output: data symbols + parity symbols
@@ -421,12 +423,12 @@
     /**
      * Decode received data (with potential errors)
      *
-     * @param {Array} data - n=7 received symbols
-     * @returns {Array} k=3 decoded data symbols
+     * @param {uint8[]} data - n=7 received symbols
+     * @returns {uint8[]} k=3 decoded data symbols
      */
     decode(data) {
       if (data.length !== this.n) {
-        throw new Error(`DNAStorage.decode: Input must be ${this.n} symbols`);
+        throw new Error("DNAStorage.decode: Input must be " + this.n + " symbols");
       }
 
       const received = [...data];
@@ -504,7 +506,7 @@
 
           const testSyndromes = this.calculateSyndromes(testCorrected);
           if (testSyndromes.every(s => s === 0)) {
-            console.log(`DNAStorage: Corrected error at position ${pos}`);
+            console.log("DNAStorage: Corrected error at position " + pos);
             return testCorrected;
           }
         }
@@ -518,7 +520,7 @@
     /**
      * Detect if errors exist in received data
      *
-     * @param {Array} data - Received codeword
+     * @param {uint8[]} data - Received codeword
      * @returns {boolean} True if errors detected
      */
     DetectError(data) {
@@ -544,7 +546,7 @@
 
       if (gcPercent < 40 || gcPercent > 60) {
         console.warn(
-          `DNAStorage: GC-content ${gcPercent.toFixed(1)}% outside optimal range [40-60%]`
+          "DNAStorage: GC-content " + (gcPercent.toFixed(1)) + "% outside optimal range [40-60%]"
         );
       }
 
@@ -564,7 +566,7 @@
       if (maxRun > 3) {
         const base = this.symbolToBase[symbols[0]];
         console.warn(
-          `DNAStorage: Homopolymer run of ${maxRun} detected (${base.repeat(maxRun)}). Max recommended: 3`
+          "DNAStorage: Homopolymer run of " + maxRun + " detected (" + (base.repeat(maxRun)) + "). Max recommended: 3"
         );
       }
     }
@@ -588,7 +590,7 @@
     dnaToSymbols(dna) {
       return dna.toUpperCase().split('').map(base => {
         if (!this.baseToSymbol.hasOwnProperty(base)) {
-          throw new Error(`DNAStorage: Invalid DNA base '${base}'`);
+          throw new Error("DNAStorage: Invalid DNA base '" + base + "'");
         }
         return this.baseToSymbol[base];
       });

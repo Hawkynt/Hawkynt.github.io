@@ -119,7 +119,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {KerdockCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -136,17 +136,22 @@
   class KerdockCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {KerdockCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
       this._m = 3; // Default m=3 gives [16, 256, 6]
     }
 
+    /**
+     * @param {int32} value - Odd parameter m, 1..7
+     */
     set m(value) {
       if (value < 1 || (value % 2) === 0 || value > 7) {
         throw new Error('KerdockCodeInstance.m: Must be odd and between 1 and 7');
@@ -154,6 +159,9 @@
       this._m = value;
     }
 
+    /**
+     * @returns {int32} Parameter m
+     */
     get m() {
       return this._m;
     }
@@ -189,19 +197,24 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       const m = this._m;
       const k = 2 * m; // Number of information symbols
       const n = OpCodes.Shl32(1, m + 1); // Codeword length = 2^(m+1)
 
       if (data.length !== k) {
-        throw new Error(`Kerdock encode: Input must be exactly ${k} bits for m=${m}`);
+        throw new Error("Kerdock encode: Input must be exactly " + k + " bits for m=" + m);
       }
 
       // Simplified Kerdock encoding using first-order Reed-Muller structure
       // Real Kerdock uses Z4 Gray map, this is educational approximation
 
-      const codeword = new Array(n).fill(0);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(n, 0);
 
       // Split data into two halves: u (m bits) and v (m bits)
       const u = data.slice(0, m);
@@ -209,12 +222,13 @@
 
       // Generate codeword using Kerdock construction
       for (let i = 0; i < n; ++i) {
+        /** @type {uint32} */
         let bit = 0;
 
         // Linear part from first m bits
         for (let j = 0; j < m; ++j) {
-          if ((OpCodes.AndN(OpCodes.Shr32(i, j), 1)) === 1) {
-            bit = OpCodes.XorN(bit, u[j]);
+          if ((OpCodes.And32(OpCodes.Shr32(i, j), 1)) === 1) {
+            bit = OpCodes.Xor32(bit, u[j]);
           }
         }
 
@@ -222,13 +236,14 @@
         for (let j = 0; j < m; ++j) {
           if (v[j] === 1) {
             // Add quadratic term based on position
+            /** @type {uint32} */
             let quad = 0;
             for (let k = 0; k < m; ++k) {
-              if ((OpCodes.AndN(OpCodes.Shr32(i, k), 1)) === 1 && k <= j) {
-                quad = OpCodes.XorN(quad, 1);
+              if ((OpCodes.And32(OpCodes.Shr32(i, k), 1)) === 1 && k <= j) {
+                quad = OpCodes.Xor32(quad, 1);
               }
             }
-            bit = OpCodes.XorN(bit, quad);
+            bit = OpCodes.Xor32(bit, quad);
           }
         }
 
@@ -238,26 +253,32 @@
       return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       const m = this._m;
       const n = OpCodes.Shl32(1, m + 1);
       const k = 2 * m;
 
       if (data.length !== n) {
-        throw new Error(`Kerdock decode: Input must be exactly ${n} bits for m=${m}`);
+        throw new Error("Kerdock decode: Input must be exactly " + n + " bits for m=" + m);
       }
 
       // Simplified maximum likelihood decoding
-      // Try all OpCodes.XorN(2, k) possible messages (feasible for small m)
+      // Try all OpCodes.Xor32(2, k) possible messages (feasible for small m)
       let minDistance = Infinity;
-      let bestMessage = new Array(k).fill(0);
+      /** @type {uint8[]} */
+      let bestMessage = OpCodes.CreateArray(k, 0);
 
       const totalMessages = OpCodes.Shl32(1, k);
 
       for (let msgIndex = 0; msgIndex < totalMessages; ++msgIndex) {
+        /** @type {uint8[]} */
         const message = [];
         for (let i = 0; i < k; ++i) {
-          message.push(OpCodes.AndN(OpCodes.Shr32(msgIndex, i), 1));
+          message.push(OpCodes.And32(OpCodes.Shr32(msgIndex, i), 1));
         }
 
         const testCodeword = this.encode(message);
@@ -279,6 +300,10 @@
       return bestMessage;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       const m = this._m;
       const n = OpCodes.Shl32(1, m + 1);

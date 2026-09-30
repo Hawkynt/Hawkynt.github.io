@@ -124,7 +124,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ConstantWeightCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -141,13 +141,15 @@
   class ConstantWeightCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {ConstantWeightCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
       this._n = 5; // Default length
       this._w = 2; // Default weight
@@ -166,7 +168,7 @@
 
     set w(value) {
       if (value < 0 || value > this._n) {
-        throw new Error(`ConstantWeightCodeInstance.w: Must be between 0 and ${this._n}`);
+        throw new Error("ConstantWeightCodeInstance.w: Must be between 0 and " + this._n);
       }
       this._w = value;
     }
@@ -214,36 +216,48 @@
       return weight;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       if (data.length !== this._n) {
-        throw new Error(`Constant Weight encode: Input must be exactly ${this._n} bits`);
+        throw new Error("Constant Weight encode: Input must be exactly " + this._n + " bits");
       }
 
       const weight = this.calculateWeight(data);
 
       if (weight !== this._w) {
-        throw new Error(`Constant Weight encode: Input weight ${weight} doesn't match required weight ${this._w}`);
+        throw new Error("Constant Weight encode: Input weight " + weight + " doesn't match required weight " + this._w);
       }
 
       // Constant weight codes are systematic - codeword equals message
       return [...data];
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       if (data.length !== this._n) {
-        throw new Error(`Constant Weight decode: Input must be exactly ${this._n} bits`);
+        throw new Error("Constant Weight decode: Input must be exactly " + this._n + " bits");
       }
 
       const weight = this.calculateWeight(data);
 
       if (weight !== this._w) {
-        console.warn(`Constant Weight: Weight ${weight} doesn't match expected ${this._w} - error detected`);
+        console.warn("Constant Weight: Weight " + weight + " doesn't match expected " + this._w + " - error detected");
       }
 
       // Return received word (real decoder would correct to nearest valid codeword)
       return [...data];
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (data.length !== this._n) return true;
 

@@ -136,7 +136,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {GabidulinCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -153,13 +153,15 @@
   class GabidulinCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {GabidulinCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Gabidulin [4,2] code over GF(2^2)
@@ -254,16 +256,20 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       // Encode k message symbols to n codeword symbols
       if (data.length !== this.k) {
-        throw new Error(`Gabidulin encode: Input must be exactly ${this.k} symbols`);
+        throw new Error("Gabidulin encode: Input must be exactly " + this.k + " symbols");
       }
 
       // Validate symbols are in GF(4)
       for (let i = 0; i < data.length; ++i) {
         if (data[i] < 0 || data[i] > 3 || !Number.isInteger(data[i])) {
-          throw new Error(`Gabidulin encode: Symbol ${i} must be in GF(4) = {0,1,2,3}`);
+          throw new Error("Gabidulin encode: Symbol " + i + " must be in GF(4) = {0,1,2,3}");
         }
       }
 
@@ -283,15 +289,19 @@
       return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       if (data.length !== this.n) {
-        throw new Error(`Gabidulin decode: Input must be exactly ${this.n} symbols`);
+        throw new Error("Gabidulin decode: Input must be exactly " + this.n + " symbols");
       }
 
       // Validate symbols are in GF(4)
       for (let i = 0; i < data.length; ++i) {
         if (data[i] < 0 || data[i] > 3 || !Number.isInteger(data[i])) {
-          throw new Error(`Gabidulin decode: Symbol ${i} must be in GF(4) = {0,1,2,3}`);
+          throw new Error("Gabidulin decode: Symbol " + i + " must be in GF(4) = {0,1,2,3}");
         }
       }
 
@@ -346,6 +356,10 @@
       return hammingDistance;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (data.length !== this.n) return true;
 

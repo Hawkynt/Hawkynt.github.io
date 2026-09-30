@@ -116,7 +116,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {TernaryGolayInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -133,13 +133,15 @@
   class TernaryGolayInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {TernaryGolayAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Generator matrix for ternary Golay [11,6,5] code
@@ -177,7 +179,7 @@
       // Validate ternary symbols
       for (let symbol of data) {
         if (symbol < 0 || symbol > 2 || symbol !== Math.floor(symbol)) {
-          throw new Error(`TernaryGolayInstance.Feed: All symbols must be 0, 1, or 2 (got ${symbol})`);
+          throw new Error("TernaryGolayInstance.Feed: All symbols must be 0, 1, or 2 (got " + symbol + ")");
         }
       }
 
@@ -201,6 +203,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       if (data.length !== 6) {
         throw new Error('Ternary Golay encode: Input must be exactly 6 ternary symbols');
@@ -220,6 +226,10 @@
       return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       if (data.length !== 11) {
         throw new Error('Ternary Golay decode: Input must be exactly 11 ternary symbols');
@@ -252,6 +262,10 @@
       return data.slice(0, 6);
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (data.length !== 11) return true;
 

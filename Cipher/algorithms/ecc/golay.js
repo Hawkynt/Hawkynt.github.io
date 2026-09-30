@@ -121,7 +121,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {GolayCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -138,12 +138,13 @@
   class GolayCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {GolayCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
       this.inputBuffer = [];
     }
@@ -181,36 +182,38 @@
 
     // Convert byte array to 23-bit integer (big-endian: MSB first)
     _bytesToInt23(bytes) {
+      /** @type {uint32} */
       let value = 0;
       for (let i = 0; i < Math.min(bytes.length, 3); i++) {
-        value = OpCodes.OrN(OpCodes.Shl32(value, 8), OpCodes.AndN(bytes[i], 0xFF));
+        value = OpCodes.Or32(OpCodes.Shl32(value, 8), OpCodes.And32(bytes[i], 0xFF));
       }
-      return OpCodes.AndN(value, MASK23);
+      return OpCodes.And32(value, MASK23);
     }
 
     // Convert 23-bit integer to byte array (big-endian: MSB first)
     _int23ToBytes(value) {
       return [
-        OpCodes.AndN(OpCodes.Shr32(value, 16), 0x7F),
-        OpCodes.AndN(OpCodes.Shr32(value, 8), 0xFF),
-        OpCodes.AndN(value, 0xFF)
+        OpCodes.And32(OpCodes.Shr32(value, 16), 0x7F),
+        OpCodes.And32(OpCodes.Shr32(value, 8), 0xFF),
+        OpCodes.And32(value, 0xFF)
       ];
     }
 
     // Convert byte array to 12-bit integer (big-endian: MSB first)
     _bytesToInt12(bytes) {
+      /** @type {uint32} */
       let value = 0;
       for (let i = 0; i < Math.min(bytes.length, 2); i++) {
-        value = OpCodes.OrN(OpCodes.Shl32(value, 8), OpCodes.AndN(bytes[i], 0xFF));
+        value = OpCodes.Or32(OpCodes.Shl32(value, 8), OpCodes.And32(bytes[i], 0xFF));
       }
-      return OpCodes.AndN(value, MASK12);
+      return OpCodes.And32(value, MASK12);
     }
 
     // Convert 12-bit integer to byte array (big-endian: MSB first)
     _int12ToBytes(value) {
       return [
-        OpCodes.AndN(OpCodes.Shr32(value, 8), 0x0F),
-        OpCodes.AndN(value, 0xFF)
+        OpCodes.And32(OpCodes.Shr32(value, 8), 0x0F),
+        OpCodes.And32(value, 0xFF)
       ];
     }
 
@@ -220,19 +223,19 @@
 
       // Perform modulo-2 division (XOR-based)
       for (let i = 22; i >= 11; i--) {
-        if (OpCodes.AndN(syndrome, OpCodes.Shl32(1, i))) {
-          syndrome = OpCodes.XorN(syndrome, OpCodes.Shl32(GENPOL, i - 11));
+        if (OpCodes.And32(syndrome, OpCodes.Shl32(1, i))) {
+          syndrome = OpCodes.Xor32(syndrome, OpCodes.Shl32(GENPOL, i - 11));
         }
       }
 
-      return OpCodes.AndN(syndrome, OpCodes.Shl32(1, 11) - 1); // Return 11-bit syndrome
+      return OpCodes.And32(syndrome, OpCodes.Shl32(1, 11) - 1); // Return 11-bit syndrome
     }
 
     // Count number of 1-bits (Hamming weight)
     _hammingWeight(value) {
       let count = 0;
       while (value) {
-        count += OpCodes.AndN(value, 1);
+        count += OpCodes.And32(value, 1);
         value = OpCodes.Shr32(value, 1);
       }
       return count;
@@ -253,7 +256,7 @@
       // Try two-bit errors (253 patterns)
       for (let i = 0; i < 23; i++) {
         for (let j = i + 1; j < 23; j++) {
-          const pattern = OpCodes.OrN(OpCodes.Shl32(1, i), OpCodes.Shl32(1, j));
+          const pattern = OpCodes.Or32(OpCodes.Shl32(1, i), OpCodes.Shl32(1, j));
           if (this._getSyndrome(pattern) === syndrome) {
             return pattern;
           }
@@ -264,7 +267,7 @@
       for (let i = 0; i < 23; i++) {
         for (let j = i + 1; j < 23; j++) {
           for (let k = j + 1; k < 23; k++) {
-            const pattern = OpCodes.OrN(OpCodes.OrN(OpCodes.Shl32(1, i), OpCodes.Shl32(1, j)), OpCodes.Shl32(1, k));
+            const pattern = OpCodes.Or32(OpCodes.Or32(OpCodes.Shl32(1, i), OpCodes.Shl32(1, j)), OpCodes.Shl32(1, k));
             if (this._getSyndrome(pattern) === syndrome) {
               return pattern;
             }
@@ -285,13 +288,13 @@
       const data12 = this._bytesToInt12(this.inputBuffer.slice(0, 2));
 
       // Systematic encoding: multiply data by X^11
-      const shifted = OpCodes.AndN(OpCodes.Shl32(data12, 11), MASK23);
+      const shifted = OpCodes.And32(OpCodes.Shl32(data12, 11), MASK23);
 
       // Calculate syndrome (parity bits)
       const syndrome = this._getSyndrome(shifted);
 
       // Combine data and parity: codeword = data * X^11 + syndrome
-      const codeword = OpCodes.OrN(shifted, syndrome);
+      const codeword = OpCodes.Or32(shifted, syndrome);
 
       this.inputBuffer = [];
       return this._int23ToBytes(codeword);
@@ -310,7 +313,7 @@
 
       // If syndrome is zero, no errors detected
       if (syndrome === 0) {
-        const data12 = OpCodes.AndN(OpCodes.Shr32(received, 11), MASK12);
+        const data12 = OpCodes.And32(OpCodes.Shr32(received, 11), MASK12);
         this.inputBuffer = [];
         return this._int12ToBytes(data12);
       }
@@ -323,15 +326,19 @@
       }
 
       // Correct errors
-      const corrected = OpCodes.XorN(received, errorPattern);
+      const corrected = OpCodes.Xor32(received, errorPattern);
 
       // Extract data bits (upper 12 bits)
-      const data12 = OpCodes.AndN(OpCodes.Shr32(corrected, 11), MASK12);
+      const data12 = OpCodes.And32(OpCodes.Shr32(corrected, 11), MASK12);
 
       this.inputBuffer = [];
       return this._int12ToBytes(data12);
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!data || data.length < 3) return false;
 
