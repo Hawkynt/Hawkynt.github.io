@@ -1,6 +1,6 @@
 # MD6 (DarkCrypt)
 
-> Standard MD6-512 hash function as used by the DarkCrypt Total Commander plugin: the unmodified MIT reference MD6 implementation, hardcoded to digest size d=512 bits, r=168 rounds, mode parameter L=64 (fully hierarchical), and no key.
+> MD6-512 as used by the DarkCrypt Total Commander plugin: the MIT reference MD6 as submitted to SHA-3 round 1 (d=512, r=168, L=64, no key), which outputs the first rather than the last 512 bits of the final chaining value, a reference bug fixed in April 2009. Matches the published round 1 known-answer tests.
 
 ## Properties
 
@@ -31,6 +31,7 @@ No vulnerabilities are recorded for this implementation.
 
 - [The MD6 Hash Function (NIST SHA-3 submission)](https://groups.csail.mit.edu/cis/md6/)
 - [MD6 reference source (md6.h / md6_compress.c / md6_mode.c)](https://groups.csail.mit.edu/cis/md6/docs/md6_report.pdf)
+- [NIST SHA-3 round 1 MD6 submission package (known-answer tests)](https://web.archive.org/web/2017/http://csrc.nist.gov/groups/ST/hash/sha-3/Round1/documents/MD6.zip)
 - [DarkCrypt plugin (Total Commander PlugRing)](https://totalcmd.net/plugring/darkcrypttc.html)
 
 ## References
@@ -39,23 +40,37 @@ No vulnerabilities are recorded for this implementation.
 
 ## Test vectors
 
-3 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
+5 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
 
-**Vector 1** — [DarkCrypt MD6 empty string](https://github.com/Zdimon/DarkCryptTC)
+**Vector 1** — [MD6 round 1 ShortMsgKAT_512 - Len = 0](https://web.archive.org/web/2017/http://csrc.nist.gov/groups/ST/hash/sha-3/Round1/documents/MD6.zip)
 
 | Field | Value |
 | --- | --- |
 | `input` | _(empty)_ |
 | `expected` | `e3bde7f708d2006335b09d95a0e8648a 87f782e7a1ef17d676d84cc91fe00633 1749fcf14bf2a4c80ae1aeb52ed0799c 8fc9420c59344d4731690e18f7a2cef3` |
 
-**Vector 2** — [DarkCrypt MD6 "abc"](https://github.com/Zdimon/DarkCryptTC)
+**Vector 2** — [MD6 round 1 ShortMsgKAT_512 - Len = 8](https://web.archive.org/web/2017/http://csrc.nist.gov/groups/ST/hash/sha-3/Round1/documents/MD6.zip)
+
+| Field | Value |
+| --- | --- |
+| `input` | `cc` |
+| `expected` | `0f953eba85b343063d9d9151fda0d12a 527ef8bbf3dbefb8da5e11f0c4d7359e 76058ed60c29fa1f8c33e87fdc5dde12 50e3fcffd247561cef5b70df3d55fb25` |
+
+**Vector 3** — [MD6 round 1 LongMsgKAT_512 - Len = 4568 (two leaves)](https://web.archive.org/web/2017/http://csrc.nist.gov/groups/ST/hash/sha-3/Round1/documents/MD6.zip)
+
+| Field | Value |
+| --- | --- |
+| `input` | `fe06a4706468b369f7624f62d04f9fac 020f05152f13e350016b2a29efff9a39 3940c138553356b0e2848c01b622b95f fa11ab07585f7dcbbf90e9f8ec5fa2fb …` (571 bytes; the full value is in the source) |
+| `expected` | `d7e8e9ce8252ff4dc9ffedc6d8e771c8 e2d456bc959fc71003b4d0af9d392c40 e9c02f2954756b5c6648af50fca073d3 7c63ee99c1f6891fda081db2e9574c45` |
+
+**Vector 4** — [DarkCrypt MD6 "abc"](https://github.com/Zdimon/DarkCryptTC)
 
 | Field | Value |
 | --- | --- |
 | `input` | `616263` |
 | `expected` | `1c6233a806832e2c711a5595cdc355b0 4b81a3f547fff89e40391399bb925bc8 45a0cce9ecc3d1b0439450e079df51a2 3d9fdafe99a85e72d1562bbae6a1eb46` |
 
-**Vector 3** — [DarkCrypt MD6 incremental 64-byte message](https://github.com/Zdimon/DarkCryptTC)
+**Vector 5** — [DarkCrypt MD6 incremental 64-byte message](https://github.com/Zdimon/DarkCryptTC)
 
 | Field | Value |
 | --- | --- |
