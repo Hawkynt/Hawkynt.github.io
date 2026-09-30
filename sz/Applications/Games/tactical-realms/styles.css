@@ -277,3 +277,20 @@ body.tr-cinematic .fwin,
 body.tr-cinematic .combat-init-bar {
   visibility: hidden;
 }
+
+/* pixel-art portraits in the combat HUD */
+.fwin-ac-portrait {
+  width: 40px;
+  height: 40px;
+  image-rendering: pixelated;
+  border: 1px solid #c8a24e;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+.init-unit img {
+  width: 18px;
+  height: 18px;
+  image-rendering: pixelated;
+  vertical-align: middle;
+  margin-right: 3px;
+}
