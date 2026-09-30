@@ -146,6 +146,7 @@
 
     #onKeyDown(e) {
       const key = e.key;
+      this.#emit('key', { key });
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd', 'W', 'A', 'S', 'D'].includes(key)) {
         e.preventDefault();
         this.#keysDown.add(key.toLowerCase());

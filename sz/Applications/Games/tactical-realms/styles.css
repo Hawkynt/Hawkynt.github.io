@@ -271,3 +271,9 @@ html, body {
 .ch-row { cursor: pointer; }
 .ch-row:hover { background: rgba(80,120,200,0.2) !important; }
 .ch-row td { color: #ccc; }
+
+/* battle cut-ins own the whole screen: hide the floating combat HUD */
+body.tr-cinematic .fwin,
+body.tr-cinematic .combat-init-bar {
+  visibility: hidden;
+}
