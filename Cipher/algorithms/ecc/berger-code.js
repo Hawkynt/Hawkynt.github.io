@@ -44,6 +44,32 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * Outcome of checking one Berger codeword
+   * @class
+   */
+  class BergerDecodeResult {
+    /**
+     * @param {uint8[]} bits - Data bits
+     * @param {boolean} isError - True when the check value disagrees with the zero count
+     * @param {int32} difference - |check value - zero count|
+     * @param {int32} zeros - Zeros counted in the data bits
+     * @param {int32} check - Received check value
+     */
+    constructor(bits, isError, difference, zeros, check) {
+      /** @type {uint8[]} */
+      this.data = bits;
+      /** @type {boolean} */
+      this.error = isError;
+      /** @type {int32} */
+      this.syndrome = difference;
+      /** @type {int32} */
+      this.zeroCount = zeros;
+      /** @type {int32} */
+      this.checkValue = check;
+    }
+  }
+
   class BergerCodeAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
       super();
@@ -141,7 +167,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {BergerCodeInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -158,18 +184,25 @@
   class BergerCodeInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {BergerCodeAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
+      /** @type {int32} */
       this._dataLength = 8; // Default k=8 data bits
+      /** @type {int32} */
       this._checkLength = 4; // Default r=4 check bits (for k=8)
     }
 
+    /**
+     * @param {int32} value - Data bits k
+     */
     set dataLength(value) {
       if (!Number.isInteger(value) || value <= 0) {
         throw new Error('BergerCodeInstance.dataLength: Must be positive integer');
@@ -179,10 +212,16 @@
       this._checkLength = Math.ceil(Math.log2(value + 1));
     }
 
+    /**
+     * @returns {int32} Data bits k
+     */
     get dataLength() {
       return this._dataLength;
     }
 
+    /**
+     * @returns {int32} Check bits r
+     */
     get checkLength() {
       return this._checkLength;
     }
@@ -200,6 +239,7 @@
 
       if (this.isInverse) {
         // Decode: verify codeword and extract data
+        /** @type {BergerDecodeResult} */
         const decodedObj = this.decode(data);
         this.result = decodedObj.data; // Return only data bits for stability test
         this.lastDecodeInfo = decodedObj; // Store full info for diagnostic access
@@ -229,22 +269,23 @@
     /**
      * Encode data by appending Berger check bits
      * Uses B0 scheme: binary representation of zero count
-     * @param {Array} data - Binary data bits (length k)
-     * @returns {Array} Encoded codeword with check bits (length k+r)
+     * @param {uint8[]} data - Binary data bits (length k)
+     * @returns {uint8[]} Encoded codeword with check bits (length k+r)
      */
     encode(data) {
       if (data.length !== this._dataLength) {
-        throw new Error(`BergerCodeInstance.encode: Expected ${this._dataLength} data bits, got ${data.length}`);
+        throw new Error("BergerCodeInstance.encode: Expected " + this._dataLength + " data bits, got " + data.length);
       }
 
       // Validate binary input
       for (let i = 0; i < data.length; ++i) {
         if (data[i] !== 0 && data[i] !== 1) {
-          throw new Error(`BergerCodeInstance.encode: Non-binary value at position ${i}: ${data[i]}`);
+          throw new Error("BergerCodeInstance.encode: Non-binary value at position " + i + ": " + data[i]);
         }
       }
 
       // Count zeros in data word
+      /** @type {int32} */
       let zeroCount = 0;
       for (let i = 0; i < data.length; ++i) {
         if (data[i] === 0) {
@@ -253,6 +294,7 @@
       }
 
       // Convert zero count to binary check bits (B0 scheme)
+      /** @type {uint8[]} */
       const checkBits = this.intToBinary(zeroCount, this._checkLength);
 
       // Return codeword: data + check bits
@@ -261,27 +303,30 @@
 
     /**
      * Decode codeword and verify unidirectional error detection
-     * @param {Array} codeword - Encoded data (length k+r)
-     * @returns {Object} { data: Array, error: boolean, syndrome: number }
+     * @param {uint8[]} codeword - Encoded data (length k+r)
+     * @returns {BergerDecodeResult} { data: Array, error: boolean, syndrome: number }
      */
     decode(codeword) {
       const expectedLength = this._dataLength + this._checkLength;
       if (codeword.length !== expectedLength) {
-        throw new Error(`BergerCodeInstance.decode: Expected ${expectedLength} bits, got ${codeword.length}`);
+        throw new Error("BergerCodeInstance.decode: Expected " + expectedLength + " bits, got " + codeword.length);
       }
 
       // Validate binary input
       for (let i = 0; i < codeword.length; ++i) {
         if (codeword[i] !== 0 && codeword[i] !== 1) {
-          throw new Error(`BergerCodeInstance.decode: Non-binary value at position ${i}: ${codeword[i]}`);
+          throw new Error("BergerCodeInstance.decode: Non-binary value at position " + i + ": " + codeword[i]);
         }
       }
 
       // Split into data and check bits
+      /** @type {uint8[]} */
       const dataBits = codeword.slice(0, this._dataLength);
+      /** @type {uint8[]} */
       const receivedCheck = codeword.slice(this._dataLength);
 
       // Count zeros in received data
+      /** @type {int32} */
       let zeroCount = 0;
       for (let i = 0; i < dataBits.length; ++i) {
         if (dataBits[i] === 0) {
@@ -290,55 +335,55 @@
       }
 
       // Convert received check bits to integer
-      const receivedCheckValue = this.binaryToInt(receivedCheck);
+      /** @type {int32} */
+      const receivedCheckValue = OpCodes.ToInt(this.binaryToInt(receivedCheck));
 
       // Error detection: received check should equal zero count
       // If they differ, unidirectional error occurred
+      /** @type {boolean} */
       const errorDetected = (receivedCheckValue !== zeroCount);
+      /** @type {int32} */
       const syndrome = Math.abs(receivedCheckValue - zeroCount);
 
-      return {
-        data: dataBits,
-        error: errorDetected,
-        syndrome: syndrome,
-        zeroCount: zeroCount,
-        checkValue: receivedCheckValue
-      };
+      return new BergerDecodeResult(dataBits, errorDetected, syndrome, zeroCount, receivedCheckValue);
     }
 
     /**
      * Detect if error exists in codeword (without decoding)
-     * @param {Array} codeword - Encoded data (length k+r)
+     * @param {uint8[]} codeword - Encoded data (length k+r)
      * @returns {boolean} True if unidirectional error detected
      */
     detectError(codeword) {
+      /** @type {BergerDecodeResult} */
       const result = this.decode(codeword);
       return result.error;
     }
 
     /**
      * Convert integer to binary array
-     * @param {number} value - Integer value
-     * @param {number} length - Desired bit length
-     * @returns {Array} Binary representation (MSB first)
+     * @param {uint32} value - Integer value
+     * @param {int32} length - Desired bit length
+     * @returns {uint8[]} Binary representation (MSB first)
      */
     intToBinary(value, length) {
+      /** @type {uint8[]} */
       const bits = [];
       for (let i = length - 1; i >= 0; --i) {
-        bits.push(OpCodes.AndN(OpCodes.Shr32(value, i), 1));
+        bits.push(OpCodes.And32(OpCodes.Shr32(value, i), 1));
       }
       return bits;
     }
 
     /**
      * Convert binary array to integer
-     * @param {Array} bits - Binary array (MSB first)
-     * @returns {number} Integer value
+     * @param {uint8[]} bits - Binary array (MSB first)
+     * @returns {uint32} Integer value
      */
     binaryToInt(bits) {
+      /** @type {uint32} */
       let value = 0;
       for (let i = 0; i < bits.length; ++i) {
-        value = OpCodes.OrN(OpCodes.Shl32(value, 1), bits[i]);
+        value = OpCodes.Or32(OpCodes.Shl32(value, 1), bits[i]);
       }
       return value;
     }

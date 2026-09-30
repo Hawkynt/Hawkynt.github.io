@@ -115,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {DualHammingInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -132,17 +132,20 @@
   class DualHammingInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {DualHammingAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Generator matrix for Dual Hamming (7,3)
       // This is the parity-check matrix of Hamming (7,4)
+      /** @type {uint8[][]} */
       this.generator = [
         [1, 0, 1, 0, 1, 0, 1],  // Positions with bit 0 set
         [0, 1, 1, 0, 0, 1, 1],  // Positions with bit 1 set
@@ -181,18 +184,24 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
+     */
     encode(data) {
       if (data.length !== 3) {
         throw new Error('Dual Hamming encode: Input must be exactly 3 bits');
       }
 
       // Matrix multiplication: c = m * G
-      const codeword = new Array(7).fill(0);
+      /** @type {uint8[]} */
+      const codeword = OpCodes.CreateArray(7, 0);
 
       for (let i = 0; i < 7; ++i) {
+        /** @type {uint32} */
         let sum = 0;
         for (let j = 0; j < 3; ++j) {
-          sum = OpCodes.XorN(sum, OpCodes.AndN(data[j], this.generator[j][i]));
+          sum = OpCodes.Xor32(sum, OpCodes.And32(data[j], this.generator[j][i]));
         }
         codeword[i] = sum;
       }
@@ -200,6 +209,10 @@
       return codeword;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
+     */
     decode(data) {
       if (data.length !== 7) {
         throw new Error('Dual Hamming decode: Input must be exactly 7 bits');
@@ -208,10 +221,12 @@
       // Decoding using correlation (maximum likelihood)
       // Try all 2^3 = 8 possible messages
       let maxCorr = -Infinity;
+      /** @type {uint8[]} */
       let bestMessage = [0, 0, 0];
 
       for (let m = 0; m < 8; ++m) {
-        const message = [OpCodes.AndN(OpCodes.Shr32(m, 2), 1), OpCodes.AndN(OpCodes.Shr32(m, 1), 1), OpCodes.AndN(m, 1)];
+        /** @type {uint8[]} */
+        const message = [OpCodes.And32(OpCodes.Shr32(m, 2), 1), OpCodes.And32(OpCodes.Shr32(m, 1), 1), OpCodes.And32(m, 1)];
 
         // Encode this message
         const testCodeword = this.encode(message);
@@ -231,22 +246,28 @@
       return bestMessage;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
-      if (data.length !== 7) return true;
-
-      try {
-        const decoded = this.decode(data);
-        const reencoded = this.encode(decoded);
-
-        for (let i = 0; i < 7; ++i) {
-          if (data[i] !== reencoded[i]) {
-            return true;
-          }
-        }
-        return false;
-      } catch (e) {
+      // decode() and encode() only throw for lengths other than 7 and 3,
+      // which this check and decode() rule out
+      if (data.length !== 7) {
         return true;
       }
+
+      /** @type {uint8[]} */
+      const decoded = this.decode(data);
+      /** @type {uint8[]} */
+      const reencoded = this.encode(decoded);
+
+      for (let i = 0; i < 7; ++i) {
+        if (data[i] !== reencoded[i]) {
+          return true;
+        }
+      }
+      return false;
     }
   }
 
