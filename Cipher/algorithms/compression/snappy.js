@@ -174,24 +174,38 @@
   class SnappyInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SnappyCompression} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
 
       // Snappy parameters per format specification
+      /** @type {int32} */
       this.HASH_TABLE_BITS = 14;
+      /** @type {int32} */
       this.HASH_TABLE_SIZE = OpCodes.Shl32(1, this.HASH_TABLE_BITS);
+      /** @type {int32} */
       this.MIN_MATCH_LENGTH = 4;
+      /** @type {int32} */
       this.MAX_MATCH_LENGTH = 64;
+      /** @type {int32} */
       this.MAX_COPY1_OFFSET = 2047;
+      /** @type {int32} */
       this.MAX_COPY2_OFFSET = 65535;
+      /** @type {int32} */
       this.MAX_LITERAL_LENGTH_SHORT = 60;
+      /** @type {uint32} */
       this.HASH_MULTIPLIER = 0x1E35A7BD;
+
+      // Number of bytes the last _readVarint call consumed
+      /** @type {int32} */
+      this.varintConsumed = 0;
     }
 
 
@@ -202,57 +216,84 @@
    */
 
     Result() {
-      const result = this.isInverse ? this._decompress(new Uint8Array(this.inputBuffer)) : this._compress(new Uint8Array(this.inputBuffer));
-      this.inputBuffer = [];
-      return Array.from(result);
+      /** @type {uint8[]} */
+      let result;
+      if (this.isInverse) {
+        result = this._decompress(new Uint8Array(this.inputBuffer));
+      } else {
+        result = this._compress(new Uint8Array(this.inputBuffer));
+      }
+      /** @type {uint8[]} */
+      const fresh = [];
+      this.inputBuffer = fresh;
+      /** @type {uint8[]} */
+      const bytes = [];
+      for (let i = 0; i < result.length; i++) {
+        bytes.push(result[i]);
+      }
+      return bytes;
     }
 
     /**
      * Compress data using Snappy algorithm
      * Format: varint(uncompressed_length) + compressed_stream
+     * @param {uint8[]} input - Input bytes
+     * @returns {uint8[]} Compressed bytes
      */
     _compress(input) {
-      if (input.length === 0)
-        return new Uint8Array([0]); // varint 0
+      if (input.length === 0) {
+        /** @type {uint8[]} */
+        const zeroLength = new Uint8Array(1); // varint 0
+        return zeroLength;
+      }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Write uncompressed length as varint (per spec)
       this._writeVarint(output, input.length);
 
       // Hash table for finding matches (LZ77)
+      /** @type {int32[]} */
       const hashTable = new Int32Array(this.HASH_TABLE_SIZE);
       hashTable.fill(-1);
 
+      /** @type {int32} */
       let pos = 0;
+      /** @type {int32} */
       let litStart = 0;
+      /** @type {int32} */
       const srcLen = input.length;
 
       while (pos + 3 < srcLen) {
+        /** @type {uint32} */
         const h = this._hash4(input, pos);
+        /** @type {int32} */
         const candidate = hashTable[h];
         hashTable[h] = pos;
 
         if (candidate >= 0 && (pos - candidate) <= this.MAX_COPY2_OFFSET &&
-            input[candidate] === input[pos] &&
-            input[candidate + 1] === input[pos + 1] &&
-            input[candidate + 2] === input[pos + 2] &&
-            input[candidate + 3] === input[pos + 3]) {
+            this._sameFour(input, candidate, pos)) {
           // Found a match, emit pending literals first
-          if (pos > litStart)
+          if (pos > litStart) {
             this._emitLiteral(output, input, litStart, pos - litStart);
+          }
 
           // Extend match
+          /** @type {int32} */
           let matchLength = this.MIN_MATCH_LENGTH;
           while (pos + matchLength < srcLen &&
                  input[candidate + matchLength] === input[pos + matchLength] &&
-                 matchLength < this.MAX_MATCH_LENGTH)
+                 matchLength < this.MAX_MATCH_LENGTH) {
             ++matchLength;
+          }
 
+          /** @type {int32} */
           const offset = pos - candidate;
           this._emitCopy(output, offset, matchLength);
 
           // Insert hash entries for positions inside the match
+          /** @type {int32} */
           const end = pos + matchLength;
           ++pos;
           while (pos < end && pos + 3 < srcLen) {
@@ -261,56 +302,85 @@
           }
           pos = end;
           litStart = pos;
-        } else
+        } else {
           ++pos;
+        }
       }
 
       // Emit remaining literals
-      if (litStart < srcLen)
+      if (litStart < srcLen) {
         this._emitLiteral(output, input, litStart, srcLen - litStart);
+      }
 
-      return new Uint8Array(output);
+      /** @type {uint8[]} */
+      const packed = new Uint8Array(output);
+      return packed;
+    }
+
+    /**
+     * @param {uint8[]} input - Bytes
+     * @param {int32} a - First position
+     * @param {int32} b - Second position
+     * @returns {boolean} True when the four bytes at a and b are equal
+     */
+    _sameFour(input, a, b) {
+      return input[a] === input[b] &&
+        input[a + 1] === input[b + 1] &&
+        input[a + 2] === input[b + 2] &&
+        input[a + 3] === input[b + 3];
     }
 
     /**
      * Decompress Snappy-compressed data
      * Format: varint(uncompressed_length) + compressed_stream
+     * @param {uint8[]} input - Compressed bytes
+     * @returns {uint8[]} Decoded bytes
      */
     _decompress(input) {
       if (input.length === 0) {
-        return new Uint8Array(0);
+        /** @type {uint8[]} */
+        const empty = new Uint8Array(0);
+        return empty;
       }
 
+      /** @type {int32} */
       let inputPos = 0;
 
-      // Read uncompressed length (varint)
-      const lengthResult = this._readVarint(input, inputPos);
-      const uncompressedLength = lengthResult.value;
-      inputPos += lengthResult.bytesRead;
+      // Read uncompressed length (varint); like the reference, a length with
+      // bit 31 set reads as negative and nothing is decoded.
+      /** @type {int32} */
+      const uncompressedLength = this._readVarint(input, inputPos);
+      inputPos += this.varintConsumed;
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Process compressed stream
-      while (inputPos<input.length && output.length<uncompressedLength) {
+      while (inputPos < input.length && output.length < uncompressedLength) {
+        /** @type {uint8} */
         const tag = input[inputPos++];
-        const tagType = OpCodes.AndN(tag, 0x03);
+        /** @type {uint32} */
+        const tagType = OpCodes.And32(tag, 0x03);
 
         if (tagType === 0x00) {
           // Literal (tag type 00)
-          let literalLength = OpCodes.Shr8(tag, 2)+1;
+          /** @type {int32} */
+          let literalLength = OpCodes.Shr8(tag, 2) + 1;
 
-          // Extended length encoding for literals>60 bytes
-          if (literalLength>this.MAX_LITERAL_LENGTH_SHORT) {
-            const extraBytes = literalLength-this.MAX_LITERAL_LENGTH_SHORT;
+          // Extended length encoding for literals>60 bytes; the OR is a signed
+          // 32-bit one, so a four-byte length with bit 31 set is negative
+          if (literalLength > this.MAX_LITERAL_LENGTH_SHORT) {
+            /** @type {int32} */
+            const extraBytes = literalLength - this.MAX_LITERAL_LENGTH_SHORT;
             literalLength = 0;
-            for (let i = 0; i<extraBytes && inputPos<input.length; ++i) {
-              literalLength |= OpCodes.Shl32(input[inputPos++], i*8);
+            for (let i = 0; i < extraBytes && inputPos < input.length; ++i) {
+              literalLength = OpCodes.ToInt(OpCodes.Or32(literalLength, OpCodes.Shl32(input[inputPos++], i * 8)));
             }
             ++literalLength;
           }
 
           // Copy literal bytes
-          for (let i = 0; i<literalLength && inputPos<input.length; ++i) {
+          for (let i = 0; i < literalLength && inputPos < input.length; ++i) {
             output.push(input[inputPos++]);
           }
 
@@ -318,9 +388,13 @@
           // Copy with 1-byte offset (tag type 01)
           // Length: 4-11 bytes (encoded in bits 2-4 as len-4)
           // Offset: 0-2047 (upper 3 bits in tag bits 5-7, lower 8 bits in next byte)
-          const length = OpCodes.Shr8(OpCodes.AndN(tag, 0x1C), 2)+4;
+          /** @type {int32} */
+          const length = OpCodes.Shr8(OpCodes.And32(tag, 0x1C), 2) + 4;
+          /** @type {uint8} */
           const offsetHigh = OpCodes.Shr8(tag, 5);
+          /** @type {uint8} */
           const offsetLow = input[inputPos++];
+          /** @type {uint16} */
           const offset = OpCodes.Pack16LE(offsetLow, offsetHigh);
 
           // Copy from history
@@ -330,10 +404,16 @@
           // Copy with 2-byte offset (tag type 10)
           // Length: 1-64 bytes (encoded in upper 6 bits as len-1)
           // Offset: 0-65535 (next 2 bytes, little-endian)
-          const length = OpCodes.Shr8(tag, 2)+1;
-          if (inputPos+1>=input.length) break;
+          /** @type {int32} */
+          const length = OpCodes.Shr8(tag, 2) + 1;
+          if (inputPos + 1 >= input.length) {
+            break;
+          }
+          /** @type {uint8} */
           const offsetLow = input[inputPos++];
+          /** @type {uint8} */
           const offsetHigh = input[inputPos++];
+          /** @type {uint16} */
           const offset = OpCodes.Pack16LE(offsetLow, offsetHigh);
 
           // Copy from history
@@ -343,12 +423,20 @@
           // Copy with 4-byte offset (tag type 11)
           // Length: 1-64 bytes (encoded in upper 6 bits as len-1)
           // Offset: 0-2^32-1 (next 4 bytes, little-endian)
-          const length = OpCodes.Shr8(tag, 2)+1;
-          if (inputPos+3>=input.length) break;
+          /** @type {int32} */
+          const length = OpCodes.Shr8(tag, 2) + 1;
+          if (inputPos + 3 >= input.length) {
+            break;
+          }
+          /** @type {uint8} */
           const b0 = input[inputPos++];
+          /** @type {uint8} */
           const b1 = input[inputPos++];
+          /** @type {uint8} */
           const b2 = input[inputPos++];
+          /** @type {uint8} */
           const b3 = input[inputPos++];
+          /** @type {uint32} */
           const offset = OpCodes.Pack32LE(b0, b1, b2, b3);
 
           // Copy from history (using 32-bit offset)
@@ -356,13 +444,19 @@
         }
       }
 
-      return new Uint8Array(output.slice(0, uncompressedLength));
+      /** @type {uint8[]} */
+      const decoded = new Uint8Array(output.slice(0, uncompressedLength));
+      return decoded;
     }
 
     /**
      * Hash function for a 4-byte little-endian sequence (Snappy multiplicative hash)
+     * @param {uint8[]} input - Bytes
+     * @param {int32} pos - Position of the four hashed bytes
+     * @returns {uint32} Hash table index
      */
     _hash4(input, pos) {
+      /** @type {uint32} */
       const val = OpCodes.Pack32LE(input[pos], input[pos + 1], input[pos + 2], input[pos + 3]);
       return OpCodes.Shr32(OpCodes.Mul32(val, this.HASH_MULTIPLIER), 32 - this.HASH_TABLE_BITS);
     }
@@ -370,124 +464,180 @@
     /**
      * Write varint (variable-length integer) per Snappy spec
      * Lower 7 bits = data, upper bit = continuation flag
+     * @param {uint8[]} output - Output
+     * @param {uint32} value - Value
      */
     _writeVarint(output, value) {
-      while (value>=0x80) {
-        output.push(OpCodes.OrN(OpCodes.AndN(value, 0x7F), 0x80));
-        value = OpCodes.Shr32(value, 7);
+      /** @type {uint32} */
+      let rest = value;
+      while (rest >= 0x80) {
+        output.push(OpCodes.Or32(OpCodes.And32(rest, 0x7F), 0x80));
+        rest = OpCodes.Shr32(rest, 7);
       }
-      output.push(OpCodes.AndN(value, 0x7F));
+      output.push(OpCodes.And32(rest, 0x7F));
     }
 
     /**
-     * Read varint from input stream
+     * Read varint from input stream (at most five bytes). The value is
+     * assembled with a signed 32-bit OR, so bit 31 makes it negative. The
+     * number of bytes consumed is left in varintConsumed.
+     * @param {uint8[]} input - Bytes
+     * @param {int32} pos - Position of the varint
+     * @returns {int32} Value
      */
     _readVarint(input, pos) {
+      /** @type {int32} */
       let value = 0;
+      /** @type {int32} */
       let shift = 0;
-      let bytesRead = 0;
+      /** @type {int32} */
+      let consumed = 0;
 
-      while (pos+bytesRead<input.length) {
-        const byte = input[pos+bytesRead];
-        ++bytesRead;
+      while (pos + consumed < input.length) {
+        /** @type {uint8} */
+        const byte = input[pos + consumed];
+        ++consumed;
 
-        value = OpCodes.OrN(value, OpCodes.Shl32(OpCodes.AndN(byte, 0x7F), shift));
+        value = OpCodes.ToInt(OpCodes.Or32(value, OpCodes.Shl32(OpCodes.And32(byte, 0x7F), shift)));
 
-        if (OpCodes.AndN(byte, 0x80) === 0) {
+        if (OpCodes.And32(byte, 0x80) === 0) {
           break;
         }
 
         shift += 7;
-        if (shift>=32) break; // Prevent overflow
+        if (shift >= 32) {
+          break; // Prevent overflow
+        }
       }
 
-      return { value: value, bytesRead: bytesRead };
+      this.varintConsumed = consumed;
+      return value;
     }
 
     /**
      * Emit literal bytes with Snappy tag encoding
      * Tag byte format: [length-1][00] for lengths 1-60, or an escape tag
      * (60/61/62/63) followed by 1/2/3/4 little-endian bytes holding length-1.
+     * @param {uint8[]} output - Output
+     * @param {uint8[]} input - Source bytes
+     * @param {int32} start - First literal
+     * @param {int32} length - Number of literals
      */
     _emitLiteral(output, input, start, length) {
+      /** @type {int32} */
       const n = length - 1; // tag encodes length-1
 
-      if (n < 60)
-        output.push(OpCodes.OrN(OpCodes.Shl8(n, 2), 0x00));
-      else if (n < 0x100) {
-        output.push(OpCodes.OrN(OpCodes.Shl8(60, 2), 0x00));
-        output.push(OpCodes.AndN(n, 0xFF));
+      if (n < 60) {
+        output.push(OpCodes.Shl8(n, 2));
+      } else if (n < 0x100) {
+        output.push(OpCodes.Shl8(60, 2));
+        output.push(OpCodes.And32(n, 0xFF));
       } else if (n < 0x10000) {
-        output.push(OpCodes.OrN(OpCodes.Shl8(61, 2), 0x00));
-        const [b0, b1] = OpCodes.Unpack16LE(n);
-        output.push(b0, b1);
+        output.push(OpCodes.Shl8(61, 2));
+        /** @type {uint8[]} */
+        const two = OpCodes.Unpack16LE(n);
+        output.push(two[0]);
+        output.push(two[1]);
       } else if (n < 0x1000000) {
-        output.push(OpCodes.OrN(OpCodes.Shl8(62, 2), 0x00));
-        const [b0, b1, b2] = OpCodes.Unpack32LE(n);
-        output.push(b0, b1, b2);
+        output.push(OpCodes.Shl8(62, 2));
+        /** @type {uint8[]} */
+        const three = OpCodes.Unpack32LE(n);
+        output.push(three[0]);
+        output.push(three[1]);
+        output.push(three[2]);
       } else {
-        output.push(OpCodes.OrN(OpCodes.Shl8(63, 2), 0x00));
-        const [b0, b1, b2, b3] = OpCodes.Unpack32LE(n);
-        output.push(b0, b1, b2, b3);
+        output.push(OpCodes.Shl8(63, 2));
+        /** @type {uint8[]} */
+        const four = OpCodes.Unpack32LE(n);
+        output.push(four[0]);
+        output.push(four[1]);
+        output.push(four[2]);
+        output.push(four[3]);
       }
 
       // Copy literal bytes
-      for (let i = 0; i<length; ++i) {
-        output.push(input[start+i]);
+      for (let i = 0; i < length; ++i) {
+        output.push(input[start + i]);
       }
     }
 
     /**
      * Emit copy instruction(s) with optimal tag type, chunking to MAX_MATCH_LENGTH
+     * @param {uint8[]} output - Output
+     * @param {int32} offset - Match distance
+     * @param {int32} length - Match length
      */
     _emitCopy(output, offset, length) {
-      while (length > 0) {
-        let chunk = Math.min(length, this.MAX_MATCH_LENGTH);
+      /** @type {int32} */
+      let remaining = length;
+      while (remaining > 0) {
+        /** @type {int32} */
+        let chunk = Math.min(remaining, this.MAX_MATCH_LENGTH);
 
         if (offset <= this.MAX_COPY1_OFFSET && chunk >= 4 && chunk <= 11) {
           // 1-byte offset copy (tag type 01)
           // Tag: OOOLLL01 where OOO = offset bits 10:8, LLL = length - 4
-          const [offsetLow, offsetHigh] = OpCodes.Unpack16LE(offset);
-          const tag = OpCodes.OrN(OpCodes.Shl8(chunk-4, 2), OpCodes.OrN(OpCodes.Shl8(offsetHigh, 5), 0x01));
-          output.push(tag, offsetLow);
+          /** @type {uint8[]} */
+          const offsetBytes = OpCodes.Unpack16LE(offset);
+          /** @type {uint32} */
+          const tag = OpCodes.Or32(OpCodes.Shl8(chunk - 4, 2), OpCodes.Or32(OpCodes.Shl8(offsetBytes[1], 5), 0x01));
+          output.push(tag);
+          output.push(offsetBytes[0]);
         } else if (offset <= this.MAX_COPY2_OFFSET) {
           // 2-byte offset copy (tag type 10)
+          /** @type {int32} */
           const l = Math.min(chunk, this.MAX_MATCH_LENGTH);
-          const [offsetLow, offsetHigh] = OpCodes.Unpack16LE(offset);
-          const tag = OpCodes.OrN(OpCodes.Shl8(l-1, 2), 0x02);
-          output.push(tag, offsetLow, offsetHigh);
+          /** @type {uint8[]} */
+          const offsetBytes = OpCodes.Unpack16LE(offset);
+          /** @type {uint32} */
+          const tag = OpCodes.Or32(OpCodes.Shl8(l - 1, 2), 0x02);
+          output.push(tag);
+          output.push(offsetBytes[0]);
+          output.push(offsetBytes[1]);
           chunk = l;
         } else {
           // 4-byte offset copy (tag type 11)
+          /** @type {int32} */
           const l = Math.min(chunk, this.MAX_MATCH_LENGTH);
-          const [b0, b1, b2, b3] = OpCodes.Unpack32LE(offset);
-          const tag = OpCodes.OrN(OpCodes.Shl8(l-1, 2), 0x03);
-          output.push(tag, b0, b1, b2, b3);
+          /** @type {uint8[]} */
+          const offsetBytes = OpCodes.Unpack32LE(offset);
+          /** @type {uint32} */
+          const tag = OpCodes.Or32(OpCodes.Shl8(l - 1, 2), 0x03);
+          output.push(tag);
+          output.push(offsetBytes[0]);
+          output.push(offsetBytes[1]);
+          output.push(offsetBytes[2]);
+          output.push(offsetBytes[3]);
           chunk = l;
         }
 
-        length -= chunk;
+        remaining -= chunk;
       }
     }
 
     /**
      * Copy bytes from decompression history (handles overlapping copies)
+     * @param {uint8[]} output - Decoded bytes so far
+     * @param {uint32} offset - Distance back
+     * @param {int32} length - Number of bytes
      */
     _copyFromHistory(output, offset, length) {
-      if (offset === 0 || offset>output.length) {
+      if (offset === 0 || offset > output.length) {
         // Invalid offset - pad with zeros
-        for (let i = 0; i<length; ++i) {
+        for (let i = 0; i < length; ++i) {
           output.push(0);
         }
         return;
       }
 
-      const sourceStart = output.length-offset;
+      /** @type {int32} */
+      const sourceStart = output.length - offset;
 
       // Handle overlapping copies (RLE pattern)
-      for (let i = 0; i<length; ++i) {
-        const sourcePos = sourceStart+i;
-        if (sourcePos>=0 && sourcePos<output.length) {
+      for (let i = 0; i < length; ++i) {
+        /** @type {int32} */
+        const sourcePos = sourceStart + i;
+        if (sourcePos >= 0 && sourcePos < output.length) {
           output.push(output[sourcePos]);
         } else {
           output.push(0);
@@ -495,6 +645,7 @@
       }
     }
   }
+
 
   // ===== REGISTRATION =====
 
