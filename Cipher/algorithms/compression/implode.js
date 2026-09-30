@@ -75,25 +75,40 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /** @type {boolean} */
   const USE_LITERAL_TREE = true;
+  /** @type {boolean} */
   const USE_8K_DICTIONARY = true;
+  /** @type {int32} */
   const LITERAL_SYMBOLS = 256;
+  /** @type {int32} */
   const LENGTH_SYMBOLS = 64;
+  /** @type {int32} */
   const DISTANCE_SYMBOLS = 64;
 
   // ----- Bit-level stream helpers (LSB-first) -----
 
   class BitWriter {
     constructor() {
+      /** @type {uint8[]} */
       this.bytes = [];
+      /** @type {uint32} */
       this.cur = 0;
+      /** @type {int32} */
       this.bitPos = 0;
     }
 
+    /**
+     * @param {uint32} value - Value
+     * @param {int32} count - Number of bits, least significant first
+     */
     writeBits(value, count) {
       for (let i = 0; i < count; ++i) {
-        const bit = OpCodes.AndN(OpCodes.Shr32(value, i), 1);
-        if (bit === 1) this.cur = OpCodes.OrN(this.cur, OpCodes.Shl32(1, this.bitPos));
+        /** @type {uint32} */
+        const bit = OpCodes.And32(OpCodes.Shr32(value, i), 1);
+        if (bit === 1) {
+          this.cur = OpCodes.Or32(this.cur, OpCodes.Shl32(1, this.bitPos));
+        }
         ++this.bitPos;
         if (this.bitPos === 8) {
           this.bytes.push(this.cur);
@@ -103,6 +118,9 @@
       }
     }
 
+    /**
+     * @returns {uint8[]} All bytes, the last one zero-padded
+     */
     finish() {
       if (this.bitPos > 0) {
         this.bytes.push(this.cur);
@@ -114,101 +132,226 @@
   }
 
   class BitReader {
+    /**
+     * @param {uint8[]} bytes - Source bytes (zero bits past the end)
+     */
     constructor(bytes) {
+      /** @type {uint8[]} */
       this.bytes = bytes;
+      /** @type {int32} */
       this.pos = 0;
     }
 
+    /**
+     * @returns {uint32} Next bit
+     */
     readBit() {
+      /** @type {int32} */
       const byteIdx = Math.floor(this.pos / 8);
-      if (byteIdx >= this.bytes.length) { ++this.pos; return 0; }
+      if (byteIdx >= this.bytes.length) {
+        ++this.pos;
+        return 0;
+      }
+      /** @type {int32} */
       const bitIdx = this.pos % 8;
       ++this.pos;
-      return OpCodes.AndN(OpCodes.Shr32(this.bytes[byteIdx], bitIdx), 1);
+      return OpCodes.And32(OpCodes.Shr32(this.bytes[byteIdx], bitIdx), 1);
     }
 
+    /**
+     * @param {int32} count - Number of bits, least significant first
+     * @returns {uint32} Value read
+     */
     readBits(count) {
+      /** @type {uint32} */
       let result = 0;
-      for (let i = 0; i < count; ++i) result = OpCodes.OrN(result, OpCodes.Shl32(this.readBit(), i));
+      for (let i = 0; i < count; ++i) {
+        result = OpCodes.Or32(result, OpCodes.Shl32(this.readBit(), i));
+      }
       return result;
     }
   }
 
   // ----- Canonical Huffman code-length / code construction -----
 
+  /**
+   * @param {int32[]} freq - Frequency per symbol
+   * @param {int32} numSymbols - Alphabet size
+   * @returns {int32[]} Code length per symbol
+   */
   function buildCodeLengths(freq, numSymbols) {
     // Every symbol must be codeable in this format, so unused ones are floored to
     // weight 1 and take part in the tree. Ties between equally weighted symbols are
     // broken by the total order documented in huffman-code-lengths.data.js.
+    /** @type {int32[]} */
     const weights = new Array(numSymbols);
-    for (let i = 0; i < numSymbols; ++i) weights[i] = Math.max(freq[i], 1);
+    for (let i = 0; i < numSymbols; ++i) {
+      weights[i] = Math.max(freq[i], 1);
+    }
 
+    /** @type {int32[]} */
     const lengths = HuffmanCodeLengths.buildCodeLengths(weights, numSymbols);
 
+    /** @type {int32} */
     let maxLen = 0;
-    for (let i = 0; i < numSymbols; ++i) if (lengths[i] > maxLen) maxLen = lengths[i];
+    for (let i = 0; i < numSymbols; ++i) {
+      if (lengths[i] > maxLen) {
+        maxLen = lengths[i];
+      }
+    }
     if (maxLen > 16) {
+      /** @type {int32} */
       let bits = 1;
-      while (OpCodes.Shl32(1, bits) < numSymbols) ++bits;
-      for (let i = 0; i < numSymbols; ++i) lengths[i] = bits;
+      while (OpCodes.Shl32(1, bits) < numSymbols) {
+        ++bits;
+      }
+      for (let i = 0; i < numSymbols; ++i) {
+        lengths[i] = bits;
+      }
     }
 
     return lengths;
   }
 
+  /**
+   * @param {uint32} value - Code
+   * @param {int32} count - Number of bits
+   * @returns {uint32} The count low bits in reverse order
+   */
   function reverseBits(value, count) {
+    /** @type {uint32} */
     let result = 0;
+    /** @type {uint32} */
+    let rest = value;
     for (let i = 0; i < count; ++i) {
-      result = OpCodes.OrN(OpCodes.Shl32(result, 1), OpCodes.AndN(value, 1));
-      value = OpCodes.Shr32(value, 1);
+      result = OpCodes.Or32(OpCodes.Shl32(result, 1), OpCodes.And32(rest, 1));
+      rest = OpCodes.Shr32(rest, 1);
     }
     return result;
   }
 
+  /**
+   * Canonical codes of one alphabet, bit-reversed for the LSB-first stream
+   */
+  class ImplodeCodes {
+    /**
+     * @param {int32} numSymbols - Alphabet size
+     */
+    constructor(numSymbols) {
+      /** @type {uint32[]} */
+      this.code = new Array(numSymbols);
+      /** @type {int32[]} */
+      this.bits = new Array(numSymbols);
+    }
+  }
+
   // Canonical assignment (MSB-first code order), then each code is
   // bit-reversed so it reads correctly from the LSB-first stream.
+  /**
+   * @param {int32[]} codeLengths - Code length per symbol
+   * @param {int32} numSymbols - Alphabet size
+   * @returns {ImplodeCodes} Codes
+   */
   function buildCodes(codeLengths, numSymbols) {
+    /** @type {int32} */
     let maxLen = 0;
-    for (let i = 0; i < numSymbols; ++i) if (codeLengths[i] > maxLen) maxLen = codeLengths[i];
-    if (maxLen === 0) maxLen = 1;
+    for (let i = 0; i < numSymbols; ++i) {
+      if (codeLengths[i] > maxLen) {
+        maxLen = codeLengths[i];
+      }
+    }
+    if (maxLen === 0) {
+      maxLen = 1;
+    }
 
-    const blCount = new Array(maxLen + 1).fill(0);
-    for (let i = 0; i < numSymbols; ++i) if (codeLengths[i] > 0) ++blCount[codeLengths[i]];
+    /** @type {int32[]} */
+    const blCount = new Array(maxLen + 1);
+    /** @type {uint32[]} */
+    const nextCode = new Array(maxLen + 1);
+    for (let b = 0; b <= maxLen; ++b) {
+      blCount[b] = 0;
+      nextCode[b] = 0;
+    }
+    for (let i = 0; i < numSymbols; ++i) {
+      if (codeLengths[i] > 0) {
+        ++blCount[codeLengths[i]];
+      }
+    }
 
-    const nextCode = new Array(maxLen + 1).fill(0);
+    /** @type {uint32} */
     let code = 0;
     for (let b = 1; b <= maxLen; ++b) {
-      code = OpCodes.Shl32(code + blCount[b - 1], 1);
+      /** @type {int32} */
+      const counted = blCount[b - 1];
+      code = OpCodes.Shl32(code + counted, 1);
       nextCode[b] = code;
     }
 
-    const codes = new Array(numSymbols);
+    /** @type {ImplodeCodes} */
+    const codes = new ImplodeCodes(numSymbols);
     for (let sym = 0; sym < numSymbols; ++sym) {
+      /** @type {int32} */
       const len = codeLengths[sym];
-      if (len === 0) { codes[sym] = { code: 0, bits: 0 }; continue; }
+      if (len === 0) {
+        codes.code[sym] = 0;
+        codes.bits[sym] = 0;
+        continue;
+      }
+      /** @type {uint32} */
       const raw = nextCode[len]++;
-      codes[sym] = { code: reverseBits(raw, len), bits: len };
+      codes.code[sym] = reverseBits(raw, len);
+      codes.bits[sym] = len;
     }
     return codes;
   }
 
+  /**
+   * Decode-trie node; a missing branch is null
+   */
+  class ImplodeTrieNode {
+    constructor() {
+      /** @type {int32} */
+      this.sym = -1;
+      /** @type {ImplodeTrieNode} */
+      this.c0 = null;
+      /** @type {ImplodeTrieNode} */
+      this.c1 = null;
+    }
+  }
+
   class DecodeTrie {
+    /**
+     * @param {ImplodeCodes} codes - Codes of the alphabet
+     * @param {int32} numSymbols - Alphabet size
+     */
     constructor(codes, numSymbols) {
-      this.root = { sym: -1, c0: null, c1: null };
+      /** @type {ImplodeTrieNode} */
+      this.root = new ImplodeTrieNode();
       for (let s = 0; s < numSymbols; ++s) {
-        const entry = codes[s];
-        if (!entry || entry.bits === 0) continue;
+        /** @type {int32} */
+        const bits = codes.bits[s];
+        if (bits === 0) {
+          continue;
+        }
+        /** @type {uint32} */
+        const code = codes.code[s];
+        /** @type {ImplodeTrieNode} */
         let node = this.root;
         // Codes were bit-reversed for LSB-first transmission, so walking the
         // trie bit-by-bit as each bit is *read* means consuming the reversed
         // code's bits from bit 0 upward - i.e. in the same order they were written.
-        for (let i = 0; i < entry.bits; ++i) {
-          const bit = OpCodes.AndN(OpCodes.Shr32(entry.code, i), 1);
+        for (let i = 0; i < bits; ++i) {
+          /** @type {uint32} */
+          const bit = OpCodes.And32(OpCodes.Shr32(code, i), 1);
           if (bit === 0) {
-            if (!node.c0) node.c0 = { sym: -1, c0: null, c1: null };
+            if (node.c0 === null) {
+              node.c0 = new ImplodeTrieNode();
+            }
             node = node.c0;
           } else {
-            if (!node.c1) node.c1 = { sym: -1, c0: null, c1: null };
+            if (node.c1 === null) {
+              node.c1 = new ImplodeTrieNode();
+            }
             node = node.c1;
           }
         }
@@ -216,40 +359,107 @@
       }
     }
 
+    /**
+     * @param {BitReader} reader - Input bits
+     * @returns {int32} Decoded symbol
+     */
     decode(reader) {
+      /** @type {ImplodeTrieNode} */
       let node = this.root;
-      while (node.sym === -1) node = reader.readBit() === 0 ? node.c0 : node.c1;
+      while (node.sym === -1) {
+        /** @type {uint32} */
+        const bit = reader.readBit();
+        if (bit === 0) {
+          node = node.c0;
+        } else {
+          node = node.c1;
+        }
+      }
       return node.sym;
     }
   }
 
   // ----- Code-length table (run-length) serialization, inline in the bitstream -----
 
+  /**
+   * @param {BitWriter} writer - Output bits
+   * @param {int32[]} lengths - Code length per symbol
+   * @param {int32} numSymbols - Alphabet size
+   */
   function writeSfTree(writer, lengths, numSymbols) {
-    const runs = [];
+    /** @type {int32[]} */
+    const runLength = [];
+    /** @type {int32[]} */
+    const runCount = [];
+    /** @type {int32} */
     let i = 0;
     while (i < numSymbols) {
+      /** @type {int32} */
       const len = lengths[i];
+      /** @type {int32} */
       let count = 1;
-      while (i + count < numSymbols && lengths[i + count] === len && count < 16) ++count;
-      runs.push([len > 0 ? len - 1 : 0, count]);
+      while (i + count < numSymbols && lengths[i + count] === len && count < 16) {
+        ++count;
+      }
+      runLength.push(len > 0 ? len - 1 : 0);
+      runCount.push(count);
       i += count;
     }
-    writer.writeBits(runs.length - 1, 8);
-    for (const [adjLen, count] of runs) writer.writeBits(OpCodes.OrN(adjLen, OpCodes.Shl32(count - 1, 4)), 8);
+    writer.writeBits(runLength.length - 1, 8);
+    for (let r = 0; r < runLength.length; r++) {
+      writer.writeBits(OpCodes.Or32(runLength[r], OpCodes.Shl32(runCount[r] - 1, 4)), 8);
+    }
   }
 
+  /**
+   * @param {BitReader} reader - Input bits
+   * @param {int32} numSymbols - Alphabet size
+   * @returns {int32[]} Code length per symbol (0 past the last run)
+   */
   function readSfTree(reader, numSymbols) {
-    const numEntries = reader.readBits(8) + 1;
-    const lengths = new Array(numSymbols).fill(0);
+    /** @type {int32} */
+    const numEntries = OpCodes.Add32(reader.readBits(8), 1);
+    /** @type {int32[]} */
+    const lengths = new Array(numSymbols);
+    for (let k = 0; k < numSymbols; k++) {
+      lengths[k] = 0;
+    }
+    /** @type {int32} */
     let idx = 0;
     for (let i = 0; i < numEntries && idx < numSymbols; ++i) {
+      /** @type {uint32} */
       const val = reader.readBits(8);
-      const len = OpCodes.AndN(val, 0x0F) + 1;
+      /** @type {int32} */
+      const len = OpCodes.And32(val, 0x0F) + 1;
+      /** @type {int32} */
       const count = OpCodes.Shr32(val, 4) + 1;
-      for (let j = 0; j < count && idx < numSymbols; ++j) lengths[idx++] = len;
+      for (let j = 0; j < count && idx < numSymbols; ++j) {
+        lengths[idx++] = len;
+      }
     }
     return lengths;
+  }
+
+  /**
+   * One parsed token: a literal byte or a (length, distance - 1) match
+   */
+  class ImplodeToken {
+    /**
+     * @param {boolean} isLit - True for a literal
+     * @param {uint8} lit - Literal byte (0 for a match)
+     * @param {int32} len - Match length (0 for a literal)
+     * @param {int32} dist - Match distance minus one (0 for a literal)
+     */
+    constructor(isLit, lit, len, dist) {
+      /** @type {boolean} */
+      this.isLit = isLit;
+      /** @type {uint8} */
+      this.lit = lit;
+      /** @type {int32} */
+      this.len = len;
+      /** @type {int32} */
+      this.dist = dist;
+    }
   }
 
   /**
@@ -319,45 +529,86 @@
         ];
       }
 
+      /**
+       * Create a new instance
+       * @param {boolean} [isInverse=false] - True to decompress
+       * @returns {ImplodeInstance} New instance
+       */
       CreateInstance(isInverse = false) {
         return new ImplodeInstance(this, isInverse);
       }
     }
 
     class ImplodeInstance extends IAlgorithmInstance {
+      /**
+       * @param {ImplodeCompression} algorithm - Parent algorithm
+       * @param {boolean} [isInverse=false] - True to decompress
+       */
       constructor(algorithm, isInverse = false) {
         super(algorithm);
+        /** @type {boolean} */
         this.isInverse = isInverse;
+        /** @type {uint8[]} */
         this.inputBuffer = [];
       }
 
-
+      /**
+       * Compress or decompress the collected input
+       * @returns {uint8[]} Output bytes
+       */
       Result() {
+        /** @type {uint8[]} */
         const data = this.inputBuffer;
-        this.inputBuffer = [];
-        return this.isInverse ? this._decompress(data) : this._compress(data);
+        /** @type {uint8[]} */
+        const fresh = [];
+        this.inputBuffer = fresh;
+        if (this.isInverse) {
+          return this._decompress(data);
+        }
+        return this._compress(data);
       }
 
       // ----- LZ77 parse over the sliding dictionary -----
 
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @param {int32} windowSize - Largest distance
+       * @param {int32} minMatchLen - Smallest match length
+       * @param {int32} maxMatchLen - Largest match length
+       * @returns {ImplodeToken[]} Tokens
+       */
       _parse(data, windowSize, minMatchLen, maxMatchLen) {
+        /** @type {ImplodeToken[]} */
         const tokens = [];
+        /** @type {int32} */
         let i = 0;
         while (i < data.length) {
-          let bestLen = 0, bestDist = 0;
+          /** @type {int32} */
+          let bestLen = 0;
+          /** @type {int32} */
+          let bestDist = 0;
+          /** @type {int32} */
           const searchStart = Math.max(0, i - windowSize);
           for (let j = searchStart; j < i; ++j) {
+            /** @type {int32} */
             let len = 0;
+            /** @type {int32} */
             const maxLen = Math.min(data.length - i, maxMatchLen);
+            /** @type {int32} */
             const span = i - j;
-            while (len < maxLen && data[j + (len % span)] === data[i + len]) ++len;
-            if (len > bestLen && len >= minMatchLen) { bestLen = len; bestDist = i - j - 1; }
+            while (len < maxLen && data[j + (len % span)] === data[i + len]) {
+              ++len;
+            }
+            if (len > bestLen && len >= minMatchLen) {
+              bestLen = len;
+              bestDist = i - j - 1;
+            }
           }
           if (bestLen >= minMatchLen) {
-            tokens.push({ isLit: false, lit: 0, len: bestLen, dist: bestDist });
+            tokens.push(new ImplodeToken(false, 0, bestLen, bestDist));
             i += bestLen;
           } else {
-            tokens.push({ isLit: true, lit: data[i], len: 0, dist: 0 });
+            tokens.push(new ImplodeToken(true, data[i], 0, 0));
             i += 1;
           }
         }
@@ -366,121 +617,208 @@
 
       // ----- Compression -----
 
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @param {boolean} useLiteralTree - Code literals with their own tree
+       * @param {boolean} use8kDictionary - Use the 8 KiB window
+       * @returns {uint8[]} Trees and coded tokens
+       */
       _encode(data, useLiteralTree, use8kDictionary) {
+        /** @type {int32} */
         const distanceBits = use8kDictionary ? 7 : 6;
+        /** @type {int32} */
         const minMatchLen = useLiteralTree ? 3 : 2;
+        /** @type {int32} */
         const windowSize = use8kDictionary ? 8192 : 4096;
-        const maxMatchLen = Math.min(data.length, 63 + 255 + minMatchLen);
 
+        /** @type {ImplodeToken[]} */
         const tokens = this._parse(data, windowSize, minMatchLen, 63 + 255 + minMatchLen);
 
-        const literalFreq = new Array(LITERAL_SYMBOLS).fill(0);
-        const lengthFreq = new Array(LENGTH_SYMBOLS).fill(0);
-        const distanceFreq = new Array(DISTANCE_SYMBOLS).fill(0);
+        /** @type {int32[]} */
+        const literalFreq = new Int32Array(LITERAL_SYMBOLS);
+        /** @type {int32[]} */
+        const lengthFreq = new Int32Array(LENGTH_SYMBOLS);
+        /** @type {int32[]} */
+        const distanceFreq = new Int32Array(DISTANCE_SYMBOLS);
 
-        for (const t of tokens) {
+        for (let n = 0; n < tokens.length; n++) {
+          /** @type {ImplodeToken} */
+          const t = tokens[n];
           if (t.isLit) {
             literalFreq[t.lit]++;
           } else {
+            /** @type {int32} */
             const lenCode = Math.min(t.len - minMatchLen, 63);
+            /** @type {int32} */
             const distHigh = OpCodes.Shr32(t.dist, distanceBits);
             lengthFreq[lenCode]++;
-            if (distHigh < 64) distanceFreq[distHigh]++;
+            if (distHigh < 64) {
+              distanceFreq[distHigh]++;
+            }
           }
         }
 
-        const literalLengths = useLiteralTree ? buildCodeLengths(literalFreq, LITERAL_SYMBOLS) : null;
+        /** @type {int32[]} */
+        let literalLengths = null;
+        /** @type {ImplodeCodes} */
+        let literalCodes = null;
+        if (useLiteralTree) {
+          literalLengths = buildCodeLengths(literalFreq, LITERAL_SYMBOLS);
+        }
+        /** @type {int32[]} */
         const lengthLengths = buildCodeLengths(lengthFreq, LENGTH_SYMBOLS);
+        /** @type {int32[]} */
         const distanceLengths = buildCodeLengths(distanceFreq, DISTANCE_SYMBOLS);
 
-        const literalCodes = useLiteralTree ? buildCodes(literalLengths, LITERAL_SYMBOLS) : null;
+        if (useLiteralTree) {
+          literalCodes = buildCodes(literalLengths, LITERAL_SYMBOLS);
+        }
+        /** @type {ImplodeCodes} */
         const lengthCodes = buildCodes(lengthLengths, LENGTH_SYMBOLS);
+        /** @type {ImplodeCodes} */
         const distanceCodes = buildCodes(distanceLengths, DISTANCE_SYMBOLS);
 
+        /** @type {BitWriter} */
         const writer = new BitWriter();
 
-        if (useLiteralTree) writeSfTree(writer, literalLengths, LITERAL_SYMBOLS);
+        if (useLiteralTree) {
+          writeSfTree(writer, literalLengths, LITERAL_SYMBOLS);
+        }
         writeSfTree(writer, lengthLengths, LENGTH_SYMBOLS);
         writeSfTree(writer, distanceLengths, DISTANCE_SYMBOLS);
 
-        for (const t of tokens) {
+        for (let n = 0; n < tokens.length; n++) {
+          /** @type {ImplodeToken} */
+          const t = tokens[n];
           if (t.isLit) {
             writer.writeBits(1, 1);
             if (useLiteralTree) {
-              const c = literalCodes[t.lit];
-              writer.writeBits(c.code, c.bits);
+              writer.writeBits(literalCodes.code[t.lit], literalCodes.bits[t.lit]);
             } else {
               writer.writeBits(t.lit, 8);
             }
           } else {
             writer.writeBits(0, 1);
-            const distLow = OpCodes.AndN(t.dist, OpCodes.Shl32(1, distanceBits) - 1);
+            /** @type {uint32} */
+            const distLow = OpCodes.And32(t.dist, OpCodes.Shl32(1, distanceBits) - 1);
+            /** @type {int32} */
             const distHigh = OpCodes.Shr32(t.dist, distanceBits);
+            /** @type {int32} */
             const lenCode = Math.min(t.len - minMatchLen, 63);
 
             writer.writeBits(distLow, distanceBits);
-            const dc = distanceCodes[distHigh < 64 ? distHigh : 0];
-            writer.writeBits(dc.code, dc.bits);
-            const lc = lengthCodes[lenCode];
-            writer.writeBits(lc.code, lc.bits);
+            /** @type {int32} */
+            const distanceSymbol = distHigh < 64 ? distHigh : 0;
+            writer.writeBits(distanceCodes.code[distanceSymbol], distanceCodes.bits[distanceSymbol]);
+            writer.writeBits(lengthCodes.code[lenCode], lengthCodes.bits[lenCode]);
             if (lenCode === 63) {
+              /** @type {int32} */
               const extra = Math.min(t.len - minMatchLen - 63, 255);
               writer.writeBits(extra, 8);
             }
           }
         }
 
-        return writer.finish();
+        /** @type {uint8[]} */
+        const bits = writer.finish();
+        return bits;
       }
 
+      /**
+       * @param {uint8[]} data - Input bytes
+       * @returns {uint8[]} Size, flags and body
+       */
       _compress(data) {
-        const body = data.length === 0 ? [] : this._encode(data, USE_LITERAL_TREE, USE_8K_DICTIONARY);
+        /** @type {uint8[]} */
+        let body = [];
+        if (data.length !== 0) {
+          body = this._encode(data, USE_LITERAL_TREE, USE_8K_DICTIONARY);
+        }
+        /** @type {uint8[]} */
         const output = [];
+        /** @type {uint32} */
         const len32 = OpCodes.ToUint32(data.length);
-        output.push(OpCodes.AndN(len32, 0xFF));
-        output.push(OpCodes.AndN(OpCodes.Shr32(len32, 8), 0xFF));
-        output.push(OpCodes.AndN(OpCodes.Shr32(len32, 16), 0xFF));
-        output.push(OpCodes.AndN(OpCodes.Shr32(len32, 24), 0xFF));
-        output.push(OpCodes.OrN(USE_LITERAL_TREE ? 1 : 0, USE_8K_DICTIONARY ? 2 : 0));
-        for (let i = 0; i < body.length; ++i) output.push(body[i]);
+        output.push(OpCodes.And32(len32, 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(len32, 8), 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(len32, 16), 0xFF));
+        output.push(OpCodes.And32(OpCodes.Shr32(len32, 24), 0xFF));
+        output.push(OpCodes.Or32(USE_LITERAL_TREE ? 1 : 0, USE_8K_DICTIONARY ? 2 : 0));
+        for (let i = 0; i < body.length; ++i) {
+          output.push(body[i]);
+        }
         return output;
       }
 
       // ----- Decompression -----
 
+      /**
+       * @param {uint8[]} compressed - Trees and coded tokens
+       * @param {int32} originalSize - Size from the header (negative decodes nothing)
+       * @param {boolean} hasLiteralTree - Literals have their own tree
+       * @param {boolean} is8kDictionary - The 8 KiB window is used
+       * @returns {uint8[]} Decoded bytes
+       */
       _decode(compressed, originalSize, hasLiteralTree, is8kDictionary) {
+        /** @type {int32} */
         const distanceBits = is8kDictionary ? 7 : 6;
+        /** @type {int32} */
         const minMatchLen = hasLiteralTree ? 3 : 2;
 
+        /** @type {BitReader} */
         const reader = new BitReader(compressed);
 
+        /** @type {DecodeTrie} */
         let literalTrie = null;
         if (hasLiteralTree) {
+          /** @type {int32[]} */
           const literalLengths = readSfTree(reader, LITERAL_SYMBOLS);
           literalTrie = new DecodeTrie(buildCodes(literalLengths, LITERAL_SYMBOLS), LITERAL_SYMBOLS);
         }
+        /** @type {int32[]} */
         const lengthLengths = readSfTree(reader, LENGTH_SYMBOLS);
+        /** @type {DecodeTrie} */
         const lengthTrie = new DecodeTrie(buildCodes(lengthLengths, LENGTH_SYMBOLS), LENGTH_SYMBOLS);
+        /** @type {int32[]} */
         const distanceLengths = readSfTree(reader, DISTANCE_SYMBOLS);
+        /** @type {DecodeTrie} */
         const distanceTrie = new DecodeTrie(buildCodes(distanceLengths, DISTANCE_SYMBOLS), DISTANCE_SYMBOLS);
 
+        /** @type {uint8[]} */
         const out = [];
         while (out.length < originalSize) {
+          /** @type {uint32} */
           const flag = reader.readBit();
           if (flag === 1) {
-            const b = hasLiteralTree ? literalTrie.decode(reader) : reader.readBits(8);
+            /** @type {int32} */
+            let b = 0;
+            if (hasLiteralTree) {
+              b = literalTrie.decode(reader);
+            } else {
+              b = reader.readBits(8);
+            }
             out.push(b);
           } else {
+            /** @type {uint32} */
             const distLow = reader.readBits(distanceBits);
+            /** @type {int32} */
             const distHigh = distanceTrie.decode(reader);
-            const distance = OpCodes.OrN(OpCodes.Shl32(distHigh, distanceBits), distLow);
+            /** @type {int32} */
+            const distance = OpCodes.Or32(OpCodes.Shl32(distHigh, distanceBits), distLow);
 
+            /** @type {int32} */
             const lenCode = lengthTrie.decode(reader);
+            /** @type {int32} */
             let length = lenCode + minMatchLen;
-            if (lenCode === 63) length += reader.readBits(8);
+            if (lenCode === 63) {
+              /** @type {int32} */
+              const extra = reader.readBits(8);
+              length += extra;
+            }
 
+            /** @type {int32} */
             const srcPos = out.length - distance - 1;
             for (let k = 0; k < length && out.length < originalSize; ++k) {
+              /** @type {int32} */
               const src = srcPos + k;
               out.push(src >= 0 && src < out.length ? out[src] : 0);
             }
@@ -490,17 +828,34 @@
         return out;
       }
 
+      /**
+       * @param {uint8[]} data - Size, flags and body
+       * @returns {uint8[]} Decoded bytes
+       */
       _decompress(data) {
-        if (data.length < 5) throw new Error('Implode: input smaller than 5-byte header');
-        const size = OpCodes.OrN(
-          OpCodes.OrN(OpCodes.OrN(data[0], OpCodes.Shl32(data[1], 8)), OpCodes.Shl32(data[2], 16)),
+        if (data.length < 5) {
+          throw new Error('Implode: input smaller than 5-byte header');
+        }
+        // The size is read as a signed 32-bit value, as in the reference.
+        /** @type {int32} */
+        const size = OpCodes.ToInt(OpCodes.Or32(
+          OpCodes.Or32(OpCodes.Or32(data[0], OpCodes.Shl32(data[1], 8)), OpCodes.Shl32(data[2], 16)),
           OpCodes.Shl32(data[3], 24)
-        );
+        ));
+        /** @type {uint8} */
         const flags = data[4];
-        if (size === 0) return [];
-        const hasLiteralTree = OpCodes.AndN(flags, 1) !== 0;
-        const is8kDictionary = OpCodes.AndN(flags, 2) !== 0;
-        return this._decode(data.slice(5), size, hasLiteralTree, is8kDictionary);
+        if (size === 0) {
+          /** @type {uint8[]} */
+          const empty = [];
+          return empty;
+        }
+        /** @type {boolean} */
+        const hasLiteralTree = OpCodes.And32(flags, 1) !== 0;
+        /** @type {boolean} */
+        const is8kDictionary = OpCodes.And32(flags, 2) !== 0;
+        /** @type {uint8[]} */
+        const decoded = this._decode(data.slice(5), size, hasLiteralTree, is8kDictionary);
+        return decoded;
       }
     }
 
