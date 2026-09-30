@@ -55,153 +55,251 @@
 
   // ===== NUMBER THEORY UTILITIES FOR RABIN-WILLIAMS =====
 
-  const NumberTheory = {
+  /**
+   * The Bezout coefficients of a and b alongside their gcd.
+   */
+  class ExtendedGcdResult {
     /**
-     * Extended Euclidean algorithm: find x, y such that ax + by = gcd(a,b)
-     * @param {BigInt} a - First number
-     * @param {BigInt} b - Second number
-     * @returns {Object} {gcd, x, y}
+     * @param {BigInt} gcd - gcd(a, b)
+     * @param {BigInt} x - coefficient of a
+     * @param {BigInt} y - coefficient of b
      */
-    extendedGcd: function(a, b) {
-      let oldR = a;
-      let r = b;
-      let oldS = 1n;
-      let s = 0n;
-      let oldT = 0n;
-      let t = 1n;
+    constructor(gcd, x, y) {
+      /** @type {BigInt} */
+      this.gcd = gcd;
+      /** @type {BigInt} */
+      this.x = x;
+      /** @type {BigInt} */
+      this.y = y;
+    }
+  }
 
-      while (r !== 0n) {
-        const quotient = oldR / r;
-        let tmp = oldR - quotient * r;
-        oldR = r;
-        r = tmp;
-        tmp = oldS - quotient * s;
-        oldS = s;
-        s = tmp;
-        tmp = oldT - quotient * t;
-        oldT = t;
-        t = tmp;
+  /**
+   * Extended Euclidean algorithm: find x, y such that ax + by = gcd(a,b)
+   * @param {BigInt} a - First number
+   * @param {BigInt} b - Second number
+   * @returns {ExtendedGcdResult} {gcd, x, y}
+   */
+  function extendedGcd(a, b) {
+    /** @type {BigInt} */
+    let oldR = a;
+    /** @type {BigInt} */
+    let r = b;
+    /** @type {BigInt} */
+    let oldS = 1n;
+    /** @type {BigInt} */
+    let s = 0n;
+    /** @type {BigInt} */
+    let oldT = 0n;
+    /** @type {BigInt} */
+    let t = 1n;
+
+    while (r !== 0n) {
+      const quotient = oldR / r;
+      let tmp = oldR - quotient * r;
+      oldR = r;
+      r = tmp;
+      tmp = oldS - quotient * s;
+      oldS = s;
+      s = tmp;
+      tmp = oldT - quotient * t;
+      oldT = t;
+      t = tmp;
+    }
+
+    return new ExtendedGcdResult(oldR, oldS, oldT);
+  }
+
+  /**
+   * Modular multiplicative inverse using extended Euclidean algorithm
+   * @param {BigInt} a - Number to invert
+   * @param {BigInt} m - Modulus
+   * @returns {BigInt} Inverse of a mod m
+   * @throws {Error} If a is not invertible modulo m
+   */
+  function modInverse(a, m) {
+    const result = extendedGcd(((a % m) + m) % m, m);
+    if (result.gcd !== 1n) {
+      throw new Error('Modular inverse does not exist');
+    }
+    return ((result.x % m) + m) % m;
+  }
+
+  /**
+   * Modular exponentiation: compute (base^exp) mod m efficiently
+   * @param {BigInt} base - Base value
+   * @param {BigInt} exp - Exponent
+   * @param {BigInt} m - Modulus
+   * @returns {BigInt} (base^exp) mod m
+   */
+  function modExp(base, exp, m) {
+    if (m === 1n) {
+      return 0n;
+    }
+
+    /** @type {BigInt} */
+    let result = 1n;
+    let b = ((base % m) + m) % m;
+    let e = exp;
+
+    while (e > 0n) {
+      if (e % 2n === 1n) {
+        result = (result * b) % m;
       }
+      e = e / 2n;
+      b = (b * b) % m;
+    }
 
-      return { gcd: oldR, x: oldS, y: oldT };
-    },
+    return result;
+  }
 
-    /**
-     * Modular multiplicative inverse using extended Euclidean algorithm
-     * @param {BigInt} a - Number to invert
-     * @param {BigInt} m - Modulus
-     * @returns {BigInt} Inverse of a mod m
-     * @throws {Error} If a is not invertible modulo m
-     */
-    modInverse: function(a, m) {
-      const result = this.extendedGcd(((a % m) + m) % m, m);
-      if (result.gcd !== 1n) {
-        throw new Error('Modular inverse does not exist');
-      }
-      return ((result.x % m) + m) % m;
-    },
+  /**
+   * Legendre/Jacobi symbol (a/n) for odd positive n
+   * @param {BigInt} a - Upper value
+   * @param {BigInt} n - Lower value, odd and positive
+   * @returns {int32} -1, 0 or 1
+   */
+  function jacobi(a, n) {
+    if (n <= 0n || n % 2n === 0n) {
+      throw new Error('Jacobi symbol: n must be odd and positive');
+    }
 
-    /**
-     * Modular exponentiation: compute (base^exp) mod m efficiently
-     * @param {BigInt} base - Base value
-     * @param {BigInt} exp - Exponent
-     * @param {BigInt} m - Modulus
-     * @returns {BigInt} (base^exp) mod m
-     */
-    modExp: function(base, exp, m) {
-      if (m === 1n) return 0n;
+    /** @type {BigInt} */
+    let top = ((a % n) + n) % n;
+    /** @type {BigInt} */
+    let bottom = n;
+    let result = 1;
 
-      let result = 1n;
-      let b = ((base % m) + m) % m;
-      let e = exp;
-
-      while (e > 0n) {
-        if (e % 2n === 1n) {
-          result = (result * b) % m;
-        }
-        e = e / 2n;
-        b = (b * b) % m;
-      }
-
-      return result;
-    },
-
-    /**
-     * Legendre/Jacobi symbol (a/n) for odd positive n
-     * @param {BigInt} a - Upper value
-     * @param {BigInt} n - Lower value, odd and positive
-     * @returns {number} -1, 0 or 1
-     */
-    jacobi: function(a, n) {
-      if (n <= 0n || n % 2n === 0n) {
-        throw new Error('Jacobi symbol: n must be odd and positive');
-      }
-
-      let top = ((a % n) + n) % n;
-      let bottom = n;
-      let result = 1;
-
-      while (top !== 0n) {
-        while (top % 2n === 0n) {
-          top = top / 2n;
-          const mod8 = bottom % 8n;
-          if (mod8 === 3n || mod8 === 5n) {
-            result = -result;
-          }
-        }
-
-        const swap = top;
-        top = bottom;
-        bottom = swap;
-
-        if (top % 4n === 3n && bottom % 4n === 3n) {
+    while (top !== 0n) {
+      while (top % 2n === 0n) {
+        top = top / 2n;
+        const mod8 = bottom % 8n;
+        if (mod8 === 3n || mod8 === 5n) {
           result = -result;
         }
-
-        top = top % bottom;
       }
 
-      return bottom === 1n ? result : 0;
-    },
+      const swap = top;
+      top = bottom;
+      bottom = swap;
 
-    /**
-     * Chinese Remainder Theorem, Crypto++ form
-     * x = xq + q * ((xp - xq) * u mod p)
-     * @param {BigInt} xp - x mod p
-     * @param {BigInt} p - First prime modulus
-     * @param {BigInt} xq - x mod q
-     * @param {BigInt} q - Second prime modulus
-     * @param {BigInt} u - Precomputed q^(-1) mod p
-     * @returns {BigInt} Solution x modulo p*q
-     */
-    crt: function(xp, p, xq, q, u) {
-      const diff = ((xp - xq) % p + p) % p;
-      const mult = (diff * u) % p;
-      return xq + q * mult;
-    },
+      if (top % 4n === 3n && bottom % 4n === 3n) {
+        result = -result;
+      }
 
-    /**
-     * Square root modulo a prime congruent to 3 modulo 4
-     * @param {BigInt} a - Quadratic residue
-     * @param {BigInt} prime - Prime congruent 3 modulo 4
-     * @returns {BigInt} A square root of a modulo prime
-     */
-    squareRoot3Mod4: function(a, prime) {
-      return this.modExp(a, (prime + 1n) / 4n, prime);
-    },
-
-    /**
-     * Draw a random integer in [min, max]
-     * @param {BigInt} min - Lower bound, inclusive
-     * @param {BigInt} max - Upper bound, inclusive
-     * @returns {BigInt} Random value in range
-     */
-    randomBigInt: function(min, max) {
-      const range = max - min + 1n;
-      const octets = Math.ceil(range.toString(16).length / 2) + 8;
-      return min + (OS2IP(randomBytes(octets)) % range);
+      top = top % bottom;
     }
+
+    return bottom === 1n ? result : 0;
+  }
+
+  /**
+   * Chinese Remainder Theorem, Crypto++ form
+   * x = xq + q * ((xp - xq) * u mod p)
+   * @param {BigInt} xp - x mod p
+   * @param {BigInt} p - First prime modulus
+   * @param {BigInt} xq - x mod q
+   * @param {BigInt} q - Second prime modulus
+   * @param {BigInt} u - Precomputed q^(-1) mod p
+   * @returns {BigInt} Solution x modulo p*q
+   */
+  function crt(xp, p, xq, q, u) {
+    const diff = ((xp - xq) % p + p) % p;
+    const mult = (diff * u) % p;
+    return xq + q * mult;
+  }
+
+  /**
+   * Square root modulo a prime congruent to 3 modulo 4
+   * @param {BigInt} a - Quadratic residue
+   * @param {BigInt} prime - Prime congruent 3 modulo 4
+   * @returns {BigInt} A square root of a modulo prime
+   */
+  function squareRoot3Mod4(a, prime) {
+    return modExp(a, (prime + 1n) / 4n, prime);
+  }
+
+  /**
+   * Draw a random integer in [min, max]
+   * @param {BigInt} min - Lower bound, inclusive
+   * @param {BigInt} max - Upper bound, inclusive
+   * @returns {BigInt} Random value in range
+   */
+  function randomBigInt(min, max) {
+    const range = max - min + 1n;
+    /** @type {string} */
+    const rangeHex = range.toString(16);
+    const octets = Math.ceil(rangeHex.length / 2) + 8;
+    return min + (OS2IP(randomBytes(octets)) % range);
+  }
+
+  // The number theory above, under the names this module has always exported.
+  const NumberTheory = {
+    extendedGcd: extendedGcd,
+    modInverse: modInverse,
+    modExp: modExp,
+    jacobi: jacobi,
+    crt: crt,
+    squareRoot3Mod4: squareRoot3Mod4,
+    randomBigInt: randomBigInt
   };
+
+  /**
+   * One of the four tweaked message representatives.
+   */
+  class TweakCandidate {
+    /**
+     * @param {BigInt} value - the tweaked representative
+     * @param {int32} tweak - one of the TWEAK_ constants
+     */
+    constructor(value, tweak) {
+      /** @type {BigInt} */
+      this.value = value;
+      /** @type {int32} */
+      this.tweak = tweak;
+    }
+  }
+
+  /**
+   * A Rabin-Williams public key.
+   */
+  class RWPublicKey {
+    /**
+     * @param {BigInt} n - modulus p * q
+     * @param {int32} keySize - modulus size in bits
+     */
+    constructor(n, keySize) {
+      /** @type {BigInt} */
+      this.n = n;
+      /** @type {int32} */
+      this.keySize = keySize;
+    }
+  }
+
+  /**
+   * A Rabin-Williams private key.
+   */
+  class RWPrivateKey {
+    /**
+     * @param {BigInt} n - modulus p * q
+     * @param {BigInt} p - prime, 3 mod 8
+     * @param {BigInt} q - prime, 7 mod 8
+     * @param {BigInt} u - q^-1 mod p
+     * @param {int32} keySize - modulus size in bits
+     */
+    constructor(n, p, q, u, keySize) {
+      /** @type {BigInt} */
+      this.n = n;
+      /** @type {BigInt} */
+      this.p = p;
+      /** @type {BigInt} */
+      this.q = q;
+      /** @type {BigInt} */
+      this.u = u;
+      /** @type {int32} */
+      this.keySize = keySize;
+    }
+  }
 
   // ===== INTEGER / OCTET-STRING PRIMITIVES =====
 
@@ -211,9 +309,12 @@
    * @returns {BigInt} Parsed value
    */
   function hexToBigInt(hex) {
+    /** @type {BigInt} */
     let value = 0n;
     for (let i = 0; i < hex.length; ++i) {
-      value = value * 16n + BigInt(parseInt(hex.charAt(i), 16));
+      /** @type {int32} */
+      const digit = parseInt(hex.charAt(i), 16);
+      value = value * 16n + BigInt(digit);
     }
     return value;
   }
@@ -224,6 +325,7 @@
    * @returns {BigInt} Corresponding integer
    */
   function OS2IP(octets) {
+    /** @type {BigInt} */
     let value = 0n;
     for (let i = 0; i < octets.length; ++i) {
       value = value * 256n + BigInt(octets[i]);
@@ -238,7 +340,7 @@
    * needs fewer than xLen octets is left-padded rather than shortened.
    *
    * @param {BigInt} value - Integer to convert
-   * @param {number} xLen - Intended length of the octet string
+   * @param {int32} xLen - Intended length of the octet string
    * @returns {uint8[]} Big-endian octet string of exactly xLen bytes
    */
   function I2OSP(value, xLen) {
@@ -246,10 +348,13 @@
       throw new Error('I2OSP: integer must be non-negative');
     }
 
+    /** @type {uint8[]} */
     const octets = new Array(xLen);
     let remaining = value;
     for (let i = xLen - 1; i >= 0; --i) {
-      octets[i] = Number(remaining % 256n);
+      /** @type {uint8} */
+      const octet = Number(remaining % 256n);
+      octets[i] = octet;
       remaining = remaining / 256n;
     }
 
@@ -263,7 +368,7 @@
   /**
    * Collect cryptographically strong random bytes, falling back to a weaker
    * source only where no such generator exists.
-   * @param {number} count - Number of bytes required
+   * @param {int32} count - Number of bytes required
    * @returns {uint8[]} Random bytes
    */
   function randomBytes(count) {
@@ -288,6 +393,7 @@
       }
     }
 
+    /** @type {uint8[]} */
     const result = new Array(count);
     for (let i = 0; i < count; ++i) {
       result[i] = buffer[i];
@@ -309,7 +415,7 @@
   /**
    * Wrap a message in a recoverable encoded block.
    * @param {uint8[]} message - Message octets
-   * @param {number} emLen - Width of the encoded block
+   * @param {int32} emLen - Width of the encoded block
    * @returns {uint8[]} Encoded block of exactly emLen octets
    */
   function encodeForRecovery(message, emLen) {
@@ -318,7 +424,9 @@
       throw new Error('Rabin-Williams: message too long (' + message.length + ' bytes, maximum ' + capacity + ')');
     }
 
-    const block = new Array(emLen).fill(0x00);
+    /** @type {uint8[]} */
+    const block = new Array(emLen);
+    block.fill(0x00);
     block[0] = HEADER_OCTET;
 
     const offset = emLen - 3 - message.length;
@@ -350,6 +458,7 @@
       throw new Error('Rabin-Williams: verification failed - recovered length out of range');
     }
 
+    /** @type {int32} */
     const offset = emLen - 3 - length;
     for (let i = 1; i < offset; ++i) {
       if (block[i] !== 0x00) {
@@ -372,44 +481,52 @@
   // and checked to satisfy n = p * q with both factors prime, p congruent 3 and
   // q congruent 7 modulo 8 (hence n congruent 5 modulo 8), and u * q congruent
   // to 1 modulo p.
-  const RW_KEYS = {
-    1024: {
-      n: 'adb1b8740daa87df2f698c394fcdaf981b41fc25ea57077d5b109bd0e60f9c92' +
-         'e27a7bae324a9a399dbf651bfd1740a1f03e62aa048bffe39abc68a9357e5674' +
-         '21e43e0568b9cac6cdf92203d0603ccd678534daae092aafd76b6119d9155fec' +
-         'c214f218c87374bb70bfb4a915416e1698ae10d6ff438a040ab96bf6ba1469e5',
-      p: 'cfda4e5ea1269176e3ea66266ad8c0fbcd93ebcf070a1320da0379c0cb946972' +
-         '5b26afbba47a47213de7934cdc4a6ece9250f7d0a713e0ea9d79424c4f2bdf43',
-      q: 'd5edcf17b3d0352748258c34733097f10a29763a20d2fe4dbab17a181836f541' +
-         '1c887fe46e8076d9fa107cb6938606979612c245c546fe1dba12a37790095bb7',
-      u: 'a82864c46c48222395d6cb8acbe6ccdcb6b52a32fd8aa021c7aa15c66ec3ea30' +
-         '44f36ac065f4135614d9ada891a3b559814ea446d2f3b8ab24f31cb12c2b7def'
-    },
-    2048: {
-      n: '825758bf1705a3fe81421397e937c64d2aa981991aeb59e2092415dd8a15e27f' +
-         '49269f8ebc420b824baf27ac086835fae576ffbedaca609c1e2be12ed3c7cb72' +
-         '92af71444340c78858845f37bc8907b541338aad2c76fe3ff285570d13e353ad' +
-         '300a1a7b1325b76855a6bef899a0c215ec9df6488eade860527833357f4f6c5a' +
-         '20621fb82ccae10f5079fdeaeee818e88577cd2ba330de9ca3234dbe3234046f' +
-         '2ee660703c0270659d28112e453feda7d632c391e4f552c40bce5bf95c2033fd' +
-         'fbb577c4b16a78be0f4e44a86a7b3a17e7182d8ed0c8c82b2653cabd3c0515fd' +
-         '38c6d47e62d5acf46e4257edf3473cafce62d9c5198f04a3ea67e93c7aa6d82d',
-      p: 'fe2f04d56b682d13e4582a0dba751e1528b5c195444412924ce452c7f3a29f9d' +
-         '5e499c10d6cd18741d90abe7273e109f7ba957dfadcaf882f2058ca5b83ec997' +
-         '802311904e556bb1c7c7d96750a408ff10fedfef25cbae2096c7003e0c9d62ec' +
-         '619cdfc978894b1e5c98a42b3f2f6fb5cbcdb4a6a79fb48959dc1b532a1cec3b',
-      q: '8345c804e09e8e5cf6aca689a6a24ff2372448e8d5c98a87887dee9384169fe0' +
-         'b301cbee6d3336a076b450b5bf3e05a3a5ccd14ee4718a1676634a6fe5887618' +
-         '46c314effd33eddb7ca5e01915ab9e5ae03541a5356e7e5798e878f0ab724eff' +
-         '676122591a24070667f416e4985fd21f89fae90a34674095058f19e4b0004eb7',
-      u: '8987fac81313f74981c2530278b69c167deba160ee32533f4f3682005e3fd211' +
-         '79d4e84b8a80f3e18ab8ffaf8f1ba7c3a293a892e59f325ceda8e2ba91115618' +
-         '567d6ce54fbc83025d058c4979ffe8e1560912c6515f3308cc1c5e28e0b5dc70' +
-         'eaaf8a173dca14292a370c9cb593ba62198432eea6acf96ff4019afa476a4838'
-    }
-  };
-
+  /** @type {int32[]} */
   const SUPPORTED_KEY_SIZES = [1024, 2048];
+
+  // Key columns, one entry per size of SUPPORTED_KEY_SIZES.
+  /** @type {string[]} */
+  const RW_KEYS_N = [
+    'adb1b8740daa87df2f698c394fcdaf981b41fc25ea57077d5b109bd0e60f9c92' +
+    'e27a7bae324a9a399dbf651bfd1740a1f03e62aa048bffe39abc68a9357e5674' +
+    '21e43e0568b9cac6cdf92203d0603ccd678534daae092aafd76b6119d9155fec' +
+    'c214f218c87374bb70bfb4a915416e1698ae10d6ff438a040ab96bf6ba1469e5',
+    '825758bf1705a3fe81421397e937c64d2aa981991aeb59e2092415dd8a15e27f' +
+    '49269f8ebc420b824baf27ac086835fae576ffbedaca609c1e2be12ed3c7cb72' +
+    '92af71444340c78858845f37bc8907b541338aad2c76fe3ff285570d13e353ad' +
+    '300a1a7b1325b76855a6bef899a0c215ec9df6488eade860527833357f4f6c5a' +
+    '20621fb82ccae10f5079fdeaeee818e88577cd2ba330de9ca3234dbe3234046f' +
+    '2ee660703c0270659d28112e453feda7d632c391e4f552c40bce5bf95c2033fd' +
+    'fbb577c4b16a78be0f4e44a86a7b3a17e7182d8ed0c8c82b2653cabd3c0515fd' +
+    '38c6d47e62d5acf46e4257edf3473cafce62d9c5198f04a3ea67e93c7aa6d82d'
+  ];
+  /** @type {string[]} */
+  const RW_KEYS_P = [
+    'cfda4e5ea1269176e3ea66266ad8c0fbcd93ebcf070a1320da0379c0cb946972' +
+    '5b26afbba47a47213de7934cdc4a6ece9250f7d0a713e0ea9d79424c4f2bdf43',
+    'fe2f04d56b682d13e4582a0dba751e1528b5c195444412924ce452c7f3a29f9d' +
+    '5e499c10d6cd18741d90abe7273e109f7ba957dfadcaf882f2058ca5b83ec997' +
+    '802311904e556bb1c7c7d96750a408ff10fedfef25cbae2096c7003e0c9d62ec' +
+    '619cdfc978894b1e5c98a42b3f2f6fb5cbcdb4a6a79fb48959dc1b532a1cec3b'
+  ];
+  /** @type {string[]} */
+  const RW_KEYS_Q = [
+    'd5edcf17b3d0352748258c34733097f10a29763a20d2fe4dbab17a181836f541' +
+    '1c887fe46e8076d9fa107cb6938606979612c245c546fe1dba12a37790095bb7',
+    '8345c804e09e8e5cf6aca689a6a24ff2372448e8d5c98a87887dee9384169fe0' +
+    'b301cbee6d3336a076b450b5bf3e05a3a5ccd14ee4718a1676634a6fe5887618' +
+    '46c314effd33eddb7ca5e01915ab9e5ae03541a5356e7e5798e878f0ab724eff' +
+    '676122591a24070667f416e4985fd21f89fae90a34674095058f19e4b0004eb7'
+  ];
+  /** @type {string[]} */
+  const RW_KEYS_U = [
+    'a82864c46c48222395d6cb8acbe6ccdcb6b52a32fd8aa021c7aa15c66ec3ea30' +
+    '44f36ac065f4135614d9ada891a3b559814ea446d2f3b8ab24f31cb12c2b7def',
+    '8987fac81313f74981c2530278b69c167deba160ee32533f4f3682005e3fd211' +
+    '79d4e84b8a80f3e18ab8ffaf8f1ba7c3a293a892e59f325ceda8e2ba91115618' +
+    '567d6ce54fbc83025d058c4979ffe8e1560912c6515f3308cc1c5e28e0b5dc70' +
+    'eaaf8a173dca14292a370c9cb593ba62198432eea6acf96ff4019afa476a4838'
+  ];
 
   // Tweak codes transmitted with the root. Each names one of the four ways the
   // message representative x relates to u = s^2 mod n.
@@ -423,34 +540,44 @@
    * used across this collection are accepted: decimal digits in ASCII, and a
    * big-endian 16-bit count of bits.
    * @param {uint8[]|string|number} keyData - Key selector
-   * @returns {number} Key size in bits
+   * @returns {int32} Key size in bits
    */
   function parseKeySize(keyData) {
     if (typeof keyData === 'number') {
-      return keyData;
+      /** @type {int32} */
+      const bits = keyData;
+      return bits;
     }
 
     if (typeof keyData === 'string') {
-      return parseInt(keyData, 10);
+      /** @type {string} */
+      const text = keyData;
+      /** @type {int32} */
+      const parsed = parseInt(text, 10);
+      return parsed;
     }
 
     if (keyData && typeof keyData.length === 'number') {
+      /** @type {uint8[]} */
+      const bytes = keyData;
       let digits = '';
-      let allDigits = keyData.length > 0;
-      for (let i = 0; i < keyData.length; ++i) {
-        if (keyData[i] < 0x30 || keyData[i] > 0x39) {
+      let allDigits = bytes.length > 0;
+      for (let i = 0; i < bytes.length; ++i) {
+        if (bytes[i] < 0x30 || bytes[i] > 0x39) {
           allDigits = false;
           break;
         }
-        digits += String.fromCharCode(keyData[i]);
+        digits += String.fromCharCode(bytes[i]);
       }
 
       if (allDigits) {
-        return parseInt(digits, 10);
+        /** @type {int32} */
+        const size = parseInt(digits, 10);
+        return size;
       }
 
-      if (keyData.length >= 2) {
-        return OpCodes.Pack16BE(keyData[0], keyData[1]);
+      if (bytes.length >= 2) {
+        return OpCodes.Pack16BE(bytes[0], bytes[1]);
       }
     }
 
@@ -566,21 +693,28 @@
   class RabinWilliamsInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {RabinWilliamsSignature} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Verification mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {int32} */
       this.keySize = 1024;
+      /** @type {RWPublicKey|null} */
       this._publicKey = null;
+      /** @type {RWPrivateKey|null} */
       this._privateKey = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       this._keyData = null;
     }
 
     // Property setters/getters for compatibility
+    /**
+     * @param {uint8[]} keyData - Key size selector (see parseKeySize)
+     */
     set key(keyData) {
       this.KeySetup(keyData);
     }
@@ -594,23 +728,39 @@
       return this._keyData;
     }
 
+    /**
+     * @param {RWPublicKey|null} keyData - public key
+     */
     set publicKey(keyData) {
       this._publicKey = keyData ? keyData : null;
     }
 
+    /**
+     * @returns {RWPublicKey|null} current public key
+     */
     get publicKey() {
       return this._publicKey;
     }
 
+    /**
+     * @param {RWPrivateKey|null} keyData - private key
+     */
     set privateKey(keyData) {
       this._privateKey = keyData ? keyData : null;
     }
 
+    /**
+     * @returns {RWPrivateKey|null} current private key
+     */
     get privateKey() {
       return this._privateKey;
     }
 
     // Initialize Rabin-Williams with specified key size
+    /**
+     * @param {int32} keySize - modulus size in bits
+     * @returns {boolean} true once the size is accepted
+     */
     Init(keySize) {
       if (!SUPPORTED_KEY_SIZES.includes(keySize)) {
         throw new Error('Rabin-Williams: no demonstration key of ' + keySize + ' bits. Use ' + SUPPORTED_KEY_SIZES.join(' or ') + ', or set publicKey/privateKey directly.');
@@ -628,7 +778,9 @@
 
     Feed(data) {
       if (typeof data === 'string') {
-        for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data.charCodeAt(i) % 256);
+        /** @type {string} */
+        const text = data;
+        for (let i = 0; i < text.length; ++i) this.inputBuffer.push(text.charCodeAt(i) % 256);
       } else if (data && typeof data.length === 'number') {
         for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data[i]);
       } else {
@@ -645,7 +797,9 @@
 
     Result() {
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
       try {
@@ -653,41 +807,39 @@
           ? this._verify(this.inputBuffer)
           : this._sign(this.inputBuffer);
 
-        this.inputBuffer = [];
         return result;
-      } catch (error) {
+      } finally {
         this.inputBuffer = [];
-        throw error;
       }
     }
 
     // Set up keys
+    /**
+     * @param {uint8[]} keyData - Key size selector (see parseKeySize)
+     */
     KeySetup(keyData) {
       this._keyData = keyData;
 
       this.Init(parseKeySize(keyData));
 
-      const material = RW_KEYS[this.keySize];
-      const n = hexToBigInt(material.n);
+      const index = SUPPORTED_KEY_SIZES.indexOf(this.keySize);
+      const n = hexToBigInt(RW_KEYS_N[index]);
 
-      this._publicKey = {
-        n: n,
-        keySize: this.keySize
-      };
+      this._publicKey = new RWPublicKey(n, this.keySize);
 
-      this._privateKey = {
-        n: n,
-        p: hexToBigInt(material.p),
-        q: hexToBigInt(material.q),
-        u: hexToBigInt(material.u),
-        keySize: this.keySize
-      };
+      this._privateKey = new RWPrivateKey(
+        n,
+        hexToBigInt(RW_KEYS_P[index]),
+        hexToBigInt(RW_KEYS_Q[index]),
+        hexToBigInt(RW_KEYS_U[index]),
+        this.keySize
+      );
     }
 
     /**
      * Number of octets in the modulus.
      * @param {BigInt} n - Modulus
-     * @returns {number} Octet length
+     * @returns {int32} Octet length
      */
     _modulusLength(n) {
       let octets = 0;
@@ -703,11 +855,11 @@
      * The public function: reconstruct the message representative from a root
      * and the tweak that accompanied it.
      * @param {BigInt} s - Signature root
-     * @param {number} tweak - One of the TWEAK_ constants
+     * @param {int32} tweak - One of the TWEAK_ constants
      * @returns {BigInt} Message representative x
      */
     _applyFunction(s, tweak) {
-      const { n } = this._publicKey;
+      const n = this._publicKey.n;
       const u = (s * s) % n;
 
       switch (tweak) {
@@ -741,7 +893,10 @@
         throw new Error('Rabin-Williams private key not set. Assign a key first.');
       }
 
-      const { n, p, q, u } = this._privateKey;
+      const n = this._privateKey.n;
+      const p = this._privateKey.p;
+      const q = this._privateKey.q;
+      const u = this._privateKey.u;
       const k = this._modulusLength(n);
 
       const x = OS2IP(encodeForRecovery(message, k - 1));
@@ -750,18 +905,20 @@
       }
 
       // Pick the candidate that is a square modulo both primes
-      const halfOfN = NumberTheory.modInverse(2n, n);
+      const halfOfN = modInverse(2n, n);
+      /** @type {TweakCandidate[]} */
       const candidates = [
-        { value: x, tweak: TWEAK_PLAIN },
-        { value: (n - x) % n, tweak: TWEAK_NEGATED },
-        { value: (x * halfOfN) % n, tweak: TWEAK_DOUBLED },
-        { value: ((n - x) % n * halfOfN) % n, tweak: TWEAK_NEG_DOUBLED }
+        new TweakCandidate(x, TWEAK_PLAIN),
+        new TweakCandidate((n - x) % n, TWEAK_NEGATED),
+        new TweakCandidate((x * halfOfN) % n, TWEAK_DOUBLED),
+        new TweakCandidate(((n - x) % n * halfOfN) % n, TWEAK_NEG_DOUBLED)
       ];
 
+      /** @type {TweakCandidate|null} */
       let chosen = null;
       for (let i = 0; i < candidates.length; ++i) {
         const value = candidates[i].value;
-        if (NumberTheory.jacobi(value, p) === 1 && NumberTheory.jacobi(value, q) === 1) {
+        if (jacobi(value, p) === 1 && jacobi(value, q) === 1) {
           chosen = candidates[i];
           break;
         }
@@ -773,12 +930,14 @@
 
       // Blinding: work on w * r^2 and divide the root by r afterwards. The
       // blinding factor is a square, so it changes neither Jacobi symbol.
+      /** @type {BigInt} */
       let blind;
+      /** @type {BigInt} */
       let blindInverse;
       for (;;) {
-        blind = NumberTheory.randomBigInt(1n, n - 1n);
+        blind = randomBigInt(1n, n - 1n);
         try {
-          blindInverse = NumberTheory.modInverse(blind, n);
+          blindInverse = modInverse(blind, n);
           break;
         } catch (e) {
           // blind shares a factor with n; draw again
@@ -788,15 +947,22 @@
       const blinded = (chosen.value * ((blind * blind) % n)) % n;
 
       // Square roots modulo each prime, both congruent 3 modulo 4
-      const rootP = NumberTheory.squareRoot3Mod4(blinded % p, p);
-      const rootQ = NumberTheory.squareRoot3Mod4(blinded % q, q);
+      const rootP = squareRoot3Mod4(blinded % p, p);
+      const rootQ = squareRoot3Mod4(blinded % q, q);
 
       // All four roots modulo n, unblinded. Taking the smallest makes the
       // signature canonical, so it does not depend on the blinding factor.
+      /** @type {BigInt[]} */
+      const rootsP = [rootP, (p - rootP) % p];
+      /** @type {BigInt[]} */
+      const rootsQ = [rootQ, (q - rootQ) % q];
+      /** @type {BigInt|null} */
       let root = null;
-      for (const signP of [rootP, (p - rootP) % p]) {
-        for (const signQ of [rootQ, (q - rootQ) % q]) {
-          const combined = NumberTheory.crt(signP, p, signQ, q, u) % n;
+      for (let a = 0; a < rootsP.length; ++a) {
+        const signP = rootsP[a];
+        for (let b = 0; b < rootsQ.length; ++b) {
+          const signQ = rootsQ[b];
+          const combined = crt(signP, p, signQ, q, u) % n;
           const unblinded = (combined * blindInverse) % n;
           if (root === null || unblinded < root) {
             root = unblinded;
@@ -824,7 +990,7 @@
         throw new Error('Rabin-Williams public key not set. Assign a key first.');
       }
 
-      const { n } = this._publicKey;
+      const n = this._publicKey.n;
       const k = this._modulusLength(n);
 
       if (signature.length !== k + 1) {
