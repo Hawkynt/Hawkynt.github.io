@@ -733,7 +733,7 @@
       let matrixMemory = 0;
       if (this.A) {
         /** @type {int32} */
-        const entries = this.A.data.size;
+        const entries = this.A.nonZeroCount();
         matrixMemory = entries * 16; // Approximate bytes per entry
       }
       /** @type {int32} */
