@@ -155,13 +155,21 @@
 
       // Standard turbo code configuration (LTE-like)
       // K=4 constraint length, rate 1/3
+      /** @type {int32} */
       this._constraintLength = 4;
+      /** @type {uint32} */
       this._generator1 = 0b1101; // 13 octal - feedback polynomial
+      /** @type {uint32} */
       this._generator2 = 0b1111; // 15 octal - feedforward polynomial
+      /** @type {int32} */
       this._iterations = 6; // Iterative decoding iterations
+      /** @type {int32[]} */
       this._interleaver = null; // Will be generated based on input length
     }
 
+    /**
+     * @param {int32} value - Decoder iterations (1..20)
+     */
     set iterations(value) {
       if (value < 1 || value > 20) {
         throw new Error('TurboCodeInstance.iterations: Must be between 1 and 20');
@@ -169,6 +177,9 @@
       this._iterations = value;
     }
 
+    /**
+     * @returns {int32} Decoder iterations
+     */
     get iterations() {
       return this._iterations;
     }
@@ -217,30 +228,40 @@
       // Turbo encoding: parallel concatenation of two RSC encoders
       // Output format: [systematic bits, parity1 bits, parity2 bits]
       const n = data.length;
-      const systematic = [...data];
+      /** @type {uint8[]} */
+      const systematic = data.slice();
 
       // Generate interleaver for this block size
       this._interleaver = this.generateInterleaver(n);
 
       // First RSC encoder (no interleaving)
+      /** @type {uint8[]} */
       const parity1 = this.rscEncode(data);
 
       // Interleave input for second encoder
+      /** @type {uint8[]} */
       const interleaved = this.interleave(data, this._interleaver);
 
       // Second RSC encoder (with interleaving)
+      /** @type {uint8[]} */
       const parity2 = this.rscEncode(interleaved);
 
       // Combine into rate 1/3 output: systematic + parity1 + parity2
       /** @type {uint8[]} */
       const encoded = [];
       for (let i = 0; i < n; ++i) {
-        encoded.push(systematic[i], parity1[i], parity2[i]);
+        encoded.push(systematic[i]);
+        encoded.push(parity1[i]);
+        encoded.push(parity2[i]);
       }
 
       return encoded;
     }
 
+    /**
+     * @param {uint8[]} data - Input bits
+     * @returns {uint8[]} Parity bits
+     */
     rscEncode(data) {
       // Recursive Systematic Convolutional encoder
       // Using generators (13, 15) octal for K=4
@@ -248,16 +269,19 @@
       const parity = [];
       /** @type {uint32} */
       let state = 0; // K-1 = 3 bits of state
-      const stateMask = OpCodes.Shl32(1, (this._constraintLength - 1)) - 1;
+      /** @type {uint32} */
+      const stateMask = OpCodes.Sub32(OpCodes.Shl32(1, (this._constraintLength - 1)), 1);
 
       for (let i = 0; i < data.length; ++i) {
         const inputBit = OpCodes.And32(data[i], 1);
 
         // Compute parity output before state update
         const fullState = OpCodes.Or32(state, OpCodes.Shl32(inputBit, (this._constraintLength - 1)));
+        /** @type {uint32} */
         const parityBit = this.convolve(fullState, this._generator2);
 
         // Feedback through generator1
+        /** @type {uint32} */
         const feedbackBit = this.convolve(fullState, this._generator1);
 
         // Update state with feedback
@@ -269,10 +293,16 @@
       return parity;
     }
 
+    /**
+     * @param {uint32} state - Register contents
+     * @param {uint32} generator - Tap mask
+     * @returns {uint32} Parity of the tapped bits
+     */
     convolve(state, generator) {
       // XOR all bits where generator polynomial is 1
       /** @type {uint32} */
       let result = 0;
+      /** @type {uint32} */
       let temp = OpCodes.And32(state, generator);
 
       while (temp) {
@@ -283,12 +313,16 @@
       return result;
     }
 
+    /**
+     * @param {int32} length - Block length
+     * @returns {int32[]} Block-interleaver permutation
+     */
     generateInterleaver(length) {
       // Generate pseudo-random interleaver using S-random interleaver
       // For educational purposes, using simple block interleaver
       // In 3GPP LTE, QPP (Quadratic Permutation Polynomial) is used
 
-      /** @type {uint8[]} */
+      /** @type {int32[]} */
       const interleaver = [];
       const rows = Math.ceil(Math.sqrt(length));
       const cols = Math.ceil(length / rows);
@@ -306,7 +340,13 @@
       return interleaver;
     }
 
+    /**
+     * @param {uint8[]} data - Bits
+     * @param {int32[]} pattern - Permutation
+     * @returns {uint8[]} output[i] = data[pattern[i]]
+     */
     interleave(data, pattern) {
+      /** @type {uint8[]} */
       const result = new Array(data.length);
       for (let i = 0; i < pattern.length; ++i) {
         result[i] = data[pattern[i]];
@@ -314,7 +354,13 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Bits
+     * @param {int32[]} pattern - Permutation
+     * @returns {uint8[]} output[pattern[i]] = data[i]
+     */
     deinterleave(data, pattern) {
+      /** @type {uint8[]} */
       const result = new Array(data.length);
       for (let i = 0; i < pattern.length; ++i) {
         result[pattern[i]] = data[i];
@@ -322,6 +368,40 @@
       return result;
     }
 
+    /**
+     * interleave() for soft values
+     * @param {float64[]} data - Soft values
+     * @param {int32[]} pattern - Permutation
+     * @returns {float64[]} output[i] = data[pattern[i]]
+     */
+    _interleaveSoft(data, pattern) {
+      /** @type {float64[]} */
+      const result = new Array(data.length);
+      for (let i = 0; i < pattern.length; ++i) {
+        result[i] = data[pattern[i]];
+      }
+      return result;
+    }
+
+    /**
+     * deinterleave() for soft values
+     * @param {float64[]} data - Soft values
+     * @param {int32[]} pattern - Permutation
+     * @returns {float64[]} output[pattern[i]] = data[i]
+     */
+    _deinterleaveSoft(data, pattern) {
+      /** @type {float64[]} */
+      const result = new Array(data.length);
+      for (let i = 0; i < pattern.length; ++i) {
+        result[pattern[i]] = data[i];
+      }
+      return result;
+    }
+
+    /**
+     * @param {uint8[]} received - Systematic/parity1/parity2 triples
+     * @returns {uint8[]} Decoded bits
+     */
     decode(received) {
       // Simplified iterative turbo decoder
       // Full implementation would use MAP (BCJR) or SOVA algorithm
@@ -351,12 +431,15 @@
       this._interleaver = this.generateInterleaver(n);
 
       // Iterative decoding (simplified)
-      let decoded = [...systematic]; // Start with systematic bits
       /** @type {uint8[]} */
-      let extrinsic = OpCodes.CreateArray(n, 0); // Extrinsic information
+      let decoded = systematic.slice(); // Start with systematic bits
+      /** @type {float64[]} */
+      let extrinsic = []; // Extrinsic information
+      for (let i = 0; i < n; ++i) extrinsic.push(0);
 
       for (let iter = 0; iter < this._iterations; ++iter) {
         // Decoder 1: use systematic + parity1 + extrinsic from decoder 2
+        /** @type {float64[]} */
         const decoder1Output = this.simpleSISODecode(
           systematic,
           parity1,
@@ -364,15 +447,20 @@
         );
 
         // Compute extrinsic from decoder 1
-        const extrinsic1 = decoder1Output.map((val, idx) =>
-          val - systematic[idx] - extrinsic[idx]
-        );
+        /** @type {float64[]} */
+        const extrinsic1 = [];
+        for (let idx = 0; idx < decoder1Output.length; ++idx) {
+          extrinsic1.push(decoder1Output[idx] - systematic[idx] - extrinsic[idx]);
+        }
 
         // Interleave extrinsic for decoder 2
-        const interleavedExtrinsic = this.interleave(extrinsic1, this._interleaver);
+        /** @type {float64[]} */
+        const interleavedExtrinsic = this._interleaveSoft(extrinsic1, this._interleaver);
+        /** @type {uint8[]} */
         const interleavedSystematic = this.interleave(systematic, this._interleaver);
 
         // Decoder 2: use interleaved systematic + parity2 + interleaved extrinsic
+        /** @type {float64[]} */
         const decoder2Output = this.simpleSISODecode(
           interleavedSystematic,
           parity2,
@@ -380,28 +468,40 @@
         );
 
         // Compute extrinsic from decoder 2
-        const extrinsic2 = decoder2Output.map((val, idx) =>
-          val - interleavedSystematic[idx] - interleavedExtrinsic[idx]
-        );
+        /** @type {float64[]} */
+        const extrinsic2 = [];
+        for (let idx = 0; idx < decoder2Output.length; ++idx) {
+          extrinsic2.push(decoder2Output[idx] - interleavedSystematic[idx] - interleavedExtrinsic[idx]);
+        }
 
         // Deinterleave extrinsic for next iteration
-        extrinsic = this.deinterleave(extrinsic2, this._interleaver);
+        extrinsic = this._deinterleaveSoft(extrinsic2, this._interleaver);
 
         // Make hard decisions on final iteration
         if (iter === this._iterations - 1) {
-          decoded = decoder1Output.map(llr => llr > 0 ? 1 : 0);
+          /** @type {uint8[]} */
+          const hard = [];
+          for (let idx = 0; idx < decoder1Output.length; ++idx) hard.push(decoder1Output[idx] > 0 ? 1 : 0);
+          decoded = hard;
         }
       }
 
       return decoded;
     }
 
+    /**
+     * @param {uint8[]} systematic - Systematic bits
+     * @param {uint8[]} parity - Parity bits
+     * @param {float64[]} extrinsic - Extrinsic values
+     * @returns {float64[]} Log-likelihood ratios
+     */
     simpleSISODecode(systematic, parity, extrinsic) {
       // Simplified Soft-Input Soft-Output decoder
       // Educational approximation of MAP/SOVA algorithm
       // Returns log-likelihood ratios (LLRs)
 
       const n = systematic.length;
+      /** @type {float64[]} */
       const llr = new Array(n);
 
       for (let i = 0; i < n; ++i) {
@@ -411,6 +511,7 @@
         // Simple heuristic: if systematic and parity agree, high confidence
         const systematicContrib = systematic[i] ? 1 : -1;
         const parityContrib = parity[i] ? 1 : -1;
+        /** @type {float64} */
         const extrinsicContrib = extrinsic[i];
 
         // Weighted combination (simplified)
