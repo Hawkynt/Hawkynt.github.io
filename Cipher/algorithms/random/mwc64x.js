@@ -215,7 +215,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {MWC64XInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -233,8 +233,13 @@
  */
 
   class MWC64XInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {MWC64XAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // MWC64X state: 64 bits total
       // Lower 32 bits: x (state)
@@ -251,6 +256,7 @@
      * Set seed value (1-8 bytes)
      * Bytes 0-3: x (state) - little-endian 32-bit
      * Bytes 4-7: c (carry) - little-endian 32-bit (optional, defaults to 0)
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -268,6 +274,7 @@
         );
       } else {
         // For seeds < 4 bytes, pack what we have (pad with zeros)
+        /** @type {uint8[]} */
         const bytes = [0, 0, 0, 0];
         for (let i = 0; i < Math.min(seedBytes.length, 4); ++i) {
           bytes[i] = seedBytes[i];
@@ -285,6 +292,7 @@
         );
       } else if (seedBytes.length >= 5) {
         // For partial carry bytes, pack what we have
+        /** @type {uint8[]} */
         const bytes = [0, 0, 0, 0];
         for (let i = 4; i < seedBytes.length; ++i) {
           bytes[i - 4] = seedBytes[i];
@@ -297,6 +305,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -324,19 +335,24 @@
 
       // Perform 64-bit multiply-with-carry: temp = A * x + c
       // BigInt required for exact 64-bit arithmetic (no OpCodes equivalent)
+      /** @type {BigInt} */
       const temp = BigInt(this._A) * BigInt(this._x) + BigInt(this._c);
 
       // Split result: lower 32 bits = new x, upper 32 bits = new c
-      this._x = Number(OpCodes.AndN(temp, 0xFFFFFFFFn));
-      this._c = Number(OpCodes.ShiftRn(temp, 32));
+      /** @type {uint32} */
+      const newX = Number(OpCodes.AndN(temp, 0xFFFFFFFFn));
+      /** @type {uint32} */
+      const newC = Number(OpCodes.ShiftRn(temp, 32));
+      this._x = newX;
+      this._c = newC;
 
       return output;
     }
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -344,9 +360,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let bytesRemaining = length;
 
@@ -388,19 +407,23 @@
 
     Result() {
       // Use specified output size or default to 64 bytes
-      const size = this._outputSize || 64;
+      const size = (this._outputSize ? this._outputSize : 64);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 64;
+      return (this._outputSize ? this._outputSize : 64);
     }
   }
 

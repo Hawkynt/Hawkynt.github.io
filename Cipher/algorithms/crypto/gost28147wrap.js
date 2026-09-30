@@ -98,7 +98,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {GOST28147WrapInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -116,18 +116,26 @@
   class GOST28147WrapInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {GOST28147WrapAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]|null} */
       this._ukm = null; // User Keying Material (used as IV for MAC)
+      /** @type {IBlockCipherInstance|null} */
       this.gostCipherEngine = null;
+      /** @type {IMacInstance|null} */
       this.gostMacEngine = null;
+      this._cachedGOSTAlgorithm = null;
+      this._cachedGOSTMACAlgorithm = null;
     }
 
     // Property setter for key
@@ -147,20 +155,24 @@
 
       // Validate key size
       if (keyBytes.length !== 32) {
-        throw new Error(`Invalid key size: ${keyBytes.length} bytes (must be exactly 32 bytes)`);
+        throw new Error("Invalid key size: " + keyBytes.length + " bytes (must be exactly 32 bytes)");
       }
 
       this._key = [...keyBytes];
 
       // Create cipher engine for wrap/unwrap
       const GOST28147Algorithm = this._getGOST28147Algorithm();
-      this.gostCipherEngine = GOST28147Algorithm.CreateInstance(this.isInverse);
-      this.gostCipherEngine.key = keyBytes;
+      /** @type {IBlockCipherInstance} */
+      const cipherEngine = GOST28147Algorithm.CreateInstance(this.isInverse);
+      cipherEngine.key = keyBytes;
+      this.gostCipherEngine = cipherEngine;
 
       // Create MAC engine for authentication
       const GOST28147MACAlgorithm = this._getGOST28147MACAlgorithm();
-      this.gostMacEngine = GOST28147MACAlgorithm.CreateInstance(false);
-      this.gostMacEngine.key = keyBytes;
+      /** @type {IMacInstance} */
+      const macEngine = GOST28147MACAlgorithm.CreateInstance(false);
+      macEngine.key = keyBytes;
+      this.gostMacEngine = macEngine;
     }
 
     /**
@@ -172,7 +184,10 @@
       return this._key ? [...this._key] : null;
     }
 
-    // Property setter for UKM (User Keying Material - used as MAC IV)
+    /**
+     * UKM (User Keying Material - used as MAC IV)
+     * @param {uint8[]|null} ukmBytes - 8 bytes, or null to clear
+     */
     set ukm(ukmBytes) {
       if (!ukmBytes) {
         this._ukm = null;
@@ -191,6 +206,9 @@
       }
     }
 
+    /**
+     * @returns {uint8[]|null} Copy of the UKM or null
+     */
     get ukm() {
       return this._ukm ? [...this._ukm] : null;
     }
@@ -222,6 +240,7 @@
       if (!this._ukm) throw new Error("UKM not set");
       if (this.inputBuffer.length === 0) throw new Error("No data fed");
 
+      /** @type {uint8[]} */
       const result = this.isInverse
         ? this._unwrap(this.inputBuffer)
         : this._wrap(this.inputBuffer);
@@ -230,26 +249,40 @@
       return result;
     }
 
-    // GOST 28147-89 Key Wrap implementation
+    /**
+     * GOST 28147-89 Key Wrap implementation
+     * @param {uint8[]} plaintext - 32-byte key
+     * @returns {uint8[]} Encrypted key followed by the 4-byte MAC
+     */
     _wrap(plaintext) {
       // Validate input length (must be exactly 32 bytes = 4 blocks of 8 bytes)
       if (plaintext.length !== 32) {
         throw new Error("Plaintext must be exactly 32 bytes (4 blocks) for GOST 28147-89 Key Wrap");
       }
 
+      /** @type {int32} */
       const MAC_SIZE = 4;
+      /** @type {int32} */
       const BLOCK_SIZE = 8;
+      /** @type {uint8[]} */
       const wrappedKey = new Array(plaintext.length + MAC_SIZE);
+      /** @type {IMacInstance} */
+      const macEngine = this.gostMacEngine;
+      /** @type {IBlockCipherInstance} */
+      const cipherEngine = this.gostCipherEngine;
 
       // Step 1: Compute MAC over the plaintext
-      this.gostMacEngine.Feed(plaintext);
-      const macBytes = this.gostMacEngine.Result();
+      macEngine.Feed(plaintext);
+      /** @type {uint8[]} */
+      const macBytes = macEngine.Result();
 
       // Step 2: Encrypt all 4 blocks of plaintext
       for (let i = 0; i < 4; ++i) {
+        /** @type {uint8[]} */
         const block = plaintext.slice(i * BLOCK_SIZE, (i + 1) * BLOCK_SIZE);
-        this.gostCipherEngine.Feed(block);
-        const encryptedBlock = this.gostCipherEngine.Result();
+        cipherEngine.Feed(block);
+        /** @type {uint8[]} */
+        const encryptedBlock = cipherEngine.Result();
 
         // Copy encrypted block to output
         for (let j = 0; j < BLOCK_SIZE; ++j) {
@@ -265,24 +298,38 @@
       return wrappedKey;
     }
 
-    // GOST 28147-89 Key Unwrap implementation
+    /**
+     * GOST 28147-89 Key Unwrap implementation
+     * @param {uint8[]} ciphertext - Encrypted key followed by the 4-byte MAC
+     * @returns {uint8[]} 32-byte key
+     */
     _unwrap(ciphertext) {
       // Validate input length (must be exactly 36 bytes = 4 blocks + 4-byte MAC)
+      /** @type {int32} */
       const MAC_SIZE = 4;
+      /** @type {int32} */
       const BLOCK_SIZE = 8;
+      /** @type {int32} */
       const expectedLength = 32 + MAC_SIZE; // 4 blocks + MAC
 
       if (ciphertext.length !== expectedLength) {
-        throw new Error(`Ciphertext must be exactly ${expectedLength} bytes for GOST 28147-89 Key Unwrap`);
+        throw new Error("Ciphertext must be exactly " + expectedLength + " bytes for GOST 28147-89 Key Unwrap");
       }
 
+      /** @type {uint8[]} */
       const decKey = new Array(ciphertext.length - MAC_SIZE);
+      /** @type {IMacInstance} */
+      const macEngine = this.gostMacEngine;
+      /** @type {IBlockCipherInstance} */
+      const cipherEngine = this.gostCipherEngine;
 
       // Step 1: Decrypt all 4 blocks
       for (let i = 0; i < 4; ++i) {
+        /** @type {uint8[]} */
         const block = ciphertext.slice(i * BLOCK_SIZE, (i + 1) * BLOCK_SIZE);
-        this.gostCipherEngine.Feed(block);
-        const decryptedBlock = this.gostCipherEngine.Result();
+        cipherEngine.Feed(block);
+        /** @type {uint8[]} */
+        const decryptedBlock = cipherEngine.Result();
 
         // Copy decrypted block to output
         for (let j = 0; j < BLOCK_SIZE; ++j) {
@@ -291,10 +338,12 @@
       }
 
       // Step 2: Compute MAC over decrypted plaintext
-      this.gostMacEngine.Feed(decKey);
-      const macResult = this.gostMacEngine.Result();
+      macEngine.Feed(decKey);
+      /** @type {uint8[]} */
+      const macResult = macEngine.Result();
 
       // Step 3: Extract expected MAC from ciphertext (last 4 bytes)
+      /** @type {uint8[]} */
       const macExpected = ciphertext.slice(ciphertext.length - MAC_SIZE);
 
       // Step 4: Verify MAC using constant-time comparison
@@ -305,7 +354,9 @@
       return decKey;
     }
 
-    // Helper: Load GOST 28147-89 cipher with fallback strategies
+    /**
+     * Load GOST 28147-89 cipher with fallback strategies
+     */
     _getGOST28147Algorithm() {
       // Return cached instance if available
       if (this._cachedGOSTAlgorithm) {
@@ -321,18 +372,7 @@
         }
       }
 
-      // Strategy 2: Search in AlgorithmFramework registry
-      const algorithms = AlgorithmFramework.GetAll ? AlgorithmFramework.GetAll() : [];
-      const gostAlgorithm = algorithms.find(alg =>
-        alg.name === 'GOST 28147-89'
-      );
-
-      if (gostAlgorithm) {
-        this._cachedGOSTAlgorithm = gostAlgorithm;
-        return gostAlgorithm;
-      }
-
-      // Strategy 3: Try direct Find
+      // Strategy 2: Find in the AlgorithmFramework registry
       const foundAlgorithm = AlgorithmFramework.Find("GOST 28147-89");
       if (foundAlgorithm) {
         this._cachedGOSTAlgorithm = foundAlgorithm;
@@ -345,7 +385,9 @@
       );
     }
 
-    // Helper: Load GOST 28147-89 MAC with fallback strategies
+    /**
+     * Load GOST 28147-89 MAC with fallback strategies
+     */
     _getGOST28147MACAlgorithm() {
       // Return cached instance if available
       if (this._cachedGOSTMACAlgorithm) {
@@ -361,18 +403,7 @@
         }
       }
 
-      // Strategy 2: Search in AlgorithmFramework registry
-      const algorithms = AlgorithmFramework.GetAll ? AlgorithmFramework.GetAll() : [];
-      const gostMacAlgorithm = algorithms.find(alg =>
-        alg.name === 'GOST 28147-89 MAC'
-      );
-
-      if (gostMacAlgorithm) {
-        this._cachedGOSTMACAlgorithm = gostMacAlgorithm;
-        return gostMacAlgorithm;
-      }
-
-      // Strategy 3: Try direct Find
+      // Strategy 2: Find in the AlgorithmFramework registry
       const foundAlgorithm = AlgorithmFramework.Find("GOST 28147-89 MAC");
       if (foundAlgorithm) {
         this._cachedGOSTMACAlgorithm = foundAlgorithm;

@@ -44,29 +44,59 @@
   /**
    * Combination modes for combining multiple LCG outputs
    */
-  const CombinationMode = Object.freeze({
-    ADDITIVE: 0,      // Add outputs: (X1 + X2) mod 2^64
-    SUBTRACTIVE: 1,   // Subtract outputs: (X1 - X2) mod 2^64
-    MULTIPLICATIVE: 2,// Multiply outputs: (X1 * X2) mod 2^64
-    XOR: 3            // XOR outputs: X1 XOR X2
-  });
+  class CombinationModes {
+    constructor() {
+      /** @type {int32} */
+      this.ADDITIVE = 0;      // Add outputs: (X1 + X2) mod 2^64
+      /** @type {int32} */
+      this.SUBTRACTIVE = 1;   // Subtract outputs: (X1 - X2) mod 2^64
+      /** @type {int32} */
+      this.MULTIPLICATIVE = 2;// Multiply outputs: (X1 * X2) mod 2^64
+      /** @type {int32} */
+      this.XOR = 3;           // XOR outputs: X1 XOR X2
+      Object.freeze(this);
+    }
+  }
+
+  /** @type {CombinationModes} */
+  const CombinationMode = new CombinationModes();
 
   /**
    * SplitMix64 for seeding individual LCGs
    * Based on Guy L. Steele Jr. and Doug Lea's algorithm
    */
+  class SplitMixResult {
+    /**
+     * @param {BigInt} state - Advanced state
+     * @param {BigInt} value - Output
+     */
+    constructor(state, value) {
+      /** @type {BigInt} */
+      this.state = state;
+      /** @type {BigInt} */
+      this.value = value;
+    }
+  }
+
   class SplitMix64 {
-    static next(state) {
+    /**
+     * One SplitMix64 step
+     * @param {BigInt} current - State before the step
+     * @returns {SplitMixResult} Advanced state and output
+     */
+    static next(current) {
       // Add golden gamma
-      const newState = OpCodes.AndN(state + 0x9E3779B97F4A7C15n, 0xFFFFFFFFFFFFFFFFn);
+      /** @type {BigInt} */
+      const newState = OpCodes.AndN(current + 0x9E3779B97F4A7C15n, 0xFFFFFFFFFFFFFFFFn);
 
       // Mix function (Stafford variant 13)
+      /** @type {BigInt} */
       let z = newState;
       z = OpCodes.AndN(OpCodes.XorN(z, OpCodes.ShiftRn(z, 30)) * 0xBF58476D1CE4E5B9n, 0xFFFFFFFFFFFFFFFFn);
       z = OpCodes.AndN(OpCodes.XorN(z, OpCodes.ShiftRn(z, 27)) * 0x94D049BB133111EBn, 0xFFFFFFFFFFFFFFFFn);
       z = OpCodes.AndN(OpCodes.XorN(z, OpCodes.ShiftRn(z, 31)), 0xFFFFFFFFFFFFFFFFn);
 
-      return { state: newState, value: z };
+      return new SplitMixResult(newState, z);
     }
   }
 
@@ -75,14 +105,28 @@
    * X(n+1) = (a * X(n) + c) mod m
    */
   class LinearCongruentialGenerator {
+    /**
+     * @param {BigInt} multiplier - Multiplier a
+     * @param {BigInt} increment - Increment c
+     * @param {BigInt} modulo - Modulus m (0 for 2^64)
+     */
     constructor(multiplier, increment, modulo) {
+      /** @type {BigInt} */
       this._multiplier = multiplier;
+      /** @type {BigInt} */
       this._increment = increment;
+      /** @type {BigInt} */
       this._modulo = modulo;
+      /** @type {BigInt} */
       this._state = 0n;
+      /** @type {boolean} */
       this._useImplicitModulo = (modulo === 0n);
     }
 
+    /**
+     * @param {BigInt} seedValue - Initial state
+     * @returns {void}
+     */
     seed(seedValue) {
       if (!this._useImplicitModulo && this._modulo > 0n) {
         this._state = seedValue % this._modulo;
@@ -91,6 +135,9 @@
       }
     }
 
+    /**
+     * @returns {BigInt} Next state
+     */
     next() {
       if (this._useImplicitModulo) {
         // Implicit modulo 2^64 (natural BigInt overflow with masking)
@@ -100,6 +147,7 @@
         );
       } else {
         // Explicit modulo (like C# UInt128 arithmetic)
+        /** @type {BigInt} */
         const state128 = this._state * this._multiplier + this._increment;
         this._state = state128 % this._modulo;
       }
@@ -248,7 +296,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {CombinedLCGInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -266,36 +314,55 @@
  */
 
   class CombinedLCGInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {CombinedLCGAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Default combination mode: ADDITIVE
+      /** @type {int32} */
       this._combinationMode = CombinationMode.ADDITIVE;
 
       // Default LCG parameters (matching C# defaults: PCG constants)
       // LCG 1: a=6364136223846793005 (0x5851F42D4C957F2D), c=1442695040888963407 (0x14057B7EF767814F), m=0 (implicit)
+      /** @type {BigInt} */
       this._lcg1Multiplier = 6364136223846793005n;
+      /** @type {BigInt} */
       this._lcg1Increment = 1442695040888963407n;
+      /** @type {BigInt} */
       this._lcg1Modulo = 0n;
 
       // LCG 2: a=3935559000370003845 (0x369DEA0F31A53F85), c=2691343689449507681 (0x255992D382208B61), m=0 (implicit)
+      /** @type {BigInt} */
       this._lcg2Multiplier = 3935559000370003845n;
+      /** @type {BigInt} */
       this._lcg2Increment = 2691343689449507681n;
+      /** @type {BigInt} */
       this._lcg2Modulo = 0n;
 
       // LCG instances (will be created on seed)
+      /** @type {LinearCongruentialGenerator} */
       this._lcg1 = null;
+      /** @type {LinearCongruentialGenerator} */
       this._lcg2 = null;
+      /** @type {LinearCongruentialGenerator[]} */
       this._lcgs = []; // Additional LCGs beyond the first two
 
       // State
+      /** @type {boolean} */
       this._ready = false;
+      /** @type {BigInt} */
       this._seedValue = 0n;
+      /** @type {boolean} */
       this._needsInit = false;
     }
 
     /**
      * Set seed value
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -304,6 +371,7 @@
       }
 
       // Convert seed bytes to BigInt (big-endian)
+      /** @type {BigInt} */
       let seedValue = 0n;
       for (let i = 0; i < seedBytes.length; ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8n), BigInt(seedBytes[i]));
@@ -316,14 +384,19 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null;
     }
 
     /**
      * Initialize LCG instances with seeds derived from main seed using SplitMix64
+     * @returns {void}
      */
     _initializeLCGs() {
+      /** @type {BigInt} */
       let currentState = this._seedValue;
 
       // Create LCG 1 and seed it
@@ -332,6 +405,7 @@
         this._lcg1Increment,
         this._lcg1Modulo
       );
+      /** @type {SplitMixResult} */
       const seed1Result = SplitMix64.next(currentState);
       currentState = seed1Result.state;
       this._lcg1.seed(seed1Result.value);
@@ -342,12 +416,14 @@
         this._lcg2Increment,
         this._lcg2Modulo
       );
+      /** @type {SplitMixResult} */
       const seed2Result = SplitMix64.next(currentState);
       currentState = seed2Result.state;
       this._lcg2.seed(seed2Result.value);
 
       // Seed any additional LCGs
       for (let i = 0; i < this._lcgs.length; ++i) {
+        /** @type {SplitMixResult} */
         const seedResult = SplitMix64.next(currentState);
         currentState = seedResult.state;
         this._lcgs[i].seed(seedResult.value);
@@ -356,6 +432,7 @@
 
     /**
      * Set combination mode
+     * @param {int32} mode - One of CombinationMode
      */
     set combinationMode(mode) {
       if (typeof mode === 'number' && mode >= 0 && mode <= 3) {
@@ -363,26 +440,39 @@
       }
     }
 
+    /**
+     * @returns {int32} Current combination mode
+     */
     get combinationMode() {
       return this._combinationMode;
     }
 
     /**
      * Set LCG 1 parameters
+     * @param {uint8[]} multiplierBytes - Multiplier, big-endian
      */
     set lcg1Multiplier(multiplierBytes) {
+      /** @type {BigInt} */
       const value = this._bytesToBigInt(multiplierBytes);
       this._lcg1Multiplier = (value !== null) ? value : 6364136223846793005n;
       this._needsInit = true; // Mark for re-initialization
     }
 
+    /**
+     * @param {uint8[]} incrementBytes - Increment, big-endian
+     */
     set lcg1Increment(incrementBytes) {
+      /** @type {BigInt} */
       const value = this._bytesToBigInt(incrementBytes);
       this._lcg1Increment = (value !== null) ? value : 1442695040888963407n;
       this._needsInit = true; // Mark for re-initialization
     }
 
+    /**
+     * @param {uint8[]} moduloBytes - Modulus, big-endian
+     */
     set lcg1Modulo(moduloBytes) {
+      /** @type {BigInt} */
       const value = this._bytesToBigInt(moduloBytes);
       this._lcg1Modulo = (value !== null) ? value : 0n;
       this._needsInit = true; // Mark for re-initialization
@@ -390,20 +480,30 @@
 
     /**
      * Set LCG 2 parameters
+     * @param {uint8[]} multiplierBytes - Multiplier, big-endian
      */
     set lcg2Multiplier(multiplierBytes) {
+      /** @type {BigInt} */
       const value = this._bytesToBigInt(multiplierBytes);
       this._lcg2Multiplier = (value !== null) ? value : 3935559000370003845n;
       this._needsInit = true; // Mark for re-initialization
     }
 
+    /**
+     * @param {uint8[]} incrementBytes - Increment, big-endian
+     */
     set lcg2Increment(incrementBytes) {
+      /** @type {BigInt} */
       const value = this._bytesToBigInt(incrementBytes);
       this._lcg2Increment = (value !== null) ? value : 2691343689449507681n;
       this._needsInit = true; // Mark for re-initialization
     }
 
+    /**
+     * @param {uint8[]} moduloBytes - Modulus, big-endian
+     */
     set lcg2Modulo(moduloBytes) {
+      /** @type {BigInt} */
       const value = this._bytesToBigInt(moduloBytes);
       this._lcg2Modulo = (value !== null) ? value : 0n;
       this._needsInit = true; // Mark for re-initialization
@@ -411,12 +511,15 @@
 
     /**
      * Convert byte array to BigInt (big-endian)
+     * @param {uint8[]} bytes - Big-endian bytes
+     * @returns {BigInt} Value, or null when no bytes are given
      */
     _bytesToBigInt(bytes) {
       if (!bytes || bytes.length === 0) {
         return null;
       }
 
+      /** @type {BigInt} */
       let value = 0n;
       for (let i = 0; i < bytes.length; ++i) {
         value = OpCodes.OrN(OpCodes.ShiftLn(value, 8n), BigInt(bytes[i]));
@@ -426,6 +529,7 @@
 
     /**
      * Generate next combined value
+     * @returns {BigInt} Next 64-bit output
      */
     _next() {
       if (!this._ready) {
@@ -439,14 +543,17 @@
       }
 
       // Get next value from first LCG
+      /** @type {BigInt} */
       let result = this._lcg1.next();
 
       // Get next value from second LCG and combine
+      /** @type {BigInt} */
       const value2 = this._lcg2.next();
       result = this._combine(result, value2);
 
       // Combine with any additional LCGs
       for (let i = 0; i < this._lcgs.length; ++i) {
+        /** @type {BigInt} */
         const valueN = this._lcgs[i].next();
         result = this._combine(result, valueN);
       }
@@ -456,8 +563,12 @@
 
     /**
      * Combine two values using the selected combination mode
+     * @param {BigInt} value1 - First value
+     * @param {BigInt} value2 - Second value
+     * @returns {BigInt} Combined value
      */
     _combine(value1, value2) {
+      /** @type {BigInt} */
       const mask64 = 0xFFFFFFFFFFFFFFFFn;
 
       switch (this._combinationMode) {
@@ -485,6 +596,8 @@
 
     /**
      * Generate random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -492,18 +605,24 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       while (output.length < length) {
+        /** @type {BigInt} */
         const value = this._next();
 
         // Pack as 64-bit value (big-endian)
         for (let i = 56; i >= 0; i -= 8) {
           if (output.length < length) {
-            output.push(Number(OpCodes.AndN(OpCodes.ShiftRn(value, BigInt(i)), 0xFFn)));
+            /** @type {uint8} */
+            const b = Number(OpCodes.AndN(OpCodes.ShiftRn(value, i), 0xFFn));
+            output.push(b);
           }
         }
       }
@@ -530,19 +649,24 @@
 
     Result() {
       // Use specified output size or default to 32 bytes
-      const size = this._outputSize || 32;
+      /** @type {int32} */
+      const size = (this._outputSize ? this._outputSize : 32);
       return this.NextBytes(size);
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
-      return this._outputSize || 32;
+      return (this._outputSize ? this._outputSize : 32);
     }
   }
 

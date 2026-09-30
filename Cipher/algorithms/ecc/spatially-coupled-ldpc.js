@@ -139,7 +139,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SpatiallyCoupledLDPCInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -156,13 +156,15 @@
   class SpatiallyCoupledLDPCInstance extends IErrorCorrectionInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {SpatiallyCoupledLDPCAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]|null} */
       this.result = null;
 
       // Spatially coupled (3,6)-regular LDPC parameters
@@ -190,6 +192,7 @@
       // In production, this would use proper protograph edge-spreading
 
       // Base parity check matrix for one position (3 checks, 6 variables)
+      /** @type {uint8[][]} */
       const baseMatrix = [
         [1, 1, 1, 0, 0, 0],  // Check 1: connects to vars 0,1,2
         [0, 1, 0, 1, 1, 0],  // Check 2: connects to vars 1,3,4
@@ -198,6 +201,7 @@
 
       // For spatial coupling with w=2, we overlap adjacent positions
       // Coupling matrix connects variables across time positions
+      /** @type {uint8[][]} */
       this.couplingMatrix = [
         // Position 0 checks
         [1, 1, 1, 0, 0, 0],
@@ -224,18 +228,22 @@
       // decoder describing different codes.
       const parityCount = this.n - this.k;
 
+      /** @type {uint8[][]} */
       this.parityGenerator = [];
       for (let i = 0; i < this.k; i++) {
-        const row = new Array(parityCount).fill(0);
+        /** @type {int32[]} */
+        const row = OpCodes.CreateArray(parityCount, 0);
         for (let p = 0; p < parityCount; p++) {
           row[p] = this.couplingMatrix[p][i];
         }
         this.parityGenerator.push(row);
       }
 
+      /** @type {int32[][]} */
       this.parityCheckMatrix = [];
       for (let p = 0; p < parityCount; p++) {
-        const row = new Array(this.n).fill(0);
+        /** @type {int32[]} */
+        const row = OpCodes.CreateArray(this.n, 0);
         for (let i = 0; i < this.k; i++) {
           row[i] = this.parityGenerator[i][p];
         }
@@ -279,11 +287,16 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {boolean} True if errors detected
+     */
     DetectError(data) {
       if (!Array.isArray(data) || data.length !== this.n) {
-        throw new Error(`SpatiallyCoupledLDPCInstance.DetectError: Input must be ${this.n}-bit array`);
+        throw new Error("SpatiallyCoupledLDPCInstance.DetectError: Input must be " + this.n + "-bit array");
       }
 
+      /** @type {uint8[]} */
       const syndrome = this.calculateSyndrome(data);
       return !this.isZeroVector(syndrome);
     }
@@ -295,13 +308,16 @@
      * NOTE: This is an educational implementation. Full SC-LDPC encoding
      * requires solving H*c = 0 using Gaussian elimination or iterative methods.
      * This simplified version demonstrates the spatial coupling concept.
+     * @param {uint8[]} data - Message symbols
+     * @returns {uint8[]} Codeword symbols
      */
     encode(data) {
       if (data.length !== this.k) {
-        throw new Error(`SC-LDPC encode: Input must be exactly ${this.k} bits`);
+        throw new Error("SC-LDPC encode: Input must be exactly " + this.k + " bits");
       }
 
-      const encoded = new Array(this.n).fill(0);
+      /** @type {uint8[]} */
+      const encoded = OpCodes.CreateArray(this.n, 0);
 
       // Copy systematic information bits
       for (let i = 0; i < this.k; i++) {
@@ -311,12 +327,13 @@
       // Calculate parity bits using spatially coupled structure
       // Each parity bit is computed from information bits and coupling
       for (let p = 0; p < (this.n - this.k); p++) {
+        /** @type {uint32} */
         let parity = 0;
 
         // Sum over information bits according to the generator's parity part
         for (let j = 0; j < this.k; j++) {
           if (this.parityGenerator[j][p] === 1) {
-            parity = OpCodes.XorN(parity, data[j]);
+            parity = OpCodes.Xor32(parity, data[j]);
           }
         }
 
@@ -329,13 +346,17 @@
     /**
      * Decode using windowed belief propagation
      * Simplified implementation of sliding window decoding
+     * @param {uint8[]} data - Received codeword symbols
+     * @returns {uint8[]} Decoded message symbols
      */
     decode(data) {
       if (data.length !== this.n) {
-        throw new Error(`SC-LDPC decode: Input must be exactly ${this.n} bits`);
+        throw new Error("SC-LDPC decode: Input must be exactly " + this.n + " bits");
       }
 
-      const received = [...data];
+      /** @type {uint8[]} */
+      const received = data.slice();
+      /** @type {uint8[]} */
       const syndrome = this.calculateSyndrome(received);
 
       if (this.isZeroVector(syndrome)) {
@@ -345,6 +366,7 @@
 
       // Errors detected - run windowed belief propagation
       // In production, this would use full belief propagation with sliding window
+      /** @type {uint8[]} */
       const decoded = this.windowedBP(received, 10); // 10 iterations for better convergence
 
       // Belief propagation is not guaranteed to converge, and this construction
@@ -362,15 +384,19 @@
     /**
      * Calculate syndrome for error detection
      * Syndrome = H * codeword (mod 2)
+     * @param {uint8[]} codeword - Codeword bits
+     * @returns {uint8[]} Syndrome bits
      */
     calculateSyndrome(codeword) {
+      /** @type {uint8[]} */
       const syndrome = [];
 
       for (let i = 0; i < this.numChecks; i++) {
+        /** @type {uint32} */
         let sum = 0;
         for (let j = 0; j < this.numVars; j++) {
           if (this.parityCheckMatrix[i][j] === 1) {
-            sum = OpCodes.XorN(sum, codeword[j]);
+            sum = OpCodes.Xor32(sum, codeword[j]);
           }
         }
         syndrome.push(sum);
@@ -382,34 +408,41 @@
     /**
      * Windowed belief propagation decoder
      * Implements simplified sliding window decoding with threshold saturation
+     * @param {uint8[]} received - Received bits
+     * @param {int32} maxIterations - Iteration limit
+     * @returns {uint8[]} Hard decisions
      */
     windowedBP(received, maxIterations) {
-      const decoded = [...received];
+      /** @type {uint8[]} */
+      const decoded = received.slice();
       const windowSize = this.w; // Window size equals coupling width
 
       // Initialize log-likelihood ratios (LLRs)
-      const llr = received.map(bit => bit === 0 ? 5.0 : -5.0);
+      /** @type {float64[]} */
+      const llr = [];
+      for (let i = 0; i < received.length; ++i) llr.push(received[i] === 0 ? 5.0 : -5.0);
 
       // Belief propagation iterations
       for (let iter = 0; iter < maxIterations; iter++) {
-        const checkToVar = new Array(this.numChecks).fill(0).map(() =>
-          new Array(this.numVars).fill(0)
-        );
-        const varToCheck = new Array(this.numVars).fill(0).map(() =>
-          new Array(this.numChecks).fill(0)
-        );
+        /** @type {float64[][]} */
+        const checkToVar = this._zeroMatrix(this.numChecks, this.numVars);
+        /** @type {float64[][]} */
+        const varToCheck = this._zeroMatrix(this.numVars, this.numChecks);
 
         // Check node update (simplified)
         for (let c = 0; c < this.numChecks; c++) {
           for (let v = 0; v < this.numVars; v++) {
             if (this.parityCheckMatrix[c][v] === 1) {
               // Simplified message: product of signs, minimum magnitude
+              /** @type {float64} */
               let prod = 1.0;
+              /** @type {float64} */
               let minMag = 100.0;
 
               for (let vp = 0; vp < this.numVars; vp++) {
                 if (vp !== v && this.parityCheckMatrix[c][vp] === 1) {
-                  const msg = varToCheck[vp][c] || llr[vp];
+                  /** @type {float64} */
+                  const msg = varToCheck[vp][c] !== 0 ? varToCheck[vp][c] : llr[vp];
                   prod *= (msg >= 0) ? 1 : -1;
                   minMag = Math.min(minMag, Math.abs(msg));
                 }
@@ -422,6 +455,7 @@
 
         // Variable node update (simplified)
         for (let v = 0; v < this.numVars; v++) {
+          /** @type {float64} */
           let totalLLR = llr[v];
 
           for (let c = 0; c < this.numChecks; c++) {
@@ -442,6 +476,7 @@
         }
 
         // Check for convergence
+        /** @type {uint8[]} */
         const currentSyndrome = this.calculateSyndrome(decoded);
         if (this.isZeroVector(currentSyndrome)) {
           break; // Decoded successfully
@@ -453,9 +488,31 @@
 
     /**
      * Check if vector is all zeros
+     * @param {uint8[]} vector - Bits
+     * @returns {boolean} True when every entry is zero
      */
     isZeroVector(vector) {
-      return vector.every(bit => bit === 0);
+      for (let i = 0; i < vector.length; ++i) {
+        if (vector[i] !== 0) return false;
+      }
+      return true;
+    }
+
+    /**
+     * @param {int32} rows - Row count
+     * @param {int32} cols - Column count
+     * @returns {float64[][]} rows x cols zeros
+     */
+    _zeroMatrix(rows, cols) {
+      /** @type {float64[][]} */
+      const matrix = [];
+      for (let r = 0; r < rows; ++r) {
+        /** @type {float64[]} */
+        const row = [];
+        for (let c = 0; c < cols; ++c) row.push(0);
+        matrix.push(row);
+      }
+      return matrix;
     }
   }
 
