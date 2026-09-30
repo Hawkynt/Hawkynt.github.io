@@ -136,9 +136,13 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this.result = null;
+      /** @type {int32} */
       this._m = 3; // Default RM(1,3) - [8,4,4] code
     }
 
+    /**
+     * @param {int32} value - Order parameter m (2..5)
+     */
     set m(value) {
       if (value < 2 || value > 5) {
         throw new Error('ReedMullerInstance.m: Must be between 2 and 5');
@@ -146,6 +150,9 @@
       this._m = value;
     }
 
+    /**
+     * @returns {int32} Order parameter m
+     */
     get m() {
       return this._m;
     }
@@ -250,16 +257,21 @@
       // codeword. Per-coordinate majority voting is NOT a valid decoder here: the
       // constant term biases every coordinate vote, which makes the votes tie on
       // perfectly clean codewords.
+      /** @type {float64[]} */
       const transform = new Array(n);
       for (let i = 0; i < n; ++i) {
-        transform[i] = 1 - 2 * data[i];
+        /** @type {float64} */
+        const bit = data[i];
+        transform[i] = 1 - 2 * bit;
       }
 
       // In-place Walsh-Hadamard butterfly (natural / Hadamard ordering)
       for (let span = 1; span < n; span = span * 2) {
         for (let base = 0; base < n; base += span * 2) {
           for (let i = base; i < base + span; ++i) {
+            /** @type {float64} */
             const lo = transform[i];
+            /** @type {float64} */
             const hi = transform[i + span];
             transform[i] = lo + hi;
             transform[i + span] = lo - hi;
@@ -268,9 +280,12 @@
       }
 
       // Locate the coefficient of maximum magnitude: the most likely mask
+      /** @type {int32} */
       let bestIndex = 0;
+      /** @type {float64} */
       let bestMagnitude = -1;
       for (let i = 0; i < n; ++i) {
+        /** @type {float64} */
         const magnitude = transform[i] < 0 ? -transform[i] : transform[i];
         if (magnitude > bestMagnitude) {
           bestMagnitude = magnitude;
@@ -299,10 +314,13 @@
       if (data.length !== n) return true;
 
       try {
+        /** @type {uint8[]} */
         const decoded = this.decode(data);
+        /** @type {ReedMullerInstance} */
         const tempInstance = new ReedMullerInstance(this.algorithm, false);
         tempInstance.m = this._m;
         tempInstance.Feed(decoded);
+        /** @type {uint8[]} */
         const reencoded = tempInstance.Result();
 
         for (let i = 0; i < n; ++i) {
