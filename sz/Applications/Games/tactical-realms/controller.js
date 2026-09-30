@@ -11,6 +11,7 @@
   const MOVE_DURATION = 0.12;
   const COMBAT_TILE_SIZE = 44;
   const COMBAT_MOVE_STEP_DUR = 0.08;
+  const REVEAL_TIME = 0.55;
 
   const BATTLE_SCENE_KEY = 'sz-tactical-realms-battle-scenes';
   const BATTLE_SCENE_MODES = ['full', 'short', 'off'];
@@ -36,6 +37,13 @@
         SZ.Dialog.show('dlg-about');
     }
   };
+
+  // Camp and town menus: shared by drawing and hit-testing.
+  const menuButtons = (labels, accents) => Object.freeze(labels.map((label, i) => Object.freeze({
+    x: 958, y: 150 + i * 60, w: 280, h: 46, label, accent: accents[i] || null,
+  })));
+  const CAMP_BUTTONS = menuButtons(['Inventory', 'Equipment', 'Rest (Heal Party)', 'Return to Overworld'], [null, null, '#5ad07a', '#d8a050']);
+  const TOWN_BUTTONS = menuButtons(['Weaponsmith', 'Armorer', 'General Store', 'Inn (Heal Party)', 'Leave Town'], [null, null, null, '#5ad07a', '#d8a050']);
 
   const TITLE_BUTTONS = [
     { label: 'New Game', x: 540, y: 370, w: 200, h: 44 },
@@ -687,6 +695,10 @@
           this.#renderTitle();
       }
 
+      // every screen change is revealed by a diagonal wipe
+      if (this.#screenTime < REVEAL_TIME && TR.ScreenArt && this.#sm.current !== GameState.TITLE)
+        TR.ScreenArt.reveal(this.#renderer.bufCtx, this.#screenTime / REVEAL_TIME);
+
       this.#renderer.endFrame();
     }
 
@@ -697,7 +709,9 @@
       const season = this.#timeRotation.currentSeason();
       const holiday = this.#timeRotation.isHoliday();
 
-      this.#renderer.drawScreenText(CANVAS_W / 2, 265, `Daily Bonus: ${daily}  |  Season: ${season}`, { color: '#88a', font: '16px monospace', align: 'center' });
+      if (TR.ScreenArt && this.#renderer.bufCtx)
+        TR.ScreenArt.frame(this.#renderer.bufCtx, CANVAS_W / 2 - 200, 244, 400, 34, { alpha: 0.8 });
+      this.#renderer.drawScreenText(CANVAS_W / 2, 266, `Daily Bonus: ${daily}  |  Season: ${season}`, { color: '#e8e0c8', font: '15px monospace', align: 'center' });
       if (holiday)
         this.#renderer.drawScreenText(CANVAS_W / 2, 295, `\u2605 ${holiday.name} \u2605`, { color: '#ffd700', font: 'bold 18px serif', align: 'center' });
 
@@ -751,7 +765,8 @@
       }
 
       const selCount = this.#selectedSlots.size;
-      this.#renderer.drawScreenText(CANVAS_W / 2, CANVAS_H - 54, `Selected: ${selCount} / 4`, { color: selCount > 0 ? '#ccc' : '#666', font: '14px monospace', align: 'center' });
+      // beside the button: the second card row reaches down to y = 676
+      this.#renderer.drawScreenText(528, CANVAS_H - 18, `Selected: ${selCount} / 4`, { color: selCount > 0 ? '#e8e0c8' : '#888', font: '15px monospace', align: 'right' });
 
       if (selCount >= 1 && selCount <= 4)
         this.#renderer.drawButton(540, CANVAS_H - 42, 200, 36, 'Begin Adventure', { bg: '#2a4a2a', font: '15px monospace' });
@@ -777,14 +792,12 @@
       if (this.#overworldMap) {
         const cam = this.#renderer.camera;
         const locs = this.#overworldMap.getVisibleLocations(cam.x, cam.y, CANVAS_W, CANVAS_H, ts);
+        const ctx = this.#renderer.bufCtx;
         for (const loc of locs) {
-          const name = loc.name || '';
-          const color = loc.tile === OverworldTile.DUNGEON ? '#f88' : loc.tile === OverworldTile.TOWN ? '#ff8' : '#8ff';
-          this.#renderer.drawText(
-            loc.col * ts + ts / 2, loc.row * ts - 3,
-            name,
-            { color, font: 'bold 11px monospace', align: 'center' }
-          );
+          const s = this.#renderer.worldToScreen(loc.col * ts + ts / 2, loc.row * ts);
+          if (loc.tile === OverworldTile.CAMP && ctx)
+            this.#drawCampGlow(ctx, s.x, s.y + ts * 0.6);
+          this.#drawLocationPlate(ctx, s.x, s.y - 6, loc);
         }
       }
 
@@ -847,7 +860,10 @@
       const lineH = 22;
       const h = 40 + this.#party.length * lineH;
 
-      this.#renderer.drawPanel(x, y, w, h, { bg: 'rgba(0,0,0,0.75)' });
+      if (TR.ScreenArt && this.#renderer.bufCtx)
+        TR.ScreenArt.frame(this.#renderer.bufCtx, x, y, w, h, { alpha: 0.85 });
+      else
+        this.#renderer.drawPanel(x, y, w, h, { bg: 'rgba(0,0,0,0.75)' });
       this.#renderer.drawScreenText(x + w / 2, y + 16, `Party  Gold: ${this.#gold}`, { color: '#c8a84e', font: 'bold 12px monospace', align: 'center' });
 
       for (let i = 0; i < this.#party.length; ++i) {
@@ -860,92 +876,122 @@
       }
     }
 
+    // Name plate above a map location, coloured by its kind.
+    #drawLocationPlate(ctx, x, y, loc) {
+      const name = loc.name || '';
+      if (!ctx || !name)
+        return;
+      const accent = loc.tile === OverworldTile.DUNGEON ? '#e0604a' : loc.tile === OverworldTile.TOWN ? '#e8c85a' : '#6ad0e0';
+      ctx.save();
+      ctx.font = "bold 12px Georgia, 'Times New Roman', serif";
+      const w = Math.ceil(ctx.measureText(name).width) + 16;
+      const h = 18;
+      const bx = Math.round(x - w / 2), by = Math.round(y - h);
+      ctx.fillStyle = 'rgba(14,16,34,0.82)';
+      ctx.fillRect(bx, by, w, h);
+      ctx.fillStyle = accent;
+      ctx.fillRect(bx, by, w, 2);
+      ctx.fillRect(bx, by + h - 1, w, 1);
+      ctx.fillStyle = 'rgba(14,16,34,0.82)';
+      ctx.beginPath();
+      ctx.moveTo(x - 5, by + h); ctx.lineTo(x + 5, by + h); ctx.lineTo(x, by + h + 5); ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#f0ead8';
+      ctx.textAlign = 'center';
+      ctx.fillText(name, x, by + 13);
+      ctx.restore();
+    }
+
+    #drawCampGlow(ctx, x, y) {
+      const t = this.#screenTime;
+      const r = 46 * (0.85 + 0.15 * Math.sin(t * 9) * Math.sin(t * 5.7));
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(x, y, 2, x, y, r);
+      g.addColorStop(0, 'rgba(255,170,70,0.45)');
+      g.addColorStop(1, 'rgba(255,120,40,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+      ctx.restore();
+    }
+
     #renderCamp() {
-      this.#renderer.drawPanel(0, 0, CANVAS_W, CANVAS_H, { bg: '#1a1a1a' });
-      this.#renderer.drawScreenText(CANVAS_W / 2, 54, 'CAMP', { color: '#c8a84e', font: 'bold 36px serif', align: 'center' });
-      this.#renderer.drawScreenText(CANVAS_W / 2, 86, 'Rest and manage your party', { color: '#888', font: '16px monospace', align: 'center' });
-
-      if (this.#party && this.#partyHp) {
-        const cardW = 120;
-        const startX = Math.floor(CANVAS_W / 2 - (this.#party.length * (cardW + 14)) / 2);
-        for (let i = 0; i < this.#party.length; ++i) {
-          const c = this.#party[i];
-          const hp = this.#partyHp[i];
-          const x = startX + i * (cardW + 14);
-          const y = 110;
-          this.#renderer.drawPanel(x, y, cardW, 58, { bg: '#222' });
-          this.#renderer.drawScreenText(x + cardW / 2, y + 22, c.name.substring(0, 10), { color: '#ccc', font: '12px monospace', align: 'center' });
-          const hpColor = hp >= c.maxHp ? '#4a4' : hp > c.maxHp * 0.25 ? '#aa4' : '#a44';
-          this.#renderer.drawScreenText(x + cardW / 2, y + 44, `HP: ${hp}/${c.maxHp}`, { color: hpColor, font: '12px monospace', align: 'center' });
-        }
+      const SA = TR.ScreenArt;
+      const ctx = this.#renderer.bufCtx;
+      if (!SA || !ctx) {
+        this.#renderer.drawPanel(0, 0, CANVAS_W, CANVAS_H, { bg: '#1a1a1a' });
+        return;
       }
-
-      const labels = ['Inventory', 'Equipment', 'Rest (Heal Party)', 'Return to Overworld'];
-      for (let i = 0; i < labels.length; ++i)
-        this.#renderer.drawButton(520, 210 + i * 60, 240, 44, labels[i], { bg: i === 2 ? '#2a4a2a' : '#333', font: '15px monospace' });
+      const t = this.#screenTime;
+      // night in the woods, the party gathered around the fire
+      SA.stage(ctx, 'forest', this.#dimension, t, { night: true });
+      const fireX = 520, footY = 640;
+      SA.campfire(ctx, fireX, footY - 4, t);
+      if (this.#party)
+        SA.partyLine(ctx, this.#party, { x: fireX, footY, gap: 130, spacing: 150, height: 180, time: t });
+      SA.vignette(ctx, 0.55);
+      SA.banner(ctx, 'Camp', 24, { sub: 'Rest and manage your party' });
+      SA.rosterPanel(ctx, this.#party, this.#partyHp, 24, 24);
+      SA.menu(ctx, CAMP_BUTTONS, { title: 'Actions' });
     }
 
     #renderTown() {
-      this.#renderer.drawPanel(0, 0, CANVAS_W, CANVAS_H, { bg: '#1e1a14' });
-
+      const SA = TR.ScreenArt;
+      const ctx = this.#renderer.bufCtx;
+      if (!SA || !ctx) {
+        this.#renderer.drawPanel(0, 0, CANVAS_W, CANVAS_H, { bg: '#1e1a14' });
+        return;
+      }
+      const t = this.#screenTime;
+      SA.stage(ctx, 'town', this.#dimension, t, { dim: this.#shopStock ? 0.55 : 0 });
       if (this.#shopStock) {
         this.#renderShop();
         return;
       }
-
-      this.#renderer.drawScreenText(CANVAS_W / 2, 54, 'TOWN', { color: '#c8a84e', font: 'bold 36px serif', align: 'center' });
-      this.#renderer.drawScreenText(CANVAS_W / 2, 86, 'Visit town facilities', { color: '#888', font: '16px monospace', align: 'center' });
-
-      if (this.#party && this.#partyHp) {
-        const cardW = 120;
-        const startX = Math.floor(CANVAS_W / 2 - (this.#party.length * (cardW + 14)) / 2);
-        for (let i = 0; i < this.#party.length; ++i) {
-          const c = this.#party[i];
-          const hp = this.#partyHp[i];
-          const x = startX + i * (cardW + 14);
-          const y = 110;
-          this.#renderer.drawPanel(x, y, cardW, 58, { bg: '#222' });
-          this.#renderer.drawScreenText(x + cardW / 2, y + 22, c.name.substring(0, 10), { color: '#ccc', font: '12px monospace', align: 'center' });
-          const hpColor = hp >= c.maxHp ? '#4a4' : hp > c.maxHp * 0.25 ? '#aa4' : '#a44';
-          this.#renderer.drawScreenText(x + cardW / 2, y + 44, `HP: ${hp}/${c.maxHp}`, { color: hpColor, font: '12px monospace', align: 'center' });
-        }
-      }
-
-      this.#renderer.drawScreenText(CANVAS_W / 2, 190, `Gold: ${this.#gold}  |  Inventory: ${this.#inventory.length} items`, { color: '#aaa', font: '13px monospace', align: 'center' });
-
-      const labels = ['Weaponsmith', 'Armorer', 'General Store', 'Inn (Heal Party)', 'Leave Town'];
-      for (let i = 0; i < labels.length; ++i)
-        this.#renderer.drawButton(520, 210 + i * 50, 240, 40, labels[i], { bg: i === 3 ? '#2a4a2a' : '#333', font: '14px monospace' });
+      if (this.#party)
+        SA.partyLine(ctx, this.#party, { x: 560, footY: 660, spacing: 130, height: 180, time: t, facing: 1 });
+      SA.vignette(ctx, 0.35);
+      SA.banner(ctx, 'Town', 24, { sub: `Gold: ${this.#gold}   |   Inventory: ${this.#inventory.length} items` });
+      SA.rosterPanel(ctx, this.#party, this.#partyHp, 24, 24);
+      SA.menu(ctx, TOWN_BUTTONS, { title: 'Visit' });
     }
 
     #renderShop() {
+      const SA = TR.ScreenArt;
+      const ctx = this.#renderer.bufCtx;
       const cfg = Shop && ShopType ? TR.SHOP_CONFIGS[this.#shopType] : null;
       const title = cfg ? cfg.name : 'Shop';
-      this.#renderer.drawScreenText(CANVAS_W / 2, 36, title, { color: '#c8a84e', font: 'bold 28px serif', align: 'center' });
-      this.#renderer.drawScreenText(CANVAS_W / 2, 60, `Gold: ${this.#gold}`, { color: '#daa520', font: 'bold 14px monospace', align: 'center' });
+      SA.banner(ctx, title, 12, { size: 30, sub: `Gold: ${this.#gold}` });
 
-      // Shop stock on left
-      this.#renderer.drawScreenText(200, 90, 'For Sale', { color: '#8a8', font: 'bold 16px monospace', align: 'center' });
       const stock = this.#shopStock || [];
+      const assets = this.#renderer.assets;
+      const tierColors = TR.TIER_COLORS || {};
+      const row = (x, y, w, item, right, rightColor, enabled) => {
+        ctx.fillStyle = enabled ? 'rgba(40,48,90,0.85)' : 'rgba(30,30,40,0.7)';
+        ctx.fillRect(x, y, w, 30);
+        ctx.strokeStyle = tierColors[item.tier] || 'rgba(200,162,78,0.5)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 29);
+        SA.itemIcon(ctx, assets, item, x + 4, y + 3, 24);
+        ctx.globalAlpha = enabled ? 1 : 0.5;
+        this.#renderer.drawScreenText(x + 36, y + 20, `${item.name}${item.quantity > 1 ? ' x' + item.quantity : ''}`, { color: '#e8e0c8', font: '13px monospace', align: 'left' });
+        this.#renderer.drawScreenText(x + w - 10, y + 20, right, { color: rightColor, font: 'bold 13px monospace', align: 'right' });
+        ctx.globalAlpha = 1;
+      };
+
+      SA.frame(ctx, 24, 84, 352, Math.max(80, 44 + stock.length * 36));
+      this.#renderer.drawScreenText(200, 106, 'For Sale', { color: '#a8e0a0', font: "bold 18px Georgia, 'Times New Roman', serif", align: 'center' });
       for (let i = 0; i < stock.length; ++i) {
-        const item = stock[i];
-        const y = 110 + i * 36;
-        const price = Shop ? Shop.buyPrice(item) : item.value;
-        const canBuy = this.#gold >= price;
-        this.#renderer.drawPanel(40, y, 320, 30, { bg: '#1a1a1a' });
-        this.#renderer.drawScreenText(50, y + 20, item.name, { color: canBuy ? '#ccc' : '#666', font: '12px monospace', align: 'left' });
-        this.#renderer.drawScreenText(340, y + 20, `${price}g`, { color: canBuy ? '#daa520' : '#644', font: '12px monospace', align: 'right' });
+        const price = Shop ? Shop.buyPrice(stock[i]) : stock[i].value;
+        row(40, 110 + i * 36, 320, stock[i], `${price}g`, '#ffd24a', this.#gold >= price);
       }
 
-      // Inventory on right
-      this.#renderer.drawScreenText(800, 90, 'Inventory', { color: '#88a', font: 'bold 16px monospace', align: 'center' });
-      for (let i = 0; i < this.#inventory.length && i < 14; ++i) {
-        const item = this.#inventory[i];
-        const y = 110 + i * 36;
-        const sell = Shop ? Shop.sellPrice(item) : Math.floor(item.value * 0.5);
-        this.#renderer.drawPanel(600, y, 380, 30, { bg: '#1a1a1a' });
-        this.#renderer.drawScreenText(610, y + 20, `${item.name}${item.quantity > 1 ? ' x' + item.quantity : ''}`, { color: '#ccc', font: '12px monospace', align: 'left' });
-        this.#renderer.drawScreenText(960, y + 20, `Sell: ${sell}g`, { color: '#a86', font: '12px monospace', align: 'right' });
+      const inv = this.#inventory.slice(0, 14);
+      SA.frame(ctx, 584, 84, 412, Math.max(80, 44 + inv.length * 36));
+      this.#renderer.drawScreenText(790, 106, 'Your Pack', { color: '#a8c8ff', font: "bold 18px Georgia, 'Times New Roman', serif", align: 'center' });
+      for (let i = 0; i < inv.length; ++i) {
+        const sell = Shop ? Shop.sellPrice(inv[i]) : Math.floor(inv[i].value * 0.5);
+        row(600, 110 + i * 36, 380, inv[i], `Sell ${sell}g`, '#e8b070', true);
       }
 
       this.#renderer.drawButton(CANVAS_W / 2 - 80, CANVAS_H - 60, 160, 40, 'Back', { bg: '#444', font: '15px monospace' });
@@ -1567,7 +1613,8 @@
     #renderVictory() {
       const xpGained = this.#lastRewards ? this.#lastRewards.xp : 0;
       const goldGained = this.#lastRewards ? this.#lastRewards.gold : 0;
-      this.#renderer.drawVictoryScreen(this.#party, xpGained, goldGained, Math.min(1, this.#screenTime * 0.5));
+      this.#renderer.drawVictoryScreen(this.#party, xpGained, goldGained, Math.min(1, this.#screenTime * 0.5),
+        { time: this.#screenTime, biome: this.#combatBiome, plane: this.#dimension });
 
       let y = 250;
       if (this.#lastRewards) {
@@ -1605,7 +1652,7 @@
     }
 
     #renderDefeat() {
-      this.#renderer.drawDefeatScreen(this.#screenTime);
+      this.#renderer.drawDefeatScreen(this.#screenTime, { party: this.#party, biome: this.#combatBiome, plane: this.#dimension });
       this.#renderer.drawButton(440, 360, 160, 44, 'Retreat', { bg: '#4a4a2a', font: '15px monospace' });
       this.#renderer.drawButton(680, 360, 160, 44, 'Title', { bg: '#4a2a2a', font: '15px monospace' });
     }
@@ -1764,12 +1811,7 @@
     }
 
     #onClickCamp(e) {
-      const buttons = [
-        { x: 520, y: 210, w: 240, h: 44 },
-        { x: 520, y: 270, w: 240, h: 44 },
-        { x: 520, y: 330, w: 240, h: 44 },
-        { x: 520, y: 390, w: 240, h: 44 },
-      ];
+      const buttons = CAMP_BUTTONS;
       if (this.#hitButton(e, buttons[2]))
         this.#restParty();
       else if (this.#hitButton(e, buttons[3]))
@@ -1782,13 +1824,7 @@
         return;
       }
 
-      const buttons = [
-        { x: 520, y: 210, w: 240, h: 40 },
-        { x: 520, y: 260, w: 240, h: 40 },
-        { x: 520, y: 310, w: 240, h: 40 },
-        { x: 520, y: 360, w: 240, h: 40 },
-        { x: 520, y: 410, w: 240, h: 40 },
-      ];
+      const buttons = TOWN_BUTTONS;
       if (this.#hitButton(e, buttons[0]))
         this.#openShop(ShopType.WEAPONSMITH);
       else if (this.#hitButton(e, buttons[1]))

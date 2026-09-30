@@ -7,6 +7,14 @@
   const DEFAULT_HEIGHT = 720;
   const DEFAULT_TILE_SIZE = 32;
 
+  function brighten(hex, f) {
+    if (typeof hex !== 'string' || hex.charAt(0) !== '#' || hex.length !== 7)
+      return hex;
+    const n = parseInt(hex.slice(1), 16);
+    const ch = sh => Math.min(255, Math.round(((n >> sh) & 255) * f));
+    return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+  }
+
   class Renderer {
     #canvas;
     #ctx;
@@ -294,6 +302,13 @@
       if (!this.#bufCtx)
         return;
       const ctx = this.#bufCtx;
+      const SA = (window.SZ && window.SZ.TacticalRealms && window.SZ.TacticalRealms.ScreenArt) || null;
+      if (SA) {
+        // coloured buttons (green confirm, red leave, ...) keep their hue as an accent stripe
+        const accent = bg === '#444' || bg === '#333' ? null : brighten(bg, 2.2);
+        SA.button(ctx, x, y, w, h, text, { accent, hover });
+        return;
+      }
       ctx.fillStyle = hover ? '#666' : bg;
       ctx.fillRect(x, y, w, h);
       ctx.strokeStyle = '#888';
@@ -366,18 +381,31 @@
       const cx = x + w / 2;
       const pad = 10;
 
-      const assets = this.#assets;
-      const classId = character.class;
-      const portraitSize = 48;
-      const px = cx - portraitSize / 2;
-      const py = cy;
-      let portraitDrawn = false;
-      if (assets && assets.ready)
-        portraitDrawn = this.#drawCreatureSprite(ctx, classId, 'party', px, py, portraitSize);
-      if (portraitDrawn) {
+      const SA = TR.ScreenArt;
+      if (SA && TR.BattleSprites) {
+        // the hero on a little stage, idling
+        const pw = w - 20, ph = 100;
+        const px = x + 10, py = cy - 4;
+        const g = ctx.createLinearGradient(0, py, 0, py + ph);
+        g.addColorStop(0, '#2c3a60');
+        g.addColorStop(0.72, '#1a2240');
+        g.addColorStop(0.72, '#3a3024');
+        g.addColorStop(1, '#241c14');
+        ctx.fillStyle = g;
+        ctx.fillRect(px, py, pw, ph);
+        const t = (typeof performance !== 'undefined' ? performance.now() : 0) / 1000;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(px, py, pw, ph);
+        ctx.clip();
+        // feet below the stage: head to waist fills it, like a portrait
+        TR.BattleSprites.draw(ctx, SA.asUnit(character), 'idle', (t * 0.8) % 1, cx, SA.bustFootY(character, py, 144, 8), 144, 1);
+        ctx.restore();
         ctx.strokeStyle = borderColor;
-        ctx.strokeRect(px, py, portraitSize, portraitSize);
-        cy += portraitSize + 6;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(px, py, pw, ph);
+        ctx.lineWidth = 1;
+        cy += ph + 12;
       } else {
         cy += 8;
       }
@@ -783,191 +811,164 @@
 
 
 
-    drawTitleScreen(progress) {
+    drawTitleScreen(time) {
       if (!this.#bufCtx)
         return;
       const ctx = this.#bufCtx;
       const w = this.#width;
       const h = this.#height;
-      const p = Math.max(0, progress);
-
-      const grad = ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#0a0a1e');
-      grad.addColorStop(0.5, '#1a1a2e');
-      grad.addColorStop(1, '#0a0a14');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, w, h);
-
+      const t = Math.max(0, time);
       const TR = (window.SZ && window.SZ.TacticalRealms) || {};
-      const assets = this.#assets;
-      const spriteMap = TR.OVERWORLD_TERRAIN_SPRITES;
-      if (assets && assets.ready && assets.has('overworld') && spriteMap) {
-        const img = assets.get('overworld');
-        const tiles = ['GRASS', 'FOREST', 'MOUNTAIN', 'WATER', 'SAND', 'ROAD'];
-        const ts = 24;
-        const cols = Math.ceil(w / ts);
-        const rows = Math.ceil(h / ts);
-        ctx.globalAlpha = 0.08;
-        ctx.imageSmoothingEnabled = false;
-        for (let r = 0; r < rows; ++r)
-          for (let c = 0; c < cols; ++c) {
-            const idx = ((r * 7 + c * 13) ^ 0x5a5a) % tiles.length;
-            const rect = spriteMap[tiles[idx]];
-            const src = rect && rect.sheet ? assets.get(rect.sheet) : img;
-            if (rect && src)
-              ctx.drawImage(src, rect.x, rect.y, rect.w, rect.h, c * ts, r * ts, ts, ts);
-          }
-        ctx.globalAlpha = 1;
+      const SA = TR.ScreenArt;
+
+      if (SA) {
+        // dusk over the mountains, the heroes waiting on the road
+        SA.stage(ctx, 'mountain', 'material', t, { pan: Math.sin(t * 0.08) * 160 });
+        ctx.save();
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = '#c88a78';
+        ctx.fillRect(0, 0, w, h);
+        ctx.restore();
+        const heroes = [
+          { name: 'Paladin', class: 'paladin', race: 'human' },
+          { name: 'Wizard', class: 'wizard', race: 'elf' },
+          { name: 'Ranger', class: 'ranger', race: 'halfling' },
+          { name: 'Barbarian', class: 'barbarian', race: 'half_orc' },
+          { name: 'Cleric', class: 'cleric', race: 'dwarf' },
+        ];
+        SA.partyLine(ctx, heroes, { x: w / 2, footY: h - 64, spacing: 150, height: 216, time: t, facing: 1 });
+        SA.vignette(ctx, 0.6);
+      } else {
+        ctx.fillStyle = '#0a0a1e';
+        ctx.fillRect(0, 0, w, h);
       }
 
       const midX = w / 2;
-
+      const rise = Math.min(1, t * 1.5);
       ctx.save();
-      ctx.shadowColor = '#c8a84e';
-      ctx.shadowBlur = 20 + Math.sin(p * Math.PI * 2) * 8;
-      ctx.fillStyle = '#c8a84e';
-      ctx.font = 'bold 56px serif';
       ctx.textAlign = 'center';
-      ctx.fillText('TACTICAL REALMS', midX, 140);
+      ctx.font = "bold 76px Georgia, 'Times New Roman', serif";
+      const ty = 150 - (1 - rise) * 30;
+      ctx.globalAlpha = rise;
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 12;
+      ctx.strokeStyle = '#1a0e08';
+      ctx.strokeText('TACTICAL REALMS', midX, ty);
+      const g = ctx.createLinearGradient(0, ty - 64, 0, ty + 6);
+      g.addColorStop(0, '#fff4c0');
+      g.addColorStop(0.5, '#f0c050');
+      g.addColorStop(1, '#a86a18');
+      ctx.fillStyle = g;
+      ctx.shadowColor = 'rgba(255,200,80,0.6)';
+      ctx.shadowBlur = 18 + Math.sin(t * 2) * 6;
+      ctx.fillText('TACTICAL REALMS', midX, ty);
+      ctx.shadowBlur = 0;
+      ctx.font = "italic 24px Georgia, 'Times New Roman', serif";
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#1a0e08';
+      ctx.strokeText('A Tactical RPG Adventure', midX, ty + 46);
+      ctx.fillStyle = '#f0e6d0';
+      ctx.fillText('A Tactical RPG Adventure', midX, ty + 46);
       ctx.restore();
-
-      ctx.fillStyle = '#aaa';
-      ctx.font = '22px serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('A Tactical RPG Adventure', midX, 195);
-
-      const sparkCount = 12;
-      ctx.globalAlpha = 0.4 + Math.sin(p * Math.PI * 4) * 0.2;
-      for (let i = 0; i < sparkCount; ++i) {
-        const angle = (i / sparkCount) * Math.PI * 2 + p * Math.PI;
-        const radius = 80 + Math.sin(p * Math.PI * 2 + i) * 20;
-        const sx = midX + Math.cos(angle) * radius;
-        const sy = 140 + Math.sin(angle) * 30;
-        ctx.fillStyle = '#ffd700';
-        ctx.beginPath();
-        ctx.arc(sx, sy, 1.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-
-      const pulse = 0.5 + Math.sin(p * Math.PI * 3) * 0.5;
-      ctx.fillStyle = `rgba(200,200,200,${(0.4 + pulse * 0.6).toFixed(2)})`;
-      ctx.font = '18px serif';
-      ctx.fillText('Click to Start', midX, h - 80);
-      ctx.textAlign = 'left';
     }
 
-    drawVictoryScreen(party, xpGained, goldGained, progress) {
+    drawVictoryScreen(party, xpGained, goldGained, progress, { time = 0, biome = 'plains', plane = 'material' } = {}) {
       if (!this.#bufCtx)
         return;
       const ctx = this.#bufCtx;
       const w = this.#width;
       const h = this.#height;
       const p = Math.min(1, Math.max(0, progress));
-
-      const grad = ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#1a2a0a');
-      grad.addColorStop(0.5, '#2a3a1a');
-      grad.addColorStop(1, '#1a2a0a');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, w, h);
-
+      const TR = (window.SZ && window.SZ.TacticalRealms) || {};
+      const SA = TR.ScreenArt;
       const midX = w / 2;
 
-      ctx.save();
-      ctx.shadowColor = '#ffd700';
-      ctx.shadowBlur = 16 + Math.sin(p * Math.PI * 2) * 6;
-      ctx.fillStyle = '#ffd700';
-      ctx.font = 'bold 52px serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('VICTORY', midX, 120);
-      ctx.restore();
-
-      if (party && party.length > 0) {
-        const spriteSize = 48;
-        const totalW = party.length * spriteSize + (party.length - 1) * 12;
-        const startX = midX - totalW / 2;
-        for (let i = 0; i < party.length; ++i) {
-          const classId = party[i].class;
-          const dx = startX + i * (spriteSize + 12);
-          const drawn = this.#drawCreatureSprite(ctx, classId, 'party', dx, 150, spriteSize);
-          if (!drawn) {
-            ctx.fillStyle = '#4488cc';
-            ctx.beginPath();
-            ctx.arc(dx + spriteSize / 2, 150 + spriteSize / 2, spriteSize * 0.4, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
+      if (SA) {
+        SA.stage(ctx, biome, plane, time);
+        // the party cheers: arms up, hopping
+        SA.partyLine(ctx, party, {
+          x: midX, footY: h - 12, spacing: 200, height: 144, time, hop: 10,
+          pose: i => ({ pose: 'cast', p: 0.6 + 0.4 * Math.abs(Math.sin(time * 4 + i)) }),
+        });
+        SA.vignette(ctx, 0.45);
+        SA.frame(ctx, midX - 330, 206, 660, 330, { alpha: 0.88 });
+        SA.confetti(ctx, time);
+      } else {
+        ctx.fillStyle = '#1a2a0a';
+        ctx.fillRect(0, 0, w, h);
       }
 
-      let y = 230;
-      ctx.fillStyle = '#daa520';
-      ctx.font = 'bold 18px monospace';
+      ctx.save();
       ctx.textAlign = 'center';
-      ctx.fillText(`+${xpGained} XP    +${goldGained} Gold`, midX, y);
-      y += 40;
+      const pop = Math.min(1, time * 3);
+      ctx.translate(midX, 120);
+      ctx.scale(0.6 + 0.4 * pop, 0.6 + 0.4 * pop);
+      ctx.font = "900 78px Georgia, 'Times New Roman', serif";
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 12;
+      ctx.strokeStyle = '#1a0e08';
+      ctx.strokeText('VICTORY!', 0, 0);
+      const g = ctx.createLinearGradient(0, -64, 0, 6);
+      g.addColorStop(0, '#fffbe0');
+      g.addColorStop(0.5, '#ffd24a');
+      g.addColorStop(1, '#c87a10');
+      ctx.fillStyle = g;
+      ctx.fillText('VICTORY!', 0, 0);
+      ctx.restore();
 
-      const barW = 300;
-      const barH = 12;
-      const barX = midX - barW / 2;
-      ctx.fillStyle = '#333';
-      ctx.fillRect(barX, y, barW, barH);
-      ctx.fillStyle = '#4a4';
-      ctx.fillRect(barX, y, barW * p, barH);
-      ctx.strokeStyle = '#666';
-      ctx.strokeRect(barX, y, barW, barH);
-      y += 30;
-
-      ctx.fillStyle = '#aaa';
-      ctx.font = '14px monospace';
-      ctx.fillText('XP Progress', midX, y);
-      y += 40;
-
-      const pulse = 0.5 + Math.sin(p * Math.PI * 3) * 0.5;
-      ctx.fillStyle = `rgba(200,200,200,${(0.4 + pulse * 0.6).toFixed(2)})`;
-      ctx.font = '16px serif';
-      ctx.fillText('Click to continue', midX, y);
-      ctx.textAlign = 'left';
+      // the controller lists the rewards inside the panel; this bar fills with them
+      const barW = 360, barH = 8, barX = midX - barW / 2;
+      ctx.fillStyle = '#0a0610';
+      ctx.fillRect(barX - 1, 223, barW + 2, barH + 2);
+      ctx.fillStyle = '#46d468';
+      ctx.fillRect(barX, 224, barW * p, barH);
     }
 
-    drawDefeatScreen(progress) {
+    drawDefeatScreen(time, { party = null, biome = 'plains', plane = 'material' } = {}) {
       if (!this.#bufCtx)
         return;
       const ctx = this.#bufCtx;
       const w = this.#width;
       const h = this.#height;
-      const p = Math.min(1, Math.max(0, progress));
-
-      ctx.fillStyle = '#1a0a0a';
-      ctx.fillRect(0, 0, w, h);
-
-      const vignetteGrad = ctx.createRadialGradient(w / 2, h / 2, h * 0.2, w / 2, h / 2, h * 0.7);
-      vignetteGrad.addColorStop(0, 'rgba(40,10,10,0)');
-      vignetteGrad.addColorStop(1, 'rgba(10,0,0,0.7)');
-      ctx.fillStyle = vignetteGrad;
-      ctx.fillRect(0, 0, w, h);
-
+      const t = Math.max(0, time);
+      const TR = (window.SZ && window.SZ.TacticalRealms) || {};
+      const SA = TR.ScreenArt;
       const midX = w / 2;
 
+      if (SA) {
+        SA.stage(ctx, biome, plane, t, { dim: 0.35 });
+        ctx.save();
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = '#8a3a3a';
+        ctx.fillRect(0, 0, w, h);
+        ctx.restore();
+        if (party)
+          SA.partyLine(ctx, party, {
+            x: midX, footY: h - 86, spacing: 200, height: 180, time: t, facing: 1,
+            pose: () => ({ pose: 'down', p: 1, opts: { rotate: -1.35, alpha: 0.85 } }),
+          });
+        SA.vignette(ctx, 0.8, '20,0,0');
+      } else {
+        ctx.fillStyle = '#1a0a0a';
+        ctx.fillRect(0, 0, w, h);
+      }
+
       ctx.save();
-      ctx.shadowColor = '#cc4444';
-      ctx.shadowBlur = 20 + Math.sin(p * Math.PI * 2) * 8;
-      ctx.fillStyle = '#cc4444';
-      ctx.font = 'bold 52px serif';
       ctx.textAlign = 'center';
+      ctx.globalAlpha = Math.min(1, t * 0.8);
+      ctx.font = "900 76px Georgia, 'Times New Roman', serif";
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 12;
+      ctx.strokeStyle = '#0a0404';
+      ctx.strokeText('DEFEAT', midX, 220);
+      ctx.fillStyle = '#d84a3a';
       ctx.fillText('DEFEAT', midX, 220);
-      ctx.restore();
-
-      ctx.fillStyle = '#888';
-      ctx.font = '18px serif';
-      ctx.textAlign = 'center';
+      ctx.font = "italic 22px Georgia, 'Times New Roman', serif";
+      ctx.lineWidth = 6;
+      ctx.strokeText('Your party has fallen...', midX, 270);
+      ctx.fillStyle = '#e0d0c8';
       ctx.fillText('Your party has fallen...', midX, 270);
-
-      const pulse = 0.5 + Math.sin(p * Math.PI * 3) * 0.5;
-      ctx.fillStyle = `rgba(200,200,200,${(0.4 + pulse * 0.6).toFixed(2)})`;
-      ctx.font = '16px serif';
-      ctx.fillText('Click to continue', midX, h - 80);
-      ctx.textAlign = 'left';
+      ctx.restore();
     }
 
     drawImage(image, x, y, w, h) {
