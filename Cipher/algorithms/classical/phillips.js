@@ -102,6 +102,7 @@
       this.testVectors = this.tests;
 
       // Standard 5x5 grid (I/J combined)
+      /** @type {string[][]} */
       this.STANDARD_GRID = [
         ['A', 'B', 'C', 'D', 'E'],
         ['F', 'G', 'H', 'I', 'K'],
@@ -114,7 +115,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {PhillipsInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -131,25 +132,40 @@
   class PhillipsInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {PhillipsCipher} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {string[]} */
       this.inputBuffer = [];
+      /** @type {string|null} */
       this._key = null;
-      this.grid = this.algorithm.STANDARD_GRID.map(row => [...row]);
+      /** @type {string[][]} */
+      this.grid = [];
+      for (let r = 0; r < algorithm.STANDARD_GRID.length; r++) {
+        this.grid.push(algorithm.STANDARD_GRID[r].slice());
+      }
+      /** @type {int32} */
       this.blockSize = 5;
     }
 
+    /**
+     * Keyword for the grid, given as a string or as its ASCII bytes
+     * @param {string|uint8[]} keyData - Keyword; empty keeps the standard grid
+     */
     set key(keyData) {
+      /** @type {string} */
       let keyString = '';
       if (typeof keyData === 'string') {
         keyString = keyData;
       } else if (Array.isArray(keyData)) {
-        keyString = String.fromCharCode(...keyData);
+        /** @type {uint8[]} */
+        const bytes = keyData;
+        keyString = String.fromCharCode(...bytes);
       }
 
       if (keyString && keyString.length > 0) {
@@ -159,8 +175,8 @@
     }
 
     /**
-   * Get copy of current key
-   * @returns {uint8[]|null} Copy of key bytes or null
+   * Get the keyword
+   * @returns {string|null} Keyword or null
    */
 
     get key() {
@@ -169,7 +185,7 @@
 
     /**
    * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
+   * @param {string|uint8[]} data - Input text, or its bytes
    * @throws {Error} If key not set
    */
 
@@ -177,11 +193,14 @@
       if (!data || data.length === 0) return;
 
       // Convert bytes to string for classical cipher
+      /** @type {string} */
       let text = '';
       if (typeof data === 'string') {
         text = data;
       } else {
-        text = String.fromCharCode(...data);
+        /** @type {uint8[]} */
+        const bytes = data;
+        text = String.fromCharCode(...bytes);
       }
 
       this.inputBuffer.push(text);
@@ -194,56 +213,91 @@
    */
 
     Result() {
-      if (this.inputBuffer.length === 0) return [];
+      /** @type {uint8[]} */
+      const output = [];
+      if (this.inputBuffer.length === 0) return output;
 
+      /** @type {string} */
       const text = this.inputBuffer.join('');
       this.inputBuffer = [];
 
-      const result = this.isInverse ? 
-        this.decryptText(text) : 
+      /** @type {string} */
+      const result = this.isInverse ?
+        this.decryptText(text) :
         this.encryptText(text);
 
-      // Convert string result to bytes
-      return Array.from(result).map(c => c.charCodeAt(0));
+      // Convert string result to bytes (all characters are ASCII)
+      for (let i = 0; i < result.length; i++) output.push(result.charCodeAt(i));
+      return output;
     }
 
+    /**
+     * Build a 5x5 grid from a keyword (I and J share a cell)
+     * @param {string} keyword - Keyword
+     * @returns {string[][]} Grid of single letters
+     */
     createCustomGrid(keyword) {
-      const cleanKey = keyword.toUpperCase()
-        .replace(/[^A-Z]/g, '')
-        .replace(/J/g, 'I')
-        .split('')
-        .filter((char, index, arr) => arr.indexOf(char) === index)
-        .join('');
-
-      const alphabet = 'ABCDEFGHIKLMNOPQRSTUVWXYZ';
-      let remaining = alphabet;
-      for (let i = 0; i < cleanKey.length; i++) {
-        remaining = remaining.replace(cleanKey[i], '');
+      /** @type {string} */
+      const upper = keyword.toUpperCase();
+      /** @type {string} */
+      const letters = upper.replace(/[^A-Z]/g, '').replace(/J/g, 'I');
+      /** @type {string} */
+      let cleanKey = '';
+      for (let i = 0; i < letters.length; i++) {
+        /** @type {string} */
+        const letter = letters.charAt(i);
+        // keep the first occurrence of each letter
+        if (letters.indexOf(letter) === i) cleanKey += letter;
       }
 
+      /** @type {string} */
+      const alphabet = 'ABCDEFGHIKLMNOPQRSTUVWXYZ';
+      /** @type {string} */
+      let remaining = alphabet;
+      for (let i = 0; i < cleanKey.length; i++) {
+        remaining = remaining.replace(cleanKey.charAt(i), '');
+      }
+
+      /** @type {string} */
       const fullAlphabet = cleanKey + remaining;
+      /** @type {string[][]} */
       const grid = [];
       for (let row = 0; row < 5; row++) {
-        grid[row] = [];
+        /** @type {string[]} */
+        const cells = [];
         for (let col = 0; col < 5; col++) {
-          grid[row][col] = fullAlphabet[row * 5 + col];
+          cells.push(fullAlphabet.charAt(row * 5 + col));
         }
+        grid.push(cells);
       }
 
       return grid;
     }
 
+    /**
+     * @param {string} plaintext - Text; only its letters count, J as I
+     * @returns {string} Space-separated two-digit cell numbers
+     */
     encryptText(plaintext) {
-      const text = plaintext.toUpperCase().replace(/[^A-Z]/g, '').replace(/J/g, 'I');
+      /** @type {string} */
+      const upper = plaintext.toUpperCase();
+      /** @type {string} */
+      const text = upper.replace(/[^A-Z]/g, '').replace(/J/g, 'I');
+      /** @type {string[]} */
       const result = [];
 
       for (let i = 0; i < text.length; i++) {
-        const char = text[i];
+        /** @type {string} */
+        const char = text.charAt(i);
         // Find position in grid
         for (let row = 0; row < 5; row++) {
           for (let col = 0; col < 5; col++) {
             if (this.grid[row][col] === char) {
-              result.push(((row + 1) * 10 + (col + 1)).toString());
+              /** @type {int32} */
+              const cell = (row + 1) * 10 + (col + 1);
+              /** @type {string} */
+              const cellText = String(cell);
+              result.push(cellText);
               break;
             }
           }
@@ -253,12 +307,24 @@
       return result.join(' ');
     }
 
+    /**
+     * @param {string} ciphertext - Space-separated cell numbers
+     * @returns {string} Letters, '?' for numbers outside the grid
+     */
     decryptText(ciphertext) {
-      const numbers = ciphertext.trim().split(/\s+/).map(n => parseInt(n));
+      /** @type {string} */
+      const trimmed = ciphertext.trim();
+      /** @type {string[]} */
+      const numbers = trimmed.split(/\s+/);
+      /** @type {string} */
       let result = '';
 
-      for (const num of numbers) {
+      for (let i = 0; i < numbers.length; i++) {
+        /** @type {int32} */
+        const num = parseInt(numbers[i]);
+        /** @type {int32} */
         const row = Math.floor(num / 10) - 1;
+        /** @type {int32} */
         const col = (num % 10) - 1;
 
         if (row >= 0 && row < 5 && col >= 0 && col < 5) {
