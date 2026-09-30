@@ -178,11 +178,17 @@
       this.isInverse = isInverse;
       /** @type {uint8[]|null} */
       this.result = null;
+      /** @type {int32} */
       this._rows = 4; // Default 4x4 matrix
+      /** @type {int32} */
       this._cols = 4;
+      /** @type {string} */
       this._direction = 'ascending'; // 'ascending' or 'descending' diagonal pattern
     }
 
+    /**
+     * @param {int32} r - Matrix rows (1..256)
+     */
     set rows(r) {
       if (r < 1 || r > 256) {
         throw new Error('ZigzagCodeInstance.rows: Must be between 1 and 256');
@@ -190,10 +196,16 @@
       this._rows = r;
     }
 
+    /**
+     * @returns {int32} Matrix rows
+     */
     get rows() {
       return this._rows;
     }
 
+    /**
+     * @param {int32} c - Matrix columns (1..256)
+     */
     set cols(c) {
       if (c < 1 || c > 256) {
         throw new Error('ZigzagCodeInstance.cols: Must be between 1 and 256');
@@ -201,10 +213,16 @@
       this._cols = c;
     }
 
+    /**
+     * @returns {int32} Matrix columns
+     */
     get cols() {
       return this._cols;
     }
 
+    /**
+     * @param {string} d - 'ascending' or 'descending'
+     */
     set direction(d) {
       if (d !== 'ascending' && d !== 'descending') {
         throw new Error("ZigzagCodeInstance.direction: Must be 'ascending' or 'descending'");
@@ -212,6 +230,9 @@
       this._direction = d;
     }
 
+    /**
+     * @returns {string} Diagonal direction
+     */
     get direction() {
       return this._direction;
     }
@@ -252,6 +273,10 @@
       return this.result;
     }
 
+    /**
+     * @param {uint8[]} data - Symbols, a whole number of blocks
+     * @returns {uint8[]} Diagonal-order symbols
+     */
     zigzag(data) {
       // Zigzag diagonal interleaving: write row-major, read diagonal
       const blockSize = this._rows * this._cols;
@@ -278,6 +303,7 @@
         }
 
         // Read in diagonal zigzag pattern
+        /** @type {uint8[]} */
         const diagonals = this._direction === 'ascending'
           ? this._readAscendingDiagonals(matrix)
           : this._readDescendingDiagonals(matrix);
@@ -287,6 +313,10 @@
       return result;
     }
 
+    /**
+     * @param {uint8[]} data - Diagonal-order symbols
+     * @returns {uint8[]} Row-major symbols
+     */
     dezigzag(data) {
       // Reverse zigzag: write diagonal, read row-major
       const blockSize = this._rows * this._cols;
@@ -301,13 +331,16 @@
 
       for (let block = 0; block < numBlocks; ++block) {
         const offset = block * blockSize;
+        /** @type {uint8[]} */
         const blockData = data.slice(offset, offset + blockSize);
 
         // Create empty matrix
         /** @type {uint8[][]} */
         const matrix = [];
         for (let r = 0; r < this._rows; ++r) {
-          matrix[r] = new Array(this._cols);
+          /** @type {uint8[]} */
+          const row = new Array(this._cols);
+          matrix[r] = row;
         }
 
         // Write in diagonal zigzag pattern
@@ -328,6 +361,10 @@
       return result;
     }
 
+    /**
+     * @param {uint8[][]} matrix - Block
+     * @returns {uint8[]} Ascending diagonals
+     */
     _readAscendingDiagonals(matrix) {
       // Read diagonals from bottom-left to top-right (ascending)
       // Pattern: (0,0), (1,0)-(0,1), (2,0)-(1,1)-(0,2), ...
@@ -361,6 +398,10 @@
       return result;
     }
 
+    /**
+     * @param {uint8[][]} matrix - Block
+     * @returns {uint8[]} Descending diagonals
+     */
     _readDescendingDiagonals(matrix) {
       // Read diagonals from top-left to bottom-right (descending)
       // Pattern: (0,0), (0,1)-(1,0), (0,2)-(1,1)-(2,0), ...
@@ -394,6 +435,11 @@
       return result;
     }
 
+    /**
+     * @param {uint8[][]} matrix - Block, filled in place
+     * @param {uint8[]} data - Diagonal-order symbols
+     * @returns {void}
+     */
     _writeAscendingDiagonals(matrix, data) {
       // Write data into matrix using ascending diagonal pattern
       const rows = this._rows;
@@ -423,6 +469,11 @@
       }
     }
 
+    /**
+     * @param {uint8[][]} matrix - Block, filled in place
+     * @param {uint8[]} data - Diagonal-order symbols
+     * @returns {void}
+     */
     _writeDescendingDiagonals(matrix, data) {
       // Write data into matrix using descending diagonal pattern
       const rows = this._rows;
