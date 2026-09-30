@@ -12,8 +12,23 @@
   const COMBAT_TILE_SIZE = 44;
   const COMBAT_MOVE_STEP_DUR = 0.08;
 
+  const BATTLE_SCENE_KEY = 'sz-tactical-realms-battle-scenes';
+  const BATTLE_SCENE_MODES = ['full', 'short', 'off'];
+
+  function loadBattleSceneMode() {
+    try {
+      const v = localStorage.getItem(BATTLE_SCENE_KEY);
+      return BATTLE_SCENE_MODES.includes(v) ? v : 'full';
+    } catch (_) {
+      return 'full';
+    }
+  }
+
   const MENU_ACTIONS = {
     'new'() { controller && controller.newGame(); },
+    'scenes-full'() { controller?.setBattleSceneMode('full'); },
+    'scenes-short'() { controller?.setBattleSceneMode('short'); },
+    'scenes-off'() { controller?.setBattleSceneMode('off'); },
     'combat-history'() { controller?.showCombatHistory(); },
     'exit'() { window.parent.postMessage({ type: 'sz:close' }, '*'); },
     'about'() {
@@ -66,6 +81,7 @@
     #combatAnim;
     #enemyQueue;
     #combatFx;
+    #battleSceneMode;
     #combatMovePath;
     #combatMoveUnit;
     #combatMoveIdx;
@@ -128,6 +144,7 @@
       this.#combatAnim = null;
       this.#enemyQueue = [];
       this.#combatFx = TR.CombatFx ? new TR.CombatFx() : null;
+      this.#battleSceneMode = loadBattleSceneMode();
       this.#combatMovePath = null;
       this.#combatMoveUnit = null;
       this.#combatMoveIdx = 0;
@@ -189,6 +206,7 @@
       this.#input.on('doubleClick', (e) => this.#onDoubleClick(e));
       this.#input.on('hover', (e) => this.#onHover(e));
       this.#input.on('rightClick', (e) => this.#onRightClick(e));
+      this.#input.on('key', (e) => this.#onKey(e));
 
       this.#statusEls = {
         state: document.getElementById('statusState'),
@@ -196,6 +214,7 @@
       };
 
       this.#setupMenu();
+      this.#syncBattleSceneMenu();
       this.#setupCombatLogPanel();
 
       // Initialize floating combat UI
@@ -505,9 +524,16 @@
       }
 
       if (this.#combatAnim) {
-        this.#combatAnim.timer -= dt;
-        if (this.#combatAnim.timer <= 0)
-          this.#finishCombatAnim();
+        const scene = this.#combatAnim.scene;
+        if (scene) {
+          scene.update(dt);
+          if (scene.done)
+            this.#finishCombatAnim();
+        } else {
+          this.#combatAnim.timer -= dt;
+          if (this.#combatAnim.timer <= 0)
+            this.#finishCombatAnim();
+        }
         return;
       }
 
@@ -616,7 +642,19 @@
       }
     }
 
+    #syncCinematic() {
+      const scene = this.#combatAnim && this.#combatAnim.scene;
+      const on = this.#sm.current === GameState.COMBAT && !!scene && !scene.done;
+      if (on !== this.#cinematic && typeof document !== 'undefined' && document.body && document.body.classList) {
+        document.body.classList.toggle('tr-cinematic', on);
+        this.#cinematic = on;
+      }
+    }
+
+    #cinematic = false;
+
     #render() {
+      this.#syncCinematic();
       this.#renderer.beginFrame();
 
       switch (this.#sm.current) {
@@ -1040,10 +1078,8 @@
 
       if (this.#combatAnim) {
         const anim = this.#combatAnim;
-        if ((anim.type === 'player_attack' || anim.type === 'enemy_attack' || anim.type === 'spell_cast') && anim.result && anim.defender) {
-          const dur = anim.duration || 2.0;
-          const progress = 1 - (anim.timer / dur);
-          this.#renderer.drawBattleScene(anim.attacker, anim.defender, anim.result, progress, anim.type);
+        if (anim.scene) {
+          anim.scene.draw(this.#renderer.bufCtx, CANVAS_W, CANVAS_H);
         } else {
           if (anim.defender && anim.defender.position) {
             const dp = anim.defender.position;
@@ -1356,7 +1392,7 @@
           const crit = attackEvent.critical;
           const hit = attackEvent.result.hit;
 
-          this.#combatAnim = {
+          this.#combatAnim = this.#attachBattleScene({
             type: 'enemy_attack',
             timer: 2.0,
             duration: 2.0,
@@ -1375,7 +1411,7 @@
               natural1: attackEvent.result.natural1,
               natural20: attackEvent.result.natural20,
             },
-          };
+          });
         } else {
           this.#combatAnim = {
             type: 'enemy_move',
@@ -1462,7 +1498,7 @@
       if (!attacker || !defender)
         return;
 
-      this.#combatAnim = {
+      this.#combatAnim = this.#attachBattleScene({
         type: 'player_attack',
         timer: 2.0,
         duration: 2.0,
@@ -1472,7 +1508,7 @@
         impacts: [result.hit
           ? { kind: 'hit', unit: defender, from: attacker, amount: result.damage, crit: result.critical }
           : { kind: 'miss', unit: defender, from: attacker }],
-      };
+      });
     }
 
     #startSpellAnim(caster, target, result) {
@@ -1487,7 +1523,7 @@
       if (result.heal > 0)
         impacts.push({ kind: 'heal', unit: target, amount: result.heal });
 
-      this.#combatAnim = {
+      this.#combatAnim = this.#attachBattleScene({
         type: 'spell_cast',
         timer: 2.0,
         duration: 2.0,
@@ -1495,7 +1531,7 @@
         defender: target,
         impacts,
         result: { ...result, hit: true, d20: 0, total: 0, natural20: false, natural1: false, critical: false, spellName },
-      };
+      });
     }
 
     #startAoeSpellAnim(caster, result) {
@@ -1517,7 +1553,7 @@
       }
 
       const firstTarget = result.targets.length > 0 ? (eng ? eng.unitById(result.targets[0].unitId) : null) : null;
-      this.#combatAnim = {
+      this.#combatAnim = this.#attachBattleScene({
         type: 'spell_cast',
         timer: 2.0,
         duration: 2.0,
@@ -1525,7 +1561,7 @@
         defender: firstTarget || caster,
         impacts,
         result: { ...result, hit: true, d20: 0, total: 0, natural20: false, natural1: false, critical: false, spellName: `${spellName} (${result.targets.length} hit)` },
-      };
+      });
     }
 
     #renderVictory() {
@@ -1811,7 +1847,62 @@
       }
     }
 
+    #onKey(e) {
+      if (e.key === ' ' || e.key === 'Enter' || e.key === 'Escape')
+        this.#skipBattleScene();
+    }
+
+    #skipBattleScene() {
+      const scene = this.#combatAnim && this.#combatAnim.scene;
+      if (!scene || scene.done)
+        return false;
+      scene.skip();
+      return true;
+    }
+
+    get battleSceneMode() { return this.#battleSceneMode; }
+
+    setBattleSceneMode(mode) {
+      if (!BATTLE_SCENE_MODES.includes(mode))
+        return;
+      this.#battleSceneMode = mode;
+      try {
+        localStorage.setItem(BATTLE_SCENE_KEY, mode);
+      } catch (_) { /* private mode: setting lasts for this session */ }
+      this.#syncBattleSceneMenu();
+    }
+
+    #syncBattleSceneMenu() {
+      if (typeof document === 'undefined' || !document.querySelectorAll)
+        return;
+      for (const m of BATTLE_SCENE_MODES) {
+        const el = document.getElementById(`menu-scenes-${m}`);
+        if (el && el.classList)
+          el.classList.toggle('checked', m === this.#battleSceneMode);
+      }
+    }
+
+    // Turns a grid animation into a battle cut-in, or plays its impacts
+    // right away when cut-ins are switched off.
+    #attachBattleScene(anim) {
+      if (!anim || !anim.defender)
+        return anim;
+      if (this.#battleSceneMode === 'off' || !TR.BattleScene) {
+        this.#playImpacts(anim.impacts);
+        anim.impacts = null;
+        anim.timer = anim.duration = 0.6;
+        return anim;
+      }
+      anim.scene = new TR.BattleScene({
+        attacker: anim.attacker, defender: anim.defender, result: anim.result, type: anim.type,
+        biome: this.#combatBiome, plane: this.#dimension, mode: this.#battleSceneMode,
+      });
+      return anim;
+    }
+
     #onClickCombat(e) {
+      if (this.#skipBattleScene())
+        return;
       const eng = this.#combatEngine;
       if (!eng || this.#combatAnim || this.#enemyQueue.length > 0 || this.#combatMovePath)
         return;

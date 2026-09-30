@@ -6,7 +6,8 @@
 
   // Creature sprite registry — maps creature templateId to sprite definition.
   // Formats: 'icon' (single image), 'anim-sheet' (spritesheet), 'anim-set' (multi-file).
-  // All support optional `tint` (CSS color string).
+  // All support optional `tint` (CSS color string) and `faces` ('left' or
+  // 'right') for side-on art, so battle scenes can turn it toward the foe.
   // Every icon was matched by looking at it (tools/sheet-preview.html). Creatures
   // without a fitting icon use a dungeon-sheet sprite instead (bottom of file).
 
@@ -23,7 +24,7 @@
   // --- Chaos folder ---
   cs.goblin          = { type: 'icon', path: 'assets/monsters/Chaos/Icon12.png' }; // green goblin with blade
   cs.kobold          = { type: 'icon', path: 'assets/monsters/Chaos/Icon10.png' }; // small tailed reptilian
-  cs.wolf            = { type: 'icon', path: 'assets/monsters/Chaos/Icon27.png' }; // dark wolf
+  cs.wolf            = { type: 'icon', path: 'assets/monsters/Chaos/Icon27.png', faces: 'left' }; // dark wolf
   cs.worg            = { type: 'icon', path: 'assets/monsters/Chaos/Icon7.png' }; // maned hound
   cs.gnoll           = { type: 'icon', path: 'assets/monsters/Chaos/Icon33.png' }; // hyena brute
   cs.orc             = { type: 'icon', path: 'assets/monsters/Chaos/Icon50.png' }; // horned brute
@@ -33,16 +34,16 @@
   cs.ghoul           = { type: 'icon', path: 'assets/monsters/Chaos/Icon24.png' }; // gaunt ghoul
   cs.skeleton        = { type: 'icon', path: 'assets/monsters/Chaos/Icon38.png' }; // skull-faced warrior
   cs.troll           = { type: 'icon', path: 'assets/monsters/Chaos/Icon41.png' }; // lanky green troll
-  cs.ogre            = { type: 'icon', path: 'assets/monsters/Chaos/Icon36.png' }; // club-wielding ogre
+  cs.ogre            = { type: 'icon', path: 'assets/monsters/Chaos/Icon36.png', faces: 'left' }; // club-wielding ogre
   cs.minotaur        = { type: 'icon', path: 'assets/monsters/Chaos/Icon39.png' }; // horned bull-man
-  cs.basilisk        = { type: 'icon', path: 'assets/monsters/Chaos/Icon8.png' }; // crawling reptile
-  cs.gargoyle        = { type: 'icon', path: 'assets/monsters/Chaos/Icon43.png' }; // winged stone beast
+  cs.basilisk        = { type: 'icon', path: 'assets/monsters/Chaos/Icon8.png', faces: 'left' }; // crawling reptile
+  cs.gargoyle        = { type: 'icon', path: 'assets/monsters/Chaos/Icon43.png', faces: 'left' }; // winged stone beast
   cs.owlbear         = { type: 'icon', path: 'assets/monsters/Chaos/Icon18.png' }; // owl-faced bear
   cs.manticore       = { type: 'icon', path: 'assets/monsters/Chaos/Icon28.png' }; // scorpion-tailed lion
   cs.vampire_spawn   = { type: 'icon', path: 'assets/monsters/Chaos/Icon14.png' }; // pale winged vampire
   cs.fire_elemental  = { type: 'icon', path: 'assets/monsters/Chaos/Icon47.png' }; // living flame
   cs.frost_giant     = { type: 'icon', path: 'assets/monsters/Chaos/Icon49.png' }; // ice-blue giant
-  cs.wyvern          = { type: 'icon', path: 'assets/monsters/Chaos/Icon17.png' }; // dark wyvern
+  cs.wyvern          = { type: 'icon', path: 'assets/monsters/Chaos/Icon17.png', faces: 'left' }; // dark wyvern
   cs.dragon_wyrmling = { type: 'icon', path: 'assets/monsters/Chaos/Icon23.png' }; // young green dragon
   cs.lich            = { type: 'icon', path: 'assets/monsters/Chaos/Icon34.png' }; // skull-crowned sorcerer
   cs.mind_flayer     = { type: 'icon', path: 'assets/monsters/Chaos/Icon44.png' }; // tentacle-faced aberration
