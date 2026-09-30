@@ -56,25 +56,71 @@
   const SIGNATURE_SIZE = 64; // R (32 bytes) + S (32 bytes)
 
   // Prime modulus: 2^255 - 19
+  /** @type {BigInt} */
   const P = OpCodes.ShiftLn(1n, 255n) - 19n;
 
   // Order of base point (group order): 2^252 + 27742317777372353535851937790883648493
+  /** @type {BigInt} */
   const L = OpCodes.ShiftLn(1n, 252n) + 27742317777372353535851937790883648493n;
 
   // Curve parameter d = -121665/121666 (mod p)
+  /** @type {BigInt} */
   const D = 37095705934669439343138083508754565189542113879843219016388785533085940283555n;
 
   // 2*d (mod p) - used in addition formula
+  /** @type {BigInt} */
   const D2 = modP(D + D);
 
   // Base point coordinates
+  /** @type {BigInt} */
   const Bx = 15112221349535400772501151409588531511454012693041857206046113283949847762202n;
+  /** @type {BigInt} */
   const By = 46316835694926478169428394003475163141307993866256225615783033603165251855960n;
+
+  /**
+   * A point in affine coordinates.
+   */
+  class EdAffinePoint {
+    /**
+     * @param {BigInt} x - x coordinate
+     * @param {BigInt} y - y coordinate
+     */
+    constructor(x, y) {
+      /** @type {BigInt} */
+      this.x = x;
+      /** @type {BigInt} */
+      this.y = y;
+    }
+  }
+
+  /**
+   * A point in extended coordinates (X : Y : Z : T), x = X/Z, y = Y/Z, xy = T/Z.
+   */
+  class EdExtendedPoint {
+    /**
+     * @param {BigInt} x - X
+     * @param {BigInt} y - Y
+     * @param {BigInt} z - Z
+     * @param {BigInt} t - T
+     */
+    constructor(x, y, z, t) {
+      /** @type {BigInt} */
+      this.x = x;
+      /** @type {BigInt} */
+      this.y = y;
+      /** @type {BigInt} */
+      this.z = z;
+      /** @type {BigInt} */
+      this.t = t;
+    }
+  }
 
   // ===== FIELD ARITHMETIC (Modulo P = 2^255 - 19) =====
 
   /**
    * Modular reduction modulo P = 2^255 - 19
+   * @param {BigInt} x - x
+   * @returns {BigInt} Result
    */
   function modP(x) {
     x = x % P;
@@ -84,6 +130,8 @@
 
   /**
    * Modular inverse using Fermat's little theorem: a^(p-2) mod p
+   * @param {BigInt} x - x
+   * @returns {BigInt} Result
    */
   function modPInv(x) {
     return modPow(x, P - 2n, P);
@@ -91,8 +139,13 @@
 
   /**
    * Modular exponentiation: base^exp mod mod
+   * @param {BigInt} base - base
+   * @param {BigInt} exp - exp
+   * @param {BigInt} mod - mod
+   * @returns {BigInt} Result
    */
   function modPow(base, exp, mod) {
+    /** @type {BigInt} */
     var result = 1n;
     base = base % mod;
     while (exp > 0n) {
@@ -107,6 +160,8 @@
 
   /**
    * Modular reduction modulo L (group order)
+   * @param {BigInt} x - x
+   * @returns {BigInt} Result
    */
   function modL(x) {
     x = x % L;
@@ -118,11 +173,17 @@
 
   /**
    * Encode integer as little-endian byte array
+   * @param {BigInt} value - value
+   * @param {int32} length - length
+   * @returns {uint8[]} Result
    */
   function encodeInt(value, length) {
+    /** @type {uint8[]} */
     const result = new Array(length);
     for (var i = 0; i < length; ++i) {
-      result[i] = Number(OpCodes.AndN(value, 0xFFn));
+      /** @type {uint8} */
+      var octet = Number(OpCodes.AndN(value, 0xFFn));
+      result[i] = octet;
       value = OpCodes.ShiftRn(value, 8n);
     }
     return result;
@@ -130,11 +191,14 @@
 
   /**
    * Decode little-endian byte array to BigInt
+   * @param {uint8[]} bytes - bytes
+   * @returns {BigInt} Result
    */
   function decodeInt(bytes) {
+    /** @type {BigInt} */
     var result = 0n;
     for (var i = bytes.length - 1; i >= 0; --i) {
-      result = OpCodes.OrN(OpCodes.ShiftLn(result, 8n), BigInt(OpCodes.AndN(bytes[i], 0xFF)));
+      result = OpCodes.OrN(OpCodes.ShiftLn(result, 8n), BigInt(OpCodes.And8(bytes[i], 0xFF)));
     }
     return result;
   }
@@ -142,6 +206,8 @@
   /**
    * Encode point to 32-byte compressed format (RFC 8032)
    * Format: y-coordinate (255 bits) + sign bit of x (1 bit)
+   * @param {EdAffinePoint} point - point
+   * @returns {uint8[]} Result
    */
   function encodePoint(point) {
     const y = modP(point.y);
@@ -150,7 +216,7 @@
 
     // Set sign bit (bit 255) based on x's parity
     if (OpCodes.AndN(x, 1n)) {
-      bytes[31] = OpCodes.OrN(bytes[31], 0x80);
+      bytes[31] = OpCodes.Or8(bytes[31], 0x80);
     }
 
     return bytes;
@@ -158,6 +224,8 @@
 
   /**
    * Decode 32-byte compressed point format (RFC 8032)
+   * @param {uint8[]} bytes - bytes
+   * @returns {EdAffinePoint} Result
    */
   function decodePoint(bytes) {
     if (bytes.length !== 32) {
@@ -165,11 +233,11 @@
     }
 
     // Extract sign bit
-    const signBit = OpCodes.AndN(bytes[31], 0x80) !== 0;
+    const signBit = OpCodes.And8(bytes[31], 0x80) !== 0;
 
     // Decode y-coordinate
     const yBytes = bytes.slice(0);
-    yBytes[31] = OpCodes.AndN(yBytes[31], 0x7F); // Clear sign bit
+    yBytes[31] = OpCodes.And8(yBytes[31], 0x7F); // Clear sign bit
     const y = decodeInt(yBytes);
 
     if (y >= P) {
@@ -186,6 +254,7 @@
     const x2 = modP(u * vInv);
 
     // Compute square root using p = 5 (mod 8) property
+    /** @type {BigInt} */
     var x = modPow(x2, (P + 3n) / 8n, P);
 
     // Check if x^2 == x2, if not multiply by sqrt(-1) = 2^((p-1)/4)
@@ -203,7 +272,7 @@
       x = modP(-x);
     }
 
-    return { x: x, y: y };
+    return new EdAffinePoint(x, y);
   }
 
   // ===== EDWARDS CURVE OPERATIONS =====
@@ -212,10 +281,19 @@
    * Edwards curve point addition using extended coordinates
    * Formula from https://hyperelliptic.org/EFD/g1p/auto-twisted-extended-1.html
    * This is the complete addition formula for twisted Edwards curves with a=-1
+   * @param {EdExtendedPoint} p1 - p1
+   * @param {EdExtendedPoint} p2 - p2
+   * @returns {EdExtendedPoint} Result
    */
   function pointAdd(p1, p2) {
-    const x1 = p1.x, y1 = p1.y, z1 = p1.z || 1n, t1 = p1.t || modP(x1 * y1);
-    const x2 = p2.x, y2 = p2.y, z2 = p2.z || 1n, t2 = p2.t || modP(x2 * y2);
+    const x1 = p1.x;
+    const y1 = p1.y;
+    const z1 = p1.z ? p1.z : 1n;
+    const t1 = p1.t ? p1.t : modP(x1 * y1);
+    const x2 = p2.x;
+    const y2 = p2.y;
+    const z2 = p2.z ? p2.z : 1n;
+    const t2 = p2.t ? p2.t : modP(x2 * y2);
 
     // A = (Y1-X1)*(Y2-X2)
     const A = modP((y1 - x1) * (y2 - x2));
@@ -242,15 +320,19 @@
     // Z3 = F*G
     const Z3 = modP(F * G);
 
-    return { x: X3, y: Y3, z: Z3, t: T3 };
+    return new EdExtendedPoint(X3, Y3, Z3, T3);
   }
 
   /**
    * Edwards curve point doubling using extended coordinates
    * Formula from https://hyperelliptic.org/EFD/g1p/auto-twisted-extended-1.html
+   * @param {EdExtendedPoint} p - p
+   * @returns {EdExtendedPoint} Result
    */
   function pointDouble(p) {
-    const x = p.x, y = p.y, z = p.z || 1n;
+    const x = p.x;
+    const y = p.y;
+    const z = p.z ? p.z : 1n;
 
     // A = X1^2
     const A = modP(x * x);
@@ -275,49 +357,55 @@
     // Z3 = F*G
     const Z3 = modP(F * G);
 
-    return { x: X3, y: Y3, z: Z3, t: T3 };
+    return new EdExtendedPoint(X3, Y3, Z3, T3);
   }
 
   /**
    * Convert extended coordinates to affine
+   * @param {EdExtendedPoint} p - p
+   * @returns {EdAffinePoint} Result
    */
   function toAffine(p) {
     if (!p.z || p.z === 1n) {
-      return { x: p.x, y: p.y };
+      return new EdAffinePoint(p.x, p.y);
     }
     const zInv = modPInv(p.z);
-    return {
-      x: modP(p.x * zInv),
-      y: modP(p.y * zInv)
-    };
+    return new EdAffinePoint(
+      modP(p.x * zInv),
+      modP(p.y * zInv)
+    );
   }
 
   /**
    * Scalar multiplication: k * Point using Montgomery ladder
    * This is more efficient and constant-time than double-and-add
+   * @param {BigInt} k - k
+   * @param {EdAffinePoint} point - point
+   * @returns {EdAffinePoint} Result
    */
   function scalarMult(k, point) {
     // Handle edge cases
     if (k === 0n) {
-      return { x: 0n, y: 1n }; // Neutral element
+      return new EdAffinePoint(0n, 1n); // Neutral element
     }
 
     // Convert to extended coordinates
-    const P = {
-      x: point.x,
-      y: point.y,
-      z: 1n,
-      t: modP(point.x * point.y)
-    };
+    const P = new EdExtendedPoint(
+      point.x,
+      point.y,
+      1n,
+      modP(point.x * point.y)
+    );
 
     // Start with neutral element
-    var R0 = { x: 0n, y: 1n, z: 1n, t: 0n };
+    var R0 = new EdExtendedPoint(0n, 1n, 1n, 0n);
     var R1 = P;
 
     // Process scalar from MSB to LSB (Montgomery ladder)
+    /** @type {string} */
     const kBits = k.toString(2);
     for (var i = 0; i < kBits.length; ++i) {
-      if (kBits[i] === '1') {
+      if (kBits.charAt(i) === '1') {
         R0 = pointAdd(R0, R1);
         R1 = pointDouble(R1);
       } else {
@@ -331,9 +419,11 @@
 
   /**
    * Scalar multiplication by base point: k * B
+   * @param {BigInt} k - k
+   * @returns {EdAffinePoint} Result
    */
   function scalarMultBase(k) {
-    return scalarMult(k, { x: Bx, y: By });
+    return scalarMult(k, new EdAffinePoint(Bx, By));
   }
 
   // ===== SHA-512 INTEGRATION =====
@@ -350,11 +440,12 @@
 
   /**
    * Get SHA-512 hash function instance
-   * @returns {Object} A fresh SHA-512 instance
+   * @returns {IHashFunctionInstance} A fresh SHA-512 instance
    */
   function getSHA512() {
     // The registry is the normal path. In the browser the hash script tag has
     // run long before anyone signs; under Node the load below puts it there.
+    /** @type {Algorithm} */
     let algorithm = AlgorithmFramework.Find ? AlgorithmFramework.Find('SHA-512') : null;
 
     if (!algorithm && typeof require !== 'undefined') {
@@ -369,22 +460,30 @@
     if (!algorithm)
       throw new Error('SHA-512 implementation not available. Please load sha512.js first.');
 
-    return algorithm.CreateInstance();
+    /** @type {IHashFunctionInstance} */
+    const instance = algorithm.CreateInstance();
+    return instance;
   }
 
   /**
    * Hash data using SHA-512
+   * @param {uint8[]} data - data
+   * @returns {uint8[]} Result
    */
   function sha512Hash(data) {
     const sha512 = getSHA512();
     sha512.Feed(data);
-    return sha512.Result();
+    /** @type {uint8[]} */
+    const digest = sha512.Result();
+    return digest;
   }
 
   // ===== ED25519 CORE OPERATIONS =====
 
   /**
    * Generate public key from secret key (32 bytes)
+   * @param {uint8[]} secretKey - secretKey
+   * @returns {uint8[]} Result
    */
   function generatePublicKey(secretKey) {
     if (!secretKey || secretKey.length !== SECRET_KEY_SIZE) {
@@ -396,9 +495,9 @@
 
     // Clamp the first 32 bytes to create scalar
     const scalar = h.slice(0, 32);
-    scalar[0] = OpCodes.AndN(scalar[0], 0xF8);  // Clear lowest 3 bits
-    scalar[31] = OpCodes.AndN(scalar[31], 0x7F); // Clear highest bit
-    scalar[31] = OpCodes.OrN(scalar[31], 0x40); // Set second-highest bit
+    scalar[0] = OpCodes.And8(scalar[0], 0xF8);  // Clear lowest 3 bits
+    scalar[31] = OpCodes.And8(scalar[31], 0x7F); // Clear highest bit
+    scalar[31] = OpCodes.Or8(scalar[31], 0x40); // Set second-highest bit
 
     const s = decodeInt(scalar);
 
@@ -411,6 +510,9 @@
   /**
    * Sign a message
    * Returns 64-byte signature (R || S)
+   * @param {uint8[]} secretKey - secretKey
+   * @param {uint8[]} message - message
+   * @returns {uint8[]} Result
    */
   function sign(secretKey, message) {
     if (!secretKey || secretKey.length !== SECRET_KEY_SIZE) {
@@ -422,9 +524,9 @@
 
     // First 32 bytes: clamped scalar
     const scalarBytes = h.slice(0, 32);
-    scalarBytes[0] = OpCodes.AndN(scalarBytes[0], 0xF8);
-    scalarBytes[31] = OpCodes.AndN(scalarBytes[31], 0x7F);
-    scalarBytes[31] = OpCodes.OrN(scalarBytes[31], 0x40);
+    scalarBytes[0] = OpCodes.And8(scalarBytes[0], 0xF8);
+    scalarBytes[31] = OpCodes.And8(scalarBytes[31], 0x7F);
+    scalarBytes[31] = OpCodes.Or8(scalarBytes[31], 0x40);
     const s = decodeInt(scalarBytes);
 
     // Second 32 bytes: prefix for nonce
@@ -456,6 +558,10 @@
   /**
    * Verify a signature
    * Returns true if signature is valid, false otherwise
+   * @param {uint8[]} publicKey - publicKey
+   * @param {uint8[]} message - message
+   * @param {uint8[]} signature - signature
+   * @returns {boolean} Result
    */
   function verify(publicKey, message, signature) {
     if (!publicKey || publicKey.length !== PUBLIC_KEY_SIZE) {
@@ -491,9 +597,12 @@
       const SB = scalarMultBase(S);
       const kA = scalarMult(k, A);
 
-      // Compute R' = S*B - k*A
-      const negKA = { x: modP(-kA.x), y: kA.y }; // Negate point by negating x
-      const Rprime = pointAdd(SB, negKA);
+      // Compute R' = S*B - k*A. Both operands are affine: Z = 1 and T = xy,
+      // which is what pointAdd assumed for them.
+      const negKAx = modP(-kA.x); // Negate point by negating x
+      const Rprime = pointAdd(
+        new EdExtendedPoint(SB.x, SB.y, 1n, modP(SB.x * SB.y)),
+        new EdExtendedPoint(negKAx, kA.y, 1n, modP(negKAx * kA.y)));
 
       // Compare R' with R
       return Rprime.x === R.x && Rprime.y === R.y;
@@ -593,15 +702,25 @@
  */
 
   class Ed25519Instance extends IAlgorithmInstance {
+    /**
+     * @param {Ed25519Algorithm} algorithm - Parent algorithm instance
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {uint8[]|null} */
       this._secretKey = null;
+      /** @type {uint8[]|null} */
       this._publicKey = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {string} */
       this.mode = 'sign'; // 'sign' or 'verify'
     }
 
     // Property: secret key (32 bytes)
+    /**
+     * @param {uint8[]|null} keyBytes - 32-byte secret key
+     */
     set secretKey(keyBytes) {
       if (!keyBytes) {
         this._secretKey = null;
@@ -609,7 +728,7 @@
       }
 
       if (keyBytes.length !== SECRET_KEY_SIZE) {
-        throw new Error(`Invalid secret key size: ${keyBytes.length} bytes (expected ${SECRET_KEY_SIZE})`);
+        throw new Error('Invalid secret key size: ' + keyBytes.length + ' bytes (expected ' + SECRET_KEY_SIZE + ')');
       }
 
       this._secretKey = keyBytes.slice(0);
@@ -618,11 +737,17 @@
       this._publicKey = generatePublicKey(this._secretKey);
     }
 
+    /**
+     * @returns {uint8[]|null} copy of the secret key
+     */
     get secretKey() {
       return this._secretKey ? this._secretKey.slice(0) : null;
     }
 
     // Property: public key (32 bytes)
+    /**
+     * @param {uint8[]|null} keyBytes - 32-byte public key
+     */
     set publicKey(keyBytes) {
       if (!keyBytes) {
         this._publicKey = null;
@@ -630,12 +755,15 @@
       }
 
       if (keyBytes.length !== PUBLIC_KEY_SIZE) {
-        throw new Error(`Invalid public key size: ${keyBytes.length} bytes (expected ${PUBLIC_KEY_SIZE})`);
+        throw new Error('Invalid public key size: ' + keyBytes.length + ' bytes (expected ' + PUBLIC_KEY_SIZE + ')');
       }
 
       this._publicKey = keyBytes.slice(0);
     }
 
+    /**
+     * @returns {uint8[]|null} copy of the public key
+     */
     get publicKey() {
       return this._publicKey ? this._publicKey.slice(0) : null;
     }
@@ -662,6 +790,7 @@
 
     Result() {
       // Ed25519 can sign empty messages (RFC 8032 Test Vector #1)
+      /** @type {uint8[]} */
       var result;
 
       if (this.mode === 'sign') {

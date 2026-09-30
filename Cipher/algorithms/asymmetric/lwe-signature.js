@@ -148,52 +148,86 @@
 
   /**
    * An octet stream of unbounded length derived from a seed.
-   * @param {string} name - Registered XOF name, SHAKE128 or SHAKE256
-   * @param {uint8[]} seed - Seed octets
-   * @returns {function():number} Returns the next octet on each call
    */
-  function xofStream(name, seed) {
-    loadHashes();
+  class XofStream {
+    /**
+     * @param {string} name - Registered XOF name, SHAKE128 or SHAKE256
+     * @param {uint8[]} seed - Seed octets
+     */
+    constructor(name, seed) {
+      loadHashes();
 
-    const algorithm = AlgorithmFramework.Find(name);
-    if (!algorithm) {
-      throw new Error('LWE-Signature requires ' + name + ', which is not registered');
-    }
-
-    let counter = 0;
-    let buffer = [];
-    let position = 0;
-
-    return function next() {
-      if (position >= buffer.length) {
-        const suffix = OpCodes.Unpack32BE(counter);
-        ++counter;
-
-        const input = new Array(seed.length + 4);
-        for (let i = 0; i < seed.length; ++i) input[i] = seed[i];
-        for (let i = 0; i < 4; ++i) input[seed.length + i] = suffix[i];
-
-        const instance = algorithm.CreateInstance();
-        instance.outputSize = XOF_BLOCK;
-        instance.Feed(input);
-        buffer = instance.Result();
-        position = 0;
+      /** @type {Algorithm} */
+      const algorithm = AlgorithmFramework.Find(name);
+      if (!algorithm) {
+        throw new Error('LWE-Signature requires ' + name + ', which is not registered');
       }
-      return buffer[position++];
-    };
+
+      /** @type {Algorithm} */
+      this.algorithm = algorithm;
+      /** @type {uint8[]} */
+      this.seed = seed;
+      /** @type {uint32} */
+      this.counter = 0;
+      /** @type {uint8[]} */
+      this.buffer = [];
+      /** @type {int32} */
+      this.position = 0;
+    }
+  }
+
+  /**
+   * The next octet of a stream.
+   * @param {XofStream} stream - The stream
+   * @returns {uint8} Next octet
+   */
+  function xofNext(stream) {
+    if (stream.position >= stream.buffer.length) {
+      const suffix = OpCodes.Unpack32BE(stream.counter);
+      ++stream.counter;
+
+      /** @type {uint8[]} */
+      const input = new Array(stream.seed.length + 4);
+      for (let i = 0; i < stream.seed.length; ++i) input[i] = stream.seed[i];
+      for (let i = 0; i < 4; ++i) input[stream.seed.length + i] = suffix[i];
+
+      /** @type {IHashFunctionInstance} */
+      const instance = stream.algorithm.CreateInstance();
+      instance.outputSize = XOF_BLOCK;
+      instance.Feed(input);
+      /** @type {uint8[]} */
+      const block = instance.Result();
+      stream.buffer = block;
+      stream.position = 0;
+    }
+    return stream.buffer[stream.position++];
+  }
+
+  /**
+   * The next two octets of a stream as a big-endian 16-bit value.
+   * @param {XofStream} stream - The stream
+   * @returns {int32} First octet times 256 plus the second
+   */
+  function xofNext16(stream) {
+    /** @type {int32} */
+    const high = xofNext(stream);
+    /** @type {int32} */
+    const low = xofNext(stream);
+    return high * 256 + low;
   }
 
   /**
    * A fixed number of octets derived from a seed.
    * @param {string} name - Registered XOF name
    * @param {uint8[]} seed - Seed octets
-   * @param {number} length - Octets required
+   * @param {int32} length - Octets required
    * @returns {uint8[]} The derived octets
    */
   function xof(name, seed, length) {
-    const next = xofStream(name, seed);
+    const stream = new XofStream(name, seed);
+    /** @type {uint8[]} */
     const out = new Array(length);
-    for (let i = 0; i < length; ++i) out[i] = next();
+    for (let i = 0; i < length; ++i) out[i] = xofNext(stream);
     return out;
   }
 
@@ -204,15 +238,21 @@
    * [0, Q). Three octets give 24 bits; the low 20 are kept, which is one bit
    * wider than Q, so all but three values in 2^20 are accepted immediately.
    * @param {uint8[]} seed - Seed octets
-   * @returns {Int32Array} A in row-major order, N*M entries
+   * @returns {int32[]} A in row-major order, N*M entries
    */
   function expandA(seed) {
-    const next = xofStream('SHAKE128', seed);
+    const stream = new XofStream('SHAKE128', seed);
     const a = new Int32Array(N * M);
     let filled = 0;
 
     while (filled < N * M) {
-      const raw = (next() * 65536 + next() * 256 + next()) % 1048576;
+      /** @type {int32} */
+      const high = xofNext(stream);
+      /** @type {int32} */
+      const middle = xofNext(stream);
+      /** @type {int32} */
+      const low = xofNext(stream);
+      const raw = (high * 65536 + middle * 256 + low) % 1048576;
       if (raw < Q) a[filled++] = raw;
     }
 
@@ -222,17 +262,17 @@
   /**
    * Expand the ternary secret S from its seed.
    * @param {uint8[]} seed - Seed octets
-   * @returns {Int8Array} S in row-major order, M*K entries in {-1, 0, 1}
+   * @returns {int8[]} S in row-major order, M*K entries in {-1, 0, 1}
    */
   function expandS(seed) {
-    const next = xofStream('SHAKE256', seed);
+    const stream = new XofStream('SHAKE256', seed);
     const s = new Int8Array(M * K);
 
     for (let i = 0; i < M * K; ++i) {
       // Values 0..242 are an exact multiple of three, so taking the remainder
       // of anything below that is unbiased; the rest are drawn again.
-      let raw = next();
-      while (raw >= 243) raw = next();
+      let raw = xofNext(stream);
+      while (raw >= 243) raw = xofNext(stream);
       const r = raw % 3;
       s[i] = r === 2 ? -1 : r;
     }
@@ -242,9 +282,9 @@
 
   /**
    * The public key T = A*S mod Q.
-   * @param {Int32Array} a - The matrix A
-   * @param {Int8Array} s - The secret S
-   * @returns {Int32Array} T in row-major order, N*K entries
+   * @param {int32[]} a - The matrix A
+   * @param {int8[]} s - The secret S
+   * @returns {int32[]} T in row-major order, N*K entries
    */
   function computeT(a, s) {
     const t = new Int32Array(N * K);
@@ -273,10 +313,11 @@
   /**
    * Encode a vector of values below 2^24 as three octets each, big-endian.
    * Used only as hash input, where a fixed width is what matters.
-   * @param {Int32Array|number[]} values - The values
+   * @param {int32[]} values - The values
    * @returns {uint8[]} Three octets per value
    */
   function encodeWide(values) {
+    /** @type {uint8[]} */
     const out = new Array(values.length * 3);
     for (let i = 0; i < values.length; ++i) {
       const v = values[i];
@@ -294,6 +335,53 @@
   const KEY_CACHE = new Map();
 
   /**
+   * A key pair derived from a master seed.
+   */
+  class LWEKeyPair {
+    /**
+     * @param {uint8[]} seedA - Public seed of A
+     * @param {uint8[]} seedK - Secret seed of the masking vectors
+     * @param {int32[]} a - The matrix A
+     * @param {int8[]} s - The secret S
+     * @param {int32[]} t - The public key T = A*S mod Q
+     * @param {uint8[]} publicDigest - Digest of the public key
+     */
+    constructor(seedA, seedK, a, s, t, publicDigest) {
+      /** @type {uint8[]} */
+      this.seedA = seedA;
+      /** @type {uint8[]} */
+      this.seedK = seedK;
+      /** @type {int32[]} */
+      this.a = a;
+      /** @type {int8[]} */
+      this.s = s;
+      /** @type {int32[]} */
+      this.t = t;
+      /** @type {uint8[]} */
+      this.publicDigest = publicDigest;
+    }
+  }
+
+  /**
+   * The public parts of a key pair.
+   */
+  class LWEPublicKey {
+    /**
+     * @param {uint8[]} seedA - Public seed of A
+     * @param {int32[]} t - The public key T
+     * @param {uint8[]} publicDigest - Digest of the public key
+     */
+    constructor(seedA, t, publicDigest) {
+      /** @type {uint8[]} */
+      this.seedA = seedA;
+      /** @type {int32[]} */
+      this.t = t;
+      /** @type {uint8[]} */
+      this.publicDigest = publicDigest;
+    }
+  }
+
+  /**
    * Derive a key pair from a master seed.
    *
    * The three sub-seeds are separate so that the public matrix, the secret and
@@ -301,11 +389,16 @@
    * is secret and expands S, and seedK is secret and derandomises signing.
    *
    * @param {uint8[]} seed - Master seed, SEED_LENGTH octets
-   * @returns {Object} { seedA, seedK, a, s, t, publicDigest }
+   * @returns {LWEKeyPair} { seedA, seedK, a, s, t, publicDigest }
    */
   function deriveKeyPair(seed) {
     let cacheKey = '';
-    for (let i = 0; i < seed.length; ++i) cacheKey += (seed[i] + 256).toString(16).slice(1);
+    for (let i = 0; i < seed.length; ++i) {
+      /** @type {string} */
+      const hex = (seed[i] + 256).toString(16);
+      cacheKey += hex.slice(1);
+    }
+    /** @type {LWEKeyPair} */
     const cached = KEY_CACHE.get(cacheKey);
     if (cached) return cached;
 
@@ -324,7 +417,7 @@
     const digestInput = seedA.concat(encodeWide(t));
     const publicDigest = xof('SHAKE256', digestInput, 32);
 
-    const keyPair = { seedA, seedK, a, s, t, publicDigest };
+    const keyPair = new LWEKeyPair(seedA, seedK, a, s, t, publicDigest);
     KEY_CACHE.set(cacheKey, keyPair);
     return keyPair;
   }
@@ -335,18 +428,18 @@
    * Expand a challenge hash into a sparse ternary vector: KAPPA coordinates of
    * the K are non-zero, each plus or minus one.
    * @param {uint8[]} challengeHash - The hash carried in the signature
-   * @returns {Int8Array} The challenge, K entries
+   * @returns {int8[]} The challenge, K entries
    */
   function expandChallenge(challengeHash) {
-    const next = xofStream('SHAKE256', challengeHash);
+    const stream = new XofStream('SHAKE256', challengeHash);
     const c = new Int8Array(K);
     let placed = 0;
 
     while (placed < KAPPA) {
       // K is a power of two, so the remainder of a 16-bit draw is unbiased.
-      const position = (next() * 256 + next()) % K;
+      const position = xofNext16(stream) % K;
       if (c[position] !== 0) continue;
-      c[position] = (next() % 2) === 0 ? 1 : -1;
+      c[position] = (xofNext(stream) % 2) === 0 ? 1 : -1;
       ++placed;
     }
 
@@ -357,11 +450,12 @@
    * The challenge hash: a commitment to the public key, the message and w.
    * @param {uint8[]} publicDigest - Digest of the public key
    * @param {uint8[]} message - Message octets
-   * @param {number[]} w - The commitment vector, N entries below Q
+   * @param {int32[]} w - The commitment vector, N entries below Q
    * @returns {uint8[]} CHALLENGE_LENGTH octets
    */
   function challengeHash(publicDigest, message, w) {
     const encoded = encodeWide(w);
+    /** @type {uint8[]} */
     const input = new Array(publicDigest.length + encoded.length + message.length);
     let at = 0;
     for (let i = 0; i < publicDigest.length; ++i) input[at++] = publicDigest[i];
@@ -372,14 +466,15 @@
 
   /**
    * w = A*y mod Q.
-   * @param {Int32Array} a - The matrix A
-   * @param {Int32Array} y - A vector of M entries
-   * @returns {number[]} N entries in [0, Q)
+   * @param {int32[]} a - The matrix A
+   * @param {int32[]} y - A vector of M entries
+   * @returns {int32[]} N entries in [0, Q)
    */
   function multiplyA(a, y) {
     // A plain array rather than an Int32Array: the accumulator reaches about
     // Q*GAMMA*M, some 2^44, which a double holds exactly and an Int32Array
     // would silently truncate.
+    /** @type {int32[]} */
     const w = new Array(N);
     for (let row = 0; row < N; ++row) {
       let accumulator = 0;
@@ -398,12 +493,15 @@
    * number rather than from an RNG, so the same message always produces the
    * same signature and a weak generator cannot leak the secret.
    *
-   * @param {Object} keyPair - From deriveKeyPair
+   * @param {LWEKeyPair} keyPair - From deriveKeyPair
    * @param {uint8[]} message - Message octets
    * @returns {uint8[]} SIGNATURE_LENGTH octets
    */
   function signMessage(keyPair, message) {
-    const { a, s, seedK, publicDigest } = keyPair;
+    const a = keyPair.a;
+    const s = keyPair.s;
+    const seedK = keyPair.seedK;
+    const publicDigest = keyPair.publicDigest;
 
     // Enough attempts that exhausting them is impossible in practice: each is
     // accepted with probability about 0.63, so the chance of 256 failures is
@@ -412,6 +510,7 @@
 
     for (let attempt = 0; attempt < maxAttempts; ++attempt) {
       const suffix = OpCodes.Unpack32BE(attempt);
+      /** @type {uint8[]} */
       const maskSeed = new Array(seedK.length + message.length + 4);
       let at = 0;
       for (let i = 0; i < seedK.length; ++i) maskSeed[at++] = seedK[i];
@@ -421,11 +520,11 @@
       // y uniform on [-(GAMMA-1), GAMMA-1], which is 2*GAMMA-1 values. Drawing
       // 16 bits and rejecting anything at or above 65534 keeps it unbiased,
       // because 65534 is 2*(2*GAMMA-1).
-      const next = xofStream('SHAKE256', maskSeed);
+      const stream = new XofStream('SHAKE256', maskSeed);
       const y = new Int32Array(M);
       for (let i = 0; i < M; ++i) {
-        let raw = next() * 256 + next();
-        while (raw >= 65534) raw = next() * 256 + next();
+        let raw = xofNext16(stream);
+        while (raw >= 65534) raw = xofNext16(stream);
         y[i] = (raw % (2 * GAMMA - 1)) - (GAMMA - 1);
       }
 
@@ -438,9 +537,11 @@
       const z = new Int32Array(M);
       for (let i = 0; i < M; ++i) z[i] = y[i];
       for (let ci = 0; ci < K; ++ci) {
+        /** @type {int32} */
         const sign = c[ci];
         if (sign === 0) continue;
         for (let i = 0; i < M; ++i) {
+          /** @type {int32} */
           const coefficient = s[i * K + ci];
           if (coefficient === 0) continue;
           z[i] += sign * coefficient;
@@ -456,6 +557,7 @@
       }
       if (!accepted) continue;
 
+      /** @type {uint8[]} */
       const signature = new Array(SIGNATURE_LENGTH);
       for (let i = 0; i < CHALLENGE_LENGTH; ++i) signature[i] = cHash[i];
       for (let i = 0; i < M; ++i) {
@@ -471,20 +573,26 @@
 
   /**
    * Check a signature over a message.
-   * @param {Object} keyPair - From deriveKeyPair; only the public parts are read
+   * @param {LWEKeyPair} keyPair - From deriveKeyPair; only the public parts are read
    * @param {uint8[]} message - Message octets
    * @param {uint8[]} signature - SIGNATURE_LENGTH octets
    * @returns {boolean} Whether the signature verifies
    */
   function verifyMessage(keyPair, message, signature) {
-    const { a, t, publicDigest } = keyPair;
+    const a = keyPair.a;
+    const t = keyPair.t;
+    const publicDigest = keyPair.publicDigest;
 
     if (!signature || signature.length !== SIGNATURE_LENGTH) return false;
 
     const cHash = signature.slice(0, CHALLENGE_LENGTH);
     const z = new Int32Array(M);
     for (let i = 0; i < M; ++i) {
-      const shifted = signature[CHALLENGE_LENGTH + i * 2] * 256 + signature[CHALLENGE_LENGTH + i * 2 + 1];
+      /** @type {int32} */
+      const high = signature[CHALLENGE_LENGTH + i * 2];
+      /** @type {int32} */
+      const shifted = high * 256 + signature[CHALLENGE_LENGTH + i * 2 + 1];
+      /** @type {int32} */
       const value = shifted - ZBOUND;
       // The norm check, and it is not optional: without it a forger is free to
       // answer with any z at all, and the problem left to solve is no longer a
@@ -498,6 +606,7 @@
     // w = A*z - T*c mod Q, which is A*y for an honest signature.
     const w = multiplyA(a, z);
     for (let ci = 0; ci < K; ++ci) {
+      /** @type {int32} */
       const sign = c[ci];
       if (sign === 0) continue;
       for (let row = 0; row < N; ++row) {
@@ -643,18 +752,24 @@
    */
   class LWESignatureInstance extends IAlgorithmInstance {
     /**
-     * @param {Object} algorithm - Parent algorithm instance
+     * @param {LWESignatureAlgorithm} algorithm - Parent algorithm instance
      * @param {boolean} [isInverse=false] - Verification mode flag
      */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
       this.isInverse = isInverse;
+      /** @type {LWEKeyPair|null} */
       this._keyPair = null;
+      /** @type {uint8[]|null} */
       this._keyData = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
     // Property setter for key (for test suite compatibility)
+    /**
+     * @param {uint8[]} keyData - Master seed, SEED_LENGTH octets
+     */
     set key(keyData) {
       this.KeySetup(keyData);
     }
@@ -669,17 +784,16 @@
 
     /**
      * The public parts of the key pair.
-     * @returns {Object|null} { seedA, t, publicDigest } or null
+     * @returns {LWEPublicKey|null} { seedA, t, publicDigest } or null
      */
     get publicKey() {
       if (!this._keyPair) return null;
-      const { seedA, t, publicDigest } = this._keyPair;
-      return { seedA, t, publicDigest };
+      return new LWEPublicKey(this._keyPair.seedA, this._keyPair.t, this._keyPair.publicDigest);
     }
 
     /**
      * The whole key pair, secret included.
-     * @returns {Object|null} The key pair, or null
+     * @returns {LWEKeyPair|null} The key pair, or null
      */
     get privateKey() {
       return this._keyPair;
@@ -695,6 +809,7 @@
           + SEED_LENGTH + ' octets');
       }
 
+      /** @type {uint8[]} */
       const seed = new Array(SEED_LENGTH);
       for (let i = 0; i < SEED_LENGTH; ++i) seed[i] = keyData[i];
 
@@ -709,7 +824,9 @@
      */
     Feed(data) {
       if (typeof data === 'string') {
-        for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data.charCodeAt(i) % 256);
+        /** @type {string} */
+        const text = data;
+        for (let i = 0; i < text.length; ++i) this.inputBuffer.push(text.charCodeAt(i) % 256);
       } else if (data && typeof data.length === 'number') {
         for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data[i]);
       } else {
@@ -724,7 +841,9 @@
      */
     Result() {
       if (this.inputBuffer.length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
       try {
@@ -732,11 +851,9 @@
           ? this._open(this.inputBuffer)
           : this._sign(this.inputBuffer);
 
-        this.inputBuffer = [];
         return result;
-      } catch (error) {
+      } finally {
         this.inputBuffer = [];
-        throw error;
       }
     }
 
@@ -759,6 +876,7 @@
         throw new Error('LWE-Signature: internal error, the computed signature does not verify');
       }
 
+      /** @type {uint8[]} */
       const out = new Array(signature.length + message.length);
       for (let i = 0; i < signature.length; ++i) out[i] = signature[i];
       for (let i = 0; i < message.length; ++i) out[signature.length + i] = message[i];
