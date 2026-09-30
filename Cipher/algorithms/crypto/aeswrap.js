@@ -47,9 +47,12 @@
           CryptoAlgorithm, KeySize, LinkItem, IAlgorithmInstance } = AlgorithmFramework;
 
   // Default IV for RFC 3394
+  /** @type {uint8[]} */
   const DEFAULT_IV = [0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6, 0xA6];
 
-  // Helper function to get Rijndael algorithm (registry-first, plain require fallback)
+  /**
+   * Get the Rijndael algorithm (registry-first, plain require fallback)
+   */
   function getRijndaelAlgorithm() {
     let rijndael = AlgorithmFramework.Find('Rijndael (AES)');
     if (!rijndael && typeof require !== 'undefined') {
@@ -144,7 +147,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {AesKeyWrapInstance} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -161,16 +164,23 @@
   class AesKeyWrapInstance extends IAlgorithmInstance {
     /**
    * Initialize Algorithm cipher instance
-   * @param {Object} algorithm - Parent algorithm instance
+   * @param {AesKeyWrapAlgorithm} algorithm - Parent algorithm instance
    * @param {boolean} [isInverse=false] - Decryption mode flag
    */
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {KeySize[]} */
+      this.keySizeList = algorithm.SupportedKeySizes;
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._key = null;
+      /** @type {uint8[]} */
       this._iv = [...DEFAULT_IV];
+      /** @type {IBlockCipherInstance|null} */
       this.aesInstance = null;
     }
 
@@ -188,11 +198,18 @@
       }
 
       // Validate key size (must be 128, 192, or 256 bits)
-      const isValidSize = this.algorithm.SupportedKeySizes.some(ks =>
-        keyBytes.length >= ks.minSize &&
-        keyBytes.length <= ks.maxSize &&
-        (keyBytes.length - ks.minSize) % ks.stepSize === 0
-      );
+      /** @type {boolean} */
+      let isValidSize = false;
+      for (let k = 0; k < this.keySizeList.length; k++) {
+        /** @type {KeySize} */
+        const ks = this.keySizeList[k];
+        if (keyBytes.length >= ks.minSize &&
+            keyBytes.length <= ks.maxSize &&
+            (keyBytes.length - ks.minSize) % ks.stepSize === 0) {
+          isValidSize = true;
+          break;
+        }
+      }
 
       if (!isValidSize) {
         throw new Error('Invalid key size: ' + keyBytes.length + ' bytes (must be 16, 24, or 32)');
@@ -256,11 +273,16 @@
         throw new Error('No data fed');
       }
 
+      /** @type {uint8[]} */
       const result = this.isInverse ? this._unwrap() : this._wrap();
       this.inputBuffer = [];
       return result;
     }
 
+    /**
+     * Wrap the buffered key data (RFC 3394 section 2.2.1)
+     * @returns {uint8[]} Wrapped data
+     */
     _wrap() {
       const plaintext = this.inputBuffer;
 
@@ -278,21 +300,28 @@
       // Initialize AES instance if not already done
       if (!this.aesInstance) {
         const RijndaelAlgorithm = getRijndaelAlgorithm();
-        this.aesInstance = RijndaelAlgorithm.CreateInstance(false);
-        this.aesInstance.key = this._key;
+        /** @type {IBlockCipherInstance} */
+        const aes = RijndaelAlgorithm.CreateInstance(false);
+        aes.key = this._key;
+        this.aesInstance = aes;
       }
+      /** @type {IBlockCipherInstance} */
+      const aesEncrypt = this.aesInstance;
 
       // Special case: single 64-bit block (n=1)
       if (n === 1) {
         // Just encrypt [IV|plaintext] as a single AES block
         const block = [...this._iv, ...plaintext];
-        this.aesInstance.Feed(block);
-        return this.aesInstance.Result();
+        aesEncrypt.Feed(block);
+        /** @type {uint8[]} */
+        const single = aesEncrypt.Result();
+        return single;
       }
 
       // General case: n >= 2
       // Initialize variables
       let A = [...this._iv];  // 64-bit register A
+      /** @type {uint8[][]} */
       const R = [];           // Array of n 64-bit registers
 
       // Copy input into R[1]...R[n]
@@ -305,8 +334,9 @@
         for (let i = 0; i < n; ++i) {
           // B = AES(K, A|R[i])
           const block = [...A, ...R[i]];
-          this.aesInstance.Feed(block);
-          const B = this.aesInstance.Result();
+          aesEncrypt.Feed(block);
+          /** @type {uint8[]} */
+          const B = aesEncrypt.Result();
 
           // A = MSB(64, B) XOR t (where t = n*j + i + 1)
           A = B.slice(0, 8);
@@ -314,7 +344,7 @@
 
           // XOR the counter t into the last 4 bytes of A (big-endian)
           for (let k = 1; t !== 0 && k <= 4; ++k) {
-            A[8 - k] = OpCodes.XorN(A[8 - k], OpCodes.AndN(OpCodes.Shr32(t, (k - 1) * 8), 0xFF));
+            A[8 - k] = OpCodes.Xor8(A[8 - k], OpCodes.GetByte(t, k - 1));
           }
 
           // R[i] = LSB(64, B)
@@ -323,14 +353,19 @@
       }
 
       // Output is A|R[0]|R[1]|...|R[n-1]
+      /** @type {uint8[]} */
       const output = [...A];
       for (let i = 0; i < n; ++i) {
-        output.push(...R[i]);
+        for (let b = 0; b < R[i].length; ++b) output.push(R[i][b]);
       }
 
       return output;
     }
 
+    /**
+     * Unwrap the buffered data (RFC 3394 section 2.2.2)
+     * @returns {uint8[]} Unwrapped key data
+     */
     _unwrap() {
       const ciphertext = this.inputBuffer;
 
@@ -351,10 +386,12 @@
       // Special case: single 64-bit block (n=1)
       if (n === 1) {
         // Just decrypt the ciphertext as a single AES block
-        const aesDecrypt = RijndaelAlgorithm.CreateInstance(true);
-        aesDecrypt.key = this._key;
-        aesDecrypt.Feed(ciphertext);
-        const block = aesDecrypt.Result();
+        /** @type {IBlockCipherInstance} */
+        const aesSingle = RijndaelAlgorithm.CreateInstance(true);
+        aesSingle.key = this._key;
+        aesSingle.Feed(ciphertext);
+        /** @type {uint8[]} */
+        const block = aesSingle.Result();
 
         // Check IV
         const receivedIV = block.slice(0, 8);
@@ -368,6 +405,7 @@
       // General case: n >= 2
       // Initialize variables
       let A = ciphertext.slice(0, 8);  // First 64 bits
+      /** @type {uint8[][]} */
       const R = [];                     // Array of n 64-bit registers
 
       // Copy ciphertext into R[0]...R[n-1]
@@ -376,6 +414,7 @@
       }
 
       // Perform unwrapping operation
+      /** @type {IBlockCipherInstance} */
       const aesDecrypt = RijndaelAlgorithm.CreateInstance(true);
       aesDecrypt.key = this._key;
 
@@ -387,12 +426,13 @@
           // XOR t into A (reverse the operation from wrapping)
           const A_copy = [...A];
           for (let k = 1; t !== 0 && k <= 4; ++k) {
-            A_copy[8 - k] = OpCodes.XorN(A_copy[8 - k], OpCodes.AndN(OpCodes.Shr32(t, (k - 1) * 8), 0xFF));
+            A_copy[8 - k] = OpCodes.Xor8(A_copy[8 - k], OpCodes.GetByte(t, k - 1));
           }
 
           // B = AES_Decrypt(K, (A XOR t)|R[i])
           const block = [...A_copy, ...R[i]];
           aesDecrypt.Feed(block);
+          /** @type {uint8[]} */
           const B = aesDecrypt.Result();
 
           // A = MSB(64, B)
@@ -409,9 +449,10 @@
       }
 
       // Output is R[0]|R[1]|...|R[n-1]
+      /** @type {uint8[]} */
       const output = [];
       for (let i = 0; i < n; ++i) {
-        output.push(...R[i]);
+        for (let b = 0; b < R[i].length; ++b) output.push(R[i][b]);
       }
 
       return output;
