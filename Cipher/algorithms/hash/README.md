@@ -58,7 +58,7 @@ Generated from the registry by `tools/refresh-readmes.js`.
 - **JH-384** (`jh.js`) - JH is a SHA-3 finalist designed by Hongjun Wu
 - **JH-512** (`jh.js`) - JH is a SHA-3 finalist designed by Hongjun Wu
 - **KangarooTwelve** (`kangaroo.js`) - Fast hashing based on Keccak-p[1600,12] with tree structure for parallel processing
-- **Keccak (DarkCrypt)** (`darkcrypt-keccak.js`) - Keccak sponge hash variant used by the DarkCrypt Total Commander plugin
+- **Keccak (DarkCrypt)** (`darkcrypt-keccak.js`) - Keccak-512 as used by the DarkCrypt Total Commander plugin: the original SHA-3 round 1 submission (Keccak version 1, 2008), Keccak[r=512, c=1088, d=64] with 18 rounds of Keccak-f[1600] and the version 1 padding that encodes the diversifier and rate
 - **Keccak-224** (`keccak.js`) - Original Keccak-224 hash function (pre-SHA3)
 - **Keccak-256** (`keccak.js`) - Original Keccak-256 hash function (pre-SHA3)
 - **Keccak-384** (`keccak.js`) - Original Keccak-384 hash function (pre-SHA3)
@@ -79,7 +79,7 @@ Generated from the registry by `tools/refresh-readmes.js`.
 - **MD2** (`md.js`) - MD2 is a 128-bit cryptographic hash function and predecessor to MD4 and MD5
 - **MD4** (`md.js`) - MD4 is a 128-bit cryptographic hash function and predecessor to MD5
 - **MD5** (`md.js`) - 128-bit cryptographic hash function designed by Ronald Rivest
-- **MD6 (DarkCrypt)** (`darkcrypt-md6.js`) - Standard MD6-512 hash function as used by the DarkCrypt Total Commander plugin: the unmodified MIT reference MD6 implementation, hardcoded to digest size d=512 bits, r=168 rounds, mode parameter L=64 (fully hierarchical), and no key
+- **MD6 (DarkCrypt)** (`darkcrypt-md6.js`) - MD6-512 as used by the DarkCrypt Total Commander plugin: the MIT reference MD6 as submitted to SHA-3 round 1 (d=512, r=168, L=64, no key), which outputs the first rather than the last 512 bits of the final chaining value, a reference bug fixed in April 2009
 - **MDC-2** (`mdc2.js`) - Modification Detection Code 2, an ISO/IEC 10118-2 standard hash function based on DES encryption
 - **MurmurHash3** (`murmurhash3.js`) - Fast non-cryptographic hash function with excellent distribution properties
 - **Panama-BE** (`panama.js`) - Panama hash function with big-endian byte order
@@ -113,7 +113,7 @@ Generated from the registry by `tools/refresh-readmes.js`.
 - **SHAKE256** (`shake.js`) - SHAKE256 is an extendable-output function (XOF) from NIST FIPS 202 with 256-bit security
 - **SipHash-2-4** (`siphash.js`) - Fast cryptographically secure pseudorandom function designed for hash tables and data structures requiring collision resistance
 - **Skein** (`skein.js`) - Skein-512 hash function from NIST SHA-3 competition
-- **Skein (DarkCrypt)** (`darkcrypt-skein.js`) - Skein-512-512 variant used by the DarkCrypt Total Commander plugin
+- **Skein (DarkCrypt)** (`darkcrypt-skein.js`) - Skein-512-512 as used by the DarkCrypt Total Commander plugin: Skein version 1.1, the SHA-3 round 1 definition, with the original Threefish-512 rotation constants (replaced in version 1.2) and key schedule parity constant 0x5555555555555555 (replaced by C240 in version 1.3)
 - **SKINNY-tk2-HASH** (`skinny-hash.js`) - Lightweight hash function based on SKINNY-128-256 tweakable block cipher
 - **SKINNY-tk3-HASH** (`skinny-hash.js`) - Lightweight hash function based on SKINNY-128-384 tweakable block cipher
 - **SM3** (`sm3.js`) - Chinese national cryptographic hash standard producing 256-bit digests
