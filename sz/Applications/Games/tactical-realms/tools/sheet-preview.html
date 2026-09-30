@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tactical Realms — Sprite Atlas Preview</title>
+<style>
+  body { margin: 0; padding: 16px; background: #1b1b22; color: #ddd; font: 13px/1.4 sans-serif; }
+  h1 { font-size: 18px; margin: 0 0 8px; }
+  h2 { font-size: 15px; margin: 24px 0 8px; border-bottom: 1px solid #444; padding-bottom: 4px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 8px; }
+  .gallery { display: flex; flex-wrap: wrap; gap: 6px; }
+  .cell { width: 84px; background: #2a2a33; border: 1px solid #3a3a44; border-radius: 4px; padding: 4px; text-align: center; }
+  .cell canvas { display: block; margin: 0 auto 2px; image-rendering: pixelated; background: #3a3a44; }
+  .cell span { display: block; font-size: 10px; word-break: break-all; white-space: pre-line; }
+  .cell.missing { border-color: #a33; }
+  .cell.fallback { border-color: #a83; }
+  .scroll { overflow: auto; max-height: 70vh; border: 1px solid #3a3a44; }
+  .scroll canvas { image-rendering: pixelated; display: block; }
+  .legend span { padding: 0 6px; border-left: 4px solid; margin-right: 8px; }
+</style>
+</head>
+<body>
+<h1>Sprite Atlas Preview</h1>
+<p>Every sprite mapping of the game, drawn from the live tables. Use it to pick tile indices by looking instead of guessing.</p>
+<div class="bar legend">
+  <span style="border-color:#3a3a44">registry icon / sheet</span>
+  <span style="border-color:#a83">sheet fallback (no icon)</span>
+  <span style="border-color:#a33">nothing resolved</span>
+</div>
+
+<h2>Enemies (creature registry icon, else dungeon sheet)</h2>
+<div id="enemies" class="gallery"></div>
+
+<h2>Party classes</h2>
+<div id="party" class="gallery"></div>
+
+<h2>Combat terrain</h2>
+<div id="combat" class="gallery"></div>
+
+<h2>Overworld terrain per plane</h2>
+<div id="overworld"></div>
+
+<h2>Items</h2>
+<div id="items" class="gallery"></div>
+
+<h2>Raw sheets</h2>
+<div class="bar">
+  <label>Sheet <select id="sheetSel"></select></label>
+  <label>Zoom <select id="zoomSel"><option>2</option><option selected>3</option><option>4</option></select></label>
+</div>
+<div class="scroll"><canvas id="sheetCanvas"></canvas></div>
+
+<script>window.SZ = window.SZ || {};</script>
+<script src="../pixel-art.js"></script>
+<script src="../asset-loader.js"></script>
+<script src="../data/creature-sprites.js"></script>
+<script src="../sprite-resolver.js"></script>
+<script>
+;(function() {
+  'use strict';
+  const TR = SZ.TacticalRealms;
+  main();
+
+  async function main() {
+    // pages under tools/ resolve asset paths one level up
+    const base = '../';
+    const sheets = {};
+    await Promise.all(Object.entries(TR.SHEET_REGISTRY).map(([id, m]) => loadImage(base + m.path).then(img => { sheets[id] = img; })));
+    if (TR.PixelArt)
+      for (const [id, sheet] of Object.entries(TR.PixelArt.sheets()))
+        sheets[id] = sheet;
+
+    const icons = {};
+    const registry = TR.CREATURE_SPRITE_REGISTRY || {};
+    await Promise.all(Object.values(registry).filter(e => e.type === 'icon').map(e =>
+      loadImage(base + e.path).then(img => { icons[e.path] = img; }, () => {})));
+
+    renderEnemies(sheets, icons, registry);
+    renderSimple('party', TR.PARTY_SPRITES, sheets, TR.PARTY_TINTS);
+    renderSimple('combat', TR.COMBAT_TERRAIN_SPRITES, sheets);
+    renderOverworld(sheets);
+    renderSimple('items', TR.ITEM_SPRITES, sheets);
+    setupSheetViewer(sheets);
+  }
+
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+  }
+
+  function cell(parent, label, cls) {
+    const div = document.createElement('div');
+    div.className = 'cell' + (cls ? ' ' + cls : '');
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 64;
+    const span = document.createElement('span');
+    span.textContent = label;
+    div.appendChild(cv);
+    div.appendChild(span);
+    parent.appendChild(div);
+    const ctx = cv.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    return ctx;
+  }
+
+  function drawRect(ctx, img, rect, tint) {
+    if (!img || !rect)
+      return false;
+    ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, 64, 64);
+    if (tint) {
+      ctx.globalCompositeOperation = 'source-atop';
+      ctx.fillStyle = tint;
+      ctx.fillRect(0, 0, 64, 64);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    return true;
+  }
+
+  function sheetOf(sheets, rect, fallback) {
+    return sheets[(rect && rect.sheet) || fallback];
+  }
+
+  function renderEnemies(sheets, icons, registry) {
+    const host = document.getElementById('enemies');
+    for (const id of Object.keys(TR.ENEMY_SPRITES)) {
+      const entry = registry[id];
+      const rect = TR.ENEMY_SPRITES[id];
+      if (entry && entry.type === 'icon' && icons[entry.path]) {
+        const ctx = cell(host, `${id}\n${entry.path.replace(/^.*monsters\//, '')}`);
+        drawRect(ctx, icons[entry.path], { x: 0, y: 0, w: 32, h: 32 }, entry.tint);
+        continue;
+      }
+      if (entry && entry.type === 'sheet') {
+        const ctx = cell(host, `${id}\nsheet`);
+        drawRect(ctx, sheets[entry.sheetId || 'dungeon'], entry.rect, entry.tint);
+        continue;
+      }
+      const ctx = cell(host, id, 'fallback');
+      if (!drawRect(ctx, sheetOf(sheets, rect, 'dungeon'), rect, TR.ENEMY_TINTS[id]))
+        ctx.canvas.parentNode.className = 'cell missing';
+    }
+  }
+
+  function renderSimple(hostId, table, sheets, tints) {
+    const host = document.getElementById(hostId);
+    for (const [id, rect] of Object.entries(table)) {
+      const ctx = cell(host, id);
+      drawRect(ctx, sheetOf(sheets, rect, 'dungeon'), rect, tints && tints[id]);
+    }
+  }
+
+  function renderOverworld(sheets) {
+    const host = document.getElementById('overworld');
+    for (const [dim, table] of Object.entries(TR.DIMENSION_TERRAIN_SPRITES)) {
+      const h = document.createElement('h3');
+      h.textContent = dim;
+      h.style.cssText = 'font-size:13px;margin:10px 0 4px';
+      host.appendChild(h);
+      const row = document.createElement('div');
+      row.className = 'gallery';
+      host.appendChild(row);
+      for (const [name, rect] of Object.entries(table)) {
+        const ctx = cell(row, name);
+        // overlay tiles are shown on the plane's grass so transparency reads correctly
+        if (name !== 'GRASS' && name !== 'WATER' && table.GRASS)
+          drawRect(ctx, sheets.overworld, table.GRASS);
+        drawRect(ctx, sheetOf(sheets, rect, 'overworld'), rect);
+      }
+    }
+  }
+
+  function setupSheetViewer(sheets) {
+    const sel = document.getElementById('sheetSel');
+    const zoomSel = document.getElementById('zoomSel');
+    for (const id of Object.keys(sheets)) {
+      const opt = document.createElement('option');
+      opt.textContent = id;
+      sel.appendChild(opt);
+    }
+    const draw = () => drawSheet(sheets[sel.value], sel.value, +zoomSel.value);
+    sel.onchange = draw;
+    zoomSel.onchange = draw;
+    draw();
+  }
+
+  function drawSheet(img, id, zoom) {
+    const meta = TR.SHEET_REGISTRY[id] || { tileSize: 16, margin: 0, cols: Math.floor(img.width / 16) };
+    const step = meta.tileSize + meta.margin;
+    const cols = meta.cols;
+    const rows = Math.floor((img.height + meta.margin) / step);
+    const ts = meta.tileSize * zoom;
+    const cw = ts + 4;
+    const ch = ts + 14;
+    const cv = document.getElementById('sheetCanvas');
+    cv.width = cols * cw;
+    cv.height = rows * ch;
+    const ctx = cv.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = '#26262e';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.font = '10px monospace';
+    ctx.textBaseline = 'top';
+    for (let r = 0; r < rows; ++r)
+      for (let c = 0; c < cols; ++c) {
+        const x = c * cw;
+        const y = r * ch;
+        ctx.fillStyle = '#ff0';
+        ctx.fillText(String(r * cols + c), x + 1, y + 1);
+        ctx.drawImage(img, c * step, r * step, meta.tileSize, meta.tileSize, x, y + 12, ts, ts);
+      }
+  }
+})();
+</script>
+</body>
+</html>
