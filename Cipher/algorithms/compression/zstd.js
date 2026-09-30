@@ -5,11 +5,13 @@
  *
  * Genuinely interoperable implementation of the Zstandard frame format.
  *
- * Encoder: emits a fully standard-compliant frame using only Raw_Block and
- * RLE_Block (RFC 8878 Section 3.1.1.2.2). This is legal, spec-compliant
- * Zstandard output — the standard explicitly permits storing literal bytes
- * uncompressed inside a valid frame — and is read correctly by facebook/zstd,
- * the zstd CLI, and Node's zlib.zstdDecompressSync.
+ * Encoder: emits a standard-compliant frame in which each block is the
+ * smallest of Raw_Block, RLE_Block or a genuine Compressed_Block (RFC 8878
+ * Section 3.1.1.2.2): an LZ77 hash-chain match finder, sequences FSE-coded
+ * with the predefined distribution tables, and Huffman-coded literals with a
+ * directly described tree whose last weight is implied rather than sent
+ * (Section 4.2.1.3). Its output is read correctly by Node's
+ * zlib.zstdDecompressSync, which the interop tests check in both directions.
  *
  * Decoder: implements the full block/section grammar needed to read frames
  * produced by real Zstd encoders (Node's zlib.zstdCompressSync, the zstd
@@ -804,8 +806,45 @@
     }
   }
 
+  // RFC 8878 4.2.1.3: the last symbol's weight is never transmitted, in
+  // either representation. It is the one weight that completes the Kraft sum
+  // to the next power of 2: with S = sum(2^(w-1)) over the transmitted
+  // weights, Max_Number_of_Bits = highbit(S) + 1 and the missing term
+  // 2^Max_Number_of_Bits - S must itself be a power of 2, 2^(lastWeight-1).
+  /**
+   * @param {int32[]} transmitted - Weights of every symbol but the last
+   * @returns {int32[]} Complete weight list, the implied last weight appended
+   */
+  function appendImpliedLastWeight(transmitted) {
+    /** @type {float64} */
+    let weightTotal = 0;
+    for (let i = 0; i < transmitted.length; ++i) {
+      if (transmitted[i] > 0) {
+        weightTotal += OpCodes.Shr32(OpCodes.Shl32(1, transmitted[i]), 1);
+      }
+    }
+    if (weightTotal === 0) {
+      throw new Error('Zstd: corrupt Huffman weight stream');
+    }
+    /** @type {int32} */
+    const tableLog = highBitPos(weightTotal) + 1;
+    if (tableLog > HUF_MAX_BITS) {
+      throw new Error('Zstd: invalid Huffman tree (too deep)');
+    }
+    /** @type {float64} */
+    const rest = OpCodes.Shl32(1, tableLog) - weightTotal;
+    if (OpCodes.Shl32(1, highBitPos(rest)) !== rest) {
+      throw new Error('Zstd: corrupt Huffman weight stream (bad last weight)');
+    }
+    /** @type {int32[]} */
+    const weights = transmitted.slice();
+    weights.push(highBitPos(rest) + 1);
+    return weights;
+  }
+
   // RFC 8878 4.2.1.1 / 4.2.1.2: parse the Huffman_Tree_Description and return
-  // the weight list plus the number of header bytes consumed.
+  // the complete weight list (implied last weight included) plus the number
+  // of header bytes consumed.
   /**
    * @param {uint8[]} bytes - Data
    * @param {float64} offset - Header byte position
@@ -815,18 +854,20 @@
     /** @type {uint8} */
     const headerByte = bytes[offset];
     if (headerByte >= 128) {
+      // Direct representation: Number_of_Symbols = headerByte - 127 weights,
+      // 4 bits each, high nibble first; the symbol after them is implied.
       /** @type {int32} */
       const numSymbols = headerByte - 127;
       /** @type {int32[]} */
-      const weights = new Array(numSymbols);
+      const transmitted = new Array(numSymbols);
       for (let i = 0; i < numSymbols; ++i) {
         /** @type {uint8} */
         const b = bytes[offset + 1 + Math.floor(i / 2)];
-        weights[i] = (i % 2 === 0) ? OpCodes.Shr32(b, 4) : OpCodes.And32(b, 0xF);
+        transmitted[i] = (i % 2 === 0) ? OpCodes.Shr32(b, 4) : OpCodes.And32(b, 0xF);
       }
       /** @type {int32} */
       const numBytes = Math.ceil(numSymbols / 2);
-      return new TreeDescription(weights, 1 + numBytes);
+      return new TreeDescription(appendImpliedLastWeight(transmitted), 1 + numBytes);
     }
 
     /** @type {int32} */
@@ -847,32 +888,7 @@
     const bwd = new BwdBitCursor(bytes, streamStart, streamEnd);
     /** @type {int32[]} */
     const decoded = decodeFseInterleaved2(bwd, table, 255);
-
-    // Last symbol's weight is implied: complete the power-of-2 sum.
-    /** @type {float64} */
-    let weightTotal = 0;
-    for (let i = 0; i < decoded.length; ++i) {
-      weightTotal += OpCodes.Shr32(OpCodes.Shl32(1, decoded[i]), 1);
-    }
-    if (weightTotal === 0) {
-      throw new Error('Zstd: corrupt Huffman weight stream');
-    }
-    /** @type {int32} */
-    const tableLog = highBitPos(weightTotal) + 1;
-    /** @type {int32} */
-    const total = OpCodes.Shl32(1, tableLog);
-    /** @type {float64} */
-    const rest = total - weightTotal;
-    /** @type {int32} */
-    const lastWeight = highBitPos(rest) + 1;
-    if (OpCodes.Shl32(1, highBitPos(rest)) !== rest) {
-      throw new Error('Zstd: corrupt Huffman weight stream (bad last weight)');
-    }
-
-    /** @type {int32[]} */
-    const weights = decoded.slice();
-    weights.push(lastWeight);
-    return new TreeDescription(weights, 1 + fseSize);
+    return new TreeDescription(appendImpliedLastWeight(decoded), 1 + fseSize);
   }
 
   // Decode exactly `count` symbols from a single Huffman-coded stream.
@@ -1664,15 +1680,18 @@
   }
 
   // RFC 8878 4.2.1.1 direct weight representation: Header_Byte = 127 +
-  // Number_of_Symbols, then each symbol's weight as a 4-bit nibble (high
-  // nibble first). Only legal when Number_of_Symbols <= 128.
+  // Number_of_Symbols, then each transmitted weight as a 4-bit nibble (high
+  // nibble first). The last symbol's weight is implied (4.2.1.3) and never
+  // written, so Number_of_Symbols = weights.length - 1, which must be <= 128.
+  // The weights must sum (as 2^(w-1)) to a power of 2 and end with a
+  // non-zero weight, so the decoder re-derives exactly that last weight.
   /**
-   * @param {int32[]} weights - Weight per symbol
+   * @param {int32[]} weights - Weight per symbol, last symbol included
    * @returns {uint8[]} Tree description
    */
   function writeHuffmanTreeDescriptionDirect(weights) {
     /** @type {int32} */
-    const numSymbols = weights.length;
+    const numSymbols = weights.length - 1;
     /** @type {uint8[]} */
     const bytes = [];
     bytes.push(OpCodes.And32(127 + numSymbols, 0xFF));
@@ -1715,7 +1734,8 @@
   // Compressed is only attempted when it's legal for this decoder's header
   // grammar: single-stream mode's 3-byte header caps BOTH regenSize and
   // compSize at 1023, and the direct tree-weight representation caps
-  // Number_of_Symbols (maxSymbolValue+1) at 128 - outside those bounds this
+  // the transmitted Number_of_Symbols (maxSymbolValue, since the weight of
+  // symbol maxSymbolValue itself is implied) at 128 - outside those bounds this
   // falls back to Raw_Literals_Block, still leaving FSE-coded sequences to do
   // the compression work for that block.
   /**
@@ -1752,7 +1772,7 @@
     if (regenSize >= 2 && regenSize < 1024) {
       /** @type {LiteralHuffman} */
       const huf = buildLiteralHuffman(literalBytes);
-      if (huf && huf.maxSymbolValue <= 127) {
+      if (huf && huf.maxSymbolValue <= 128) {
         /** @type {uint8[]} */
         const treeDesc = writeHuffmanTreeDescriptionDirect(huf.weights);
         /** @type {uint8[]} */
