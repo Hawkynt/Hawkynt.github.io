@@ -44,6 +44,49 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
+  /**
+   * Graph properties as reported by getGraphProperties()
+   * @class
+   */
+  class ExpanderGraphProperties {
+    /**
+     * @param {int32} n - Variable nodes
+     * @param {int32} m - Check nodes
+     * @param {int32} k - Information length
+     */
+    constructor(n, m, k) {
+      /** @type {int32} */
+      this.n = n;                    // Number of variable nodes
+      /** @type {int32} */
+      this.m = m;                    // Number of check nodes
+      /** @type {int32} */
+      this.k = k;                    // Information length
+      /** @type {float64} */
+      this.rate = k / n;       // Code rate
+      /** @type {int32} */
+      this.leftDegree = 3;               // Variable node degree
+      /** @type {int32} */
+      this.rightDegree = 6;              // Check node degree
+      /** @type {string} */
+      this.expansion = 'Good expansion'; // Qualitative property
+      /** @type {string} */
+      this.graphType = '(3,6)-regular bipartite expander';
+    }
+  }
+
+  /**
+   * Checks of one variable node
+   * @param {int32} a - First check
+   * @param {int32} b - Second check
+   * @param {int32} c - Third check
+   * @returns {int32[]} Check indices
+   */
+  function checks3(a, b, c) {
+    /** @type {int32[]} */
+    const list = [a, b, c];
+    return list;
+  }
+
   class ExpanderCodeAlgorithm extends ErrorCorrectionAlgorithm {
     constructor() {
       super();
@@ -157,36 +200,45 @@
       // Right vertices (check nodes): m=6
       // Each left vertex connects to d_l=3 right vertices
       // Each right vertex connects to d_r=6 left vertices
+      /** @type {int32} */
       this.n = 12; // Code length (variable nodes)
+      /** @type {int32} */
       this.k = 6;  // Information length (dimension)
+      /** @type {int32} */
       this.m = 6;  // Check nodes
 
       // Bipartite expander graph adjacency structure
       // Each variable node connects to 3 check nodes
       // Graph constructed to have good expansion properties
+      /** @type {int32[][]} */
       this.variableToCheck = [
-        [0, 1, 2], // Variable 0 connects to checks 0,1,2
-        [0, 1, 3], // Variable 1 connects to checks 0,1,3
-        [0, 2, 3], // Variable 2 connects to checks 0,2,3
-        [1, 2, 4], // Variable 3 connects to checks 1,2,4
-        [1, 3, 4], // Variable 4 connects to checks 1,3,4
-        [2, 3, 5], // Variable 5 connects to checks 2,3,5
-        [0, 4, 5], // Variable 6 connects to checks 0,4,5
-        [1, 4, 5], // Variable 7 connects to checks 1,4,5
-        [2, 4, 5], // Variable 8 connects to checks 2,4,5
-        [3, 4, 5], // Variable 9 connects to checks 3,4,5
-        [0, 3, 5], // Variable 10 connects to checks 0,3,5
-        [0, 2, 4]  // Variable 11 connects to checks 0,2,4
+        checks3(0, 1, 2), // Variable 0 connects to checks 0,1,2
+        checks3(0, 1, 3), // Variable 1 connects to checks 0,1,3
+        checks3(0, 2, 3), // Variable 2 connects to checks 0,2,3
+        checks3(1, 2, 4), // Variable 3 connects to checks 1,2,4
+        checks3(1, 3, 4), // Variable 4 connects to checks 1,3,4
+        checks3(2, 3, 5), // Variable 5 connects to checks 2,3,5
+        checks3(0, 4, 5), // Variable 6 connects to checks 0,4,5
+        checks3(1, 4, 5), // Variable 7 connects to checks 1,4,5
+        checks3(2, 4, 5), // Variable 8 connects to checks 2,4,5
+        checks3(3, 4, 5), // Variable 9 connects to checks 3,4,5
+        checks3(0, 3, 5), // Variable 10 connects to checks 0,3,5
+        checks3(0, 2, 4)  // Variable 11 connects to checks 0,2,4
       ];
 
       // Generator matrix for systematic encoding
       // Derived from expander graph structure
+      /** @type {uint8[][]} */
       this.generatorMatrix = this.constructGeneratorMatrix();
 
       // Maximum iterations for iterative decoding
+      /** @type {int32} */
       this._maxIterations = 10;
     }
 
+    /**
+     * @param {int32} value - Iteration limit (1..100)
+     */
     set maxIterations(value) {
       if (value < 1 || value > 100) {
         throw new Error('ExpanderCodeInstance.maxIterations: Must be between 1 and 100');
@@ -194,6 +246,9 @@
       this._maxIterations = value;
     }
 
+    /**
+     * @returns {int32} Iteration limit
+     */
     get maxIterations() {
       return this._maxIterations;
     }
@@ -239,6 +294,7 @@
       }
 
       // Compute syndrome using expander graph
+      /** @type {uint8[]} */
       const syndrome = this.computeSyndrome(data);
       return !this.isZeroVector(syndrome);
     }
@@ -246,19 +302,25 @@
     /**
      * Constructs systematic generator matrix from expander graph
      * G = [I_k|P] where I_k is k×k identity and P is k×(n-k) parity matrix
-     * @returns {Array} - Generator matrix
+     * @returns {uint8[][]} - Generator matrix
      */
     constructGeneratorMatrix() {
       // Generator matrix derived from (3,6)-regular bipartite expander graph
       // Each row corresponds to information bit expansion using graph edges
-      const G = [
-        [1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0],  // Info bit 0
-        [0, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0],  // Info bit 1
-        [0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1],  // Info bit 2
-        [1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0],  // Info bit 3
-        [0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1],  // Info bit 4
-        [1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1]   // Info bit 5
-      ];
+      /** @type {uint8[]} */
+      const row0 = [1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0];  // Info bit 0
+      /** @type {uint8[]} */
+      const row1 = [0, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0];  // Info bit 1
+      /** @type {uint8[]} */
+      const row2 = [0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1];  // Info bit 2
+      /** @type {uint8[]} */
+      const row3 = [1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0];  // Info bit 3
+      /** @type {uint8[]} */
+      const row4 = [0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1];  // Info bit 4
+      /** @type {uint8[]} */
+      const row5 = [1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1];  // Info bit 5
+      /** @type {uint8[][]} */
+      const G = [row0, row1, row2, row3, row4, row5];
 
       return G;
     }
@@ -266,8 +328,8 @@
     /**
      * Encodes information bits using expander graph structure
      * Uses matrix-vector multiplication: codeword = infoBits * generatorMatrix
-     * @param {Array} infoBits - k information bits
-     * @returns {Array} - n encoded bits
+     * @param {uint8[]} infoBits - k information bits
+     * @returns {uint8[]} - n encoded bits
      */
     encode(infoBits) {
       if (infoBits.length !== this.k) {
@@ -288,10 +350,11 @@
       // Note: Uses XOR for GF(2) field addition
       // Multiplication is done using standard binary multiplication
       for (let j = 0; j < this.n; ++j) {
+        /** @type {int32} */
         let sum = 0;
         for (let i = 0; i < this.k; ++i) {
           // GF(2) operations: multiplication then addition (XOR)
-          sum ^= (infoBits[i] * this.generatorMatrix[i][j]);
+          sum = OpCodes.ToInt(OpCodes.Xor32(sum, OpCodes.Mul32(infoBits[i], this.generatorMatrix[i][j])));
         }
         codeword[j] = sum;
       }
@@ -301,16 +364,23 @@
 
     /**
      * Solves linear system Ax = b in GF(2) using Gaussian elimination
-     * @param {Array} A - m×n matrix
-     * @param {Array} b - m-vector
-     * @returns {Array} - n-vector solution
+     * @param {uint8[][]} A - m×n matrix
+     * @param {uint8[]} b - m-vector
+     * @returns {uint8[]} - n-vector solution
      */
     solveLinearSystemGF2(A, b) {
       const m = A.length;
       const n = A[0].length;
 
       // Create augmented matrix [A|b]
-      const aug = A.map((row, i) => [...row, b[i]]);
+      /** @type {uint8[][]} */
+      const aug = [];
+      for (let i = 0; i < A.length; ++i) {
+        /** @type {uint8[]} */
+        const row = A[i].slice();
+        row.push(b[i]);
+        aug.push(row);
+      }
 
       // Forward elimination
       // Note: Uses XOR for GF(2) row operations (structural linear algebra, not cryptographic)
@@ -329,7 +399,10 @@
 
         // Swap rows
         if (pivotRow !== pivot) {
-          [aug[pivot], aug[pivotRow]] = [aug[pivotRow], aug[pivot]];
+          /** @type {uint8[]} */
+          const swap = aug[pivot];
+          aug[pivot] = aug[pivotRow];
+          aug[pivotRow] = swap;
         }
 
         // Eliminate below pivot using GF(2) row addition (XOR)
@@ -337,7 +410,7 @@
           if (aug[row][col] === 1) {
             for (let c = 0; c <= n; c++) {
               // GF(2) addition: XOR for row reduction
-              aug[row][c] ^= aug[pivot][c];
+              aug[row][c] = OpCodes.ToInt(OpCodes.Xor32(aug[row][c], aug[pivot][c]));
             }
           }
         }
@@ -346,7 +419,8 @@
       }
 
       // Back substitution
-      const x = Array(n).fill(0);
+      /** @type {uint8[]} */
+      const x = OpCodes.CreateArray(n, 0);
       for (let row = Math.min(pivot, m) - 1; row >= 0; row--) {
         // Find leading column
         let leadCol = -1;
@@ -360,9 +434,10 @@
         if (leadCol === -1) continue; // Free variable or zero row
 
         // Compute x[leadCol]
+        /** @type {int32} */
         let sum = aug[row][n]; // RHS
         for (let col = leadCol + 1; col < n; col++) {
-          sum ^= aug[row][col] * x[col];
+          sum = OpCodes.ToInt(OpCodes.Xor32(sum, OpCodes.Mul32(aug[row][col], x[col])));
         }
         x[leadCol] = sum;
       }
@@ -374,8 +449,8 @@
      * Decodes received bits using exhaustive maximum-likelihood decoding
      * For error-free channels, finds the unique message that generates the codeword
      * For noisy channels, finds the message corresponding to closest valid codeword
-     * @param {Array} receivedBits - n received bits (possibly with errors)
-     * @returns {Array} - k decoded information bits
+     * @param {uint8[]} receivedBits - n received bits (possibly with errors)
+     * @returns {uint8[]} - k decoded information bits
      */
     decode(receivedBits) {
       if (receivedBits.length !== this.n) {
@@ -391,15 +466,16 @@
 
       // For educational implementation, use maximum likelihood decoding
       // Real expander code decoding uses message-passing on bipartite graph
+      /** @type {float64} */
       let minDistance = Infinity;
-      /** @type {float64[]} */
+      /** @type {uint8[]} */
       let bestMessage = OpCodes.CreateArray(this.k, 0);
 
       // Exhaustive search over all 2^k possible messages (feasible for small k)
       const totalMessages = Math.pow(2, this.k);
 
       for (let msgIndex = 0; msgIndex < totalMessages; ++msgIndex) {
-        /** @type {float64[]} */
+        /** @type {uint8[]} */
         const message = [];
         let temp = msgIndex;
 
@@ -408,9 +484,11 @@
           message.push(Math.floor(temp / Math.pow(2, i)) % 2);
         }
 
+        /** @type {uint8[]} */
         const testCodeword = this.encode(message);
 
         // Calculate Hamming distance
+        /** @type {int32} */
         const distance = this.hammingDistance(receivedBits, testCodeword);
 
         if (distance < minDistance) {
@@ -425,18 +503,21 @@
     /**
      * Computes syndrome vector using expander graph structure
      * Note: Uses XOR for GF(2) parity computation (linear code operation)
-     * @param {Array} codeword - n-bit codeword
-     * @returns {Array} - m-bit syndrome
+     * @param {uint8[]} codeword - n-bit codeword
+     * @returns {uint8[]} - m-bit syndrome
      */
     computeSyndrome(codeword) {
-      const syndrome = Array(this.m).fill(0);
+      /** @type {uint8[]} */
+      const syndrome = OpCodes.CreateArray(this.m, 0);
 
       // Each check node computes XOR of its connected variable nodes
       // This is GF(2) parity check computation (structural, not cryptographic)
       for (let v = 0; v < this.n; v++) {
         if (codeword[v] === 1) {
-          for (const c of this.variableToCheck[v]) {
-            syndrome[c] ^= 1; // GF(2) parity accumulation
+          /** @type {int32[]} */
+          const checks = this.variableToCheck[v];
+          for (let t = 0; t < checks.length; ++t) {
+            syndrome[checks[t]] = OpCodes.ToInt(OpCodes.Xor32(syndrome[checks[t]], 1)); // GF(2) parity accumulation
           }
         }
       }
@@ -446,18 +527,21 @@
 
     /**
      * Checks if vector is all zeros
-     * @param {Array} vector - Bit vector
+     * @param {uint8[]} vector - Bit vector
      * @returns {boolean} - True if all zeros
      */
     isZeroVector(vector) {
-      return vector.every(bit => bit === 0);
+      for (let i = 0; i < vector.length; ++i) {
+        if (vector[i] !== 0) return false;
+      }
+      return true;
     }
 
     /**
      * Computes Hamming distance between two bit vectors
-     * @param {Array} a - First bit vector
-     * @param {Array} b - Second bit vector
-     * @returns {number} - Hamming distance
+     * @param {uint8[]} a - First bit vector
+     * @param {uint8[]} b - Second bit vector
+     * @returns {int32} - Hamming distance
      */
     hammingDistance(a, b) {
       if (a.length !== b.length) {
@@ -475,19 +559,10 @@
 
     /**
      * Gets expansion properties of the expander graph
-     * @returns {Object} - Graph properties
+     * @returns {ExpanderGraphProperties} - Graph properties
      */
     getGraphProperties() {
-      return {
-        n: this.n,                    // Number of variable nodes
-        m: this.m,                    // Number of check nodes
-        k: this.k,                    // Information length
-        rate: this.k / this.n,       // Code rate
-        leftDegree: 3,               // Variable node degree
-        rightDegree: 6,              // Check node degree
-        expansion: 'Good expansion', // Qualitative property
-        graphType: '(3,6)-regular bipartite expander'
-      };
+      return new ExpanderGraphProperties(this.n, this.m, this.k);
     }
   }
 
