@@ -164,7 +164,7 @@
     /**
      * Create new instance for Feed/Result pattern
      * @param {boolean} isInverse - Not applicable for PRNG (ignored)
-     * @returns {SelfShrinkingGeneratorInstance} New generator instance
+     * @returns {SelfShrinkingGeneratorInstance|null} New generator instance
      */
     CreateInstance(isInverse = false) {
       return new SelfShrinkingGeneratorInstance(this, isInverse);
@@ -221,17 +221,24 @@
       this._bitPosition = 0;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return this._state;
     }
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
       return this._outputSize || 8;
     }
@@ -277,6 +284,7 @@
         throw new Error('PRNG not initialized: seed must be set');
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let currentByte = 0;
       let bitCount = 0;

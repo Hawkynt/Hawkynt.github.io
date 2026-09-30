@@ -199,7 +199,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {Ranlux48Instance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -217,8 +217,13 @@
  */
 
   class Ranlux48Instance extends IRandomGeneratorInstance {
+    /**
+     * @param {Ranlux48Algorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._skip = 0;
 
       // RANLUX48_BASE state (subtract-with-carry engine)
       this._state = new Array(LONG_LAG);  // r=12 state values (48-bit BigInts)
@@ -240,7 +245,7 @@
      * Uses linear congruential initialization from C++ standard
      * For w=48 bits, combines TWO 32-bit LCG values per state element
      *
-     * @param {Array} seedBytes - 4-byte array containing 32-bit seed
+     * @param {uint8[]|null} seedBytes - 4-byte array containing 32-bit seed
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -294,6 +299,9 @@
       this._initialized = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -368,8 +376,8 @@
      * Generate random bytes
      * Outputs bytes in little-endian order (LSB first) from 48-bit values
      *
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._initialized) {
@@ -377,9 +385,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Generate complete 48-bit values (6 bytes each)
@@ -437,11 +448,15 @@
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
       return this._outputSize;
     }

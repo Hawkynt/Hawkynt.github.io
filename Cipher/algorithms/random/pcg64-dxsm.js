@@ -116,7 +116,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {PCG64DxsmInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -134,6 +134,9 @@
  */
 
   class PCG64DxsmInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {PCG64DxsmAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
 
@@ -163,6 +166,7 @@
     /**
      * Set seed value (128-bit)
      * Initializes both state and increment from seed
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -194,6 +198,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       // Return current state as seed (for inspection)
       const stateBytes = [];

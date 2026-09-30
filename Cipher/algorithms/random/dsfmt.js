@@ -210,7 +210,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {dSFMTInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -228,8 +228,13 @@
  */
 
   class dSFMTInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {dSFMTAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._skip = 0;
 
       // dSFMT state - array of 128-bit integers represented as 2x64-bit words
       // Each 64-bit word is stored as two 32-bit values [low, high]
@@ -248,7 +253,7 @@
      * Initialize the generator with a 32-bit seed
      * Based on dSFMT dsfmt_init_gen_rand function
      *
-     * @param {Array} seedBytes - 4-byte array containing 32-bit seed
+     * @param {uint8[]|null} seedBytes - 4-byte array containing 32-bit seed
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -284,6 +289,9 @@
       this._index = N64;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -438,6 +446,7 @@
      * @returns {Array} Array of double values
      */
     NextDoubles(count) {
+      /** @type {uint8[]} */
       const output = [];
 
       for (let i = 0; i < count; ++i) {
@@ -456,14 +465,17 @@
      * Generate random bytes
      * Outputs doubles as 8-byte IEEE 754 values in little-endian order
      *
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
 
       // Generate complete 8-byte doubles
@@ -519,11 +531,15 @@
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
       return this._outputSize;
     }

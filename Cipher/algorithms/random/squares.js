@@ -231,7 +231,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {SquaresInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -249,8 +249,13 @@
  */
 
   class SquaresInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {SquaresAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Default key from FlorisSteenkamp reference implementation
       // This key was chosen to have good statistical properties
@@ -307,6 +312,7 @@
     /**
      * Set counter value (8 bytes = 64-bit, little-endian)
      * For counter-based PRNGs, the "seed" is the initial counter value
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -329,6 +335,9 @@
       this._bufferPos = 0;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed/counter
     }
@@ -370,6 +379,8 @@
 
     /**
      * Generate random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -377,9 +388,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let remaining = length;
 
@@ -433,10 +447,16 @@
       return this.NextBytes(size);
     }
 
+    /**
+     * @param {int32} size - Bytes returned by Result()
+     */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
       return this._outputSize || 4;
     }

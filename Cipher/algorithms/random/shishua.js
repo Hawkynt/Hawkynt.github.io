@@ -170,7 +170,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ShishuaInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -188,8 +188,13 @@
  */
 
   class ShishuaInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {ShishuaAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // SHISHUA state: 16 x 64-bit values (4 lanes of 4 values each)
       this._state = new Array(16).fill(0n);
@@ -223,6 +228,7 @@
     /**
      * Set seed value (256-bit = 32 bytes = 4 x 64-bit values)
      * Seeds are applied as 4 x 64-bit values in little-endian byte order
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -284,6 +290,9 @@
       this._ready = true;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed from PRNG state
     }
@@ -354,8 +363,8 @@
 
     /**
      * Generate random bytes
-     * @param {number} length - Number of random bytes to generate
-     * @returns {Array} Random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -363,7 +372,9 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
       const result = [];
@@ -426,11 +437,15 @@
 
     /**
      * Set output size for Result() method
+     * @param {int32} size - Bytes returned by Result()
      */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
       return this._outputSize || 128;
     }

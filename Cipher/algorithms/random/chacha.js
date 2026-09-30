@@ -300,7 +300,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ChaChaInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -326,6 +326,9 @@
       this.outputSize = 64; // Default output size in bytes
     }
 
+    /**
+     * @param {uint8[]|null} seedBytes - Seed bytes
+     */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
         this._key = null;
@@ -348,6 +351,9 @@
       this._resetState();
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return this._key ? this._key.slice() : null;
     }
@@ -567,6 +573,7 @@
       }
 
       const requestedSize = this.outputSize || 64;
+      /** @type {uint8[]} */
       const output = [];
 
       while (output.length < requestedSize) {

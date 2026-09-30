@@ -239,7 +239,7 @@
     /**
    * Create new cipher instance
    * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {Object} New cipher instance
+   * @returns {ThreefryInstance|null} New cipher instance
    */
 
     CreateInstance(isInverse = false) {
@@ -257,8 +257,13 @@
  */
 
   class ThreefryInstance extends IRandomGeneratorInstance {
+    /**
+     * @param {ThreefryAlgorithm} algorithm - Parent algorithm
+     */
     constructor(algorithm) {
       super(algorithm);
+      /** @type {int32} */
+      this._outputSize = 0; // 0 selects the default of 32 bytes
 
       // Key (2x 64-bit words as BigInt)
       this._key = [0n, 0n];
@@ -303,6 +308,7 @@
     /**
      * Set counter value (16 bytes = 2x 64-bit words, little-endian)
      * For counter-based PRNGs, the "seed" is actually the initial counter value
+     * @param {uint8[]|null} seedBytes - Seed bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
@@ -323,6 +329,9 @@
       this._bufferPos = 0;
     }
 
+    /**
+     * @returns {uint8[]|null} The seed cannot be read back: null
+     */
     get seed() {
       return null; // Cannot retrieve seed/counter
     }
@@ -365,6 +374,8 @@
 
     /**
      * Generate random bytes
+     * @param {int32} length - Number of random bytes to generate
+     * @returns {uint8[]} Random bytes
      */
     NextBytes(length) {
       if (!this._ready) {
@@ -372,9 +383,12 @@
       }
 
       if (length === 0) {
-        return [];
+        /** @type {uint8[]} */
+        const none = [];
+        return none;
       }
 
+      /** @type {uint8[]} */
       const output = [];
       let remaining = length;
 
@@ -424,10 +438,16 @@
       return this.NextBytes(size);
     }
 
+    /**
+     * @param {int32} size - Bytes returned by Result()
+     */
     set outputSize(size) {
       this._outputSize = size;
     }
 
+    /**
+     * @returns {int32} Bytes returned by Result()
+     */
     get outputSize() {
       return this._outputSize || 16;
     }
