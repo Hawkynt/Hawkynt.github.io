@@ -317,6 +317,77 @@ test('Zstandard: given small-alphabet streams from node\'s zlib, when decompress
   if (failures.length) throw new Error(`${failures.length} case(s): ${failures.slice(0, 4).join('; ')}`);
 });
 
+// ---------------------------------------------------------------- XChaCha20
+function xchacha20Instance() {
+  const { XChaCha20Algorithm } = require(path.join(CIPHER_ROOT, 'algorithms', 'stream', 'xchacha20.js'));
+  return new XChaCha20Algorithm().CreateInstance();
+}
+function expectThrow(fn, fragment) {
+  try { fn(); } catch (error) {
+    if (!String(error.message).includes(fragment)) throw new Error(`threw '${error.message}', expected '${fragment}'`);
+    return;
+  }
+  throw new Error(`did not throw (expected '${fragment}')`);
+}
+
+// HChaCha20 output is only an intermediate subkey, which no XChaCha20 vector exposes
+test('XChaCha20: given the draft-irtf-cfrg-xchacha-03 section 2.2.1 key and nonce, when HChaCha20 runs, then it returns the published subkey', () => {
+  const instance = xchacha20Instance();
+  const key = [...Buffer.from('000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f', 'hex')];
+  const nonce = [...Buffer.from('000000090000004a0000000031415927', 'hex')];
+  equalHex(instance._hchacha20(key, nonce), '82413b4227b27bfed30e42508a877d73a0f9e4d58a74a853c12ec41326d3ecdc');
+});
+
+test('XChaCha20: given a libsodium tv_hchacha20 key and input, when HChaCha20 runs, then it returns the published output', () => {
+  // https://github.com/jedisct1/libsodium/blob/master/test/default/xchacha20.c (first tv_hchacha20 entry)
+  const instance = xchacha20Instance();
+  const key = [...Buffer.from('24f11cce8a1b3d61e441561a696c1c1b7e173d084fd4812425435a8896a013dc', 'hex')];
+  const input = [...Buffer.from('d9660c5900ae19ddad28d6e06e45fe5e', 'hex')];
+  equalHex(instance._hchacha20(key, input), '5966b3eec3bff1189f831f06afe4d4e3be97fa9235ec8c20d08acfbbb4e851e3');
+});
+
+// A.3.2.2 needs block counter 1, which the cross-language harnesses do not apply
+test('XChaCha20: given the draft-irtf-cfrg-xchacha-03 A.3.2.2 inputs and block counter 1, when encrypted, then the published ciphertext results', () => {
+  const { XChaCha20Algorithm } = require(path.join(CIPHER_ROOT, 'algorithms', 'stream', 'xchacha20.js'));
+  const algorithm = new XChaCha20Algorithm();
+  const a321 = algorithm.tests[0]; // A.3.2.1: the same plaintext, key and nonce at block counter 0
+  const instance = algorithm.CreateInstance();
+  instance.key = a321.key;
+  instance.nonce = a321.nonce;
+  instance.counter = 1;
+  instance.Feed(a321.input);
+  equalHex(instance.Result(),
+    '7d0a2e6b7f7c65a236542630294e063b7ab9b555a5d5149aa21e4ae1e4fbce87' +
+    'ecc8e08a8b5e350abe622b2ffa617b202cfad72032a3037e76ffdcdc4376ee05' +
+    '3a190d7e46ca1de04144850381b9cb29f051915386b8a710b8ac4d027b8b050f' +
+    '7cba5854e028d564e453b8a968824173fc16488b8970cac828f11ae53cabd201' +
+    '12f87107df24ee6183d2274fe4c8b1485534ef2c5fbc1ec24bfc3663efaa08bc' +
+    '047d29d25043532db8391a8a3d776bf4372a6955827ccb0cdd4af403a7ce4c63' +
+    'd595c75a43e045f0cce1f29c8b93bd65afc5974922f214a40b7c402cdb91ae73' +
+    'c0b63615cdad0480680f16515a7ace9d39236464328a37743ffc28f4ddb324f4' +
+    'd0f5bbdc270c65b1749a6efff1fbaa09536175ccd29fb9e6057b307320d31683' +
+    '8a9c71f70b5b5907a66f7ea49aadc409');
+});
+
+test('XChaCha20: given the counter at 2^32-1, when one block is encrypted, then it succeeds; when a second block is needed, then it throws instead of wrapping', () => {
+  const instance = xchacha20Instance();
+  instance.key = new Array(32).fill(0);
+  instance.counter = 0xFFFFFFFF;
+  instance.Feed(new Array(64).fill(0));
+  if (instance.Result().length !== 64) throw new Error('one block at the last counter value was not produced');
+  instance.Feed(new Array(65).fill(0));
+  expectThrow(() => instance.Result(), 'wrap');
+});
+
+test('XChaCha20: given a counter outside 0..2^32-1 or not an integer, when it is set, then it is rejected', () => {
+  const instance = xchacha20Instance();
+  expectThrow(() => { instance.counter = -1; }, 'counter');
+  expectThrow(() => { instance.counter = 0x100000000; }, 'counter');
+  expectThrow(() => { instance.counter = 1.5; }, 'counter');
+  instance.counter = null;
+  if (instance.counter !== 0) throw new Error('null did not restore counter 0');
+});
+
 /**
  * Run every algorithm regression case.
  * @param {object} options - { verbose }
