@@ -12,7 +12,7 @@
 | Complexity | Not specified |
 | Inventor | Dai Watanabe, Soichi Furuya, Hirotaka Yoshida, Kazuo Takaragi, Bart Preneel |
 | Year | 2002 |
-| Origin | JP |
+| Origin | 🇯🇵 Japan |
 | Source | [`algorithms/stream/mugi.js`](../../../algorithms/stream/mugi.js) |
 
 ## Security

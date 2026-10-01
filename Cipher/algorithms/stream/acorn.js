@@ -42,11 +42,8 @@
 
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          StreamCipherAlgorithm, AeadAlgorithm, IAlgorithmInstance,
+          AeadAlgorithm, IAlgorithmInstance,
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
-
-  // Use AEAD if available, otherwise StreamCipher
-  const BaseAlgorithm = AeadAlgorithm || StreamCipherAlgorithm;
 
   // ===== ACORN-128 STATE =====
 
@@ -109,9 +106,9 @@
    * ACORN-128 - Production-grade AEAD stream cipher (CAESAR competition winner)
    * 128-bit security with authenticated encryption and associated data support
    * @class
-   * @extends {StreamCipherAlgorithm|AeadAlgorithm}
+   * @extends {AeadAlgorithm}
    */
-  class ACORNAlgorithm extends BaseAlgorithm {
+  class ACORNAlgorithm extends AeadAlgorithm {
     constructor() {
       super();
 
