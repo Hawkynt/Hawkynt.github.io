@@ -389,25 +389,29 @@
     constructor(algorithm, securityBits) {
       super(algorithm);
 
+      // Every setting is read when Result() runs, never earlier, so the digest
+      // does not depend on the order the properties and the elements are set in.
+      // cSHAKE absorbs N and S before the first message byte, so the cSHAKE
+      // state can only be built once S is final: the encoded elements are kept
+      // until Result() and absorbed there.
+
       /** @type {int32} */
       this.securityBits = securityBits;
-      /** @type {IHashFunctionInstance} Underlying cSHAKE instance */
-      this.cshake = null;
       /** @type {int32} Output length in bytes, defaulting by security level */
       this._outputSize = securityBits === 128 ? 32 : 64;
       /** @type {uint8[]} */
       this._customization = [];
       /** @type {boolean} */
       this._xofMode = false;
-      /** @type {boolean} */
-      this._firstOutput = true;
-
-      this._newCshake();
+      /** @type {uint8[]} encode_string(X_1) || ... of the elements fed since the last Result() */
+      this._encoded = [];
     }
 
     /**
-     * Start a fresh cSHAKE instance with N = "TupleHash" and the current S
-     * @returns {void}
+     * A fresh cSHAKE instance with N = "TupleHash" and the current S, for the
+     * current security level
+     * @returns {IHashFunctionInstance} cSHAKE128 or cSHAKE256 instance
+     * @throws {Error} If that cSHAKE is not registered
      */
     _newCshake() {
       // Get registered cSHAKE algorithm
@@ -422,7 +426,7 @@
       const cshake = cshakeAlgo.CreateInstance();
       cshake.functionName = OpCodes.AnsiToBytes("TupleHash");
       cshake.customization = this._customization;
-      this.cshake = cshake;
+      return cshake;
     }
 
     /**
@@ -445,7 +449,8 @@
     }
 
     /**
-     * Set the customization string S
+     * Set the customization string S; it applies to the next Result(), even
+     * when elements were fed before it was set
      * @param {uint8[]} customBytes - S as bytes (null clears it)
      */
     set customization(customBytes) {
@@ -455,7 +460,6 @@
         for (let i = 0; i < customBytes.length; i++) copy.push(customBytes[i]);
       }
       this._customization = copy;
-      this.cshake.customization = this._customization;
     }
 
     /**
@@ -508,35 +512,32 @@
       // element - null/undefined, how the suite spells "no input" - is a no-op.
       if (data === null || data === undefined) return;
 
-      // Encode the tuple element and feed to CSHAKE
+      // Keep encode_string(X_i); cSHAKE absorbs it in Result(), once S is final
+      /** @type {uint8[]} */
       const encoded = encodeTuple(data);
-      this.cshake.Feed(encoded);
+      for (let i = 0; i < encoded.length; i++) this._encoded.push(encoded[i]);
     }
 
     /**
-     * Digest of the tuple fed so far; starts a new tuple
+     * Digest of the tuple fed so far, under the settings current now; starts a
+     * new tuple (the settings stay)
      * @returns {uint8[]} Output bytes
+     * @throws {Error} If the cSHAKE for the security level is not registered
      */
     Result() {
-      if (this._firstOutput) {
-        this._firstOutput = false;
+      /** @type {IHashFunctionInstance} */
+      const cshake = this._newCshake();
+      cshake.Feed(this._encoded);
 
-        // Append right_encode(output_length * 8) for fixed-length output
-        // For XOF mode, append right_encode(0)
-        const outputBits = this._xofMode ? 0 : (this._outputSize * 8);
-        const encoded = rightEncode(outputBits);
-        this.cshake.Feed(encoded);
-      }
+      // right_encode(L) for fixed-length output, right_encode(0) for TupleHashXOF
+      const outputBits = this._xofMode ? 0 : (this._outputSize * 8);
+      cshake.Feed(rightEncode(outputBits));
 
-      // Get output from CSHAKE
-      this.cshake.outputSize = this._outputSize;
+      cshake.outputSize = this._outputSize;
       /** @type {uint8[]} */
-      const result = this.cshake.Result();
+      const result = cshake.Result();
 
-      // Reset for next operation
-      this._newCshake();
-      this._firstOutput = true;
-
+      this._encoded = [];
       return result;
     }
   }

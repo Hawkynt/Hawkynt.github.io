@@ -65,6 +65,29 @@ test('GOST R 34.11-94: given a message of 2^32 + 24 bits, when finalized, then t
   equalHex(blocks[blocks.length - 2], hex(leBytes(LONG_BITS, 32)));
 });
 
+// ---------------------------------------------------------------- TupleHash
+// cSHAKE absorbs N and S before the message, so TupleHash used to drop a
+// customization set after the elements. Expected values: NIST SP 800-185
+// TupleHash samples #2 and #5, X = (000102, 101112131415), S = "My Tuple App".
+function tupleHashWithCustomizationLast(algorithmName, outputSize) {
+  require(path.join(CIPHER_ROOT, 'algorithms', 'hash', 'cshake.js'));
+  const algorithms = require(path.join(CIPHER_ROOT, 'algorithms', 'hash', 'tuplehash.js'));
+  const instance = new algorithms[algorithmName]().CreateInstance();
+  // Given: the elements are fed first, then the output length, then S
+  instance.Feed(Array.from(Buffer.from('000102', 'hex')));
+  instance.Feed(Array.from(Buffer.from('101112131415', 'hex')));
+  instance.outputSize = outputSize;
+  instance.customization = Array.from(Buffer.from('My Tuple App'));
+  // When: the digest is computed
+  return instance.Result();
+}
+test('TupleHash128: given the customization is set after the elements, when hashed, then the digest is NIST sample #2', () => {
+  equalHex(tupleHashWithCustomizationLast('TupleHash128', 32), '75cdb20ff4db1154e841d758e24160c54bae86eb8c13e7f5f40eb35588e96dfb');
+});
+test('TupleHash256: given the customization is set after the elements, when hashed, then the digest is NIST sample #5', () => {
+  equalHex(tupleHashWithCustomizationLast('TupleHash256', 64), '147c2191d5ed7efd98dbd96d7ab5a11692576f5fe2a5065f3e33de6bba9f3aa1c4e9a068a289c61c95aab30aee1e410b0b607de3620e24a4e3bf9852a1d4367e');
+});
+
 // ---------------------------------------------------------------- missing dependencies
 // A page context (no require, no module, no global) holding only the named
 // scripts: what an algorithm meets when the hash or cipher it builds on is not
