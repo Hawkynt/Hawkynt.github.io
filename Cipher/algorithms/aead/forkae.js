@@ -54,11 +54,6 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           AeadAlgorithm, IAeadInstance, TestCase, LinkItem, KeySize, Find } = AlgorithmFramework;
 
-  // Import ForkSkinny block cipher implementations
-  if (typeof require !== 'undefined') {
-    require('../block/forkskinny.js');
-  }
-
   // Helper: XOR two byte arrays
   /**
    * @param {uint8[]} a
@@ -162,7 +157,11 @@
      */
     getForkSkinnyInstance() {
       /** @type {Algorithm} */
-      const algo = Find(this.forkSkinnyVariant);
+      let algo = Find(this.forkSkinnyVariant);
+      if (!algo && typeof require !== 'undefined') {
+        try { require('../block/forkskinny.js'); } catch (e) { /* not found - error below */ }
+        algo = Find(this.forkSkinnyVariant);
+      }
 
       if (!algo) {
         throw new Error("ForkSkinny variant " + this.forkSkinnyVariant + " not found in registry");
