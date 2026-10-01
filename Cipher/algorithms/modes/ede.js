@@ -172,7 +172,7 @@
      * @param {IBlockCipherInstance} cipher - The block cipher instance
      */
     setBlockCipher(cipher) {
-      if (!cipher || typeof cipher.Feed !== 'function' || typeof cipher.Result !== 'function') {
+      if (!cipher) {
         throw new Error("Invalid block cipher instance");
       }
       this.blockCipher = cipher;
@@ -346,7 +346,7 @@
       // We use the algorithm from the provided cipher instance
       /** @type {Algorithm} */
       const algorithm = this.blockCipherAlgorithm ? this.blockCipherAlgorithm : this.blockCipher.algorithm;
-      if (!algorithm || !algorithm.CreateInstance) {
+      if (!algorithm) {
         throw new Error("Cannot access block cipher algorithm for EDE mode");
       }
 
