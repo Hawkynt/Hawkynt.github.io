@@ -273,6 +273,18 @@ test('walk: given a syntax error, when analyzed, then a parse error is returned 
   const r = TypeCoverage.analyzeSource('function (');
   ok(r.parseError, 'parse error reported');
 });
+test('walk: given a wrapper function called in place, when counted, then the sites in its body are counted', () => {
+  // A wrapper the transpiler does not unwrap stays a call; its body used to be
+  // skipped with the callee, hiding a whole file from TYPES.
+  const s = sites("(function (global) {\n  function f(a) { return a; }\n})(typeof global !== 'undefined' ? global : this);\nif (require.main === module) { }");
+  ok(s.some(x => x.line === 2 && x.expression === 'a'), 'the body read of a is a site');
+});
+test('walk: given a function invoked with .call(this), when counted, then the sites in its body are counted', () => {
+  ok(sites('(function () {\n  function f(a) { return a; }\n}).call(this);').some(x => x.line === 2 && x.expression === 'a'), 'the body read of a is a site');
+});
+test('walk: given a named function as callee, when counted, then the callee itself is no site', () => {
+  equal(sites('/** @returns {uint8} */\nfunction g() { return 1; }\ng();').length, 0);
+});
 test('walk: given sites, when tallied, then every site lands in exactly one tier', () => {
   const s = sites('function f(a) { return OpCodes.XorN(a, 1) + a; }');
   const t = TypeCoverage.byTier(s);
