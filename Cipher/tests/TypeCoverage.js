@@ -237,6 +237,7 @@ function analyzeSource(code) {
       else if (node.type === 'SequenceExpression') childIsValue = false;
       else if ((node.type === 'MemberExpression' || node.type === 'ThisPropertyAccess') && key === 'property' && !node.computed) continue;
       else if (node.type === 'Property' && key === 'key' && !node.computed) continue;
+      else if (node.type === 'CatchClause' && key === 'param') continue;       // `catch (e)` declares e
       else if ((node.type === 'ForOfStatement' || node.type === 'ForInStatement') && key === 'left') childIsValue = false;
       else if (node.type === 'ForStatement' && (key === 'init' || key === 'update')) childIsValue = false;
       walk(child, childIsValue, childWhere);
