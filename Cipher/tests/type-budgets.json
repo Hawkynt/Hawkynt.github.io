@@ -49,7 +49,7 @@
   "algorithms/asymmetric/ed25519.js": 2,
   "algorithms/asymmetric/elgamal.js": 19,
   "algorithms/asymmetric/esign.js": 17,
-  "algorithms/asymmetric/faest.js": 198,
+  "algorithms/asymmetric/faest.js": 0,
   "algorithms/asymmetric/falcon.js": 35,
   "algorithms/asymmetric/frodokem.js": 4,
   "algorithms/asymmetric/hawk.js": 353,
