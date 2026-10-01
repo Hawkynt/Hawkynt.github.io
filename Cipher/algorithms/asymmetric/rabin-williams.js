@@ -233,17 +233,6 @@
     return min + (OS2IP(randomBytes(octets)) % range);
   }
 
-  // The number theory above, under the names this module has always exported.
-  const NumberTheory = {
-    extendedGcd: extendedGcd,
-    modInverse: modInverse,
-    modExp: modExp,
-    jacobi: jacobi,
-    crt: crt,
-    squareRoot3Mod4: squareRoot3Mod4,
-    randomBigInt: randomBigInt
-  };
-
   /**
    * One of the four tweaked message representatives.
    */
@@ -536,28 +525,14 @@
   const TWEAK_NEG_DOUBLED = 3; // x = n - (2u mod n)
 
   /**
-   * Read a key size selector from whatever the caller supplied. Both spellings
-   * used across this collection are accepted: decimal digits in ASCII, and a
-   * big-endian 16-bit count of bits.
-   * @param {uint8[]|string|number} keyData - Key selector
+   * Read a key size selector. Both spellings used across this collection are
+   * accepted: decimal digits in ASCII, and a big-endian 16-bit count of bits.
+   * A size in bits is passed to Init directly.
+   * @param {uint8[]} keyData - Key selector octets
    * @returns {int32} Key size in bits
    */
   function parseKeySize(keyData) {
-    if (typeof keyData === 'number') {
-      /** @type {int32} */
-      const bits = keyData;
-      return bits;
-    }
-
-    if (typeof keyData === 'string') {
-      /** @type {string} */
-      const text = keyData;
-      /** @type {int32} */
-      const parsed = parseInt(text, 10);
-      return parsed;
-    }
-
-    if (keyData && typeof keyData.length === 'number') {
+    if (keyData) {
       /** @type {uint8[]} */
       const bytes = keyData;
       let digits = '';
@@ -936,11 +911,10 @@
       let blindInverse;
       for (;;) {
         blind = randomBigInt(1n, n - 1n);
-        try {
-          blindInverse = modInverse(blind, n);
+        // A blind sharing a factor with n has no inverse; draw again
+        if (OpCodes.GcdN(blind, n) === 1n) {
+          blindInverse = OpCodes.ModInverseN(blind, n);
           break;
-        } catch (e) {
-          // blind shares a factor with n; draw again
         }
       }
 
@@ -1030,5 +1004,5 @@
 
   // ===== EXPORTS =====
 
-  return { RabinWilliamsSignature, RabinWilliamsInstance, NumberTheory, I2OSP, OS2IP };
+  return { RabinWilliamsSignature, RabinWilliamsInstance, I2OSP, OS2IP };
 }));
