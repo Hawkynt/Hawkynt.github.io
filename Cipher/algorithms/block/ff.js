@@ -41,17 +41,6 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           BlockCipherAlgorithm, IBlockCipherInstance, KeySize, LinkItem, Vulnerability } = AlgorithmFramework;
 
-  // Load Rijndael/AES dependency for FF1 PRF
-  /** @type {Object|null} */
-  let RijndaelModule = null;
-  if (typeof require !== 'undefined') {
-    try {
-      RijndaelModule = require('./rijndael.js');
-    } catch (e) {
-      // Rijndael may already be loaded, will try AlgorithmFramework.Find() as fallback
-    }
-  }
-
   // ===== SHARED UTILITIES =====
 
   // FF1 Constants from NIST SP 800-38G
@@ -203,20 +192,18 @@
     }
   }
 
-  // Finds the AES block cipher: the directly imported module first (bypasses
-  // the AlgorithmFramework registry), then the registry under its names.
+  // Finds the AES block cipher in the AlgorithmFramework registry, loading
+  // rijndael.js first when it is not registered yet and a loader exists.
   /**
    * @returns {BlockCipherAlgorithm|null} The Rijndael algorithm, or null
    */
   function findRijndael() {
     /** @type {BlockCipherAlgorithm|null} */
-    let found = null;
-    if (RijndaelModule && RijndaelModule.RijndaelAlgorithm) {
-      /** @type {BlockCipherAlgorithm} */
-      const created = new RijndaelModule.RijndaelAlgorithm();
-      found = created;
+    let found = AlgorithmFramework.Find('Rijndael (AES)');
+    if (!found && typeof require !== 'undefined') {
+      try { require('./rijndael.js'); } catch (e) { /* not found - tried by name below */ }
+      found = AlgorithmFramework.Find('Rijndael (AES)');
     }
-    if (!found) found = AlgorithmFramework.Find('Rijndael (AES)');
     if (!found) found = AlgorithmFramework.Find('Rijndael');
     if (!found) found = AlgorithmFramework.Find('AES');
     return found;
@@ -610,7 +597,11 @@
           aes.key = this._key;
           this.aesPrf = new AESPRF(aes);
         } catch (error) {
-          throw new Error("FF1: Failed to initialize AES for PRF: " + error.message);
+          /** @type {Error} */
+          const err = error;
+          /** @type {string} */
+          const text = err.message;
+          throw new Error("FF1: Failed to initialize AES for PRF: " + text);
         }
       }
 

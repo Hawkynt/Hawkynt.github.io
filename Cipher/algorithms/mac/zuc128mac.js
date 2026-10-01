@@ -60,7 +60,8 @@
    */
   function loadZUCOnce() {
     if (!zucLoaded) {
-      if (!loadZUC()) throw new Error('ZUC stream cipher dependency is required');
+      loadZUC();
+      if (!AlgorithmFramework.Find('ZUC')) throw new Error('ZUC stream cipher dependency is required');
       zucLoaded = true;
     }
   }
