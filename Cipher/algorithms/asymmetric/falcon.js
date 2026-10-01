@@ -618,34 +618,66 @@
 
   // ===== the signed message =====
 
+  /** The outcome of opening a signed message. */
+  class FalconOpenResult {
+    /**
+     * @param {boolean} accepted - whether the signature verified
+     * @param {string} reason - why it was refused; empty when accepted
+     * @param {uint8[]|null} message - the message carried, when accepted
+     * @param {int32} norm - the squared norm, or -1 when refused before it
+     * @param {FalconParams|null} parameterSet - the parameter set, when accepted
+     */
+    constructor(accepted, reason, message, norm, parameterSet) {
+      /** @type {boolean} */
+      this.accepted = accepted;
+      /** @type {string} */
+      this.reason = reason;
+      /** @type {uint8[]|null} */
+      this.message = message;
+      /** @type {int32} */
+      this.norm = norm;
+      /** @type {FalconParams|null} */
+      this.parameterSet = parameterSet;
+    }
+  }
+
+  /**
+   * A refusal decided before the norm was computed.
+   * @param {string} reason - why
+   * @returns {FalconOpenResult} the refusal
+   */
+  function Refuse(reason) {
+    return new FalconOpenResult(false, reason, null, -1, null);
+  }
+
   /**
    * Check a signed message laid out as the submission's NIST wrapper writes it
    * and return the message it carries.
    * @param {uint8[]} signedMessage - the bundle
    * @param {uint8[]} publicKey - the encoded public key
-   * @returns {Object} { accepted, message, reason }
+   * @returns {FalconOpenResult} { accepted, reason, message, norm, parameterSet }
    */
   function SignOpen(signedMessage, publicKey) {
     if (!publicKey || publicKey.length < 1) {
-      return { accepted: false, reason: 'no public key' };
+      return Refuse('no public key');
     }
 
     /** @type {int32} */
     const logn = OpCodes.And32(publicKey[0], 0x0F);
     const set = ParameterSetByLogn(logn);
     if (OpCodes.And32(publicKey[0], 0xF0) !== 0 || !set) {
-      return { accepted: false, reason: 'the public key header names no FALCON parameter set' };
+      return Refuse('the public key header names no FALCON parameter set');
     }
     if (publicKey.length !== set.publicKeySize)
-      return { accepted: false, reason: 'a ' + set.name + ' public key is ' + set.publicKeySize + ' bytes, got ' + publicKey.length };
+      return Refuse('a ' + set.name + ' public key is ' + set.publicKeySize + ' bytes, got ' + publicKey.length);
 
     const decodedKey = DecodePublicKey(publicKey, 1, set);
     if (!decodedKey || decodedKey.length !== publicKey.length - 1) {
-      return { accepted: false, reason: 'the public key body is malformed' };
+      return Refuse('the public key body is malformed');
     }
 
     if (signedMessage.length < 2 + NONCE_LENGTH) {
-      return { accepted: false, reason: 'the signed message is too short to hold a nonce' };
+      return Refuse('the signed message is too short to hold a nonce');
     }
 
     /** @type {int32} */
@@ -654,18 +686,18 @@
     const lengthLow = signedMessage[1];
     const signatureLength = lengthHigh * 256 + lengthLow;
     if (signatureLength > signedMessage.length - 2 - NONCE_LENGTH || signatureLength < 1) {
-      return { accepted: false, reason: 'the declared signature length does not fit' };
+      return Refuse('the declared signature length does not fit');
     }
 
     const messageLength = signedMessage.length - 2 - NONCE_LENGTH - signatureLength;
     const signatureOffset = 2 + NONCE_LENGTH + messageLength;
     if (signedMessage[signatureOffset] !== 0x20 + logn) {
-      return { accepted: false, reason: 'the signature header does not match the public key' };
+      return Refuse('the signature header does not match the public key');
     }
 
     const decodedSignature = DecodeSignature(signedMessage, signatureOffset + 1, signatureLength - 1, set);
     if (!decodedSignature || decodedSignature.length !== signatureLength - 1) {
-      return { accepted: false, reason: 'the signature body is malformed' };
+      return Refuse('the signature body is malformed');
     }
 
     /** @type {uint8[]} */
@@ -678,10 +710,10 @@
     const point = HashToPoint(nonce, message, set);
     const verdict = VerifyRaw(point, decodedSignature.coefficients, decodedKey.coefficients, set);
     if (!verdict.accepted) {
-      return { accepted: false, reason: 'the signature is not short enough', norm: verdict.norm };
+      return new FalconOpenResult(false, 'the signature is not short enough', null, verdict.norm, null);
     }
 
-    return { accepted: true, message: message, norm: verdict.norm, parameterSet: set };
+    return new FalconOpenResult(true, '', message, verdict.norm, set);
   }
 
   const FALCON512_PK = OpCodes.Hex8ToBytes(
@@ -1086,8 +1118,9 @@
     }
 
     /**
-     * The generic key entry point. Accepts a public key or the name of a
+     * The generic key entry point. Accepts a public key or the ASCII name of a
      * parameter set.
+     * @param {uint8[]|null} keyData - key bytes; null clears the public key
      */
     set key(keyData) {
       this._keyData = keyData;
@@ -1097,12 +1130,9 @@
         return;
       }
 
-      if (typeof keyData === 'string' || typeof keyData === 'number') {
-        this.parameterSet = keyData;
-        return;
-      }
-
-      if (!Array.isArray(keyData) && !ArrayBuffer.isView(keyData))
+      /** @type {boolean} */
+      const isTypedArray = ArrayBuffer.isView(keyData);
+      if (!Array.isArray(keyData) && !isTypedArray)
         throw new Error('Invalid FALCON key data format');
 
       if (ParameterSetByPublicKeyLength(keyData.length)) {
@@ -1177,7 +1207,7 @@
      * Verify a signed message against a public key.
      * @param {uint8[]} signedMessage - the bundle
      * @param {uint8[]} [publicKey] - the key, defaulting to the configured one
-     * @returns {Object} { accepted, message, reason }
+     * @returns {FalconOpenResult} { accepted, reason, message, norm, parameterSet }
      */
     Verify(signedMessage, publicKey) {
       const key = publicKey ? publicKey : this._publicKey;

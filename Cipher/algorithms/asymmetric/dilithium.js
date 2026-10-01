@@ -73,17 +73,13 @@
   // vectors, so it is reused rather than duplicated - the same arrangement
   // TupleHash and ParallelHash use for cSHAKE.
 
-  const globalScope = typeof globalThis !== 'undefined' ? globalThis
-    : (typeof window !== 'undefined' ? window
-    : (typeof self !== 'undefined' ? self : {}));
-
   // Resolved SHAKE128 and SHAKE256 algorithms, in that order.
   /** @type {Algorithm[]} */
   const shakeAlgorithms = [null, null];
 
   /**
-   * Resolve a SHAKE algorithm object: the registry first, then the global
-   * scope, then the module.
+   * Resolve a SHAKE algorithm from the registry, loading shake.js under Node
+   * when it is not registered yet.
    *
    * The lookup is deferred to first use rather than done while this file loads,
    * and it is deliberate. Both the README generator and the browser script-tag
@@ -101,22 +97,15 @@
     if (shakeAlgorithms[slot]) return shakeAlgorithms[slot];
 
     /** @type {Algorithm} */
-    let algo = AlgorithmFramework.Find ? AlgorithmFramework.Find('SHAKE' + variant) : null;
+    let algo = AlgorithmFramework.Find('SHAKE' + variant);
 
-    if (!algo) {
-      let SHAKEAlgorithmClass = globalScope.SHAKEAlgorithm;
-      if (!SHAKEAlgorithmClass && typeof require !== 'undefined') {
-        try {
-          SHAKEAlgorithmClass = require('../hash/shake.js').SHAKEAlgorithm;
-        } catch (e) {
-          // Reported as a missing dependency below.
-        }
+    if (!algo && typeof require !== 'undefined') {
+      try {
+        require('../hash/shake.js');
+      } catch (e) {
+        // Reported as a missing dependency below.
       }
-      if (SHAKEAlgorithmClass) {
-        /** @type {string} */
-        const variantName = String(variant);
-        algo = new SHAKEAlgorithmClass(variantName);
-      }
+      algo = AlgorithmFramework.Find('SHAKE' + variant);
     }
 
     if (!algo) throw new Error('SHAKE' + variant + ' is required by ML-DSA and was not found');
@@ -423,37 +412,28 @@
     8, 7, 2, 75,
     2592, 4896, 4627);
 
-  const PARAMETER_SETS = {
-    'ML-DSA-44': ML_DSA_44,
-    'ML-DSA-65': ML_DSA_65,
-    'ML-DSA-87': ML_DSA_87
-  };
-
   /** @type {DilithiumParams[]} */
   const PARAMETER_SET_LIST = [ML_DSA_44, ML_DSA_65, ML_DSA_87];
 
   /**
-   * Every accepted spelling of a parameter set, so a caller can name it by the
+   * The parameter set one of whose accepted spellings is exactly this: the
    * standardised label, the round-3 label, or either number.
-   * @returns {Object} spelling to parameter set
+   * @param {string} key - the spelling
+   * @returns {DilithiumParams|null} the parameter set, or null
    */
-  function buildParameterSetAliases() {
-    const map = {};
+  function aliasEntry(key) {
     for (let i = 0; i < PARAMETER_SET_LIST.length; i++) {
       const set = PARAMETER_SET_LIST[i];
-      map[set.name] = set;
-      map[set.alias] = set;
-      map[set.name.substring(7)] = set;  // 44, 65, 87
-      map[set.alias.substring(9)] = set;  // 2, 3, 5
+      // 'ML-DSA-44' or '44', 'Dilithium2' or '2'
+      if (set.name === key || set.name.substring(7) === key) return set;
+      if (set.alias === key || set.alias.substring(9) === key) return set;
     }
-    return map;
+    return null;
   }
-
-  const PARAMETER_SET_ALIASES = buildParameterSetAliases();
 
   /**
    * Look a parameter set up by any of its accepted names.
-   * @param {string} label - 'ML-DSA-44', 'Dilithium2', 44, 2, ...
+   * @param {string} label - 'ML-DSA-44', 'Dilithium2', '44', '2', ...
    * @returns {DilithiumParams|null} The parameter set, or null when unrecognised
    */
   function findParameterSet(label) {
@@ -462,9 +442,9 @@
     }
     /** @type {string} */
     const key = String(label).trim();
-    /** @type {DilithiumParams|null} */
-    const found = PARAMETER_SET_ALIASES[key] || PARAMETER_SET_ALIASES[key.toUpperCase()] || null;
-    return found;
+    const exact = aliasEntry(key);
+    if (exact) return exact;
+    return aliasEntry(key.toUpperCase());
   }
 
   /**
@@ -2825,6 +2805,77 @@
       if (isInverse) return null;
       return new DilithiumInstance(this);
     }
+
+    // ---- the lattice core, for ml-dsa.js ----
+    //
+    // ml-dsa.js registers the FIPS 204 interface over this same core rather
+    // than carrying a second copy of the lattice arithmetic, and reaches it
+    // through the registered algorithm.
+
+    /**
+     * Look a parameter set up by any of its accepted names.
+     * @param {string} label - 'ML-DSA-44', 'Dilithium2', '44', '2', ...
+     * @returns {DilithiumParams|null} The parameter set, or null when unrecognised
+     */
+    FindParameterSet(label) {
+      return findParameterSet(label);
+    }
+
+    /**
+     * Identify a parameter set from the length of one of its encoded values.
+     * @param {int32} length - byte length
+     * @param {string} field - 'publicKeySize', 'privateKeySize' or 'signatureSize'
+     * @returns {DilithiumParams|null} The parameter set, or null
+     */
+    ParameterSetByLength(length, field) {
+      return parameterSetByLength(length, field);
+    }
+
+    /**
+     * ML-DSA.KeyGen_internal.
+     * @param {uint8[]} xi - 32 byte seed
+     * @param {DilithiumParams} P - parameter set
+     * @returns {DilithiumKeyPair} { publicKey, privateKey }
+     */
+    KeyGenInternal(xi, P) {
+      return keyGenInternal(xi, P);
+    }
+
+    /**
+     * ML-DSA.Sign_internal.
+     * @param {uint8[]} sk - the private key
+     * @param {uint8[]} messageRepresentative - M', ignored when externalMu is given
+     * @param {uint8[]} rnd - 32 bytes, all zero for deterministic signing
+     * @param {DilithiumParams} P - parameter set
+     * @param {uint8[]|null} externalMu - a 64 byte mu computed by the caller, or null
+     * @returns {uint8[]} the signature
+     */
+    SignInternal(sk, messageRepresentative, rnd, P, externalMu) {
+      return signInternal(sk, messageRepresentative, rnd, P, externalMu);
+    }
+
+    /**
+     * ML-DSA.Verify_internal.
+     * @param {uint8[]} pk - the public key
+     * @param {uint8[]} messageRepresentative - M', ignored when externalMu is given
+     * @param {uint8[]} sig - the signature
+     * @param {DilithiumParams} P - parameter set
+     * @param {uint8[]|null} externalMu - a 64 byte mu computed by the caller, or null
+     * @returns {boolean} whether the signature is valid
+     */
+    VerifyInternal(pk, messageRepresentative, sig, P, externalMu) {
+      return verifyInternal(pk, messageRepresentative, sig, P, externalMu);
+    }
+
+    /**
+     * M' for the external interface, FIPS 204 section 5.2.
+     * @param {uint8[]} message - the message
+     * @param {uint8[]} context - the application context, at most 255 bytes
+     * @returns {uint8[]} M'
+     */
+    PureMessageRepresentative(message, context) {
+      return pureMessageRepresentative(message, context);
+    }
   }
 
   /**
@@ -2856,7 +2907,7 @@
       // Declared here so that the test engine, which only assigns properties
       // that already exist on the instance, can set any of them from a vector.
       /** @type {DilithiumParams} */
-      this._parameterSet = PARAMETER_SETS['ML-DSA-44'];
+      this._parameterSet = ML_DSA_44;
       /** @type {uint8[]|null} */
       this._privateKey = null;
       /** @type {uint8[]|null} */
@@ -2978,8 +3029,8 @@
     }
 
     /**
-     * The generic key entry point. Accepts a private key, a public key, a
-     * 32 byte generation seed, or the name of a parameter set.
+     * The generic key entry point. Accepts a private key, a public key, a 32 byte generation seed, or the ASCII name of a parameter set.
+     * @param {uint8[]|null} keyData - key bytes; null clears both keys
      */
     set key(keyData) {
       this._keyData = keyData;
@@ -2990,12 +3041,9 @@
         return;
       }
 
-      if (typeof keyData === 'string' || typeof keyData === 'number') {
-        this.parameterSet = keyData;
-        return;
-      }
-
-      if (!Array.isArray(keyData) && !ArrayBuffer.isView(keyData))
+      /** @type {boolean} */
+      const isTypedArray = ArrayBuffer.isView(keyData);
+      if (!Array.isArray(keyData) && !isTypedArray)
         throw new Error('Invalid ML-DSA key data format');
 
       /** @type {uint8[]} */
@@ -3153,28 +3201,18 @@
 
   // ===== EXPORTS =====
 
-  // ml-dsa.js registers the FIPS 204 interface over this same core rather than
-  // carrying a second copy of the lattice arithmetic. Under CommonJS it reaches
-  // the core through require; in the browser the factory return value is
-  // discarded, so the core is published here for it to find. Nothing else reads
-  // this global.
-  /**
-   * Publish the module exports as the DilithiumCore global and return them.
-   * @param {Object} core - the module exports
-   * @returns {Object} the same object
-   */
-  function publishCore(core) {
-    globalScope.DilithiumCore = core;
-    return core;
-  }
-
-  return publishCore({
+  return {
     DilithiumCipher, DilithiumInstance,
-    PARAMETER_SETS, Q, N, ZETAS,
+    PARAMETER_SETS: {
+      'ML-DSA-44': ML_DSA_44,
+      'ML-DSA-65': ML_DSA_65,
+      'ML-DSA-87': ML_DSA_87
+    },
+    Q, N, ZETAS,
     ntt, inverseNtt, pointwiseMultiply, polyMultiplySchoolbook,
     power2Round, decompose, highBits, lowBits, makeHint, useHint,
     simpleBitPack, simpleBitUnpack, bitPack, bitUnpack, hintBitPack, hintBitUnpack,
     findParameterSet, parameterSetByLength,
     keyGenInternal, signInternal, verifyInternal, pureMessageRepresentative
-  });
+  };
 }));
