@@ -52,7 +52,7 @@
   "algorithms/asymmetric/faest.js": 198,
   "algorithms/asymmetric/falcon.js": 35,
   "algorithms/asymmetric/frodokem.js": 4,
-  "algorithms/asymmetric/hawk.js": 353,
+  "algorithms/asymmetric/hawk.js": 0,
   "algorithms/asymmetric/hqc.js": 22,
   "algorithms/asymmetric/luc.js": 23,
   "algorithms/asymmetric/lwe-signature.js": 0,
