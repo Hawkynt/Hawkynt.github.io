@@ -55,7 +55,7 @@
 
       // Required metadata
       this.name = "PBKDF2";
-      this.description = "Password-Based Key Derivation Function 2 (PBKDF2) using HMAC-SHA1 for key stretching. Converts passwords into cryptographic keys through iterative hashing. Educational implementation demonstrating key derivation principles.";
+      this.description = "Password-Based Key Derivation Function 2 (PBKDF2) using HMAC-SHA1 (default), HMAC-SHA224, HMAC-SHA256, HMAC-SHA384 or HMAC-SHA512 for key stretching. Converts passwords into cryptographic keys through iterative hashing. Educational implementation demonstrating key derivation principles.";
       this.inventor = "RSA Laboratories";
       this.year = 2000;
       this.category = CategoryType.KDF;
@@ -92,7 +92,7 @@
         )
       ];
 
-      // Test vectors from RFC 6070 (PBKDF2-HMAC-SHA1)
+      // Test vectors from RFC 6070 (PBKDF2-HMAC-SHA1, the default PRF)
       this.tests = [
         {
           text: "RFC 6070 Test Vector 1: password/salt, 1 iteration",
@@ -111,6 +111,68 @@
           iterations: 2,
           outputSize: 20,
           expected: OpCodes.Hex8ToBytes("ea6c014dc72d6f8ccd1ed92ace1d41f0d8de8957")
+        },
+        // PBKDF2-HMAC-SHA256 (the PRF scrypt uses), from RFC 7914 section 11
+        {
+          text: "RFC 7914 section 11: PBKDF2-HMAC-SHA256 passwd/salt, 1 iteration, 64 bytes",
+          uri: "https://www.rfc-editor.org/rfc/rfc7914#section-11",
+          input: OpCodes.AnsiToBytes('passwd'),
+          salt: OpCodes.AnsiToBytes('salt'),
+          hashFunction: 'SHA-256',
+          iterations: 1,
+          outputSize: 64,
+          expected: OpCodes.Hex8ToBytes("55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc49ca9cccf179b645991664b39d77ef317c71b845b1e30bd509112041d3a19783")
+        },
+        // Published PBKDF2-HMAC-SHA2 values: the RFC 6070 inputs with SHA-256/SHA-512
+        {
+          text: "PBKDF2-HMAC-SHA256 Test Case 2: password/salt, 2 iterations, 20 bytes",
+          uri: "https://github.com/brycx/Test-Vector-Generation/blob/master/PBKDF2/pbkdf2-hmac-sha2-test-vectors.md",
+          input: OpCodes.AnsiToBytes('password'),
+          salt: OpCodes.AnsiToBytes('salt'),
+          hashFunction: 'SHA-256',
+          iterations: 2,
+          outputSize: 20,
+          expected: OpCodes.Hex8ToBytes("ae4d0c95af6b46d32d0adff928f06dd02a303f8e")
+        },
+        {
+          text: "PBKDF2-HMAC-SHA256 Test Case 5: long password/salt, 4096 iterations, 25 bytes",
+          uri: "https://github.com/brycx/Test-Vector-Generation/blob/master/PBKDF2/pbkdf2-hmac-sha2-test-vectors.md",
+          input: OpCodes.AnsiToBytes('passwordPASSWORDpassword'),
+          salt: OpCodes.AnsiToBytes('saltSALTsaltSALTsaltSALTsaltSALTsalt'),
+          hashFunction: 'SHA-256',
+          iterations: 4096,
+          outputSize: 25,
+          expected: OpCodes.Hex8ToBytes("348c89dbcbd32b2f32d814b8116e84cf2b17347ebc1800181c")
+        },
+        {
+          text: "PBKDF2-HMAC-SHA256 Test Case 6: pass\\0word/sa\\0lt, 4096 iterations, 16 bytes",
+          uri: "https://github.com/brycx/Test-Vector-Generation/blob/master/PBKDF2/pbkdf2-hmac-sha2-test-vectors.md",
+          input: OpCodes.Hex8ToBytes("7061737300776f7264"),
+          salt: OpCodes.Hex8ToBytes("7361006c74"),
+          hashFunction: 'SHA-256',
+          iterations: 4096,
+          outputSize: 16,
+          expected: OpCodes.Hex8ToBytes("89b69d0516f829893c696226650a8687")
+        },
+        {
+          text: "PBKDF2-HMAC-SHA512 Test Case 1: password/salt, 1 iteration, 20 bytes",
+          uri: "https://github.com/brycx/Test-Vector-Generation/blob/master/PBKDF2/pbkdf2-hmac-sha2-test-vectors.md",
+          input: OpCodes.AnsiToBytes('password'),
+          salt: OpCodes.AnsiToBytes('salt'),
+          hashFunction: 'SHA-512',
+          iterations: 1,
+          outputSize: 20,
+          expected: OpCodes.Hex8ToBytes("867f70cf1ade02cff3752599a3a53dc4af34c7a6")
+        },
+        {
+          text: "PBKDF2-HMAC-SHA512 Test Case 5: long password/salt, 4096 iterations, 25 bytes",
+          uri: "https://github.com/brycx/Test-Vector-Generation/blob/master/PBKDF2/pbkdf2-hmac-sha2-test-vectors.md",
+          input: OpCodes.AnsiToBytes('passwordPASSWORDpassword'),
+          salt: OpCodes.AnsiToBytes('saltSALTsaltSALTsaltSALTsaltSALTsalt'),
+          hashFunction: 'SHA-512',
+          iterations: 4096,
+          outputSize: 25,
+          expected: OpCodes.Hex8ToBytes("8c0511f4c6e597c6ac6315d8f0362e225f3c501495ba23b868")
         }
       ];
     }
@@ -150,7 +212,50 @@
       this.password = null;
       /** @type {uint8[]} Fed password bytes (null until the first Feed) */
       this._inputData = null;
+      /** @type {string} Hash under the HMAC PRF; SHA-1 keeps the RFC 6070 behaviour */
+      this._hashFunction = 'SHA-1';
     }
+
+    /**
+     * Digest size hLen of a hash the PRF supports
+     * @param {string} hashFunction - Upper-case hash name
+     * @returns {int32} Digest size in bytes, or 0 when the hash is not supported
+     */
+    digestSizeOf(hashFunction) {
+      switch (hashFunction) {
+        case 'SHA-1': return 20;
+        case 'SHA-224': return 28;
+        case 'SHA-256': return 32;
+        case 'SHA-384': return 48;
+        case 'SHA-512': return 64;
+        default: return 0;
+      }
+    }
+
+    /**
+     * Select the hash under the HMAC PRF: SHA-1 (default), SHA-224, SHA-256,
+     * SHA-384 or SHA-512, case-insensitive. Any other name is refused rather
+     * than ignored, so a typo cannot silently fall back to HMAC-SHA1.
+     * @param {string} name - Hash name
+     * @throws {Error} If the value is not a string, or names an unsupported hash
+     */
+    set hashFunction(name) {
+      if (typeof name !== 'string') {
+        throw new Error('PBKDF2: hashFunction must be a hash name string');
+      }
+      /** @type {string} */
+      const upper = name.toUpperCase();
+      if (this.digestSizeOf(upper) === 0) {
+        throw new Error('PBKDF2: unsupported hash function "' + name + '" (supported: SHA-1, SHA-224, SHA-256, SHA-384, SHA-512)');
+      }
+      this._hashFunction = upper;
+    }
+
+    /**
+     * Name of the hash under the HMAC PRF
+     * @returns {string} Upper-case hash name
+     */
+    get hashFunction() { return this._hashFunction; }
 
     // Property aliases for test vector compatibility
     /** @returns {int32} Output size in bytes */
@@ -212,7 +317,7 @@
     }
 
     /**
-     * PBKDF2-HMAC-SHA1 (RFC 8018 section 5.2)
+     * PBKDF2 with HMAC over the selected hash (RFC 8018 section 5.2)
      * @param {uint8[]} password - Password bytes
      * @param {uint8[]} salt - Salt bytes
      * @param {int32} iterations - Iteration count
@@ -220,7 +325,7 @@
      * @returns {uint8[]} Derived key
      */
     deriveKey(password, salt, iterations, outputSize) {
-      const hLen = 20; // SHA1 output size (using HMAC-SHA1 per RFC 6070)
+      const hLen = this.digestSizeOf(this._hashFunction); // PRF output size hLen
       const l = Math.ceil(outputSize / hLen);
       const r = outputSize - (l - 1) * hLen;
 
@@ -253,12 +358,16 @@
       // U_1 = PRF(P, S || INT(i))
       /** @type {uint8[]} */
       const saltPlusI = salt.concat(this.intToBytes(blockNumber));
-      let U = this.hmacSha1(password, saltPlusI);
+      /** @type {IMacInstance} */
+      const prf = this.createPrf(password);
+      /** @type {uint8[]} */
+      let U = prf.ComputeMac(saltPlusI);
+      /** @type {uint8[]} */
       let result = U.slice();
 
       // U_2 through U_c
       for (let j = 2; j <= iterations; j++) {
-        U = this.hmacSha1(password, U);
+        U = prf.ComputeMac(U);
         result = OpCodes.XorArrays(result, U);
       }
 
@@ -266,64 +375,29 @@
     }
 
     /**
-     * HMAC-SHA1 (RFC 2104)
-     * @param {uint8[]} key - HMAC key
-     * @param {uint8[]} data - Message
-     * @returns {uint8[]} 20-byte MAC
+     * The PRF: an instance of the registered HMAC (RFC 2104), keyed with the
+     * password and set to the selected hash. Registry-first: Find() is checked
+     * before require() loads the module (CommonJS only; an AMD or browser
+     * loader cannot require synchronously, and the page loads HMAC).
+     * @param {uint8[]} password - HMAC key (copied, not modified)
+     * @returns {IMacInstance} Keyed HMAC instance; ComputeMac(m) = HMAC(P, m)
+     * @throws {Error} If HMAC is not registered
      */
-    hmacSha1(key, data) {
-      // HMAC(K, M) = H((K xor opad) || H((K xor ipad) || M))
-
-      const blockSize = 64; // SHA-1 block size
-      const opad = 0x5C;
-      const ipad = 0x36;
-
-      // If key is longer than block size, hash it
-      let keyBytes = key.slice();
-      if (keyBytes.length > blockSize) {
-        keyBytes = this.sha1(keyBytes);
+    createPrf(password) {
+      let hmacAlgorithm = AlgorithmFramework.Find('HMAC');
+      if (!hmacAlgorithm && typeof module !== 'undefined' && typeof require !== 'undefined') {
+        require('../mac/hmac.js');
+        hmacAlgorithm = AlgorithmFramework.Find('HMAC');
+      }
+      if (!hmacAlgorithm) {
+        throw new Error('PBKDF2Instance.createPrf: HMAC is not registered. Load it before PBKDF2');
       }
 
-      // Pad key to block size
-      while (keyBytes.length < blockSize) {
-        keyBytes.push(0);
-      }
-
-      // Create inner and outer padded keys
-      /** @type {uint8[]} */
-      const innerKey = keyBytes.map(b => OpCodes.Xor8(b, ipad));
-      /** @type {uint8[]} */
-      const outerKey = keyBytes.map(b => OpCodes.Xor8(b, opad));
-
-      // HMAC = H(outer_key || H(inner_key || data))
-      const innerHash = this.sha1(innerKey.concat(data));
-      return this.sha1(outerKey.concat(innerHash));
-    }
-
-    /**
-     * SHA-1 digest with the registered SHA-1. Registry-first: Find() is
-     * checked before require() loads the module (CommonJS only; an AMD or
-     * browser loader cannot require synchronously, and the page loads SHA-1).
-     * @param {uint8[]} data - Message
-     * @returns {uint8[]} 20-byte digest
-     * @throws {Error} If SHA-1 is not registered
-     */
-    sha1(data) {
-      let sha1Alg = AlgorithmFramework.Find('SHA-1');
-      if (!sha1Alg && typeof module !== 'undefined' && typeof require !== 'undefined') {
-        require('../hash/sha1.js');
-        sha1Alg = AlgorithmFramework.Find('SHA-1');
-      }
-      if (!sha1Alg) {
-        throw new Error('PBKDF2Instance.sha1: SHA-1 is not registered. Load it before PBKDF2');
-      }
-
-      /** @type {IHashFunctionInstance} */
-      const hashInstance = sha1Alg.CreateInstance();
-      hashInstance.Feed(data);
-      /** @type {uint8[]} */
-      const digest = hashInstance.Result();
-      return digest;
+      /** @type {IMacInstance} */
+      const hmacInstance = hmacAlgorithm.CreateInstance(false);
+      hmacInstance.key = password;
+      hmacInstance.hashFunction = this._hashFunction;
+      return hmacInstance;
     }
 
     /**

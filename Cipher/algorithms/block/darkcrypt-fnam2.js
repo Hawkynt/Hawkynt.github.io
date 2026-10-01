@@ -3,17 +3,23 @@
  * Compatible with AlgorithmFramework
  * (c)2006-2025 Hawkynt
  *
- * The "FNAm2-512" block cipher as implemented in the DarkCrypt Total Commander
- * plugin (Alexander Myasnikov, "Zarya" project). No public specification exists;
- * this implementation follows the behavior of the DarkCrypt plugin:
+ * FNAm2 ("Feistel Net Algorithm mark 2") by Alexey Kobzin (2009), in the form
+ * shipped with the DarkCrypt Total Commander plugin (implementation by
+ * Alexander Myasnikov). Follows the published C source (fnam2.c):
  *   - 128-bit block treated as four 32-bit little-endian words
  *   - 512-bit key treated as sixteen 32-bit little-endian words
  *   - 64 sequential ARX-with-multiply steps (16 cycles over the four words)
  *   - each step updates one word: w[t] = ~( w[t] + f(w[(t+1)%4], S) )
  *       f(x,S) = S*(~(x<<7)) + ( (x>>>16) ^ ((x<<25) + S) )
- *       S(r)   = K[r&15]*r + K[(r&15)+1]         (all 32-bit modular arithmetic)
- * Test vectors verified against the DarkCrypt implementation (crypt/decrypt
- * round-trip verified). 128-bit block, 512-bit key.
+ *       S(r)   = K[i]*r + K[im]*Num + K[ip]   (all 32-bit modular arithmetic)
+ *     with i = r%16, ip = i+1, im = i-1, except im = 16 for i = 1
+ *   - Num is the index of the block within the message (0, 1, 2, ...), so
+ *     every block position gets its own subkeys; it advances once per block in
+ *     both directions.
+ *   - The reference indexes one word past either end of its key array: K[16]
+ *     is the global that holds Num, and K[-1] reads as 0. Both are reproduced.
+ * Test vectors verified against the DarkCrypt implementation, single- and
+ * multi-block. 128-bit block, 512-bit key.
  * Educational only.
  */
 
@@ -72,9 +78,9 @@
       super();
 
       this.name = "FNAm2-512 (DarkCrypt)";
-      this.description = "FNAm2-512 block cipher from the DarkCrypt Total Commander plugin. A 128-bit-block / 512-bit-key ARX-with-multiply construction: 64 sequential steps mix the four little-endian words using key-derived subkeys built from 32-bit multiplication.";
-      this.inventor = "Alexander Myasnikov (DarkCrypt / Zarya)";
-      this.year = 2013;
+      this.description = "FNAm2 (Feistel Net Algorithm mark 2) as shipped with the DarkCrypt Total Commander plugin. A 128-bit-block / 512-bit-key ARX-with-multiply construction: 64 sequential steps mix the four little-endian words using subkeys built by 32-bit multiplication from the key, the step number and the block's position in the message.";
+      this.inventor = "Alexey Kobzin (DarkCrypt implementation by Alexander Myasnikov)";
+      this.year = 2009;
       this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
       this.securityStatus = SecurityStatus.EDUCATIONAL;
@@ -85,11 +91,12 @@
       this.SupportedBlockSizes = [new KeySize(16, 16, 0)];  // fixed 128-bit
 
       this.documentation = [
+        new LinkItem("FNAm2 reference C source (fnam2.c, cartman-cipher mirror)", "https://cartman-cipher.narod.ru/mirror/fnam2.zip"),
         new LinkItem("DarkCrypt plugin (Total Commander PlugRing)", "https://totalcmd.net/plugring/darkcrypttc.html")
       ];
 
       this.knownVulnerabilities = [
-        new Vulnerability("Non-standard cipher", "Custom ARX-with-multiply design of unknown provenance; unanalyzed and not recommended for real use.", "Use AES or another vetted cipher.")
+        new Vulnerability("Non-standard cipher", "Amateur ARX-with-multiply design without published cryptanalysis; not recommended for real use.", "Use AES or another vetted cipher.")
       ];
 
       // Test vectors verified against the DarkCrypt implementation.
@@ -114,6 +121,27 @@
           input: OpCodes.Hex8ToBytes("101112131415161718191a1b1c1d1e1f"),
           key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40"),
           expected: OpCodes.Hex8ToBytes("7baf2995776dab041609d53a6b4b59c7")
+        },
+        {
+          text: "DarkCrypt Fnam2 — four zero blocks (per-block subkeys)",
+          uri: "https://cartman-cipher.narod.ru/mirror/fnam2.zip",
+          input: OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("e7dbfb251bf0fcfb302602cc2cfe03f2399dfb35a02cc6fa236003b82c1d1121f9defb1b1c9ee8aa2bc9020a31a911796719fd279e078a1acf7102ee2924a03e")
+        },
+        {
+          text: "DarkCrypt Fnam2 — three incrementing blocks, encryption",
+          uri: "https://cartman-cipher.narod.ru/mirror/fnam2.zip",
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
+          expected: OpCodes.Hex8ToBytes("838b7b06c845801344698e2fd3b89fc0b6aa47fdc0a586afab4fd529ed4071def30c3a0c501ae7ccbf86f316fd42d5ca")
+        },
+        {
+          text: "DarkCrypt Fnam2 — three incrementing blocks, from the plugin's decryption",
+          uri: "https://cartman-cipher.narod.ru/mirror/fnam2.zip",
+          input: OpCodes.Hex8ToBytes("5deae5e351e0f3a4ab28d570de4af746905e59febfb0c7f66b7ac4e1ef8f288da4e89bc3bef249d6e6e580768f26e7d7"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
+          expected: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f")
         }
       ];
     }
@@ -173,18 +201,22 @@
 
       /** @type {uint8[]} */
       const output = [];
+      const K = this._keyWords();
+      // Num: position of the block within the message (the reference's block counter)
+      /** @type {uint32} */
+      let num = 0;
       for (let i = 0; i < this.inputBuffer.length; i += this.BlockSize) {
         const block = this.inputBuffer.slice(i, i + this.BlockSize);
-        output.push(...(this.isInverse ? this._decryptBlock(block) : this._encryptBlock(block)));
+        output.push(...(this.isInverse ? this._decryptBlock(block, K, num) : this._encryptBlock(block, K, num)));
+        num = OpCodes.ToUint32(num + 1);
       }
       this.inputBuffer = [];
       return output;
     }
 
-    // Sixteen 32-bit little-endian key words; index 16 is a per-session counter,
-    // which is always 0 for a freshly keyed single block.
+    // Sixteen 32-bit little-endian key words
     /**
-     * @returns {uint32[]} Seventeen key words
+     * @returns {uint32[]} Sixteen key words
      */
     _keyWords() {
       const k = this._key;
@@ -192,29 +224,35 @@
       const K = [];
       for (let i = 0; i < 16; i++)
         K.push(OpCodes.Pack32LE(k[i * 4], k[i * 4 + 1], k[i * 4 + 2], k[i * 4 + 3]));
-      K.push(0);
       return K;
     }
 
-    // Subkey for step r (session counter fixed at 0): S = K[m]*r + K[m+1], m = r & 15
+    // Subkey for step r of block num: S = K[i]*r + K[im]*num + K[ip], i = r mod 16.
+    // The reference reads one word past each end of its key array: index 16 is
+    // the block counter itself and index -1 is zero.
     /**
      * @param {uint32[]} K - Key words
      * @param {int32} r - Step index
+     * @param {uint32} num - Block position within the message
      * @returns {uint32} Step subkey
      */
-    _subkey(K, r) {
+    _subkey(K, r, num) {
       /** @type {int32} */
-      const m = OpCodes.And32(r, 0xF);
-      const kNext = (m + 1 <= 15) ? K[m + 1] : 0; // K[16] is the counter (0)
-      return OpCodes.ToUint32(mul32(K[m], r) + kNext);
+      const i = OpCodes.And32(r, 0xF);
+      /** @type {uint32} */
+      const kMinus = i === 0 ? 0 : (i === 1 ? num : K[i - 1]);
+      /** @type {uint32} */
+      const kPlus = i === 15 ? num : K[i + 1];
+      return OpCodes.Add32(OpCodes.Add32(mul32(K[i], r), mul32(kMinus, num)), kPlus);
     }
 
     /**
      * @param {uint8[]} block - Input block
+     * @param {uint32[]} K - Key words
+     * @param {uint32} num - Block position within the message
      * @returns {uint8[]} Output block
      */
-    _encryptBlock(block) {
-      const K = this._keyWords();
+    _encryptBlock(block, K, num) {
       const w = [
         OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
         OpCodes.Pack32LE(block[4], block[5], block[6], block[7]),
@@ -222,7 +260,7 @@
         OpCodes.Pack32LE(block[12], block[13], block[14], block[15])
       ];
       for (let r = 0; r < STEPS; r++) {
-        const S = this._subkey(K, r);
+        const S = this._subkey(K, r, num);
         const t = OpCodes.And32(r, 3);
         const f = mix(w[OpCodes.And32(t + 1, 3)], S);
         w[t] = OpCodes.Not32(OpCodes.ToUint32(w[t] + f));
@@ -235,10 +273,11 @@
 
     /**
      * @param {uint8[]} block - Input block
+     * @param {uint32[]} K - Key words
+     * @param {uint32} num - Block position within the message
      * @returns {uint8[]} Output block
      */
-    _decryptBlock(block) {
-      const K = this._keyWords();
+    _decryptBlock(block, K, num) {
       const w = [
         OpCodes.Pack32LE(block[0], block[1], block[2], block[3]),
         OpCodes.Pack32LE(block[4], block[5], block[6], block[7]),
@@ -246,7 +285,7 @@
         OpCodes.Pack32LE(block[12], block[13], block[14], block[15])
       ];
       for (let r = STEPS - 1; r >= 0; r--) {
-        const S = this._subkey(K, r);
+        const S = this._subkey(K, r, num);
         const t = OpCodes.And32(r, 3);
         const f = mix(w[OpCodes.And32(t + 1, 3)], S);
         // invert w[t] = ~(w[t] + f)  =>  w[t] = ~w[t] - f
