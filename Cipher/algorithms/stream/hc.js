@@ -36,14 +36,15 @@
   // ===== ALGORITHM IMPLEMENTATION =====
 
 class HCAlgorithm extends StreamCipherAlgorithm {
+  /**
+   * @param {string} [variant='128'] - '256' selects HC-256, anything else the HC-128 parameters
+   */
   constructor(variant = '128') {
     super();
 
-    const config = this._getVariantConfig(variant);
-
+    /** @type {string} */
     this.variant = variant;
     this.name = "HC-" + variant;
-    this.description = config.description;
     this.inventor = "Hongjun Wu";
     this.year = 2004;
     this.category = CategoryType.STREAM;
@@ -51,115 +52,121 @@ class HCAlgorithm extends StreamCipherAlgorithm {
     this.securityStatus = null;
     this.complexity = ComplexityType.ADVANCED;
     this.country = CountryCode.CN;
-
-    this.SupportedKeySizes = config.keySizes;
     this.SupportedBlockSizes = [new KeySize(1, 65536, 1)];
 
+    /** @type {string} */
+    let specUrl = "";
+    /** @type {string} */
+    let wikiUrl = "";
+    /** @type {string} */
+    let refUrl = "";
+    /** @type {string} */
+    let refLibUrl = "";
+    /** @type {Vulnerability[]} */
+    this.vulnerabilities = [];
+
+    // Variant-specific configuration
+    /** @type {int32} */
+    this.TABLE_SIZE = 0;
+    /** @type {int32} */
+    this.INIT_STEPS = 0;
+    /** @type {boolean} */
+    this.HAS_XY_ARRAYS = false;
+    /** @type {int32} */
+    this.IV_SIZE = 0;
+    /** @type {int32} */
+    this.KEY_WORDS = 0;
+    /** @type {int32} */
+    this.W_SIZE = 0;
+
+    if (variant === '256') {
+      this.description = "eSTREAM Phase 3 finalist with large table-based design. Uses two 1024-word tables with nonlinear update functions for high-speed software encryption. Designed by Hongjun Wu.";
+      specUrl = "https://www.ecrypt.eu.org/stream/p3ciphers/hc/hc256_p3.pdf";
+      wikiUrl = "https://en.wikipedia.org/wiki/HC-256";
+      refUrl = "https://personal.ntu.edu.sg/wuhj/research/hc/hc256_ref.h";
+      refLibUrl = "https://github.com/weidai11/cryptopp/blob/master/hc256.h";
+      this.SupportedKeySizes = [new KeySize(32, 32, 1)];
+      this.vulnerabilities = [
+        new Vulnerability("Distinguishing Attack", "2^255 complexity distinguishing attack (impractical)")
+      ];
+      this.tests = [
+        {
+          text: "HC-256 Test Vector - Zero Key/IV",
+          uri: "eSTREAM verified implementation",
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          iv: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          input: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("5B078985D8F6F30D42C5C02FA6B6795153F06534801F89F24E74248B720B4818")
+        },
+        {
+          text: "HC-256 Test Vector - Non-zero Key/IV",
+          uri: "eSTREAM verified implementation",
+          key: OpCodes.Hex8ToBytes("0053A6F94C9FF24598EB3E91E4378ADD3083D6297CCF2275C81B6EC11467BA0D"),
+          iv: OpCodes.Hex8ToBytes("0D74DB42A91077DE45AC137AE148AF16B9C6B1F8E9C1A86A6B17F1B9A6C3C8F7"),
+          input: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("2EC868D5779C5F522A5E2A9530A675EC359DD8D08845F57064562FE0C5927EA4")
+        },
+        {
+          text: "DarkCrypt keystream, incremental key",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          iv: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          input: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("7cb997d6e1b46dd7c0a9629b441c377114d6c18f230291fa7ef0b039aedcc9aaa4ae05ba13f3931e3f8373aa320a8bcf28e825b2084d0fa486be52c92c3c6f1487f9af5c886705dcbd33d08c62e59c814a719c6b0372f44948d5130aaf20289bc3dc704d2ffa09ce7989d5afc977695afa6c82dd92a9a01cdc5de373127cc4e1")
+        },
+        {
+          text: "DarkCrypt incremental plaintext, incremental key",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+          iv: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
+          expected: OpCodes.Hex8ToBytes("7cb895d5e5b16bd0c8a068904811397e04c7d39c371787ed66e9aa22b2c1d7b5848f279937d6b53917aa59811e27a5e018d917813c783993be8768f21001512b")
+        }
+      ];
+      this.TABLE_SIZE = 1024;
+      this.INIT_STEPS = 4096;
+      this.HAS_XY_ARRAYS = false;
+      this.IV_SIZE = 32;
+      this.KEY_WORDS = 8;
+      this.W_SIZE = 2560;
+    } else {
+      this.description = "eSTREAM Profile 1 finalist with table-based design. Uses two 512-word tables with complex update functions for high-speed software encryption. Designed by Hongjun Wu.";
+      specUrl = "https://www.ecrypt.eu.org/stream/p3ciphers/hc/hc128_p3.pdf";
+      wikiUrl = "https://en.wikipedia.org/wiki/HC-128";
+      refUrl = "https://personal.ntu.edu.sg/wuhj/research/hc/hc128_ref.h";
+      refLibUrl = "https://github.com/weidai11/cryptopp/blob/master/hc128.h";
+      this.SupportedKeySizes = [new KeySize(16, 16, 1)];
+      this.vulnerabilities = [
+        new Vulnerability("Weak Key Classes", "Theoretical weak key classes identified, though not practical")
+      ];
+      this.tests = [
+        {
+          text: "HC-128 eSTREAM Test Vector",
+          uri: "https://github.com/neoeinstein/bouncycastle/blob/master/crypto/test/data/hc256/hc128/ecrypt_HC-128.txt",
+          key: OpCodes.Hex8ToBytes("80000000000000000000000000000000"),
+          iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
+          input: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("378602B98F32A74847515654AE0DE7ED8F72BC34776A065103E51595521FFE47")
+        }
+      ];
+      this.TABLE_SIZE = 512;
+      this.INIT_STEPS = 1024;
+      this.HAS_XY_ARRAYS = true;
+      this.IV_SIZE = 16;
+      this.KEY_WORDS = 4;
+      this.W_SIZE = 1280;
+    }
+
     this.documentation = [
-      new LinkItem("eSTREAM HC-" + variant + " Specification", config.specUrl),
-      new LinkItem("HC-" + variant + " Wikipedia", config.wikiUrl),
+      new LinkItem("eSTREAM HC-" + variant + " Specification", specUrl),
+      new LinkItem("HC-" + variant + " Wikipedia", wikiUrl),
       new LinkItem("eSTREAM Portfolio", "https://www.ecrypt.eu.org/stream/")
     ];
 
     this.references = [
-      new LinkItem("Hongjun Wu HC-" + variant + " Reference Implementation", config.refUrl),
-      new LinkItem("Crypto++ HC-" + variant + " Implementation", config.refLibUrl)
+      new LinkItem("Hongjun Wu HC-" + variant + " Reference Implementation", refUrl),
+      new LinkItem("Crypto++ HC-" + variant + " Implementation", refLibUrl)
     ];
-
-    this.vulnerabilities = config.vulnerabilities;
-    this.tests = config.tests;
-
-    // Variant-specific configuration
-    this.TABLE_SIZE = config.tableSize;
-    this.INIT_STEPS = config.initSteps;
-    this.HAS_XY_ARRAYS = config.hasXYArrays;
-    this.IV_SIZE = config.ivSize;
-    this.KEY_WORDS = config.keyWords;
-    this.W_SIZE = config.wSize;
-  }
-
-  _getVariantConfig(variant) {
-    const configs = {
-      '128': {
-        description: "eSTREAM Profile 1 finalist with table-based design. Uses two 512-word tables with complex update functions for high-speed software encryption. Designed by Hongjun Wu.",
-        specUrl: "https://www.ecrypt.eu.org/stream/p3ciphers/hc/hc128_p3.pdf",
-        wikiUrl: "https://en.wikipedia.org/wiki/HC-128",
-        refUrl: "https://personal.ntu.edu.sg/wuhj/research/hc/hc128_ref.h",
-        refLibUrl: "https://github.com/weidai11/cryptopp/blob/master/hc128.h",
-        tableSize: 512,
-        initSteps: 1024,
-        hasXYArrays: true,
-        ivSize: 16,
-        keyWords: 4,
-        wSize: 1280,
-        keySizes: [new KeySize(16, 16, 1)],
-        vulnerabilities: [
-          new Vulnerability("Weak Key Classes", "Theoretical weak key classes identified, though not practical")
-        ],
-        tests: [
-          {
-            text: "HC-128 eSTREAM Test Vector",
-            uri: "https://github.com/neoeinstein/bouncycastle/blob/master/crypto/test/data/hc256/hc128/ecrypt_HC-128.txt",
-            key: OpCodes.Hex8ToBytes("80000000000000000000000000000000"),
-            iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-            input: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
-            expected: OpCodes.Hex8ToBytes("378602B98F32A74847515654AE0DE7ED8F72BC34776A065103E51595521FFE47")
-          }
-        ]
-      },
-      '256': {
-        description: "eSTREAM Phase 3 finalist with large table-based design. Uses two 1024-word tables with nonlinear update functions for high-speed software encryption. Designed by Hongjun Wu.",
-        specUrl: "https://www.ecrypt.eu.org/stream/p3ciphers/hc/hc256_p3.pdf",
-        wikiUrl: "https://en.wikipedia.org/wiki/HC-256",
-        refUrl: "https://personal.ntu.edu.sg/wuhj/research/hc/hc256_ref.h",
-        refLibUrl: "https://github.com/weidai11/cryptopp/blob/master/hc256.h",
-        tableSize: 1024,
-        initSteps: 4096,
-        hasXYArrays: false,
-        ivSize: 32,
-        keyWords: 8,
-        wSize: 2560,
-        keySizes: [new KeySize(32, 32, 1)],
-        vulnerabilities: [
-          new Vulnerability("Distinguishing Attack", "2^255 complexity distinguishing attack (impractical)")
-        ],
-        tests: [
-          {
-            text: "HC-256 Test Vector - Zero Key/IV",
-            uri: "eSTREAM verified implementation",
-            key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
-            iv: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
-            input: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
-            expected: OpCodes.Hex8ToBytes("5B078985D8F6F30D42C5C02FA6B6795153F06534801F89F24E74248B720B4818")
-          },
-          {
-            text: "HC-256 Test Vector - Non-zero Key/IV",
-            uri: "eSTREAM verified implementation",
-            key: OpCodes.Hex8ToBytes("0053A6F94C9FF24598EB3E91E4378ADD3083D6297CCF2275C81B6EC11467BA0D"),
-            iv: OpCodes.Hex8ToBytes("0D74DB42A91077DE45AC137AE148AF16B9C6B1F8E9C1A86A6B17F1B9A6C3C8F7"),
-            input: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
-            expected: OpCodes.Hex8ToBytes("2EC868D5779C5F522A5E2A9530A675EC359DD8D08845F57064562FE0C5927EA4")
-          },
-          {
-            text: "DarkCrypt keystream, incremental key",
-            uri: "https://totalcmd.net/plugring/darkcrypttc.html",
-            key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
-            iv: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
-            input: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
-            expected: OpCodes.Hex8ToBytes("7cb997d6e1b46dd7c0a9629b441c377114d6c18f230291fa7ef0b039aedcc9aaa4ae05ba13f3931e3f8373aa320a8bcf28e825b2084d0fa486be52c92c3c6f1487f9af5c886705dcbd33d08c62e59c814a719c6b0372f44948d5130aaf20289bc3dc704d2ffa09ce7989d5afc977695afa6c82dd92a9a01cdc5de373127cc4e1")
-          },
-          {
-            text: "DarkCrypt incremental plaintext, incremental key",
-            uri: "https://totalcmd.net/plugring/darkcrypttc.html",
-            key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
-            iv: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
-            input: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f"),
-            expected: OpCodes.Hex8ToBytes("7cb895d5e5b16bd0c8a068904811397e04c7d39c371787ed66e9aa22b2c1d7b5848f279937d6b53917aa59811e27a5e018d917813c783993be8768f21001512b")
-          }
-        ]
-      }
-    };
-    return configs[variant] || configs['128'];
   }
 
   CreateInstance(isInverse = false) {
