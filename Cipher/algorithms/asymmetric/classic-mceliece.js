@@ -94,19 +94,24 @@
   // file was being loaded when it happened, so requiring the block cipher here
   // would file AES under this directory and drop it from the block cipher
   // index.
+  /** @type {Algorithm|null} */
   let aesAlgorithm = null;
 
+  /**
+   * The registered AES, loading it under Node when it is missing.
+   * @returns {Algorithm} the block cipher
+   */
   function FindAes() {
     if (aesAlgorithm) return aesAlgorithm;
 
-    aesAlgorithm = AlgorithmFramework.Find ? AlgorithmFramework.Find('Rijndael (AES)') : null;
+    aesAlgorithm = AlgorithmFramework.Find('Rijndael (AES)');
     if (!aesAlgorithm && typeof require !== 'undefined') {
       try {
         require('../block/rijndael.js');
       } catch (e) {
         // Reported as a missing dependency below.
       }
-      aesAlgorithm = AlgorithmFramework.Find ? AlgorithmFramework.Find('Rijndael (AES)') : null;
+      aesAlgorithm = AlgorithmFramework.Find('Rijndael (AES)');
     }
 
     if (!aesAlgorithm)
@@ -150,7 +155,7 @@
   /**
    * One Keccak-f[1600] permutation over a state held as 25 pairs of 32 bit
    * halves, low half first.
-   * @param {Int32Array} state - 50 words, modified in place
+   * @param {int32[]} state - 50 words, modified in place
    */
   function KeccakPermute(state) {
     const b = new Int32Array(50);
@@ -236,8 +241,8 @@
 
   /**
    * Exclusive-or one full block into the state and permute.
-   * @param {Int32Array} state - 50 words, modified in place
-   * @param {Uint8Array} block - SHAKE256_RATE octets
+   * @param {int32[]} state - 50 words, modified in place
+   * @param {uint8[]} block - SHAKE256_RATE octets
    */
   function AbsorbBlock(state, block) {
     for (let i = 0; i < SHAKE256_RATE; ++i) {
@@ -256,7 +261,7 @@
    * SHAKE-256 over a byte string, squeezed to any length in one call.
    * @param {uint8[]} input - the message
    * @param {int32} outputLength - octets wanted
-   * @returns {Uint8Array} the output
+   * @returns {uint8[]} the output
    */
   function Shake256(input, outputLength) {
     const state = new Int32Array(50);
@@ -309,6 +314,7 @@
    * @returns {uint8[]} 16 ciphertext octets
    */
   function Aes256Ecb(key, block) {
+    /** @type {IBlockCipherInstance} */
     const instance = FindAes().CreateInstance(false);
     instance.key = key;
     instance.Feed(block);
@@ -324,7 +330,7 @@
   function IncrementCounter(v) {
     for (let j = 15; j >= 0; --j) {
       if (v[j] === 0xFF) v[j] = 0;
-      else { v[j] = v[j] + 1; break; }
+      else { v[j] = OpCodes.Add32(v[j], 1); break; }
     }
   }
 
@@ -332,9 +338,9 @@
   class McElieceDrbg {
     constructor() {
       /** @type {uint8[]} */
-      this.key = new Array(32).fill(0);
+      this.key = OpCodes.CreateArray(32, 0);
       /** @type {uint8[]} */
-      this.v = new Array(16).fill(0);
+      this.v = OpCodes.CreateArray(16, 0);
     }
   }
 
@@ -351,10 +357,8 @@
       const block = Aes256Ecb(drbg.key, drbg.v);
       for (let j = 0; j < 16; ++j) temp.push(block[j]);
     }
-    // The seed arrives from the caller unmasked, so the exclusive-or stays
-    // the plain one rather than the unsigned 32 bit helper.
     if (providedData)
-      for (let i = 0; i < 48; ++i) temp[i] = OpCodes.XorN(temp[i], providedData[i]);
+      for (let i = 0; i < 48; ++i) temp[i] = OpCodes.Xor32(temp[i], providedData[i]);
     for (let i = 0; i < 32; ++i) drbg.key[i] = temp[i];
     for (let i = 0; i < 16; ++i) drbg.v[i] = temp[32 + i];
   }
@@ -476,29 +480,20 @@
   /** @type {McElieceParams[]} */
   const PARAMETER_SET_LIST = [MCELIECE_348864, MCELIECE_460896, MCELIECE_6688128, MCELIECE_6960119, MCELIECE_8192128];
 
-  const PARAMETER_SETS = {
-    'mceliece348864': MCELIECE_348864,
-    'mceliece460896': MCELIECE_460896,
-    'mceliece6688128': MCELIECE_6688128,
-    'mceliece6960119': MCELIECE_6960119,
-    'mceliece8192128': MCELIECE_8192128
-  };
-
   /**
-   * The table entry under a name. A plain property read, so a name is
-   * accepted exactly when the table has a truthy property of it.
+   * The parameter set of exactly this name.
    * @param {string} name - the name
-   * @returns {McElieceParams} the entry, or a falsy value
+   * @returns {McElieceParams|null} the entry, or null
    */
   function ParameterSetEntry(name) {
-    /** @type {McElieceParams} */
-    const entry = PARAMETER_SETS[name];
-    return entry;
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i)
+      if (PARAMETER_SET_LIST[i].name === name) return PARAMETER_SET_LIST[i];
+    return null;
   }
 
   /**
    * Look a parameter set up by a name, a part of a name, or its code length.
-   * @param {string|int32} label - 'mceliece348864', '460896', '8192', ...
+   * @param {string} label - 'mceliece348864', '460896', '8192', ...
    * @returns {McElieceParams|null} the parameter set, or null
    */
   function FindParameterSet(label) {
@@ -548,8 +543,8 @@
      * @param {int32} m - degree
      * @param {int32} q - 2^m
      * @param {int32} mask - q - 1, the multiplicative order
-     * @param {Uint16Array} exp - powers of the generator, twice over
-     * @param {Uint16Array} log - discrete logarithms
+     * @param {uint16[]} exp - powers of the generator, twice over
+     * @param {uint16[]} log - discrete logarithms
      */
     constructor(m, q, mask, exp, log) {
       /** @type {int32} */
@@ -558,9 +553,9 @@
       this.q = q;
       /** @type {int32} */
       this.mask = mask;
-      /** @type {Uint16Array} */
+      /** @type {uint16[]} */
       this.exp = exp;
-      /** @type {Uint16Array} */
+      /** @type {uint16[]} */
       this.log = log;
     }
   }
@@ -667,11 +662,11 @@
   /**
    * Multiply in the ring whose elements the Goppa polynomials are minimal
    * polynomials of.
-   * @param {Uint16Array} a - first operand, t coefficients
-   * @param {Uint16Array} b - second operand, t coefficients
+   * @param {uint16[]} a - first operand, t coefficients
+   * @param {uint16[]} b - second operand, t coefficients
    * @param {McElieceParams} set - the parameter set
    * @param {McElieceField} field - the field
-   * @returns {Uint16Array} the product
+   * @returns {uint16[]} the product
    */
   function RingMultiply(a, b, set, field) {
     const t = set.t;
@@ -706,16 +701,16 @@
    * The minimal polynomial over GF(2^m) of the ring element the seed names.
    * Returns null when it has degree below t, which the caller answers by
    * restarting key generation from the next seed.
-   * @param {Uint16Array} element - t coefficients
+   * @param {uint16[]} element - t coefficients
    * @param {McElieceParams} set - the parameter set
    * @param {McElieceField} field - the field
-   * @returns {Uint16Array|null} the t low coefficients of the monic result
+   * @returns {uint16[]|null} the t low coefficients of the monic result
    */
   function MinimalPolynomial(element, set, field) {
     const t = set.t;
 
     // column j holds the jth power of the element
-    /** @type {Uint16Array[]} */
+    /** @type {uint16[][]} */
     const columns = [];
     const first = new Uint16Array(t);
     first[0] = 1;
@@ -819,9 +814,9 @@
 
   /**
    * out[permutation[i]] = values[i].
-   * @param {Int32Array} values - the values
-   * @param {Int32Array} permutation - where each goes
-   * @returns {Int32Array} the composition
+   * @param {int32[]} values - the values
+   * @param {int32[]} permutation - where each goes
+   * @returns {int32[]} the composition
    */
   function ComposeInverse(values, permutation) {
     const out = new Int32Array(values.length);
@@ -831,7 +826,7 @@
 
   /**
    * Control bits for the permutation, as controlbits in the specification.
-   * @param {Int32Array} permutation - a permutation of a power-of-two range
+   * @param {int32[]} permutation - a permutation of a power-of-two range
    * @returns {int32[]} one bit per entry of the network
    */
   function ControlBits(permutation) {
@@ -917,7 +912,7 @@
    * specification. Decapsulation reads the private key this way.
    * @param {uint8[]} conditionBytes - the control bits
    * @param {int32} m - log2 of the field size
-   * @returns {Int32Array} the permutation
+   * @returns {int32[]} the permutation
    */
   function PermutationFromControlBits(conditionBytes, m) {
     /** @type {int32} */
@@ -947,7 +942,7 @@
    * encode, restricted to the n columns the code uses.
    * @param {uint8[]} conditionBytes - the control bits
    * @param {McElieceParams} set - the parameter set
-   * @returns {Uint16Array} the support
+   * @returns {uint16[]} the support
    */
   function SupportFromControlBits(conditionBytes, set) {
     const permutation = PermutationFromControlBits(conditionBytes, set.m);
@@ -963,7 +958,7 @@
    * systematic form, of which only the non-identity part is kept. Returns null
    * when the reduction fails, which the caller answers by restarting key
    * generation from the next seed.
-   * @param {Uint16Array} goppa - the t low coefficients of the monic polynomial
+   * @param {uint16[]} goppa - the t low coefficients of the monic polynomial
    * @param {uint8[]} raw - q little-endian 32 bit values ordering the field
    * @param {McElieceParams} set - the parameter set
    * @param {McElieceField} field - the field
@@ -985,19 +980,17 @@
     for (let i = 0; i < q; ++i) {
       value[i] = OpCodes.Pack32LE(raw[4 * i], raw[4 * i + 1], raw[4 * i + 2], raw[4 * i + 3]);
     }
-    /**
-     * By the drawn value, ties by index; the values are finite, so a zero
-     * difference is the only falsy one.
-     * @param {int32} x - left index
-     * @param {int32} y - right index
-     * @returns {float64} negative, zero or positive
-     */
-    function CompareDrawn(x, y) {
-      /** @type {float64} */
-      const difference = value[x] - value[y];
-      return difference !== 0 ? difference : x - y;
-    }
-    order.sort(CompareDrawn);
+    // By the drawn value, ties by index.
+    order.sort(
+      /**
+       * @param {int32} x - left index
+       * @param {int32} y - right index
+       * @returns {int32} -1, 0 or 1
+       */
+      function (x, y) {
+        if (value[x] !== value[y]) return value[x] < value[y] ? -1 : 1;
+        return x < y ? -1 : (x > y ? 1 : 0);
+      });
     for (let i = 1; i < q; ++i) if (value[order[i - 1]] === value[order[i]]) return null;
 
     const permutation = new Int32Array(q);
@@ -1018,7 +1011,7 @@
     }
 
     const rowWords = Math.ceil(nBytes / 4);
-    /** @type {Uint32Array[]} */
+    /** @type {uint32[][]} */
     const rows = new Array(mt);
     for (let i = 0; i < mt; ++i) rows[i] = new Uint32Array(rowWords);
 
@@ -1149,13 +1142,13 @@
 
   class McEliecePublicKey {
     /**
-     * @param {Uint8Array} publicKey - the matrix
-     * @param {Int32Array} permutation - the field ordering
+     * @param {uint8[]} publicKey - the matrix
+     * @param {int32[]} permutation - the field ordering
      */
     constructor(publicKey, permutation) {
-      /** @type {Uint8Array} */
+      /** @type {uint8[]} */
       this.publicKey = publicKey;
-      /** @type {Int32Array} */
+      /** @type {int32[]} */
       this.permutation = permutation;
     }
   }
@@ -1178,11 +1171,11 @@
 
   class McElieceErrorVector {
     /**
-     * @param {Uint8Array} errorVector - n bits of weight t
+     * @param {uint8[]} errorVector - n bits of weight t
      * @param {int32[]} positions - its set bits, in drawing order
      */
     constructor(errorVector, positions) {
-      /** @type {Uint8Array} */
+      /** @type {uint8[]} */
       this.errorVector = errorVector;
       /** @type {int32[]} */
       this.positions = positions;
@@ -1238,7 +1231,7 @@
    * @param {uint8[]} errorVector - n bits of weight t
    * @param {uint8[]} publicKey - the matrix
    * @param {McElieceParams} set - the parameter set
-   * @returns {Uint8Array} the ciphertext
+   * @returns {uint8[]} the ciphertext
    */
   function Encode(errorVector, publicKey, set) {
     const mt = set.mt;
@@ -1307,7 +1300,7 @@
 
   /**
    * Horner evaluation over GF(2^m).
-   * @param {Uint16Array} coefficients - constant term first
+   * @param {uint16[]} coefficients - constant term first
    * @param {int32} degree - index of the leading coefficient
    * @param {uint32} at - the point
    * @param {McElieceField} field - the field
@@ -1322,12 +1315,12 @@
 
   /**
    * The double-size syndrome of a received word under the Goppa code.
-   * @param {Uint16Array} goppa - t + 1 coefficients, monic
-   * @param {Uint16Array} support - the field ordering
+   * @param {uint16[]} goppa - t + 1 coefficients, monic
+   * @param {uint16[]} support - the field ordering
    * @param {uint8[]} word - n bits
    * @param {McElieceParams} set - the parameter set
    * @param {McElieceField} field - the field
-   * @returns {Uint16Array} 2t field elements
+   * @returns {uint16[]} 2t field elements
    */
   function Syndrome(goppa, support, word, set, field) {
     const width = 2 * set.t;
@@ -1350,10 +1343,10 @@
 
   /**
    * The error locator, by Berlekamp-Massey over the syndrome.
-   * @param {Uint16Array} syndrome - 2t field elements
+   * @param {uint16[]} syndrome - 2t field elements
    * @param {McElieceParams} set - the parameter set
    * @param {McElieceField} field - the field
-   * @returns {Uint16Array} t + 1 coefficients, constant term first
+   * @returns {uint16[]} t + 1 coefficients, constant term first
    */
   function BerlekampMassey(syndrome, set, field) {
     const t = set.t;
@@ -1408,7 +1401,7 @@
    * @param {uint8[]} ciphertext - the syndrome
    * @param {McElieceParams} set - the parameter set
    * @param {McElieceField} field - the field
-   * @returns {Uint8Array|null} the error vector
+   * @returns {uint8[]|null} the error vector
    */
   function Decode(privateKeyBody, ciphertext, set, field) {
     const t = set.t;
@@ -2874,6 +2867,10 @@
 
     // ---- configuration ----
 
+    /**
+     * Select the parameter set by name.
+     * @param {string} label - 'mceliece348864', '460896', '8192', ...
+     */
     set parameterSet(label) {
       const found = FindParameterSet(label);
       if (!found) throw new Error('Unknown Classic McEliece parameter set: ' + label);
@@ -2945,8 +2942,8 @@
     }
 
     /**
-     * The generic key entry point. Accepts a private key, a public key, or the
-     * name of a parameter set.
+     * The generic key entry point. Accepts a secret key, a public key, or the ASCII name of a parameter set.
+     * @param {uint8[]|null} keyData - key bytes; null clears both keys
      */
     set key(keyData) {
       this._keyData = keyData;
@@ -2957,12 +2954,9 @@
         return;
       }
 
-      if (typeof keyData === 'string' || typeof keyData === 'number') {
-        this.parameterSet = keyData;
-        return;
-      }
-
-      if (!Array.isArray(keyData) && !ArrayBuffer.isView(keyData))
+      /** @type {boolean} */
+      const isTypedArray = ArrayBuffer.isView(keyData);
+      if (!Array.isArray(keyData) && !isTypedArray)
         throw new Error('Invalid Classic McEliece key data format');
 
       const bytes = ToArray(keyData);
