@@ -66,7 +66,7 @@
   "algorithms/asymmetric/rsa.js": 20,
   "algorithms/asymmetric/schnorr.js": 15,
   "algorithms/asymmetric/sike.js": 0,
-  "algorithms/asymmetric/slh-dsa.js": 6,
+  "algorithms/asymmetric/slh-dsa.js": 0,
   "algorithms/asymmetric/sphincs-plus.js": 76,
   "algorithms/asymmetric/sqisign.js": 237,
   "algorithms/asymmetric/x25519.js": 0,
