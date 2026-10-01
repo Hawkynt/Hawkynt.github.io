@@ -285,6 +285,14 @@ test('walk: given a function invoked with .call(this), when counted, then the si
 test('walk: given a named function as callee, when counted, then the callee itself is no site', () => {
   equal(sites('/** @returns {uint8} */\nfunction g() { return 1; }\ng();').length, 0);
 });
+test('walk: given catch (e), when counted, then the declared e is no site', () => {
+  equal(sites('function f() { try { return 1; } catch (e) { return 2; } }').length, 0);
+});
+test('walk: given catch (e) whose e is read, when counted, then only the read is a site', () => {
+  const s = sites('function f() {\n  try { return 1; }\n  catch (e) {\n    return e;\n  }\n}');
+  equal(s.length, 1);
+  equal(s[0].line, 4);
+});
 test('walk: given sites, when tallied, then every site lands in exactly one tier', () => {
   const s = sites('function f(a) { return OpCodes.XorN(a, 1) + a; }');
   const t = TypeCoverage.byTier(s);
