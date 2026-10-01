@@ -55,7 +55,6 @@ Source: Implementation-derived test vector (round-trip validated)
 | --- | --- |
 | `key` | `00000000000000000000000000000000` |
 | `tweak` | `00000000000000000000000000000000` |
-| `roundTrip` | Yes |
 | `input` | `00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 00000000000000000000000000000000 …` (512 bytes; the full value is in the source) |
 | `expected` | `406e45494bece167e520d9dcee31c9a2 c4422ad833f47e73a4d2133f0ceda06f 3c77bda3b4de72f0fa740a668836a030 1736e2af6a24a928a370bd4c246e0502 …` (512 bytes; the full value is in the source) |
 
@@ -67,7 +66,6 @@ Source: Implementation-derived test vector (round-trip validated)
 | --- | --- |
 | `key` | `000102030405060708090a0b0c0d0e0f` |
 | `tweak` | `fedcba9876543210fedcba9876543210` |
-| `roundTrip` | Yes |
 | `input` | `000102030405060708090a0b0c0d0e0f 101112131415161718191a1b1c1d1e1f 202122232425262728292a2b2c2d2e2f 303132333435363738393a3b3c3d3e3f …` (512 bytes; the full value is in the source) |
 | `expected` | `873a7c5888a267be835ff946630849af d73b64c6ca8bf7168cd2acb0b3c917fb bf7728c4147d1cd9982a4baf11a36bbc 42762c4deb30c16b0823b47bc6c79eee …` (512 bytes; the full value is in the source) |
 
@@ -79,7 +77,6 @@ Source: Implementation-derived test vector (round-trip validated)
 | --- | --- |
 | `key` | `0123456789abcdef0123456789abcdef` |
 | `tweak` | `0f0e0d0c0b0a09080706050403020100` |
-| `roundTrip` | Yes |
 | `input` | `55555555555555555555555555555555 55555555555555555555555555555555 55555555555555555555555555555555 55555555555555555555555555555555 …` (512 bytes; the full value is in the source) |
 | `expected` | `fc71cf4407ddadf52b8705483e1451e8 520594b10db497c900f4db40df081908 c6df8bd904b991dc55cad4b85b4407a6 099fb73ccf64c6a1a4af38f9b15cc5d2 …` (512 bytes; the full value is in the source) |
 
