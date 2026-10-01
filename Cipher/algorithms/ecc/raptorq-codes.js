@@ -53,8 +53,6 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
-  // Extract foundation utilities
-  const { SparseMatrix, GaloisField, SeededRandom, PerformanceProfiler } = FountainFoundation;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -131,6 +129,29 @@
       this.symbolBytes = symbolSize;
       /** @type {int32} */
       this.totalBytes = matrixSize + symbolSize;
+    }
+  }
+
+  /**
+   * RFC 6330 parameters, compliance and resource figures as reported by getPerformanceReport()
+   * @class
+   */
+  class RaptorQPerformanceReport {
+    /**
+     * @param {RFC6330Parameters} parameters - Derived RFC 6330 parameters
+     * @param {RFC6330Compliance} compliance - Compliance flags
+     * @param {float64} matrixDensity - Constraint matrix density
+     * @param {MemoryUsage} memoryUsage - Memory estimate
+     */
+    constructor(parameters, compliance, matrixDensity, memoryUsage) {
+      /** @type {RFC6330Parameters} */
+      this.rfc6330Parameters = parameters;
+      /** @type {RFC6330Compliance} */
+      this.compliance = compliance;
+      /** @type {float64} */
+      this.matrixDensity = matrixDensity;
+      /** @type {MemoryUsage} */
+      this.memoryUsage = memoryUsage;
     }
   }
 
@@ -284,12 +305,14 @@
       this.U = 0;                     // Number of source symbols in first sub-block
 
       // Matrices and structures
+      /** @type {SparseMatrix} */
       this.A = null;                  // Constraint matrix
-      this.gf = null;                 // Galois field for operations
-      this.profiler = new PerformanceProfiler();
+      /** @type {PerformanceProfiler} */
+      this.profiler = new FountainFoundation.PerformanceProfiler();
 
       // Initialize Galois Field for octet operations
-      this.gf = new GaloisField(2, 8); // GF(2^8) = GF(256)
+      /** @type {GaloisField} */
+      this.gf = new FountainFoundation.GaloisField(2, 8); // GF(2^8) = GF(256)
     }
 
     /**
@@ -422,7 +445,7 @@
       this.profiler.startTimer('matrix_construction');
 
       // Create constraint matrix A with dimensions L x L
-      this.A = new SparseMatrix(this.L, this.L);
+      this.A = new FountainFoundation.SparseMatrix(this.L, this.L);
 
       // Build matrix according to RFC 6330 Section 5.3.3.4
       this._buildLDPCConstraints();
@@ -690,15 +713,14 @@
         this.S > 0 && this.H > 0 && this.L > 0);
     }
 
-    // Performance analysis
+    /**
+     * RFC 6330 parameters, compliance, matrix density and memory estimate
+     * @returns {RaptorQPerformanceReport} Performance report
+     */
     getPerformanceReport() {
-      return {
-        ...this.profiler.getReport(),
-        rfc6330Parameters: new RFC6330Parameters(this.K, this.S, this.H, this.W, this.L, this.T, this.Al),
-        compliance: this.validateRFC6330Compliance(),
-        matrixDensity: this._calculateMatrixDensity(),
-        memoryUsage: this._estimateMemoryUsage()
-      };
+      return new RaptorQPerformanceReport(
+        new RFC6330Parameters(this.K, this.S, this.H, this.W, this.L, this.T, this.Al),
+        this.validateRFC6330Compliance(), this._calculateMatrixDensity(), this._estimateMemoryUsage());
     }
 
     /**

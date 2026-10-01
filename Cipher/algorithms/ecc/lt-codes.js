@@ -53,8 +53,6 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
-  // Extract foundation utilities
-  const { BipartiteGraph, DegreeDistribution, SeededRandom, PerformanceProfiler } = FountainFoundation;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -81,6 +79,29 @@
       this.median = median;
       /** @type {int32[]} */
       this.distribution = distribution;
+    }
+  }
+
+  /**
+   * Code parameters and encoding-graph density as reported by getPerformanceReport()
+   * @class
+   */
+  class LTPerformanceReport {
+    /**
+     * @param {float64} overheadUsed - Overhead factor
+     * @param {int32} sourceSymbols - Source symbols (k)
+     * @param {int32} encodedSymbols - Encoded symbols, 0 before encoding
+     * @param {float64} graphDensity - Edges over possible edges
+     */
+    constructor(overheadUsed, sourceSymbols, encodedSymbols, graphDensity) {
+      /** @type {float64} */
+      this.overheadUsed = overheadUsed;
+      /** @type {int32} */
+      this.sourceSymbols = sourceSymbols;
+      /** @type {int32} */
+      this.encodedSymbols = encodedSymbols;
+      /** @type {float64} */
+      this.graphDensity = graphDensity;
     }
   }
 
@@ -202,10 +223,14 @@
       this.seed = 12345;       // Random seed for reproducibility
 
       // Internal state
+      /** @type {BipartiteGraph} */
       this.graph = null;
+      /** @type {DegreeDistribution} */
       this.degreeDistribution = null;
+      /** @type {SeededRandom} */
       this.rng = null;
-      this.profiler = new PerformanceProfiler();
+      /** @type {PerformanceProfiler} */
+      this.profiler = new FountainFoundation.PerformanceProfiler();
     }
 
     /**
@@ -289,12 +314,12 @@
      * @returns {void}
      */
     _initializeEncoding() {
-      this.rng = new SeededRandom(this.seed);
-      this.degreeDistribution = new DegreeDistribution(this.k);
+      this.rng = new FountainFoundation.SeededRandom(this.seed);
+      this.degreeDistribution = new FountainFoundation.DegreeDistribution(this.k);
 
       // Calculate number of encoded symbols needed
       const numEncoded = Math.ceil(this.k * (1.0 + this.overhead));
-      this.graph = new BipartiteGraph(this.k, numEncoded);
+      this.graph = new FountainFoundation.BipartiteGraph(this.k, numEncoded);
 
       this.profiler.startTimer('graph_construction');
       this._constructEncodingGraph();
@@ -471,17 +496,15 @@
       return decodedCount === this.k ? decoded : null;
     }
 
-    // Performance analysis
+    /**
+     * Code parameters and encoding-graph density
+     * @returns {LTPerformanceReport} Performance report
+     */
     getPerformanceReport() {
       /** @type {int32} */
-      const encodedSymbols = this.graph ? this.graph.rightNodes : 0;
-      return {
-        ...this.profiler.getReport(),
-        overheadUsed: this.overhead,
-        sourceSymbols: this.k,
-        encodedSymbols: encodedSymbols,
-        graphDensity: this._calculateGraphDensity()
-      };
+      let encodedSymbols = 0;
+      if (this.graph) encodedSymbols = this.graph.rightNodes;
+      return new LTPerformanceReport(this.overhead, this.k, encodedSymbols, this._calculateGraphDensity());
     }
 
     /**
