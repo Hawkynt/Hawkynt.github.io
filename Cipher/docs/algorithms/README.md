@@ -204,7 +204,7 @@ _Block-based symmetric encryption_
 | [FEAL-NX](block-ciphers/feal-nx.md) | ❌ Broken | Fast Data Encipherment Algorithm NX variant by NTT with 128-bit keys. Educational implementation of a cryptographically broken Feistel ciph… |
 | [FF1](block-ciphers/ff1.md) | — | Format-Preserving Encryption from NIST SP 800-38G. |
 | [FF3](block-ciphers/ff3.md) | ❌ Broken | Format-Preserving Encryption from NIST SP 800-38G (March 2016). DEPRECATED due to security vulnerabilities discovered after publication. Ed… |
-| [FNAm2-512 (DarkCrypt)](block-ciphers/fnam2-512-darkcrypt.md) | 🎓 Educational Only | FNAm2-512 block cipher from the DarkCrypt Total Commander plugin. A 128-bit-block / 512-bit-key ARX-with-multiply construction: 64 sequenti… |
+| [FNAm2-512 (DarkCrypt)](block-ciphers/fnam2-512-darkcrypt.md) | 🎓 Educational Only | FNAm2 (Feistel Net Algorithm mark 2) as shipped with the DarkCrypt Total Commander plugin. A 128-bit-block / 512-bit-key ARX-with-multiply… |
 | [ForkSkinny-128-256](block-ciphers/forkskinny-128-256.md) | 🧪 Experimental | ForkSkinny is a tweakable block cipher with forking construction, producing two outputs from one input. Designed for authenticated encrypti… |
 | [ForkSkinny-128-384](block-ciphers/forkskinny-128-384.md) | 🧪 Experimental | ForkSkinny-128-384 is a tweakable block cipher with 384-bit tweakey and forking construction. Used in ForkAE authenticated encryption suite. |
 | [FROG](block-ciphers/frog.md) | — | AES candidate from TecApro built on a key-as-program design: the user key derives a large internal key of per-round substitution and permut… |
@@ -926,7 +926,7 @@ _Key derivation and stretching functions_
 | [KDF1-ISO-18033](key-derivation-functions/kdf1-iso-18033.md) | 🎓 Educational Only | KDF1 Key Derivation Function from ISO/IEC 18033-2. Counter-based iterative hash KDF supporting arbitrary output lengths with 32-bit counter… |
 | [KDF2](key-derivation-functions/kdf2.md) | 🎓 Educational Only | KDF2 Key Derivation Function as defined in IEEE 1363 and ISO/IEC 18033-2. Iterative hash-based KDF using a counter to generate cryptographi… |
 | [PBKDF1](key-derivation-functions/pbkdf1.md) | ⚠️ Deprecated | Password-Based Key Derivation Function 1 (PBKDF1) from PKCS #5 v2.0 (RFC 2898 / RFC 8018). Derives cryptographic keys from passwords using… |
-| [PBKDF2](key-derivation-functions/pbkdf2.md) | 🎓 Educational Only | Password-Based Key Derivation Function 2 (PBKDF2) using HMAC-SHA1 for key stretching. Converts passwords into cryptographic keys through it… |
+| [PBKDF2](key-derivation-functions/pbkdf2.md) | 🎓 Educational Only | Password-Based Key Derivation Function 2 (PBKDF2) using HMAC-SHA1 (default), HMAC-SHA224, HMAC-SHA256, HMAC-SHA384 or HMAC-SHA512 for key s… |
 | [scrypt](key-derivation-functions/scrypt.md) | 🛡️ Secure | Sequential memory-hard key derivation function designed to resist brute-force attacks using specialized hardware. Uses large memory require… |
 | [SP800-108-Counter](key-derivation-functions/sp800-108-counter.md) | 🛡️ Secure | NIST SP 800-108 Key Derivation Function in Counter Mode. Uses HMAC with counter-based PRF expansion for deriving cryptographic keys from in… |
 | [SP800-108-Feedback](key-derivation-functions/sp800-108-feedback.md) | 🛡️ Secure | NIST SP 800-108 Key Derivation Function in Feedback Mode. Uses HMAC with feedback-based PRF expansion where each iteration feeds the previo… |
