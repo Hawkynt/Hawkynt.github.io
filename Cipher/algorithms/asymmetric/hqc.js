@@ -421,28 +421,21 @@
   /** @type {HqcParams[]} */
   const PARAMETER_SET_LIST = [HQC_128, HQC_192, HQC_256];
 
-  const PARAMETER_SETS = {
-    'hqc-128': HQC_128,
-    'hqc-192': HQC_192,
-    'hqc-256': HQC_256
-  };
-
   /**
-   * The table entry under a name. A plain property read, so a name is
-   * accepted exactly when the table has a truthy property of it.
+   * The parameter set of exactly this name.
    * @param {string} name - the name
-   * @returns {HqcParams} the entry, or a falsy value
+   * @returns {HqcParams|null} the entry, or null
    */
   function ParameterSetEntry(name) {
-    /** @type {HqcParams} */
-    const entry = PARAMETER_SETS[name];
-    return entry;
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i)
+      if (PARAMETER_SET_LIST[i].name === name) return PARAMETER_SET_LIST[i];
+    return null;
   }
 
   /**
    * Look a parameter set up by a label that names, contains or is contained in
    * one of the set names, or by its security level alone.
-   * @param {string|int32} label - 'hqc-128', 'HQC-192', '256', ...
+   * @param {string} label - 'hqc-128', 'HQC-192', '256', ...
    * @returns {HqcParams|null} the parameter set, or null
    */
   function FindParameterSet(label) {
@@ -565,7 +558,8 @@
    */
   function ZeroArray(count) {
     /** @type {int32[]} */
-    const out = new Array(count).fill(0);
+    const out = new Array(count);
+    for (let i = 0; i < count; ++i) out[i] = 0;
     return out;
   }
 
@@ -620,7 +614,7 @@
   /**
    * @param {uint8[]} bytes - octets, least significant first
    * @param {int32} wordCount - words to fill
-   * @returns {Uint32Array} the words
+   * @returns {uint32[]} the words
    */
   function BytesToWords(bytes, wordCount) {
     const words = new Uint32Array(wordCount);
@@ -633,7 +627,7 @@
   }
 
   /**
-   * @param {Uint32Array} words - the words
+   * @param {uint32[]} words - the words
    * @param {int32} byteCount - octets to emit
    * @returns {uint8[]} the octets, least significant first
    */
@@ -646,9 +640,9 @@
   }
 
   /**
-   * @param {Uint32Array} a - vector
-   * @param {Uint32Array} b - vector, at least as long
-   * @returns {Uint32Array} a + b over GF(2)
+   * @param {uint32[]} a - vector
+   * @param {uint32[]} b - vector, at least as long
+   * @returns {uint32[]} a + b over GF(2)
    */
   function VectAdd(a, b) {
     const out = new Uint32Array(a.length);
@@ -660,8 +654,8 @@
    * Fold every bit at index n or above back down by n, which is the reduction
    * modulo x^n - 1.
    * @param {HqcParams} set - the parameter set
-   * @param {Uint32Array} accumulator - the unreduced product
-   * @returns {Uint32Array} the reduced vector, set.nWords long
+   * @param {uint32[]} accumulator - the unreduced product
+   * @returns {uint32[]} the reduced vector, set.nWords long
    */
   function ReduceCyclic(set, accumulator) {
     const words = set.nWords;
@@ -698,8 +692,8 @@
    * of the other operand shifted to each of them.
    * @param {HqcParams} set - the parameter set
    * @param {int32[]} sparsePositions - positions of the set bits
-   * @param {Uint32Array} dense - the other operand
-   * @returns {Uint32Array} the product
+   * @param {uint32[]} dense - the other operand
+   * @returns {uint32[]} the product
    */
   function VectMul(set, sparsePositions, dense) {
     const words = set.nWords;
@@ -748,7 +742,9 @@
     for (let i = 0; i < weight; ++i) {
       const b = 4 * i;
       const value = OpCodes.Pack32LE(bytes[b], bytes[b + 1], bytes[b + 2], bytes[b + 3]);
-      positions[i] = i + (value % (set.n - i));
+      /** @type {int32} */
+      const offset = value % (set.n - i);
+      positions[i] = i + offset;
     }
 
     for (let i = weight - 2; i >= 0; --i) {
@@ -770,7 +766,7 @@
    * A uniformly random vector of length n.
    * @param {HqcParams} set - the parameter set
    * @param {HqcShakeStream} expander - the seed expander to draw from
-   * @returns {Uint32Array} the vector
+   * @returns {uint32[]} the vector
    */
   function VectSetRandom(set, expander) {
     const words = BytesToWords(ExpanderRead(expander, set.nBytes), set.nWords);
@@ -791,7 +787,7 @@
   /**
    * One message octet to a 128 bit RM(1,7) codeword, held as four words.
    * @param {int32} message - the octet
-   * @returns {Uint32Array} the codeword
+   * @returns {uint32[]} the codeword
    */
   function ReedMullerEncodeByte(message) {
     let first = Bit0Mask(OpCodes.Shr32(message, 7));
@@ -815,7 +811,7 @@
   /**
    * @param {HqcParams} set - the parameter set
    * @param {int32[]} messageBytes - n1 Reed-Solomon symbols
-   * @returns {Uint32Array} the duplicated Reed-Muller codeword
+   * @returns {uint32[]} the duplicated Reed-Muller codeword
    */
   function ReedMullerEncode(set, messageBytes) {
     const words = new Uint32Array(set.n1n2Words);
@@ -856,7 +852,7 @@
    * Maximum likelihood decoding of the duplicated code: sum the copies, take
    * the Hadamard transform, and read off the largest coefficient.
    * @param {HqcParams} set - the parameter set
-   * @param {Uint32Array} words - the received word
+   * @param {uint32[]} words - the received word
    * @returns {int32[]} one octet per Reed-Solomon symbol
    */
   function ReedMullerDecode(set, words) {
@@ -916,9 +912,10 @@
     const parity = set.n1 - set.k;
 
     for (let i = 0; i < set.k; ++i) {
-      // The message octet comes from the caller unmasked, so the exclusive-or
-      // stays the plain one rather than the unsigned 32 bit helper.
-      const gate = OpCodes.XorN(messageBytes[set.k - 1 - i], codeword[parity - 1]);
+      // The message octet comes from the caller unmasked. A gate outside
+      // 0..255 misses the GF tables whichever sign its top bit is read with,
+      // so the unsigned helper gives the same products as a signed exclusive-or.
+      const gate = OpCodes.Xor32(messageBytes[set.k - 1 - i], codeword[parity - 1]);
       for (let j = 0; j < set.g; ++j) tmp[j] = GfMul(gate, set.rsPoly[j]);
       for (let kk = parity - 1; kk > 0; --kk) codeword[kk] = OpCodes.Xor32(codeword[kk - 1], tmp[kk]);
       codeword[0] = tmp[0];
@@ -1103,7 +1100,7 @@
   /**
    * @param {HqcParams} set - the parameter set
    * @param {int32[]} messageBytes - k octets
-   * @returns {Uint32Array} the concatenated codeword
+   * @returns {uint32[]} the concatenated codeword
    */
   function CodeEncode(set, messageBytes) {
     return ReedMullerEncode(set, ReedSolomonEncode(set, messageBytes));
@@ -1111,7 +1108,7 @@
 
   /**
    * @param {HqcParams} set - the parameter set
-   * @param {Uint32Array} words - the received word
+   * @param {uint32[]} words - the received word
    * @returns {int32[]} the k decoded octets
    */
   function CodeDecode(set, words) {
@@ -1122,11 +1119,11 @@
 
   class HqcFixedWeight {
     /**
-     * @param {Uint32Array} words - the vector
+     * @param {uint32[]} words - the vector
      * @param {int32[]} positions - positions of its set bits
      */
     constructor(words, positions) {
-      /** @type {Uint32Array} */
+      /** @type {uint32[]} */
       this.words = words;
       /** @type {int32[]} */
       this.positions = positions;
@@ -1148,13 +1145,13 @@
 
   class HqcPublicKey {
     /**
-     * @param {Uint32Array} h - the random vector
-     * @param {Uint32Array} s - the syndrome
+     * @param {uint32[]} h - the random vector
+     * @param {uint32[]} s - the syndrome
      */
     constructor(h, s) {
-      /** @type {Uint32Array} */
+      /** @type {uint32[]} */
       this.h = h;
-      /** @type {Uint32Array} */
+      /** @type {uint32[]} */
       this.s = s;
     }
   }
@@ -1174,13 +1171,13 @@
 
   class HqcPkeCiphertext {
     /**
-     * @param {Uint32Array} u - first ciphertext vector
-     * @param {Uint32Array} v - second ciphertext vector
+     * @param {uint32[]} u - first ciphertext vector
+     * @param {uint32[]} v - second ciphertext vector
      */
     constructor(u, v) {
-      /** @type {Uint32Array} */
+      /** @type {uint32[]} */
       this.u = u;
-      /** @type {Uint32Array} */
+      /** @type {uint32[]} */
       this.v = v;
     }
   }
@@ -1290,8 +1287,8 @@
    * Decrypt by decoding v - u y, which differs from the codeword only by the
    * low weight combination the secret cancels.
    * @param {HqcParams} set - the parameter set
-   * @param {Uint32Array} u - first ciphertext vector
-   * @param {Uint32Array} v - second ciphertext vector
+   * @param {uint32[]} u - first ciphertext vector
+   * @param {uint32[]} v - second ciphertext vector
    * @param {int32[]} sk - the secret key
    * @returns {int32[]} the k recovered octets
    */
@@ -2106,6 +2103,10 @@
 
     // ---- configuration ----
 
+    /**
+     * Select the parameter set by name.
+     * @param {string} label - 'hqc-128', 'HQC-192', '256', ...
+     */
     set parameterSet(label) {
       const found = FindParameterSet(label);
       if (!found) throw new Error('Unknown HQC parameter set: ' + label);
@@ -2178,7 +2179,8 @@
 
     /**
      * The generic key entry point. Accepts a secret key, a public key, or the
-     * name of a parameter set.
+     * ASCII name of a parameter set.
+     * @param {uint8[]|null} keyData - key bytes; null clears both keys
      */
     set key(keyData) {
       this._keyData = keyData;
@@ -2189,12 +2191,9 @@
         return;
       }
 
-      if (typeof keyData === 'string' || typeof keyData === 'number') {
-        this.parameterSet = keyData;
-        return;
-      }
-
-      if (!Array.isArray(keyData) && !ArrayBuffer.isView(keyData))
+      /** @type {boolean} */
+      const isTypedArray = ArrayBuffer.isView(keyData);
+      if (!Array.isArray(keyData) && !isTypedArray)
         throw new Error('Invalid HQC key data format');
 
       /** @type {uint8[]} */
