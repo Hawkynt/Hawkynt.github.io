@@ -546,6 +546,7 @@ The OpCodes library provides 500+ cryptographic operations organized by category
 - `ConstantTimeCompare(a, b)` - Constant-time equality
 - `TimingSafeSelect(cond, a, b)` - Constant-time select
 - `TimingSafeAddMod(a, b, mod)` - Timing-safe modular add
+- `SecureRandomBytes(count)` - Cryptographically secure random bytes (Web Crypto, else Node's `crypto.randomBytes`)
 
 **Modular Arithmetic:**
 - `AddMod(a, b, mod)` - Modular addition
