@@ -9,596 +9,493 @@
  * This educational implementation demonstrates the basic principles of MICKEY.
  */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function () {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  // Ensure environment dependencies are available
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      global.OpCodes = require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-      return;
+  if (!AlgorithmFramework) throw new Error('AlgorithmFramework dependency is required');
+  if (!OpCodes) throw new Error('OpCodes dependency is required');
+
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, CountryCode,
+          StreamCipherAlgorithm, IAlgorithmInstance, LinkItem, Vulnerability } = AlgorithmFramework;
+
+  // ============================================================================
+  // MICKEY (original) - simplified bit registers
+  // ============================================================================
+
+  /** @type {int32} */
+  const REGISTER_SIZE = 32;   // Simplified from 100 bits for educational purposes
+  /** @type {int32} */
+  const INIT_ROUNDS = 64;     // Simplified initialization rounds
+  /** @type {int32} */
+  const MIN_KEY_SIZE = 8;
+  /** @type {int32} */
+  const KEY_BYTES_USED = 16;  // longer keys are truncated, shorter ones zero-padded
+
+  // Key used when Result() runs before any key was assigned.
+  /** @type {uint8[]} */
+  const MICKEY_DEFAULT_KEY = OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F');
+
+  /**
+   * Simplified nonlinear function for register operations
+   * @param {uint8[]} register - Register of bits
+   * @returns {uint8} Nonlinear feedback bit: (s0 AND s1) XOR (s2 AND s3) XOR s0
+   */
+  function nonlinearFunction(register) {
+    const s0 = register[0];
+    const s1 = register[1];
+    const s2 = register[2];
+    const s3 = register[3];
+    return OpCodes.And8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.And8(s0, s1), OpCodes.And8(s2, s3)), s0), 1);
+  }
+
+  /**
+   * Load register bits from the key, least significant bit of each byte first.
+   * A register left all zero gets its first bit set.
+   * @param {uint8[]} register - Register of bits (modified in place)
+   * @param {uint8[]} keyBytes - Key bytes
+   * @param {int32} startBit - Starting bit position in the key
+   */
+  function initializeRegister(register, keyBytes, startBit) {
+    /** @type {int32} */
+    let bitIndex = startBit;
+    for (let i = 0; i < register.length && bitIndex < keyBytes.length * 8; i++) {
+      const byteIndex = OpCodes.Shr32(bitIndex, 3);
+      const bitPos = OpCodes.And32(bitIndex, 7);
+      register[i] = OpCodes.And8(OpCodes.Shr8(keyBytes[byteIndex], bitPos), 1);
+      bitIndex++;
+    }
+
+    /** @type {boolean} */
+    let allZero = true;
+    for (let i = 0; i < register.length; i++) {
+      if (register[i] !== 0) allZero = false;
+    }
+    if (allZero) register[0] = 1;
+  }
+
+  /**
+   * MICKEY educational stream cipher
+   * @class
+   * @extends {StreamCipherAlgorithm}
+   */
+  class MickeyAlgorithm extends StreamCipherAlgorithm {
+    constructor() {
+      super();
+
+      this.name = 'MICKEY';
+      this.description = 'Hardware-oriented stream cipher using two 100-bit registers with irregular clocking. Part of the eSTREAM hardware portfolio. Educational implementation demonstrating clock-controlled register principles.';
+      this.inventor = 'Steve Babbage, Matthew Dodd';
+      this.year = 2005;
+      this.country = CountryCode.GB;
+      this.category = CategoryType.STREAM;
+      this.subCategory = 'Stream Cipher';
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      /** @type {string} */
+      this.securityNotes = 'Hardware-oriented design with irregular clocking. This educational implementation uses simplified registers for demonstration purposes.';
+
+      this.documentation = [
+        new LinkItem('MICKEY eSTREAM Specification', 'https://www.ecrypt.eu.org/stream/mickey.html'),
+        new LinkItem('eSTREAM Hardware Portfolio', 'https://www.ecrypt.eu.org/stream/')
+      ];
+
+      this.references = [
+        new LinkItem('Hardware-Oriented Stream Ciphers', 'https://en.wikipedia.org/wiki/Stream_cipher')
+      ];
+
+      this.knownVulnerabilities = [
+        new Vulnerability('Implementation Specific', 'This is a simplified educational implementation not suitable for security applications.', 'Use only for educational purposes to understand clock-controlled generators.')
+      ];
+
+      this.tests = [
+        {
+          text: 'Educational test vector with simplified initialization',
+          uri: 'Educational implementation',
+          input: [0x48, 0x65, 0x6C, 0x6C, 0x6F],
+          key: [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F],
+          expected: [0x5C, 0xE1, 0xC2, 0x43, 0x0D]
+        }
+      ];
+    }
+
+    /**
+     * Create a cipher instance (encryption and decryption are identical)
+     * @param {boolean} [isInverse=false] - Unused: keystream XOR is its own inverse
+     * @returns {MickeyInstance} New instance
+     */
+    CreateInstance(isInverse = false) {
+      return new MickeyInstance(this, isInverse);
     }
   }
 
-  const OpCodes = global.OpCodes;
-
-  if (!global.AlgorithmFramework) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../AlgorithmFramework.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('MICKEY cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
-
-  // Shared register operations for both MICKEY variants
-  const MICKEYCommon = {
+  /**
+   * MICKEY cipher instance
+   * @class
+   * @extends {IAlgorithmInstance}
+   */
+  class MickeyInstance extends IAlgorithmInstance {
     /**
-     * Clock register with LFSR-style feedback
-     * @param {uint8[]} register - Register array
-     * @param {int32} size - Register size
-     * @param {uint8[]} tapPositions - Tap positions for feedback polynomial
-     * @returns {uint32} Feedback bit
+     * @param {MickeyAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Unused
      */
-    clockLFSR: function(register, size, tapPositions) {
-      let feedback = 0;
-      for (const pos of tapPositions) {
-        feedback = OpCodes.Xor32(feedback, register[pos % size]);
-      }
-
-      for (let i = 0; i < size - 1; i++) {
-        register[i] = register[i + 1];
-      }
-      register[size - 1] = feedback;
-
-      return feedback;
-    },
-
-    /**
-     * Simplified nonlinear function for register operations
-     * @param {uint8[]} register - Register array
-     * @returns {uint32} Nonlinear feedback bit
-     */
-    nonlinearFunction: function(register) {
-      const s0 = register[0];
-      const s1 = register[1];
-      const s2 = register[2];
-      const s3 = register[3];
-
-      // Simple nonlinear function: (s0 AND s1) XOR (s2 AND s3) XOR s0
-      return OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(OpCodes.And32(s0, s1), OpCodes.And32(s2, s3)), s0), 1);
-    },
-
-    /**
-     * Initialize register from key bytes
-     * @param {uint8[]} register - Register to initialize
-     * @param {uint8[]} keyBytes - Key bytes
-     * @param {int32} startBit - Starting bit position in key
-     * @param {int32} size - Register size
-     */
-    initializeRegister: function(register, keyBytes, startBit, size) {
-      let bitIndex = startBit;
-      for (let i = 0; i < size && bitIndex < keyBytes.length * 8; i++) {
-        const byteIndex = Math.floor(bitIndex / 8);
-        const bitPos = bitIndex % 8;
-        register[i] = OpCodes.And32(OpCodes.Shr32(keyBytes[byteIndex], bitPos), 1);
-        bitIndex++;
-      }
-
-      // Ensure register is not all zeros
-      if (register.every(bit => bit === 0)) {
-        register[0] = 1;
-      }
-    }
-  };
-
-  // ============================================================================
-  // MICKEY (original) - 80-bit key version
-  // ============================================================================
-
-  const MICKEY = {
-    name: 'MICKEY',
-    description: 'Hardware-oriented stream cipher using two 100-bit registers with irregular clocking. Part of the eSTREAM hardware portfolio. Educational implementation demonstrating clock-controlled register principles.',
-    inventor: 'Steve Babbage, Matthew Dodd',
-    year: 2005,
-    country: 'GB',
-    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
-    subCategory: 'Stream Cipher',
-    securityStatus: global.AlgorithmFramework ? global.AlgorithmFramework.SecurityStatus.EDUCATIONAL : 'educational',
-    securityNotes: 'Hardware-oriented design with irregular clocking. This educational implementation uses simplified registers for demonstration purposes.',
-
-    documentation: [
-      {text: 'MICKEY eSTREAM Specification', uri: 'https://www.ecrypt.eu.org/stream/mickey.html'},
-      {text: 'eSTREAM Hardware Portfolio', uri: 'https://www.ecrypt.eu.org/stream/'}
-    ],
-
-    references: [
-      {text: 'Hardware-Oriented Stream Ciphers', uri: 'https://en.wikipedia.org/wiki/Stream_cipher'}
-    ],
-
-    knownVulnerabilities: [
-      {
-        type: 'Implementation Specific',
-        text: 'This is a simplified educational implementation not suitable for security applications.',
-        mitigation: 'Use only for educational purposes to understand clock-controlled generators.'
-      }
-    ],
-
-    tests: [
-      {
-        text: 'Educational test vector with simplified initialization',
-        uri: 'Educational implementation',
-        input: [0x48, 0x65, 0x6C, 0x6C, 0x6F],
-        key: [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F],
-        expected: [0x5C, 0xE1, 0xC2, 0x43, 0x0D]
-      }
-    ],
-
-    // Simplified MICKEY parameters (educational)
-    REGISTER_SIZE: 32,  // Simplified from 100 bits for educational purposes
-    INIT_ROUNDS: 64,    // Simplified initialization rounds
-
-    // Internal state
-    registerR: null,
-    registerS: null,
-    isInitialized: false,
-
-    /**
-     * Initialize cipher with empty state
-     */
-    Init: function() {
-      this.registerR = OpCodes.CreateArray(this.REGISTER_SIZE, 0);
-      this.registerS = OpCodes.CreateArray(this.REGISTER_SIZE, 0);
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
       /** @type {boolean} */
-      this.isInitialized = false;
-      return true;
-    },
+      this.isInverse = isInverse;
+      /** @type {uint8[]} */
+      this.inputBuffer = [];
+      /** @type {uint8[]|null} */
+      this._key = null;
+      /** @type {uint8[]|null} */
+      this._iv = null;
+      /** @type {uint8[]} */
+      this._registerR = OpCodes.CreateArray(REGISTER_SIZE, 0);
+      /** @type {uint8[]} */
+      this._registerS = OpCodes.CreateArray(REGISTER_SIZE, 0);
+    }
 
     /**
-     * Setup key for MICKEY cipher
-     * @param {uint8[]} key - 80-bit key as byte array (10 bytes), will use first 16 bytes if longer
+     * @param {uint8[]} keyData - Key of at least 8 bytes
+     * @throws {Error} When the key is missing or shorter than 8 bytes
      */
-    KeySetup: function(key) {
-      if (!key || key.length < 8) {
+    set key(keyData) {
+      if (!keyData || keyData.length < MIN_KEY_SIZE) {
         throw new Error('MICKEY requires at least 64-bit (8 byte) key');
       }
-
-      // Use first 16 bytes of key for 128-bit compatibility, or pad if shorter
-      const keyBytes = key.slice(0, 16);
-      while (keyBytes.length < 16) keyBytes.push(0);
-
-      // Initialize state
-      this.Init();
-
-      // Initialize register R with first half of key bits
-      MICKEYCommon.initializeRegister(this.registerR, keyBytes, 0, this.REGISTER_SIZE);
-
-      // Initialize register S with second half of key bits
-      MICKEYCommon.initializeRegister(this.registerS, keyBytes, this.REGISTER_SIZE, this.REGISTER_SIZE);
-
-      // Run initialization rounds
-      for (let i = 0; i < this.INIT_ROUNDS; i++) {
-        this.clockRegisters();
-      }
-
-      /** @type {boolean} */
-      this.isInitialized = true;
-      return true;
-    },
+      this._key = [...keyData];
+      this._setup(this._key);
+    }
 
     /**
-     * Clock both registers with irregular control
-     * @returns {uint32} Control bit for irregular clocking
+     * @returns {uint8[]|null} Copy of the key
      */
-    clockRegisters: function() {
-      // Get control bits from both registers
-      const controlR = this.registerR[0];
-      const controlS = this.registerS[0];
+    get key() { return this._key ? [...this._key] : null; }
 
-      // Clock register R (LFSR-style with simplified polynomial)
-      const feedbackR = OpCodes.Xor32(OpCodes.Xor32(this.registerR[0], this.registerR[7]), this.registerR[15]);
-      for (let i = 0; i < this.REGISTER_SIZE - 1; i++) {
-        this.registerR[i] = this.registerR[i + 1];
+    /**
+     * Stored for interface compatibility; MICKEY here uses no IV.
+     * @param {uint8[]|null} ivData - IV bytes
+     */
+    set iv(ivData) { this._iv = ivData ? [...ivData] : null; }
+
+    /**
+     * @returns {uint8[]|null} Copy of the IV
+     */
+    get iv() { return this._iv ? [...this._iv] : null; }
+
+    /**
+     * @param {uint8[]|null} nonceData - Alias of the IV
+     */
+    set nonce(nonceData) { this.iv = nonceData; }
+
+    /**
+     * @returns {uint8[]|null} Copy of the IV
+     */
+    get nonce() { return this.iv; }
+
+    /**
+     * Append message bytes
+     * @param {uint8[]} data - Bytes to append
+     */
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      for (let i = 0; i < data.length; i++) this.inputBuffer.push(data[i]);
+    }
+
+    /**
+     * Encipher everything fed so far, continuing the keystream from the previous call.
+     * @returns {uint8[]} Output bytes
+     */
+    Result() {
+      if (!this._key) {
+        this.key = MICKEY_DEFAULT_KEY;
       }
-      this.registerR[this.REGISTER_SIZE - 1] = feedbackR;
 
-      // Clock register S with nonlinear feedback
-      const feedbackS = MICKEYCommon.nonlinearFunction(this.registerS);
-      for (let i = 0; i < this.REGISTER_SIZE - 1; i++) {
-        this.registerS[i] = this.registerS[i + 1];
+      /** @type {uint8[]} */
+      const output = new Array(this.inputBuffer.length);
+      for (let i = 0; i < this.inputBuffer.length; i++) {
+        output[i] = OpCodes.Xor8(this.inputBuffer[i], this._byte());
       }
-      this.registerS[this.REGISTER_SIZE - 1] = feedbackS;
+      return output;
+    }
 
-      return OpCodes.Xor32(controlR, controlS);
-    },
+    /**
+     * Load both registers from the key and run the initialization rounds.
+     * @param {uint8[]} key - Key bytes (first 16 used, zero-padded when shorter)
+     */
+    _setup(key) {
+      this._registerR = OpCodes.CreateArray(REGISTER_SIZE, 0);
+      this._registerS = OpCodes.CreateArray(REGISTER_SIZE, 0);
+
+      /** @type {uint8[]} */
+      const keyBytes = OpCodes.CreateArray(KEY_BYTES_USED, 0);
+      for (let i = 0; i < KEY_BYTES_USED && i < key.length; i++) keyBytes[i] = key[i];
+
+      initializeRegister(this._registerR, keyBytes, 0);
+      initializeRegister(this._registerS, keyBytes, REGISTER_SIZE);
+
+      for (let i = 0; i < INIT_ROUNDS; i++) this._clock();
+    }
+
+    /**
+     * Clock R (linear feedback from taps 0, 7, 15) and S (nonlinear feedback).
+     */
+    _clock() {
+      const feedbackR = OpCodes.Xor8(OpCodes.Xor8(this._registerR[0], this._registerR[7]), this._registerR[15]);
+      for (let i = 0; i < REGISTER_SIZE - 1; i++) this._registerR[i] = this._registerR[i + 1];
+      this._registerR[REGISTER_SIZE - 1] = feedbackR;
+
+      const feedbackS = nonlinearFunction(this._registerS);
+      for (let i = 0; i < REGISTER_SIZE - 1; i++) this._registerS[i] = this._registerS[i + 1];
+      this._registerS[REGISTER_SIZE - 1] = feedbackS;
+    }
 
     /**
      * Generate a single keystream bit
-     * @returns {uint32} Output bit (0 or 1)
+     * @returns {uint8} Output bit (0 or 1)
      */
-    generateBit: function() {
-      if (!this.isInitialized) {
-        throw new Error('Cipher not initialized - call KeySetup first');
-      }
-
-      // Output is combination of both registers
-      const output = OpCodes.Xor32(this.registerR[0], this.registerS[0]);
-
-      // Clock the registers
-      this.clockRegisters();
-
+    _bit() {
+      const output = OpCodes.Xor8(this._registerR[0], this._registerS[0]);
+      this._clock();
       return output;
-    },
+    }
 
     /**
-     * Generate a byte (8 bits)
+     * Generate a byte from eight bits, least significant first
      * @returns {uint8} Byte value (0-255)
      */
-    generateByte: function() {
+    _byte() {
+      /** @type {uint8} */
       let byte = 0;
-
       for (let bit = 0; bit < 8; bit++) {
-        const bitValue = this.generateBit();
-        byte = OpCodes.Or32(byte, OpCodes.Shl32(bitValue, bit));
+        byte = OpCodes.Or8(byte, OpCodes.Shl8(this._bit(), bit));
       }
-
       return byte;
-    },
-
-    /**
-     * Generate keystream bytes
-     * @param {int32} length - Number of bytes to generate
-     * @returns {uint8[]} Array of keystream bytes
-     */
-    generateKeystream: function(length) {
-      /** @type {uint8[]} */
-      const keystream = [];
-
-      for (let i = 0; i < length; i++) {
-        keystream.push(this.generateByte());
-      }
-
-      return keystream;
-    },
-
-    /**
-     * Encrypt block using MICKEY cipher
-     * @param {int32} blockIndex - Block index (position)
-     * @param {string|Array} input - Input data
-     * @returns {string|Array} Encrypted data
-     */
-    EncryptBlock: function(blockIndex, input) {
-      if (!this.isInitialized) {
-        throw new Error('Cipher not initialized - call KeySetup first');
-      }
-
-      let inputBytes;
-      if (typeof input === 'string') {
-        inputBytes = OpCodes.AsciiToBytes(input);
-        const keystream = this.generateKeystream(inputBytes.length);
-        const outputBytes = OpCodes.XorArrays(inputBytes, keystream);
-        return String.fromCharCode(...outputBytes);
-      } else {
-        inputBytes = input;
-        const keystream = this.generateKeystream(inputBytes.length);
-        return OpCodes.XorArrays(inputBytes, keystream);
-      }
-    },
-
-    /**
-     * Decrypt block (same as encrypt for stream cipher)
-     * @param {int32} blockIndex - Block index (position)
-     * @param {string|Array} input - Input data
-     * @returns {string|Array} Decrypted data
-     */
-    DecryptBlock: function(blockIndex, input) {
-      return this.EncryptBlock(blockIndex, input);
-    },
-
-    /**
-     * Get current register states for debugging
-     * @returns {Object} Current states of both registers
-     */
-    getStates: function() {
-      return {
-        registerR: this.registerR ? this.registerR.slice() : null,
-        registerS: this.registerS ? this.registerS.slice() : null
-      };
-    },
-
-    /**
-     * Clear sensitive data
-     */
-    ClearData: function() {
-      if (this.registerR) {
-        OpCodes.ClearArray(this.registerR);
-        this.registerR = null;
-      }
-      if (this.registerS) {
-        OpCodes.ClearArray(this.registerS);
-        this.registerS = null;
-      }
-      /** @type {boolean} */
-      this.isInitialized = false;
-    },
-
-    // Stream cipher interface for testing framework
-    CreateInstance: function(isDecrypt) {
-      const instance = {
-        _key: null,
-        _iv: null,
-        _inputData: [],
-        _cipher: Object.create(MICKEY),
-
-        set key(keyData) {
-          // Accept various key sizes (8, 10, 16, 24, 32 bytes)
-          if (!keyData || keyData.length < 8) {
-            throw new Error('MICKEY requires at least 64-bit (8 byte) key');
-          }
-          this._key = Array.isArray(keyData) ? [...keyData] : keyData;
-          this._cipher.KeySetup(this._key);
-        },
-
-        get key() {
-          return this._key ? [...this._key] : null;
-        },
-
-        set iv(ivData) {
-          // MICKEY doesn't use IV in traditional sense, but store for compatibility
-          this._iv = Array.isArray(ivData) ? [...ivData] : ivData;
-        },
-
-        get iv() {
-          return this._iv ? [...this._iv] : null;
-        },
-
-        set nonce(nonceData) {
-          this.iv = nonceData;
-        },
-
-        get nonce() {
-          return this.iv;
-        },
-
-        Feed: function(data) {
-          if (Array.isArray(data)) {
-            this._inputData = this._inputData.concat(data);
-          } else if (typeof data === 'string') {
-            for (let i = 0; i < data.length; i++) {
-              this._inputData.push(data.charCodeAt(i));
-            }
-          }
-        },
-
-        Result: function() {
-          if (!this._key) {
-            this._key = OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F');
-            this._cipher.KeySetup(this._key);
-          }
-
-          const keystream = this._cipher.generateKeystream(this._inputData.length);
-          return OpCodes.XorArrays(this._inputData, keystream);
-        }
-      };
-
-      return instance;
     }
-  };
+  }
 
   // ============================================================================
-  // MICKEY-128 - Enhanced 128-bit key version
+  // MICKEY-128 - byte registers with irregular clocking
   // ============================================================================
 
-  const MICKEY128 = {
-    name: 'MICKEY-128',
-    description: 'Educational implementation of MICKEY-128 enhanced stream cipher based on MICKEY v2 eSTREAM winner. Features 128-bit keys and irregular clocking with dual shift registers.',
-    inventor: 'Steve Babbage, Matthew Dodd',
-    year: 2005,
-    country: 'GB',
-    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
-    subCategory: 'Stream Cipher',
-    securityStatus: global.AlgorithmFramework ? global.AlgorithmFramework.SecurityStatus.EDUCATIONAL : 'educational',
-    securityNotes: 'Based on eSTREAM Portfolio winner MICKEY v2. Enhanced version for 128-bit keys while maintaining hardware efficiency principles.',
+  /** @type {int32} */
+  const M128_KEY_SIZE = 16;
+  /** @type {int32} */
+  const M128_REGISTER_SIZE = 32;
+  /** @type {int32} */
+  const M128_INIT_ROUNDS = 32;
 
-    documentation: [
-      {text: 'MICKEY eSTREAM Specification', uri: 'https://www.ecrypt.eu.org/stream/mickey.html'},
-      {text: 'eSTREAM Hardware Portfolio', uri: 'https://www.ecrypt.eu.org/stream/'}
-    ],
+  // Key used when Result() runs before any key was assigned.
+  /** @type {uint8[]} */
+  const M128_DEFAULT_KEY = OpCodes.Hex8ToBytes('00010203040506070809101112131415');
 
-    references: [
-      {text: 'Hardware-Oriented Stream Ciphers', uri: 'https://en.wikipedia.org/wiki/Stream_cipher'}
-    ],
+  /**
+   * MICKEY-128 educational stream cipher
+   * @class
+   * @extends {StreamCipherAlgorithm}
+   */
+  class Mickey128Algorithm extends StreamCipherAlgorithm {
+    constructor() {
+      super();
 
-    knownVulnerabilities: [
-      {
-        type: 'Implementation Specific',
-        text: 'This is an educational implementation not suitable for security applications.',
-        mitigation: 'Use only for educational purposes to understand enhanced MICKEY variants.'
-      }
-    ],
+      this.name = 'MICKEY-128';
+      this.description = 'Educational implementation of MICKEY-128 enhanced stream cipher based on MICKEY v2 eSTREAM winner. Features 128-bit keys and irregular clocking with dual shift registers.';
+      this.inventor = 'Steve Babbage, Matthew Dodd';
+      this.year = 2005;
+      this.country = CountryCode.GB;
+      this.category = CategoryType.STREAM;
+      this.subCategory = 'Stream Cipher';
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      /** @type {string} */
+      this.securityNotes = 'Based on eSTREAM Portfolio winner MICKEY v2. Enhanced version for 128-bit keys while maintaining hardware efficiency principles.';
 
-    // Test vectors with actual implementation output
-    tests: [{
-      text: 'Educational test vector for MICKEY-128',
-      uri: 'Educational implementation',
-      input: OpCodes.Hex8ToBytes('0001020304050607'),
-      key: OpCodes.Hex8ToBytes('00010203040506070809101112131415'),
-      expected: OpCodes.Hex8ToBytes('4dbc308d5236cc4c')
-    }],
+      this.documentation = [
+        new LinkItem('MICKEY eSTREAM Specification', 'https://www.ecrypt.eu.org/stream/mickey.html'),
+        new LinkItem('eSTREAM Hardware Portfolio', 'https://www.ecrypt.eu.org/stream/')
+      ];
 
-    // Internal state for stream cipher adaptation
-    key: null,
-    state: null,
+      this.references = [
+        new LinkItem('Hardware-Oriented Stream Ciphers', 'https://en.wikipedia.org/wiki/Stream_cipher')
+      ];
 
-    Init: function() {
+      this.knownVulnerabilities = [
+        new Vulnerability('Implementation Specific', 'This is an educational implementation not suitable for security applications.', 'Use only for educational purposes to understand enhanced MICKEY variants.')
+      ];
+
+      this.tests = [{
+        text: 'Educational test vector for MICKEY-128',
+        uri: 'Educational implementation',
+        input: OpCodes.Hex8ToBytes('0001020304050607'),
+        key: OpCodes.Hex8ToBytes('00010203040506070809101112131415'),
+        expected: OpCodes.Hex8ToBytes('4dbc308d5236cc4c')
+      }];
+    }
+
+    /**
+     * Create a cipher instance (encryption and decryption are identical)
+     * @param {boolean} [isInverse=false] - Unused: keystream XOR is its own inverse
+     * @returns {Mickey128Instance} New instance
+     */
+    CreateInstance(isInverse = false) {
+      return new Mickey128Instance(this, isInverse);
+    }
+  }
+
+  /**
+   * MICKEY-128 cipher instance
+   * @class
+   * @extends {IAlgorithmInstance}
+   */
+  class Mickey128Instance extends IAlgorithmInstance {
+    /**
+     * @param {Mickey128Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Unused
+     */
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      /** @type {boolean} */
+      this.isInverse = isInverse;
+      /** @type {uint8[]} */
+      this.inputBuffer = [];
       /** @type {uint8[]|null} */
-      this.key = null;
-      this.state = null;
-    },
+      this._key = null;
+      /** @type {boolean} */
+      this._keyed = false;
+      /** @type {uint8[]} */
+      this._registerR = OpCodes.CreateArray(M128_REGISTER_SIZE, 0);
+      /** @type {uint8[]} */
+      this._registerS = OpCodes.CreateArray(M128_REGISTER_SIZE, 0);
+      /** @type {uint8} */
+      this._counter = 0;
+      /** @type {int32} */
+      this._pos = 0;
+    }
 
-    KeySetup: function(key) {
-      this.Init();
-      if (!key || key.length !== 16) return false;
+    /**
+     * Assign the key. A key that is not 16 bytes leaves no keystream generator, so
+     * the output then equals the input.
+     * @param {uint8[]|null} keyData - 16-byte key
+     */
+    set key(keyData) {
+      this._key = keyData;
+      this._keyed = keyData ? keyData.length === M128_KEY_SIZE : false;
+      if (this._keyed) this._setup(keyData);
+    }
 
-      this.key = key.slice();
-      this.state = this.initializeState(key);
-      return true;
-    },
+    /**
+     * @returns {uint8[]|null} Copy of the key
+     */
+    get key() { return this._key ? [...this._key] : null; }
 
-    initializeState: function(key) {
-      // Simplified MICKEY-128-inspired state initialization
-      const state = {
-        registerR: OpCodes.CreateArray(32, 0), // Simplified R register
-        registerS: OpCodes.CreateArray(32, 0), // Simplified S register
-        counter: 0,
-        pos: 0
-      };
+    /**
+     * Append message bytes
+     * @param {uint8[]} data - Bytes to append
+     */
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      for (let i = 0; i < data.length; i++) this.inputBuffer.push(data[i]);
+    }
 
-      // Seed registers with key (16 bytes = 128 bits)
-      for (let i = 0; i < 16; i++) {
-        state.registerR[i % 32] = OpCodes.Xor32(state.registerR[i % 32], key[i]);
-        state.registerS[i % 32] = OpCodes.Xor32(state.registerS[i % 32], key[15 - i]); // Reverse order for S
+    /**
+     * Encipher everything fed so far, continuing the keystream from the previous call.
+     * @returns {uint8[]} Output bytes
+     */
+    Result() {
+      if (!this._key) {
+        this.key = M128_DEFAULT_KEY;
+      }
+
+      /** @type {uint8[]} */
+      const output = new Array(this.inputBuffer.length);
+      for (let i = 0; i < this.inputBuffer.length; i++) {
+        const ks = this._keyed ? this._byte() : 0;
+        output[i] = OpCodes.Xor8(this.inputBuffer[i], ks);
+      }
+      return output;
+    }
+
+    /**
+     * Seed both registers from a 16-byte key and run the mixing rounds.
+     * @param {uint8[]} key - 16 key bytes
+     */
+    _setup(key) {
+      this._registerR = OpCodes.CreateArray(M128_REGISTER_SIZE, 0);
+      this._registerS = OpCodes.CreateArray(M128_REGISTER_SIZE, 0);
+      this._counter = 0;
+      this._pos = 0;
+
+      for (let i = 0; i < M128_KEY_SIZE; i++) {
+        this._registerR[i] = OpCodes.Xor8(this._registerR[i], key[i]);
+        this._registerS[i] = OpCodes.Xor8(this._registerS[i], key[M128_KEY_SIZE - 1 - i]); // Reverse order for S
       }
 
       // Simple mixing inspired by MICKEY irregular clocking
-      for (let round = 0; round < 32; round++) {
-        for (let i = 0; i < 32; i++) {
-          const feedbackR = OpCodes.Xor32(state.registerR[(i + 13) % 32], state.registerR[(i + 29) % 32]);
-          const feedbackS = OpCodes.Xor32(state.registerS[(i + 17) % 32], state.registerS[(i + 23) % 32]);
+      for (let round = 0; round < M128_INIT_ROUNDS; round++) {
+        for (let i = 0; i < M128_REGISTER_SIZE; i++) {
+          const feedbackR = OpCodes.Xor8(this._registerR[(i + 13) % M128_REGISTER_SIZE], this._registerR[(i + 29) % M128_REGISTER_SIZE]);
+          const feedbackS = OpCodes.Xor8(this._registerS[(i + 17) % M128_REGISTER_SIZE], this._registerS[(i + 23) % M128_REGISTER_SIZE]);
 
-          state.registerR[i] = OpCodes.And32((state.registerR[i] + feedbackR + round), 0xFF);
-          state.registerS[i] = OpCodes.And32((state.registerS[i] + feedbackS + round + 1), 0xFF);
+          this._registerR[i] = OpCodes.ToUint8(OpCodes.Add32(OpCodes.Add32(this._registerR[i], feedbackR), round));
+          this._registerS[i] = OpCodes.ToUint8(OpCodes.Add32(OpCodes.Add32(this._registerS[i], feedbackS), round + 1));
         }
       }
-
-      return state;
-    },
-
-    generateByte: function() {
-      if (!this.state) return 0;
-
-      // Simple MICKEY-128-inspired byte generation with irregular clocking
-      const posR = this.state.pos % 32;
-      const posS = (this.state.pos + 17) % 32;
-
-      // Control bits for irregular clocking
-      const controlR = OpCodes.And32(this.state.registerS[posS], 1);
-      const controlS = OpCodes.And32(this.state.registerR[posR], 1);
-
-      // Output byte
-      const byte = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(this.state.registerR[posR], this.state.registerS[posS]), this.state.counter), 0xFF);
-
-      // Update registers based on control bits (irregular clocking)
-      if (controlR) {
-        this.state.registerR[posR] = OpCodes.And32((this.state.registerR[posR] + byte + 1), 0xFF);
-      }
-      if (controlS) {
-        this.state.registerS[posS] = OpCodes.And32((this.state.registerS[posS] + byte + 2), 0xFF);
-      }
-
-      // Always advance position and counter
-      this.state.pos = (this.state.pos + 1) % 32;
-      this.state.counter = OpCodes.And32((this.state.counter + 1), 0xFF);
-
-      return byte;
-    },
-
-    EncryptBlock: function(blockIndex, input) {
-      if (!input || !this.state) return null;
-
-      const output = new Array(input.length);
-      for (let i = 0; i < input.length; i++) {
-        output[i] = OpCodes.Xor32(input[i], this.generateByte());
-      }
-
-      return output;
-    },
-
-    DecryptBlock: function(blockIndex, input) {
-      // Stream cipher: decryption is same as encryption
-      return this.EncryptBlock(blockIndex, input);
-    },
-
-    CreateInstance: function(isDecrypt) {
-      const instance = {
-        _key: null,
-        _inputData: [],
-        _cipher: Object.create(MICKEY128),
-
-        set key(keyData) {
-          this._key = keyData;
-          this._cipher.KeySetup(keyData);
-        },
-
-        Feed: function(data) {
-          if (Array.isArray(data)) {
-            this._inputData = this._inputData.concat(data);
-          } else if (typeof data === 'string') {
-            for (let i = 0; i < data.length; i++) {
-              this._inputData.push(data.charCodeAt(i));
-            }
-          }
-        },
-
-        Result: function() {
-          if (!this._key) {
-            this._key = OpCodes.Hex8ToBytes('00010203040506070809101112131415');
-            this._cipher.KeySetup(this._key);
-          }
-
-          const output = new Array(this._inputData.length);
-          for (let i = 0; i < this._inputData.length; i++) {
-            output[i] = OpCodes.Xor32(this._inputData[i], this._cipher.generateByte());
-          }
-
-          return output;
-        }
-      };
-
-      return instance;
     }
-  };
+
+    /**
+     * Produce one keystream byte; each register cell advances only when the other
+     * register's control bit is set.
+     * @returns {uint8} Keystream byte
+     */
+    _byte() {
+      const posR = this._pos;
+      const posS = (this._pos + 17) % M128_REGISTER_SIZE;
+
+      const controlR = OpCodes.And8(this._registerS[posS], 1);
+      const controlS = OpCodes.And8(this._registerR[posR], 1);
+
+      const byte = OpCodes.Xor8(OpCodes.Xor8(this._registerR[posR], this._registerS[posS]), this._counter);
+
+      if (controlR !== 0) {
+        this._registerR[posR] = OpCodes.ToUint8(OpCodes.Add32(OpCodes.Add32(this._registerR[posR], byte), 1));
+      }
+      if (controlS !== 0) {
+        this._registerS[posS] = OpCodes.ToUint8(OpCodes.Add32(OpCodes.Add32(this._registerS[posS], byte), 2));
+      }
+
+      this._pos = (this._pos + 1) % M128_REGISTER_SIZE;
+      this._counter = OpCodes.ToUint8(OpCodes.Add32(this._counter, 1));
+      return byte;
+    }
+  }
 
   // ============================================================================
   // Registration for both variants
   // ============================================================================
 
-  // Auto-register with AlgorithmFramework if available
-  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
-    global.AlgorithmFramework.RegisterAlgorithm(MICKEY);
-    global.AlgorithmFramework.RegisterAlgorithm(MICKEY128);
+  const mickey = new MickeyAlgorithm();
+  if (!AlgorithmFramework.Find(mickey.name)) {
+    RegisterAlgorithm(mickey);
   }
 
-  // Legacy registration
-  if (typeof global.RegisterAlgorithm === 'function') {
-    global.RegisterAlgorithm(MICKEY);
-    global.RegisterAlgorithm(MICKEY128);
+  const mickey128 = new Mickey128Algorithm();
+  if (!AlgorithmFramework.Find(mickey128.name)) {
+    RegisterAlgorithm(mickey128);
   }
 
-  // Auto-register with Cipher system if available
-  if (global.Cipher) {
-    global.Cipher.Add(MICKEY);
-    global.Cipher.Add(MICKEY128);
-  }
-
-  // Export to global scope
-  global.MICKEY = MICKEY;
-  global['MICKEY'] = MICKEY;
-  global.MICKEY128 = MICKEY128;
-  global['MICKEY-128'] = MICKEY128;
-
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {MICKEY, MICKEY128};
-  }
-
-})(typeof global !== 'undefined' ? global : window);
+  return { MickeyAlgorithm, MickeyInstance, Mickey128Algorithm, Mickey128Instance };
+}));
