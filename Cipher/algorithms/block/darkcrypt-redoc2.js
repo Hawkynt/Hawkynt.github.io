@@ -19,8 +19,20 @@
  *     substitution/enclave tables is a single 32-bit integer (not a byte array):
  *     it starts at 32, is incremented by 1 in place on each reseed, and that same
  *     running value is threaded across all three table generators in sequence
- *     (never reset in between). The RNG itself is the classic Borland/Turbo runtime
- *     rand()/srand() (seed = seed*0x41C64E6D + 0x3039; value = (seed>>16) & 0x7FFF).
+ *     (never reset in between). The RNG itself is the C standard's reference
+ *     rand()/srand() (seed = seed*0x41C64E6D + 0x3039; value = bits 16..30 of seed).
+ *
+ * Relation to Michael Wood's reference source (REDOC2.ZIP, registered as "REDOC II"
+ * in redoc.js): the rounds, the key table and the mask fold are the same; the
+ * plugin builds two of the fixed tables differently, so the two give different
+ * ciphertexts for every key:
+ *   - the reference starts each of the three table generators at the first seed
+ *     (32), where the plugin continues the counter (permutations from 32,
+ *     substitutions from 74, enclaves from 90);
+ *   - the mask fold reads 40 entries past the key table; the reference declares
+ *     the mask table there, the plugin takes the first 40 enclave-table entries.
+ * With both choices switched to the plugin's, the reference source reproduces this
+ * implementation exactly.
  * Test vectors verified against the DarkCrypt implementation. Educational only.
  */
 
@@ -56,7 +68,7 @@
   const ENN = 15;   // enclave table entry size (3 groups of 5)
   const KEN = 10;   // key table row size
 
-  // Borland/Turbo runtime rand()/srand(): seed = seed*0x41C64E6D + 0x3039 (mod 2^32);
+  // The C standard's reference rand()/srand(): seed = seed*0x41C64E6D + 0x3039 (mod 2^32);
   // rand() returns bits 16..30 of the seed.
   class BorlandRng {
     constructor() {
