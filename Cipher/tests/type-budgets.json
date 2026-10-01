@@ -842,7 +842,7 @@
   "algorithms/stream/acorn.js": 0,
   "algorithms/stream/aegis-128.js": 0,
   "algorithms/stream/aes-gcm-siv.js": 68,
-  "algorithms/stream/beth-piper.js": 130,
+  "algorithms/stream/beth-piper.js": 0,
   "algorithms/stream/caracachs.js": 0,
   "algorithms/stream/chacha20.js": 0,
   "algorithms/stream/crypto1.js": 0,
