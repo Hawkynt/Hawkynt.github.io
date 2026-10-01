@@ -344,11 +344,17 @@
       /** @type {uint32[]} */
       const sbox = new Array(256);
       let state = OpCodes.ToUint32(seed);
+      /** @type {float64} */
+      const LCG_MULTIPLIER = 1103515245;
 
       for (let i = 0; i < 256; i++) {
         // LCG: state = (a * state + c) mod m
-        // Using values similar to BSD rand()
-        state = OpCodes.ToUint32(1103515245 * state + 12345);
+        // Using values similar to BSD rand(). The product is formed in double
+        // precision, whose rounding of the up-to-63-bit value the tables (and
+        // so the test vectors) depend on; it is not the exact 32-bit product.
+        /** @type {float64} */
+        const product = LCG_MULTIPLIER * state + 12345;
+        state = OpCodes.ToUint32(product);
         sbox[i] = state;
       }
 

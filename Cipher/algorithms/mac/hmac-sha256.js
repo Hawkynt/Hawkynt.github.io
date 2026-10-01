@@ -188,7 +188,7 @@
       this.BLOCK_SIZE = 64; // SHA-256 block size in bytes
 
       // SHA-256 algorithm reference
-      /** @type {Algorithm} */
+      /** @type {HashFunctionAlgorithm} */
       this._sha256Algorithm = null;
     }
 
@@ -238,7 +238,7 @@
 
     /**
      * Get SHA-256 algorithm from framework
-     * @returns {Algorithm} SHA-256 algorithm
+     * @returns {HashFunctionAlgorithm} SHA-256 algorithm
      */
     _getSHA256Algorithm() {
       if (this._sha256Algorithm) {
@@ -270,7 +270,11 @@
      * @returns {IHashFunctionInstance} New SHA-256 instance (null when the algorithm declines)
      */
     _createSHA256Instance() {
-      return this._getSHA256Algorithm().CreateInstance();
+      /** @type {HashFunctionAlgorithm} */
+      const sha256 = this._getSHA256Algorithm();
+      /** @type {IHashFunctionInstance} */
+      const instance = sha256.CreateInstance();
+      return instance;
     }
 
     /**
