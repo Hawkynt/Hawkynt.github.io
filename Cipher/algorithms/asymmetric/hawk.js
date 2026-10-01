@@ -95,7 +95,7 @@
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           AsymmetricCipherAlgorithm, IAlgorithmInstance,
-          LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
+          TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // ===== SHAKE256 =====
   //
@@ -144,7 +144,7 @@
 
   /**
    * Keccak-f[1600] over 25 lanes held as low/high 32-bit halves.
-   * @param {Uint32Array} s - 50 words, permuted in place
+   * @param {uint32[]} s - 50 words, permuted in place
    */
   function KeccakPermute(s) {
     const b = new Uint32Array(50);
@@ -213,9 +213,9 @@
    */
   class Shake256 {
     constructor() {
-      /** @type {Uint32Array} */
+      /** @type {uint32[]} */
       this.state = new Uint32Array(50);
-      /** @type {Uint8Array} */
+      /** @type {uint8[]} */
       this.buffer = new Uint8Array(SHAKE256_RATE);
       /** @type {int32} */
       this.position = 0;
@@ -292,7 +292,7 @@
 
     /**
      * @param {int32} count - octets wanted
-     * @returns {Uint8Array} the next count octets of output
+     * @returns {uint8[]} the next count octets of output
      */
     Extract(count) {
       const out = new Uint8Array(count);
@@ -312,12 +312,14 @@
    * SHAKE256 over the concatenation of the given parts.
    * @param {uint8[][]} parts - octet arrays
    * @param {int32} count - output length
-   * @returns {Uint8Array} the digest
+   * @returns {uint8[]} the digest
    */
   function Shake(parts, count) {
     const sc = new Shake256();
     for (let i = 0; i < parts.length; ++i) sc.Inject(parts[i]);
-    return sc.Flip().Extract(count);
+    /** @type {uint8[]} */
+    const digest = sc.Flip().Extract(count);
+    return digest;
   }
 
   /**
@@ -337,19 +339,23 @@
   // looked up on first use rather than at load time, so that loading this file
   // does not register a block cipher under this directory.
 
+  /** @type {Algorithm|null} */
   let aesAlgorithm = null;
 
+  /**
+   * @returns {Algorithm} the registered AES
+   */
   function FindAes() {
     if (aesAlgorithm) return aesAlgorithm;
 
-    aesAlgorithm = AlgorithmFramework.Find ? AlgorithmFramework.Find('Rijndael (AES)') : null;
+    aesAlgorithm = AlgorithmFramework.Find('Rijndael (AES)');
     if (!aesAlgorithm && typeof require !== 'undefined') {
       try {
         require('../block/rijndael.js');
       } catch (e) {
         // Reported as a missing dependency below.
       }
-      aesAlgorithm = AlgorithmFramework.Find ? AlgorithmFramework.Find('Rijndael (AES)') : null;
+      aesAlgorithm = AlgorithmFramework.Find('Rijndael (AES)');
     }
 
     if (!aesAlgorithm)
@@ -358,11 +364,12 @@
   }
 
   /**
-   * @param {Uint8Array} key - 32 key octets
-   * @param {Uint8Array} block - 16 plaintext octets
+   * @param {uint8[]} key - 32 key octets
+   * @param {uint8[]} block - 16 plaintext octets
    * @returns {uint8[]} 16 ciphertext octets
    */
   function Aes256Ecb(key, block) {
+    /** @type {IAlgorithmInstance} */
     const instance = FindAes().CreateInstance(false);
     instance.key = Array.from(key);
     instance.Feed(Array.from(block));
@@ -372,59 +379,66 @@
   }
 
   /**
-   * @param {Uint8Array} v - 16 octet big-endian counter, incremented in place
+   * @param {uint8[]} v - 16 octet big-endian counter, incremented in place
    */
   function IncrementCounter(v) {
     for (let j = 15; j >= 0; --j) {
       if (v[j] === 0xFF) v[j] = 0;
-      else { v[j] = v[j] + 1; break; }
+      else { v[j] = OpCodes.ToByte(v[j] + 1); break; }
     }
   }
 
   /**
-   * The generator, seeded as randombytes_init does with a zero key and counter.
-   * @param {uint8[]} entropy - the 48 octet seed
-   * @returns {function} a reader: count -> Uint8Array
+   * The random source of key generation and signing: the generator seeded as
+   * randombytes_init does with a zero key and counter, or, without a seed,
+   * all zeros.
    */
-  function Drbg(entropy) {
-    const key = new Uint8Array(32);
-    const v = new Uint8Array(16);
+  class HawkRandom {
+    /**
+     * @param {uint8[]|null} entropy - the 48 octet seed, or null for zeros
+     */
+    constructor(entropy) {
+      /** @type {boolean} */
+      this.seeded = entropy !== null;
+      /** @type {uint8[]} */
+      this.key = new Uint8Array(32);
+      /** @type {uint8[]} */
+      this.v = new Uint8Array(16);
+      if (entropy !== null) this._update(entropy);
+    }
 
-    const update = function (providedData) {
+    /**
+     * @param {uint8[]|null} providedData - 48 octets mixed into the state, or null
+     */
+    _update(providedData) {
       const temp = new Uint8Array(48);
       for (let i = 0; i < 3; ++i) {
-        IncrementCounter(v);
-        const block = Aes256Ecb(key, v);
+        IncrementCounter(this.v);
+        const block = Aes256Ecb(this.key, this.v);
         for (let j = 0; j < 16; ++j) temp[i * 16 + j] = block[j];
       }
-      if (providedData)
+      if (providedData !== null)
         for (let i = 0; i < 48; ++i) temp[i] = OpCodes.Xor32(temp[i], providedData[i]);
-      for (let i = 0; i < 32; ++i) key[i] = temp[i];
-      for (let i = 0; i < 16; ++i) v[i] = temp[32 + i];
-    };
+      for (let i = 0; i < 32; ++i) this.key[i] = temp[i];
+      for (let i = 0; i < 16; ++i) this.v[i] = temp[32 + i];
+    }
 
-    update(entropy);
-
-    return function (count) {
+    /**
+     * @param {int32} count - octets wanted
+     * @returns {uint8[]} the next count octets
+     */
+    Read(count) {
       const out = new Uint8Array(count);
+      if (!this.seeded) return out;
       let produced = 0;
       while (produced < count) {
-        IncrementCounter(v);
-        const block = Aes256Ecb(key, v);
+        IncrementCounter(this.v);
+        const block = Aes256Ecb(this.key, this.v);
         for (let j = 0; j < 16 && produced < count; ++j) out[produced++] = block[j];
       }
-      update(null);
+      this._update(null);
       return out;
-    };
-  }
-
-  /**
-   * The randomness used when no generator seed is configured.
-   * @param {int32} count - octets wanted
-   * @returns {Uint8Array} zeros
-   */
-  function ZeroRng(count) {
-    return new Uint8Array(count);
+    }
   }
 
   // ===== parameter sets =====
@@ -432,21 +446,30 @@
   // Tables of the signing sampler: for each k, the probability that |X| is at
   // least 2k+2 (even column) or 2k+3 (odd column), scaled by 2^78 and split
   // into a 15-bit high part and a 63-bit low part.
-  const GAUSS_HI = {
-    8: [0x4D70, 0x268B, 0x0F80, 0x04FA, 0x0144, 0x0041, 0x000A, 0x0001],
-    9: [0x580B, 0x35F9, 0x1D34, 0x0DD7, 0x05B7, 0x020C, 0x00A2, 0x002B, 0x000A, 0x0001],
-    10: [0x58B0, 0x36FE, 0x1E3A, 0x0EA0, 0x0632, 0x024A, 0x00BC, 0x0034, 0x000C, 0x0002]
-  };
+  // Indexed by logn - 8.
+  /** @type {int32[][]} */
+  const GAUSS_HI = [
+    // logn 8
+    [0x4D70, 0x268B, 0x0F80, 0x04FA, 0x0144, 0x0041, 0x000A, 0x0001],
+    // logn 9
+    [0x580B, 0x35F9, 0x1D34, 0x0DD7, 0x05B7, 0x020C, 0x00A2, 0x002B, 0x000A, 0x0001],
+    // logn 10
+    [0x58B0, 0x36FE, 0x1E3A, 0x0EA0, 0x0632, 0x024A, 0x00BC, 0x0034, 0x000C, 0x0002]
+  ];
 
-  const GAUSS_LO = {
-    8: [
+  // Indexed by logn - 8.
+  /** @type {string[][]} */
+  const GAUSS_LO = [
+    // logn 8
+    [
       '71FBD58485D45050', '1408A4B181C718B1', '54114F1DC2FA7AC9', '614569CC54722DC9',
       '42F74ADDA0B5AE61', '151C5CDCBAFF49A3', '252E2152AB5D758B', '23460C30AC398322',
       '0FDE62196C1718FC', '01355A8330C44097', '00127325DDF8CEBA', '0000DC8DE401FD12',
       '000008100822C548', '0000003B0FFB28F0', '0000000152A6E9AE', '0000000005EFCD99',
       '000000000014DA4A', '0000000000003953', '000000000000007B', '0000000000000000'
     ],
-    9: [
+    // logn 9
+    [
       '0C27920A04F8F267', '3C689D9213449DC9', '1C4FF17C204AA058', '7B908C81FCE3524F',
       '5E63263BE0098FFD', '4EBEFD8FF4F07378', '56AEDFB0876A3BD8', '4628BC6B23887196',
       '061E21D588CC61CC', '7F769211F07B326F', '2BA568D92EEC18E7', '0668F461693DFF8F',
@@ -455,7 +478,8 @@
       '0000000000EBCC6A', '000000000007876E', '00000000000034CF', '000000000000013D',
       '0000000000000006', '0000000000000000'
     ],
-    10: [
+    // logn 10
+    [
       '3AAA2EB76504E560', '01AE2B17728DF2DE', '70E1C03E49BB683E', '6A00B82C69624C93',
       '55CDA662EF2D1C48', '2685DB30348656A4', '31E874B355421BB7', '430192770E205503',
       '57C0676C029895A7', '5353BD4091AA96DB', '3D4D67696E51F820', '09915A53D8667BEE',
@@ -464,7 +488,7 @@
       '0000000002F93038', '00000000001B2445', '000000000000D5A7', '00000000000005AA',
       '0000000000000021', '0000000000000000'
     ]
-  };
+  ];
 
   // Word budgets of the NTRU solver at each recursion depth, in 31-bit words:
   // (f, g) at that depth, unreduced (F, G), and how many top words of (f, g)
@@ -491,23 +515,32 @@
     }
   }
 
-  const SOLVER_PROFILES = {
-    8: new HawkSolverProfile(
-      [1, 1, 1, 2, 3, 5, 9, 17, 34, 0, 0],
-      [1, 1, 2, 4, 7, 13, 26, 50, 0, 0],
-      [1, 1, 1, 2, 3, 3, 3, 4, 0, 0],
-      20),
-    9: new HawkSolverProfile(
-      [1, 1, 1, 2, 3, 6, 11, 21, 41, 82, 0],
-      [1, 2, 3, 5, 8, 16, 31, 61, 121, 0],
-      [1, 1, 1, 2, 2, 3, 3, 4, 6, 0],
-      15),
-    10: new HawkSolverProfile(
-      [1, 1, 2, 2, 4, 7, 13, 25, 48, 96, 191],
-      [1, 2, 3, 5, 10, 19, 37, 72, 143, 284],
-      [1, 1, 2, 2, 3, 3, 3, 4, 4, 7],
-      12)
-  };
+  /** @type {int32[]} */
+  const SMALL_256 = [1, 1, 1, 2, 3, 5, 9, 17, 34, 0, 0];
+  /** @type {int32[]} */
+  const LARGE_256 = [1, 1, 2, 4, 7, 13, 26, 50, 0, 0];
+  /** @type {int32[]} */
+  const WINDOW_256 = [1, 1, 1, 2, 3, 3, 3, 4, 0, 0];
+  /** @type {int32[]} */
+  const SMALL_512 = [1, 1, 1, 2, 3, 6, 11, 21, 41, 82, 0];
+  /** @type {int32[]} */
+  const LARGE_512 = [1, 2, 3, 5, 8, 16, 31, 61, 121, 0];
+  /** @type {int32[]} */
+  const WINDOW_512 = [1, 1, 1, 2, 2, 3, 3, 4, 6, 0];
+  /** @type {int32[]} */
+  const SMALL_1024 = [1, 1, 2, 2, 4, 7, 13, 25, 48, 96, 191];
+  /** @type {int32[]} */
+  const LARGE_1024 = [1, 2, 3, 5, 10, 19, 37, 72, 143, 284];
+  /** @type {int32[]} */
+  const WINDOW_1024 = [1, 1, 2, 2, 3, 3, 3, 4, 4, 7];
+
+  // Indexed by logn - 8.
+  /** @type {HawkSolverProfile[]} */
+  const SOLVER_PROFILES = [
+    new HawkSolverProfile(SMALL_256, LARGE_256, WINDOW_256, 20),
+    new HawkSolverProfile(SMALL_512, LARGE_512, WINDOW_512, 15),
+    new HawkSolverProfile(SMALL_1024, LARGE_1024, WINDOW_1024, 12)
+  ];
 
   /** A parameter set, in the field order the plain object always had. */
   class HawkParams {
@@ -584,7 +617,7 @@
    */
   function GaussHi(logn) {
     /** @type {int32[]} */
-    const table = GAUSS_HI[logn];
+    const table = GAUSS_HI[logn - 8];
     return table;
   }
 
@@ -594,16 +627,8 @@
    * @returns {uint32[][]} the pairs
    */
   function GaussLoPairs(logn) {
-    /** @type {string[]} */
-    const hex = GAUSS_LO[logn];
     /** @type {uint32[][]} */
-    const pairs = new Array(hex.length);
-    for (let i = 0; i < hex.length; ++i) {
-      const h = hex[i];
-      /** @type {uint32[]} */
-      const pair = [parseInt(h.slice(0, 8), 16), parseInt(h.slice(8), 16)];
-      pairs[i] = pair;
-    }
+    const pairs = OpCodes.CreateUint64ArrayFromHex(GAUSS_LO[logn - 8]);
     return pairs;
   }
 
@@ -613,7 +638,7 @@
    */
   function SolverProfile(logn) {
     /** @type {HawkSolverProfile} */
-    const profile = SOLVER_PROFILES[logn];
+    const profile = SOLVER_PROFILES[logn - 8];
     return profile;
   }
 
@@ -637,22 +662,14 @@
     new HawkParams('HAWK-1024', 10, 2440, 1221, 40, 20218, 7981, 1431655n, BITS_1024, LOWS_1024)
   ];
 
-  const PARAMETER_SETS = {
-    'HAWK-256': PARAMETER_SET_LIST[0],
-    'HAWK-512': PARAMETER_SET_LIST[1],
-    'HAWK-1024': PARAMETER_SET_LIST[2]
-  };
-
   /**
-   * The table entry under a name. A plain property read, so a name is
-   * accepted exactly when the table has a truthy property of it.
-   * @param {string} name - the name
-   * @returns {HawkParams} the entry, or a falsy value
+   * @param {string} name - 'HAWK-256', 'HAWK-512' or 'HAWK-1024'
+   * @returns {HawkParams|null} the set of that name
    */
   function ParameterSetEntry(name) {
-    /** @type {HawkParams} */
-    const entry = PARAMETER_SETS[name];
-    return entry;
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i)
+      if (PARAMETER_SET_LIST[i].name === name) return PARAMETER_SET_LIST[i];
+    return null;
   }
 
   /**
@@ -673,6 +690,17 @@
     for (let i = 0; i < PARAMETER_SET_LIST.length; ++i)
       if (PARAMETER_SET_LIST[i].pkSize === size) return PARAMETER_SET_LIST[i];
     return null;
+  }
+
+  /**
+   * @param {int32} n - length
+   * @returns {int32[]} n zeros
+   */
+  function Zeros(n) {
+    /** @type {int32[]} */
+    const z = new Array(n);
+    for (let i = 0; i < n; ++i) z[i] = 0;
+    return z;
   }
 
   // ===== arithmetic modulo the two 31-bit primes =====
@@ -764,8 +792,6 @@
     return v > (p - 1) / 2 ? v - p : v;
   }
 
-  const nttCache = {};
-
   /** Evaluation tables for X^n+1 modulo a prime. */
   class HawkNttTables {
     /**
@@ -798,6 +824,9 @@
     }
   }
 
+  /** @type {HawkNttTables[]} */
+  const NTT_CACHE = [];
+
   /**
    * Evaluation tables for X^n+1 modulo p: psi is a primitive 2n-th root.
    * @param {int32} logn - logn
@@ -805,12 +834,10 @@
    * @returns {HawkNttTables} Result
    */
   function NttTables(logn, p) {
-    const key = p + ':' + logn;
-    /** @type {HawkNttTables} */
-    const cached = nttCache[key];
-    if (cached) return cached;
-
     const n = Math.pow(2, logn);
+    for (let i = 0; i < NTT_CACHE.length; ++i)
+      if (NTT_CACHE[i].n === n && NTT_CACHE[i].p === p) return NTT_CACHE[i];
+
     let psi = 0;
     for (let h = 2; ; ++h) {
       psi = PowMod(h, (p - 1) / (2 * n), p);
@@ -840,7 +867,7 @@
       rev[i] = r;
     }
     const tables = new HawkNttTables(n, p, psiPow, psiInvPow, rev, omega, InvMod(omega, p), InvMod(n, p));
-    nttCache[key] = tables;
+    NTT_CACHE.push(tables);
     return tables;
   }
 
@@ -884,6 +911,7 @@
    */
   function Ntt(a, logn, p) {
     const T = NttTables(logn, p);
+    /** @type {int32[]} */
     const b = new Array(T.n);
     for (let i = 0; i < T.n; ++i) b[i] = MulMod(ToMod(a[i], p), T.psiPow[i], p);
     return CyclicTransform(b, T, T.omega);
@@ -925,7 +953,7 @@
   function BitLength(v) {
     if (v < 0n) v = -v;
     if (v === 0n) return 0;
-    return v.toString(2).length;
+    return OpCodes.BitCountN(v);
   }
 
   /**
@@ -942,10 +970,10 @@
   }
 
   /**
-   * @param {Float64Array} A - A
-   * @param {Float64Array} B - B
+   * @param {float64[]} A - A
+   * @param {float64[]} B - B
    * @param {int32} m - m
-   * @returns {Float64Array} Result
+   * @returns {float64[]} Result
    */
   function ConvNeg(A, B, m) {
     const R = new Float64Array(m);
@@ -963,18 +991,20 @@
    * @param {BigInt[]} a - a
    * @param {int32} limbBits - limbBits
    * @param {int32} count - count
-   * @returns {Float64Array[]} Result
+   * @returns {float64[][]} Result
    */
   function SplitLimbs(a, limbBits, count) {
     const m = a.length;
+    /** @type {BigInt} */
     const mask = OpCodes.ShiftLn(1n, limbBits) - 1n;
-    /** @type {Float64Array[]} */
+    /** @type {float64[][]} */
     const limbs = [];
     for (let k = 0; k < count; ++k) limbs.push(new Float64Array(m));
     for (let i = 0; i < m; ++i) {
       const negative = a[i] < 0n;
       let mag = BigAbs(a[i]);
       for (let k = 0; k < count && mag !== 0n; ++k) {
+        /** @type {int32} */
         const limb = Number(OpCodes.AndN(mag, mask));
         limbs[k][i] = negative ? -limb : limb;
         mag = OpCodes.ShiftRn(mag, limbBits);
@@ -1014,7 +1044,14 @@
     if (bitsA + bitsB + logm <= 52) {
       const A = new Float64Array(m);
       const B = new Float64Array(m);
-      for (let i = 0; i < m; ++i) { A[i] = Number(a[i]); B[i] = Number(b[i]); }
+      for (let i = 0; i < m; ++i) {
+        /** @type {float64} */
+        const ai = Number(a[i]);
+        /** @type {float64} */
+        const bi = Number(b[i]);
+        A[i] = ai;
+        B[i] = bi;
+      }
       const R = ConvNeg(A, B, m);
       for (let i = 0; i < m; ++i) out[i] = BigInt(R[i]);
       return out;
@@ -1054,6 +1091,7 @@
    * @returns {BigInt[]} Result
    */
   function Expand2(a) {
+    /** @type {BigInt[]} */
     const out = new Array(2 * a.length);
     for (let i = 0; i < a.length; ++i) {
       out[2 * i] = a[i];
@@ -1137,6 +1175,7 @@
   // halving rounds. These are the operations whose rounding decides the
   // Babai reduction, so they are reproduced exactly.
 
+  /** @type {BigInt} */
   const TWO32 = 4294967296n;
 
   /**
@@ -1144,46 +1183,51 @@
    * @param {BigInt} b - b
    * @returns {BigInt} Result
    */
-  function FxAdd(a, b) { return BigInt.asIntN(64, a + b); }
+  function FxAdd(a, b) { return OpCodes.ToLong(a + b); }
   /**
    * @param {BigInt} a - a
    * @param {BigInt} b - b
    * @returns {BigInt} Result
    */
-  function FxSub(a, b) { return BigInt.asIntN(64, a - b); }
+  function FxSub(a, b) { return OpCodes.ToLong(a - b); }
   /**
    * @param {BigInt} a - a
    * @returns {BigInt} Result
    */
-  function FxNeg(a) { return BigInt.asIntN(64, -a); }
+  function FxNeg(a) { return OpCodes.ToLong(-a); }
   /**
    * @param {BigInt} a - a
    * @param {BigInt} b - b
    * @returns {BigInt} Result
    */
-  function FxMul(a, b) { return BigInt.asIntN(64, OpCodes.ShiftRn(a * b, 32)); }
+  function FxMul(a, b) { return OpCodes.ToLong(OpCodes.ShiftRn(a * b, 32)); }
   /**
    * @param {BigInt} a - a
    * @returns {BigInt} Result
    */
-  function FxHalf(a) { return OpCodes.ShiftRn(BigInt.asIntN(64, a + 1n), 1); }
+  function FxHalf(a) { return OpCodes.ShiftRn(OpCodes.ToLong(a + 1n), 1); }
   /**
    * @param {BigInt} a - a
    * @param {int32} e - e
    * @returns {BigInt} Result
    */
-  function FxMul2e(a, e) { return BigInt.asIntN(64, OpCodes.ShiftLn(a, e)); }
+  function FxMul2e(a, e) { return OpCodes.ToLong(OpCodes.ShiftLn(a, e)); }
   /**
    * @param {int32} j - j
    * @returns {BigInt} Result
    */
-  function FxOf(j) { return BigInt.asIntN(64, BigInt(j) * TWO32); }
+  function FxOf(j) { return OpCodes.ToLong(BigInt(j) * TWO32); }
   /**
    * @param {BigInt} a - a
    * @returns {int32} Result
    */
-  function FxRound(a) { return Number(OpCodes.ShiftRn(BigInt.asIntN(64, a + 2147483648n), 32)); }
+  function FxRound(a) {
+    /** @type {int32} */
+    const r = Number(OpCodes.ShiftRn(OpCodes.ToLong(a + 2147483648n), 32));
+    return r;
+  }
 
+  /** @type {BigInt} */
   const U64 = 18446744073709551616n;
 
   /**
@@ -1196,13 +1240,13 @@
    */
   function FxDiv(x, y) {
     /** @type {BigInt} */
-    let ux = BigInt.asUintN(64, x);
+    let ux = OpCodes.ToQWord(x);
     /** @type {BigInt} */
-    let uy = BigInt.asUintN(64, y);
+    let uy = OpCodes.ToQWord(y);
     const sx = ux >= 9223372036854775808n;
     const sy = uy >= 9223372036854775808n;
-    if (sx) ux = BigInt.asUintN(64, U64 - ux);
-    if (sy) uy = BigInt.asUintN(64, U64 - uy);
+    if (sx) ux = OpCodes.ToQWord(U64 - ux);
+    if (sy) uy = OpCodes.ToQWord(U64 - uy);
 
     /** @type {BigInt} */
     let q = 0n;
@@ -1213,22 +1257,22 @@
       q = scaled / uy;
       const rem = scaled - q * uy;
       if (2n * rem >= uy) q += 1n;
-      q = BigInt.asUintN(64, q);
+      q = OpCodes.ToQWord(q);
     } else {
       q = 0n;
       for (let i = 63; i >= 0; --i) {
-        const b = BigInt.asUintN(64, num - uy) < 9223372036854775808n;
+        const b = OpCodes.ToQWord(num - uy) < 9223372036854775808n;
         if (b) {
           q = OpCodes.OrN(q, OpCodes.ShiftLn(1n, i));
-          num = BigInt.asUintN(64, num - uy);
+          num = OpCodes.ToQWord(num - uy);
         }
-        num = BigInt.asUintN(64, OpCodes.ShiftLn(num, 1));
+        num = OpCodes.ToQWord(OpCodes.ShiftLn(num, 1));
         if (i >= 33) num = OpCodes.OrN(num, OpCodes.AndN(OpCodes.ShiftRn(ux, i - 33), 1n));
       }
-      if (BigInt.asUintN(64, num - uy) < 9223372036854775808n) q = BigInt.asUintN(64, q + 1n);
+      if (OpCodes.ToQWord(num - uy) < 9223372036854775808n) q = OpCodes.ToQWord(q + 1n);
     }
-    if (sx !== sy) q = BigInt.asUintN(64, U64 - q);
-    return BigInt.asIntN(64, q);
+    if (sx !== sy) q = OpCodes.ToQWord(U64 - q);
+    return OpCodes.ToLong(q);
   }
 
   // Roots of unity for the fixed-point FFTs, in the reference's order: entry
@@ -1293,11 +1337,22 @@
   }
 
   /**
+   * @param {int32[]} a - integers
+   * @returns {BigInt[]} the same integers as BigInts
+   */
+  function ToBigInts(a) {
+    /** @type {BigInt[]} */
+    const out = new Array(a.length);
+    for (let i = 0; i < a.length; ++i) out[i] = BigInt(a[i]);
+    return out;
+  }
+
+  /**
    * @returns {HawkRoots64} the key generation's 32.32 roots
    */
   function BuildGM64() {
     const t = RootTable(4294967296);
-    return new HawkRoots64(t.re.map(BigInt), t.im.map(BigInt));
+    return new HawkRoots64(ToBigInts(t.re), ToBigInts(t.im));
   }
 
   const GM64 = BuildGM64();
@@ -1398,9 +1453,14 @@
    */
   function Word31(value, len, index) {
     if (index < 0) return 0;
-    if (index >= len) return value < 0n ? 0x7FFFFFFF : 0;
-    const u = BigInt.asUintN(31 * len, value);
-    return Number(OpCodes.AndN(OpCodes.ShiftRn(u, 31 * index), 0x7FFFFFFFn));
+    if (index >= len) {
+      return value < 0n ? 0x7FFFFFFF : 0;
+    }
+    // Below index len the words of the len-word two's complement form are
+    // those of the value itself.
+    /** @type {int32} */
+    const word = Number(OpCodes.AndN(OpCodes.ShiftRn(value, 31 * index), 0x7FFFFFFFn));
+    return word;
   }
 
   /**
@@ -1441,7 +1501,7 @@
     w2 = OpCodes.Or32(w2, OpCodes.Shl32(OpCodes.And32(w2, 0x40000000), 1));
     const xl = OpCodes.Or32(OpCodes.Shr32(w0, scl - 1), OpCodes.Shl32(w1, 32 - scl));
     const xh = OpCodes.Or32(OpCodes.Shr32(w1, scl), OpCodes.Shl32(w2, 31 - scl));
-    return BigInt.asIntN(64, BigInt(xh) * TWO32 + BigInt(xl));
+    return OpCodes.ToLong(BigInt(xh) * TWO32 + BigInt(xl));
   }
 
   // ===== the NTRU solver =====
@@ -1579,8 +1639,6 @@
     const hn = n / 2;
     const p = P1;
 
-    const Fdn = Fd.map(Number);
-    const Gdn = Gd.map(Number);
     /** @type {int32[]} */
     const fx2 = new Array(n);
     /** @type {int32[]} */
@@ -1589,13 +1647,19 @@
       fx2[i] = (i % 2 === 1) ? -f[i] : f[i];
       gx2[i] = (i % 2 === 1) ? -g[i] : g[i];
     }
-    /** @type {int32[]} */
-    const Fe = new Array(n).fill(0);
-    /** @type {int32[]} */
-    const Ge = new Array(n).fill(0);
+    // (F, G) of the level below, in X^2, reduced modulo p as the reference
+    // reduces them.
+    /** @type {BigInt} */
+    const pn = BigInt(p);
+    const Fe = Zeros(n);
+    const Ge = Zeros(n);
     for (let i = 0; i < hn; ++i) {
-      Fe[2 * i] = Fdn[i];
-      Ge[2 * i] = Gdn[i];
+      /** @type {int32} */
+      const fr = Number(OpCodes.ModN(Fd[i], pn));
+      /** @type {int32} */
+      const gr = Number(OpCodes.ModN(Gd[i], pn));
+      Fe[2 * i] = fr;
+      Ge[2 * i] = gr;
     }
 
     const nf = Ntt(f, logn, p);
@@ -1622,17 +1686,26 @@
     const c1 = InverseNtt(t1, logn, p).map(function (v) { return Centered(v, p); });
     const c2 = InverseNtt(t2, logn, p).map(function (v) { return Centered(v, p); });
 
+    /** @type {BigInt} */
     const scale22 = 4194304n;
-    const rq = c2.map(function (v) { return BigInt.asIntN(64, BigInt(v) * scale22); });
+    /** @type {BigInt[]} */
+    const rq = new Array(n);
+    /** @type {BigInt[]} */
+    const rt = new Array(n);
+    for (let u = 0; u < n; ++u) {
+      rq[u] = OpCodes.ToLong(BigInt(c2[u]) * scale22);
+      rt[u] = OpCodes.ToLong(BigInt(c1[u]) * scale22);
+    }
     VectFFT(logn, rq);
-    const rt = c1.map(function (v) { return BigInt.asIntN(64, BigInt(v) * scale22); });
     VectFFT(logn, rt);
     for (let u = 0; u < hn; ++u) {
       rt[u] = FxDiv(rt[u], rq[u]);
       rt[u + hn] = FxDiv(rt[u + hn], rq[u]);
     }
     VectIFFT(logn, rt);
-    const k = rt.map(FxRound);
+    /** @type {int32[]} */
+    const k = new Array(n);
+    for (let u = 0; u < n; ++u) k[u] = FxRound(rt[u]);
 
     const nk = Ntt(k, logn, p);
     for (let u = 0; u < n; ++u) {
@@ -1673,8 +1746,10 @@
 
     if (!IsInvertibleMod(f, logn, P1)) return SOLVE_FAIL;
 
-    const fs = [f.map(BigInt)];
-    const gs = [g.map(BigInt)];
+    /** @type {BigInt[][]} */
+    const fs = [ToBigInts(f)];
+    /** @type {BigInt[][]} */
+    const gs = [ToBigInts(g)];
     for (let d = 0; d < logn; ++d) {
       fs.push(FieldNorm(fs[d]));
       gs.push(FieldNorm(gs[d]));
@@ -1818,13 +1893,13 @@
 
   class HawkKeyPair {
     /**
-     * @param {Uint8Array} sk - encoded secret key
-     * @param {Uint8Array} pk - encoded public key
+     * @param {uint8[]} sk - encoded secret key
+     * @param {uint8[]} pk - encoded public key
      */
     constructor(sk, pk) {
-      /** @type {Uint8Array} */
+      /** @type {uint8[]} */
       this.sk = sk;
-      /** @type {Uint8Array} */
+      /** @type {uint8[]} */
       this.pk = pk;
     }
   }
@@ -1842,14 +1917,15 @@
     }
   }
 
-  // Stream bits per coefficient of (f, g), by logn.
-  const FG_BITS = { 8: 4, 9: 8, 10: 16 };
+  // Stream bits per coefficient of (f, g), indexed by logn - 8.
+  /** @type {int32[]} */
+  const FG_BITS = [4, 8, 16];
 
   /**
    * Hawk_regen_fg: four SHAKE256 streams over the seed; each coefficient is a
    * centred binomial sample, the popcount of 4, 8 or 16 stream bits.
    * @param {HawkParams} P - P
-   * @param {Uint8Array} seed - seed
+   * @param {uint8[]} seed - seed
    * @returns {HawkFG} Result
    */
   function RegenFG(P, seed) {
@@ -1859,17 +1935,20 @@
     /** @type {int32[]} */
     const g = new Array(n);
     /** @type {int32} */
-    const bits = FG_BITS[P.logn];
+    const bits = FG_BITS[P.logn - 8];
     const perChunk = 64 / bits;
     const step = 4 * perChunk;
     for (let j = 0; j < 4; ++j) {
       /** @type {uint8[]} */
       const index = [j];
+      /** @type {Shake256} */
       const sc = new Shake256().Inject(seed).Inject(index).Flip();
       for (let u = 0; u < 2 * n; u += step) {
+        /** @type {uint8[]} */
         const q = sc.Extract(8);
         for (let i = 0; i < perChunk; ++i) {
-          let c;
+          /** @type {int32} */
+          let c = 0;
           if (bits === 4) {
             const byte = q[Math.floor(i / 2)];
             c = POPCOUNT8[(i % 2 === 0) ? OpCodes.And32(byte, 15) : OpCodes.Shr32(byte, 4)] - 2;
@@ -1897,7 +1976,7 @@
    */
   function PairProduct(a, b, c, d) {
     const n = a.length;
-    const out = new Array(n).fill(0);
+    const out = Zeros(n);
     // a*adj(b) + c*adj(d); adj(b)[0] = b[0], adj(b)[i] = -b[n-i].
     for (let i = 0; i < n; ++i) {
       const av = a[i];
@@ -1919,7 +1998,7 @@
    * One key-generation attempt from a seed, screened as Hawk_keygen screens
    * it. Returns null when the reference would draw another seed.
    * @param {HawkParams} P - P
-   * @param {Uint8Array} seed - seed
+   * @param {uint8[]} seed - seed
    * @returns {HawkKeyAttempt|null} Result
    */
   function KeygenAttempt(P, seed) {
@@ -1941,10 +2020,14 @@
 
     const q00 = PairProduct(f, f, g, g);
     if (!IsInvertibleMod(q00, logn, P1)) return null;
-    if (!IsInvertibleMod(q00, logn, P2)) return null;
+    if (!IsInvertibleMod(q00, logn, P2)) {
+      return null;
+    }
 
     // The constant term of 1/q00 must be small enough.
-    const rt = q00.map(FxOf);
+    /** @type {BigInt[]} */
+    const rt = new Array(n);
+    for (let u = 0; u < n; ++u) rt[u] = FxOf(q00[u]);
     VectFFT(logn, rt);
     for (let u = 0; u < hn; ++u) rt[u] = FxDiv(TWO32, rt[u]);
     for (let u = hn; u < n; ++u) rt[u] = 0n;
@@ -1983,7 +2066,7 @@
    * room runs out.
    * @param {int32[]} values - values
    * @param {int32} low - low
-   * @param {Uint8Array} dst - dst
+   * @param {uint8[]} dst - dst
    * @param {int32} off - off
    * @param {int32} room - room
    * @returns {HawkEncoded|null} Result
@@ -1994,6 +2077,7 @@
     let pos = off;
 
     for (let u = 0; u < n; u += 8) {
+      /** @type {uint32} */
       let x = 0;
       for (let v = 0; v < 8; ++v)
         if (values[u + v] < 0) x = OpCodes.Or32(x, OpCodes.Shl32(1, v));
@@ -2059,7 +2143,7 @@
    * @param {int32} n - n
    * @param {int32} low - low
    * @param {int32} limBits - limBits
-   * @param {Uint8Array} buf - buf
+   * @param {uint8[]} buf - buf
    * @param {int32} off - off
    * @param {int32} bufLen - bufLen
    * @returns {HawkDecoded|null} { values, length, ignored }
@@ -2070,6 +2154,7 @@
     /** @type {int32[]} */
     const d = new Array(n);
 
+    /** @type {uint32} */
     let acc = 0;
     let accOff = 0;
     const limHi = Math.pow(2, limBits - low);
@@ -2120,7 +2205,7 @@
    * @param {HawkParams} P - P
    * @param {int32[]} q00 - q00
    * @param {int32[]} q01 - q01
-   * @returns {Uint8Array|null}
+   * @returns {uint8[]|null}
    */
   function EncodePublic(P, q00, q01) {
     const n = P.n;
@@ -2153,7 +2238,7 @@
   /**
    * extract_lowbit: coefficients modulo 2, packed LSB first.
    * @param {int32[]} a - a
-   * @returns {Uint8Array} Result
+   * @returns {uint8[]} Result
    */
   function LowBits(a) {
     const out = new Uint8Array(a.length / 8);
@@ -2164,11 +2249,11 @@
 
   /**
    * @param {HawkParams} P - P
-   * @param {Uint8Array} seed - seed
+   * @param {uint8[]} seed - seed
    * @param {int32[]} F - F
    * @param {int32[]} G - G
-   * @param {Uint8Array} pub - pub
-   * @returns {Uint8Array} Result
+   * @param {uint8[]} pub - pub
+   * @returns {uint8[]} Result
    */
   function EncodePrivate(P, seed, F, G, pub) {
     const sk = new Uint8Array(P.skSize);
@@ -2183,12 +2268,13 @@
    * hawk_keygen driven by a random source: draw seeds until one survives the
    * screening, the solver and the public-key encoding.
    * @param {HawkParams} P - P
-   * @param {function} rng - rng
+   * @param {HawkRandom} rng - rng
    * @returns {HawkKeyPair} Result
    */
   function Keygen(P, rng) {
     for (let attempts = 0; attempts < 100000; ++attempts) {
-      const seed = rng(P.seedLen);
+      /** @type {uint8[]} */
+      const seed = rng.Read(P.seedLen);
       const key = KeygenAttempt(P, seed);
       if (!key) continue;
       const pub = EncodePublic(P, key.q00, key.q01);
@@ -2202,8 +2288,8 @@
    * Rebuild the public key belonging to a secret key, from its seed, and check
    * that it is the one the secret key was made with.
    * @param {HawkParams} P - P
-   * @param {Uint8Array} sk - sk
-   * @returns {Uint8Array} Result
+   * @param {uint8[]} sk - sk
+   * @returns {uint8[]} Result
    */
   function PublicKeyFromSecret(P, sk) {
     const seed = sk.slice(0, P.seedLen);
@@ -2223,7 +2309,7 @@
   /**
    * The four-instance SHAKE256 Gaussian sampler (sig_gauss).
    * @param {HawkParams} P - P
-   * @param {function} rng - rng
+   * @param {HawkRandom} rng - rng
    * @param {Shake256} base - base
    * @param {int32[]} t - t
    * @returns {HawkSample} Result
@@ -2236,14 +2322,17 @@
     const loLen = lo.length;
     /** @type {int32[]} */
     const x = new Array(2 * n);
-    const seed = rng(40);
+    /** @type {uint8[]} */
+    const seed = rng.Read(40);
     let sn = 0;
 
     for (let j = 0; j < 4; ++j) {
       /** @type {uint8[]} */
       const index = [j];
+      /** @type {Shake256} */
       const sc = base.Clone().Inject(seed).Inject(index).Flip();
       for (let u = 0; u < 2 * n; u += 16) {
+        /** @type {uint8[]} */
         const buf = sc.Extract(40);
         for (let k = 0; k < 4; ++k) {
           const v = u + 4 * j + k;
@@ -2251,7 +2340,7 @@
           let loH = OpCodes.Pack32LE(buf[8 * k + 4], buf[8 * k + 5], buf[8 * k + 6], buf[8 * k + 7]);
           const neg = OpCodes.Shr32(loH, 31) === 1;
           loH = OpCodes.And32(loH, 0x7FFFFFFF);
-          const h = OpCodes.And32(buf[32 + 2 * k] + 256 * buf[33 + 2 * k], 0x7FFF);
+          const h = OpCodes.And32(OpCodes.Pack16LE(buf[32 + 2 * k], buf[33 + 2 * k]), 0x7FFF);
           const odd = t[v];
 
           let r = 0;
@@ -2295,7 +2384,7 @@
   }
 
   /**
-   * @param {Uint8Array} bytes - bytes
+   * @param {uint8[]} bytes - bytes
    * @param {int32} off - off
    * @param {int32} n - n
    * @returns {int32[]} Result
@@ -2309,9 +2398,9 @@
 
   /**
    * @param {HawkParams} P - P
-   * @param {Uint8Array} salt - salt
+   * @param {uint8[]} salt - salt
    * @param {int32[]} s1 - s1
-   * @returns {Uint8Array|null} Result
+   * @returns {uint8[]|null} Result
    */
   function EncodeSignature(P, salt, s1) {
     const n = P.n;
@@ -2327,10 +2416,10 @@
   /**
    * hawk_sign_finish.
    * @param {HawkParams} P - parameter set
-   * @param {Uint8Array} sk - encoded secret key
+   * @param {uint8[]} sk - encoded secret key
    * @param {uint8[]} message - message octets
-   * @param {function} rng - random source
-   * @returns {Uint8Array} the encoded signature
+   * @param {HawkRandom} rng - random source
+   * @returns {uint8[]} the encoded signature
    */
   function Sign(P, sk, message, rng) {
     const n = P.n;
@@ -2341,28 +2430,33 @@
     const fg = RegenFG(P, seed);
     const f = fg.f;
     const g = fg.g;
-    const f2 = f.map(function (v) { return Math.abs(v % 2); });
-    const g2 = g.map(function (v) { return Math.abs(v % 2); });
+    // f and g modulo 2.
+    const f2 = Zeros(n);
+    const g2 = Zeros(n);
+    for (let u = 0; u < n; ++u) {
+      f2[u] = Math.abs(f[u] % 2);
+      g2[u] = Math.abs(g[u] % 2);
+    }
 
     const hm = Shake([message, hpub], 64);
     const lim = Math.pow(2, P.bitsLimS1);
 
     for (let attempt = 0; attempt < 4294967294; attempt += 2) {
-      const fresh = rng(P.saltLen);
+      /** @type {uint8[]} */
+      const fresh = rng.Read(P.saltLen);
       const salt = Shake([hm, seed, Le32(attempt), fresh], P.saltLen);
       const h = Shake([hm, salt], n / 4);
       const h0 = UnpackBits(h, 0, n);
       const h1 = UnpackBits(h, n / 8, n);
 
-      /** @type {int32[]} */
-      const t0 = new Array(n).fill(0);
-      /** @type {int32[]} */
-      const t1 = new Array(n).fill(0);
+      const t0 = Zeros(n);
+      const t1 = Zeros(n);
       BinMulAdd(t0, h0, f2);
       BinMulAdd(t0, h1, F2);
       BinMulAdd(t1, h0, g2);
       BinMulAdd(t1, h1, G2);
 
+      /** @type {Shake256} */
       const base = new Shake256().Inject(hm).Inject(seed).Inject(Le32(attempt + 1));
       const sample = SampleGauss(P, rng, base, t0.concat(t1));      if (sample.norm > P.maxXnorm) continue;
       const x0 = sample.x.slice(0, n);
@@ -2370,8 +2464,7 @@
 
       // w = f*x1 - g*x0 (x holds twice the sampled vector), reduced as the
       // reference reduces it: modulo 18433, centred.
-      /** @type {int32[]} */
-      const w = new Array(n).fill(0);
+      const w = Zeros(n);
       for (let i = 0; i < n; ++i) {
         const fi = f[i];
         const gi = g[i];
@@ -2417,7 +2510,7 @@
    * @returns {int32} Result
    */
   function Int32(v) {
-    return Number(BigInt.asIntN(32, v));
+    return OpCodes.ToInt(Number(OpCodes.AndN(v, 0xFFFFFFFFn)));
   }
 
   /**
@@ -2507,7 +2600,7 @@
   }
 
   /**
-   * @param {Uint8Array} buf - buf
+   * @param {uint8[]} buf - buf
    * @param {int32} off - off
    * @param {int32} len - len
    * @returns {boolean} Result
@@ -2521,7 +2614,7 @@
   /**
    * decode_q00, as crypto_sign_open reaches it (one octet short of the key).
    * @param {HawkParams} P - P
-   * @param {Uint8Array} pk - pk
+   * @param {uint8[]} pk - pk
    * @param {int32} bufLen - bufLen
    * @returns {HawkDecodedQ00|null} Result
    */
@@ -2548,7 +2641,7 @@
     }
     if (last !== 0) return null;
     const q00 = r.values;
-    q00[0] = Number(BigInt.asIntN(16, BigInt(q00[0] * Math.pow(2, eb) + eb00)));
+    q00[0] = OpCodes.ToShort(q00[0] * Math.pow(2, eb) + eb00);
     return new HawkDecodedQ00(q00, len);
   }
 
@@ -2557,7 +2650,7 @@
    * @param {int32} n - n
    * @param {int32} low - low
    * @param {int32} limBits - limBits
-   * @param {Uint8Array} buf - buf
+   * @param {uint8[]} buf - buf
    * @param {int32} off - off
    * @param {int32} bufLen - bufLen
    * @returns {int32[]|null} Result
@@ -2585,8 +2678,7 @@
   function QNormMod(P, q00, q01, t0, t1, p) {
     const n = P.n;
     const hn = n / 2;
-    /** @type {int32[]} */
-    const full = new Array(n).fill(0);
+    const full = Zeros(n);
     full[0] = q00[0];
     for (let u = 1; u < hn; ++u) {
       full[u] = q00[u];
@@ -2617,9 +2709,9 @@
   /**
    * crypto_sign_open's verification of one signature.
    * @param {HawkParams} P - P
-   * @param {Uint8Array} pk - pk
+   * @param {uint8[]} pk - pk
    * @param {uint8[]} message - message
-   * @param {Uint8Array} sig - sig
+   * @param {uint8[]} sig - sig
    * @returns {boolean}
    */
   function Verify(P, pk, message, sig) {
@@ -2664,8 +2756,7 @@
     const q00 = d00.values;
     if (q00[0] < 0) return false;
 
-    /** @type {int32[]} */
-    const fq00 = new Array(n).fill(0);
+    const fq00 = Zeros(n);
     for (let u = 1; u < hn; ++u) {
       const z = Fx32Of(q00[u], shQ00);
       fq00[u] = z;
@@ -2691,8 +2782,12 @@
       const bw = BigInt(w00);
       const are = BigAbs(xre);
       const aim = BigAbs(xim);
-      if (OpCodes.ShiftRn(are, 32) >= bw || OpCodes.ShiftRn(aim, 32) >= bw) return false;
+      if (OpCodes.ShiftRn(are, 32) >= bw || OpCodes.ShiftRn(aim, 32) >= bw) {
+        return false;
+      }
+      /** @type {uint32} */
       const yre = Number(are / bw);
+      /** @type {uint32} */
       const yim = Number(aim / bw);
       fq01[u] = OpCodes.ToInt(xre < 0n ? -yre : yre);
       fq01[u + hn] = OpCodes.ToInt(xim < 0n ? -yim : yim);
@@ -2725,14 +2820,47 @@
   // drew, the message, the key pair and the signed message the reference
   // produced. Nothing here was produced by this file.
 
-  const KAT = {
-    'HAWK-256': [
-      {
-        count: 0,
-        file: 'PQCsignKAT_96.rsp',
-        seed: '061550234d158c5ec95595fe04ef7a25767f2e24cc2bc479d09d86dc9abcfde7056a8c266f9ef97ed08541dbd2e1ffa1',
-        msg: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8',
-        pk: '1aa4e965f7fa0ece029050e324ccff5b64a81a062fd5f2005647d02359294179ac371a426fa4f1a413501405c191ef20' +
+  /** One record of a PQCsignKAT response file, its fields in the file's order. */
+  class HawkKatRecord {
+    /**
+     * @param {int32} count - the record's count
+     * @param {string} file - the response file
+     * @param {string} seed - hex of the 48-octet generator seed
+     * @param {string} msg - hex of the message
+     * @param {string} pk - hex of the public key
+     * @param {string} sk - hex of the secret key
+     * @param {string} sm - hex of the signed message
+     */
+    constructor(count, file, seed, msg, pk, sk, sm) {
+      /** @type {int32} */
+      this.count = count;
+      /** @type {string} */
+      this.file = file;
+      /** @type {string} */
+      this.seed = seed;
+      /** @type {string} */
+      this.msg = msg;
+      /** @type {string} */
+      this.pk = pk;
+      /** @type {string} */
+      this.sk = sk;
+      /** @type {string} */
+      this.sm = sm;
+    }
+  }
+
+  // Indexed like PARAMETER_SET_LIST.
+  /** @type {HawkKatRecord[][]} */
+  const KAT = [
+    // HAWK-256
+    [
+      new HawkKatRecord(
+        0, // count
+        'PQCsignKAT_96.rsp', // file
+        '061550234d158c5ec95595fe04ef7a25767f2e24cc2bc479d09d86dc9abcfde7056a8c266f9ef97ed08541dbd2e1ffa1', // seed
+        'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8', // msg
+        // pk
+        '1aa4e965f7fa0ece029050e324ccff5b64a81a062fd5f2005647d02359294179ac371a426fa4f1a413501405c191ef20' +
             '57051788e5831a02a74053b0a2920143b11f320c28e61dc85980de5ba6e401c07ccad1e6879622b56298b98619818969' +
             'effef5f77b7b5f6ffff5edb5b77bffff7fddfe360fc1f27affa20ac570500aaa7cdf973597ab6488df3b3ea3a5c0c808' +
             '83e97ff6dedf9d653d4311204f174ee5bf21e8e8b849b5deb2379b4c53d03d71871d48b2e0dbb44a7dadd525d3f35fcb' +
@@ -2742,22 +2870,26 @@
             '7b9937dadb982d0d253d0a58131702ee1615e4093553986720c9b2a1fd612c5ef3494992e2c7c0d1710427cc8ad54ede' +
             '4637c38f1cd10333752c5599d2775f2f0368f8e8616bffbf5bbfffeffadfffb7f7fefbbbebf67dffbdefdcdfafbddfbf' +
             'ffcbfffd76edef7fbfedff0f000000000000',
-        sk: '33a8e1741166e78e8d3c4d6938aac6233d3b4e2958dde1a0ee2cab58be6511d831835b6de57933e313bec50b097816c9' +
+        // sk
+        '33a8e1741166e78e8d3c4d6938aac6233d3b4e2958dde1a0ee2cab58be6511d831835b6de57933e313bec50b097816c9' +
             'dd3307bcc85b27afa7a748bd475fef2207f746c683aa62c8df3360e6804a19acb7a1db8058cc2a4c867e0db36709f463',
-        sm: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac88757e24de80ba8581980f966d55c89' +
+        // sm
+        'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac88757e24de80ba8581980f966d55c89' +
             '0642a34d0adf7dff6f46b00005d1a3d73f0ecf371164f4dfe3790f1c101687e74751074232aac5edc00a250800e5330b' +
             '9f0929b3857a922b37b940ac1127e8072c906788284222430387203805d502dbe0a8d9b7c4099a268b80c17ab0e86d41' +
             'fa2dcc3a0ac90d361991c3af4415f93c354d084baa821b2fd40e169304592344116911abb42f5420624af9882dcdb082' +
             'b20903950de810f3b069d5ebb7a439fe6afce546942ac794034668883028d996862d752a4260d7c0a42eb954f0d92f7e' +
             'df7ffdddffdfbbfffff7f7ab57fbdbfe7effddff7fbdfbfbfefff5ffbf7ff7fbffbffbf7020000000000'
-      },
-      {
-        count: 1,
-        file: 'PQCsignKAT_96.rsp',
-        seed: '64335bf29e5de62842c941766ba129b0643b5e7121ca26cfc190ec7dc3543830557fdd5c03cf123a456d48efea43c868',
-        msg: '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a073e7b90e02ebf98ca2227eba38c1a' +
+      ),
+      new HawkKatRecord(
+        1, // count
+        'PQCsignKAT_96.rsp', // file
+        '64335bf29e5de62842c941766ba129b0643b5e7121ca26cfc190ec7dc3543830557fdd5c03cf123a456d48efea43c868', // seed
+        // msg
+        '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a073e7b90e02ebf98ca2227eba38c1a' +
              'b2568209e46dba961869c6f83983b17dcd49',
-        pk: '8efafce862ede469e14d54c53226f6c544402d92f65c925556a0446fb39a5d769085db30e1ba0e48272034b7ca7a68a1' +
+        // pk
+        '8efafce862ede469e14d54c53226f6c544402d92f65c925556a0446fb39a5d769085db30e1ba0e48272034b7ca7a68a1' +
             'a1028286a6b910bdff04480e4ef818c9183c2120f510acf120626a76b31890eeb8f08c285b7a030dfa9449707d80c1e5' +
             'fb7f7fffb7e57defadfed5bfffbdfff7f3fbdd6e037c86fce033c245e30f434b511b2f277c0e3c31e6727ad8f023eecb' +
             '43bb9a040fe58f346c6e5f95b641830942c23f64c37c224da302432376bf161b37719832d10f8297497d1ecaa200635b' +
@@ -2767,24 +2899,28 @@
             'cc2fe4872ef241485e286bac2ba98c4d917663150627a4fd56fe63a281b89717294353923a34be21c4f8d12f1a697f64' +
             '098e29bd90b21572976f9e10e92fa234062c1e0e2fdfefffdebfbbfbfffa5faf767bfd7fb77ffbdff7d7edab76f7f7ff' +
             'fddbfdfeeef7b7f7eefffe5d000000000000',
-        sk: '1afd5d58947429edb0f4bef8d99e48ec4bf0de0d51bc9e83c599eb6c882ec92fa9eebbe84aa989445cc71d9e9baf99b5' +
+        // sk
+        '1afd5d58947429edb0f4bef8d99e48ec4bf0de0d51bc9e83c599eb6c882ec92fa9eebbe84aa989445cc71d9e9baf99b5' +
             '2c6ea86bbe32e4a434c8978f91c483629f2ac8d601e033364dd4f16f07da449e36e86f39f0324d23259f50471419f45d',
-        sm: '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a073e7b90e02ebf98ca2227eba38c1a' +
+        // sm
+        '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a073e7b90e02ebf98ca2227eba38c1a' +
             'b2568209e46dba961869c6f83983b17dcd492e3bef948dcc67c7d277bc9f58484d28c27e19b42404719c4d8b69cf22f2' +
             'd61760ddc631c54566dc720826ec384d1a106865b21b342008bca266e1361a0ad3c038621a564902622f2863e701ce74' +
             '20ce8397c675e4f48b8c72ec3f6500376693454759e61007844dc315079661b28b8f0793901ba470b054ec596d1b28ec' +
             '8508b3e22a1b8c45031cf282ca06851757594a2e7c81ed72e8a3c275015e8636ba1093991261e70a6f274fda71cba049' +
             '20aac239fa0a145621ab0c220599fe9c938c5c43c272922006fa620f8570d5d1bff5fdfbffffefbdfff5dbf7ffefbbbf' +
             'fffefff5efdbf77d7ab55b6ff7fbf6ff7ef7ffd7dff60100000000'
-      }
+      )
     ],
-    'HAWK-512': [
-      {
-        count: 0,
-        file: 'PQCsignKAT_184.rsp',
-        seed: '061550234d158c5ec95595fe04ef7a25767f2e24cc2bc479d09d86dc9abcfde7056a8c266f9ef97ed08541dbd2e1ffa1',
-        msg: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8',
-        pk: 'b69f8c532d716e830c1165b52138c6995f4ee35849dd92f7f5c32d1a709e044ff00d80e9188704f289070448dd3e3ba8' +
+    // HAWK-512
+    [
+      new HawkKatRecord(
+        0, // count
+        'PQCsignKAT_184.rsp', // file
+        '061550234d158c5ec95595fe04ef7a25767f2e24cc2bc479d09d86dc9abcfde7056a8c266f9ef97ed08541dbd2e1ffa1', // seed
+        'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8', // msg
+        // pk
+        'b69f8c532d716e830c1165b52138c6995f4ee35849dd92f7f5c32d1a709e044ff00d80e9188704f289070448dd3e3ba8' +
             '97ca09527f700e391cb4174dd27344e53e9a54b6d0883c9b6c4b70b09e802a735ab75daebd008048408db8b2e134155a' +
             '3f3239058369ec9e5fd5bb10d77184589552233fb1c100d32c5485a836b510a9507f485acd701b19c2bc00b465d7704f' +
             'ce5e20143caaa2c36e9f1aa3495af2ee4b8a4a21be5580200607654a039831cf9511a33cde96a6ecdf7ec7830a82ad43' +
@@ -2806,11 +2942,13 @@
             'ab36b65c4e25b7eeb6cccd25e96f6969a776ae367a5e4d9fd27a135d713925d39af697756a2595eed9daa55a49afb76d' +
             '5b524bbbf42d756eadedb636d44a5d2575ae9d8c39ba94b297ea4d2bddfeeceeb9525d6f4dbbe97cdfe452d27d7b9eb2' +
             '565ad709000000000000000000000000',
-        sk: '0a1315c8585d6afe83cd259ea7ba63ab84178ef93f45eb4cd8cd503fdb67e70415b5da5d4c9c84c453d6c3bc4b0585e2' +
+        // sk
+        '0a1315c8585d6afe83cd259ea7ba63ab84178ef93f45eb4cd8cd503fdb67e70415b5da5d4c9c84c453d6c3bc4b0585e2' +
             '071841a97898b724eb5153a918eb3ae8ac36f32216474f2cee3ee9cb07e2c4a1263510153116b416fc23b41541d7daf7' +
             '6fb8097bd846583c81a6a89c7e3afa871081bfad4474befa790c5545de2d064f3bbf2d5a651672444760566f67dc92f4' +
             '9ab7cb604a746f6bdff976d6fe3b346d51c51b91a47666351f1cb691ebf589943b8a3202a69462a8',
-        sm: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8cd1d53990f1e3b05ee8ff67dd99574' +
+        // sm
+        'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8cd1d53990f1e3b05ee8ff67dd99574' +
             '333561db26f5b19cb94f4dcb1bb4882f6ebfe3872475d94ce3287af2227583b4a1093492d01d7a05d1e6a97a35be0f09' +
             'f34fb498a6b93d0af0c8853f6d86488a5f52f10678e1836cbbc4b97b9ddc6b63d43345ad644dd5917ac3a6ced14aa35e' +
             'fb82427a5f339d50f04825f0e8419388084e6ae20ff5c2a4cac72a94bb24b951cf8de38847808d4242004204480243d4' +
@@ -2823,14 +2961,16 @@
             'e92a59f54c826eb82555955547992b552c315ac27694d9fe4a51e3ebd6a88863cb97dac88d3ada52a4c25e8eac5e725b' +
             'c7c9d4b4ec7cc8cdc966b3fbb4ad44c3ede5e855841492f5b35caaad4adcaa5069957c92f289ec6e0000000000000000' +
             '000000000000000000000000'
-      },
-      {
-        count: 1,
-        file: 'PQCsignKAT_184.rsp',
-        seed: '64335bf29e5de62842c941766ba129b0643b5e7121ca26cfc190ec7dc3543830557fdd5c03cf123a456d48efea43c868',
-        msg: '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a073e7b90e02ebf98ca2227eba38c1a' +
+      ),
+      new HawkKatRecord(
+        1, // count
+        'PQCsignKAT_184.rsp', // file
+        '64335bf29e5de62842c941766ba129b0643b5e7121ca26cfc190ec7dc3543830557fdd5c03cf123a456d48efea43c868', // seed
+        // msg
+        '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a073e7b90e02ebf98ca2227eba38c1a' +
              'b2568209e46dba961869c6f83983b17dcd49',
-        pk: '50999e765cd8567e1f2a72ca0a530f008a4f838a4b27591f61e6a57da862a7bcf05b93e187cfb789a14185be8271f7c3' +
+        // pk
+        '50999e765cd8567e1f2a72ca0a530f008a4f838a4b27591f61e6a57da862a7bcf05b93e187cfb789a14185be8271f7c3' +
             '48270de008dee34832d600e180e2eb136b4e7cc4daf955055401414fb29562abd3a36ea8644738108ea5fa00d39c6248' +
             'd7cd48ac0fa015a1c705ce245b24b00e955d77be398d705f44dd4096e949e3e6d3b0f69485ae593c557de8ef5739bcf2' +
             '0eb2a4968936509c17b35fa3b0f11705c63783e0347595d79cea3a820aebf5e866f02d69cd1804aed22d1d4234860619' +
@@ -2852,11 +2992,13 @@
             'c85b943eb396d255f3ec2ff64bee24cf5a4b7d79dc4adead95fc8d4a3329f6484dceae64979b9c252e51eef355e42cb3' +
             '5c4b5dd94d6daeb6e4da73e1ba3dab9c2757d7946ad9adb6b626355329b3b366155556698f93aaf2a9b24e5652b92b67' +
             '4bbfd7ea2e4affae0700000000000000',
-        sk: 'c0f8f8308409d690c5a01316a9b077dd6bbe9adf2cd732c9fa6fe65d87da8b96779302961528f96217822c1bd5959cc7' +
+        // sk
+        'c0f8f8308409d690c5a01316a9b077dd6bbe9adf2cd732c9fa6fe65d87da8b96779302961528f96217822c1bd5959cc7' +
             '8f4f53f6b845a6d5b22fa17325dcadd831edf0f918780415d45e5c455dbb909e4c0d99672e4f148a9c73ce41dbee190c' +
             '7ffe6891ea6b6d769570121cad9c6cb033d19ec2b79d4411b87e80dd63ee2573728a535068a7b8f0b674d077932c71af' +
             'de752420f06ce581c1eed21150630057d7ff230011dc212bf609fc4b8b505f0b11990e0598de6d41',
-        sm: '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a073e7b90e02ebf98ca2227eba38c1a' +
+        // sm
+        '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a073e7b90e02ebf98ca2227eba38c1a' +
             'b2568209e46dba961869c6f83983b17dcd4914984c33ad7104e8635b9f8012780e9341076b7bbb8ffcf0994929f27da5' +
             '22e59ee3927168d6d18b35aa61d173d0917440c38c19faad0e0247439047c2cda4add1b410a6de0633627f887cece374' +
             'a310e851ebb8e5f1d21cba1923e238635500250faf6fb44738e05e45550a038d07df82704d263cc7d8438f696ab353e8' +
@@ -2869,15 +3011,17 @@
             'd933e588d1ea51d39551779ae947f5f62b0f63698848892e95d148db9349ad5b2aafb0c7f84d2a55d2158f297dca4aab' +
             '96fc75d5c9142573e3af249206a9a75645eac40aa34fed75d574b28c2599085d3ed1d4ace228c624b0544a23b484f80e' +
             'aac775a312458dc29a494dab8a722aa21ec91cc8b445c94aadaa5f140f00000000000000000000000000000000'
-      }
+      )
     ],
-    'HAWK-1024': [
-      {
-        count: 0,
-        file: 'PQCsignKAT_360.rsp',
-        seed: '061550234d158c5ec95595fe04ef7a25767f2e24cc2bc479d09d86dc9abcfde7056a8c266f9ef97ed08541dbd2e1ffa1',
-        msg: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8',
-        pk: 'd4645c050d7a7c2d5b9452354e9b961aa40d9b1bcb09ebbf52a64fada7106f72068fd7854a8d84c7c8a3b3a755afd8f2' +
+    // HAWK-1024
+    [
+      new HawkKatRecord(
+        0, // count
+        'PQCsignKAT_360.rsp', // file
+        '061550234d158c5ec95595fe04ef7a25767f2e24cc2bc479d09d86dc9abcfde7056a8c266f9ef97ed08541dbd2e1ffa1', // seed
+        'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8', // msg
+        // pk
+        'd4645c050d7a7c2d5b9452354e9b961aa40d9b1bcb09ebbf52a64fada7106f72068fd7854a8d84c7c8a3b3a755afd8f2' +
             '7e4941c9dd882562f36361a6e73df8f13dd38c226e4175c7b18c0698be914d5db748cb7fe11f78156a4d406fe8176cd0' +
             '01332fcda49b19954670f7c01223570db8fa5c176f4ad0a205cd013e961935e26badda73188c2a0982e9344c4749af75' +
             '15eb07ca6996e8f900080db8ae3768dcc62ad810451104bbd6d5e4518ad6da17bc17a4b5790cc5575e00c3a7d4595d8e' +
@@ -2928,7 +3072,8 @@
             '088949094d548820a14893d2d0212251a454246d8814c28494847a15149410b88810992890d2b8603442514cb2201189' +
             'c892b2a80914a41425c9086511119914bca08c2698384215b141089b2492e0011123254a0622a5986418498d83190100' +
             '00000000000000000000000000000000000000000000000000000000000000000000000000000000',
-        sk: '61ee7ec28a59914a778d0592ea722329b7736a285e9426c14ffe5d3a3947df2f795cd46045990685227d2e025da989f1' +
+        // sk
+        '61ee7ec28a59914a778d0592ea722329b7736a285e9426c14ffe5d3a3947df2f795cd46045990685227d2e025da989f1' +
             'be618ca878f462eb58b916ae35c237e09b9a413902e1ed855294f47db1ae79e9ae98526ec7b2becb4878a1d91d4f4caa' +
             '17b4362ad39f2902f2e91a53729a653c16f64f7324167a8bb1b9bfd76e15df95682099d04ddc48f7a54b010c03b4b4e4' +
             '312837eb78f5e1c537bc34374881d8af4b2bfaa43835da1c177013f6998e969ec76f1e703cc62a3ddcabaf827dea6814' +
@@ -2936,7 +3081,8 @@
             'c00ca4046ab93a5ead62d2d7679543b76667a3a57d3aaeb2a6ab94a331777bcd7386e7f40bacb0452326679ada73f7a2' +
             '3f00b9972972be0112118e3f69be6ddde9d1d62b380dc6fb7688f263c4f95066aa3cc6457ff6989fcb21fc950614c313' +
             'e57b6242241e8a23186373944780fd49b8369bc81fea2b3b',
-        sm: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac87a7551d10eda23430ae3896a0002c1' +
+        // sm
+        'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac87a7551d10eda23430ae3896a0002c1' +
             '2bc7e2156c7fc2d0efbd37d6a9a333789332d3eb173a3b0a119d0b673517f0c3db6f9d00ec398f057e13e6c84f2f800f' +
             '9675c33771bb94430abdd56408b6c659a0e0fc1760d3545d30bb0b23f539762a01e11e77e0b1b9d07624a91fe1ec7ee4' +
             '1b28feee3ba02cde3e0f7fa50f8b7a59b007bb97efd24edd6ba55e6efb57f0e49843aea094839bba82107bc3aad14079' +
@@ -2963,14 +3109,16 @@
             '7c1ea950d3aefcdb489398e69b1c49ed2a192a8a87b2e96a52599b6268f7e8e5d1c8c85b6dbb1d6252e50c99b78b9614' +
             '87cb09868e48c8ae56a2849de934e7214912515d2d6cb54f59ae60000000000000000000000000000000000000000000' +
             '000000000000'
-      },
-      {
-        count: 1,
-        file: 'PQCsignKAT_360.rsp',
-        seed: '64335bf29e5de62842c941766ba129b0643b5e7121ca26cfc190ec7dc3543830557fdd5c03cf123a456d48efea43c868',
-        msg: '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a073e7b90e02ebf98ca2227eba38c1a' +
+      ),
+      new HawkKatRecord(
+        1, // count
+        'PQCsignKAT_360.rsp', // file
+        '64335bf29e5de62842c941766ba129b0643b5e7121ca26cfc190ec7dc3543830557fdd5c03cf123a456d48efea43c868', // seed
+        // msg
+        '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a073e7b90e02ebf98ca2227eba38c1a' +
              'b2568209e46dba961869c6f83983b17dcd49',
-        pk: '605253c86e7785b8c8e0cd90a5a3852924b546b6d8dd6b63a9cb3795f01a5e38e9e354b3b8cc36721642f4002023b9ac' +
+        // pk
+        '605253c86e7785b8c8e0cd90a5a3852924b546b6d8dd6b63a9cb3795f01a5e38e9e354b3b8cc36721642f4002023b9ac' +
             'e0d7f588d64a0cb46f2e518da826d9f5852cd415c289526d70484b6b5f55e053587dc03f816b962ea998437218467c9c' +
             '1b9abed129ed04d6fefca04dd02b4daff7d1488e07d3e8b899e4708a05e3b6537300f4955620529ec014897627212d85' +
             'af85c5e8322f86563747e6f3182e9f87e2aef51e7875a59e7237514fe13e2662ec125a7dab4371673a00fdc9b5b5e689' +
@@ -3021,7 +3169,8 @@
             'a246936114aab63512294204894511896538019320410847ee085d211cca904034a194804c4a14c178a9cc8b84171a75' +
             'b073b2a388a48401210de1491613748399ac481b94b218a3880a8b31154281225321184db95a89c88a8090a462682422' +
             '48a2941046054e09c4620879c0885082010000000000000000000000000000000000000000000000',
-        sk: '8cbe9660a20e8a7b8d370d52a3f2219f202045ebbf5f9dff7f2f4b3e6c64771b3420dd08615ed93c343feefc66eff297' +
+        // sk
+        '8cbe9660a20e8a7b8d370d52a3f2219f202045ebbf5f9dff7f2f4b3e6c64771b3420dd08615ed93c343feefc66eff297' +
             '50f21e308803f7c4352327efa601d1bd83675021169e35e7cfc497b3805da7bfee93b22ed65e0c80f9b5f3836f29a749' +
             'a062231ea515a2f9c8deb3b7f80c28d7654857e3d22021deb9b56d73295541465fa610354672e05b23e3d73d4221c637' +
             'bf6b3103c7afe5cb2d25e5283c7f1780c5983d43307423f4fab7eee3f6e8fbecc3362c1308c39faf773bd921c70db44b' +
@@ -3029,7 +3178,8 @@
             '0f85b6621d15aa54bccbe4820b6f0c54a1b96465296bc4ab760b4f0428bd3f955e8c5cb1a5153bab6498c89a83c33ac2' +
             '714b164c9a2b87a368107dd0fa8070c89ff09236ecf3dfa891f25835fe8f8fd0ad82221dd15d8a46289b2feef36a4ddc' +
             '8e1bdc4bf88779e6c6905d649d6d5dcf6cacd3ef25081374',
-        sm: '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a073e7b90e02ebf98ca2227eba38c1a' +
+        // sm
+        '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a073e7b90e02ebf98ca2227eba38c1a' +
             'b2568209e46dba961869c6f83983b17dcd4975abf4a0ded89e6d41a28856c16597a304bbde4172f5e0c6a05ff4fd9c40' +
             'a4540b0cdb23d76d223efbd94ee6f02e6f35b09236a0dd2bacf2bdce7ff35a6f6109a9d8ae64ef1cccc056931f88645f' +
             '3b48fba30ab4f74ef083f36b18938a5c0972eee8edbd974397d9ea7f0d1857620870af4a0b707789f081ee8a9e0a3402' +
@@ -3056,9 +3206,9 @@
             '1dd65a48ad9a315b42564b10ad4d03ed47e9aaa88e854f6d84472d2e2b1b5aea65592eb93a0b09253e5b37aa610a45b5' +
             '6affa56c941a366ef792946366d1552b6bf64f7552226b6bcca892456abdec75d368291fb18c9ac4b692cbaaf6e5445b' +
             'ec3c4249e7abcb94f65a5a4b010000000000000000000000000000000000000000000000000000'
-      }
+      )
     ]
-  };
+  ];
 
   /**
    * A copy of the octets with one of them inverted.
@@ -3070,6 +3220,15 @@
     const out = bytes.slice();
     out[index] = OpCodes.Xor32(out[index], 0xFF);
     return out;
+  }
+
+  /**
+   * @param {string} setName - the parameter set
+   * @param {HawkKatRecord} r - a record
+   * @returns {string} where the record comes from
+   */
+  function KatLabel(setName, r) {
+    return setName + ' ' + r.file + ' count ' + r.count;
   }
 
   // ===== ALGORITHM =====
@@ -3094,14 +3253,19 @@
       this.complexity = ComplexityType.EXPERT;
       this.country = CountryCode.INTL;
 
-      this.parameterSets = Object.keys(PARAMETER_SETS);
+      /** @type {string[]} */
+      this.parameterSets = [];
+      for (let i = 0; i < PARAMETER_SET_LIST.length; ++i) this.parameterSets.push(PARAMETER_SET_LIST[i].name);
 
       // The key is the encoded secret key of the parameter set: 96, 184 or
       // 360 octets. Its length selects the parameter set.
-      this.SupportedKeySizes = this.parameterSets.map(function (name) {
-        const s = PARAMETER_SETS[name].skSize;
-        return new KeySize(s, s, 0);
-      });
+      /** @type {KeySize[]} */
+      const keySizes = [];
+      for (let i = 0; i < PARAMETER_SET_LIST.length; ++i) {
+        const size = PARAMETER_SET_LIST[i].skSize;
+        keySizes.push(new KeySize(size, size, 0));
+      }
+      this.SupportedKeySizes = keySizes;
 
       this.documentation = [
         new LinkItem('HAWK round-two specification',
@@ -3161,90 +3325,81 @@
       // secret key from their seed, their public key from their secret key,
       // their signed message octet for octet, and open under their public key.
       this.tests = [];
-      for (const setName of this.parameterSets) {
-        const records = KAT[setName];
-        const uri = 'https://csrc.nist.gov/csrc/media/Projects/pqc-dig-sig/documents/round-2/submission-pkg/hawk-submission-round2.zip';
-        const r0 = records[0];
-        const r1 = records[1];
-        const h = OpCodes.Hex8ToBytes;
-        const where = function (r) { return setName + ' ' + r.file + ' count ' + r.count; };
+      const uri = 'https://csrc.nist.gov/csrc/media/Projects/pqc-dig-sig/documents/round-2/submission-pkg/hawk-submission-round2.zip';
+      for (let set = 0; set < PARAMETER_SET_LIST.length; ++set) {
+        const P = PARAMETER_SET_LIST[set];
+        const setName = P.name;
+        const r0 = KAT[set][0];
+        const r1 = KAT[set][1];
+        const where0 = KatLabel(setName, r0);
+        const where1 = KatLabel(setName, r1);
 
-        this.tests.push({
-          text: where(r0) + ': signing with the secret key replays the published signed message',
-          uri: uri,
-          input: h(r0.msg),
-          key: h(r0.sk),
-          drbgSeed: h(r0.seed),
-          expected: h(r0.sm)
-        });
-        this.tests.push({
-          text: where(r1) + ': key generation from the harness seed, then signing, replays the published signed message',
-          uri: uri,
-          input: h(r1.msg),
-          parameterSet: setName,
-          drbgSeed: h(r1.seed),
-          expected: h(r1.sm)
-        });
-        this.tests.push({
-          text: where(r0) + ': the published signed message opens under the published public key',
-          uri: uri,
-          inverse: true,
-          publicKey: h(r0.pk),
-          input: h(r0.sm),
-          expected: h(r0.msg)
-        });
-        this.tests.push({
-          text: where(r1) + ': the published signed message opens under the published public key',
-          uri: uri,
-          inverse: true,
-          publicKey: h(r1.pk),
-          input: h(r1.sm),
-          expected: h(r1.msg)
-        });
-        this.tests.push({
-          text: where(r1) + ': the published signed message opens under the public key rebuilt from the secret key',
-          uri: uri,
-          inverse: true,
-          key: h(r1.sk),
-          input: h(r1.sm),
-          expected: h(r1.msg)
-        });
-        this.tests.push({
-          text: where(r0) + ': the verdict on the published signed message is acceptance',
-          uri: uri,
-          inverse: true,
-          publicKey: h(r0.pk),
-          message: h(r0.msg),
-          input: h(r0.sm),
-          expected: [1]
-        });
-        this.tests.push({
-          text: where(r0) + ': the signature must not verify for a message with its first octet changed',
-          uri: uri,
-          inverse: true,
-          publicKey: h(r0.pk),
-          message: FlipOctet(h(r0.msg), 0),
-          input: FlipOctet(h(r0.sm), 0),
-          expected: [0]
-        });
-        this.tests.push({
-          text: where(r0) + ': a signature with one octet of s1 changed must not verify',
-          uri: uri,
-          inverse: true,
-          publicKey: h(r0.pk),
-          message: h(r0.msg),
-          input: FlipOctet(h(r0.sm), h(r0.msg).length + PARAMETER_SETS[setName].saltLen + 8),
-          expected: [0]
-        });
-        this.tests.push({
-          text: where(r0) + ': the signed message must not verify under count ' + r1.count + '\'s public key',
-          uri: uri,
-          inverse: true,
-          publicKey: h(r1.pk),
-          message: h(r0.msg),
-          input: h(r0.sm),
-          expected: [0]
-        });
+        const signing = new TestCase(OpCodes.Hex8ToBytes(r0.msg), OpCodes.Hex8ToBytes(r0.sm),
+          where0 + ': signing with the secret key replays the published signed message', uri);
+        signing.key = OpCodes.Hex8ToBytes(r0.sk);
+        signing.drbgSeed = OpCodes.Hex8ToBytes(r0.seed);
+        this.tests.push(signing);
+
+        const keygen = new TestCase(OpCodes.Hex8ToBytes(r1.msg), OpCodes.Hex8ToBytes(r1.sm),
+          where1 + ': key generation from the harness seed, then signing, replays the published signed message', uri);
+        keygen.parameterSet = setName;
+        keygen.drbgSeed = OpCodes.Hex8ToBytes(r1.seed);
+        this.tests.push(keygen);
+
+        const open0 = new TestCase(OpCodes.Hex8ToBytes(r0.sm), OpCodes.Hex8ToBytes(r0.msg),
+          where0 + ': the published signed message opens under the published public key', uri);
+        open0.inverse = true;
+        open0.publicKey = OpCodes.Hex8ToBytes(r0.pk);
+        this.tests.push(open0);
+
+        const open1 = new TestCase(OpCodes.Hex8ToBytes(r1.sm), OpCodes.Hex8ToBytes(r1.msg),
+          where1 + ': the published signed message opens under the published public key', uri);
+        open1.inverse = true;
+        open1.publicKey = OpCodes.Hex8ToBytes(r1.pk);
+        this.tests.push(open1);
+
+        const rebuilt = new TestCase(OpCodes.Hex8ToBytes(r1.sm), OpCodes.Hex8ToBytes(r1.msg),
+          where1 + ': the published signed message opens under the public key rebuilt from the secret key', uri);
+        rebuilt.inverse = true;
+        rebuilt.key = OpCodes.Hex8ToBytes(r1.sk);
+        this.tests.push(rebuilt);
+
+        /** @type {uint8[]} */
+        const accepted = [1];
+        const accept = new TestCase(OpCodes.Hex8ToBytes(r0.sm), accepted,
+          where0 + ': the verdict on the published signed message is acceptance', uri);
+        accept.inverse = true;
+        accept.publicKey = OpCodes.Hex8ToBytes(r0.pk);
+        accept.message = OpCodes.Hex8ToBytes(r0.msg);
+        this.tests.push(accept);
+
+        /** @type {uint8[]} */
+        const rejectedMessage = [0];
+        const badMessage = new TestCase(FlipOctet(OpCodes.Hex8ToBytes(r0.sm), 0), rejectedMessage,
+          where0 + ': the signature must not verify for a message with its first octet changed', uri);
+        badMessage.inverse = true;
+        badMessage.publicKey = OpCodes.Hex8ToBytes(r0.pk);
+        badMessage.message = FlipOctet(OpCodes.Hex8ToBytes(r0.msg), 0);
+        this.tests.push(badMessage);
+
+        /** @type {uint8[]} */
+        const rejectedSignature = [0];
+        const s1Offset = OpCodes.Hex8ToBytes(r0.msg).length + P.saltLen + 8;
+        const badSignature = new TestCase(FlipOctet(OpCodes.Hex8ToBytes(r0.sm), s1Offset), rejectedSignature,
+          where0 + ': a signature with one octet of s1 changed must not verify', uri);
+        badSignature.inverse = true;
+        badSignature.publicKey = OpCodes.Hex8ToBytes(r0.pk);
+        badSignature.message = OpCodes.Hex8ToBytes(r0.msg);
+        this.tests.push(badSignature);
+
+        /** @type {uint8[]} */
+        const rejectedKey = [0];
+        const foreignKey = new TestCase(OpCodes.Hex8ToBytes(r0.sm), rejectedKey,
+          where0 + ': the signed message must not verify under count ' + r1.count + '\'s public key', uri);
+        foreignKey.inverse = true;
+        foreignKey.publicKey = OpCodes.Hex8ToBytes(r1.pk);
+        foreignKey.message = OpCodes.Hex8ToBytes(r0.msg);
+        this.tests.push(foreignKey);
       }
     }
 
@@ -3279,18 +3434,24 @@
       this.isInverse = isInverse;
       /** @type {HawkParams|null} */
       this._params = null;
+      /** @type {boolean} */
+      this._explicitSet = false;
       /** @type {uint8[]|null} */
       this._keyData = null;
+      /** @type {uint8[]|null} */
       this._publicKeyData = null;
+      /** @type {uint8[]|null} */
       this._derivedPublicKey = null;
+      /** @type {uint8[]|null} */
       this._drbgSeed = null;
+      /** @type {uint8[]|null} */
       this._message = null;
       this.inputBuffer = [];
     }
 
     /**
      * Install an encoded secret key; its length selects the parameter set.
-     * @param {uint8[]} keyData - 96, 184 or 360 octets
+     * @param {uint8[]|null} keyData - 96, 184 or 360 octets
      */
     KeySetup(keyData) {
       if (!keyData) {
@@ -3307,19 +3468,30 @@
       this._derivedPublicKey = null;
     }
 
+    /**
+     * @param {uint8[]|null} keyData - the encoded secret key
+     */
     set key(keyData) {
       this.KeySetup(keyData);
     }
 
+    /**
+     * @returns {uint8[]|null} a copy of the encoded secret key
+     */
     get key() {
       return this._keyData ? this._keyData.slice() : null;
     }
 
-    /** The parameter set in use, by name. */
+    /**
+     * @returns {string|null} the name of the parameter set in use
+     */
     get parameterSet() {
       return this._params ? this._params.name : null;
     }
 
+    /**
+     * @param {string} name - 'HAWK-256', 'HAWK-512' or 'HAWK-1024'
+     */
     set parameterSet(name) {
       const P = ParameterSetEntry(name);
       if (!P) throw new Error('HAWK: unknown parameter set ' + name);
@@ -3332,11 +3504,12 @@
     /**
      * The public key: the one set explicitly, the one rebuilt from the
      * secret key's seed, or the one the configured generator seed yields.
+     * @returns {uint8[]|null} a copy of the encoded public key
      */
     get publicKey() {
       if (this._publicKeyData) return this._publicKeyData.slice();
       if (!this._keyData && this._drbgSeed && this._params) {
-        const pair = Keygen(this._params, Drbg(this._drbgSeed));
+        const pair = Keygen(this._params, new HawkRandom(this._drbgSeed));
         this._keyData = Array.from(pair.sk);
         this._derivedPublicKey = Array.from(pair.pk);
       }
@@ -3346,6 +3519,9 @@
       return this._derivedPublicKey.slice();
     }
 
+    /**
+     * @param {uint8[]|null} value - 450, 1024 or 2440 octets
+     */
     set publicKey(value) {
       if (!value) {
         this._publicKeyData = null;
@@ -3359,7 +3535,10 @@
       this._publicKeyData = Array.from(value);
     }
 
-    /** The 48-octet seed of a NIST harness run, whose generator then supplies all randomness. */
+    /**
+     * The 48-octet seed of a NIST harness run, whose generator then supplies all randomness.
+     * @param {uint8[]|null} value - the seed
+     */
     set drbgSeed(value) {
       if (!value) {
         this._drbgSeed = null;
@@ -3369,29 +3548,31 @@
       this._drbgSeed = Array.from(value);
     }
 
+    /**
+     * @returns {uint8[]|null} a copy of the generator seed
+     */
     get drbgSeed() {
       return this._drbgSeed ? this._drbgSeed.slice() : null;
     }
 
-    /** With a message set, verification returns a verdict on it instead of the message. */
+    /**
+     * With a message set, verification returns a verdict on it instead of the message.
+     * @param {uint8[]|null} value - the message
+     */
     set message(value) {
       this._message = value ? Array.from(value) : null;
     }
 
+    /**
+     * @returns {uint8[]|null} a copy of the message
+     */
     get message() {
       return this._message ? this._message.slice() : null;
     }
 
-    Feed(data) {
-      if (typeof data === 'string') {
-        for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data.charCodeAt(i) % 256);
-      } else if (data && typeof data.length === 'number') {
-        for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data[i]);
-      } else if (typeof data === 'number') {
-        this.inputBuffer.push(data);
-      }
-    }
-
+    /**
+     * @returns {uint8[]} the signed message, or the opened message or verdict
+     */
     Result() {
       const input = this.inputBuffer;
       this.inputBuffer = [];
@@ -3401,11 +3582,12 @@
     /**
      * The random source for signing: the replayed harness generator after
      * the key-generation draws, or zeros.
+     * @returns {HawkRandom} the source
      */
     _signingRng() {
       const P = this._params;
-      if (!this._drbgSeed) return ZeroRng;
-      const rng = Drbg(this._drbgSeed);
+      if (!this._drbgSeed) return new HawkRandom(null);
+      const rng = new HawkRandom(this._drbgSeed);
       if (!this._keyData) {
         const pair = Keygen(P, rng);
         this._keyData = Array.from(pair.sk);
@@ -3416,7 +3598,8 @@
       // attempts it discarded are skipped by drawing until the key's seed.
       const seed = this._keyData.slice(0, P.seedLen);
       for (let attempt = 0; attempt < 100000; ++attempt) {
-        const drawn = rng(P.seedLen);
+        /** @type {uint8[]} */
+        const drawn = rng.Read(P.seedLen);
         let same = true;
         for (let i = 0; i < P.seedLen; ++i)
           if (drawn[i] !== seed[i]) { same = false; break; }
@@ -3425,6 +3608,10 @@
       throw new Error(P.name + ': the generator seed did not produce this secret key');
     }
 
+    /**
+     * @param {uint8[]} message - the message
+     * @returns {uint8[]} message || signature
+     */
     _sign(message) {
       if (!this._params)
         throw new Error('HAWK: signing needs a secret key, or a generator seed and a parameter set');
@@ -3433,20 +3620,27 @@
       const P = this._params;
       const rng = this._signingRng();
       const sig = Sign(P, Uint8Array.from(this._keyData), message, rng);
+      /** @type {uint8[]} */
       const out = new Array(message.length + sig.length);
       for (let i = 0; i < message.length; ++i) out[i] = message[i];
       for (let i = 0; i < sig.length; ++i) out[message.length + i] = sig[i];
       return out;
     }
 
+    /**
+     * @param {uint8[]} sm - message || signature
+     * @returns {uint8[]} the message, or [1]/[0] as the verdict on the configured message
+     */
     _open(sm) {
       if (!this._params)
         throw new Error('HAWK: verification needs a public key or a secret key');
       const P = this._params;
+      /** @type {uint8[]|null} */
       const pk = this.publicKey;
       if (!pk) throw new Error('HAWK: verification needs a public key or a secret key');
 
       let accepted = false;
+      /** @type {uint8[]} */
       let message = [];
       if (sm.length >= P.sigSize) {
         message = sm.slice(0, sm.length - P.sigSize);
@@ -3457,7 +3651,9 @@
         let same = accepted && message.length === this._message.length;
         for (let i = 0; same && i < message.length; ++i)
           if (message[i] !== this._message[i]) same = false;
-        return [same ? 1 : 0];
+        /** @type {uint8[]} */
+        const verdict = [same ? 1 : 0];
+        return verdict;
       }
       if (!accepted) throw new Error(P.name + ': the signature does not verify');
       return message;
@@ -3486,9 +3682,9 @@
   return {
     HawkAlgorithm,
     HawkInstance,
-    PARAMETER_SETS,
+    PARAMETER_SET_LIST,
     Shake256,
-    Drbg,
+    HawkRandom,
     RegenFG,
     KeygenAttempt,
     Keygen,
