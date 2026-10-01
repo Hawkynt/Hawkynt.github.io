@@ -59,6 +59,29 @@
   // ===== ALGORITHM IMPLEMENTATION =====
 
   /**
+   * Code parameters and graph density as reported by getPerformanceReport()
+   * @class
+   */
+  class TornadoPerformanceReport {
+    /**
+     * @param {int32} stages - Tornado stages
+     * @param {int32} sourceSymbols - Source symbols (k)
+     * @param {float64} overhead - Overhead factor
+     * @param {float64} graphDensity - Edge density over all stages
+     */
+    constructor(stages, sourceSymbols, overhead, graphDensity) {
+      /** @type {int32} */
+      this.stages = stages;
+      /** @type {int32} */
+      this.sourceSymbols = sourceSymbols;
+      /** @type {float64} */
+      this.overhead = overhead;
+      /** @type {float64} */
+      this.graphDensity = graphDensity;
+    }
+  }
+
+  /**
    * Per-stage statistics as reported by getStageStats()
    * @class
    */
@@ -266,7 +289,9 @@
       this.graphs = [];         // Array of graphs for each stage
       /** @type {uint8[][]} */
       this.stageSymbols = [];   // Intermediate symbols at each stage
+      /** @type {SeededRandom} */
       this.rng = null;
+      /** @type {PerformanceProfiler} */
       this.profiler = new PerformanceProfiler();
       /** @type {DegreeDistribution[]} */
       this.degreeDistributions = [];
@@ -368,11 +393,13 @@
       // Initialize each tornado stage
       for (let stage = 0; stage < this.stages; stage++) {
         const stageK = stage === 0 ? this.k : Math.ceil(this.k / Math.pow(2, stage));
+        /** @type {DegreeDistribution} */
         const stageDegree = new DegreeDistribution(stageK);
         this.degreeDistributions.push(stageDegree);
 
         // Create graph for this stage
         const numChecks = Math.ceil(stageK * (1.0 + this.overhead / this.stages));
+        /** @type {BipartiteGraph} */
         const graph = new BipartiteGraph(stageK, numChecks);
         this.graphs.push(graph);
 
@@ -607,15 +634,12 @@
       return decodedCount === this.k ? decoded : null;
     }
 
-    // Performance analysis
+    /**
+     * Code parameters and overall graph density
+     * @returns {TornadoPerformanceReport} Performance report
+     */
     getPerformanceReport() {
-      return {
-        ...this.profiler.getReport(),
-        stages: this.stages,
-        sourceSymbols: this.k,
-        overhead: this.overhead,
-        graphDensity: this._calculateOverallGraphDensity()
-      };
+      return new TornadoPerformanceReport(this.stages, this.k, this.overhead, this._calculateOverallGraphDensity());
     }
 
     /**

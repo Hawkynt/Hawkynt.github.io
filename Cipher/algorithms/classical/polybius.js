@@ -164,10 +164,10 @@
         ['V', 'W', 'X', 'Y', 'Z']
       ];
 
-      // The grid stays untyped: the key getter hands it out although the key
-      // setter takes keyword bytes, and only an untyped grid lets the key
-      // property of a statically typed port, typed by its setter, accept it
-      this.grid = JSON.parse(JSON.stringify(this.STANDARD_GRID)); // Deep copy
+      /** @type {string[][]} */
+      this.grid = this.copyStandardGrid();
+      /** @type {uint8[]} */
+      this._key = [];
     }
 
     /**
@@ -177,9 +177,12 @@
     set key(keyData) {
       if (!keyData || keyData.length === 0) {
         // Use standard grid
-        this.grid = JSON.parse(JSON.stringify(this.STANDARD_GRID));
+        this._key = [];
+        this.grid = this.copyStandardGrid();
         return;
       }
+
+      this._key = keyData.slice();
 
       /** @type {string} */
       const keyword = String.fromCharCode.apply(null, keyData);
@@ -187,12 +190,24 @@
     }
 
     /**
-   * Get the grid in use
-   * @returns {string[][]} Grid of single letters
+   * Get the keyword bytes in use
+   * @returns {uint8[]} Keyword bytes, empty for the standard grid
    */
 
     get key() {
-      return this.grid;
+      return this._key;
+    }
+
+    /**
+     * Copy the standard grid, so a keyed grid never aliases it
+     * @returns {string[][]} Grid of single letters
+     */
+    copyStandardGrid() {
+      /** @type {string[][]} */
+      const grid = [];
+      for (let row = 0; row < this.STANDARD_GRID.length; ++row)
+        grid.push(this.STANDARD_GRID[row].slice());
+      return grid;
     }
 
     /**
@@ -202,7 +217,7 @@
      */
     createCustomGrid(keyword) {
       if (!keyword || keyword.length === 0) {
-        return JSON.parse(JSON.stringify(this.STANDARD_GRID));
+        return this.copyStandardGrid();
       }
 
       // Normalize keyword: uppercase, letters only, remove duplicates

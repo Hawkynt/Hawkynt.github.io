@@ -134,6 +134,43 @@
   }
 
   /**
+   * Encoding parameters and graph statistics as reported by getPerformanceReport()
+   * @class
+   */
+  class LTEnhancedPerformanceReport {
+    /**
+     * @param {LTParameters} parameters - Encoding parameters
+     * @param {GraphStatistics} graphStats - Encoding-graph statistics, or null before encoding
+     */
+    constructor(parameters, graphStats) {
+      /** @type {LTParameters} */
+      this.parameters = parameters;
+      /** @type {GraphStatistics} */
+      this.graphStats = graphStats;
+    }
+  }
+
+  /**
+   * Encoded-symbol degree histogram as reported by getDegreeDistributionStats()
+   * @class
+   */
+  class DegreeDistributionStats {
+    /**
+     * @param {int32[]} distribution - Occurrences of each degree, indexed by degree
+     * @param {int32} totalSymbols - Encoded symbols
+     * @param {float64} averageDegree - Mean degree
+     */
+    constructor(distribution, totalSymbols, averageDegree) {
+      /** @type {int32[]} */
+      this.distribution = distribution;
+      /** @type {int32} */
+      this.totalSymbols = totalSymbols;
+      /** @type {float64} */
+      this.averageDegree = averageDegree;
+    }
+  }
+
+  /**
    * The indices 0 .. count-1
    * @param {int32} count - Number of indices
    * @returns {int32[]} Index list
@@ -303,9 +340,13 @@
       this.maxIterations = 1000;   // Max belief propagation iterations
 
       // Internal state
+      /** @type {BipartiteGraph} */
       this.graph = null;
+      /** @type {DegreeDistribution} */
       this.degreeDistribution = null;
+      /** @type {SeededRandom} */
       this.rng = null;
+      /** @type {PerformanceProfiler} */
       this.profiler = new PerformanceProfiler();
 
       // Encoding metadata
@@ -651,6 +692,7 @@
       const numReceived = this.encodedSymbols.length;
 
       // Build sparse matrix representation for Gaussian elimination
+      /** @type {SparseMatrix} */
       const matrix = new SparseMatrix(numReceived, this.k);
       /** @type {uint8[]} */
       const receivedVector = this.encodedSymbols.slice();
@@ -775,7 +817,9 @@
      */
     _reconstructDecodingGraph(numReceived) {
       // Reconstruct the encoding graph for received symbols
+      /** @type {BipartiteGraph} */
       const graph = new BipartiteGraph(this.k, numReceived);
+      /** @type {SeededRandom} */
       const rng = new SeededRandom(this.seed);
       /** @type {float64[]} */
       const cdf = this.degreeDistribution.buildCumulativeDistribution(this.c, this.delta);
@@ -810,12 +854,14 @@
 
     // ===== PERFORMANCE AND ANALYSIS =====
 
+    /**
+     * Encoding parameters and encoding-graph statistics
+     * @returns {LTEnhancedPerformanceReport} Performance report
+     */
     getPerformanceReport() {
-      return {
-        ...this.profiler.getReport(),
-        parameters: new LTParameters(this.k, this.overhead, this.c, this.delta, this.systematic, this.useInactivation),
-        graphStats: this._getGraphStatistics()
-      };
+      return new LTEnhancedPerformanceReport(
+        new LTParameters(this.k, this.overhead, this.c, this.delta, this.systematic, this.useInactivation),
+        this._getGraphStatistics());
     }
 
     /**
@@ -858,6 +904,10 @@
         degrees[Math.floor(degrees.length / 2)], totalEdges / (leftNodes * rightNodes));
     }
 
+    /**
+     * How often each degree occurs among the encoded symbols
+     * @returns {DegreeDistributionStats} Degree histogram, or null before encoding
+     */
     getDegreeDistributionStats() {
       if (!this.encodingMetadata || this.encodingMetadata.length === 0) {
         return null;
@@ -865,19 +915,18 @@
 
       /** @type {int32} */
       let degreeSum = 0;
-      const degreeCount = {};
+      /** @type {int32[]} */
+      const degreeCount = [];
       for (let i = 0; i < this.encodingMetadata.length; ++i) {
         /** @type {int32} */
         const deg = this.encodingMetadata[i].degree;
-        degreeCount[deg] = ((degreeCount[deg] ? degreeCount[deg] : 0)) + 1;
+        while (degreeCount.length <= deg) degreeCount.push(0);
+        ++degreeCount[deg];
         degreeSum += deg;
       }
 
-      return {
-        distribution: degreeCount,
-        totalSymbols: this.encodingMetadata.length,
-        averageDegree: degreeSum / this.encodingMetadata.length
-      };
+      return new DegreeDistributionStats(degreeCount, this.encodingMetadata.length,
+        degreeSum / this.encodingMetadata.length);
     }
   }
 
