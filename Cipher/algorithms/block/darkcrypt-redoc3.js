@@ -5,12 +5,18 @@
  *
  * REDOC III as implemented in the DarkCrypt Total Commander plugin
  * (Alexander Myasnikov, "Zarya" project). 80-bit block, 256-bit key.
- * Structure:
- *   - key setup builds a 2560-byte pseudorandom table using a classic
- *     linear-congruential generator (multiplier 0x41C64E6D, increment
- *     0x3039 — the historic Borland/Turbo C runtime rand()), reseeded
- *     once per key byte pair with a fixed odd-prime step size used to
- *     walk the table indices
+ * It is Michael Wood's REDOC III reference source applied to a 10-byte
+ * block. Structure:
+ *   - key setup builds a 2560-byte pseudorandom table using the C
+ *     standard's reference rand() (multiplier 0x41C64E6D, increment
+ *     0x3039, 15-bit result), reseeded once per key byte pair with a
+ *     fixed odd-prime step size used to walk the table indices
+ *   - the plugin builds each seed in a 32-bit variable of which it sets
+ *     only the low 16 bits (the two key bytes); the upper 16 bits keep
+ *     whatever the memory held before, so the plugin's output varies with
+ *     that content. This implementation clears them, which reproduces the
+ *     16-bit seed of the reference source and the plugin's output when
+ *     that memory is zero
  *   - the 2560-byte table is XOR-folded (cyclically, 16 bytes at a
  *     time) into a 16-byte subkey
  *   - only the FIRST 8 bytes of the 10-byte block are transformed; the
@@ -24,7 +30,8 @@
  *   - decryption undoes the two passes in reverse (pass 8-15 first,
  *     then pass 0-7), each processed with the byte index running 7
  *     downto 0
- * Test vectors verified against the DarkCrypt implementation. Educational only.
+ * Test vectors verified against the DarkCrypt implementation with that memory
+ * cleared, and against the reference source. Educational only.
  */
 
 (function (root, factory) {
@@ -59,8 +66,6 @@
   const TRANSFORMED_BYTES = 8;      // only the first 8 of 10 block bytes are transformed
   const LCG_MULT = 0x41C64E6D;
   const LCG_INC = 0x3039;
-  // Fixed constant occupying bits 16-31 of the per-key-byte LCG reseed value.
-  const SEED_GARBAGE = 0x04F70000;
   // Fixed step table used to walk table indices during key setup (1 followed by the first 34 odd primes).
   /** @type {uint8[]} */
   const STEP_TABLE = [1, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
@@ -71,7 +76,7 @@
       super();
 
       this.name = "REDOC III (DarkCrypt)";
-      this.description = "REDOC III variant from the DarkCrypt Total Commander plugin: an 80-bit block (only the first 8 bytes are transformed, the last 2 pass through unchanged), 256-bit key. Key-dependent 2560-byte pseudorandom table (classic LCG) folded into a 16-byte subkey; two masking passes select table rows that get XORed into the other working bytes.";
+      this.description = "REDOC III as implemented in the DarkCrypt Total Commander plugin: Michael Wood's REDOC III applied to an 80-bit block (only the first 8 bytes are transformed, the last 2 pass through unchanged) with a fixed 256-bit key. The plugin leaves the upper 16 bits of each 32-bit rand() seed unset, so its output depends on prior memory contents; this implementation clears them, matching the reference source's 16-bit seed and the plugin's output when that memory is zero.";
       this.inventor = "IBM Research (Michael Wood); DarkCrypt variant by Alexander Myasnikov";
       this.year = 1985;
       this.category = CategoryType.BLOCK;
@@ -85,35 +90,45 @@
 
       this.documentation = [
         new LinkItem("DarkCrypt plugin (Total Commander PlugRing)", "https://totalcmd.net/plugring/darkcrypttc.html"),
+        new LinkItem("REDOC III reference source (Michael Wood)", "https://www.schneier.com/wp-content/uploads/2015/03/REDOC3-2.zip"),
         new LinkItem("Applied Cryptography, 2nd ed. (REDOC III description)", "https://www.schneier.com/books/applied-cryptography/")
       ];
 
       this.knownVulnerabilities = [
-        new Vulnerability("Non-standard, unanalyzed variant", "Only the last 2 of 10 block bytes are unprotected pass-through. Not analyzed for cryptographic strength.", "Use AES or another vetted cipher.")
+        new Vulnerability("Unprotected bytes", "The last 2 of the 10 block bytes pass through unencrypted.", "Use AES or another vetted cipher."),
+        new Vulnerability("Differential cryptanalysis", "Ken Shirriff's differential attack on REDOC III needs about 2^20 chosen plaintexts and 2^30 memory.", "Use AES or another vetted cipher.", "https://en.wikipedia.org/wiki/REDOC")
       ];
 
-      // Test vectors verified against the DarkCrypt implementation.
+      // Test vectors from the DarkCrypt plugin with the seed memory cleared; the
+      // first 8 bytes equal the reference source's REDOC III output.
       this.tests = [
         {
           text: "DarkCrypt Redoc3 — zero key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("00000000000000000000"),
           key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("59384d4a4be0617b0000")
+          expected: OpCodes.Hex8ToBytes("4f83a9591536d9bd0000")
         },
         {
           text: "DarkCrypt Redoc3 — incrementing key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("00010203040506070809"),
           key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
-          expected: OpCodes.Hex8ToBytes("84c182949e2875270809")
+          expected: OpCodes.Hex8ToBytes("731624c431837ac50809")
         },
         {
           text: "DarkCrypt Redoc3 — shifted incrementing key/plaintext",
           uri: "https://totalcmd.net/plugring/darkcrypttc.html",
           input: OpCodes.Hex8ToBytes("10111213141516171819"),
           key: OpCodes.Hex8ToBytes("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
-          expected: OpCodes.Hex8ToBytes("dba910c8db2fb2ae1819")
+          expected: OpCodes.Hex8ToBytes("40c416275c34483c1819")
+        },
+        {
+          text: "DarkCrypt Redoc3 — all-ones key/plaintext",
+          uri: "https://totalcmd.net/plugring/darkcrypttc.html",
+          input: OpCodes.Hex8ToBytes("ffffffffffffffffffff"),
+          key: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+          expected: OpCodes.Hex8ToBytes("3485b3877f608773ffff")
         }
       ];
     }
@@ -165,7 +180,7 @@
      */
     get key() { return this._key ? [...this._key] : null; }
 
-    // Classic LCG (Borland/Turbo C runtime rand()): seed = seed*0x41C64E6D + 0x3039; value = (seed>>16) & 0x7FFF
+    // C standard reference rand(): seed = seed*0x41C64E6D + 0x3039; value = (seed>>16) & 0x7FFF
     /**
      * Build the key-dependent substitution table
      * @param {uint8[]} key - 32 key bytes
@@ -185,7 +200,8 @@
           b0 = key[edi - 1];
           b1 = key[edi];
         }
-        let seed = OpCodes.Or32(OpCodes.Or32(b0, OpCodes.Shl32(b1, 8)), SEED_GARBAGE);
+        // Upper 16 bits clear, see the header on the plugin's unset seed bits
+        let seed = OpCodes.Or32(b0, OpCodes.Shl32(b1, 8));
         let pos = 0;
         /** @type {int32} */
         const step = STEP_TABLE[edi];
