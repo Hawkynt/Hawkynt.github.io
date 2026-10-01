@@ -135,9 +135,24 @@
   // a value that is in range but outside the order-q subgroup is refused, which
   // is what stops small subgroup confinement.
 
-  const DH_GROUPS = {
+  // The published groups by key, in the order of DH_GROUP_LIST.
+  /** @type {string[]} */
+  const DH_GROUP_NAMES = [
+    'modp1536',
+    'modp2048',
+    'modp3072',
+    'modp4096',
+    'modp6144',
+    'modp8192',
+    'modp1024s160',
+    'modp2048s224',
+    'modp2048s256'
+  ];
+
+  /** @type {DHGroup[]} */
+  const DH_GROUP_LIST = [
     // 1536-bit MODP group, RFC 3526 Group 5
-    modp1536: new DHGroup(
+    new DHGroup(
       'RFC 3526 Group 5',
       'RFC 3526',
       1536,
@@ -153,7 +168,7 @@
 
 
     // 2048-bit MODP group, RFC 3526 Group 14
-    modp2048: new DHGroup(
+    new DHGroup(
       'RFC 3526 Group 14',
       'RFC 3526',
       2048,
@@ -171,7 +186,7 @@
 
 
     // 3072-bit MODP group, RFC 3526 Group 15
-    modp3072: new DHGroup(
+    new DHGroup(
       'RFC 3526 Group 15',
       'RFC 3526',
       3072,
@@ -193,7 +208,7 @@
 
 
     // 4096-bit MODP group, RFC 3526 Group 16
-    modp4096: new DHGroup(
+    new DHGroup(
       'RFC 3526 Group 16',
       'RFC 3526',
       4096,
@@ -219,7 +234,7 @@
 
 
     // 6144-bit MODP group, RFC 3526 Group 17
-    modp6144: new DHGroup(
+    new DHGroup(
       'RFC 3526 Group 17',
       'RFC 3526',
       6144,
@@ -253,7 +268,7 @@
 
 
     // 8192-bit MODP group, RFC 3526 Group 18
-    modp8192: new DHGroup(
+    new DHGroup(
       'RFC 3526 Group 18',
       'RFC 3526',
       8192,
@@ -295,7 +310,7 @@
 
 
     // 1024-bit MODP Group with 160-bit Prime Order Subgroup, RFC 5114 Group 22 (RFC 5114 section 2.1)
-    modp1024s160: new DHGroup(
+    new DHGroup(
       'RFC 5114 Group 22',
       'RFC 5114 section 2.1',
       1024,
@@ -314,7 +329,7 @@
 
 
     // 2048-bit MODP Group with 224-bit Prime Order Subgroup, RFC 5114 Group 23 (RFC 5114 section 2.2)
-    modp2048s224: new DHGroup(
+    new DHGroup(
       'RFC 5114 Group 23',
       'RFC 5114 section 2.2',
       2048,
@@ -341,7 +356,7 @@
 
 
     // 2048-bit MODP Group with 256-bit Prime Order Subgroup, RFC 5114 Group 24 (RFC 5114 section 2.3)
-    modp2048s256: new DHGroup(
+    new DHGroup(
       'RFC 5114 Group 24',
       'RFC 5114 section 2.3',
       2048,
@@ -365,7 +380,19 @@
         'F6A167B5A41825D967E144E5140564251CCACB83E6B486F6B3CA3F7971506026' +
         'C0B857F689962856DED4010ABD0BE621C3A3960A54E710C375F26375D7014103' +
         'A4B54330C198AF126116D2276E11715F693877FAD7EF09CADB094AE91E1A1597'))
-  };
+  ];
+
+  /**
+   * The published group under a key.
+   * @param {string} name - Group key such as 'modp2048' or 'modp2048s256'
+   * @returns {DHGroup|null} The group, or null for any other key
+   */
+  function groupByName(name) {
+    for (let i = 0; i < DH_GROUP_NAMES.length; ++i) {
+      if (DH_GROUP_NAMES[i] === name) return DH_GROUP_LIST[i];
+    }
+    return null;
+  }
 
   // Selecting a group by modulus size alone is how RFC 3526 is usually cited,
   // so a bare bit length keeps working and resolves to the RFC 3526 group.
@@ -385,50 +412,47 @@
   }
 
   /**
-   * Resolve a group selector to its parameters.
-   * @param {string|number} selector - Group key such as 'modp2048' or 'modp2048s256', or a modulus bit length
+   * The error for a selector that names no group.
+   * @param {string} selector - The selector as given
+   * @returns {Error} The error to throw
+   */
+  function unknownGroup(selector) {
+    return new Error('Unknown Diffie-Hellman group: ' + selector
+      + '. Use one of ' + DH_GROUP_NAMES.join(', ')
+      + ', or an RFC 3526 modulus size of 1536, 2048, 3072, 4096, 6144 or 8192.');
+  }
+
+  /**
+   * Resolve a group key, or a modulus bit length in decimal, to its parameters.
+   * @param {string} selector - Group key such as 'modp2048' or 'modp2048s256', or a modulus bit length
    * @returns {DHGroup} The group parameters
    * @throws {Error} If the selector names no known group
    */
   function resolveGroup(selector) {
-    if (selector !== null && typeof selector === 'object' && selector.p !== undefined) {
-      /** @type {DHGroup} */
-      const custom = selector;
-      return custom;
+    const trimmed = selector.trim();
+    const named = groupByName(trimmed);
+    if (named !== null) {
+      return named;
     }
-
-    if (typeof selector === 'number') {
-      /** @type {int32} */
-      const bits = selector;
-      const bySize = groupBySize(bits);
-      if (bySize) {
-        /** @type {DHGroup} */
-        const sized = DH_GROUPS[bySize];
-        return sized;
-      }
+    const bySize = groupBySize(parseInt(trimmed, 10));
+    if (bySize !== null) {
+      return groupByName(bySize);
     }
+    throw unknownGroup(selector);
+  }
 
-    if (typeof selector === 'string') {
-      /** @type {string} */
-      const text = selector;
-      const trimmed = text.trim();
-      if (DH_GROUPS[trimmed]) {
-        /** @type {DHGroup} */
-        const named = DH_GROUPS[trimmed];
-        return named;
-      }
-      /** @type {int32} */
-      const parsed = parseInt(trimmed, 10);
-      if (!isNaN(parsed) && groupBySize(parsed)) {
-        /** @type {DHGroup} */
-        const sized = DH_GROUPS[groupBySize(parsed)];
-        return sized;
-      }
+  /**
+   * Resolve an RFC 3526 modulus size to its group.
+   * @param {int32} bits - Modulus size in bits
+   * @returns {DHGroup} The group parameters
+   * @throws {Error} If no RFC 3526 group has that size
+   */
+  function resolveGroupSize(bits) {
+    const bySize = groupBySize(bits);
+    if (bySize !== null) {
+      return groupByName(bySize);
     }
-
-    throw new Error('Unknown Diffie-Hellman group: ' + selector
-      + '. Use one of ' + Object.keys(DH_GROUPS).join(', ')
-      + ', or an RFC 3526 modulus size of 1536, 2048, 3072, 4096, 6144 or 8192.');
+    throw unknownGroup('' + bits);
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -773,7 +797,7 @@
       super(algorithm);
       this.isInverse = isInverse;
       /** @type {DHGroup} */
-      this._group = DH_GROUPS.modp2048; // RFC 3526 Group 14, the recommended minimum
+      this._group = groupByName('modp2048'); // RFC 3526 Group 14, the recommended minimum
       /** @type {BigInt|null} */
       this._privateKey = null;
       /** @type {BigInt|null} */
@@ -787,7 +811,7 @@
     //#region ===== configuration =====
 
     /**
-     * @param {string|int32|DHGroup} selector - Group key, modulus size or group parameters
+     * @param {string} selector - Group key, or a modulus size in decimal
      */
     set group(selector) {
       this._group = resolveGroup(selector);
@@ -805,7 +829,7 @@
      * @param {int32} bits - RFC 3526 modulus size
      */
     set groupSize(bits) {
-      this._group = resolveGroup(bits);
+      this._group = resolveGroupSize(bits);
     }
 
     /**
@@ -817,7 +841,7 @@
 
     /**
      * Set the private exponent.
-     * @param {uint8[]|BigInt|number|null} value - Private exponent, big-endian bytes or a BigInt
+     * @param {uint8[]|null} value - Private exponent, big-endian bytes
      */
     set privateKey(value) {
       if (value === null || value === undefined) {
@@ -825,42 +849,48 @@
         this._keyData = null;
         return;
       }
-      this._privateKey = this._toBigInt(value, 'private exponent');
-      if (Array.isArray(value)) {
-        /** @type {uint8[]} */
-        const bytes = value;
-        this._keyData = bytes.slice();
-      } else {
-        this._keyData = null;
-      }
+      this._privateKey = this._bytesToBigInt(value);
+      this._keyData = value.slice();
     }
 
+    /**
+     * @returns {BigInt|null} Private exponent
+     */
     get privateKey() {
       return this._privateKey;
     }
 
     // The framework and the UI both drive a 'key' property, which for a key
     // agreement is the private exponent.
+    /**
+     * @param {uint8[]|null} value - Private exponent, big-endian bytes
+     */
     set key(value) {
       this.privateKey = value;
     }
 
+    /**
+     * @returns {uint8[]|null} Private exponent bytes as set
+     */
     get key() {
       return this._keyData;
     }
 
     /**
      * Set the peer's public value, as an alternative to feeding it.
-     * @param {uint8[]|BigInt|null} value - Peer public value
+     * @param {uint8[]|null} value - Peer public value, big-endian bytes
      */
     set otherPublicKey(value) {
       if (value === null || value === undefined) {
         this._otherPublicKey = null;
         return;
       }
-      this._otherPublicKey = this._toBigInt(value, 'public value');
+      this._otherPublicKey = this._bytesToBigInt(value);
     }
 
+    /**
+     * @returns {BigInt|null} Peer public value
+     */
     get otherPublicKey() {
       return this._otherPublicKey;
     }
@@ -881,20 +911,20 @@
      * Generate a key pair. With no argument a private exponent is drawn from a
      * cryptographically secure source, by rejection sampling so the draw stays
      * uniform over its range.
-     * @param {uint8[]|BigInt|null} [privateValue=null] - Private exponent to use, or null to generate one
+     * @param {uint8[]|null} [privateValue=null] - Private exponent to use (big-endian bytes), or null to generate one
      * @returns {DHKeyPair} The generated pair
      */
     GenerateKeyPair(privateValue = null) {
       this._privateKey = privateValue === null
         ? this._randomPrivateExponent()
-        : this._toBigInt(privateValue, 'private exponent');
+        : this._bytesToBigInt(privateValue);
       this._keyData = null;
       return new DHKeyPair(this._privateKey, this._computePublicValue());
     }
 
     /**
      * Derive the shared secret from the peer's public value.
-     * @param {uint8[]|BigInt} otherPublicValue - The peer's public value
+     * @param {BigInt} otherPublicValue - The peer's public value
      * @returns {BigInt} The shared secret Z
      * @throws {Error} If no private exponent is set or the public value fails validation
      */
@@ -902,7 +932,7 @@
       if (this._privateKey === null) {
         throw new Error('Diffie-Hellman private exponent not set. Assign privateKey or call GenerateKeyPair() first.');
       }
-      const peer = this._toBigInt(otherPublicValue, 'public value');
+      const peer = otherPublicValue;
       this._validatePublicValue(peer);
       return this._modPow(peer, this._privateKey, this._group.p);
     }
@@ -976,34 +1006,6 @@
      */
     _modulusBytes() {
       return Math.ceil(this._group.bitLength / 8);
-    }
-
-    /**
-     * Accept a private exponent or public value in any of the forms callers use.
-     * @param {uint8[]|Uint8Array|BigInt|number|string} value - The value
-     * @param {string} what - Name used in error messages
-     * @returns {BigInt} The value as a BigInt
-     */
-    _toBigInt(value, what) {
-      if (typeof value === 'bigint') {
-        /** @type {BigInt} */
-        const big = value;
-        return big;
-      }
-      if (typeof value === 'number') {
-        /** @type {float64} */
-        const number = value;
-        if (!Number.isInteger(number) || number < 0) {
-          throw new Error('Diffie-Hellman ' + what + ' must be a non-negative integer');
-        }
-        return BigInt(number);
-      }
-      if (Array.isArray(value) || (value && typeof value.length === 'number' && typeof value !== 'string')) {
-        /** @type {uint8[]} */
-        const bytes = value;
-        return this._bytesToBigInt(bytes);
-      }
-      throw new Error('Invalid Diffie-Hellman ' + what + ' format: expected big-endian bytes or a BigInt');
     }
 
     /**
@@ -1172,5 +1174,5 @@
 
   // ===== EXPORTS =====
 
-  return { DiffieHellmanKE, DiffieHellmanInstance, DH_GROUPS };
+  return { DiffieHellmanKE, DiffieHellmanInstance };
 }));

@@ -12,7 +12,7 @@
 | Complexity | Not specified |
 | Inventor | Steve Babbage, Matthew Dodd |
 | Year | 2005 |
-| Origin | GB |
+| Origin | 🇬🇧 United Kingdom |
 | Source | [`algorithms/stream/mickey.js`](../../../algorithms/stream/mickey.js) |
 
 ## Security
@@ -25,7 +25,7 @@ Based on eSTREAM Portfolio winner MICKEY v2. Enhanced version for 128-bit keys w
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| This is an educational implementation not suitable for security applications. | — | Use only for educational purposes to understand enhanced MICKEY variants. |
+| Implementation Specific | This is an educational implementation not suitable for security applications. | Use only for educational purposes to understand enhanced MICKEY variants. |
 
 ## Documentation
 

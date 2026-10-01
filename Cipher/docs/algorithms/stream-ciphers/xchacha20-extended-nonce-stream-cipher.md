@@ -12,14 +12,14 @@
 | Complexity | Not specified |
 | Inventor | Daniel J. Bernstein (ChaCha20), Frank Denis (XChaCha20) |
 | Year | 2018 |
-| Origin | US |
+| Origin | 🇺🇸 United States |
 | Source | [`algorithms/stream/xchacha20.js`](../../../algorithms/stream/xchacha20.js) |
 
-## Capabilities
+## Parameters
 
-| Flag | Value |
+| Parameter | Supported values |
 | --- | --- |
-| `isStreamCipher` | Yes |
+| Key sizes | 32 bytes (256 bits) |
 
 ## Security
 
@@ -28,41 +28,6 @@
 Extended ChaCha20 with 192-bit nonces. Educational implementation demonstrating nonce extension techniques.
 
 No vulnerabilities are recorded for this implementation.
-
-## Notes
-
-- Extended-nonce variant of ChaCha20 with 192-bit nonces and HChaCha20 key derivation
-
-## Background
-
-- **overview:** XChaCha20 extends ChaCha20 with 192-bit nonces, eliminating birthday bound concerns and simplifying secure implementation.
-- **keyFeatures:**
-  - 192-bit nonces (3x larger than ChaCha20)
-  - HChaCha20 key derivation for subkey generation
-  - No nonce reuse concerns with random nonces
-  - Compatible with ChaCha20 core operations
-  - Practical solution for real-world applications
-- **advantages:**
-  - **Large nonce space:** 2^192 possible nonces eliminate collision concerns
-  - **Simplified usage:** Random nonces can be safely used without counters
-  - **Better security:** Resistant to nonce reuse attacks
-  - **Practical engineering:** Solves real-world cryptographic implementation challenges
-- **technicalDetails:**
-  - **Key derivation:** HChaCha20 derives 256-bit subkeys from 256-bit master keys
-  - **Nonce structure:** First 16 bytes for HChaCha20, last 8 bytes for ChaCha20
-  - **Performance:** Minimal overhead compared to ChaCha20
-  - **Compatibility:** Based on proven ChaCha20 core operations
-- **usageExample:** // Simple encryption with random nonce const key = 'Your 32-byte secret key goes here!!'; const plaintext = 'Confidential message'; // Generate secure random nonce const nonce = XChaCha20.generateNonce(); // Encrypt const encrypted = XChaCha20.encrypt(key, XChaCha20.bytesToString(nonce), plaintext); // Decrypt const decrypted = XChaCha20.decrypt(key, XChaCha20.bytesToString(nonce), encrypted.ciphertext); console.log('Original:', plaintext); console.log('Decrypted:', decrypted.ciphertext);
-- **securityNotes:**
-  - Use cryptographically secure random nonce generation
-  - 192-bit nonces eliminate birthday bound concerns
-  - Never reuse nonces with the same key (though unlikely with random nonces)
-  - This implementation is educational only - use proven libraries for production
-- **practicalBenefits:**
-  - Database encryption with deterministic nonces from record IDs
-  - File encryption without nonce management complexity
-  - Network protocols with simple nonce handling
-  - Applications requiring many encryptions per key
 
 ## Documentation
 

@@ -8,16 +8,22 @@
 | --- | --- |
 | Category | Stream Ciphers |
 | Sub-category | Stream Cipher |
-| Security status | educational |
+| Security status | 🎓 Educational Only |
 | Complexity | Not specified |
 | Inventor | NTT (Nippon Telegraph and Telephone) |
 | Year | 1998 |
-| Origin | JP |
+| Origin | 🇯🇵 Japan |
 | Source | [`algorithms/stream/e2.js`](../../../algorithms/stream/e2.js) |
+
+## Parameters
+
+| Parameter | Supported values |
+| --- | --- |
+| Key sizes | 16 bytes (128 bits) |
 
 ## Security
 
-**Status:** educational
+**Status:** 🎓 Educational Only
 
 Block cipher adapted for educational stream cipher demonstration. Original E2 was an AES candidate.
 

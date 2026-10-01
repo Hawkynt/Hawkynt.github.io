@@ -80,19 +80,24 @@
   // file was being loaded when it happened, so requiring the block cipher here
   // would file AES under this directory and drop it from the block cipher
   // index.
+  /** @type {Algorithm|null} */
   let aesAlgorithm = null;
 
+  /**
+   * The registered AES, loading it under Node when it is missing.
+   * @returns {Algorithm} the block cipher
+   */
   function FindAes() {
     if (aesAlgorithm) return aesAlgorithm;
 
-    aesAlgorithm = AlgorithmFramework.Find ? AlgorithmFramework.Find('Rijndael (AES)') : null;
+    aesAlgorithm = AlgorithmFramework.Find('Rijndael (AES)');
     if (!aesAlgorithm && typeof require !== 'undefined') {
       try {
         require('../block/rijndael.js');
       } catch (e) {
         // Reported as a missing dependency below.
       }
-      aesAlgorithm = AlgorithmFramework.Find ? AlgorithmFramework.Find('Rijndael (AES)') : null;
+      aesAlgorithm = AlgorithmFramework.Find('Rijndael (AES)');
     }
 
     if (!aesAlgorithm)
@@ -128,7 +133,7 @@
   // rather than transcribed.
   /**
    * The rho offsets, walking (x, y) -> (y, 2x + 3y) from (1, 0).
-   * @returns {Uint8Array} rotation per lane
+   * @returns {uint8[]} rotation per lane
    */
   function BuildKeccakRotation() {
     const table = new Uint8Array(25);
@@ -146,7 +151,7 @@
 
   /**
    * The pi permutation: the source lane of every destination lane.
-   * @returns {Uint8Array} source index per lane
+   * @returns {uint8[]} source index per lane
    */
   function BuildKeccakPi() {
     const table = new Uint8Array(25);
@@ -367,6 +372,7 @@
    * @returns {uint8[]} 16 ciphertext octets
    */
   function Aes256Ecb(key, block) {
+    /** @type {IBlockCipherInstance} */
     const instance = FindAes().CreateInstance(false);
     instance.key = key;
     instance.Feed(block);
@@ -382,7 +388,7 @@
   function IncrementCounter(v) {
     for (let j = 15; j >= 0; --j) {
       if (v[j] === 0xFF) v[j] = 0;
-      else { v[j] = v[j] + 1; break; }
+      else { v[j] = OpCodes.Add32(v[j], 1); break; }
     }
   }
 
@@ -390,9 +396,9 @@
   class BikeDrbg {
     constructor() {
       /** @type {uint8[]} */
-      this.key = new Array(32).fill(0);
+      this.key = OpCodes.CreateArray(32, 0);
       /** @type {uint8[]} */
-      this.v = new Array(16).fill(0);
+      this.v = OpCodes.CreateArray(16, 0);
     }
   }
 
@@ -409,10 +415,8 @@
       const block = Aes256Ecb(drbg.key, drbg.v);
       for (let j = 0; j < 16; ++j) temp.push(block[j]);
     }
-    // The seed arrives from the caller unmasked, so the exclusive-or stays
-    // the plain one rather than the unsigned 32 bit helper.
     if (providedData)
-      for (let i = 0; i < 48; ++i) temp[i] = OpCodes.XorN(temp[i], providedData[i]);
+      for (let i = 0; i < 48; ++i) temp[i] = OpCodes.Xor32(temp[i], providedData[i]);
     for (let i = 0; i < 32; ++i) drbg.key[i] = temp[i];
     for (let i = 0; i < 16; ++i) drbg.v[i] = temp[32 + i];
   }
@@ -513,28 +517,21 @@
   /** @type {BikeParams[]} */
   const PARAMETER_SET_LIST = [BIKE_L1, BIKE_L3, BIKE_L5];
 
-  const PARAMETER_SETS = {
-    'bike-l1': BIKE_L1,
-    'bike-l3': BIKE_L3,
-    'bike-l5': BIKE_L5
-  };
-
   /**
-   * The table entry under a name. A plain property read, so a name is
-   * accepted exactly when the table has a truthy property of it.
+   * The parameter set of exactly this name.
    * @param {string} name - the name
-   * @returns {BikeParams} the entry, or a falsy value
+   * @returns {BikeParams|null} the entry, or null
    */
   function ParameterSetEntry(name) {
-    /** @type {BikeParams} */
-    const entry = PARAMETER_SETS[name];
-    return entry;
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i)
+      if (PARAMETER_SET_LIST[i].name === name) return PARAMETER_SET_LIST[i];
+    return null;
   }
 
   /**
    * Look a parameter set up by a label that names, contains or is contained in
    * one of the set names, or by its level or security strength alone.
-   * @param {string|int32} label - 'bike-l1', 'BIKE-L3', '5', '256', ...
+   * @param {string} label - 'bike-l1', 'BIKE-L3', '5', '256', ...
    * @returns {BikeParams|null} the parameter set, or null
    */
   function FindParameterSet(label) {
@@ -593,7 +590,7 @@
   /**
    * @param {uint8[]} bytes - octets, least significant first
    * @param {int32} wordCount - words to fill
-   * @returns {Uint32Array} the words
+   * @returns {uint32[]} the words
    */
   function BytesToWords(bytes, wordCount) {
     const words = new Uint32Array(wordCount);
@@ -606,7 +603,7 @@
   }
 
   /**
-   * @param {Uint32Array} words - the words
+   * @param {uint32[]} words - the words
    * @param {int32} byteCount - octets to emit
    * @returns {uint8[]} the octets, least significant first
    */
@@ -624,18 +621,8 @@
    */
   function ZeroArray(count) {
     /** @type {uint8[]} */
-    const out = new Array(count).fill(0);
+    const out = OpCodes.CreateArray(count, 0);
     return out;
-  }
-
-  /**
-   * Ascending numeric order for Array.prototype.sort.
-   * @param {int32} a - left
-   * @param {int32} b - right
-   * @returns {int32} negative, zero or positive
-   */
-  function CompareNumbers(a, b) {
-    return a - b;
   }
 
   // ===== result records =====
@@ -668,11 +655,11 @@
 
   class BikeDecoded {
     /**
-     * @param {Uint8Array} error - the recovered error vector, one bit per entry
+     * @param {uint8[]} error - the recovered error vector, one bit per entry
      * @param {boolean} success - whether the syndrome cleared
      */
     constructor(error, success) {
-      /** @type {Uint8Array} */
+      /** @type {uint8[]} */
       this.error = error;
       /** @type {boolean} */
       this.success = success;
@@ -747,14 +734,23 @@
     for (let i = weight - 1; i >= 0; --i) {
       const raw = StreamRead(stream, 4);
       const value = OpCodes.Pack32LE(raw[0], raw[1], raw[2], raw[3]);
-      let position = Math.floor(value * (length - i) / 4294967296);
+      // floor(value * (length - i) / 2^32), the high word of the product
+      /** @type {int32} */
+      let position = OpCodes.MulHi32(value, length - i);
       position += i;
       if (GetBit(bytes, position) === 1) position = i;
       SetBit(bytes, position);
       positions.push(position);
     }
 
-    positions.sort(CompareNumbers);
+    positions.sort(
+      /**
+       * Ascending order.
+       * @param {int32} a - left
+       * @param {int32} b - right
+       * @returns {int32} -1, 0 or 1
+       */
+      function (a, b) { return a < b ? -1 : (a > b ? 1 : 0); });
     return new BikeSparse(bytes, positions);
   }
 
@@ -763,8 +759,8 @@
   /**
    * Fold every bit at index r or above back down by r.
    * @param {BikeParams} set - the parameter set
-   * @param {Uint32Array} accumulator - the unreduced product
-   * @returns {Uint32Array} the reduced vector, set.rWords long
+   * @param {uint32[]} accumulator - the unreduced product
+   * @returns {uint32[]} the reduced vector, set.rWords long
    */
   function ReduceCyclic(set, accumulator) {
     const words = set.rWords;
@@ -800,8 +796,8 @@
    * other operand shifted to each of them.
    * @param {BikeParams} set - the parameter set
    * @param {int32[]} sparsePositions - positions of the set bits
-   * @param {Uint32Array} dense - the other operand
-   * @returns {Uint32Array} the product
+   * @param {uint32[]} dense - the other operand
+   * @returns {uint32[]} the product
    */
   function VectMul(set, sparsePositions, dense) {
     const words = set.rWords;
@@ -834,7 +830,7 @@
   }
 
   /**
-   * @param {Uint32Array} words - the polynomial
+   * @param {uint32[]} words - the polynomial
    * @param {int32} from - highest word to look at
    * @returns {int32} its degree, or -1 for zero
    */
@@ -851,8 +847,8 @@
 
   /**
    * target += source * x^shift, over the given words of source.
-   * @param {Uint32Array} target - modified in place
-   * @param {Uint32Array} source - the addend
+   * @param {uint32[]} target - modified in place
+   * @param {uint32[]} source - the addend
    * @param {int32} shift - power of x
    * @param {int32} wordCount - words of source to use
    */
@@ -883,8 +879,8 @@
    * invertible, but a polynomial of odd weight is coprime to x + 1 and the
    * secret circulants have odd weight by construction.
    * @param {BikeParams} set - the parameter set
-   * @param {Uint32Array} dense - the polynomial to invert
-   * @returns {Uint32Array} its inverse
+   * @param {uint32[]} dense - the polynomial to invert
+   * @returns {uint32[]} its inverse
    */
   function VectInverse(set, dense) {
     const size = set.rWords + 2;
@@ -915,7 +911,9 @@
         const swapDegree = degreeU; degreeU = degreeV; degreeV = swapDegree;
       }
       const shift = degreeU - degreeV;
-      const span = size - OpCodes.Shr32(shift, 5) - 1;
+      /** @type {int32} */
+      const wordShift = OpCodes.Shr32(shift, 5);
+      const span = size - wordShift - 1;
       XorShifted(polyU, polyV, shift, span);
       XorShifted(g1, g2, shift, span);
       degreeU = DegreeOf(polyU, OpCodes.Shr32(degreeU, 5));
@@ -956,7 +954,8 @@
   function FirstColumn(set, rowPositions) {
     const dv = set.dv;
     /** @type {int32[]} */
-    const column = new Array(dv).fill(0);
+    const column = new Array(dv);
+    for (let i = 0; i < dv; ++i) column[i] = 0;
     if (rowPositions[0] === 0) {
       column[0] = 0;
       for (let i = 1; i < dv; ++i) column[i] = set.r - rowPositions[dv - i];
@@ -971,7 +970,7 @@
    * @param {BikeParams} set - the parameter set
    * @param {int32[]} column - first column offsets
    * @param {int32} position - the error position
-   * @param {Uint8Array} syndrome - the transposed syndrome
+   * @param {uint8[]} syndrome - the transposed syndrome
    * @returns {int32} the count
    */
   function CounterAt(set, column, position, syndrome) {
@@ -988,7 +987,7 @@
   /**
    * Update the syndrome for one flipped error position.
    * @param {BikeParams} set - the parameter set
-   * @param {Uint8Array} syndrome - modified in place
+   * @param {uint8[]} syndrome - modified in place
    * @param {int32} position - the flipped position
    * @param {int32[]} h0 - positions of the first secret circulant
    * @param {int32[]} h1 - positions of the second
@@ -1011,7 +1010,7 @@
   /**
    * The syndrome is held transposed, so the error index has to be mirrored.
    * @param {BikeParams} set - the parameter set
-   * @param {Uint8Array} e - the error vector, modified in place
+   * @param {uint8[]} e - the error vector, modified in place
    * @param {int32} position - the position to flip
    */
   function FlipAdjusted(set, e, position) {
@@ -1022,7 +1021,7 @@
   }
 
   /**
-   * @param {Uint8Array} bits - one bit per entry
+   * @param {uint8[]} bits - one bit per entry
    * @returns {int32} how many are set
    */
   function HammingWeight(bits) {
@@ -1039,10 +1038,10 @@
    * One bit flipping pass. Positions at or above the threshold are flipped and
    * marked black; those within tau of it are marked grey for the masked passes.
    * @param {BikeParams} set - the parameter set
-   * @param {Uint8Array} e - the error vector, modified in place
-   * @param {Uint8Array} black - positions flipped, marked here
-   * @param {Uint8Array} gray - positions nearly flipped, marked here
-   * @param {Uint8Array} syndrome - the transposed syndrome, updated
+   * @param {uint8[]} e - the error vector, modified in place
+   * @param {uint8[]} black - positions flipped, marked here
+   * @param {uint8[]} gray - positions nearly flipped, marked here
+   * @param {uint8[]} syndrome - the transposed syndrome, updated
    * @param {int32} threshold - the flipping threshold
    * @param {int32[]} h0 - positions of the first secret circulant
    * @param {int32[]} h1 - positions of the second
@@ -1079,9 +1078,9 @@
   /**
    * A bit flipping pass over the masked positions only.
    * @param {BikeParams} set - the parameter set
-   * @param {Uint8Array} e - the error vector, modified in place
-   * @param {Uint8Array} syndrome - the transposed syndrome, updated
-   * @param {Uint8Array} mask - positions to consider
+   * @param {uint8[]} e - the error vector, modified in place
+   * @param {uint8[]} syndrome - the transposed syndrome, updated
+   * @param {uint8[]} mask - positions to consider
    * @param {int32} threshold - the flipping threshold
    * @param {int32[]} h0 - positions of the first secret circulant
    * @param {int32[]} h1 - positions of the second
@@ -1116,7 +1115,7 @@
    * is followed by two masked passes over the positions it flipped and the
    * positions it nearly flipped.
    * @param {BikeParams} set - the parameter set
-   * @param {Uint8Array} syndrome - the transposed syndrome, consumed in place
+   * @param {uint8[]} syndrome - the transposed syndrome, consumed in place
    * @param {int32[]} h0 - positions of the first secret circulant
    * @param {int32[]} h1 - positions of the second
    * @returns {BikeDecoded} the recovered error vector and whether the syndrome cleared
@@ -1226,9 +1225,7 @@
     const masked = FunctionL(set, e.bytes);
     /** @type {uint8[]} */
     const c1 = new Array(32);
-    // The message arrives from the caller unmasked, so this exclusive-or stays
-    // the plain one rather than the unsigned 32 bit helper.
-    for (let i = 0; i < 32; ++i) c1[i] = OpCodes.XorN(masked[i], m[i]);
+    for (let i = 0; i < 32; ++i) c1[i] = OpCodes.Xor32(masked[i], m[i]);
 
     return new BikeEncapsulation(c0.concat(c1), FunctionK(set, m, c0, c1));
   }
@@ -1276,9 +1273,7 @@
     const masked = FunctionL(set, recoveredError);
     /** @type {uint8[]} */
     const message = new Array(32);
-    // The ciphertext arrives from the caller unmasked, so this exclusive-or
-    // stays the plain one rather than the unsigned 32 bit helper.
-    for (let i = 0; i < 32; ++i) message[i] = OpCodes.XorN(c1[i], masked[i]);
+    for (let i = 0; i < 32; ++i) message[i] = OpCodes.Xor32(c1[i], masked[i]);
 
     const recomputed = FunctionH(set, message);
 
@@ -1887,6 +1882,10 @@
 
     // ---- configuration ----
 
+    /**
+     * Select the parameter set by name.
+     * @param {string} label - 'bike-l1', 'BIKE-L3', '5', '256', ...
+     */
     set parameterSet(label) {
       const found = FindParameterSet(label);
       if (!found) throw new Error('Unknown BIKE parameter set: ' + label);
@@ -1958,8 +1957,8 @@
     }
 
     /**
-     * The generic key entry point. Accepts a secret key, a public key, or the
-     * name of a parameter set.
+     * The generic key entry point. Accepts a secret key, a public key, or the ASCII name of a parameter set.
+     * @param {uint8[]|null} keyData - key bytes; null clears both keys
      */
     set key(keyData) {
       this._keyData = keyData;
@@ -1970,12 +1969,9 @@
         return;
       }
 
-      if (typeof keyData === 'string' || typeof keyData === 'number') {
-        this.parameterSet = keyData;
-        return;
-      }
-
-      if (!Array.isArray(keyData) && !ArrayBuffer.isView(keyData))
+      /** @type {boolean} */
+      const isTypedArray = ArrayBuffer.isView(keyData);
+      if (!Array.isArray(keyData) && !isTypedArray)
         throw new Error('Invalid BIKE key data format');
 
       /** @type {uint8[]} */
