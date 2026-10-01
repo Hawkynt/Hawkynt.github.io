@@ -54,6 +54,9 @@
           ErrorCorrectionAlgorithm, IErrorCorrectionInstance,
           TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
+  // Extract foundation utilities
+  const { BipartiteGraph, SparseMatrix, DegreeDistribution,
+          SeededRandom, PerformanceProfiler } = FountainFoundation;
 
   /**
    * Degree and neighbour list recorded for one encoded symbol
@@ -344,7 +347,7 @@
       /** @type {SeededRandom} */
       this.rng = null;
       /** @type {PerformanceProfiler} */
-      this.profiler = new FountainFoundation.PerformanceProfiler();
+      this.profiler = new PerformanceProfiler();
 
       // Encoding metadata
       /** @type {EncodingRecord[]} */
@@ -431,8 +434,8 @@
       this.profiler.startTimer('initialization');
 
       // Initialize seeded RNG and degree distribution for decoding
-      this.rng = new FountainFoundation.SeededRandom(this.seed);
-      this.degreeDistribution = new FountainFoundation.DegreeDistribution(this.k);
+      this.rng = new SeededRandom(this.seed);
+      this.degreeDistribution = new DegreeDistribution(this.k);
 
       this.profiler.endTimer('initialization');
     }
@@ -445,14 +448,14 @@
       this.profiler.startTimer('initialization');
 
       // Initialize seeded RNG for reproducibility
-      this.rng = new FountainFoundation.SeededRandom(this.seed);
-      this.degreeDistribution = new FountainFoundation.DegreeDistribution(this.k);
+      this.rng = new SeededRandom(this.seed);
+      this.degreeDistribution = new DegreeDistribution(this.k);
 
       // Calculate number of encoded symbols
       const numEncoded = Math.ceil(this.k * (1.0 + this.overhead));
 
       // Build encoding graph
-      this.graph = new FountainFoundation.BipartiteGraph(this.k, numEncoded);
+      this.graph = new BipartiteGraph(this.k, numEncoded);
       this._constructEncodingGraph();
 
       this.profiler.endTimer('initialization');
@@ -690,7 +693,7 @@
 
       // Build sparse matrix representation for Gaussian elimination
       /** @type {SparseMatrix} */
-      const matrix = new FountainFoundation.SparseMatrix(numReceived, this.k);
+      const matrix = new SparseMatrix(numReceived, this.k);
       /** @type {uint8[]} */
       const receivedVector = this.encodedSymbols.slice();
 
@@ -815,9 +818,9 @@
     _reconstructDecodingGraph(numReceived) {
       // Reconstruct the encoding graph for received symbols
       /** @type {BipartiteGraph} */
-      const graph = new FountainFoundation.BipartiteGraph(this.k, numReceived);
+      const graph = new BipartiteGraph(this.k, numReceived);
       /** @type {SeededRandom} */
-      const rng = new FountainFoundation.SeededRandom(this.seed);
+      const rng = new SeededRandom(this.seed);
       /** @type {float64[]} */
       const cdf = this.degreeDistribution.buildCumulativeDistribution(this.c, this.delta);
 

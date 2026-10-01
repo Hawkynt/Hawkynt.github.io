@@ -53,6 +53,8 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
+  // Extract foundation utilities
+  const { SparseMatrix, BipartiteGraph, DegreeDistribution, SeededRandom, PerformanceProfiler } = FountainFoundation;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -238,7 +240,7 @@
       /** @type {uint8[]} */
       this.intermediateSymbols = null; // Symbols after pre-coding
       /** @type {PerformanceProfiler} */
-      this.profiler = new FountainFoundation.PerformanceProfiler();
+      this.profiler = new PerformanceProfiler();
       /** @type {SeededRandom} */
       this.rng = null;
     }
@@ -322,7 +324,7 @@
      * @returns {void}
      */
     _initializeEncoding() {
-      this.rng = new FountainFoundation.SeededRandom(this.seed);
+      this.rng = new SeededRandom(this.seed);
       this.profiler.startTimer('initialization');
 
       // Calculate intermediate symbols count
@@ -350,7 +352,7 @@
       const numParityChecks = n - this.k;
 
       // Create sparse LDPC matrix
-      this.preCodeMatrix = new FountainFoundation.SparseMatrix(numParityChecks, n);
+      this.preCodeMatrix = new SparseMatrix(numParityChecks, n);
 
       // Build regular LDPC code with systematic form
       const checksPerVariable = 3; // Degree of variable nodes
@@ -409,9 +411,9 @@
       const n = this.intermediateSymbolsCount;
       const numLTSymbols = Math.ceil(n * (1.0 + this.targetOverhead));
 
-      this.ltGraph = new FountainFoundation.BipartiteGraph(n, numLTSymbols);
+      this.ltGraph = new BipartiteGraph(n, numLTSymbols);
       /** @type {DegreeDistribution} */
-      const degreeDistribution = new FountainFoundation.DegreeDistribution(n);
+      const degreeDistribution = new DegreeDistribution(n);
       /** @type {float64[]} */
       const cdf = degreeDistribution.buildCumulativeDistribution(0.1, 0.5);
 

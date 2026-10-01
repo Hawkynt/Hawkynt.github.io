@@ -53,6 +53,8 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
+  // Extract foundation utilities
+  const { BipartiteGraph, DegreeDistribution, SeededRandom, PerformanceProfiler } = FountainFoundation;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -359,7 +361,7 @@
       /** @type {uint8[]} */
       this.auxiliarySymbols = null;   // Auxiliary symbols from outer code
       /** @type {PerformanceProfiler} */
-      this.profiler = new FountainFoundation.PerformanceProfiler();
+      this.profiler = new PerformanceProfiler();
       /** @type {SeededRandom} */
       this.rng = null;
     }
@@ -444,7 +446,7 @@
      * @returns {void}
      */
     _initializeEncoding() {
-      this.rng = new FountainFoundation.SeededRandom(this.seed);
+      this.rng = new SeededRandom(this.seed);
       this.profiler.startTimer('initialization');
 
       // Calculate number of auxiliary symbols (outer code)
@@ -471,7 +473,7 @@
 
       // Outer code: each message symbol connects to q randomly chosen auxiliary symbols
       // Total nodes: k message symbols on left, auxiliaryCount symbols on right
-      this.outerCodeGraph = new FountainFoundation.BipartiteGraph(this.k, this.auxiliaryCount);
+      this.outerCodeGraph = new BipartiteGraph(this.k, this.auxiliaryCount);
 
       // For each source symbol, connect to q auxiliary symbols
       for (let msgIdx = 0; msgIdx < this.k; msgIdx++) {
@@ -503,11 +505,11 @@
       // We generate a few extra symbols for testing
       const innerSymbolCount = Math.ceil(compositeCount * (1.0 + this.epsilon / 2));
 
-      this.innerCodeGraph = new FountainFoundation.BipartiteGraph(compositeCount, innerSymbolCount);
+      this.innerCodeGraph = new BipartiteGraph(compositeCount, innerSymbolCount);
 
       // Use robust soliton distribution for inner code
       /** @type {DegreeDistribution} */
-      const degreeDistribution = new FountainFoundation.DegreeDistribution(compositeCount);
+      const degreeDistribution = new DegreeDistribution(compositeCount);
       /** @type {float64[]} */
       const cdf = degreeDistribution.buildCumulativeDistribution(0.1, this.failureProbability);
 

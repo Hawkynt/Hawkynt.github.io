@@ -53,6 +53,8 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
+  // Extract foundation utilities
+  const { SeededRandom, PerformanceProfiler } = FountainFoundation;
 
   /**
    * Code parameters and encoding counters as reported by getPerformanceReport()
@@ -302,7 +304,7 @@
       /** @type {uint8[][]} */
       this.recodeChain = [];          // Recoding operations chain
       /** @type {PerformanceProfiler} */
-      this.profiler = new FountainFoundation.PerformanceProfiler();
+      this.profiler = new PerformanceProfiler();
       /** @type {SeededRandom} */
       this.rng = null;
     }
@@ -388,7 +390,7 @@
      * @returns {void}
      */
     _initializeEncoding() {
-      this.rng = new FountainFoundation.SeededRandom(this.seed);
+      this.rng = new SeededRandom(this.seed);
       this.profiler.startTimer('initialization');
 
       // Auto-calculate batch parameters if needed
