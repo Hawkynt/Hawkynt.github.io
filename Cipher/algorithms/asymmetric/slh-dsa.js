@@ -218,20 +218,43 @@
     }
   }
 
-  const PARAMETER_SETS = {
-    'SLH-DSA-SHA2-128s':  new SlhDsaBaseParams(16, 63, 7, 9, 12, 14, 4, 30, 'SHA2'),
-    'SLH-DSA-SHAKE-128s': new SlhDsaBaseParams(16, 63, 7, 9, 12, 14, 4, 30, 'SHAKE'),
-    'SLH-DSA-SHA2-128f':  new SlhDsaBaseParams(16, 66, 22, 3, 6, 33, 4, 34, 'SHA2'),
-    'SLH-DSA-SHAKE-128f': new SlhDsaBaseParams(16, 66, 22, 3, 6, 33, 4, 34, 'SHAKE'),
-    'SLH-DSA-SHA2-192s':  new SlhDsaBaseParams(24, 63, 7, 9, 14, 17, 4, 39, 'SHA2'),
-    'SLH-DSA-SHAKE-192s': new SlhDsaBaseParams(24, 63, 7, 9, 14, 17, 4, 39, 'SHAKE'),
-    'SLH-DSA-SHA2-192f':  new SlhDsaBaseParams(24, 66, 22, 3, 8, 33, 4, 42, 'SHA2'),
-    'SLH-DSA-SHAKE-192f': new SlhDsaBaseParams(24, 66, 22, 3, 8, 33, 4, 42, 'SHAKE'),
-    'SLH-DSA-SHA2-256s':  new SlhDsaBaseParams(32, 64, 8, 8, 14, 22, 4, 47, 'SHA2'),
-    'SLH-DSA-SHAKE-256s': new SlhDsaBaseParams(32, 64, 8, 8, 14, 22, 4, 47, 'SHAKE'),
-    'SLH-DSA-SHA2-256f':  new SlhDsaBaseParams(32, 68, 17, 4, 9, 35, 4, 49, 'SHA2'),
-    'SLH-DSA-SHAKE-256f': new SlhDsaBaseParams(32, 68, 17, 4, 9, 35, 4, 49, 'SHAKE')
-  };
+  const SLH_DSA_SHA2_128S  = new SlhDsaBaseParams(16, 63, 7, 9, 12, 14, 4, 30, 'SHA2');
+  const SLH_DSA_SHAKE_128S = new SlhDsaBaseParams(16, 63, 7, 9, 12, 14, 4, 30, 'SHAKE');
+  const SLH_DSA_SHA2_128F  = new SlhDsaBaseParams(16, 66, 22, 3, 6, 33, 4, 34, 'SHA2');
+  const SLH_DSA_SHAKE_128F = new SlhDsaBaseParams(16, 66, 22, 3, 6, 33, 4, 34, 'SHAKE');
+  const SLH_DSA_SHA2_192S  = new SlhDsaBaseParams(24, 63, 7, 9, 14, 17, 4, 39, 'SHA2');
+  const SLH_DSA_SHAKE_192S = new SlhDsaBaseParams(24, 63, 7, 9, 14, 17, 4, 39, 'SHAKE');
+  const SLH_DSA_SHA2_192F  = new SlhDsaBaseParams(24, 66, 22, 3, 8, 33, 4, 42, 'SHA2');
+  const SLH_DSA_SHAKE_192F = new SlhDsaBaseParams(24, 66, 22, 3, 8, 33, 4, 42, 'SHAKE');
+  const SLH_DSA_SHA2_256S  = new SlhDsaBaseParams(32, 64, 8, 8, 14, 22, 4, 47, 'SHA2');
+  const SLH_DSA_SHAKE_256S = new SlhDsaBaseParams(32, 64, 8, 8, 14, 22, 4, 47, 'SHAKE');
+  const SLH_DSA_SHA2_256F  = new SlhDsaBaseParams(32, 68, 17, 4, 9, 35, 4, 49, 'SHA2');
+  const SLH_DSA_SHAKE_256F = new SlhDsaBaseParams(32, 68, 17, 4, 9, 35, 4, 49, 'SHAKE');
+
+  /** @type {string[]} The twelve FIPS 205 names, in the order of PARAMETER_SET_LIST. */
+  const PARAMETER_SET_NAMES = [
+    'SLH-DSA-SHA2-128s', 'SLH-DSA-SHAKE-128s', 'SLH-DSA-SHA2-128f', 'SLH-DSA-SHAKE-128f',
+    'SLH-DSA-SHA2-192s', 'SLH-DSA-SHAKE-192s', 'SLH-DSA-SHA2-192f', 'SLH-DSA-SHAKE-192f',
+    'SLH-DSA-SHA2-256s', 'SLH-DSA-SHAKE-256s', 'SLH-DSA-SHA2-256f', 'SLH-DSA-SHAKE-256f'
+  ];
+
+  /** @type {SlhDsaBaseParams[]} */
+  const PARAMETER_SET_LIST = [
+    SLH_DSA_SHA2_128S, SLH_DSA_SHAKE_128S, SLH_DSA_SHA2_128F, SLH_DSA_SHAKE_128F,
+    SLH_DSA_SHA2_192S, SLH_DSA_SHAKE_192S, SLH_DSA_SHA2_192F, SLH_DSA_SHAKE_192F,
+    SLH_DSA_SHA2_256S, SLH_DSA_SHAKE_256S, SLH_DSA_SHA2_256F, SLH_DSA_SHAKE_256F
+  ];
+
+  /**
+   * The base parameters of exactly this FIPS 205 name.
+   * @param {string} name - a parameter set name
+   * @returns {SlhDsaBaseParams|null} the parameters, or null
+   */
+  function BaseParameters(name) {
+    for (let i = 0; i < PARAMETER_SET_NAMES.length; ++i)
+      if (PARAMETER_SET_NAMES[i] === name) return PARAMETER_SET_LIST[i];
+    return null;
+  }
 
   // FIPS 205 is the standardised form of the SPHINCS+ round-3 submission, and
   // the two differ in four specific places. Rather than copy the tree, WOTS+
@@ -282,8 +305,7 @@
    * @returns {SlhDsaParams} the parameter set augmented with len/len1/len2 and sizes
    */
   function DeriveParameters(name) {
-    /** @type {SlhDsaBaseParams} */
-    const base = PARAMETER_SETS[name];
+    const base = BaseParameters(name);
     if (!base)
       throw new Error('Unknown SLH-DSA parameter set: ' + name);
 
@@ -320,7 +342,6 @@
    * @returns {uint8[]} Result
    */
   function ToByteArray(data) {
-    if (data instanceof Uint8Array) return data;
     const out = new Uint8Array(data.length);
     for (let i = 0; i < data.length; ++i) out[i] = data[i];
     return out;
@@ -948,8 +969,8 @@
 
   class SlhDsaEngine {
     /**
-     * @param {SlhDsaParams} parameterSet - a FIPS 205 parameter set name, or
-     *   an already-derived parameter object for a caller with its own table
+     * @param {SlhDsaParams} parameterSet - the derived parameters, from
+     *   DeriveParameters or from a caller with its own table
      * @param {SlhDsaProfile} [profile] - which of the two constructions to build;
      *   FIPS 205 by default
      */
@@ -957,9 +978,7 @@
       /** @type {SlhDsaProfile} */
       this.profile = profile ? profile : FIPS205_PROFILE;
       /** @type {SlhDsaParams} */
-      this.params = typeof parameterSet === 'string'
-        ? DeriveParameters(parameterSet)
-        : parameterSet;
+      this.params = parameterSet;
       /** @type {SlhDsaHashes} */
       this.hash = BuildHashFunctions(this.params, this.profile);
     }
@@ -1867,7 +1886,8 @@
       this.optRand = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
-      this._engines = {};
+      /** @type {SlhDsaEngine[]} engines built so far, one per parameter set */
+      this._engines = [];
     }
 
     /**
@@ -1893,12 +1913,10 @@
      * @returns {SlhDsaEngine} the engine
      */
     _engine() {
-      /** @type {SlhDsaEngine} */
-      let engine = this._engines[this.parameterSet];
-      if (!engine) {
-        engine = new SlhDsaEngine(this.parameterSet);
-        this._engines[this.parameterSet] = engine;
-      }
+      for (let i = 0; i < this._engines.length; ++i)
+        if (this._engines[i].params.name === this.parameterSet) return this._engines[i];
+      const engine = new SlhDsaEngine(DeriveParameters(this.parameterSet));
+      this._engines.push(engine);
       return engine;
     }
 
@@ -1982,7 +2000,20 @@
     SlhDsaInstance,
     SlhDsaEngine,
     DeriveParameters,
-    PARAMETER_SETS,
+    PARAMETER_SETS: {
+      'SLH-DSA-SHA2-128s':  SLH_DSA_SHA2_128S,
+      'SLH-DSA-SHAKE-128s': SLH_DSA_SHAKE_128S,
+      'SLH-DSA-SHA2-128f':  SLH_DSA_SHA2_128F,
+      'SLH-DSA-SHAKE-128f': SLH_DSA_SHAKE_128F,
+      'SLH-DSA-SHA2-192s':  SLH_DSA_SHA2_192S,
+      'SLH-DSA-SHAKE-192s': SLH_DSA_SHAKE_192S,
+      'SLH-DSA-SHA2-192f':  SLH_DSA_SHA2_192F,
+      'SLH-DSA-SHAKE-192f': SLH_DSA_SHAKE_192F,
+      'SLH-DSA-SHA2-256s':  SLH_DSA_SHA2_256S,
+      'SLH-DSA-SHAKE-256s': SLH_DSA_SHAKE_256S,
+      'SLH-DSA-SHA2-256f':  SLH_DSA_SHA2_256F,
+      'SLH-DSA-SHAKE-256f': SLH_DSA_SHAKE_256F
+    },
     FIPS205_PROFILE,
     SPHINCS_ROUND3_PROFILE
   };
