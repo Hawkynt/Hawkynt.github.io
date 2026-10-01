@@ -228,10 +228,6 @@
         return;
       }
 
-      if (!Array.isArray(keyBytes) && !(keyBytes instanceof Uint8Array)) {
-        throw new Error("Invalid key - must be byte array");
-      }
-
       if (keyBytes.length !== KEY_LEN) {
         throw new Error("Invalid SSS key size: " + keyBytes.length + " bytes. Key must be 16 bytes (128 bits)");
       }
@@ -255,9 +251,6 @@
       if (!ivData) {
         this._iv = null;
       } else {
-        if (!Array.isArray(ivData) && !(ivData instanceof Uint8Array)) {
-          throw new Error("Invalid IV - must be byte array");
-        }
         if (ivData.length !== KEY_LEN) {
           throw new Error("Invalid SSS IV size: " + ivData.length + " bytes. IV must be 16 bytes (128 bits)");
         }
@@ -295,9 +288,6 @@
      */
     Feed(data) {
       if (!data || data.length === 0) return;
-      if (!Array.isArray(data) && !(data instanceof Uint8Array)) {
-        throw new Error("Invalid input data - must be byte array");
-      }
       if (!this._key) {
         throw new Error("Key not set");
       }
