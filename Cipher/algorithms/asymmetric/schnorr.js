@@ -37,14 +37,6 @@
     throw new Error('OpCodes dependency is required');
   }
 
-  const globalScope = (function() {
-    if (typeof globalThis !== 'undefined') return globalThis;
-    if (typeof window !== 'undefined') return window;
-    if (typeof global !== 'undefined') return global;
-    if (typeof self !== 'undefined') return self;
-    throw new Error('Unable to locate global object');
-  })();
-
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           AsymmetricCipherAlgorithm, IAlgorithmInstance,
           TestCase, LinkItem, KeySize } = AlgorithmFramework;
@@ -403,18 +395,11 @@
     if (sha256Algorithm) return sha256Algorithm;
 
     /** @type {Algorithm} */
-    let found = AlgorithmFramework.Find ? AlgorithmFramework.Find('SHA-256') : null;
+    let found = AlgorithmFramework.Find('SHA-256');
 
-    if (!found) {
-      let sha256Module = globalScope.SHA2_256;
-      if (!sha256Module && typeof require !== 'undefined') {
-        try {
-          sha256Module = require('../hash/sha256.js');
-        } catch (error) {
-          // Reported as a missing dependency below.
-        }
-      }
-      if (sha256Module && sha256Module.SHA2_256Algorithm) found = new sha256Module.SHA2_256Algorithm();
+    if (!found && typeof require !== 'undefined') {
+      try { require('../hash/sha256.js'); } catch (error) { /* reported as a missing dependency below */ }
+      found = AlgorithmFramework.Find('SHA-256');
     }
 
     if (!found)

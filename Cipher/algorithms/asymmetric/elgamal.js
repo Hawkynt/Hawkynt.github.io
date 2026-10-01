@@ -360,28 +360,14 @@
   ];
 
   /**
-   * Read a key size selector from whatever the caller supplied. Both spellings
-   * used across this collection are accepted: decimal digits in ASCII, and a
-   * big-endian 16-bit count of bits.
-   * @param {uint8[]|string|number} keyData - Key selector
+   * Read a key size selector. Both spellings used across this collection are
+   * accepted: decimal digits in ASCII, and a big-endian 16-bit count of bits.
+   * A size in bits is passed to Init directly.
+   * @param {uint8[]} keyData - Key selector octets
    * @returns {int32} Key size in bits
    */
   function parseKeySize(keyData) {
-    if (typeof keyData === 'number') {
-      /** @type {int32} */
-      const bits = keyData;
-      return bits;
-    }
-
-    if (typeof keyData === 'string') {
-      /** @type {string} */
-      const text = keyData;
-      /** @type {int32} */
-      const parsed = parseInt(text, 10);
-      return parsed;
-    }
-
-    if (keyData && typeof keyData.length === 'number') {
+    if (keyData) {
       /** @type {uint8[]} */
       const bytes = keyData;
       let digits = '';
@@ -406,6 +392,53 @@
     }
 
     throw new Error('ElGamal: unrecognised key selector');
+  }
+
+  /**
+   * ElGamal public key: group (p, g) and y = g^x mod p
+   */
+  class ElGamalPublicKey {
+    /**
+     * @param {BigInt} p - Prime modulus
+     * @param {BigInt} g - Generator
+     * @param {BigInt} y - Public value g^x mod p
+     * @param {int32} keySize - Modulus size in bits
+     */
+    constructor(p, g, y, keySize) {
+      /** @type {BigInt} */
+      this.p = p;
+      /** @type {BigInt} */
+      this.g = g;
+      /** @type {BigInt} */
+      this.y = y;
+      /** @type {int32} */
+      this.keySize = keySize;
+    }
+  }
+
+  /**
+   * ElGamal private key: the public key and the secret exponent x
+   */
+  class ElGamalPrivateKey {
+    /**
+     * @param {BigInt} p - Prime modulus
+     * @param {BigInt} g - Generator
+     * @param {BigInt} y - Public value g^x mod p
+     * @param {BigInt} x - Secret exponent
+     * @param {int32} keySize - Modulus size in bits
+     */
+    constructor(p, g, y, x, keySize) {
+      /** @type {BigInt} */
+      this.p = p;
+      /** @type {BigInt} */
+      this.g = g;
+      /** @type {BigInt} */
+      this.y = y;
+      /** @type {BigInt} */
+      this.x = x;
+      /** @type {int32} */
+      this.keySize = keySize;
+    }
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -530,7 +563,9 @@
       this.isInverse = isInverse;
       /** @type {int32} */
       this.keySize = 2048; // Bit length of the prime modulus
+      /** @type {ElGamalPublicKey|null} */
       this._publicKey = null;
+      /** @type {ElGamalPrivateKey|null} */
       this._privateKey = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -556,19 +591,31 @@
     }
 
     // Property setters/getters for public key
+    /**
+     * @param {ElGamalPublicKey|null} keyData - Public key, or null to clear it
+     */
     set publicKey(keyData) {
       this._publicKey = keyData ? keyData : null;
     }
 
+    /**
+     * @returns {ElGamalPublicKey|null} Public key
+     */
     get publicKey() {
       return this._publicKey;
     }
 
     // Property setters/getters for private key
+    /**
+     * @param {ElGamalPrivateKey|null} keyData - Private key, or null to clear it
+     */
     set privateKey(keyData) {
       this._privateKey = keyData ? keyData : null;
     }
 
+    /**
+     * @returns {ElGamalPrivateKey|null} Private key
+     */
     get privateKey() {
       return this._privateKey;
     }
@@ -644,20 +691,11 @@
       const g = hexToBigInt(ELGAMAL_KEYS_G[index]);
       const y = hexToBigInt(ELGAMAL_KEYS_Y[index]);
 
-      this._publicKey = {
-        p: p,
-        g: g,
-        y: y,
-        keySize: this.keySize
-      };
+      this._publicKey = new ElGamalPublicKey(p, g, y, this.keySize);
 
-      this._privateKey = {
-        p: p,
-        g: g,
-        y: y,
-        x: hexToBigInt(ELGAMAL_KEYS_X[index]),
-        keySize: this.keySize
-      };
+      this._privateKey = new ElGamalPrivateKey(p, g, y,
+        hexToBigInt(ELGAMAL_KEYS_X[index]),
+        this.keySize);
     }
 
     /**
