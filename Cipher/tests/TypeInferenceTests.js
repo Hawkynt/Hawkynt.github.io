@@ -273,10 +273,10 @@ class TypeInferenceTestSuite {
         'int32', 'Medium negative (-32769) → int32', 'const x = -32769'
       );
 
-      // Very negative → uint32 (literal 2147483649 is uint32, unary minus preserves type)
+      // Very negative → int64 (a negative value is never uint32)
       this.assertEqual(
         this.inferType('const x = -2147483649;', this.findVarInit),
-        'uint32', 'Below int32 min → uint32 (literal exceeds int32)', 'const x = -2147483649'
+        'int64', 'Below int32 min → int64 (was uint32, which cannot hold it)', 'const x = -2147483649'
       );
 
       // Floating point
@@ -557,10 +557,10 @@ class TypeInferenceTestSuite {
         'int32', 'int32 + int32 → int32', 'const x = 1 + 65536'
       );
 
-      // Arithmetic preserves left type
+      // Arithmetic is typed to hold its result (2^31 + 1 does not fit int32)
       this.assertEqual(
         this.inferType('const x = 1 + 2147483648;', this.findVarInit),
-        'int32', 'int32 + uint32 → int32 (left type rule)', 'const x = 1 + 2147483648'
+        'uint32', 'literal 1 + literal 2^31 → uint32 (holds 2^31 + 1)', 'const x = 1 + 2147483648'
       );
 
       this.assertEqual(
@@ -701,10 +701,10 @@ class TypeInferenceTestSuite {
         'int32', 'cond ? int32 : int32 → int32', 'true ? 1 : 65536'
       );
 
-      // Ternary with mixed signed/unsigned - prefers signed type
+      // Ternary over literals: the type that holds both values (int32 cannot hold 2^31)
       this.assertEqual(
         this.inferType('const x = true ? 1 : 2147483648;', this.findVarInit),
-        'int32', 'cond ? int32 : uint32 → int32 (prefer signed)', 'true ? 1 : 2147483648'
+        'uint32', 'cond ? 1 : 2^31 → uint32 (the literal 1 fits uint32)', 'true ? 1 : 2147483648'
       );
 
       // Ternary - string wins over number
@@ -1526,7 +1526,7 @@ class TypeInferenceTestSuite {
       );
 
       // Type flow from TypedArray element through operations
-      // uint8 + int32 literal - left operand type is uint8
+      // uint8 + 1 reaches 256, which uint8 cannot hold: int32
       const code12 = `
         function f() {
           const arr = new Uint8Array(10);
@@ -1535,9 +1535,224 @@ class TypeInferenceTestSuite {
       `;
       this.assertEqual(
         this.inferType(code12, this.findReturnArg),
-        'uint8', 'uint8 + literal → uint8 (left type)', 'Uint8Array[0] + 1'
+        'int32', 'uint8 + literal → int32 (holds 255 + 1)', 'Uint8Array[0] + 1'
       );
     });
+  }
+
+  // ============================================================================
+  // Type soundness regressions
+  // ============================================================================
+
+  /**
+   * The type of the variable `name`: its declarator's type, else its initializer's.
+   * @param {string} code - JavaScript
+   * @param {string} name - variable name
+   * @returns {string|null} type
+   */
+  declType(code, name) {
+    return this.inferType(code, ast => {
+      const find = node => {
+        if (!node || typeof node !== 'object') return null;
+        if (node.type === 'VariableDeclarator' && node.id && node.id.name === name)
+          return node.resultType ? node : node.init;
+        for (const key in node) {
+          if (key === 'loc' || key === 'range') continue;
+          const r = find(node[key]);
+          if (r) return r;
+        }
+        return null;
+      };
+      return find(ast);
+    });
+  }
+
+  /**
+   * Each case is a type the IL gave that a value at run time did not have
+   * (found by tests/TypeSoundness.js), or a type the IL lost: the expected
+   * type holds every value the expression can produce.
+   */
+  testSoundnessRegressions() {
+    this.runCategory('Type Soundness Regressions', () => {
+      const check = (code, name, expected, title) => this.assertEqual(this.declType(code, name), expected, title, code.replace(/\s+/g, ' '));
+      const bytes = '/** @param {uint8[]} b\n * @param {uint8[]} c */\nfunction f(b, c) {\n';
+
+      // A spread contributes its elements: [...bytes] was typed uint8[][]
+      check(bytes + 'const x = [...b]; return x; }', 'x', 'uint8[]', 'given [...bytes], then uint8[] (not uint8[][])');
+      check(bytes + 'const x = [...b, ...c]; return x; }', 'x', 'uint8[]', 'given [...a, ...b] of bytes, then uint8[]');
+      check('/** @param {uint8[][]} m */\nfunction f(m) { const x = [...m]; return x; }', 'x', 'uint8[][]', 'given [...rows] of uint8[][], then uint8[][]');
+
+      // The common type holds both sides
+      const mixed = '/** @param {uint32} u\n * @param {int32} s\n * @param {uint8} b\n * @param {boolean} c */\nfunction f(u, s, b, c) {\n';
+      check(mixed + 'const x = c ? u : s; return x; }', 'x', 'int64', 'given c ? uint32 : int32, then int64 (int32 cannot hold 2^32-1)');
+      check(mixed + 'const x = c ? 0 : u; return x; }', 'x', 'uint32', 'given c ? 0 : uint32, then uint32 (the literal fits)');
+      check(mixed + 'const x = c ? -1 : u; return x; }', 'x', 'int64', 'given c ? -1 : uint32, then int64 (boundary: a negative literal)');
+      check('/** @param {uint8} b\n * @param {float32} g\n * @param {boolean} c */\nfunction f(b, g, c) { const x = c ? b : g; return x; }', 'x', 'float32', 'given c ? uint8 : float32, then float32');
+      check(mixed + 'const x = c ? s : 1.5; return x; }', 'x', 'float64', 'given c ? int32 : 1.5, then float64 (float32 cannot hold int32)');
+      check(bytes + 'const x = b.length > 0 ? null : c; return x; }', 'x', 'uint8[]', 'given cond ? null : bytes, then uint8[]');
+      check(mixed + 'const x = Math.min(255, b); return x; }', 'x', 'uint8', 'given Math.min(255, uint8), then uint8');
+
+      // Arithmetic is typed to hold its result
+      check(mixed + 'const x = b + b; return x; }', 'x', 'int32', 'given uint8 + uint8, then int32 (holds 510)');
+      check(mixed + 'const x = u + u; return x; }', 'x', 'int64', 'given uint32 + uint32, then int64');
+      check(mixed + 'const x = u - 1; return x; }', 'x', 'int64', 'given uint32 - 1, then int64 (may be -1)');
+      check('/** @param {uint16} a */\nfunction f(a) { const x = a * a; return x; }', 'x', 'uint32', 'given uint16 * uint16, then uint32 (boundary: 65535^2 < 2^32)');
+      check(mixed + 'const x = s + b; return x; }', 'x', 'int32', 'given int32 + uint8, then int32 (a counted int32 stays int32)');
+      check(mixed + 'const x = s * u; return x; }', 'x', 'int64', 'given int32 * uint32, then int64');
+      this.assertEqual(this.inferType(mixed + 'let x = b; return x += b; }', this.findReturnArg), 'int32',
+        'given uint8 += uint8, then the compound result is int32', 'x += b');
+
+      // BigInt arithmetic does not wrap
+      const big = '/** @param {BigInt} a\n * @param {uint64} w */\nfunction f(a, w) {\n';
+      check(big + 'const x = a / 2n; return x; }', 'x', 'bigint', 'given BigInt / 2n, then bigint (was float64)');
+      check(big + 'const x = w + 1n; return x; }', 'x', 'bigint', 'given uint64 + 1n, then bigint (exceeds 64 bits)');
+      check(big + 'const x = OpCodes.ShiftLn(a, 3) - 1n; return x; }', 'x', 'bigint', 'given ShiftLn(...) - 1n, then bigint (was int64)');
+      check(big + 'const x = a & 0xFFn; return x; }', 'x', 'uint64', 'given BigInt & 0xFFn, then uint64');
+      check(big + 'const x = w >> 3n; return x; }', 'x', 'uint64', 'given uint64 >> 3n, then uint64');
+      check(big + 'const x = a % 7n; return x; }', 'x', 'bigint', 'given BigInt % 7n, then bigint (keeps the sign)');
+
+      // Rounding keeps the dividend's range
+      check(mixed + 'const x = Math.floor(u / 8); return x; }', 'x', 'int32', 'given Math.floor(uint32 / 8), then int32');
+      check(mixed + 'const x = Math.floor(u / 1); return x; }', 'x', 'uint32', 'given Math.floor(uint32 / 1), then uint32 (boundary: divisor 1)');
+      check('/** @param {uint64} v */\nfunction f(v) { const x = Math.floor(v / 0x100000000); return x; }', 'x', 'uint64', 'given Math.floor(uint64 / 2^32), then uint64 (was int32)');
+      check(mixed + 'const x = Math.floor(u / u); return x; }', 'x', 'uint32', 'given Math.floor(uint32 / uint32), then uint32');
+      check('function f() { const x = Math.floor(Math.random() * 10); return x; }', 'x', 'int32', 'given Math.floor(float), then int32 (unchanged default)');
+
+      // A JSDoc type survives a braceless if
+      const after = '\n  /** @type {uint8[]} */\n  const out = new Array(d.length);\n  return out;\n}';
+      check('/** @param {uint8[]} d\n * @param {boolean} f */\nfunction g(d, f) {\n  if (f) d = d;' + after, 'out', 'uint8[]', 'given if (f) x = y; then the next JSDoc @type is kept');
+      check('/** @param {uint8[]} d\n * @param {boolean} f */\nfunction g(d, f) {\n  if (f) return d;' + after, 'out', 'uint8[]', 'given if (f) return d; then the next JSDoc @type is kept');
+      check('/** @param {uint8[]} d\n * @param {boolean} f */\nfunction g(d, f) {\n  if (f) d = d;\n  else d = d;' + after, 'out', 'uint8[]', 'given if/else without braces, then the next JSDoc @type is kept');
+
+      // Methods of the file's own classes type calls on their objects
+      const G = 'class G { /** @returns {uint8} */ next() { return 1; } }\n';
+      check(G + 'class A { constructor() { /** @type {G} */ this.g = new G(); } m() { const v = this.g.next(); return v; } }', 'v', 'uint8', 'given this.g typed {G}, then this.g.next() is uint8');
+      check(G + 'class A { constructor() { /** @type {G|null} */ this.g = null; } m() { const v = this.g.next(); return v; } }', 'v', 'uint8', 'given this.g typed {G|null}, then this.g.next() is uint8');
+      check(G + 'function m() { /** @type {G} */ const g = new G(); const v = g.next(); return v; }', 'v', 'uint8', 'given a local typed {G}, then g.next() is uint8');
+      check(G + 'function m() { const v = new G().next(); return v; }', 'v', 'uint8', 'given new G().next(), then uint8');
+      check('class Box { /** @returns {uint8[]} */ Get() { return []; } }\n/** @param {Box} b */\nfunction f(b) { const v = b.Get(); return v; }', 'v', 'uint8[]', 'given @param {Box} b, then b.Get() is uint8[]');
+      check(G + 'class H extends G { }\nfunction m() { const v = new H().next(); return v; }', 'v', 'uint8', 'given a subclass, then the inherited method types the call');
+      check(G + 'function m() { const v = new G().other(); return v; }', 'v', null, 'given a method the class lacks, then no type (exceptional)');
+
+      // A typed-array JSDoc name is an array of its element type
+      check('/** @param {Uint8Array} a */\nfunction f(a) { const v = a[0]; return v; }', 'v', 'uint8', 'given @param {Uint8Array} a, then a[0] is uint8');
+      check('/** @param {Uint32Array} a */\nfunction f(a) { const v = a; return v; }', 'v', 'uint32[]', 'given @param {Uint32Array}, then uint32[]');
+      check('/** @param {BigUint64Array} a */\nfunction f(a) { const v = a[1]; return v; }', 'v', 'uint64', 'given @param {BigUint64Array}, then elements are uint64');
+
+      // Constructor @param types the arguments of new
+      this.assertEqual(this.inferType('class Prof { /** @param {int32[]} a */ constructor(a) { this.a = a; } }\nconst p = new Prof([1, 2, 3]);',
+        ast => this.findNodeOfType(ast, 'ArrayExpression')), 'int32[]', 'given @param {int32[]} on the constructor, then new Prof([1, 2, 3]) passes int32[]', 'new Prof([1, 2, 3])');
+
+      // new Array(n).fill(v) takes the declared type
+      check('/** @param {int32} n */\nfunction f(n) { /** @type {int32[]} */ const a = new Array(n).fill(0); return a; }', 'a', 'int32[]', 'given @type {int32[]} on new Array(n).fill(0), then int32[]');
+      this.assertEqual(this.inferType('/** @param {int32} n */\nfunction f(n) { /** @type {int32[]} */ const a = new Array(n).fill(0); return a; }',
+        ast => this.findNodeOfType(ast, 'ArrayCreation')), 'int32[]', 'given the same, then the inner new Array(n) is int32[] too', 'new Array(n)');
+
+      // Loop variables and inline callbacks take the element type
+      check('/** @param {string[]} names */\nfunction f(names) { for (const x of names) { const y = x; return y; } return ""; }', 'y', 'string', 'given for (const x of string[]), then x is string');
+      check('/** @param {uint32[]} w */\nfunction f(w) { for (const x of w) { const y = x; return y; } return 0; }', 'y', 'uint32', 'given for (const x of uint32[]), then x is uint32');
+      check(bytes + 'return b.map(v => { const w = v; return w; }); }', 'w', 'uint8', 'given bytes.map(v => ...), then v is uint8');
+      check(bytes + 'b.forEach((v, i) => { const k = i; return k; }); return b; }', 'k', 'int32', 'given forEach((v, i) => ...), then i is int32');
+      check(bytes + 'return b.reduce((acc, v) => { const w = v; return acc + w; }, 0); }', 'w', 'uint8', 'given reduce((acc, v) => ...), then v is uint8');
+      check('function f(b) { return b.map(v => { const w = v; return w; }); }', 'w', null, 'given an untyped array, then the callback parameter stays untyped');
+
+      // JSDoc in front of `const f = (a, b) => ...` types the arrow
+      check('/**\n * @param {uint8} a\n * @param {uint32} b\n * @returns {uint32}\n */\nconst f = (a, b) => { const v = b; return v; };', 'v', 'uint32', 'given JSDoc on const f = (a, b) => ..., then b is uint32');
+      check('/**\n * @param {uint8} a\n * @returns {uint32}\n */\nconst f = (a, b) => { const v = b; return v; };', 'v', null, 'given JSDoc that leaves b out, then b stays untyped');
+      check('/**\n * @param {uint8} q - names no parameter of the arrow\n */\nconst f = (a) => { const v = a; return v; };', 'v', null, 'given JSDoc naming another parameter, then the arrow is not typed by it (exceptional)');
+      check('/**\n * @param {uint8[]} d\n * @returns {uint8}\n */\nconst f = d => d[0];\nconst x = f([1]);', 'x', 'uint8', 'given @returns on an arrow, then calls of it are typed');
+
+      // Typed-array results
+      check('/** @param {Uint8Array} a */\nfunction f(a) { const v = a.subarray(1, 3); return v; }', 'v', 'uint8[]', 'given Uint8Array.subarray(), then uint8[]');
+      check('/** @returns {Uint8Array} */\nfunction g() { return new Uint8Array(4); }\nfunction f() { const v = g(); return v; }', 'v', 'uint8[]', 'given @returns {Uint8Array}, then the call is uint8[]');
+
+      // Keyed collections
+      check('/** @type {Object<string, uint8[]>} */\nconst T = {};\nfunction f(k) { const v = T[k]; return v; }', 'v', 'uint8[]', 'given Object<string, uint8[]>, then T[k] is uint8[]');
+      check('/** @type {Object.<string, uint32>} */\nconst T = {};\nfunction f() { const v = T.abc; return v; }', 'v', 'uint32', 'given Object.<string, uint32>, then T.abc is uint32');
+      check('/** @param {Map<string, uint16[]>} m */\nfunction f(m) { const v = m.get("a"); return v; }', 'v', 'uint16[]', 'given Map<string, uint16[]>, then m.get(k) is uint16[]');
+      check('/** @param {Map<string, uint16[]>} m */\nfunction f(m) { const v = m.has("a"); return v; }', 'v', 'boolean', 'given Map<K, V>, then m.has(k) is boolean');
+      check('/** @param {Map<string>} m */\nfunction f(m) { const v = m.get("a"); return v; }', 'v', null, 'given Map with one type argument, then nothing is assumed (exceptional)');
+
+      // The declared type reaches both branches of a ternary
+      this.assertEqual(this.inferType('/** @param {boolean} c */\nfunction f(c) { /** @type {uint8[]} */ const v = c ? [1, 2] : [300]; return v; }',
+        ast => this.findNodeOfType(ast, 'ConditionalExpression')), 'uint8[]', 'given @type {uint8[]} on c ? [..] : [..], then the ternary is uint8[]', 'c ? [1, 2] : [300]');
+      this.assertEqual(this.inferType('/** @param {boolean} c */\nfunction f(c) { /** @type {uint16[]} */ const v = c ? [1, 2] : []; return v; }',
+        ast => this.findNodeOfType(ast, 'ArrayExpression')), 'uint16[]', 'given @type {uint16[]}, then a literal branch takes the declared type', '[1, 2]');
+
+      // Comments inside an expression, and after braceless loops
+      check('/** @param {boolean} a\n * @param {boolean} b\n * @param {boolean} c */\nfunction f(a, b, c) {\n  const x = a === b // why\n    || c;\n  return x;\n}', 'x', 'boolean', 'given a === b // comment, then || c on the next line, then it parses (was a parse error)');
+      check('/** @param {uint8} a\n * @param {uint8} b */\nfunction f(a, b) {\n  const x = a /* left */ * /* right */ b;\n  return x;\n}', 'x', 'int32', 'given block comments around an operator, then it parses');
+      check('/** @param {boolean} c */\nfunction f(c) {\n  const x = c ? 1 // one\n    : 2;\n  return x;\n}', 'x', 'int32', 'given a comment before the : of a ternary, then it parses');
+      check('/** @param {uint8} a */\nfunction f(a) {\n  let x = a // trailing\n  /** @type {uint16} */\n  const y = 1;\n  return y;\n}', 'y', 'uint16', 'given a trailing comment and no semicolon, then the next JSDoc still leads the next statement');
+      check('/** @param {uint8[]} d */\nfunction g(d) {\n  for (let i = 0; i < 4; ++i) if (d[i]) return d;\n  /** @type {uint8[]} */\n  const out = new Array(4);\n  return out;\n}', 'out', 'uint8[]', 'given for (...) if (...) return ...; then the next JSDoc @type is kept');
+
+      // OpCodes.SecureRandomBytes is typed by its JSDoc
+      check('function f() { const k = OpCodes.SecureRandomBytes(16); return k; }', 'k', 'uint8[]', 'given OpCodes.SecureRandomBytes(16), then uint8[]');
+
+      // A function of the file used as a value
+      check('function CompareNumbers(a, b) { return 0; }\nfunction f() { const c = CompareNumbers; return c; }', 'c', 'function', 'given a named function as a value, then it is typed function');
+      check('function f() { const c = NotDeclaredAnywhere; return c; }', 'c', null, 'given an unknown name, then no type (exceptional)');
+
+      // Bitwise operators on numbers yield int32
+      const words = '/** @param {uint32} a\n * @param {uint32} b\n * @param {uint8} c */\nfunction f(a, b, c) {\n';
+      check(words + 'const x = a ^ b; return x; }', 'x', 'int32', 'given uint32 ^ uint32, then int32 (may be negative; was uint32)');
+      check(words + 'const x = a | 1; return x; }', 'x', 'int32', 'given uint32 | 1, then int32');
+      check(words + 'const x = a << 1; return x; }', 'x', 'int32', 'given uint32 << 1, then int32');
+      check(words + 'const x = c & a; return x; }', 'x', 'uint8', 'given uint8 & uint32, then uint8 (within the uint8)');
+      check(words + 'const x = c >> 1; return x; }', 'x', 'uint8', 'given uint8 >> 1, then uint8');
+      this.assertEqual(this.inferType(words + 'let x = a; return x ^= b; }', this.findReturnArg), 'int32',
+        'given uint32 ^= uint32, then the compound result is int32 (was uint32)', 'x ^= b');
+
+      // BigInt literals and BigInt-typed variables
+      check('function f() { const x = 18446744073709551616n; return x; }', 'x', 'bigint', 'given 2^64 as a BigInt literal, then bigint (was uint64)');
+      check('function f() { const x = 18446744073709551615n; return x; }', 'x', 'uint64', 'given 2^64-1, then uint64 (boundary)');
+      check('function f() { const x = -9223372036854775809n; return x; }', 'x', 'bigint', 'given -2^63-1, then bigint (boundary)');
+      {
+        const ast = (() => { const log = console.log; console.log = () => {}; try { return new TypeAwareJSASTParser('/** @param {BigInt} m */\nfunction f(m) { let r = 1n; r = (r * m) % m; return r; }').parse(); } finally { console.log = log; } })();
+        const lit = this.findNodeOfType(ast, 'Literal');
+        this.assertEqual(Boolean(lit && lit.typeGuess), true, 'given let r = 1n later assigned a bigint, then the literal type is flagged as a guess', 'let r = 1n');
+      }
+
+      // An undeclared field holds every value assigned to it
+      check('class A { constructor() { this.a = 0; } /** @param {uint32} s */ seed(s) { this.a = s; } get() { const v = this.a; return v; } }', 'v', 'uint32', 'given this.a = 0 and this.a = uint32, then the field is uint32');
+      check('class A { constructor() { this.a = 0; } /** @param {uint32} s */ seed(s) { this.a = s; this.a = 7; } get() { const v = this.a; return v; } }', 'v', 'uint32', 'given a literal after a uint32, then the field stays uint32 (was int32)');
+      check('class A { constructor() { this.a = -1; } /** @param {uint32} s */ seed(s) { this.a = s; } get() { const v = this.a; return v; } }', 'v', 'int64', 'given this.a = -1 and this.a = uint32, then int64');
+      check('class A { constructor() { this.a = 0; } /** @param {uint8[]} s */ seed(s) { this.a = s; } get() { const v = this.a; return v; } }', 'v', 'uint8[]', 'given a number then an array, then the last assignment (no numeric join)');
+
+      // Negation is signed
+      check(words + 'const x = -a; return x; }', 'x', 'int64', 'given -uint32, then int64 (was uint32)');
+      check(words + 'const x = -c; return x; }', 'x', 'int32', 'given -uint8, then int32');
+      check('function f() { const x = -2147483648; return x; }', 'x', 'int32', 'given -2^31, then int32 (boundary)');
+      check('/** @param {BigInt} a */\nfunction f(a) { const x = ~a; return x; }', 'x', 'bigint', 'given ~BigInt, then bigint (was int32)');
+
+      // CopyArray copies any element type
+      check('/** @param {uint32[]} w */\nfunction f(w) { const x = OpCodes.CopyArray(w); return x; }', 'x', 'uint32[]', 'given CopyArray(uint32[]), then uint32[] (was uint8[])');
+      check('/** @param {uint8[]} w */\nfunction f(w) { const x = OpCodes.CopyArray(w); return x; }', 'x', 'uint8[]', 'given CopyArray(uint8[]), then uint8[]');
+
+      // Multiplication by a literal widens
+      check('/** @param {uint8} a */\nfunction f(a) { const v = a * 16; return v; }', 'v', 'int32', 'given uint8 * 16, then int32 (was uint8)');
+      check('/** @param {uint8} a */\nfunction f(a) { const v = a * -1; return v; }', 'v', 'int32', 'given uint8 * -1, then int32 (negative)');
+    });
+  }
+
+  /**
+   * First node of an IL node type.
+   * @param {Object} ast - IL AST
+   * @param {string} type - node type
+   * @returns {Object|null} node
+   */
+  findNodeOfType(ast, type) {
+    const find = node => {
+      if (!node || typeof node !== 'object') return null;
+      if (node.type === type) return node;
+      for (const key in node) {
+        if (key === 'loc' || key === 'range') continue;
+        const r = find(node[key]);
+        if (r) return r;
+      }
+      return null;
+    };
+    return find(ast);
   }
 
   // ============================================================================
@@ -1560,6 +1775,7 @@ class TypeInferenceTestSuite {
     this.testCallExpressions();
     this.testOperationResultTypes();
     this.testEdgeCases();
+    this.testSoundnessRegressions();
 
     const elapsed = Date.now() - startTime;
 
