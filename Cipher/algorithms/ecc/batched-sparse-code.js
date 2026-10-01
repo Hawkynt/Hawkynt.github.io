@@ -53,8 +53,38 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
-  // Extract foundation utilities
-  const { SeededRandom, PerformanceProfiler } = FountainFoundation;
+
+  /**
+   * Code parameters and encoding counters as reported by getPerformanceReport()
+   * @class
+   */
+  class BatchedSparsePerformanceReport {
+    /**
+     * @param {int32} sourceSymbols - Source packets (k)
+     * @param {int32} batchSize - Batch size (b)
+     * @param {int32} numBatches - Batches built
+     * @param {int32} encodedSymbols - Encoded batches
+     * @param {int32} fieldSize - Field size
+     * @param {int32} recodeChainDepth - Recoding operations
+     * @param {int32} totalLinearCombinations - Linear combinations formed
+     */
+    constructor(sourceSymbols, batchSize, numBatches, encodedSymbols, fieldSize, recodeChainDepth, totalLinearCombinations) {
+      /** @type {int32} */
+      this.sourceSymbols = sourceSymbols;
+      /** @type {int32} */
+      this.batchSize = batchSize;
+      /** @type {int32} */
+      this.numBatches = numBatches;
+      /** @type {int32} */
+      this.encodedSymbols = encodedSymbols;
+      /** @type {int32} */
+      this.fieldSize = fieldSize;
+      /** @type {int32} */
+      this.recodeChainDepth = recodeChainDepth;
+      /** @type {int32} */
+      this.totalLinearCombinations = totalLinearCombinations;
+    }
+  }
 
   /**
    * Per-batch statistics as reported by getBatchStats()
@@ -271,7 +301,9 @@
       this.encodedBatches = [];       // Encoded batches
       /** @type {uint8[][]} */
       this.recodeChain = [];          // Recoding operations chain
-      this.profiler = new PerformanceProfiler();
+      /** @type {PerformanceProfiler} */
+      this.profiler = new FountainFoundation.PerformanceProfiler();
+      /** @type {SeededRandom} */
       this.rng = null;
     }
 
@@ -356,7 +388,7 @@
      * @returns {void}
      */
     _initializeEncoding() {
-      this.rng = new SeededRandom(this.seed);
+      this.rng = new FountainFoundation.SeededRandom(this.seed);
       this.profiler.startTimer('initialization');
 
       // Auto-calculate batch parameters if needed
@@ -805,18 +837,15 @@
       return OpCodes.ToByte(result);
     }
 
-    // Performance analysis
+    /**
+     * Code parameters and encoding counters
+     * @returns {BatchedSparsePerformanceReport} Performance report
+     */
     getPerformanceReport() {
-      return {
-        ...this.profiler.getReport(),
-        sourceSymbols: this.k,
-        batchSize: this.batchSize,
-        numBatches: this.batches.length,
-        encodedSymbols: this.encodedBatches.length,
-        fieldSize: this.fieldSize,
-        recodeChainDepth: this.recodeChain.length,
-        totalLinearCombinations: this.profiler.getCounter('linear_combinations')
-      };
+      /** @type {int32} */
+      const linearCombinations = this.profiler.getCounter('linear_combinations');
+      return new BatchedSparsePerformanceReport(this.k, this.batchSize, this.batches.length,
+        this.encodedBatches.length, this.fieldSize, this.recodeChain.length, linearCombinations);
     }
 
     /**
