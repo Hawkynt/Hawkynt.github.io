@@ -1887,18 +1887,10 @@
     /**
      * Feed data for processing. Appends, so that a message split across several
      * calls signs identically to the same message delivered at once.
-     * @param {uint8[]|string} data - Input octets
+     * @param {uint8[]} data - Input octets
      */
     Feed(data) {
-      if (typeof data === 'string') {
-        /** @type {string} */
-        const text = data;
-        for (let i = 0; i < text.length; ++i) this.inputBuffer.push(text.charCodeAt(i) % 256);
-      } else if (data && typeof data.length === 'number') {
-        for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data[i]);
-      } else {
-        this.inputBuffer.push(data);
-      }
+      for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data[i]);
     }
 
     /**
