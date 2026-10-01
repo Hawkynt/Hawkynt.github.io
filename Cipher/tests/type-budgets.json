@@ -912,7 +912,7 @@
   "algorithms/stream/rc4.js": 0,
   "algorithms/stream/rule30.js": 0,
   "algorithms/stream/salsa20.js": 0,
-  "algorithms/stream/seal.js": 10,
+  "algorithms/stream/seal.js": 0,
   "algorithms/stream/shrinking-generator.js": 0,
   "algorithms/stream/snow3g.js": 0,
   "algorithms/stream/sober128.js": 0,
