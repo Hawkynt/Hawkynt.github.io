@@ -1163,7 +1163,7 @@ _Stream-based symmetric encryption_
 | [Dragon](stream-ciphers/dragon.md) | ❌ Broken | Word-based eSTREAM candidate using two NLFSRs with 32-bit operations for high-speed software. Designed by Chen, Henricksen, et al. but elim… |
 | [Dragon (DarkCrypt)](stream-ciphers/dragon-darkcrypt.md) | 🎓 Educational Only | Real Dragon-256 eSTREAM Phase 3 Focus candidate: a single 1024-bit NLFSR filtered by a reversible F function built from two 8x32 S-boxes. 2… |
 | [E0](stream-ciphers/e0.md) | ❌ Broken | Stream cipher used in Bluetooth protocol for encryption. Combines four LFSRs with nonlinear combining function using majority logic. Has kn… |
-| [E2 (NTT AES candidate)](stream-ciphers/e2-ntt-aes-candidate.md) | educational | Educational implementation of E2 block cipher adapted as a stream cipher using keystream generation. Originally an AES candidate by NTT wit… |
+| [E2 (NTT AES candidate)](stream-ciphers/e2-ntt-aes-candidate.md) | 🎓 Educational Only | Educational implementation of E2 block cipher adapted as a stream cipher using keystream generation. Originally an AES candidate by NTT wit… |
 | [Edon80](stream-ciphers/edon80.md) | 🎓 Educational Only | Edon80 quasigroup-based stream cipher, an eSTREAM hardware-profile candidate built from an 80-stage pipeline of e-transformers, each bound… |
 | [F-FCSR](stream-ciphers/f-fcsr.md) | — | Feedback with Carry Shift Register stream cipher based on eSTREAM specification. Uses FCSR automaton with binary expansion of 2-adic number… |
 | [F-FCSR (DarkCrypt)](stream-ciphers/f-fcsr-darkcrypt.md) | — | Feedback-with-Carry Shift Register (Galois FCSR) filter generator from the DarkCrypt Total Commander plugin. Non-standard 256-bit register… |
