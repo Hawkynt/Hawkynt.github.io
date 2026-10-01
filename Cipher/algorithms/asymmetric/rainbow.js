@@ -63,8 +63,9 @@
   // file was being loaded when it happened, so requiring a hash here would file
   // it under this directory and drop it from the hash index.
 
+  /** @type {Algorithm|null} */
   let aesAlgorithm = null;
-  const shaAlgorithms = {};
+  const SHA_CACHE = new Map();
 
   /**
    * @returns {Algorithm} Result
@@ -72,50 +73,74 @@
   function FindAes() {
     if (aesAlgorithm) return aesAlgorithm;
 
-    aesAlgorithm = AlgorithmFramework.Find ? AlgorithmFramework.Find('Rijndael (AES)') : null;
-    if (!aesAlgorithm && typeof require !== 'undefined') {
+    /** @type {Algorithm} */
+    let found = AlgorithmFramework.Find('Rijndael (AES)');
+    if (!found && typeof require !== 'undefined') {
       try {
         require('../block/rijndael.js');
       } catch (e) {
         // Reported as a missing dependency below.
       }
-      aesAlgorithm = AlgorithmFramework.Find ? AlgorithmFramework.Find('Rijndael (AES)') : null;
+      found = AlgorithmFramework.Find('Rijndael (AES)');
     }
 
-    if (!aesAlgorithm)
+    if (!found)
       throw new Error('Rainbow key expansion needs AES, which is not registered');
-    return aesAlgorithm;
+    aesAlgorithm = found;
+    return found;
   }
 
-  const SHA_NAMES = { 32: 'SHA-256', 48: 'SHA-384', 64: 'SHA-512' };
-  const SHA_MODULES = { 32: '../hash/sha256.js', 48: '../hash/sha512.js', 64: '../hash/sha512.js' };
+  /**
+   * @param {int32} length - digest octets: 32, 48 or 64
+   * @returns {string} the registered name of the SHA-2 digest of that length
+   */
+  function ShaName(length) {
+    switch (length) {
+      case 32: return 'SHA-256';
+      case 48: return 'SHA-384';
+      default: return 'SHA-512';
+    }
+  }
+
+  /**
+   * @param {int32} length - digest octets: 32, 48 or 64
+   * @returns {string} the module that registers it
+   */
+  function ShaModule(length) {
+    return length === 32 ? '../hash/sha256.js' : '../hash/sha512.js';
+  }
 
   /**
    * @param {int32} length - length
    * @returns {Algorithm} Result
    */
   function FindSha(length) {
-    if (shaAlgorithms[length]) return shaAlgorithms[length];
+    /** @type {Algorithm} */
+    const cached = SHA_CACHE.get(length);
+    if (cached) return cached;
 
-    const name = SHA_NAMES[length];
-    let found = AlgorithmFramework.Find ? AlgorithmFramework.Find(name) : null;
+    const name = ShaName(length);
+    /** @type {Algorithm} */
+    let found = AlgorithmFramework.Find(name);
     if (!found && typeof require !== 'undefined') {
       try {
-        require(SHA_MODULES[length]);
+        require(ShaModule(length));
       } catch (e) {
         // Reported as a missing dependency below.
       }
-      found = AlgorithmFramework.Find ? AlgorithmFramework.Find(name) : null;
+      found = AlgorithmFramework.Find(name);
     }
 
     if (!found) throw new Error('Rainbow needs ' + name + ', which is not registered');
-    shaAlgorithms[length] = found;
+    SHA_CACHE.set(length, found);
     return found;
   }
 
   // Key expansion runs the block cipher tens of thousands of times under one
   // key, so the instance is kept and only re-keyed when the key changes.
+  /** @type {IBlockCipherInstance|null} */
   let aesInstance = null;
+  /** @type {uint8[]|null} */
   let aesInstanceKey = null;
 
   /**
@@ -125,14 +150,22 @@
    */
   function Aes256Ecb(key, block) {
     let sameKey = aesInstanceKey !== null;
-    if (sameKey)
-      for (let i = 0; i < 32; ++i)
-        if (aesInstanceKey[i] !== key[i]) { sameKey = false; break; }
+    if (sameKey) {
+      for (let i = 0; i < 32; ++i) {
+        /** @type {uint8} */
+        const keyOctet = key[i];
+        if (aesInstanceKey[i] !== keyOctet) { sameKey = false; break; }
+      }
+    }
 
     if (!sameKey) {
-      aesInstance = FindAes().CreateInstance(false);
-      aesInstanceKey = Array.from(key);
-      aesInstance.key = aesInstanceKey;
+      /** @type {IBlockCipherInstance} */
+      const instance = FindAes().CreateInstance(false);
+      /** @type {uint8[]} */
+      const keyCopy = Array.from(key);
+      instance.key = keyCopy;
+      aesInstance = instance;
+      aesInstanceKey = keyCopy;
     }
 
     aesInstance.Feed(Array.from(block));
@@ -147,6 +180,7 @@
    * @returns {Uint8Array} the SHA-2 digest
    */
   function Sha2(length, data) {
+    /** @type {IHashFunctionInstance} */
     const instance = FindSha(length).CreateInstance(false);
     instance.Feed(Array.from(data));
     /** @type {uint8[]} */
@@ -187,9 +221,9 @@
         const b0 = b % 4, b1 = (b - b0) / 4;
         const p00 = GF4_MUL[a0 * 4 + b0];
         const p11 = GF4_MUL[a1 * 4 + b1];
-        const mid = OpCodes.Xor32(OpCodes.Xor32(GF4_MUL[OpCodes.Xor32(a0, a1) * 4 + OpCodes.Xor32(b0, b1)], p00), p11);
+        const mid = OpCodes.Xor32(OpCodes.Xor32(GF4_MUL[OpCodes.Or32(OpCodes.Shl32(OpCodes.Xor32(a0, a1), 2), OpCodes.Xor32(b0, b1))], p00), p11);
         // y^2 = y + x, so the constant term gains x times a1 b1.
-        GF16_MUL[a * 16 + b] = OpCodes.Xor32(OpCodes.Xor32(mid, p11) * 4, OpCodes.Xor32(p00, GF4_MUL[p11 * 4 + 2]));
+        GF16_MUL[a * 16 + b] = OpCodes.Xor32(OpCodes.Xor32(mid, p11) * 4, OpCodes.Xor32(p00, GF4_MUL[OpCodes.Or32(OpCodes.Shl32(p11, 2), 2)]));
       }
     }
 
@@ -199,9 +233,9 @@
         const b0 = b % 16, b1 = (b - b0) / 16;
         const p00 = GF16_MUL[a0 * 16 + b0];
         const p11 = GF16_MUL[a1 * 16 + b1];
-        const mid = OpCodes.Xor32(OpCodes.Xor32(GF16_MUL[OpCodes.Xor32(a0, a1) * 16 + OpCodes.Xor32(b0, b1)], p00), p11);
+        const mid = OpCodes.Xor32(OpCodes.Xor32(GF16_MUL[OpCodes.Or32(OpCodes.Shl32(OpCodes.Xor32(a0, a1), 4), OpCodes.Xor32(b0, b1))], p00), p11);
         // X^2 = X + xy, and xy is the GF(16) element 8.
-        GF256_MUL[a * 256 + b] = OpCodes.Xor32(OpCodes.Xor32(mid, p11) * 16, OpCodes.Xor32(p00, GF16_MUL[p11 * 16 + 8]));
+        GF256_MUL[a * 256 + b] = OpCodes.Xor32(OpCodes.Xor32(mid, p11) * 16, OpCodes.Xor32(p00, GF16_MUL[OpCodes.Or32(OpCodes.Shl32(p11, 4), 8)]));
       }
     }
 
@@ -215,7 +249,7 @@
     for (let b = 0; b < 16; ++b)
       for (let v = 0; v < 256; ++v) {
         const lo = v % 16, hi = (v - lo) / 16;
-        GF16_BYTE_MUL[b * 256 + v] = GF16_MUL[b * 16 + lo] + GF16_MUL[b * 16 + hi] * 16;
+        GF16_BYTE_MUL[b * 256 + v] = OpCodes.Or32(GF16_MUL[b * 16 + lo], OpCodes.Shl32(GF16_MUL[b * 16 + hi], 4));
       }
   }
 
@@ -233,55 +267,98 @@
    */
   function IncrementCounter(v) {
     for (let j = 15; j >= 0; --j) {
-      if (v[j] === 0xFF) v[j] = 0;
-      else { v[j] = v[j] + 1; break; }
+      /** @type {uint8} */
+      const octet = v[j];
+      if (octet === 0xFF) {
+        v[j] = 0;
+      } else {
+        v[j] = OpCodes.Add32(octet, 1);
+        break;
+      }
+    }
+  }
+
+  /**
+   * Copy n octets from one array into another.
+   * @param {Uint8Array} dst - destination
+   * @param {int32} dOff - destination offset
+   * @param {Uint8Array} src - source
+   * @param {int32} sOff - source offset
+   * @param {int32} n - how many octets
+   */
+  function VecCopy(dst, dOff, src, sOff, n) {
+    for (let i = 0; i < n; ++i) {
+      /** @type {uint8} */
+      const octet = src[sOff + i];
+      dst[dOff + i] = octet;
+    }
+  }
+
+  /** The generator, seeded as randombytes_init does with a zero key and counter. */
+  class RainbowDrbg {
+    /**
+     * @param {Uint8Array} entropy - the 48 octet seed
+     */
+    constructor(entropy) {
+      /** @type {Uint8Array} */
+      this.key = new Uint8Array(32);
+      /** @type {Uint8Array} */
+      this.v = new Uint8Array(16);
+      this.update(entropy);
+    }
+
+    /**
+     * The CTR_DRBG update step, folding in optional provided data.
+     * @param {Uint8Array|null} providedData - 48 octets, or null
+     */
+    update(providedData) {
+      const temp = new Uint8Array(48);
+      for (let i = 0; i < 3; ++i) {
+        IncrementCounter(this.v);
+        const block = Aes256Ecb(this.key, this.v);
+        for (let j = 0; j < 16; ++j) temp[i * 16 + j] = block[j];
+      }
+      if (providedData)
+        for (let i = 0; i < 48; ++i) temp[i] = OpCodes.Xor32(temp[i], providedData[i]);
+      VecCopy(this.key, 0, temp, 0, 32);
+      VecCopy(this.v, 0, temp, 32, 16);
+    }
+
+    /**
+     * Expand straight into the destination, which avoids copying the hundreds
+     * of kilobytes a Rainbow secret key needs.
+     * @param {Uint8Array} dst - destination
+     * @param {int32} off - destination offset
+     * @param {int32} count - how many octets
+     */
+    readInto(dst, off, count) {
+      let produced = 0;
+      while (produced < count) {
+        IncrementCounter(this.v);
+        const block = Aes256Ecb(this.key, this.v);
+        for (let j = 0; j < 16 && produced < count; ++j) dst[off + produced++] = block[j];
+      }
+      this.update(null);
+    }
+
+    /**
+     * @param {int32} count - how many octets
+     * @returns {Uint8Array} the next count octets
+     */
+    read(count) {
+      const out = new Uint8Array(count);
+      this.readInto(out, 0, count);
+      return out;
     }
   }
 
   /**
    * The generator, seeded as randombytes_init does with a zero key and counter.
-   * @param {uint8[]} entropy - the 48 octet seed
-   * @returns {object} a reader with read(count) and readInto(dst, offset, count)
+   * @param {Uint8Array} entropy - the 48 octet seed
+   * @returns {RainbowDrbg} a reader with read(count) and readInto(dst, offset, count)
    */
   function Drbg(entropy) {
-    const key = new Uint8Array(32);
-    const v = new Uint8Array(16);
-
-    const update = function (providedData) {
-      const temp = new Uint8Array(48);
-      for (let i = 0; i < 3; ++i) {
-        IncrementCounter(v);
-        const block = Aes256Ecb(key, v);
-        for (let j = 0; j < 16; ++j) temp[i * 16 + j] = block[j];
-      }
-      if (providedData)
-        for (let i = 0; i < 48; ++i) temp[i] = OpCodes.Xor32(temp[i], providedData[i]);
-      for (let i = 0; i < 32; ++i) key[i] = temp[i];
-      for (let i = 0; i < 16; ++i) v[i] = temp[32 + i];
-    };
-
-    update(entropy);
-
-    // Expanding straight into the destination avoids copying the hundreds of
-    // kilobytes a Rainbow secret key needs.
-    const readInto = function (dst, off, count) {
-      let produced = 0;
-      while (produced < count) {
-        IncrementCounter(v);
-        const block = Aes256Ecb(key, v);
-        for (let j = 0; j < 16 && produced < count; ++j) dst[off + produced++] = block[j];
-      }
-      update(null);
-    };
-
-    return {
-      readInto: readInto,
-      read: function (count) {
-        const out = new Uint8Array(count);
-        readInto(out, 0, count);
-        return out;
-      }
-    };
+    return new RainbowDrbg(entropy);
   }
 
   // ===== hashing =====
@@ -300,22 +377,22 @@
   function ExpandHash(hashLen, outLen, first) {
     const digest = new Uint8Array(outLen);
     if (hashLen >= outLen) {
-      for (let i = 0; i < outLen; ++i) digest[i] = first[i];
+      VecCopy(digest, 0, first, 0, outLen);
       return digest;
     }
 
-    for (let i = 0; i < hashLen; ++i) digest[i] = first[i];
+    VecCopy(digest, 0, first, 0, hashLen);
     let remaining = outLen - hashLen;
     let pos = 0;
     while (hashLen <= remaining) {
       const next = Sha2(hashLen, digest.subarray(pos, pos + hashLen));
-      for (let i = 0; i < hashLen; ++i) digest[pos + hashLen + i] = next[i];
+      VecCopy(digest, pos + hashLen, next, 0, hashLen);
       remaining -= hashLen;
       pos += hashLen;
     }
     if (remaining) {
       const next = Sha2(hashLen, digest.subarray(pos, pos + hashLen));
-      for (let i = 0; i < remaining; ++i) digest[pos + hashLen + i] = next[i];
+      VecCopy(digest, pos + hashLen, next, 0, remaining);
     }
     return digest;
   }
@@ -335,18 +412,18 @@
    * seed, padded out with a hash of the seed when the seed is shorter.
    * @param {int32} hashLen - the parameter set's digest length
    * @param {Uint8Array} seed - the seed octets
-   * @returns {Object} the generator
+   * @returns {RainbowDrbg} the generator
    */
   function PrngSet(hashLen, seed) {
     const material = new Uint8Array(48);
     if (seed.length >= 48) {
-      for (let i = 0; i < 48; ++i) material[i] = seed[i];
+      VecCopy(material, 0, seed, 0, 48);
     } else {
-      for (let i = 0; i < seed.length; ++i) material[i] = seed[i];
+      VecCopy(material, 0, seed, 0, seed.length);
       const tail = HashMsg(hashLen, 48 - seed.length, seed);
-      for (let i = 0; i < tail.length; ++i) material[seed.length + i] = tail[i];
+      VecCopy(material, seed.length, tail, 0, tail.length);
     }
-    return Drbg(material);
+    return new RainbowDrbg(material);
   }
 
   // ===== vectors over the field =====
@@ -371,59 +448,152 @@
     for (let i = 0; i < n; ++i) dst[dOff + i] = 0;
   }
 
-  // A field is the small bundle of operations that differ between GF(16),
-  // where two elements share an octet, and GF(256), where they do not.
-  function MakeField(gfSize) {
-    if (gfSize === 16) return {
-      size: 16,
-      inv: GF16_INV,
-      mul: function (a, b) { return GF16_MUL[a * 16 + b]; },
-      isNonZero: function (a) { return (a % 16) === 0 ? 0 : 1; },
-      bytesFor: function (n) { return n / 2; },
-      getEle: function (a, off, i) {
-        const byte = a[off + (i - (i % 2)) / 2];
-        const lo = byte % 16;
-        return (i % 2) ? (byte - lo) / 16 : lo;
-      },
-      setEle: function (a, off, i, val) {
-        const at = off + (i - (i % 2)) / 2;
-        const byte = a[at];
-        const lo = byte % 16;
-        const v = val % 16;
-        a[at] = (i % 2) ? lo + v * 16 : v + (byte - lo);
-      },
-      madd: function (dst, dOff, src, sOff, b, n) {
-        const scalar = b % 16;
-        if (scalar === 0) return;
-        const base = scalar * 256;
-        for (let i = 0; i < n; ++i)
-          dst[dOff + i] = OpCodes.XorN(dst[dOff + i], GF16_BYTE_MUL[base + src[sOff + i]]);
-      },
-      mulScalar: function (a, off, b, n) {
-        const base = (b % 16) * 256;
-        for (let i = 0; i < n; ++i) a[off + i] = GF16_BYTE_MUL[base + a[off + i]];
-      }
-    };
+  /**
+   * A field is the small bundle of operations that differ between GF(16),
+   * where two elements share an octet, and GF(256), where they do not.
+   *
+   * Scaling a run of octets is the same table walk in both: the GF(16) octet
+   * table scales both nibbles at once, so only the scalar's width differs.
+   */
+  class RainbowField {
+    /**
+     * @param {int32} size - 16 or 256
+     */
+    constructor(size) {
+      /** @type {int32} */
+      this.size = size;
+      /** @type {boolean} */
+      this.packed = size === 16;
+      /** @type {Uint8Array} */
+      this.inv = this.packed ? GF16_INV : GF256_INV;
+      /** @type {uint8} */
+      this.mask = this.packed ? 0x0F : 0xFF;
+      /** @type {Uint8Array} */
+      this.byteMul = this.packed ? GF16_BYTE_MUL : GF256_BYTE_MUL;
+    }
 
-    return {
-      size: 256,
-      inv: GF256_INV,
-      mul: function (a, b) { return GF256_MUL[a * 256 + b]; },
-      isNonZero: function (a) { return a === 0 ? 0 : 1; },
-      bytesFor: function (n) { return n; },
-      getEle: function (a, off, i) { return a[off + i]; },
-      setEle: function (a, off, i, val) { a[off + i] = val; },
-      madd: function (dst, dOff, src, sOff, b, n) {
-        if (b === 0) return;
-        const base = b * 256;
-        for (let i = 0; i < n; ++i)
-          dst[dOff + i] = OpCodes.XorN(dst[dOff + i], GF256_BYTE_MUL[base + src[sOff + i]]);
-      },
-      mulScalar: function (a, off, b, n) {
-        const base = b * 256;
-        for (let i = 0; i < n; ++i) a[off + i] = GF256_BYTE_MUL[base + a[off + i]];
+    /**
+     * @param {uint8} a - element
+     * @param {uint8} b - element
+     * @returns {uint8} a b
+     */
+    mul(a, b) {
+      /** @type {int32} */
+      const index = this.packed ? OpCodes.Or32(OpCodes.Shl32(a, 4), b) : OpCodes.Or32(OpCodes.Shl32(a, 8), b);
+      /** @type {uint8} */
+      const product = this.packed ? GF16_MUL[index] : GF256_MUL[index];
+      return product;
+    }
+
+    /**
+     * @param {uint8} a - element
+     * @returns {int32} 1 when a is non-zero, 0 otherwise
+     */
+    isNonZero(a) {
+      return OpCodes.And8(a, this.mask) === 0 ? 0 : 1;
+    }
+
+    /**
+     * @param {int32} n - elements
+     * @returns {int32} the octets n elements occupy
+     */
+    bytesFor(n) {
+      /** @type {int32} */
+      const bytes = this.packed ? Math.floor(n / 2) : n;
+      return bytes;
+    }
+
+    /**
+     * @param {Uint8Array} a - packed vector
+     * @param {int32} off - octet offset of the vector
+     * @param {int32} i - element index
+     * @returns {uint8} element i
+     */
+    getEle(a, off, i) {
+      if (!this.packed) {
+        /** @type {uint8} */
+        const element = a[off + i];
+        return element;
       }
-    };
+      /** @type {int32} */
+      const at = off + Math.floor(i / 2);
+      /** @type {uint8} */
+      const octet = a[at];
+      return (i % 2) ? OpCodes.Shr8(octet, 4) : OpCodes.And8(octet, 0x0F);
+    }
+
+    /**
+     * @param {Uint8Array} a - packed vector
+     * @param {int32} off - octet offset of the vector
+     * @param {int32} i - element index
+     * @param {uint8} val - the element
+     */
+    setEle(a, off, i, val) {
+      if (!this.packed) {
+        a[off + i] = val;
+        return;
+      }
+      /** @type {int32} */
+      const at = off + Math.floor(i / 2);
+      /** @type {uint8} */
+      const octet = a[at];
+      const v = OpCodes.And8(val, 0x0F);
+      a[at] = (i % 2) ? OpCodes.Or8(OpCodes.And8(octet, 0x0F), OpCodes.Shl8(v, 4)) : OpCodes.Or8(v, OpCodes.And8(octet, 0xF0));
+    }
+
+    /**
+     * dst += b src, over n octets.
+     * @param {Uint8Array} dst - destination
+     * @param {int32} dOff - destination offset
+     * @param {Uint8Array} src - source
+     * @param {int32} sOff - source offset
+     * @param {uint8} b - scalar
+     * @param {int32} n - octets
+     */
+    madd(dst, dOff, src, sOff, b, n) {
+      const scalar = OpCodes.And8(b, this.mask);
+      if (scalar === 0) return;
+      /** @type {int32} */
+      const base = OpCodes.Shl32(scalar, 8);
+      const table = this.byteMul;
+      for (let i = 0; i < n; ++i) {
+        /** @type {uint8} */
+        const octet = src[sOff + i];
+        /** @type {int32} */
+        const index = base + octet;
+        dst[dOff + i] = OpCodes.Xor8(dst[dOff + i], table[index]);
+      }
+    }
+
+    /**
+     * a *= b, over n octets.
+     * @param {Uint8Array} a - the vector
+     * @param {int32} off - its offset
+     * @param {uint8} b - scalar
+     * @param {int32} n - octets
+     */
+    mulScalar(a, off, b, n) {
+      /** @type {int32} */
+      const base = OpCodes.Shl32(OpCodes.And8(b, this.mask), 8);
+      const table = this.byteMul;
+      for (let i = 0; i < n; ++i) {
+        /** @type {uint8} */
+        const octet = a[off + i];
+        /** @type {int32} */
+        const index = base + octet;
+        /** @type {uint8} */
+        const product = table[index];
+        a[off + i] = product;
+      }
+    }
+  }
+
+  /**
+   * @param {int32} gfSize - 16 or 256
+   * @returns {RainbowField} the field operations
+   */
+  function MakeField(gfSize) {
+    return new RainbowField(gfSize);
   }
 
   // ===== batched matrix arithmetic =====
@@ -473,7 +643,7 @@
 
   // bC += btriA * B
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {Uint8Array} c - c
    * @param {int32} cOff - cOff
    * @param {Uint8Array} triA - triA
@@ -489,8 +659,11 @@
     let co = cOff, ao = aOff;
     for (let i = 0; i < bHeight; ++i) {
       for (let j = 0; j < bWidth; ++j) {
-        for (let k = i; k < bHeight; ++k)
-          F.madd(c, co, triA, ao + (k - i) * sizeBatch, F.getEle(b, bOff + j * bColVec, k), sizeBatch);
+        for (let k = i; k < bHeight; ++k) {
+          /** @type {uint8} */
+          const scalar = F.getEle(b, bOff + j * bColVec, k);
+          F.madd(c, co, triA, ao + (k - i) * sizeBatch, scalar, sizeBatch);
+        }
         co += sizeBatch;
       }
       ao += (bHeight - i) * sizeBatch;
@@ -499,7 +672,7 @@
 
   // bC += btriA^T * B
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {Uint8Array} c - c
    * @param {int32} cOff - cOff
    * @param {Uint8Array} triA - triA
@@ -515,9 +688,11 @@
     let co = cOff;
     for (let i = 0; i < bHeight; ++i) {
       for (let j = 0; j < bWidth; ++j) {
-        for (let k = 0; k <= i; ++k)
-          F.madd(c, co, triA, aOff + sizeBatch * IdxOfTrimat(k, i, bHeight),
-                 F.getEle(b, bOff + j * bColVec, k), sizeBatch);
+        for (let k = 0; k <= i; ++k) {
+          /** @type {uint8} */
+          const scalar = F.getEle(b, bOff + j * bColVec, k);
+          F.madd(c, co, triA, aOff + sizeBatch * IdxOfTrimat(k, i, bHeight), scalar, sizeBatch);
+        }
         co += sizeBatch;
       }
     }
@@ -525,7 +700,7 @@
 
   // bC += (btriA + btriA^T) * B
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {Uint8Array} c - c
    * @param {int32} cOff - cOff
    * @param {Uint8Array} triA - triA
@@ -543,8 +718,9 @@
       for (let j = 0; j < bWidth; ++j) {
         for (let k = 0; k < bHeight; ++k) {
           if (i === k) continue;
-          F.madd(c, co, triA, aOff + sizeBatch * IdxOf2Trimat(i, k, bHeight),
-                 F.getEle(b, bOff + j * bColVec, k), sizeBatch);
+          /** @type {uint8} */
+          const scalar = F.getEle(b, bOff + j * bColVec, k);
+          F.madd(c, co, triA, aOff + sizeBatch * IdxOf2Trimat(i, k, bHeight), scalar, sizeBatch);
         }
         co += sizeBatch;
       }
@@ -553,7 +729,7 @@
 
   // bC += A^T * bB
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {Uint8Array} c - c
    * @param {int32} cOff - cOff
    * @param {Uint8Array} a - a
@@ -569,16 +745,18 @@
   function BatchMatTrMadd(F, c, cOff, a, aOff, aHeight, aColVec, aWidth, b, bOff, bWidth, sizeBatch) {
     let co = cOff;
     for (let i = 0; i < aWidth; ++i) {
-      for (let j = 0; j < aHeight; ++j)
-        F.madd(c, co, b, bOff + j * bWidth * sizeBatch,
-               F.getEle(a, aOff + aColVec * i, j), sizeBatch * bWidth);
+      for (let j = 0; j < aHeight; ++j) {
+        /** @type {uint8} */
+        const scalar = F.getEle(a, aOff + aColVec * i, j);
+        F.madd(c, co, b, bOff + j * bWidth * sizeBatch, scalar, sizeBatch * bWidth);
+      }
       co += sizeBatch * bWidth;
     }
   }
 
   // bC += bA^T * B
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {Uint8Array} c - c
    * @param {int32} cOff - cOff
    * @param {Uint8Array} a - a
@@ -595,9 +773,11 @@
     let co = cOff;
     for (let i = 0; i < aWidth; ++i) {
       for (let j = 0; j < bWidth; ++j) {
-        for (let k = 0; k < bHeight; ++k)
-          F.madd(c, co, a, aOff + sizeBatch * (i + k * aWidth),
-                 F.getEle(b, bOff + j * bColVec, k), sizeBatch);
+        for (let k = 0; k < bHeight; ++k) {
+          /** @type {uint8} */
+          const scalar = F.getEle(b, bOff + j * bColVec, k);
+          F.madd(c, co, a, aOff + sizeBatch * (i + k * aWidth), scalar, sizeBatch);
+        }
         co += sizeBatch;
       }
     }
@@ -605,7 +785,7 @@
 
   // bC += bA * B
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {Uint8Array} c - c
    * @param {int32} cOff - cOff
    * @param {Uint8Array} a - a
@@ -622,8 +802,11 @@
     let co = cOff, ao = aOff;
     for (let i = 0; i < aHeight; ++i) {
       for (let j = 0; j < bWidth; ++j) {
-        for (let k = 0; k < bHeight; ++k)
-          F.madd(c, co, a, ao + k * sizeBatch, F.getEle(b, bOff + j * bColVec, k), sizeBatch);
+        for (let k = 0; k < bHeight; ++k) {
+          /** @type {uint8} */
+          const scalar = F.getEle(b, bOff + j * bColVec, k);
+          F.madd(c, co, a, ao + k * sizeBatch, scalar, sizeBatch);
+        }
         co += sizeBatch;
       }
       ao += bHeight * sizeBatch;
@@ -632,7 +815,7 @@
 
   // y = x^T * trimat * x, one field element for each polynomial of the batch.
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {Uint8Array} y - y
    * @param {int32} yOff - yOff
    * @param {Uint8Array} triMat - triMat
@@ -644,7 +827,11 @@
    */
   function BatchQuadTrimatEval(F, y, yOff, triMat, mOff, x, xOff, dim, sizeBatch) {
     const xs = new Uint8Array(dim);
-    for (let i = 0; i < dim; ++i) xs[i] = F.getEle(x, xOff, i);
+    for (let i = 0; i < dim; ++i) {
+      /** @type {uint8} */
+      const element = F.getEle(x, xOff, i);
+      xs[i] = element;
+    }
 
     const tmp = new Uint8Array(sizeBatch);
     let mo = mOff;
@@ -661,7 +848,7 @@
 
   // c = matA * b, with matA held column by column.
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {Uint8Array} c - c
    * @param {int32} cOff - cOff
    * @param {Uint8Array} matA - matA
@@ -673,8 +860,11 @@
    */
   function GfMatProd(F, c, cOff, matA, aOff, colVecBytes, width, b, bOff) {
     VecZero(c, cOff, colVecBytes);
-    for (let i = 0; i < width; ++i)
-      F.madd(c, cOff, matA, aOff + i * colVecBytes, F.getEle(b, bOff, i), colVecBytes);
+    for (let i = 0; i < width; ++i) {
+      /** @type {uint8} */
+      const scalar = F.getEle(b, bOff, i);
+      F.madd(c, cOff, matA, aOff + i * colVecBytes, scalar, colVecBytes);
+    }
   }
 
   // ===== Gaussian elimination =====
@@ -687,7 +877,7 @@
   // stand-in for a row exchange.
 
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {Uint8Array} mat - mat
    * @param {int32} h - h
    * @param {int32} wByte - wByte
@@ -697,18 +887,32 @@
     let ok = 1;
     for (let i = 0; i < h; ++i) {
       const ai = i * wByte;
-      for (let j = i + 1; j < h; ++j)
-        if (!F.isNonZero(F.getEle(mat, ai, i)))
+      for (let j = i + 1; j < h; ++j) {
+        /** @type {uint8} */
+        const lead = F.getEle(mat, ai, i);
+        /** @type {int32} */
+        const leadNonZero = F.isNonZero(lead);
+        if (!leadNonZero)
           VecAdd(mat, ai, mat, j * wByte, wByte);
+      }
 
+      /** @type {uint8} */
       const pivot = F.getEle(mat, ai, i);
-      if (!F.isNonZero(pivot)) ok = 0;
-      F.mulScalar(mat, ai, F.inv[pivot], wByte);
+      /** @type {int32} */
+      const pivotNonZero = F.isNonZero(pivot);
+      if (!pivotNonZero) {
+        ok = 0;
+      }
+      /** @type {uint8} */
+      const pivotInverse = F.inv[pivot];
+      F.mulScalar(mat, ai, pivotInverse, wByte);
 
       for (let j = 0; j < h; ++j) {
         if (i === j) continue;
         const aj = j * wByte;
-        F.madd(mat, aj, mat, ai, F.getEle(mat, aj, i), wByte);
+        /** @type {uint8} */
+        const scalar = F.getEle(mat, aj, i);
+        F.madd(mat, aj, mat, ai, scalar, wByte);
       }
     }
     return ok;
@@ -716,7 +920,7 @@
 
   /**
    * The inverse of an n by n matrix held column by column.
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {Uint8Array} invA - invA
    * @param {Uint8Array} a - a
    * @param {int32} aOff - aOff
@@ -724,6 +928,7 @@
    * @returns {int32} 1 when it exists, 0 when the matrix is singular
    */
   function MatInv(F, invA, a, aOff, n) {
+    /** @type {int32} */
     const srcRowBytes = F.bytesFor(n);
     const rowBytes = srcRowBytes * 2;
     const mat = new Uint8Array(n * rowBytes);
@@ -741,7 +946,7 @@
 
   /**
    * Solves inpMat * sol = cTerms, with inpMat held column by column.
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {Uint8Array} sol - sol
    * @param {int32} solOff - solOff
    * @param {Uint8Array} inpMat - inpMat
@@ -752,13 +957,20 @@
    * @returns {int32} 1 on success, 0 when the system is singular
    */
   function MatSolve(F, sol, solOff, inpMat, mOff, cTerms, cOff, n) {
+    /** @type {int32} */
     const nb = F.bytesFor(n);
     const vecLen = nb + 4;
     const mat = new Uint8Array(n * vecLen);
     for (let i = 0; i < n; ++i) {
       const mi = i * vecLen;
-      for (let j = 0; j < n; ++j) F.setEle(mat, mi, j, F.getEle(inpMat, mOff + j * nb, i));
-      mat[mi + nb] = F.getEle(cTerms, cOff, i);
+      for (let j = 0; j < n; ++j) {
+        /** @type {uint8} */
+        const element = F.getEle(inpMat, mOff + j * nb, i);
+        F.setEle(mat, mi, j, element);
+      }
+      /** @type {uint8} */
+      const constant = F.getEle(cTerms, cOff, i);
+      mat[mi + nb] = constant;
     }
     const ok = GaussElim(F, mat, n, vecLen);
     for (let i = 0; i < n; ++i) F.setEle(sol, solOff, i, mat[i * vecLen + nb]);
@@ -1034,6 +1246,7 @@
   /** The published constants of one registered set. */
   class RainbowSetSpec {
     /**
+     * @param {string} name - the registered name
      * @param {int32} gfSize - 16 or 256
      * @param {int32} v1 - vinegar variables
      * @param {int32} o1 - first-layer oil variables
@@ -1042,7 +1255,9 @@
      * @param {int32} level - NIST level
      * @param {string} label - the submission's label
      */
-    constructor(gfSize, v1, o1, o2, hashLen, level, label) {
+    constructor(name, gfSize, v1, o1, o2, hashLen, level, label) {
+      /** @type {string} */
+      this.name = name;
       /** @type {int32} */
       this.gfSize = gfSize;
       /** @type {int32} */
@@ -1060,21 +1275,23 @@
     }
   }
 
-  const PARAMETER_SETS = {
-    'Rainbow-I': new RainbowSetSpec(16, 36, 32, 32, 32, 1, 'Ia'),
-    'Rainbow-III': new RainbowSetSpec(256, 68, 32, 48, 48, 3, 'IIIc'),
-    'Rainbow-V': new RainbowSetSpec(256, 96, 36, 64, 64, 5, 'Vc')
-  };
+  /** @type {RainbowSetSpec[]} */
+  const PARAMETER_SETS = [
+    new RainbowSetSpec('Rainbow-I', 16, 36, 32, 32, 32, 1, 'Ia'),
+    new RainbowSetSpec('Rainbow-III', 256, 68, 32, 48, 48, 3, 'IIIc'),
+    new RainbowSetSpec('Rainbow-V', 256, 96, 36, 64, 64, 5, 'Vc')
+  ];
 
   /**
-   * The table entry under a name. A plain property read.
+   * The registered set of this name.
    * @param {string} name - the name
-   * @returns {RainbowSetSpec} the entry, or a falsy value
+   * @returns {RainbowSetSpec|null} the entry, or null
    */
   function ParameterSetEntry(name) {
-    /** @type {RainbowSetSpec} */
-    const entry = PARAMETER_SETS[name];
-    return entry;
+    for (let i = 0; i < PARAMETER_SETS.length; ++i) {
+      if (PARAMETER_SETS[i].name === name) return PARAMETER_SETS[i];
+    }
+    return null;
   }
 
   /** A key pair. */
@@ -1096,7 +1313,7 @@
   /**
    * @param {RainbowParams} p - p
    * @param {Uint8Array} sk - sk
-   * @param {Object} prng - prng
+   * @param {RainbowDrbg} prng - the generator
    */
   function GenerateST(p, sk, prng) {
     prng.readInto(sk, p.s1, p.s1Size);
@@ -1109,7 +1326,7 @@
    * @param {RainbowParams} p - p
    * @param {Uint8Array} buf - buf
    * @param {int32} base - base
-   * @param {Object} prng - prng
+   * @param {RainbowDrbg} prng - the generator
    */
   function GenerateB1B2(p, buf, base, prng) {
     let off = base;
@@ -1125,7 +1342,7 @@
   // t4 <- t2 + t1 t3. The map is its own inverse, which is how the reference
   // moves the field between its two meanings.
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {RainbowParams} p - p
    * @param {Uint8Array} sk - sk
    */
@@ -1140,7 +1357,7 @@
   // S mixes the second layer into the first, so every layer-one public block
   // carries an s1 multiple of the matching layer-two block.
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {RainbowParams} p - p
    * @param {Uint8Array} l1 - l1
    * @param {int32} l1Off - l1Off
@@ -1162,7 +1379,7 @@
 
   // The public map of the central map composed with T, before S is applied.
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {RainbowParams} p - p
    * @param {Uint8Array} Q - Q
    * @param {Uint8Array} sk - sk
@@ -1170,8 +1387,8 @@
   function CalculateQFromF(F, p, Q, sk) {
     const t2 = p.t4;
 
-    for (let i = 0; i < p.eL1Q1Size; ++i) Q[p.eL1Q1 + i] = sk[p.l1F1 + i];
-    for (let i = 0; i < p.eL1Q2Size; ++i) Q[p.eL1Q2 + i] = sk[p.l1F2 + i];
+    VecCopy(Q, p.eL1Q1, sk, p.l1F1, p.eL1Q1Size);
+    VecCopy(Q, p.eL1Q2, sk, p.l1F2, p.eL1Q2Size);
     BatchTrimatMadd(F, Q, p.eL1Q2, sk, p.l1F1, sk, p.t1, p.v1, p.v1b, p.o1, p.o1b);
 
     VecZero(Q, p.eL1Q3, p.eL1Q3Size);
@@ -1200,25 +1417,25 @@
     BatchBmatTrMadd(F, Q, p.eL1Q6, sk, p.l1F2, p.o1, sk, t2, p.v1, p.v1b, p.o2, p.o1b);
     BatchMatTrMadd(F, Q, p.eL1Q6, sk, p.t1, p.v1, p.v1b, p.o1, Q, p.eL1Q3, p.o2, p.o1b);
 
-    for (let i = 0; i < p.eL2Q1Size; ++i) Q[p.eL2Q1 + i] = sk[p.l2F1 + i];
-    for (let i = 0; i < p.eL2Q2Size; ++i) Q[p.eL2Q2 + i] = sk[p.l2F2 + i];
+    VecCopy(Q, p.eL2Q1, sk, p.l2F1, p.eL2Q1Size);
+    VecCopy(Q, p.eL2Q2, sk, p.l2F2, p.eL2Q2Size);
     BatchTrimatMadd(F, Q, p.eL2Q2, sk, p.l2F1, sk, p.t1, p.v1, p.v1b, p.o1, p.o2b);
 
-    for (let i = 0; i < p.eL2Q5Size; ++i) Q[p.eL2Q5 + i] = sk[p.l2F5 + i];
+    VecCopy(Q, p.eL2Q5, sk, p.l2F5, p.eL2Q5Size);
     VecZero(tempQ, 0, p.o2b * p.o1 * p.o1);
     BatchMatTrMadd(F, tempQ, 0, sk, p.t1, p.v1, p.v1b, p.o1, Q, p.eL2Q2, p.o1, p.o2b);
     UpperTrianglize(Q, p.eL2Q5, tempQ, 0, p.o1, p.o2b);
 
     BatchTrimatTrMadd(F, Q, p.eL2Q2, sk, p.l2F1, sk, p.t1, p.v1, p.v1b, p.o1, p.o2b);
 
-    for (let i = 0; i < p.eL2Q3Size; ++i) Q[p.eL2Q3 + i] = sk[p.l2F3 + i];
+    VecCopy(Q, p.eL2Q3, sk, p.l2F3, p.eL2Q3Size);
     BatchTrimatMadd(F, Q, p.eL2Q3, sk, p.l2F1, sk, t2, p.v1, p.v1b, p.o2, p.o2b);
     BatchMatMadd(F, Q, p.eL2Q3, sk, p.l2F2, p.v1, sk, p.t3, p.o1, p.o1b, p.o2, p.o2b);
 
     VecZero(tempQ, 0, p.o2b * p.o2 * p.o2);
     BatchMatTrMadd(F, tempQ, 0, sk, t2, p.v1, p.v1b, p.o2, Q, p.eL2Q3, p.o2, p.o2b);
 
-    for (let i = 0; i < p.eL2Q6Size; ++i) Q[p.eL2Q6 + i] = sk[p.l2F6 + i];
+    VecCopy(Q, p.eL2Q6, sk, p.l2F6, p.eL2Q6Size);
     BatchTrimatMadd(F, Q, p.eL2Q6, sk, p.l2F5, sk, p.t3, p.o1, p.o1b, p.o2, p.o2b);
     BatchMatTrMadd(F, tempQ, 0, sk, p.t3, p.o1, p.o1b, p.o2, Q, p.eL2Q6, p.o2, p.o2b);
     VecZero(Q, p.eL2Q9, p.eL2Q9Size);
@@ -1235,34 +1452,34 @@
   // and the central map is recovered from them, which is what lets a cyclic
   // public key be so much smaller than a flat one.
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {RainbowParams} p - p
    * @param {Uint8Array} sk - sk
    * @param {Uint8Array} Qs - Qs
    */
   function CalculateFFromQ(F, p, sk, Qs) {
-    for (let i = 0; i < p.l1F1Size; ++i) sk[p.l1F1 + i] = Qs[p.l1F1 + i];
+    VecCopy(sk, p.l1F1, Qs, p.l1F1, p.l1F1Size);
 
-    for (let i = 0; i < p.l1F2Size; ++i) sk[p.l1F2 + i] = Qs[p.l1F2 + i];
+    VecCopy(sk, p.l1F2, Qs, p.l1F2, p.l1F2Size);
     Batch2TrimatMadd(F, sk, p.l1F2, Qs, p.l1F1, sk, p.t1, p.v1, p.v1b, p.o1, p.o1b);
 
-    for (let i = 0; i < p.l2F1Size; ++i) sk[p.l2F1 + i] = Qs[p.l2F1 + i];
+    VecCopy(sk, p.l2F1, Qs, p.l2F1, p.l2F1Size);
 
-    for (let i = 0; i < p.l2F2Size; ++i) sk[p.l2F2 + i] = Qs[p.l2F2 + i];
+    VecCopy(sk, p.l2F2, Qs, p.l2F2, p.l2F2Size);
     BatchTrimatMadd(F, sk, p.l2F2, Qs, p.l2F1, sk, p.t1, p.v1, p.v1b, p.o1, p.o2b);
 
     const tempQ = new Uint8Array(p.o1 * p.o1 * p.o2b);
     BatchMatTrMadd(F, tempQ, 0, sk, p.t1, p.v1, p.v1b, p.o1, sk, p.l2F2, p.o1, p.o2b);
-    for (let i = 0; i < p.l2F5Size; ++i) sk[p.l2F5 + i] = Qs[p.l2F5 + i];
+    VecCopy(sk, p.l2F5, Qs, p.l2F5, p.l2F5Size);
     UpperTrianglize(sk, p.l2F5, tempQ, 0, p.o1, p.o2b);
 
     BatchTrimatTrMadd(F, sk, p.l2F2, Qs, p.l2F1, sk, p.t1, p.v1, p.v1b, p.o1, p.o2b);
 
-    for (let i = 0; i < p.l2F3Size; ++i) sk[p.l2F3 + i] = Qs[p.l2F3 + i];
+    VecCopy(sk, p.l2F3, Qs, p.l2F3, p.l2F3Size);
     Batch2TrimatMadd(F, sk, p.l2F3, Qs, p.l2F1, sk, p.t4, p.v1, p.v1b, p.o2, p.o2b);
     BatchMatMadd(F, sk, p.l2F3, Qs, p.l2F2, p.v1, sk, p.t3, p.o1, p.o1b, p.o2, p.o2b);
 
-    for (let i = 0; i < p.l2F6Size; ++i) sk[p.l2F6 + i] = Qs[p.l2F6 + i];
+    VecCopy(sk, p.l2F6, Qs, p.l2F6, p.l2F6Size);
     BatchMatTrMadd(F, sk, p.l2F6, sk, p.t1, p.v1, p.v1b, p.o1, sk, p.l2F3, p.o2, p.o2b);
     Batch2TrimatMadd(F, sk, p.l2F6, Qs, p.l2F5, sk, p.t3, p.o1, p.o1b, p.o2, p.o2b);
     BatchBmatTrMadd(F, sk, p.l2F6, Qs, p.l2F2, p.o1, sk, p.t4, p.v1, p.v1b, p.o2, p.o2b);
@@ -1270,7 +1487,7 @@
 
   // The blocks of a cyclic public key that its seed does not fix.
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {RainbowParams} p - p
    * @param {Uint8Array} cpk - cpk
    * @param {Uint8Array} sk - sk
@@ -1282,7 +1499,7 @@
     const bufF2 = new Uint8Array(bufSize);
     const bufF3 = new Uint8Array(bufSize);
 
-    for (let i = 0; i < p.o1b * p.v1 * p.o1; ++i) bufF2[i] = sk[p.l1F2 + i];
+    VecCopy(bufF2, 0, sk, p.l1F2, p.o1b * p.v1 * p.o1);
     BatchTrimatMadd(F, bufF2, 0, sk, p.l1F1, sk, p.t1, p.v1, p.v1b, p.o1, p.o1b);
 
     VecZero(bufF3, 0, p.o1b * p.o1 * p.o1);
@@ -1306,14 +1523,14 @@
     BatchBmatTrMadd(F, cpk, p.cQ6, sk, p.l1F2, p.o1, sk, t2, p.v1, p.v1b, p.o2, p.o1b);
     BatchMatTrMadd(F, cpk, p.cQ6, sk, p.t1, p.v1, p.v1b, p.o1, cpk, p.cQ3, p.o2, p.o1b);
 
-    for (let i = 0; i < p.o2b * p.v1 * p.o2; ++i) bufF3[i] = sk[p.l2F3 + i];
+    VecCopy(bufF3, 0, sk, p.l2F3, p.o2b * p.v1 * p.o2);
     BatchTrimatMadd(F, bufF3, 0, sk, p.l2F1, sk, t2, p.v1, p.v1b, p.o2, p.o2b);
     BatchMatMadd(F, bufF3, 0, sk, p.l2F2, p.v1, sk, p.t3, p.o1, p.o1b, p.o2, p.o2b);
 
     VecZero(bufF2, 0, p.o2b * p.v1 * p.o2);
     BatchMatTrMadd(F, bufF2, 0, sk, t2, p.v1, p.v1b, p.o2, bufF3, 0, p.o2, p.o2b);
 
-    for (let i = 0; i < p.o2b * p.o1 * p.o2; ++i) bufF3[i] = sk[p.l2F6 + i];
+    VecCopy(bufF3, 0, sk, p.l2F6, p.o2b * p.o1 * p.o2);
     BatchTrimatMadd(F, bufF3, 0, sk, p.l2F5, sk, p.t3, p.o1, p.o1b, p.o2, p.o2b);
 
     BatchMatTrMadd(F, bufF2, 0, sk, p.t3, p.o1, p.o1b, p.o2, bufF3, 0, p.o2, p.o2b);
@@ -1342,8 +1559,8 @@
       const jStart = triangular ? i : jFrom;
       for (let j = jStart; j < jTo; ++j) {
         const base = p.mb * IdxOfTrimat(i, j, p.n);
-        for (let k = 0; k < p.o1b; ++k) pk[base + k] = Q[a + k];
-        for (let k = 0; k < p.o2b; ++k) pk[base + p.o1b + k] = Q[b + k];
+        VecCopy(pk, base, Q, a, p.o1b);
+        VecCopy(pk, base + p.o1b, Q, b, p.o2b);
         a += p.o1b;
         b += p.o2b;
       }
@@ -1367,13 +1584,13 @@
   /**
    * The classic secret key: everything comes from one seed.
    * @param {Uint8Array} skSeed - 32 octets
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {RainbowParams} p - p
    * @returns {Uint8Array} the secret key, with t4 in its signing form
    */
   function GenerateSecretKeyClassic(F, p, skSeed) {
     const sk = new Uint8Array(p.skSize);
-    for (let i = 0; i < 32; ++i) sk[p.skSeed + i] = skSeed[i];
+    VecCopy(sk, p.skSeed, skSeed, 0, 32);
     const prng = PrngSet(p.hashLen, skSeed);
     GenerateST(p, sk, prng);
     GenerateB1B2(p, sk, p.l1F1, prng);
@@ -1383,14 +1600,14 @@
 
   /**
    * The classic key pair. The public key is the flat quadratic map.
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {RainbowParams} p - p
    * @param {Uint8Array} skSeed - skSeed
    * @returns {RainbowKeyPair} Result
    */
   function GenerateKeypairClassic(F, p, skSeed) {
     const sk = new Uint8Array(p.skSize);
-    for (let i = 0; i < 32; ++i) sk[p.skSeed + i] = skSeed[i];
+    VecCopy(sk, p.skSeed, skSeed, 0, 32);
     const prng = PrngSet(p.hashLen, skSeed);
     GenerateST(p, sk, prng);
     GenerateB1B2(p, sk, p.l1F1, prng);
@@ -1415,7 +1632,7 @@
   /**
    * The secret key of the cyclic and compressed forms, from the two seeds.
    * Signing needs only this, not the public key.
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {RainbowParams} p - p
    * @param {Uint8Array} pkSeed - pkSeed
    * @param {Uint8Array} skSeed - skSeed
@@ -1423,7 +1640,7 @@
    */
   function GenerateSecretKeyCyclic(F, p, pkSeed, skSeed) {
     const sk = new Uint8Array(p.skSize);
-    for (let i = 0; i < 32; ++i) sk[p.skSeed + i] = skSeed[i];
+    VecCopy(sk, p.skSeed, skSeed, 0, 32);
 
     const prng0 = PrngSet(p.hashLen, skSeed);
     GenerateST(p, sk, prng0);
@@ -1441,7 +1658,7 @@
 
   /**
    * The cyclic key pair: the full secret key and the small public key.
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {RainbowParams} p - p
    * @param {Uint8Array} pkSeed - pkSeed
    * @param {Uint8Array} skSeed - skSeed
@@ -1450,14 +1667,14 @@
   function GenerateKeypairCyclic(F, p, pkSeed, skSeed) {
     const sk = new Uint8Array(p.skSize);
     const cpk = new Uint8Array(p.cpkSize);
-    for (let i = 0; i < 32; ++i) cpk[p.pkSeed + i] = pkSeed[i];
-    for (let i = 0; i < 32; ++i) sk[p.skSeed + i] = skSeed[i];
+    VecCopy(cpk, p.pkSeed, pkSeed, 0, 32);
+    VecCopy(sk, p.skSeed, skSeed, 0, 32);
 
     const prng0 = PrngSet(p.hashLen, skSeed);
     GenerateST(p, sk, prng0);
 
     const t2 = new Uint8Array(p.t4Size);
-    for (let i = 0; i < p.t4Size; ++i) t2[i] = sk[p.t4 + i];
+    VecCopy(t2, 0, sk, p.t4, p.t4Size);
     CalculateT4(F, p, sk);
 
     const Qs = new Uint8Array(p.skSize);
@@ -1470,10 +1687,10 @@
 
     // The remaining public blocks want t2 where signing wants t4.
     const t4 = new Uint8Array(p.t4Size);
-    for (let i = 0; i < p.t4Size; ++i) t4[i] = sk[p.t4 + i];
-    for (let i = 0; i < p.t4Size; ++i) sk[p.t4 + i] = t2[i];
+    VecCopy(t4, 0, sk, p.t4, p.t4Size);
+    VecCopy(sk, p.t4, t2, 0, p.t4Size);
     CalculateQFromFCyclic(F, p, cpk, sk);
-    for (let i = 0; i < p.t4Size; ++i) sk[p.t4 + i] = t4[i];
+    VecCopy(sk, p.t4, t4, 0, p.t4Size);
 
     ObfuscateL1(F, p, cpk, p.cQ3, Qs, p.l2F3, p.v1 * p.o2, sk);
     ObfuscateL1(F, p, cpk, p.cQ5, Qs, p.l2F5, p.triO1, sk);
@@ -1494,7 +1711,7 @@
   const MAX_ATTEMPTS = 128;
 
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {RainbowParams} p - p
    * @param {Uint8Array} sk - sk
    * @param {Uint8Array} digest - digest
@@ -1507,8 +1724,8 @@
     // A private generator keyed by the secret seed and the digest, so a
     // signature is deterministic in the key and the message.
     const preseed = new Uint8Array(32 + p.hashLen);
-    for (let i = 0; i < 32; ++i) preseed[i] = sk[p.skSeed + i];
-    for (let i = 0; i < p.hashLen; ++i) preseed[32 + i] = digest[i];
+    VecCopy(preseed, 0, sk, p.skSeed, 32);
+    VecCopy(preseed, 32, digest, 0, p.hashLen);
     const prng = PrngSet(p.hashLen, HashMsg(p.hashLen, p.hashLen, preseed));
 
     const vinegar = new Uint8Array(p.v1b);
@@ -1540,7 +1757,7 @@
     const tempO = new Uint8Array(Math.max(p.o1b, p.o2b) + 32);
 
     const digestSalt = new Uint8Array(p.hashLen + p.saltBytes);
-    for (let i = 0; i < p.hashLen; ++i) digestSalt[i] = digest[i];
+    VecCopy(digestSalt, 0, digest, 0, p.hashLen);
 
     let ok = 0;
     while (!ok) {
@@ -1548,15 +1765,15 @@
 
       prng.readInto(digestSalt, p.hashLen, p.saltBytes);
       const target = HashMsg(p.hashLen, p.mb, digestSalt);
-      for (let i = 0; i < p.mb; ++i) z[i] = target[i];
+      VecCopy(z, 0, target, 0, p.mb);
 
       // y = S^-1 z
-      for (let i = 0; i < p.mb; ++i) y[i] = z[i];
+      VecCopy(y, 0, z, 0, p.mb);
       GfMatProd(F, tempO, 0, sk, p.s1, p.o1b, p.o2, z, p.o1b);
       VecAdd(y, 0, tempO, 0, p.o1b);
 
       // First layer.
-      for (let i = 0; i < p.o1b; ++i) tempO[i] = rL1F1[i];
+      VecCopy(tempO, 0, rL1F1, 0, p.o1b);
       VecAdd(tempO, 0, y, 0, p.o1b);
       GfMatProd(F, xo1, 0, matL1, 0, p.o1b, p.o1, tempO, 0);
 
@@ -1579,9 +1796,9 @@
 
     // w = T^-1 y
     const w = new Uint8Array(p.nb);
-    for (let i = 0; i < p.v1b; ++i) w[i] = vinegar[i];
-    for (let i = 0; i < p.o1b; ++i) w[p.v1b + i] = xo1[i];
-    for (let i = 0; i < p.o2b; ++i) w[p.v2b + i] = xo2[i];
+    VecCopy(w, 0, vinegar, 0, p.v1b);
+    VecCopy(w, p.v1b, xo1, 0, p.o1b);
+    VecCopy(w, p.v2b, xo2, 0, p.o2b);
 
     GfMatProd(F, y, 0, sk, p.t1, p.v1b, p.o1, xo1, 0);
     VecAdd(w, 0, y, 0, p.v1b);
@@ -1591,8 +1808,8 @@
     VecAdd(w, p.v1b, y, 0, p.o1b);
 
     const signature = new Uint8Array(p.sigBytes);
-    for (let i = 0; i < p.nb; ++i) signature[i] = w[i];
-    for (let i = 0; i < p.saltBytes; ++i) signature[p.nb + i] = digestSalt[p.hashLen + i];
+    VecCopy(signature, 0, w, 0, p.nb);
+    VecCopy(signature, p.nb, digestSalt, p.hashLen, p.saltBytes);
     return signature;
   }
 
@@ -1602,7 +1819,7 @@
   // of coefficients at (i, j).
 
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {Uint8Array} y - y
    * @param {int32} yOff - yOff
    * @param {Uint8Array} tri - tri
@@ -1616,13 +1833,19 @@
     let off = tOff;
     for (let i = 0; i < dim; ++i)
       for (let j = i; j < dim; ++j) {
-        F.madd(y, yOff, tri, off, F.mul(x[xFrom + i], x[xFrom + j]), vecLen);
+        /** @type {uint8} */
+        const xi = x[xFrom + i];
+        /** @type {uint8} */
+        const xj = x[xFrom + j];
+        /** @type {uint8} */
+        const product = F.mul(xi, xj);
+        F.madd(y, yOff, tri, off, product, vecLen);
         off += vecLen;
       }
   }
 
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {Uint8Array} y - y
    * @param {int32} yOff - yOff
    * @param {Uint8Array} mat - mat
@@ -1639,13 +1862,19 @@
     let off = mOff;
     for (let i = 0; i < dimA; ++i)
       for (let j = 0; j < dimB; ++j) {
-        F.madd(y, yOff, mat, off, F.mul(xa[aFrom + i], xb[bFrom + j]), vecLen);
+        /** @type {uint8} */
+        const xi = xa[aFrom + i];
+        /** @type {uint8} */
+        const xj = xb[bFrom + j];
+        /** @type {uint8} */
+        const product = F.mul(xi, xj);
+        F.madd(y, yOff, mat, off, product, vecLen);
         off += vecLen;
       }
   }
 
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {RainbowParams} p - p
    * @param {Uint8Array} pk - pk
    * @param {Uint8Array} w - w
@@ -1653,7 +1882,11 @@
    */
   function RainbowPublicMap(F, p, pk, w) {
     const x = new Uint8Array(p.n);
-    for (let i = 0; i < p.n; ++i) x[i] = F.getEle(w, 0, i);
+    for (let i = 0; i < p.n; ++i) {
+      /** @type {uint8} */
+      const element = F.getEle(w, 0, i);
+      x[i] = element;
+    }
     const z = new Uint8Array(p.mb);
     EvalQuadTri(F, z, 0, pk, 0, x, 0, p.n, p.mb);
     return z;
@@ -1662,7 +1895,7 @@
   // The cyclic public key regenerates its first blocks from its seed, so
   // evaluating it means expanding them again in the same order.
   /**
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {RainbowParams} p - p
    * @param {Uint8Array} cpk - cpk
    * @param {Uint8Array} w - w
@@ -1670,7 +1903,11 @@
    */
   function RainbowPublicMapCyclic(F, p, cpk, w) {
     const x = new Uint8Array(p.n);
-    for (let i = 0; i < p.n; ++i) x[i] = F.getEle(w, 0, i);
+    for (let i = 0; i < p.n; ++i) {
+      /** @type {uint8} */
+      const element = F.getEle(w, 0, i);
+      x[i] = element;
+    }
     const atV1 = 0, atO1 = p.v1, atO2 = p.v2;
 
     const prng = PrngSet(p.hashLen, cpk.subarray(p.pkSeed, p.pkSeed + 32));
@@ -1705,7 +1942,7 @@
   /**
    * A signature is valid when the public map of its vector reproduces the
    * hash of the digest and the salt the signature carries.
-   * @param {Object} F - F
+   * @param {RainbowField} F - the field
    * @param {RainbowParams} p - p
    * @param {Uint8Array} publicKey - publicKey
    * @param {boolean} cyclic - cyclic
@@ -1719,8 +1956,8 @@
                          : RainbowPublicMap(F, p, publicKey, w);
 
     const digestSalt = new Uint8Array(p.hashLen + p.saltBytes);
-    for (let i = 0; i < p.hashLen; ++i) digestSalt[i] = digest[i];
-    for (let i = 0; i < p.saltBytes; ++i) digestSalt[p.hashLen + i] = signature[p.nb + i];
+    VecCopy(digestSalt, 0, digest, 0, p.hashLen);
+    VecCopy(digestSalt, p.hashLen, signature, p.nb, p.saltBytes);
     const correct = HashMsg(p.hashLen, p.mb, digestSalt);
 
     /** @type {uint32} */
@@ -1740,77 +1977,95 @@
   // octet key is the compressed secret key, pk_seed followed by sk_seed, and
   // gives the cyclic public key. Both are the submission's own key formats.
 
-  const KAT = {
-    'Rainbow-I': [
-      {
-        count: 0,
-        file: 'KAT/Ia_Circumzenithal/PQCsignKAT_103648.rsp',
-        key: '8626ed79d451140800e03b59b956f8210e556067407d13dc90fa9e8b872bfb8f' +
-             '7c9935a0b07694aa0c6d10e4db6b1add2fd81a25ccb148032dcd739936737f2d',
-        msg: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8',
-        sm: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8' +
-            '8847ec401b4b72631083a138e29d2323d1759d7268af6b3edb06762722491fa2bc' +
-            '3e93dd9a10a995f9b38ab6c65b608ac9fe4b9a9e38ee4622d5bc61d8e1fe912433'
-      },
-      {
-        count: 1,
-        file: 'KAT/Ia_Circumzenithal/PQCsignKAT_103648.rsp',
-        key: 'e82fcc97ca60ccb27bf6938c975658aeb8b4d37cffbde25d97e561f36c219ade' +
-             '4b622de1350119c45a9f2e2ef3dc5df50a759d138cdfbd64c81cc7cc2f513345',
-        msg: '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a' +
-             '073e7b90e02ebf98ca2227eba38c1ab2568209e46dba961869c6f83983b17dcd49',
-        sm: '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a' +
-            '073e7b90e02ebf98ca2227eba38c1ab2568209e46dba961869c6f83983b17dcd49' +
-            '92f541ac65b6f3240547be53b796eb3581385f9d4a0ef041c833feae4403573049' +
-            '3c10ceefe90bfc61cc58d8eff712232740d0bd6e49bd95099f3cfa73edae6777a8'
-      },
-      {
-        count: 2,
-        file: 'KAT/Ia_Circumzenithal/PQCsignKAT_103648.rsp',
-        key: 'f333d36590910e7a5a6cbe567bcdd154137eef62b92bf8dc1fdc900e7c194e5f' +
-             '1d836e889e46259bcd1ccd2b369583c5b47cfbb919ec2b72c280247cb15a5569',
-        msg: '2b8c4b0f29363eaee469a7e33524538aa066ae98980eaa19d1f10593203da2143b' +
-             '9e9e1973f7ff0e6c6aaa3c0b900e50d003412efe96deece3046d8c46bc7709228' +
-             '789775abdf56aed6416c90033780cb7a4984815da1b14660dcf34aa34bf82cebbcf',
-        sm: '2b8c4b0f29363eaee469a7e33524538aa066ae98980eaa19d1f10593203da2143b' +
-            '9e9e1973f7ff0e6c6aaa3c0b900e50d003412efe96deece3046d8c46bc7709228' +
-            '789775abdf56aed6416c90033780cb7a4984815da1b14660dcf34aa34bf82cebbcf' +
-            'a7d2035a4219d6accf47a7a97478f1b48c3e5eb9fb69b323fe3b14f9b87c45dc36' +
-            '50ddc23c09f010234f14c0f49f6cadc6d919ccf0912ae76f9bdb0d8d0ac37e7473'
-      }
-    ],
-    'Rainbow-V': [
-      {
-        count: 0,
-        file: 'KAT/Vc_Classic/PQCsignKAT_1408736.rsp',
-        key: '7c9935a0b07694aa0c6d10e4db6b1add2fd81a25ccb148032dcd739936737f2d',
-        msg: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8',
-        sm: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8' +
-            '15040f890f2bf56f8b04b1d8b9ba21d303c490868a0a10c9ffc04a2af9d1f3122d' +
-            '14f7c6d5e0b1d914cc23d763c061b2fd34df8cb0d75f12111244241fa7a136c440' +
-            'c2d40782390fe5ef3c15ed5539285b437da0447e361853e98982e1f16aa0506bab' +
-            'ffbba8282baa0a307c50eba79596ad26ebece897e7b4de3b601a515c0877552652' +
-            '2915ed03f08baa23afed4224c8e50ed67fbccfab62c58872ce880c850d3a03f21b2' +
-            '703c5c085fa410a5fcb3559e50d6bbc6a06faba309962f2922e0d014c5eb074090' +
-            '543c9478050169fccfbc0e9ba11'
-      },
-      {
-        count: 0,
-        file: 'KAT/Vc_Circumzenithal/PQCsignKAT_1408736.rsp',
-        key: '8626ed79d451140800e03b59b956f8210e556067407d13dc90fa9e8b872bfb8f' +
-             '7c9935a0b07694aa0c6d10e4db6b1add2fd81a25ccb148032dcd739936737f2d',
-        msg: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8',
-        sm: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8' +
-            'd1f97d1310f57af3509f66307985b7f341234ce8f7516e4b61f9e53b1282ce66b9' +
-            '526321c66954e1753d1a9c8ba4012b9c5a211f0287c72705141f71a9aaec350e81' +
-            'f6ec67ed10e1bd61dcdfa4ac87553563e0fee31927e5877741d5dcdf03c44e50cf' +
-            '80bb3d15856af49f2c68a7edac52fd2957f96a7113dce51785edf0ab8538c1eaad' +
-            '694e8514cdc7872664412bcf9884c185bade87781016826e32e08c1ec6275c6f85' +
-            '88a11ff6575d704505d4ab794d047bec1104c00dad3bcfc2de42267b3552bd7409' +
-            '0543c9478050169fccfbc0e9ba11'
-      }
-    ]
-  };
+  /** One entry of a PQCsignKAT file. */
+  class RainbowKatEntry {
+    /**
+     * @param {string} setName - the parameter set
+     * @param {int32} count - the entry's count field
+     * @param {string} file - the response file, relative to the package
+     * @param {string} key - the seed material, hex
+     * @param {string} msg - the message, hex
+     * @param {string} sm - the signed message, hex
+     */
+    constructor(setName, count, file, key, msg, sm) {
+      /** @type {string} */
+      this.setName = setName;
+      /** @type {int32} */
+      this.count = count;
+      /** @type {string} */
+      this.file = file;
+      /** @type {string} */
+      this.key = key;
+      /** @type {string} */
+      this.msg = msg;
+      /** @type {string} */
+      this.sm = sm;
+    }
+  }
+
+  /** @type {RainbowKatEntry[]} */
+  const KAT = [
+    new RainbowKatEntry('Rainbow-I',
+      0,
+      'KAT/Ia_Circumzenithal/PQCsignKAT_103648.rsp',
+      '8626ed79d451140800e03b59b956f8210e556067407d13dc90fa9e8b872bfb8f' +
+        '7c9935a0b07694aa0c6d10e4db6b1add2fd81a25ccb148032dcd739936737f2d',
+      'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8',
+      'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8' +
+        '8847ec401b4b72631083a138e29d2323d1759d7268af6b3edb06762722491fa2bc' +
+        '3e93dd9a10a995f9b38ab6c65b608ac9fe4b9a9e38ee4622d5bc61d8e1fe912433'),
+    new RainbowKatEntry('Rainbow-I',
+      1,
+      'KAT/Ia_Circumzenithal/PQCsignKAT_103648.rsp',
+      'e82fcc97ca60ccb27bf6938c975658aeb8b4d37cffbde25d97e561f36c219ade' +
+        '4b622de1350119c45a9f2e2ef3dc5df50a759d138cdfbd64c81cc7cc2f513345',
+      '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a' +
+        '073e7b90e02ebf98ca2227eba38c1ab2568209e46dba961869c6f83983b17dcd49',
+      '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a' +
+        '073e7b90e02ebf98ca2227eba38c1ab2568209e46dba961869c6f83983b17dcd49' +
+        '92f541ac65b6f3240547be53b796eb3581385f9d4a0ef041c833feae4403573049' +
+        '3c10ceefe90bfc61cc58d8eff712232740d0bd6e49bd95099f3cfa73edae6777a8'),
+    new RainbowKatEntry('Rainbow-I',
+      2,
+      'KAT/Ia_Circumzenithal/PQCsignKAT_103648.rsp',
+      'f333d36590910e7a5a6cbe567bcdd154137eef62b92bf8dc1fdc900e7c194e5f' +
+        '1d836e889e46259bcd1ccd2b369583c5b47cfbb919ec2b72c280247cb15a5569',
+      '2b8c4b0f29363eaee469a7e33524538aa066ae98980eaa19d1f10593203da2143b' +
+        '9e9e1973f7ff0e6c6aaa3c0b900e50d003412efe96deece3046d8c46bc7709228' +
+        '789775abdf56aed6416c90033780cb7a4984815da1b14660dcf34aa34bf82cebbcf',
+      '2b8c4b0f29363eaee469a7e33524538aa066ae98980eaa19d1f10593203da2143b' +
+        '9e9e1973f7ff0e6c6aaa3c0b900e50d003412efe96deece3046d8c46bc7709228' +
+        '789775abdf56aed6416c90033780cb7a4984815da1b14660dcf34aa34bf82cebbcf' +
+        'a7d2035a4219d6accf47a7a97478f1b48c3e5eb9fb69b323fe3b14f9b87c45dc36' +
+        '50ddc23c09f010234f14c0f49f6cadc6d919ccf0912ae76f9bdb0d8d0ac37e7473'),
+    new RainbowKatEntry('Rainbow-V',
+      0,
+      'KAT/Vc_Classic/PQCsignKAT_1408736.rsp',
+      '7c9935a0b07694aa0c6d10e4db6b1add2fd81a25ccb148032dcd739936737f2d',
+      'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8',
+      'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8' +
+        '15040f890f2bf56f8b04b1d8b9ba21d303c490868a0a10c9ffc04a2af9d1f3122d' +
+        '14f7c6d5e0b1d914cc23d763c061b2fd34df8cb0d75f12111244241fa7a136c440' +
+        'c2d40782390fe5ef3c15ed5539285b437da0447e361853e98982e1f16aa0506bab' +
+        'ffbba8282baa0a307c50eba79596ad26ebece897e7b4de3b601a515c0877552652' +
+        '2915ed03f08baa23afed4224c8e50ed67fbccfab62c58872ce880c850d3a03f21b2' +
+        '703c5c085fa410a5fcb3559e50d6bbc6a06faba309962f2922e0d014c5eb074090' +
+        '543c9478050169fccfbc0e9ba11'),
+    new RainbowKatEntry('Rainbow-V',
+      0,
+      'KAT/Vc_Circumzenithal/PQCsignKAT_1408736.rsp',
+      '8626ed79d451140800e03b59b956f8210e556067407d13dc90fa9e8b872bfb8f' +
+        '7c9935a0b07694aa0c6d10e4db6b1add2fd81a25ccb148032dcd739936737f2d',
+      'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8',
+      'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8' +
+        'd1f97d1310f57af3509f66307985b7f341234ce8f7516e4b61f9e53b1282ce66b9' +
+        '526321c66954e1753d1a9c8ba4012b9c5a211f0287c72705141f71a9aaec350e81' +
+        'f6ec67ed10e1bd61dcdfa4ac87553563e0fee31927e5877741d5dcdf03c44e50cf' +
+        '80bb3d15856af49f2c68a7edac52fd2957f96a7113dce51785edf0ab8538c1eaad' +
+        '694e8514cdc7872664412bcf9884c185bade87781016826e32e08c1ec6275c6f85' +
+        '88a11ff6575d704505d4ab794d047bec1104c00dad3bcfc2de42267b3552bd7409' +
+        '0543c9478050169fccfbc0e9ba11')
+  ];
 
   // ===== the set whose response file was never generated =====
   //
@@ -1855,51 +2110,79 @@
   // time: hashLen is 32 for Rainbow-I and 64 for Rainbow-V, so nothing the
   // suite ran reached 48.
 
-  const RECONSTRUCTED = {
-    'Rainbow-III': [
-      {
-        format: 'classic',
-        digest: '1eb9bb6e63cfdbd05a6eaca9989e969fd234b110b67ff7e6373e1af080b35f41',
-        uri: 'https://github.com/PQClean/PQClean/blob/6cd3167b397e1150289a383baef52bc6cfc9eadf/crypto_sign/rainbowIII-classic/META.yml',
-        key: '7c9935a0b07694aa0c6d10e4db6b1add2fd81a25ccb148032dcd739936737f2d',
-        msg: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8',
-        sm: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8' +
-            '6033c99a65042be545eed707341bd14f73ca178f2a5b244a87e847dcab29a90866' +
-            '76d7a7a4b35e3904a9edd7b399b1bd104a19373a415029bccd4c707b416eed683f' +
-            '13a9189ef0bdc151116cbf6d6a9d4bc019faa58fd770b6f567a410c700b48c488a' +
-            '375c33866f3febb8dedf239c64ff9a36f092e3d6192b9a0726b06672a540a892fa' +
-            '7ba47dbe7f3e66bf394ed328a107b8edceb39ad2e43c6ee441f39ece871397ac'
-      },
-      {
-        format: 'circumzenithal',
-        digest: '1b5cbbdef12492ba8176309a44461d3d64a05b049f78edb85af1d166f4b64f32',
-        uri: 'https://github.com/PQClean/PQClean/blob/6cd3167b397e1150289a383baef52bc6cfc9eadf/crypto_sign/rainbowIII-circumzenithal/META.yml',
-        key: '8626ed79d451140800e03b59b956f8210e556067407d13dc90fa9e8b872bfb8f' +
-             '7c9935a0b07694aa0c6d10e4db6b1add2fd81a25ccb148032dcd739936737f2d',
-        msg: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8',
-        sm: 'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8' +
-            '451f524fef128edbe93814c041d5edd2c8a0226e05e13942b5b832c864a9618426' +
-            '1745a5b530d09d51773c3e6f3c8297e3a8e6e4dbd23e56bda10b5c3a491f7a5d9e' +
-            'a819d712fc6565429f965fd7264041e5f2007085de29930b20b187bb9e5bc4bcac' +
-            '01c35cabc97f5ec6476c42138c3d18a1dbd23ba22b31b21bdbe5421ac1b837a793' +
-            '123c80e2b5028a0763872e76e45f6aa9d675e2d667e6f68024d5ef1143d21713'
-      }
-    ]
-  };
+  /** A count = 0 record rebuilt from the request seed and pinned by its digest. */
+  class RainbowReconstructedEntry {
+    /**
+     * @param {string} setName - the parameter set
+     * @param {string} format - the key format
+     * @param {string} digest - the published nistkat-sha256, hex
+     * @param {string} uri - where the digest is published
+     * @param {string} key - the seed material, hex
+     * @param {string} msg - the message, hex
+     * @param {string} sm - the signed message, hex
+     */
+    constructor(setName, format, digest, uri, key, msg, sm) {
+      /** @type {string} */
+      this.setName = setName;
+      /** @type {string} */
+      this.format = format;
+      /** @type {string} */
+      this.digest = digest;
+      /** @type {string} */
+      this.uri = uri;
+      /** @type {string} */
+      this.key = key;
+      /** @type {string} */
+      this.msg = msg;
+      /** @type {string} */
+      this.sm = sm;
+    }
+  }
+
+  /** @type {RainbowReconstructedEntry[]} */
+  const RECONSTRUCTED = [
+    new RainbowReconstructedEntry('Rainbow-III',
+      'classic',
+      '1eb9bb6e63cfdbd05a6eaca9989e969fd234b110b67ff7e6373e1af080b35f41',
+      'https://github.com/PQClean/PQClean/blob/6cd3167b397e1150289a383baef52bc6cfc9eadf/crypto_sign/rainbowIII-classic/META.yml',
+      '7c9935a0b07694aa0c6d10e4db6b1add2fd81a25ccb148032dcd739936737f2d',
+      'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8',
+      'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8' +
+        '6033c99a65042be545eed707341bd14f73ca178f2a5b244a87e847dcab29a90866' +
+        '76d7a7a4b35e3904a9edd7b399b1bd104a19373a415029bccd4c707b416eed683f' +
+        '13a9189ef0bdc151116cbf6d6a9d4bc019faa58fd770b6f567a410c700b48c488a' +
+        '375c33866f3febb8dedf239c64ff9a36f092e3d6192b9a0726b06672a540a892fa' +
+        '7ba47dbe7f3e66bf394ed328a107b8edceb39ad2e43c6ee441f39ece871397ac'),
+    new RainbowReconstructedEntry('Rainbow-III',
+      'circumzenithal',
+      '1b5cbbdef12492ba8176309a44461d3d64a05b049f78edb85af1d166f4b64f32',
+      'https://github.com/PQClean/PQClean/blob/6cd3167b397e1150289a383baef52bc6cfc9eadf/crypto_sign/rainbowIII-circumzenithal/META.yml',
+      '8626ed79d451140800e03b59b956f8210e556067407d13dc90fa9e8b872bfb8f' +
+        '7c9935a0b07694aa0c6d10e4db6b1add2fd81a25ccb148032dcd739936737f2d',
+      'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8',
+      'd81c4d8d734fcbfbeade3d3f8a039faa2a2c9957e835ad55b22e75bf57bb556ac8' +
+        '451f524fef128edbe93814c041d5edd2c8a0226e05e13942b5b832c864a9618426' +
+        '1745a5b530d09d51773c3e6f3c8297e3a8e6e4dbd23e56bda10b5c3a491f7a5d9e' +
+        'a819d712fc6565429f965fd7264041e5f2007085de29930b20b187bb9e5bc4bcac' +
+        '01c35cabc97f5ec6476c42138c3d18a1dbd23ba22b31b21bdbe5421ac1b837a793' +
+        '123c80e2b5028a0763872e76e45f6aa9d675e2d667e6f68024d5ef1143d21713')
+  ];
 
   // ===== ALGORITHM =====
 
   class RainbowAlgorithm extends AsymmetricCipherAlgorithm {
     /**
-     * @param {string} setName - one of the keys of PARAMETER_SETS
+     * @param {string} setName - the name of one of the PARAMETER_SETS
      */
     constructor(setName) {
       super();
 
       const spec = ParameterSetEntry(setName);
       const p = BuildParams(setName, spec.gfSize, spec.v1, spec.o1, spec.o2, spec.hashLen);
+      /** @type {RainbowParams} */
       this.parameters = p;
-      this.field = MakeField(spec.gfSize);
+      /** @type {RainbowField} */
+      this.field = new RainbowField(spec.gfSize);
 
       this.name = setName;
       this.description = 'Rainbow ' + spec.label + ', the round-three parameter set over GF('
@@ -2001,14 +2284,14 @@
       // published request seed and checked against the digest PQClean publishes
       // over the record they belong to; the reasoning is above that table, and
       // each vector says in its own text what it is.
-      this.tests = (KAT[setName] || []).map(entry => ({
+      this.tests = KAT.filter(entry => entry.setName === setName).map(entry => ({
         text: setName + ' ' + entry.file.split('/')[1].replace(/_/g, ' ')
               + ' KAT entry ' + entry.count,
         uri: 'https://csrc.nist.gov/CSRC/media/Projects/post-quantum-cryptography/documents/round-3/submissions/Rainbow-Round3.zip',
         input: OpCodes.Hex8ToBytes(entry.msg),
         key: OpCodes.Hex8ToBytes(entry.key),
         expected: OpCodes.Hex8ToBytes(entry.sm)
-      })).concat((RECONSTRUCTED[setName] || []).map(entry => ({
+      })).concat(RECONSTRUCTED.filter(entry => entry.setName === setName).map(entry => ({
         text: setName + ' ' + entry.format + ' KAT entry 0, reconstructed: the submission '
               + 'left this response file ungenerated, so the record was rebuilt from the '
               + 'published request seed and checked against the nistkat-sha256 '
@@ -2048,14 +2331,21 @@
      */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
       /** @type {RainbowParams} */
       this.parameters = algorithm.parameters;
+      /** @type {RainbowField} */
       this.field = algorithm.field;
+      /** @type {uint8[]|null} */
       this._keyData = null;
+      /** @type {boolean} */
       this._cyclic = false;
+      /** @type {Uint8Array|null} */
       this._secretKey = null;
+      /** @type {Uint8Array|null} */
       this._publicKey = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -2155,16 +2445,11 @@
     /**
      * Feed data for processing. Appends, so a message split across several
      * calls signs identically to the same message delivered at once.
-     * @param {uint8[]|string} data - input octets
+     * @param {uint8[]} data - input octets
      */
     Feed(data) {
-      if (typeof data === 'string') {
-        for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data.charCodeAt(i) % 256);
-      } else if (data && typeof data.length === 'number') {
-        for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data[i]);
-      } else if (typeof data === 'number') {
-        this.inputBuffer.push(data);
-      }
+      if (!data) return;
+      for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data[i]);
     }
 
     /**
@@ -2210,16 +2495,24 @@
 
       /** @type {uint8[]} */
       const out = new Array(message.length + p.sigBytes);
-      for (let i = 0; i < message.length; ++i) out[i] = message[i];
-      for (let i = 0; i < p.sigBytes; ++i) out[message.length + i] = signature[i];
+      for (let i = 0; i < message.length; ++i) {
+        /** @type {uint8} */
+        const octet = message[i];
+        out[i] = octet;
+      }
+      for (let i = 0; i < p.sigBytes; ++i) {
+        /** @type {uint8} */
+        const octet = signature[i];
+        out[message.length + i] = octet;
+      }
       return out;
     }
   }
 
   // ===== REGISTRATION =====
 
-  for (const setName of Object.keys(PARAMETER_SETS)) {
-    const instance = new RainbowAlgorithm(setName);
+  for (let i = 0; i < PARAMETER_SETS.length; ++i) {
+    const instance = new RainbowAlgorithm(PARAMETER_SETS[i].name);
     if (!AlgorithmFramework.Find(instance.name)) {
       RegisterAlgorithm(instance);
     }
