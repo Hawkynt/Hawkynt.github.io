@@ -39,7 +39,7 @@
   "algorithms/aead/tinyjambu.js": 51,
   "algorithms/aead/wage.js": 0,
   "algorithms/aead/xoodyak.js": 0,
-  "algorithms/asymmetric/bike.js": 34,
+  "algorithms/asymmetric/bike.js": 0,
   "algorithms/asymmetric/classic-mceliece.js": 38,
   "algorithms/asymmetric/cross.js": 166,
   "algorithms/asymmetric/diffie-hellman.js": 37,
