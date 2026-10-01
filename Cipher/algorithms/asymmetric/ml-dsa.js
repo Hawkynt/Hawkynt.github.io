@@ -236,41 +236,31 @@
     }
   }
 
-  const PRE_HASH = {
-    'SHA2-256':     new PreHashSpec('SHA-256',     'sha256', 32, false, hashOid(1)),
-    'SHA2-384':     new PreHashSpec('SHA-384',     'sha512', 48, false, hashOid(2)),
-    'SHA2-512':     new PreHashSpec('SHA-512',     'sha512', 64, false, hashOid(3)),
-    'SHA2-224':     new PreHashSpec('SHA-224',     'sha256', 28, false, hashOid(4)),
-    'SHA2-512/224': new PreHashSpec('SHA-512/224', 'sha512', 28, false, hashOid(5)),
-    'SHA2-512/256': new PreHashSpec('SHA-512/256', 'sha512', 32, false, hashOid(6)),
-    'SHA3-224':     new PreHashSpec('SHA-3-224',   'sha3',   28, false, hashOid(7)),
-    'SHA3-256':     new PreHashSpec('SHA-3-256',   'sha3',   32, false, hashOid(8)),
-    'SHA3-384':     new PreHashSpec('SHA-3-384',   'sha3',   48, false, hashOid(9)),
-    'SHA3-512':     new PreHashSpec('SHA-3-512',   'sha3',   64, false, hashOid(10)),
-    'SHAKE-128':    new PreHashSpec('SHAKE128',    'shake',  32, true,  hashOid(11)),
-    'SHAKE-256':    new PreHashSpec('SHAKE256',    'shake',  64, true,  hashOid(12))
-  };
+  const PRE_HASH_SHA2_256     = new PreHashSpec('SHA-256',     'sha256', 32, false, hashOid(1));
+  const PRE_HASH_SHA2_384     = new PreHashSpec('SHA-384',     'sha512', 48, false, hashOid(2));
+  const PRE_HASH_SHA2_512     = new PreHashSpec('SHA-512',     'sha512', 64, false, hashOid(3));
+  const PRE_HASH_SHA2_224     = new PreHashSpec('SHA-224',     'sha256', 28, false, hashOid(4));
+  const PRE_HASH_SHA2_512_224 = new PreHashSpec('SHA-512/224', 'sha512', 28, false, hashOid(5));
+  const PRE_HASH_SHA2_512_256 = new PreHashSpec('SHA-512/256', 'sha512', 32, false, hashOid(6));
+  const PRE_HASH_SHA3_224     = new PreHashSpec('SHA-3-224',   'sha3',   28, false, hashOid(7));
+  const PRE_HASH_SHA3_256     = new PreHashSpec('SHA-3-256',   'sha3',   32, false, hashOid(8));
+  const PRE_HASH_SHA3_384     = new PreHashSpec('SHA-3-384',   'sha3',   48, false, hashOid(9));
+  const PRE_HASH_SHA3_512     = new PreHashSpec('SHA-3-512',   'sha3',   64, false, hashOid(10));
+  const PRE_HASH_SHAKE_128    = new PreHashSpec('SHAKE128',    'shake',  32, true,  hashOid(11));
+  const PRE_HASH_SHAKE_256    = new PreHashSpec('SHAKE256',    'shake',  64, true,  hashOid(12));
 
-  /**
-   * Both the ACVP spelling and this collection's own algorithm name are
-   * accepted, so a caller can ask for 'SHA2-256' or 'SHA-256' and mean it.
-   * @returns {Object} upper-cased spelling to pre-hash specification
-   */
-  function buildPreHashAliases() {
-    const map = {};
-    /** @type {string[]} */
-    const labels = Object.keys(PRE_HASH);
-    for (let i = 0; i < labels.length; i++) {
-      const label = labels[i];
-      /** @type {PreHashSpec} */
-      const spec = PRE_HASH[label];
-      map[label.toUpperCase()] = spec;
-      map[spec.algorithm.toUpperCase()] = spec;
-    }
-    return map;
-  }
+  /** @type {string[]} The ACVP labels, in the order of PRE_HASH_LIST. */
+  const PRE_HASH_LABELS = [
+    'SHA2-256', 'SHA2-384', 'SHA2-512', 'SHA2-224', 'SHA2-512/224', 'SHA2-512/256',
+    'SHA3-224', 'SHA3-256', 'SHA3-384', 'SHA3-512', 'SHAKE-128', 'SHAKE-256'
+  ];
 
-  const PRE_HASH_ALIASES = buildPreHashAliases();
+  /** @type {PreHashSpec[]} */
+  const PRE_HASH_LIST = [
+    PRE_HASH_SHA2_256, PRE_HASH_SHA2_384, PRE_HASH_SHA2_512, PRE_HASH_SHA2_224,
+    PRE_HASH_SHA2_512_224, PRE_HASH_SHA2_512_256, PRE_HASH_SHA3_224, PRE_HASH_SHA3_256,
+    PRE_HASH_SHA3_384, PRE_HASH_SHA3_512, PRE_HASH_SHAKE_128, PRE_HASH_SHAKE_256
+  ];
 
   /**
    * Look a pre-hash function up by either of its accepted names.
@@ -279,21 +269,25 @@
    * @throws {Error} when the name is not one of the twelve approved functions
    */
   function findPreHash(label) {
-    /** @type {PreHashSpec} */
-    let found = null;
+    // Both the ACVP spelling and this collection's own algorithm name are
+    // accepted, so a caller can ask for 'SHA2-256' or 'SHA-256' and mean it.
     if (!(label === null || label === undefined)) {
       /** @type {string} */
       const key = String(label).trim().toUpperCase();
-      found = PRE_HASH_ALIASES[key];
+      for (let i = 0; i < PRE_HASH_LIST.length; i++) {
+        if (PRE_HASH_LABELS[i].toUpperCase() === key || PRE_HASH_LIST[i].algorithm.toUpperCase() === key)
+          return PRE_HASH_LIST[i];
+      }
     }
 
-    if (!found)
-      throw new Error('HashML-DSA pre-hash must be one of ' + Object.keys(PRE_HASH).join(', ') + ', got ' + label);
-
-    return found;
+    throw new Error('HashML-DSA pre-hash must be one of ' + PRE_HASH_LABELS.join(', ') + ', got ' + label);
   }
 
-  const hashAlgorithms = {};
+  // The pre-hash algorithms found so far, by registered name.
+  /** @type {string[]} */
+  const hashAlgorithmNames = [];
+  /** @type {Algorithm[]} */
+  const hashAlgorithms = [];
 
   /**
    * Hash a message with one of the approved pre-hash functions.
@@ -301,16 +295,18 @@
    * The hash modules are resolved from the registry on demand, for the same
    * load-order reason the core is, and cached once found.
    *
-   * @param {PreHashSpec} spec - an entry of PRE_HASH
+   * @param {PreHashSpec} spec - an entry of PRE_HASH_LIST
    * @param {uint8[]} message - the message to digest
    * @returns {uint8[]} spec.digestSize bytes
    */
   function preHashDigest(spec, message) {
     /** @type {Algorithm} */
-    let algorithm = hashAlgorithms[spec.algorithm];
+    let algorithm = null;
+    for (let i = 0; i < hashAlgorithmNames.length; i++)
+      if (hashAlgorithmNames[i] === spec.algorithm) algorithm = hashAlgorithms[i];
 
     if (!algorithm) {
-      algorithm = AlgorithmFramework.Find ? AlgorithmFramework.Find(spec.algorithm) : null;
+      algorithm = AlgorithmFramework.Find(spec.algorithm);
 
       if (!algorithm && typeof require !== 'undefined') {
         try {
@@ -324,7 +320,8 @@
       if (!algorithm)
         throw new Error('HashML-DSA needs ' + spec.algorithm + ', which was not found');
 
-      hashAlgorithms[spec.algorithm] = algorithm;
+      hashAlgorithmNames.push(spec.algorithm);
+      hashAlgorithms.push(algorithm);
     }
 
     /** @type {IHashFunctionInstance} */
@@ -2103,8 +2100,8 @@
     }
 
     /**
-     * The generic key entry point. Accepts a private key, a public key, a
-     * 32 byte generation seed, or the name of a parameter set.
+     * The generic key entry point. Accepts a private key, a public key, a 32 byte generation seed, or the ASCII name of a parameter set.
+     * @param {uint8[]|null} keyData - key bytes; null clears both keys
      */
     set key(keyData) {
       this._keyData = keyData;
@@ -2115,12 +2112,9 @@
         return;
       }
 
-      if (typeof keyData === 'string' || typeof keyData === 'number') {
-        this.parameterSet = keyData;
-        return;
-      }
-
-      if (!Array.isArray(keyData) && !ArrayBuffer.isView(keyData))
+      /** @type {boolean} */
+      const isTypedArray = ArrayBuffer.isView(keyData);
+      if (!Array.isArray(keyData) && !isTypedArray)
         throw new Error('Invalid ML-DSA key data format');
 
       /** @type {uint8[]} */
@@ -2335,6 +2329,20 @@
 
   return {
     MLDSAAlgorithm, MLDSAInstance,
-    PRE_HASH, findPreHash, preHashMessageRepresentative
+    PRE_HASH: {
+      'SHA2-256':     PRE_HASH_SHA2_256,
+      'SHA2-384':     PRE_HASH_SHA2_384,
+      'SHA2-512':     PRE_HASH_SHA2_512,
+      'SHA2-224':     PRE_HASH_SHA2_224,
+      'SHA2-512/224': PRE_HASH_SHA2_512_224,
+      'SHA2-512/256': PRE_HASH_SHA2_512_256,
+      'SHA3-224':     PRE_HASH_SHA3_224,
+      'SHA3-256':     PRE_HASH_SHA3_256,
+      'SHA3-384':     PRE_HASH_SHA3_384,
+      'SHA3-512':     PRE_HASH_SHA3_512,
+      'SHAKE-128':    PRE_HASH_SHAKE_128,
+      'SHAKE-256':    PRE_HASH_SHAKE_256
+    },
+    findPreHash, preHashMessageRepresentative
   };
 }));
