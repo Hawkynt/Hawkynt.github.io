@@ -44,13 +44,12 @@ Educational cryptanalysis tool demonstrating frequency analysis principles. Show
 
 2 vectors ship with this algorithm and run in the test suite. Byte values are hexadecimal.
 
-**Vector 1** — Caesar Cipher Analysis
+**Vector 1** — Caesar Cipher Analysis (ciphertext shifted by 3, recovered by frequency analysis)
 
 Source: Historical cryptanalysis examples
 
 | Field | Value |
 | --- | --- |
-| `shift` | `3` |
 | `language` | english |
 | `input` | `574b5256204c562044205648465548572050485656444a48` |
 | `expected` | `54484f53204953204120534543524554204d455353414745` |
