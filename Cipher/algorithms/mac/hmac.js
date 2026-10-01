@@ -101,7 +101,7 @@
           uri: "https://github.com/randombit/botan/blob/master/src/tests/data/mac/hmac.vec",
           input: OpCodes.Hex8ToBytes('4869205468657265'), // "Hi There"
           key: OpCodes.Hex8ToBytes('0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b'),
-          hashFunction: OpCodes.AnsiToBytes('MD5'),
+          hashFunction: 'MD5',
           expected: OpCodes.Hex8ToBytes('9294727A3638BB1C13F48EF8158BFC9D')
         },
         // Test Case 2: "Test With Truncation" with MD5 (Botan vector)
@@ -110,7 +110,7 @@
           uri: "https://github.com/randombit/botan/blob/master/src/tests/data/mac/hmac.vec",
           input: OpCodes.Hex8ToBytes('546573742057697468205472756E636174696F6E'), // "Test With Truncation"
           key: OpCodes.Hex8ToBytes('0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c'),
-          hashFunction: OpCodes.AnsiToBytes('MD5'),
+          hashFunction: 'MD5',
           expected: OpCodes.Hex8ToBytes('56461EF2342EDC00F9BAB995690EFD4C')
         }
       ];
@@ -203,20 +203,15 @@
     // Property setter for hash function
     /**
      * Select the hash function
-     * @param {string|uint8[]} hashFunc - Hash function name, as a string or as its ANSI bytes (test vectors)
-     * @throws {Error} If the value is neither, or names an unsupported hash function
+     * @param {string} hashFunc - Hash function name
+     * @throws {Error} If no name is given, or it names an unsupported hash function
      */
     set hashFunction(hashFunc) {
-      // Convert byte array to string if needed (from test vectors)
-      /** @type {string} */
-      let funcName;
-      if (Array.isArray(hashFunc)) {
-        funcName = OpCodes.BytesToAnsi(hashFunc);
-      } else if (typeof hashFunc === 'string') {
-        funcName = hashFunc;
-      } else {
-        throw new Error('Invalid hash function - must be string or byte array');
+      if (!hashFunc) {
+        throw new Error('Invalid hash function - must be a name');
       }
+      /** @type {string} */
+      const funcName = hashFunc;
 
       /** @type {string} */
       const upperFunc = funcName.toUpperCase();
