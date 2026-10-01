@@ -498,6 +498,7 @@ this.tests = [
 1. **Algorithm Class**: Extends appropriate base class and implements `CreateInstance(isInverse)`
 2. **Instance Class**: Extends `IAlgorithmInstance` and implements `Feed(data)` and `Result()`
 3. **Properties**: Instance properties can be set to configure behavior (key, iv, outputSize, etc.)
+4. **Every vector field must be applied**: apart from `text`, `uri`, `input`, `expected` and `inverse`, each field of a test vector must name a setter (`setKey`, `setIV`, `setSalt`, ...) or a property of the instance. The test engine fails a vector whose field it cannot apply, or whose setter throws, so a misspelled field or a setting the algorithm lacks never leaves a default in place unnoticed. The one descriptive field is `roundTripOnly`, for a vector without an expected value.
 
 ### CreateInstance Return Values
 

@@ -23,13 +23,13 @@ that one load.
 | `interface` | it loads and registers at least one algorithm | `TestEngine.js` |
 | `metadata` | the metadata follows CONTRIBUTING.md | `TestEngine.js` |
 | `issues` | no TODO/FIXME/BUG/ISSUE/HACK markers | `TestEngine.js` |
-| `functionality` | every committed vector; an algorithm with an inverse must also recover each vector's input | `TestEngine.js` |
+| `functionality` | every committed vector, with every field of it applied (a field the instance has no setter or property for, or whose setter throws, fails the vector); an algorithm with an inverse must also recover each vector's input | `TestEngine.js` |
 | `optimization` | OpCodes instead of raw bit operators | `TestEngine.js` |
 | `types` | untyped value sites within the file's budget (see below) | `TypeCoverage.js`, `type-budgets.json` |
 | `roundtrip` | every reversible algorithm decodes its own output over an adversarial corpus, and compressors compress; interoperability with zlib/bzip2 is reported, never gating | `RoundTrip.js` |
 | `chunked` | `Feed(whole)` equals `Feed(part1); Feed(part2); ...` for every split | `ChunkedFeed.js` |
 | `browser` | every script tag of `index.html` evaluates in page order with no `require`, `module` or `global` | `BrowserLoad.js` |
-| `library` | unit tests of the OpCodes helpers, `ByteBuffer`, the runners' category selection and summary, and of algorithm paths no committed vector reaches (lengths beyond 2^32 bits, a missing dependency) | `OpCodesHelperTests.js`, `ByteBufferTests.js`, `RunnerTests.js`, `AlgorithmRegressionTests.js` |
+| `library` | unit tests of the OpCodes helpers, `ByteBuffer`, the runners' category selection and summary, of algorithm paths no committed vector reaches (lengths beyond 2^32 bits, a missing dependency), and of how the test engine applies a vector's fields | `OpCodesHelperTests.js`, `ByteBufferTests.js`, `RunnerTests.js`, `AlgorithmRegressionTests.js`, `TestEngineTests.js` |
 
 Hashes, MACs, KDFs, random generators and the algorithms named in
 `round-trip-exemptions.js` have no inverse: `functionality` does not round-trip
