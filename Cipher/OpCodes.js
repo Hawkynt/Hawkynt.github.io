@@ -2463,9 +2463,10 @@
     },
     
     /**
-     * Copy array (deep copy for simple arrays)
+     * Copy array (deep copy for simple arrays). Any element type is copied;
+     * the transpiler types the copy as its source (uint32[] in, uint32[] out).
      * @param {uint8[]} arr - Source array
-     * @returns {uint8[]} Copied array
+     * @returns {uint8[]} Copied array, of the source's element type
      */
     CopyArray: function(arr) {
       if (arr.length <= 16) {
