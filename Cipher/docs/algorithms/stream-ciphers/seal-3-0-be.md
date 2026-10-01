@@ -36,7 +36,7 @@
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| SEAL has known theoretical weaknesses and is considered broken for modern cryptographic applications. | — | Use modern stream ciphers like ChaCha20 or XSalsa20 for new systems. |
+| Theoretical Attack | SEAL has known theoretical weaknesses and is considered broken for modern cryptographic applications. | Use modern stream ciphers like ChaCha20 or XSalsa20 for new systems. |
 
 ## Documentation
 
