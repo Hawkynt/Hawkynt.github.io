@@ -293,6 +293,20 @@ test('walk: given catch (e) whose e is read, when counted, then only the read is
   equal(s.length, 1);
   equal(s[0].line, 4);
 });
+test('walk: given catch without a binding (catch {), when counted, then it parses and nothing is a site', () => {
+  const r = TypeCoverage.analyzeSource('function f() { try { return 1; } catch { return 2; } }');
+  ok(!r.parseError, `parse error: ${r.parseError}`);
+  equal(r.sites.length, 0);
+});
+test('context: given return { ... } under @returns {Settings}, when counted, then the object literal is no site', () => {
+  equal(sites('/** @typedef {Object} Settings */\n/** @returns {Settings} */\nfunction f() { return { a: 1 }; }').length, 0);
+});
+test('context: given return { ... } without @returns, when counted, then the object literal is a site', () => {
+  equal(sites('function f() { return { a: 1 }; }').length, 1);
+});
+test('context: given an inner function without @returns, when counted, then the outer @returns does not reach its return', () => {
+  equal(sites('/** @returns {Settings} */\nfunction f() { const g = function () { return { a: 1 }; }; return { b: g }; }').length, 1);
+});
 test('walk: given sites, when tallied, then every site lands in exactly one tier', () => {
   const s = sites('function f(a) { return OpCodes.XorN(a, 1) + a; }');
   const t = TypeCoverage.byTier(s);

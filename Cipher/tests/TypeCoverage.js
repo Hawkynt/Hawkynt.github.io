@@ -121,15 +121,16 @@ function isTestVectorAssignment(node) {
 /**
  * Analyze JavaScript source.
  * @param {string} code - Algorithm source
+ * @param {string} [filePath] - Its path: the sibling data modules it requires are typed from their own JSDoc
  * @returns {Object} { sites: [{line, expression, reason, tier}], parseError }
  */
-function analyzeSource(code) {
+function analyzeSource(code, filePath) {
   const P = parserClass();
   const log = console.log, warn = console.warn, error = console.error;
   let parser, ast;
   console.log = console.warn = console.error = () => {};
   try {
-    parser = new P(code);
+    parser = new P(code, filePath ? { sourcePath: path.resolve(filePath) } : {});
     ast = parser.parse();
   } catch (e) {
     return { sites: [], parseError: e.message };
@@ -256,7 +257,7 @@ function analyzeSource(code) {
  * @returns {Object} { sites, parseError, count }
  */
 function analyzeFile(filePath, source) {
-  const result = analyzeSource(typeof source === 'string' ? source : fs.readFileSync(filePath, 'utf8'));
+  const result = analyzeSource(typeof source === 'string' ? source : fs.readFileSync(filePath, 'utf8'), filePath);
   result.count = result.parseError ? null : result.sites.length;
   return result;
 }
