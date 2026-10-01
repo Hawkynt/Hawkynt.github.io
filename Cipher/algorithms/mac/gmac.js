@@ -397,6 +397,22 @@
       return y;
     }
 
+    /**
+     * The last GHASH block of GCM (NIST SP 800-38D, section 7.1 step 5):
+     * [len(A)]_64 || [len(C)]_64, both bit lengths as 64-bit big-endian numbers.
+     * GMAC authenticates A alone, so len(C) is 0. All 64 bits of len(A) are
+     * encoded: from 2^29 bytes (512 MiB) on, the bit length needs more than 32.
+     * @param {uint64} aadByteLength - Length of the authenticated data in bytes
+     * @returns {uint8[]} 16-byte length block
+     */
+    _lengthBlock(aadByteLength) {
+      /** @type {uint8[]} */
+      const aadBits = OpCodes.Unpack64BE(aadByteLength * 8);
+      /** @type {uint8[]} */
+      const ciphertextBits = OpCodes.Unpack64BE(0);
+      return aadBits.concat(ciphertextBits);
+    }
+
     // Core GMAC computation
     /**
      * GMAC tag of the buffered message
@@ -414,17 +430,10 @@
         }
       }
 
-      // Append length fields: len(AAD) || len(C) = len(AAD) || 0
-      const aadBitLength = this.inputBuffer.length * 8;
-      const plaintextBitLength = 0; // GMAC has no ciphertext
-
-      // Add 64-bit AAD length (big-endian) using OpCodes
-      gmacInput.push(0, 0, 0, 0); // High 32 bits (always 0 for practical message sizes)
-      const aadLengthBytes = OpCodes.Unpack32BE(aadBitLength);
-      for (let _i = 0; _i < aadLengthBytes.length; _i++) gmacInput.push(aadLengthBytes[_i]);
-
-      // Add 64-bit plaintext length (big-endian, zero for GMAC)
-      gmacInput.push(0, 0, 0, 0, 0, 0, 0, 0);
+      // Append the length block: len(AAD) || len(C) = len(AAD) || 0
+      /** @type {uint8[]} */
+      const lengthBlock = this._lengthBlock(this.inputBuffer.length);
+      for (let _i = 0; _i < lengthBlock.length; _i++) gmacInput.push(lengthBlock[_i]);
 
       // Compute GHASH
       const ghashResult = this._ghash(gmacInput);
