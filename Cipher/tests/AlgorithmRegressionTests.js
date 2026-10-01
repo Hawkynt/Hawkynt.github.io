@@ -91,8 +91,9 @@ function correctOrRefused(outcome, expected, dependency) {
   equalHex(outcome.value, expected);
 }
 
-function pbkdf2(framework, password, salt, iterations, size) {
+function pbkdf2(framework, password, salt, iterations, size, hashName) {
   const instance = framework.Find('PBKDF2').CreateInstance();
+  if (hashName !== undefined) instance.hashFunction = hashName;
   instance.salt = Array.from(Buffer.from(salt));
   instance.iterations = iterations;
   instance.outputSize = size;
@@ -103,13 +104,35 @@ function pbkdf2(framework, password, salt, iterations, size) {
 // RFC 6070 test case 1, also node's crypto.pbkdf2Sync('password', 'salt', 1, 20, 'sha1')
 const PBKDF2_RFC6070_1 = '0c60c80f961f0e71f3a9b524af6012062fe037a6';
 
-test('PBKDF2: given a page without SHA-1, when a key is derived, then it is the RFC 6070 key or a refusal naming SHA-1 - never a wrong key', () => {
-  const framework = pageWith('algorithms/kdf/pbkdf2.js');
+// RFC 7914 section 11 (PBKDF2-HMAC-SHA256, passwd/salt, c=1), first 32 of its 64 bytes;
+// also node's crypto.pbkdf2Sync('passwd', 'salt', 1, 32, 'sha256')
+const PBKDF2_RFC7914_SHA256_32 = '55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc';
+
+test('PBKDF2: given a page with HMAC but without SHA-1, when a key is derived, then it is the RFC 6070 key or a refusal naming SHA-1 - never a wrong key', () => {
+  const framework = pageWith('algorithms/mac/hmac.js', 'algorithms/kdf/pbkdf2.js');
   correctOrRefused(attempt(() => pbkdf2(framework, 'password', 'salt', 1, 20)), PBKDF2_RFC6070_1, 'SHA-1');
 });
-test('PBKDF2: given a page with SHA-1, when a key is derived, then it is the RFC 6070 key', () => {
+test('PBKDF2: given a page with SHA-1 but without HMAC, when a key is derived, then it is the RFC 6070 key or a refusal naming HMAC - never a wrong key', () => {
   const framework = pageWith('algorithms/hash/sha1.js', 'algorithms/kdf/pbkdf2.js');
+  correctOrRefused(attempt(() => pbkdf2(framework, 'password', 'salt', 1, 20)), PBKDF2_RFC6070_1, 'HMAC');
+});
+test('PBKDF2: given a page with SHA-1 and HMAC, when a key is derived, then it is the RFC 6070 key', () => {
+  const framework = pageWith('algorithms/hash/sha1.js', 'algorithms/mac/hmac.js', 'algorithms/kdf/pbkdf2.js');
   equalHex(pbkdf2(framework, 'password', 'salt', 1, 20), PBKDF2_RFC6070_1);
+});
+test('PBKDF2: given a page with SHA-256 and HMAC, when hashFunction is SHA-256, then the key is the RFC 7914 one', () => {
+  const framework = pageWith('algorithms/hash/sha256.js', 'algorithms/mac/hmac.js', 'algorithms/kdf/pbkdf2.js');
+  equalHex(pbkdf2(framework, 'passwd', 'salt', 1, 32, 'SHA-256'), PBKDF2_RFC7914_SHA256_32);
+});
+test('PBKDF2: given an unknown or non-string hash name, when it is set, then it is refused - never silently ignored', () => {
+  const { PBKDF2Algorithm } = require(path.join(CIPHER_ROOT, 'algorithms', 'kdf', 'pbkdf2.js'));
+  const instance = new PBKDF2Algorithm().CreateInstance();
+  for (const bad of ['SHA256', 'MD5', 'SHA3-256', '', 'WHIRLPOOL', Array.from(Buffer.from('SHA-256')), null, 256]) {
+    const outcome = attempt(() => { instance.hashFunction = bad; });
+    if (!outcome.error) throw new Error(`${JSON.stringify(bad)} was accepted`);
+    if (!/hash/i.test(outcome.error.message)) throw new Error(`refusal does not say why: ${outcome.error.message}`);
+  }
+  if (instance.hashFunction !== 'SHA-1') throw new Error(`a refused name changed the hash to ${instance.hashFunction}`);
 });
 
 function pbkdf1(framework, hashName, iterations) {
