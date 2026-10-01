@@ -84,28 +84,247 @@
    * TinyJAMBU AEAD Algorithm (supports 128, 192, 256-bit variants)
    */
   class TinyJAMBUAlgorithm extends AeadAlgorithm {
+    /**
+     * @param {string} [variant='128'] - Key size in bits: '128', '192' or '256'
+     */
     constructor(variant = '128') {
       super();
 
-      const config = this._getVariantConfig(variant);
-
       // Store variant-specific parameters
+      /** @type {string} */
       this.variant = variant;
-      this.keySize = config.keySize;
-      this.keyWords = config.keyWords;
-      this.initRounds = config.initRounds;
-      this.permutation = config.permutation;
+      /** @type {int32} */
+      this.keySize = 0;
+      /** @type {int32} */
+      this.keyWords = 0;
+      /** @type {int32} */
+      this.initRounds = 0;
+
+      if (variant === '128') {
+        this.keySize = 16;
+        this.keyWords = 4;
+        this.initRounds = 8;
+        this.description = "Lightweight authenticated encryption finalist in NIST LWC. Features 128-bit keyed permutation with 4-word state, 96-bit nonce, and 64-bit authentication tag. Optimized for constrained environments.";
+        this.country = CountryCode.CN;
+        this.tests = [
+          {
+            text: "TinyJAMBU-128: Empty message, empty AAD (Count 1)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes(""),
+            input: OpCodes.Hex8ToBytes(""),
+            expected: OpCodes.Hex8ToBytes("7C5456E109B55A3A")
+          },
+          {
+            text: "TinyJAMBU-128: Empty message with 1-byte AAD (Count 2)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes("00"),
+            input: OpCodes.Hex8ToBytes(""),
+            expected: OpCodes.Hex8ToBytes("607DFB91AE92D187")
+          },
+          {
+            text: "TinyJAMBU-128: Empty message with 4-byte AAD (Count 5)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes("00010203"),
+            input: OpCodes.Hex8ToBytes(""),
+            expected: OpCodes.Hex8ToBytes("F7A293DB3FB16464")
+          },
+          {
+            text: "TinyJAMBU-128: 1-byte message, empty AAD (Count 34)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes(""),
+            input: OpCodes.Hex8ToBytes("00"),
+            expected: OpCodes.Hex8ToBytes("02A5B193AD5739203E")
+          },
+          {
+            text: "TinyJAMBU-128: 1-byte message with 1-byte AAD (Count 35)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes("00"),
+            input: OpCodes.Hex8ToBytes("00"),
+            expected: OpCodes.Hex8ToBytes("CAB4391F64177F8C2B")
+          },
+          {
+            text: "TinyJAMBU-128: 4-byte message with 4-byte AAD (Count 137)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes("00010203"),
+            input: OpCodes.Hex8ToBytes("00010203"),
+            expected: OpCodes.Hex8ToBytes("362BC344C45C165CECA7FD82")
+          },
+          {
+            text: "TinyJAMBU-128: 8-byte message with 8-byte AAD (Count 273)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes("0001020304050607"),
+            input: OpCodes.Hex8ToBytes("0001020304050607"),
+            expected: OpCodes.Hex8ToBytes("C7D6A4D8244A54636022D9E7AB0A0673")
+          }
+        ];
+      } else if (variant === '192') {
+        this.keySize = 24;
+        this.keyWords = 6;
+        this.initRounds = 9;
+        this.description = "Lightweight authenticated encryption finalist in NIST LWC. Features 192-bit keyed permutation with 4-word state, 96-bit nonce, and 64-bit authentication tag. Optimized for constrained environments.";
+        this.country = CountryCode.INTL;
+        this.tests = [
+          {
+            text: "TinyJAMBU-192: Empty message, empty AAD (Count 1)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes(""),
+            input: OpCodes.Hex8ToBytes(""),
+            expected: OpCodes.Hex8ToBytes("7A0775B5021A22A6")
+          },
+          {
+            text: "TinyJAMBU-192: Empty message with 1-byte AAD (Count 2)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes("00"),
+            input: OpCodes.Hex8ToBytes(""),
+            expected: OpCodes.Hex8ToBytes("CE89A55740C8B4E3")
+          },
+          {
+            text: "TinyJAMBU-192: Empty message with 4-byte AAD (Count 5)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes("00010203"),
+            input: OpCodes.Hex8ToBytes(""),
+            expected: OpCodes.Hex8ToBytes("BB87C0583A6DD75A")
+          },
+          {
+            text: "TinyJAMBU-192: 1-byte message, empty AAD (Count 34)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes(""),
+            input: OpCodes.Hex8ToBytes("00"),
+            expected: OpCodes.Hex8ToBytes("6017F2D006DCC66569")
+          },
+          {
+            text: "TinyJAMBU-192: 1-byte message with 1-byte AAD (Count 35)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes("00"),
+            input: OpCodes.Hex8ToBytes("00"),
+            expected: OpCodes.Hex8ToBytes("803A2659C516B939AB")
+          },
+          {
+            text: "TinyJAMBU-192: 4-byte message with 4-byte AAD (Count 137)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes("00010203"),
+            input: OpCodes.Hex8ToBytes("00010203"),
+            expected: OpCodes.Hex8ToBytes("EC0F17ADE4456F9A644D5FC2")
+          },
+          {
+            text: "TinyJAMBU-192: 8-byte message with 32-byte AAD (Count 297)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+            input: OpCodes.Hex8ToBytes("0001020304050607"),
+            expected: OpCodes.Hex8ToBytes("813CA1B8AA61E2A8951D73F7B2D03BB3")
+          }
+        ];
+      } else if (variant === '256') {
+        this.keySize = 32;
+        this.keyWords = 8;
+        this.initRounds = 10;
+        this.description = "Lightweight authenticated encryption finalist in NIST LWC. Features 256-bit keyed permutation with 4-word state, 96-bit nonce, and 64-bit authentication tag. Optimized for constrained environments.";
+        this.country = CountryCode.INTL;
+        this.tests = [
+          {
+            text: "TinyJAMBU-256: Empty message, empty AAD (Count 1)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes(""),
+            input: OpCodes.Hex8ToBytes(""),
+            expected: OpCodes.Hex8ToBytes("9B04ED416F7D7F56")
+          },
+          {
+            text: "TinyJAMBU-256: Empty message with 1-byte AAD (Count 2)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes("00"),
+            input: OpCodes.Hex8ToBytes(""),
+            expected: OpCodes.Hex8ToBytes("A68D4C7689096558")
+          },
+          {
+            text: "TinyJAMBU-256: Empty message with 4-byte AAD (Count 5)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes("00010203"),
+            input: OpCodes.Hex8ToBytes(""),
+            expected: OpCodes.Hex8ToBytes("90F1ACE82C4C5FFE")
+          },
+          {
+            text: "TinyJAMBU-256: 1-byte message, empty AAD (Count 34)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes(""),
+            input: OpCodes.Hex8ToBytes("00"),
+            expected: OpCodes.Hex8ToBytes("0FE90A41B4AA18329F")
+          },
+          {
+            text: "TinyJAMBU-256: 1-byte message with 1-byte AAD (Count 35)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes("00"),
+            input: OpCodes.Hex8ToBytes("00"),
+            expected: OpCodes.Hex8ToBytes("20BB303279C2739CE5")
+          },
+          {
+            text: "TinyJAMBU-256: 4-byte message with 4-byte AAD (Count 137)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes("00010203"),
+            input: OpCodes.Hex8ToBytes("00010203"),
+            expected: OpCodes.Hex8ToBytes("0243655595B82F3B398F3D96")
+          },
+          {
+            text: "TinyJAMBU-256: 8-byte message with 32-byte AAD (Count 297)",
+            uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
+            aad: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+            input: OpCodes.Hex8ToBytes("0001020304050607"),
+            expected: OpCodes.Hex8ToBytes("A5628DF713D4316218A127FC09046F81")
+          }
+        ];
+      } else {
+        throw new Error("Unsupported TinyJAMBU variant: " + variant);
+      }
 
       // Required metadata
       this.name = "TinyJAMBU-" + variant + " AEAD";
-      this.description = config.description;
       this.inventor = "Hongjun Wu, Tao Huang";
       this.year = 2019;
       this.category = CategoryType.AEAD;
       this.subCategory = "Lightweight Cryptography";
       this.securityStatus = SecurityStatus.EXPERIMENTAL;
       this.complexity = ComplexityType.INTERMEDIATE;
-      this.country = config.country;
 
       this.SupportedKeySizes = [new KeySize(this.keySize, this.keySize, 1)];
       this.SupportedTagSizes = [new KeySize(8, 8, 1)];
@@ -132,235 +351,6 @@
           "https://github.com/rweather/lwc-finalists"
         )
       ];
-
-      this.tests = config.tests;
-    }
-
-    _getVariantConfig(variant) {
-      const configs = {
-        '128': {
-          description: "Lightweight authenticated encryption finalist in NIST LWC. Features 128-bit keyed permutation with 4-word state, 96-bit nonce, and 64-bit authentication tag. Optimized for constrained environments.",
-          keySize: 16,
-          keyWords: 4,
-          initRounds: 8,
-          country: CountryCode.CN,
-          tests: [
-            {
-              text: "TinyJAMBU-128: Empty message, empty AAD (Count 1)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes(""),
-              input: OpCodes.Hex8ToBytes(""),
-              expected: OpCodes.Hex8ToBytes("7C5456E109B55A3A")
-            },
-            {
-              text: "TinyJAMBU-128: Empty message with 1-byte AAD (Count 2)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes("00"),
-              input: OpCodes.Hex8ToBytes(""),
-              expected: OpCodes.Hex8ToBytes("607DFB91AE92D187")
-            },
-            {
-              text: "TinyJAMBU-128: Empty message with 4-byte AAD (Count 5)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes("00010203"),
-              input: OpCodes.Hex8ToBytes(""),
-              expected: OpCodes.Hex8ToBytes("F7A293DB3FB16464")
-            },
-            {
-              text: "TinyJAMBU-128: 1-byte message, empty AAD (Count 34)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes(""),
-              input: OpCodes.Hex8ToBytes("00"),
-              expected: OpCodes.Hex8ToBytes("02A5B193AD5739203E")
-            },
-            {
-              text: "TinyJAMBU-128: 1-byte message with 1-byte AAD (Count 35)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes("00"),
-              input: OpCodes.Hex8ToBytes("00"),
-              expected: OpCodes.Hex8ToBytes("CAB4391F64177F8C2B")
-            },
-            {
-              text: "TinyJAMBU-128: 4-byte message with 4-byte AAD (Count 137)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes("00010203"),
-              input: OpCodes.Hex8ToBytes("00010203"),
-              expected: OpCodes.Hex8ToBytes("362BC344C45C165CECA7FD82")
-            },
-            {
-              text: "TinyJAMBU-128: 8-byte message with 8-byte AAD (Count 273)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes("0001020304050607"),
-              input: OpCodes.Hex8ToBytes("0001020304050607"),
-              expected: OpCodes.Hex8ToBytes("C7D6A4D8244A54636022D9E7AB0A0673")
-            }
-          ]
-        },
-        '192': {
-          description: "Lightweight authenticated encryption finalist in NIST LWC. Features 192-bit keyed permutation with 4-word state, 96-bit nonce, and 64-bit authentication tag. Optimized for constrained environments.",
-          keySize: 24,
-          keyWords: 6,
-          initRounds: 9,
-          country: CountryCode.INTL,
-          tests: [
-            {
-              text: "TinyJAMBU-192: Empty message, empty AAD (Count 1)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes(""),
-              input: OpCodes.Hex8ToBytes(""),
-              expected: OpCodes.Hex8ToBytes("7A0775B5021A22A6")
-            },
-            {
-              text: "TinyJAMBU-192: Empty message with 1-byte AAD (Count 2)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes("00"),
-              input: OpCodes.Hex8ToBytes(""),
-              expected: OpCodes.Hex8ToBytes("CE89A55740C8B4E3")
-            },
-            {
-              text: "TinyJAMBU-192: Empty message with 4-byte AAD (Count 5)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes("00010203"),
-              input: OpCodes.Hex8ToBytes(""),
-              expected: OpCodes.Hex8ToBytes("BB87C0583A6DD75A")
-            },
-            {
-              text: "TinyJAMBU-192: 1-byte message, empty AAD (Count 34)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes(""),
-              input: OpCodes.Hex8ToBytes("00"),
-              expected: OpCodes.Hex8ToBytes("6017F2D006DCC66569")
-            },
-            {
-              text: "TinyJAMBU-192: 1-byte message with 1-byte AAD (Count 35)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes("00"),
-              input: OpCodes.Hex8ToBytes("00"),
-              expected: OpCodes.Hex8ToBytes("803A2659C516B939AB")
-            },
-            {
-              text: "TinyJAMBU-192: 4-byte message with 4-byte AAD (Count 137)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes("00010203"),
-              input: OpCodes.Hex8ToBytes("00010203"),
-              expected: OpCodes.Hex8ToBytes("EC0F17ADE4456F9A644D5FC2")
-            },
-            {
-              text: "TinyJAMBU-192: 8-byte message with 32-byte AAD (Count 297)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F1011121314151617"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-              input: OpCodes.Hex8ToBytes("0001020304050607"),
-              expected: OpCodes.Hex8ToBytes("813CA1B8AA61E2A8951D73F7B2D03BB3")
-            }
-          ]
-        },
-        '256': {
-          description: "Lightweight authenticated encryption finalist in NIST LWC. Features 256-bit keyed permutation with 4-word state, 96-bit nonce, and 64-bit authentication tag. Optimized for constrained environments.",
-          keySize: 32,
-          keyWords: 8,
-          initRounds: 10,
-          country: CountryCode.INTL,
-          tests: [
-            {
-              text: "TinyJAMBU-256: Empty message, empty AAD (Count 1)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes(""),
-              input: OpCodes.Hex8ToBytes(""),
-              expected: OpCodes.Hex8ToBytes("9B04ED416F7D7F56")
-            },
-            {
-              text: "TinyJAMBU-256: Empty message with 1-byte AAD (Count 2)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes("00"),
-              input: OpCodes.Hex8ToBytes(""),
-              expected: OpCodes.Hex8ToBytes("A68D4C7689096558")
-            },
-            {
-              text: "TinyJAMBU-256: Empty message with 4-byte AAD (Count 5)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes("00010203"),
-              input: OpCodes.Hex8ToBytes(""),
-              expected: OpCodes.Hex8ToBytes("90F1ACE82C4C5FFE")
-            },
-            {
-              text: "TinyJAMBU-256: 1-byte message, empty AAD (Count 34)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes(""),
-              input: OpCodes.Hex8ToBytes("00"),
-              expected: OpCodes.Hex8ToBytes("0FE90A41B4AA18329F")
-            },
-            {
-              text: "TinyJAMBU-256: 1-byte message with 1-byte AAD (Count 35)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes("00"),
-              input: OpCodes.Hex8ToBytes("00"),
-              expected: OpCodes.Hex8ToBytes("20BB303279C2739CE5")
-            },
-            {
-              text: "TinyJAMBU-256: 4-byte message with 4-byte AAD (Count 137)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes("00010203"),
-              input: OpCodes.Hex8ToBytes("00010203"),
-              expected: OpCodes.Hex8ToBytes("0243655595B82F3B398F3D96")
-            },
-            {
-              text: "TinyJAMBU-256: 8-byte message with 32-byte AAD (Count 297)",
-              uri: "https://csrc.nist.gov/projects/lightweight-cryptography",
-              key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-              nonce: OpCodes.Hex8ToBytes("000102030405060708090A0B"),
-              aad: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-              input: OpCodes.Hex8ToBytes("0001020304050607"),
-              expected: OpCodes.Hex8ToBytes("A5628DF713D4316218A127FC09046F81")
-            }
-          ]
-        }
-      };
-
-      if (!configs[variant]) {
-        throw new Error("Unsupported TinyJAMBU variant: " + variant);
-      }
-
-      return configs[variant];
     }
 
     /**
