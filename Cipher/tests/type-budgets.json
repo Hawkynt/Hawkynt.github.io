@@ -685,7 +685,7 @@
   "algorithms/mac/iso9797alg3.js": 0,
   "algorithms/mac/kmac.js": 0,
   "algorithms/mac/omac.js": 0,
-  "algorithms/mac/pelican.js": 0,
+  "algorithms/mac/pelican.js": 2,
   "algorithms/mac/pmac.js": 0,
   "algorithms/mac/poly1305.js": 0,
   "algorithms/mac/siphash128.js": 0,
@@ -924,7 +924,7 @@
   "algorithms/stream/vmpc.js": 0,
   "algorithms/stream/vmpcksa3.js": 0,
   "algorithms/stream/wake.js": 0,
-  "algorithms/stream/xchacha20.js": 7,
+  "algorithms/stream/xchacha20.js": 477,
   "algorithms/stream/xsalsa20.js": 0,
   "algorithms/stream/zuc.js": 0,
   "algorithms/stream/zuc256.js": 0
