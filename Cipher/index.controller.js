@@ -3098,14 +3098,17 @@ class CipherController {
         // Show parameters based on selected KDF
         switch (selectedKdf) {
             case 'PBKDF2':
-                // PBKDF2: salt, iterations, outputSize
+                // PBKDF2: salt, iterations, hashFunction, outputSize
                 if (iterationsContainer) iterationsContainer.style.display = 'block';
+                if (hashContainer) hashContainer.style.display = 'block';
+                this.setKdfHashChoices(parameterType, selectedKdf, ['SHA-1', 'SHA-224', 'SHA-256', 'SHA-384', 'SHA-512']);
                 break;
 
             case 'HKDF':
                 // HKDF: salt, info, hashFunction, outputSize
                 if (infoContainer) infoContainer.style.display = 'block';
                 if (hashContainer) hashContainer.style.display = 'block';
+                this.setKdfHashChoices(parameterType, selectedKdf, null);
                 break;
 
             case 'scrypt':
@@ -3119,6 +3122,47 @@ class CipherController {
                 DebugConfig.log(`⚠️ Unknown KDF selected: ${selectedKdf}`);
                 break;
         }
+    }
+
+    /**
+     * Fill a parameter's KDF hash select with the hashes the selected KDF accepts.
+     * The select is shared between KDFs, so its options are rebuilt only when the
+     * KDF changes; a repeated call for the same KDF keeps the user's choice.
+     * @param {string} parameterType - 'key', 'iv', 'salt', 'nonce', or 'pepper'
+     * @param {string} kdfName - Name of the selected KDF algorithm
+     * @param {string[]|null} choices - Accepted hash names, or null for the options the page declares
+     */
+    setKdfHashChoices(parameterType, kdfName, choices) {
+        const hashSelect = document.getElementById(`${parameterType}-kdf-hash`);
+        if (!hashSelect || hashSelect.getAttribute('data-kdf') === kdfName) return;
+
+        // Remember the markup's own options (HKDF's list) before replacing them
+        if (!this.kdfHashMarkupOptions) this.kdfHashMarkupOptions = {};
+        if (!this.kdfHashMarkupOptions[parameterType]) {
+            this.kdfHashMarkupOptions[parameterType] = Array.from(hashSelect.options).map(option => ({
+                value: option.value,
+                text: option.textContent,
+                selected: option.defaultSelected
+            }));
+        }
+
+        let entries = this.kdfHashMarkupOptions[parameterType];
+        if (choices) {
+            // Preselect the algorithm's own default so derivation is unchanged
+            const kdfAlgorithm = AlgorithmFramework.Algorithms.find(a => a.name === kdfName);
+            const defaultHash = kdfAlgorithm ? kdfAlgorithm.CreateInstance().hashFunction : null;
+            entries = choices.map(name => ({ value: name, text: name, selected: name === defaultHash }));
+        }
+
+        hashSelect.options.length = 0;
+        entries.forEach(entry => {
+            const option = document.createElement('option');
+            option.value = entry.value;
+            option.textContent = entry.text;
+            option.selected = entry.selected;
+            hashSelect.appendChild(option);
+        });
+        hashSelect.setAttribute('data-kdf', kdfName);
     }
 
     /**
@@ -3168,6 +3212,15 @@ class CipherController {
             case 'PBKDF2':
                 const iterations = parseInt(document.getElementById(`${parameterType}-kdf-iterations`)?.value) || 10000;
                 kdfInstance.iterations = iterations;
+                const pbkdf2Hash = document.getElementById(`${parameterType}-kdf-hash`)?.value;
+                if (pbkdf2Hash) {
+                    try {
+                        kdfInstance.hashFunction = pbkdf2Hash;
+                    } catch (error) {
+                        // The algorithm refused the value: surface its message
+                        throw new Error(`Key derivation with ${kdfName} failed: ${error.message || error}`);
+                    }
+                }
                 break;
 
             case 'HKDF':
