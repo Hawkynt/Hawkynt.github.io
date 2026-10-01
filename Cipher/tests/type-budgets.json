@@ -839,7 +839,7 @@
   "algorithms/special/xchacha20-poly1305.js": 0,
   "algorithms/stream/a5.js": 0,
   "algorithms/stream/achterbahn.js": 0,
-  "algorithms/stream/acorn.js": 3,
+  "algorithms/stream/acorn.js": 0,
   "algorithms/stream/aegis-128.js": 0,
   "algorithms/stream/aes-gcm-siv.js": 68,
   "algorithms/stream/beth-piper.js": 130,
