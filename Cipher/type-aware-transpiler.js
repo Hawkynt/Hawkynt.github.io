@@ -258,8 +258,10 @@
   /**
    * Map a JSDoc type - a JSDocParser type object or a raw type string - to the
    * IL type vocabulary ('uint8', 'uint32[]', 'string', a class name, ...).
-   * A nullable union (`uint8[]|null`) maps to its non-null member; any other
-   * union, generic or tuple has no single IL name and maps to null. `number`
+   * A nullable union (`uint8[]|null`) maps to its non-null member; a typed
+   * array to an array of its elements (`Uint8Array` is 'uint8[]'); a keyed
+   * collection to 'Map<K,V>' or 'Object<K,V>'; any other union, generic or
+   * tuple has no single IL name and maps to null. `number`
    * is kept as 'number': it states no width or signedness, and the type
    * coverage walk counts it as untyped.
    * @param {Object|string} t - JSDoc type
@@ -274,11 +276,20 @@
         const element = ilTypeFromJSDoc(t.elementType);
         return element ? element + '[]' : null;
       }
-      if (t.isGeneric) return null;
+      if (t.isGeneric) {
+        const args = t.genericTypes || [];
+        return KEYED_COLLECTIONS[t.name] && args.length === 2 ? keyedType(t.name, ilTypeFromJSDoc(args[0]), ilTypeFromJSDoc(args[1])) : null;
+      }
       t = t.name;
     }
     if (typeof t !== 'string') return null;
     t = t.trim().replace(/^[?!]|[?=]$/g, '');
+    // Map<K, V>, Object<K, V>, Object.<K, V>, Record<K, V>
+    const keyed = t.match(/^(Map|Object|Record)\.?<(.+)>$/);
+    if (keyed) {
+      const args = splitTypeArguments(keyed[2]);
+      return args.length === 2 ? keyedType(keyed[1], ilTypeFromJSDoc(args[0]), ilTypeFromJSDoc(args[1])) : null;
+    }
     if (t.includes('|')) {
       const members = t.split('|').map(s => s.trim()).filter(s => s !== 'null' && s !== 'undefined');
       return members.length === 1 ? ilTypeFromJSDoc(members[0]) : null;
@@ -293,8 +304,49 @@
       return element ? element + '[]' : null;
     }
     if (!/^[A-Za-z_$][\w$.]*$/.test(t)) return null;
+    // A typed array is an array of its element type, as `new Uint8Array(n)` is.
+    if (Object.prototype.hasOwnProperty.call(JSDOC_TYPED_ARRAYS, t)) return JSDOC_TYPED_ARRAYS[t] + '[]';
     return JSDOC_TYPE_ALIASES[t] || t;
   }
+
+  /** JSDoc keyed collections and the IL name of each: a Map stays a Map, the rest are objects. */
+  const KEYED_COLLECTIONS = { 'Map': 'Map', 'Object': 'Object', 'Record': 'Object' };
+
+  /**
+   * IL type of a keyed collection: 'Map<K,V>' or 'Object<K,V>'.
+   * @param {string} name - JSDoc name (Map, Object, Record)
+   * @param {string|null} key - IL key type
+   * @param {string|null} value - IL value type
+   * @returns {string|null} IL type, or null when either type is unknown
+   */
+  function keyedType(name, key, value) {
+    return key && value ? `${KEYED_COLLECTIONS[name]}<${key},${value}>` : null;
+  }
+
+  /**
+   * Split type arguments at their top-level commas: 'string, Map<a,b>' -> ['string', 'Map<a,b>'].
+   * @param {string} text - the text between the outer angle brackets
+   * @returns {string[]} trimmed arguments
+   */
+  function splitTypeArguments(text) {
+    const parts = [];
+    let depth = 0, start = 0;
+    for (let i = 0; i < text.length; ++i) {
+      const c = text[i];
+      if (c === '<' || c === '(' || c === '{') ++depth;
+      else if (c === '>' || c === ')' || c === '}') --depth;
+      else if (c === ',' && depth === 0) { parts.push(text.slice(start, i).trim()); start = i + 1; }
+    }
+    parts.push(text.slice(start).trim());
+    return parts;
+  }
+
+  /** JSDoc typed-array names and their IL element types. */
+  const JSDOC_TYPED_ARRAYS = {
+    'Uint8Array': 'uint8', 'Uint8ClampedArray': 'uint8', 'Int8Array': 'int8',
+    'Uint16Array': 'uint16', 'Int16Array': 'int16', 'Uint32Array': 'uint32', 'Int32Array': 'int32',
+    'Float32Array': 'float32', 'Float64Array': 'float64', 'BigUint64Array': 'uint64', 'BigInt64Array': 'int64'
+  };
 
   /**
    * Precise Type System for Cryptographic Operations
@@ -944,12 +996,24 @@
      * @param {string} fieldName - Field name
      * @param {string} type - Type string
      */
-    registerClassFieldType(className, fieldName, type) {
+    registerClassFieldType(className, fieldName, type, valueNode = null) {
       if (!className || !fieldName || !type) return;
       // A declared type (framework interface, then local JSDoc) is fixed; an
       // assignment elsewhere in the class cannot re-type the field.
       if (this.lookupDeclaredFieldType(className, fieldName)) return;
-      this.classFieldTypes.set(`${className}.${fieldName}`, type);
+      const key = `${className}.${fieldName}`;
+      // An undeclared numeric field holds every value assigned to it: its type
+      // is the common type of the assignments (`this.a = 0` in the constructor
+      // and `this.a = seed` with a uint32 seed is uint32, not int32).
+      const prior = this.classFieldTypes.get(key);
+      const numeric = t => typeof t === 'string' && /^(u?int(8|16|32|64)|float(32|64))$/.test(t);
+      if (!this.classFieldLiterals) this.classFieldLiterals = new Map();
+      if (prior && prior !== type && numeric(prior) && numeric(type))
+        type = this._getCommonType(prior, type, this.classFieldLiterals.get(key) || null, valueNode);
+      const isLiteral = valueNode && valueNode.type === 'Literal' && typeof valueNode.value === 'number';
+      if (isLiteral && !prior) this.classFieldLiterals.set(key, valueNode);   // a single literal so far
+      else this.classFieldLiterals.delete(key);
+      this.classFieldTypes.set(key, type);
     }
 
     /**
@@ -1725,6 +1789,16 @@
      * TypedArray element type mappings for IL nodes
      * Maps JavaScript TypedArray names to precise IL element types
      */
+    /**
+     * Value range of each fixed-width integer IL type (64-bit bounds as Numbers).
+     */
+    static INTEGER_RANGES = {
+      'uint8': [0, 0xFF], 'int8': [-0x80, 0x7F],
+      'uint16': [0, 0xFFFF], 'int16': [-0x8000, 0x7FFF],
+      'uint32': [0, 0xFFFFFFFF], 'int32': [-0x80000000, 0x7FFFFFFF],
+      'uint64': [0, 2 ** 64 - 1], 'int64': [-(2 ** 63), 2 ** 63 - 1]
+    };
+
     static TYPED_ARRAY_ELEMENT_TYPES = {
       'Uint8Array': 'uint8',
       'Int8Array': 'int8',
@@ -1861,6 +1935,7 @@
       this.localClassNames = new Set();
       this.declaredFunctions = new Map();
       this.declaredMethodParams = new Map();
+      this.localFunctionNames = new Set();
 
       const scanThisAssignments = (node, className) => {
         if (!node || typeof node !== 'object') return;
@@ -1913,6 +1988,7 @@
           node.type === 'VariableDeclarator' && node.id && node.id.type === 'Identifier' && node.init &&
           (node.init.type === 'FunctionExpression' || node.init.type === 'ArrowFunctionExpression') ? node.init : null;
         const fnName = fn && (node.type === 'FunctionDeclaration' ? node.id.name : node.id.name);
+        if (fn && fnName) this.localFunctionNames.add(fnName);
         if (fn && fnName && fn.typeInfo && !this.declaredFunctions.has(fnName)) {
           this.declaredFunctions.set(fnName, {
             params: (fn.params || []).map(p => {
@@ -1937,6 +2013,7 @@
       this.scopeStack = [new Map()];
       this.constantTypes = new Map();
       this.classFieldTypes = new Map();
+      this.classFieldLiterals = new Map();
       return this._normalizeNode(ast, { inClass: false, className: null, isModuleLevel: true });
     }
 
@@ -1949,6 +2026,15 @@
       if (Array.isArray(node)) {
         return node.map(child => this._normalizeNode(child, context)).filter(n => n !== null);
       }
+
+      // `for (const x of arr)`: x is typed from arr's elements before the body is.
+      if (node.type === 'ForOfStatement' && node.left && node.right)
+        return this._normalizeForOf(node, context);
+
+      // `arr.map(v => ...)`: the callback's parameters are typed from arr's
+      // elements before its body is (the callback is normalized first).
+      if (node.type === 'CallExpression')
+        this._callbackParamHints(node, context);
 
       // Update context for class declarations
       let newContext = context;
@@ -2069,8 +2155,80 @@
 
           if (paramType)
             this.registerVariableType(param.name, paramType, true);
+          // An inline callback of an array method takes the element type of
+          // the array it iterates (see _callbackParamHints).
+          else if (node.paramHints && node.paramHints[index])
+            this.registerVariableType(param.name, node.paramHints[index]);
         }
       });
+    }
+
+    /**
+     * Normalize `for (const x of arr) body`: the loop variable takes arr's
+     * element type (a string iterates strings) before the body is typed.
+     * @param {Object} node - ForOfStatement
+     * @param {Object} context - normalization context
+     * @returns {Object} normalized statement
+     * @private
+     */
+    _normalizeForOf(node, context) {
+      const right = this._normalizeNode(node.right, context);
+      const t = right && typeof right.resultType === 'string' ? right.resultType : null;
+      const elementType = t && t.endsWith('[]') ? t.slice(0, -2) : t === 'string' ? 'string' : null;
+      this.pushScope();
+      const left = this._normalizeNode(node.left, context);
+      const decl = left && left.type === 'VariableDeclaration' && left.declarations && left.declarations.length === 1 ? left.declarations[0] : null;
+      if (elementType && decl && decl.id && decl.id.type === 'Identifier' && decl.id.name) {
+        this.registerVariableType(decl.id.name, elementType);
+        if (!decl.resultType) {
+          decl.resultType = elementType;
+          decl.id = { ...decl.id, resultType: elementType };
+        }
+      }
+      const body = this._normalizeNode(node.body, context);
+      this.popScope();
+      const result = this._transformNode({ ...node, left, right, body }, context);
+      if (result && typeof result === 'object' && !result.loc && node.loc) {
+        result.loc = node.loc;
+        result.range = node.range;
+      }
+      return result;
+    }
+
+    /**
+     * Parameters of inline callbacks, by array method, from the element type.
+     */
+    static CALLBACK_PARAMETERS = {
+      forEach: e => [e, 'int32'], map: e => [e, 'int32'], filter: e => [e, 'int32'], some: e => [e, 'int32'],
+      every: e => [e, 'int32'], find: e => [e, 'int32'], findIndex: e => [e, 'int32'], findLast: e => [e, 'int32'],
+      findLastIndex: e => [e, 'int32'], flatMap: e => [e, 'int32'],
+      reduce: e => [null, e, 'int32'], reduceRight: e => [null, e, 'int32'], sort: e => [e, e]
+    };
+
+    /**
+     * `arr.forEach((v, i) => ...)` and the like: hint the callback's parameter
+     * types from the element type of arr (a typed local, parameter or field),
+     * for _registerFunctionParameters to use where no JSDoc types them.
+     * @param {Object} node - CallExpression, before normalization
+     * @param {Object} context - normalization context
+     * @private
+     */
+    _callbackParamHints(node, context) {
+      const callee = node.callee;
+      if (!callee || callee.type !== 'MemberExpression' || callee.computed) return;
+      const method = callee.property && (callee.property.name || callee.property.value);
+      const hints = Object.prototype.hasOwnProperty.call(TypeAwareJSASTParser.CALLBACK_PARAMETERS, method) ?
+        TypeAwareJSASTParser.CALLBACK_PARAMETERS[method] : null;
+      const fn = node.arguments && node.arguments[0];
+      if (!hints || !fn || (fn.type !== 'ArrowFunctionExpression' && fn.type !== 'FunctionExpression')) return;
+      const object = callee.object;
+      let type = null;
+      if (object && object.type === 'Identifier') type = this.lookupVariableType(object.name);
+      else if (object && object.type === 'MemberExpression' && !object.computed && object.object &&
+               object.object.type === 'ThisExpression' && context && context.className)
+        type = this.lookupClassFieldType(context.className, object.property && (object.property.name || object.property.value));
+      if (typeof type !== 'string' || !type.endsWith('[]')) return;
+      fn.paramHints = hints(type.slice(0, -2));
     }
 
     /**
@@ -2194,6 +2352,9 @@
         // A framework enum (CategoryType, ...) is its own type (tier 2).
         if (!resultType && this.typeKnowledge.frameworkEnums && this.typeKnowledge.frameworkEnums.has(name))
           resultType = name;
+        // A function of this file used as a value (`s.sort(CompareNumbers)`).
+        if (!resultType && this.localFunctionNames && this.localFunctionNames.has(name))
+          resultType = 'function';
       }
 
       return {
@@ -2220,9 +2381,12 @@
         // Compound assignment: derive type from the implicit binary operator
         const leftType = typeof left?.resultType === 'string' ? left.resultType : '';
         const rightType = typeof right?.resultType === 'string' ? right.resultType : '';
-        if (['|=', '&=', '^=', '<<=', '>>='].includes(op)) {
-          // Bitwise compound: result is left operand type or int32
-          resultType = (leftType && leftType !== 'any' && leftType !== 'number') ? leftType : 'int32';
+        if (['|=', '&=', '^=', '<<=', '>>='].includes(op) &&
+            (TypeAwareJSASTParser._isBigIntValue(left) || TypeAwareJSASTParser._isBigIntValue(right))) {
+          resultType = TypeAwareJSASTParser._bigIntResultType(op.slice(0, -1), left, right);
+        } else if (['|=', '&=', '^=', '<<=', '>>='].includes(op)) {
+          // Bitwise compound on numbers: an int32 result (see _bitwiseResultType)
+          resultType = TypeAwareJSASTParser._bitwiseResultType(op.slice(0, -1), left, right);
         } else if (op === '>>>=') {
           // Unsigned right shift always produces uint32
           resultType = 'uint32';
@@ -2231,8 +2395,12 @@
             resultType = 'string';
           else if (leftType.includes('float') || rightType.includes('float'))
             resultType = 'float64';
+          else if (TypeAwareJSASTParser._isBigIntValue(left) || TypeAwareJSASTParser._isBigIntValue(right))
+            resultType = TypeAwareJSASTParser._bigIntResultType(op.slice(0, -1), left, right);
           else if (leftType.includes('64') || rightType.includes('64'))
             resultType = leftType.includes('int') || rightType.includes('int') ? 'int64' : 'uint64';
+          else if (op !== '%=' && TypeAwareJSASTParser._widenedArithmeticType(op.slice(0, -1), leftType, rightType, left, right))
+            resultType = TypeAwareJSASTParser._widenedArithmeticType(op.slice(0, -1), leftType, rightType, left, right);
           else if (leftType && leftType !== 'any' && leftType !== 'number')
             resultType = leftType;
           else if (rightType && rightType !== 'any' && rightType !== 'number')
@@ -2278,12 +2446,13 @@
         // Register variable type if assigning to identifier
         if (targetName && resultType && !this.isDeclaredVariable(targetName)) {
           this._checkLiteralTypedVariable(targetName, resultType);
+          this._widenDeclaredVariable(targetName, resultType, right);
           this.registerVariableType(targetName, resultType);
         }
 
         // Register class field type if assigning to this.field.
         if (fieldName && resultType)
-          this.registerClassFieldType(context.className, fieldName, resultType);
+          this.registerClassFieldType(context.className, fieldName, resultType, right);
       }
 
       return {
@@ -2312,6 +2481,13 @@
       if (ilNode.ilNodeType === 'ArrayLiteral' && type.endsWith('[]') && !isNumericType(type.slice(0, -2)) &&
           (ilNode.elements || []).some(e => e && e.type === 'Literal' && typeof e.value === 'number')) return;
       ilNode.contextType = type;
+      // `c ? a : b` stores whichever branch runs: both flow into the target.
+      if (ilNode.type === 'ConditionalExpression') {
+        this._applyContextualType(ilNode.consequent, type);
+        this._applyContextualType(ilNode.alternate, type);
+        ilNode.resultType = this._commonTypeOf([ilNode.consequent, ilNode.alternate]) || ilNode.resultType;
+        return;
+      }
       if (ilNode.type === 'Literal' && typeof ilNode.value === 'number' && isNumericType(type)) {
         ilNode.resultType = type;
         delete ilNode.typeGuess;
@@ -2328,6 +2504,17 @@
         ilNode.elementType = elementType;
         ilNode.resultType = type;
         delete ilNode.typeGuess;
+      } else if (ilNode.type === 'ArrayFill' && type.endsWith('[]') && ilNode.array &&
+                 ilNode.array.type === 'ArrayCreation' && !ilNode.array.resultType) {
+        // `new Array(n).fill(v)` is a fresh array: its element type was only a
+        // default, so the declared type of the target is the type (both nodes).
+        const elementType = type.slice(0, -2);
+        for (const n of [ilNode, ilNode.array]) {
+          n.elementType = elementType;
+          n.resultType = type;
+          n.contextType = type;
+        }
+        this._applyContextualType(ilNode.value, elementType);
       }
     }
 
@@ -2339,6 +2526,39 @@
     _literalTypedVariables() {
       const scope = this.scopeStack[this.scopeStack.length - 1];
       return scope.literalTyped || (scope.literalTyped = new Map());
+    }
+
+    /**
+     * Declarators of the current scope typed by a non-literal initializer.
+     * @returns {Map} name -> declarator IL node
+     */
+    _variableDeclarators() {
+      const scope = this.scopeStack[this.scopeStack.length - 1];
+      return scope.declarators || (scope.declarators = new Map());
+    }
+
+    /**
+     * `let d = k[8];` (uint8) followed by `d = OpCodes.Or32(...)` (uint32): the
+     * variable is declared once, so its declared type is widened to hold both.
+     * (Reads keep the type of the last assignment before them.)
+     * @param {string} name - Assigned variable
+     * @param {string} assignedType - Type of the assigned value
+     * @param {Object} value - Assigned IL node
+     */
+    _widenDeclaredVariable(name, assignedType, value) {
+      const numeric = t => typeof t === 'string' && /^(u?int(8|16|32|64)|float(32|64))$/.test(t);
+      if (!numeric(assignedType)) return;
+      for (let i = this.scopeStack.length - 1; i >= 0; --i) {
+        const scope = this.scopeStack[i];
+        if (!scope.has(name)) continue;
+        const decl = scope.declarators && scope.declarators.get(name);
+        if (decl && numeric(decl.resultType) && decl.resultType !== assignedType) {
+          const widened = this._getCommonType(decl.resultType, assignedType, null, value);
+          decl.resultType = widened;
+          if (decl.id) decl.id = { ...decl.id, resultType: widened };
+        }
+        return;
+      }
     }
 
     /**
@@ -2395,7 +2615,7 @@
       // If both branches have different types, try to find common type
       if (consequent?.resultType && alternate?.resultType &&
           consequent.resultType !== alternate.resultType) {
-        resultType = this._getCommonType(consequent.resultType, alternate.resultType);
+        resultType = this._commonTypeOf([consequent, alternate]);
       }
 
       return {
@@ -2715,7 +2935,55 @@
         }
       }
 
+      // obj.method() on an object of a local class (a field, local or parameter
+      // typed with that class, or `new C()`): the method's JSDoc types its
+      // arguments and its result (tier 3), as for this.method().
+      if (callee && callee.type === 'MemberExpression' && !callee.computed && callee.object) {
+        const className = this._localClassOf(callee.object.resultType);
+        const methodName = callee.property?.name || callee.property?.value;
+        const objectType = typeof callee.object.resultType === 'string' ? callee.object.resultType : null;
+        // a.subarray(i, j) is a view of a: the same element type.
+        if (methodName === 'subarray' && objectType && objectType.endsWith('[]'))
+          return { ...node, resultType: objectType };
+        // m.get(k) on a Map<K,V> or Object<K,V> is a V; m.has(k) a boolean.
+        const map = TypeAwareJSASTParser._keyValueTypes(objectType);
+        if (map && methodName === 'get') return { ...node, resultType: map.value };
+        if (map && methodName === 'has') return { ...node, resultType: 'boolean' };
+        if (className && methodName) {
+          const params = this._localMethodParams(className, methodName);
+          if (params) (node.arguments || []).forEach((arg, i) => this._applyContextualType(arg, params[i]));
+          const returns = this.lookupClassMethodReturnType(className, methodName);
+          if (returns && returns !== 'void') return { ...node, resultType: returns };
+        }
+      }
+
       return node;
+    }
+
+    /**
+     * The local class an IL type names ('G', or a JSDoc type object naming it).
+     * @param {*} type - resultType
+     * @returns {string|null} class name, or null when it is no class of this file
+     * @private
+     */
+    _localClassOf(type) {
+      const name = typeof type === 'string' ? type : type && typeof type === 'object' && !type.isArray ? type.name : null;
+      return name && this.localClassNames && this.localClassNames.has(name) ? name : null;
+    }
+
+    /**
+     * Declared parameter types of a local class's method, following local base classes.
+     * @param {string} className - class
+     * @param {string} methodName - method ('constructor' for new)
+     * @returns {string[]|null} IL types by position, or null
+     * @private
+     */
+    _localMethodParams(className, methodName) {
+      for (let name = className, hops = 0; name && hops < 32; name = this.localSuperClasses.get(name), ++hops) {
+        const params = this.declaredMethodParams.get(`${name}.${methodName}`);
+        if (params) return params;
+      }
+      return null;
     }
 
     /**
@@ -2735,6 +3003,25 @@
       const result = this._transformOpCodesCallCore(methodName, rawArgs, context);
       if (!result || typeof result !== 'object') return result;
       result.opCodesMethod = methodName;
+
+      // CopyArray copies any array: the copy has the source's type, whatever
+      // its JSDoc (written for the common byte case) says.
+      const source = rawArgs && rawArgs[0];
+      if (TypeAwareJSASTParser.TYPE_PRESERVING_OPCODES.has(methodName) && source &&
+          typeof source.resultType === 'string' && source.resultType.endsWith('[]')) {
+        result.resultType = source.resultType;
+        source.contextType = source.resultType;
+      }
+      // CreateArray(n, v) is filled with v: a BigInt or out-of-byte-range v
+      // makes an array of v's type, not the bytes its JSDoc describes.
+      const fill = methodName === 'CreateArray' && rawArgs ? rawArgs[1] : null;
+      if (fill && fill.type === 'Literal' && (typeof fill.value === 'bigint' || (typeof fill.value === 'number' && !(fill.value >= 0 && fill.value <= 0xFF)))) {
+        result.resultType = `${this._transformLiteral({ type: 'Literal', value: fill.value, raw: fill.raw }, context).resultType}[]`;
+        fill.contextType = result.resultType.slice(0, -2);
+      } else if (fill && fill.type !== 'Literal' && typeof fill.resultType === 'string' && /^(u?int(8|16|32|64)|float(32|64)|bigint|BigInt|boolean)$/.test(fill.resultType)) {
+        result.resultType = `${fill.resultType}[]`;
+        fill.contextType = fill.resultType;
+      }
       // A masked inline form (`(a ^ b) & 0xFFFFFFFF`) carries the helper on both nodes.
       for (const inner of [result.left, result.argument])
         if (inner && typeof inner === 'object' && inner.ilNodeType === 'InlinedOpCode') inner.opCodesMethod = methodName;
@@ -2786,6 +3073,160 @@
     static BIGINT_ONLY_OPCODES = new Set(['XorN', 'AndN', 'OrN', 'NotN', 'ShiftLn', 'ShiftRn']);
 
     /**
+     * OpCodes helpers whose result is a copy of their first (array) argument.
+     */
+    static TYPE_PRESERVING_OPCODES = new Set(['CopyArray']);
+
+    /**
+     * Key and value type of a keyed collection type: 'Map<K,V>' or 'Object<K,V>'
+     * (JSDoc `Map<K, V>`, `Object<K, V>`, `Object.<K, V>`, `Record<K, V>`).
+     * @param {*} type - IL type
+     * @returns {{key: string, value: string}|null} the two types, or null
+     */
+    static _keyValueTypes(type) {
+      if (typeof type !== 'string') return null;
+      const m = type.match(/^(Map|Object)<(.+)>$/);
+      if (!m) return null;
+      const parts = splitTypeArguments(m[2]);
+      return parts.length === 2 ? { key: parts[0], value: parts[1] } : null;
+    }
+
+    /**
+     * Is this IL value certainly a BigInt? (A 'uint64' identifier may hold a
+     * Number or a BigInt; a BigInt literal, a BigInt() cast, a value typed
+     * bigint and an inlined BigInt shift cannot be a Number.)
+     * @param {Object} node - IL node
+     * @returns {boolean} true for a BigInt
+     */
+    static _isBigIntValue(node) {
+      if (!node || typeof node !== 'object') return false;
+      return node.resultType === 'bigint' || node.resultType === 'BigInt' || node.type === 'BigIntCast' ||
+        node.bigint === true || (node.type === 'Literal' && typeof node.value === 'bigint') ||
+        // OpCodes.AndN/XorN/... applied as declared (to BigInts, not numbers)
+        (TypeAwareJSASTParser.BIGINT_ONLY_OPCODES.has(node.opCodesMethod) && node.typeGuessKind !== 'bigint-helper-on-number');
+    }
+
+    /**
+     * Result type of a binary operator on BigInt operands. BigInt arithmetic
+     * never wraps, so only an operator that provably stays within 64 bits on
+     * non-negative 64-bit operands keeps 'uint64'; anything else is 'bigint'.
+     * @param {string} op - operator
+     * @param {Object} left - left IL operand
+     * @param {Object} right - right IL operand
+     * @returns {string} 'uint64' or 'bigint'
+     */
+    static _bigIntResultType(op, left, right) {
+      const u64 = n => n && (n.type === 'Literal' && typeof n.value === 'bigint'
+        ? n.value >= 0n && n.value <= 0xFFFFFFFFFFFFFFFFn
+        : n.resultType === 'uint64');
+      switch (op) {
+        case '&': return u64(left) || u64(right) ? 'uint64' : 'bigint';   // at most the non-negative operand
+        case '|': case '^': return u64(left) && u64(right) ? 'uint64' : 'bigint';
+        case '>>': case '%': return u64(left) ? 'uint64' : 'bigint';      // at most the left operand
+        case '/': return u64(left) && u64(right) ? 'uint64' : 'bigint';
+        default: return 'bigint';                                         // + - * ** << grow without bound
+      }
+    }
+
+    /**
+     * Result type of `&`, `|`, `^`, `<<`, `>>` on Numbers. JavaScript converts
+     * both operands to int32 and yields an int32, so `a ^ b` on two uint32 may
+     * be negative. Narrower is kept only where no sign bit can arise: `&` with
+     * a uint8/uint16 value stays within it, `|`/`^` of two such values within
+     * the wider, `>>` of one within it. (A literal operand counts as int32.)
+     * @param {string} op - operator
+     * @param {Object} left - left IL operand
+     * @param {Object} right - right IL operand
+     * @returns {string} result type
+     */
+    static _bitwiseResultType(op, left, right) {
+      const ranges = TypeAwareJSASTParser.INTEGER_RANGES;
+      // A 64-bit operand may be a BigInt (`|` on BigInts stays 64-bit): its
+      // type is kept, as before, rather than assumed to be a Number.
+      const wide = n => n && (n.resultType === 'uint64' || n.resultType === 'int64') ? n.resultType : null;
+      if (wide(left) || wide(right)) return wide(left) || wide(right);
+      const small = n => n && n.type !== 'Literal' && (n.resultType === 'uint8' || n.resultType === 'uint16') ? n.resultType : null;
+      const l = small(left), r = small(right);
+      switch (op) {
+        case '&':
+          if (l && r) return ranges[l][1] <= ranges[r][1] ? l : r;   // within the smaller
+          return l || r || 'int32';
+        case '|': case '^': {
+          // A non-negative literal that fits the other operand's type keeps it (`b | 1` on uint8)
+          const fits = (n, t) => n && n.type === 'Literal' && typeof n.value === 'number' && n.value >= 0 && n.value <= ranges[t][1];
+          if (l && r) return ranges[l][1] >= ranges[r][1] ? l : r;
+          if (l && fits(right, l)) return l;
+          if (r && fits(left, r)) return r;
+          return 'int32';
+        }
+        case '>>':
+          return l || 'int32';
+        default:
+          return 'int32';
+      }
+    }
+
+    /**
+     * Result type of `+`, `-` or `*` on integers of up to 32 bits: a type that
+     * holds every result, since JavaScript does not wrap (uint8 + uint8 is up
+     * to 510, uint32 - uint32 may be negative). Integer literals count by their
+     * value. Arithmetic involving a non-literal int32 (indices, counts, sizes)
+     * is taken to stay within int32 unless the other side is uint32.
+     * @param {string} op - '+', '-' or '*'
+     * @param {string} lt - left operand type
+     * @param {string} rt - right operand type
+     * @param {Object} left - left IL operand
+     * @param {Object} right - right IL operand
+     * @returns {string|null} 'int32', 'uint32' or 'int64'; null when an operand is not such an integer
+     */
+    static _widenedArithmeticType(op, lt, rt, left, right) {
+      if (!['+', '-', '*'].includes(op)) return null;
+      const ranges = TypeAwareJSASTParser.INTEGER_RANGES;
+      const literal = n => n && n.type === 'Literal' && typeof n.value === 'number' && Number.isInteger(n.value);
+      const range = (n, t) => literal(n) ? [n.value, n.value] : /^u?int(8|16|32)$/.test(t) ? ranges[t] : null;
+      const a = range(left, lt), b = range(right, rt);
+      if (!a || !b) return null;
+      const counted = (n, t) => !literal(n) && t === 'int32';
+      if ((counted(left, lt) || counted(right, rt)) && lt !== 'uint32' && rt !== 'uint32') return 'int32';
+      let lo, hi;
+      if (op === '+') { lo = a[0] + b[0]; hi = a[1] + b[1]; }
+      else if (op === '-') { lo = a[0] - b[1]; hi = a[1] - b[0]; }
+      else {
+        const corners = [a[0] * b[0], a[0] * b[1], a[1] * b[0], a[1] * b[1]];
+        lo = Math.min(...corners); hi = Math.max(...corners);
+      }
+      if (lo >= ranges.int32[0] && hi <= ranges.int32[1]) return 'int32';
+      if (lo >= 0 && hi <= ranges.uint32[1]) return 'uint32';
+      return 'int64';
+    }
+
+    /**
+     * Result type of Math.floor/ceil/round/trunc: the argument's own integer
+     * type, or for `a / b` with an integer dividend and a divisor of at least 1
+     * the dividend's type (the quotient is no larger). Null when the argument
+     * says nothing (the caller then keeps its default).
+     * @param {Object} arg - IL argument
+     * @returns {string|null} integer type or null
+     */
+    static _roundedType(arg) {
+      const integer = t => typeof t === 'string' && /^u?int(8|16|32|64)$/.test(t);
+      if (!arg) return null;
+      if (integer(arg.resultType) && !(arg.type === 'Literal' && typeof arg.value !== 'number')) return arg.resultType;
+      if (arg.type === 'BinaryExpression' && arg.operator === '/' && arg.left && arg.right && integer(arg.left.resultType)) {
+        const r = arg.right;
+        const dividend = arg.left.resultType;
+        const range = TypeAwareJSASTParser.INTEGER_RANGES[dividend];
+        // A literal divisor narrows the quotient: uint32 / 8 fits int32.
+        if (r.type === 'Literal' && typeof r.value === 'number' && r.value >= 1) {
+          const lo = Math.floor(range[0] / r.value), hi = Math.ceil(range[1] / r.value);
+          return lo >= -0x80000000 && hi <= 0x7FFFFFFF ? 'int32' : dividend;
+        }
+        if (integer(r.resultType) && r.resultType.startsWith('u') && r.type !== 'Literal') return dividend;
+      }
+      return null;
+    }
+
+    /**
      * Build the IL node for an OpCodes call (see _transformOpCodesCall)
      * @private
      */
@@ -2804,7 +3245,17 @@
       // Check for inline operations (simple bitwise)
       const inlineOp = TypeAwareJSASTParser.INLINE_OPCODES[methodName];
       if (inlineOp) {
-        const resultType = inlineOp.mask ? getTypeFromMask(inlineOp.mask) : (args[0]?.resultType || 'int32');
+        let resultType = inlineOp.mask ? getTypeFromMask(inlineOp.mask) : (args[0]?.resultType || 'int32');
+        // The BigInt helpers (XorN, ShiftLn, ...) on BigInts: what the operator
+        // yields on BigInt operands (ShiftLn grows, AndN with a 64-bit mask
+        // stays 64-bit), not the first operand's type or an int32 default. On
+        // numbers they keep the first operand's type (a misuse flagged below).
+        const narrowNumber = t => typeof t === 'string' && /^u?int(8|16|32)$/.test(t);
+        if (TypeAwareJSASTParser.BIGINT_ONLY_OPCODES.has(methodName) &&
+            !(methodName.startsWith('Shift') ? args.slice(0, 1) : args).some(a => a && narrowNumber(a.resultType))) {
+          const op = { XorN: '^', AndN: '&', OrN: '|', NotN: '~', ShiftLn: '<<', ShiftRn: '>>' }[methodName];
+          resultType = op === '~' ? 'bigint' : TypeAwareJSASTParser._bigIntResultType(op, args[0], methodName.startsWith('Shift') ? null : args[1]);
+        }
 
         if (inlineOp.type === 'UnaryExpression') {
           const result = {
@@ -2970,21 +3421,16 @@
       // Helper to get the wider type from multiple arguments
       const getWiderType = (argList) => {
         if (!argList || argList.length === 0) return undefined;
-        let result = argList[0]?.resultType;
-        for (let i = 1; i < argList.length; ++i) {
-          const t = argList[i]?.resultType;
-          if (t) result = this._getCommonType(result || t, t);
-        }
-        return result;
+        return this._commonTypeOf(argList) || undefined;
       };
 
       switch (methodName) {
         case 'floor':
-          return { type: 'Floor', argument: args[0], resultType: getResultType('Floor'), ilNodeType: 'Floor' };
+          return { type: 'Floor', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0]) || getResultType('Floor'), ilNodeType: 'Floor' };
         case 'ceil':
-          return { type: 'Ceil', argument: args[0], resultType: getResultType('Ceil'), ilNodeType: 'Ceil' };
+          return { type: 'Ceil', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0]) || getResultType('Ceil'), ilNodeType: 'Ceil' };
         case 'round':
-          return { type: 'Round', argument: args[0], resultType: getResultType('Round'), ilNodeType: 'Round' };
+          return { type: 'Round', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0]) || getResultType('Round'), ilNodeType: 'Round' };
         case 'abs':
           return { type: 'Abs', argument: args[0], resultType: getResultType('Abs', args[0]?.resultType), ilNodeType: 'Abs' };
         case 'min':
@@ -2998,7 +3444,7 @@
         case 'random':
           return { type: 'Random', resultType: getResultType('Random'), ilNodeType: 'Random' };
         case 'trunc':
-          return { type: 'Truncate', argument: args[0], resultType: getResultType('Truncate'), ilNodeType: 'Truncate' };
+          return { type: 'Truncate', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0]) || getResultType('Truncate'), ilNodeType: 'Truncate' };
         case 'log':
           return { type: 'Log', argument: args[0], resultType: getResultType('Log'), ilNodeType: 'Log' };
         case 'log2':
@@ -3458,7 +3904,7 @@
             fillElementType = args[0].value >= 0n ? 'uint64' : 'int64';
             fillResultType = `${fillElementType}[]`;
           }
-          return {
+          const filled = {
             type: 'ArrayFill',
             array: arrayNode,
             value: args[0],
@@ -3468,6 +3914,15 @@
             resultType: fillResultType,
             ilNodeType: 'ArrayFill'
           };
+          // A fresh `new Array(n).fill(0)` says nothing about what it will hold:
+          // its uint8 is a default, settled by a declared target (see
+          // _applyContextualType) and otherwise a guess.
+          if (arrayNode && arrayNode.type === 'ArrayCreation' && !arrayNode.elementType &&
+              args[0] && args[0].type === 'Literal' && typeof args[0].value === 'number') {
+            filled.typeGuess = `new Array(n).fill(${args[0].raw || args[0].value}) has no element type of its own (${fillElementType} by default); declare it with a JSDoc @type`;
+            filled.typeGuessKind = 'literal-array';
+          }
+          return filled;
         }
         case 'slice':
           return {
@@ -3822,7 +4277,10 @@
         // Extract element type from array type (e.g., "uint8[]" → "uint8")
         let elementType = null;
         if (objectType && typeof objectType === 'string') {
-          if (objectType.endsWith('[]'))
+          const keyed = TypeAwareJSASTParser._keyValueTypes(objectType);
+          if (keyed && keyed.value)
+            elementType = keyed.value;                    // table[key] of an Object<K,V>
+          else if (objectType.endsWith('[]'))
             elementType = objectType.slice(0, -2);
           else if (objectType.startsWith('Array<') && objectType.endsWith('>'))
             elementType = objectType.slice(6, -1);
@@ -3851,6 +4309,11 @@
       // Known property patterns that apply to any object
       if (propertyName === 'length' || propertyName === 'size' || propertyName === 'count')
         resultType = 'int32';
+
+      // table.key of an Object<string,V> is a V
+      const keyed = TypeAwareJSASTParser._keyValueTypes(objectType);
+      if (!resultType && keyed && objectType.startsWith('Object<') && keyed.key === 'string')
+        resultType = keyed.value;
 
       // A member of a value whose class is known: framework enum values are of
       // the enum type; fields of local and framework classes are looked up
@@ -4046,6 +4509,13 @@
           node.ilNodeType = 'NewExpression';
           if (calleeName && !node.resultType)
             node.resultType = calleeName;
+          // A local class's constructor JSDoc types the arguments (tier 3):
+          // `new Prof([1, 2, 3])` under `@param {int32[]} a` is int32[], not
+          // the uint8[] its literal magnitudes suggest.
+          if (calleeName && this._localClassOf(calleeName)) {
+            const params = this.declaredMethodParams.get(`${calleeName}.constructor`);
+            if (params) args.forEach((arg, i) => this._applyContextualType(arg, params[i]));
+          }
           return node;
       }
     }
@@ -4147,7 +4617,7 @@
             varType = declaredType;
             this._applyContextualType(transformedInit, declaredType);
           } else if (varName && transformedInit && transformedInit.type === 'Literal' &&
-                     typeof transformedInit.value === 'number' && !isConst) {
+                     (typeof transformedInit.value === 'number' || typeof transformedInit.value === 'bigint') && !isConst) {
             // An integer literal gives a mutable variable its type only by the
             // literal's shape; remember it so a later assignment of another
             // integer type can mark this initializer as a guess.
@@ -4172,6 +4642,10 @@
             transformedDecl.id = { ...decl.id, resultType: varType };
           }
           transformedDeclarations.push(transformedDecl);
+          // A variable typed by a non-literal initializer is declared with a
+          // type that must hold every later assignment (see _widenDeclaredVariable).
+          if (varName && varType && !declaredType && !isModuleLevel && transformedInit && transformedInit.type !== 'Literal')
+            this._variableDeclarators().set(varName, transformedDecl);
         }
       }
 
@@ -4236,7 +4710,9 @@
           }
         }
       } else if (typeof value === 'bigint') {
-        resultType = value >= 0n ? 'uint64' : 'int64';
+        // A BigInt literal beyond 64 bits (a field prime, 2^64) is a bigint
+        resultType = value >= 0n && value <= 0xFFFFFFFFFFFFFFFFn ? 'uint64' :
+          value < 0n && value >= -0x8000000000000000n ? 'int64' : 'bigint';
       } else if (typeof value === 'string') {
         resultType = 'string';
       } else if (typeof value === 'boolean') {
@@ -4296,17 +4772,11 @@
                       maxValue <= 0xFFFF ? 'uint16' :
                       maxValue <= 0xFFFFFFFF ? 'uint32' : 'uint64';
       } else {
-        for (const el of elements) {
-          if (el && el.resultType) {
-            const elType = el.resultType;
-            if (!elementType) {
-              elementType = elType;
-            } else if (elementType !== elType) {
-              // Type coercion: find common type
-              elementType = this._getCommonType(elementType, elType);
-            }
-          }
-        }
+        // `[...a]` holds a's elements, not a: a spread contributes its element
+        // type (typing `[...bytes]` as uint8[][] made every copy of a byte
+        // array a nested array).
+        elementType = this._commonTypeOf(elements.map(el =>
+          el && el.type === 'SpreadElement' ? { type: 'SpreadElement', resultType: el.elementType } : el));
       }
 
       // If no element types found, use int32 as default (consistent with literal default)
@@ -4333,35 +4803,77 @@
     }
 
     /**
-     * Get common type between two types for type coercion
+     * The common type of several values (array elements, conditional branches,
+     * Math.min/max arguments). Integer literals are placed last, so a literal
+     * takes the type of the typed values when it fits there.
+     * @param {Object[]} nodes - IL nodes (null entries are skipped)
+     * @returns {string|null} common type, or null when none is typed
      * @private
      */
-    _getCommonType(type1, type2) {
+    _commonTypeOf(nodes) {
+      const isIntLiteral = n => n && n.type === 'Literal' && typeof n.value === 'number' && Number.isInteger(n.value);
+      const ordered = [...nodes.filter(n => n && !isIntLiteral(n)), ...nodes.filter(isIntLiteral)];
+      let common = null;
+      let only = null;                   // the node common came from, while it is just one
+      for (const n of ordered) {
+        const t = n.resultType;
+        if (!t) continue;
+        if (common === null) { common = t; only = n; continue; }
+        if (common !== t) common = this._getCommonType(common, t, only, n);
+        only = null;
+      }
+      return common;
+    }
+
+    /**
+     * The common type of two types: one that holds every value of both.
+     * @param {string} type1 - first type
+     * @param {string} type2 - second type
+     * @param {Object} [node1] - the type1 value, when it is a literal that may fit type2
+     * @param {Object} [node2] - the type2 value, likewise
+     * @returns {string} common type
+     * @private
+     */
+    _getCommonType(type1, type2, node1 = null, node2 = null) {
       // Same types
       if (type1 === type2) return type1;
 
-      // Numeric type widening
-      const numericTypes = ['uint8', 'uint16', 'uint32', 'uint64', 'int8', 'int16', 'int32', 'int64', 'float32', 'float64'];
-      const idx1 = numericTypes.indexOf(type1);
-      const idx2 = numericTypes.indexOf(type2);
+      // An integer literal is typed int32 only by default: it takes the other
+      // side's type when its value fits there (`c ? 0 : u32` is uint32).
+      const fits = (node, type) => {
+        if (!node || node.type !== 'Literal' || typeof node.value !== 'number' || !Number.isInteger(node.value)) return false;
+        const range = TypeAwareJSASTParser.INTEGER_RANGES[type];
+        return range ? node.value >= range[0] && node.value <= range[1] : /^float(32|64)$/.test(type);
+      };
+      if (fits(node1, type2)) return type2;
+      if (fits(node2, type1)) return type1;
 
-      if (idx1 >= 0 && idx2 >= 0) {
-        // Both numeric - use the larger type
-        const isSigned1 = type1.startsWith('int') || type1.startsWith('float');
-        const isSigned2 = type2.startsWith('int') || type2.startsWith('float');
-
-        // If one is signed and one unsigned, prefer signed
-        if (isSigned1 !== isSigned2) {
-          // Use the larger bit width with signed
-          const bits1 = parseInt(type1.match(/\d+/)?.[0] || '32');
-          const bits2 = parseInt(type2.match(/\d+/)?.[0] || '32');
-          const maxBits = Math.max(bits1, bits2);
-          return maxBits <= 8 ? 'int8' : maxBits <= 16 ? 'int16' : maxBits <= 32 ? 'int32' : 'int64';
-        }
-
-        // Same signedness - use larger type
-        return idx1 > idx2 ? type1 : type2;
+      // Numeric type widening: the common type must hold every value of both.
+      const integer = t => /^u?int(8|16|32|64)$/.test(t);
+      const float = t => t === 'float32' || t === 'float64';
+      const bits = t => parseInt(t.match(/\d+/)[0], 10);
+      if (integer(type1) && integer(type2)) {
+        const unsigned1 = type1.startsWith('u'), unsigned2 = type2.startsWith('u');
+        if (unsigned1 === unsigned2) return bits(type1) >= bits(type2) ? type1 : type2;
+        // Mixed signedness: a signed type wider than the unsigned one, or
+        // twice the unsigned width (uint8|int8 -> int16, uint32|int32 -> int64).
+        const u = unsigned1 ? bits(type1) : bits(type2);
+        const s = unsigned1 ? bits(type2) : bits(type1);
+        const need = s > u ? s : 2 * u;
+        return need <= 8 ? 'int8' : need <= 16 ? 'int16' : need <= 32 ? 'int32' : 'int64';
       }
+      if ((integer(type1) || float(type1)) && (integer(type2) || float(type2))) {
+        // float32 holds integers up to 16 bits exactly; anything wider needs float64.
+        const narrow = t => t === 'float32' || (integer(t) && bits(t) <= 16);
+        return narrow(type1) && narrow(type2) ? 'float32' : 'float64';
+      }
+
+      // null (or a missing value) is a value of every reference type: `c ? null : bytes` is bytes' type
+      // (a number or boolean has no null, so those keep the old answer).
+      const nothing = t => t === 'null' || t === 'void' || t === 'undefined';
+      const reference = t => typeof t !== 'string' || !(integer(t) || float(t) || t === 'boolean' || t === 'bigint');
+      if (nothing(type1) && reference(type2)) return type2;
+      if (nothing(type2) && reference(type1)) return type1;
 
       // String and anything else -> string
       if (type1 === 'string' || type2 === 'string') return 'string';
@@ -4400,10 +4912,19 @@
       };
       const rightValue = getRightValue();
 
+      // BigInt operands: JavaScript BigInt arithmetic has no width, so only
+      // what provably stays in 64 bits keeps a 64-bit type.
+      const bigintType = (!['==', '===', '!=', '!==', '<', '>', '<=', '>=', '&&', '||'].includes(op) &&
+        (TypeAwareJSASTParser._isBigIntValue(left) || TypeAwareJSASTParser._isBigIntValue(right)))
+        ? TypeAwareJSASTParser._bigIntResultType(op, left, right) : null;
+
       // Check for idioms first (common JavaScript type coercion patterns)
 
+      if (bigintType) {
+        resultType = bigintType;
+      }
       // Idiom: x & 0xff or x & 255 → uint8
-      if (op === '&' && (rightValue === 0xff || rightValue === 255)) {
+      else if (op === '&' && (rightValue === 0xff || rightValue === 255)) {
         resultType = 'uint8';
       }
       // Idiom: x & 0xffff or x & 65535 → uint16
@@ -4434,18 +4955,13 @@
       else if (['&&', '||'].includes(op)) {
         resultType = 'boolean';
       }
-      // Bitwise operators - return left operand type (unless idiom above)
+      // Bitwise operators (unless idiom above): JavaScript computes them on int32
       else if (['&', '|', '^', '<<', '>>', '>>>'].includes(op)) {
         // >>> always produces uint32 in JavaScript (ToUint32)
         if (op === '>>>') {
           resultType = 'uint32';
         } else {
-          const leftType = left.resultType;
-          // Return left operand type for bitwise ops
-          if (leftType && leftType !== 'any' && leftType !== 'number')
-            resultType = leftType;
-          else
-            resultType = 'int32'; // Default to int32
+          resultType = TypeAwareJSASTParser._bitwiseResultType(op, left, right);
         }
       }
       // Arithmetic operators
@@ -4465,6 +4981,12 @@
         // If either is 64-bit, result is 64-bit
         else if (leftType.includes('64') || rightType.includes('64')) {
           resultType = leftType.includes('int') || rightType.includes('int') ? 'int64' : 'uint64';
+        }
+        // Fixed-width integers up to 32 bits: a type that holds the result
+        // (JavaScript does not wrap: two uint8 add up to 510, uint32 - uint32
+        // goes negative).
+        else if (op !== '%' && TypeAwareJSASTParser._widenedArithmeticType(op, leftType, rightType, left, right)) {
+          resultType = TypeAwareJSASTParser._widenedArithmeticType(op, leftType, rightType, left, right);
         }
         // Preserve left type if specific, else default to int32
         else if (leftType && leftType !== 'any' && leftType !== 'number') {
@@ -4507,6 +5029,8 @@
       // An inlined OpCodes helper (Xor32, Add32, ...) is typed by its JSDoc, not guessed.
       if (node.opCodesMethod || node.ilNodeType === 'InlinedOpCode') {
         // keep whatever _transformOpCodesCall decided
+      } else if (bigintType) {
+        // BigInt operands: the type above holds every result (see _bigIntResultType)
       } else if (isInteger(lt) && isInteger(rt)) {
         if (['+', '-', '*'].includes(op) && !(lt === 'int32' && rt === 'int32')) {
           result.typeGuess = `'${lt} ${op} ${rt}' has no fixed width in JavaScript but is typed ${resultType}; ` +
@@ -4534,8 +5058,20 @@
       if (op === '!') {
         resultType = 'boolean';
       } else if (op === '~') {
-        // Bitwise NOT - always returns int32 in JavaScript (ToInt32 then NOT)
-        resultType = 'int32';
+        // Bitwise NOT - int32 in JavaScript (ToInt32 then NOT); a BigInt stays a BigInt
+        resultType = TypeAwareJSASTParser._isBigIntValue(argument) ? 'bigint' : 'int32';
+      } else if (op === '-' && argument && argument.type === 'Literal' && typeof argument.value === 'bigint') {
+        // -<BigInt literal>: the type of the negative value
+        resultType = -argument.value >= -0x8000000000000000n ? 'int64' : 'bigint';
+      } else if (op === '-' && argument && argument.type === 'Literal' && typeof argument.value === 'number') {
+        // -<literal>: the type of the negative value, as a negative literal would have
+        resultType = this._transformLiteral({ type: 'Literal', value: -argument.value, raw: argument.raw }, context).resultType;
+      } else if (op === '-' && typeof argument.resultType === 'string' && /^uint(8|16|32|64)$/.test(argument.resultType)) {
+        // Negating an unsigned value goes negative: a signed type that holds it
+        const t = argument.resultType;
+        resultType = t === 'uint64' ? (TypeAwareJSASTParser._isBigIntValue(argument) ? 'bigint' : 'int64') : t === 'uint32' ? 'int64' : 'int32';
+      } else if (op === '-' && (argument.resultType === 'int8' || argument.resultType === 'int16')) {
+        resultType = 'int32';                     // -(-128) is 128
       } else if (op === '-' || op === '+') {
         // Preserve argument type if specific, else default to int32
         const argType = argument.resultType;
@@ -7845,7 +8381,10 @@
      */
     parseVariableDeclaration(consumeSemicolon = true) {
       const node = { type: 'VariableDeclaration' };
-      
+      // The JSDoc in front of `const f = (a, b) => ...` documents the arrow
+      // function (a `function` expression consumes it itself).
+      const leadingDoc = this.lastJSDocComment;
+
       node.kind = this.currentToken.value; // const, let, var
       this.advance();
       
@@ -7872,8 +8411,26 @@
           // Use parseAssignmentExpression instead of parseExpression to avoid consuming
           // the comma that separates variable declarators (e.g., const a = 1, b = 2)
           declarator.init = this.parseAssignmentExpression();
+          const init = declarator.init;
+          // Only a doc that names this arrow's parameters is its own.
+          const jsDoc = init && init.type === 'ArrowFunctionExpression' && !init.typeInfo && leadingDoc &&
+            node.declarations.length === 0 && /@(param|returns?)\b/.test(leadingDoc) ? this.jsDocParser.parseJSDoc(leadingDoc) : null;
+          const names = jsDoc ? new Set((init.params || []).map(p => p && (p.type === 'AssignmentPattern' ? p.left : p)).map(p => p && p.name)) : null;
+          if (jsDoc && jsDoc.params.every(p => names.has(p.name))) {
+            init.jsDoc = jsDoc;
+            init.typeInfo = {
+              params: new Map(jsDoc.params.map(p => [p.name, p.type])),
+              returns: jsDoc.returns ? jsDoc.returns.type : null,
+              csharpOverride: jsDoc.csharpOverride || null
+            };
+            (init.params || []).forEach((param, index) => {
+              if (jsDoc.params[index] && param && param.type === 'Identifier')
+                this.typeAnnotations.set(param, { type: jsDoc.params[index].type, source: 'jsdoc' });
+            });
+            if (this.lastJSDocComment === leadingDoc) this.lastJSDocComment = null;
+          }
         }
-        
+
         node.declarations.push(declarator);
         
         if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === ',') {
@@ -8413,18 +8970,39 @@
      */
     parsePostfixExpression() {
       let left = this.parseCallExpression();
-      
-      if (this.currentToken && this.currentToken.type === 'OPERATOR' && 
+
+      if (this.currentToken && this.currentToken.type === 'OPERATOR' &&
           ['++', '--'].includes(this.currentToken.value)) {
         const node = { type: 'UpdateExpression' };
         node.operator = this.currentToken.value;
         node.prefix = false;
         node.argument = left;
         this.advance();
+        this._skipCommentsBeforeOperator();
         return node;
       }
-      
+
+      this._skipCommentsBeforeOperator();
       return left;
+    }
+
+    /**
+     * After an operand: comments followed by a binary operator, `?` or `:`
+     * sit inside the expression (`a === b // why\n || c`), so they are passed
+     * over for the operator loops to see it. Comments followed by anything
+     * else are left for the next statement.
+     */
+    _skipCommentsBeforeOperator() {
+      const isComment = t => t && (t.type === 'COMMENT_SINGLE' || t.type === 'COMMENT_MULTI');
+      if (!isComment(this.currentToken)) return;
+      let i = this.position;
+      while (isComment(this.tokens[i])) ++i;
+      const next = this.tokens[i];
+      const continues = next && ((next.type === 'OPERATOR' && !['++', '--', '!', '~'].includes(next.value)) ||
+        (next.type === 'PUNCTUATION' && (next.value === '?' || next.value === ':')));
+      if (!continues) return;
+      this.position = i;
+      this.currentToken = next;
     }
 
     /**
@@ -9918,7 +10496,11 @@
       const consequent = this.parseStatement();
       
       let alternate = null;
-      this.skipComments();
+      // Looking for `else` skips the comments behind a braceless consequent
+      // (`if (f) x = y;`); with no else they lead the next statement, so they
+      // are kept for _carryComments the way consume() keeps them after `}`.
+      const skipped = this.skipComments();
+      if (skipped.length > 0) this.lastConsumeSkip = { end: this.position, comments: skipped };
       if (this.currentToken && this.currentToken.type === 'KEYWORD' && this.currentToken.value === 'else') {
         this.advance(); // consume 'else'
         this.skipComments();
