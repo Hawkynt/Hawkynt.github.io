@@ -590,7 +590,7 @@
       const katKey = variant === 'su'
         ? "000102030405060708090A0B0C0D0E0F"
         : "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F";
-      const nonce = "000102030405060708090A0B0C0D0E0F";
+      const katNonce = "000102030405060708090A0B0C0D0E0F";
       const block16 = "000102030405060708090A0B0C0D0E0F";
       const block32 = "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F";
       const pt17 = "000102030405060708090A0B0C0D0E0F10";
@@ -601,7 +601,7 @@
           uri: katUri,
           input: OpCodes.Hex8ToBytes(""),
           key: OpCodes.Hex8ToBytes(katKey),
-          nonce: OpCodes.Hex8ToBytes(nonce),
+          nonce: OpCodes.Hex8ToBytes(katNonce),
           aad: OpCodes.Hex8ToBytes(""),
           expected: OpCodes.Hex8ToBytes(expected[0])
         },
@@ -610,7 +610,7 @@
           uri: katUri,
           input: OpCodes.Hex8ToBytes(""),
           key: OpCodes.Hex8ToBytes(katKey),
-          nonce: OpCodes.Hex8ToBytes(nonce),
+          nonce: OpCodes.Hex8ToBytes(katNonce),
           aad: OpCodes.Hex8ToBytes("00"),
           expected: OpCodes.Hex8ToBytes(expected[1])
         },
@@ -619,7 +619,7 @@
           uri: katUri,
           input: OpCodes.Hex8ToBytes("00"),
           key: OpCodes.Hex8ToBytes(katKey),
-          nonce: OpCodes.Hex8ToBytes(nonce),
+          nonce: OpCodes.Hex8ToBytes(katNonce),
           aad: OpCodes.Hex8ToBytes(""),
           expected: OpCodes.Hex8ToBytes(expected[2])
         },
@@ -628,7 +628,7 @@
           uri: katUri,
           input: OpCodes.Hex8ToBytes("00"),
           key: OpCodes.Hex8ToBytes(katKey),
-          nonce: OpCodes.Hex8ToBytes(nonce),
+          nonce: OpCodes.Hex8ToBytes(katNonce),
           aad: OpCodes.Hex8ToBytes(block16),
           expected: OpCodes.Hex8ToBytes(expected[3])
         },
@@ -637,7 +637,7 @@
           uri: katUri,
           input: OpCodes.Hex8ToBytes(pt17),
           key: OpCodes.Hex8ToBytes(katKey),
-          nonce: OpCodes.Hex8ToBytes(nonce),
+          nonce: OpCodes.Hex8ToBytes(katNonce),
           aad: OpCodes.Hex8ToBytes(""),
           expected: OpCodes.Hex8ToBytes(expected[4])
         },
@@ -646,7 +646,7 @@
           uri: katUri,
           input: OpCodes.Hex8ToBytes(block32),
           key: OpCodes.Hex8ToBytes(katKey),
-          nonce: OpCodes.Hex8ToBytes(nonce),
+          nonce: OpCodes.Hex8ToBytes(katNonce),
           aad: OpCodes.Hex8ToBytes(block32),
           expected: OpCodes.Hex8ToBytes(expected[5])
         }
