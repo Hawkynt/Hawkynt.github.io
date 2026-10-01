@@ -264,7 +264,7 @@
    * Miller-Rabin primality test (simplified)
    * @param {BigInt} n - Number to test
    * @param {int32} k - Number of rounds (higher = more accurate)
-   * @param {function} [source] - Optional deterministic bit source
+   * @param {SplitMix64BitSource|null} source - Deterministic bit source, or null for Math.random
    * @returns {boolean} True if probably prime
    */
   function isProbablyPrime(n, k = 20, source) {
@@ -323,7 +323,7 @@
    * Generate random BigInt in range [min, max]
    * @param {BigInt} min - Minimum value
    * @param {BigInt} max - Maximum value
-   * @param {function} [source] - Optional deterministic bit source returning 0n or 1n
+   * @param {SplitMix64BitSource|null} source - Deterministic bit source, or null for Math.random
    * @returns {BigInt} Random value
    */
   function randomBigInt(min, max, source) {
@@ -331,19 +331,28 @@
     /** @type {string} */
     const rangeBits = range.toString(2);
     const bits = rangeBits.length;
-    const nextBit = source || mathRandomBit;
 
     /** @type {BigInt} */
     let result;
     do {
       result = 0n;
       for (let i = 0; i < bits; ++i) {
-        result = OpCodes.OrN(OpCodes.ShiftLn(result, 1n), nextBit());
+        /** @type {BigInt} */
+        let bit = 0n;
+        if (source !== null) {
+          bit = source.nextBit();
+        } else {
+          bit = mathRandomBit();
+        }
+        result = OpCodes.OrN(OpCodes.ShiftLn(result, 1n), bit);
       }
     } while (result >= range);
 
     return min + result;
   }
+
+  /** @type {BigInt} */
+  const MASK64 = 0xFFFFFFFFFFFFFFFFn;
 
   /**
    * Deterministic bit source for key generation.
@@ -352,37 +361,45 @@
    * generator below is SplitMix64 (Steele, Lea and Flood, "Fast Splittable
    * Pseudorandom Number Generators", OOPSLA 2014), seeded from the caller's
    * key bytes, so the same key always yields the same p and q.
-   *
-   * @param {uint8[]} seedBytes - Key material to seed from
-   * @returns {function} Bit source returning 0n or 1n
    */
-  function deterministicBitSource(seedBytes) {
-    /** @type {BigInt} */
-    const MASK64 = 0xFFFFFFFFFFFFFFFFn;
-    /** @type {BigInt} */
-    let state = 0x243F6A8885A308D3n;   // pi, first 64 fractional bits
-    // FNV-1a over the key material, so every seed byte reaches the state
-    for (let i = 0; i < seedBytes.length; ++i)
-      state = OpCodes.AndN(OpCodes.XorN(state, BigInt(seedBytes[i] % 256)) * 0x100000001B3n, MASK64);
+  class SplitMix64BitSource {
+    /**
+     * @param {uint8[]} seedBytes - Key material to seed from
+     */
+    constructor(seedBytes) {
+      /** @type {BigInt} */
+      let state = 0x243F6A8885A308D3n;   // pi, first 64 fractional bits
+      // FNV-1a over the key material, so every seed byte reaches the state
+      for (let i = 0; i < seedBytes.length; ++i)
+        state = OpCodes.AndN(OpCodes.XorN(state, BigInt(seedBytes[i] % 256)) * 0x100000001B3n, MASK64);
 
-    /** @type {BigInt} */
-    let reservoir = 0n;
-    let available = 0;
-    return function nextBit() {
-      if (available === 0) {
-        state = OpCodes.AndN(state + 0x9E3779B97F4A7C15n, MASK64);
+      /** @type {BigInt} */
+      this.state = state;
+      /** @type {BigInt} */
+      this.reservoir = 0n;
+      /** @type {int32} */
+      this.available = 0;
+    }
+
+    /**
+     * Next bit of the stream, least significant bit of each 64-bit output first
+     * @returns {BigInt} 0n or 1n
+     */
+    nextBit() {
+      if (this.available === 0) {
+        this.state = OpCodes.AndN(this.state + 0x9E3779B97F4A7C15n, MASK64);
         /** @type {BigInt} */
-        let z = state;
+        let z = this.state;
         z = OpCodes.AndN(OpCodes.XorN(z, OpCodes.ShiftRn(z, 30n)) * 0xBF58476D1CE4E5B9n, MASK64);
         z = OpCodes.AndN(OpCodes.XorN(z, OpCodes.ShiftRn(z, 27n)) * 0x94D049BB133111EBn, MASK64);
-        reservoir = OpCodes.XorN(z, OpCodes.ShiftRn(z, 31n));
-        available = 64;
+        this.reservoir = OpCodes.XorN(z, OpCodes.ShiftRn(z, 31n));
+        this.available = 64;
       }
-      const bit = OpCodes.AndN(reservoir, 1n);
-      reservoir = OpCodes.ShiftRn(reservoir, 1n);
-      --available;
+      const bit = OpCodes.AndN(this.reservoir, 1n);
+      this.reservoir = OpCodes.ShiftRn(this.reservoir, 1n);
+      --this.available;
       return bit;
-    };
+    }
   }
 
   /**
@@ -428,7 +445,7 @@
   /**
    * Generate random prime p ≡ 3 (mod 4) of specified bit length
    * @param {int32} bits - Bit length of prime
-   * @param {function} [source] - Optional deterministic bit source
+   * @param {SplitMix64BitSource} source - Deterministic bit source
    * @returns {BigInt} Random prime
    */
   function generatePrime3Mod4(bits, source) {
@@ -458,23 +475,6 @@
       }
     }
   }
-
-  // The number theory above, under the names this module has always exported.
-  const NumberTheory = {
-    gcd: gcd,
-    extendedGcd: extendedGcd,
-    modInverse: modInverse,
-    modExp: modExp,
-    jacobi: jacobi,
-    modularSquareRoot: modularSquareRoot,
-    crt: crt,
-    isProbablyPrime: isProbablyPrime,
-    _randomBigInt: randomBigInt,
-    deterministicBitSource: deterministicBitSource,
-    SMALL_PRIMES: SMALL_PRIMES,
-    _passesTrialDivision: passesTrialDivision,
-    generatePrime3Mod4: generatePrime3Mod4
-  };
 
   /**
    * A Rabin public key: the modulus and the two twist values.
@@ -901,9 +901,9 @@
       /** @type {uint8[]} */
       const qTag = [0x71];
       const p = generatePrime3Mod4(primeBits,
-        deterministicBitSource(seedMaterial.concat(pTag)));
+        new SplitMix64BitSource(seedMaterial.concat(pTag)));
       const q = generatePrime3Mod4(primeBits,
-        deterministicBitSource(seedMaterial.concat(qTag)));
+        new SplitMix64BitSource(seedMaterial.concat(qTag)));
 
       const n = p * q;
 
@@ -1028,7 +1028,7 @@
       c = c % n;
 
       // Blinding: generate random r_blind and compute c' = c * r_blind^2 mod n
-      const r_blind = randomBigInt(1n, n - 1n);
+      const r_blind = randomBigInt(1n, n - 1n, null);
       const r_blind_sq = (r_blind * r_blind) % n;
       let c_blind = (c * r_blind_sq) % n;
 
@@ -1141,5 +1141,5 @@
 
   // ===== EXPORTS =====
 
-  return { RabinCipher, RabinInstance, NumberTheory };
+  return { RabinCipher, RabinInstance };
 }));
