@@ -55,8 +55,16 @@
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // C-boxes: 8 boxes x 256 entries of one 64-bit word as [high32, low32]
+  /**
+   * The C-box tables shark-cboxes.data.js provides
+   * @typedef {Object} SharkCBoxTables
+   * @property {uint32[][][]} CBOX_ENC - Encryption C-boxes
+   * @property {uint32[][][]} CBOX_DEC - Decryption C-boxes
+   */
+  /** @type {SharkCBoxTables} */
+  const CBoxes = SharkCBoxes;
   /** @type {uint32[][][]} */
-  const CBOX_ENC = SharkCBoxes.CBOX_ENC;
+  const CBOX_ENC = CBoxes.CBOX_ENC;
 
   // GF(2^8) multiplication with SHARK's irreducible polynomial (x^8+x^7+x^6+x^5+x^4+x^2+1, 0x1F5 in
   // the "bit 8 implied" convention used by OpCodes.GFMul).
