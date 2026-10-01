@@ -313,7 +313,7 @@ _Block-based symmetric encryption_
 | [RC5-32/16/64 (DarkCrypt)](block-ciphers/rc5-32-16-64-darkcrypt.md) | 🎓 Educational Only | RC5 variant from the DarkCrypt Total Commander plugin: word size w=32 (64-bit real block), 16 rounds, 512-bit (64-byte) key via the standar… |
 | [RC6](block-ciphers/rc6.md) | — | AES finalist designed as evolution of RC5. Features 128-bit blocks, variable key sizes, and data-dependent rotations with quadratic nonline… |
 | [RC6-512 (DarkCrypt)](block-ciphers/rc6-512-darkcrypt.md) | 🎓 Educational Only | RC6 variant from the DarkCrypt Total Commander plugin: standard 128-bit block, 20 rounds, extended to a 512-bit (64-byte) key. The key sche… |
-| [REDOC II](block-ciphers/redoc-ii.md) | 🎓 Educational Only | IBM's experimental data-dependent cipher from the 1980s with 80-bit blocks and 160-bit keys. Uses data-dependent permutations, substitution… |
+| [REDOC II](block-ciphers/redoc-ii.md) | ❌ Broken | Michael Wood's cipher for Cryptech Inc: 80-bit blocks, a 160-bit key and 10 rounds of substitutions, key-table XORs, enclave functions and… |
 | [REDOC II (DarkCrypt)](block-ciphers/redoc-ii-darkcrypt.md) | 🎓 Educational Only | The genuine REDOC II cipher (Michael Wood, 1985) as implemented in the DarkCrypt Total Commander plugin: 80-bit blocks, 160-bit keys, 10 ro… |
 | [REDOC III](block-ciphers/redoc-iii.md) | ❌ Broken | Michael Wood's streamlined successor of REDOC II, built only from XORs: the key (1 to 34 bytes) seeds a 2560-byte key table that is folded… |
 | [REDOC III (DarkCrypt)](block-ciphers/redoc-iii-darkcrypt.md) | 🎓 Educational Only | REDOC III as implemented in the DarkCrypt Total Commander plugin: Michael Wood's REDOC III applied to an 80-bit block (only the first 8 byt… |
