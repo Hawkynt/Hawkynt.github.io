@@ -12,8 +12,14 @@
 | Complexity | Not specified |
 | Inventor | Thomas Beth, Fred Piper |
 | Year | 1984 |
-| Origin | DE |
+| Origin | 🇩🇪 Germany |
 | Source | [`algorithms/stream/beth-piper.js`](../../../algorithms/stream/beth-piper.js) |
+
+## Parameters
+
+| Parameter | Supported values |
+| --- | --- |
+| Key sizes | 16 bytes (128 bits) |
 
 ## Security
 
@@ -25,7 +31,7 @@ Clock-controlled generators can be vulnerable to correlation attacks and algebra
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| Clock-controlled generators can be vulnerable to correlation attacks that exploit dependencies between control and data sequences. | — | Use only for educational purposes, not in production systems. |
+| Correlation Attack | Clock-controlled generators can be vulnerable to correlation attacks that exploit dependencies between control and data sequences. | Use only for educational purposes, not in production systems. |
 
 ## Documentation
 
