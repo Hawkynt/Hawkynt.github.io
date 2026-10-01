@@ -455,6 +455,25 @@
       ]
     },
     
+    SecureRandomBytes: {
+      name: 'SecureRandomBytes',
+      description: 'Cryptographically secure random bytes from the platform CSPRNG',
+      category: 'security',
+      parameters: [
+        { name: 'count', type: 'int32', description: 'Number of bytes (0 or more)' }
+      ],
+      returnType: 'array',
+      implementation: {
+        algorithm: 'platform_csprng',
+        security: 'cryptographically_secure'
+      },
+      // Random output has no fixed expectation; the cases pin the length.
+      testCases: [
+        { inputs: [0], expectedLength: 0, description: 'No bytes' },
+        { inputs: [32], expectedLength: 32, description: 'A 256-bit key' }
+      ]
+    },
+
     ClearArray: {
       name: 'ClearArray',
       description: 'Clear array (fill with zeros) - security operation',
@@ -610,10 +629,13 @@
           
           operation.testCases.forEach((testCase, index) => {
             const inputs = testCase.inputs.map(inp => this._formatValue(langConfig, inp)).join(', ');
-            const expected = this._formatValue(langConfig, testCase.expected);
             code.push(`        # ${testCase.description}`);
             code.push(`        result = ${opName}(${inputs})`);
-            code.push(`        self.assertEqual(result, ${expected})`);
+            // A random result is pinned by its length only
+            if (testCase.expectedLength !== undefined)
+              code.push(`        self.assertEqual(len(result), ${testCase.expectedLength})`);
+            else
+              code.push(`        self.assertEqual(result, ${this._formatValue(langConfig, testCase.expected)})`);
           });
         });
         
@@ -636,8 +658,12 @@
           
           operation.testCases.forEach(testCase => {
             const inputs = testCase.inputs.map(inp => this._formatValue(langConfig, inp)).join(', ');
-            const expected = this._formatValue(langConfig, testCase.expected);
             code.push(`        // ${testCase.description}`);
+            if (testCase.expectedLength !== undefined) {
+              code.push(`        assertEquals(${testCase.expectedLength}, CryptoOpcodes.${opName}(${inputs}).length);`);
+              return;
+            }
+            const expected = this._formatValue(langConfig, testCase.expected);
             if (operation.returnType === 'array') {
               code.push(`        assertArrayEquals(${expected}, CryptoOpcodes.${opName}(${inputs}));`);
             } else {
@@ -808,6 +834,31 @@
           }
           break;
           
+        case 'SecureRandomBytes':
+          // The platform CSPRNG of each language
+          if (langConfig.name === 'Python') {
+            lines.push(indent + 'import os');
+            lines.push(indent + 'return list(os.urandom(count))');
+          } else if (langConfig.name === 'C++') {
+            lines.push(indent + 'std::random_device rd;  // non-deterministic source; use the OS CSPRNG where it is not');
+            lines.push(indent + 'std::vector<uint8_t> result(count);');
+            lines.push(indent + 'for (auto& b : result) b = static_cast<uint8_t>(rd() & 0xFF);');
+            lines.push(indent + 'return result;');
+          } else if (langConfig.name === 'Java') {
+            lines.push(indent + 'byte[] raw = new byte[count];');
+            lines.push(indent + 'new java.security.SecureRandom().nextBytes(raw);');
+            lines.push(indent + 'int[] result = new int[count];');
+            lines.push(indent + 'for (int i = 0; i < count; i++) result[i] = raw[i] & 0xFF;');
+            lines.push(indent + 'return result;');
+          } else if (langConfig.name === 'C#') {
+            lines.push(indent + 'return System.Security.Cryptography.RandomNumberGenerator.GetBytes((int)count);');
+          } else if (langConfig.name === 'Rust') {
+            lines.push(indent + 'let mut result = vec![0u8; count as usize];');
+            lines.push(indent + 'getrandom::getrandom(&mut result).expect("no secure random source");');
+            lines.push(indent + 'result');
+          }
+          break;
+
         default:
           lines.push(indent + langConfig.syntax.comment.replace('{text}', 'Implementation placeholder'));
           if (langConfig.name === 'Python') {
