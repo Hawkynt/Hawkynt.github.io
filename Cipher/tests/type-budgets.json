@@ -68,7 +68,7 @@
   "algorithms/asymmetric/sike.js": 18,
   "algorithms/asymmetric/slh-dsa.js": 6,
   "algorithms/asymmetric/sphincs-plus.js": 76,
-  "algorithms/asymmetric/sqisign.js": 237,
+  "algorithms/asymmetric/sqisign.js": 0,
   "algorithms/asymmetric/x25519.js": 0,
   "algorithms/block/3des.js": 0,
   "algorithms/block/anubis.js": 0,
