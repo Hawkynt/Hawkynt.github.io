@@ -53,6 +53,8 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
+  // Extract foundation utilities
+  const { SparseMatrix, GaloisField, SeededRandom, PerformanceProfiler } = FountainFoundation;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -308,11 +310,11 @@
       /** @type {SparseMatrix} */
       this.A = null;                  // Constraint matrix
       /** @type {PerformanceProfiler} */
-      this.profiler = new FountainFoundation.PerformanceProfiler();
+      this.profiler = new PerformanceProfiler();
 
       // Initialize Galois Field for octet operations
       /** @type {GaloisField} */
-      this.gf = new FountainFoundation.GaloisField(2, 8); // GF(2^8) = GF(256)
+      this.gf = new GaloisField(2, 8); // GF(2^8) = GF(256)
     }
 
     /**
@@ -445,7 +447,7 @@
       this.profiler.startTimer('matrix_construction');
 
       // Create constraint matrix A with dimensions L x L
-      this.A = new FountainFoundation.SparseMatrix(this.L, this.L);
+      this.A = new SparseMatrix(this.L, this.L);
 
       // Build matrix according to RFC 6330 Section 5.3.3.4
       this._buildLDPCConstraints();

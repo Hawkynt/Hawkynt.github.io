@@ -53,6 +53,8 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
+  // Extract foundation utilities
+  const { BipartiteGraph, DegreeDistribution, SeededRandom, PerformanceProfiler } = FountainFoundation;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -290,7 +292,7 @@
       /** @type {SeededRandom} */
       this.rng = null;
       /** @type {PerformanceProfiler} */
-      this.profiler = new FountainFoundation.PerformanceProfiler();
+      this.profiler = new PerformanceProfiler();
       /** @type {DegreeDistribution[]} */
       this.degreeDistributions = [];
     }
@@ -375,7 +377,7 @@
      * @returns {void}
      */
     _initializeEncoding() {
-      this.rng = new FountainFoundation.SeededRandom(this.seed);
+      this.rng = new SeededRandom(this.seed);
       /** @type {BipartiteGraph[]} */
       const graphs = [];
       this.graphs = graphs;
@@ -392,13 +394,13 @@
       for (let stage = 0; stage < this.stages; stage++) {
         const stageK = stage === 0 ? this.k : Math.ceil(this.k / Math.pow(2, stage));
         /** @type {DegreeDistribution} */
-        const stageDegree = new FountainFoundation.DegreeDistribution(stageK);
+        const stageDegree = new DegreeDistribution(stageK);
         this.degreeDistributions.push(stageDegree);
 
         // Create graph for this stage
         const numChecks = Math.ceil(stageK * (1.0 + this.overhead / this.stages));
         /** @type {BipartiteGraph} */
-        const graph = new FountainFoundation.BipartiteGraph(stageK, numChecks);
+        const graph = new BipartiteGraph(stageK, numChecks);
         this.graphs.push(graph);
 
         // Initialize stage symbols with source symbols at stage 0
