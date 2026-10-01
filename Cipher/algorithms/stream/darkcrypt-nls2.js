@@ -227,10 +227,6 @@
         return;
       }
 
-      if (!Array.isArray(keyBytes) && !(keyBytes instanceof Uint8Array)) {
-        throw new Error("Invalid key - must be byte array");
-      }
-
       if (keyBytes.length !== 16) {
         throw new Error("Invalid NLS2 key size: " + keyBytes.length + " bytes. Key must be 16 bytes (128 bits)");
       }
@@ -253,10 +249,6 @@
       if (!ivData) {
         this._iv = null;
         return;
-      }
-
-      if (!Array.isArray(ivData) && !(ivData instanceof Uint8Array)) {
-        throw new Error("Invalid IV - must be byte array");
       }
 
       if (ivData.length !== 16) {
@@ -296,9 +288,6 @@
      */
     Feed(data) {
       if (!data || data.length === 0) return;
-      if (!Array.isArray(data) && !(data instanceof Uint8Array)) {
-        throw new Error("Invalid input data - must be byte array");
-      }
       if (!this._key) {
         throw new Error("Key not set");
       }
