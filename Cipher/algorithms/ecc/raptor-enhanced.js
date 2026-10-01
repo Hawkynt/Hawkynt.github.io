@@ -51,6 +51,9 @@
           ErrorCorrectionAlgorithm, IErrorCorrectionInstance,
           TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
+  // Extract foundation utilities
+  const { GaloisField, SparseMatrix,
+          SeededRandom, PerformanceProfiler } = FountainFoundation;
 
   // ===== RFC 5053 FIXED PARAMETERS =====
 
@@ -310,11 +313,11 @@
 
       // Utilities
       /** @type {GaloisField} */
-      this.gf = new FountainFoundation.GaloisField(2, 8); // GF(256) for symbol operations
+      this.gf = new GaloisField(2, 8); // GF(256) for symbol operations
       /** @type {PerformanceProfiler} */
-      this.profiler = new FountainFoundation.PerformanceProfiler();
+      this.profiler = new PerformanceProfiler();
       /** @type {SeededRandom} */
-      this.rng = new FountainFoundation.SeededRandom(0);
+      this.rng = new SeededRandom(0);
     }
 
     // ===== PROPERTY SETTERS =====
@@ -574,7 +577,7 @@
       const W = this.W;
 
       // Create sparse matrix for efficiency
-      this.constraintMatrix = new FountainFoundation.SparseMatrix(L, L);
+      this.constraintMatrix = new SparseMatrix(L, L);
 
       // LDPC part: First S rows (RFC 5053 Section 5.4.2.3)
       for (let row = 0; row < S; row++) {
@@ -895,7 +898,7 @@
 
       // Build decoding matrix from received symbols
       /** @type {SparseMatrix} */
-      const decodingMatrix = new FountainFoundation.SparseMatrix(n, this.L);
+      const decodingMatrix = new SparseMatrix(n, this.L);
       /** @type {uint8[]} */
       const received = this.encodedSymbols.slice(0, n);
 
