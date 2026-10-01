@@ -374,13 +374,9 @@
                 throw new Error('Failed to create algorithm instance');
             }
 
-            // Handle block cipher modes
-            if (_isBlockCipherMode(algorithmInstance)) {
-                _setupBlockCipherMode(instance, vector, algorithmInstance.name);
-            }
-
-            // Apply all vector properties (key, iv, nonce, etc.)
-            _applyVectorProperties(instance, vector);
+            // Apply every vector field (cipher-mode setup, key, iv, nonce, ...);
+            // a field that cannot be applied fails the vector
+            ConfigureInstance(algorithmInstance, instance, vector);
 
             // Execute test with timeout protection (5 seconds max per test vector)
             const output = await _executeWithTimeout(
@@ -428,10 +424,7 @@
                                 const reverseInstance = algorithmInstance.CreateInstance(!isInverse);
                                 if (!reverseInstance) return null;
 
-                                if (_isBlockCipherMode(algorithmInstance)) {
-                                    _setupBlockCipherMode(reverseInstance, vector, algorithmInstance.name);
-                                }
-                                _applyVectorProperties(reverseInstance, vector);
+                                ConfigureInstance(algorithmInstance, reverseInstance, vector);
 
                                 reverseInstance.Feed(output);
                                 return reverseInstance.Result();
@@ -462,10 +455,15 @@
      * this setup is what makes a sweep report working algorithms as broken: a
      * cipher mode with no block cipher, or XTS with no tweak, refuses everything.
      *
+     * Strict: every vector field must be applied (see _applyVectorProperties),
+     * so a misspelled field or a setting the algorithm lacks throws, naming the
+     * field, rather than leaving the default in place.
+     *
      * @param {object} algorithm - Registered algorithm
      * @param {object} instance - Instance created from it
      * @param {object} vector - Test vector supplying key/iv/nonce/tweak/etc.
      * @returns {object} The same instance, configured
+     * @throws {Error} When a field cannot be applied or its setter throws
      */
     function ConfigureInstance(algorithm, instance, vector) {
         if (isNode && !global.DummyBlockCipher) {
@@ -473,10 +471,10 @@
                 global.DummyBlockCipher = require('./DummyBlockCipher.js').DummyBlockCipher;
             } catch (e) { /* modes needing it will report the missing dependency */ }
         }
-        if (_isBlockCipherMode(algorithm)) {
-            _setupBlockCipherMode(instance, vector, algorithm.name);
-        }
-        _applyVectorProperties(instance, vector);
+        const consumed = _isBlockCipherMode(algorithm)
+            ? _setupBlockCipherMode(instance, vector, algorithm.name)
+            : null;
+        _applyVectorProperties(instance, vector, algorithm.name, consumed);
         return instance;
     }
 
@@ -617,11 +615,19 @@
         }
     }
 
+    /**
+     * Give a cipher mode its block cipher (the vector's `cipher`, keyed with
+     * its `key`) and an IV.
+     * @returns {Set<string>} The vector fields this consumed
+     */
     function _setupBlockCipherMode(instance, vector, algorithmName) {
+        const consumed = new Set();
         const isSimpleMode = algorithmName === 'ECB';
         // Modes that handle their own key splitting/management shouldn't have keys set on cipher
         const isMultiKeyMode = ['EDE', 'EEE'].includes(algorithmName);
         const dummyCipher = _createDummyCipher(vector, isSimpleMode, isMultiKeyMode);
+        if (vector.cipher !== undefined) consumed.add('cipher');
+        if (vector.key !== undefined && !isMultiKeyMode) consumed.add('key');
 
         if (typeof instance.setBlockCipher === 'function') {
             instance.setBlockCipher(dummyCipher);
@@ -629,13 +635,15 @@
 
         if (typeof instance.setIV === 'function') {
             if (vector.iv) {
-                instance.setIV(vector.iv);
+                _setField(instance, 'iv', () => instance.setIV(vector.iv), algorithmName);
+                consumed.add('iv');
             } else {
                 const defaultIV = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
                                   0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f];
                 instance.setIV(defaultIV);
             }
         }
+        return consumed;
     }
 
     function _createDummyCipher(vector, isSimple, skipKeySet) {
@@ -679,17 +687,19 @@
                 }
 
                 if (foundAlgorithm) {
-                    try {
-                        algorithm = foundAlgorithm;
-                        instance = algorithm.CreateInstance(false);
-                    } catch (error) {
-                        DebugConfig.warn(`Failed to create instance of ${vector.cipher}, falling back to DummyBlockCipher:`, error.message);
-                    }
+                    algorithm = foundAlgorithm;
+                    instance = algorithm.CreateInstance(false);
                 }
+            }
+
+            // A vector naming a cipher is checked against that cipher; the
+            // stand-in would let it run against something else entirely
+            if (!instance) {
+                throw new Error(`Vector field 'cipher' is not applied: no block cipher named '${vector.cipher}' is registered`);
             }
         }
 
-        // Fall back to DummyBlockCipher if no specific cipher requested or cipher not found
+        // DummyBlockCipher when the vector names no cipher
         if (!instance) {
             const DummyBlockCipher = typeof window !== 'undefined' ? window.DummyBlockCipher : global.DummyBlockCipher;
 
@@ -715,88 +725,110 @@
         return instance;
     }
 
-    function _applyVectorProperties(instance, vector) {
-        // Key handling
+    // Vector fields the engine consumes itself, whatever the algorithm: the
+    // data, the expectation, the description and the direction.
+    const FRAMEWORK_FIELDS = new Set(['input', 'expected', 'text', 'uri', 'inverse']);
+
+    // Vector fields that describe the vector and configure nothing. Every other
+    // field must reach the instance through a setter or a property of its name,
+    // or the vector fails - so this list is the only way a field can be left
+    // unapplied, and it must stay this small. A field naming anything an
+    // algorithm could be configured with never belongs here: give the algorithm
+    // the setting, or drop the field.
+    // - roundTripOnly: marks a vector without an expected output, checked by
+    //   round trip alone. A missing `expected` already means that; the flag
+    //   only says so, and a vector carrying both is refused as contradictory.
+    const DESCRIPTIVE_FIELDS = new Set(['roundTripOnly']);
+
+    // Fields with a dedicated setter, in the order they are applied. `seed`
+    // comes last of all: a generator's state size or mode must be in place
+    // before it is seeded.
+    const SETTER_FIELDS = [
+        ['key', 'setKey'], ['iv', 'setIV'], ['nonce', 'setNonce'], ['iv1', 'setIV1'], ['iv2', 'setIV2'],
+        ['key2', 'setKey2'], ['tweak', 'setTweak'], ['tweakKey', 'setTweakKey'],
+        ['aad', 'setAAD'], ['tagSize', 'setTagSize'], ['tagLength', 'setTagLength'], ['tag', 'setTag'],
+        ['radix', 'setRadix'], ['alphabet', 'setAlphabet'],
+        ['salt', 'setSalt'], ['info', 'setInfo'], ['outputSize', 'setOutputSize'], ['OutputSize', 'setOutputSize'],
+        ['hashFunction', 'setHashFunction'], ['password', 'setPassword'], ['iterations', 'setIterations']
+    ];
+    const SEED_FIELD = ['seed', 'setSeed'];
+
+    /**
+     * Apply every field of a vector to an instance, or throw. A field is
+     * applied when it is a framework field, was consumed by the cipher-mode
+     * setup, is a declared descriptive field, or reaches the instance through a
+     * setter or a property of its name. Anything else - a misspelling, or a
+     * setting the algorithm does not have - throws, naming the field, so a
+     * vector can never pass while a setting it names was ignored. An error
+     * thrown while setting a field propagates the same way.
+     * @param {object} instance - Instance to configure
+     * @param {object} vector - Test vector
+     * @param {string} algorithmName - For the error message
+     * @param {Set<string>} [consumed] - Fields the cipher-mode setup consumed
+     */
+    function _applyVectorProperties(instance, vector, algorithmName, consumed) {
+        const applied = new Set(consumed || []);
+        const name = algorithmName || 'the algorithm';
+
+        if (vector.roundTripOnly && vector.expected !== undefined && vector.expected.length > 0) {
+            throw new Error(`Vector field 'roundTripOnly' contradicts its expected value (${name})`);
+        }
+
+        // A key-encryption key goes to setKEK, or to setKey where there is none
         if (vector.kek !== undefined) {
-            _applyProperty(instance, vector, 'kek', 'setKEK');
-            if (typeof instance.setKEK !== 'function' && typeof instance.setKey === 'function') {
-                _applyProperty(instance, {...vector, key: vector.kek}, 'key', 'setKey');
-            }
-        } else {
-            _applyProperty(instance, vector, 'key', 'setKey');
+            const asKek = _applyProperty(instance, vector, 'kek', 'setKEK', name);
+            const asKey = typeof instance.setKEK !== 'function' && typeof instance.setKey === 'function'
+                && _applyProperty(instance, { key: vector.kek }, 'key', 'setKey', name);
+            if (asKek || asKey) applied.add('kek');
         }
 
-        // IV/Nonce
-        _applyProperty(instance, vector, 'iv', 'setIV');
-        _applyProperty(instance, vector, 'nonce', 'setNonce');
-        _applyProperty(instance, vector, 'iv1', 'setIV1');
-        _applyProperty(instance, vector, 'iv2', 'setIV2');
-
-        // Dual keys
-        _applyProperty(instance, vector, 'key2', 'setKey2');
-
-        // Tweaks
-        _applyProperty(instance, vector, 'tweak', 'setTweak');
-        _applyProperty(instance, vector, 'tweakKey', 'setTweakKey');
-
-        // AEAD
-        _applyProperty(instance, vector, 'aad', 'setAAD');
-        _applyProperty(instance, vector, 'tagSize', 'setTagSize');
-        _applyProperty(instance, vector, 'tagLength', 'setTagLength');
-        _applyProperty(instance, vector, 'tag', 'setTag');
-
-        // Format-preserving encryption
-        _applyProperty(instance, vector, 'radix', 'setRadix');
-        _applyProperty(instance, vector, 'alphabet', 'setAlphabet');
-
-        // KDF properties
-        _applyProperty(instance, vector, 'salt', 'setSalt');
-        _applyProperty(instance, vector, 'info', 'setInfo');
-        _applyProperty(instance, vector, 'outputSize', 'setOutputSize');
-        _applyProperty(instance, vector, 'OutputSize', 'setOutputSize');
-        _applyProperty(instance, vector, 'hashFunction', 'setHashFunction');
-        _applyProperty(instance, vector, 'password', 'setPassword');
-        _applyProperty(instance, vector, 'iterations', 'setIterations');
-
-        // Block size (for Kalyna and other variable block size algorithms)
-        // Use property setter, not method call
-        if (vector.blockSize !== undefined && 'blockSize' in instance) {
-            instance.blockSize = vector.blockSize;
+        for (const [field, setter] of SETTER_FIELDS) {
+            if (_applyProperty(instance, vector, field, setter, name)) applied.add(field);
         }
 
-        // Apply any other properties
-        const handledProps = new Set([
-            'input', 'expected', 'text', 'uri', 'key', 'kek', 'key2', 'iv', 'iv1', 'iv2',
-            'nonce', 'tweak', 'tweakKey', 'aad', 'tagSize', 'tagLength', 'tag', 'radix',
-            'alphabet', 'salt', 'info', 'outputSize', 'OutputSize', 'hashFunction',
-            'password', 'iterations', 'blockSize', 'seed'
-        ]);
-
-        Object.keys(vector).forEach(prop => {
-            if (!handledProps.has(prop) && vector[prop] !== undefined) {
-                try {
-                    if (prop in instance) {
-                        instance[prop] = vector[prop];
-                    }
-                } catch (error) {
-                    // Silently ignore
-                }
+        // Every other field goes to the property of its name
+        for (const prop of Object.keys(vector)) {
+            if (vector[prop] === undefined || FRAMEWORK_FIELDS.has(prop) || DESCRIPTIVE_FIELDS.has(prop)) continue;
+            if (prop === 'kek' || prop === SEED_FIELD[0] || SETTER_FIELDS.some(([field]) => field === prop)) continue;
+            if (prop in instance) {
+                _setField(instance, prop, () => { instance[prop] = vector[prop]; }, name);
+                applied.add(prop);
             }
-        });
+        }
 
-        // PRNG seed (apply AFTER other properties like stateSize, operationMode, etc.)
-        _applyProperty(instance, vector, 'seed', 'setSeed');
+        if (_applyProperty(instance, vector, SEED_FIELD[0], SEED_FIELD[1], name)) applied.add(SEED_FIELD[0]);
+
+        for (const prop of Object.keys(vector)) {
+            if (vector[prop] === undefined || FRAMEWORK_FIELDS.has(prop) || DESCRIPTIVE_FIELDS.has(prop)) continue;
+            if (!applied.has(prop)) {
+                throw new Error(`Vector field '${prop}' is not applied: ${name} has no setter or property of that name`);
+            }
+        }
     }
 
-    function _applyProperty(instance, vector, vectorProp, methodName) {
-        if (vector[vectorProp] === undefined) return;
+    /**
+     * Apply one field through its setter method or its property.
+     * @returns {boolean} Whether the instance had either
+     */
+    function _applyProperty(instance, vector, vectorProp, methodName, algorithmName) {
+        if (vector[vectorProp] === undefined) return false;
 
-        const setterMethod = methodName || `set${vectorProp.charAt(0).toUpperCase()}${vectorProp.slice(1)}`;
+        if (typeof instance[methodName] === 'function') {
+            _setField(instance, vectorProp, () => instance[methodName](vector[vectorProp]), algorithmName);
+            return true;
+        }
+        if (vectorProp in instance) {
+            _setField(instance, vectorProp, () => { instance[vectorProp] = vector[vectorProp]; }, algorithmName);
+            return true;
+        }
+        return false;
+    }
 
-        if (typeof instance[setterMethod] === 'function') {
-            instance[setterMethod](vector[vectorProp]);
-        } else if (vectorProp in instance) {
-            instance[vectorProp] = vector[vectorProp];
+    function _setField(instance, field, apply, algorithmName) {
+        try {
+            apply();
+        } catch (error) {
+            throw new Error(`Setting vector field '${field}' on ${algorithmName} failed: ${error && error.message}`);
         }
     }
 
@@ -885,7 +917,7 @@
             const decodeInstance = algorithm.CreateInstance(true); // true = decode mode
             if (!decodeInstance) return false;
 
-            _applyVectorProperties(decodeInstance, vector);
+            ConfigureInstance(algorithm, decodeInstance, vector);
             decodeInstance.Feed(encodedOutput);
             const decodedResult = decodeInstance.Result();
 
@@ -893,7 +925,7 @@
             const reEncodeInstance = algorithm.CreateInstance(false); // false = encode mode
             if (!reEncodeInstance) return false;
 
-            _applyVectorProperties(reEncodeInstance, vector);
+            ConfigureInstance(algorithm, reEncodeInstance, vector);
             reEncodeInstance.Feed(decodedResult);
             const reEncodedResult = reEncodeInstance.Result();
 
