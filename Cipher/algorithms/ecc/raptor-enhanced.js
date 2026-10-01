@@ -307,12 +307,16 @@
       this.U = 0;                      // U parameter (LDPC overhead)
 
       // Matrices and graphs
+      /** @type {SparseMatrix} */
       this.constraintMatrix = null;    // A matrix from RFC 5053 Section 5.4.2
       this.ltGraph = null;             // LT encoding graph
 
       // Utilities
+      /** @type {GaloisField} */
       this.gf = new GaloisField(2, 8); // GF(256) for symbol operations
+      /** @type {PerformanceProfiler} */
       this.profiler = new PerformanceProfiler();
+      /** @type {SeededRandom} */
       this.rng = new SeededRandom(0);
     }
 
@@ -893,6 +897,7 @@
                          Math.ceil(this.k * this.targetOverhead) + 10);
 
       // Build decoding matrix from received symbols
+      /** @type {SparseMatrix} */
       const decodingMatrix = new SparseMatrix(n, this.L);
       /** @type {uint8[]} */
       const received = this.encodedSymbols.slice(0, n);
