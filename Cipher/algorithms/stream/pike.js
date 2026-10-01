@@ -5,337 +5,288 @@
  * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function () {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  // Environment detection and dependency loading
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-      return;
-    }
-  }
+  if (!AlgorithmFramework) throw new Error('AlgorithmFramework dependency is required');
+  if (!OpCodes) throw new Error('OpCodes dependency is required');
 
-  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-    try {
-      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
-    } catch (e) {
-      console.error('Failed to load AlgorithmFramework:', e.message);
-      return;
-    }
-  }
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, CountryCode,
+          StreamCipherAlgorithm, IAlgorithmInstance, LinkItem, Vulnerability } = AlgorithmFramework;
 
-  const PIKE = {
-    // Required metadata following CONTRIBUTING.md
-    name: "PIKE",
-    description: "Educational implementation inspired by Pike stream cipher. Designed by Ross Anderson using three lagged Fibonacci generators with clock control mechanism.",
-    inventor: "Ross Anderson",
-    year: 1994,
-    country: "GB",
-    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
-    subCategory: "Stream Cipher",
-    securityStatus: global.AlgorithmFramework ? global.AlgorithmFramework.SecurityStatus.EDUCATIONAL : "educational",
-    securityNotes: "Educational implementation only. Pike was designed to replace FISH but has potential vulnerabilities. Use only for educational purposes.",
+  /** @type {int32} */
+  const KEY_SIZE = 32;      // 256-bit default key
+  /** @type {int32} */
+  const IV_SIZE = 16;       // 128-bit IV
 
-    documentation: [
-      {text: "Pike Cipher Wikipedia", uri: "https://en.wikipedia.org/wiki/Pike_(cipher)"},
-      {text: "Lagged Fibonacci Generators", uri: "https://en.wikipedia.org/wiki/Lagged_Fibonacci_generator"},
-      {text: "Ross Anderson's Work", uri: "https://www.cl.cam.ac.uk/~rja14/"}
-    ],
+  // LFG parameters (simplified Pike-inspired)
+  /** @type {int32} */
+  const LAG_A = 55;         // a_i = a_{i-55} + a_{i-24} (mod 2^32)
+  /** @type {int32} */
+  const TAP_A = 24;
+  /** @type {int32} */
+  const LAG_B = 57;         // b_i = b_{i-57} + b_{i-7} (mod 2^32)
+  /** @type {int32} */
+  const TAP_B = 7;
+  /** @type {int32} */
+  const LAG_C = 58;         // c_i = c_{i-58} + c_{i-19} (mod 2^32)
+  /** @type {int32} */
+  const TAP_C = 19;
 
-    references: [
-      {text: "FISH Cryptanalysis", uri: "https://www.cl.cam.ac.uk/~rja14/Papers/fibonacci.pdf"},
-      {text: "Pike Design Notes", uri: "https://en.wikipedia.org/wiki/Pike_(cipher)"},
-      {text: "Anderson's Publications", uri: "https://www.cl.cam.ac.uk/~rja14/papers.html"}
-    ],
+  /** @type {uint32} */
+  const GOLDEN_RATIO = 0x9E3779B9;
 
-    knownVulnerabilities: [
-      {
-        type: "Educational Implementation",
-        text: "This is a simplified educational implementation",
-        mitigation: "Use only for learning about lagged Fibonacci generators"
-      }
-    ],
-
-    tests: [
-      {
-        text: "Pike Educational Test Vector 1 (Empty)",
-        uri: "Educational test case",
-        key: global.OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-        iv: global.OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-        input: global.OpCodes.Hex8ToBytes(""),
-        expected: global.OpCodes.Hex8ToBytes("")
-      },
-      {
-        text: "Pike Educational Test Vector 2 (Single Byte)",
-        uri: "Educational test case",
-        key: global.OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-        iv: global.OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-        input: global.OpCodes.Hex8ToBytes("00"),
-        expected: global.OpCodes.Hex8ToBytes("20")
-      },
-      {
-        text: "Pike Educational Test Vector 3 (Two Bytes)",
-        uri: "Educational test case",
-        key: global.OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-        iv: global.OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-        input: global.OpCodes.Hex8ToBytes("0001"),
-        expected: global.OpCodes.Hex8ToBytes("20BF")
-      },
-      {
-        text: "Pike Educational Test Vector 4 (Block)",
-        uri: "Educational test case",
-        key: global.OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
-        iv: global.OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-        input: global.OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-        expected: global.OpCodes.Hex8ToBytes("20BF4E19EC9F6A19F89B3EFDB47732D1")
-      }
-    ],
-
-    // Legacy interface properties
-    internalName: 'pike',
-    minKeyLength: 32,
-    maxKeyLength: 32,
-    stepKeyLength: 1,
-    minBlockSize: 1,
-    maxBlockSize: 65536,
-    stepBlockSize: 1,
-    instances: {},
-    cantDecode: false,
-    isInitialized: false,
-
-    // Pike educational parameters
-    KEY_SIZE: 32,       // 256-bit key
-    IV_SIZE: 16,        // 128-bit IV
-
-    // LFG parameters (simplified Pike-inspired)
-    LAG_A: 55, TAP_A: 24,   // a_i = a_{i-55} + a_{i-24} (mod 2^32)
-    LAG_B: 57, TAP_B: 7,    // b_i = b_{i-57} + b_{i-7} (mod 2^32)
-    LAG_C: 58, TAP_C: 19,   // c_i = c_{i-58} + c_{i-19} (mod 2^32)
-
-    // Initialize algorithm
-    Init: function() {
-      /** @type {boolean} */
-      this.isInitialized = true;
-      return true;
-    },
-
-    // Key setup for legacy interface
-    KeySetup: function(key) {
-      if (!key || key.length < 8) {
-        throw new Error('Pike requires at least 64-bit (8 byte) key');
-      }
-
-      // Accept various key sizes and adapt them to the required size
-      let adaptedKey;
-      if (key.length === this.KEY_SIZE) {
-        adaptedKey = global.OpCodes.CopyArray(key);
-      } else if (key.length > this.KEY_SIZE) {
-        // Truncate longer keys
-        adaptedKey = key.slice(0, this.KEY_SIZE);
-      } else {
-        // Extend shorter keys by repetition
-        adaptedKey = new Array(this.KEY_SIZE);
-        for (let i = 0; i < this.KEY_SIZE; i++) {
-          adaptedKey[i] = key[i % key.length];
-        }
-      }
-
-      this.key = adaptedKey;
-      this.keyScheduled = true;
-      return 'pike-educational-' + Math.random().toString(36).substr(2, 9);
-    },
-
-    // Educational Pike-inspired stream function
-    educationalPike: function(key, iv, data) {
-      // Initialize three LFGs with key and IV material
-      const lfgA = new Array(this.LAG_A);
-      const lfgB = new Array(this.LAG_B);
-      const lfgC = new Array(this.LAG_C);
-
-      // Initialize LFG A with key material
-      for (let i = 0; i < this.LAG_A; i++) {
-        lfgA[i] = global.OpCodes.Pack32LE(
-          key[(i * 4) % key.length], key[(i * 4 + 1) % key.length],
-          key[(i * 4 + 2) % key.length], key[(i * 4 + 3) % key.length]
-        );
-      }
-
-      // Initialize LFG B with key material (offset)
-      for (let i = 0; i < this.LAG_B; i++) {
-        lfgB[i] = global.OpCodes.Pack32LE(
-          key[(i * 4 + 8) % key.length], key[(i * 4 + 9) % key.length],
-          key[(i * 4 + 10) % key.length], key[(i * 4 + 11) % key.length]
-        );
-      }
-
-      // Initialize LFG C with key material (different offset)
-      for (let i = 0; i < this.LAG_C; i++) {
-        lfgC[i] = global.OpCodes.Pack32LE(
-          key[(i * 4 + 16) % key.length], key[(i * 4 + 17) % key.length],
-          key[(i * 4 + 18) % key.length], key[(i * 4 + 19) % key.length]
-        );
-      }
-
-      // Mix in IV
-      if (iv && iv.length >= 16) {
-        for (let i = 0; i < 4; i++) {
-          const ivWord = global.OpCodes.Pack32LE(
-            iv[i * 4], iv[i * 4 + 1], iv[i * 4 + 2], iv[i * 4 + 3]
-          );
-          lfgA[i] = global.OpCodes.Xor32(lfgA[i], ivWord);
-          lfgB[i] = global.OpCodes.Xor32(lfgB[i], ivWord);
-          lfgC[i] = global.OpCodes.Xor32(lfgC[i], ivWord);
-        }
-      }
-
-      // LFG positions
-      let posA = 0, posB = 0, posC = 0;
-
-      // Generate keystream and encrypt data
+  /**
+   * Fill a register with little-endian words read cyclically from the key.
+   * An empty key reads as zero bytes.
+   * @param {uint8[]} key - Key bytes
+   * @param {int32} length - Register length in words
+   * @param {int32} offset - Byte offset of the first word in the key
+   * @returns {uint32[]} Register words
+   */
+  function loadRegister(key, length, offset) {
+    /** @type {uint32[]} */
+    const reg = new Array(length);
+    for (let i = 0; i < length; i++) {
       /** @type {uint8[]} */
-      const output = [];
-
-      for (let i = 0; i < data.length; i++) {
-        // Simplified keystream generation (Pike-inspired but educational)
-        // Mix the LFG states to create keystream
-
-        // Simple state mixing for educational purposes
-        const mixA = global.OpCodes.ToUint32(lfgA[posA % this.LAG_A] + lfgA[(posA + this.TAP_A) % this.LAG_A]);
-        const mixB = global.OpCodes.ToUint32(lfgB[posB % this.LAG_B] + lfgB[(posB + this.TAP_B) % this.LAG_B]);
-        const mixC = global.OpCodes.ToUint32(lfgC[posC % this.LAG_C] + lfgC[(posC + this.TAP_C) % this.LAG_C]);
-
-        // Update LFG states
-        lfgA[posA % this.LAG_A] = mixA;
-        lfgB[posB % this.LAG_B] = mixB;
-        lfgC[posC % this.LAG_C] = mixC;
-
-        // Generate keystream by combining all three
-        const keystreamWord = global.OpCodes.Xor32(global.OpCodes.Xor32(global.OpCodes.Xor32(mixA, mixB), mixC), (i * 0x9E3779B9));
-        const keystreamByte = global.OpCodes.And32((keystreamWord + i), 0xFF);
-
-        output.push(global.OpCodes.Xor32(data[i], keystreamByte));
-
-        // Advance positions
-        posA = (posA + 1) % this.LAG_A;
-        posB = (posB + 1) % this.LAG_B;
-        posC = (posC + 1) % this.LAG_C;
+      const b = [0, 0, 0, 0];
+      if (key.length > 0) {
+        for (let k = 0; k < 4; k++) b[k] = key[(i * 4 + offset + k) % key.length];
       }
+      reg[i] = OpCodes.Pack32LE(b[0], b[1], b[2], b[3]);
+    }
+    return reg;
+  }
 
-      return output;
-    },
+  /**
+   * Educational Pike-inspired stream function: encrypts or decrypts `data`.
+   * @param {uint8[]} key - Key bytes (any length)
+   * @param {uint8[]} iv - IV bytes; mixed in only when at least 16 long
+   * @param {uint8[]} data - Input bytes
+   * @returns {uint8[]} Output bytes
+   */
+  function educationalPike(key, iv, data) {
+    // Initialize three LFGs with key material at different offsets
+    /** @type {uint32[]} */
+    const lfgA = loadRegister(key, LAG_A, 0);
+    /** @type {uint32[]} */
+    const lfgB = loadRegister(key, LAG_B, 8);
+    /** @type {uint32[]} */
+    const lfgC = loadRegister(key, LAG_C, 16);
 
-    // Legacy cipher interface
-    szEncryptBlock: function(blockIndex, plaintext) {
-      if (!this.keyScheduled) {
-        throw new Error('Key not set up');
+    // Mix in IV
+    if (iv.length >= IV_SIZE) {
+      for (let i = 0; i < 4; i++) {
+        const ivWord = OpCodes.Pack32LE(iv[i * 4], iv[i * 4 + 1], iv[i * 4 + 2], iv[i * 4 + 3]);
+        lfgA[i] = OpCodes.Xor32(lfgA[i], ivWord);
+        lfgB[i] = OpCodes.Xor32(lfgB[i], ivWord);
+        lfgC[i] = OpCodes.Xor32(lfgC[i], ivWord);
       }
+    }
 
-      const iv = OpCodes.CreateArray(this.IV_SIZE, 0);
-      iv[0] = global.OpCodes.And32(blockIndex, 0xFF);
-      iv[1] = global.OpCodes.And32(global.OpCodes.ShiftR32(blockIndex, 8), 0xFF);
+    // LFG positions
+    /** @type {int32} */
+    let posA = 0;
+    /** @type {int32} */
+    let posB = 0;
+    /** @type {int32} */
+    let posC = 0;
 
-      return this.educationalPike(this.key, iv, plaintext);
-    },
+    /** @type {uint8[]} */
+    const output = [];
+    for (let i = 0; i < data.length; i++) {
+      // Simple state mixing for educational purposes
+      const mixA = OpCodes.Add32(lfgA[posA], lfgA[(posA + TAP_A) % LAG_A]);
+      const mixB = OpCodes.Add32(lfgB[posB], lfgB[(posB + TAP_B) % LAG_B]);
+      const mixC = OpCodes.Add32(lfgC[posC], lfgC[(posC + TAP_C) % LAG_C]);
 
-    szDecryptBlock: function(blockIndex, ciphertext) {
-      if (!this.keyScheduled) {
-        throw new Error('Key not set up');
-      }
+      // Update LFG states
+      lfgA[posA] = mixA;
+      lfgB[posB] = mixB;
+      lfgC[posC] = mixC;
 
-      const iv = OpCodes.CreateArray(this.IV_SIZE, 0);
-      iv[0] = global.OpCodes.And32(blockIndex, 0xFF);
-      iv[1] = global.OpCodes.And32(global.OpCodes.ShiftR32(blockIndex, 8), 0xFF);
+      // Generate keystream by combining all three
+      const keystreamWord = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(mixA, mixB), mixC), OpCodes.Mul32(i, GOLDEN_RATIO));
+      const keystreamByte = OpCodes.ToUint8(OpCodes.Add32(keystreamWord, i));
 
-      return this.educationalPike(this.key, iv, ciphertext);
-    },
+      output.push(OpCodes.Xor8(data[i], keystreamByte));
 
-    // Create algorithm instance (required by AlgorithmFramework)
-    CreateInstance: function(isDecrypt) {
-      return {
-        _instance: null,
-        _inputData: [],
-        _key: null,
-        _iv: null,
+      // Advance positions
+      posA = (posA + 1) % LAG_A;
+      posB = (posB + 1) % LAG_B;
+      posC = (posC + 1) % LAG_C;
+    }
 
-        set key(keyData) {
-          this._key = keyData;
+    return output;
+  }
+
+  /**
+   * Pike-inspired educational stream cipher
+   * @class
+   * @extends {StreamCipherAlgorithm}
+   */
+  class PikeAlgorithm extends StreamCipherAlgorithm {
+    constructor() {
+      super();
+
+      this.name = "PIKE";
+      this.description = "Educational implementation inspired by Pike stream cipher. Designed by Ross Anderson using three lagged Fibonacci generators with clock control mechanism.";
+      this.inventor = "Ross Anderson";
+      this.year = 1994;
+      this.country = CountryCode.GB;
+      this.category = CategoryType.STREAM;
+      this.subCategory = "Stream Cipher";
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      /** @type {string} */
+      this.securityNotes = "Educational implementation only. Pike was designed to replace FISH but has potential vulnerabilities. Use only for educational purposes.";
+
+      this.documentation = [
+        new LinkItem("Pike Cipher Wikipedia", "https://en.wikipedia.org/wiki/Pike_(cipher)"),
+        new LinkItem("Lagged Fibonacci Generators", "https://en.wikipedia.org/wiki/Lagged_Fibonacci_generator"),
+        new LinkItem("Ross Anderson's Work", "https://www.cl.cam.ac.uk/~rja14/")
+      ];
+
+      this.references = [
+        new LinkItem("FISH Cryptanalysis", "https://www.cl.cam.ac.uk/~rja14/Papers/fibonacci.pdf"),
+        new LinkItem("Pike Design Notes", "https://en.wikipedia.org/wiki/Pike_(cipher)"),
+        new LinkItem("Anderson's Publications", "https://www.cl.cam.ac.uk/~rja14/papers.html")
+      ];
+
+      this.knownVulnerabilities = [
+        new Vulnerability("Educational Implementation", "This is a simplified educational implementation", "Use only for learning about lagged Fibonacci generators")
+      ];
+
+      this.tests = [
+        {
+          text: "Pike Educational Test Vector 1 (Empty)",
+          uri: "Educational test case",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          iv: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          input: OpCodes.Hex8ToBytes(""),
+          expected: OpCodes.Hex8ToBytes("")
         },
-
-        get key() {
-          return this._key ? [...this._key] : null;
+        {
+          text: "Pike Educational Test Vector 2 (Single Byte)",
+          uri: "Educational test case",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          iv: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          input: OpCodes.Hex8ToBytes("00"),
+          expected: OpCodes.Hex8ToBytes("20")
         },
-
-        set iv(ivData) {
-          this._iv = ivData;
+        {
+          text: "Pike Educational Test Vector 3 (Two Bytes)",
+          uri: "Educational test case",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          iv: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          input: OpCodes.Hex8ToBytes("0001"),
+          expected: OpCodes.Hex8ToBytes("20BF")
         },
-
-        get iv() {
-          return this._iv ? [...this._iv] : null;
-        },
-
-        Feed: function(data) {
-          // Feed is a streaming interface: successive calls extend the message
-          // rather than replace it, so Feed(a); Feed(b) encrypts the same bytes
-          // as Feed(a || b).
-          if (!this._inputData) this._inputData = [];
-          if (Array.isArray(data)) {
-            for (let i = 0; i < data.length; i++) this._inputData.push(data[i]);
-          } else if (typeof data === 'string') {
-            for (let i = 0; i < data.length; i++) {
-              this._inputData.push(data.charCodeAt(i));
-            }
-          }
-        },
-
-        Result: function() {
-          if (!this._inputData) {
-            return [];
-          }
-
-          // Use default key/iv if not provided
-          const key = this._key ? this._key : OpCodes.CreateArray(PIKE.KEY_SIZE, 0);
-          const iv = this._iv ? this._iv : OpCodes.CreateArray(PIKE.IV_SIZE, 0);
-
-          return PIKE.educationalPike(key, iv, this._inputData);
+        {
+          text: "Pike Educational Test Vector 4 (Block)",
+          uri: "Educational test case",
+          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F"),
+          iv: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+          expected: OpCodes.Hex8ToBytes("20BF4E19EC9F6A19F89B3EFDB47732D1")
         }
-      };
-    },
-
-    ClearData: function() {
-      if (this.key) {
-        global.OpCodes.ClearArray(this.key);
-      }
-      this.keyScheduled = false;
+      ];
     }
-  };
 
-  // Auto-register with global cipher registry
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    try {
-      global.Cipher.Add(PIKE);
-    } catch (e) {
-      console.error('Failed to register Pike with global cipher registry:', e.message);
+    /**
+     * Create a cipher instance (encryption and decryption are identical)
+     * @param {boolean} [isInverse=false] - Unused: keystream XOR is its own inverse
+     * @returns {PikeInstance} New instance
+     */
+    CreateInstance(isInverse = false) {
+      return new PikeInstance(this, isInverse);
     }
   }
 
-  // Auto-register with AlgorithmFramework if available
-  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
-    try {
-      global.AlgorithmFramework.RegisterAlgorithm(PIKE);
-    } catch (e) {
-      console.error('Failed to register Pike with AlgorithmFramework:', e.message);
+  /**
+   * Pike-inspired cipher instance
+   * @class
+   * @extends {IAlgorithmInstance}
+   */
+  class PikeInstance extends IAlgorithmInstance {
+    /**
+     * @param {PikeAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Unused
+     */
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      /** @type {boolean} */
+      this.isInverse = isInverse;
+      /** @type {uint8[]} */
+      this.inputBuffer = [];
+      /** @type {uint8[]|null} */
+      this._key = null;
+      /** @type {uint8[]|null} */
+      this._iv = null;
+    }
+
+    /**
+     * @param {uint8[]|null} keyData - Key bytes (any length; none means 32 zero bytes)
+     */
+    set key(keyData) { this._key = keyData; }
+
+    /**
+     * @returns {uint8[]|null} Copy of the key
+     */
+    get key() { return this._key ? [...this._key] : null; }
+
+    /**
+     * @param {uint8[]|null} ivData - IV bytes (none means 16 zero bytes)
+     */
+    set iv(ivData) { this._iv = ivData; }
+
+    /**
+     * @returns {uint8[]|null} Copy of the IV
+     */
+    get iv() { return this._iv ? [...this._iv] : null; }
+
+    /**
+     * Append message bytes
+     * @param {uint8[]} data - Bytes to append
+     */
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      for (let i = 0; i < data.length; i++) this.inputBuffer.push(data[i]);
+    }
+
+    /**
+     * Encipher everything fed so far with a freshly keyed generator.
+     * @returns {uint8[]} Output bytes
+     */
+    Result() {
+      /** @type {uint8[]} */
+      const key = this._key ? this._key : OpCodes.CreateArray(KEY_SIZE, 0);
+      /** @type {uint8[]} */
+      const iv = this._iv ? this._iv : OpCodes.CreateArray(IV_SIZE, 0);
+      return educationalPike(key, iv, this.inputBuffer);
     }
   }
 
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = PIKE;
+  const algorithmInstance = new PikeAlgorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
 
-  // Global export
-  global.PIKE = PIKE;
-
-})(typeof global !== 'undefined' ? global : window);
+  return { PikeAlgorithm, PikeInstance };
+}));
