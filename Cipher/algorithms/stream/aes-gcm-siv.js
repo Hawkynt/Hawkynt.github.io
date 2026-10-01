@@ -8,270 +8,210 @@
  * Uses basic stream cipher principles with synthetic IV generation.
  */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  // Ensure environment dependencies are available
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    try {
-      global.OpCodes = require('../../OpCodes.js');
-    } catch (e) {
-      console.error('Failed to load OpCodes:', e.message);
-      return;
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
+
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, CountryCode,
+          StreamCipherAlgorithm, IAlgorithmInstance, LinkItem, Vulnerability } = AlgorithmFramework;
+
+  /** @type {int32} */
+  const STATE_SIZE = 16;   // Key and synthetic IV are 16 bytes
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  /**
+   * Simplified educational AES-GCM-SIV keystream construction
+   */
+  class AESGCMSIVAlgorithm extends StreamCipherAlgorithm {
+    constructor() {
+      super();
+
+      this.name = 'AES-GCM-SIV';
+      this.description = 'Simplified educational implementation of nonce-misuse resistant AEAD. Demonstrates synthetic IV generation and stream encryption principles for learning purposes.';
+      this.inventor = 'Shay Gueron, Yehuda Lindell';
+      this.year = 2017;
+      this.category = CategoryType.STREAM;
+      this.subCategory = 'AEAD Stream Cipher';
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      /** @type {string} */
+      this.securityNotes = 'Simplified educational implementation for learning AEAD concepts. Not suitable for production use.';
+      this.country = CountryCode.INTL;
+
+      this.documentation = [
+        new LinkItem('RFC 8452 - AES-GCM-SIV', 'https://tools.ietf.org/rfc/rfc8452.html'),
+        new LinkItem('Educational AEAD Overview', 'https://en.wikipedia.org/wiki/Authenticated_encryption')
+      ];
+
+      this.references = [
+        new LinkItem('Stream Cipher Principles', 'https://en.wikipedia.org/wiki/Stream_cipher')
+      ];
+
+      this.knownVulnerabilities = [
+        new Vulnerability(
+          'Educational Only',
+          'This is a simplified educational implementation not suitable for security applications.',
+          'Use only for educational purposes to understand AEAD concepts.'
+        )
+      ];
+
+      this.tests = [
+        {
+          text: 'Educational test vector',
+          uri: 'Educational implementation',
+          input: OpCodes.Hex8ToBytes('48656C6C6F'),
+          key: OpCodes.Hex8ToBytes('0102030405060708090A0B0C0D0E0F10'),
+          expected: OpCodes.Hex8ToBytes('6C85AF6353')
+        }
+      ];
+    }
+
+    /**
+     * @param {boolean} [isInverse=false] - Decryption flag (XOR stream: same operation)
+     * @returns {AESGCMSIVInstance} New instance
+     */
+    CreateInstance(isInverse = false) {
+      return new AESGCMSIVInstance(this, isInverse);
     }
   }
 
-  const OpCodes = global.OpCodes;
+  /**
+   * Keystream instance: the 16-byte key and the synthetic IV derived from it
+   */
+  class AESGCMSIVInstance extends IAlgorithmInstance {
+    /**
+     * @param {AESGCMSIVAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decryption flag
+     */
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      /** @type {boolean} */
+      this.isInverse = isInverse;
+      /** @type {uint8[]} */
+      this.inputBuffer = [];
+      /** @type {uint8[]|null} */
+      this._key = null;
+      /** @type {uint8[]} */
+      this._state = OpCodes.CreateArray(STATE_SIZE, 0);
+      /** @type {uint8[]} */
+      this._siv = OpCodes.CreateArray(STATE_SIZE, 0);
+    }
 
-  if (!global.AlgorithmFramework) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../AlgorithmFramework.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
+    /**
+     * @param {uint8[]|null} keyBytes - Non-empty key; truncated or zero-padded to 16 bytes
+     */
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
         return;
       }
-    } else {
-      console.error('AES-GCM-SIV cipher requires Cipher system to be loaded first');
-      return;
-    }
-  }
-
-  const AESGCMSIV = {
-    name: 'AES-GCM-SIV',
-    description: 'Simplified educational implementation of nonce-misuse resistant AEAD. Demonstrates synthetic IV generation and stream encryption principles for learning purposes.',
-    inventor: 'Shay Gueron, Yehuda Lindell',
-    year: 2017,
-    country: 'MULTI',
-    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
-    subCategory: 'AEAD Stream Cipher',
-    securityStatus: global.AlgorithmFramework ? global.AlgorithmFramework.SecurityStatus.EDUCATIONAL : 'educational',
-    securityNotes: 'Simplified educational implementation for learning AEAD concepts. Not suitable for production use.',
-
-    documentation: [
-      {text: 'RFC 8452 - AES-GCM-SIV', uri: 'https://tools.ietf.org/rfc/rfc8452.html'},
-      {text: 'Educational AEAD Overview', uri: 'https://en.wikipedia.org/wiki/Authenticated_encryption'}
-    ],
-
-    references: [
-      {text: 'Stream Cipher Principles', uri: 'https://en.wikipedia.org/wiki/Stream_cipher'}
-    ],
-
-    knownVulnerabilities: [
-      {
-        type: 'Educational Only',
-        text: 'This is a simplified educational implementation not suitable for security applications.',
-        mitigation: 'Use only for educational purposes to understand AEAD concepts.'
-      }
-    ],
-
-    tests: [
-      {
-        text: 'Educational test vector',
-        uri: 'Educational implementation',
-        input: [0x48, 0x65, 0x6C, 0x6C, 0x6F],
-        key: [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10],
-        expected: [0x6C, 0x85, 0xAF, 0x63, 0x53]
-      }
-    ],
-
-    // Internal state
-    key: null,
-    isInitialized: false,
-
-    /**
-     * Initialize cipher with empty state
-     */
-    Init: function() {
-      /** @type {uint8[]|null} */
-      this.key = null;
-      /** @type {boolean} */
-      this.isInitialized = false;
-      return true;
-    },
-
-    /**
-     * Setup key for simplified AES-GCM-SIV
-     * @param {uint8[]} key - Key as byte array
-     */
-    KeySetup: function(key) {
-      if (!key || key.length === 0) {
+      if (keyBytes.length === 0) {
         throw new Error('AES-GCM-SIV requires a non-empty key');
       }
+      this._key = [...keyBytes];
 
       // Pad key to 16 bytes for consistent operation
-      this.key = key.slice(0, 16);
-      while (this.key.length < 16) this.key.push(0);
-
-      /** @type {boolean} */
-      this.isInitialized = true;
-      return true;
-    },
+      for (let i = 0; i < STATE_SIZE; i++) {
+        this._state[i] = i < keyBytes.length ? keyBytes[i] : 0;
+      }
+      this._siv = this._generateSIV();
+    }
 
     /**
-     * Generate synthetic IV (deterministic, not data-dependent)
-     * @param {uint8[]} data - Input data (ignored for reversibility)
-     * @returns {uint8[]} Synthetic IV
+     * @returns {uint8[]|null} Copy of the key
      */
-    generateSIV: function(data) {
-      // Deterministic IV generation for educational purposes
-      /** @type {uint8[]} */
-      const siv = OpCodes.CreateArray(16, 0);
+    get key() {
+      return this._key ? [...this._key] : null;
+    }
 
-      // Generate IV based only on key (deterministic)
-      for (let i = 0; i < 16; i++) {
-        siv[i] = this.key[i];
-        siv[i] = OpCodes.Xor8(siv[i], OpCodes.RotL8(this.key[(i + 8) % 16], (i % 8) + 1));
+    /**
+     * @param {uint8[]} data - Input bytes
+     */
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      for (let i = 0; i < data.length; i++) this.inputBuffer.push(data[i]);
+    }
+
+    /**
+     * XOR the buffered input with the keystream (which starts afresh for every message)
+     * @returns {uint8[]} Output bytes
+     */
+    Result() {
+      if (!this._key) throw new Error('Key not set');
+
+      /** @type {uint8[]} */
+      const output = [];
+      for (let i = 0; i < this.inputBuffer.length; i++) {
+        output.push(OpCodes.Xor8(this.inputBuffer[i], this._keystreamByte(i)));
+      }
+      this.inputBuffer = [];
+      return output;
+    }
+
+    /**
+     * Synthetic IV, derived from the padded key only (deterministic)
+     * @returns {uint8[]} 16-byte synthetic IV
+     */
+    _generateSIV() {
+      /** @type {uint8[]} */
+      const siv = OpCodes.CreateArray(STATE_SIZE, 0);
+      for (let i = 0; i < STATE_SIZE; i++) {
+        siv[i] = this._state[i];
+        siv[i] = OpCodes.Xor8(siv[i], OpCodes.RotL8(this._state[(i + 8) % STATE_SIZE], (i % 8) + 1));
         siv[i] = OpCodes.Xor8(siv[i], OpCodes.ToByte(i * 17)); // Add position-based entropy
       }
-
       return siv;
-    },
-
-    /**
-     * Generate keystream bytes
-     * @param {uint8[]} data - Input data (used for SIV generation)
-     * @param {int32} length - Number of bytes to generate
-     * @returns {uint8[]} Keystream bytes
-     */
-    generateKeystream: function(data, length) {
-      /** @type {uint8[]} */
-      const siv = this.generateSIV(data);
-      /** @type {uint8[]} */
-      const keystream = [];
-
-      for (let i = 0; i < length; i++) {
-        // Simple keystream generation using SIV and key
-        /** @type {uint8} */
-        let byte = siv[i % 16];
-        byte = OpCodes.Xor8(byte, this.key[i % 16]);
-        byte = OpCodes.Xor8(byte, OpCodes.ToByte(i));
-        byte = OpCodes.RotL8(byte, (i % 8) + 1);
-        keystream.push(byte);
-      }
-
-      return keystream;
-    },
-
-    /**
-     * Encrypt/Decrypt data using simplified AES-GCM-SIV
-     * @param {uint8[]} data - Input data
-     * @returns {uint8[]} Output data
-     */
-    processData: function(data) {
-      if (!this.isInitialized) {
-        throw new Error('Cipher not initialized - call KeySetup first');
-      }
-
-      // Generate keystream based only on key, not input data (for reversibility)
-      /** @type {uint8[]} */
-      const noData = [];
-      /** @type {uint8[]} */
-      const keystream = this.generateKeystream(noData, data.length);
-      return OpCodes.XorArrays(data, keystream);
-    },
-
-    /**
-     * Encrypt block using AES-GCM-SIV
-     * @param {int32} blockIndex - Block index (position)
-     * @param {string|Array} input - Input data
-     * @returns {string|Array} Encrypted data
-     */
-    EncryptBlock: function(blockIndex, input) {
-      let inputBytes;
-      if (typeof input === 'string') {
-        inputBytes = OpCodes.AsciiToBytes(input);
-        const outputBytes = this.processData(inputBytes);
-        return String.fromCharCode(...outputBytes);
-      } else {
-        inputBytes = input;
-        return this.processData(inputBytes);
-      }
-    },
-
-    /**
-     * Decrypt block (same as encrypt for stream cipher)
-     * @param {int32} blockIndex - Block index (position)
-     * @param {string|Array} input - Input data
-     * @returns {string|Array} Decrypted data
-     */
-    DecryptBlock: function(blockIndex, input) {
-      return this.EncryptBlock(blockIndex, input);
-    },
-
-    /**
-     * Clear sensitive data
-     */
-    ClearData: function() {
-      if (this.key) {
-        OpCodes.ClearArray(this.key);
-        /** @type {uint8[]|null} */
-        this.key = null;
-      }
-      /** @type {boolean} */
-      this.isInitialized = false;
-    },
-
-    // Stream cipher interface for testing framework
-    CreateInstance: function(isDecrypt) {
-      const instance = {
-        _key: null,
-        _inputData: [],
-        _cipher: Object.create(AESGCMSIV),
-
-        set key(keyData) {
-          this._key = keyData;
-          this._cipher.KeySetup(keyData);
-        },
-
-        Feed: function(data) {
-          if (Array.isArray(data)) {
-            this._inputData = this._inputData.concat(data);
-          } else if (typeof data === 'string') {
-            for (let i = 0; i < data.length; i++) {
-              this._inputData.push(data.charCodeAt(i));
-            }
-          }
-        },
-
-        Result: function() {
-          if (!this._key) {
-            this._key = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10];
-            this._cipher.KeySetup(this._key);
-          }
-
-          return this._cipher.processData(this._inputData);
-        }
-      };
-
-      return instance;
     }
-  };
 
-  // Auto-register with AlgorithmFramework if available
-  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
-    global.AlgorithmFramework.RegisterAlgorithm(AESGCMSIV);
+    /**
+     * Keystream byte at a message position
+     * @param {int32} i - Position in the message
+     * @returns {uint8} Keystream byte
+     */
+    _keystreamByte(i) {
+      /** @type {uint8} */
+      let byte = this._siv[i % STATE_SIZE];
+      byte = OpCodes.Xor8(byte, this._state[i % STATE_SIZE]);
+      byte = OpCodes.Xor8(byte, OpCodes.ToByte(i));
+      return OpCodes.RotL8(byte, (i % 8) + 1);
+    }
   }
 
-  // Legacy registration
-  if (typeof global.RegisterAlgorithm === 'function') {
-    global.RegisterAlgorithm(AESGCMSIV);
+  // ===== REGISTRATION =====
+
+  const algorithmInstance = new AESGCMSIVAlgorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
 
-  // Auto-register with Cipher system if available
-  if (global.Cipher) {
-    global.Cipher.Add(AESGCMSIV);
-  }
+  // ===== EXPORTS =====
 
-  // Export to global scope
-  global.AESGCMSIV = AESGCMSIV;
-  global['AES-GCM-SIV'] = AESGCMSIV;
-
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = AESGCMSIV;
-  }
-
-})(typeof global !== 'undefined' ? global : window);
+  return { AESGCMSIVAlgorithm, AESGCMSIVInstance };
+}));
