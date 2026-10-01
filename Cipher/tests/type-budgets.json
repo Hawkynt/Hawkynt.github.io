@@ -898,7 +898,7 @@
   "algorithms/stream/f-fcsr.js": 0,
   "algorithms/stream/geffe.js": 0,
   "algorithms/stream/grain.js": 0,
-  "algorithms/stream/hc.js": 48,
+  "algorithms/stream/hc.js": 0,
   "algorithms/stream/leviathan.js": 0,
   "algorithms/stream/mickey.js": 243,
   "algorithms/stream/miller.js": 0,
