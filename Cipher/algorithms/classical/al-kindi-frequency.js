@@ -81,11 +81,10 @@
 
         this.tests = [
           {
-            text: "Caesar Cipher Analysis",
+            text: "Caesar Cipher Analysis (ciphertext shifted by 3, recovered by frequency analysis)",
             uri: "Historical cryptanalysis examples",
             input: OpCodes.AnsiToBytes("WKRV LV D VHFUHW PHVVDJH"),
             expected: OpCodes.AnsiToBytes("THOS IS A SECRET MESSAGE"),
-            shift: 3, // Caesar cipher for testing - frequency analysis approximation
             language: "english"
           },
           {
