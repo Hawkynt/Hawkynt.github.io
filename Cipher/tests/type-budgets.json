@@ -841,7 +841,7 @@
   "algorithms/stream/achterbahn.js": 0,
   "algorithms/stream/acorn.js": 0,
   "algorithms/stream/aegis-128.js": 0,
-  "algorithms/stream/aes-gcm-siv.js": 68,
+  "algorithms/stream/aes-gcm-siv.js": 0,
   "algorithms/stream/beth-piper.js": 0,
   "algorithms/stream/caracachs.js": 0,
   "algorithms/stream/chacha20.js": 0,
