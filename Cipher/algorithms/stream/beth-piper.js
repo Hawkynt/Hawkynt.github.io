@@ -225,7 +225,7 @@
      * @returns {uint8} 0 or 1
      */
     _keyBit(key, bitIndex) {
-      return OpCodes.UintToByte(OpCodes.And32(OpCodes.Shr32(key[OpCodes.Shr32(bitIndex, 3)], bitIndex % 8), 1));
+      return OpCodes.And8(OpCodes.Shr8(key[OpCodes.Shr32(bitIndex, 3)], bitIndex % 8), 1);
     }
 
     /**
@@ -288,12 +288,12 @@
      * @returns {uint8} Keystream byte
      */
     _generateByte() {
-      /** @type {uint32} */
+      /** @type {uint8} */
       let byte = 0;
       for (let bit = 0; bit < 8; bit++) {
-        byte = OpCodes.Or32(byte, OpCodes.Shl32(this._generateBit(), bit));
+        byte = OpCodes.Or8(byte, OpCodes.Shl8(this._generateBit(), bit));
       }
-      return OpCodes.UintToByte(byte);
+      return byte;
     }
   }
 
