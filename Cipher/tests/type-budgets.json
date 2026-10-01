@@ -53,7 +53,7 @@
   "algorithms/asymmetric/falcon.js": 35,
   "algorithms/asymmetric/frodokem.js": 4,
   "algorithms/asymmetric/hawk.js": 353,
-  "algorithms/asymmetric/hqc.js": 22,
+  "algorithms/asymmetric/hqc.js": 0,
   "algorithms/asymmetric/luc.js": 23,
   "algorithms/asymmetric/lwe-signature.js": 0,
   "algorithms/asymmetric/mayo.js": 100,
