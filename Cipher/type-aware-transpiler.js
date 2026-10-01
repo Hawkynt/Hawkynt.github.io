@@ -1609,6 +1609,8 @@
      */
     buildILAST(jsAst) {
       let ilAst = jsAst;
+      // The sibling data modules this file requires (before unwrapping drops the require calls)
+      const siblingSpecs = this._siblingModuleSpecs(jsAst);
 
       // Step 1: Unwrap UMD/IIFE module patterns to extract inner factory function
       ilAst = this.unwrapModulePatterns(ilAst);
@@ -1641,6 +1643,7 @@
       // before any expression is typed, so tier 2 and tier 3 do not depend on
       // the order in which methods happen to appear in the file.
       this._collectDeclaredTypes(ilAst);
+      this._loadSiblingModules(siblingSpecs);
 
       // Step 3: Normalize JavaScript-specific patterns to IL AST nodes
       // This converts super(), this.x, OpCodes.X(), Math.X(), Array methods, etc.
@@ -1929,6 +1932,75 @@
      * `/** @type {T} *\/ x = ...;` class field).
      * @param {Object} ast - AST after module unwrapping
      */
+    /**
+     * The sibling data modules a file requires: `require('./x.data')` and
+     * `require('./x.data.js')` (the shared tables and helper classes several
+     * algorithm files of a directory use, e.g. fountain-foundation.data.js).
+     * @param {Object} jsAst - AST before module unwrapping
+     * @returns {string[]} require specifiers
+     */
+    _siblingModuleSpecs(jsAst) {
+      const specs = new Set();
+      const visit = n => {
+        if (!n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(visit); return; }
+        if (n.type === 'CallExpression' && n.callee && n.callee.type === 'Identifier' && n.callee.name === 'require' &&
+            n.arguments && n.arguments[0] && n.arguments[0].type === 'Literal' && typeof n.arguments[0].value === 'string' &&
+            /^\.\.?\/.*\.data(\.js)?$/.test(n.arguments[0].value))
+          specs.add(n.arguments[0].value);
+        for (const key in n) {
+          if (key === 'loc' || key === 'range' || key === 'leadingComments') continue;
+          if (n[key] && typeof n[key] === 'object') visit(n[key]);
+        }
+      };
+      visit(jsAst);
+      return [...specs];
+    }
+
+    /**
+     * A sibling data module is typed by its own JSDoc (tier 3 of that file):
+     * its classes become known classes here (methods, fields, constructor
+     * parameters) and its exports - classes, functions, @type'd tables - are
+     * typed where a file destructures them (`const { SeededRandom } = FountainFoundation;`).
+     * Only in Node, and only when the parser was given the file's path
+     * (options.sourcePath); a sibling's own siblings are not followed.
+     * @param {string[]} specs - require specifiers (see _siblingModuleSpecs)
+     */
+    _loadSiblingModules(specs) {
+      this.siblingExports = new Map();
+      const sourcePath = this.options && this.options.sourcePath;
+      if (!sourcePath || !specs.length || this.options.siblingDepth || typeof require !== 'function') return;
+      let fs, path;
+      try { fs = require('fs'); path = require('path'); } catch (e) { return; }
+      for (const spec of specs) {
+        const file = path.resolve(path.dirname(sourcePath), spec.endsWith('.js') ? spec : spec + '.js');
+        let sibling;
+        const log = console.log, warn = console.warn;
+        console.log = console.warn = () => {};
+        try {
+          sibling = new TypeAwareJSASTParser(fs.readFileSync(file, 'utf8'), { sourcePath: file, siblingDepth: 1 });
+          sibling.parse();
+        } catch (e) {
+          continue;                                   // unreadable or unparsable: nothing known
+        } finally {
+          console.log = log; console.warn = warn;
+        }
+        const merge = (into, from) => { for (const [k, v] of from) if (!into.has(k)) into.set(k, v); };
+        for (const cls of sibling.localClassNames) {
+          if (this.localClassNames.has(cls)) continue;
+          this.localClassNames.add(cls);
+          this.siblingExports.set(cls, 'function');
+        }
+        merge(this.classMethodReturnTypes, sibling.classMethodReturnTypes);
+        merge(this.declaredMethodParams, sibling.declaredMethodParams);
+        merge(this.declaredFieldTypes, sibling.declaredFieldTypes);
+        merge(this.localSuperClasses, sibling.localSuperClasses);
+        for (const name of sibling.declaredFunctions.keys()) if (!this.siblingExports.has(name)) this.siblingExports.set(name, 'function');
+        for (const name of sibling.localFunctionNames || []) if (!this.siblingExports.has(name)) this.siblingExports.set(name, 'function');
+        for (const [name, type] of sibling.constantTypes || []) if (type && !this.siblingExports.has(name)) this.siblingExports.set(name, type);
+      }
+    }
+
     _collectDeclaredTypes(ast) {
       this.declaredFieldTypes = new Map();
       this.localSuperClasses = new Map();
@@ -2046,6 +2118,15 @@
       } else if (node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression' ||
                  node.type === 'ArrowFunctionExpression' || node.type === 'MethodDefinition') {
         newContext = { ...context, isModuleLevel: false };
+        // What `return` hands back is typed by the function's declared return
+        // type: the framework method it implements, else its own @returns.
+        if (node.type !== 'MethodDefinition') {
+          const framework = context && context.frameworkSignature && context.frameworkSignature.fn === node ? context.frameworkReturns : null;
+          newContext.returnType = framework || ilTypeFromJSDoc(node.typeInfo && node.typeInfo.returns) || null;
+          // kept on the node: a function re-transformed later in another
+          // context (a declarator's init) still types its returns by its own
+          node.declaredReturnType = newContext.returnType;
+        }
         pushNewScope = true;
       } else if (node.type === 'BlockStatement') {
         // Block statements don't change isModuleLevel but create a scope
@@ -2070,7 +2151,8 @@
         const framework = node.static || node.kind === 'get' || node.kind === 'set' ? null :
           this._frameworkMemberType(context.className, node.key.name, 'method');
         if (framework && node.value)
-          newContext = { ...newContext, frameworkSignature: { fn: node.value, params: framework.params || [] } };
+          newContext = { ...newContext, frameworkSignature: { fn: node.value, params: framework.params || [] },
+            frameworkReturns: ilTypeFromJSDoc(framework.returns) !== 'void' ? ilTypeFromJSDoc(framework.returns) : null };
 
         const returnType = ilTypeFromJSDoc(node.value?.typeInfo?.returns || node.value?.jsDoc?.returns?.type);
         if (returnType)
@@ -2325,6 +2407,12 @@
 
         case 'YieldExpression':
           return this._transformYieldExpression(node, context);
+
+        case 'ReturnStatement':
+          // `return { ... }` under `@returns {Settings}` is a Settings
+          if (node.argument && context && context.returnType)
+            this._applyContextualType(node.argument, context.returnType);
+          return node;
 
         default:
           return node;
@@ -2968,7 +3056,11 @@
      */
     _localClassOf(type) {
       const name = typeof type === 'string' ? type : type && typeof type === 'object' && !type.isArray ? type.name : null;
-      return name && this.localClassNames && this.localClassNames.has(name) ? name : null;
+      if (!name) return null;
+      // This file's classes (and those of the sibling data modules it loads),
+      // and the AlgorithmFramework's (`@param {HashFunctionAlgorithm} alg`).
+      const framework = (this.typeKnowledge && this.typeKnowledge.frameworkTypes) || {};
+      return (this.localClassNames && this.localClassNames.has(name)) || Object.prototype.hasOwnProperty.call(framework, name) ? name : null;
     }
 
     /**
@@ -2979,6 +3071,8 @@
      * @private
      */
     _localMethodParams(className, methodName) {
+      const framework = this._frameworkMemberType(className, methodName, 'method');
+      if (framework && framework.params) return framework.params.map(ilTypeFromJSDoc);
       for (let name = className, hops = 0; name && hops < 32; name = this.localSuperClasses.get(name), ++hops) {
         const params = this.declaredMethodParams.get(`${name}.${methodName}`);
         if (params) return params;
@@ -4558,20 +4652,36 @@
 
           // Then create individual assignments from the temp
           if (decl.id.type === 'ObjectPattern') {
+            // Destructuring a sibling data module (`const { SeededRandom } =
+            // FountainFoundation;`): its exports are typed by its JSDoc, and the
+            // module itself is a namespace named after the binding.
+            const exports = this.siblingExports || new Map();
+            const fromSibling = (decl.id.properties || []).some(p => exports.has(p.key?.name || p.key?.value));
+            if (fromSibling && transformedInit && transformedInit.type === 'Identifier' && !transformedInit.resultType) {
+              transformedInit.resultType = transformedInit.name;
+              transformedDeclarations[transformedDeclarations.length - 1].resultType = transformedInit.name;
+              transformedDeclarations[transformedDeclarations.length - 1].id.resultType = transformedInit.name;
+              this.registerVariableType(tempName, transformedInit.name);
+            }
+            const moduleType = fromSibling && transformedInit && transformedInit.type === 'Identifier' ? transformedInit.name : null;
             for (const prop of (decl.id.properties || [])) {
               const propName = prop.key?.name || prop.key?.value;
               const varName = prop.value?.name || propName;
+              const exported = fromSibling ? exports.get(propName) || null : null;
               transformedDeclarations.push({
                 type: 'VariableDeclarator',
-                id: { type: 'Identifier', name: varName },
+                id: { type: 'Identifier', name: varName, ...(exported ? { resultType: exported } : {}) },
                 init: {
                   type: 'MemberExpression',
-                  object: { type: 'Identifier', name: tempName },
+                  object: { type: 'Identifier', name: tempName, ...(moduleType ? { resultType: moduleType } : {}) },
                   property: { type: 'Identifier', name: propName },
-                  computed: false
+                  computed: false,
+                  ...(exported ? { resultType: exported } : {})
                 },
-                ilNodeType: 'DestructuredProperty'
+                ilNodeType: 'DestructuredProperty',
+                ...(exported ? { resultType: exported } : {})
               });
+              if (exported) this.registerVariableType(varName, exported);
             }
           } else if (decl.id.type === 'ArrayPattern') {
             // For array destructuring, element type is the array's element type
@@ -5277,6 +5387,8 @@
     _transformFunctionExpression(node, context) {
       const isArrow = node.type === 'ArrowFunctionExpression';
       const params = [];
+      // The function's own declared return type, not the enclosing one's
+      context = { ...context, returnType: node.declaredReturnType !== undefined ? node.declaredReturnType : ilTypeFromJSDoc(node.typeInfo && node.typeInfo.returns) || null };
 
       // Transform parameters
       for (const param of (node.params || [])) {
@@ -10631,9 +10743,14 @@
       let handler = null;
       if (this.currentToken && this.currentToken.type === 'KEYWORD' && this.currentToken.value === 'catch') {
         this.advance(); // consume 'catch'
-        this.expect('PUNCTUATION', '(');
-        const param = this.parseIdentifier();
-        this.expect('PUNCTUATION', ')');
+        this.skipComments();
+        // `catch {` (ES2019) binds no variable
+        let param = null;
+        if (this.currentToken && this.currentToken.type === 'PUNCTUATION' && this.currentToken.value === '(') {
+          this.expect('PUNCTUATION', '(');
+          param = this.parseIdentifier();
+          this.expect('PUNCTUATION', ')');
+        }
         const body = this.parseBlockStatement();
         
         handler = {
