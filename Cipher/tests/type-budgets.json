@@ -62,7 +62,7 @@
   "algorithms/asymmetric/perk.js": 0,
   "algorithms/asymmetric/rabin-williams.js": 23,
   "algorithms/asymmetric/rabin.js": 27,
-  "algorithms/asymmetric/rainbow.js": 212,
+  "algorithms/asymmetric/rainbow.js": 0,
   "algorithms/asymmetric/rsa.js": 20,
   "algorithms/asymmetric/schnorr.js": 15,
   "algorithms/asymmetric/sike.js": 18,
