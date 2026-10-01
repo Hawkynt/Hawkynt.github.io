@@ -18,23 +18,39 @@
  * Implementation: Based on Southern Storm Software reference implementation
  */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  // Load AlgorithmFramework
-  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
 
-  // Load OpCodes for cryptographic operations
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    global.OpCodes = require('../../OpCodes.js');
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           AeadAlgorithm, IAeadInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
-
-  const OpCodes = global.OpCodes;
 
   // Domain separation prefixes for SKINNY-AEAD variants
   const DOMAIN_SEP_M1 = 0x00;
@@ -1299,101 +1315,162 @@
   // Create and Register All Six Variants
   // ==========================================================================
 
-  const m1 = new SkinnyAeadAlgorithm(1, 16, 16, false);
-  m1.tests = [
-    {
-      text: 'SKINNY-AEAD-M1 Official Test Vector #1 (empty PT, empty AD)',
-      uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M1.txt',
-      input: OpCodes.Hex8ToBytes(''),
-      key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
-      nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
-      aad: OpCodes.Hex8ToBytes(''),
-      expected: OpCodes.Hex8ToBytes('99CE68EF7B52AAD0E11C6E2FC722426D')
-    },
-    {
-      text: 'SKINNY-AEAD-M1 Official Test Vector #2 (empty PT, 1 byte AD)',
-      uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M1.txt',
-      input: OpCodes.Hex8ToBytes(''),
-      key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
-      nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
-      aad: OpCodes.Hex8ToBytes('00'),
-      expected: OpCodes.Hex8ToBytes('4720E8EA3682D9E9DC5C83563705F8F4')
-    },
-    {
-      text: 'SKINNY-AEAD-M1 Official Test Vector #37 (1 byte PT, 3 bytes AD)',
-      uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M1.txt',
-      input: OpCodes.Hex8ToBytes('00'),
-      key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
-      nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
-      aad: OpCodes.Hex8ToBytes('000102'),
-      expected: OpCodes.Hex8ToBytes('859DB826629C124578ABA5A459E97A312F')
+  /**
+   * SKINNY-AEAD-M1 with its published test vectors
+   * @class
+   * @extends {SkinnyAeadAlgorithm}
+   */
+  class SkinnyAeadM1Algorithm extends SkinnyAeadAlgorithm {
+    constructor() {
+      super(1, 16, 16, false);
+      this.tests = [
+        {
+          text: 'SKINNY-AEAD-M1 Official Test Vector #1 (empty PT, empty AD)',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M1.txt',
+          input: OpCodes.Hex8ToBytes(''),
+          key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          aad: OpCodes.Hex8ToBytes(''),
+          expected: OpCodes.Hex8ToBytes('99CE68EF7B52AAD0E11C6E2FC722426D')
+        },
+        {
+          text: 'SKINNY-AEAD-M1 Official Test Vector #2 (empty PT, 1 byte AD)',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M1.txt',
+          input: OpCodes.Hex8ToBytes(''),
+          key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          aad: OpCodes.Hex8ToBytes('00'),
+          expected: OpCodes.Hex8ToBytes('4720E8EA3682D9E9DC5C83563705F8F4')
+        },
+        {
+          text: 'SKINNY-AEAD-M1 Official Test Vector #37 (1 byte PT, 3 bytes AD)',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M1.txt',
+          input: OpCodes.Hex8ToBytes('00'),
+          key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          aad: OpCodes.Hex8ToBytes('000102'),
+          expected: OpCodes.Hex8ToBytes('859DB826629C124578ABA5A459E97A312F')
+        }
+      ];
     }
-  ];
+  }
 
-  const m2 = new SkinnyAeadAlgorithm(2, 12, 16, false);
-  m2.tests = [
-    {
-      text: 'SKINNY-AEAD-M2 Official Test Vector #1',
-      uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M2.txt',
-      input: OpCodes.Hex8ToBytes(''),
-      key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
-      nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B'),
-      aad: OpCodes.Hex8ToBytes(''),
-      expected: OpCodes.Hex8ToBytes('B9E76FC4D90272FF24E6386BF522CFE3')
+  /**
+   * SKINNY-AEAD-M2 with its published test vectors
+   * @class
+   * @extends {SkinnyAeadAlgorithm}
+   */
+  class SkinnyAeadM2Algorithm extends SkinnyAeadAlgorithm {
+    constructor() {
+      super(2, 12, 16, false);
+      this.tests = [
+        {
+          text: 'SKINNY-AEAD-M2 Official Test Vector #1',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M2.txt',
+          input: OpCodes.Hex8ToBytes(''),
+          key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B'),
+          aad: OpCodes.Hex8ToBytes(''),
+          expected: OpCodes.Hex8ToBytes('B9E76FC4D90272FF24E6386BF522CFE3')
+        }
+      ];
     }
-  ];
+  }
 
-  const m3 = new SkinnyAeadAlgorithm(3, 16, 8, false);
-  m3.tests = [
-    {
-      text: 'SKINNY-AEAD-M3 Official Test Vector #1',
-      uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M3.txt',
-      input: OpCodes.Hex8ToBytes(''),
-      key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
-      nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
-      aad: OpCodes.Hex8ToBytes(''),
-      expected: OpCodes.Hex8ToBytes('62B08C0557EDCC94')
+  /**
+   * SKINNY-AEAD-M3 with its published test vectors
+   * @class
+   * @extends {SkinnyAeadAlgorithm}
+   */
+  class SkinnyAeadM3Algorithm extends SkinnyAeadAlgorithm {
+    constructor() {
+      super(3, 16, 8, false);
+      this.tests = [
+        {
+          text: 'SKINNY-AEAD-M3 Official Test Vector #1',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M3.txt',
+          input: OpCodes.Hex8ToBytes(''),
+          key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          aad: OpCodes.Hex8ToBytes(''),
+          expected: OpCodes.Hex8ToBytes('62B08C0557EDCC94')
+        }
+      ];
     }
-  ];
+  }
 
-  const m4 = new SkinnyAeadAlgorithm(4, 12, 8, false);
-  m4.tests = [
-    {
-      text: 'SKINNY-AEAD-M4 Official Test Vector #1',
-      uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M4.txt',
-      input: OpCodes.Hex8ToBytes(''),
-      key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
-      nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B'),
-      aad: OpCodes.Hex8ToBytes(''),
-      expected: OpCodes.Hex8ToBytes('F94B439573612A09')
+  /**
+   * SKINNY-AEAD-M4 with its published test vectors
+   * @class
+   * @extends {SkinnyAeadAlgorithm}
+   */
+  class SkinnyAeadM4Algorithm extends SkinnyAeadAlgorithm {
+    constructor() {
+      super(4, 12, 8, false);
+      this.tests = [
+        {
+          text: 'SKINNY-AEAD-M4 Official Test Vector #1',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M4.txt',
+          input: OpCodes.Hex8ToBytes(''),
+          key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B'),
+          aad: OpCodes.Hex8ToBytes(''),
+          expected: OpCodes.Hex8ToBytes('F94B439573612A09')
+        }
+      ];
     }
-  ];
+  }
 
-  const m5 = new SkinnyAeadAlgorithm(5, 12, 16, true);
-  m5.tests = [
-    {
-      text: 'SKINNY-AEAD-M5 Official Test Vector #1',
-      uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M5.txt',
-      input: OpCodes.Hex8ToBytes(''),
-      key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
-      nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B'),
-      aad: OpCodes.Hex8ToBytes(''),
-      expected: OpCodes.Hex8ToBytes('26171C0816F2CCC821D57F0090F8E1AB')
+  /**
+   * SKINNY-AEAD-M5 with its published test vectors
+   * @class
+   * @extends {SkinnyAeadAlgorithm}
+   */
+  class SkinnyAeadM5Algorithm extends SkinnyAeadAlgorithm {
+    constructor() {
+      super(5, 12, 16, true);
+      this.tests = [
+        {
+          text: 'SKINNY-AEAD-M5 Official Test Vector #1',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M5.txt',
+          input: OpCodes.Hex8ToBytes(''),
+          key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B'),
+          aad: OpCodes.Hex8ToBytes(''),
+          expected: OpCodes.Hex8ToBytes('26171C0816F2CCC821D57F0090F8E1AB')
+        }
+      ];
     }
-  ];
+  }
 
-  const m6 = new SkinnyAeadAlgorithm(6, 12, 8, true);
-  m6.tests = [
-    {
-      text: 'SKINNY-AEAD-M6 Official Test Vector #1',
-      uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M6.txt',
-      input: OpCodes.Hex8ToBytes(''),
-      key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
-      nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B'),
-      aad: OpCodes.Hex8ToBytes(''),
-      expected: OpCodes.Hex8ToBytes('DAAB927F30D9C87B')
+  /**
+   * SKINNY-AEAD-M6 with its published test vectors
+   * @class
+   * @extends {SkinnyAeadAlgorithm}
+   */
+  class SkinnyAeadM6Algorithm extends SkinnyAeadAlgorithm {
+    constructor() {
+      super(6, 12, 8, true);
+      this.tests = [
+        {
+          text: 'SKINNY-AEAD-M6 Official Test Vector #1',
+          uri: 'https://github.com/rweather/lightweight-crypto/blob/master/test/kat/SKINNY-AEAD-M6.txt',
+          input: OpCodes.Hex8ToBytes(''),
+          key: OpCodes.Hex8ToBytes('000102030405060708090A0B0C0D0E0F'),
+          nonce: OpCodes.Hex8ToBytes('000102030405060708090A0B'),
+          aad: OpCodes.Hex8ToBytes(''),
+          expected: OpCodes.Hex8ToBytes('DAAB927F30D9C87B')
+        }
+      ];
     }
-  ];
+  }
+
+  const m1 = new SkinnyAeadM1Algorithm();
+  const m2 = new SkinnyAeadM2Algorithm();
+  const m3 = new SkinnyAeadM3Algorithm();
+  const m4 = new SkinnyAeadM4Algorithm();
+  const m5 = new SkinnyAeadM5Algorithm();
+  const m6 = new SkinnyAeadM6Algorithm();
 
   RegisterAlgorithm(m1);
   RegisterAlgorithm(m2);
@@ -1402,20 +1479,14 @@
   RegisterAlgorithm(m5);
   RegisterAlgorithm(m6);
 
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-      SkinnyAeadAlgorithm,
-      SkinnyAeadInstance,
-      SkinnyAeadM1: m1,
-      SkinnyAeadM2: m2,
-      SkinnyAeadM3: m3,
-      SkinnyAeadM4: m4,
-      SkinnyAeadM5: m5,
-      SkinnyAeadM6: m6
-    };
-  }
-
-})(typeof globalThis !== 'undefined' ? globalThis :
-   typeof window !== 'undefined' ? window :
-   typeof global !== 'undefined' ? global :
-   typeof self !== 'undefined' ? self : this);
+  return {
+    SkinnyAeadAlgorithm,
+    SkinnyAeadInstance,
+    SkinnyAeadM1: m1,
+    SkinnyAeadM2: m2,
+    SkinnyAeadM3: m3,
+    SkinnyAeadM4: m4,
+    SkinnyAeadM5: m5,
+    SkinnyAeadM6: m6
+  };
+}));
