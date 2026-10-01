@@ -12,9 +12,16 @@
  *           Hamsi-384, Hamsi-512 (big, 8-byte blocks, 16x32-bit state)
  * Rounds: 3 normal + 6 final (small), 6 normal + 12 final (big)
  *
- * Implementation and test vectors verified against the sphlib reference
- * (Thomas Pornin): hamsi.c, hamsi_helper.c and test_hamsi.c (NIST KAT
- * derived values).
+ * Two published versions exist, selected by the instance property `variant`:
+ *   "specification" - IVs of the specification and the round-2 submission
+ *                     code, matching the official NIST KAT files;
+ *   "sphlib"        - sphlib's re-encoded IVs (default), followed by most
+ *                     downstream libraries.
+ * Only the Hamsi-224 IV differs; the other three sizes agree.
+ *
+ * Verified against all byte-aligned entries of the round-2 ShortMsgKAT and
+ * LongMsgKAT files ("specification") and against every byte-aligned value
+ * of sphlib's test_hamsi.c ("sphlib"), for all four sizes.
  * (c)2006-2025 Hawkynt
  */
 
@@ -52,17 +59,50 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           HashFunctionAlgorithm, IHashFunctionInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
-  // Initialization vectors for all Hamsi variants (from sphlib)
-  const IV224 = new Uint32Array([
+  // Initialization vectors. They are the UTF-8 text "Özgül Küçük, Katholieke
+  // Universiteit Leuven, Departement Elektrotechniek, ..." read as big-endian
+  // words: iv224 is the first 256 bits, iv256 the next 256, iv384 and iv512
+  // the following two 512-bit pieces. Only the first 256 bits contain the
+  // Turkish letters, so iv224 is the only IV on which the two published
+  // versions of Hamsi disagree; iv256, iv384 and iv512 are identical.
+
+  // Hamsi-224 IV of the specification (section 2.2.2, "the first word of
+  // iv224 is 0x3c967a67") and of the round-2 submission code
+  // (hamsi-tables.c), which produced the official NIST KAT files. The
+  // letters are mis-encoded: the nibbles of 0xc3 are swapped to 0x3c.
+  /** @type {uint32[]} */
+  const IV224_SPECIFICATION = new Uint32Array([
+    0x3c967a67, 0x3cbc6c20, 0xb4c343c3, 0xa73cbc6b,
+    0x2c204b61, 0x74686f6c, 0x69656b65, 0x20556e69
+  ]);
+
+  // Hamsi-224 IV of sphlib (hamsi.c), the correct UTF-8 encoding of the same
+  // text, followed by the downstream libraries built on sphlib.
+  /** @type {uint32[]} */
+  const IV224_SPHLIB = new Uint32Array([
     0xc3967a67, 0xc3bc6c20, 0x4bc3bcc3, 0xa7c3bc6b,
     0x2c204b61, 0x74686f6c, 0x69656b65, 0x20556e69
   ]);
 
+  /**
+   * Version following the specification and the official NIST KAT files
+   * @type {string}
+   */
+  const VARIANT_SPECIFICATION = "specification";
+
+  /**
+   * Version following sphlib and the libraries derived from it
+   * @type {string}
+   */
+  const VARIANT_SPHLIB = "sphlib";
+
+  /** @type {uint32[]} */
   const IV256 = new Uint32Array([
     0x76657273, 0x69746569, 0x74204c65, 0x7576656e,
     0x2c204465, 0x70617274, 0x656d656e, 0x7420456c
   ]);
 
+  /** @type {uint32[]} */
   const IV384 = new Uint32Array([
     0x656b7472, 0x6f746563, 0x686e6965, 0x6b2c2043,
     0x6f6d7075, 0x74657220, 0x53656375, 0x72697479,
@@ -70,6 +110,7 @@
     0x43727970, 0x746f6772, 0x61706879, 0x2c204b61
   ]);
 
+  /** @type {uint32[]} */
   const IV512 = new Uint32Array([
     0x73746565, 0x6c706172, 0x6b204172, 0x656e6265,
     0x72672031, 0x302c2062, 0x75732032, 0x3434362c,
@@ -475,12 +516,12 @@
       this.stateSize = this.isBig ? 16 : 8;
       /** @type {int32} Digest size in 32-bit words */
       this.outputWords = OpCodes.Shr32(bitSize, 5);
+      // Published version whose IVs are used; sphlib by default, see variant
+      /** @type {string} */
+      this._variant = VARIANT_SPHLIB;
 
-      // Initialize state with appropriate IV
       /** @type {uint32[]} */
       this.state = new Uint32Array(this.stateSize);
-      this._initialize();
-
       // Buffer for incomplete blocks
       /** @type {uint8[]} */
       this.buffer = [];
@@ -489,22 +530,53 @@
       this.bitCountLow = 0;
       /** @type {uint32} */
       this.bitCountHigh = 0;
+      this._restart();
     }
 
     /**
-     * Load the IV of the variant into the chaining state
+     * Select which of the two published versions of Hamsi to compute.
+     *
+     * "specification" uses the IVs printed in the specification and in the
+     * round-2 submission code, which generated the official NIST KAT files.
+     * "sphlib" (the default) uses sphlib's correctly UTF-8-encoded IVs, which
+     * x11-style hash chains and most other libraries reproduce. The versions
+     * differ only for Hamsi-224; Hamsi-256, -384 and -512 give the same
+     * digest under both. Selecting a version discards any data already fed.
+     * @param {string} value - "specification" or "sphlib"
+     */
+    set variant(value) {
+      if (value !== VARIANT_SPECIFICATION && value !== VARIANT_SPHLIB) {
+        throw new Error("Hamsi variant must be '" + VARIANT_SPECIFICATION + "' or '" + VARIANT_SPHLIB + "'");
+      }
+      this._variant = value;
+      this._restart();
+    }
+
+    /**
+     * @returns {string} Selected version: "specification" or "sphlib"
+     */
+    get variant() {
+      return this._variant;
+    }
+
+    /**
+     * Load the IV of the output size and version into the chaining state and
+     * forget any buffered data
      * @returns {void}
      */
-    _initialize() {
+    _restart() {
       /** @type {uint32[]} */
       let iv = IV512;
-      if (this.bitSize === 224) iv = IV224;
+      if (this.bitSize === 224) iv = this._variant === VARIANT_SPECIFICATION ? IV224_SPECIFICATION : IV224_SPHLIB;
       else if (this.bitSize === 256) iv = IV256;
       else if (this.bitSize === 384) iv = IV384;
 
       for (let i = 0; i < this.stateSize; ++i) {
         this.state[i] = iv[i];
       }
+      this.buffer = [];
+      this.bitCountLow = 0;
+      this.bitCountHigh = 0;
     }
 
     /**
@@ -595,11 +667,8 @@
         }
       }
 
-      // Re-initialize for potential reuse
-      this._initialize();
-      this.buffer = [];
-      this.bitCountLow = 0;
-      this.bitCountHigh = 0;
+      // Re-initialize for potential reuse, keeping the selected version
+      this._restart();
 
       return output;
     }
@@ -616,7 +685,7 @@
     constructor() {
       super();
       this.name = "Hamsi-224";
-      this.description = "SHA-3 candidate hash function with 224-bit output. Uses a Serpent-inspired non-linear permutation with a linear-code based message expansion in a concatenation-truncation construction.";
+      this.description = "SHA-3 candidate hash function with 224-bit output. Uses a Serpent-inspired non-linear permutation with a linear-code based message expansion in a concatenation-truncation construction. Two incompatible versions were published: the specification and the official NIST KAT encode the designer's name in the IV wrongly, while sphlib and the libraries derived from it use the correct UTF-8 encoding. The variant property selects \"specification\" or \"sphlib\" (default).";
       this.inventor = "Özgül Küçük";
       this.year = 2008;
       this.category = CategoryType.HASH;
@@ -639,12 +708,49 @@
         new LinkItem("sphlib test vectors (test_hamsi.c)", "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c")
       ];
 
+      // Both published versions, each set explicitly by the vector's variant
       this.tests = [
         {
-          text: "NIST Vector #1 (0 bits)",
+          text: "Specification version: NIST round-2 KAT ShortMsgKAT_224.txt, Len = 0",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Hash-Functions/documents/Hamsi_Round2.zip",
+          variant: "specification",
+          input: new Uint8Array([]),
+          expected: OpCodes.Hex8ToBytes("6F5708887722A92764A4D55527FEAEBA32F297F05D35A8276301D508")
+        },
+        {
+          text: "Specification version: NIST round-2 KAT ShortMsgKAT_224.txt, Len = 8",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Hash-Functions/documents/Hamsi_Round2.zip",
+          variant: "specification",
+          input: OpCodes.Hex8ToBytes("cc"),
+          expected: OpCodes.Hex8ToBytes("FC1C9369AC35B331EDA60812A9F51E9E189B5F5A699456D8ED89539F")
+        },
+        {
+          text: "Specification version: NIST round-2 KAT ShortMsgKAT_224.txt, Len = 512",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Hash-Functions/documents/Hamsi_Round2.zip",
+          variant: "specification",
+          input: OpCodes.Hex8ToBytes("e926ae8b0af6e53176dbffcc2a6b88c6bd765f939d3d178a9bde9ef3aa131c61e31c1e42cdfaf4b4dcde579a37e150efbef5555b4c1cb40439d835a724e2fae7"),
+          expected: OpCodes.Hex8ToBytes("EE0ECDD2CE0553B60A7803416DE7E9A5FEB381E836C0BFA0BD6F2583")
+        },
+        {
+          text: "sphlib version: test_hamsi.c nist_vec224[0] (NIST message, Len = 0)",
           uri: "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c",
+          variant: "sphlib",
           input: new Uint8Array([]),
           expected: OpCodes.Hex8ToBytes("B9F6EB1A9B990373F9D2CB125584333C69A3D41AE291845F05DA221F")
+        },
+        {
+          text: "sphlib version: test_hamsi.c nist_vec224[24] (NIST message, Len = 24)",
+          uri: "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c",
+          variant: "sphlib",
+          input: OpCodes.Hex8ToBytes("1f877c"),
+          expected: OpCodes.Hex8ToBytes("15A0B54528FE0F765B50BD340BFB36AE32F106E305AEC3B2F42CBEC5")
+        },
+        {
+          text: "sphlib version: test_hamsi.c nist_vec224[1016] (NIST message, Len = 1016)",
+          uri: "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c",
+          variant: "sphlib",
+          input: OpCodes.Hex8ToBytes("a62fc595b4096e6336e53fcdfc8d1cc175d71dac9d750a6133d23199eaac288207944cea6b16d27631915b4619f743da2e30a0c00bbdb1bbb35ab852ef3b9aec6b0a8dcc6e9e1abaa3ad62ac0a6c5de765de2c3711b769e3fde44a74016fff82ac46fa8f1797d3b2a726b696e3dea5530439acee3a45c2a51bc32dd055650b"),
+          expected: OpCodes.Hex8ToBytes("6D30B7CD15B0C6DE05F23D7C08DC44FB2F58B5B06C4F02DAF2F73408")
         }
       ];
     }
@@ -695,12 +801,49 @@
         new LinkItem("sphlib test vectors (test_hamsi.c)", "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c")
       ];
 
+      // Both published versions, each set explicitly by the vector's variant
       this.tests = [
         {
-          text: "NIST Vector #1 (0 bits)",
-          uri: "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c",
+          text: "Specification version: NIST round-2 KAT ShortMsgKAT_256.txt, Len = 0",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Hash-Functions/documents/Hamsi_Round2.zip",
+          variant: "specification",
           input: new Uint8Array([]),
           expected: OpCodes.Hex8ToBytes("750E9EC469F4DB626BEE7E0C10DDAA1BD01FE194B94EFBABEBD24764DC2B13E9")
+        },
+        {
+          text: "Specification version: NIST round-2 KAT ShortMsgKAT_256.txt, Len = 8",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Hash-Functions/documents/Hamsi_Round2.zip",
+          variant: "specification",
+          input: OpCodes.Hex8ToBytes("cc"),
+          expected: OpCodes.Hex8ToBytes("AC2DAC2A6DDAF703B7A55745D61B1A16A3D1BF1F74CAAB265A2E5DBEBCF60832")
+        },
+        {
+          text: "Specification version: NIST round-2 KAT ShortMsgKAT_256.txt, Len = 512",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Hash-Functions/documents/Hamsi_Round2.zip",
+          variant: "specification",
+          input: OpCodes.Hex8ToBytes("e926ae8b0af6e53176dbffcc2a6b88c6bd765f939d3d178a9bde9ef3aa131c61e31c1e42cdfaf4b4dcde579a37e150efbef5555b4c1cb40439d835a724e2fae7"),
+          expected: OpCodes.Hex8ToBytes("4B24B386D53085883656F1EDADF10532EA11F369AA6952D6559CB90C80F8E96D")
+        },
+        {
+          text: "sphlib version: test_hamsi.c nist_vec256[0] (NIST message, Len = 0)",
+          uri: "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c",
+          variant: "sphlib",
+          input: new Uint8Array([]),
+          expected: OpCodes.Hex8ToBytes("750E9EC469F4DB626BEE7E0C10DDAA1BD01FE194B94EFBABEBD24764DC2B13E9")
+        },
+        {
+          text: "sphlib version: test_hamsi.c nist_vec256[24] (NIST message, Len = 24)",
+          uri: "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c",
+          variant: "sphlib",
+          input: OpCodes.Hex8ToBytes("1f877c"),
+          expected: OpCodes.Hex8ToBytes("CB596913E691F8654A613E24DEBF3262E6477FD737D5C422E670E0C75FAE7D17")
+        },
+        {
+          text: "sphlib version: test_hamsi.c nist_vec256[1016] (NIST message, Len = 1016)",
+          uri: "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c",
+          variant: "sphlib",
+          input: OpCodes.Hex8ToBytes("a62fc595b4096e6336e53fcdfc8d1cc175d71dac9d750a6133d23199eaac288207944cea6b16d27631915b4619f743da2e30a0c00bbdb1bbb35ab852ef3b9aec6b0a8dcc6e9e1abaa3ad62ac0a6c5de765de2c3711b769e3fde44a74016fff82ac46fa8f1797d3b2a726b696e3dea5530439acee3a45c2a51bc32dd055650b"),
+          expected: OpCodes.Hex8ToBytes("5FE8991B5CA9547C156197C9F797296B09690599C75AA0ACBD4FA0C54C09F020")
         }
       ];
     }
@@ -751,12 +894,49 @@
         new LinkItem("sphlib test vectors (test_hamsi.c)", "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c")
       ];
 
+      // Both published versions, each set explicitly by the vector's variant
       this.tests = [
         {
-          text: "NIST Vector #1 (0 bits)",
-          uri: "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c",
+          text: "Specification version: NIST round-2 KAT ShortMsgKAT_384.txt, Len = 0",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Hash-Functions/documents/Hamsi_Round2.zip",
+          variant: "specification",
           input: new Uint8Array([]),
           expected: OpCodes.Hex8ToBytes("3943CD34E3B96B197A8BF4BAC7AA982D18530DD12F41136B26D7E88759255F21153F4A4BD02E523612B8427F9DD96C8D")
+        },
+        {
+          text: "Specification version: NIST round-2 KAT ShortMsgKAT_384.txt, Len = 8",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Hash-Functions/documents/Hamsi_Round2.zip",
+          variant: "specification",
+          input: OpCodes.Hex8ToBytes("cc"),
+          expected: OpCodes.Hex8ToBytes("9B299C0B4A6838B5B0F53B0F9C0AEA98BBC9C4C9481EC0EC68F344E696F8787DE2E08A1404A038C83AC9E121136E8BB8")
+        },
+        {
+          text: "Specification version: NIST round-2 KAT ShortMsgKAT_384.txt, Len = 512",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Hash-Functions/documents/Hamsi_Round2.zip",
+          variant: "specification",
+          input: OpCodes.Hex8ToBytes("e926ae8b0af6e53176dbffcc2a6b88c6bd765f939d3d178a9bde9ef3aa131c61e31c1e42cdfaf4b4dcde579a37e150efbef5555b4c1cb40439d835a724e2fae7"),
+          expected: OpCodes.Hex8ToBytes("EB2582E8E02DFEA88E372F233833EB17B283CAD4A3AD13410E16A50867A62270FB4C5B90A9D7C6B2077571F9EA2054E6")
+        },
+        {
+          text: "sphlib version: test_hamsi.c nist_vec384[0] (NIST message, Len = 0)",
+          uri: "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c",
+          variant: "sphlib",
+          input: new Uint8Array([]),
+          expected: OpCodes.Hex8ToBytes("3943CD34E3B96B197A8BF4BAC7AA982D18530DD12F41136B26D7E88759255F21153F4A4BD02E523612B8427F9DD96C8D")
+        },
+        {
+          text: "sphlib version: test_hamsi.c nist_vec384[24] (NIST message, Len = 24)",
+          uri: "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c",
+          variant: "sphlib",
+          input: OpCodes.Hex8ToBytes("1f877c"),
+          expected: OpCodes.Hex8ToBytes("D8C34C26E4147F706B94923073EE272AEF4D024E75CB622288016E38175AF79C405CEC671F426DC2ABEF6E4381886E69")
+        },
+        {
+          text: "sphlib version: test_hamsi.c nist_vec384[1016] (NIST message, Len = 1016)",
+          uri: "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c",
+          variant: "sphlib",
+          input: OpCodes.Hex8ToBytes("a62fc595b4096e6336e53fcdfc8d1cc175d71dac9d750a6133d23199eaac288207944cea6b16d27631915b4619f743da2e30a0c00bbdb1bbb35ab852ef3b9aec6b0a8dcc6e9e1abaa3ad62ac0a6c5de765de2c3711b769e3fde44a74016fff82ac46fa8f1797d3b2a726b696e3dea5530439acee3a45c2a51bc32dd055650b"),
+          expected: OpCodes.Hex8ToBytes("A401DD37B1C6C6BBE5275677B3989F193E0AC946DB1D2545DE416A30B4D98F444E2ED3287B84411C93B154FA0B027F0A")
         }
       ];
     }
@@ -807,12 +987,49 @@
         new LinkItem("sphlib test vectors (test_hamsi.c)", "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c")
       ];
 
+      // Both published versions, each set explicitly by the vector's variant
       this.tests = [
         {
-          text: "NIST Vector #1 (0 bits)",
-          uri: "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c",
+          text: "Specification version: NIST round-2 KAT ShortMsgKAT_512.txt, Len = 0",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Hash-Functions/documents/Hamsi_Round2.zip",
+          variant: "specification",
           input: new Uint8Array([]),
           expected: OpCodes.Hex8ToBytes("5CD7436A91E27FC809D7015C3407540633DAB391127113CE6BA360F0C1E35F404510834A551610D6E871E75651EA381A8BA628AF1DCF2B2BE13AF2EB6247290F")
+        },
+        {
+          text: "Specification version: NIST round-2 KAT ShortMsgKAT_512.txt, Len = 8",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Hash-Functions/documents/Hamsi_Round2.zip",
+          variant: "specification",
+          input: OpCodes.Hex8ToBytes("cc"),
+          expected: OpCodes.Hex8ToBytes("7DA1BE62A813A8E24D200671CFFB1D0BE79D2BC176FF0B163B11EDED2414EF66261FF52C745383442BC7F1884D5166F26F41D335FC2D2FDB2F93B24B8D079265")
+        },
+        {
+          text: "Specification version: NIST round-2 KAT ShortMsgKAT_512.txt, Len = 512",
+          uri: "https://csrc.nist.gov/CSRC/media/Projects/Hash-Functions/documents/Hamsi_Round2.zip",
+          variant: "specification",
+          input: OpCodes.Hex8ToBytes("e926ae8b0af6e53176dbffcc2a6b88c6bd765f939d3d178a9bde9ef3aa131c61e31c1e42cdfaf4b4dcde579a37e150efbef5555b4c1cb40439d835a724e2fae7"),
+          expected: OpCodes.Hex8ToBytes("3F8531A92159C5790FA3A0D2A4095A19B25C263EBADC931BC6C88868D8B1568393E722DFD5CE5842D044604C3A357E8A4BB6EF9299049C3C83398A8B2AB4BBA9")
+        },
+        {
+          text: "sphlib version: test_hamsi.c nist_vec512[0] (NIST message, Len = 0)",
+          uri: "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c",
+          variant: "sphlib",
+          input: new Uint8Array([]),
+          expected: OpCodes.Hex8ToBytes("5CD7436A91E27FC809D7015C3407540633DAB391127113CE6BA360F0C1E35F404510834A551610D6E871E75651EA381A8BA628AF1DCF2B2BE13AF2EB6247290F")
+        },
+        {
+          text: "sphlib version: test_hamsi.c nist_vec512[24] (NIST message, Len = 24)",
+          uri: "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c",
+          variant: "sphlib",
+          input: OpCodes.Hex8ToBytes("1f877c"),
+          expected: OpCodes.Hex8ToBytes("AF015A97B6996ED048F32B3A6C209E6A2DAEACD4F61EB62EAA31C68328EE5790B0681245EBE1ECEC4C0DD7F9008672D28A0424406998EC02518F023B3C27DCDE")
+        },
+        {
+          text: "sphlib version: test_hamsi.c nist_vec512[1016] (NIST message, Len = 1016)",
+          uri: "https://github.com/pornin/sphlib/blob/master/c/test_hamsi.c",
+          variant: "sphlib",
+          input: OpCodes.Hex8ToBytes("a62fc595b4096e6336e53fcdfc8d1cc175d71dac9d750a6133d23199eaac288207944cea6b16d27631915b4619f743da2e30a0c00bbdb1bbb35ab852ef3b9aec6b0a8dcc6e9e1abaa3ad62ac0a6c5de765de2c3711b769e3fde44a74016fff82ac46fa8f1797d3b2a726b696e3dea5530439acee3a45c2a51bc32dd055650b"),
+          expected: OpCodes.Hex8ToBytes("B39BE99DF905E73EF94EE8A47CDCED6CF3A9DBDBF29D35C7BCABADEBCD98CD15219082AC5F25AC0DA65B6437146C9CECDBBB89299BD00E3B3FDF51DE479DE23B")
         }
       ];
     }
