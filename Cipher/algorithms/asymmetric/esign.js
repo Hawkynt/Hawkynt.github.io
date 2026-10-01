@@ -369,13 +369,9 @@
       const denominator = ((e % p) * modPow(r, e - 1n, p)) % p;
       if (denominator === 0n) continue;
 
+      if (OpCodes.GcdN(denominator, p) !== 1n) continue;
       /** @type {BigInt} */
-      let t;
-      try {
-        t = ((w0 % p) * modInverse(denominator, p)) % p;
-      } catch (error) {
-        continue;
-      }
+      const t = ((w0 % p) * modInverse(denominator, p)) % p;
 
       const s = r + t * pq;
       if (s >= n) continue;
@@ -480,8 +476,18 @@
     }
   }
 
-  const ESIGN_KEYS = {
-    'NESSIE-1536-0': new ESIGNKeyMaterial(
+  // The published key pairs, by name, in the order of the NESSIE file.
+  /** @type {string[]} */
+  const ESIGN_KEY_NAMES = [
+    'NESSIE-1536-0',
+    'NESSIE-1536-4',
+    'NESSIE-3072-10',
+    'NESSIE-3072-12'
+  ];
+
+  /** @type {ESIGNKeyMaterial[]} */
+  const ESIGN_KEY_MATERIAL = [
+    new ESIGNKeyMaterial(
       'e6755c83eb4a23269d342e6ec74e632e593bdb345206d7b7697a4940df800ae4' +
       '7e866ee0368e7c1ed5d31d0d8629d691855b823bb3d2576eacb7311cdddc4815' +
       '0ac15beac84209e1fe5f8504677a154192dbe8da75f84e4749273619ccdb243f' +
@@ -498,7 +504,7 @@
       '3f1bee209a5032ab5a7b8ed61a3f53e3cfb94ecb3f5a52af19e164e20cd7df17' +
       'c8dc76ee632a7ee4b679a4f03c3511e933f949a14f1354571d45c0a8dfd64677'
     ),
-    'NESSIE-1536-4': new ESIGNKeyMaterial(
+    new ESIGNKeyMaterial(
       '91b6a444d9f130241f4c109510cd05cc3a5503f4f75342eec90ba4edc5fedc44' +
       'bfe57809e86ba189fcdd6386ca67d1debd65e42a3511c89aa811365df8c8a61d' +
       '3ecd129cc04ae9c7067c9281c71fe299039b17afc7611ac07255e30a3413ac71' +
@@ -515,7 +521,7 @@
       'c661a8c10dda5fa8b28b32436d7657e08fd438c774d309c04c63117f612c5fd4' +
       'a6dbb071cfcf20f55e606c0f40ef8a84ff88860b39dc93d64da8189e5881a418'
     ),
-    'NESSIE-3072-10': new ESIGNKeyMaterial(
+    new ESIGNKeyMaterial(
       'a720c94a5f564c0d9e8061416384741ceb3fd3bb6cadc04c5fd684cac23fe7b6' +
       'aef8117c311ae09210a61f513296d6c8a65e20d1d0f109be26bc8f725026843d' +
       '3df60150efc3a29a1acf7c2c57455c0ac4b9f2588f4f73fcb55b86d3d56c9d14' +
@@ -546,7 +552,7 @@
       '41b6b2640d3ecf311179fddb5cc2d339c316813f0aff1ff62de710ea6a17f90f' +
       '6b9881686ce7b3989e693e36c15a09e1931fd8485b55c48e0214bf31bb2873a5'
     ),
-    'NESSIE-3072-12': new ESIGNKeyMaterial(
+    new ESIGNKeyMaterial(
       '84c133e09ed5c096f79b5758cd1d1b468a469c448f0351f9916a5c0c9ea39f1a' +
       '6e893f23fc08f037c64ba49c1edd0972719efded27f864fd4748d1794906c16b' +
       'cda105c54cf9f70260eadf7f84c53b7ff851a9566251d959ec1ce375e9092a8e' +
@@ -577,29 +583,29 @@
       '19330257735bc143d9ca58764db19790435ac33540f79e7798383c8329e17ac5' +
       '6261abba9ac621fe25ccc37d37c7878e4b4c28c3f3d1ac07d62e6de2f686c540'
     )
-  };
+  ];
+
+  /**
+   * Index of a published key in ESIGN_KEY_NAMES.
+   * @param {string} name - Key name
+   * @returns {int32} The index, or -1 when no key has that name
+   */
+  function keyIndex(name) {
+    for (let i = 0; i < ESIGN_KEY_NAMES.length; ++i) {
+      if (ESIGN_KEY_NAMES[i] === name) return i;
+    }
+    return -1;
+  }
 
   /**
    * Read a key selector. Two octets: the modulus size in units of 256 bits,
-   * then the index of the key within the published file. A decimal string or a
-   * number naming the modulus size selects the first key of that size.
-   * @param {uint8[]|string|number} keyData - Key selector
+   * then the index of the key within the published file. ASCII decimal digits
+   * naming the modulus size select the first key of that size.
+   * @param {uint8[]} keyData - Key selector octets
    * @returns {string} The key name
    */
   function parseKeySelector(keyData) {
-    if (typeof keyData === 'number') {
-      /** @type {int32} */
-      const bits = keyData;
-      return findFirstOfSize(bits);
-    }
-    if (typeof keyData === 'string') {
-      /** @type {string} */
-      const text = keyData;
-      if (ESIGN_KEYS[text]) return text;
-      return findFirstOfSize(parseInt(text, 10));
-    }
-
-    if (keyData && typeof keyData.length === 'number') {
+    if (keyData) {
       /** @type {uint8[]} */
       const bytes = keyData;
       let digits = '';
@@ -614,7 +620,7 @@
         /** @type {int32} */
         const sizeBits = bytes[0] * 256;
         const name = 'NESSIE-' + sizeBits + '-' + bytes[1];
-        if (ESIGN_KEYS[name]) return name;
+        if (keyIndex(name) >= 0) return name;
         throw new Error('ESIGN: no published key ' + name);
       }
     }
@@ -628,10 +634,8 @@
    * @returns {string} The key name
    */
   function findFirstOfSize(bits) {
-    /** @type {string[]} */
-    const names = Object.keys(ESIGN_KEYS);
-    for (let i = 0; i < names.length; ++i) {
-      const name = names[i];
+    for (let i = 0; i < ESIGN_KEY_NAMES.length; ++i) {
+      const name = ESIGN_KEY_NAMES[i];
       if (name.indexOf('NESSIE-' + bits + '-') === 0) return name;
     }
     throw new Error('ESIGN: no published key of ' + bits + ' bits');
@@ -821,6 +825,7 @@
       this._privateKey = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {uint8[]|null} */
       this._keyData = null;
     }
 
@@ -834,7 +839,7 @@
 
     /**
      * Get the key selector this instance was configured with.
-     * @returns {uint8[]|string|number|null} The selector, or null
+     * @returns {uint8[]|null} The selector, or null
      */
     get key() {
       return this._keyData;
@@ -910,13 +915,12 @@
 
     /**
      * Install one of the published key pairs.
-     * @param {uint8[]|string|number} keyData - Key selector
+     * @param {uint8[]} keyData - Key selector (see parseKeySelector)
      */
     KeySetup(keyData) {
       this._keyData = keyData;
 
-      /** @type {ESIGNKeyMaterial} */
-      const material = ESIGN_KEYS[parseKeySelector(keyData)];
+      const material = ESIGN_KEY_MATERIAL[keyIndex(parseKeySelector(keyData))];
       const n = hexToBigInt(material.n);
       const e = hexToBigInt(material.e);
       this.keySize = bitCount(n);
@@ -1006,14 +1010,13 @@
     }
 
     /**
-     * Check a signed message and return the message it carries.
+     * Check a signed message.
      * @param {uint8[]} signed - signature || message
-     * @returns {uint8[]} The message octets
-     * @throws {Error} When the signature does not verify
+     * @returns {string} Empty when the signature verifies, else why it does not
      */
-    _open(signed) {
+    _check(signed) {
       if (!this._publicKey) {
-        throw new Error('ESIGN public key not set. Assign a key first.');
+        return 'ESIGN public key not set. Assign a key first.';
       }
 
       const n = this._publicKey.n;
@@ -1021,15 +1024,15 @@
       const sigLen = this._signatureLength(n);
 
       if (signed.length < sigLen) {
-        throw new Error('ESIGN: signed message is ' + signed.length
-          + ' octets, shorter than the ' + sigLen + '-octet signature it must carry');
+        return 'ESIGN: signed message is ' + signed.length
+          + ' octets, shorter than the ' + sigLen + '-octet signature it must carry';
       }
 
       // VP-ESIGN-D step 1. Crypto++ omits this check, so a value congruent to a
       // valid signature modulo n is accepted there; the specification rejects it.
       const s = OS2IP(signed.slice(0, sigLen));
       if (s >= n) {
-        throw new Error('ESIGN: signature representative is not below the modulus');
+        return 'ESIGN: signature representative is not below the modulus';
       }
 
       const message = signed.slice(sigLen);
@@ -1039,59 +1042,52 @@
       // rather than clamping it to the bound as Crypto++ does.
       const recovered = ESIGNApply(s, e, n);
       if (recovered >= OpCodes.ShiftLn(1n, pLen - 1)) {
-        throw new Error('ESIGN: recovered representative is out of range');
+        return 'ESIGN: recovered representative is out of range';
       }
 
       if (recovered !== this._representative(message, pLen)) {
-        throw new Error('ESIGN: signature does not verify');
+        return 'ESIGN: signature does not verify';
       }
 
-      return message;
+      return '';
+    }
+
+    /**
+     * Check a signed message and return the message it carries.
+     * @param {uint8[]} signed - signature || message
+     * @returns {uint8[]} The message octets
+     * @throws {Error} When the signature does not verify
+     */
+    _open(signed) {
+      const failure = this._check(signed);
+      if (failure !== '') {
+        throw new Error(failure);
+      }
+      return signed.slice(this._signatureLength(this._publicKey.n));
     }
 
     /**
      * Sign a message, returning the signature alone.
-     * @param {uint8[]|string} message - Message octets
+     * @param {uint8[]} message - Message octets
      * @returns {uint8[]} Signature octets
      */
     Sign(message) {
-      /** @type {uint8[]} */
-      const bytes = typeof message === 'string' ? this._stringToBytes(message) : message;
-      return this._sign(bytes).slice(0, this._signatureLength(this._privateKey.n));
+      return this._sign(message).slice(0, this._signatureLength(this._privateKey.n));
     }
 
     /**
      * Verify a detached signature over a message.
-     * @param {uint8[]|string} message - Message octets
+     * @param {uint8[]} message - Message octets
      * @param {uint8[]} signature - Signature octets
      * @returns {boolean} Whether the signature verifies
      */
     Verify(message, signature) {
       /** @type {uint8[]} */
-      const bytes = typeof message === 'string' ? this._stringToBytes(message) : message;
-      /** @type {uint8[]} */
-      const signed = new Array(signature.length + bytes.length);
+      const signed = new Array(signature.length + message.length);
       for (let i = 0; i < signature.length; ++i) signed[i] = signature[i];
-      for (let i = 0; i < bytes.length; ++i) signed[signature.length + i] = bytes[i];
+      for (let i = 0; i < message.length; ++i) signed[signature.length + i] = message[i];
 
-      try {
-        this._open(signed);
-        return true;
-      } catch (error) {
-        return false;
-      }
-    }
-
-    /**
-     * Octets of a string, one per code unit.
-     * @param {string} text - Input
-     * @returns {uint8[]} Octets
-     */
-    _stringToBytes(text) {
-      /** @type {uint8[]} */
-      const out = new Array(text.length);
-      for (let i = 0; i < text.length; ++i) out[i] = text.charCodeAt(i) % 256;
-      return out;
+      return this._check(signed) === '';
     }
 
     /**
