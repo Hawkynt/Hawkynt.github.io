@@ -983,13 +983,13 @@
     // By the drawn value, ties by index.
     order.sort(
       /**
-       * @param {int32} x - left index
-       * @param {int32} y - right index
+       * @param {int32} a - left index
+       * @param {int32} b - right index
        * @returns {int32} -1, 0 or 1
        */
-      function (x, y) {
-        if (value[x] !== value[y]) return value[x] < value[y] ? -1 : 1;
-        return x < y ? -1 : (x > y ? 1 : 0);
+      function (a, b) {
+        if (value[a] !== value[b]) return value[a] < value[b] ? -1 : 1;
+        return a < b ? -1 : (a > b ? 1 : 0);
       });
     for (let i = 1; i < q; ++i) if (value[order[i - 1]] === value[order[i]]) return null;
 

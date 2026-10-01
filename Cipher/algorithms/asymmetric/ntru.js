@@ -841,11 +841,11 @@
     // of two words of opposite sign does not fit 32 bits.
     s.sort(
       /**
-       * @param {int32} x - left
-       * @param {int32} y - right
+       * @param {int32} a - left
+       * @param {int32} b - right
        * @returns {int32} -1, 0 or 1
        */
-      function (x, y) { return x < y ? -1 : (x > y ? 1 : 0); });
+      function (a, b) { return a < b ? -1 : (a > b ? 1 : 0); });
 
     const r = zeros(P.n);
     for (let i = 0; i < count; i++) r[i] = OpCodes.And32(s[i], 3);
