@@ -53,6 +53,8 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
+  // Extract foundation utilities
+  const { BipartiteGraph, DegreeDistribution, SeededRandom, PerformanceProfiler } = FountainFoundation;
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
@@ -230,7 +232,7 @@
       /** @type {SeededRandom} */
       this.rng = null;
       /** @type {PerformanceProfiler} */
-      this.profiler = new FountainFoundation.PerformanceProfiler();
+      this.profiler = new PerformanceProfiler();
     }
 
     /**
@@ -314,12 +316,12 @@
      * @returns {void}
      */
     _initializeEncoding() {
-      this.rng = new FountainFoundation.SeededRandom(this.seed);
-      this.degreeDistribution = new FountainFoundation.DegreeDistribution(this.k);
+      this.rng = new SeededRandom(this.seed);
+      this.degreeDistribution = new DegreeDistribution(this.k);
 
       // Calculate number of encoded symbols needed
       const numEncoded = Math.ceil(this.k * (1.0 + this.overhead));
-      this.graph = new FountainFoundation.BipartiteGraph(this.k, numEncoded);
+      this.graph = new BipartiteGraph(this.k, numEncoded);
 
       this.profiler.startTimer('graph_construction');
       this._constructEncodingGraph();
