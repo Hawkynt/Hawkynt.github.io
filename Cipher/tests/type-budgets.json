@@ -57,7 +57,7 @@
   "algorithms/asymmetric/luc.js": 23,
   "algorithms/asymmetric/lwe-signature.js": 0,
   "algorithms/asymmetric/mayo.js": 100,
-  "algorithms/asymmetric/ml-dsa.js": 24,
+  "algorithms/asymmetric/ml-dsa.js": 0,
   "algorithms/asymmetric/ntru.js": 0,
   "algorithms/asymmetric/perk.js": 84,
   "algorithms/asymmetric/rabin-williams.js": 23,
