@@ -65,6 +65,24 @@ test('GOST R 34.11-94: given a message of 2^32 + 24 bits, when finalized, then t
   equalHex(blocks[blocks.length - 2], hex(leBytes(LONG_BITS, 32)));
 });
 
+// ---------------------------------------------------------------- GMAC
+test('GMAC: given 2^32 + 24 bits of data, when the tag is computed, then the GHASH length block holds all 64 bits of len(A) and a zero len(C)', () => {
+  const { GMACAlgorithm } = require(path.join(CIPHER_ROOT, 'algorithms', 'mac', 'gmac.js'));
+  const instance = new GMACAlgorithm().CreateInstance();
+  instance.key = Array.from(Buffer.alloc(16));
+  instance.nonce = Array.from(Buffer.alloc(12));
+  let ghashInput = null;
+  const ghash = instance._ghash.bind(instance);
+  instance._ghash = data => { ghashInput = Array.from(data); return ghash(data); };
+  // Given: a buffer reporting 2^29 + 3 bytes whose contents GHASH need not see
+  // (the length block is what is under test, and 512 MiB is too much to allocate)
+  instance.inputBuffer = { length: LONG_BYTES, slice: () => [] };
+  // When
+  instance.Result();
+  // Then: SP 800-38D 7.1 step 5 - [len(A)]_64 || [len(C)]_64, big-endian
+  equalHex(ghashInput.slice(-16), hex(leBytes(LONG_BITS, 8).reverse().concat(leBytes(0n, 8))));
+});
+
 // ---------------------------------------------------------------- TupleHash
 // cSHAKE absorbs N and S before the message, so TupleHash used to drop a
 // customization set after the elements. Expected values: NIST SP 800-185
