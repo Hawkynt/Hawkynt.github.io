@@ -1,10 +1,12 @@
 /*
  * REDOC Block Cipher Implementation (REDOC II and REDOC III)
  * Compatible with AlgorithmFramework
- * IBM's experimental data-dependent ciphers from the 1980s
+ * Michael Wood's data-dependent ciphers for Cryptech Inc
  * (c)2006-2025 Hawkynt
  *
- * REDOC II: 80-bit blocks, 160-bit keys, 10 rounds (1980)
+ * REDOC II: 80-bit blocks, 160-bit keys, 10 rounds of key- and data-selected
+ *           substitutions, enclaves and permutations,
+ *           following Michael Wood's reference source code
  * REDOC III: 64-bit blocks, 8- to 272-bit keys, XOR-only key-table masking,
  *            following Michael Wood's reference source code
  */
@@ -52,50 +54,254 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
-  // ===== SHARED COMPONENTS =====
-
-  /**
-   * Shared S-box generation: a bijective S-box built by permuting 0-255
-   * @param {int32} seedKey - Seed
-   * @param {int32} multiplier - Multiplier
-   * @returns {uint8[]} S-box
-   */
-  function generateSBox(seedKey, multiplier) {
-    // Create a proper bijective S-box by permuting 0-255
-    /** @type {uint8[]} */
-    const sbox = new Array(256);
-
-    // Initialize with identity
-    for (let i = 0; i < 256; i++) {
-      sbox[i] = i;
-    }
-
-    // Use a simple permutation based on seed key and multiplier
-    for (let i = 0; i < 256; i++) {
-      const j = (i + seedKey + (i * multiplier)) % 256;
-      // Swap elements to create permutation
-      const temp = sbox[i];
-      sbox[i] = sbox[j];
-      sbox[j] = temp;
-    }
-
-    return sbox;
-  }
-
-  /**
-   * @param {uint8[]} sbox - Bijective S-box
-   * @returns {uint8[]} Inverse S-box
-   */
-  function generateInverseSBox(sbox) {
-    /** @type {uint8[]} */
-    const invSbox = new Array(256);
-    for (let i = 0; i < 256; i++) {
-      invSbox[sbox[i]] = i;
-    }
-    return invSbox;
-  }
-
   // ===== REDOC II IMPLEMENTATION =====
+  //
+  // Follows Michael Wood's REDOC II reference source (REDOC2.ZIP of the
+  // Applied Cryptography source distribution) and the published description
+  // (Cusick and Wood, "The REDOC II Cryptosystem", CRYPTO '90):
+  //   - fixed, key-independent function tables drawn from rand(): 256
+  //     permutations of the 10 block bytes, 16 byte substitutions with their
+  //     inverses, and 256 enclave tables (three rows, each a permutation of
+  //     0-4, whose columns hold three distinct indices)
+  //   - the 160-bit key is split into two 10-byte halves; the second half is
+  //     transformed 256 times (permutation, substitution, left and right
+  //     enclave, all selected by the first half XOR the current row, while the
+  //     first half is permuted as well), each state becoming a key-table row
+  //   - the 2560-byte key table is XOR-folded into a 10x10 mask table
+  //   - 10 rounds, each skipping bytes r and r+1: two substitutions, a key-row
+  //     XOR, the left and right enclave, a second key-row XOR and a
+  //     permutation, every table chosen by a block byte XOR a mask byte
+  // Choices for what the reference source leaves to its platform:
+  //   - rand() is the C standard's reference generator (multiplier
+  //     1103515245, increment 12345, 15-bit result), as for REDOC III;
+  //   - the table generators take their seeds from consecutive values starting
+  //     at 32 (the source passes the constant 32 as the seed address); each of
+  //     the three generators starts again at 32, reseeding with the next value
+  //     after every 6 permutations, every substitution and every 6 enclave
+  //     tables;
+  //   - the mask fold reads 2600 entries, 40 more than the key table holds;
+  //     the source declares the mask table right after the key table, so the
+  //     last 40 entries are mask bytes 0-39, XORed into mask bytes 60-99.
+
+  /** @type {int32} */
+  const REDOC2_BLOCK_SIZE = 10;
+  /** @type {int32} */
+  const REDOC2_KEY_SIZE = 20;
+  /** @type {int32} */
+  const REDOC2_ROUNDS = 10;
+  /** @type {int32} */
+  const REDOC2_PERMUTATIONS = 256;
+  /** @type {int32} */
+  const REDOC2_SUBSTITUTIONS = 16;
+  /** @type {int32} */
+  const REDOC2_ENCLAVES = 256;
+  /** @type {int32} */
+  const REDOC2_ENCLAVE_SIZE = 15;
+  /** @type {int32} */
+  const REDOC2_KEY_ROWS = 256;
+  /** @type {int32} */
+  const REDOC2_MASK_SIZE = 100;
+  /** @type {int32} */
+  const REDOC2_MASK_FOLD = 2600;
+  /** @type {int32} */
+  const REDOC2_FIRST_SEED = 32;
+  /** @type {uint32} */
+  const REDOC2_RAND_MULT = 1103515245;
+  /** @type {uint32} */
+  const REDOC2_RAND_INC = 12345;
+
+  /**
+   * The C standard's reference rand(): advance the seed, return its bits 16-30
+   * @param {uint32[]} state - One-element generator state, updated
+   * @returns {int32} Next value, 0 to 32767
+   */
+  function redoc2Rand(state) {
+    state[0] = OpCodes.ToUint32(OpCodes.Add32(OpCodes.Mul32(state[0], REDOC2_RAND_MULT), REDOC2_RAND_INC));
+    return OpCodes.And32(OpCodes.Shr32(state[0], 16), 0x7FFF);
+  }
+
+  /**
+   * Write a random permutation of 0..count-1 into table, drawing values with
+   * rand() modulo count and rejecting repeats
+   * @param {uint32[]} rng - Generator state
+   * @param {uint8[]} table - Destination
+   * @param {int32} offset - First entry written
+   * @param {int32} count - Permutation length
+   */
+  function redoc2RandomPermutation(rng, table, offset, count) {
+    /** @type {uint8[]} */
+    const seen = new Uint8Array(count);
+    let filled = 0;
+    while (filled < count) {
+      /** @type {int32} */
+      const value = redoc2Rand(rng) % count;
+      if (seen[value] === 0) {
+        seen[value] = 1;
+        table[offset + filled] = value;
+        ++filled;
+      }
+    }
+  }
+
+  /**
+   * Key-independent function tables of REDOC II
+   * @typedef {Object} REDOC2Tables
+   * @property {uint8[]} perm - 256 permutations of 10 bytes
+   * @property {uint8[]} sub - 16 substitutions of 256 bytes
+   * @property {uint8[]} inv - Inverses of the substitutions
+   * @property {uint8[]} encl - 256 enclave tables of 3x5 entries
+   */
+
+  /** @type {REDOC2Tables|null} */
+  let redoc2Tables = null;
+
+  /**
+   * Build (once) the permutation, substitution and enclave tables
+   * @returns {REDOC2Tables} Function tables
+   */
+  function redoc2FunctionTables() {
+    if (redoc2Tables) return redoc2Tables;
+
+    /** @type {uint8[]} */
+    const perm = new Uint8Array(REDOC2_PERMUTATIONS * REDOC2_BLOCK_SIZE);
+    /** @type {uint32[]} */
+    const rng = new Uint32Array([REDOC2_FIRST_SEED]);
+    let seed = REDOC2_FIRST_SEED;
+    for (let i = 0; i < REDOC2_PERMUTATIONS; i++) {
+      redoc2RandomPermutation(rng, perm, i * REDOC2_BLOCK_SIZE, REDOC2_BLOCK_SIZE);
+      if ((i + 1) % 6 === 0) rng[0] = ++seed;
+    }
+
+    /** @type {uint8[]} */
+    const sub = new Uint8Array(REDOC2_SUBSTITUTIONS * 256);
+    /** @type {uint8[]} */
+    const inv = new Uint8Array(REDOC2_SUBSTITUTIONS * 256);
+    seed = REDOC2_FIRST_SEED;
+    rng[0] = seed;
+    for (let t = 0; t < REDOC2_SUBSTITUTIONS; t++) {
+      redoc2RandomPermutation(rng, sub, t * 256, 256);
+      rng[0] = ++seed;
+      for (let i = 0; i < 256; i++) inv[OpCodes.Add32(t * 256, sub[t * 256 + i])] = i;
+    }
+
+    /** @type {uint8[]} */
+    const encl = new Uint8Array(REDOC2_ENCLAVES * REDOC2_ENCLAVE_SIZE);
+    seed = REDOC2_FIRST_SEED;
+    rng[0] = seed;
+    for (let t = 0; t < REDOC2_ENCLAVES; t++) {
+      const base = t * REDOC2_ENCLAVE_SIZE;
+      let valid = false;
+      while (!valid) {
+        for (let row = 0; row < 3; row++) redoc2RandomPermutation(rng, encl, base + row * 5, 5);
+        valid = true;
+        for (let col = 0; col < 5; col++) {
+          const x = encl[base + col];
+          const y = encl[base + 5 + col];
+          const z = encl[base + 10 + col];
+          if (x === y || x === z || y === z) valid = false;
+        }
+      }
+      if ((t + 1) % 6 === 0) rng[0] = ++seed;
+    }
+
+    redoc2Tables = { perm: perm, sub: sub, inv: inv, encl: encl };
+    return redoc2Tables;
+  }
+
+  /**
+   * Move byte i of the 10 bytes to position perm[i]
+   * @param {uint8[]} perm - Permutation tables
+   * @param {int32} row - Permutation number
+   * @param {uint8[]} data - Bytes, changed in place
+   */
+  function redoc2Permute(perm, row, data) {
+    const src = data.slice(0, REDOC2_BLOCK_SIZE);
+    const base = row * REDOC2_BLOCK_SIZE;
+    for (let i = 0; i < REDOC2_BLOCK_SIZE; i++) data[perm[base + i]] = src[i];
+  }
+
+  /**
+   * Undo redoc2Permute
+   * @param {uint8[]} perm - Permutation tables
+   * @param {int32} row - Permutation number
+   * @param {uint8[]} data - Bytes, changed in place
+   */
+  function redoc2Unpermute(perm, row, data) {
+    const src = data.slice(0, REDOC2_BLOCK_SIZE);
+    const base = row * REDOC2_BLOCK_SIZE;
+    for (let i = 0; i < REDOC2_BLOCK_SIZE; i++) data[i] = src[perm[base + i]];
+  }
+
+  /**
+   * Substitute every block byte except the skipped one
+   * @param {uint8[]} sub - Substitution (or inverse) tables
+   * @param {int32} table - Table number, 0 to 15
+   * @param {uint8[]} data - Bytes, changed in place
+   * @param {int32} skip - Byte left unchanged (10 = none)
+   */
+  function redoc2Substitute(sub, table, data, skip) {
+    const base = table * 256;
+    for (let i = 0; i < REDOC2_BLOCK_SIZE; i++) {
+      if (i !== skip) data[i] = sub[OpCodes.Add32(base, data[i])];
+    }
+  }
+
+  /**
+   * XOR a key-table row into every block byte except the skipped one
+   * @param {uint8[]} keyTable - Key table
+   * @param {int32} row - Row number, 0 to 255
+   * @param {uint8[]} data - Bytes, changed in place
+   * @param {int32} skip - Byte left unchanged
+   */
+  function redoc2KeyXor(keyTable, row, data, skip) {
+    const base = row * REDOC2_BLOCK_SIZE;
+    for (let i = 0; i < REDOC2_BLOCK_SIZE; i++) {
+      if (i !== skip) data[i] = OpCodes.Xor8(data[i], keyTable[base + i]);
+    }
+  }
+
+  /**
+   * Apply (or undo) one enclave table to the 5-byte half at offset: per
+   * column, the byte named by the first row gains (loses) the bytes named by
+   * the second and third rows
+   * @param {uint8[]} encl - Enclave tables
+   * @param {int32} table - Enclave table number
+   * @param {uint8[]} data - Bytes, changed in place
+   * @param {int32} half - Offset of the half, 0 or 5
+   * @param {boolean} forward - Add (true) or subtract (false)
+   */
+  function redoc2Clave(encl, table, data, half, forward) {
+    const base = table * REDOC2_ENCLAVE_SIZE;
+    for (let n = 0; n < 5; n++) {
+      const col = forward ? n : 4 - n;
+      const target = OpCodes.Add32(half, encl[base + col]);
+      const sum = OpCodes.Add32(data[OpCodes.Add32(half, encl[base + 5 + col])], data[OpCodes.Add32(half, encl[base + 10 + col])]);
+      data[target] = OpCodes.ToByte(forward ? OpCodes.Add32(data[target], sum) : OpCodes.Sub32(data[target], sum));
+    }
+  }
+
+  /**
+   * Enclave function on one half: two enclave tables, then the other half is
+   * XORed into it
+   * @param {uint8[]} encl - Enclave tables
+   * @param {int32} first - First enclave table
+   * @param {int32} second - Second enclave table
+   * @param {uint8[]} data - Bytes, changed in place
+   * @param {int32} half - Offset of the changed half, 0 (left) or 5 (right)
+   * @param {boolean} forward - Apply (true) or undo (false)
+   */
+  function redoc2Enclave(encl, first, second, data, half, forward) {
+    const other = 5 - half;
+    if (forward) {
+      redoc2Clave(encl, first, data, half, true);
+      redoc2Clave(encl, second, data, half, true);
+    }
+    for (let i = 0; i < 5; i++) data[half + i] = OpCodes.Xor8(data[half + i], data[other + i]);
+    if (!forward) {
+      redoc2Clave(encl, second, data, half, false);
+      redoc2Clave(encl, first, data, half, false);
+    }
+  }
 
   /**
  * REDOC2Algorithm - Block cipher implementation
@@ -109,46 +315,84 @@
 
       // Required metadata
       this.name = "REDOC II";
-      this.description = "IBM's experimental data-dependent cipher from the 1980s with 80-bit blocks and 160-bit keys. Uses data-dependent permutations, substitutions, and enclave operations with 10 rounds. Educational implementation only.";
-      this.inventor = "IBM Research";
-      this.year = 1980;
+      this.description = "Michael Wood's cipher for Cryptech Inc: 80-bit blocks, a 160-bit key and 10 rounds of substitutions, key-table XORs, enclave functions and permutations, each chosen by a block byte XORed with a mask byte. The key expands into a 256-row key table and a 10x10 mask table. Follows Wood's reference source code.";
+      this.inventor = "Michael Wood";
+      this.year = 1990;
       this.category = CategoryType.BLOCK;
       this.subCategory = "Block Cipher";
-      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      this.securityStatus = SecurityStatus.BROKEN;
       this.complexity = ComplexityType.ADVANCED;
       this.country = CountryCode.US;
 
       // Algorithm-specific metadata
       this.SupportedKeySizes = [
-        new KeySize(20, 20, 1) // 160-bit keys only
+        new KeySize(REDOC2_KEY_SIZE, REDOC2_KEY_SIZE, 0)
       ];
       this.SupportedBlockSizes = [
-        new KeySize(10, 10, 1) // 80-bit blocks only
+        new KeySize(REDOC2_BLOCK_SIZE, REDOC2_BLOCK_SIZE, 0)
       ];
 
       // Documentation and references
       this.documentation = [
-        new LinkItem("IBM Cryptographic Research Documents", "https://www.ibm.com/security/cryptography/"),
-        new LinkItem("Fast Software Encryption Proceedings", "https://link.springer.com/conference/fse")
+        new LinkItem("Applied Cryptography source code (REDOC2.ZIP by Michael Wood)", "https://www.schneier.com/books/applied-cryptography-source/"),
+        new LinkItem("Cusick, Wood - \"The REDOC II Cryptosystem\", CRYPTO '90", "https://link.springer.com/chapter/10.1007/3-540-38424-3_38"),
+        new LinkItem("Wikipedia: REDOC", "https://en.wikipedia.org/wiki/REDOC"),
+        new LinkItem("US Patent 5,003,596 (Wood)", "https://patents.google.com/patent/US5003596A")
       ];
 
       this.references = [
-        new LinkItem("Data-Dependent Cipher Design Research", "https://eprint.iacr.org/"),
-        new LinkItem("IBM Internal Research Archives", "https://researcher.watson.ibm.com/")
+        new LinkItem("REDOC II reference source (Michael Wood)", "https://www.schneier.com/wp-content/uploads/2015/03/REDOC2-2.zip")
       ];
 
       this.knownVulnerabilities = [
-        new Vulnerability("Educational Implementation", "Simplified implementation may not reflect full security of original design", "Use only for educational purposes and cryptographic research", "https://eprint.iacr.org/")
+        new Vulnerability("Differential cryptanalysis", "Biham and Shamir attack one round with about 2300 encryptions and recover three masks of up to four rounds faster than exhaustive search; Cusick found another one-round attack.", "Use AES or another vetted cipher.", "https://www.cs.technion.ac.il/~biham/Reports/Weizmann/cs91-18.ps.gz")
       ];
 
-      // Test vectors
+      // Test vectors: Michael Wood's reference source compiled with the C
+      // standard's reference rand() (see the notes above the constants).
+      const uri = "https://www.schneier.com/wp-content/uploads/2015/03/REDOC2-2.zip";
       this.tests = [
         {
-          text: "REDOC II Reference Test Vector",
-          uri: "Based on simplified implementation",
-          input: OpCodes.Hex8ToBytes("41424344454647484950"), // "ABCDEFGHIJ"
-          key: OpCodes.Hex8ToBytes("724d3e0e5b71e9aa3898ffde1a9bd5f80c6d4e5f"), // key_x + key_y from reference
-          expected: OpCodes.Hex8ToBytes("B925A9CFC61993FB7E70") // Computed from working implementation
+          text: "REDOC II reference - sample key and block of the reference source (\"ABCDEFGHIJ\")",
+          uri: uri,
+          input: OpCodes.Hex8ToBytes("4142434445464748494a"),
+          key: OpCodes.Hex8ToBytes("724d3e0e5b71e9aa3898ffde1a9bd5f80c6d4e5f"),
+          expected: OpCodes.Hex8ToBytes("d3e1b40d11f4c81224ca")
+        },
+        {
+          text: "REDOC II reference - zero key, zero block",
+          uri: uri,
+          input: OpCodes.Hex8ToBytes("00000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0000000000000000000000000000000000000000"),
+          expected: OpCodes.Hex8ToBytes("f00bb85e8f9205917b57")
+        },
+        {
+          text: "REDOC II reference - incrementing key and block",
+          uri: uri,
+          input: OpCodes.Hex8ToBytes("00010203040506070809"),
+          key: OpCodes.Hex8ToBytes("000102030405060708090a0b0c0d0e0f10111213"),
+          expected: OpCodes.Hex8ToBytes("98b8a06b23bf702b729e")
+        },
+        {
+          text: "REDOC II reference - all-ones key and block",
+          uri: uri,
+          input: OpCodes.Hex8ToBytes("ffffffffffffffffffff"),
+          key: OpCodes.Hex8ToBytes("ffffffffffffffffffffffffffffffffffffffff"),
+          expected: OpCodes.Hex8ToBytes("cba888ddd1b273eb965e")
+        },
+        {
+          text: "REDOC II reference - mixed key and block",
+          uri: uri,
+          input: OpCodes.Hex8ToBytes("6bc1bee22e409f96e93d"),
+          key: OpCodes.Hex8ToBytes("2b7e151628aed2a6abf7158809cf4f3c762e7160"),
+          expected: OpCodes.Hex8ToBytes("0f78543ed2e217aaa2bf")
+        },
+        {
+          text: "REDOC II reference - single set bit in the block",
+          uri: uri,
+          input: OpCodes.Hex8ToBytes("80000000000000000000"),
+          key: OpCodes.Hex8ToBytes("0123456789abcdeffedcba987654321000112233"),
+          expected: OpCodes.Hex8ToBytes("d1d49c32755140ea71ca")
         }
       ];
     }
@@ -184,24 +428,12 @@
       this._key = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
-      this.BlockSize = 10;
-      this.KeySize = 20;
-
-      // REDOC II parameters - simplified implementation
-      /** @type {int32} */
-      this.ROUNDS = 10;
-
-      // Precomputed S-boxes for educational purposes
-      /** @type {uint8[]} */
-      this.SBOX = generateSBox(0x5A, 131);
-      /** @type {uint8[]} */
-      this.SBOX_INV = generateInverseSBox(this.SBOX);
+      this.BlockSize = REDOC2_BLOCK_SIZE;
+      this.KeySize = 0;
       /** @type {uint8[]|null} */
-      this.keyX = null;
+      this.keyTable = null;
       /** @type {uint8[]|null} */
-      this.keyY = null;
-      /** @type {uint8[][]|null} */
-      this.roundKeys = null;
+      this.maskTable = null;
     }
 
     /**
@@ -220,48 +452,67 @@
       if (!value) {
         this._key = null;
         this.KeySize = 0;
+        this.keyTable = null;
+        this.maskTable = null;
         return;
       }
 
-      if (value.length !== 20) {
-        throw new Error('Invalid REDOC II key size: ' + (8 * value.length) + ' bits. Required: 160 bits.');
+      if (value.length !== REDOC2_KEY_SIZE) {
+        throw new Error('Invalid REDOC II key size: ' + value.length + ' bytes. Required: ' + REDOC2_KEY_SIZE + ' bytes.');
       }
       this._key = [...value]; // Copy the key
       this.KeySize = value.length;
-      this._setupKey();
+      this.keyTable = this._buildKeyTable(this._key);
+      this.maskTable = this._buildMaskTable(this.keyTable);
     }
 
     /**
-     * Split the key and derive the round keys
+     * Expand the key into the 256-row key table
+     * @param {uint8[]} key - 20 key bytes
+     * @returns {uint8[]} Key table
      */
-    _setupKey() {
-      if (!this._key) return;
-
-      // Split key into two halves
-      this.keyX = this._key.slice(0, 10);
-      this.keyY = this._key.slice(10, 20);
-
-      // Generate round keys
-      this.roundKeys = this._generateRoundKeys();
-    }
-
-    /**
-     * @returns {uint8[][]} One round key per round
-     */
-    _generateRoundKeys() {
-      /** @type {uint8[][]} */
-      const roundKeys = [];
-
-      for (let round = 0; round < this.ROUNDS; round++) {
+    _buildKeyTable(key) {
+      const tables = redoc2FunctionTables();
+      /** @type {uint8[]} */
+      const table = new Uint8Array(REDOC2_KEY_ROWS * REDOC2_BLOCK_SIZE);
+      const x = key.slice(0, REDOC2_BLOCK_SIZE);
+      const row = key.slice(REDOC2_BLOCK_SIZE, REDOC2_KEY_SIZE);
+      for (let r = 0; r < REDOC2_KEY_ROWS; r++) {
         /** @type {uint8[]} */
-        const roundKey = new Array(10);
-        for (let i = 0; i < 10; i++) {
-          roundKey[i] = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(this.keyX[i], this.keyY[(i + round) % 10]), round), 0xFF);
-        }
-        roundKeys.push(roundKey);
-      }
+        const s = new Array(REDOC2_BLOCK_SIZE);
+        for (let i = 0; i < REDOC2_BLOCK_SIZE; i++) s[i] = OpCodes.Xor8(x[i], row[i]);
+        const m = OpCodes.Xor8(s[4], s[5]);
+        const n = OpCodes.Xor8(s[6], s[7]);
+        const z = OpCodes.Xor8(OpCodes.Xor8(x[8], row[8]), OpCodes.ToByte(OpCodes.Add32(x[9], row[9])));
 
-      return roundKeys;
+        redoc2Permute(tables.perm, n, row);
+        redoc2Substitute(tables.sub, m % REDOC2_SUBSTITUTIONS, row, REDOC2_BLOCK_SIZE);
+        redoc2Enclave(tables.encl, s[0], s[1], row, 0, true);
+        redoc2Enclave(tables.encl, s[2], s[3], row, 5, true);
+        redoc2Permute(tables.perm, z, x);
+
+        for (let i = 0; i < REDOC2_BLOCK_SIZE; i++) table[r * REDOC2_BLOCK_SIZE + i] = row[i];
+      }
+      return table;
+    }
+
+    /**
+     * XOR-fold the key table into the 10x10 mask table
+     * @param {uint8[]} table - Key table
+     * @returns {uint8[]} Mask table
+     */
+    _buildMaskTable(table) {
+      /** @type {uint8[]} */
+      const mask = new Uint8Array(REDOC2_MASK_SIZE);
+      for (let i = 0; i < table.length; i++) {
+        mask[i % REDOC2_MASK_SIZE] = OpCodes.Xor8(mask[i % REDOC2_MASK_SIZE], table[i]);
+      }
+      // The fold's last 40 entries lie past the key table, in mask bytes 0-39
+      for (let i = table.length; i < REDOC2_MASK_FOLD; i++) {
+        const target = i % REDOC2_MASK_SIZE;
+        mask[target] = OpCodes.Xor8(mask[target], mask[i - table.length]);
+      }
+      return mask;
     }
 
     /**
@@ -306,22 +557,59 @@
     }
 
     /**
+     * Mask byte k of round r
+     * @param {int32} round - Round, 0 to 9
+     * @param {int32} k - Mask row, 0 to 8
+     * @returns {uint8} Mask byte
+     */
+    _mask(round, k) {
+      return this.maskTable[k * REDOC2_BLOCK_SIZE + round];
+    }
+
+    /**
+     * Data byte XOR mask byte, the selector of a table in round r
+     * @param {uint8[]} data - Block bytes
+     * @param {int32} index - Block byte
+     * @param {int32} round - Round
+     * @param {int32} k - Mask row
+     * @returns {uint8} Selector
+     */
+    _select(data, index, round, k) {
+      return OpCodes.Xor8(data[index], this._mask(round, k));
+    }
+
+    /**
+     * XOR of all block bytes and the round's last mask byte
+     * @param {uint8[]} data - Block bytes
+     * @param {int32} round - Round
+     * @returns {uint8} Permutation number
+     */
+    _permutationSelector(data, round) {
+      let acc = this._mask(round, 8);
+      for (let i = 0; i < REDOC2_BLOCK_SIZE; i++) acc = OpCodes.Xor8(acc, data[i]);
+      return acc;
+    }
+
+    /**
      * @param {uint8[]} block - Input block
      * @returns {uint8[]} Output block
      */
     _encryptBlock(block) {
-      if (block.length !== 10) {
-        throw new Error('REDOC II requires 10-byte blocks');
-      }
-
-      // Copy input data
+      const tables = redoc2FunctionTables();
       const data = block.slice();
-
-      // Apply 10 rounds of REDOC II operations
-      for (let round = 0; round < this.ROUNDS; round++) {
-        this._roundFunction(data, this.roundKeys[round], true);
+      for (let r = 0; r < REDOC2_ROUNDS; r++) {
+        const s1 = r;
+        const s2 = (r + 1) % REDOC2_BLOCK_SIZE;
+        const w = (r + 4) % 5;
+        const z = (w + 1) % 5;
+        redoc2Substitute(tables.sub, this._select(data, s1, r, 0) % REDOC2_SUBSTITUTIONS, data, s1);
+        redoc2Substitute(tables.sub, this._select(data, s2, r, 1) % REDOC2_SUBSTITUTIONS, data, s2);
+        redoc2KeyXor(this.keyTable, this._select(data, s1, r, 2), data, s1);
+        redoc2Enclave(tables.encl, this._select(data, 5 + w, r, 3), this._select(data, 5 + z, r, 4), data, 0, true);
+        redoc2Enclave(tables.encl, this._select(data, w, r, 5), this._select(data, z, r, 6), data, 5, true);
+        redoc2KeyXor(this.keyTable, this._select(data, s2, r, 7), data, s2);
+        redoc2Permute(tables.perm, this._permutationSelector(data, r), data);
       }
-
       return data;
     }
 
@@ -330,74 +618,22 @@
      * @returns {uint8[]} Output block
      */
     _decryptBlock(block) {
-      if (block.length !== 10) {
-        throw new Error('REDOC II requires 10-byte blocks');
-      }
-
-      // Copy input data
+      const tables = redoc2FunctionTables();
       const data = block.slice();
-
-      // Apply 10 rounds in reverse order
-      for (let round = this.ROUNDS - 1; round >= 0; round--) {
-        this._roundFunction(data, this.roundKeys[round], false);
+      for (let r = REDOC2_ROUNDS - 1; r >= 0; r--) {
+        const s1 = r;
+        const s2 = (r + 1) % REDOC2_BLOCK_SIZE;
+        const w = (r + 4) % 5;
+        const z = (w + 1) % 5;
+        redoc2Unpermute(tables.perm, this._permutationSelector(data, r), data);
+        redoc2KeyXor(this.keyTable, this._select(data, s2, r, 7), data, s2);
+        redoc2Enclave(tables.encl, this._select(data, w, r, 5), this._select(data, z, r, 6), data, 5, false);
+        redoc2Enclave(tables.encl, this._select(data, 5 + w, r, 3), this._select(data, 5 + z, r, 4), data, 0, false);
+        redoc2KeyXor(this.keyTable, this._select(data, s1, r, 2), data, s1);
+        redoc2Substitute(tables.inv, this._select(data, s2, r, 1) % REDOC2_SUBSTITUTIONS, data, s2);
+        redoc2Substitute(tables.inv, this._select(data, s1, r, 0) % REDOC2_SUBSTITUTIONS, data, s1);
       }
-
       return data;
-    }
-
-    /**
-     * One round, applied in place
-     * @param {uint8[]} data - Block bytes
-     * @param {uint8[]} roundKey - Round key
-     * @param {boolean} encrypt - Forward (true) or inverse (false) round
-     */
-    _roundFunction(data, roundKey, encrypt) {
-      if (encrypt) {
-        // Simplified symmetric encryption round
-
-        // Step 1: XOR with round key
-        for (let i = 0; i < 10; i++) {
-          data[i] = OpCodes.Xor8(data[i], roundKey[i]);
-        }
-
-        // Step 2: S-box substitution
-        for (let i = 0; i < 10; i++) {
-          data[i] = this.SBOX[data[i]];
-        }
-
-        // Step 3: Simple rotation based on position
-        for (let i = 0; i < 10; i++) {
-          data[i] = OpCodes.RotL8(data[i], OpCodes.And32(i + 1, 0x07));
-        }
-
-        // Step 4: Left-right mixing (like Feistel)
-        for (let i = 0; i < 5; i++) {
-          data[i] = OpCodes.Xor8(data[i], data[i + 5]);
-        }
-
-      } else {
-        // Decryption round (exact reverse)
-
-        // Reverse Step 4: Left-right mixing
-        for (let i = 0; i < 5; i++) {
-          data[i] = OpCodes.Xor8(data[i], data[i + 5]);
-        }
-
-        // Reverse Step 3: Simple rotation
-        for (let i = 0; i < 10; i++) {
-          data[i] = OpCodes.RotR8(data[i], OpCodes.And32(i + 1, 0x07));
-        }
-
-        // Reverse Step 2: Inverse S-box substitution
-        for (let i = 0; i < 10; i++) {
-          data[i] = this.SBOX_INV[data[i]];
-        }
-
-        // Reverse Step 1: XOR with round key
-        for (let i = 0; i < 10; i++) {
-          data[i] = OpCodes.Xor8(data[i], roundKey[i]);
-        }
-      }
     }
   }
 
