@@ -41,7 +41,7 @@
   "algorithms/aead/xoodyak.js": 0,
   "algorithms/asymmetric/bike.js": 0,
   "algorithms/asymmetric/classic-mceliece.js": 0,
-  "algorithms/asymmetric/cross.js": 166,
+  "algorithms/asymmetric/cross.js": 0,
   "algorithms/asymmetric/diffie-hellman.js": 37,
   "algorithms/asymmetric/dilithium.js": 0,
   "algorithms/asymmetric/dsa.js": 17,
