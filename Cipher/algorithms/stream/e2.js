@@ -179,18 +179,18 @@
       /** @type {uint8[]} */
       const counter = OpCodes.CreateArray(BLOCK_SIZE, 0);
       for (let i = 0; i < BLOCK_SIZE; i++) {
-        counter[i] = OpCodes.UintToByte(OpCodes.Shr32(blockIndex, (i % 4) * 8));
+        counter[i] = OpCodes.GetByte(blockIndex, i % 4);
       }
 
       /** @type {uint8[]} */
       const keystream = OpCodes.CreateArray(BLOCK_SIZE, 0);
       for (let i = 0; i < BLOCK_SIZE; i++) {
-        keystream[i] = OpCodes.UintToByte(OpCodes.Xor32(OpCodes.Xor32(key[i], counter[i]), OpCodes.Add32(OpCodes.Mul32(blockIndex, 17), i)));
+        keystream[i] = OpCodes.Xor8(OpCodes.Xor8(key[i], counter[i]), OpCodes.GetByte(OpCodes.Add32(OpCodes.Mul32(blockIndex, 17), i), 0));
       }
 
       // S-box-like diffusion pass, in place and in order
       for (let i = 0; i < BLOCK_SIZE; i++) {
-        keystream[i] = OpCodes.UintToByte(OpCodes.Add32(keystream[i], OpCodes.Xor32(keystream[(i + 1) % BLOCK_SIZE], keystream[(i + 15) % BLOCK_SIZE])));
+        keystream[i] = OpCodes.GetByte(OpCodes.Add32(keystream[i], OpCodes.Xor8(keystream[(i + 1) % BLOCK_SIZE], keystream[(i + 15) % BLOCK_SIZE])), 0);
       }
 
       return keystream;
