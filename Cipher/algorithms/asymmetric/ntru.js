@@ -69,10 +69,7 @@
   // collection's FIPS 202 module already agrees with the published digests, so
   // it is reused rather than duplicated.
 
-  const globalScope = typeof globalThis !== 'undefined' ? globalThis
-    : (typeof window !== 'undefined' ? window
-    : (typeof self !== 'undefined' ? self : {}));
-
+  /** @type {Algorithm|null} */
   let sha3Algorithm = null;
 
   /**
@@ -91,23 +88,21 @@
    */
   function sha3_256(data) {
     if (!sha3Algorithm) {
-      sha3Algorithm = AlgorithmFramework.Find ? AlgorithmFramework.Find('SHA-3-256') : null;
+      sha3Algorithm = AlgorithmFramework.Find('SHA-3-256');
 
-      if (!sha3Algorithm) {
-        let SHA3AlgorithmClass = globalScope.SHA3Algorithm;
-        if (!SHA3AlgorithmClass && typeof require !== 'undefined') {
-          try {
-            SHA3AlgorithmClass = require('../hash/sha3.js').SHA3Algorithm;
-          } catch (e) {
-            // Reported as a missing dependency below.
-          }
+      if (!sha3Algorithm && typeof require !== 'undefined') {
+        try {
+          require('../hash/sha3.js');
+        } catch (e) {
+          // Reported as a missing dependency below.
         }
-        if (SHA3AlgorithmClass) sha3Algorithm = new SHA3AlgorithmClass(256);
+        sha3Algorithm = AlgorithmFramework.Find('SHA-3-256');
       }
 
       if (!sha3Algorithm) throw new Error('SHA3-256 is required by NTRU and was not found');
     }
 
+    /** @type {IHashFunctionInstance} */
     const instance = sha3Algorithm.CreateInstance();
     instance.Feed(data);
     /** @type {uint8[]} */
@@ -170,40 +165,31 @@
   /** @type {NtruParams[]} */
   const PARAMETER_SET_LIST = [NTRU_HPS_2048_509, NTRU_HPS_2048_677, NTRU_HPS_4096_821];
 
-  const PARAMETER_SETS = {
-    'ntruhps2048509': NTRU_HPS_2048_509,
-    'ntruhps2048677': NTRU_HPS_2048_677,
-    'ntruhps4096821': NTRU_HPS_4096_821
-  };
-
-  // Every accepted label: the name, the degree and the NTRU-HPS-q-n form.
-  const PARAMETER_SET_ALIASES = {
-    'ntruhps2048509': NTRU_HPS_2048_509,
-    '509': NTRU_HPS_2048_509,
-    'NTRU-HPS-2048-509': NTRU_HPS_2048_509,
-    'ntruhps2048677': NTRU_HPS_2048_677,
-    '677': NTRU_HPS_2048_677,
-    'NTRU-HPS-2048-677': NTRU_HPS_2048_677,
-    'ntruhps4096821': NTRU_HPS_4096_821,
-    '821': NTRU_HPS_4096_821,
-    'NTRU-HPS-4096-821': NTRU_HPS_4096_821
-  };
+  // Every accepted label: the name, the degree and the NTRU-HPS-q-n form,
+  // each the label of the set at the same index of PARAMETER_SET_LIST.
+  /** @type {string[]} */
+  const ALIAS_NAMES = ['ntruhps2048509', 'ntruhps2048677', 'ntruhps4096821'];
+  /** @type {string[]} */
+  const ALIAS_DEGREES = ['509', '677', '821'];
+  /** @type {string[]} */
+  const ALIAS_LONG_NAMES = ['NTRU-HPS-2048-509', 'NTRU-HPS-2048-677', 'NTRU-HPS-4096-821'];
 
   /**
-   * The alias table entry for a label. A plain property read, so a label is
-   * accepted exactly when the table has a truthy property of it.
+   * The parameter set one of whose labels is exactly this.
    * @param {string} key - the label
-   * @returns {NtruParams} the entry, or a falsy value
+   * @returns {NtruParams|null} the entry, or null
    */
   function AliasEntry(key) {
-    /** @type {NtruParams} */
-    const entry = PARAMETER_SET_ALIASES[key];
-    return entry;
+    for (let i = 0; i < PARAMETER_SET_LIST.length; i++) {
+      if (ALIAS_NAMES[i] === key || ALIAS_DEGREES[i] === key || ALIAS_LONG_NAMES[i] === key)
+        return PARAMETER_SET_LIST[i];
+    }
+    return null;
   }
 
   /**
    * Look a parameter set up by any of its accepted names.
-   * @param {string|number} label - 'ntruhps2048509', 'NTRU-HPS-2048-509', 509
+   * @param {string} label - 'ntruhps2048509', 'NTRU-HPS-2048-509', '509'
    * @returns {NtruParams|null} The parameter set, or null when unrecognised
    */
   function findParameterSet(label) {
@@ -258,18 +244,18 @@
    */
   function zeros(count) {
     /** @type {int32[]} */
-    const out = new Array(count).fill(0);
+    const out = new Array(count);
+    for (let i = 0; i < count; i++) out[i] = 0;
     return out;
   }
 
   /**
-   * @returns {int64[]} 2^0 .. 2^32
+   * @returns {uint32[]} 2^0 .. 2^31
    */
   function PowersOfTwo() {
-    /** @type {int64[]} */
-    const table = new Array(33);
-    table[0] = 1;
-    for (let i = 1; i < 33; i++) table[i] = table[i - 1] * 2;
+    /** @type {uint32[]} */
+    const table = new Array(32);
+    for (let i = 0; i < 32; i++) table[i] = OpCodes.Shl32(1, i);
     return table;
   }
 
@@ -277,11 +263,11 @@
 
   /**
    * Read an unsigned 32 bit quantity as signed.
-   * @param {int64} v - value in [0, 2^32)
+   * @param {uint32} v - value in [0, 2^32)
    * @returns {int32} v, or v - 2^32 when v is 2^31 or more
    */
   function ToSigned32(v) {
-    return v >= POW2[31] ? v - POW2[32] : v;
+    return OpCodes.ToInt(v);
   }
 
   // ===== COEFFICIENT ARITHMETIC =====
@@ -814,16 +800,6 @@
   }
 
   /**
-   * Ascending numeric order for Array.prototype.sort.
-   * @param {int32} x - left
-   * @param {int32} y - right
-   * @returns {int32} negative, zero or positive
-   */
-  function CompareNumbers(x, y) {
-    return x - y;
-  }
-
-  /**
    * Sample_fixed_type: a ternary polynomial with exactly weight/2 coefficients
    * equal to 1 and weight/2 equal to -1, obtained by tagging the low two bits
    * of thirty bit random words and sorting.
@@ -861,7 +837,15 @@
     for (let i = 0; i < P.weight / 2; i++) s[i] = ToSigned32(OpCodes.Or32(s[i], 1));
     for (let i = P.weight / 2; i < P.weight; i++) s[i] = ToSigned32(OpCodes.Or32(s[i], 2));
 
-    s.sort(CompareNumbers);
+    // Ascending signed order. Compared rather than subtracted: the difference
+    // of two words of opposite sign does not fit 32 bits.
+    s.sort(
+      /**
+       * @param {int32} a - left
+       * @param {int32} b - right
+       * @returns {int32} -1, 0 or 1
+       */
+      function (a, b) { return a < b ? -1 : (a > b ? 1 : 0); });
 
     const r = zeros(P.n);
     for (let i = 0; i < count; i++) r[i] = OpCodes.And32(s[i], 3);
@@ -1803,6 +1787,10 @@
 
     // ---- configuration ----
 
+    /**
+     * Select the parameter set by name.
+     * @param {string} label - 'ntruhps2048509', 'NTRU-HPS-2048-509', '509'
+     */
     set parameterSet(label) {
       const found = findParameterSet(label);
       if (!found) throw new Error('Unknown NTRU parameter set: ' + label);
@@ -1874,8 +1862,8 @@
     }
 
     /**
-     * The generic key entry point. Accepts a secret key, a public key, or the
-     * name of a parameter set.
+     * The generic key entry point. Accepts a secret key, a public key, or the ASCII name of a parameter set.
+     * @param {uint8[]|null} keyData - key bytes; null clears both keys
      */
     set key(keyData) {
       this._keyData = keyData;
@@ -1886,12 +1874,9 @@
         return;
       }
 
-      if (typeof keyData === 'string' || typeof keyData === 'number') {
-        this.parameterSet = keyData;
-        return;
-      }
-
-      if (!Array.isArray(keyData) && !ArrayBuffer.isView(keyData))
+      /** @type {boolean} */
+      const isTypedArray = ArrayBuffer.isView(keyData);
+      if (!Array.isArray(keyData) && !isTypedArray)
         throw new Error('Invalid NTRU key data format');
 
       /** @type {int32[]} */
@@ -2034,7 +2019,12 @@
   // ===== EXPORTS =====
 
   return {
-    NTRUCipher, NTRUInstance, PARAMETER_SETS,
+    NTRUCipher, NTRUInstance,
+    PARAMETER_SETS: {
+      'ntruhps2048509': NTRU_HPS_2048_509,
+      'ntruhps2048677': NTRU_HPS_2048_677,
+      'ntruhps4096821': NTRU_HPS_4096_821
+    },
     rqMultiply, sqMultiply, s3Multiply, rqInverse, r2Inverse, s3Inverse,
     s3ToBytes, s3FromBytes, sqToBytes, sqFromBytes, rqSumZeroToBytes, rqSumZeroFromBytes,
     sampleFg, sampleRm, sampleFixedType, owcpaKeypair, owcpaEncrypt, owcpaDecrypt,

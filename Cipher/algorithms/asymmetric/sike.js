@@ -91,6 +91,7 @@
   // collection's FIPS 202 module already agrees with the published digests, so
   // it is reused rather than duplicated.
 
+  /** @type {Algorithm|null} */
   let shakeAlgorithm = null;
 
   /**
@@ -109,7 +110,7 @@
    */
   function shake256(data, outputLength) {
     if (!shakeAlgorithm) {
-      shakeAlgorithm = AlgorithmFramework.Find ? AlgorithmFramework.Find('SHAKE256') : null;
+      shakeAlgorithm = AlgorithmFramework.Find('SHAKE256');
 
       if (!shakeAlgorithm && typeof require !== 'undefined') {
         try {
@@ -117,17 +118,18 @@
         } catch (e) {
           // reported as a missing dependency below
         }
-        shakeAlgorithm = AlgorithmFramework.Find ? AlgorithmFramework.Find('SHAKE256') : null;
+        shakeAlgorithm = AlgorithmFramework.Find('SHAKE256');
       }
 
       if (!shakeAlgorithm) throw new Error('SHAKE256 is required by SIKE and was not found');
     }
 
+    /** @type {IHashFunctionInstance} */
     const instance = shakeAlgorithm.CreateInstance();
     instance.outputSize = outputLength;
     instance.Feed(data);
     /** @type {uint8[]} */
-    const output = Array.from(instance.Result());
+    const output = instance.Result();
     return output;
   }
 
@@ -333,28 +335,20 @@
   /** @type {SikeParams[]} */
   const PARAMETER_SET_LIST = [SIKE_P434, SIKE_P503, SIKE_P610, SIKE_P751];
 
-  const PARAMETER_SETS = {
-    SIKEp434: SIKE_P434,
-    SIKEp503: SIKE_P503,
-    SIKEp610: SIKE_P610,
-    SIKEp751: SIKE_P751
-  };
-
   /**
-   * The table entry under a name. A plain property read, so a name is
-   * accepted exactly when the table has a truthy property of it.
+   * The parameter set of exactly this name.
    * @param {string} name - the name
-   * @returns {SikeParams} the entry, or a falsy value
+   * @returns {SikeParams|null} the entry, or null
    */
   function ParameterSetEntry(name) {
-    /** @type {SikeParams} */
-    const entry = PARAMETER_SETS[name];
-    return entry;
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i)
+      if (PARAMETER_SET_LIST[i].name === name) return PARAMETER_SET_LIST[i];
+    return null;
   }
 
   /**
    * Look up a parameter set by name, tolerating the spellings people use.
-   * @param {string|int32} label - a set name, or just the prime size
+   * @param {string} label - a set name, or just the prime size
    * @returns {SikeParams|null} the parameter set
    */
   function findParameterSet(label) {
@@ -1934,6 +1928,10 @@
 
     // ---- configuration ----
 
+    /**
+     * Select the parameter set by name.
+     * @param {string} label - a set name, or just the prime size
+     */
     set parameterSet(label) {
       const found = findParameterSet(label);
       if (!found) throw new Error('Unknown SIKE parameter set: ' + label);
@@ -2003,7 +2001,11 @@
       return this._sharedSecret ? this._sharedSecret.slice() : null;
     }
 
-    /** The generic key entry point: a secret key, a public key, or a set name. */
+    /**
+     * The generic key entry point: a secret key, a public key, or the ASCII
+     * name of a parameter set.
+     * @param {uint8[]|null} keyData - key bytes; null clears both keys
+     */
     set key(keyData) {
       this._keyData = keyData;
 
@@ -2013,12 +2015,9 @@
         return;
       }
 
-      if (typeof keyData === 'string' || typeof keyData === 'number') {
-        this.parameterSet = keyData;
-        return;
-      }
-
-      if (!Array.isArray(keyData) && !ArrayBuffer.isView(keyData))
+      /** @type {boolean} */
+      const isTypedArray = ArrayBuffer.isView(keyData);
+      if (!Array.isArray(keyData) && !isTypedArray)
         throw new Error('Invalid SIKE key data format');
 
       /** @type {uint8[]} */
@@ -2155,7 +2154,13 @@
   // ===== EXPORTS =====
 
   return {
-    SIKEAlgorithm, SIKEInstance, PARAMETER_SETS,
+    SIKEAlgorithm, SIKEInstance,
+    PARAMETER_SETS: {
+      SIKEp434: SIKE_P434,
+      SIKEp503: SIKE_P503,
+      SIKEp610: SIKE_P610,
+      SIKEp751: SIKE_P751
+    },
     kemKeypair, kemEncapsulate, kemDecapsulate,
     ephemeralKeyGenerationA, ephemeralKeyGenerationB,
     ephemeralSecretAgreementA, ephemeralSecretAgreementB
