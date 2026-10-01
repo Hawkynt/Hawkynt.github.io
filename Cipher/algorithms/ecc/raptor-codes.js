@@ -53,10 +53,37 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
-  // Extract foundation utilities
-  const { SparseMatrix, BipartiteGraph, DegreeDistribution, SeededRandom, PerformanceProfiler } = FountainFoundation;
 
   // ===== ALGORITHM IMPLEMENTATION =====
+
+  /**
+   * Code parameters and densities as reported by getPerformanceReport()
+   * @class
+   */
+  class RaptorPerformanceReport {
+    /**
+     * @param {float64} preCodeRate - Pre-code rate
+     * @param {float64} targetOverhead - Target overhead
+     * @param {int32} intermediateSymbols - Intermediate symbols after pre-coding
+     * @param {int32} sourceSymbols - Source symbols (k)
+     * @param {float64} matrixDensity - Pre-code matrix density
+     * @param {float64} graphDensity - LT graph density
+     */
+    constructor(preCodeRate, targetOverhead, intermediateSymbols, sourceSymbols, matrixDensity, graphDensity) {
+      /** @type {float64} */
+      this.preCodeRate = preCodeRate;
+      /** @type {float64} */
+      this.targetOverhead = targetOverhead;
+      /** @type {int32} */
+      this.intermediateSymbols = intermediateSymbols;
+      /** @type {int32} */
+      this.sourceSymbols = sourceSymbols;
+      /** @type {float64} */
+      this.matrixDensity = matrixDensity;
+      /** @type {float64} */
+      this.graphDensity = graphDensity;
+    }
+  }
 
   /**
    * Overhead figures as reported by getOverheadAnalysis()
@@ -204,11 +231,15 @@
       this.seed = 42;                 // Random seed
 
       // Internal structures
+      /** @type {SparseMatrix} */
       this.preCodeMatrix = null;      // LDPC pre-code matrix
+      /** @type {BipartiteGraph} */
       this.ltGraph = null;            // LT code graph
       /** @type {uint8[]} */
       this.intermediateSymbols = null; // Symbols after pre-coding
-      this.profiler = new PerformanceProfiler();
+      /** @type {PerformanceProfiler} */
+      this.profiler = new FountainFoundation.PerformanceProfiler();
+      /** @type {SeededRandom} */
       this.rng = null;
     }
 
@@ -291,7 +322,7 @@
      * @returns {void}
      */
     _initializeEncoding() {
-      this.rng = new SeededRandom(this.seed);
+      this.rng = new FountainFoundation.SeededRandom(this.seed);
       this.profiler.startTimer('initialization');
 
       // Calculate intermediate symbols count
@@ -319,7 +350,7 @@
       const numParityChecks = n - this.k;
 
       // Create sparse LDPC matrix
-      this.preCodeMatrix = new SparseMatrix(numParityChecks, n);
+      this.preCodeMatrix = new FountainFoundation.SparseMatrix(numParityChecks, n);
 
       // Build regular LDPC code with systematic form
       const checksPerVariable = 3; // Degree of variable nodes
@@ -378,8 +409,9 @@
       const n = this.intermediateSymbolsCount;
       const numLTSymbols = Math.ceil(n * (1.0 + this.targetOverhead));
 
-      this.ltGraph = new BipartiteGraph(n, numLTSymbols);
-      const degreeDistribution = new DegreeDistribution(n);
+      this.ltGraph = new FountainFoundation.BipartiteGraph(n, numLTSymbols);
+      /** @type {DegreeDistribution} */
+      const degreeDistribution = new FountainFoundation.DegreeDistribution(n);
       /** @type {float64[]} */
       const cdf = degreeDistribution.buildCumulativeDistribution(0.1, 0.5);
 
@@ -599,17 +631,13 @@
       return converged ? variableBeliefs.slice(0, this.k) : null;
     }
 
-    // Performance analysis
+    /**
+     * Code parameters, pre-code matrix and LT graph densities
+     * @returns {RaptorPerformanceReport} Performance report
+     */
     getPerformanceReport() {
-      return {
-        ...this.profiler.getReport(),
-        preCodeRate: this.preCodeRate,
-        targetOverhead: this.targetOverhead,
-        intermediateSymbols: this.intermediateSymbolsCount,
-        sourceSymbols: this.k,
-        matrixDensity: this._calculateMatrixDensity(),
-        graphDensity: this._calculateGraphDensity()
-      };
+      return new RaptorPerformanceReport(this.preCodeRate, this.targetOverhead, this.intermediateSymbolsCount,
+        this.k, this._calculateMatrixDensity(), this._calculateGraphDensity());
     }
 
     /**
