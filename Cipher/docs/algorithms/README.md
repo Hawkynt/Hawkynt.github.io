@@ -2,7 +2,7 @@
 
 > One page per algorithm, generated from the implementations themselves.
 
-This reference covers **1097 algorithms** across **17 categories**.
+This reference covers **1101 algorithms** across **17 categories**.
 Every page is produced by `tools/generate-algorithm-docs.js` from the metadata an
 algorithm declares in its own source file, so the properties, parameters, security
 status, references and test vectors shown here always match the code.
@@ -25,7 +25,7 @@ status, references and test vectors shown here always match the code.
 - [Post-Quantum Cryptography](#post-quantum-cryptography) (1)
 - [Random Number Generators](#random-number-generators) (94)
 - [Special Algorithms](#special-algorithms) (27)
-- [Stream Ciphers](#stream-ciphers) (98)
+- [Stream Ciphers](#stream-ciphers) (102)
 
 ## Asymmetric Ciphers
 
@@ -1197,6 +1197,7 @@ _Stream-based symmetric encryption_
 | [Pike (DarkCrypt)](stream-ciphers/pike-darkcrypt.md) | 🎓 Educational Only | Lagged-Fibonacci stream cipher with three add-with-carry registers of lengths 55, 57 and 58 words; each step, registers whose carry bit mat… |
 | [Pomaranch](stream-ciphers/pomaranch.md) | 🎓 Educational Only | Educational implementation inspired by Pomaranch eSTREAM Phase 3 finalist. Uses nine linear feedback shift registers with nonlinear combini… |
 | [Pomaranch (DarkCrypt)](stream-ciphers/pomaranch-darkcrypt.md) | 🎓 Educational Only | Cascade Jump Controlled Sequence Generator (CJCSG), the 128-bit-key stream cipher behind Pomaranch: nine cascaded jump registers whose cell… |
+| [ProVEST-32](stream-ciphers/provest-32.md) | ❌ Broken | ProVEST-32, the Phase 1 VEST-32 root cipher in its eSTREAM API version: the VEST-32 structure with earlier counters, permutations and outpu… |
 | [Py (DarkCrypt)](stream-ciphers/py-darkcrypt.md) | — | Py ("Roo") eSTREAM Phase 2 candidate by Biham and Seberry, using two rolling arrays (a 260-word Y array and a 256-byte permutation P) index… |
 | [Py6 (DarkCrypt)](stream-ciphers/py6-darkcrypt.md) | — | Reduced-state variant of Py by Biham and Seberry: a 64-entry (6-bit) rolling permutation P and a 68-entry rolling word array Y, same round… |
 | [Pypy (DarkCrypt)](stream-ciphers/pypy-darkcrypt.md) | — | Strengthened variant of Py by Biham and Seberry: same rolling-array key/IV setup as Py, but the round output stage is simplified to a singl… |
@@ -1229,7 +1230,10 @@ _Stream-based symmetric encryption_
 | [Trivium (DarkCrypt)](stream-ciphers/trivium-darkcrypt.md) | 🎓 Educational Only | Standard eSTREAM Trivium NLFSR (93+84+111 bit state, 80-bit key, 80-bit IV, 1152-round warm-up) as implemented in the DarkCrypt Total Comma… |
 | [TSC-4](stream-ciphers/tsc-4.md) | 🎓 Educational Only | Stream cipher with extremely complex nonlinear operations using multiple S-boxes and parallel LFSRs. Submitted to eSTREAM but eliminated ea… |
 | [Turing (DarkCrypt)](stream-ciphers/turing-darkcrypt.md) | 🎓 Educational Only | Turing stream cipher (Rose and Hawkes, Qualcomm), 256-bit key / 128-bit IV variant. LFSR + keyed S-box mixing, algorithm matches the publis… |
-| [VEST](stream-ciphers/vest.md) | 🎓 Educational Only | Variable Encryption Standard stream cipher with configurable key sizes and word-based operations. Submitted to eSTREAM but not selected for… |
+| [VEST-16](stream-ciphers/vest-16.md) | ❌ Broken | VEST-16 root cipher (eSTREAM Phase 2): 16 nonlinear RNS counters drive a 331-bit nonlinear accumulator through a linear diffusor; 16 output… |
+| [VEST-32](stream-ciphers/vest-32.md) | ❌ Broken | VEST-32 root cipher (eSTREAM Phase 2): 16 nonlinear RNS counters drive a 587-bit nonlinear accumulator through a linear diffusor; 32 output… |
+| [VEST-4](stream-ciphers/vest-4.md) | ❌ Broken | VEST-4 root cipher (eSTREAM Phase 2): 16 nonlinear RNS counters drive an 83-bit nonlinear accumulator through a linear diffusor; 4 output b… |
+| [VEST-8](stream-ciphers/vest-8.md) | ❌ Broken | VEST-8 root cipher (eSTREAM Phase 2): 16 nonlinear RNS counters drive a 211-bit nonlinear accumulator through a linear diffusor; 8 output b… |
 | [VMPC](stream-ciphers/vmpc.md) | 🧪 Experimental | Variably Modified Permutation Composition stream cipher using RC4-like structure with enhanced mixing function P[P[P[s]]+1]. Designed as im… |
 | [VMPC-KSA3](stream-ciphers/vmpc-ksa3.md) | 🧪 Experimental | Enhanced VMPC variant with modified Key Scheduling Algorithm using three 768-round mixing phases (key-IV-key). Provides increased security… |
 | [WAKE (DarkCrypt)](stream-ciphers/wake-darkcrypt.md) | ❌ Broken | David Wheeler's WAKE stream cipher as implemented in the DarkCrypt Total Commander plugin: a 257-word table-driven M() cascade over four ru… |
