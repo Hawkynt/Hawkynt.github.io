@@ -53,10 +53,39 @@
           IKdfInstance, IAeadInstance, IErrorCorrectionInstance, IRandomGeneratorInstance,
           TestCase, LinkItem, Vulnerability, AuthResult, KeySize } = AlgorithmFramework;
 
-  // Extract foundation utilities
-  const { BipartiteGraph, DegreeDistribution, SeededRandom, PerformanceProfiler } = FountainFoundation;
 
   // ===== ALGORITHM IMPLEMENTATION =====
+
+  /**
+   * Code parameters and code densities as reported by getPerformanceReport()
+   * @class
+   */
+  class OnlineCodePerformanceReport {
+    /**
+     * @param {float64} epsilon - Overhead parameter
+     * @param {int32} q - Outer-code checks per symbol
+     * @param {int32} sourceSymbols - Source symbols (k)
+     * @param {int32} auxiliarySymbols - Auxiliary symbols, 0 before encoding
+     * @param {float64} outerCodeDensity - Outer-code edge density
+     * @param {float64} innerCodeDensity - Inner-code edge density
+     */
+    constructor(epsilon, q, sourceSymbols, auxiliarySymbols, outerCodeDensity, innerCodeDensity) {
+      /** @type {float64} */
+      this.epsilon = epsilon;
+      /** @type {int32} */
+      this.q = q;
+      /** @type {int32} */
+      this.sourceSymbols = sourceSymbols;
+      /** @type {int32} */
+      this.auxiliarySymbols = auxiliarySymbols;
+      /** @type {int32} */
+      this.compositeBlockSize = sourceSymbols + auxiliarySymbols;
+      /** @type {float64} */
+      this.outerCodeDensity = outerCodeDensity;
+      /** @type {float64} */
+      this.innerCodeDensity = innerCodeDensity;
+    }
+  }
 
   /**
    * Outer-code statistics as reported by getOuterCodeStats()
@@ -323,11 +352,15 @@
       this.seed = 42;                 // Random seed
 
       // Internal structures
+      /** @type {BipartiteGraph} */
       this.outerCodeGraph = null;     // Outer code bipartite graph
+      /** @type {BipartiteGraph} */
       this.innerCodeGraph = null;     // Inner code (LT-like) bipartite graph
       /** @type {uint8[]} */
       this.auxiliarySymbols = null;   // Auxiliary symbols from outer code
-      this.profiler = new PerformanceProfiler();
+      /** @type {PerformanceProfiler} */
+      this.profiler = new FountainFoundation.PerformanceProfiler();
+      /** @type {SeededRandom} */
       this.rng = null;
     }
 
@@ -411,7 +444,7 @@
      * @returns {void}
      */
     _initializeEncoding() {
-      this.rng = new SeededRandom(this.seed);
+      this.rng = new FountainFoundation.SeededRandom(this.seed);
       this.profiler.startTimer('initialization');
 
       // Calculate number of auxiliary symbols (outer code)
@@ -438,7 +471,7 @@
 
       // Outer code: each message symbol connects to q randomly chosen auxiliary symbols
       // Total nodes: k message symbols on left, auxiliaryCount symbols on right
-      this.outerCodeGraph = new BipartiteGraph(this.k, this.auxiliaryCount);
+      this.outerCodeGraph = new FountainFoundation.BipartiteGraph(this.k, this.auxiliaryCount);
 
       // For each source symbol, connect to q auxiliary symbols
       for (let msgIdx = 0; msgIdx < this.k; msgIdx++) {
@@ -470,10 +503,11 @@
       // We generate a few extra symbols for testing
       const innerSymbolCount = Math.ceil(compositeCount * (1.0 + this.epsilon / 2));
 
-      this.innerCodeGraph = new BipartiteGraph(compositeCount, innerSymbolCount);
+      this.innerCodeGraph = new FountainFoundation.BipartiteGraph(compositeCount, innerSymbolCount);
 
       // Use robust soliton distribution for inner code
-      const degreeDistribution = new DegreeDistribution(compositeCount);
+      /** @type {DegreeDistribution} */
+      const degreeDistribution = new FountainFoundation.DegreeDistribution(compositeCount);
       /** @type {float64[]} */
       const cdf = degreeDistribution.buildCumulativeDistribution(0.1, this.failureProbability);
 
@@ -700,18 +734,15 @@
       return unknown.length === 0 ? decoded : null;
     }
 
-    // Performance analysis
+    /**
+     * Code parameters and outer/inner code densities
+     * @returns {OnlineCodePerformanceReport} Performance report
+     */
     getPerformanceReport() {
-      return {
-        ...this.profiler.getReport(),
-        epsilon: this.epsilon,
-        q: this.q,
-        sourceSymbols: this.k,
-        auxiliarySymbols: this.auxiliaryCount,
-        compositeBlockSize: this.k + ((this.auxiliaryCount ? this.auxiliaryCount : 0)),
-        outerCodeDensity: this._calculateOuterCodeDensity(),
-        innerCodeDensity: this._calculateInnerCodeDensity()
-      };
+      /** @type {int32} */
+      const auxiliaryCount = this.auxiliaryCount ? this.auxiliaryCount : 0;
+      return new OnlineCodePerformanceReport(this.epsilon, this.q, this.k, auxiliaryCount,
+        this._calculateOuterCodeDensity(), this._calculateInnerCodeDensity());
     }
 
     /**

@@ -51,9 +51,6 @@
           ErrorCorrectionAlgorithm, IErrorCorrectionInstance,
           TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
-  // Extract foundation utilities
-  const { GaloisField, SparseMatrix,
-          SeededRandom, PerformanceProfiler } = FountainFoundation;
 
   // ===== RFC 5053 FIXED PARAMETERS =====
 
@@ -307,13 +304,17 @@
       this.U = 0;                      // U parameter (LDPC overhead)
 
       // Matrices and graphs
+      /** @type {SparseMatrix} */
       this.constraintMatrix = null;    // A matrix from RFC 5053 Section 5.4.2
       this.ltGraph = null;             // LT encoding graph
 
       // Utilities
-      this.gf = new GaloisField(2, 8); // GF(256) for symbol operations
-      this.profiler = new PerformanceProfiler();
-      this.rng = new SeededRandom(0);
+      /** @type {GaloisField} */
+      this.gf = new FountainFoundation.GaloisField(2, 8); // GF(256) for symbol operations
+      /** @type {PerformanceProfiler} */
+      this.profiler = new FountainFoundation.PerformanceProfiler();
+      /** @type {SeededRandom} */
+      this.rng = new FountainFoundation.SeededRandom(0);
     }
 
     // ===== PROPERTY SETTERS =====
@@ -573,7 +574,7 @@
       const W = this.W;
 
       // Create sparse matrix for efficiency
-      this.constraintMatrix = new SparseMatrix(L, L);
+      this.constraintMatrix = new FountainFoundation.SparseMatrix(L, L);
 
       // LDPC part: First S rows (RFC 5053 Section 5.4.2.3)
       for (let row = 0; row < S; row++) {
@@ -893,7 +894,8 @@
                          Math.ceil(this.k * this.targetOverhead) + 10);
 
       // Build decoding matrix from received symbols
-      const decodingMatrix = new SparseMatrix(n, this.L);
+      /** @type {SparseMatrix} */
+      const decodingMatrix = new FountainFoundation.SparseMatrix(n, this.L);
       /** @type {uint8[]} */
       const received = this.encodedSymbols.slice(0, n);
 
