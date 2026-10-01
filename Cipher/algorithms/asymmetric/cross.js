@@ -86,7 +86,7 @@
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           AsymmetricCipherAlgorithm, IAlgorithmInstance,
-          LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
+          LinkItem, Vulnerability, KeySize, TestCase } = AlgorithmFramework;
 
   // ===== Keccak-f[1600] and SHAKE =====
   //
@@ -134,7 +134,7 @@
 
   /**
    * Keccak-f[1600] over 25 lanes held as low/high 32 bit halves.
-   * @param {Int32Array} s - 50 words, modified in place
+   * @param {int32[]} s - 50 words, modified in place
    */
   function KeccakF(s) {
     const b = kB, c = kC;
@@ -191,7 +191,7 @@
   // The word of the state and the bit offset in it that hold octet i of a
   // block: lane i/8, low half for octets 0-3 of the lane, high for 4-7.
   /**
-   * @returns {Uint8Array} the state word holding each octet of a block
+   * @returns {uint8[]} the state word holding each octet of a block
    */
   function BuildOctetWord() {
     const table = new Uint8Array(200);
@@ -200,7 +200,7 @@
   }
 
   /**
-   * @returns {Uint8Array} the bit offset of each octet of a block in its word
+   * @returns {uint8[]} the bit offset of each octet of a block in its word
    */
   function BuildOctetShift() {
     const table = new Uint8Array(200);
@@ -214,70 +214,101 @@
   /**
    * An incremental SHAKE: absorb any number of times, then squeeze any number
    * of times, the squeezed octets forming one continuous stream.
-   * @param {int32} rate - 168 for SHAKE128, 136 for SHAKE256
    */
-  function Shake(rate) {
-    this.rate = rate;
-    this.state = new Int32Array(50);
-    this.pos = 0;
-    this.squeezing = false;
+  class Shake {
+    /**
+     * @param {int32} rate - 168 for SHAKE128, 136 for SHAKE256
+     */
+    constructor(rate) {
+      /** @type {int32} */
+      this.rate = rate;
+      /** @type {int32[]} */
+      this.state = new Int32Array(50);
+      /** @type {int32} */
+      this.pos = 0;
+      /** @type {boolean} */
+      this.squeezing = false;
+    }
+
+    /**
+     * Absorb octets, all of them or length of them from offset.
+     * @param {uint8[]} data - octets to absorb
+     * @param {int32} [offset] - first octet, 0 when absent
+     * @param {int32} [length] - how many, up to the end when absent
+     * @returns {Shake} this sponge
+     */
+    absorb(data, offset, length) {
+      const s = this.state, rate = this.rate;
+      /** @type {int32} */
+      const start = offset ? offset : 0;
+      /** @type {int32} */
+      const end = start + (length === undefined ? data.length - start : length);
+      let pos = this.pos;
+      for (let i = start; i < end; ++i) {
+        const w = OCTET_WORD[pos];
+        s[w] = OpCodes.Xor32(s[w], OpCodes.Shl32(data[i], OCTET_SHIFT[pos]));
+        if (++pos === rate) {
+          KeccakF(s);
+          pos = 0;
+        }
+      }
+      this.pos = pos;
+      return this;
+    }
+
+    /**
+     * Pad and switch to squeezing.
+     * @returns {Shake} this sponge
+     */
+    finalize() {
+      const s = this.state;
+      let w = OCTET_WORD[this.pos];
+      s[w] = OpCodes.Xor32(s[w], OpCodes.Shl32(0x1F, OCTET_SHIFT[this.pos]));
+      w = OCTET_WORD[this.rate - 1];
+      s[w] = OpCodes.Xor32(s[w], OpCodes.Shl32(0x80, OCTET_SHIFT[this.rate - 1]));
+      KeccakF(s);
+      this.pos = 0;
+      this.squeezing = true;
+      return this;
+    }
+
+    /**
+     * Squeeze the next length octets into out from offset.
+     * @param {uint8[]} out - destination
+     * @param {int32} offset - where to write
+     * @param {int32} length - octets wanted
+     */
+    squeezeInto(out, offset, length) {
+      const s = this.state, rate = this.rate;
+      let pos = this.pos;
+      for (let i = 0; i < length; ++i) {
+        if (pos === rate) {
+          KeccakF(s);
+          pos = 0;
+        }
+        out[offset + i] = OpCodes.And32(OpCodes.Shr32(s[OCTET_WORD[pos]], OCTET_SHIFT[pos]), 0xFF);
+        ++pos;
+      }
+      this.pos = pos;
+    }
+
+    /**
+     * Squeeze the next length octets.
+     * @param {int32} length - octets wanted
+     * @returns {uint8[]} the octets
+     */
+    squeeze(length) {
+      const out = new Uint8Array(length);
+      this.squeezeInto(out, 0, length);
+      return out;
+    }
   }
 
-  Shake.prototype.absorb = function (data, offset, length) {
-    const s = this.state, rate = this.rate;
-    const start = offset || 0;
-    const end = start + (length === undefined ? data.length - start : length);
-    let pos = this.pos;
-    for (let i = start; i < end; ++i) {
-      const w = OCTET_WORD[pos];
-      s[w] = OpCodes.Xor32(s[w], OpCodes.Shl32(data[i], OCTET_SHIFT[pos]));
-      if (++pos === rate) {
-        KeccakF(s);
-        pos = 0;
-      }
-    }
-    this.pos = pos;
-    return this;
-  };
-
-  Shake.prototype.finalize = function () {
-    const s = this.state;
-    let w = OCTET_WORD[this.pos];
-    s[w] = OpCodes.Xor32(s[w], OpCodes.Shl32(0x1F, OCTET_SHIFT[this.pos]));
-    w = OCTET_WORD[this.rate - 1];
-    s[w] = OpCodes.Xor32(s[w], OpCodes.Shl32(0x80, OCTET_SHIFT[this.rate - 1]));
-    KeccakF(s);
-    this.pos = 0;
-    this.squeezing = true;
-    return this;
-  };
-
-  Shake.prototype.squeezeInto = function (out, offset, length) {
-    const s = this.state, rate = this.rate;
-    let pos = this.pos;
-    for (let i = 0; i < length; ++i) {
-      if (pos === rate) {
-        KeccakF(s);
-        pos = 0;
-      }
-      out[offset + i] = OpCodes.And32(OpCodes.Shr32(s[OCTET_WORD[pos]], OCTET_SHIFT[pos]), 0xFF);
-      ++pos;
-    }
-    this.pos = pos;
-  };
-
-  Shake.prototype.squeeze = function (length) {
-    const out = new Uint8Array(length);
-    this.squeezeInto(out, 0, length);
-    return out;
-  };
-
-  // Typed entry points to the sponge above, which stays a constructor function
-  // because it is exported as one.
+  // Function forms of the sponge methods, as the rest of this file calls them.
 
   /**
    * @param {Shake} x - the sponge
-   * @param {uint8[]|Uint8Array} data - octets to absorb
+   * @param {uint8[]} data - octets to absorb
    */
   function ShakeAbsorb(x, data) {
     x.absorb(data);
@@ -288,23 +319,25 @@
    * @returns {Shake} the same sponge, ready to squeeze
    */
   function ShakeFinalize(x) {
-    return x.finalize();
+    /** @type {Shake} */
+    const ready = x.finalize();
+    return ready;
   }
 
   /**
    * @param {Shake} x - the sponge
    * @param {int32} length - octets wanted
-   * @returns {Uint8Array} the octets
+   * @returns {uint8[]} the octets
    */
   function ShakeSqueeze(x, length) {
-    /** @type {Uint8Array} */
+    /** @type {uint8[]} */
     const out = x.squeeze(length);
     return out;
   }
 
   /**
    * @param {Shake} x - the sponge
-   * @param {Uint8Array} out - destination
+   * @param {uint8[]} out - destination
    * @param {int32} offset - where to write
    * @param {int32} length - octets wanted
    */
@@ -320,18 +353,23 @@
   // carry their messages as published. AES is borrowed from the collection
   // and loaded on first use, never at module scope.
 
+  /** @type {Algorithm|null} */
   let aesAlgorithm = null;
 
+  /**
+   * The registered AES, loading it under Node when it is missing.
+   * @returns {Algorithm} the block cipher
+   */
   function FindAes() {
     if (aesAlgorithm) return aesAlgorithm;
-    aesAlgorithm = AlgorithmFramework.Find ? AlgorithmFramework.Find('Rijndael (AES)') : null;
+    aesAlgorithm = AlgorithmFramework.Find('Rijndael (AES)');
     if (!aesAlgorithm && typeof require !== 'undefined') {
       try {
         require('../block/rijndael.js');
       } catch (e) {
         // Reported as a missing dependency below.
       }
-      aesAlgorithm = AlgorithmFramework.Find ? AlgorithmFramework.Find('Rijndael (AES)') : null;
+      aesAlgorithm = AlgorithmFramework.Find('Rijndael (AES)');
     }
     if (!aesAlgorithm)
       throw new Error('the NIST harness generator needs AES, which is not registered');
@@ -339,11 +377,12 @@
   }
 
   /**
-   * @param {Uint8Array} key - 32 key octets
-   * @param {Uint8Array} block - 16 plaintext octets
+   * @param {uint8[]} key - 32 key octets
+   * @param {uint8[]} block - 16 plaintext octets
    * @returns {uint8[]} 16 ciphertext octets
    */
   function Aes256Ecb(key, block) {
+    /** @type {IBlockCipherInstance} */
     const instance = FindAes().CreateInstance(false);
     instance.key = Array.from(key);
     instance.Feed(Array.from(block));
@@ -353,49 +392,70 @@
   }
 
   /**
-   * @param {Uint8Array} v - 16 octet big-endian counter, incremented in place
+   * @param {uint8[]} v - 16 octet big-endian counter, incremented in place
    */
   function IncrementCounter(v) {
     for (let j = 15; j >= 0; --j) {
       if (v[j] === 0xFF) v[j] = 0;
-      else { v[j] = v[j] + 1; break; }
+      else { v[j] = OpCodes.Add32(v[j], 1); break; }
+    }
+  }
+
+  /** The AES-256 CTR_DRBG of the NIST harness, seeded as randombytes_init is. */
+  class CrossNistDrbg {
+    /**
+     * @param {uint8[]} entropy - 48 octets
+     */
+    constructor(entropy) {
+      /** @type {uint8[]} */
+      this.key = new Uint8Array(32);
+      /** @type {uint8[]} */
+      this.v = new Uint8Array(16);
+      this.update(entropy);
+    }
+
+    /**
+     * The CTR_DRBG update function.
+     * @param {uint8[]|null} provided - 48 octets to mix in, or null
+     */
+    update(provided) {
+      const temp = new Uint8Array(48);
+      for (let i = 0; i < 3; ++i) {
+        IncrementCounter(this.v);
+        const block = Aes256Ecb(this.key, this.v);
+        for (let j = 0; j < 16; ++j) temp[16 * i + j] = block[j];
+      }
+      if (provided)
+        for (let i = 0; i < 48; ++i) temp[i] = OpCodes.Xor32(temp[i], provided[i]);
+      for (let i = 0; i < 32; ++i) this.key[i] = temp[i];
+      for (let i = 0; i < 16; ++i) this.v[i] = temp[32 + i];
+    }
+
+    /**
+     * Draw count octets, then update the state.
+     * @param {int32} count - octets wanted
+     * @returns {uint8[]} the octets
+     */
+    read(count) {
+      const out = new Uint8Array(count);
+      let produced = 0;
+      while (produced < count) {
+        IncrementCounter(this.v);
+        const block = Aes256Ecb(this.key, this.v);
+        for (let j = 0; j < 16 && produced < count; ++j) out[produced++] = block[j];
+      }
+      this.update(null);
+      return out;
     }
   }
 
   /**
    * The AES-256 CTR_DRBG of the NIST harness, seeded as randombytes_init is.
    * @param {uint8[]} entropy - 48 octets
-   * @returns {object} a reader with read(count)
+   * @returns {CrossNistDrbg} a reader with read(count)
    */
   function NistDrbg(entropy) {
-    const key = new Uint8Array(32);
-    const v = new Uint8Array(16);
-    const update = function (provided) {
-      const temp = new Uint8Array(48);
-      for (let i = 0; i < 3; ++i) {
-        IncrementCounter(v);
-        const block = Aes256Ecb(key, v);
-        for (let j = 0; j < 16; ++j) temp[16 * i + j] = block[j];
-      }
-      if (provided)
-        for (let i = 0; i < 48; ++i) temp[i] = OpCodes.Xor32(temp[i], provided[i]);
-      for (let i = 0; i < 32; ++i) key[i] = temp[i];
-      for (let i = 0; i < 16; ++i) v[i] = temp[32 + i];
-    };
-    update(entropy);
-    return {
-      read: function (count) {
-        const out = new Uint8Array(count);
-        let produced = 0;
-        while (produced < count) {
-          IncrementCounter(v);
-          const block = Aes256Ecb(key, v);
-          for (let j = 0; j < 16 && produced < count; ++j) out[produced++] = block[j];
-        }
-        update(null);
-        return out;
-      }
-    };
+    return new CrossNistDrbg(entropy);
   }
 
   // ===== parameter sets =====
@@ -407,42 +467,7 @@
   // a tuning choice: each sampler reads exactly that many octets from its
   // stream, and whatever reads the stream next depends on it.
 
-  /**
-   * One TREE row: [off, npl, lpl, leafStart, leafCount, nodesToStore].
-   * @param {int32[]} off - per-level offsets
-   * @param {int32[]} npl - nodes per level
-   * @param {int32[]} lpl - leaves per level
-   * @param {int32[]} leafStart - first leaf of each leaf run
-   * @param {int32[]} leafCount - length of each leaf run
-   * @param {int32} nodesToStore - worst-case published nodes
-   * @returns {Array} the row
-   */
-  function TreeRowOf(off, npl, lpl, leafStart, leafCount, nodesToStore) {
-    return [off, npl, lpl, leafStart, leafCount, nodesToStore];
-  }
-
-  const TREE = {
-    'RSDP-1-fast':      null,
-    'RSDP-1-balanced':  TreeRowOf([0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256], [0,0,0,0,0,0,0,0,256], [255], [256], 108),
-    'RSDP-1-small':     TreeRowOf([0,0,0,0,0,16,16,16,16,16,16], [1,2,4,8,16,16,32,64,128,256,512], [0,0,0,0,8,0,0,0,0,0,512], [527,23], [512,8], 129),
-    'RSDP-3-fast':      null,
-    'RSDP-3-balanced':  TreeRowOf([0,0,0,0,0,0,0,0,0,256], [1,2,4,8,16,32,64,128,256,256], [0,0,0,0,0,0,0,0,128,256], [511,383], [256,128], 165),
-    'RSDP-3-small':     TreeRowOf([0,0,0,0,0,8,8,8,8,136,136], [1,2,4,8,16,24,48,96,192,256,512], [0,0,0,0,4,0,0,0,64,0,512], [647,327,27], [512,64,4], 184),
-    'RSDP-5-fast':      null,
-    'RSDP-5-balanced':  TreeRowOf([0,0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256,512], [0,0,0,0,0,0,0,0,0,512], [511], [512], 220),
-    'RSDP-5-small':     TreeRowOf([0,0,0,0,0,0,0,0,0,128,128], [1,2,4,8,16,32,64,128,256,384,768], [0,0,0,0,0,0,0,0,64,0,768], [895,447], [768,64], 251),
-    'RSDPG-1-fast':     null,
-    'RSDPG-1-balanced': TreeRowOf([0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256], [0,0,0,0,0,0,0,0,256], [255], [256], 101),
-    'RSDPG-1-small':    TreeRowOf([0,0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256,512], [0,0,0,0,0,0,0,0,0,512], [511], [512], 117),
-    'RSDPG-3-fast':     null,
-    'RSDPG-3-balanced': TreeRowOf([0,0,0,0,0,8,24,24,24,24], [1,2,4,8,16,24,32,64,128,256], [0,0,0,0,4,8,0,0,0,256], [279,47,27], [256,8,4], 138),
-    'RSDPG-3-small':    TreeRowOf([0,0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256,512], [0,0,0,0,0,0,0,0,0,512], [511], [512], 165),
-    'RSDPG-5-fast':     null,
-    'RSDPG-5-balanced': TreeRowOf([0,0,0,0,0,0,8,8,8,200], [1,2,4,8,16,32,56,112,224,256], [0,0,0,0,0,4,0,0,96,256], [455,359,59], [256,96,4], 185),
-    'RSDPG-5-small':    TreeRowOf([0,0,0,0,4,4,4,4,4,4,260], [1,2,4,8,12,24,48,96,192,384,512], [0,0,0,2,0,0,0,0,0,128,512], [771,643,13], [512,128,2], 220)
-  };
-
-  /** The shape of a truncated tree, read from its TREE row. */
+  /** The shape of a truncated tree: one row of the submission's TREE table. */
   class CrossTree {
     /**
      * @param {int32[]} off - per-level offsets
@@ -467,6 +492,42 @@
       this.nodesToStore = nodesToStore;
     }
   }
+
+  /**
+   * One TREE row.
+   * @param {int32[]} off - per-level offsets
+   * @param {int32[]} npl - nodes per level
+   * @param {int32[]} lpl - leaves per level
+   * @param {int32[]} leafStart - first leaf of each leaf run
+   * @param {int32[]} leafCount - length of each leaf run
+   * @param {int32} nodesToStore - worst-case published nodes
+   * @returns {CrossTree} the row
+   */
+  function TreeRowOf(off, npl, lpl, leafStart, leafCount, nodesToStore) {
+    return new CrossTree(off, npl, lpl, leafStart, leafCount, nodesToStore);
+  }
+
+  // The tree-based sets and their rows; the fast sets have none.
+  /** @type {string[]} */
+  const TREE_KEYS = [
+    'RSDP-1-balanced', 'RSDP-1-small', 'RSDP-3-balanced', 'RSDP-3-small', 'RSDP-5-balanced', 'RSDP-5-small',
+    'RSDPG-1-balanced', 'RSDPG-1-small', 'RSDPG-3-balanced', 'RSDPG-3-small', 'RSDPG-5-balanced', 'RSDPG-5-small'
+  ];
+  /** @type {CrossTree[]} */
+  const TREE_ROWS = [
+    /* RSDP-1-balanced */  TreeRowOf([0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256], [0,0,0,0,0,0,0,0,256], [255], [256], 108),
+    /* RSDP-1-small */     TreeRowOf([0,0,0,0,0,16,16,16,16,16,16], [1,2,4,8,16,16,32,64,128,256,512], [0,0,0,0,8,0,0,0,0,0,512], [527,23], [512,8], 129),
+    /* RSDP-3-balanced */  TreeRowOf([0,0,0,0,0,0,0,0,0,256], [1,2,4,8,16,32,64,128,256,256], [0,0,0,0,0,0,0,0,128,256], [511,383], [256,128], 165),
+    /* RSDP-3-small */     TreeRowOf([0,0,0,0,0,8,8,8,8,136,136], [1,2,4,8,16,24,48,96,192,256,512], [0,0,0,0,4,0,0,0,64,0,512], [647,327,27], [512,64,4], 184),
+    /* RSDP-5-balanced */  TreeRowOf([0,0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256,512], [0,0,0,0,0,0,0,0,0,512], [511], [512], 220),
+    /* RSDP-5-small */     TreeRowOf([0,0,0,0,0,0,0,0,0,128,128], [1,2,4,8,16,32,64,128,256,384,768], [0,0,0,0,0,0,0,0,64,0,768], [895,447], [768,64], 251),
+    /* RSDPG-1-balanced */ TreeRowOf([0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256], [0,0,0,0,0,0,0,0,256], [255], [256], 101),
+    /* RSDPG-1-small */    TreeRowOf([0,0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256,512], [0,0,0,0,0,0,0,0,0,512], [511], [512], 117),
+    /* RSDPG-3-balanced */ TreeRowOf([0,0,0,0,0,8,24,24,24,24], [1,2,4,8,16,24,32,64,128,256], [0,0,0,0,4,8,0,0,0,256], [279,47,27], [256,8,4], 138),
+    /* RSDPG-3-small */    TreeRowOf([0,0,0,0,0,0,0,0,0,0], [1,2,4,8,16,32,64,128,256,512], [0,0,0,0,0,0,0,0,0,512], [511], [512], 165),
+    /* RSDPG-5-balanced */ TreeRowOf([0,0,0,0,0,0,8,8,8,200], [1,2,4,8,16,32,56,112,224,256], [0,0,0,0,0,4,0,0,96,256], [455,359,59], [256,96,4], 185),
+    /* RSDPG-5-small */    TreeRowOf([0,0,0,0,4,4,4,4,4,4,260], [1,2,4,8,12,24,48,96,192,384,512], [0,0,0,2,0,0,0,0,0,128,512], [771,643,13], [512,128,2], 220)
+  ];
 
   /**
    * A parameter set of parameters.h with its derived constants, in the field
@@ -529,7 +590,7 @@
       const row = TreeRow(key);
       /** @type {boolean} */
       this.fast = row === null;
-      /** @type {Array|null} */
+      /** @type {CrossTree|null} */
       this.tree = row;
       /** @type {int32} */
       this.rate = this.lambda === 128 ? 168 : 136;
@@ -556,7 +617,7 @@
       /** @type {int32} */
       this.log2t = BitLength(this.t - 1);
       /** @type {int32} */
-      this.nodesToStore = this.fast ? this.w : TreeShapeOfRow(row).nodesToStore;
+      this.nodesToStore = row === null ? this.w : row.nodesToStore;
       /** @type {int32} */
       this.pkBytes = this.keySeedBytes + this.fpSynBytes;
       /** @type {int32} */
@@ -585,7 +646,7 @@
       this.dscSeedPk = 3 * this.t + 2;
       /** @type {int32} */
       this.dscSeedE = 3 * this.t + 3;
-      /** @type {Uint16Array} */
+      /** @type {uint16[]} */
       this.gPow = new Uint16Array(this.Z + 1);
       /** @type {int32} */
       let acc = 1;
@@ -596,21 +657,12 @@
   /**
    * The TREE row of a set, or null for the fast corner.
    * @param {string} key - the TREE key
-   * @returns {Array|null} [off, npl, lpl, leafStart, leafCount, nodesToStore]
+   * @returns {CrossTree|null} the row
    */
   function TreeRow(key) {
-    /** @type {Array|null} */
-    const row = TREE[key];
-    return row;
-  }
-
-  /**
-   * A typed view of a TREE row; the arrays are the row's own.
-   * @param {Array} row - [off, npl, lpl, leafStart, leafCount, nodesToStore]
-   * @returns {CrossTree} the view
-   */
-  function TreeShapeOfRow(row) {
-    return new CrossTree(row[0], row[1], row[2], row[3], row[4], row[5]);
+    for (let i = 0; i < TREE_KEYS.length; ++i)
+      if (TREE_KEYS[i] === key) return TREE_ROWS[i];
+    return null;
   }
 
   /**
@@ -618,7 +670,7 @@
    * @returns {CrossTree} the shape of its trees
    */
   function TreeShapeOf(p) {
-    return TreeShapeOfRow(p.tree);
+    return p.tree;
   }
 
   /**
@@ -667,16 +719,6 @@
   ];
 
   /**
-   * The sets by name, in the order of the list.
-   * @returns {Object} name to parameter set
-   */
-  function BuildParameterSets() {
-    const table = {};
-    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i) table[PARAMETER_SET_LIST[i].name] = PARAMETER_SET_LIST[i];
-    return table;
-  }
-
-  /**
    * @returns {string[]} the set names, in the order of the list
    */
   function BuildSetNames() {
@@ -686,20 +728,19 @@
     return names;
   }
 
-  const PARAMETER_SETS = BuildParameterSets();
   const SET_NAMES = BuildSetNames();
 
   /**
-   * The table entry under a name. A plain property read, so a name is
-   * accepted exactly when the table has a truthy property of it.
+   * The parameter set of exactly this name.
    * @param {string} name - the name
-   * @returns {CrossParams} the entry, or a falsy value
+   * @returns {CrossParams|null} the entry, or null
    */
   function ParameterSetEntry(name) {
-    /** @type {CrossParams} */
-    const entry = PARAMETER_SETS[name];
-    return entry;
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i)
+      if (PARAMETER_SET_LIST[i].name === name) return PARAMETER_SET_LIST[i];
+    return null;
   }
+
 
   const HASH_DSC = 32768;
 
@@ -707,11 +748,11 @@
 
   class CrossUnpacked {
     /**
-     * @param {Uint16Array} values - the unpacked values
+     * @param {uint16[]} values - the unpacked values
      * @param {boolean} ok - whether the padding bits are zero
      */
     constructor(values, ok) {
-      /** @type {Uint16Array} */
+      /** @type {uint16[]} */
       this.values = values;
       /** @type {boolean} */
       this.ok = ok;
@@ -720,46 +761,46 @@
 
   class CrossMatrices {
     /**
-     * @param {Uint16Array} V - the parity-check part
-     * @param {Uint16Array|null} W - the RSDP(G) generator part
+     * @param {uint16[]} V - the parity-check part
+     * @param {uint16[]|null} W - the RSDP(G) generator part
      */
     constructor(V, W) {
-      /** @type {Uint16Array} */
+      /** @type {uint16[]} */
       this.V = V;
-      /** @type {Uint16Array|null} */
+      /** @type {uint16[]|null} */
       this.W = W;
     }
   }
 
   class CrossSecretKey {
     /**
-     * @param {Uint8Array} seedPk - the public seed
-     * @param {Uint16Array} V - the parity-check part
-     * @param {Uint16Array|null} W - the RSDP(G) generator part
-     * @param {Uint16Array} eBar - the secret restricted vector
-     * @param {Uint16Array|null} eGBar - its RSDP(G) coordinates
+     * @param {uint8[]} seedPk - the public seed
+     * @param {uint16[]} V - the parity-check part
+     * @param {uint16[]|null} W - the RSDP(G) generator part
+     * @param {uint16[]} eBar - the secret restricted vector
+     * @param {uint16[]|null} eGBar - its RSDP(G) coordinates
      */
     constructor(seedPk, V, W, eBar, eGBar) {
-      /** @type {Uint8Array} */
+      /** @type {uint8[]} */
       this.seedPk = seedPk;
-      /** @type {Uint16Array} */
+      /** @type {uint16[]} */
       this.V = V;
-      /** @type {Uint16Array|null} */
+      /** @type {uint16[]|null} */
       this.W = W;
-      /** @type {Uint16Array} */
+      /** @type {uint16[]} */
       this.eBar = eBar;
-      /** @type {Uint16Array|null} */
+      /** @type {uint16[]|null} */
       this.eGBar = eGBar;
     }
   }
 
   class CrossSeeds {
     /**
-     * @param {Uint8Array} seeds - the round seeds
+     * @param {uint8[]} seeds - the round seeds
      * @param {boolean} ok - whether the padding is zero
      */
     constructor(seeds, ok) {
-      /** @type {Uint8Array} */
+      /** @type {uint8[]} */
       this.seeds = seeds;
       /** @type {boolean} */
       this.ok = ok;
@@ -768,11 +809,11 @@
 
   class CrossRoot {
     /**
-     * @param {Uint8Array} root - the Merkle root
+     * @param {uint8[]} root - the Merkle root
      * @param {boolean} ok - whether the padding is zero
      */
     constructor(root, ok) {
-      /** @type {Uint8Array} */
+      /** @type {uint8[]} */
       this.root = root;
       /** @type {boolean} */
       this.ok = ok;
@@ -781,29 +822,29 @@
 
   class CrossFirstChallenge {
     /**
-     * @param {Uint8Array} digest - the challenge digest
-     * @param {Uint16Array} chall1 - the t challenge values
+     * @param {uint8[]} digest - the challenge digest
+     * @param {uint16[]} chall1 - the t challenge values
      */
     constructor(digest, chall1) {
-      /** @type {Uint8Array} */
+      /** @type {uint8[]} */
       this.digest = digest;
-      /** @type {Uint16Array} */
+      /** @type {uint16[]} */
       this.chall1 = chall1;
     }
   }
 
   class CrossHarnessRandomness {
     /**
-     * @param {Uint8Array} seedSk - the key-pair seed
-     * @param {Uint8Array} rootSeed - the root seed
-     * @param {Uint8Array} salt - the salt
+     * @param {uint8[]} seedSk - the key-pair seed
+     * @param {uint8[]} rootSeed - the root seed
+     * @param {uint8[]} salt - the salt
      */
     constructor(seedSk, rootSeed, salt) {
-      /** @type {Uint8Array} */
+      /** @type {uint8[]} */
       this.seedSk = seedSk;
-      /** @type {Uint8Array} */
+      /** @type {uint8[]} */
       this.rootSeed = rootSeed;
-      /** @type {Uint8Array} */
+      /** @type {uint8[]} */
       this.salt = salt;
     }
   }
@@ -812,7 +853,7 @@
 
   /**
    * @param {CrossParams} p - p
-   * @param {Uint8Array[]} parts - parts
+   * @param {uint8[][]} parts - parts
    * @param {int32} dsc - dsc
    * @returns {Shake} Result
    */
@@ -827,9 +868,9 @@
 
   /**
    * @param {CrossParams} p - p
-   * @param {Uint8Array[]} parts - parts
+   * @param {uint8[][]} parts - parts
    * @param {int32} dsc - dsc
-   * @returns {Uint8Array} Result
+   * @returns {uint8[]} Result
    */
   function Hash(p, parts, dsc) {
     return ShakeSqueeze(CsprngInit(p, parts, dsc), p.hashBytes);
@@ -838,7 +879,7 @@
   // The samplers read the stream as one little-endian bit string, a few bits
   // per candidate, with the octets beyond the drawn buffer reading as zero.
   /**
-   * @param {Uint8Array} buf - buf
+   * @param {uint8[]} buf - buf
    * @param {int32} bitPos - bitPos
    * @param {int32} count - count
    * @returns {int32} Result
@@ -861,7 +902,7 @@
    * @param {int32} bound - bound
    * @param {int32} bufferBits - bufferBits
    * @param {boolean} plusOne - plusOne
-   * @returns {Uint16Array} Result
+   * @returns {uint16[]} Result
    */
   function SampleUniform(state, count, bits, bound, bufferBits, plusOne) {
     const buf = ShakeSqueeze(state, Math.ceil(bufferBits / 8));
@@ -878,39 +919,39 @@
   /**
    * @param {CrossParams} p - p
    * @param {Shake} state - state
-   * @returns {Uint16Array} Result
+   * @returns {uint16[]} Result
    */
   function SampleFpVec(p, state) { return SampleUniform(state, p.n, p.bitsP, p.P, p.bitsFpVec, false); }
   /**
    * @param {CrossParams} p - p
    * @param {Shake} state - state
-   * @returns {Uint16Array} Result
+   * @returns {uint16[]} Result
    */
   function SampleChall1(p, state) { return SampleUniform(state, p.t, p.bitsPm1, p.P, p.bitsChall1, true); }
   /**
    * @param {CrossParams} p - p
    * @param {Shake} state - state
-   * @returns {Uint16Array} Result
+   * @returns {uint16[]} Result
    */
   function SampleV(p, state) { return SampleUniform(state, p.k * (p.n - p.k), p.bitsP, p.P, p.bitsV, false); }
   /**
    * @param {CrossParams} p - p
    * @param {Shake} state - state
-   * @returns {Uint16Array} Result
+   * @returns {uint16[]} Result
    */
   function SampleFzVec(p, state) { return SampleUniform(state, p.rsdpg ? p.m : p.n, p.bitsZ, p.Z, p.bitsFz, false); }
   /**
    * @param {CrossParams} p - p
    * @param {Shake} state - state
-   * @returns {Uint16Array} Result
+   * @returns {uint16[]} Result
    */
   function SampleW(p, state) { return SampleUniform(state, p.m * (p.n - p.m), p.bitsZ, p.Z, p.bitsW, false); }
 
   /**
    * The second challenge: t positions, exactly w of them ones, by Fisher-Yates.
    * @param {CrossParams} p - p
-   * @param {Uint8Array} digest - digest
-   * @returns {Uint8Array} Result
+   * @param {uint8[]} digest - digest
+   * @returns {uint8[]} Result
    */
   function ExpandFixedWeight(p, digest) {
     const state = CsprngInit(p, [digest], p.dscFixedWeight);
@@ -937,10 +978,10 @@
   // padded with zero bits to a whole octet.
 
   /**
-   * @param {Uint16Array} values - values
+   * @param {uint16[]} values - values
    * @param {int32} count - count
    * @param {int32} bits - bits
-   * @param {Uint8Array} out - out
+   * @param {uint8[]} out - out
    * @param {int32} offset - offset
    */
   function Pack(values, count, bits, out, offset) {
@@ -961,7 +1002,7 @@
    * padding bits are zero, checked as the reference checks them: for the
    * 7 and 9 bit packings, and not at all for the 3 bit one, whose check in the
    * reference reduces to a constant.
-   * @param {Uint8Array} src - src
+   * @param {uint8[]} src - src
    * @param {int32} offset - offset
    * @param {int32} count - count
    * @param {int32} bits - bits
@@ -984,9 +1025,9 @@
   /**
    * s = e H^T for H = [V I], e given as F_p values.
    * @param {CrossParams} p - p
-   * @param {Uint16Array} e - e
-   * @param {Uint16Array} V - V
-   * @returns {Uint16Array} Result
+   * @param {uint16[]} e - e
+   * @param {uint16[]} V - V
+   * @returns {uint16[]} Result
    */
   function FpVecByMatrix(p, e, V) {
     const nk = p.n - p.k, P = p.P;
@@ -996,7 +1037,7 @@
       const ei = e[i];
       if (ei === 0) continue;
       const row = i * nk;
-      for (let j = 0; j < nk; ++j) acc[j] += ei * V[row + j];
+      for (let j = 0; j < nk; ++j) acc[j] += OpCodes.Mul32(ei, V[row + j]);
     }
     const res = new Uint16Array(nk);
     for (let j = 0; j < nk; ++j) res[j] = acc[j] % P;
@@ -1006,9 +1047,9 @@
   /**
    * The restricted vector e_G M_G for M_G = [W I], exponents modulo z.
    * @param {CrossParams} p - p
-   * @param {Uint16Array} eG - eG
-   * @param {Uint16Array} W - W
-   * @returns {Uint16Array} Result
+   * @param {uint16[]} eG - eG
+   * @param {uint16[]} W - W
+   * @returns {uint16[]} Result
    */
   function FzInfByMatrix(p, eG, W) {
     const nm = p.n - p.m, Z = p.Z;
@@ -1018,7 +1059,7 @@
       const ei = eG[i];
       if (ei === 0) continue;
       const row = i * nm;
-      for (let j = 0; j < nm; ++j) acc[j] += ei * W[row + j];
+      for (let j = 0; j < nm; ++j) acc[j] += OpCodes.Mul32(ei, W[row + j]);
     }
     for (let j = 0; j < nm; ++j) res[j] = acc[j] % Z;
     for (let i = 0; i < p.m; ++i) res[nm + i] = eG[i] % Z;
@@ -1027,8 +1068,8 @@
 
   /**
    * @param {CrossParams} p - p
-   * @param {Uint16Array} e - e
-   * @returns {Uint16Array} Result
+   * @param {uint16[]} e - e
+   * @returns {uint16[]} Result
    */
   function RestrToFp(p, e) {
     const out = new Uint16Array(e.length);
@@ -1040,7 +1081,7 @@
 
   /**
    * @param {CrossParams} p - p
-   * @param {Uint8Array} seedPk - seedPk
+   * @param {uint8[]} seedPk - seedPk
    * @returns {CrossMatrices} Result
    */
   function ExpandPk(p, seedPk) {
@@ -1052,7 +1093,7 @@
 
   /**
    * @param {CrossParams} p - p
-   * @param {Uint8Array} seedSk - seedSk
+   * @param {uint8[]} seedSk - seedSk
    * @returns {CrossSecretKey} Result
    */
   function ExpandSk(p, seedSk) {
@@ -1061,9 +1102,9 @@
     const seedPk = seeds.subarray(p.keySeedBytes, 2 * p.keySeedBytes);
     const mats = ExpandPk(p, seedPk);
     const stateE = CsprngInit(p, [seedE], p.dscSeedE);
-    /** @type {Uint16Array} */
+    /** @type {uint16[]} */
     let eBar = null;
-    /** @type {Uint16Array|null} */
+    /** @type {uint16[]|null} */
     let eGBar = null;
     if (p.rsdpg) {
       eGBar = SampleFzVec(p, stateE);
@@ -1077,8 +1118,8 @@
   /**
    * crypto_sign_keypair from a key-pair seed: the public key.
    * @param {CrossParams} p - p
-   * @param {Uint8Array} seedSk - seedSk
-   * @returns {Uint8Array} Result
+   * @param {uint8[]} seedSk - seedSk
+   * @returns {uint8[]} Result
    */
   function PublicKeyFromSeed(p, seedSk) {
     const sk = ExpandSk(p, seedSk);
@@ -1104,7 +1145,7 @@
 
   /**
    * @param {CrossParams} p - p
-   * @returns {Uint16Array} Result
+   * @returns {uint16[]} Result
    */
   function LeafIndex(p) {
     const tr = TreeShapeOf(p), idx = new Uint16Array(p.t);
@@ -1117,9 +1158,9 @@
   /**
    * Round seeds of the fast corner, which has no tree.
    * @param {CrossParams} p - p
-   * @param {Uint8Array} rootSeed - rootSeed
-   * @param {Uint8Array} salt - salt
-   * @returns {Uint8Array} Result
+   * @param {uint8[]} rootSeed - rootSeed
+   * @param {uint8[]} salt - salt
+   * @returns {uint8[]} Result
    */
   function SeedLeavesFlat(p, rootSeed, salt) {
     const S = p.seedBytes, t = p.t;
@@ -1139,9 +1180,9 @@
 
   /**
    * @param {CrossParams} p - p
-   * @param {Uint8Array} rootSeed - rootSeed
-   * @param {Uint8Array} salt - salt
-   * @returns {Uint8Array} Result
+   * @param {uint8[]} rootSeed - rootSeed
+   * @param {uint8[]} salt - salt
+   * @returns {uint8[]} Result
    */
   function GenSeedTree(p, rootSeed, salt) {
     const S = p.seedBytes, tr = TreeShapeOf(p);
@@ -1163,21 +1204,25 @@
 
   /**
    * @param {CrossParams} p - p
-   * @param {Uint8Array} tree - tree
-   * @returns {Uint8Array} Result
+   * @param {uint8[]} tree - tree
+   * @returns {uint8[]} Result
    */
   function SeedLeavesFromTree(p, tree) {
     const S = p.seedBytes, idx = LeafIndex(p);
     const seeds = new Uint8Array(p.t * S);
-    for (let i = 0; i < p.t; ++i) seeds.set(tree.subarray(idx[i] * S, (idx[i] + 1) * S), i * S);
+    for (let i = 0; i < p.t; ++i) {
+      /** @type {int32} */
+      const leaf = idx[i];
+      seeds.set(tree.subarray(leaf * S, (leaf + 1) * S), i * S);
+    }
     return seeds;
   }
 
   /**
    * Flags of the seed tree nodes whose whole subtree is to be revealed.
    * @param {CrossParams} p - p
-   * @param {Uint8Array} chall2 - chall2
-   * @returns {Uint8Array} Result
+   * @param {uint8[]} chall2 - chall2
+   * @returns {uint8[]} Result
    */
   function SeedsToPublish(p, chall2) {
     const tr = TreeShapeOf(p), off = tr.off, npl = tr.npl;
@@ -1198,9 +1243,9 @@
 
   /**
    * @param {CrossParams} p - p
-   * @param {Uint8Array} tree - tree
-   * @param {Uint8Array} chall2 - chall2
-   * @param {Uint8Array} sig - sig
+   * @param {uint8[]} tree - tree
+   * @param {uint8[]} chall2 - chall2
+   * @param {uint8[]} sig - sig
    * @param {int32} offset - offset
    */
   function SeedPath(p, tree, chall2, sig, offset) {
@@ -1223,10 +1268,10 @@
   /**
    * Rebuild the round seeds a signature reveals; null if its padding is not zero.
    * @param {CrossParams} p - p
-   * @param {Uint8Array} chall2 - chall2
-   * @param {Uint8Array} sig - sig
+   * @param {uint8[]} chall2 - chall2
+   * @param {uint8[]} sig - sig
    * @param {int32} offset - offset
-   * @param {Uint8Array} salt - salt
+   * @param {uint8[]} salt - salt
    * @returns {CrossSeeds} Result
    */
   function RebuildSeedTree(p, chall2, sig, offset, salt) {
@@ -1258,8 +1303,8 @@
 
   /**
    * @param {CrossParams} p - p
-   * @param {Uint8Array} cmt0 - cmt0
-   * @returns {Uint8Array} Result
+   * @param {uint8[]} cmt0 - cmt0
+   * @returns {uint8[]} Result
    */
   function MerkleRootFlat(p, cmt0) {
     const H = p.hashBytes, t = p.t;
@@ -1278,14 +1323,18 @@
 
   /**
    * @param {CrossParams} p - p
-   * @param {Uint8Array} cmt0 - cmt0
-   * @returns {Uint8Array} Result
+   * @param {uint8[]} cmt0 - cmt0
+   * @returns {uint8[]} Result
    */
   function MerkleTree(p, cmt0) {
     const H = p.hashBytes, tr = TreeShapeOf(p), off = tr.off, npl = tr.npl;
     const tree = new Uint8Array((2 * p.t - 1) * H);
     const idx = LeafIndex(p);
-    for (let i = 0; i < p.t; ++i) tree.set(cmt0.subarray(i * H, (i + 1) * H), idx[i] * H);
+    for (let i = 0; i < p.t; ++i) {
+      /** @type {int32} */
+      const leaf = idx[i];
+      tree.set(cmt0.subarray(i * H, (i + 1) * H), leaf * H);
+    }
     let start = tr.leafStart[0];
     for (let level = p.log2t; level > 0; --level) {
       for (let i = npl[level] - 2; i >= 0; i -= 2) {
@@ -1300,9 +1349,9 @@
 
   /**
    * @param {CrossParams} p - p
-   * @param {Uint8Array} tree - tree
-   * @param {Uint8Array} chall2 - chall2
-   * @param {Uint8Array} sig - sig
+   * @param {uint8[]} tree - tree
+   * @param {uint8[]} chall2 - chall2
+   * @param {uint8[]} sig - sig
    * @param {int32} offset - offset
    */
   function MerkleProof(p, tree, chall2, sig, offset) {
@@ -1331,9 +1380,9 @@
 
   /**
    * @param {CrossParams} p - p
-   * @param {Uint8Array} cmt0 - cmt0
-   * @param {Uint8Array} chall2 - chall2
-   * @param {Uint8Array} sig - sig
+   * @param {uint8[]} cmt0 - cmt0
+   * @param {uint8[]} chall2 - chall2
+   * @param {uint8[]} sig - sig
    * @param {int32} offset - offset
    * @returns {CrossRoot} Result
    */
@@ -1343,8 +1392,10 @@
     const flags = new Uint8Array(2 * p.t - 1);
     const idx = LeafIndex(p);
     for (let i = 0; i < p.t; ++i) {
-      tree.set(cmt0.subarray(i * H, (i + 1) * H), idx[i] * H);
-      if (chall2[i] === 0) flags[idx[i]] = 1;
+      /** @type {int32} */
+      const leaf = idx[i];
+      tree.set(cmt0.subarray(i * H, (i + 1) * H), leaf * H);
+      if (chall2[i] === 0) flags[leaf] = 1;
     }
     const input = new Uint8Array(2 * H);
     let start = tr.leafStart[0], published = 0;
@@ -1379,9 +1430,9 @@
 
   /**
    * @param {CrossParams} p - p
-   * @param {Uint8Array} message - message
-   * @param {Uint8Array} digestCmt - digestCmt
-   * @param {Uint8Array} salt - salt
+   * @param {uint8[]} message - message
+   * @param {uint8[]} digestCmt - digestCmt
+   * @param {uint8[]} salt - salt
    * @returns {CrossFirstChallenge} Result
    */
   function FirstChallenge(p, message, digestCmt, salt) {
@@ -1394,11 +1445,11 @@
   /**
    * CROSS signing.
    * @param {CrossParams} p - parameter set
-   * @param {Uint8Array} seedSk - the secret key
-   * @param {Uint8Array} message - the message
-   * @param {Uint8Array} rootSeed - L/8 octets of randomness
-   * @param {Uint8Array} salt - 2L/8 octets of randomness
-   * @returns {Uint8Array} the signature
+   * @param {uint8[]} seedSk - the secret key
+   * @param {uint8[]} message - the message
+   * @param {uint8[]} rootSeed - L/8 octets of randomness
+   * @param {uint8[]} salt - 2L/8 octets of randomness
+   * @returns {uint8[]} the signature
    */
   function Sign(p, seedSk, message, rootSeed, salt) {
     const S = p.seedBytes, H = p.hashBytes, t = p.t, n = p.n, P = p.P, Z = p.Z;
@@ -1406,9 +1457,9 @@
     const sig = new Uint8Array(p.sigBytes);
     sig.set(salt, 0);
 
-    /** @type {Uint8Array|null} */
+    /** @type {uint8[]|null} */
     let tree = null;
-    /** @type {Uint8Array} */
+    /** @type {uint8[]} */
     let seeds = null;
     if (p.fast) {
       seeds = SeedLeavesFlat(p, rootSeed, salt);
@@ -1424,21 +1475,21 @@
     cmt1Input.set(salt, S);
     const cmt0 = new Uint8Array(t * H);
     const cmt1 = new Uint8Array(t * H);
-    /** @type {Uint16Array[]} */
+    /** @type {uint16[][]} */
     const ePrime = new Array(t);
-    /** @type {Uint16Array[]} */
+    /** @type {uint16[][]} */
     const uPrime = new Array(t);
-    /** @type {Uint16Array[]} */
+    /** @type {uint16[][]} */
     const vBarAll = new Array(t);
 
     for (let i = 0; i < t; ++i) {
       const seed = seeds.subarray(i * S, (i + 1) * S);
       const state = CsprngInit(p, [seed, salt], i + 2 * t - 1);
-      /** @type {Uint16Array} */
+      /** @type {uint16[]} */
       let eBarPrime = null;
-      /** @type {Uint16Array} */
+      /** @type {uint16[]} */
       let vBar = null;
-      /** @type {Uint16Array} */
+      /** @type {uint16[]} */
       let vPacked = null;
       if (p.rsdpg) {
         const eGPrime = SampleFzVec(p, state);
@@ -1455,7 +1506,7 @@
       const u = SampleFpVec(p, state);
       const v = RestrToFp(p, vBar);
       const prod = new Uint16Array(n);
-      for (let j = 0; j < n; ++j) prod[j] = (v[j] * u[j]) % P;
+      for (let j = 0; j < n; ++j) prod[j] = OpCodes.Mul32(v[j], u[j]) % P;
       const sPrime = FpVecByMatrix(p, prod, sk.V);
       Pack(sPrime, n - p.k, p.bitsP, cmt0Input, 0);
       Pack(vPacked, fzLen, p.bitsZ, cmt0Input, p.fpSynBytes);
@@ -1467,9 +1518,9 @@
       vBarAll[i] = vPacked;
     }
 
-    /** @type {Uint8Array|null} */
+    /** @type {uint8[]|null} */
     let merkle = null;
-    /** @type {Uint8Array} */
+    /** @type {uint8[]} */
     let root = null;
     if (p.fast) {
       root = MerkleRootFlat(p, cmt0);
@@ -1482,13 +1533,13 @@
 
     const first = FirstChallenge(p, message, digestCmt, salt);
     const ys = new Uint8Array(t * p.fpVecBytes);
-    /** @type {Uint16Array[]} */
+    /** @type {uint16[][]} */
     const y = new Array(t);
     for (let i = 0; i < t; ++i) {
       const g = RestrToFp(p, ePrime[i]);
       const yi = new Uint16Array(n);
       const c = first.chall1[i];
-      for (let j = 0; j < n; ++j) yi[j] = (uPrime[i][j] + g[j] * c) % P;
+      for (let j = 0; j < n; ++j) yi[j] = OpCodes.Add32(uPrime[i][j], OpCodes.Mul32(g[j], c)) % P;
       y[i] = yi;
       Pack(yi, n, p.bitsP, ys, i * p.fpVecBytes);
     }
@@ -1524,9 +1575,9 @@
   /**
    * CROSS verification.
    * @param {CrossParams} p - p
-   * @param {Uint8Array} pk - pk
-   * @param {Uint8Array} message - message
-   * @param {Uint8Array} sig - sig
+   * @param {uint8[]} pk - pk
+   * @param {uint8[]} message - message
+   * @param {uint8[]} sig - sig
    * @returns {boolean} whether the signature verifies under the public key
    */
   function Verify(p, pk, message, sig) {
@@ -1543,7 +1594,7 @@
     const first = FirstChallenge(p, message, digestCmt, salt);
     const chall2 = ExpandFixedWeight(p, digestChall2);
 
-    /** @type {Uint8Array} */
+    /** @type {uint8[]} */
     let seeds = null;
     if (p.fast) {
       seeds = new Uint8Array(t * S);
@@ -1582,7 +1633,7 @@
         const g = RestrToFp(p, eBarPrime);
         const yi = new Uint16Array(n);
         const c = first.chall1[i];
-        for (let j = 0; j < n; ++j) yi[j] = (u[j] + g[j] * c) % P;
+        for (let j = 0; j < n; ++j) yi[j] = OpCodes.Add32(u[j], OpCodes.Mul32(g[j], c)) % P;
         Pack(yi, n, p.bitsP, ys, i * p.fpVecBytes);
       } else {
         const at = p.offResp0 + used * p.respBytes;
@@ -1600,16 +1651,20 @@
         ++used;
         const v = RestrToFp(p, vBar);
         const yPrime = new Uint16Array(n);
-        for (let j = 0; j < n; ++j) yPrime[j] = (v[j] * (yr.values[j] % P)) % P;
+        for (let j = 0; j < n; ++j) yPrime[j] = OpCodes.Mul32(v[j], yr.values[j] % P) % P;
         const yH = FpVecByMatrix(p, yPrime, mats.V);
         const c = first.chall1[i];
-        for (let j = 0; j < n - p.k; ++j) sScaled[j] = Mod(yH[j] - (s[j] % P) * c, P);
+        for (let j = 0; j < n - p.k; ++j) {
+          /** @type {int32} */
+          const scaled = OpCodes.Mul32(s[j] % P, c);
+          sScaled[j] = Mod(yH[j] - scaled, P);
+        }
         Pack(sScaled, n - p.k, p.bitsP, cmt0Input, 0);
         cmt0.set(Hash(p, [cmt0Input], HASH_DSC + dsc), i * H);
       }
     }
 
-    /** @type {Uint8Array} */
+    /** @type {uint8[]} */
     let root = null;
     if (p.fast) {
       let pub = 0;
@@ -1674,6 +1729,63 @@
   // other ten sets are covered by the whole-file digests above, not here.
 
   const KAT_URI = 'https://csrc.nist.gov/csrc/media/Projects/pqc-dig-sig/documents/round-2/submission-pkg/cross-submission-round2.zip';
+
+  /**
+   * A vector of the test list: a TestCase with the instance settings it
+   * names. Each optional setting becomes a field only when it is given, so a
+   * vector carries exactly the settings that apply to it.
+   */
+  class CrossTestCase extends TestCase {
+    /**
+     * @param {string} text - description
+     * @param {boolean} inverse - whether the vector opens rather than signs
+     * @param {string} parameterSet - parameter set name
+     * @param {uint8[]} input - input octets
+     * @param {uint8[]} expected - expected output octets
+     */
+    constructor(text, inverse, parameterSet, input, expected) {
+      super(input, expected, text, KAT_URI);
+      if (inverse) {
+        /** @type {boolean} */
+        this.inverse = true;
+      }
+      /** @type {string} */
+      this.parameterSet = parameterSet;
+    }
+
+    /**
+     * Replay the randomness of this record of the KAT generator.
+     * @param {int32} count - record number
+     */
+    SetKatCount(count) {
+      /** @type {int32} */
+      this.katCount = count;
+    }
+
+    /**
+     * @param {uint8[]} key - the key-pair seed
+     */
+    SetKey(key) {
+      /** @type {uint8[]} */
+      this.key = key;
+    }
+
+    /**
+     * @param {uint8[]} publicKey - the public key
+     */
+    SetPublicKey(publicKey) {
+      /** @type {uint8[]} */
+      this.publicKey = publicKey;
+    }
+
+    /**
+     * @param {uint8[]} message - the message the verdict is about
+     */
+    SetMessage(message) {
+      /** @type {uint8[]} */
+      this.message = message;
+    }
+  }
 
   /** One record of a rebuilt response file. */
   class CrossKatRecord {
@@ -3697,13 +3809,13 @@
   /**
    * The key-pair seed length a public key length implies.
    * @param {int32} length - public key octets
-   * @returns {int32} 32, 48 or 64, or undefined for any other length
+   * @returns {int32} 32, 48 or 64, or 0 for any other length
    */
   function KeyLengthOfPublicKey(length) {
     if (length === 77) return 32;
     if (length === 115) return 48;
     if (length === 153) return 64;
-    return undefined;
+    return 0;
   }
 
   /**
@@ -3783,101 +3895,74 @@
           KAT_URI)
       ];
 
+      /** @type {uint8[]} */
+      const ACCEPT = [1];
+      /** @type {uint8[]} */
+      const REJECT = [0];
+      /** @type {CrossTestCase[]} */
       const tests = [];
       for (let i = 0; i < KAT.length; ++i) {
         const e = KAT[i];
         const note = ' (round-two KAT record rebuilt from the package generator; the whole response file '
           + e.file + ' reproduces its published SHA-512)';
-        tests.push({
-          text: e.set + ' count ' + e.count + ': crypto_sign reproduces the signed message' + note,
-          uri: KAT_URI,
-          parameterSet: e.set,
-          katCount: e.count,
-          key: OpCodes.Hex8ToBytes(e.sk),
-          input: OpCodes.Hex8ToBytes(e.msg),
-          expected: OpCodes.Hex8ToBytes(e.sm)
-        });
+        const label = e.set + ' count ' + e.count + ': ';
+
+        const signs = new CrossTestCase(label + 'crypto_sign reproduces the signed message' + note, false, e.set,
+          OpCodes.Hex8ToBytes(e.msg), OpCodes.Hex8ToBytes(e.sm));
+        signs.SetKatCount(e.count);
+        signs.SetKey(OpCodes.Hex8ToBytes(e.sk));
+        tests.push(signs);
+
         if (e.keygen) {
-          tests.push({
-            text: e.set + ' count ' + e.count + ': key generation from the harness stream, then signing' + note,
-            uri: KAT_URI,
-            parameterSet: e.set,
-            katCount: e.count,
-            input: OpCodes.Hex8ToBytes(e.msg),
-            expected: OpCodes.Hex8ToBytes(e.sm)
-          });
+          const generates = new CrossTestCase(label + 'key generation from the harness stream, then signing' + note, false, e.set,
+            OpCodes.Hex8ToBytes(e.msg), OpCodes.Hex8ToBytes(e.sm));
+          generates.SetKatCount(e.count);
+          tests.push(generates);
         }
-        tests.push({
-          text: e.set + ' count ' + e.count + ': crypto_sign_open under the published public key yields the message' + note,
-          uri: KAT_URI,
-          inverse: true,
-          parameterSet: e.set,
-          publicKey: OpCodes.Hex8ToBytes(e.pk),
-          input: OpCodes.Hex8ToBytes(e.sm),
-          expected: OpCodes.Hex8ToBytes(e.msg)
-        });
+
+        const opens = new CrossTestCase(label + 'crypto_sign_open under the published public key yields the message' + note, true, e.set,
+          OpCodes.Hex8ToBytes(e.sm), OpCodes.Hex8ToBytes(e.msg));
+        opens.SetPublicKey(OpCodes.Hex8ToBytes(e.pk));
+        tests.push(opens);
+
         if (e.negatives) {
           const mlen = e.msg.length / 2;
-          tests.push({
-            text: e.set + ' count ' + e.count + ': the verdict under the public key derived from the secret key is acceptance',
-            uri: KAT_URI,
-            inverse: true,
-            parameterSet: e.set,
-            key: OpCodes.Hex8ToBytes(e.sk),
-            message: OpCodes.Hex8ToBytes(e.msg),
-            input: OpCodes.Hex8ToBytes(e.sm),
-            expected: [1]
-          });
-          tests.push({
-            text: e.set + ' count ' + e.count + ': a modified message must not verify',
-            uri: KAT_URI,
-            inverse: true,
-            parameterSet: e.set,
-            publicKey: OpCodes.Hex8ToBytes(e.pk),
-            message: Flip(e.msg, 0),
-            input: Flip(e.sm, 0),
-            expected: [0]
-          });
-          tests.push({
-            text: e.set + ' count ' + e.count + ': a genuine signed message does not vouch for a different message',
-            uri: KAT_URI,
-            inverse: true,
-            parameterSet: e.set,
-            publicKey: OpCodes.Hex8ToBytes(e.pk),
-            message: Flip(e.msg, 0),
-            input: OpCodes.Hex8ToBytes(e.sm),
-            expected: [0]
-          });
-          tests.push({
-            text: e.set + ' count ' + e.count + ': a modified signature (one bit of the first response) must not verify',
-            uri: KAT_URI,
-            inverse: true,
-            parameterSet: e.set,
-            publicKey: OpCodes.Hex8ToBytes(e.pk),
-            message: OpCodes.Hex8ToBytes(e.msg),
-            input: Flip(e.sm, mlen + PARAMETER_SETS[e.set].offResp0),
-            expected: [0]
-          });
-          tests.push({
-            text: e.set + ' count ' + e.count + ': a modified signature (one bit of the salt) must not verify',
-            uri: KAT_URI,
-            inverse: true,
-            parameterSet: e.set,
-            publicKey: OpCodes.Hex8ToBytes(e.pk),
-            message: OpCodes.Hex8ToBytes(e.msg),
-            input: Flip(e.sm, mlen),
-            expected: [0]
-          });
-          tests.push({
-            text: e.set + ' count ' + e.count + ': the signature must not verify under another record\'s public key',
-            uri: KAT_URI,
-            inverse: true,
-            parameterSet: e.set,
-            publicKey: OpCodes.Hex8ToBytes(e.otherPk),
-            message: OpCodes.Hex8ToBytes(e.msg),
-            input: OpCodes.Hex8ToBytes(e.sm),
-            expected: [0]
-          });
+
+          const derived = new CrossTestCase(label + 'the verdict under the public key derived from the secret key is acceptance', true, e.set,
+            OpCodes.Hex8ToBytes(e.sm), ACCEPT.slice());
+          derived.SetKey(OpCodes.Hex8ToBytes(e.sk));
+          derived.SetMessage(OpCodes.Hex8ToBytes(e.msg));
+          tests.push(derived);
+
+          const modifiedMessage = new CrossTestCase(label + 'a modified message must not verify', true, e.set,
+            Flip(e.sm, 0), REJECT.slice());
+          modifiedMessage.SetPublicKey(OpCodes.Hex8ToBytes(e.pk));
+          modifiedMessage.SetMessage(Flip(e.msg, 0));
+          tests.push(modifiedMessage);
+
+          const otherMessage = new CrossTestCase(label + 'a genuine signed message does not vouch for a different message', true, e.set,
+            OpCodes.Hex8ToBytes(e.sm), REJECT.slice());
+          otherMessage.SetPublicKey(OpCodes.Hex8ToBytes(e.pk));
+          otherMessage.SetMessage(Flip(e.msg, 0));
+          tests.push(otherMessage);
+
+          const modifiedResponse = new CrossTestCase(label + 'a modified signature (one bit of the first response) must not verify', true, e.set,
+            Flip(e.sm, mlen + ParameterSetEntry(e.set).offResp0), REJECT.slice());
+          modifiedResponse.SetPublicKey(OpCodes.Hex8ToBytes(e.pk));
+          modifiedResponse.SetMessage(OpCodes.Hex8ToBytes(e.msg));
+          tests.push(modifiedResponse);
+
+          const modifiedSalt = new CrossTestCase(label + 'a modified signature (one bit of the salt) must not verify', true, e.set,
+            Flip(e.sm, mlen), REJECT.slice());
+          modifiedSalt.SetPublicKey(OpCodes.Hex8ToBytes(e.pk));
+          modifiedSalt.SetMessage(OpCodes.Hex8ToBytes(e.msg));
+          tests.push(modifiedSalt);
+
+          const otherKey = new CrossTestCase(label + 'the signature must not verify under another record\'s public key', true, e.set,
+            OpCodes.Hex8ToBytes(e.sm), REJECT.slice());
+          otherKey.SetPublicKey(OpCodes.Hex8ToBytes(e.otherPk));
+          otherKey.SetMessage(OpCodes.Hex8ToBytes(e.msg));
+          tests.push(otherKey);
         }
       }
       this.tests = tests;
@@ -3911,14 +3996,21 @@
      */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {string|null} */
       this._parameterSet = null;
+      /** @type {uint8[]|null} */
       this._keyData = null;
+      /** @type {uint8[]|null} */
       this._publicKey = null;
+      /** @type {uint8[]|null} */
       this._derivedPublicKey = null;
       /** @type {int32|null} */
       this._katCount = null;
+      /** @type {uint8[]|null} */
       this._message = null;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
     }
 
@@ -3942,7 +4034,7 @@
      */
     KeySetup(keyData) {
       if (!keyData) { this._keyData = null; this._derivedPublicKey = null; return; }
-      if (typeof keyData.length !== 'number' || [32, 48, 64].indexOf(keyData.length) < 0)
+      if (typeof keyData.length !== 'number' || (keyData.length !== 32 && keyData.length !== 48 && keyData.length !== 64))
         throw new Error('CROSS: the secret key is a key-pair seed of 32, 48 or 64 octets, not ' + keyData.length);
       /** @type {uint8[]} */
       const copy = new Array(keyData.length);
@@ -3983,7 +4075,7 @@
 
     /**
      * @param {CrossParams} p - p
-     * @returns {Uint8Array|null} Result
+     * @returns {uint8[]|null} Result
      */
     _secretKey(p) {
       if (this._keyData) {
@@ -4032,7 +4124,11 @@
       if (this.isInverse) {
         const verdict = (this._message !== null);
         if (input.length < p.sigBytes) {
-          if (verdict) return [0];
+          if (verdict) {
+            /** @type {uint8[]} */
+            const rejected = [0];
+            return rejected;
+          }
           throw new Error(p.name + ': a signed message is at least ' + p.sigBytes + ' octets');
         }
         let pk = this._publicKey;
@@ -4056,9 +4152,9 @@
 
       const sk = this._secretKey(p);
       if (!sk) throw new Error(p.name + ': signing needs a secret key');
-      /** @type {Uint8Array} */
+      /** @type {uint8[]} */
       let rootSeed = null;
-      /** @type {Uint8Array} */
+      /** @type {uint8[]} */
       let salt = null;
       if (this._katCount !== null) {
         const r = HarnessRandomness(p, this._katCount);
@@ -4103,7 +4199,26 @@
   return {
     CrossAlgorithm,
     CrossInstance,
-    PARAMETER_SETS,
+    PARAMETER_SETS: {
+      'CROSS-RSDP-128-fast':      PARAMETER_SET_LIST[0],
+      'CROSS-RSDP-128-balanced':  PARAMETER_SET_LIST[1],
+      'CROSS-RSDP-128-small':     PARAMETER_SET_LIST[2],
+      'CROSS-RSDP-192-fast':      PARAMETER_SET_LIST[3],
+      'CROSS-RSDP-192-balanced':  PARAMETER_SET_LIST[4],
+      'CROSS-RSDP-192-small':     PARAMETER_SET_LIST[5],
+      'CROSS-RSDP-256-fast':      PARAMETER_SET_LIST[6],
+      'CROSS-RSDP-256-balanced':  PARAMETER_SET_LIST[7],
+      'CROSS-RSDP-256-small':     PARAMETER_SET_LIST[8],
+      'CROSS-RSDPG-128-fast':     PARAMETER_SET_LIST[9],
+      'CROSS-RSDPG-128-balanced': PARAMETER_SET_LIST[10],
+      'CROSS-RSDPG-128-small':    PARAMETER_SET_LIST[11],
+      'CROSS-RSDPG-192-fast':     PARAMETER_SET_LIST[12],
+      'CROSS-RSDPG-192-balanced': PARAMETER_SET_LIST[13],
+      'CROSS-RSDPG-192-small':    PARAMETER_SET_LIST[14],
+      'CROSS-RSDPG-256-fast':     PARAMETER_SET_LIST[15],
+      'CROSS-RSDPG-256-balanced': PARAMETER_SET_LIST[16],
+      'CROSS-RSDPG-256-small':    PARAMETER_SET_LIST[17]
+    },
     Shake,
     NistDrbg,
     HarnessRandomness,
