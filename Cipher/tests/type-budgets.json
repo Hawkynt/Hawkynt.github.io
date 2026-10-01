@@ -924,7 +924,7 @@
   "algorithms/stream/vmpc.js": 0,
   "algorithms/stream/vmpcksa3.js": 0,
   "algorithms/stream/wake.js": 0,
-  "algorithms/stream/xchacha20.js": 7,
+  "algorithms/stream/xchacha20.js": 0,
   "algorithms/stream/xsalsa20.js": 0,
   "algorithms/stream/zuc.js": 0,
   "algorithms/stream/zuc256.js": 0
