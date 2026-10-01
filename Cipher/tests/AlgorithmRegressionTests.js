@@ -65,6 +65,47 @@ test('GOST R 34.11-94: given a message of 2^32 + 24 bits, when finalized, then t
   equalHex(blocks[blocks.length - 2], hex(leBytes(LONG_BITS, 32)));
 });
 
+// ---------------------------------------------------------------- GMAC
+test('GMAC: given 2^32 + 24 bits of data, when the tag is computed, then the GHASH length block holds all 64 bits of len(A) and a zero len(C)', () => {
+  const { GMACAlgorithm } = require(path.join(CIPHER_ROOT, 'algorithms', 'mac', 'gmac.js'));
+  const instance = new GMACAlgorithm().CreateInstance();
+  instance.key = Array.from(Buffer.alloc(16));
+  instance.nonce = Array.from(Buffer.alloc(12));
+  let ghashInput = null;
+  const ghash = instance._ghash.bind(instance);
+  instance._ghash = data => { ghashInput = Array.from(data); return ghash(data); };
+  // Given: a buffer reporting 2^29 + 3 bytes whose contents GHASH need not see
+  // (the length block is what is under test, and 512 MiB is too much to allocate)
+  instance.inputBuffer = { length: LONG_BYTES, slice: () => [] };
+  // When
+  instance.Result();
+  // Then: SP 800-38D 7.1 step 5 - [len(A)]_64 || [len(C)]_64, big-endian
+  equalHex(ghashInput.slice(-16), hex(leBytes(LONG_BITS, 8).reverse().concat(leBytes(0n, 8))));
+});
+
+// ---------------------------------------------------------------- TupleHash
+// cSHAKE absorbs N and S before the message, so TupleHash used to drop a
+// customization set after the elements. Expected values: NIST SP 800-185
+// TupleHash samples #2 and #5, X = (000102, 101112131415), S = "My Tuple App".
+function tupleHashWithCustomizationLast(algorithmName, outputSize) {
+  require(path.join(CIPHER_ROOT, 'algorithms', 'hash', 'cshake.js'));
+  const algorithms = require(path.join(CIPHER_ROOT, 'algorithms', 'hash', 'tuplehash.js'));
+  const instance = new algorithms[algorithmName]().CreateInstance();
+  // Given: the elements are fed first, then the output length, then S
+  instance.Feed(Array.from(Buffer.from('000102', 'hex')));
+  instance.Feed(Array.from(Buffer.from('101112131415', 'hex')));
+  instance.outputSize = outputSize;
+  instance.customization = Array.from(Buffer.from('My Tuple App'));
+  // When: the digest is computed
+  return instance.Result();
+}
+test('TupleHash128: given the customization is set after the elements, when hashed, then the digest is NIST sample #2', () => {
+  equalHex(tupleHashWithCustomizationLast('TupleHash128', 32), '75cdb20ff4db1154e841d758e24160c54bae86eb8c13e7f5f40eb35588e96dfb');
+});
+test('TupleHash256: given the customization is set after the elements, when hashed, then the digest is NIST sample #5', () => {
+  equalHex(tupleHashWithCustomizationLast('TupleHash256', 64), '147c2191d5ed7efd98dbd96d7ab5a11692576f5fe2a5065f3e33de6bba9f3aa1c4e9a068a289c61c95aab30aee1e410b0b607de3620e24a4e3bf9852a1d4367e');
+});
+
 // ---------------------------------------------------------------- missing dependencies
 // A page context (no require, no module, no global) holding only the named
 // scripts: what an algorithm meets when the hash or cipher it builds on is not
@@ -91,8 +132,9 @@ function correctOrRefused(outcome, expected, dependency) {
   equalHex(outcome.value, expected);
 }
 
-function pbkdf2(framework, password, salt, iterations, size) {
+function pbkdf2(framework, password, salt, iterations, size, hashName) {
   const instance = framework.Find('PBKDF2').CreateInstance();
+  if (hashName !== undefined) instance.hashFunction = hashName;
   instance.salt = Array.from(Buffer.from(salt));
   instance.iterations = iterations;
   instance.outputSize = size;
@@ -103,13 +145,35 @@ function pbkdf2(framework, password, salt, iterations, size) {
 // RFC 6070 test case 1, also node's crypto.pbkdf2Sync('password', 'salt', 1, 20, 'sha1')
 const PBKDF2_RFC6070_1 = '0c60c80f961f0e71f3a9b524af6012062fe037a6';
 
-test('PBKDF2: given a page without SHA-1, when a key is derived, then it is the RFC 6070 key or a refusal naming SHA-1 - never a wrong key', () => {
-  const framework = pageWith('algorithms/kdf/pbkdf2.js');
+// RFC 7914 section 11 (PBKDF2-HMAC-SHA256, passwd/salt, c=1), first 32 of its 64 bytes;
+// also node's crypto.pbkdf2Sync('passwd', 'salt', 1, 32, 'sha256')
+const PBKDF2_RFC7914_SHA256_32 = '55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc';
+
+test('PBKDF2: given a page with HMAC but without SHA-1, when a key is derived, then it is the RFC 6070 key or a refusal naming SHA-1 - never a wrong key', () => {
+  const framework = pageWith('algorithms/mac/hmac.js', 'algorithms/kdf/pbkdf2.js');
   correctOrRefused(attempt(() => pbkdf2(framework, 'password', 'salt', 1, 20)), PBKDF2_RFC6070_1, 'SHA-1');
 });
-test('PBKDF2: given a page with SHA-1, when a key is derived, then it is the RFC 6070 key', () => {
+test('PBKDF2: given a page with SHA-1 but without HMAC, when a key is derived, then it is the RFC 6070 key or a refusal naming HMAC - never a wrong key', () => {
   const framework = pageWith('algorithms/hash/sha1.js', 'algorithms/kdf/pbkdf2.js');
+  correctOrRefused(attempt(() => pbkdf2(framework, 'password', 'salt', 1, 20)), PBKDF2_RFC6070_1, 'HMAC');
+});
+test('PBKDF2: given a page with SHA-1 and HMAC, when a key is derived, then it is the RFC 6070 key', () => {
+  const framework = pageWith('algorithms/hash/sha1.js', 'algorithms/mac/hmac.js', 'algorithms/kdf/pbkdf2.js');
   equalHex(pbkdf2(framework, 'password', 'salt', 1, 20), PBKDF2_RFC6070_1);
+});
+test('PBKDF2: given a page with SHA-256 and HMAC, when hashFunction is SHA-256, then the key is the RFC 7914 one', () => {
+  const framework = pageWith('algorithms/hash/sha256.js', 'algorithms/mac/hmac.js', 'algorithms/kdf/pbkdf2.js');
+  equalHex(pbkdf2(framework, 'passwd', 'salt', 1, 32, 'SHA-256'), PBKDF2_RFC7914_SHA256_32);
+});
+test('PBKDF2: given an unknown or non-string hash name, when it is set, then it is refused - never silently ignored', () => {
+  const { PBKDF2Algorithm } = require(path.join(CIPHER_ROOT, 'algorithms', 'kdf', 'pbkdf2.js'));
+  const instance = new PBKDF2Algorithm().CreateInstance();
+  for (const bad of ['SHA256', 'MD5', 'SHA3-256', '', 'WHIRLPOOL', Array.from(Buffer.from('SHA-256')), null, 256]) {
+    const outcome = attempt(() => { instance.hashFunction = bad; });
+    if (!outcome.error) throw new Error(`${JSON.stringify(bad)} was accepted`);
+    if (!/hash/i.test(outcome.error.message)) throw new Error(`refusal does not say why: ${outcome.error.message}`);
+  }
+  if (instance.hashFunction !== 'SHA-1') throw new Error(`a refused name changed the hash to ${instance.hashFunction}`);
 });
 
 function pbkdf1(framework, hashName, iterations) {
