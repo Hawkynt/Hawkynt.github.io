@@ -1634,6 +1634,45 @@ class TypeInferenceTestSuite {
       check(G + 'class H extends G { }\nfunction m() { const v = new H().next(); return v; }', 'v', 'uint8', 'given a subclass, then the inherited method types the call');
       check(G + 'function m() { const v = new G().other(); return v; }', 'v', null, 'given a method the class lacks, then no type (exceptional)');
 
+      // Methods of AlgorithmFramework classes type calls on their objects
+      check('/** @param {HashFunctionAlgorithm} alg */\nfunction f(alg) { const i = alg.CreateInstance(); return i; }', 'i', 'IHashFunctionInstance', 'given @param {HashFunctionAlgorithm} alg, then alg.CreateInstance() is IHashFunctionInstance');
+
+      // A sibling data module is typed by its own JSDoc
+      {
+        const fs = require('fs'), os = require('os');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sibling-'));
+        try {
+          fs.writeFileSync(path.join(dir, 'shared.data.js'),
+            '(function (root, factory) { module.exports = factory(); })(this, function () {\n' +
+            '  class Rng { /** @returns {uint32} */ next() { return 1; } }\n' +
+            '  /** @type {uint8[]} */\n  const TABLE = [1, 2, 3];\n' +
+            '  return { Rng, TABLE };\n});\n');
+          const main = '(function (root, factory) { module.exports = factory(require(\'./shared.data\')); })(this, function (Shared) {\n' +
+            '  const { Rng, TABLE } = Shared;\n' +
+            '  function f() { const r = new Rng(); const v = r.next(); const t = TABLE; return v + t[0]; }\n' +
+            '  return { f };\n});\n';
+          const typeIn = (name, withPath) => {
+            const log = console.log; console.log = () => {};
+            try {
+              const ast = new TypeAwareJSASTParser(main, withPath ? { sourcePath: path.join(dir, 'main.js') } : {}).parse();
+              const decl = (function find(n) {
+                if (!n || typeof n !== 'object') return null;
+                if (n.type === 'VariableDeclarator' && n.id && n.id.name === name) return n;
+                for (const k in n) { if (k === 'loc' || k === 'range') continue; const r = find(n[k]); if (r) return r; }
+                return null;
+              })(ast);
+              return decl ? decl.resultType || null : null;
+            } finally { console.log = log; }
+          };
+          this.assertEqual(typeIn('v', true), 'uint32', 'given a class of a sibling .data module, then its method JSDoc types the call', 'r.next()');
+          this.assertEqual(typeIn('t', true), 'uint8[]', 'given a @type table of a sibling .data module, then the destructured name is typed', 'TABLE');
+          this.assertEqual(typeIn('Rng', true), 'function', 'given a class destructured from a sibling, then the binding is a function', 'Rng');
+          this.assertEqual(typeIn('v', false), null, 'given no source path, then the sibling is not read (exceptional)', 'r.next()');
+        } finally {
+          fs.rmSync(dir, { recursive: true, force: true });
+        }
+      }
+
       // A typed-array JSDoc name is an array of its element type
       check('/** @param {Uint8Array} a */\nfunction f(a) { const v = a[0]; return v; }', 'v', 'uint8', 'given @param {Uint8Array} a, then a[0] is uint8');
       check('/** @param {Uint32Array} a */\nfunction f(a) { const v = a; return v; }', 'v', 'uint32[]', 'given @param {Uint32Array}, then uint32[]');
