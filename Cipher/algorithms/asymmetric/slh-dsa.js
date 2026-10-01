@@ -1851,6 +1851,18 @@
       if (isInverse) return null;
       return new SlhDsaInstance(this);
     }
+
+    /**
+     * The hypertree engine over parameters a caller derived from its own
+     * table. sphincs-plus.js signs the SPHINCS+ round-3 submission with it
+     * rather than carrying a second copy of the engine.
+     * @param {SlhDsaParams} params - the derived parameters
+     * @param {boolean} round3 - the round-3 construction instead of FIPS 205
+     * @returns {SlhDsaEngine} the engine
+     */
+    CreateEngine(params, round3) {
+      return new SlhDsaEngine(params, round3 ? SPHINCS_ROUND3_PROFILE : FIPS205_PROFILE);
+    }
   }
 
   /**
