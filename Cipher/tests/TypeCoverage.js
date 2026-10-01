@@ -89,6 +89,21 @@ function typeName(t) {
   return String(t);
 }
 
+const FUNCTION_NODES = new Set(['FunctionExpression', 'ArrowFunctionExpression']);
+
+/**
+ * The function a call invokes in place: `(function () {...})()`,
+ * `(() => {...})()`, `(function () {...}).call(this)`.
+ * @param {Object} callee - IL callee node
+ * @returns {Object|null} the function node, or null for any other callee
+ */
+function calledFunction(callee) {
+  if (!callee || typeof callee !== 'object') return null;
+  if (FUNCTION_NODES.has(callee.type)) return callee;
+  if (callee.type === 'MemberExpression' && callee.object && FUNCTION_NODES.has(callee.object.type)) return callee.object;
+  return null;
+}
+
 /**
  * Is this an assignment to `this.tests` (test vectors)?
  * @param {Object} node - IL node
@@ -202,6 +217,14 @@ function analyzeSource(code) {
       (node.type === 'LogicalExpression' || (node.type === 'UnaryExpression' && node.operator === '!'));
 
     for (const key of Object.keys(node)) {
+      // A callee is not a value, but a function called in place - an IIFE
+      // wrapper the transpiler did not unwrap, `(function () {...}).call(this)` -
+      // holds code whose sites count like any other.
+      if (key === 'callee') {
+        const fn = calledFunction(node[key]);
+        if (fn) walk(fn, false, { ...here, inCondition: false });
+        continue;
+      }
       if (SKIP_KEYS.has(key)) continue;
       const child = node[key];
       if (!child || typeof child !== 'object') continue;
