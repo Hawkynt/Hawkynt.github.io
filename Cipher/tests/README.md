@@ -58,7 +58,9 @@ The transpiler types every value from, in this order: **1.** OpCodes JSDoc (ever
 OpCodes argument and result), **2.** the AlgorithmFramework interfaces (`Feed`,
 `Result`, `BlockSize`, `OutputSize`, ...), **3.** the algorithm file's own JSDoc
 (`@type` on constants, tables and `this.field` assignments, `@param`/`@returns` on
-helpers and methods). Anything else is a guess: a table typed by its literal
+helpers and methods); a sibling data module the file requires (`./x.data.js`) is typed
+by its own JSDoc the same way, so its classes, functions and `@type` tables keep their
+types where the file destructures them. Anything else is a guess: a table typed by its literal
 magnitudes, `data || []`, raw `a + b` on fixed-width values, `OpCodes.XorN` (BigInt)
 applied to numbers, an unannotated parameter.
 
