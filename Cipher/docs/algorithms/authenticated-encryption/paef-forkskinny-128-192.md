@@ -22,6 +22,12 @@
 | Key sizes | 16 bytes (128 bits) |
 | Nonce sizes | 6 bytes (48 bits) |
 
+## Capabilities
+
+| Flag | Value |
+| --- | --- |
+| `SupportsDetached` | No |
+
 ## Security
 
 **Status:** 🧪 Experimental
