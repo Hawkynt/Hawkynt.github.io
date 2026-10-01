@@ -88,10 +88,6 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           AsymmetricCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize } = AlgorithmFramework;
 
-  const globalScope = typeof globalThis !== 'undefined' ? globalThis
-    : (typeof window !== 'undefined' ? window
-    : (typeof self !== 'undefined' ? self : {}));
-
   const SEED_BYTES = 32;
   const MU_BYTES = 64;
 
@@ -113,10 +109,13 @@
 
   // ===== THE SHARED LATTICE CORE =====
 
+  /** @type {DilithiumCipher|null} */
   let cachedCore = null;
 
   /**
-   * Resolve the Dilithium core: the global it publishes, then the module.
+   * Resolve the Dilithium core: the registered Dilithium algorithm, whose
+   * lattice methods this file signs and verifies with. Under Node a missing
+   * registration loads dilithium.js.
    *
    * The lookup is deferred to first use rather than done while this file loads,
    * and that is deliberate for the same reason dilithium.js defers its own
@@ -126,19 +125,21 @@
    * file. Resolving on demand leaves dilithium.js to register itself when the
    * walk reaches it.
    *
-   * @returns {Object} the exports of dilithium.js
+   * @returns {DilithiumCipher} the registered Dilithium algorithm
    */
   function core() {
     if (cachedCore) return cachedCore;
 
-    let resolved = globalScope.DilithiumCore;
+    /** @type {DilithiumCipher} */
+    let resolved = AlgorithmFramework.Find('Dilithium');
 
     if (!resolved && typeof require !== 'undefined') {
       try {
-        resolved = require('./dilithium.js');
+        require('./dilithium.js');
       } catch (e) {
         // Reported as a missing dependency below.
       }
+      resolved = AlgorithmFramework.Find('Dilithium');
     }
 
     if (!resolved)
@@ -157,12 +158,8 @@
     if (chosen) {
       return chosen;
     }
-    /** @type {Object} */
-    const exported = core();
-    /** @type {Object} */
-    const sets = exported.PARAMETER_SETS;
     /** @type {DilithiumParams} */
-    const fallback = sets['ML-DSA-44'];
+    const fallback = core().FindParameterSet('ML-DSA-44');
     return fallback;
   }
 
@@ -2009,7 +2006,7 @@
      */
     set parameterSet(label) {
       /** @type {DilithiumParams|null} */
-      const found = core().findParameterSet(label);
+      const found = core().FindParameterSet(label);
       if (!found) throw new Error('Unknown ML-DSA parameter set: ' + label);
       this._parameterSet = found;
     }
@@ -2035,7 +2032,7 @@
       }
 
       /** @type {DilithiumParams|null} */
-      const found = core().parameterSetByLength(keyBytes.length, 'privateKeySize');
+      const found = core().ParameterSetByLength(keyBytes.length, 'privateKeySize');
       if (!found)
         throw new Error('An ML-DSA private key is 2560, 4032 or 4896 bytes, got ' + keyBytes.length);
 
@@ -2060,7 +2057,7 @@
       }
 
       /** @type {DilithiumParams|null} */
-      const found = core().parameterSetByLength(keyBytes.length, 'publicKeySize');
+      const found = core().ParameterSetByLength(keyBytes.length, 'publicKeySize');
       if (!found)
         throw new Error('An ML-DSA public key is 1312, 1952 or 2592 bytes, got ' + keyBytes.length);
 
@@ -2128,17 +2125,16 @@
 
       /** @type {uint8[]} */
       const bytes = Array.from(keyData);
-      /** @type {Object} */
       const C = core();
 
       /** @type {DilithiumParams|null} */
-      const privateSet = C.parameterSetByLength(bytes.length, 'privateKeySize');
+      const privateSet = C.ParameterSetByLength(bytes.length, 'privateKeySize');
       if (privateSet) {
         this.privateKey = bytes;
         return;
       }
       /** @type {DilithiumParams|null} */
-      const publicSet = C.parameterSetByLength(bytes.length, 'publicKeySize');
+      const publicSet = C.ParameterSetByLength(bytes.length, 'publicKeySize');
       if (publicSet) {
         this.publicKey = bytes;
         return;
@@ -2201,7 +2197,7 @@
           return preHashMessageRepresentative(message, this.context ? this.context : noContext, this.preHashAlgorithm);
         case 'pure': {
           /** @type {uint8[]} */
-          const representative = core().pureMessageRepresentative(message, this.context ? this.context : noContext);
+          const representative = core().PureMessageRepresentative(message, this.context ? this.context : noContext);
           return representative;
         }
         default:
@@ -2217,14 +2213,13 @@
       const message = this.inputBuffer;
       this.inputBuffer = [];
 
-      /** @type {Object} */
       const C = core();
       const P = parameterSetOrDefault(this._parameterSet);
 
       if (this.keyGeneration) {
         const seed = this._keySeed && this._keySeed.length === SEED_BYTES ? this._keySeed : message;
         /** @type {DilithiumKeyPair} */
-        const pair = C.keyGenInternal(seed, P);
+        const pair = C.KeyGenInternal(seed, P);
         /** @type {uint8[]} */
         const generatedPrivate = pair.privateKey;
         /** @type {uint8[]} */
@@ -2247,7 +2242,7 @@
         if (!this._publicKey)
           throw new Error('ML-DSA verification needs a public key');
         /** @type {boolean} */
-        const valid = C.verifyInternal(this._publicKey, representative, this._signature, P, externalMu);
+        const valid = C.VerifyInternal(this._publicKey, representative, this._signature, P, externalMu);
         /** @type {uint8[]} */
         const verdict = [valid ? 1 : 0];
         return verdict;
@@ -2257,14 +2252,14 @@
         if (!this._keySeed)
           throw new Error('ML-DSA signing needs a private key or a generation seed');
         /** @type {DilithiumKeyPair} */
-        const generated = C.keyGenInternal(this._keySeed, P);
+        const generated = C.KeyGenInternal(this._keySeed, P);
         /** @type {uint8[]} */
         const generatedPrivate = generated.privateKey;
         this.privateKey = generatedPrivate;
       }
 
       /** @type {uint8[]} */
-      const signature = C.signInternal(this._privateKey, representative, this.signRandomness, P, externalMu);
+      const signature = C.SignInternal(this._privateKey, representative, this.signRandomness, P, externalMu);
       return signature;
     }
 
@@ -2277,7 +2272,7 @@
      */
     GenerateKeyPair(seed) {
       /** @type {DilithiumKeyPair} */
-      const pair = core().keyGenInternal(Array.from(seed), parameterSetOrDefault(this._parameterSet));
+      const pair = core().KeyGenInternal(Array.from(seed), parameterSetOrDefault(this._parameterSet));
       /** @type {uint8[]} */
       const generatedPublic = pair.publicKey;
       /** @type {uint8[]} */
