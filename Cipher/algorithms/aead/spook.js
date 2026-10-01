@@ -484,6 +484,57 @@
     }
   }
 
+  /**
+   * Expected ciphertext||tag of the six NIST LWC KAT counts the algorithm
+   * tests (1, 2, 34, 50, 562 and 1089), in that order.
+   * @param {int32} shadowSize - 512 or 384
+   * @param {string} variant - su (single-user) or mu (multi-user)
+   * @returns {string[]} Hexadecimal ciphertext||tag per count
+   */
+  function spookKatExpected(shadowSize, variant) {
+    if (shadowSize === 384 && variant === 'su') {
+      return [
+        "FC48E447519B6B75D2BCBF63040F5A18",
+        "00B0214E9F2A7FBE2CE22EBE42337867",
+        "C844F77B117566B8C9DBEA56D38BEAA1B1",
+        "2E5EF88B13B0113F9B655EA5D4D61217BA",
+        "C83E1BFC0D2DC1CCAEEB2040C4148B52164779A962FFEE8B06C3E9601E9C24C4AA",
+        "2E0DB88E6D535A8B74665A5ADB9F5EEE3135DA199D8D519842297EE2A6798668252B19C5F323ECE12A80541EADC1809E"
+      ];
+    }
+    if (shadowSize === 384 && variant === 'mu') {
+      return [
+        "F415781FC0DD665660200DA92DA17D2A",
+        "F7C7B3FC3752534A734908386D3C29DF",
+        "26BDA1F2538E0859C6B17555D63F61E8C1",
+        "8C1C498DA9EC7CFD168EF5950843473D34",
+        "26F5383F4A9DB286C0CEDD286DB1A2684E21BECC46092BC5FF4B25A6526981F52E",
+        "3B8D8FA82875D7B9C9FB57EEFD9A54F3D1D3CCA478C654B0B06AC6773F4ED0225CF891BC8212F0D2866536FE04BB5068"
+      ];
+    }
+    if (shadowSize === 512 && variant === 'su') {
+      return [
+        "E3E9A30ABC6D23284B31F81783A8E810",
+        "703AE36267F531A7215E2C09B1351922",
+        "2848C938FCE8CD25C243326E56778432AB",
+        "F2AF92F1A1B050FC59C33A213366095021",
+        "28BD311FD0CD7F7674D7E62980620497D8837D06FF9F8059C34C7D452AA51AF672",
+        "9D1A32CE941DCD220CC33300FD0512AE8332E1E720898671B8B6EB9D08704031E1C0BE40A40322A13A95D3288F6DE8DB"
+      ];
+    }
+    if (shadowSize === 512 && variant === 'mu') {
+      return [
+        "2EF04011DD3048E837440A3022718522",
+        "080E0CEB34E942238BE8C87E91E6F8A5",
+        "59652011CF0BFAD1D4544FD4B40D820CE8",
+        "38146D8D332522F5E08B482CAD26A0704A",
+        "591F6B9032EF281AE0E7DDD30092B828D28B2DFB7DBE155CE23F27B05A013D7BFC",
+        "3401C24A5DC2699436C15A6A99EF3A76E4309F86AC7DD43295BBAA038FA6FD8E9A17A05D14DEA6E28198885D40451583"
+      ];
+    }
+    throw new Error('Spook has no KAT vectors for Spook-128-' + shadowSize + '-' + variant);
+  }
+
   // Base Spook AEAD Algorithm
   class SpookAead extends AeadAlgorithm {
     /**
@@ -529,88 +580,77 @@
         new LinkItem("NIST LWC Known-Answer-Test vectors (rweather/lightweight-crypto, MIT)", "https://github.com/rweather/lightweight-crypto/tree/master/test/kat")
       ];
 
-      // Test vectors from NIST LWC KAT files
-      this.tests = this._getTestVectors();
-    }
-
-    _getTestVectors() {
-      // Official NIST LWC round-2 submission vectors, taken verbatim from the
-      // published KAT files. Selected counts exercise the empty case, the
-      // associated-data padding path, the partial-block path, a plaintext that
-      // spans more than one sponge rate block, and the both-full-blocks case.
-      const suKey = "000102030405060708090A0B0C0D0E0F";
-      const muKey = "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F";
+      // Test vectors from NIST LWC KAT files: the official round-2 submission
+      // vectors, taken verbatim from the published KAT files. Selected counts
+      // exercise the empty case, the associated-data padding path, the
+      // partial-block path, a plaintext that spans more than one sponge rate
+      // block, and the both-full-blocks case.
+      const katUri = "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/" + this.name + ".txt";
+      const katText = "NIST LWC round-2 KAT " + this.name + " Count = ";
+      const katKey = variant === 'su'
+        ? "000102030405060708090A0B0C0D0E0F"
+        : "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F";
       const nonce = "000102030405060708090A0B0C0D0E0F";
       const block16 = "000102030405060708090A0B0C0D0E0F";
       const block32 = "000102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F";
       const pt17 = "000102030405060708090A0B0C0D0E0F10";
-
-      // count, plaintext, associated data
-      const cases = [
-        [1, "", ""],
-        [2, "", "00"],
-        [34, "00", ""],
-        [50, "00", block16],
-        [562, pt17, ""],
-        [1089, block32, block32]
-      ];
-
-      // Expected ciphertext||tag per variant, indexed like `cases` above.
-      const expectedByVariant = {
-        "384-su": [
-          "FC48E447519B6B75D2BCBF63040F5A18",
-          "00B0214E9F2A7FBE2CE22EBE42337867",
-          "C844F77B117566B8C9DBEA56D38BEAA1B1",
-          "2E5EF88B13B0113F9B655EA5D4D61217BA",
-          "C83E1BFC0D2DC1CCAEEB2040C4148B52164779A962FFEE8B06C3E9601E9C24C4AA",
-          "2E0DB88E6D535A8B74665A5ADB9F5EEE3135DA199D8D519842297EE2A6798668252B19C5F323ECE12A80541EADC1809E"
-        ],
-        "384-mu": [
-          "F415781FC0DD665660200DA92DA17D2A",
-          "F7C7B3FC3752534A734908386D3C29DF",
-          "26BDA1F2538E0859C6B17555D63F61E8C1",
-          "8C1C498DA9EC7CFD168EF5950843473D34",
-          "26F5383F4A9DB286C0CEDD286DB1A2684E21BECC46092BC5FF4B25A6526981F52E",
-          "3B8D8FA82875D7B9C9FB57EEFD9A54F3D1D3CCA478C654B0B06AC6773F4ED0225CF891BC8212F0D2866536FE04BB5068"
-        ],
-        "512-su": [
-          "E3E9A30ABC6D23284B31F81783A8E810",
-          "703AE36267F531A7215E2C09B1351922",
-          "2848C938FCE8CD25C243326E56778432AB",
-          "F2AF92F1A1B050FC59C33A213366095021",
-          "28BD311FD0CD7F7674D7E62980620497D8837D06FF9F8059C34C7D452AA51AF672",
-          "9D1A32CE941DCD220CC33300FD0512AE8332E1E720898671B8B6EB9D08704031E1C0BE40A40322A13A95D3288F6DE8DB"
-        ],
-        "512-mu": [
-          "2EF04011DD3048E837440A3022718522",
-          "080E0CEB34E942238BE8C87E91E6F8A5",
-          "59652011CF0BFAD1D4544FD4B40D820CE8",
-          "38146D8D332522F5E08B482CAD26A0704A",
-          "591F6B9032EF281AE0E7DDD30092B828D28B2DFB7DBE155CE23F27B05A013D7BFC",
-          "3401C24A5DC2699436C15A6A99EF3A76E4309F86AC7DD43295BBAA038FA6FD8E9A17A05D14DEA6E28198885D40451583"
-        ]
-      };
-
-      const variantKey = this.shadowSize + "-" + this.variant;
-      const expected = expectedByVariant[variantKey];
-      if (!expected) return [];
-
-      const katUri = "https://github.com/rweather/lightweight-crypto/blob/master/test/kat/" + this.name + ".txt";
-      const vectors = [];
-      for (let i = 0; i < cases.length; ++i) {
-        const [count, ptHex, adHex] = cases[i];
-        vectors.push({
-          text: "NIST LWC round-2 KAT " + this.name + " Count = " + count + " (PT " + (ptHex.length / 2) + " bytes, AD " + (adHex.length / 2) + " bytes)",
+      const expected = spookKatExpected(shadowSize, variant);
+      this.tests = [
+        {
+          text: katText + "1 (PT 0 bytes, AD 0 bytes)",
           uri: katUri,
-          input: OpCodes.Hex8ToBytes(ptHex),
-          key: OpCodes.Hex8ToBytes(this.variant === 'su' ? suKey : muKey),
+          input: OpCodes.Hex8ToBytes(""),
+          key: OpCodes.Hex8ToBytes(katKey),
           nonce: OpCodes.Hex8ToBytes(nonce),
-          aad: OpCodes.Hex8ToBytes(adHex),
-          expected: OpCodes.Hex8ToBytes(expected[i])
-        });
-      }
-
-      return vectors;
+          aad: OpCodes.Hex8ToBytes(""),
+          expected: OpCodes.Hex8ToBytes(expected[0])
+        },
+        {
+          text: katText + "2 (PT 0 bytes, AD 1 bytes)",
+          uri: katUri,
+          input: OpCodes.Hex8ToBytes(""),
+          key: OpCodes.Hex8ToBytes(katKey),
+          nonce: OpCodes.Hex8ToBytes(nonce),
+          aad: OpCodes.Hex8ToBytes("00"),
+          expected: OpCodes.Hex8ToBytes(expected[1])
+        },
+        {
+          text: katText + "34 (PT 1 bytes, AD 0 bytes)",
+          uri: katUri,
+          input: OpCodes.Hex8ToBytes("00"),
+          key: OpCodes.Hex8ToBytes(katKey),
+          nonce: OpCodes.Hex8ToBytes(nonce),
+          aad: OpCodes.Hex8ToBytes(""),
+          expected: OpCodes.Hex8ToBytes(expected[2])
+        },
+        {
+          text: katText + "50 (PT 1 bytes, AD 16 bytes)",
+          uri: katUri,
+          input: OpCodes.Hex8ToBytes("00"),
+          key: OpCodes.Hex8ToBytes(katKey),
+          nonce: OpCodes.Hex8ToBytes(nonce),
+          aad: OpCodes.Hex8ToBytes(block16),
+          expected: OpCodes.Hex8ToBytes(expected[3])
+        },
+        {
+          text: katText + "562 (PT 17 bytes, AD 0 bytes)",
+          uri: katUri,
+          input: OpCodes.Hex8ToBytes(pt17),
+          key: OpCodes.Hex8ToBytes(katKey),
+          nonce: OpCodes.Hex8ToBytes(nonce),
+          aad: OpCodes.Hex8ToBytes(""),
+          expected: OpCodes.Hex8ToBytes(expected[4])
+        },
+        {
+          text: katText + "1089 (PT 32 bytes, AD 32 bytes)",
+          uri: katUri,
+          input: OpCodes.Hex8ToBytes(block32),
+          key: OpCodes.Hex8ToBytes(katKey),
+          nonce: OpCodes.Hex8ToBytes(nonce),
+          aad: OpCodes.Hex8ToBytes(block32),
+          expected: OpCodes.Hex8ToBytes(expected[5])
+        }
+      ];
     }
 
     /**
