@@ -59,7 +59,7 @@
   "algorithms/asymmetric/mayo.js": 0,
   "algorithms/asymmetric/ml-dsa.js": 40,
   "algorithms/asymmetric/ntru.js": 35,
-  "algorithms/asymmetric/perk.js": 84,
+  "algorithms/asymmetric/perk.js": 0,
   "algorithms/asymmetric/rabin-williams.js": 23,
   "algorithms/asymmetric/rabin.js": 27,
   "algorithms/asymmetric/rainbow.js": 212,
