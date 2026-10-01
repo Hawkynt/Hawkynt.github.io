@@ -12,14 +12,8 @@
 | Complexity | Not specified |
 | Inventor | Ross Anderson |
 | Year | 1994 |
-| Origin | GB |
+| Origin | 🇬🇧 United Kingdom |
 | Source | [`algorithms/stream/pike.js`](../../../algorithms/stream/pike.js) |
-
-## Capabilities
-
-| Flag | Value |
-| --- | --- |
-| `cantDecode` | No |
 
 ## Security
 
@@ -31,7 +25,7 @@ Educational implementation only. Pike was designed to replace FISH but has poten
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| This is a simplified educational implementation | — | Use only for learning about lagged Fibonacci generators |
+| Educational Implementation | This is a simplified educational implementation | Use only for learning about lagged Fibonacci generators |
 
 ## Documentation
 
