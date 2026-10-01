@@ -179,27 +179,11 @@
     }
 
     /**
-     * Shift amount: a number, or a byte array whose bytes are XORed together
-     * @param {int32|uint8[]} shiftAmount - Shift, normalised to 0..25; anything else selects 3
+     * Shift amount
+     * @param {int32} shiftAmount - Shift, normalised to 0..25
      */
     set shift(shiftAmount) {
-      if (typeof shiftAmount === 'number') {
-        /** @type {int32} */
-        const amount = shiftAmount;
-        this._shift = ((amount % 26) + 26) % 26; // Normalize to 0-25
-      } else if (Array.isArray(shiftAmount) && shiftAmount.length > 0) {
-        // If shift is provided as byte array, XOR all bytes to get shift value
-        /** @type {uint8[]} */
-        const bytes = shiftAmount;
-        /** @type {int32} */
-        let shift = 0;
-        for (let i = 0; i < bytes.length; i++) {
-          shift = OpCodes.Xor32(shift, bytes[i]);
-        }
-        this._shift = ((shift % 26) + 26) % 26;
-      } else {
-        this._shift = 3; // Default
-      }
+      this._shift = ((shiftAmount % 26) + 26) % 26; // Normalize to 0-25
     }
 
     /**
