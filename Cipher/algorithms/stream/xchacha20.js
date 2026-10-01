@@ -288,17 +288,17 @@
      */
     _initialState(key) {
       /** @type {uint32[]} */
-      const state = new Array(16);
+      const words = new Array(16);
       for (let i = 0; i < 4; i++) {
-        state[i] = CHACHA20_CONSTANTS[i];
+        words[i] = CHACHA20_CONSTANTS[i];
       }
       for (let i = 0; i < 8; i++) {
-        state[4 + i] = OpCodes.Pack32LE(key[i * 4], key[i * 4 + 1], key[i * 4 + 2], key[i * 4 + 3]);
+        words[4 + i] = OpCodes.Pack32LE(key[i * 4], key[i * 4 + 1], key[i * 4 + 2], key[i * 4 + 3]);
       }
       for (let i = 12; i < 16; i++) {
-        state[i] = 0;
+        words[i] = 0;
       }
-      return state;
+      return words;
     }
 
     /**
@@ -320,11 +320,17 @@
       const subkey = [];
       for (let i = 0; i < 4; i++) {
         const low = OpCodes.Unpack32LE(state[i]);
-        subkey.push(low[0], low[1], low[2], low[3]);
+        subkey.push(low[0]);
+        subkey.push(low[1]);
+        subkey.push(low[2]);
+        subkey.push(low[3]);
       }
       for (let i = 0; i < 4; i++) {
         const high = OpCodes.Unpack32LE(state[12 + i]);
-        subkey.push(high[0], high[1], high[2], high[3]);
+        subkey.push(high[0]);
+        subkey.push(high[1]);
+        subkey.push(high[2]);
+        subkey.push(high[3]);
       }
       return subkey;
     }
@@ -351,8 +357,13 @@
       /** @type {uint8[]} */
       const keystream = [];
       for (let i = 0; i < 16; i++) {
-        const bytes = OpCodes.Unpack32LE(OpCodes.Add32(working[i], state[i]));
-        keystream.push(bytes[0], bytes[1], bytes[2], bytes[3]);
+        /** @type {uint32} */
+        const sum = OpCodes.Add32(working[i], state[i]);
+        const bytes = OpCodes.Unpack32LE(sum);
+        keystream.push(bytes[0]);
+        keystream.push(bytes[1]);
+        keystream.push(bytes[2]);
+        keystream.push(bytes[3]);
       }
       return keystream;
     }
