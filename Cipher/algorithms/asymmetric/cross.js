@@ -1732,7 +1732,8 @@
 
   /**
    * A vector of the test list: a TestCase with the instance settings it
-   * names. A setting it leaves undefined is not applied.
+   * names. Each optional setting becomes a field only when it is given, so a
+   * vector carries exactly the settings that apply to it.
    */
   class CrossTestCase extends TestCase {
     /**
@@ -1744,18 +1745,45 @@
      */
     constructor(text, inverse, parameterSet, input, expected) {
       super(input, expected, text, KAT_URI);
-      /** @type {boolean|undefined} */
-      this.inverse = inverse ? true : undefined;
+      if (inverse) {
+        /** @type {boolean} */
+        this.inverse = true;
+      }
       /** @type {string} */
       this.parameterSet = parameterSet;
-      /** @type {int32|undefined} */
-      this.katCount = undefined;
-      /** @type {uint8[]|undefined} */
-      this.key = undefined;
-      /** @type {uint8[]|undefined} */
-      this.publicKey = undefined;
-      /** @type {uint8[]|undefined} */
-      this.message = undefined;
+    }
+
+    /**
+     * Replay the randomness of this record of the KAT generator.
+     * @param {int32} count - record number
+     */
+    SetKatCount(count) {
+      /** @type {int32} */
+      this.katCount = count;
+    }
+
+    /**
+     * @param {uint8[]} key - the key-pair seed
+     */
+    SetKey(key) {
+      /** @type {uint8[]} */
+      this.key = key;
+    }
+
+    /**
+     * @param {uint8[]} publicKey - the public key
+     */
+    SetPublicKey(publicKey) {
+      /** @type {uint8[]} */
+      this.publicKey = publicKey;
+    }
+
+    /**
+     * @param {uint8[]} message - the message the verdict is about
+     */
+    SetMessage(message) {
+      /** @type {uint8[]} */
+      this.message = message;
     }
   }
 
@@ -3881,20 +3909,20 @@
 
         const signs = new CrossTestCase(label + 'crypto_sign reproduces the signed message' + note, false, e.set,
           OpCodes.Hex8ToBytes(e.msg), OpCodes.Hex8ToBytes(e.sm));
-        signs.katCount = e.count;
-        signs.key = OpCodes.Hex8ToBytes(e.sk);
+        signs.SetKatCount(e.count);
+        signs.SetKey(OpCodes.Hex8ToBytes(e.sk));
         tests.push(signs);
 
         if (e.keygen) {
           const generates = new CrossTestCase(label + 'key generation from the harness stream, then signing' + note, false, e.set,
             OpCodes.Hex8ToBytes(e.msg), OpCodes.Hex8ToBytes(e.sm));
-          generates.katCount = e.count;
+          generates.SetKatCount(e.count);
           tests.push(generates);
         }
 
         const opens = new CrossTestCase(label + 'crypto_sign_open under the published public key yields the message' + note, true, e.set,
           OpCodes.Hex8ToBytes(e.sm), OpCodes.Hex8ToBytes(e.msg));
-        opens.publicKey = OpCodes.Hex8ToBytes(e.pk);
+        opens.SetPublicKey(OpCodes.Hex8ToBytes(e.pk));
         tests.push(opens);
 
         if (e.negatives) {
@@ -3902,38 +3930,38 @@
 
           const derived = new CrossTestCase(label + 'the verdict under the public key derived from the secret key is acceptance', true, e.set,
             OpCodes.Hex8ToBytes(e.sm), ACCEPT.slice());
-          derived.key = OpCodes.Hex8ToBytes(e.sk);
-          derived.message = OpCodes.Hex8ToBytes(e.msg);
+          derived.SetKey(OpCodes.Hex8ToBytes(e.sk));
+          derived.SetMessage(OpCodes.Hex8ToBytes(e.msg));
           tests.push(derived);
 
           const modifiedMessage = new CrossTestCase(label + 'a modified message must not verify', true, e.set,
             Flip(e.sm, 0), REJECT.slice());
-          modifiedMessage.publicKey = OpCodes.Hex8ToBytes(e.pk);
-          modifiedMessage.message = Flip(e.msg, 0);
+          modifiedMessage.SetPublicKey(OpCodes.Hex8ToBytes(e.pk));
+          modifiedMessage.SetMessage(Flip(e.msg, 0));
           tests.push(modifiedMessage);
 
           const otherMessage = new CrossTestCase(label + 'a genuine signed message does not vouch for a different message', true, e.set,
             OpCodes.Hex8ToBytes(e.sm), REJECT.slice());
-          otherMessage.publicKey = OpCodes.Hex8ToBytes(e.pk);
-          otherMessage.message = Flip(e.msg, 0);
+          otherMessage.SetPublicKey(OpCodes.Hex8ToBytes(e.pk));
+          otherMessage.SetMessage(Flip(e.msg, 0));
           tests.push(otherMessage);
 
           const modifiedResponse = new CrossTestCase(label + 'a modified signature (one bit of the first response) must not verify', true, e.set,
             Flip(e.sm, mlen + ParameterSetEntry(e.set).offResp0), REJECT.slice());
-          modifiedResponse.publicKey = OpCodes.Hex8ToBytes(e.pk);
-          modifiedResponse.message = OpCodes.Hex8ToBytes(e.msg);
+          modifiedResponse.SetPublicKey(OpCodes.Hex8ToBytes(e.pk));
+          modifiedResponse.SetMessage(OpCodes.Hex8ToBytes(e.msg));
           tests.push(modifiedResponse);
 
           const modifiedSalt = new CrossTestCase(label + 'a modified signature (one bit of the salt) must not verify', true, e.set,
             Flip(e.sm, mlen), REJECT.slice());
-          modifiedSalt.publicKey = OpCodes.Hex8ToBytes(e.pk);
-          modifiedSalt.message = OpCodes.Hex8ToBytes(e.msg);
+          modifiedSalt.SetPublicKey(OpCodes.Hex8ToBytes(e.pk));
+          modifiedSalt.SetMessage(OpCodes.Hex8ToBytes(e.msg));
           tests.push(modifiedSalt);
 
           const otherKey = new CrossTestCase(label + 'the signature must not verify under another record\'s public key', true, e.set,
             OpCodes.Hex8ToBytes(e.sm), REJECT.slice());
-          otherKey.publicKey = OpCodes.Hex8ToBytes(e.otherPk);
-          otherKey.message = OpCodes.Hex8ToBytes(e.msg);
+          otherKey.SetPublicKey(OpCodes.Hex8ToBytes(e.otherPk));
+          otherKey.SetMessage(OpCodes.Hex8ToBytes(e.msg));
           tests.push(otherKey);
         }
       }
