@@ -199,18 +199,11 @@
 
     /**
      * Two keywords separated by comma, colon, space or semicolon
-     * @param {string|uint8[]} keyData - Key text or its bytes
+     * @param {uint8[]} keyData - Key text or its bytes
      */
     set key(keyData) {
       /** @type {string} */
-      let keyString = '';
-      if (typeof keyData === 'string') {
-        keyString = keyData;
-      } else if (Array.isArray(keyData)) {
-        /** @type {uint8[]} */
-        const bytes = keyData;
-        keyString = String.fromCharCode(...bytes);
-      }
+      let keyString = keyData ? String.fromCharCode(...keyData) : '';
 
       // Use default test key if none provided or invalid format
       if (!keyString || keyString.length === 0 ||

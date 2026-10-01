@@ -349,42 +349,6 @@
       }
 
       /**
-       * Convert a Unicode symbol to its UTF-8 bytes
-       * @param {string} symbol - Symbol
-       * @returns {uint8[]} Bytes
-       */
-      symbolToBytes(symbol) {
-        // Convert Unicode symbols to byte representation
-        if (typeof TextEncoder !== 'undefined') {
-          const encoder = new TextEncoder();
-          return Array.from(encoder.encode(symbol));
-        } else {
-          // Fallback for environments without TextEncoder
-          /** @type {uint8[]} */
-          const codes = [];
-          for (let i = 0; i < symbol.length; i++) codes.push(symbol.charCodeAt(i));
-          return codes;
-        }
-      }
-
-      /**
-       * Convert UTF-8 bytes back to a symbol
-       * @param {uint8[]} bytes - Bytes
-       * @returns {string} Symbol
-       */
-      bytesToSymbol(bytes) {
-        if (typeof TextDecoder !== 'undefined') {
-          const decoder = new TextDecoder();
-          return decoder.decode(new Uint8Array(bytes));
-        } else {
-          // Fallback for environments without TextDecoder
-          /** @type {string} */
-          const text = String.fromCharCode(...bytes);
-          return text;
-        }
-      }
-
-      /**
        * @returns {uint8[]} The buffered data, unchanged
        */
       Result() {

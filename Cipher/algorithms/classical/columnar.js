@@ -235,26 +235,15 @@
       }
 
       /**
-       * Keyword as a string, its ASCII bytes, or an object carrying either as 'key'
-       * @param {string|uint8[]} keyData - Keyword
+       * Keyword as its ASCII bytes; no key leaves the current keyword in place
+       * @param {uint8[]} keyData - Keyword bytes
        */
       set key(keyData) {
-        if (typeof keyData === 'string') {
-          /** @type {string} */
-          const keyText = keyData;
-          this._key = keyText;
-          this.setupKey(keyText);
-        } else if (Array.isArray(keyData)) {
-          // Convert byte array to string
-          /** @type {uint8[]} */
-          const bytes = keyData;
-          /** @type {string} */
-          const keyString = String.fromCharCode(...bytes);
-          this._key = keyString;
-          this.setupKey(keyString);
-        } else if (keyData && keyData.key) {
-          this.key = keyData.key;
-        }
+        if (!keyData) return;
+        /** @type {string} */
+        const keyString = String.fromCharCode(...keyData);
+        this._key = keyString;
+        this.setupKey(keyString);
       }
 
       /**
