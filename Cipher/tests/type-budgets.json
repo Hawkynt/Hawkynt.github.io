@@ -903,7 +903,7 @@
   "algorithms/stream/mickey.js": 243,
   "algorithms/stream/miller.js": 0,
   "algorithms/stream/morus.js": 0,
-  "algorithms/stream/mugi.js": 142,
+  "algorithms/stream/mugi.js": 0,
   "algorithms/stream/norx.js": 0,
   "algorithms/stream/phelix-simple.js": 0,
   "algorithms/stream/pike.js": 174,
