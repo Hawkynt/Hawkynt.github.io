@@ -276,6 +276,7 @@
     #selectedSpell;
     #aiTier;
     #coordinatedPlan;
+    #plannedRound = 0;
 
     constructor(prng) {
       this.#prng = prng;
@@ -944,11 +945,19 @@
       const partyUnits = this.#units.filter(u => u.faction === 'party' && u.isAlive);
       const allEnemyUnits = this.#aiTier >= 3 ? this.#units.filter(u => u.faction === 'enemy' && u.isAlive) : null;
 
-      // Tier 4: use pre-coordinated plan if available
-      let decision;
-      if (this.#aiTier >= 4 && this.#coordinatedPlan && this.#coordinatedPlan.has(unitId))
+      // Tier 4: the first enemy to act each round plans for all of them
+      if (this.#aiTier >= 4 && this.#plannedRound !== this.#round) {
+        this.#plannedRound = this.#round;
+        this.planEnemyRound();
+      }
+      let decision = null;
+      if (this.#aiTier >= 4 && this.#coordinatedPlan && this.#coordinatedPlan.has(unitId)) {
         decision = this.#coordinatedPlan.get(unitId);
-      else
+        // the plan was made before others moved; drop steps that no longer fit
+        if (!this.#planStillValid(unit, decision))
+          decision = null;
+      }
+      if (!decision)
         decision = EnemyAI.decide(this.#grid, unit, partyUnits, this.#prng, this.#aiTier, allEnemyUnits);
 
       if (decision.type === 'attack') {
@@ -977,6 +986,33 @@
       unit.endAction();
       if (this.#phase !== CombatPhase.VICTORY && this.#phase !== CombatPhase.DEFEAT)
         this.#phase = CombatPhase.TURN_END;
+    }
+
+    #planStillValid(unit, d) {
+      if (!d || !d.type)
+        return false;
+      if (d.moveTo) {
+        const { col, row } = d.moveTo;
+        if (!this.#grid.inBounds(col, row))
+          return false;
+        const occupant = this.#grid.unitAt(col, row);
+        if (occupant && occupant !== unit.id)
+          return false;
+        const range = Pathfinding.movementRange(this.#grid, unit.position, unit.speedTiles, unit.faction);
+        if (!(col === unit.position.col && row === unit.position.row) && !range.has(`${col},${row}`))
+          return false;
+      }
+      if (d.target) {
+        const t = this.unitById(d.target);
+        if (!t || !t.isAlive)
+          return false;
+        if (d.type === 'attack' || d.type === 'move_and_attack') {
+          const from = d.moveTo || unit.position;
+          if (!D20.isAdjacent(from, t.position))
+            return false;
+        }
+      }
+      return true;
     }
 
     // Called at the start of each enemy round for tier 4 coordination
