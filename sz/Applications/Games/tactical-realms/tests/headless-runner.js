@@ -14,6 +14,7 @@ function makeFakeCtx2d() {
     fillText: noop, measureText: () => ({ width: 0 }),
     moveTo: noop, lineTo: noop, roundRect: noop, rect: noop,
     clip: noop, translate: noop, closePath: noop, setTransform: noop,
+    ellipse: noop, strokeText: noop, scale: noop, rotate: noop, quadraticCurveTo: noop, bezierCurveTo: noop,
     createLinearGradient: () => ({ addColorStop: noop }),
     createRadialGradient: () => ({ addColorStop: noop }),
     imageSmoothingEnabled: true, globalCompositeOperation: 'source-over',
@@ -57,7 +58,14 @@ load('save-crypto.js');
 load('save-manager.js');
 load('input-handler.js');
 load('sprite-compositor.js');
+load('../../shared/game-effects.js');
 load('renderer.js');
+load('combat-fx.js');
+load('battle-sprites.js');
+load('battle-backdrop.js');
+load('battle-fx.js');
+load('battle-scene.js');
+load('screen-art.js');
 
 // Shared enums (load before all data files)
 load('data/enums.js');
@@ -177,6 +185,7 @@ tryLoad('data/boss-templates.js');
 load('combat-history.js');
 load('combat-ui.js');
 load('combat-engine.js');
+load('pixel-art.js');
 load('asset-loader.js');
 tryLoad('data/creature-sprites.js');
 load('sprite-resolver.js');
@@ -197,6 +206,9 @@ loadTest('test-save-crypto.js');
 loadTest('test-save-manager.js');
 loadTest('test-input-handler.js');
 loadTest('test-renderer.js');
+loadTest('test-combat-fx.js');
+loadTest('test-battle-scene.js');
+loadTest('test-screen-art.js');
 loadTest('test-character.js');
 loadTest('test-roster.js');
 loadTest('test-terrain.js');
@@ -211,6 +223,7 @@ loadTest('test-items.js');
 loadTest('test-shop.js');
 loadTest('test-asset-loader.js');
 loadTest('test-sprite-resolver.js');
+loadTest('test-sprite-mapping.js');
 loadTest('test-autotile.js');
 loadTest('test-overworld-map.js');
 loadTest('test-dungeon-gen.js');

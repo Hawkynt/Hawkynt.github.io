@@ -12,6 +12,8 @@
     #stageCtx;
     #hits;
     #misses;
+    #imageIds;
+    #nextImageId;
 
     constructor(maxSize = 1024) {
       this.#cache = new Map();
@@ -22,6 +24,8 @@
       this.#stageCtx = null;
       this.#hits = 0;
       this.#misses = 0;
+      this.#imageIds = new WeakMap();
+      this.#nextImageId = 1;
     }
 
     get corsBlocked() { return this.#corsBlocked; }
@@ -117,11 +121,23 @@
       let key = '' + destSize;
       for (const layer of layers) {
         const r = layer.rect;
-        key += '|' + (r.sheet || '') + ':' + r.x + ',' + r.y + ',' + r.w + ',' + r.h;
+        key += '|' + this.#imageId(layer.img) + (r.sheet || '') + ':' + r.x + ',' + r.y + ',' + r.w + ',' + r.h;
         if (layer.tint)
           key += '~' + layer.tint;
       }
       return key;
+    }
+
+    // Icons all share the rect 0,0,32,32, so the image itself must be part of the key.
+    #imageId(img) {
+      if (!img || (typeof img !== 'object' && typeof img !== 'function'))
+        return 0;
+      let id = this.#imageIds.get(img);
+      if (!id) {
+        id = this.#nextImageId++;
+        this.#imageIds.set(img, id);
+      }
+      return id;
     }
 
     #ensureStage(size) {
