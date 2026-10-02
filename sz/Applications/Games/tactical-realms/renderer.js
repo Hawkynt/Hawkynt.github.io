@@ -782,33 +782,66 @@
       this.drawUnitToken(col, row, unit, tileSize, offsetX, offsetY, { active, dead: false, fx, time });
     }
 
+    // Reachable area: soft inset fill with a bright outline along its rim.
     highlightTiles(tiles, tileSize, offsetX, offsetY, color) {
       if (!this.#bufCtx)
         return;
       const ctx = this.#bufCtx;
-      ctx.fillStyle = color || 'rgba(80,140,255,0.3)';
-      for (const [key] of tiles) {
+      const fill = color || 'rgba(80,140,255,0.3)';
+      const rim = fill.replace(/rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)/, 'rgba($1,$2,$3,0.95)');
+      const set = new Set();
+      for (const [key] of tiles)
+        set.add(key);
+      const ts = tileSize;
+      ctx.save();
+      ctx.fillStyle = fill;
+      for (const key of set) {
         const [c, r] = key.split(',').map(Number);
-        ctx.fillRect(offsetX + c * tileSize, offsetY + r * tileSize, tileSize, tileSize);
+        ctx.fillRect(offsetX + c * ts + 2, offsetY + r * ts + 2, ts - 4, ts - 4);
       }
+      ctx.strokeStyle = rim;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (const key of set) {
+        const [c, r] = key.split(',').map(Number);
+        const x = offsetX + c * ts, y = offsetY + r * ts;
+        if (!set.has(`${c},${r - 1}`)) { ctx.moveTo(x, y + 1); ctx.lineTo(x + ts, y + 1); }
+        if (!set.has(`${c},${r + 1}`)) { ctx.moveTo(x, y + ts - 1); ctx.lineTo(x + ts, y + ts - 1); }
+        if (!set.has(`${c - 1},${r}`)) { ctx.moveTo(x + 1, y); ctx.lineTo(x + 1, y + ts); }
+        if (!set.has(`${c + 1},${r}`)) { ctx.moveTo(x + ts - 1, y); ctx.lineTo(x + ts - 1, y + ts); }
+      }
+      ctx.stroke();
+      ctx.restore();
     }
 
-    highlightAttackTargets(targets, units, tileSize, offsetX, offsetY) {
+    // Attackable foes: a red glow under them and pulsing corner brackets.
+    highlightAttackTargets(targets, units, tileSize, offsetX, offsetY, time = 0) {
       if (!this.#bufCtx)
         return;
       const ctx = this.#bufCtx;
-      ctx.fillStyle = 'rgba(255,60,60,0.35)';
+      const ts = tileSize;
+      const pulse = 0.5 + 0.5 * Math.sin(time * 6);
+      const inset = 2 + pulse * ts * 0.06;
+      const arm = ts * 0.28;
+      ctx.save();
       for (const tid of targets) {
         const u = units.find(u => u.id === tid);
         if (!u)
           continue;
-        const pos = u.position;
-        ctx.fillRect(offsetX + pos.col * tileSize, offsetY + pos.row * tileSize, tileSize, tileSize);
-        ctx.strokeStyle = 'rgba(255,60,60,0.8)';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(offsetX + pos.col * tileSize + 1, offsetY + pos.row * tileSize + 1, tileSize - 2, tileSize - 2);
-        ctx.lineWidth = 1;
+        const x = offsetX + u.position.col * ts, y = offsetY + u.position.row * ts;
+        ctx.fillStyle = `rgba(255,60,50,${(0.18 + 0.12 * pulse).toFixed(3)})`;
+        ctx.fillRect(x + 2, y + 2, ts - 4, ts - 4);
+        ctx.strokeStyle = '#ff5a48';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        for (const [cx, cy, sx, sy] of [[x + inset, y + inset, 1, 1], [x + ts - inset, y + inset, -1, 1], [x + inset, y + ts - inset, 1, -1], [x + ts - inset, y + ts - inset, -1, -1]]) {
+          ctx.moveTo(cx, cy + sy * arm);
+          ctx.lineTo(cx, cy);
+          ctx.lineTo(cx + sx * arm, cy);
+        }
+        ctx.stroke();
       }
+      ctx.restore();
     }
 
 
@@ -819,28 +852,23 @@
       if (!this.#bufCtx || !lines || lines.length === 0)
         return;
       const ctx = this.#bufCtx;
-      ctx.font = '13px monospace';
+      ctx.font = "14px Georgia, 'Times New Roman', serif";
       ctx.textBaseline = 'alphabetic';
       ctx.textAlign = 'left';
-      const lineH = 18;
-      const pad = 8;
+      const lineH = 20;
+      const pad = 10;
       let maxW = 0;
       for (const l of lines)
         maxW = Math.max(maxW, ctx.measureText(l).width);
       const w = maxW + pad * 2;
-      const h = lines.length * lineH + pad * 2;
-
+      const h = lines.length * lineH + pad * 2 - 4;
       const tx = Math.min(x, this.#width - w - 4);
       const ty = Math.min(y, this.#height - h - 4);
-
-      ctx.fillStyle = 'rgba(10,10,20,0.95)';
-      ctx.fillRect(tx, ty, w, h);
-      ctx.strokeStyle = '#888';
-      ctx.strokeRect(tx, ty, w, h);
-
-      ctx.fillStyle = '#ddd';
-      for (let i = 0; i < lines.length; ++i)
+      this.#frame(ctx, tx, ty, w, h);
+      for (let i = 0; i < lines.length; ++i) {
+        ctx.fillStyle = i === 0 ? '#f0d890' : '#e8e0c8';
         ctx.fillText(lines[i], tx + pad, ty + pad + 12 + i * lineH);
+      }
     }
 
     drawContextMenu(x, y, items, hoverIndex) {
@@ -851,28 +879,40 @@
       const menuW = 200;
       const padY = 4;
       const h = items.length * itemH + padY * 2;
-
       const mx = Math.min(x, this.#width - menuW - 4);
       const my = Math.min(y, this.#height - h - 4);
-
-      ctx.fillStyle = 'rgba(10,10,20,0.95)';
-      ctx.fillRect(mx, my, menuW, h);
-      ctx.strokeStyle = '#888';
-      ctx.strokeRect(mx, my, menuW, h);
-
-      ctx.font = '13px monospace';
+      this.#frame(ctx, mx, my, menuW, h);
+      ctx.font = "bold 14px Georgia, 'Times New Roman', serif";
       ctx.textBaseline = 'alphabetic';
       ctx.textAlign = 'left';
       for (let i = 0; i < items.length; ++i) {
         const iy = my + padY + i * itemH;
         if (i === hoverIndex) {
-          ctx.fillStyle = 'rgba(80,120,200,0.5)';
-          ctx.fillRect(mx + 1, iy, menuW - 2, itemH);
+          const g = ctx.createLinearGradient(0, iy, 0, iy + itemH);
+          g.addColorStop(0, '#3a4a8a');
+          g.addColorStop(1, '#1e2650');
+          ctx.fillStyle = g;
+          ctx.fillRect(mx + 4, iy, menuW - 8, itemH);
+          ctx.fillStyle = '#ffd75a';
+          ctx.fillRect(mx + 4, iy, 3, itemH);
         }
-        const icon = items[i].action === 'attack' ? '\u2694 ' : '\u2728 ';
-        ctx.fillStyle = '#ddd';
-        ctx.fillText(icon + items[i].label, mx + 8, iy + 19);
+        const icon = items[i].action === 'attack' ? '⚔ ' : '✨ ';
+        ctx.fillStyle = i === hoverIndex ? '#ffffff' : '#e8e0c8';
+        ctx.fillText(icon + items[i].label, mx + 14, iy + 19);
       }
+    }
+
+    // Gold-framed navy panel shared by the canvas widgets.
+    #frame(ctx, x, y, w, h) {
+      const SA = TR.ScreenArt;
+      if (SA) {
+        SA.frame(ctx, x, y, w, h);
+        return;
+      }
+      ctx.fillStyle = 'rgba(10,10,20,0.95)';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = '#888';
+      ctx.strokeRect(x, y, w, h);
     }
 
 

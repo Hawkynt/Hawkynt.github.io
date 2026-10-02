@@ -1076,7 +1076,7 @@
 
       if (phase === CombatPhase.AWAITING_TARGET) {
         const targets = eng.getAttackTargets(eng.currentUnit.id);
-        this.#renderer.highlightAttackTargets(targets, eng.units, ts, ox, oy);
+        this.#renderer.highlightAttackTargets(targets, eng.units, ts, ox, oy, this.#combatTime);
       }
 
       if (phase === CombatPhase.AWAITING_SPELL_TARGET && eng.selectedSpell) {
