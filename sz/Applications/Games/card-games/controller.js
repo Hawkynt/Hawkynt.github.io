@@ -175,6 +175,58 @@
   const floatingText = new SZ.GameEffects.FloatingText();
 
   /* ══════════════════════════════════════════════════════════════════
+     SOUND (generic: derived from what the variants show)
+     ══════════════════════════════════════════════════════════════════ */
+
+  const sound = (name, opts) => SZ.GameAudio.play(name, opts);
+  let lastOutcomeSound = 0;
+  let roundStartScore = 0;
+
+  function outcomeSound(name) {
+    const now = performance.now();
+    if (now - lastOutcomeSound < 2000) return;
+    lastOutcomeSound = now;
+    sound(name);
+  }
+
+  function colorMood(color) {
+    const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color || '');
+    if (!m) return 0;
+    const h = m[1].length === 3 ? m[1].replace(/./g, '$&$&') : m[1];
+    const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    if (g > r + 40 && g >= b) return 1;
+    if (r > g + 40 && r > b + 40) return -1;
+    return 0;
+  }
+
+  // Big green/red banners are wins/losses, small refusals are invalid moves
+  function soundForText(text, opts) {
+    const t = String(text);
+    const big = (opts?.size || 0) >= 22;
+    const mood = colorMood(opts?.color);
+    if (/cannot|can't|invalid|must |not allowed|illegal|would bust|no (more )?moves/i.test(t)) {
+      sound('error', { volume: 0.6 });
+      return;
+    }
+    if (big && mood !== 0 || /\byou (win|won)\b|\bwins?!?$|game over/i.test(t)) {
+      const good = mood > 0 || (mood === 0 && /\byou (win|won)\b/i.test(t));
+      outcomeSound(good ? 'win' : 'lose');
+    }
+  }
+
+  const addFloatingText = floatingText.add.bind(floatingText);
+  floatingText.add = function(x, y, text, opts) {
+    soundForText(text, opts);
+    return addFloatingText(x, y, text, opts);
+  };
+
+  const triggerShake = screenShake.trigger.bind(screenShake);
+  screenShake.trigger = function(...args) {
+    sound('thud', { volume: 0.6 });
+    return triggerShake(...args);
+  };
+
+  /* ══════════════════════════════════════════════════════════════════
      GAME STATE
      ══════════════════════════════════════════════════════════════════ */
 
@@ -230,11 +282,16 @@
     hintTime: 0,
     getScore() { return score; },
     onScoreChanged(newScore) {
+      if (newScore > score && state === STATE_PLAYING)
+        sound('pickup', { volume: 0.4 });
       score = newScore;
       updateStatus();
       saveHighScores();
     },
     onRoundOver(isGameOver) {
+      if (isGameOver || score < roundStartScore) outcomeSound('lose');
+      else if (score > roundStartScore) outcomeSound('win');
+      else outcomeSound('drop');
       if (isGameOver) {
         state = STATE_GAME_OVER;
         floatingText.add(CANVAS_W / 2, CANVAS_H / 2, 'GAME OVER', { color: '#f44', size: 36 });
@@ -252,16 +309,19 @@
       });
     },
     flipCard(cardRef, faceUp) {
+      sound('click', { pitch: 0.8, volume: 0.7 });
       flipAnimations.push({
         cardRef, t: 0, duration: 0.25, faceUp, scaleX: 1
       });
     },
     addGlow(x, y, w, h, duration) {
       glowCards.push({ x, y, w, h, t: 0, duration: duration || 1.5 });
+      sound('select', { volume: 0.6 });
       if (SZ.CardThemes) SZ.CardThemes.addShimmer(x, y, w, h, 'pulse');
     },
     triggerChipSparkle(x, y) {
       particles.sparkle(x, y, 20, { color: '#fa0', speed: 80, life: 0.8 });
+      sound('coin');
       chipSparkleTimer = 1.0;
     }
   };
@@ -272,6 +332,8 @@
 
   function updateAnimations(dt) {
     for (const a of dealAnimations) {
+      if (a.t < 0 && a.t + dt >= 0)
+        sound('click', { pitch: 0.7 + Math.random() * 0.2, volume: 0.6 });
       a.t += dt;
       if (a.t >= a.duration && !a.done) {
         a.done = true;
@@ -333,6 +395,7 @@
     currentVariant = VARIANTS.find(v => v.id === variantId) || VARIANTS[0];
     state = STATE_PLAYING;
     roundNumber = 1;
+    roundStartScore = score;
     dealAnimations = [];
     flipAnimations = [];
     glowCards = [];
@@ -413,6 +476,7 @@
           const bx = marginX + col * (btnW + gapX);
           const by = curY + padTop + row * (btnH + gapY);
           if (CE.isInRect(mx, my, bx, by, btnW, btnH)) {
+            sound('select');
             selectGame(cat.games[i].variant.id);
             return;
           }
@@ -472,9 +536,12 @@
 
     // Forward to active variant module
     if (activeVariantModule) {
+      sound('click', { volume: 0.7 });
       if (activeVariantModule.handleClick) activeVariantModule.handleClick(mx, my);
     }
   }
+
+  let pointerDownAt = null;
 
   canvas.addEventListener('pointerdown', (e) => {
     const rect = canvas.getBoundingClientRect();
@@ -482,6 +549,7 @@
     const scaleY = CANVAS_H / rect.height;
     const mx = (e.clientX - rect.left) * scaleX;
     const my = (e.clientY - rect.top) * scaleY;
+    pointerDownAt = { x: mx, y: my };
     handleCanvasClick(mx, my);
   });
 
@@ -502,6 +570,9 @@
     const scaleY = CANVAS_H / rect.height;
     const mx = (e.clientX - rect.left) * scaleX;
     const my = (e.clientY - rect.top) * scaleY;
+    if (pointerDownAt && state === STATE_PLAYING && Math.hypot(mx - pointerDownAt.x, my - pointerDownAt.y) > 12)
+      sound('drop', { volume: 0.6 });
+    pointerDownAt = null;
     activeVariantModule.handlePointerUp(mx, my, e);
   });
 
@@ -860,6 +931,12 @@
   setupCanvas();
   if (SZ.CardThemes) SZ.CardThemes.loadTheme();
   initGame();
+
+  // In the status bar: a corner button would cover the variants' table buttons
+  const statusBar = document.querySelector('.status-bar');
+  const muteBtn = SZ.GameAudio.attachMuteButton(statusBar || undefined);
+  if (statusBar)
+    Object.assign(muteBtn.style, { position: 'static', marginLeft: 'auto', width: '18px', height: '16px', fontSize: '10px', lineHeight: '14px', borderRadius: '3px' });
 
   lastTimestamp = 0;
   requestAnimationFrame(gameLoop);
