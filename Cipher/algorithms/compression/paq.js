@@ -93,12 +93,12 @@
   }
 
   /**
-   * @returns {int32[]} squash(x) on the 12-bit grid for every logit x
+   * @returns {int16[]} squash(x) on the 12-bit grid for every logit x
    */
   function buildSquashTable() {
     /** @type {int32} */
     const span = CM_MAX_STRETCH - CM_MIN_STRETCH + 1;
-    /** @type {int32[]} */
+    /** @type {int16[]} */
     const table = new Int16Array(span);
     for (let i = 0; i < span; ++i) {
       /** @type {float64} */
@@ -113,12 +113,12 @@
   }
 
   /**
-   * @param {int32[]} squash - Squash table
-   * @returns {int32[]} Its inverse on the 12-bit grid
+   * @param {int16[]} squash - Squash table
+   * @returns {int16[]} Its inverse on the 12-bit grid
    */
   function buildStretchTable(squash) {
     // Invert squash so the two are exact mutual inverses on the 12-bit grid.
-    /** @type {int32[]} */
+    /** @type {int16[]} */
     const table = new Int16Array(CM_PROB_SCALE);
     /** @type {int32} */
     let pos = 0;
@@ -135,9 +135,9 @@
     return table;
   }
 
-  /** @type {int32[]} */
+  /** @type {int16[]} */
   const CM_SQUASH_TABLE = buildSquashTable();
-  /** @type {int32[]} */
+  /** @type {int16[]} */
   const CM_STRETCH_TABLE = buildStretchTable(CM_SQUASH_TABLE);
 
   /**
