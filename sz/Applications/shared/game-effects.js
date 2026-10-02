@@ -2,6 +2,28 @@
   'use strict';
   const SZ = window.SZ || (window.SZ = {});
 
+  /* ---- FrameClock ---- */
+  /* Counts 60 Hz frames between update calls so effects keep their speed on any refresh rate */
+  const FRAME_MS = 1000 / 60;
+  const FRAME_SNAP = 0.1;
+  const MAX_FRAMES = 3;
+
+  class FrameClock {
+    #last = null;
+
+    step() {
+      const now = performance.now();
+      const last = this.#last;
+      this.#last = now;
+      if (last === null)
+        return 1;
+      const frames = (now - last) / FRAME_MS;
+      if (Math.abs(frames - 1) < FRAME_SNAP)
+        return 1;
+      return Math.min(Math.max(frames, 0), MAX_FRAMES);
+    }
+  }
+
   /* ---- Particle ---- */
   class Particle {
     constructor(x, y, opts = {}) {
@@ -21,15 +43,16 @@
       this.rotationSpeed = opts.rotationSpeed ?? (Math.random() - 0.5) * 0.2;
     }
 
-    update() {
-      this.vy += this.gravity;
-      this.vx *= this.friction;
-      this.vy *= this.friction;
-      this.x += this.vx;
-      this.y += this.vy;
-      this.life -= this.decay;
-      this.size *= this.shrink;
-      this.rotation += this.rotationSpeed;
+    update(f) {
+      this.vy += this.gravity * f;
+      const friction = Math.pow(this.friction, f);
+      this.vx *= friction;
+      this.vy *= friction;
+      this.x += this.vx * f;
+      this.y += this.vy * f;
+      this.life -= this.decay * f;
+      this.size *= Math.pow(this.shrink, f);
+      this.rotation += this.rotationSpeed * f;
     }
 
     get dead() { return this.life <= 0 || this.size < 0.3; }
@@ -67,6 +90,7 @@
   /* ---- ParticleSystem ---- */
   class ParticleSystem {
     #particles = [];
+    #clock = new FrameClock();
 
     get count() { return this.#particles.length; }
 
@@ -138,8 +162,9 @@
     }
 
     update() {
+      const f = this.#clock.step();
       for (let i = this.#particles.length - 1; i >= 0; --i) {
-        this.#particles[i].update();
+        this.#particles[i].update(f);
         if (this.#particles[i].dead)
           this.#particles.splice(i, 1);
       }
@@ -200,6 +225,7 @@
   /* ---- FloatingText ---- */
   class FloatingText {
     #texts = [];
+    #clock = new FrameClock();
 
     add(x, y, text, opts = {}) {
       this.#texts.push({
@@ -215,10 +241,11 @@
     }
 
     update() {
+      const f = this.#clock.step();
       for (let i = this.#texts.length - 1; i >= 0; --i) {
         const t = this.#texts[i];
-        t.y += t.vy;
-        t.life -= t.decay;
+        t.y += t.vy * f;
+        t.life -= t.decay * f;
         if (t.life <= 0)
           this.#texts.splice(i, 1);
       }
@@ -372,6 +399,7 @@
   /* ---- Starfield ---- */
   class Starfield {
     #stars = [];
+    #clock = new FrameClock();
 
     constructor(width, height, count = 60) {
       for (let i = 0; i < count; ++i)
@@ -397,10 +425,11 @@
       }
     }
 
-    update(dt) {
+    update() {
+      const f = this.#clock.step();
       for (const s of this.#stars) {
-        s.y += s.speed;
-        s.twinkle += 0.02;
+        s.y += s.speed * f;
+        s.twinkle += 0.02 * f;
         if (s.y > this._h) {
           s.y = 0;
           s.x = Math.random() * this._w;

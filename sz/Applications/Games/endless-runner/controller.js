@@ -1277,6 +1277,12 @@
     updateStatus();
   }
 
+  /* Pause when the window is hidden or loses focus */
+  SZ.GameAutoPause.attach({
+    isRunning: () => state === STATE_RUNNING,
+    pause: togglePause
+  });
+
   document.addEventListener('keydown', function(e) {
     /* Tutorial navigation */
     if (showTutorial) {

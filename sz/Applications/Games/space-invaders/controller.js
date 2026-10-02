@@ -332,6 +332,12 @@
   let mouseDown = false;
   let mouseActive = false;
   let lastTime = 0;
+  let simAccumulator = 0;
+
+  /* Simulation runs in fixed 60 Hz steps regardless of display refresh rate */
+  const SIM_STEP = 1000 / 60;
+  const SIM_MAX_STEPS = 3;
+  const SIM_SNAP = 0.5;
   let gameTime = 0;
   let alienFrame = 0;
   let titlePulse = 0;
@@ -2265,10 +2271,17 @@
   function gameLoop(timestamp) {
     if (!lastTime)
       lastTime = timestamp;
-    const dt = Math.min(timestamp - lastTime, 50);
+    let elapsed = timestamp - lastTime;
     lastTime = timestamp;
 
-    update(dt);
+    /* Snap refresh jitter around 60 Hz to exactly one step; cap catch-up after stalls */
+    if (Math.abs(elapsed - SIM_STEP) < SIM_SNAP)
+      elapsed = SIM_STEP;
+    simAccumulator = Math.min(simAccumulator + elapsed, SIM_STEP * SIM_MAX_STEPS);
+    while (simAccumulator >= SIM_STEP) {
+      simAccumulator -= SIM_STEP;
+      update(SIM_STEP);
+    }
     draw();
     requestAnimationFrame(gameLoop);
   }
@@ -2348,6 +2361,14 @@
   /* ================================================================
    *  INPUT
    * ================================================================ */
+
+  /* Pause when the window is hidden or loses focus */
+  SZ.GameAutoPause.attach({
+    isRunning: () => gameState === 'playing',
+    pause: () => {
+      gameState = 'paused';
+    }
+  });
 
   document.addEventListener('keydown', (e) => {
     keys[e.code] = true;
