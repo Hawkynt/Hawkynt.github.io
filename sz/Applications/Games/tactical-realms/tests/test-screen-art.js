@@ -32,7 +32,7 @@
     it('draws every screen widget without throwing', () => {
       const c = ctx();
       SA.stage(c, 'forest', 'material', 1, { night: true });
-      SA.stage(c, 'town', 'feywild', 1, { dim: 0.5 });
+      SA.stage(c, 'town', 'arborea', 1, { dim: 0.5 });
       SA.campfire(c, 500, 600, 1.3);
       SA.rosterPanel(c, party, [8, 4, 7], 20, 20);
       SA.menu(c, [{ x: 10, y: 60, w: 200, h: 40, label: 'Go' }], { title: 'Menu' });
