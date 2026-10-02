@@ -639,7 +639,7 @@
     WriteFile(path, data) {
       // String → store as bytes (UTF-8 encoded)
       if (typeof data === 'string') {
-        const bytes = Array.from(new TextEncoder().encode(data));
+        const bytes = new TextEncoder().encode(data);
         return _sendMessage('sz:vfs:WriteAllBytes', { path, bytes }).then(r => {
           if (r.error)
             throw new Error(r.error.message || r.error);
@@ -656,7 +656,7 @@
         });
 
       // Binary / array → store as bytes
-      const bytes = Array.from(_toUint8Array(data));
+      const bytes = _toUint8Array(data);
       return _sendMessage('sz:vfs:WriteAllBytes', { path, bytes }).then(r => {
         if (r.error)
           throw new Error(r.error.message || r.error);
@@ -665,7 +665,7 @@
     },
 
     WriteAllBytes(path, bytes) {
-      const payload = Array.from(_toUint8Array(bytes));
+      const payload = _toUint8Array(bytes);
       return _sendMessage('sz:vfs:WriteAllBytes', { path, bytes: payload }).then(r => {
         if (r.error)
           throw new Error(r.error.message || r.error);
