@@ -167,7 +167,7 @@
       base: 'CHAOS', road: 'silver_path', gate: 'Anchored Stone',
       terrain: (h, m, v) => (v > 0.75 ? 'CINDER' : v < 0.2 ? 'CURRENT' : m > 0.72 ? 'SKY' : h > 0.8 ? 'BEDROCK' : 'CHAOS'),
       towns: ['Anchorhold'],
-      sites: [site('Churning Spire', 'chaos', ['red_slaad', 'blue_slaad']), site('Slaad Hatchery', 'chaos', ['green_slaad', 'gray_slaad'], 2)],
+      sites: [site('Churning Spire', 'chaos', ['red_slaad', 'blue_slaad']), site('Chaosfrog Spawning Pools', 'chaos', ['green_slaad', 'gray_slaad'], 2)],
     },
     pandemonium: {
       base: 'GLOOM', road: 'ruins', gate: 'Howling Mouth',
