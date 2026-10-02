@@ -705,8 +705,8 @@
       const closeAllIcon = '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><line x1="3" y1="3" x2="9" y2="9" stroke="#ef4444" stroke-width="1.2" stroke-linecap="round"/><line x1="9" y1="3" x2="3" y2="9" stroke="#ef4444" stroke-width="1.2" stroke-linecap="round"/><line x1="7" y1="7" x2="13" y2="13" stroke="#ef4444" stroke-width="1.2" stroke-linecap="round"/><line x1="13" y1="7" x2="7" y2="13" stroke="#ef4444" stroke-width="1.2" stroke-linecap="round"/></svg>';
 
       const items = [
-        { label: 'Close', icon: closeIcon, bold: true, action: () => wm.closeWindow(windowId) },
-        { label: 'Close All Windows', icon: closeAllIcon, action: () => { for (const id of [...this.#buttons.keys()]) wm.closeWindow(id); } },
+        { label: 'Close', icon: closeIcon, bold: true, action: () => wm.requestClose(windowId) },
+        { label: 'Close All Windows', icon: closeAllIcon, action: () => { for (const id of [...this.#buttons.keys()]) wm.requestClose(id); } },
       ];
 
       if (hasSameApp)
@@ -729,7 +729,7 @@
     #closeAllSameApp(appId) {
       for (const [winId, btn] of this.#buttons)
         if (btn.dataset.appId === appId)
-          this.#windowManager.closeWindow(winId);
+          this.#windowManager.requestClose(winId);
     }
 
     #updateOverflow() {

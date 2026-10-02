@@ -207,6 +207,7 @@
         case 'sz:getTheme': return respond('sz:themeCSS', { css: themeEngine.styleText });
         case 'sz:setTitle': if (win) { win.setTitle(data.title); taskbar.updateTitle(win.id, data.title); } return;
         case 'sz:close': if (win) windowManager.closeWindow(win.id); return;
+        case 'sz:closeReply': if (win) windowManager.handleCloseReply(win.id, data.closeRequest, !!data.handled); return;
         case 'sz:resize': if (win) win.resizeContentTo(data.width, data.height); return;
         case 'sz:setFrameless': if (win) win.setFrameless(data.value); return;
         case 'sz:closeWindow': if (data.windowId) windowManager.closeWindow(data.windowId); return;

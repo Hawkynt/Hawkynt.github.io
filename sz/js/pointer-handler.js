@@ -61,7 +61,7 @@
       },
       { separator: true },
       { label: 'Restart', disabled: !win.appId, action: () => wm.restartWindow(id) },
-      { label: 'Close', bold: true, action: () => wm.closeWindow(id) },
+      { label: 'Close', bold: true, action: () => wm.requestClose(id) },
     ];
   }
 
@@ -136,7 +136,7 @@
           clearTimeout(iconClickTimer);
           iconClickTimer = null;
           iconClickWindowId = null;
-          windowManager.closeWindow(windowId);
+          windowManager.requestClose(windowId);
           return;
         }
 
