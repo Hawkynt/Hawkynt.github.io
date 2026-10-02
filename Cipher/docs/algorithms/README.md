@@ -241,7 +241,7 @@ _Block-based symmetric encryption_
 | [Keeloq](block-ciphers/keeloq.md) | ❌ Broken | 32-bit block cipher with 64-bit key designed for remote keyless entry systems. Uses 528-round NLFSR structure. Owned by Microchip. Cryptogr… |
 | [KeeLoq (DarkCrypt)](block-ciphers/keeloq-darkcrypt.md) | ❌ Broken | KeeLoq variant from the DarkCrypt Total Commander plugin: standard 528-round NLFSR core, but block and key words are packed little-endian (… |
 | [Khazad](block-ciphers/khazad.md) | 🎓 Educational Only | NESSIE-era 64-bit block cipher using involutional substitution-permutation structure. Educational reference implementation. |
-| [Khufu](block-ciphers/khufu.md) | ❌ Broken | Ralph Merkle's Khufu cipher with 64-bit blocks and variable key lengths up to 512 bits. Uses key-dependent S-boxes in an unbalanced Feistel… |
+| [Khufu](block-ciphers/khufu.md) | ❌ Broken | Ralph Merkle's Khufu: a 64-bit Feistel block cipher with a key of up to 512 bits and 8 to 64 rounds (default 16). Each octet of 8 rounds us… |
 | [Khufu-512 (DarkCrypt)](block-ciphers/khufu-512-darkcrypt.md) | 🎓 Educational Only | Ralph Merkle's Khufu cipher with a 544-bit key as implemented in the DarkCrypt Total Commander plugin: 64-bit Feistel block, 8 octets of 8… |
 | [Kinebick (DarkCrypt)](block-ciphers/kinebick-darkcrypt.md) | 🎓 Educational Only | 128-bit block, 512-bit key cipher from the DarkCrypt Total Commander plugin. Unrolled ARX network with three boolean mixers over four 32-bi… |
 | [Kuznyechik](block-ciphers/kuznyechik.md) | 🧪 Experimental | Russian Federal block cipher standard GOST R 34.12-2015 with 128-bit blocks and 256-bit keys. Designed to replace GOST 28147-89, featuring… |
