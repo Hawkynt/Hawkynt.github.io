@@ -26,6 +26,7 @@
     #camera;
     #assets;
     #compositor;
+    #lightCanvas = null;
 
     constructor(canvas, { width, height, tileSize } = {}) {
       this.#width = width || DEFAULT_WIDTH;
@@ -503,6 +504,15 @@
           const sy = offsetY + r * tileSize;
           let drawn = false;
 
+          // hand-painted underground tiles, varied per cell
+          const art = t && TR.TerrainArt && TR.TerrainArt.has(t.id) ? TR.TerrainArt.rect(t.id, c, r) : null;
+          const artImg = art && assets ? assets.get('terrain') : null;
+          if (art && artImg) {
+            ctx.drawImage(artImg, art.x, art.y, art.w, art.h, sx, sy, tileSize, tileSize);
+            this.#drawTerrainEdges(ctx, grid, c, r, t.id, sx, sy, tileSize);
+            continue;
+          }
+
           if (t) {
             const terrainLayers = TR.TERRAIN_LAYERS && TR.TERRAIN_LAYERS[t.id];
             if (terrainLayers) {
@@ -549,6 +559,68 @@
     }
 
     // fx: optional CombatFx.unitState() result ({ dx, dy, flash, alpha, tint }).
+    // Flagstone floors read as raised slabs: a dark lip where they meet
+    // rougher ground below or to the right, a light one above or left.
+    #drawTerrainEdges(ctx, grid, c, r, id, sx, sy, ts) {
+      if (id !== 'dungeon_floor' && id !== 'ruins')
+        return;
+      const lip = Math.max(2, Math.round(ts / 16) * 2);
+      const other = (cc, rr) => grid.inBounds(cc, rr) && grid.terrainIdAt(cc, rr) !== id;
+      ctx.fillStyle = 'rgba(10,6,12,0.45)';
+      if (other(c, r + 1))
+        ctx.fillRect(sx, sy + ts - lip, ts, lip);
+      if (other(c + 1, r))
+        ctx.fillRect(sx + ts - lip, sy, lip, ts);
+      ctx.fillStyle = 'rgba(255,240,220,0.14)';
+      if (other(c, r - 1))
+        ctx.fillRect(sx, sy, ts, lip / 2);
+      if (other(c - 1, r))
+        ctx.fillRect(sx, sy, lip / 2, ts);
+    }
+
+    // Underground darkness with torch-light around each light source.
+    // lights: [{ x, y, radius }] in screen pixels.
+    drawLighting(x, y, w, h, lights, time = 0, darkness = 0.62) {
+      if (!this.#bufCtx || typeof document === 'undefined')
+        return;
+      if (!this.#lightCanvas || this.#lightCanvas.width !== Math.ceil(w) || this.#lightCanvas.height !== Math.ceil(h)) {
+        this.#lightCanvas = document.createElement('canvas');
+        this.#lightCanvas.width = Math.ceil(w);
+        this.#lightCanvas.height = Math.ceil(h);
+      }
+      const lc = this.#lightCanvas.getContext('2d');
+      if (!lc)
+        return;
+      lc.globalCompositeOperation = 'source-over';
+      lc.clearRect(0, 0, w, h);
+      lc.fillStyle = `rgba(6,4,16,${darkness})`;
+      lc.fillRect(0, 0, w, h);
+      lc.globalCompositeOperation = 'destination-out';
+      lights.forEach((l, i) => {
+        const flick = 1 + 0.04 * Math.sin(time * 9 + i * 2.1) * Math.sin(time * 5.3 + i);
+        const rad = l.radius * flick;
+        const g = lc.createRadialGradient(l.x - x, l.y - y, rad * 0.15, l.x - x, l.y - y, rad);
+        g.addColorStop(0, 'rgba(0,0,0,1)');
+        g.addColorStop(0.6, 'rgba(0,0,0,0.75)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        lc.fillStyle = g;
+        lc.fillRect(l.x - x - rad, l.y - y - rad, rad * 2, rad * 2);
+      });
+      const ctx = this.#bufCtx;
+      ctx.drawImage(this.#lightCanvas, x, y);
+      // warm tint where the light falls
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      lights.forEach(l => {
+        const g = ctx.createRadialGradient(l.x, l.y, 0, l.x, l.y, l.radius * 0.8);
+        g.addColorStop(0, 'rgba(255,150,60,0.10)');
+        g.addColorStop(1, 'rgba(255,120,40,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(l.x - l.radius, l.y - l.radius, l.radius * 2, l.radius * 2);
+      });
+      ctx.restore();
+    }
+
     drawUnitToken(col, row, unit, tileSize, offsetX, offsetY, { active = false, dead = false, fx = null, time = 0 } = {}) {
       if (!this.#bufCtx)
         return;

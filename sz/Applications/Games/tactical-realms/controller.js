@@ -12,6 +12,8 @@
   const COMBAT_TILE_SIZE = 44;
   const COMBAT_MOVE_STEP_DUR = 0.08;
   const REVEAL_TIME = 0.55;
+  // darkness of underground boards (0 = lit)
+  const UNDERGROUND_LIGHT = Object.freeze({ dungeon: 0.6, cave: 0.68, lava: 0.35 });
 
   const BATTLE_SCENE_KEY = 'sz-tactical-realms-battle-scenes';
   const BATTLE_SCENE_MODES = ['full', 'short', 'off'];
@@ -1028,8 +1030,15 @@
         this.#combatOffsetX = ox;
         this.#combatOffsetY = oy;
       } else {
-        this.#renderer.drawPanel(0, 0, CANVAS_W, CANVAS_H, { bg: '#0a0a1a' });
+        // the board lies on the battle's own backdrop, framed in gold
+        if (TR.ScreenArt && bctx) {
+          TR.ScreenArt.stage(bctx, this.#combatBiome, this.#dimension, this.#combatTime, { dim: 0.55 });
+          TR.ScreenArt.vignette(bctx, 0.6);
+        } else
+          this.#renderer.drawPanel(0, 0, CANVAS_W, CANVAS_H, { bg: '#0a0a1a' });
         this.#renderer.drawCombatGrid(eng.grid, ts, ox, oy, this.#combatBiome);
+        if (TR.ScreenArt && bctx)
+          TR.ScreenArt.border(bctx, ox, oy, eng.grid.cols * ts, eng.grid.rows * ts);
       }
 
       const gridPxW = eng.grid.cols * ts;
@@ -1120,6 +1129,16 @@
           const isActive = eng.currentUnit && eng.currentUnit.id === u.id;
           this.#renderer.drawUnitTokenAt(vc, vr, u, ts, ox, oy, { active: isActive, time: this.#combatTime });
         }
+      }
+
+      // underground fights are lit only by the fighters' torches
+      const dark = UNDERGROUND_LIGHT[this.#combatBiome];
+      if (dark && !this.#overworldCombat) {
+        const lights = [];
+        for (const u of eng.units)
+          if (u.isAlive)
+            lights.push({ x: ox + u.position.col * ts + ts / 2, y: oy + u.position.row * ts + ts / 2, radius: ts * (u.faction === 'party' ? 3.4 : 2.4) });
+        this.#renderer.drawLighting(ox, oy, eng.grid.cols * ts, eng.grid.rows * ts, lights, this.#combatTime, dark);
       }
 
       if (this.#combatAnim) {
