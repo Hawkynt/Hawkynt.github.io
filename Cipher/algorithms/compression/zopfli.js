@@ -699,10 +699,10 @@
   // walked once at load and answered from a lookup afterwards.
 
   /**
-   * @returns {int32[]} Length code per match length
+   * @returns {uint16[]} Length code per match length
    */
   function buildLengthCodeTable() {
-    /** @type {int32[]} */
+    /** @type {uint16[]} */
     const table = new Uint16Array(MAX_MATCH + 1);
     for (let length = MIN_MATCH; length <= MAX_MATCH; ++length) {
       /** @type {int32} */
@@ -721,10 +721,10 @@
   }
 
   /**
-   * @returns {int32[]} Distance code per distance
+   * @returns {uint8[]} Distance code per distance
    */
   function buildDistanceCodeTable() {
-    /** @type {int32[]} */
+    /** @type {uint8[]} */
     const table = new Uint8Array(WINDOW_SIZE + 1);
     for (let distance = 1; distance <= WINDOW_SIZE; ++distance) {
       /** @type {int32} */
@@ -749,10 +749,10 @@
     return table;
   }
 
-  /** @type {int32[]} */
+  /** @type {uint16[]} */
   const LENGTH_CODE_TABLE = buildLengthCodeTable();
 
-  /** @type {int32[]} */
+  /** @type {uint8[]} */
   const DISTANCE_CODE_TABLE = buildDistanceCodeTable();
 
   /**
@@ -1060,9 +1060,9 @@
 
       /** @type {int32[]} */
       this.runStart = runStart;
-      /** @type {int32[]} */
+      /** @type {uint16[]} */
       this.runMaxLength = new Uint16Array(maxLengths.length);
-      /** @type {int32[]} */
+      /** @type {uint16[]} */
       this.runDistance = new Uint16Array(distances.length);
       for (let k = 0; k < maxLengths.length; ++k) {
         this.runMaxLength[k] = maxLengths[k];
@@ -1136,9 +1136,9 @@
 
     /** @type {float64[]} */
     const cost = new Float64Array(span + 1).fill(UNREACHABLE);
-    /** @type {int32[]} */
+    /** @type {uint16[]} */
     const length = new Uint16Array(span + 1);
-    /** @type {int32[]} */
+    /** @type {uint16[]} */
     const distance = new Uint16Array(span + 1);
     cost[0] = 0;
 
