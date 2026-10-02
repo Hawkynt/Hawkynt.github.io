@@ -22,6 +22,7 @@
     #hasActed;
     #conditions = [];
     #speedMult = 1;
+    #extraPass = 0;
 
     constructor(id, character, faction, col, row) {
       this.#id = id;
@@ -82,8 +83,13 @@
       this.#conditions = ids.slice();
       this.#speedMult = speedMult;
     }
-    // movement modes (walk, fly, swim, ...) of monsters; party units walk
-    get passMode() { return this.#character.passMode || undefined; }
+    // movement modes (walk, fly, swim, ...) of monsters; party units walk,
+    // unless the plane lets everyone fly or swim
+    get passMode() {
+      const own = this.#character.passMode;
+      return this.#extraPass ? (own || 0b00001) | this.#extraPass : own || undefined;
+    }
+    grantPassMode(bits) { this.#extraPass |= bits; }
     get dexMod() { return Character.abilityMod(this.#character.stats.dex); }
     get strMod() { return Character.abilityMod(this.#character.stats.str); }
     get currentMp() { return this.#currentMp; }

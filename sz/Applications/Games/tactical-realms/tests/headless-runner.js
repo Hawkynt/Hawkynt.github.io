@@ -242,6 +242,7 @@ loadTest('test-autotile.js');
 loadTest('test-overworld-map.js');
 loadTest('test-plane-worlds.js');
 loadTest('test-portal.js');
+loadTest('test-plane-traits.js');
 loadTest('test-dungeon-gen.js');
 loadTest('test-dungeon-crawl.js');
 loadTest('test-debug-console.js');

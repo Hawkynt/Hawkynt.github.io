@@ -18,6 +18,13 @@
   // darkness of underground boards (0 = lit)
   const UNDERGROUND_LIGHT = Object.freeze({ dungeon: 0.6, cave: 0.68, lava: 0.35 });
 
+  // colours of the planes' traits and of the damage their energy deals
+  const TRAIT_COLORS = Object.freeze({
+    weightless: '#c8d8ff', flooded: '#7ac8ff', hazard: '#ff9a5a', vital: '#fff2a0', element_magic: '#ffb86a',
+    potent_magic: '#d8a8ff', dulled_magic: '#a8a8b8', wild_magic: '#ff8af0', home_ground: '#f0d890', despair: '#9a9a9a',
+  });
+  const HAZARD_COLORS = Object.freeze({ fire: '#ff7a2a', cold: '#8ad8ff', acid: '#a8e84a', negative: '#b88aff' });
+
   const BATTLE_SCENE_KEY = 'sz-tactical-realms-battle-scenes';
   const BATTLE_SCENE_MODES = ['full', 'short', 'off'];
 
@@ -751,7 +758,8 @@
       this.#stepsSinceEncounter = 0;
       const P = TR.PlaneWorlds ? TR.PlaneWorlds.get(target) : null;
       const name = P ? P.name : (TR.PlaneRegistry.get(target) || {}).name || target;
-      this.#toast(name, '#d8c8ff', target === 'material' ? 'Home again.' : null);
+      const traits = TR.PlaneWorlds ? TR.PlaneWorlds.traits(target) : [];
+      this.#toast(name, '#d8c8ff', target === 'material' ? 'Home again.' : traits.map(t => t.name).join('  ·  ') || null);
       this.#autoSave(GameState.OVERWORLD);
     }
 
@@ -817,6 +825,26 @@
       ctx.fillStyle = g;
       ctx.fillRect(x - r, y - r, r * 2, r * 2);
       ctx.restore();
+    }
+
+    // The plane's traits take hold of a fight: burning air, weightless
+    // bodies, stronger or weaker magic. Damage it deals floats up like a hit.
+    #applyPlaneToCombat() {
+      const eng = this.#combatEngine;
+      if (!eng || !TR.PlaneWorlds)
+        return;
+      eng.setPlaneTraits(TR.PlaneWorlds.traits(this.#dimension));
+      eng.on('planeEffect', ({ unit, amount, kind }) => {
+        if (!this.#combatFx)
+          return;
+        const ts = this.#combatTileSize;
+        const x = this.#combatOffsetX + unit.position.col * ts + ts / 2;
+        const y = this.#combatOffsetY + unit.position.row * ts;
+        if (amount < 0)
+          this.#combatFx.heal(unit.id, x, y, -amount);
+        else
+          this.#combatFx.hit(unit.id, x, y, amount, { color: HAZARD_COLORS[kind] || '#ff8a4a' });
+      });
     }
 
     // --- dungeon crawl ------------------------------------------------------
@@ -1136,6 +1164,7 @@
         return hp >= ch.maxHp ? ch : Object.freeze({ ...ch, hp });
       });
       this.#combatEngine.initCombatAt(partyWithHp, setup.enemies, setup.grid, setup.partyPositions, setup.enemyPositions, { ambush });
+      this.#applyPlaneToCombat();
       this.#combatEngine.startTurn();
 
       // tiles stay readable; boards larger than the screen scroll
@@ -1505,6 +1534,21 @@
       this.#renderer.drawScreenText(24, 30, P.name, { color: '#f0d890', font: "bold 16px Georgia, 'Times New Roman', serif" });
       const kind = { transitive: 'Transitive Plane', inner: 'Inner Plane', outer: 'Outer Plane' }[P.category] || 'Plane';
       this.#renderer.drawScreenText(24, 46, kind, { color: '#b8c0d8', font: '11px monospace' });
+      // the plane's traits, one line each
+      const traits = TR.PlaneWorlds.traits(this.#dimension);
+      if (!traits.length)
+        return;
+      const lineH = 30;
+      ctx.save();
+      ctx.font = '11px monospace';
+      const tw = Math.max(w, ...traits.map(t => Math.ceil(ctx.measureText(t.text).width) + 28));
+      ctx.restore();
+      TR.ScreenArt.frame(ctx, 8, 58, tw, 12 + traits.length * lineH, { alpha: 0.8 });
+      traits.forEach((t, i) => {
+        const y = 58 + 8 + i * lineH;
+        this.#renderer.drawScreenText(20, y + 12, t.name, { color: TRAIT_COLORS[t.id] || '#e8dcc0', font: "bold 12px Georgia, 'Times New Roman', serif" });
+        this.#renderer.drawScreenText(20, y + 25, t.text, { color: '#b8c0d8', font: '11px monospace' });
+      });
     }
 
     #renderOverworldPartyStatus() {
@@ -1967,6 +2011,7 @@
       });
 
       this.#combatEngine.initCombat(partyWithHp, enemies, gridCols, gridRows, biome);
+      this.#applyPlaneToCombat();
       this.#combatEngine.startTurn();
       // Tiles fill the canvas: reserve 36px top (active char) + 36px bottom (init bar)
       const availW = CANVAS_W - 8;
@@ -2012,6 +2057,7 @@
       const partyGridPos = { col: Math.floor(gridCols / 2), row: Math.floor(gridRows / 2) };
 
       this.#combatEngine.initCombatWithGrid(partyWithHp, enemies, grid, biome, partyGridPos);
+      this.#applyPlaneToCombat();
       this.#combatEngine.startTurn();
       // Overworld combat uses the overworld tile size since background is the actual map
       this.#combatTileSize = TILE_SIZE;

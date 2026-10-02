@@ -61,7 +61,7 @@
     },
     elemental_fire: {
       base: 'CINDER', road: 'hell_road', gate: 'Pillar of Flame',
-      terrain: (h, m, v) => (v > 0.7 || h < 0.18 ? 'LAVA' : m > 0.68 ? 'ASH' : 'CINDER'),
+      terrain: (h, m, v) => (v > 0.8 || h < 0.08 ? 'LAVA' : m > 0.68 ? 'ASH' : 'CINDER'),
       props: { CINDER: ['vent', 13] },
       towns: ['Ember Bazaar'],
       sites: [site('Brazen Citadel', 'infernal', ['efreeti', 'salamander_noble'], 2), site('Cinder Forge', 'infernal', ['azer', 'mephit_fire']), site('Salamander Warrens', 'infernal', ['salamander_average', 'fire_elemental_medium'], 1)],
@@ -95,7 +95,7 @@
     },
     para_magma: {
       base: 'CINDER', road: 'hell_road', gate: 'Molten Arch',
-      terrain: (h, m, v) => (v > 0.6 ? 'LAVA' : m > 0.6 ? 'ASH' : 'CINDER'),
+      terrain: (h, m, v) => (v > 0.74 ? 'LAVA' : m > 0.6 ? 'ASH' : 'CINDER'),
       towns: ['Slagport'],
       sites: [site('Magma Forge', 'infernal', ['mephit_magma', 'magmin']), site('Molten Deep', 'infernal', ['salamander_average', 'fire_elemental_large'], 2)],
     },
@@ -279,6 +279,68 @@
     return out;
   }
 
+  // --- traits: how a plane changes a fight ----------------------------------
+
+  // energy that hurts every unprotected creature at the start of its turn
+  const HAZARDS = Object.freeze({
+    elemental_fire: { name: 'Searing Heat', energy: 'fire', dice: [1, 6] },
+    para_magma: { name: 'Molten Air', energy: 'fire', dice: [1, 6] },
+    para_smoke: { name: 'Choking Smoke', energy: 'fire', dice: [1, 4] },
+    para_ice: { name: 'Bitter Cold', energy: 'cold', dice: [1, 6] },
+    para_ooze: { name: 'Caustic Ooze', energy: 'acid', dice: [1, 4] },
+    negative_energy: { name: 'Life Drain', energy: 'negative', dice: [1, 6] },
+  });
+  const ELEMENT_ENERGY = Object.freeze({ fire: 'fire', water: 'cold', earth: 'acid', air: 'electricity' });
+  const OPPOSED = Object.freeze({ fire: 'cold', cold: 'fire', acid: 'electricity', electricity: 'acid' });
+  const PASS_FLY = 0b00010, PASS_SWIM = 0b00100;
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+  // The traits of a plane in play, each with a name and a line of rules text:
+  //   passMode     movement every creature gains (flying, swimming)
+  //   hazard       { energy, dice } damage at the start of each turn
+  //   heal         hit points every creature regains each turn
+  //   energy/opposed  spells of that energy deal 1.5x, the opposed 0.5x
+  //   spellMult    all spell damage scaled; wild: scaled at random
+  //   natives      subtypes of the plane's own folk, who hit at +1
+  //   visitorAttack  attack modifier for everyone else
+  function traits(id) {
+    const plane = TR.PlaneRegistry ? TR.PlaneRegistry.get(id) : null;
+    if (!plane || id === 'material')
+      return [];
+    const t = plane.traits || {};
+    const out = [];
+    if (t.gravity === 'none' || t.gravity === 'subjective')
+      out.push({ id: 'weightless', name: 'Weightless', text: 'Everyone floats and flies over any ground.', passMode: PASS_FLY });
+    if (id === 'elemental_water')
+      out.push({ id: 'flooded', name: 'Flooded', text: 'Water everywhere: everyone swims.', passMode: PASS_SWIM });
+    const hz = HAZARDS[id];
+    if (hz)
+      out.push({ id: 'hazard', name: hz.name, text: `Unprotected creatures take ${hz.dice[0]}d${hz.dice[1]} ${hz.energy} damage each turn.`, hazard: hz });
+    if (id === 'positive_energy')
+      out.push({ id: 'vital', name: 'Vital Surge', text: 'Every creature heals 2 hit points each turn.', heal: 2 });
+    const energy = t.elemental ? ELEMENT_ENERGY[t.elemental] : null;
+    if (energy && t.magic === 'enhanced')
+      out.push({ id: 'element_magic', name: `${cap(t.elemental)} Magic`, text: `${cap(energy)} spells strike half again as hard, ${OPPOSED[energy]} spells half as hard.`, energy, opposed: OPPOSED[energy] });
+    else if (t.magic === 'enhanced')
+      out.push({ id: 'potent_magic', name: 'Potent Magic', text: 'Spells strike a quarter harder.', spellMult: 1.25 });
+    else if (t.magic === 'impeded' || t.magic === 'limited')
+      out.push({ id: 'dulled_magic', name: 'Dulled Magic', text: 'Spells strike a quarter weaker.', spellMult: 0.75 });
+    else if (t.magic === 'wild')
+      out.push({ id: 'wild_magic', name: 'Wild Magic', text: 'Spells strike anywhere from half to half again as hard.', wild: true });
+    const al = t.alignment;
+    if (al && (al.law || al.good)) {
+      const natives = [];
+      if (al.law)
+        natives.push(al.law > 0 ? 'lawful' : 'chaotic');
+      if (al.good)
+        natives.push(al.good > 0 ? 'good' : 'evil');
+      out.push({ id: 'home_ground', name: `${natives.map(cap).join(' and ')} Ground`, text: `The plane's ${natives.join(', ')} natives fight at +1 to hit.`, natives });
+    }
+    if (id === 'gray_waste')
+      out.push({ id: 'despair', name: 'Despair', text: 'Grey apathy weighs on visitors: -1 to hit.', visitorAttack: -1 });
+    return out;
+  }
+
   // The plane's own creatures the game can field.
   function natives(id) {
     const plane = TR.PlaneRegistry ? TR.PlaneRegistry.get(id) : null;
@@ -289,7 +351,7 @@
   }
 
   TR.PlaneWorlds = Object.freeze({
-    get, natives, categoryOf,
+    get, natives, categoryOf, traits,
     shortName: id => SHORT[id] || (TR.PlaneRegistry && TR.PlaneRegistry.get(id) ? TR.PlaneRegistry.get(id).name : id),
     ids: () => Object.keys(PROFILES),
     has: id => !!get(id),
