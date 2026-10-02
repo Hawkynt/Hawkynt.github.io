@@ -67,6 +67,7 @@
     #animFrame;
     #hoverTile;
     #mouse = null;
+    #stepsSinceEncounter = 0;
     #playerPos;
     #overworldMap;
     #statusEls;
@@ -651,8 +652,11 @@
         }
       }
 
-      const chance = this.#overworldMap.encounterChance(col, row);
+      ++this.#stepsSinceEncounter;
+      const pacing = TR.encounterPacing ? TR.encounterPacing(this.#stepsSinceEncounter) : 1;
+      const chance = this.#overworldMap.encounterChance(col, row) * pacing;
       if (chance > 0 && this.#prng.next() < chance) {
+        this.#stepsSinceEncounter = 0;
         this.#walkPath = null;
         const avgLevel = this.#party.length > 0 ? Math.round(this.#party.reduce((s, c) => s + c.level, 0) / this.#party.length) : 1;
         const enemies = this.#overworldMap.encounterEnemies(col, row, this.#prng, avgLevel);
@@ -3262,6 +3266,8 @@
 
     async #onTransition(e) {
       this.#screenTime = 0;
+      if (e.to === GameState.OVERWORLD && e.from !== GameState.COMBAT)
+        this.#stepsSinceEncounter = 0;
       if (e.to !== GameState.COMBAT) {
         this.#hideCombatLogPanel();
         if (this._combatUI) this._combatUI.hide();
