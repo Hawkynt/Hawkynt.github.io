@@ -184,17 +184,17 @@
     let r3 = r[3];
     /** @type {uint32} */
     let r4 = r[4];
-    r3 ^= r0;  r4  = r1;
-    r1 &= r3;  r4 ^= r2;
-    r1 ^= r0;  r0 |= r3;
-    r0 ^= r4;  r4 ^= r3;
-    r3 ^= r2;  r2 |= r1;
-    r2 ^= r4;  r4 = ~r4;
-    r4 |= r1;  r1 ^= r3;
-    r1 ^= r4;  r3 |= r0;
-    r1 ^= r3;  r4 ^= r3;
+    r3 = OpCodes.Xor32(r3, r0);  r4 = r1;
+    r1 = OpCodes.And32(r1, r3);  r4 = OpCodes.Xor32(r4, r2);
+    r1 = OpCodes.Xor32(r1, r0);  r0 = OpCodes.Or32(r0, r3);
+    r0 = OpCodes.Xor32(r0, r4);  r4 = OpCodes.Xor32(r4, r3);
+    r3 = OpCodes.Xor32(r3, r2);  r2 = OpCodes.Or32(r2, r1);
+    r2 = OpCodes.Xor32(r2, r4);  r4 = OpCodes.Not32(r4);
+    r4 = OpCodes.Or32(r4, r1);  r1 = OpCodes.Xor32(r1, r3);
+    r1 = OpCodes.Xor32(r1, r4);  r3 = OpCodes.Or32(r3, r0);
+    r1 = OpCodes.Xor32(r1, r3);  r4 = OpCodes.Xor32(r4, r3);
     /** @type {uint32[]} */
-    const regs = [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    const regs = [r0, r1, r2, r3, r4];
     return regs;
   }
 
@@ -213,18 +213,18 @@
     let r3 = r[3];
     /** @type {uint32} */
     let r4 = r[4];
-    r0 = ~r0;  r2 = ~r2;
-    r4  = r0;  r0 &= r1;
-    r2 ^= r0;  r0 |= r3;
-    r3 ^= r2;  r1 ^= r0;
-    r0 ^= r4;  r4 |= r1;
-    r1 ^= r3;  r2 |= r0;
-    r2 &= r4;  r0 ^= r1;
-    r1 &= r2;
-    r1 ^= r0;  r0 &= r2;
-    r0 ^= r4;
+    r0 = OpCodes.Not32(r0);  r2 = OpCodes.Not32(r2);
+    r4 = r0;  r0 = OpCodes.And32(r0, r1);
+    r2 = OpCodes.Xor32(r2, r0);  r0 = OpCodes.Or32(r0, r3);
+    r3 = OpCodes.Xor32(r3, r2);  r1 = OpCodes.Xor32(r1, r0);
+    r0 = OpCodes.Xor32(r0, r4);  r4 = OpCodes.Or32(r4, r1);
+    r1 = OpCodes.Xor32(r1, r3);  r2 = OpCodes.Or32(r2, r0);
+    r2 = OpCodes.And32(r2, r4);  r0 = OpCodes.Xor32(r0, r1);
+    r1 = OpCodes.And32(r1, r2);
+    r1 = OpCodes.Xor32(r1, r0);  r0 = OpCodes.And32(r0, r2);
+    r0 = OpCodes.Xor32(r0, r4);
     /** @type {uint32[]} */
-    const regs = [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    const regs = [r0, r1, r2, r3, r4];
     return regs;
   }
 
@@ -243,16 +243,16 @@
     let r3 = r[3];
     /** @type {uint32} */
     let r4 = r[4];
-    r4  = r0;  r0 &= r2;
-    r0 ^= r3;  r2 ^= r1;
-    r2 ^= r0;  r3 |= r4;
-    r3 ^= r1;  r4 ^= r2;
-    r1  = r3;  r3 |= r4;
-    r3 ^= r0;  r0 &= r1;
-    r4 ^= r0;  r1 ^= r3;
-    r1 ^= r4;  r4 = ~r4;
+    r4 = r0;  r0 = OpCodes.And32(r0, r2);
+    r0 = OpCodes.Xor32(r0, r3);  r2 = OpCodes.Xor32(r2, r1);
+    r2 = OpCodes.Xor32(r2, r0);  r3 = OpCodes.Or32(r3, r4);
+    r3 = OpCodes.Xor32(r3, r1);  r4 = OpCodes.Xor32(r4, r2);
+    r1 = r3;  r3 = OpCodes.Or32(r3, r4);
+    r3 = OpCodes.Xor32(r3, r0);  r0 = OpCodes.And32(r0, r1);
+    r4 = OpCodes.Xor32(r4, r0);  r1 = OpCodes.Xor32(r1, r3);
+    r1 = OpCodes.Xor32(r1, r4);  r4 = OpCodes.Not32(r4);
     /** @type {uint32[]} */
-    const regs = [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    const regs = [r0, r1, r2, r3, r4];
     return regs;
   }
 
@@ -271,18 +271,18 @@
     let r3 = r[3];
     /** @type {uint32} */
     let r4 = r[4];
-    r4  = r0;  r0 |= r3;
-    r3 ^= r1;  r1 &= r4;
-    r4 ^= r2;  r2 ^= r3;
-    r3 &= r0;  r4 |= r1;
-    r3 ^= r4;  r0 ^= r1;
-    r4 &= r0;  r1 ^= r3;
-    r4 ^= r2;  r1 |= r0;
-    r1 ^= r2;  r0 ^= r3;
-    r2  = r1;  r1 |= r3;
-    r1 ^= r0;
+    r4 = r0;  r0 = OpCodes.Or32(r0, r3);
+    r3 = OpCodes.Xor32(r3, r1);  r1 = OpCodes.And32(r1, r4);
+    r4 = OpCodes.Xor32(r4, r2);  r2 = OpCodes.Xor32(r2, r3);
+    r3 = OpCodes.And32(r3, r0);  r4 = OpCodes.Or32(r4, r1);
+    r3 = OpCodes.Xor32(r3, r4);  r0 = OpCodes.Xor32(r0, r1);
+    r4 = OpCodes.And32(r4, r0);  r1 = OpCodes.Xor32(r1, r3);
+    r4 = OpCodes.Xor32(r4, r2);  r1 = OpCodes.Or32(r1, r0);
+    r1 = OpCodes.Xor32(r1, r2);  r0 = OpCodes.Xor32(r0, r3);
+    r2 = r1;  r1 = OpCodes.Or32(r1, r3);
+    r1 = OpCodes.Xor32(r1, r0);
     /** @type {uint32[]} */
-    const regs = [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    const regs = [r0, r1, r2, r3, r4];
     return regs;
   }
 
@@ -301,18 +301,18 @@
     let r3 = r[3];
     /** @type {uint32} */
     let r4 = r[4];
-    r1 ^= r3;  r3 = ~r3;
-    r2 ^= r3;  r3 ^= r0;
-    r4  = r1;  r1 &= r3;
-    r1 ^= r2;  r4 ^= r3;
-    r0 ^= r4;  r2 &= r4;
-    r2 ^= r0;  r0 &= r1;
-    r3 ^= r0;  r4 |= r1;
-    r4 ^= r0;  r0 |= r3;
-    r0 ^= r2;  r2 &= r3;
-    r0 = ~r0;  r4 ^= r2;
+    r1 = OpCodes.Xor32(r1, r3);  r3 = OpCodes.Not32(r3);
+    r2 = OpCodes.Xor32(r2, r3);  r3 = OpCodes.Xor32(r3, r0);
+    r4 = r1;  r1 = OpCodes.And32(r1, r3);
+    r1 = OpCodes.Xor32(r1, r2);  r4 = OpCodes.Xor32(r4, r3);
+    r0 = OpCodes.Xor32(r0, r4);  r2 = OpCodes.And32(r2, r4);
+    r2 = OpCodes.Xor32(r2, r0);  r0 = OpCodes.And32(r0, r1);
+    r3 = OpCodes.Xor32(r3, r0);  r4 = OpCodes.Or32(r4, r1);
+    r4 = OpCodes.Xor32(r4, r0);  r0 = OpCodes.Or32(r0, r3);
+    r0 = OpCodes.Xor32(r0, r2);  r2 = OpCodes.And32(r2, r3);
+    r0 = OpCodes.Not32(r0);  r4 = OpCodes.Xor32(r4, r2);
     /** @type {uint32[]} */
-    const regs = [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    const regs = [r0, r1, r2, r3, r4];
     return regs;
   }
 
@@ -331,18 +331,18 @@
     let r3 = r[3];
     /** @type {uint32} */
     let r4 = r[4];
-    r0 ^= r1;  r1 ^= r3;
-    r3 = ~r3;  r4  = r1;
-    r1 &= r0;  r2 ^= r3;
-    r1 ^= r2;  r2 |= r4;
-    r4 ^= r3;  r3 &= r1;
-    r3 ^= r0;  r4 ^= r1;
-    r4 ^= r2;  r2 ^= r0;
-    r0 &= r3;  r2 = ~r2;
-    r0 ^= r4;  r4 |= r3;
-    r2 ^= r4;
+    r0 = OpCodes.Xor32(r0, r1);  r1 = OpCodes.Xor32(r1, r3);
+    r3 = OpCodes.Not32(r3);  r4 = r1;
+    r1 = OpCodes.And32(r1, r0);  r2 = OpCodes.Xor32(r2, r3);
+    r1 = OpCodes.Xor32(r1, r2);  r2 = OpCodes.Or32(r2, r4);
+    r4 = OpCodes.Xor32(r4, r3);  r3 = OpCodes.And32(r3, r1);
+    r3 = OpCodes.Xor32(r3, r0);  r4 = OpCodes.Xor32(r4, r1);
+    r4 = OpCodes.Xor32(r4, r2);  r2 = OpCodes.Xor32(r2, r0);
+    r0 = OpCodes.And32(r0, r3);  r2 = OpCodes.Not32(r2);
+    r0 = OpCodes.Xor32(r0, r4);  r4 = OpCodes.Or32(r4, r3);
+    r2 = OpCodes.Xor32(r2, r4);
     /** @type {uint32[]} */
-    const regs = [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    const regs = [r0, r1, r2, r3, r4];
     return regs;
   }
 
@@ -361,18 +361,18 @@
     let r3 = r[3];
     /** @type {uint32} */
     let r4 = r[4];
-    r2 = ~r2;  r4  = r3;
-    r3 &= r0;  r0 ^= r4;
-    r3 ^= r2;  r2 |= r4;
-    r1 ^= r3;  r2 ^= r0;
-    r0 |= r1;  r2 ^= r1;
-    r4 ^= r0;  r0 |= r3;
-    r0 ^= r2;  r4 ^= r3;
-    r4 ^= r0;  r3 = ~r3;
-    r2 &= r4;
-    r2 ^= r3;
+    r2 = OpCodes.Not32(r2);  r4 = r3;
+    r3 = OpCodes.And32(r3, r0);  r0 = OpCodes.Xor32(r0, r4);
+    r3 = OpCodes.Xor32(r3, r2);  r2 = OpCodes.Or32(r2, r4);
+    r1 = OpCodes.Xor32(r1, r3);  r2 = OpCodes.Xor32(r2, r0);
+    r0 = OpCodes.Or32(r0, r1);  r2 = OpCodes.Xor32(r2, r1);
+    r4 = OpCodes.Xor32(r4, r0);  r0 = OpCodes.Or32(r0, r3);
+    r0 = OpCodes.Xor32(r0, r2);  r4 = OpCodes.Xor32(r4, r3);
+    r4 = OpCodes.Xor32(r4, r0);  r3 = OpCodes.Not32(r3);
+    r2 = OpCodes.And32(r2, r4);
+    r2 = OpCodes.Xor32(r2, r3);
     /** @type {uint32[]} */
-    const regs = [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    const regs = [r0, r1, r2, r3, r4];
     return regs;
   }
 
@@ -391,19 +391,19 @@
     let r3 = r[3];
     /** @type {uint32} */
     let r4 = r[4];
-    r4  = r1;  r1 |= r2;
-    r1 ^= r3;  r4 ^= r2;
-    r2 ^= r1;  r3 |= r4;
-    r3 &= r0;  r4 ^= r2;
-    r3 ^= r1;  r1 |= r4;
-    r1 ^= r0;  r0 |= r4;
-    r0 ^= r2;  r1 ^= r4;
-    r2 ^= r1;  r1 &= r0;
-    r1 ^= r4;  r2 = ~r2;
-    r2 |= r0;
-    r4 ^= r2;
+    r4 = r1;  r1 = OpCodes.Or32(r1, r2);
+    r1 = OpCodes.Xor32(r1, r3);  r4 = OpCodes.Xor32(r4, r2);
+    r2 = OpCodes.Xor32(r2, r1);  r3 = OpCodes.Or32(r3, r4);
+    r3 = OpCodes.And32(r3, r0);  r4 = OpCodes.Xor32(r4, r2);
+    r3 = OpCodes.Xor32(r3, r1);  r1 = OpCodes.Or32(r1, r4);
+    r1 = OpCodes.Xor32(r1, r0);  r0 = OpCodes.Or32(r0, r4);
+    r0 = OpCodes.Xor32(r0, r2);  r1 = OpCodes.Xor32(r1, r4);
+    r2 = OpCodes.Xor32(r2, r1);  r1 = OpCodes.And32(r1, r0);
+    r1 = OpCodes.Xor32(r1, r4);  r2 = OpCodes.Not32(r2);
+    r2 = OpCodes.Or32(r2, r0);
+    r4 = OpCodes.Xor32(r4, r2);
     /** @type {uint32[]} */
-    const regs = [OpCodes.ToUint32(r0), OpCodes.ToUint32(r1), OpCodes.ToUint32(r2), OpCodes.ToUint32(r3), OpCodes.ToUint32(r4)];
+    const regs = [r0, r1, r2, r3, r4];
     return regs;
   }
 
