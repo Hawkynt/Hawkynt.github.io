@@ -74,6 +74,8 @@
     get bab() { return this.#character.bab; }
     get speed() { return this.#character.speed; }
     get speedTiles() { return Math.floor(this.#character.speed / 5); }
+    // movement modes (walk, fly, swim, ...) of monsters; party units walk
+    get passMode() { return this.#character.passMode || undefined; }
     get dexMod() { return Character.abilityMod(this.#character.stats.dex); }
     get strMod() { return Character.abilityMod(this.#character.stats.str); }
     get currentMp() { return this.#currentMp; }
