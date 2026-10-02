@@ -24,6 +24,9 @@
     light: '#f1c49c', tan: '#d69a6c', brown: '#9c6541', dark: '#6b4430',
     green: '#7fae54', grey: '#a9b2b8', red: '#c8563c', pale: '#c9d6de',
     orange: '#d8844a', blue: '#7fa0c8',
+    obsidian: '#3c3446', ash: '#8e9096', jaundice: '#b4b46a', violet: '#8e72b0', sea: '#5a9a8a',
+    bark: '#8a6a44', ember: '#e8743a', azure: '#5a86d8', crimson: '#b8382a', stone: '#9a968c', wrapped: '#d8ccaa',
+    gold: '#d8b44a', leaf: '#6aa84a',
   });
 
   const CLASS_LOOKS = Object.freeze({
@@ -65,6 +68,58 @@
     dark_mage:  { skin: 'pale', body: 'robe', bodyColor: '#1e1a2a', trim: '#8a2ad6', legs: '#1e1a2a', headgear: 'hood', hoodColor: '#16121e', eyes: '#ff4a6a', weapon: 'staff', gem: '#ff3a5a', cape: '#2a0e1e' },
     wight:      { skin: 'pale', body: 'mail', bodyColor: '#5a5e62', trim: '#3a3e42', legs: '#3a3e42', headgear: 'helm', eyes: '#7ae0ff', weapon: 'sword', shield: null, cape: '#2a2e38', hairColor: '#d8dde2', scale: 1.02 },
     hill_giant: { skin: 'tan', body: 'bare', bodyColor: null, trim: '#6b4a2e', legs: '#6b4a2e', headgear: 'none', hair: 'wild', hairColor: '#4a3020', beard: '#4a3020', weapon: 'club', scale: 1.4, width: 1.35 },
+    // people of the deep and the planes
+    drow_warrior:      { skin: 'obsidian', body: 'leather', bodyColor: '#2a2236', trim: '#8a5ad6', legs: '#1e1a28', headgear: 'none', hair: 'long', hairColor: '#eeeef4', ears: true, eyes: '#ff4a4a', weapon: 'rapier', cape: '#1a1424' },
+    duergar_warrior:   { skin: 'ash', body: 'mail', bodyColor: '#5a5a62', trim: '#3a3a40', legs: '#3a3a40', headgear: 'helm', weapon: 'mace', shield: '#4a4a52', beard: '#c8c8cc', hairColor: '#c8c8cc', scale: 0.82, width: 1.2 },
+    githyanki_warrior: { skin: 'jaundice', body: 'mail', bodyColor: '#7a5a3a', trim: '#c8a040', legs: '#4a3a2a', headgear: 'none', hair: 'bald', ears: true, eyes: '#1a1a1a', weapon: 'sword', scale: 1.04, width: 0.92 },
+    githzerai_monk:    { skin: 'jaundice', body: 'tunic', bodyColor: '#6a5a8a', trim: '#3a3050', legs: '#4a3a5a', headgear: 'none', hair: 'bald', ears: true, weapon: 'none', scale: 1.02, width: 0.88 },
+    yuan_ti_pureblood: { skin: 'sea', body: 'robe', bodyColor: '#2a5a3a', trim: '#c8a040', legs: '#2a5a3a', headgear: 'none', hair: 'bald', eyes: '#ffd84a', weapon: 'dagger' },
+    medusa:            { skin: 'leaf', body: 'robe', bodyColor: '#3a6a4a', trim: '#d8b44a', legs: '#3a6a4a', headgear: 'none', hair: 'wild', hairColor: '#3a8a3a', eyes: '#ffe84a', weapon: 'bow' },
+    sahuagin:          { skin: 'sea', body: 'bare', trim: '#2a4a5a', legs: '#2a5a5a', headgear: 'none', hair: 'bald', eyes: '#ffd84a', weapon: 'staff', gem: '#c8c8c8', scale: 1.02, width: 1.1 },
+    mind_flayer_h:     { skin: 'violet', body: 'robe', bodyColor: '#3a1e4a', trim: '#8a5ad6', legs: '#2a1438', headgear: 'none', hair: 'bald', eyes: '#f4f4ff', weapon: 'orb', gem: '#d87aff', cape: '#2a1438' },
+    azer:              { skin: 'ember', body: 'mail', bodyColor: '#b8783a', trim: '#e8b44a', legs: '#8a5a2a', headgear: 'none', hair: 'wild', hairColor: '#ff9a2a', beard: '#ff9a2a', weapon: 'greataxe', scale: 0.85, width: 1.15 },
+    janni:             { skin: 'tan', body: 'doublet', bodyColor: '#d8b46a', trim: '#8a3a2a', legs: '#f0e6d0', headgear: 'cap', hoodColor: '#f0e6d0', weapon: 'sword', beard: '#2a1a10', hairColor: '#2a1a10', scale: 1.1, width: 1.05 },
+    djinni:            { skin: 'azure', body: 'bare', trim: '#e8c14a', legs: '#e8eef8', headgear: 'cap', hoodColor: '#f0f4ff', weapon: 'sword', beard: '#1a1a2a', hairColor: '#1a1a2a', scale: 1.35, width: 1.25 },
+    efreeti:           { skin: 'crimson', body: 'bare', trim: '#2a1a10', legs: '#3a2218', headgear: 'none', hair: 'bald', horns: '#2a1a10', eyes: '#ffd84a', weapon: 'greataxe', scale: 1.4, width: 1.3 },
+    marid:             { skin: 'azure', body: 'bare', trim: '#3a8ac8', legs: '#2a5a8a', headgear: 'circlet', weapon: 'staff', gem: '#7ae0ff', hair: 'long', hairColor: '#d8f0ff', scale: 1.4, width: 1.25 },
+    dao:               { skin: 'bark', body: 'bare', trim: '#d8b44a', legs: '#5a4030', headgear: 'none', hair: 'bald', horns: '#d8b44a', weapon: 'greataxe', scale: 1.4, width: 1.35 },
+    rakshasa:          { skin: 'orange', body: 'robe', bodyColor: '#7a1a3a', trim: '#e8c14a', legs: '#5a1028', headgear: 'none', hair: 'wild', hairColor: '#2a1a10', ears: true, eyes: '#ffd84a', weapon: 'orb', gem: '#ff6a3a' },
+    night_hag:         { skin: 'violet', body: 'robe', bodyColor: '#2a2030', trim: '#5a4a6a', legs: '#2a2030', headgear: 'none', hair: 'wild', hairColor: '#1a1018', eyes: '#ff4a2a', weapon: 'staff', gem: '#a83ad6' },
+    chain_devil:       { skin: 'pale', body: 'mail', bodyColor: '#6a6a72', trim: '#8a2a2a', legs: '#4a4a52', headgear: 'helm', eyes: '#ff3a3a', weapon: 'club', scale: 1.05 },
+    erinyes:           { skin: 'light', body: 'plate', bodyColor: '#7a1a1a', trim: '#2a1a1a', legs: '#4a1010', headgear: 'none', hair: 'long', hairColor: '#1a1018', eyes: '#ff4a4a', weapon: 'bow', cape: '#3a0a0a' },
+    succubus:          { skin: 'crimson', body: 'leather', bodyColor: '#2a1018', trim: '#a83a5a', legs: '#2a1018', headgear: 'none', hair: 'long', hairColor: '#1a0a10', horns: '#2a1a2a', eyes: '#ffd84a', weapon: 'dagger', cape: '#4a1028' },
+    vampire:           { skin: 'pale', body: 'doublet', bodyColor: '#1a1a22', trim: '#a8182a', legs: '#1a1a22', headgear: 'none', hairColor: '#0a0a10', eyes: '#ff2a3a', weapon: 'rapier', cape: '#6a0a1a' },
+    mummy:             { skin: 'wrapped', body: 'tunic', bodyColor: '#c8bc98', trim: '#8a7a5a', legs: '#c8bc98', headgear: 'hood', hoodColor: '#d8ccaa', eyes: '#7affa8', weapon: 'none', scale: 1.04 },
+    // constructs in armour
+    nimblewright:      { skin: 'stone', body: 'plate', bodyColor: '#a8a49a', trim: '#5a5a62', legs: '#7a7a72', headgear: 'helm', eyes: '#7ae0ff', weapon: 'rapier' },
+    shield_guardian:   { skin: 'stone', body: 'plate', bodyColor: '#8a8478', trim: '#c8a040', legs: '#6a645a', headgear: 'helm', eyes: '#ffd84a', weapon: 'none', shield: '#8a8478', scale: 1.3, width: 1.3 },
+    inevitable_zelekhut: { skin: 'gold', body: 'plate', bodyColor: '#d8b44a', trim: '#f0e6c0', legs: '#a8843a', headgear: 'helm', eyes: '#7ae0ff', weapon: 'mace', scale: 1.15, width: 1.2 },
+    inevitable_kolyarut: { skin: 'gold', body: 'plate', bodyColor: '#c8a040', trim: '#e8d8a0', legs: '#9a7a30', headgear: 'helm', eyes: '#7ae0ff', weapon: 'sword', cape: '#5a3a8a' },
+    inevitable_marut:  { skin: 'gold', body: 'plate', bodyColor: '#2a2a32', trim: '#e8c14a', legs: '#1e1e26', headgear: 'helm', eyes: '#ffd84a', weapon: 'none', scale: 1.4, width: 1.35 },
+    // giants
+    firbolg:           { skin: 'light', body: 'leather', bodyColor: '#5a6a3a', trim: '#8a6a3a', legs: '#4a3a2a', headgear: 'none', hair: 'long', hairColor: '#c8783a', beard: '#c8783a', weapon: 'greataxe', scale: 1.35, width: 1.2 },
+    verbeeg:           { skin: 'tan', body: 'tunic', bodyColor: '#6a5a4a', trim: '#3a2a1a', legs: '#4a3a2a', headgear: 'none', hair: 'wild', hairColor: '#5a4030', weapon: 'club', scale: 1.35, width: 1.1 },
+    cyclops:           { skin: 'tan', body: 'bare', trim: '#5a3a1e', legs: '#5a3a1e', headgear: 'none', hair: 'bald', eyes: '#ffd84a', weapon: 'club', scale: 1.45, width: 1.35 },
+    ettin:             { skin: 'brown', body: 'leather', bodyColor: '#4a3a2a', trim: '#2a2018', legs: '#3a2a1e', headgear: 'none', hair: 'wild', hairColor: '#2a2018', tusks: true, weapon: 'club', scale: 1.45, width: 1.45 },
+    stone_giant:       { skin: 'stone', body: 'bare', trim: '#5a5a52', legs: '#5a5a52', headgear: 'none', hair: 'bald', weapon: 'club', scale: 1.45, width: 1.3 },
+    fire_giant:        { skin: 'obsidian', body: 'plate', bodyColor: '#5a2a1a', trim: '#e8742a', legs: '#3a1a10', headgear: 'none', hair: 'wild', hairColor: '#ff5a1a', beard: '#ff5a1a', weapon: 'sword', scale: 1.45, width: 1.4 },
+    fomorian:          { skin: 'brown', body: 'bare', trim: '#3a2a1e', legs: '#3a2a1e', headgear: 'none', hair: 'wild', hairColor: '#1a1a10', weapon: 'club', scale: 1.45, width: 1.4 },
+    cloud_giant:       { skin: 'light', body: 'robe', bodyColor: '#d8e0f0', trim: '#7a9ad8', legs: '#b8c4d8', headgear: 'circlet', hair: 'long', hairColor: '#f0f0f8', beard: '#f0f0f8', weapon: 'mace', scale: 1.5, width: 1.3 },
+    storm_giant:       { skin: 'sea', body: 'mail', bodyColor: '#3a6a7a', trim: '#e8c14a', legs: '#2a4a5a', headgear: 'circlet', hair: 'long', hairColor: '#a8c8d8', beard: '#a8c8d8', weapon: 'sword', scale: 1.5, width: 1.35 },
+    // fey folk
+    brownie:           { skin: 'tan', body: 'tunic', bodyColor: '#7a5a3a', trim: '#4a8a3a', legs: '#5a4030', headgear: 'cap', hoodColor: '#4a8a3a', ears: true, weapon: 'dagger', scale: 0.55, width: 0.9 },
+    killmoulis:        { skin: 'tan', body: 'tunic', bodyColor: '#5a4a3a', trim: '#8a6a3a', legs: '#4a3a2a', headgear: 'none', hair: 'wild', hairColor: '#6a4a2a', ears: true, weapon: 'none', scale: 0.5, width: 0.85 },
+    quickling:         { skin: 'pale', body: 'leather', bodyColor: '#3a4a3a', trim: '#8a8a5a', legs: '#2a3a2a', headgear: 'none', hair: 'wild', hairColor: '#d8d8c8', ears: true, eyes: '#ff4a4a', weapon: 'dagger', scale: 0.55, width: 0.8 },
+    korred:            { skin: 'brown', body: 'bare', trim: '#5a4030', legs: '#5a4030', headgear: 'none', hair: 'wild', hairColor: '#3a2a1a', beard: '#3a2a1a', ears: true, weapon: 'club', scale: 0.62, width: 1.1 },
+    sprite:            { skin: 'light', body: 'tunic', bodyColor: '#6ab8e8', trim: '#e8f0ff', legs: '#4a8ac8', headgear: 'none', hair: 'long', hairColor: '#e8d27a', ears: true, weapon: 'bow', scale: 0.5, width: 0.85 },
+    pixie:             { skin: 'light', body: 'tunic', bodyColor: '#a87ad8', trim: '#f0e0ff', legs: '#7a5aa8', headgear: 'none', hair: 'long', hairColor: '#f0a8d8', ears: true, weapon: 'dagger', scale: 0.48, width: 0.85 },
+    atomie:            { skin: 'light', body: 'tunic', bodyColor: '#8ad87a', trim: '#e8ffe0', legs: '#5aa84a', headgear: 'none', hairColor: '#8a5a2a', ears: true, weapon: 'dagger', scale: 0.45, width: 0.85 },
+    nixie:             { skin: 'sea', body: 'tunic', bodyColor: '#3a8a8a', trim: '#a8e8e8', legs: '#2a6a6a', headgear: 'none', hair: 'long', hairColor: '#2a6a4a', ears: true, weapon: 'dagger', scale: 0.62, width: 0.9 },
+    nereid:            { skin: 'blue', body: 'robe', bodyColor: '#7ab8e8', trim: '#e8f8ff', legs: '#5a98c8', headgear: 'none', hair: 'long', hairColor: '#e8f0ff', ears: true, weapon: 'none' },
+    dryad:             { skin: 'bark', body: 'robe', bodyColor: '#4a7a3a', trim: '#8ad84a', legs: '#3a5a2a', headgear: 'circlet', hair: 'long', hairColor: '#5a9a3a', ears: true, weapon: 'staff', gem: '#8ae07a' },
+    nymph:             { skin: 'light', body: 'robe', bodyColor: '#e8f0e0', trim: '#8ad84a', legs: '#c8d8c0', headgear: 'circlet', hair: 'long', hairColor: '#e8d27a', ears: true, weapon: 'none' },
+    satyr:             { skin: 'tan', body: 'bare', trim: '#6a4a2e', legs: '#6a4a2e', headgear: 'none', hair: 'wild', hairColor: '#4a3020', beard: '#4a3020', horns: '#d8c8a0', ears: true, weapon: 'none' },
+    fossergrim:        { skin: 'sea', body: 'bare', trim: '#3a5a4a', legs: '#3a5a4a', headgear: 'none', hair: 'long', hairColor: '#3a5a3a', beard: '#3a5a3a', weapon: 'sword', scale: 1.05 },
   });
 
   function lookFor(unit) {
@@ -612,20 +667,41 @@
       ctx.fill();
       return { w: size, h: size, kind: 'circle' };
     }
-    const img = sprite.img;
-    ctx.drawImage(img, sprite.srcX, sprite.srcY, sprite.srcW, sprite.srcH, -size / 2, -size, size, size);
-    if (sprite.tint) {
-      ctx.globalCompositeOperation = 'source-atop';
-      ctx.fillStyle = sprite.tint;
-      ctx.fillRect(-size / 2, -size, size, size);
-      ctx.globalCompositeOperation = 'source-over';
-    }
+    const src = sprite.tint ? tinted(sprite) : null;
+    const img = src || sprite.img;
+    const sx = src ? 0 : sprite.srcX, sy = src ? 0 : sprite.srcY;
+    ctx.drawImage(img, sx, sy, sprite.srcW, sprite.srcH, -size / 2, -size, size, size);
     if (opts.flash > 0) {
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha *= Math.min(1, opts.flash);
-      ctx.drawImage(img, sprite.srcX, sprite.srcY, sprite.srcW, sprite.srcH, -size / 2, -size, size, size);
+      ctx.drawImage(img, sx, sy, sprite.srcW, sprite.srcH, -size / 2, -size, size, size);
     }
     return { w: size, h: size, kind: 'sprite' };
+  }
+
+  // A tinted copy of a sprite, cut out on its own canvas so the wash only
+  // touches the creature's pixels.
+  const _tinted = new Map();
+  function tinted(sprite) {
+    if (typeof document === 'undefined' || !sprite.img || !(sprite.img.width || sprite.img.naturalWidth))
+      return null;
+    const key = `${sprite.img.src || ''}|${sprite.srcX},${sprite.srcY},${sprite.srcW},${sprite.srcH}|${sprite.tint}`;
+    let c = _tinted.get(key);
+    if (c)
+      return c;
+    c = document.createElement('canvas');
+    c.width = sprite.srcW;
+    c.height = sprite.srcH;
+    const g = c.getContext('2d');
+    if (!g)
+      return null;
+    g.imageSmoothingEnabled = false;
+    g.drawImage(sprite.img, sprite.srcX, sprite.srcY, sprite.srcW, sprite.srcH, 0, 0, sprite.srcW, sprite.srcH);
+    g.globalCompositeOperation = 'source-atop';
+    g.fillStyle = sprite.tint;
+    g.fillRect(0, 0, sprite.srcW, sprite.srcH);
+    _tinted.set(key, c);
+    return c;
   }
 
   function hasDoll(unit) {
