@@ -836,6 +836,16 @@
 
   setupCanvas();
   SZ.GameAudio.attachMuteButton();
+  SZ.TouchControls.attach({
+    container: document.querySelector('.game-frame'),
+    stick: 'four',
+    repeat: 170,
+    buttons: [
+      { label: '\u21BB', code: 'KeyE', title: 'Rotate right' },
+      { label: '\u21BA', code: 'KeyQ', title: 'Rotate left' }
+    ],
+    extra: [{ label: 'II', code: 'Escape', title: 'Pause' }]
+  });
   loadProgress();
   loadHighScores();
   updateWindowTitle();
