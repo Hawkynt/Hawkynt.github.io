@@ -152,7 +152,9 @@
     }
 
 
-    drawInfiniteMap(tileGetter, dimension) {
+    // groundGetter: optional (col, row) => painted ground id; with it the
+    // material plane draws regional ground and biome features.
+    drawInfiniteMap(tileGetter, dimension, groundGetter = null) {
       if (!this.#bufCtx)
         return;
       const ctx = this.#bufCtx;
@@ -191,6 +193,11 @@
       // the material plane gets painted, varied grass and dirt roads
       const TA = TR.TerrainArt;
       const painted = (!dimension || dimension === 'material') && TA && assets ? assets.get('terrain') : null;
+      const props = assets ? assets.get('props') : null;
+      const DA = TR.DungeonArt;
+      const kenney = i => TR.spriteRectM ? TR.spriteRectM(i, TR.OVERWORLD_COLS, TR.OVERWORLD_MARGIN) : null;
+      const OVERLAY_TREES = [kenney(528), kenney(526), kenney(528)];
+      const CACTUS = kenney(592), DEAD_TREE = kenney(597);
       const paint = (id, c, r, sx, sy) => {
         const q = TA.rect(id, c, r);
         ctx.drawImage(painted, q.x, q.y, q.w, q.h, sx, sy, tsDraw, tsDraw);
@@ -201,6 +208,41 @@
           const sx = c * ts - fcx;
           const sy = r * ts - fcy;
           let drawn = false;
+          if (painted && groundGetter && tile !== 6 && tile !== 8 && tile > 0) {
+            paint(groundGetter(c, r), c, r, sx, sy);
+            const h = (Math.imul(c * 73856093 ^ r * 19349663, 0x9E3779B1) >>> 0) >>> 5;
+            const prop = id => {
+              const q = DA && props ? DA.rect(id) : null;
+              if (q)
+                ctx.drawImage(props, q.x, q.y, q.w, q.h, sx, sy, tsDraw, tsDraw);
+            };
+            const sheetRect = q => {
+              if (q && sheetImg)
+                ctx.drawImage(sheetImg, q.x, q.y, q.w, q.h, sx, sy, tsDraw, tsDraw);
+            };
+            switch (tile) {
+              case 1: if (h % 29 === 0) prop('flowers'); break;
+              case 2: sheetRect(OVERLAY_TREES[h % 3]); break;
+              case 10: if (h % 13 === 0) prop('snow_rock'); break;
+              case 11: prop('snow_pine'); break;
+              case 12: if (h % 3 === 1) prop('palm'); else if (h % 3 === 2) sheetRect(OVERLAY_TREES[h % 2]); break;
+              case 13: if (h % 9 === 0) sheetRect(CACTUS); break;
+              case 14: if (h % 7 === 0) prop('mesa'); break;
+              case 15: if (h % 11 === 0) sheetRect(DEAD_TREE); else if (h % 3 === 0) prop('reeds'); break;
+              case 16: prop('hillock'); break;
+              case 17: if (h % 8 === 0) prop('acacia'); break;
+              case 19: if (h % 9 === 0) prop('vent'); break;
+              default: break;
+            }
+            // mountains and locations stand on the regional ground
+            if ((tile === 3 || tile === 4 || tile === 5 || tile === 7) && spriteMap) {
+              const rect = spriteMap[TILE_NAMES[tile]];
+              const img = rect && rect.sheet ? assets.get(rect.sheet) : sheetImg;
+              if (rect && img)
+                ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, sx, sy, tsDraw, tsDraw);
+            }
+            continue;
+          }
           if (sheetImg && tile > 0 && tile < TILE_NAMES.length) {
             // Draw grass base layer for overlay tiles (forest, mountain, etc.)
             if (NEEDS_BASE[tile] && painted)
@@ -316,6 +358,17 @@
         case 7: return '#5a7a8a';
         case 8: return '#2a4a8a';
         case 9: return '#c8b878';
+        case 10: return '#e8eef6';
+        case 11: return '#2f5a46';
+        case 12: return '#2a6a2a';
+        case 13: return '#d8bc80';
+        case 14: return '#b0663e';
+        case 15: return '#4a5a36';
+        case 16: return '#6aa848';
+        case 17: return '#c8b05a';
+        case 18: return '#a8d0ea';
+        case 19: return '#5a5658';
+        case 20: return '#e8501a';
         default: return '#333';
       }
     }

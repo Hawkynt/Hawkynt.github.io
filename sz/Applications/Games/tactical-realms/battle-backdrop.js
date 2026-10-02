@@ -24,6 +24,12 @@
     lava:     { sky: ['#2a0a0a', '#8a2a0a'], far: 'peaks', farCol: '#3a1410', mid: 'rocks', midCol: '#2a1410', ground: ['#3a2420', '#241410'], detail: 'cracks', ambient: 'embers', glow: '#ff6a1a' },
     dungeon:  { sky: ['#140e18', '#2a2030'], far: 'wall', farCol: '#3a3440', mid: 'pillars', midCol: '#4a4450', ground: ['#5a3a34', '#3e2824'], detail: 'flagstones', ambient: 'dust', torches: true },
     cave:     { sky: ['#0e0c12', '#221c24'], far: 'cavewall', farCol: '#2a2428', mid: 'stalactites', midCol: '#3a3236', ground: ['#4a3a34', '#322622'], detail: 'pebbles', ambient: 'drips', torches: true },
+    jungle:   { sky: ['#5aa8c8', '#c8e8c0'], far: 'hills', farCol: '#3a7a4a', mid: 'trees', midCol: '#2a6a2a', ground: ['#4a8a34', '#2f6a24'], detail: 'grass', ambient: 'fireflies' },
+    taiga:    { sky: ['#7a94b8', '#e0e8f0'], far: 'peaks', farCol: '#9aacc4', mid: 'pines', midCol: '#2f5a46', ground: ['#e8eef6', '#c8d4e2'], detail: 'drifts', ambient: 'snow' },
+    badlands: { sky: ['#d8884a', '#f4d0a0'], far: 'peaks', farCol: '#b0663e', mid: 'rocks', midCol: '#8a4a2a', ground: ['#c07a4a', '#9a5a34'], detail: 'pebbles', ambient: 'dust' },
+    hills:    { sky: ['#6fb3e8', '#d8ecf6'], far: 'hills', farCol: '#7aa86a', mid: 'trees', midCol: '#4f8a3c', ground: ['#7ab854', '#5a9a40'], detail: 'grass', ambient: 'pollen' },
+    savanna:  { sky: ['#e8b060', '#f8e8c0'], far: 'hills', farCol: '#c8a868', mid: 'cacti', midCol: '#6a8a34', ground: ['#d0b860', '#b09a48'], detail: 'grass', ambient: 'dust' },
+    ash:      { sky: ['#3a3236', '#8a7a72'], far: 'peaks', farCol: '#4a4044', mid: 'rocks', midCol: '#3a3436', ground: ['#5a5658', '#3e3a3c'], detail: 'cracks', ambient: 'embers', glow: '#ff6a1a' },
     town:     { sky: ['#6fb3e8', '#d8ecf6'], far: 'hills', farCol: '#8ab098', mid: 'houses', midCol: '#e8d8b8', ground: ['#b8a88a', '#8a7a64'], detail: 'cobbles', ambient: 'pollen' },
     ruins:    { sky: ['#4a5a7a', '#a8a0a0'], far: 'hills', farCol: '#6a7068', mid: 'ruins', midCol: '#8a8478', ground: ['#7a6a58', '#5a4c3e'], detail: 'flagstones', ambient: 'dust' },
   });
