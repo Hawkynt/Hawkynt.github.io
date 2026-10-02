@@ -2300,10 +2300,14 @@
       /** @type {int32} */
       this.R = R;
 
-      const affineC = SBOX_AFFINE.map(v => ByteCombineBits(B, this.ByteBits(v), 0));
+      /** @type {Uint32Array[]} */
+      const affineC = new Array(SBOX_AFFINE.length);
+      for (let i = 0; i < SBOX_AFFINE.length; ++i) affineC[i] = ByteCombineBits(B, this.ByteBits(SBOX_AFFINE[i]), 0);
       /** @type {Uint32Array[]} */
       this.affineC = affineC;
-      const affineCSq = SBOX_AFFINE_SQ.map(v => ByteCombineBits(B, this.ByteBits(v), 0));
+      /** @type {Uint32Array[]} */
+      const affineCSq = new Array(SBOX_AFFINE_SQ.length);
+      for (let i = 0; i < SBOX_AFFINE_SQ.length; ++i) affineCSq[i] = ByteCombineBits(B, this.ByteBits(SBOX_AFFINE_SQ[i]), 0);
       /** @type {Uint32Array[]} */
       this.affineCSq = affineCSq;
       const v1 = ByteCombineBits(B, this.ByteBits(1), 0);
@@ -2316,7 +2320,7 @@
       /** @type {Uint32Array} */
       this.v3 = v3;
       const mixV = [[v1, v2, v3], [FieldMul(F, v1, v1), FieldMul(F, v2, v2), FieldMul(F, v3, v3)]];
-      /** @type {Uint32Array[][][]} */
+      /** @type {Uint32Array[][]} */
       this.mixV = mixV;
 
       const beta4 = FieldAdd(F, B.alpha[5], B.alpha[3]);
@@ -2409,7 +2413,7 @@
       const nst = this.nst;
       /** @type {int32} */
       const nstBytes = this.nstBytes;
-      /** @type {Uint32Array[][][]} */
+      /** @type {Uint32Array[][]} */
       const mixV = this.mixV;
       const m = mixV[sq ? 1 : 0];
       const V1 = m[0], V2 = m[1], V3 = m[2];
