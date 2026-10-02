@@ -137,6 +137,12 @@
   const ALLY_SHOOT_INTERVAL = 800;
   const ALLY_FOLLOW_DIST = 100;
   const FIRE_DAMAGE_COOLDOWN = 500;
+  const RESPAWN_DELAY = 1500;
+
+  /* Simulation runs in fixed 60 Hz steps regardless of display refresh rate */
+  const SIM_STEP = 1000 / 60;
+  const SIM_MAX_STEPS = 3;
+  const SIM_SNAP = 0.5;
 
   /* ---- Powerup Definitions ---- */
   const POWERUP_TYPES = {
@@ -297,6 +303,8 @@
   let gameActive, gamePaused, gameOverFlag;
   let invulnTimer, hyperspaceCooldown;
   let animFrameId, lastTime;
+  let simAccumulator = 0;
+  let respawnTimer = 0;
   let gameMode, modeSelectActive;
   let collectiblePowerups, powerupState;
   let combo, stats, warpState;
@@ -1191,11 +1199,7 @@
       return;
     }
 
-    setTimeout(() => {
-      if (!gameActive || gameOverFlag) return;
-      ship = createShip();
-      invulnTimer = INVULN_DURATION;
-    }, 1500);
+    respawnTimer = RESPAWN_DELAY;
   }
 
   function damageEnemy(enemy, index, amount) {
@@ -1494,6 +1498,15 @@
 
   function update(dt) {
     gameTime += dt;
+
+    /* Respawn counts game time only, so it holds while paused */
+    if (!ship && respawnTimer > 0) {
+      respawnTimer -= dt;
+      if (respawnTimer <= 0) {
+        ship = createShip();
+        invulnTimer = INVULN_DURATION;
+      }
+    }
 
     /* Ship controls */
     if (ship) {
@@ -3243,11 +3256,18 @@
     animFrameId = requestAnimationFrame(gameLoop);
 
     if (!lastTime) lastTime = timestamp;
-    const dt = Math.min(timestamp - lastTime, 50);
+    let elapsed = timestamp - lastTime;
     lastTime = timestamp;
 
-    if (gameActive && !gamePaused && !gameOverFlag && !modeSelectActive)
-      update(dt);
+    /* Snap refresh jitter around 60 Hz to exactly one step; cap catch-up after stalls */
+    if (Math.abs(elapsed - SIM_STEP) < SIM_SNAP)
+      elapsed = SIM_STEP;
+    simAccumulator = Math.min(simAccumulator + elapsed, SIM_STEP * SIM_MAX_STEPS);
+    while (simAccumulator >= SIM_STEP) {
+      simAccumulator -= SIM_STEP;
+      if (gameActive && !gamePaused && !gameOverFlag && !modeSelectActive)
+        update(SIM_STEP);
+    }
 
     render();
   }
@@ -3297,7 +3317,9 @@
     hyperspaceCooldown = 0;
     enemySpawnTimer = cfg.ufoInterval;
     shootCooldownTimer = 0;
+    respawnTimer = 0;
     lastTime = null;
+    simAccumulator = 0;
     gameTime = 0;
     warpState = null;
 
