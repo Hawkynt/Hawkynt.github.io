@@ -1385,6 +1385,224 @@
     }
   }
 
+  /* -- Run save / resume (plain data only; objects are rebuilt on load) -- */
+  const STORAGE_SAVE = STORAGE_PREFIX + '-save-v1';
+  const SAVE_VERSION = 1;
+  const AUTOSAVE_INTERVAL = 5; // seconds of play between autosaves
+  let autosaveTimer = 0;
+  let saveAvailable = false;   // a resumable run is stored
+  let saveNotice = '';         // shown on the title screen (e.g. discarded save)
+  let newGameConfirmOpen = false;
+
+  function isRunActive() {
+    return primaryGadget !== null && (state === STATE_PLAYING || state === STATE_PAUSED || state === STATE_UPGRADE_DIALOG);
+  }
+
+  function saveRun() {
+    if (!isRunActive()) return;
+    const partialHP = [];
+    for (let r = 0; r < GRID_ROWS; ++r)
+      for (let c = 0; c < GRID_COLS; ++c)
+        if (tileMaxHP[r] && tileMaxHP[r][c] > 0 && tileHP[r][c] < tileMaxHP[r][c])
+          partialHP.push([r, c, Math.round(tileHP[r][c] * 1000) / 1000]);
+    const data = {
+      version: SAVE_VERSION,
+      view: transitionTarget || currentView,
+      domeHP, maxDomeHP, carried, carryCapacity,
+      weaponDamage, fireRate, drillSpeed, moveStepInterval,
+      drillX, drillY, turretAngle,
+      resources, upgradeLevels, upgradeTreeLevels,
+      waveNumber, waveTimer, waveActive, score,
+      enemies,
+      grid: undergroundGrid.map(row => row.map(t => String.fromCharCode(48 + t)).join('')),
+      partialHP,
+      droppedResources,
+      primaryGadget, primaryGadgetState, foundGadgets, gadgetChambers,
+      unlockedTools, activeToolKey, toolState
+    };
+    try {
+      localStorage.setItem(STORAGE_SAVE, JSON.stringify(data));
+      saveAvailable = true;
+    } catch (_) {}
+  }
+
+  function clearSave() {
+    saveAvailable = false;
+    try { localStorage.removeItem(STORAGE_SAVE); } catch (_) {}
+  }
+
+  function isNum(v) {
+    return typeof v === 'number' && isFinite(v);
+  }
+
+  function isPlainObject(v) {
+    return !!v && typeof v === 'object' && !Array.isArray(v);
+  }
+
+  // Read and validate the stored run; a broken or outdated save is discarded with a notice
+  function readSavedRun() {
+    let raw = null;
+    try { raw = localStorage.getItem(STORAGE_SAVE); } catch (_) { return null; }
+    if (!raw)
+      return null;
+    try {
+      const d = JSON.parse(raw);
+      if (!isPlainObject(d) || d.version !== SAVE_VERSION)
+        throw new Error('unsupported save version');
+      for (const k of ['domeHP', 'maxDomeHP', 'carried', 'carryCapacity', 'weaponDamage', 'fireRate', 'drillSpeed', 'moveStepInterval', 'drillX', 'drillY', 'turretAngle', 'waveNumber', 'waveTimer', 'score'])
+        if (!isNum(d[k]))
+          throw new Error('bad ' + k);
+      if (!Array.isArray(d.grid) || d.grid.length !== GRID_ROWS)
+        throw new Error('bad grid');
+      for (const row of d.grid) {
+        if (typeof row !== 'string' || row.length !== GRID_COLS)
+          throw new Error('bad grid row');
+        for (let c = 0; c < row.length; ++c) {
+          const t = row.charCodeAt(c) - 48;
+          if (t < TILE_EMPTY || t > TILE_RUBY)
+            throw new Error('bad tile');
+        }
+      }
+      if (d.drillX < 0 || d.drillX >= GRID_COLS || d.drillY < 0 || d.drillY >= GRID_ROWS)
+        throw new Error('bad position');
+      if (!PRIMARY_GADGETS.some(g => g.key === d.primaryGadget))
+        throw new Error('bad gadget');
+      for (const k of ['resources', 'upgradeLevels', 'upgradeTreeLevels', 'primaryGadgetState', 'unlockedTools', 'toolState'])
+        if (!isPlainObject(d[k]))
+          throw new Error('bad ' + k);
+      for (const k of ['enemies', 'partialHP', 'droppedResources', 'foundGadgets', 'gadgetChambers'])
+        if (!Array.isArray(d[k]))
+          throw new Error('bad ' + k);
+      for (const k in d.resources)
+        if (!isNum(d.resources[k]))
+          throw new Error('bad resource');
+      for (const e of d.enemies)
+        if (!isPlainObject(e) || !isNum(e.x) || !isNum(e.y) || !isNum(e.hp) || !isNum(e.maxHP))
+          throw new Error('bad enemy');
+      for (const ch of d.gadgetChambers)
+        if (!isPlainObject(ch) || !isNum(ch.r) || !isNum(ch.c))
+          throw new Error('bad chamber');
+      for (const dr of d.droppedResources)
+        if (!isPlainObject(dr) || !isNum(dr.col) || !isNum(dr.row) || !isNum(dr.value))
+          throw new Error('bad drop');
+      return d;
+    } catch (_) {
+      clearSave();
+      saveNotice = 'The saved run could not be read and was discarded.';
+      return null;
+    }
+  }
+
+  function restoreRun(d) {
+    resetGame(); // fresh defaults for everything not stored
+    undergroundGrid = d.grid.map(row => Array.from(row, ch => ch.charCodeAt(0) - 48));
+    gadgetChambers = d.gadgetChambers
+      .filter(ch => ch.r >= 0 && ch.r < GRID_ROWS - 1 && ch.c >= 0 && ch.c < GRID_COLS - 1)
+      .map(ch => ({ r: ch.r, c: ch.c, gadgetType: ch.gadgetType, revealed: !!ch.revealed }));
+    initTileHP();
+    for (const p of d.partialHP)
+      if (Array.isArray(p) && tileHP[p[0]] && isNum(p[2]) && tileMaxHP[p[0]][p[1]] > 0)
+        tileHP[p[0]][p[1]] = Math.max(0, Math.min(tileMaxHP[p[0]][p[1]], p[2]));
+
+    domeHP = d.domeHP;
+    maxDomeHP = d.maxDomeHP;
+    carried = d.carried;
+    carryCapacity = d.carryCapacity;
+    weaponDamage = d.weaponDamage;
+    fireRate = d.fireRate;
+    drillSpeed = d.drillSpeed;
+    moveStepInterval = d.moveStepInterval;
+    drillX = d.drillX;
+    drillY = d.drillY;
+    turretAngle = d.turretAngle;
+    Object.assign(resources, d.resources);
+    Object.assign(upgradeLevels, d.upgradeLevels);
+    Object.assign(upgradeTreeLevels, d.upgradeTreeLevels);
+    waveNumber = d.waveNumber;
+    waveTimer = d.waveTimer;
+    waveActive = !!d.waveActive;
+    score = d.score;
+    enemies = d.enemies.map(e => Object.assign({}, e));
+    droppedResources = d.droppedResources.map(dr => Object.assign({ age: 0 }, dr));
+    primaryGadget = d.primaryGadget;
+    primaryGadgetState = Object.assign({}, d.primaryGadgetState);
+    foundGadgets = d.foundGadgets.filter(g => typeof g === 'string');
+    unlockedTools = Object.assign({}, d.unlockedTools);
+    activeToolKey = typeof d.activeToolKey === 'string' ? d.activeToolKey : null;
+    Object.assign(toolState, d.toolState);
+
+    currentView = d.view === VIEW_UNDERGROUND ? VIEW_UNDERGROUND : VIEW_SURFACE;
+    if (currentView === VIEW_UNDERGROUND) {
+      cameraX = Math.max(0, Math.min(GRID_COLS * TILE_SIZE - CANVAS_W, drillX * TILE_SIZE - CANVAS_W / 2 + TILE_SIZE / 2));
+      cameraY = Math.max(0, Math.min(GRID_ROWS * TILE_SIZE - CANVAS_H, drillY * TILE_SIZE - CANVAS_H / 2 + TILE_SIZE / 2));
+    }
+    autosaveTimer = 0;
+    state = STATE_PLAYING;
+    updateWindowTitle();
+  }
+
+  function continueRun() {
+    const d = readSavedRun();
+    if (!d)
+      return;
+    try {
+      restoreRun(d);
+      saveNotice = '';
+      SZ.GameAudio.play('select');
+      floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `Run resumed -- Wave ${waveNumber}`, { color: '#4af', font: 'bold 32px sans-serif' });
+    } catch (_) {
+      clearSave();
+      primaryGadget = null;
+      state = STATE_READY;
+      saveNotice = 'The saved run could not be restored and was discarded.';
+    }
+  }
+
+  function startNewRun() {
+    clearSave();
+    saveNotice = '';
+    resetGame();
+  }
+
+  // New Game: ask before throwing away a stored run
+  function requestNewGame() {
+    if (newGameConfirmOpen)
+      return;
+    if (!saveAvailable) {
+      startNewRun();
+      return;
+    }
+    if (state === STATE_PLAYING)
+      state = STATE_PAUSED;
+    saveRun();
+    newGameConfirmOpen = true;
+    // The shared click wiring hides the inner box too; make sure it shows again
+    const box = document.querySelector('#dlg-new-game .dialog');
+    if (box)
+      box.hidden = false;
+    SZ.Dialog.show('dlg-new-game').then((result) => {
+      newGameConfirmOpen = false;
+      if (result === 'yes')
+        startNewRun();
+    });
+  }
+
+  // Title-screen buttons shown when a saved run exists
+  function getTitleButtons() {
+    const w = 360, h = 60, x = CANVAS_W / 2 - w / 2;
+    return [
+      { id: 'continue', label: 'Continue', x, y: CANVAS_H / 2 + 10, w, h },
+      { id: 'new', label: 'New Game', x, y: CANVAS_H / 2 + 90, w, h }
+    ];
+  }
+
+  function hitTitleButton(mx, my) {
+    for (const b of getTitleButtons())
+      if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h)
+        return b.id;
+    return null;
+  }
+
   /* ======================================================================
      UNDERGROUND GRID GENERATION
      ====================================================================== */
@@ -2280,6 +2498,7 @@
             SZ.GameAudio.play('explode');
             SZ.GameAudio.play('lose');
             addHighScore(waveNumber, score);
+            clearSave();
             updateWindowTitle();
             return;
           }
@@ -2315,6 +2534,7 @@
       waveTimer = WAVE_INTERVAL;
       SZ.GameAudio.play('levelup');
       floatingText.add(CANVAS_W / 2, 80, 'WAVE CLEAR!', { color: '#0f0', font: 'bold 36px sans-serif' });
+      saveRun();
     }
   }
 
@@ -3334,6 +3554,7 @@
     state = stateBeforeUpgradeDialog || STATE_PLAYING;
     stateBeforeUpgradeDialog = null;
     upgradeDialogHover = null;
+    saveRun();
   }
 
   function drawUpgradeDialog() {
@@ -3861,6 +4082,12 @@
 
     updateEnemies(dt);
     updateWeapon(dt);
+
+    autosaveTimer += dt;
+    if (autosaveTimer >= AUTOSAVE_INTERVAL && state === STATE_PLAYING) {
+      autosaveTimer = 0;
+      saveRun();
+    }
   }
 
   /* ======================================================================
@@ -5696,11 +5923,34 @@
       ctx.textBaseline = 'middle';
       ctx.fillText('Defend your dome. Mine resources. Upgrade.', CANVAS_W / 2, CANVAS_H / 2 - 30);
 
-      // Pulsing start prompt
       const startPulse = Math.sin(animTime * 3) * 0.3 + 0.7;
-      ctx.fillStyle = `rgba(170,170,170,${startPulse})`;
-      ctx.font = '28px sans-serif';
-      ctx.fillText('Tap or press F2 to Start', CANVAS_W / 2, CANVAS_H / 2 + 40);
+      if (saveAvailable) {
+        // Continue / New Game buttons
+        for (const b of getTitleButtons()) {
+          const primary = b.id === 'continue';
+          ctx.fillStyle = primary ? 'rgba(40,90,160,0.9)' : 'rgba(30,35,50,0.9)';
+          ctx.fillRect(b.x, b.y, b.w, b.h);
+          ctx.strokeStyle = primary ? `rgba(120,200,255,${startPulse})` : '#4a5a7a';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(b.x, b.y, b.w, b.h);
+          ctx.fillStyle = primary ? '#fff' : '#bbb';
+          ctx.font = 'bold 28px sans-serif';
+          ctx.fillText(b.label, CANVAS_W / 2, b.y + b.h / 2);
+        }
+        ctx.fillStyle = '#777';
+        ctx.font = '20px sans-serif';
+        ctx.fillText('Enter = Continue  |  F2 = New Game', CANVAS_W / 2, CANVAS_H / 2 + 180);
+      } else {
+        // Pulsing start prompt
+        ctx.fillStyle = `rgba(170,170,170,${startPulse})`;
+        ctx.font = '28px sans-serif';
+        ctx.fillText('Tap or press F2 to Start', CANVAS_W / 2, CANVAS_H / 2 + 40);
+      }
+      if (saveNotice) {
+        ctx.fillStyle = '#fa0';
+        ctx.font = '22px sans-serif';
+        ctx.fillText(saveNotice, CANVAS_W / 2, CANVAS_H / 2 + (saveAvailable ? 220 : 90));
+      }
 
       // Decorative dome outline
       ctx.beginPath();
@@ -6215,15 +6465,31 @@
     isRunning: () => state === STATE_PLAYING,
     pause: () => {
       state = STATE_PAUSED;
+      saveRun();
     }
+  });
+
+  /* Keep the run when the page goes away or is hidden */
+  window.addEventListener('pagehide', () => saveRun());
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden)
+      saveRun();
   });
 
   window.addEventListener('keydown', (e) => {
     keys[e.code] = true;
 
+    if (newGameConfirmOpen) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        SZ.Dialog.close('dlg-new-game');
+      }
+      return;
+    }
+
     if (e.code === 'F2') {
       e.preventDefault();
-      resetGame();
+      requestNewGame();
       return;
     }
 
@@ -6263,11 +6529,25 @@
         closeUpgradeDialog();
         return;
       }
-      if (state === STATE_PLAYING)
+      if (state === STATE_PLAYING) {
         state = STATE_PAUSED;
-      else if (state === STATE_PAUSED)
+        saveRun();
+      } else if (state === STATE_PAUSED)
         state = STATE_PLAYING;
       return;
+    }
+
+    // Title screen with a saved run: Enter/C continues, N starts over
+    if (state === STATE_READY && saveAvailable) {
+      if (e.code === 'Enter' || e.code === 'KeyC') {
+        e.preventDefault();
+        continueRun();
+        return;
+      }
+      if (e.code === 'KeyN') {
+        requestNewGame();
+        return;
+      }
     }
 
     // U key: open/close upgrade dialog
@@ -6356,8 +6636,19 @@
         showTutorial = false;
       return;
     }
+    if (newGameConfirmOpen)
+      return;
+    if (state === STATE_READY && saveAvailable) {
+      const rect = canvas.getBoundingClientRect();
+      const hit = hitTitleButton((e.clientX - rect.left) * CANVAS_W / rect.width, (e.clientY - rect.top) * CANVAS_H / rect.height);
+      if (hit === 'continue')
+        continueRun();
+      else if (hit === 'new')
+        requestNewGame();
+      return;
+    }
     if (state === STATE_READY || state === STATE_GAME_OVER) {
-      resetGame();
+      startNewRun();
       return;
     }
 
@@ -6646,12 +6937,13 @@
   function handleAction(action) {
     switch (action) {
       case 'new':
-        resetGame();
+        requestNewGame();
         break;
       case 'pause':
-        if (state === STATE_PLAYING)
+        if (state === STATE_PLAYING) {
           state = STATE_PAUSED;
-        else if (state === STATE_PAUSED)
+          saveRun();
+        } else if (state === STATE_PAUSED)
           state = STATE_PLAYING;
         break;
       case 'high-scores':
@@ -6729,6 +7021,7 @@
 
   setupCanvas();
   loadHighScores();
+  saveAvailable = !!readSavedRun();
   try { tutorialSeen = localStorage.getItem(STORAGE_TUTORIAL) === '1'; } catch (_) { tutorialSeen = false; }
   updateWindowTitle();
 
