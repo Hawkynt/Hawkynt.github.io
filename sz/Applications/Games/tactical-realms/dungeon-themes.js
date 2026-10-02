@@ -88,6 +88,73 @@
       biome: 'mountain', darkness: 0, props: ['boulder', 'snowdrift', 'bones'],
       pools: [['harpy', 'stirge', 'eagle', 'hippogriff', 'goblin'], ['harpy', 'orc', 'hippogriff', 'griffon', 'worg'], ['manticore', 'harpy', 'griffon', 'ettin', 'ogre'], ['wyvern', 'manticore', 'chimera', 'stone_giant', 'hill_giant'], ['wyvern', 'chimera', 'stone_giant', 'cloud_giant', 'frost_giant']],
     }),
+    // --- the other planes -------------------------------------------------
+    astral: Object.freeze({
+      id: 'astral', name: 'Astral Drift', layout: 'wilds', size: [56, 40], floors: [1, 1],
+      floorTerrain: 'dungeon_floor', wallTerrain: 'stone_wall', floorArt: 'astral_rock', wallArt: 'rift',
+      biome: 'astral', darkness: 0.2, props: ['astral_shard', 'crystals', 'statue'],
+      pools: [['githyanki_warrior', 'phasm', 'intellect_devourer'], ['githyanki_warrior', 'phase_spider', 'intellect_devourer', 'githzerai_monk'], ['mind_flayer', 'githyanki_warrior', 'silver_dragon_wyrmling'], ['mind_flayer', 'silver_dragon_young', 'githzerai_monk'], ['silver_dragon_juvenile', 'mind_flayer', 'githyanki_warrior']],
+    }),
+    ethereal: Object.freeze({
+      id: 'ethereal', name: 'Ghostly Halls', layout: 'built', size: [46, 34], floors: [1, 2],
+      floorTerrain: 'dungeon_floor', wallTerrain: 'stone_wall', floorArt: 'mist', wallArt: 'crypt_wall',
+      biome: 'ethereal', darkness: 0.35, props: ['candles', 'urn', 'bones'],
+      pools: [['allip', 'phase_spider', 'ethereal_filcher'], ['allip', 'phasm', 'phase_spider', 'ethereal_filcher'], ['wraith', 'phasm', 'spectre', 'banshee'], ['spectre', 'night_hag', 'banshee'], ['night_hag', 'spectre', 'nightmare']],
+    }),
+    shadowkeep: Object.freeze({
+      id: 'shadowkeep', name: 'Shadow Keep', layout: 'built', size: [48, 34], floors: [1, 3],
+      floorTerrain: 'dungeon_floor', wallTerrain: 'stone_wall', floorArt: 'gloom', wallArt: 'crypt_wall',
+      biome: 'shadow', darkness: 0.82, props: ['bones', 'chains', 'urn', 'grey_tree'],
+      pools: [['shadow', 'skeleton', 'zombie'], ['shadow', 'wight', 'allip', 'ghast'], ['wraith', 'shadow', 'mohrg', 'spectre'], ['spectre', 'bodak', 'nightmare', 'wraith'], ['bodak', 'vampire', 'lich', 'spectre']],
+    }),
+    drowned: Object.freeze({
+      id: 'drowned', name: 'Drowned Halls', layout: 'cavern', size: [54, 40], floors: [1, 2],
+      floorTerrain: 'earth_packed', wallTerrain: 'stone_wall', floorArt: 'coral', wallArt: 'cave_wall',
+      biome: 'water', darkness: 0.4, props: ['coral_fan', 'puddle', 'crystals'],
+      pools: [['mephit_water', 'water_elemental_small', 'tojanida_juvenile'], ['tojanida_juvenile', 'water_elemental_medium', 'mephit_water'], ['tojanida_adult', 'water_elemental_large', 'bronze_dragon_wyrmling'], ['marid', 'tojanida_elder', 'water_elemental_huge'], ['marid', 'water_elemental_greater', 'black_dragon_young']],
+    }),
+    geode: Object.freeze({
+      id: 'geode', name: 'Geode Halls', layout: 'cavern', size: [56, 40], floors: [1, 3],
+      floorTerrain: 'earth_packed', wallTerrain: 'stone_wall', floorArt: 'bedrock', wallArt: 'earth_wall',
+      biome: 'earth', darkness: 0.6, props: ['crystals', 'stalagmite', 'gold', 'rubble'],
+      pools: [['mephit_earth', 'earth_elemental_small', 'xorn_minor'], ['xorn_minor', 'earth_elemental_medium', 'mephit_earth'], ['xorn_average', 'earth_elemental_large', 'umber_hulk'], ['xorn_elder', 'earth_elemental_huge', 'dao'], ['dao', 'earth_elemental_greater', 'xorn_elder']],
+    }),
+    skyhold: Object.freeze({
+      id: 'skyhold', name: 'Sky Castle', layout: 'built', size: [46, 34], floors: [2, 3],
+      floorTerrain: 'dungeon_floor', wallTerrain: 'stone_wall', floorArt: 'marble', wallArt: 'cloudbank',
+      biome: 'sky', darkness: 0, props: ['banner', 'statue', 'candles'],
+      pools: [['mephit_air', 'air_elemental_small', 'eagle'], ['air_elemental_medium', 'mephit_air', 'griffon'], ['air_elemental_large', 'invisible_stalker', 'djinni'], ['djinni', 'cloud_giant', 'air_elemental_huge'], ['cloud_giant', 'air_elemental_greater', 'silver_dragon_juvenile']],
+    }),
+    celestial: Object.freeze({
+      id: 'celestial', name: 'Shining Halls', layout: 'built', size: [46, 34], floors: [1, 2],
+      floorTerrain: 'dungeon_floor', wallTerrain: 'stone_wall', floorArt: 'marble', wallArt: 'ruin_wall',
+      biome: 'celestial', darkness: 0, props: ['fountain', 'statue', 'flowers', 'candles'],
+      pools: [['pegasus', 'griffon', 'unicorn'], ['unicorn', 'griffon', 'dire_lion', 'inevitable_zelekhut'], ['inevitable_zelekhut', 'gold_dragon_wyrmling', 'lion'], ['inevitable_kolyarut', 'gold_dragon_young', 'silver_dragon_young'], ['inevitable_marut', 'gold_dragon_young_adult', 'silver_dragon_juvenile']],
+    }),
+    fey_glade: Object.freeze({
+      id: 'fey_glade', name: 'Fey Glade', layout: 'wilds', size: [56, 40], floors: [1, 1],
+      floorTerrain: 'plains', wallTerrain: 'stone_wall', floorArt: 'fey', wallArt: 'thicket',
+      biome: 'fey', darkness: 0, props: ['fey_tree', 'mushrooms', 'flowers'],
+      pools: [['pixie', 'sprite', 'grig', 'satyr'], ['satyr', 'dryad', 'quickling', 'pixie'], ['nymph', 'redcap', 'satyr', 'unicorn'], ['treant', 'nymph', 'green_dragon_young', 'unicorn'], ['treant', 'green_dragon_juvenile', 'nymph']],
+    }),
+    chaos: Object.freeze({
+      id: 'chaos', name: 'Churning Chaos', layout: 'cavern', size: [54, 40], floors: [1, 2],
+      floorTerrain: 'earth_packed', wallTerrain: 'stone_wall', floorArt: 'chaos', wallArt: 'rift',
+      biome: 'chaos', darkness: 0.25, props: ['crystals', 'astral_shard', 'lava_pool'],
+      pools: [['mephit_fire', 'mephit_water', 'mephit_air', 'mephit_earth'], ['howler', 'quasit', 'githzerai_monk'], ['githzerai_monk', 'howler', 'fire_elemental_medium', 'water_elemental_medium'], ['retriever_fiend', 'githzerai_monk', 'vrock'], ['retriever_fiend', 'glabrezu', 'githzerai_monk']],
+    }),
+    abyssal: Object.freeze({
+      id: 'abyssal', name: 'Abyssal Pit', layout: 'cavern', size: [56, 42], floors: [2, 3],
+      floorTerrain: 'cave', wallTerrain: 'stone_wall', floorArt: 'abyssal', wallArt: 'infernal_wall',
+      biome: 'abyss', darkness: 0.45, props: ['bones', 'chains', 'hell_spire', 'lava_pool'],
+      pools: [['dretch', 'quasit', 'demon'], ['dretch', 'babau', 'howler', 'demon'], ['babau', 'vrock', 'succubus', 'demon'], ['vrock', 'hezrou', 'glabrezu'], ['glabrezu', 'nalfeshnee', 'marilith']],
+    }),
+    clockwork: Object.freeze({
+      id: 'clockwork', name: 'Clockwork Maze', layout: 'maze', size: [50, 38], floors: [1, 3],
+      floorTerrain: 'dungeon_floor', wallTerrain: 'stone_wall', floorArt: 'gears', wallArt: 'iron_plate',
+      biome: 'clockwork', darkness: 0.3, props: ['cog', 'crates', 'chains'],
+      pools: [['homunculus', 'animated_object_small', 'iron_cobra'], ['iron_cobra', 'animated_object_medium', 'rust_monster'], ['shield_guardian', 'animated_object_large', 'inevitable_zelekhut'], ['inevitable_zelekhut', 'stone_golem', 'clay_golem'], ['inevitable_kolyarut', 'iron_golem', 'inevitable_marut']],
+    }),
   });
 
   // Which theme a map location gets: its name first, then its biome.
@@ -109,6 +176,9 @@
   });
 
   function themeForLocation(loc) {
+    // the places of the other planes name their own look
+    if (loc && loc.theme && THEMES[loc.theme])
+      return THEMES[loc.theme];
     const name = (loc && loc.name) || '';
     // a den or nest in the forest is out in the woods, not underground
     if (loc && loc.biome === 'forest' && /den|camp|grounds|territory|bridge|pack/i.test(name))

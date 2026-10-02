@@ -152,8 +152,8 @@
     }
 
 
-    // groundGetter: optional (col, row) => painted ground id; with it the
-    // material plane draws regional ground and biome features.
+    // groundGetter: optional (col, row) => painted ground id; with it every
+    // plane draws its own painted ground, roads and features.
     drawInfiniteMap(tileGetter, dimension, groundGetter = null) {
       if (!this.#bufCtx)
         return;
@@ -190,9 +190,16 @@
       const fcy = Math.floor(cy);
       // Draw tiles 1px wider/taller to overlap and hide hairline seams
       const tsDraw = ts + 1;
-      // the material plane gets painted, varied grass and dirt roads
+      // painted, varied ground; each plane paves its roads its own way and
+      // scatters its own features
       const TA = TR.TerrainArt;
-      const painted = (!dimension || dimension === 'material') && TA && assets ? assets.get('terrain') : null;
+      const painted = TA && assets ? assets.get('terrain') : null;
+      const world = dimension && dimension !== 'material' && TR.PlaneWorlds ? TR.PlaneWorlds.get(dimension) : null;
+      const roadArt = world ? world.road : 'road';
+      const planeProps = new Map();
+      if (world && TR.OverworldTile)
+        for (const [name, spec] of Object.entries(world.props))
+          planeProps.set(TR.OverworldTile[name], spec);
       const props = assets ? assets.get('props') : null;
       const DA = TR.DungeonArt;
       const kenney = i => TR.spriteRectM ? TR.spriteRectM(i, TR.OVERWORLD_COLS, TR.OVERWORLD_MARGIN) : null;
@@ -232,7 +239,13 @@
               case 16: prop('hillock'); break;
               case 17: if (h % 8 === 0) prop('acacia'); break;
               case 19: if (h % 9 === 0) prop('vent'); break;
-              default: break;
+              case 21: prop('portal'); break;
+              default: {
+                const spec = planeProps.get(tile);
+                if (spec && h % spec[1] === 0)
+                  prop(spec[0]);
+                break;
+              }
             }
             // mountains and locations stand on the regional ground
             if ((tile === 3 || tile === 4 || tile === 5 || tile === 7) && spriteMap) {
@@ -253,7 +266,7 @@
                 ctx.drawImage(sheetImg, baseRect.x, baseRect.y, baseRect.w, baseRect.h, sx, sy, tsDraw, tsDraw);
             }
             if (painted && (tile === 1 || tile === 6)) {
-              paint(tile === 1 ? 'meadow' : 'road', c, r, sx, sy);
+              paint(tile === 1 ? 'meadow' : roadArt, c, r, sx, sy);
               continue;
             }
             let rect = null;
@@ -285,8 +298,9 @@
     }
 
     // Living overworld: glints moving over water, cloud shadows drifting
-    // across the land, and a soft vignette.
-    drawOverworldAmbience(tileGetter, time) {
+    // across the land (on the other planes their own air and motes instead),
+    // and a soft vignette.
+    drawOverworldAmbience(tileGetter, time, plane = 'material') {
       if (!this.#bufCtx)
         return;
       const ctx = this.#bufCtx;
@@ -315,12 +329,19 @@
           ctx.fillRect(gx + len, gy - 2, 2, 2);
         }
       ctx.globalAlpha = 1;
+      const BB = (window.SZ && window.SZ.TacticalRealms && window.SZ.TacticalRealms.BattleBackdrop) || null;
+      const tint = plane && plane !== 'material' && BB ? BB.PLANE_TINTS[plane] : null;
+      if (tint) {
+        ctx.fillStyle = tint.world;
+        ctx.fillRect(0, 0, this.#width, this.#height);
+        BB.drawAmbient(ctx, tint.ambient, time, this.#width, this.#height);
+      }
       // cloud shadows live in world space and drift east
       ctx.fillStyle = 'rgba(10,20,40,0.12)';
       if ('filter' in ctx)
         ctx.filter = 'blur(18px)';
       const span = 2400;
-      for (let i = 0; i < 5; ++i) {
+      for (let i = 0; i < (tint ? 0 : 5); ++i) {
         const wx = ((i * 977 + time * 18) % span + span) % span;
         const wy = ((i * 613) % 1800);
         // repeat the cloud field so it covers any camera position
@@ -369,7 +390,13 @@
         case 18: return '#a8d0ea';
         case 19: return '#5a5658';
         case 20: return '#e8501a';
-        default: return '#333';
+        case 21: return '#8a5ad6';
+        default: {
+          const TR = (window.SZ && window.SZ.TacticalRealms) || {};
+          const T = TR.TerrainArt;
+          const ground = TR.OverworldGround && TR.OverworldGround[type];
+          return ground && T && T.color ? T.color(ground) : '#333';
+        }
       }
     }
 
