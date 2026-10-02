@@ -710,8 +710,10 @@
       if (!target || !TR.PlaneRegistry || !TR.PlaneRegistry.has(target))
         return;
       const where = TR.PlaneWorlds ? TR.PlaneWorlds.shortName(target) : target;
+      // what waits on the other side, so the step is a choice
+      const traits = TR.PlaneWorlds ? TR.PlaneWorlds.traits(target).map(t => t.name).join('  ·  ') : '';
       this.#crawlPrompt = {
-        text: loc.name, sub: `Step through to ${where}?`, yes: 'Step through',
+        text: loc.name, sub: `Step through to ${where}?`, note: traits || null, yes: 'Step through',
         act: () => this.#beginPlaneShift(target, !!loc.returnGate),
       };
     }
@@ -1109,9 +1111,12 @@
       const b = this.#crawlPromptButtons();
       const p = this.#crawlPrompt;
       TR.ScreenArt.frame(ctx, CANVAS_W / 2 - 230, CANVAS_H / 2 - 80, 460, 160);
-      this.#renderer.drawScreenText(CANVAS_W / 2, CANVAS_H / 2 - (p.sub ? 36 : 22), p.text, { color: '#f0d890', font: "bold 22px Georgia, 'Times New Roman', serif", align: 'center' });
+      const top = p.note ? 48 : p.sub ? 36 : 22;
+      this.#renderer.drawScreenText(CANVAS_W / 2, CANVAS_H / 2 - top, p.text, { color: '#f0d890', font: "bold 22px Georgia, 'Times New Roman', serif", align: 'center' });
       if (p.sub)
-        this.#renderer.drawScreenText(CANVAS_W / 2, CANVAS_H / 2 - 10, p.sub, { color: '#d8d0f0', font: "15px Georgia, 'Times New Roman', serif", align: 'center' });
+        this.#renderer.drawScreenText(CANVAS_W / 2, CANVAS_H / 2 - top + 26, p.sub, { color: '#d8d0f0', font: "15px Georgia, 'Times New Roman', serif", align: 'center' });
+      if (p.note)
+        this.#renderer.drawScreenText(CANVAS_W / 2, CANVAS_H / 2 - top + 46, p.note, { color: '#ffb08a', font: '12px monospace', align: 'center' });
       this.#renderer.drawButton(b.yes.x, b.yes.y, b.yes.w, b.yes.h, this.#crawlPrompt.yes, { bg: '#2a4a2a' });
       this.#renderer.drawButton(b.no.x, b.no.y, b.no.w, b.no.h, 'Stay', { bg: '#444' });
     }

@@ -109,6 +109,17 @@
         assert.ok(allowed.includes(p.targetPlane), p.targetPlane);
     });
 
+    it('every portal near the gate can be walked to, so no arrival is cut off', () => {
+      for (const plane of ['astral', 'ethereal', 'elemental_earth', 'pandemonium', 'abyss']) {
+        const map = new OverworldMap(21, plane);
+        const portals = locations(map, 2).filter(l => l.tile === Tile.PORTAL && !l.returnGate);
+        for (const p of portals) {
+          const path = map.findPath({ col: 0, row: 0 }, { col: p.col, row: p.row }, 200);
+          assert.ok(path && path.length > 1, `${plane}: ${p.name} at ${p.col},${p.row} cut off`);
+        }
+      }
+    });
+
     it('portals can be walked onto', () => {
       const map = new OverworldMap(4, 'astral');
       assert.ok(map.isPassable(0, 0));
