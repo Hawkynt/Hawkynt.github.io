@@ -378,7 +378,13 @@
 
     it('findPath steps are cardinal-adjacent', () => {
       const map = new OverworldMap(12345);
-      const path = map.findPath({ col: 0, row: 0 }, { col: 3, row: 2 });
+      // nearest walkable spot a few steps out (terrain differs per world)
+      let goal = null;
+      for (let d = 3; d < 10 && !goal; ++d)
+        for (const [c, r] of [[d, 2], [2, d], [-d, 2], [2, -d]])
+          if (!goal && map.isPassable(c, r) && map.findPath({ col: 0, row: 0 }, { col: c, row: r }))
+            goal = { col: c, row: r };
+      const path = map.findPath({ col: 0, row: 0 }, goal);
       assert.ok(path);
       for (let i = 1; i < path.length; ++i) {
         const dc = Math.abs(path[i].col - path[i - 1].col);
@@ -465,8 +471,9 @@
     it('extractTileRect tiles are valid tile IDs', () => {
       const map = new OverworldMap(42);
       const result = map.extractTileRect(0, 0, 10, 10);
+      const valid = new Set(Object.values(OverworldTile));
       for (const t of result.tiles)
-        assert.ok(t >= 0 && t <= 9, `tile value ${t} out of range`);
+        assert.ok(valid.has(t), `tile value ${t} out of range`);
     });
 
     it('extractTileRect center tile matches getTile', () => {
@@ -590,6 +597,58 @@
         const path = map.findPath({ col: 0, row: 0 }, { col: 5, row: -3 }, 60);
         assert.ok(path, `seed ${i}: no path from Home Camp to its first dungeon`);
       }
+    });
+  });
+  describe('OverworldMap -- biomes', () => {
+
+    function sample(map, step = 6, span = 300) {
+      const seen = new Map();
+      for (let r = -span; r <= span; r += step)
+        for (let c = -span; c <= span; c += step) {
+          const t = map.regionTile(c, r);
+          seen.set(t, (seen.get(t) || 0) + 1);
+        }
+      return seen;
+    }
+
+    it('the world has many regions: cold, temperate and hot', () => {
+      const T = OverworldTile;
+      for (const seed of [12345, 777, 42]) {
+        const seen = sample(new OverworldMap(seed));
+        assert.ok(seen.size >= 9, `seed ${seed}: only ${seen.size} region types`);
+        const cold = (seen.get(T.SNOW) || 0) + (seen.get(T.TAIGA) || 0) + (seen.get(T.ICE) || 0);
+        const hot = (seen.get(T.DESERT) || 0) + (seen.get(T.BADLANDS) || 0) + (seen.get(T.JUNGLE) || 0) + (seen.get(T.SAVANNA) || 0);
+        assert.ok(cold > 0 && hot > 0, `seed ${seed}: cold ${cold}, hot ${hot}`);
+      }
+    });
+
+    it('every world starts in temperate land', () => {
+      for (const seed of [1, 2, 3, 12345, 777]) {
+        const map = new OverworldMap(seed);
+        assert.ok(Math.abs(map.temperatureAt(0, 0) - 0.5) < 0.01, `seed ${seed}`);
+      }
+    });
+
+    it('biomes are real D&D biome ids', () => {
+      const reg = window.SZ.TacticalRealms.BiomeRegistry;
+      const map = new OverworldMap(777);
+      for (let r = -200; r <= 200; r += 20)
+        for (let c = -200; c <= 200; c += 20)
+          assert.ok(!reg || reg.has(map.biomeAt(c, r)), `unknown biome ${map.biomeAt(c, r)}`);
+    });
+
+    it('every battle biome has a backdrop', () => {
+      const themes = window.SZ.TacticalRealms.BattleBackdrop.THEMES;
+      for (const info of Object.values(window.SZ.TacticalRealms.OverworldTileInfo))
+        assert.ok(themes[info.battle], `no backdrop for ${info.battle}`);
+    });
+
+    it('roads stay walkable through every region', () => {
+      const map = new OverworldMap(777);
+      for (let r = -150; r <= 150; r += 3)
+        for (let c = -150; c <= 150; c += 3)
+          if (map.getTile(c, r) === OverworldTile.ROAD)
+            assert.ok(map.isPassable(c, r));
     });
   });
 })();

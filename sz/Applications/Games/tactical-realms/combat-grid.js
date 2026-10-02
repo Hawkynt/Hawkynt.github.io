@@ -154,6 +154,17 @@
         7: 'plains',   // CAMP
         8: 'water',    // WATER
         9: 'desert',   // SAND
+        10: 'snow',        // SNOW
+        11: 'forest',      // TAIGA
+        12: 'jungle',      // JUNGLE
+        13: 'desert',      // DESERT
+        14: 'desert_rock', // BADLANDS
+        15: 'swamp',       // SWAMP
+        16: 'hill',        // HILLS
+        17: 'plains',      // SAVANNA
+        18: 'ice',         // ICE
+        19: 'desert_rock', // ASH
+        20: 'lava',        // LAVA
       };
       const terrain = [];
       for (let i = 0; i < tileData.length; ++i)
