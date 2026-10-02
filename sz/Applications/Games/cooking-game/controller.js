@@ -262,6 +262,7 @@
           120 + c.slot * 180, CUSTOMER_Y - 20,
           'Too slow!', { color: '#f44', size: 16 }
         );
+        SZ.GameAudio.play('hurt', { volume: 0.6 });
         ++dayMissed;
       }
     }
@@ -271,6 +272,7 @@
 
   function addCustomer() {
     spawnCustomer();
+    SZ.GameAudio.play('blip', { pitch: 1.5, volume: 0.5 });
     ++dayCustomersSpawned;
   }
 
@@ -289,6 +291,7 @@
     cookingProgress = 0;
     cookingSpeed = (0.3 + recipe.steps[0].duration * 0.1) * speedBonus;
     state = STATE_COOKING;
+    SZ.GameAudio.play('click');
   }
 
   function updateCooking(dt) {
@@ -304,6 +307,7 @@
       floatingText.add(STATION_CENTER_X, STATION_CENTER_Y - 40, 'Burned!', { color: '#f44', size: 22 });
       screenShake.trigger(10, 500);
       particles.burst(STATION_CENTER_X, STATION_CENTER_Y, 15, { color: '#444', speed: 60, life: 0.5 });
+      SZ.GameAudio.play('smallExplode');
       activeDish = null;
       state = STATE_PLAYING;
     }
@@ -317,6 +321,7 @@
     if (cookingProgress >= lo && cookingProgress <= hi) {
       floatingText.add(STATION_CENTER_X, STATION_CENTER_Y - 40, 'Perfect!', { color: '#4f4', size: 22 });
       particles.sparkle(STATION_CENTER_X, STATION_CENTER_Y - 20, 12, { color: '#ff0', speed: 50, life: 0.6 });
+      SZ.GameAudio.play('pickup', { pitch: 1 + activeDish.stepIndex * 0.12 });
 
       ++activeDish.stepIndex;
       if (activeDish.stepIndex >= activeDish.recipe.steps.length) {
@@ -333,6 +338,7 @@
     } else {
       floatingText.add(STATION_CENTER_X, STATION_CENTER_Y - 40, 'Ruined!', { color: '#f44', size: 20 });
       screenShake.trigger(6, 300);
+      SZ.GameAudio.play('error');
       activeDish = null;
       state = STATE_PLAYING;
     }
@@ -368,6 +374,7 @@
 
     particles.sparkle(pu.x, pu.y, 12, { color: t.color });
     floatingText.add(pu.x, pu.y - 20, t.emoji + ' ' + t.label + '!', { color: t.color, size: 16 });
+    SZ.GameAudio.play('powerup');
 
     if (t.id === 'patience') {
       for (const c of customers) {
@@ -455,6 +462,7 @@
         120 + customer.slot * 180, CUSTOMER_Y,
         'Wrong dish!', { color: '#f88', size: 14 }
       );
+      SZ.GameAudio.play('error', { volume: 0.7 });
       return;
     }
 
@@ -474,6 +482,7 @@
       `Delicious! +$${earnedTip}`, { color: '#4f4', size: 18 }
     );
     particles.confetti(120 + customer.slot * 180, CUSTOMER_Y, 15);
+    SZ.GameAudio.play('coin');
 
     updateStatus();
   }
@@ -491,6 +500,7 @@
     const ratio = dayServed / Math.max(dayCustomerCount, 1);
     const stars = ratio >= 0.9 ? 3 : ratio >= 0.6 ? 2 : ratio >= 0.3 ? 1 : 0;
     state = STATE_DAY_OVER;
+    SZ.GameAudio.play(stars === 3 ? 'win' : stars > 0 ? 'levelup' : 'lose');
     floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `Day ${day} Complete!`, { color: '#fff', size: 28 });
     floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 20, `${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}`, { color: '#fa0', size: 32 });
     floatingText.add(CANVAS_W / 2, CANVAS_H / 2 + 20, `Served: ${dayServed}/${dayCustomerCount}`, { color: '#aaa', size: 16 });
@@ -517,6 +527,7 @@
 
   function startPlaying() {
     state = STATE_PLAYING;
+    SZ.GameAudio.play('select');
     updateWindowTitle();
   }
 
@@ -530,6 +541,7 @@
     money -= upgrade.cost;
     upgrade.bought = true;
     floatingText.add(CANVAS_W / 2, CANVAS_H / 2, `Bought: ${upgrade.name}!`, { color: '#4f4', size: 20 });
+    SZ.GameAudio.play('coin', { pitch: 0.75 });
     updateStatus();
   }
 
@@ -548,6 +560,7 @@
     }
 
     if (state === STATE_DAY_OVER) {
+      SZ.GameAudio.play('click');
       startNextDay();
       return;
     }
@@ -1711,6 +1724,7 @@
     recentRecipes.length = 0;
     for (const u of UPGRADES) u.bought = false;
     state = STATE_PLAYING;
+    SZ.GameAudio.play('select');
     updateWindowTitle();
     updateStatus();
   }
@@ -1729,6 +1743,7 @@
 
   setupCanvas();
   initGame();
+  SZ.GameAudio.attachMuteButton();
 
   lastTimestamp = 0;
   requestAnimationFrame(gameLoop);
