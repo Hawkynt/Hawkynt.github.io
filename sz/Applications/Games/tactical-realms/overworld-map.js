@@ -137,7 +137,7 @@
     Object.freeze({ tile: Tile.DUNGEON, name: 'Phase Spider Web', difficulty: 3, biome: 'cave', enemies: ['phase_spider', 'spider', 'spider'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: "Giant's Keep", difficulty: 5, biome: 'mountain', enemies: ['hill_giant', 'ogre'], minCount: 1, maxCount: 2 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Elemental Rift', difficulty: 5, biome: 'lava', enemies: ['fire_elemental', 'fire_elemental'], minCount: 1, maxCount: 3 }),
-    Object.freeze({ tile: Tile.DUNGEON, name: 'Mind Flayer Colony', difficulty: 6, biome: 'dungeon', enemies: ['mind_flayer', 'wight', 'ghoul'], minCount: 1, maxCount: 3 }),
+    Object.freeze({ tile: Tile.DUNGEON, name: 'Thoughtdrinker Colony', difficulty: 6, biome: 'dungeon', enemies: ['mind_flayer', 'wight', 'ghoul'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Dragon Hoard', difficulty: 8, biome: 'cave', enemies: ['young_dragon', 'kobold', 'kobold'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: "Death Knight's Tomb", difficulty: 8, biome: 'dungeon', enemies: ['death_knight', 'wight', 'skeleton'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Frozen Fortress', difficulty: 7, biome: 'mountain', enemies: ['frost_giant', 'worg', 'dire_wolf'], minCount: 1, maxCount: 3 }),
@@ -549,7 +549,8 @@
 
       // the full monster roster knows who lives where
       if (TR.MonsterRoster && typeof TR.MonsterRoster.encounter === 'function') {
-        const list = TR.MonsterRoster.encounter(biome, avgLevel + Math.floor(tier / 2), prng);
+        // far from home the land gets more dangerous than the party
+        const list = TR.MonsterRoster.encounter(biome, avgLevel + Math.round(tier * 0.6), prng);
         if (list && list.length)
           return list;
       }

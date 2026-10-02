@@ -522,7 +522,19 @@
       assert.ok(seenNew.size >= 5, `should see at least 5 new enemy types, saw ${seenNew.size}: ${[...seenNew].join(',')}`);
     });
 
-    it('encounters at high tiers include tier 7 enemies', () => {
+    // the classic fallback lists, used when no monster roster is loaded
+    function withoutRoster(fn) {
+      const TRR = window.SZ.TacticalRealms;
+      const roster = TRR.MonsterRoster;
+      TRR.MonsterRoster = undefined;
+      try {
+        fn();
+      } finally {
+        TRR.MonsterRoster = roster;
+      }
+    }
+
+    it('encounters at high tiers include tier 7 enemies', () => withoutRoster(() => {
       const map = new OverworldMap(42);
       const tier7 = new Set(['young_dragon', 'death_knight', 'frost_giant', 'mind_flayer', 'demon', 'devil', 'lich']);
       const found = new Set();
@@ -534,20 +546,20 @@
             found.add(e.templateId);
       }
       assert.ok(found.size >= 2, `should see tier 7 enemies at high distance, saw: ${[...found].join(',')}`);
-    });
+    }));
 
     it('encounter enemies reference valid template IDs', () => {
-      const { CombatEngine } = window.SZ.TacticalRealms;
+      const { CombatEngine, CreatureRegistry } = window.SZ.TacticalRealms;
       const map = new OverworldMap(42);
       for (let d = 0; d < 200; d += 5) {
         const prng = new PRNG(42 + d);
         const enemies = map.encounterEnemies(d, 0, prng);
         for (const e of enemies)
-          assert.ok(CombatEngine.ENEMY_TEMPLATES[e.templateId], `invalid template ${e.templateId}`);
+          assert.ok(CombatEngine.ENEMY_TEMPLATES[e.templateId] || (CreatureRegistry && CreatureRegistry.getMonster(e.templateId)), `invalid template ${e.templateId}`);
       }
     });
 
-    it('leader variant sometimes has higher targetLevel', () => {
+    it('leader variant sometimes has higher targetLevel', () => withoutRoster(() => {
       const map = new OverworldMap(42);
       let foundLeader = false;
       for (let i = 0; i < 200; ++i) {
@@ -557,6 +569,21 @@
           foundLeader = true;
       }
       assert.ok(foundLeader, 'should sometimes generate leader variant with higher level');
+    }));
+
+    it('with the monster roster, far lands bring stronger foes', () => {
+      const R = window.SZ.TacticalRealms.MonsterRoster;
+      if (!R)
+        return;
+      const map = new OverworldMap(42);
+      const avgEL = (col) => {
+        let sum = 0;
+        for (let i = 0; i < 40; ++i)
+          sum += R.encounterLevel(map.encounterEnemies(col, 0, new PRNG(i), 1).map(e => e.templateId));
+        return sum / 40;
+      };
+      const near = avgEL(2), far = avgEL(120);
+      assert.ok(far > near + 1.5, `near EL ${near.toFixed(1)}, far EL ${far.toFixed(1)}`);
     });
   });
   describe('OverworldMap — Start Is Never Trapped', () => {
