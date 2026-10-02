@@ -261,7 +261,7 @@
       for (let i = 0; i < this.DEFAULT_SIZE; i++) {
         const keyIndex = i % this._key.length;
         const bitIndex = i % 8;
-        this.cells[i] = OpCodes.GetBit(this._key[keyIndex], bitIndex);
+        this.cells[i] = OpCodes.GetBit(this._key[keyIndex], bitIndex) ? 1 : 0;
       }
 
       // Ensure at least one cell is set (avoid all-zero state)

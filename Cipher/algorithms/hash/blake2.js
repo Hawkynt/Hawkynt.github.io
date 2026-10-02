@@ -167,6 +167,7 @@
     /** @type {BigInt[]} */
     const words = [];
     for (let i = 0; i < bytes.length; i += 8) {
+      /** @type {uint64} */
       let word = BigInt(0);
       for (let j = 0; j < 8 && i + j < bytes.length; j++) {
         word = OpCodes.OrN(word, OpCodes.ShiftLn(BigInt(bytes[i + j]), j * 8));
@@ -979,7 +980,7 @@
       /** @type {int32} */
       this.blockSize = 64; // 512 bits = 64 bytes (BLAKE2s block size)
       /** @type {int32} */
-      this.outputSize = null; // Variable output
+      this.outputSize = 0; // Variable output: no fixed digest size
 
       // Documentation and references
       this.documentation = [
@@ -1258,7 +1259,7 @@
           // Finalize to get next block
           /** @type {uint8[]} */
           const result = h.finalize();
-          for (let j = 0; j < 32; j++) {
+          for (let j = 0; j < result.length; j++) {
             this._buf[j] = result[j];
           }
 

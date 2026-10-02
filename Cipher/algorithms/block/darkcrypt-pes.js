@@ -73,7 +73,7 @@
     while (newr !== 0) {
       const q = Math.floor(r / newr);
       const t2 = t - q * newt; t = newt; newt = t2;
-      const r2 = r - q * newr; r = newr; newr = r2;
+      const r2 = r % newr; r = newr; newr = r2;
     }
     let inv = ((t % MOD) + MOD) % MOD;
     return inv === 65536 ? 0 : inv;

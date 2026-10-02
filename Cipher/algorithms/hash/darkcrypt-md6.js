@@ -110,9 +110,10 @@
    * Read one big-endian 64-bit word; bytes past the end read as zero
    * @param {uint8[]} bytes - Source bytes
    * @param {int32} offset - Index of the most significant byte
-   * @returns {BigInt} The word
+   * @returns {uint64} The word
    */
   function bytesToWordBE(bytes, offset) {
+    /** @type {uint64} */
     let w = 0n;
     for (let i = 0; i < 8; i++) {
       const b = offset + i < bytes.length ? bytes[offset + i] : 0;

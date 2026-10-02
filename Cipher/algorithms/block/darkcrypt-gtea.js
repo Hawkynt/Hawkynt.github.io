@@ -496,9 +496,11 @@
       const k = this._keyWords(key);
       /** @type {uint32[]} */
       const RK = new Array(128);
+      /** @type {uint32} */
       let A = C1;
       /** @type {uint32} */
       let ACC = 0;
+      /** @type {uint32} */
       let B = C2;
       for (let i = 0; i < 128; i++) {
         const kw = k[OpCodes.And32(i, 0xF)];
