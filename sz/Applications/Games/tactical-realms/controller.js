@@ -788,8 +788,11 @@
         visualRow * ts + ts / 2
       );
 
-      if (this.#overworldMap)
-        this.#renderer.drawInfiniteMap((c, r) => this.#overworldMap.getTile(c, r), this.#dimension);
+      if (this.#overworldMap) {
+        const tile = (c, r) => this.#overworldMap.getTile(c, r);
+        this.#renderer.drawInfiniteMap(tile, this.#dimension);
+        this.#renderer.drawOverworldAmbience(tile, this.#screenTime);
+      }
 
       if (this.#overworldMap) {
         const cam = this.#renderer.camera;
