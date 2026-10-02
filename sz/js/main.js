@@ -12,7 +12,7 @@
     // -- Virtual File System --
     bootScreen.setProgress(10, 'Initializing VFS...');
     const kernel = new SZ.VFS.Kernel();
-    kernel.mount('/user', new SZ.VFS.LocalStorageDriver('sz-vfs-user:'));
+    kernel.mount('/user', typeof indexedDB !== 'undefined' ? new SZ.VFS.IndexedDBDriver('user', 'sz-vfs-user:') : new SZ.VFS.LocalStorageDriver('sz-vfs-user:'));
     try {
       await kernel.Mkdir('/system');
       await kernel.Mkdir('/system/wallpapers');
