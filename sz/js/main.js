@@ -87,6 +87,9 @@
     const taskbar = new SZ.Taskbar(document.getElementById('sz-taskbar'), windowManager);
     taskbar.applySkin(currentSkin);
     taskbar.applyStartButtonImage(skinCSSResult?.startButtonImage || currentSkin.startButton?.image, currentSkin.personality);
+    taskbar.setShowClock(settings.get('taskbar.showClock'));
+    taskbar.setAutoHide(settings.get('taskbar.autoHide'));
+    taskbar.setSmallIcons(settings.get('taskbar.smallIcons'));
     
     const appLauncher = new SZ.AppLauncher(windowManager, themeEngine, desktop);
     await appLauncher.loadManifest(SZ.manifest);
@@ -236,6 +239,11 @@
                     background: _normalizeBackgroundSettings(settings.get('background')),
                     onlineServicesAvailable: location.protocol !== 'file:',
                     animations: settings.get('animations'),
+                    taskbar: {
+                      showClock: settings.get('taskbar.showClock'),
+                      autoHide: settings.get('taskbar.autoHide'),
+                      smallIcons: settings.get('taskbar.smallIcons'),
+                    },
                     cursor: {
                       shadow: settings.get('cursor.shadow'),
                       trail: settings.get('cursor.trail'),
@@ -327,7 +335,9 @@
               snapEngine.updateConfig({ ['snap.' + data.key]: data.value });
             return;
         case 'sz:taskbarSetting':
-            // Forward taskbar settings
+            if (!['showClock', 'autoHide', 'smallIcons'].includes(data.key))
+              return;
+            settings.set('taskbar.' + data.key, !!data.value);
             if (data.key === 'showClock')
               taskbar.setShowClock?.(data.value);
             else if (data.key === 'autoHide')
@@ -443,7 +453,7 @@
                 screenWidth: window.innerWidth,
                 screenHeight: window.innerHeight,
                 workAreaWidth: window.innerWidth,
-                workAreaHeight: window.innerHeight - (tb?.offsetHeight || 40),
+                workAreaHeight: window.innerHeight - (document.documentElement.classList.contains('sz-taskbar-autohide') ? 0 : (tb?.offsetHeight || 40)),
                 captionHeight: 30,
                 taskbarHeight: tb?.offsetHeight || 40,
               }

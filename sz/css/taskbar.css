@@ -463,3 +463,19 @@
 #sz-taskbar.sz-auto-hide:has(.open) {
   transform: translateY(0);
 }
+
+/* Auto-hide: only a thin edge stays on screen until the pointer reaches it */
+.sz-taskbar-autohide #sz-taskbar {
+  bottom: -32px;
+  transition: bottom 0.18s ease;
+}
+
+.sz-taskbar-autohide #sz-taskbar:hover,
+.sz-taskbar-autohide #sz-taskbar:focus-within,
+.sz-taskbar-autohide #sz-taskbar.sz-taskbar-peek {
+  bottom: 0;
+}
+
+.sz-taskbar-autohide #sz-window-area {
+  inset: 0;
+}
