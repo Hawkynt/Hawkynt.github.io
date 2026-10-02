@@ -110,7 +110,75 @@
     }
   }
 
+  // Meadow grass: mottled greens, blade tufts, the odd flower.
+  function grass(ctx, ox, oy, r, base, { flowers = 0.5, dry = 0 } = {}) {
+    for (let y = 0; y < T; y += 2)
+      for (let x = 0; x < T; x += 2)
+        px(ctx, ox + x, oy + y, rgb(base, 0.92 + r() * 0.14), 2, 2);
+    for (let i = 0; i < 7; ++i) {
+      const x = Math.floor(r() * 15), y = 2 + Math.floor(r() * 13);
+      px(ctx, ox + x, oy + y - 2, rgb(base, 1.28), 1, 2);
+      px(ctx, ox + x + 1, oy + y - 1, rgb(base, 1.18), 1, 1);
+      px(ctx, ox + x, oy + y, rgb(base, 0.72), 2, 1);
+    }
+    if (dry > 0)
+      for (let i = 0; i < 6; ++i)
+        px(ctx, ox + Math.floor(r() * T), oy + Math.floor(r() * T), '#b8a860', 2, 1);
+    if (r() < flowers) {
+      const x = 2 + Math.floor(r() * 11), y = 2 + Math.floor(r() * 11);
+      const petal = ['#f4e05a', '#f4f4f4', '#e86a8a', '#8ab8ff'][Math.floor(r() * 4)];
+      px(ctx, ox + x - 1, oy + y, petal); px(ctx, ox + x + 1, oy + y, petal);
+      px(ctx, ox + x, oy + y - 1, petal); px(ctx, ox + x, oy + y + 1, petal);
+      px(ctx, ox + x, oy + y, '#f8c040');
+    }
+  }
+
+  // Wheel-rutted dirt track.
+  function dirtRoad(ctx, ox, oy, r) {
+    roughGround(ctx, ox, oy, r, '#9a7a52');
+    for (let i = 0; i < 4; ++i)
+      px(ctx, ox + Math.floor(r() * T), oy + Math.floor(r() * T), '#c8a878', 2, 1);
+  }
+
+  function sand(ctx, ox, oy, r) {
+    for (let y = 0; y < T; ++y)
+      for (let x = 0; x < T; x += 2)
+        px(ctx, ox + x, oy + y, rgb('#d8bc80', 0.94 + r() * 0.1), 2, 1);
+    for (let i = 0; i < 3; ++i) {
+      const y = 2 + Math.floor(r() * 12), x = Math.floor(r() * 8);
+      px(ctx, ox + x, oy + y, '#e8d098', 6, 1);
+      px(ctx, ox + x + 1, oy + y + 1, '#b89a60', 5, 1);
+    }
+  }
+
+  function snowField(ctx, ox, oy, r) {
+    for (let y = 0; y < T; y += 2)
+      for (let x = 0; x < T; x += 2)
+        px(ctx, ox + x, oy + y, rgb('#e8eef8', 0.95 + r() * 0.06), 2, 2);
+    for (let i = 0; i < 4; ++i) {
+      const x = Math.floor(r() * 12), y = Math.floor(r() * 14);
+      px(ctx, ox + x, oy + y, '#c8d4e6', 4, 1);
+      px(ctx, ox + x + 1, oy + y - 1, '#ffffff', 2, 1);
+    }
+  }
+
+  function swampGround(ctx, ox, oy, r) {
+    grass(ctx, ox, oy, r, '#5a6a3a', { flowers: 0 });
+    const x = 2 + Math.floor(r() * 7), y = 3 + Math.floor(r() * 8);
+    const w = 5 + Math.floor(r() * 4);
+    px(ctx, ox + x, oy + y, '#3a4a3a', w, 3);
+    px(ctx, ox + x + 1, oy + y, '#5a7a6a', w - 2, 1);
+    px(ctx, ox + x + w - 2, oy + y - 2, '#4a7a3a', 1, 3);
+  }
+
   const PAINTERS = Object.freeze({
+    plains:        (ctx, x, y, r) => grass(ctx, x, y, r, '#5f9e44'),
+    forest:        (ctx, x, y, r) => grass(ctx, x, y, r, '#4f8a3c', { flowers: 0.15 }),
+    road:          (ctx, x, y, r) => dirtRoad(ctx, x, y, r),
+    desert:        (ctx, x, y, r) => sand(ctx, x, y, r),
+    snow:          (ctx, x, y, r) => snowField(ctx, x, y, r),
+    swamp:         (ctx, x, y, r) => swampGround(ctx, x, y, r),
+    mountain:      (ctx, x, y, r) => roughGround(ctx, x, y, r, '#7a7a72'),
     dungeon_floor: (ctx, x, y, r) => flagstones(ctx, x, y, r, '#7a6e72', '#3a3236'),
     cave:          (ctx, x, y, r) => roughGround(ctx, x, y, r, '#5a4a40'),
     ruins:         (ctx, x, y, r) => flagstones(ctx, x, y, r, '#8a8070', '#4a4438', { moss: 0.35 }),
