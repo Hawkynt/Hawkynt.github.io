@@ -173,23 +173,10 @@
 
     /**
      * Number of rails, 2..26
-     * @param {int32|uint8[]} railsData - A number, or a byte array whose first byte is the count
+     * @param {int32} railsData - Rail count, clamped to 2..26
      */
     set rails(railsData) {
-      if (typeof railsData === 'number') {
-        /** @type {int32} */
-        const count = railsData;
-        this._rails = Math.max(2, Math.min(26, Math.floor(count)));
-      } else if (Array.isArray(railsData) && railsData.length > 0) {
-        // If rails provided as byte array, use first byte as rail count
-        /** @type {uint8[]} */
-        const bytes = railsData;
-        /** @type {int32} */
-        const railCount = bytes[0];
-        this._rails = Math.max(2, Math.min(26, railCount));
-      } else {
-        this._rails = 3; // Default
-      }
+      this._rails = Math.max(2, Math.min(26, railsData));
     }
 
     /**

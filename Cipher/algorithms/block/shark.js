@@ -54,10 +54,18 @@
 
   // Extract C-boxes for optimized transformations
   // C-boxes: 8 boxes x 256 entries of one 64-bit word as [high32, low32]
+  /**
+   * The C-box tables shark-cboxes.data.js provides
+   * @typedef {Object} SharkCBoxTables
+   * @property {uint32[][][]} CBOX_ENC - Encryption C-boxes
+   * @property {uint32[][][]} CBOX_DEC - Decryption C-boxes
+   */
+  /** @type {SharkCBoxTables} */
+  const CBoxes = SharkCBoxes;
   /** @type {uint32[][][]} */
-  const CBOX_ENC = SharkCBoxes.CBOX_ENC;
+  const CBOX_ENC = CBoxes.CBOX_ENC;
   /** @type {uint32[][][]} */
-  const CBOX_DEC = SharkCBoxes.CBOX_DEC;
+  const CBOX_DEC = CBoxes.CBOX_DEC;
 
   // ===== S-BOXES AND C-BOXES =====
 

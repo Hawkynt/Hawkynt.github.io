@@ -59,7 +59,7 @@
 | Field | Value |
 | --- | --- |
 | `key` | `0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b` |
-| `hashFunction` | `4d4435` |
+| `hashFunction` | MD5 |
 | `input` | `4869205468657265` |
 | `expected` | `9294727a3638bb1c13f48ef8158bfc9d` |
 
@@ -68,7 +68,7 @@
 | Field | Value |
 | --- | --- |
 | `key` | `0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c` |
-| `hashFunction` | `4d4435` |
+| `hashFunction` | MD5 |
 | `input` | `546573742057697468205472756e636174696f6e` |
 | `expected` | `56461ef2342edc00f9bab995690efd4c` |
 
