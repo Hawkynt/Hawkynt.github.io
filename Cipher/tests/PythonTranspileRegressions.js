@@ -255,6 +255,27 @@ check('side effects: postfix update in an initializer, a subscript and a return'
   ['[7, 8]', '[20, 2]', '5 5', '3']);
 });
 
+// ---------------------------------------------------------------------------
+// switch lowering
+// ---------------------------------------------------------------------------
+check('switch: braced case bodies and a break nested in an if leave only the switch', () => {
+  const js = 'function sw(v, x) { let r = 0;\n' +
+    '  switch (v) { case "a": r = 1; break; case "b": { r = 2; if (x) break; r = 3; break; } case "c": { const q = x + 1; r = q; break; } default: r = 9; }\n' +
+    '  return r; }\n' +
+    'function loop(n) { let s = 0;\n' +
+    '  for (let i = 0; i < n; i++) { switch (i % 3) { case 0: if (i > 3) break; s += 1; break; case 1: continue; default: s += 100; } s += 10; }\n' +
+    '  return s; }';
+  // Given a nested break (no loop), and a nested break plus a continue inside a for loop
+  // Then the results match JavaScript (1 2 3 5 9 252)
+  return expectOutput(runPython(js, 'print(sw("a", 0), sw("b", 1), sw("b", 0), sw("c", 4), sw("z", 0), loop(8))'), ['1 2 3 5 9 252']);
+});
+check('switch: a continue inside a switch still advances a while-lowered for loop', () => {
+  const js = 'function f(n) { let s = 0; for (let i = 0, j = 0; i < n; i++, j += 2) { switch (i) { case 1: continue; default: s += j; } } return s; }';
+  // Given a two-variable for loop (lowered to while) whose switch continues
+  // Then the update clause still runs: no endless loop, JS result 0+4+6 = 10 for n = 4
+  return expectOutput(runPython(js, 'print(f(4))'), ['10']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

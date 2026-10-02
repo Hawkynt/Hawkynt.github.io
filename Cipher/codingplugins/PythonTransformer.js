@@ -3631,8 +3631,12 @@ class OpCodes(metaclass=_OpCodesMeta):
           return this.transformSwitchStatement(node);
         case 'BreakStatement':
           return new PythonBreak();
-        case 'ContinueStatement':
+        case 'ContinueStatement': {
+          // Inside a switch lowered to a one-pass loop (transformSwitchStatement)
+          const flag = this._switchContinueTargets && this._switchContinueTargets.get(node);
+          if (flag) return [new PythonAssignment(new PythonIdentifier(flag), PythonLiteral.Bool(true)), new PythonBreak()];
           return new PythonContinue();
+        }
         case 'ThrowStatement':
           return this.transformThrowStatement(node);
         case 'TryStatement':
@@ -5728,6 +5732,7 @@ class OpCodes(metaclass=_OpCodesMeta):
     _hasOwnLevelContinueNoBreak(node) {
       let hasContinue = false;
       let hasBreak = false;
+      let inSwitch = 0;
       const visit = (n) => {
         if (!n || typeof n !== 'object' || hasBreak) return;
         switch (n.type) {
@@ -5735,7 +5740,14 @@ class OpCodes(metaclass=_OpCodesMeta):
             if (!n.label) hasContinue = true;
             return;
           case 'BreakStatement':
-            if (!n.label) hasBreak = true;
+            if (!n.label && inSwitch === 0) hasBreak = true;
+            return;
+          // A continue inside a switch still advances this loop; a break
+          // there only leaves the switch.
+          case 'SwitchStatement':
+            ++inSwitch;
+            for (const c of n.cases || []) for (const s of c.consequent || []) visit(s);
+            --inSwitch;
             return;
           case 'BlockStatement':
             for (const s of n.body) { visit(s); if (hasBreak) return; }
@@ -5997,6 +6009,55 @@ class OpCodes(metaclass=_OpCodesMeta):
         return null;
       }
 
+      // A braced case body (`case 'x': { ...; break; }`) is the same
+      // statement list as an unbraced one; unwrap it so its trailing break
+      // is seen as the case's terminator.
+      const flattenCase = consequent => {
+        let real = consequent.filter(s => s.type !== 'EmptyStatement');
+        while (real.length > 0 && real[real.length - 1].type === 'BlockStatement')
+          real = [...real.slice(0, -1), ...real[real.length - 1].body.filter(s => s.type !== 'EmptyStatement')];
+        return real;
+      };
+      node = Object.assign({}, node, { cases: node.cases.map(c => Object.assign({}, c, { consequent: flattenCase(c.consequent) })) });
+
+      // A break nested below a case's top level (`if (x) break;`) leaves the
+      // switch; an if/elif chain has nothing for it to leave, so the chain is
+      // wrapped in a one-pass `while True:` loop. A continue aimed at an
+      // enclosing loop would then hit the wrapper instead, so not then.
+      const nestedBreak = node.cases.some(c => c.consequent.some((s, i) =>
+        !(s.type === 'BreakStatement' && i === c.consequent.length - 1) && this._findJumpOutside(s, 'BreakStatement')));
+      const loopContinue = node.cases.some(c => c.consequent.some(s => this._findJumpOutside(s, 'ContinueStatement')));
+      if (nestedBreak && !node._wrapped) {
+        // A continue aimed at the enclosing loop would hit the wrapper
+        // instead: it sets a flag and leaves the wrapper, and the flag
+        // continues the real loop after it.
+        let flag = null;
+        if (loopContinue) {
+          this._switchContinueCounter = (this._switchContinueCounter || 0) + 1;
+          flag = `_switch_continue_${this._switchContinueCounter}`;
+          if (!this._switchContinueTargets) this._switchContinueTargets = new WeakMap();
+          const mark = n => {
+            if (!n || typeof n !== 'object') return;
+            if (Array.isArray(n)) { n.forEach(mark); return; }
+            if (n.type === 'ContinueStatement') { if (!n.label) this._switchContinueTargets.set(n, flag); return; }
+            if (['ForStatement', 'WhileStatement', 'DoWhileStatement', 'ForOfStatement', 'ForInStatement',
+              'FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression', 'ArrowFunction',
+              'ClassDeclaration', 'ClassExpression'].includes(n.type)) return;
+            for (const key of Object.keys(n)) if (key !== 'loc' && key !== 'range') mark(n[key]);
+          };
+          node.cases.forEach(c => mark(c.consequent));
+        }
+        const inner = this.transformSwitchStatement(Object.assign({}, node, { _wrapped: true }));
+        const body = new PythonBlock();
+        body.statements.push(...(Array.isArray(inner) ? inner : (inner ? [inner] : [])), new PythonBreak());
+        const wrapper = new PythonWhile(PythonLiteral.Bool(true), body);
+        if (!flag) return wrapper;
+        const resume = new PythonBlock();
+        resume.statements.push(new PythonContinue());
+        return [new PythonAssignment(new PythonIdentifier(flag), PythonLiteral.Bool(false)), wrapper,
+          new PythonIf(new PythonIdentifier(flag), resume, [], null)];
+      }
+
       const discriminant = this.transformExpression(node.discriminant);
 
       // Fold the common "shared body via stacked labels" JS idiom -
@@ -6083,6 +6144,29 @@ class OpCodes(metaclass=_OpCodesMeta):
       }
 
       return currentIf;
+    }
+
+    /**
+     * Whether a statement holds an unlabeled break/continue that leaves it,
+     * i.e. one not owned by a loop (or, for break, a switch) inside it.
+     * @param {Object} node - IL statement
+     * @param {string} type - 'BreakStatement' or 'ContinueStatement'
+     * @returns {boolean}
+     */
+    _findJumpOutside(node, type) {
+      if (!node || typeof node !== 'object') return false;
+      if (Array.isArray(node)) return node.some(n => this._findJumpOutside(n, type));
+      if (node.type === type) return !node.label;
+      const LOOPS = ['ForStatement', 'WhileStatement', 'DoWhileStatement', 'ForOfStatement', 'ForInStatement'];
+      const FUNCTIONS = ['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression', 'ArrowFunction', 'ClassDeclaration', 'ClassExpression'];
+      if (LOOPS.includes(node.type) || FUNCTIONS.includes(node.type)) return false;
+      if (node.type === 'SwitchStatement' && type === 'BreakStatement') return false;
+      for (const key of Object.keys(node)) {
+        if (key === 'loc' || key === 'range' || key === 'resultType') continue;
+        const v = node[key];
+        if (v && typeof v === 'object' && this._findJumpOutside(v, type)) return true;
+      }
+      return false;
     }
 
     // Lowers a switch with genuine (non-empty-body) fall-through into a
