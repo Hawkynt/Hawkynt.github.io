@@ -582,9 +582,11 @@
     let seed = 0x2A6B9E17;
     /** @type {uint8[]} */
     const out = [];
+    /** @type {float64} */
+    const multiplier = 1103515245;
     for (let i = 0; i < count; ++i) {
       /** @type {float64} */
-      const product = seed * 1103515245 + 12345;
+      const product = seed * multiplier + 12345;
       seed = OpCodes.And32(OpCodes.ToUint32(product), 0x7fffffff);
       out.push(seed % 256);
     }

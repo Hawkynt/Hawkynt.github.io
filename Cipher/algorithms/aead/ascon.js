@@ -412,8 +412,10 @@
 
       // Variant-specific parameters (matching C reference)
       if (this.variant === 'ascon128') {
-        /** @type {float64} */
-        this.IV = 0x80400c0600000000; // 64-bit IV
+        /** @type {uint32} */
+        this.ivHigh = 0x80400c06; // 64-bit IV 0x80400c0600000000, upper and lower word
+        /** @type {uint32} */
+        this.ivLow = 0x00000000;
         /** @type {int32} */
         this.keybytes = 16;
         /** @type {int32} */
@@ -423,13 +425,15 @@
         /** @type {int32} */
         this.b = 6;  // Intermediate rounds
       } else if (this.variant === 'ascon128a') {
-        this.IV = 0x80800c0800000000;
+        this.ivHigh = 0x80800c08;
+        this.ivLow = 0x00000000;
         this.keybytes = 16;
         this.rate = 16;
         this.a = 12;
         this.b = 8;
       } else if (this.variant === 'ascon80pq') {
-        this.IV = 0xa0400c0600000000;
+        this.ivHigh = 0xa0400c06;
+        this.ivLow = 0x00000000;
         this.keybytes = 20;
         this.rate = 8;
         this.a = 12;
@@ -555,8 +559,8 @@
       // State layout: S[0]=IV, S[1-2]=key, S[3-4]=nonce (for 16-byte key)
 
       // S[0] = IV
-      const ivHigh = Math.floor(this.IV / 0x100000000);
-      const ivLow = OpCodes.And32(this.IV, 0xFFFFFFFF);
+      const ivHigh = this.ivHigh;
+      const ivLow = this.ivLow;
       this.perm.S[0] = [ivLow, ivHigh];
 
       if (this.keybytes === 16) {
@@ -660,8 +664,8 @@
       const receivedTag = ciphertextWithTag.slice(ciphertextLen);
 
       // Initialize state (same as encrypt)
-      const ivHigh = Math.floor(this.IV / 0x100000000);
-      const ivLow = OpCodes.And32(this.IV, 0xFFFFFFFF);
+      const ivHigh = this.ivHigh;
+      const ivLow = this.ivLow;
       this.perm.S[0] = [ivLow, ivHigh];
 
       if (this.keybytes === 16) {

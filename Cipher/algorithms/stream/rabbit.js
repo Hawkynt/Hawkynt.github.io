@@ -319,8 +319,9 @@ class RabbitInstance extends IAlgorithmInstance {
     /** @type {uint32} */
     // The products stay below 2^32; gh is only consumed modulo 2^32.
     const gh = OpCodes.Add32(OpCodes.Shr32(OpCodes.Add32(OpCodes.Shr32(OpCodes.Mul32(ga, ga), 17), OpCodes.Mul32(ga, gb)), 15), OpCodes.Mul32(gb, gb));
-    /** @type {int32} */
-    const gl = OpCodes.ToInt(OpCodes.And32(gx, 0xffff0000) * gx) + OpCodes.ToInt(OpCodes.And32(gx, 0x0000ffff) * gx);
+    // gl: the low 32 bits of gx squared
+    /** @type {uint32} */
+    const gl = OpCodes.Mul32(gx, gx);
     return OpCodes.ToUint32(OpCodes.Xor32(gh, gl));
   }
 
