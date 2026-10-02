@@ -754,7 +754,7 @@
     return false;
   }
 
-  function doGameOver(won) {
+  async function doGameOver(won) {
     gameOver = true;
     gameWon = won;
     stopTimer();
@@ -797,7 +797,7 @@
       // Best time check
       if (difficulty !== 'custom' && bestTimes[difficulty] && timerValue < bestTimes[difficulty].time) {
         bestTimes[difficulty].time = timerValue;
-        const name = prompt('You have the fastest time for ' + difficulty + ' level.\nPlease enter your name:', 'Anonymous');
+        const name = await SZ.Dialog.prompt('You have the fastest time for ' + difficulty + ' level.\nPlease enter your name:', 'Anonymous', 'Minesweeper');
         bestTimes[difficulty].name = name || 'Anonymous';
         saveBestTimes();
       }

@@ -614,7 +614,7 @@
       }
       _rebuildGrid();
       SZ.Dialog.close('dlg-remove-duplicates');
-      alert(toRemove.length + ' duplicate row(s) removed, ' + allRows.length + ' unique row(s) remaining.');
+      SZ.Dialog.alert(toRemove.length + ' duplicate row(s) removed, ' + allRows.length + ' unique row(s) remaining.', 'Spreadsheet');
     };
 
     SZ.Dialog.show('dlg-remove-duplicates');
@@ -775,7 +775,7 @@
 
     document.getElementById('af-ok').onclick = () => {
       const listRange = parseRange(listInput.value);
-      if (!listRange) { alert('Invalid list range.'); return; }
+      if (!listRange) { SZ.Dialog.alert('Invalid list range.', 'Spreadsheet'); return; }
       const critStr = criteriaInput.value.trim();
       const critRange = critStr ? parseRange(critStr) : null;
 
