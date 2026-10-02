@@ -39,6 +39,9 @@
   const STORAGE_PREFIX = 'sz-space-farming';
   const STORAGE_HIGHSCORES = STORAGE_PREFIX + '-highscores';
   const STORAGE_TUTORIAL = STORAGE_PREFIX + '-tutorial-seen';
+  const STORAGE_SAVE = STORAGE_PREFIX + '-save-v1';
+  const SAVE_VERSION = 1;
+  const AUTOSAVE_INTERVAL = 5; // seconds of play between autosaves
   const MAX_HIGH_SCORES = 5;
 
   /* ── Crop Definitions ── */
@@ -308,6 +311,13 @@
   let tooltipLines = [];
   let tooltipX = 0;
   let tooltipY = 0;
+
+  // Saved farm
+  let savedGameAvailable = false;
+  let autosaveTimer = 0;
+  let saveNotice = '';
+  let newGameConfirmOpen = false;
+  const startButtons = { cont: null, fresh: null };
 
   /* ══════════════════════════════════════════════════════════════════
      SPRITES — 16x16 pixel art drawn once into offscreen canvases
@@ -896,6 +906,238 @@
       tr.innerHTML = '<td colspan="3" style="text-align:center">No scores yet</td>';
       highScoresBody.appendChild(tr);
     }
+  }
+
+  /* ── Saved farm ── */
+
+  function readSavedGameRaw() {
+    try {
+      return localStorage.getItem(STORAGE_SAVE);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function clearSavedGame() {
+    try { localStorage.removeItem(STORAGE_SAVE); } catch (_) {}
+    savedGameAvailable = false;
+  }
+
+  function saveGame() {
+    if (state !== STATE_PLAYING && state !== STATE_PAUSED) return;
+    autosaveTimer = 0;
+    const data = {
+      version: SAVE_VERSION,
+      credits, selectedCropIndex, gameTime, dayCount,
+      gridRows, gridCols, gridColOffset, expansionDirection,
+      soilQuality, tileTypes, tileFertility, hoedTiles,
+      farmGrid: farmGrid.map(row => row.map(cell => cell ? { cropIndex: cell.cropIndex, growthProgress: cell.growthProgress, growthStage: cell.growthStage } : null)),
+      buildings: buildings.map(row => row.map(bld => bld ? { typeIndex: bld.typeIndex, level: bld.level || 1 } : null)),
+      livestockPens: livestockPens.map(pen => ({ typeIndex: pen.typeIndex, feedTimer: pen.feedTimer, produceReady: !!pen.produceReady, gridRow: pen.gridRow, gridCol: pen.gridCol })),
+      wildAnimals: wildAnimals.map(a => ({ x: a.x, y: a.y, targetCol: a.targetCol, targetRow: a.targetRow, moveTimer: a.moveTimer, hp: a.hp })),
+      priceMultipliers, priceChangeTimer, inventory, upgradeLevels,
+      weatherType, weatherTimer, weatherInterval,
+      currentSeason, dayPhase, energy, nextAnimalSpawn,
+      buildingHarvestTimer, autoHarvestTimer, autoCollectorTimer, autoPlanterTimer,
+      buildingIncomeTimer, buildingIncomeAccum, buildingIncomeSurplusAccum,
+      viewZoom, viewPanX, viewPanY
+    };
+    try {
+      localStorage.setItem(STORAGE_SAVE, JSON.stringify(data));
+      savedGameAvailable = true;
+    } catch (_) {}
+  }
+
+  function isFiniteNumber(v) {
+    return typeof v === 'number' && isFinite(v);
+  }
+
+  function isIndex(v, length) {
+    return Number.isInteger(v) && v >= 0 && v < length;
+  }
+
+  function isGridOf(grid, rows, cols, check) {
+    return Array.isArray(grid) && grid.length === rows
+      && grid.every(row => Array.isArray(row) && row.length === cols && row.every(check));
+  }
+
+  function isValidSave(d) {
+    if (!d || typeof d !== 'object' || d.version !== SAVE_VERSION) return false;
+    const rows = d.gridRows, cols = d.gridCols;
+    if (!Number.isInteger(rows) || !Number.isInteger(cols) || rows < 1 || cols < 1 || rows > 400 || cols > 400) return false;
+    if (!isFiniteNumber(d.credits) || !Number.isInteger(d.dayCount) || !isFiniteNumber(d.gameTime)) return false;
+    if (!isGridOf(d.tileTypes, rows, cols, t => t === TILE_FARMLAND || t === TILE_ROCK || t === TILE_WATER || t === TILE_SAND)) return false;
+    if (!isGridOf(d.tileFertility, rows, cols, isFiniteNumber)) return false;
+    if (!isGridOf(d.hoedTiles, rows, cols, h => typeof h === 'boolean')) return false;
+    if (!isGridOf(d.farmGrid, rows, cols, cell => cell === null || (cell && isIndex(cell.cropIndex, CROPS.length)
+      && isFiniteNumber(cell.growthProgress) && Number.isInteger(cell.growthStage) && cell.growthStage >= 0))) return false;
+    if (!isGridOf(d.buildings, rows, cols, bld => bld === null || (bld && isIndex(bld.typeIndex, BUILDINGS.length)
+      && Number.isInteger(bld.level) && bld.level >= 1 && bld.level <= BUILDING_MAX_LEVEL))) return false;
+    if (!Array.isArray(d.soilQuality) || !d.soilQuality.every(isFiniteNumber)) return false;
+    if (!Array.isArray(d.livestockPens) || !d.livestockPens.every(pen => pen && isIndex(pen.typeIndex, LIVESTOCK.length)
+      && isFiniteNumber(pen.feedTimer) && Number.isInteger(pen.gridRow) && Number.isInteger(pen.gridCol))) return false;
+    if (!Array.isArray(d.wildAnimals) || !d.wildAnimals.every(a => a && isFiniteNumber(a.x) && isFiniteNumber(a.y))) return false;
+    if (!Array.isArray(d.priceMultipliers) || d.priceMultipliers.length !== CROPS.length || !d.priceMultipliers.every(isFiniteNumber)) return false;
+    if (!d.inventory || typeof d.inventory !== 'object' || Array.isArray(d.inventory)) return false;
+    if (!d.upgradeLevels || typeof d.upgradeLevels !== 'object' || Array.isArray(d.upgradeLevels)) return false;
+    if (!isIndex(d.currentSeason, SEASONS.length)) return false;
+    return true;
+  }
+
+  /* Returns the parsed save, or null after discarding an unreadable or outdated one */
+  function readValidSave() {
+    const raw = readSavedGameRaw();
+    if (!raw) {
+      savedGameAvailable = false;
+      return null;
+    }
+    let d = null;
+    try {
+      d = JSON.parse(raw);
+    } catch (_) {
+      d = null;
+    }
+    if (!isValidSave(d)) {
+      clearSavedGame();
+      saveNotice = 'The saved farm could not be loaded and was discarded.';
+      return null;
+    }
+    savedGameAvailable = true;
+    return d;
+  }
+
+  function checkSavedGame() {
+    readValidSave();
+  }
+
+  function restoreSavedGame() {
+    const d = readValidSave();
+    if (!d)
+      return false;
+
+    const num = (v, def) => isFiniteNumber(v) ? v : def;
+    const plainCounts = (obj) => {
+      const out = {};
+      for (const k of Object.keys(obj))
+        if (isFiniteNumber(obj[k]))
+          out[k] = obj[k];
+      return out;
+    };
+
+    credits = d.credits;
+    selectedCropIndex = isIndex(d.selectedCropIndex, CROPS.length) ? d.selectedCropIndex : 0;
+    selectedTool = TOOL_PLANT;
+    selectedBuildingIndex = -1;
+    gameTime = d.gameTime;
+    dayCount = d.dayCount;
+    gridRows = d.gridRows;
+    gridCols = d.gridCols;
+    gridColOffset = Number.isInteger(d.gridColOffset) ? d.gridColOffset : 0;
+    expansionDirection = isIndex(d.expansionDirection, 4) ? d.expansionDirection : 0;
+    soilQuality = d.soilQuality.slice();
+    tileTypes = d.tileTypes.map(row => row.slice());
+    tileFertility = d.tileFertility.map(row => row.slice());
+    hoedTiles = d.hoedTiles.map(row => row.slice());
+    farmGrid = d.farmGrid.map(row => row.map(cell => cell ? {
+      cropIndex: cell.cropIndex,
+      growthProgress: cell.growthProgress,
+      growthStage: Math.min(cell.growthStage, CROPS[cell.cropIndex].stages - 1),
+      plantAnim: 0
+    } : null));
+    buildings = d.buildings.map(row => row.map(bld => bld ? { typeIndex: bld.typeIndex, level: bld.level } : null));
+    livestockPens = d.livestockPens.map(pen => ({
+      typeIndex: pen.typeIndex,
+      feedTimer: pen.feedTimer,
+      produceReady: !!pen.produceReady,
+      gridRow: pen.gridRow,
+      gridCol: pen.gridCol
+    }));
+    wildAnimals = d.wildAnimals.map(a => ({
+      x: a.x,
+      y: a.y,
+      targetCol: Number.isInteger(a.targetCol) ? a.targetCol : -1,
+      targetRow: Number.isInteger(a.targetRow) ? a.targetRow : -1,
+      moveTimer: num(a.moveTimer, 0),
+      hp: num(a.hp, 1)
+    }));
+    priceMultipliers = d.priceMultipliers.slice();
+    priceChangeTimer = num(d.priceChangeTimer, PRICE_CHANGE_INTERVAL);
+    inventory = plainCounts(d.inventory);
+    upgradeLevels = plainCounts(d.upgradeLevels);
+
+    const weathers = [WEATHER_NONE, WEATHER_SOLAR_FLARE, WEATHER_METEOR_SHOWER, WEATHER_RAIN, WEATHER_THUNDERSTORM];
+    weatherType = weathers.includes(d.weatherType) ? d.weatherType : WEATHER_NONE;
+    weatherTimer = num(d.weatherTimer, 0);
+    weatherInterval = num(d.weatherInterval, WEATHER_MIN_INTERVAL);
+    overlayAlpha = 0;
+    weatherParticles = [];
+
+    currentSeason = d.currentSeason;
+    dayPhase = num(d.dayPhase, 0);
+    energy = num(d.energy, ENERGY_BASE_MAX);
+    nextAnimalSpawn = num(d.nextAnimalSpawn, ANIMAL_SPAWN_MIN);
+    buildingHarvestTimer = num(d.buildingHarvestTimer, 0);
+    autoHarvestTimer = num(d.autoHarvestTimer, 0);
+    autoCollectorTimer = num(d.autoCollectorTimer, 0);
+    autoPlanterTimer = num(d.autoPlanterTimer, 0);
+    buildingIncomeTimer = num(d.buildingIncomeTimer, 0);
+    buildingIncomeAccum = num(d.buildingIncomeAccum, 0);
+    buildingIncomeSurplusAccum = num(d.buildingIncomeSurplusAccum, 0);
+
+    viewZoom = Math.max(VIEW_ZOOM_MIN, Math.min(VIEW_ZOOM_MAX, num(d.viewZoom, 1)));
+    viewPanX = num(d.viewPanX, 0);
+    viewPanY = num(d.viewPanY, 0);
+    isPanning = false;
+    panButton = -1;
+
+    showUpgradeShop = false;
+    upgradeShopScroll = 0;
+    showLivestockShop = false;
+    livestockShopScroll = 0;
+    shuffleCacheTimer = 0;
+    cachedHarvestOrder = [];
+    cachedPlantOrder = [];
+    autosaveTimer = 0;
+    saveNotice = '';
+    return true;
+  }
+
+  function continueSavedGame() {
+    if (!restoreSavedGame()) {
+      SZ.GameAudio.play('error');
+      return;
+    }
+    state = STATE_PLAYING;
+    SZ.GameAudio.play('select');
+    updateWindowTitle();
+  }
+
+  /* Starts a new farm, asking first when that would replace a running or saved one */
+  function requestNewGame() {
+    if (newGameConfirmOpen) return;
+    const running = state === STATE_PLAYING || state === STATE_PAUSED;
+    if (!running && !savedGameAvailable) {
+      resetGame();
+      return;
+    }
+    const resumeAfter = state === STATE_PLAYING;
+    if (resumeAfter) {
+      state = STATE_PAUSED;
+      saveGame();
+    }
+    newGameConfirmOpen = true;
+    // the inner panel gets hidden along with the overlay when a button closes it, so show it again
+    const panel = document.querySelector('#dlg-new-game .dialog');
+    if (panel)
+      panel.hidden = false;
+    SZ.Dialog.show('dlg-new-game').then((result) => {
+      newGameConfirmOpen = false;
+      if (result === 'yes') {
+        clearSavedGame();
+        resetGame();
+      } else if (resumeAfter && state === STATE_PAUSED)
+        state = STATE_PLAYING;
+    });
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -1559,6 +1801,8 @@
     buildingIncomeAccum = 0;
     buildingIncomeSurplusAccum = 0;
 
+    autosaveTimer = 0;
+    saveNotice = '';
     state = STATE_PLAYING;
     SZ.GameAudio.play('select');
     updateWindowTitle();
@@ -3594,7 +3838,34 @@
       ctx.fillStyle = '#888';
       ctx.font = '14px sans-serif';
       ctx.fillText('Grow crops, tend livestock, sell produce on your space station.', canvasW / 2, canvasH / 2);
-      ctx.fillText('Tap or press F2 to Start', canvasW / 2, canvasH / 2 + 30);
+      startButtons.cont = null;
+      startButtons.fresh = null;
+      if (savedGameAvailable) {
+        const bw = 140, bh = 30, gap = 16, by = canvasH / 2 + 22;
+        startButtons.cont = { x: canvasW / 2 - bw - gap / 2, y: by, w: bw, h: bh };
+        startButtons.fresh = { x: canvasW / 2 + gap / 2, y: by, w: bw, h: bh };
+        const drawStartButton = (r, label, fill, stroke, color) => {
+          ctx.fillStyle = fill;
+          ctx.fillRect(r.x, r.y, r.w, r.h);
+          ctx.strokeStyle = stroke;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(r.x, r.y, r.w, r.h);
+          ctx.fillStyle = color;
+          ctx.font = 'bold 13px sans-serif';
+          ctx.fillText(label, r.x + r.w / 2, r.y + r.h / 2 + 1);
+        };
+        drawStartButton(startButtons.cont, 'Continue', '#132', '#4d4', '#8f8');
+        drawStartButton(startButtons.fresh, 'New Game', '#221', '#aa6', '#ee9');
+        ctx.fillStyle = '#777';
+        ctx.font = '11px sans-serif';
+        ctx.fillText('Enter = Continue  |  F2 = New Game', canvasW / 2, by + bh + 18);
+      } else
+        ctx.fillText('Tap or press F2 to Start', canvasW / 2, canvasH / 2 + 30);
+      if (saveNotice) {
+        ctx.fillStyle = '#f84';
+        ctx.font = '12px sans-serif';
+        ctx.fillText(saveNotice, canvasW / 2, canvasH / 2 + 100);
+      }
       ctx.textAlign = 'start';
     }
 
@@ -4311,6 +4582,12 @@
 
     updateGame(dt);
 
+    if (state === STATE_PLAYING) {
+      autosaveTimer += dt;
+      if (autosaveTimer >= AUTOSAVE_INTERVAL)
+        saveGame();
+    }
+
     particles.update();
     screenShake.update(dt * 1000);
     floatingText.update();
@@ -4338,15 +4615,26 @@
     isRunning: () => state === STATE_PLAYING,
     pause: () => {
       state = STATE_PAUSED;
+      saveGame();
     }
+  });
+
+  /* Keep the farm when the window is closed or the page goes away */
+  window.addEventListener('pagehide', saveGame);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden)
+      saveGame();
   });
 
   window.addEventListener('keydown', (e) => {
     keys[e.code] = true;
 
+    if (newGameConfirmOpen)
+      return;
+
     if (e.code === 'F2') {
       e.preventDefault();
-      resetGame();
+      requestNewGame();
       return;
     }
 
@@ -4380,6 +4668,12 @@
       }
     }
 
+    if (state === STATE_READY && savedGameAvailable && (e.code === 'Enter' || e.code === 'KeyC')) {
+      e.preventDefault();
+      continueSavedGame();
+      return;
+    }
+
     if (e.code === 'Escape') {
       e.preventDefault();
       if (showUpgradeShop) {
@@ -4390,9 +4684,10 @@
         showLivestockShop = false;
         return;
       }
-      if (state === STATE_PLAYING)
+      if (state === STATE_PLAYING) {
         state = STATE_PAUSED;
-      else if (state === STATE_PAUSED)
+        saveGame();
+      } else if (state === STATE_PAUSED)
         state = STATE_PLAYING;
       return;
     }
@@ -4524,6 +4819,15 @@
       ++tutorialPage;
       if (tutorialPage >= TUTORIAL_PAGES.length)
         showTutorial = false;
+      return;
+    }
+    if (state === STATE_READY && savedGameAvailable) {
+      const { x: sx, y: sy } = pointerToCanvas(e);
+      const hit = (r) => r && sx >= r.x && sx <= r.x + r.w && sy >= r.y && sy <= r.y + r.h;
+      if (hit(startButtons.cont))
+        continueSavedGame();
+      else if (hit(startButtons.fresh))
+        requestNewGame();
       return;
     }
     if (state === STATE_READY || state === STATE_GAME_OVER) {
@@ -4885,12 +5189,13 @@
   function handleAction(action) {
     switch (action) {
       case 'new':
-        resetGame();
+        requestNewGame();
         break;
       case 'pause':
-        if (state === STATE_PLAYING)
+        if (state === STATE_PLAYING) {
           state = STATE_PAUSED;
-        else if (state === STATE_PAUSED)
+          saveGame();
+        } else if (state === STATE_PAUSED)
           state = STATE_PLAYING;
         break;
       case 'high-scores':
@@ -4963,6 +5268,7 @@
   const muteButton = SZ.GameAudio.attachMuteButton();
   Object.assign(muteButton.style, { top: '2px', bottom: 'auto', width: '20px', height: '20px', font: '11px/18px sans-serif' });
   loadHighScores();
+  checkSavedGame();
   try { tutorialSeen = localStorage.getItem(STORAGE_TUTORIAL) === '1'; } catch (_) { tutorialSeen = false; }
   updateWindowTitle();
 
