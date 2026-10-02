@@ -113,6 +113,12 @@
   const particles = new SZ.GameEffects.ParticleSystem();
   const screenShake = new SZ.GameEffects.ScreenShake();
   const floatingText = new SZ.GameEffects.FloatingText();
+  const audio = SZ.GameAudio;
+  const WEAPON_SOUNDS = {
+    spread: ['shoot', 1], laser: ['laser', 1.4], missile: ['whoosh', 1.2], plasma: ['zap', 0.6], beam: ['laser', 1.8],
+    shotgun: ['hit', 1.4], lightning: ['zap', 1.1], flak: ['shoot', 0.7], railgun: ['laser', 0.6]
+  };
+  let lastShotSoundAt = 0;
 
   /* ── Tutorial ── */
   let tutorialSeen = false;
@@ -244,6 +250,7 @@
       bossWarningTimer = 2;
       bossVictoryTimer = 0;
       boss = null;
+      audio.play('error', { pitch: 1.5 });
       return;
     }
 
@@ -538,6 +545,13 @@
       // Add visual trail
       railTrails.push({ x: px, y1: py - PLAYER_SIZE, y2: py - PLAYER_SIZE, timer: RAILGUN_TRAIL_DURATION });
     }
+
+    const now = performance.now();
+    if (now - lastShotSoundAt >= 100) {
+      lastShotSoundAt = now;
+      const snd = WEAPON_SOUNDS[currentWeapon] || WEAPON_SOUNDS.spread;
+      audio.play(snd[0], { pitch: snd[1], volume: 0.5 });
+    }
   }
 
   /* ── Collision Helpers ── */
@@ -566,6 +580,7 @@
       --shieldHP;
       screenShake.trigger(4, 200);
       particles.burst(player.x, player.y, 10, { color: '#00bfff', speed: 3, life: 0.5, size: 2, decay: 0.02 });
+      audio.play('bounce', { pitch: 0.7 });
       return;
     }
 
@@ -576,7 +591,10 @@
     if (lives <= 0) {
       state = STATE_DEAD;
       addHighScore(Math.floor(score), waveNumber);
+      audio.play('explode');
+      audio.play('lose');
     } else {
+      audio.play('hurt');
       // Brief invulnerability handled by shield recharge
       shieldHP = 1;
     }
@@ -593,6 +611,11 @@
     ++streak;
     streakTimer = STREAK_TIMEOUT;
     multiplier = Math.min(streak, MAX_MULTIPLIER);
+
+    if ((enemy.maxHp || 1) >= 4)
+      audio.play('explode', { pitch: 1.2, volume: 0.6 });
+    else
+      audio.play('smallExplode', { pitch: 1 + (multiplier - 1) * 0.08 });
 
     const points = enemy.score * multiplier;
     score += points;
@@ -679,6 +702,7 @@
     if (!boss.enraged && boss.hp <= boss.maxHp * 0.5) {
       boss.enraged = true;
       screenShake.trigger(10, 500);
+      audio.play('hurt', { pitch: 0.5 });
       floatingText.add(boss.x, boss.y + boss.size + 20, 'ENRAGED!', { color: '#f44', decay: 0.02 });
     }
 
@@ -800,6 +824,7 @@
           });
         }
         particles.burst(boss.x, boss.y + boss.size, 10, { color: '#f80', speed: 3, life: 0.4, size: 2, decay: 0.03 });
+        audio.play('drop', { pitch: 0.7 });
       }
     }
 
@@ -922,6 +947,8 @@
     particles.burst(boss.x, boss.y, 40, { color: boss.color, speed: 6, life: 1, size: 4, decay: 0.015 });
     particles.burst(boss.x, boss.y, 25, { color: '#ffd700', speed: 5, life: 0.8, size: 3, decay: 0.02 });
     screenShake.trigger(12, 600);
+    audio.play('explode', { pitch: 0.7 });
+    audio.play('win');
     boss.alive = false;
     bossVictoryTimer = 3;
   }
@@ -1084,6 +1111,7 @@
             });
           }
           particles.burst(b.x, b.y, 8, { color: '#f80', speed: 3, life: 0.3, size: 2, decay: 0.04 });
+          audio.play('smallExplode', { pitch: 1.6, volume: 0.4 });
           bullets.splice(i, 1);
           continue;
         }
@@ -1142,6 +1170,7 @@
             // Plasma AOE: damage all enemies in radius
             particles.burst(b.x, b.y, 20, { color: '#a0f', speed: 5, life: 0.6, size: 4, decay: 0.02 });
             screenShake.trigger(5, 200);
+            audio.play('smallExplode', { pitch: 0.7 });
             for (let k = enemies.length - 1; k >= 0; --k) {
               const t = enemies[k];
               const adx = t.x - b.x, ady = t.y - b.y;
@@ -1203,6 +1232,7 @@
           else {
             particles.burst(e.x, e.y, 4, { color: '#fff', speed: 2, life: 0.2, size: 1, decay: 0.05 });
             screenShake.trigger(2, 80);
+            audio.play('click', { pitch: 0.6 });
           }
           if (bulletConsumed)
             break;
@@ -1224,10 +1254,12 @@
               boss.shieldDownTimer = 0;
               floatingText.add(boss.x, boss.y - boss.size - 10, 'SHIELD BROKEN!', { color: '#f44', decay: 0.02 });
               screenShake.trigger(6, 300);
+              audio.play('zap', { pitch: 0.5 });
             }
           } else {
             boss.hp -= b.damage;
             particles.burst(b.x, b.y, 4, { color: '#fff', speed: 2, life: 0.2, size: 1, decay: 0.05 });
+            audio.play('click', { pitch: 0.5 });
           }
           screenShake.trigger(2, 80);
           if (!b.piercing)
@@ -1523,12 +1555,14 @@
           const def = PERSISTENT_UPGRADE_DEFS[u.type];
           floatingText.add(u.x, u.y, def.label + ' ' + pUpgrades[u.type], { color: def.color, decay: 0.02 });
           particles.burst(u.x, u.y, 12, { color: def.color, speed: 3, life: 0.5, size: 2, decay: 0.03 });
+          audio.play('powerup');
           if (u.type === 'shieldUp')
             shieldHP = Math.min(shieldHP + 1, SHIELD_MAX_HP + pUpgrades.shieldUp);
         } else {
           currentWeapon = u.type;
           floatingText.add(u.x, u.y, u.type.toUpperCase(), { color: '#0ff', decay: 0.025 });
           particles.burst(u.x, u.y, 8, { color: '#0ff', speed: 3, life: 0.4, size: 2, decay: 0.03 });
+          audio.play('pickup');
         }
         upgrades.splice(i, 1);
       }
@@ -1554,6 +1588,7 @@
         // Detonate mine
         particles.burst(m.x, m.y, 15, { color: '#f80', speed: 5, life: 0.5, size: 3, decay: 0.03 });
         screenShake.trigger(6, 250);
+        audio.play('explode', { pitch: 1.4, volume: 0.7 });
         // Damage player if within damage radius
         if (mdx * mdx + mdy * mdy < m.damageRadius * m.damageRadius)
           playerHit();
@@ -1597,6 +1632,8 @@
           ++waveNumber;
           shieldHP = Math.min(shieldHP + 1, SHIELD_MAX_HP + pUpgrades.shieldUp);
           startWave();
+          if (!isBossWave)
+            audio.play('levelup');
           floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 40, 'WAVE ' + waveNumber, { color: '#fff', decay: 0.015 });
         }
       }
@@ -1619,6 +1656,8 @@
           ++waveNumber;
           shieldHP = Math.min(shieldHP + 1, SHIELD_MAX_HP + pUpgrades.shieldUp);
           startWave();
+          if (!isBossWave)
+            audio.play('levelup');
           floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 40, 'WAVE ' + waveNumber, { color: '#fff', decay: 0.015 });
         }
       }
@@ -2516,6 +2555,7 @@
     if (state === STATE_READY) {
       state = STATE_PLAYING;
       startWave();
+      audio.play('select');
       updateStatus();
     } else if (state === STATE_DEAD) {
       resetGame();
@@ -2663,6 +2703,7 @@
   setupCanvas();
   initStars();
   updateStatus();
+  audio.attachMuteButton();
   canvas.focus();
   if (!tutorialSeen) {
     showTutorial = true;
