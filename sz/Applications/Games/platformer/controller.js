@@ -119,7 +119,110 @@
     saveHighScores();
   }
 
+  /* ── Level layouts ── */
+  // One character per 32px tile, the last row is the bottom of the screen.
+  //   #  solid ground          =  thin platform (land on top only)
+  //   o  coin                  @  player start      G  goal
+  //   w  walker   f  flyer   s  shooter   B  boss
+  //   J  double jump   I  invincibility   F  fireball
+  // After the last layout the levels repeat with faster enemies.
+  const LEVELS = [
+    {
+      name: 'Green Meadow',
+      map: [
+        '........................................oooo..............................................',
+        '........................................====..............................................',
+        '.........ooooo..........................................................oooo..............',
+        '.........=====....oo..........ooo..====......oo..................oo.....====..............',
+        '..@......................w....###.................o.o.owo.o....................w......G...',
+        '##################..#########################..##################..#######################'
+      ]
+    },
+    {
+      name: 'Stepping Stones',
+      map: [
+        '........................................................f..........................oooo.............',
+        '.........................ooo.......................................................====.............',
+        '................ooo..ooo..............J........ooo..........oo......................................',
+        '...................######...####....=====......===..........##.........ooo....====..................',
+        '..@.............#########...####...w.......w................##....w.......................s.....G...',
+        '#########################...##################.....####################...##########################'
+      ]
+    },
+    {
+      name: 'Sky Bridges',
+      map: [
+        '........................f..............................................................ooo......................',
+        '....................................f..................................................===......................',
+        '....................oooooooooo....................................................oooo..............f...........',
+        '....................====..====....................................................====..........................',
+        '..............oooo..............oooo............................................................................',
+        '..............====..............====..===....J..........oooo.................====........===....................',
+        '..@...............................................s...............w..#..w...............................s...G...',
+        '#############............................###############....################.................###################'
+      ]
+    },
+    {
+      name: 'Stone Keep',
+      map: [
+        '......................................................................oooo..........................................',
+        '......................................................................====..........................................',
+        '..............................................................f.....................................................',
+        '......................................ooso.......................====...............................................',
+        '..............oo......................####................................................oo..........oooo..........',
+        '........F.....##....................########.......oooo.....====.................ooo......##..........====..........',
+        '..@...........##............w.....############...............................w............##...w....w.......s...G...',
+        '#####################...###########################....##########################...################################'
+      ]
+    },
+    {
+      name: 'Guardian Arena',
+      map: [
+        '......................................................................................oooo......................',
+        '..............................f.......................................................====......................',
+        '......................................oo........oo..............................................................',
+        '...............ooo....................==........##...........oo...I...........====............====..............',
+        '..@......................w......................##.....s............................................B.......G...',
+        '###############...##################......###################..#################################################'
+      ]
+    },
+    {
+      name: 'Gauntlet',
+      map: [
+        '................................................................................................f...........................',
+        '............................................................................................ooo.............................',
+        '.........................................f..................................................===.............................',
+        '......................................ooo..................................f................................................',
+        '......................................===..............................................===.......===........................',
+        '.........................................................s..................................................................',
+        '...........oooo.......##.........===.......===.....J....##.....oooo...............===................===....................',
+        '..@................w..##...w..........................####..w...........s.....................................w...s..#..G...',
+        '###########....################.................###############....##############........................###################'
+      ]
+    }
+  ];
+
+  const POWER_UP_TYPES = { J: 'doubleJump', I: 'invincible', F: 'fireball' };
+
   /* ── Level generation ── */
+  let spawnX = 64;
+  let spawnY = 300;
+
+  function makeEnemy(type, x, y, level, patrolMin, patrolMax, isBoss) {
+    return {
+      x, y, vx: (30 + level * 5) * (Math.random() < 0.5 ? 1 : -1), vy: 0,
+      w: isBoss ? 48 : 24, h: isBoss ? 48 : 24,
+      type,
+      alive: true,
+      isBoss,
+      bossHealth: isBoss ? 3 + Math.floor(level / 5) : 0,
+      animFrame: 0,
+      patrolMin,
+      patrolMax,
+      shootTimer: isBoss ? 0 : 2
+    };
+  }
+
   function generateLevel(level) {
     tiles = [];
     platforms = [];
@@ -129,92 +232,91 @@
     fireballs = [];
     coinCount = 0;
 
-    const cols = 60 + level * 10;
+    const layout = LEVELS[(level - 1) % LEVELS.length];
     const rows = Math.ceil(CANVAS_H / TILE_SIZE);
+    const map = layout.map;
+    const top = rows - map.length;
+    const cols = Math.max(...map.map((line) => line.length));
     levelWidth = cols * TILE_SIZE;
+    const at = (r, c) => {
+      const line = map[r - top];
+      return line && c >= 0 && c < line.length ? line[c] : '.';
+    };
+    const isSolid = (r, c) => at(r, c) === '#';
+    const isSupport = (r, c) => at(r, c) === '#' || at(r, c) === '=';
 
-    // Floor tiles
-    for (let c = 0; c < cols; ++c)
-      tiles.push({ x: c * TILE_SIZE, y: (rows - 1) * TILE_SIZE, w: TILE_SIZE, h: TILE_SIZE, type: 'ground' });
+    // Walkers patrol the stretch of ground they stand on
+    const patrolRange = (r, c, reach) => {
+      let lo = c, hi = c;
+      while (lo > c - reach && isSupport(r + 1, lo - 1) && !isSolid(r, lo - 1))
+        --lo;
+      while (hi < c + reach && isSupport(r + 1, hi + 1) && !isSolid(r, hi + 1))
+        ++hi;
+      return [lo * TILE_SIZE, hi * TILE_SIZE + TILE_SIZE - 24];
+    };
 
-    // Platforms scattered — variety per level
-    const numPlatforms = 8 + level * 3;
-    for (let i = 0; i < numPlatforms; ++i) {
-      const px = 120 + Math.floor(Math.random() * (levelWidth - 300));
-      const py = 120 + Math.floor(Math.random() * (CANVAS_H - 200));
-      const pw = TILE_SIZE * (2 + Math.floor(Math.random() * 4));
-      platforms.push({ x: px, y: py, w: pw, h: 12 });
-    }
+    let hasBoss = false;
+    for (let r = top; r < rows; ++r)
+      for (let c = 0; c < cols; ++c) {
+        const ch = at(r, c);
+        const x = c * TILE_SIZE;
+        const y = r * TILE_SIZE;
+        switch (ch) {
+          case '#':
+            tiles.push({ x, y, w: TILE_SIZE, h: TILE_SIZE, type: 'ground', surface: !isSolid(r - 1, c) });
+            break;
+          case '=': {
+            if (at(r, c - 1) === '=')
+              break;
+            let len = 1;
+            while (at(r, c + len) === '=')
+              ++len;
+            platforms.push({ x, y, w: len * TILE_SIZE, h: 12 });
+            break;
+          }
+          case 'o':
+            coins.push({ x: x + 8, y: y + 8, w: 16, h: 16, collected: false, bobPhase: Math.random() * Math.PI * 2 });
+            break;
+          case '@':
+            spawnX = x + 4;
+            spawnY = y + TILE_SIZE - player.h;
+            break;
+          case 'G':
+            tiles.push({ x, y: y - TILE_SIZE * 3, w: TILE_SIZE, h: TILE_SIZE * 4, type: 'goal' });
+            break;
+          case 'w':
+          case 's': {
+            const range = patrolRange(r, c, 5);
+            enemies.push(makeEnemy(ch === 'w' ? 'walker' : 'shooter', x + 4, y + TILE_SIZE - 24, level, range[0], range[1], false));
+            break;
+          }
+          case 'f':
+            enemies.push(makeEnemy('flyer', x + 4, y + 4, level, x - 96, x + 96, false));
+            break;
+          case 'B': {
+            const range = patrolRange(r, c, 6);
+            enemies.push(makeEnemy('walker', x - 8, y + TILE_SIZE - 48, level, range[0], range[1] - 24, true));
+            hasBoss = true;
+            break;
+          }
+          case 'J':
+          case 'I':
+          case 'F':
+            powerUps.push({ x: x + 6, y: y + 6, w: 20, h: 20, type: POWER_UP_TYPES[ch], active: true });
+            break;
+        }
+      }
 
-    // Coins along the level
-    const numCoins = 15 + level * 5;
-    for (let i = 0; i < numCoins; ++i) {
-      coins.push({
-        x: 100 + Math.floor(Math.random() * (levelWidth - 200)),
-        y: 80 + Math.floor(Math.random() * (CANVAS_H - 200)),
-        w: 16, h: 16,
-        collected: false,
-        bobPhase: Math.random() * Math.PI * 2
-      });
-    }
-
-    // Enemies — walker, flyer, shooter types
-    const numEnemies = 5 + level * 2;
-    for (let i = 0; i < numEnemies; ++i) {
-      const types = ['walker', 'flyer', 'shooter'];
-      const type = types[Math.floor(Math.random() * types.length)];
-      const ex = 200 + Math.floor(Math.random() * (levelWidth - 400));
-      const ey = type === 'flyer' ? 80 + Math.floor(Math.random() * 200) : (rows - 2) * TILE_SIZE;
-      enemies.push({
-        x: ex, y: ey, vx: (30 + level * 5) * (Math.random() < 0.5 ? 1 : -1), vy: 0,
-        w: 24, h: 24,
-        type: type,
-        alive: true,
-        isBoss: false,
-        bossHealth: 0,
-        animFrame: 0,
-        patrolMin: ex - 80,
-        patrolMax: ex + 80,
-        shootTimer: 2
-      });
-    }
-
-    // Boss every 5 levels
-    if (level % 5 === 0) {
+    // Every fifth level ends with a guardian
+    if (level % 5 === 0 && !hasBoss) {
       const bossX = levelWidth - 200;
-      enemies.push({
-        x: bossX, y: (rows - 2) * TILE_SIZE - 24, vx: 30, vy: 0,
-        w: 48, h: 48,
-        type: 'walker',
-        alive: true,
-        isBoss: true,
-        bossHealth: 3 + Math.floor(level / 5),
-        animFrame: 0,
-        patrolMin: bossX - 120,
-        patrolMax: bossX + 120,
-        shootTimer: 0
-      });
+      enemies.push(makeEnemy('walker', bossX, (rows - 2) * TILE_SIZE - 24, level, bossX - 120, bossX + 120, true));
+      enemies[enemies.length - 1].vx = 30;
     }
-
-    // Power-ups
-    if (level >= 2) {
-      const puTypes = ['doubleJump', 'invincible', 'fireball'];
-      const puType = puTypes[Math.floor(Math.random() * puTypes.length)];
-      powerUps.push({
-        x: 200 + Math.floor(Math.random() * (levelWidth - 400)),
-        y: 100 + Math.floor(Math.random() * (CANVAS_H - 250)),
-        w: 20, h: 20,
-        type: puType,
-        active: true
-      });
-    }
-
-    // Goal at end of level
-    tiles.push({ x: levelWidth - TILE_SIZE * 2, y: (rows - 3) * TILE_SIZE, w: TILE_SIZE, h: TILE_SIZE * 2, type: 'goal' });
 
     // Reset player position
-    player.x = 64;
-    player.y = (rows - 2) * TILE_SIZE - player.h;
+    player.x = spawnX;
+    player.y = spawnY;
     player.vx = 0;
     player.vy = 0;
     player.alive = true;
@@ -231,16 +333,25 @@
   function checkTileCollision(entity, dt) {
     entity.grounded = false;
 
-    // Check ground tiles
+    // Check ground tiles: land on top, bump the head below, stop at the sides
     for (const t of tiles) {
       if (t.type === 'goal') continue;
       if (!aabb(entity, t)) continue;
       const prevBottom = entity.y + entity.h - entity.vy * dt;
-      if (entity.vy >= 0 && prevBottom <= t.y) {
+      const prevTop = entity.y - entity.vy * dt;
+      const prevX = entity.x - entity.vx * dt;
+      if (entity.vy >= 0 && prevBottom <= t.y + 0.5) {
         entity.y = t.y - entity.h;
         entity.vy = 0;
         entity.grounded = true;
         entity.isJumping = false;
+      } else if (prevX + entity.w <= t.x + 0.5 || prevX >= t.x + t.w - 0.5) {
+        entity.x = prevX + entity.w <= t.x + 0.5 ? t.x - entity.w : t.x + t.w;
+        if (entity.patrolMin !== undefined)
+          entity.vx = -entity.vx;
+      } else if (entity.vy < 0 && prevTop >= t.y + t.h - 0.5) {
+        entity.y = t.y + t.h;
+        entity.vy = 0;
       }
     }
 
@@ -289,8 +400,8 @@
       player.invincible -= dt;
       if (player.invincible <= 0) {
         player.alive = true;
-        player.x = 64;
-        player.y = 300;
+        player.x = spawnX;
+        player.y = spawnY;
         player.vx = 0;
         player.vy = 0;
         player.invincible = 2;
@@ -705,26 +816,44 @@
             ctx.fillStyle = ((sx + sy) & 1) ? '#5a3a18' : '#4a3020';
             ctx.fillRect(sx, sy, 3, 2);
           }
-        // Grass strip on top
-        ctx.fillStyle = '#4a8a2a';
-        ctx.fillRect(t.x, t.y, t.w, 4);
-        // Grass blades
-        ctx.fillStyle = '#5aaa30';
-        for (let gx = t.x; gx < t.x + t.w; gx += 4) {
-          ctx.beginPath();
-          ctx.moveTo(gx, t.y);
-          ctx.lineTo(gx + 2, t.y - 4);
-          ctx.lineTo(gx + 4, t.y);
-          ctx.closePath();
-          ctx.fill();
+        if (t.surface !== false) {
+          // Grass strip on top
+          ctx.fillStyle = '#4a8a2a';
+          ctx.fillRect(t.x, t.y, t.w, 4);
+          // Grass blades
+          ctx.fillStyle = '#5aaa30';
+          for (let gx = t.x; gx < t.x + t.w; gx += 4) {
+            ctx.beginPath();
+            ctx.moveTo(gx, t.y);
+            ctx.lineTo(gx + 2, t.y - 4);
+            ctx.lineTo(gx + 4, t.y);
+            ctx.closePath();
+            ctx.fill();
+          }
         }
       } else if (t.type === 'goal') {
+        // Flag pole on a golden base
+        const poleX = t.x + t.w / 2 - 2;
+        ctx.fillStyle = '#d8d8e0';
+        ctx.fillRect(poleX, t.y, 4, t.h - 8);
         ctx.fillStyle = '#ffd700';
-        ctx.fillRect(t.x, t.y, t.w, t.h);
+        ctx.beginPath();
+        ctx.arc(poleX + 2, t.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+        const wave = Math.sin(Date.now() / 200) * 3;
+        ctx.fillStyle = '#ff4444';
+        ctx.beginPath();
+        ctx.moveTo(poleX + 4, t.y + 4);
+        ctx.lineTo(poleX + 30, t.y + 14 + wave);
+        ctx.lineTo(poleX + 4, t.y + 26);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#ffd700';
+        ctx.fillRect(t.x + 2, t.y + t.h - 8, t.w - 4, 8);
         ctx.fillStyle = '#ffee44';
-        ctx.font = 'bold 14px sans-serif';
+        ctx.font = 'bold 12px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('GOAL', t.x + t.w / 2, t.y + t.h / 2 + 5);
+        ctx.fillText('GOAL', t.x + t.w / 2, t.y - 10);
         ctx.textAlign = 'start';
       }
     }
