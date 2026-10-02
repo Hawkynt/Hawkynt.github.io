@@ -407,6 +407,7 @@
 
     moves = 0;
     state = STATE_PLAYING;
+    SZ.GameAudio.play('select');
 
     // Show hint overlay at level start
     hintOverlayText = levelDef.hint || '';
@@ -424,6 +425,7 @@
     else {
       state = STATE_GAME_OVER;
       floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 40, 'ALL PUZZLES COMPLETE!', { color: '#ff0', font: 'bold 20px sans-serif' });
+      SZ.GameAudio.play('win');
       updateWindowTitle();
     }
   }
@@ -461,6 +463,7 @@
           particles.sparkle(tx, ty, 6, { color: '#ff0', speed: 1.5 });
           floatingText.add(tx, ty - 15, 'Burn!', { color: '#f80', font: 'bold 12px sans-serif' });
           screenShake.trigger(4, 150);
+          SZ.GameAudio.play('smallExplode');
           acted = true;
         }
         break;
@@ -472,6 +475,7 @@
           particles.burst(tx, ty, 10, { color: '#48f', speed: 2, life: 0.5 });
           particles.sparkle(tx, ty, 5, { color: '#8af', speed: 1 });
           floatingText.add(tx, ty - 15, 'Fill!', { color: '#4af', font: 'bold 12px sans-serif' });
+          SZ.GameAudio.play('drop', { pitch: 1.5 });
           acted = true;
         }
         break;
@@ -483,6 +487,7 @@
           particles.burst(tx, ty, 8, { color: '#a62', speed: 2, life: 0.4 });
           particles.sparkle(tx, ty, 4, { color: '#840', speed: 1 });
           floatingText.add(tx, ty - 15, 'Block path!', { color: '#a62', font: 'bold 12px sans-serif' });
+          SZ.GameAudio.play('thud');
           acted = true;
         }
         break;
@@ -500,6 +505,7 @@
               particles.burst(tx, ty, 8, { color: '#ddf', speed: 2, life: 0.4 });
               particles.sparkle(tx, ty, 5, { color: '#eef', speed: 1.5 });
               floatingText.add(tx, ty - 15, 'Push!', { color: '#aaf', font: 'bold 12px sans-serif' });
+              SZ.GameAudio.play('whoosh');
               acted = true;
             }
           }
@@ -508,7 +514,7 @@
     }
 
     // Check rune discovery — cast any element adjacent to rune
-    checkRuneDiscovery(row, col, tx, ty);
+    const runeFound = checkRuneDiscovery(row, col, tx, ty);
 
     // Direct cast on a hidden rune reveals it (counts as a move)
     if (!acted && tile === T_RUNE) {
@@ -520,7 +526,8 @@
     if (acted) {
       ++moves;
       checkLevelComplete();
-    }
+    } else if (!runeFound)
+      SZ.GameAudio.play('error', { volume: 0.5 });
   }
 
   function getAirPushDirection(row, col) {
@@ -541,6 +548,7 @@
 
   function checkRuneDiscovery(row, col, tx, ty) {
     const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+    let found = false;
     for (const [dr, dc] of dirs) {
       const nr = row + dr;
       const nc = col + dc;
@@ -551,15 +559,18 @@
           const rx = GRID_OFFSET_X + nc * TILE_SIZE + TILE_SIZE / 2;
           const ry = GRID_OFFSET_Y + nr * TILE_SIZE + TILE_SIZE / 2;
           revealRune(rx, ry);
+          found = true;
         }
       }
     }
+    return found;
   }
 
   function revealRune(rx, ry) {
     particles.sparkle(rx, ry, 15, { color: '#c8f', speed: 2 });
     floatingText.add(rx, ry - 20, 'Rune Found!', { color: '#c8f', font: 'bold 14px sans-serif' });
     screenShake.trigger(3, 100);
+    SZ.GameAudio.play('pickup', { pitch: 1.2 });
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -621,6 +632,7 @@
     floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `Level ${currentLevel + 1} Solved!`, { color: '#ff0', font: 'bold 18px sans-serif' });
     floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 30, `${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}`, { color: '#fc0', font: 'bold 24px sans-serif' });
     screenShake.trigger(6, 300);
+    SZ.GameAudio.play(stars === 3 ? 'win' : 'levelup');
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -1359,6 +1371,7 @@
   function selectElement(elemId) {
     if (selectedElement !== elemId) {
       selectedElement = elemId;
+      SZ.GameAudio.play('click');
       elementSwitchAnim = 1.0; // trigger transition animation
     }
   }
@@ -1651,6 +1664,7 @@
   loadHighScores();
   loadTutorialSeen();
   updateWindowTitle();
+  SZ.GameAudio.attachMuteButton();
 
   // Show tutorial automatically for first-time players
   if (!tutorialSeen) {
