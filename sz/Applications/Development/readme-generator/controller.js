@@ -2170,11 +2170,9 @@
   }
 
   function doSave() {
-    if (!currentFilePath) {
-      doSaveAs();
-      return;
-    }
-    saveToPath(currentFilePath);
+    if (!currentFilePath)
+      return doSaveAs();
+    return saveToPath(currentFilePath);
   }
 
   async function doSaveAs() {
@@ -2468,7 +2466,7 @@
       case 'save': doSave(); break;
       case 'save-as': doSaveAs(); break;
       case 'export': doExport(); break;
-      case 'exit': SZ.Dlls.User32.DestroyWindow(); break;
+      case 'exit': SZ.Dlls.User32.RequestClose(); break;
       case 'undo': doUndo(); break;
       case 'redo': doRedo(); break;
       case 'copy-markdown': doCopyMarkdown(); break;
@@ -2564,4 +2562,7 @@
   }
 
   init();
+
+  // closing with unsaved changes asks to save them first
+  SZ.Dlls.User32.SetCloseGuard(() => dirty, () => doSave(), () => currentFileName);
 })();

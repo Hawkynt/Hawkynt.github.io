@@ -3076,7 +3076,8 @@
   }
 
   async function doSave() {
-    if (!currentFilePath) { doSaveAs(); return; }
+    if (!currentFilePath)
+      return doSaveAs();
     if (/\.xlsx$/i.test(currentFilePath) || currentFileFormat === 'xlsx') {
       if (await saveAsXlsx(currentFilePath))
         setDirty(false);
@@ -5111,7 +5112,7 @@
       case 'import-tsv': doImportTsv(); break;
       case 'export-tsv': doExportTsv(); break;
       case 'print': window.print(); break;
-      case 'exit': User32.DestroyWindow(); break;
+      case 'exit': User32.RequestClose(); break;
       case 'undo': doUndo(); break;
       case 'redo': doRedo(); break;
       case 'undo-history': showUndoHistory(); break;
@@ -6051,4 +6052,7 @@
     })();
   }
 
+
+  // closing with unsaved changes asks to save them first
+  User32.SetCloseGuard(() => dirty, () => doSave(), () => currentFileName);
 })();
