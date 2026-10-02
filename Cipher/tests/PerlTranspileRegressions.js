@@ -140,6 +140,18 @@ check('framework: a super(...) call into a framework base chains into its BUILD'
   expectMatch(code, /\$self->SUPER::BUILD\(\$a\)/, '$self->SUPER::BUILD($a)');
 });
 
+// ---------------------------------------------------------------------------
+// Signatures: JavaScript ignores surplus arguments
+// ---------------------------------------------------------------------------
+check('signatures: a callback declaring fewer parameters than it is passed still runs', () => {
+  const code = transpile('/** @param {function(int, int, int): int} f @returns {int} */ function apply(f) { return f(1, 2, 3); }\n' +
+    '/** @returns {int} */ function g() { return apply((a, b) => a + b); }');
+  expectMatch(code, /sub \(\$a = undef, \$b = undef, @\)/, 'an anonymous sub ending in a nameless slurpy');
+  if (!hasPerl()) return 'skip';
+  expectOutput(runPerl('/** @param {function(int, int, int): int} f @returns {int} */ function apply(f) { return f(1, 2, 3); }\n' +
+    '/** @returns {int} */ function g() { return apply((a, b) => a + b); }', 'print main::g(), "\\n";'), '3');
+});
+
 /**
  * PERL: run every regression case.
  * @param {object} options - { verbose }

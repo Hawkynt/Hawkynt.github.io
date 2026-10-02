@@ -1696,7 +1696,7 @@ sub MerkleDamgardBlocks {
       if (node.useSignatures && node.parameters.length > 0) {
         // Modern Perl signatures
         const params = node.parameters.map(p => this.emitParameterSignature(p));
-        decl += ' (' + params.join(', ') + ')';
+        decl += ' (' + this._withSurplusSlurpy(node.parameters, params).join(', ') + ')';
       }
 
       code += this.line(decl + ' {');
@@ -1721,6 +1721,20 @@ sub MerkleDamgardBlocks {
       code += this.line('}');
 
       return code;
+    }
+
+    /**
+     * A JavaScript function ignores surplus arguments (a BlockAbsorber
+     * finalizer declaring two of the three it is passed); a Perl signature
+     * dies on them unless it ends in a slurpy, so a nameless one is added.
+     * @param {Array} parameters - the PerlParameter nodes
+     * @param {string[]} emitted - their emitted signature entries
+     * @returns {string[]} the entries, ending in a slurpy
+     */
+    _withSurplusSlurpy(parameters, emitted) {
+      const last = parameters[parameters.length - 1];
+      if (last && (last.sigil === '@' || last.sigil === '%')) return emitted;
+      return [...emitted, '@'];
     }
 
     emitParameterSignature(node) {
@@ -2931,7 +2945,7 @@ sub MerkleDamgardBlocks {
         // calling "hash32: function(data, seed) {...}") died with "Too few
         // arguments for subroutine" instead of leaving the extra param undef.
         const params = node.parameters.map(p => this.emitParameterSignature(p));
-        code += ' (' + params.join(', ') + ')';
+        code += ' (' + this._withSurplusSlurpy(node.parameters, params).join(', ') + ')';
       }
 
       code += ' {' + this.newline;
