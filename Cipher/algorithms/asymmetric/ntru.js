@@ -1025,8 +1025,8 @@
     let twos = 0;
 
     for (let i = 0; i < P.n; i++) {
-      ones += OpCodes.And32(m[i], 1);
-      twos += OpCodes.And32(m[i], 2) / 2;
+      if (OpCodes.And32(m[i], 1) !== 0) ++ones;
+      if (OpCodes.And32(m[i], 2) !== 0) ++twos;
     }
 
     return ones === P.weight / 2 && twos === P.weight / 2 ? 0 : 1;
