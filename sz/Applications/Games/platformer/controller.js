@@ -1328,6 +1328,15 @@
     try { localStorage.setItem(STORAGE_TUTORIAL, '1'); } catch (_) {}
   }
   SZ.GameAudio.attachMuteButton();
+  SZ.TouchControls.attach({
+    container: document.querySelector('.game-frame'),
+    stick: 'horizontal',
+    buttons: [
+      { label: 'Jump', code: 'ArrowUp' },
+      { label: 'Fire', code: 'KeyZ' }
+    ],
+    extra: [{ label: 'II', code: 'Escape', title: 'Pause' }]
+  });
   requestAnimationFrame(gameLoop);
 
 })();
