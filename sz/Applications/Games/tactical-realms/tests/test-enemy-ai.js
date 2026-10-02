@@ -409,5 +409,44 @@
       assert.ok(map.encounterAiTier(100, 0) >= 3, 'dist ~100 should be tier 3+');
     });
   });
+  describe('EnemyAI -- positioning', () => {
+
+    // 24x9 board: open ground, with a one-tile gap in a wall at column 14
+    function corridorGrid() {
+      const cols = 24, rows = 9, terrain = [];
+      for (let r = 0; r < rows; ++r)
+        for (let c = 0; c < cols; ++c)
+          terrain.push(c === 14 && r !== 4 ? 'stone_wall' : 'plains');
+      return new CombatGrid(cols, rows, terrain);
+    }
+
+    it('a fighter far from the party holds the gap instead of charging into the open', () => {
+      const grid = corridorGrid();
+      const hero = new CombatUnit('party_0', makeChar('Hero'), 'party', 1, 4);
+      grid.placeUnit('party_0', 1, 4);
+      const orc = new CombatUnit('enemy_0', makeChar('Orc'), 'enemy', 18, 4);
+      grid.placeUnit('enemy_0', 18, 4);
+      const d = EnemyAI.decide(grid, orc, [hero], new PRNG(1), 3, [orc]);
+      const at = d.moveTo || orc.position;
+      // the gap or a tile backed by the wall, never past it into the open
+      assert.ok(at.col >= 13, `left cover for column ${at.col}`);
+    });
+
+    it('a fighter in reach still attacks', () => {
+      const grid = corridorGrid();
+      const hero = new CombatUnit('party_0', makeChar('Hero'), 'party', 10, 4);
+      grid.placeUnit('party_0', 10, 4);
+      const orc = new CombatUnit('enemy_0', makeChar('Orc'), 'enemy', 12, 4);
+      grid.placeUnit('enemy_0', 12, 4);
+      const d = EnemyAI.decide(grid, orc, [hero], new PRNG(1), 3, [orc]);
+      assert.ok(d.type === 'move_and_attack' || d.type === 'attack', d.type);
+    });
+
+    it('a chokepoint is worth more than open ground', () => {
+      const grid = corridorGrid();
+      const u = new CombatUnit('enemy_0', makeChar('Orc'), 'enemy', 20, 2);
+      assert.ok(EnemyAI.defensiveValue(grid, 14, 4, u, []) > EnemyAI.defensiveValue(grid, 20, 2, u, []));
+    });
+  });
 })();
 
