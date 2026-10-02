@@ -359,7 +359,7 @@
   "algorithms/compression/bcj-arm-thumb.js": 0,
   "algorithms/compression/bcj-arm.js": 0,
   "algorithms/compression/bcj-arm64.js": 0,
-  "algorithms/compression/bcj-ia64.js": 1,
+  "algorithms/compression/bcj-ia64.js": 0,
   "algorithms/compression/bcj-powerpc.js": 0,
   "algorithms/compression/bcj-riscv.js": 0,
   "algorithms/compression/bcj-sparc.js": 0,
