@@ -489,12 +489,19 @@
   }
 
   // Limbo: fire, water, earth and air churning side by side.
+  // each patch of Limbo is one element for now, streaked with the next
   function chaos(ctx, ox, oy, r) {
-    const bases = ['#c84a1a', '#2a5ab8', '#6a5038', '#a8c8f0', '#8a3ac8'];
-    for (let y = 0; y < T; y += 4)
-      for (let x = 0; x < T; x += 4)
-        px(ctx, ox + x, oy + y, rgb(bases[Math.floor(r() * bases.length)], 0.8 + r() * 0.3), 4, 4);
-    specks(ctx, ox, oy, r, ['#ffffff', '#ffd24a'], 4);
+    const bases = ['#8a4a3a', '#3a5a9a', '#6a5a48', '#7a8aa8', '#6a4a8a'];
+    const i = Math.floor(r() * bases.length);
+    mottle(ctx, ox, oy, r, bases[i], 0.2, 2);
+    const streak = bases[(i + 1 + Math.floor(r() * 3)) % bases.length];
+    let y = Math.floor(r() * T);
+    for (let x = 0; x < T; ++x) {
+      px(ctx, ox + x, oy + y, rgb(streak, 1.3), 1, 2);
+      if (r() < 0.35)
+        y = Math.max(0, Math.min(T - 2, y + (r() < 0.5 ? -1 : 1)));
+    }
+    specks(ctx, ox, oy, r, ['#e8d8ff'], 2);
   }
 
   function ooze(ctx, ox, oy, r) {
