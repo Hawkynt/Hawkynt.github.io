@@ -51,6 +51,218 @@
     'LinkItem', 'Vulnerability', 'TestCase', 'KeySize', 'AuthResult'
   ]);
 
+  // AlgorithmFramework.js in Perl (see PerlEmitter.emitFrameworkRuntime).
+  // Every class here mirrors its JavaScript counterpart field for field, so
+  // a transpiled subclass that inherits Feed, Result or the key accessor
+  // behaves as it does in JavaScript.
+  const FRAMEWORK_RUNTIME = String.raw`{
+no warnings 'redefine';
+
+package Algorithm;
+sub new { my $class = shift; my $self = bless {}, $class; $self->BUILD(@_); return $self; }
+sub BUILD {
+    my ($self) = @_;
+    $self->{$_} = undef for qw(name description inventor year category subCategory securityStatus complexity country);
+    $self->{$_} = [] for qw(documentation references knownVulnerabilities tests);
+    return;
+}
+sub CreateInstance { die "CreateInstance() not implemented\n"; }
+
+package CryptoAlgorithm; our @ISA = ('Algorithm');
+package SymmetricCipherAlgorithm; our @ISA = ('CryptoAlgorithm');
+package AsymmetricCipherAlgorithm; our @ISA = ('CryptoAlgorithm');
+package AsymmetricAlgorithm; our @ISA = ('CryptoAlgorithm');
+package BlockCipherAlgorithm; our @ISA = ('SymmetricCipherAlgorithm');
+sub BUILD { my ($self) = @_; $self->Algorithm::BUILD(); $self->{SupportedKeySizes} = []; $self->{SupportedBlockSizes} = []; return; }
+package StreamCipherAlgorithm; our @ISA = ('SymmetricCipherAlgorithm');
+package EncodingAlgorithm; our @ISA = ('Algorithm');
+package CompressionAlgorithm; our @ISA = ('Algorithm');
+package ErrorCorrectionAlgorithm; our @ISA = ('Algorithm');
+package ChecksumAlgorithm; our @ISA = ('Algorithm');
+package ClassicalCipherAlgorithm; our @ISA = ('Algorithm');
+package EccAlgorithm; our @ISA = ('Algorithm');
+package SpecialAlgorithm; our @ISA = ('Algorithm');
+package HashFunctionAlgorithm; our @ISA = ('Algorithm');
+sub BUILD { my ($self) = @_; $self->Algorithm::BUILD(); $self->{SupportedOutputSizes} = []; return; }
+package MacAlgorithm; our @ISA = ('Algorithm');
+sub BUILD { my ($self) = @_; $self->Algorithm::BUILD(); $self->{SupportedMacSizes} = []; $self->{NeedsKey} = 1; return; }
+package KdfAlgorithm; our @ISA = ('Algorithm');
+sub BUILD { my ($self) = @_; $self->Algorithm::BUILD(); $self->{SupportedOutputSizes} = []; $self->{SaltRequired} = 1; return; }
+package PaddingAlgorithm; our @ISA = ('Algorithm');
+sub BUILD { my ($self) = @_; $self->Algorithm::BUILD(); $self->{IsLengthIncluded} = 0; return; }
+package CipherModeAlgorithm; our @ISA = ('Algorithm');
+sub BUILD { my ($self) = @_; $self->Algorithm::BUILD(); $self->{RequiresIV} = 1; $self->{SupportedIVSizes} = []; return; }
+package AeadAlgorithm; our @ISA = ('CryptoAlgorithm');
+sub BUILD { my ($self) = @_; $self->Algorithm::BUILD(); $self->{SupportedTagSizes} = []; $self->{SupportsDetached} = 0; return; }
+package RandomGenerationAlgorithm; our @ISA = ('Algorithm');
+sub BUILD {
+    my ($self) = @_; $self->Algorithm::BUILD();
+    $self->{IsDeterministic} = 0; $self->{IsCryptographicallySecure} = 1; $self->{SupportedSeedSizes} = [];
+    return;
+}
+
+package IAlgorithmInstance;
+sub new { my $class = shift; my $self = bless {}, $class; $self->BUILD(@_); return $self; }
+sub BUILD { my ($self, $algorithm) = @_; $self->{algorithm} = $algorithm; $self->{isInverse} = 0; $self->{inputBuffer} = []; return; }
+sub Feed {
+    my ($self, $data) = @_;
+    return if !defined($data) || ref($data) ne 'ARRAY' || !@$data;
+    $self->{inputBuffer} = [] if !$self->{inputBuffer};
+    push @{$self->{inputBuffer}}, @$data;
+    return;
+}
+sub Result { die "Result() not implemented\n"; }
+sub Dispose { my ($self) = @_; @{$self->{inputBuffer}} = () if $self->{inputBuffer}; return; }
+
+package IBlockCipherInstance; our @ISA = ('IAlgorithmInstance');
+sub BUILD {
+    my ($self, $algorithm) = @_;
+    $self->IAlgorithmInstance::BUILD($algorithm);
+    $self->{BlockSize} = 0; $self->{KeySize} = 0; $self->{_key} = undef;
+    return;
+}
+sub key { my $self = shift; if (@_) { $self->{_key} = shift; return; } return $self->{_key}; }
+sub EncryptBlock { die "EncryptBlock() not implemented\n"; }
+sub DecryptBlock { die "DecryptBlock() not implemented\n"; }
+sub RequireBlockMultiple {
+    my ($self, $blockSize) = @_;
+    my $size = $blockSize || $self->{BlockSize};
+    die "BlockSize not set\n" if !($size && $size > 0);
+    my $length = $self->{inputBuffer} ? scalar(@{$self->{inputBuffer}}) : 0;
+    die "Input length must be multiple of $size bytes\n" if $length % $size != 0;
+    return int($length / $size);
+}
+sub Result {
+    my ($self) = @_;
+    die "Key not set\n" if !$self->key();
+    die "No data fed\n" if !$self->{inputBuffer} || !@{$self->{inputBuffer}};
+    my $blockSize = $self->{BlockSize};
+    $self->RequireBlockMultiple($blockSize);
+    my @output;
+    my $buffer = $self->{inputBuffer};
+    for (my $offset = 0; $offset < @$buffer; $offset += $blockSize) {
+        my $block = [@{$buffer}[$offset .. $offset + $blockSize - 1]];
+        my $processed = $self->{isInverse} ? $self->DecryptBlock($block) : $self->EncryptBlock($block);
+        push @output, @$processed;
+    }
+    $self->{inputBuffer} = [];
+    return \@output;
+}
+
+package IHashFunctionInstance; our @ISA = ('IAlgorithmInstance');
+sub BUILD { my ($self, $algorithm) = @_; $self->IAlgorithmInstance::BUILD($algorithm); $self->{OutputSize} = 0; return; }
+package IMacInstance; our @ISA = ('IAlgorithmInstance');
+sub ComputeMac { die "ComputeMac() not implemented\n"; }
+package IKdfInstance; our @ISA = ('IAlgorithmInstance');
+sub BUILD { my ($self, $algorithm) = @_; $self->IAlgorithmInstance::BUILD($algorithm); $self->{OutputSize} = 0; $self->{Iterations} = 0; return; }
+package IAeadInstance; our @ISA = ('IAlgorithmInstance');
+sub BUILD { my ($self, $algorithm) = @_; $self->IAlgorithmInstance::BUILD($algorithm); $self->{aad} = []; $self->{tagSize} = 0; return; }
+package IErrorCorrectionInstance; our @ISA = ('IAlgorithmInstance');
+sub DetectError { die "DetectError() not implemented\n"; }
+package IRandomGeneratorInstance; our @ISA = ('IAlgorithmInstance');
+sub NextBytes { die "NextBytes() not implemented\n"; }
+package IStreamCipherInstance; our @ISA = ('IAlgorithmInstance');
+package ICompressionInstance; our @ISA = ('IAlgorithmInstance');
+package IEncodingInstance; our @ISA = ('IAlgorithmInstance');
+package IPaddingInstance; our @ISA = ('IAlgorithmInstance');
+package ICipherModeInstance; our @ISA = ('IAlgorithmInstance');
+package IAsymmetricCipherInstance; our @ISA = ('IAlgorithmInstance');
+
+package BlockAbsorber;
+sub new {
+    my ($class, $blockSize, $processBlock) = @_;
+    die "BlockAbsorber: blockSize must be positive\n" if !(defined($blockSize) && $blockSize > 0);
+    die "BlockAbsorber: processBlock must be a function\n" if ref($processBlock) ne 'CODE';
+    return bless { BlockSize => $blockSize, _processBlock => $processBlock, _held => [(0) x $blockSize], Pending => 0, Length => 0 }, $class;
+}
+sub BlockSize { return $_[0]{BlockSize}; }
+sub Pending { return $_[0]{Pending}; }
+sub Length { return $_[0]{Length}; }
+sub Absorb {
+    my ($self, $data) = @_;
+    return if !defined($data) || ref($data) ne 'ARRAY' || !@$data;
+    my $blockSize = $self->{BlockSize};
+    my $total = scalar(@$data);
+    my $offset = 0;
+    while ($offset < $total) {
+        if ($self->{Pending} == $blockSize) {
+            $self->{_processBlock}->($self->{_held});
+            $self->{Pending} = 0;
+        }
+        my $take = $blockSize - $self->{Pending};
+        $take = $total - $offset if $total - $offset < $take;
+        $self->{_held}[$self->{Pending} + $_] = main::_FrameworkByte($data->[$offset + $_]) for 0 .. $take - 1;
+        $self->{Pending} += $take;
+        $offset += $take;
+        $self->{Length} += $take;
+    }
+    return;
+}
+sub Finish {
+    my ($self, $finalize) = @_;
+    die "BlockAbsorber: finalize must be a function\n" if ref($finalize) ne 'CODE';
+    my @held = @{$self->{_held}}[0 .. $self->{Pending} - 1];
+    return $finalize->(\@held, $self->{Pending}, $self->{Length});
+}
+sub Reset { my ($self) = @_; $_ = 0 for @{$self->{_held}}; $self->{Pending} = 0; $self->{Length} = 0; return; }
+
+package main;
+sub _FrameworkByte {
+    my $reduced = int($_[0] // 0) % 256;
+    return $reduced < 0 ? $reduced + 256 : $reduced;
+}
+sub _FrameworkEncodeLength {
+    my ($value, $byteCount, $littleEndian) = @_;
+    my @encoded = (0) x $byteCount;
+    my $remaining = $value > 0 ? int($value) : 0;
+    for my $i (0 .. $byteCount - 1) {
+        $encoded[$littleEndian ? $i : $byteCount - 1 - $i] = $remaining % 256;
+        $remaining = int($remaining / 256);
+    }
+    return @encoded;
+}
+sub SpongePadBlocks {
+    my ($held, $pending, $rate, $separator) = @_;
+    die "SpongePadBlocks: rate must be positive\n" if !($rate > 0);
+    die "SpongePadBlocks: pending $pending outside 0..$rate\n" if $pending < 0 || $pending > $rate;
+    my @blocks;
+    my @block = (0) x $rate;
+    $block[$_] = _FrameworkByte($held->[$_]) for 0 .. $pending - 1;
+    my $used = $pending;
+    if ($used == $rate) { push @blocks, [@block]; @block = (0) x $rate; $used = 0; }
+    $block[$used] = _FrameworkByte($separator);
+    $block[$rate - 1] |= 0x80;
+    push @blocks, [@block];
+    return \@blocks;
+}
+sub MerkleDamgardBlocks {
+    my ($held, $pending, $totalLength, $options) = @_;
+    my %settings = %{$options || {}};
+    my $blockSize = $settings{blockSize};
+    die "MerkleDamgardBlocks: blockSize must be positive\n" if !(defined($blockSize) && $blockSize > 0);
+    die "MerkleDamgardBlocks: pending $pending outside 0..$blockSize\n" if $pending < 0 || $pending > $blockSize;
+    my $padByte = defined($settings{padByte}) ? $settings{padByte} : 0x80;
+    my $lengthBytes = defined($settings{lengthBytes}) ? $settings{lengthBytes} : 8;
+    my $littleEndian = $settings{lengthLittleEndian} ? 1 : 0;
+    my $inBits = (exists($settings{lengthInBits}) && defined($settings{lengthInBits}) && !$settings{lengthInBits}) ? 0 : 1;
+    die "MerkleDamgardBlocks: lengthBytes $lengthBytes does not fit a $blockSize-byte block\n"
+        if $lengthBytes < 0 || $lengthBytes >= $blockSize;
+    my @blocks;
+    my @block = (0) x $blockSize;
+    $block[$_] = _FrameworkByte($held->[$_]) for 0 .. $pending - 1;
+    my $used = $pending;
+    if ($used == $blockSize) { push @blocks, [@block]; @block = (0) x $blockSize; $used = 0; }
+    $block[$used++] = _FrameworkByte($padByte);
+    if ($used > $blockSize - $lengthBytes) { push @blocks, [@block]; @block = (0) x $blockSize; }
+    if ($lengthBytes > 0) {
+        my @encoded = _FrameworkEncodeLength($inBits ? $totalLength * 8 : $totalLength, $lengthBytes, $littleEndian);
+        $block[$blockSize - $lengthBytes + $_] = $encoded[$_] for 0 .. $lengthBytes - 1;
+    }
+    push @blocks, [@block];
+    return \@blocks;
+}
+}`;
+
   class PerlEmitter {
     constructor(options = {}) {
       this.options = options;
@@ -115,32 +327,23 @@
      * @returns {string} Perl code defining the stub package
      */
     emitFrameworkBaseClassStub(className) {
-      if (this.skipBaseStubs) {
-        return ''; // Skip when test harness provides stubs
-      }
-      if (this.emittedBaseClassStubs.has(className)) {
-        return ''; // Already emitted
-      }
-      this.emittedBaseClassStubs.add(className);
+      // Every framework base class lives in the one framework runtime.
+      return this.emitFrameworkRuntime();
+    }
 
-      let code = '';
-      code += this.line(`package ${className};`);
-      code += this.line('use strict;');
-      code += this.line('use warnings;');
-      code += this.newline;
-      code += this.line('sub new {');
-      this.indentLevel++;
-      code += this.line('my $class = shift;');
-      code += this.line('my $self = { @_ };');
-      code += this.line('bless $self, $class;');
-      code += this.line('return $self;');
-      this.indentLevel--;
-      code += this.line('}');
-      code += this.newline;
-      code += this.line('1;');
-      code += this.newline;
-
-      return code;
+    /**
+     * The AlgorithmFramework.js runtime in Perl: the algorithm and instance
+     * base classes with their constructors and inherited behaviour (Feed,
+     * the block cipher Result loop, the key accessor, ...), BlockAbsorber,
+     * SpongePadBlocks and MerkleDamgardBlocks. Emitted once per file inside
+     * a block that silences redefinition, so a bundle of several transpiled
+     * files may each carry it.
+     * @returns {string} Perl code
+     */
+    emitFrameworkRuntime() {
+      if (this.skipBaseStubs || this.emittedBaseClassStubs.has('#runtime')) return '';
+      this.emittedBaseClassStubs.add('#runtime');
+      return FRAMEWORK_RUNTIME.split('\n').map(l => l ? this.indent() + l : l).join(this.newline) + this.newline;
     }
 
     /**
@@ -991,6 +1194,10 @@
         code += this.newline;
       }
 
+      // The framework base classes and construction primitives, ahead of
+      // every class that inherits from them.
+      code += this.emitFrameworkRuntime();
+
       // Emit the inline OpCodes runtime package backing OpCodes::<name>
       // fallback calls, when the source actually uses one (see
       // transformOpCodesCall / module.usesOpCodesRuntimeFallback).
@@ -1372,6 +1579,9 @@
 
           if (hasBuild) {
             code += this.line('$self->BUILD(@_);');
+          } else if (node.baseClass) {
+            // No constructor of its own: JavaScript runs the inherited one.
+            code += this.line('$self->BUILD(@_) if $self->can(\'BUILD\');');
           }
 
           code += this.line('return $self;');

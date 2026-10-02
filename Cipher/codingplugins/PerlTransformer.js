@@ -712,6 +712,8 @@
       // === 512 ? shadow512 : shadow384;", picking between two
       // interchangeable top-level permutation functions per variant.
       this._topLevelFunctionNames = topLevelFunctionNames;
+      // The framework runtime's free functions live in package main.
+      for (const name of PerlAST.FRAMEWORK_RUNTIME_FUNCTIONS) this.functionNames.add(name);
 
       // Flat whole-file scan for every real "static FIELD = ...;" class
       // field name (ES2022 static class fields, e.g. block/aria.js's
@@ -4509,36 +4511,22 @@
      * up and blindly forwarding constructor args into their generic
      * "$self = { @_ }" stub corrupts positional args into bogus hash keys.
      *
-     * Real (locally-defined) parent classes still need their field
-     * initialization to run, though, so when the base class is one we
-     * know has its own constructor-derived BUILD (tracked in
-     * this.classesWithConstructor), the super(args) call is rewritten to
-     * $self->SUPER::BUILD(args) - preserving the exact arguments the JS
-     * super() call passed, so multi-level chains like
-     * "class Foo extends Base { constructor(variant) { super(variant); ... } }"
-     * still initialize Base's fields correctly.
+     * A parent with a BUILD up its chain - a class of this file, or one of
+     * the framework runtime's (PerlAST.FRAMEWORK_RUNTIME_CLASSES, which
+     * mirror AlgorithmFramework.js's constructors field for field) - gets
+     * the super(args) call as $self->SUPER::BUILD(args), with the exact
+     * arguments JavaScript passed.
      *
-     * When the base class is an AlgorithmFramework.js instance-interface
-     * stub (IAlgorithmInstance and everything that extends it -
-     * IBlockCipherInstance, IHashFunctionInstance, ...), those interfaces
-     * are never transpiled themselves (they live in AlgorithmFramework.js,
-     * not the algorithm source file), so they can never appear in
-     * classesWithConstructor - but IAlgorithmInstance's constructor sets
-     * fields (algorithm, isInverse, inputBuffer) that virtually every
-     * instance class's Feed()/Result()/accessors rely on. Since 'new' no
-     * longer chains through the framework stub's generic new(@_), that
-     * contract is replicated here directly from the exact super(...) call
-     * arguments, instead of being silently lost.
-     *
-     * Any other framework/unknown base class's super() call is dropped
-     * entirely - those stubs carry no meaningful state.
+     * Any other (unknown) base class's super() call is dropped.
      */
     transformSuperCallsForBuild(body) {
       if (!body || !body.body) return body;
 
       const baseClass = this.currentClass?.baseClass;
-      const parentHasBuild = baseClass && this.classesWithConstructor.has(baseClass);
-      const parentIsInstanceStub = baseClass && !parentHasBuild && /^I\w*Instance$/.test(baseClass);
+      // A same-file parent and every framework runtime class have a BUILD
+      // somewhere up their chain (the runtime's mirrors AlgorithmFramework.js).
+      const parentHasBuild = baseClass && (this.classesWithConstructor.has(baseClass) ||
+        this.definedClassNames.has(baseClass) || PerlAST.FRAMEWORK_RUNTIME_CLASSES.has(baseClass));
 
       const rewritten = [];
       for (const stmt of body.body) {
@@ -4554,19 +4542,6 @@
                 type: 'ExpressionStatement',
                 expression: { type: 'ParentBuildCall', arguments: expr.arguments || [] }
               });
-            } else if (parentIsInstanceStub) {
-              const args = expr.arguments || [];
-              const thisAssign = (property, value) => ({
-                type: 'ExpressionStatement',
-                expression: {
-                  type: 'AssignmentExpression', operator: '=',
-                  left: { type: 'ThisPropertyAccess', property },
-                  right: value
-                }
-              });
-              rewritten.push(thisAssign('algorithm', args[0] || { type: 'Literal', value: null }));
-              rewritten.push(thisAssign('isInverse', args[1] || { type: 'Literal', value: false }));
-              rewritten.push(thisAssign('inputBuffer', { type: 'ArrayExpression', elements: [] }));
             }
             // else: drop - no parent BUILD/state to replicate
             continue;
@@ -5801,6 +5776,11 @@
       // "Can't use string as an ARRAY ref"), so split it into characters.
       if (this.isStringType(node.right))
         iterable = new PerlCall('split', [PerlLiteral.String('', "//"), iterable]);
+      // An array-typed iterable is an array reference: iterate its elements,
+      // not the one reference (e.g. a call returning byte[][]).
+      else if (/\[\]$/.test(node.right.resultType || '') &&
+               !(iterable.nodeType === 'UnaryExpression' && iterable.operator === '@'))
+        iterable = new PerlUnaryExpression('@', iterable, true);
 
       // "for (const token of tokens)" where "tokens" is known (from the
       // whole-file lengthFieldArrayVarNames pre-scan) to only ever be pushed
