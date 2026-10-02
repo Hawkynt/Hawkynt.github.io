@@ -200,10 +200,15 @@
       assert.equal(TR.DIMENSION_TERRAIN_SPRITES.material, TR.OVERWORLD_TERRAIN_SPRITES);
     });
 
-    it('has entries for all planned dimensions', () => {
-      const dims = ['material', 'feywild', 'shadowfell', 'nine_hells', 'underdark', 'abyss'];
+    it('has entries for the themed planes', () => {
+      const dims = ['material', 'arborea', 'shadow', 'nine_hells', 'elemental_earth', 'abyss'];
       for (const d of dims)
-        assert.ok(TR.DIMENSION_TERRAIN_SPRITES[d], `missing dimension ${d}`);
+        assert.ok(TR.DIMENSION_TERRAIN_SPRITES[d], `missing plane ${d}`);
+    });
+
+    it('is keyed by plane ids from the plane registry', () => {
+      for (const d of Object.keys(TR.DIMENSION_TERRAIN_SPRITES))
+        assert.ok(TR.PlaneRegistry.has(d), `${d} is not a plane`);
     });
 
     it('each dimension has GRASS, FOREST, and WATER keys at minimum', () => {

@@ -128,6 +128,7 @@
     #contextMenu;
     #contextMenuHover;
     #screenTime;
+    // the plane the party walks (a data/planes.js id)
     #dimension;
     #inventory;
     #shopStock;
@@ -2261,6 +2262,7 @@
         if (data && data.state) {
           if (data.state.playerPos)
             this.#playerPos = data.state.playerPos;
+          this.#dimension = TR.PlaneRegistry && TR.PlaneRegistry.has(data.state.plane) ? data.state.plane : 'material';
           if (data.state.overworldSeed != null)
             this.#overworldMap = new OverworldMap(data.state.overworldSeed);
           else
@@ -2348,6 +2350,7 @@
           this.#lastRewards = null;
           this.#overworldMap = new OverworldMap(this.#prng.state);
           this.#playerPos = { col: 0, row: 0 };
+          this.#dimension = 'material';
           this.#isMoving = false;
           this.#moveTarget = null;
           this.#moveFrom = null;
@@ -3278,6 +3281,7 @@
           await this.#saveManager.save({
             lastState: e.to,
             playerPos: this.#playerPos,
+            plane: this.#dimension,
             overworldSeed: this.#overworldMap ? this.#overworldMap.worldSeed : null,
             party: this.#party ? this.#party.map(c => Character.serialize(c)) : null,
             partyHp: this.#partyHp ? this.#partyHp.slice() : null,
