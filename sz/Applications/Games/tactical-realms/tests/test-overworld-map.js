@@ -678,4 +678,31 @@
             assert.ok(map.isPassable(c, r));
     });
   });
+  describe('OverworldMap -- encounter pacing', () => {
+
+    it('no fight right after the last one, then the odds ramp up', () => {
+      const pace = window.SZ.TacticalRealms.encounterPacing;
+      assert.equal(pace(0), 0);
+      assert.equal(pace(14), 0);
+      assert.ok(pace(30) > 0 && pace(30) < pace(45));
+      assert.ok(pace(500) <= 1.5);
+    });
+
+    it('a long walk through the wilds averages dozens of steps per fight', () => {
+      const pace = window.SZ.TacticalRealms.encounterPacing;
+      const map = new OverworldMap(777);
+      // walk 4000 forest-rate steps with the game's rule and count fights
+      const prng = new PRNG(5);
+      let fights = 0, since = 0;
+      for (let i = 0; i < 4000; ++i) {
+        ++since;
+        if (prng.next() < 0.035 * pace(since)) {
+          ++fights;
+          since = 0;
+        }
+      }
+      const perFight = 4000 / fights;
+      assert.ok(perFight > 30 && perFight < 80, `${perFight.toFixed(1)} steps per fight`);
+    });
+  });
 })();

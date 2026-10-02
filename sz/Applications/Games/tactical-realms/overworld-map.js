@@ -39,22 +39,22 @@
   // backdrop), travel cost, encounter chance and the painted ground under
   // any overlay. Locations and roads keep their own entries.
   const TILE_INFO = Object.freeze({
-    [Tile.GRASS]:    { biome: 'temperate_plains', battle: 'plains',   cost: 1,   encounter: 0.06 },
-    [Tile.FOREST]:   { biome: 'temperate_forest', battle: 'forest',   cost: 1.5, encounter: 0.12 },
+    [Tile.GRASS]:    { biome: 'temperate_plains', battle: 'plains',   cost: 1,   encounter: 0.022 },
+    [Tile.FOREST]:   { biome: 'temperate_forest', battle: 'forest',   cost: 1.5, encounter: 0.035 },
     [Tile.MOUNTAIN]: { biome: 'mountain',         battle: 'mountain', cost: -1,  encounter: 0 },
-    [Tile.ROAD]:     { biome: 'temperate_plains', battle: 'plains',   cost: 0.5, encounter: 0.02 },
+    [Tile.ROAD]:     { biome: 'temperate_plains', battle: 'plains',   cost: 0.5, encounter: 0.006 },
     [Tile.WATER]:    { biome: 'temperate_plains', battle: 'plains',   cost: -1,  encounter: 0 },
-    [Tile.SAND]:     { biome: 'desert_sand',      battle: 'desert',   cost: 1.2, encounter: 0.04 },
-    [Tile.SNOW]:     { biome: 'arctic_tundra',    battle: 'snow',     cost: 1.5, encounter: 0.06 },
-    [Tile.TAIGA]:    { biome: 'arctic_tundra',    battle: 'taiga',    cost: 1.7, encounter: 0.1 },
-    [Tile.JUNGLE]:   { biome: 'tropical_jungle',  battle: 'jungle',   cost: 2,   encounter: 0.14 },
-    [Tile.DESERT]:   { biome: 'desert_sand',      battle: 'desert',   cost: 1.4, encounter: 0.07 },
-    [Tile.BADLANDS]: { biome: 'desert_rock',      battle: 'badlands', cost: 1.3, encounter: 0.08 },
-    [Tile.SWAMP]:    { biome: 'swamp',            battle: 'swamp',    cost: 2,   encounter: 0.13 },
-    [Tile.HILLS]:    { biome: 'hill',             battle: 'hills',    cost: 1.6, encounter: 0.08 },
-    [Tile.SAVANNA]:  { biome: 'temperate_plains', battle: 'savanna',  cost: 1,   encounter: 0.07 },
+    [Tile.SAND]:     { biome: 'desert_sand',      battle: 'desert',   cost: 1.2, encounter: 0.015 },
+    [Tile.SNOW]:     { biome: 'arctic_tundra',    battle: 'snow',     cost: 1.5, encounter: 0.022 },
+    [Tile.TAIGA]:    { biome: 'arctic_tundra',    battle: 'taiga',    cost: 1.7, encounter: 0.03 },
+    [Tile.JUNGLE]:   { biome: 'tropical_jungle',  battle: 'jungle',   cost: 2,   encounter: 0.04 },
+    [Tile.DESERT]:   { biome: 'desert_sand',      battle: 'desert',   cost: 1.4, encounter: 0.025 },
+    [Tile.BADLANDS]: { biome: 'desert_rock',      battle: 'badlands', cost: 1.3, encounter: 0.025 },
+    [Tile.SWAMP]:    { biome: 'swamp',            battle: 'swamp',    cost: 2,   encounter: 0.04 },
+    [Tile.HILLS]:    { biome: 'hill',             battle: 'hills',    cost: 1.6, encounter: 0.028 },
+    [Tile.SAVANNA]:  { biome: 'temperate_plains', battle: 'savanna',  cost: 1,   encounter: 0.022 },
     [Tile.ICE]:      { biome: 'arctic_glacier',   battle: 'snow',     cost: -1,  encounter: 0 },
-    [Tile.ASH]:      { biome: 'ash_waste',        battle: 'ash',      cost: 1.3, encounter: 0.1 },
+    [Tile.ASH]:      { biome: 'ash_waste',        battle: 'ash',      cost: 1.3, encounter: 0.035 },
     [Tile.LAVA]:     { biome: 'lava_field',       battle: 'lava',     cost: -1,  encounter: 0 },
   });
 
@@ -795,7 +795,17 @@
   }
 
   TR.OverworldMap = OverworldMap;
+  // Encounter pacing: no fight within GRACE steps of the last one (or of
+  // leaving a town, camp or dungeon), then the odds ramp up gently.
+  const GRACE = 15;
+  function encounterPacing(stepsSince) {
+    if (stepsSince < GRACE)
+      return 0;
+    return Math.min(1.5, (stepsSince - GRACE) / 30);
+  }
+
   TR.OverworldTile = Tile;
+  TR.encounterPacing = encounterPacing;
   TR.OverworldTileInfo = TILE_INFO;
   TR.CHUNK_SIZE = CHUNK_SIZE;
   TR.LOCATION_SPACING = LOCATION_SPACING;
