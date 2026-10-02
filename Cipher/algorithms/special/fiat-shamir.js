@@ -137,17 +137,17 @@
         /** @type {uint8[]} */
         this.inputBuffer = [];
 
-        // Public parameters
-        /** @type {float64|null} */
-        this.n = null;                // Modulus n = p * q
+        // Public parameters; n, p and q are 0 until generated or set up
+        /** @type {float64} */
+        this.n = 0;                   // Modulus n = p * q
         /** @type {float64[]} */
         this.v = [];                  // Public keys (quadratic residues)
 
         // Secret parameters (prover only)
-        /** @type {float64|null} */
-        this.p = null;                // First prime (secret)
-        /** @type {float64|null} */
-        this.q = null;                // Second prime (secret)
+        /** @type {float64} */
+        this.p = 0;                   // First prime (secret)
+        /** @type {float64} */
+        this.q = 0;                   // Second prime (secret)
         /** @type {float64[]} */
         this.s = [];                  // Secret keys (square roots)
 
