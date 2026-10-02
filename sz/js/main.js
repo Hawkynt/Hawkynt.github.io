@@ -181,8 +181,14 @@
       const { data } = e;
       if (!data?.type?.startsWith('sz:')) return;
 
-      const { type, requestId, path } = data;
+      // only the desktop itself and the apps in its own windows may talk to it
+      if (e.origin !== location.origin)
+        return;
       const win = windowManager.getWindowByIframe(e.source);
+      if (!win && e.source !== window)
+        return;
+
+      const { type, requestId, path } = data;
 
       const respond = (responseType, payload) => e.source?.postMessage({ type: responseType, requestId, path, ...payload }, '*');
       const handle = (p, type) => p.then(res => respond(type, res)).catch(err => respond(type, { error: { message: err.message, code: err.code } }));
