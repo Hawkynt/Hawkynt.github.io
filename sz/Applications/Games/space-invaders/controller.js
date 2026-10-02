@@ -2349,6 +2349,14 @@
    *  INPUT
    * ================================================================ */
 
+  /* Pause when the window is hidden or loses focus */
+  SZ.GameAutoPause.attach({
+    isRunning: () => gameState === 'playing',
+    pause: () => {
+      gameState = 'paused';
+    }
+  });
+
   document.addEventListener('keydown', (e) => {
     keys[e.code] = true;
     /* Keyboard input disables mouse movement to avoid conflicts */

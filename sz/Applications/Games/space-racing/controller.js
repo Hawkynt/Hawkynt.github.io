@@ -2258,6 +2258,14 @@
      INPUT
      ══════════════════════════════════════════════════════════════════ */
 
+  /* Pause when the window is hidden or loses focus */
+  SZ.GameAutoPause.attach({
+    isRunning: () => state === STATE_PLAYING,
+    pause: () => {
+      state = STATE_PAUSED;
+    }
+  });
+
   window.addEventListener('keydown', (e) => {
     if (keys[e.code]) return; // Ignore key repeat
     keys[e.code] = true;
