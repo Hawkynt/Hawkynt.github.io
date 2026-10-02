@@ -420,20 +420,8 @@
           return respond('sz:vfs:ListMountsResult', { mounts: kernel.listMounts() });
 
         // MessageBox
-        case 'sz:messageBox': {
-            const mbType = (data.flags || 0) & 0x0F;
-            const prompt = (data.caption ? data.caption + '\n\n' : '') + (data.text || '');
-            let result;
-            if (mbType === 4 || mbType === 3) // MB_YESNO, MB_YESNOCANCEL
-              result = confirm(prompt) ? 6 : 7; // IDYES : IDNO
-            else if (mbType === 1) // MB_OKCANCEL
-              result = confirm(prompt) ? 1 : 2; // IDOK : IDCANCEL
-            else {
-              alert(prompt);
-              result = 1; // IDOK
-            }
-            return respond('sz:messageBoxResult', { result });
-        }
+        case 'sz:messageBox':
+            return handle(SZ.MessageBox.show(data.text, data.caption, data.flags).then(result => ({ result })), 'sz:messageBoxResult');
 
         // System metrics
         case 'sz:getSystemMetrics': {
