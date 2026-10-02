@@ -287,10 +287,13 @@
       this.singleSymbol = -1;
       /** @type {int32} */
       this.maxLength = 0;
-      // One row per code length, mapping a code value to its symbol (holes
-      // for code values no symbol has).
+      // One row per code length, listing its symbols in code order: the
+      // canonical codes of one length are consecutive, starting at
+      // firstCode[length].
       /** @type {int32[][]} */
       this.byLength = null;
+      /** @type {int32[]} */
+      this.firstCode = null;
     }
 
     /**
@@ -335,13 +338,14 @@
       }
 
       /** @type {int32[]} */
-      const nextCode = filledArray(maxLength + 1, 0);
+      const firstCode = filledArray(maxLength + 1, 0);
       /** @type {uint32} */
       let code = 0;
       for (let bits = 1; bits <= maxLength; ++bits) {
         code = OpCodes.Shl32(code + blCount[bits - 1], 1);
-        nextCode[bits] = code;
+        firstCode[bits] = code;
       }
+      this.firstCode = firstCode;
 
       /** @type {int32[][]} */
       const rows = new Array(maxLength + 1);
@@ -351,15 +355,14 @@
         rows[len] = row;
       }
       this.byLength = rows;
+      // Symbols in increasing order get consecutive codes of their length.
       for (let s = 0; s < alphabetSize; ++s) {
         /** @type {int32} */
         const len = lengths[s];
         if (len === 0) {
           continue;
         }
-        /** @type {int32} */
-        const assigned = nextCode[len]++;
-        rows[len][assigned] = s;
+        rows[len].push(s);
       }
       return true;
     }
@@ -381,9 +384,9 @@
         /** @type {int32[]} */
         const atLength = this.byLength[len];
         /** @type {int32} */
-        const symbol = atLength[code];
-        if (symbol !== undefined) {
-          return symbol;
+        const offset = code - this.firstCode[len];
+        if (offset >= 0 && offset < atLength.length) {
+          return atLength[offset];
         }
       }
       throw new Error('Invalid Brotli prefix code');
@@ -2561,24 +2564,26 @@
    * @returns {DictionaryGroup[]} Transform groups
    */
   function buildDictionaryGroups() {
-    /** @type {string[][]} */
-    const transforms = BrotliDictionary.Table('TRANSFORMS');
+    /** @type {string[]} */
+    const prefixes = BrotliDictionary.Table('TRANSFORM_PREFIXES');
+    /** @type {int32[]} */
+    const types = BrotliDictionary.Table('TRANSFORM_TYPES');
+    /** @type {string[]} */
+    const suffixes = BrotliDictionary.Table('TRANSFORM_SUFFIXES');
     /** @type {DictionaryGroup[]} */
     const groups = [];
 
-    for (let id = 0; id < transforms.length; ++id) {
-      /** @type {string[]} */
-      const definition = transforms[id];
+    for (let id = 0; id < types.length; ++id) {
       /** @type {int32} */
-      const tid = definition[1];
+      const tid = types[id];
       if (tid >= TID_OMIT_FIRST_LOW && tid <= TID_OMIT_FIRST_HIGH) {
         continue;
       }
 
       /** @type {uint8[]} */
-      const prefix = stringBytes(definition[0]);
+      const prefix = stringBytes(prefixes[id]);
       /** @type {uint8[]} */
-      const suffix = stringBytes(definition[2]);
+      const suffix = stringBytes(suffixes[id]);
 
       /** @type {int32} */
       let groupIndex = -1;
