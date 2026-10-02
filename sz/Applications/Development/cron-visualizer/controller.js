@@ -395,8 +395,8 @@
   /* ---------- Action dispatch ---------- */
 
   const actions = {
-    open: () => openCrontab().catch((err) => alert(`Open failed: ${err.message}`)),
-    save: () => saveCrontabAs().catch((err) => alert(`Save failed: ${err.message}`)),
+    open: () => openCrontab().catch((err) => SZ.Dialog.alert(`Open failed: ${err.message}`, 'Cron Visualizer')),
+    save: () => saveCrontabAs().catch((err) => SZ.Dialog.alert(`Save failed: ${err.message}`, 'Cron Visualizer')),
     parse: parseAndRender,
     clear: clearAll,
     append: appendBuilderLine,
