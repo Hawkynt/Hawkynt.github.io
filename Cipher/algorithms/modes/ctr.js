@@ -207,7 +207,7 @@
 
       // Add from least significant byte (right to left)
       for (let i = result.length - 1; i >= 0 && carry > 0; i--) {
-        const sum = result[i] + carry;
+        const sum = OpCodes.Add32(result[i], carry);
         result[i] = OpCodes.And32(sum, 0xFF);
         carry = Math.floor(sum / 256);
       }

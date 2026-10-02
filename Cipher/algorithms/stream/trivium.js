@@ -331,8 +331,8 @@
         const bitNumber = 79 - i;
         const byteIndex = Math.floor(bitNumber / 8);
         const bitIndex = bitNumber % 8;
-        this.state[i] = OpCodes.GetBit(this._key[byteIndex], bitIndex);
-        this.state[93 + i] = OpCodes.GetBit(this._iv[byteIndex], bitIndex);
+        this.state[i] = OpCodes.GetBit(this._key[byteIndex], bitIndex) ? 1 : 0;
+        this.state[93 + i] = OpCodes.GetBit(this._iv[byteIndex], bitIndex) ? 1 : 0;
       }
 
       // Set the last 3 bits of register C to 1 (positions 285, 286, 287)

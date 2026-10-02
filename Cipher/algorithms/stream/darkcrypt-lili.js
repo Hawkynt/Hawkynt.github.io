@@ -232,11 +232,13 @@
       d2 = OpCodes.Or32(OpCodes.Shl32(d2, 8), k[6]);
       d2 = OpCodes.Or32(OpCodes.Shl32(d2, 8), k[7]);
 
+      /** @type {uint32} */
       let d1 = k[8];
       d1 = OpCodes.Or32(OpCodes.Shl32(d1, 8), k[9]);
       d1 = OpCodes.Or32(OpCodes.Shl32(d1, 8), k[10]);
       d1 = OpCodes.Or32(OpCodes.Shl32(d1, 8), k[11]);
 
+      /** @type {uint32} */
       let d0 = k[12];
       d0 = OpCodes.Or32(OpCodes.Shl32(d0, 8), k[13]);
       d0 = OpCodes.Or32(OpCodes.Shl32(d0, 8), k[14]);

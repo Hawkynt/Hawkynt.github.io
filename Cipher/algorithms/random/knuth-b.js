@@ -187,9 +187,9 @@
       /** @type {boolean} */
       this._ready = false;
 
-      // Optional count for skipping ahead to nth value
+      // Optional count for skipping ahead to nth value (0: none)
       /** @type {int32} */
-      this._skipCount = null;
+      this._skipCount = 0;
     }
 
     /**
@@ -351,7 +351,7 @@
         for (let i = 1; i < this._skipCount; ++i) {
           this._next();
         }
-        this._skipCount = null; // Clear after use
+        this._skipCount = 0; // Clear after use
       }
 
       /** @type {uint8[]} */
