@@ -173,6 +173,8 @@
 
   const PAINTERS = Object.freeze({
     plains:        (ctx, x, y, r) => grass(ctx, x, y, r, '#5f9e44'),
+    // overworld grass: Kenney's grass colour so pond and shore tiles still blend
+    meadow:        (ctx, x, y, r) => grass(ctx, x, y, r, '#8dc435', { flowers: 0.3 }),
     forest:        (ctx, x, y, r) => grass(ctx, x, y, r, '#4f8a3c', { flowers: 0.15 }),
     road:          (ctx, x, y, r) => dirtRoad(ctx, x, y, r),
     desert:        (ctx, x, y, r) => sand(ctx, x, y, r),
