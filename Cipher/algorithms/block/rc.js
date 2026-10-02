@@ -319,25 +319,25 @@
       this.KeySize = 0;
       /** @type {KeySize[]} */
       this.keySizeList = algorithm.SupportedKeySizes;
-      /** @type {int32|null} */
-      this._effectiveBits = null;
+      /** @type {int32} */
+      this._effectiveBits = 0; // 0: 8 * key length
     }
 
     /**
-     * Effective key size in bits (null: 8 * key length)
-     * @returns {int32|null} Effective bits
+     * Effective key size in bits (0: 8 * key length)
+     * @returns {int32} Effective bits
      */
     get effectiveBits() {
       return this._effectiveBits;
     }
 
     /**
-     * @param {int32|null} value - Effective key size in bits (re-expands the key when it changes)
+     * @param {int32} value - Effective key size in bits, 0 for 8 * key length (re-expands the key when it changes)
      */
     set effectiveBits(value) {
       const oldValue = this._effectiveBits;
-      this._effectiveBits = value;
-      if (oldValue !== value && this._key) {
+      this._effectiveBits = value ? value : 0;
+      if (oldValue !== this._effectiveBits && this._key) {
         this._setupKey();
       }
     }
@@ -388,7 +388,7 @@
     _setupKey() {
       if (!this._key) return;
       /** @type {int32} */
-      const effectiveBits = this._effectiveBits !== null ? this._effectiveBits : (this._key.length * 8);
+      const effectiveBits = this._effectiveBits !== 0 ? this._effectiveBits : (this._key.length * 8);
       this.expandedKey = rc2WorkingKey(this._key, effectiveBits);
     }
 
