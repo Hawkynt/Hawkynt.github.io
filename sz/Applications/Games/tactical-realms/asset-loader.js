@@ -314,7 +314,7 @@
     get(id) { return this.#images.get(id) || this.#generated(id); }
 
     #generated(id) {
-      return (TR.PixelArt && TR.PixelArt.get(id)) || (TR.TerrainArt && TR.TerrainArt.get(id)) || null;
+      return (TR.PixelArt && TR.PixelArt.get(id)) || (TR.TerrainArt && TR.TerrainArt.get(id)) || (TR.DungeonArt && TR.DungeonArt.get(id)) || null;
     }
 
     async loadAll(onProgress) {

@@ -18,12 +18,12 @@
 
   const TRANSITIONS = Object.freeze({
     [GameState.TITLE]:            [GameState.CHARACTER_SELECT, GameState.LOAD_GAME],
-    [GameState.LOAD_GAME]:        [GameState.OVERWORLD, GameState.CAMP, GameState.TITLE],
+    [GameState.LOAD_GAME]:        [GameState.OVERWORLD, GameState.CAMP, GameState.TITLE, GameState.DUNGEON],
     [GameState.CHARACTER_SELECT]: [GameState.OVERWORLD],
     [GameState.OVERWORLD]:        [GameState.DUNGEON, GameState.TOWN, GameState.CAMP, GameState.COMBAT],
     [GameState.TOWN]:             [GameState.OVERWORLD, GameState.CAMP],
     [GameState.DUNGEON]:          [GameState.COMBAT, GameState.OVERWORLD],
-    [GameState.COMBAT]:           [GameState.VICTORY, GameState.DEFEAT, GameState.OVERWORLD],
+    [GameState.COMBAT]:           [GameState.VICTORY, GameState.DEFEAT, GameState.OVERWORLD, GameState.DUNGEON],
     [GameState.VICTORY]:          [GameState.DUNGEON, GameState.CAMP],
     [GameState.DEFEAT]:           [GameState.CAMP, GameState.TITLE],
     [GameState.CAMP]:             [GameState.OVERWORLD]

@@ -195,6 +195,8 @@ load('overworld-map.js');
 load('dungeon-gen.js');
 load('dungeon-themes.js');
 load('dungeon-crawl.js');
+load('dungeon-art.js');
+load('dungeon-view.js');
 load('debug-console.js');
 
 // Load test suites

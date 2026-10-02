@@ -523,9 +523,10 @@
       for (const f of this.features)
         if (f.col === nc && f.row === nr)
           events.push({ type: f.type, feature: f });
+      // a group the party had already spotted is caught unawares
       for (const g of this.groups)
         if (!g.aware && this.#groupSees(g))
-          events.push({ type: 'encounter', group: g });
+          events.push({ type: 'encounter', group: g, ambush: !!g.sighted });
       // monsters the party saw first can be ambushed
       for (const g of this.groups)
         if (!g.sighted && this.#aliveMembers(g).some(m => this.isVisible(m.col, m.row))) {
@@ -562,6 +563,10 @@
         for (const [dc, dr] of DIRS4) {
           const nc = cur.col + dc, nr = cur.row + dr, k = key(nc, nr);
           if (prev.has(k) || !this.level.open(nc, nr) || !this.isExplored(nc, nr) || this.#monsterAt(nc, nr))
+            continue;
+          // stairs are only walked onto on purpose
+          const cell = this.level.get(nc, nr);
+          if ((cell === Cell.STAIRS_UP || cell === Cell.STAIRS_DOWN) && (nc !== tc || nr !== tr))
             continue;
           prev.set(k, key(cur.col, cur.row));
           q.push({ col: nc, row: nr });
