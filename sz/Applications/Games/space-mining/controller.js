@@ -592,6 +592,14 @@
   }
 
   /* ── Input ── */
+  /* Pause when the window is hidden or loses focus */
+  SZ.GameAutoPause.attach({
+    isRunning: () => state === STATE_PLAYING,
+    pause: () => {
+      state = STATE_PAUSED;
+    }
+  });
+
   window.addEventListener('keydown', (e) => {
     keys[e.code] = true;
 
@@ -823,6 +831,12 @@
     updateWindowTitle();
   }
 
+  /* Number of 60 Hz frames covered by dt; snaps refresh jitter so 60 Hz stays one frame */
+  function frameScale(dt) {
+    const frames = dt * 60;
+    return Math.abs(frames - 1) < 0.03 ? 1 : frames;
+  }
+
   function updateShip(dt) {
     const speedMult = activePowerups.speed > 0 ? 1.6 : 1.0;
 
@@ -908,8 +922,9 @@
     }
 
     /* Drag */
-    ship.vx *= DRAG;
-    ship.vy *= DRAG;
+    const drag = Math.pow(DRAG, frameScale(dt));
+    ship.vx *= drag;
+    ship.vy *= drag;
 
     /* Speed limit */
     const speed = Math.hypot(ship.vx, ship.vy);
