@@ -3685,6 +3685,44 @@
     setTimeout(() => tooltip.remove(), 1000);
   }
 
+  // A clicked row is selected; Edit > Copy Selected Value copies its value.
+  let selectedRow = null;
+  const menuCopyValue = document.getElementById('menu-copy-value');
+
+  function selectRow(tr) {
+    if (selectedRow)
+      selectedRow.classList.remove('row-selected');
+    selectedRow = tr;
+    if (tr)
+      tr.classList.add('row-selected');
+    if (menuCopyValue)
+      menuCopyValue.classList.toggle('disabled', !tr);
+  }
+
+  function valueCellOf(tr) {
+    return tr && tr.querySelector('td.field-value, td.field-editable');
+  }
+
+  metadataTbody.addEventListener('click', (e) => {
+    const tr = e.target.closest('tr');
+    selectRow(tr && valueCellOf(tr) ? tr : null);
+  });
+
+  // re-rendering the table drops the selection
+  new MutationObserver(() => {
+    if (selectedRow && !selectedRow.isConnected)
+      selectRow(null);
+  }).observe(metadataTbody, { childList: true });
+
+  function copySelectedValue() {
+    if (!selectedRow || !selectedRow.isConnected)
+      return;
+    const cell = valueCellOf(selectedRow);
+    const span = cell && cell.querySelector('span');
+    const text = (cell && cell.classList.contains('field-editable') && span ? span.textContent : cell ? cell.textContent : '').trim();
+    navigator.clipboard.writeText(text).catch(() => {});
+  }
+
   function copyAllMetadata() {
     if (!parseResult) return;
     let text = 'File: ' + (currentFileName || '') + '\n';
@@ -3802,6 +3840,7 @@
       case 'export': exportFile(); break;
       case 'exit': User32.DestroyWindow(); break;
       case 'copy-all': copyAllMetadata(); break;
+      case 'copy-value': copySelectedValue(); break;
       case 'revert': revertChanges(); break;
       case 'toggle-preview':
         showPreviewPanel = !showPreviewPanel;
