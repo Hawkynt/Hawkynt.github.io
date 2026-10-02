@@ -113,10 +113,7 @@
    * // Result: 0x89ABCDEF01234567
    */
   function RotR64(value, positions) {
-    const mask64 = BigInt('0xffffffffffffffff');
-    value = OpCodes.AndN(value, mask64);
-    positions = OpCodes.AndN(BigInt(positions), BigInt(63));
-    return OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftRn(value, positions), OpCodes.ShiftLn(value, (BigInt(64) - positions))), mask64);
+    return OpCodes.RotR64n(value, positions);
   }
 
   /**
@@ -580,6 +577,7 @@
       // Process key block if key is provided
       const buffer = new Uint8Array(BLAKE2B_BLOCKBYTES);
       let bufferLen = 0;
+      /** @type {uint64} */
       let totalLen = BigInt(0);
 
       if (this._key && this._key.length > 0) {
