@@ -910,22 +910,23 @@
       // Find r and s values
       // r: Jacobi(r, p) = 1 and Jacobi(r, q) = -1
       // s: Jacobi(s, p) = -1 and Jacobi(s, q) = 1
-      /** @type {BigInt|null} */
-      let r = null;
-      /** @type {BigInt|null} */
-      let s = null;
+      // 0n until found; the search starts at 2
+      /** @type {BigInt} */
+      let r = 0n;
+      /** @type {BigInt} */
+      let s = 0n;
       /** @type {BigInt} */
       let t = 2n;
 
-      while (r === null || s === null) {
+      while (r === 0n || s === 0n) {
         const jp = jacobi(t, p);
         const jq = jacobi(t, q);
 
-        if (r === null && jp === 1 && jq === -1) {
+        if (r === 0n && jp === 1 && jq === -1) {
           r = t;
         }
 
-        if (s === null && jp === -1 && jq === 1) {
+        if (s === 0n && jp === -1 && jq === 1) {
           s = t;
         }
 
