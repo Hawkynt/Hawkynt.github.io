@@ -44,6 +44,8 @@
       const returnFocus = document.activeElement;
       annotate(overlay);
       overlay.hidden = false;
+      for (const box of overlay.querySelectorAll('.dialog[hidden]'))
+        box.hidden = false;
       overlay.classList.add('visible');
 
       const fields = () => [...overlay.querySelectorAll(FOCUSABLE)].filter(visible);
@@ -206,13 +208,18 @@
     },
 
     wireAll() {
-      for (const overlay of document.querySelectorAll('.dialog-overlay, .dialog, [data-dialog]'))
+      for (const overlay of document.querySelectorAll('.dialog-overlay, .dialog, [data-dialog]')) {
+        // a box inside an overlay closes with its overlay; hiding the box
+        // itself left the overlay empty the next time it opened
+        if (overlay.matches('.dialog') && overlay.parentElement && overlay.parentElement.closest('.dialog-overlay, [data-dialog]'))
+          continue;
         overlay.addEventListener('click', function(e) {
           if (e.target.closest('[data-dialog-close]') || e.target.closest('[data-result]')) {
             this.classList.remove('visible');
             this.hidden = true;
           }
         });
+      }
     },
 
   };
