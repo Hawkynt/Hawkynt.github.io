@@ -3,7 +3,7 @@
 html, body { height: 100%; }
 body {
   overflow: hidden;
-  background: #0a0a1a;
+  background: #0f0e2a;
   font-family: 'Segoe UI', system-ui, sans-serif;
   display: flex;
   flex-direction: column;
@@ -22,7 +22,7 @@ canvas {
   display: block;
   width: 100%;
   height: 100%;
-  background: #0a0a1a;
+  background: #0f0e2a;
 }
 
 .status-bar {
