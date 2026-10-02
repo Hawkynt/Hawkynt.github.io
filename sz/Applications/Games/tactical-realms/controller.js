@@ -1177,7 +1177,9 @@
 
       // Canvas-rendered panels removed — now handled by CombatUI HTML overlays
 
-      if (this.#combatHoverTile && eng.grid.inBounds(this.#combatHoverTile.col, this.#combatHoverTile.row)) {
+      // nothing of the board's UI may show through a battle cut-in
+      const inScene = !!(this.#combatAnim && this.#combatAnim.scene);
+      if (!inScene && this.#combatHoverTile && eng.grid.inBounds(this.#combatHoverTile.col, this.#combatHoverTile.row)) {
         const ht = this.#combatHoverTile;
         const terrain = eng.grid.terrainAt(ht.col, ht.row);
         const uid = eng.grid.unitAt(ht.col, ht.row);
@@ -1196,7 +1198,7 @@
         }
       }
 
-      if (this.#contextMenu)
+      if (this.#contextMenu && !inScene)
         this.#renderer.drawContextMenu(this.#contextMenu.x, this.#contextMenu.y, this.#contextMenu.items, this.#contextMenuHover);
 
       if (phase === CombatPhase.VICTORY) {
