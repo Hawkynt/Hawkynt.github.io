@@ -388,6 +388,71 @@ test('XChaCha20: given a counter outside 0..2^32-1 or not an integer, when it is
   if (instance.counter !== 0) throw new Error('null did not restore counter 0');
 });
 
+// ---------------------------------------------------------------- random padding
+// The vectors run seeded or in test mode; the secure-random path is what an
+// unseeded instance uses, and its bytes cannot be committed as a vector.
+function paddingInstance(file, className, isInverse) {
+  const Algorithm = require(path.join(CIPHER_ROOT, 'algorithms', 'padding', file))[className];
+  return new Algorithm().CreateInstance(isInverse);
+}
+function pad(file, className, data, blockSize) {
+  const instance = paddingInstance(file, className, false);
+  instance.blockSize = blockSize;
+  instance.Feed(data);
+  return instance.Result();
+}
+const PAD_DATA = [0x41, 0x42, 0x43, 0x44, 0x45];
+
+test('ISO 10126: given an unseeded instance and 5 bytes, when padded to 16, then 10 secure random bytes and the length byte 11 follow the data', () => {
+  const padded = pad('iso10126.js', 'Iso10126Algorithm', PAD_DATA, 16);
+  if (padded.length !== 16) throw new Error(`expected 16 bytes, got ${padded.length}`);
+  equalHex(padded.slice(0, 5), hex(PAD_DATA));
+  if (padded[15] !== 11) throw new Error(`expected length byte 11, got ${padded[15]}`);
+  for (const b of padded) if (!Number.isInteger(b) || b < 0 || b > 255) throw new Error(`not a byte: ${b}`);
+});
+
+test('ISO 10126: given an unseeded instance and a whole block, when padded, then a full block of 15 random bytes and the length byte 16 is added', () => {
+  const padded = pad('iso10126.js', 'Iso10126Algorithm', new Array(16).fill(7), 16);
+  if (padded.length !== 32 || padded[31] !== 16) throw new Error(`expected 32 bytes ending in 16, got ${padded.length} ending in ${padded[31]}`);
+});
+
+test('ISO 10126: given two unseeded paddings of the same data, when compared, then their random bytes differ and both unpad to the data', () => {
+  const first = pad('iso10126.js', 'Iso10126Algorithm', PAD_DATA, 32);
+  const second = pad('iso10126.js', 'Iso10126Algorithm', PAD_DATA, 32);
+  // 26 random bytes each: equal by chance with probability 2^-208
+  if (hex(first) === hex(second)) throw new Error('two unseeded paddings are identical');
+  for (const padded of [first, second]) {
+    const unpad = paddingInstance('iso10126.js', 'Iso10126Algorithm', true);
+    unpad.blockSize = 32;
+    unpad.Feed(padded);
+    equalHex(unpad.Result(), hex(PAD_DATA));
+  }
+});
+
+test('Random padding: given an unseeded instance and 5 bytes, when padded to 16 and unpadded with the original length, then the data returns', () => {
+  const padded = pad('random.js', 'RandomPaddingAlgorithm', PAD_DATA, 16);
+  if (padded.length !== 16) throw new Error(`expected 16 bytes, got ${padded.length}`);
+  equalHex(padded.slice(0, 5), hex(PAD_DATA));
+  for (const b of padded) if (!Number.isInteger(b) || b < 0 || b > 255) throw new Error(`not a byte: ${b}`);
+  const unpad = paddingInstance('random.js', 'RandomPaddingAlgorithm', true);
+  unpad.blockSize = 16;
+  unpad.setOriginalLength(PAD_DATA.length);
+  unpad.Feed(padded);
+  equalHex(unpad.Result(), hex(PAD_DATA));
+});
+
+test('Random padding: given a whole block, when padded, then nothing is added', () => {
+  const padded = pad('random.js', 'RandomPaddingAlgorithm', new Array(16).fill(7), 16);
+  equalHex(padded, hex(new Array(16).fill(7)));
+});
+
+test('Random padding: given no original length, when unpadding, then it is refused', () => {
+  const unpad = paddingInstance('random.js', 'RandomPaddingAlgorithm', true);
+  unpad.blockSize = 16;
+  unpad.Feed(new Array(16).fill(0));
+  expectThrow(() => unpad.Result(), 'original data length');
+});
+
 /**
  * Run every algorithm regression case.
  * @param {object} options - { verbose }
