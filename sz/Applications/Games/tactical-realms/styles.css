@@ -294,3 +294,74 @@ body.tr-cinematic .combat-init-bar {
   vertical-align: middle;
   margin-right: 3px;
 }
+
+/* === Combat HUD theme: navy panels with a gold frame, matching the canvas art === */
+.fwin {
+  background: linear-gradient(180deg, rgba(26, 30, 64, 0.94), rgba(10, 12, 30, 0.94));
+  border: 2px solid #c8a24e;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px #2a1e10, inset 0 0 0 1px rgba(255, 236, 170, 0.25), 0 6px 18px rgba(0, 0, 0, 0.6);
+  color: #d8d4c4;
+}
+.fwin-titlebar {
+  background: linear-gradient(180deg, #2c3468, #1a1f44);
+  border-bottom: 1px solid #8a7440;
+  color: #f0d890;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 0.04em;
+}
+.fwin-btns button { color: #c8b880; }
+.fwin-btns button:hover { background: #3a4a8a; color: #fff; border-color: #c8a24e; }
+.fwin-body pre { color: #d0ccbc; }
+.fwin-resize-handle { background: linear-gradient(135deg, transparent 50%, #c8a24e 50%); }
+
+.fwin-actions {
+  background: linear-gradient(180deg, rgba(26, 30, 64, 0.94), rgba(10, 12, 30, 0.94));
+  padding: 6px;
+}
+.fwin-action-btn {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 14px;
+  font-weight: bold;
+  padding: 7px 18px;
+  background: linear-gradient(180deg, #2a3264, #141a3a);
+  border: 2px solid #8a7440;
+  border-radius: 2px;
+  color: #f0ead8;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.fwin-action-btn:hover:not(.disabled) {
+  background: linear-gradient(180deg, #3a4a8a, #1e2650);
+  border-color: #ffe08a;
+  color: #fff;
+}
+
+.fwin-active-char {
+  flex-direction: row;
+  font-family: Georgia, 'Times New Roman', serif;
+  padding: 6px 14px;
+}
+.fwin-ac-stat { color: #b8c0d8; font-family: monospace; }
+.fwin-ac-hpbar { height: 7px; background: #3a1418; border: 1px solid #0a0610; border-radius: 0; }
+.fwin-ac-hpbar div { border-radius: 0; }
+
+.combat-init-bar {
+  background: linear-gradient(180deg, rgba(26, 30, 64, 0.96), rgba(10, 12, 30, 0.96));
+  border-top: 2px solid #c8a24e;
+  height: 34px;
+}
+.init-unit {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 12px;
+  padding: 2px 8px 2px 3px;
+  border-radius: 0;
+  border: 1px solid transparent;
+}
+.init-party { background: linear-gradient(180deg, rgba(60, 100, 200, 0.45), rgba(30, 50, 110, 0.45)); color: #b8d4ff; }
+.init-enemy { background: linear-gradient(180deg, rgba(200, 60, 60, 0.45), rgba(110, 30, 30, 0.45)); color: #ffc0b0; }
+.init-dead { background: rgba(30, 30, 40, 0.5); color: #6a6a78; }
+.init-dead img { filter: grayscale(1) brightness(0.6); }
+.init-active { outline: none; border-color: #ffd75a; box-shadow: 0 0 8px rgba(255, 215, 90, 0.7); font-weight: bold; }
+.init-sep { color: #c8a24e; border-color: #8a7440; font-family: Georgia, 'Times New Roman', serif; }
