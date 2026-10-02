@@ -186,6 +186,7 @@ load('combat-history.js');
 load('combat-ui.js');
 load('combat-engine.js');
 load('pixel-art.js');
+load('terrain-art.js');
 load('asset-loader.js');
 tryLoad('data/creature-sprites.js');
 load('sprite-resolver.js');
