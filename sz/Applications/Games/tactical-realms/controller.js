@@ -1918,16 +1918,33 @@
       }
 
       const prevPos = { col: unit.position.col, row: unit.position.row };
-      let attackEvent = null;
+      let attackEvent = null, specialEvent = null, spellEvent = null;
       const captureAttack = (e) => { attackEvent = e; };
+      const captureSpecial = (e) => { specialEvent = e; };
+      const captureSpell = (e) => { spellEvent = e; };
       eng.on('attackResolved', captureAttack);
+      eng.on('specialResolved', captureSpecial);
+      eng.on('spellResolved', captureSpell);
       eng.executeEnemyTurn(unit.id);
       eng.off('attackResolved', captureAttack);
+      eng.off('specialResolved', captureSpecial);
+      eng.off('spellResolved', captureSpell);
 
       const newPos = unit.position;
       const moved = prevPos.col !== newPos.col || prevPos.row !== newPos.row;
 
       const showAttack = () => {
+        if (specialEvent && specialEvent.targets.length) {
+          this.#showMonsterSpecial(unit, specialEvent);
+          return;
+        }
+        if (spellEvent) {
+          if (spellEvent.aoe)
+            this.#startAoeSpellAnim(unit, spellEvent);
+          else
+            this.#startSpellAnim(unit, spellEvent.target, spellEvent);
+          return;
+        }
         if (attackEvent) {
           const def = attackEvent.defender;
           const pos = def.position;
@@ -1946,11 +1963,13 @@
             defender: def,
             impacts: [hit
               ? { kind: 'hit', unit: def, from: unit, amount: dmg, crit }
-              : { kind: 'miss', unit: def, from: unit }],
+              : { kind: 'miss', unit: def, from: unit },
+              ...(attackEvent.effects || []).map(e => ({ kind: 'effect', unit: def, text: e.text, color: e.color }))],
             result: {
               hit,
               damage: dmg,
               critical: crit,
+              effects: attackEvent.effects || [],
               flanking: attackEvent.flanking,
               d20: attackEvent.result.d20,
               total: attackEvent.result.total,
@@ -2032,9 +2051,37 @@
           fx.miss(u.id, c.x, c.y);
         else if (imp.kind === 'heal')
           fx.heal(u.id, c.x, c.y, imp.amount);
+        else if (imp.kind === 'effect')
+          fx.number(c.x, c.y - 26, imp.text, { color: imp.color || '#f0e080', size: 15 });
         if (!u.isAlive && !fx.isDying(u.id))
           fx.death(u.id, c.x, c.y);
       }
+    }
+
+    // A monster's breath, gaze, rays, web or rock as a battle scene; every
+    // creature it caught gets its numbers or effect on the grid afterwards.
+    #showMonsterSpecial(unit, ev) {
+      const first = ev.targets.find(t => t.damage > 0) || ev.targets[0];
+      const effects = ev.targets.filter(t => t.effect).map(t => ({ unitId: t.unit.id, text: t.effect, color: '#f0e080' }));
+      this.#combatAnim = this.#attachBattleScene({
+        type: 'spell_cast',
+        timer: 2.5,
+        duration: 2.5,
+        attacker: unit,
+        defender: first.unit,
+        impacts: ev.targets.flatMap(t => [
+          t.damage > 0 ? { kind: 'hit', unit: t.unit, from: unit, amount: t.damage, spell: true, color: '#ff9a4a' } : null,
+          t.effect ? { kind: 'effect', unit: t.unit, text: t.effect } : null,
+        ].filter(Boolean)),
+        result: {
+          damage: first.damage,
+          targets: ev.targets.map(t => ({ unitId: t.unit.id, damage: t.damage, heal: 0 })),
+          spell: { id: `special_${ev.special}`, name: ev.name },
+          spellName: ev.name,
+          special: { kind: ev.special, element: ev.element, shape: ev.shape },
+          effects,
+        },
+      });
     }
 
     #startAttackAnim(attackerId, defenderId, result) {

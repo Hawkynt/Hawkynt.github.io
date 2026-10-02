@@ -175,4 +175,44 @@
         assert.ok(BattleFx.palette(el).main, el);
     });
   });
+
+  describe('BattleScene -- monster specials', () => {
+
+    const special = (kind, element, extra = {}) => ({
+      attacker: foe('red_dragon_adult'), defender: hero('fighter'), type: 'spell_cast',
+      result: { damage: 12, spell: { id: `special_${kind}`, name: kind }, special: { kind, element, shape: 'cone' }, ...extra },
+    });
+
+    it('breath, gazes, rays, mind blasts, webs, spit and rocks get their own scene', () => {
+      for (const kind of ['breath', 'gaze', 'rays', 'mindblast', 'web', 'spit', 'rock']) {
+        const s = new BattleScene(special(kind, kind === 'rock' ? 'earth' : 'fire'));
+        assert.equal(s.kind, 'special', kind);
+        const ctx = fakeCtx();
+        while (!s.done) {
+          s.update(1 / 20);
+          s.draw(ctx, 1280, 720);
+        }
+        assert.ok(s.done, kind);
+      }
+    });
+
+    it('an effect without damage still plays out, statue and all', () => {
+      const s = new BattleScene(special('gaze', 'earth', { damage: 0, effects: [{ unitId: 'h1', text: 'Petrified' }] }));
+      const ctx = fakeCtx();
+      while (!s.done) {
+        s.update(1 / 20);
+        s.draw(ctx, 1280, 720);
+      }
+      assert.ok(s.done);
+    });
+
+    it('the special drawing helpers draw without throwing', () => {
+      const ctx = fakeCtx();
+      BattleFx.breath(ctx, 'fire', 0, 0, 200, 50, 0.4, 'cone', 1);
+      BattleFx.breath(ctx, 'lightning', 0, 0, 200, 50, 0.4, 'line', 1);
+      BattleFx.beam(ctx, 'arcane', 0, 0, 200, 50, 0.5);
+      BattleFx.rock(ctx, 50, 50, 20, 1);
+      assert.ok(BattleFx.palette('earth').main);
+    });
+  });
 })();
