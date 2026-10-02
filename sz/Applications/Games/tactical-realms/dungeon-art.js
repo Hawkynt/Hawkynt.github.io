@@ -55,6 +55,35 @@
     flowers: c => { for (const [x, y, col] of [[4, 6, '#f4e05a'], [10, 5, '#e86a8a'], [7, 10, '#8ab8ff'], [12, 11, '#f4f4f4']]) { px(c, x, y + 2, '#4f8a3c', 1, 3); px(c, x - 1, y, col, 3, 1); px(c, x, y - 1, col, 1, 3); px(c, x, y, '#f8c040'); } },
     boulder: c => { shadow(c, 8, 14, 12); disc(c, 8, 9, 5, '#7a7470'); disc(c, 7, 8, 3, '#9a948a'); px(c, 5, 6, '#b8b2a8', 2, 1); },
     reeds: c => { for (const x of [3, 6, 9, 12]) { px(c, x, 4 + (x % 3), '#5a8a3a', 1, 11 - (x % 3)); px(c, x, 3 + (x % 3), '#8a6238', 1, 2); } },
+    // overworld features
+    palm: c => {
+      shadow(c, 8, 15, 10);
+      for (let y = 6; y < 15; ++y) px(c, 7 + (y > 10 ? 1 : 0), y, y % 3 ? '#9a6a38' : '#7a5228', 2, 1);
+      // fronds: dark outline first, then bright leaves
+      const fronds = [[-7, 2], [-5, -2], [-1, -4], [3, -3], [7, 1], [6, 4], [-6, 4]];
+      for (const [col, size] of [['#1e4a1a', 2], ['#7ac83a', 1]])
+        for (const [dx, dy] of fronds)
+          for (let k = 1; k <= 5; ++k)
+            px(c, 8 + Math.round(dx * k / 5) - (size >> 1), 5 + Math.round(dy * k / 5) + (k > 3 ? 1 : 0) - (size >> 1), col, size + 1, size + 1);
+      px(c, 7, 4, '#a8e85a', 2, 2);
+      px(c, 6, 6, '#6a4a22', 3, 2);
+    },
+    snow_pine: c => { shadow(c, 8, 15, 8); px(c, 7, 12, '#5a3a22', 2, 3); for (let y = 0; y < 11; ++y) { const w = 2 + Math.floor(y * 0.9); px(c, 8 - (w >> 1), 1 + y, y % 3 === 0 ? '#eef4fa' : '#2f5a46', w, 1); } px(c, 7, 1, '#ffffff', 2, 1); },
+    acacia: c => { shadow(c, 8, 15, 10); px(c, 7, 7, '#6a4a28', 2, 8); px(c, 5, 7, '#6a4a28', 2, 1); for (let x = 1; x < 15; ++x) px(c, x, 4 + (x < 4 || x > 11 ? 1 : 0), x % 3 ? '#6a8a34' : '#4f6a28', 1, 3); },
+    hillock: c => {
+      // a grassy mound lit from the upper left
+      for (let y = 0; y < 8; ++y) {
+        const w = 15 - y * 2, x0 = 1 + y;
+        px(c, x0, 14 - y, '#2f5a26', w, 1);
+        px(c, x0 + 1, 14 - y, '#9ad868', Math.max(1, (w >> 1) - 1), 1);
+        px(c, x0 + (w >> 1), 14 - y, '#5a9a40', Math.max(1, (w >> 1) - 1), 1);
+      }
+      px(c, 7, 7, '#c8f08a', 2, 1);
+      px(c, 1, 15, 'rgba(0,0,0,0.3)', 15, 1);
+    },
+    mesa: c => { shadow(c, 8, 15, 14); px(c, 2, 6, '#a8583a', 12, 9); px(c, 3, 4, '#c8784a', 10, 3); px(c, 2, 9, '#7a3a22', 12, 1); px(c, 2, 12, '#8a4a2a', 12, 1); },
+    vent: c => { disc(c, 8, 11, 3, '#2a2628'); px(c, 7, 10, '#ff7a2a', 2, 2); for (let i = 0; i < 4; ++i) px(c, 7 + (i % 2), 7 - i * 2, 'rgba(120,120,120,0.6)', 2, 2); },
+    snow_rock: c => { shadow(c, 8, 14, 12); disc(c, 8, 10, 4, '#7a7a86'); px(c, 4, 6, '#f4f8fc', 8, 2); px(c, 5, 5, '#ffffff', 5, 1); },
     // interactive features
     chest: c => { shadow(c, 8, 14, 12); px(c, 3, 6, '#8a5a2a', 10, 8); px(c, 3, 6, '#a87238', 10, 3); px(c, 3, 9, '#5a3a1a', 10, 1); px(c, 7, 8, '#e8c14a', 2, 3); px(c, 3, 6, '#5a3a1a', 1, 8); px(c, 12, 6, '#5a3a1a', 1, 8); },
     chest_open: c => { shadow(c, 8, 14, 12); px(c, 3, 8, '#8a5a2a', 10, 6); px(c, 3, 3, '#5a3a1a', 10, 4); px(c, 4, 7, '#1a1010', 8, 2); px(c, 3, 13, '#5a3a1a', 10, 1); },

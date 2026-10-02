@@ -19,6 +19,79 @@
     CAMP: 7,
     WATER: 8,
     SAND: 9,
+    // regional biomes
+    SNOW: 10,
+    TAIGA: 11,
+    JUNGLE: 12,
+    DESERT: 13,
+    BADLANDS: 14,
+    SWAMP: 15,
+    HILLS: 16,
+    SAVANNA: 17,
+    ICE: 18,
+    ASH: 19,
+    LAVA: 20,
+  });
+
+  const IMPASSABLE = Object.freeze(new Set([Tile.VOID, Tile.MOUNTAIN, Tile.WATER, Tile.ICE, Tile.LAVA]));
+
+  // Per tile: D&D biome id (data/biomes.js), battle biome (combat palette and
+  // backdrop), travel cost, encounter chance and the painted ground under
+  // any overlay. Locations and roads keep their own entries.
+  const TILE_INFO = Object.freeze({
+    [Tile.GRASS]:    { biome: 'temperate_plains', battle: 'plains',   cost: 1,   encounter: 0.022 },
+    [Tile.FOREST]:   { biome: 'temperate_forest', battle: 'forest',   cost: 1.5, encounter: 0.035 },
+    [Tile.MOUNTAIN]: { biome: 'mountain',         battle: 'mountain', cost: -1,  encounter: 0 },
+    [Tile.ROAD]:     { biome: 'temperate_plains', battle: 'plains',   cost: 0.5, encounter: 0.006 },
+    [Tile.WATER]:    { biome: 'temperate_plains', battle: 'plains',   cost: -1,  encounter: 0 },
+    [Tile.SAND]:     { biome: 'desert_sand',      battle: 'desert',   cost: 1.2, encounter: 0.015 },
+    [Tile.SNOW]:     { biome: 'arctic_tundra',    battle: 'snow',     cost: 1.5, encounter: 0.022 },
+    [Tile.TAIGA]:    { biome: 'arctic_tundra',    battle: 'taiga',    cost: 1.7, encounter: 0.03 },
+    [Tile.JUNGLE]:   { biome: 'tropical_jungle',  battle: 'jungle',   cost: 2,   encounter: 0.04 },
+    [Tile.DESERT]:   { biome: 'desert_sand',      battle: 'desert',   cost: 1.4, encounter: 0.025 },
+    [Tile.BADLANDS]: { biome: 'desert_rock',      battle: 'badlands', cost: 1.3, encounter: 0.025 },
+    [Tile.SWAMP]:    { biome: 'swamp',            battle: 'swamp',    cost: 2,   encounter: 0.04 },
+    [Tile.HILLS]:    { biome: 'hill',             battle: 'hills',    cost: 1.6, encounter: 0.028 },
+    [Tile.SAVANNA]:  { biome: 'temperate_plains', battle: 'savanna',  cost: 1,   encounter: 0.022 },
+    [Tile.ICE]:      { biome: 'arctic_glacier',   battle: 'snow',     cost: -1,  encounter: 0 },
+    [Tile.ASH]:      { biome: 'ash_waste',        battle: 'ash',      cost: 1.3, encounter: 0.035 },
+    [Tile.LAVA]:     { biome: 'lava_field',       battle: 'lava',     cost: -1,  encounter: 0 },
+  });
+
+  // Which overworld regions suit a location's own biome.
+  const LOCATION_FIT = Object.freeze({
+    forest: [Tile.FOREST, Tile.JUNGLE, Tile.TAIGA, Tile.GRASS],
+    swamp: [Tile.SWAMP, Tile.JUNGLE],
+    mountain: [Tile.HILLS, Tile.BADLANDS, Tile.SNOW, Tile.TAIGA, Tile.MOUNTAIN],
+    lava: [Tile.ASH, Tile.BADLANDS],
+  });
+
+  // Which of the classic foes roam each region (data/biomes.js ids).
+  const BIOME_CREATURES = Object.freeze({
+    temperate_plains: ['bandit', 'wolf', 'goblin', 'orc', 'gnoll', 'hobgoblin', 'cockatrice', 'ogre', 'hill_giant'],
+    temperate_forest: ['wolf', 'goblin', 'spider', 'stirge', 'dire_wolf', 'worg', 'bugbear', 'owlbear', 'phase_spider', 'troll'],
+    hill: ['goblin', 'orc', 'gnoll', 'hobgoblin', 'ogre', 'harpy', 'manticore', 'hill_giant', 'wyvern'],
+    mountain: ['goblin', 'orc', 'harpy', 'gargoyle', 'manticore', 'wyvern', 'frost_giant', 'young_dragon'],
+    arctic_tundra: ['wolf', 'worg', 'dire_wolf', 'ogre', 'troll', 'frost_giant'],
+    arctic_glacier: ['wolf', 'worg', 'frost_giant'],
+    desert_sand: ['kobold', 'gnoll', 'cockatrice', 'basilisk', 'manticore', 'fire_elemental'],
+    desert_rock: ['kobold', 'gnoll', 'harpy', 'basilisk', 'manticore', 'gargoyle', 'wyvern'],
+    tropical_jungle: ['spider', 'stirge', 'lizardfolk', 'phase_spider', 'basilisk', 'harpy', 'wyvern'],
+    swamp: ['rat', 'stirge', 'lizardfolk', 'zombie', 'ghoul', 'cockatrice', 'basilisk', 'troll'],
+    ash_waste: ['fire_elemental', 'gargoyle', 'devil', 'demon'],
+    lava_field: ['fire_elemental', 'devil', 'demon'],
+  });
+
+  function creatureCR(id) {
+    const t = TR.CombatEngine && TR.CombatEngine.ENEMY_TEMPLATES ? TR.CombatEngine.ENEMY_TEMPLATES[id] : null;
+    return t && Number.isFinite(t.cr) ? t.cr : 1;
+  }
+
+  const GROUND = Object.freeze({
+    [Tile.GRASS]: 'meadow', [Tile.FOREST]: 'meadow', [Tile.HILLS]: 'meadow', [Tile.SAVANNA]: 'savanna',
+    [Tile.SNOW]: 'snow', [Tile.TAIGA]: 'snow', [Tile.ICE]: 'glacier', [Tile.JUNGLE]: 'jungle_floor',
+    [Tile.DESERT]: 'desert', [Tile.SAND]: 'desert', [Tile.BADLANDS]: 'badlands', [Tile.SWAMP]: 'swamp',
+    [Tile.ASH]: 'ash', [Tile.LAVA]: 'lava',
   });
 
   const LOCATION_TYPES = Object.freeze([
@@ -64,7 +137,7 @@
     Object.freeze({ tile: Tile.DUNGEON, name: 'Phase Spider Web', difficulty: 3, biome: 'cave', enemies: ['phase_spider', 'spider', 'spider'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: "Giant's Keep", difficulty: 5, biome: 'mountain', enemies: ['hill_giant', 'ogre'], minCount: 1, maxCount: 2 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Elemental Rift', difficulty: 5, biome: 'lava', enemies: ['fire_elemental', 'fire_elemental'], minCount: 1, maxCount: 3 }),
-    Object.freeze({ tile: Tile.DUNGEON, name: 'Mind Flayer Colony', difficulty: 6, biome: 'dungeon', enemies: ['mind_flayer', 'wight', 'ghoul'], minCount: 1, maxCount: 3 }),
+    Object.freeze({ tile: Tile.DUNGEON, name: 'Thoughtdrinker Colony', difficulty: 6, biome: 'dungeon', enemies: ['mind_flayer', 'wight', 'ghoul'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Dragon Hoard', difficulty: 8, biome: 'cave', enemies: ['young_dragon', 'kobold', 'kobold'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: "Death Knight's Tomb", difficulty: 8, biome: 'dungeon', enemies: ['death_knight', 'wight', 'skeleton'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Frozen Fortress', difficulty: 7, biome: 'mountain', enemies: ['frost_giant', 'worg', 'dire_wolf'], minCount: 1, maxCount: 3 }),
@@ -109,8 +182,26 @@
     return (n1 + n2 + n3) / 1.75;
   }
 
+  // Blended value noise bunches around 0.5; stretching spreads it back
+  // over 0..1 so thresholds read as rough shares of the world.
+  const stretch = (v, k) => Math.max(0, Math.min(1, 0.5 + (v - 0.5) * k));
+
   function moistureNoise(col, row, seed) {
-    return noise2d(col, row, seed + 48611, 12);
+    return stretch(noise2d(col, row, seed + 48611, 12) * 0.35 + noise2d(col, row, seed + 52711, 40) * 0.65, 1.75);
+  }
+
+  // Continental shape: large swells under the local detail.
+  function elevationNoise(col, row, seed) {
+    return stretch(terrainNoise(col, row, seed) * 0.55 + noise2d(col, row, seed + 91141, 56) * 0.45, 2.2);
+  }
+
+  // Climate bands wide enough to walk through: a region spans dozens of tiles.
+  function temperatureNoise(col, row, seed) {
+    return stretch(noise2d(col, row, seed + 77003, 90) * 0.75 + noise2d(col, row, seed + 81239, 30) * 0.25, 1.65);
+  }
+
+  function volcanismNoise(col, row, seed) {
+    return noise2d(col, row, seed + 23017, 26);
   }
 
   // Home Camp and the four locations around it; type indexes LOCATION_TYPES.
@@ -124,6 +215,8 @@
 
   class OverworldMap {
     #worldSeed;
+    #tempShift;
+    #terrainCache = new Map();
     #chunks;
     #locations;
     #roads;
@@ -131,6 +224,9 @@
 
     constructor(worldSeed) {
       this.#worldSeed = worldSeed >>> 0;
+      // every world starts in a temperate land; the correction fades with
+      // distance so the rest of the world keeps its own climate
+      this.#tempShift = 0.5 - temperatureNoise(0, 0, this.#worldSeed);
       this.#chunks = new Map();
       this.#locations = new Map();
       this.#roads = new Set();
@@ -165,26 +261,95 @@
     }
 
     isPassable(col, row) {
-      const t = this.getTile(col, row);
-      return t !== Tile.MOUNTAIN && t !== Tile.WATER && t !== Tile.VOID;
+      return !IMPASSABLE.has(this.getTile(col, row));
     }
 
-    #baseTerrain(col, row) {
-      const height = terrainNoise(col, row, this.#worldSeed);
-      const moisture = moistureNoise(col, row, this.#worldSeed);
+    // Temperature 0 (frozen) .. 1 (scorching) at a cell.
+    temperatureAt(col, row) {
+      const d = Math.sqrt(col * col + row * row);
+      const homeward = d < 40 ? 1 : d > 90 ? 0 : 1 - (d - 40) / 50;
+      return Math.max(0, Math.min(1, temperatureNoise(col, row, this.#worldSeed) + this.#tempShift * homeward));
+    }
 
+    // The D&D biome a cell belongs to (data/biomes.js ids).
+    biomeAt(col, row) {
+      const info = TILE_INFO[this.#regionTile(col, row)];
+      return info ? info.biome : 'temperate_plains';
+    }
+
+    // Natural ground of a cell, ignoring locations and roads.
+    regionTile(col, row) {
+      return this.#regionTile(col, row);
+    }
+
+    #regionTile(col, row) {
+      const t = this.#baseTerrain(col, row);
+      // overlays (mountains) take the climate of their surroundings
+      if (t === Tile.MOUNTAIN || t === Tile.WATER) {
+        const temp = this.temperatureAt(col, row);
+        return temp < 0.25 ? Tile.SNOW : temp > 0.74 ? Tile.DESERT : Tile.GRASS;
+      }
+      return t;
+    }
+
+    // Painted ground under a cell's overlay (trees, rocks, landmarks).
+    groundAt(col, row) {
+      const t = this.#regionTile(col, row);
+      return GROUND[t] || 'meadow';
+    }
+
+    // Whittaker-style biomes from elevation, moisture and temperature,
+    // cached because the map is redrawn every frame.
+    #baseTerrain(col, row) {
+      const key = `${col},${row}`;
+      let t = this.#terrainCache.get(key);
+      if (t === undefined) {
+        if (this.#terrainCache.size > 60000)
+          this.#terrainCache.clear();
+        t = this.#computeTerrain(col, row);
+        this.#terrainCache.set(key, t);
+      }
+      return t;
+    }
+
+    #computeTerrain(col, row) {
+      const seed = this.#worldSeed;
+      const height = elevationNoise(col, row, seed);
+      const moisture = moistureNoise(col, row, seed);
+      const temp = this.temperatureAt(col, row);
+
+      // rare volcanic country: ash plains around rivers of lava
+      const volc = volcanismNoise(col, row, seed);
+      if (volc > 0.85 && height > 0.45 && temp > 0.45)
+        return volc > 0.92 ? Tile.LAVA : Tile.ASH;
+
+      if (height < 0.14)
+        return temp < 0.18 ? Tile.ICE : Tile.WATER;
       if (height < 0.18)
-        return Tile.WATER;
-      if (height < 0.23)
-        return Tile.SAND;
-      if (height > 0.82)
+        return temp < 0.25 ? Tile.SNOW : Tile.SAND;
+      if (height > 0.88)
         return Tile.MOUNTAIN;
 
-      if (moisture > 0.6 && height < 0.6)
+      if (temp < 0.25) {
+        if (height > 0.78 && temp < 0.12)
+          return Tile.ICE;
+        return moisture > 0.5 ? Tile.TAIGA : Tile.SNOW;
+      }
+      if (temp > 0.74) {
+        if (moisture > 0.62)
+          return Tile.JUNGLE;
+        if (moisture < 0.4)
+          return height > 0.62 ? Tile.BADLANDS : Tile.DESERT;
+        return height > 0.74 ? Tile.HILLS : Tile.SAVANNA;
+      }
+      if (height > 0.76)
+        return Tile.HILLS;
+      if (moisture > 0.72 && height < 0.36)
+        return Tile.SWAMP;
+      if (moisture > 0.6 && height < 0.66)
         return Tile.FOREST;
-      if (moisture > 0.45 && height < 0.45)
+      if (moisture > 0.48 && height < 0.44)
         return Tile.FOREST;
-
       return Tile.GRASS;
     }
 
@@ -218,7 +383,7 @@
       const baseRow = gcy * LOCATION_SPACING + rng.nextInt(3, LOCATION_SPACING - 4);
 
       const dist = Math.sqrt(gcx * gcx + gcy * gcy);
-      const locType = this.#pickLocationType(rng, dist);
+      const locType = this.#pickLocationType(rng, dist, this.#regionTile(baseCol, baseRow));
       const key = this.#locationKey(baseCol, baseRow);
       this.#locations.set(key, Object.freeze({ ...locType, col: baseCol, row: baseRow }));
 
@@ -287,30 +452,35 @@
       }
     }
 
-    #pickLocationType(rng, dist) {
-      const dungeonCount = 41;
-      const townStart = 20;
-      const townCount = 4;
-      const campStart = 24;
-      const campCount = 3;
-      const newDungeonStart = 27;
-      const newDungeonCount = 14;
-
+    // Towns and camps are common everywhere; dungeons get harder with
+    // distance from home and prefer regions that suit them (a lizardfolk
+    // village in a swamp, a frozen fortress in the snow).
+    #pickLocationType(rng, dist, region) {
       const roll = rng.next();
+      const towns = LOCATION_TYPES.filter(l => l.tile === Tile.TOWN);
+      const camps = LOCATION_TYPES.filter(l => l.tile === Tile.CAMP);
       if (roll < 0.12)
-        return LOCATION_TYPES[townStart + rng.nextInt(0, townCount - 1)];
+        return towns[rng.nextInt(0, towns.length - 1)];
       if (roll < 0.22)
-        return LOCATION_TYPES[campStart + rng.nextInt(0, campCount - 1)];
+        return camps[rng.nextInt(0, camps.length - 1)];
 
-      if (dist <= 1)
-        return LOCATION_TYPES[rng.nextInt(0, 3)];
-      if (dist <= 3)
-        return LOCATION_TYPES[rng.nextInt(0, 8)];
-      if (dist <= 5)
-        return LOCATION_TYPES[rng.nextInt(0, 14)];
-      if (dist <= 8)
-        return LOCATION_TYPES[rng.nextInt(0, newDungeonStart + 10)];
-      return LOCATION_TYPES[rng.nextInt(0, dungeonCount - 1)];
+      const maxDiff = dist <= 1 ? 2 : dist <= 3 ? 3 : dist <= 5 ? 4 : dist <= 8 ? 6 : 8;
+      const minDiff = Math.max(1, maxDiff - 3);
+      const dungeons = LOCATION_TYPES.filter(l => l.tile === Tile.DUNGEON && l.difficulty >= minDiff && l.difficulty <= maxDiff);
+      const weights = dungeons.map(l => {
+        const fit = LOCATION_FIT[l.biome];
+        if (!fit)
+          return 1;                      // caves, crypts and ruins fit anywhere
+        return fit.includes(region) ? 3 : 0.15;
+      });
+      const total = weights.reduce((a, w) => a + w, 0);
+      let pick = rng.next() * total;
+      for (let i = 0; i < dungeons.length; ++i) {
+        pick -= weights[i];
+        if (pick <= 0)
+          return dungeons[i];
+      }
+      return dungeons[dungeons.length - 1];
     }
 
     #clearTerrainAround(_col, _row) {
@@ -358,16 +528,8 @@
     }
 
     encounterChance(col, row) {
-      const t = this.getTile(col, row);
-      if (t === Tile.FOREST)
-        return 0.12;
-      if (t === Tile.GRASS)
-        return 0.06;
-      if (t === Tile.SAND)
-        return 0.04;
-      if (t === Tile.ROAD)
-        return 0.02;
-      return 0;
+      const info = TILE_INFO[this.getTile(col, row)];
+      return info ? info.encounter : 0;
     }
 
     // Map distance-based tier to AI behavior tier (0-4)
@@ -383,6 +545,15 @@
       const avgLevel = partyLevel || 1;
       const dist = Math.sqrt(col * col + row * row);
       const tier = Math.min(7, Math.floor(dist / 12));
+      const biome = this.biomeAt(col, row);
+
+      // the full monster roster knows who lives where
+      if (TR.MonsterRoster && typeof TR.MonsterRoster.encounter === 'function') {
+        // far from home the land gets more dangerous than the party
+        const list = TR.MonsterRoster.encounter(biome, avgLevel + Math.round(tier * 0.6), prng);
+        if (list && list.length)
+          return list;
+      }
 
       // Thematic creature pools by distance tier (flavor only - stats are scaled)
       const pools = [
@@ -395,7 +566,10 @@
         ['dragon_wyrmling', 'lich', 'vampire_spawn', 'wyvern', 'minotaur', 'mind_flayer', 'demon', 'devil'],
         ['young_dragon', 'death_knight', 'frost_giant', 'mind_flayer', 'demon', 'devil', 'lich'],
       ];
-      const pool = pools[tier];
+      // mostly the region's own creatures (not too strong yet), the rest
+      // from the danger of the distance: far lands stay deadly
+      const local = (BIOME_CREATURES[biome] || []).filter(id => creatureCR(id) <= 1 + tier * 1.2);
+      const pickId = () => (local.length >= 2 && prng.next() < 0.6 ? prng.pick(local) : prng.pick(pools[tier]));
       const count = prng.nextInt(1, Math.min(4, 1 + tier));
       const enemies = [];
 
@@ -406,7 +580,7 @@
       const perEnemyCR = count === 1 ? crBudget : Math.max(0.5, crBudget - Math.log2(count) * 2);
 
       for (let i = 0; i < count; ++i) {
-        const templateId = prng.pick(pool);
+        const templateId = pickId();
         // Target level = perEnemyCR with ±20% variance
         const variance = 0.8 + prng.next() * 0.4;
         const targetLevel = Math.max(1, Math.round(perEnemyCR * variance));
@@ -422,20 +596,15 @@
 
     #pathCost(col, row, goalCol, goalRow) {
       const t = this.getTile(col, row);
-      if (t === Tile.MOUNTAIN || t === Tile.WATER || t === Tile.VOID)
+      if (IMPASSABLE.has(t))
         return -1;
       if (t === Tile.DUNGEON || t === Tile.TOWN || t === Tile.CAMP) {
         if (col === goalCol && row === goalRow)
           return 1;
         return -1;
       }
-      if (t === Tile.ROAD)
-        return 0.5;
-      if (t === Tile.FOREST)
-        return 1.5;
-      if (t === Tile.SAND)
-        return 1.2;
-      return 1;
+      const info = TILE_INFO[t];
+      return info && info.cost > 0 ? info.cost : 1;
     }
 
     findPath(start, goal, maxDist) {
@@ -608,13 +777,10 @@
       return { tiles, startCol, startRow };
     }
 
+    // Battle biome (combat palette, backdrop) for a fight at a cell.
     encounterBiome(col, row) {
-      const t = this.getTile(col, row);
-      if (t === Tile.FOREST)
-        return 'forest';
-      if (t === Tile.SAND)
-        return 'plains';
-      return 'plains';
+      const info = TILE_INFO[this.#regionTile(col, row)];
+      return info ? info.battle : 'plains';
     }
 
     serialize() {
@@ -629,7 +795,18 @@
   }
 
   TR.OverworldMap = OverworldMap;
+  // Encounter pacing: no fight within GRACE steps of the last one (or of
+  // leaving a town, camp or dungeon), then the odds ramp up gently.
+  const GRACE = 15;
+  function encounterPacing(stepsSince) {
+    if (stepsSince < GRACE)
+      return 0;
+    return Math.min(1.5, (stepsSince - GRACE) / 30);
+  }
+
   TR.OverworldTile = Tile;
+  TR.encounterPacing = encounterPacing;
+  TR.OverworldTileInfo = TILE_INFO;
   TR.CHUNK_SIZE = CHUNK_SIZE;
   TR.LOCATION_SPACING = LOCATION_SPACING;
 })();

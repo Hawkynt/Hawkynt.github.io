@@ -254,7 +254,51 @@
     px(ctx, ox, oy, '#9a948a', T, 1);
   }
 
+  // Dry golden grass with darker tufts.
+  function savanna(ctx, ox, oy, r) {
+    grass(ctx, ox, oy, r, '#c8b05a', { flowers: 0, dry: 1 });
+    for (let i = 0; i < 3; ++i)
+      px(ctx, ox + Math.floor(r() * 14), oy + Math.floor(r() * 14), '#8a7a3a', 2, 1);
+  }
+
+  // Blue glacier ice in blocks with deep cracks.
+  function glacier(ctx, ox, oy, r) {
+    iceFloor(ctx, ox, oy, r);
+    px(ctx, ox, oy + 7 + Math.floor(r() * 3), '#5a88b0', T, 1);
+    px(ctx, ox + 5 + Math.floor(r() * 6), oy, '#5a88b0', 1, 8);
+    px(ctx, ox + 2, oy + 2, '#ffffff', 4, 1);
+  }
+
+  // Jungle undergrowth: dark loam under ferns.
+  function jungleFloor(ctx, ox, oy, r) {
+    grass(ctx, ox, oy, r, '#3f7a34', { flowers: 0.25 });
+    for (let i = 0; i < 4; ++i) {
+      const x = Math.floor(r() * 13), y = 3 + Math.floor(r() * 12);
+      px(ctx, ox + x, oy + y, '#2a5a24', 3, 1);
+      px(ctx, ox + x + 1, oy + y - 1, '#5aa848', 1, 1);
+    }
+  }
+
+  // Red rock and cracked clay of the badlands.
+  function badlands(ctx, ox, oy, r) {
+    roughGround(ctx, ox, oy, r, '#b0663e');
+    for (let i = 0; i < 2; ++i)
+      px(ctx, ox + Math.floor(r() * 12), oy + Math.floor(r() * 15), '#7a3a22', 4, 1);
+  }
+
+  // Grey ash with cinders.
+  function ash(ctx, ox, oy, r) {
+    roughGround(ctx, ox, oy, r, '#5a5658');
+    for (let i = 0; i < 3; ++i)
+      px(ctx, ox + Math.floor(r() * T), oy + Math.floor(r() * T), r() < 0.5 ? '#ff7a2a' : '#2a2628');
+  }
+
   const PAINTERS = Object.freeze({
+    savanna:        (ctx, x, y, r) => savanna(ctx, x, y, r),
+    glacier:        (ctx, x, y, r) => glacier(ctx, x, y, r),
+    jungle_floor:   (ctx, x, y, r) => jungleFloor(ctx, x, y, r),
+    badlands:       (ctx, x, y, r) => badlands(ctx, x, y, r),
+    ash:            (ctx, x, y, r) => ash(ctx, x, y, r),
     crypt_floor:    (ctx, x, y, r) => flagstones(ctx, x, y, r, '#8a8070', '#3a322c'),
     crypt_wall:     (ctx, x, y, r) => brickWall(ctx, x, y, r, '#4a4660'),
     cave_wall:      (ctx, x, y, r) => rockWall(ctx, x, y, r, '#4e4450'),
