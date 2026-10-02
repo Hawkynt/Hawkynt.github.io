@@ -174,21 +174,16 @@
 
     /**
      * Set associated authenticated data
-     * @param {uint8[]} aadArray - One AAD byte array, or an array of AAD byte arrays
+     * @param {uint8[][]} aadArray - The associated-data strings, one byte array each
      */
     setAAD(aadArray) {
-      // RFC 5297 authenticates a vector of associated-data strings. Accept
-      // either that (an array of byte arrays) or a single flat byte array,
-      // which is how most callers and test vectors supply one header.
+      // RFC 5297 authenticates a vector of associated-data strings; a single
+      // header is a vector of one, [header].
       /** @type {uint8[][]} */
       const vectors = [];
-      if (aadArray && aadArray.length > 0) {
-        if (Array.isArray(aadArray[0])) {
-          for (let i = 0; i < aadArray.length; i++) {
-            vectors.push([...aadArray[i]]);
-          }
-        } else {
-          vectors.push([...aadArray]);
+      if (aadArray) {
+        for (let i = 0; i < aadArray.length; i++) {
+          vectors.push([...aadArray[i]]);
         }
       }
       this.aad = vectors;
