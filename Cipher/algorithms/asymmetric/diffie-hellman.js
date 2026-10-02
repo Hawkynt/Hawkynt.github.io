@@ -78,6 +78,14 @@
   }
 
   /**
+   * Marks a BigInt field that holds no value: a subgroup order the
+   * specification does not publish, or a key not set yet. Every real value
+   * here is positive.
+   * @type {BigInt}
+   */
+  const NO_VALUE = -1n;
+
+  /**
    * One published MODP group.
    */
   class DHGroup {
@@ -86,7 +94,7 @@
      * @param {string} source - Specification and section
      * @param {int32} bitLength - Modulus size in bits
      * @param {BigInt} g - Generator
-     * @param {BigInt|null} q - Prime order of the subgroup g generates, where published
+     * @param {BigInt} q - Prime order of the subgroup g generates, NO_VALUE where not published
      * @param {BigInt} p - Prime modulus
      */
     constructor(groupName, source, bitLength, g, q, p) {
@@ -98,7 +106,7 @@
       this.bitLength = bitLength;
       /** @type {BigInt} */
       this.g = g;
-      /** @type {BigInt|null} */
+      /** @type {BigInt} */
       this.q = q;
       /** @type {BigInt} */
       this.p = p;
@@ -157,7 +165,7 @@
       'RFC 3526',
       1536,
       2n,
-      null,
+      NO_VALUE,
       H(
         'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
         '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
@@ -173,7 +181,7 @@
       'RFC 3526',
       2048,
       2n,
-      null,
+      NO_VALUE,
       H(
         'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
         '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
@@ -191,7 +199,7 @@
       'RFC 3526',
       3072,
       2n,
-      null,
+      NO_VALUE,
       H(
         'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
         '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
@@ -213,7 +221,7 @@
       'RFC 3526',
       4096,
       2n,
-      null,
+      NO_VALUE,
       H(
         'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
         '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
@@ -239,7 +247,7 @@
       'RFC 3526',
       6144,
       2n,
-      null,
+      NO_VALUE,
       H(
         'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
         '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
@@ -273,7 +281,7 @@
       'RFC 3526',
       8192,
       2n,
-      null,
+      NO_VALUE,
       H(
         'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74' +
         '020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437' +
@@ -798,10 +806,10 @@
       this.isInverse = isInverse;
       /** @type {DHGroup} */
       this._group = groupByName('modp2048'); // RFC 3526 Group 14, the recommended minimum
-      /** @type {BigInt|null} */
-      this._privateKey = null;
-      /** @type {BigInt|null} */
-      this._otherPublicKey = null;
+      /** @type {BigInt} */
+      this._privateKey = NO_VALUE;
+      /** @type {BigInt} */
+      this._otherPublicKey = NO_VALUE;
       /** @type {uint8[]} */
       this.inputBuffer = [];
       /** @type {uint8[]|null} */
@@ -845,7 +853,7 @@
      */
     set privateKey(value) {
       if (value === null || value === undefined) {
-        this._privateKey = null;
+        this._privateKey = NO_VALUE;
         this._keyData = null;
         return;
       }
@@ -854,7 +862,7 @@
     }
 
     /**
-     * @returns {BigInt|null} Private exponent
+     * @returns {BigInt} Private exponent, NO_VALUE (-1n) when not set
      */
     get privateKey() {
       return this._privateKey;
@@ -882,14 +890,14 @@
      */
     set otherPublicKey(value) {
       if (value === null || value === undefined) {
-        this._otherPublicKey = null;
+        this._otherPublicKey = NO_VALUE;
         return;
       }
       this._otherPublicKey = this._bytesToBigInt(value);
     }
 
     /**
-     * @returns {BigInt|null} Peer public value
+     * @returns {BigInt} Peer public value, NO_VALUE (-1n) when not set
      */
     get otherPublicKey() {
       return this._otherPublicKey;
@@ -929,7 +937,7 @@
      * @throws {Error} If no private exponent is set or the public value fails validation
      */
     ComputeSharedSecret(otherPublicValue) {
-      if (this._privateKey === null) {
+      if (this._privateKey === NO_VALUE) {
         throw new Error('Diffie-Hellman private exponent not set. Assign privateKey or call GenerateKeyPair() first.');
       }
       const peer = otherPublicValue;
@@ -953,7 +961,7 @@
 
       // NIST SP 800-56A full public key validation, available only where the
       // specification publishes the subgroup order.
-      if (group.q !== null && this._modPow(y, group.q, group.p) !== 1n) {
+      if (group.q !== NO_VALUE && this._modPow(y, group.q, group.p) !== 1n) {
         throw new Error('Diffie-Hellman public value is not in the order-q subgroup: '
           + 'rejected to prevent small subgroup confinement');
       }
@@ -965,7 +973,7 @@
      * @throws {Error} If no private exponent is set
      */
     _computePublicValue() {
-      if (this._privateKey === null) {
+      if (this._privateKey === NO_VALUE) {
         throw new Error('Diffie-Hellman private exponent not set. Assign privateKey or call GenerateKeyPair() first.');
       }
       return this._modPow(this._group.g, this._privateKey, this._group.p);
@@ -986,6 +994,7 @@
       if (modulus === 1n) return 0n;
       if (exponent < 0n) throw new Error('Diffie-Hellman exponent must not be negative');
 
+      /** @type {BigInt} */
       let result = 1n;
       let value = base % modulus;
       if (value < 0n) value += modulus;
@@ -1061,7 +1070,7 @@
       // SP 800-56A: the exponent lives in the subgroup order where one is
       // published, and otherwise below the modulus.
       /** @type {BigInt} */
-      const order = group.q === null ? group.p : group.q;
+      const order = group.q === NO_VALUE ? group.p : group.q;
       const upper = order - 2n;
       /** @type {string} */
       const upperHex = upper.toString(16);
@@ -1070,38 +1079,10 @@
       const width = digits / 2;
 
       for (let attempt = 0; attempt < 1000; attempt++) {
-        const candidate = this._bytesToBigInt(this._randomBytes(width));
+        const candidate = this._bytesToBigInt(OpCodes.SecureRandomBytes(width));
         if (candidate >= 2n && candidate <= upper) return candidate;
       }
       throw new Error('Diffie-Hellman private exponent generation failed to find a value in range');
-    }
-
-    /**
-     * Cryptographically secure random bytes.
-     * @param {int32} count - Number of bytes
-     * @returns {uint8[]} Random bytes
-     * @throws {Error} If no secure source is available
-     */
-    _randomBytes(count) {
-      /** @type {uint8[]} */
-      const out = new Array(count);
-
-      const host = (typeof globalThis !== 'undefined') ? globalThis : null;
-      const webCrypto = host ? host.crypto : null;
-      if (webCrypto && typeof webCrypto.getRandomValues === 'function') {
-        const buffer = new Uint8Array(count);
-        webCrypto.getRandomValues(buffer);
-        for (let i = 0; i < count; i++) out[i] = buffer[i];
-        return out;
-      }
-
-      if (typeof require === 'function') {
-        const buffer = require('crypto').randomBytes(count);
-        for (let i = 0; i < count; i++) out[i] = buffer[i];
-        return out;
-      }
-
-      throw new Error('No cryptographically secure random source available for Diffie-Hellman key generation');
     }
 
     //#endregion
@@ -1135,15 +1116,14 @@
     Result() {
       const width = this._modulusBytes();
 
-      let peer = null;
+      /** @type {BigInt} */
+      let peer = this._otherPublicKey;
       if (this.inputBuffer.length > 0) {
         peer = this._bytesToBigInt(this.inputBuffer);
-      } else if (this._otherPublicKey !== null) {
-        peer = this._otherPublicKey;
       }
       this.inputBuffer = [];
 
-      if (peer === null) {
+      if (peer === NO_VALUE) {
         return this._bigIntToBytes(this._computePublicValue(), width);
       }
 
@@ -1156,8 +1136,8 @@
      * Clear the private exponent and the derived state.
      */
     ClearData() {
-      this._privateKey = null;
-      this._otherPublicKey = null;
+      this._privateKey = NO_VALUE;
+      this._otherPublicKey = NO_VALUE;
       if (this._keyData) OpCodes.ClearArray(this._keyData);
       this._keyData = null;
       OpCodes.ClearArray(this.inputBuffer);
