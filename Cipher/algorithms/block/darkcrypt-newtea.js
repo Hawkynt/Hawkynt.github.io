@@ -195,6 +195,7 @@
       let v2 = OpCodes.Pack32LE(block[8], block[9], block[10], block[11]);
       let v3 = OpCodes.Pack32LE(block[12], block[13], block[14], block[15]);
       const K = this._keyWords();
+      /** @type {uint32} */
       let sum = DELTA;
 
       for (let r = 0; r < ROUNDS; r++) {

@@ -175,7 +175,7 @@
       super(algorithm);
       /** @type {boolean} */
       this.isInverse = isInverse;
-      /** @type {string[]} */
+      /** @type {uint8[]} */
       this.inputBuffer = [];
       /** @type {string|null} */
       this._key = null;
@@ -231,18 +231,12 @@
     Feed(data) {
       if (!data || data.length === 0) return;
 
-      // Convert bytes to string for classical cipher
-      /** @type {string} */
-      let text = '';
+      // Collect octets; a string is taken as its character codes, one octet each
       if (typeof data === 'string') {
-        text = data;
+        for (let i = 0; i < data.length; i++) this.inputBuffer.push(OpCodes.ToByte(data.charCodeAt(i)));
       } else {
-        /** @type {uint8[]} */
-        const bytes = data;
-        text = String.fromCharCode(...bytes);
+        for (let i = 0; i < data.length; i++) this.inputBuffer.push(data[i]);
       }
-
-      this.inputBuffer.push(text);
     }
 
     /**
@@ -257,7 +251,8 @@
       if (this.inputBuffer.length === 0) return output;
 
       /** @type {string} */
-      const text = this.inputBuffer.join('');
+      let text = '';
+      for (let i = 0; i < this.inputBuffer.length; i++) text += String.fromCharCode(this.inputBuffer[i]);
       this.inputBuffer = [];
 
       /** @type {string} */

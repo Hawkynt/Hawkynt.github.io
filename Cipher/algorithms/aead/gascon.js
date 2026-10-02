@@ -547,8 +547,10 @@
       /** @type {uint8[]} */
       this.inputBuffer = [];
 
-      /** @type {float64} */
-      this.IV = 0x80400c0600000000;
+      /** @type {uint32} */
+      this.ivHigh = 0x80400c06; // 64-bit IV 0x80400c0600000000, upper and lower word
+      /** @type {uint32} */
+      this.ivLow = 0x00000000;
       /** @type {int32} */
       this.rate = 8;
       /** @type {int32} */
@@ -657,8 +659,8 @@
     }
 
     _initialize() {
-      const ivLow = OpCodes.ToUint32(OpCodes.And32(this.IV, 0xFFFFFFFF));
-      const ivHigh = Math.floor(this.IV / 0x100000000);
+      const ivLow = this.ivLow;
+      const ivHigh = this.ivHigh;
 
       this.perm.B[0] = OpCodes.And32(ivLow, 0xFF);
       this.perm.B[1] = OpCodes.And32(OpCodes.Shr32(ivLow, 8), 0xFF);
