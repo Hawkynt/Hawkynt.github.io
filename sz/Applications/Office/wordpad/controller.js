@@ -49,6 +49,15 @@
   const editor = document.getElementById('editor');
   const editorWrapper = document.getElementById('editor-wrapper');
 
+  // undo/redo that also covers the tools which change the page directly
+  const undoHistory = new SZ.WordPadUndoHistory(editor, {
+    onRestore: () => {
+      markDirty();
+      updateStatusBar();
+      updateRibbonState();
+    },
+  });
+
   const FILE_FILTERS = [
     { name: 'Word Document', ext: ['docx'] },
     { name: 'Rich Text', ext: ['html', 'htm'] },
@@ -246,8 +255,8 @@
       case 'doc-properties': showDocPropertiesDialog(); break;
 
       // Edit
-      case 'undo': document.execCommand('undo'); editor.focus(); break;
-      case 'redo': document.execCommand('redo'); editor.focus(); break;
+      case 'undo': undoHistory.undo(); editor.focus(); break;
+      case 'redo': undoHistory.redo(); editor.focus(); break;
       case 'cut': document.execCommand('cut'); editor.focus(); break;
       case 'copy': document.execCommand('copy'); editor.focus(); break;
       case 'paste': document.execCommand('paste'); editor.focus(); break;
@@ -3119,6 +3128,7 @@
 
   function setEditorContent(html) {
     editor.innerHTML = html;
+    undoHistory.reset();
     savedContent = editor.innerHTML;
     dirty = false;
     pendingFontColor = null;
@@ -3143,6 +3153,7 @@
 
   function resetEditor() {
     editor.innerHTML = '';
+    undoHistory.reset();
     savedContent = '';
     currentFilePath = null;
     currentFileName = 'Untitled';
