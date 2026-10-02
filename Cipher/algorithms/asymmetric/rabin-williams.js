@@ -230,7 +230,7 @@
     /** @type {string} */
     const rangeHex = range.toString(16);
     const octets = Math.ceil(rangeHex.length / 2) + 8;
-    return min + (OS2IP(randomBytes(octets)) % range);
+    return min + (OS2IP(OpCodes.SecureRandomBytes(octets)) % range);
   }
 
   /**
@@ -352,42 +352,6 @@
     }
 
     return octets;
-  }
-
-  /**
-   * Collect cryptographically strong random bytes, falling back to a weaker
-   * source only where no such generator exists.
-   * @param {int32} count - Number of bytes required
-   * @returns {uint8[]} Random bytes
-   */
-  function randomBytes(count) {
-    const buffer = new Uint8Array(count);
-
-    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-      crypto.getRandomValues(buffer);
-    } else {
-      let filled = false;
-      if (typeof require !== 'undefined') {
-        try {
-          require('crypto').randomFillSync(buffer);
-          filled = true;
-        } catch (e) {
-          filled = false;
-        }
-      }
-      if (!filled) {
-        for (let i = 0; i < count; ++i) {
-          buffer[i] = Math.floor(Math.random() * 256);
-        }
-      }
-    }
-
-    /** @type {uint8[]} */
-    const result = new Array(count);
-    for (let i = 0; i < count; ++i) {
-      result[i] = buffer[i];
-    }
-    return result;
   }
 
   // ===== MESSAGE ENCODING WITH RECOVERY =====
@@ -930,15 +894,16 @@
       const rootsP = [rootP, (p - rootP) % p];
       /** @type {BigInt[]} */
       const rootsQ = [rootQ, (q - rootQ) % q];
-      /** @type {BigInt|null} */
-      let root = null;
+      // n is above every root, so the first one replaces it
+      /** @type {BigInt} */
+      let root = n;
       for (let a = 0; a < rootsP.length; ++a) {
         const signP = rootsP[a];
         for (let b = 0; b < rootsQ.length; ++b) {
           const signQ = rootsQ[b];
           const combined = crt(signP, p, signQ, q, u) % n;
           const unblinded = (combined * blindInverse) % n;
-          if (root === null || unblinded < root) {
+          if (unblinded < root) {
             root = unblinded;
           }
         }
