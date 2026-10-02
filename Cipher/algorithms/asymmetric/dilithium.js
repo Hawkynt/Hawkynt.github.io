@@ -579,7 +579,7 @@
     const a = w.slice();
     let k = 0;
 
-    for (let len = 128; len >= 1; len = len / 2) {
+    for (let len = 128; len >= 1; len = Math.floor(len / 2)) {
       for (let start = 0; start < N; start += 2 * len) {
         k++;
         const zeta = ZETAS[k];
@@ -720,11 +720,12 @@
    * @returns {int32} the value
    */
   function readBits(source, bitPosition, bits) {
+    /** @type {uint32} */
     let value = 0;
     for (let t = 0; t < bits; t++) {
       const index = Math.floor((bitPosition + t) / 8);
       if (OpCodes.And32(OpCodes.Shr32(source[index], (bitPosition + t) % 8), 1) === 1)
-        value += POW2[t];
+        value = OpCodes.Or32(value, POW2[t]);
     }
     return value;
   }
@@ -1015,7 +1016,7 @@
    * @param {uint8} b0 - low byte
    * @param {uint8} b1 - middle byte
    * @param {uint8} b2 - high byte, of which seven bits are used
-   * @returns {int32|null} the coefficient, or null when rejected
+   * @returns {int32} the coefficient, or -1 when rejected
    */
   function coeffFromThreeBytes(b0, b1, b2) {
     /** @type {int32} */
@@ -1025,7 +1026,7 @@
     /** @type {int32} */
     const low = b0;
     const z = high * 65536 + middle * 256 + low;
-    return z < Q ? z : null;
+    return z < Q ? z : -1;
   }
 
   /**
@@ -1042,7 +1043,7 @@
     while (j < N) {
       const chunk = xofRead(stream, 3);
       const value = coeffFromThreeBytes(chunk[0], chunk[1], chunk[2]);
-      if (value !== null) {
+      if (value >= 0) {
         a[j] = value;
         j++;
       }
@@ -1052,15 +1053,24 @@
   }
 
   /**
-   * CoeffFromHalfByte: read a coefficient in [-eta, eta] out of a nibble.
+   * CoeffFromHalfByte: read a coefficient in [-eta, eta] out of a nibble
+   * that halfByteAccepted lets through.
    * @param {int32} b - nibble
    * @param {int32} eta - 2 or 4
-   * @returns {int32|null} the coefficient, or null when rejected
+   * @returns {int32} the coefficient
    */
   function coeffFromHalfByte(b, eta) {
-    if (eta === 2 && b < 15) return 2 - (b % 5);
-    if (eta === 4 && b < 9) return 4 - b;
-    return null;
+    return eta === 2 ? 2 - (b % 5) : 4 - b;
+  }
+
+  /**
+   * The rejection test of CoeffFromHalfByte.
+   * @param {int32} b - nibble
+   * @param {int32} eta - 2 or 4
+   * @returns {boolean} true when the nibble yields a coefficient
+   */
+  function halfByteAccepted(b, eta) {
+    return (eta === 2 && b < 15) || (eta === 4 && b < 9);
   }
 
   /**
@@ -1077,15 +1087,15 @@
 
     while (j < N) {
       const z = xofRead(stream, 1)[0];
-      const low = coeffFromHalfByte(z % 16, eta);
-      const high = coeffFromHalfByte(Math.floor(z / 16), eta);
+      const low = z % 16;
+      const high = Math.floor(z / 16);
 
-      if (low !== null) {
-        a[j] = low;
+      if (halfByteAccepted(low, eta)) {
+        a[j] = coeffFromHalfByte(low, eta);
         j++;
       }
-      if (high !== null && j < N) {
-        a[j] = high;
+      if (halfByteAccepted(high, eta) && j < N) {
+        a[j] = coeffFromHalfByte(high, eta);
         j++;
       }
     }

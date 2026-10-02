@@ -120,6 +120,7 @@
      * @returns {BigInt} base^exp mod p
      */
     function powModP(base, exp) {
+      /** @type {BigInt} */
       let result = 1n;
       base = modP(base);
 
@@ -159,6 +160,7 @@
      * @returns {BigInt} Decoded value
      */
     function decodeScalar(bytes) {
+      /** @type {BigInt} */
       let result = 0n;
       for (let i = 31; i >= 0; --i) {
         result = OpCodes.OrN(OpCodes.ShiftLn(result, 8), BigInt(bytes[i]));
@@ -211,11 +213,15 @@
     function montgomeryLadder(k, u) {
       // Initialize ladder variables
       let x1 = u;
+      /** @type {BigInt} */
       let x2 = 1n;
+      /** @type {BigInt} */
       let z2 = 0n;
       let x3 = u;
+      /** @type {BigInt} */
       let z3 = 1n;
 
+      /** @type {BigInt} */
       let swap = 0n;
 
       // Process scalar from bit 254 down to bit 0

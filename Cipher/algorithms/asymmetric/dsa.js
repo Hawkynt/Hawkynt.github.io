@@ -810,19 +810,19 @@
       /** @type {uint8[]} */
       this.inputBuffer = [];
 
-      // DSA domain parameters (p, q, g)
-      /** @type {BigInt|null} */
-      this._p = null; // Prime modulus
-      /** @type {BigInt|null} */
-      this._q = null; // Prime divisor (subgroup order)
-      /** @type {BigInt|null} */
-      this._g = null; // Generator
+      // DSA domain parameters (p, q, g) and keys; each is positive when set
+      // and 0n while it is not
+      /** @type {BigInt} */
+      this._p = 0n; // Prime modulus
+      /** @type {BigInt} */
+      this._q = 0n; // Prime divisor (subgroup order)
+      /** @type {BigInt} */
+      this._g = 0n; // Generator
 
-      // DSA keys
-      /** @type {BigInt|null} */
-      this._publicKey = null;  // y = g^x mod p
-      /** @type {BigInt|null} */
-      this._privateKey = null; // x (private exponent)
+      /** @type {BigInt} */
+      this._publicKey = 0n;  // y = g^x mod p
+      /** @type {BigInt} */
+      this._privateKey = 0n; // x (private exponent)
 
       // Signature for verification
       /** @type {DSASignatureValue|null} */
@@ -847,7 +847,7 @@
     }
 
     /**
-     * @returns {BigInt|null} Prime modulus p
+     * @returns {BigInt} Prime modulus p, 0n when not set
      */
     get p() { return this._p; }
 
@@ -861,7 +861,7 @@
     }
 
     /**
-     * @returns {BigInt|null} Subgroup order q
+     * @returns {BigInt} Subgroup order q, 0n when not set
      */
     get q() { return this._q; }
 
@@ -875,7 +875,7 @@
     }
 
     /**
-     * @returns {BigInt|null} Generator g
+     * @returns {BigInt} Generator g, 0n when not set
      */
     get g() { return this._g; }
 
@@ -889,7 +889,7 @@
     }
 
     /**
-     * @returns {BigInt|null} Public key y
+     * @returns {BigInt} Public key y, 0n when not set
      */
     get y() { return this._publicKey; }
 
@@ -903,7 +903,7 @@
     }
 
     /**
-     * @returns {BigInt|null} Private key x
+     * @returns {BigInt} Private key x, 0n when not set
      */
     get x() { return this._privateKey; }
 
@@ -911,7 +911,7 @@
      * @param {BigInt|null} value - Private key x, or null to clear it
      */
     set privateKey(value) {
-      if (value === null) { this._privateKey = null; return; }
+      if (value === null) { this._privateKey = 0n; return; }
       var x = value;
 
       if (this._q && (x <= 0n || x >= this._q)) {
@@ -922,13 +922,13 @@
 
       // y = g^x mod p, derived so a caller that sets only the domain
       // parameters and x can still verify what it signed.
-      if (this._p && this._g && this._publicKey === null) {
+      if (this._p && this._g && this._publicKey === 0n) {
         this._publicKey = modPow(this._g, x, this._p);
       }
     }
 
     /**
-     * @returns {BigInt|null} Private key x
+     * @returns {BigInt} Private key x, 0n when not set
      */
     get privateKey() { return this._privateKey; }
 
@@ -1050,7 +1050,7 @@
         throw new Error("DSA domain parameters (p, q, g) not set");
       }
 
-      if (this._privateKey === null || this._privateKey === undefined) {
+      if (this._privateKey === 0n) {
         throw new Error("DSA private key not set");
       }
 
@@ -1159,14 +1159,11 @@
 
     // Clear sensitive data
     ClearData() {
-      if (this._privateKey) {
-        this._privateKey = 0n;
-      }
-      this._privateKey = null;
-      this._publicKey = null;
-      this._p = null;
-      this._q = null;
-      this._g = null;
+      this._privateKey = 0n;
+      this._publicKey = 0n;
+      this._p = 0n;
+      this._q = 0n;
+      this._g = 0n;
       this._signature = null;
       OpCodes.ClearArray(this.inputBuffer);
       this.inputBuffer = [];

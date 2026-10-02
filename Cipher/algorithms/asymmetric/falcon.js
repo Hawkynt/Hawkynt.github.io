@@ -116,13 +116,13 @@
   /**
    * One Keccak-f[1600] permutation over a state held as 25 pairs of 32 bit
    * halves, low half first.
-   * @param {int32[]} state - 50 words, modified in place
+   * @param {uint32[]} state - 50 words, modified in place
    * @returns {void} Result
    */
   function KeccakPermute(state) {
-    const b = new Int32Array(50);
-    const c = new Int32Array(10);
-    const d = new Int32Array(10);
+    const b = new Uint32Array(50);
+    const c = new Uint32Array(10);
+    const d = new Uint32Array(10);
 
     for (let round = 0; round < 24; ++round) {
       for (let x = 0; x < 5; ++x) {
@@ -198,7 +198,7 @@
   }
 
   /**
-   * @param {int32[]} state - state
+   * @param {uint32[]} state - state
    * @param {uint8[]} block - block
    * @returns {void} Result
    */
@@ -255,8 +255,8 @@
    */
   class FalconShakeReader {
     constructor() {
-      /** @type {int32[]} */
-      this.state = new Int32Array(50);
+      /** @type {uint32[]} */
+      this.state = new Uint32Array(50);
       /** @type {uint8[]} */
       this.buffered = new Uint8Array(SHAKE256_RATE);
       /** @type {int32} */
@@ -450,7 +450,7 @@
     const length = OpCodes.Shr32(n * 14 + 7, 3);
     if (offset + length > bytes.length) return null;
 
-    const out = new Uint16Array(n);
+    const out = new Int32Array(n);
     /** @type {uint32} */
     let accumulator = 0;
     let accumulated = 0;
@@ -486,7 +486,7 @@
    */
   function DecodeSignature(bytes, offset, maxLength, set) {
     const n = set.n;
-    const out = new Int16Array(n);
+    const out = new Int32Array(n);
     /** @type {uint32} */
     let accumulator = 0;
     let accumulated = 0;
@@ -533,7 +533,7 @@
    */
   function HashToPoint(nonce, message, set) {
     const reader = Shake256Reader([nonce, message]);
-    const out = new Uint16Array(set.n);
+    const out = new Int32Array(set.n);
     let produced = 0;
 
     while (produced < set.n) {
@@ -578,7 +578,7 @@
         accumulator[i + j - n] = (accumulator[i + j - n] - left * b[j]) % Q;
     }
 
-    const out = new Uint16Array(n);
+    const out = new Int32Array(n);
     for (let i = 0; i < n; ++i) out[i] = ((accumulator[i] % Q) + Q) % Q;
     return out;
   }
@@ -595,7 +595,7 @@
   function VerifyRaw(point, s2, publicKey, set) {
     const n = set.n;
 
-    const reduced = new Uint16Array(n);
+    const reduced = new Int32Array(n);
     for (let i = 0; i < n; ++i) reduced[i] = ((s2[i] % Q) + Q) % Q;
 
     const product = RingMultiply(reduced, publicKey, n);

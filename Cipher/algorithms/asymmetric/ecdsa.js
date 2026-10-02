@@ -677,6 +677,7 @@
    * @returns {BigInt} The integer
    */
   function octetsToInt(bytes) {
+    /** @type {BigInt} */
     let value = 0n;
     for (let i = 0; i < bytes.length; ++i) {
       value = OpCodes.OrN(OpCodes.ShiftLn(value, 8), BigInt(bytes[i]));
@@ -1113,8 +1114,8 @@
       /** @type {string|null} */
       this._curveName = null;
       this.curve = null;
-      /** @type {BigInt|null} */
-      this._privateKey = null;
+      /** @type {BigInt} the private scalar d, in [1, n-1]; 0n while not set */
+      this._privateKey = 0n;
       /** @type {ECPoint|null} */
       this._publicKey = null;
       /** @type {uint8[]} */
@@ -1219,7 +1220,7 @@
      */
     set privateKey(keyBytes) {
       if (!keyBytes || keyBytes.length === 0) {
-        this._privateKey = null;
+        this._privateKey = 0n;
         return;
       }
 
@@ -1228,6 +1229,7 @@
       }
 
       // Convert bytes to BigInt
+      /** @type {BigInt} */
       let d = 0n;
       for (let i = 0; i < keyBytes.length; ++i) {
         d = OpCodes.OrN(OpCodes.ShiftLn(d, 8n), BigInt(keyBytes[i]));
@@ -1250,7 +1252,7 @@
      * @returns {uint8[]|null} the private scalar, big-endian over the octets of n
      */
     get privateKey() {
-      if (this._privateKey === null) return null;
+      if (this._privateKey === 0n) return null;
 
       // Convert BigInt to bytes
       const keySize = Math.ceil(HexDigits(this._curve.n) / 2);
@@ -1633,7 +1635,7 @@
 
     // Clear sensitive data
     ClearData() {
-      this._privateKey = null;
+      this._privateKey = 0n;
       this._publicKey = null;
       OpCodes.ClearArray(this.inputBuffer);
       this.inputBuffer = [];

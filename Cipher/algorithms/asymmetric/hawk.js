@@ -732,8 +732,10 @@
    * @returns {int32} Result
    */
   function AddMod(a, b, p) {
-    const s = a + b;
-    return s >= p ? s - p : s;
+    // a + b itself can pass 2^31; comparing a with p - b keeps every step
+    // inside int32
+    const room = p - b;
+    return a >= room ? a - room : a + b;
   }
 
   /**
@@ -961,6 +963,7 @@
    * @returns {int32} Result
    */
   function MaxBits(a) {
+    /** @type {BigInt} */
     let m = 0n;
     for (let i = 0; i < a.length; ++i) {
       const x = BigAbs(a[i]);
@@ -1152,11 +1155,14 @@
   /**
    * @param {BigInt} a - a
    * @param {BigInt} m - m
-   * @returns {BigInt|null} Result
+   * @returns {BigInt} the inverse in [0, m), or -1n when there is none
    */
   function ModInverseBig(a, m) {
     let r0 = m, r1 = a % m;
-    let t0 = 0n, t1 = 1n;
+    /** @type {BigInt} */
+    let t0 = 0n;
+    /** @type {BigInt} */
+    let t1 = 1n;
     while (r1 !== 0n) {
       const q = r0 / r1;
       const r2 = r0 - q * r1;
@@ -1164,7 +1170,7 @@
       const t2 = t0 - q * t1;
       t0 = t1; t1 = t2;
     }
-    if (r0 !== 1n) return null;
+    if (r0 !== 1n) return -1n;
     return t0 < 0n ? t0 + m : t0;
   }
 
@@ -1282,16 +1288,18 @@
   // precision: no scaled value lies within 4*10^-5 of a half, a hundred times
   // the error of the double computation, and both tables built this way equal
   // the reference's GM_TAB and FX32_GM entry for entry.
+  // Both tables are used as BigInts; scaled by 2^32 their entries need 33
+  // bits, by 2^31 still 32 signed bits.
   /**
-   * @param {int32} scale - scale
-   * @returns {HawkRoots} Result
+   * @param {int64} scale - scale, 2^31 or 2^32
+   * @returns {HawkRoots64} Result
    */
   function RootTable(scale) {
-    /** @type {int32[]} */
+    /** @type {BigInt[]} */
     const re = new Array(1024);
-    /** @type {int32[]} */
+    /** @type {BigInt[]} */
     const im = new Array(1024);
-    re[0] = scale; im[0] = 0;
+    re[0] = BigInt(scale); im[0] = 0n;
     for (let k = 1; k < 1024; ++k) {
       const j = Math.floor(Math.log2(k));
       const off = k - Math.pow(2, j);
@@ -1302,24 +1310,10 @@
         x = Math.floor(x / 2);
       }
       const angle = Math.PI * (2 * r + 1) / Math.pow(2, j + 1);
-      re[k] = Math.round(scale * Math.cos(angle));
-      im[k] = Math.round(scale * Math.sin(angle));
+      re[k] = BigInt(Math.round(scale * Math.cos(angle)));
+      im[k] = BigInt(Math.round(scale * Math.sin(angle)));
     }
-    return new HawkRoots(re, im);
-  }
-
-  /** Roots of unity scaled to integers. */
-  class HawkRoots {
-    /**
-     * @param {int32[]} re - real parts
-     * @param {int32[]} im - imaginary parts
-     */
-    constructor(re, im) {
-      /** @type {int32[]} */
-      this.re = re;
-      /** @type {int32[]} */
-      this.im = im;
-    }
+    return new HawkRoots64(re, im);
   }
 
   /** Roots of unity scaled to BigInt fixed point. */
@@ -1347,15 +1341,8 @@
     return out;
   }
 
-  /**
-   * @returns {HawkRoots64} the key generation's 32.32 roots
-   */
-  function BuildGM64() {
-    const t = RootTable(4294967296);
-    return new HawkRoots64(ToBigInts(t.re), ToBigInts(t.im));
-  }
-
-  const GM64 = BuildGM64();
+  // the key generation's 32.32 roots
+  const GM64 = RootTable(4294967296);
 
   const GM32 = RootTable(2147483648);
 
@@ -1768,7 +1755,7 @@
     const rg = gs[logn][0];
     if (rf <= 0n || rg <= 0n || rf % 2n === 0n || rg % 2n === 0n) return SOLVE_FAIL;
     const G0 = ModInverseBig(rf, rg);
-    if (G0 === null) return SOLVE_FAIL;
+    if (G0 < 0n) return SOLVE_FAIL;
     const F0 = (rf * G0 - 1n) / rg;
 
     let Fd = [F0];
@@ -2544,8 +2531,8 @@
       const hm = m / 2;
       let j0 = 0;
       for (let i = 0; i < hm; ++i) {
-        const sre = BigInt(GM32.re[i + m]);
-        const sim = BigInt(GM32.im[i + m]);
+        const sre = GM32.re[i + m];
+        const sim = GM32.im[i + m];
         for (let j = j0; j < j0 + ht; ++j) {
           const x1re = BigInt(a[j]) * 2147483648n;
           const x1im = BigInt(a[j + hn]) * 2147483648n;
@@ -2577,8 +2564,8 @@
       const hm = m / 2;
       let j0 = 0;
       for (let i = 0; i < hm; ++i) {
-        const sre = BigInt(GM32.re[i + m]);
-        const sim = BigInt(-GM32.im[i + m]);
+        const sre = GM32.re[i + m];
+        const sim = -GM32.im[i + m];
         for (let j = j0; j < j0 + ht; ++j) {
           const x1re = a[j];
           const x1im = a[j + hn];

@@ -887,10 +887,11 @@
   function ReadBits(buf, bitPos, count) {
     const idx = Math.floor(bitPos / 8);
     const len = buf.length;
-    const x = (idx < len ? buf[idx] : 0)
-            + (idx + 1 < len ? buf[idx + 1] : 0) * 256
-            + (idx + 2 < len ? buf[idx + 2] : 0) * 65536;
-    return Math.floor(x / Math.pow(2, bitPos % 8)) % Math.pow(2, count);
+    const b0 = idx < len ? buf[idx] : 0;
+    const b1 = idx + 1 < len ? buf[idx + 1] : 0;
+    const b2 = idx + 2 < len ? buf[idx + 2] : 0;
+    const x = OpCodes.Or32(OpCodes.Or32(b0, OpCodes.Shl32(b1, 8)), OpCodes.Shl32(b2, 16));
+    return OpCodes.And32(OpCodes.Shr32(x, bitPos % 8), OpCodes.BitMask(count));
   }
 
   /**
@@ -4006,8 +4007,8 @@
       this._publicKey = null;
       /** @type {uint8[]|null} */
       this._derivedPublicKey = null;
-      /** @type {int32|null} */
-      this._katCount = null;
+      /** @type {int32} -1 while no KAT record is replayed */
+      this._katCount = -1;
       /** @type {uint8[]|null} */
       this._message = null;
       /** @type {uint8[]} */
@@ -4048,11 +4049,12 @@
 
     /** @param {int32} count - replay the randomness of this record of the KAT generator */
     set katCount(count) {
-      if (count === null || count === undefined) { this._katCount = null; return; }
+      if (count === null || count === undefined) { this._katCount = -1; return; }
       if (!(count >= 0 && Math.floor(count) === count))
         throw new Error('CROSS: katCount is a record number of the response file');
       this._katCount = count;
     }
+    /** @returns {int32} the replayed KAT record, -1 when none */
     get katCount() { return this._katCount; }
 
     /** @param {uint8[]} value - when set, open returns [1] or [0] for this message */
@@ -4083,7 +4085,7 @@
           throw new Error(p.name + ': the secret key is ' + p.skBytes + ' octets, not ' + this._keyData.length);
         return Uint8Array.from(this._keyData);
       }
-      if (this._katCount !== null) return HarnessRandomness(p, this._katCount).seedSk;
+      if (this._katCount >= 0) return HarnessRandomness(p, this._katCount).seedSk;
       return null;
     }
 
@@ -4156,7 +4158,7 @@
       let rootSeed = null;
       /** @type {uint8[]} */
       let salt = null;
-      if (this._katCount !== null) {
+      if (this._katCount >= 0) {
         const r = HarnessRandomness(p, this._katCount);
         rootSeed = r.rootSeed;
         salt = r.salt;
