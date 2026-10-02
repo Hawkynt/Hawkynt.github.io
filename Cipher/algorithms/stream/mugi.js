@@ -1,225 +1,235 @@
-(function(global) {
+/*
+ * MUGI-inspired Stream Cipher (educational)
+ * Compatible with AlgorithmFramework
+ * (c)2006-2025 Hawkynt
+ *
+ * A simplified construction after the design principles of MUGI: a 16-byte buffer and a
+ * 16-byte shift register, both seeded from the 128-bit key, mixed for 16 rounds and then
+ * clocked once per keystream byte. Not the ISO/IEC 18033-4 MUGI algorithm.
+ */
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function () {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  // Environment detection and dependency loading
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
-  }
+  if (!AlgorithmFramework) throw new Error('AlgorithmFramework dependency is required');
+  if (!OpCodes) throw new Error('OpCodes dependency is required');
 
-  if (!global.AlgorithmFramework) {
-    if (typeof require !== 'undefined') {
-      // Node.js environment - load dependencies
-      try {
-        require('../../universal-cipher-env.js');
-        require('../../AlgorithmFramework.js');
-      } catch (e) {
-        console.error('Failed to load cipher dependencies:', e.message);
-        return;
-      }
-    } else {
-      console.error('MUGI cipher requires Cipher system to be loaded first');
-      return;
+  const { RegisterAlgorithm, CategoryType, SecurityStatus, CountryCode,
+          StreamCipherAlgorithm, IAlgorithmInstance, LinkItem } = AlgorithmFramework;
+
+  /** @type {int32} */
+  const KEY_SIZE = 16;
+  /** @type {int32} */
+  const STATE_SIZE = 16;
+  /** @type {int32} */
+  const INIT_ROUNDS = 16;
+
+  // Key used when Result() runs before any key was assigned.
+  /** @type {uint8[]} */
+  const DEFAULT_KEY = OpCodes.Hex8ToBytes('00010203040506070809101112131415');
+
+  // Keystream generator state: byte buffer, byte shift register and two position counters.
+  class MugiState {
+    constructor() {
+      /** @type {uint8[]} */
+      this.buffer = OpCodes.CreateArray(STATE_SIZE, 0);
+      /** @type {uint8[]} */
+      this.lfsr = OpCodes.CreateArray(STATE_SIZE, 0);
+      /** @type {int32} */
+      this.counter = 0;   // 0..15
+      /** @type {int32} */
+      this.cycle = 0;     // 0..255, advanced once per 16 keystream bytes
     }
   }
 
-  const MUGI = {
-    name: 'MUGI Stream Cipher',
-    description: 'Educational implementation of MUGI stream cipher. MUGI is a word-oriented stream cipher with a 128-bit key and 128-bit internal state, designed for high-speed software implementation.',
-    inventor: 'Dai Watanabe, Soichi Furuya, Hirotaka Yoshida, Kazuo Takaragi, Bart Preneel',
-    year: 2002,
-    country: 'JP',
-    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
-    subCategory: 'Stream Cipher',
-    securityStatus: global.AlgorithmFramework ? global.AlgorithmFramework.SecurityStatus.EDUCATIONAL : 'educational',
-    securityNotes: 'MUGI is a Japanese stream cipher designed for efficient software implementation. This educational version demonstrates the basic principles.',
+  /**
+   * Shift the register one byte towards index 0, feeding back taps 0, 5, 11 and 15.
+   * @param {uint8[]} lfsr - Shift register (modified in place)
+   */
+  function clockLfsr(lfsr) {
+    const feedback = OpCodes.Xor8(OpCodes.Xor8(lfsr[0], lfsr[5]), OpCodes.Xor8(lfsr[11], lfsr[15]));
+    for (let j = 0; j < STATE_SIZE - 1; j++) lfsr[j] = lfsr[j + 1];
+    lfsr[STATE_SIZE - 1] = feedback;
+  }
 
-    documentation: [
-      {text: 'Hitachi MUGI Specification and Self-Evaluation Report', uri: 'https://www.hitachi.com/rd/yrl/crypto/mugi/'},
-      {text: 'MUGI - Wikipedia', uri: 'https://en.wikipedia.org/wiki/MUGI'},
-      {text: 'ISO/IEC 18033-4:2011 Encryption algorithms - Part 4: Stream ciphers', uri: 'https://www.iso.org/standard/54531.html'}
-    ],
+  /**
+   * Seed the state from a 16-byte key and run the mixing rounds.
+   * @param {uint8[]} key - 16 key bytes
+   * @returns {MugiState} Initialised state
+   */
+  function initializeState(key) {
+    const state = new MugiState();
+    for (let i = 0; i < STATE_SIZE; i++) {
+      state.buffer[i] = key[i];
+      state.lfsr[i] = key[STATE_SIZE - 1 - i];   // reversed for the register
+    }
 
-    // No maintained public reference-implementation repository for MUGI is known to exist;
-    // the most authoritative available sources are Hitachi's own specification document
-    // (which includes the reference algorithm description) and the CRYPTREC evaluation
-    // report, which documents and benchmarks an ANSI-C reference implementation.
-    references: [
-      {text: 'Hitachi MUGI Specification Ver. 1.2 (reference algorithm description, PDF)', uri: 'https://www.hitachi.com/rd/yrl/crypto/mugi/mugi_spe.pdf'},
-      {text: 'CRYPTREC Evaluation of the MUGI Pseudorandom Number Generator (ANSI-C reference implementation benchmark)', uri: 'https://www.cryptrec.go.jp/exreport/cryptrec-ex-1035-2002.pdf'}
-    ],
+    for (let round = 0; round < INIT_ROUNDS; round++) {
+      for (let i = 0; i < STATE_SIZE; i++) {
+        clockLfsr(state.lfsr);
+        state.buffer[i] = OpCodes.ToUint8(OpCodes.Add32(OpCodes.Add32(state.buffer[i], state.lfsr[i]), round + i));
+      }
+    }
+    return state;
+  }
 
-    // Test vectors with actual implementation output
-    tests: [{
-      text: 'Self-computed vector: output of this simplified educational MUGI-inspired construction, verified for self-consistency (not an official Hitachi MUGI test vector - this implementation approximates MUGI\'s design principles rather than the exact ISO/IEC 18033-4 algorithm)',
-      uri: 'https://www.hitachi.com/rd/yrl/crypto/mugi/',
-      input: OpCodes.Hex8ToBytes('0001020304050607'),
-      key: OpCodes.Hex8ToBytes('00010203040506070809101112131415'),
-      expected: OpCodes.Hex8ToBytes('519970858a85daaa') // Generated from implementation
-    }],
+  /**
+   * Produce one keystream byte and advance the state.
+   * @param {MugiState} state - Generator state (modified in place)
+   * @returns {uint8} Keystream byte
+   */
+  function generateByte(state) {
+    const pos = state.counter % STATE_SIZE;
+    const byte = OpCodes.ToUint8(OpCodes.Xor32(OpCodes.Xor8(state.buffer[pos], state.lfsr[pos]), state.cycle * 3 + pos));
 
-    // Internal state for stream cipher adaptation
-    key: null,
-    state: null,
+    clockLfsr(state.lfsr);
+    state.buffer[pos] = OpCodes.ToUint8(OpCodes.Add32(OpCodes.Add32(state.buffer[pos], byte), 1));
 
-    Init: function() {
+    state.counter = (state.counter + 1) % STATE_SIZE;
+    if (state.counter === 0) state.cycle = OpCodes.ToUint8(state.cycle + 1);
+    return byte;
+  }
+
+  /**
+   * MUGI-inspired educational stream cipher
+   * @class
+   * @extends {StreamCipherAlgorithm}
+   */
+  class MugiAlgorithm extends StreamCipherAlgorithm {
+    constructor() {
+      super();
+
+      this.name = 'MUGI Stream Cipher';
+      this.description = 'Educational implementation of MUGI stream cipher. MUGI is a word-oriented stream cipher with a 128-bit key and 128-bit internal state, designed for high-speed software implementation.';
+      this.inventor = 'Dai Watanabe, Soichi Furuya, Hirotaka Yoshida, Kazuo Takaragi, Bart Preneel';
+      this.year = 2002;
+      this.country = CountryCode.JP;
+      this.category = CategoryType.STREAM;
+      this.subCategory = 'Stream Cipher';
+      this.securityStatus = SecurityStatus.EDUCATIONAL;
+      /** @type {string} */
+      this.securityNotes = 'MUGI is a Japanese stream cipher designed for efficient software implementation. This educational version demonstrates the basic principles.';
+
+      this.documentation = [
+        new LinkItem('Hitachi MUGI Specification and Self-Evaluation Report', 'https://www.hitachi.com/rd/yrl/crypto/mugi/'),
+        new LinkItem('MUGI - Wikipedia', 'https://en.wikipedia.org/wiki/MUGI'),
+        new LinkItem('ISO/IEC 18033-4:2011 Encryption algorithms - Part 4: Stream ciphers', 'https://www.iso.org/standard/54531.html')
+      ];
+
+      // No maintained public reference-implementation repository for MUGI is known to exist;
+      // the most authoritative available sources are Hitachi's own specification document
+      // (which includes the reference algorithm description) and the CRYPTREC evaluation
+      // report, which documents and benchmarks an ANSI-C reference implementation.
+      this.references = [
+        new LinkItem('Hitachi MUGI Specification Ver. 1.2 (reference algorithm description, PDF)', 'https://www.hitachi.com/rd/yrl/crypto/mugi/mugi_spe.pdf'),
+        new LinkItem('CRYPTREC Evaluation of the MUGI Pseudorandom Number Generator (ANSI-C reference implementation benchmark)', 'https://www.cryptrec.go.jp/exreport/cryptrec-ex-1035-2002.pdf')
+      ];
+
+      this.tests = [{
+        text: 'Self-computed vector: output of this simplified educational MUGI-inspired construction, verified for self-consistency (not an official Hitachi MUGI test vector - this implementation approximates MUGI\'s design principles rather than the exact ISO/IEC 18033-4 algorithm)',
+        uri: 'https://www.hitachi.com/rd/yrl/crypto/mugi/',
+        input: OpCodes.Hex8ToBytes('0001020304050607'),
+        key: OpCodes.Hex8ToBytes('00010203040506070809101112131415'),
+        expected: OpCodes.Hex8ToBytes('519970858a85daaa') // Generated from implementation
+      }];
+    }
+
+    /**
+     * Create a cipher instance (encryption and decryption are identical)
+     * @param {boolean} [isInverse=false] - Unused: keystream XOR is its own inverse
+     * @returns {MugiInstance} New instance
+     */
+    CreateInstance(isInverse = false) {
+      return new MugiInstance(this, isInverse);
+    }
+  }
+
+  /**
+   * MUGI-inspired cipher instance
+   * @class
+   * @extends {IAlgorithmInstance}
+   */
+  class MugiInstance extends IAlgorithmInstance {
+    /**
+     * @param {MugiAlgorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Unused
+     */
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      /** @type {boolean} */
+      this.isInverse = isInverse;
+      /** @type {uint8[]} */
+      this.inputBuffer = [];
       /** @type {uint8[]|null} */
-      this.key = null;
-      this.state = null;
-    },
-
-    KeySetup: function(key) {
-      this.Init();
-      if (!key || key.length !== 16) return false;
-
-      this.key = key.slice();
-      this.state = this.initializeState(key);
-      return true;
-    },
-
-    initializeState: function(key) {
-      // MUGI-inspired state initialization with 128-bit key
-      const state = {
-        buffer: OpCodes.CreateArray(16, 0), // 128-bit buffer (16 bytes)
-        lfsr: OpCodes.CreateArray(16, 0),   // Linear feedback shift register
-        counter: 0,
-        round: 0
-      };
-
-      // Initialize with key
-      for (let i = 0; i < 16; i++) {
-        state.buffer[i] = key[i];
-        state.lfsr[i] = key[15 - i]; // Reverse for LFSR
-      }
-
-      // MUGI-style initialization rounds
-      for (let round = 0; round < 16; round++) {
-        for (let i = 0; i < 16; i++) {
-          // LFSR feedback
-          const feedback = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(state.lfsr[0], state.lfsr[5]), state.lfsr[11]), state.lfsr[15]);
-
-          // Shift LFSR
-          for (let j = 0; j < 15; j++) {
-            state.lfsr[j] = state.lfsr[j + 1];
-          }
-          state.lfsr[15] = feedback;
-
-          // Update buffer with MUGI-style non-linear transformation
-          state.buffer[i] = OpCodes.And32((state.buffer[i] + state.lfsr[i] + round + i), 0xFF);
-        }
-      }
-
-      return state;
-    },
-
-    generateByte: function() {
-      if (!this.state) return 0;
-
-      // MUGI-inspired byte generation
-      const pos = this.state.counter % 16;
-
-      // Get values from buffer and LFSR
-      const bufVal = this.state.buffer[pos];
-      const lfsrVal = this.state.lfsr[pos];
-
-      // MUGI-style output generation
-      const byte = OpCodes.And32(OpCodes.Xor32(OpCodes.Xor32(bufVal, lfsrVal), (this.state.round * 3 + pos)), 0xFF);
-
-      // Update LFSR (simplified feedback)
-      const feedback = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(this.state.lfsr[0], this.state.lfsr[5]), this.state.lfsr[11]), this.state.lfsr[15]);
-      for (let i = 0; i < 15; i++) {
-        this.state.lfsr[i] = this.state.lfsr[i + 1];
-      }
-      this.state.lfsr[15] = feedback;
-
-      // Update buffer
-      this.state.buffer[pos] = OpCodes.And32((this.state.buffer[pos] + byte + 1), 0xFF);
-
-      // Update counters
-      this.state.counter = (this.state.counter + 1) % 16;
-      if (this.state.counter === 0) {
-        this.state.round = OpCodes.And32((this.state.round + 1), 0xFF);
-      }
-
-      return byte;
-    },
-
-    EncryptBlock: function(blockIndex, input) {
-      if (!input || !this.state) return null;
-
-      const output = new Array(input.length);
-      for (let i = 0; i < input.length; i++) {
-        output[i] = OpCodes.Xor32(input[i], this.generateByte());
-      }
-
-      return output;
-    },
-
-    DecryptBlock: function(blockIndex, input) {
-      // Stream cipher: decryption is same as encryption
-      return this.EncryptBlock(blockIndex, input);
-    },
-
-    CreateInstance: function(isDecrypt) {
-      const instance = {
-        _key: null,
-        _inputData: [],
-        _cipher: Object.create(MUGI),
-
-        set key(keyData) {
-          this._key = keyData;
-          this._cipher.KeySetup(keyData);
-        },
-
-        Feed: function(data) {
-          if (Array.isArray(data)) {
-            this._inputData = this._inputData.concat(data);
-          } else if (typeof data === 'string') {
-            for (let i = 0; i < data.length; i++) {
-              this._inputData.push(data.charCodeAt(i));
-            }
-          }
-        },
-
-        Result: function() {
-          if (!this._key) {
-            this._key = OpCodes.Hex8ToBytes('00010203040506070809101112131415');
-            this._cipher.KeySetup(this._key);
-          }
-
-          const output = new Array(this._inputData.length);
-          for (let i = 0; i < this._inputData.length; i++) {
-            output[i] = OpCodes.Xor32(this._inputData[i], this._cipher.generateByte());
-          }
-
-          return output;
-        }
-      };
-
-      return instance;
+      this._key = null;
+      /** @type {MugiState|null} */
+      this._state = null;
     }
-  };
 
-  // Auto-register with AlgorithmFramework if available
-  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
-    global.AlgorithmFramework.RegisterAlgorithm(MUGI);
+    /**
+     * Assign the key. A key that is not 16 bytes leaves no keystream state, so the
+     * output then equals the input.
+     * @param {uint8[]|null} keyData - 16-byte key
+     */
+    set key(keyData) {
+      this._key = keyData;
+      this._state = (keyData && keyData.length === KEY_SIZE) ? initializeState(keyData) : null;
+    }
+
+    /**
+     * @returns {uint8[]|null} Copy of the key
+     */
+    get key() { return this._key ? [...this._key] : null; }
+
+    /**
+     * Append message bytes
+     * @param {uint8[]} data - Bytes to append
+     */
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      for (let i = 0; i < data.length; i++) this.inputBuffer.push(data[i]);
+    }
+
+    /**
+     * Encipher everything fed so far, continuing the keystream from the previous call.
+     * @returns {uint8[]} Output bytes
+     */
+    Result() {
+      if (!this._key) {
+        this.key = DEFAULT_KEY;
+      }
+
+      /** @type {uint8[]} */
+      const output = new Array(this.inputBuffer.length);
+      for (let i = 0; i < this.inputBuffer.length; i++) {
+        const ks = this._state ? generateByte(this._state) : 0;
+        output[i] = OpCodes.Xor8(this.inputBuffer[i], ks);
+      }
+      return output;
+    }
   }
 
-  // Legacy registration
-  if (typeof global.RegisterAlgorithm === 'function') {
-    global.RegisterAlgorithm(MUGI);
+  const algorithmInstance = new MugiAlgorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
 
-  // Auto-register with Cipher system if available
-  if (global.Cipher) {
-    global.Cipher.Add(MUGI);
-  }
-
-  // Export to global scope
-  global.MUGI = MUGI;
-
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = MUGI;
-  }
-
-})(typeof global !== 'undefined' ? global : window);
+  return { MugiAlgorithm, MugiInstance };
+}));

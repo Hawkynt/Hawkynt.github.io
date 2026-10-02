@@ -1,939 +1,472 @@
-#!/usr/bin/env node
 /*
- * Universal XChaCha20 Stream Cipher Implementation
+ * XChaCha20 Stream Cipher
  * Compatible with both Browser and Node.js environments
- * Based on draft-irtf-cfrg-xchacha specification and libsodium reference
- * 
- * XChaCha20 is an extended-nonce variant of ChaCha20 that provides:
- * - 192-bit nonces (compared to ChaCha20's 96-bit nonces)
- * - Better security against nonce reuse attacks
- * - Simplified nonce generation for applications
- * - HChaCha20 key derivation for subkey generation
- * 
- * Key Features:
- * - 256-bit keys with 192-bit nonces
- * - Uses HChaCha20 for subkey derivation
- * - Compatible with ChaCha20 core operations
- * - No nonce reuse concerns with random nonces
- * - Excellent for applications needing large nonce spaces
- * 
- * Educational Value:
- * - Demonstrates nonce extension techniques
- * - Shows key derivation function usage
- * - Practical cryptographic engineering
- * - Modern stream cipher construction
- * - Security against nonce reuse attacks
- * 
- * Applications:
- * - File encryption with random nonces
- * - Network protocols requiring unique nonces
- * - Database encryption with deterministic nonces
- * - Any application where nonce management is challenging
- * 
- * WARNING: This is an educational implementation for learning purposes only.
- * Use proven cryptographic libraries for production systems.
- * 
+ *
+ * XChaCha20 as specified in draft-irtf-cfrg-xchacha-03, section 2.3:
+ * - HChaCha20 (section 2.2) derives a 256-bit subkey from the key and the
+ *   first 16 bytes of the 24-byte nonce;
+ * - ChaCha20 (RFC 8439) then runs under that subkey with the 12-byte nonce
+ *   4 zero bytes || last 8 nonce bytes, from block counter 0 unless set.
+ *
  * References:
- * - draft-irtf-cfrg-xchacha: https://tools.ietf.org/html/draft-irtf-cfrg-xchacha
- * - libsodium XChaCha20: https://libsodium.gitbook.io/doc/secret-key_cryptography/xchacha20
- * - ChaCha20 RFC 7539: https://tools.ietf.org/html/rfc7539
- * 
- * (c)2006-2025 Hawkynt - Educational implementation following draft-irtf-cfrg-xchacha
+ * - draft-irtf-cfrg-xchacha-03: https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-xchacha-03
+ * - libsodium XChaCha20: https://doc.libsodium.org/advanced/stream_ciphers/xchacha20
+ * - ChaCha20 RFC 8439: https://www.rfc-editor.org/rfc/rfc8439
+ *
+ * (c)2006-2025 Hawkynt
  */
 
-(function(global) {
-  'use strict';
-  
-  // Environment detection and dependency loading
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    require('../../OpCodes.js');
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
   }
-  
-  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-    try {
-      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
-    } catch (e) {
-      console.error('Failed to load AlgorithmFramework:', e.message);
-      return;
-    }
-  } 
-  
-  
-  
-  // XChaCha20 constants
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
+  'use strict';
+
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
+
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
+
+  const { RegisterAlgorithm, CategoryType, CountryCode,
+          StreamCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize } = AlgorithmFramework;
+
+  /** @type {int32} */
   const XCHACHA20_KEY_SIZE = 32;     // 256-bit keys
+  /** @type {int32} */
   const XCHACHA20_NONCE_SIZE = 24;   // 192-bit nonces
+  /** @type {int32} */
   const XCHACHA20_BLOCK_SIZE = 64;   // 64-byte keystream blocks
-  const CHACHA20_NONCE_SIZE = 12;    // Internal ChaCha20 nonce size
+  /** @type {int32} */
   const HCHACHA20_NONCE_SIZE = 16;   // HChaCha20 nonce size
-  
-  // ChaCha20 constants - "expand 32-byte k"
-  const constantBytes = OpCodes.Hex8ToBytes('617078653320646e79622d326b206574');
-  const CHACHA20_CONSTANTS = Object.freeze([
-    OpCodes.Pack32LE(constantBytes[0], constantBytes[1], constantBytes[2], constantBytes[3]),
-    OpCodes.Pack32LE(constantBytes[4], constantBytes[5], constantBytes[6], constantBytes[7]),
-    OpCodes.Pack32LE(constantBytes[8], constantBytes[9], constantBytes[10], constantBytes[11]),
-    OpCodes.Pack32LE(constantBytes[12], constantBytes[13], constantBytes[14], constantBytes[15])
-  ]);
-  
-  const XChaCha20 = {
-    // Required metadata fields
-    name: 'XChaCha20 Extended-Nonce Stream Cipher',
-    description: 'Extended-nonce variant of ChaCha20 providing 192-bit nonces instead of 96-bit. Uses HChaCha20 key derivation to generate subkeys, eliminating nonce reuse concerns and simplifying secure implementation.',
-    inventor: 'Daniel J. Bernstein (ChaCha20), Frank Denis (XChaCha20)',
-    year: 2018,
-    country: 'US',
-    category: global.AlgorithmFramework ? global.AlgorithmFramework.CategoryType.STREAM : 'stream',
-    subCategory: 'Stream Cipher',
-    securityStatus: global.AlgorithmFramework ? global.AlgorithmFramework.SecurityStatus.EXPERIMENTAL : 'research',
-    securityNotes: 'Extended ChaCha20 with 192-bit nonces. Educational implementation demonstrating nonce extension techniques.',
-    
-    documentation: [
-      {text: 'draft-irtf-cfrg-xchacha', uri: 'https://tools.ietf.org/html/draft-irtf-cfrg-xchacha'},
-      {text: 'ChaCha20 RFC 7539', uri: 'https://tools.ietf.org/html/rfc7539'}
-    ],
 
-    references: [
-      {text: 'libsodium XChaCha20 Reference Implementation', uri: 'https://github.com/jedisct1/libsodium'}
-    ],
+  // "expand 32-byte k" as four little-endian words (RFC 8439 section 2.3)
+  /** @type {uint32[]} */
+  const CHACHA20_CONSTANTS = [
+    OpCodes.Pack32LE(0x65, 0x78, 0x70, 0x61), // "expa"
+    OpCodes.Pack32LE(0x6e, 0x64, 0x20, 0x33), // "nd 3"
+    OpCodes.Pack32LE(0x32, 0x2d, 0x62, 0x79), // "2-by"
+    OpCodes.Pack32LE(0x74, 0x65, 0x20, 0x6b)  // "te k"
+  ];
 
-    tests: [
-      {
-        text: 'XChaCha20 Basic Test',
-        uri: 'Educational test vector',
-        input: OpCodes.Hex8ToBytes('48656c6c6f20576f726c64'), // "Hello World"
-        key: OpCodes.Hex8ToBytes('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'),
-        nonce: OpCodes.Hex8ToBytes('000102030405060708090a0b0c0d0e0f1011121314151617'),
-        expected: OpCodes.Hex8ToBytes('931b70ad80d05cf433f99f') // Actual output from implementation
-      }
-    ],
-    
-    // Universal cipher interface properties
-    internalName: 'xchacha20-universal',
-    comment: 'Extended-nonce variant of ChaCha20 with 192-bit nonces and HChaCha20 key derivation',
-    
-    // Cipher interface requirements
-    minKeyLength: 32,        // XChaCha20 requires exactly 32-byte keys
-    maxKeyLength: 32,
-    stepKeyLength: 1,
-    minBlockSize: 1,         // Stream cipher - processes byte by byte
-    maxBlockSize: 65536,     // Practical limit
-    stepBlockSize: 1,
-    instances: {},
-    
-    // Algorithm properties
-    isStreamCipher: true,
-    version: '1.0.0',
-    date: '2025-01-18',
-    
-    // Comprehensive metadata
-    metadata: global.CipherMetadata ? global.CipherMetadata.createMetadata({
-      algorithm: 'XChaCha20',
-      displayName: 'XChaCha20 Extended-Nonce Stream Cipher',
-      description: 'Extended-nonce variant of ChaCha20 providing 192-bit nonces instead of 96-bit. Uses HChaCha20 key derivation to generate subkeys, eliminating nonce reuse concerns and simplifying secure implementation.',
-      
-      inventor: 'Daniel J. Bernstein (ChaCha20 base), Frank Denis (XChaCha20 extension)',
-      year: 2018,
-      background: 'Developed to address ChaCha20\'s small nonce space. Standardized in draft-irtf-cfrg-xchacha and widely implemented in libsodium. Provides practical solution for applications requiring many encryptions.',
-      
-      securityStatus: global.CipherMetadata.SecurityStatus.SECURE,
-      securityNotes: 'Secure with proper implementation. Eliminates birthday bound concerns of ChaCha20 nonces. Based on well-analyzed ChaCha20 with proven HChaCha20 key derivation.',
-      
-      category: global.CipherMetadata.Categories.STREAM,
-      subcategory: 'Extended-Nonce Stream Cipher',
-      complexity: global.CipherMetadata.ComplexityLevels.INTERMEDIATE,
-      
-      keySize: 256, // 256-bit keys
-      blockSize: 512, // 64-byte keystream blocks
-      rounds: 20, // ChaCha20 rounds
-      
-      specifications: [
+  /** @type {uint32} */
+  const MAX_BLOCK_COUNTER = 0xFFFFFFFF; // RFC 8439: the 32-bit counter must not wrap
+
+  /** @type {string} */
+  const DEFAULT_NONCE_HEX = '000102030405060708090a0b0c0d0e0f1011121314151617';
+
+  // ===== ALGORITHM IMPLEMENTATION =====
+
+  /**
+   * XChaCha20 extended-nonce stream cipher (draft-irtf-cfrg-xchacha-03)
+   */
+  class XChaCha20Algorithm extends StreamCipherAlgorithm {
+    constructor() {
+      super();
+
+      this.name = 'XChaCha20 Extended-Nonce Stream Cipher';
+      this.description = 'Extended-nonce variant of ChaCha20 providing 192-bit nonces instead of 96-bit. HChaCha20 derives a subkey from the key and the first 16 nonce bytes; ChaCha20 then runs under that subkey with the remaining 8 nonce bytes, so nonces can be chosen at random.';
+      this.inventor = 'Daniel J. Bernstein (ChaCha20), Frank Denis (XChaCha20)';
+      this.year = 2018;
+      this.category = CategoryType.STREAM;
+      this.subCategory = 'Stream Cipher';
+      this.securityStatus = null;
+      /** @type {string} */
+      this.securityNotes = 'Random 192-bit nonces are safe under a single key (a collision is expected only after about 2^96 messages). Provides no integrity on its own: pair it with a MAC, as XChaCha20-Poly1305 does.';
+      this.country = CountryCode.US;
+
+      this.SupportedKeySizes = [new KeySize(XCHACHA20_KEY_SIZE, XCHACHA20_KEY_SIZE, 1)];
+
+      this.documentation = [
+        new LinkItem('draft-irtf-cfrg-xchacha-03: XChaCha', 'https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-xchacha-03'),
+        new LinkItem('RFC 8439: ChaCha20 and Poly1305 for IETF Protocols', 'https://www.rfc-editor.org/rfc/rfc8439')
+      ];
+
+      this.references = [
+        new LinkItem('libsodium XChaCha20 Implementation', 'https://github.com/jedisct1/libsodium/blob/master/src/libsodium/crypto_stream/xchacha20/stream_xchacha20.c'),
+        new LinkItem('libsodium XChaCha20 Test Vectors', 'https://github.com/jedisct1/libsodium/blob/master/test/default/xchacha20.c')
+      ];
+
+      // The draft's plaintext for A.3.2 ("The dhole (pronounced "dole") ...", 304 bytes)
+      /** @type {string} */
+      const dholePlaintext =
+        '5468652064686f6c65202870726f6e6f756e6365642022646f6c652229206973' +
+        '20616c736f206b6e6f776e2061732074686520417369617469632077696c6420' +
+        '646f672c2072656420646f672c20616e642077686973746c696e6720646f672e' +
+        '2049742069732061626f7574207468652073697a65206f662061204765726d61' +
+        '6e20736865706865726420627574206c6f6f6b73206d6f7265206c696b652061' +
+        '206c6f6e672d6c656767656420666f782e205468697320686967686c7920656c' +
+        '757369766520616e6420736b696c6c6564206a756d70657220697320636c6173' +
+        '736966696564207769746820776f6c7665732c20636f796f7465732c206a6163' +
+        '6b616c732c20616e6420666f78657320696e20746865207461786f6e6f6d6963' +
+        '2066616d696c792043616e696461652e';
+
+      this.tests = [
         {
-          name: 'draft-irtf-cfrg-xchacha: XChaCha: eXtended-nonce ChaCha',
-          url: 'https://tools.ietf.org/html/draft-irtf-cfrg-xchacha'
+          text: 'draft-irtf-cfrg-xchacha-03 A.3.2.1 XChaCha20 (block counter 0)',
+          uri: 'https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-xchacha-03#appendix-A.3.2.1',
+          input: OpCodes.Hex8ToBytes(dholePlaintext),
+          key: OpCodes.Hex8ToBytes('808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f'),
+          nonce: OpCodes.Hex8ToBytes('404142434445464748494a4b4c4d4e4f5051525354555658'),
+          expected: OpCodes.Hex8ToBytes(
+            '4559abba4e48c16102e8bb2c05e6947f50a786de162f9b0b7e592a9b53d0d4e9' +
+            '8d8d6410d540a1a6375b26d80dace4fab52384c731acbf16a5923c0c48d3575d' +
+            '4d0d2c673b666faa731061277701093a6bf7a158a8864292a41c48e3a9b4c0da' +
+            'ece0f8d98d0d7e05b37a307bbb66333164ec9e1b24ea0d6c3ffddcec4f68e744' +
+            '3056193a03c810e11344ca06d8ed8a2bfb1e8d48cfa6bc0eb4e2464b74814240' +
+            '7c9f431aee769960e15ba8b96890466ef2457599852385c661f752ce20f9da0c' +
+            '09ab6b19df74e76a95967446f8d0fd415e7bee2a12a114c20eb5292ae7a349ae' +
+            '577820d5520a1f3fb62a17ce6a7e68fa7c79111d8860920bc048ef43fe84486c' +
+            'cb87c25f0ae045f0cce1e7989a9aa220a28bdd4827e751a24a6d5c62d790a663' +
+            '93b93111c1a55dd7421a10184974c7c5')
+        },
+        // libsodium tv_stream_xchacha20: crypto_stream_xchacha20 keystream, i.e. the encryption of zero bytes
+        {
+          text: 'libsodium tv_stream_xchacha20 #1 (29 bytes)',
+          uri: 'https://github.com/jedisct1/libsodium/blob/master/test/default/xchacha20.c',
+          input: OpCodes.CreateArray(29, 0),
+          key: OpCodes.Hex8ToBytes('79c99798ac67300bbb2704c95c341e3245f3dcb21761b98e52ff45b24f304fc4'),
+          nonce: OpCodes.Hex8ToBytes('b33ffd3096479bcfbc9aee49417688a0a2554f8d95389419'),
+          expected: OpCodes.Hex8ToBytes('c6e9758160083ac604ef90e712ce6e75d7797590744e0cf060f013739c')
         },
         {
-          name: 'ChaCha20 RFC 7539 (base algorithm)',
-          url: 'https://tools.ietf.org/html/rfc7539'
-        }
-      ],
-      
-      testVectors: [
-        {
-          name: 'XChaCha20 Test Vectors',
-          url: 'https://github.com/jedisct1/libsodium/tree/master/test/default'
+          text: 'libsodium tv_stream_xchacha20 #3 (22 bytes)',
+          uri: 'https://github.com/jedisct1/libsodium/blob/master/test/default/xchacha20.c',
+          input: OpCodes.CreateArray(22, 0),
+          key: OpCodes.Hex8ToBytes('3d12800e7b014e88d68a73f0a95b04b435719936feba60473f02a9e61ae60682'),
+          nonce: OpCodes.Hex8ToBytes('56bed2599eac99fb27ebf4ffcb770a64772dec4d5849ea2d'),
+          expected: OpCodes.Hex8ToBytes('a2c3c1406f33c054a92760a8e0666b84f84fa3a618f0')
         },
         {
-          name: 'draft-irtf-cfrg-xchacha Test Vectors',
-          url: 'https://tools.ietf.org/html/draft-irtf-cfrg-xchacha#section-2.2.1'
-        }
-      ],
-      
-      references: [
-        {
-          name: 'libsodium XChaCha20 Documentation',
-          url: 'https://libsodium.gitbook.io/doc/secret-key_cryptography/xchacha20'
+          text: 'libsodium tv_stream_xchacha20 #8 (76 bytes, two blocks)',
+          uri: 'https://github.com/jedisct1/libsodium/blob/master/test/default/xchacha20.c',
+          input: OpCodes.CreateArray(76, 0),
+          key: OpCodes.Hex8ToBytes('d45e56368ebc7ba9be7c55cfd2da0feb633c1d86cab67cd5627514fd20c2b391'),
+          nonce: OpCodes.Hex8ToBytes('fd37da2db31e0c738754463edadc7dafb0833bd45da497fc'),
+          expected: OpCodes.Hex8ToBytes(
+            '47950efa8217e3dec437454bd6b6a80a287e2570f0a48b3fa1ea3eb868be3d48' +
+            '6f6516606d85e5643becc473b370871ab9ef8e2a728f73b92bd98e6e26ea7c8f' +
+            'f96ec5a9e8de95e1eee9300c')
         },
         {
-          name: 'Too Much Crypto (XChaCha20 blog post)',
-          url: 'https://blog.filippo.io/the-scrypt-parameters/'
+          text: 'libsodium tv_stream_xchacha20 #10 (91 bytes, two blocks)',
+          uri: 'https://github.com/jedisct1/libsodium/blob/master/test/default/xchacha20.c',
+          input: OpCodes.CreateArray(91, 0),
+          key: OpCodes.Hex8ToBytes('9d23bd4149cb979ccf3c5c94dd217e9808cb0e50cd0f67812235eaaf601d6232'),
+          nonce: OpCodes.Hex8ToBytes('c047548266b7c370d33566a2425cbf30d82d1eaf5294109e'),
+          expected: OpCodes.Hex8ToBytes(
+            'a21209096594de8c5667b1d13ad93f744106d054df210e4782cd396fec692d35' +
+            '15a20bf351eec011a92c367888bc464c32f0807acd6c203a247e0db854148468' +
+            'e9f96bee4cf718d68d5f637cbd5a376457788e6fae90fc31097cfc')
         }
-      ],
-      
-      implementationNotes: 'Educational implementation demonstrating HChaCha20 key derivation and nonce extension techniques. Shows practical cryptographic engineering.',
-      performanceNotes: 'Similar performance to ChaCha20 with additional HChaCha20 setup cost. Negligible overhead for most applications.',
-      
-      educationalValue: 'Excellent for learning nonce extension techniques, key derivation functions, and practical cryptographic engineering solutions.',
-      prerequisites: ['ChaCha20 understanding', 'Stream cipher concepts', 'Key derivation functions'],
-      
-      tags: ['stream', 'extended-nonce', 'chacha20-variant', 'key-derivation', 'nonce-extension', 'practical'],
-      
-      version: '2.0'
-    }) : null,
-    
-    // Initialize XChaCha20
-    Init: function() {
-      return true;
-    },
-    
-    // ChaCha20 quarter-round operation
-    quarterRound: function(state, a, b, c, d) {
-      // a += b; d ^= a; d <<<= 16;
-      state[a] = global.OpCodes.ToUint32(state[a] + state[b]);
-      state[d] = global.OpCodes.XorN(state[d], state[a]);
-      state[d] = global.OpCodes.RotL32(state[d], 16);
+      ];
+    }
 
-      // c += d; b ^= c; b <<<= 12;
-      state[c] = global.OpCodes.ToUint32(state[c] + state[d]);
-      state[b] = global.OpCodes.XorN(state[b], state[c]);
-      state[b] = global.OpCodes.RotL32(state[b], 12);
+    /**
+     * @param {boolean} [isInverse=false] - Decryption flag (XOR stream: same operation)
+     * @returns {XChaCha20Instance} New instance
+     */
+    CreateInstance(isInverse = false) {
+      return new XChaCha20Instance(this, isInverse);
+    }
+  }
 
-      // a += b; d ^= a; d <<<= 8;
-      state[a] = global.OpCodes.ToUint32(state[a] + state[b]);
-      state[d] = global.OpCodes.XorN(state[d], state[a]);
-      state[d] = global.OpCodes.RotL32(state[d], 8);
+  /**
+   * XChaCha20 instance; every message starts at the initial block counter (default 0)
+   */
+  class XChaCha20Instance extends IAlgorithmInstance {
+    /**
+     * @param {XChaCha20Algorithm} algorithm - Parent algorithm
+     * @param {boolean} [isInverse=false] - Decryption flag
+     */
+    constructor(algorithm, isInverse = false) {
+      super(algorithm);
+      /** @type {boolean} */
+      this.isInverse = isInverse;
+      /** @type {uint8[]} */
+      this.inputBuffer = [];
+      /** @type {uint8[]|null} */
+      this._key = null;
+      /** @type {uint8[]} */
+      this._nonce = OpCodes.Hex8ToBytes(DEFAULT_NONCE_HEX);
+      /** @type {uint32} */
+      this._counter = 0;
+    }
 
-      // c += d; b ^= c; b <<<= 7;
-      state[c] = global.OpCodes.ToUint32(state[c] + state[d]);
-      state[b] = global.OpCodes.XorN(state[b], state[c]);
-      state[b] = global.OpCodes.RotL32(state[b], 7);
-    },
-    
-    // HChaCha20 key derivation function
-    // Takes 256-bit key and 128-bit nonce, produces 256-bit subkey
-    hchacha20: function(key, nonce) {
-      if (key.length !== XCHACHA20_KEY_SIZE) {
-        throw new Error('HChaCha20 key must be 32 bytes');
+    /**
+     * @param {uint32|null} value - Initial ChaCha20 block counter; null restores 0
+     */
+    set counter(value) {
+      if (value === null || value === undefined) {
+        this._counter = 0;
+        return;
       }
-      if (nonce.length !== HCHACHA20_NONCE_SIZE) {
-        throw new Error('HChaCha20 nonce must be 16 bytes');
+      if (value < 0 || value > MAX_BLOCK_COUNTER || value !== Math.floor(value)) {
+        throw new Error('XChaCha20 block counter must be an integer from 0 to 2^32-1');
       }
-      
-      // Initialize state like ChaCha20
-      const state = new Array(16);
-      
-      // Constants (words 0-3)
-      for (let i = 0; i < 4; i++) {
-        state[i] = CHACHA20_CONSTANTS[i];
+      this._counter = value;
+    }
+
+    /**
+     * @returns {uint32} Initial ChaCha20 block counter
+     */
+    get counter() {
+      return this._counter;
+    }
+
+    /**
+     * @param {uint8[]|null} keyBytes - 32-byte key
+     */
+    set key(keyBytes) {
+      if (!keyBytes) {
+        this._key = null;
+        return;
       }
-      
-      // Key (words 4-11)
-      for (let i = 0; i < 8; i++) {
-        const offset = i * 4;
-        state[4 + i] = global.OpCodes.Pack32LE(
-          key[offset],
-          key[offset + 1],
-          key[offset + 2],
-          key[offset + 3]
-        );
-      }
-      
-      // Nonce (words 12-15) - first 16 bytes of XChaCha20 nonce
-      for (let i = 0; i < 4; i++) {
-        const offset = i * 4;
-        state[12 + i] = global.OpCodes.Pack32LE(
-          nonce[offset],
-          nonce[offset + 1],
-          nonce[offset + 2],
-          nonce[offset + 3]
-        );
-      }
-      
-      // Perform 20 rounds (10 double-rounds) like ChaCha20
-      for (let round = 0; round < 10; round++) {
-        // Column rounds
-        this.quarterRound(state, 0, 4, 8, 12);
-        this.quarterRound(state, 1, 5, 9, 13);
-        this.quarterRound(state, 2, 6, 10, 14);
-        this.quarterRound(state, 3, 7, 11, 15);
-        
-        // Diagonal rounds
-        this.quarterRound(state, 0, 5, 10, 15);
-        this.quarterRound(state, 1, 6, 11, 12);
-        this.quarterRound(state, 2, 7, 8, 13);
-        this.quarterRound(state, 3, 4, 9, 14);
-      }
-      
-      // Extract subkey from words 0, 1, 2, 3, 12, 13, 14, 15
-      const subkey = new Array(32);
-      const keyWords = [0, 1, 2, 3, 12, 13, 14, 15];
-      
-      for (let i = 0; i < 8; i++) {
-        const bytes = global.OpCodes.Unpack32LE(state[keyWords[i]]);
-        subkey[i * 4] = bytes[0];
-        subkey[i * 4 + 1] = bytes[1];
-        subkey[i * 4 + 2] = bytes[2];
-        subkey[i * 4 + 3] = bytes[3];
-      }
-      
-      return subkey;
-    },
-    
-    // ChaCha20 block function for keystream generation
-    chacha20Block: function(key, counter, nonce) {
-      // Initialize ChaCha20 state
-      const state = new Array(16);
-      
-      // Constants (words 0-3)
-      for (let i = 0; i < 4; i++) {
-        state[i] = CHACHA20_CONSTANTS[i];
-      }
-      
-      // Key (words 4-11)
-      for (let i = 0; i < 8; i++) {
-        const offset = i * 4;
-        state[4 + i] = global.OpCodes.Pack32LE(
-          key[offset],
-          key[offset + 1],
-          key[offset + 2],
-          key[offset + 3]
-        );
-      }
-      
-      // Counter (word 12)
-      state[12] = counter;
-      
-      // Nonce (words 13-15)
-      for (let i = 0; i < 3; i++) {
-        const offset = i * 4;
-        state[13 + i] = global.OpCodes.Pack32LE(
-          nonce[offset],
-          nonce[offset + 1],
-          nonce[offset + 2],
-          nonce[offset + 3]
-        );
-      }
-      
-      // Create working copy for permutation
-      const workingState = state.slice(0);
-      
-      // Perform 20 rounds (10 double-rounds)
-      for (let round = 0; round < 10; round++) {
-        // Column rounds
-        this.quarterRound(workingState, 0, 4, 8, 12);
-        this.quarterRound(workingState, 1, 5, 9, 13);
-        this.quarterRound(workingState, 2, 6, 10, 14);
-        this.quarterRound(workingState, 3, 7, 11, 15);
-        
-        // Diagonal rounds
-        this.quarterRound(workingState, 0, 5, 10, 15);
-        this.quarterRound(workingState, 1, 6, 11, 12);
-        this.quarterRound(workingState, 2, 7, 8, 13);
-        this.quarterRound(workingState, 3, 4, 9, 14);
-      }
-      
-      // Add original state to working state
-      for (let i = 0; i < 16; i++) {
-        workingState[i] = global.OpCodes.ToUint32(workingState[i] + state[i]);
-      }
-      
-      // Convert to byte array (little-endian)
-      const keystream = new Array(64);
-      for (let i = 0; i < 16; i++) {
-        const bytes = global.OpCodes.Unpack32LE(workingState[i]);
-        keystream[i * 4] = bytes[0];
-        keystream[i * 4 + 1] = bytes[1];
-        keystream[i * 4 + 2] = bytes[2];
-        keystream[i * 4 + 3] = bytes[3];
-      }
-      
-      return keystream;
-    },
-    
-    // XChaCha20 encryption/decryption
-    xchacha20: function(key, nonce, data, counter) {
-      if (key.length !== XCHACHA20_KEY_SIZE) {
+      if (keyBytes.length !== XCHACHA20_KEY_SIZE) {
         throw new Error('XChaCha20 key must be 32 bytes');
       }
-      if (nonce.length !== XCHACHA20_NONCE_SIZE) {
+      this._key = [...keyBytes];
+    }
+
+    /**
+     * @returns {uint8[]|null} Copy of the key
+     */
+    get key() {
+      return this._key ? [...this._key] : null;
+    }
+
+    /**
+     * @param {uint8[]|null} nonceBytes - 24-byte nonce; null restores the default nonce
+     */
+    set nonce(nonceBytes) {
+      if (!nonceBytes) {
+        this._nonce = OpCodes.Hex8ToBytes(DEFAULT_NONCE_HEX);
+        return;
+      }
+      if (nonceBytes.length !== XCHACHA20_NONCE_SIZE) {
         throw new Error('XChaCha20 nonce must be 24 bytes');
       }
-      
-      counter = counter || 0;
-      
-      // Step 1: Derive subkey using HChaCha20
-      // Use first 16 bytes of nonce for HChaCha20
-      const hchacha20Nonce = nonce.slice(0, 16);
-      const subkey = this.hchacha20(key, hchacha20Nonce);
-      
-      // Step 2: Use ChaCha20 with subkey and remaining nonce bytes
-      // Last 8 bytes of XChaCha20 nonce become first 8 bytes of ChaCha20 nonce
-      // Plus 4 zero bytes to make 12-byte ChaCha20 nonce
-      const chacha20Nonce = [
-        ...nonce.slice(16, 24), // Last 8 bytes of XChaCha20 nonce
-        0, 0, 0, 0              // 4 zero bytes
-      ];
-      
-      // Step 3: Encrypt/decrypt data using ChaCha20
-      const output = new Array(data.length);
-      let pos = 0;
-      let blockCounter = counter;
-      
-      while (pos < data.length) {
-        // Generate keystream block
-        const keystream = this.chacha20Block(subkey, blockCounter, chacha20Nonce);
-        
-        // XOR with data
-        const blockSize = Math.min(XCHACHA20_BLOCK_SIZE, data.length - pos);
-        for (let i = 0; i < blockSize; i++) {
-          output[pos + i] = global.OpCodes.XorN(data[pos + i], keystream[i]);
-        }
-        
-        pos += blockSize;
-        blockCounter++;
+      this._nonce = [...nonceBytes];
+    }
+
+    /**
+     * @returns {uint8[]} Copy of the nonce
+     */
+    get nonce() {
+      return [...this._nonce];
+    }
+
+    /**
+     * @param {uint8[]} data - Input bytes
+     */
+    Feed(data) {
+      if (!data || data.length === 0) return;
+      for (let i = 0; i < data.length; i++) this.inputBuffer.push(data[i]);
+    }
+
+    /**
+     * XOR the buffered input with the keystream
+     * @returns {uint8[]} Output bytes
+     */
+    Result() {
+      if (!this._key) throw new Error('Key not set');
+
+      // Step 1: derive the subkey from the first 16 nonce bytes
+      /** @type {uint8[]} */
+      const subkey = this._hchacha20(this._key, this._nonce.slice(0, HCHACHA20_NONCE_SIZE));
+
+      // Step 2: inner nonce = 4 zero bytes, then the last 8 nonce bytes
+      /** @type {uint8[]} */
+      const innerNonce = OpCodes.CreateArray(12, 0);
+      for (let i = 0; i < 8; i++) {
+        innerNonce[4 + i] = this._nonce[16 + i];
       }
-      
+
+      // Step 3: ChaCha20 keystream from the initial block counter
+      /** @type {uint8[]} */
+      const output = [];
+      /** @type {uint8[]} */
+      let keystream = [];
+      /** @type {uint32} */
+      let blockCounter = this._counter;
+      /** @type {boolean} */
+      let counterExhausted = false;
+      for (let i = 0; i < this.inputBuffer.length; i++) {
+        const offset = i % XCHACHA20_BLOCK_SIZE;
+        if (offset === 0) {
+          if (counterExhausted) {
+            this.inputBuffer = [];
+            throw new Error('XChaCha20 block counter would wrap past 2^32-1');
+          }
+          keystream = this._chacha20Block(subkey, blockCounter, innerNonce);
+          if (blockCounter === MAX_BLOCK_COUNTER) {
+            counterExhausted = true;
+          } else {
+            blockCounter = OpCodes.Add32(blockCounter, 1);
+          }
+        }
+        output.push(OpCodes.Xor8(this.inputBuffer[i], keystream[offset]));
+      }
+
+      this.inputBuffer = [];
       return output;
-    },
-    
-    // Encrypt data with XChaCha20
-    encrypt: function(key, nonce, plaintext, counter) {
-      const keyBytes = this.stringToBytes(key);
-      const nonceBytes = this.stringToBytes(nonce);
-      const plaintextBytes = this.stringToBytes(plaintext);
-      
-      const ciphertextBytes = this.xchacha20(keyBytes, nonceBytes, plaintextBytes, counter);
-      
-      return {
-        ciphertext: this.bytesToString(ciphertextBytes),
-        ciphertextBytes: ciphertextBytes,
-        keySize: keyBytes.length,
-        nonceSize: nonceBytes.length
-      };
-    },
-    
-    // Decrypt data with XChaCha20
-    decrypt: function(key, nonce, ciphertext, counter) {
-      // For stream ciphers, decryption is identical to encryption
-      return this.encrypt(key, nonce, ciphertext, counter);
-    },
-    
-    // Generate random nonce (192 bits)
-    generateNonce: function() {
-      const nonce = new Array(XCHACHA20_NONCE_SIZE);
-      
-      if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-        // Browser environment
-        const array = new Uint8Array(XCHACHA20_NONCE_SIZE);
-        crypto.getRandomValues(array);
-        for (let i = 0; i < XCHACHA20_NONCE_SIZE; i++) {
-          nonce[i] = array[i];
-        }
-      } else if (typeof require !== 'undefined') {
-        // Node.js environment
-        try {
-          const crypto = require('crypto');
-          const buffer = crypto.randomBytes(XCHACHA20_NONCE_SIZE);
-          for (let i = 0; i < XCHACHA20_NONCE_SIZE; i++) {
-            nonce[i] = buffer[i];
-          }
-        } catch (e) {
-          // Fallback to Math.random (not cryptographically secure)
-          console.warn('Using insecure random number generation');
-          for (let i = 0; i < XCHACHA20_NONCE_SIZE; i++) {
-            nonce[i] = Math.floor(Math.random() * 256);
-          }
-        }
-      } else {
-        // Fallback
-        for (let i = 0; i < XCHACHA20_NONCE_SIZE; i++) {
-          nonce[i] = Math.floor(Math.random() * 256);
-        }
-      }
-      
-      return nonce;
-    },
-    
-    // String to byte array conversion
-    stringToBytes: function(str) {
-      const bytes = [];
-      for (let i = 0; i < str.length; i++) {
-        bytes.push(global.OpCodes.AndN(str.charCodeAt(i), 0xFF));
-      }
-      return bytes;
-    },
-    
-    // Byte array to string conversion
-    bytesToString: function(bytes) {
-      let str = '';
-      for (let i = 0; i < bytes.length; i++) {
-        str += String.fromCharCode(bytes[i]);
-      }
-      return str;
-    },
-    
-    // Universal cipher interface methods
-    KeySetup: function(key) {
-      let id;
-      do {
-        id = 'XChaCha20[' + global.generateUniqueID() + ']';
-      } while (this.instances[id] || global.objectInstances[id]);
-      
-      this.instances[id] = {
-        key: key,
-        keyBytes: this.stringToBytes(key)
-      };
-      global.objectInstances[id] = true;
-      
-      return id;
-    },
-    
-    // Encrypt block (stream cipher interface)
-    encryptBlock: function(instanceId, plaintext) {
-      if (!this.instances[instanceId]) {
-        throw new Error('Unknown XChaCha20 instance: ' + instanceId);
-      }
-      
-      const instance = this.instances[instanceId];
-      
-      // Generate random nonce for each encryption
-      const nonce = this.generateNonce();
-      const plaintextBytes = this.stringToBytes(plaintext);
-      
-      const ciphertextBytes = this.xchacha20(instance.keyBytes, nonce, plaintextBytes);
-      
-      // Prepend nonce to ciphertext for storage/transmission
-      const output = [...nonce, ...ciphertextBytes];
-      
-      return this.bytesToString(output);
-    },
-    
-    // Decrypt block (stream cipher interface)
-    decryptBlock: function(instanceId, ciphertext) {
-      if (!this.instances[instanceId]) {
-        throw new Error('Unknown XChaCha20 instance: ' + instanceId);
-      }
-      
-      const instance = this.instances[instanceId];
-      const ciphertextBytes = this.stringToBytes(ciphertext);
-      
-      if (ciphertextBytes.length < XCHACHA20_NONCE_SIZE) {
-        throw new Error('Ciphertext too short - missing nonce');
-      }
-      
-      // Extract nonce and ciphertext
-      const nonce = ciphertextBytes.slice(0, XCHACHA20_NONCE_SIZE);
-      const actualCiphertext = ciphertextBytes.slice(XCHACHA20_NONCE_SIZE);
-      
-      const plaintextBytes = this.xchacha20(instance.keyBytes, nonce, actualCiphertext);
-      
-      return this.bytesToString(plaintextBytes);
-    },
-    
-    // Clear sensitive data
-    ClearData: function(id) {
-      if (this.instances[id]) {
-        const instance = this.instances[id];
-        
-        // Clear key data
-        if (instance.keyBytes && global.OpCodes) {
-          global.OpCodes.ClearArray(instance.keyBytes);
-        }
-        
-        delete this.instances[id];
-        delete global.objectInstances[id];
-        return true;
-      }
-      return false;
-    },
-    
-    // Educational test suite
-    runTestVectors: function() {
-      console.log('Running XChaCha20 educational test suite...');
-      const results = [];
-      
-      try {
-        // Test 1: Basic encryption/decryption round-trip
-        console.log('Testing basic round-trip...');
-        const key = OpCodes.CreateArray(32, 0).map((_, i) => i);
-        const nonce = OpCodes.CreateArray(24, 0).map((_, i) => i + 100);
-        const plaintext = 'Hello XChaCha20! This is a test message.';
-        
-        const encrypted = this.encrypt(this.bytesToString(key), this.bytesToString(nonce), plaintext);
-        const decrypted = this.decrypt(this.bytesToString(key), this.bytesToString(nonce), encrypted.ciphertext);
-        
-        const roundTripSuccess = decrypted.ciphertext === plaintext;
-        
-        results.push({
-          test: 'Round-trip Encryption/Decryption',
-          success: roundTripSuccess,
-          description: 'Encrypt then decrypt produces original plaintext',
-          plaintextLength: plaintext.length,
-          ciphertextLength: encrypted.ciphertext.length
-        });
-        
-        // Test 2: HChaCha20 subkey derivation
-        console.log('Testing HChaCha20 key derivation...');
-        const testKey = OpCodes.CreateArray(32, 0x42);
-        const testNonce = OpCodes.CreateArray(16, 0x24);
-        
-        const subkey1 = this.hchacha20(testKey, testNonce);
-        const subkey2 = this.hchacha20(testKey, testNonce);
-        
-        let subkeysEqual = subkey1.length === subkey2.length;
-        for (let i = 0; subkeysEqual && i < subkey1.length; i++) {
-          if (subkey1[i] !== subkey2[i]) {
-            subkeysEqual = false;
-          }
-        }
-        
-        results.push({
-          test: 'HChaCha20 Deterministic Key Derivation',
-          success: subkeysEqual,
-          description: 'Same inputs produce same subkey',
-          subkeyLength: subkey1.length
-        });
-        
-        // Test 3: Different nonces produce different outputs
-        console.log('Testing nonce uniqueness...');
-        const nonce1 = OpCodes.CreateArray(24, 1);
-        const nonce2 = OpCodes.CreateArray(24, 2);
-        const testMessage = 'Test message for nonce uniqueness';
-        
-        const cipher1 = this.encrypt(this.bytesToString(key), this.bytesToString(nonce1), testMessage);
-        const cipher2 = this.encrypt(this.bytesToString(key), this.bytesToString(nonce2), testMessage);
-        
-        const differentOutputs = cipher1.ciphertext !== cipher2.ciphertext;
-        
-        results.push({
-          test: 'Nonce Uniqueness',
-          success: differentOutputs,
-          description: 'Different nonces produce different ciphertexts for same plaintext'
-        });
-        
-        // Test 4: Interface compatibility
-        console.log('Testing universal cipher interface...');
-        const instanceId = this.KeySetup(this.bytesToString(key));
-        const encryptedBlock = this.encryptBlock(instanceId, testMessage);
-        const decryptedBlock = this.decryptBlock(instanceId, encryptedBlock);
-        
-        const interfaceSuccess = decryptedBlock === testMessage;
-        this.ClearData(instanceId);
-        
-        results.push({
-          test: 'Universal Cipher Interface',
-          success: interfaceSuccess,
-          description: 'Block encrypt/decrypt interface works correctly'
-        });
-        
-        // Test 5: Large nonce space utilization
-        console.log('Testing large nonce space...');
-        const randomNonce1 = this.generateNonce();
-        const randomNonce2 = this.generateNonce();
-        
-        let noncesUnique = randomNonce1.length === randomNonce2.length;
-        let diffCount = 0;
-        for (let i = 0; i < Math.min(randomNonce1.length, randomNonce2.length); i++) {
-          if (randomNonce1[i] !== randomNonce2[i]) {
-            diffCount++;
-          }
-        }
-        
-        noncesUnique = diffCount > 0;
-        
-        results.push({
-          test: 'Random Nonce Generation',
-          success: noncesUnique,
-          description: 'Generated nonces are unique',
-          nonceSize: randomNonce1.length,
-          differingBytes: diffCount
-        });
-        
-        const totalTests = results.length;
-        const passedTests = results.filter(r => r.success).length;
-        
-        console.log("\nXChaCha20 test results: " + passedTests + "/" + totalTests + " passed");
-        
-        return {
-          algorithm: 'XChaCha20',
-          implementation: 'Educational extended-nonce stream cipher',
-          totalTests: totalTests,
-          passed: passedTests,
-          results: results,
-          performance: this.measurePerformance(),
-          note: 'Educational implementation demonstrating nonce extension techniques'
-        };
-        
-      } catch (error) {
-        console.error('XChaCha20 test failed:', error.message);
-        results.push({
-          test: 'Overall Test Suite',
-          success: false,
-          error: error.message
-        });
-        
-        return {
-          algorithm: 'XChaCha20',
-          totalTests: results.length,
-          passed: 0,
-          results: results,
-          error: error.message
-        };
-      }
-    },
-    
-    // Performance measurement
-    measurePerformance: function() {
-      const iterations = 100;
-      const testData = 'Performance test data for XChaCha20 encryption and decryption.'.repeat(5);
-      const key = OpCodes.CreateArray(32, 0x42);
-      const nonce = OpCodes.CreateArray(24, 0x24);
-      
-      // Test encryption performance
-      const startEnc = Date.now();
-      for (let i = 0; i < iterations; i++) {
-        this.xchacha20(key, nonce, this.stringToBytes(testData));
-      }
-      const encTime = Date.now() - startEnc;
-      
-      // Test HChaCha20 performance
-      const hchacha20Nonce = nonce.slice(0, 16);
-      const startHC = Date.now();
-      for (let i = 0; i < iterations; i++) {
-        this.hchacha20(key, hchacha20Nonce);
-      }
-      const hcTime = Date.now() - startHC;
-      
-      const bytesProcessed = testData.length * iterations;
-      
-      return {
-        iterations: iterations,
-        encryptionTimeMs: encTime,
-        hchacha20TimeMs: hcTime,
-        bytesProcessed: bytesProcessed,
-        throughputMBps: (bytesProcessed / 1024 / 1024) / (encTime / 1000),
-        encryptionsPerSecond: Math.round((iterations * 1000) / encTime),
-        keyDerivationsPerSecond: Math.round((iterations * 1000) / hcTime)
-      };
-    },
-    
-    // Create instance for testing framework
-    CreateInstance: function(isDecrypt) {
-      const instance = {
-        _key: null,
-        _nonce: null,
-        _inputData: [],
-        
-        set key(keyData) {
-          this._key = keyData;
-        },
-        
-        set nonce(nonceData) {
-          this._nonce = nonceData;
-        },
-        
-        Feed: function(data) {
-          if (Array.isArray(data)) {
-            this._inputData = this._inputData.concat(data);
-          } else if (typeof data === 'string') {
-            for (let i = 0; i < data.length; i++) {
-              this._inputData.push(data.charCodeAt(i));
-            }
-          }
-        },
-        
-        Result: function() {
-          if (!this._key) {
-            this._key = OpCodes.Hex8ToBytes('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef');
-          }
-          if (!this._nonce) {
-            this._nonce = OpCodes.Hex8ToBytes('000102030405060708090a0b0c0d0e0f1011121314151617');
-          }
-          
-          return XChaCha20.xchacha20(this._key, this._nonce, this._inputData, 0);
-        }
-      };
-      
-      return instance;
     }
-  };
-  
-  // Educational information
-  XChaCha20.educationalInfo = {
-    overview: 'XChaCha20 extends ChaCha20 with 192-bit nonces, eliminating birthday bound concerns and simplifying secure implementation.',
-    keyFeatures: [
-      '192-bit nonces (3x larger than ChaCha20)',
-      'HChaCha20 key derivation for subkey generation',
-      'No nonce reuse concerns with random nonces',
-      'Compatible with ChaCha20 core operations',
-      'Practical solution for real-world applications'
-    ],
-    advantages: {
-      'Large nonce space': '2^192 possible nonces eliminate collision concerns',
-      'Simplified usage': 'Random nonces can be safely used without counters',
-      'Better security': 'Resistant to nonce reuse attacks',
-      'Practical engineering': 'Solves real-world cryptographic implementation challenges'
-    },
-    technicalDetails: {
-      'Key derivation': 'HChaCha20 derives 256-bit subkeys from 256-bit master keys',
-      'Nonce structure': 'First 16 bytes for HChaCha20, last 8 bytes for ChaCha20',
-      'Performance': 'Minimal overhead compared to ChaCha20',
-      'Compatibility': 'Based on proven ChaCha20 core operations'
-    },
-    usageExample: `
-      // Simple encryption with random nonce
-      const key = 'Your 32-byte secret key goes here!!';
-      const plaintext = 'Confidential message';
-      
-      // Generate secure random nonce
-      const nonce = XChaCha20.generateNonce();
-      
-      // Encrypt
-      const encrypted = XChaCha20.encrypt(key, XChaCha20.bytesToString(nonce), plaintext);
-      
-      // Decrypt
-      const decrypted = XChaCha20.decrypt(key, XChaCha20.bytesToString(nonce), encrypted.ciphertext);
-      
-      console.log('Original:', plaintext);
-      console.log('Decrypted:', decrypted.ciphertext);
-    `,
-    securityNotes: [
-      'Use cryptographically secure random nonce generation',
-      '192-bit nonces eliminate birthday bound concerns',
-      'Never reuse nonces with the same key (though unlikely with random nonces)',
-      'This implementation is educational only - use proven libraries for production'
-    ],
-    practicalBenefits: [
-      'Database encryption with deterministic nonces from record IDs',
-      'File encryption without nonce management complexity',
-      'Network protocols with simple nonce handling',
-      'Applications requiring many encryptions per key'
-    ],
 
-    // Create instance for testing framework
-    CreateInstance: function(isDecrypt) {
-      return {
-        _instance: null,
-        _inputData: [],
-        
-        set key(keyData) {
-          this._key = keyData;
-        },
-        
-        set keySize(size) {
-          this._keySize = size;
-        },
-        
-        set nonce(nonceData) {
-          this._nonce = nonceData;
-        },
-        
-        Feed: function(data) {
-          if (Array.isArray(data)) {
-            this._inputData = data.slice();
-          } else if (typeof data === 'string') {
-            this._inputData = [];
-            for (let i = 0; i < data.length; i++) {
-              this._inputData.push(data.charCodeAt(i));
-            }
-          }
-        },
-        
-        Result: function() {
-          if (!this._inputData || this._inputData.length === 0) {
-            return [];
-          }
-          
-          if (!this._key) {
-            this._key = OpCodes.CreateArray(32, 0);
-          }
-          if (!this._nonce) {
-            this._nonce = OpCodes.CreateArray(24, 0);
-          }
-          
-          const keyStr = String.fromCharCode.apply(null, this._key);
-          const nonceStr = String.fromCharCode.apply(null, this._nonce);
-          const inputStr = String.fromCharCode.apply(null, this._inputData);
-          
-          const result = XChaCha20.encrypt(keyStr, nonceStr, inputStr);
-          return XChaCha20.stringToBytes(result.ciphertext);
-        }
-      };
+    /**
+     * ChaCha20 quarter-round on a state in place
+     * @param {uint32[]} state - 16-word state
+     * @param {int32} a - Word index
+     * @param {int32} b - Word index
+     * @param {int32} c - Word index
+     * @param {int32} d - Word index
+     */
+    _quarterRound(state, a, b, c, d) {
+      state[a] = OpCodes.Add32(state[a], state[b]);
+      state[d] = OpCodes.RotL32(OpCodes.Xor32(state[d], state[a]), 16);
+
+      state[c] = OpCodes.Add32(state[c], state[d]);
+      state[b] = OpCodes.RotL32(OpCodes.Xor32(state[b], state[c]), 12);
+
+      state[a] = OpCodes.Add32(state[a], state[b]);
+      state[d] = OpCodes.RotL32(OpCodes.Xor32(state[d], state[a]), 8);
+
+      state[c] = OpCodes.Add32(state[c], state[d]);
+      state[b] = OpCodes.RotL32(OpCodes.Xor32(state[b], state[c]), 7);
     }
-  };
-  
-  // Auto-register with AlgorithmFramework if available
-  if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
-    global.AlgorithmFramework.RegisterAlgorithm(XChaCha20);
-  }
-  
-  // Legacy registration
-  if (typeof global.RegisterAlgorithm === 'function') {
-    global.RegisterAlgorithm(XChaCha20);
-  }
-  
-  // Auto-register with universal cipher system
-  if (global.Cipher && typeof global.Cipher.AddCipher === 'function') {
-    global.Cipher.AddCipher(XChaCha20);
-  }
-  
-  // Auto-register with Cipher system if available
-  if (global.Cipher && typeof global.Cipher.Add === 'function') {
-    global.Cipher.Add(XChaCha20);
-  }
-  
-  // Export to global scope
-  global.XChaCha20 = XChaCha20;
-  
-  // Node.js module export
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = XChaCha20;
-  }
-  
-})(typeof global !== 'undefined' ? global : typeof window !== 'undefined' ? window : this);
 
-// Self-test if run directly in Node.js
-if (typeof require !== 'undefined' && require.main === module) {
-  console.log('XChaCha20 Extended-Nonce Stream Cipher - Educational Implementation');
-  console.log('='.repeat(70));
-  console.log('draft-irtf-cfrg-xchacha specification');
-  console.log('192-bit nonces with HChaCha20 key derivation');
-  console.log('');
-  
-  const XChaCha20 = module.exports;
-  const testResults = XChaCha20.runTestVectors();
-  
-  console.log('\nTest Results Summary:');
-  console.log("Total tests: " + testResults.totalTests);
-  console.log("Passed: " + testResults.passed);
-  console.log("Failed: " + (testResults.totalTests - testResults.passed));
-  
-  if (testResults.performance) {
-    console.log('\nPerformance Results:');
-    console.log("Throughput: " + (testResults.performance.throughputMBps.toFixed(2)) + " MB/s");
-    console.log("Encryptions/sec: " + testResults.performance.encryptionsPerSecond);
-    console.log("Key derivations/sec: " + testResults.performance.keyDerivationsPerSecond);
+    /**
+     * 20 rounds (10 column/diagonal double rounds) in place
+     * @param {uint32[]} state - 16-word state
+     */
+    _rounds(state) {
+      for (let round = 0; round < 10; round++) {
+        this._quarterRound(state, 0, 4, 8, 12);
+        this._quarterRound(state, 1, 5, 9, 13);
+        this._quarterRound(state, 2, 6, 10, 14);
+        this._quarterRound(state, 3, 7, 11, 15);
+
+        this._quarterRound(state, 0, 5, 10, 15);
+        this._quarterRound(state, 1, 6, 11, 12);
+        this._quarterRound(state, 2, 7, 8, 13);
+        this._quarterRound(state, 3, 4, 9, 14);
+      }
+    }
+
+    /**
+     * State words 0-11: constants and key
+     * @param {uint8[]} key - 32-byte key
+     * @returns {uint32[]} 16-word state with words 12-15 still zero
+     */
+    _initialState(key) {
+      /** @type {uint32[]} */
+      const words = new Array(16);
+      for (let i = 0; i < 4; i++) {
+        words[i] = CHACHA20_CONSTANTS[i];
+      }
+      for (let i = 0; i < 8; i++) {
+        words[4 + i] = OpCodes.Pack32LE(key[i * 4], key[i * 4 + 1], key[i * 4 + 2], key[i * 4 + 3]);
+      }
+      for (let i = 12; i < 16; i++) {
+        words[i] = 0;
+      }
+      return words;
+    }
+
+    /**
+     * HChaCha20: 32-byte subkey from the key and a 16-byte nonce
+     * @param {uint8[]} key - 32-byte key
+     * @param {uint8[]} nonce - 16-byte nonce
+     * @returns {uint8[]} 32-byte subkey (state words 0-3 and 12-15)
+     */
+    _hchacha20(key, nonce) {
+      /** @type {uint32[]} */
+      const state = this._initialState(key);
+      for (let i = 0; i < 4; i++) {
+        state[12 + i] = OpCodes.Pack32LE(nonce[i * 4], nonce[i * 4 + 1], nonce[i * 4 + 2], nonce[i * 4 + 3]);
+      }
+
+      this._rounds(state);
+
+      /** @type {uint8[]} */
+      const subkey = [];
+      for (let i = 0; i < 4; i++) {
+        const low = OpCodes.Unpack32LE(state[i]);
+        subkey.push(low[0]);
+        subkey.push(low[1]);
+        subkey.push(low[2]);
+        subkey.push(low[3]);
+      }
+      for (let i = 0; i < 4; i++) {
+        const high = OpCodes.Unpack32LE(state[12 + i]);
+        subkey.push(high[0]);
+        subkey.push(high[1]);
+        subkey.push(high[2]);
+        subkey.push(high[3]);
+      }
+      return subkey;
+    }
+
+    /**
+     * One 64-byte ChaCha20 keystream block
+     * @param {uint8[]} key - 32-byte key
+     * @param {uint32} counter - Block counter
+     * @param {uint8[]} nonce - 12-byte nonce
+     * @returns {uint8[]} 64 keystream bytes
+     */
+    _chacha20Block(key, counter, nonce) {
+      /** @type {uint32[]} */
+      const state = this._initialState(key);
+      state[12] = counter;
+      for (let i = 0; i < 3; i++) {
+        state[13 + i] = OpCodes.Pack32LE(nonce[i * 4], nonce[i * 4 + 1], nonce[i * 4 + 2], nonce[i * 4 + 3]);
+      }
+
+      /** @type {uint32[]} */
+      const working = state.slice(0);
+      this._rounds(working);
+
+      /** @type {uint8[]} */
+      const keystream = [];
+      for (let i = 0; i < 16; i++) {
+        /** @type {uint32} */
+        const sum = OpCodes.Add32(working[i], state[i]);
+        const bytes = OpCodes.Unpack32LE(sum);
+        keystream.push(bytes[0]);
+        keystream.push(bytes[1]);
+        keystream.push(bytes[2]);
+        keystream.push(bytes[3]);
+      }
+      return keystream;
+    }
   }
-  
-  if (testResults.passed === testResults.totalTests) {
-    console.log('\n✓ All tests passed! XChaCha20 implementation appears functional.');
-  } else {
-    console.log('\n✗ Some tests failed. Review implementation.');
+
+  // ===== REGISTRATION =====
+
+  const algorithmInstance = new XChaCha20Algorithm();
+  if (!AlgorithmFramework.Find(algorithmInstance.name)) {
+    RegisterAlgorithm(algorithmInstance);
   }
-  
-  console.log('\n' + '='.repeat(70));
-  console.log('EDUCATIONAL NOTE:');
-  console.log('This XChaCha20 implementation demonstrates nonce extension techniques.');
-  console.log('Shows how HChaCha20 key derivation solves practical cryptographic problems.');
-  console.log('Use certified libraries for production applications.');
-}
+
+  // ===== EXPORTS =====
+
+  return { XChaCha20Algorithm, XChaCha20Instance };
+}));

@@ -54,7 +54,7 @@
   if (typeof global !== 'undefined') return global;
   if (typeof self !== 'undefined') return self;
   throw new Error('Unable to locate global object');
-})(), function (AlgorithmFramework, OpCodes, SlhDsaShared) {
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
   if (!AlgorithmFramework) {
@@ -65,17 +65,33 @@
     throw new Error('OpCodes dependency is required');
   }
 
-  if (!SlhDsaShared || !SlhDsaShared.SlhDsaEngine) {
-    throw new Error('SPHINCS+ requires slh-dsa.js, which carries the shared hypertree engine');
-  }
-
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           AsymmetricCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize,
           Vulnerability } = AlgorithmFramework;
 
-  const SlhDsaEngine = SlhDsaShared.SlhDsaEngine;
-  /** @type {SlhDsaProfile} */
-  const SPHINCS_ROUND3_PROFILE = SlhDsaShared.SPHINCS_ROUND3_PROFILE;
+  /** @type {SlhDsaAlgorithm|null} */
+  let slhDsaAlgorithm = null;
+
+  /**
+   * The registered SLH-DSA algorithm, which carries the hypertree engine this
+   * file shares. Under Node a missing registration loads slh-dsa.js.
+   * @returns {SlhDsaAlgorithm} the algorithm
+   */
+  function SlhDsa() {
+    if (slhDsaAlgorithm) return slhDsaAlgorithm;
+    slhDsaAlgorithm = AlgorithmFramework.Find('SLH-DSA');
+    if (!slhDsaAlgorithm && typeof require !== 'undefined') {
+      try {
+        require('./slh-dsa.js');
+      } catch (e) {
+        // Reported as a missing dependency below.
+      }
+      slhDsaAlgorithm = AlgorithmFramework.Find('SLH-DSA');
+    }
+    if (!slhDsaAlgorithm)
+      throw new Error('SPHINCS+ requires slh-dsa.js, which carries the shared hypertree engine');
+    return slhDsaAlgorithm;
+  }
 
   //#region ===== PARAMETER SETS =====
 
@@ -216,23 +232,29 @@
   /** @type {string[]} */
   const MODERN_FAMILY_NAMES = ['SHA2', 'SHAKE'];
 
-  const PARAMETER_SETS = {};
-  // v3.1 of the specification renamed the hash families, dropping the digest
-  // size that was never a choice. Both spellings are accepted so that a caller
-  // working from either document finds the set it asks for.
-  const ALIASES = {};
+  // Every size under every family, size by size: the round-3 name, the v3.1
+  // name and the parameters at the same index. v3.1 of the specification
+  // renamed the hash families, dropping the digest size that was never a
+  // choice. Both spellings are accepted so that a caller working from either
+  // document finds the set it asks for.
+  /** @type {string[]} */
+  const SET_NAMES = [];
+  /** @type {string[]} */
+  const SET_ALIASES = [];
+  /** @type {SphincsBaseParams[]} */
+  const SET_LIST = [];
 
   /**
-   * Fill PARAMETER_SETS and ALIASES with every size under every family.
+   * Fill SET_NAMES, SET_ALIASES and SET_LIST.
    * @returns {void}
    */
   function BuildParameterSets() {
     for (let s = 0; s < SHAPE_SIZES.length; ++s) {
       const size = SHAPE_SIZES[s];
       for (let f = 0; f < FAMILIES.length; ++f) {
-        const name = 'SPHINCS+-' + LEGACY_FAMILY_NAMES[f] + '-' + size + '-simple';
-        PARAMETER_SETS[name] = new SphincsBaseParams(4, FAMILIES[f], SHAPES[s]);
-        ALIASES['SPHINCS+-' + MODERN_FAMILY_NAMES[f] + '-' + size + '-simple'] = name;
+        SET_NAMES.push('SPHINCS+-' + LEGACY_FAMILY_NAMES[f] + '-' + size + '-simple');
+        SET_ALIASES.push('SPHINCS+-' + MODERN_FAMILY_NAMES[f] + '-' + size + '-simple');
+        SET_LIST.push(new SphincsBaseParams(4, FAMILIES[f], SHAPES[s]));
       }
     }
   }
@@ -240,18 +262,23 @@
   BuildParameterSets();
 
   /**
+   * The index of a parameter set, under either spelling.
+   * @param {string} name - a parameter set name
+   * @returns {int32} its index in SET_LIST
+   */
+  function SetIndex(name) {
+    for (let i = 0; i < SET_NAMES.length; ++i)
+      if (SET_NAMES[i] === name || SET_ALIASES[i] === name) return i;
+    throw new Error('Unknown SPHINCS+ parameter set: ' + name);
+  }
+
+  /**
    * The round-3 name of a parameter set, under either spelling.
    * @param {string} name - a parameter set name
    * @returns {string} the round-3 name
    */
   function CanonicalName(name) {
-    if (PARAMETER_SETS[name]) return name;
-    if (ALIASES[name]) {
-      /** @type {string} */
-      const canonical = ALIASES[name];
-      return canonical;
-    }
-    throw new Error('Unknown SPHINCS+ parameter set: ' + name);
+    return SET_NAMES[SetIndex(name)];
   }
 
   /**
@@ -260,35 +287,10 @@
    * @returns {SphincsParams} the derived parameters
    */
   function DeriveParameters(name) {
-    const canonical = CanonicalName(name);
-    /** @type {SphincsBaseParams} */
-    const base = PARAMETER_SETS[canonical];
-    if (!(base instanceof SphincsBaseParams)) return DeriveFromInheritedEntry(canonical);
+    const index = SetIndex(name);
+    const canonical = SET_NAMES[index];
+    const base = SET_LIST[index];
     const p = new SphincsParams(base);
-    p.name = canonical;
-    p.w = Math.pow(2, p.lgw);
-    p.len1 = Math.ceil((8 * p.n) / p.lgw);
-    p.len2 = Math.floor(Math.log2(p.len1 * (p.w - 1)) / p.lgw) + 1;
-    p.len = p.len1 + p.len2;
-    p.publicKeyBytes = 2 * p.n;
-    p.privateKeyBytes = 4 * p.n;
-    p.signatureBytes = p.n * (1 + p.k * (p.a + 1) + p.d * (p.len + p.hp));
-    p.mdBytes = Math.ceil((p.k * p.a) / 8);
-    p.treeIdxBytes = Math.ceil((p.h - p.hp) / 8);
-    p.leafIdxBytes = Math.ceil(p.hp / 8);
-    return p;
-  }
-
-  /**
-   * DeriveParameters for a name that matches only an inherited property of
-   * the table, such as 'constructor'. Such a name has always been accepted
-   * and produced a plain copy without the base fields, so it keeps the plain
-   * copy here rather than the class, which would add those fields.
-   * @param {string} canonical - the name as CanonicalName accepted it
-   * @returns {SphincsParams} the derived quantities, not a usable parameter set
-   */
-  function DeriveFromInheritedEntry(canonical) {
-    const p = Object.assign({}, PARAMETER_SETS[canonical]);
     p.name = canonical;
     p.w = Math.pow(2, p.lgw);
     p.len1 = Math.ceil((8 * p.n) / p.lgw);
@@ -557,7 +559,10 @@
       this.optRand = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
-      this._engines = {};
+      /** @type {SlhDsaEngine[]} engines built so far, one per parameter set */
+      this._engines = [];
+      /** @type {string[]} the round-3 names of those parameter sets */
+      this._engineNames = [];
     }
 
     /**
@@ -587,12 +592,13 @@
      */
     _engine() {
       const canonical = CanonicalName(this.parameterSet);
-      /** @type {SlhDsaEngine} */
-      let engine = this._engines[canonical];
-      if (!engine) {
-        engine = new SlhDsaEngine(DeriveParameters(canonical), SPHINCS_ROUND3_PROFILE);
-        this._engines[canonical] = engine;
+      for (let i = 0; i < this._engineNames.length; ++i) {
+        if (this._engineNames[i] === canonical) return this._engines[i];
       }
+      /** @type {SlhDsaEngine} */
+      const engine = SlhDsa().CreateEngine(DeriveParameters(canonical), true);
+      this._engines.push(engine);
+      this._engineNames.push(canonical);
       return engine;
     }
 
@@ -677,6 +683,19 @@
     SphincsPlusAlgorithm,
     SphincsPlusInstance,
     DeriveParameters,
-    PARAMETER_SETS
+    PARAMETER_SETS: {
+      'SPHINCS+-SHA-256-128s-simple':   SET_LIST[0],
+      'SPHINCS+-SHAKE-256-128s-simple': SET_LIST[1],
+      'SPHINCS+-SHA-256-128f-simple':   SET_LIST[2],
+      'SPHINCS+-SHAKE-256-128f-simple': SET_LIST[3],
+      'SPHINCS+-SHA-256-192s-simple':   SET_LIST[4],
+      'SPHINCS+-SHAKE-256-192s-simple': SET_LIST[5],
+      'SPHINCS+-SHA-256-192f-simple':   SET_LIST[6],
+      'SPHINCS+-SHAKE-256-192f-simple': SET_LIST[7],
+      'SPHINCS+-SHA-256-256s-simple':   SET_LIST[8],
+      'SPHINCS+-SHAKE-256-256s-simple': SET_LIST[9],
+      'SPHINCS+-SHA-256-256f-simple':   SET_LIST[10],
+      'SPHINCS+-SHAKE-256-256f-simple': SET_LIST[11]
+    }
   };
 }));

@@ -86,7 +86,8 @@
   // hashes, both chosen by the security level. The collection's FIPS 202
   // modules already agree with the published digests, so they are reused.
 
-  const hashAlgorithms = {};
+  const HASH_CACHE = new Map();
+  let hashesLoaded = false;
 
   /**
    * Resolve one of the collection's Keccak algorithms by name.
@@ -102,11 +103,15 @@
    * @returns {Algorithm} the algorithm
    */
   function findHash(name) {
-    if (hashAlgorithms[name]) return hashAlgorithms[name];
+    /** @type {Algorithm} */
+    const cached = HASH_CACHE.get(name);
+    if (cached) return cached;
 
-    let found = AlgorithmFramework.Find ? AlgorithmFramework.Find(name) : null;
+    /** @type {Algorithm} */
+    let found = AlgorithmFramework.Find(name);
 
-    if (!found && typeof require !== 'undefined') {
+    if (!found && !hashesLoaded && typeof require !== 'undefined') {
+      hashesLoaded = true;
       for (const module of ['sha3', 'shake']) {
         try {
           require('../hash/' + module + '.js');
@@ -114,11 +119,11 @@
           // already loaded, or a bundler without CommonJS
         }
       }
-      found = AlgorithmFramework.Find ? AlgorithmFramework.Find(name) : null;
+      found = AlgorithmFramework.Find(name);
     }
 
     if (!found) throw new Error(name + ' is required by PERK and was not found');
-    hashAlgorithms[name] = found;
+    HASH_CACHE.set(name, found);
     return found;
   }
 
@@ -129,10 +134,13 @@
    * @returns {uint8[]} the digest
    */
   function sha3(name, data) {
+    /** @type {IHashFunctionInstance} */
     const instance = findHash(name).CreateInstance();
     instance.Feed(data);
     /** @type {uint8[]} */
-    const digest = Array.from(instance.Result());
+    const result = instance.Result();
+    /** @type {uint8[]} */
+    const digest = Array.from(result);
     return digest;
   }
 
@@ -420,7 +428,7 @@
      * @param {int32} t - how many x vectors
      * @param {int32} tau - rounds
      * @param {int32} N - shares per round
-     * @param {int32} permBits - packed width of two coefficients, fast sets only
+     * @param {int32} permBits - packed width of two coefficients, zero for the ranked sets
      * @param {boolean} ranked - whether the opened permutation is ranked
      */
     constructor(name, security, n1, m, t, tau, N, permBits, ranked) {
@@ -510,70 +518,56 @@
   // Two permutation coefficients share one field of permBits bits, written as
   // c1 * radix + c0. Fourteen bits is the one case where the two halves are
   // simply seven bits each, which is the same rule with a radix of 128.
-  const PERM_RADIX = { 13: 90, 14: 128, 15: 181 };
-
   /**
-   * The radix for a packed width, undefined for the ranked sets.
-   * @param {int32} permBits - the packed width
+   * The radix for a packed width, zero for the ranked sets.
+   * @param {int32} permBits - the packed width, zero for the ranked sets
    * @returns {int32} the radix
    */
   function PermRadix(permBits) {
-    /** @type {int32} */
-    const radix = PERM_RADIX[permBits];
-    return radix;
+    switch (permBits) {
+      case 13: return 90;
+      case 14: return 128;
+      case 15: return 181;
+      default: return 0;
+    }
   }
 
   /** @type {PerkParams[]} */
   const PARAMETER_SET_LIST = [
     new PerkParams('perk-128-fast-3',  16, 79,  35, 3, 30, 32,  13, false),
     new PerkParams('perk-128-fast-5',  16, 83,  36, 5, 28, 32,  13, false),
-    new PerkParams('perk-128-short-3', 16, 79,  35, 3, 20, 256, undefined, true),
-    new PerkParams('perk-128-short-5', 16, 83,  36, 5, 18, 256, undefined, true),
+    new PerkParams('perk-128-short-3', 16, 79,  35, 3, 20, 256, 0,  true),
+    new PerkParams('perk-128-short-5', 16, 83,  36, 5, 18, 256, 0,  true),
     new PerkParams('perk-192-fast-3',  24, 112, 54, 3, 46, 32,  14, false),
     new PerkParams('perk-192-fast-5',  24, 116, 55, 5, 43, 32,  14, false),
-    new PerkParams('perk-192-short-3', 24, 112, 54, 3, 31, 256, undefined, true),
-    new PerkParams('perk-192-short-5', 24, 116, 55, 5, 28, 256, undefined, true),
+    new PerkParams('perk-192-short-3', 24, 112, 54, 3, 31, 256, 0,  true),
+    new PerkParams('perk-192-short-5', 24, 116, 55, 5, 28, 256, 0,  true),
     new PerkParams('perk-256-fast-3',  32, 146, 75, 3, 61, 32,  15, false),
     new PerkParams('perk-256-fast-5',  32, 150, 76, 5, 57, 32,  15, false),
-    new PerkParams('perk-256-short-3', 32, 146, 75, 3, 41, 256, undefined, true),
-    new PerkParams('perk-256-short-5', 32, 150, 76, 5, 37, 256, undefined, true)
+    new PerkParams('perk-256-short-3', 32, 146, 75, 3, 41, 256, 0,  true),
+    new PerkParams('perk-256-short-5', 32, 150, 76, 5, 37, 256, 0,  true)
   ];
 
-  const PARAMETER_SETS = {
-    'perk-128-fast-3': PARAMETER_SET_LIST[0],
-    'perk-128-fast-5': PARAMETER_SET_LIST[1],
-    'perk-128-short-3': PARAMETER_SET_LIST[2],
-    'perk-128-short-5': PARAMETER_SET_LIST[3],
-    'perk-192-fast-3': PARAMETER_SET_LIST[4],
-    'perk-192-fast-5': PARAMETER_SET_LIST[5],
-    'perk-192-short-3': PARAMETER_SET_LIST[6],
-    'perk-192-short-5': PARAMETER_SET_LIST[7],
-    'perk-256-fast-3': PARAMETER_SET_LIST[8],
-    'perk-256-fast-5': PARAMETER_SET_LIST[9],
-    'perk-256-short-3': PARAMETER_SET_LIST[10],
-    'perk-256-short-5': PARAMETER_SET_LIST[11]
-  };
-
   /**
-   * The table entry under a name. A plain property read, so a name is
-   * accepted exactly when the table has a truthy property of it.
+   * The parameter set registered under exactly this name.
    * @param {string} name - the name
-   * @returns {PerkParams} the entry, or a falsy value
+   * @returns {PerkParams|null} the parameter set, or null
    */
   function ParameterSetEntry(name) {
-    /** @type {PerkParams} */
-    const entry = PARAMETER_SETS[name];
-    return entry;
+    for (let i = 0; i < PARAMETER_SET_LIST.length; i++) {
+      if (PARAMETER_SET_LIST[i].name === name) return PARAMETER_SET_LIST[i];
+    }
+    return null;
   }
 
   /**
    * Look up a parameter set by name, tolerating the spellings people use.
-   * @param {string|int32} label - a set name
+   * @param {string} label - a set name
    * @returns {PerkParams|null} the parameter set
    */
   function findParameterSet(label) {
     /** @type {string} */
-    const text = String(label).trim();
+    const text = label.trim();
     const exact = ParameterSetEntry(text);
     if (exact) return exact;
 
@@ -782,6 +776,7 @@
    * @returns {uint8[]} Result
    */
   function toLittleEndian16(values) {
+    /** @type {uint8[]} */
     const out = new Array(values.length * 2);
     for (let i = 0; i < values.length; i++) {
       out[2 * i] = values[i] % 256;
@@ -878,7 +873,9 @@
    * @returns {uint8[]} the bytes
    */
   function GeneratorBytes(generator, count) {
-    return generator.stream.Squeeze(count);
+    /** @type {uint8[]} */
+    const bytes = generator.stream.Squeeze(count);
+    return bytes;
   }
 
   /**
@@ -887,8 +884,9 @@
    * @returns {int32} the word
    */
   function GeneratorWord16(generator) {
+    /** @type {uint8[]} */
     const pair = generator.stream.Squeeze(2);
-    return pair[0] + 256 * pair[1];
+    return OpCodes.Pack16LE(pair[0], pair[1]);
   }
 
   /**
@@ -930,18 +928,19 @@
     /** @type {int32[]} */
     const order = new Array(keys.length);
     for (let i = 0; i < keys.length; i++) order[i] = i;
-    /**
-     * By key, ties by index; the keys are 16 bit words, so a zero difference
-     * is the only falsy one.
-     * @param {int32} a - left index
-     * @param {int32} b - right index
-     * @returns {int32} negative, zero or positive
-     */
-    function CompareKeys(a, b) {
-      const difference = keys[a] - keys[b];
-      return difference !== 0 ? difference : a - b;
-    }
-    order.sort(CompareKeys);
+    // By key, ties by index; the keys are 16 bit words, so a zero difference
+    // is the only falsy one.
+    order.sort(
+      /**
+       * @param {int32} a - left index
+       * @param {int32} b - right index
+       * @returns {int32} negative, zero or positive
+       */
+      function (a, b) {
+        /** @type {int32} */
+        const difference = keys[a] - keys[b];
+        return difference !== 0 ? difference : a - b;
+      });
     return order;
   }
 
@@ -1083,10 +1082,13 @@
       code = code * BigInt(P.n1 - i) + BigInt(digit);
     }
 
+    /** @type {uint8[]} */
     const out = new Array(P.rankedBytes);
     let rest = code;
     for (let i = 0; i < P.rankedBytes; i++) {
-      out[i] = Number(OpCodes.AndN(rest, 0xFFn));
+      /** @type {uint8} */
+      const low = Number(OpCodes.AndN(rest, 0xFFn));
+      out[i] = low;
       rest = OpCodes.ShiftRn(rest, 8);
     }
     return out;
@@ -1104,13 +1106,17 @@
     for (let i = P.rankedBytes - 1; i >= 0; i--) {
       code = OpCodes.OrN(OpCodes.ShiftLn(code, 8), BigInt(OpCodes.And8(bytes[offset + i], 0xFF)));
     }
-    if (code >= P.factorials[P.n1]) return null;
+    if (code >= P.factorials[P.n1]) {
+      return null;
+    }
 
     /** @type {int32[]} */
     const digits = new Array(P.n1);
     for (let i = 0; i < P.n1; i++) {
       const radix = P.factorials[P.n1 - 1 - i];
-      digits[i] = Number(code / radix);
+      /** @type {int32} */
+      const digit = Number(code / radix);
+      digits[i] = digit;
       code = code % radix;
     }
 
@@ -1121,6 +1127,7 @@
       for (let j = 0; j < width; j++) counts[width + j - 1] = Math.pow(2, P.rankBits - level);
     }
 
+    /** @type {int32[]} */
     const out = new Array(P.n1);
     for (let i = 0; i < P.n1; i++) {
       let digit = digits[i];
@@ -1162,6 +1169,7 @@
    * @returns {int32[]} Result
    */
   function vectorAdd(a, b) {
+    /** @type {int32[]} */
     const out = new Array(a.length);
     for (let i = 0; i < a.length; i++) {
       const s = a[i] + b[i];
@@ -1177,6 +1185,7 @@
    * @returns {int32[]} Result
    */
   function vectorSubtract(a, b) {
+    /** @type {int32[]} */
     const out = new Array(a.length);
     for (let i = 0; i < a.length; i++) {
       const d = a[i] - b[i];
@@ -1206,6 +1215,7 @@
    * @returns {int32[]} Result
    */
   function matrixVectorMultiply(H, v, P) {
+    /** @type {int32[]} */
     const out = new Array(P.m);
     for (let i = 0; i < P.m; i++) {
       let accumulator = 0;
@@ -1307,6 +1317,7 @@
    */
   function sampleBlockwise(generator, count, P) {
     const wordsPerBlock = Math.floor(P.shakeRate / 2);
+    /** @type {int32[]} */
     const out = new Array(count);
     let produced = 0;
 
@@ -1314,7 +1325,7 @@
       const block = GeneratorBytes(generator, P.shakeRate);
       let word = 0;
       while (produced < count && word < wordsPerBlock) {
-        const candidate = OpCodes.And16(block[2 * word] + 256 * block[2 * word + 1], 0x3FF);
+        const candidate = OpCodes.And16(OpCodes.Pack16LE(block[2 * word], block[2 * word + 1]), 0x3FF);
         word++;
         if (candidate < PARAM_Q) out[produced++] = candidate;
       }
@@ -1398,6 +1409,7 @@
    * @returns {uint8[][]} one seed per level
    */
   function siblingSeeds(tree, alpha, P) {
+    /** @type {uint8[][]} */
     const out = new Array(P.treeLevels);
     for (let i = 0; i < P.treeLevels; i++) {
       const levelStart = Math.pow(2, i + 1) - 1;
@@ -1430,6 +1442,7 @@
 
       const to = 2 * i + 1;
       const missing = Math.floor(alpha / Math.pow(2, P.treeLevels - level));
+      /** @type {int32} */
       const isRight = 1 - OpCodes.And8(Math.floor(alpha / Math.pow(2, P.treeLevels - 1 - level)), 1);
 
       if (position === missing) {
@@ -1520,6 +1533,7 @@
    * @returns {uint8[][]} the N commitments, reversed
    */
   function commitToShares(salt, round, tree, firstShare, P) {
+    /** @type {uint8[][]} */
     const out = new Array(P.N);
     const offset = leafOffset(P);
 
@@ -1585,7 +1599,7 @@
     const seed = bytes.slice(0, P.seedBytes);
     /** @type {int32[][]} */
     const y = new Array(P.t);
-    for (let i = 0; i < P.t; i++) y[i] = new Array(P.m);
+    for (let i = 0; i < P.t; i++) y[i] = zeros(P.m);
 
     for (let i = 0; i < P.m * P.t; i++) {
       const value = getBits(bytes, P.seedBytes, i, PARAM_Q_BITS);
@@ -1614,11 +1628,14 @@
     // a digest, so the second half never reaches the sponge; reproducing the
     // published challenges means reproducing that truncation.
     const generator = makeGenerator(P, DOMAIN_PRG1, null, h1.slice(0, P.seedBytes));
+    /** @type {int32[][]} */
     const out = new Array(P.tau);
 
     for (let i = 0; i < P.tau; i++) {
-      let kappa;
-      let nonZero;
+      /** @type {int32[]} */
+      let kappa = [];
+      /** @type {uint16} */
+      let nonZero = 0;
       do {
         kappa = new Array(P.t);
         nonZero = 0;
@@ -1645,7 +1662,11 @@
     const generator = makeGenerator(P, DOMAIN_PRG1, null, h2.slice(0, P.seedBytes));
     /** @type {int32[]} */
     const out = new Array(P.tau);
-    for (let i = 0; i < P.tau; i++) out[i] = OpCodes.And16(GeneratorWord16(generator), P.nMask) + 1;
+    for (let i = 0; i < P.tau; i++) {
+      /** @type {int32} */
+      const index = OpCodes.And16(GeneratorWord16(generator), P.nMask) + 1;
+      out[i] = index;
+    }
     return out;
   }
 
@@ -1802,7 +1823,9 @@
     }
 
     const publicKey = decodePublicKey(publicKeyBytes, P);
-    if (!publicKey) return false;
+    if (!publicKey) {
+      return false;
+    }
 
     /** @type {PerkRound[]} */
     const rounds = new Array(P.tau);
@@ -1865,6 +1888,7 @@
    * @returns {uint8[]} the encoded signature
    */
   function encodeSignature(salt, h1, h2, responses, P) {
+    /** @type {uint8[]} */
     const out = [];
     appendAll(out, salt);
     appendAll(out, h1);
@@ -1925,7 +1949,11 @@
         z2Seeds[j] = bytes.slice(offset, offset + P.seedBytes);
         offset += P.seedBytes;
       }
-      responses[i] = new PerkResponse(commitment, z2Seeds, new Array(P.n1), new Array(P.n1));
+      /** @type {int32[]} */
+      const z1 = new Array(P.n1);
+      /** @type {int32[]} */
+      const z2Permutation = new Array(P.n1);
+      responses[i] = new PerkResponse(commitment, z2Seeds, z1, z2Permutation);
     }
 
     for (let i = 0; i < P.tau * P.n1; i++) {
@@ -2879,21 +2907,35 @@
      */
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {boolean} */
       this.isInverse = isInverse;
+      /** @type {uint8[]} */
       this.inputBuffer = [];
+      /** @type {PerkParams} */
       this._parameterSet = PARAMETER_SET_LIST[0];
+      /** @type {uint8[]|null} */
       this._publicKey = null;
+      /** @type {uint8[]|null} */
       this._privateKey = null;
+      /** @type {uint8[]|null} */
       this._keyData = null;
+      /** @type {uint8[]|null} */
       this._signature = null;
+      /** @type {boolean} */
       this.keyGeneration = false;
+      /** @type {string} */
       this.keyGenerationOutput = 'publicKey';
+      /** @type {uint8[]|null} */
       this.signingRandomness = null;
+      /** @type {string} */
       this.signatureOutput = 'signedMessage';
     }
 
     // ---- configuration ----
 
+    /**
+     * @param {string} label - a set name
+     */
     set parameterSet(label) {
       const found = findParameterSet(label);
       if (!found) throw new Error('Unknown PERK parameter set: ' + label);
@@ -2957,22 +2999,19 @@
       return this._signature ? this._signature.slice() : null;
     }
 
+    /**
+     * An encoded private or public key, told apart by length, or the octets
+     * of a parameter set name; falsy clears both keys.
+     * @param {uint8[]|null} keyData - the octets
+     */
     set key(keyData) {
       this._keyData = keyData;
 
-      if (keyData === null || keyData === undefined) {
+      if (!keyData) {
         this._publicKey = null;
         this._privateKey = null;
         return;
       }
-
-      if (typeof keyData === 'string' || typeof keyData === 'number') {
-        this.parameterSet = keyData;
-        return;
-      }
-
-      if (!Array.isArray(keyData) && !ArrayBuffer.isView(keyData))
-        throw new Error('Invalid PERK key data format');
 
       /** @type {uint8[]} */
       const bytes = Array.from(keyData);
@@ -2999,29 +3038,17 @@
     /**
      * Feed input bytes. Repeated calls append, so feeding in pieces is the same
      * as feeding whole.
-     * @param {int32[]} data - input bytes
+     * @param {uint8[]} data - input bytes
      */
     Feed(data) {
-      if (data === null || data === undefined) return;
-
-      if (typeof data === 'string') {
-        for (let i = 0; i < data.length; i++)
-          this.inputBuffer.push(OpCodes.And8(data.charCodeAt(i), 0xFF));
-        return;
-      }
-
-      if (typeof data === 'number') {
-        this.inputBuffer.push(data);
-        return;
-      }
-
+      if (!data) return;
       for (let i = 0; i < data.length; i++) this.inputBuffer.push(data[i]);
     }
 
     /**
      * Produce the key, the signed message, or the message a signed message
      * carries.
-     * @returns {int32[]} the result bytes
+     * @returns {uint8[]} the result bytes
      */
     Result() {
       const input = this.inputBuffer;
@@ -3129,7 +3156,7 @@
   // ===== EXPORTS =====
 
   return {
-    PERKAlgorithm, PERKInstance, PARAMETER_SETS, ShakeStream,
+    PERKAlgorithm, PERKInstance, PARAMETER_SET_LIST, findParameterSet, ShakeStream,
     generateKeyPair, sign, verify, decodePublicKey, decodeSignature, encodeSignature
   };
 }));

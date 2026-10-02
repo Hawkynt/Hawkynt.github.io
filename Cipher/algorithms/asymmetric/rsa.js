@@ -309,28 +309,14 @@
   ];
 
   /**
-   * Read a key size selector from whatever the caller supplied. Both spellings
-   * used across this collection are accepted: decimal digits in ASCII, and a
-   * big-endian 16-bit count of bits.
-   * @param {uint8[]|string|number} keyData - Key selector
+   * Read a key size selector. Both spellings used across this collection are
+   * accepted: decimal digits in ASCII, and a big-endian 16-bit count of bits.
+   * A size in bits is passed to Init directly.
+   * @param {uint8[]} keyData - Key selector octets
    * @returns {int32} Key size in bits
    */
   function parseKeySize(keyData) {
-    if (typeof keyData === 'number') {
-      /** @type {int32} */
-      const bits = keyData;
-      return bits;
-    }
-
-    if (typeof keyData === 'string') {
-      /** @type {string} */
-      const text = keyData;
-      /** @type {int32} */
-      const parsed = parseInt(text, 10);
-      return parsed;
-    }
-
-    if (keyData && typeof keyData.length === 'number') {
+    if (keyData) {
       /** @type {uint8[]} */
       const bytes = keyData;
       let digits = '';
@@ -355,6 +341,53 @@
     }
 
     throw new Error('RSA: unrecognised key selector');
+  }
+
+  /**
+   * RSA public key (n, e)
+   */
+  class RSAPublicKey {
+    /**
+     * @param {BigInt} n - Modulus
+     * @param {BigInt} e - Public exponent
+     * @param {int32} keySize - Modulus size in bits
+     */
+    constructor(n, e, keySize) {
+      /** @type {BigInt} */
+      this.n = n;
+      /** @type {BigInt} */
+      this.e = e;
+      /** @type {int32} */
+      this.keySize = keySize;
+    }
+  }
+
+  /**
+   * RSA private key: the public pair, the private exponent and the primes
+   */
+  class RSAPrivateKey {
+    /**
+     * @param {BigInt} n - Modulus
+     * @param {BigInt} e - Public exponent
+     * @param {BigInt} d - Private exponent
+     * @param {BigInt} p - First prime
+     * @param {BigInt} q - Second prime
+     * @param {int32} keySize - Modulus size in bits
+     */
+    constructor(n, e, d, p, q, keySize) {
+      /** @type {BigInt} */
+      this.n = n;
+      /** @type {BigInt} */
+      this.e = e;
+      /** @type {BigInt} */
+      this.d = d;
+      /** @type {BigInt} */
+      this.p = p;
+      /** @type {BigInt} */
+      this.q = q;
+      /** @type {int32} */
+      this.keySize = keySize;
+    }
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -474,7 +507,9 @@
       this.isInverse = isInverse;
       /** @type {int32} */
       this.keySize = 2048;
+      /** @type {RSAPublicKey|null} */
       this._publicKey = null;
+      /** @type {RSAPrivateKey|null} */
       this._privateKey = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -500,18 +535,30 @@
     }
 
     // Property setters/getters for UI compatibility
+    /**
+     * @param {RSAPublicKey|null} keyData - Public key, or null to clear it
+     */
     set publicKey(keyData) {
       this._publicKey = keyData ? keyData : null;
     }
 
+    /**
+     * @returns {RSAPublicKey|null} Public key
+     */
     get publicKey() {
       return this._publicKey;
     }
 
+    /**
+     * @param {RSAPrivateKey|null} keyData - Private key, or null to clear it
+     */
     set privateKey(keyData) {
       this._privateKey = keyData ? keyData : null;
     }
 
+    /**
+     * @returns {RSAPrivateKey|null} Private key
+     */
     get privateKey() {
       return this._privateKey;
     }
@@ -586,20 +633,13 @@
       const n = hexToBigInt(RSA_N[index]);
       const e = hexToBigInt(RSA_E[index]);
 
-      this._publicKey = {
-        n: n,
-        e: e,
-        keySize: this.keySize
-      };
+      this._publicKey = new RSAPublicKey(n, e, this.keySize);
 
-      this._privateKey = {
-        n: n,
-        e: e,
-        d: hexToBigInt(RSA_D[index]),
-        p: hexToBigInt(RSA_P[index]),
-        q: hexToBigInt(RSA_Q[index]),
-        keySize: this.keySize
-      };
+      this._privateKey = new RSAPrivateKey(n, e,
+        hexToBigInt(RSA_D[index]),
+        hexToBigInt(RSA_P[index]),
+        hexToBigInt(RSA_Q[index]),
+        this.keySize);
     }
 
     /**

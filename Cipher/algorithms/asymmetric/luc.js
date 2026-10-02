@@ -495,28 +495,14 @@
   ];
 
   /**
-   * Read a key size selector from whatever the caller supplied. Both spellings
-   * used across this collection are accepted: decimal digits in ASCII, and a
-   * big-endian 16-bit count of bits.
-   * @param {uint8[]|string|number} keyData - Key selector
+   * Read a key size selector. Both spellings used across this collection are
+   * accepted: decimal digits in ASCII, and a big-endian 16-bit count of bits.
+   * A size in bits is passed to Init directly.
+   * @param {uint8[]} keyData - Key selector octets
    * @returns {int32} Key size in bits
    */
   function parseKeySize(keyData) {
-    if (typeof keyData === 'number') {
-      /** @type {int32} */
-      const bits = keyData;
-      return bits;
-    }
-
-    if (typeof keyData === 'string') {
-      /** @type {string} */
-      const text = keyData;
-      /** @type {int32} */
-      const parsed = parseInt(text, 10);
-      return parsed;
-    }
-
-    if (keyData && typeof keyData.length === 'number') {
+    if (keyData) {
       /** @type {uint8[]} */
       const bytes = keyData;
       let digits = '';
@@ -541,6 +527,53 @@
     }
 
     throw new Error('LUC: unrecognised key selector');
+  }
+
+  /**
+   * LUC public key (n, e)
+   */
+  class LUCPublicKey {
+    /**
+     * @param {BigInt} n - Modulus
+     * @param {BigInt} e - Public exponent
+     * @param {int32} keySize - Modulus size in bits
+     */
+    constructor(n, e, keySize) {
+      /** @type {BigInt} */
+      this.n = n;
+      /** @type {BigInt} */
+      this.e = e;
+      /** @type {int32} */
+      this.keySize = keySize;
+    }
+  }
+
+  /**
+   * LUC private key: the public pair, the primes and u = q^-1 mod p
+   */
+  class LUCPrivateKey {
+    /**
+     * @param {BigInt} n - Modulus
+     * @param {BigInt} e - Public exponent
+     * @param {BigInt} p - First prime
+     * @param {BigInt} q - Second prime
+     * @param {BigInt} u - q^-1 mod p
+     * @param {int32} keySize - Modulus size in bits
+     */
+    constructor(n, e, p, q, u, keySize) {
+      /** @type {BigInt} */
+      this.n = n;
+      /** @type {BigInt} */
+      this.e = e;
+      /** @type {BigInt} */
+      this.p = p;
+      /** @type {BigInt} */
+      this.q = q;
+      /** @type {BigInt} */
+      this.u = u;
+      /** @type {int32} */
+      this.keySize = keySize;
+    }
   }
 
   // ===== ALGORITHM IMPLEMENTATION =====
@@ -635,7 +668,9 @@
       this.isInverse = isInverse;
       /** @type {int32} */
       this.keySize = 1024;
+      /** @type {LUCPublicKey|null} */
       this._publicKey = null;
+      /** @type {LUCPrivateKey|null} */
       this._privateKey = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
@@ -661,18 +696,30 @@
     }
 
     // Property setters/getters for UI compatibility
+    /**
+     * @param {LUCPublicKey|null} keyData - Public key, or null to clear it
+     */
     set publicKey(keyData) {
       this._publicKey = keyData;
     }
 
+    /**
+     * @returns {LUCPublicKey|null} Public key
+     */
     get publicKey() {
       return this._publicKey;
     }
 
+    /**
+     * @param {LUCPrivateKey|null} keyData - Private key, or null to clear it
+     */
     set privateKey(keyData) {
       this._privateKey = keyData;
     }
 
+    /**
+     * @returns {LUCPrivateKey|null} Private key
+     */
     get privateKey() {
       return this._privateKey;
     }
@@ -752,20 +799,13 @@
       const n = hexToBigInt(LUC_KEYS_N[index]);
       const e = hexToBigInt(LUC_KEYS_E[index]);
 
-      this._publicKey = {
-        n: n,
-        e: e,
-        keySize: this.keySize
-      };
+      this._publicKey = new LUCPublicKey(n, e, this.keySize);
 
-      this._privateKey = {
-        n: n,
-        e: e,
-        p: hexToBigInt(LUC_KEYS_P[index]),
-        q: hexToBigInt(LUC_KEYS_Q[index]),
-        u: hexToBigInt(LUC_KEYS_U[index]),
-        keySize: this.keySize
-      };
+      this._privateKey = new LUCPrivateKey(n, e,
+        hexToBigInt(LUC_KEYS_P[index]),
+        hexToBigInt(LUC_KEYS_Q[index]),
+        hexToBigInt(LUC_KEYS_U[index]),
+        this.keySize);
     }
 
     /**

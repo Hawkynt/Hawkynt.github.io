@@ -19,22 +19,39 @@
  * (c)2025 Hawkynt
  */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  // Load dependencies
-  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
 
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    global.OpCodes = require('../../OpCodes.js');
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          StreamCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize } = AlgorithmFramework;
-
-  const OpCodes = global.OpCodes;
+          StreamCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize, Vulnerability } = AlgorithmFramework;
 
   // ===== SEAL IMPLEMENTATION =====
 
@@ -77,11 +94,11 @@
       ];
 
       this.knownVulnerabilities = [
-        {
-          type: 'Theoretical Attack',
-          text: 'SEAL has known theoretical weaknesses and is considered broken for modern cryptographic applications.',
-          mitigation: 'Use modern stream ciphers like ChaCha20 or XSalsa20 for new systems.'
-        }
+        new Vulnerability(
+          'Theoretical Attack',
+          'SEAL has known theoretical weaknesses and is considered broken for modern cryptographic applications.',
+          'Use modern stream ciphers like ChaCha20 or XSalsa20 for new systems.'
+        )
       ];
 
       // Crypto++ test vector from TestVectors/seal.txt
@@ -668,9 +685,7 @@
   RegisterAlgorithm(new SEALStreamCipher(true));   // SEAL-3.0-BE
   RegisterAlgorithm(new SEALStreamCipher(false));  // SEAL-3.0-LE
 
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { SEALStreamCipher, SEALStreamCipherInstance };
-  }
+  // ===== EXPORTS =====
 
-})(typeof global !== 'undefined' ? global : window);
+  return { SEALStreamCipher, SEALStreamCipherInstance };
+}));

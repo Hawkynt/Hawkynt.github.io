@@ -88,10 +88,6 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           AsymmetricCipherAlgorithm, IAlgorithmInstance, LinkItem, KeySize } = AlgorithmFramework;
 
-  const globalScope = typeof globalThis !== 'undefined' ? globalThis
-    : (typeof window !== 'undefined' ? window
-    : (typeof self !== 'undefined' ? self : {}));
-
   const SEED_BYTES = 32;
   const MU_BYTES = 64;
 
@@ -113,10 +109,13 @@
 
   // ===== THE SHARED LATTICE CORE =====
 
+  /** @type {DilithiumCipher|null} */
   let cachedCore = null;
 
   /**
-   * Resolve the Dilithium core: the global it publishes, then the module.
+   * Resolve the Dilithium core: the registered Dilithium algorithm, whose
+   * lattice methods this file signs and verifies with. Under Node a missing
+   * registration loads dilithium.js.
    *
    * The lookup is deferred to first use rather than done while this file loads,
    * and that is deliberate for the same reason dilithium.js defers its own
@@ -126,19 +125,21 @@
    * file. Resolving on demand leaves dilithium.js to register itself when the
    * walk reaches it.
    *
-   * @returns {Object} the exports of dilithium.js
+   * @returns {DilithiumCipher} the registered Dilithium algorithm
    */
   function core() {
     if (cachedCore) return cachedCore;
 
-    let resolved = globalScope.DilithiumCore;
+    /** @type {DilithiumCipher} */
+    let resolved = AlgorithmFramework.Find('Dilithium');
 
     if (!resolved && typeof require !== 'undefined') {
       try {
-        resolved = require('./dilithium.js');
+        require('./dilithium.js');
       } catch (e) {
         // Reported as a missing dependency below.
       }
+      resolved = AlgorithmFramework.Find('Dilithium');
     }
 
     if (!resolved)
@@ -157,12 +158,8 @@
     if (chosen) {
       return chosen;
     }
-    /** @type {Object} */
-    const exported = core();
-    /** @type {Object} */
-    const sets = exported.PARAMETER_SETS;
     /** @type {DilithiumParams} */
-    const fallback = sets['ML-DSA-44'];
+    const fallback = core().FindParameterSet('ML-DSA-44');
     return fallback;
   }
 
@@ -239,41 +236,31 @@
     }
   }
 
-  const PRE_HASH = {
-    'SHA2-256':     new PreHashSpec('SHA-256',     'sha256', 32, false, hashOid(1)),
-    'SHA2-384':     new PreHashSpec('SHA-384',     'sha512', 48, false, hashOid(2)),
-    'SHA2-512':     new PreHashSpec('SHA-512',     'sha512', 64, false, hashOid(3)),
-    'SHA2-224':     new PreHashSpec('SHA-224',     'sha256', 28, false, hashOid(4)),
-    'SHA2-512/224': new PreHashSpec('SHA-512/224', 'sha512', 28, false, hashOid(5)),
-    'SHA2-512/256': new PreHashSpec('SHA-512/256', 'sha512', 32, false, hashOid(6)),
-    'SHA3-224':     new PreHashSpec('SHA-3-224',   'sha3',   28, false, hashOid(7)),
-    'SHA3-256':     new PreHashSpec('SHA-3-256',   'sha3',   32, false, hashOid(8)),
-    'SHA3-384':     new PreHashSpec('SHA-3-384',   'sha3',   48, false, hashOid(9)),
-    'SHA3-512':     new PreHashSpec('SHA-3-512',   'sha3',   64, false, hashOid(10)),
-    'SHAKE-128':    new PreHashSpec('SHAKE128',    'shake',  32, true,  hashOid(11)),
-    'SHAKE-256':    new PreHashSpec('SHAKE256',    'shake',  64, true,  hashOid(12))
-  };
+  const PRE_HASH_SHA2_256     = new PreHashSpec('SHA-256',     'sha256', 32, false, hashOid(1));
+  const PRE_HASH_SHA2_384     = new PreHashSpec('SHA-384',     'sha512', 48, false, hashOid(2));
+  const PRE_HASH_SHA2_512     = new PreHashSpec('SHA-512',     'sha512', 64, false, hashOid(3));
+  const PRE_HASH_SHA2_224     = new PreHashSpec('SHA-224',     'sha256', 28, false, hashOid(4));
+  const PRE_HASH_SHA2_512_224 = new PreHashSpec('SHA-512/224', 'sha512', 28, false, hashOid(5));
+  const PRE_HASH_SHA2_512_256 = new PreHashSpec('SHA-512/256', 'sha512', 32, false, hashOid(6));
+  const PRE_HASH_SHA3_224     = new PreHashSpec('SHA-3-224',   'sha3',   28, false, hashOid(7));
+  const PRE_HASH_SHA3_256     = new PreHashSpec('SHA-3-256',   'sha3',   32, false, hashOid(8));
+  const PRE_HASH_SHA3_384     = new PreHashSpec('SHA-3-384',   'sha3',   48, false, hashOid(9));
+  const PRE_HASH_SHA3_512     = new PreHashSpec('SHA-3-512',   'sha3',   64, false, hashOid(10));
+  const PRE_HASH_SHAKE_128    = new PreHashSpec('SHAKE128',    'shake',  32, true,  hashOid(11));
+  const PRE_HASH_SHAKE_256    = new PreHashSpec('SHAKE256',    'shake',  64, true,  hashOid(12));
 
-  /**
-   * Both the ACVP spelling and this collection's own algorithm name are
-   * accepted, so a caller can ask for 'SHA2-256' or 'SHA-256' and mean it.
-   * @returns {Object} upper-cased spelling to pre-hash specification
-   */
-  function buildPreHashAliases() {
-    const map = {};
-    /** @type {string[]} */
-    const labels = Object.keys(PRE_HASH);
-    for (let i = 0; i < labels.length; i++) {
-      const label = labels[i];
-      /** @type {PreHashSpec} */
-      const spec = PRE_HASH[label];
-      map[label.toUpperCase()] = spec;
-      map[spec.algorithm.toUpperCase()] = spec;
-    }
-    return map;
-  }
+  /** @type {string[]} The ACVP labels, in the order of PRE_HASH_LIST. */
+  const PRE_HASH_LABELS = [
+    'SHA2-256', 'SHA2-384', 'SHA2-512', 'SHA2-224', 'SHA2-512/224', 'SHA2-512/256',
+    'SHA3-224', 'SHA3-256', 'SHA3-384', 'SHA3-512', 'SHAKE-128', 'SHAKE-256'
+  ];
 
-  const PRE_HASH_ALIASES = buildPreHashAliases();
+  /** @type {PreHashSpec[]} */
+  const PRE_HASH_LIST = [
+    PRE_HASH_SHA2_256, PRE_HASH_SHA2_384, PRE_HASH_SHA2_512, PRE_HASH_SHA2_224,
+    PRE_HASH_SHA2_512_224, PRE_HASH_SHA2_512_256, PRE_HASH_SHA3_224, PRE_HASH_SHA3_256,
+    PRE_HASH_SHA3_384, PRE_HASH_SHA3_512, PRE_HASH_SHAKE_128, PRE_HASH_SHAKE_256
+  ];
 
   /**
    * Look a pre-hash function up by either of its accepted names.
@@ -282,21 +269,25 @@
    * @throws {Error} when the name is not one of the twelve approved functions
    */
   function findPreHash(label) {
-    /** @type {PreHashSpec} */
-    let found = null;
+    // Both the ACVP spelling and this collection's own algorithm name are
+    // accepted, so a caller can ask for 'SHA2-256' or 'SHA-256' and mean it.
     if (!(label === null || label === undefined)) {
       /** @type {string} */
       const key = String(label).trim().toUpperCase();
-      found = PRE_HASH_ALIASES[key];
+      for (let i = 0; i < PRE_HASH_LIST.length; i++) {
+        if (PRE_HASH_LABELS[i].toUpperCase() === key || PRE_HASH_LIST[i].algorithm.toUpperCase() === key)
+          return PRE_HASH_LIST[i];
+      }
     }
 
-    if (!found)
-      throw new Error('HashML-DSA pre-hash must be one of ' + Object.keys(PRE_HASH).join(', ') + ', got ' + label);
-
-    return found;
+    throw new Error('HashML-DSA pre-hash must be one of ' + PRE_HASH_LABELS.join(', ') + ', got ' + label);
   }
 
-  const hashAlgorithms = {};
+  // The pre-hash algorithms found so far, by registered name.
+  /** @type {string[]} */
+  const hashAlgorithmNames = [];
+  /** @type {Algorithm[]} */
+  const hashAlgorithms = [];
 
   /**
    * Hash a message with one of the approved pre-hash functions.
@@ -304,16 +295,18 @@
    * The hash modules are resolved from the registry on demand, for the same
    * load-order reason the core is, and cached once found.
    *
-   * @param {PreHashSpec} spec - an entry of PRE_HASH
+   * @param {PreHashSpec} spec - an entry of PRE_HASH_LIST
    * @param {uint8[]} message - the message to digest
    * @returns {uint8[]} spec.digestSize bytes
    */
   function preHashDigest(spec, message) {
     /** @type {Algorithm} */
-    let algorithm = hashAlgorithms[spec.algorithm];
+    let algorithm = null;
+    for (let i = 0; i < hashAlgorithmNames.length; i++)
+      if (hashAlgorithmNames[i] === spec.algorithm) algorithm = hashAlgorithms[i];
 
     if (!algorithm) {
-      algorithm = AlgorithmFramework.Find ? AlgorithmFramework.Find(spec.algorithm) : null;
+      algorithm = AlgorithmFramework.Find(spec.algorithm);
 
       if (!algorithm && typeof require !== 'undefined') {
         try {
@@ -327,7 +320,8 @@
       if (!algorithm)
         throw new Error('HashML-DSA needs ' + spec.algorithm + ', which was not found');
 
-      hashAlgorithms[spec.algorithm] = algorithm;
+      hashAlgorithmNames.push(spec.algorithm);
+      hashAlgorithms.push(algorithm);
     }
 
     /** @type {IHashFunctionInstance} */
@@ -2009,7 +2003,7 @@
      */
     set parameterSet(label) {
       /** @type {DilithiumParams|null} */
-      const found = core().findParameterSet(label);
+      const found = core().FindParameterSet(label);
       if (!found) throw new Error('Unknown ML-DSA parameter set: ' + label);
       this._parameterSet = found;
     }
@@ -2035,7 +2029,7 @@
       }
 
       /** @type {DilithiumParams|null} */
-      const found = core().parameterSetByLength(keyBytes.length, 'privateKeySize');
+      const found = core().ParameterSetByLength(keyBytes.length, 'privateKeySize');
       if (!found)
         throw new Error('An ML-DSA private key is 2560, 4032 or 4896 bytes, got ' + keyBytes.length);
 
@@ -2060,7 +2054,7 @@
       }
 
       /** @type {DilithiumParams|null} */
-      const found = core().parameterSetByLength(keyBytes.length, 'publicKeySize');
+      const found = core().ParameterSetByLength(keyBytes.length, 'publicKeySize');
       if (!found)
         throw new Error('An ML-DSA public key is 1312, 1952 or 2592 bytes, got ' + keyBytes.length);
 
@@ -2106,8 +2100,8 @@
     }
 
     /**
-     * The generic key entry point. Accepts a private key, a public key, a
-     * 32 byte generation seed, or the name of a parameter set.
+     * The generic key entry point. Accepts a private key, a public key, a 32 byte generation seed, or the ASCII name of a parameter set.
+     * @param {uint8[]|null} keyData - key bytes; null clears both keys
      */
     set key(keyData) {
       this._keyData = keyData;
@@ -2118,27 +2112,23 @@
         return;
       }
 
-      if (typeof keyData === 'string' || typeof keyData === 'number') {
-        this.parameterSet = keyData;
-        return;
-      }
-
-      if (!Array.isArray(keyData) && !ArrayBuffer.isView(keyData))
+      /** @type {boolean} */
+      const isTypedArray = ArrayBuffer.isView(keyData);
+      if (!Array.isArray(keyData) && !isTypedArray)
         throw new Error('Invalid ML-DSA key data format');
 
       /** @type {uint8[]} */
       const bytes = Array.from(keyData);
-      /** @type {Object} */
       const C = core();
 
       /** @type {DilithiumParams|null} */
-      const privateSet = C.parameterSetByLength(bytes.length, 'privateKeySize');
+      const privateSet = C.ParameterSetByLength(bytes.length, 'privateKeySize');
       if (privateSet) {
         this.privateKey = bytes;
         return;
       }
       /** @type {DilithiumParams|null} */
-      const publicSet = C.parameterSetByLength(bytes.length, 'publicKeySize');
+      const publicSet = C.ParameterSetByLength(bytes.length, 'publicKeySize');
       if (publicSet) {
         this.publicKey = bytes;
         return;
@@ -2201,7 +2191,7 @@
           return preHashMessageRepresentative(message, this.context ? this.context : noContext, this.preHashAlgorithm);
         case 'pure': {
           /** @type {uint8[]} */
-          const representative = core().pureMessageRepresentative(message, this.context ? this.context : noContext);
+          const representative = core().PureMessageRepresentative(message, this.context ? this.context : noContext);
           return representative;
         }
         default:
@@ -2217,14 +2207,13 @@
       const message = this.inputBuffer;
       this.inputBuffer = [];
 
-      /** @type {Object} */
       const C = core();
       const P = parameterSetOrDefault(this._parameterSet);
 
       if (this.keyGeneration) {
         const seed = this._keySeed && this._keySeed.length === SEED_BYTES ? this._keySeed : message;
         /** @type {DilithiumKeyPair} */
-        const pair = C.keyGenInternal(seed, P);
+        const pair = C.KeyGenInternal(seed, P);
         /** @type {uint8[]} */
         const generatedPrivate = pair.privateKey;
         /** @type {uint8[]} */
@@ -2247,7 +2236,7 @@
         if (!this._publicKey)
           throw new Error('ML-DSA verification needs a public key');
         /** @type {boolean} */
-        const valid = C.verifyInternal(this._publicKey, representative, this._signature, P, externalMu);
+        const valid = C.VerifyInternal(this._publicKey, representative, this._signature, P, externalMu);
         /** @type {uint8[]} */
         const verdict = [valid ? 1 : 0];
         return verdict;
@@ -2257,14 +2246,14 @@
         if (!this._keySeed)
           throw new Error('ML-DSA signing needs a private key or a generation seed');
         /** @type {DilithiumKeyPair} */
-        const generated = C.keyGenInternal(this._keySeed, P);
+        const generated = C.KeyGenInternal(this._keySeed, P);
         /** @type {uint8[]} */
         const generatedPrivate = generated.privateKey;
         this.privateKey = generatedPrivate;
       }
 
       /** @type {uint8[]} */
-      const signature = C.signInternal(this._privateKey, representative, this.signRandomness, P, externalMu);
+      const signature = C.SignInternal(this._privateKey, representative, this.signRandomness, P, externalMu);
       return signature;
     }
 
@@ -2277,7 +2266,7 @@
      */
     GenerateKeyPair(seed) {
       /** @type {DilithiumKeyPair} */
-      const pair = core().keyGenInternal(Array.from(seed), parameterSetOrDefault(this._parameterSet));
+      const pair = core().KeyGenInternal(Array.from(seed), parameterSetOrDefault(this._parameterSet));
       /** @type {uint8[]} */
       const generatedPublic = pair.publicKey;
       /** @type {uint8[]} */
@@ -2340,6 +2329,20 @@
 
   return {
     MLDSAAlgorithm, MLDSAInstance,
-    PRE_HASH, findPreHash, preHashMessageRepresentative
+    PRE_HASH: {
+      'SHA2-256':     PRE_HASH_SHA2_256,
+      'SHA2-384':     PRE_HASH_SHA2_384,
+      'SHA2-512':     PRE_HASH_SHA2_512,
+      'SHA2-224':     PRE_HASH_SHA2_224,
+      'SHA2-512/224': PRE_HASH_SHA2_512_224,
+      'SHA2-512/256': PRE_HASH_SHA2_512_256,
+      'SHA3-224':     PRE_HASH_SHA3_224,
+      'SHA3-256':     PRE_HASH_SHA3_256,
+      'SHA3-384':     PRE_HASH_SHA3_384,
+      'SHA3-512':     PRE_HASH_SHA3_512,
+      'SHAKE-128':    PRE_HASH_SHAKE_128,
+      'SHAKE-256':    PRE_HASH_SHAKE_256
+    },
+    findPreHash, preHashMessageRepresentative
   };
 }));

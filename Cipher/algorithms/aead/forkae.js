@@ -20,25 +20,39 @@
  * @author JavaScript implementation for SynthelicZ Cipher Tools
  */
 
-(function(global) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
+  } else if (typeof module === 'object' && module.exports) {
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
+  } else {
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
+  }
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
-  // Load dependencies
-  if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-    global.AlgorithmFramework = require('../../AlgorithmFramework.js');
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
   }
 
-  if (!global.OpCodes && typeof require !== 'undefined') {
-    global.OpCodes = require('../../OpCodes.js');
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           AeadAlgorithm, IAeadInstance, TestCase, LinkItem, KeySize, Find } = AlgorithmFramework;
-
-  // Import ForkSkinny block cipher implementations
-  if (typeof require !== 'undefined') {
-    require('../block/forkskinny.js');
-  }
 
   // Helper: XOR two byte arrays
   /**
@@ -137,15 +151,25 @@
       }
     }
 
-    // Get ForkSkinny instance for this variant
+    /**
+     * Get a ForkSkinny instance for this variant
+     * @returns {ForkSkinny128_256Instance} Fresh encryption instance
+     */
     getForkSkinnyInstance() {
-      const algo = Find(this.forkSkinnyVariant);
+      /** @type {Algorithm} */
+      let algo = Find(this.forkSkinnyVariant);
+      if (!algo && typeof require !== 'undefined') {
+        try { require('../block/forkskinny.js'); } catch (e) { /* not found - error below */ }
+        algo = Find(this.forkSkinnyVariant);
+      }
 
       if (!algo) {
         throw new Error("ForkSkinny variant " + this.forkSkinnyVariant + " not found in registry");
       }
 
-      return algo.CreateInstance(false);
+      /** @type {ForkSkinny128_256Instance} */
+      const instance = algo.CreateInstance(false);
+      return instance;
     }
 
     /**
@@ -170,6 +194,7 @@
       const tag = OpCodes.CreateArray(this.blockSize, 0);
 
       // Get ForkSkinny instance
+      /** @type {ForkSkinny128_256Instance} */
       const forkskinny = this.getForkSkinnyInstance();
       forkskinny.key = tweakey;
 
@@ -327,6 +352,7 @@
       const tag = OpCodes.CreateArray(this.blockSize, 0);
 
       // Get ForkSkinny instance
+      /** @type {ForkSkinny128_256Instance} */
       const forkskinny = this.getForkSkinnyInstance();
       /** @type {int32} */
       let blockNo = 1;
@@ -401,6 +427,7 @@
         /** @type {uint8[]} */
 
         const ctBlock = ciphertext.slice(ctPos, ctPos + this.blockSize);
+        /** @type {ForkSkinny128_256Instance} */
         const instance = forkskinny.algorithm.CreateInstance(true);
         instance.key = tweakey;
         instance.forkOutput = "both";
@@ -434,6 +461,7 @@
         /** @type {uint8[]} */
         const xoredBlock = xorBytes(ctBlock, tag, this.blockSize);
 
+        /** @type {ForkSkinny128_256Instance} */
         const instance = forkskinny.algorithm.CreateInstance(true);
         instance.key = tweakey;
         instance.forkOutput = "both";
@@ -464,6 +492,7 @@
         /** @type {uint8[]} */
         const xoredBlock = xorBytes(ctBlock, tag, this.blockSize);
 
+        /** @type {ForkSkinny128_256Instance} */
         const instance = forkskinny.algorithm.CreateInstance(true);
         instance.key = tweakey;
         instance.forkOutput = "both";
@@ -722,12 +751,10 @@
   // Register algorithm
   RegisterAlgorithm(new PAEFForkSkinny128_256());
 
-  // Export for Node.js
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-      PAEFForkSkinny128_256,
-      PAEFForkSkinny128_256Instance
-    };
-  }
+  // ===== EXPORTS =====
 
-})(typeof window !== 'undefined' ? window : global);
+  return {
+    PAEFForkSkinny128_256,
+    PAEFForkSkinny128_256Instance
+  };
+}));

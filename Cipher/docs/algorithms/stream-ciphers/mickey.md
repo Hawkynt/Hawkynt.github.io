@@ -12,7 +12,7 @@
 | Complexity | Not specified |
 | Inventor | Steve Babbage, Matthew Dodd |
 | Year | 2005 |
-| Origin | GB |
+| Origin | 🇬🇧 United Kingdom |
 | Source | [`algorithms/stream/mickey.js`](../../../algorithms/stream/mickey.js) |
 
 ## Security
@@ -25,7 +25,7 @@ Hardware-oriented design with irregular clocking. This educational implementatio
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| This is a simplified educational implementation not suitable for security applications. | — | Use only for educational purposes to understand clock-controlled generators. |
+| Implementation Specific | This is a simplified educational implementation not suitable for security applications. | Use only for educational purposes to understand clock-controlled generators. |
 
 ## Documentation
 
