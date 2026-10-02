@@ -503,6 +503,7 @@
       slideDy: 0,
       slideProgress: 0
     });
+    SZ.GameAudio.play('drop', { volume: 0.7 });
   }
 
   /* ── Detonate Bomb ── */
@@ -514,6 +515,8 @@
 
     const cx = bomb.col * TILE_SIZE + TILE_SIZE / 2;
     const cy = bomb.row * TILE_SIZE + TILE_SIZE / 2;
+
+    SZ.GameAudio.play('explode', { pitch: 1.15 - Math.min(bomb.blastRange, 6) * 0.05 });
 
     // Center fire cell
     fireCells.push({ col: bomb.col, row: bomb.row, timer: FIRE_DURATION, isCenter: true });
@@ -551,6 +554,7 @@
           // Enhanced wall destruction: confetti debris with gravity + rotation
           particles.confetti(fx, fy, 8, { colors: ['#8b4513', '#a0522d', '#cd853f', '#d2b48c'], speed: 4, gravity: 0.15 });
           particles.burst(fx, fy, 6, { color: '#a0522d', speed: 3, life: 0.4, size: 2, decay: 0.03 });
+          SZ.GameAudio.play('smallExplode', { volume: 0.6 });
 
           // Reveal hidden power-up from destroyed wall
           const key = fr + ',' + fc;
@@ -628,6 +632,7 @@
 
           // Flash text showing what was destroyed
           floatingText.add(px, py, pu.type.replace('_', ' ').toUpperCase(), { color: '#f44', decay: 0.03 });
+          SZ.GameAudio.play('error', { volume: 0.6 });
 
           powerUps.splice(i, 1);
         }
@@ -650,9 +655,11 @@
 
     if (lives <= 0) {
       state = STATE_DEAD;
+      SZ.GameAudio.play('lose');
       addHighScore(score, currentLevel);
       SZ.Dlls.User32.SetWindowText('Bomberman — Game Over');
     } else {
+      SZ.GameAudio.play('hurt');
       resetPlayerPosition();
     }
     updateStatus();
@@ -667,6 +674,7 @@
       enemy.hitTimer = 0.15;
       particles.burst(enemy.x, enemy.y, 8, { color: '#fff', speed: 3, life: 0.3, size: 2, decay: 0.04 });
       floatingText.add(enemy.x, enemy.y, 'HP ' + enemy.hp, { color: '#ff6b6b', decay: 0.04 });
+      SZ.GameAudio.play('hit');
       screenShake.trigger(4, 100);
       return;
     }
@@ -686,6 +694,7 @@
 
     // Floating score text for enemy kill
     floatingText.add(enemy.x, enemy.y, '+' + points, { color: '#ffd700', decay: 0.025 });
+    SZ.GameAudio.play('coin');
 
     // Check if level clear — all enemies defeated
     if (enemies.length === 0)
@@ -697,6 +706,7 @@
   /* ── Level Complete ── */
   function levelComplete() {
     ++currentLevel;
+    SZ.GameAudio.play('levelup');
     floatingText.add(
       COLS * TILE_SIZE / 2,
       ROWS * TILE_SIZE / 2,
@@ -904,6 +914,7 @@
             if (b.col === newCol && b.row === newRow) {
               b.col = kickCol;
               b.row = kickRow;
+              SZ.GameAudio.play('bounce');
               break;
             }
         return;
@@ -943,6 +954,7 @@
           pu.type.replace('_', ' ').toUpperCase(),
           { color: '#0ff', decay: 0.025 }
         );
+        SZ.GameAudio.play('powerup');
 
         powerUps.splice(i, 1);
       }
@@ -984,6 +996,7 @@
     const lx = landCol * TILE_SIZE + TILE_SIZE / 2;
     const ly = landRow * TILE_SIZE + TILE_SIZE / 2;
     particles.burst(lx, ly, 10, { color: '#ff69b4', speed: 4, life: 0.5, size: 3, decay: 0.03 });
+    SZ.GameAudio.play('whoosh');
   }
 
   /* ── Slide Bomb (Power Kick) ── */
@@ -995,6 +1008,7 @@
     bomb.slideDx = dx;
     bomb.slideDy = dy;
     bomb.slideProgress = 0;
+    SZ.GameAudio.play('whoosh', { pitch: 0.8 });
   }
 
   /* ── Update Sliding Bombs ── */
@@ -1019,6 +1033,7 @@
           const sx = bomb.col * TILE_SIZE + TILE_SIZE / 2;
           const sy = bomb.row * TILE_SIZE + TILE_SIZE / 2;
           particles.burst(sx, sy, 6, { color: '#aaa', speed: 2, life: 0.3, size: 2, decay: 0.04, gravity: 0.05 });
+          SZ.GameAudio.play('thud', { volume: 0.6 });
           continue;
         }
 
@@ -1038,6 +1053,7 @@
           const sx = bomb.col * TILE_SIZE + TILE_SIZE / 2;
           const sy = bomb.row * TILE_SIZE + TILE_SIZE / 2;
           particles.burst(sx, sy, 6, { color: '#aaa', speed: 2, life: 0.3, size: 2, decay: 0.04, gravity: 0.05 });
+          SZ.GameAudio.play('thud', { volume: 0.6 });
           continue;
         }
 
@@ -1611,6 +1627,7 @@
   function handleStart() {
     if (state === STATE_READY) {
       state = STATE_PLAYING;
+      SZ.GameAudio.play('select');
       updateStatus();
     } else if (state === STATE_DEAD) {
       resetGame();
@@ -1738,6 +1755,7 @@
   try { tutorialSeen = localStorage.getItem(STORAGE_TUTORIAL) === '1'; } catch (_) { tutorialSeen = false; }
   setupCanvas();
   resetGame();
+  SZ.GameAudio.attachMuteButton();
   if (!tutorialSeen) {
     showTutorial = true;
     tutorialPage = 0;
