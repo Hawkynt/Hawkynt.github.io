@@ -137,7 +137,7 @@
       /** @type {BigInt} */
       this._state = 0n; // UInt128 state
       /** @type {BigInt} */
-      this._sequence = null; // Increment (will be set to default on first seed)
+      this._sequence = 0n; // Increment (0n: set to the default on first seed)
 
       // PCG constants (from Abseil pcg64_2018_engine)
       // Multiplier: 0x2360ed051fc65da4 4385df649fccf645 (128-bit)

@@ -186,7 +186,7 @@
         return OpCodes.And32(this._rngState, 0xFF);
       } else {
         // Non-deterministic: Use secure random
-        return OpCodes.SecureRandom(256);
+        return OpCodes.SecureRandomBytes(1)[0];
       }
     }
 

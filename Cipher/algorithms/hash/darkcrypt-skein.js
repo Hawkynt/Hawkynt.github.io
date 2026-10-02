@@ -66,11 +66,21 @@
   const MASK64 = 0xFFFFFFFFFFFFFFFFn;
 
   /**
+   * Threefish word addition: (a + b) mod 2^64
+   * @param {uint64} a - 64-bit word
+   * @param {uint64} b - 64-bit word
+   * @returns {uint64} 64-bit sum
+   */
+  function add64(a, b) {
+    return OpCodes.AndN(a + b, MASK64);
+  }
+
+  /**
    * Rotate left and XOR for mixing: rotl64(x, n) xor xor, both reduced to 64 bits
-   * @param {BigInt} x - word to rotate (may exceed 64 bits)
+   * @param {uint64} x - word to rotate
    * @param {int32} n - rotation count
-   * @param {BigInt} xor - word to XOR in (may exceed 64 bits)
-   * @returns {BigInt} 64-bit result
+   * @param {uint64} xor - word to XOR in
+   * @returns {uint64} 64-bit result
    */
   function rotlXor64(x, n, xor) {
     const word = OpCodes.AndN(x, MASK64);
@@ -116,76 +126,76 @@
     let b6 = OpCodes.AndN(BigInt(block[6]), MASK64);
     let b7 = OpCodes.AndN(BigInt(block[7]), MASK64);
 
-    b0 += kw[0];
-    b1 += kw[1];
-    b2 += kw[2];
-    b3 += kw[3];
-    b4 += kw[4];
-    b5 += kw[5] + t[0];
-    b6 += kw[6] + t[1];
-    b7 += kw[7];
+    b0 = add64(b0, kw[0]);
+    b1 = add64(b1, kw[1]);
+    b2 = add64(b2, kw[2]);
+    b3 = add64(b3, kw[3]);
+    b4 = add64(b4, kw[4]);
+    b5 = add64(b5, add64(kw[5], t[0]));
+    b6 = add64(b6, add64(kw[6], t[1]));
+    b7 = add64(b7, kw[7]);
 
     for (let d = 1; d < (ROUNDS_512 / 4); d += 2) {
       const dm9 = d % 9;
       const dm3 = d % 3;
 
-      b1 = rotlXor64(b1, ROTATION_0_0, b0 += b1);
-      b3 = rotlXor64(b3, ROTATION_0_1, b2 += b3);
-      b5 = rotlXor64(b5, ROTATION_0_2, b4 += b5);
-      b7 = rotlXor64(b7, ROTATION_0_3, b6 += b7);
+      b1 = rotlXor64(b1, ROTATION_0_0, b0 = add64(b0, b1));
+      b3 = rotlXor64(b3, ROTATION_0_1, b2 = add64(b2, b3));
+      b5 = rotlXor64(b5, ROTATION_0_2, b4 = add64(b4, b5));
+      b7 = rotlXor64(b7, ROTATION_0_3, b6 = add64(b6, b7));
 
-      b1 = rotlXor64(b1, ROTATION_1_0, b2 += b1);
-      b7 = rotlXor64(b7, ROTATION_1_1, b4 += b7);
-      b5 = rotlXor64(b5, ROTATION_1_2, b6 += b5);
-      b3 = rotlXor64(b3, ROTATION_1_3, b0 += b3);
+      b1 = rotlXor64(b1, ROTATION_1_0, b2 = add64(b2, b1));
+      b7 = rotlXor64(b7, ROTATION_1_1, b4 = add64(b4, b7));
+      b5 = rotlXor64(b5, ROTATION_1_2, b6 = add64(b6, b5));
+      b3 = rotlXor64(b3, ROTATION_1_3, b0 = add64(b0, b3));
 
-      b1 = rotlXor64(b1, ROTATION_2_0, b4 += b1);
-      b3 = rotlXor64(b3, ROTATION_2_1, b6 += b3);
-      b5 = rotlXor64(b5, ROTATION_2_2, b0 += b5);
-      b7 = rotlXor64(b7, ROTATION_2_3, b2 += b7);
+      b1 = rotlXor64(b1, ROTATION_2_0, b4 = add64(b4, b1));
+      b3 = rotlXor64(b3, ROTATION_2_1, b6 = add64(b6, b3));
+      b5 = rotlXor64(b5, ROTATION_2_2, b0 = add64(b0, b5));
+      b7 = rotlXor64(b7, ROTATION_2_3, b2 = add64(b2, b7));
 
-      b1 = rotlXor64(b1, ROTATION_3_0, b6 += b1);
-      b7 = rotlXor64(b7, ROTATION_3_1, b0 += b7);
-      b5 = rotlXor64(b5, ROTATION_3_2, b2 += b5);
-      b3 = rotlXor64(b3, ROTATION_3_3, b4 += b3);
+      b1 = rotlXor64(b1, ROTATION_3_0, b6 = add64(b6, b1));
+      b7 = rotlXor64(b7, ROTATION_3_1, b0 = add64(b0, b7));
+      b5 = rotlXor64(b5, ROTATION_3_2, b2 = add64(b2, b5));
+      b3 = rotlXor64(b3, ROTATION_3_3, b4 = add64(b4, b3));
 
-      b0 += kw[dm9];
-      b1 += kw[dm9 + 1];
-      b2 += kw[dm9 + 2];
-      b3 += kw[dm9 + 3];
-      b4 += kw[dm9 + 4];
-      b5 += kw[dm9 + 5] + t[dm3];
-      b6 += kw[dm9 + 6] + t[dm3 + 1];
-      b7 += kw[dm9 + 7] + BigInt(d);
+      b0 = add64(b0, kw[dm9]);
+      b1 = add64(b1, kw[dm9 + 1]);
+      b2 = add64(b2, kw[dm9 + 2]);
+      b3 = add64(b3, kw[dm9 + 3]);
+      b4 = add64(b4, kw[dm9 + 4]);
+      b5 = add64(b5, add64(kw[dm9 + 5], t[dm3]));
+      b6 = add64(b6, add64(kw[dm9 + 6], t[dm3 + 1]));
+      b7 = add64(b7, add64(kw[dm9 + 7], BigInt(d)));
 
-      b1 = rotlXor64(b1, ROTATION_4_0, b0 += b1);
-      b3 = rotlXor64(b3, ROTATION_4_1, b2 += b3);
-      b5 = rotlXor64(b5, ROTATION_4_2, b4 += b5);
-      b7 = rotlXor64(b7, ROTATION_4_3, b6 += b7);
+      b1 = rotlXor64(b1, ROTATION_4_0, b0 = add64(b0, b1));
+      b3 = rotlXor64(b3, ROTATION_4_1, b2 = add64(b2, b3));
+      b5 = rotlXor64(b5, ROTATION_4_2, b4 = add64(b4, b5));
+      b7 = rotlXor64(b7, ROTATION_4_3, b6 = add64(b6, b7));
 
-      b1 = rotlXor64(b1, ROTATION_5_0, b2 += b1);
-      b7 = rotlXor64(b7, ROTATION_5_1, b4 += b7);
-      b5 = rotlXor64(b5, ROTATION_5_2, b6 += b5);
-      b3 = rotlXor64(b3, ROTATION_5_3, b0 += b3);
+      b1 = rotlXor64(b1, ROTATION_5_0, b2 = add64(b2, b1));
+      b7 = rotlXor64(b7, ROTATION_5_1, b4 = add64(b4, b7));
+      b5 = rotlXor64(b5, ROTATION_5_2, b6 = add64(b6, b5));
+      b3 = rotlXor64(b3, ROTATION_5_3, b0 = add64(b0, b3));
 
-      b1 = rotlXor64(b1, ROTATION_6_0, b4 += b1);
-      b3 = rotlXor64(b3, ROTATION_6_1, b6 += b3);
-      b5 = rotlXor64(b5, ROTATION_6_2, b0 += b5);
-      b7 = rotlXor64(b7, ROTATION_6_3, b2 += b7);
+      b1 = rotlXor64(b1, ROTATION_6_0, b4 = add64(b4, b1));
+      b3 = rotlXor64(b3, ROTATION_6_1, b6 = add64(b6, b3));
+      b5 = rotlXor64(b5, ROTATION_6_2, b0 = add64(b0, b5));
+      b7 = rotlXor64(b7, ROTATION_6_3, b2 = add64(b2, b7));
 
-      b1 = rotlXor64(b1, ROTATION_7_0, b6 += b1);
-      b7 = rotlXor64(b7, ROTATION_7_1, b0 += b7);
-      b5 = rotlXor64(b5, ROTATION_7_2, b2 += b5);
-      b3 = rotlXor64(b3, ROTATION_7_3, b4 += b3);
+      b1 = rotlXor64(b1, ROTATION_7_0, b6 = add64(b6, b1));
+      b7 = rotlXor64(b7, ROTATION_7_1, b0 = add64(b0, b7));
+      b5 = rotlXor64(b5, ROTATION_7_2, b2 = add64(b2, b5));
+      b3 = rotlXor64(b3, ROTATION_7_3, b4 = add64(b4, b3));
 
-      b0 += kw[dm9 + 1];
-      b1 += kw[dm9 + 2];
-      b2 += kw[dm9 + 3];
-      b3 += kw[dm9 + 4];
-      b4 += kw[dm9 + 5];
-      b5 += kw[dm9 + 6] + t[dm3 + 1];
-      b6 += kw[dm9 + 7] + t[dm3 + 2];
-      b7 += kw[dm9 + 8] + BigInt(d + 1);
+      b0 = add64(b0, kw[dm9 + 1]);
+      b1 = add64(b1, kw[dm9 + 2]);
+      b2 = add64(b2, kw[dm9 + 3]);
+      b3 = add64(b3, kw[dm9 + 4]);
+      b4 = add64(b4, kw[dm9 + 5]);
+      b5 = add64(b5, add64(kw[dm9 + 6], t[dm3 + 1]));
+      b6 = add64(b6, add64(kw[dm9 + 7], t[dm3 + 2]));
+      b7 = add64(b7, add64(kw[dm9 + 8], BigInt(d + 1)));
     }
 
     /** @type {BigInt[]} */
@@ -272,6 +282,7 @@
     processBlock(chain) {
       for (let i = 0; i < 8; i++) {
         const off = i * 8;
+        /** @type {uint64} */
         let w = 0n;
         for (let j = 0; j < 8; j++) {
           w = OpCodes.OrN(w, OpCodes.ShiftLn(BigInt(this.currentBlock[off + j]), j * 8));

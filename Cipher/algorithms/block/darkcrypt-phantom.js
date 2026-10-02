@@ -137,17 +137,17 @@
   const PHANTOM_SBOX = OpCodes.Hex8ToBytes(PHANTOM_SBOX_HEX);
 
   // IDEA-style multiplication modulo 65537 (0x10001); the value 0 represents 65536 (2^16).
+  // 65536 is -1 modulo 65537, so a zero operand negates the other one; two
+  // non-zero 16-bit operands have a product below 2^32.
   /**
    * @param {uint32} a - 16-bit operand (0 means 65536)
    * @param {uint32} b - 16-bit operand (0 means 65536)
-   * @returns {uint32} Product modulo 65537 (65536 as 0)
+   * @returns {uint16} Product modulo 65537 (65536 as 0)
    */
   function mulMod65537(a, b) {
-    const A = a === 0 ? 65536 : a;
-    const B = b === 0 ? 65536 : b;
-    let p = (A * B) % 65537;
-    if (p === 65536) p = 0;
-    return p;
+    if (a === 0) return OpCodes.ToUint16(65537 - (b === 0 ? 65536 : b));
+    if (b === 0) return OpCodes.ToUint16(65537 - a);
+    return OpCodes.ToUint16(OpCodes.Mul32(a, b) % 65537);
   }
 
   class DarkCryptPhantomAlgorithm extends BlockCipherAlgorithm {

@@ -185,6 +185,7 @@
       const n = data.length;
 
       for (let pos = 0; pos + 16 <= n; pos += 16) {
+        /** @type {bigint} */
         let bundle = 0n;
         for (let j = 0; j < 16; j++) {
           bundle = OpCodes.OrN(bundle, OpCodes.ShiftLn(BigInt(data[pos + j]), 8 * j));

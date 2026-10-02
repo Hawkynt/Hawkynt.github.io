@@ -1210,20 +1210,12 @@ namespace ${namespace}
         }
         public static void ClearArray(byte[] arr) => System.Array.Clear(arr, 0, arr.Length);
         public static bool IsInteger(double v) => v == Math.Floor(v);
-        // OpCodes.js itself has no SecureRandom - iso10126.js's/random.js's/oaep.js's/
-        // shamir-secret-sharing.js's padding schemes call OpCodes.SecureRandom(256)
-        // (expecting a single random byte, 0-255) only on their non-deterministic path
-        // (test mode / a fixed seed always take a different, deterministic branch
-        // instead - the reason this was never caught by the JS suite, which never
-        // exercises non-deterministic padding). Added here purely so that call site
-        // COMPILES against a real random source (CS0117); System.Random.Shared is
-        // thread-safe (.NET 6+), matching this stub's static, no-shared-state usage
-        // pattern elsewhere. Returns byte (not uint) to match every real call site -
-        // a bare scalar assignment/return into a byte[]-element or byte-typed method -
-        // this stub has no JSDoc entry for the type inferencer (it isn't a real OpCodes.js
-        // function) to pick up, so an unmatching uint return silently skipped its
-        // narrowing cast at those sites (CS0266).
-        public static byte SecureRandom(int max = 256) => (byte)System.Random.Shared.Next(max);
+        // OpCodes.SecureRandomBytes(count): count bytes from the platform CSPRNG
+        public static byte[] SecureRandomBytes(int count) {
+            var result = new byte[count];
+            System.Security.Cryptography.RandomNumberGenerator.Fill(result);
+            return result;
+        }
         public static byte[] ConcatArrays(byte[] a, byte[] b) {
             var result = new byte[a.Length + b.Length];
             System.Array.Copy(a, 0, result, 0, a.Length);
