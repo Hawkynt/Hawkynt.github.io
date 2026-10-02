@@ -560,7 +560,9 @@
       ctx.textAlign = 'left';
     }
 
-    drawCombatGrid(grid, tileSize, offsetX, offsetY, biome, dimension) {
+    // theme: optional dungeon theme; its floor and wall art replace the
+    // generic look of its floor and wall terrain.
+    drawCombatGrid(grid, tileSize, offsetX, offsetY, biome, dimension, theme = null) {
       if (!this.#bufCtx)
         return;
       const ctx = this.#bufCtx;
@@ -581,10 +583,23 @@
           let drawn = false;
 
           // hand-painted underground tiles, varied per cell
-          const art = t && TR.TerrainArt && TR.TerrainArt.has(t.id) ? TR.TerrainArt.rect(t.id, c, r) : null;
+          const isWall = theme && t && t.id === theme.wallTerrain;
+          const artId = !t ? null : isWall ? theme.wallArt : theme && t.id === theme.floorTerrain ? theme.floorArt : t.id;
+          const art = artId && TR.TerrainArt && TR.TerrainArt.has(artId) ? TR.TerrainArt.rect(artId, c, r) : null;
           const artImg = art && assets ? assets.get('terrain') : null;
           if (art && artImg) {
             ctx.drawImage(artImg, art.x, art.y, art.w, art.h, sx, sy, tileSize, tileSize);
+            if (isWall) {
+              // buried rock shows its dark top, rock above open floor its face
+              const below = grid.inBounds(c, r + 1) ? grid.terrainIdAt(c, r + 1) : t.id;
+              ctx.fillStyle = below === t.id ? 'rgba(8,6,14,0.72)' : 'rgba(0,0,0,0.25)';
+              ctx.fillRect(sx, sy, tileSize, below === t.id ? tileSize : Math.round(tileSize * 0.18));
+              continue;
+            }
+            if (theme && grid.inBounds(c, r - 1) && grid.terrainIdAt(c, r - 1) === theme.wallTerrain) {
+              ctx.fillStyle = 'rgba(0,0,0,0.32)';
+              ctx.fillRect(sx, sy, tileSize, Math.round(tileSize * 0.22));
+            }
             this.#drawTerrainEdges(ctx, grid, c, r, t.id, sx, sy, tileSize);
             // trees, rocks and reeds stand on the painted ground
             const layers = TR.TERRAIN_LAYERS && TR.TERRAIN_LAYERS[t.id];
