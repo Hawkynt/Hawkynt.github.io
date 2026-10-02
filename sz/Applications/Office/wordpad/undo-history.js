@@ -52,6 +52,7 @@
       this.#last = this.#snapshot();
 
       editor.addEventListener('beforeinput', (e) => {
+        this.noteSelection();
         if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') {
           e.preventDefault();
           if (e.inputType === 'historyUndo')
@@ -64,6 +65,8 @@
         this.#wordBreak = e.inputType === 'insertText' && /\s/.test(e.data || '');
       });
       editor.addEventListener('keydown', (e) => {
+        // the browser reports selection changes late: take it as the key arrives
+        this.noteSelection();
         if (!(e.ctrlKey || e.metaKey) || e.altKey)
           return;
         const k = e.key.toLowerCase();
