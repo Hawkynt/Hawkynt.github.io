@@ -275,6 +275,7 @@
 
   function activatePowerUp(pu) {
     floatingText.add(pu.x, pu.y, pu.label, { color: pu.color, font: 'bold 16px sans-serif' });
+    SZ.GameAudio.play('powerup');
 
     if (pu.type === 'W') {
       paddle.width = PADDLE_WIDTH_WIDE;
@@ -410,6 +411,7 @@
     ball.vy = Math.sin(angle) * ball.speed;
     ball.y = paddle.y - ball.radius;
 
+    SZ.GameAudio.play('bounce');
     particles.burst(ball.x, paddle.y, 8, {
       color: '#6cf', speed: 3, gravity: 0.02, life: 0.4, size: 2
     });
@@ -418,6 +420,7 @@
   function hitBrick(brick, ball) {
     if (brick.type === 'indestructible') {
       particles.sparkle(brick.x + brick.width / 2, brick.y + brick.height / 2, 4, { color: '#888' });
+      SZ.GameAudio.play('click', { pitch: 0.6 });
       return;
     }
 
@@ -437,6 +440,7 @@
         });
 
       score += Math.max(0, (comboCount - 1)) * 10;
+      SZ.GameAudio.play(brick.type === 'glass' ? 'zap' : 'blip', { pitch: Math.min(1 + (comboCount - 1) * 0.08, 2) });
 
       if (brick.type === 'glass') {
         particles.burst(brick.x + brick.width / 2, brick.y + brick.height / 2, 20, {
@@ -458,6 +462,7 @@
     } else {
       particles.sparkle(brick.x + brick.width / 2, brick.y + brick.height / 2, 5, { color: '#ff0' });
       screenShake.trigger(2, 100);
+      SZ.GameAudio.play('hit', { pitch: 1.4, volume: 0.7 });
     }
     updateStatus();
   }
@@ -621,6 +626,7 @@
           ball.y = CANVAS_H - ball.radius - 4;
           barrier.life = 0;
           barrier.flashTime = 15;
+          SZ.GameAudio.play('bounce', { pitch: 0.7 });
           particles.burst(ball.x, CANVAS_H - 4, 15, {
             color: '#88f', speed: 3, gravity: 0.02, life: 0.5, size: 2
           });
@@ -630,6 +636,7 @@
         balls.splice(i, 1);
         if (balls.length === 0) {
           screenShake.trigger(8, 400);
+          SZ.GameAudio.play(!zenMode && lives <= 1 ? 'lose' : 'hurt');
           if (zenMode) {
             const nb = createBall(false);
             launchBall(nb);
@@ -1158,6 +1165,7 @@
 
   /* ---- Level Management ---- */
   function nextLevel() {
+    SZ.GameAudio.play('levelup');
     ++level;
     powerUps = [];
     lasers = [];
@@ -1322,6 +1330,7 @@
     const py = paddle.y;
     lasers.push({ x: lx, y: py - 10 });
     lasers.push({ x: rx, y: py - 10 });
+    SZ.GameAudio.play('laser', { volume: 0.6 });
     particles.sparkle(lx, py - 10, 3, { color: '#f88' });
     particles.sparkle(rx, py - 10, 3, { color: '#f88' });
   }
@@ -1398,6 +1407,7 @@
         for (const ball of balls)
           if (ball.attached)
             launchBall(ball);
+        SZ.GameAudio.play('shoot', { pitch: 0.7 });
       } else if (state === STATE_PLAYING)
         fireLaser();
       return;
@@ -1442,6 +1452,7 @@
       for (const ball of balls)
         if (ball.attached)
           launchBall(ball);
+      SZ.GameAudio.play('shoot', { pitch: 0.7 });
     } else if (state === STATE_PLAYING)
       fireLaser();
   });
@@ -1462,6 +1473,7 @@
   /* ---- Init ---- */
   function init() {
     SZ.Dlls.User32.EnableVisualStyles();
+    SZ.GameAudio.attachMuteButton();
     loadHighScores();
     recalcFieldDerived();
     newGame();
