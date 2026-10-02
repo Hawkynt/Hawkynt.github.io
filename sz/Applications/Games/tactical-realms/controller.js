@@ -66,6 +66,7 @@
     #lastTime;
     #animFrame;
     #hoverTile;
+    #mouse = null;
     #playerPos;
     #overworldMap;
     #statusEls;
@@ -1310,6 +1311,7 @@
         for (const step of this.#walkPath)
           this.#renderer.highlightTile(step.col, step.row, 'rgba(255,255,100,0.2)');
 
+      this.#refreshHover();
       if (this.#hoverTile && this.#overworldMap) {
         const passable = this.#overworldMap.isPassable(this.#hoverTile.col, this.#hoverTile.row);
         const color = passable ? 'rgba(255,255,0,0.3)' : 'rgba(255,100,100,0.15)';
@@ -1484,6 +1486,7 @@
       let oy = this.#combatOffsetY;
       const cfx = this.#combatFx;
       const bctx = this.#renderer.bufCtx;
+      this.#refreshHover();
       if (cfx && bctx)
         cfx.beginShake(bctx);
 
@@ -3129,7 +3132,25 @@
       }
     }
 
+    // The tile under the cursor follows the view: recomputed every frame from
+    // the cursor's screen position, so a scrolling camera never leaves the
+    // highlight behind on the tile the cursor used to be over.
+    #refreshHover() {
+      const m = this.#mouse;
+      if (!m)
+        return;
+      if (this.#sm.current === GameState.OVERWORLD && this.#overworldMap)
+        this.#hoverTile = this.#input.screenToTile(m.x, m.y, this.#renderer.camera);
+      else if (this.#sm.current === GameState.COMBAT && this.#combatEngine) {
+        const ts = this.#combatTileSize;
+        const col = Math.floor((m.x - this.#combatOffsetX) / ts);
+        const row = Math.floor((m.y - this.#combatOffsetY) / ts);
+        this.#combatHoverTile = this.#combatEngine.grid.inBounds(col, row) ? { col, row } : null;
+      }
+    }
+
     #onHover(e) {
+      this.#mouse = { x: e.x, y: e.y };
       if ((this.#sm.current === GameState.OVERWORLD || this.#sm.current === GameState.DUNGEON) && this.#overworldMap) {
         this.#hoverTile = this.#input.screenToTile(e.x, e.y, this.#renderer.camera);
       } else if (this.#sm.current === GameState.COMBAT && this.#combatEngine) {
