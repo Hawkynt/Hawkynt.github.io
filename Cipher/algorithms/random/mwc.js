@@ -353,21 +353,16 @@
       // Result is 96 bits max (64-bit * 32-bit)
 
       // Low part: xLow * a (produces up to 64 bits)
-      // (the double-precision products below round above 2^53 exactly as before)
       /** @type {int32} */
       const lowMul = Math.imul(xLow, a);  // Low 32 bits of xLow * a
-      /** @type {float64} */
-      const lowProduct = xLow * a;
-      /** @type {float64} */
-      const lowCarry = Math.floor(lowProduct / 0x100000000); // High 32 bits
+      /** @type {uint32} */
+      const lowCarry = OpCodes.MulHi32(xLow, a); // High 32 bits of xLow * a
 
       // High part: xHigh * a (produces up to 64 bits, but we only need 32+32)
       /** @type {int32} */
       const highMul = Math.imul(xHigh, a);  // Low 32 bits of xHigh * a
-      /** @type {float64} */
-      const highProduct = xHigh * a;
-      /** @type {float64} */
-      const highCarry = Math.floor(highProduct / 0x100000000); // High 32 bits
+      /** @type {uint32} */
+      const highCarry = OpCodes.MulHi32(xHigh, a); // High 32 bits of xHigh * a
 
       // Combine: result = lowMul + (lowCarry + highMul) * 2^32 + highCarry * 2^64
       // We track as [result0, result1, result2, result3] each 32-bit
