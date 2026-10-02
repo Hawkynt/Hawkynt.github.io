@@ -1163,7 +1163,7 @@ _Stream-based symmetric encryption_
 | [Dragon](stream-ciphers/dragon.md) | ❌ Broken | Word-based eSTREAM candidate using two NLFSRs with 32-bit operations for high-speed software. Designed by Chen, Henricksen, et al. but elim… |
 | [Dragon (DarkCrypt)](stream-ciphers/dragon-darkcrypt.md) | 🎓 Educational Only | Real Dragon-256 eSTREAM Phase 3 Focus candidate: a single 1024-bit NLFSR filtered by a reversible F function built from two 8x32 S-boxes. 2… |
 | [E0](stream-ciphers/e0.md) | ❌ Broken | Stream cipher used in Bluetooth protocol for encryption. Combines four LFSRs with nonlinear combining function using majority logic. Has kn… |
-| [E2 (NTT AES candidate)](stream-ciphers/e2-ntt-aes-candidate.md) | educational | Educational implementation of E2 block cipher adapted as a stream cipher using keystream generation. Originally an AES candidate by NTT wit… |
+| [E2 (NTT AES candidate)](stream-ciphers/e2-ntt-aes-candidate.md) | 🎓 Educational Only | Educational implementation of E2 block cipher adapted as a stream cipher using keystream generation. Originally an AES candidate by NTT wit… |
 | [Edon80](stream-ciphers/edon80.md) | 🎓 Educational Only | Edon80 quasigroup-based stream cipher, an eSTREAM hardware-profile candidate built from an 80-stage pipeline of e-transformers, each bound… |
 | [F-FCSR](stream-ciphers/f-fcsr.md) | — | Feedback with Carry Shift Register stream cipher based on eSTREAM specification. Uses FCSR automaton with binary expansion of 2-adic number… |
 | [F-FCSR (DarkCrypt)](stream-ciphers/f-fcsr-darkcrypt.md) | — | Feedback-with-Carry Shift Register (Galois FCSR) filter generator from the DarkCrypt Total Commander plugin. Non-standard 256-bit register… |
@@ -1240,7 +1240,7 @@ _Stream-based symmetric encryption_
 | [WAKE-OFB-BE](stream-ciphers/wake-ofb-be.md) | ❌ Broken | Table-driven stream cipher designed by David Wheeler using 32-bit word operations with auto-key generation. Operates in OFB mode with casca… |
 | [WAKE-OFB-LE](stream-ciphers/wake-ofb-le.md) | ❌ Broken | Table-driven stream cipher designed by David Wheeler using 32-bit word operations with auto-key generation. Operates in OFB mode with casca… |
 | [WG (DarkCrypt)](stream-ciphers/wg-darkcrypt.md) | 🎓 Educational Only | Welch-Gong (WG) transformation stream cipher: an 11-stage LFSR over GF(2^29) filtered by a degree-11 normal-basis nonlinear transformation.… |
-| [XChaCha20 Extended-Nonce Stream Cipher](stream-ciphers/xchacha20-extended-nonce-stream-cipher.md) | 🧪 Experimental | Extended-nonce variant of ChaCha20 providing 192-bit nonces instead of 96-bit. Uses HChaCha20 key derivation to generate subkeys, eliminati… |
+| [XChaCha20 Extended-Nonce Stream Cipher](stream-ciphers/xchacha20-extended-nonce-stream-cipher.md) | — | Extended-nonce variant of ChaCha20 providing 192-bit nonces instead of 96-bit. HChaCha20 derives a subkey from the key and the first 16 non… |
 | [XSalsa20](stream-ciphers/xsalsa20.md) | 🛡️ Secure | Extended-nonce variant of Salsa20 stream cipher with 192-bit nonces. Uses HSalsa20 for subkey derivation enabling longer nonces without inc… |
 | [Yamb (DarkCrypt)](stream-ciphers/yamb-darkcrypt.md) | ❌ Broken | T-function-based eSTREAM Phase 1 candidate by LAN Crypto, combining Galois-style word LFSRs (state OLZ, feedback 0x091B17C9) with a 256-byt… |
 | [ZK-Crypt v3 (DarkCrypt)](stream-ciphers/zk-crypt-v3-darkcrypt.md) | 🎓 Educational Only | eSTREAM Profile II (hardware) 'Variable Clocking Mechanism' stream cipher: three irregularly-clocked nLFSR data banks with independent smal… |

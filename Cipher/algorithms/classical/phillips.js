@@ -155,18 +155,11 @@
 
     /**
      * Keyword for the grid, given as a string or as its ASCII bytes
-     * @param {string|uint8[]} keyData - Keyword; empty keeps the standard grid
+     * @param {uint8[]} keyData - Keyword; empty keeps the standard grid
      */
     set key(keyData) {
       /** @type {string} */
-      let keyString = '';
-      if (typeof keyData === 'string') {
-        keyString = keyData;
-      } else if (Array.isArray(keyData)) {
-        /** @type {uint8[]} */
-        const bytes = keyData;
-        keyString = String.fromCharCode(...bytes);
-      }
+      const keyString = keyData ? String.fromCharCode(...keyData) : '';
 
       if (keyString && keyString.length > 0) {
         this.grid = this.createCustomGrid(keyString);

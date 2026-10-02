@@ -135,6 +135,29 @@
   }
 
   /**
+   * RFC 6330 parameters, compliance and resource figures as reported by getPerformanceReport()
+   * @class
+   */
+  class RaptorQPerformanceReport {
+    /**
+     * @param {RFC6330Parameters} parameters - Derived RFC 6330 parameters
+     * @param {RFC6330Compliance} compliance - Compliance flags
+     * @param {float64} matrixDensity - Constraint matrix density
+     * @param {MemoryUsage} memoryUsage - Memory estimate
+     */
+    constructor(parameters, compliance, matrixDensity, memoryUsage) {
+      /** @type {RFC6330Parameters} */
+      this.rfc6330Parameters = parameters;
+      /** @type {RFC6330Compliance} */
+      this.compliance = compliance;
+      /** @type {float64} */
+      this.matrixDensity = matrixDensity;
+      /** @type {MemoryUsage} */
+      this.memoryUsage = memoryUsage;
+    }
+  }
+
+  /**
    * Rate figures as reported by getEfficiency()
    * @class
    */
@@ -284,11 +307,13 @@
       this.U = 0;                     // Number of source symbols in first sub-block
 
       // Matrices and structures
+      /** @type {SparseMatrix} */
       this.A = null;                  // Constraint matrix
-      this.gf = null;                 // Galois field for operations
+      /** @type {PerformanceProfiler} */
       this.profiler = new PerformanceProfiler();
 
       // Initialize Galois Field for octet operations
+      /** @type {GaloisField} */
       this.gf = new GaloisField(2, 8); // GF(2^8) = GF(256)
     }
 
@@ -690,15 +715,14 @@
         this.S > 0 && this.H > 0 && this.L > 0);
     }
 
-    // Performance analysis
+    /**
+     * RFC 6330 parameters, compliance, matrix density and memory estimate
+     * @returns {RaptorQPerformanceReport} Performance report
+     */
     getPerformanceReport() {
-      return {
-        ...this.profiler.getReport(),
-        rfc6330Parameters: new RFC6330Parameters(this.K, this.S, this.H, this.W, this.L, this.T, this.Al),
-        compliance: this.validateRFC6330Compliance(),
-        matrixDensity: this._calculateMatrixDensity(),
-        memoryUsage: this._estimateMemoryUsage()
-      };
+      return new RaptorQPerformanceReport(
+        new RFC6330Parameters(this.K, this.S, this.H, this.W, this.L, this.T, this.Al),
+        this.validateRFC6330Compliance(), this._calculateMatrixDensity(), this._estimateMemoryUsage());
     }
 
     /**

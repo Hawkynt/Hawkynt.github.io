@@ -225,11 +225,12 @@
   /**
    * Decode 32-byte compressed point format (RFC 8032)
    * @param {uint8[]} bytes - bytes
-   * @returns {EdAffinePoint} Result
+   * @returns {EdAffinePoint|null} The point, or null when the bytes encode none
+   *   (wrong length, y not below p, or no x on the curve for y)
    */
   function decodePoint(bytes) {
     if (bytes.length !== 32) {
-      throw new Error('Invalid point encoding length');
+      return null;
     }
 
     // Extract sign bit
@@ -241,7 +242,7 @@
     const y = decodeInt(yBytes);
 
     if (y >= P) {
-      throw new Error('Invalid y-coordinate');
+      return null;
     }
 
     // Recover x from y using curve equation: x^2 = (y^2 - 1) / (d*y^2 + 1)
@@ -264,7 +265,7 @@
 
     // Verify solution
     if (modP(x * x) !== x2) {
-      throw new Error('Point not on curve');
+      return null;
     }
 
     // Adjust sign
@@ -446,7 +447,7 @@
     // The registry is the normal path. In the browser the hash script tag has
     // run long before anyone signs; under Node the load below puts it there.
     /** @type {Algorithm} */
-    let algorithm = AlgorithmFramework.Find ? AlgorithmFramework.Find('SHA-512') : null;
+    let algorithm = AlgorithmFramework.Find('SHA-512');
 
     if (!algorithm && typeof require !== 'undefined') {
       try {
@@ -572,44 +573,45 @@
       return false;
     }
 
-    try {
-      // Parse signature: R || S
-      const encodedR = signature.slice(0, 32);
-      const encodedS = signature.slice(32, 64);
+    // Parse signature: R || S
+    const encodedR = signature.slice(0, 32);
+    const encodedS = signature.slice(32, 64);
 
-      const R = decodePoint(encodedR);
-      const S = decodeInt(encodedS);
-
-      // Check S < L (prevent signature malleability)
-      if (S >= L) {
-        return false;
-      }
-
-      // Decode public key
-      const A = decodePoint(publicKey);
-
-      // Compute k = H(R || A || message)
-      const kHash = sha512Hash(encodedR.concat(publicKey).concat(message));
-      const k = modL(decodeInt(kHash));
-
-      // Verify: S*B = R + k*A
-      // Equivalently: S*B - k*A = R
-      const SB = scalarMultBase(S);
-      const kA = scalarMult(k, A);
-
-      // Compute R' = S*B - k*A. Both operands are affine: Z = 1 and T = xy,
-      // which is what pointAdd assumed for them.
-      const negKAx = modP(-kA.x); // Negate point by negating x
-      const Rprime = pointAdd(
-        new EdExtendedPoint(SB.x, SB.y, 1n, modP(SB.x * SB.y)),
-        new EdExtendedPoint(negKAx, kA.y, 1n, modP(negKAx * kA.y)));
-
-      // Compare R' with R
-      return Rprime.x === R.x && Rprime.y === R.y;
-
-    } catch (e) {
+    const R = decodePoint(encodedR);
+    if (R === null) {
       return false;
     }
+    const S = decodeInt(encodedS);
+
+    // Check S < L (prevent signature malleability)
+    if (S >= L) {
+      return false;
+    }
+
+    // Decode public key
+    const A = decodePoint(publicKey);
+    if (A === null) {
+      return false;
+    }
+
+    // Compute k = H(R || A || message)
+    const kHash = sha512Hash(encodedR.concat(publicKey).concat(message));
+    const k = modL(decodeInt(kHash));
+
+    // Verify: S*B = R + k*A
+    // Equivalently: S*B - k*A = R
+    const SB = scalarMultBase(S);
+    const kA = scalarMult(k, A);
+
+    // Compute R' = S*B - k*A. Both operands are affine: Z = 1 and T = xy,
+    // which is what pointAdd assumed for them.
+    const negKAx = modP(-kA.x); // Negate point by negating x
+    const Rprime = pointAdd(
+      new EdExtendedPoint(SB.x, SB.y, 1n, modP(SB.x * SB.y)),
+      new EdExtendedPoint(negKAx, kA.y, 1n, modP(negKAx * kA.y)));
+
+    // Compare R' with R
+    return Rprime.x === R.x && Rprime.y === R.y;
   }
 
   // ===== ALGORITHM CLASS =====

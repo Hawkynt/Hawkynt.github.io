@@ -163,29 +163,15 @@
   }
 
   /**
-   * Read a parameter set selector from whatever the caller supplied. Both
-   * spellings used across this collection are accepted: decimal digits in
-   * ASCII, and a big-endian 16-bit count. The ASCII form used to be read as a
-   * 16-bit count, so "976" arrived as 0x3937 and quietly selected 640.
-   * @param {uint8[]|string|number} keyData - Parameter set selector
+   * Read a parameter set selector from the key bytes. Both spellings used
+   * across this collection are accepted: decimal digits in ASCII, and a
+   * big-endian 16-bit count. The ASCII form used to be read as a 16-bit
+   * count, so "976" arrived as 0x3937 and quietly selected 640.
+   * @param {uint8[]} keyData - Parameter set selector
    * @returns {int32} The lattice dimension n
    */
   function parseParameterSet(keyData) {
-    if (typeof keyData === 'number') {
-      /** @type {int32} */
-      const dimension = keyData;
-      return dimension;
-    }
-
-    if (typeof keyData === 'string') {
-      /** @type {string} */
-      const text = keyData;
-      /** @type {int32} */
-      const parsed = parseInt(text, 10);
-      return parsed;
-    }
-
-    if (keyData && typeof keyData.length === 'number') {
+    if (keyData) {
       /** @type {uint8[]} */
       const bytes = keyData;
       let digits = '';

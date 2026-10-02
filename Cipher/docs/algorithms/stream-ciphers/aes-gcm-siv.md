@@ -12,7 +12,7 @@
 | Complexity | Not specified |
 | Inventor | Shay Gueron, Yehuda Lindell |
 | Year | 2017 |
-| Origin | MULTI |
+| Origin | 🌐 International |
 | Source | [`algorithms/stream/aes-gcm-siv.js`](../../../algorithms/stream/aes-gcm-siv.js) |
 
 ## Security
@@ -25,7 +25,7 @@ Simplified educational implementation for learning AEAD concepts. Not suitable f
 
 | Issue | Description | Mitigation |
 | --- | --- | --- |
-| This is a simplified educational implementation not suitable for security applications. | — | Use only for educational purposes to understand AEAD concepts. |
+| Educational Only | This is a simplified educational implementation not suitable for security applications. | Use only for educational purposes to understand AEAD concepts. |
 
 ## Documentation
 

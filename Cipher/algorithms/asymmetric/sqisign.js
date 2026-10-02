@@ -101,7 +101,7 @@
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           AsymmetricCipherAlgorithm, IAlgorithmInstance,
-          LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
+          TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
   // ===== SHAKE256 =====
   //
@@ -137,7 +137,7 @@
   /**
    * One Keccak-f[1600] permutation over a state held as 25 pairs of 32 bit
    * halves, low half first.
-   * @param {Int32Array} state - 50 words, modified in place
+   * @param {int32[]} state - 50 words, modified in place
    */
   function KeccakPermute(state) {
     const b = new Int32Array(50);
@@ -180,16 +180,19 @@
           const rotation = KECCAK_ROTATION[i];
           const low = state[2 * i];
           const high = state[2 * i + 1];
-          let newLow, newHigh;
+          /** @type {uint32} */
+          let newLow = 0;
+          /** @type {uint32} */
+          let newHigh = 0;
           if (rotation === 0) {
-            newLow = low;
-            newHigh = high;
+            newLow = OpCodes.ToDWord(low);
+            newHigh = OpCodes.ToDWord(high);
           } else if (rotation < 32) {
             newLow = OpCodes.Or32(OpCodes.Shl32(low, rotation), OpCodes.Shr32(high, 32 - rotation));
             newHigh = OpCodes.Or32(OpCodes.Shl32(high, rotation), OpCodes.Shr32(low, 32 - rotation));
           } else if (rotation === 32) {
-            newLow = high;
-            newHigh = low;
+            newLow = OpCodes.ToDWord(high);
+            newHigh = OpCodes.ToDWord(low);
           } else {
             const shift = rotation - 32;
             newLow = OpCodes.Or32(OpCodes.Shl32(high, shift), OpCodes.Shr32(low, 32 - shift));
@@ -215,7 +218,7 @@
   }
 
   /**
-   * @param {Int32Array} state - state
+   * @param {int32[]} state - state
    * @param {int32} position - position
    * @param {int32} value - value
    */
@@ -227,7 +230,7 @@
   }
 
   /**
-   * @param {Int32Array} state - state
+   * @param {int32[]} state - state
    * @param {int32} position - position
    * @returns {int32} Result
    */
@@ -300,7 +303,9 @@
     const bits = new Array(count);
     let v = value;
     for (let i = 0; i < count; ++i) {
-      bits[i] = Number(v % 2n);
+      /** @type {int32} */
+      const bit = Number(v % 2n);
+      bits[i] = bit;
       v = v / 2n;
     }
     return bits;
@@ -314,6 +319,7 @@
    * @returns {BigInt} Result
    */
   function DecodeLittleEndian(bytes, offset, length) {
+    /** @type {BigInt} */
     let v = 0n;
     for (let i = length - 1; i >= 0; --i) v = v * 256n + BigInt(bytes[offset + i]);
     return v;
@@ -330,7 +336,9 @@
     const out = new Array(length);
     let v = value;
     for (let i = 0; i < length; ++i) {
-      out[i] = Number(v % 256n);
+      /** @type {uint8} */
+      const octet = Number(v % 256n);
+      out[i] = octet;
       v = v / 256n;
     }
     return out;
@@ -341,35 +349,53 @@
   /**
    * Arithmetic of GF(p) and GF(p^2) = GF(p)[i]/(i^2 + 1) for one prime
    * p = 3 mod 4. Elements of GF(p) are BigInt in [0, p); elements of GF(p^2)
-   * are { re, im } pairs of them.
-   * @param {BigInt} P - the prime
-   * @param {int32} encodedBytes - bytes of an encoded element of GF(p)
-   * @returns {SqiField} the field operations
+   * are Fp2 pairs of them.
    */
-  function MakeField(P, encodedBytes) {
-    const PP = P * P;
-    const INV2 = (P + 1n) / 2n;
-    const INV3 = ((2n * P + 1n) % 3n === 0n) ? (2n * P + 1n) / 3n : (P + 1n) / 3n;
-
-    // Exponents, as bit strings consumed from the top.
+  class SqiField {
     /**
-     * @param {BigInt} e - an exponent
+     * @param {BigInt} P - the prime
+     * @param {int32} encodedBytes - bytes of an encoded element of GF(p)
+     */
+    constructor(P, encodedBytes) {
+      /** @type {BigInt} */
+      this.P = P;
+      /** @type {int32} */
+      this.bytes = encodedBytes;
+      /** @type {BigInt} */
+      this.PP = P * P;
+      /** @type {BigInt} */
+      this.INV2 = (P + 1n) / 2n;
+      /** @type {BigInt} */
+      const twoPPlus1 = 2n * P + 1n;
+      /** @type {BigInt} */
+      this.INV3 = (twoPPlus1 % 3n === 0n) ? twoPPlus1 / 3n : (P + 1n) / 3n;
+      // Exponents, as bit strings consumed from the top.
+      /** @type {int32[]} */
+      this.E_SQRT = SqiField.exponentBits((P + 1n) / 4n);
+      /** @type {int32[]} */
+      this.E_PRO = SqiField.exponentBits((P - 3n) / 4n);
+      /** @type {int32[]} */
+      this.E_INV = SqiField.exponentBits(P - 2n);
+      /** @type {int32[]} */
+      this.E_LEG = SqiField.exponentBits((P - 1n) / 2n);
+    }
+
+    /**
+     * @param {BigInt} e - a positive exponent
      * @returns {int32[]} its bits, least significant first
      */
-    function exponentBits(e) {
-      return BitsOf(e, e.toString(2).length);
+    static exponentBits(e) {
+      return BitsOf(e, OpCodes.BitCountN(e));
     }
-    const E_SQRT = exponentBits((P + 1n) / 4n);
-    const E_PRO = exponentBits((P - 3n) / 4n);
-    const E_INV = exponentBits(P - 2n);
-    const E_LEG = exponentBits((P - 1n) / 2n);
 
     /**
      * @param {BigInt} a - a
      * @param {int32[]} bits - bits
      * @returns {BigInt} Result
      */
-    function fpPow(a, bits) {
+    _pow(a, bits) {
+      const P = this.P;
+      /** @type {BigInt} */
       let r = 1n;
       for (let i = bits.length - 1; i >= 0; --i) {
         r = r * r % P;
@@ -378,251 +404,256 @@
       return r;
     }
 
-    const F = {
-      P: P,
-      bytes: encodedBytes,
-      /**
-       * @param {BigInt} a - a
-       * @param {BigInt} b - b
-       * @returns {BigInt} a + b
-       */
-      fpAdd(a, b) { const s = a + b; return s >= P ? s - P : s; },
-      /**
-       * @param {BigInt} a - a
-       * @param {BigInt} b - b
-       * @returns {BigInt} a - b
-       */
-      fpSub(a, b) { const s = a - b; return s < 0n ? s + P : s; },
-      /**
-       * @param {BigInt} a - a
-       * @returns {BigInt} -a
-       */
-      fpNeg(a) { return (a === 0n ? 0n : P - a); },
-      /**
-       * @param {BigInt} a - a
-       * @param {BigInt} b - b
-       * @returns {BigInt} a b
-       */
-      fpMul(a, b) { return a * b % P; },
-      /**
-       * @param {BigInt} a - a
-       * @returns {BigInt} 1 / a
-       */
-      fpInv(a) { return fpPow(a, E_INV); },
-      /**
-       * @param {BigInt} a - a
-       * @returns {BigInt} a^((p + 1) / 4)
-       */
-      fpSqrt(a) { return fpPow(a, E_SQRT); },
-      /**
-       * @param {BigInt} a - a
-       * @returns {BigInt} a^((p - 3) / 4)
-       */
-      fpExp3Div4(a) { return fpPow(a, E_PRO); },
-      /**
-       * @param {BigInt} a - a
-       * @returns {boolean} whether a is a square
-       */
-      fpIsSquare(a) { return (a === 0n) || (fpPow(a, E_LEG) === 1n); },
-      /**
-       * @param {BigInt} a - a
-       * @returns {BigInt} a / 2
-       */
-      fpHalf(a) { return a * INV2 % P; },
-      /**
-       * @param {BigInt} a - a
-       * @returns {BigInt} a / 3
-       */
-      fpDiv3(a) { return a * INV3 % P; },
-      // --- GF(p^2) ---
-      /**
-       * @returns {Fp2} zero
-       */
-      zero() { return new Fp2(0n, 0n); },
-      /**
-       * @returns {Fp2} one
-       */
-      one() { return new Fp2(1n, 0n); },
-      // An arrow rather than a method: the parsers the tests and the
-      // transpiler share read a method named of as the for-of keyword.
-      of: (re, im) => new Fp2(re, im),
-      /**
-       * @param {int32} n - a small integer
-       * @returns {Fp2} n
-       */
-      small(n) { return new Fp2(BigInt(n) % P, 0n); },
-      /**
-       * @param {Fp2} a - a
-       * @param {Fp2} b - b
-       * @returns {Fp2} a + b
-       */
-      add(a, b) {
-        let re = a.re + b.re; if (re >= P) re -= P;
-        let im = a.im + b.im; if (im >= P) im -= P;
-        return new Fp2(re, im);
-      },
-      /**
-       * @param {Fp2} a - a
-       * @param {Fp2} b - b
-       * @returns {Fp2} a - b
-       */
-      sub(a, b) {
-        let re = a.re - b.re; if (re < 0n) re += P;
-        let im = a.im - b.im; if (im < 0n) im += P;
-        return new Fp2(re, im);
-      },
-      /**
-       * @param {Fp2} a - a
-       * @returns {Fp2} -a
-       */
-      neg(a) { return new Fp2(a.re === 0n ? 0n : P - a.re, a.im === 0n ? 0n : P - a.im); },
-      /**
-       * @param {Fp2} a - a
-       * @param {Fp2} b - b
-       * @returns {Fp2} a b
-       */
-      mul(a, b) {
-        return new Fp2(
-          (a.re * b.re + PP - a.im * b.im) % P,
-          (a.re * b.im + a.im * b.re) % P
-        );
-      },
-      /**
-       * @param {Fp2} a - a
-       * @returns {Fp2} a^2
-       */
-      sqr(a) {
-        return new Fp2(
-          (a.re + a.im) * (a.re + P - a.im) % P,
-          2n * a.re * a.im % P
-        );
-      },
-      /**
-       * @param {Fp2} a - a
-       * @param {int32} n - a small integer
-       * @returns {Fp2} n a
-       */
-      mulSmall(a, n) { return new Fp2(a.re * BigInt(n) % P, a.im * BigInt(n) % P); },
-      /**
-       * @param {Fp2} a - a
-       * @returns {Fp2} a / 2
-       */
-      half(a) { return new Fp2(a.re * INV2 % P, a.im * INV2 % P); },
-      /**
-       * @param {Fp2} a - a
-       * @returns {Fp2} a / 3
-       */
-      div3(a) { return new Fp2(a.re * INV3 % P, a.im * INV3 % P); },
-      /**
-       * @param {Fp2} a - a
-       * @returns {boolean} whether a is zero
-       */
-      isZero(a) { return a.re === 0n && a.im === 0n; },
-      /**
-       * @param {Fp2} a - a
-       * @returns {boolean} whether a is one
-       */
-      isOne(a) { return a.re === 1n && a.im === 0n; },
-      /**
-       * @param {Fp2} a - a
-       * @param {Fp2} b - b
-       * @returns {boolean} whether a equals b
-       */
-      equal(a, b) { return a.re === b.re && a.im === b.im; },
-      /**
-       * @param {Fp2} a - a
-       * @returns {Fp2} a copy of a
-       */
-      copy(a) { return new Fp2(a.re, a.im); },
-      /**
-       * @param {Fp2} a - a
-       * @returns {Fp2} 1 / a
-       */
-      inv(a) {
-        const norm = (a.re * a.re + a.im * a.im) % P;
-        const t = fpPow(norm, E_INV);
-        return new Fp2(a.re * t % P, (P - a.im * t % P) % P);
-      },
-      /**
-       * @param {Fp2} a - a
-       * @returns {boolean} whether a is a square
-       */
-      isSquare(a) {
-        const norm = (a.re * a.re + a.im * a.im) % P;
-        return (norm === 0n) || (fpPow(norm, E_LEG) === 1n);
-      },
-      // The canonical square root of the reference (Aardal et al.,
-      // eprint 2024/1563): the root whose real part is even, or whose
-      // imaginary part is even when the real part is zero.
-      /**
-       * @param {Fp2} a - a square
-       * @returns {Fp2} its canonical root
-       */
-      sqrt(a) {
-        let x0 = fpPow((a.re * a.re + a.im * a.im) % P, E_SQRT);
-        if (a.im === 0n) x0 = a.re;
-        x0 = F.fpAdd(x0, a.re);
-        let t0 = F.fpAdd(x0, x0);
-        let x1 = fpPow(t0, E_PRO);
-        x0 = x0 * x1 % P;
-        x1 = x1 * a.im % P;
-        let t1 = F.fpAdd(x0, x0);
-        t1 = t1 * t1 % P;
-        const f = (t0 === t1);
-        /** @type {BigInt} */
-        let r0;
-        /** @type {BigInt} */
-        let r1;
-        if (f) { r0 = x0; r1 = x1; } else { r0 = x1; r1 = F.fpNeg(x0); }
-        const negate = (r0 % 2n === 1n) || (r0 === 0n && r1 % 2n === 1n);
-        if (negate) { r0 = F.fpNeg(r0); r1 = F.fpNeg(r1); }
-        return new Fp2(r0, r1);
-      },
-      /**
-       * Encode an element of GF(p^2): real part, then imaginary, little-endian.
-       * @param {Fp2} a - a
-       * @returns {uint8[]} its encoding
-       */
-      encode(a) { return EncodeLittleEndian(a.re, encodedBytes).concat(EncodeLittleEndian(a.im, encodedBytes)); },
-      /**
-       * Decode; a non-canonical half decodes to zero, as the reference does.
-       * @param {uint8[]} bytes - the encoding
-       * @param {int32} offset - where it starts
-       * @returns {Fp2} the element
-       */
-      decode(bytes, offset) {
-        let re = DecodeLittleEndian(bytes, offset, encodedBytes);
-        let im = DecodeLittleEndian(bytes, offset + encodedBytes, encodedBytes);
-        if (re >= P) re = 0n;
-        if (im >= P) im = 0n;
-        return new Fp2(re, im);
-      }
-    };
-
+    /**
+     * @param {BigInt} a - a
+     * @param {BigInt} b - b
+     * @returns {BigInt} a + b
+     */
+    fpAdd(a, b) { const s = a + b; return s >= this.P ? s - this.P : s; }
+    /**
+     * @param {BigInt} a - a
+     * @param {BigInt} b - b
+     * @returns {BigInt} a - b
+     */
+    fpSub(a, b) { const s = a - b; return s < 0n ? s + this.P : s; }
+    /**
+     * @param {BigInt} a - a
+     * @returns {BigInt} -a
+     */
+    fpNeg(a) { return (a === 0n ? 0n : this.P - a); }
+    /**
+     * @param {BigInt} a - a
+     * @param {BigInt} b - b
+     * @returns {BigInt} a b
+     */
+    fpMul(a, b) { return a * b % this.P; }
+    /**
+     * @param {BigInt} a - a
+     * @returns {BigInt} 1 / a
+     */
+    fpInv(a) { return this._pow(a, this.E_INV); }
+    /**
+     * @param {BigInt} a - a
+     * @returns {BigInt} a^((p + 1) / 4)
+     */
+    fpSqrt(a) { return this._pow(a, this.E_SQRT); }
+    /**
+     * @param {BigInt} a - a
+     * @returns {BigInt} a^((p - 3) / 4)
+     */
+    fpExp3Div4(a) { return this._pow(a, this.E_PRO); }
+    /**
+     * @param {BigInt} a - a
+     * @returns {boolean} whether a is a square
+     */
+    fpIsSquare(a) { return (a === 0n) || (this._pow(a, this.E_LEG) === 1n); }
+    /**
+     * @param {BigInt} a - a
+     * @returns {BigInt} a / 2
+     */
+    fpHalf(a) { return a * this.INV2 % this.P; }
+    /**
+     * @param {BigInt} a - a
+     * @returns {BigInt} a / 3
+     */
+    fpDiv3(a) { return a * this.INV3 % this.P; }
+    // --- GF(p^2) ---
+    /**
+     * @returns {Fp2} zero
+     */
+    zero() { return new Fp2(0n, 0n); }
+    /**
+     * @returns {Fp2} one
+     */
+    one() { return new Fp2(1n, 0n); }
+    /**
+     * @param {BigInt} re - the real part
+     * @param {BigInt} im - the imaginary part
+     * @returns {Fp2} re + i im
+     */
+    fromParts(re, im) { return new Fp2(re, im); }
+    /**
+     * @param {int32} n - a small integer
+     * @returns {Fp2} n
+     */
+    small(n) { return new Fp2(BigInt(n) % this.P, 0n); }
+    /**
+     * @param {Fp2} a - a
+     * @param {Fp2} b - b
+     * @returns {Fp2} a + b
+     */
+    add(a, b) {
+      const P = this.P;
+      let re = a.re + b.re; if (re >= P) re -= P;
+      let im = a.im + b.im; if (im >= P) im -= P;
+      return new Fp2(re, im);
+    }
+    /**
+     * @param {Fp2} a - a
+     * @param {Fp2} b - b
+     * @returns {Fp2} a - b
+     */
+    sub(a, b) {
+      const P = this.P;
+      let re = a.re - b.re; if (re < 0n) re += P;
+      let im = a.im - b.im; if (im < 0n) im += P;
+      return new Fp2(re, im);
+    }
+    /**
+     * @param {Fp2} a - a
+     * @returns {Fp2} -a
+     */
+    neg(a) { return new Fp2(a.re === 0n ? 0n : this.P - a.re, a.im === 0n ? 0n : this.P - a.im); }
+    /**
+     * @param {Fp2} a - a
+     * @param {Fp2} b - b
+     * @returns {Fp2} a b
+     */
+    mul(a, b) {
+      const P = this.P;
+      return new Fp2(
+        (a.re * b.re + this.PP - a.im * b.im) % P,
+        (a.re * b.im + a.im * b.re) % P
+      );
+    }
+    /**
+     * @param {Fp2} a - a
+     * @returns {Fp2} a^2
+     */
+    sqr(a) {
+      const P = this.P;
+      return new Fp2(
+        (a.re + a.im) * (a.re + P - a.im) % P,
+        2n * a.re * a.im % P
+      );
+    }
+    /**
+     * @param {Fp2} a - a
+     * @param {int32} n - a small integer
+     * @returns {Fp2} n a
+     */
+    mulSmall(a, n) { return new Fp2(a.re * BigInt(n) % this.P, a.im * BigInt(n) % this.P); }
+    /**
+     * @param {Fp2} a - a
+     * @returns {Fp2} a / 2
+     */
+    half(a) { return new Fp2(a.re * this.INV2 % this.P, a.im * this.INV2 % this.P); }
+    /**
+     * @param {Fp2} a - a
+     * @returns {Fp2} a / 3
+     */
+    div3(a) { return new Fp2(a.re * this.INV3 % this.P, a.im * this.INV3 % this.P); }
+    /**
+     * @param {Fp2} a - a
+     * @returns {boolean} whether a is zero
+     */
+    isZero(a) { return a.re === 0n && a.im === 0n; }
+    /**
+     * @param {Fp2} a - a
+     * @returns {boolean} whether a is one
+     */
+    isOne(a) { return a.re === 1n && a.im === 0n; }
+    /**
+     * @param {Fp2} a - a
+     * @param {Fp2} b - b
+     * @returns {boolean} whether a equals b
+     */
+    equal(a, b) { return a.re === b.re && a.im === b.im; }
+    /**
+     * @param {Fp2} a - a
+     * @returns {Fp2} a copy of a
+     */
+    copy(a) { return new Fp2(a.re, a.im); }
+    /**
+     * @param {Fp2} a - a
+     * @returns {Fp2} 1 / a
+     */
+    inv(a) {
+      const P = this.P;
+      const norm = (a.re * a.re + a.im * a.im) % P;
+      const t = this._pow(norm, this.E_INV);
+      return new Fp2(a.re * t % P, (P - a.im * t % P) % P);
+    }
+    /**
+     * @param {Fp2} a - a
+     * @returns {boolean} whether a is a square
+     */
+    isSquare(a) {
+      const norm = (a.re * a.re + a.im * a.im) % this.P;
+      return (norm === 0n) || (this._pow(norm, this.E_LEG) === 1n);
+    }
+    // The canonical square root of the reference (Aardal et al.,
+    // eprint 2024/1563): the root whose real part is even, or whose
+    // imaginary part is even when the real part is zero.
+    /**
+     * @param {Fp2} a - a square
+     * @returns {Fp2} its canonical root
+     */
+    sqrt(a) {
+      const P = this.P;
+      /** @type {BigInt} */
+      let x0 = this._pow((a.re * a.re + a.im * a.im) % P, this.E_SQRT);
+      if (a.im === 0n) x0 = a.re;
+      x0 = this.fpAdd(x0, a.re);
+      const t0 = this.fpAdd(x0, x0);
+      /** @type {BigInt} */
+      let x1 = this._pow(t0, this.E_PRO);
+      x0 = x0 * x1 % P;
+      x1 = x1 * a.im % P;
+      /** @type {BigInt} */
+      let t1 = this.fpAdd(x0, x0);
+      t1 = t1 * t1 % P;
+      const f = (t0 === t1);
+      /** @type {BigInt} */
+      let r0;
+      /** @type {BigInt} */
+      let r1;
+      if (f) { r0 = x0; r1 = x1; } else { r0 = x1; r1 = this.fpNeg(x0); }
+      const negate = (r0 % 2n === 1n) || (r0 === 0n && r1 % 2n === 1n);
+      if (negate) { r0 = this.fpNeg(r0); r1 = this.fpNeg(r1); }
+      return new Fp2(r0, r1);
+    }
+    /**
+     * Encode an element of GF(p^2): real part, then imaginary, little-endian.
+     * @param {Fp2} a - a
+     * @returns {uint8[]} its encoding
+     */
+    encode(a) { return EncodeLittleEndian(a.re, this.bytes).concat(EncodeLittleEndian(a.im, this.bytes)); }
+    /**
+     * Decode; a non-canonical half decodes to zero, as the reference does.
+     * @param {uint8[]} bytes - the encoding
+     * @param {int32} offset - where it starts
+     * @returns {Fp2} the element
+     */
+    decode(bytes, offset) {
+      let re = DecodeLittleEndian(bytes, offset, this.bytes);
+      let im = DecodeLittleEndian(bytes, offset + this.bytes, this.bytes);
+      if (re >= this.P) re = 0n;
+      if (im >= this.P) im = 0n;
+      return new Fp2(re, im);
+    }
     /**
      * Invert every element at once; a zero among them zeroes them all.
      * @param {Fp2[]} xs - the elements
      * @returns {Fp2[]} their inverses
      */
-    F.batchedInv = function (xs) {
+    batchedInv(xs) {
       const len = xs.length;
       /** @type {Fp2[]} */
       const t1 = new Array(len);
       t1[0] = xs[0];
-      for (let i = 1; i < len; ++i) t1[i] = F.mul(t1[i - 1], xs[i]);
-      const inverse = F.inv(t1[len - 1]);
+      for (let i = 1; i < len; ++i) t1[i] = this.mul(t1[i - 1], xs[i]);
+      const inverse = this.inv(t1[len - 1]);
       /** @type {Fp2[]} */
       const t2 = new Array(len);
       t2[0] = inverse;
-      for (let i = 1; i < len; ++i) t2[i] = F.mul(t2[i - 1], xs[len - i]);
+      for (let i = 1; i < len; ++i) t2[i] = this.mul(t2[i - 1], xs[len - i]);
       /** @type {Fp2[]} */
       const out = new Array(len);
       out[0] = t2[len - 1];
-      for (let i = 1; i < len; ++i) out[i] = F.mul(t1[i - 1], t2[len - i - 1]);
+      for (let i = 1; i < len; ++i) out[i] = this.mul(t1[i - 1], t2[len - i - 1]);
       return out;
-    };
-
-    return new SqiField(F);
+    }
   }
 
   // ===== value classes =====
@@ -638,54 +669,6 @@
       this.re = re;
       /** @type {BigInt} */
       this.im = im;
-    }
-  }
-
-  /**
-   * The operations of one field GF(p^2), the closures MakeField builds, as own
-   * properties in the order the object literal held them.
-   */
-  class SqiField {
-    /**
-     * @param {Object} ops - the object literal of the operations
-     */
-    constructor(ops) {
-      /** @type {BigInt} */
-      this.P = ops.P;
-      /** @type {int32} */
-      this.bytes = ops.bytes;
-      this.fpAdd = ops.fpAdd;
-      this.fpSub = ops.fpSub;
-      this.fpNeg = ops.fpNeg;
-      this.fpMul = ops.fpMul;
-      this.fpInv = ops.fpInv;
-      this.fpSqrt = ops.fpSqrt;
-      this.fpExp3Div4 = ops.fpExp3Div4;
-      this.fpIsSquare = ops.fpIsSquare;
-      this.fpHalf = ops.fpHalf;
-      this.fpDiv3 = ops.fpDiv3;
-      this.zero = ops.zero;
-      this.one = ops.one;
-      this.of = ops.of;
-      this.small = ops.small;
-      this.add = ops.add;
-      this.sub = ops.sub;
-      this.neg = ops.neg;
-      this.mul = ops.mul;
-      this.sqr = ops.sqr;
-      this.mulSmall = ops.mulSmall;
-      this.half = ops.half;
-      this.div3 = ops.div3;
-      this.isZero = ops.isZero;
-      this.isOne = ops.isOne;
-      this.equal = ops.equal;
-      this.copy = ops.copy;
-      this.inv = ops.inv;
-      this.isSquare = ops.isSquare;
-      this.sqrt = ops.sqrt;
-      this.encode = ops.encode;
-      this.decode = ops.decode;
-      this.batchedInv = ops.batchedInv;
     }
   }
 
@@ -1296,11 +1279,11 @@
    * @param {SqiField} F - the field
    * @param {BigInt} re - re
    * @param {BigInt} im - im
-   * @returns {Fp2} F.of(re, im)
+   * @returns {Fp2} F.fromParts(re, im)
    */
   function FieldOf(F, re, im) {
     /** @type {Fp2} */
-    const r = F.of(re, im);
+    const r = F.fromParts(re, im);
     return r;
   }
 
@@ -1535,14 +1518,15 @@
    */
   function Params(name, cofactor, power, responseLength, securityBits, hashIterations,
                   publicKeyBytes, signatureBytes, e0) {
+    /** @type {BigInt} */
     const P = BigInt(cofactor) * PowerOfTwo(power) - 1n;
-    const fpBytes = Math.floor((P.toString(2).length + 7) / 8);
-    const F = MakeField(P, fpBytes);
+    const fpBytes = Math.floor((OpCodes.BitCountN(P) + 7) / 8);
+    const F = new SqiField(P, fpBytes);
     return new SqiParams(
       name,
       F,
       BigInt(cofactor),
-      BigInt(cofactor).toString(2).length,
+      OpCodes.BitCountN(BigInt(cofactor)),
       power,
       responseLength,
       securityBits,
@@ -1559,36 +1543,36 @@
 
   // The canonical basis of E0[2^f], precomputed by the submission because the
   // entangled-basis construction below needs A != 0.
-  const PARAMETER_SETS = {
-    'SQIsign-I': Params('SQIsign-I', 5, 248, 126, 128, 64, 65, 148, [
+  /** @type {SqiParams[]} */
+  const PARAMETER_SET_LIST = [
+    Params('SQIsign-I', 5, 248, 126, 128, 64, 65, 148, [
       '19b877fca82b12483cc04c3a66216c444be991a59bfa78b2119d95eaeb40078',
       '4442adb49eae04252150aaa9867e92fb2cfddae514292748e04133dc3f9d275',
       '45ffd477d5c0b719fdf2717050d041d878678f7a54be1f37c16252a5593eb1f',
       '487d4e9df1873dc4465a8fb3676b39a39ff054b6f8ea5aefde228b7a0cdaaee'
     ]),
-    'SQIsign-III': Params('SQIsign-III', 65, 376, 192, 192, 256, 97, 224, [
+    Params('SQIsign-III', 65, 376, 192, 192, 256, 97, 224, [
       '1798a1c27fb6dbff48e2f771d26ec456d059a73a5b5d2c853fb73a87d77bc2c5dbd311c20c76dbc43ea2ed69d1d24317',
       '2cb19c5d827d348a69cd0e002c4665c2aed0cf6c1fcdf1a1afa3773ad7512fddf4b5201c5623521faafc461b9ddd11f0',
       '129213ad6e31d1c94a24ad066819aff34be5b9ecf412164a24d8d0bc9570ff6cd67adb66e57db8685bc56017c110a723',
       '32a595cb10fd42a35f44f05ea57dc0431817aba97f782a74cb79a068d58e35e22f24b1bfb2677cd995fcb7e977b9335'
     ]),
-    'SQIsign-V': Params('SQIsign-V', 27, 500, 253, 256, 512, 129, 292, [
+    Params('SQIsign-V', 27, 500, 253, 256, 512, 129, 292, [
       '9fafe5085fcb1f13d5e487f010c8026abe233871b01f4a3587f06737f9bc686ba009922e2d459ec8f149c4c4083604e7842a612b6fdf8180025cdeb187b4c0',
       'c42a516ef3cf80d3e2e7a2d88faba1e46785ddce14f150ff4d204a43d47ad8d01940b2eba9aaac28b7198e48ed9281128f5782cdd197f48cddfbffe867063d',
       'bce91be61859cd3ddcd3f8408657d1d43c6f2764437e66e96371e74bc4b725f0cb99b58b09a91e872afcebb4608219f68aa3572c70ef5e6e654099bfc8aa09',
       'a48c9987de3810adbf0813505a561e134f31d64466875f90e21dd7c6b44eb81bed0e58d70ebd39fd9443a7523049993bd75145d72ec8f52be58b7086fffbe8'
     ])
-  };
+  ];
 
   /**
-   * The parameter set of a name, a plain property read of the table.
-   * @param {string} name - the set name
-   * @returns {SqiParams} the entry
+   * @param {string} name - 'SQIsign-I', 'SQIsign-III' or 'SQIsign-V'
+   * @returns {SqiParams|null} the set of that name
    */
   function ParameterSetEntry(name) {
-    /** @type {SqiParams} */
-    const entry = PARAMETER_SETS[name];
-    return entry;
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i)
+      if (PARAMETER_SET_LIST[i].name === name) return PARAMETER_SET_LIST[i];
+    return null;
   }
 
   /**
@@ -1596,8 +1580,8 @@
    * @returns {SqiParams} Result
    */
   function ParameterSetByPublicKeyLength(length) {
-    for (const name of Object.keys(PARAMETER_SETS))
-      if (ParameterSetEntry(name).publicKeyBytes === length) return ParameterSetEntry(name);
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i)
+      if (PARAMETER_SET_LIST[i].publicKeyBytes === length) return PARAMETER_SET_LIST[i];
     return null;
   }
 
@@ -1611,14 +1595,16 @@
     }
     /** @type {string} */
     const wanted = String(label).toUpperCase().replace(/[^A-Z0-9]/g, '');
-    for (const name of Object.keys(PARAMETER_SETS)) {
+    for (let i = 0; i < PARAMETER_SET_LIST.length; ++i) {
+      const name = PARAMETER_SET_LIST[i].name;
       /** @type {string} */
       const short = name.toUpperCase().replace(/[^A-Z0-9]/g, '');
       /** @type {string} */
-      const level = name.split('-')[1];
-      if (wanted === short || wanted === level || wanted === 'LVL' + ({ I: 1, III: 3, V: 5 })[level]
-          || wanted === 'SQISIGNLVL' + ({ I: 1, III: 3, V: 5 })[level])
-        return ParameterSetEntry(name);
+      const level = name.substring(name.indexOf('-') + 1);
+      const levelNumber = level === 'I' ? 1 : (level === 'III' ? 3 : 5);
+      if (wanted === short || wanted === level || wanted === 'LVL' + levelNumber
+          || wanted === 'SQISIGNLVL' + levelNumber)
+        return PARAMETER_SET_LIST[i];
     }
     return null;
   }
@@ -1630,9 +1616,13 @@
   // the reference implementation formula for formula.
 
   /**
-   * @param {SqiParams} prm - prm
+   * crypto_sign_open at one level.
+   * @param {SqiParams} prm - the level
+   * @param {uint8[]} signedMessage - signature || message
+   * @param {uint8[]} publicKey - the encoded public key
+   * @returns {SqiOpenResult} the outcome
    */
-  function Verifier(prm) {
+  function OpenSigned(prm, signedMessage, publicKey) {
     const F = prm.F;
     const TORSION = prm.torsionPower;
     const HD_EXTRA_TORSION = 2;
@@ -2493,7 +2483,7 @@
       const PmQ = B.PmQ;
 
       const Py = recoverY(Px, E);
-      const PyValue = Py || FieldSqrt(F, FieldAdd(F, FieldAdd(F, FieldMul(F, FieldSqr(F, Px), E.A), Px), FieldMul(F, FieldSqr(F, Px), Px)));
+      const PyValue = Py !== null ? Py : FieldSqrt(F, FieldAdd(F, FieldAdd(F, FieldMul(F, FieldSqr(F, Px), E.A), Px), FieldMul(F, FieldSqr(F, Px), Px)));
 
       let Qx = B.Q.x, Qz = B.Q.z;
       let v1 = FieldMul(F, Px, Qz);
@@ -3058,6 +3048,7 @@
      * @returns {Splitting|null} Result
      */
     function splittingCompute(A, zeroIndex) {
+      /** @type {Fp2[][]|null} */
       let M = null;
       let count = 0;
       for (let i = 0; i < 10; ++i) {
@@ -3072,7 +3063,14 @@
         const vanishes = FieldIsZero(F, U);
         if (vanishes) {
           ++count;
-          M = SPLITTING_TRANSFORMS[i].map(row => row.map(c => FP2_CONSTANTS[c]));
+          const transform = SPLITTING_TRANSFORMS[i];
+          M = new Array(transform.length);
+          for (let row = 0; row < transform.length; ++row) {
+            /** @type {Fp2[]} */
+            const entries = new Array(transform[row].length);
+            for (let col = 0; col < transform[row].length; ++col) entries[col] = FP2_CONSTANTS[transform[row][col]];
+            M[row] = entries;
+          }
         }
         if (zeroIndex !== -1 && i === zeroIndex && !vanishes) return null;
       }
@@ -3343,51 +3341,34 @@
       return hashToChallenge(Epk, Ecom, message) === sig.challenge;
     }
 
-    return {
-      /**
-       * crypto_sign_open.
-       * @param {uint8[]} signedMessage - signature || message
-       * @param {uint8[]} publicKey - the encoded public key
-       * @returns {{accepted: boolean, message: number[]|null, reason: string}}
-       */
-      open: function (signedMessage, publicKey) {
-        if (publicKey.length !== prm.publicKeyBytes)
-          return new SqiOpenResult(false, null, 'a ' + prm.name + ' public key is ' + prm.publicKeyBytes + ' bytes');
-        if (signedMessage.length < prm.signatureBytes)
-          return new SqiOpenResult(false, null, 'a ' + prm.name + ' signed message carries a ' + prm.signatureBytes + ' byte signature');
-        const sig = decodeSignature(signedMessage);
-        const message = signedMessage.slice(prm.signatureBytes);
-        const accepted = verify(sig, decodePublicKey(publicKey), message);
-        return new SqiOpenResult(accepted, accepted ? message : null, accepted ? '' : 'the signature does not verify');
-      }
-    };
-  }
-
-  const verifiers = {};
-  /**
-   * @param {SqiParams} prm - prm
-   */
-  function VerifierFor(prm) {
-    if (!verifiers[prm.name]) verifiers[prm.name] = Verifier(prm);
-    return verifiers[prm.name];
+    if (publicKey.length !== prm.publicKeyBytes)
+      return new SqiOpenResult(false, null, 'a ' + prm.name + ' public key is ' + prm.publicKeyBytes + ' bytes');
+    if (signedMessage.length < prm.signatureBytes)
+      return new SqiOpenResult(false, null, 'a ' + prm.name + ' signed message carries a ' + prm.signatureBytes + ' byte signature');
+    const sig = decodeSignature(signedMessage);
+    const message = signedMessage.slice(prm.signatureBytes);
+    const accepted = verify(sig, decodePublicKey(publicKey), message);
+    return new SqiOpenResult(accepted, accepted ? message : null, accepted ? '' : 'the signature does not verify');
   }
 
   /**
    * Open a signed message under a public key; the key's length picks the level.
    * @param {uint8[]} signedMessage - signature || message
    * @param {uint8[]} publicKey - the encoded public key
-   * @returns {SqiOpenResult}}
+   * @returns {SqiOpenResult} the outcome
    */
   function SignOpen(signedMessage, publicKey) {
     const prm = ParameterSetByPublicKeyLength(publicKey.length);
-    if (!prm) return new SqiOpenResult(false, null, 'no SQIsign level has a ' + publicKey.length + ' byte public key');
+    if (!prm) {
+      return new SqiOpenResult(false, null, 'no SQIsign level has a ' + publicKey.length + ' byte public key');
+    }
     /** @type {uint8[]} */
     const sm = [];
     for (let i = 0; i < signedMessage.length; ++i) sm.push(OpCodes.And32(signedMessage[i], 0xFF));
     /** @type {uint8[]} */
     const pk = [];
     for (let i = 0; i < publicKey.length; ++i) pk.push(OpCodes.And32(publicKey[i], 0xFF));
-    return VerifierFor(prm).open(sm, pk);
+    return OpenSigned(prm, sm, pk);
   }
 
   // ===== KAT DATA =====
@@ -3420,30 +3401,63 @@
 
   const KAT_URI = 'https://csrc.nist.gov/csrc/media/Projects/pqc-dig-sig/documents/round-2/submission-pkg/sqisign-submission-round2.zip';
 
+  /** One record of a PQCsignKAT response file. */
+  class SqiKatRecord {
+    /**
+     * @param {string} level - the parameter set
+     * @param {string} file - the response file
+     * @param {int32} count - the record's count
+     * @param {string} pk - hex of the public key
+     * @param {string} msg - hex of the message
+     * @param {string} sm - hex of the signed message
+     */
+    constructor(level, file, count, pk, msg, sm) {
+      /** @type {string} */
+      this.level = level;
+      /** @type {string} */
+      this.file = file;
+      /** @type {int32} */
+      this.count = count;
+      /** @type {string} */
+      this.pk = pk;
+      /** @type {string} */
+      this.msg = msg;
+      /** @type {string} */
+      this.sm = sm;
+    }
+  }
+
+  /** @type {SqiKatRecord[]} */
   const KAT = [
-      {
-        level: 'SQIsign-I', file: 'PQCsignKAT_353_SQIsign_lvl1.rsp', count: 1,
-        pk: '8fe148717389e48c123c9aa09fb17c5c6f0cef7e3471ef400296e3ec18e59901e7bfbd3aaab48cb49e7198d5543ae786' +
+      new SqiKatRecord(
+        'SQIsign-I', 'PQCsignKAT_353_SQIsign_lvl1.rsp', 1,
+        // pk
+        '8fe148717389e48c123c9aa09fb17c5c6f0cef7e3471ef400296e3ec18e59901e7bfbd3aaab48cb49e7198d5543ae786' +
             '727d904425f343a64bc03513b09472010b',
-        msg: '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a073e7b90e02ebf98ca2227eba38c1a' +
+        // msg
+        '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a073e7b90e02ebf98ca2227eba38c1a' +
             'b2568209e46dba961869c6f83983b17dcd49',
-        sm: '410e68d74d44a5ce60ec0c05232c9e08a12afbc5c4584f3cf9dbf3e235774d01d420a17eba5c5b2ba8b853f5bc66670d' +
+        // sm
+        '410e68d74d44a5ce60ec0c05232c9e08a12afbc5c4584f3cf9dbf3e235774d01d420a17eba5c5b2ba8b853f5bc66670d' +
             'b2e3bbf8b11944e1d82b22896e76ca040102e9356a08d41768e8b250b54c33de5a3f07f5a5f1667bbfb84e8b68e10b07' +
             '077fddc9268b4267e5ce42c8c04f17412e200f7b59038d18600d95c2a7c84e54312fa59abf9342169f4a4d7faceab486' +
             '6b030204225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a073e7b90e02ebf98ca2227' +
             'eba38c1ab2568209e46dba961869c6f83983b17dcd49'
-      },
-      {
-        level: 'SQIsign-I', file: 'PQCsignKAT_353_SQIsign_lvl1.rsp', count: 7,
-        pk: 'bb1ed0183d5192fd52fcf31315cc92632e443acd6a4377010310498419b9f4012d924db8d9847862cbd0a6f920da91ac' +
+      ),
+      new SqiKatRecord(
+        'SQIsign-I', 'PQCsignKAT_353_SQIsign_lvl1.rsp', 7,
+        // pk
+        'bb1ed0183d5192fd52fcf31315cc92632e443acd6a4377010310498419b9f4012d924db8d9847862cbd0a6f920da91ac' +
             '258d2b11f09c08b699e16cfadbc1f60402',
-        msg: 'a1586245d81f96bd8ee81aa30f10c0adb343d74cf72c4dff71550c12873af89fa1874d4731c996243c3749af3f6188ff' +
+        // msg
+        'a1586245d81f96bd8ee81aa30f10c0adb343d74cf72c4dff71550c12873af89fa1874d4731c996243c3749af3f6188ff' +
             'e9fa45430549045134eb29ef3cec37e72904aa082b1c6161e6b52361e49af4933a8d8c0734f21cafd7467b0c02876f43' +
             '211d6122e3e735fe36064df7a0c91449237c2bc7c3a78ac7bb0f9567f2576f05802c872adf183a87aa3b8217188f2f35' +
             '35f877724f35b29e545de4bcf258f13bbc7edd8c6587f733c9691f74b4151cf8c060c3ae9e8d49fe7c77bf477dc9f23f' +
             'd0f0b67320275529034b84f94176730923c03aa50f9584d9c2d60b8dccf85a13f243f30a51abefbbf2cda602bf3d75e8' +
             '49eb92422b808416c7e56b046ce38e4677ad24d23d7237a9',
-        sm: '25750d798e050ed506b37fd67a1d5cc74b3b84239acc1fac04c4165156d8e50103be1240850cade72f97bc9ca9a56987' +
+        // sm
+        '25750d798e050ed506b37fd67a1d5cc74b3b84239acc1fac04c4165156d8e50103be1240850cade72f97bc9ca9a56987' +
             'b19ad960e65c4989fa4ae77dec52eb0100006147a2ffe1448119857be09619d50fe0e0a04a8118fef32b35c97fd6bda8' +
             '4ca9f5344dc3d7c73770db27a3669979670b5f2fdf0a02779a7eedb51adf94dc278f788adffbd3e7311034742a22d5df' +
             '8202020ba1586245d81f96bd8ee81aa30f10c0adb343d74cf72c4dff71550c12873af89fa1874d4731c996243c3749af' +
@@ -3452,12 +3466,14 @@
             '188f2f3535f877724f35b29e545de4bcf258f13bbc7edd8c6587f733c9691f74b4151cf8c060c3ae9e8d49fe7c77bf47' +
             '7dc9f23fd0f0b67320275529034b84f94176730923c03aa50f9584d9c2d60b8dccf85a13f243f30a51abefbbf2cda602' +
             'bf3d75e849eb92422b808416c7e56b046ce38e4677ad24d23d7237a9'
-      },
-      {
-        level: 'SQIsign-I', file: 'PQCsignKAT_353_SQIsign_lvl1.rsp', count: 14,
-        pk: '2ffc0e8fed091ae82c2fb18a662772de22fddfa4bae6e6ad4b17cec22c69d80254e447611a108a126de83acf74dedeab' +
+      ),
+      new SqiKatRecord(
+        'SQIsign-I', 'PQCsignKAT_353_SQIsign_lvl1.rsp', 14,
+        // pk
+        '2ffc0e8fed091ae82c2fb18a662772de22fddfa4bae6e6ad4b17cec22c69d80254e447611a108a126de83acf74dedeab' +
             'aea4d4b84073915ae7e9570a1ebdd1010b',
-        msg: '8cb18850e27d8416b88a9a71f4a66bdf447814db6c82098c371b53f61600ef5dfd88e4fb34200207c3f6f55166af4878' +
+        // msg
+        '8cb18850e27d8416b88a9a71f4a66bdf447814db6c82098c371b53f61600ef5dfd88e4fb34200207c3f6f55166af4878' +
             'd38fca7e2dc18fe662e3ea491b58a86246cae16090fb7ada53b9a67b3d0e3787d3323ea921274c60cffb19a889bcf030' +
             '0fe10e242aae025f374dd83fbe9d007c8b9d9d75574c74146331ddec6f0e49c10dbaf15654897e33e2b4780dba484224' +
             'aa6fac79015d5792faa2d532bb7d239b11d91420b98690b1fbde9632223927e0804bfb284368a426c414c3db8ea82f0d' +
@@ -3468,7 +3484,8 @@
             '40f80d8ddfad2041a52922701c689f46f49f84cfc05eca6d7d4c356d50b6a0ba61966245d45134d6a1f5197540a1c39c' +
             '36bb0b78831af3f5156e669fd9213b64e0cf1c5a31e88ae79ad61757ec67b551b9f0a760f646bf81f6b92403a62840cc' +
             '29fa4f3949b3a9f0a9a4286ee7808a',
-        sm: '1acbe3fbb26b8c020dd11dab10262f631ef20863480a8582b2f3adffa01c4b02a86d4e6ac0f239fb42d59fdfc5dd867a' +
+        // sm
+        '1acbe3fbb26b8c020dd11dab10262f631ef20863480a8582b2f3adffa01c4b02a86d4e6ac0f239fb42d59fdfc5dd867a' +
             '5e477657e9bec19cecf987e97e9aed00010226560da2eb9a3c6aed4755f1d93c1805995e863ba186bc564d6cd303c3d2' +
             '5433aef7efb81490dc21593195b3010fde51872d9dd8814f1d3c3935770d36f7d006501678c3f441b9d0e598d9973022' +
             '1d02190b8cb18850e27d8416b88a9a71f4a66bdf447814db6c82098c371b53f61600ef5dfd88e4fb34200207c3f6f551' +
@@ -3482,33 +3499,39 @@
             'e6798dea40f80d8ddfad2041a52922701c689f46f49f84cfc05eca6d7d4c356d50b6a0ba61966245d45134d6a1f51975' +
             '40a1c39c36bb0b78831af3f5156e669fd9213b64e0cf1c5a31e88ae79ad61757ec67b551b9f0a760f646bf81f6b92403' +
             'a62840cc29fa4f3949b3a9f0a9a4286ee7808a'
-      },
-      {
-        level: 'SQIsign-III', file: 'PQCsignKAT_529_SQIsign_lvl3.rsp', count: 2,
-        pk: 'eb728ce5e8a421f40bfe8880ecab2a240ee04f7a225e59b71c4f7fd7a454958e3b0bd76b85f77ff8105b9af50c4c0d19' +
+      ),
+      new SqiKatRecord(
+        'SQIsign-III', 'PQCsignKAT_529_SQIsign_lvl3.rsp', 2,
+        // pk
+        'eb728ce5e8a421f40bfe8880ecab2a240ee04f7a225e59b71c4f7fd7a454958e3b0bd76b85f77ff8105b9af50c4c0d19' +
             'da1da62884f73f7f594dc20f645ebd98ee6dfdb697e78725c1bd9db18b1cfe3800390f5d36e0daeb99b294695c23202b' +
             '08',
-        msg: '2b8c4b0f29363eaee469a7e33524538aa066ae98980eaa19d1f10593203da2143b9e9e1973f7ff0e6c6aaa3c0b900e50' +
+        // msg
+        '2b8c4b0f29363eaee469a7e33524538aa066ae98980eaa19d1f10593203da2143b9e9e1973f7ff0e6c6aaa3c0b900e50' +
             'd003412efe96deece3046d8c46bc7709228789775abdf56aed6416c90033780cb7a4984815da1b14660dcf34aa34bf82' +
             'cebbcf',
-        sm: 'da3af5395ad7bbb673824e96917ea1c19b670f7d0739b34631cc9dc5eb02f5b1128f8c53af12527b9cc4e117bca0af20' +
+        // sm
+        'da3af5395ad7bbb673824e96917ea1c19b670f7d0739b34631cc9dc5eb02f5b1128f8c53af12527b9cc4e117bca0af20' +
             '172cb6628c16ea99d3e142307a5b7bb739e00abe6e491ed3cccf5d7669a096758e42227696193ce199b835a9131ac43c' +
             '0101b458a1078af34eea2ac093fec66718d06774c5e0020eee3b00e7e9c2bc0854b1dc524d30043807e4de36287fbfab' +
             '91e611013ecb989371b91f930b454238bb18dab6294a29a84d3e22be00e67c853b1b23db69186b09ef2a85f127c09a08' +
             '663887a436003a3253bcdbcacc23c3e0c5792261181db808303b1b4a750006022b8c4b0f29363eaee469a7e33524538a' +
             'a066ae98980eaa19d1f10593203da2143b9e9e1973f7ff0e6c6aaa3c0b900e50d003412efe96deece3046d8c46bc7709' +
             '228789775abdf56aed6416c90033780cb7a4984815da1b14660dcf34aa34bf82cebbcf'
-      },
-      {
-        level: 'SQIsign-III', file: 'PQCsignKAT_529_SQIsign_lvl3.rsp', count: 4,
-        pk: 'f5e50cb53363976ceb633e49c7efab26ad1bab13e2b678aade4f20692c9d37075e3cd3ed463949811257ab4dd36beb3d' +
+      ),
+      new SqiKatRecord(
+        'SQIsign-III', 'PQCsignKAT_529_SQIsign_lvl3.rsp', 4,
+        // pk
+        'f5e50cb53363976ceb633e49c7efab26ad1bab13e2b678aade4f20692c9d37075e3cd3ed463949811257ab4dd36beb3d' +
             'a475dac1d2bd235dbf8253719600b769b7b0c54f7fcdde8c7218f082cf5430f9e782629973e4ba480a2291d629131102' +
             '08',
-        msg: '1cdf0ae1124780a8ff00318f779a3b86b3504d059ca7ab3fe4d6eae9fd46428d1dabb704c0735a8fe8708f409741017b' +
+        // msg
+        '1cdf0ae1124780a8ff00318f779a3b86b3504d059ca7ab3fe4d6eae9fd46428d1dabb704c0735a8fe8708f409741017b' +
             '723d9a304e54fdc5789a7b0748c2464b7308ac9665115644c569ae253d5205751342574c03346dddc1950a6273546616' +
             'b96d0c5ece0a044af0edefbe445f9ae37da5afb8d22a56d9fd1801425a0a276f48431d7af039521e549551481391fe5f' +
             '4ebfb7644d9f9782d83a95137e84ea3aeb3c2f8099',
-        sm: '6285d7bf636914656ac4e9ccb92b0af197c87f97b29e92ac08030970b13c86bbdaef9fe677b22b3072768ecc99d24902' +
+        // sm
+        '6285d7bf636914656ac4e9ccb92b0af197c87f97b29e92ac08030970b13c86bbdaef9fe677b22b3072768ecc99d24902' +
             '32ce57e3c229dde967e241dd53d6f69dbf0c3aeef510a75c46f95accdd2715bc61fbb40905b9f99d1c8abc65b085fb01' +
             '0000baaca3f9e8b4829af53d2bd47e62f16fecb2838f1e2639e2038b25de72576acc19bc4a78b255b217e551dc1e344f' +
             '6dd16802bd2d74e37dfc542ffa658ef4193e6c1778351bfe1c2dcce000b31da58478bd4dee10e99c430c66faf1a6c834' +
@@ -3517,20 +3540,23 @@
             '7308ac9665115644c569ae253d5205751342574c03346dddc1950a6273546616b96d0c5ece0a044af0edefbe445f9ae3' +
             '7da5afb8d22a56d9fd1801425a0a276f48431d7af039521e549551481391fe5f4ebfb7644d9f9782d83a95137e84ea3a' +
             'eb3c2f8099'
-      },
-      {
-        level: 'SQIsign-III', file: 'PQCsignKAT_529_SQIsign_lvl3.rsp', count: 8,
-        pk: 'cf617023c07fe87c73f88a258f218cb1c7a661fef55788eb28cbc2da0226ffcab1a6dceb73011455b9f6f2053227dd40' +
+      ),
+      new SqiKatRecord(
+        'SQIsign-III', 'PQCsignKAT_529_SQIsign_lvl3.rsp', 8,
+        // pk
+        'cf617023c07fe87c73f88a258f218cb1c7a661fef55788eb28cbc2da0226ffcab1a6dceb73011455b9f6f2053227dd40' +
             '64836dd9b1dd0561d75cb143d683beabc113114b7714658fc0492806c38d56c365e5ed06b71d4b84a8f269467e0f2b25' +
             '0d',
-        msg: '9366ed7b3b623c411448b634446f1a3faabdd163a6cc1e2bcae4a98703cd8cee441405892fba051be2a586a6950a5ef7' +
+        // msg
+        '9366ed7b3b623c411448b634446f1a3faabdd163a6cc1e2bcae4a98703cd8cee441405892fba051be2a586a6950a5ef7' +
             '3a255e5f86b0d7212e0c51c3bc79be4b88e76ed6f043fef3204faf044bfb1ed722d61eb5d0b74c66a257e8ac3a220627' +
             '3c80d2ec2123a4dbb715d60118d99ed7322e38f1562f82379138da3ddb8baa7ce61ab729afc3748c0134633cf45a9973' +
             'c05c75d04e82f631845427626b5799dc07ddf830ba01e8bc6236bb6d03b37d949dbb29eec7dfe60fbc17ea590956d251' +
             '539792016e2a8b01e70476961bc9ada43cda682d0caa4fcc58810bba1a673ef8f6bc90baee701e8e4f7c04a346ca56c7' +
             'b2862ff57756ce6cd1ee22d677bcdaa896eae96f87870e032c18b6c6a0c1a191fae2ed487ce55296cc4b6339eac9e8a7' +
             '42bd0a44c3525cc750',
-        sm: 'e10e935cbbc3b7b548b565f207f95daaa655959a95f630360c17e6d56a61c29101da728b6893c73d08791bf6afadc433' +
+        // sm
+        'e10e935cbbc3b7b548b565f207f95daaa655959a95f630360c17e6d56a61c29101da728b6893c73d08791bf6afadc433' +
             '7bfbc64c52961cbc4ce4aee971bf66f67940cd1e4d0b9b3ec67919c34d8c7b9e05b9ed89c257ab050c3fb61e60f16b1a' +
             '010353bbb23066a3b7cb5da03bb0fce8e3f7db8199fdf4bd507600a7068b42246afb70ca57eb4bfd8740c8d13b7f81cc' +
             'e089ed01eac7f688a16490f8fcee33ba88964a3219c8d394d4d0c46f00da6729e38b28c4aad3ce2ea547c859fb92a8ed' +
@@ -3541,15 +3567,18 @@
             '07ddf830ba01e8bc6236bb6d03b37d949dbb29eec7dfe60fbc17ea590956d251539792016e2a8b01e70476961bc9ada4' +
             '3cda682d0caa4fcc58810bba1a673ef8f6bc90baee701e8e4f7c04a346ca56c7b2862ff57756ce6cd1ee22d677bcdaa8' +
             '96eae96f87870e032c18b6c6a0c1a191fae2ed487ce55296cc4b6339eac9e8a742bd0a44c3525cc750'
-      },
-      {
-        level: 'SQIsign-V', file: 'PQCsignKAT_701_SQIsign_lvl5.rsp', count: 1,
-        pk: 'ddbf05b82d61dd94c4d04534d013c668524642505f0d674e0c10006bf6b45c87dc49b2e3055d9c1ee4c277598a60c295' +
+      ),
+      new SqiKatRecord(
+        'SQIsign-V', 'PQCsignKAT_701_SQIsign_lvl5.rsp', 1,
+        // pk
+        'ddbf05b82d61dd94c4d04534d013c668524642505f0d674e0c10006bf6b45c87dc49b2e3055d9c1ee4c277598a60c295' +
             'e174d52f6c4a938bb67730c50d409c015bd74fba5c590e0b9eda468865b3eeba914ac1ff5cbd1e68502dbc7f72b9e5fe' +
             'c5a593538f641215473cc5441a2fc3770723b7380bb6664967bbec6a94b64a0108',
-        msg: '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a073e7b90e02ebf98ca2227eba38c1a' +
+        // msg
+        '225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a073e7b90e02ebf98ca2227eba38c1a' +
             'b2568209e46dba961869c6f83983b17dcd49',
-        sm: '2fe69d4c312452982e2b0911544d65ee17554adbecb2a03860a180af5b8964044f1bae37d60ebef295f7334574007b99' +
+        // sm
+        '2fe69d4c312452982e2b0911544d65ee17554adbecb2a03860a180af5b8964044f1bae37d60ebef295f7334574007b99' +
             '09e8b9d5976a54801394ae59c762a300f67507792b1282b65dc7423bb49577ba5f904a276019694db0c14201e589b015' +
             '7e2b0eb2018e2060df6cfc7c90ee2037c2344712d38f7eebe13d2b79a1933b010101af2bc85cb1642d01a69264da9401' +
             'dd3725c31ecb056d60f857ef6a4fd6500017e967f6a6948d1a6e047a557e87bde88147a5291c8ddfada35958aaf1edd4' +
@@ -3557,16 +3586,19 @@
             '46e883586481ac539827913d3feefb6dc803ecd2209764ab4b483b952a021efecc29452724fc981cd00f95848a3741e6' +
             '7f00090b225d5ce2ceac61930a07503fb59f7c2f936a3e075481da3ca299a80f8c5df9223a073e7b90e02ebf98ca2227' +
             'eba38c1ab2568209e46dba961869c6f83983b17dcd49'
-      },
-      {
-        level: 'SQIsign-V', file: 'PQCsignKAT_701_SQIsign_lvl5.rsp', count: 2,
-        pk: '4703985adea9f41a6cbcc98227e662690352617bbb05d5406297b8a12bebdb1bbaaff7c9b69bf5fc5351bdcb3664ad4f' +
+      ),
+      new SqiKatRecord(
+        'SQIsign-V', 'PQCsignKAT_701_SQIsign_lvl5.rsp', 2,
+        // pk
+        '4703985adea9f41a6cbcc98227e662690352617bbb05d5406297b8a12bebdb1bbaaff7c9b69bf5fc5351bdcb3664ad4f' +
             '5160c188a390a41b2f36eaefc2c63e01475746aabc99cd5a8fe6fd0d12c94a7585fe0b8551d82f83c6c7089a4fa9b057' +
             '35ba15f77bc05d9eebcb7628c2491a58f0768cea699c19603a23e5eb75ceaf0004',
-        msg: '2b8c4b0f29363eaee469a7e33524538aa066ae98980eaa19d1f10593203da2143b9e9e1973f7ff0e6c6aaa3c0b900e50' +
+        // msg
+        '2b8c4b0f29363eaee469a7e33524538aa066ae98980eaa19d1f10593203da2143b9e9e1973f7ff0e6c6aaa3c0b900e50' +
             'd003412efe96deece3046d8c46bc7709228789775abdf56aed6416c90033780cb7a4984815da1b14660dcf34aa34bf82' +
             'cebbcf',
-        sm: 'f0de30a68ffc1d912bec7a314d61ba53d6f31db502cda21ec8bda753478d14f6d43d18474faa819616390823177287bf' +
+        // sm
+        'f0de30a68ffc1d912bec7a314d61ba53d6f31db502cda21ec8bda753478d14f6d43d18474faa819616390823177287bf' +
             '7a1c847925b6cda81e69fdcf6157190098ca36e386dee1b6a23c6a477a29d89a9f72a6edccac71e7bd033e789dd540f2' +
             'd17a861c2dd8683687380aff21dca83cd8139b216b68b47db65c5a93ddb8820000008278e96a3fd471af02aa36bb548d' +
             'a75e179daedb9033151b257e3d59a96aeb54490d68a9da03bcaef327ba5587dced533541473debdd67eb75559b670df9' +
@@ -3575,13 +3607,15 @@
             '460009022b8c4b0f29363eaee469a7e33524538aa066ae98980eaa19d1f10593203da2143b9e9e1973f7ff0e6c6aaa3c' +
             '0b900e50d003412efe96deece3046d8c46bc7709228789775abdf56aed6416c90033780cb7a4984815da1b14660dcf34' +
             'aa34bf82cebbcf'
-      },
-      {
-        level: 'SQIsign-V', file: 'PQCsignKAT_701_SQIsign_lvl5.rsp', count: 13,
-        pk: '37018d6d0c3c5e4d9471f7bfaa0ccfadff5c2b308522e6135abb974443069af69e0f0500cc9e0cce1ea3065b5ce89687' +
+      ),
+      new SqiKatRecord(
+        'SQIsign-V', 'PQCsignKAT_701_SQIsign_lvl5.rsp', 13,
+        // pk
+        '37018d6d0c3c5e4d9471f7bfaa0ccfadff5c2b308522e6135abb974443069af69e0f0500cc9e0cce1ea3065b5ce89687' +
             '1306fe288e0e54fc86fb73b4822c40019ba3daa475b1e71ba878a7580d069d26b58814ab982354df25b350f2540360d6' +
             '21a5d1c693ef36154f62f8978da2cc923b6ad80e43e5fd5bfe3b18cfbcff91000b',
-        msg: '439529df1864297e33956afee00a60099b658a67830a6a6abddc329e87831d9f9b647917fedf1ae182a4040214328551' +
+        // msg
+        '439529df1864297e33956afee00a60099b658a67830a6a6abddc329e87831d9f9b647917fedf1ae182a4040214328551' +
             '6fcab83f447354c72fae81ac26e7005c2aa561763c152e66bd80f14565f47defa440dbb491e7994ab9fe35995d5fbb38' +
             '00ca030b43df611141637a5246ab9d9cac02efe14af60736b6bdb2babb97cf21e831e5d04d41c00f090b154977900efa' +
             'dd3a9313389a3f84cb3ac38e8b57b70a43dd08a8243f8154013fd5cf29de5a8df0b197c12b17e0610fcfe3625cc94067' +
@@ -3591,7 +3625,8 @@
             '6d37fa82e2572b9799a5fc7cf4c49bc20ad78efa8cd989a84d72ed680ac3c0f64155c56acbfd7c7d628b418a489f9613' +
             '57f77bd62204adb079dd3106485a37fee535c9cf82e832d8aadcbf686976b806b02ae733db46db0bf162e973931c3e33' +
             '8cc86db38c66262d1b2ebc7691b8281e0b20bf36305fba996d20ecfdc695',
-        sm: '435430153ecd491b58c7afbea99b501b05c0733e71bfaa7036a4af523d97761a07f727aeecadb01d26cf084bc48851f9' +
+        // sm
+        '435430153ecd491b58c7afbea99b501b05c0733e71bfaa7036a4af523d97761a07f727aeecadb01d26cf084bc48851f9' +
             'cfabd3b60fd70f115d7b480500342f01f8797285e73ef857d9a4d3673195974aa187f91c95e0581f4d77058e068be409' +
             '142b563a07b70013a88ee0fdac17f53c3ca6c2410ee12c52c77f9a36e7e2890101018a919353d43022ed505fc1fefafa' +
             '94c28516122162eea752b3543778a9dc79018370d8907d4a9df8b6c6e058dfbe80ddf24d4540495ef90e38a92d8c8eb1' +
@@ -3607,7 +3642,7 @@
             'b40ea8f76d37fa82e2572b9799a5fc7cf4c49bc20ad78efa8cd989a84d72ed680ac3c0f64155c56acbfd7c7d628b418a' +
             '489f961357f77bd62204adb079dd3106485a37fee535c9cf82e832d8aadcbf686976b806b02ae733db46db0bf162e973' +
             '931c3e338cc86db38c66262d1b2ebc7691b8281e0b20bf36305fba996d20ecfdc695'
-      }
+      )
   ];
 
   /**
@@ -3618,9 +3653,14 @@
     return OpCodes.Hex8ToBytes(text);
   }
 
+  /**
+   * @param {string} level - the parameter set
+   * @param {int32} count - the record's count
+   * @returns {SqiKatRecord} the committed record
+   */
   function Record(level, count) {
-    for (const r of KAT)
-      if (r.level === level && r.count === count) return r;
+    for (let i = 0; i < KAT.length; ++i)
+      if (KAT[i].level === level && KAT[i].count === count) return KAT[i];
     throw new Error('no committed SQIsign record ' + level + ' ' + count);
   }
 
@@ -3637,96 +3677,138 @@
     return out;
   }
 
-  const WHAT = {
-    'SQIsign-I:1': 'backtracking and a 2^2 response isogeny on P',
-    'SQIsign-I:7': 'no backtracking and no response isogeny',
-    'SQIsign-I:14': 'backtracking and a response isogeny on Q',
-    'SQIsign-III:2': 'backtracking and a 2^1 response isogeny on Q',
-    'SQIsign-III:4': 'no backtracking and no response isogeny',
-    'SQIsign-III:8': 'backtracking and a 2^3 response isogeny on P',
-    'SQIsign-V:1': 'backtracking and a 2^1 response isogeny on P',
-    'SQIsign-V:2': 'no backtracking and no response isogeny',
-    'SQIsign-V:13': 'backtracking and a response isogeny on Q'
-  };
+  // What each committed record's signature makes verification do, by
+  // "level:count".
+  /** @type {string[]} */
+  const WHAT_KEYS = [
+    'SQIsign-I:1', 'SQIsign-I:7', 'SQIsign-I:14',
+    'SQIsign-III:2', 'SQIsign-III:4', 'SQIsign-III:8',
+    'SQIsign-V:1', 'SQIsign-V:2', 'SQIsign-V:13'
+  ];
+  /** @type {string[]} */
+  const WHAT_TEXTS = [
+    'backtracking and a 2^2 response isogeny on P',
+    'no backtracking and no response isogeny',
+    'backtracking and a response isogeny on Q',
+    'backtracking and a 2^1 response isogeny on Q',
+    'no backtracking and no response isogeny',
+    'backtracking and a 2^3 response isogeny on P',
+    'backtracking and a 2^1 response isogeny on P',
+    'no backtracking and no response isogeny',
+    'backtracking and a response isogeny on Q'
+  ];
 
+  /**
+   * @param {SqiKatRecord} r - a committed record
+   * @returns {string} what its signature makes verification do
+   */
+  function What(r) {
+    const key = r.level + ':' + r.count;
+    for (let i = 0; i < WHAT_KEYS.length; ++i)
+      if (WHAT_KEYS[i] === key) return WHAT_TEXTS[i];
+    throw new Error('no description of SQIsign record ' + key);
+  }
+
+  /**
+   * A rejection vector. The message named for the verdict is the one the
+   * modified input itself carries, so that [0] can only come from the
+   * signature being rejected and never from the message comparison.
+   * @param {TestCase[]} vectors - where the vector goes
+   * @param {string} what - its description
+   * @param {uint8[]} publicKey - the public key
+   * @param {uint8[]} input - the modified signed message
+   */
+  function Negative(vectors, what, publicKey, input) {
+    const prm = ParameterSetByPublicKeyLength(publicKey.length);
+    /** @type {uint8[]} */
+    const rejected = [0];
+    const vector = new TestCase(input, rejected, what, KAT_URI);
+    vector.inverse = true;
+    vector.publicKey = publicKey;
+    vector.message = input.slice(Math.min(prm.signatureBytes, input.length));
+    vectors.push(vector);
+  }
+
+  /**
+   * @param {SqiKatRecord} r - a committed record
+   * @returns {TestCase} the vector: its signed message opens to its message
+   */
+  function OpensVector(r) {
+    const vector = new TestCase(Hex(r.sm), Hex(r.msg),
+      r.level + ' ' + r.file + ' count ' + r.count + ' (' + What(r)
+        + '): the published signed message opens and yields its message', KAT_URI);
+    vector.inverse = true;
+    vector.publicKey = Hex(r.pk);
+    return vector;
+  }
+
+  /**
+   * @param {string} level - the parameter set
+   * @param {int32} count - the record's count
+   * @returns {TestCase} the vector: the verdict on its signature is acceptance
+   */
+  function AcceptVector(level, count) {
+    const r = Record(level, count);
+    /** @type {uint8[]} */
+    const accepted = [1];
+    const vector = new TestCase(Hex(r.sm), accepted,
+      level + ' ' + r.file + ' count ' + count + ': the verdict on the published signature is acceptance', KAT_URI);
+    vector.inverse = true;
+    vector.publicKey = Hex(r.pk);
+    vector.message = Hex(r.msg);
+    return vector;
+  }
+
+  /**
+   * @returns {TestCase[]} the test vectors
+   */
   function BuildVectors() {
+    /** @type {TestCase[]} */
     const vectors = [];
 
     // Every committed record opens and yields its published message.
-    for (const r of KAT) {
-      vectors.push({
-        text: r.level + ' ' + r.file + ' count ' + r.count + ' (' + WHAT[r.level + ':' + r.count]
-              + '): the published signed message opens and yields its message',
-        uri: KAT_URI,
-        inverse: true,
-        publicKey: Hex(r.pk),
-        input: Hex(r.sm),
-        expected: Hex(r.msg)
-      });
-    }
+    for (let i = 0; i < KAT.length; ++i) vectors.push(OpensVector(KAT[i]));
 
     // The verdict form, once per level.
-    for (const [level, count] of [['SQIsign-I', 7], ['SQIsign-III', 4], ['SQIsign-V', 2]]) {
-      const r = Record(level, count);
-      vectors.push({
-        text: level + ' ' + r.file + ' count ' + count + ': the verdict on the published signature is acceptance',
-        uri: KAT_URI,
-        inverse: true,
-        publicKey: Hex(r.pk),
-        message: Hex(r.msg),
-        input: Hex(r.sm),
-        expected: [1]
-      });
-    }
+    vectors.push(AcceptVector('SQIsign-I', 7));
+    vectors.push(AcceptVector('SQIsign-III', 4));
+    vectors.push(AcceptVector('SQIsign-V', 2));
 
     // Rejections. Each takes a published signed message and changes one thing.
     // A SQIsign-I signature is E_aux (64 bytes), backtracking, the response
     // length, four 16 byte matrix entries, the 16 byte challenge and two hints.
     const r1 = Record('SQIsign-I', 1);
-    const pk1 = Hex(r1.pk), sm1 = Hex(r1.sm);
-    // The message named for the verdict is the one the modified input itself
-    // carries, so that [0] can only come from the signature being rejected and
-    // never from the message comparison.
-    const negative = (what, publicKey, input) => {
-      const prm = ParameterSetByPublicKeyLength(publicKey.length);
-      vectors.push({
-        text: what,
-        uri: KAT_URI,
-        inverse: true,
-        publicKey: publicKey,
-        message: input.slice(Math.min(prm.signatureBytes, input.length)),
-        input: input,
-        expected: [0]
-      });
-    };
+    const pk1 = Hex(r1.pk);
+    const sm1 = Hex(r1.sm);
 
-    negative('SQIsign-I count 1: a modified message must not verify', pk1, FlipBit(sm1, sm1.length - 1, 0x01));
-    negative('SQIsign-I count 1: a modified auxiliary curve must not verify', pk1, FlipBit(sm1, 0, 0x01));
-    negative('SQIsign-I count 1: a modified backtracking length must not verify', pk1, FlipBit(sm1, 64, 0x01));
-    negative('SQIsign-I count 1: a modified response isogeny length must not verify', pk1, FlipBit(sm1, 65, 0x01));
-    negative('SQIsign-I count 1: a modified basis-change matrix must not verify', pk1, FlipBit(sm1, 66 + 16, 0x04));
-    negative('SQIsign-I count 1: a modified challenge must not verify', pk1, FlipBit(sm1, 66 + 64, 0x01));
-    negative('SQIsign-I count 1: a modified auxiliary basis hint must not verify', pk1, FlipBit(sm1, 146, 0x02));
-    negative('SQIsign-I count 1: a modified challenge basis hint must not verify', pk1, FlipBit(sm1, 147, 0x02));
-    negative('SQIsign-I count 1: the signature must not verify under count 7\'s public key',
+    Negative(vectors, 'SQIsign-I count 1: a modified message must not verify', pk1, FlipBit(sm1, sm1.length - 1, 0x01));
+    Negative(vectors, 'SQIsign-I count 1: a modified auxiliary curve must not verify', pk1, FlipBit(sm1, 0, 0x01));
+    Negative(vectors, 'SQIsign-I count 1: a modified backtracking length must not verify', pk1, FlipBit(sm1, 64, 0x01));
+    Negative(vectors, 'SQIsign-I count 1: a modified response isogeny length must not verify', pk1, FlipBit(sm1, 65, 0x01));
+    Negative(vectors, 'SQIsign-I count 1: a modified basis-change matrix must not verify', pk1, FlipBit(sm1, 66 + 16, 0x04));
+    Negative(vectors, 'SQIsign-I count 1: a modified challenge must not verify', pk1, FlipBit(sm1, 66 + 64, 0x01));
+    Negative(vectors, 'SQIsign-I count 1: a modified auxiliary basis hint must not verify', pk1, FlipBit(sm1, 146, 0x02));
+    Negative(vectors, 'SQIsign-I count 1: a modified challenge basis hint must not verify', pk1, FlipBit(sm1, 147, 0x02));
+    Negative(vectors, 'SQIsign-I count 1: the signature must not verify under count 7\'s public key',
       Hex(Record('SQIsign-I', 7).pk), sm1);
-    negative('SQIsign-I count 1: the signature must not verify under a modified public curve',
+    Negative(vectors, 'SQIsign-I count 1: the signature must not verify under a modified public curve',
       FlipBit(pk1, 0, 0x01), sm1);
-    negative('SQIsign-I count 1: the signature must not verify under a modified public key hint',
+    Negative(vectors, 'SQIsign-I count 1: the signature must not verify under a modified public key hint',
       FlipBit(pk1, 64, 0x02), sm1);
-    negative('SQIsign-I count 1: a SQIsign-I signature must not verify under a SQIsign-III public key',
+    Negative(vectors, 'SQIsign-I count 1: a SQIsign-I signature must not verify under a SQIsign-III public key',
       Hex(Record('SQIsign-III', 2).pk), sm1);
 
     const r3 = Record('SQIsign-III', 8);
-    negative('SQIsign-III count 8: a modified basis-change matrix must not verify',
+    Negative(vectors, 'SQIsign-III count 8: a modified basis-change matrix must not verify',
       Hex(r3.pk), FlipBit(Hex(r3.sm), 96 + 2, 0x01));
     const r5 = Record('SQIsign-V', 13);
-    negative('SQIsign-V count 13: a modified message must not verify',
+    Negative(vectors, 'SQIsign-V count 13: a modified message must not verify',
       Hex(r5.pk), FlipBit(Hex(r5.sm), 292, 0x80));
 
     return vectors;
   }
 
+  /** @type {TestCase[]} */
   const VECTORS = BuildVectors();
 
   // ===== ALGORITHM =====
@@ -3755,11 +3837,18 @@
       this.complexity = ComplexityType.EXPERT;
       this.country = CountryCode.INTL;
 
-      this.parameterSets = Object.keys(PARAMETER_SETS);
+      /** @type {string[]} */
+      this.parameterSets = [];
+      for (let i = 0; i < PARAMETER_SET_LIST.length; ++i) this.parameterSets.push(PARAMETER_SET_LIST[i].name);
 
       // A verifier holds the public key, and its length names the level.
-      this.SupportedKeySizes = Object.keys(PARAMETER_SETS).map(name =>
-        new KeySize(PARAMETER_SETS[name].publicKeyBytes, PARAMETER_SETS[name].publicKeyBytes, 0));
+      /** @type {KeySize[]} */
+      const keySizes = [];
+      for (let i = 0; i < PARAMETER_SET_LIST.length; ++i) {
+        const size = PARAMETER_SET_LIST[i].publicKeyBytes;
+        keySizes.push(new KeySize(size, size, 0));
+      }
+      this.SupportedKeySizes = keySizes;
 
       this.documentation = [
         new LinkItem('SQIsign round 2 specification', 'https://csrc.nist.gov/csrc/media/Projects/pqc-dig-sig/documents/round-2/spec-files/sqisign-spec-round2-web.pdf'),
@@ -3804,7 +3893,7 @@
     /**
      * Only the verifying direction exists.
      * @param {boolean} [isInverse=false] - true for verification
-     * @returns {object|null} a verifying instance, or null for signing
+     * @returns {SQIsignInstance|null} a verifying instance, or null for signing
      */
     CreateInstance(isInverse = false) {
       if (!isInverse) return null;
@@ -3820,7 +3909,7 @@
    */
   class SQIsignInstance extends IAlgorithmInstance {
     /**
-     * @param {object} algorithm - parent algorithm instance
+     * @param {SQIsignAlgorithm} algorithm - parent algorithm instance
      */
     constructor(algorithm) {
       super(algorithm);
@@ -3829,9 +3918,13 @@
 
       // Declared here so that the test engine, which only assigns properties
       // that already exist on the instance, can set any of them from a vector.
+      /** @type {SqiParams} */
       this._parameterSet = ParameterSetEntry('SQIsign-I');
+      /** @type {uint8[]|null} */
       this._publicKey = null;
+      /** @type {uint8[]|null} */
       this._message = null;
+      /** @type {uint8[]|null} */
       this._keyData = null;
     }
 
@@ -3844,6 +3937,9 @@
       this._parameterSet = found;
     }
 
+    /**
+     * @returns {string} the name of the level in use
+     */
     get parameterSet() {
       return this._parameterSet.name;
     }
@@ -3860,10 +3956,15 @@
       const found = ParameterSetByPublicKeyLength(keyBytes.length);
       if (!found) throw new Error('A SQIsign public key is 65, 97 or 129 bytes, got ' + keyBytes.length);
       this._parameterSet = found;
-      this._publicKey = [];
-      for (let i = 0; i < keyBytes.length; ++i) this._publicKey.push(keyBytes[i]);
+      /** @type {uint8[]} */
+      const copy = [];
+      for (let i = 0; i < keyBytes.length; ++i) copy.push(keyBytes[i]);
+      this._publicKey = copy;
     }
 
+    /**
+     * @returns {uint8[]|null} a copy of the public key
+     */
     get publicKey() {
       return this._publicKey ? this._publicKey.slice() : null;
     }
@@ -3878,10 +3979,15 @@
         this._message = null;
         return;
       }
-      this._message = [];
-      for (let i = 0; i < messageBytes.length; ++i) this._message.push(messageBytes[i]);
+      /** @type {uint8[]} */
+      const copy = [];
+      for (let i = 0; i < messageBytes.length; ++i) copy.push(messageBytes[i]);
+      this._message = copy;
     }
 
+    /**
+     * @returns {uint8[]|null} a copy of the message
+     */
     get message() {
       return this._message ? this._message.slice() : null;
     }
@@ -3899,30 +4005,16 @@
       this.publicKey = keyData;
     }
 
+    /**
+     * @returns {uint8[]|null} the key as it was set
+     */
     get key() {
       return this._keyData;
     }
 
     /**
-     * Feed the signed message. Repeated calls append.
-     * @param {number[]|string} data - input bytes
-     */
-    Feed(data) {
-      if (data === null || data === undefined) return;
-      if (typeof data === 'string') {
-        for (let i = 0; i < data.length; ++i) this.inputBuffer.push(OpCodes.And32(data.charCodeAt(i), 0xFF));
-        return;
-      }
-      if (typeof data === 'number') {
-        this.inputBuffer.push(data);
-        return;
-      }
-      for (let i = 0; i < data.length; ++i) this.inputBuffer.push(data[i]);
-    }
-
-    /**
      * Verify the fed signed message.
-     * @returns {number[]} the message, or the verdict when a message was set
+     * @returns {uint8[]} the message, or the verdict when a message was set
      */
     Result() {
       const input = this.inputBuffer;
@@ -3942,11 +4034,11 @@
     /**
      * Verify a signed message against a public key.
      * @param {uint8[]} signedMessage - signature || message
-     * @param {number[]} [publicKey] - the key, defaulting to the configured one
-     * @returns {object} { accepted, message, reason }
+     * @param {uint8[]} [publicKey] - the key, defaulting to the configured one
+     * @returns {SqiOpenResult} { accepted, message, reason }
      */
     Verify(signedMessage, publicKey) {
-      const key = publicKey || this._publicKey;
+      const key = publicKey ? publicKey : this._publicKey;
       if (!key) throw new Error('SQIsign verification needs a public key');
       return SignOpen(signedMessage, key);
     }
@@ -3970,5 +4062,5 @@
 
   // ===== EXPORTS =====
 
-  return { SQIsignAlgorithm, SQIsignInstance, PARAMETER_SETS, SignOpen };
+  return { SQIsignAlgorithm, SQIsignInstance, PARAMETER_SET_LIST, SignOpen };
 }));

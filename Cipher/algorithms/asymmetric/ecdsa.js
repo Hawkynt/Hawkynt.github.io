@@ -306,13 +306,13 @@
     }
 
     /**
-     * Decode point from bytes
+     * Why a byte string is not a point decodePoint accepts.
      * @param {uint8[]} bytes - the encoding
-     * @returns {ECPoint} the point
+     * @returns {string} empty when it decodes, else the reason it does not
      */
-    decodePoint(bytes) {
+    decodePointError(bytes) {
       if (bytes.length === 0 || bytes[0] === 0x00) {
-        return PointAtInfinity();
+        return '';
       }
 
       /** @type {string} */
@@ -322,24 +322,47 @@
       if (bytes[0] === 0x04) {
         // Uncompressed point
         if (bytes.length !== 1 + 2 * coordSize) {
-          throw new Error('Invalid uncompressed point length');
+          return 'Invalid uncompressed point length';
         }
 
         const x = this._bytesToBigInt(bytes.slice(1, 1 + coordSize));
         const y = this._bytesToBigInt(bytes.slice(1 + coordSize));
 
-        const point = new ECPoint(x, y);
-        if (!this.isOnCurve(point)) {
-          throw new Error('Point not on curve');
+        if (!this.isOnCurve(new ECPoint(x, y))) {
+          return 'Point not on curve';
         }
 
-        return point;
+        return '';
       } else if (bytes[0] === 0x02 || bytes[0] === 0x03) {
         // Compressed point - would need square root implementation
-        throw new Error('Compressed point format not yet supported in educational implementation');
+        return 'Compressed point format not yet supported in educational implementation';
       } else {
-        throw new Error('Invalid point encoding');
+        return 'Invalid point encoding';
       }
+    }
+
+    /**
+     * Decode point from bytes
+     * @param {uint8[]} bytes - the encoding
+     * @returns {ECPoint} the point
+     * @throws {Error} With the reason decodePointError gives, when it gives one
+     */
+    decodePoint(bytes) {
+      const failure = this.decodePointError(bytes);
+      if (failure !== '') {
+        throw new Error(failure);
+      }
+
+      if (bytes.length === 0 || bytes[0] === 0x00) {
+        return PointAtInfinity();
+      }
+
+      /** @type {string} */
+      const pHex = this.p.toString(16);
+      const coordSize = Math.ceil(pHex.length / 2);
+      const x = this._bytesToBigInt(bytes.slice(1, 1 + coordSize));
+      const y = this._bytesToBigInt(bytes.slice(1 + coordSize));
+      return new ECPoint(x, y);
     }
 
     /**
@@ -491,27 +514,17 @@
     'secp521r1'
   );
 
-  // The curves by name, with the NIST aliases listed after the SEC names.
-  const CURVES = {
-    'secp256k1': SECP256K1,
-    'secp256r1': SECP256R1,
-    'secp384r1': SECP384R1,
-    'secp521r1': SECP521R1,
-    'P-256': SECP256R1,
-    'P-384': SECP384R1,
-    'P-521': SECP521R1
-  };
-
   /**
-   * The curve listed under a name. A plain property read, so a name is
-   * accepted exactly when CURVES has a truthy property of it.
+   * The curve listed under a name: the SEC names and the NIST aliases.
    * @param {string} name - curve name such as 'secp256r1' or 'P-256'
-   * @returns {EllipticCurve} the curve, or a falsy value when unlisted
+   * @returns {EllipticCurve|null} the curve, or null when unlisted
    */
   function CurveByName(name) {
-    /** @type {EllipticCurve} */
-    const curve = CURVES[name];
-    return curve;
+    if (name === 'secp256k1') return SECP256K1;
+    if (name === 'secp256r1' || name === 'P-256') return SECP256R1;
+    if (name === 'secp384r1' || name === 'P-384') return SECP384R1;
+    if (name === 'secp521r1' || name === 'P-521') return SECP521R1;
+    return null;
   }
 
   // ===== HASHING AND RFC 6979 =====
@@ -532,13 +545,10 @@
     hashesLoaded = true;
     if (typeof require === 'undefined') return;
 
-    for (const mod of ['../hash/sha1.js', '../hash/sha256.js', '../hash/sha512.js']) {
-      try {
-        require(mod);
-      } catch (error) {
-        // In the browser these arrive as script tags instead; Find() reports it.
-      }
-    }
+    // In the browser these arrive as script tags instead; Find() reports it.
+    try { require('../hash/sha1.js'); } catch (error) { /* reported by Find() */ }
+    try { require('../hash/sha256.js'); } catch (error) { /* reported by Find() */ }
+    try { require('../hash/sha512.js'); } catch (error) { /* reported by Find() */ }
   }
 
   // Digest and HMAC block sizes, in octets, for the hashes FIPS 186-4 approves
@@ -557,24 +567,18 @@
     }
   }
 
-  const HASH_PARAMS = {
-    'SHA-1':   new HashParams(20, 64),
-    'SHA-224': new HashParams(28, 64),
-    'SHA-256': new HashParams(32, 64),
-    'SHA-384': new HashParams(48, 128),
-    'SHA-512': new HashParams(64, 128)
-  };
-
   /**
-   * The digest parameters listed under a hash name. A plain property read, so
-   * a name is accepted exactly when HASH_PARAMS has a truthy property of it.
+   * The digest parameters of a hash.
    * @param {string} name - hash name such as 'SHA-256'
-   * @returns {HashParams} the parameters, or a falsy value when unlisted
+   * @returns {HashParams|null} the parameters, or null when unlisted
    */
   function HashParamsByName(name) {
-    /** @type {HashParams} */
-    const params = HASH_PARAMS[name];
-    return params;
+    if (name === 'SHA-1') return new HashParams(20, 64);
+    if (name === 'SHA-224') return new HashParams(28, 64);
+    if (name === 'SHA-256') return new HashParams(32, 64);
+    if (name === 'SHA-384') return new HashParams(48, 128);
+    if (name === 'SHA-512') return new HashParams(64, 128);
+    return null;
   }
 
   /**
@@ -586,11 +590,13 @@
   function digest(hashName, bytes) {
     loadHashes();
 
+    /** @type {Algorithm} */
     const algorithm = AlgorithmFramework.Find(hashName);
     if (!algorithm) {
       throw new Error('ECDSA requires the hash ' + hashName + ', which is not registered');
     }
 
+    /** @type {IHashFunctionInstance} */
     const instance = algorithm.CreateInstance();
     instance.Feed(bytes);
     /** @type {uint8[]} */
@@ -1130,7 +1136,7 @@
     set hashAlgorithm(name) {
       if (!name) return;
       if (!HashParamsByName(name)) {
-        throw new Error(`Unsupported hash for ECDSA: ${name}`);
+        throw new Error('Unsupported hash for ECDSA: ' + name);
       }
       this._hashAlgorithm = name;
     }
@@ -1180,17 +1186,19 @@
         throw new Error('Curve must be set before public key');
       }
 
-      try {
-        /** @type {ECPoint} */
-        const decoded = this._curve.decodePoint(keyBytes);
-        this._publicKey = decoded;
-        /** @type {boolean} */
-        const onCurve = this._curve.isOnCurve(decoded);
-        if (!onCurve) {
-          throw new Error('Public key point not on curve');
-        }
-      } catch (error) {
-        throw new Error(`Invalid public key: ${error.message}`);
+      /** @type {string} */
+      const failure = this._curve.decodePointError(keyBytes);
+      if (failure !== '') {
+        throw new Error('Invalid public key: ' + failure);
+      }
+
+      /** @type {ECPoint} */
+      const decoded = this._curve.decodePoint(keyBytes);
+      this._publicKey = decoded;
+      /** @type {boolean} */
+      const onCurve = this._curve.isOnCurve(decoded);
+      if (!onCurve) {
+        throw new Error('Invalid public key: Public key point not on curve');
       }
     }
 
@@ -1198,7 +1206,9 @@
      * @returns {uint8[]|null} the public key as an uncompressed point
      */
     get publicKey() {
-      if (!this._publicKey || !this._curve) return null;
+      if (!this._publicKey || !this._curve) {
+        return null;
+      }
       /** @type {uint8[]} */
       const encoded = this._curve.encodePoint(this._publicKey, false);
       return encoded;
@@ -1347,13 +1357,12 @@
         let r = 0n;
         /** @type {BigInt} */
         let s = 0n;
-        try {
-          const decoded = this._decodeDER(this.signature);
-          r = decoded.r;
-          s = decoded.s;
-        } catch (error) {
+        const decoded = this._decodeDER(this.signature);
+        if (decoded === null) {
           return false;
         }
+        r = decoded.r;
+        s = decoded.s;
 
         // Hash the message
         const e = this._hashMessage(message);
@@ -1382,11 +1391,10 @@
       // Compute w = s^-1 mod n
       /** @type {BigInt} */
       let w = 0n;
-      try {
-        w = ModInv(s, n);
-      } catch (error) {
+      if (OpCodes.GcdN(s, n) !== 1n) {
         return false;
       }
+      w = ModInv(s, n);
 
       // Compute u1 = e * w mod n
       const u1 = (e * w) % n;
@@ -1453,22 +1461,30 @@
     /**
      * @param {uint8[]} der - the encoding
      * @param {int32} pos - offset of the length octets
-     * @returns {DerLength} the length and the offset after it
+     * @returns {DerLength|null} the length and the offset after it, or null
+     *   when malformed
      */
     _decodeLength(der, pos) {
-      if (pos >= der.length) throw new Error('Invalid DER signature: truncated length');
+      if (pos >= der.length) {
+        return null; // truncated length
+      }
 
       /** @type {int32} */
       const first = der[pos];
-      if (first < 0x80) return new DerLength(first, pos + 1);
-      if (first === 0x80) throw new Error('Invalid DER signature: indefinite length');
+      if (first < 0x80) {
+        return new DerLength(first, pos + 1);
+      }
+      if (first === 0x80) {
+        return null; // indefinite length
+      }
 
+      /** @type {int32} */
       const count = first - 0x80;
       if (count > 4 || pos + count >= der.length) {
-        throw new Error('Invalid DER signature: unsupported length encoding');
+        return null; // unsupported length encoding
       }
       if (der[pos + 1] === 0x00) {
-        throw new Error('Invalid DER signature: non-minimal length encoding');
+        return null; // non-minimal length encoding
       }
 
       /** @type {int32} */
@@ -1479,7 +1495,7 @@
         length = length * 256 + octet;
       }
       if (length < 0x80) {
-        throw new Error('Invalid DER signature: long form used for a short length');
+        return null; // long form used for a short length
       }
 
       return new DerLength(length, pos + 1 + count);
@@ -1491,25 +1507,29 @@
     /**
      * @param {uint8[]} der - the encoding
      * @param {int32} pos - offset of the INTEGER tag
-     * @returns {DerInteger} the value and the offset after it
+     * @returns {DerInteger|null} the value and the offset after it, or null
+     *   when malformed
      */
     _decodeInteger(der, pos) {
-      if (der[pos] !== 0x02) {
-        throw new Error('Invalid DER signature: expected an INTEGER');
+      if (pos >= der.length || der[pos] !== 0x02) {
+        return null; // expected an INTEGER
       }
 
       const header = this._decodeLength(der, pos + 1);
+      if (header === null) {
+        return null;
+      }
       const end = header.next + header.length;
       if (header.length === 0 || end > der.length) {
-        throw new Error('Invalid DER signature: INTEGER out of bounds');
+        return null; // INTEGER out of bounds
       }
 
       const bytes = der.slice(header.next, end);
       if (OpCodes.And32(bytes[0], 0x80) !== 0) {
-        throw new Error('Invalid DER signature: negative INTEGER');
+        return null; // negative INTEGER
       }
       if (bytes.length > 1 && bytes[0] === 0x00 && OpCodes.And32(bytes[1], 0x80) === 0) {
-        throw new Error('Invalid DER signature: non-minimal INTEGER');
+        return null; // non-minimal INTEGER
       }
 
       return new DerInteger(this._bytesToInteger(bytes), end);
@@ -1540,23 +1560,30 @@
     // encoding of the same signature, which a verifier must not accept.
     /**
      * @param {uint8[]} der - the encoded signature
-     * @returns {DerSignature} r and s
+     * @returns {DerSignature|null} r and s, or null when the encoding is not
+     *   exactly one DER SEQUENCE of two INTEGERs
      */
     _decodeDER(der) {
       if (der.length < 2 || der[0] !== 0x30) {
-        throw new Error('Invalid DER signature: missing SEQUENCE tag');
+        return null; // missing SEQUENCE tag
       }
 
       const seq = this._decodeLength(der, 1);
-      if (seq.next + seq.length !== der.length) {
-        throw new Error('Invalid DER signature: SEQUENCE does not span the input');
+      if (seq === null || seq.next + seq.length !== der.length) {
+        return null; // SEQUENCE does not span the input
       }
 
       const rField = this._decodeInteger(der, seq.next);
+      if (rField === null) {
+        return null;
+      }
       const sField = this._decodeInteger(der, rField.next);
+      if (sField === null) {
+        return null;
+      }
 
       if (sField.next !== der.length) {
-        throw new Error('Invalid DER signature: trailing data after s');
+        return null; // trailing data after s
       }
 
       return new DerSignature(rField.value, sField.value);
@@ -1624,5 +1651,5 @@
 
   // ===== EXPORTS =====
 
-  return { ECDSACipher, ECDSAInstance, CURVES, ECPoint, EllipticCurve };
+  return { ECDSACipher, ECDSAInstance, ECPoint, EllipticCurve };
 }));
