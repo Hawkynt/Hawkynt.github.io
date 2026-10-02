@@ -58,6 +58,11 @@
   const STATE_GAME_OVER = 'GAME_OVER';
   const STATE_LEVEL_TRANSITION = 'LEVEL_TRANSITION';
 
+  /* Simulation runs in fixed 60 Hz steps regardless of display refresh rate */
+  const SIM_STEP = 1000 / 60;
+  const SIM_MAX_STEPS = 3;
+  const SIM_SNAP = 0.5;
+
   /* ---- Canvas Setup ---- */
   const canvas = document.getElementById('gameCanvas');
   const ctx = canvas.getContext('2d');
@@ -113,6 +118,7 @@
   let activePowerUps;
   let animFrameId;
   let lastTime;
+  let simAccumulator = 0;
   let keysDown;
   let gameTime = 0;
   let arcFrame = 0;
@@ -323,32 +329,41 @@
   }
 
   function setPowerUpTimer(type, duration) {
-    duration = duration ?? POWERUP_DURATION;
-    if (activePowerUps[type + '_timer'])
-      clearTimeout(activePowerUps[type + '_timer']);
-    activePowerUps[type + '_timer'] = setTimeout(() => {
-      if (type === 'W') {
-        paddle.width = PADDLE_WIDTH_DEFAULT;
-        if (paddle.x + paddle.width > CANVAS_W)
-          paddle.x = CANVAS_W - paddle.width;
-      } else if (type === 'S') {
-        const targetSpeed = Math.min(BALL_SPEED_INITIAL + (level - 1) * BALL_SPEED_INCREMENT, BALL_SPEED_MAX);
-        for (const b of balls) {
-          const mag = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
-          if (mag > 0) {
-            b.vx = (b.vx / mag) * targetSpeed;
-            b.vy = (b.vy / mag) * targetSpeed;
-            b.speed = targetSpeed;
-          }
+    activePowerUps[type + '_timer'] = duration ?? POWERUP_DURATION;
+  }
+
+  function updatePowerUpTimers(dt) {
+    for (const key of Object.keys(activePowerUps)) {
+      if (!key.endsWith('_timer'))
+        continue;
+      activePowerUps[key] -= dt;
+      if (activePowerUps[key] <= 0)
+        expirePowerUp(key.slice(0, -6));
+    }
+  }
+
+  function expirePowerUp(type) {
+    if (type === 'W') {
+      paddle.width = PADDLE_WIDTH_DEFAULT;
+      if (paddle.x + paddle.width > CANVAS_W)
+        paddle.x = CANVAS_W - paddle.width;
+    } else if (type === 'S') {
+      const targetSpeed = Math.min(BALL_SPEED_INITIAL + (level - 1) * BALL_SPEED_INCREMENT, BALL_SPEED_MAX);
+      for (const b of balls) {
+        const mag = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+        if (mag > 0) {
+          b.vx = (b.vx / mag) * targetSpeed;
+          b.vy = (b.vy / mag) * targetSpeed;
+          b.speed = targetSpeed;
         }
-      } else if (type === 'F') {
-        for (const b of balls)
-          b.fire = false;
-      } else if (type === 'L') {
-        delete activePowerUps.L;
       }
-      delete activePowerUps[type + '_timer'];
-    }, duration);
+    } else if (type === 'F') {
+      for (const b of balls)
+        b.fire = false;
+    } else if (type === 'L') {
+      delete activePowerUps.L;
+    }
+    delete activePowerUps[type + '_timer'];
   }
 
   /* ---- Collision ---- */
@@ -495,6 +510,9 @@
     /* Laser cooldown */
     if (laserCooldown > 0)
       --laserCooldown;
+
+    /* Power-up durations count game time only, so they hold while paused */
+    updatePowerUpTimers(dt);
 
     /* Paddle movement via keyboard */
     if (keysDown.ArrowLeft || keysDown.a || keysDown.A) {
@@ -1124,10 +1142,17 @@
 
     if (!lastTime)
       lastTime = timestamp;
-    const dt = timestamp - lastTime;
+    let elapsed = timestamp - lastTime;
     lastTime = timestamp;
 
-    update(dt);
+    /* Snap refresh jitter around 60 Hz to exactly one step; cap catch-up after stalls */
+    if (Math.abs(elapsed - SIM_STEP) < SIM_SNAP)
+      elapsed = SIM_STEP;
+    simAccumulator = Math.min(simAccumulator + elapsed, SIM_STEP * SIM_MAX_STEPS);
+    while (simAccumulator >= SIM_STEP) {
+      simAccumulator -= SIM_STEP;
+      update(SIM_STEP);
+    }
     draw();
   }
 
@@ -1138,11 +1163,6 @@
     lasers = [];
     barrier = null;
 
-    /* Clear power-up timers */
-    for (const key of Object.keys(activePowerUps)) {
-      if (key.endsWith('_timer'))
-        clearTimeout(activePowerUps[key]);
-    }
     activePowerUps = {};
     paddle.width = PADDLE_WIDTH_DEFAULT;
     for (const b of balls)
@@ -1162,11 +1182,6 @@
       cancelAnimationFrame(animFrameId);
       animFrameId = null;
     }
-
-    if (activePowerUps)
-      for (const key of Object.keys(activePowerUps))
-        if (key.endsWith('_timer'))
-          clearTimeout(activePowerUps[key]);
 
     score = 0;
     lives = 3;
@@ -1193,6 +1208,7 @@
     levelTransitionTimer = 0;
     levelTransitionPhase = 0;
     lastTime = null;
+    simAccumulator = 0;
 
     updateStatus();
     animFrameId = requestAnimationFrame(gameLoop);
@@ -1289,6 +1305,12 @@
       exitPointerLock();
     }
   }
+
+  /* Pause when the window is hidden or loses focus */
+  SZ.GameAutoPause.attach({
+    isRunning: () => state === STATE_PLAYING,
+    pause: togglePause
+  });
 
   /* ---- Laser Fire ---- */
   function fireLaser() {

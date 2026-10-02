@@ -1160,6 +1160,16 @@
      INPUT HANDLING
      ══════════════════════════════════════════════════════════════════ */
 
+  /* Pause when the window is hidden or loses focus */
+  SZ.GameAutoPause.attach({
+    isRunning: () => state === STATE_PLAYING,
+    pause: () => {
+      state = STATE_PAUSED;
+      pauseMusic();
+      updateWindowTitle();
+    }
+  });
+
   window.addEventListener('keydown', (e) => {
     // Bootstrap audio context on first user gesture (browser requirement)
     ensureAudioCtx();
