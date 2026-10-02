@@ -31,6 +31,12 @@
 <h2>Enemies (creature registry icon, else dungeon sheet)</h2>
 <div id="enemies" class="gallery"></div>
 
+<h2>Creature registry (every monster's map token)</h2>
+<div id="registry" class="gallery"></div>
+
+<h2>Battle dolls of humanoid monsters</h2>
+<div id="dolls" class="gallery"></div>
+
 <h2>Party classes</h2>
 <div id="party" class="gallery"></div>
 
@@ -53,8 +59,23 @@
 <script>window.SZ = window.SZ || {};</script>
 <script src="../pixel-art.js"></script>
 <script src="../asset-loader.js"></script>
+<script src="../data/monsters-aberrations.js"></script>
+<script src="../data/monsters-animals.js"></script>
+<script src="../data/monsters-constructs.js"></script>
+<script src="../data/monsters-dragons.js"></script>
+<script src="../data/monsters-elementals.js"></script>
+<script src="../data/monsters-fey.js"></script>
+<script src="../data/monsters-fiends.js"></script>
+<script src="../data/monsters-giants.js"></script>
+<script src="../data/monsters-humanoids.js"></script>
+<script src="../data/monsters-magical-beasts.js"></script>
+<script src="../data/monsters-oozes-plants.js"></script>
+<script src="../data/monsters-undead.js"></script>
+<script src="../data/monsters-misc.js"></script>
+<script src="../creature-registry.js"></script>
 <script src="../data/creature-sprites.js"></script>
 <script src="../sprite-resolver.js"></script>
+<script src="../battle-sprites.js"></script>
 <script>
 ;(function() {
   'use strict';
@@ -76,6 +97,8 @@
       loadImage(base + e.path).then(img => { icons[e.path] = img; }, () => {})));
 
     renderEnemies(sheets, icons, registry);
+    renderRegistry(sheets, icons, registry);
+    renderDolls();
     renderSimple('party', TR.PARTY_SPRITES, sheets, TR.PARTY_TINTS);
     renderSimple('combat', TR.COMBAT_TERRAIN_SPRITES, sheets);
     renderOverworld(sheets);
@@ -142,6 +165,35 @@
       const ctx = cell(host, id, 'fallback');
       if (!drawRect(ctx, sheetOf(sheets, rect, 'dungeon'), rect, TR.ENEMY_TINTS[id]))
         ctx.canvas.parentNode.className = 'cell missing';
+    }
+  }
+
+  function renderRegistry(sheets, icons, registry) {
+    const host = document.getElementById('registry');
+    if (!TR.CreatureRegistry)
+      return;
+    for (const m of TR.CreatureRegistry.getMonsters()) {
+      const entry = registry[m.id];
+      const label = `${m.id}\n${m.type}`;
+      if (entry && entry.type === 'icon' && icons[entry.path]) {
+        drawRect(cell(host, label), icons[entry.path], { x: 0, y: 0, w: 32, h: 32 }, entry.tint);
+        continue;
+      }
+      if (entry && entry.type === 'sheet' && entry.rect) {
+        drawRect(cell(host, label), sheets[entry.sheetId || 'dungeon'], entry.rect, entry.tint);
+        continue;
+      }
+      cell(host, label, 'missing');
+    }
+  }
+
+  function renderDolls() {
+    const host = document.getElementById('dolls');
+    if (!TR.BattleSprites)
+      return;
+    for (const id of Object.keys(TR.BattleSprites.MONSTER_LOOKS)) {
+      const ctx = cell(host, id);
+      TR.BattleSprites.draw(ctx, { faction: 'enemy', character: { class: id } }, 'idle', 0, 32, 62, 48, 1);
     }
   }
 

@@ -79,7 +79,7 @@
     if (!creaturePassMode || !TR.Terrain || !TR.Terrain.passMode)
       return moveCost < 99;
     // Use bitmask: creature can enter if any movement mode overlaps tile's passMode
-    const tileId = grid.terrainAt ? grid.terrainAt(col, row) : null;
+    const tileId = grid.terrainIdAt ? grid.terrainIdAt(col, row) : null;
     if (!tileId)
       return moveCost < 99;
     const tilePass = TR.Terrain.passMode(tileId);

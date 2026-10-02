@@ -20,6 +20,7 @@
     psychic:   { core: '#fff0ff', main: '#ff7ad8', dark: '#a82a88', particle: ['#ffd8f4', '#ff8ae0', '#c84ab0'] },
     heal:      { core: '#ffffff', main: '#8affb0', dark: '#2aa860', particle: ['#ffffff', '#b0ffd0', '#5ae890'] },
     nature:    { core: '#f0ffd0', main: '#8ad84a', dark: '#4a8a2a', particle: ['#d8ff9a', '#8ad84a', '#5a9a3a'] },
+    earth:     { core: '#e8e0d0', main: '#a89a88', dark: '#5a5048', particle: ['#d8d0c0', '#a89a88', '#6a6058'] },
   });
 
   // Elements travel as a projectile; the others strike in place.
@@ -350,9 +351,105 @@
     ctx.restore();
   }
 
+  // --- monster specials ------------------------------------------------------
+
+  // A breath weapon pouring from (x0, y0) toward (x1, y1): a widening cone
+  // of puffs, or a crackling line. p in [0, 1].
+  function breath(ctx, element, x0, y0, x1, y1, p, shape = 'cone', t = 0) {
+    if (p <= 0 || p >= 1)
+      return;
+    const pal = palette(element);
+    const reach = easeOut(clamp01(p * 1.6));
+    const fade = 1 - clamp01((p - 0.6) / 0.4);
+    const dx = x1 - x0, dy = y1 - y0;
+    ctx.save();
+    if (shape === 'line') {
+      const ex = x0 + dx * reach * 1.25, ey = y0 + dy * reach * 1.25;
+      // dark halo, bright body, white-hot core
+      for (let i = 0; i < 3; ++i) {
+        ctx.globalCompositeOperation = i === 2 ? 'lighter' : 'source-over';
+        ctx.globalAlpha = fade * (i === 0 ? 0.45 : 0.9);
+        ctx.strokeStyle = i === 0 ? pal.dark : i === 1 ? pal.main : pal.core;
+        ctx.lineWidth = i === 0 ? 30 : i === 1 ? 16 : 6;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        const segs = 10;
+        for (let k = 1; k <= segs; ++k) {
+          const f = k / segs;
+          ctx.lineTo(x0 + (ex - x0) * f, y0 + (ey - y0) * f + Math.sin(t * 40 + k * 1.7) * 6 * (1 - f * 0.3));
+        }
+        ctx.stroke();
+      }
+    } else {
+      const len = Math.hypot(dx, dy) * 1.2 || 1;
+      for (let i = 0; i < 26; ++i) {
+        const f = (i / 26) * reach;
+        const spread = f * len * 0.42;
+        const wob = Math.sin(t * 9 + i * 2.3);
+        const px = x0 + dx * f * 1.2 + (-dy / len) * spread * wob;
+        const py = y0 + dy * f * 1.2 + (dx / len) * spread * wob;
+        const r = 14 + f * 70;
+        // the older puffs at the front darken, the fresh ones near the mouth glow
+        ctx.globalCompositeOperation = f < 0.35 ? 'lighter' : 'source-over';
+        ctx.globalAlpha = fade * (0.6 - f * 0.3);
+        const g = ctx.createRadialGradient(px, py, 0, px, py, r);
+        g.addColorStop(0, f < 0.35 ? pal.core : pal.main);
+        g.addColorStop(0.5, f < 0.35 ? pal.main : pal.dark);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  // A beam (gazes, eye rays) from (x0, y0) to (x1, y1).
+  function beam(ctx, element, x0, y0, x1, y1, p, width = 10) {
+    if (p <= 0 || p >= 1)
+      return;
+    const pal = palette(element);
+    const a = Math.sin(p * Math.PI);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 3; ++i) {
+      ctx.globalAlpha = a * (0.9 - i * 0.28);
+      ctx.strokeStyle = i === 0 ? pal.core : i === 1 ? pal.main : pal.dark;
+      ctx.lineWidth = width * (1 + i);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x0 + (x1 - x0) * clamp01(p * 2), y0 + (y1 - y0) * clamp01(p * 2));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // A thrown boulder, tumbling.
+  function rock(ctx, x, y, size, rot) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.fillStyle = '#7a7268';
+    ctx.beginPath();
+    for (let i = 0; i < 9; ++i) {
+      const a = (i / 9) * Math.PI * 2;
+      const r = size * (0.8 + 0.2 * Math.sin(i * 2.7));
+      ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#9a9288';
+    ctx.fillRect(-size * 0.4, -size * 0.5, size * 0.5, size * 0.25);
+    ctx.restore();
+  }
+
   TR.BattleFx = Object.freeze({
     ELEMENTS, PROJECTILE,
     elementOf, palette, isProjectile: el => !!PROJECTILE[el],
     slash, impactStar, speedLines, arrow, magicCircle, projectile, burst, strikeFromAbove, healLight,
+    breath, beam, rock,
   });
 })();

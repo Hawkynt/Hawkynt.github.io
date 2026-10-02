@@ -905,6 +905,30 @@
         ctx.stroke();
       }
 
+      // conditions in effect: small badges, statues turn grey
+      const conds = !dead && unit.conditions ? unit.conditions : null;
+      if (conds && conds.length) {
+        const BADGES = { paralyzed: '#f0e080', stunned: '#ffd24a', petrified: '#a8a29a', sickened: '#7ac85a', shaken: '#c8a0ff',
+          confused: '#ff8ad8', entangled: '#8ad84a', grappled: '#e8a870', energy_drained: '#b88ae8', fatigued: '#c8b8a0', slowed: '#7ab0ff', unconscious: '#8a8ad8' };
+        if (conds.includes('petrified')) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'saturation';
+          ctx.fillStyle = '#808080';
+          ctx.fillRect(dx + 2, dy + 2, ts - 4, ts - 4);
+          ctx.restore();
+        }
+        [...new Set(conds)].slice(0, 4).forEach((c, i) => {
+          ctx.fillStyle = '#140a18';
+          ctx.beginPath();
+          ctx.arc(dx + ts - 6 - i * 9, dy + 7, 4.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = BADGES[c] || '#ffffff';
+          ctx.beginPath();
+          ctx.arc(dx + ts - 6 - i * 9, dy + 7, 3.2, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+
       if (!dead && unit.currentHp < unit.maxHp) {
         const barW = ts * 0.7;
         const barH = Math.max(3, ts * 0.07);
