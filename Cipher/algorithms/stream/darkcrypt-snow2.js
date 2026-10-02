@@ -388,11 +388,11 @@
     _tap(offset) { return this._s[OpCodes.And32(this._head + offset, 15)]; }
 
     // One SNOW 2.0 clock. withF=true folds the FSM feedback into the LFSR update (key/IV
-    // warm-up mode, no output); withF=false is normal generation mode and returns the
-    // 32-bit keystream word z = (s15 + R1) XOR R2 XOR s0.
+    // warm-up mode); withF=false is normal generation mode. Either way it returns the
+    // 32-bit word z = (s15 + R1) XOR R2 XOR s0, which is keystream only in generation mode.
     /**
      * @param {boolean} withF
-     * @returns {uint32|null}
+     * @returns {uint32}
      */
     _clock(withF) {
       const s = this._s;
@@ -405,12 +405,9 @@
       const f = OpCodes.Xor32(OpCodes.Add32(s15, this._r1), this._r2);
 
       let v = OpCodes.Xor32(OpCodes.Xor32(mulAlpha(s0), s2), divAlpha(s11));
-      /** @type {uint32|null} */
-      let z = null;
+      const z = OpCodes.Xor32(f, s0);
       if (withF)
         v = OpCodes.Xor32(v, f);
-      else
-        z = OpCodes.Xor32(f, s0);
 
       const r2New = sBoxWord(this._r1);
       const r1New = OpCodes.Add32(this._r2, s5); // R1' = R2(old) + s5(old); R2' = S(R1(old))
