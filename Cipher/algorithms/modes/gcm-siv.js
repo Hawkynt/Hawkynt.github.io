@@ -542,7 +542,7 @@
       /** @type {uint8[]} */
       const output = [];
       let counter = [...tag];
-      counter[15] = counter[15] + (counter[15] < 128 ? 128 : 0); // Set MSB (equivalent to |= 0x80)
+      counter[15] = OpCodes.Or8(counter[15], 0x80); // Set MSB
 
       for (let i = 0; i < this.inputBuffer.length; i += 16) {
         const remainingBytes = Math.min(16, this.inputBuffer.length - i);
@@ -579,7 +579,7 @@
       /** @type {uint8[]} */
       const output = [];
       let counter = [...tag];
-      counter[15] = counter[15] + (counter[15] < 128 ? 128 : 0); // Set MSB (equivalent to |= 0x80)
+      counter[15] = OpCodes.Or8(counter[15], 0x80); // Set MSB
 
       for (let i = 0; i < ciphertext.length; i += 16) {
         const remainingBytes = Math.min(16, ciphertext.length - i);
