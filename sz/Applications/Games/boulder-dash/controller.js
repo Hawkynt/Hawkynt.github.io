@@ -135,7 +135,55 @@
   }
 
   /* ── Level generator ── */
+  const MAX_LEVEL_REPAIRS = 400;
+
+  // Every generated level is solvable: enough diamonds and the exit are
+  // reachable along cells the player can dig without setting any boulder in
+  // motion, so no boulder can crush the player on that route or block it
+  // later. Random layouts that fall short get the boulders in the way of the
+  // explored area turned into dirt, one blockage at a time.
   function generateLevel(level) {
+    buildLevelLayout(level);
+    for (let repair = 0; repair < MAX_LEVEL_REPAIRS; ++repair) {
+      const result = analyseLevel();
+      if (result.solvable || !result.frontier.length)
+        return;
+      clearBlockage(pickBlockage(result));
+    }
+  }
+
+  // Unsafe cells bordering the explored area: toward the exit while it is
+  // still out of reach, anywhere otherwise
+  function pickBlockage(result) {
+    const frontier = result.frontier;
+    if (result.exitReached)
+      return frontier[Math.floor(Math.random() * frontier.length)];
+    const dist = (key) => Math.abs(Math.floor(key / COLS) - exitRow) + Math.abs(key % COLS - exitCol);
+    frontier.sort((a, b) => dist(a) - dist(b));
+    return frontier[Math.floor(Math.random() * Math.min(3, frontier.length))];
+  }
+
+  // Turns the boulders that make a cell unsafe (and a boulder in it) into dirt
+  function clearBlockage(key) {
+    const r = Math.floor(key / COLS);
+    const c = key % COLS;
+    const soften = (rr, cc) => {
+      if (grid[rr][cc] === BOULDER)
+        grid[rr][cc] = DIRT;
+    };
+    soften(r, c);
+    soften(r - 1, c);
+    if (isRollingBoulder(r, c - 1))
+      soften(r, c - 1);
+    if (isRollingBoulder(r, c + 1))
+      soften(r, c + 1);
+    if (isRollingBoulder(r - 1, c - 1))
+      soften(r - 1, c - 1);
+    if (isRollingBoulder(r - 1, c + 1))
+      soften(r - 1, c + 1);
+  }
+
+  function buildLevelLayout(level) {
     grid = [];
     enemies = [];
     fallingBoulders = new Map();
@@ -189,12 +237,24 @@
       }
     }
 
+    // Player start pocket
+    grid[1][1] = EMPTY;
+    grid[1][2] = EMPTY;
+    grid[2][1] = EMPTY;
+
     // Place exit in bottom-right area
     exitRow = ROWS - 2;
     exitCol = COLS - 2;
     grid[exitRow][exitCol] = WALL; // hidden until unlocked
 
-    // Place enemies
+    placeEnemies(level);
+
+    // Let loose boulders come to rest before play starts
+    settleBoulders();
+    enemies = enemies.filter((e) => grid[e.row][e.col] === EMPTY);
+  }
+
+  function placeEnemies(level) {
     const numEnemies = Math.min(2 + level, 8);
     for (let i = 0; i < numEnemies; ++i) {
       let er, ec;
@@ -212,6 +272,96 @@
         moveTimer: 0
       });
     }
+  }
+
+  function isRounded(cell) {
+    return cell === BOULDER || cell === GEM;
+  }
+
+  /* Applies the boulder rules (fall, roll off rounded objects) until nothing moves */
+  function settleBoulders() {
+    for (let pass = 0; pass < ROWS * 4; ++pass) {
+      let moved = false;
+      for (let r = ROWS - 2; r >= 1; --r)
+        for (let c = 1; c < COLS - 1; ++c) {
+          if (grid[r][c] !== BOULDER)
+            continue;
+          if (grid[r + 1][c] === EMPTY) {
+            grid[r][c] = EMPTY;
+            grid[r + 1][c] = BOULDER;
+            moved = true;
+            continue;
+          }
+          if (!isRounded(grid[r + 1][c]))
+            continue;
+          for (const side of [-1, 1]) {
+            const sc = c + side;
+            if (sc >= 1 && sc < COLS - 1 && grid[r][sc] === EMPTY && grid[r + 1][sc] === EMPTY) {
+              grid[r][c] = EMPTY;
+              grid[r][sc] = BOULDER;
+              moved = true;
+              break;
+            }
+          }
+        }
+      if (!moved)
+        return;
+    }
+  }
+
+  // A boulder that sits on a rounded object rolls as soon as there is room beside it
+  function isRollingBoulder(r, c) {
+    return c >= 1 && c < COLS - 1 && grid[r][c] === BOULDER && isRounded(grid[r + 1][c]);
+  }
+
+  // Digging or collecting this cell can never start a boulder moving
+  function isSafeCell(r, c) {
+    const cell = grid[r][c];
+    if (cell !== EMPTY && cell !== DIRT && cell !== GEM)
+      return false;
+    if (grid[r - 1][c] === BOULDER)
+      return false;
+    if (isRollingBoulder(r, c - 1) || isRollingBoulder(r, c + 1))
+      return false;
+    const above = grid[r - 1][c];
+    if (above !== WALL && above !== BOULDER && (isRollingBoulder(r - 1, c - 1) || isRollingBoulder(r - 1, c + 1)))
+      return false;
+    return true;
+  }
+
+  function isLevelSolvable() {
+    return analyseLevel().solvable;
+  }
+
+  // Explores everything reachable over safe cells from the start
+  function analyseLevel() {
+    const seen = new Uint8Array(ROWS * COLS);
+    const queue = [1 * COLS + 1];
+    const frontier = [];
+    seen[COLS + 1] = 1;
+    let gems = 0;
+    let exitReached = false;
+    for (let i = 0; i < queue.length; ++i) {
+      const r = Math.floor(queue[i] / COLS);
+      const c = queue[i] % COLS;
+      if (grid[r][c] === GEM)
+        ++gems;
+      for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nr = r + dr;
+        const nc = c + dc;
+        if (nr === exitRow && nc === exitCol)
+          exitReached = true;
+        const key = nr * COLS + nc;
+        if (seen[key] || nr < 1 || nr >= ROWS - 1 || nc < 1 || nc >= COLS - 1 || grid[nr][nc] === WALL)
+          continue;
+        seen[key] = 1;
+        if (isSafeCell(nr, nc))
+          queue.push(key);
+        else
+          frontier.push(key);
+      }
+    }
+    return { solvable: exitReached && gems >= gemsRequired, exitReached, frontier };
   }
 
   /* ── Player movement & digging ── */
