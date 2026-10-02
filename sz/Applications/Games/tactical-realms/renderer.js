@@ -701,8 +701,21 @@
       const sy = dy + 2 - ts * 0.06 + bob;
 
       const classId = unit.character ? unit.character.class : null;
-      const spriteDrawn = this.#drawCreatureSprite(ctx, classId, isParty ? 'party' : 'enemy', sx, sy, size,
-        null, null, null, fx && !dead ? fx.flash : (dying ? 0.5 * (1 - fx.alpha) : 0));
+      const flash = fx && !dead ? fx.flash : (dying ? 0.5 * (1 - fx.alpha) : 0);
+      let spriteDrawn = false;
+      let headY = dy;
+      // heroes and humanoid foes use the same doll as in the battle scenes
+      const BS = TR.BattleSprites;
+      if (BS && BS.hasDoll(unit)) {
+        const art = BS.ART_H;
+        const h = Math.max(art, Math.floor(ts / art) * art);
+        const look = BS.lookFor(unit);
+        headY = dy + ts * 0.94 + bob - 60 * (look.scale || 1) * (h / art);
+        BS.draw(ctx, unit, 'idle', (time * 0.8 + (seed % 100) / 100) % 1, cx, dy + ts * 0.94 + bob, h, isParty ? 1 : -1, { flash });
+        spriteDrawn = true;
+      } else
+        spriteDrawn = this.#drawCreatureSprite(ctx, classId, isParty ? 'party' : 'enemy', sx, sy, size,
+          null, null, null, flash);
 
       if (!spriteDrawn) {
         ctx.fillStyle = dead ? '#444' : (isParty ? '#4488cc' : '#cc4444');
@@ -734,7 +747,7 @@
       // active marker: bouncing chevron above the head
       if (active && !dead) {
         const hop = Math.abs(Math.sin(time * 4)) * ts * 0.08;
-        const ay = dy - ts * 0.02 - hop;
+        const ay = Math.min(dy, headY) - ts * 0.04 - hop;
         const aw = ts * 0.14;
         ctx.fillStyle = '#ffd75a';
         ctx.strokeStyle = '#3a2a08';
