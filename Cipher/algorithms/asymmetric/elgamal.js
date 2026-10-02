@@ -123,6 +123,7 @@
   function modPow(base, exponent, modulus) {
     if (modulus === 1n) return 0n;
 
+    /** @type {BigInt} */
     let result = 1n;
     let b = ((base % modulus) + modulus) % modulus;
     let e = exponent;
@@ -147,7 +148,9 @@
   function modInverse(a, m) {
     let oldR = ((a % m) + m) % m;
     let r = m;
+    /** @type {BigInt} */
     let oldS = 1n;
+    /** @type {BigInt} */
     let s = 0n;
 
     while (r !== 0n) {
@@ -168,42 +171,6 @@
   }
 
   /**
-   * Collect cryptographically strong random bytes, falling back to a weaker
-   * source only where no such generator exists.
-   * @param {int32} count - Number of bytes required
-   * @returns {uint8[]} Random bytes
-   */
-  function randomBytes(count) {
-    const buffer = new Uint8Array(count);
-
-    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-      crypto.getRandomValues(buffer);
-    } else {
-      let filled = false;
-      if (typeof require !== 'undefined') {
-        try {
-          require('crypto').randomFillSync(buffer);
-          filled = true;
-        } catch (e) {
-          filled = false;
-        }
-      }
-      if (!filled) {
-        for (let i = 0; i < count; ++i) {
-          buffer[i] = Math.floor(Math.random() * 256);
-        }
-      }
-    }
-
-    /** @type {uint8[]} */
-    const result = new Array(count);
-    for (let i = 0; i < count; ++i) {
-      result[i] = buffer[i];
-    }
-    return result;
-  }
-
-  /**
    * Draw a random integer in [min, max].
    * @param {BigInt} min - Lower bound, inclusive
    * @param {BigInt} max - Upper bound, inclusive
@@ -217,7 +184,7 @@
 
     // Sampling one extra byte beyond the range and reducing keeps the bias
     // below any practically detectable level while avoiding a rejection loop.
-    const value = OS2IP(randomBytes(octets));
+    const value = OS2IP(OpCodes.SecureRandomBytes(octets));
     return min + (value % range);
   }
 
@@ -233,7 +200,7 @@
     let produced = 0;
 
     while (produced < count) {
-      const candidates = randomBytes(count - produced);
+      const candidates = OpCodes.SecureRandomBytes(count - produced);
       for (let i = 0; i < candidates.length && produced < count; ++i) {
         if (candidates[i] !== 0) {
           padding[produced] = candidates[i];
