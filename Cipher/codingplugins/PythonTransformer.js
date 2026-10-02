@@ -1395,7 +1395,40 @@ class OpCodes(metaclass=_OpCodesMeta):
     def GetByte(word, byte_index):
         return (word >> (byte_index * 8)) & 0xFF
 
+    @staticmethod
+    def SetByte(word, byte_index, value):
+        shift = byte_index * 8
+        return ((word & ~(0xFF << shift)) | ((value & 0xFF) << shift)) & 0xFFFFFFFF
+
     # ==================[ HEX UTILITIES ]==================
+    @staticmethod
+    def _hex_digits(hex_value, helper):
+        s = hex_value[2:] if hex_value[:2] in ("0x", "0X") else hex_value
+        if not s or any(c not in "0123456789abcdefABCDEF" for c in s):
+            raise Exception(helper + ": Invalid hex string: " + str(hex_value))
+        return s
+
+    @staticmethod
+    def CreateUint32ArrayFromHex(hex_values):
+        return JSUint32Array([int(OpCodes._hex_digits(h, "CreateUint32ArrayFromHex"), 16) & 0xFFFFFFFF for h in hex_values])
+
+    @staticmethod
+    def CreateByteArrayFromHex(hex_values):
+        result = JSArray()
+        for h in hex_values:
+            result.extend(OpCodes.Hex8ToBytes(OpCodes._hex_digits(h, "CreateByteArrayFromHex")))
+        return result
+
+    @staticmethod
+    def CreateUint64ArrayFromHex(hex_values):
+        result = JSArray()
+        for h in hex_values:
+            s = OpCodes._hex_digits(h, "CreateUint64ArrayFromHex").rjust(16, "0")
+            if len(s) != 16:
+                raise Exception("CreateUint64ArrayFromHex: Hex string must represent 64-bit value: " + str(h))
+            result.append(JSArray([int(s[0:8], 16), int(s[8:16], 16)]))
+        return result
+
     @staticmethod
     def HexCharCodeToValue(code):
         if 48 <= code <= 57:
@@ -1423,6 +1456,19 @@ class OpCodes(metaclass=_OpCodesMeta):
         return [int(hex_string[i:i + 8], 16) & 0xFFFFFFFF for i in range(0, len(hex_string), 8)]
 
     # ==================[ STRING/BYTE CONVERSIONS ]==================
+    @staticmethod
+    def BytesToChars(byte_list):
+        return "".join(chr(int(b)) for b in byte_list)
+
+    @staticmethod
+    def SecureRandomBytes(count):
+        if isinstance(count, float) and count.is_integer():
+            count = int(count)
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise Exception("SecureRandomBytes: count must be a non-negative integer")
+        import os as _os
+        return JSArray(_os.urandom(count))
+
     @staticmethod
     def AnsiToBytes(s):
         return [ord(c) & 0x7F for c in s]

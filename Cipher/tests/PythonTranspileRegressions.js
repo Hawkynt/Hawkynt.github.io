@@ -164,6 +164,32 @@ check('framework: MerkleDamgardBlocks splits at the length-field boundary and ho
 });
 
 // ---------------------------------------------------------------------------
+// OpCodes runtime: the Python port covers OpCodes.js
+// ---------------------------------------------------------------------------
+check('opcodes: every public OpCodes.js function has a Python implementation', () => {
+  const OpCodes = require(path.join(CIPHER_DIR, 'OpCodes.js'));
+  const names = Object.keys(OpCodes).filter(k => typeof OpCodes[k] === 'function' && !k.startsWith('_'));
+  // Given the public OpCodes.js surface
+  // When the Python runtime is loaded
+  // Then each name is defined on the OpCodes class itself, not answered by the
+  //      missing-constant fallback (which yields 0, so a call raised "'int' object is not callable")
+  const out = runPython('function f() { return 1; }',
+    `names = ${JSON.stringify(names)}\nprint(",".join(n for n in names if not any(n in c.__dict__ for c in OpCodes.__mro__)) or "none")`);
+  return expectOutput(out, ['none']);
+});
+check('opcodes: hex table constructors, SetByte, BytesToChars and SecureRandomBytes', () => {
+  const js = 'function f() { return [OpCodes.CreateUint64ArrayFromHex(["0x0123456789ABCDEF", "ff"]), OpCodes.CreateUint32ArrayFromHex(["DEADBEEF"]),\n' +
+    '  OpCodes.CreateByteArrayFromHex(["0a0B"]), OpCodes.SetByte(0x11223344, 1, 0xAB), OpCodes.BytesToChars([72, 105]), OpCodes.SecureRandomBytes(5).length, OpCodes.SecureRandomBytes(0).length]; }';
+  // Given 64-bit, short and 0x-prefixed hex, a byte index of 1, and counts 5 and 0 (boundary)
+  return expectOutput(runPython(js,
+    'r = f()\nprint([list(p) for p in r[0]], list(r[1]), list(r[2]), hex(r[3]), r[4], r[5], r[6])\n' +
+    'for bad in (["0xZZ"], [""]):\n    try:\n        OpCodes.CreateUint64ArrayFromHex(bad)\n    except Exception as e:\n        print("refused", bad)\n' +
+    'try:\n    OpCodes.SecureRandomBytes(-1)\nexcept Exception as e:\n    print(e)'),
+  ['[[19088743, 2309737967], [0, 255]] [3735928559] [10, 11] 0x1122ab44 Hi 5 0',
+    "refused ['0xZZ']", "refused ['']", 'SecureRandomBytes: count must be a non-negative integer']);
+});
+
+// ---------------------------------------------------------------------------
 // Member names: one escaping at declaration, read and write
 // ---------------------------------------------------------------------------
 check('names: fields and methods named like Python builtins keep one spelling everywhere', () => {
