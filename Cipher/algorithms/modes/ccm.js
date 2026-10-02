@@ -157,8 +157,8 @@
       /** @type {uint8[]|null} */
       this.nonce = null;
       this.tagSize = 8; // Default 8-byte tag (M=8)
-      /** @type {int32|null} */
-      this.messageLength = null; // Must be pre-specified
+      /** @type {int32} */
+      this.messageLength = -1; // Must be pre-specified; -1 until setMessageLength
       this.aad = []; // Associated authenticated data
     }
 
