@@ -962,7 +962,7 @@
           currentX: px,
           currentY: py
         };
-        _canvas.setPointerCapture(0);
+        _canvas.szPointerId != null && _canvas.setPointerCapture(_canvas.szPointerId);
         return;
       }
 
@@ -985,7 +985,7 @@
           currentX: px,
           currentY: py
         };
-        _canvas.setPointerCapture(0);
+        _canvas.szPointerId != null && _canvas.setPointerCapture(_canvas.szPointerId);
       }
     },
 
