@@ -45,26 +45,26 @@
   // weather affinity: 'any' = unaffected, 'solar' = boosted by solar flare,
   //                   'cold-vulnerable' = damaged by meteor shower cold snap
   const CROPS = [
-    { name: 'Space Wheat',   icon: '🌾', color: '#da2',  growTime: 8,  stages: 4, sellPrice: 10, seedCost: 5,  weatherAffinity: null },
-    { name: 'Star Fruit',    icon: '⭐', color: '#f80',  growTime: 14, stages: 4, sellPrice: 25, seedCost: 12, weatherAffinity: null },
-    { name: 'Nebula Berry',  icon: '🫐', color: '#a3f',  growTime: 10, stages: 4, sellPrice: 15, seedCost: 8,  weatherAffinity: null },
-    { name: 'Lunar Lettuce', icon: '🥬', color: '#5d5',  growTime: 6,  stages: 3, sellPrice: 8,  seedCost: 3,  weatherAffinity: null },
-    { name: 'Cosmic Corn',   icon: '🌽', color: '#ec3',  growTime: 12, stages: 4, sellPrice: 20, seedCost: 10, weatherAffinity: null },
-    { name: 'Crystal Melon', icon: '🍈', color: '#0da',  growTime: 18, stages: 5, sellPrice: 40, seedCost: 20, weatherAffinity: null },
-    { name: 'Solar Tomato',  icon: '🍅', color: '#e33',  growTime: 9,  stages: 4, sellPrice: 12, seedCost: 6,  weatherAffinity: null },
-    { name: 'Void Mushroom', icon: '🍄', color: '#728',  growTime: 11, stages: 4, sellPrice: 18, seedCost: 9,  weatherAffinity: 'any' },
-    { name: 'Plasma Pepper', icon: '🌶️', color: '#f52',  growTime: 6,  stages: 3, sellPrice: 30, seedCost: 15, weatherAffinity: 'cold-vulnerable' },
-    { name: 'Astral Flower', icon: '🌸', color: '#8af',  growTime: 20, stages: 5, sellPrice: 55, seedCost: 28, weatherAffinity: 'solar' },
-    { name: 'Lunar Moss',   icon: '🌑', color: '#679',  growTime: 35, stages: 4, sellPrice: 28, seedCost: 15, weatherAffinity: null, nightOnly: true },
-    { name: 'Solar Vine',   icon: '☀️', color: '#fc0',  growTime: 30, stages: 4, sellPrice: 35, seedCost: 20, weatherAffinity: 'solar', dayOnly: true }
+    { name: 'Space Wheat',   sprite: 'wheat', color: '#da2',  growTime: 8,  stages: 4, sellPrice: 10, seedCost: 5,  weatherAffinity: null },
+    { name: 'Star Fruit',    sprite: 'starfruit', color: '#f80',  growTime: 14, stages: 4, sellPrice: 25, seedCost: 12, weatherAffinity: null },
+    { name: 'Nebula Berry',  sprite: 'berry', color: '#a3f',  growTime: 10, stages: 4, sellPrice: 15, seedCost: 8,  weatherAffinity: null },
+    { name: 'Lunar Lettuce', sprite: 'lettuce', color: '#5d5',  growTime: 6,  stages: 3, sellPrice: 8,  seedCost: 3,  weatherAffinity: null },
+    { name: 'Cosmic Corn',   sprite: 'corn', color: '#ec3',  growTime: 12, stages: 4, sellPrice: 20, seedCost: 10, weatherAffinity: null },
+    { name: 'Crystal Melon', sprite: 'melon', color: '#0da',  growTime: 18, stages: 5, sellPrice: 40, seedCost: 20, weatherAffinity: null },
+    { name: 'Solar Tomato',  sprite: 'tomato', color: '#e33',  growTime: 9,  stages: 4, sellPrice: 12, seedCost: 6,  weatherAffinity: null },
+    { name: 'Void Mushroom', sprite: 'mushroom', color: '#728',  growTime: 11, stages: 4, sellPrice: 18, seedCost: 9,  weatherAffinity: 'any' },
+    { name: 'Plasma Pepper', sprite: 'pepper', color: '#f52',  growTime: 6,  stages: 3, sellPrice: 30, seedCost: 15, weatherAffinity: 'cold-vulnerable' },
+    { name: 'Astral Flower', sprite: 'flower', color: '#8af',  growTime: 20, stages: 5, sellPrice: 55, seedCost: 28, weatherAffinity: 'solar' },
+    { name: 'Lunar Moss',   sprite: 'moss', color: '#679',  growTime: 35, stages: 4, sellPrice: 28, seedCost: 15, weatherAffinity: null, nightOnly: true },
+    { name: 'Solar Vine',   sprite: 'solarvine', color: '#fc0',  growTime: 30, stages: 4, sellPrice: 35, seedCost: 20, weatherAffinity: 'solar', dayOnly: true }
   ];
 
   /* ── Livestock Definitions ── */
   const LIVESTOCK = [
-    { name: 'Space Cow',     icon: '🐄', color: '#ddd', feedInterval: 12, produce: 'Milk',      produceIcon: '🥛', produceValue: 18, cost: 50 },
-    { name: 'Star Hen',      icon: '🐔', color: '#fb4', feedInterval: 8,  produce: 'Egg',       produceIcon: '🥚', produceValue: 10, cost: 30 },
-    { name: 'Nebula Goat',   icon: '🐐', color: '#c96', feedInterval: 10, produce: 'Wool',      produceIcon: '🧶', produceValue: 14, cost: 40 },
-    { name: 'Crystal Chick', icon: '🐣', color: '#ff8', feedInterval: 6,  produce: 'Feather',   produceIcon: '🪶', produceValue: 6,  cost: 15 }
+    { name: 'Space Cow',     sprite: 'cow', color: '#ddd', feedInterval: 12, produce: 'Milk',      produceSprite: 'milk', produceValue: 18, cost: 50 },
+    { name: 'Star Hen',      sprite: 'hen', color: '#fb4', feedInterval: 8,  produce: 'Egg',       produceSprite: 'egg', produceValue: 10, cost: 30 },
+    { name: 'Nebula Goat',   sprite: 'goat', color: '#c96', feedInterval: 10, produce: 'Wool',      produceSprite: 'wool', produceValue: 14, cost: 40 },
+    { name: 'Crystal Chick', sprite: 'chick', color: '#ff8', feedInterval: 6,  produce: 'Feather',   produceSprite: 'feather', produceValue: 6,  cost: 15 }
   ];
 
   /* ── Weather ── */
@@ -85,30 +85,30 @@
 
   /* ── Upgrade Definitions ── */
   const UPGRADES = [
-    { id: 'growSpeed',       name: 'Growth Boost',       icon: '🌱', maxLevel: 5, baseCost: 50,  costScale: 1.8, desc: 'Crops grow faster (+25%/lvl)' },
-    { id: 'yieldMultiplier', name: 'Yield Multiplier',   icon: '📦', maxLevel: 5, baseCost: 80,  costScale: 2.0, desc: 'Harvest more per crop (+20%/lvl)' },
-    { id: 'weatherResist',   name: 'Weather Shield',     icon: '🛡', maxLevel: 3, baseCost: 120, costScale: 2.5, desc: 'Reduce meteor damage chance' },
-    { id: 'autoHarvest',     name: 'Auto-Harvester',     icon: '🤖', maxLevel: 3, baseCost: 200, costScale: 3.0, desc: 'Auto-harvest mature crops' },
-    { id: 'plotExpansion',   name: 'Plot Expansion',     icon: '🗺', maxLevel: 99, baseCost: 150, costScale: 1.5, desc: 'Expand farm by 1 strip (L/R/T/B cycle)' },
-    { id: 'soilQuality',    name: 'Soil Quality',        icon: '🧪', maxLevel: 5, baseCost: 100, costScale: 1.9, desc: 'All tiles grow faster (+15%/lvl)' },
-    { id: 'marketAccess',   name: 'Market Access',       icon: '📈', maxLevel: 5, baseCost: 120, costScale: 2.0, desc: 'Sell prices +10% per level' },
-    { id: 'irrigation',     name: 'Irrigation System',   icon: '💧', maxLevel: 3, baseCost: 140, costScale: 2.3, desc: 'Reduce crop damage -15%/lvl (stacks w/ Shield)' }
+    { id: 'growSpeed',       name: 'Growth Boost',       sprite: 'growth', maxLevel: 5, baseCost: 50,  costScale: 1.8, desc: 'Crops grow faster (+25%/lvl)' },
+    { id: 'yieldMultiplier', name: 'Yield Multiplier',   sprite: 'crate', maxLevel: 5, baseCost: 80,  costScale: 2.0, desc: 'Harvest more per crop (+20%/lvl)' },
+    { id: 'weatherResist',   name: 'Weather Shield',     sprite: 'shield', maxLevel: 3, baseCost: 120, costScale: 2.5, desc: 'Reduce meteor damage chance' },
+    { id: 'autoHarvest',     name: 'Auto-Harvester',     sprite: 'robot', maxLevel: 3, baseCost: 200, costScale: 3.0, desc: 'Auto-harvest mature crops' },
+    { id: 'plotExpansion',   name: 'Plot Expansion',     sprite: 'map', maxLevel: 99, baseCost: 150, costScale: 1.5, desc: 'Expand farm by 1 strip (L/R/T/B cycle)' },
+    { id: 'soilQuality',    name: 'Soil Quality',        sprite: 'flask', maxLevel: 5, baseCost: 100, costScale: 1.9, desc: 'All tiles grow faster (+15%/lvl)' },
+    { id: 'marketAccess',   name: 'Market Access',       sprite: 'chart', maxLevel: 5, baseCost: 120, costScale: 2.0, desc: 'Sell prices +10% per level' },
+    { id: 'irrigation',     name: 'Irrigation System',   sprite: 'drop', maxLevel: 3, baseCost: 140, costScale: 2.3, desc: 'Reduce crop damage -15%/lvl (stacks w/ Shield)' }
   ];
 
   /* ── Building Definitions ── */
   const BUILDINGS = [
-    { name: 'Sprinkler',  icon: '\uD83D\uDCA7', cost: 50,  desc: 'Waters adjacent crops (+20% growth)', range: 1 },
-    { name: 'Harvester',  icon: '\uD83E\uDD16', cost: 120, desc: 'Auto-harvests adjacent mature crops',   range: 1 },
-    { name: 'Greenhouse', icon: '\uD83C\uDFE0', cost: 200, desc: 'Protects adjacent crops from weather',  range: 1 },
-    { name: 'Silo',       icon: '\uD83C\uDFD7\uFE0F', cost: 80,  desc: 'Increases sell price by 10% (global)', range: 0 },
-    { name: 'Solar Panel',  icon: '\u2600\uFE0F', cost: 150, desc: 'Generates 2 credits/cycle',              range: 0 },
-    { name: 'Wind Turbine', icon: '\uD83C\uDF00', cost: 250, desc: 'Generates 5 credits/cycle + adj growth +10%', range: 1 },
-    { name: 'Compost Bin',  icon: '\u267B\uFE0F', cost: 100, desc: 'Boosts adjacent fertility +25%',         range: 1 },
-    { name: 'Scarecrow',    icon: '\uD83E\uDDD1\u200D\uD83C\uDF3E', cost: 75, desc: 'Protects 3x3 area from animals', range: 1 },
-    { name: 'Fence',        icon: '\uD83D\uDD32', cost: 30,  desc: 'Blocks animal movement on this tile',     range: 0 },
-    { name: 'Auto-Planter L1', icon: '\uD83C\uDF31', cost: 200, desc: 'Plants selected crop on adj. empty land (15s)', range: 1 },
-    { name: 'Auto-Planter L2', icon: '\uD83C\uDF3F', cost: 500, desc: 'Plants highest-price crop on adj. land (15s)',  range: 1 },
-    { name: 'Auto-Collector', icon: '\uD83D\uDCE5', cost: 300, desc: 'Auto-collects adjacent livestock produce', range: 1 },
+    { name: 'Sprinkler',  sprite: 'sprinkler', cost: 50,  desc: 'Waters adjacent crops (+20% growth)', range: 1 },
+    { name: 'Harvester',  sprite: 'harvester', cost: 120, desc: 'Auto-harvests adjacent mature crops',   range: 1 },
+    { name: 'Greenhouse', sprite: 'greenhouse', cost: 200, desc: 'Protects adjacent crops from weather',  range: 1 },
+    { name: 'Silo',       sprite: 'silo', cost: 80,  desc: 'Increases sell price by 10% (global)', range: 0 },
+    { name: 'Solar Panel',  sprite: 'solarpanel', cost: 150, desc: 'Generates 2 credits/cycle',              range: 0 },
+    { name: 'Wind Turbine', sprite: 'turbine', cost: 250, desc: 'Generates 5 credits/cycle + adj growth +10%', range: 1 },
+    { name: 'Compost Bin',  sprite: 'compost', cost: 100, desc: 'Boosts adjacent fertility +25%',         range: 1 },
+    { name: 'Scarecrow',    sprite: 'scarecrow', cost: 75, desc: 'Protects 3x3 area from animals', range: 1 },
+    { name: 'Fence',        sprite: 'fence', cost: 30,  desc: 'Blocks animal movement on this tile',     range: 0 },
+    { name: 'Auto-Planter L1', sprite: 'planter1', cost: 200, desc: 'Plants selected crop on adj. empty land (15s)', range: 1 },
+    { name: 'Auto-Planter L2', sprite: 'planter2', cost: 500, desc: 'Plants highest-price crop on adj. land (15s)',  range: 1 },
+    { name: 'Auto-Collector', sprite: 'collector', cost: 300, desc: 'Auto-collects adjacent livestock produce', range: 1 },
   ];
 
   const BUILDING_MAX_LEVEL = 6; // levels 1-6 (5 upgrades from L1)
@@ -124,7 +124,7 @@
   /* ── Seasons ── */
   const SEASONS = ['Spring', 'Summer', 'Autumn', 'Winter'];
   const SEASON_DURATION = 4; // days per season
-  const SEASON_ICONS = ['\uD83C\uDF31', '\u2600\uFE0F', '\uD83C\uDF42', '\u2744\uFE0F']; // icons per season
+  const SEASON_SPRITES = ['spring', 'sun', 'autumn', 'winter']; // icons per season
 
   /* ── Day/Night ── */
   const DAY_CYCLE_PERIOD = 30; // same as game day length in seconds
@@ -308,6 +308,530 @@
   let tooltipLines = [];
   let tooltipX = 0;
   let tooltipY = 0;
+
+  /* ══════════════════════════════════════════════════════════════════
+     SPRITES — 16x16 pixel art drawn once into offscreen canvases
+     ══════════════════════════════════════════════════════════════════ */
+
+  const SPRITE_SIZE = 16;
+  const SPRITE_OUTLINE = '#1a1424';
+
+  const PAL = {
+    white: '#f4f0e8', cream: '#ffe6a8', yellow: '#ffd23f', gold: '#f2a516', orange: '#f57a1f',
+    red: '#e23b3b', maroon: '#9c2a4a', pink: '#ff8fb8', purple: '#a54be0', violet: '#6a3bb5',
+    blue: '#3d8ef0', sky: '#8fd3ff', cyan: '#4fe0d0', teal: '#1fa39a', green: '#4cc341',
+    leaf: '#2f8f3a', lime: '#a8e04a', brown: '#9a5b34', dbrown: '#5e3820', tan: '#d8a868',
+    grey: '#9aa0b0', dgrey: '#5a5f70', steel: '#c8d0dc', black: '#2a2438', slate: '#7186b0',
+    soil: '#6b4429'
+  };
+
+  function shadeColor(hex, amount) {
+    let h = hex.replace('#', '');
+    if (h.length === 3)
+      h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    const n = parseInt(h, 16);
+    const mix = (v) => Math.round(amount < 0 ? v * (1 + amount) : v + (255 - v) * amount);
+    const r = mix((n >> 16) & 255), g = mix((n >> 8) & 255), b = mix(n & 255);
+    return '#' + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1);
+  }
+
+  /* Pixel painter on a 16x16 grid; every primitive works in whole pixels */
+  function createPixelPainter() {
+    const N = SPRITE_SIZE;
+    const px = new Array(N * N).fill(null);
+    const flat = new Array(N * N).fill(false);
+    const set = (x, y, c, noShade) => {
+      x = Math.round(x);
+      y = Math.round(y);
+      if (x < 0 || y < 0 || x >= N || y >= N) return;
+      px[y * N + x] = c;
+      flat[y * N + x] = !!noShade;
+    };
+    const p = {
+      px: set,
+      clear: (x, y) => set(x, y, null),
+      rect: (x, y, w, h, c, noShade) => {
+        for (let j = 0; j < h; ++j)
+          for (let i = 0; i < w; ++i)
+            set(x + i, y + j, c, noShade);
+      },
+      ell: (cx, cy, rx, ry, c, noShade) => {
+        for (let y = 0; y < N; ++y)
+          for (let x = 0; x < N; ++x) {
+            const dx = (x - cx) / (rx + 0.5), dy = (y - cy) / (ry + 0.5);
+            if (dx * dx + dy * dy <= 1)
+              set(x, y, c, noShade);
+          }
+      },
+      disc: (cx, cy, r, c, noShade) => p.ell(cx, cy, r, r, c, noShade),
+      line: (x0, y0, x1, y1, c, noShade) => {
+        const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
+        for (let s = 0; s <= steps; ++s)
+          set(x0 + (x1 - x0) * s / steps, y0 + (y1 - y0) * s / steps, c, noShade);
+      },
+      poly: (pts, c, noShade) => {
+        for (let y = 0; y < N; ++y)
+          for (let x = 0; x < N; ++x) {
+            const tx = x + 0.5, ty = y + 0.5;
+            let inside = false;
+            for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+              const xi = pts[i][0], yi = pts[i][1], xj = pts[j][0], yj = pts[j][1];
+              if ((yi > ty) !== (yj > ty) && tx < (xj - xi) * (ty - yi) / (yj - yi) + xi)
+                inside = !inside;
+            }
+            if (inside)
+              set(x, y, c, noShade);
+          }
+      },
+      map: (x0, y0, rows, colors, noShade) => {
+        for (let j = 0; j < rows.length; ++j)
+          for (let i = 0; i < rows[j].length; ++i) {
+            const ch = rows[j][i];
+            if (ch !== '.')
+              set(x0 + i, y0 + j, colors[ch], noShade);
+          }
+      },
+      _px: px,
+      _flat: flat
+    };
+    return p;
+  }
+
+  /* Bakes a painter into a canvas: light rim top-left, shadow bottom-right, 1px dark outline */
+  function bakeSprite(paint) {
+    const N = SPRITE_SIZE;
+    const p = createPixelPainter();
+    paint(p, PAL);
+    const src = p._px;
+    const at = (x, y) => (x < 0 || y < 0 || x >= N || y >= N) ? null : src[y * N + x];
+    const out = src.slice();
+    for (let y = 0; y < N; ++y)
+      for (let x = 0; x < N; ++x) {
+        const c = src[y * N + x];
+        if (!c || p._flat[y * N + x]) continue;
+        if (at(x + 1, y) !== c && at(x, y + 1) !== c && (at(x + 1, y) === null || at(x, y + 1) === null))
+          out[y * N + x] = shadeColor(c, -0.3);
+        else if (at(x, y + 1) === null || at(x + 1, y) === null)
+          out[y * N + x] = shadeColor(c, -0.22);
+        else if (at(x, y - 1) === null || at(x - 1, y) === null)
+          out[y * N + x] = shadeColor(c, 0.25);
+      }
+    for (let y = 0; y < N; ++y)
+      for (let x = 0; x < N; ++x)
+        if (!src[y * N + x] && (at(x - 1, y) || at(x + 1, y) || at(x, y - 1) || at(x, y + 1)))
+          out[y * N + x] = SPRITE_OUTLINE;
+    const cv = document.createElement('canvas');
+    cv.width = N;
+    cv.height = N;
+    const g = cv.getContext('2d');
+    for (let y = 0; y < N; ++y)
+      for (let x = 0; x < N; ++x)
+        if (out[y * N + x]) {
+          g.fillStyle = out[y * N + x];
+          g.fillRect(x, y, 1, 1);
+        }
+    return cv;
+  }
+
+  function paintSun(p, P, cx, cy, r) {
+    for (let a = 0; a < 8; ++a) {
+      const ang = a * Math.PI / 4;
+      p.line(cx + Math.cos(ang) * (r + 2), cy + Math.sin(ang) * (r + 2), cx + Math.cos(ang) * (r + 3), cy + Math.sin(ang) * (r + 3), P.orange);
+    }
+    p.disc(cx, cy, r, P.yellow);
+    p.px(cx - 1, cy - 1, P.cream, true);
+  }
+
+  function paintRobot(p, P) {
+    p.line(7.5, 1, 7.5, 3, P.dgrey);
+    p.disc(7.5, 1, 0, P.red, true);
+    p.rect(3, 4, 10, 7, P.steel);
+    p.rect(5, 6, 2, 2, P.cyan, true);
+    p.rect(9, 6, 2, 2, P.cyan, true);
+    p.rect(6, 9, 4, 1, P.dgrey, true);
+    p.rect(4, 12, 8, 3, P.grey);
+    p.rect(1, 6, 2, 3, P.grey);
+    p.rect(13, 6, 2, 3, P.grey);
+  }
+
+  function paintPot(p, P) {
+    p.poly([[4, 10], [12, 10], [11, 15], [5, 15]], P.brown);
+    p.rect(3, 9, 10, 2, P.orange);
+    p.rect(5, 9, 6, 1, P.soil, true);
+  }
+
+  const SPRITE_PAINTERS = {
+    /* ── Crops (mature) ── */
+    wheat: (p, P) => {
+      p.line(7, 14, 7, 6, P.lime); p.line(7, 14, 4, 8, P.lime); p.line(8, 14, 11, 8, P.lime);
+      p.ell(7, 4, 1, 3, P.gold); p.ell(4, 6, 1, 3, P.gold); p.ell(11, 6, 1, 3, P.gold);
+      p.px(7, 3, P.yellow, true); p.px(4, 5, P.yellow, true); p.px(11, 5, P.yellow, true);
+    },
+    starfruit: (p, P) => {
+      const pts = [];
+      for (let i = 0; i < 10; ++i) {
+        const ang = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 3.2 : 7;
+        pts.push([8 + Math.cos(ang) * r, 8.6 + Math.sin(ang) * r]);
+      }
+      p.poly(pts, P.gold);
+      p.px(7, 6, P.cream, true); p.px(7, 7, P.yellow, true);
+      p.line(8, 4, 8, 9, P.yellow, true);
+    },
+    berry: (p, P) => {
+      p.line(7, 2, 8, 6, P.leaf); p.ell(10, 3, 2, 1, P.green);
+      p.disc(4.5, 8, 2.5, P.purple); p.disc(10.5, 8, 2.5, P.violet); p.disc(7.5, 11.5, 2.5, P.purple);
+      p.px(4, 7, P.pink, true); p.px(10, 7, P.pink, true); p.px(7, 11, P.pink, true);
+    },
+    lettuce: (p, P) => {
+      p.ell(7.5, 9, 6, 5, P.leaf);
+      p.ell(7.5, 8.5, 4, 4, P.green);
+      p.ell(7.5, 8, 2, 2, P.lime);
+      p.line(7.5, 5, 7.5, 13, P.lime, true);
+      p.line(4, 8, 6, 11, P.lime, true); p.line(11, 8, 9, 11, P.lime, true);
+    },
+    corn: (p, P) => {
+      p.ell(7.5, 6.5, 2.5, 5.5, P.yellow);
+      for (let y = 2; y <= 11; y += 2)
+        for (let x = 6; x <= 9; x += 2)
+          p.px(x + (y % 4 ? 1 : 0), y, P.gold, true);
+      p.poly([[3, 6], [7, 15], [5, 15], [2, 9]], P.green);
+      p.poly([[13, 6], [9, 15], [11, 15], [14, 9]], P.leaf);
+      p.rect(6, 13, 4, 2, P.leaf);
+    },
+    melon: (p, P) => {
+      p.disc(7.5, 8.5, 6, P.teal);
+      for (let i = -1; i <= 1; ++i) {
+        p.line(7.5 + i * 3, 3, 7.5 + i * 4, 14, P.cyan, true);
+      }
+      p.px(5, 5, P.white, true);
+      p.rect(7, 1, 2, 2, P.leaf);
+    },
+    tomato: (p, P) => {
+      p.ell(7.5, 9, 6, 5, P.red);
+      p.poly([[4, 4], [8, 5.5], [12, 4], [10, 6.5], [8, 7.5], [6, 6.5]], P.green);
+      p.rect(7, 2, 2, 3, P.leaf);
+      p.px(4, 8, P.pink, true); p.px(5, 7, P.pink, true);
+    },
+    mushroom: (p, P) => {
+      p.rect(6, 9, 4, 6, P.cream);
+      p.ell(7.5, 7, 6.5, 4.5, P.violet);
+      p.rect(0, 9, 16, 3, null);
+      p.rect(6, 9, 4, 6, P.cream);
+      p.rect(1, 8, 14, 1, P.purple);
+      p.px(5, 4, P.pink, true); p.px(9, 3, P.pink, true); p.px(11, 6, P.pink, true); p.px(4, 7, P.pink, true); p.px(8, 6, P.pink, true);
+    },
+    pepper: (p, P) => {
+      p.poly([[4, 5], [10, 4], [12, 7], [11, 11], [7, 14], [3, 15], [6, 11], [5, 8]], P.red);
+      p.line(6, 6, 6, 9, P.pink, true);
+      p.line(10, 4, 12, 1, P.leaf); p.rect(8, 3, 4, 2, P.green);
+    },
+    flower: (p, P) => {
+      p.line(7.5, 10, 7.5, 15, P.leaf); p.ell(10, 13, 2, 1, P.green);
+      for (let i = 0; i < 5; ++i) {
+        const ang = -Math.PI / 2 + i * 2 * Math.PI / 5;
+        p.disc(7.5 + Math.cos(ang) * 4, 6.5 + Math.sin(ang) * 4, 2.2, P.sky);
+      }
+      p.disc(7.5, 6.5, 1.5, P.yellow);
+      p.px(7, 6, P.white, true);
+    },
+    moss: (p, P) => {
+      p.ell(7.5, 11, 6.5, 3.5, P.slate);
+      p.ell(5, 9, 3, 2.5, P.slate); p.ell(10, 8.5, 3, 3, P.slate);
+      p.px(4, 10, P.sky, true); p.px(9, 7, P.sky, true); p.px(11, 11, P.sky, true); p.px(6, 12, P.sky, true);
+      p.ell(7.5, 6, 2, 2, P.slate);
+      p.px(12, 3, P.cream, true); p.px(3, 4, P.cream, true); p.px(8, 2, P.sky, true);
+    },
+    solarvine: (p, P) => {
+      p.line(3, 15, 4, 11, P.leaf); p.line(4, 11, 7, 10, P.leaf); p.line(7, 10, 8, 13, P.leaf); p.line(8, 13, 11, 12, P.leaf);
+      p.ell(3, 9, 1, 1, P.green); p.ell(11, 14, 1, 1, P.green);
+      paintSun(p, P, 8, 5, 2.5);
+    },
+
+    /* ── Growth stages ── */
+    sprout: (p, P) => {
+      p.ell(7.5, 13, 5, 1.5, P.soil);
+      p.line(7.5, 12, 7.5, 8, P.lime);
+      p.ell(5, 7, 2, 1, P.green); p.ell(10, 6, 2, 1, P.green);
+    },
+
+    /* ── Livestock ── */
+    cow: (p, P) => {
+      p.rect(4, 6, 10, 6, P.white);
+      p.rect(5, 12, 2, 3, P.white); p.rect(11, 12, 2, 3, P.white);
+      p.ell(3, 7, 2.5, 2.5, P.white);
+      p.rect(0, 8, 3, 2, P.pink);
+      p.px(2, 6, P.black, true);
+      p.px(1, 4, P.cream); p.px(4, 4, P.cream);
+      p.rect(7, 7, 3, 2, P.black, true); p.rect(11, 9, 2, 2, P.black, true); p.px(9, 10, P.black, true);
+      p.line(14, 6, 15, 10, P.white);
+      p.rect(8, 12, 2, 1, P.pink, true);
+    },
+    hen: (p, P) => {
+      p.ell(8.5, 9.5, 5, 4, P.white);
+      p.disc(4.5, 5, 2.5, P.white);
+      p.rect(3, 1, 3, 2, P.red);
+      p.rect(0, 5, 2, 2, P.gold);
+      p.px(2, 7, P.red, true);
+      p.px(4, 4, P.black, true);
+      p.poly([[12, 6], [15, 3], [15, 8], [13, 10]], P.cream);
+      p.ell(9, 9.5, 2.5, 1.5, P.cream);
+      p.line(7, 14, 7, 15, P.orange); p.line(10, 14, 10, 15, P.orange);
+    },
+    goat: (p, P) => {
+      p.rect(5, 6, 9, 5, P.tan);
+      p.rect(6, 11, 2, 4, P.tan); p.rect(12, 11, 2, 4, P.tan);
+      p.ell(3.5, 5.5, 2, 2.5, P.tan);
+      p.line(3, 2, 6, 0, P.grey); p.line(4, 2, 7, 1, P.grey);
+      p.px(3, 5, P.black, true);
+      p.line(2, 8, 2, 10, P.white);
+      p.px(14, 5, P.tan);
+      p.ell(9, 7, 2, 1, P.cream, true);
+    },
+    chick: (p, P) => {
+      p.disc(7.5, 6, 4, P.yellow);
+      p.poly([[2, 9], [4, 8], [6, 10], [8, 8], [10, 10], [12, 8], [14, 9], [13, 15], [3, 15]], P.white);
+      p.rect(1, 5, 2, 2, P.orange);
+      p.px(5, 5, P.black, true); p.px(10, 5, P.black, true);
+      p.px(6, 3, P.cream, true);
+    },
+
+    /* ── Produce ── */
+    milk: (p, P) => {
+      p.rect(6, 1, 4, 2, P.blue);
+      p.rect(6, 3, 4, 2, P.white);
+      p.poly([[6, 5], [10, 5], [12, 8], [12, 15], [4, 15], [4, 8]], P.white);
+      p.rect(4, 9, 8, 3, P.sky, true);
+    },
+    egg: (p, P) => {
+      p.ell(7.5, 8.5, 4.5, 6, P.cream);
+      p.px(6, 5, P.white, true); p.px(5, 6, P.white, true);
+    },
+    wool: (p, P) => {
+      p.disc(7.5, 8.5, 6, P.pink);
+      p.line(3, 5, 12, 12, P.maroon, true); p.line(2, 9, 9, 15, P.maroon, true); p.line(6, 3, 14, 9, P.maroon, true);
+      p.line(13, 13, 15, 15, P.pink);
+    },
+    feather: (p, P) => {
+      p.poly([[13, 1], [15, 3], [8, 11], [4, 12], [5, 8]], P.white);
+      p.poly([[13, 1], [9, 3], [4, 9], [5, 8]], P.sky);
+      p.line(2, 14, 13, 2, P.grey, true);
+    },
+
+    /* ── Upgrades ── */
+    growth: (p, P) => {
+      p.ell(5.5, 13, 4, 1.5, P.soil);
+      p.line(5.5, 12, 5.5, 8, P.lime); p.ell(3, 7, 2, 1, P.green); p.ell(8, 6, 2, 1, P.green);
+      p.poly([[12, 2], [15, 6], [13, 6], [13, 12], [11, 12], [11, 6], [9, 6]], P.lime);
+    },
+    crate: (p, P) => {
+      p.rect(2, 4, 12, 11, P.tan);
+      p.rect(2, 4, 12, 2, P.brown, true); p.rect(2, 9, 12, 1, P.brown, true); p.rect(2, 14, 12, 1, P.brown, true);
+      p.line(3, 6, 12, 13, P.brown, true);
+    },
+    shield: (p, P) => {
+      p.poly([[2, 2], [14, 2], [14, 8], [8, 15], [2, 8]], P.blue);
+      p.rect(7, 4, 2, 8, P.white, true); p.rect(4, 6, 8, 2, P.white, true);
+    },
+    robot: paintRobot,
+    map: (p, P) => {
+      p.poly([[1, 3], [5, 2], [10, 4], [15, 3], [15, 13], [10, 14], [5, 12], [1, 13]], P.cream);
+      p.line(5, 2, 5, 12, P.tan, true); p.line(10, 4, 10, 14, P.tan, true);
+      p.line(3, 10, 7, 7, P.red, true); p.line(7, 7, 12, 9, P.red, true);
+      p.px(12, 8, P.red, true); p.px(13, 9, P.red, true); p.px(12, 10, P.red, true); p.px(11, 9, P.red, true);
+      p.ell(4, 5, 1, 1, P.green, true);
+    },
+    flask: (p, P) => {
+      p.rect(6, 1, 4, 5, P.steel);
+      p.poly([[6, 5], [10, 5], [15, 14], [1, 14]], P.steel);
+      p.poly([[4.5, 9], [11.5, 9], [14, 13.5], [2, 13.5]], P.lime, true);
+      p.px(6, 11, P.white, true); p.px(9, 12, P.white, true);
+      p.rect(5, 0, 6, 1, P.brown);
+    },
+    chart: (p, P) => {
+      p.rect(1, 1, 14, 14, P.white);
+      p.rect(3, 10, 2, 3, P.blue, true); p.rect(6, 8, 2, 5, P.blue, true); p.rect(9, 6, 2, 7, P.blue, true); p.rect(12, 3, 2, 10, P.blue, true);
+      p.line(2, 9, 13, 2, P.red, true);
+    },
+    drop: (p, P) => {
+      p.poly([[8, 1], [12, 8], [12.5, 11], [10, 14.5], [6, 14.5], [3.5, 11], [4, 8]], P.blue);
+      p.disc(8, 10.5, 4, P.blue);
+      p.px(6, 9, P.sky, true); p.px(6, 10, P.sky, true); p.px(7, 7, P.sky, true);
+    },
+
+    /* ── Buildings ── */
+    sprinkler: (p, P) => {
+      p.rect(7, 8, 2, 6, P.steel);
+      p.rect(4, 13, 8, 2, P.dgrey);
+      p.rect(5, 6, 6, 2, P.grey);
+      const drops = [[2, 4], [4, 2], [7, 1], [11, 2], [13, 4], [1, 7], [14, 7], [3, 5.5], [12, 5.5]];
+      for (const d of drops) p.px(d[0], d[1], P.sky, true);
+    },
+    harvester: (p, P) => {
+      paintRobot(p, P);
+      p.rect(13, 6, 2, 3, null);
+      p.line(13, 7, 15, 10, P.grey); p.rect(14, 10, 2, 1, P.yellow); p.px(14, 11, P.yellow);
+      p.px(5, 6, P.lime, true); p.px(9, 6, P.lime, true);
+    },
+    greenhouse: (p, P) => {
+      p.poly([[1, 7], [8, 1], [15, 7], [15, 15], [1, 15]], P.sky);
+      p.line(1, 7, 8, 1, P.white, true); p.line(8, 1, 15, 7, P.white, true);
+      p.line(8, 1, 8, 15, P.white, true); p.line(1, 11, 15, 11, P.white, true);
+      p.line(4.5, 4, 4.5, 15, P.white, true); p.line(11.5, 4, 11.5, 15, P.white, true);
+      p.ell(6, 13, 1, 1, P.green, true); p.ell(10, 13, 1, 1, P.green, true);
+    },
+    silo: (p, P) => {
+      p.rect(4, 5, 8, 10, P.red);
+      p.ell(7.5, 5, 4, 3, P.steel);
+      p.rect(4, 8, 8, 1, P.maroon, true); p.rect(4, 12, 8, 1, P.maroon, true);
+      p.rect(7, 11, 2, 4, P.dbrown, true);
+      p.rect(12, 9, 3, 6, P.grey);
+    },
+    solarpanel: (p, P) => {
+      p.poly([[3, 3], [15, 3], [13, 11], [1, 11]], P.blue);
+      for (let i = 1; i < 4; ++i) p.line(3 + i * 3, 3, 1 + i * 3, 11, P.sky, true);
+      p.line(2, 7, 14, 7, P.sky, true);
+      p.rect(7, 12, 2, 3, P.grey);
+      p.rect(4, 14, 8, 1, P.dgrey);
+    },
+    turbine: (p, P) => {
+      p.poly([[7, 7], [9, 7], [10, 15], [6, 15]], P.white);
+      p.poly([[8, 6], [7, 0], [9, 0]], P.steel);
+      p.poly([[8, 6], [14, 10], [13, 11]], P.steel);
+      p.poly([[8, 6], [2, 10], [3, 11]], P.steel);
+      p.disc(8, 6, 1, P.grey);
+    },
+    compost: (p, P) => {
+      p.poly([[3, 5], [13, 5], [12, 15], [4, 15]], P.green);
+      p.rect(2, 3, 12, 2, P.leaf);
+      p.rect(7, 2, 2, 1, P.leaf);
+      p.poly([[8, 7], [11, 10], [9, 10], [9, 13], [7, 13], [7, 10], [5, 10]], P.lime, true);
+    },
+    scarecrow: (p, P) => {
+      p.rect(7, 6, 2, 9, P.brown);
+      p.rect(1, 7, 14, 2, P.brown);
+      p.poly([[4, 7], [12, 7], [11, 12], [5, 12]], P.blue);
+      p.disc(8, 4, 2, P.tan);
+      p.rect(3, 1, 10, 1, P.gold); p.rect(5, 0, 6, 1, P.gold);
+      p.px(7, 4, P.black, true); p.px(9, 4, P.black, true);
+      p.px(1, 9, P.yellow); p.px(14, 9, P.yellow); p.px(6, 13, P.yellow); p.px(10, 13, P.yellow);
+    },
+    fence: (p, P) => {
+      for (const x of [2, 7, 12]) {
+        p.rect(x, 3, 2, 12, P.tan);
+        p.px(x, 2, P.tan);
+      }
+      p.rect(1, 6, 14, 2, P.brown); p.rect(1, 11, 14, 2, P.brown);
+    },
+    planter1: (p, P) => {
+      paintPot(p, P);
+      p.line(8, 9, 8, 5, P.lime); p.ell(5.5, 4, 2, 1, P.green); p.ell(10.5, 4, 2, 1, P.green);
+    },
+    planter2: (p, P) => {
+      paintPot(p, P);
+      p.line(8, 9, 8, 2, P.leaf);
+      p.ell(5, 7, 2, 1, P.green); p.ell(11, 7, 2, 1, P.green);
+      p.ell(5.5, 4, 2, 1, P.green); p.ell(10.5, 4, 2, 1, P.green);
+      p.ell(8, 1, 1, 1, P.lime);
+    },
+    collector: (p, P) => {
+      p.poly([[1, 9], [5, 9], [6, 11], [10, 11], [11, 9], [15, 9], [15, 15], [1, 15]], P.grey);
+      p.poly([[8, 10], [12, 5], [10, 5], [10, 0], [6, 0], [6, 5], [4, 5]], P.lime);
+    },
+
+    /* ── Seasons, time of day, tools ── */
+    spring: (p, P) => {
+      p.line(7.5, 15, 7.5, 7, P.leaf);
+      p.ell(4, 9, 3, 1.5, P.green); p.ell(11, 7, 3, 1.5, P.green);
+      p.disc(7.5, 4, 2.5, P.pink); p.disc(7.5, 4, 0.8, P.yellow, true);
+    },
+    sun: (p, P) => paintSun(p, P, 7.5, 7.5, 3.5),
+    autumn: (p, P) => {
+      p.poly([[8, 1], [10, 5], [14, 4], [12, 9], [15, 11], [9, 12], [8, 15], [7, 12], [1, 11], [4, 9], [2, 4], [6, 5]], P.orange);
+      p.line(8, 4, 8, 15, P.red, true); p.line(8, 9, 4, 6, P.red, true); p.line(8, 9, 12, 6, P.red, true);
+    },
+    winter: (p, P) => {
+      for (let a = 0; a < 3; ++a) {
+        const ang = a * Math.PI / 3, dx = Math.cos(ang) * 6.5, dy = Math.sin(ang) * 6.5;
+        p.line(7.5 - dx, 7.5 - dy, 7.5 + dx, 7.5 + dy, P.sky);
+      }
+      for (let a = 0; a < 6; ++a) {
+        const ang = a * Math.PI / 3, bx = 7.5 + Math.cos(ang) * 4.5, by = 7.5 + Math.sin(ang) * 4.5;
+        p.px(bx + Math.cos(ang + 1) * 1.4, by + Math.sin(ang + 1) * 1.4, P.sky);
+        p.px(bx + Math.cos(ang - 1) * 1.4, by + Math.sin(ang - 1) * 1.4, P.sky);
+      }
+      p.px(7.5, 7.5, P.white, true);
+    },
+    moon: (p, P) => {
+      p.disc(7.5, 7.5, 6, P.cream);
+      p.disc(10.5, 5.5, 5, null);
+      p.px(4, 9, P.tan, true); p.px(6, 12, P.tan, true);
+    },
+    hoe: (p, P) => {
+      p.line(3, 14, 12, 3, P.brown); p.line(4, 14, 13, 3, P.tan);
+      p.poly([[9, 1], [15, 1], [15, 4], [12, 7], [11, 5]], P.steel);
+    },
+    mouse: (p, P) => {
+      p.ell(8, 10, 5, 3, P.grey);
+      p.disc(4, 8, 2.5, P.grey);
+      p.disc(4, 5, 1.5, P.pink);
+      p.px(1, 9, P.pink, true);
+      p.px(3, 8, P.black, true);
+      p.line(13, 11, 15, 8, P.pink);
+      p.px(6, 13, P.pink, true); p.px(10, 13, P.pink, true);
+    },
+    trap: (p, P) => {
+      p.rect(1, 10, 14, 4, P.tan);
+      p.rect(1, 13, 14, 1, P.brown, true);
+      p.line(3, 9, 9, 3, P.steel); p.line(9, 3, 11, 9, P.steel);
+      p.rect(10, 8, 3, 2, P.yellow);
+    }
+  };
+
+  const spriteCache = {};
+
+  function getSprite(key) {
+    let spr = spriteCache[key];
+    if (!spr) {
+      const paint = SPRITE_PAINTERS[key];
+      if (!paint) return null;
+      spr = spriteCache[key] = bakeSprite(paint);
+    }
+    return spr;
+  }
+
+  /* Young plant tinted with the crop's colour */
+  function getYoungCropSprite(crop) {
+    const key = 'young:' + crop.sprite;
+    let spr = spriteCache[key];
+    if (!spr)
+      spr = spriteCache[key] = bakeSprite((p, P) => {
+        p.ell(7.5, 13.5, 5.5, 1.5, P.soil);
+        p.line(7.5, 13, 7.5, 4, P.leaf);
+        p.ell(4.5, 10, 2.5, 1, P.green); p.ell(10.5, 9, 2.5, 1, P.green);
+        p.ell(5, 6, 2, 1, P.green); p.ell(10, 5, 2, 1, P.green);
+        p.disc(7.5, 3, 1.5, crop.color);
+        p.disc(3, 7.5, 1, crop.color); p.disc(12, 6.5, 1, crop.color);
+      });
+    return spr;
+  }
+
+  /* Draws a sprite centred on (cx, cy) with the given on-screen size */
+  function drawSprite(key, cx, cy, size, g) {
+    const spr = typeof key === 'string' ? getSprite(key) : key;
+    if (!spr) return;
+    const c = g || ctx;
+    const smoothing = c.imageSmoothingEnabled;
+    c.imageSmoothingEnabled = false;
+    c.drawImage(spr, Math.round(cx - size / 2), Math.round(cy - size / 2), Math.round(size), Math.round(size));
+    c.imageSmoothingEnabled = smoothing;
+  }
+
+  function getCropStageSprite(crop, stage) {
+    const maxStage = crop.stages - 1;
+    if (stage >= maxStage) return getSprite(crop.sprite);
+    if (stage <= 0) return getSprite('sprout');
+    return getYoungCropSprite(crop);
+  }
 
   /* ══════════════════════════════════════════════════════════════════
      CANVAS SETUP
@@ -596,7 +1120,7 @@
 
     const bdef = BUILDINGS[bld.typeIndex];
     const { x: tx, y: ty } = gridCenterToScreen(col, row);
-    floatingText.add(tx, ty - 10, `${bdef.icon} L${bld.level}! -${cost}cr`, { color: '#0ff', font: 'bold 12px sans-serif' });
+    floatingText.add(tx, ty - 10, `${bdef.name} L${bld.level}! -${cost}cr`, { color: '#0ff', font: 'bold 12px sans-serif' });
     particles.confetti(tx, ty, 10, { speed: 3 });
     SZ.GameAudio.play('powerup', { pitch: 1 + Math.min(bld.level, 10) * 0.04 });
   }
@@ -764,7 +1288,7 @@
 
     credits -= cost;
     upgradeLevels[def.id] = curLevel + 1;
-    floatingText.add(canvasW / 2, canvasH / 2 - 30, `${def.icon} ${def.name} Lv${curLevel + 1}!`, { color: '#0ff', font: 'bold 14px sans-serif' });
+    floatingText.add(canvasW / 2, canvasH / 2 - 30, `${def.name} Lv${curLevel + 1}!`, { color: '#0ff', font: 'bold 14px sans-serif' });
     particles.confetti(canvasW / 2, canvasH / 2, 15, { speed: 4 });
     SZ.GameAudio.play('levelup');
 
@@ -1746,7 +2270,7 @@
         if (Math.random() < 0.05 * (1 - resist)) {
           const pen = livestockPens[i];
           const scr = livestockPenToScreen(pen);
-          floatingText.add(scr.x, scr.y - 10, `${LIVESTOCK[pen.typeIndex].icon} Lost!`, { color: '#f44', font: 'bold 12px sans-serif' });
+          floatingText.add(scr.x, scr.y - 10, `${LIVESTOCK[pen.typeIndex].name} lost!`, { color: '#f44', font: 'bold 12px sans-serif' });
           livestockPens.splice(i, 1);
         }
       }
@@ -2307,12 +2831,9 @@
           ctx.arc(x + ts / 2, y + ts / 2, ts / 3, 0, TWO_PI);
           ctx.fill();
 
-          // Building icon (slightly larger at higher levels)
+          // Building sprite (slightly larger at higher levels)
           const iconScale = 1 + (bLvl - 1) * 0.06;
-          ctx.font = `${Math.round(20 * viewZoom * iconScale)}px sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(bdef.icon, x + ts / 2, y + ts / 2);
+          drawSprite(bdef.sprite, x + ts / 2, y + ts / 2, 32 * viewZoom * iconScale);
 
           // Building name label when zoomed in
           if (viewZoom >= 0.9) {
@@ -2387,11 +2908,7 @@
           ctx.save();
           ctx.translate(x + ts / 2, y + ts / 2 - 4 * viewZoom);
           ctx.scale(scale, scale);
-          ctx.fillStyle = crop.color;
-          ctx.font = `${Math.round((14 + cell.growthStage * 3) * viewZoom)}px sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(crop.icon, 0, 0);
+          drawSprite(getCropStageSprite(crop, cell.growthStage), 0, 0, (mature ? 48 : 28 + cell.growthStage * 4) * viewZoom);
           ctx.restore();
 
           // Light glow on mature crops
@@ -2443,11 +2960,8 @@
         ctx.beginPath(); ctx.moveTo(scr.x + halfTs, my); ctx.lineTo(scr.x + halfTs - 3 * viewZoom, my); ctx.stroke();
       }
 
-      // Animal icon
-      ctx.font = `${Math.round(24 * viewZoom)}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(def.icon, scr.x, scr.y);
+      // Animal sprite
+      drawSprite(def.sprite, scr.x, scr.y - 3 * viewZoom, 48 * viewZoom);
 
       // Feed timer bar
       if (!pen.produceReady) {
@@ -2467,8 +2981,7 @@
         ctx.save();
         ctx.shadowBlur = 10;
         ctx.shadowColor = '#0f0';
-        ctx.font = `${Math.round(14 * viewZoom)}px sans-serif`;
-        ctx.fillText(def.produceIcon, scr.x + 14 * viewZoom, scr.y - 12 * viewZoom);
+        drawSprite(def.produceSprite, scr.x + 14 * viewZoom, scr.y - 12 * viewZoom, 16 * viewZoom);
         ctx.restore();
 
         // Pulsing green border
@@ -2630,9 +3143,8 @@
         ctx.lineWidth = 2;
         ctx.strokeRect(bx, barY + 4, CROP_BTN_W, 37);
       }
-      ctx.font = '14px sans-serif';
+      drawSprite(CROPS[i].sprite, bx + 14, barY + 15, 16);
       ctx.textAlign = 'center';
-      ctx.fillText(CROPS[i].icon, bx + 14, barY + 18);
       ctx.fillStyle = credits >= CROPS[i].seedCost ? '#aaa' : '#f44';
       ctx.font = '8px sans-serif';
       ctx.fillText(`${CROPS[i].seedCost}cr`, bx + CROP_BTN_W - 10, barY + 18);
@@ -2667,9 +3179,8 @@
     ctx.strokeStyle = hoeSelected ? '#fa0' : '#864';
     ctx.lineWidth = hoeSelected ? 2 : 1;
     ctx.strokeRect(hoeBtnX, barY + 4, 58, 37);
-    ctx.font = '14px sans-serif';
+    drawSprite('hoe', hoeBtnX + 29, barY + 17, 16);
     ctx.textAlign = 'center';
-    ctx.fillText('\u26CF\uFE0F', hoeBtnX + 29, barY + 20);
     ctx.fillStyle = '#ca8';
     ctx.font = 'bold 8px sans-serif';
     ctx.fillText('HOE', hoeBtnX + 29, barY + 36);
@@ -2731,9 +3242,8 @@
         ctx.lineWidth = 2;
         ctx.strokeRect(bx, bldBarY + 2, BLD_BTN_W, 24);
       }
-      ctx.font = '12px sans-serif';
+      drawSprite(BUILDINGS[i].sprite, bx + 12, bldBarY + 14, 16);
       ctx.textAlign = 'center';
-      ctx.fillText(BUILDINGS[i].icon, bx + 12, bldBarY + 17);
       ctx.fillStyle = credits >= BUILDINGS[i].cost ? '#aaa' : '#f44';
       ctx.font = '8px sans-serif';
       ctx.fillText(`${BUILDINGS[i].cost}cr`, bx + BLD_BTN_W - 12, bldBarY + 17);
@@ -2828,7 +3338,8 @@
       ctx.font = '12px sans-serif';
       ctx.textAlign = 'left';
       ctx.fillStyle = '#fff';
-      ctx.fillText(`${def.icon} ${def.name}`, px + 12, ry + 15);
+      drawSprite(def.sprite, px + 20, ry + 11, 16);
+      ctx.fillText(def.name, px + 31, ry + 15);
 
       // Level pips (skip for infinite upgrades like Plot Expansion)
       ctx.font = '9px sans-serif';
@@ -2949,12 +3460,14 @@
       ctx.font = '12px sans-serif';
       ctx.textAlign = 'left';
       ctx.fillStyle = '#fff';
-      ctx.fillText(`${def.icon} ${def.name}`, px + 12, ry + 15);
+      drawSprite(def.sprite, px + 20, ry + 11, 16);
+      ctx.fillText(def.name, px + 31, ry + 15);
 
       // Produce info
       ctx.font = '9px sans-serif';
       ctx.fillStyle = '#aaa';
-      ctx.fillText(`${def.produceIcon} ${def.produce} every ${def.feedInterval}s (${getEffectiveProduceValue(def)}cr)`, px + 12, ry + 27);
+      drawSprite(def.produceSprite, px + 17, ry + 24, 10);
+      ctx.fillText(`${def.produce} every ${def.feedInterval}s (${getEffectiveProduceValue(def)}cr)`, px + 24, ry + 27);
 
       // Owned count
       const owned = livestockPens.filter(p => p.typeIndex === i).length;
@@ -3152,19 +3665,10 @@
         ctx.fill();
       }
 
-      // Draw as a small colored dot
-      ctx.fillStyle = nearCrop ? '#f44' : '#c44';
-      ctx.beginPath();
-      ctx.arc(sx, sy, 5 * viewZoom, 0, TWO_PI);
-      ctx.fill();
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      // Mouse emoji
-      ctx.font = `${Math.round(12 * viewZoom)}px sans-serif`;
+      // Mouse sprite
+      drawSprite('mouse', sx, sy, 32 * viewZoom);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('\uD83D\uDC2D', sx, sy);
 
       // Pest control indicator: show trap icon when cursor is nearby
       const mdx = tooltipX - sx, mdy = tooltipY - sy;
@@ -3174,7 +3678,8 @@
         ctx.fillRect(sx - 22 * viewZoom, sy - 20 * viewZoom, 44 * viewZoom, 14 * viewZoom);
         ctx.fillStyle = '#fa0';
         ctx.font = `bold ${Math.round(8 * viewZoom)}px sans-serif`;
-        ctx.fillText('\uD83E\uDEA4 +10cr', sx, sy - 12 * viewZoom);
+        drawSprite('trap', sx - 13 * viewZoom, sy - 13 * viewZoom, 12 * viewZoom);
+        ctx.fillText('+10cr', sx + 5 * viewZoom, sy - 12 * viewZoom);
       }
     }
   }
@@ -3189,18 +3694,18 @@
     for (const crop of CROPS) {
       const count = inventory[crop.name] || 0;
       if (count > 0)
-        items.push({ icon: crop.icon, name: crop.name, count });
+        items.push({ sprite: crop.sprite, name: crop.name, count });
     }
     for (const live of LIVESTOCK) {
       const count = inventory[live.produce] || 0;
       if (count > 0)
-        items.push({ icon: live.produceIcon, name: live.produce, count });
+        items.push({ sprite: live.produceSprite, name: live.produce, count });
     }
 
     const estValue = getEstimatedStorageValue();
 
     const panelW = 110;
-    const lineH = 14;
+    const lineH = 16;
     const headerH = 18;
     const estLineH = totalItems > 0 ? lineH : 0;
     const panelH = headerH + Math.max(1, items.length) * lineH + estLineH + 6;
@@ -3223,7 +3728,9 @@
     ctx.font = '9px sans-serif';
     for (let i = 0; i < items.length; ++i) {
       ctx.fillStyle = '#ccc';
-      ctx.fillText(`${items[i].icon} ${items[i].count}`, px + 4, py + headerH + (i + 1) * lineH);
+      const iy = py + headerH + (i + 1) * lineH;
+      drawSprite(items[i].sprite, px + 11, iy - 4, 16);
+      ctx.fillText(`${items[i].name} ${items[i].count}`, px + 22, iy);
     }
     if (!items.length) {
       ctx.fillStyle = '#666';
@@ -3242,16 +3749,16 @@
     if (state !== STATE_PLAYING) return;
     // Season display near the day counter area
     const seasonName = SEASONS[currentSeason];
-    const seasonIcon = SEASON_ICONS[currentSeason];
     ctx.fillStyle = '#aaa';
     ctx.font = 'bold 10px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`${seasonIcon} ${seasonName}`, 4, 22);
+    drawSprite(SEASON_SPRITES[currentSeason], 12, 17, 16);
+    ctx.fillText(seasonName, 22, 22);
 
     // Day/night indicator
     const isNight = dayPhase >= 0.5;
-    const dnIcon = isNight ? '\uD83C\uDF19' : '\u2600\uFE0F';
-    ctx.fillText(`${dnIcon} ${isNight ? 'Night' : 'Day'}`, 4, 36);
+    drawSprite(isNight ? 'moon' : 'sun', 12, 32, 16);
+    ctx.fillText(isNight ? 'Night' : 'Day', 22, 36);
 
     // Energy bar
     const eMax = getEnergyMax();
@@ -3340,7 +3847,7 @@
     const progress = Math.min(100, Math.round(cell.growthProgress * 100));
     const effPrice = getEffectiveSellPrice(crop);
     const lines = [
-      { text: crop.icon + ' ' + crop.name, color: crop.color, bold: true }
+      { text: crop.name, sprite: crop.sprite, color: crop.color, bold: true }
     ];
     if (mature)
       lines.push({ text: 'Ready to harvest! (click)', color: '#0f0' });
@@ -3373,7 +3880,7 @@
     const bdef = BUILDINGS[bld.typeIndex];
     const bLvl = bld.level || 1;
     const lines = [
-      { text: bdef.icon + ' ' + bdef.name + (bLvl > 1 ? ' L' + bLvl : ''), color: '#0ff', bold: true },
+      { text: bdef.name + (bLvl > 1 ? ' L' + bLvl : ''), sprite: bdef.sprite, color: '#0ff', bold: true },
       { text: bdef.desc, color: '#aaa' }
     ];
 
@@ -3453,9 +3960,9 @@
       { text: 'Empty plot', color: '#999', bold: true }
     ];
     if (selectedTool === TOOL_BUILD && selectedBuildingIndex >= 0)
-      lines.push({ text: 'Click to place ' + BUILDINGS[selectedBuildingIndex].icon + ' ' + BUILDINGS[selectedBuildingIndex].name + ' (' + BUILDINGS[selectedBuildingIndex].cost + ' cr)', color: '#0ff' });
+      lines.push({ text: 'Click to place ' + BUILDINGS[selectedBuildingIndex].name + ' (' + BUILDINGS[selectedBuildingIndex].cost + ' cr)', color: '#0ff' });
     else
-      lines.push({ text: 'Click to plant ' + crop.icon + ' ' + crop.name + ' (' + crop.seedCost + ' cr)', color: '#aaa' });
+      lines.push({ text: 'Click to plant ' + crop.name + ' (' + crop.seedCost + ' cr)', color: '#aaa' });
     if (sq < 1.0)
       lines.push({ text: 'Fertility: ' + Math.round(sq * 100) + '% (slower growth)', color: '#ca4' });
     else if (sq > 1.0)
@@ -3480,7 +3987,7 @@
     const effPrice = getEffectiveSellPrice(crop);
     const pm = priceMultipliers[cropIndex] || 1;
     const lines = [
-      { text: crop.icon + ' ' + crop.name, color: crop.color, bold: true },
+      { text: crop.name, sprite: crop.sprite, color: crop.color, bold: true },
       { text: 'Seed cost: ' + crop.seedCost + ' cr', color: '#aaa' },
       { text: 'Sell price: ' + effPrice + ' cr' + (effPrice !== crop.sellPrice ? ' (base ' + crop.sellPrice + ')' : ''), color: '#da2' }
     ];
@@ -3529,9 +4036,9 @@
   function buildLivestockBuyTooltip(typeIndex) {
     const def = LIVESTOCK[typeIndex];
     return [
-      { text: def.icon + ' ' + def.name, color: '#fff', bold: true },
+      { text: def.name, sprite: def.sprite, color: '#fff', bold: true },
       { text: 'Cost: ' + def.cost + ' cr', color: '#f88' },
-      { text: 'Produces: ' + def.produceIcon + ' ' + def.produce + ' (' + getEffectiveProduceValue(def) + ' cr)', color: '#da2' },
+      { text: 'Produces: ' + def.produce + ' (' + getEffectiveProduceValue(def) + ' cr)', color: '#da2' },
       { text: 'Every ' + def.feedInterval + 's — click pen to collect', color: '#8cf' }
     ];
   }
@@ -3539,10 +4046,10 @@
   function buildLivestockPenTooltip(pen) {
     const def = LIVESTOCK[pen.typeIndex];
     const lines = [
-      { text: def.icon + ' ' + def.name, color: '#fff', bold: true }
+      { text: def.name, sprite: def.sprite, color: '#fff', bold: true }
     ];
     if (pen.produceReady)
-      lines.push({ text: def.produceIcon + ' ' + def.produce + ' ready! (click to collect)', color: '#0f0' });
+      lines.push({ text: def.produce + ' ready! (click to collect)', sprite: def.produceSprite, color: '#0f0' });
     else {
       const remaining = Math.max(0, Math.ceil(pen.feedTimer));
       lines.push({ text: 'Next ' + def.produce + ' in ' + remaining + 's', color: '#aaa' });
@@ -3595,7 +4102,7 @@
       if (bldIdx >= 0 && bldIdx < BUILDINGS.length && mx >= bldStartX) {
         const bdef = BUILDINGS[bldIdx];
         tooltipLines = [
-          { text: bdef.icon + ' ' + bdef.name, color: '#0ff', bold: true },
+          { text: bdef.name, sprite: bdef.sprite, color: '#0ff', bold: true },
           { text: 'Cost: ' + bdef.cost + ' cr', color: '#f88' },
           { text: bdef.desc, color: '#aaa' },
           { text: 'Range: ' + (bdef.range > 0 ? 'adjacent tiles' : 'global') + ' | Upgradeable to L6', color: '#8cf' }
@@ -3666,7 +4173,7 @@
       // Hoe button
       if (mx >= ttHoeBtnX && mx <= ttHoeBtnX + 58) {
         tooltipLines = [
-          { text: '\u26CF\uFE0F Hoe Tool', color: '#fa0', bold: true },
+          { text: 'Hoe Tool', sprite: 'hoe', color: '#fa0', bold: true },
           { text: 'Left-click farmland near water: +0.2 fertility (max 1.5)', color: '#4d4' },
           { text: 'Right-click on crop: uproot (refund 50% seed cost)', color: '#f88' },
           { text: 'Shortcut: T', color: '#666' }
@@ -3716,7 +4223,7 @@
     let maxW = 0;
     for (const line of tooltipLines) {
       const t = typeof line === 'object' ? String(line.text || '') : String(line);
-      const w = ctx.measureText(t).width;
+      const w = ctx.measureText(t).width + (line && line.sprite ? 18 : 0);
       if (w > maxW)
         maxW = w;
     }
@@ -3763,7 +4270,12 @@
       const color = (typeof line === 'object' ? line.color : null) || '#ddd';
       ctx.fillStyle = color;
       ctx.font = (line && line.bold) ? 'bold 11px sans-serif' : '11px sans-serif';
-      ctx.fillText(text, tx + padding, ty + padding + (i + 1) * lineH - 4);
+      const baseY = ty + padding + (i + 1) * lineH - 4;
+      if (line && line.sprite) {
+        drawSprite(line.sprite, tx + padding + 7, baseY - 4, 16);
+        ctx.fillText(text, tx + padding + 18, baseY);
+      } else
+        ctx.fillText(text, tx + padding, baseY);
     }
 
     ctx.restore();
