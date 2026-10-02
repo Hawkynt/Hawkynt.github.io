@@ -554,6 +554,9 @@
     ctx.save();
     ctx.globalAlpha *= alpha;
     ctx.imageSmoothingEnabled = false;
+    // turned to stone: grey and still
+    if (opts.stone && 'filter' in ctx)
+      ctx.filter = 'grayscale(1) brightness(0.85) contrast(1.1)';
     if (look) {
       const frame = dollFrame(look, pose, p);
       if (frame) {
