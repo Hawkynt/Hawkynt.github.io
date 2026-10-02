@@ -3031,6 +3031,12 @@
       lastTime = performance.now();
   }
 
+  /* Pause when the window is hidden or loses focus */
+  SZ.GameAutoPause.attach({
+    isRunning: () => gameActive && !gamePaused && !gameOverFlag && !modeSelectActive,
+    pause: togglePause
+  });
+
   /* ============================== HIGH SCORES ============================== */
 
   let highScores = [];

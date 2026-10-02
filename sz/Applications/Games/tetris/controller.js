@@ -692,6 +692,12 @@
     }
   }
 
+  /* Pause when the window is hidden or loses focus */
+  SZ.GameAutoPause.attach({
+    isRunning: () => gameActive && !gamePaused && !gameOverFlag,
+    pause: togglePause
+  });
+
   /* ---- High Scores ---- */
   let highScores = [];
 

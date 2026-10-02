@@ -1306,6 +1306,12 @@
     }
   }
 
+  /* Pause when the window is hidden or loses focus */
+  SZ.GameAutoPause.attach({
+    isRunning: () => state === STATE_PLAYING,
+    pause: togglePause
+  });
+
   /* ---- Laser Fire ---- */
   function fireLaser() {
     if (!activePowerUps.L || laserCooldown > 0)
