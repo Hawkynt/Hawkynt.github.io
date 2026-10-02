@@ -171,7 +171,102 @@
     px(ctx, ox + x + w - 2, oy + y - 2, '#4a7a3a', 1, 3);
   }
 
+  // Rock face: boulders with lit tops and dark seams.
+  function rockWall(ctx, ox, oy, r, base) {
+    px(ctx, ox, oy, rgb(base, 0.5), T, T);
+    for (let i = 0; i < 7; ++i) {
+      const w = 4 + Math.floor(r() * 5), h = 3 + Math.floor(r() * 4);
+      const x = Math.floor(r() * (T - w + 2)) - 1, y = Math.floor(r() * (T - h + 2)) - 1;
+      const tone = 0.8 + r() * 0.35;
+      px(ctx, ox + Math.max(0, x), oy + Math.max(0, y), rgb(base, tone), Math.min(w, T - Math.max(0, x)), Math.min(h, T - Math.max(0, y)));
+      px(ctx, ox + Math.max(0, x), oy + Math.max(0, y), rgb(base, tone * 1.25), Math.min(w, T - Math.max(0, x)), 1);
+    }
+  }
+
+  // Wooden planks running across, with seams and nail heads.
+  function planks(ctx, ox, oy, r, base) {
+    for (let row = 0; row < 4; ++row) {
+      const tone = 0.88 + r() * 0.2;
+      px(ctx, ox, oy + row * 4, rgb(base, tone), T, 4);
+      px(ctx, ox, oy + row * 4, rgb(base, tone * 1.15), T, 1);
+      px(ctx, ox, oy + row * 4 + 3, rgb(base, 0.55), T, 1);
+      const seam = Math.floor(r() * 14) + 1;
+      px(ctx, ox + seam, oy + row * 4, rgb(base, 0.55), 1, 3);
+      px(ctx, ox + (seam + 3) % T, oy + row * 4 + 1, '#3a2a1a');
+      for (let i = 0; i < 3; ++i)
+        px(ctx, ox + Math.floor(r() * T), oy + row * 4 + 1 + Math.floor(r() * 2), rgb(base, 0.78), 2, 1);
+    }
+  }
+
+  // Glassy black rock split by glowing seams.
+  function obsidian(ctx, ox, oy, r) {
+    for (let y = 0; y < T; y += 2)
+      for (let x = 0; x < T; x += 2)
+        px(ctx, ox + x, oy + y, rgb('#2a1a20', 0.85 + r() * 0.35), 2, 2);
+    let x = Math.floor(r() * T), y = 0;
+    while (y < T) {
+      px(ctx, ox + x, oy + y, r() < 0.5 ? '#e8501a' : '#ff8a2a');
+      if (r() < 0.4)
+        x = Math.max(0, Math.min(T - 1, x + (r() < 0.5 ? -1 : 1)));
+      else
+        ++y;
+    }
+    px(ctx, ox + Math.floor(r() * 12), oy + Math.floor(r() * 12), '#6a4a5a', 2, 1);
+  }
+
+  function iceFloor(ctx, ox, oy, r) {
+    for (let y = 0; y < T; ++y)
+      for (let x = 0; x < T; x += 4)
+        px(ctx, ox + x, oy + y, rgb('#a8d0ea', 0.94 + r() * 0.1), 4, 1);
+    for (let i = 0; i < 2; ++i) {
+      let x = Math.floor(r() * T), y = Math.floor(r() * 6);
+      for (let k = 0; k < 8; ++k) {
+        px(ctx, ox + x, oy + y, '#7aa8c8');
+        x += r() < 0.5 ? 1 : 0;
+        y += 1;
+        if (x >= T || y >= T)
+          break;
+      }
+    }
+    px(ctx, ox + 3, oy + 3, '#ffffff', 3, 1);
+    px(ctx, ox + 4, oy + 4, '#e8f6ff', 1, 1);
+  }
+
+  // Dense canopy seen from above: overlapping leaf clusters.
+  function thicket(ctx, ox, oy, r) {
+    px(ctx, ox, oy, '#1e3a1e', T, T);
+    for (let i = 0; i < 6; ++i) {
+      const cx = Math.floor(r() * T), cy = Math.floor(r() * T), rad = 3 + Math.floor(r() * 3);
+      const tone = 0.75 + r() * 0.4;
+      for (let y = -rad; y <= rad; ++y)
+        for (let x = -rad; x <= rad; ++x)
+          if (x * x + y * y <= rad * rad && cx + x >= 0 && cx + x < T && cy + y >= 0 && cy + y < T)
+            px(ctx, ox + cx + x, oy + cy + y, rgb('#3f7a34', tone + (y < 0 ? 0.15 : 0)));
+    }
+  }
+
+  // Layered cliff face.
+  function cliff(ctx, ox, oy, r) {
+    for (let y = 0; y < T; ++y)
+      px(ctx, ox, oy + y, rgb('#7a7468', 0.7 + (y % 5) * 0.08 + r() * 0.06), T, 1);
+    for (let i = 0; i < 5; ++i)
+      px(ctx, ox + Math.floor(r() * 14), oy + Math.floor(r() * 16), '#4e4a42', 2 + Math.floor(r() * 3), 1);
+    px(ctx, ox, oy, '#9a948a', T, 1);
+  }
+
   const PAINTERS = Object.freeze({
+    crypt_floor:    (ctx, x, y, r) => flagstones(ctx, x, y, r, '#8a8070', '#3a322c'),
+    crypt_wall:     (ctx, x, y, r) => brickWall(ctx, x, y, r, '#4a4660'),
+    cave_wall:      (ctx, x, y, r) => rockWall(ctx, x, y, r, '#4e4450'),
+    wood_floor:     (ctx, x, y, r) => planks(ctx, x, y, r, '#8a6238'),
+    fortress_wall:  (ctx, x, y, r) => brickWall(ctx, x, y, r, '#5a5a66'),
+    infernal_floor: (ctx, x, y, r) => obsidian(ctx, x, y, r),
+    infernal_wall:  (ctx, x, y, r) => brickWall(ctx, x, y, r, '#6a2a26'),
+    ice_floor:      (ctx, x, y, r) => iceFloor(ctx, x, y, r),
+    ice_wall:       (ctx, x, y, r) => brickWall(ctx, x, y, r, '#7ab0d4'),
+    ruin_wall:      (ctx, x, y, r) => { brickWall(ctx, x, y, r, '#8a8474'); px(ctx, x + 2, y + 9, '#4f7a3a', 3, 2); px(ctx, x + 10, y + 1, '#6a9a4a', 2, 2); },
+    thicket:        (ctx, x, y, r) => thicket(ctx, x, y, r),
+    cliff:          (ctx, x, y, r) => cliff(ctx, x, y, r),
     plains:        (ctx, x, y, r) => grass(ctx, x, y, r, '#5f9e44'),
     // overworld grass: Kenney's grass colour so pond and shore tiles still blend
     meadow:        (ctx, x, y, r) => grass(ctx, x, y, r, '#8dc435', { flowers: 0.3 }),
