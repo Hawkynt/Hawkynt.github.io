@@ -243,7 +243,7 @@
               const start = entries.indexOf(focused);
               for (let i = 1; i <= entries.length; ++i) {
                 const cand = entries[(start + i) % entries.length];
-                if (this.#labelOf(cand).toLowerCase().startsWith(letter)) {
+                if (this.#labelOf(cand).replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase().startsWith(letter)) {
                   this.#focus(cand);
                   break;
                 }
@@ -275,7 +275,7 @@
 
     #itemByLetter(key) {
       const letter = key.toLowerCase();
-      return this.#items().find(i => this.#labelOf(i).toLowerCase().startsWith(letter)) || null;
+      return this.#items().find(i => this.#labelOf(i).replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase().startsWith(letter)) || null;
     }
 
     #enter(silent) {
