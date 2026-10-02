@@ -1037,6 +1037,7 @@
         } else
           this.#renderer.drawPanel(0, 0, CANVAS_W, CANVAS_H, { bg: '#0a0a1a' });
         this.#renderer.drawCombatGrid(eng.grid, ts, ox, oy, this.#combatBiome);
+        this.#renderer.drawGridLines(eng.grid.cols, eng.grid.rows, ts, ox, oy);
         if (TR.ScreenArt && bctx)
           TR.ScreenArt.border(bctx, ox, oy, eng.grid.cols * ts, eng.grid.rows * ts);
       }

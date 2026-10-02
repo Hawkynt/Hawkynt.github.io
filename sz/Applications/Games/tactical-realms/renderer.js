@@ -510,6 +510,15 @@
           if (art && artImg) {
             ctx.drawImage(artImg, art.x, art.y, art.w, art.h, sx, sy, tileSize, tileSize);
             this.#drawTerrainEdges(ctx, grid, c, r, t.id, sx, sy, tileSize);
+            // trees, rocks and reeds stand on the painted ground
+            const layers = TR.TERRAIN_LAYERS && TR.TERRAIN_LAYERS[t.id];
+            if (layers && layers.length > 1)
+              for (const def of layers.slice(1)) {
+                const rect = TR.resolveSprite ? TR.resolveSprite(def.sprite, 'combat_terrain') : null;
+                const img = rect && assets.has(rect.sheet || 'dungeon') ? assets.get(rect.sheet || 'dungeon') : null;
+                if (img)
+                  ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, sx, sy, tileSize, tileSize);
+              }
             continue;
           }
 
@@ -559,6 +568,29 @@
     }
 
     // fx: optional CombatFx.unitState() result ({ dx, dy, flash, alpha, tint }).
+    // Faint cell lines so distances stay readable on painted ground.
+    drawGridLines(cols, rows, tileSize, offsetX, offsetY) {
+      if (!this.#bufCtx)
+        return;
+      const ctx = this.#bufCtx;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let c = 1; c < cols; ++c) {
+        const x = Math.round(offsetX + c * tileSize) + 0.5;
+        ctx.moveTo(x, offsetY);
+        ctx.lineTo(x, offsetY + rows * tileSize);
+      }
+      for (let r = 1; r < rows; ++r) {
+        const y = Math.round(offsetY + r * tileSize) + 0.5;
+        ctx.moveTo(offsetX, y);
+        ctx.lineTo(offsetX + cols * tileSize, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // Flagstone floors read as raised slabs: a dark lip where they meet
     // rougher ground below or to the right, a light one above or left.
     #drawTerrainEdges(ctx, grid, c, r, id, sx, sy, ts) {
