@@ -2,6 +2,9 @@
   'use strict';
   const SZ = window.SZ || (window.SZ = {});
 
+  // below this work-area width windows open maximized
+  const NARROW_SCREEN_PX = 700;
+
   class WindowManager {
     #container;
     #windows = new Map();
@@ -58,6 +61,18 @@
       this.#windows.set(id, win);
       this.#zStack.push(id);
       this.focusWindow(id);
+
+      // On a phone-sized screen a window opens over the whole work area;
+      // one that cannot be maximized is at least kept on screen.
+      const areaW = this.#container.clientWidth, areaH = this.#container.clientHeight;
+      if (areaW && areaW < NARROW_SCREEN_PX) {
+        if (win.maximizable !== false && win.resizable !== false)
+          this.maximizeWindow(id);
+        else {
+          const el = win.element;
+          win.moveTo(Math.max(0, Math.floor((areaW - el.offsetWidth) / 2)), Math.max(0, Math.min(40, areaH - el.offsetHeight)));
+        }
+      }
 
       if (this.onWindowCreated)
         this.onWindowCreated(win);
