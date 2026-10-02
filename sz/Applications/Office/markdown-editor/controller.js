@@ -61,22 +61,42 @@
     preview.innerHTML = markdownToHtml(source.value);
   }
 
+  // Links and images may only lead to web pages, mail addresses, anchors
+  // and relative paths; images may also be inline data images.
+  function safeUrl(url, isImage) {
+    const t = url.trim();
+    const m = /^([a-z][a-z0-9+.\-]*):/i.exec(t.replace(/[\u0000-\u0020]/g, ''));
+    if (!m)
+      return t;
+    const scheme = m[1].toLowerCase();
+    if (scheme === 'http' || scheme === 'https' || (!isImage && scheme === 'mailto'))
+      return t;
+    if (isImage && /^data:image\/(png|gif|jpe?g|webp|bmp);/i.test(t))
+      return t;
+    return '#';
+  }
+
   function markdownToHtml(md) {
     if (!md)
       return '';
 
     let html = md;
 
-    // Escape HTML entities
-    html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // Escape HTML entities, quotes included so nothing breaks out of an attribute
+    html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    // Code, link targets and images are set aside so emphasis and lists leave them untouched
+    const stash = [];
+    const keep = (markup, block) => {
+      stash.push(markup);
+      return (block ? '\u0001B' : '\u0001I') + (stash.length - 1) + '\u0002';
+    };
 
     // Fenced code blocks (``` ... ```)
-    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-      return '<pre><code>' + code.replace(/\n$/, '') + '</code></pre>';
-    });
+    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => keep('<pre><code>' + code.replace(/\n$/, '') + '</code></pre>', true));
 
     // Inline code
-    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    html = html.replace(/`([^`]+)`/g, (_, code) => keep('<code>' + code + '</code>', false));
 
     // Horizontal rule
     html = html.replace(/^(?:---|\*\*\*|___)$/gm, '<hr>');
@@ -93,10 +113,10 @@
     html = html.replace(/^&gt;\s+(.+)$/gm, '<blockquote>$1</blockquote>');
 
     // Images
-    html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
+    html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) => keep('<img src="' + safeUrl(url, true) + '" alt="' + alt + '">', false));
 
     // Links
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => keep('<a href="' + safeUrl(url, false) + '" target="_blank" rel="noopener noreferrer">', false) + text + '</a>');
 
     // Bold + italic
     html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
@@ -156,14 +176,14 @@
         result.push('');
         continue;
       }
-      if (/^<(h[1-6]|hr|pre|ul|ol|li|blockquote|table|thead|tbody|tr|th|td|div|p)/.test(trimmed)) {
+      if (/^(<(h[1-6]|hr|pre|ul|ol|li|blockquote|table|thead|tbody|tr|th|td|div|p)|\u0001B\d+\u0002$)/.test(trimmed)) {
         result.push(line);
         continue;
       }
       result.push('<p>' + trimmed + '</p>');
     }
 
-    return result.join('\n');
+    return result.join('\n').replace(/\u0001[BI](\d+)\u0002/g, (_, i) => stash[+i]);
   }
 
   // -----------------------------------------------------------------------
