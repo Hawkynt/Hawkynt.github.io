@@ -12,6 +12,11 @@
   const COMBAT_TILE_SIZE = 44;
   const COMBAT_MOVE_STEP_DUR = 0.08;
   const REVEAL_TIME = 0.55;
+  const CRAWL_TILE = 48;
+  const CRAWL_STEP = 0.11;
+  const DEPLOY_BUTTON = Object.freeze({ x: CANVAS_W / 2 - 100, y: 92, w: 200, h: 44 });
+  // darkness of underground boards (0 = lit)
+  const UNDERGROUND_LIGHT = Object.freeze({ dungeon: 0.6, cave: 0.68, lava: 0.35 });
 
   const BATTLE_SCENE_KEY = 'sz-tactical-realms-battle-scenes';
   const BATTLE_SCENE_MODES = ['full', 'short', 'off'];
@@ -90,6 +95,19 @@
     #enemyQueue;
     #combatFx;
     #battleSceneMode;
+    // dungeon crawl
+    #crawl = null;
+    #crawlCache = new Map();
+    #crawlTrail = [];
+    #crawlWalk = null;
+    #crawlPath = null;
+    #crawlCooldown = 0;
+    #crawlBattle = null;
+    #toasts = [];
+    #deploying = false;
+    #deploySelected = null;
+    #combatCam = null;
+    #crawlPrompt = null;
     #combatMovePath;
     #combatMoveUnit;
     #combatMoveIdx;
@@ -257,6 +275,7 @@
           getPlayerPos: () => this.#playerPos,
           getOverworldMap: () => this.#overworldMap,
           getCombatEngine: () => this.#combatEngine,
+          getCrawl: () => this.#crawl,
           getStateMachine: () => this.#sm,
           getRoster: () => this.#roster,
           getTimeRotation: () => this.#timeRotation,
@@ -513,6 +532,11 @@
 
       if (this.#combatFx)
         this.#combatFx.update(dt);
+      for (let i = this.#toasts.length - 1; i >= 0; --i)
+        if ((this.#toasts[i].t += dt) > 3.2)
+          this.#toasts.splice(i, 1);
+      if (this.#sm.current === GameState.COMBAT && this.#combatCam)
+        this.#updateCombatCamera(dt);
 
       if (this.#combatMovePath) {
         this.#combatMoveProgress += dt / COMBAT_MOVE_STEP_DUR;
@@ -550,7 +574,10 @@
         return;
       }
 
-      if ((this.#sm.current === GameState.OVERWORLD || this.#sm.current === GameState.DUNGEON) && this.#overworldMap) {
+      if (this.#sm.current === GameState.DUNGEON && this.#crawl)
+        this.#updateCrawl(dt);
+
+      if (this.#sm.current === GameState.OVERWORLD && this.#overworldMap) {
         if (this.#isMoving) {
           this.#moveProgress += dt / MOVE_DURATION;
           if (this.#moveProgress >= 1) {
@@ -618,18 +645,7 @@
         }
         if (loc.tile === OverworldTile.DUNGEON) {
           this.#overworldCombat = false;
-          this.#sm.transition(GameState.DUNGEON);
-          this.#sm.transition(GameState.COMBAT);
-          const pool = loc.enemies || ['goblin', 'skeleton'];
-          const minCount = loc.minCount || 1;
-          const maxCount = loc.maxCount || 3;
-          const biome = loc.biome || 'plains';
-          const enemyCount = this.#prng.nextInt(minCount, maxCount);
-          const enemies = [];
-          for (let i = 0; i < enemyCount; ++i)
-            enemies.push({ templateId: this.#prng.pick(pool) });
-          const aiTier = TR.EnemyAI ? TR.EnemyAI.difficultyToAiTier(loc.difficulty || 1) : 0;
-          this.#startCombat(enemies, biome, aiTier);
+          this.#enterDungeon(loc);
           return;
         }
       }
@@ -648,6 +664,459 @@
         const aiTier = this.#overworldMap.encounterAiTier(col, row);
         this.#startOverworldCombat(enemies, biome, aiTier);
       }
+    }
+
+    // --- dungeon crawl ------------------------------------------------------
+
+    #crawlKey() {
+      return `${this.#playerPos.col},${this.#playerPos.row}`;
+    }
+
+    #enterDungeon(loc) {
+      if (!TR.DungeonCrawl || !TR.DungeonThemes)
+        return;
+      const key = `${loc.col},${loc.row}`;
+      let crawl = this.#crawlCache.get(key);
+      if (!crawl) {
+        const world = this.#overworldMap ? this.#overworldMap.worldSeed : 1;
+        const seed = (world ^ Math.imul(loc.col, 73856093) ^ Math.imul(loc.row, 19349663)) >>> 0;
+        crawl = new TR.DungeonCrawl({
+          seed, theme: TR.DungeonThemes.themeForLocation(loc), name: loc.name,
+          difficulty: loc.difficulty || 1, enemies: loc.enemies || [],
+        });
+        this.#crawlCache.set(key, crawl);
+      } else
+        crawl.enterFloor(0, 'up');
+      this.#crawl = crawl;
+      this.#crawlPrompt = null;
+      this.#crawlTrail = [];
+      this.#crawlWalk = null;
+      this.#crawlPath = null;
+      this.#preloadCrawlMonsters();
+      this.#sm.transition(GameState.DUNGEON);
+      this.#toast(`${loc.name}`, '#f0d890', crawl.theme.name);
+    }
+
+    #preloadCrawlMonsters() {
+      if (TR.spriteResolver && this.#crawl)
+        TR.spriteResolver.preloadCreatures(this.#crawl.groups.flatMap(g => g.members.map(m => m.templateId)));
+    }
+
+    #leaveDungeon() {
+      this.#crawl = null;
+      this.#crawlPath = null;
+      this.#sm.transition(GameState.OVERWORLD);
+    }
+
+    #toast(text, color = '#f0ead8', sub = null) {
+      this.#toasts.push({ text, color, sub, t: 0 });
+      if (this.#toasts.length > 4)
+        this.#toasts.shift();
+    }
+
+    #updateCrawl(dt) {
+      if (this.#crawlPrompt)
+        return;
+      const walk = this.#crawlWalk;
+      if (walk) {
+        walk.t += dt / CRAWL_STEP;
+        if (walk.t >= 1) {
+          this.#crawlWalk = null;
+          this.#handleCrawlEvents(walk.events);
+        }
+        return;
+      }
+      const dir = this.#input ? this.#input.getMovementDirection() : { dx: 0, dy: 0 };
+      let dc = dir.dx, dr = dir.dy;
+      if (dc && dr)
+        dr = 0;
+      if (dc || dr)
+        this.#crawlPath = null;
+      else if (this.#crawlPath && this.#crawlPath.length > 0) {
+        const next = this.#crawlPath.shift();
+        const p = this.#crawl.position;
+        dc = next.col - p.col;
+        dr = next.row - p.row;
+        if (Math.abs(dc) + Math.abs(dr) !== 1) {
+          this.#crawlPath = null;
+          return;
+        }
+      } else
+        return;
+      const from = this.#crawl.position;
+      const res = this.#crawl.step(dc, dr);
+      if (!res.moved) {
+        this.#crawlPath = null;
+        return;
+      }
+      // the others follow in the leader's footsteps
+      this.#crawlTrail.unshift(from);
+      this.#crawlTrail.length = Math.min(this.#crawlTrail.length, 6);
+      this.#crawlWalk = { from, to: this.#crawl.position, t: 0, events: res.events };
+    }
+
+    #handleCrawlEvents(events) {
+      const c = this.#crawl;
+      const level = c.difficulty + c.floorIndex;
+      for (const ev of events) {
+        switch (ev.type) {
+          case 'exit':
+            this.#crawlPath = null;
+            this.#crawlPrompt = { text: 'Leave the dungeon?', yes: 'Leave', act: () => this.#leaveDungeon() };
+            return;
+          case 'stairs_down':
+          case 'stairs_up': {
+            const down = ev.type === 'stairs_down';
+            this.#crawlPath = null;
+            this.#crawlPrompt = {
+              text: down ? `Descend to floor ${c.floorIndex + 2}?` : `Climb back to floor ${c.floorIndex}?`,
+              yes: down ? 'Descend' : 'Climb',
+              act: () => {
+                c.enterFloor(c.floorIndex + (down ? 1 : -1), down ? 'up' : 'down');
+                this.#crawlTrail = [];
+                this.#screenTime = 0;
+                this.#preloadCrawlMonsters();
+                this.#toast(`Floor ${c.floorIndex + 1} of ${c.floorCount}`, '#c8d8ff', c.isLastFloor ? 'The air grows heavy...' : null);
+              },
+            };
+            return;
+          }
+          case 'treasure':
+          case 'hoard': {
+            const hoard = ev.type === 'hoard';
+            const gold = (hoard ? 120 : 15) * level + this.#prng.nextInt(0, 20 * level);
+            this.#gold += gold;
+            const loot = Items ? Items.generateLoot(this.#prng, level + (hoard ? 3 : 0)) : [];
+            for (const item of loot)
+              this.#inventory = Items.addToInventory(this.#inventory, item);
+            c.useFeature(ev.feature);
+            const names = loot.map(i => i.name).join(', ');
+            this.#toast(hoard ? `The hoard: ${gold} gold!` : `Treasure: ${gold} gold`, '#ffd24a', names || null);
+            if (hoard && c.cleared)
+              this.#toast(`${c.name} is cleared!`, '#a8ffc8');
+            break;
+          }
+          case 'trap': {
+            c.useFeature(ev.feature);
+            // the sharpest eyes in the party may spot it in time
+            const wis = Math.max(...this.#party.map(p => p.stats ? Math.floor((p.stats.wis - 10) / 2) : 0));
+            if (this.#prng.nextInt(1, 20) + wis >= 12 + c.difficulty) {
+              this.#toast('A trap! Spotted and disarmed.', '#a8e0ff');
+              break;
+            }
+            const i = this.#prng.nextInt(0, this.#party.length - 1);
+            const dmg = this.#prng.nextInt(1, 6) * (1 + c.floorIndex) + c.difficulty;
+            this.#partyHp[i] = Math.max(1, this.#partyHp[i] - dmg);
+            this.#toast(`A trap springs! ${this.#party[i].name} takes ${dmg} damage.`, '#ff8a7a');
+            break;
+          }
+          case 'fountain':
+            c.useFeature(ev.feature);
+            this.#partyHp = this.#party.map(p => p.maxHp);
+            this.#toast('Cool water restores the party.', '#8affb0');
+            break;
+          case 'shrine':
+            c.useFeature(ev.feature);
+            this.#partyHp = this.#party.map((p, i) => Math.min(p.maxHp, this.#partyHp[i] + Math.ceil(p.maxHp / 2)));
+            if (this.#partyXp)
+              this.#partyXp = this.#partyXp.map(x => x + 10 * level);
+            this.#toast('A shrine\'s blessing settles on the party.', '#fff2b0', `+${10 * level} XP each`);
+            break;
+          case 'sighted': {
+            const alive = c.aliveMembers(ev.group);
+            const name = alive[0] ? alive[0].templateId.replace(/_/g, ' ') : 'foes';
+            this.#crawlPath = null;
+            this.#toast(alive.length > 1 ? `${alive.length} foes ahead: ${name} and more` : `A ${name} lurks ahead`, '#ffb0a0', 'They have not noticed you yet.');
+            break;
+          }
+          case 'encounter':
+            this.#crawlPath = null;
+            this.#startCrawlBattle(ev.group, ev.ambush ? 'party' : 'enemy');
+            return;
+          default:
+            break;
+        }
+      }
+    }
+
+    #crawlCamera() {
+      const c = this.#crawl;
+      const ts = CRAWL_TILE;
+      let pc = c.position.col, pr = c.position.row;
+      const w = this.#crawlWalk;
+      if (w) {
+        const t = Math.min(1, w.t);
+        pc = w.from.col + (w.to.col - w.from.col) * t;
+        pr = w.from.row + (w.to.row - w.from.row) * t;
+      }
+      return { x: pc * ts + ts / 2 - CANVAS_W / 2, y: pr * ts + ts / 2 - CANVAS_H / 2 };
+    }
+
+    #renderCrawl() {
+      const ctx = this.#renderer.bufCtx;
+      const c = this.#crawl;
+      if (!ctx || !c || !TR.DungeonView)
+        return;
+      const cam = this.#crawlCamera();
+      const w = this.#crawlWalk;
+      TR.DungeonView.draw(ctx, c, {
+        renderer: this.#renderer, assets: this.#renderer.assets, ts: CRAWL_TILE, cam,
+        w: CANVAS_W, h: CANVAS_H, time: this.#screenTime, party: this.#party, trail: this.#crawlTrail,
+        walk: w ? { from: w.from, to: w.to, t: Math.min(1, w.t) } : null,
+      });
+      TR.DungeonView.minimap(ctx, c, CANVAS_W - 224, 16, 208, 150);
+      const SA = TR.ScreenArt;
+      if (SA) {
+        SA.frame(ctx, 16, 16, 300, 58, { alpha: 0.88 });
+        this.#renderer.drawScreenText(32, 42, c.name, { color: '#f0d890', font: "bold 18px Georgia, 'Times New Roman', serif" });
+        this.#renderer.drawScreenText(32, 62, `${c.theme.name}  ·  Floor ${c.floorIndex + 1} of ${c.floorCount}`, { color: '#b8c0d8', font: '13px monospace' });
+        this.#drawPartyStrip(ctx, 16, CANVAS_H - 16 - 22 * this.#party.length - 16);
+      }
+      this.#drawToasts(ctx);
+      if (this.#crawlPrompt)
+        this.#drawCrawlPrompt(ctx);
+      this.#renderer.drawScreenText(CANVAS_W - 16, CANVAS_H - 12, 'Arrow keys / WASD to move, click to walk', { color: 'rgba(220,220,230,0.55)', font: '12px monospace', align: 'right' });
+    }
+
+    #drawPartyStrip(ctx, x, y) {
+      const rowH = 22;
+      TR.ScreenArt.frame(ctx, x, y, 260, rowH * this.#party.length + 16, { alpha: 0.85 });
+      this.#party.forEach((p, i) => {
+        const hp = this.#partyHp ? this.#partyHp[i] : p.maxHp;
+        const ry = y + 10 + i * rowH;
+        this.#renderer.drawScreenText(x + 12, ry + 14, p.name.split(' ')[0], { color: '#e8e0c8', font: "13px Georgia, 'Times New Roman', serif" });
+        const ratio = Math.max(0, Math.min(1, hp / p.maxHp));
+        ctx.fillStyle = '#3a1418';
+        ctx.fillRect(x + 100, ry + 6, 110, 8);
+        ctx.fillStyle = ratio > 0.5 ? '#46d468' : ratio > 0.25 ? '#e8c440' : '#e84838';
+        ctx.fillRect(x + 100, ry + 6, 110 * ratio, 8);
+        this.#renderer.drawScreenText(x + 250, ry + 14, `${hp}`, { color: '#f0ecdc', font: 'bold 11px monospace', align: 'right' });
+      });
+    }
+
+    #drawToasts(ctx, bottom = false) {
+      this.#toasts.forEach((t, i) => {
+        const a = t.t < 0.25 ? t.t / 0.25 : t.t > 2.6 ? Math.max(0, (3.2 - t.t) / 0.6) : 1;
+        ctx.save();
+        ctx.globalAlpha = a;
+        ctx.font = '13px monospace';
+        const subW = t.sub ? ctx.measureText(t.sub).width : 0;
+        ctx.font = "bold 20px Georgia, 'Times New Roman', serif";
+        const tw = Math.max(ctx.measureText(t.text).width, subW) + 48;
+        const h = t.sub ? 58 : 40;
+        const y = bottom ? CANVAS_H - 150 - i * 66 : 96 + i * 66;
+        if (TR.ScreenArt)
+          TR.ScreenArt.frame(ctx, CANVAS_W / 2 - tw / 2, y, tw, h, { alpha: 0.9 });
+        ctx.textAlign = 'center';
+        ctx.fillStyle = t.color;
+        ctx.fillText(t.text, CANVAS_W / 2, y + 27);
+        if (t.sub) {
+          ctx.font = '13px monospace';
+          ctx.fillStyle = '#c8c4d8';
+          ctx.fillText(t.sub, CANVAS_W / 2, y + 47);
+        }
+        ctx.restore();
+      });
+    }
+
+    #crawlPromptButtons() {
+      const y = CANVAS_H / 2 + 10;
+      return { yes: { x: CANVAS_W / 2 - 170, y, w: 160, h: 44 }, no: { x: CANVAS_W / 2 + 10, y, w: 160, h: 44 } };
+    }
+
+    #drawCrawlPrompt(ctx) {
+      const b = this.#crawlPromptButtons();
+      TR.ScreenArt.frame(ctx, CANVAS_W / 2 - 210, CANVAS_H / 2 - 70, 420, 150);
+      this.#renderer.drawScreenText(CANVAS_W / 2, CANVAS_H / 2 - 22, this.#crawlPrompt.text, { color: '#f0d890', font: "bold 22px Georgia, 'Times New Roman', serif", align: 'center' });
+      this.#renderer.drawButton(b.yes.x, b.yes.y, b.yes.w, b.yes.h, this.#crawlPrompt.yes, { bg: '#2a4a2a' });
+      this.#renderer.drawButton(b.no.x, b.no.y, b.no.w, b.no.h, 'Stay', { bg: '#444' });
+    }
+
+    #answerCrawlPrompt(yes) {
+      const prompt = this.#crawlPrompt;
+      this.#crawlPrompt = null;
+      if (yes && prompt)
+        prompt.act();
+    }
+
+    #onClickCrawl(e) {
+      const c = this.#crawl;
+      if (!c)
+        return;
+      if (this.#crawlPrompt) {
+        const b = this.#crawlPromptButtons();
+        if (this.#hitButton(e, b.yes))
+          this.#answerCrawlPrompt(true);
+        else if (this.#hitButton(e, b.no))
+          this.#answerCrawlPrompt(false);
+        return;
+      }
+      const cam = this.#crawlCamera();
+      const col = Math.floor((e.x + cam.x) / CRAWL_TILE);
+      const row = Math.floor((e.y + cam.y) / CRAWL_TILE);
+      const path = c.pathTo(col, row);
+      if (path && path.length)
+        this.#crawlPath = path;
+    }
+
+    // --- dungeon battles -------------------------------------------------------
+
+    #startCrawlBattle(group, ambush) {
+      const c = this.#crawl;
+      const setup = c.battleSetup(group);
+      if (!setup.enemies.length)
+        return;
+      this.#crawlBattle = setup;
+      if (this.#combatFx)
+        this.#combatFx.clear();
+      if (TR.spriteResolver)
+        TR.spriteResolver.preloadCreatures(setup.enemies.map(e => e.templateId));
+      this.#combatEngine = new CombatEngine(PRNG.random());
+      if (TR.EnemyAI)
+        this.#combatEngine.setAiTier(TR.EnemyAI.difficultyToAiTier(c.difficulty + c.floorIndex));
+      this.#combatBiome = setup.biome;
+      const partyWithHp = this.#party.map((ch, i) => {
+        const hp = this.#partyHp ? this.#partyHp[i] : ch.maxHp;
+        return hp >= ch.maxHp ? ch : Object.freeze({ ...ch, hp });
+      });
+      this.#combatEngine.initCombatAt(partyWithHp, setup.enemies, setup.grid, setup.partyPositions, setup.enemyPositions, { ambush });
+      this.#combatEngine.startTurn();
+
+      // tiles stay readable; boards larger than the screen scroll
+      const { cols, rows } = setup.grid;
+      const availW = CANVAS_W - 8, availH = CANVAS_H - 72;
+      const ts = Math.max(40, Math.min(60, Math.floor(availW / cols), Math.floor(availH / rows)));
+      this.#combatTileSize = ts;
+      const bw = cols * ts, bh = rows * ts;
+      const lead = this.#combatEngine.units.find(u => u.faction === 'party');
+      const cx = lead ? lead.position.col * ts + ts / 2 - availW / 2 : 0;
+      const cy = lead ? lead.position.row * ts + ts / 2 - availH / 2 : 0;
+      this.#combatCam = { x: cx, y: cy, tx: cx, ty: cy, maxX: Math.max(0, bw - availW), maxY: Math.max(0, bh - availH), bw, bh, manual: 0, lastUnit: null };
+      this.#updateCombatCamera(0);
+      this.#combatMovePath = null;
+      this.#combatMoveUnit = null;
+      this.#combatTime = 0;
+      this.#sm.transition(GameState.COMBAT);
+
+      this.#deploying = ambush === 'party';
+      this.#deploySelected = null;
+      this.#toasts.length = 0;
+      if (this.#deploying) {
+        if (this._combatUI)
+          this._combatUI.hide();
+        this.#toast('Ambush!', '#ffd24a', 'Click a hero, then a lit tile to place them. Begin when ready.');
+        return;
+      }
+      if (this._combatUI)
+        this._combatUI.show();
+      this.#toast(ambush === 'enemy' ? 'They spotted you!' : 'Battle!', '#ff8a7a');
+      if (this.#combatEngine.currentUnit && this.#combatEngine.currentUnit.faction === 'enemy')
+        this.#processEnemyTurns();
+    }
+
+    #updateCombatCamera(dt) {
+      const cam = this.#combatCam;
+      const eng = this.#combatEngine;
+      if (!cam || !eng)
+        return;
+      const ts = this.#combatTileSize;
+      const availW = CANVAS_W - 8, availH = CANVAS_H - 72;
+      // arrow keys look around; the camera then stays put for a moment
+      const dir = this.#input && !this.#deploying ? this.#input.getMovementDirection() : { dx: 0, dy: 0 };
+      if (dir.dx || dir.dy) {
+        cam.tx += dir.dx * 700 * dt;
+        cam.ty += dir.dy * 700 * dt;
+        cam.manual = 2.5;
+      }
+      const cur = eng.currentUnit;
+      if (cur && cur.id !== cam.lastUnit) {
+        cam.lastUnit = cur.id;
+        cam.manual = 0;
+      }
+      cam.manual = Math.max(0, cam.manual - dt);
+      if (cam.manual <= 0 && cur && cur.position && !this.#deploying) {
+        cam.tx = cur.position.col * ts + ts / 2 - availW / 2;
+        cam.ty = cur.position.row * ts + ts / 2 - availH / 2;
+      }
+      cam.tx = Math.max(0, Math.min(cam.maxX, cam.tx));
+      cam.ty = Math.max(0, Math.min(cam.maxY, cam.ty));
+      const k = dt > 0 ? Math.min(1, dt * 7) : 1;
+      cam.x += (cam.tx - cam.x) * k;
+      cam.y += (cam.ty - cam.y) * k;
+      this.#combatOffsetX = cam.bw <= availW ? Math.floor((CANVAS_W - cam.bw) / 2) : 4 - Math.round(cam.x);
+      this.#combatOffsetY = cam.bh <= availH ? 36 + Math.floor((availH - cam.bh) / 2) : 36 - Math.round(cam.y);
+    }
+
+    #onClickDeploy(e) {
+      const eng = this.#combatEngine;
+      const setup = this.#crawlBattle;
+      if (!eng || !setup)
+        return;
+      if (this.#hitButton(e, DEPLOY_BUTTON)) {
+        this.#deploying = false;
+        this.#deploySelected = null;
+        this.#toasts.length = 0;
+        if (this._combatUI)
+          this._combatUI.show();
+        if (eng.currentUnit && eng.currentUnit.faction === 'enemy')
+          this.#processEnemyTurns();
+        return;
+      }
+      const ts = this.#combatTileSize;
+      const col = Math.floor((e.x - this.#combatOffsetX) / ts);
+      const row = Math.floor((e.y - this.#combatOffsetY) / ts);
+      const uid = eng.grid.inBounds(col, row) ? eng.grid.unitAt(col, row) : null;
+      const unit = uid ? eng.unitById(uid) : null;
+      if (unit && unit.faction === 'party') {
+        this.#deploySelected = unit.id;
+        return;
+      }
+      if (this.#deploySelected && !uid && setup.deployZone.some(z => z.col === col && z.row === row)) {
+        const u = eng.unitById(this.#deploySelected);
+        eng.grid.moveUnit(u.id, col, row);
+        u.setPosition(col, row);
+        this.#deploySelected = null;
+      }
+    }
+
+    #drawDeployment(ox, oy, ts) {
+      const setup = this.#crawlBattle;
+      const ctx = this.#renderer.bufCtx;
+      if (!setup || !ctx)
+        return;
+      const pulse = 0.5 + 0.5 * Math.sin(this.#combatTime * 4);
+      ctx.save();
+      ctx.fillStyle = `rgba(255,215,90,${(0.14 + 0.1 * pulse).toFixed(3)})`;
+      ctx.strokeStyle = 'rgba(255,215,90,0.6)';
+      for (const z of setup.deployZone) {
+        ctx.fillRect(ox + z.col * ts + 2, oy + z.row * ts + 2, ts - 4, ts - 4);
+        ctx.strokeRect(ox + z.col * ts + 2.5, oy + z.row * ts + 2.5, ts - 5, ts - 5);
+      }
+      if (this.#deploySelected) {
+        const u = this.#combatEngine.unitById(this.#deploySelected);
+        if (u) {
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(ox + u.position.col * ts + 1.5, oy + u.position.row * ts + 1.5, ts - 3, ts - 3);
+        }
+      }
+      ctx.restore();
+      this.#renderer.drawButton(DEPLOY_BUTTON.x, DEPLOY_BUTTON.y, DEPLOY_BUTTON.w, DEPLOY_BUTTON.h, 'Begin Battle', { bg: '#2a4a2a' });
+    }
+
+    // Monsters that fell stay dead in the dungeon.
+    #resolveCrawlBattle() {
+      const eng = this.#combatEngine;
+      const setup = this.#crawlBattle;
+      if (!eng || !setup || !this.#crawl)
+        return;
+      const slain = [];
+      setup.enemies.forEach((e, i) => {
+        const u = eng.unitById(`enemy_${i}`);
+        if (!u || !u.isAlive)
+          slain.push({ groupId: e.groupId, member: e.member });
+      });
+      this.#crawl.resolveBattle(setup, slain);
     }
 
     #syncCinematic() {
@@ -673,8 +1142,10 @@
           this.#renderCharacterSelect();
           break;
         case GameState.OVERWORLD:
-        case GameState.DUNGEON:
           this.#renderOverworld();
+          break;
+        case GameState.DUNGEON:
+          this.#renderCrawl();
           break;
         case GameState.CAMP:
           this.#renderCamp();
@@ -786,8 +1257,11 @@
         visualRow * ts + ts / 2
       );
 
-      if (this.#overworldMap)
-        this.#renderer.drawInfiniteMap((c, r) => this.#overworldMap.getTile(c, r), this.#dimension);
+      if (this.#overworldMap) {
+        const tile = (c, r) => this.#overworldMap.getTile(c, r);
+        this.#renderer.drawInfiniteMap(tile, this.#dimension);
+        this.#renderer.drawOverworldAmbience(tile, this.#screenTime);
+      }
 
       if (this.#overworldMap) {
         const cam = this.#renderer.camera;
@@ -1028,8 +1502,16 @@
         this.#combatOffsetX = ox;
         this.#combatOffsetY = oy;
       } else {
-        this.#renderer.drawPanel(0, 0, CANVAS_W, CANVAS_H, { bg: '#0a0a1a' });
-        this.#renderer.drawCombatGrid(eng.grid, ts, ox, oy, this.#combatBiome);
+        // the board lies on the battle's own backdrop, framed in gold
+        if (TR.ScreenArt && bctx) {
+          TR.ScreenArt.stage(bctx, this.#combatBiome, this.#dimension, this.#combatTime, { dim: 0.55 });
+          TR.ScreenArt.vignette(bctx, 0.6);
+        } else
+          this.#renderer.drawPanel(0, 0, CANVAS_W, CANVAS_H, { bg: '#0a0a1a' });
+        this.#renderer.drawCombatGrid(eng.grid, ts, ox, oy, this.#combatBiome, this.#dimension, this.#crawlBattle && this.#crawl ? this.#crawl.theme : null);
+        this.#renderer.drawGridLines(eng.grid.cols, eng.grid.rows, ts, ox, oy);
+        if (TR.ScreenArt && bctx)
+          TR.ScreenArt.border(bctx, ox, oy, eng.grid.cols * ts, eng.grid.rows * ts);
       }
 
       const gridPxW = eng.grid.cols * ts;
@@ -1059,14 +1541,14 @@
       }
 
       const phase = eng.phase;
-      if (phase === CombatPhase.AWAITING_MOVE && eng.moveRange) {
+      if (phase === CombatPhase.AWAITING_MOVE && eng.moveRange && !this.#deploying) {
         const pulseAlpha = (0.15 + 0.15 * Math.sin(this.#combatTime * 3)).toFixed(3);
         this.#renderer.highlightTiles(eng.moveRange, ts, ox, oy, `rgba(80,140,255,${pulseAlpha})`);
       }
 
       if (phase === CombatPhase.AWAITING_TARGET) {
         const targets = eng.getAttackTargets(eng.currentUnit.id);
-        this.#renderer.highlightAttackTargets(targets, eng.units, ts, ox, oy);
+        this.#renderer.highlightAttackTargets(targets, eng.units, ts, ox, oy, this.#combatTime);
       }
 
       if (phase === CombatPhase.AWAITING_SPELL_TARGET && eng.selectedSpell) {
@@ -1122,6 +1604,22 @@
         }
       }
 
+      // underground fights are lit only by the fighters' torches
+      const dark = this.#crawlBattle && this.#crawl ? this.#crawl.theme.darkness : UNDERGROUND_LIGHT[this.#combatBiome];
+      if (dark && !this.#overworldCombat) {
+        const lights = [];
+        for (const u of eng.units)
+          if (u.isAlive)
+            lights.push({ x: ox + u.position.col * ts + ts / 2, y: oy + u.position.row * ts + ts / 2, radius: ts * (u.faction === 'party' ? 3.4 : 2.4) });
+        this.#renderer.drawLighting(ox, oy, eng.grid.cols * ts, eng.grid.rows * ts, lights, this.#combatTime, dark);
+      }
+
+      // placing the party before an ambush; messages stay above the board
+      if (this.#deploying)
+        this.#drawDeployment(ox, oy, ts);
+      if (this.#crawlBattle && !(this.#combatAnim && this.#combatAnim.scene))
+        this.#drawToasts(this.#renderer.bufCtx, true);
+
       if (this.#combatAnim) {
         const anim = this.#combatAnim;
         if (anim.scene) {
@@ -1154,7 +1652,9 @@
 
       // Canvas-rendered panels removed — now handled by CombatUI HTML overlays
 
-      if (this.#combatHoverTile && eng.grid.inBounds(this.#combatHoverTile.col, this.#combatHoverTile.row)) {
+      // nothing of the board's UI may show through a battle cut-in
+      const inScene = !!(this.#combatAnim && this.#combatAnim.scene);
+      if (!inScene && this.#combatHoverTile && eng.grid.inBounds(this.#combatHoverTile.col, this.#combatHoverTile.row)) {
         const ht = this.#combatHoverTile;
         const terrain = eng.grid.terrainAt(ht.col, ht.row);
         const uid = eng.grid.unitAt(ht.col, ht.row);
@@ -1173,7 +1673,7 @@
         }
       }
 
-      if (this.#contextMenu)
+      if (this.#contextMenu && !inScene)
         this.#renderer.drawContextMenu(this.#contextMenu.x, this.#contextMenu.y, this.#contextMenu.items, this.#contextMenuHover);
 
       if (phase === CombatPhase.VICTORY) {
@@ -1668,6 +2168,9 @@
         case GameState.OVERWORLD:
           this.#onClickOverworld(e);
           break;
+        case GameState.DUNGEON:
+          this.#onClickCrawl(e);
+          break;
         case GameState.CAMP:
           this.#onClickCamp(e);
           break;
@@ -1720,7 +2223,15 @@
             this.#gold = data.state.gold;
           if (Items && Array.isArray(data.state.inventory))
             this.#inventory = Items.deserializeInventory(data.state.inventory);
-          const target = data.state.lastState || GameState.OVERWORLD;
+          let target = data.state.lastState || GameState.OVERWORLD;
+          if (target === GameState.DUNGEON) {
+            if (data.state.crawl && TR.DungeonCrawl) {
+              this.#crawl = TR.DungeonCrawl.deserialize(data.state.crawl.data);
+              this.#crawlCache.set(data.state.crawl.key, this.#crawl);
+              this.#crawlTrail = [];
+            } else
+              target = GameState.OVERWORLD;
+          }
           if (this.#sm.canTransition(target))
             this.#sm.transition(target);
           else
@@ -1884,6 +2395,13 @@
     }
 
     #onKey(e) {
+      if (this.#crawlPrompt && this.#sm.current === GameState.DUNGEON) {
+        if (e.key === 'Enter')
+          this.#answerCrawlPrompt(true);
+        else if (e.key === 'Escape')
+          this.#answerCrawlPrompt(false);
+        return;
+      }
       if (e.key === ' ' || e.key === 'Enter' || e.key === 'Escape')
         this.#skipBattleScene();
     }
@@ -1939,6 +2457,10 @@
     #onClickCombat(e) {
       if (this.#skipBattleScene())
         return;
+      if (this.#deploying) {
+        this.#onClickDeploy(e);
+        return;
+      }
       const eng = this.#combatEngine;
       if (!eng || this.#combatAnim || this.#enemyQueue.length > 0 || this.#combatMovePath)
         return;
@@ -1974,6 +2496,8 @@
           this.#hideCombatLogPanel();
           this.#syncPartyHpFromCombat();
           this.#distributeRewards();
+          if (this.#crawlBattle)
+            this.#resolveCrawlBattle();
           this.#sm.transition(GameState.VICTORY);
           this.#updateHistoryButton();
         }
@@ -2268,6 +2792,15 @@
         this.#combatMoveStart = null;
         this.#combatTime = 0;
         this.#syncPartyHpFromCombat();
+        if (this.#crawlBattle) {
+          this.#resolveCrawlBattle();
+          this.#combatEngine = null;
+          this.#crawlBattle = null;
+          this.#combatCam = null;
+          this.#sm.transition(GameState.DUNGEON);
+          this.#toast('You fall back into the dark.', '#e8c878');
+          return;
+        }
         this.#combatEngine = null;
         this.#overworldCombat = false;
         this.#overworldCombatOrigin = null;
@@ -2571,6 +3104,12 @@
       if (this.#hitButton(e, btn)) {
         this.#overworldCombat = false;
         this.#overworldCombatOrigin = null;
+        if (this.#crawlBattle && this.#crawl) {
+          this.#crawlBattle = null;
+          this.#combatCam = null;
+          this.#sm.transition(GameState.DUNGEON);
+          return;
+        }
         this.#sm.transition(GameState.CAMP);
       }
     }
@@ -2671,6 +3210,7 @@
             partyXp: this.#partyXp ? this.#partyXp.slice() : null,
             gold: this.#gold,
             inventory: Items ? Items.serializeInventory(this.#inventory) : [],
+            crawl: this.#crawl && e.to === GameState.DUNGEON ? { key: this.#crawlKey(), data: this.#crawl.serialize() } : null,
             timestamp: Date.now()
           });
         } catch (err) {

@@ -26,6 +26,7 @@
     #camera;
     #assets;
     #compositor;
+    #lightCanvas = null;
 
     constructor(canvas, { width, height, tileSize } = {}) {
       this.#width = width || DEFAULT_WIDTH;
@@ -187,6 +188,13 @@
       const fcy = Math.floor(cy);
       // Draw tiles 1px wider/taller to overlap and hide hairline seams
       const tsDraw = ts + 1;
+      // the material plane gets painted, varied grass and dirt roads
+      const TA = TR.TerrainArt;
+      const painted = (!dimension || dimension === 'material') && TA && assets ? assets.get('terrain') : null;
+      const paint = (id, c, r, sx, sy) => {
+        const q = TA.rect(id, c, r);
+        ctx.drawImage(painted, q.x, q.y, q.w, q.h, sx, sy, tsDraw, tsDraw);
+      };
       for (let r = startRow; r <= endRow; ++r)
         for (let c = startCol; c <= endCol; ++c) {
           const tile = tileGetter(c, r);
@@ -195,10 +203,16 @@
           let drawn = false;
           if (sheetImg && tile > 0 && tile < TILE_NAMES.length) {
             // Draw grass base layer for overlay tiles (forest, mountain, etc.)
-            if (NEEDS_BASE[tile] && spriteMap) {
+            if (NEEDS_BASE[tile] && painted)
+              paint('meadow', c, r, sx, sy);
+            else if (NEEDS_BASE[tile] && spriteMap) {
               const baseRect = spriteMap.GRASS;
               if (baseRect)
                 ctx.drawImage(sheetImg, baseRect.x, baseRect.y, baseRect.w, baseRect.h, sx, sy, tsDraw, tsDraw);
+            }
+            if (painted && (tile === 1 || tile === 6)) {
+              paint(tile === 1 ? 'meadow' : 'road', c, r, sx, sy);
+              continue;
             }
             let rect = null;
             let srcImg = sheetImg;
@@ -226,6 +240,69 @@
             ctx.fillRect(sx, sy, tsDraw, tsDraw);
           }
         }
+    }
+
+    // Living overworld: glints moving over water, cloud shadows drifting
+    // across the land, and a soft vignette.
+    drawOverworldAmbience(tileGetter, time) {
+      if (!this.#bufCtx)
+        return;
+      const ctx = this.#bufCtx;
+      const ts = this.#tileSize;
+      const cx = this.#camera.x, cy = this.#camera.y;
+      const c0 = Math.floor(cx / ts) - 1, r0 = Math.floor(cy / ts) - 1;
+      const c1 = Math.ceil((cx + this.#width) / ts) + 1, r1 = Math.ceil((cy + this.#height) / ts) + 1;
+      const WATER = 8;
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+      for (let r = r0; r <= r1; ++r)
+        for (let c = c0; c <= c1; ++c) {
+          if (tileGetter(c, r) !== WATER)
+            continue;
+          // each water tile glints now and then at its own phase
+          const h = Math.imul(c * 73856093 ^ r * 19349663, 0x9E3779B1) >>> 0;
+          const phase = ((h & 1023) / 1023) * Math.PI * 2;
+          const k = Math.sin(time * 1.7 + phase);
+          if (k < 0.55)
+            continue;
+          const gx = Math.floor(c * ts - cx + 4 + (h >>> 10) % (ts - 12));
+          const gy = Math.floor(r * ts - cy + 6 + (h >>> 16) % (ts - 12));
+          const len = Math.round(2 + (k - 0.55) * 14);
+          ctx.globalAlpha = (k - 0.55) * 2;
+          ctx.fillRect(gx, gy, len * 2, 2);
+          ctx.fillRect(gx + len, gy - 2, 2, 2);
+        }
+      ctx.globalAlpha = 1;
+      // cloud shadows live in world space and drift east
+      ctx.fillStyle = 'rgba(10,20,40,0.12)';
+      if ('filter' in ctx)
+        ctx.filter = 'blur(18px)';
+      const span = 2400;
+      for (let i = 0; i < 5; ++i) {
+        const wx = ((i * 977 + time * 18) % span + span) % span;
+        const wy = ((i * 613) % 1800);
+        // repeat the cloud field so it covers any camera position
+        const ox = Math.floor((cx - wx) / span) * span + wx + span - cx;
+        const oy = Math.floor((cy - wy) / 1800) * 1800 + wy + 1800 - cy;
+        for (const [dx, dy] of [[0, 0], [-span, 0], [0, -1800], [-span, -1800]]) {
+          const x = ox + dx, y = oy + dy;
+          if (x < -400 || x > this.#width + 400 || y < -300 || y > this.#height + 300)
+            continue;
+          ctx.beginPath();
+          ctx.ellipse(x, y, 190, 70, 0, 0, Math.PI * 2);
+          ctx.ellipse(x + 120, y - 30, 130, 60, 0, 0, Math.PI * 2);
+          ctx.ellipse(x - 110, y + 20, 110, 50, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      if ('filter' in ctx)
+        ctx.filter = 'none';
+      const g = ctx.createRadialGradient(this.#width / 2, this.#height / 2, this.#height * 0.45, this.#width / 2, this.#height / 2, this.#height * 0.95);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(0,0,0,0.32)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, this.#width, this.#height);
+      ctx.restore();
     }
 
     #tileColor(type) {
@@ -483,7 +560,9 @@
       ctx.textAlign = 'left';
     }
 
-    drawCombatGrid(grid, tileSize, offsetX, offsetY, biome, dimension) {
+    // theme: optional dungeon theme; its floor and wall art replace the
+    // generic look of its floor and wall terrain.
+    drawCombatGrid(grid, tileSize, offsetX, offsetY, biome, dimension, theme = null) {
       if (!this.#bufCtx)
         return;
       const ctx = this.#bufCtx;
@@ -502,6 +581,37 @@
           const sx = offsetX + c * tileSize;
           const sy = offsetY + r * tileSize;
           let drawn = false;
+
+          // hand-painted underground tiles, varied per cell
+          const isWall = theme && t && t.id === theme.wallTerrain;
+          const artId = !t ? null : isWall ? theme.wallArt : theme && t.id === theme.floorTerrain ? theme.floorArt : t.id;
+          const art = artId && TR.TerrainArt && TR.TerrainArt.has(artId) ? TR.TerrainArt.rect(artId, c, r) : null;
+          const artImg = art && assets ? assets.get('terrain') : null;
+          if (art && artImg) {
+            ctx.drawImage(artImg, art.x, art.y, art.w, art.h, sx, sy, tileSize, tileSize);
+            if (isWall) {
+              // buried rock shows its dark top, rock above open floor its face
+              const below = grid.inBounds(c, r + 1) ? grid.terrainIdAt(c, r + 1) : t.id;
+              ctx.fillStyle = below === t.id ? 'rgba(8,6,14,0.72)' : 'rgba(0,0,0,0.25)';
+              ctx.fillRect(sx, sy, tileSize, below === t.id ? tileSize : Math.round(tileSize * 0.18));
+              continue;
+            }
+            if (theme && grid.inBounds(c, r - 1) && grid.terrainIdAt(c, r - 1) === theme.wallTerrain) {
+              ctx.fillStyle = 'rgba(0,0,0,0.32)';
+              ctx.fillRect(sx, sy, tileSize, Math.round(tileSize * 0.22));
+            }
+            this.#drawTerrainEdges(ctx, grid, c, r, t.id, sx, sy, tileSize);
+            // trees, rocks and reeds stand on the painted ground
+            const layers = TR.TERRAIN_LAYERS && TR.TERRAIN_LAYERS[t.id];
+            if (layers && layers.length > 1)
+              for (const def of layers.slice(1)) {
+                const rect = TR.resolveSprite ? TR.resolveSprite(def.sprite, 'combat_terrain') : null;
+                const img = rect && assets.has(rect.sheet || 'dungeon') ? assets.get(rect.sheet || 'dungeon') : null;
+                if (img)
+                  ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, sx, sy, tileSize, tileSize);
+              }
+            continue;
+          }
 
           if (t) {
             const terrainLayers = TR.TERRAIN_LAYERS && TR.TERRAIN_LAYERS[t.id];
@@ -549,6 +659,91 @@
     }
 
     // fx: optional CombatFx.unitState() result ({ dx, dy, flash, alpha, tint }).
+    // Faint cell lines so distances stay readable on painted ground.
+    drawGridLines(cols, rows, tileSize, offsetX, offsetY) {
+      if (!this.#bufCtx)
+        return;
+      const ctx = this.#bufCtx;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let c = 1; c < cols; ++c) {
+        const x = Math.round(offsetX + c * tileSize) + 0.5;
+        ctx.moveTo(x, offsetY);
+        ctx.lineTo(x, offsetY + rows * tileSize);
+      }
+      for (let r = 1; r < rows; ++r) {
+        const y = Math.round(offsetY + r * tileSize) + 0.5;
+        ctx.moveTo(offsetX, y);
+        ctx.lineTo(offsetX + cols * tileSize, y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Flagstone floors read as raised slabs: a dark lip where they meet
+    // rougher ground below or to the right, a light one above or left.
+    #drawTerrainEdges(ctx, grid, c, r, id, sx, sy, ts) {
+      if (id !== 'dungeon_floor' && id !== 'ruins')
+        return;
+      const lip = Math.max(2, Math.round(ts / 16) * 2);
+      const other = (cc, rr) => grid.inBounds(cc, rr) && grid.terrainIdAt(cc, rr) !== id;
+      ctx.fillStyle = 'rgba(10,6,12,0.45)';
+      if (other(c, r + 1))
+        ctx.fillRect(sx, sy + ts - lip, ts, lip);
+      if (other(c + 1, r))
+        ctx.fillRect(sx + ts - lip, sy, lip, ts);
+      ctx.fillStyle = 'rgba(255,240,220,0.14)';
+      if (other(c, r - 1))
+        ctx.fillRect(sx, sy, ts, lip / 2);
+      if (other(c - 1, r))
+        ctx.fillRect(sx, sy, lip / 2, ts);
+    }
+
+    // Underground darkness with torch-light around each light source.
+    // lights: [{ x, y, radius }] in screen pixels.
+    drawLighting(x, y, w, h, lights, time = 0, darkness = 0.62) {
+      if (!this.#bufCtx || typeof document === 'undefined')
+        return;
+      if (!this.#lightCanvas || this.#lightCanvas.width !== Math.ceil(w) || this.#lightCanvas.height !== Math.ceil(h)) {
+        this.#lightCanvas = document.createElement('canvas');
+        this.#lightCanvas.width = Math.ceil(w);
+        this.#lightCanvas.height = Math.ceil(h);
+      }
+      const lc = this.#lightCanvas.getContext('2d');
+      if (!lc)
+        return;
+      lc.globalCompositeOperation = 'source-over';
+      lc.clearRect(0, 0, w, h);
+      lc.fillStyle = `rgba(6,4,16,${darkness})`;
+      lc.fillRect(0, 0, w, h);
+      lc.globalCompositeOperation = 'destination-out';
+      lights.forEach((l, i) => {
+        const flick = 1 + 0.04 * Math.sin(time * 9 + i * 2.1) * Math.sin(time * 5.3 + i);
+        const rad = l.radius * flick;
+        const g = lc.createRadialGradient(l.x - x, l.y - y, rad * 0.15, l.x - x, l.y - y, rad);
+        g.addColorStop(0, 'rgba(0,0,0,1)');
+        g.addColorStop(0.6, 'rgba(0,0,0,0.75)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        lc.fillStyle = g;
+        lc.fillRect(l.x - x - rad, l.y - y - rad, rad * 2, rad * 2);
+      });
+      const ctx = this.#bufCtx;
+      ctx.drawImage(this.#lightCanvas, x, y);
+      // warm tint where the light falls
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      lights.forEach(l => {
+        const g = ctx.createRadialGradient(l.x, l.y, 0, l.x, l.y, l.radius * 0.8);
+        g.addColorStop(0, 'rgba(255,150,60,0.10)');
+        g.addColorStop(1, 'rgba(255,120,40,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(l.x - l.radius, l.y - l.radius, l.radius * 2, l.radius * 2);
+      });
+      ctx.restore();
+    }
+
     drawUnitToken(col, row, unit, tileSize, offsetX, offsetY, { active = false, dead = false, fx = null, time = 0 } = {}) {
       if (!this.#bufCtx)
         return;
@@ -597,8 +792,21 @@
       const sy = dy + 2 - ts * 0.06 + bob;
 
       const classId = unit.character ? unit.character.class : null;
-      const spriteDrawn = this.#drawCreatureSprite(ctx, classId, isParty ? 'party' : 'enemy', sx, sy, size,
-        null, null, null, fx && !dead ? fx.flash : (dying ? 0.5 * (1 - fx.alpha) : 0));
+      const flash = fx && !dead ? fx.flash : (dying ? 0.5 * (1 - fx.alpha) : 0);
+      let spriteDrawn = false;
+      let headY = dy;
+      // heroes and humanoid foes use the same doll as in the battle scenes
+      const BS = TR.BattleSprites;
+      if (BS && BS.hasDoll(unit)) {
+        const art = BS.ART_H;
+        const h = Math.max(art, Math.floor(ts / art) * art);
+        const look = BS.lookFor(unit);
+        headY = dy + ts * 0.94 + bob - 60 * (look.scale || 1) * (h / art);
+        BS.draw(ctx, unit, 'idle', (time * 0.8 + (seed % 100) / 100) % 1, cx, dy + ts * 0.94 + bob, h, isParty ? 1 : -1, { flash });
+        spriteDrawn = true;
+      } else
+        spriteDrawn = this.#drawCreatureSprite(ctx, classId, isParty ? 'party' : 'enemy', sx, sy, size,
+          null, null, null, flash);
 
       if (!spriteDrawn) {
         ctx.fillStyle = dead ? '#444' : (isParty ? '#4488cc' : '#cc4444');
@@ -630,7 +838,7 @@
       // active marker: bouncing chevron above the head
       if (active && !dead) {
         const hop = Math.abs(Math.sin(time * 4)) * ts * 0.08;
-        const ay = dy - ts * 0.02 - hop;
+        const ay = Math.min(dy, headY) - ts * 0.04 - hop;
         const aw = ts * 0.14;
         ctx.fillStyle = '#ffd75a';
         ctx.strokeStyle = '#3a2a08';
@@ -665,33 +873,66 @@
       this.drawUnitToken(col, row, unit, tileSize, offsetX, offsetY, { active, dead: false, fx, time });
     }
 
+    // Reachable area: soft inset fill with a bright outline along its rim.
     highlightTiles(tiles, tileSize, offsetX, offsetY, color) {
       if (!this.#bufCtx)
         return;
       const ctx = this.#bufCtx;
-      ctx.fillStyle = color || 'rgba(80,140,255,0.3)';
-      for (const [key] of tiles) {
+      const fill = color || 'rgba(80,140,255,0.3)';
+      const rim = fill.replace(/rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)/, 'rgba($1,$2,$3,0.95)');
+      const set = new Set();
+      for (const [key] of tiles)
+        set.add(key);
+      const ts = tileSize;
+      ctx.save();
+      ctx.fillStyle = fill;
+      for (const key of set) {
         const [c, r] = key.split(',').map(Number);
-        ctx.fillRect(offsetX + c * tileSize, offsetY + r * tileSize, tileSize, tileSize);
+        ctx.fillRect(offsetX + c * ts + 2, offsetY + r * ts + 2, ts - 4, ts - 4);
       }
+      ctx.strokeStyle = rim;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (const key of set) {
+        const [c, r] = key.split(',').map(Number);
+        const x = offsetX + c * ts, y = offsetY + r * ts;
+        if (!set.has(`${c},${r - 1}`)) { ctx.moveTo(x, y + 1); ctx.lineTo(x + ts, y + 1); }
+        if (!set.has(`${c},${r + 1}`)) { ctx.moveTo(x, y + ts - 1); ctx.lineTo(x + ts, y + ts - 1); }
+        if (!set.has(`${c - 1},${r}`)) { ctx.moveTo(x + 1, y); ctx.lineTo(x + 1, y + ts); }
+        if (!set.has(`${c + 1},${r}`)) { ctx.moveTo(x + ts - 1, y); ctx.lineTo(x + ts - 1, y + ts); }
+      }
+      ctx.stroke();
+      ctx.restore();
     }
 
-    highlightAttackTargets(targets, units, tileSize, offsetX, offsetY) {
+    // Attackable foes: a red glow under them and pulsing corner brackets.
+    highlightAttackTargets(targets, units, tileSize, offsetX, offsetY, time = 0) {
       if (!this.#bufCtx)
         return;
       const ctx = this.#bufCtx;
-      ctx.fillStyle = 'rgba(255,60,60,0.35)';
+      const ts = tileSize;
+      const pulse = 0.5 + 0.5 * Math.sin(time * 6);
+      const inset = 2 + pulse * ts * 0.06;
+      const arm = ts * 0.28;
+      ctx.save();
       for (const tid of targets) {
         const u = units.find(u => u.id === tid);
         if (!u)
           continue;
-        const pos = u.position;
-        ctx.fillRect(offsetX + pos.col * tileSize, offsetY + pos.row * tileSize, tileSize, tileSize);
-        ctx.strokeStyle = 'rgba(255,60,60,0.8)';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(offsetX + pos.col * tileSize + 1, offsetY + pos.row * tileSize + 1, tileSize - 2, tileSize - 2);
-        ctx.lineWidth = 1;
+        const x = offsetX + u.position.col * ts, y = offsetY + u.position.row * ts;
+        ctx.fillStyle = `rgba(255,60,50,${(0.18 + 0.12 * pulse).toFixed(3)})`;
+        ctx.fillRect(x + 2, y + 2, ts - 4, ts - 4);
+        ctx.strokeStyle = '#ff5a48';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        for (const [cx, cy, sx, sy] of [[x + inset, y + inset, 1, 1], [x + ts - inset, y + inset, -1, 1], [x + inset, y + ts - inset, 1, -1], [x + ts - inset, y + ts - inset, -1, -1]]) {
+          ctx.moveTo(cx, cy + sy * arm);
+          ctx.lineTo(cx, cy);
+          ctx.lineTo(cx + sx * arm, cy);
+        }
+        ctx.stroke();
       }
+      ctx.restore();
     }
 
 
@@ -702,28 +943,23 @@
       if (!this.#bufCtx || !lines || lines.length === 0)
         return;
       const ctx = this.#bufCtx;
-      ctx.font = '13px monospace';
+      ctx.font = "14px Georgia, 'Times New Roman', serif";
       ctx.textBaseline = 'alphabetic';
       ctx.textAlign = 'left';
-      const lineH = 18;
-      const pad = 8;
+      const lineH = 20;
+      const pad = 10;
       let maxW = 0;
       for (const l of lines)
         maxW = Math.max(maxW, ctx.measureText(l).width);
       const w = maxW + pad * 2;
-      const h = lines.length * lineH + pad * 2;
-
+      const h = lines.length * lineH + pad * 2 - 4;
       const tx = Math.min(x, this.#width - w - 4);
       const ty = Math.min(y, this.#height - h - 4);
-
-      ctx.fillStyle = 'rgba(10,10,20,0.95)';
-      ctx.fillRect(tx, ty, w, h);
-      ctx.strokeStyle = '#888';
-      ctx.strokeRect(tx, ty, w, h);
-
-      ctx.fillStyle = '#ddd';
-      for (let i = 0; i < lines.length; ++i)
+      this.#frame(ctx, tx, ty, w, h);
+      for (let i = 0; i < lines.length; ++i) {
+        ctx.fillStyle = i === 0 ? '#f0d890' : '#e8e0c8';
         ctx.fillText(lines[i], tx + pad, ty + pad + 12 + i * lineH);
+      }
     }
 
     drawContextMenu(x, y, items, hoverIndex) {
@@ -734,28 +970,40 @@
       const menuW = 200;
       const padY = 4;
       const h = items.length * itemH + padY * 2;
-
       const mx = Math.min(x, this.#width - menuW - 4);
       const my = Math.min(y, this.#height - h - 4);
-
-      ctx.fillStyle = 'rgba(10,10,20,0.95)';
-      ctx.fillRect(mx, my, menuW, h);
-      ctx.strokeStyle = '#888';
-      ctx.strokeRect(mx, my, menuW, h);
-
-      ctx.font = '13px monospace';
+      this.#frame(ctx, mx, my, menuW, h);
+      ctx.font = "bold 14px Georgia, 'Times New Roman', serif";
       ctx.textBaseline = 'alphabetic';
       ctx.textAlign = 'left';
       for (let i = 0; i < items.length; ++i) {
         const iy = my + padY + i * itemH;
         if (i === hoverIndex) {
-          ctx.fillStyle = 'rgba(80,120,200,0.5)';
-          ctx.fillRect(mx + 1, iy, menuW - 2, itemH);
+          const g = ctx.createLinearGradient(0, iy, 0, iy + itemH);
+          g.addColorStop(0, '#3a4a8a');
+          g.addColorStop(1, '#1e2650');
+          ctx.fillStyle = g;
+          ctx.fillRect(mx + 4, iy, menuW - 8, itemH);
+          ctx.fillStyle = '#ffd75a';
+          ctx.fillRect(mx + 4, iy, 3, itemH);
         }
-        const icon = items[i].action === 'attack' ? '\u2694 ' : '\u2728 ';
-        ctx.fillStyle = '#ddd';
-        ctx.fillText(icon + items[i].label, mx + 8, iy + 19);
+        const icon = items[i].action === 'attack' ? '⚔ ' : '✨ ';
+        ctx.fillStyle = i === hoverIndex ? '#ffffff' : '#e8e0c8';
+        ctx.fillText(icon + items[i].label, mx + 14, iy + 19);
       }
+    }
+
+    // Gold-framed navy panel shared by the canvas widgets.
+    #frame(ctx, x, y, w, h) {
+      const SA = TR.ScreenArt;
+      if (SA) {
+        SA.frame(ctx, x, y, w, h);
+        return;
+      }
+      ctx.fillStyle = 'rgba(10,10,20,0.95)';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = '#888';
+      ctx.strokeRect(x, y, w, h);
     }
 
 
