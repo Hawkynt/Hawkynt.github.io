@@ -125,7 +125,7 @@
 
     const toc = generateTOC();
     if (!toc) {
-      alert('No headings found in the document.');
+      SZ.Dialog.alert('No headings found in the document.', 'WordPad');
       return;
     }
 
@@ -143,8 +143,14 @@
   // Footnotes
   // ═══════════════════════════════════════════════════════════════
 
-  function insertFootnote() {
-    const text = prompt('Footnote text:');
+  async function insertFootnote() {
+    const saved = window.getSelection();
+    const savedRange = saved.rangeCount ? saved.getRangeAt(0).cloneRange() : null;
+    const text = await SZ.Dialog.prompt('Footnote text:', '', 'WordPad');
+    if (savedRange) {
+      saved.removeAllRanges();
+      saved.addRange(savedRange);
+    }
     if (!text) return;
 
     ++footnoteCounter;
@@ -225,8 +231,14 @@
     return result;
   }
 
-  function insertEndnote() {
-    const text = prompt('Endnote text:');
+  async function insertEndnote() {
+    const saved = window.getSelection();
+    const savedRange = saved.rangeCount ? saved.getRangeAt(0).cloneRange() : null;
+    const text = await SZ.Dialog.prompt('Endnote text:', '', 'WordPad');
+    if (savedRange) {
+      saved.removeAllRanges();
+      saved.addRange(savedRange);
+    }
     if (!text) return;
 
     ++endnoteCounter;

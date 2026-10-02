@@ -50,7 +50,7 @@
     // Check built-in first, then user blocks
     const html = BUILTIN_BLOCKS[name] || blocks[name];
     if (!html) {
-      alert('Building block "' + name + '" not found.');
+      SZ.Dialog.alert('Building block "' + name + '" not found.', 'WordPad');
       return;
     }
 
@@ -144,35 +144,37 @@
       dd.classList.remove('open');
   }
 
-  function saveSelectionToQuickParts() {
+  async function saveSelectionToQuickParts() {
     const sel = window.getSelection();
     if (!sel.rangeCount || sel.isCollapsed) {
-      alert('Select content to save as a Quick Part.');
+      SZ.Dialog.alert('Select content to save as a Quick Part.', 'WordPad');
       return;
     }
 
-    const name = prompt('Enter a name for this Quick Part:');
+    const range = sel.getRangeAt(0).cloneRange();
+    const name = await SZ.Dialog.prompt('Enter a name for this Quick Part:', '', 'WordPad');
+    sel.removeAllRanges();
+    sel.addRange(range);
     if (!name)
       return;
 
-    const range = sel.getRangeAt(0);
     const container = document.createElement('div');
     container.appendChild(range.cloneContents());
     const html = container.innerHTML;
 
     if (saveBlock(name, html)) {
       refreshQuickPartsList();
-      alert('Quick Part "' + name + '" saved.');
+      SZ.Dialog.alert('Quick Part "' + name + '" saved.', 'WordPad');
     }
   }
 
-  function showManageBuildingBlocks() {
+  async function showManageBuildingBlocks() {
     const allBlocks = getBlocks();
     let msg = 'Building Blocks:\n\n';
     const names = Object.keys(allBlocks);
 
     if (!names.length) {
-      alert('No building blocks defined.');
+      SZ.Dialog.alert('No building blocks defined.', 'WordPad');
       return;
     }
 
@@ -182,7 +184,7 @@
     }
 
     msg += '\nEnter number to delete (user blocks only), or press Cancel:';
-    const input = prompt(msg);
+    const input = await SZ.Dialog.prompt(msg, '', 'WordPad');
     if (!input)
       return;
 
@@ -190,12 +192,12 @@
     if (idx >= 0 && idx < names.length) {
       const name = names[idx];
       if (allBlocks[name].builtin) {
-        alert('Cannot delete built-in blocks.');
+        SZ.Dialog.alert('Cannot delete built-in blocks.', 'WordPad');
         return;
       }
       if (deleteBlock(name)) {
         refreshQuickPartsList();
-        alert('Block "' + name + '" deleted.');
+        SZ.Dialog.alert('Block "' + name + '" deleted.', 'WordPad');
       }
     }
   }
