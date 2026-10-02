@@ -18,10 +18,10 @@
   const ELEMENT_AIR = 'air';
 
   const ELEMENTS = [
-    { id: ELEMENT_FIRE,  name: 'Fire',  icon: '🔥', color: '#f60', key: '1', altKey: 'KeyQ' },
-    { id: ELEMENT_WATER, name: 'Water', icon: '💧', color: '#48f', key: '2', altKey: 'KeyW' },
-    { id: ELEMENT_EARTH, name: 'Earth', icon: '🪨', color: '#a62', key: '3', altKey: 'KeyE' },
-    { id: ELEMENT_AIR,   name: 'Air',   icon: '💨', color: '#aaf', key: '4', altKey: 'KeyR' }
+    { id: ELEMENT_FIRE,  name: 'Fire',  color: '#f60', key: '1', altKey: 'KeyQ' },
+    { id: ELEMENT_WATER, name: 'Water', color: '#48f', key: '2', altKey: 'KeyW' },
+    { id: ELEMENT_EARTH, name: 'Earth', color: '#a62', key: '3', altKey: 'KeyE' },
+    { id: ELEMENT_AIR,   name: 'Air',   color: '#aaf', key: '4', altKey: 'KeyR' }
   ];
 
   /* ── States ── */
@@ -257,6 +257,350 @@
   const particles = new SZ.GameEffects.ParticleSystem();
   const screenShake = new SZ.GameEffects.ScreenShake();
   const floatingText = new SZ.GameEffects.FloatingText();
+
+  /* ══════════════════════════════════════════════════════════════════
+     SPRITES — 16x16 pixel art, outlined and cached in offscreen canvases
+     ══════════════════════════════════════════════════════════════════ */
+
+  const SPRITE_OUTLINE = '#140c1c';
+
+  const PIXEL_SPRITES = {
+    fire: {
+      palette: { r: '#c8281c', o: '#f66a10', y: '#ffc62e', w: '#fff3b0' },
+      rows: [
+        '................',
+        '........r.......',
+        '.......rr.......',
+        '.......ror......',
+        '......roor..r...',
+        '..r...roor..rr..',
+        '..rr.rooyor.ror.',
+        '..ror.rooyoroor.',
+        '.rooorooyyoooor.',
+        '.rooooyyyyyooor.',
+        '.roooyyywyyyoor.',
+        '.rooyyywwwyyyor.',
+        '..rooyywwwyyor..',
+        '..rroyyywyyorr..',
+        '...rrooyyoorr...',
+        '.....rrrrrr.....'
+      ]
+    },
+    water: {
+      palette: { b: '#3f86f0', l: '#7ab4ff', w: '#e0f2ff', d: '#2252b8' },
+      rows: [
+        '................',
+        '.......bb.......',
+        '.......bb.......',
+        '......bbbb......',
+        '......bbbb......',
+        '.....bbbbbb.....',
+        '.....bwlbbb.....',
+        '....bbwlbbbb....',
+        '....bwlbbbbb....',
+        '...bbwlbbbbbd...',
+        '...bwwlbbbbbd...',
+        '...blbbbbbbdd...',
+        '...dbbbbbbbdd...',
+        '....dbbbbbdd....',
+        '.....dddddd.....',
+        '................'
+      ]
+    },
+    earth: {
+      palette: { l: '#d0aa80', g: '#94683f', s: '#6c4828', d: '#56381e', m: '#4f9a34', M: '#7cc850' },
+      rows: [
+        '................',
+        '................',
+        '.......ll.......',
+        '......lllg......',
+        '.....llggg......',
+        '....llgggsg.....',
+        '...lllggggsg....',
+        '...lgggggggsd...',
+        '..llggsgggggd...',
+        '..lgggsggggggd..',
+        '.lgggggggsgggd..',
+        '.lggggggsgggddd.',
+        '.ggggggggggdddd.',
+        '.MmMmMmMmMmMmMm.',
+        '.mmmmmmmmmmmmmm.',
+        '................'
+      ]
+    },
+    air: {
+      palette: { a: '#e6e8ff', s: '#9aa0f0' },
+      rows: [
+        '................',
+        '..........aa....',
+        '.........a..a...',
+        '............a...',
+        '...........sa...',
+        '.aaaaaaaaaaa....',
+        '................',
+        '...aaaaaaaaaaa..',
+        '..............a.',
+        '..........a...a.',
+        '...........aaa..',
+        '................',
+        '.aaaaaaaas......',
+        '.........a......',
+        '.......aa.......',
+        '................'
+      ]
+    },
+    wood: {
+      palette: { b: '#5a3418', B: '#8a5530', t: '#b07840', y: '#e8b878', R: '#a8703c', g: '#5cae3a' },
+      rows: [
+        '................',
+        '................',
+        '.....g..........',
+        '...bbbgbbbbttt..',
+        '..bBBBBBBBtyyyt.',
+        '..bbbbbbbtyyyyyt',
+        '..BBBBBBBtyRRRyt',
+        '..bbbbbbbtyRyRyt',
+        '..BBBBBBBtyRRRyt',
+        '..bbbbbbbtyyyyyt',
+        '..bBBBBBBBtyyyt.',
+        '...bbbbbbbbttt..',
+        '................',
+        '................',
+        '................',
+        '................'
+      ]
+    },
+    block: {
+      palette: { h: '#d4dce6', m: '#7a8494', s: '#aab4c2', k: '#3a404c', r: '#f0f4fa' },
+      rows: [
+        '................',
+        '................',
+        '..hhhhhhhhhhhh..',
+        '..hrmmmmmmmmrk..',
+        '..hmsmmmmmmsmk..',
+        '..hmmsmmmmsmmk..',
+        '..hmmmsmmsmmmk..',
+        '..hmmmmssmmmmk..',
+        '..hmmmmssmmmmk..',
+        '..hmmmsmmsmmmk..',
+        '..hmmsmmmmsmmk..',
+        '..hmsmmmmmmsmk..',
+        '..hrmmmmmmmmrk..',
+        '..hkkkkkkkkkkk..',
+        '................',
+        '................'
+      ]
+    },
+    goal: {
+      palette: { y: '#ffd23a', w: '#fff8c8', o: '#e08a10' },
+      rows: [
+        '................',
+        '.......yy.......',
+        '.......wy.......',
+        '......ywyy......',
+        '......wwyy......',
+        'yyyyyywwyyyyyyyy',
+        '.oyyyyyyyyyyyyo.',
+        '..oyyyyyyyyyyo..',
+        '...oyyyyyyyyo...',
+        '....yyyyyyyo....',
+        '....yyyyyyyo....',
+        '...yyyyooyyyo...',
+        '...yyyo..oyyo...',
+        '..yyo......oyo..',
+        '..yo........oo..',
+        '................'
+      ]
+    },
+    rune: {
+      palette: { p: '#e2bcff', w: '#ffffff' },
+      rows: [
+        '................',
+        '................',
+        '.....pp.........',
+        '.....wppppp.....',
+        '.....pp...pp....',
+        '.....pw....pp...',
+        '.....pp...pp....',
+        '.....pp..pp.....',
+        '.....pwppp......',
+        '.....pppp.......',
+        '.....pp.pp......',
+        '.....pp..pp.....',
+        '.....pw...pp....',
+        '.....pp....pp...',
+        '................',
+        '................'
+      ]
+    },
+    channel: {
+      palette: { b: '#4a88ff', d: '#123058' },
+      rows: [
+        '................',
+        '................',
+        '..bb.bb.bb.bb...',
+        '..b..........b..',
+        '..dddddddddddd..',
+        '..dddddddddddd..',
+        '.bdddddddddddd..',
+        '..dddddddddddd..',
+        '..dddddddddddd..',
+        '..dddddddddddd..',
+        '..dddddddddddd..',
+        '..dddddddddddd.b',
+        '..dddddddddddd..',
+        '..b..........b..',
+        '...bb.bb.bb.bb..',
+        '................'
+      ]
+    },
+    bulb: {
+      palette: { y: '#ffe04a', w: '#fffbe0', o: '#e0a020', g: '#9aa4b4', G: '#5c6676' },
+      rows: [
+        '................',
+        '.....yyyyyy.....',
+        '....ywwyyyyy....',
+        '...ywwyyyyyyo...',
+        '...ywyyyyyyyo...',
+        '...yyyyyyyyyo...',
+        '...yyyyyyyyoo...',
+        '....yyyyyyoo....',
+        '.....yyyyoo.....',
+        '.....yyyyoo.....',
+        '.....gggggg.....',
+        '.....GGGGGG.....',
+        '.....gggggg.....',
+        '......GGGG......',
+        '................',
+        '................'
+      ]
+    }
+  };
+
+  const spriteCache = {};
+
+  // Paints the pixel map one pixel inside an 18x18 canvas, then rings every
+  // opaque pixel with a 1px outline so all sprites share the same dark edge.
+  function buildPixelSprite(def) {
+    const size = 18;
+    const c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    const g = c.getContext('2d');
+    const solid = [];
+    for (let y = 0; y < size; ++y)
+      solid.push(new Array(size).fill(false));
+    for (let y = 0; y < def.rows.length; ++y) {
+      const row = def.rows[y];
+      for (let x = 0; x < row.length; ++x) {
+        const color = def.palette[row[x]];
+        if (!color)
+          continue;
+        g.fillStyle = color;
+        g.fillRect(x + 1, y + 1, 1, 1);
+        solid[y + 1][x + 1] = true;
+      }
+    }
+    g.fillStyle = SPRITE_OUTLINE;
+    for (let y = 0; y < size; ++y)
+      for (let x = 0; x < size; ++x) {
+        if (solid[y][x])
+          continue;
+        if ((y > 0 && solid[y - 1][x]) || (y < size - 1 && solid[y + 1][x]) || (x > 0 && solid[y][x - 1]) || (x < size - 1 && solid[y][x + 1]))
+          g.fillRect(x, y, 1, 1);
+      }
+    return c;
+  }
+
+  // Full-tile 16x16 textures (no outline) built from simple brick/stone/wave patterns.
+  function buildTileTexture(kind) {
+    const c = document.createElement('canvas');
+    c.width = 16;
+    c.height = 16;
+    const g = c.getContext('2d');
+    const px = (x, y, color) => { g.fillStyle = color; g.fillRect(x, y, 1, 1); };
+    if (kind === 'brick' || kind === 'stone') {
+      const brick = kind === 'brick'
+        ? { mortar: '#4a2c16', face: '#a8643a', light: '#cf8a58', dark: '#7a4628' }
+        : { mortar: '#1e1e28', face: '#4a4c58', light: '#5e6070', dark: '#363844' };
+      const bw = 8;
+      const bh = kind === 'brick' ? 4 : 8;
+      g.fillStyle = brick.mortar;
+      g.fillRect(0, 0, 16, 16);
+      for (let row = 0; row * bh < 16; ++row) {
+        const offset = (row % 2) * (bw / 2);
+        for (let col = -1; col * bw < 16; ++col) {
+          const x0 = col * bw + offset;
+          const y0 = row * bh;
+          for (let y = y0; y < y0 + bh - 1; ++y)
+            for (let x = x0; x < x0 + bw - 1; ++x) {
+              if (x < 0 || x >= 16 || y >= 16)
+                continue;
+              let color = brick.face;
+              if (y === y0 || x === x0) color = brick.light;
+              else if (y === y0 + bh - 2 || x === x0 + bw - 2) color = brick.dark;
+              px(x, y, color);
+            }
+        }
+      }
+      if (kind === 'stone') {
+        px(3, 3, brick.dark); px(11, 5, brick.dark); px(6, 12, brick.dark); px(13, 13, brick.light);
+      }
+    } else if (kind === 'waves') {
+      g.fillStyle = '#2a78d8';
+      g.fillRect(0, 0, 16, 16);
+      for (let y = 0; y < 16; ++y)
+        for (let x = 0; x < 16; ++x) {
+          const band = (y + 2) % 6;
+          const wave = (x + (y % 12 < 6 ? 0 : 4)) % 8;
+          if (band === 0 && wave < 4) px(x, y, '#8cc8ff');
+          else if (band === 1 && wave >= 3 && wave < 6) px(x, y, '#5aa4f4');
+          else if (band === 4) px(x, y, '#2468c4');
+        }
+    }
+    return c;
+  }
+
+  function getSprite(name) {
+    if (!spriteCache[name])
+      spriteCache[name] = PIXEL_SPRITES[name] ? buildPixelSprite(PIXEL_SPRITES[name]) : buildTileTexture(name);
+    return spriteCache[name];
+  }
+
+  // Draws a cached sprite centred at (cx, cy) with crisp nearest-neighbour scaling.
+  function drawSprite(name, cx, cy, size) {
+    const sprite = getSprite(name);
+    const prev = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(sprite, Math.round(cx - size / 2), Math.round(cy - size / 2), size, size);
+    ctx.imageSmoothingEnabled = prev;
+  }
+
+  // Fills a tile rectangle with a tiled texture scaled by 3 (16px -> 48px).
+  function drawTileTexture(name, x, y, w, h) {
+    const tex = getSprite(name);
+    const prev = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+    ctx.drawImage(tex, x - 1, y - 1, 48, 48);
+    ctx.restore();
+    ctx.imageSmoothingEnabled = prev;
+  }
+
+  // Draws "<sprite> text" with the pair centred on cx (textAlign must be irrelevant here).
+  function drawIconLabel(name, text, cx, cy, iconSize) {
+    const gap = 6;
+    const tw = ctx.measureText(text).width;
+    const left = cx - (iconSize + gap + tw) / 2;
+    drawSprite(name, left + iconSize / 2, cy, iconSize);
+    const align = ctx.textAlign;
+    ctx.textAlign = 'left';
+    ctx.fillText(text, left + iconSize + gap, cy);
+    ctx.textAlign = align;
+  }
 
   /* ══════════════════════════════════════════════════════════════════
      GAME STATE
@@ -687,13 +1031,13 @@
         ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
 
         // Tile details
-        ctx.font = '20px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
+        const cx = x + TILE_SIZE / 2;
+        const cy = y + TILE_SIZE / 2;
 
-        if (tile === T_WOOD) {
-          ctx.fillStyle = '#a64';
-          ctx.fillText('🪵', x + TILE_SIZE / 2, y + TILE_SIZE / 2);
+        if (tile === T_WALL) {
+          drawTileTexture('stone', x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+        } else if (tile === T_WOOD) {
+          drawSprite('wood', cx, cy, 36);
         } else if (tile === T_CHANNEL) {
           ctx.strokeStyle = '#48f';
           ctx.lineWidth = 1;
@@ -701,16 +1045,11 @@
           ctx.strokeRect(x + 4, y + 4, TILE_SIZE - 8, TILE_SIZE - 8);
           ctx.setLineDash([]);
         } else if (tile === T_FILLED) {
-          ctx.fillStyle = '#48f';
-          ctx.globalAlpha = 0.5;
-          ctx.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
-          ctx.globalAlpha = 1;
-          ctx.fillText('💧', x + TILE_SIZE / 2, y + TILE_SIZE / 2);
+          drawTileTexture('waves', x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
         } else if (tile === T_BLOCK) {
-          ctx.fillStyle = '#aaa';
-          ctx.fillText('📦', x + TILE_SIZE / 2, y + TILE_SIZE / 2);
+          drawSprite('block', cx, cy, 36);
         } else if (tile === T_EARTH_WALL) {
-          ctx.fillText('🧱', x + TILE_SIZE / 2, y + TILE_SIZE / 2);
+          drawTileTexture('brick', x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
         } else if (tile === T_RUNE) {
           // Hidden rune — pulsing shimmer to draw attention
           const runePulse = 0.15 + 0.1 * Math.sin(performance.now() / 500);
@@ -726,10 +1065,11 @@
           // Discovered rune — draw rune with glow
           drawRuneGlow(x, y);
         } else if (tile === T_GOAL) {
+          ctx.save();
           ctx.shadowBlur = 10;
           ctx.shadowColor = '#0f0';
-          ctx.fillText('⭐', x + TILE_SIZE / 2, y + TILE_SIZE / 2);
-          ctx.shadowBlur = 0;
+          drawSprite('goal', cx, cy, 36);
+          ctx.restore();
         }
 
         // Grid lines
@@ -787,11 +1127,7 @@
     ctx.save();
     ctx.shadowBlur = 15;
     ctx.shadowColor = '#c8f';
-    ctx.fillStyle = '#c8f';
-    ctx.font = 'bold 22px serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('ᚱ', x + TILE_SIZE / 2, y + TILE_SIZE / 2);
+    drawSprite('rune', x + TILE_SIZE / 2, y + TILE_SIZE / 2, 36);
     ctx.shadowBlur = 0;
     ctx.restore();
   }
@@ -820,14 +1156,13 @@
         ctx.shadowBlur = 0;
       }
 
-      ctx.font = '18px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(elem.icon, bx + 22, barY + 24);
+      drawSprite(elem.id, bx + 18, barY + 24, 27);
 
       ctx.fillStyle = isSelected ? elem.color : '#888';
       ctx.font = '11px sans-serif';
-      ctx.fillText(`${elem.name} [${elem.key}]`, bx + 54, barY + 24);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${elem.name} [${elem.key}]`, bx + 33, barY + 24);
     }
 
     // Level info
@@ -851,13 +1186,13 @@
         else if (t === T_GOAL) hasGoal = true;
       }
     }
-    if (woodCount > 0) objectives.push({ icon: '🔥', text: `Burn ${woodCount} wood`, done: false });
-    if (channelCount > 0) objectives.push({ icon: '💧', text: `Fill ${channelCount} channel${channelCount > 1 ? 's' : ''}`, done: false });
-    if (runeCount > 0) objectives.push({ icon: 'ᚱ', text: `Reveal ${runeCount} rune${runeCount > 1 ? 's' : ''} (cast on/near)`, done: false });
-    if (hasGoal) objectives.push({ icon: '⭐', text: 'Clear all to win (auto)', done: woodCount === 0 && channelCount === 0 && runeCount === 0 });
+    if (woodCount > 0) objectives.push({ icon: 'fire', text: `Burn ${woodCount} wood`, done: false });
+    if (channelCount > 0) objectives.push({ icon: 'water', text: `Fill ${channelCount} channel${channelCount > 1 ? 's' : ''}`, done: false });
+    if (runeCount > 0) objectives.push({ icon: 'rune', text: `Reveal ${runeCount} rune${runeCount > 1 ? 's' : ''} (cast on/near)`, done: false });
+    if (hasGoal) objectives.push({ icon: 'goal', text: 'Clear all to win (auto)', done: woodCount === 0 && channelCount === 0 && runeCount === 0 });
     // Mark completed objectives
-    if (woodCount === 0 && objectives.some(o => o.icon === '🔥'))
-      objectives.find(o => o.icon === '🔥').done = true;
+    if (woodCount === 0 && objectives.some(o => o.icon === 'fire'))
+      objectives.find(o => o.icon === 'fire').done = true;
     return objectives;
   }
 
@@ -880,8 +1215,9 @@
       ctx.fillStyle = obj.done ? '#4a4' : '#aaa';
       ctx.font = '11px sans-serif';
       const prefix = obj.done ? '[done] ' : '[ ] ';
-      ctx.fillText(`${obj.icon} ${prefix}${obj.text}`, ox, oy);
-      oy += 16;
+      drawSprite(obj.icon, ox + 8, oy + 6, 18);
+      ctx.fillText(`${prefix}${obj.text}`, ox + 20, oy, CANVAS_W - ox - 24);
+      oy += 20;
     }
 
     // Suggested element
@@ -894,7 +1230,8 @@
       oy += 14;
       ctx.fillStyle = suggestion.color;
       ctx.font = '11px sans-serif';
-      ctx.fillText(`${suggestion.icon} ${suggestion.name}`, ox, oy);
+      drawSprite(suggestion.id, ox + 8, oy + 6, 18);
+      ctx.fillText(suggestion.name, ox + 20, oy);
     }
   }
 
@@ -934,7 +1271,7 @@
     ctx.font = 'bold 18px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('💡 Hint', CANVAS_W / 2, bandY + 16);
+    drawIconLabel('bulb', 'Hint', CANVAS_W / 2, bandY + 16, 18);
 
     // Hint text
     ctx.fillStyle = '#eee';
@@ -1057,17 +1394,17 @@
     y += 40;
 
     const elementInfo = [
-      { icon: '🔥', name: 'Fire', color: '#f60', desc: 'Burns wood obstacles (brown tiles with 🪵)' },
-      { icon: '💧', name: 'Water', color: '#48f', desc: 'Fills empty channels (dark blue dashed tiles)' },
-      { icon: '🪨', name: 'Earth', color: '#a62', desc: 'Creates wall barriers on empty tiles' },
-      { icon: '💨', name: 'Air', color: '#aaf', desc: 'Pushes movable blocks (grey tiles with 📦)' }
+      { icon: 'fire', name: 'Fire', color: '#f60', desc: 'Burns wood obstacles (brown tiles with logs)' },
+      { icon: 'water', name: 'Water', color: '#48f', desc: 'Fills empty channels (dark blue dashed tiles)' },
+      { icon: 'earth', name: 'Earth', color: '#a62', desc: 'Creates wall barriers on empty tiles' },
+      { icon: 'air', name: 'Air', color: '#aaf', desc: 'Pushes movable blocks (grey tiles with steel crates)' }
     ];
 
     for (const info of elementInfo) {
       // Icon + name
       ctx.fillStyle = info.color;
       ctx.font = 'bold 18px sans-serif';
-      ctx.fillText(`${info.icon} ${info.name}`, cx, y);
+      drawIconLabel(info.icon, info.name, cx, y, 27);
       y += 24;
 
       // Description
@@ -1091,19 +1428,19 @@
     y += 36;
 
     const tiles = [
-      { icon: '🪵', label: 'Wood', color: '#642', desc: 'Obstacle. Burn it with Fire.' },
-      { icon: '~ ~', label: 'Channel', color: '#124', desc: 'Gap. Fill it with Water.' },
-      { icon: '📦', label: 'Block', color: '#555', desc: 'Movable. Push it with Air.' },
-      { icon: '🧱', label: 'Earth Wall', color: '#863', desc: 'You create these with Earth on empty tiles.' },
-      { icon: 'ᚱ', label: 'Hidden Rune', color: '#c8f', desc: 'Cast any element ON it or on an adjacent tile to reveal it.' },
-      { icon: '⭐', label: 'Goal', color: '#0f0', desc: 'Level auto-completes when all obstacles & runes are cleared.' }
+      { icon: 'wood', label: 'Wood', color: '#c96', desc: 'Obstacle. Burn it with Fire.' },
+      { icon: 'channel', label: 'Channel', color: '#48f', desc: 'Gap. Fill it with Water.' },
+      { icon: 'block', label: 'Block', color: '#aab', desc: 'Movable. Push it with Air.' },
+      { icon: 'brick', label: 'Earth Wall', color: '#c84', desc: 'You create these with Earth on empty tiles.' },
+      { icon: 'rune', label: 'Hidden Rune', color: '#c8f', desc: 'Cast any element ON it or on an adjacent tile to reveal it.' },
+      { icon: 'goal', label: 'Goal', color: '#0f0', desc: 'Level auto-completes when all obstacles & runes are cleared.' }
     ];
 
     ctx.font = '14px sans-serif';
     for (const t of tiles) {
       ctx.fillStyle = t.color;
       ctx.font = 'bold 14px sans-serif';
-      ctx.fillText(`${t.icon}  ${t.label}`, cx, y);
+      drawIconLabel(t.icon, t.label, cx, y, 18);
       y += 20;
 
       ctx.fillStyle = '#aaa';
@@ -1230,7 +1567,7 @@
       for (let i = 0; i < ELEMENTS.length; ++i) {
         const elem = ELEMENTS[i];
         const ex = CANVAS_W / 2 - 120 + i * 80;
-        ctx.fillText(elem.icon, ex, CANVAS_H / 2 + 25);
+        drawSprite(elem.id, ex, CANVAS_H / 2 + 22, 27);
         ctx.fillStyle = elem.color;
         ctx.font = '11px sans-serif';
         ctx.fillText(elem.name, ex, CANVAS_H / 2 + 45);
