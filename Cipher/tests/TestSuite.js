@@ -22,6 +22,13 @@
  *   when its count rises above it; a budget of 0 means the file is policy-clean.
  *   That the OpCodes and framework tiers are themselves fully typed is the
  *   JSDOC category of tests/TranspilerSuite.js.
+ * - SOUNDNESS: the types TYPES finds present must also be right. The file is
+ *   instrumented at its typed sites, the first vector of each algorithm runs
+ *   (--soundness-vectors=N runs more), and every value is checked against the
+ *   IL type of its site (TypeSoundness.js); the count of sites holding a value
+ *   their type does not allow is held to the file's budget in
+ *   type-soundness-budgets.json, a ratchet like TYPES. A deeper run reports
+ *   what it finds but is held to the budgets only at the default depth.
  *
  * Over the algorithms the files registered:
  * - ROUNDTRIP: every reversible algorithm decodes its own output over an
@@ -46,8 +53,9 @@
  *   --only=<a,b>              run only these categories (e.g. --only=roundtrip,types)
  *   --skip=<a,b>              run everything but these
  *   --verbose, -v             details, including every untyped value site
- *   --update-type-budgets     lower each tested file's TYPES budget to its current count
+ *   --update-type-budgets     lower each tested file's TYPES (and SOUNDNESS, when it ran) budget to its current count
  *   --allow-budget-increase   with --update-type-budgets: also raise budgets (and add new files)
+ *   --soundness-vectors=<n>   SOUNDNESS: vectors run per algorithm (default 1; 0 runs all; not gated unless 1)
  *   --large                   ROUNDTRIP: also push 1 MB through each algorithm
  *   --large-size=<n[K|M]>     ROUNDTRIP: the same with another size (see LARGE-INPUTS.md)
  *   --budget=<ms>             ROUNDTRIP: time per algorithm for the small corpus
@@ -61,6 +69,7 @@ const fs = require('fs');
 const path = require('path');
 const TestEngine = require('./TestEngine');
 const TypeCoverage = require('./TypeCoverage');
+const TypeSoundness = require('./TypeSoundness');
 const RoundTrip = require('./RoundTrip');
 const ChunkedFeed = require('./ChunkedFeed');
 const BrowserLoad = require('./BrowserLoad');
@@ -74,7 +83,9 @@ const Runner = require('./CategoryRunner');
 const CIPHER_DIR = path.join(__dirname, '..');
 const ALGORITHMS_DIR = path.join(CIPHER_DIR, 'algorithms');
 const TYPE_BUDGETS_FILE = path.join(__dirname, 'type-budgets.json');
+const SOUNDNESS_BUDGETS_FILE = path.join(__dirname, 'type-soundness-budgets.json');
 const FILE_TIMEOUT_MS = 5000;
+const DEFAULT_SOUNDNESS_VECTORS = 1;
 
 // Categories reported per file. The first six come from TestEngine.TestFile.
 const FILE_CATEGORIES = [
@@ -84,7 +95,8 @@ const FILE_CATEGORIES = [
   { key: 'issues', label: 'ISSUES' },
   { key: 'functionality', label: 'FUNCTIONALITY' },
   { key: 'optimization', label: 'OPTIMIZATION' },
-  { key: 'types', label: 'TYPES' }
+  { key: 'types', label: 'TYPES' },
+  { key: 'soundness', label: 'SOUNDNESS' }
 ];
 const ENGINE_KEYS = FILE_CATEGORIES.slice(0, 6).map(c => c.key);
 // Names on the per-file progress line
@@ -120,13 +132,15 @@ const SWEEPS = [
 const CATEGORY_KEYS = [...FILE_CATEGORIES.map(c => c.key), ...SWEEPS.map(s => s.key)];
 
 /**
- * Budgets of untyped value sites per algorithm file (path relative to Cipher/).
+ * Budgets per algorithm file (path relative to Cipher/): untyped value sites
+ * (type-budgets.json) or mismatching sites (type-soundness-budgets.json).
  * -1 marks a file the transpiler could not parse when the budget was set.
+ * @param {string} [file] - budget file (default: the TYPES budgets)
  * @returns {Object} path -> budget
  */
-function loadTypeBudgets() {
+function loadTypeBudgets(file = TYPE_BUDGETS_FILE) {
   try {
-    return JSON.parse(fs.readFileSync(TYPE_BUDGETS_FILE, 'utf8'));
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch (e) {
     return {};
   }
@@ -140,12 +154,16 @@ function loadTypeBudgets() {
 function parseOptions(args) {
   Runner.rejectUnknownOptions(args,
     ['--verbose', '-v', '--update-type-budgets', '--allow-budget-increase', '--large'],
-    ['category', 'algorithm', 'only', 'skip', 'large-size', 'budget']);
+    ['category', 'algorithm', 'only', 'skip', 'large-size', 'budget', 'soundness-vectors']);
   const { selected, explicit } = Runner.selectCategories(args, CATEGORY_KEYS);
   const largeSize = Runner.optionValue(args, 'large-size');
   const budget = Runner.optionValue(args, 'budget');
   if (budget !== null && !(Number(budget) > 0)) throw new Error(`--budget expects milliseconds; got "${budget}"`);
+  const soundnessVectors = Runner.optionValue(args, 'soundness-vectors');
+  if (soundnessVectors !== null && !/^\d+$/.test(soundnessVectors))
+    throw new Error(`--soundness-vectors expects a count (0: all); got "${soundnessVectors}"`);
   return {
+    soundnessVectors: soundnessVectors !== null ? Number(soundnessVectors) : DEFAULT_SOUNDNESS_VECTORS,
     selected, explicit,
     verbose: args.includes('--verbose') || args.includes('-v'),
     categoryFilter: Runner.optionValue(args, 'category'),
@@ -179,6 +197,10 @@ class TestSuite {
     this.typeCounts = {};                                   // path -> count (null: unparsed)
     this.typeTotals = { sites: 0, opcodes: 0, framework: 0, local: 0, unparsed: 0 };
     this.typeTimeMs = 0;
+    this.soundnessBudgets = loadTypeBudgets(SOUNDNESS_BUDGETS_FILE);
+    this.soundnessCounts = {};                              // path -> mismatching sites (null: unparsed)
+    this.soundnessTotals = { mismatches: 0, files: 0, sites: 0, checked: 0, timeMs: 0 };
+    this.soundnessGated = options.soundnessVectors === DEFAULT_SOUNDNESS_VECTORS;
     this.sources = new Map();                               // absolute path -> text, read once
   }
 
@@ -224,7 +246,7 @@ class TestSuite {
     for (const sweep of algorithmSweeps) await this.runSweep(sweep);
 
     const failed = this.generateReport();
-    if (this.options.updateTypeBudgets && this.selected.has('types'))
+    if (this.options.updateTypeBudgets && (this.selected.has('types') || this.selected.has('soundness')))
       this.writeTypeBudgets();
     console.log(`\nWall time: ${process.uptime().toFixed(1)}s`);
     return failed;
@@ -355,7 +377,13 @@ class TestSuite {
 
     const elapsedMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
 
-    if (this.selected.has('types')) result.types = this.testTypes(filePath, source);
+    let parsed = null;
+    if (this.selected.has('types')) {
+      result.types = this.testTypes(filePath, source);
+      parsed = result.types.parsed;
+      delete result.types.parsed;
+    }
+    if (this.selected.has('soundness')) result.soundness = await this.testSoundness(filePath, source, parsed);
 
     const testResults = result.functionality && this.selected.has('functionality') ? result.functionality.testResults : null;
     this.recordInvertibility(algorithmName, testResults, result);
@@ -368,6 +396,7 @@ class TestSuite {
       const r = result[key];
       if (key === 'issues') return `Issues:${r.passed ? '0' : r.errors.length}`;
       if (key === 'types') return `Types:${r.summary}`;
+      if (key === 'soundness') return `Soundness:${r.summary}`;
       return `${FILE_LABELS[key]}:${r.passed ? '✓' : '✗'}`;
     });
     const status = shown.every(c => result[c.key].passed) ? '✓' : '✗';
@@ -388,6 +417,11 @@ class TestSuite {
       console.log(`    Untyped value sites in ${result.types.file}:`);
       for (const site of result.types.sites)
         console.log(`      ${result.types.file}:${site.line} [${site.tier}] ${site.expression} - ${site.reason}`);
+    }
+    if (this.verbose && result.soundness && result.soundness.mismatches.length > 0) {
+      console.log(`    Type mismatches in ${result.soundness.file}:`);
+      for (const m of result.soundness.mismatches)
+        console.log(`      ${result.soundness.file}:${m.line} [${m.origin}] ${m.expression} - ${m.role} typed ${m.type}, ${m.kind}: ${m.observed.join(', ')}`);
     }
   }
 
@@ -450,7 +484,7 @@ class TestSuite {
     for (const tier of Object.keys(tiers)) this.typeTotals[tier] = (this.typeTotals[tier] || 0) + tiers[tier];
     const passed = budget === -1 || coverage.count <= budget;
     return {
-      passed, file, sites: coverage.sites,
+      passed, file, sites: coverage.sites, parsed: coverage.parsed,
       summary: `${coverage.count}/${budget === -1 ? '-' : budget}`,
       error: passed ? null : `${file}: ${coverage.count} untyped value sites, budget ${budget}` +
         (hasBudget ? '' : ' (new file: add JSDoc, or record a budget with --update-type-budgets --allow-budget-increase)')
@@ -458,15 +492,74 @@ class TestSuite {
   }
 
   /**
-   * Rewrite type-budgets.json from this run's counts: only ever lower a budget,
-   * unless --allow-budget-increase is given too. Files not tested keep theirs.
+   * SOUNDNESS: run the file's vectors instrumented and hold its count of
+   * sites whose values do not fit their IL type to its budget.
+   * @param {string} filePath - Algorithm file
+   * @param {string} source - Its text
+   * @param {Object|null} parsed - { parser, ast } from TYPES, when it ran
+   * @returns {Promise<Object>} { passed, error, summary, mismatches, file }
+   */
+  async testSoundness(filePath, source, parsed) {
+    const file = path.relative(CIPHER_DIR, filePath).split(path.sep).join('/');
+    const result = await TypeSoundness.checkFile(filePath, { source, parsed, maxVectors: this.options.soundnessVectors || 0 });
+    const t = this.soundnessTotals;
+    t.timeMs += result.timeMs;
+    t.sites += result.sites;
+    t.checked += result.hitSites;
+    const hasBudget = Object.prototype.hasOwnProperty.call(this.soundnessBudgets, file);
+    const budget = hasBudget ? this.soundnessBudgets[file] : 0;
+    if (result.error && /^unparsed/.test(result.error)) {
+      this.soundnessCounts[file] = null;
+      const passed = budget === -1;
+      return { passed, file, mismatches: [], summary: 'unparsed', error: passed ? null : `${file}: ${result.error}` };
+    }
+    const count = TypeSoundness.siteCount(result.mismatches);
+    this.soundnessCounts[file] = count;
+    t.mismatches += count;
+    if (count) ++t.files;
+    // The budgets were counted at the default depth; another depth only reports.
+    const gated = this.soundnessGated;
+    // An instrumented copy that cannot load or run proves nothing: that fails too.
+    const passed = !result.error && (!gated || budget === -1 || count <= budget);
+    return {
+      passed, file, mismatches: result.mismatches,
+      summary: `${count}/${budget === -1 ? '-' : budget}${gated ? '' : '?'}`,
+      error: result.error ? `${file}: ${result.error}` : passed ? null :
+        `${file}: ${count} sites hold values their type does not allow, budget ${budget}` +
+        (hasBudget ? '' : ' (new file: fix the types, or record a budget with --update-type-budgets --allow-budget-increase)')
+    };
+  }
+
+  /**
+   * Rewrite the budget files of the categories that ran (TYPES, SOUNDNESS).
    */
   writeTypeBudgets() {
-    const budgets = { ...this.typeBudgets };
+    if (this.selected.has('types'))
+      this.writeBudgets(TYPE_BUDGETS_FILE, this.typeBudgets, this.typeCounts);
+    if (this.selected.has('soundness') && this.soundnessGated)
+      this.writeBudgets(SOUNDNESS_BUDGETS_FILE, this.soundnessBudgets, this.soundnessCounts, true);
+    else if (this.selected.has('soundness'))
+      console.log(`\nSoundness budgets are counted at --soundness-vectors=${DEFAULT_SOUNDNESS_VECTORS}; not written`);
+  }
+
+  /**
+   * Rewrite a budget file from this run's counts: only ever lower a budget,
+   * unless --allow-budget-increase is given too. Files not tested keep theirs.
+   * @param {string} budgetFile - JSON file
+   * @param {Object} current - its budgets (path -> budget)
+   * @param {Object} counts - this run's counts (path -> count, null: unparsed)
+   * @param {boolean} [sparse] - a file without an entry has budget 0, so zeros are not written
+   */
+  writeBudgets(budgetFile, current, counts, sparse = false) {
+    const budgets = { ...current };
     let lowered = 0, raised = 0;
-    for (const [file, count] of Object.entries(this.typeCounts)) {
+    for (const [file, count] of Object.entries(counts)) {
       const next = count === null ? -1 : count;        // -1: the transpiler cannot parse the file
       const has = Object.prototype.hasOwnProperty.call(budgets, file);
+      if (sparse && next === 0) {
+        if (has) { delete budgets[file]; ++lowered; }
+        continue;
+      }
       const current = has ? budgets[file] : null;
       if (has && current === next) continue;
       // Stricter: a lower count, or a real count where the file was unparsable.
@@ -481,8 +574,8 @@ class TestSuite {
     }
     const sorted = {};
     for (const file of Object.keys(budgets).sort()) sorted[file] = budgets[file];
-    fs.writeFileSync(TYPE_BUDGETS_FILE, JSON.stringify(sorted, null, 1).replace(/^ /gm, '  ') + '\n');
-    console.log(`\nType budgets: ${lowered} lowered, ${raised} raised or added -> ${path.relative(CIPHER_DIR, TYPE_BUDGETS_FILE)}`);
+    fs.writeFileSync(budgetFile, JSON.stringify(sorted, null, 1).replace(/^ /gm, '  ') + '\n');
+    console.log(`\nBudgets: ${lowered} lowered, ${raised} raised or added -> ${path.relative(CIPHER_DIR, budgetFile)}`);
     if (!this.options.allowBudgetIncrease)
       console.log('(budgets only go down; pass --allow-budget-increase as well to raise or add one)');
   }
@@ -584,6 +677,13 @@ class TestSuite {
       const t = this.typeTotals;
       types.detail = `${t.sites} untyped value sites: ${t.opcodes} OpCodes JSDoc, ${t.framework} framework, ${t.local} local source` +
         `${t.unparsed ? `; ${t.unparsed} file(s) not parsed` : ''}; +${(this.typeTimeMs / 1000).toFixed(1)}s`;
+    }
+    const soundness = rows.find(r => r.label === 'SOUNDNESS');
+    if (soundness) {
+      const s = this.soundnessTotals;
+      soundness.detail = `${s.mismatches} sites hold values their type does not allow, in ${s.files} file(s); ` +
+        `${s.checked} of ${s.sites} typed sites reached${this.soundnessGated ? '' : `; ${this.options.soundnessVectors || 'all'} vector(s), not held to the budgets`}; ` +
+        `+${(s.timeMs / 1000).toFixed(1)}s`;
     }
     const order = SWEEPS.map(s => s.key);
     rows.push(...this.sweepRows.slice().sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key)));
