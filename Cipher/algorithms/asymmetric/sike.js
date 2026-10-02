@@ -508,7 +508,9 @@
   // the same arithmetic and the encoded results are identical, so plain
   // reduction is used here.
 
+  /** @type {BigInt} */
   const ZERO = 0n;
+  /** @type {BigInt} */
   const ONE = 1n;
 
   /**
