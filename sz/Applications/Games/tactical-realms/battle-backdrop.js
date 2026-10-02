@@ -32,6 +32,24 @@
     ash:      { sky: ['#3a3236', '#8a7a72'], far: 'peaks', farCol: '#4a4044', mid: 'rocks', midCol: '#3a3436', ground: ['#5a5658', '#3e3a3c'], detail: 'cracks', ambient: 'embers', glow: '#ff6a1a' },
     town:     { sky: ['#6fb3e8', '#d8ecf6'], far: 'hills', farCol: '#8ab098', mid: 'houses', midCol: '#e8d8b8', ground: ['#b8a88a', '#8a7a64'], detail: 'cobbles', ambient: 'pollen' },
     ruins:    { sky: ['#4a5a7a', '#a8a0a0'], far: 'hills', farCol: '#6a7068', mid: 'ruins', midCol: '#8a8478', ground: ['#7a6a58', '#5a4c3e'], detail: 'flagstones', ambient: 'dust' },
+    // the other planes
+    astral:    { sky: ['#1a1438', '#5a4a9a'], stars: true, far: 'islands', farCol: '#6a6890', mid: 'crystals', midCol: '#a89aff', ground: ['#4a4478', '#2a2650'], detail: 'pebbles', ambient: 'stars' },
+    ethereal:  { sky: ['#8a98b8', '#d8e0f0'], far: 'hills', farCol: '#a0aac0', mid: 'deadtrees', midCol: '#7a8498', ground: ['#b8c0d4', '#9aa4bc'], detail: 'drifts', ambient: 'mist' },
+    shadow:    { sky: ['#14161c', '#3a3e48'], noClouds: true, far: 'hills', farCol: '#2a2e36', mid: 'deadtrees', midCol: '#1e2228', ground: ['#3c4440', '#262c2a'], detail: 'grass', ambient: 'ash' },
+    fire:      { sky: ['#4a0a00', '#ff7a1a'], far: 'peaks', farCol: '#5a1a0a', mid: 'spires', midCol: '#3a1008', ground: ['#5a2a18', '#3a180c'], detail: 'cracks', ambient: 'embers', glow: '#ff6a1a' },
+    water:     { sky: ['#06204a', '#2a6ab0'], noClouds: true, far: 'coral', farCol: '#1a4a7a', mid: 'coral', midCol: '#d86a6a', ground: ['#2a5a8a', '#1a3a6a'], detail: 'ripples', ambient: 'bubbles' },
+    earth:     { sky: ['#1a120c', '#3a2a1e'], far: 'cavewall', farCol: '#3a2a1e', mid: 'crystals', midCol: '#6ad8ff', ground: ['#6a5440', '#4a3a2a'], detail: 'pebbles', ambient: 'dust' },
+    sky:       { sky: ['#3a7ad8', '#d8ecff'], far: 'clouds', farCol: '#ffffff', mid: 'clouds', midCol: '#e8f0fa', ground: ['#f0f4fa', '#c8d4e6'], detail: 'drifts', ambient: 'wind' },
+    radiant:   { sky: ['#fff4c8', '#ffffff'], noClouds: true, far: 'clouds', farCol: '#fffaf0', mid: 'spires', midCol: '#fff0bc', ground: ['#fff0bc', '#f0d890'], detail: 'grass', ambient: 'sparkles' },
+    void:      { sky: ['#000000', '#120e1a'], stars: true, far: 'islands', farCol: '#1e1828', mid: 'none', midCol: '#000000', ground: ['#1a1422', '#0a080e'], detail: 'pebbles', ambient: 'ash' },
+    celestial: { sky: ['#7ab8f0', '#fff4d8'], far: 'peaks', farCol: '#e8e0f0', mid: 'trees', midCol: '#c8b84a', ground: ['#b8c85a', '#98a848'], detail: 'grass', ambient: 'sparkles' },
+    fey:       { sky: ['#3a2a6a', '#c88ae8'], stars: true, far: 'hills', farCol: '#4a6a8a', mid: 'trees', midCol: '#2a8a7a', ground: ['#3aa88a', '#2a7a68'], detail: 'grass', ambient: 'fireflies' },
+    infernal:  { sky: ['#2a0606', '#a83a1a'], far: 'peaks', farCol: '#3a0e08', mid: 'spires', midCol: '#2a0a06', ground: ['#7a2c1c', '#4a1810'], detail: 'cracks', ambient: 'embers', glow: '#ff4a1a' },
+    abyss:     { sky: ['#1a0414', '#6a1a4a'], far: 'spires', farCol: '#2a0a20', mid: 'spires', midCol: '#3a0e2a', ground: ['#4a1a3a', '#2a0e22'], detail: 'cracks', ambient: 'embers', glow: '#c8203a' },
+    clockwork: { sky: ['#3a2e1a', '#c8a860'], noClouds: true, far: 'gears', farCol: '#7a5a2a', mid: 'gears', midCol: '#a8823a', ground: ['#a8823a', '#7a5a28'], detail: 'cobbles', ambient: 'dust' },
+    chaos:     { sky: ['#4a1a6a', '#3a8ac8'], far: 'islands', farCol: '#8a3ac8', mid: 'crystals', midCol: '#ff8a3a', ground: ['#6a5038', '#2a5ab8'], detail: 'cobbles', ambient: 'sparkles' },
+    ooze:      { sky: ['#2a3a14', '#7a9a3a'], noClouds: true, far: 'hills', farCol: '#4a5a24', mid: 'deadtrees', midCol: '#3a4a1a', ground: ['#5a7a2a', '#3a5a1a'], detail: 'puddles', ambient: 'drips' },
+    grey:      { sky: ['#4a4a4a', '#9a9a9a'], noClouds: true, far: 'hills', farCol: '#6a6a6a', mid: 'deadtrees', midCol: '#5a5a5a', ground: ['#7a7876', '#5a5856'], detail: 'pebbles', ambient: 'ash' },
   });
 
   // Planes recolour whatever biome they contain, keyed by data/planes.js
@@ -117,7 +135,12 @@
       ctx.fillStyle = mix(top, bot, t);
       ctx.fillRect(0, Math.floor(i * HORIZON / bands), LOW_W, Math.ceil(HORIZON / bands) + 1);
     }
-    if (th.far !== 'wall' && th.far !== 'cavewall' && !th.glow) {
+    if (th.stars)
+      for (let i = 0; i < 70; ++i) {
+        ctx.fillStyle = r() > 0.7 ? '#ffffff' : 'rgba(200,190,255,0.7)';
+        ctx.fillRect(Math.floor(r() * LOW_W), Math.floor(r() * (HORIZON - 10)), 1, 1);
+      }
+    if (th.far !== 'wall' && th.far !== 'cavewall' && !th.glow && !th.noClouds && !th.stars) {
       ctx.fillStyle = 'rgba(255,255,255,0.75)';
       for (let i = 0; i < 5; ++i) {
         const cx = r() * LOW_W, cy = 10 + r() * 40, w = 18 + r() * 30;
@@ -175,6 +198,33 @@
       case 'dunes':
         ridge(ctx, r, HORIZON - 4, 18, 2, shade(c, 1.05), 2);
         break;
+      case 'islands':
+        // rocks adrift in the void, flat on top, tapering beneath
+        for (let i = 0; i < 9; ++i) {
+          const x = r() * LOW_W, y = 14 + r() * (HORIZON - 40), w = 10 + r() * 34, h = 6 + r() * 16;
+          for (let k = 0; k < h; ++k) {
+            ctx.fillStyle = shade(c, k < 2 ? 1.35 : 1 - k / h * 0.4);
+            const ww = w * (1 - k / h);
+            ctx.fillRect(Math.floor(x - ww / 2), Math.floor(y + k), Math.ceil(ww), 1);
+          }
+        }
+        break;
+      case 'clouds':
+        for (let i = 0; i < 14; ++i)
+          blob(ctx, r() * LOW_W, HORIZON - 4 - r() * 50, 10 + r() * 22, shade(c, 0.9 + r() * 0.12));
+        break;
+      case 'coral':
+        for (let i = 0; i < 16; ++i)
+          coralFan(ctx, r() * LOW_W, HORIZON + 2, 18 + r() * 30, shade(c, 0.8 + r() * 0.4), r);
+        break;
+      case 'spires':
+        for (let i = 0; i < 12; ++i)
+          spire(ctx, r() * LOW_W, HORIZON + 2, 30 + r() * 60, 6 + r() * 10, shade(c, 0.85 + r() * 0.3));
+        break;
+      case 'gears':
+        for (let i = 0; i < 7; ++i)
+          gear(ctx, r() * LOW_W, 20 + r() * (HORIZON - 30), 10 + r() * 24, shade(c, 0.85 + r() * 0.3));
+        break;
       case 'wall':
       case 'cavewall': {
         ctx.fillStyle = c;
@@ -196,6 +246,45 @@
       default:
         break;
     }
+  }
+
+  function blob(ctx, cx, cy, rad, color) {
+    ctx.fillStyle = color;
+    for (let y = -rad; y <= rad * 0.6; ++y) {
+      const w = Math.sqrt(Math.max(0, rad * rad - y * y)) * 2;
+      ctx.fillRect(Math.floor(cx - w / 2), Math.floor(cy + y), Math.ceil(w), 1);
+    }
+  }
+
+  function spire(ctx, x, baseY, h, w, color) {
+    ctx.fillStyle = color;
+    for (let y = 0; y < h; ++y) {
+      const ww = Math.max(1, w * (y / h));
+      ctx.fillRect(Math.floor(x - ww / 2), Math.floor(baseY - h + y), Math.ceil(ww), 1);
+    }
+    ctx.fillStyle = shade(color.startsWith('#') ? color : '#3a1008', 1.4);
+    ctx.fillRect(Math.floor(x), Math.floor(baseY - h * 0.6), 1, Math.floor(h * 0.3));
+  }
+
+  function coralFan(ctx, x, baseY, h, color, r) {
+    ctx.fillStyle = color;
+    ctx.fillRect(Math.floor(x), baseY - h, 2, h);
+    for (let k = 0; k < 4; ++k) {
+      const by = baseY - h * (0.3 + r() * 0.6), bw = 4 + r() * 8, dir = r() > 0.5 ? 1 : -1;
+      ctx.fillRect(Math.floor(dir > 0 ? x : x - bw), Math.floor(by), Math.ceil(bw), 2);
+      ctx.fillRect(Math.floor(x + dir * bw), Math.floor(by - 6), 2, 6);
+    }
+  }
+
+  function gear(ctx, cx, cy, rad, color) {
+    ctx.fillStyle = color;
+    for (let y = -rad - 3; y <= rad + 3; ++y)
+      for (let x = -rad - 3; x <= rad + 3; ++x) {
+        const d = Math.sqrt(x * x + y * y);
+        const tooth = Math.floor((Math.atan2(y, x) + Math.PI) / (Math.PI / 6)) % 2 === 0;
+        if ((d <= rad && d > rad * 0.35) || (tooth && d > rad && d <= rad + 3))
+          ctx.fillRect(Math.floor(cx + x), Math.floor(cy + y), 1, 1);
+      }
   }
 
   function pine(ctx, x, baseY, h, color) {
@@ -277,6 +366,34 @@
           ctx.fillRect(x - 3, 4, 22, 5);
           ctx.fillRect(x - 3, HORIZON - 1, 22, 5);
         }
+        break;
+      case 'crystals':
+        for (let i = 0; i < 12; ++i) {
+          const x = r() * LOW_W, h = 10 + r() * 30, w = 4 + r() * 6;
+          ctx.fillStyle = shade(c, 0.75 + r() * 0.5);
+          for (let y = 0; y < h; ++y) {
+            const ww = y < h * 0.3 ? w * (y / (h * 0.3)) : w;
+            ctx.fillRect(Math.floor(x - ww / 2), Math.floor(HORIZON + 4 - h + y), Math.ceil(ww), 1);
+          }
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(Math.floor(x - 1), Math.floor(HORIZON + 4 - h * 0.8), 1, Math.ceil(h * 0.4));
+        }
+        break;
+      case 'spires':
+        for (let i = 0; i < 8; ++i)
+          spire(ctx, r() * LOW_W, HORIZON + 6, 26 + r() * 40, 8 + r() * 8, shade(c, 0.8 + r() * 0.4));
+        break;
+      case 'coral':
+        for (let i = 0; i < 10; ++i)
+          coralFan(ctx, r() * LOW_W, HORIZON + 6, 14 + r() * 24, shade(c, 0.8 + r() * 0.4), r);
+        break;
+      case 'clouds':
+        for (let i = 0; i < 8; ++i)
+          blob(ctx, r() * LOW_W, HORIZON + 2 - r() * 16, 8 + r() * 14, shade(c, 0.92 + r() * 0.08));
+        break;
+      case 'gears':
+        for (let i = 0; i < 5; ++i)
+          gear(ctx, r() * LOW_W, HORIZON - 10 - r() * 30, 8 + r() * 14, shade(c, 0.85 + r() * 0.3));
         break;
       case 'stalactites':
         for (let i = 0; i < 26; ++i) {
