@@ -996,6 +996,15 @@
   loadHighScores();
   updateWindowTitle();
   SZ.GameAudio.attachMuteButton();
+  SZ.TouchControls.attach({
+    container: document.querySelector('.game-frame'),
+    stick: 'eight',
+    buttons: [
+      { label: 'Use', code: 'KeyE' },
+      { label: 'Shift', code: 'KeyQ' }
+    ],
+    extra: [{ label: 'II', code: 'Escape', title: 'Pause' }]
+  });
 
   lastTimestamp = 0;
   animFrameId = requestAnimationFrame(gameLoop);
