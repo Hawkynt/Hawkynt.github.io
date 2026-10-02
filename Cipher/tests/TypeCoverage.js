@@ -122,7 +122,7 @@ function isTestVectorAssignment(node) {
  * Analyze JavaScript source.
  * @param {string} code - Algorithm source
  * @param {string} [filePath] - Its path: the sibling data modules it requires are typed from their own JSDoc
- * @returns {Object} { sites: [{line, expression, reason, tier}], parseError }
+ * @returns {Object} { sites: [{line, expression, reason, tier}], parseError, parsed: { parser, ast } }
  */
 function analyzeSource(code, filePath) {
   const P = parserClass();
@@ -247,7 +247,8 @@ function analyzeSource(code, filePath) {
 
   walk(ast, false, { line: 0, range: null, className: null, inCondition: false });
   sites.sort((a, b) => a.line - b.line);
-  return { sites, parseError: null };
+  // The parse is handed on (TypeSoundness.js checks the same IL AST).
+  return { sites, parseError: null, parsed: { parser, ast } };
 }
 
 /**

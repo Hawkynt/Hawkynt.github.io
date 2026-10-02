@@ -658,8 +658,8 @@ CI runs both with no arguments.
 
 | Runner | Question it answers | Categories |
 |---|---|---|
-| `tests/TestSuite.js` | Is each algorithm correct? | `compilation`, `interface`, `metadata`, `issues`, `functionality`, `optimization`, `types`, `roundtrip`, `chunked`, `browser`, `library` |
-| `tests/TranspilerSuite.js` | Does the transpiler work? | `codegen`, `inference`, `policy`, `jsdoc`, `csharp`, `validation` (only when named) |
+| `tests/TestSuite.js` | Is each algorithm correct? | `compilation`, `interface`, `metadata`, `issues`, `functionality`, `optimization`, `types`, `soundness`, `roundtrip`, `chunked`, `browser`, `library` |
+| `tests/TranspilerSuite.js` | Does the transpiler work? | `codegen`, `inference`, `policy`, `soundness`, `jsdoc`, `csharp`, `validation` (only when named) |
 
 **Usage:**
 ```bash
@@ -680,7 +680,7 @@ node tests/TranspilerSuite.js --only=codegen --language=python
 # Details, including every untyped value site and every vector
 node tests/TestSuite.js --algorithm=sha1 --verbose
 
-# Lower the TYPES budgets of the tested files to their current counts
+# Lower the TYPES and SOUNDNESS budgets of the tested files to their current counts
 node tests/TestSuite.js --update-type-budgets
 ```
 
