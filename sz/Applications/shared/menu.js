@@ -337,8 +337,9 @@
       item.classList.add('open');
       item.setAttribute('aria-expanded', 'true');
       this.#openMenu = item;
+      // apps enable, disable and check entries at any time
+      this.#refreshEntryStates();
       if (focusEntry) {
-        this.#refreshEntryStates();
         const entries = this.#entries(item.querySelector(':scope > .menu-dropdown') || item);
         this.#focus(fromEnd ? entries[entries.length - 1] : entries[0]);
         if (!entries.length)
