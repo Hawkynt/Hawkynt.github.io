@@ -170,6 +170,37 @@
       assert.ok(hasDungeon);
     });
 
+    it('generate keeps spawn columns on walkable footing, even in lava', () => {
+      const g = CombatGrid.generate(14, 10, new PRNG(3), 'lava');
+      for (let r = 0; r < 10; ++r)
+        for (const c of [1, 12])
+          assert.ok(Terrain.byId(g.terrainIdAt(c, r)).moveCost < 10, `spawn ${c},${r} is ${g.terrainIdAt(c, r)}`);
+    });
+
+    it('generate forms patches instead of speckle', () => {
+      const g = CombatGrid.generate(16, 12, new PRNG(11), 'dungeon');
+      let same = 0, pairs = 0;
+      for (let r = 0; r < 12; ++r)
+        for (let c = 0; c < 15; ++c) {
+          ++pairs;
+          if (g.terrainIdAt(c, r) === g.terrainIdAt(c + 1, r))
+            ++same;
+        }
+      // independent picks from this palette would match about 56% of the time
+      assert.ok(same / pairs > 0.7, `only ${(100 * same / pairs).toFixed(0)}% of neighbours match`);
+    });
+
+    it('generate keeps roughly the palette mix', () => {
+      const g = CombatGrid.generate(20, 15, new PRNG(5), 'plains');
+      let forest = 0;
+      for (let r = 0; r < 15; ++r)
+        for (let c = 0; c < 20; ++c)
+          if (g.terrainIdAt(c, r) === 'forest')
+            ++forest;
+      // one sixth of the palette, minus what the spawn columns override
+      assert.ok(forest > 30 && forest < 60, `${forest} forest tiles`);
+    });
+
     it('serialize and deserialize roundtrip', () => {
       grid.placeUnit('u1', 2, 3);
       const data = grid.serialize();
