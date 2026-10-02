@@ -2053,7 +2053,7 @@
   }
 
   function doExit() {
-    User32.DestroyWindow();
+    User32.RequestClose();
   }
 
   // -----------------------------------------------------------------------
@@ -2414,4 +2414,7 @@
   } else
     updateTitle();
 
+
+  // closing with unsaved changes asks to save them first
+  User32.SetCloseGuard(() => dirty, (done) => doSave(done), () => currentFileName);
 })();
