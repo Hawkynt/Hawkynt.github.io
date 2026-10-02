@@ -178,7 +178,9 @@
       /** @type {uint8[]|null} */
       this._iv = null;
 
+      /** @type {uint32[]} */
       this.R = OpCodes.CreateArray(WORDS, 0);
+      /** @type {uint32[]} */
       this.S = OpCodes.CreateArray(WORDS, 0);
       /** @type {boolean} */
       this.initialized = false;
@@ -341,7 +343,7 @@
 
       const rot0 = OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(o1, 1), 31), OpCodes.Shr32(o0, 1));
       let chi0 = OpCodes.And32(OpCodes.Xor32(o0, CT_B[0]), OpCodes.Xor32(CT_A[0], rot0));
-      chi0 &= 0xFFFFFFFE; // word 0 has no inter-word carry: its chi-term bit 0 is forced to 0
+      chi0 = OpCodes.And32(chi0, 0xFFFFFFFE); // word 0 has no inter-word carry: its chi-term bit 0 is forced to 0
       const n0 = OpCodes.Xor32(OpCodes.Shl32(o0, 1), chi0);
 
       const rot1 = OpCodes.Or32(OpCodes.Shl32(OpCodes.And32(o2, 1), 31), OpCodes.Shr32(o1, 1));
@@ -358,7 +360,7 @@
 
       const rot4 = OpCodes.Shr32(o4, 1); // no 6th word to rotate a bit in from
       let chi4 = OpCodes.And32(OpCodes.Xor32(o4, CT_B[4]), OpCodes.Xor32(CT_A[4], rot4));
-      chi4 &= 0x7FFFFFFF;
+      chi4 = OpCodes.And32(chi4, 0x7FFFFFFF);
       const n4 = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Shl32(o4, 1), chi4), OpCodes.And32(OpCodes.Shr32(o3, 31), 1));
 
       S[0] = n0; S[1] = n1; S[2] = n2; S[3] = n3; S[4] = n4;

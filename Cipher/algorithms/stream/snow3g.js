@@ -47,9 +47,9 @@
 
   // ===== ALGORITHM IMPLEMENTATION =====
 
-  // SNOW 3G S-box S1 (3GPP specification)
+  // SNOW 3G S-box SR (3GPP TS 35.216; the AES S-box), the byte S-box beneath S1
   /** @type {uint8[]} */
-  const SNOW3G_S1 = [
+  const SNOW3G_SR = [
       0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76,
       0xCA, 0x82, 0xC9, 0x7D, 0xFA, 0x59, 0x47, 0xF0, 0xAD, 0xD4, 0xA2, 0xAF, 0x9C, 0xA4, 0x72, 0xC0,
       0xB7, 0xFD, 0x93, 0x26, 0x36, 0x3F, 0xF7, 0xCC, 0x34, 0xA5, 0xE5, 0xF1, 0x71, 0xD8, 0x31, 0x15,
@@ -68,26 +68,84 @@
       0x8C, 0xA1, 0x89, 0x0D, 0xBF, 0xE6, 0x42, 0x68, 0x41, 0x99, 0x2D, 0x0F, 0xB0, 0x54, 0xBB, 0x16
   ];
 
-  // SNOW 3G S-box S2 (3GPP specification)
+  // SNOW 3G S-box SQ (3GPP TS 35.216), the byte S-box beneath S2
   /** @type {uint8[]} */
-  const SNOW3G_S2 = [
-      0xE2, 0x4E, 0x54, 0xFC, 0x94, 0xC2, 0x4A, 0xCC, 0x62, 0x0D, 0x6A, 0x46, 0x3C, 0x4D, 0x8B, 0xD1,
-      0x5E, 0xFA, 0x64, 0xCB, 0xB4, 0x97, 0xBE, 0x2B, 0xBC, 0x77, 0x2E, 0x03, 0xD3, 0x19, 0x59, 0xC1,
-      0x1D, 0x06, 0x41, 0x6B, 0x55, 0xF0, 0x99, 0x69, 0xEA, 0x9C, 0x18, 0xAE, 0x63, 0xDF, 0xE7, 0xBB,
-      0x00, 0x73, 0x66, 0xFB, 0x96, 0x4C, 0x85, 0xE4, 0x3A, 0x09, 0x45, 0xAA, 0x0F, 0xEE, 0x10, 0xEB,
-      0x2D, 0x7F, 0xF4, 0x29, 0xAC, 0xCF, 0xAD, 0x91, 0x8D, 0x78, 0xC8, 0x95, 0xF9, 0x2F, 0xCE, 0xCD,
-      0x08, 0x7A, 0x88, 0x38, 0x5C, 0x83, 0x2A, 0x28, 0x47, 0xDB, 0xB8, 0xC7, 0x93, 0xA4, 0x12, 0x53,
-      0xFF, 0x87, 0x0E, 0x31, 0x36, 0x21, 0x58, 0x48, 0x01, 0x8E, 0x37, 0x74, 0x32, 0xCA, 0xE9, 0xB1,
-      0xB7, 0xAB, 0x0C, 0xD7, 0xC4, 0x56, 0x42, 0x26, 0x07, 0x98, 0x60, 0xD9, 0xB6, 0xB9, 0x11, 0x40,
-      0xEC, 0x20, 0x8C, 0xBD, 0xA0, 0xC9, 0x84, 0x04, 0x49, 0x23, 0xF1, 0x4F, 0x50, 0x1F, 0x13, 0xDC,
-      0xD8, 0xC0, 0x9E, 0x57, 0xE3, 0xC3, 0x7B, 0x65, 0x3B, 0x02, 0x8F, 0x3E, 0xE8, 0x25, 0x92, 0xE5,
-      0x15, 0xDD, 0xFD, 0x17, 0xA9, 0xBF, 0xD4, 0x9A, 0x7E, 0xC5, 0x39, 0x67, 0xFE, 0x76, 0x9D, 0x43,
-      0xA7, 0xE1, 0xD0, 0xF5, 0x68, 0xF2, 0x1B, 0x34, 0x70, 0x05, 0xA3, 0x8A, 0xD5, 0x79, 0x86, 0xA8,
-      0x30, 0xC6, 0x51, 0x4B, 0x1E, 0xA6, 0x27, 0xF6, 0x35, 0xD2, 0x6E, 0x24, 0x16, 0x82, 0x5F, 0xDA,
-      0xE6, 0x75, 0xA2, 0xEF, 0x2C, 0xB2, 0x1C, 0x9F, 0x5D, 0x6F, 0x80, 0x0A, 0x72, 0x44, 0x9B, 0x6C,
-      0x90, 0x0B, 0x5B, 0x33, 0x7D, 0x5A, 0x52, 0xF3, 0x61, 0xA1, 0xF7, 0xB0, 0xD6, 0x3F, 0x7C, 0x6D,
-      0xED, 0x14, 0xE0, 0xA5, 0x3D, 0x22, 0xB3, 0xF8, 0x89, 0xDE, 0x71, 0x1A, 0xAF, 0xBA, 0xB5, 0x81
+  const SNOW3G_SQ = [
+      0x25, 0x24, 0x73, 0x67, 0xD7, 0xAE, 0x5C, 0x30, 0xA4, 0xEE, 0x6E, 0xCB, 0x7D, 0xB5, 0x82, 0xDB,
+      0xE4, 0x8E, 0x48, 0x49, 0x4F, 0x5D, 0x6A, 0x78, 0x70, 0x88, 0xE8, 0x5F, 0x5E, 0x84, 0x65, 0xE2,
+      0xD8, 0xE9, 0xCC, 0xED, 0x40, 0x2F, 0x11, 0x28, 0x57, 0xD2, 0xAC, 0xE3, 0x4A, 0x15, 0x1B, 0xB9,
+      0xB2, 0x80, 0x85, 0xA6, 0x2E, 0x02, 0x47, 0x29, 0x07, 0x4B, 0x0E, 0xC1, 0x51, 0xAA, 0x89, 0xD4,
+      0xCA, 0x01, 0x46, 0xB3, 0xEF, 0xDD, 0x44, 0x7B, 0xC2, 0x7F, 0xBE, 0xC3, 0x9F, 0x20, 0x4C, 0x64,
+      0x83, 0xA2, 0x68, 0x42, 0x13, 0xB4, 0x41, 0xCD, 0xBA, 0xC6, 0xBB, 0x6D, 0x4D, 0x71, 0x21, 0xF4,
+      0x8D, 0xB0, 0xE5, 0x93, 0xFE, 0x8F, 0xE6, 0xCF, 0x43, 0x45, 0x31, 0x22, 0x37, 0x36, 0x96, 0xFA,
+      0xBC, 0x0F, 0x08, 0x52, 0x1D, 0x55, 0x1A, 0xC5, 0x4E, 0x23, 0x69, 0x7A, 0x92, 0xFF, 0x5B, 0x5A,
+      0xEB, 0x9A, 0x1C, 0xA9, 0xD1, 0x7E, 0x0D, 0xFC, 0x50, 0x8A, 0xB6, 0x62, 0xF5, 0x0A, 0xF8, 0xDC,
+      0x03, 0x3C, 0x0C, 0x39, 0xF1, 0xB8, 0xF3, 0x3D, 0xF2, 0xD5, 0x97, 0x66, 0x81, 0x32, 0xA0, 0x00,
+      0x06, 0xCE, 0xF6, 0xEA, 0xB7, 0x17, 0xF7, 0x8C, 0x79, 0xD6, 0xA7, 0xBF, 0x8B, 0x3F, 0x1F, 0x53,
+      0x63, 0x75, 0x35, 0x2C, 0x60, 0xFD, 0x27, 0xD3, 0x94, 0xA5, 0x7C, 0xA1, 0x05, 0x58, 0x2D, 0xBD,
+      0xD9, 0xC7, 0xAF, 0x6B, 0x54, 0x0B, 0xE0, 0x38, 0x04, 0xC8, 0x9D, 0xE7, 0x14, 0xB1, 0x87, 0x9C,
+      0xDF, 0x6F, 0xF9, 0xDA, 0x2A, 0xC4, 0x59, 0x16, 0x74, 0x91, 0xAB, 0x26, 0x61, 0x76, 0x34, 0x2B,
+      0xAD, 0x99, 0xFB, 0x72, 0xEC, 0x33, 0x12, 0xDE, 0x98, 0x3B, 0xC0, 0x9B, 0x3E, 0x18, 0x10, 0x3A,
+      0x56, 0xE1, 0x77, 0xC9, 0x1E, 0x9E, 0x95, 0xA3, 0x90, 0x19, 0xA8, 0x6C, 0x09, 0xD0, 0xF0, 0x86
   ];
+
+  /**
+   * MULx: the byte v multiplied by x in GF(2^8), reduced with the constant c
+   * @param {uint8} v
+   * @param {uint8} c
+   * @returns {uint8}
+   */
+  function mulX(v, c) {
+    return OpCodes.And8(v, 0x80) !== 0 ? OpCodes.Xor8(OpCodes.Shl8(v, 1), c) : OpCodes.Shl8(v, 1);
+  }
+
+  /**
+   * MULxPOW: the byte v multiplied by x^i in GF(2^8), reduced with the constant c
+   * @param {uint8} v
+   * @param {int32} i
+   * @param {uint8} c
+   * @returns {uint8}
+   */
+  function mulXPow(v, i, c) {
+    let r = v;
+    for (let k = 0; k < i; k++) r = mulX(r, c);
+    return r;
+  }
+
+  // MULalpha and DIValpha of the LFSR feedback, tabulated over their byte argument
+  /** @type {uint32[]} */
+  const MUL_ALPHA = [];
+  /** @type {uint32[]} */
+  const DIV_ALPHA = [];
+  for (let c = 0; c < 256; c++) {
+    MUL_ALPHA.push(OpCodes.Pack32BE(mulXPow(c, 23, 0xA9), mulXPow(c, 245, 0xA9), mulXPow(c, 48, 0xA9), mulXPow(c, 239, 0xA9)));
+    DIV_ALPHA.push(OpCodes.Pack32BE(mulXPow(c, 16, 0xA9), mulXPow(c, 39, 0xA9), mulXPow(c, 6, 0xA9), mulXPow(c, 64, 0xA9)));
+  }
+
+  /**
+   * The S1 and S2 word substitutions: each byte through the S-box box, then the
+   * column mix of the specification with reduction constant c
+   * (S1: SR with 0x1B, S2: SQ with 0x69)
+   * @param {uint32} w
+   * @param {uint8[]} box
+   * @param {uint8} c
+   * @returns {uint32}
+   */
+  function sBoxWord(w, box, c) {
+    const s0 = box[OpCodes.GetByte(w, 3)];
+    const s1 = box[OpCodes.GetByte(w, 2)];
+    const s2 = box[OpCodes.GetByte(w, 1)];
+    const s3 = box[OpCodes.GetByte(w, 0)];
+    const m0 = mulX(s0, c);
+    const m1 = mulX(s1, c);
+    const m2 = mulX(s2, c);
+    const m3 = mulX(s3, c);
+    const r0 = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(m0, s1), s2), m3), s3);
+    const r1 = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(m0, s0), m1), s2), s3);
+    const r2 = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(s0, m1), s1), m2), s3);
+    const r3 = OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(OpCodes.Xor8(s0, s1), m2), s2), m3);
+    return OpCodes.Pack32BE(r0, r1, r2, r3);
+  }
 
   /**
  * SNOW3GAlgorithm - Stream cipher implementation
@@ -121,6 +179,7 @@
       // Documentation links
       this.documentation = [
         new LinkItem("3GPP TS 35.216: SNOW 3G Specification", "https://www.3gpp.org/ftp/Specs/archive/35_series/35.216/"),
+        new LinkItem("3GPP TS 35.217: Implementors' Test Data", "https://www.3gpp.org/ftp/Specs/archive/35_series/35.217/"),
         new LinkItem("ETSI/SAGE Specification", "https://www.gsma.com/aboutus/wp-content/uploads/2014/12/snow3gspec.pdf"),
         new LinkItem("Wikipedia: SNOW", "https://en.wikipedia.org/wiki/SNOW")
       ];
@@ -138,15 +197,40 @@
         )
       ];
 
-      // Official 3GPP TS 35.216 test vectors
+      // 3GPP TS 35.217 (UEA2/UIA2 Document 3: Implementors' Test Data), SNOW 3G test sets:
+      // keystream words z1 and z2, as the encryption of eight zero bytes
       this.tests = [
         {
-          text: "3GPP TS 35.216 Test Vector 1",
-          uri: "https://www.3gpp.org/ftp/Specs/archive/35_series/35.216/",
+          text: "3GPP TS 35.217 SNOW 3G Test Set 1",
+          uri: "https://www.3gpp.org/ftp/Specs/archive/35_series/35.217/",
           input: OpCodes.Hex8ToBytes("0000000000000000"),
-          key: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          iv: OpCodes.Hex8ToBytes("00000000000000000000000000000000"),
-          expected: OpCodes.Hex8ToBytes("13b2655e88d404bb")
+          key: OpCodes.Hex8ToBytes("2BD6459F82C5B300952C49104881FF48"),
+          iv: OpCodes.Hex8ToBytes("EA024714AD5C4D84DF1F9B251C0BF45F"),
+          expected: OpCodes.Hex8ToBytes("ABEE97047AC31373")
+        },
+        {
+          text: "3GPP TS 35.217 SNOW 3G Test Set 2",
+          uri: "https://www.3gpp.org/ftp/Specs/archive/35_series/35.217/",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("8CE33E2CC3C0B5FC1F3DE8A6DC66B1F3"),
+          iv: OpCodes.Hex8ToBytes("D3C5D592327FB11CDE551988CEB2F9B7"),
+          expected: OpCodes.Hex8ToBytes("EFF8A342F751480F")
+        },
+        {
+          text: "3GPP TS 35.217 SNOW 3G Test Set 3",
+          uri: "https://www.3gpp.org/ftp/Specs/archive/35_series/35.217/",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("4035C6680AF8C6D1A8FF8667B1714013"),
+          iv: OpCodes.Hex8ToBytes("62A540981BA6F9B74592B0E78690F71B"),
+          expected: OpCodes.Hex8ToBytes("A8C874A97AE7C4F8")
+        },
+        {
+          text: "3GPP TS 35.217 SNOW 3G Test Set 4",
+          uri: "https://www.3gpp.org/ftp/Specs/archive/35_series/35.217/",
+          input: OpCodes.Hex8ToBytes("0000000000000000"),
+          key: OpCodes.Hex8ToBytes("0DED7263109CF92E3352255A140E0F76"),
+          iv: OpCodes.Hex8ToBytes("6B68079A41A7C4C91BEFD79F7FDCC233"),
+          expected: OpCodes.Hex8ToBytes("D712C05CA937C2A6")
         }
       ];
     }
@@ -345,37 +429,47 @@
       return output;
     }
 
-    // Initialize SNOW 3G with key and IV
+    // Initialize SNOW 3G with key and IV (initialisation mode of the specification)
     _initialize() {
       if (!this._key || !this._iv) return;
 
-      // Convert key and IV to 32-bit words
-      const kwords = this._bytesToWords(this._key);
-      const vwords = this._bytesToWords(this._iv);
+      // Key words k0..k3 and IV words IV0..IV3, big-endian, in byte order
+      const k = this._bytesToWords(this._key);
+      const iv = this._bytesToWords(this._iv);
+      /** @type {uint32} */
+      const ONES = 0xFFFFFFFF;
 
-      // Initialize LFSR according to SNOW 3G specification
-      for (let i = 0; i < 16; i++) {
-        if (i < 4) {
-          this.LFSR[i] = OpCodes.Xor32(kwords[3 - i], vwords[3 - i]);
-        } else if (i < 8) {
-          this.LFSR[i] = kwords[11 - i];
-        } else if (i < 12) {
-          this.LFSR[i] = OpCodes.Xor32(kwords[7 - (i - 8)], vwords[7 - (i - 8)]);
-        } else {
-          this.LFSR[i] = kwords[19 - i];
-        }
-      }
+      const s = this.LFSR;
+      s[15] = OpCodes.Xor32(k[3], iv[0]);
+      s[14] = k[2];
+      s[13] = k[1];
+      s[12] = OpCodes.Xor32(k[0], iv[1]);
+      s[11] = OpCodes.Xor32(k[3], ONES);
+      s[10] = OpCodes.Xor32(OpCodes.Xor32(k[2], ONES), iv[2]);
+      s[9] = OpCodes.Xor32(OpCodes.Xor32(k[1], ONES), iv[3]);
+      s[8] = OpCodes.Xor32(k[0], ONES);
+      s[7] = k[3];
+      s[6] = k[2];
+      s[5] = k[1];
+      s[4] = k[0];
+      s[3] = OpCodes.Xor32(k[3], ONES);
+      s[2] = OpCodes.Xor32(k[2], ONES);
+      s[1] = OpCodes.Xor32(k[1], ONES);
+      s[0] = OpCodes.Xor32(k[0], ONES);
 
-      // Initialize FSM registers
       this.R1 = 0;
       this.R2 = 0;
       this.R3 = 0;
 
-      // Run initialization phase (32 clocks without output)
+      // 32 clocks with the FSM output fed into the LFSR
       for (let i = 0; i < 32; i++) {
         const f = this._clockFSM();
         this._clockLFSR(f);
       }
+
+      // Keystream mode starts with one clock whose FSM output is discarded
+      this._clockFSM();
+      this._clockLFSR(0);
 
       this.initialized = true;
     }
@@ -389,116 +483,58 @@
       /** @type {uint32[]} */
       const words = [];
       for (let i = 0; i < bytes.length; i += 4) {
-        const word = OpCodes.Pack32BE(bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]);
-        words.push(OpCodes.ToUint32(word));
+        words.push(OpCodes.Pack32BE(bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]));
       }
       return words;
     }
 
-    // Generate one keystream word
+    // Generate one keystream word: z = F XOR s0, then clock the LFSR in keystream mode
     /**
      * @returns {uint32}
      */
     _generateKeyword() {
       const F = this._clockFSM();
-      this._clockLFSR(0); // Clock LFSR with 0 during keystream generation
-      return OpCodes.Xor32(F, this.LFSR[0]);
+      const z = OpCodes.Xor32(F, this.LFSR[0]);
+      this._clockLFSR(0);
+      return z;
     }
 
-    // FSM function
+    // Clock the FSM: F = (s15 + R1) XOR R2; R1 = R2 + (R3 XOR s5), R2 = S1(R1), R3 = S2(R2)
     /**
      * @returns {uint32}
      */
     _clockFSM() {
-      const F = OpCodes.Add32(this.LFSR[15], this.R1);
+      const F = OpCodes.Xor32(OpCodes.Add32(this.LFSR[15], this.R1), this.R2);
       const r = OpCodes.Add32(this.R2, OpCodes.Xor32(this.R3, this.LFSR[5]));
 
-      this.R3 = OpCodes.ToUint32(this._S2_T(this.R2));
-      this.R2 = OpCodes.ToUint32(this._S1_T(this.R1));
+      this.R3 = sBoxWord(this.R2, SNOW3G_SQ, 0x69);
+      this.R2 = sBoxWord(this.R1, SNOW3G_SR, 0x1B);
       this.R1 = r;
 
       return F;
     }
 
-    // LFSR function
+    // Clock the LFSR: v = s0*alpha XOR s2 XOR s11*alpha^-1 XOR F (F = 0 in keystream mode)
     /**
      * @param {uint32} F
      */
     _clockLFSR(F) {
-      const v = OpCodes.ToUint32(
-        OpCodes.Xor32(
-          OpCodes.Xor32(
-            OpCodes.Xor32(
-              OpCodes.Xor32(this.LFSR[0], this._mulAlpha(this.LFSR[2])),
-              this.LFSR[11]
-            ),
-            this._mulAlpha(this.LFSR[15])
-          ),
-          F
-        )
-      );
+      const s = this.LFSR;
+      const s0Alpha = OpCodes.Xor32(OpCodes.Shl32(s[0], 8), MUL_ALPHA[OpCodes.GetByte(s[0], 3)]);
+      const s11DivAlpha = OpCodes.Xor32(OpCodes.Shr32(s[11], 8), DIV_ALPHA[OpCodes.GetByte(s[11], 0)]);
+      const v = OpCodes.Xor32(OpCodes.Xor32(OpCodes.Xor32(s0Alpha, s[2]), s11DivAlpha), F);
 
-      // Shift LFSR
       for (let i = 0; i < 15; i++) {
-        this.LFSR[i] = this.LFSR[i + 1];
+        s[i] = s[i + 1];
       }
-      this.LFSR[15] = v;
-    }
-
-    // S-box substitution S1
-    /**
-     * @param {uint32} w
-     * @returns {uint32}
-     */
-    _S1_T(w) {
-      return OpCodes.ToUint32(
-        OpCodes.Or32(
-          OpCodes.Or32(
-            OpCodes.Or32(
-              OpCodes.Shl32(SNOW3G_S1[OpCodes.And32(OpCodes.Shr32(w, 24), 0xFF)], 24),
-              OpCodes.Shl32(SNOW3G_S1[OpCodes.And32(OpCodes.Shr32(w, 16), 0xFF)], 16)
-            ),
-            OpCodes.Shl32(SNOW3G_S1[OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF)], 8)
-          ),
-          SNOW3G_S1[OpCodes.And32(w, 0xFF)]
-        )
-      );
-    }
-
-    // S-box substitution S2
-    /**
-     * @param {uint32} w
-     * @returns {uint32}
-     */
-    _S2_T(w) {
-      return OpCodes.ToUint32(
-        OpCodes.Or32(
-          OpCodes.Or32(
-            OpCodes.Or32(
-              OpCodes.Shl32(SNOW3G_S2[OpCodes.And32(OpCodes.Shr32(w, 24), 0xFF)], 24),
-              OpCodes.Shl32(SNOW3G_S2[OpCodes.And32(OpCodes.Shr32(w, 16), 0xFF)], 16)
-            ),
-            OpCodes.Shl32(SNOW3G_S2[OpCodes.And32(OpCodes.Shr32(w, 8), 0xFF)], 8)
-          ),
-          SNOW3G_S2[OpCodes.And32(w, 0xFF)]
-        )
-      );
-    }
-
-    // Multiplication by alpha in GF(2^32)
-    /**
-     * @param {uint32} w
-     * @returns {uint32}
-     */
-    _mulAlpha(w) {
-      return OpCodes.ToUint32(OpCodes.Or32(OpCodes.Shl32(w, 8), OpCodes.Shr32(w, 24)));
+      s[15] = v;
     }
   }
 
   // SNOW 3G S-boxes (from 3GPP specification)
-  SNOW3GAlgorithm.S1 = SNOW3G_S1;
+  SNOW3GAlgorithm.S1 = SNOW3G_SR;
 
-  SNOW3GAlgorithm.S2 = SNOW3G_S2;
+  SNOW3GAlgorithm.S2 = SNOW3G_SQ;
 
   // Register the algorithm
   const algorithmInstance = new SNOW3GAlgorithm();
