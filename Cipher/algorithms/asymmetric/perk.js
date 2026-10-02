@@ -1068,6 +1068,7 @@
    */
   function rankPermutation(p, P) {
     const counts = zeros(Math.pow(2, P.rankBits + 1) - 1);
+    /** @type {BigInt} */
     let code = 0n;
 
     for (let i = 0; i < P.n1; i++) {
@@ -1102,6 +1103,7 @@
    * @returns {int32[]|null} the permutation, or null when the rank is too big
    */
   function unrankPermutation(bytes, offset, P) {
+    /** @type {BigInt} */
     let code = 0n;
     for (let i = P.rankedBytes - 1; i >= 0; i--) {
       code = OpCodes.OrN(OpCodes.ShiftLn(code, 8), BigInt(OpCodes.And8(bytes[offset + i], 0xFF)));
