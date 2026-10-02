@@ -102,19 +102,25 @@
 
     // Apply key-dependent permutation using a deterministic shuffle based on key
     // This is a plausible implementation of "key-dependent S-box" concept
-    // Signed 32-bit seed, exactly as JavaScript computes it (the second LCG
-    // step below multiplies beyond 2^53 and is kept as written).
+    /** @type {uint32} */
+    let mix = 0;
+    for (let i = 0; i < keyBytes.length; ++i)
+      mix = OpCodes.Add32(OpCodes.Mul32(mix, 31), keyBytes[i]);
+
+    // The LCG starts from the mixed key read as a signed 32-bit integer and
+    // forms each product in double precision: products beyond 2^53 are
+    // rounded before the low 31 bits are kept, and the permutation depends
+    // on that rounding.
     /** @type {int32} */
-    let seed = 0;
-    for (let i = 0; i < keyBytes.length; ++i) {
-      /** @type {int32} */
-      const keyByte = keyBytes[i];
-      seed = (seed * 31 + keyByte)&0xffffffff;
-    }
+    let seed = OpCodes.ToInt(mix);
+    /** @type {float64} */
+    const LCG_MULTIPLIER = 1103515245;
 
     // Fisher-Yates shuffle with key-based PRNG
     for (let i = 255; i > 0; --i) {
-      seed = (seed * 1103515245 + 12345)&0x7fffffff;
+      /** @type {float64} */
+      const product = LCG_MULTIPLIER * seed + 12345;
+      seed = OpCodes.ToInt(OpCodes.And32(product, 0x7fffffff));
       const j = seed % (i + 1);
       const temp = sbox[i];
       sbox[i] = sbox[j];
@@ -137,13 +143,10 @@
    * @returns {int32[]} Row shift amounts (row 0 is 0)
    */
   function generateKeyDependentShifts(keyBytes) {
-    /** @type {int32} */
+    /** @type {uint32} */
     let seed = 0;
-    for (let i = 0; i < keyBytes.length; ++i) {
-      /** @type {int32} */
-      const keyByte = keyBytes[i];
-      seed = (seed * 37 + keyByte)&0xffffffff;
-    }
+    for (let i = 0; i < keyBytes.length; ++i)
+      seed = OpCodes.Add32(OpCodes.Mul32(seed, 37), keyBytes[i]);
 
     // Generate shift amounts for each row (keeping row 0 at 0)
     // Extract different bytes from seed for variety using OpCodes

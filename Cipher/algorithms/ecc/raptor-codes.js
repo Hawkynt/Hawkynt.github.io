@@ -237,6 +237,8 @@
       this.preCodeMatrix = null;      // LDPC pre-code matrix
       /** @type {BipartiteGraph} */
       this.ltGraph = null;            // LT code graph
+      /** @type {int32} */
+      this.intermediateSymbolsCount = 0; // Set when encoding is initialised
       /** @type {uint8[]} */
       this.intermediateSymbols = null; // Symbols after pre-coding
       /** @type {PerformanceProfiler} */
@@ -575,8 +577,10 @@
       // For systematic Raptor codes, the systematic part gives us the source symbols directly
       // The repair symbols help recover any lost systematic symbols
 
-      // In this simplified implementation, assume systematic reception
-      const n = this.intermediateSymbolsCount;
+      // In this simplified implementation, assume systematic reception.
+      // A decoder that never initialised encoding has no count of its own;
+      // it holds at least the k systematic symbols.
+      const n = Math.max(this.intermediateSymbolsCount, this.k);
       /** @type {uint8[]} */
       const intermediate = OpCodes.CreateArray(n, 0);
 

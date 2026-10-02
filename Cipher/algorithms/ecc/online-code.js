@@ -358,6 +358,8 @@
       this.outerCodeGraph = null;     // Outer code bipartite graph
       /** @type {BipartiteGraph} */
       this.innerCodeGraph = null;     // Inner code (LT-like) bipartite graph
+      /** @type {int32} */
+      this.auxiliaryCount = 0;        // Auxiliary symbol count, set when encoding is initialised
       /** @type {uint8[]} */
       this.auxiliarySymbols = null;   // Auxiliary symbols from outer code
       /** @type {PerformanceProfiler} */

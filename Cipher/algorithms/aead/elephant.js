@@ -663,7 +663,7 @@
       /** @type {int32} */
       var rv = 0;
       /** @type {uint8[]} */
-      var outputMessage = new Array(this.blockSize);
+      var outputMessage = OpCodes.CreateArray(this.blockSize, 0);
 
       for (var i = this.nbIts; i < nbIt; ++i) {
         /** @type {int32} */

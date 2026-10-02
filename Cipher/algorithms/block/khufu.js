@@ -451,35 +451,35 @@
         // Pattern: 16, 16, 8, 8, 16, 16, 24, 24
 
         // Round 1: Rotate L by 16
-        R ^= sbox[OpCodes.ToByte(L)];
+        R = OpCodes.Xor32(R, sbox[OpCodes.ToByte(L)]);
         L = OpCodes.RotR32(L, 16);
 
         // Round 2: Rotate R by 16
-        L ^= sbox[OpCodes.ToByte(R)];
+        L = OpCodes.Xor32(L, sbox[OpCodes.ToByte(R)]);
         R = OpCodes.RotR32(R, 16);
 
         // Round 3: Rotate L by 8
-        R ^= sbox[OpCodes.ToByte(L)];
+        R = OpCodes.Xor32(R, sbox[OpCodes.ToByte(L)]);
         L = OpCodes.RotR32(L, 8);
 
         // Round 4: Rotate R by 8
-        L ^= sbox[OpCodes.ToByte(R)];
+        L = OpCodes.Xor32(L, sbox[OpCodes.ToByte(R)]);
         R = OpCodes.RotR32(R, 8);
 
         // Round 5: Rotate L by 16
-        R ^= sbox[OpCodes.ToByte(L)];
+        R = OpCodes.Xor32(R, sbox[OpCodes.ToByte(L)]);
         L = OpCodes.RotR32(L, 16);
 
         // Round 6: Rotate R by 16
-        L ^= sbox[OpCodes.ToByte(R)];
+        L = OpCodes.Xor32(L, sbox[OpCodes.ToByte(R)]);
         R = OpCodes.RotR32(R, 16);
 
         // Round 7: Rotate L by 24
-        R ^= sbox[OpCodes.ToByte(L)];
+        R = OpCodes.Xor32(R, sbox[OpCodes.ToByte(L)]);
         L = OpCodes.RotR32(L, 24);
 
         // Round 8: Rotate R by 24
-        L ^= sbox[OpCodes.ToByte(R)];
+        L = OpCodes.Xor32(L, sbox[OpCodes.ToByte(R)]);
         R = OpCodes.RotR32(R, 24);
       }
 
@@ -518,35 +518,35 @@
 
         // Reverse Round 8: Rotate R by -24 (left by 24)
         R = OpCodes.RotL32(R, 24);
-        L ^= sbox[OpCodes.ToByte(R)];
+        L = OpCodes.Xor32(L, sbox[OpCodes.ToByte(R)]);
 
         // Reverse Round 7: Rotate L by -24 (left by 24)
         L = OpCodes.RotL32(L, 24);
-        R ^= sbox[OpCodes.ToByte(L)];
+        R = OpCodes.Xor32(R, sbox[OpCodes.ToByte(L)]);
 
         // Reverse Round 6: Rotate R by -16 (left by 16)
         R = OpCodes.RotL32(R, 16);
-        L ^= sbox[OpCodes.ToByte(R)];
+        L = OpCodes.Xor32(L, sbox[OpCodes.ToByte(R)]);
 
         // Reverse Round 5: Rotate L by -16 (left by 16)
         L = OpCodes.RotL32(L, 16);
-        R ^= sbox[OpCodes.ToByte(L)];
+        R = OpCodes.Xor32(R, sbox[OpCodes.ToByte(L)]);
 
         // Reverse Round 4: Rotate R by -8 (left by 8)
         R = OpCodes.RotL32(R, 8);
-        L ^= sbox[OpCodes.ToByte(R)];
+        L = OpCodes.Xor32(L, sbox[OpCodes.ToByte(R)]);
 
         // Reverse Round 3: Rotate L by -8 (left by 8)
         L = OpCodes.RotL32(L, 8);
-        R ^= sbox[OpCodes.ToByte(L)];
+        R = OpCodes.Xor32(R, sbox[OpCodes.ToByte(L)]);
 
         // Reverse Round 2: Rotate R by -16 (left by 16)
         R = OpCodes.RotL32(R, 16);
-        L ^= sbox[OpCodes.ToByte(R)];
+        L = OpCodes.Xor32(L, sbox[OpCodes.ToByte(R)]);
 
         // Reverse Round 1: Rotate L by -16 (left by 16)
         L = OpCodes.RotL32(L, 16);
-        R ^= sbox[OpCodes.ToByte(L)];
+        R = OpCodes.Xor32(R, sbox[OpCodes.ToByte(L)]);
       }
 
       // Reverse pre-whitening
