@@ -1259,7 +1259,7 @@
 
       if (this.#overworldMap) {
         const tile = (c, r) => this.#overworldMap.getTile(c, r);
-        this.#renderer.drawInfiniteMap(tile, this.#dimension);
+        this.#renderer.drawInfiniteMap(tile, this.#dimension, (c, r) => this.#overworldMap.groundAt(c, r));
         this.#renderer.drawOverworldAmbience(tile, this.#screenTime);
       }
 
@@ -1493,7 +1493,7 @@
           origin.col * TILE_SIZE + TILE_SIZE / 2,
           origin.row * TILE_SIZE + TILE_SIZE / 2
         );
-        this.#renderer.drawInfiniteMap((c, r) => this.#overworldMap.getTile(c, r), this.#dimension);
+        this.#renderer.drawInfiniteMap((c, r) => this.#overworldMap.getTile(c, r), this.#dimension, (c, r) => this.#overworldMap.groundAt(c, r));
 
         const cam = this.#renderer.camera;
         const tileRect = this.#overworldMap.extractTileRect(origin.col, origin.row, eng.grid.cols, eng.grid.rows);
