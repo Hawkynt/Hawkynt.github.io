@@ -602,7 +602,7 @@
       /** @type {boolean[]} */
       const symbolStatus = []; // false = unknown, true = decoded
       for (let i = 0; i < this.k; ++i) {
-        decoded.push(null);
+        decoded.push(0); // a placeholder until symbolStatus marks it decoded
         symbolStatus.push(false);
       }
 
