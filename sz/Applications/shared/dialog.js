@@ -30,6 +30,9 @@
 
   let uid = 0;
 
+  // Open dialogs, topmost last: only the topmost visible one handles keys
+  const openStack = [];
+
   const Dialog = {
 
     show(dialogId) {
@@ -57,6 +60,9 @@
 
       return new Promise((resolve) => {
         function done(result) {
+          const at = openStack.indexOf(overlay);
+          if (at >= 0)
+            openStack.splice(at, 1);
           overlay.classList.remove('visible');
           overlay.hidden = true;
           overlay.removeEventListener('click', onClick);
@@ -75,6 +81,9 @@
         }
         function onKey(e) {
           if (!overlay.classList.contains('visible'))
+            return;
+          const shown = openStack.filter(o => o.classList.contains('visible'));
+          if (shown[shown.length - 1] !== overlay)
             return;
           if (e.key === 'Escape') {
             e.preventDefault();
@@ -111,6 +120,9 @@
           done(btn.dataset.result);
         }
         overlay._dialogDone = done;
+        if (openStack.indexOf(overlay) >= 0)
+          openStack.splice(openStack.indexOf(overlay), 1);
+        openStack.push(overlay);
         overlay.addEventListener('click', onClick);
         document.addEventListener('keydown', onKey, true);
       });
