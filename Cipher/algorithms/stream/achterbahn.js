@@ -110,7 +110,7 @@
    * @returns {uint8}
    */
   function bitAt(bytes, i) {
-    return OpCodes.GetBit(bytes[Math.floor(i / 8)], i % 8);
+    return OpCodes.GetBit(bytes[Math.floor(i / 8)], i % 8) ? 1 : 0;
   }
 
   /**
@@ -386,7 +386,10 @@
       /** @type {int32} */
       const keyBits = key.length * 8;
       this.active = key.length > 10 ? REGISTERS_128 : REGISTERS_80;
-      this.registers = REGISTER_LENGTHS.map(n => OpCodes.CreateArray(n, 0));
+      /** @type {uint8[][]} */
+      const registers = [];
+      for (let r = 0; r < REGISTER_LENGTHS.length; r++) registers.push(OpCodes.CreateArray(REGISTER_LENGTHS[r], 0));
+      this.registers = registers;
 
       // Steps 1 and 2: the first key bits fill each register, the rest are fed in
       for (let k = 0; k < this.active.length; k++) {
