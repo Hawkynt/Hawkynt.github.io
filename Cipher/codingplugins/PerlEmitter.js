@@ -221,6 +221,23 @@ sub _FrameworkEncodeLength {
     }
     return @encoded;
 }
+sub _JsClz32 {
+    my $value = int($_[0] // 0) & 0xFFFFFFFF;
+    my $count = 32;
+    while ($value) { --$count; $value >>= 1; }
+    return $count;
+}
+sub _JsPad {
+    my ($atStart, $string, $targetLength, $padString) = @_;
+    $string = '' if !defined($string);
+    $padString = ' ' if !defined($padString);
+    my $missing = int($targetLength // 0) - length($string);
+    return $string if $missing <= 0 || $padString eq '';
+    my $fill = substr($padString x (int($missing / length($padString)) + 1), 0, $missing);
+    return $atStart ? $fill . $string : $string . $fill;
+}
+sub _JsByteLength { my ($view) = @_; return ref($view) eq 'ARRAY' ? scalar(@$view) : length($view // ''); }
+sub _JsFromEntries { my ($entries) = @_; return { map { ($_->[0] => $_->[1]) } @{$entries || []} }; }
 sub SpongePadBlocks {
     my ($held, $pending, $rate, $separator) = @_;
     die "SpongePadBlocks: rate must be positive\n" if !($rate > 0);

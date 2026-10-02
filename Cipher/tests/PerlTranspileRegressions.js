@@ -152,6 +152,25 @@ check('signatures: a callback declaring fewer parameters than it is passed still
     '/** @returns {int} */ function g() { return apply((a, b) => a + b); }', 'print main::g(), "\\n";'), '3');
 });
 
+// ---------------------------------------------------------------------------
+// IL node types with no Perl translation
+// ---------------------------------------------------------------------------
+const MATH_SNIPPET = '/** @param {int32} a @param {int32} b @returns {string} */\n' +
+  'function f(a, b) { const o = { x: 1, y: 2 }; delete o.x;\n' +
+  '  return [Math.trunc((a - b) / 2), Math.floor((a - b) / 2), Math.clz32(a), Math.clz32(0), o.x === undefined ? 1 : 0, o.y].join(","); }';
+check('IL: Math.trunc, Math.clz32 and delete are translated, not dropped', () => {
+  const code = transpile(MATH_SNIPPET);
+  expectNoMatch(code.slice(code.indexOf('sub f ')), /[-+=,]\s*[;)]/, 'an expression with a missing operand');
+  expectMatch(code, /delete\(\$o->\{'x'\}\)/, 'delete($o->{x})');
+  if (!hasPerl()) return 'skip';
+  // JavaScript: f(1, 8) is "-3,-4,31,32,1,2"
+  expectOutput(runPerl(MATH_SNIPPET, 'print main::f(1, 8), "\\n";'), '-3,-4,31,32,1,2');
+});
+check('modules: a module used only through qualified calls imports nothing', () => {
+  const code = transpile('/** @param {number} x @returns {number} */ function f(x) { return Math.floor(x) + Math.ceil(x); }');
+  expectMatch(code, /use POSIX \(\);/, 'use POSIX ();');
+});
+
 /**
  * PERL: run every regression case.
  * @param {object} options - { verbose }

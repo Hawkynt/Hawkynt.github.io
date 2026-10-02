@@ -838,7 +838,9 @@
           const funcList = Array.from(funcs).join(' ');
           module.pragmas.push(`use ${moduleName} qw(${funcList})`);
         } else {
-          module.pragmas.push(`use ${moduleName}`);
+          // Every call into it is qualified; importing its defaults (all of
+          // POSIX) would clash with same-named subs of the algorithm.
+          module.pragmas.push(`use ${moduleName} ()`);
         }
       }
 
@@ -6515,8 +6517,39 @@
               return result;
             }
           }
-          return new PerlCall('int', [transformedArg]);
+          // int() truncates toward zero; Math.floor rounds a negative
+          // quotient down (Math.floor(-7 / 2) is -4).
+          this.addRequiredModule('POSIX');
+          return new PerlCall(new PerlIdentifier('POSIX::floor', ''), [transformedArg]);
         }
+
+        case 'Truncate':
+          // Math.trunc rounds toward zero, as int() does
+          return new PerlCall('int', [this.transformExpression(node.argument)]);
+
+        case 'CountLeadingZeros':
+          // Math.clz32 (see the framework runtime's _JsClz32)
+          return new PerlCall(new PerlIdentifier('main::_JsClz32', ''), [this.transformExpression(node.argument)]);
+
+        case 'StringPad':
+          // str.padStart/padEnd(targetLength, padString)
+          return new PerlCall(new PerlIdentifier('main::_JsPad', ''), [
+            PerlLiteral.Number(node.method === 'padStart' ? 1 : 0),
+            this.transformExpression(node.string),
+            node.targetLength ? this.transformExpression(node.targetLength) : PerlLiteral.Number(0),
+            node.padString ? this.transformExpression(node.padString) : PerlLiteral.Undef()
+          ]);
+
+        case 'DataViewGetByteLength':
+          // A view is a byte string or an array of bytes, see 'DataViewCreation'
+          return new PerlCall(new PerlIdentifier('main::_JsByteLength', ''), [this.transformExpression(node.view)]);
+
+        case 'ObjectFromEntries':
+          return new PerlCall(new PerlIdentifier('main::_JsFromEntries', ''), [this.transformExpression(node.entries)]);
+
+        case 'DeleteExpression':
+          // delete obj[key] / delete obj.prop
+          return new PerlCall('delete', [this.transformExpression(node.argument)]);
 
         case 'Ceil':
           // ceil(x) -> POSIX::ceil(x)
