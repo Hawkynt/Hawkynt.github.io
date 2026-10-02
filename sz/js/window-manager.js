@@ -2,9 +2,6 @@
   'use strict';
   const SZ = window.SZ || (window.SZ = {});
 
-  // below this work-area width windows open maximized
-  const NARROW_SCREEN_PX = 700;
-
   class WindowManager {
     #container;
     #windows = new Map();
@@ -64,6 +61,7 @@
 
       // On a phone-sized screen a window opens over the whole work area;
       // one that cannot be maximized is at least kept on screen.
+      const NARROW_SCREEN_PX = 700;
       const areaW = this.#container.clientWidth, areaH = this.#container.clientHeight;
       if (areaW && areaW < NARROW_SCREEN_PX) {
         if (win.maximizable !== false && win.resizable !== false)
