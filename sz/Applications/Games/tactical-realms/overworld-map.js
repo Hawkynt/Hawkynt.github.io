@@ -472,9 +472,9 @@
       const baseRow = gcy * LOCATION_SPACING + rng.nextInt(3, LOCATION_SPACING - 4);
 
       const dist = Math.sqrt(gcx * gcx + gcy * gcy);
-      const locType = this.#profile
+      const locType = this.#pickPortal(gcx, gcy, dist) || (this.#profile
         ? this.#pickPlanarLocation(rng, dist)
-        : this.#pickLocationType(rng, dist, this.#regionTile(baseCol, baseRow));
+        : this.#pickLocationType(rng, dist, this.#regionTile(baseCol, baseRow)));
       const key = this.#locationKey(baseCol, baseRow);
       this.#locations.set(key, Object.freeze({ ...locType, col: baseCol, row: baseRow }));
 
@@ -583,6 +583,27 @@
       if (!P.sites.length)
         return { tile: Tile.CAMP, name: 'Wayfarer Camp', difficulty: 0 };
       return this.#site(P.sites[rng.nextInt(0, P.sites.length - 1)], dist, 0);
+    }
+
+    // Now and then a location cell holds a portal to a neighbouring plane;
+    // never right next to home on the Material Plane. Portals roll their own
+    // dice so the rest of the world stays as it was.
+    #pickPortal(gcx, gcy, dist) {
+      const P = TR.PlaneWorlds ? TR.PlaneWorlds.get(this.#plane) : null;
+      const chance = P ? P.portalChance : 0;
+      if (!TR.Portal || !chance || (!this.#profile && dist < 2))
+        return null;
+      const rng = new PRNG(hashCoords(gcx, gcy, this.#seed + 424243));
+      if (rng.next() >= chance)
+        return null;
+      const conn = TR.Portal.pickConnection(this.#plane, rng);
+      if (!conn)
+        return null;
+      const target = TR.PlaneRegistry.get(conn.targetPlane);
+      return {
+        tile: Tile.PORTAL, name: TR.Portal.nameFor(conn, target), difficulty: 0,
+        targetPlane: conn.targetPlane, portalType: conn.portalType,
+      };
     }
 
     // Towns and camps are common everywhere; dungeons get harder with
