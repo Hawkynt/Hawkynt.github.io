@@ -148,6 +148,8 @@
      ══════════════════════════════════════════════════════════════════ */
 
   const canvas = document.getElementById('gameCanvas');
+  // variants capture the pointer that started a drag; remember its id
+  canvas.addEventListener('pointerdown', (e) => { canvas.szPointerId = e.pointerId; }, true);
   const ctx = canvas.getContext('2d');
   const User32 = SZ.Dlls?.User32;
 
