@@ -14,61 +14,39 @@
  * Reference: https://www.esat.kuleuven.be/cosic/forkae/
 */
 
-(function(root, factory) {
+(function (root, factory) {
   if (typeof define === 'function' && define.amd) {
-    define([], factory);
+    // AMD
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
   } else if (typeof module === 'object' && module.exports) {
-    module.exports = factory();
+    // Node.js/CommonJS
+    module.exports = factory(
+      require('../../AlgorithmFramework'),
+      require('../../OpCodes')
+    );
   } else {
-    factory();
+    // Browser/Worker global
+    factory(root.AlgorithmFramework, root.OpCodes);
   }
-}(
-  (function() {
-    if (typeof globalThis !== 'undefined') return globalThis;
-    if (typeof window !== 'undefined') return window;
-    if (typeof global !== 'undefined') return global;
-    if (typeof self !== 'undefined') return self;
-    return this;
-  })(),
-  function() {
-    'use strict';
+}((function() {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  if (typeof self !== 'undefined') return self;
+  throw new Error('Unable to locate global object');
+})(), function (AlgorithmFramework, OpCodes) {
+  'use strict';
 
-    // Load AlgorithmFramework and OpCodes
-    var global = (function() {
-      if (typeof globalThis !== 'undefined') return globalThis;
-      if (typeof window !== 'undefined') return window;
-      if (typeof global !== 'undefined') return global;
-      if (typeof self !== 'undefined') return self;
-      return this;
-    })();
+  if (!AlgorithmFramework) {
+    throw new Error('AlgorithmFramework dependency is required');
+  }
 
-    if (!global.AlgorithmFramework && typeof require !== 'undefined') {
-      global.AlgorithmFramework = require('../../AlgorithmFramework.js');
-    }
-    if (!global.OpCodes && typeof require !== 'undefined') {
-      global.OpCodes = require('../../OpCodes.js');
-    }
+  if (!OpCodes) {
+    throw new Error('OpCodes dependency is required');
+  }
 
-    var AlgorithmFramework = global.AlgorithmFramework;
-    var OpCodes = global.OpCodes;
-
-    if (!AlgorithmFramework) {
-      throw new Error('AlgorithmFramework is required but not loaded');
-    }
-    if (!OpCodes) {
-      throw new Error('OpCodes is required but not loaded');
-    }
-
-    var RegisterAlgorithm = AlgorithmFramework.RegisterAlgorithm;
-    var CategoryType = AlgorithmFramework.CategoryType;
-    var SecurityStatus = AlgorithmFramework.SecurityStatus;
-    var ComplexityType = AlgorithmFramework.ComplexityType;
-    var CountryCode = AlgorithmFramework.CountryCode;
-    var AeadAlgorithm = AlgorithmFramework.AeadAlgorithm;
-    var IAeadInstance = AlgorithmFramework.IAeadInstance;
-    var TestCase = AlgorithmFramework.TestCase;
-    var LinkItem = AlgorithmFramework.LinkItem;
-    var KeySize = AlgorithmFramework.KeySize;
+    const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
+            AeadAlgorithm, IAeadInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
     // ==================== SKINNY-128 Helper Functions ====================
 
@@ -657,119 +635,119 @@
 
     // ==================== PAEF-ForkSkinny-128-192 Algorithm Class ====================
 
-    function PAEFForkSkinny128_192Algorithm() {
-      this.name = "PAEF-ForkSkinny-128-192";
-      this.description = "Parallel authenticated encryption with forking based on ForkSkinny-128-256 tweakable block cipher. NIST Lightweight Cryptography Competition candidate optimized for small packet sizes with parallel processing capability.";
-      this.inventor = "Christoph Dobraunig, Maria Eichlseder, Florian Mendel, Martin Schläffer";
-      this.year = 2019;
-      this.category = CategoryType.AEAD;
-      this.subCategory = "Authenticated Encryption";
-      this.securityStatus = SecurityStatus.EXPERIMENTAL;
-      this.complexity = ComplexityType.ADVANCED;
-      this.country = CountryCode.AT;
+    class PAEFForkSkinny128_192Algorithm extends AeadAlgorithm {
+      constructor() {
+        super();
+        this.name = "PAEF-ForkSkinny-128-192";
+        this.description = "Parallel authenticated encryption with forking based on ForkSkinny-128-256 tweakable block cipher. NIST Lightweight Cryptography Competition candidate optimized for small packet sizes with parallel processing capability.";
+        this.inventor = "Christoph Dobraunig, Maria Eichlseder, Florian Mendel, Martin Schläffer";
+        this.year = 2019;
+        this.category = CategoryType.AEAD;
+        this.subCategory = "Authenticated Encryption";
+        this.securityStatus = SecurityStatus.EXPERIMENTAL;
+        this.complexity = ComplexityType.ADVANCED;
+        this.country = CountryCode.AT;
 
-      this.SupportedKeySizes = [new KeySize(16, 16, 1)];
-      this.SupportedNonceSizes = [new KeySize(6, 6, 1)];
-      this.TagSize = 16;
+        this.SupportedKeySizes = [new KeySize(16, 16, 1)];
+        this.SupportedNonceSizes = [new KeySize(6, 6, 1)];
+        this.TagSize = 16;
 
-      this.documentation = [
-        new LinkItem("ForkAE Official Website", "https://www.esat.kuleuven.be/cosic/forkae/"),
-        new LinkItem("ForkAE NIST LWC Round 2 Submission Specification", "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf"),
-        new LinkItem("NIST Lightweight Cryptography Project", "https://csrc.nist.gov/projects/lightweight-cryptography"),
-        new LinkItem("Forkcipher: A New Primitive for Authenticated Encryption of Very Short Messages", "https://eprint.iacr.org/2019/1004")
-      ];
+        this.documentation = [
+          new LinkItem("ForkAE Official Website", "https://www.esat.kuleuven.be/cosic/forkae/"),
+          new LinkItem("ForkAE NIST LWC Round 2 Submission Specification", "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf"),
+          new LinkItem("NIST Lightweight Cryptography Project", "https://csrc.nist.gov/projects/lightweight-cryptography"),
+          new LinkItem("Forkcipher: A New Primitive for Authenticated Encryption of Very Short Messages", "https://eprint.iacr.org/2019/1004")
+        ];
 
-      this.references = [
-        new LinkItem("Reference C Implementation (rweather/lightweight-crypto)", "https://github.com/rweather/lightweight-crypto")
-      ];
+        this.references = [
+          new LinkItem("Reference C Implementation (rweather/lightweight-crypto)", "https://github.com/rweather/lightweight-crypto")
+        ];
 
-      this.tests = [
-        // Test vectors from NIST KAT file PAEF-ForkSkinny-128-192.txt
-        {
-          text: "Empty PT, Empty AD",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405"),
-          associatedData: [],
-          input: [],
-          expected: OpCodes.Hex8ToBytes("DE2381C2D19A843CFF8C3BAAB8AE9A4C")
-        },
-        {
-          text: "Empty PT, 1-byte AD",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405"),
-          associatedData: OpCodes.Hex8ToBytes("00"),
-          input: [],
-          expected: OpCodes.Hex8ToBytes("AABC9CAF30A81191E44E26032D1B073F")
-        },
-        {
-          text: "Empty PT, 2-byte AD",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405"),
-          associatedData: OpCodes.Hex8ToBytes("0001"),
-          input: [],
-          expected: OpCodes.Hex8ToBytes("56E1C0FB050C740B9D1FC539CF38512F")
-        },
-        {
-          text: "Empty PT, 16-byte AD",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405"),
-          associatedData: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          input: [],
-          expected: OpCodes.Hex8ToBytes("687A101BBBF86F3A98080AFCFA7FD965")
-        },
-        {
-          text: "1-byte PT, Empty AD",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405"),
-          associatedData: [],
-          input: OpCodes.Hex8ToBytes("00"),
-          expected: OpCodes.Hex8ToBytes("312E5E7DDE73A0048DD7DE0C66BE4033A2")
-        },
-        {
-          text: "1-byte PT, 1-byte AD",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405"),
-          associatedData: OpCodes.Hex8ToBytes("00"),
-          input: OpCodes.Hex8ToBytes("00"),
-          expected: OpCodes.Hex8ToBytes("9B92C2D2EEDBB1956999F80F4BA5470CA2")
-        },
-        {
-          text: "16-byte PT, Empty AD",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405"),
-          associatedData: [],
-          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          expected: OpCodes.Hex8ToBytes("D10CC6CDA5214AD435F9B231B0BDD1D182E2D5A15505E038AFC39EEFBEA7D84F")
-        },
-        {
-          text: "16-byte PT, 16-byte AD",
-          uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
-          key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          nonce: OpCodes.Hex8ToBytes("000102030405"),
-          associatedData: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
-          expected: OpCodes.Hex8ToBytes("B976D6D61ED925EEADF1B8CD4AC208B482E2D5A15505E038AFC39EEFBEA7D84F")
-        }
-      ];
+        this.tests = [
+          // Test vectors from NIST KAT file PAEF-ForkSkinny-128-192.txt
+          {
+            text: "Empty PT, Empty AD",
+            uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405"),
+            associatedData: [],
+            input: [],
+            expected: OpCodes.Hex8ToBytes("DE2381C2D19A843CFF8C3BAAB8AE9A4C")
+          },
+          {
+            text: "Empty PT, 1-byte AD",
+            uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405"),
+            associatedData: OpCodes.Hex8ToBytes("00"),
+            input: [],
+            expected: OpCodes.Hex8ToBytes("AABC9CAF30A81191E44E26032D1B073F")
+          },
+          {
+            text: "Empty PT, 2-byte AD",
+            uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405"),
+            associatedData: OpCodes.Hex8ToBytes("0001"),
+            input: [],
+            expected: OpCodes.Hex8ToBytes("56E1C0FB050C740B9D1FC539CF38512F")
+          },
+          {
+            text: "Empty PT, 16-byte AD",
+            uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405"),
+            associatedData: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            input: [],
+            expected: OpCodes.Hex8ToBytes("687A101BBBF86F3A98080AFCFA7FD965")
+          },
+          {
+            text: "1-byte PT, Empty AD",
+            uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405"),
+            associatedData: [],
+            input: OpCodes.Hex8ToBytes("00"),
+            expected: OpCodes.Hex8ToBytes("312E5E7DDE73A0048DD7DE0C66BE4033A2")
+          },
+          {
+            text: "1-byte PT, 1-byte AD",
+            uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405"),
+            associatedData: OpCodes.Hex8ToBytes("00"),
+            input: OpCodes.Hex8ToBytes("00"),
+            expected: OpCodes.Hex8ToBytes("9B92C2D2EEDBB1956999F80F4BA5470CA2")
+          },
+          {
+            text: "16-byte PT, Empty AD",
+            uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405"),
+            associatedData: [],
+            input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            expected: OpCodes.Hex8ToBytes("D10CC6CDA5214AD435F9B231B0BDD1D182E2D5A15505E038AFC39EEFBEA7D84F")
+          },
+          {
+            text: "16-byte PT, 16-byte AD",
+            uri: "https://csrc.nist.gov/CSRC/media/Projects/lightweight-cryptography/documents/round-2/spec-doc-rnd2/forkae-spec-round2.pdf",
+            key: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            nonce: OpCodes.Hex8ToBytes("000102030405"),
+            associatedData: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            input: OpCodes.Hex8ToBytes("000102030405060708090A0B0C0D0E0F"),
+            expected: OpCodes.Hex8ToBytes("B976D6D61ED925EEADF1B8CD4AC208B482E2D5A15505E038AFC39EEFBEA7D84F")
+          }
+        ];
+      }
+
+      /**
+       * @param {boolean} isInverse - Decryption mode flag
+       * @returns {PAEFForkSkinny128_192Instance}
+       */
+      CreateInstance(isInverse) {
+        return new PAEFForkSkinny128_192Instance(this, isInverse);
+      }
     }
-
-    PAEFForkSkinny128_192Algorithm.prototype = Object.create(AeadAlgorithm.prototype);
-    PAEFForkSkinny128_192Algorithm.prototype.constructor = PAEFForkSkinny128_192Algorithm;
-
-    /**
-     * @param {boolean} isInverse - Decryption mode flag
-     * @returns {PAEFForkSkinny128_192Instance}
-     */
-    PAEFForkSkinny128_192Algorithm.prototype.CreateInstance = function(isInverse) {
-      return new PAEFForkSkinny128_192Instance(this, isInverse);
-    };
 
     // ==================== PAEF-ForkSkinny-128-192 Instance Class ====================
 
@@ -1195,5 +1173,4 @@
       PAEFForkSkinny128_192Algorithm: PAEFForkSkinny128_192Algorithm,
       PAEFForkSkinny128_192Instance: PAEFForkSkinny128_192Instance
     };
-  }
-));
+}));

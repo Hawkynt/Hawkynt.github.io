@@ -172,18 +172,11 @@
      * keep the plain A-Z square. The square keyword is what mixes the Polybius
      * square, which the published worked examples all rely on - without it the
      * cipher could only ever reproduce a plain-square variant of them.
-     * @param {uint8[]|string} keyData - Key bytes or string
+     * @param {uint8[]} keyData - Key bytes or string
      */
     set key(keyData) {
       /** @type {string} */
-      let keyString = '';
-      if (typeof keyData === 'string') {
-        keyString = keyData;
-      } else if (Array.isArray(keyData)) {
-        /** @type {uint8[]} */
-        const bytes = keyData;
-        keyString = String.fromCharCode(...bytes);
-      }
+      const keyString = keyData ? String.fromCharCode(...keyData) : '';
 
       /** @type {string[]} */
       const parts = keyString.split(',');

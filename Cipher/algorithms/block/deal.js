@@ -14,19 +14,16 @@
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
     // AMD
-    define(['../../AlgorithmFramework', '../../OpCodes'], function (AlgorithmFramework, OpCodes) {
-      return factory(AlgorithmFramework, OpCodes, root);
-    });
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
   } else if (typeof module === 'object' && module.exports) {
     // Node.js/CommonJS
     module.exports = factory(
       require('../../AlgorithmFramework'),
-      require('../../OpCodes'),
-      root
+      require('../../OpCodes')
     );
   } else {
     // Browser/Worker global
-    factory(root.AlgorithmFramework, root.OpCodes, root);
+    root.DEAL = factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -34,7 +31,7 @@
   if (typeof global !== 'undefined') return global;
   if (typeof self !== 'undefined') return self;
   throw new Error('Unable to locate global object');
-})(), function (AlgorithmFramework, OpCodes, root) {
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
   if (!AlgorithmFramework) {
@@ -473,9 +470,6 @@
 
   const DEAL = new DealAlgorithm();
   RegisterAlgorithm(DEAL);
-
-  // Export to global scope
-  if (root) root.DEAL = DEAL;
 
   // ===== EXPORTS =====
 

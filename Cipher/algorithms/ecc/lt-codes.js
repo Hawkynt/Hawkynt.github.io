@@ -85,6 +85,29 @@
   }
 
   /**
+   * Code parameters and encoding-graph density as reported by getPerformanceReport()
+   * @class
+   */
+  class LTPerformanceReport {
+    /**
+     * @param {float64} overheadUsed - Overhead factor
+     * @param {int32} sourceSymbols - Source symbols (k)
+     * @param {int32} encodedSymbols - Encoded symbols, 0 before encoding
+     * @param {float64} graphDensity - Edges over possible edges
+     */
+    constructor(overheadUsed, sourceSymbols, encodedSymbols, graphDensity) {
+      /** @type {float64} */
+      this.overheadUsed = overheadUsed;
+      /** @type {int32} */
+      this.sourceSymbols = sourceSymbols;
+      /** @type {int32} */
+      this.encodedSymbols = encodedSymbols;
+      /** @type {float64} */
+      this.graphDensity = graphDensity;
+    }
+  }
+
+  /**
    * The indices 0 .. count-1
    * @param {int32} count - Number of indices
    * @returns {int32[]} Index list
@@ -202,9 +225,13 @@
       this.seed = 12345;       // Random seed for reproducibility
 
       // Internal state
+      /** @type {BipartiteGraph} */
       this.graph = null;
+      /** @type {DegreeDistribution} */
       this.degreeDistribution = null;
+      /** @type {SeededRandom} */
       this.rng = null;
+      /** @type {PerformanceProfiler} */
       this.profiler = new PerformanceProfiler();
     }
 
@@ -471,17 +498,15 @@
       return decodedCount === this.k ? decoded : null;
     }
 
-    // Performance analysis
+    /**
+     * Code parameters and encoding-graph density
+     * @returns {LTPerformanceReport} Performance report
+     */
     getPerformanceReport() {
       /** @type {int32} */
-      const encodedSymbols = this.graph ? this.graph.rightNodes : 0;
-      return {
-        ...this.profiler.getReport(),
-        overheadUsed: this.overhead,
-        sourceSymbols: this.k,
-        encodedSymbols: encodedSymbols,
-        graphDensity: this._calculateGraphDensity()
-      };
+      let encodedSymbols = 0;
+      if (this.graph) encodedSymbols = this.graph.rightNodes;
+      return new LTPerformanceReport(this.overhead, this.k, encodedSymbols, this._calculateGraphDensity());
     }
 
     /**

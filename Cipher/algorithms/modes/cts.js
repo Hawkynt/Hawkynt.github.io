@@ -206,7 +206,7 @@
     }
 
     /**
-     * @param {*} cipher - Block cipher instance (an object with BlockSize, key and algorithm)
+     * @param {IBlockCipherInstance} cipher - Block cipher instance
      */
     setBlockCipher(cipher) {
       if (!cipher || !cipher.BlockSize) {
