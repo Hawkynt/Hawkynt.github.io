@@ -100,7 +100,7 @@ Grid-based tactical combat with bidirectional A* pathfinding, path caching with 
   - **Tier 2**: Skeleton (AC 13, 1d6, 30xp/15g), Giant Spider (AC 14, 1d6, 35xp/10g), Bandit (AC 15, 1d8, 40xp/25g), Dire Wolf (AC 14, 1d8, 45xp/10g), Hobgoblin (AC 16, 1d8, 40xp/20g), Bugbear (AC 14, 2d6, 50xp/20g), Worg (AC 13, 1d8, 40xp/8g), Harpy (AC 12, 1d6, 45xp/15g)
   - **Tier 3**: Orc (AC 14, 1d10, 50xp/20g), Troll (AC 13, 2d8, 80xp/30g), Dark Mage (AC 12, 2d6, 60xp/40g), Ghoul (AC 13, 1d8, 55xp/20g), Basilisk (AC 15, 2d6, 70xp/30g), Wight (AC 15, 1d8, 65xp/35g), Gargoyle (AC 15, 1d8, 60xp/25g), Owlbear (AC 13, 2d6, 70xp/20g), Manticore (AC 14, 2d6, 70xp/25g), Phase Spider (AC 15, 1d8, 65xp/20g)
   - **Tier 4**: Wraith (AC 16, 1d8, 70xp/35g), Ogre (AC 14, 2d6, 65xp/25g), Minotaur (AC 14, 2d8, 90xp/40g), Hill Giant (AC 13, 2d10, 120xp/50g), Fire Elemental (AC 13, 2d6, 110xp/30g)
-  - **Tier 5**: Vampire Spawn (AC 16, 1d10, 100xp/50g), Wyvern (AC 13, 2d8, 100xp/35g), Demon (AC 16, 2d8, 150xp/60g), Devil (AC 17, 2d8+spells, 150xp/65g), Mind Flayer (AC 17, 2d8+spells, 180xp/80g)
+  - **Tier 5**: Vampire Spawn (AC 16, 1d10, 100xp/50g), Wyvern (AC 13, 2d8, 100xp/35g), Demon (AC 16, 2d8, 150xp/60g), Devil (AC 17, 2d8+spells, 150xp/65g), Thoughtdrinker (AC 17, 2d8+spells, 180xp/80g)
   - **Tier 6**: Lich (AC 18, 2d8+spells, 150xp/80g), Dragon Wyrmling (AC 17, 2d10, 200xp/100g)
   - **Tier 7**: Young Dragon (AC 18, 2d12, 250xp/120g), Death Knight (AC 20, 2d10+spells, 280xp/100g), Frost Giant (AC 15, 3d8, 230xp/90g)
 - 5-tier scoring AI: Trivial (nearest target), Simple (+ spells), Tactical (+ flanking/priority), Strategic (+ screening/buffs), Mastermind (+ coordination/lookahead); auto-mapped from dungeon difficulty and distance
@@ -189,10 +189,10 @@ Complete playable gameplay loop from title screen to combat and back.
 | Debug console                   | Done -- premium-gated devtools API for testing (party, economy, combat, overworld), 16 tests                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Sprite tinting system           | Done -- `SpriteCompositor` with LRU cache (1024 entries) for tint compositing and multi-layer terrain stacking; CORS fallback to direct layered drawing; 42 ENEMY_TINTS + 2 PARTY_TINTS for visual differentiation                                                                                                                                                                                                                                                                                           |
 | Terrain layer stacking          | Done -- `TERRAIN_LAYERS` maps 14 terrain IDs to ordered sprite layer arrays (e.g., forest = plains base + forest overlay, ruins = dungeon_floor base + ruins overlay); compositor caches composited results; single-layer terrains render identically to before                                                                                                                                                                                                                                              |
-| 23 new enemy types              | Done -- Kobold, Zombie, Stirge, Gnoll, Bugbear, Worg, Lizardfolk, Harpy, Cockatrice, Basilisk, Wight, Gargoyle, Owlbear, Manticore, Phase Spider, Hill Giant, Mind Flayer, Young Dragon, Death Knight, Fire Elemental, Frost Giant, Demon, Devil                                                                                                                                                                                                                                                             |
+| 23 new enemy types              | Done -- Kobold, Zombie, Stirge, Gnoll, Bugbear, Worg, Lizardfolk, Harpy, Cockatrice, Basilisk, Wight, Gargoyle, Owlbear, Manticore, Phase Spider, Hill Giant, Thoughtdrinker, Young Dragon, Death Knight, Fire Elemental, Frost Giant, Demon, Devil                                                                                                                                                                                                                                                             |
 | Mob leveling system             | Done -- D&D 3.5e SRD-accurate monster advancement: `CREATURE_TYPES` registry (12 types) drives hit die size (d6-d12), BAB progression (full/medium/poor), and save progression (good/poor) per creature type; `levelUpTemplate(id, extraHD)` adds HP using racial HD + CON, recalculates BAB from total HD, +1 ability per 4 HD threshold, tracks CR; `templateToCharacter` calculates saves from creature type good/poor progressions + ability mods; Leader/Champion name variants; scaled XP/gold rewards |
 | Leader variants in encounters   | Done -- 25% chance first enemy in pack (tier 1+, 2+ enemies) is a leveled-up leader with 1-4 extra HD                                                                                                                                                                                                                                                                                                                                                                                                        |
-| 21 new dungeon location types   | Done -- Gnoll Camp, Kobold Warren, Bugbear Den, Lizardfolk Village, Basilisk Lair, Harpy Nest, Zombie Graveyard, Worg Hunting Grounds, Gargoyle Perch, Owlbear Territory, Manticore Peak, Phase Spider Web, Giant's Keep, Elemental Rift, Mind Flayer Colony, Dragon Hoard, Death Knight's Tomb, Frozen Fortress, Demon Gate, Infernal Pit                                                                                                                                                                   |
+| 21 new dungeon location types   | Done -- Gnoll Camp, Kobold Warren, Bugbear Den, Lizardfolk Village, Basilisk Lair, Harpy Nest, Zombie Graveyard, Worg Hunting Grounds, Gargoyle Perch, Owlbear Territory, Manticore Peak, Phase Spider Web, Giant's Keep, Elemental Rift, Thoughtdrinker Colony, Dragon Hoard, Death Knight's Tomb, Frozen Fortress, Demon Gate, Infernal Pit                                                                                                                                                                   |
 | 8-tier encounter pools          | Done -- expanded from 7 to 8 tiers with new enemies distributed across all tiers                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | Dimension terrain registry      | Done -- `DIMENSION_TERRAIN_SPRITES` maps 6 dimensions (material, feywild, shadowfell, nine_hells, underdark, abyss) to different overworld tile indices; renderer accepts `dimension` parameter                                                                                                                                                                                                                                                                                                              |
 | Multi-resolution asset pipeline | Done -- `SHEET_REGISTRY` centralizes spritesheet metadata (tileSize, margin, cols, path); `sheetRect()` generates rects from any registered sheet; `resolveSprite()` provides HD-first lookup with 16x16 fallback; renderer uses `resolveSprite()` for all sprite lookups; `SpriteCompositor` handles layer compositing + caching; `tools/pack-sprites.js` offline packer for future 32x32 content                                                                                                           |
@@ -1594,9 +1594,9 @@ Each dimension is a self-contained infinite world with unique generation rules.
 | **Elemental Plane of Water** | Coral Reefs, Abyssal Trenches, Kelp Forests, Whirlpools             | Deep blues, teals, bioluminescent          | 3-5                | 25              | Sahuagin Temples, Kraken Dens, Sunken Ships                   | Tidal weapons (+water), Merfolk armor (swim speed)            |
 | **Elemental Plane of Earth** | Crystal Caverns, Gemstone Fields, Petrified Forests, Dust Storms    | Browns, ambers, crystal whites             | 3-5                | 25              | Dao Vaults, Xorn Tunnels, Gem Mines                           | Earthshaker weapons (+stun), Geode armor (AC bonus)           |
 | **Elemental Plane of Air**   | Cloud Islands, Storm Fronts, Floating Ruins, Void Gaps              | Light blues, whites, silver                | 3-5                | 25              | Djinni Towers, Storm Giant Keeps, Lightning Spires            | Stormcaller weapons (+lightning), Zephyr armor (+Initiative)  |
-| **Astral Plane**             | Silver Void, Thought Reefs, Dead God Husks, Color Pools             | Silver, iridescent, void black             | 4-5                | 40              | Githyanki Fortresses, Mind Flayer Cities, Astral Dreadnoughts | Psychic weapons (+INT scaling), Astral armor (plane shift)    |
-| **Far Realm**                | Alien Geometry, Tentacle Fields, Non-Euclidean Halls, Eye Clusters  | Eldritch purples, impossible colors        | 5                  | 60              | Aboleth Temples, Elder Brain Hives, Void Maws                 | Eldritch weapons (+madness), Aberrant armor (tentacle parry)  |
-| **Underdark**                | Fungal Forests, Lava Rivers, Crystal Caverns, Spider Webs           | Deep purples, bioluminescent greens        | 3-5                | 20              | Drow Cities, Mind Flayer Colonies, Beholder Lairs             | Drow weapons (+poison), Adamantine armor                      |
+| **Astral Plane**             | Silver Void, Thought Reefs, Dead God Husks, Color Pools             | Silver, iridescent, void black             | 4-5                | 40              | Voidblade Fortresses, Thoughtdrinker Cities, Astral Dreadnoughts | Psychic weapons (+INT scaling), Astral armor (plane shift)    |
+| **Far Realm**                | Alien Geometry, Tentacle Fields, Non-Euclidean Halls, Eye Clusters  | Eldritch purples, impossible colors        | 5                  | 60              | Aboleth Temples, Elder Mind Hives, Void Maws                 | Eldritch weapons (+madness), Aberrant armor (tentacle parry)  |
+| **Underdark**                | Fungal Forests, Lava Rivers, Crystal Caverns, Spider Webs           | Deep purples, bioluminescent greens        | 3-5                | 20              | Drow Cities, Thoughtdrinker Colonies, Gloomeye Lairs             | Drow weapons (+poison), Adamantine armor                      |
 
 #### Dimension-Specific Generation Rules
 
@@ -1708,9 +1708,9 @@ Each dimension generates distinct dungeon types. The dungeon theme determines ro
 | **Elemental Water** | Sahuagin Temple, Kraken Den, Sunken Ship                  | Drowning timer (limited air), currents push units                   | Water movement costs doubled; swimming check per turn           |
 | **Elemental Earth** | Dao Vault, Xorn Tunnel, Gem Mine                          | Cave-ins (random tile collapse), tremors                            | Narrow corridors; no rooms > 6×6; claustrophobic                |
 | **Elemental Air**   | Djinni Tower, Storm Keep, Lightning Spire                 | Wind gusts (push units), lightning strikes (random AoE)             | Gaps between platforms; fall damage; no solid ground guaranteed |
-| **Astral Plane**    | Githyanki Fortress, Mind Flayer City, Dead God Interior   | Psychic static (INT save or daze), gravity shifts                   | No walls — open space with floating platforms                   |
-| **Far Realm**       | Aboleth Temple, Elder Brain Hive, Void Maw                | Madness buildup (cumulative debuff), reality tears (teleport traps) | Non-Euclidean: doors may loop, rooms connect illogically        |
-| **Underdark**       | Drow City, Beholder Lair, Fungal Grotto, Spider Nest      | Darkness (reduced vision), web traps (slow), spore clouds           | Vertical levels (pits, ledges, stalactites); 3D-feeling layout  |
+| **Astral Plane**    | Voidblade Fortress, Thoughtdrinker City, Dead God Interior   | Psychic static (INT save or daze), gravity shifts                   | No walls — open space with floating platforms                   |
+| **Far Realm**       | Aboleth Temple, Elder Mind Hive, Void Maw                | Madness buildup (cumulative debuff), reality tears (teleport traps) | Non-Euclidean: doors may loop, rooms connect illogically        |
+| **Underdark**       | Drow City, Gloomeye Lair, Fungal Grotto, Spider Nest      | Darkness (reduced vision), web traps (slow), spore clouds           | Vertical levels (pits, ledges, stalactites); 3D-feeling layout  |
 
 #### Risk-Reward Design
 
@@ -2426,7 +2426,7 @@ Applying a lower condition to a creature already suffering a higher one has no e
 | Medium Spider Venom   | Injury   | 14      | 1d4 STR          | 1d4 STR               | Phase Spider, Drider            |
 | Wyvern Poison         | Injury   | 17      | 2d6 CON          | 2d6 CON               | Wyvern                          |
 | Purple Worm Poison    | Injury   | 24      | 1d6 STR          | 2d6 STR               | Purple Worm                     |
-| Carrion Crawler Mucus | Contact  | 13      | Paralysis        | None                  | Carrion Crawler                 |
+| Gravecrawler Mucus | Contact  | 13      | Paralysis        | None                  | Gravecrawler                 |
 | Drow Sleep Poison     | Injury   | 13      | Unconscious 1min | Unconscious 2d4 hours | Drow Elite                      |
 | Burnt Othur Fumes     | Inhaled  | 18      | 1 CON drain      | 3d6 CON               | Trap (alchemical)               |
 | Assassin's Blood      | Ingested | 15      | 1d6 CON          | 1d6 CON               | Player-crafted (Rogue/Assassin) |
@@ -2895,7 +2895,7 @@ Some creatures have **Spell Resistance (SR)** — a numeric value that spells mu
 - SR check is made per spell (before saving throw)
 - If the check fails, the spell has no effect (MP is still consumed)
 - SR does not apply to beneficial spells (healing, buffs) unless the creature chooses
-- SR is listed in monster stat blocks (e.g., "SR 25" for Mind Flayer)
+- SR is listed in monster stat blocks (e.g., "SR 25" for Thoughtdrinker)
 
 ##### Overcoming Spell Resistance
 
@@ -2908,7 +2908,7 @@ Some creatures have **Spell Resistance (SR)** — a numeric value that spells mu
 | **Touch spells**                   | No SR bypass, but touching requires adjacency | Melee touch range                    |
 | **High caster level**              | Each caster level = +1 to the SR check        | Natural progression                  |
 
-SR check formula: `d20 + caster level + SR bonuses ≥ target SR`. Example: A level 15 Wizard with Spell Penetration (+2) rolls d20+17 vs Mind Flayer SR 25 → needs an 8+ to overcome.
+SR check formula: `d20 + caster level + SR bonuses ≥ target SR`. Example: A level 15 Wizard with Spell Penetration (+2) rolls d20+17 vs Thoughtdrinker SR 25 → needs an 8+ to overcome.
 
 #### User Stories & Acceptance Criteria -- Magic
 
@@ -3579,7 +3579,7 @@ Light and darkness are mechanically significant in dungeons and caves. Character
 | **Darkvision 120ft** | Deep- dimensional variants, Drow              | As darkvision but extends to 120ft. Sees further in Underdark caves.                                             |
 | **Blindsight**       | Some monsters (Hook Horror, Bat, Purple Worm) | Perceives surroundings without sight (echolocation, tremorsense). Immune to darkness/blindness penalties.        |
 | **Blindsense**       | Some monsters                                 | Detects presence of creatures within range but cannot see them precisely. No miss chance negation.               |
-| **Tremorsense**      | Purple Worm, Xorn, Umber Hulk                 | Detects creatures touching the ground within range. Works in total darkness.                                     |
+| **Tremorsense**      | Purple Worm, Xorn, Tunnel Brute                 | Detects creatures touching the ground within range. Works in total darkness.                                     |
 
 ##### Fog of War vs Vision Type Interaction
 
@@ -4143,8 +4143,8 @@ abilityDC = 10 + floor(CR / 2) + relevantAbilityMod
 | Ability Category                    | Save Type     | Examples                                                          |
 | ----------------------------------- | ------------- | ----------------------------------------------------------------- |
 | Poison, disease, death effects      | **Fortitude** | Giant Rat disease bite, Zombie undead fortitude, Basilisk petrify |
-| Gaze, breath weapon, AoE            | **Reflex**    | Dragon breath, Beholder eye rays, Fireball traps                  |
-| Fear, charm, mind control, illusion | **Will**      | Harpy song, Mind Flayer mind blast, Vampire dominate              |
+| Gaze, breath weapon, AoE            | **Reflex**    | Dragon breath, Gloomeye eye rays, Fireball traps                  |
+| Fear, charm, mind control, illusion | **Will**      | Harpy song, Thoughtdrinker mind blast, Vampire dominate              |
 
 ##### Duration Categories
 
@@ -4219,7 +4219,7 @@ XP per D&D 3e CR table: CR ¼ = 75 XP, CR ½ = 150 XP, CR 1 = 300 XP | Gold: 2-1
 | Myconid Sprout | ¼   | 7 (2d6)     | 10  | +1 melee (1d4−1)                 | −1   | Defensive  | Swarm (5-8)  | 2    | Rapport spores (telepathy 30ft), pacifying spores (Will DC 11)                        | Underdark            |
 | Needle Blight  | ¼   | 11 (2d8+2)  | 12  | +3 ranged (2d4 needles)          | +1   | Aggressive | Swarm (5-8)  | 0    | Needle spray (cone, 2d4), false appearance (looks like bush)                          | Feywild              |
 | Twig Blight    | ⅛   | 4 (1d6+1)   | 13  | +3 melee (1d4+1)                 | +1   | Ambush     | Swarm (6-10) | 0    | False appearance (looks like dead shrub), vulnerability to fire                       | Feywild              |
-| Gas Spore      | ½   | 1 (1d10−4)  | 5   | --                               | −3   | Aggressive | Solo         | 0    | Looks like Beholder (Spot DC 15), death burst (3d6 poison 10ft, Fort DC 10, infested) | Underdark            |
+| Gas Spore      | ½   | 1 (1d10−4)  | 5   | --                               | −3   | Aggressive | Solo         | 0    | Looks like Gloomeye (Spot DC 15), death burst (3d6 poison 10ft, Fort DC 10, infested) | Underdark            |
 | Flumph         | ¼   | 7 (2d6)     | 12  | +4 melee (1d4+2 acid)            | +3   | Support    | Pair (2)     | 5    | Telepathic shriek (stun 1 round, Ref DC 10), detect evil/good, ally — helps party     | Underdark            |
 | Violet Fungus  | ¼   | 18 (4d8)    | 5   | +2 melee (1d8 necrotic, reach 2) | −3   | Aggressive | Pack (3-5)   | 0    | Rotting touch (4 tentacle attacks, 1d8 necrotic each, reach 2 tiles)                  | Underdark            |
 
@@ -4246,14 +4246,14 @@ XP per D&D 3e CR table: CR 2 = 600 XP, CR 3 = 900 XP, CR 4 = 1,200 XP | Gold: 10
 | Quaggoth           | 2   | 30 (4d10+8)  | 13  | +6 melee (1d6+4)                         | +1   | Aggressive | Pack (3-5)   | 8    | Frenzy (extra attack when below half HP), climb 20ft                                      | Underdark                  |
 | Dryad              | 3   | 14 (2d6+7)   | 17  | +6 melee (1d4−1)                         | +4   | Support    | Solo         | 20   | Charm person (Will DC 14), tree stride, DR 5/cold iron                                    | Feywild                    |
 | Rust Monster       | 3   | 27 (5d10)    | 18  | +3 melee (touch)                         | +3   | Aggressive | Pair (2)     | 0    | Rust touch (destroys metal items, Fort DC 17 negates)                                     | Underdark                  |
-| Carrion Crawler    | 4   | 19 (3d10+3)  | 17  | +2 melee (tentacle 0 + paralysis)        | +2   | Aggressive | Solo         | 10   | 8 tentacle attacks (Fort DC 13 or paralyzed 2d6 min), ceiling crawl                       | Underdark                  |
+| Gravecrawler    | 4   | 19 (3d10+3)  | 17  | +2 melee (tentacle 0 + paralysis)        | +2   | Aggressive | Solo         | 10   | 8 tentacle attacks (Fort DC 13 or paralyzed 2d6 min), ceiling crawl                       | Underdark                  |
 | Ankheg             | 3   | 28 (3d10+12) | 18  | +7 melee (2d6+7 bite + 1d4 acid)         | +0   | Ambush     | Pair (2)     | 20   | Burrow ambush (+2d6 on surprise), acid spray (line 3 tiles, 4d4 acid, Ref DC 13)          | Material                   |
 | Peryton            | 2   | 33 (6d8+6)   | 13  | +5 melee (1d8+3 gore)                    | +2   | Aggressive | Pair (2)     | 15   | Flyby attack (no AoO on move-through), dive attack (double damage from 5+ tiles altitude) | Material, Mountain         |
 | Intellect Devourer | 2   | 21 (6d4+6)   | 12  | +4 melee (1d6+2 claw ×2)                 | +4   | Ambush     | Solo         | 0    | Devour Intellect (INT damage, Int DC 12), Body Thief (steal dead host)                    | Underdark, Far Realm       |
 | Gibbering Mouther  | 2   | 67 (9d8+27)  | 9   | +2 melee (5d6 bite swarm)                | −1   | Aggressive | Solo         | 15   | Gibbering (Will DC 10 or confused 1 round), ground warp (difficult terrain 10ft)          | Far Realm                  |
 | Grick              | 2   | 27 (6d8)     | 14  | +4 melee (1d6+2 tentacle ×2, 1d4+1 beak) | +2   | Ambush     | Pair (2)     | 10   | Stone camouflage (+10 Hide vs stone), DR 5/magic                                          | Underdark                  |
 | Kenku              | 1   | 13 (3d8)     | 13  | +3 melee (1d6+1 shortsword)              | +1   | Ambush     | Pack (3-5)   | 12   | Mimicry (distraction, Will DC 12 or flat-footed), ambush tactics (+2d4 sneak on surprise) | Material                   |
-| Kuo-Toa            | ½   | 11 (2d8+2)   | 13  | +3 melee (1d6+1 spear)                   | +0   | Defensive  | Pack (3-5)   | 10   | Sticky shield (disarm on shield block, Ref DC 11), slippery (+4 escape grapple)           | Underdark, Elemental Water |
+| Deepfolk            | ½   | 11 (2d8+2)   | 13  | +3 melee (1d6+1 spear)                   | +0   | Defensive  | Pack (3-5)   | 10   | Sticky shield (disarm on shield block, Ref DC 11), slippery (+4 escape grapple)           | Underdark, Elemental Water |
 
 #### CR 5–8 — Rare Encounters
 
@@ -4268,7 +4268,7 @@ XP per D&D 3e CR table: CR 5 = 1,500 XP, CR 6 = 1,800 XP, CR 7 = 2,100 XP, CR 8 
 | Gargoyle                | 4   | 37 (4d8+19)    | 16  | +6 melee (1d4+2 claw ×2, 1d6+1 bite, 1d6+1 gore) | +2   | Defensive   | Patrol (2-3) | 35   | DR 10/magic, freeze (appear as statue)                                                            | Material                   |
 | Owlbear                 | 4   | 52 (5d10+25)   | 15  | +9 melee (1d6+5 claw ×2, 1d8+2 bite)             | +1   | Aggressive  | Pair (2)     | 40   | Improved Grab, bear hug (2d6+5 crush)                                                             | Material, Feywild          |
 | Manticore               | 5   | 57 (6d10+24)   | 17  | +10 melee (1d6+5 claw ×2, 1d8+2 bite)            | +2   | Aggressive  | Solo         | 50   | Tail spikes (ranged 4 tiles, 6/day, 1d8+2 each)                                                   | Material                   |
-| Displacer Beast         | 4   | 51 (6d10+18)   | 16  | +7 melee (1d6+4 tentacle ×2)                     | +3   | Ambush      | Pair (2)     | 45   | Displacement (50% miss chance until hit, resets each round)                                       | Feywild                    |
+| Shimmercat         | 4   | 51 (6d10+18)   | 16  | +7 melee (1d6+4 tentacle ×2)                     | +3   | Ambush      | Pair (2)     | 45   | Displacement (50% miss chance until hit, resets each round)                                       | Feywild                    |
 | Phase Spider            | 5   | 32 (5d10+5)    | 15  | +7 melee (1d6+4 + poison)                        | +7   | Ambush      | Pack (3-5)   | 30   | Ethereal jaunt (phase shift after attack), poison (Fort DC 17, 1d6 CON)                           | Ethereal                   |
 | Troll                   | 5   | 63 (6d8+36)    | 16  | +9 melee (1d6+6 claw ×2, 1d6+3 bite)             | +2   | Aggressive  | Pair (2)     | 40   | Regeneration 5/round (fire and acid negate)                                                       | Material                   |
 | Hill Giant              | 7   | 102 (12d8+48)  | 20  | +16 melee (2d8+10 greatclub)                     | −1   | Aggressive  | Solo         | 60   | Rock throw (ranged 5 tiles, 2d6+7), ground slam (AoE)                                             | Material                   |
@@ -4286,7 +4286,7 @@ XP per D&D 3e CR table: CR 5 = 1,500 XP, CR 6 = 1,800 XP, CR 7 = 2,100 XP, CR 8 
 | Gorgon (Bull)           | 5   | 114 (12d10+48) | 19  | +13 melee (2d12+7 gore)                          | +0   | Aggressive  | Solo         | 60   | Petrifying breath (cone 3 tiles, Fort DC 13 or petrified over 2 rounds), trample                  | Material                   |
 | Revenant                | 5   | 136 (16d8+64)  | 13  | +7 melee (2d6+4 fist)                            | +0   | Aggressive  | Solo         | 0    | Relentless (if destroyed, reforms in 24h near murderer), vengeful tracker, immune to turn         | Shadowfell                 |
 | Shambling Mound         | 5   | 136 (16d10+48) | 15  | +9 melee (2d8+4 slam ×2)                         | +0   | Aggressive  | Solo         | 0    | Engulf (grapple → 2d8+4/round + blind), lightning heals it, fire resistance                       | Material, Swamp            |
-| Yuan-Ti Malison         | 7   | 66 (12d8+12)   | 15  | +6 melee (1d6+3 scimitar ×2)                     | +5   | Spellcaster | Patrol (2-3) | 70   | Suggestion (Will DC 13), poison immunity, shapechanger, magic resistance (adv on saves vs spells) | Material, Jungle           |
+| Serpentkin Malison         | 7   | 66 (12d8+12)   | 15  | +6 melee (1d6+3 scimitar ×2)                     | +5   | Spellcaster | Patrol (2-3) | 70   | Suggestion (Will DC 13), poison immunity, shapechanger, magic resistance (adv on saves vs spells) | Material, Jungle           |
 | Wyvern                  | 6   | 110 (13d10+39) | 13  | +7 melee (2d6+4 bite, 2d6+4 stinger)             | +0   | Aggressive  | Pair (2)     | 50   | Poison sting (Fort DC 15, 7d6 poison), flyby, no breath weapon                                    | Material, Mountain         |
 
 #### CR 9–14 — Very Rare Encounters
@@ -4295,9 +4295,9 @@ XP per D&D 3e CR table: CR 9 = 2,700 XP, CR 10 = 3,000 XP, CR 12 = 3,600 XP, CR 
 
 | Enemy              | CR  | HP             | AC  | Atk                                               | Init | AI          | Spawn        | Gold | Special                                                                                                               | Home Dimension       |
 | ------------------ | --- | -------------- | --- | ------------------------------------------------- | ---- | ----------- | ------------ | ---- | --------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| Mind Flayer        | 8   | 44 (8d8+8)     | 15  | +8 melee (tentacle 1d4+1 × 4)                     | +6   | Spellcaster | Solo         | 120  | Mind Blast (Will DC 17, 3×3 cone, stun 3d4 rounds), brain extract (grappled + stunned = instant kill), SR 25          | Underdark, Astral    |
-| Beholder           | 13  | 93 (11d8+44)   | 26  | +7 ranged (eye rays)                              | +6   | Spellcaster | Solo         | 150  | 10 eye rays (random: charm, paralyze, petrify, disintegrate, etc.), antimagic cone 150ft                              | Underdark            |
-| Umber Hulk         | 7   | 71 (8d8+35)    | 18  | +14 melee (2d4+6 claw ×2, 2d8+3 bite)             | +1   | Aggressive  | Solo         | 80   | Confusing gaze (Will DC 15), burrow through stone                                                                     | Underdark            |
+| Thoughtdrinker        | 8   | 44 (8d8+8)     | 15  | +8 melee (tentacle 1d4+1 × 4)                     | +6   | Spellcaster | Solo         | 120  | Mind Blast (Will DC 17, 3×3 cone, stun 3d4 rounds), brain extract (grappled + stunned = instant kill), SR 25          | Underdark, Astral    |
+| Gloomeye           | 13  | 93 (11d8+44)   | 26  | +7 ranged (eye rays)                              | +6   | Spellcaster | Solo         | 150  | 10 eye rays (random: charm, paralyze, petrify, disintegrate, etc.), antimagic cone 150ft                              | Underdark            |
+| Tunnel Brute         | 7   | 71 (8d8+35)    | 18  | +14 melee (2d4+6 claw ×2, 2d8+3 bite)             | +1   | Aggressive  | Solo         | 80   | Confusing gaze (Will DC 15), burrow through stone                                                                     | Underdark            |
 | Gorgon             | 8   | 85 (8d10+40)   | 20  | +14 melee (2d8+9 gore)                            | +4   | Aggressive  | Solo         | 100  | Petrifying breath (cone, Fort DC 18), trample 2d8+9 (Ref DC 22)                                                       | Material             |
 | Chimera            | 7   | 76 (9d10+27)   | 19  | +11 melee (1d8+4 bite ×3)                         | +1   | Aggressive  | Solo         | 90   | Fire breath (3d8, Ref DC 15), triple attack                                                                           | Material             |
 | Roper              | 12  | 85 (10d8+40)   | 24  | +11 melee (2d6+6 bite)                            | +5   | Ambush      | Solo         | 80   | 6 tentacle strands (Ref DC 18, pull 10ft/round), DR 10/good, SR 21, false appearance                                  | Underdark            |
@@ -4313,7 +4313,7 @@ XP per D&D 3e CR table: CR 9 = 2,700 XP, CR 10 = 3,000 XP, CR 12 = 3,600 XP, CR 
 | Efreeti            | 11  | 95 (10d8+50)   | 18  | +15 melee (2d6+6 slam + 1d6 fire)                 | +7   | Spellcaster | Solo         | 200  | Scorching ray, wall of fire, grant wishes, plane shift, fire immune                                                   | Elemental Fire       |
 | Marid              | 9   | 84 (8d8+48)    | 22  | +14 melee (2d6+6 slam)                            | +6   | Spellcaster | Solo         | 200  | Water jet (line, 1d6+6 + push), control water, water walk, gaseous form                                               | Elemental Water      |
 | Djinni             | 5   | 45 (7d8+14)    | 16  | +9 melee (2d6+4 slam)                             | +8   | Spellcaster | Solo         | 200  | Whirlwind (10-50ft, 2d6 damage), invisibility, create food/water, major creation                                      | Elemental Air        |
-| Githyanki Knight   | 9   | 55 (10d8+10)   | 22  | +13 melee (2d6+5 silver greatsword + 2d6 psychic) | +2   | Aggressive  | Patrol (2-3) | 120  | Plane shift 1/day, telekinesis, innate psi (DC 16), SR 18                                                             | Astral               |
+| Voidblade Knight   | 9   | 55 (10d8+10)   | 22  | +13 melee (2d6+5 silver greatsword + 2d6 psychic) | +2   | Aggressive  | Patrol (2-3) | 120  | Plane shift 1/day, telekinesis, innate psi (DC 16), SR 18                                                             | Astral               |
 | Nothic             | 4   | 45 (6d10+12)   | 15  | +4 melee (2d6+2 claw ×2)                          | +2   | Ambush      | Solo         | 60   | Weird insight (knows weaknesses, +4d6 DMG next attack), rotting gaze (3d6 necrotic, Con DC 12)                        | Underdark, Far Realm |
 | Behir              | 11  | 168 (16d10+80) | 17  | +13 melee (3d10+6 bite)                           | +7   | Aggressive  | Solo         | 120  | Lightning breath (line 4 tiles, 12d10, Ref DC 16), constrict (2d10+6), swallow medium or smaller                      | Underdark            |
 | Spirit Naga        | 8   | 75 (10d10+20)  | 15  | +7 melee (1d8+4 bite + poison)                    | +6   | Spellcaster | Solo         | 100  | Spells (lightning bolt, fireball, charm, dominate), rejuvenation (reforms in 1d6 days), poison bite (Fort DC 13, 7d8) | Underdark            |
@@ -4339,11 +4339,11 @@ XP per D&D 3e CR table: CR 15 = 4,500 XP, CR 17 = 5,100 XP, CR 20 = 6,000 XP, CR
 | Devil (Pit Fiend)           | 20  | 325 (26d8+208)  | 40  | +37 melee (4d6+17 bite)                             | +12  | Spellcaster | Solo + Minions | 700  | Fear aura (Will DC 25), fireball at will, poison (Fort DC 27), regeneration 5, DR 15/good+silver, SR 32                                                  | Nine Hells           |
 | Aboleth                     | 10  | 76 (8d8+40)     | 16  | +12 melee (1d6+5 tentacle × 4)                      | +1   | Spellcaster | Solo + Minions | 500  | Enslave (Will DC 17), slime (Fort DC 19 or breathe only water), psychic crush, SR 15                                                                     | Far Realm, Underdark |
 | Purple Worm                 | 12  | 200 (16d10+112) | 19  | +25 melee (2d8+12 bite, 2d6+6 sting)                | −2   | Aggressive  | Solo           | 300  | Swallow whole (grapple +25, 2d8+12 crush), burrow 20ft, tremorsense 60ft, poison (Fort DC 25)                                                            | Underdark            |
-| Beholder Tyrant             | 16  | 120 (16d8+48)   | 30  | +10 ranged (eye rays)                               | +8   | Spellcaster | Solo + Minions | 1000 | Death ray (Fort DC 22), disintegrate, petrify, charm, antimagic cone 150ft, lair actions (3/round)                                                       | Underdark            |
+| Gloomeye Tyrant             | 16  | 120 (16d8+48)   | 30  | +10 ranged (eye rays)                               | +8   | Spellcaster | Solo + Minions | 1000 | Death ray (Fort DC 22), disintegrate, petrify, charm, antimagic cone 150ft, lair actions (3/round)                                                       | Underdark            |
 | Death Knight                | 15  | 114 (12d12+36)  | 30  | +18 melee (2d6+9 greatsword + 2d6 necrotic)         | +5   | Aggressive  | Solo + Minions | 600  | Hellfire orb (20ft, 12d6 fire+necrotic, Ref DC 20), command undead, aura of fear, immune turning                                                         | Shadowfell           |
 | Storm Giant                 | 13  | 199 (19d8+114)  | 27  | +28 melee (3d6+14 greatsword)                       | +2   | Spellcaster | Solo           | 800  | Call lightning (10d6), control weather, chain lightning, water breathing, freedom of movement                                                            | Elemental Air        |
-| Elder Brain                 | 18  | 210 (20d8+120)  | 22  | +8 ranged (psychic)                                 | +0   | Spellcaster | Solo + Minions | 600  | Psychic blast (60ft cone, 4d8+8 psychic, Int DC 20), dominate monster (Will DC 22), thrall link                                                          | Far Realm, Astral    |
-| Githyanki Supreme Commander | 16  | 150 (20d8+60)   | 28  | +22 melee (2d6+8 silver greatsword + 3d6 psychic)   | +5   | Aggressive  | Solo + Minions | 500  | Plane shift at will, mass telekinesis, psi abilities (DC 20), gith squad tactics (+2 Atk aura)                                                           | Astral               |
+| Elder Mind                 | 18  | 210 (20d8+120)  | 22  | +8 ranged (psychic)                                 | +0   | Spellcaster | Solo + Minions | 600  | Psychic blast (60ft cone, 4d8+8 psychic, Int DC 20), dominate monster (Will DC 22), thrall link                                                          | Far Realm, Astral    |
+| Voidblade Supreme Commander | 16  | 150 (20d8+60)   | 28  | +22 melee (2d6+8 silver greatsword + 3d6 psychic)   | +5   | Aggressive  | Solo + Minions | 500  | Plane shift at will, mass telekinesis, psi abilities (DC 20), gith squad tactics (+2 Atk aura)                                                           | Astral               |
 | Kraken                      | 20  | 290 (20d10+180) | 20  | +28 melee (2d8+12 tentacle × 4)                     | +4   | Aggressive  | Solo           | 400  | Fling (hurl grabbed creature 60ft), lightning storm (3/day, 8d6), ink cloud (blinds all, 3 rounds), swallow whole                                        | Elemental Water      |
 | Tarrasque                   | 30  | 858 (48d10+576) | 35  | +57 melee (4d8+17 bite)                             | +0   | Aggressive  | Solo           | 0    | Reflective carapace (ranged spells rebound), swallow whole, trample 4d12+25 (Ref DC 43), frightful presence (Will DC 30), regeneration 40/round, rush    | Material (mythic)    |
 | Ancient Dragon (any)        | 22  | 462 (28d12+280) | 39  | +38 melee (4d6+14 bite, 2d8+7 claw ×2)              | +0   | Aggressive  | Solo           | 1000 | Legendary actions (3/round), breath weapon (DC 29), frightful presence (DC 29), lair actions, wing attack (2d6+7)                                        | Material, all        |
@@ -5419,20 +5419,20 @@ Scenario: Learn spell from trainer
 | 1   | **Goblin Warchief**           | 5   | Goblin warren            | 2      | Summons goblin waves; rallying cry (+2 attack aura to all goblins)   |
 | 2   | **Ettercap Broodmother**      | 5   | Web-choked cavern        | 2      | Web traps (difficult terrain), spider swarm summons, poison bite     |
 | 3   | **Bandit King**               | 6   | Forest clearing fortress | 2      | Ambush reinforcements from forest edges, smoke bomb (concealment)    |
-| 4   | **Carrion Crawler Matriarch** | 6   | Sewer tunnels            | 2      | Paralyzing tentacles (Fort DC 14), ceiling movement, acid secretion  |
+| 4   | **Gravecrawler Matriarch** | 6   | Sewer tunnels            | 2      | Paralyzing tentacles (Fort DC 14), ceiling movement, acid secretion  |
 | 5   | **Werewolf Alpha**            | 7   | Moonlit grove            | 2      | Regeneration (silver bypasses), howl (summon pack), frenzy at low HP |
 | 6   | **Young Black Dragon**        | 7   | Acid swamp               | 2      | Acid breath (line), swim through acid pools, tail sweep              |
 | 7   | **Wight Lord**                | 8   | Barrow tomb              | 2      | Energy drain (−1 level on hit), summon wight minions, create spawn   |
-| 8   | **Umber Hulk Tunneler**       | 8   | Collapsed mine           | 2      | Confusing Gaze (Will DC 16), burrow/ambush, collapse ceiling tiles   |
+| 8   | **Tunnel Brute Tunneler**       | 8   | Collapsed mine           | 2      | Confusing Gaze (Will DC 16), burrow/ambush, collapse ceiling tiles   |
 
 ##### CR 9-12 — Journeyman Tier (Dungeon Floors 4-6)
 
 | #   | Boss                  | CR  | Arena            | Phases | Key Mechanic                                                               |
 | --- | --------------------- | --- | ---------------- | ------ | -------------------------------------------------------------------------- |
-| 9   | **Beholder**          | 9   | Circular chamber | 2      | Random eye ray each turn, anti-magic cone                                  |
+| 9   | **Gloomeye**          | 9   | Circular chamber | 2      | Random eye ray each turn, anti-magic cone                                  |
 | 10  | **Medusa Queen**      | 9   | Statue garden    | 2      | Petrifying Gaze (Fort DC 17), snake hair attacks, shatter petrified allies |
 | 11  | **Frost Giant Jarl**  | 10  | Ice throne hall  | 2      | Boulder throw, ground slam (ice tiles), winter wolf companion              |
-| 12  | **Mind Flayer Elder** | 10  | Underdark cavern | 3      | Mass mind blast, brain drain (stat steal), thrall control                  |
+| 12  | **Thoughtdrinker Elder** | 10  | Underdark cavern | 3      | Mass mind blast, brain drain (stat steal), thrall control                  |
 | 13  | **Vampire Lord**      | 11  | Gothic castle    | 3      | Mist form (invulnerable phase), bat swarm, charm                           |
 | 14  | **Iron Golem**        | 11  | Forge chamber    | 2      | Immune to magic, reflects spells, ground slam AoE                          |
 | 15  | **Aboleth**           | 12  | Flooded temple   | 2      | Enslave party member, psychic blast, mucous cloud                          |
@@ -5448,7 +5448,7 @@ Scenario: Learn spell from trainer
 | 20  | **Storm Giant**          | 14  | Cloud fortress      | 3      | Call lightning, wind wall (deflects ranged), thunder clap AoE         |
 | 21  | **Nalfeshnee**           | 14  | Abyssal rift        | 2      | Horror nimbus (Will DC 18), teleport, unholy smite                    |
 | 22  | **Nightwalker**          | 15  | Shadow plane breach | 3      | Finger of death, crush (AoE darkness), gaze of despair                |
-| 23  | **Beholder Hive Mother** | 15  | Eye tyrant lair     | 3      | Controls 3 mini-beholders, combined eye ray volleys, anti-magic pulse |
+| 23  | **Gloomeye Hive Mother** | 15  | Gloomeye lair     | 3      | Controls 3 mini-gloomeyes, combined eye ray volleys, anti-magic pulse |
 | 24  | **Adult Red Dragon**     | 16  | Volcanic caldera    | 3      | Breath weapon (cone), wing buffet, frightful presence, lava surge     |
 
 ##### CR 17-20 — Champion Tier (Dungeon Floors 10-12)
@@ -5471,7 +5471,7 @@ Scenario: Learn spell from trainer
 | 33  | **Ancient Red Dragon**         | 21  | Mountain peak      | 4      | Flight phases, breath weapon charges, tail sweep, lair actions                     |
 | 34  | **Dracolich**                  | 21  | Bone cathedral     | 3      | Dragon abilities + undead immunities + phylactery                                  |
 | 35  | **Solar**                      | 22  | Celestial court    | 3      | Slaying longbow, healing aura, holy word, blinding radiance                        |
-| 36  | **Elder Brain**                | 22  | Mind Flayer colony | 3      | Psychic scream (mass), dominate multiple targets, tentacle network                 |
+| 36  | **Elder Mind**                | 22  | Thoughtdrinker colony | 3      | Psychic scream (mass), dominate multiple targets, tentacle network                 |
 | 37  | **Archdevil (Mephistopheles)** | 23  | Cania frozen waste | 4      | Hellfire (cold+fire), contract bargain mechanic, reshape arena, summon devils      |
 | 38  | **Empyrean**                   | 23  | Titan's colosseum  | 3      | Bolt (lightning/fire), trembling strike (earthquake), divine buff/debuff           |
 | 39  | **Aspect of Tiamat**           | 24  | Dragon god temple  | 4      | 5 breath weapons (1 per head), legendary actions, frightful presence, divine magic |
@@ -5484,7 +5484,7 @@ Scenario: Learn spell from trainer
 | 41  | **Tarrasque**                     | 30  | Ruined city           | 4      | Massive HP, reflects ranged, swallow whole, regeneration                                        |
 | 42  | **Atropal**                       | 26  | Negative energy plane | 3      | Life drain aura, negative energy burst, summon wraiths                                          |
 | 43  | **Hecatoncheires**                | 27  | Titan prison          | 3      | 100 arms: massive multiattack, throw boulders, grapple multiple                                 |
-| 44  | **Ssendam (Slaad Lord)**          | 28  | Limbo rift            | 4      | Chaos warp (randomize terrain), shapeshift, reality distortion                                  |
+| 44  | **Xorvath (Chaosspawn Lord)**          | 28  | Limbo rift            | 4      | Chaos warp (randomize terrain), shapeshift, reality distortion                                  |
 | 45  | **Elder Evil: Pandorym**          | 28  | Void breach           | 4      | Antimagic body, mind-shattering aura, world-ending detonation phase                             |
 | 46  | **Lolth (Avatar)**                | 29  | Demonweb Pits         | 4      | Spider swarms, web maze, dominate (Will DC 28), darkness, shapeshift                            |
 | 47  | **Orcus (Avatar)**                | 29  | Thanatos throne       | 4      | Wand of Orcus (instant death Fort DC 30), undead army, necrotic storm                           |
@@ -5531,11 +5531,11 @@ Bosses maintain a **combo state machine** that tracks their current tactical seq
 | -------------------------------- | -------------------------------------------------- | ------------------------------------------------------- | -------------------------------------- | -------------------------------------------- |
 | **Buff → Debuff → Strike**       | Cast self-buff (e.g., Haste, Shield, Mirror Image) | Debuff highest-threat target (e.g., Slow, Blind, Curse) | Full attack on debuffed target         | Lich King, Rakshasa, Demilich, Vecna         |
 | **Summon → Position → AoE**      | Summon minions to block chokepoints                | Reposition to maximize AoE coverage                     | Unleash AoE on clustered party         | Demon Lord, Pit Fiend, Lolth, Orcus          |
-| **Debuff → Isolate → Execute**   | Mass debuff (Fear, Confusion, Darkness)            | Target isolated/debuffed character                      | Power attack / power word kill         | Mind Flayer Elder, Nightwalker, Vampire Lord |
+| **Debuff → Isolate → Execute**   | Mass debuff (Fear, Confusion, Darkness)            | Target isolated/debuffed character                      | Power attack / power word kill         | Thoughtdrinker Elder, Nightwalker, Vampire Lord |
 | **Tank → Punish → Heal**         | Defensive stance / raise AC                        | Counter-attack anyone who attacked this turn (AoO)      | Self-heal or regenerate                | Iron Golem, Tarrasque, Hydra, Marut          |
-| **Kite → Blast → Retreat**       | Move to max range                                  | Ranged/spell attack                                     | Move behind cover or minions           | Beholder, Storm Giant, Ancient Blue Dragon   |
-| **Lockdown → Drain → Overwhelm** | AoE control (Web, Entangle, Wall)                  | Drain resources (mana burn, ability damage)             | Press weakened party with full offense | Aboleth, Elder Brain, Pandorym               |
-| **Shapeshift → Adapt → Exploit** | Change form to counter party's strongest type      | Adapt resistances/immunities                            | Exploit newly-created weakness         | Ssendam, Lolth, Empyrean                     |
+| **Kite → Blast → Retreat**       | Move to max range                                  | Ranged/spell attack                                     | Move behind cover or minions           | Gloomeye, Storm Giant, Ancient Blue Dragon   |
+| **Lockdown → Drain → Overwhelm** | AoE control (Web, Entangle, Wall)                  | Drain resources (mana burn, ability damage)             | Press weakened party with full offense | Aboleth, Elder Mind, Pandorym               |
+| **Shapeshift → Adapt → Exploit** | Change form to counter party's strongest type      | Adapt resistances/immunities                            | Exploit newly-created weakness         | Xorvath, Lolth, Empyrean                     |
 
 ##### Phase-Specific Behavior Escalation
 
@@ -5560,7 +5560,7 @@ Bosses have **reactive triggers** that fire outside their normal turn:
 | Party clusters (3+ in adjacent tiles) | Queue AoE for next turn                               | Dragon queues breath weapon, Balor queues fire whip sweep      |
 | Boss takes >25% max HP in single hit  | Enrage: +2 attack, +1d6 damage for 2 rounds           | Tarrasque, Hydra, Barbarian-type bosses                        |
 | Party attempts to flee/retreat        | Block escape routes or pursue                         | Vampire mist-blocks door, Kraken tentacle-blocks exits         |
-| Minions all defeated                  | Fury phase: skip buff turns, pure offense             | Goblin Warchief, Beholder Hive Mother                          |
+| Minions all defeated                  | Fury phase: skip buff turns, pure offense             | Goblin Warchief, Gloomeye Hive Mother                          |
 
 ##### Boss Ability Cooldown System
 
@@ -5658,20 +5658,20 @@ Nightmare difficulty adds +15% to all drop chances (see Nightmare Risk/Reward Ba
 | **Goblin Warchief**           | Warchief's Crown (helmet, +2 CHA, rally cry 1/combat: +1 attack to party for 3 rounds) | Goblin-Tooth Necklace (accessory, +1d6 sneak attack vs flanked)            | Warchief's Cleaver (+2 axe, +1d6 vs small creatures)                         |
 | **Ettercap Broodmother**      | Broodmother's Spinnerets (accessory, web 1/combat: DC 14 Reflex)                       | Venomfang Dagger (+2 dagger, poison 1d4 CON, Fort DC 14)                   | Spider-Silk Cloak (+2 AC, +4 vs entangle/web effects)                        |
 | **Bandit King**               | Bandit King's Rapier (+2 sword, +2 Initiative, +1d6 vs flat-footed)                    | Coin Purse of Holding (accessory, +25% gold from all sources)              | Smoke Bomb Belt (accessory, 3/day: concealment in 2-tile radius)             |
-| **Carrion Crawler Matriarch** | Paralytic Tentacle Whip (+2 flail, paralyze on crit Fort DC 14)                        | Crawler Carapace (+4 AC, immune to acid)                                   | Matriarch's Eye (accessory, darkvision 60ft, +2 vs ambush)                   |
+| **Gravecrawler Matriarch** | Paralytic Tentacle Whip (+2 flail, paralyze on crit Fort DC 14)                        | Crawler Carapace (+4 AC, immune to acid)                                   | Matriarch's Eye (accessory, darkvision 60ft, +2 vs ambush)                   |
 | **Werewolf Alpha**            | Moonsilver Fang (+2 sword, +1d6 vs shapechangers, silver)                              | Alpha's Pelt Cloak (+3 AC, regenerate 1 HP/round, vulnerability to silver) | Howling Amulet (accessory, 1/combat: summon 2 wolves for 3 rounds)           |
 | **Young Black Dragon**        | Acidblood Spear (+2 spear, +1d6 acid, acid splash on crit)                             | Dragonhide Buckler (+2 AC, acid resistance 10)                             | Hatchling's Fang (accessory, +2 CON, acid breath 1/day: 2d6 cone)            |
 | **Wight Lord**                | Barrow Blade (+2 sword, energy drain on crit: −1 level, Fort DC 16 negates)            | Crown of the Barrow (+3 AC, immune to energy drain)                        | Death's Grasp Ring (accessory, 1/combat: animate dead, raise 1 fallen enemy) |
-| **Umber Hulk Tunneler**       | Hulk Claw Gauntlets (+2 warhammer, Sunder at +4, +2 STR)                               | Tunneler's Carapace (+5 AC, immune to confusion)                           | Tremorsense Amulet (accessory, tremorsense 30ft, +2 Initiative underground)  |
+| **Tunnel Brute Tunneler**       | Hulk Claw Gauntlets (+2 warhammer, Sunder at +4, +2 STR)                               | Tunneler's Carapace (+5 AC, immune to confusion)                           | Tremorsense Amulet (accessory, tremorsense 30ft, +2 Initiative underground)  |
 
 ##### Journeyman Tier Loot (CR 9-12)
 
 | Boss                  | Unique Drop 1 (40%)                                                       | Unique Drop 2 (35%)                                                    | Unique Drop 3 (30%)                                                    |
 | --------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| **Beholder**          | Eye of the Beholder (accessory, +4 INT, 1/day: Antimagic Cone 3 rounds)   | Beholder Scale Shield (+4 AC, reflect 1 spell/combat)                  | Crown of Eyes (helmet, darkvision 120ft, +2 all saves vs spells)       |
+| **Gloomeye**          | Gloomeye Lens (accessory, +4 INT, 1/day: Antimagic Cone 3 rounds)   | Gloomeye Scale Shield (+4 AC, reflect 1 spell/combat)                  | Crown of Eyes (helmet, darkvision 120ft, +2 all saves vs spells)       |
 | **Medusa Queen**      | Gorgon's Gaze Mirror (shield, +3 AC, 1/combat: reflect gaze attack)       | Petrified Heart (accessory, +4 CON, immune to petrification)           | Serpent-Hair Whip (+3 flail, poison 1d6 DEX, Fort DC 17)               |
 | **Frost Giant Jarl**  | Jarlsbane (+3 axe, +2d6 cold, Frost Nova on crit: 10ft AoE cold)          | Jarl's Ice Crown (helmet, cold immunity, +2 STR)                       | Glacial Plate (+7 AC, cold immunity, −2 Initiative)                    |
-| **Mind Flayer Elder** | Crown of the Elder Brain (helmet, +6 INT, Mind Blast 1/combat)            | Tentacle Rod (+3 mace, 4 attacks/round, grapple on hit)                | Psionic Robes (+4 AC, SR 20, immune to mind-affecting)                 |
+| **Thoughtdrinker Elder** | Crown of the Elder Mind (helmet, +6 INT, Mind Blast 1/combat)            | Tentacle Rod (+3 mace, 4 attacks/round, grapple on hit)                | Psionic Robes (+4 AC, SR 20, immune to mind-affecting)                 |
 | **Vampire Lord**      | Crimson Fang (+3 dagger, life steal 50% damage, +2 DEX)                   | Cloak of the Night (accessory, greater invisibility 1/combat, +4 Hide) | Blood Chalice (accessory, killing blow restores 50% max HP)            |
 | **Iron Golem**        | Adamantine Full Plate (+8 AC, DR 10/adamantine, immune to crits)          | Golem Fist (+3 warhammer, +2d6 damage, Sunder on hit)                  | Clockwork Heart (accessory, +4 CON, immune to poison/disease)          |
 | **Aboleth**           | Mucus Orb (accessory, underwater breathing, dominate 1 creature 1/combat) | Aboleth-Skin Cloak (+3 AC, slippery: immune to grapple, +4 escape)     | Trident of the Deep (+3 spear, +2d6 vs land creatures, waterbreathing) |
@@ -5687,7 +5687,7 @@ Nightmare difficulty adds +15% to all drop chances (see Nightmare Risk/Reward Ba
 | **Storm Giant**          | Stormcaller (+4 warhammer, +2d6 lightning, call lightning 1/combat)                | Storm Giant Girdle (accessory, +4 STR, immune to lightning)     | Thunderhead Crown (helmet, wind wall 1/combat, +2 all saves)              |
 | **Nalfeshnee**           | Dread Cleaver (+4 axe, +2d6 unholy, horror nimbus on crit)                         | Abyssal Hide (+7 AC, DR 10/good, fire/lightning resistance 10)  | Demon's Third Eye (accessory, true seeing 1/combat, +4 INT)               |
 | **Nightwalker**          | Nightsword (+4 sword, +3d6 necrotic, finger of death 1/combat)                     | Shadow Mantle (+6 AC, concealment 20%, immune to death effects) | Void Heart (accessory, negative energy immunity, −2 CHA)                  |
-| **Beholder Hive Mother** | Greater Eye of the Beholder (accessory, +6 INT, 2 eye rays/combat)                 | Hive Mother Carapace (+8 AC, SR 25, reflect 1 spell/round)      | Optic Nerve Crown (helmet, darkvision 120ft, dominate 1/combat)           |
+| **Gloomeye Hive Mother** | Greater Gloomeye Lens (accessory, +6 INT, 2 eye rays/combat)                 | Hive Mother Carapace (+8 AC, SR 25, reflect 1 spell/round)      | Optic Nerve Crown (helmet, darkvision 120ft, dominate 1/combat)           |
 | **Adult Red Dragon**     | Red Dragon Fang (+4 sword, +2d6 fire, fire immunity)                               | Red Dragon Scale Armor (+8 AC, fire immunity, −1 check penalty) | Dragon's Breath Amulet (accessory, breath weapon 1/combat: 6d6 fire cone) |
 
 ##### Champion Tier Loot (CR 17-20)
@@ -5710,7 +5710,7 @@ Nightmare difficulty adds +15% to all drop chances (see Nightmare Risk/Reward Ba
 | **Ancient Red Dragon**         | Dragonslayer Blade (+5 sword, +3d6 fire, fire immunity)                     | Red Dragon Scale Armor (+12 AC, fire immunity, −1 check penalty)         | Dragon's Hoard Ring (accessory, +50% gold from all sources)                         |
 | **Dracolich**                  | Dragonfang Staff (+5 staff, +4d6 necrotic, animate dead 1/combat)           | Bone Dragon Plate (+12 AC, cold/necrotic immunity, frightful presence)   | Phylactery Shard (accessory, −1 level on death instead of −1 level on resurrection) |
 | **Solar**                      | Solaris (+5 bow, +3d6 radiant, slaying arrow 1/combat)                      | Celestial Plate (+12 AC, DR 15/evil, radiant immunity)                   | Halo of the Solar (helmet, +6 WIS, heal 50 HP 1/combat)                             |
-| **Elder Brain**                | Mind's Eye Scepter (+5 staff, +4 spell DC, dominate 1/combat no save)       | Thought Shield Diadem (helmet, +6 INT, immune to psychic/mind-affecting) | Neural Web Cloak (+6 AC, telepathy 120ft, detect thoughts at will)                  |
+| **Elder Mind**                | Mind's Eye Scepter (+5 staff, +4 spell DC, dominate 1/combat no save)       | Thought Shield Diadem (helmet, +6 INT, immune to psychic/mind-affecting) | Neural Web Cloak (+6 AC, telepathy 120ft, detect thoughts at will)                  |
 | **Archdevil (Mephistopheles)** | Cania's Fury (+5 staff, +3d6 fire + 3d6 cold, hellfire storm 1/combat)      | Archdevil's Raiment (+12 AC, DR 15/good+silver, fire/cold immunity)      | Infernal Contract (accessory, +6 CHA, wish 1/week with devil's bargain drawback)    |
 | **Empyrean**                   | Titan's Mace (+5 warhammer, +4d6 thunder, earthquake on crit)               | Empyrean Aegis (+12 AC, DR 10/epic, +4 all saves)                        | Belt of Titan's Might (accessory, +6 STR, enlarge person at will)                   |
 | **Aspect of Tiamat**           | Pentachromatic Blade (+5 sword, +1d6 each: fire/cold/lightning/acid/poison) | Tiamat's Scale (+14 AC, resist 20 all energy types)                      | Crown of the Dragon Queen (helmet, 5 breath weapons 1/day each)                     |
@@ -5723,7 +5723,7 @@ Nightmare difficulty adds +15% to all drop chances (see Nightmare Risk/Reward Ba
 | **Tarrasque**            | Tarrasque Claw (+5 axe, +4d6 damage, ignore DR, threat 18-20)              | Tarrasque Hide (+14 AC, DR 15/epic, reflect spells)                   | Heart of the Tarrasque (accessory, regenerate 10 HP/round, immune to death effects) |
 | **Atropal**              | Stillborn Scepter (+5 staff, +4d6 necrotic, death aura 10ft: 2d6/round)    | Shroud of Unlife (+8 AC, negative energy immunity, undead immunities) | Atropal's Tear (accessory, +6 WIS, raise dead at will on enemies as undead)         |
 | **Hecatoncheires**       | Hundred-Armed Gauntlets (+5 warhammer, 6 attacks/round)                    | Titan Prison Plate (+16 AC, DR 20/epic, immune to grapple)            | Atlas Stone (accessory, +8 STR, can lift/throw terrain objects as weapons)          |
-| **Ssendam (Slaad Lord)** | Entropy Blade (+5 sword, random energy type each hit, chaos warp on crit)  | Slaad Lord's Hide (+10 AC, change shape 1/round, immune to polymorph) | Chaos Gem (accessory, 1/round: reroll any d20 roll, keep either result)             |
+| **Xorvath (Chaosspawn Lord)** | Entropy Blade (+5 sword, random energy type each hit, chaos warp on crit)  | Chaosspawn Lord's Hide (+10 AC, change shape 1/round, immune to polymorph) | Chaos Gem (accessory, 1/round: reroll any d20 roll, keep either result)             |
 | **Elder Evil: Pandorym** | Void Blade (+5 sword, +4d6 force, antimagic strike 1/combat)               | Pandorym's Shell (+14 AC, immune to magic, DR 20/epic)                | Void Heart (accessory, 1/combat: antimagic field 3 rounds centered on self)         |
 | **Lolth (Avatar)**       | Spider Queen's Fang (+5 dagger, +3d6 poison, dominate 1/combat)            | Demonweb Plate (+14 AC, immune to web/entangle, spider climb)         | Lolth's Blessing (accessory, +6 DEX, summon drider army 1/dungeon)                  |
 | **Orcus (Avatar)**       | Wand of Orcus Shard (+5 mace, death touch 1/combat Fort DC 30)             | Orcus Plate (+14 AC, undead immunities, command undead at will)       | Skull of Orcus (helmet, +6 WIS, animate dead army 1/dungeon)                        |
@@ -5746,7 +5746,7 @@ Nightmare difficulty adds +15% to all drop chances (see Nightmare Risk/Reward Ba
 | #   | Acceptance Criterion                                                                       |
 | --- | ------------------------------------------------------------------------------------------ |
 | AC1 | Each boss arena has unique terrain tiles and background                                    |
-| AC2 | The arena size matches the boss's combat style (large for Dragon, small for Beholder)      |
+| AC2 | The arena size matches the boss's combat style (large for Dragon, small for Gloomeye)      |
 | AC3 | Arena-specific terrain types affect combat (lava in Hellfire Pit, water in Flooded Temple) |
 
 **US-BOSS-03**: As a player, I can observe boss phase transitions with visual and mechanical changes.
@@ -6791,7 +6791,7 @@ localStorage keys:
       fighter: ['champion', 'weaponMaster'],
       wizard: ['archmage']
     },
-    defeatedBosses: ['beholder', 'lich-king'],   // Lifetime boss kills (for quest prereqs)
+    defeatedBosses: ['gloomeye', 'lich-king'],   // Lifetime boss kills (for quest prereqs)
     clearedDungeons: ['shadow-cavern'],           // Fully cleared dungeons (for quest prereqs)
     saveSlots: 3,                                 // Number of save slots used (max 5)
   },
@@ -6806,7 +6806,7 @@ localStorage keys:
   // - Auto-save always writes to the currently active slot
   bestiary: {                          // Persistent monster codex
     'goblin': { encounters: 25, kills: 20, state: 'mastered' },
-    'beholder': { encounters: 1, kills: 0, state: 'encountered' }
+    'gloomeye': { encounters: 1, kills: 0, state: 'encountered' }
   },
   achievements: {                      // Persistent achievement tracking
     'first-blood': { unlocked: true, date: '2026-03-10' },
@@ -8032,7 +8032,7 @@ Secret quests show "???" for unmet hidden prerequisites. These are revealed thro
 | Discovery Method       | How It Works                                                                                                | Example                                                                                                             |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | **NPC dialogue hint**  | Talking to a specific NPC reveals one "???" prerequisite as readable text                                   | Elminster says "I hear the Underdark holds a key to ancient power..." → reveals "Requires: Clear Underdark dungeon" |
-| **Bestiary entry**     | Killing enough of a monster type (reaching "Studied" rank) reveals quest prerequisites tied to that monster | Studying Beholders reveals "Defeat Beholder Hive Mother" as a quest prerequisite                                    |
+| **Bestiary entry**     | Killing enough of a monster type (reaching "Studied" rank) reveals quest prerequisites tied to that monster | Studying Gloomeyes reveals "Defeat Gloomeye Hive Mother" as a quest prerequisite                                    |
 | **Lore item**          | Finding a lore book/scroll in a dungeon reveals a hidden prerequisite                                       | Reading "Tome of the Shadow Chain" reveals the prerequisite for Shadow Chain Part 3                                 |
 | **Achievement unlock** | Completing an achievement reveals associated secret quest prerequisites                                     | "Dragon Slayer" achievement reveals dragon-related quest prerequisites                                              |
 | **Faction reputation** | Reaching a reputation threshold with a faction reveals their secret quests                                  | Reaching "Trusted" with Thieves' Guild reveals hidden heist quests                                                  |
@@ -8041,7 +8041,7 @@ Discovery state is persisted in the save data:
 ```js
 questDiscovery: {
   revealedPrereqs: {
-    'secret-quest-001': ['npcHint:elminster', 'bestiaryRank:beholder'],
+    'secret-quest-001': ['npcHint:elminster', 'bestiaryRank:gloomeye'],
     'secret-quest-002': ['loreItem:tome-shadow-chain']
   }
 }
