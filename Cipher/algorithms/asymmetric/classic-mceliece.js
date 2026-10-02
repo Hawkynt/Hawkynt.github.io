@@ -155,12 +155,12 @@
   /**
    * One Keccak-f[1600] permutation over a state held as 25 pairs of 32 bit
    * halves, low half first.
-   * @param {int32[]} state - 50 words, modified in place
+   * @param {uint32[]} state - 50 words, modified in place
    */
   function KeccakPermute(state) {
-    const b = new Int32Array(50);
-    const c = new Int32Array(10);
-    const d = new Int32Array(10);
+    const b = new Uint32Array(50);
+    const c = new Uint32Array(10);
+    const d = new Uint32Array(10);
 
     for (let round = 0; round < 24; ++round) {
       for (let x = 0; x < 5; ++x) {
@@ -177,9 +177,9 @@
       }
 
       for (let x = 0; x < 5; ++x) {
-        /** @type {int32} */
+        /** @type {uint32} */
         const low = c[2 * ((x + 1) % 5)];
-        /** @type {int32} */
+        /** @type {uint32} */
         const high = c[2 * ((x + 1) % 5) + 1];
         const rotatedLow = OpCodes.Or32(OpCodes.Shl32(low, 1), OpCodes.Shr32(high, 31));
         const rotatedHigh = OpCodes.Or32(OpCodes.Shl32(high, 1), OpCodes.Shr32(low, 31));
@@ -198,9 +198,9 @@
         for (let y = 0; y < 5; ++y) {
           const i = x + 5 * y;
           const rotation = KECCAK_ROTATION[i];
-          /** @type {int32} */
+          /** @type {uint32} */
           const low = state[2 * i];
-          /** @type {int32} */
+          /** @type {uint32} */
           const high = state[2 * i + 1];
           /** @type {uint32} */
           let newLow = 0;
@@ -241,7 +241,7 @@
 
   /**
    * Exclusive-or one full block into the state and permute.
-   * @param {int32[]} state - 50 words, modified in place
+   * @param {uint32[]} state - 50 words, modified in place
    * @param {uint8[]} block - SHAKE256_RATE octets
    */
   function AbsorbBlock(state, block) {
@@ -264,7 +264,7 @@
    * @returns {uint8[]} the output
    */
   function Shake256(input, outputLength) {
-    const state = new Int32Array(50);
+    const state = new Uint32Array(50);
     const block = new Uint8Array(SHAKE256_RATE);
 
     let filled = 0;
