@@ -383,6 +383,7 @@
         case 'sz:vfs:Copy': return handle(kernel.ReadAllBytes(data.from).then(bytes => kernel.WriteAllBytes(data.to, bytes)).then(()=>{ if (_affectsDesktop(data.to)) _dskRefresh(); return {success:true}; }), 'sz:vfs:CopyResult');
         case 'sz:desktopRefresh': _dskRefresh(); return;
         case 'sz:clipboardUpdate': window._szClipboard = data.clipboard; return;
+        case 'sz:shellKey': if (data.key === 'start') taskbar.toggleStartMenuFromKeyboard(); return;
 
         // Mount/unmount local directories
         case 'sz:vfs:MountLocal': {
