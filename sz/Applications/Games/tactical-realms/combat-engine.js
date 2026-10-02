@@ -276,6 +276,7 @@
     #selectedSpell;
     #aiTier;
     #coordinatedPlan;
+    #plannedRound = 0;
 
     constructor(prng) {
       this.#prng = prng;
@@ -367,6 +368,56 @@
       this.#phase = CombatPhase.TURN_START;
     }
 
+    // Battle on a prepared board with everyone already placed (dungeon
+    // encounters). `ambush` gives the side that noticed the other first a
+    // head start on initiative: 'party', 'enemy' or null.
+    initCombatAt(party, enemies, grid, partyPositions, enemyPositions, { ambush = null } = {}) {
+      CombatUnit.resetCombatTags();
+      this.#grid = grid;
+      this.#units = [];
+      this.#combatLog = [];
+      this.#round = 1;
+      this.#turnIndex = 0;
+
+      for (let i = 0; i < party.length; ++i) {
+        const id = `party_${i}`;
+        const slot = partyPositions[i] || partyPositions[partyPositions.length - 1];
+        let charData = party[i];
+        if (!charData.spells && Spells) {
+          const spells = Spells.assignSpells(charData.class, charData.level, this.#prng.fork(`spells_${i}`));
+          if (spells.length > 0)
+            charData = Object.freeze({ ...charData, spells });
+        }
+        const unit = new CombatUnit(id, charData, 'party', slot.col, slot.row);
+        this.#units.push(unit);
+        this.#grid.placeUnit(id, slot.col, slot.row);
+      }
+
+      for (let i = 0; i < enemies.length; ++i) {
+        const tmpl = enemies[i];
+        const id = `enemy_${i}`;
+        const char = templateToCharacter(tmpl.templateId, this.#prng, tmpl.extraHD || 0, tmpl.targetLevel);
+        const slot = enemyPositions[i];
+        const unit = new CombatUnit(id, char, 'enemy', slot.col, slot.row);
+        this.#units.push(unit);
+        this.#grid.placeUnit(id, slot.col, slot.row);
+      }
+
+      const initEntries = [];
+      for (const u of this.#units) {
+        const head = ambush && ambush === u.faction ? 10 : 0;
+        const roll = D20.rollInitiative(this.#prng, u.dexMod, head);
+        initEntries.push({ id: u.id, total: roll.total, dexMod: u.dexMod, roll: roll.roll });
+      }
+      this.#turnOrder = D20.sortInitiative(initEntries, this.#prng);
+
+      this.#combatLog.push(ambush === 'party' ? 'You catch them unawares!' : ambush === 'enemy' ? 'They were waiting for you!' : `Combat begins! Round ${this.#round}`);
+      for (const e of this.#turnOrder)
+        this.#combatLog.push(`  ${this.unitById(e.id).logName}: Initiative ${e.total} (d20=${e.roll})`);
+
+      this.#phase = CombatPhase.TURN_START;
+    }
+
     initCombatWithGrid(party, enemies, grid, biome, partyCenter) {
       CombatUnit.resetCombatTags();
       this.#grid = grid;
@@ -445,6 +496,15 @@
       const unit = this.currentUnit;
       if (!unit)
         return;
+      // a side can fall outside an attack (traps, effects, a fled foe)
+      if (this.checkVictory()) {
+        this.#phase = CombatPhase.VICTORY;
+        return;
+      }
+      if (this.checkDefeat()) {
+        this.#phase = CombatPhase.DEFEAT;
+        return;
+      }
 
       while (!unit.isAlive) {
         this.nextTurn();
@@ -885,11 +945,19 @@
       const partyUnits = this.#units.filter(u => u.faction === 'party' && u.isAlive);
       const allEnemyUnits = this.#aiTier >= 3 ? this.#units.filter(u => u.faction === 'enemy' && u.isAlive) : null;
 
-      // Tier 4: use pre-coordinated plan if available
-      let decision;
-      if (this.#aiTier >= 4 && this.#coordinatedPlan && this.#coordinatedPlan.has(unitId))
+      // Tier 4: the first enemy to act each round plans for all of them
+      if (this.#aiTier >= 4 && this.#plannedRound !== this.#round) {
+        this.#plannedRound = this.#round;
+        this.planEnemyRound();
+      }
+      let decision = null;
+      if (this.#aiTier >= 4 && this.#coordinatedPlan && this.#coordinatedPlan.has(unitId)) {
         decision = this.#coordinatedPlan.get(unitId);
-      else
+        // the plan was made before others moved; drop steps that no longer fit
+        if (!this.#planStillValid(unit, decision))
+          decision = null;
+      }
+      if (!decision)
         decision = EnemyAI.decide(this.#grid, unit, partyUnits, this.#prng, this.#aiTier, allEnemyUnits);
 
       if (decision.type === 'attack') {
@@ -918,6 +986,33 @@
       unit.endAction();
       if (this.#phase !== CombatPhase.VICTORY && this.#phase !== CombatPhase.DEFEAT)
         this.#phase = CombatPhase.TURN_END;
+    }
+
+    #planStillValid(unit, d) {
+      if (!d || !d.type)
+        return false;
+      if (d.moveTo) {
+        const { col, row } = d.moveTo;
+        if (!this.#grid.inBounds(col, row))
+          return false;
+        const occupant = this.#grid.unitAt(col, row);
+        if (occupant && occupant !== unit.id)
+          return false;
+        const range = Pathfinding.movementRange(this.#grid, unit.position, unit.speedTiles, unit.faction);
+        if (!(col === unit.position.col && row === unit.position.row) && !range.has(`${col},${row}`))
+          return false;
+      }
+      if (d.target) {
+        const t = this.unitById(d.target);
+        if (!t || !t.isAlive)
+          return false;
+        if (d.type === 'attack' || d.type === 'move_and_attack') {
+          const from = d.moveTo || unit.position;
+          if (!D20.isAdjacent(from, t.position))
+            return false;
+        }
+      }
+      return true;
     }
 
     // Called at the start of each enemy round for tier 4 coordination

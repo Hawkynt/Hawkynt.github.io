@@ -15,11 +15,11 @@
 
   // Scoring weights per tier
   const TIER_WEIGHTS = Object.freeze([
-    Object.freeze({ proximity: 1.0, lowHp: 0.3, spell: 0,   flanking: 0,   threat: 0,   blocking: 0,   coordination: 0   }),
-    Object.freeze({ proximity: 1.0, lowHp: 0.5, spell: 0.8, flanking: 0,   threat: 0,   blocking: 0,   coordination: 0   }),
-    Object.freeze({ proximity: 0.8, lowHp: 0.8, spell: 1.0, flanking: 1.2, threat: 0.5, blocking: 0,   coordination: 0   }),
-    Object.freeze({ proximity: 0.6, lowHp: 1.0, spell: 1.2, flanking: 1.2, threat: 1.0, blocking: 1.0, coordination: 0.3 }),
-    Object.freeze({ proximity: 0.4, lowHp: 1.0, spell: 1.5, flanking: 1.5, threat: 1.2, blocking: 1.0, coordination: 1.0 }),
+    Object.freeze({ proximity: 1.0, lowHp: 0.3, spell: 0,   flanking: 0,   threat: 0,   blocking: 0,   coordination: 0,   positioning: 0   }),
+    Object.freeze({ proximity: 1.0, lowHp: 0.5, spell: 0.8, flanking: 0,   threat: 0,   blocking: 0,   coordination: 0,   positioning: 0   }),
+    Object.freeze({ proximity: 0.8, lowHp: 0.8, spell: 1.0, flanking: 1.2, threat: 0.5, blocking: 0,   coordination: 0,   positioning: 0.6 }),
+    Object.freeze({ proximity: 0.6, lowHp: 1.0, spell: 1.2, flanking: 1.2, threat: 1.0, blocking: 1.0, coordination: 0.3, positioning: 1.0 }),
+    Object.freeze({ proximity: 0.4, lowHp: 1.0, spell: 1.5, flanking: 1.5, threat: 1.2, blocking: 1.0, coordination: 1.0, positioning: 1.2 }),
   ]);
 
   // Map dungeon difficulty (1-8) or overworld tier (0-7) to AI tier
@@ -253,6 +253,75 @@
     return [{ type: 'move', moveTo: bestMove, score: bestScore }];
   }
 
+  // --- Positioning (tier 2+) ---
+
+  function nearestPartyDistance(c, r, partyUnits) {
+    let best = Infinity;
+    for (const pu of partyUnits)
+      if (pu.isAlive)
+        best = Math.min(best, Math.abs(c - pu.position.col) + Math.abs(r - pu.position.row));
+    return best;
+  }
+
+  function isCaster(unit) {
+    return !!(TR.Spells && (unit.spells || []).some(id => {
+      const sp = TR.Spells.byId(id);
+      return sp && sp.target === 'enemy' && unit.canCastSpell(sp);
+    }));
+  }
+
+  // How good a tile is to defend: cover, a narrow approach, a wall at the
+  // back and friends beside it.
+  function defensiveValue(grid, c, r, unit, allies) {
+    const t = grid.terrainAt(c, r);
+    let v = t && t.coverAC ? Math.min(4, t.coverAC) * 0.5 : 0;
+    let open = 0, walls = 0;
+    for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nc = c + dc, nr = r + dr;
+      if (!grid.inBounds(nc, nr) || grid.moveCostAt(nc, nr) >= 99)
+        ++walls;
+      else
+        ++open;
+    }
+    if (open <= 2)
+      v += 2;          // chokepoint: few ways in
+    if (walls > 0)
+      v += 0.5;        // back to the wall
+    for (const a of allies || [])
+      if (a !== unit && a.isAlive && Math.abs(a.position.col - c) + Math.abs(a.position.row - r) === 1)
+        v += 0.6;      // shoulder to shoulder
+    return v;
+  }
+
+  // Casters keep their distance; fighters out of reach hold good ground
+  // instead of trickling toward the party one by one.
+  function evaluatePositionActions(grid, unit, partyUnits, moveRange, weights, allEnemyUnits) {
+    if (!weights.positioning)
+      return [];
+    const pos = unit.position;
+    const nearest = nearestPartyDistance(pos.col, pos.row, partyUnits);
+    const caster = isCaster(unit);
+    if (!caster && nearest <= (unit.speedTiles || 6) + 1)
+      return [];
+    const out = [];
+    const consider = [[`${pos.col},${pos.row}`]].concat([...moveRange]);
+    for (const [key] of consider) {
+      const [c, r] = key.split(',').map(Number);
+      const here = c === pos.col && r === pos.row;
+      if (!here && grid.isOccupied(c, r))
+        continue;
+      const d = nearestPartyDistance(c, r, partyUnits);
+      const def = defensiveValue(grid, c, r, unit, allEnemyUnits);
+      let score;
+      if (caster)
+        score = weights.positioning * ((d < 2 ? -6 : d <= 5 ? 3 + Math.min(d, 4) * 0.5 : 3 - (d - 5) * 0.6) + def * 0.4);
+      else
+        score = weights.positioning * (def + (d <= nearest ? 0.5 : -1.5));
+      out.push(here ? { type: 'wait', score } : { type: 'move', moveTo: { col: c, row: r }, score });
+    }
+    return out;
+  }
+
   // --- Tier 4: Coordinated multi-unit pre-planning ---
   function coordinatedDecide(grid, enemyUnits, partyUnits, prng) {
     const weights = TIER_WEIGHTS[4];
@@ -399,6 +468,8 @@
       const melee = evaluateMeleeActions(grid, unit, partyUnits, moveRange, weights, aiTier, allEnemyUnits);
       const spells = evaluateSpellActions(grid, unit, partyUnits, allEnemyUnits, weights, aiTier);
       const moves = evaluateMoveActions(grid, unit, partyUnits, moveRange, weights, allEnemyUnits);
+      const positions = evaluatePositionActions(grid, unit, partyUnits, moveRange, weights, allEnemyUnits);
+      const threatened = nearestPartyDistance(pos.col, pos.row, partyUnits) <= 1;
 
       // Also consider spells after moving
       if (aiTier >= 2 && TR.Spells) {
@@ -415,17 +486,20 @@
             for (const pu of partyUnits) {
               if (!pu.isAlive) continue;
               if (!TR.Spells.isInRange(c, r, pu.position.col, pu.position.row, range)) continue;
-              // Already in range from current pos? Skip (covered by non-move spell actions)
-              if (TR.Spells.isInRange(pos.col, pos.row, pu.position.col, pu.position.row, range)) continue;
+              // Already in range from here? Covered by plain spell actions,
+              // unless a foe is adjacent and stepping back first is wiser.
+              if (!threatened && TR.Spells.isInRange(pos.col, pos.row, pu.position.col, pu.position.row, range)) continue;
               const expectedDmg = (spell.damageDice || 1) * ((spell.damageSides || 6) / 2);
               let score = weights.spell * (expectedDmg / 5) + scoreTarget(unit, pu, weights) * 0.2;
+              if (weights.positioning)
+                score += weights.positioning * (nearestPartyDistance(c, r, partyUnits) >= 3 ? 1.5 : -1.5);
               spells.push({ type: 'move_and_spell', moveTo: movePos, spellId, target: pu.id, score });
             }
           }
         }
       }
 
-      const all = [...melee, ...spells, ...moves];
+      const all = [...melee, ...spells, ...moves, ...positions];
       if (all.length === 0)
         return { type: 'wait' };
 
@@ -439,6 +513,7 @@
 
     // Tier 4: pre-plan all enemy moves at once for coordination
     coordinatedDecide,
+    defensiveValue,
   };
 
   TR.EnemyAI = EnemyAI;

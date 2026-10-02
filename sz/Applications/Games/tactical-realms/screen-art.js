@@ -235,6 +235,26 @@
       ctx.fillRect(cx - 4, cy - 4, 8, 8);
   }
 
+  // Gold frame around an area that is already drawn (the combat board).
+  function border(ctx, x, y, w, h) {
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.7)';
+    ctx.shadowBlur = 24;
+    ctx.strokeStyle = '#2a1e10';
+    ctx.lineWidth = 10;
+    ctx.strokeRect(x - 5, y - 5, w + 10, h + 10);
+    ctx.restore();
+    ctx.strokeStyle = '#c8a24e';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x - 5.5, y - 5.5, w + 11, h + 11);
+    ctx.strokeStyle = 'rgba(255,236,170,0.35)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - 1.5, y - 1.5, w + 3, h + 3);
+    ctx.fillStyle = '#c8a24e';
+    for (const [cx, cy] of [[x - 5, y - 5], [x + w + 5, y - 5], [x - 5, y + h + 5], [x + w + 5, y + h + 5]])
+      ctx.fillRect(cx - 5, cy - 5, 10, 10);
+  }
+
   function banner(ctx, text, y, { size = 40, color = '#f0d890', sub = null } = {}) {
     ctx.save();
     ctx.font = '15px monospace';
@@ -414,6 +434,6 @@
   TR.ScreenArt = Object.freeze({
     itemIcon,
     W, H, asUnit, bustFootY, portraitURL, stage, vignette, campfire, partyLine, portrait,
-    frame, banner, rosterPanel, menu, button, reveal, confetti,
+    frame, border, banner, rosterPanel, menu, button, reveal, confetti,
   });
 })();
