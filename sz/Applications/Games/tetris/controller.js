@@ -4,7 +4,11 @@
   /* ---- Constants ---- */
   const COLS = 10;
   const ROWS = 20;
-  const PREVIEW_SIZE = 4;
+  const PREVIEW_COLS = 4;
+  const PREVIEW_ROWS = 2;
+  const NEXT_COUNT = 5;
+  const LOCK_DELAY_MS = 500;
+  const MAX_LOCK_RESETS = 15;
   const STORAGE_KEY = 'sz-tetris-high-scores';
   const MAX_HIGH_SCORES = 5;
 
@@ -112,7 +116,12 @@
   /* ---- State ---- */
   let board;
   let currentPiece;
-  let nextPieceType;
+  let nextQueue;
+  let heldType;
+  let holdUsed;
+  let lockStart;
+  let lockResets;
+  let lowestRow;
   let bag;
   let score;
   let level;
@@ -130,6 +139,8 @@
   /* ---- DOM ---- */
   const boardEl = document.getElementById('board');
   const previewGridEl = document.getElementById('previewGrid');
+  const holdGridEl = document.getElementById('holdGrid');
+  const holdBox = document.getElementById('holdBox');
   const scoreDisplay = document.getElementById('scoreDisplay');
   const levelDisplay = document.getElementById('levelDisplay');
   const linesDisplay = document.getElementById('linesDisplay');
@@ -141,6 +152,7 @@
 
   let boardCells = [];
   let previewCells = [];
+  let holdCells = [];
 
   /* ---- Build DOM grids ---- */
   function buildBoard() {
@@ -155,16 +167,28 @@
       }
   }
 
+  function buildMiniGrid(parent, extraClass) {
+    const grid = document.createElement('div');
+    grid.className = 'preview-grid' + (extraClass ? ' ' + extraClass : '');
+    const cells = [];
+    for (let r = 0; r < PREVIEW_ROWS; ++r)
+      for (let c = 0; c < PREVIEW_COLS; ++c) {
+        const cell = document.createElement('div');
+        cell.className = 'preview-cell';
+        grid.appendChild(cell);
+        cells.push(cell);
+      }
+    parent.appendChild(grid);
+    return cells;
+  }
+
   function buildPreview() {
     previewGridEl.innerHTML = '';
     previewCells = [];
-    for (let r = 0; r < PREVIEW_SIZE; ++r)
-      for (let c = 0; c < PREVIEW_SIZE; ++c) {
-        const cell = document.createElement('div');
-        cell.className = 'preview-cell';
-        previewGridEl.appendChild(cell);
-        previewCells.push(cell);
-      }
+    for (let i = 0; i < NEXT_COUNT; ++i)
+      previewCells.push(buildMiniGrid(previewGridEl, i === 0 ? 'preview-first' : 'preview-later'));
+    holdGridEl.innerHTML = '';
+    holdCells = buildMiniGrid(holdGridEl, 'preview-first');
   }
 
   /* ---- 7-Bag Randomizer ---- */
@@ -224,9 +248,12 @@
   }
 
   /* ---- Spawn Piece ---- */
-  function spawnPiece() {
-    const type = nextPieceType;
-    nextPieceType = nextFromBag();
+  function spawnPiece(heldPiece) {
+    let type = heldPiece;
+    if (!type) {
+      type = nextQueue.shift();
+      nextQueue.push(nextFromBag());
+    }
 
     const shape = getShape(type, 0);
     const size = shape.length;
@@ -234,6 +261,7 @@
     const row = -1;
 
     currentPiece = { type, rotation: 0, row, col };
+    resetLockState();
 
     if (!isValidPosition(type, 0, row, col)) {
       if (!isValidPosition(type, 0, row - 1, col)) {
@@ -244,8 +272,57 @@
       currentPiece.row = row - 1;
     }
 
+    lowestRow = currentPiece.row;
     renderPreview();
     return true;
+  }
+
+  /* ---- Lock Delay ---- */
+  function resetLockState() {
+    lockStart = null;
+    lockResets = 0;
+    lowestRow = currentPiece ? currentPiece.row : -99;
+  }
+
+  function isGrounded() {
+    return !!currentPiece && !isValidPosition(currentPiece.type, currentPiece.rotation, currentPiece.row + 1, currentPiece.col);
+  }
+
+  /* A piece that reaches a new lowest row earns a fresh set of lock resets */
+  function noteLowestRow() {
+    if (currentPiece.row > lowestRow) {
+      lowestRow = currentPiece.row;
+      lockResets = 0;
+    }
+  }
+
+  /* Moving or rotating a resting piece restarts its lock timer (limited) */
+  function onPieceShifted() {
+    noteLowestRow();
+    if (lockStart !== null && lockResets < MAX_LOCK_RESETS) {
+      lockStart = performance.now();
+      ++lockResets;
+    }
+  }
+
+  /* ---- Hold ---- */
+  function holdPiece() {
+    if (!gameActive || gamePaused || gameOverFlag || clearingRows || !currentPiece)
+      return;
+    if (holdUsed) {
+      SZ.GameAudio.play('error', { volume: 0.4 });
+      return;
+    }
+    const swapIn = heldType;
+    heldType = currentPiece.type;
+    holdUsed = true;
+    currentPiece = null;
+    SZ.GameAudio.play('whoosh', { pitch: 1.4, volume: 0.7 });
+    if (!spawnPiece(swapIn))
+      return;
+    renderHold();
+    lastDropTime = performance.now();
+    render();
   }
 
   /* ---- Lock piece onto board ---- */
@@ -322,6 +399,7 @@
       return;
     if (isValidPosition(currentPiece.type, currentPiece.rotation, currentPiece.row, currentPiece.col - 1)) {
       --currentPiece.col;
+      onPieceShifted();
       SZ.GameAudio.play('click', { volume: 0.5 });
       render();
     }
@@ -332,6 +410,7 @@
       return;
     if (isValidPosition(currentPiece.type, currentPiece.rotation, currentPiece.row, currentPiece.col + 1)) {
       ++currentPiece.col;
+      onPieceShifted();
       SZ.GameAudio.play('click', { volume: 0.5 });
       render();
     }
@@ -342,6 +421,9 @@
       return false;
     if (isValidPosition(currentPiece.type, currentPiece.rotation, currentPiece.row + 1, currentPiece.col)) {
       ++currentPiece.row;
+      noteLowestRow();
+      if (!isGrounded())
+        lockStart = null;
       render();
       return true;
     }
@@ -382,6 +464,7 @@
         currentPiece.rotation = newRot;
         currentPiece.col += dx;
         currentPiece.row -= dy;
+        onPieceShifted();
         SZ.GameAudio.play('blip', { pitch: 1.3, volume: 0.5 });
         render();
         return;
@@ -399,6 +482,7 @@
         currentPiece.rotation = newRot;
         currentPiece.col += dx;
         currentPiece.row -= dy;
+        onPieceShifted();
         SZ.GameAudio.play('blip', { pitch: 1.3, volume: 0.5 });
         render();
         return;
@@ -414,6 +498,8 @@
     flashLockedCells();
     lockPieceToBoard();
     currentPiece = null;
+    holdUsed = false;
+    renderHold();
     if (!hardDropped)
       SZ.GameAudio.play('drop', { volume: 0.7 });
 
@@ -511,28 +597,65 @@
       }
   }
 
-  function renderPreview() {
-    const shape = getShape(nextPieceType, 0);
-    const size = shape.length;
-
-    for (const cell of previewCells)
+  /* Draws a piece centred in a small grid, trimmed to its filled cells */
+  function renderMini(cells, type) {
+    for (const cell of cells)
       cell.className = 'preview-cell';
+    if (!type)
+      return;
 
-    const offsetR = Math.floor((PREVIEW_SIZE - size) / 2);
-    const offsetC = Math.floor((PREVIEW_SIZE - size) / 2);
-
-    const color = getPieceColor(nextPieceType);
+    const shape = getShape(type, 0);
+    const size = shape.length;
+    let minR = size, maxR = -1, minC = size, maxC = -1;
     for (let r = 0; r < size; ++r)
-      for (let c = 0; c < size; ++c) {
+      for (let c = 0; c < size; ++c)
+        if (shape[r][c]) {
+          minR = Math.min(minR, r);
+          maxR = Math.max(maxR, r);
+          minC = Math.min(minC, c);
+          maxC = Math.max(maxC, c);
+        }
+
+    const offsetR = Math.floor((PREVIEW_ROWS - (maxR - minR + 1)) / 2) - minR;
+    const offsetC = Math.floor((PREVIEW_COLS - (maxC - minC + 1)) / 2) - minC;
+    const color = getPieceColor(type);
+    for (let r = minR; r <= maxR; ++r)
+      for (let c = minC; c <= maxC; ++c) {
         if (!shape[r][c])
           continue;
         const pr = offsetR + r;
         const pc = offsetC + c;
-        if (pr >= 0 && pr < PREVIEW_SIZE && pc >= 0 && pc < PREVIEW_SIZE) {
-          const idx = pr * PREVIEW_SIZE + pc;
-          previewCells[idx].className = 'preview-cell filled piece-' + color;
-        }
+        if (pr >= 0 && pr < PREVIEW_ROWS && pc >= 0 && pc < PREVIEW_COLS)
+          cells[pr * PREVIEW_COLS + pc].className = 'preview-cell filled piece-' + color;
       }
+  }
+
+  function renderPreview() {
+    for (let i = 0; i < NEXT_COUNT; ++i)
+      renderMini(previewCells[i], nextQueue[i]);
+  }
+
+  function renderHold() {
+    renderMini(holdCells, heldType);
+    holdBox.classList.toggle('hold-used', !!holdUsed);
+  }
+
+  /* ---- Effects: Line Clear Flash ---- */
+  function flashClearedRows(rows) {
+    const cellSize = 20;
+    for (const row of rows) {
+      const band = document.createElement('div');
+      band.className = 'clear-flash';
+      band.style.top = (row * cellSize) + 'px';
+      boardWrapper.appendChild(band);
+      band.addEventListener('animationend', () => band.remove());
+    }
+    if (rows.length >= 4) {
+      const flash = document.createElement('div');
+      flash.className = 'tetris-flash';
+      boardWrapper.appendChild(flash);
+      flash.addEventListener('animationend', () => flash.remove());
+    }
   }
 
   /* ---- Effects: Screen Shake ---- */
@@ -669,6 +792,7 @@
         boardCells[idx].className = 'board-cell clearing';
       }
     spawnClearParticles(rows);
+    flashClearedRows(rows);
     shakeBoard(rows.length);
     SZ.GameAudio.play('lineClear', { pitch: 1 + (rows.length - 1) * 0.12, volume: 0.8 + rows.length * 0.1 });
     if (rows.length >= 4)
@@ -703,6 +827,8 @@
     } else {
       pauseOverlay.classList.remove('visible');
       lastDropTime = performance.now();
+      if (lockStart !== null)
+        lockStart = lastDropTime;
     }
   }
 
@@ -869,6 +995,12 @@
         e.preventDefault();
         hardDrop();
         break;
+      case 'c':
+      case 'C':
+      case 'Shift':
+        e.preventDefault();
+        holdPiece();
+        break;
     }
   });
 
@@ -878,6 +1010,11 @@
   });
 
   /* ---- Touch / click controls ---- */
+  holdBox.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    holdPiece();
+  });
+
   {
     let touchStartX = 0, touchStartY = 0, touchId = null;
     const SWIPE_THRESHOLD = 30;
@@ -938,10 +1075,19 @@
     if (!currentPiece)
       return;
 
+    if (isGrounded()) {
+      if (lockStart === null)
+        lockStart = timestamp;
+      if (timestamp - lockStart >= LOCK_DELAY_MS || lockResets >= MAX_LOCK_RESETS)
+        lockAndAdvance();
+      lastDropTime = timestamp;
+      return;
+    }
+
+    lockStart = null;
     const interval = getDropInterval(level);
     if (timestamp - lastDropTime >= interval) {
-      if (!moveDown())
-        lockAndAdvance();
+      moveDown();
       lastDropTime = timestamp;
     }
   }
@@ -968,11 +1114,17 @@
     clearAnimStart = 0;
     softDropping = false;
     bag = null;
+    heldType = null;
+    holdUsed = false;
+    currentPiece = null;
 
     pauseOverlay.classList.remove('visible');
     gameOverOverlay.classList.remove('visible');
 
-    nextPieceType = nextFromBag();
+    nextQueue = [];
+    for (let i = 0; i < NEXT_COUNT; ++i)
+      nextQueue.push(nextFromBag());
+    renderHold();
     if (!spawnPiece())
       return;
 
