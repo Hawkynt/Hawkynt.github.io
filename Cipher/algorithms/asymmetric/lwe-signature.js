@@ -477,10 +477,13 @@
     /** @type {int32[]} */
     const w = new Array(N);
     for (let row = 0; row < N; ++row) {
+      /** @type {int64} */
       let accumulator = 0;
       const offset = row * M;
       for (let j = 0; j < M; ++j) accumulator += a[offset + j] * y[j];
-      w[row] = ((accumulator % Q) + Q) % Q;
+      /** @type {int32} */
+      const residue = accumulator % Q;
+      w[row] = residue < 0 ? residue + Q : residue;
     }
     return w;
   }
