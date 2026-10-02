@@ -89,6 +89,7 @@ tryLoad('data/monsters-magical-beasts.js');
 tryLoad('data/monsters-oozes-plants.js');
 tryLoad('data/monsters-undead.js');
 tryLoad('data/monsters-misc.js');
+tryLoad('data/monsters-outsiders.js');
 load('creature-registry.js');
 
 // Data files: classes (push to _pending.classes)

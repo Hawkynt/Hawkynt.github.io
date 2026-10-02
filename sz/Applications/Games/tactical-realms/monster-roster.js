@@ -49,18 +49,18 @@
     lava_field:       { re: /fire|red_dragon|salamander|magma|efreeti|azer|hellcat/, subtypes: ['fire'] },
     ash_waste:        { re: /fire|dust|magma|salamander|bodak|skeleton|zombie|wight|mohrg/ },
     cloud:            { re: /air_elemental|djinni|cloud_giant|storm_giant|pegasus|griffon|hippogriff|silver_dragon|eagle|invisible_stalker/, subtypes: ['air'] },
-    shadow:           { types: ['undead'] },
+    shadow:           { re: /mastiff|nightwalker/, types: ['undead'] },
     astral_void:      { re: /githyanki|githzerai|mind_flayer|intellect_devourer|silver_dragon/ },
     ethereal_mist:    { re: /phase|ethereal|phasm|night_hag|allip|spectre|ghost|wraith/, subtypes: ['incorporeal'] },
-    infernal_waste:   { re: /devil|imp$|lemure|hellcat|erinyes|barghest|nightmare|night_hag|loth$/, subtypes: ['lawful'] },
-    celestial_garden: { re: /unicorn|pegasus|griffon|lion|gold_dragon|silver_dragon|inevitable|nymph/ },
-    feywild_grove:    { re: /green_dragon|unicorn|treant|vine|owl/, types: ['fey'] },
-    abyss:            { re: /demon|dretch|vrock|balor|marilith|hezrou|glabrezu|quasit|babau|succubus|nalfeshnee|howler|retriever_fiend|loth$/, subtypes: ['chaotic'] },
+    infernal_waste:   { re: /devil|imp$|lemure|hellcat|erinyes|barghest|nightmare|night_hag|loth$|hell_hound|achaierai/, subtypes: ['lawful'] },
+    celestial_garden: { re: /unicorn|pegasus|griffon|lion|gold_dragon|silver_dragon|inevitable|nymph|archon|deva|planetar|^solar$|guardinal|blink_dog/ },
+    feywild_grove:    { re: /green_dragon|unicorn|treant|vine|owl|eladrin|lillend/, types: ['fey'] },
+    abyss:            { re: /demon|dretch|vrock|balor|marilith|hezrou|glabrezu|quasit|babau|succubus|nalfeshnee|howler|retriever_fiend|loth$|bebilith|vargouille/, subtypes: ['chaotic'] },
     elemental_fire:   { re: /fire|salamander|magma|efreeti|azer/, subtypes: ['fire'] },
     elemental_water:  { re: /water|marid|tojanida/, subtypes: ['water'] },
     elemental_earth:  { re: /earth|dao|xorn|salt/, subtypes: ['earth'] },
     elemental_air:    { re: /air|djinni|invisible_stalker|dust/, subtypes: ['air'] },
-    mechanus_grid:    { re: /inevitable|golem|iron_cobra|shield_guardian|nimblewright|animated_object|homunculus/ },
+    mechanus_grid:    { re: /inevitable|golem|iron_cobra|shield_guardian|nimblewright|animated_object|homunculus|formian/ },
   });
 
   const registry = () => TR.CreatureRegistry || null;
@@ -167,12 +167,20 @@
   }
 
   // A fair fight for a party of the given level in a biome.
-  // encounter(biomeId, partyLevel, prng) -> [{ templateId, targetLevel? }]
-  function encounter(biomeId, partyLevel, prng) {
+  // natives: creature ids of the plane the biome lies on; they join the
+  // pool and come up as often as the biome's own table.
+  // encounter(biomeId, partyLevel, prng, { natives } = {}) -> [{ templateId, targetLevel? }]
+  function encounter(biomeId, partyLevel, prng, { natives = [] } = {}) {
     const el = Math.max(1, Math.round(partyLevel || 1));
     const table = tableOf(biomeId);
+    const fits = (min, max) => natives.filter(id => {
+      const cr = crOf(id);
+      return cr != null && cr >= min && cr <= max;
+    });
+    for (const id of natives)
+      table.add(id);
     // a group of up to six of a kind spans six ELs below the target
-    let pool = forBiome(biomeId, { crMin: Math.max(0, el - 6), crMax: el });
+    let pool = [...new Set([...forBiome(biomeId, { crMin: Math.max(0, el - 6), crMax: el }), ...fits(Math.max(0, el - 6), el)])];
     // nothing weak enough lives here: a single creature a little above the
     // party, else the common beasts and brigands of the plains
     if (!pool.length)

@@ -141,4 +141,47 @@
       assert.equal(back.getTile(12, 7), map.getTile(12, 7));
     });
   });
+  describe('PlaneWorlds -- inhabitants', () => {
+
+    it('every plane is home to creatures the game can field', () => {
+      for (const p of others()) {
+        const natives = PlaneWorlds.natives(p.id);
+        assert.equal(natives.length, (p.inhabitants || []).length, `${p.id}: ${p.inhabitants.filter(i => !natives.includes(i)).join(', ')}`);
+        assert.ok(natives.length >= 3, `${p.id} has ${natives.length} natives`);
+      }
+    });
+
+    it('the celestial and chaotic hosts have joined the roster', () => {
+      for (const id of ['lantern_archon', 'hound_archon', 'astral_deva', 'planetar', 'solar', 'bralani_eladrin', 'ghaele_eladrin', 'avoral_guardinal', 'leonal_guardinal', 'red_slaad', 'death_slaad', 'formian_warrior', 'formian_myrmarch', 'hell_hound', 'triton', 'xill', 'arrowhawk_adult', 'magmin', 'nightwalker'])
+        assert.ok(TR.MonsterRoster.crOf(id) != null, id);
+    });
+
+    it('fights on a plane are mostly with its natives', () => {
+      const map = new OverworldMap(3, 'nine_hells');
+      const natives = new Set(PlaneWorlds.natives('nine_hells'));
+      const prng = new TR.PRNG(17);
+      let native = 0, total = 0;
+      for (let i = 0; i < 60; ++i)
+        for (const e of map.encounterEnemies(9, 9, prng, 6)) {
+          ++total;
+          if (natives.has(e.templateId) || /devil|imp|lemure|hell/.test(e.templateId))
+            ++native;
+        }
+      assert.ok(native / total > 0.6, `${native} of ${total}`);
+    });
+
+    it('the planes fight harder than home, the outer planes hardest', () => {
+      const level = (plane, seed) => {
+        const map = new OverworldMap(seed, plane);
+        const prng = new TR.PRNG(seed);
+        let sum = 0;
+        for (let i = 0; i < 40; ++i)
+          sum += TR.MonsterRoster.encounterLevel(map.encounterEnemies(6, 6, prng, 5).map(e => e.templateId));
+        return sum / 40;
+      };
+      const home = level('material', 5), astral = level('astral', 5), hells = level('nine_hells', 5);
+      assert.ok(astral > home, `astral ${astral.toFixed(1)} vs home ${home.toFixed(1)}`);
+      assert.ok(hells > home + 1, `hells ${hells.toFixed(1)} vs home ${home.toFixed(1)}`);
+    });
+  });
 })();
