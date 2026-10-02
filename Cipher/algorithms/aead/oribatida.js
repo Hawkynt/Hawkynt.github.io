@@ -49,7 +49,7 @@
 
   /**
    * Step the round constant as the reference does on a 64-bit word:
-   * z = (z >> 1) | (z << 61), the bits shifted past bit 63 dropped
+   * z shifted right by 1, OR z shifted left by 61, the bits past bit 63 dropped
    * @param {uint64} z - Current round constant
    * @returns {uint64} Next round constant
    */
