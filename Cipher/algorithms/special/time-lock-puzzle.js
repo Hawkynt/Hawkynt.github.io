@@ -130,14 +130,15 @@
         /** @type {uint8[]} */
         this.inputBuffer = [];
 
-        /** @type {float64|null} */
-        this.p = null;                // First prime
-        /** @type {float64|null} */
-        this.q = null;                // Second prime
-        /** @type {float64|null} */
-        this.n = null;                // Modulus n = p * q
-        /** @type {float64|null} */
-        this.phi = null;              // Euler's totient φ(n) = (p-1)(q-1)
+        // p, q, n and phi are 0 until generated
+        /** @type {float64} */
+        this.p = 0;                   // First prime
+        /** @type {float64} */
+        this.q = 0;                   // Second prime
+        /** @type {float64} */
+        this.n = 0;                   // Modulus n = p * q
+        /** @type {float64} */
+        this.phi = 0;                 // Euler's totient φ(n) = (p-1)(q-1)
         /** @type {int32} */
         this._timeSteps = 10000;      // Number of squaring operations
         /** @type {uint8[]|null} */

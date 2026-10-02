@@ -309,42 +309,6 @@
   }
 
   /**
-   * Collect cryptographically strong random bytes, falling back to a weaker
-   * source only where no such generator exists.
-   * @param {int32} count - Number of bytes required
-   * @returns {uint8[]} Random bytes
-   */
-  function randomBytes(count) {
-    const buffer = new Uint8Array(count);
-
-    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-      crypto.getRandomValues(buffer);
-    } else {
-      let filled = false;
-      if (typeof require !== 'undefined') {
-        try {
-          require('crypto').randomFillSync(buffer);
-          filled = true;
-        } catch (e) {
-          filled = false;
-        }
-      }
-      if (!filled) {
-        for (let i = 0; i < count; ++i) {
-          buffer[i] = Math.floor(Math.random() * 256);
-        }
-      }
-    }
-
-    /** @type {uint8[]} */
-    const result = new Array(count);
-    for (let i = 0; i < count; ++i) {
-      result[i] = buffer[i];
-    }
-    return result;
-  }
-
-  /**
    * Generate a padding string of pseudo-randomly chosen non-zero octets
    * (RFC 8017 Section 7.2.1 step 2).
    * @param {int32} count - Length of the padding string
@@ -356,7 +320,7 @@
     let produced = 0;
 
     while (produced < count) {
-      const candidates = randomBytes(count - produced);
+      const candidates = OpCodes.SecureRandomBytes(count - produced);
       for (let i = 0; i < candidates.length && produced < count; ++i) {
         if (candidates[i] !== 0) {
           padding[produced] = candidates[i];
