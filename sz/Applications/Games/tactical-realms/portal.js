@@ -27,6 +27,19 @@
     gate:        '#',
     gate_town:   'G',
     border:      '%',
+    vortex:      'V',
+  });
+
+  // What a portal of each kind is called on the map.
+  const PORTAL_NAME = Object.freeze({
+    natural:     'Rift',
+    coterminous: 'Thin Veil',
+    curtain:     'Shimmering Curtain',
+    color_pool:  'Color Pool',
+    gate:        'Planar Gate',
+    gate_town:   'Gate-Town Road',
+    border:      'Borderland',
+    vortex:      'Vortex',
   });
 
   const Portal = {
@@ -132,8 +145,49 @@
       });
     },
 
+    /**
+     * Pick one of a plane's connections, the common ones more often.
+     *
+     * @param {string} planeId  Plane the portal stands on.
+     * @param {object} prng     PRNG instance (TR.PRNG).
+     * @returns {object|null}   { targetPlane, portalType, frequency } or null.
+     */
+    pickConnection(planeId, prng) {
+      const plane = TR.PlaneRegistry?.get(planeId);
+      const conns = (plane?.connections || []).filter(c => TR.PlaneRegistry.has(c.targetPlane));
+      if (!conns.length)
+        return null;
+      let total = 0;
+      for (const c of conns)
+        total += FREQ_CHANCE[c.frequency] || FREQ_CHANCE.rare;
+      let roll = prng.next() * total;
+      for (const c of conns) {
+        roll -= FREQ_CHANCE[c.frequency] || FREQ_CHANCE.rare;
+        if (roll <= 0)
+          return c;
+      }
+      return conns[conns.length - 1];
+    },
+
+    /**
+     * Map label of a portal, e.g. "Color Pool to Mechanus".
+     *
+     * @param {{portalType:string, targetPlane:string}} conn
+     * @param {object} [target]  Plane record of the target.
+     * @returns {string}
+     */
+    nameFor(conn, target) {
+      const label = PORTAL_NAME[conn.portalType] || 'Portal';
+      const id = conn.targetPlane;
+      const where = TR.PlaneWorlds ? TR.PlaneWorlds.shortName(id) : (target?.name || id);
+      return `${label} to ${where}`;
+    },
+
     /** Expose glyph table so renderers can draw portals. */
     PORTAL_CHAR,
+
+    /** Map labels by portal type. */
+    PORTAL_NAME,
 
     /** Expose frequency table for external tuning / tests. */
     FREQ_CHANCE,
