@@ -2506,6 +2506,12 @@
     updateStatus();
   }
 
+  /* Pause when the window is hidden or loses focus */
+  SZ.GameAutoPause.attach({
+    isRunning: () => state === STATE_PLAYING,
+    pause: togglePause
+  });
+
   function handleStart() {
     if (state === STATE_READY) {
       state = STATE_PLAYING;
