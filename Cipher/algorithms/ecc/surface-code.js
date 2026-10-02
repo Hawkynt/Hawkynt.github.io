@@ -256,7 +256,7 @@
       /** @type {string} */
       this._errorType = 'X'; // X (bit flip) or Z (phase flip) errors
       /** @type {int32} */
-      this._logicalState = null;
+      this._logicalState = -1; // -1: none set, the input is data to encode
       /** @type {boolean} */
       this._syndromeExtraction = false;
       /** @type {int32} */
@@ -311,17 +311,17 @@
     }
 
     /**
-     * @param {int32} state - 0, 1 or null
+     * @param {int32} state - 0 or 1, or -1 for none
      */
     set logicalState(state) {
-      if (state !== null && state !== 0 && state !== 1) {
-        throw new Error('TopologicalSurfaceCodeInstance.logicalState: Must be 0, 1, or null');
+      if (state !== -1 && state !== 0 && state !== 1) {
+        throw new Error('TopologicalSurfaceCodeInstance.logicalState: Must be 0, 1, or -1 (none)');
       }
       this._logicalState = state;
     }
 
     /**
-     * @returns {int32} 0, 1 or null
+     * @returns {int32} 0 or 1, or -1 when none is set
      */
     get logicalState() {
       return this._logicalState;
@@ -488,7 +488,7 @@
       }
 
       // Check if encoding logical state from property
-      if (this._logicalState !== null) {
+      if (this._logicalState !== -1) {
         // Encode single logical qubit
         /** @type {uint8[]} */
         const encoded = OpCodes.CreateArray(numPhysicalQubits, 0);

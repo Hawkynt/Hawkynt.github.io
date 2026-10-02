@@ -558,7 +558,7 @@
       /** @type {int32} */
       this.mode = 0; // 0 = absorbing, 1 = squeezing (XOF only)
       /** @type {int32} */
-      this._outputSize = null;
+      this._outputSize = 0; // 0 = not set yet
       this.Reset();
     }
 

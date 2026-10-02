@@ -163,11 +163,15 @@
       /** @type {int32} */
       this._outputSize = 0; // 0 selects the default of 32 bytes
 
-      // Blum-Micali state
-      this._p = null;           // Large prime modulus
-      this._g = null;           // Primitive root (generator)
-      this._state = null;       // Current state x_i
-      this._threshold = null;   // (p-1)/2 for bit extraction
+      // Blum-Micali state (0n until set)
+      /** @type {BigInt} */
+      this._p = 0n;             // Large prime modulus
+      /** @type {BigInt} */
+      this._g = 0n;             // Primitive root (generator)
+      /** @type {BigInt} */
+      this._state = 0n;         // Current state x_i
+      /** @type {BigInt} */
+      this._threshold = 0n;     // (p-1)/2 for bit extraction
       this._ready = false;      // Generator ready flag
     }
 
