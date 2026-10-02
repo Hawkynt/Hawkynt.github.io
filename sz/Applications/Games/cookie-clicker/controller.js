@@ -425,14 +425,20 @@
       purchaseGlowTimer = 0.6;
       purchaseGlowIndex = defIndex;
       particles.burst(650, 80 + defIndex * BLDG_ROW_TOTAL, 8, { r: 255, g: 215, b: 0 }, 0.6);
-    }
+      SZ.GameAudio.play('coin');
+    } else
+      SZ.GameAudio.play('error', { volume: 0.5 });
   }
 
   /* ── Buy Upgrade ── */
   function buyUpgrade(defIndex) {
     const def = UPGRADE_DEFS[defIndex];
-    if (upgradePurchased[def.id] || cookies < def.cost)
+    if (upgradePurchased[def.id])
       return;
+    if (cookies < def.cost) {
+      SZ.GameAudio.play('error', { volume: 0.5 });
+      return;
+    }
     cookies -= def.cost;
     upgradePurchased[def.id] = true;
     if (def.target === 'click')
@@ -444,6 +450,7 @@
     recalcCPS();
     recalcClickValue();
     particles.burst(400, 300, 12, { r: 180, g: 100, b: 255 }, 0.8);
+    SZ.GameAudio.play('powerup');
   }
 
   /* ── Cookie Click ── */
@@ -459,6 +466,7 @@
     particles.burst(COOKIE_CX, COOKIE_CY, 5, { r: 160, g: 120, b: 60 }, 0.4);
     cookieScale = 0.95;
     cookieScaleV = 0.3;
+    SZ.GameAudio.play('bounce', { pitch: 0.9 + Math.random() * 0.3, volume: 0.5 });
   }
 
   /* ── Achievement Check ── */
@@ -482,8 +490,10 @@
         floatingText.add(CANVAS_W / 2, 40, '\u{1F3C6} ' + def.name, { color: '#ffd700', decay: 0.01 });
       }
     }
-    if (newUnlock)
+    if (newUnlock) {
       recalcCPS();
+      SZ.GameAudio.play('levelup');
+    }
   }
 
   /* ── Milestone Confetti ── */
@@ -501,6 +511,7 @@
       if (cookiesBakedAllTime >= m && lastMilestone < m) {
         lastMilestone = m;
         confettiTimer = 2;
+        SZ.GameAudio.play('win');
         for (let i = 0; i < 50; ++i)
           particles.burst(Math.random() * CANVAS_W, -10, 3, CONFETTI_COLORS[i % CONFETTI_COLORS.length], 2);
       }
@@ -535,6 +546,7 @@
     recalcCPS();
     recalcClickValue();
     confettiTimer = 2;
+    SZ.GameAudio.play('win', { pitch: 1.5 });
     for (let i = 0; i < 40; ++i)
       particles.burst(Math.random() * CANVAS_W, -10, 2, { r: 200, g: 200, b: 255 }, 2);
   }
@@ -1379,6 +1391,13 @@
   window.addEventListener('blur', saveGame);
 
   /* ── Init ── */
+  {
+    const muteBtn = SZ.GameAudio.attachMuteButton(document.querySelector('.status-bar'));
+    muteBtn.style.position = 'static';
+    muteBtn.style.margin = '0 0 0 auto';
+    muteBtn.style.width = muteBtn.style.height = '18px';
+    muteBtn.style.font = '11px/16px sans-serif';
+  }
   setupCanvas();
   loadGame();
   recalcCPS();
