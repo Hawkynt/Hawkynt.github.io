@@ -48,6 +48,19 @@
   // Standard size progression ladder (index into this)
   const SIZE_LADDER = ['Fine', 'Diminutive', 'Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan', 'Colossal'];
 
+  // Size categories gained per age (SRD age tables), keyed by the
+  // wyrmling's size: Wyrmling .. Great Wyrm.
+  const SIZE_STEPS = Object.freeze({
+    Tiny:   [0, 1, 2, 2, 3, 3, 4, 4, 4, 4, 5, 5],
+    Small:  [0, 1, 1, 2, 2, 3, 3, 3, 3, 4, 4, 4],
+    Medium: [0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 4],
+  });
+
+  // Bite damage by size (the dragon's primary natural weapon).
+  const BITE_BY_SIZE = Object.freeze({
+    Tiny: [1, 4], Small: [1, 6], Medium: [1, 8], Large: [2, 6], Huge: [2, 8], Gargantuan: [4, 6], Colossal: [4, 8],
+  });
+
   // Fly-speed breakpoints by size: when a dragon crosses into a new size, its fly speed may change
   const FLY_BY_SIZE = { Tiny: 100, Small: 100, Medium: 150, Large: 150, Huge: 150, Gargantuan: 200, Colossal: 200 };
 
@@ -468,8 +481,9 @@
       const ageSlug = buildIdSlug(ageRow.age);
       const id = dtype.key + '_' + ageSlug;
 
-      // Size
-      const sizeIdx = Math.min(dtype.wyrmlingSizeIdx + ageRow.sizeStep, SIZE_LADDER.length - 1);
+      // Size: SRD growth depends on how small the wyrmling starts
+      const steps = SIZE_STEPS[SIZE_LADDER[dtype.wyrmlingSizeIdx]] || SIZE_STEPS.Medium;
+      const sizeIdx = Math.min(dtype.wyrmlingSizeIdx + steps[ageRow.idx - 1], SIZE_LADDER.length - 1);
       const size = SIZE_LADDER[sizeIdx];
 
       // Hit Dice
@@ -554,8 +568,9 @@
         availability: 'core',
         source: 'core/Monster-Manual',
         passMode: dtype.passMode,
-        damageDice: bw.dice,
-        damageSides: bw.sides,
+        damageDice: (BITE_BY_SIZE[size] || BITE_BY_SIZE.Medium)[0],
+        damageSides: (BITE_BY_SIZE[size] || BITE_BY_SIZE.Medium)[1],
+        breath: { dice: bw.dice, sides: bw.sides },
         xpReward,
         goldReward,
 

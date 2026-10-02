@@ -223,6 +223,7 @@ loadTest('test-d20-engine.js');
 loadTest('test-combat-unit.js');
 loadTest('test-enemy-ai.js');
 loadTest('test-combat-engine.js');
+loadTest('test-monster-spawn.js');
 loadTest('test-spells.js');
 loadTest('test-items.js');
 loadTest('test-shop.js');
