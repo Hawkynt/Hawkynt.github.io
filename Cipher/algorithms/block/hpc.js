@@ -1659,8 +1659,8 @@
       this._key = null;
       /** @type {int32} */
       this._keyBitSize = 0;
-      /** @type {int32|null} */
-      this._blockSizeBits = null;
+      /** @type {int32} */
+      this._blockSizeBits = 0; // 0: none declared, the input is one block
       /** @type {uint64[][]|null} */
       this._KX = null; // Key expansion array, one table per sub-cipher
       /** @type {uint8[]|null} */
@@ -1721,7 +1721,7 @@
     }
 
     /**
-     * @returns {int32|null} Declared block size in bits, or null
+     * @returns {int32} Declared block size in bits, or 0 when none is declared
      */
     get blockSizeBits() {
       return this._blockSizeBits;
