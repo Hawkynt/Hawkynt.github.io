@@ -228,6 +228,7 @@ loadTest('test-combat-engine.js');
 loadTest('test-monster-spawn.js');
 loadTest('test-monster-attacks.js');
 loadTest('test-monster-abilities.js');
+loadTest('test-monster-sprites.js');
 loadTest('test-spells.js');
 loadTest('test-items.js');
 loadTest('test-shop.js');
