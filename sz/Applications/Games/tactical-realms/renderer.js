@@ -188,6 +188,13 @@
       const fcy = Math.floor(cy);
       // Draw tiles 1px wider/taller to overlap and hide hairline seams
       const tsDraw = ts + 1;
+      // the material plane gets painted, varied grass and dirt roads
+      const TA = TR.TerrainArt;
+      const painted = (!dimension || dimension === 'material') && TA && assets ? assets.get('terrain') : null;
+      const paint = (id, c, r, sx, sy) => {
+        const q = TA.rect(id, c, r);
+        ctx.drawImage(painted, q.x, q.y, q.w, q.h, sx, sy, tsDraw, tsDraw);
+      };
       for (let r = startRow; r <= endRow; ++r)
         for (let c = startCol; c <= endCol; ++c) {
           const tile = tileGetter(c, r);
@@ -196,10 +203,16 @@
           let drawn = false;
           if (sheetImg && tile > 0 && tile < TILE_NAMES.length) {
             // Draw grass base layer for overlay tiles (forest, mountain, etc.)
-            if (NEEDS_BASE[tile] && spriteMap) {
+            if (NEEDS_BASE[tile] && painted)
+              paint('meadow', c, r, sx, sy);
+            else if (NEEDS_BASE[tile] && spriteMap) {
               const baseRect = spriteMap.GRASS;
               if (baseRect)
                 ctx.drawImage(sheetImg, baseRect.x, baseRect.y, baseRect.w, baseRect.h, sx, sy, tsDraw, tsDraw);
+            }
+            if (painted && (tile === 1 || tile === 6)) {
+              paint(tile === 1 ? 'meadow' : 'road', c, r, sx, sy);
+              continue;
             }
             let rect = null;
             let srcImg = sheetImg;
@@ -227,6 +240,69 @@
             ctx.fillRect(sx, sy, tsDraw, tsDraw);
           }
         }
+    }
+
+    // Living overworld: glints moving over water, cloud shadows drifting
+    // across the land, and a soft vignette.
+    drawOverworldAmbience(tileGetter, time) {
+      if (!this.#bufCtx)
+        return;
+      const ctx = this.#bufCtx;
+      const ts = this.#tileSize;
+      const cx = this.#camera.x, cy = this.#camera.y;
+      const c0 = Math.floor(cx / ts) - 1, r0 = Math.floor(cy / ts) - 1;
+      const c1 = Math.ceil((cx + this.#width) / ts) + 1, r1 = Math.ceil((cy + this.#height) / ts) + 1;
+      const WATER = 8;
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+      for (let r = r0; r <= r1; ++r)
+        for (let c = c0; c <= c1; ++c) {
+          if (tileGetter(c, r) !== WATER)
+            continue;
+          // each water tile glints now and then at its own phase
+          const h = Math.imul(c * 73856093 ^ r * 19349663, 0x9E3779B1) >>> 0;
+          const phase = ((h & 1023) / 1023) * Math.PI * 2;
+          const k = Math.sin(time * 1.7 + phase);
+          if (k < 0.55)
+            continue;
+          const gx = Math.floor(c * ts - cx + 4 + (h >>> 10) % (ts - 12));
+          const gy = Math.floor(r * ts - cy + 6 + (h >>> 16) % (ts - 12));
+          const len = Math.round(2 + (k - 0.55) * 14);
+          ctx.globalAlpha = (k - 0.55) * 2;
+          ctx.fillRect(gx, gy, len * 2, 2);
+          ctx.fillRect(gx + len, gy - 2, 2, 2);
+        }
+      ctx.globalAlpha = 1;
+      // cloud shadows live in world space and drift east
+      ctx.fillStyle = 'rgba(10,20,40,0.12)';
+      if ('filter' in ctx)
+        ctx.filter = 'blur(18px)';
+      const span = 2400;
+      for (let i = 0; i < 5; ++i) {
+        const wx = ((i * 977 + time * 18) % span + span) % span;
+        const wy = ((i * 613) % 1800);
+        // repeat the cloud field so it covers any camera position
+        const ox = Math.floor((cx - wx) / span) * span + wx + span - cx;
+        const oy = Math.floor((cy - wy) / 1800) * 1800 + wy + 1800 - cy;
+        for (const [dx, dy] of [[0, 0], [-span, 0], [0, -1800], [-span, -1800]]) {
+          const x = ox + dx, y = oy + dy;
+          if (x < -400 || x > this.#width + 400 || y < -300 || y > this.#height + 300)
+            continue;
+          ctx.beginPath();
+          ctx.ellipse(x, y, 190, 70, 0, 0, Math.PI * 2);
+          ctx.ellipse(x + 120, y - 30, 130, 60, 0, 0, Math.PI * 2);
+          ctx.ellipse(x - 110, y + 20, 110, 50, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      if ('filter' in ctx)
+        ctx.filter = 'none';
+      const g = ctx.createRadialGradient(this.#width / 2, this.#height / 2, this.#height * 0.45, this.#width / 2, this.#height / 2, this.#height * 0.95);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(0,0,0,0.32)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, this.#width, this.#height);
+      ctx.restore();
     }
 
     #tileColor(type) {
