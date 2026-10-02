@@ -159,6 +159,7 @@
       this.r4 = 0;
       this.r5 = 0;
       this.r6 = 0;
+      /** @type {uint32[]} */
       this.t = OpCodes.CreateArray(257, 0);
 
       // Keystream buffer for byte-level output

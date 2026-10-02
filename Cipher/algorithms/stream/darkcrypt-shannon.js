@@ -150,10 +150,15 @@
       /** @type {uint8[]|null} */
       this._iv = null;
 
+      /** @type {uint32[]} */
       this.R = OpCodes.CreateArray(N, 0);
+      /** @type {uint32[]} */
       this.CRC = OpCodes.CreateArray(N, 0);
+      /** @type {uint32[]} */
       this.initR = OpCodes.CreateArray(N, 0);
+      /** @type {uint32} */
       this.konst = 0;
+      /** @type {uint32} */
       this.sbuf = 0;
       this.nbuf = 0; // number of buffered stream BITS remaining in sbuf
     }

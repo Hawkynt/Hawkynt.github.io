@@ -187,12 +187,17 @@
       /** @type {int32} */
       this._outputSize = 0; // 0 selects the default of 32 bytes
 
-      // BBS state
-      this._p = null;           // First prime factor
-      this._q = null;           // Second prime factor
-      this._n = null;           // Modulus n = p * q
-      this._x0 = null;          // Initial seed (squared)
-      this._current = null;     // Current state x_i
+      // BBS state (0n until set)
+      /** @type {BigInt} */
+      this._p = 0n;             // First prime factor
+      /** @type {BigInt} */
+      this._q = 0n;             // Second prime factor
+      /** @type {BigInt} */
+      this._n = 0n;             // Modulus n = p * q
+      /** @type {BigInt} */
+      this._x0 = 0n;            // Initial seed (squared)
+      /** @type {BigInt} */
+      this._current = 0n;       // Current state x_i
       this._maxBits = 0;        // Bits extracted per iteration
       this._bitsLeft = 0;       // Bits remaining in current iteration
       /** @type {BigInt} */
