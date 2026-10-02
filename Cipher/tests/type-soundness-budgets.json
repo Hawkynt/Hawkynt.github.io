@@ -75,7 +75,6 @@
   "algorithms/stream/darkcrypt-shannon.js": 15,
   "algorithms/stream/darkcrypt-snow2.js": 2,
   "algorithms/stream/darkcrypt-sosemanuk.js": 145,
-  "algorithms/stream/darkcrypt-wg.js": 29,
   "algorithms/stream/rabbit.js": 2,
   "algorithms/stream/rule30.js": 7,
   "algorithms/stream/snow3g.js": 6,
