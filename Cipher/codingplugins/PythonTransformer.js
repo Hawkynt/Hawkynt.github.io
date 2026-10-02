@@ -60,6 +60,16 @@
     'KdfAlgorithm', 'PaddingAlgorithm', 'CipherModeAlgorithm', 'AeadAlgorithm',
     'RandomGenerationAlgorithm',
   ];
+  /** The parent of each algorithm family in AlgorithmFramework.js. */
+  const FRAMEWORK_BASE_PARENTS = {
+    CryptoAlgorithm: 'Algorithm', SymmetricCipherAlgorithm: 'CryptoAlgorithm',
+    AsymmetricCipherAlgorithm: 'CryptoAlgorithm', AsymmetricAlgorithm: 'CryptoAlgorithm',
+    BlockCipherAlgorithm: 'SymmetricCipherAlgorithm', StreamCipherAlgorithm: 'SymmetricCipherAlgorithm',
+    EncodingAlgorithm: 'Algorithm', CompressionAlgorithm: 'Algorithm', ErrorCorrectionAlgorithm: 'Algorithm',
+    HashFunctionAlgorithm: 'Algorithm', MacAlgorithm: 'Algorithm', KdfAlgorithm: 'Algorithm',
+    PaddingAlgorithm: 'Algorithm', CipherModeAlgorithm: 'Algorithm', AeadAlgorithm: 'CryptoAlgorithm',
+    RandomGenerationAlgorithm: 'Algorithm',
+  };
   const FRAMEWORK_INSTANCE_BASES = [
     'IAlgorithmInstance', 'IBlockCipherInstance', 'IStreamCipherInstance', 'IHashFunctionInstance',
     'IMacInstance', 'IKdfInstance', 'IAeadInstance', 'IErrorCorrectionInstance',
@@ -629,8 +639,12 @@
       const ALGORITHM_BASES = FRAMEWORK_ALGORITHM_BASES;
       const INSTANCE_BASES = FRAMEWORK_INSTANCE_BASES;
       const FRAMEWORK_STUBS = {};
-      for (const name of ALGORITHM_BASES)
-        FRAMEWORK_STUBS[name] = `class ${name}:\n    pass`;
+      // The algorithm families keep AlgorithmFramework.js's inheritance, so an
+      // isinstance() test or an inherited member resolves as it does in JS.
+      for (const name of ALGORITHM_BASES) {
+        const parent = FRAMEWORK_BASE_PARENTS[name];
+        FRAMEWORK_STUBS[name] = parent ? `class ${name}(${parent}):\n    pass` : `class ${name}:\n    pass`;
+      }
       // *args/**kwargs (on every __init__ below) swallow extra positional
       // args - JS is forgiving of base-constructor call-site arity
       // mismatches (e.g. `super(algorithm, isInverse)` against a JS base
@@ -646,11 +660,68 @@
       // JS's forgiving `undefined`); Python raises AttributeError on a
       // truly-never-assigned instance attribute, so omitting the field here
       // turned that into a hard crash instead of the JS no-op.
-      const INSTANCE_BASE_BODY = 'self.algorithm = algorithm\n        self.is_inverse = False\n        self.input_buffer = []';
+      //
+      // Every instance base derives from IAlgorithmInstance, which carries
+      // the framework's Feed/Result/Dispose: an algorithm that inherits Feed
+      // (accumulate into inputBuffer) instead of defining its own must find
+      // it here, exactly as the JS subclass finds it on its prototype chain.
+      const INSTANCE_BASE_BODY = 'IAlgorithmInstance.__init__(self, algorithm)';
       FRAMEWORK_STUBS['IAlgorithmInstance'] =
-        `class IAlgorithmInstance:\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}`;
+        'class IAlgorithmInstance:\n' +
+        '    def __init__(self, algorithm=None, *args, **kwargs):\n' +
+        '        self.algorithm = algorithm\n' +
+        '        self.is_inverse = False\n' +
+        '        self.input_buffer = JSArray()\n' +
+        '    def feed(self, data=None, *args):\n' +
+        '        if not data or len(data) == 0:\n' +
+        '            return\n' +
+        '        if self.input_buffer is None:\n' +
+        '            self.input_buffer = JSArray()\n' +
+        '        self.input_buffer.extend(data)\n' +
+        '    def result(self, *args):\n' +
+        '        raise Exception("Result() not implemented")\n' +
+        '    def dispose(self, *args):\n' +
+        '        if self.input_buffer:\n' +
+        '            del self.input_buffer[:]';
+      // IBlockCipherInstance.Result: encrypt or decrypt every buffered block,
+      // refusing a partial block (AlgorithmFramework.js, same messages).
       FRAMEWORK_STUBS['IBlockCipherInstance'] =
-        `class IBlockCipherInstance:\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}\n        self.block_size = 0\n        self.key_size = 0\n        self._key = None\n    @property\n    def key(self): return self._key\n    @key.setter\n    def key(self, value): self._key = value`;
+        'class IBlockCipherInstance(IAlgorithmInstance):\n' +
+        '    def __init__(self, algorithm=None, *args, **kwargs):\n' +
+        `        ${INSTANCE_BASE_BODY}\n` +
+        '        self.block_size = 0\n' +
+        '        self.key_size = 0\n' +
+        '        self._key = None\n' +
+        '    @property\n' +
+        '    def key(self): return self._key\n' +
+        '    @key.setter\n' +
+        '    def key(self, value): self._key = value\n' +
+        '    def encrypt_block(self, block, *args):\n' +
+        '        raise Exception("EncryptBlock() not implemented")\n' +
+        '    def decrypt_block(self, block, *args):\n' +
+        '        raise Exception("DecryptBlock() not implemented")\n' +
+        '    def require_block_multiple(self, block_size=None, *args):\n' +
+        '        size = block_size or self.block_size\n' +
+        '        if not (size and size > 0):\n' +
+        '            raise Exception("BlockSize not set")\n' +
+        '        length = len(self.input_buffer) if self.input_buffer else 0\n' +
+        '        if length % size != 0:\n' +
+        '            raise Exception("Input length must be multiple of " + str(size) + " bytes")\n' +
+        '        return length // size\n' +
+        '    def result(self, *args):\n' +
+        '        if self.key is None:\n' +
+        '            raise Exception("Key not set")\n' +
+        '        if not self.input_buffer or len(self.input_buffer) == 0:\n' +
+        '            raise Exception("No data fed")\n' +
+        '        block_size = self.block_size\n' +
+        '        self.require_block_multiple(block_size)\n' +
+        '        output = JSArray()\n' +
+        '        for offset in range(0, len(self.input_buffer), block_size):\n' +
+        '            block = JSArray(self.input_buffer[offset:offset + block_size])\n' +
+        '            processed = self.decrypt_block(block) if self.is_inverse else self.encrypt_block(block)\n' +
+        '            output.extend(processed)\n' +
+        '        self.input_buffer = JSArray()\n' +
+        '        return output';
       // The base default writes below (output_size/iterations) are wrapped in
       // try/except: JS keeps these distinct from a same-named-but-differently-
       // cased subclass accessor (e.g. IHashFunctionInstance's `this.OutputSize`
@@ -666,14 +737,14 @@
       // case where the subclass has no such property, where the plain
       // attribute assignment always succeeds.
       FRAMEWORK_STUBS['IHashFunctionInstance'] =
-        `class IHashFunctionInstance:\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}\n        try:\n            self.output_size = 0\n        except Exception:\n            pass`;
+        `class IHashFunctionInstance(IAlgorithmInstance):\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}\n        try:\n            self.output_size = 0\n        except Exception:\n            pass`;
       FRAMEWORK_STUBS['IKdfInstance'] =
-        `class IKdfInstance:\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}\n        try:\n            self.output_size = 0\n        except Exception:\n            pass\n        try:\n            self.iterations = 0\n        except Exception:\n            pass`;
+        `class IKdfInstance(IAlgorithmInstance):\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}\n        try:\n            self.output_size = 0\n        except Exception:\n            pass\n        try:\n            self.iterations = 0\n        except Exception:\n            pass`;
       FRAMEWORK_STUBS['IAeadInstance'] =
-        `class IAeadInstance:\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}\n        self.aad = []\n        self.tag_size = 0`;
+        `class IAeadInstance(IAlgorithmInstance):\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}\n        self.aad = []\n        self.tag_size = 0`;
       for (const name of INSTANCE_BASES) {
         if (FRAMEWORK_STUBS[name]) continue; // already given a tailored stub above
-        FRAMEWORK_STUBS[name] = `class ${name}:\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}`;
+        FRAMEWORK_STUBS[name] = `class ${name}(IAlgorithmInstance):\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}`;
       }
 
       // Helper classes and enums.
@@ -2623,12 +2694,118 @@ class OpCodes(metaclass=_OpCodesMeta):
         // JS produces even though every individual (key, value) pair is
         // itself correct.
         '_js_object_keys': 'def _js_object_keys(d):\n    keys = list(d.keys()) if hasattr(d, "keys") else list(d)\n    int_keys = []\n    other_keys = []\n    for k in keys:\n        ks = str(k)\n        if ks == "0" or (ks and ks[0] != "0" and ks.isdigit()):\n            int_keys.append(k)\n        else:\n            other_keys.append(k)\n    int_keys.sort(key=lambda x: int(x))\n    return int_keys + other_keys',
+        // AlgorithmFramework.js's shared construction primitives
+        // (BlockAbsorber, SpongePadBlocks, MerkleDamgardBlocks), ported
+        // line for line. Finish passes (held, pending, totalLength) through
+        // _js_arr_cb, since a JS finalizer may declare fewer parameters.
+        'FrameworkPrimitives': 'def _af_byte(value):\n' +
+          '    return int(value) % 256\n' +
+          'def _af_merge_bits(a, b):\n' +
+          '    return _af_byte(a) | _af_byte(b)\n' +
+          'class BlockAbsorber:\n' +
+          '    def __init__(self, block_size, process_block):\n' +
+          '        if not (block_size > 0):\n' +
+          '            raise Exception("BlockAbsorber: blockSize must be positive")\n' +
+          '        if not callable(process_block):\n' +
+          '            raise Exception("BlockAbsorber: processBlock must be a function")\n' +
+          '        self._block_size = int(block_size)\n' +
+          '        self._process_block = process_block\n' +
+          '        self._held = JSArray([0] * self._block_size)\n' +
+          '        self._pending = 0\n' +
+          '        self._length = 0\n' +
+          '    @property\n' +
+          '    def block_size(self): return self._block_size\n' +
+          '    @property\n' +
+          '    def pending(self): return self._pending\n' +
+          '    @property\n' +
+          '    def length(self): return self._length\n' +
+          '    def absorb(self, data):\n' +
+          '        if not data or len(data) == 0:\n' +
+          '            return\n' +
+          '        block_size = self._block_size\n' +
+          '        total = len(data)\n' +
+          '        offset = 0\n' +
+          '        while offset < total:\n' +
+          '            if self._pending == block_size:\n' +
+          '                self._process_block(self._held)\n' +
+          '                self._pending = 0\n' +
+          '            take = min(block_size - self._pending, total - offset)\n' +
+          '            for i in range(take):\n' +
+          '                self._held[self._pending + i] = _af_byte(data[offset + i])\n' +
+          '            self._pending += take\n' +
+          '            offset += take\n' +
+          '            self._length += take\n' +
+          '    def finish(self, finalize):\n' +
+          '        if not callable(finalize):\n' +
+          '            raise Exception("BlockAbsorber: finalize must be a function")\n' +
+          '        return _js_arr_cb(finalize, JSArray(self._held[0:self._pending]), self._pending, self._length)\n' +
+          '    def reset(self):\n' +
+          '        for i in range(self._block_size):\n' +
+          '            self._held[i] = 0\n' +
+          '        self._pending = 0\n' +
+          '        self._length = 0\n' +
+          'def sponge_pad_blocks(held, pending, rate, separator):\n' +
+          '    if not (rate > 0):\n' +
+          '        raise Exception("SpongePadBlocks: rate must be positive")\n' +
+          '    if pending < 0 or pending > rate:\n' +
+          '        raise Exception("SpongePadBlocks: pending " + str(pending) + " outside 0.." + str(rate))\n' +
+          '    blocks = JSArray()\n' +
+          '    block = JSArray([0] * rate)\n' +
+          '    for i in range(pending):\n' +
+          '        block[i] = _af_byte(held[i])\n' +
+          '    used = pending\n' +
+          '    if used == rate:\n' +
+          '        blocks.append(block)\n' +
+          '        block = JSArray([0] * rate)\n' +
+          '        used = 0\n' +
+          '    block[used] = _af_byte(separator)\n' +
+          '    block[rate - 1] = _af_merge_bits(block[rate - 1], 0x80)\n' +
+          '    blocks.append(block)\n' +
+          '    return blocks\n' +
+          'def _af_option(options, name, default):\n' +
+          '    if options is None:\n' +
+          '        return default\n' +
+          '    value = options.get(name) if isinstance(options, dict) else getattr(options, name, None)\n' +
+          '    return default if value is None else value\n' +
+          'def merkle_damgard_blocks(held, pending, total_length, options=None):\n' +
+          '    block_size = _af_option(options, "block_size", 0)\n' +
+          '    if not (block_size > 0):\n' +
+          '        raise Exception("MerkleDamgardBlocks: blockSize must be positive")\n' +
+          '    if pending < 0 or pending > block_size:\n' +
+          '        raise Exception("MerkleDamgardBlocks: pending " + str(pending) + " outside 0.." + str(block_size))\n' +
+          '    pad_byte = _af_option(options, "pad_byte", 0x80)\n' +
+          '    length_bytes = _af_option(options, "length_bytes", 8)\n' +
+          '    little_endian = _af_option(options, "length_little_endian", False) is True\n' +
+          '    in_bits = _af_option(options, "length_in_bits", True) is not False\n' +
+          '    if length_bytes < 0 or length_bytes >= block_size:\n' +
+          '        raise Exception("MerkleDamgardBlocks: lengthBytes " + str(length_bytes) + " does not fit a " + str(block_size) + "-byte block")\n' +
+          '    blocks = JSArray()\n' +
+          '    block = JSArray([0] * block_size)\n' +
+          '    for i in range(pending):\n' +
+          '        block[i] = _af_byte(held[i])\n' +
+          '    used = pending\n' +
+          '    if used == block_size:\n' +
+          '        blocks.append(block)\n' +
+          '        block = JSArray([0] * block_size)\n' +
+          '        used = 0\n' +
+          '    block[used] = _af_byte(pad_byte)\n' +
+          '    used += 1\n' +
+          '    if used > block_size - length_bytes:\n' +
+          '        blocks.append(block)\n' +
+          '        block = JSArray([0] * block_size)\n' +
+          '    if length_bytes > 0:\n' +
+          '        remaining = max(0, int(total_length * 8 if in_bits else total_length))\n' +
+          '        for i in range(length_bytes):\n' +
+          '            block[block_size - 1 - i if not little_endian else block_size - length_bytes + i] = remaining % 256\n' +
+          '            remaining //= 256\n' +
+          '    blocks.append(block)\n' +
+          '    return blocks',
         '_js_object_values': 'def _js_object_values(d):\n    return [d[k] for k in _js_object_keys(d)]',
         '_js_object_entries': 'def _js_object_entries(d):\n    return [(k, d[k]) for k in _js_object_keys(d)]',
       };
       // Fixed emission order so base classes (LinkItem) are always defined before
       // subclasses (TestCase, Vulnerability) regardless of Set insertion order.
-      const HELPER_ORDER = ['JSObject', '_js_arr_cb', 'JSArray', 'JSUint8Array', 'JSArrayBuffer', 'JSUint8ArraySubarray', 'JSUint32Array', 'JSTypedBufferView', 'JSBytesOfWordsView', 'BitStream', 'OpCodes', 'SpliceArray', '_bigint', '_json_preserve', '_json_default', '_typed_array_bytes', '_typed_array_view', '_int_to_base', '_js_sort', '_js_fill', '_js_object_keys', '_js_object_values', '_js_object_entries', 'LinkItem', 'TestCase', 'Vulnerability', 'KeySize', 'AuthResult'];
+      const HELPER_ORDER = ['JSObject', '_js_arr_cb', 'JSArray', 'FrameworkPrimitives', 'JSUint8Array', 'JSArrayBuffer', 'JSUint8ArraySubarray', 'JSUint32Array', 'JSTypedBufferView', 'JSBytesOfWordsView', 'BitStream', 'OpCodes', 'SpliceArray', '_bigint', '_json_preserve', '_json_default', '_typed_array_bytes', '_typed_array_view', '_int_to_base', '_js_sort', '_js_fill', '_js_object_keys', '_js_object_values', '_js_object_entries', 'LinkItem', 'TestCase', 'Vulnerability', 'KeySize', 'AuthResult'];
       // TestCase/Vulnerability both extend LinkItem in the real framework.
       if (this.helperClasses.has('TestCase') || this.helperClasses.has('Vulnerability'))
         this.helperClasses.add('LinkItem');
@@ -2847,6 +3024,9 @@ class OpCodes(metaclass=_OpCodesMeta):
           '    test_case = TestCase\n' +
           '    vulnerability = Vulnerability\n' +
           '    auth_result = AuthResult\n' +
+          '    block_absorber = BlockAbsorber\n' +
+          '    sponge_pad_blocks = staticmethod(sponge_pad_blocks)\n' +
+          '    merkle_damgard_blocks = staticmethod(merkle_damgard_blocks)\n' +
           '    category_type = category_type\n' +
           '    security_status = security_status\n' +
           '    complexity_type = complexity_type\n' +
