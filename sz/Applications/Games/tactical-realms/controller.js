@@ -11,9 +11,25 @@
   const MOVE_DURATION = 0.12;
   const COMBAT_TILE_SIZE = 44;
   const COMBAT_MOVE_STEP_DUR = 0.08;
+  const REVEAL_TIME = 0.55;
+
+  const BATTLE_SCENE_KEY = 'sz-tactical-realms-battle-scenes';
+  const BATTLE_SCENE_MODES = ['full', 'short', 'off'];
+
+  function loadBattleSceneMode() {
+    try {
+      const v = localStorage.getItem(BATTLE_SCENE_KEY);
+      return BATTLE_SCENE_MODES.includes(v) ? v : 'full';
+    } catch (_) {
+      return 'full';
+    }
+  }
 
   const MENU_ACTIONS = {
     'new'() { controller && controller.newGame(); },
+    'scenes-full'() { controller?.setBattleSceneMode('full'); },
+    'scenes-short'() { controller?.setBattleSceneMode('short'); },
+    'scenes-off'() { controller?.setBattleSceneMode('off'); },
     'combat-history'() { controller?.showCombatHistory(); },
     'exit'() { window.parent.postMessage({ type: 'sz:close' }, '*'); },
     'about'() {
@@ -21,6 +37,13 @@
         SZ.Dialog.show('dlg-about');
     }
   };
+
+  // Camp and town menus: shared by drawing and hit-testing.
+  const menuButtons = (labels, accents) => Object.freeze(labels.map((label, i) => Object.freeze({
+    x: 958, y: 150 + i * 60, w: 280, h: 46, label, accent: accents[i] || null,
+  })));
+  const CAMP_BUTTONS = menuButtons(['Inventory', 'Equipment', 'Rest (Heal Party)', 'Return to Overworld'], [null, null, '#5ad07a', '#d8a050']);
+  const TOWN_BUTTONS = menuButtons(['Weaponsmith', 'Armorer', 'General Store', 'Inn (Heal Party)', 'Leave Town'], [null, null, null, '#5ad07a', '#d8a050']);
 
   const TITLE_BUTTONS = [
     { label: 'New Game', x: 540, y: 370, w: 200, h: 44 },
@@ -65,7 +88,8 @@
     #walkPath;
     #combatAnim;
     #enemyQueue;
-    #combatFloats;
+    #combatFx;
+    #battleSceneMode;
     #combatMovePath;
     #combatMoveUnit;
     #combatMoveIdx;
@@ -127,7 +151,8 @@
       this.#walkPath = null;
       this.#combatAnim = null;
       this.#enemyQueue = [];
-      this.#combatFloats = [];
+      this.#combatFx = TR.CombatFx ? new TR.CombatFx() : null;
+      this.#battleSceneMode = loadBattleSceneMode();
       this.#combatMovePath = null;
       this.#combatMoveUnit = null;
       this.#combatMoveIdx = 0;
@@ -189,6 +214,7 @@
       this.#input.on('doubleClick', (e) => this.#onDoubleClick(e));
       this.#input.on('hover', (e) => this.#onHover(e));
       this.#input.on('rightClick', (e) => this.#onRightClick(e));
+      this.#input.on('key', (e) => this.#onKey(e));
 
       this.#statusEls = {
         state: document.getElementById('statusState'),
@@ -196,6 +222,7 @@
       };
 
       this.#setupMenu();
+      this.#syncBattleSceneMenu();
       this.#setupCombatLogPanel();
 
       // Initialize floating combat UI
@@ -484,12 +511,8 @@
       if (this.#encounterTimer > 0)
         this.#encounterTimer = Math.max(0, this.#encounterTimer - dt);
 
-      for (let i = this.#combatFloats.length - 1; i >= 0; --i) {
-        this.#combatFloats[i].timer -= dt;
-        this.#combatFloats[i].y -= 30 * dt;
-        if (this.#combatFloats[i].timer <= 0)
-          this.#combatFloats.splice(i, 1);
-      }
+      if (this.#combatFx)
+        this.#combatFx.update(dt);
 
       if (this.#combatMovePath) {
         this.#combatMoveProgress += dt / COMBAT_MOVE_STEP_DUR;
@@ -509,9 +532,16 @@
       }
 
       if (this.#combatAnim) {
-        this.#combatAnim.timer -= dt;
-        if (this.#combatAnim.timer <= 0)
-          this.#finishCombatAnim();
+        const scene = this.#combatAnim.scene;
+        if (scene) {
+          scene.update(dt);
+          if (scene.done)
+            this.#finishCombatAnim();
+        } else {
+          this.#combatAnim.timer -= dt;
+          if (this.#combatAnim.timer <= 0)
+            this.#finishCombatAnim();
+        }
         return;
       }
 
@@ -620,7 +650,19 @@
       }
     }
 
+    #syncCinematic() {
+      const scene = this.#combatAnim && this.#combatAnim.scene;
+      const on = this.#sm.current === GameState.COMBAT && !!scene && !scene.done;
+      if (on !== this.#cinematic && typeof document !== 'undefined' && document.body && document.body.classList) {
+        document.body.classList.toggle('tr-cinematic', on);
+        this.#cinematic = on;
+      }
+    }
+
+    #cinematic = false;
+
     #render() {
+      this.#syncCinematic();
       this.#renderer.beginFrame();
 
       switch (this.#sm.current) {
@@ -653,6 +695,10 @@
           this.#renderTitle();
       }
 
+      // every screen change is revealed by a diagonal wipe
+      if (this.#screenTime < REVEAL_TIME && TR.ScreenArt && this.#sm.current !== GameState.TITLE)
+        TR.ScreenArt.reveal(this.#renderer.bufCtx, this.#screenTime / REVEAL_TIME);
+
       this.#renderer.endFrame();
     }
 
@@ -663,7 +709,9 @@
       const season = this.#timeRotation.currentSeason();
       const holiday = this.#timeRotation.isHoliday();
 
-      this.#renderer.drawScreenText(CANVAS_W / 2, 265, `Daily Bonus: ${daily}  |  Season: ${season}`, { color: '#88a', font: '16px monospace', align: 'center' });
+      if (TR.ScreenArt && this.#renderer.bufCtx)
+        TR.ScreenArt.frame(this.#renderer.bufCtx, CANVAS_W / 2 - 200, 244, 400, 34, { alpha: 0.8 });
+      this.#renderer.drawScreenText(CANVAS_W / 2, 266, `Daily Bonus: ${daily}  |  Season: ${season}`, { color: '#e8e0c8', font: '15px monospace', align: 'center' });
       if (holiday)
         this.#renderer.drawScreenText(CANVAS_W / 2, 295, `\u2605 ${holiday.name} \u2605`, { color: '#ffd700', font: 'bold 18px serif', align: 'center' });
 
@@ -717,7 +765,8 @@
       }
 
       const selCount = this.#selectedSlots.size;
-      this.#renderer.drawScreenText(CANVAS_W / 2, CANVAS_H - 54, `Selected: ${selCount} / 4`, { color: selCount > 0 ? '#ccc' : '#666', font: '14px monospace', align: 'center' });
+      // beside the button: the second card row reaches down to y = 676
+      this.#renderer.drawScreenText(528, CANVAS_H - 18, `Selected: ${selCount} / 4`, { color: selCount > 0 ? '#e8e0c8' : '#888', font: '15px monospace', align: 'right' });
 
       if (selCount >= 1 && selCount <= 4)
         this.#renderer.drawButton(540, CANVAS_H - 42, 200, 36, 'Begin Adventure', { bg: '#2a4a2a', font: '15px monospace' });
@@ -743,14 +792,12 @@
       if (this.#overworldMap) {
         const cam = this.#renderer.camera;
         const locs = this.#overworldMap.getVisibleLocations(cam.x, cam.y, CANVAS_W, CANVAS_H, ts);
+        const ctx = this.#renderer.bufCtx;
         for (const loc of locs) {
-          const name = loc.name || '';
-          const color = loc.tile === OverworldTile.DUNGEON ? '#f88' : loc.tile === OverworldTile.TOWN ? '#ff8' : '#8ff';
-          this.#renderer.drawText(
-            loc.col * ts + ts / 2, loc.row * ts - 3,
-            name,
-            { color, font: 'bold 11px monospace', align: 'center' }
-          );
+          const s = this.#renderer.worldToScreen(loc.col * ts + ts / 2, loc.row * ts);
+          if (loc.tile === OverworldTile.CAMP && ctx)
+            this.#drawCampGlow(ctx, s.x, s.y + ts * 0.6);
+          this.#drawLocationPlate(ctx, s.x, s.y - 6, loc);
         }
       }
 
@@ -759,8 +806,9 @@
       const camX = this.#renderer.camera.x;
       const camY = this.#renderer.camera.y;
       let drawnSprite = false;
+      const leaderClass = (this.#party && this.#party[0] && this.#party[0].class) || 'paladin';
       if (TR.spriteResolver) {
-        const sprite = TR.spriteResolver.resolve('paladin', 'party');
+        const sprite = TR.spriteResolver.resolve(leaderClass, 'party');
         if (sprite) {
           const ctx = this.#renderer.bufCtx;
           ctx.imageSmoothingEnabled = false;
@@ -776,7 +824,7 @@
       }
       if (!drawnSprite) {
         const assets = this.#renderer.assets;
-        const playerSprite = (TR.resolveSprite && TR.resolveSprite('paladin', 'party')) || TR.PLAYER_SPRITE;
+        const playerSprite = (TR.resolveSprite && TR.resolveSprite(leaderClass, 'party')) || TR.PLAYER_SPRITE;
         const playerSheet = (playerSprite && playerSprite.sheet) || 'dungeon';
         if (assets && assets.ready && assets.has(playerSheet) && playerSprite)
           drawnSprite = assets.drawSprite(this.#renderer.bufCtx, playerSheet, playerSprite, px - camX + 2, py - camY + 2, ts - 4);
@@ -812,7 +860,10 @@
       const lineH = 22;
       const h = 40 + this.#party.length * lineH;
 
-      this.#renderer.drawPanel(x, y, w, h, { bg: 'rgba(0,0,0,0.75)' });
+      if (TR.ScreenArt && this.#renderer.bufCtx)
+        TR.ScreenArt.frame(this.#renderer.bufCtx, x, y, w, h, { alpha: 0.85 });
+      else
+        this.#renderer.drawPanel(x, y, w, h, { bg: 'rgba(0,0,0,0.75)' });
       this.#renderer.drawScreenText(x + w / 2, y + 16, `Party  Gold: ${this.#gold}`, { color: '#c8a84e', font: 'bold 12px monospace', align: 'center' });
 
       for (let i = 0; i < this.#party.length; ++i) {
@@ -825,92 +876,122 @@
       }
     }
 
+    // Name plate above a map location, coloured by its kind.
+    #drawLocationPlate(ctx, x, y, loc) {
+      const name = loc.name || '';
+      if (!ctx || !name)
+        return;
+      const accent = loc.tile === OverworldTile.DUNGEON ? '#e0604a' : loc.tile === OverworldTile.TOWN ? '#e8c85a' : '#6ad0e0';
+      ctx.save();
+      ctx.font = "bold 12px Georgia, 'Times New Roman', serif";
+      const w = Math.ceil(ctx.measureText(name).width) + 16;
+      const h = 18;
+      const bx = Math.round(x - w / 2), by = Math.round(y - h);
+      ctx.fillStyle = 'rgba(14,16,34,0.82)';
+      ctx.fillRect(bx, by, w, h);
+      ctx.fillStyle = accent;
+      ctx.fillRect(bx, by, w, 2);
+      ctx.fillRect(bx, by + h - 1, w, 1);
+      ctx.fillStyle = 'rgba(14,16,34,0.82)';
+      ctx.beginPath();
+      ctx.moveTo(x - 5, by + h); ctx.lineTo(x + 5, by + h); ctx.lineTo(x, by + h + 5); ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#f0ead8';
+      ctx.textAlign = 'center';
+      ctx.fillText(name, x, by + 13);
+      ctx.restore();
+    }
+
+    #drawCampGlow(ctx, x, y) {
+      const t = this.#screenTime;
+      const r = 46 * (0.85 + 0.15 * Math.sin(t * 9) * Math.sin(t * 5.7));
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(x, y, 2, x, y, r);
+      g.addColorStop(0, 'rgba(255,170,70,0.45)');
+      g.addColorStop(1, 'rgba(255,120,40,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+      ctx.restore();
+    }
+
     #renderCamp() {
-      this.#renderer.drawPanel(0, 0, CANVAS_W, CANVAS_H, { bg: '#1a1a1a' });
-      this.#renderer.drawScreenText(CANVAS_W / 2, 54, 'CAMP', { color: '#c8a84e', font: 'bold 36px serif', align: 'center' });
-      this.#renderer.drawScreenText(CANVAS_W / 2, 86, 'Rest and manage your party', { color: '#888', font: '16px monospace', align: 'center' });
-
-      if (this.#party && this.#partyHp) {
-        const cardW = 120;
-        const startX = Math.floor(CANVAS_W / 2 - (this.#party.length * (cardW + 14)) / 2);
-        for (let i = 0; i < this.#party.length; ++i) {
-          const c = this.#party[i];
-          const hp = this.#partyHp[i];
-          const x = startX + i * (cardW + 14);
-          const y = 110;
-          this.#renderer.drawPanel(x, y, cardW, 58, { bg: '#222' });
-          this.#renderer.drawScreenText(x + cardW / 2, y + 22, c.name.substring(0, 10), { color: '#ccc', font: '12px monospace', align: 'center' });
-          const hpColor = hp >= c.maxHp ? '#4a4' : hp > c.maxHp * 0.25 ? '#aa4' : '#a44';
-          this.#renderer.drawScreenText(x + cardW / 2, y + 44, `HP: ${hp}/${c.maxHp}`, { color: hpColor, font: '12px monospace', align: 'center' });
-        }
+      const SA = TR.ScreenArt;
+      const ctx = this.#renderer.bufCtx;
+      if (!SA || !ctx) {
+        this.#renderer.drawPanel(0, 0, CANVAS_W, CANVAS_H, { bg: '#1a1a1a' });
+        return;
       }
-
-      const labels = ['Inventory', 'Equipment', 'Rest (Heal Party)', 'Return to Overworld'];
-      for (let i = 0; i < labels.length; ++i)
-        this.#renderer.drawButton(520, 210 + i * 60, 240, 44, labels[i], { bg: i === 2 ? '#2a4a2a' : '#333', font: '15px monospace' });
+      const t = this.#screenTime;
+      // night in the woods, the party gathered around the fire
+      SA.stage(ctx, 'forest', this.#dimension, t, { night: true });
+      const fireX = 520, footY = 640;
+      SA.campfire(ctx, fireX, footY - 4, t);
+      if (this.#party)
+        SA.partyLine(ctx, this.#party, { x: fireX, footY, gap: 130, spacing: 150, height: 180, time: t });
+      SA.vignette(ctx, 0.55);
+      SA.banner(ctx, 'Camp', 24, { sub: 'Rest and manage your party' });
+      SA.rosterPanel(ctx, this.#party, this.#partyHp, 24, 24);
+      SA.menu(ctx, CAMP_BUTTONS, { title: 'Actions' });
     }
 
     #renderTown() {
-      this.#renderer.drawPanel(0, 0, CANVAS_W, CANVAS_H, { bg: '#1e1a14' });
-
+      const SA = TR.ScreenArt;
+      const ctx = this.#renderer.bufCtx;
+      if (!SA || !ctx) {
+        this.#renderer.drawPanel(0, 0, CANVAS_W, CANVAS_H, { bg: '#1e1a14' });
+        return;
+      }
+      const t = this.#screenTime;
+      SA.stage(ctx, 'town', this.#dimension, t, { dim: this.#shopStock ? 0.55 : 0 });
       if (this.#shopStock) {
         this.#renderShop();
         return;
       }
-
-      this.#renderer.drawScreenText(CANVAS_W / 2, 54, 'TOWN', { color: '#c8a84e', font: 'bold 36px serif', align: 'center' });
-      this.#renderer.drawScreenText(CANVAS_W / 2, 86, 'Visit town facilities', { color: '#888', font: '16px monospace', align: 'center' });
-
-      if (this.#party && this.#partyHp) {
-        const cardW = 120;
-        const startX = Math.floor(CANVAS_W / 2 - (this.#party.length * (cardW + 14)) / 2);
-        for (let i = 0; i < this.#party.length; ++i) {
-          const c = this.#party[i];
-          const hp = this.#partyHp[i];
-          const x = startX + i * (cardW + 14);
-          const y = 110;
-          this.#renderer.drawPanel(x, y, cardW, 58, { bg: '#222' });
-          this.#renderer.drawScreenText(x + cardW / 2, y + 22, c.name.substring(0, 10), { color: '#ccc', font: '12px monospace', align: 'center' });
-          const hpColor = hp >= c.maxHp ? '#4a4' : hp > c.maxHp * 0.25 ? '#aa4' : '#a44';
-          this.#renderer.drawScreenText(x + cardW / 2, y + 44, `HP: ${hp}/${c.maxHp}`, { color: hpColor, font: '12px monospace', align: 'center' });
-        }
-      }
-
-      this.#renderer.drawScreenText(CANVAS_W / 2, 190, `Gold: ${this.#gold}  |  Inventory: ${this.#inventory.length} items`, { color: '#aaa', font: '13px monospace', align: 'center' });
-
-      const labels = ['Weaponsmith', 'Armorer', 'General Store', 'Inn (Heal Party)', 'Leave Town'];
-      for (let i = 0; i < labels.length; ++i)
-        this.#renderer.drawButton(520, 210 + i * 50, 240, 40, labels[i], { bg: i === 3 ? '#2a4a2a' : '#333', font: '14px monospace' });
+      if (this.#party)
+        SA.partyLine(ctx, this.#party, { x: 560, footY: 660, spacing: 130, height: 180, time: t, facing: 1 });
+      SA.vignette(ctx, 0.35);
+      SA.banner(ctx, 'Town', 24, { sub: `Gold: ${this.#gold}   |   Inventory: ${this.#inventory.length} items` });
+      SA.rosterPanel(ctx, this.#party, this.#partyHp, 24, 24);
+      SA.menu(ctx, TOWN_BUTTONS, { title: 'Visit' });
     }
 
     #renderShop() {
+      const SA = TR.ScreenArt;
+      const ctx = this.#renderer.bufCtx;
       const cfg = Shop && ShopType ? TR.SHOP_CONFIGS[this.#shopType] : null;
       const title = cfg ? cfg.name : 'Shop';
-      this.#renderer.drawScreenText(CANVAS_W / 2, 36, title, { color: '#c8a84e', font: 'bold 28px serif', align: 'center' });
-      this.#renderer.drawScreenText(CANVAS_W / 2, 60, `Gold: ${this.#gold}`, { color: '#daa520', font: 'bold 14px monospace', align: 'center' });
+      SA.banner(ctx, title, 12, { size: 30, sub: `Gold: ${this.#gold}` });
 
-      // Shop stock on left
-      this.#renderer.drawScreenText(200, 90, 'For Sale', { color: '#8a8', font: 'bold 16px monospace', align: 'center' });
       const stock = this.#shopStock || [];
+      const assets = this.#renderer.assets;
+      const tierColors = TR.TIER_COLORS || {};
+      const row = (x, y, w, item, right, rightColor, enabled) => {
+        ctx.fillStyle = enabled ? 'rgba(40,48,90,0.85)' : 'rgba(30,30,40,0.7)';
+        ctx.fillRect(x, y, w, 30);
+        ctx.strokeStyle = tierColors[item.tier] || 'rgba(200,162,78,0.5)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 29);
+        SA.itemIcon(ctx, assets, item, x + 4, y + 3, 24);
+        ctx.globalAlpha = enabled ? 1 : 0.5;
+        this.#renderer.drawScreenText(x + 36, y + 20, `${item.name}${item.quantity > 1 ? ' x' + item.quantity : ''}`, { color: '#e8e0c8', font: '13px monospace', align: 'left' });
+        this.#renderer.drawScreenText(x + w - 10, y + 20, right, { color: rightColor, font: 'bold 13px monospace', align: 'right' });
+        ctx.globalAlpha = 1;
+      };
+
+      SA.frame(ctx, 24, 84, 352, Math.max(80, 44 + stock.length * 36));
+      this.#renderer.drawScreenText(200, 106, 'For Sale', { color: '#a8e0a0', font: "bold 18px Georgia, 'Times New Roman', serif", align: 'center' });
       for (let i = 0; i < stock.length; ++i) {
-        const item = stock[i];
-        const y = 110 + i * 36;
-        const price = Shop ? Shop.buyPrice(item) : item.value;
-        const canBuy = this.#gold >= price;
-        this.#renderer.drawPanel(40, y, 320, 30, { bg: '#1a1a1a' });
-        this.#renderer.drawScreenText(50, y + 20, item.name, { color: canBuy ? '#ccc' : '#666', font: '12px monospace', align: 'left' });
-        this.#renderer.drawScreenText(340, y + 20, `${price}g`, { color: canBuy ? '#daa520' : '#644', font: '12px monospace', align: 'right' });
+        const price = Shop ? Shop.buyPrice(stock[i]) : stock[i].value;
+        row(40, 110 + i * 36, 320, stock[i], `${price}g`, '#ffd24a', this.#gold >= price);
       }
 
-      // Inventory on right
-      this.#renderer.drawScreenText(800, 90, 'Inventory', { color: '#88a', font: 'bold 16px monospace', align: 'center' });
-      for (let i = 0; i < this.#inventory.length && i < 14; ++i) {
-        const item = this.#inventory[i];
-        const y = 110 + i * 36;
-        const sell = Shop ? Shop.sellPrice(item) : Math.floor(item.value * 0.5);
-        this.#renderer.drawPanel(600, y, 380, 30, { bg: '#1a1a1a' });
-        this.#renderer.drawScreenText(610, y + 20, `${item.name}${item.quantity > 1 ? ' x' + item.quantity : ''}`, { color: '#ccc', font: '12px monospace', align: 'left' });
-        this.#renderer.drawScreenText(960, y + 20, `Sell: ${sell}g`, { color: '#a86', font: '12px monospace', align: 'right' });
+      const inv = this.#inventory.slice(0, 14);
+      SA.frame(ctx, 584, 84, 412, Math.max(80, 44 + inv.length * 36));
+      this.#renderer.drawScreenText(790, 106, 'Your Pack', { color: '#a8c8ff', font: "bold 18px Georgia, 'Times New Roman', serif", align: 'center' });
+      for (let i = 0; i < inv.length; ++i) {
+        const sell = Shop ? Shop.sellPrice(inv[i]) : Math.floor(inv[i].value * 0.5);
+        row(600, 110 + i * 36, 380, inv[i], `Sell ${sell}g`, '#e8b070', true);
       }
 
       this.#renderer.drawButton(CANVAS_W / 2 - 80, CANVAS_H - 60, 160, 40, 'Back', { bg: '#444', font: '15px monospace' });
@@ -927,6 +1008,10 @@
       const ts = this.#combatTileSize;
       let ox = this.#combatOffsetX;
       let oy = this.#combatOffsetY;
+      const cfx = this.#combatFx;
+      const bctx = this.#renderer.bufCtx;
+      if (cfx && bctx)
+        cfx.beginShake(bctx);
 
       if (this.#overworldCombat && this.#overworldMap) {
         const origin = this.#overworldCombatOrigin || this.#playerPos;
@@ -1018,7 +1103,9 @@
         if (this.#combatMovePath && this.#combatMoveUnit === u.id) continue;
         const isActive = eng.currentUnit && eng.currentUnit.id === u.id;
         const pos = (isActive && this.#combatTentativePos) ? this.#combatTentativePos : u.position;
-        this.#renderer.drawUnitToken(pos.col, pos.row, u, ts, ox, oy, { active: isActive, dead: !u.isAlive });
+        this.#renderer.drawUnitToken(pos.col, pos.row, u, ts, ox, oy, {
+          active: isActive, dead: !u.isAlive, fx: cfx ? cfx.unitState(u.id, ts) : null, time: this.#combatTime,
+        });
       }
 
       if (this.#combatMovePath && this.#combatMoveUnit) {
@@ -1031,16 +1118,14 @@
           const vc = from.col + (to.col - from.col) * t;
           const vr = from.row + (to.row - from.row) * t;
           const isActive = eng.currentUnit && eng.currentUnit.id === u.id;
-          this.#renderer.drawUnitTokenAt(vc, vr, u, ts, ox, oy, { active: isActive });
+          this.#renderer.drawUnitTokenAt(vc, vr, u, ts, ox, oy, { active: isActive, time: this.#combatTime });
         }
       }
 
       if (this.#combatAnim) {
         const anim = this.#combatAnim;
-        if ((anim.type === 'player_attack' || anim.type === 'enemy_attack' || anim.type === 'spell_cast') && anim.result && anim.defender) {
-          const dur = anim.duration || 2.0;
-          const progress = 1 - (anim.timer / dur);
-          this.#renderer.drawBattleScene(anim.attacker, anim.defender, anim.result, progress, anim.type);
+        if (anim.scene) {
+          anim.scene.draw(this.#renderer.bufCtx, CANVAS_W, CANVAS_H);
         } else {
           if (anim.defender && anim.defender.position) {
             const dp = anim.defender.position;
@@ -1061,8 +1146,11 @@
         }
       }
 
-      for (const f of this.#combatFloats)
-        this.#renderer.drawScreenText(f.x, f.y, f.text, { color: f.color, font: 'bold 16px monospace', align: 'center' });
+      if (cfx && bctx) {
+        cfx.drawParticles(bctx);
+        cfx.drawNumbers(bctx);
+        cfx.endShake(bctx);
+      }
 
       // Canvas-rendered panels removed — now handled by CombatUI HTML overlays
 
@@ -1173,6 +1261,8 @@
     }
 
     #startCombat(enemies, biome, aiTier) {
+      if (this.#combatFx)
+        this.#combatFx.clear();
       if (TR.spriteResolver)
         TR.spriteResolver.preloadCreatures(enemies.map(e => e.templateId));
 
@@ -1213,6 +1303,8 @@
     }
 
     #startOverworldCombat(enemies, biome, aiTier) {
+      if (this.#combatFx)
+        this.#combatFx.clear();
       if (TR.spriteResolver)
         TR.spriteResolver.preloadCreatures(enemies.map(e => e.templateId));
 
@@ -1346,30 +1438,15 @@
           const crit = attackEvent.critical;
           const hit = attackEvent.result.hit;
 
-          if (hit) {
-            this.#combatFloats.push({
-              x: ox + pos.col * ts + ts / 2,
-              y: oy + pos.row * ts,
-              text: crit ? `CRIT -${dmg}!` : `-${dmg}`,
-              color: crit ? '#ffd700' : '#ff4444',
-              timer: 1.0,
-            });
-          } else {
-            this.#combatFloats.push({
-              x: ox + pos.col * ts + ts / 2,
-              y: oy + pos.row * ts,
-              text: 'MISS',
-              color: '#888',
-              timer: 0.8,
-            });
-          }
-
-          this.#combatAnim = {
+          this.#combatAnim = this.#attachBattleScene({
             type: 'enemy_attack',
             timer: 2.0,
             duration: 2.0,
             attacker: unit,
             defender: def,
+            impacts: [hit
+              ? { kind: 'hit', unit: def, from: unit, amount: dmg, crit }
+              : { kind: 'miss', unit: def, from: unit }],
             result: {
               hit,
               damage: dmg,
@@ -1380,7 +1457,7 @@
               natural1: attackEvent.result.natural1,
               natural20: attackEvent.result.natural20,
             },
-          };
+          });
         } else {
           this.#combatAnim = {
             type: 'enemy_move',
@@ -1407,6 +1484,8 @@
 
     #finishCombatAnim() {
       const animType = this.#combatAnim ? this.#combatAnim.type : null;
+      if (this.#combatAnim)
+        this.#playImpacts(this.#combatAnim.impacts);
       this.#combatAnim = null;
       this.#combatTentativePos = null;
       this.#combatOriginalPos = null;
@@ -1428,6 +1507,36 @@
         this.#processEnemyTurns();
     }
 
+    #unitScreenCenter(unit) {
+      const ts = this.#combatTileSize;
+      const pos = unit.position;
+      return { x: this.#combatOffsetX + pos.col * ts + ts / 2, y: this.#combatOffsetY + pos.row * ts + ts / 2 };
+    }
+
+    // Grid feedback for one resolved action, played when its cut-in ends.
+    #playImpacts(impacts) {
+      const fx = this.#combatFx;
+      if (!fx || !impacts)
+        return;
+      for (const imp of impacts) {
+        const u = imp.unit;
+        if (!u || !u.position)
+          continue;
+        const c = this.#unitScreenCenter(u);
+        const src = imp.from && imp.from.position && imp.from !== u ? this.#unitScreenCenter(imp.from) : null;
+        if (imp.kind === 'hit') {
+          fx.hit(u.id, c.x, c.y, imp.amount, { crit: !!imp.crit, fromX: src ? src.x : null, fromY: src ? src.y : null, color: imp.color || null });
+          if (imp.spell)
+            fx.spell(c.x, c.y, imp.color);
+        } else if (imp.kind === 'miss')
+          fx.miss(u.id, c.x, c.y);
+        else if (imp.kind === 'heal')
+          fx.heal(u.id, c.x, c.y, imp.amount);
+        if (!u.isAlive && !fx.isDying(u.id))
+          fx.death(u.id, c.x, c.y);
+      }
+    }
+
     #startAttackAnim(attackerId, defenderId, result) {
       const eng = this.#combatEngine;
       const attacker = eng.unitById(attackerId);
@@ -1435,115 +1544,77 @@
       if (!attacker || !defender)
         return;
 
-      const pos = defender.position;
-      const ts = this.#combatTileSize;
-      const ox = this.#combatOffsetX;
-      const oy = this.#combatOffsetY;
-
-      if (result.hit) {
-        this.#combatFloats.push({
-          x: ox + pos.col * ts + ts / 2,
-          y: oy + pos.row * ts,
-          text: result.critical ? `CRIT -${result.damage}!` : `-${result.damage}`,
-          color: result.critical ? '#ffd700' : '#ff4444',
-          timer: 1.2,
-        });
-      } else {
-        this.#combatFloats.push({
-          x: ox + pos.col * ts + ts / 2,
-          y: oy + pos.row * ts,
-          text: 'MISS',
-          color: '#888888',
-          timer: 0.8,
-        });
-      }
-
-      this.#combatAnim = {
+      this.#combatAnim = this.#attachBattleScene({
         type: 'player_attack',
         timer: 2.0,
         duration: 2.0,
         attacker,
         defender,
         result,
-      };
+        impacts: [result.hit
+          ? { kind: 'hit', unit: defender, from: attacker, amount: result.damage, crit: result.critical }
+          : { kind: 'miss', unit: defender, from: attacker }],
+      });
     }
 
     #startSpellAnim(caster, target, result) {
       if (!caster || !target)
         return;
 
-      const pos = target.position;
-      const ts = this.#combatTileSize;
-      const ox = this.#combatOffsetX;
-      const oy = this.#combatOffsetY;
       const spell = result.spell;
       const spellName = spell ? spell.name : 'Spell';
+      const impacts = [];
+      if (result.damage > 0)
+        impacts.push({ kind: 'hit', unit: target, from: caster, amount: result.damage, color: '#c070ff', spell: true });
+      if (result.heal > 0)
+        impacts.push({ kind: 'heal', unit: target, amount: result.heal });
 
-      if (result.damage > 0) {
-        this.#combatFloats.push({
-          x: ox + pos.col * ts + ts / 2,
-          y: oy + pos.row * ts,
-          text: `-${result.damage}`,
-          color: '#bb44ff',
-          timer: 1.2,
-        });
-      }
-      if (result.heal > 0) {
-        this.#combatFloats.push({
-          x: ox + pos.col * ts + ts / 2,
-          y: oy + pos.row * ts,
-          text: `+${result.heal}`,
-          color: '#44ff88',
-          timer: 1.2,
-        });
-      }
-
-      this.#combatAnim = {
+      this.#combatAnim = this.#attachBattleScene({
         type: 'spell_cast',
         timer: 2.0,
         duration: 2.0,
         attacker: caster,
         defender: target,
+        impacts,
         result: { ...result, hit: true, d20: 0, total: 0, natural20: false, natural1: false, critical: false, spellName },
-      };
+      });
     }
 
     #startAoeSpellAnim(caster, result) {
       if (!caster || !result || !result.targets)
         return;
 
-      const ts = this.#combatTileSize;
-      const ox = this.#combatOffsetX;
-      const oy = this.#combatOffsetY;
       const eng = this.#combatEngine;
       const spell = result.spell;
       const spellName = spell ? spell.name : 'AoE Spell';
 
+      const impacts = [];
       for (const t of result.targets) {
         const u = eng ? eng.unitById(t.unitId) : null;
         if (!u) continue;
-        const pos = u.position;
         if (t.damage > 0)
-          this.#combatFloats.push({ x: ox + pos.col * ts + ts / 2, y: oy + pos.row * ts, text: `-${t.damage}`, color: '#bb44ff', timer: 1.2 });
+          impacts.push({ kind: 'hit', unit: u, from: caster, amount: t.damage, color: '#c070ff', spell: true });
         if (t.heal > 0)
-          this.#combatFloats.push({ x: ox + pos.col * ts + ts / 2, y: oy + pos.row * ts, text: `+${t.heal}`, color: '#44ff88', timer: 1.2 });
+          impacts.push({ kind: 'heal', unit: u, amount: t.heal });
       }
 
       const firstTarget = result.targets.length > 0 ? (eng ? eng.unitById(result.targets[0].unitId) : null) : null;
-      this.#combatAnim = {
+      this.#combatAnim = this.#attachBattleScene({
         type: 'spell_cast',
         timer: 2.0,
         duration: 2.0,
         attacker: caster,
         defender: firstTarget || caster,
+        impacts,
         result: { ...result, hit: true, d20: 0, total: 0, natural20: false, natural1: false, critical: false, spellName: `${spellName} (${result.targets.length} hit)` },
-      };
+      });
     }
 
     #renderVictory() {
       const xpGained = this.#lastRewards ? this.#lastRewards.xp : 0;
       const goldGained = this.#lastRewards ? this.#lastRewards.gold : 0;
-      this.#renderer.drawVictoryScreen(this.#party, xpGained, goldGained, Math.min(1, this.#screenTime * 0.5));
+      this.#renderer.drawVictoryScreen(this.#party, xpGained, goldGained, Math.min(1, this.#screenTime * 0.5),
+        { time: this.#screenTime, biome: this.#combatBiome, plane: this.#dimension });
 
       let y = 250;
       if (this.#lastRewards) {
@@ -1581,7 +1652,7 @@
     }
 
     #renderDefeat() {
-      this.#renderer.drawDefeatScreen(this.#screenTime);
+      this.#renderer.drawDefeatScreen(this.#screenTime, { party: this.#party, biome: this.#combatBiome, plane: this.#dimension });
       this.#renderer.drawButton(440, 360, 160, 44, 'Retreat', { bg: '#4a4a2a', font: '15px monospace' });
       this.#renderer.drawButton(680, 360, 160, 44, 'Title', { bg: '#4a2a2a', font: '15px monospace' });
     }
@@ -1740,12 +1811,7 @@
     }
 
     #onClickCamp(e) {
-      const buttons = [
-        { x: 520, y: 210, w: 240, h: 44 },
-        { x: 520, y: 270, w: 240, h: 44 },
-        { x: 520, y: 330, w: 240, h: 44 },
-        { x: 520, y: 390, w: 240, h: 44 },
-      ];
+      const buttons = CAMP_BUTTONS;
       if (this.#hitButton(e, buttons[2]))
         this.#restParty();
       else if (this.#hitButton(e, buttons[3]))
@@ -1758,13 +1824,7 @@
         return;
       }
 
-      const buttons = [
-        { x: 520, y: 210, w: 240, h: 40 },
-        { x: 520, y: 260, w: 240, h: 40 },
-        { x: 520, y: 310, w: 240, h: 40 },
-        { x: 520, y: 360, w: 240, h: 40 },
-        { x: 520, y: 410, w: 240, h: 40 },
-      ];
+      const buttons = TOWN_BUTTONS;
       if (this.#hitButton(e, buttons[0]))
         this.#openShop(ShopType.WEAPONSMITH);
       else if (this.#hitButton(e, buttons[1]))
@@ -1823,7 +1883,62 @@
       }
     }
 
+    #onKey(e) {
+      if (e.key === ' ' || e.key === 'Enter' || e.key === 'Escape')
+        this.#skipBattleScene();
+    }
+
+    #skipBattleScene() {
+      const scene = this.#combatAnim && this.#combatAnim.scene;
+      if (!scene || scene.done)
+        return false;
+      scene.skip();
+      return true;
+    }
+
+    get battleSceneMode() { return this.#battleSceneMode; }
+
+    setBattleSceneMode(mode) {
+      if (!BATTLE_SCENE_MODES.includes(mode))
+        return;
+      this.#battleSceneMode = mode;
+      try {
+        localStorage.setItem(BATTLE_SCENE_KEY, mode);
+      } catch (_) { /* private mode: setting lasts for this session */ }
+      this.#syncBattleSceneMenu();
+    }
+
+    #syncBattleSceneMenu() {
+      if (typeof document === 'undefined' || !document.querySelectorAll)
+        return;
+      for (const m of BATTLE_SCENE_MODES) {
+        const el = document.getElementById(`menu-scenes-${m}`);
+        if (el && el.classList)
+          el.classList.toggle('checked', m === this.#battleSceneMode);
+      }
+    }
+
+    // Turns a grid animation into a battle cut-in, or plays its impacts
+    // right away when cut-ins are switched off.
+    #attachBattleScene(anim) {
+      if (!anim || !anim.defender)
+        return anim;
+      if (this.#battleSceneMode === 'off' || !TR.BattleScene) {
+        this.#playImpacts(anim.impacts);
+        anim.impacts = null;
+        anim.timer = anim.duration = 0.6;
+        return anim;
+      }
+      anim.scene = new TR.BattleScene({
+        attacker: anim.attacker, defender: anim.defender, result: anim.result, type: anim.type,
+        biome: this.#combatBiome, plane: this.#dimension, mode: this.#battleSceneMode,
+      });
+      return anim;
+    }
+
     #onClickCombat(e) {
+      if (this.#skipBattleScene())
+        return;
       const eng = this.#combatEngine;
       if (!eng || this.#combatAnim || this.#enemyQueue.length > 0 || this.#combatMovePath)
         return;
@@ -2137,7 +2252,8 @@
 
       if (total >= dc) {
         eng.combatLog.push(`${unit.logName} flees! (d20=${roll}+${dexMod}=${total} vs DC ${dc} - SUCCESS)`);
-        this.#combatFloats.push({ x: fx, y: fy, text: 'Fled!', color: '#4c4', timer: 1.0 });
+        if (this.#combatFx)
+          this.#combatFx.number(fx, fy, 'Fled!', { color: '#5dd65d', size: 18 });
         // Map the fleeing unit's combat grid position back to overworld coordinates
         if (this.#overworldCombatOrigin && eng.grid) {
           const gridCenterCol = Math.floor(eng.grid.cols / 2);
@@ -2158,7 +2274,8 @@
         this.#sm.transition(GameState.OVERWORLD);
       } else {
         const modStr = dexMod >= 0 ? `+${dexMod}` : `${dexMod}`;
-        this.#combatFloats.push({ x: fx, y: fy, text: `Flee failed! (${roll}${modStr}=${total} vs DC ${dc})`, color: '#c44', timer: 1.5 });
+        if (this.#combatFx)
+          this.#combatFx.number(fx, fy, `Flee failed! (${roll}${modStr}=${total} vs DC ${dc})`, { color: '#e05050', size: 15 });
         eng.combatLog.push(`${unit.logName} fails to flee! (d20=${roll}+${dexMod}=${total} vs DC ${dc} - FAIL)`);
         eng.selectWait();
         eng.nextTurn();

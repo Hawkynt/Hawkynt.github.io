@@ -266,10 +266,10 @@
       assert.equal(f.y, 119);
     });
 
-    it('dungeon goblin at index 86 maps to col=2 row=7 at (34,119)', () => {
+    it('dungeon goblin at index 112 maps to col=4 row=9 at (68,153)', () => {
       const g = TR.ENEMY_SPRITES.goblin;
-      assert.equal(g.x, 34);
-      assert.equal(g.y, 119);
+      assert.equal(g.x, 68);
+      assert.equal(g.y, 153);
     });
 
     it('overworld sprites use 1px margin (968px = 57×16 + 56×1)', () => {
@@ -293,10 +293,12 @@
       }
     });
 
-    it('all dungeon combat terrain sprites fit within 203×186 sheet bounds', () => {
+    it('all combat terrain sprites fit within their sheet bounds', () => {
+      const bounds = { dungeon: [203, 186], overworld: [968, 526] };
       for (const [id, rect] of Object.entries(TR.COMBAT_TERRAIN_SPRITES)) {
-        assert.ok(rect.x + rect.w <= 203, `${id} x+w exceeds 203px dungeon width`);
-        assert.ok(rect.y + rect.h <= 186, `${id} y+h exceeds 186px dungeon height`);
+        const [w, h] = bounds[rect.sheet || 'dungeon'];
+        assert.ok(rect.x + rect.w <= w, `${id} x+w exceeds ${w}px sheet width`);
+        assert.ok(rect.y + rect.h <= h, `${id} y+h exceeds ${h}px sheet height`);
       }
     });
 

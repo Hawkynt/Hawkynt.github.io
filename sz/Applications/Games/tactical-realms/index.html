@@ -39,6 +39,10 @@
       <div class="menu-separator"></div>
       <div class="menu-entry" data-action="combat-history">Combat History</div>
       <div class="menu-separator"></div>
+      <div class="menu-entry radio checked" data-action="scenes-full" id="menu-scenes-full">Battle Scenes: Full</div>
+      <div class="menu-entry radio" data-action="scenes-short" id="menu-scenes-short">Battle Scenes: Short</div>
+      <div class="menu-entry radio" data-action="scenes-off" id="menu-scenes-off">Battle Scenes: Off</div>
+      <div class="menu-separator"></div>
       <div class="menu-entry" data-action="exit">Exit</div>
     </div>
   </div>
@@ -118,6 +122,7 @@
 
 <script src="../../shared/menu.js"></script>
 <script src="../../shared/dialog.js"></script>
+<script src="../../shared/game-effects.js"></script>
 <!-- Core modules -->
 <script defer src="prng.js"></script>
 <script defer src="time-rotation.js"></script>
@@ -127,6 +132,12 @@
 <script defer src="input-handler.js"></script>
 <script defer src="sprite-compositor.js"></script>
 <script defer src="renderer.js"></script>
+<script defer src="combat-fx.js"></script>
+<script defer src="battle-sprites.js"></script>
+<script defer src="battle-backdrop.js"></script>
+<script defer src="battle-fx.js"></script>
+<script defer src="battle-scene.js"></script>
+<script defer src="screen-art.js"></script>
 
 <!-- Shared enums (loaded before all data files) -->
 <script defer src="data/enums.js"></script>
@@ -244,6 +255,7 @@
 <!-- Combat engine & game systems -->
 <script defer src="combat-history.js"></script>
 <script defer src="combat-engine.js"></script>
+<script defer src="pixel-art.js"></script>
 <script defer src="asset-loader.js"></script>
 <script defer src="data/creature-sprites.js"></script>
 <script defer src="sprite-resolver.js"></script>
