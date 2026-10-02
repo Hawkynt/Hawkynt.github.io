@@ -37,7 +37,10 @@
     #prefix = 'sz-';
 
     get(key) {
-      const raw = localStorage.getItem(this.#prefix + key);
+      let raw = null;
+      try {
+        raw = localStorage.getItem(this.#prefix + key);
+      } catch (_) { /* storage blocked: defaults apply */ }
       if (raw === null)
         return DEFAULTS[key] ?? null;
 
@@ -45,7 +48,12 @@
     }
 
     set(key, value) {
-      localStorage.setItem(this.#prefix + key, JSON.stringify(value));
+      try {
+        localStorage.setItem(this.#prefix + key, JSON.stringify(value));
+      } catch (e) {
+        // a full or blocked storage loses the setting, not the desktop
+        console.warn('[SZ] Could not store setting ' + key + ':', e && e.message);
+      }
     }
 
     getAll() {
