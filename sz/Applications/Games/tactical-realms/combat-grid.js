@@ -17,6 +17,37 @@
     lava:     ['lava', 'lava', 'dungeon_floor', 'dungeon_floor', 'cave', 'cave'],
   });
 
+  function moveCostOf(id) {
+    const t = Terrain && Terrain.byId ? Terrain.byId(id) : null;
+    return t && Number.isFinite(t.moveCost) ? t.moveCost : 1;
+  }
+
+  // Value noise on a coarse lattice, bilinearly smoothed, plus a finer
+  // octave; deterministic for a given prng.
+  function smoothNoise(cols, rows, prng) {
+    const octave = (cell, weight, out) => {
+      const gw = Math.ceil(cols / cell) + 2, gh = Math.ceil(rows / cell) + 2;
+      const lattice = [];
+      for (let i = 0; i < gw * gh; ++i)
+        lattice.push(prng.next());
+      for (let r = 0; r < rows; ++r)
+        for (let c = 0; c < cols; ++c) {
+          const gx = c / cell, gy = r / cell;
+          const x0 = Math.floor(gx), y0 = Math.floor(gy);
+          const tx = gx - x0, ty = gy - y0;
+          const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+          const v = (x, y) => lattice[y * gw + x];
+          const top = v(x0, y0) + (v(x0 + 1, y0) - v(x0, y0)) * sx;
+          const bot = v(x0, y0 + 1) + (v(x0 + 1, y0 + 1) - v(x0, y0 + 1)) * sx;
+          out[r * cols + c] += (top + (bot - top) * sy) * weight;
+        }
+    };
+    const out = new Array(cols * rows).fill(0);
+    octave(4, 1, out);
+    octave(2, 0.35, out);
+    return out;
+  }
+
   class CombatGrid {
     #cols;
     #rows;
@@ -130,11 +161,42 @@
       return new CombatGrid(cols, rows, terrain);
     }
 
+    // Terrain keeps the palette's proportions but is placed by a smooth
+    // noise field, so it forms patches, paths and clearings instead of
+    // speckle. The palette's first entry is the base terrain; the spawn
+    // columns (1 and cols - 2) get the palette's easiest footing.
     static generate(cols, rows, prng, biome) {
       const palette = BIOME_PALETTES[biome] || BIOME_PALETTES.plains;
-      const terrain = [];
-      for (let i = 0; i < cols * rows; ++i)
-        terrain.push(prng.pick(palette));
+      const n = cols * rows;
+      const field = smoothNoise(cols, rows, prng);
+      const order = [...Array(n).keys()].sort((a, b) => field[a] - field[b] || a - b);
+      const terrain = new Array(n);
+      const counts = new Map();
+      for (const id of palette)
+        counts.set(id, (counts.get(id) || 0) + 1);
+      // walk the noise ranks: base terrain in the middle band, others outside it
+      const base = palette[0];
+      const others = [...counts.keys()].filter(id => id !== base);
+      const bands = [];
+      const half = Math.ceil(others.length / 2);
+      for (const id of others.slice(0, half))
+        bands.push(id);
+      bands.push(base);
+      for (const id of others.slice(half))
+        bands.push(id);
+      let k = 0;
+      for (const id of bands) {
+        const take = Math.round(n * counts.get(id) / palette.length);
+        for (let i = 0; i < take && k < n; ++i)
+          terrain[order[k++]] = id;
+      }
+      while (k < n)
+        terrain[order[k++]] = base;
+      const footing = [...counts.keys()].reduce((best, id) => moveCostOf(id) < moveCostOf(best) ? id : best, base);
+      for (let r = 0; r < rows; ++r)
+        for (const c of [1, cols - 2])
+          if (c >= 0 && c < cols)
+            terrain[r * cols + c] = footing;
       return new CombatGrid(cols, rows, terrain);
     }
 
