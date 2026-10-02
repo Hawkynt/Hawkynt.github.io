@@ -821,6 +821,18 @@
      SHIP PHYSICS
      ══════════════════════════════════════════════════════════════════ */
 
+  /* Number of 60 Hz frames covered by dt; snaps refresh jitter so 60 Hz stays one frame */
+  function frameScale(dt) {
+    const frames = dt * 60;
+    return Math.abs(frames - 1) < 0.03 ? 1 : frames;
+  }
+
+  /* Per-frame rate (blend factor or chance) spread over the frames covered by dt */
+  function frameRate(rate, dt) {
+    const frames = frameScale(dt);
+    return frames === 1 ? rate : 1 - Math.pow(1 - rate, frames);
+  }
+
   function updateShip(dt) {
     if (state !== STATE_PLAYING) return;
 
@@ -858,8 +870,9 @@
     }
 
     // Friction
-    ship.vx *= SHIP_FRICTION;
-    ship.vy *= SHIP_FRICTION;
+    const friction = Math.pow(SHIP_FRICTION, frameScale(dt));
+    ship.vx *= friction;
+    ship.vy *= friction;
 
     // Clamp speed
     ship.speed = Math.sqrt(ship.vx * ship.vx + ship.vy * ship.vy);
@@ -912,8 +925,9 @@
       ai.reactionTimer -= dt;
       if (ai.reactionTimer > 0) {
         // During reaction delay, just coast with friction
-        ai.vx *= SHIP_FRICTION;
-        ai.vy *= SHIP_FRICTION;
+        const coastFriction = Math.pow(SHIP_FRICTION, frameScale(dt));
+        ai.vx *= coastFriction;
+        ai.vy *= coastFriction;
         ai.speed = Math.sqrt(ai.vx * ai.vx + ai.vy * ai.vy);
         ai.x += ai.vx * dt;
         ai.y += ai.vy * dt;
@@ -924,7 +938,7 @@
       if (ai.mistakeTimer > 0) {
         ai.mistakeTimer -= dt;
         ai.angle += ai.mistakeAngle * dt;
-      } else if (Math.random() < AI_MISTAKE_CHANCE * p.mistakeRate) {
+      } else if (Math.random() < frameRate(AI_MISTAKE_CHANCE * p.mistakeRate, dt)) {
         ai.mistakeTimer = AI_MISTAKE_DURATION * (0.5 + Math.random());
         ai.mistakeAngle = (Math.random() > 0.5 ? 1 : -1) * (1.0 + Math.random() * 1.5);
       }
@@ -954,7 +968,7 @@
         throttle = AI_BRAKE_FACTOR;
 
       // Smooth throttle transitions
-      ai.throttle += (throttle - ai.throttle) * 0.1;
+      ai.throttle += (throttle - ai.throttle) * frameRate(0.1, dt);
 
       // Accelerate toward waypoint
       const accel = AI_BASE_ACCEL * ai.speedFactor * ai.throttle;
@@ -962,8 +976,9 @@
       ai.vy += Math.sin(ai.angle) * accel * dt;
 
       // Friction
-      ai.vx *= SHIP_FRICTION;
-      ai.vy *= SHIP_FRICTION;
+      const friction = Math.pow(SHIP_FRICTION, frameScale(dt));
+      ai.vx *= friction;
+      ai.vy *= friction;
 
       // Clamp speed
       ai.speed = Math.sqrt(ai.vx * ai.vx + ai.vy * ai.vy);
@@ -1384,11 +1399,12 @@
      CAMERA
      ══════════════════════════════════════════════════════════════════ */
 
-  function updateCamera() {
+  function updateCamera(dt) {
     const targetX = ship.x - CANVAS_W / 2;
     const targetY = ship.y - CANVAS_H / 2;
-    camX += (targetX - camX) * 0.08;
-    camY += (targetY - camY) * 0.08;
+    const follow = frameRate(0.08, dt);
+    camX += (targetX - camX) * follow;
+    camY += (targetY - camY) * follow;
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -1407,7 +1423,7 @@
     checkWormholes(dt);
     emitThrustParticles();
     updateRace(dt);
-    updateCamera();
+    updateCamera(dt);
     updateSpeedLines();
   }
 
