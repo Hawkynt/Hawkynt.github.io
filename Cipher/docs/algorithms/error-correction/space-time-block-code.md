@@ -52,64 +52,64 @@
 | Field | Value |
 | --- | --- |
 | `config` | `{"numTxAntennas":2}` |
-| `input` | `0102` |
-| `expected` | `[1,2,-2,1]` |
+| `input` | `00010002` |
+| `expected` | `00010002fffe0001` |
 
 **Vector 2** — [2x2 Alamouti STBC: [3, -1] -> Orthogonal matrix](https://ieeexplore.ieee.org/document/730453)
 
 | Field | Value |
 | --- | --- |
 | `config` | `{"numTxAntennas":2}` |
-| `input` | `[3,-1]` |
-| `expected` | `[3,-1,1,3]` |
+| `input` | `0003ffff` |
+| `expected` | `0003ffff00010003` |
 
 **Vector 3** — [2x2 Alamouti STBC: [0, 0] -> Zero matrix](https://en.wikipedia.org/wiki/Space%E2%80%93time_block_code)
 
 | Field | Value |
 | --- | --- |
 | `config` | `{"numTxAntennas":2}` |
-| `input` | `0000` |
-| `expected` | `00000000` |
+| `input` | `00000000` |
+| `expected` | `0000000000000000` |
 
 **Vector 4** — [IEEE 802.11n STBC pattern: [5, 7]](https://standards.ieee.org/standard/802_11n-2009.html)
 
 | Field | Value |
 | --- | --- |
 | `config` | `{"numTxAntennas":2}` |
-| `input` | `0507` |
-| `expected` | `[5,7,-7,5]` |
+| `input` | `00050007` |
+| `expected` | `00050007fff90005` |
 
 **Vector 5** — [3GPP LTE STTD pattern: [-3, 4]](https://www.3gpp.org/DynaReport/36211.htm)
 
 | Field | Value |
 | --- | --- |
 | `config` | `{"numTxAntennas":2}` |
-| `input` | `[-3,4]` |
-| `expected` | `[-3,4,-4,-3]` |
+| `input` | `fffd0004` |
+| `expected` | `fffd0004fffcfffd` |
 
 **Vector 6** — [Large symbols: [127, -128]](https://ieeexplore.ieee.org/document/771146)
 
 | Field | Value |
 | --- | --- |
 | `config` | `{"numTxAntennas":2}` |
-| `input` | `[127,-128]` |
-| `expected` | `[127,-128,128,127]` |
+| `input` | `007fff80` |
+| `expected` | `007fff800080007f` |
 
 **Vector 7** — [Multiple symbol blocks: [1, 2, 3, 4]](https://ieeexplore.ieee.org/document/771146)
 
 | Field | Value |
 | --- | --- |
 | `config` | `{"numTxAntennas":2}` |
-| `input` | `01020304` |
-| `expected` | `[1,2,-2,1,3,4,-4,3]` |
+| `input` | `0001000200030004` |
+| `expected` | `00010002fffe000100030004fffc0003` |
 
 **Vector 8** — [Orthogonality test: [1, 1]](https://engineering.uci.edu/files/Jafarkhani-Space-Time-Block-Codes-July-1999.pdf)
 
 | Field | Value |
 | --- | --- |
 | `config` | `{"numTxAntennas":2}` |
-| `input` | `0101` |
-| `expected` | `[1,1,-1,1]` |
+| `input` | `00010001` |
+| `expected` | `00010001ffff0001` |
 
 ---
 
