@@ -176,34 +176,71 @@
     });
   }
 
+  // D&D size modifier to AC and attack rolls.
+  const SIZE_MOD = Object.freeze({ F: 8, D: 4, T: 2, S: 1, M: 0, L: -1, H: -2, G: -4, C: -8 });
+
+  // Grid movement: flyers use their wings, but boards are small, so very
+  // fast creatures are capped to keep battles on screen.
+  const MAX_SPEED = 60;
+
+  function _abilityMod(score) {
+    return Math.floor(((score == null ? 10 : score) - 10) / 2);
+  }
+
+  // Registry monsters are scaled to the game's reward economy, which is
+  // far below tabletop XP: about 20 + 25 XP per CR.
+  function _registryTemplate(reg) {
+    const stats = { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10, ...(reg.stats || {}) };
+    const die = parseInt(String(reg.hitDie || 'd8').slice(1), 10) || 8;
+    const racialHD = reg.racialHD || 1;
+    // undead and constructs have no Con score: no Con bonus to their HP
+    const conMod = reg.type === 'undead' || reg.type === 'construct' ? 0 : _abilityMod(stats.con);
+    const hp = Math.max(1, Math.round(racialHD * (die / 2 + 0.5 + conMod)));
+    const sizeCode = String(reg.size || 'Medium').charAt(0).toUpperCase();
+    const sizeMod = SIZE_MOD[sizeCode] || 0;
+    const sp = reg.speed && typeof reg.speed === 'object' ? reg.speed : { land: Number(reg.speed) || 30 };
+    const land = sp.land || 0, fly = sp.fly || 0, swim = sp.swim || 0;
+    const speed = Math.max(10, Math.min(MAX_SPEED, Math.max(land, fly, land ? 0 : swim)));
+    const traits = reg.traits || [];
+    const darkvision = traits.some(t => /^darkvision\d+$/.test(t)) || traits.includes('see_in_darkness');
+    const vision = darkvision ? 'darkvision' : traits.includes('low_light_vision') ? 'low-light' : 'normal';
+    const cr = reg.cr || 1;
+    return {
+      name: reg.name,
+      type: reg.type,
+      subtypes: reg.subtypes || [],
+      cr,
+      hitDice: Math.max(1, Math.round(racialHD)),
+      hp,
+      ac: 10 + _abilityMod(stats.dex) + (reg.naturalArmor || 0) + sizeMod,
+      bab: reg.bab || 0,
+      sizeMod,
+      speed,
+      passMode: reg.passMode || undefined,
+      size: sizeCode,
+      vision,
+      stats,
+      saves: reg.baseSaves ? { ...reg.baseSaves } : null,
+      damageDice: reg.damageDice || 1,
+      damageSides: reg.damageSides || 6,
+      breath: reg.breath || null,
+      traits,
+      casterLevel: reg.casterLevel || 0,
+      xpReward: Math.round(20 + 25 * cr),
+      goldReward: Math.round(5 + 10 * cr),
+      mp: 0,
+      maxMp: 0,
+      spells: [],
+    };
+  }
+
   // Resolve a template ID to a base template object (legacy or registry)
   function _resolveTemplate(templateId) {
     let tmpl = ENEMY_TEMPLATES[templateId];
     if (!tmpl && TR.CreatureRegistry) {
       const reg = TR.CreatureRegistry.getMonster(templateId);
-      if (reg) {
-        const _mod = s => Math.floor(((s || 10) - 10) / 2);
-        tmpl = {
-          name: reg.name,
-          type: reg.type,
-          cr: reg.cr || 1,
-          hitDice: reg.racialHD || 1,
-          hp: reg.racialHD * (Math.ceil((reg.hitDie ? parseInt(reg.hitDie.slice(1)) : 8) / 2) + _mod(reg.stats?.con || 10)),
-          ac: 10 + _mod(reg.stats?.dex || 10) + (reg.naturalArmor || 0),
-          bab: reg.bab || 0,
-          speed: reg.speed?.land || reg.speed || 30,
-          size: reg.size?.charAt(0) || 'M',
-          vision: reg.traits?.includes('darkvision60') ? 'darkvision' : reg.traits?.includes('lowLightVision') ? 'low-light' : 'normal',
-          stats: reg.stats || { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
-          damageDice: reg.damageDice || 1,
-          damageSides: reg.damageSides || 6,
-          xpReward: reg.xpReward || Math.round(300 * (reg.cr || 1)),
-          goldReward: reg.goldReward || Math.round(100 * (reg.cr || 1)),
-          mp: 0,
-          maxMp: 0,
-          spells: [],
-        };
-      }
+      if (reg)
+        tmpl = _registryTemplate(reg);
     }
     return tmpl || null;
   }
@@ -224,7 +261,15 @@
 
     const typeInfo = CREATURE_TYPES[tmpl.type] || CREATURE_TYPES.humanoid;
     const totalHD = tmpl.hitDice || 1;
-    const saves = Object.freeze({
+    // monsters keep the saves from their stat block, shifted by advancement
+    const baseHD = (_resolveTemplate(templateId) || tmpl).hitDice || 1;
+    const shift = kind => Character.calcSave(typeInfo.goodSaves.includes(kind) ? 'good' : 'poor', totalHD)
+      - Character.calcSave(typeInfo.goodSaves.includes(kind) ? 'good' : 'poor', baseHD);
+    const saves = tmpl.saves ? Object.freeze({
+      fort: tmpl.saves.fort + shift('fort'),
+      ref: tmpl.saves.ref + shift('ref'),
+      will: tmpl.saves.will + shift('will'),
+    }) : Object.freeze({
       fort: Character.calcSave(typeInfo.goodSaves.includes('fort') ? 'good' : 'poor', totalHD)
             + Character.abilityMod(tmpl.stats.con),
       ref:  Character.calcSave(typeInfo.goodSaves.includes('ref') ? 'good' : 'poor', totalHD)
@@ -251,7 +296,15 @@
       initiative: Character.abilityMod(tmpl.stats.dex),
       speed: tmpl.speed,
       size: tmpl.size,
+      sizeMod: tmpl.sizeMod || 0,
+      passMode: tmpl.passMode,
       vision: tmpl.vision,
+      creatureType: tmpl.type,
+      subtypes: Object.freeze([...(tmpl.subtypes || [])]),
+      traits: Object.freeze([...(tmpl.traits || [])]),
+      cr: tmpl.cr,
+      breath: tmpl.breath || null,
+      casterLevel: tmpl.casterLevel || 0,
       spells,
       xpReward: tmpl.xpReward || 0,
       goldReward: tmpl.goldReward || 0,
@@ -515,7 +568,7 @@
       this.#emit('turnStart', { unit });
 
       if (unit.faction === 'party') {
-        this.#moveRange = Pathfinding.movementRange(this.#grid, unit.position, unit.speedTiles, unit.faction);
+        this.#moveRange = Pathfinding.movementRange(this.#grid, unit.position, unit.speedTiles, unit.faction, unit.passMode);
         this.#phase = CombatPhase.AWAITING_MOVE;
       } else {
         this.#phase = CombatPhase.ENEMY_TURN;
@@ -555,7 +608,7 @@
       this.#grid.moveUnit(unit.id, this.#prevPosition.col, this.#prevPosition.row);
       unit.undoMove(this.#prevPosition.col, this.#prevPosition.row);
       this.#prevPosition = null;
-      this.#moveRange = Pathfinding.movementRange(this.#grid, unit.position, unit.speedTiles, unit.faction);
+      this.#moveRange = Pathfinding.movementRange(this.#grid, unit.position, unit.speedTiles, unit.faction, unit.passMode);
       this.#phase = CombatPhase.AWAITING_MOVE;
     }
 
@@ -894,7 +947,8 @@
       const bossAtk = bossPhase ? (bossPhase.babBonus || 0) : 0;
       const bossDmgMult = bossPhase ? (bossPhase.damageMult || 1) : 1;
 
-      const attackResult = D20.attackRoll(this.#prng, attacker.bab, attacker.strMod, flankBonus + equipAtk + bossAtk, effectiveAC);
+      const sizeAtk = ch.sizeMod || 0;
+      const attackResult = D20.attackRoll(this.#prng, attacker.bab, attacker.strMod, flankBonus + equipAtk + bossAtk + sizeAtk, effectiveAC);
       let damage = 0;
       let critical = false;
 
@@ -998,7 +1052,7 @@
         const occupant = this.#grid.unitAt(col, row);
         if (occupant && occupant !== unit.id)
           return false;
-        const range = Pathfinding.movementRange(this.#grid, unit.position, unit.speedTiles, unit.faction);
+        const range = Pathfinding.movementRange(this.#grid, unit.position, unit.speedTiles, unit.faction, unit.passMode);
         if (!(col === unit.position.col && row === unit.position.row) && !range.has(`${col},${row}`))
           return false;
       }

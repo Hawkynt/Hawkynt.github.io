@@ -337,7 +337,7 @@
     });
 
     for (const unit of sorted) {
-      const moveRange = Pathfinding.movementRange(grid, unit.position, unit.speedTiles, unit.faction);
+      const moveRange = Pathfinding.movementRange(grid, unit.position, unit.speedTiles, unit.faction, unit.passMode);
 
       // Generate all candidate actions
       const melee = evaluateMeleeActions(grid, unit, partyUnits, moveRange, weights, 4, enemyUnits);
@@ -443,7 +443,7 @@
         if (D20.isAdjacent(pos, targetPos))
           return { type: 'attack', target: target.id };
 
-        const moveRange = Pathfinding.movementRange(grid, pos, unit.speedTiles, unit.faction);
+        const moveRange = Pathfinding.movementRange(grid, pos, unit.speedTiles, unit.faction, unit.passMode);
         const adjacentTiles = grid.neighbors(targetPos.col, targetPos.row);
 
         for (const at of adjacentTiles) {
@@ -462,7 +462,7 @@
       // --- Tier 1+: scoring-based decision ---
       const weights = TIER_WEIGHTS[Math.min(aiTier, 4)];
       const pos = unit.position;
-      const moveRange = Pathfinding.movementRange(grid, pos, unit.speedTiles, unit.faction);
+      const moveRange = Pathfinding.movementRange(grid, pos, unit.speedTiles, unit.faction, unit.passMode);
 
       // Generate all candidate actions
       const melee = evaluateMeleeActions(grid, unit, partyUnits, moveRange, weights, aiTier, allEnemyUnits);
