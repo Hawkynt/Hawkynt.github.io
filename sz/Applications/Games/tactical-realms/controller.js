@@ -675,16 +675,16 @@
     // --- dungeon crawl ------------------------------------------------------
 
     #crawlKey() {
-      return `${this.#playerPos.col},${this.#playerPos.row}`;
+      return `${this.#dimension}:${this.#playerPos.col},${this.#playerPos.row}`;
     }
 
     #enterDungeon(loc) {
       if (!TR.DungeonCrawl || !TR.DungeonThemes)
         return;
-      const key = `${loc.col},${loc.row}`;
+      const key = `${this.#dimension}:${loc.col},${loc.row}`;
       let crawl = this.#crawlCache.get(key);
       if (!crawl) {
-        const world = this.#overworldMap ? this.#overworldMap.worldSeed : 1;
+        const world = this.#overworldMap ? this.#overworldMap.seed : 1;
         const seed = (world ^ Math.imul(loc.col, 73856093) ^ Math.imul(loc.row, 19349663)) >>> 0;
         crawl = new TR.DungeonCrawl({
           seed, theme: TR.DungeonThemes.themeForLocation(loc), name: loc.name,
@@ -1266,7 +1266,7 @@
       if (this.#overworldMap) {
         const tile = (c, r) => this.#overworldMap.getTile(c, r);
         this.#renderer.drawInfiniteMap(tile, this.#dimension, (c, r) => this.#overworldMap.groundAt(c, r));
-        this.#renderer.drawOverworldAmbience(tile, this.#screenTime);
+        this.#renderer.drawOverworldAmbience(tile, this.#screenTime, this.#dimension);
       }
 
       if (this.#overworldMap) {
@@ -1324,12 +1324,29 @@
       }
 
       this.#renderOverworldPartyStatus();
+      this.#drawPlaneBanner();
 
       if (this.#encounterTimer > 0 && this.#encounterMsg) {
         this.#renderer.drawScreenText(CANVAS_W / 2, CANVAS_H / 2, this.#encounterMsg, { color: '#f44', font: 'bold 28px serif', align: 'center' });
       }
 
       this.#renderer.drawScreenText(10, CANVAS_H - 8, 'Arrow keys / WASD to move, Click to walk', { color: 'rgba(200,200,200,0.5)', font: '12px monospace' });
+    }
+
+    // Where the party is when it is not at home: the plane's name.
+    #drawPlaneBanner() {
+      const ctx = this.#renderer.bufCtx;
+      const P = TR.PlaneWorlds && this.#dimension !== 'material' ? TR.PlaneWorlds.get(this.#dimension) : null;
+      if (!ctx || !P || !TR.ScreenArt)
+        return;
+      ctx.save();
+      ctx.font = "bold 16px Georgia, 'Times New Roman', serif";
+      const w = Math.max(220, Math.ceil(ctx.measureText(P.name).width) + 32);
+      ctx.restore();
+      TR.ScreenArt.frame(ctx, 8, 8, w, 46, { alpha: 0.85 });
+      this.#renderer.drawScreenText(24, 30, P.name, { color: '#f0d890', font: "bold 16px Georgia, 'Times New Roman', serif" });
+      const kind = { transitive: 'Transitive Plane', inner: 'Inner Plane', outer: 'Outer Plane' }[P.category] || 'Plane';
+      this.#renderer.drawScreenText(24, 46, kind, { color: '#b8c0d8', font: '11px monospace' });
     }
 
     #renderOverworldPartyStatus() {
@@ -2264,9 +2281,9 @@
             this.#playerPos = data.state.playerPos;
           this.#dimension = TR.PlaneRegistry && TR.PlaneRegistry.has(data.state.plane) ? data.state.plane : 'material';
           if (data.state.overworldSeed != null)
-            this.#overworldMap = new OverworldMap(data.state.overworldSeed);
+            this.#overworldMap = new OverworldMap(data.state.overworldSeed, this.#dimension);
           else
-            this.#overworldMap = new OverworldMap(this.#prng.state);
+            this.#overworldMap = new OverworldMap(this.#prng.state, this.#dimension);
           if (data.state.party && Array.isArray(data.state.party)) {
             const restored = data.state.party.map(c => Character.deserialize(c)).filter(c => c !== null);
             this.#party = Object.freeze(restored);
@@ -2351,6 +2368,7 @@
           this.#overworldMap = new OverworldMap(this.#prng.state);
           this.#playerPos = { col: 0, row: 0 };
           this.#dimension = 'material';
+          this.#crawlCache.clear();
           this.#isMoving = false;
           this.#moveTarget = null;
           this.#moveFrom = null;
