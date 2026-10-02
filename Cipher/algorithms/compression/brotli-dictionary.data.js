@@ -1316,6 +1316,11 @@
     [" ", 1, "='"]
   ];
 
+  // The three columns of TRANSFORMS, each holding values of one type.
+  const TRANSFORM_PREFIXES = TRANSFORMS.map(t => t[0]);
+  const TRANSFORM_TYPES = TRANSFORMS.map(t => t[1]);
+  const TRANSFORM_SUFFIXES = TRANSFORMS.map(t => t[2]);
+
   const T_IDENTITY = 0, T_FERMENT_FIRST = 1, T_FERMENT_ALL = 2;
 
   // RFC 7932 Section 8: single-byte "ferment" (case-flip) step for FermentFirst/
@@ -1445,6 +1450,9 @@
     NWORDS: NWORDS,
     DOFFSET: DOFFSET,
     TRANSFORMS: TRANSFORMS,
+    TRANSFORM_PREFIXES: TRANSFORM_PREFIXES,
+    TRANSFORM_TYPES: TRANSFORM_TYPES,
+    TRANSFORM_SUFFIXES: TRANSFORM_SUFFIXES,
     ApplyTransform: ApplyTransform,
     LookupWord: LookupWord,
     Table: Table
