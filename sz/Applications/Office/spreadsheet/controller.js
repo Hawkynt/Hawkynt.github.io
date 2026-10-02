@@ -384,8 +384,8 @@
       replyBtn.className = 'comment-action-btn';
       replyBtn.textContent = 'Reply';
       const idx = i;
-      replyBtn.addEventListener('click', () => {
-        const replyText = prompt('Reply:');
+      replyBtn.addEventListener('click', async () => {
+        const replyText = await SZ.Dialog.prompt('Reply:', '', 'Spreadsheet');
         if (replyText) {
           replyCellComment(cellRef, idx, replyText);
           showCommentPopup(cellRef);
@@ -2311,8 +2311,8 @@
         tab.appendChild(bar);
       }
       tab.addEventListener('click', () => switchSheet(i));
-      tab.addEventListener('dblclick', () => {
-        const newName = prompt('Rename sheet:', sheets[i].name);
+      tab.addEventListener('dblclick', async () => {
+        const newName = await SZ.Dialog.prompt('Rename sheet:', sheets[i].name, 'Spreadsheet');
         if (newName && newName.trim()) { sheets[i].name = newName.trim(); renderSheetTabs(); setDirty(true); }
       });
       tab.addEventListener('contextmenu', (e) => showSheetContextMenu(e, i));
