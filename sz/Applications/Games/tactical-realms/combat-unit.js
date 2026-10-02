@@ -20,6 +20,8 @@
     #row;
     #hasMoved;
     #hasActed;
+    #conditions = [];
+    #speedMult = 1;
 
     constructor(id, character, faction, col, row) {
       this.#id = id;
@@ -73,7 +75,15 @@
     get ac() { return this.#character.ac; }
     get bab() { return this.#character.bab; }
     get speed() { return this.#character.speed; }
-    get speedTiles() { return Math.floor(this.#character.speed / 5); }
+    get speedTiles() { return Math.floor(this.#character.speed / 5 * this.#speedMult); }
+    // conditions in effect (ids), kept current by the combat engine
+    get conditions() { return this.#conditions; }
+    setConditions(ids, speedMult = 1) {
+      this.#conditions = ids.slice();
+      this.#speedMult = speedMult;
+    }
+    // movement modes (walk, fly, swim, ...) of monsters; party units walk
+    get passMode() { return this.#character.passMode || undefined; }
     get dexMod() { return Character.abilityMod(this.#character.stats.dex); }
     get strMod() { return Character.abilityMod(this.#character.stats.str); }
     get currentMp() { return this.#currentMp; }

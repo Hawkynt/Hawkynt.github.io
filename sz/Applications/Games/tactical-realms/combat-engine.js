@@ -176,34 +176,78 @@
     });
   }
 
+  // D&D size modifier to AC and attack rolls.
+  const SIZE_MOD = Object.freeze({ F: 8, D: 4, T: 2, S: 1, M: 0, L: -1, H: -2, G: -4, C: -8 });
+
+  // Grid movement: flyers use their wings, but boards are small, so very
+  // fast creatures are capped to keep battles on screen.
+  const MAX_SPEED = 60;
+
+  function _abilityMod(score) {
+    return Math.floor(((score == null ? 10 : score) - 10) / 2);
+  }
+
+  // Registry monsters are scaled to the game's reward economy, which is
+  // far below tabletop XP: about 20 + 25 XP per CR.
+  function _registryTemplate(reg) {
+    const stats = { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10, ...(reg.stats || {}) };
+    const die = parseInt(String(reg.hitDie || 'd8').slice(1), 10) || 8;
+    const racialHD = reg.racialHD || 1;
+    // undead and constructs have no Con score: no Con bonus to their HP
+    const conMod = reg.type === 'undead' || reg.type === 'construct' ? 0 : _abilityMod(stats.con);
+    const hp = Math.max(1, Math.round(racialHD * (die / 2 + 0.5 + conMod)));
+    const sizeCode = String(reg.size || 'Medium').charAt(0).toUpperCase();
+    const sizeMod = SIZE_MOD[sizeCode] || 0;
+    const sp = reg.speed && typeof reg.speed === 'object' ? reg.speed : { land: Number(reg.speed) || 30 };
+    const land = sp.land || 0, fly = sp.fly || 0, swim = sp.swim || 0;
+    const speed = Math.max(10, Math.min(MAX_SPEED, Math.max(land, fly, land ? 0 : swim)));
+    const traits = reg.traits || [];
+    const darkvision = traits.some(t => /^darkvision\d+$/.test(t)) || traits.includes('see_in_darkness');
+    const vision = darkvision ? 'darkvision' : traits.includes('low_light_vision') ? 'low-light' : 'normal';
+    const cr = reg.cr || 1;
+    return {
+      name: reg.name,
+      type: reg.type,
+      subtypes: reg.subtypes || [],
+      cr,
+      hitDice: Math.max(1, Math.round(racialHD)),
+      hp,
+      ac: 10 + _abilityMod(stats.dex) + (reg.naturalArmor || 0) + sizeMod,
+      bab: reg.bab || 0,
+      sizeMod,
+      speed,
+      passMode: reg.passMode || undefined,
+      size: sizeCode,
+      vision,
+      stats,
+      saves: reg.baseSaves ? { ...reg.baseSaves } : null,
+      damageDice: reg.damageDice || 1,
+      damageSides: reg.damageSides || 6,
+      breath: reg.breath || null,
+      traits,
+      casterLevel: reg.casterLevel || 0,
+      xpReward: Math.round(20 + 25 * cr),
+      goldReward: Math.round(5 + 10 * cr),
+      mp: 0,
+      maxMp: 0,
+      spells: [],
+    };
+  }
+
   // Resolve a template ID to a base template object (legacy or registry)
   function _resolveTemplate(templateId) {
     let tmpl = ENEMY_TEMPLATES[templateId];
+    // legacy templates keep their tuned stats but gain the full creature's
+    // special abilities, subtypes and movement
+    if (tmpl && TR.CreatureRegistry && !tmpl.traits) {
+      const reg = TR.CreatureRegistry.getMonster(templateId);
+      if (reg)
+        tmpl = { ...tmpl, traits: reg.traits || [], subtypes: reg.subtypes || [], passMode: reg.passMode || undefined };
+    }
     if (!tmpl && TR.CreatureRegistry) {
       const reg = TR.CreatureRegistry.getMonster(templateId);
-      if (reg) {
-        const _mod = s => Math.floor(((s || 10) - 10) / 2);
-        tmpl = {
-          name: reg.name,
-          type: reg.type,
-          cr: reg.cr || 1,
-          hitDice: reg.racialHD || 1,
-          hp: reg.racialHD * (Math.ceil((reg.hitDie ? parseInt(reg.hitDie.slice(1)) : 8) / 2) + _mod(reg.stats?.con || 10)),
-          ac: 10 + _mod(reg.stats?.dex || 10) + (reg.naturalArmor || 0),
-          bab: reg.bab || 0,
-          speed: reg.speed?.land || reg.speed || 30,
-          size: reg.size?.charAt(0) || 'M',
-          vision: reg.traits?.includes('darkvision60') ? 'darkvision' : reg.traits?.includes('lowLightVision') ? 'low-light' : 'normal',
-          stats: reg.stats || { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
-          damageDice: reg.damageDice || 1,
-          damageSides: reg.damageSides || 6,
-          xpReward: reg.xpReward || Math.round(300 * (reg.cr || 1)),
-          goldReward: reg.goldReward || Math.round(100 * (reg.cr || 1)),
-          mp: 0,
-          maxMp: 0,
-          spells: [],
-        };
-      }
+      if (reg)
+        tmpl = _registryTemplate(reg);
     }
     return tmpl || null;
   }
@@ -224,7 +268,15 @@
 
     const typeInfo = CREATURE_TYPES[tmpl.type] || CREATURE_TYPES.humanoid;
     const totalHD = tmpl.hitDice || 1;
-    const saves = Object.freeze({
+    // monsters keep the saves from their stat block, shifted by advancement
+    const baseHD = (_resolveTemplate(templateId) || tmpl).hitDice || 1;
+    const shift = kind => Character.calcSave(typeInfo.goodSaves.includes(kind) ? 'good' : 'poor', totalHD)
+      - Character.calcSave(typeInfo.goodSaves.includes(kind) ? 'good' : 'poor', baseHD);
+    const saves = tmpl.saves ? Object.freeze({
+      fort: tmpl.saves.fort + shift('fort'),
+      ref: tmpl.saves.ref + shift('ref'),
+      will: tmpl.saves.will + shift('will'),
+    }) : Object.freeze({
       fort: Character.calcSave(typeInfo.goodSaves.includes('fort') ? 'good' : 'poor', totalHD)
             + Character.abilityMod(tmpl.stats.con),
       ref:  Character.calcSave(typeInfo.goodSaves.includes('ref') ? 'good' : 'poor', totalHD)
@@ -233,8 +285,13 @@
             + Character.abilityMod(tmpl.stats.wis),
     });
 
-    const spells = tmpl.spells || [];
-    const mp = tmpl.mp || 0;
+    let spells = tmpl.spells || [];
+    let mp = tmpl.mp || 0;
+    if (!spells.length && tmpl.traits && TR.MonsterAbilities) {
+      spells = TR.MonsterAbilities.spellsFor(tmpl.traits, tmpl.casterLevel || 0, totalHD);
+      if (spells.length)
+        mp = 4 + 2 * Math.max(1, tmpl.casterLevel || Math.ceil(totalHD / 2));
+    }
     return Object.freeze({
       name: tmpl.name,
       race: 'monster',
@@ -251,7 +308,15 @@
       initiative: Character.abilityMod(tmpl.stats.dex),
       speed: tmpl.speed,
       size: tmpl.size,
+      sizeMod: tmpl.sizeMod || 0,
+      passMode: tmpl.passMode,
       vision: tmpl.vision,
+      creatureType: tmpl.type,
+      subtypes: Object.freeze([...(tmpl.subtypes || [])]),
+      traits: Object.freeze([...(tmpl.traits || [])]),
+      cr: tmpl.cr,
+      breath: tmpl.breath || null,
+      casterLevel: tmpl.casterLevel || 0,
       spells,
       xpReward: tmpl.xpReward || 0,
       goldReward: tmpl.goldReward || 0,
@@ -277,6 +342,10 @@
     #aiTier;
     #coordinatedPlan;
     #plannedRound = 0;
+    #conditions = null;
+    #cooldowns = new Map();
+    #auraDone = new Set();
+    #skipGuard = 0;
 
     constructor(prng) {
       this.#prng = prng;
@@ -319,6 +388,7 @@
     static get CREATURE_TYPES() { return CREATURE_TYPES; }
 
     initCombat(party, enemies, gridCols, gridRows, biome) {
+      this.#resetEffects();
       CombatUnit.resetCombatTags();
       this.#grid = CombatGrid.generate(gridCols, gridRows, this.#prng.fork('grid'), biome);
       this.#units = [];
@@ -372,6 +442,7 @@
     // encounters). `ambush` gives the side that noticed the other first a
     // head start on initiative: 'party', 'enemy' or null.
     initCombatAt(party, enemies, grid, partyPositions, enemyPositions, { ambush = null } = {}) {
+      this.#resetEffects();
       CombatUnit.resetCombatTags();
       this.#grid = grid;
       this.#units = [];
@@ -419,6 +490,7 @@
     }
 
     initCombatWithGrid(party, enemies, grid, biome, partyCenter) {
+      this.#resetEffects();
       CombatUnit.resetCombatTags();
       this.#grid = grid;
       this.#units = [];
@@ -511,11 +583,20 @@
         return this.startTurn();
       }
 
+      // conditions run out, wounds knit; the helpless lose their turn
+      if (!this.#beginTurnEffects(unit) && this.#skipGuard < 200) {
+        ++this.#skipGuard;
+        this.nextTurn();
+        return this.startTurn();
+      }
+      this.#skipGuard = 0;
+
       unit.beginTurn();
       this.#emit('turnStart', { unit });
 
       if (unit.faction === 'party') {
-        this.#moveRange = Pathfinding.movementRange(this.#grid, unit.position, unit.speedTiles, unit.faction);
+        const fx = this.#effects(unit);
+        this.#moveRange = Pathfinding.movementRange(this.#grid, unit.position, fx && !fx.canMove ? 0 : unit.speedTiles, unit.faction, unit.passMode);
         this.#phase = CombatPhase.AWAITING_MOVE;
       } else {
         this.#phase = CombatPhase.ENEMY_TURN;
@@ -555,7 +636,7 @@
       this.#grid.moveUnit(unit.id, this.#prevPosition.col, this.#prevPosition.row);
       unit.undoMove(this.#prevPosition.col, this.#prevPosition.row);
       this.#prevPosition = null;
-      this.#moveRange = Pathfinding.movementRange(this.#grid, unit.position, unit.speedTiles, unit.faction);
+      this.#moveRange = Pathfinding.movementRange(this.#grid, unit.position, unit.speedTiles, unit.faction, unit.passMode);
       this.#phase = CombatPhase.AWAITING_MOVE;
     }
 
@@ -689,7 +770,7 @@
 
         if (spell.damageDice > 0 && spell.damageSides > 0) {
           const dmg = D20.damageRoll(this.#prng, spell.damageDice, spell.damageSides, castMod, 0);
-          damage = Math.max(1, Math.round(dmg.total * falloff));
+          damage = this.#spellDamage(caster, target, spell, Math.max(1, Math.round(dmg.total * falloff)));
           target.takeDamage(damage);
           totalDamage += damage;
         }
@@ -769,7 +850,7 @@
 
       if (spell.damageDice > 0 && spell.damageSides > 0) {
         const dmg = D20.damageRoll(this.#prng, spell.damageDice, spell.damageSides, castMod, 0);
-        damage = dmg.total;
+        damage = this.#spellDamage(caster, target, spell, dmg.total);
         target.takeDamage(damage);
       }
 
@@ -874,7 +955,12 @@
       const flankBonus = flanking ? 2 : 0;
 
       const terrainCover = Terrain.coverBonus(this.#grid.terrainIdAt(defender.position.col, defender.position.row));
-      const effectiveAC = defender.ac + terrainCover;
+      const defFx = this.#effects(defender);
+      const atkFx = this.#effects(attacker);
+      // the helpless are easy to hit
+      const helpless = defFx && defFx.canAct === false ? -4 : 0;
+      const effectiveAC = defender.ac + terrainCover + (defFx ? defFx.acPenalty : 0) + helpless;
+      const fxAtk = (atkFx ? atkFx.attackPenalty : 0) - this.#drainedLevels(attacker);
 
       const ch = attacker.character;
       const eq = ch.equipment;
@@ -894,46 +980,76 @@
       const bossAtk = bossPhase ? (bossPhase.babBonus || 0) : 0;
       const bossDmgMult = bossPhase ? (bossPhase.damageMult || 1) : 1;
 
-      const attackResult = D20.attackRoll(this.#prng, attacker.bab, attacker.strMod, flankBonus + equipAtk + bossAtk, effectiveAC);
+      const sizeAtk = ch.sizeMod || 0;
+      // monsters swing their whole natural routine when they stood still
+      // (or can pounce); after moving only the primary attack lands
+      const routine = TR.MonsterAttacks ? TR.MonsterAttacks.routine(ch) : null;
+      const full = !!routine && routine.length > 1 && (!attacker.hasMoved || TR.MonsterAttacks.canPounce(ch));
+      const swings = routine ? (full ? routine : [routine[0]]) : [null];
       let damage = 0;
       let critical = false;
+      let anyHit = false;
+      let attackResult = null;
+      const attacks = [];
 
-      if (attackResult.hit) {
-        const tmpl = ENEMY_TEMPLATES[ch.class];
-        const dieCount = weapon ? weapon.damageDice : (ch.damageDice || (tmpl ? tmpl.damageDice : 1));
-        const dieSides = weapon ? weapon.damageSides : (ch.damageSides || (tmpl ? tmpl.damageSides : 6));
-        const critRange = weapon ? weapon.critRange : [20];
-        const critMult = weapon ? weapon.critMult : 2;
-        const dmgResult = D20.damageRoll(this.#prng, dieCount, dieSides, attacker.strMod, equipDmg);
-
-        const critResult = D20.criticalCheck(this.#prng, attackResult.d20, critRange, attacker.bab, attacker.strMod, flankBonus + equipAtk + bossAtk, effectiveAC, critMult);
-        if (critResult.confirmed) {
-          critical = true;
-          damage = dmgResult.total * critResult.multiplier;
-        } else {
-          damage = dmgResult.total;
+      for (const swing of swings) {
+        const secondary = !!swing && !swing.primary;
+        const misc = flankBonus + equipAtk + bossAtk + sizeAtk + fxAtk - (secondary ? 5 : 0);
+        const roll = D20.attackRoll(this.#prng, attacker.bab, attacker.strMod, misc, effectiveAC);
+        if (!attackResult)
+          attackResult = roll;
+        let dealt = 0;
+        let crit = false;
+        if (roll.hit) {
+          anyHit = true;
+          const tmpl = ENEMY_TEMPLATES[ch.class];
+          const dieCount = swing ? swing.dice : weapon ? weapon.damageDice : (ch.damageDice || (tmpl ? tmpl.damageDice : 1));
+          const dieSides = swing ? swing.sides : weapon ? weapon.damageSides : (ch.damageSides || (tmpl ? tmpl.damageSides : 6));
+          const critRange = weapon && !swing ? weapon.critRange : [20];
+          const critMult = weapon && !swing ? weapon.critMult : 2;
+          const strBonus = secondary ? Math.floor(attacker.strMod / 2) : attacker.strMod;
+          const dmgResult = D20.damageRoll(this.#prng, dieCount, dieSides, strBonus, equipDmg);
+          const critResult = D20.criticalCheck(this.#prng, roll.d20, critRange, attacker.bab, attacker.strMod, misc, effectiveAC, critMult);
+          if (critResult.confirmed) {
+            crit = true;
+            critical = true;
+            dealt = dmgResult.total * critResult.multiplier;
+          } else
+            dealt = dmgResult.total;
+          if (weapon && !swing && weapon.affixDamage) {
+            const affix = D20.damageRoll(this.#prng, weapon.affixDamage.dice, weapon.affixDamage.sides, 0, 0);
+            dealt += affix.total;
+          }
+          dealt = Math.max(1, Math.round(dealt * bossDmgMult));
+          // damage reduction, incorporeal bodies
+          const adj = TR.MonsterAbilities ? TR.MonsterAbilities.adjustDamage(defender, dealt, 'physical', swing ? null : weapon, this.#prng) : { amount: dealt, note: null };
+          if (adj.note)
+            this.#combatLog.push(`  ${defender.logName}: ${adj.note}`);
+          dealt = adj.amount;
+          defender.takeDamage(dealt);
+          damage += dealt;
         }
-
-        if (weapon && weapon.affixDamage) {
-          const affix = D20.damageRoll(this.#prng, weapon.affixDamage.dice, weapon.affixDamage.sides, 0, 0);
-          damage += affix.total;
-        }
-
-        damage = Math.round(damage * bossDmgMult);
-        defender.takeDamage(damage);
+        attacks.push({ name: swing ? swing.name : 'weapon', hit: roll.hit, damage: dealt, critical: crit, d20: roll.d20, total: roll.total });
+        if (!defender.isAlive)
+          break;
       }
+      attackResult = { ...attackResult, hit: anyHit };
+      const effects = anyHit ? this.#applyRiders(attacker, defender, attacks) : [];
 
-      const logEntry = `${attacker.logName} attacks ${defender.logName}: d20+${attacker.bab}${flankBonus ? `+${flankBonus}flank` : ''}=${attackResult.total} vs AC ${effectiveAC} ${attackResult.hit ? 'HIT' : 'MISS'}${critical ? ' CRITICAL!' : ''}${attackResult.hit ? ` (${damage} dmg)` : ''}${!defender.isAlive ? ' - SLAIN!' : ''}`;
-      this.#combatLog.push(logEntry);
+      attacks.forEach((at, i) => {
+        const how = attacks.length > 1 ? ` (${at.name})` : '';
+        const slain = i === attacks.length - 1 && !defender.isAlive ? ' - SLAIN!' : '';
+        this.#combatLog.push(`${attacker.logName} attacks ${defender.logName}${how}: d20+${attacker.bab}${flankBonus ? `+${flankBonus}flank` : ''}=${at.total} vs AC ${effectiveAC} ${at.hit ? 'HIT' : 'MISS'}${at.critical ? ' CRITICAL!' : ''}${at.hit ? ` (${at.damage} dmg)` : ''}${slain}`);
+      });
 
-      this.#emit('attackResolved', { attacker, defender, result: attackResult, damage, critical, flanking });
+      this.#emit('attackResolved', { attacker, defender, result: attackResult, damage, critical, flanking, effects });
 
       if (this.checkVictory())
         this.#phase = CombatPhase.VICTORY;
       else if (this.checkDefeat())
         this.#phase = CombatPhase.DEFEAT;
 
-      return { hit: attackResult.hit, damage, critical, flanking, d20: attackResult.d20, total: attackResult.total, natural20: attackResult.natural20, natural1: attackResult.natural1 };
+      return { hit: attackResult.hit, damage, critical, flanking, d20: attackResult.d20, total: attackResult.total, natural20: attackResult.natural20, natural1: attackResult.natural1, attacks, effects };
     }
 
     executeEnemyTurn(unitId) {
@@ -942,7 +1058,16 @@
         return;
 
       unit.beginTurn();
-      const partyUnits = this.#units.filter(u => u.faction === 'party' && u.isAlive);
+      const partyUnits = this.#units.filter(u => u.faction === 'party' && u.isAlive && !this.conditionsOf(u.id).includes('petrified'));
+      this.#maybeAura(unit, partyUnits);
+      const special = this.#chooseSpecial(unit, partyUnits);
+      if (special) {
+        this.#resolveSpecial(unit, special);
+        unit.endAction();
+        if (this.#phase !== CombatPhase.VICTORY && this.#phase !== CombatPhase.DEFEAT)
+          this.#phase = CombatPhase.TURN_END;
+        return;
+      }
       const allEnemyUnits = this.#aiTier >= 3 ? this.#units.filter(u => u.faction === 'enemy' && u.isAlive) : null;
 
       // Tier 4: the first enemy to act each round plans for all of them
@@ -998,7 +1123,7 @@
         const occupant = this.#grid.unitAt(col, row);
         if (occupant && occupant !== unit.id)
           return false;
-        const range = Pathfinding.movementRange(this.#grid, unit.position, unit.speedTiles, unit.faction);
+        const range = Pathfinding.movementRange(this.#grid, unit.position, unit.speedTiles, unit.faction, unit.passMode);
         if (!(col === unit.position.col && row === unit.position.row) && !range.has(`${col},${row}`))
           return false;
       }
@@ -1027,11 +1152,431 @@
     }
 
     checkVictory() {
-      return this.#units.filter(u => u.faction === 'enemy').every(u => !u.isAlive);
+      return this.#units.filter(u => u.faction === 'enemy').every(u => this.#out(u));
     }
 
     checkDefeat() {
-      return this.#units.filter(u => u.faction === 'party').every(u => !u.isAlive);
+      return this.#units.filter(u => u.faction === 'party').every(u => this.#out(u));
+    }
+
+    // Conditions on a unit right now (ids), e.g. ['paralyzed'].
+    conditionsOf(unitId) {
+      return this.#conditions ? this.#conditions.getActive(unitId).map(c => c.conditionId) : [];
+    }
+
+    // Puts a condition on a unit unless it is immune; durations in rounds,
+    // -1 lasts the whole battle.
+    applyCondition(unitId, conditionId, rounds, source) {
+      const unit = this.unitById(unitId);
+      if (!unit || !this.#conditions || !unit.isAlive)
+        return false;
+      if (TR.MonsterAbilities && TR.MonsterAbilities.immuneToCondition(unit, conditionId))
+        return false;
+      this.#conditions.apply(unit.id, conditionId, rounds, source || '');
+      this.#syncUnit(unit);
+      return true;
+    }
+
+    #resetEffects() {
+      this.#conditions = TR.ConditionTracker ? new TR.ConditionTracker() : null;
+      this.#cooldowns = new Map();
+      this.#auraDone = new Set();
+      this.#skipGuard = 0;
+    }
+
+    #effects(unit) {
+      return this.#conditions && unit ? this.#conditions.getEffects(unit.id) : null;
+    }
+
+    #drainedLevels(unit) {
+      return this.#conditions ? this.#conditions.getActive(unit.id).filter(c => c.conditionId === 'energy_drained').length : 0;
+    }
+
+    #syncUnit(unit) {
+      const fx = this.#effects(unit);
+      unit.setConditions(this.conditionsOf(unit.id), fx ? fx.speedMult : 1);
+    }
+
+    #out(u) {
+      return !u.isAlive || (!!this.#conditions && this.#conditions.has(u.id, 'petrified'));
+    }
+
+    #save(unit, kind, dc) {
+      const fx = this.#effects(unit);
+      const bonus = TR.MonsterAbilities.saveBonus(unit, kind, (fx ? fx.savePenalty : 0) - this.#drainedLevels(unit));
+      return D20.savingThrow(this.#prng, bonus, 0, 0, dc).success;
+    }
+
+    #beginTurnEffects(unit) {
+      if (this.#conditions) {
+        const expired = this.#conditions.tickRound(unit.id);
+        if (expired.length) {
+          this.#syncUnit(unit);
+          this.#combatLog.push(`${unit.logName} recovers (${expired.join(', ')})`);
+        }
+      }
+      const a = TR.MonsterAbilities ? TR.MonsterAbilities.parse(unit.character) : null;
+      const healing = a ? (a.regen || a.fastHeal) : 0;
+      if (healing && unit.isAlive && unit.currentHp < unit.maxHp) {
+        unit.heal(healing);
+        this.#combatLog.push(`${unit.logName} regenerates ${healing} HP`);
+      }
+      const fx = this.#effects(unit);
+      if (fx && fx.canAct === false) {
+        this.#combatLog.push(`${unit.logName} is ${fx.conditions.join(', ')} and loses the turn`);
+        return false;
+      }
+      if (fx && fx.conditions.includes('confused') && this.#prng.next() < 0.5) {
+        this.#combatLog.push(`${unit.logName} staggers about in confusion`);
+        return false;
+      }
+      return true;
+    }
+
+    // Spell damage after spell resistance and energy defences.
+    #spellDamage(caster, target, spell, raw) {
+      const MA = TR.MonsterAbilities;
+      if (!MA || caster.faction === target.faction)
+        return raw;
+      const a = MA.parse(target.character);
+      if (a && a.sr) {
+        const sr = D20.spellResistanceCheck(this.#prng, caster.character.level || 1, a.sr);
+        if (!sr.overcome) {
+          this.#combatLog.push(`  ${target.logName} shrugs off ${spell.name} (SR ${a.sr})`);
+          return 0;
+        }
+      }
+      const el = MA.spellElement(spell);
+      if (!el)
+        return raw;
+      const adj = MA.adjustDamage(target, raw, el);
+      if (adj.note)
+        this.#combatLog.push(`  ${target.logName}: ${adj.note}`);
+      return adj.amount;
+    }
+
+    // Extra effects of a monster's hit: poison, paralysis, drain, disease,
+    // blood drain, grab and constrict, rend. Returns [{ unitId, text }].
+    #applyRiders(attacker, defender, attacks) {
+      const MA = TR.MonsterAbilities;
+      const a = MA ? MA.parse(attacker.character) : null;
+      if (!a || !a.riders.length || attacker.faction === defender.faction)
+        return [];
+      const out = [];
+      const ch = attacker.character;
+      const dc = MA.saveDC(ch, 'con');
+      const note = (text, color) => out.push({ unitId: defender.id, text, color });
+      const roll = (n, d) => D20.damageRoll(this.#prng, n, d, 0, 0).total;
+      const riders = new Set(a.riders);
+      for (const r of riders) {
+        if (!defender.isAlive)
+          break;
+        switch (r) {
+          case 'poison':
+            if (MA.isImmune(defender, 'poison'))
+              break;
+            if (this.#save(defender, 'fort', dc)) {
+              note('Resists poison', '#a8e0a8');
+              break;
+            }
+            defender.takeDamage(roll(1, 6));
+            this.applyCondition(defender.id, 'sickened', 3, ch.name);
+            note('Poisoned', '#7ac85a');
+            this.#combatLog.push(`  ${defender.logName} is poisoned`);
+            break;
+          case 'paralysis':
+            if (MA.immuneToCondition(defender, 'paralyzed') || this.#save(defender, 'fort', dc))
+              break;
+            if (this.applyCondition(defender.id, 'paralyzed', this.#prng.nextInt(2, 5), ch.name)) {
+              note('Paralyzed', '#f0e080');
+              this.#combatLog.push(`  ${defender.logName} is paralyzed`);
+            }
+            break;
+          case 'drain':
+            if (this.applyCondition(defender.id, 'energy_drained', 10, ch.name)) {
+              attacker.heal(5);
+              note('Drained', '#b88ae8');
+              this.#combatLog.push(`  ${defender.logName} loses life energy`);
+            }
+            break;
+          case 'weaken':
+            if (this.applyCondition(defender.id, 'fatigued', 4, ch.name))
+              note('Weakened', '#c8b8a0');
+            break;
+          case 'disease':
+            if (!this.#save(defender, 'fort', dc) && this.applyCondition(defender.id, 'sickened', 4, ch.name))
+              note('Diseased', '#9ab84a');
+            break;
+          case 'blood': {
+            const d = roll(1, 4);
+            defender.takeDamage(d);
+            attacker.heal(d);
+            note('Blood drained', '#e84838');
+            break;
+          }
+          case 'grab': {
+            const order = MA.SIZE_ORDER;
+            const sa = order.indexOf(ch.size || 'M'), sd = order.indexOf(defender.character.size || 'M');
+            if (sa < sd)
+              break;
+            const grip = s => [-16, -12, -8, -4, 0, 4, 8, 12, 16][s] || 0;
+            const mine = D20.grappleCheck(this.#prng, attacker.bab, attacker.strMod, grip(sa), 0).total;
+            const theirs = D20.grappleCheck(this.#prng, defender.bab, defender.strMod, grip(sd), 0).total;
+            if (mine < theirs)
+              break;
+            this.applyCondition(defender.id, 'grappled', 1, ch.name);
+            if (riders.has('constrict')) {
+              const d = roll(ch.damageDice || 1, ch.damageSides || 6) + attacker.strMod;
+              defender.takeDamage(Math.max(1, d));
+              note('Crushed', '#e8a870');
+              this.#combatLog.push(`  ${attacker.logName} constricts ${defender.logName} (${Math.max(1, d)} dmg)`);
+            } else
+              note('Grabbed', '#e8c878');
+            break;
+          }
+          case 'rend':
+            if (attacks.filter(x => x.hit && x.name === 'claw').length >= 2) {
+              const d = Math.max(1, roll(2, 6) + Math.floor(attacker.strMod * 1.5));
+              defender.takeDamage(d);
+              note('Rent', '#e84838');
+              this.#combatLog.push(`  ${attacker.logName} rends ${defender.logName} (${d} dmg)`);
+            }
+            break;
+          default:
+            break;
+        }
+      }
+      return out;
+    }
+
+    // --- monster special actions ---
+
+    #ready(unit, key) {
+      const cd = this.#cooldowns.get(unit.id);
+      return !cd || !(cd[key] > this.#round);
+    }
+
+    #cooldown(unit, key, rounds) {
+      const cd = this.#cooldowns.get(unit.id) || {};
+      cd[key] = this.#round + rounds;
+      this.#cooldowns.set(unit.id, cd);
+    }
+
+    // A special the monster should use now, or null.
+    #chooseSpecial(unit, foes) {
+      const MA = TR.MonsterAbilities;
+      const a = MA ? MA.parse(unit.character) : null;
+      if (!a || !foes.length)
+        return null;
+      const friends = this.#units.filter(u => u.faction === unit.faction && u.isAlive);
+      const adjacent = foes.some(f => D20.isAdjacent(unit.position, f.position));
+      const near = (range, pred = () => true) => foes
+        .filter(f => MA.distance(unit.position, f.position) <= range && pred(f))
+        .sort((x, y) => MA.distance(unit.position, x.position) - MA.distance(unit.position, y.position));
+      if (a.breath && this.#ready(unit, 'breath')) {
+        const area = MA.bestArea(this.#grid, unit, foes, friends, a.breath.shape, a.breath.length);
+        if (area && !area.own.length && (area.hit.length >= 2 || !adjacent))
+          return { kind: 'breath', area };
+      }
+      if (a.specials.includes('mindblast') && this.#ready(unit, 'mindblast')) {
+        const area = MA.bestArea(this.#grid, unit, foes, friends, 'cone', 6);
+        if (area && !area.own.length && (area.hit.length >= 2 || !adjacent))
+          return { kind: 'mindblast', area };
+      }
+      if (a.gaze && this.#ready(unit, 'gaze')) {
+        const t = near(6, f => !this.conditionsOf(f.id).includes('petrified'))[0];
+        if (t)
+          return { kind: 'gaze', target: t };
+      }
+      if (a.specials.includes('rays') && this.#ready(unit, 'rays')) {
+        const ts = near(8);
+        if (ts.length)
+          return { kind: 'rays', targets: ts.slice(0, 3) };
+      }
+      if (!adjacent) {
+        if (a.specials.includes('web') && this.#ready(unit, 'web')) {
+          const t = near(6, f => !this.conditionsOf(f.id).includes('entangled'))[0];
+          if (t)
+            return { kind: 'web', target: t };
+        }
+        if (a.specials.includes('spit') && this.#ready(unit, 'spit')) {
+          const t = near(5)[0];
+          if (t)
+            return { kind: 'spit', target: t };
+        }
+        if (a.specials.includes('rock')) {
+          const t = near(10, f => MA.distance(unit.position, f.position) >= 2)[0];
+          if (t)
+            return { kind: 'rock', target: t };
+        }
+      }
+      return null;
+    }
+
+    // Fear auras (frightful presence) wash over the party once per battle.
+    #maybeAura(unit, foes) {
+      const MA = TR.MonsterAbilities;
+      const a = MA ? MA.parse(unit.character) : null;
+      if (!a || !a.aura || this.#auraDone.has(unit.id))
+        return;
+      this.#auraDone.add(unit.id);
+      const dc = MA.saveDC(unit.character, 'cha');
+      for (const f of foes)
+        if (MA.distance(unit.position, f.position) <= 6 && !this.#save(f, 'will', dc)
+            && this.applyCondition(f.id, 'shaken', this.#prng.nextInt(3, 6), unit.character.name))
+          this.#combatLog.push(`  ${f.logName} is shaken by ${unit.logName}`);
+    }
+
+    #resolveSpecial(unit, sp) {
+      const MA = TR.MonsterAbilities;
+      const a = MA.parse(unit.character);
+      const ch = unit.character;
+      const roll = (n, d) => D20.damageRoll(this.#prng, n, d, 0, 0).total;
+      const results = [];
+      const hurt = (t, dmg, energy) => {
+        const adj = energy ? MA.adjustDamage(t, dmg, energy) : { amount: dmg };
+        t.takeDamage(adj.amount);
+        return adj.amount;
+      };
+      const condition = (t, cond, rounds, text) => {
+        if (this.applyCondition(t.id, cond, rounds, ch.name)) {
+          results.push({ unit: t, damage: 0, effect: text });
+          return true;
+        }
+        results.push({ unit: t, damage: 0, effect: 'Unaffected' });
+        return false;
+      };
+      let name = '', element = 'arcane', shape = null, special = sp.kind;
+      switch (sp.kind) {
+        case 'breath': {
+          const b = a.breath;
+          const dc = MA.saveDC(ch, 'con');
+          shape = b.shape;
+          element = b.effect ? b.effect.element : b.poison ? 'poison' : (b.energy === 'electricity' ? 'lightning' : b.energy === 'cold' ? 'frost' : b.energy || 'fire');
+          name = `${b.word.replace(/_/g, ' ')} breath`.replace(/^\w/, c => c.toUpperCase());
+          for (const t of sp.area.hit) {
+            if (b.effect) {
+              if (this.#save(t, b.effect.save, dc))
+                results.push({ unit: t, damage: 0, effect: 'Resists' });
+              else
+                condition(t, b.effect.condition, this.#prng.nextInt(b.effect.rounds[0], b.effect.rounds[1]), b.effect.condition.replace(/_/g, ' '));
+              continue;
+            }
+            let dmg = roll(b.dice, b.sides);
+            const saved = this.#save(t, b.poison ? 'fort' : 'ref', dc);
+            if (saved)
+              dmg = Math.floor(dmg / 2);
+            results.push({ unit: t, damage: hurt(t, dmg, b.energy), effect: saved ? 'Half' : null });
+          }
+          this.#cooldown(unit, 'breath', this.#prng.nextInt(1, 4) + 1);
+          break;
+        }
+        case 'mindblast': {
+          const dc = MA.saveDC(ch, 'cha');
+          name = 'Mind blast';
+          element = 'psychic';
+          shape = 'cone';
+          for (const t of sp.area.hit)
+            if (this.#save(t, 'will', dc))
+              results.push({ unit: t, damage: 0, effect: 'Resists' });
+            else
+              condition(t, 'stunned', this.#prng.nextInt(1, 4), 'Stunned');
+          this.#cooldown(unit, 'mindblast', this.#prng.nextInt(1, 4) + 1);
+          break;
+        }
+        case 'gaze': {
+          const g = a.gaze;
+          const dc = MA.saveDC(ch, g.ability);
+          const t = sp.target;
+          name = { petrify: 'Petrifying gaze', stun: 'Stunning gaze', confuse: 'Maddening gaze', death: 'Deathly gaze' }[g.kind];
+          element = g.kind === 'petrify' ? 'earth' : g.kind === 'death' ? 'necrotic' : 'psychic';
+          if (this.#save(t, g.save, dc))
+            results.push({ unit: t, damage: 0, effect: 'Looks away' });
+          else if (g.kind === 'petrify')
+            condition(t, 'petrified', -1, 'Petrified');
+          else if (g.kind === 'stun')
+            condition(t, 'stunned', this.#prng.nextInt(1, 4), 'Stunned');
+          else if (g.kind === 'confuse')
+            condition(t, 'confused', this.#prng.nextInt(2, 5), 'Confused');
+          else
+            results.push({ unit: t, damage: hurt(t, roll(6, 6)), effect: null });
+          this.#cooldown(unit, 'gaze', 2);
+          break;
+        }
+        case 'rays': {
+          name = 'Eye rays';
+          element = 'arcane';
+          const dc = MA.saveDC(ch, 'cha');
+          const kinds = ['fire', 'cold', 'petrify', 'sleep', 'slow', 'fear', 'wound', 'disintegrate'];
+          for (let i = 0; i < 3 && sp.targets.length; ++i) {
+            const t = sp.targets[i % sp.targets.length];
+            if (!t.isAlive)
+              continue;
+            const k = kinds[this.#prng.nextInt(0, kinds.length - 1)];
+            if (k === 'fire' || k === 'cold') {
+              let d = roll(4, 6);
+              if (this.#save(t, 'ref', dc))
+                d = Math.floor(d / 2);
+              results.push({ unit: t, damage: hurt(t, d, k), effect: `${k} ray` });
+            } else if (k === 'wound' || k === 'disintegrate') {
+              const saved = this.#save(t, k === 'wound' ? 'will' : 'fort', dc);
+              const d = k === 'wound' ? roll(3, 8) : saved ? roll(5, 6) : roll(10, 6);
+              results.push({ unit: t, damage: hurt(t, k === 'wound' && saved ? Math.floor(d / 2) : d), effect: k === 'wound' ? 'Wounding ray' : 'Disintegrating ray' });
+            } else if (this.#save(t, k === 'petrify' ? 'fort' : 'will', dc))
+              results.push({ unit: t, damage: 0, effect: 'Resists' });
+            else
+              condition(t, { petrify: 'petrified', sleep: 'unconscious', slow: 'slowed', fear: 'shaken' }[k], k === 'petrify' ? -1 : this.#prng.nextInt(2, 4), `${k} ray`);
+          }
+          this.#cooldown(unit, 'rays', 1);
+          break;
+        }
+        case 'web': {
+          name = 'Web';
+          element = 'nature';
+          const dc = MA.saveDC(ch, 'con');
+          if (this.#save(sp.target, 'ref', dc))
+            results.push({ unit: sp.target, damage: 0, effect: 'Dodges' });
+          else
+            condition(sp.target, 'entangled', 2, 'Entangled');
+          this.#cooldown(unit, 'web', 3);
+          break;
+        }
+        case 'spit': {
+          name = 'Spit';
+          element = 'acid';
+          const dc = MA.saveDC(ch, 'con');
+          let d = roll(2, 6);
+          if (this.#save(sp.target, 'ref', dc))
+            d = Math.floor(d / 2);
+          results.push({ unit: sp.target, damage: hurt(sp.target, d, 'acid'), effect: null });
+          this.#cooldown(unit, 'spit', 2);
+          break;
+        }
+        case 'rock': {
+          name = 'Hurled rock';
+          element = 'force';
+          const t = sp.target;
+          const hit = D20.attackRoll(this.#prng, unit.bab, unit.dexMod, ch.sizeMod || 0, t.ac);
+          const dice = ['L', 'H', 'G', 'C'].includes(ch.size) ? 2 : 1;
+          const sides = ch.size === 'H' || ch.size === 'G' || ch.size === 'C' ? 8 : 6;
+          if (hit.hit)
+            results.push({ unit: t, damage: hurt(t, Math.max(1, roll(dice, sides) + unit.strMod)), effect: null });
+          else
+            results.push({ unit: t, damage: 0, effect: 'Miss' });
+          break;
+        }
+        default:
+          return null;
+      }
+      const total = results.reduce((s2, r) => s2 + r.damage, 0);
+      this.#combatLog.push(`${unit.logName} uses ${name}: ${results.map(r => `${r.unit.logName} ${r.damage ? r.damage + ' dmg' : ''}${r.effect ? ' ' + r.effect : ''}${!r.unit.isAlive ? ' - SLAIN!' : ''}`).join(', ')}`);
+      const out = { attacker: unit, special, name, element, shape, targets: results, totalDamage: total };
+      this.#emit('specialResolved', out);
+      if (this.checkVictory())
+        this.#phase = CombatPhase.VICTORY;
+      else if (this.checkDefeat())
+        this.#phase = CombatPhase.DEFEAT;
+      return out;
     }
 
     nextTurn() {
