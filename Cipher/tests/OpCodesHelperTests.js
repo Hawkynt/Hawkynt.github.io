@@ -168,6 +168,37 @@ test('Unpack64LE: given a fractional Number, when unpacked, then a RangeError is
   throws(() => OpCodes.Unpack64LE(1.5), RangeError);
 });
 
+// ---------------------------------------------------------------- SecureRandomBytes
+const isByteArray = (a, n) => Array.isArray(a) && a.length === n && a.every(b => Number.isInteger(b) && b >= 0 && b <= 255);
+test('SecureRandomBytes: given 32, when drawn, then a plain array of 32 bytes (uint8[]) is returned', () => {
+  if (!isByteArray(OpCodes.SecureRandomBytes(32), 32)) throw new Error('not 32 bytes in 0..255');
+});
+test('SecureRandomBytes: given 0 (lower boundary), when drawn, then an empty array is returned', () => {
+  equal(OpCodes.SecureRandomBytes(0).length, 0);
+});
+test('SecureRandomBytes: given 65537 (one past a Web Crypto call), when drawn, then every byte is filled', () => {
+  const a = OpCodes.SecureRandomBytes(65537);
+  if (!isByteArray(a, 65537)) throw new Error('not 65537 bytes');
+  if (a.slice(65520).every(b => b === 0)) throw new Error('the tail beyond 65536 was not filled');
+});
+test('SecureRandomBytes: given two draws of 32, when compared, then they differ', () => {
+  if (OpCodes.SecureRandomBytes(32).join() === OpCodes.SecureRandomBytes(32).join()) throw new Error('two draws are equal');
+});
+test('SecureRandomBytes: given no Web Crypto, when drawn, then node\'s crypto.randomBytes fills them', () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  Object.defineProperty(globalThis, 'crypto', { value: undefined, configurable: true, writable: true });
+  try {
+    if (!isByteArray(OpCodes.SecureRandomBytes(16), 16)) throw new Error('not 16 bytes');
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, 'crypto', descriptor); else delete globalThis.crypto;
+  }
+});
+test('SecureRandomBytes: given -1, 1.5 or a string, when drawn, then a RangeError is thrown', () => {
+  throws(() => OpCodes.SecureRandomBytes(-1), RangeError);
+  throws(() => OpCodes.SecureRandomBytes(1.5), RangeError);
+  throws(() => OpCodes.SecureRandomBytes('4'), RangeError);
+});
+
 /**
  * Run every OpCodes helper case.
  * @param {object} options - { verbose }

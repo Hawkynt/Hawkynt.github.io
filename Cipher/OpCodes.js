@@ -2463,9 +2463,10 @@
     },
     
     /**
-     * Copy array (deep copy for simple arrays)
+     * Copy array (deep copy for simple arrays). Any element type is copied;
+     * the transpiler types the copy as its source (uint32[] in, uint32[] out).
      * @param {uint8[]} arr - Source array
-     * @returns {uint8[]} Copied array
+     * @returns {uint8[]} Copied array, of the source's element type
      */
     CopyArray: function(arr) {
       if (arr.length <= 16) {
@@ -2533,7 +2534,39 @@
       
       return result === 0;
     },
-    
+
+    /**
+     * Cryptographically secure random bytes: Web Crypto (crypto.getRandomValues)
+     * where the platform has it, else Node's crypto.randomBytes. Nothing is
+     * required at load time, so the page loads it as any other script.
+     * @param {int32} count - Number of bytes (0 or more)
+     * @returns {uint8[]} count random bytes
+     * @throws {RangeError} When count is not a non-negative integer
+     * @throws {Error} When the platform offers no secure random source
+     */
+    SecureRandomBytes: function(count) {
+      if (typeof count !== 'number' || count < 0 || Math.floor(count) !== count)
+        throw new RangeError('SecureRandomBytes: count must be a non-negative integer');
+      const result = new Array(count);
+      if (count === 0) return result;
+      const root = typeof globalThis !== 'undefined' ? globalThis : global;
+      const webCrypto = root && root.crypto && typeof root.crypto.getRandomValues === 'function' ? root.crypto : null;
+      let bytes = null;
+      if (webCrypto) {
+        bytes = new Uint8Array(count);
+        // getRandomValues fills at most 65536 bytes per call
+        for (let offset = 0; offset < count; offset += 65536)
+          webCrypto.getRandomValues(bytes.subarray(offset, Math.min(count, offset + 65536)));
+      } else if (typeof require === 'function') {
+        bytes = require('crypto').randomBytes(count);
+      } else {
+        throw new Error('SecureRandomBytes: no secure random source available');
+      }
+      for (let i = 0; i < count; ++i)
+        result[i] = bytes[i];
+      return result;
+    },
+
     // ========================[ MATHEMATICAL OPERATIONS ]========================
     
     /**
