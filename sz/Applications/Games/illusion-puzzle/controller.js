@@ -227,6 +227,7 @@
     rotationTo = perspective;
 
     state = STATE_PLAYING;
+    SZ.GameAudio.play('select');
     updateWindowTitle();
     saveProgress();
   }
@@ -239,6 +240,7 @@
       floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 40, 'ALL LEVELS COMPLETE!', { color: '#ffd700', font: 'bold 20px sans-serif' });
       particles.confetti(CANVAS_W / 2, CANVAS_H / 2, 40, { speed: 6, gravity: 0.08 });
       screenShake.trigger(6, 300);
+      SZ.GameAudio.play('win');
       updateWindowTitle();
     }
   }
@@ -255,6 +257,7 @@
     floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 50, `Level ${currentLevel + 1} Complete!`, { color: '#ff0', font: 'bold 18px sans-serif' });
     floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 20, `Moves: ${moves}`, { color: '#ccc', font: '14px sans-serif' });
     screenShake.trigger(4, 200);
+    SZ.GameAudio.play('levelup');
     updateWindowTitle();
   }
 
@@ -271,6 +274,7 @@
     screenShake.trigger(3, 120);
     floatingText.add(CANVAS_W / 2, 30, dir > 0 ? 'Rotate Right' : 'Rotate Left', { color: '#88f', font: 'bold 12px sans-serif' });
     particles.burst(CANVAS_W / 2, CANVAS_H / 2, 10, { color: '#66f', speed: 2, life: 0.4 });
+    SZ.GameAudio.play('whoosh', { pitch: dir > 0 ? 1.2 : 0.9 });
   }
 
   function updateRotation(dt) {
@@ -343,12 +347,16 @@
       particles.burst(player.x, player.y, 12, { color: '#a0f', speed: 3, life: 0.5 });
       floatingText.add(player.x, player.y - 20, 'Warp!', { color: '#a0f', font: 'bold 12px sans-serif' });
       screenShake.trigger(3, 80);
+      SZ.GameAudio.play('zap');
       checkCollectibles();
       checkGoal();
       return;
     }
 
-    if (!isWalkable(newRow, newCol)) return;
+    if (!isWalkable(newRow, newCol)) {
+      SZ.GameAudio.play('click', { pitch: 0.5, volume: 0.5 });
+      return;
+    }
 
     player.row = newRow;
     player.col = newCol;
@@ -357,6 +365,7 @@
     player.targetY = pos.y;
     player.moveProgress = 0;
     ++moves;
+    SZ.GameAudio.play('click', { pitch: 0.8 + (moves % 2) * 0.1, volume: 0.6 });
 
     trail.push({ row: player.row, col: player.col });
     checkCollectibles();
@@ -392,6 +401,7 @@
         particles.burst(pos.x, pos.y, 8, { color: '#fa0', speed: 2, life: 0.4 });
         floatingText.add(pos.x, pos.y - 20, 'Gem!', { color: '#ff0', font: 'bold 12px sans-serif' });
         screenShake.trigger(2, 60);
+        SZ.GameAudio.play('pickup', { pitch: 1 + collected.length * 0.06 });
       }
     }
   }
@@ -696,6 +706,9 @@
       state = STATE_PAUSED;
     else if (state === STATE_PAUSED)
       state = STATE_PLAYING;
+    else
+      return;
+    SZ.GameAudio.play('click');
   }
 
   function resetAndStart() {
@@ -822,6 +835,7 @@
   });
 
   setupCanvas();
+  SZ.GameAudio.attachMuteButton();
   loadProgress();
   loadHighScores();
   updateWindowTitle();
