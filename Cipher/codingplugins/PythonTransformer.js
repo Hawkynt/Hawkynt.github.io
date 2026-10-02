@@ -60,6 +60,8 @@
     'KdfAlgorithm', 'PaddingAlgorithm', 'CipherModeAlgorithm', 'AeadAlgorithm',
     'RandomGenerationAlgorithm',
   ];
+  /** AlgorithmFramework.js helper classes the runtime defines under their own names. */
+  const FRAMEWORK_HELPER_CLASSES = ['LinkItem', 'TestCase', 'Vulnerability', 'KeySize', 'AuthResult', 'BlockAbsorber'];
   /** The parent of each algorithm family in AlgorithmFramework.js. */
   const FRAMEWORK_BASE_PARENTS = {
     CryptoAlgorithm: 'Algorithm', SymmetricCipherAlgorithm: 'CryptoAlgorithm',
@@ -3029,6 +3031,28 @@ class OpCodes(metaclass=_OpCodesMeta):
           '    value = int(s[start:i], base)\n' +
           '    return -value if neg else value'
       });
+      // ArrayBuffer.isView: the runtime's typed-array and view types (a plain
+      // list is a JS Array, a JSArrayBuffer the buffer itself, neither a view)
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_is_view(x):\n' +
+          '    if isinstance(x, JSArrayBuffer):\n' +
+          '        return False\n' +
+          '    return isinstance(x, (bytes, bytearray, memoryview, JSUint32Array, JSTypedBufferView, JSBytesOfWordsView, JSUint8ArraySubarray))'
+      });
+      // String.prototype.padStart/padEnd: the pad string is repeated and cut
+      // to the missing length; an empty pad string pads nothing.
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_pad(s, target_length, pad=" ", at_start=True):\n' +
+          '    s = str(s)\n' +
+          '    pad = " " if pad is None else str(pad)\n' +
+          '    missing = int(target_length) - len(s)\n' +
+          '    if missing <= 0 or pad == "":\n' +
+          '        return s\n' +
+          '    fill = (pad * (missing // len(pad) + 1))[:missing]\n' +
+          '    return fill + s if at_start else s + fill'
+      });
       stubs.push({
         nodeType: 'RawCode', code:
           'def safe_replace(s, search, replacement, is_global=True):\n' +
@@ -3688,7 +3712,8 @@ class OpCodes(metaclass=_OpCodesMeta):
           const isKnownClass = FRAMEWORK_CLASSES.has(baseName) ||
             FRAMEWORK_ALGORITHM_BASES.includes(baseName) ||
             FRAMEWORK_INSTANCE_BASES.includes(baseName) ||
-            this.definedClassNames.has(baseName);
+            this.definedClassNames.has(baseName) ||
+            FRAMEWORK_HELPER_CLASSES.includes(baseName);
           if (!isKnownClass)
             baseName = toSnakeCase(baseName);
 
@@ -6637,7 +6662,26 @@ class OpCodes(metaclass=_OpCodesMeta):
           return this.transformImul(node);
 
         case 'Clz32':
+        case 'CountLeadingZeros': // Math.clz32
           return this.transformClz32(node);
+
+        case 'Truncate': // Math.trunc
+          return this.transformTrunc(node);
+
+        case 'DataViewGetByteLength':
+          return new PythonCall(new PythonIdentifier('_js_len'), [this.transformExpression(node.view)]);
+
+        case 'StringPad': {
+          // padStart/padEnd repeat a multi-character pad string and cut it
+          // to fit, which str.rjust/ljust (one fill character) cannot.
+          this.frameworkFunctions.add('_js_pad');
+          return new PythonCall(new PythonIdentifier('_js_pad'), [
+            this.transformExpression(node.string),
+            node.targetLength ? this.transformExpression(node.targetLength) : PythonLiteral.Int(0),
+            node.padString ? this.transformExpression(node.padString) : PythonLiteral.Str(' '),
+            PythonLiteral.Bool(node.method === 'padStart')
+          ]);
+        }
 
         case 'Cast':
           return this.transformCast(node);
@@ -9544,6 +9588,12 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformCallExpression(node) {
+      // ArrayBuffer.isView(x): is x a typed-array or DataView view
+      if (node.callee.type === 'MemberExpression' && !node.callee.computed &&
+          node.callee.object.type === 'Identifier' && node.callee.object.name === 'ArrayBuffer' &&
+          (node.callee.property.name || node.callee.property.value) === 'isView')
+        return new PythonCall(new PythonIdentifier('_js_is_view'), (node.arguments || []).slice(0, 1).map(a => this.transformExpression(a)));
+
       // Bare `Find(...)` call - the destructuring that would normally bind
       // this name (`const { ..., Find } = AlgorithmFramework;`, then called
       // as a bare identifier rather than `AlgorithmFramework.Find(...)` -
@@ -10474,13 +10524,10 @@ class OpCodes(metaclass=_OpCodesMeta):
           // str.repeat(n) -> str * n
           return new PythonBinaryExpression(target, '*', args[0]);
         }
-        if (methodName === 'padStart') {
-          // str.padStart(len, fillChar) -> str.rjust(len, fillChar)
-          return new PythonCall(new PythonMemberAccess(target, 'rjust'), args);
-        }
-        if (methodName === 'padEnd') {
-          // str.padEnd(len, fillChar) -> str.ljust(len, fillChar)
-          return new PythonCall(new PythonMemberAccess(target, 'ljust'), args);
+        if (methodName === 'padStart' || methodName === 'padEnd') {
+          // see the 'StringPad' IL case: a multi-character pad string is legal
+          return new PythonCall(new PythonIdentifier('_js_pad'), [target,
+            args[0] || PythonLiteral.Int(0), args[1] || PythonLiteral.Str(' '), PythonLiteral.Bool(methodName === 'padStart')]);
         }
         if (methodName === 'replace' || methodName === 'replaceAll') {
           // Use safe_replace to handle None values like JavaScript
@@ -10593,6 +10640,13 @@ class OpCodes(metaclass=_OpCodesMeta):
         if (funcName === 'parseInt') {
           this.frameworkFunctions.add('_js_parse_int');
           return new PythonCall(new PythonIdentifier('_js_parse_int'), args.slice(0, 2));
+        }
+        // Array(n) without `new` is `new Array(n)`; Array(a, b) lists them
+        if (funcName === 'Array') {
+          const sizeType = node.arguments.length === 1 ? String(node.arguments[0].resultType || '') : '';
+          if (/^(u?int\d*|number|float\d*|double)$/.test(sizeType))
+            return this.transformArrayCreation({ size: node.arguments[0] });
+          return new PythonList(args);
         }
         // parseFloat(x) -> float(x)
         if (funcName === 'parseFloat')
@@ -12144,11 +12198,10 @@ class OpCodes(metaclass=_OpCodesMeta):
      */
     transformClz32(node) {
       const argument = this.transformExpression(node.argument);
-      // (32 - (x & 0xFFFFFFFF).bit_length()) if x else 32
-      const masked = new PythonBinaryExpression(argument, '&', PythonLiteral.Int(0xFFFFFFFF));
+      // 32 - (ToUint32(x)).bit_length(); 0 has bit length 0, giving 32
+      const masked = new PythonBinaryExpression(new PythonCall(new PythonIdentifier('int'), [argument]), '&', PythonLiteral.Int(0xFFFFFFFF));
       const bitLength = new PythonCall(new PythonMemberAccess(masked, 'bit_length'), []);
-      const result = new PythonBinaryExpression(PythonLiteral.Int(32), '-', bitLength);
-      return new PythonConditional(result, argument, PythonLiteral.Int(32));
+      return new PythonBinaryExpression(PythonLiteral.Int(32), '-', bitLength);
     }
 
     /**

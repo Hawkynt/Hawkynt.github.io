@@ -276,6 +276,31 @@ check('switch: a continue inside a switch still advances a while-lowered for loo
   return expectOutput(runPython(js, 'print(f(4))'), ['10']);
 });
 
+// ---------------------------------------------------------------------------
+// IL nodes with no Python transform before
+// ---------------------------------------------------------------------------
+check('il: Math.trunc, Math.clz32 and padStart/padEnd with a multi-character pad', () => {
+  const js = 'function f(x, s) {\n  /** @type {int32} */\n  const t = Math.trunc(x / 3);\n  /** @type {int32} */\n  const z = Math.clz32(x);\n' +
+    '  return [t, z, Math.clz32(0), Math.trunc(-7 / 2), s.padStart(7, "ab"), s.padEnd(5, "0"), s.padStart(2, "x"), s.padStart(5)]; }';
+  // Given zero (clz32 boundary), a negative quotient, a pad string longer than one character and a target shorter than the string
+  const code = transpile(js);
+  expectNoMatch(code, /UNHANDLED_EXPRESSION/, 'an unhandled IL node');
+  return expectOutput(runPython(js, 'print(f(100, "abc"))'), ["[33, 25, 32, -3, 'abababc', 'abc00', 'abc', '  abc']"]);
+});
+
+// ---------------------------------------------------------------------------
+// JavaScript globals
+// ---------------------------------------------------------------------------
+check('globals: ArrayBuffer.isView, Array(n) without new, and TestCase as a base class', () => {
+  const js = 'const { TestCase } = AlgorithmFramework;\n' +
+    'class MyCase extends TestCase { constructor(i, e) { super(i, e, "t", "u"); this.extra = 1; } }\n' +
+    'function g(d) { const a = Array(3); const b = Array("x"); return [ArrayBuffer.isView(d), ArrayBuffer.isView([1]), a.length, b[0]]; }';
+  // Given a typed array and a plain array, a numeric and a string Array() argument
+  return expectOutput(runPython(js,
+    'print(g(JSUint8Array(2)))\nc = MyCase([1], [2])\nprint(isinstance(c, TestCase), list(c.input), c.extra)'),
+  ["[True, False, 3, 'x']", 'True [1] 1']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }
