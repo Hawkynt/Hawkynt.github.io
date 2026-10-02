@@ -163,6 +163,33 @@ check('framework: MerkleDamgardBlocks splits at the length-field boundary and ho
   ['1 2', '[0, 0, 0, 0, 0, 0, 0, 24]', '[24, 0, 0, 0, 0, 0, 0, 0]']);
 });
 
+// ---------------------------------------------------------------------------
+// Function expressions whose body is not one expression
+// ---------------------------------------------------------------------------
+check('lambda: a block-bodied arrow argument keeps every statement', () => {
+  const js = 'function each(items, fn) { for (const x of items) fn(x); }\n' +
+    'function collect(items) { const out = []; let sum = 0;\n' +
+    '  each(items, x => { out.push(x * 2); sum += x; });\n' +
+    '  each(items, x => { if (x > 1) out.push(-x); });\n' +
+    '  return [out, sum]; }';
+  // Given an arrow with two statements and one with a single if statement
+  // When it is passed as an argument and called
+  // Then every statement runs, including the update of the enclosing local
+  return expectOutput(runPython(js, 'r = collect([1, 2])\nprint(list(r[0]), r[1])'), ['[2, 4, -2] 3']);
+});
+check('lambda: an expression-bodied arrow that assigns still assigns', () => {
+  const js = 'class Box { constructor() { this.v = 0; } setter() { return x => this.v = x; } }';
+  // Given `x => this.v = x`
+  // When the returned function is called
+  // Then the field is written and the assigned value returned
+  return expectOutput(runPython(js, 'b = Box()\nf = b.setter()\nprint(f(7), b.v)'), ['7 7']);
+});
+check('lambda: a single-return arrow stays a lambda', () => {
+  const code = transpile('function twice(xs) { return xs.map(x => { return x * 2; }); }\nfunction apply(f) { return f(1); }\nfunction g() { return apply(y => { return y + 1; }); }');
+  expectMatch(code, /apply\(lambda y: y \+ 1\)/, 'apply(lambda y: y + 1)');
+  expectNoMatch(code, /def _fn_\d+/, 'a hoisted helper');
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

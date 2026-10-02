@@ -7075,6 +7075,10 @@ class OpCodes(metaclass=_OpCodesMeta):
 
         // IL AST ArrowFunction - (x) => expr -> lambda x: expr
         case 'ArrowFunction': {
+          if (this._lambdaNeedsDef(node.body)) {
+            const params = (node.params || []).map(p => typeof p === 'string' ? { type: 'Identifier', name: p } : p);
+            return this.transformLambdaExpression(Object.assign({}, node, { params }));
+          }
           const params = (node.params || []).map((p, idx) => {
             // toSnakeCase() (not a bare pass-through) everywhere below - it
             // also escapePythonReserved()s the result, matching how the
@@ -10838,9 +10842,26 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformLambdaExpression(node) {
-      const params = node.params.map(p => this.transformParameter(p));
       const bodyNode = node.body;
 
+      // A Python lambda holds one expression. A body with statements, or
+      // with an assignment or update whose side effect is the point, is
+      // hoisted into a local def ahead of the current statement; reducing it
+      // to its first expression silently dropped the rest of the body.
+      if (this._lambdaNeedsDef(bodyNode)) {
+        this._lambdaHelperCounter = (this._lambdaHelperCounter || 0) + 1;
+        const fnName = `_fn_${this._lambdaHelperCounter}`;
+        // An assignment body runs as a statement and returns the assigned target.
+        const block = bodyNode.type === 'BlockStatement' ? bodyNode
+          : { type: 'BlockStatement', body: [{ type: 'ExpressionStatement', expression: bodyNode },
+            ...(bodyNode.type === 'AssignmentExpression' ? [{ type: 'ReturnStatement', argument: bodyNode.left }] : [])] };
+        const func = this.transformArrowToFunction(fnName, Object.assign({}, node, { body: block }));
+        if (!this.pendingPreStatements) this.pendingPreStatements = [];
+        this.pendingPreStatements.push(func);
+        return new PythonIdentifier(fnName);
+      }
+
+      const params = node.params.map(p => this.transformParameter(p));
       let body;
       if (bodyNode.type === 'BlockStatement') {
         // BlockStatement body - extract the first statement's return value or expression
@@ -10858,6 +10879,25 @@ class OpCodes(metaclass=_OpCodesMeta):
       }
 
       return new PythonLambda(params, body);
+    }
+
+    /**
+     * Whether an arrow/function body cannot be a single Python lambda
+     * expression without losing behavior.
+     * @param {Object} bodyNode - IL body (BlockStatement or expression)
+     * @returns {boolean}
+     */
+    _lambdaNeedsDef(bodyNode) {
+      if (!bodyNode) return false;
+      const sideEffect = n => !!n && (n.type === 'AssignmentExpression' || n.type === 'UpdateExpression');
+      if (bodyNode.type !== 'BlockStatement') return sideEffect(bodyNode);
+      const stmts = bodyNode.body || [];
+      if (stmts.length === 0) return false;
+      if (stmts.length > 1) return true;
+      const only = stmts[0];
+      // A statement body (even a single call) runs as statements: several IL
+      // nodes (array append, ...) have no faithful expression form.
+      return !(only.type === 'ReturnStatement' && !sideEffect(only.argument));
     }
 
     /**
