@@ -80,6 +80,7 @@
   let powerUpFireball = false;
   let powerTimer = 0;
   let hasDoubleJumped = false;
+  let jumpWasHeld = false;
 
   /* Collections */
   let tiles = [];
@@ -423,19 +424,21 @@
       player.facingRight = true;
     }
 
-    // Jump
-    if ((keysDown['ArrowUp'] || keysDown['w'] || keysDown[' ']) && player.grounded) {
+    // Jump (the double jump needs the key pressed again in the air)
+    const jumpHeld = !!(keysDown['ArrowUp'] || keysDown['w'] || keysDown[' ']);
+    if (jumpHeld && player.grounded) {
       player.vy = JUMP_FORCE;
       player.isJumping = true;
       player.grounded = false;
       hasDoubleJumped = false;
       SZ.GameAudio.play('jump');
-    } else if ((keysDown['ArrowUp'] || keysDown['w'] || keysDown[' ']) && powerUpDoubleJump && !hasDoubleJumped && !player.grounded) {
+    } else if (jumpHeld && !jumpWasHeld && powerUpDoubleJump && !hasDoubleJumped && !player.grounded) {
       player.vy = JUMP_FORCE * 0.8;
       hasDoubleJumped = true;
       particles.burst(player.x + 12, player.y + player.h, 6, { color: '#ffd700', life: 0.3, speed: 30 });
       SZ.GameAudio.play('jump', { pitch: 1.3 });
     }
+    jumpWasHeld = jumpHeld;
 
     // Fireball
     if (keysDown['z'] && powerUpFireball && fireballs.length < 3) {
