@@ -100,6 +100,9 @@
   // ── Message listener ────────────────────────────────────────────
   if (_isInsideOS) {
     window.addEventListener('message', (e) => {
+      // only the desktop hosting this app may talk to it
+      if (e.source !== window.parent || e.origin !== location.origin)
+        return;
       const data = e.data;
       if (!data || typeof data !== 'object')
         return;
