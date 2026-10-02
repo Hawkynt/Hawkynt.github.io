@@ -135,8 +135,8 @@
       this.inputBuffer = [];
       /** @type {int32} */
       this.blockSize = 16; // Default block size
-      /** @type {int32|null} */
-      this.originalLength = null; // Required for unpadding
+      /** @type {int32} */
+      this.originalLength = -1; // Required for unpadding; -1 until setOriginalLength
       /** @type {boolean} */
       this.isDeterministic = false;
       /** @type {uint8[]|null} */
@@ -194,7 +194,7 @@
         return OpCodes.And32(this._rngState, 0xFF);
       } else {
         // Non-deterministic: Use secure random
-        return OpCodes.SecureRandom(256);
+        return OpCodes.SecureRandomBytes(1)[0];
       }
     }
 
@@ -296,7 +296,7 @@
       }
 
       // Random padding removal is impossible without knowing the original length
-      if (this.originalLength === null) {
+      if (this.originalLength < 0) {
         throw new Error("Random padding removal requires original data length. Call setOriginalLength() first.");
       }
 
