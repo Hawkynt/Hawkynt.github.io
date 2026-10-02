@@ -529,22 +529,13 @@
 
     /**
      * Computes Hamming distance between two symbols
-     * Note: XOR for GF(2) difference, bitwise for popcount (structural operations)
+     * Note: XOR for GF(2) difference, then the population count of the difference
      * @param {uint8} symbol1 - First 3-bit symbol
      * @param {uint8} symbol2 - Second 3-bit symbol
      * @returns {int32} - Hamming distance
      */
     _hammingDistance(symbol1, symbol2) {
-      let distance = 0;
-      let xor = OpCodes.Xor32(symbol1, symbol2); // GF(2) subtraction (difference vector)
-
-      // Count set bits in XOR (population count - structural operation)
-      while (xor) {
-        distance += OpCodes.And32(xor, 1); // Structural bit extraction
-        xor = OpCodes.Shr32(xor, 1); // Structural right shift
-      }
-
-      return distance;
+      return OpCodes.PopCount(OpCodes.Xor32(symbol1, symbol2));
     }
 
     /**
