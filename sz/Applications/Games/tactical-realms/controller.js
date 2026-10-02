@@ -66,6 +66,8 @@
     #lastTime;
     #animFrame;
     #hoverTile;
+    #mouse = null;
+    #stepsSinceEncounter = 0;
     #playerPos;
     #overworldMap;
     #statusEls;
@@ -650,8 +652,11 @@
         }
       }
 
-      const chance = this.#overworldMap.encounterChance(col, row);
+      ++this.#stepsSinceEncounter;
+      const pacing = TR.encounterPacing ? TR.encounterPacing(this.#stepsSinceEncounter) : 1;
+      const chance = this.#overworldMap.encounterChance(col, row) * pacing;
       if (chance > 0 && this.#prng.next() < chance) {
+        this.#stepsSinceEncounter = 0;
         this.#walkPath = null;
         const avgLevel = this.#party.length > 0 ? Math.round(this.#party.reduce((s, c) => s + c.level, 0) / this.#party.length) : 1;
         const enemies = this.#overworldMap.encounterEnemies(col, row, this.#prng, avgLevel);
@@ -1259,7 +1264,7 @@
 
       if (this.#overworldMap) {
         const tile = (c, r) => this.#overworldMap.getTile(c, r);
-        this.#renderer.drawInfiniteMap(tile, this.#dimension);
+        this.#renderer.drawInfiniteMap(tile, this.#dimension, (c, r) => this.#overworldMap.groundAt(c, r));
         this.#renderer.drawOverworldAmbience(tile, this.#screenTime);
       }
 
@@ -1310,6 +1315,7 @@
         for (const step of this.#walkPath)
           this.#renderer.highlightTile(step.col, step.row, 'rgba(255,255,100,0.2)');
 
+      this.#refreshHover();
       if (this.#hoverTile && this.#overworldMap) {
         const passable = this.#overworldMap.isPassable(this.#hoverTile.col, this.#hoverTile.row);
         const color = passable ? 'rgba(255,255,0,0.3)' : 'rgba(255,100,100,0.15)';
@@ -1484,6 +1490,7 @@
       let oy = this.#combatOffsetY;
       const cfx = this.#combatFx;
       const bctx = this.#renderer.bufCtx;
+      this.#refreshHover();
       if (cfx && bctx)
         cfx.beginShake(bctx);
 
@@ -1493,7 +1500,7 @@
           origin.col * TILE_SIZE + TILE_SIZE / 2,
           origin.row * TILE_SIZE + TILE_SIZE / 2
         );
-        this.#renderer.drawInfiniteMap((c, r) => this.#overworldMap.getTile(c, r), this.#dimension);
+        this.#renderer.drawInfiniteMap((c, r) => this.#overworldMap.getTile(c, r), this.#dimension, (c, r) => this.#overworldMap.groundAt(c, r));
 
         const cam = this.#renderer.camera;
         const tileRect = this.#overworldMap.extractTileRect(origin.col, origin.row, eng.grid.cols, eng.grid.rows);
@@ -1918,16 +1925,33 @@
       }
 
       const prevPos = { col: unit.position.col, row: unit.position.row };
-      let attackEvent = null;
+      let attackEvent = null, specialEvent = null, spellEvent = null;
       const captureAttack = (e) => { attackEvent = e; };
+      const captureSpecial = (e) => { specialEvent = e; };
+      const captureSpell = (e) => { spellEvent = e; };
       eng.on('attackResolved', captureAttack);
+      eng.on('specialResolved', captureSpecial);
+      eng.on('spellResolved', captureSpell);
       eng.executeEnemyTurn(unit.id);
       eng.off('attackResolved', captureAttack);
+      eng.off('specialResolved', captureSpecial);
+      eng.off('spellResolved', captureSpell);
 
       const newPos = unit.position;
       const moved = prevPos.col !== newPos.col || prevPos.row !== newPos.row;
 
       const showAttack = () => {
+        if (specialEvent && specialEvent.targets.length) {
+          this.#showMonsterSpecial(unit, specialEvent);
+          return;
+        }
+        if (spellEvent) {
+          if (spellEvent.aoe)
+            this.#startAoeSpellAnim(unit, spellEvent);
+          else
+            this.#startSpellAnim(unit, spellEvent.target, spellEvent);
+          return;
+        }
         if (attackEvent) {
           const def = attackEvent.defender;
           const pos = def.position;
@@ -1946,11 +1970,13 @@
             defender: def,
             impacts: [hit
               ? { kind: 'hit', unit: def, from: unit, amount: dmg, crit }
-              : { kind: 'miss', unit: def, from: unit }],
+              : { kind: 'miss', unit: def, from: unit },
+              ...(attackEvent.effects || []).map(e => ({ kind: 'effect', unit: def, text: e.text, color: e.color }))],
             result: {
               hit,
               damage: dmg,
               critical: crit,
+              effects: attackEvent.effects || [],
               flanking: attackEvent.flanking,
               d20: attackEvent.result.d20,
               total: attackEvent.result.total,
@@ -2032,9 +2058,37 @@
           fx.miss(u.id, c.x, c.y);
         else if (imp.kind === 'heal')
           fx.heal(u.id, c.x, c.y, imp.amount);
+        else if (imp.kind === 'effect')
+          fx.number(c.x, c.y - 26, imp.text, { color: imp.color || '#f0e080', size: 15 });
         if (!u.isAlive && !fx.isDying(u.id))
           fx.death(u.id, c.x, c.y);
       }
+    }
+
+    // A monster's breath, gaze, rays, web or rock as a battle scene; every
+    // creature it caught gets its numbers or effect on the grid afterwards.
+    #showMonsterSpecial(unit, ev) {
+      const first = ev.targets.find(t => t.damage > 0) || ev.targets[0];
+      const effects = ev.targets.filter(t => t.effect).map(t => ({ unitId: t.unit.id, text: t.effect, color: '#f0e080' }));
+      this.#combatAnim = this.#attachBattleScene({
+        type: 'spell_cast',
+        timer: 2.5,
+        duration: 2.5,
+        attacker: unit,
+        defender: first.unit,
+        impacts: ev.targets.flatMap(t => [
+          t.damage > 0 ? { kind: 'hit', unit: t.unit, from: unit, amount: t.damage, spell: true, color: '#ff9a4a' } : null,
+          t.effect ? { kind: 'effect', unit: t.unit, text: t.effect } : null,
+        ].filter(Boolean)),
+        result: {
+          damage: first.damage,
+          targets: ev.targets.map(t => ({ unitId: t.unit.id, damage: t.damage, heal: 0 })),
+          spell: { id: `special_${ev.special}`, name: ev.name },
+          spellName: ev.name,
+          special: { kind: ev.special, element: ev.element, shape: ev.shape },
+          effects,
+        },
+      });
     }
 
     #startAttackAnim(attackerId, defenderId, result) {
@@ -3129,7 +3183,25 @@
       }
     }
 
+    // The tile under the cursor follows the view: recomputed every frame from
+    // the cursor's screen position, so a scrolling camera never leaves the
+    // highlight behind on the tile the cursor used to be over.
+    #refreshHover() {
+      const m = this.#mouse;
+      if (!m)
+        return;
+      if (this.#sm.current === GameState.OVERWORLD && this.#overworldMap)
+        this.#hoverTile = this.#input.screenToTile(m.x, m.y, this.#renderer.camera);
+      else if (this.#sm.current === GameState.COMBAT && this.#combatEngine) {
+        const ts = this.#combatTileSize;
+        const col = Math.floor((m.x - this.#combatOffsetX) / ts);
+        const row = Math.floor((m.y - this.#combatOffsetY) / ts);
+        this.#combatHoverTile = this.#combatEngine.grid.inBounds(col, row) ? { col, row } : null;
+      }
+    }
+
     #onHover(e) {
+      this.#mouse = { x: e.x, y: e.y };
       if ((this.#sm.current === GameState.OVERWORLD || this.#sm.current === GameState.DUNGEON) && this.#overworldMap) {
         this.#hoverTile = this.#input.screenToTile(e.x, e.y, this.#renderer.camera);
       } else if (this.#sm.current === GameState.COMBAT && this.#combatEngine) {
@@ -3194,6 +3266,8 @@
 
     async #onTransition(e) {
       this.#screenTime = 0;
+      if (e.to === GameState.OVERWORLD && e.from !== GameState.COMBAT)
+        this.#stepsSinceEncounter = 0;
       if (e.to !== GameState.COMBAT) {
         this.#hideCombatLogPanel();
         if (this._combatUI) this._combatUI.hide();

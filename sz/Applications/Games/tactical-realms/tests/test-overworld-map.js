@@ -378,7 +378,13 @@
 
     it('findPath steps are cardinal-adjacent', () => {
       const map = new OverworldMap(12345);
-      const path = map.findPath({ col: 0, row: 0 }, { col: 3, row: 2 });
+      // nearest walkable spot a few steps out (terrain differs per world)
+      let goal = null;
+      for (let d = 3; d < 10 && !goal; ++d)
+        for (const [c, r] of [[d, 2], [2, d], [-d, 2], [2, -d]])
+          if (!goal && map.isPassable(c, r) && map.findPath({ col: 0, row: 0 }, { col: c, row: r }))
+            goal = { col: c, row: r };
+      const path = map.findPath({ col: 0, row: 0 }, goal);
       assert.ok(path);
       for (let i = 1; i < path.length; ++i) {
         const dc = Math.abs(path[i].col - path[i - 1].col);
@@ -465,8 +471,9 @@
     it('extractTileRect tiles are valid tile IDs', () => {
       const map = new OverworldMap(42);
       const result = map.extractTileRect(0, 0, 10, 10);
+      const valid = new Set(Object.values(OverworldTile));
       for (const t of result.tiles)
-        assert.ok(t >= 0 && t <= 9, `tile value ${t} out of range`);
+        assert.ok(valid.has(t), `tile value ${t} out of range`);
     });
 
     it('extractTileRect center tile matches getTile', () => {
@@ -515,7 +522,19 @@
       assert.ok(seenNew.size >= 5, `should see at least 5 new enemy types, saw ${seenNew.size}: ${[...seenNew].join(',')}`);
     });
 
-    it('encounters at high tiers include tier 7 enemies', () => {
+    // the classic fallback lists, used when no monster roster is loaded
+    function withoutRoster(fn) {
+      const TRR = window.SZ.TacticalRealms;
+      const roster = TRR.MonsterRoster;
+      TRR.MonsterRoster = undefined;
+      try {
+        fn();
+      } finally {
+        TRR.MonsterRoster = roster;
+      }
+    }
+
+    it('encounters at high tiers include tier 7 enemies', () => withoutRoster(() => {
       const map = new OverworldMap(42);
       const tier7 = new Set(['young_dragon', 'death_knight', 'frost_giant', 'mind_flayer', 'demon', 'devil', 'lich']);
       const found = new Set();
@@ -527,20 +546,20 @@
             found.add(e.templateId);
       }
       assert.ok(found.size >= 2, `should see tier 7 enemies at high distance, saw: ${[...found].join(',')}`);
-    });
+    }));
 
     it('encounter enemies reference valid template IDs', () => {
-      const { CombatEngine } = window.SZ.TacticalRealms;
+      const { CombatEngine, CreatureRegistry } = window.SZ.TacticalRealms;
       const map = new OverworldMap(42);
       for (let d = 0; d < 200; d += 5) {
         const prng = new PRNG(42 + d);
         const enemies = map.encounterEnemies(d, 0, prng);
         for (const e of enemies)
-          assert.ok(CombatEngine.ENEMY_TEMPLATES[e.templateId], `invalid template ${e.templateId}`);
+          assert.ok(CombatEngine.ENEMY_TEMPLATES[e.templateId] || (CreatureRegistry && CreatureRegistry.getMonster(e.templateId)), `invalid template ${e.templateId}`);
       }
     });
 
-    it('leader variant sometimes has higher targetLevel', () => {
+    it('leader variant sometimes has higher targetLevel', () => withoutRoster(() => {
       const map = new OverworldMap(42);
       let foundLeader = false;
       for (let i = 0; i < 200; ++i) {
@@ -550,6 +569,21 @@
           foundLeader = true;
       }
       assert.ok(foundLeader, 'should sometimes generate leader variant with higher level');
+    }));
+
+    it('with the monster roster, far lands bring stronger foes', () => {
+      const R = window.SZ.TacticalRealms.MonsterRoster;
+      if (!R)
+        return;
+      const map = new OverworldMap(42);
+      const avgEL = (col) => {
+        let sum = 0;
+        for (let i = 0; i < 40; ++i)
+          sum += R.encounterLevel(map.encounterEnemies(col, 0, new PRNG(i), 1).map(e => e.templateId));
+        return sum / 40;
+      };
+      const near = avgEL(2), far = avgEL(120);
+      assert.ok(far > near + 1.5, `near EL ${near.toFixed(1)}, far EL ${far.toFixed(1)}`);
     });
   });
   describe('OverworldMap — Start Is Never Trapped', () => {
@@ -590,6 +624,85 @@
         const path = map.findPath({ col: 0, row: 0 }, { col: 5, row: -3 }, 60);
         assert.ok(path, `seed ${i}: no path from Home Camp to its first dungeon`);
       }
+    });
+  });
+  describe('OverworldMap -- biomes', () => {
+
+    function sample(map, step = 6, span = 300) {
+      const seen = new Map();
+      for (let r = -span; r <= span; r += step)
+        for (let c = -span; c <= span; c += step) {
+          const t = map.regionTile(c, r);
+          seen.set(t, (seen.get(t) || 0) + 1);
+        }
+      return seen;
+    }
+
+    it('the world has many regions: cold, temperate and hot', () => {
+      const T = OverworldTile;
+      for (const seed of [12345, 777, 42]) {
+        const seen = sample(new OverworldMap(seed));
+        assert.ok(seen.size >= 9, `seed ${seed}: only ${seen.size} region types`);
+        const cold = (seen.get(T.SNOW) || 0) + (seen.get(T.TAIGA) || 0) + (seen.get(T.ICE) || 0);
+        const hot = (seen.get(T.DESERT) || 0) + (seen.get(T.BADLANDS) || 0) + (seen.get(T.JUNGLE) || 0) + (seen.get(T.SAVANNA) || 0);
+        assert.ok(cold > 0 && hot > 0, `seed ${seed}: cold ${cold}, hot ${hot}`);
+      }
+    });
+
+    it('every world starts in temperate land', () => {
+      for (const seed of [1, 2, 3, 12345, 777]) {
+        const map = new OverworldMap(seed);
+        assert.ok(Math.abs(map.temperatureAt(0, 0) - 0.5) < 0.01, `seed ${seed}`);
+      }
+    });
+
+    it('biomes are real D&D biome ids', () => {
+      const reg = window.SZ.TacticalRealms.BiomeRegistry;
+      const map = new OverworldMap(777);
+      for (let r = -200; r <= 200; r += 20)
+        for (let c = -200; c <= 200; c += 20)
+          assert.ok(!reg || reg.has(map.biomeAt(c, r)), `unknown biome ${map.biomeAt(c, r)}`);
+    });
+
+    it('every battle biome has a backdrop', () => {
+      const themes = window.SZ.TacticalRealms.BattleBackdrop.THEMES;
+      for (const info of Object.values(window.SZ.TacticalRealms.OverworldTileInfo))
+        assert.ok(themes[info.battle], `no backdrop for ${info.battle}`);
+    });
+
+    it('roads stay walkable through every region', () => {
+      const map = new OverworldMap(777);
+      for (let r = -150; r <= 150; r += 3)
+        for (let c = -150; c <= 150; c += 3)
+          if (map.getTile(c, r) === OverworldTile.ROAD)
+            assert.ok(map.isPassable(c, r));
+    });
+  });
+  describe('OverworldMap -- encounter pacing', () => {
+
+    it('no fight right after the last one, then the odds ramp up', () => {
+      const pace = window.SZ.TacticalRealms.encounterPacing;
+      assert.equal(pace(0), 0);
+      assert.equal(pace(14), 0);
+      assert.ok(pace(30) > 0 && pace(30) < pace(45));
+      assert.ok(pace(500) <= 1.5);
+    });
+
+    it('a long walk through the wilds averages dozens of steps per fight', () => {
+      const pace = window.SZ.TacticalRealms.encounterPacing;
+      const map = new OverworldMap(777);
+      // walk 4000 forest-rate steps with the game's rule and count fights
+      const prng = new PRNG(5);
+      let fights = 0, since = 0;
+      for (let i = 0; i < 4000; ++i) {
+        ++since;
+        if (prng.next() < 0.035 * pace(since)) {
+          ++fights;
+          since = 0;
+        }
+      }
+      const perFight = 4000 / fights;
+      assert.ok(perFight > 30 && perFight < 80, `${perFight.toFixed(1)} steps per fight`);
     });
   });
 })();
