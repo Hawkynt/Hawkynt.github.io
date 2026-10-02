@@ -346,6 +346,7 @@
     #cooldowns = new Map();
     #auraDone = new Set();
     #skipGuard = 0;
+    #planeTraits = [];
 
     constructor(prng) {
       this.#prng = prng;
@@ -366,6 +367,87 @@
     }
 
     get grid() { return this.#grid; }
+    get planeTraits() { return this.#planeTraits; }
+
+    // The traits of the plane the fight happens on (TR.PlaneWorlds.traits):
+    // call after the units are placed.
+    setPlaneTraits(traits) {
+      this.#planeTraits = (traits || []).slice();
+      for (const t of this.#planeTraits)
+        if (t.passMode)
+          for (const u of this.#units)
+            u.grantPassMode(t.passMode);
+      if (this.#planeTraits.length)
+        this.#combatLog.push(`The plane: ${this.#planeTraits.map(t => t.name).join(', ')}`);
+    }
+
+    #planeTrait(key) {
+      return this.#planeTraits.find(t => t[key] != null) || null;
+    }
+
+    // natives of an aligned plane hit a little more often, visitors of a
+    // despairing one a little less
+    #planeAttackBonus(unit) {
+      let bonus = 0;
+      const home = this.#planeTrait('natives');
+      const subs = unit.character.subtypes || [];
+      const native = !!home && home.natives.every(s => subs.includes(s));
+      if (native)
+        bonus += 1;
+      const visitors = this.#planeTrait('visitorAttack');
+      if (visitors && !native && unit.faction === 'party')
+        bonus += visitors.visitorAttack;
+      return bonus;
+    }
+
+    // energy of the plane burning, freezing or draining at a turn's start
+    #planeTurnEffects(unit) {
+      const hz = this.#planeTrait('hazard');
+      if (hz && unit.isAlive) {
+        const { energy, dice } = hz.hazard;
+        const ch = unit.character;
+        const undead = ch.creatureType === 'undead';
+        const kin = (ch.subtypes || []).includes(energy);
+        if (!(energy === 'negative' && (undead || ch.creatureType === 'construct')) && !kin) {
+          let dmg = 0;
+          for (let i = 0; i < dice[0]; ++i)
+            dmg += 1 + Math.floor(this.#prng.next() * dice[1]);
+          const adj = TR.MonsterAbilities && energy !== 'negative' ? TR.MonsterAbilities.adjustDamage(unit, dmg, energy) : { amount: dmg, note: null };
+          if (adj.amount > 0) {
+            unit.takeDamage(adj.amount);
+            this.#combatLog.push(`${unit.logName} suffers ${adj.amount} ${energy} damage (${hz.name})${unit.isAlive ? '' : ' - SLAIN!'}`);
+            this.#emit('planeEffect', { unit, amount: adj.amount, kind: energy, trait: hz.id });
+          } else if (adj.note)
+            this.#combatLog.push(`${unit.logName}: ${adj.note}`);
+        }
+      }
+      const vital = this.#planeTrait('heal');
+      if (vital && unit.isAlive && unit.currentHp < unit.maxHp) {
+        const before = unit.currentHp;
+        unit.heal(vital.heal);
+        if (unit.currentHp > before)
+          this.#emit('planeEffect', { unit, amount: -(unit.currentHp - before), kind: 'positive', trait: vital.id });
+      }
+    }
+
+    // spell damage after the plane's magic: elements, potency, wild surges
+    #planeSpellDamage(spell, raw) {
+      if (!this.#planeTraits.length || raw <= 0)
+        return raw;
+      let mult = 1;
+      const el = TR.MonsterAbilities ? TR.MonsterAbilities.spellElement(spell) : null;
+      const elem = this.#planeTrait('energy');
+      if (elem && el === elem.energy)
+        mult *= 1.5;
+      else if (elem && el === elem.opposed)
+        mult *= 0.5;
+      const potent = this.#planeTrait('spellMult');
+      if (potent)
+        mult *= potent.spellMult;
+      if (this.#planeTrait('wild'))
+        mult *= 0.5 + this.#prng.next();
+      return Math.max(1, Math.round(raw * mult));
+    }
     get aiTier() { return this.#aiTier; }
     setAiTier(tier) { this.#aiTier = Math.min(4, Math.max(0, tier || 0)); }
     get units() { return this.#units; }
@@ -960,7 +1042,7 @@
       // the helpless are easy to hit
       const helpless = defFx && defFx.canAct === false ? -4 : 0;
       const effectiveAC = defender.ac + terrainCover + (defFx ? defFx.acPenalty : 0) + helpless;
-      const fxAtk = (atkFx ? atkFx.attackPenalty : 0) - this.#drainedLevels(attacker);
+      const fxAtk = (atkFx ? atkFx.attackPenalty : 0) - this.#drainedLevels(attacker) + this.#planeAttackBonus(attacker);
 
       const ch = attacker.character;
       const eq = ch.equipment;
@@ -1208,6 +1290,9 @@
     }
 
     #beginTurnEffects(unit) {
+      this.#planeTurnEffects(unit);
+      if (!unit.isAlive)
+        return false;
       if (this.#conditions) {
         const expired = this.#conditions.tickRound(unit.id);
         if (expired.length) {
@@ -1236,6 +1321,7 @@
     // Spell damage after spell resistance and energy defences.
     #spellDamage(caster, target, spell, raw) {
       const MA = TR.MonsterAbilities;
+      raw = this.#planeSpellDamage(spell, raw);
       if (!MA || caster.faction === target.faction)
         return raw;
       const a = MA.parse(target.character);
