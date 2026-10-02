@@ -272,6 +272,8 @@
         const b = document.createElement('div');
         b.className = 'sz-touch-btn';
         b.textContent = def.label;
+        if (def.label.length <= 2)
+          b.style.fontSize = '26px';
         if (def.title)
           b.title = def.title;
         bindButton(b, def);
