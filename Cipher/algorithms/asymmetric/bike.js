@@ -167,21 +167,21 @@
   /**
    * The Keccak-f[1600] permutation, over a state of 25 lanes each held as a low
    * and a high 32 bit half.
-   * @param {Int32Array} high - high halves, 25 entries, updated in place
-   * @param {Int32Array} low - low halves, 25 entries, updated in place
+   * @param {Uint32Array} high - high halves, 25 entries, updated in place
+   * @param {Uint32Array} low - low halves, 25 entries, updated in place
    */
   function KeccakF1600(high, low) {
-    const bufferHigh = new Int32Array(25);
-    const bufferLow = new Int32Array(25);
-    const columnHigh = new Int32Array(5);
-    const columnLow = new Int32Array(5);
+    const bufferHigh = new Uint32Array(25);
+    const bufferLow = new Uint32Array(25);
+    const columnHigh = new Uint32Array(5);
+    const columnLow = new Uint32Array(5);
 
     for (let round = 0; round < 24; ++round) {
       // theta
       for (let column = 0; column < 5; ++column) {
-        /** @type {int32} */
+        /** @type {uint32} */
         let accumulatorHigh = high[column];
-        /** @type {int32} */
+        /** @type {uint32} */
         let accumulatorLow = low[column];
         for (let row = 1; row < 5; ++row) {
           accumulatorHigh = OpCodes.Xor32(accumulatorHigh, high[column + 5 * row]);
@@ -246,10 +246,10 @@
      * @param {int32} rate - the sponge rate in octets
      */
     constructor(rate) {
-      /** @type {Int32Array} */
-      this.high = new Int32Array(25);
-      /** @type {Int32Array} */
-      this.low = new Int32Array(25);
+      /** @type {Uint32Array} */
+      this.high = new Uint32Array(25);
+      /** @type {Uint32Array} */
+      this.low = new Uint32Array(25);
       /** @type {int32} */
       this.rate = rate;
       /** @type {int32} */
@@ -284,7 +284,7 @@
     }
     const lane = Math.floor(stream.squeezed / 8);
     const inLane = stream.squeezed % 8;
-    /** @type {int32} */
+    /** @type {uint32} */
     let half = 0;
     if (inLane < 4) {
       half = stream.low[lane];

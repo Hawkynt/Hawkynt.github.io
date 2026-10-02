@@ -247,6 +247,7 @@
   function modPow(base, exponent, modulus) {
     if (modulus === 1n) return 0n;
 
+    /** @type {BigInt} */
     let result = 1n;
     let b = ((base % modulus) + modulus) % modulus;
     let e = exponent;
@@ -272,7 +273,9 @@
   function modInverse(a, m) {
     let oldR = ((a % m) + m) % m;
     let r = m;
+    /** @type {BigInt} */
     let oldS = 1n;
+    /** @type {BigInt} */
     let s = 0n;
 
     while (r !== 0n) {

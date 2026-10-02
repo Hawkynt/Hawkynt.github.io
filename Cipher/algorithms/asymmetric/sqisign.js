@@ -420,7 +420,7 @@
      * @param {BigInt} a - a
      * @returns {BigInt} -a
      */
-    fpNeg(a) { return (a === 0n ? 0n : this.P - a); }
+    fpNeg(a) { return (a === 0n ? a : this.P - a); }
     /**
      * @param {BigInt} a - a
      * @param {BigInt} b - b
