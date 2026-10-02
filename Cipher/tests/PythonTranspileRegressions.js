@@ -236,6 +236,25 @@ check('lambda: a single-return arrow stays a lambda', () => {
   expectNoMatch(code, /def _fn_\d+/, 'a hoisted helper');
 });
 
+// ---------------------------------------------------------------------------
+// Side effects in value positions
+// ---------------------------------------------------------------------------
+check('side effects: postfix update in an initializer, a subscript and a return', () => {
+  const js = 'function a(next, len) { const c = next[len]++; return [c, next[len]]; }\n' +
+    'function r(reader, body) { const token = body[reader.pos++]; return [token, reader.pos]; }\n' +
+    'function s(st, v) { return st.top = v + 1; }\n' +
+    'function p(n) { return n++; }';
+  // Given `x = y++`, `body[o.p++]` on an object field, `return o.f = v` and `return n++`
+  // When run
+  // Then the old value is used, the update happens once, and the assignment is kept
+  const code = transpile(js);
+  expectNoMatch(code, /getattr\([^)]*\)\s*\+=/, 'an augmented assignment to getattr(...)');
+  return expectOutput(runPython(js,
+    'print(list(a([5, 7], 1)))\nclass R: pass\nrd = R()\nrd.pos = 1\nprint(list(r(rd, [10, 20, 30])))\n' +
+    'class S: pass\nst = S()\nprint(s(st, 4), st.top)\nprint(p(3))'),
+  ['[7, 8]', '[20, 2]', '5 5', '3']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

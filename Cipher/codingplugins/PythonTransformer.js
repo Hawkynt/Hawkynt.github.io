@@ -5174,7 +5174,8 @@ class OpCodes(metaclass=_OpCodesMeta):
         return [...preStatements, tempAssign, returnStmt];
       }
 
-      const expr = node.argument ? this.transformExpression(node.argument) : null;
+      // `return x = v` / `return i++`: the side effect becomes a statement.
+      const expr = node.argument ? this.transformSideEffectFreeValue(node.argument) : null;
 
       const preStatements = [...(this.pendingPreStatements || [])];
       const postStatements = [...this.pendingPostStatements];
@@ -7436,7 +7437,7 @@ class OpCodes(metaclass=_OpCodesMeta):
 
         // IL AST DeleteExpression - delete obj.prop / delete obj[key] -> del obj.prop / del obj[key]
         case 'DeleteExpression': {
-          const target = this.transformExpression(node.argument);
+          const target = this._transformAsTarget(node.argument);
           return new PythonDelete(target);
         }
 
@@ -8396,7 +8397,7 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     transformUpdateExpression(node) {
       // Convert i++ to i += 1
-      const target = this.transformExpression(node.argument);
+      const target = this._transformAsTarget(node.argument);
       const one = PythonLiteral.Int(1);
       const operator = node.operator === '++' ? '+=' : '-=';
 
@@ -8434,7 +8435,7 @@ class OpCodes(metaclass=_OpCodesMeta):
       }
 
       if (isUpdateExpr(node)) {
-        const target = this.transformExpression(node.argument);
+        const target = this._transformAsTarget(node.argument);
         const one = PythonLiteral.Int(1);
         const op = node.operator === '++' ? '+=' : '-=';
         const updateStmt = new PythonAssignment(target, one);
@@ -8708,7 +8709,7 @@ class OpCodes(metaclass=_OpCodesMeta):
                         (prop.type === 'UnaryExpression' && (prop.operator === '++' || prop.operator === '--'));
 
         if (isUpdate) {
-          const target = this.transformExpression(prop.argument);
+          const target = this._transformAsTarget(prop.argument);
           const one = PythonLiteral.Int(1);
           const op = prop.operator === '++' ? '+=' : '-=';
 
@@ -8770,9 +8771,27 @@ class OpCodes(metaclass=_OpCodesMeta):
     _transformExpressionAsRead(node) {
       this._memberReadWrapEnabled = (this._memberReadWrapEnabled || 0) + 1;
       try {
-        return this.transformExpression(node);
+        // `const c = next[len]++`: the update is a statement, the value a read.
+        return this.transformSideEffectFreeValue(node);
       } finally {
         this._memberReadWrapEnabled--;
+      }
+    }
+
+    /**
+     * Transform the target of an assignment or ++/--: a place, never wrapped
+     * in the getattr() read leniency (`getattr(o, "p", None) += 1` is not
+     * assignable).
+     * @param {Object} node - IL target expression
+     * @returns {Object} Python target
+     */
+    _transformAsTarget(node) {
+      const saved = this._memberReadWrapEnabled;
+      this._memberReadWrapEnabled = 0;
+      try {
+        return this.transformExpression(node);
+      } finally {
+        this._memberReadWrapEnabled = saved;
       }
     }
 
@@ -8798,7 +8817,7 @@ class OpCodes(metaclass=_OpCodesMeta):
         const propName = node.property.name || node.property.value;
         return new PythonIdentifier(toSnakeCase(propName));
       }
-      return this.transformExpression(node);
+      return this._transformAsTarget(node);
     }
 
     transformAssignmentExpressionCore(node) {
@@ -9253,7 +9272,7 @@ class OpCodes(metaclass=_OpCodesMeta):
         if (isUpdate) {
           if (!prop.prefix) {
             // Postfix i++ or i--: use current value, then add increment/decrement as post-statement
-            const target = this.transformExpression(prop.argument);
+            const target = this._transformAsTarget(prop.argument);
             const one = PythonLiteral.Int(1);
             const op = prop.operator === '++' ? '+=' : '-=';
             if (!this.pendingPostStatements) this.pendingPostStatements = [];
@@ -9292,7 +9311,7 @@ class OpCodes(metaclass=_OpCodesMeta):
               : currentValue;
           } else {
             // Prefix ++i or --i: increment first (add as pre-statement), then use new value
-            const target = this.transformExpression(prop.argument);
+            const target = this._transformAsTarget(prop.argument);
             const one = PythonLiteral.Int(1);
             const op = prop.operator === '++' ? '+=' : '-=';
             const preIncrement = new PythonAssignment(target, one);
