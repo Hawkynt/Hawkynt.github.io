@@ -303,6 +303,7 @@
     state = STATE_PLAYING;
     aiPlayTimer = 0;
     turnTransition = 0;
+    SZ.GameAudio.play('select');
     updateWindowTitle();
     updateStatusBar();
   }
@@ -320,8 +321,12 @@
       return;
 
     const card = playerHand[cardIndex];
-    if (!card || playerMana < card.cost)
+    if (!card)
       return;
+    if (playerMana < card.cost) {
+      SZ.GameAudio.play('error', { volume: 0.6 });
+      return;
+    }
 
     playerMana -= card.cost;
     playerHand.splice(cardIndex, 1);
@@ -376,6 +381,10 @@
         }
 
         // Burst particles on damage
+        if (damage > 0)
+          SZ.GameAudio.play(rawDamage >= 10 ? 'thud' : 'hit', { pitch: isPlayer ? 1 : 0.85 });
+        else
+          SZ.GameAudio.play('bounce', { pitch: 0.8 });
         particles.burst(CANVAS_W / 2, targetY, 20, { color: card.color, speed: 4 });
         floatingText.add(CANVAS_W / 2, targetY - 20, `-${rawDamage}`, { color: '#f44', font: 'bold 16px sans-serif' });
 
@@ -392,6 +401,7 @@
           aiShield += shieldAmount;
 
         particles.sparkle(CANVAS_W / 2, selfY, 12, { color: '#8af', speed: 2 });
+        SZ.GameAudio.play('select', { pitch: 0.75, volume: 0.8 });
         floatingText.add(CANVAS_W / 2, selfY - 20, `+${shieldAmount} Shield`, { color: '#8af', font: 'bold 14px sans-serif' });
         break;
       }
@@ -403,6 +413,7 @@
           aiHP = Math.min(aiMaxHP, aiHP + healAmount);
 
         particles.sparkle(CANVAS_W / 2, selfY, 12, { color: '#4f4', speed: 2 });
+        SZ.GameAudio.play('pickup', { volume: 0.8 });
         floatingText.add(CANVAS_W / 2, selfY - 20, `+${healAmount} HP`, { color: '#4f4', font: 'bold 14px sans-serif' });
         break;
       }
@@ -413,10 +424,12 @@
           else
             aiMana += totalPower;
           particles.sparkle(100, selfY, 10, { color: '#48f', speed: 2 });
+          SZ.GameAudio.play('coin', { pitch: 0.8, volume: 0.8 });
           floatingText.add(CANVAS_W / 2, selfY - 20, `+${totalPower} Mana`, { color: '#48f', font: 'bold 14px sans-serif' });
         } else if (card.name === 'Swift Feet') {
           drawFromDeck(isPlayer ? playerDeck : aiDeck, isPlayer ? playerHand : aiHand, isPlayer ? playerDiscard : aiDiscard);
           floatingText.add(CANVAS_W / 2, selfY - 20, '+1 Card', { color: '#8f8', font: 'bold 14px sans-serif' });
+          SZ.GameAudio.play('whoosh', { volume: 0.7 });
         } else {
           if (isPlayer) {
             playerDamageBuff += Math.floor(totalPower / 2);
@@ -426,6 +439,7 @@
             aiShieldBuff += Math.floor(totalPower / 2);
           }
           particles.sparkle(CANVAS_W / 2, selfY, 10, { color: '#fa4', speed: 2 });
+          SZ.GameAudio.play('powerup', { volume: 0.7 });
           floatingText.add(CANVAS_W / 2, selfY - 20, `Buffed +${Math.floor(totalPower / 2)}`, { color: '#fa4', font: 'bold 14px sans-serif' });
         }
         break;
@@ -439,6 +453,7 @@
           playerShieldBuff = Math.max(0, playerShieldBuff - totalPower);
         }
         particles.burst(CANVAS_W / 2, targetY, 15, { color: '#808', speed: 3 });
+        SZ.GameAudio.play('zap', { pitch: 0.6 });
         floatingText.add(CANVAS_W / 2, targetY - 20, `Debuff -${totalPower}`, { color: '#a66', font: 'bold 14px sans-serif' });
         break;
       }
@@ -465,12 +480,14 @@
       particles.burst(CANVAS_W / 2, CANVAS_H / 2, 50, { color: '#ff0', speed: 5 });
       screenShake.trigger(8, 400);
       floatingText.add(CANVAS_W / 2, CANVAS_H / 2, 'VICTORY!', { color: '#ff0', font: 'bold 28px sans-serif' });
+      SZ.GameAudio.play('win');
       saveHighScore();
       updateWindowTitle();
     } else if (playerHP <= 0) {
       state = STATE_GAME_OVER;
       screenShake.trigger(10, 500);
       floatingText.add(CANVAS_W / 2, CANVAS_H / 2, 'DEFEAT', { color: '#f44', font: 'bold 28px sans-serif' });
+      SZ.GameAudio.play('lose');
       updateWindowTitle();
     }
   }
@@ -489,6 +506,7 @@
         --playerPoison;
       }
       isPlayerTurn = false;
+      SZ.GameAudio.play('click');
       aiPlayTimer = 0.8;
       turnTransition = 1.0;
       turnTransitionText = 'Opponent Turn';
@@ -527,6 +545,7 @@
 
     turnTransition = 1.0;
     turnTransitionText = 'Your Turn';
+    SZ.GameAudio.play('blip', { pitch: 1.2, volume: 0.7 });
     updateStatusBar();
     checkGameEnd();
   }
@@ -663,6 +682,7 @@
      ══════════════════════════════════════════════════════════════════ */
 
   function toggleDeckBuilder() {
+    SZ.GameAudio.play('click');
     if (state === STATE_DECK_BUILD) {
       state = STATE_MENU;
     } else {
@@ -673,13 +693,17 @@
   }
 
   function addCardToDeck(cardId) {
-    if (selectedDeck.length >= DECK_SIZE)
+    if (selectedDeck.length >= DECK_SIZE) {
+      SZ.GameAudio.play('error', { volume: 0.6 });
       return;
+    }
     selectedDeck.push(cardId);
+    SZ.GameAudio.play('drop', { pitch: 1.3, volume: 0.7 });
   }
 
   function removeCardFromDeck(index) {
     selectedDeck.splice(index, 1);
+    SZ.GameAudio.play('click', { pitch: 0.8 });
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -1879,8 +1903,10 @@
       for (let i = 0; i < 3; ++i) {
         const bx = CANVAS_W / 2 - 75;
         const by = 180 + i * 48;
-        if (mx >= bx && mx <= bx + 150 && my >= by && my <= by + 38)
+        if (mx >= bx && mx <= bx + 150 && my >= by && my <= by + 38) {
           difficulty = diffs[i];
+          SZ.GameAudio.play('click');
+        }
       }
 
       // Start Game button — coordinates must match drawMenuScreen()
@@ -2070,6 +2096,7 @@
     onAction: handleAction
   });
 
+  SZ.GameAudio.attachMuteButton();
   setupCanvas();
   loadHighScores();
   updateWindowTitle();
