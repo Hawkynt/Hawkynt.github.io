@@ -772,6 +772,19 @@
 
   const lineSpacingPopup = document.getElementById('popup-line-spacing');
 
+  // Asks in an in-app dialog and puts the editor selection back afterwards,
+  // since the dialog's input takes the focus and the selection with it
+  async function promptKeepingSelection(message, defaultValue) {
+    const sel = window.getSelection();
+    const range = sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+    const value = await SZ.Dialog.prompt(message, defaultValue, 'WordPad');
+    if (range) {
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    return value;
+  }
+
   function showLineSpacingPopup() {
     const btn = document.querySelector('[data-action="line-spacing"]');
     const rect = btn.getBoundingClientRect();
@@ -781,11 +794,11 @@
   }
 
   for (const entry of lineSpacingPopup.querySelectorAll('.popup-entry')) {
-    entry.addEventListener('click', () => {
+    entry.addEventListener('click', async () => {
       lineSpacingPopup.classList.remove('visible');
       const val = entry.dataset.spacing;
       if (val === 'custom') {
-        const input = prompt('Enter line spacing (e.g. 1.5):', String(currentLineSpacing));
+        const input = await promptKeepingSelection('Enter line spacing (e.g. 1.5):', String(currentLineSpacing));
         if (input) {
           const num = parseFloat(input);
           if (!isNaN(num) && num > 0)
@@ -1670,7 +1683,7 @@
     });
   }
 
-  function handleTableAction(action, cell) {
+  async function handleTableAction(action, cell) {
     const tr = cell.closest('tr');
     const table = cell.closest('table');
     if (!tr || !table)
@@ -1781,7 +1794,7 @@
         break;
       }
       case 'table-formula': {
-        const formula = prompt('Enter formula (e.g. =SUM(ABOVE)):', '=SUM(ABOVE)');
+        const formula = await SZ.Dialog.prompt('Enter formula (e.g. =SUM(ABOVE)):', '=SUM(ABOVE)', 'WordPad');
         if (!formula)
           break;
         const formulaResult = evaluateTableFormula(formula, cell, table);
@@ -4676,8 +4689,8 @@
     }
   }
 
-  function showTabStopDialog(tabStop, tabStops, rulerInner) {
-    const typeChoice = prompt(
+  async function showTabStopDialog(tabStop, tabStops, rulerInner) {
+    const typeChoice = await promptKeepingSelection(
       'Tab Stop at ' + tabStop.position + '%\n\n'
       + 'Type (enter number):\n'
       + '  1 = Left\n'
@@ -4934,12 +4947,12 @@
     editor.focus();
   }
 
-  function doDefineListStyle() {
-    const format = prompt('Enter numbering format:\n  1 = Decimal (1, 2, 3)\n  A = Alpha Upper (A, B, C)\n  a = Alpha Lower (a, b, c)\n  I = Roman Upper (I, II, III)\n  i = Roman Lower (i, ii, iii)', '1');
+  async function doDefineListStyle() {
+    const format = await promptKeepingSelection('Enter numbering format:\n  1 = Decimal (1, 2, 3)\n  A = Alpha Upper (A, B, C)\n  a = Alpha Lower (a, b, c)\n  I = Roman Upper (I, II, III)\n  i = Roman Lower (i, ii, iii)', '1');
     if (!format)
       return;
 
-    const startNum = parseInt(prompt('Starting number:', '1'), 10) || 1;
+    const startNum = parseInt(await promptKeepingSelection('Starting number:', '1'), 10) || 1;
 
     const sel = window.getSelection();
     if (!sel.rangeCount)
@@ -5100,7 +5113,7 @@
       const pw = pwInput.value;
 
       if (restrictPasswordHash && mode === 'none') {
-        const check = prompt('Enter password to remove restrictions:');
+        const check = await SZ.Dialog.prompt('Enter password to remove restrictions:', '', 'Restrict Editing');
         const checkHash = await simpleHash(check);
         if (checkHash !== restrictPasswordHash) {
           await User32.MessageBox('Incorrect password.', 'Restrict Editing', MB_OK);
@@ -6024,8 +6037,8 @@
           const fixBtn = document.createElement('button');
           fixBtn.className = 'a11y-fix-btn';
           fixBtn.textContent = 'Fix';
-          fixBtn.addEventListener('click', () => {
-            applyAccessibilityFix(issue);
+          fixBtn.addEventListener('click', async () => {
+            await applyAccessibilityFix(issue);
             // Refresh results
             const refreshed = runAccessibilityCheck();
             renderAccessibilityResults(refreshed);
@@ -6054,27 +6067,27 @@
     }
   }
 
-  function applyAccessibilityFix(issue) {
+  async function applyAccessibilityFix(issue) {
     if (issue.fix === 'add-alt' && issue.element) {
-      const alt = prompt('Enter alt text for this image:', '');
+      const alt = await SZ.Dialog.prompt('Enter alt text for this image:', '', 'WordPad');
       if (alt != null) {
         issue.element.setAttribute('alt', alt);
         markDirty();
       }
     } else if (issue.fix === 'fill-link' && issue.element) {
-      const text = prompt('Enter link text:', issue.element.getAttribute('href') || 'Link');
+      const text = await SZ.Dialog.prompt('Enter link text:', issue.element.getAttribute('href') || 'Link', 'WordPad');
       if (text != null) {
         issue.element.textContent = text;
         markDirty();
       }
     } else if (issue.fix === 'fill-header' && issue.element) {
-      const text = prompt('Enter header text:', 'Header');
+      const text = await SZ.Dialog.prompt('Enter header text:', 'Header', 'WordPad');
       if (text != null) {
         issue.element.textContent = text;
         markDirty();
       }
     } else if (issue.fix === 'set-title') {
-      const title = prompt('Enter document title:', docProperties.title || '');
+      const title = await SZ.Dialog.prompt('Enter document title:', docProperties.title || '', 'WordPad');
       if (title != null) {
         docProperties.title = title;
         document.title = title + ' - WordPad';

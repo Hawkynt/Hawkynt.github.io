@@ -630,10 +630,10 @@
 
   // ── Slicer Dialog ────────────────────────────────────────────
 
-  function showSlicerDialog() {
+  async function showSlicerDialog() {
     const pts = _S().pivotTables;
     if (!pts.length) {
-      alert('No pivot tables on this sheet. Create a pivot table first.');
+      SZ.Dialog.alert('No pivot tables on this sheet. Create a pivot table first.', 'Spreadsheet');
       return;
     }
     const pt = pts[pts.length - 1];
@@ -692,11 +692,11 @@
       });
     } else {
       // Fallback to prompt
-      const fieldName = prompt('Enter field name for slicer:\n\nAvailable fields: ' + headers.join(', '));
+      const fieldName = await SZ.Dialog.prompt('Enter field name for slicer:\n\nAvailable fields: ' + headers.join(', '), '', 'Spreadsheet');
       if (!fieldName || !fieldName.trim()) return;
       const trimmed = fieldName.trim();
       if (!headers.includes(trimmed)) {
-        alert('Field "' + trimmed + '" not found in source data.');
+        SZ.Dialog.alert('Field "' + trimmed + '" not found in source data.', 'Spreadsheet');
         return;
       }
       createSlicer(pt.id, trimmed);
@@ -705,10 +705,10 @@
 
   // ── Group Field Dialog ─────────────────────────────────────
 
-  function showGroupFieldDialog() {
+  async function showGroupFieldDialog() {
     const pts = _S().pivotTables;
     if (!pts.length) {
-      alert('No pivot tables on this sheet. Create a pivot table first.');
+      SZ.Dialog.alert('No pivot tables on this sheet. Create a pivot table first.', 'Spreadsheet');
       return;
     }
     const pt = pts[pts.length - 1];
@@ -716,7 +716,7 @@
     // Get assigned row/col fields
     const assignedFields = pt.fields.filter(f => f.zone === 'rows' || f.zone === 'cols');
     if (!assignedFields.length) {
-      alert('No row or column fields assigned to the pivot table.');
+      SZ.Dialog.alert('No row or column fields assigned to the pivot table.', 'Spreadsheet');
       return;
     }
 
@@ -761,20 +761,20 @@
       });
     } else {
       // Fallback to prompt
-      const fieldName = prompt('Enter field name to group:\n\nRow/Column fields: ' + fieldNames.join(', '));
+      const fieldName = await SZ.Dialog.prompt('Enter field name to group:\n\nRow/Column fields: ' + fieldNames.join(', '), '', 'Spreadsheet');
       if (!fieldName || !fieldName.trim()) return;
       const trimmed = fieldName.trim();
       if (!fieldNames.includes(trimmed)) {
-        alert('Field "' + trimmed + '" is not a row or column field.');
+        SZ.Dialog.alert('Field "' + trimmed + '" is not a row or column field.', 'Spreadsheet');
         return;
       }
 
-      const groupType = prompt('Enter group type:\n\n- year (group dates by year)\n- quarter (group dates by quarter)\n- month (group dates by month)\n- day (group dates by day)\n- numeric (group numbers into ranges)', 'year');
+      const groupType = await SZ.Dialog.prompt('Enter group type:\n\n- year (group dates by year)\n- quarter (group dates by quarter)\n- month (group dates by month)\n- day (group dates by day)\n- numeric (group numbers into ranges)', 'year', 'Spreadsheet');
       if (!groupType || !groupType.trim()) return;
 
       const type = groupType.trim().toLowerCase();
       if (type === 'numeric') {
-        const rangeSize = prompt('Enter range size (e.g., 10 for 0-10, 10-20, ...):', '10');
+        const rangeSize = await SZ.Dialog.prompt('Enter range size (e.g., 10 for 0-10, 10-20, ...):', '10', 'Spreadsheet');
         if (!rangeSize) return;
         groupFieldNumeric(pt.id, trimmed, parseInt(rangeSize, 10) || 10);
       } else {
@@ -832,12 +832,12 @@
   function showDrillDownDialog() {
     const pts = _S().pivotTables;
     if (!pts.length) {
-      alert('No pivot tables on this sheet.');
+      SZ.Dialog.alert('No pivot tables on this sheet.', 'Spreadsheet');
       return;
     }
     const pt = pts[pts.length - 1];
     if (!pt.output || !pt.output.rows.length) {
-      alert('Pivot table has no data. Refresh first.');
+      SZ.Dialog.alert('Pivot table has no data. Refresh first.', 'Spreadsheet');
       return;
     }
 
@@ -848,7 +848,7 @@
     const colIdx = ac.col - anchorCol;
 
     if (rowIdx < 0 || rowIdx >= pt.output.rows.length - 1) {
-      alert('Click on a pivot data cell, then use Drill-Down.\nCurrent cell is not inside the pivot data area.');
+      SZ.Dialog.alert('Click on a pivot data cell, then use Drill-Down.\nCurrent cell is not inside the pivot data area.', 'Spreadsheet');
       return;
     }
 

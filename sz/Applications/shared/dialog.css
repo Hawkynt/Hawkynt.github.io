@@ -13,6 +13,11 @@
   display: flex;
 }
 
+/* message boxes can open over an app's own dialogs */
+.dialog-overlay.sz-quick-dialog {
+  z-index: 10000;
+}
+
 .dialog {
   background: var(--sz-color-button-face);
   border: 2px outset var(--sz-color-button-shadow);

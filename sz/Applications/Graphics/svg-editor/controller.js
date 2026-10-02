@@ -666,8 +666,8 @@
   }
 
   // ---- Section 14: Text tool ----
-  function createTextElement(pt) {
-    const value = prompt('Text value:');
+  async function createTextElement(pt) {
+    const value = await SZ.Dialog.prompt('Text value:', '', 'SVG Editor');
     if (!value || !value.trim())
       return;
 
@@ -688,11 +688,11 @@
     updateStatusElements();
   }
 
-  function editTextElement(el) {
+  async function editTextElement(el) {
     if (el.tagName.toLowerCase() !== 'text')
       return;
 
-    const value = prompt('Edit text:', el.textContent);
+    const value = await SZ.Dialog.prompt('Edit text:', el.textContent, 'SVG Editor');
     if (value == null)
       return;
 
@@ -991,7 +991,7 @@
         loadSvgText(refs.sourceBox.value, state.fileName, state.filePath);
         setDirty();
       } catch (err) {
-        alert(`Invalid SVG source: ${err.message}`);
+        SZ.Dialog.alert(`Invalid SVG source: ${err.message}`, 'SVG Editor');
       }
     });
 
