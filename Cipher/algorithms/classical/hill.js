@@ -178,8 +178,8 @@
       this.isInverse = isInverse;
       /** @type {uint8[]} */
       this.inputBuffer = [];
-      /** @type {int32|null} */
-      this.originalLength = null; // Track original length for round-trip
+      /** @type {int32} */
+      this.originalLength = 0; // Track original length for round-trip (0 before the first encryption)
 
       // Character sets
       /** @type {string} */
