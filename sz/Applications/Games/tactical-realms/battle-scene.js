@@ -30,6 +30,7 @@
     melee:  { windup: [0.40, 0.72], dash: [0.72, 0.98], strike: [0.98, 1.26], impact: 1.06, recoil: [1.26, 1.56], back: [1.56, 1.92], end: 2.35 },
     ranged: { draw: [0.40, 1.00], fly: [1.00, 1.28], impact: 1.28, end: 2.25 },
     spell:  { cast: [0.40, 1.30], release: 1.18, fly: [1.18, 1.52], impact: 1.52, end: 2.45 },
+    special: { cast: [0.40, 1.20], release: 1.05, fly: [1.05, 1.45], impact: 1.45, end: 2.50 },
     heal:   { cast: [0.40, 1.20], light: [1.00, 2.05], impact: 1.40, end: 2.40 },
     buff:   { cast: [0.40, 1.20], light: [1.00, 1.90], impact: 1.35, end: 2.20 },
   });
@@ -69,6 +70,8 @@
     #crit;
     #hit;
     #count;
+    #special;
+    #effect;
 
     constructor({ attacker, defender, result = {}, type = 'player_attack', biome = 'plains', plane = 'material', mode = 'full' } = {}) {
       this.#mode = mode === 'short' ? 'short' : 'full';
@@ -93,7 +96,13 @@
       this.#count = result.targets ? result.targets.length : 1;
 
       const isSpell = type === 'spell_cast';
-      if (isSpell)
+      // breath, gazes, rays, webs and rocks: monster specials
+      this.#special = result.special || null;
+      const fx = (result.effects || []).find(e => defender && e.unitId === defender.id);
+      this.#effect = fx || null;
+      if (this.#special)
+        this.#kind = 'special';
+      else if (isSpell)
         this.#kind = damage > 0 ? 'spell' : (heal > 0 ? 'heal' : 'buff');
       else
         this.#kind = this.#isRanged(attacker, defender) ? 'ranged' : 'melee';
@@ -103,7 +112,7 @@
       this.#killed = this.#hit && damage > 0 && defender && defender.isAlive === false;
 
       const spell = result.spell || null;
-      this.#element = isSpell && TR.BattleFx ? TR.BattleFx.elementOf(spell, { heal: this.#kind === 'heal' }) : 'arcane';
+      this.#element = this.#special ? (this.#special.element || 'arcane') : isSpell && TR.BattleFx ? TR.BattleFx.elementOf(spell, { heal: this.#kind === 'heal' }) : 'arcane';
       this.#title = isSpell ? (result.spellName || (spell && spell.name) || 'Spell') : (this.#kind === 'ranged' ? 'Ranged Attack' : 'Attack');
       this.#subtitle = !isSpell && result.d20 ? this.#rollText(result, defender) : '';
 
@@ -311,14 +320,24 @@
         this.#setBanner(this.#title, '#fff2b0');
         return;
       }
+      if (this.#kind === 'special' && !this.#amount) {
+        const text = this.#effect ? this.#effect.text : 'Resisted';
+        this.#number(text.toUpperCase(), this.#effect && this.#effect.color || '#f0e080', d, 0.62);
+        if (P)
+          P.sparkle(x, y, 20, { color: TR.BattleFx ? TR.BattleFx.palette(this.#element).core : '#fff', speed: 3.5 });
+        if (this.#shake)
+          this.#shake.trigger(5, 220);
+        return;
+      }
       if (!this.#hit) {
         this.#number('MISS', '#d8dce8', d, 0.8);
         if (P)
           P.burst(x, this.#footY() - 10, 12, { speed: 3, color: 'rgba(230,220,200,0.8)', decay: 0.03, size: 3 });
         return;
       }
-      const pal = TR.BattleFx ? TR.BattleFx.palette(this.#kind === 'spell' ? this.#element : 'lightning') : null;
-      const sparks = this.#kind === 'spell' && pal ? pal.particle : ['#ffffff', '#fff27a', '#ff9a4a'];
+      const magical = this.#kind === 'spell' || this.#kind === 'special';
+      const pal = TR.BattleFx ? TR.BattleFx.palette(magical ? this.#element : 'lightning') : null;
+      const sparks = magical && pal ? pal.particle : ['#ffffff', '#fff27a', '#ff9a4a'];
       if (P)
         for (const c of sparks)
           P.burst(x, y, this.#crit ? 22 : 12, { speed: this.#crit ? 11 : 7, color: c, decay: 0.022, size: 3 + Math.random() * 4, friction: 0.94 });
@@ -330,6 +349,9 @@
         this.#setBanner('CRITICAL!', '#ffd23a');
       }
       this.#number(String(this.#amount), this.#crit ? '#ffd23a' : '#ffffff', d, this.#crit ? 1.35 : 1);
+      // riders (poisoned, paralysed, ...) follow the damage
+      if (this.#effect)
+        this.#setBanner(this.#effect.text, this.#effect.color || '#f0e080', true);
     }
 
     #onKill() {
@@ -462,9 +484,10 @@
       ctx.ellipse(st.x, this.#footY() + 4, 70 * (1 - air * 0.4), 14 * (1 - air * 0.4), 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
+      const stone = f === this.#def && this.#effect && /petrif/i.test(this.#effect.text) && this.#time >= BEATS[this.#kind].impact;
       if (TR.BattleSprites)
-        TR.BattleSprites.draw(ctx, f.unit, st.pose, st.p, st.x, footY, FIGHTER_H, f.facing, {
-          flash: st.flash, alpha: st.alpha, rotate: st.rot, squash: st.squash,
+        TR.BattleSprites.draw(ctx, f.unit, stone ? 'idle' : st.pose, stone ? 0 : st.p, st.x, footY, FIGHTER_H, f.facing, {
+          flash: stone ? 0 : st.flash, alpha: st.alpha, rotate: stone ? 0 : st.rot, squash: st.squash, stone,
         });
     }
 
@@ -522,9 +545,48 @@
           FX.strikeFromAbove(ctx, el, d.home, this.#footY(), span(t, b.release, b.impact + 0.35), t);
           FX.burst(ctx, el, d.home, bodyY, span(t, b.impact, b.impact + 0.5), 1);
         }
+      } else if (this.#kind === 'special') {
+        this.#drawSpecialFx(ctx, FX, t, b, a, d, bodyY);
       } else {
         FX.healLight(ctx, d.home, this.#footY(), span(t, ...b.light), t);
       }
+    }
+
+    #drawSpecialFx(ctx, FX, t, b, a, d, bodyY) {
+      const sp = this.#special;
+      const el = this.#element;
+      const mouthX = a.home + a.facing * 60, mouthY = this.#footY() - FIGHTER_H * 0.62;
+      const p = span(t, b.release, b.impact + 0.4);
+      switch (sp.kind) {
+        case 'breath':
+          FX.breath(ctx, el, mouthX, mouthY, d.home, bodyY, p, sp.shape || 'cone', t);
+          break;
+        case 'mindblast':
+          for (let i = 0; i < 4; ++i)
+            FX.burst(ctx, 'psychic', lerp(mouthX, d.home, clamp01(p * 1.4 - i * 0.12)), lerp(mouthY, bodyY, clamp01(p * 1.4 - i * 0.12)), clamp01(p * 1.3 - i * 0.1), 0.5);
+          break;
+        case 'gaze':
+          FX.beam(ctx, el, mouthX, mouthY - 10, d.home, bodyY - 40, p, 6);
+          break;
+        case 'rays':
+          ['fire', 'frost', 'necrotic'].forEach((ray, i) =>
+            FX.beam(ctx, ray, mouthX, mouthY - 20 + i * 14, d.home + (i - 1) * 24, bodyY - 30 + i * 18, clamp01(p * 1.2 - i * 0.12), 5));
+          break;
+        case 'rock': {
+          const q = span(t, ...b.fly);
+          if (q > 0 && q < 1)
+            FX.rock(ctx, lerp(mouthX, d.home, q), lerp(mouthY, bodyY, q) - Math.sin(q * Math.PI) * 120, 40, t * 8);
+          break;
+        }
+        default: {
+          // web, spit: a glob in flight
+          const q = span(t, ...b.fly);
+          if (q > 0 && q < 1)
+            FX.projectile(ctx, el, lerp(mouthX, d.home, easeInOut(q)), lerp(mouthY, bodyY, q) - Math.sin(q * Math.PI) * 50, a.facing > 0 ? 0 : Math.PI, t, 0.9);
+          break;
+        }
+      }
+      FX.burst(ctx, el, d.home, bodyY, span(t, b.impact, b.impact + 0.5), 1);
     }
 
     #drawNumbers(ctx) {
