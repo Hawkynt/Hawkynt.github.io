@@ -1833,4 +1833,18 @@
         assert.ok(tiers[i] <= tiers[i + 1], 'tiers should be non-decreasing');
     });
   });
+  describe('CombatEngine -- outcome at turn start', () => {
+
+    it('a turn starting with no enemies left is a victory', () => {
+      const { CombatEngine, CombatPhase, PRNG } = window.SZ.TacticalRealms;
+      const eng = new CombatEngine(new PRNG(3));
+      eng.initCombat([makeChar('Hero')], [{ templateId: 'rat' }], 10, 8, 'plains');
+      for (const u of eng.units)
+        if (u.faction === 'enemy')
+          u.takeDamage(u.currentHp);
+      eng.nextTurn();
+      eng.startTurn();
+      assert.equal(eng.phase, CombatPhase.VICTORY);
+    });
+  });
 })();
