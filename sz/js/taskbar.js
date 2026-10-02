@@ -4,6 +4,15 @@
 
   const DEFAULT_MRU_APPS = ['calculator', 'notepad', 'explorer'];
 
+  // menu labels may come from file and folder names: always set them as text
+  function _span(text, className) {
+    const s = document.createElement('span');
+    if (className)
+      s.className = className;
+    s.textContent = text;
+    return s;
+  }
+
   class Taskbar {
     #element;
     #windowList;
@@ -259,7 +268,7 @@
         for (const [catName, folder] of sorted) {
           const catEl = document.createElement('div');
           catEl.className = 'sz-menu-item sz-menu-category';
-          catEl.innerHTML = `<span class="sz-menu-category-icon">\uD83D\uDCC1</span><span>${catName}</span><span class="sz-menu-arrow">\u25B6</span>`;
+          catEl.append(_span('\uD83D\uDCC1', 'sz-menu-category-icon'), _span(catName), _span('\u25B6', 'sz-menu-arrow'));
 
           const showFlyout = () => {
             // Remove active from other categories
@@ -373,7 +382,7 @@
         }
         const el = document.createElement('div');
         el.className = 'sz-menu-item sz-menu-system-item';
-        el.innerHTML = `<span>${si.label}</span>`;
+        el.append(_span(si.label));
         const launch = () => {
           this.#closeStartMenu();
           if (si.appId && this.#onAppLaunch)
@@ -403,10 +412,13 @@
     #createMenuItem(name, icon, onClick, appId) {
       const el = document.createElement('div');
       el.className = 'sz-menu-item';
-      if (icon)
-        el.innerHTML = `<img src="${icon}" alt=""><span>${name}</span>`;
-      else
-        el.innerHTML = `<span>${name}</span>`;
+      if (icon) {
+        const img = document.createElement('img');
+        img.src = icon;
+        img.alt = '';
+        el.append(img);
+      }
+      el.append(_span(name));
       el.addEventListener('pointerup', (e) => {
         if (e.button !== 0) return;
         e.stopPropagation();
