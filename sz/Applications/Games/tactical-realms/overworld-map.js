@@ -23,23 +23,23 @@
 
   const LOCATION_TYPES = Object.freeze([
     Object.freeze({ tile: Tile.DUNGEON, name: 'Goblin Cave', difficulty: 1, biome: 'cave', enemies: ['goblin', 'wolf', 'rat'], minCount: 1, maxCount: 2 }),
-    Object.freeze({ tile: Tile.DUNGEON, name: 'Skeleton Crypt', difficulty: 2, biome: 'dungeon_floor', enemies: ['skeleton', 'skeleton', 'bandit'], minCount: 2, maxCount: 3 }),
+    Object.freeze({ tile: Tile.DUNGEON, name: 'Skeleton Crypt', difficulty: 2, biome: 'dungeon', enemies: ['skeleton', 'skeleton', 'bandit'], minCount: 2, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Bandit Stronghold', difficulty: 2, biome: 'ruins', enemies: ['bandit', 'bandit', 'wolf'], minCount: 2, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Wolf Den', difficulty: 1, biome: 'forest', enemies: ['wolf', 'wolf', 'goblin'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Dark Cavern', difficulty: 3, biome: 'cave', enemies: ['skeleton', 'bandit', 'wolf'], minCount: 2, maxCount: 4 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Cursed Ruins', difficulty: 3, biome: 'ruins', enemies: ['skeleton', 'bandit', 'goblin'], minCount: 2, maxCount: 4 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Spider Nest', difficulty: 2, biome: 'cave', enemies: ['spider', 'spider', 'rat'], minCount: 2, maxCount: 4 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Orc Fortress', difficulty: 3, biome: 'mountain', enemies: ['orc', 'orc', 'goblin', 'wolf'], minCount: 2, maxCount: 4 }),
-    Object.freeze({ tile: Tile.DUNGEON, name: 'Mage Tower', difficulty: 4, biome: 'dungeon_floor', enemies: ['dark_mage', 'skeleton', 'wraith'], minCount: 2, maxCount: 3 }),
+    Object.freeze({ tile: Tile.DUNGEON, name: 'Mage Tower', difficulty: 4, biome: 'dungeon', enemies: ['dark_mage', 'skeleton', 'wraith'], minCount: 2, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Troll Bridge', difficulty: 3, biome: 'forest', enemies: ['troll', 'goblin'], minCount: 1, maxCount: 2 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Rat Warren', difficulty: 1, biome: 'cave', enemies: ['rat', 'rat', 'rat'], minCount: 2, maxCount: 5 }),
-    Object.freeze({ tile: Tile.DUNGEON, name: 'Haunted Catacombs', difficulty: 4, biome: 'dungeon_floor', enemies: ['wraith', 'skeleton', 'skeleton'], minCount: 2, maxCount: 4 }),
+    Object.freeze({ tile: Tile.DUNGEON, name: 'Haunted Catacombs', difficulty: 4, biome: 'dungeon', enemies: ['wraith', 'skeleton', 'skeleton'], minCount: 2, maxCount: 4 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Ogre Lair', difficulty: 4, biome: 'cave', enemies: ['ogre', 'orc', 'goblin'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Brigand Camp', difficulty: 2, biome: 'forest', enemies: ['bandit', 'bandit', 'bandit'], minCount: 2, maxCount: 4 }),
-    Object.freeze({ tile: Tile.DUNGEON, name: 'Minotaur Labyrinth', difficulty: 4, biome: 'dungeon_floor', enemies: ['minotaur', 'hobgoblin', 'ghoul'], minCount: 1, maxCount: 3 }),
+    Object.freeze({ tile: Tile.DUNGEON, name: 'Minotaur Labyrinth', difficulty: 4, biome: 'dungeon', enemies: ['minotaur', 'hobgoblin', 'ghoul'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Wyvern Roost', difficulty: 5, biome: 'mountain', enemies: ['wyvern', 'dire_wolf'], minCount: 1, maxCount: 2 }),
-    Object.freeze({ tile: Tile.DUNGEON, name: "Lich's Sanctum", difficulty: 6, biome: 'dungeon_floor', enemies: ['lich', 'wraith', 'skeleton', 'ghoul'], minCount: 2, maxCount: 4 }),
-    Object.freeze({ tile: Tile.DUNGEON, name: 'Vampire Crypt', difficulty: 5, biome: 'dungeon_floor', enemies: ['vampire_spawn', 'ghoul', 'skeleton'], minCount: 2, maxCount: 3 }),
+    Object.freeze({ tile: Tile.DUNGEON, name: "Lich's Sanctum", difficulty: 6, biome: 'dungeon', enemies: ['lich', 'wraith', 'skeleton', 'ghoul'], minCount: 2, maxCount: 4 }),
+    Object.freeze({ tile: Tile.DUNGEON, name: 'Vampire Crypt', difficulty: 5, biome: 'dungeon', enemies: ['vampire_spawn', 'ghoul', 'skeleton'], minCount: 2, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Dragon Lair', difficulty: 7, biome: 'cave', enemies: ['dragon_wyrmling', 'hobgoblin', 'hobgoblin'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Dire Wolf Pack', difficulty: 3, biome: 'forest', enemies: ['dire_wolf', 'dire_wolf', 'wolf'], minCount: 2, maxCount: 4 }),
     Object.freeze({ tile: Tile.TOWN, name: 'Village', difficulty: 0 }),
@@ -56,7 +56,7 @@
     Object.freeze({ tile: Tile.DUNGEON, name: 'Lizardfolk Village', difficulty: 2, biome: 'swamp', enemies: ['lizardfolk', 'lizardfolk', 'cockatrice'], minCount: 2, maxCount: 4 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Basilisk Lair', difficulty: 3, biome: 'cave', enemies: ['basilisk', 'cockatrice', 'spider'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Harpy Nest', difficulty: 3, biome: 'mountain', enemies: ['harpy', 'harpy', 'stirge'], minCount: 2, maxCount: 4 }),
-    Object.freeze({ tile: Tile.DUNGEON, name: 'Zombie Graveyard', difficulty: 2, biome: 'dungeon_floor', enemies: ['zombie', 'zombie', 'ghoul', 'skeleton'], minCount: 2, maxCount: 5 }),
+    Object.freeze({ tile: Tile.DUNGEON, name: 'Zombie Graveyard', difficulty: 2, biome: 'dungeon', enemies: ['zombie', 'zombie', 'ghoul', 'skeleton'], minCount: 2, maxCount: 5 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Worg Hunting Grounds', difficulty: 2, biome: 'forest', enemies: ['worg', 'worg', 'wolf'], minCount: 2, maxCount: 4 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Gargoyle Perch', difficulty: 4, biome: 'ruins', enemies: ['gargoyle', 'gargoyle', 'wight'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Owlbear Territory', difficulty: 3, biome: 'forest', enemies: ['owlbear', 'wolf', 'dire_wolf'], minCount: 1, maxCount: 3 }),
@@ -64,9 +64,9 @@
     Object.freeze({ tile: Tile.DUNGEON, name: 'Phase Spider Web', difficulty: 3, biome: 'cave', enemies: ['phase_spider', 'spider', 'spider'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: "Giant's Keep", difficulty: 5, biome: 'mountain', enemies: ['hill_giant', 'ogre'], minCount: 1, maxCount: 2 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Elemental Rift', difficulty: 5, biome: 'lava', enemies: ['fire_elemental', 'fire_elemental'], minCount: 1, maxCount: 3 }),
-    Object.freeze({ tile: Tile.DUNGEON, name: 'Mind Flayer Colony', difficulty: 6, biome: 'dungeon_floor', enemies: ['mind_flayer', 'wight', 'ghoul'], minCount: 1, maxCount: 3 }),
+    Object.freeze({ tile: Tile.DUNGEON, name: 'Mind Flayer Colony', difficulty: 6, biome: 'dungeon', enemies: ['mind_flayer', 'wight', 'ghoul'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Dragon Hoard', difficulty: 8, biome: 'cave', enemies: ['young_dragon', 'kobold', 'kobold'], minCount: 1, maxCount: 3 }),
-    Object.freeze({ tile: Tile.DUNGEON, name: "Death Knight's Tomb", difficulty: 8, biome: 'dungeon_floor', enemies: ['death_knight', 'wight', 'skeleton'], minCount: 1, maxCount: 3 }),
+    Object.freeze({ tile: Tile.DUNGEON, name: "Death Knight's Tomb", difficulty: 8, biome: 'dungeon', enemies: ['death_knight', 'wight', 'skeleton'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Frozen Fortress', difficulty: 7, biome: 'mountain', enemies: ['frost_giant', 'worg', 'dire_wolf'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Demon Gate', difficulty: 7, biome: 'lava', enemies: ['demon', 'devil', 'fire_elemental'], minCount: 1, maxCount: 3 }),
     Object.freeze({ tile: Tile.DUNGEON, name: 'Infernal Pit', difficulty: 6, biome: 'lava', enemies: ['devil', 'devil', 'demon'], minCount: 1, maxCount: 3 }),
@@ -113,6 +113,15 @@
     return noise2d(col, row, seed + 48611, 12);
   }
 
+  // Home Camp and the four locations around it; type indexes LOCATION_TYPES.
+  const STARTING_LOCATIONS = Object.freeze([
+    Object.freeze({ col: 0, row: 0, type: null }),
+    Object.freeze({ col: 5, row: -3, type: 0 }),
+    Object.freeze({ col: -4, row: 4, type: 20 }),
+    Object.freeze({ col: 8, row: 5, type: 3 }),
+    Object.freeze({ col: -6, row: -5, type: 1 }),
+  ]);
+
   class OverworldMap {
     #worldSeed;
     #chunks;
@@ -142,11 +151,10 @@
       if (loc2)
         return loc2.tile;
 
-      if (this.#roads.has(key)) {
-        const base = this.#baseTerrain(col, row);
-        if (base !== Tile.WATER && base !== Tile.MOUNTAIN)
-          return Tile.ROAD;
-      }
+      // Roads always win: across water they are causeways, through mountains
+      // passes, so every location stays reachable.
+      if (this.#roads.has(key))
+        return Tile.ROAD;
 
       return this.#baseTerrain(col, row);
     }
@@ -243,6 +251,17 @@
           this.#drawRoad(baseCol, baseRow, nearest.col, nearest.row);
       }
 
+      // Cells around the start always link to the starting area; otherwise
+      // they only link to cells generated before them, which can leave the
+      // start cut off from the rest of the road network.
+      if (Math.abs(gcx) <= 1 && Math.abs(gcy) <= 1) {
+        const home = STARTING_LOCATIONS.reduce((best, p) => {
+          const d = Math.abs(p.col - baseCol) + Math.abs(p.row - baseRow);
+          return d < best.d ? { d, p } : best;
+        }, { d: Infinity, p: null }).p;
+        this.#drawRoad(baseCol, baseRow, home.col, home.row);
+      }
+
       const centerCol = Math.round(LOCATION_SPACING / 2);
       const centerRow = Math.round(LOCATION_SPACING / 2);
       this.#drawRoad(baseCol, baseRow,
@@ -257,29 +276,15 @@
       }));
       this.#clearTerrainAround(0, 0);
 
-      this.#locations.set(this.#locationKey(5, -3), Object.freeze({
-        ...LOCATION_TYPES[0], col: 5, row: -3
-      }));
-      this.#clearTerrainAround(5, -3);
-      this.#drawRoad(0, 0, 5, -3);
-
-      this.#locations.set(this.#locationKey(-4, 4), Object.freeze({
-        ...LOCATION_TYPES[20], col: -4, row: 4
-      }));
-      this.#clearTerrainAround(-4, 4);
-      this.#drawRoad(0, 0, -4, 4);
-
-      this.#locations.set(this.#locationKey(8, 5), Object.freeze({
-        ...LOCATION_TYPES[3], col: 8, row: 5
-      }));
-      this.#clearTerrainAround(8, 5);
-      this.#drawRoad(0, 0, 8, 5);
-
-      this.#locations.set(this.#locationKey(-6, -5), Object.freeze({
-        ...LOCATION_TYPES[1], col: -6, row: -5
-      }));
-      this.#clearTerrainAround(-6, -5);
-      this.#drawRoad(0, 0, -6, -5);
+      for (const p of STARTING_LOCATIONS) {
+        if (p.type === null)
+          continue;
+        this.#locations.set(this.#locationKey(p.col, p.row), Object.freeze({
+          ...LOCATION_TYPES[p.type], col: p.col, row: p.row
+        }));
+        this.#clearTerrainAround(p.col, p.row);
+        this.#drawRoad(0, 0, p.col, p.row);
+      }
     }
 
     #pickLocationType(rng, dist) {

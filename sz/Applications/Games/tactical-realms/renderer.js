@@ -7,6 +7,14 @@
   const DEFAULT_HEIGHT = 720;
   const DEFAULT_TILE_SIZE = 32;
 
+  function brighten(hex, f) {
+    if (typeof hex !== 'string' || hex.charAt(0) !== '#' || hex.length !== 7)
+      return hex;
+    const n = parseInt(hex.slice(1), 16);
+    const ch = sh => Math.min(255, Math.round(((n >> sh) & 255) * f));
+    return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+  }
+
   class Renderer {
     #canvas;
     #ctx;
@@ -63,7 +71,7 @@
       this.#compositor.drawComposite(ctx, [{ img, rect, tint }], destSize, dx, dy);
     }
 
-    #drawCreatureSprite(ctx, creatureId, category, dx, dy, destSize, animType, direction, frame) {
+    #drawCreatureSprite(ctx, creatureId, category, dx, dy, destSize, animType, direction, frame, flash) {
       const resolver = TR.spriteResolver;
       if (!resolver)
         return false;
@@ -78,10 +86,15 @@
         ctx.scale(-1, 1);
         dx = 0; dy = 0;
       }
-      if (sprite.tint)
-        this.#drawTintedSprite(ctx, sprite.img,
-          { x: sprite.srcX, y: sprite.srcY, w: sprite.srcW, h: sprite.srcH },
-          dx, dy, destSize, sprite.tint);
+      const rect = { x: sprite.srcX, y: sprite.srcY, w: sprite.srcW, h: sprite.srcH };
+      // Flash is quantised so the compositor cache holds only a few variants.
+      const flashStep = flash > 0 ? Math.ceil(flash * 4) / 4 : 0;
+      if (flashStep > 0) {
+        const layers = [{ img: sprite.img, rect, tint: sprite.tint || null },
+          { img: sprite.img, rect, tint: `rgba(255,255,255,${(flashStep * 0.85).toFixed(2)})` }];
+        this.#compositor.drawComposite(ctx, layers, Math.round(destSize), Math.round(dx), Math.round(dy));
+      } else if (sprite.tint)
+        this.#drawTintedSprite(ctx, sprite.img, rect, Math.round(dx), Math.round(dy), Math.round(destSize), sprite.tint);
       else
         ctx.drawImage(sprite.img, sprite.srcX, sprite.srcY, sprite.srcW, sprite.srcH,
           dx, dy, destSize, destSize);
@@ -137,31 +150,6 @@
       this.#ctx.drawImage(this.#buffer, 0, 0);
     }
 
-    drawTileMap(data, cols, rows) {
-      if (!this.#bufCtx)
-        return;
-      const ctx = this.#bufCtx;
-      const ts = this.#tileSize;
-      const cx = this.#camera.x;
-      const cy = this.#camera.y;
-      const startCol = Math.max(0, Math.floor(cx / ts));
-      const startRow = Math.max(0, Math.floor(cy / ts));
-      const endCol = Math.min(cols, Math.ceil((cx + this.#width) / ts));
-      const endRow = Math.min(rows, Math.ceil((cy + this.#height) / ts));
-
-      ctx.imageSmoothingEnabled = false;
-      for (let r = startRow; r < endRow; ++r) {
-        for (let c = startCol; c < endCol; ++c) {
-          const tile = data[r * cols + c];
-          if (tile === 0)
-            continue;
-          const sx = c * ts - cx;
-          const sy = r * ts - cy;
-          ctx.fillStyle = this.#tileColor(tile);
-          ctx.fillRect(sx, sy, ts, ts);
-        }
-      }
-    }
 
     drawInfiniteMap(tileGetter, dimension) {
       if (!this.#bufCtx)
@@ -223,9 +211,12 @@
                   srcImg = genSheet;
               }
             }
-            if (!rect && spriteMap)
+            if (!rect && spriteMap) {
               rect = spriteMap[TILE_NAMES[tile]];
-            if (rect) {
+              if (rect && rect.sheet)
+                srcImg = assets.get(rect.sheet);
+            }
+            if (rect && srcImg) {
               ctx.drawImage(srcImg, rect.x, rect.y, rect.w, rect.h, sx, sy, tsDraw, tsDraw);
               drawn = true;
             }
@@ -311,6 +302,13 @@
       if (!this.#bufCtx)
         return;
       const ctx = this.#bufCtx;
+      const SA = (window.SZ && window.SZ.TacticalRealms && window.SZ.TacticalRealms.ScreenArt) || null;
+      if (SA) {
+        // coloured buttons (green confirm, red leave, ...) keep their hue as an accent stripe
+        const accent = bg === '#444' || bg === '#333' ? null : brighten(bg, 2.2);
+        SA.button(ctx, x, y, w, h, text, { accent, hover });
+        return;
+      }
       ctx.fillStyle = hover ? '#666' : bg;
       ctx.fillRect(x, y, w, h);
       ctx.strokeStyle = '#888';
@@ -383,18 +381,31 @@
       const cx = x + w / 2;
       const pad = 10;
 
-      const assets = this.#assets;
-      const classId = character.class;
-      const portraitSize = 48;
-      const px = cx - portraitSize / 2;
-      const py = cy;
-      let portraitDrawn = false;
-      if (assets && assets.ready)
-        portraitDrawn = this.#drawCreatureSprite(ctx, classId, 'party', px, py, portraitSize);
-      if (portraitDrawn) {
+      const SA = TR.ScreenArt;
+      if (SA && TR.BattleSprites) {
+        // the hero on a little stage, idling
+        const pw = w - 20, ph = 100;
+        const px = x + 10, py = cy - 4;
+        const g = ctx.createLinearGradient(0, py, 0, py + ph);
+        g.addColorStop(0, '#2c3a60');
+        g.addColorStop(0.72, '#1a2240');
+        g.addColorStop(0.72, '#3a3024');
+        g.addColorStop(1, '#241c14');
+        ctx.fillStyle = g;
+        ctx.fillRect(px, py, pw, ph);
+        const t = (typeof performance !== 'undefined' ? performance.now() : 0) / 1000;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(px, py, pw, ph);
+        ctx.clip();
+        // feet below the stage: head to waist fills it, like a portrait
+        TR.BattleSprites.draw(ctx, SA.asUnit(character), 'idle', (t * 0.8) % 1, cx, SA.bustFootY(character, py, 144, 8), 144, 1);
+        ctx.restore();
         ctx.strokeStyle = borderColor;
-        ctx.strokeRect(px, py, portraitSize, portraitSize);
-        cy += portraitSize + 6;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(px, py, pw, ph);
+        ctx.lineWidth = 1;
+        cy += ph + 12;
       } else {
         cy += 8;
       }
@@ -537,123 +548,121 @@
         }
     }
 
-    drawUnitToken(col, row, unit, tileSize, offsetX, offsetY, { active = false, dead = false } = {}) {
+    // fx: optional CombatFx.unitState() result ({ dx, dy, flash, alpha, tint }).
+    drawUnitToken(col, row, unit, tileSize, offsetX, offsetY, { active = false, dead = false, fx = null, time = 0 } = {}) {
       if (!this.#bufCtx)
         return;
       const ctx = this.#bufCtx;
-      const dx = offsetX + col * tileSize;
-      const dy = offsetY + row * tileSize;
-      const cx = dx + tileSize / 2;
-      const cy = dy + tileSize / 2;
-      const radius = tileSize * 0.38;
+      const ts = tileSize;
+      const dx = offsetX + col * ts + (fx ? fx.dx : 0);
+      const dy = offsetY + row * ts + (fx ? fx.dy : 0);
+      const cx = dx + ts / 2;
+      const footY = dy + ts * 0.9;
+      const isParty = unit.faction === 'party';
+      // A unit killed this turn fades out (fx.dying); older corpses stay faint.
+      const dying = dead && fx && fx.dying;
+      const alpha = dead ? (dying ? fx.alpha : 0.28) : (fx ? fx.alpha : 1);
 
-      if (active) {
-        ctx.strokeStyle = '#ffd700';
-        ctx.lineWidth = 2;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // ground shadow and faction base ring
+      ctx.fillStyle = 'rgba(0,0,0,0.38)';
+      ctx.beginPath();
+      ctx.ellipse(cx, footY, ts * 0.32, ts * 0.11, 0, 0, Math.PI * 2);
+      ctx.fill();
+      if (!dead || dying) {
+        ctx.strokeStyle = isParty ? 'rgba(90,170,255,0.85)' : 'rgba(255,90,80,0.85)';
+        ctx.lineWidth = Math.max(1.5, ts * 0.04);
         ctx.beginPath();
-        ctx.arc(cx, cy, radius + 3, 0, Math.PI * 2);
+        ctx.ellipse(cx, footY, ts * 0.36, ts * 0.13, 0, 0, Math.PI * 2);
         ctx.stroke();
-        ctx.lineWidth = 1;
+      }
+      if (active) {
+        const pulse = 0.5 + 0.5 * Math.sin(time * 5);
+        ctx.strokeStyle = `rgba(255,215,90,${(0.55 + 0.45 * pulse).toFixed(3)})`;
+        ctx.lineWidth = Math.max(2, ts * 0.05);
+        ctx.beginPath();
+        ctx.ellipse(cx, footY, ts * (0.4 + 0.04 * pulse), ts * (0.15 + 0.015 * pulse), 0, 0, Math.PI * 2);
+        ctx.stroke();
       }
 
-      let spriteDrawn = false;
+      // idle bob, desynchronised per unit
+      let seed = 0;
+      for (let i = 0; i < unit.id.length; ++i)
+        seed = (seed * 31 + unit.id.charCodeAt(i)) | 0;
+      const bob = dead ? 0 : Math.round(Math.sin(time * 3.2 + (seed % 628) / 100) * ts * 0.035);
+      const size = ts - 4;
+      const sx = dx + 2;
+      const sy = dy + 2 - ts * 0.06 + bob;
 
-      if (!dead) {
-        const classId = unit.character ? unit.character.class : null;
-        const category = unit.faction === 'party' ? 'party' : 'enemy';
-        spriteDrawn = this.#drawCreatureSprite(ctx, classId, category, dx + 2, dy + 2, tileSize - 4);
-      }
+      const classId = unit.character ? unit.character.class : null;
+      const spriteDrawn = this.#drawCreatureSprite(ctx, classId, isParty ? 'party' : 'enemy', sx, sy, size,
+        null, null, null, fx && !dead ? fx.flash : (dying ? 0.5 * (1 - fx.alpha) : 0));
 
       if (!spriteDrawn) {
-        ctx.fillStyle = dead ? '#444' : (unit.faction === 'party' ? '#4488cc' : '#cc4444');
+        ctx.fillStyle = dead ? '#444' : (isParty ? '#4488cc' : '#cc4444');
         ctx.beginPath();
-        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.arc(cx, dy + ts / 2 + bob, ts * 0.36, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1;
         ctx.stroke();
-
         ctx.fillStyle = '#fff';
-        ctx.font = `bold ${Math.max(8, tileSize * 0.3)|0}px monospace`;
+        ctx.font = `bold ${Math.max(8, ts * 0.3) | 0}px monospace`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(unit.name.charAt(0).toUpperCase(), cx, cy);
+        ctx.fillText(unit.name.charAt(0).toUpperCase(), cx, dy + ts / 2 + bob);
         ctx.textBaseline = 'alphabetic';
         ctx.textAlign = 'left';
       }
 
-      if (dead && spriteDrawn) {
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(dx, dy, tileSize, tileSize);
-        ctx.fillStyle = '#c44';
-        ctx.font = `bold ${Math.max(10, tileSize * 0.35)|0}px monospace`;
-        ctx.textAlign = 'center';
-        ctx.fillText('X', cx, cy + 3);
-        ctx.textAlign = 'left';
+      if (fx && fx.tint && !dead) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = fx.tint;
+        ctx.beginPath();
+        ctx.ellipse(cx, dy + ts * 0.5, ts * 0.42, ts * 0.46, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      ctx.restore();
+
+      // active marker: bouncing chevron above the head
+      if (active && !dead) {
+        const hop = Math.abs(Math.sin(time * 4)) * ts * 0.08;
+        const ay = dy - ts * 0.02 - hop;
+        const aw = ts * 0.14;
+        ctx.fillStyle = '#ffd75a';
+        ctx.strokeStyle = '#3a2a08';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(cx - aw, ay - aw);
+        ctx.lineTo(cx + aw, ay - aw);
+        ctx.lineTo(cx, ay + aw * 0.4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
       }
 
       if (!dead && unit.currentHp < unit.maxHp) {
-        const barW = tileSize - 4;
-        const barH = 3;
-        const bx = dx + 2;
-        const by = dy + tileSize - 5;
-        ctx.fillStyle = '#300';
-        ctx.fillRect(bx, by, barW, barH);
+        const barW = ts * 0.7;
+        const barH = Math.max(3, ts * 0.07);
+        const bx = cx - barW / 2;
+        const by = dy + ts - barH - 1;
         const ratio = Math.max(0, unit.currentHp / unit.maxHp);
-        ctx.fillStyle = ratio > 0.5 ? '#4a4' : ratio > 0.25 ? '#aa4' : '#a44';
+        ctx.fillStyle = 'rgba(10,6,14,0.85)';
+        ctx.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
+        ctx.fillStyle = '#3a1010';
+        ctx.fillRect(bx, by, barW, barH);
+        ctx.fillStyle = ratio > 0.5 ? '#48d060' : ratio > 0.25 ? '#e0c040' : '#e04838';
         ctx.fillRect(bx, by, barW * ratio, barH);
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(bx, by, barW * ratio, Math.max(1, barH * 0.35));
       }
     }
 
-    drawUnitTokenAt(col, row, unit, tileSize, offsetX, offsetY, { active = false } = {}) {
-      if (!this.#bufCtx)
-        return;
-      const ctx = this.#bufCtx;
-      const dx = offsetX + col * tileSize;
-      const dy = offsetY + row * tileSize;
-      const cx = dx + tileSize / 2;
-      const cy = dy + tileSize / 2;
-      const radius = tileSize * 0.38;
-
-      if (active) {
-        ctx.strokeStyle = '#ffd700';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(cx, cy, radius + 3, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.lineWidth = 1;
-      }
-
-      const classId = unit.character ? unit.character.class : null;
-      const category = unit.faction === 'party' ? 'party' : 'enemy';
-      let spriteDrawn = this.#drawCreatureSprite(ctx, classId, category, dx + 2, dy + 2, tileSize - 4);
-
-      if (!spriteDrawn) {
-        ctx.fillStyle = unit.faction === 'party' ? '#4488cc' : '#cc4444';
-        ctx.beginPath();
-        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#000';
-        ctx.stroke();
-        ctx.fillStyle = '#fff';
-        ctx.font = `bold ${Math.max(10, tileSize * 0.3)|0}px monospace`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(unit.name.charAt(0).toUpperCase(), cx, cy);
-        ctx.textBaseline = 'alphabetic';
-        ctx.textAlign = 'left';
-      }
-
-      if (unit.currentHp < unit.maxHp) {
-        const barW = tileSize - 4;
-        const barH = 3;
-        const bx = dx + 2;
-        const by = dy + tileSize - 5;
-        ctx.fillStyle = '#300';
-        ctx.fillRect(bx, by, barW, barH);
-        const ratio = Math.max(0, unit.currentHp / unit.maxHp);
-        ctx.fillStyle = ratio > 0.5 ? '#4a4' : ratio > 0.25 ? '#aa4' : '#a44';
-        ctx.fillRect(bx, by, barW * ratio, barH);
-      }
+    drawUnitTokenAt(col, row, unit, tileSize, offsetX, offsetY, { active = false, fx = null, time = 0 } = {}) {
+      this.drawUnitToken(col, row, unit, tileSize, offsetX, offsetY, { active, dead: false, fx, time });
     }
 
     highlightTiles(tiles, tileSize, offsetX, offsetY, color) {
@@ -685,136 +694,9 @@
       }
     }
 
-    drawTurnOrderBar(turnOrder, units, currentIndex, x, y, w) {
-      if (!this.#bufCtx)
-        return;
-      const ctx = this.#bufCtx;
-      const h = 42;
-      ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      ctx.fillRect(x, y, w, h);
-      ctx.strokeStyle = '#555';
-      ctx.strokeRect(x, y, w, h);
 
-      const cellW = Math.min(120, (w - 10) / Math.max(1, turnOrder.length));
-      for (let i = 0; i < turnOrder.length; ++i) {
-        const entry = turnOrder[i];
-        const u = units.find(u => u.id === entry.id);
-        if (!u)
-          continue;
-        const cx = x + 5 + i * cellW + cellW / 2;
-        const isCurrent = i === currentIndex;
 
-        ctx.fillStyle = !u.isAlive ? '#444' : isCurrent ? '#ffd700' : (u.faction === 'party' ? '#6af' : '#f66');
-        ctx.font = isCurrent ? 'bold 13px monospace' : '12px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(u.name.substring(0, 10), cx, y + 18);
-        if (u.isAlive) {
-          ctx.fillStyle = '#888';
-          ctx.font = '11px monospace';
-          ctx.fillText(`${u.currentHp}/${u.maxHp}`, cx, y + 33);
-        } else {
-          ctx.fillStyle = '#666';
-          ctx.font = '11px monospace';
-          ctx.fillText('DEAD', cx, y + 33);
-        }
-      }
-      ctx.textAlign = 'left';
-    }
 
-    drawActionMenu(buttons, x, y, hoverIndex) {
-      if (!this.#bufCtx)
-        return;
-      const ctx = this.#bufCtx;
-      const w = 180;
-      const btnH = 36;
-      const gap = 6;
-      const totalH = buttons.length * (btnH + gap) + 10;
-
-      ctx.fillStyle = 'rgba(20,20,30,0.9)';
-      ctx.fillRect(x, y, w, totalH);
-      ctx.strokeStyle = '#555';
-      ctx.strokeRect(x, y, w, totalH);
-
-      for (let i = 0; i < buttons.length; ++i) {
-        const btn = buttons[i];
-        const by = y + 5 + i * (btnH + gap);
-        const isHover = i === hoverIndex;
-        const bg = btn.disabled ? '#222' : (isHover ? '#555' : (btn.bg || '#333'));
-        ctx.fillStyle = bg;
-        ctx.fillRect(x + 5, by, w - 10, btnH);
-        ctx.strokeStyle = btn.disabled ? '#333' : '#777';
-        ctx.strokeRect(x + 5, by, w - 10, btnH);
-        ctx.fillStyle = btn.disabled ? '#555' : '#fff';
-        ctx.font = '15px monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(btn.label, x + w / 2, by + btnH / 2);
-      }
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'alphabetic';
-    }
-
-    drawSpellMenu(spellBtns, x, y, hoverIndex) {
-      if (!this.#bufCtx || !spellBtns || spellBtns.length === 0)
-        return;
-      const ctx = this.#bufCtx;
-      const w = 180;
-      const btnH = 28;
-      const gap = 3;
-      const totalH = spellBtns.length * (btnH + gap) + 8;
-
-      ctx.fillStyle = 'rgba(20,15,40,0.95)';
-      ctx.fillRect(x, y, w, totalH);
-      ctx.strokeStyle = '#66a';
-      ctx.strokeRect(x, y, w, totalH);
-
-      ctx.font = '11px monospace';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-
-      for (let i = 0; i < spellBtns.length; ++i) {
-        const btn = spellBtns[i];
-        const by = y + 4 + i * (btnH + gap);
-        const isHover = i === hoverIndex;
-        const bg = btn.disabled ? '#1a1a2a' : (isHover ? '#444a7a' : (btn.bg || '#2a2a5a'));
-        ctx.fillStyle = bg;
-        ctx.fillRect(x + 4, by, w - 8, btnH);
-        ctx.strokeStyle = btn.disabled ? '#333' : '#77a';
-        ctx.strokeRect(x + 4, by, w - 8, btnH);
-        ctx.fillStyle = btn.disabled ? '#555' : '#cce';
-        ctx.fillText(btn.label, x + 8, by + btnH / 2);
-        if (btn.range !== undefined) {
-          ctx.fillStyle = '#888';
-          ctx.textAlign = 'right';
-          ctx.fillText(`R:${btn.range}`, x + w - 8, by + btnH / 2);
-          ctx.textAlign = 'left';
-        }
-      }
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'alphabetic';
-    }
-
-    drawCombatLog(messages, x, y, w, h) {
-      if (!this.#bufCtx)
-        return;
-      const ctx = this.#bufCtx;
-      ctx.fillStyle = 'rgba(0,0,0,0.8)';
-      ctx.fillRect(x, y, w, h);
-      ctx.strokeStyle = '#444';
-      ctx.strokeRect(x, y, w, h);
-
-      ctx.fillStyle = '#bbb';
-      ctx.font = '12px monospace';
-      ctx.textAlign = 'left';
-      const lineH = 17;
-      const maxLines = Math.floor((h - 8) / lineH);
-      const startIdx = Math.max(0, messages.length - maxLines);
-      for (let i = startIdx; i < messages.length; ++i) {
-        const ly = y + 14 + (i - startIdx) * lineH;
-        const line = messages[i].length > 100 ? messages[i].substring(0, 97) + '...' : messages[i];
-        ctx.fillText(line, x + 8, ly);
-      }
-    }
 
     drawTooltip(x, y, lines) {
       if (!this.#bufCtx || !lines || lines.length === 0)
@@ -876,179 +758,7 @@
       }
     }
 
-    drawUnitInfoPanel(x, y, unit) {
-      if (!this.#bufCtx || !unit)
-        return;
-      const ctx = this.#bufCtx;
-      const w = 180;
-      const h = 115;
-      ctx.fillStyle = 'rgba(20,20,30,0.9)';
-      ctx.fillRect(x, y, w, h);
-      ctx.strokeStyle = '#555';
-      ctx.strokeRect(x, y, w, h);
 
-      ctx.fillStyle = unit.faction === 'party' ? '#6af' : '#f66';
-      ctx.font = 'bold 14px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(unit.name, x + w / 2, y + 22);
-
-      ctx.fillStyle = '#aaa';
-      ctx.font = '12px monospace';
-      ctx.fillText(`HP: ${unit.currentHp}/${unit.maxHp}`, x + w / 2, y + 44);
-      ctx.fillText(`AC: ${unit.ac}  BAB: +${unit.bab}`, x + w / 2, y + 62);
-      ctx.fillText(`Spd: ${unit.speed}  Init: ${unit.dexMod >= 0 ? '+' : ''}${unit.dexMod}`, x + w / 2, y + 80);
-
-      const barW = w - 16;
-      const barH = 7;
-      const bx = x + 8;
-      const by = y + 92;
-      ctx.fillStyle = '#300';
-      ctx.fillRect(bx, by, barW, barH);
-      const ratio = unit.maxHp > 0 ? Math.max(0, unit.currentHp / unit.maxHp) : 0;
-      ctx.fillStyle = ratio > 0.5 ? '#4a4' : ratio > 0.25 ? '#aa4' : '#a44';
-      ctx.fillRect(bx, by, barW * ratio, barH);
-
-      ctx.textAlign = 'left';
-    }
-
-    drawAttackCutIn(attacker, defender, result, progress) {
-      if (!this.#bufCtx)
-        return;
-      const ctx = this.#bufCtx;
-      const w = this.#width;
-      const h = this.#height;
-
-      const panelW = 600;
-      const panelH = 180;
-      const px = Math.floor((w - panelW) / 2);
-      const py = Math.floor(h * 0.18);
-
-      const fadeIn = Math.min(1, progress * 4);
-      const alpha = fadeIn * 0.92;
-      ctx.save();
-      ctx.globalAlpha = alpha;
-
-      ctx.fillStyle = '#0a0a14';
-      ctx.beginPath();
-      ctx.roundRect(px, py, panelW, panelH, 8);
-      ctx.fill();
-      ctx.strokeStyle = result.hit ? (result.critical ? '#ffd700' : '#cc4444') : '#666';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.roundRect(px, py, panelW, panelH, 8);
-      ctx.stroke();
-      ctx.lineWidth = 1;
-
-      const leftX = px + 20;
-      const rightX = px + panelW - 20;
-      const midX = px + panelW / 2;
-      const topY = py + 20;
-
-      const atkColor = attacker.faction === 'party' ? '#6af' : '#f66';
-      const defColor = defender.faction === 'party' ? '#6af' : '#f66';
-
-      const isSpell = !!result.spellName;
-
-      ctx.fillStyle = atkColor;
-      ctx.font = 'bold 18px serif';
-      ctx.textAlign = 'left';
-      ctx.fillText(attacker.name, leftX, topY);
-      ctx.fillStyle = '#888';
-      ctx.font = '13px monospace';
-      if (isSpell)
-        ctx.fillText(`MP ${attacker.currentMp !== undefined ? attacker.currentMp : '?'}/${attacker.maxMp || '?'}`, leftX, topY + 20);
-      else
-        ctx.fillText(`BAB +${attacker.bab}  STR ${attacker.strMod >= 0 ? '+' : ''}${attacker.strMod}`, leftX, topY + 20);
-
-      ctx.fillStyle = defColor;
-      ctx.font = 'bold 18px serif';
-      ctx.textAlign = 'right';
-      ctx.fillText(defender.name, rightX, topY);
-      ctx.fillStyle = '#888';
-      ctx.font = '13px monospace';
-      ctx.fillText(`AC ${defender.ac}  HP ${defender.currentHp}/${defender.maxHp}`, rightX, topY + 20);
-
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#aaa';
-      ctx.font = '14px monospace';
-      if (isSpell)
-        ctx.fillText(result.spellName, midX, topY + 8);
-      else
-        ctx.fillText('vs', midX, topY + 8);
-
-      const rollY = topY + 54;
-      if (isSpell) {
-        ctx.fillStyle = '#c8f';
-        ctx.font = 'bold 18px monospace';
-        ctx.fillText(`Casts ${result.spellName}`, midX, rollY);
-      } else {
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 20px monospace';
-        ctx.fillText(`d20 = ${result.d20}`, midX - 90, rollY);
-        ctx.fillStyle = '#ccc';
-        ctx.font = '16px monospace';
-        ctx.fillText(`Total: ${result.total}`, midX + 90, rollY);
-      }
-
-      if (!isSpell && result.flanking) {
-        ctx.fillStyle = '#aaf';
-        ctx.font = '12px monospace';
-        ctx.fillText('FLANKING +2', midX, rollY + 20);
-      }
-
-      const resultY = rollY + 48;
-      if (isSpell) {
-        if (result.damage > 0) {
-          ctx.fillStyle = '#bb44ff';
-          ctx.font = 'bold 26px serif';
-          ctx.fillText('HIT!', midX, resultY);
-          ctx.fillStyle = '#cc66ff';
-          ctx.font = 'bold 20px monospace';
-          ctx.fillText(`${result.damage} damage`, midX, resultY + 28);
-        } else if (result.heal > 0) {
-          ctx.fillStyle = '#44ff88';
-          ctx.font = 'bold 26px serif';
-          ctx.fillText('HEALED!', midX, resultY);
-          ctx.fillStyle = '#88ffaa';
-          ctx.font = 'bold 20px monospace';
-          ctx.fillText(`+${result.heal} HP`, midX, resultY + 28);
-        } else {
-          ctx.fillStyle = '#aaccff';
-          ctx.font = 'bold 26px serif';
-          ctx.fillText('CAST!', midX, resultY);
-        }
-      } else if (result.hit) {
-        if (result.critical) {
-          ctx.fillStyle = '#ffd700';
-          ctx.font = 'bold 30px serif';
-          ctx.fillText('CRITICAL HIT!', midX, resultY);
-          ctx.fillStyle = '#ff6666';
-          ctx.font = 'bold 22px monospace';
-          ctx.fillText(`${result.damage} damage`, midX, resultY + 30);
-        } else {
-          ctx.fillStyle = '#44cc44';
-          ctx.font = 'bold 26px serif';
-          ctx.fillText('HIT!', midX, resultY);
-          ctx.fillStyle = '#ff6666';
-          ctx.font = 'bold 20px monospace';
-          ctx.fillText(`${result.damage} damage`, midX, resultY + 28);
-        }
-      } else {
-        if (result.natural1) {
-          ctx.fillStyle = '#cc4444';
-          ctx.font = 'bold 26px serif';
-          ctx.fillText('FUMBLE!', midX, resultY);
-        } else {
-          ctx.fillStyle = '#888888';
-          ctx.font = 'bold 26px serif';
-          ctx.fillText('MISS', midX, resultY);
-        }
-      }
-
-      ctx.globalAlpha = 1;
-      ctx.textAlign = 'left';
-      ctx.restore();
-    }
 
     drawScreenRect(x, y, w, h, color) {
       if (!this.#bufCtx)
@@ -1098,430 +808,167 @@
       }
     }
 
-    drawSlashEffect(x, y, size, progress) {
-      if (!this.#bufCtx)
-        return;
-      const ctx = this.#bufCtx;
-      const cx = x + size / 2;
-      const cy = y + size / 2;
-      const r = size * 0.5;
-      const clamp = Math.min(1, Math.max(0, progress));
-      const alpha = clamp < 0.5 ? clamp * 2 : 2 - clamp * 2;
 
-      ctx.save();
-      ctx.strokeStyle = `rgba(255,255,255,${alpha.toFixed(2)})`;
-      ctx.lineWidth = 3;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(cx - r * 0.6, cy - r * 0.6);
-      ctx.lineTo(cx + r * 0.6 * clamp, cy + r * 0.6 * clamp);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(cx + r * 0.6, cy - r * 0.6);
-      ctx.lineTo(cx - r * 0.6 * clamp, cy + r * 0.6 * clamp);
-      ctx.stroke();
-      ctx.restore();
-    }
 
-    drawSpellEffect(x, y, size, progress) {
-      if (!this.#bufCtx)
-        return;
-      const ctx = this.#bufCtx;
-      const cx = x + size / 2;
-      const cy = y + size / 2;
-      const r = size * 0.45;
-      const clamp = Math.min(1, Math.max(0, progress));
-      const alpha = clamp < 0.5 ? clamp * 2 : 2 - clamp * 2;
 
-      ctx.save();
-      ctx.strokeStyle = `rgba(180,100,255,${alpha.toFixed(2)})`;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r * clamp, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.strokeStyle = `rgba(100,200,255,${(alpha * 0.6).toFixed(2)})`;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r * clamp * 0.6, 0, Math.PI * 2);
-      ctx.stroke();
-      const sparkCount = 6;
-      ctx.fillStyle = `rgba(220,180,255,${alpha.toFixed(2)})`;
-      for (let i = 0; i < sparkCount; ++i) {
-        const angle = (i / sparkCount) * Math.PI * 2 + clamp * Math.PI;
-        const sr = r * clamp * 0.8;
-        const sx = cx + Math.cos(angle) * sr;
-        const sy = cy + Math.sin(angle) * sr;
-        ctx.beginPath();
-        ctx.arc(sx, sy, 2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.restore();
-    }
-
-    drawBattleScene(attacker, defender, result, progress, type) {
+    drawTitleScreen(time) {
       if (!this.#bufCtx)
         return;
       const ctx = this.#bufCtx;
       const w = this.#width;
       const h = this.#height;
-
-      ctx.save();
-
-      const fadeIn = Math.min(1, progress * 6.67);
-      const fadeOut = progress > 0.85 ? Math.max(0, (1 - progress) / 0.15) : 1;
-      const alpha = Math.min(fadeIn, fadeOut);
-      ctx.globalAlpha = alpha;
-
-      const grad = ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#0a0a1e');
-      grad.addColorStop(1, '#1a0a0a');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, w, h);
-
-      const groundY = h * 0.7;
-      ctx.fillStyle = '#1a1a2a';
-      ctx.fillRect(0, groundY, w, h - groundY);
-      ctx.strokeStyle = '#2a2a3a';
-      ctx.beginPath();
-      ctx.moveTo(0, groundY);
-      ctx.lineTo(w, groundY);
-      ctx.stroke();
-
-      const slideIn = progress < 0.15 ? progress / 0.15 : 1;
-      const slideOut = progress > 0.85 ? (1 - progress) / 0.15 : 1;
-      const slide = Math.min(slideIn, slideOut);
-      const spriteSize = 120;
-      const spriteY = groundY - spriteSize - 10;
-      const atkX = -spriteSize + slide * (w * 0.22 + spriteSize);
-      const defX = w - slide * (w * 0.22);
-
-      const drawCharSprite = (unit, cx, cy, tint) => {
-        const classId = unit.character ? unit.character.class : null;
-        const category = unit.faction === 'party' ? 'party' : 'enemy';
-        const drawn = this.#drawCreatureSprite(ctx, classId, category, cx, cy, spriteSize);
-        if (!drawn) {
-          ctx.fillStyle = tint;
-          ctx.beginPath();
-          ctx.arc(cx + spriteSize / 2, cy + spriteSize / 2, spriteSize * 0.4, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = '#fff';
-          ctx.font = `bold ${spriteSize * 0.3 | 0}px serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(unit.name.charAt(0).toUpperCase(), cx + spriteSize / 2, cy + spriteSize / 2);
-          ctx.textBaseline = 'alphabetic';
-        }
-      };
-
-      const atkTint = attacker.faction === 'party' ? '#4488cc' : '#cc4444';
-      const defTint = defender.faction === 'party' ? '#4488cc' : '#cc4444';
-      drawCharSprite(attacker, atkX, spriteY, atkTint);
-      drawCharSprite(defender, defX, spriteY, defTint);
-
-      const plateY = groundY + 10;
-      const plateW = 200;
-      const plateH = 45;
-      const atkPlateX = atkX + spriteSize / 2 - plateW / 2;
-      const defPlateX = defX + spriteSize / 2 - plateW / 2;
-
-      const drawNamePlate = (px, py, unit, color) => {
-        ctx.fillStyle = 'rgba(0,0,0,0.7)';
-        ctx.fillRect(px, py, plateW, plateH);
-        ctx.strokeStyle = color;
-        ctx.strokeRect(px, py, plateW, plateH);
-        ctx.fillStyle = color;
-        ctx.font = 'bold 14px serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(unit.name, px + plateW / 2, py + 16);
-        const barW = plateW - 20;
-        const barH = 6;
-        const bx = px + 10;
-        const by = py + 24;
-        ctx.fillStyle = '#300';
-        ctx.fillRect(bx, by, barW, barH);
-        const ratio = unit.maxHp > 0 ? Math.max(0, unit.currentHp / unit.maxHp) : 0;
-        ctx.fillStyle = ratio > 0.5 ? '#4a4' : ratio > 0.25 ? '#aa4' : '#a44';
-        ctx.fillRect(bx, by, barW * ratio, barH);
-        ctx.fillStyle = '#aaa';
-        ctx.font = '11px monospace';
-        ctx.fillText(`${unit.currentHp}/${unit.maxHp}`, px + plateW / 2, py + 42);
-      };
-
-      drawNamePlate(atkPlateX, plateY, attacker, attacker.faction === 'party' ? '#6af' : '#f66');
-      drawNamePlate(defPlateX, plateY, defender, defender.faction === 'party' ? '#6af' : '#f66');
-
-      const isSpell = type === 'spell_cast';
-      const midX = w / 2;
-      const midY = h * 0.35;
-
-      if (progress > 0.15 && progress < 0.85) {
-        const actionProgress = Math.min(1, (progress - 0.15) / 0.55);
-        ctx.textAlign = 'center';
-
-        if (isSpell) {
-          ctx.fillStyle = '#c8f';
-          ctx.font = 'bold 22px monospace';
-          ctx.fillText(result.spellName || 'Spell', midX, midY - 20);
-          this.drawSpellEffect(defX, spriteY, spriteSize, actionProgress);
-        } else {
-          ctx.fillStyle = '#fff';
-          ctx.font = 'bold 20px monospace';
-          ctx.fillText(`d20 = ${result.d20}`, midX - 70, midY - 20);
-          ctx.fillStyle = '#ccc';
-          ctx.font = '16px monospace';
-          ctx.fillText(`Total: ${result.total}`, midX + 70, midY - 20);
-          if (result.flanking) {
-            ctx.fillStyle = '#aaf';
-            ctx.font = '13px monospace';
-            ctx.fillText('FLANKING +2', midX, midY);
-          }
-          this.drawSlashEffect(defX, spriteY, spriteSize, actionProgress);
-        }
-      }
-
-      if (progress > 0.5 && progress < 0.85) {
-        const resultAlpha = Math.min(1, (progress - 0.5) / 0.15);
-        ctx.globalAlpha = alpha * resultAlpha;
-        ctx.textAlign = 'center';
-
-        if (isSpell) {
-          if (result.damage > 0) {
-            ctx.fillStyle = '#bb44ff';
-            ctx.font = 'bold 36px serif';
-            ctx.fillText('HIT!', midX, midY + 40);
-            ctx.fillStyle = '#cc66ff';
-            ctx.font = 'bold 24px monospace';
-            ctx.fillText(`${result.damage} damage`, midX, midY + 72);
-          } else if (result.heal > 0) {
-            ctx.fillStyle = '#44ff88';
-            ctx.font = 'bold 36px serif';
-            ctx.fillText('HEALED!', midX, midY + 40);
-            ctx.fillStyle = '#88ffaa';
-            ctx.font = 'bold 24px monospace';
-            ctx.fillText(`+${result.heal} HP`, midX, midY + 72);
-          } else {
-            ctx.fillStyle = '#aaccff';
-            ctx.font = 'bold 36px serif';
-            ctx.fillText('CAST!', midX, midY + 40);
-          }
-        } else if (result.hit) {
-          if (result.critical) {
-            ctx.fillStyle = '#ffd700';
-            ctx.font = 'bold 40px serif';
-            ctx.fillText('CRITICAL HIT!', midX, midY + 40);
-            ctx.fillStyle = '#ff6666';
-            ctx.font = 'bold 28px monospace';
-            ctx.fillText(`${result.damage} damage`, midX, midY + 76);
-          } else {
-            ctx.fillStyle = '#44cc44';
-            ctx.font = 'bold 36px serif';
-            ctx.fillText('HIT!', midX, midY + 40);
-            ctx.fillStyle = '#ff6666';
-            ctx.font = 'bold 24px monospace';
-            ctx.fillText(`${result.damage} damage`, midX, midY + 72);
-          }
-        } else {
-          if (result.natural1) {
-            ctx.fillStyle = '#cc4444';
-            ctx.font = 'bold 36px serif';
-            ctx.fillText('FUMBLE!', midX, midY + 40);
-          } else {
-            ctx.fillStyle = '#888888';
-            ctx.font = 'bold 36px serif';
-            ctx.fillText('MISS', midX, midY + 40);
-          }
-        }
-        ctx.globalAlpha = alpha;
-      }
-
-      ctx.textAlign = 'left';
-      ctx.globalAlpha = 1;
-      ctx.restore();
-    }
-
-    drawTitleScreen(progress) {
-      if (!this.#bufCtx)
-        return;
-      const ctx = this.#bufCtx;
-      const w = this.#width;
-      const h = this.#height;
-      const p = Math.max(0, progress);
-
-      const grad = ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#0a0a1e');
-      grad.addColorStop(0.5, '#1a1a2e');
-      grad.addColorStop(1, '#0a0a14');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, w, h);
-
+      const t = Math.max(0, time);
       const TR = (window.SZ && window.SZ.TacticalRealms) || {};
-      const assets = this.#assets;
-      const spriteMap = TR.OVERWORLD_TERRAIN_SPRITES;
-      if (assets && assets.ready && assets.has('overworld') && spriteMap) {
-        const img = assets.get('overworld');
-        const tiles = ['GRASS', 'FOREST', 'MOUNTAIN', 'WATER', 'SAND', 'ROAD'];
-        const ts = 24;
-        const cols = Math.ceil(w / ts);
-        const rows = Math.ceil(h / ts);
-        ctx.globalAlpha = 0.08;
-        ctx.imageSmoothingEnabled = false;
-        for (let r = 0; r < rows; ++r)
-          for (let c = 0; c < cols; ++c) {
-            const idx = ((r * 7 + c * 13) ^ 0x5a5a) % tiles.length;
-            const rect = spriteMap[tiles[idx]];
-            if (rect)
-              ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, c * ts, r * ts, ts, ts);
-          }
-        ctx.globalAlpha = 1;
+      const SA = TR.ScreenArt;
+
+      if (SA) {
+        // dusk over the mountains, the heroes waiting on the road
+        SA.stage(ctx, 'mountain', 'material', t, { pan: Math.sin(t * 0.08) * 160 });
+        ctx.save();
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = '#c88a78';
+        ctx.fillRect(0, 0, w, h);
+        ctx.restore();
+        const heroes = [
+          { name: 'Paladin', class: 'paladin', race: 'human' },
+          { name: 'Wizard', class: 'wizard', race: 'elf' },
+          { name: 'Ranger', class: 'ranger', race: 'halfling' },
+          { name: 'Barbarian', class: 'barbarian', race: 'half_orc' },
+          { name: 'Cleric', class: 'cleric', race: 'dwarf' },
+        ];
+        SA.partyLine(ctx, heroes, { x: w / 2, footY: h - 64, spacing: 150, height: 216, time: t, facing: 1 });
+        SA.vignette(ctx, 0.6);
+      } else {
+        ctx.fillStyle = '#0a0a1e';
+        ctx.fillRect(0, 0, w, h);
       }
 
       const midX = w / 2;
-
+      const rise = Math.min(1, t * 1.5);
       ctx.save();
-      ctx.shadowColor = '#c8a84e';
-      ctx.shadowBlur = 20 + Math.sin(p * Math.PI * 2) * 8;
-      ctx.fillStyle = '#c8a84e';
-      ctx.font = 'bold 56px serif';
       ctx.textAlign = 'center';
-      ctx.fillText('TACTICAL REALMS', midX, 140);
+      ctx.font = "bold 76px Georgia, 'Times New Roman', serif";
+      const ty = 150 - (1 - rise) * 30;
+      ctx.globalAlpha = rise;
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 12;
+      ctx.strokeStyle = '#1a0e08';
+      ctx.strokeText('TACTICAL REALMS', midX, ty);
+      const g = ctx.createLinearGradient(0, ty - 64, 0, ty + 6);
+      g.addColorStop(0, '#fff4c0');
+      g.addColorStop(0.5, '#f0c050');
+      g.addColorStop(1, '#a86a18');
+      ctx.fillStyle = g;
+      ctx.shadowColor = 'rgba(255,200,80,0.6)';
+      ctx.shadowBlur = 18 + Math.sin(t * 2) * 6;
+      ctx.fillText('TACTICAL REALMS', midX, ty);
+      ctx.shadowBlur = 0;
+      ctx.font = "italic 24px Georgia, 'Times New Roman', serif";
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#1a0e08';
+      ctx.strokeText('A Tactical RPG Adventure', midX, ty + 46);
+      ctx.fillStyle = '#f0e6d0';
+      ctx.fillText('A Tactical RPG Adventure', midX, ty + 46);
       ctx.restore();
-
-      ctx.fillStyle = '#aaa';
-      ctx.font = '22px serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('A Tactical RPG Adventure', midX, 195);
-
-      const sparkCount = 12;
-      ctx.globalAlpha = 0.4 + Math.sin(p * Math.PI * 4) * 0.2;
-      for (let i = 0; i < sparkCount; ++i) {
-        const angle = (i / sparkCount) * Math.PI * 2 + p * Math.PI;
-        const radius = 80 + Math.sin(p * Math.PI * 2 + i) * 20;
-        const sx = midX + Math.cos(angle) * radius;
-        const sy = 140 + Math.sin(angle) * 30;
-        ctx.fillStyle = '#ffd700';
-        ctx.beginPath();
-        ctx.arc(sx, sy, 1.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-
-      const pulse = 0.5 + Math.sin(p * Math.PI * 3) * 0.5;
-      ctx.fillStyle = `rgba(200,200,200,${(0.4 + pulse * 0.6).toFixed(2)})`;
-      ctx.font = '18px serif';
-      ctx.fillText('Click to Start', midX, h - 80);
-      ctx.textAlign = 'left';
     }
 
-    drawVictoryScreen(party, xpGained, goldGained, progress) {
+    drawVictoryScreen(party, xpGained, goldGained, progress, { time = 0, biome = 'plains', plane = 'material' } = {}) {
       if (!this.#bufCtx)
         return;
       const ctx = this.#bufCtx;
       const w = this.#width;
       const h = this.#height;
       const p = Math.min(1, Math.max(0, progress));
-
-      const grad = ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#1a2a0a');
-      grad.addColorStop(0.5, '#2a3a1a');
-      grad.addColorStop(1, '#1a2a0a');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, w, h);
-
+      const TR = (window.SZ && window.SZ.TacticalRealms) || {};
+      const SA = TR.ScreenArt;
       const midX = w / 2;
 
-      ctx.save();
-      ctx.shadowColor = '#ffd700';
-      ctx.shadowBlur = 16 + Math.sin(p * Math.PI * 2) * 6;
-      ctx.fillStyle = '#ffd700';
-      ctx.font = 'bold 52px serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('VICTORY', midX, 120);
-      ctx.restore();
-
-      if (party && party.length > 0) {
-        const spriteSize = 48;
-        const totalW = party.length * spriteSize + (party.length - 1) * 12;
-        const startX = midX - totalW / 2;
-        for (let i = 0; i < party.length; ++i) {
-          const classId = party[i].class;
-          const dx = startX + i * (spriteSize + 12);
-          const drawn = this.#drawCreatureSprite(ctx, classId, 'party', dx, 150, spriteSize);
-          if (!drawn) {
-            ctx.fillStyle = '#4488cc';
-            ctx.beginPath();
-            ctx.arc(dx + spriteSize / 2, 150 + spriteSize / 2, spriteSize * 0.4, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
+      if (SA) {
+        SA.stage(ctx, biome, plane, time);
+        // the party cheers: arms up, hopping
+        SA.partyLine(ctx, party, {
+          x: midX, footY: h - 12, spacing: 200, height: 144, time, hop: 10,
+          pose: i => ({ pose: 'cast', p: 0.6 + 0.4 * Math.abs(Math.sin(time * 4 + i)) }),
+        });
+        SA.vignette(ctx, 0.45);
+        SA.frame(ctx, midX - 330, 206, 660, 330, { alpha: 0.88 });
+        SA.confetti(ctx, time);
+      } else {
+        ctx.fillStyle = '#1a2a0a';
+        ctx.fillRect(0, 0, w, h);
       }
 
-      let y = 230;
-      ctx.fillStyle = '#daa520';
-      ctx.font = 'bold 18px monospace';
+      ctx.save();
       ctx.textAlign = 'center';
-      ctx.fillText(`+${xpGained} XP    +${goldGained} Gold`, midX, y);
-      y += 40;
+      const pop = Math.min(1, time * 3);
+      ctx.translate(midX, 120);
+      ctx.scale(0.6 + 0.4 * pop, 0.6 + 0.4 * pop);
+      ctx.font = "900 78px Georgia, 'Times New Roman', serif";
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 12;
+      ctx.strokeStyle = '#1a0e08';
+      ctx.strokeText('VICTORY!', 0, 0);
+      const g = ctx.createLinearGradient(0, -64, 0, 6);
+      g.addColorStop(0, '#fffbe0');
+      g.addColorStop(0.5, '#ffd24a');
+      g.addColorStop(1, '#c87a10');
+      ctx.fillStyle = g;
+      ctx.fillText('VICTORY!', 0, 0);
+      ctx.restore();
 
-      const barW = 300;
-      const barH = 12;
-      const barX = midX - barW / 2;
-      ctx.fillStyle = '#333';
-      ctx.fillRect(barX, y, barW, barH);
-      ctx.fillStyle = '#4a4';
-      ctx.fillRect(barX, y, barW * p, barH);
-      ctx.strokeStyle = '#666';
-      ctx.strokeRect(barX, y, barW, barH);
-      y += 30;
-
-      ctx.fillStyle = '#aaa';
-      ctx.font = '14px monospace';
-      ctx.fillText('XP Progress', midX, y);
-      y += 40;
-
-      const pulse = 0.5 + Math.sin(p * Math.PI * 3) * 0.5;
-      ctx.fillStyle = `rgba(200,200,200,${(0.4 + pulse * 0.6).toFixed(2)})`;
-      ctx.font = '16px serif';
-      ctx.fillText('Click to continue', midX, y);
-      ctx.textAlign = 'left';
+      // the controller lists the rewards inside the panel; this bar fills with them
+      const barW = 360, barH = 8, barX = midX - barW / 2;
+      ctx.fillStyle = '#0a0610';
+      ctx.fillRect(barX - 1, 223, barW + 2, barH + 2);
+      ctx.fillStyle = '#46d468';
+      ctx.fillRect(barX, 224, barW * p, barH);
     }
 
-    drawDefeatScreen(progress) {
+    drawDefeatScreen(time, { party = null, biome = 'plains', plane = 'material' } = {}) {
       if (!this.#bufCtx)
         return;
       const ctx = this.#bufCtx;
       const w = this.#width;
       const h = this.#height;
-      const p = Math.min(1, Math.max(0, progress));
-
-      ctx.fillStyle = '#1a0a0a';
-      ctx.fillRect(0, 0, w, h);
-
-      const vignetteGrad = ctx.createRadialGradient(w / 2, h / 2, h * 0.2, w / 2, h / 2, h * 0.7);
-      vignetteGrad.addColorStop(0, 'rgba(40,10,10,0)');
-      vignetteGrad.addColorStop(1, 'rgba(10,0,0,0.7)');
-      ctx.fillStyle = vignetteGrad;
-      ctx.fillRect(0, 0, w, h);
-
+      const t = Math.max(0, time);
+      const TR = (window.SZ && window.SZ.TacticalRealms) || {};
+      const SA = TR.ScreenArt;
       const midX = w / 2;
 
+      if (SA) {
+        SA.stage(ctx, biome, plane, t, { dim: 0.35 });
+        ctx.save();
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillStyle = '#8a3a3a';
+        ctx.fillRect(0, 0, w, h);
+        ctx.restore();
+        if (party)
+          SA.partyLine(ctx, party, {
+            x: midX, footY: h - 86, spacing: 200, height: 180, time: t, facing: 1,
+            pose: () => ({ pose: 'down', p: 1, opts: { rotate: -1.35, alpha: 0.85 } }),
+          });
+        SA.vignette(ctx, 0.8, '20,0,0');
+      } else {
+        ctx.fillStyle = '#1a0a0a';
+        ctx.fillRect(0, 0, w, h);
+      }
+
       ctx.save();
-      ctx.shadowColor = '#cc4444';
-      ctx.shadowBlur = 20 + Math.sin(p * Math.PI * 2) * 8;
-      ctx.fillStyle = '#cc4444';
-      ctx.font = 'bold 52px serif';
       ctx.textAlign = 'center';
+      ctx.globalAlpha = Math.min(1, t * 0.8);
+      ctx.font = "900 76px Georgia, 'Times New Roman', serif";
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 12;
+      ctx.strokeStyle = '#0a0404';
+      ctx.strokeText('DEFEAT', midX, 220);
+      ctx.fillStyle = '#d84a3a';
       ctx.fillText('DEFEAT', midX, 220);
-      ctx.restore();
-
-      ctx.fillStyle = '#888';
-      ctx.font = '18px serif';
-      ctx.textAlign = 'center';
+      ctx.font = "italic 22px Georgia, 'Times New Roman', serif";
+      ctx.lineWidth = 6;
+      ctx.strokeText('Your party has fallen...', midX, 270);
+      ctx.fillStyle = '#e0d0c8';
       ctx.fillText('Your party has fallen...', midX, 270);
-
-      const pulse = 0.5 + Math.sin(p * Math.PI * 3) * 0.5;
-      ctx.fillStyle = `rgba(200,200,200,${(0.4 + pulse * 0.6).toFixed(2)})`;
-      ctx.font = '16px serif';
-      ctx.fillText('Click to continue', midX, h - 80);
-      ctx.textAlign = 'left';
+      ctx.restore();
     }
 
     drawImage(image, x, y, w, h) {
@@ -1530,28 +977,9 @@
       this.#bufCtx.drawImage(image, x, y, w, h);
     }
 
-    drawSpriteFrame(image, srcX, srcY, srcW, srcH, destX, destY, destW, destH) {
-      if (!this.#bufCtx || !image)
-        return;
-      this.#bufCtx.drawImage(image, srcX, srcY, srcW, srcH, destX, destY, destW || srcW, destH || srcH);
-    }
 
-    drawTileSprite(image, tileIndex, spriteSize, destX, destY, destSize) {
-      if (!this.#bufCtx || !image)
-        return;
-      const cols = Math.floor(image.width / spriteSize);
-      const sx = (tileIndex % cols) * spriteSize;
-      const sy = Math.floor(tileIndex / cols) * spriteSize;
-      this.#bufCtx.drawImage(image, sx, sy, spriteSize, spriteSize, destX, destY, destSize || spriteSize, destSize || spriteSize);
-    }
 
-    drawCharacterSprite(image, col, row, spriteSize, destX, destY, destSize) {
-      if (!this.#bufCtx || !image)
-        return;
-      const sx = col * spriteSize;
-      const sy = row * spriteSize;
-      this.#bufCtx.drawImage(image, sx, sy, spriteSize, spriteSize, destX, destY, destSize || spriteSize, destSize || spriteSize);
-    }
+
   }
 
   TR.Renderer = Renderer;
