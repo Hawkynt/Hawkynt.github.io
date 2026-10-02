@@ -4008,6 +4008,14 @@
 
   updateBrushPreview();
 
+
+  // the desktop's close button asks to save, like File > Exit
+  User32.RegisterWindowProc((msg) => {
+    if (msg !== WM_CLOSE)
+      return false;
+    doExit();
+    return true;
+  });
 })();
     function pickOption(select, preferredIds) {
       for (const id of preferredIds) {

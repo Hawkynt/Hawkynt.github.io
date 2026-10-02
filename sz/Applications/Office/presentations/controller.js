@@ -6016,7 +6016,9 @@
         } else {
           User32.DestroyWindow();
         }
+        return true;
       }
+      return false;
     });
   }
 
