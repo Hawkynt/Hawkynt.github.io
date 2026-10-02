@@ -296,7 +296,7 @@
   const MASK64 = 0xFFFFFFFFFFFFFFFFn;
   /** @type {uint64} */
   const MASK32 = 0xFFFFFFFFn;
-  /** @type {uint64} */
+  /** @type {bigint} */
   const MOD64 = 0x10000000000000000n;
 
   /**
@@ -307,8 +307,8 @@
     constructor() {
       /** @type {string[]} */
       this.keys = new Array(64);
-      /** @type {int32[]} */
-      this.seeds = new Int32Array(64);
+      /** @type {uint32[]} */
+      this.seeds = new Uint32Array(64);
       /** @type {PpmdContext[]} */
       this.values = new Array(64);
       for (let i = 0; i < 64; i++) {
@@ -323,7 +323,7 @@
 
     /**
      * @param {string} key - Context key
-     * @param {int32} seed - Hash bits of the key
+     * @param {uint32} seed - Hash bits of the key
      * @returns {int32} Slot holding the key, or the empty slot where it belongs
      */
     _slot(key, seed) {
@@ -337,7 +337,7 @@
 
     /**
      * @param {string} key - Context key
-     * @param {int32} seed - Hash bits of the key
+     * @param {uint32} seed - Hash bits of the key
      * @returns {PpmdContext} Context, or null when never created
      */
     get(key, seed) {
@@ -346,7 +346,7 @@
 
     /**
      * @param {string} key - Context key
-     * @param {int32} seed - Hash bits of the key
+     * @param {uint32} seed - Hash bits of the key
      * @param {PpmdContext} context - New context
      */
     add(key, seed, context) {
@@ -365,14 +365,14 @@
     _grow() {
       /** @type {string[]} */
       const oldKeys = this.keys;
-      /** @type {int32[]} */
+      /** @type {uint32[]} */
       const oldSeeds = this.seeds;
       /** @type {PpmdContext[]} */
       const oldValues = this.values;
       /** @type {int32} */
       const size = (this.mask + 1) * 2;
       this.keys = new Array(size);
-      this.seeds = new Int32Array(size);
+      this.seeds = new Uint32Array(size);
       this.values = new Array(size);
       for (let i = 0; i < size; i++) {
         this.keys[i] = null;
@@ -409,7 +409,7 @@
       /** @type {PpmdContextTable} */
       this.contexts = new PpmdContextTable(); // "order:hash" -> PpmdContext
       // Hash bits of the key built by the last _buildContextKey call
-      /** @type {int32} */
+      /** @type {uint32} */
       this.keySeed = 0;
     }
 
@@ -429,7 +429,7 @@
         hash = OpCodes.XorN(hash, value);
         hash = OpCodes.AndN(OpCodes.MulModN(hash, FNV_PRIME, MOD64), MASK64);
       }
-      /** @type {int32} */
+      /** @type {uint32} */
       const seed = Number(OpCodes.AndN(hash, MASK32));
       this.keySeed = seed;
       /** @type {string} */
