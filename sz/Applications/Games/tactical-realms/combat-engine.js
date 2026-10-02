@@ -948,37 +948,60 @@
       const bossDmgMult = bossPhase ? (bossPhase.damageMult || 1) : 1;
 
       const sizeAtk = ch.sizeMod || 0;
-      const attackResult = D20.attackRoll(this.#prng, attacker.bab, attacker.strMod, flankBonus + equipAtk + bossAtk + sizeAtk, effectiveAC);
+      // monsters swing their whole natural routine when they stood still
+      // (or can pounce); after moving only the primary attack lands
+      const routine = TR.MonsterAttacks ? TR.MonsterAttacks.routine(ch) : null;
+      const full = !!routine && routine.length > 1 && (!attacker.hasMoved || TR.MonsterAttacks.canPounce(ch));
+      const swings = routine ? (full ? routine : [routine[0]]) : [null];
       let damage = 0;
       let critical = false;
+      let anyHit = false;
+      let attackResult = null;
+      const attacks = [];
 
-      if (attackResult.hit) {
-        const tmpl = ENEMY_TEMPLATES[ch.class];
-        const dieCount = weapon ? weapon.damageDice : (ch.damageDice || (tmpl ? tmpl.damageDice : 1));
-        const dieSides = weapon ? weapon.damageSides : (ch.damageSides || (tmpl ? tmpl.damageSides : 6));
-        const critRange = weapon ? weapon.critRange : [20];
-        const critMult = weapon ? weapon.critMult : 2;
-        const dmgResult = D20.damageRoll(this.#prng, dieCount, dieSides, attacker.strMod, equipDmg);
-
-        const critResult = D20.criticalCheck(this.#prng, attackResult.d20, critRange, attacker.bab, attacker.strMod, flankBonus + equipAtk + bossAtk, effectiveAC, critMult);
-        if (critResult.confirmed) {
-          critical = true;
-          damage = dmgResult.total * critResult.multiplier;
-        } else {
-          damage = dmgResult.total;
+      for (const swing of swings) {
+        const secondary = !!swing && !swing.primary;
+        const misc = flankBonus + equipAtk + bossAtk + sizeAtk - (secondary ? 5 : 0);
+        const roll = D20.attackRoll(this.#prng, attacker.bab, attacker.strMod, misc, effectiveAC);
+        if (!attackResult)
+          attackResult = roll;
+        let dealt = 0;
+        let crit = false;
+        if (roll.hit) {
+          anyHit = true;
+          const tmpl = ENEMY_TEMPLATES[ch.class];
+          const dieCount = swing ? swing.dice : weapon ? weapon.damageDice : (ch.damageDice || (tmpl ? tmpl.damageDice : 1));
+          const dieSides = swing ? swing.sides : weapon ? weapon.damageSides : (ch.damageSides || (tmpl ? tmpl.damageSides : 6));
+          const critRange = weapon && !swing ? weapon.critRange : [20];
+          const critMult = weapon && !swing ? weapon.critMult : 2;
+          const strBonus = secondary ? Math.floor(attacker.strMod / 2) : attacker.strMod;
+          const dmgResult = D20.damageRoll(this.#prng, dieCount, dieSides, strBonus, equipDmg);
+          const critResult = D20.criticalCheck(this.#prng, roll.d20, critRange, attacker.bab, attacker.strMod, misc, effectiveAC, critMult);
+          if (critResult.confirmed) {
+            crit = true;
+            critical = true;
+            dealt = dmgResult.total * critResult.multiplier;
+          } else
+            dealt = dmgResult.total;
+          if (weapon && !swing && weapon.affixDamage) {
+            const affix = D20.damageRoll(this.#prng, weapon.affixDamage.dice, weapon.affixDamage.sides, 0, 0);
+            dealt += affix.total;
+          }
+          dealt = Math.max(1, Math.round(dealt * bossDmgMult));
+          defender.takeDamage(dealt);
+          damage += dealt;
         }
-
-        if (weapon && weapon.affixDamage) {
-          const affix = D20.damageRoll(this.#prng, weapon.affixDamage.dice, weapon.affixDamage.sides, 0, 0);
-          damage += affix.total;
-        }
-
-        damage = Math.round(damage * bossDmgMult);
-        defender.takeDamage(damage);
+        attacks.push({ name: swing ? swing.name : 'weapon', hit: roll.hit, damage: dealt, critical: crit, d20: roll.d20, total: roll.total });
+        if (!defender.isAlive)
+          break;
       }
+      attackResult = { ...attackResult, hit: anyHit };
 
-      const logEntry = `${attacker.logName} attacks ${defender.logName}: d20+${attacker.bab}${flankBonus ? `+${flankBonus}flank` : ''}=${attackResult.total} vs AC ${effectiveAC} ${attackResult.hit ? 'HIT' : 'MISS'}${critical ? ' CRITICAL!' : ''}${attackResult.hit ? ` (${damage} dmg)` : ''}${!defender.isAlive ? ' - SLAIN!' : ''}`;
-      this.#combatLog.push(logEntry);
+      attacks.forEach((at, i) => {
+        const how = attacks.length > 1 ? ` (${at.name})` : '';
+        const slain = i === attacks.length - 1 && !defender.isAlive ? ' - SLAIN!' : '';
+        this.#combatLog.push(`${attacker.logName} attacks ${defender.logName}${how}: d20+${attacker.bab}${flankBonus ? `+${flankBonus}flank` : ''}=${at.total} vs AC ${effectiveAC} ${at.hit ? 'HIT' : 'MISS'}${at.critical ? ' CRITICAL!' : ''}${at.hit ? ` (${at.damage} dmg)` : ''}${slain}`);
+      });
 
       this.#emit('attackResolved', { attacker, defender, result: attackResult, damage, critical, flanking });
 
@@ -987,7 +1010,7 @@
       else if (this.checkDefeat())
         this.#phase = CombatPhase.DEFEAT;
 
-      return { hit: attackResult.hit, damage, critical, flanking, d20: attackResult.d20, total: attackResult.total, natural20: attackResult.natural20, natural1: attackResult.natural1 };
+      return { hit: attackResult.hit, damage, critical, flanking, d20: attackResult.d20, total: attackResult.total, natural20: attackResult.natural20, natural1: attackResult.natural1, attacks };
     }
 
     executeEnemyTurn(unitId) {

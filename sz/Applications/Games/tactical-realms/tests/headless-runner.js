@@ -184,6 +184,7 @@ tryLoad('data/boss-templates.js');
 // Game systems
 load('combat-history.js');
 load('combat-ui.js');
+load('monster-attacks.js');
 load('combat-engine.js');
 load('pixel-art.js');
 load('terrain-art.js');
@@ -224,6 +225,7 @@ loadTest('test-combat-unit.js');
 loadTest('test-enemy-ai.js');
 loadTest('test-combat-engine.js');
 loadTest('test-monster-spawn.js');
+loadTest('test-monster-attacks.js');
 loadTest('test-spells.js');
 loadTest('test-items.js');
 loadTest('test-shop.js');
