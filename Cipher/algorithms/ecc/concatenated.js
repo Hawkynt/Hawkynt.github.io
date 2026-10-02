@@ -298,7 +298,7 @@
 
         // Majority vote bit by bit
         for (let j = 0; j < 4; ++j) {
-          const sum = ((block1[j] ? block1[j] : 0)) + ((block2[j] ? block2[j] : 0)) + ((block3[j] ? block3[j] : 0));
+          const sum = OpCodes.Add32(OpCodes.Add32(block1[j] ? block1[j] : 0, block2[j] ? block2[j] : 0), block3[j] ? block3[j] : 0);
           decoded.push(sum >= 2 ? 1 : 0);
         }
       }
