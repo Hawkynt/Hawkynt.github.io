@@ -59,11 +59,12 @@
       this.#zStack.push(id);
       this.focusWindow(id);
 
-      // On a phone-sized screen a window opens over the whole work area;
+      // On a phone-sized screen (upright or on its side) a window opens over
+      // the whole work area;
       // one that cannot be maximized is at least kept on screen.
-      const NARROW_SCREEN_PX = 700;
+      const NARROW_SCREEN_PX = 700, LOW_SCREEN_PX = 500;
       const areaW = this.#container.clientWidth, areaH = this.#container.clientHeight;
-      if (areaW && areaW < NARROW_SCREEN_PX) {
+      if (areaW && (areaW < NARROW_SCREEN_PX || areaH < LOW_SCREEN_PX)) {
         if (win.maximizable !== false && win.resizable !== false)
           this.maximizeWindow(id);
         else {
