@@ -1033,6 +1033,11 @@
   
   boot().catch(err => {
       console.error('[SZ] Boot failed:', err);
-      document.getElementById('sz-boot-screen').innerHTML = `<h1>Boot Failed</h1><p>${err.message}</p><pre>${err.stack}</pre>`;
+      const screen = document.getElementById('sz-boot-screen');
+      const h1 = document.createElement('h1'), p = document.createElement('p'), pre = document.createElement('pre');
+      h1.textContent = 'Boot Failed';
+      p.textContent = err.message;
+      pre.textContent = err.stack || '';
+      screen.replaceChildren(h1, p, pre);
   });
 })();
