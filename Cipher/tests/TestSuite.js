@@ -313,6 +313,11 @@ class TestSuite {
 
     for (const category of categories)
       await this.testCategory(category);
+
+    // a filter matching no file must not pass as an empty, green run
+    const algorithmFilter = this.options.algorithmFilter;
+    if (algorithmFilter && Object.keys(this.algorithmsPerCategory).length === 0)
+      throw new Error(`No algorithm file '${algorithmFilter}.js'${filter ? ` in category '${filter}'` : ''} (--algorithm takes the file name without .js)`);
   }
 
   // Test all algorithms in a category
