@@ -84,10 +84,8 @@
     /** @type {uint32} */
     let z = OpCodes.ToDWord(advanced);
 
-    z = Math.imul(OpCodes.Xor32(z, OpCodes.Shr32(z, 16)), MIX_CONST_1);
-    z = OpCodes.ToDWord(z);
-    z = Math.imul(OpCodes.Xor32(z, OpCodes.Shr32(z, 15)), MIX_CONST_2);
-    z = OpCodes.ToDWord(z);
+    z = OpCodes.Mul32(OpCodes.Xor32(z, OpCodes.Shr32(z, 16)), MIX_CONST_1);
+    z = OpCodes.Mul32(OpCodes.Xor32(z, OpCodes.Shr32(z, 15)), MIX_CONST_2);
     z = OpCodes.Xor32(z, OpCodes.Shr32(z, 15));
 
     return OpCodes.ToDWord(z);
