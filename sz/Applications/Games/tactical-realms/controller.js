@@ -771,19 +771,31 @@
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
       ctx.translate(cx, cy);
       ctx.rotate(s.t * 2.4);
-      ctx.lineWidth = 10;
-      for (let arm = 0; arm < 5; ++arm) {
-        ctx.strokeStyle = arm % 2 ? hue : 'rgba(200,180,255,0.9)';
-        ctx.beginPath();
-        for (let i = 0; i <= 40; ++i) {
-          const a = arm / 5 * Math.PI * 2 + i * 0.16;
-          const rad = (1.2 - k * 0.6) * i * 17;
-          if (i === 0)
-            ctx.moveTo(Math.cos(a) * rad, Math.sin(a) * rad);
-          else
-            ctx.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+      ctx.lineCap = 'round';
+      // soft wide arms under bright thin ones
+      for (const [width, alpha] of [[34, 0.25], [14, 0.65], [4, 1]])
+        for (let arm = 0; arm < 6; ++arm) {
+          ctx.globalAlpha = Math.min(1, k * 1.4) * alpha;
+          ctx.lineWidth = width;
+          ctx.strokeStyle = width === 4 ? '#ffffff' : arm % 2 ? hue : 'rgb(200,180,255)';
+          ctx.beginPath();
+          for (let i = 0; i <= 44; ++i) {
+            const a = arm / 6 * Math.PI * 2 + i * 0.15;
+            const rad = (1.25 - k * 0.65) * i * i * 0.42;
+            if (i === 0)
+              ctx.moveTo(Math.cos(a) * rad, Math.sin(a) * rad);
+            else
+              ctx.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+          }
+          ctx.stroke();
         }
-        ctx.stroke();
+      // motes drawn into the eye
+      ctx.globalAlpha = Math.min(1, k * 1.6);
+      for (let i = 0; i < 90; ++i) {
+        const a = i * 2.39996 - s.t * 3;
+        const rad = ((i * 37 + (1 - s.t / s.dur) * 900) % 700) * (1.1 - k * 0.5);
+        ctx.fillStyle = i % 3 ? '#ffffff' : hue;
+        ctx.fillRect(Math.cos(a) * rad, Math.sin(a) * rad, 3, 3);
       }
       ctx.restore();
       // the flash as the planes change

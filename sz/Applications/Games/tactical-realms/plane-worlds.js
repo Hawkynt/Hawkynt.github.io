@@ -42,7 +42,7 @@
   const PROFILES = Object.freeze({
     astral: {
       base: 'ASTRAL', road: 'silver_path', gate: 'Silver Pool',
-      terrain: (h, m, v) => (v > 0.78 ? 'DRIFT_ROCK' : h < 0.06 ? 'RIFT' : 'ASTRAL'),
+      terrain: (h, m, v) => (v > 0.68 ? 'DRIFT_ROCK' : h < 0.06 ? 'RIFT' : 'ASTRAL'),
       towns: ['Driftstone Market', 'Silver Wayhouse'],
       sites: [site('Petrified God-Isle', 'astral', ['githyanki_warrior', 'intellect_devourer']), site('Astral Wreck', 'astral', ['githyanki_warrior', 'phasm'], 1), site('Silver Lighthouse', 'astral', ['githyanki_warrior', 'silver_dragon_young'], 2)],
     },
@@ -54,7 +54,7 @@
     },
     shadow: {
       base: 'GLOOM', road: 'ruins', gate: 'Dim Archway',
-      terrain: (h, m, v) => (h > 0.88 ? 'MOUNTAIN' : h < 0.12 ? 'RIFT' : v > 0.75 ? 'GREY' : 'GLOOM'),
+      terrain: (h, m, v) => (h > 0.92 ? 'MOUNTAIN' : h < 0.1 ? 'GREY' : v > 0.75 ? 'GREY' : 'GLOOM'),
       props: { GLOOM: ['grey_tree', 9] },
       towns: ['Duskhaven'],
       sites: [site('Umbral Keep', 'shadowkeep', ['shadow', 'shadow_mastiff']), site('Hollow Necropolis', 'crypt', ['wraith', 'spectre'], 1), site('Gloomwood Barrow', 'shadowkeep', ['nightwalker', 'bodak'], 2)],
@@ -101,7 +101,7 @@
     },
     para_ooze: {
       base: 'OOZE', road: 'ruins', gate: 'Dripping Arch',
-      terrain: (h, m) => (h < 0.14 ? 'WATER' : m > 0.6 ? 'SWAMP' : 'OOZE'),
+      terrain: (h, m) => (m > 0.6 ? 'SWAMP' : 'OOZE'),
       props: { SWAMP: ['reeds', 4] },
       towns: ['Mudwallow'],
       sites: [site('Sludge Pits', 'marsh', ['mephit_ooze', 'gray_ooze']), site('Black Mire', 'marsh', ['black_pudding', 'ochre_jelly'], 2)],
@@ -127,7 +127,7 @@
     },
     mount_celestia: {
       base: 'CELESTIAL', road: 'marble', gate: 'Silver Stair',
-      terrain: (h, m) => (h > 0.82 ? 'MOUNTAIN' : h > 0.66 ? 'HILLS' : h < 0.12 ? 'WATER' : m > 0.66 ? 'FOREST' : 'CELESTIAL'),
+      terrain: (h, m) => (h > 0.86 ? 'MOUNTAIN' : h > 0.66 ? 'HILLS' : h < 0.12 ? 'WATER' : m > 0.66 ? 'FOREST' : 'CELESTIAL'),
       towns: ['Lantern Haven', 'Pilgrim Terrace'],
       sites: [site('Lantern Monastery', 'celestial', ['lantern_archon', 'hound_archon']), site('Archon Bastion', 'celestial', ['hound_archon', 'trumpet_archon'], 2)],
     },
@@ -184,27 +184,27 @@
     },
     carceri: {
       base: 'GLOOM', road: 'ruins', gate: 'Prison Orb Gate',
-      terrain: (h, m) => (h < 0.16 ? 'WATER' : m > 0.6 ? 'SWAMP' : 'GLOOM'),
+      terrain: (h, m) => (h < 0.16 ? 'OOZE' : m > 0.6 ? 'SWAMP' : 'GLOOM'),
       props: { SWAMP: ['grey_tree', 6] },
       towns: ["Warden's Post"],
       sites: [site('Orb Cells', 'crypt', ['bodak', 'nightmare'], 1), site('Exile Pits', 'shadowkeep', ['night_hag', 'nightwalker'], 2)],
     },
     gray_waste: {
       base: 'GREY', road: 'ruins', gate: 'Ashen Arch',
-      terrain: (h, m) => (h > 0.88 ? 'MOUNTAIN' : m > 0.68 ? 'ASH' : 'GREY'),
+      terrain: (h, m) => (h > 0.92 ? 'MOUNTAIN' : m > 0.68 ? 'ASH' : 'GREY'),
       props: { GREY: ['grey_tree', 13] },
       towns: ['Dreary Bazaar'],
       sites: [site('Ashen Fortress', 'shadowkeep', ['mezzoloth', 'night_hag']), site('Hag Market', 'shadowkeep', ['night_hag', 'nycaloth'], 2)],
     },
     gehenna: {
       base: 'BRIMSTONE', road: 'hell_road', gate: 'Furnace Gate',
-      terrain: (h, m, v) => (h > 0.86 ? 'MOUNTAIN' : v > 0.82 ? 'LAVA' : m > 0.64 ? 'ASH' : 'BRIMSTONE'),
+      terrain: (h, m, v) => (h > 0.92 ? 'MOUNTAIN' : v > 0.82 ? 'LAVA' : m > 0.64 ? 'ASH' : 'BRIMSTONE'),
       towns: ['Slagmarket'],
       sites: [site('Furnace Mount', 'infernal', ['mezzoloth', 'barghest']), site('Mercenary Keep', 'infernal', ['nycaloth', 'mezzoloth'], 2)],
     },
     nine_hells: {
       base: 'BRIMSTONE', road: 'hell_road', gate: 'Iron Gate',
-      terrain: (h, m, v) => (h > 0.86 ? 'MOUNTAIN' : v > 0.76 ? 'LAVA' : m > 0.66 ? 'ASH' : 'BRIMSTONE'),
+      terrain: (h, m, v) => (h > 0.92 ? 'MOUNTAIN' : v > 0.76 ? 'LAVA' : m > 0.66 ? 'ASH' : 'BRIMSTONE'),
       props: { BRIMSTONE: ['hell_spire', 15] },
       towns: ['Contract Exchange'],
       sites: [site('Iron Bastion', 'infernal', ['bearded_devil', 'chain_devil']), site('Brimstone Citadel', 'infernal', ['bone_devil', 'erinyes'], 1), site('Pit of Oaths', 'infernal', ['barbed_devil', 'horned_devil'], 2)],
