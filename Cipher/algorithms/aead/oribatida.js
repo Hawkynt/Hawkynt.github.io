@@ -47,6 +47,16 @@
   /** @type {uint64} */
   const SIMP_RC = 0x3369F885192C0EF5n; // 62-bit round constant (shared by both variants)
 
+  /**
+   * Step the round constant as the reference does on a 64-bit word:
+   * z = (z >> 1) | (z << 61), the bits shifted past bit 63 dropped
+   * @param {uint64} z - Current round constant
+   * @returns {uint64} Next round constant
+   */
+  function nextRoundConstant(z) {
+    return OpCodes.AndN(OpCodes.OrN(OpCodes.ShiftRn(z, 1), OpCodes.ShiftLn(z, 61)), 0xFFFFFFFFFFFFFFFFn);
+  }
+
   // Domain separation constants (shared by both variants)
   const ORIBATIDA_DOMAIN_NONCE = 0;
   const ORIBATIDA_DOMAIN_AD = 1;
@@ -216,7 +226,7 @@
           let t1 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(x3, OpCodes.AndN(rotl48(x2, 1), rotl48(x2, 8))), rotl48(x2, 2)), x1);
           let t0 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(x1, rotr48(x0, 3)), rotr48(x0, 4)), 0x0000FFFFFFFFFFFCn), OpCodes.AndN(z, 1n));
 
-          z = OpCodes.OrN(OpCodes.ShiftRn(z, 1), OpCodes.ShiftLn(z, 61)); // Rotate round constant
+          z = nextRoundConstant(z); // Rotate round constant
 
           // Truncate to 48 bits
           t0 = OpCodes.AndN(t0, 0x0000FFFFFFFFFFFFn);
@@ -232,7 +242,7 @@
           x1 = t0;
           x3 = t1;
 
-          z = OpCodes.OrN(OpCodes.ShiftRn(z, 1), OpCodes.ShiftLn(z, 61)); // Rotate round constant
+          z = nextRoundConstant(z); // Rotate round constant
         }
 
         // Swap words for all steps except the last
@@ -338,7 +348,7 @@
           let t1 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(x3, OpCodes.AndN(rotl64(x2, 1), rotl64(x2, 8))), rotl64(x2, 2)), x1);
           let t0 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(x1, rotr64(x0, 3)), rotr64(x0, 4)), 0xFFFFFFFFFFFFFFFCn), OpCodes.AndN(z, 1n));
 
-          z = OpCodes.OrN(OpCodes.ShiftRn(z, 1), OpCodes.ShiftLn(z, 61)); // Rotate round constant
+          z = nextRoundConstant(z); // Rotate round constant
 
           // Second round of pair
           x2 = OpCodes.XorN(OpCodes.XorN(OpCodes.XorN(x2, OpCodes.AndN(rotl64(t1, 1), rotl64(t1, 8))), rotl64(t1, 2)), x0);
@@ -347,7 +357,7 @@
           x1 = t0;
           x3 = t1;
 
-          z = OpCodes.OrN(OpCodes.ShiftRn(z, 1), OpCodes.ShiftLn(z, 61)); // Rotate round constant
+          z = nextRoundConstant(z); // Rotate round constant
         }
 
         // Swap words for all steps except the last
