@@ -193,6 +193,8 @@ load('sprite-resolver.js');
 load('autotile.js');
 load('overworld-map.js');
 load('dungeon-gen.js');
+load('dungeon-themes.js');
+load('dungeon-crawl.js');
 load('debug-console.js');
 
 // Load test suites
@@ -228,6 +230,7 @@ loadTest('test-sprite-mapping.js');
 loadTest('test-autotile.js');
 loadTest('test-overworld-map.js');
 loadTest('test-dungeon-gen.js');
+loadTest('test-dungeon-crawl.js');
 loadTest('test-debug-console.js');
 loadTest('test-sprite-compositor.js');
 
