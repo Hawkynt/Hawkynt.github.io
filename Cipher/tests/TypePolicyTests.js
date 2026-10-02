@@ -273,6 +273,40 @@ test('walk: given a syntax error, when analyzed, then a parse error is returned 
   const r = TypeCoverage.analyzeSource('function (');
   ok(r.parseError, 'parse error reported');
 });
+test('walk: given a wrapper function called in place, when counted, then the sites in its body are counted', () => {
+  // A wrapper the transpiler does not unwrap stays a call; its body used to be
+  // skipped with the callee, hiding a whole file from TYPES.
+  const s = sites("(function (global) {\n  function f(a) { return a; }\n})(typeof global !== 'undefined' ? global : this);\nif (require.main === module) { }");
+  ok(s.some(x => x.line === 2 && x.expression === 'a'), 'the body read of a is a site');
+});
+test('walk: given a function invoked with .call(this), when counted, then the sites in its body are counted', () => {
+  ok(sites('(function () {\n  function f(a) { return a; }\n}).call(this);').some(x => x.line === 2 && x.expression === 'a'), 'the body read of a is a site');
+});
+test('walk: given a named function as callee, when counted, then the callee itself is no site', () => {
+  equal(sites('/** @returns {uint8} */\nfunction g() { return 1; }\ng();').length, 0);
+});
+test('walk: given catch (e), when counted, then the declared e is no site', () => {
+  equal(sites('function f() { try { return 1; } catch (e) { return 2; } }').length, 0);
+});
+test('walk: given catch (e) whose e is read, when counted, then only the read is a site', () => {
+  const s = sites('function f() {\n  try { return 1; }\n  catch (e) {\n    return e;\n  }\n}');
+  equal(s.length, 1);
+  equal(s[0].line, 4);
+});
+test('walk: given catch without a binding (catch {), when counted, then it parses and nothing is a site', () => {
+  const r = TypeCoverage.analyzeSource('function f() { try { return 1; } catch { return 2; } }');
+  ok(!r.parseError, `parse error: ${r.parseError}`);
+  equal(r.sites.length, 0);
+});
+test('context: given return { ... } under @returns {Settings}, when counted, then the object literal is no site', () => {
+  equal(sites('/** @typedef {Object} Settings */\n/** @returns {Settings} */\nfunction f() { return { a: 1 }; }').length, 0);
+});
+test('context: given return { ... } without @returns, when counted, then the object literal is a site', () => {
+  equal(sites('function f() { return { a: 1 }; }').length, 1);
+});
+test('context: given an inner function without @returns, when counted, then the outer @returns does not reach its return', () => {
+  equal(sites('/** @returns {Settings} */\nfunction f() { const g = function () { return { a: 1 }; }; return { b: g }; }').length, 1);
+});
 test('walk: given sites, when tallied, then every site lands in exactly one tier', () => {
   const s = sites('function f(a) { return OpCodes.XorN(a, 1) + a; }');
   const t = TypeCoverage.byTier(s);

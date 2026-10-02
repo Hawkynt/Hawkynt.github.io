@@ -89,6 +89,21 @@ function typeName(t) {
   return String(t);
 }
 
+const FUNCTION_NODES = new Set(['FunctionExpression', 'ArrowFunctionExpression']);
+
+/**
+ * The function a call invokes in place: `(function () {...})()`,
+ * `(() => {...})()`, `(function () {...}).call(this)`.
+ * @param {Object} callee - IL callee node
+ * @returns {Object|null} the function node, or null for any other callee
+ */
+function calledFunction(callee) {
+  if (!callee || typeof callee !== 'object') return null;
+  if (FUNCTION_NODES.has(callee.type)) return callee;
+  if (callee.type === 'MemberExpression' && callee.object && FUNCTION_NODES.has(callee.object.type)) return callee.object;
+  return null;
+}
+
 /**
  * Is this an assignment to `this.tests` (test vectors)?
  * @param {Object} node - IL node
@@ -106,15 +121,16 @@ function isTestVectorAssignment(node) {
 /**
  * Analyze JavaScript source.
  * @param {string} code - Algorithm source
- * @returns {Object} { sites: [{line, expression, reason, tier}], parseError }
+ * @param {string} [filePath] - Its path: the sibling data modules it requires are typed from their own JSDoc
+ * @returns {Object} { sites: [{line, expression, reason, tier}], parseError, parsed: { parser, ast } }
  */
-function analyzeSource(code) {
+function analyzeSource(code, filePath) {
   const P = parserClass();
   const log = console.log, warn = console.warn, error = console.error;
   let parser, ast;
   console.log = console.warn = console.error = () => {};
   try {
-    parser = new P(code);
+    parser = new P(code, filePath ? { sourcePath: path.resolve(filePath) } : {});
     ast = parser.parse();
   } catch (e) {
     return { sites: [], parseError: e.message };
@@ -202,6 +218,14 @@ function analyzeSource(code) {
       (node.type === 'LogicalExpression' || (node.type === 'UnaryExpression' && node.operator === '!'));
 
     for (const key of Object.keys(node)) {
+      // A callee is not a value, but a function called in place - an IIFE
+      // wrapper the transpiler did not unwrap, `(function () {...}).call(this)` -
+      // holds code whose sites count like any other.
+      if (key === 'callee') {
+        const fn = calledFunction(node[key]);
+        if (fn) walk(fn, false, { ...here, inCondition: false });
+        continue;
+      }
       if (SKIP_KEYS.has(key)) continue;
       const child = node[key];
       if (!child || typeof child !== 'object') continue;
@@ -214,6 +238,7 @@ function analyzeSource(code) {
       else if (node.type === 'SequenceExpression') childIsValue = false;
       else if ((node.type === 'MemberExpression' || node.type === 'ThisPropertyAccess') && key === 'property' && !node.computed) continue;
       else if (node.type === 'Property' && key === 'key' && !node.computed) continue;
+      else if (node.type === 'CatchClause' && key === 'param') continue;       // `catch (e)` declares e
       else if ((node.type === 'ForOfStatement' || node.type === 'ForInStatement') && key === 'left') childIsValue = false;
       else if (node.type === 'ForStatement' && (key === 'init' || key === 'update')) childIsValue = false;
       walk(child, childIsValue, childWhere);
@@ -222,7 +247,8 @@ function analyzeSource(code) {
 
   walk(ast, false, { line: 0, range: null, className: null, inCondition: false });
   sites.sort((a, b) => a.line - b.line);
-  return { sites, parseError: null };
+  // The parse is handed on (TypeSoundness.js checks the same IL AST).
+  return { sites, parseError: null, parsed: { parser, ast } };
 }
 
 /**
@@ -232,7 +258,7 @@ function analyzeSource(code) {
  * @returns {Object} { sites, parseError, count }
  */
 function analyzeFile(filePath, source) {
-  const result = analyzeSource(typeof source === 'string' ? source : fs.readFileSync(filePath, 'utf8'));
+  const result = analyzeSource(typeof source === 'string' ? source : fs.readFileSync(filePath, 'utf8'), filePath);
   result.count = result.parseError ? null : result.sites.length;
   return result;
 }
