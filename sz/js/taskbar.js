@@ -62,6 +62,8 @@
       if (appId)
         btn.dataset.appId = appId;
       btn.addEventListener('pointerup', (e) => { e.stopPropagation(); this.#onButtonClick(windowId); });
+      // Enter or Space on a focused button (a pointer click came as pointerup)
+      btn.addEventListener('click', (e) => { if (e.detail === 0) this.#onButtonClick(windowId); });
       btn.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -653,6 +655,16 @@
         e.stopPropagation();
         this.#toggleStartMenu();
       });
+      this.#startButton.addEventListener('click', (e) => {
+        if (e.detail === 0)
+          this.toggleStartMenuFromKeyboard();
+      });
+      this.#startButton.setAttribute('aria-haspopup', 'menu');
+      this.#startButton.setAttribute('aria-expanded', 'false');
+      this.#startButton.setAttribute('aria-label', 'Start');
+      this.#startMenu.setAttribute('role', 'menu');
+      this.#startMenu.setAttribute('aria-label', 'Start menu');
+      document.addEventListener('keydown', (e) => this.#onStartMenuKey(e));
 
       document.addEventListener('pointerdown', (e) => {
         if (this.#startMenu.classList.contains('open') &&
@@ -663,9 +675,120 @@
       });
     }
 
+    // Ctrl+Esc, or Enter on the start button: open with the first entry focused
+    toggleStartMenuFromKeyboard() {
+      this.#toggleStartMenu();
+      if (!this.#startMenu.classList.contains('open')) {
+        this.#startButton.focus();
+        return;
+      }
+      // the menu fades in: focus can only land once it is shown
+      const tryFocus = (left) => {
+        const first = this.#menuItems(this.#startMenu)[0];
+        this.#focusMenuItem(first);
+        if (first && document.activeElement !== first && left > 0 && this.#startMenu.classList.contains('open'))
+          setTimeout(() => tryFocus(left - 1), 30);
+      };
+      tryFocus(10);
+    }
+
+    #menuItems(scope) {
+      const items = [...scope.querySelectorAll('.sz-menu-item')].filter(el => el.getClientRects().length > 0);
+      for (const el of items) {
+        if (!el.hasAttribute('tabindex'))
+          el.tabIndex = -1;
+        if (!el.getAttribute('role'))
+          el.setAttribute('role', 'menuitem');
+      }
+      return items;
+    }
+
+    #focusMenuItem(el) {
+      if (!el)
+        return;
+      el.focus({ preventScroll: false });
+      // categories show their programs as the focus reaches them, like on hover
+      if (el.classList.contains('sz-menu-category'))
+        el.dispatchEvent(new PointerEvent('pointerenter'));
+    }
+
+    #activateMenuItem(el) {
+      el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 }));
+    }
+
+    #onStartMenuKey(e) {
+      if (e.key === 'Escape' && e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        this.toggleStartMenuFromKeyboard();
+        return;
+      }
+      if (!this.#startMenu.classList.contains('open'))
+        return;
+      const active = document.activeElement;
+      const inFlyout = !!(this.#flyout && this.#flyout.contains(active));
+      const items = this.#menuItems(inFlyout ? this.#flyout : this.#startMenu);
+      const i = items.indexOf(active);
+      const n = items.length;
+      let handled = true;
+      switch (e.key) {
+        case 'ArrowDown': this.#focusMenuItem(items[(i + 1) % n]); break;
+        case 'ArrowUp': this.#focusMenuItem(items[(i - 1 + n) % n]); break;
+        case 'Home': this.#focusMenuItem(items[0]); break;
+        case 'End': this.#focusMenuItem(items[n - 1]); break;
+        case 'ArrowRight':
+          if (active && active.classList.contains('sz-menu-category')) {
+            this.#activateMenuItem(active);
+            if (this.#flyout && this.#flyout.classList.contains('visible'))
+              this.#focusMenuItem(this.#menuItems(this.#flyout)[0]);
+          }
+          break;
+        case 'ArrowLeft':
+          if (inFlyout) {
+            this.#flyout.classList.remove('visible');
+            this.#focusMenuItem(this.#startMenu.querySelector('.sz-menu-category.active') || this.#menuItems(this.#startMenu)[0]);
+          }
+          break;
+        case 'Enter':
+        case ' ':
+          if (i >= 0) {
+            const isCategory = active.classList.contains('sz-menu-category');
+            const isView = active.classList.contains('sz-all-programs') || active.classList.contains('sz-menu-back');
+            this.#activateMenuItem(active);
+            if (isCategory && this.#flyout && this.#flyout.classList.contains('visible'))
+              this.#focusMenuItem(this.#menuItems(this.#flyout)[0]);
+            else if (isView)
+              this.#focusMenuItem(this.#menuItems(this.#startMenu)[0]);
+          }
+          break;
+        case 'Escape':
+          this.#closeStartMenu();
+          this.#startButton.focus();
+          break;
+        case 'Tab':
+          this.#closeStartMenu();
+          handled = false;
+          break;
+        default:
+          if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey && n) {
+            const letter = e.key.toLowerCase();
+            for (let k = 1; k <= n; ++k) {
+              const cand = items[(i + k + n) % n];
+              if (cand.textContent.replace(/^[^\p{L}\p{N}]+/u, '').toLowerCase().startsWith(letter)) {
+                this.#focusMenuItem(cand);
+                break;
+              }
+            }
+          } else
+            handled = false;
+      }
+      if (handled)
+        e.preventDefault();
+    }
+
     #toggleStartMenu() {
       const isOpen = this.#startMenu.classList.toggle('open');
       this.#startButton.classList.toggle('active', isOpen);
+      this.#startButton.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
       if (isOpen) {
         this.#startButton.style.backgroundPosition = `${this.#startButtonPressedPos} 0%`;
         // Reset to MRU view when opening
@@ -683,6 +806,7 @@
     #closeStartMenu() {
       this.#startMenu.classList.remove('open');
       this.#startButton.classList.remove('active');
+      this.#startButton.setAttribute('aria-expanded', 'false');
       this.#startButton.style.backgroundPosition = '0% 0%';
       this.#flyout?.classList.remove('visible');
     }
