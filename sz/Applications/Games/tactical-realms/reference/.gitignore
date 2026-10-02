@@ -1,5 +1,6 @@
-# Reference PDFs -- local only, not committed
+# Reference PDFs and book texts -- local only, not committed
 *.pdf
+*.txt
 
 # Book markdowns in subdirectories -- local only (converted from PDFs)
 core/*.md
