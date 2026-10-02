@@ -146,7 +146,8 @@
       // PCG state (64-bit)
       /** @type {BigInt} */
       this._state = 0n;
-      this._increment = null; // Will be set on seed or increment property
+      /** @type {BigInt} */
+      this._increment = 1n; // Default increment (odd) until the increment property sets one
 
       // PCG constants for 64-bit LCG (standard PCG multiplier)
       // Same as used in pcg32 variants
@@ -200,12 +201,6 @@
       let seedValue = 0n;
       for (let i = 0; i < Math.min(seedBytes.length, 8); ++i) {
         seedValue = OpCodes.OrN(OpCodes.ShiftLn(seedValue, 8n), BigInt(seedBytes[i]));
-      }
-
-      // Set default increment if not already set
-      if (this._increment === null) {
-        /** @type {BigInt} */
-        this._increment = 1n; // Default increment (odd)
       }
 
       // Initialize state: state = lcg(seed + increment)
