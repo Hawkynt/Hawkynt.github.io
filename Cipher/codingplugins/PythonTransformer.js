@@ -3139,7 +3139,7 @@ class OpCodes(metaclass=_OpCodesMeta):
       if (callee.property.type !== 'Identifier') return false;
 
       // Check if the called method name maps to the same snake_case name
-      const calledMethodName = toSnakeCase(callee.property.name);
+      const calledMethodName = toSnakeCaseProperty(callee.property.name);
       return calledMethodName === targetSnakeName;
     }
 
@@ -3709,7 +3709,7 @@ class OpCodes(metaclass=_OpCodesMeta):
             member.kind !== 'get' &&
             member.kind !== 'set') {
           const rawName = member.key.name;
-          const methodName = toSnakeCase(rawName);
+          const methodName = toSnakeCaseProperty(rawName);
           let rawNames = this.currentClassMethodNames.get(methodName);
           if (!rawNames) { rawNames = new Set(); this.currentClassMethodNames.set(methodName, rawNames); }
           rawNames.add(rawName);
@@ -3759,7 +3759,7 @@ class OpCodes(metaclass=_OpCodesMeta):
       // Create synthetic getter stubs for setter-only properties
       const syntheticGetters = settersWithoutGetters.map(setter => {
         const propName = setter.key?.name;
-        const snakeName = toSnakeCase(propName);
+        const snakeName = toSnakeCaseProperty(propName);
         return {
           type: 'MethodDefinition',
           kind: 'get',
@@ -3820,7 +3820,7 @@ class OpCodes(metaclass=_OpCodesMeta):
       if (sortedMembers && sortedMembers.length > 0) {
         for (const member of sortedMembers) {
           if (member.type === 'MethodDefinition') {
-            let snakeName = toSnakeCase(member.key.name);
+            let snakeName = toSnakeCaseProperty(member.key.name);
             // Use the disambiguated name (see currentMethodNameOverrides in
             // transformClassDeclaration) when this raw method name is one of
             // a genuine multi-method collision (e.g. shacal-2.js's `_sigma0`/
@@ -3976,7 +3976,7 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformMethodDefinition(node) {
-      let methodName = toSnakeCase(node.key.name);
+      let methodName = toSnakeCaseProperty(node.key.name);
       // Disambiguate methods that only collide after case-folding (see the
       // currentMethodNameOverrides comment in transformClassDeclaration).
       if (this.currentMethodNameOverrides && this.currentMethodNameOverrides.has(node.key.name)) {
@@ -4477,7 +4477,7 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformPropertyDefinition(node) {
-      const propName = toSnakeCase(node.key.name);
+      const propName = toSnakeCaseProperty(node.key.name);
       const value = node.value ? this.transformExpression(node.value) : PythonLiteral.None();
 
       const assignment = new PythonAssignment(
@@ -4526,7 +4526,7 @@ class OpCodes(metaclass=_OpCodesMeta):
         // Create synthetic getter stubs for setter-only properties
         const syntheticGetters = settersWithoutGetters.map(setter => {
           const propName = setter.key?.name;
-          const snakeName = toSnakeCase(propName);
+          const snakeName = toSnakeCaseProperty(propName);
           return {
             type: 'MethodDefinition',
             kind: 'get',
@@ -10392,7 +10392,7 @@ class OpCodes(metaclass=_OpCodesMeta):
         // nested OpCodes.UInt64/UInt128 Python port classes don't define.
         let pyMethodName = this._isOpCodesRootedExpression(node.callee.object)
           ? escapePythonKeyword(methodName)
-          : toSnakeCase(methodName);
+          : toSnakeCaseProperty(methodName);
         // this.method(...) calls go through this generic fallback rather than
         // transformMemberExpression's dot-access branch, so the same method-
         // name-collision disambiguation (see the currentMethodNameOverrides
@@ -10985,7 +10985,7 @@ class OpCodes(metaclass=_OpCodesMeta):
      */
     transformParentMethodCall(node) {
       const args = (node.arguments || []).map(arg => this.transformExpression(arg));
-      const methodName = toSnakeCase(node.method);
+      const methodName = toSnakeCaseProperty(node.method);
       return new PythonCall(
         new PythonMemberAccess(new PythonCall(new PythonIdentifier('super'), []), methodName),
         args
@@ -11033,7 +11033,7 @@ class OpCodes(metaclass=_OpCodesMeta):
         }
         return this.transformExpression(arg);
       });
-      let methodName = toSnakeCase(node.method);
+      let methodName = toSnakeCaseProperty(node.method);
       // Disambiguate methods that only collide after case-folding (see the
       // currentMethodNameOverrides comment in transformClassDeclaration -
       // e.g. shacal-2.js's `_Sigma0`/`_sigma0`). This IL node type is the
@@ -11055,7 +11055,7 @@ class OpCodes(metaclass=_OpCodesMeta):
      * Transform ThisPropertyAccess to self.property_name
      */
     transformThisPropertyAccess(node) {
-      let propName = toSnakeCase(node.property);
+      let propName = toSnakeCaseProperty(node.property);
 
       // Check for backing field access inside a getter/setter (see the
       // matching comment in transformMemberExpression / the

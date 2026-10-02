@@ -164,6 +164,26 @@ check('framework: MerkleDamgardBlocks splits at the length-field boundary and ho
 });
 
 // ---------------------------------------------------------------------------
+// Member names: one escaping at declaration, read and write
+// ---------------------------------------------------------------------------
+check('names: fields and methods named like Python builtins keep one spelling everywhere', () => {
+  const js = 'class St { constructor() { this.round = 2; this.file = [7]; } hash() { return this.round * 10; } }\n' +
+    'class Use { run(state) { const r = state.round; const f = state.file || []; return r + f[0] + state.hash(); }\n' +
+    '  bump(state) { state.round += 1; return state && state.round; } }';
+  // Given fields `round`/`file` and a method `hash` (Python builtin names)
+  // When they are declared on one class and read and written through another
+  // Then every access uses the same attribute name
+  const code = transpile(js);
+  expectNoMatch(code, /\.(round|file|hash)_\b/, 'a builtin-escaped attribute name');
+  return expectOutput(runPython(js, 's = St()\nu = Use()\nprint(u.run(s), u.bump(s), s.round)'), ['29 3 3']);
+});
+check('names: a Python keyword used as a member name is escaped the same way everywhere', () => {
+  const js = 'class K { constructor() { this.lambda = 1; } get from() { return this.lambda + 1; } }\n' +
+    'function f(k) { k.lambda = 5; return k.from + k.lambda; }';
+  return expectOutput(runPython(js, 'print(f(K()))'), ['11']);
+});
+
+// ---------------------------------------------------------------------------
 // Function expressions whose body is not one expression
 // ---------------------------------------------------------------------------
 check('lambda: a block-bodied arrow argument keeps every statement', () => {
