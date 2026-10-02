@@ -73,4 +73,22 @@
       assert.ok(u.passMode & 0b00010, 'fly bit');
     });
   });
+
+  describe('Monster names', () => {
+
+    it('creatures outside the open rules carry names of their own', () => {
+      const closed = /mind ?flayer|illithid|beholder|githyanki|githzerai|carrion crawler|umber hulk|yuan-?ti|displacer|kuo-?toa|slaad|gauth|eye of the deep|neogi/i;
+      const names = [
+        ...TR.CreatureRegistry.getMonsters().map(m => m.name),
+        ...Object.values(TR.CombatEngine.ENEMY_TEMPLATES).map(t => t.name),
+      ];
+      assert.deepEqual(names.filter(n => closed.test(n)), []);
+    });
+
+    it('their ids stay stable', () => {
+      for (const id of ['mind_flayer', 'beholder', 'githyanki_warrior', 'umber_hulk', 'displacer_beast'])
+        assert.ok(TR.CreatureRegistry.getMonster(id), id);
+      assert.equal(TR.CreatureRegistry.getMonster('mind_flayer').name, 'Thoughtdrinker');
+    });
+  });
 })();
