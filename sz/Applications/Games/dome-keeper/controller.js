@@ -2891,6 +2891,14 @@
     primaryGadgetState = {};
     foundGadgets = [];
 
+    // Combat skill
+    combo = 0;
+    comboTimer = 0;
+    bestCombo = 0;
+    charge = null;
+    parryT = parryCd = hitstop = screenFlash = 0;
+    reflected = [];
+
     // Artifacts
     artifacts = [];
     artifactState = newArtifactState();
@@ -3072,6 +3080,8 @@
 
     // Dome pulse
     domePulsePhase += dt * 2.0;
+
+    screenFlash = Math.max(0, screenFlash - dt * 3);
 
     // Dome hit flash decay
     if (domeHitFlash > 0)
@@ -4217,6 +4227,9 @@
     artifactState.phoenixUsed = false;
     artifactState.timeSlow = 0;
     stormArcs = [];
+    reflected = [];
+    combo = 0;
+    charge = null;
     snowCover = 0;
     weather = { kind: 'clear', intensity: 1, timeLeft: 50 };
     waveActive = false;
@@ -4871,7 +4884,7 @@
         if (e.spit <= 0 && far < 620 && far > DOME_RADIUS + 60) {
           e.spit = 4.5;
           const tx = DOME_X + (Math.random() - 0.5) * 90;
-          enemyShots.push({ x0: e.x, y0: e.y - e.size * 0.5, tx, ty: DOME_Y - Math.sqrt(Math.max(0, DOME_RADIUS * DOME_RADIUS - (tx - DOME_X) * (tx - DOME_X))), t: 0, dur: 1.2, dmg: Math.ceil(e.damage * 0.7) });
+          enemyShots.push({ x0: e.x, y0: e.y - e.size * 0.5, tx, ty: DOME_Y - Math.sqrt(Math.max(0, DOME_RADIUS * DOME_RADIUS - (tx - DOME_X) * (tx - DOME_X))), t: 0, dur: 1.2, dmg: Math.ceil(e.damage * 0.7), src: e });
           if (currentView === VIEW_SURFACE)
             SZ.GameAudio.play('drop', { pitch: 0.6, volume: 0.5 });
         }
@@ -4939,7 +4952,7 @@
               if (e.attackTimer <= 0) {
                 e.attackTimer = T.attack;
                 const tx = DOME_X + (Math.random() - 0.5) * 90;
-                enemyShots.push({ x0: e.x + Math.sign(dx) * e.size * 0.5, y0: e.y - e.size * 0.5, tx, ty: DOME_Y - Math.sqrt(Math.max(0, DOME_RADIUS * DOME_RADIUS - (tx - DOME_X) * (tx - DOME_X))), t: 0, dur: 1.1, dmg: e.damage });
+                enemyShots.push({ x0: e.x + Math.sign(dx) * e.size * 0.5, y0: e.y - e.size * 0.5, tx, ty: DOME_Y - Math.sqrt(Math.max(0, DOME_RADIUS * DOME_RADIUS - (tx - DOME_X) * (tx - DOME_X))), t: 0, dur: 1.1, dmg: e.damage, src: e });
                 if (currentView === VIEW_SURFACE)
                   SZ.GameAudio.play('drop', { pitch: 0.7, volume: 0.6 });
               }
@@ -4981,7 +4994,14 @@
               if (vd <= step + 6) {
                 e.x = e.diveX;
                 e.y = e.diveY;
-                if (damageDome(e.damage, e.x, e.y, '', e))
+                const pc = parryCheck();
+                if (pc) {
+                  // Parried: the diver bounces off stunned and hurt
+                  parryFeedback(e.x, e.y, pc === 2);
+                  applyDamageToEnemy(e, Math.round(weaponDamage * (pc === 2 ? 4 : 3)));
+                  e.stunTimer = 2;
+                  e.y -= 30;
+                } else if (damageDome(e.damage, e.x, e.y, '', e))
                   return;
                 SZ.GameAudio.play('hit', { pitch: 1.2 });
                 particles.burst(e.x, e.y, 12, { color: T.color, speed: 3, life: 0.4 });
@@ -5006,6 +5026,21 @@
             e.y += qy / qd * qstep;
             if (angry && dist <= reach + 30 && enemyMelee(e, T, dt))
               return;
+            // Venom lance: aims for a second (the tell), then strikes - parry it back
+            e.lance = (e.lance === undefined ? 4 : e.lance) - dt;
+            if (e.lance <= 1.1 && !e.lanceAim) {
+              const ax = DOME_X + (Math.random() - 0.5) * 120;
+              e.lanceAim = { tx: ax, ty: DOME_Y - Math.sqrt(Math.max(0, DOME_RADIUS * DOME_RADIUS - (ax - DOME_X) * (ax - DOME_X))) };
+              if (currentView === VIEW_SURFACE)
+                SZ.GameAudio.sweep(400, 1600, 1.0, 'sine', 0.05);
+            }
+            if (e.lance <= 0 && e.lanceAim) {
+              e.lance = 6.5;
+              enemyShots.push({ kind: 'lance', x0: e.x, y0: e.y + e.size * 0.3, tx: e.lanceAim.tx, ty: e.lanceAim.ty, t: 0, dur: 0.35, dmg: Math.ceil(e.damage * 1.6), src: e });
+              e.lanceAim = null;
+              if (currentView === VIEW_SURFACE)
+                SZ.GameAudio.play('zap', { pitch: 0.5 });
+            }
             e.spawnTimer = (e.spawnTimer === undefined ? 3 : e.spawnTimer) - dt;
             if (e.spawnTimer <= 0 && enemies.length < 60) {
               e.spawnTimer = 5.5;
@@ -5048,11 +5083,17 @@
       s.t += dt / s.dur;
       if (s.t >= 1) {
         enemyShots.splice(i, 1);
+        const pc = parryCheck();
+        if (pc) {
+          parryFeedback(s.tx, s.ty, pc === 2);
+          reflectShot(s.tx, s.ty, s.src, Math.round((s.dmg * 3 + weaponDamage) * (pc === 2 ? 1.5 : 1)), s.kind || 'acid');
+          continue;
+        }
         if (currentView === VIEW_SURFACE) {
-          particles.burst(s.tx, s.ty, 14, { color: '#8aff50', speed: 2.5, life: 0.5, gravity: 0.1 });
+          particles.burst(s.tx, s.ty, 14, { color: s.kind === 'lance' ? '#ff80e0' : '#8aff50', speed: 2.5, life: 0.5, gravity: 0.1 });
           SZ.GameAudio.play('bounce', { pitch: 0.5, volume: 0.6 });
         }
-        if (damageDome(s.dmg, s.tx, s.ty, 'Acid'))
+        if (damageDome(s.dmg, s.tx, s.ty, s.kind === 'lance' ? 'Venom lance' : 'Acid'))
           return;
       }
     }
@@ -5062,7 +5103,10 @@
       w.r += 420 * dt;
       if (!w.hit && w.r >= Math.abs(w.from - DOME_X) - DOME_RADIUS) {
         w.hit = true;
-        if (damageDome(w.dmg, DOME_X + Math.sign(w.from - DOME_X) * DOME_RADIUS, DOME_Y - 10, 'Shockwave'))
+        const pc = parryCheck();
+        if (pc)
+          parryFeedback(DOME_X + Math.sign(w.from - DOME_X) * DOME_RADIUS, DOME_Y - 10, pc === 2);
+        else if (damageDome(w.dmg, DOME_X + Math.sign(w.from - DOME_X) * DOME_RADIUS, DOME_Y - 10, 'Shockwave'))
           return;
       }
       if (w.r > 700)
@@ -5196,11 +5240,365 @@
   }
 
   /* ======================================================================
-     WEAPON SYSTEM
+     WEAPON SYSTEM -- aimed shots, weak points, charged shots, combos, parry
      ====================================================================== */
 
+  // Weak point of each monster: offset (towards the dome, down) and radius, in body sizes
+  const WEAK_POINTS = {
+    walker: [0.35, -0.35, 0.34], swarmer: [0.3, -0.1, 0.42], flyer: [0, -0.2, 0.32], crawler: [0.6, -0.1, 0.26],
+    diver: [0.2, -0.1, 0.34], burrower: [0.3, -0.45, 0.3], spitter: [-0.3, -0.55, 0.3], splitter: [0, 0, 0.32],
+    mender: [0, -0.5, 0.3], behemoth: [0.45, -0.55, 0.22], queen: [0, -0.35, 0.26]
+  };
+  const COMBO_TIMEOUT = 3;           // seconds without a hit before the combo ends
+  const CHARGE_TIME = 1.0;           // seconds to a full charge
+  const PERFECT_FROM = 0.82;         // share of the charge where the perfect window opens
+  const CHARGE_OVERHEAT = 1.2;       // held past this the charge fizzles and restarts
+  const PARRY_WINDOW = 0.3;          // seconds the parry shield stays up
+  const PARRY_COOLDOWN = 0.9;
+  let combo = 0, comboTimer = 0, bestCombo = 0;
+  let charge = null;                 // { t } while the fire button is held
+  let parryT = 0, parryCd = 0;       // parry shield time left and cooldown
+  let hitstop = 0;                   // brief freeze of the battle after a big hit
+  let screenFlash = 0, screenFlashColor = '255,255,255';
+  let reflected = [];                // parried globs and lances flying back: { x0, y0, target, tx, ty, t, dur, dmg, kind }
+  let lastShotAt = -10;              // animTime of the last turret shot (monster tooltips wait while shooting)
+
+  function weakPoint(e) {
+    const [fx, fy, fr] = WEAK_POINTS[e.type] || [0, -0.3, 0.3];
+    const face = e.x > DOME_X ? -1 : 1;
+    const sz = e.size || 16;
+    const bob = e.type === 'flyer' ? Math.sin(e.wobblePhase || 0) * 8 : 0;
+    return { x: e.x + fx * face * sz, y: e.y + fy * sz + bob, r: Math.max(7, fr * sz) };
+  }
+
+  function comboMult() {
+    return 1 + Math.min(combo, 20) * 0.03;
+  }
+
+  function comboHit(x, y) {
+    ++combo;
+    comboTimer = COMBO_TIMEOUT;
+    bestCombo = Math.max(bestCombo, combo);
+    if (combo >= 5 && combo % 5 === 0) {
+      floatingText.add(x, y - 70, `COMBO x${combo}!`, { color: '#ffb0ff', font: 'bold 26px sans-serif' });
+      SZ.GameAudio.play('powerup', { pitch: 1 + Math.min(combo, 30) * 0.02, volume: 0.5 });
+    }
+  }
+
+  function comboBreak(x, y) {
+    if (combo >= 3)
+      floatingText.add(x, y, 'Combo lost', { color: '#9aa2b8', font: 'bold 18px sans-serif' });
+    combo = 0;
+  }
+
+  function flashScreen(alpha, rgb) {
+    screenFlash = Math.max(screenFlash, alpha);
+    screenFlashColor = rgb || '255,255,255';
+  }
+
+  // How well a shot was aimed at its target: weak point, body or a graze
+  function classifyHit(target, bx, by) {
+    const wp = weakPoint(target);
+    let ax, ay;
+    if (mouseAimX >= 0 && mouseAimY >= 0 && mouseAimY < DOME_Y + 45) {
+      ax = mouseAimX;
+      ay = mouseAimY;
+    } else {
+      // Keyboard aiming: the point of the aim ray closest to the weak point
+      const vx = Math.cos(turretAngle), vy = Math.sin(turretAngle);
+      const proj = (wp.x - bx) * vx + (wp.y - by) * vy;
+      ax = bx + vx * proj;
+      ay = by + vy * proj;
+    }
+    if (Math.hypot(ax - wp.x, ay - wp.y) <= wp.r + 5) return 'weak';
+    if (Math.hypot(ax - target.x, ay - target.y) <= (target.size || 16) + 8) return 'body';
+    return 'graze';
+  }
+
+  // One turret shot; charged = null or { mult, perfect }
+  function fireTurret(charged) {
+    lastShotAt = animTime;
+    if (tooltip.enemy)
+      clearTooltip();
+    const nozzleR = DOME_RADIUS + 16;
+    const turretBaseX = DOME_X + Math.cos(turretAngle) * nozzleR;
+    const turretBaseY = DOME_Y + Math.sin(turretAngle) * nozzleR;
+    // Project a far-off aim point along the turret angle
+    const aimDist = 400;
+    const farX = turretBaseX + Math.cos(turretAngle) * aimDist;
+    const farY = turretBaseY + Math.sin(turretAngle) * aimDist;
+
+    // Find enemy closest to the projected aim line
+    let target = null;
+    const homing = !!unlockedTools.homingShots;
+    let bestDist = homing ? 220 * 220 : 80 * 80; // hit radius of 80px (220 with homing shots)
+    // A click right on a monster always aims at that monster
+    if (mouseAimX >= 0 && mouseAimY >= 0)
+      for (const e of enemies) {
+        if (e.hidden) continue;
+        const d = (e.x - mouseAimX) * (e.x - mouseAimX) + (e.y - mouseAimY) * (e.y - mouseAimY);
+        const r = (e.size || 16) + 10;
+        if (d < r * r && d < bestDist) {
+          bestDist = d;
+          target = e;
+        }
+      }
+    if (!target)
+      for (const e of enemies) {
+        if (e.hidden) continue;
+        const dx = e.x - farX;
+        const dy = e.y - farY;
+        const d = dx * dx + dy * dy;
+        if (d < bestDist) {
+          bestDist = d;
+          target = e;
+        }
+      }
+
+    // Also check enemies near the aim line (not just the far point)
+    if (!target) {
+      let bestLineDist = homing ? 140 : 60;
+      for (const e of enemies) {
+        if (e.hidden) continue;
+        // Distance from enemy to the aim ray
+        const ex = e.x - turretBaseX;
+        const ey = e.y - turretBaseY;
+        const projLen = ex * Math.cos(turretAngle) + ey * Math.sin(turretAngle);
+        if (projLen < -nozzleR) continue; // skip only enemies truly behind dome center
+        const perpDist = Math.abs(-ex * Math.sin(turretAngle) + ey * Math.cos(turretAngle));
+        if (perpDist < bestLineDist) {
+          bestLineDist = perpDist;
+          target = e;
+        }
+      }
+    }
+
+    const muzzleX = turretBaseX + Math.cos(turretAngle) * TURRET_BARREL_LENGTH;
+    const muzzleY = turretBaseY + Math.sin(turretAngle) * TURRET_BARREL_LENGTH;
+    const perfect = !!(charged && charged.perfect);
+    const kind = target ? classifyHit(target, turretBaseX, turretBaseY) : 'miss';
+    const wp = target && kind === 'weak' ? weakPoint(target) : null;
+    let tx = wp ? wp.x : (target ? target.x : farX);
+    let ty = wp ? wp.y : (target ? target.y : farY);
+    // A perfect shot pierces: its beam runs on through the target
+    if (perfect) {
+      const len = Math.hypot(tx - muzzleX, ty - muzzleY) || 1;
+      tx = muzzleX + (tx - muzzleX) / len * 1600;
+      ty = muzzleY + (ty - muzzleY) / len * 1600;
+    }
+    projectiles.push({ x: muzzleX, y: muzzleY, tx, ty, target, life: charged ? 0.4 : 0.3, maxLife: charged ? 0.4 : 0.3, charged: !!charged, perfect });
+
+    if (target) {
+      const ty0 = target.y - (target.size || 20) - 30;
+      if (kind === 'graze')
+        comboBreak(target.x, ty0 + 24);
+      else
+        comboHit(target.x, ty0);
+      const power = weaponDamage * comboMult();
+      let shot = power * (kind === 'weak' ? 2 : (kind === 'graze' ? 0.7 : 1)) * (charged ? charged.mult : 1);
+      // Lucky critical hits (Critical Hit node, Hunter's Eye)
+      const critChance = (unlockedTools.criticalHit ? 0.15 + 0.05 * (getEffectiveLevel('criticalHit') - 1) : 0) + (hasArtifact('hunterEye') ? 0.2 : 0);
+      const lucky = Math.random() < critChance;
+      if (lucky) shot *= 2.5;
+      shot = Math.round(shot);
+      applyDamageToEnemy(target, shot);
+      // Feedback
+      if (perfect) {
+        floatingText.add(target.x, ty0 - 26, `PERFECT! ${shot}`, { color: '#ffe060', font: 'bold 30px sans-serif' });
+        hitstop = 0.09;
+        flashScreen(0.35, '255,240,190');
+        screenShake.trigger(7, 180);
+        SZ.GameAudio.play('levelup', { pitch: 1.5, volume: 0.6 });
+        SZ.GameAudio.play('explode', { pitch: 1.6, volume: 0.4 });
+      } else if (charged) {
+        floatingText.add(target.x, ty0 - 26, `Charged ${shot}`, { color: '#ffc070', font: 'bold 22px sans-serif' });
+        SZ.GameAudio.play('shoot', { pitch: 0.7, volume: 0.6 });
+      }
+      if (kind === 'weak' || lucky) {
+        floatingText.add(target.x, ty0, kind === 'weak' && lucky ? 'DOUBLE CRIT!' : 'CRIT!', { color: kind === 'weak' ? '#ffd040' : '#ffa040', font: 'bold 26px sans-serif' });
+        particles.burst(wp ? wp.x : target.x, wp ? wp.y : target.y, 10, { color: '#ffe080', speed: 3, life: 0.3 });
+        SZ.GameAudio.play('hit', { pitch: 1.6, volume: 0.6 });
+        if (!perfect) {
+          hitstop = Math.max(hitstop, 0.04);
+          flashScreen(0.12);
+        }
+      } else if (kind === 'graze')
+        floatingText.add(target.x, ty0, 'graze', { color: '#9aa2b8', font: 'bold 16px sans-serif' });
+
+      // Perfect shots pierce: everything else on the line takes most of the damage
+      if (perfect) {
+        const lx = tx - muzzleX, ly = ty - muzzleY, ll = Math.hypot(lx, ly) || 1;
+        let n = 0;
+        for (const e of enemies) {
+          if (e === target || e.hidden || n >= 4) continue;
+          const ex = e.x - muzzleX, ey = e.y - muzzleY;
+          const along = (ex * lx + ey * ly) / ll;
+          const across = Math.abs(ex * ly - ey * lx) / ll;
+          if (along > 0 && across < (e.size || 16) + 14) {
+            applyDamageToEnemy(e, Math.round(shot * 0.8));
+            particles.burst(e.x, e.y, 8, { color: '#ffe080', speed: 2.5, life: 0.3 });
+            ++n;
+          }
+        }
+      }
+
+      // Multi-Shot: more beams at the monsters nearest to the target
+      if (unlockedTools.multiShot) {
+        const extra = enemies.filter(o => o !== target && !o.hidden)
+          .sort((a, b) => Math.hypot(a.x - target.x, a.y - target.y) - Math.hypot(b.x - target.x, b.y - target.y))
+          .slice(0, getEffectiveLevel('multiShot'));
+        for (const o of extra) {
+          applyDamageToEnemy(o, Math.ceil(power * 0.6));
+          projectiles.push({ x: muzzleX, y: muzzleY, tx: o.x, ty: o.y, target: o, life: 0.25, maxLife: 0.25 });
+        }
+      }
+
+      // Explosive Rounds: every hit bursts
+      if (unlockedTools.explosiveRounds) {
+        for (const ce of enemies)
+          if (ce !== target && !ce.hidden && Math.hypot(ce.x - target.x, ce.y - target.y) < 110)
+            applyDamageToEnemy(ce, Math.ceil(power * 0.4));
+        particles.burst(target.x, target.y, 12, { color: '#ffb040', speed: 3, life: 0.35 });
+      }
+
+      // Chain Lightning: arc damage to 2 nearby enemies (+1 per extra level)
+      if (unlockedTools.chainLightning) {
+        let chainCount = 0;
+        const arcs = 1 + getEffectiveLevel('chainLightning');
+        const chainDamage = Math.ceil(power * 0.4);
+        for (const ce of enemies) {
+          if (ce.hidden || ce === target) continue;
+          if (chainCount >= arcs) break;
+          const cdx = ce.x - target.x;
+          const cdy = ce.y - target.y;
+          if (cdx * cdx + cdy * cdy < 160 * 160) {
+            applyDamageToEnemy(ce, chainDamage);
+            particles.burst(ce.x, ce.y, 4, { color: '#4af', speed: 2, life: 0.2 });
+            // Arc visual
+            projectiles.push({ x: target.x, y: target.y, tx: ce.x, ty: ce.y, life: 0.15, maxLife: 0.15 });
+            ++chainCount;
+          }
+        }
+      }
+
+      // Freeze Ray: slow enemies near target
+      if (unlockedTools.freezeRay) {
+        for (const ce of enemies) {
+          if (ce.hidden) continue;
+          const cdx = ce.x - target.x;
+          const cdy = ce.y - target.y;
+          if (cdx * cdx + cdy * cdy < 120 * 120)
+            ce.stunTimer = Math.max(ce.stunTimer || 0, 0.8 + 0.3 * (getEffectiveLevel('freezeRay') - 1));
+        }
+      }
+
+      // Plasma Cannon: AoE damage around target
+      if (unlockedTools.plasmaCannon) {
+        const aoeDamage = Math.ceil(power * 0.6);
+        for (const ce of enemies) {
+          if (ce.hidden) continue;
+          if (ce === target) continue;
+          const cdx = ce.x - target.x;
+          const cdy = ce.y - target.y;
+          if (cdx * cdx + cdy * cdy < 140 * 140) {
+            applyDamageToEnemy(ce, aoeDamage);
+            particles.burst(ce.x, ce.y, 6, { color: '#f80', speed: 2, life: 0.3 });
+          }
+        }
+        particles.burst(target.x, target.y, 15, { color: '#f80', speed: 3, life: 0.4 });
+      }
+    } else
+      comboBreak(farX, farY);
+
+    particles.burst(muzzleX, muzzleY, charged ? 10 : 4, { color: charged ? '#ffe0a0' : '#faa', speed: charged ? 2.5 : 1.5, life: 0.15, size: 2 });
+    SZ.GameAudio.play('laser', { pitch: (charged ? 0.7 : 0.95) + Math.random() * 0.1, volume: 0.7 });
+  }
+
+  // Hold the fire button to charge; let go in the gold window for a perfect shot
+  function startCharge() {
+    if (state !== STATE_PLAYING || currentView !== VIEW_SURFACE) return;
+    charge = { t: 0 };
+  }
+
+  function releaseCharge() {
+    const c = charge;
+    charge = null;
+    if (!c || state !== STATE_PLAYING || currentView !== VIEW_SURFACE) return;
+    const k = c.t / CHARGE_TIME;
+    if (k < 0.35) return;           // a tap: the normal shot already went off
+    const perfect = k >= PERFECT_FROM && k <= 1;
+    fireCooldown = 1 / fireRate;
+    fireTurret({ mult: perfect ? 3 : (k >= 0.5 ? 1.8 : 1.25), perfect });
+  }
+
+  // Raise the parry shield for a moment: acid, lances, dives and shockwaves bounce off
+  function tryParry() {
+    if (state !== STATE_PLAYING || currentView !== VIEW_SURFACE || parryCd > 0) return;
+    parryT = PARRY_WINDOW;
+    parryCd = PARRY_COOLDOWN;
+    SZ.GameAudio.play('whoosh', { pitch: 1.8, volume: 0.5 });
+  }
+
+  // Did the shield catch this hit? Returns 0 (no), 1 (parry) or 2 (perfect: pressed just in time)
+  function parryCheck() {
+    if (parryT <= 0) return 0;
+    return parryT > PARRY_WINDOW - 0.12 ? 2 : 1;
+  }
+
+  function parryFeedback(x, y, perfect) {
+    floatingText.add(x, y - 40, perfect ? 'PERFECT PARRY!' : 'PARRY!', { color: perfect ? '#ffe060' : '#8ae8ff', font: 'bold 28px sans-serif' });
+    particles.burst(x, y, perfect ? 22 : 14, { color: perfect ? '#ffe080' : '#9ae8ff', speed: 3.5, life: 0.4 });
+    SZ.GameAudio.play('zap', { pitch: 1.7 });
+    SZ.GameAudio.play('select', { pitch: perfect ? 1.6 : 1.2, volume: 0.7 });
+    spawnShieldImpact(x, y);
+    hitstop = Math.max(hitstop, perfect ? 0.08 : 0.05);
+    flashScreen(perfect ? 0.25 : 0.12, perfect ? '255,240,190' : '180,230,255');
+    comboHit(x, y - 40);
+  }
+
+  // Send a parried shot back at whoever fired it (or the nearest monster)
+  function reflectShot(x, y, src, dmg, kind) {
+    let target = src && enemies.includes(src) && !src.hidden ? src : null;
+    if (!target) {
+      let best = 1e12;
+      for (const e of enemies) {
+        if (e.hidden) continue;
+        const d = (e.x - x) * (e.x - x) + (e.y - y) * (e.y - y);
+        if (d < best) {
+          best = d;
+          target = e;
+        }
+      }
+    }
+    if (target)
+      reflected.push({ x0: x, y0: y, target, tx: target.x, ty: target.y, t: 0, dur: kind === 'lance' ? 0.3 : 0.5, dmg, kind });
+  }
+
+  function updateReflected(dt) {
+    for (let i = reflected.length - 1; i >= 0; --i) {
+      const r = reflected[i];
+      if (enemies.includes(r.target)) {
+        r.tx = r.target.x;
+        r.ty = r.target.y;
+      }
+      r.t += dt / r.dur;
+      if (r.t < 1) continue;
+      reflected.splice(i, 1);
+      if (enemies.includes(r.target)) {
+        applyDamageToEnemy(r.target, r.dmg);
+        r.target.stunTimer = Math.max(r.target.stunTimer || 0, r.kind === 'lance' ? 1.5 : 0.8);
+        floatingText.add(r.tx, r.ty - (r.target.size || 20) - 30, `-${Math.round(r.dmg)}`, { color: '#9ae8ff', font: 'bold 24px sans-serif' });
+      }
+      if (currentView === VIEW_SURFACE)
+        particles.burst(r.tx, r.ty, 14, { color: r.kind === 'lance' ? '#ff80e0' : '#b8ff70', speed: 3, life: 0.4 });
+    }
+  }
+
   function updateWeapon(dt) {
-    if (currentView !== VIEW_SURFACE) return;
+    if (currentView !== VIEW_SURFACE) {
+      charge = null;
+      return;
+    }
 
     // Turret aiming: track mouse position continuously
     // Nozzle moves along dome arc — compute aim angle from dome center
@@ -5232,153 +5630,33 @@
     if (turretAngle > TURRET_MAX_ANGLE) turretAngle = TURRET_MAX_ANGLE;
     if (turretAngle < TURRET_MIN_ANGLE) turretAngle = TURRET_MIN_ANGLE;
 
-    // Nozzle position on dome arc
-    const nozzleR = DOME_RADIUS + 16;
-    const turretBaseX = DOME_X + Math.cos(turretAngle) * nozzleR;
-    const turretBaseY = DOME_Y + Math.sin(turretAngle) * nozzleR;
-
     fireCooldown -= dt;
+
+    // Holding too long overheats the charge: it fizzles and starts over
+    if (charge) {
+      charge.t += dt;
+      if (charge.t > CHARGE_TIME * CHARGE_OVERHEAT) {
+        charge.t = 0;
+        SZ.GameAudio.play('error', { pitch: 1.8, volume: 0.35 });
+        floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 80, 'Overheated - release in the gold window', { color: '#ff9a7a', font: 'bold 18px sans-serif' });
+      }
+    }
 
     // Fire toward current turret aim direction on click
     if (fireRequested && fireCooldown <= 0) {
       fireRequested = false;
       fireCooldown = 1.0 / (fireRate * (weather.kind === 'blizzard' ? 1 - 0.25 * weather.intensity : 1));
-
-      // Project a far-off aim point along the turret angle
-      const aimDist = 400;
-      const farX = turretBaseX + Math.cos(turretAngle) * aimDist;
-      const farY = turretBaseY + Math.sin(turretAngle) * aimDist;
-
-      // Find enemy closest to the projected aim line
-      let target = null;
-      const homing = !!unlockedTools.homingShots;
-      let bestDist = homing ? 220 * 220 : 80 * 80; // hit radius of 80px (220 with homing shots)
-      for (const e of enemies) {
-        if (e.hidden) continue;
-        const dx = e.x - farX;
-        const dy = e.y - farY;
-        const d = dx * dx + dy * dy;
-        if (d < bestDist) {
-          bestDist = d;
-          target = e;
-        }
-      }
-
-      // Also check enemies near the aim line (not just the far point)
-      if (!target) {
-        let bestLineDist = homing ? 140 : 60;
-        for (const e of enemies) {
-          if (e.hidden) continue;
-          // Distance from enemy to the aim ray
-          const ex = e.x - turretBaseX;
-          const ey = e.y - turretBaseY;
-          const projLen = ex * Math.cos(turretAngle) + ey * Math.sin(turretAngle);
-          if (projLen < -nozzleR) continue; // skip only enemies truly behind dome center
-          const perpDist = Math.abs(-ex * Math.sin(turretAngle) + ey * Math.cos(turretAngle));
-          if (perpDist < bestLineDist) {
-            bestLineDist = perpDist;
-            target = e;
-          }
-        }
-      }
-
-      const tx = target ? target.x : farX;
-      const ty = target ? target.y : farY;
-
-      const muzzleX = turretBaseX + Math.cos(turretAngle) * TURRET_BARREL_LENGTH;
-      const muzzleY = turretBaseY + Math.sin(turretAngle) * TURRET_BARREL_LENGTH;
-
-      projectiles.push({
-        x: muzzleX,
-        y: muzzleY,
-        tx, ty,
-        target,
-        life: 0.3,
-        maxLife: 0.3
-      });
-
-      if (target) {
-        // Critical hits
-        let shot = weaponDamage;
-        const critChance = (unlockedTools.criticalHit ? 0.15 + 0.05 * (getEffectiveLevel('criticalHit') - 1) : 0) + (hasArtifact('hunterEye') ? 0.2 : 0);
-        if (Math.random() < critChance) {
-          shot = Math.round(shot * 2.5);
-          floatingText.add(target.x, target.y - (target.size || 20) - 30, 'CRIT!', { color: '#ffd040', font: 'bold 24px sans-serif' });
-        }
-        applyDamageToEnemy(target, shot);
-
-        // Multi-Shot: more beams at the monsters nearest to the target
-        if (unlockedTools.multiShot) {
-          const extra = enemies.filter(o => o !== target && !o.hidden)
-            .sort((a, b) => Math.hypot(a.x - target.x, a.y - target.y) - Math.hypot(b.x - target.x, b.y - target.y))
-            .slice(0, getEffectiveLevel('multiShot'));
-          for (const o of extra) {
-            applyDamageToEnemy(o, Math.ceil(weaponDamage * 0.6));
-            projectiles.push({ x: muzzleX, y: muzzleY, tx: o.x, ty: o.y, target: o, life: 0.25, maxLife: 0.25 });
-          }
-        }
-
-        // Explosive Rounds: every hit bursts
-        if (unlockedTools.explosiveRounds) {
-          for (const ce of enemies)
-            if (ce !== target && !ce.hidden && Math.hypot(ce.x - target.x, ce.y - target.y) < 110)
-              applyDamageToEnemy(ce, Math.ceil(weaponDamage * 0.4));
-          particles.burst(target.x, target.y, 12, { color: '#ffb040', speed: 3, life: 0.35 });
-        }
-
-        // Chain Lightning: arc damage to 2 nearby enemies (+1 per extra level)
-        if (unlockedTools.chainLightning) {
-          let chainCount = 0;
-          const arcs = 1 + getEffectiveLevel('chainLightning');
-          const chainDamage = Math.ceil(weaponDamage * 0.4);
-          for (const ce of enemies) {
-            if (ce.hidden || ce === target) continue;
-            if (chainCount >= arcs) break;
-            const cdx = ce.x - target.x;
-            const cdy = ce.y - target.y;
-            if (cdx * cdx + cdy * cdy < 160 * 160) {
-              applyDamageToEnemy(ce, chainDamage);
-              particles.burst(ce.x, ce.y, 4, { color: '#4af', speed: 2, life: 0.2 });
-              // Arc visual
-              projectiles.push({ x: target.x, y: target.y, tx: ce.x, ty: ce.y, life: 0.15, maxLife: 0.15 });
-              ++chainCount;
-            }
-          }
-        }
-
-        // Freeze Ray: slow enemies near target
-        if (unlockedTools.freezeRay) {
-          for (const ce of enemies) {
-            if (ce.hidden) continue;
-            const cdx = ce.x - target.x;
-            const cdy = ce.y - target.y;
-            if (cdx * cdx + cdy * cdy < 120 * 120)
-              ce.stunTimer = Math.max(ce.stunTimer || 0, 0.8 + 0.3 * (getEffectiveLevel('freezeRay') - 1));
-          }
-        }
-
-        // Plasma Cannon: AoE damage around target
-        if (unlockedTools.plasmaCannon) {
-          const aoeDamage = Math.ceil(weaponDamage * 0.6);
-          for (const ce of enemies) {
-            if (ce.hidden) continue;
-            if (ce === target) continue;
-            const cdx = ce.x - target.x;
-            const cdy = ce.y - target.y;
-            if (cdx * cdx + cdy * cdy < 140 * 140) {
-              applyDamageToEnemy(ce, aoeDamage);
-              particles.burst(ce.x, ce.y, 6, { color: '#f80', speed: 2, life: 0.3 });
-            }
-          }
-          particles.burst(target.x, target.y, 15, { color: '#f80', speed: 3, life: 0.4 });
-        }
-      }
-
-      particles.burst(muzzleX, muzzleY, 4, { color: '#faa', speed: 1.5, life: 0.15, size: 2 });
-      SZ.GameAudio.play('laser', { pitch: 0.95 + Math.random() * 0.1, volume: 0.7 });
+      fireTurret(null);
     }
 
     fireRequested = false;
+
+    // The combo fades without hits
+    if (combo > 0) {
+      comboTimer -= dt;
+      if (comboTimer <= 0)
+        combo = 0;
+    }
 
     for (let i = projectiles.length - 1; i >= 0; --i) {
       projectiles[i].life -= dt;
@@ -9397,7 +9675,13 @@
     updateWeather(dt);
 
     updateArtifacts(dt);
-    updateEnemies(artifactState.timeSlow > 0 ? dt * 0.35 : dt);
+    // Hitstop: the battle freezes for an instant after a big hit
+    const battleDt = hitstop > 0 ? dt * 0.1 : dt;
+    hitstop = Math.max(0, hitstop - dt);
+    parryT = Math.max(0, parryT - dt);
+    parryCd = Math.max(0, parryCd - dt);
+    updateEnemies(artifactState.timeSlow > 0 ? battleDt * 0.35 : battleDt);
+    updateReflected(battleDt);
     updateWeapon(dt);
     updateDrones(dt);
 
@@ -11200,6 +11484,25 @@
   // Acid globs in flight and behemoth shockwaves
   function drawEnemyShots() {
     for (const s of enemyShots) {
+      if (s.kind === 'lance') {
+        const x = s.x0 + (s.tx - s.x0) * s.t, y = s.y0 + (s.ty - s.y0) * s.t;
+        const bx = s.x0 + (s.tx - s.x0) * Math.max(0, s.t - 0.25), by = s.y0 + (s.ty - s.y0) * Math.max(0, s.t - 0.25);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = 'rgba(255,90,220,0.5)';
+        ctx.lineWidth = 12;
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        ctx.strokeStyle = '#ffd8f8';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+        ctx.restore();
+        drawGlow('#ff70e0', x, y, 30, 0.9);
+        continue;
+      }
       const x = s.x0 + (s.tx - s.x0) * s.t;
       const y = s.y0 + (s.ty - s.y0) * s.t - Math.sin(s.t * Math.PI) * 150;
       drawGlow('#8aff50', x, y, 22, 0.6);
@@ -11361,6 +11664,18 @@
     const prevOp = ctx.globalCompositeOperation;
     for (const p of projectiles) {
       const alpha = Math.max(0, p.life / p.maxLife);
+      if (p.charged) {
+        // Charged beam: a wide golden core under the red laser
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = p.perfect ? `rgba(255,230,120,${alpha * 0.55})` : `rgba(255,170,80,${alpha * 0.4})`;
+        ctx.lineWidth = (p.perfect ? 30 : 20) * alpha + 4;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.tx, p.ty);
+        ctx.stroke();
+        ctx.globalCompositeOperation = prevOp;
+      }
 
       // Beam: wide soft glow, colored body, white-hot core
       ctx.globalCompositeOperation = 'lighter';
@@ -11441,6 +11756,8 @@
 
     drawEnemyShots();
 
+    drawCombatOverlays();
+
     // Projectiles, bombs and explosions
     drawProjectiles();
     drawSurfaceBombs();
@@ -11448,6 +11765,11 @@
     drawWeather();
     drawTimeSlowTint();
     drawThrowPreview();
+    drawChargeRing();
+    if (screenFlash > 0) {
+      ctx.fillStyle = `rgba(${screenFlashColor},${screenFlash})`;
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    }
 
     drawSurfaceHUD();
 
@@ -12489,6 +12811,7 @@
     });
     if (hasArtifact('aegisHeart'))
       drawMeter(barX + 20, barY + barH + 4, barW - 40, 7, artifactState.aegis / aegisMax(), '#6cc8ff', { track: 'rgba(0,10,30,0.7)' });
+    drawCombatHUD(barX, barY, barW, barH);
 
     drawKeyHints([
       { key: 'Space', label: 'Underground' },
@@ -13215,6 +13538,182 @@
       { key: '→', label: 'Combine' },
       { key: 'Esc', label: 'Close' }
     ], CANVAS_W / 2, L.y + L.h - 26, L.w - 80);
+  }
+
+  /* ======================================================================
+     DRAWING -- COMBAT SKILL (weak points, charge ring, parry, tells, combo)
+     ====================================================================== */
+
+  // Monster under the cursor (or the one a charge is aimed at)
+  function hoveredEnemy() {
+    if (mouseAimX < 0 || state !== STATE_PLAYING) return null;
+    let best = null, bd = Infinity;
+    for (const e of enemies) {
+      if (e.hidden) continue;
+      const d = Math.hypot(mouseAimX - e.x, mouseAimY - e.y);
+      const r = (e.size || 16) + (charge ? 60 : 14);
+      if (d < r && d < bd) {
+        bd = d;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  function drawWeakPointReticle(e) {
+    const w = weakPoint(e);
+    const pulse = 0.6 + Math.sin(animTime * 10) * 0.4;
+    ctx.save();
+    drawGlow('#ffd040', w.x, w.y, w.r * 2.4, 0.45 * pulse);
+    ctx.strokeStyle = `rgba(255,220,90,${0.6 + pulse * 0.4})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(w.x, w.y, w.r, 0, TWO_PI);
+    ctx.stroke();
+    const g = w.r + 7;
+    ctx.beginPath();
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      ctx.moveTo(w.x + dx * (w.r - 3), w.y + dy * (w.r - 3));
+      ctx.lineTo(w.x + dx * g, w.y + dy * g);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Shown under the HUD: weak points, boss tells, the parry shield and parried shots
+  function drawCombatOverlays() {
+    // Boss and diver tells
+    for (const e of enemies) {
+      if (e.hidden) continue;
+      let tell = 0;
+      if (e.type === 'behemoth' && e.stomp !== undefined && e.stomp < 0.9 && Math.abs(e.x - DOME_X) < 360) {
+        tell = 1 - e.stomp / 0.9;
+        drawGlow('#ff7040', e.x, DOME_Y + 4, 60 + tell * 50, 0.35 + tell * 0.4);
+      }
+      if (e.type === 'queen' && e.lanceAim) {
+        tell = 1 - Math.max(0, e.lance) / 1.1;
+        ctx.save();
+        ctx.setLineDash([12, 10]);
+        ctx.lineDashOffset = -animTime * 60;
+        ctx.strokeStyle = `rgba(255,90,220,${0.35 + tell * 0.55})`;
+        ctx.lineWidth = 2 + tell * 4;
+        ctx.beginPath();
+        ctx.moveTo(e.x, e.y + e.size * 0.3);
+        ctx.lineTo(e.lanceAim.tx, e.lanceAim.ty);
+        ctx.stroke();
+        ctx.restore();
+        drawGlow('#ff70e0', e.lanceAim.tx, e.lanceAim.ty, 26 + tell * 20, 0.5 + tell * 0.4);
+      }
+      if (e.type === 'diver' && e.phase === 'dive')
+        tell = 1;
+      if (tell > 0) {
+        const y = e.y - (e.size || 20) * (e.boss ? 2.2 : 1.6) - 26;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        fitText('!', e.x, y + Math.sin(animTime * 18) * 2, 30, 22 + tell * 10, { weight: 'bold', color: tell > 0.7 ? '#ff5a3a' : '#ffd040', outline: 'rgba(0,0,0,0.85)' });
+      }
+    }
+    // Weak point of the monster under the cursor
+    const he = currentView === VIEW_SURFACE && !bombThrowMode ? hoveredEnemy() : null;
+    if (he)
+      drawWeakPointReticle(he);
+    // Parry shield
+    if (parryT > 0) {
+      const k = parryT / PARRY_WINDOW;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.beginPath();
+      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 18, Math.PI, 0);
+      ctx.strokeStyle = `rgba(150,230,255,${0.9 * k})`;
+      ctx.lineWidth = 10 * k + 3;
+      ctx.shadowColor = '#8ae8ff';
+      ctx.shadowBlur = 20;
+      ctx.stroke();
+      ctx.restore();
+    }
+    // Parried shots flying back
+    for (const r of reflected) {
+      const x = r.x0 + (r.tx - r.x0) * r.t, y = r.y0 + (r.ty - r.y0) * r.t - Math.sin(r.t * Math.PI) * 40;
+      drawGlow(r.kind === 'lance' ? '#ff70e0' : '#8ae8ff', x, y, 28, 0.9);
+      ctx.fillStyle = '#f0ffff';
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, TWO_PI);
+      ctx.fill();
+      if (Math.random() < 0.6)
+        particles.trail(x, y, { vx: (Math.random() - 0.5), vy: (Math.random() - 0.5), color: '#9ae8ff', life: 0.25, size: 2 });
+    }
+  }
+
+  // Timing ring while charging: the outer ring closes in, release when it meets the gold circle
+  function drawChargeRing() {
+    if (!charge || currentView !== VIEW_SURFACE || charge.t < 0.15) return;
+    const k = charge.t / CHARGE_TIME;
+    let x, y;
+    if (mouseAimX >= 0 && mouseAimY < DOME_Y + 45) {
+      x = mouseAimX;
+      y = mouseAimY;
+    } else {
+      x = DOME_X + Math.cos(turretAngle) * 320;
+      y = DOME_Y + Math.sin(turretAngle) * 320;
+    }
+    const inWindow = k >= PERFECT_FROM && k <= 1;
+    const R0 = 70, Rt = 20;
+    const r = Math.max(8, R0 - (R0 - Rt) * Math.min(1.2, k));
+    ctx.save();
+    // Gold target circle
+    ctx.strokeStyle = inWindow ? '#fff2a0' : 'rgba(255,215,90,0.75)';
+    ctx.lineWidth = inWindow ? 5 : 3;
+    if (inWindow) {
+      ctx.shadowColor = UI.gold;
+      ctx.shadowBlur = 18;
+    }
+    ctx.beginPath();
+    ctx.arc(x, y, Rt, 0, TWO_PI);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    // Closing ring
+    ctx.strokeStyle = k > 1 ? 'rgba(255,90,70,0.9)' : (inWindow ? '#ffffff' : 'rgba(150,220,255,0.85)');
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TWO_PI);
+    ctx.stroke();
+    // Charge arc around the turret
+    const tx = DOME_X + Math.cos(turretAngle) * (DOME_RADIUS + 16), ty = DOME_Y + Math.sin(turretAngle) * (DOME_RADIUS + 16);
+    drawGlow(inWindow ? '#ffe060' : '#ffb070', tx, ty, 20 + Math.min(1, k) * 30, 0.4 + Math.min(1, k) * 0.5);
+    ctx.restore();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(inWindow ? 'RELEASE!' : (k > 1 ? 'Too late…' : 'Charging'), x, y + R0 + 12, 160, 16, { weight: 'bold', color: inWindow ? UI.gold : (k > 1 ? '#ff8a7a' : '#bfe0ff'), outline: 'rgba(0,0,0,0.8)' });
+  }
+
+  // Combo meter right of the dome bar, parry readiness left of it
+  function drawCombatHUD(barX, barY, barW, barH) {
+    // Parry
+    const px = barX - 26, py = barY + barH / 2;
+    const ready = parryCd <= 0;
+    ctx.save();
+    ctx.fillStyle = 'rgba(10,14,26,0.85)';
+    ctx.beginPath();
+    ctx.arc(px, py, 18, 0, TWO_PI);
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.stroke();
+    ctx.strokeStyle = ready ? '#8ae8ff' : 'rgba(138,232,255,0.5)';
+    ctx.beginPath();
+    ctx.arc(px, py, 18, -Math.PI / 2, -Math.PI / 2 + TWO_PI * (1 - parryCd / PARRY_COOLDOWN));
+    ctx.stroke();
+    ctx.restore();
+    drawSprite('shield', px, py, 20, ready ? 1 : 0.45);
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    fitText('Parry [E]', px - 24, py + 1, 90, 13, { weight: 'bold', color: ready ? '#bff0ff' : UI.textMute });
+    // Combo
+    if (combo >= 2) {
+      const cx = barX + barW + 12;
+      const w = drawChip(`Combo x${combo}  ·  ${comboMult().toFixed(2)}x`, cx, barY, barH, { px: 15, maxW: 190, bg: 'rgba(255,120,255,0.16)', border: 'rgba(255,160,255,0.6)', color: '#ffc8ff' });
+      drawMeter(cx + 6, barY + barH + 3, w - 12, 4, comboTimer / COMBO_TIMEOUT, '#ff9aff', { track: 'rgba(0,0,0,0.5)' });
+    }
   }
 
   /* ======================================================================
@@ -14295,6 +14794,16 @@
     if (e.code === 'KeyX')
       remoteDetonate();
 
+    // Surface combat: F fires (hold to charge), E parries
+    if (currentView === VIEW_SURFACE && !e.repeat) {
+      if (e.code === 'KeyF') {
+        fireRequested = true;
+        startCharge();
+      }
+      if (e.code === 'KeyE')
+        tryParry();
+    }
+
     if (e.code === 'KeyL' && relocationCore.found)
       requestRelocation();
 
@@ -14323,6 +14832,8 @@
 
   window.addEventListener('keyup', (e) => {
     keys[e.code] = false;
+    if (e.code === 'KeyF' && charge)
+      releaseCharge();
   });
 
   /* -- Click/Tap handling -- */
@@ -14504,8 +15015,14 @@
         lobSurfaceBomb(mx, my);
         return;
       }
-      // Fire weapon toward current turret aim direction
+      // Right click or a tap on the dome raises the parry shield
+      if (e.button === 2 || (Math.hypot(mx - DOME_X, my - DOME_Y) < DOME_RADIUS + 6 && my < DOME_Y + 8)) {
+        tryParry();
+        return;
+      }
+      // Fire weapon toward current turret aim direction; holding charges a stronger shot
       fireRequested = true;
+      startCharge();
     }
   });
 
@@ -14546,7 +15063,11 @@
     }
   });
 
+  canvas.addEventListener('pointercancel', () => { charge = null; });
+
   canvas.addEventListener('pointerup', (e) => {
+    if (charge && e.button === 0)
+      releaseCharge();
     if (upgradePanning && (e.button === 0 || e.button === 2)) {
       upgradePanning = false;
       treeCam.tx = upgradePanX;
@@ -14664,9 +15185,9 @@
             clearTooltip();
           return;
         }
-        // Surface: detect enemy under mouse
+        // Surface: detect enemy under mouse (not while aiming and shooting)
         let foundEnemy = false;
-        for (const e of enemies) {
+        for (const e of (charge || animTime - lastShotAt < 2 ? [] : enemies)) {
           if (e.hidden) continue;
           const sz = e.size || 10;
           const dx = mouseAimX - e.x;
