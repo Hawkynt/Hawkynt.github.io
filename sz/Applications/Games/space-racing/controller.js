@@ -802,6 +802,7 @@
     }
 
     state = STATE_PLAYING;
+    SZ.GameAudio.play('powerup', { pitch: 0.7 });
     updateWindowTitle();
   }
 
@@ -1048,13 +1049,16 @@
       if (playerCheckpoint >= track.checkpoints.length) {
         playerCheckpoint = 0;
         ++playerLap;
+        if (playerLap < TOTAL_LAPS)
+          SZ.GameAudio.play('levelup');
         floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 40, `Lap ${playerLap}/${TOTAL_LAPS}`, {
           color: '#ff0',
           font: 'bold 18px sans-serif'
         });
         if (playerLap >= TOTAL_LAPS)
           finishRace();
-      }
+      } else
+        SZ.GameAudio.play('blip', { pitch: 1.2, volume: 0.6 });
     }
 
     // Calculate position/placement using checkpoint progress + fractional distance
@@ -1096,6 +1100,7 @@
     }
 
     playerPlace = finalPlace;
+    SZ.GameAudio.play(finalPlace <= 3 ? 'win' : 'lose');
 
     // Award credits based on placement
     const creditReward = [CREDITS_1ST, CREDITS_2ND, CREDITS_3RD, CREDITS_4TH][finalPlace - 1] || CREDITS_4TH;
@@ -1149,6 +1154,8 @@
       const dx = pad.x - ship.x;
       const dy = pad.y - ship.y;
       if (dx * dx + dy * dy < 30 * 30) {
+        if (!boostActive)
+          SZ.GameAudio.play('whoosh', { pitch: 1.5 });
         boostActive = true;
         boostTimer = BASE_BOOST_DURATION * stats.boost;
         floatingText.add(ship.x, ship.y - 20, 'BOOST!', {
@@ -1188,6 +1195,7 @@
         });
 
         screenShake.trigger(8, 300);
+        SZ.GameAudio.play('thud');
       }
     }
   }
@@ -1273,6 +1281,7 @@
           });
 
           screenShake.trigger(6, 250);
+          SZ.GameAudio.play('zap', { pitch: 0.6 });
           wormholeCooldown = WORMHOLE_COOLDOWN;
           break;
         }
@@ -2321,12 +2330,15 @@
     // ── Ship Select navigation ──
     if (state === STATE_SHIP_SELECT) {
       e.preventDefault();
-      if (e.code === 'ArrowLeft' || e.code === 'KeyA')
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
         selectCursorIndex = (selectCursorIndex - 1 + SHIP_DEFS.length) % SHIP_DEFS.length;
-      else if (e.code === 'ArrowRight' || e.code === 'KeyD')
+        SZ.GameAudio.play('click');
+      } else if (e.code === 'ArrowRight' || e.code === 'KeyD') {
         selectCursorIndex = (selectCursorIndex + 1) % SHIP_DEFS.length;
-      else if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+        SZ.GameAudio.play('click');
+      } else if (e.code === 'Enter' || e.code === 'NumpadEnter') {
         selectedShipIndex = selectCursorIndex;
+        SZ.GameAudio.play('select');
         saveSelectedShip();
         state = STATE_READY;
         updateWindowTitle();
@@ -2341,11 +2353,13 @@
     // ── Upgrade Screen navigation ──
     if (state === STATE_UPGRADES) {
       e.preventDefault();
-      if (e.code === 'ArrowUp' || e.code === 'KeyW')
+      if (e.code === 'ArrowUp' || e.code === 'KeyW') {
         upgradeCursorIndex = (upgradeCursorIndex - 1 + UPGRADE_DEFS.length) % UPGRADE_DEFS.length;
-      else if (e.code === 'ArrowDown' || e.code === 'KeyS')
+        SZ.GameAudio.play('click');
+      } else if (e.code === 'ArrowDown' || e.code === 'KeyS') {
         upgradeCursorIndex = (upgradeCursorIndex + 1) % UPGRADE_DEFS.length;
-      else if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+        SZ.GameAudio.play('click');
+      } else if (e.code === 'Enter' || e.code === 'NumpadEnter') {
         const sd = getPlayerShipDef();
         const upg = UPGRADE_DEFS[upgradeCursorIndex];
         const level = getUpgradeLevel(sd.id, upg.id);
@@ -2354,7 +2368,9 @@
           credits -= cost;
           setUpgradeLevel(sd.id, upg.id, level + 1);
           saveCredits();
-        }
+          SZ.GameAudio.play('coin');
+        } else
+          SZ.GameAudio.play('error');
       } else if (e.code === 'Escape') {
         state = STATE_READY;
         updateWindowTitle();
@@ -2525,6 +2541,7 @@
     onAction: handleAction
   });
 
+  SZ.GameAudio.attachMuteButton();
   setupCanvas();
   loadHighScores();
   loadCredits();

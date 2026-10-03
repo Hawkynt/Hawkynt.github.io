@@ -257,15 +257,17 @@
   }
 
   function nextRoom() {
-    if (currentRoom + 1 < ROOMS.length)
+    if (currentRoom + 1 < ROOMS.length) {
       loadRoom(currentRoom + 1);
-    else {
+      SZ.GameAudio.play('levelup');
+    } else {
       state = STATE_GAME_OVER;
       elapsedTime = (performance.now() - startTime) / 1000;
       addHighScore(currentRoom, elapsedTime);
       floatingText.add(canvasW / 2, canvasH / 2 - 40, 'ALL ROOMS COMPLETE!', { color: '#ffd700', font: 'bold 20px sans-serif' });
       particles.confetti(canvasW / 2, canvasH / 2, 40, { speed: 6, gravity: 0.08 });
       updateWindowTitle();
+      SZ.GameAudio.play('win');
     }
   }
 
@@ -280,6 +282,16 @@
      PERSPECTIVE SHIFTING
      ══════════════════════════════════════════════════════════════════ */
 
+  // standing on a fracture re-triggers every frame; keep its sound to one
+  const lastSoundAt = {};
+  function playThrottled(name, opts) {
+    const now = performance.now();
+    if (now - (lastSoundAt[name] || 0) < 600)
+      return;
+    lastSoundAt[name] = now;
+    SZ.GameAudio.play(name, opts);
+  }
+
   function shiftPerspective() {
     transitionTo = (currentView + 1) % 3;
     transitionProgress = 0;
@@ -288,6 +300,7 @@
     screenShake.trigger(4, 150);
     floatingText.add(canvasW / 2, 40, 'Perspective Shift!', { color: '#ff0', font: 'bold 14px sans-serif' });
     particles.burst(canvasW / 2, canvasH / 2, 15, { color: '#88f', speed: 3, life: 0.6 });
+    playThrottled('whoosh', { pitch: 0.8 + transitionTo * 0.25 });
   }
 
   function updateTransition(dt) {
@@ -314,6 +327,7 @@
     screenShake.trigger(6, 300);
     floatingText.add(canvasW / 2, canvasH / 2, 'Reality Warped!', { color: '#f44', font: 'bold 16px sans-serif' });
     particles.burst(player.x, player.y, 20, { color: '#f04', speed: 5, life: 0.8 });
+    playThrottled('zap', { pitch: 0.6 });
   }
 
   function updateWarp(dt) {
@@ -348,7 +362,7 @@
      ══════════════════════════════════════════════════════════════════ */
 
   function discoverRule() {
-    if (discoveredRules[currentRoom]) return;
+    if (discoveredRules[currentRoom]) return false;
     discoveredRules[currentRoom] = true;
     saveProgress();
 
@@ -357,6 +371,8 @@
     particles.burst(player.x, player.y, 15, { color: def.accentColor, speed: 4, life: 0.6 });
     floatingText.add(player.x, player.y - 30, 'Rule Discovered!', { color: '#0f0', font: 'bold 14px sans-serif' });
     screenShake.trigger(3, 100);
+    SZ.GameAudio.play('pickup');
+    return true;
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -380,9 +396,20 @@
     }
   }
 
+  let touchedHint = null;
+  let hintTouchedNow = false;
+
+  function touchHint(obj) {
+    hintTouchedNow = true;
+    if (!discoverRule() && obj !== touchedHint)
+      SZ.GameAudio.play('blip', { volume: 0.6 });
+    touchedHint = obj;
+  }
+
   function checkObjects() {
     const def = ROOMS[currentRoom];
     const half = PLAYER_SIZE / 2;
+    hintTouchedNow = false;
 
     for (const obj of def.objects) {
       if (!rectOverlap(player.x - half, player.y - half, PLAYER_SIZE, PLAYER_SIZE, obj.x, obj.y, obj.w, obj.h))
@@ -390,7 +417,7 @@
 
       switch (obj.type) {
         case 'clue':
-          discoverRule();
+          touchHint(obj);
           floatingText.add(obj.x, obj.y - 15, def.ruleHint, { color: '#ff0', font: '11px sans-serif' });
           break;
 
@@ -406,7 +433,7 @@
           break;
 
         case 'echo':
-          discoverRule();
+          touchHint(obj);
           floatingText.add(obj.x, obj.y - 15, def.ruleHint, { color: '#0cf', font: '11px sans-serif' });
           particles.burst(obj.x + obj.w / 2, obj.y + obj.h / 2, 10, { color: '#00ccff', speed: 3, life: 0.5 });
           break;
@@ -419,21 +446,23 @@
           break;
 
         case 'shadow':
-          discoverRule();
+          touchHint(obj);
           floatingText.add(obj.x, obj.y - 15, def.ruleHint, { color: '#678', font: '11px sans-serif' });
           break;
 
         case 'colorTile':
-          discoverRule();
+          touchHint(obj);
           floatingText.add(obj.x, obj.y - 15, def.ruleHint, { color: obj.tileColor || '#ff0', font: '11px sans-serif' });
           break;
 
         case 'phantomBridge':
-          discoverRule();
+          touchHint(obj);
           floatingText.add(obj.x + obj.w / 2, obj.y - 15, def.ruleHint, { color: '#8f4', font: '11px sans-serif' });
           break;
       }
     }
+    if (!hintTouchedNow)
+      touchedHint = null;
   }
 
   function completeGame() {
@@ -446,6 +475,7 @@
     floatingText.add(canvasW / 2, canvasH / 2 - 60, 'AWAKENED!', { color: '#ffd700', font: 'bold 24px sans-serif' });
     screenShake.trigger(8, 400);
     updateWindowTitle();
+    SZ.GameAudio.play('win');
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -965,6 +995,7 @@
   loadProgress();
   loadHighScores();
   updateWindowTitle();
+  SZ.GameAudio.attachMuteButton();
 
   lastTimestamp = 0;
   animFrameId = requestAnimationFrame(gameLoop);

@@ -840,7 +840,7 @@
           currentY: py
         };
         if (_canvas && _canvas.setPointerCapture)
-          _canvas.setPointerCapture(0);
+          _canvas.szPointerId != null && _canvas.setPointerCapture(_canvas.szPointerId);
       }
     },
 

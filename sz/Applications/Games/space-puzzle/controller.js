@@ -241,6 +241,7 @@
     if (idx >= LEVELS.length) {
       // All levels complete — game over with victory
       state = STATE_GAME_OVER;
+      SZ.GameAudio.play('levelup');
       addHighScore(totalScore);
       updateTitle();
       return;
@@ -330,6 +331,7 @@
           obj.y = ast.y + ny * (ast.r + OBJECT_RADIUS + 1);
           // Impact effects
           screenShake.trigger(4, 0.2);
+          SZ.GameAudio.play('bounce');
           particles.burst(obj.x, obj.y, 8, { color: '#ff8844', life: 0.4, speed: 40 });
         }
       }
@@ -341,6 +343,7 @@
         if (Math.sqrt(wDx * wDx + wDy * wDy) < 12) {
           // Absorbed by gravity well — object lost, reset
           screenShake.trigger(8, 0.4);
+          SZ.GameAudio.play('hurt');
           particles.burst(well.x, well.y, 15, { color: '#8844ff', life: 0.6, speed: 50 });
           floatingText.add(well.x, well.y - 20, 'Absorbed!', { color: '#ff4444' });
           resetObject();
@@ -350,6 +353,7 @@
       // Check out of bounds — object missed, off-screen reset
       if (obj.x < -50 || obj.x > CANVAS_W + 50 || obj.y < -50 || obj.y > CANVAS_H + 50) {
         floatingText.add(CANVAS_W / 2, CANVAS_H / 2, 'Miss!', { color: '#ff6644' });
+        SZ.GameAudio.play('error');
         resetObject();
       }
     }
@@ -386,6 +390,7 @@
       });
     }
     screenShake.trigger(6, 0.3);
+    SZ.GameAudio.play('win');
     updateTitle();
 
     // Advance to next level after delay
@@ -406,6 +411,7 @@
   /* ── Reset game ── */
   function resetGame() {
     totalScore = 0;
+    SZ.GameAudio.play('select');
     loadLevel(0);
     particles.clear();
     floatingText.clear();
@@ -928,6 +934,7 @@
     dragEndX = mx;
     dragEndY = my;
     state = STATE_AIMING;
+    SZ.GameAudio.play('click');
     canvas.setPointerCapture(e.pointerId);
   });
 
@@ -962,6 +969,7 @@
     obj.active = true;
     ++moveCount;
     state = STATE_LAUNCHED;
+    SZ.GameAudio.play('whoosh', { pitch: 0.6 + launchSpeed / 500 });
 
     particles.burst(startPos.x, startPos.y, 6, { color: '#44aaff', life: 0.3, speed: 30 });
   });
@@ -984,6 +992,7 @@
     if (e.key === 'r' || e.key === 'R') {
       if (state === STATE_PLAYING || state === STATE_LAUNCHED || state === STATE_AIMING) {
         resetObject();
+        SZ.GameAudio.play('click');
         moveCount = 0;
         levelStartTime = performance.now();
         state = STATE_PLAYING;
@@ -1048,6 +1057,7 @@
   }
 
   /* ── Init ── */
+  SZ.GameAudio.attachMuteButton();
   loadHighScores();
   loadLevel(0);
   state = STATE_READY;

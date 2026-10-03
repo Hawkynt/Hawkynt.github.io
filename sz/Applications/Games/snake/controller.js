@@ -99,6 +99,7 @@
   const particles = new SZ.GameEffects.ParticleSystem();
   const screenShake = new SZ.GameEffects.ScreenShake();
   const floatingText = new SZ.GameEffects.FloatingText();
+  const sfx = SZ.GameAudio;
 
   /* ---- Game Config ---- */
   let gameConfig = { ...DEFAULT_CONFIG };
@@ -350,6 +351,7 @@
         particles.burst(x * CELL + CELL / 2, y * CELL + CELL / 2, 5, {
           speed: 2, color: '#666', life: 0.5, size: 2
         });
+        sfx.play('thud', { volume: 0.6 });
         return;
       }
       ++attempts;
@@ -466,6 +468,7 @@
       });
     }
 
+    sfx.play('smallExplode');
     score += AI_KILL_BONUS;
     if (snake.length > 0) {
       const h = snake[0];
@@ -581,6 +584,7 @@
       color: type.color, font: 'bold 12px sans-serif', decay: 0.02, vy: -1.5
     });
 
+    sfx.play('powerup');
     applyPowerupEffect(type, timestamp);
     fieldPowerup = null;
     lastPowerupTime = timestamp;
@@ -618,6 +622,7 @@
     if (idx < 0)
       return false;
     activePowerups.splice(idx, 1);
+    sfx.play('bounce');
 
     const h = snake[0];
     const cx = h.x * CELL + CELL / 2, cy = h.y * CELL + CELL / 2;
@@ -1568,12 +1573,14 @@
     floatingText.add(cx, cy, '+' + pts, {
       color: '#ff0', font: 'bold 14px sans-serif', decay: 0.02, vy: -1.5
     });
+    sfx.play(isMaze() ? 'coin' : 'pickup', { pitch: 1 + ((foodsEaten - 1) % FOODS_PER_LEVEL) * 0.06 });
 
     if (gameConfig.obstacles === 'growing' && foodsEaten % 3 === 0)
       addGrowingWall();
 
     if (foodsEaten % FOODS_PER_LEVEL === 0) {
       ++level;
+      sfx.play('levelup');
       floatingText.add(canvasW / 2, canvasH / 2, 'LEVEL ' + level + '!', {
         color: '#fff', font: 'bold 20px sans-serif', decay: 0.015, vy: -1
       });
@@ -1616,6 +1623,8 @@
     }
 
     screenShake.trigger(8, 400);
+    sfx.play('hurt');
+    sfx.play('lose', { volume: 0.8 });
     checkHighScore();
   }
 
@@ -2050,6 +2059,7 @@
     if (statusEffects)
       statusEffects.style.display = 'none';
 
+    sfx.play('select');
     animFrameId = requestAnimationFrame(gameLoop);
   }
 
@@ -2060,6 +2070,7 @@
     setupCanvas();
     loadHighScores();
     setupPresetButtons();
+    sfx.attachMuteButton();
 
     snake = [];
     prevSnake = null;

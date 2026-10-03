@@ -318,10 +318,12 @@
       player.isJumping = true;
       player.grounded = false;
       hasDoubleJumped = false;
+      SZ.GameAudio.play('jump');
     } else if ((keysDown['ArrowUp'] || keysDown['w'] || keysDown[' ']) && powerUpDoubleJump && !hasDoubleJumped && !player.grounded) {
       player.vy = JUMP_FORCE * 0.8;
       hasDoubleJumped = true;
       particles.burst(player.x + 12, player.y + player.h, 6, { color: '#ffd700', life: 0.3, speed: 30 });
+      SZ.GameAudio.play('jump', { pitch: 1.3 });
     }
 
     // Fireball
@@ -335,6 +337,7 @@
         w: 10, h: 8,
         age: 0
       });
+      SZ.GameAudio.play('shoot');
     }
 
     // Gravity
@@ -385,6 +388,7 @@
       --enemy.bossHealth;
       // Boss hit — screen shake + particles
       screenShake.trigger(8, 0.4);
+      SZ.GameAudio.play('hit');
       particles.burst(enemy.x + enemy.w / 2, enemy.y + enemy.h / 2, 10, { color: '#ff4400', life: 0.5, speed: 60 });
       floatingText.add(enemy.x + enemy.w / 2, enemy.y - 10, 'HIT!', { color: '#ff4400' });
 
@@ -394,6 +398,7 @@
         floatingText.add(enemy.x + enemy.w / 2, enemy.y - 20, '+' + BOSS_STOMP_SCORE, { color: '#ffd700' });
         // Boss defeat — big shake + confetti
         screenShake.trigger(12, 0.6);
+        SZ.GameAudio.play('explode');
         for (let i = 0; i < 5; ++i) {
           particles.burst(
             enemy.x + Math.random() * enemy.w,
@@ -408,6 +413,7 @@
       score += STOMP_SCORE;
       particles.burst(enemy.x + 12, enemy.y + 12, 10, { color: '#ff6600', life: 0.4, speed: 50 });
       floatingText.add(enemy.x + 12, enemy.y - 10, '+' + STOMP_SCORE, { color: '#ff6600' });
+      SZ.GameAudio.play('bounce');
     }
   }
 
@@ -452,6 +458,8 @@
             age: 0,
             hostile: true
           });
+          if (enemy.x > cameraX && enemy.x < cameraX + CANVAS_W)
+            SZ.GameAudio.play('shoot', { pitch: 0.6, volume: 0.5 });
         }
       }
 
@@ -501,6 +509,7 @@
       // Coin collect sparkle particles
       particles.sparkle(coin.x + 8, coin.y + 8, 8, { color: '#ffd700', life: 0.4 });
       floatingText.add(coin.x + 8, coin.y - 10, '+' + COIN_SCORE, { color: '#ffd700' });
+      SZ.GameAudio.play('coin');
     }
   }
 
@@ -513,6 +522,7 @@
       // Power-up collect sparkle
       particles.sparkle(pu.x + 10, pu.y + 10, 12, { color: '#00ffaa', life: 0.5 });
       floatingText.add(pu.x + 10, pu.y - 10, 'POWER UP!', { color: '#00ffaa' });
+      SZ.GameAudio.play('powerup');
 
       if (pu.type === 'doubleJump') powerUpDoubleJump = true;
       else if (pu.type === 'invincible') powerUpInvincible = true;
@@ -542,6 +552,7 @@
       });
     }
 
+    SZ.GameAudio.play('levelup');
     ++currentLevel;
     generateLevel(currentLevel);
     updateTitle();
@@ -560,8 +571,10 @@
       state = STATE_DEAD;
       addHighScore(score, currentLevel);
       updateTitle();
+      SZ.GameAudio.play('lose');
     } else {
       player.invincible = 1.5;
+      SZ.GameAudio.play('hurt');
     }
   }
 
@@ -580,6 +593,7 @@
   /* ── Game reset ── */
   function resetGame() {
     state = STATE_PLAYING;
+    SZ.GameAudio.play('select');
     score = 0;
     lives = MAX_LIVES;
     currentLevel = 1;
@@ -1047,6 +1061,7 @@
     // Landing dust: emit particles when transitioning to grounded
     if (player.grounded && !_prevGrounded) {
       particles.burst(px + player.w / 2, py + player.h, 5, { color: '#aa9977', life: 0.3, speed: 25 });
+      SZ.GameAudio.play('thud', { volume: 0.4 });
     }
     _prevGrounded = player.grounded;
 
@@ -1312,6 +1327,7 @@
     tutorialSeen = true;
     try { localStorage.setItem(STORAGE_TUTORIAL, '1'); } catch (_) {}
   }
+  SZ.GameAudio.attachMuteButton();
   requestAnimationFrame(gameLoop);
 
 })();
