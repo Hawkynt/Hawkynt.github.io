@@ -4999,6 +4999,12 @@
       g.fillStyle = '#5ab8ff'; g.beginPath(); g.moveTo(8, 1); g.lineTo(14, 3); g.lineTo(13, 10); g.lineTo(8, 15); g.lineTo(3, 10); g.lineTo(2, 3); g.fill();
       g.fillStyle = '#b8e4ff'; g.fillRect(5, 4, 2, 5);
     },
+    eye: (g) => {
+      g.fillStyle = '#e4eaf6'; g.beginPath(); g.ellipse(8, 8, 7.5, 4.5, 0, 0, TWO_PI); g.fill();
+      g.fillStyle = '#5ab8ff'; g.beginPath(); g.arc(8, 8, 3.2, 0, TWO_PI); g.fill();
+      g.fillStyle = '#10141e'; g.fillRect(7, 7, 2, 2);
+      g.fillStyle = '#ffffff'; g.fillRect(9, 6, 1, 1);
+    },
     bomb: (g) => {
       g.fillStyle = '#2a2a34'; g.beginPath(); g.arc(7, 9.5, 5.5, 0, TWO_PI); g.fill();
       g.fillStyle = '#5a5a6a'; g.fillRect(4, 6, 2, 2);
@@ -7660,21 +7666,29 @@
   /* ── Help pages ── */
   const HELP_PAGES = [
     { title: 'Basics', body: [
-      ['flag', 'Enemies walk the path from the green spawn gate to the red exit. Each one that gets through costs a life; lose them all and the map is lost.'],
-      ['hammer', 'Pick a tower in the build bar (or press 1-0), then click a free tile next to the path. Spike traps go on the path itself.'],
-      ['up', 'Click a tower to inspect it: upgrade it, repair it or sell it for half of what it cost.'],
-      ['coin', 'Defeated enemies drop gold. Every wave also pays a small bonus.'],
-      ['play', 'Press Start Wave (Space) when you are ready. Speed buttons run the battle 2× or 3× as fast; AUTO sends waves on its own.']
+      ['flag', 'Enemies march from the cave to your gatehouse. Every one that gets through costs a life (bosses cost five); lose them all and the map is lost.'],
+      ['hammer', 'Choose a tower in the build bar (or press 1-0) and click a free tile beside the road. Spike traps go on the road itself. A green outline means you can build there.'],
+      ['eye', 'The NEXT panel shows the enemies of the coming wave. Hover them to learn what counters them. Press Start (Space) when you are ready, or call a wave early (N) for bonus gold.'],
+      ['coin', 'Defeated enemies drop gold and every cleared wave pays a bonus. Gold Mines dig up more.'],
+      ['star', 'Win a map to unlock the next one. Keep 50% of your lives for two stars and 90% for three.']
     ] },
     { title: 'Towers', towers: true },
     { title: 'Enemies', enemies: true },
+    { title: 'Upgrades', body: [
+      ['up', 'Select a tower to upgrade it (U). Tiers I-III make it stronger; at tier III pick one of two specializations (U or I) with very different strengths.'],
+      ['crown', 'Tier V masters a specialization. It needs the matching Mastery from the research tree.'],
+      ['target', 'Targeting (T): First hits the enemy closest to your gate, Last the newest one, Strong the toughest, Close the nearest.'],
+      ['flask', 'Clearing waves, winning maps and earning new stars gives research. Spend it on the title screen or the campaign map to unlock towers and abilities and to train your army for good.'],
+      ['bomb', 'Abilities (Q, W, E) are unlocked by research: Airstrike bombs the spot you click, Deep Freeze freezes the whole field, Gold Rush doubles kill gold.']
+    ] },
     { title: 'Controls', keys: [
-      ['1 - 0', 'Choose a tower to build'], ['Click / Enter', 'Build or select'], ['Right click / Esc', 'Cancel building'],
-      ['Arrow keys', 'Move the build cursor'], ['U', 'Upgrade the selected tower'], ['S', 'Sell the selected tower'], ['R', 'Repair the selected tower'],
-      ['Space', 'Start the next wave'], ['F', 'Cycle game speed'], ['A', 'Auto-wave on/off'], ['H', 'Help'], ['Esc', 'Pause menu'], ['F2', 'New game']
+      ['1 - 0', 'Choose a tower to build'], ['Click / Enter', 'Build or select'], ['Right click / Esc', 'Cancel'],
+      ['Arrow keys', 'Move the build cursor'], ['U / I', 'Upgrade / pick a specialization'], ['T', 'Cycle targeting'],
+      ['S / R', 'Sell / repair'], ['Space', 'Start the next wave'], ['N', 'Call the next wave early'],
+      ['F', 'Cycle game speed'], ['A', 'Auto-wave on/off'], ['Q / W / E', 'Abilities'],
+      ['H', 'Help'], ['Esc', 'Pause menu'], ['F2', 'New game'], ['Touch', 'Tap to preview, tap again to build']
     ] }
   ];
-
   function openHelp(page) {
     if (state === STATE_PLAYING)
       togglePause();
@@ -7711,7 +7725,7 @@
         drawTextBlock(text, cx + 48, y, cw - 48, rowH - 6, 13, { color: UI.text, valign: 'middle' });
       });
     } else if (page.towers) {
-      drawHelpGrid(cx, cy, cw, ch, TOWER_TYPES.map((def, i) => ({ draw: (x, y, s) => drawTowerIcon(i, 1, x, y, s), name: def.name, text: `${def.desc} · ${def.cost} gold` })));
+      drawHelpGrid(cx, cy, cw, ch, TOWER_TYPES.map((def, i) => ({ draw: (x, y, s) => drawTowerIcon(i, 3, x, y, s), name: `${def.name} · ${def.cost} gold`, text: `${def.desc} Becomes ${def.branches[0].name} or ${def.branches[1].name}.` })));
     } else if (page.enemies) {
       drawHelpGrid(cx, cy, cw, ch, Object.keys(ENEMY_TYPES).filter(k => ENEMY_TYPES[k].unlock <= 1).map(k => ({ draw: (x, y, s) => drawEnemyIcon(k, x, y, s), name: ENEMY_TYPES[k].name, text: `${ENEMY_TYPES[k].info} Counter: ${ENEMY_TYPES[k].counter}.` })));
     } else if (page.keys) {
@@ -8309,6 +8323,17 @@
         break;
       case 'auto-wave':
         toggleAutoWave();
+        break;
+      case 'campaign':
+        if (isInGameState()) quitToTitle();
+        openMapSelect();
+        break;
+      case 'research':
+        if (isInGameState()) quitToTitle();
+        if (state !== STATE_RESEARCH) openResearch();
+        break;
+      case 'howto':
+        openHelp();
         break;
       case 'high-scores':
         renderHighScores();
