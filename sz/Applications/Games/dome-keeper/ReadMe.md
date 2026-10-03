@@ -524,16 +524,17 @@ With `t` = threat - 1 and `s` = site index:
 * Budget min(40, 2 + 0.85 x threat + 0.012 x threat²) monster units; reinforcements bring half
 * Elites, enrage, armour and acid-spitting elites as in 8.7; the night banner names the threat and the number of elites, and the threat chip turns from green (below 5) to amber, red (10+) and violet (16+)
 
-Bot runs (perfect reaction, 30% weak-point shots, 20% grazes, 40% of acid and dives parried, 3-5 nights each):
+Bot runs, 4 nights each: the bot reacts instantly and always shoots the monster nearest to the dome. *Careless* never aims for weak points, grazes half its shots and never parries; *skilled* hits the weak point with 30% of its shots, grazes 20% and parries 40% of the acid and dives. *Upgraded* owns a sensible set of tree nodes for that stage (weapon, dome and drone chains, no bombs or artifacts).
 
-| Threat / site | No upgrades | Sensible upgrades |
-| ------------- | ----------- | ----------------- |
-| 1-5 / site 1 | no losses, at most 8 damage | no losses, no damage |
-| 8 / site 2 | 2 of 3 nights lost | no damage |
-| 12-16 / sites 3-4 | always lost | no losses, at most 40 of 325 damage |
-| 20 / site 5 | always lost | no losses, up to 30 of 400 damage |
-| 24 / site 6 | always lost | 2 of 5 lost, the rest 50-390 of 400 damage |
-| 28 / site 7 | always lost | always lost |
+| Threat (site) | No upgrades | Upgraded, careless | Upgraded, skilled |
+| ------------- | ----------- | ------------------ | ----------------- |
+| 1-5 (site 1) | no losses, at most 3 damage | no damage | no damage |
+| 8 (site 2) | 2-4 of 4 nights lost | no damage | no losses, at most 46 of 200 |
+| 12 (site 3) | always lost | no damage | no damage |
+| 16 (site 4) | always lost | no losses, at most 29 of 325 | at most 3 of 325 |
+| 20 (site 5) | always lost | no losses, 62-360 of 400 | no damage |
+| 24 (site 6) | always lost | 3 of 4 lost | no losses, 74-190 of 400 |
+| 28 (site 7) | always lost | always lost | always lost |
 
 ### Acceptance Criteria
 
