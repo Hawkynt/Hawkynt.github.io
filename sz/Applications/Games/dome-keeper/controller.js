@@ -2180,7 +2180,18 @@
     }
     computeSkyLight();
     score = d.score;
-    enemies = d.enemies.map(e => Object.assign({}, e));
+    // Older saves only knew walkers, armoured walkers, bosses and flyers
+    enemies = d.enemies.map(e => {
+      const o = Object.assign({}, e);
+      if (!ENEMY_TYPES[o.type])
+        o.type = o.boss ? 'behemoth' : (o.type === 'flyer' ? 'flyer' : (o.armored ? 'crawler' : 'walker'));
+      if (!isNum(o.size)) o.size = 20;
+      if (!isNum(o.speed)) o.speed = 20;
+      if (!isNum(o.damage)) o.damage = 2;
+      o.phase = o.phase || 'approach';
+      o.t = isNum(o.t) ? o.t : 0;
+      return o;
+    });
     droppedResources = d.mineOutdated ? [] : d.droppedResources.map(dr => Object.assign({ age: 0 }, dr));
     primaryGadget = d.primaryGadget;
     primaryGadgetState = Object.assign({}, d.primaryGadgetState);
@@ -2526,6 +2537,8 @@
     computeSkyLight();
     weather = { kind: 'clear', intensity: 1, timeLeft: 50 };
     snowCover = 0;
+    enemyShots = [];
+    shockwaves = [];
     rainDrops = [];
     snowFlakes = [];
     leaves = [];
@@ -2832,8 +2845,8 @@
         enemyHitFlash.set(e, Math.max(0, hf - dt * 6));
       e.wobblePhase += dt * 4;
       e.legPhase += dt * 8;
-      if (e.type === 'flyer')
-        e.wingPhase = (e.wingPhase || 0) + dt * 12;
+      if (e.type === 'flyer' || e.type === 'diver' || e.type === 'queen')
+        e.wingPhase = (e.wingPhase || 0) + dt * (e.type === 'queen' ? 18 : 12);
       e.eyeBlinkTimer -= dt;
       if (e.eyeBlinkTimer <= 0) {
         e.eyeBlinking = !e.eyeBlinking;
@@ -2887,6 +2900,7 @@
      ====================================================================== */
 
   function applyDamageToEnemy(e, amount) {
+    if (e.hidden) return;
     enemyHitFlash.set(e, 0.8);
     if (e.shield > 0) {
       const absorbed = Math.min(e.shield, amount);
@@ -2899,6 +2913,15 @@
         floatingText.add(e.x, e.y - (e.size || 20) - 36, 'SHIELD BROKEN', { color: '#4af', font: 'bold 22px sans-serif' });
         particles.burst(e.x, e.y, 15, { color: '#4af', speed: 3.5, life: 0.5 });
         particles.sparkle(e.x, e.y, 8, { color: '#8cf', speed: 2 });
+      }
+    }
+    // Armour plates soak part of every hit (at least a quarter always gets through)
+    if (e.armor > 0 && amount > 0) {
+      const soaked = Math.min(e.armor, amount * 0.75);
+      amount -= soaked;
+      if (soaked > 0 && currentView === VIEW_SURFACE && Math.random() < 0.5) {
+        particles.sparkle(e.x, e.y - (e.size || 20) * 0.3, 3, { color: '#fff0c0', speed: 2 });
+        SZ.GameAudio.play('hit', { pitch: 1.8, volume: 0.35 });
       }
     }
     e.hp -= amount;
@@ -3720,6 +3743,96 @@
      ENEMY WAVES
      ====================================================================== */
 
+  /* -- Monster roster -- */
+  // hp / speed / damage scale the night's base stats, cost is the share of the
+  // night's budget, level the threat level the type first appears at
+  const ENEMY_TYPES = {
+    walker:   { name: 'Walker', move: 'ground', hp: 1, speed: 1, damage: 1, size: [20, 28], cost: 1, level: 0, weight: 10, score: 1, attack: 1, color: '#e0403a',
+      desc: 'Plods to the dome and bites it' },
+    swarmer:  { name: 'Swarmer', move: 'ground', hp: 0.3, speed: 1.9, damage: 0.45, size: [9, 12], cost: 0.35, level: 2, weight: 5, score: 0.4, attack: 0.7, group: [3, 6], color: '#c8d040',
+      desc: 'Tiny and fast, always in packs' },
+    flyer:    { name: 'Flyer', move: 'air', hp: 0.6, speed: 1.3, damage: 0.8, size: [14, 20], cost: 0.9, level: 3, weight: 6, score: 1, attack: 1, color: '#a050c8',
+      desc: 'Flies straight at the dome' },
+    crawler:  { name: 'Armored Crawler', move: 'ground', hp: 2.4, speed: 0.55, damage: 1.6, size: [26, 32], cost: 2.2, level: 4, weight: 5, score: 2.5, attack: 1.4, armor: 3, color: '#a08a5a',
+      desc: 'Armor plates shrug off part of every hit' },
+    diver:    { name: 'Diver', move: 'dive', hp: 0.7, speed: 1.2, damage: 2.2, size: [16, 20], cost: 1.4, level: 5, weight: 5, score: 1.5, attack: 1, color: '#3ab0c8',
+      desc: 'Circles high, then dives at the dome' },
+    burrower: { name: 'Burrower', move: 'burrow', hp: 1.3, speed: 1.15, damage: 1.3, size: [20, 24], cost: 1.4, level: 6, weight: 4, score: 1.5, attack: 1, color: '#d0609a',
+      desc: 'Tunnels unseen and pops up beside the dome' },
+    spitter:  { name: 'Spitter', move: 'ranged', hp: 0.9, speed: 0.8, damage: 1.2, size: [20, 24], cost: 1.5, level: 7, weight: 4, score: 1.6, attack: 2.6, color: '#60d040',
+      desc: 'Keeps its distance and spits acid' },
+    splitter: { name: 'Splitter', move: 'ground', hp: 1.5, speed: 0.8, damage: 1.1, size: [24, 28], cost: 1.8, level: 8, weight: 3, score: 1.8, attack: 1, color: '#ff9030',
+      desc: 'Bursts into swarmers when killed' },
+    mender:   { name: 'Mender', move: 'ground', hp: 1.4, speed: 0.75, damage: 0.9, size: [22, 26], cost: 1.8, level: 9, weight: 3, score: 2, attack: 1.2, color: '#40e0a0',
+      desc: 'Regenerates and heals the monsters around it' },
+    behemoth: { name: 'Behemoth', move: 'ground', hp: 9, speed: 0.45, damage: 3, size: [46, 54], cost: 0, level: 10, weight: 0, score: 8, attack: 1.6, armor: 2, boss: true, color: '#b81848',
+      desc: 'Boss: stomps shockwaves into the dome' },
+    queen:    { name: 'Hive Queen', move: 'queen', hp: 7, speed: 0.5, damage: 2.5, size: [36, 42], cost: 0, level: 15, weight: 0, score: 9, attack: 1.2, boss: true, color: '#e040c0',
+      desc: 'Boss: hovers over the field dropping swarmers' }
+  };
+  // Seasons shift the mix
+  const SEASON_ENEMY_BIAS = {
+    spring: { swarmer: 2.5, splitter: 1.5, crawler: 0.5 },
+    summer: { flyer: 1.6, diver: 1.6, spitter: 1.4 },
+    autumn: { burrower: 1.8, mender: 1.3, walker: 1.2 },
+    winter: { crawler: 2.2, mender: 1.5, swarmer: 0.3, flyer: 0.6 }
+  };
+  let enemyShots = [];               // acid globs: { x0, y0, tx, ty, t, dur, dmg }
+  let shockwaves = [];               // behemoth stomps: { x, r, hit }
+
+  // Threat climbs with every night and every relocation
+  function threatLevel() {
+    return waveNumber + site.index * 4;
+  }
+
+  function enemyType(e) {
+    return ENEMY_TYPES[e.type] || ENEMY_TYPES.walker;
+  }
+
+  function spawnEnemy(key, base, at) {
+    const T = ENEMY_TYPES[key];
+    const season = currentSeason();
+    const size = (T.size[0] + Math.random() * (T.size[1] - T.size[0])) * (T.boss ? 1 : season.size);
+    const hp = base.hp * T.hp * (0.88 + Math.random() * 0.24);
+    const e = {
+      type: key, x: 0, y: 0, hp, maxHP: hp,
+      speed: base.speed * T.speed * (0.9 + Math.random() * 0.2),
+      damage: Math.max(1, Math.round(base.damage * T.damage)),
+      attackTimer: 0.4 + Math.random() * 0.5, stunTimer: 0, size,
+      armor: T.armor ? Math.round(T.armor * (1 + base.threat * 0.06)) : 0,
+      shield: 0, maxShield: 0, boss: !!T.boss, phase: 'approach', t: 0,
+      wobblePhase: Math.random() * TWO_PI, legPhase: Math.random() * TWO_PI, wingPhase: Math.random() * TWO_PI,
+      eyeBlinkTimer: 2 + Math.random() * 3, eyeBlinking: false
+    };
+    if (at) {
+      e.x = at.x;
+      e.y = at.y;
+    } else if (T.move === 'air' || T.move === 'dive' || T.move === 'queen') {
+      const angle = Math.PI + 0.15 + Math.random() * (Math.PI - 0.3);
+      const dist = 640 + Math.random() * 200;
+      e.x = DOME_X + Math.cos(angle) * dist;
+      e.y = Math.max(-80, DOME_Y + Math.sin(angle) * dist * 0.75);
+      e.hoverX = DOME_X + (Math.random() < 0.5 ? -1 : 1) * (120 + Math.random() * 200);
+      e.hoverY = 230 + Math.random() * 160;
+    } else {
+      const fromLeft = Math.random() < 0.5;
+      e.x = fromLeft ? -60 - Math.random() * 180 : CANVAS_W + 60 + Math.random() * 180;
+      e.y = DOME_Y - size * 0.35 + (Math.random() - 0.5) * 24;
+      if (T.move === 'burrow') {
+        e.hidden = true;
+        e.y = DOME_Y + 14;
+      }
+    }
+    // Shields show up as the threat grows
+    if (base.threat >= 11 && !T.boss && Math.random() < Math.min(0.3, (base.threat - 10) * 0.05)) {
+      e.shield = e.maxShield = Math.floor(hp * 0.5 + base.threat);
+    } else if (T.boss) {
+      e.shield = e.maxShield = Math.floor(hp * 0.35);
+    }
+    enemies.push(e);
+    return e;
+  }
+
   // The main attack comes at nightfall; reinforcements (smaller, no boss) later in the night
   function spawnWave(reinforcement) {
     if (!reinforcement)
@@ -3732,128 +3845,320 @@
       floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 60, 'Shield Recharged!', { color: '#4af', font: 'bold 24px sans-serif' });
     }
 
-    const isBossWave = !reinforcement && waveNumber >= 15 && waveNumber % 5 === 0;
-
-    // Gradual count ramp: 2 at wave 1, slowly increases, capped at 20; the moon makes nights stronger or calmer
-    const baseCount = Math.max(1, Math.round(Math.min(20, 2 + Math.floor(waveNumber * 0.8)) * moonStrength(world.day) * currentSeason().count * (reinforcement ? 0.45 : 1)));
-    // Flyer ratio: 0% for waves 1-4, ramps to ~40% by wave 10+
-    const flyerRatio = waveNumber <= 4 ? 0 : Math.min(0.4, (waveNumber - 4) * 0.07);
-    const flyerCount = Math.floor(baseCount * flyerRatio);
-    const walkerCount = baseCount - flyerCount;
-
-    // HP scaling: starts very low (8-10 for wave 1), gradually increases; the season shapes the swarm
+    const threat = Math.max(1, threatLevel());
     const season = currentSeason();
-    const baseHP = (8 + (waveNumber - 1) * 3) * season.hp;
-    // Damage scaling: starts at 2-3, gradually increases
-    const baseDamage = Math.max(1, Math.round((2 + Math.floor((waveNumber - 1) * 0.8)) * season.damage));
-    // Speed scaling
-    const baseSpeed = (15 + Math.min(25, waveNumber * 2)) * season.speed;
-
-    // Spawn ground walkers
-    for (let i = 0; i < walkerCount; ++i) {
-      // Ground walkers approach from left or right at ground level
-      const fromLeft = Math.random() < 0.5;
-      const spawnX = fromLeft ? -60 - Math.random() * 160 : CANVAS_W + 60 + Math.random() * 160;
-      const spawnY = DOME_Y + (Math.random() - 0.5) * 40;
-
-      const isArmored = waveNumber >= 9 && Math.random() < Math.min(0.35, (waveNumber - 8) * 0.07);
-      const hpMult = isArmored ? 2.0 : 1.0;
-      const spdMult = isArmored ? 0.75 : 1.0;
-      const sizeMult = isArmored ? 1.3 : 1.0;
-      const hp = (baseHP + Math.random() * 5) * hpMult;
-      const hasShield = waveNumber >= 11 && Math.random() < Math.min(0.3, (waveNumber - 10) * 0.05);
-      const shieldVal = hasShield ? Math.floor(hp * 0.5 + waveNumber) : 0;
-
-      enemies.push({
-        type: 'ground',
-        x: spawnX,
-        y: spawnY,
-        hp: hp,
-        maxHP: hp,
-        speed: (baseSpeed + Math.random() * 10) * spdMult,
-        damage: baseDamage + Math.floor(Math.random() * 2),
-        attackTimer: 0,
-        stunTimer: 0,
-        wobblePhase: Math.random() * TWO_PI,
-        legPhase: Math.random() * TWO_PI,
-        eyeBlinkTimer: 2 + Math.random() * 3,
-        eyeBlinking: false,
-        size: (20 + Math.random() * 8) * sizeMult * season.size,
-        armored: isArmored,
-        shield: shieldVal,
-        maxShield: shieldVal,
-        boss: false
-      });
+    const base = {
+      threat,
+      hp: (8 + (threat - 1) * 3) * season.hp * (1 + 0.3 * site.index),
+      damage: (2 + (threat - 1) * 0.8) * season.damage * (1 + 0.2 * site.index),
+      speed: (15 + Math.min(25, threat * 2)) * season.speed
+    };
+    // The night's budget: grows with the threat, the moon and the season
+    let budget = Math.min(24, 2 + threat * 0.8) * moonStrength(world.day) * season.count * (reinforcement ? 0.45 : 1);
+    const bias = SEASON_ENEMY_BIAS[season.key] || {};
+    const wb = { blizzard: { burrower: 1.6, flyer: 0.5, diver: 0.5 }, storm: { flyer: 0.6, diver: 0.6 } }[weather.kind] || {};
+    const pool = Object.keys(ENEMY_TYPES).filter(k => !ENEMY_TYPES[k].boss && ENEMY_TYPES[k].level <= threat);
+    const weightOf = (k) => ENEMY_TYPES[k].weight * (bias[k] || 1) * (wb[k] || 1);
+    let total = 0;
+    for (const k of pool) total += weightOf(k);
+    for (let guard = 0; budget > 0.25 && guard < 60; ++guard) {
+      let r = Math.random() * total, key = pool[0];
+      for (const k of pool) {
+        r -= weightOf(k);
+        if (r <= 0) {
+          key = k;
+          break;
+        }
+      }
+      if (ENEMY_TYPES[key].cost > budget + 0.4)
+        key = budget >= 1 || !pool.includes('swarmer') ? 'walker' : 'swarmer';
+      const T = ENEMY_TYPES[key];
+      if (T.group) {
+        const n = Math.max(1, Math.min(T.group[0] + Math.floor(Math.random() * (T.group[1] - T.group[0] + 1)), Math.ceil(budget / T.cost)));
+        const lead = spawnEnemy(key, base);
+        for (let i = 1; i < n; ++i)
+          spawnEnemy(key, base, { x: lead.x + (lead.x < DOME_X ? -1 : 1) * i * 22, y: lead.y + (Math.random() - 0.5) * 16 });
+        budget -= T.cost * n;
+      } else {
+        spawnEnemy(key, base);
+        budget -= T.cost;
+      }
     }
 
-    // Spawn airborne flyers
-    for (let i = 0; i < flyerCount; ++i) {
-      // Flyers approach from upper hemisphere at any angle
-      const angle = Math.PI + Math.random() * Math.PI;
-      const dist = 600 + Math.random() * 200;
-      const flyerHP = (baseHP * 0.6 + Math.random() * 3);
-      const hasShield = waveNumber >= 11 && Math.random() < Math.min(0.2, (waveNumber - 10) * 0.04);
-      const shieldVal = hasShield ? Math.floor(flyerHP * 0.4 + waveNumber * 0.5) : 0;
-
-      enemies.push({
-        type: 'flyer',
-        x: DOME_X + Math.cos(angle) * dist,
-        y: DOME_Y + Math.sin(angle) * dist * 0.6,
-        hp: flyerHP,
-        maxHP: flyerHP,
-        speed: baseSpeed * 1.3 + Math.random() * 12,
-        damage: Math.max(1, baseDamage - 1),
-        attackTimer: 0,
-        stunTimer: 0,
-        wobblePhase: Math.random() * TWO_PI,
-        legPhase: Math.random() * TWO_PI,
-        wingPhase: Math.random() * TWO_PI,
-        eyeBlinkTimer: 2 + Math.random() * 3,
-        eyeBlinking: false,
-        size: (14 + Math.random() * 6) * season.size,
-        armored: false,
-        shield: shieldVal,
-        maxShield: shieldVal,
-        boss: false
-      });
-    }
-
-    // Boss enemy every 5 waves starting at wave 15
-    if (isBossWave) {
-      const bossHP = baseHP * 8 + waveNumber * 5;
-      const bossShield = Math.floor(bossHP * 0.4);
-      const fromLeft = Math.random() < 0.5;
-      enemies.push({
-        type: 'ground',
-        x: fromLeft ? -120 : CANVAS_W + 120,
-        y: DOME_Y - 20,
-        hp: bossHP,
-        maxHP: bossHP,
-        speed: baseSpeed * 0.5,
-        damage: baseDamage * 3,
-        attackTimer: 0,
-        stunTimer: 0,
-        wobblePhase: Math.random() * TWO_PI,
-        legPhase: Math.random() * TWO_PI,
-        eyeBlinkTimer: 2 + Math.random() * 3,
-        eyeBlinking: false,
-        size: 44 + Math.random() * 8,
-        armored: true,
-        shield: bossShield,
-        maxShield: bossShield,
-        boss: true
-      });
-      floatingText.add(CANVAS_W / 2, 140, 'BOSS INCOMING!', { color: '#f00', font: 'bold 48px sans-serif' });
+    // A boss every fifth night once the threat is high enough
+    if (!reinforcement && waveNumber % 5 === 0 && threat >= 10) {
+      const bossKey = threat >= 15 && Math.floor(waveNumber / 5) % 2 === 0 ? 'queen' : 'behemoth';
+      spawnEnemy(bossKey, base);
+      const T = ENEMY_TYPES[bossKey];
+      announce(`${T.name} approaches!`, T.desc, '#ff5a5a', 'swords');
       SZ.GameAudio.play('hurt', { pitch: 0.5 });
-    } else
-      SZ.GameAudio.play('select', { pitch: 0.75 });
-
+      if (bossKey === 'queen')
+        SZ.GameAudio.sweep(300, 1400, 0.7, 'sawtooth', 0.06, 0.2);
+    }
     if (reinforcement) {
       announce('More monsters!', 'A second swarm crawls out of the dark', '#ff8a6a', 'swords');
       SZ.GameAudio.play('hurt', { pitch: 0.6, volume: 0.6 });
     }
     updateWindowTitle();
   }
+
+  // Kill effects, score and special deaths (splitters burst into swarmers)
+  function killEnemy(e, i) {
+    const T = enemyType(e);
+    const pts = Math.round((10 + waveNumber * 5) * T.score);
+    score += pts;
+    enemies.splice(i, 1);
+    const pitch = { swarmer: 1.6, flyer: 1.2, diver: 1.3, crawler: 0.7, burrower: 0.8, spitter: 1, splitter: 0.9, mender: 1.1, behemoth: 0.5, queen: 0.6 }[e.type] || 1;
+    SZ.GameAudio.play(e.boss || e.type === 'crawler' ? 'explode' : 'smallExplode', { pitch: pitch * (0.9 + Math.random() * 0.2), volume: e.type === 'swarmer' ? 0.5 : 1 });
+    if (e.type === 'mender')
+      SZ.GameAudio.play('zap', { pitch: 0.6, volume: 0.5 });
+    const n = e.boss ? 3 : 1;
+    particles.burst(e.x, e.y, 20 * n, { color: T.color, speed: 3.5 * Math.sqrt(n), life: 0.6, gravity: 0.05 });
+    particles.burst(e.x, e.y, 10 * n, { color: '#ffa040', speed: 2, life: 0.4 });
+    particles.sparkle(e.x, e.y, 6, { color: '#ff0', speed: 1.5 });
+    for (let g = 0; g < 5 * n; ++g)
+      particles.trail(e.x + (Math.random() - 0.5) * 8, e.y + (Math.random() - 0.5) * 8, {
+        vx: (Math.random() - 0.5) * 4, vy: -Math.random() * 3 - 1, color: T.color,
+        life: 0.5 + Math.random() * 0.3, size: 3 + Math.random() * 3, gravity: 0.12, shape: 'square'
+      });
+    if (e.boss)
+      screenShake.trigger(12, 400);
+    floatingText.add(e.x, e.y - 30, `+${pts}`, { color: '#ff0', font: 'bold 24px sans-serif' });
+    if (e.type === 'splitter') {
+      const base = { threat: threatLevel(), hp: e.maxHP / ENEMY_TYPES.splitter.hp * 0.9, damage: e.damage / ENEMY_TYPES.splitter.damage, speed: e.speed / ENEMY_TYPES.splitter.speed };
+      for (let k = 0; k < 3; ++k) {
+        const s = spawnEnemy('swarmer', base, { x: e.x + (k - 1) * 18, y: e.y + (Math.random() - 0.5) * 10 });
+        s.attackTimer = 0.8;
+      }
+      SZ.GameAudio.play('bounce', { pitch: 0.6 });
+      waveActive = true;
+    }
+  }
+
+  function enemyMelee(e, T, dt) {
+    e.attackTimer -= dt;
+    if (e.attackTimer > 0) return false;
+    e.attackTimer = T.attack;
+    const lunge = Math.atan2(e.y - DOME_Y, e.x - DOME_X);
+    e.lunge = 1;
+    if (damageDome(e.damage, DOME_X + Math.cos(lunge) * DOME_RADIUS, DOME_Y + Math.sin(lunge) * DOME_RADIUS))
+      return true;
+    particles.burst(e.x, e.y, 8, { color: T.color, speed: 2.5, life: 0.4 });
+    if (e.type === 'crawler' || e.boss)
+      SZ.GameAudio.play('thud', { pitch: 0.6, volume: 0.7 });
+    else if (e.type === 'swarmer')
+      SZ.GameAudio.play('click', { pitch: 0.7, volume: 0.6 });
+    return false;
+  }
+
+  function updateEnemies(dt) {
+    const repel = (primaryGadget === 'repellent' && primaryGadgetState.active) ? 0.4 : 1.0;
+    const slowGround = weatherSlow();
+    const slowAir = weather.kind === 'blizzard' ? 1 - 0.3 * weather.intensity : 1;
+    for (let i = enemies.length - 1; i >= 0; --i) {
+      const e = enemies[i];
+      const T = enemyType(e);
+      e.t += dt;
+      e.lunge = Math.max(0, (e.lunge || 0) - dt * 4);
+      const isStunned = e.stunTimer > 0;
+      if (isStunned)
+        e.stunTimer = Math.max(0, e.stunTimer - dt);
+      const air = T.move === 'air' || T.move === 'dive' || T.move === 'queen';
+      const spd = e.speed * repel * (air ? slowAir : slowGround);
+      const dx = DOME_X - e.x, dy = DOME_Y - e.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const reach = DOME_RADIUS + (air ? 10 : e.size * 0.45);
+
+      // Menders regenerate and patch up the monsters near them
+      if (e.type === 'mender') {
+        e.hp = Math.min(e.maxHP, e.hp + e.maxHP * 0.05 * dt);
+        for (const o of enemies)
+          if (o !== e && !o.hidden && Math.abs(o.x - e.x) < 130 && Math.abs(o.y - e.y) < 130)
+            o.hp = Math.min(o.maxHP, o.hp + o.maxHP * 0.03 * dt);
+      }
+      // Monsters dropped by the queen fall to the ground first
+      if (e.fall !== undefined) {
+        e.fall = Math.min(1, e.fall + dt * 1.8);
+        e.y = e.fallFrom + (DOME_Y - e.size * 0.35 - e.fallFrom) * e.fall * e.fall;
+        if (e.fall >= 1) {
+          delete e.fall;
+          particles.burst(e.x, e.y + e.size * 0.4, 5, { color: '#8a7a6a', speed: 1.5, life: 0.3 });
+        }
+      } else if (!isStunned) {
+        switch (T.move) {
+          case 'burrow':
+            if (e.hidden) {
+              e.x += Math.sign(dx) * spd * 1.15 * dt;
+              if (currentView === VIEW_SURFACE && Math.random() < dt * 14)
+                particles.trail(e.x + (Math.random() - 0.5) * 20, DOME_Y + 6, { vx: (Math.random() - 0.5) * 2, vy: -1.5 - Math.random() * 1.5, color: '#7a6248', life: 0.4, size: 2.5, gravity: 0.12, shape: 'square' });
+              if (Math.abs(dx) < DOME_RADIUS + 70) {
+                e.hidden = false;
+                e.pop = 0;
+                e.y = DOME_Y - e.size * 0.35;
+                if (currentView === VIEW_SURFACE) {
+                  particles.burst(e.x, DOME_Y, 22, { color: '#8a6a48', speed: 4, life: 0.6, gravity: 0.15 });
+                  screenShake.trigger(4, 150);
+                }
+                SZ.GameAudio.play('thud', { pitch: 0.5 });
+                SZ.GameAudio.noise(0.3, 0.12, 'lowpass', 600, 120);
+              }
+              break;
+            }
+            // surfaced: fall through to ground behaviour
+          case 'ground':
+            if (dist > reach)
+              e.x += Math.sign(dx) * spd * dt;
+            else if (enemyMelee(e, T, dt))
+              return;
+            break;
+          case 'ranged': {
+            if (Math.abs(dx) > 330) {
+              e.x += Math.sign(dx) * spd * dt;
+            } else {
+              e.attackTimer -= dt;
+              e.charge = Math.max(0, 1 - e.attackTimer / 0.8);
+              if (e.attackTimer <= 0) {
+                e.attackTimer = T.attack;
+                const tx = DOME_X + (Math.random() - 0.5) * 90;
+                enemyShots.push({ x0: e.x + Math.sign(dx) * e.size * 0.5, y0: e.y - e.size * 0.5, tx, ty: DOME_Y - Math.sqrt(Math.max(0, DOME_RADIUS * DOME_RADIUS - (tx - DOME_X) * (tx - DOME_X))), t: 0, dur: 1.1, dmg: e.damage });
+                if (currentView === VIEW_SURFACE)
+                  SZ.GameAudio.play('drop', { pitch: 0.7, volume: 0.6 });
+              }
+            }
+            break;
+          }
+          case 'air':
+            if (dist > reach) {
+              e.x += dx / dist * spd * dt;
+              e.y += dy / dist * spd * dt;
+            } else if (enemyMelee(e, T, dt))
+              return;
+            break;
+          case 'dive': {
+            if (e.phase === 'approach' || e.phase === 'climb') {
+              const hx = e.hoverX - e.x, hy = e.hoverY - e.y, hd = Math.hypot(hx, hy) || 1;
+              e.x += hx / hd * spd * (e.phase === 'climb' ? 1.6 : 1) * dt;
+              e.y += hy / hd * spd * (e.phase === 'climb' ? 1.6 : 1) * dt;
+              if (hd < 12) {
+                e.phase = 'circle';
+                e.t = 0;
+                e.circleFor = 1.6 + Math.random() * 2;
+              }
+            } else if (e.phase === 'circle') {
+              e.x = e.hoverX + Math.sin(e.t * 2.2) * 70;
+              e.y = e.hoverY + Math.sin(e.t * 4.4) * 18;
+              if (e.t > e.circleFor) {
+                e.phase = 'dive';
+                const tx = DOME_X + (Math.random() - 0.5) * 70;
+                e.diveX = tx;
+                e.diveY = DOME_Y - Math.sqrt(Math.max(0, DOME_RADIUS * DOME_RADIUS - (tx - DOME_X) * (tx - DOME_X)));
+                if (currentView === VIEW_SURFACE)
+                  SZ.GameAudio.sweep(1900, 500, 0.55, 'sawtooth', 0.04);
+              }
+            } else if (e.phase === 'dive') {
+              const vx = e.diveX - e.x, vy = e.diveY - e.y, vd = Math.hypot(vx, vy) || 1;
+              const step = spd * 5.2 * dt;
+              e.angle = Math.atan2(vy, vx);
+              if (vd <= step + 6) {
+                e.x = e.diveX;
+                e.y = e.diveY;
+                if (damageDome(e.damage, e.x, e.y))
+                  return;
+                SZ.GameAudio.play('hit', { pitch: 1.2 });
+                particles.burst(e.x, e.y, 12, { color: T.color, speed: 3, life: 0.4 });
+                e.phase = 'climb';
+                e.hoverX = DOME_X + (Math.random() < 0.5 ? -1 : 1) * (120 + Math.random() * 200);
+                e.hoverY = 230 + Math.random() * 160;
+              } else {
+                e.x += vx / vd * step;
+                e.y += vy / vd * step;
+              }
+            }
+            break;
+          }
+          case 'queen': {
+            // Hovers above the field, drops swarmers; comes down to fight when wounded
+            const angry = e.hp < e.maxHP * 0.5;
+            const tx = angry ? DOME_X : DOME_X + Math.sin(e.t * 0.35) * 380;
+            const ty = angry ? DOME_Y - DOME_RADIUS - 30 : 250 + Math.sin(e.t * 0.9) * 40;
+            const qx = tx - e.x, qy = ty - e.y, qd = Math.hypot(qx, qy) || 1;
+            const qstep = Math.min(qd, spd * 1.6 * dt);
+            e.x += qx / qd * qstep;
+            e.y += qy / qd * qstep;
+            if (angry && dist <= reach + 30 && enemyMelee(e, T, dt))
+              return;
+            e.spawnTimer = (e.spawnTimer === undefined ? 3 : e.spawnTimer) - dt;
+            if (e.spawnTimer <= 0 && enemies.length < 60) {
+              e.spawnTimer = 5.5;
+              const base = { threat: threatLevel(), hp: e.maxHP / T.hp * 0.8, damage: e.damage / T.damage, speed: e.speed / T.speed };
+              for (let k = 0; k < 3; ++k) {
+                const s = spawnEnemy('swarmer', base, { x: e.x + (k - 1) * 26, y: e.y + 20 });
+                s.fall = 0;
+                s.fallFrom = e.y + 20;
+              }
+              if (currentView === VIEW_SURFACE)
+                SZ.GameAudio.sweep(500, 1100, 0.25, 'square', 0.04);
+            }
+            break;
+          }
+        }
+        // Behemoth stomp: a shockwave that rolls into the dome
+        if (e.type === 'behemoth' && dist < 360) {
+          e.stomp = (e.stomp === undefined ? 2 : e.stomp) - dt;
+          if (e.stomp <= 0) {
+            e.stomp = 5.5;
+            e.stompAnim = 0.5;
+            shockwaves.push({ x: e.x, r: 10, from: e.x, hit: false, dmg: Math.ceil(e.damage * 0.6) });
+            if (currentView === VIEW_SURFACE) {
+              screenShake.trigger(7, 260);
+              SZ.GameAudio.play('explode', { pitch: 0.55, volume: 0.6 });
+            }
+          }
+        }
+      }
+      if (e.stompAnim > 0)
+        e.stompAnim = Math.max(0, e.stompAnim - dt);
+
+      if (e.hp <= 0)
+        killEnemy(e, i);
+    }
+
+    // Acid globs arc through the air
+    for (let i = enemyShots.length - 1; i >= 0; --i) {
+      const s = enemyShots[i];
+      s.t += dt / s.dur;
+      if (s.t >= 1) {
+        enemyShots.splice(i, 1);
+        if (currentView === VIEW_SURFACE) {
+          particles.burst(s.tx, s.ty, 14, { color: '#8aff50', speed: 2.5, life: 0.5, gravity: 0.1 });
+          SZ.GameAudio.play('bounce', { pitch: 0.5, volume: 0.6 });
+        }
+        if (damageDome(s.dmg, s.tx, s.ty, 'Acid'))
+          return;
+      }
+    }
+    // Stomp shockwaves
+    for (let i = shockwaves.length - 1; i >= 0; --i) {
+      const w = shockwaves[i];
+      w.r += 420 * dt;
+      if (!w.hit && w.r >= Math.abs(w.from - DOME_X) - DOME_RADIUS) {
+        w.hit = true;
+        if (damageDome(w.dmg, DOME_X + Math.sign(w.from - DOME_X) * DOME_RADIUS, DOME_Y - 10, 'Shockwave'))
+          return;
+      }
+      if (w.r > 700)
+        shockwaves.splice(i, 1);
+    }
+
+    if (waveActive && enemies.length === 0) {
+      waveActive = false;
+      SZ.GameAudio.play('levelup');
+      announce('Swarm beaten!', isNight() && world.bursts < 3 ? 'More may come before dawn' : 'The dome holds', '#6fe08a', 'shield');
+      saveRun();
+    }
+  }
+
+  let domeDamageShown = { t: 0, amount: 0, label: '' }; // hits within a moment are shown as one number
 
   // Any hit on the dome: shield gadget, armour, effects and game over. Returns true when the dome is lost.
   function damageDome(amount, ex, ey, label) {
@@ -3879,7 +4184,13 @@
       lastDomeHurtSound = hurtNow;
       SZ.GameAudio.play('hurt', { volume: 0.7 });
     }
-    floatingText.add(DOME_X + (Math.random() - 0.5) * 80, DOME_Y - 60, label ? `${label} -${effectiveDmg}` : `-${effectiveDmg} HP`, { color: '#f44', font: 'bold 28px sans-serif' });
+    domeDamageShown.amount += effectiveDmg;
+    if (label) domeDamageShown.label = label;
+    const nowMs = performance.now();
+    if (nowMs - domeDamageShown.t > 450) {
+      floatingText.add(DOME_X + (Math.random() - 0.5) * 80, DOME_Y - 60, domeDamageShown.label ? `${domeDamageShown.label} -${domeDamageShown.amount}` : `-${domeDamageShown.amount} HP`, { color: '#f44', font: 'bold 28px sans-serif' });
+      domeDamageShown = { t: nowMs, amount: 0, label: '' };
+    }
     spawnShieldImpact(ex, ey);
     // Sparks along the shield surface
     const impactAngle = Math.atan2(ey - DOME_Y, ex - DOME_X);
@@ -3907,71 +4218,6 @@
       return true;
     }
     return false;
-  }
-
-  function updateEnemies(dt) {
-    for (let i = enemies.length - 1; i >= 0; --i) {
-      const e = enemies[i];
-
-      const dx = DOME_X - e.x;
-      const dy = DOME_Y - e.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      // Repellent field slows enemies
-      const speedMult = ((primaryGadget === 'repellent' && primaryGadgetState.active) ? 0.4 : 1.0) * (e.type === 'flyer' ? 1 : weatherSlow());
-      // Stun laser freezes targeted enemy
-      const isStunned = e.stunTimer > 0;
-      if (isStunned) {
-        e.stunTimer -= dt;
-        if (e.stunTimer < 0) e.stunTimer = 0;
-      }
-
-      if (dist > DOME_RADIUS + 10) {
-        if (!isStunned) {
-          e.x += (dx / dist) * e.speed * speedMult * dt;
-          e.y += (dy / dist) * e.speed * speedMult * dt;
-        }
-      } else if (!isStunned) {
-        e.attackTimer -= dt;
-        if (e.attackTimer <= 0) {
-          e.attackTimer = 1.0;
-
-          if (damageDome(e.damage, e.x, e.y))
-            return;
-          particles.burst(e.x, e.y, 10, { color: '#f44', speed: 2.5, life: 0.5 });
-        }
-      }
-
-      // Remove dead enemies with death animation
-      if (e.hp <= 0) {
-        score += 10 + waveNumber * 5;
-        SZ.GameAudio.play(e.boss ? 'explode' : 'smallExplode', { pitch: 0.85 + Math.random() * 0.3 });
-        // Chunky death explosion
-        particles.burst(e.x, e.y, 20, { color: '#fa0', speed: 3.5, life: 0.6, gravity: 0.05 });
-        particles.burst(e.x, e.y, 10, { color: '#f44', speed: 2, life: 0.4 });
-        particles.sparkle(e.x, e.y, 6, { color: '#ff0', speed: 1.5 });
-        // Gore chunks (squares)
-        for (let g = 0; g < 5; ++g)
-          particles.trail(e.x + (Math.random() - 0.5) * 8, e.y + (Math.random() - 0.5) * 8, {
-            vx: (Math.random() - 0.5) * 4,
-            vy: -Math.random() * 3 - 1,
-            color: '#c33',
-            life: 0.5 + Math.random() * 0.3,
-            size: 3 + Math.random() * 3,
-            gravity: 0.12,
-            shape: 'square'
-          });
-        floatingText.add(e.x, e.y - 30, `+${10 + waveNumber * 5}`, { color: '#ff0', font: 'bold 24px sans-serif' });
-        enemies.splice(i, 1);
-      }
-    }
-
-    if (waveActive && enemies.length === 0) {
-      waveActive = false;
-      SZ.GameAudio.play('levelup');
-      announce('Swarm beaten!', isNight() && world.bursts < 3 ? 'More may come before dawn' : 'The dome holds', '#6fe08a', 'shield');
-      saveRun();
-    }
   }
 
   /* ======================================================================
@@ -4029,6 +4275,7 @@
       let target = null;
       let bestDist = 80 * 80; // hit radius of 80px
       for (const e of enemies) {
+        if (e.hidden) continue;
         const dx = e.x - farX;
         const dy = e.y - farY;
         const d = dx * dx + dy * dy;
@@ -4042,6 +4289,7 @@
       if (!target) {
         let bestLineDist = 60;
         for (const e of enemies) {
+          if (e.hidden) continue;
           // Distance from enemy to the aim ray
           const ex = e.x - turretBaseX;
           const ey = e.y - turretBaseY;
@@ -4078,6 +4326,7 @@
           let chainCount = 0;
           const chainDamage = Math.ceil(weaponDamage * 0.4);
           for (const ce of enemies) {
+            if (ce.hidden) continue;
             if (ce === target || chainCount >= 2) break;
             const cdx = ce.x - target.x;
             const cdy = ce.y - target.y;
@@ -4094,6 +4343,7 @@
         // Freeze Ray: slow enemies near target
         if (unlockedTools.freezeRay) {
           for (const ce of enemies) {
+            if (ce.hidden) continue;
             const cdx = ce.x - target.x;
             const cdy = ce.y - target.y;
             if (cdx * cdx + cdy * cdy < 120 * 120)
@@ -4105,6 +4355,7 @@
         if (unlockedTools.plasmaCannon) {
           const aoeDamage = Math.ceil(weaponDamage * 0.6);
           for (const ce of enemies) {
+            if (ce.hidden) continue;
             if (ce === target) continue;
             const cdx = ce.x - target.x;
             const cdy = ce.y - target.y;
@@ -5656,6 +5907,7 @@
           // Find nearest enemy
           let nearest = null, bestD = Infinity;
           for (const e of enemies) {
+            if (e.hidden) continue;
             const dx = e.x - DOME_X;
             const dy = e.y - DOME_Y;
             const d = dx * dx + dy * dy;
@@ -5689,6 +5941,7 @@
           primaryGadgetState.stunLaserTimer = 8;
           let nearest = null, bestD = Infinity;
           for (const e of enemies) {
+            if (e.hidden) continue;
             const dx = e.x - DOME_X;
             const dy = e.y - DOME_Y;
             const d = dx * dx + dy * dy;
@@ -7201,11 +7454,19 @@
       walker: ['#ff9a8a', '#e0403a', '#8a1420', '#3a0610'],
       armored: ['#e8d8a8', '#a08a5a', '#5a4828', '#241a0c'],
       boss: ['#ff7aa0', '#b81848', '#5a0420', '#20020a'],
-      flyer: ['#f0a8ff', '#a050c8', '#4a1868', '#1a0628']
+      flyer: ['#f0a8ff', '#a050c8', '#4a1868', '#1a0628'],
+      swarmer: ['#f4ffb0', '#c8d040', '#6a7a10', '#283008'],
+      diver: ['#b8f4ff', '#3ab0c8', '#145a70', '#06242e'],
+      burrower: ['#ffc0e0', '#d0609a', '#7a2050', '#300a20'],
+      spitter: ['#dcffb8', '#60b040', '#2a6a18', '#0e300a'],
+      splitter: ['#ffe0b0', '#ff9030', '#a04a10', '#401a04'],
+      mender: ['#c8fff0', '#40c890', '#127a54', '#063020'],
+      queen: ['#ffc0f0', '#e040c0', '#7a1468', '#30062a']
     }[kind];
+    const drop = kind === 'flyer' || kind === 'diver';
     g.fillStyle = SPRITE_OUTLINE;
     g.beginPath();
-    if (kind === 'flyer') {
+    if (drop) {
       g.moveTo(0, -r - 4);
       g.quadraticCurveTo(r * 0.9, -r * 0.1, r * 0.7 + 4, r * 0.6 + 4);
       g.quadraticCurveTo(0, r * 0.35 + 4, -r * 0.7 - 4, r * 0.6 + 4);
@@ -7215,7 +7476,7 @@
     g.fill();
     const bodyPath = () => {
       g.beginPath();
-      if (kind === 'flyer') {
+      if (drop) {
         g.moveTo(0, -r);
         g.quadraticCurveTo(r * 0.85, -r * 0.1, r * 0.7, r * 0.6);
         g.quadraticCurveTo(0, r * 0.35, -r * 0.7, r * 0.6);
@@ -7235,7 +7496,13 @@
     bodyPath();
     g.clip();
     // Spots / plates
-    if (kind === 'armored') {
+    if (kind === 'splitter' || kind === 'spitter') {
+      // Translucent membrane
+      g.fillStyle = 'rgba(255,255,255,0.12)';
+      g.beginPath();
+      g.arc(0, 0, r * 0.8, 0, TWO_PI);
+      g.fill();
+    } else if (kind === 'armored') {
       g.strokeStyle = 'rgba(30,20,8,0.7)';
       g.lineWidth = 3;
       for (const y of [-12, 6, 22]) {
@@ -7490,48 +7757,96 @@
     ctx.fill();
   }
 
+  // How each ground creature is put together (body palette, legs, face and extras)
+  const CREATURE_LOOK = {
+    walker:   { body: 'walker', legs: 2, legCol: '#8a2028', eyes: '#fff27a', mouth: 'fangs' },
+    swarmer:  { body: 'swarmer', legs: 3, legCol: '#5a6a10', eyes: '#ff5040', mouth: 'mandibles', sx: 1.3, sy: 0.8, antennae: true, legSpeed: 2.2 },
+    crawler:  { body: 'armored', legs: 4, legCol: '#5a4a2a', eyes: '#ffb030', mouth: 'mandibles', sx: 1.35, sy: 0.85, plates: true, legSpeed: 0.6 },
+    splitter: { body: 'splitter', legs: 2, legCol: '#a04a10', eyes: '#ffffff', mouth: 'fangs', cores: true },
+    mender:   { body: 'mender', legs: 0, eyes: '#e0fff0', mouth: 'none', sx: 1.35, sy: 0.72, crystals: true },
+    spitter:  { body: 'spitter', legs: 2, legCol: '#2a6a18', eyes: '#ffff80', mouth: 'tube', sac: true },
+    burrower: { body: 'burrower', legs: 0, eyes: '#ffe0f0', mouth: 'drill', worm: true },
+    behemoth: { body: 'boss', legs: 3, legCol: '#6a1028', eyes: '#ff4040', mouth: 'fangs', crown: true, horns: true, legSpeed: 0.5 }
+  };
+
   function drawEnemy(e) {
+    if (e.hidden)
+      return drawBurrowMound(e);
     if (e.type === 'flyer')
       return drawFlyer(e);
-    return drawGroundEnemy(e);
+    if (e.type === 'diver')
+      return drawDiver(e);
+    if (e.type === 'queen')
+      return drawQueen(e);
+    return drawCreature(e, CREATURE_LOOK[e.type] || CREATURE_LOOK.walker);
   }
 
-  function drawGroundEnemy(e) {
+  function drawCreature(e, look) {
     const sz = e.size || 10;
-    const wobble = Math.sin(e.wobblePhase) * 3;
-    const legOffset = Math.sin(e.legPhase) * 6;
-    const kind = e.boss ? 'boss' : (e.armored ? 'armored' : 'walker');
+    const legSpeed = look.legSpeed || 1;
+    const wobble = Math.sin(e.wobblePhase * legSpeed) * (look.worm ? 1 : 3);
+    const legOffset = Math.sin(e.legPhase * legSpeed) * 6 * Math.min(1, sz / 20);
     const flash = enemyHitFlash.get(e) || 0;
+    const face = e.x > DOME_X ? -1 : 1;
+    const lunge = (e.lunge || 0) * 8 * face;
+    const pop = e.pop !== undefined ? Math.min(1, e.pop) : 1;
+    if (e.pop !== undefined && e.pop < 1)
+      e.pop += 0.04;
 
     ctx.save();
-    ctx.translate(e.x, e.y + wobble);
+    ctx.translate(e.x + lunge, e.y + wobble + (1 - pop) * sz * 1.4);
+    if (look.worm && pop < 1) {
+      ctx.beginPath();
+      ctx.rect(-sz * 3, -sz * 4, sz * 6, DOME_Y - e.y + sz * 4 - wobble - (1 - pop) * sz * 1.4);
+      ctx.clip();
+    }
 
     // Ground shadow
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
-    ctx.ellipse(0, sz + 4 - wobble, sz * 0.9, 6, 0, 0, TWO_PI);
+    ctx.ellipse(0, sz * 0.75 + 4 - wobble, sz * 0.95 * (look.sx || 1), 6, 0, 0, TWO_PI);
     ctx.fill();
 
+    // Behemoth stomp: the front feet rise and slam
+    const stomp = e.stompAnim > 0 ? Math.sin((1 - e.stompAnim / 0.5) * Math.PI) * sz * 0.35 : 0;
+
     // Legs with outlines and feet
-    const legCol = e.armored ? '#6a5a38' : (e.boss ? '#6a1028' : '#8a2028');
-    const legs = [[-0.4, 0.3, -0.85, 0.75, legOffset], [-0.25, 0.15, -0.75, 0.45, -legOffset], [0.4, 0.3, 0.85, 0.75, -legOffset], [0.25, 0.15, 0.75, 0.45, legOffset]];
-    for (const pass of [0, 1]) {
-      ctx.strokeStyle = pass ? legCol : SPRITE_OUTLINE;
-      ctx.lineWidth = (e.boss ? 7 : 5) + (pass ? 0 : 3);
-      ctx.lineCap = 'round';
-      for (const [x0, y0, x1, y1, o] of legs) {
-        ctx.beginPath();
-        ctx.moveTo(sz * x0, sz * y0);
-        ctx.quadraticCurveTo(sz * x1, sz * (y0 - 0.1), sz * x1, sz * y1 + o);
-        ctx.stroke();
+    if (look.legs) {
+      const legs = [];
+      for (let k = 0; k < look.legs; ++k) {
+        const t = look.legs === 1 ? 0.5 : k / (look.legs - 1);
+        const ox = (0.2 + t * 0.25) * (look.sx || 1), spread = (0.7 + t * 0.2) * (look.sx || 1);
+        const o = (k % 2 ? -1 : 1) * legOffset;
+        legs.push([-ox, 0.25, -spread, 0.6 + t * 0.15, o - (k === 0 ? stomp : 0)], [ox, 0.25, spread, 0.6 + t * 0.15, -o - (k === 0 ? stomp : 0)]);
+      }
+      const lw = Math.max(2.5, sz * 0.2);
+      for (const pass of [0, 1]) {
+        ctx.strokeStyle = pass ? look.legCol : SPRITE_OUTLINE;
+        ctx.lineWidth = lw + (pass ? 0 : 3);
+        ctx.lineCap = 'round';
+        for (const [x0, y0, x1, y1, o] of legs) {
+          ctx.beginPath();
+          ctx.moveTo(sz * x0, sz * y0);
+          ctx.quadraticCurveTo(sz * x1, sz * (y0 - 0.15), sz * x1, sz * y1 + o);
+          ctx.stroke();
+        }
+      }
+      ctx.lineCap = 'butt';
+    }
+
+    // Worm segments trailing into the ground
+    if (look.worm) {
+      const body = getEnemyBody(look.body);
+      for (let k = 3; k >= 1; --k) {
+        const s = sz * (1 - k * 0.12) * 2 * (96 / 72);
+        ctx.drawImage(body, -face * k * sz * 0.45 - s / 2, k * sz * 0.38 - s / 2 + Math.sin(e.t * 6 + k) * 2, s, s);
       }
     }
-    ctx.lineCap = 'butt';
 
     // Body with squash and stretch
-    const squash = 1 + Math.sin(e.wobblePhase * 2) * 0.05;
-    const body = getEnemyBody(kind);
-    const bw = sz * 2 * (96 / 72) / squash, bh = sz * 2 * (96 / 72) * squash;
+    const squash = 1 + Math.sin(e.wobblePhase * 2 * legSpeed) * 0.05;
+    const body = getEnemyBody(look.body);
+    const bw = sz * 2 * (96 / 72) * (look.sx || 1) / squash, bh = sz * 2 * (96 / 72) * (look.sy || 1) * squash;
     ctx.drawImage(body, -bw / 2, -bh / 2, bw, bh);
     if (flash > 0) {
       ctx.globalCompositeOperation = 'lighter';
@@ -7541,8 +7856,117 @@
       ctx.globalCompositeOperation = 'source-over';
     }
 
-    // Boss crown
-    if (e.boss) {
+    // Spitter's acid sac swells before each shot
+    if (look.sac) {
+      const swell = 1 + (e.charge || 0) * 0.35 + Math.sin(animTime * 5) * 0.04;
+      const sr = sz * 0.5 * swell;
+      ctx.fillStyle = SPRITE_OUTLINE;
+      ctx.beginPath();
+      ctx.arc(-face * sz * 0.3, -sz * 0.78, sr + 2.5, 0, TWO_PI);
+      ctx.fill();
+      const sg = ctx.createRadialGradient(-face * sz * 0.4, -sz * 0.95, 2, -face * sz * 0.3, -sz * 0.78, sr);
+      sg.addColorStop(0, '#f0ffc0');
+      sg.addColorStop(0.5, '#9aff50');
+      sg.addColorStop(1, '#3a8a18');
+      ctx.fillStyle = sg;
+      ctx.beginPath();
+      ctx.arc(-face * sz * 0.3, -sz * 0.78, sr, 0, TWO_PI);
+      ctx.fill();
+      drawGlow('#8aff50', -face * sz * 0.3, -sz * 0.78, sr * 1.8, 0.25 + (e.charge || 0) * 0.5);
+    }
+
+    // Armour plates
+    if (look.plates) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(0, 0, sz * (look.sx || 1), sz * (look.sy || 1), 0, 0, TWO_PI);
+      ctx.clip();
+      // Overlapping shell segments from head to tail
+      const W = sz * (look.sx || 1);
+      for (let k = -1; k <= 2; ++k) {
+        const x = k * W * 0.42 - W * 0.2;
+        ctx.strokeStyle = SPRITE_OUTLINE;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(x - sz * 0.12, -sz);
+        ctx.quadraticCurveTo(x + sz * 0.22, 0, x - sz * 0.12, sz);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,240,200,0.4)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x - sz * 0.05, -sz * 0.8);
+        ctx.quadraticCurveTo(x + sz * 0.28, 0, x - sz * 0.05, sz * 0.4);
+        ctx.stroke();
+      }
+      for (const [rx, ry] of [[-0.55, -0.35], [0.1, -0.5], [0.6, -0.3]]) {
+        ctx.fillStyle = 'rgba(255,240,210,0.55)';
+        ctx.beginPath();
+        ctx.arc(rx * W, ry * sz, sz * 0.07, 0, TWO_PI);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Splitter cores swirling inside the membrane
+    if (look.cores) {
+      for (let k = 0; k < 3; ++k) {
+        const a = animTime * 2.4 + k * TWO_PI / 3;
+        const cx = Math.cos(a) * sz * 0.5, cy = Math.sin(a) * sz * 0.14 + sz * 0.5;
+        ctx.fillStyle = SPRITE_OUTLINE;
+        ctx.beginPath();
+        ctx.arc(cx, cy, sz * 0.2 + 1.5, 0, TWO_PI);
+        ctx.fill();
+        ctx.fillStyle = '#fff0a0';
+        ctx.beginPath();
+        ctx.arc(cx, cy, sz * 0.2, 0, TWO_PI);
+        ctx.fill();
+      }
+    }
+
+    // Mender: glowing crystals and a healing pulse
+    if (look.crystals) {
+      const pulse = (animTime * 0.8 + e.wobblePhase) % 1;
+      ctx.strokeStyle = `rgba(90,255,170,${0.5 * (1 - pulse)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(0, sz * 0.4, sz * (1 + pulse * 3), sz * (0.4 + pulse * 1.2), 0, 0, TWO_PI);
+      ctx.stroke();
+      for (let k = -1; k <= 1; ++k) {
+        const h = sz * (0.7 + (k === 0 ? 0.35 : 0));
+        ctx.fillStyle = SPRITE_OUTLINE;
+        ctx.beginPath();
+        ctx.moveTo(k * sz * 0.45 - 5, -sz * 0.45);
+        ctx.lineTo(k * sz * 0.45, -sz * 0.45 - h - 2);
+        ctx.lineTo(k * sz * 0.45 + 5, -sz * 0.45);
+        ctx.fill();
+        ctx.fillStyle = '#7affc8';
+        ctx.beginPath();
+        ctx.moveTo(k * sz * 0.45 - 3.5, -sz * 0.45);
+        ctx.lineTo(k * sz * 0.45, -sz * 0.45 - h);
+        ctx.lineTo(k * sz * 0.45 + 3.5, -sz * 0.45);
+        ctx.fill();
+        drawGlow('#5affb0', k * sz * 0.45, -sz * 0.45 - h * 0.5, sz * 0.5, 0.5);
+      }
+    }
+
+    // Boss horns and crown
+    if (look.horns) {
+      for (const side of [-1, 1]) {
+        ctx.fillStyle = SPRITE_OUTLINE;
+        ctx.beginPath();
+        ctx.moveTo(side * sz * 0.55, -sz * 0.55);
+        ctx.quadraticCurveTo(side * sz * 1.25, -sz * 0.9, side * sz * 1.05, -sz * 1.45);
+        ctx.quadraticCurveTo(side * sz * 0.95, -sz * 0.95, side * sz * 0.35, -sz * 0.75);
+        ctx.fill();
+        ctx.fillStyle = '#e8dcc0';
+        ctx.beginPath();
+        ctx.moveTo(side * sz * 0.55, -sz * 0.6);
+        ctx.quadraticCurveTo(side * sz * 1.15, -sz * 0.92, side * sz * 1.02, -sz * 1.35);
+        ctx.quadraticCurveTo(side * sz * 0.92, -sz * 0.95, side * sz * 0.4, -sz * 0.75);
+        ctx.fill();
+      }
+    }
+    if (look.crown) {
       ctx.fillStyle = SPRITE_OUTLINE;
       ctx.beginPath();
       ctx.moveTo(-sz * 0.6, -sz * 0.8);
@@ -7569,25 +7993,78 @@
       ctx.closePath();
       ctx.fill();
     }
+    if (look.antennae) {
+      ctx.strokeStyle = SPRITE_OUTLINE;
+      ctx.lineWidth = 1.5;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(side * sz * 0.3, -sz * 0.55);
+        ctx.quadraticCurveTo(side * sz * 0.5 + face * sz * 0.4, -sz * 1.3, side * sz * 0.2 + face * sz * 0.9, -sz * 1.1 + Math.sin(animTime * 9 + side) * 2);
+        ctx.stroke();
+      }
+    }
 
-    drawEnemyEyes(sz, e.eyeBlinking, e.boss ? '#ff4040' : '#fff27a', '#200');
-
-    // Mouth with fangs
-    ctx.fillStyle = '#2a0008';
-    ctx.beginPath();
-    ctx.moveTo(-sz * 0.28, sz * 0.22);
-    ctx.quadraticCurveTo(0, sz * 0.5, sz * 0.28, sz * 0.22);
-    ctx.quadraticCurveTo(0, sz * 0.32, -sz * 0.28, sz * 0.22);
-    ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.moveTo(-sz * 0.14, sz * 0.27);
-    ctx.lineTo(-sz * 0.09, sz * 0.38);
-    ctx.lineTo(-sz * 0.04, sz * 0.29);
-    ctx.moveTo(sz * 0.04, sz * 0.29);
-    ctx.lineTo(sz * 0.09, sz * 0.38);
-    ctx.lineTo(sz * 0.14, sz * 0.27);
-    ctx.fill();
+    // Face: eyes looking toward the dome and a mouth
+    ctx.save();
+    ctx.translate(face * sz * 0.12 * (look.sx || 1), 0);
+    drawEnemyEyes(sz * (look.sy || 1), e.eyeBlinking, look.eyes, '#200');
+    const ms = sz * (look.sy || 1);
+    if (look.mouth === 'fangs') {
+      ctx.fillStyle = '#2a0008';
+      ctx.beginPath();
+      ctx.moveTo(-ms * 0.28, ms * 0.22);
+      ctx.quadraticCurveTo(0, ms * 0.5, ms * 0.28, ms * 0.22);
+      ctx.quadraticCurveTo(0, ms * 0.32, -ms * 0.28, ms * 0.22);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.moveTo(-ms * 0.14, ms * 0.27);
+      ctx.lineTo(-ms * 0.09, ms * 0.38);
+      ctx.lineTo(-ms * 0.04, ms * 0.29);
+      ctx.moveTo(ms * 0.04, ms * 0.29);
+      ctx.lineTo(ms * 0.09, ms * 0.38);
+      ctx.lineTo(ms * 0.14, ms * 0.27);
+      ctx.fill();
+    } else if (look.mouth === 'mandibles') {
+      const open = 0.25 + Math.abs(Math.sin(animTime * 6 + e.wobblePhase)) * 0.25;
+      ctx.strokeStyle = SPRITE_OUTLINE;
+      ctx.lineWidth = Math.max(2, ms * 0.14);
+      ctx.lineCap = 'round';
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(side * ms * 0.2, ms * 0.3);
+        ctx.quadraticCurveTo(side * ms * (0.35 + open), ms * 0.6, side * ms * 0.05, ms * 0.72);
+        ctx.stroke();
+      }
+      ctx.lineCap = 'butt';
+    } else if (look.mouth === 'tube') {
+      ctx.fillStyle = SPRITE_OUTLINE;
+      roundRectPath(face > 0 ? ms * 0.1 : -ms * 0.75, ms * 0.12, ms * 0.65, ms * 0.32, ms * 0.12);
+      ctx.fill();
+      ctx.fillStyle = '#4a9a28';
+      roundRectPath(face > 0 ? ms * 0.14 : -ms * 0.71, ms * 0.16, ms * 0.57, ms * 0.22, ms * 0.1);
+      ctx.fill();
+      ctx.fillStyle = '#c8ff80';
+      ctx.beginPath();
+      ctx.arc(face * ms * 0.72, ms * 0.27, ms * 0.07, 0, TWO_PI);
+      ctx.fill();
+    } else if (look.mouth === 'drill') {
+      // Ring of teeth turning like a drill
+      ctx.fillStyle = '#3a0820';
+      ctx.beginPath();
+      ctx.arc(0, ms * 0.3, ms * 0.3, 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = '#ffe8f0';
+      for (let k = 0; k < 6; ++k) {
+        const a = k * TWO_PI / 6 + animTime * 5;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * ms * 0.3, ms * 0.3 + Math.sin(a) * ms * 0.3);
+        ctx.lineTo(Math.cos(a + 0.25) * ms * 0.12, ms * 0.3 + Math.sin(a + 0.25) * ms * 0.12);
+        ctx.lineTo(Math.cos(a + 0.5) * ms * 0.3, ms * 0.3 + Math.sin(a + 0.5) * ms * 0.3);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
 
     // Stun overlay
     if (e.stunTimer > 0) {
@@ -7600,12 +8077,227 @@
         drawSprite('snowflake', Math.cos(a) * sz * 0.9, -sz * 1.1 + Math.sin(a) * 4, 14);
       }
     }
-
     ctx.restore();
 
     if (e.shield > 0)
       drawEnemyShield(e, wobble);
     drawEnemyHPBar(e, sz, wobble);
+  }
+
+  // A burrower travelling under the surface: a moving hump of dirt
+  function drawBurrowMound(e) {
+    const x = e.x, y = DOME_Y + 2;
+    const w = e.size * 1.1, h = 8 + Math.sin(e.t * 9) * 2;
+    ctx.fillStyle = SPRITE_OUTLINE;
+    ctx.beginPath();
+    ctx.ellipse(x, y, w + 2, h + 2, 0, Math.PI, 0);
+    ctx.fill();
+    ctx.fillStyle = '#6a5038';
+    ctx.beginPath();
+    ctx.ellipse(x, y, w, h, 0, Math.PI, 0);
+    ctx.fill();
+    ctx.fillStyle = '#8a6c4c';
+    for (let k = -2; k <= 2; ++k) {
+      ctx.fillRect(x + k * w * 0.35 - 2, y - h * (0.5 + 0.3 * Math.sin(e.t * 7 + k)), 4, 3);
+    }
+    ctx.strokeStyle = 'rgba(30,20,10,0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x - w * 0.5, y - h * 0.4);
+    ctx.lineTo(x - w * 0.1, y - h * 0.8);
+    ctx.lineTo(x + w * 0.3, y - h * 0.5);
+    ctx.stroke();
+  }
+
+  function drawDiver(e) {
+    const sz = e.size || 16;
+    const flash = enemyHitFlash.get(e) || 0;
+    const diving = e.phase === 'dive';
+    const flap = diving ? 0.2 : Math.sin(e.wingPhase || 0);
+    const ang = diving ? e.angle + Math.PI / 2 : Math.sin(e.t * 2.2) * 0.25;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.16)';
+    ctx.beginPath();
+    ctx.ellipse(e.x, DOME_Y + 6, sz * 0.7, 3.5, 0, 0, TWO_PI);
+    ctx.fill();
+    ctx.translate(e.x, e.y);
+    ctx.rotate(ang);
+    if (diving)
+      for (let k = 1; k <= 4; ++k) {
+        ctx.fillStyle = `rgba(160,230,255,${0.18 - k * 0.035})`;
+        ctx.beginPath();
+        ctx.ellipse(0, -k * sz * 0.55, sz * 0.4, sz * 0.7, 0, 0, TWO_PI);
+        ctx.fill();
+      }
+    // Swept wings
+    for (const side of [-1, 1]) {
+      const span = diving ? 0.8 : 1.9;
+      const tipY = -sz * 0.2 + flap * sz * 0.7;
+      ctx.beginPath();
+      ctx.moveTo(side * sz * 0.25, -sz * 0.25);
+      ctx.lineTo(side * sz * span, tipY - sz * 0.35);
+      ctx.lineTo(side * sz * span * 0.7, tipY + sz * 0.15);
+      ctx.lineTo(side * sz * 0.3, sz * 0.35);
+      ctx.closePath();
+      ctx.fillStyle = '#1e7890';
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = SPRITE_OUTLINE;
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(180,240,255,0.55)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(side * sz * 0.3, -sz * 0.2);
+      ctx.lineTo(side * sz * span * 0.85, tipY - sz * 0.25);
+      ctx.stroke();
+    }
+    const body = getEnemyBody('diver');
+    const bs = sz * 2 * (96 / 72);
+    ctx.save();
+    ctx.scale(0.8, 1.15);
+    ctx.drawImage(body, -bs / 2, -bs / 2, bs, bs);
+    if (flash > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = flash;
+      ctx.drawImage(body, -bs / 2, -bs / 2, bs, bs);
+    }
+    ctx.restore();
+    // Beak and eyes
+    ctx.fillStyle = SPRITE_OUTLINE;
+    ctx.beginPath();
+    ctx.moveTo(-sz * 0.22, sz * 0.55);
+    ctx.lineTo(0, sz * 1.15);
+    ctx.lineTo(sz * 0.22, sz * 0.55);
+    ctx.fill();
+    ctx.fillStyle = '#ffd040';
+    ctx.beginPath();
+    ctx.moveTo(-sz * 0.15, sz * 0.58);
+    ctx.lineTo(0, sz * 1.02);
+    ctx.lineTo(sz * 0.15, sz * 0.58);
+    ctx.fill();
+    for (const sx of [-1, 1]) {
+      ctx.fillStyle = '#ffee60';
+      ctx.beginPath();
+      ctx.arc(sx * sz * 0.24, sz * 0.2, sz * 0.13, 0, TWO_PI);
+      ctx.fill();
+      drawGlow('#ffe040', sx * sz * 0.24, sz * 0.2, sz * 0.4, 0.5);
+    }
+    ctx.restore();
+    if (e.shield > 0)
+      drawEnemyShield(e, 0);
+    drawEnemyHPBar(e, sz, 0);
+  }
+
+  function drawQueen(e) {
+    const sz = e.size || 40;
+    const flash = enemyHitFlash.get(e) || 0;
+    const bob = Math.sin(e.wobblePhase) * 6;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(e.x, DOME_Y + 6, sz * 1.2, 7, 0, 0, TWO_PI);
+    ctx.fill();
+    ctx.translate(e.x, e.y + bob);
+    // Two pairs of shimmering wings
+    for (const [side, k] of [[-1, 0], [1, 0], [-1, 1], [1, 1]]) {
+      const flap = Math.sin((e.wingPhase || 0) * 1.4 + k * 0.6);
+      ctx.save();
+      ctx.rotate(side * (0.45 + k * 0.5 + flap * 0.25));
+      ctx.fillStyle = `rgba(255,180,240,${0.35 - k * 0.08})`;
+      ctx.strokeStyle = 'rgba(255,220,250,0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(side * sz * 0.2, -sz * (1.05 - k * 0.15), sz * 0.35, sz * (1.05 - k * 0.25), 0, 0, TWO_PI);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    // Striped abdomen
+    ctx.fillStyle = SPRITE_OUTLINE;
+    ctx.beginPath();
+    ctx.ellipse(0, sz * 0.75, sz * 0.55, sz * 0.8, 0, 0, TWO_PI);
+    ctx.fill();
+    const ag = ctx.createLinearGradient(-sz * 0.5, 0, sz * 0.5, 0);
+    ag.addColorStop(0, '#7a1468');
+    ag.addColorStop(0.5, '#ff70d8');
+    ag.addColorStop(1, '#7a1468');
+    ctx.fillStyle = ag;
+    ctx.beginPath();
+    ctx.ellipse(0, sz * 0.75, sz * 0.5, sz * 0.75, 0, 0, TWO_PI);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(40,0,30,0.55)';
+    for (let k = 0; k < 4; ++k)
+      ctx.fillRect(-sz * 0.48, sz * (0.35 + k * 0.28), sz * 0.96, sz * 0.09);
+    // Thorax / head
+    const body = getEnemyBody('queen');
+    const bs = sz * 2 * (96 / 72) * 0.8;
+    ctx.drawImage(body, -bs / 2, -bs / 2 - sz * 0.1, bs, bs);
+    if (flash > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = flash;
+      ctx.drawImage(body, -bs / 2, -bs / 2 - sz * 0.1, bs, bs);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    drawEnemyEyes(sz * 0.8, e.eyeBlinking, '#ff60e0', '#300');
+    // Crown
+    ctx.fillStyle = SPRITE_OUTLINE;
+    ctx.beginPath();
+    ctx.moveTo(-sz * 0.45, -sz * 0.55);
+    ctx.lineTo(-sz * 0.35, -sz * 1.0);
+    ctx.lineTo(-sz * 0.12, -sz * 0.75);
+    ctx.lineTo(0, -sz * 1.15);
+    ctx.lineTo(sz * 0.12, -sz * 0.75);
+    ctx.lineTo(sz * 0.35, -sz * 1.0);
+    ctx.lineTo(sz * 0.45, -sz * 0.55);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#ffd860';
+    ctx.beginPath();
+    ctx.moveTo(-sz * 0.39, -sz * 0.6);
+    ctx.lineTo(-sz * 0.32, -sz * 0.9);
+    ctx.lineTo(-sz * 0.12, -sz * 0.7);
+    ctx.lineTo(0, -sz * 1.04);
+    ctx.lineTo(sz * 0.12, -sz * 0.7);
+    ctx.lineTo(sz * 0.32, -sz * 0.9);
+    ctx.lineTo(sz * 0.39, -sz * 0.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    if (e.shield > 0)
+      drawEnemyShield(e, bob);
+    drawEnemyHPBar(e, sz, bob - sz * 0.2);
+  }
+
+  // Acid globs in flight and behemoth shockwaves
+  function drawEnemyShots() {
+    for (const s of enemyShots) {
+      const x = s.x0 + (s.tx - s.x0) * s.t;
+      const y = s.y0 + (s.ty - s.y0) * s.t - Math.sin(s.t * Math.PI) * 150;
+      drawGlow('#8aff50', x, y, 22, 0.6);
+      ctx.fillStyle = SPRITE_OUTLINE;
+      ctx.beginPath();
+      ctx.arc(x, y, 7.5, 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = '#b8ff70';
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = '#f0ffd0';
+      ctx.fillRect(x - 3, y - 3, 2, 2);
+      if (Math.random() < 0.4)
+        particles.trail(x, y, { vx: (Math.random() - 0.5), vy: 0.5, color: '#8aff50', life: 0.3, size: 1.5, gravity: 0.05 });
+    }
+    for (const w of shockwaves) {
+      const a = Math.max(0, 1 - w.r / 700);
+      ctx.strokeStyle = `rgba(255,170,120,${0.7 * a})`;
+      ctx.lineWidth = 5 * a + 1;
+      for (const dir of [-1, 1]) {
+        ctx.beginPath();
+        ctx.ellipse(w.from + dir * w.r * 0.0, DOME_Y + 4, w.r, 12 + w.r * 0.02, 0, dir > 0 ? -0.6 : Math.PI - 0.6, dir > 0 ? 0.6 : Math.PI + 0.6);
+        ctx.stroke();
+      }
+    }
   }
 
   function drawFlyer(e) {
@@ -7795,6 +8487,8 @@
     // Enemies
     for (const e of enemies)
       drawEnemy(e);
+
+    drawEnemyShots();
 
     // Projectiles
     drawProjectiles();
@@ -9643,27 +10337,18 @@
 
   // Build tooltip content for an enemy
   function buildEnemyTooltip(e) {
-    const lines = [];
-    let typeName;
-    if (e.boss)
-      typeName = 'Boss';
-    else if (e.type === 'flyer')
-      typeName = 'Flyer';
-    else
-      typeName = 'Walker';
-
-    lines.push(typeName + (e.armored ? ' (Armored)' : ''));
+    const T = enemyType(e);
+    const lines = [T.name, T.desc];
     lines.push('HP: ' + Math.ceil(e.hp) + ' / ' + Math.ceil(e.maxHP));
     if (e.shield > 0)
       lines.push('Shield: ' + Math.ceil(e.shield) + ' / ' + Math.ceil(e.maxShield));
     else if (e.maxShield > 0)
       lines.push('\u2718 Shield broken');
-    if (e.armored)
-      lines.push('\u26A0 Armored: 2x HP, 0.75x speed');
+    if (e.armor > 0)
+      lines.push('\u26A0 Armor: blocks ' + e.armor + ' damage per hit');
     lines.push('Damage: ' + e.damage + ' per hit');
     if (e.stunTimer > 0)
       lines.push('\u26A0 Stunned: ' + e.stunTimer.toFixed(1) + 's');
-
     return lines;
   }
 
@@ -10242,6 +10927,7 @@
         // Surface: detect enemy under mouse
         let foundEnemy = false;
         for (const e of enemies) {
+          if (e.hidden) continue;
           const sz = e.size || 10;
           const dx = mouseAimX - e.x;
           const dy = mouseAimY - e.y;
