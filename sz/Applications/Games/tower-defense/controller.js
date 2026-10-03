@@ -13,30 +13,11 @@
      CONSTANTS
      ══════════════════════════════════════════════════════════════════ */
 
-  const CANVAS_W = 800;
-  const CANVAS_H = 560;
   const MAX_DT = 0.05;
   const CELL = 32;
   const COLS = 25;
   const ROWS = 17;
   const MAX_TIER = 3;
-
-  /* ── Palette layout constants ── */
-  const PALETTE_H = 48;
-  const PALETTE_Y = CANVAS_H - PALETTE_H;
-  const PALETTE_BTN_H = 38;
-  const PALETTE_BTN_GAP = 2;
-  const PALETTE_BTN_Y = PALETTE_Y + 5;
-  const PALETTE_HUD_RESERVED = 140; // space reserved for HUD buttons on the right
-
-  function getPaletteBtnW() {
-    const count = TOWER_TYPES.length;
-    return Math.floor((CANVAS_W - PALETTE_HUD_RESERVED - 8 - (count - 1) * PALETTE_BTN_GAP) / count);
-  }
-
-  /* ── Right-side HUD buttons ── */
-  const HUD_BTN_W = 64;
-  const HUD_BTN_H = 20;
 
   /* ── Game states ── */
   const STATE_READY = 'READY';
@@ -189,7 +170,7 @@
   const { User32 } = SZ?.Dlls ?? {};
 
   const particles = new SZ.GameEffects.ParticleSystem();
-  const screenShake = new SZ.GameEffects.ScreenShake();
+  const screenShake = { trigger: (intensity, ms) => addShake(intensity, ms) };
   const floatingText = new SZ.GameEffects.FloatingText();
   const audio = SZ.GameAudio;
 
@@ -222,7 +203,7 @@
   let currentWave = 0;
   let totalWaves = 15;
   let gameSpeed = 1;
-  let selectedTowerType = 0;
+  let selectedTowerType = -1;   // tower type chosen in the build bar, -1 = none
   let selectedTower = null;
   let hoverCell = null;
   let hoverPoint = null;
@@ -247,35 +228,16 @@
   let warningActive = false;
   let warningPulse = 0;
 
-  /* ── Context menu state ── */
-  let contextMenu = null; // { x, y, tower }
-
   /* ── Tower angle tracking for turret rotation ── */
   let towerAngles = new Map();
 
   /* ── Global animation timer ── */
   let animTime = 0;
 
-  /* ══════════════════════════════════════════════════════════════════
-     CANVAS SETUP
-     ══════════════════════════════════════════════════════════════════ */
-
-  function setupCanvas() {
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = CANVAS_W * dpr;
-    canvas.height = CANVAS_H * dpr;
-    // Scale canvas display to fill parent while keeping aspect ratio
-    const parent = canvas.parentElement || document.body;
-    const rect = parent.getBoundingClientRect();
-    const aspect = CANVAS_W / CANVAS_H;
-    let displayW = rect.width;
-    let displayH = rect.height;
-    if (displayW / displayH > aspect) displayW = displayH * aspect;
-    else displayH = displayW / aspect;
-    canvas.style.width = Math.floor(displayW) + 'px';
-    canvas.style.height = Math.floor(displayH) + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
+  /* ── Run statistics and HUD bookkeeping ── */
+  let runStats = { kills: 0, gold: 0 };
+  let waveSize = 0;                       // enemies in the current wave
+  const goldHudPos = { x: 0, y: 0 };      // where gold counts up (UI units)
 
   /* ══════════════════════════════════════════════════════════════════
      PERSISTENCE
@@ -347,6 +309,7 @@
       gameSpeed, autoWaveMode, autoWaveTimer,
       waveComplete, waveCountdown, spawnTimer,
       waveEnemies: waveEnemies.slice(),
+      stats: { kills: runStats.kills, gold: runStats.gold },
       towers: towers.map(t => ({
         col: t.col, row: t.row, type: t.type, tier: t.tier,
         damage: t.damage, range: t.range, fireRate: t.fireRate,
@@ -450,13 +413,17 @@
     gold = d.gold;
     lives = d.lives;
     currentWave = d.wave;
-    gameSpeed = [1, 2, 3, 5, 10].indexOf(d.gameSpeed) >= 0 ? d.gameSpeed : 1;
+    gameSpeed = [1, 2, 3].indexOf(d.gameSpeed) >= 0 ? d.gameSpeed : (isFiniteNumber(d.gameSpeed) && d.gameSpeed > 3 ? 3 : 1);
     autoWaveMode = !!d.autoWaveMode;
     autoWaveTimer = isFiniteNumber(d.autoWaveTimer) ? d.autoWaveTimer : 0;
     waveComplete = d.phase === 'build' ? true : !!d.waveComplete;
     waveCountdown = isFiniteNumber(d.waveCountdown) ? d.waveCountdown : 3;
     spawnTimer = isFiniteNumber(d.spawnTimer) ? d.spawnTimer : 0;
     waveEnemies = d.waveEnemies.slice();
+    waveSize = waveEnemies.length + d.enemies.length;
+    if (d.stats && isFiniteNumber(d.stats.kills) && isFiniteNumber(d.stats.gold))
+      runStats = { kills: d.stats.kills, gold: d.stats.gold };
+    shownGold = gold;
 
     towers = d.towers.map(t => ({
       col: t.col, row: t.row,
@@ -575,7 +542,6 @@
     spawnTimer = 0;
     waveComplete = true;
     waveCountdown = 3;
-    contextMenu = null;
     towerAngles = new Map();
     warningActive = false;
     warningTimer = 0;
@@ -583,6 +549,9 @@
 
     buildPathCells(mapDef);
     pathPoints = getPathPoints(mapDef);
+    runStats = { kills: 0, gold: 0 };
+    shownGold = gold;
+    selectedTowerType = -1;
 
     state = STATE_BUILD;
     updateWindowTitle();
@@ -756,8 +725,7 @@
     state = STATE_VICTORY;
     clearSavedGame();
     addHighScore(MAPS[currentMap].name, currentWave);
-    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 30, 'VICTORY!', { color: '#ffd700', font: 'bold 24px sans-serif' });
-    particles.confetti(CANVAS_W / 2, CANVAS_H / 2, 40, { speed: 6, gravity: 0.08 });
+    particles.confetti(WORLD_W / 2, WORLD_H / 2, 40, { speed: 6, gravity: 0.08 });
     screenShake.trigger(6, 300);
     audio.play('win');
     updateWindowTitle();
@@ -770,21 +738,21 @@
     }
 
     waveEnemies = generateWave(currentWave);
+    waveSize = waveEnemies.length;
     spawnTimer = 0;
     waveComplete = false;
     ++currentWave;
     state = STATE_PLAYING;
     warningActive = false;
     warningTimer = 0;
-    contextMenu = null;
 
-    floatingText.add(CANVAS_W / 2, 30, `Wave ${currentWave}`, { color: '#ff0', font: 'bold 16px sans-serif' });
     audio.play('select', { pitch: 0.75 });
 
     // Wave bonus/interest
     const bonus = Math.floor(gold * 0.05) + 10;
     gold += bonus;
-    floatingText.add(CANVAS_W / 2, 50, `+${bonus}g interest`, { color: '#8f8', font: '11px sans-serif' });
+    runStats.gold += bonus;
+    floatingText.add(WORLD_W / 2, 40, `+${bonus} gold wave bonus`, { color: '#8f8', font: 'bold 12px sans-serif' });
     updateWindowTitle();
     saveGame();
   }
@@ -862,6 +830,7 @@
       dotDuration: def.dotDuration || 0,
       aoe: def.aoe || 0,
       towerType: tower.type,
+      tower,
       trail: []
     });
 
@@ -885,6 +854,10 @@
     particles.burst(enemy.x, enemy.y, 12, { color: enemy.color, speed: 3, life: 0.6 });
 
     gold += enemy.bounty;
+    ++runStats.kills;
+    runStats.gold += enemy.bounty;
+    if (enemy.lastHitBy)
+      ++enemy.lastHitBy.kills;
     floatingText.add(enemy.x, enemy.y - 16, `+${enemy.bounty}g`, { color: '#ff0', font: 'bold 11px sans-serif' });
 
     if (enemy.isBoss) {
@@ -904,7 +877,8 @@
     --lives;
     enemies.splice(index, 1);
     screenShake.trigger(4, 150);
-    floatingText.add(CANVAS_W - 40, 20, '-1 Life!', { color: '#f44', font: 'bold 12px sans-serif' });
+    floatingText.add(enemy.x, enemy.y - 12, '-1 life', { color: '#f44', font: 'bold 12px sans-serif' });
+    livesPulse = 1;
     audio.play('hurt');
 
     if (lives <= 0) {
@@ -912,7 +886,6 @@
       state = STATE_GAME_OVER;
       clearSavedGame();
       addHighScore(MAPS[currentMap].name, currentWave);
-      floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 30, 'GAME OVER', { color: '#f44', font: 'bold 24px sans-serif' });
       screenShake.trigger(8, 500);
       updateWindowTitle();
     }
@@ -1068,6 +1041,7 @@
     } else {
       target.hp -= p.damage;
     }
+    target.lastHitBy = p.tower;
 
     // Freeze (stronger than slow -- stops enemy completely)
     if (p.freeze > 0) {
@@ -1381,11 +1355,11 @@
 
   function drawGrid() {
     // Background grass texture
-    const bgGrad = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, WORLD_H);
     bgGrad.addColorStop(0, '#1a3a1a');
     bgGrad.addColorStop(1, '#153015');
     ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.fillRect(0, 0, WORLD_W, WORLD_H);
 
     // Path tiles with gradient
     for (const key of pathCells) {
@@ -1420,27 +1394,6 @@
       ctx.stroke();
     }
 
-    // Hover highlight
-    if (hoverCell && (state === STATE_BUILD || state === STATE_PLAYING)) {
-      const hcol = hoverCell.col;
-      const hrow = hoverCell.row;
-      // Don't show hover on palette area
-      if (hrow * CELL < PALETTE_Y) {
-        const def = TOWER_TYPES[selectedTowerType];
-        const valid = def.isFloorTrap ? canPlaceSpike(hcol, hrow) : canPlace(hcol, hrow);
-        ctx.fillStyle = valid ? 'rgba(0,255,0,0.15)' : 'rgba(255,0,0,0.15)';
-        ctx.fillRect(hcol * CELL, hrow * CELL, CELL, CELL);
-
-        // Show range preview when hovering with valid placement (not for floor traps)
-        if (valid && def.range > 0) {
-          ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.arc(hcol * CELL + CELL / 2, hrow * CELL + CELL / 2, def.range, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-      }
-    }
   }
 
   /* ── Path visualization: direction arrows and spawn/exit markers ── */
@@ -1578,348 +1531,342 @@
 
     ctx.restore();
 
-    // Warning countdown text at top
-    ctx.save();
-    ctx.fillStyle = `rgba(255, 200, 50, ${pulse})`;
-    ctx.font = 'bold 14px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText(`Enemies incoming in ${Math.ceil(warningTimer)}s`, CANVAS_W / 2, 4);
-    ctx.restore();
   }
 
   /* ── Improved tower drawing with distinct shapes ── */
+  function drawTowerShape(def, tier, angle) {
+    const tierScale = 1 + (tier - 1) * 0.1;
+    const baseSize = 11 * tierScale;
+    // Glow under tower
+    const glowGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, 14 * tierScale);
+    glowGrad.addColorStop(0, _hexAlpha(def.color, '40'));
+    glowGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = glowGrad;
+    ctx.fillRect(-16, -16, 32, 32);
+
+    // Base platform
+        const baseGrad = ctx.createLinearGradient(-baseSize, -baseSize, baseSize, baseSize);
+    baseGrad.addColorStop(0, def.color);
+    baseGrad.addColorStop(1, def.colorDark);
+    ctx.fillStyle = baseGrad;
+
+    // Different shapes per tower type
+    switch (def.id) {
+      case 'arrow':
+        // Diamond base
+        ctx.beginPath();
+        ctx.moveTo(0, -baseSize);
+        ctx.lineTo(baseSize, 0);
+        ctx.lineTo(0, baseSize);
+        ctx.lineTo(-baseSize, 0);
+        ctx.closePath();
+        ctx.fill();
+        // Turret
+        ctx.save();
+        ctx.rotate(angle);
+        ctx.fillStyle = '#8d6';
+        ctx.fillRect(-2, -2, 14, 4);
+        ctx.fillRect(10, -4, 4, 8); // arrowhead
+        ctx.restore();
+        break;
+
+      case 'cannon':
+        // Round base
+        ctx.beginPath();
+        ctx.arc(0, 0, baseSize, 0, Math.PI * 2);
+        ctx.fill();
+        // Barrel
+        ctx.save();
+        ctx.rotate(angle);
+        ctx.fillStyle = '#a64';
+        ctx.fillRect(-3, -3, 16, 6);
+        ctx.fillStyle = '#888';
+        ctx.fillRect(10, -5, 6, 10); // muzzle
+        ctx.restore();
+        break;
+
+      case 'frost':
+        // Hexagonal base
+        ctx.beginPath();
+        for (let p = 0; p < 6; ++p) {
+          const a = (Math.PI / 3) * p - Math.PI / 6;
+          const px = Math.cos(a) * baseSize;
+          const py = Math.sin(a) * baseSize;
+          if (p === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        // Ice crystal on top (rotating)
+        ctx.save();
+        ctx.rotate(animTime * 0.5);
+        ctx.strokeStyle = '#aef';
+        ctx.lineWidth = 2;
+        for (let p = 0; p < 6; ++p) {
+          const a = (Math.PI / 3) * p;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(Math.cos(a) * 7, Math.sin(a) * 7);
+          ctx.stroke();
+        }
+        ctx.restore();
+        break;
+
+      case 'lightning':
+        // Square base with notched corners
+        ctx.fillRect(-baseSize, -baseSize, baseSize * 2, baseSize * 2);
+        // Lightning bolt symbol
+        ctx.save();
+        ctx.fillStyle = '#ff0';
+        ctx.beginPath();
+        ctx.moveTo(-3, -7);
+        ctx.lineTo(3, -2);
+        ctx.lineTo(0, -2);
+        ctx.lineTo(3, 7);
+        ctx.lineTo(-3, 2);
+        ctx.lineTo(0, 2);
+        ctx.closePath();
+        ctx.fill();
+        // Electric crackle effect
+        if (Math.random() < 0.3) {
+          ctx.strokeStyle = `rgba(255, 255, 100, ${0.3 + Math.random() * 0.4})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          const ex = (Math.random() - 0.5) * 20;
+          const ey = (Math.random() - 0.5) * 20;
+          ctx.moveTo(0, 0);
+          ctx.lineTo(ex * 0.5, ey * 0.5);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+        }
+        ctx.restore();
+        break;
+
+      case 'laser':
+        // Octagonal base
+        ctx.beginPath();
+        for (let p = 0; p < 8; ++p) {
+          const a = (Math.PI / 4) * p;
+          const px = Math.cos(a) * baseSize;
+          const py = Math.sin(a) * baseSize;
+          if (p === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        // Laser emitter
+        ctx.save();
+        ctx.rotate(angle);
+        ctx.fillStyle = '#f8f';
+        ctx.fillRect(-2, -1.5, 16, 3);
+        // Lens
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(14, 0, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        break;
+
+      case 'poison':
+        // Bubbling cauldron shape
+        ctx.beginPath();
+        ctx.arc(0, 2, baseSize, 0, Math.PI);
+        ctx.lineTo(-baseSize, -3);
+        ctx.quadraticCurveTo(-baseSize - 2, -baseSize, 0, -baseSize);
+        ctx.quadraticCurveTo(baseSize + 2, -baseSize, baseSize, -3);
+        ctx.closePath();
+        ctx.fill();
+        // Bubbles
+        const bubblePhase = animTime * 2;
+        for (let b = 0; b < 3; ++b) {
+          const bx = Math.sin(bubblePhase + b * 2) * 5;
+          const by = -5 - ((bubblePhase + b * 1.3) % 2) * 6;
+          const br = 1.5 + Math.sin(bubblePhase + b) * 0.5;
+          ctx.fillStyle = `rgba(80, 255, 120, ${0.5 - ((bubblePhase + b * 1.3) % 2) * 0.2})`;
+          ctx.beginPath();
+          ctx.arc(bx, by, br, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        break;
+
+      case 'tesla':
+        // Cylindrical coil shape
+        ctx.beginPath();
+        ctx.arc(0, 0, baseSize, 0, Math.PI * 2);
+        ctx.fill();
+        // Tesla coil rings
+        ctx.strokeStyle = '#8ff';
+        ctx.lineWidth = 1.5;
+        for (let r = 0; r < 3; ++r) {
+          const rr = 4 + r * 3;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, rr, rr * 0.4, animTime * 1.5 + r, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        // Sparks
+        if (Math.random() < 0.4) {
+          ctx.strokeStyle = `rgba(100, 220, 255, ${0.5 + Math.random() * 0.5})`;
+          ctx.lineWidth = 1;
+          const sa = Math.random() * Math.PI * 2;
+          const sr = baseSize + Math.random() * 6;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(sa) * (baseSize - 2), Math.sin(sa) * (baseSize - 2));
+          ctx.lineTo(Math.cos(sa) * sr, Math.sin(sa) * sr);
+          ctx.stroke();
+        }
+        break;
+
+      case 'mortar':
+        // Sturdy square with reinforced corners
+        ctx.fillRect(-baseSize, -baseSize, baseSize * 2, baseSize * 2);
+        // Corner reinforcements
+        ctx.fillStyle = def.colorDark;
+        const cs = 4;
+        ctx.fillRect(-baseSize, -baseSize, cs, cs);
+        ctx.fillRect(baseSize - cs, -baseSize, cs, cs);
+        ctx.fillRect(-baseSize, baseSize - cs, cs, cs);
+        ctx.fillRect(baseSize - cs, baseSize - cs, cs, cs);
+        // Mortar tube (angled up)
+        ctx.save();
+        ctx.rotate(angle);
+        ctx.fillStyle = '#b09878';
+        ctx.fillRect(-4, -4, 12, 8);
+        ctx.fillStyle = '#666';
+        ctx.beginPath();
+        ctx.arc(8, 0, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        break;
+
+      case 'flame':
+        // Triangular/flame-shaped base
+        ctx.beginPath();
+        ctx.moveTo(0, -baseSize);
+        ctx.lineTo(baseSize, baseSize * 0.7);
+        ctx.lineTo(-baseSize, baseSize * 0.7);
+        ctx.closePath();
+        ctx.fill();
+        // Animated flame on top
+        ctx.save();
+        ctx.rotate(angle);
+        const flicker = Math.sin(animTime * 8) * 2;
+        const flameGrad = ctx.createRadialGradient(8, 0, 1, 8, 0, 8 + flicker);
+        flameGrad.addColorStop(0, '#fff');
+        flameGrad.addColorStop(0.3, '#fa4');
+        flameGrad.addColorStop(0.7, '#f60');
+        flameGrad.addColorStop(1, 'rgba(255,100,0,0)');
+        ctx.fillStyle = flameGrad;
+        ctx.beginPath();
+        ctx.arc(8, 0, 8 + flicker, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        break;
+
+      case 'ice':
+        // Snowflake-shaped base
+        ctx.beginPath();
+        for (let p = 0; p < 6; ++p) {
+          const a = (Math.PI / 3) * p - Math.PI / 6;
+          ctx.moveTo(0, 0);
+          ctx.lineTo(Math.cos(a) * baseSize, Math.sin(a) * baseSize);
+        }
+        ctx.strokeStyle = def.color;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        // Icy center
+        ctx.fillStyle = '#cff';
+        ctx.beginPath();
+        ctx.arc(0, 0, baseSize * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        // Rotating frost ring
+        ctx.save();
+        ctx.rotate(-animTime * 0.8);
+        ctx.strokeStyle = 'rgba(200,240,255,0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, baseSize * 0.8, 0, Math.PI);
+        ctx.stroke();
+        ctx.restore();
+        break;
+
+      case 'fire':
+        // Circular fiery base
+        ctx.beginPath();
+        ctx.arc(0, 0, baseSize, 0, Math.PI * 2);
+        ctx.fill();
+        // Animated fire rings
+        for (let r = 0; r < 2; ++r) {
+          const firePhase = animTime * 6 + r * 1.5;
+          const fr = baseSize * (0.5 + 0.3 * Math.sin(firePhase));
+          ctx.strokeStyle = r === 0 ? '#f84' : '#fa4';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(0, 0, fr, firePhase, firePhase + Math.PI);
+          ctx.stroke();
+        }
+        break;
+
+      case 'chainlightning':
+        // Pentagon base
+        ctx.beginPath();
+        for (let p = 0; p < 5; ++p) {
+          const a = (Math.PI * 2 / 5) * p - Math.PI / 2;
+          if (p === 0) ctx.moveTo(Math.cos(a) * baseSize, Math.sin(a) * baseSize);
+          else ctx.lineTo(Math.cos(a) * baseSize, Math.sin(a) * baseSize);
+        }
+        ctx.closePath();
+        ctx.fill();
+        // Lightning arcs between vertices
+        ctx.strokeStyle = '#df4';
+        ctx.lineWidth = 1.5;
+        if (Math.random() < 0.5) {
+          const a1 = Math.random() * Math.PI * 2;
+          const a2 = a1 + 1.2 + Math.random();
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(a1) * baseSize * 0.9, Math.sin(a1) * baseSize * 0.9);
+          const mx = (Math.random() - 0.5) * baseSize;
+          const my = (Math.random() - 0.5) * baseSize;
+          ctx.lineTo(mx, my);
+          ctx.lineTo(Math.cos(a2) * baseSize * 0.9, Math.sin(a2) * baseSize * 0.9);
+          ctx.stroke();
+        }
+        break;
+
+      case 'sniper':
+        // Long thin rectangle base
+        ctx.fillRect(-baseSize * 0.6, -baseSize, baseSize * 1.2, baseSize * 2);
+        // Crosshair
+        ctx.save();
+        ctx.rotate(angle);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, -baseSize); ctx.lineTo(0, baseSize);
+        ctx.moveTo(-baseSize, 0); ctx.lineTo(baseSize, 0);
+        ctx.stroke();
+        // Scope lens
+        ctx.strokeStyle = '#f44';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(0, 0, 4, 0, Math.PI * 2);
+        ctx.stroke();
+        // Long barrel
+        ctx.fillStyle = '#aaa';
+        ctx.fillRect(-1.5, -2, 20, 4);
+        ctx.restore();
+        break;
+    }
+
+  }
+
   function drawTowers() {
     for (const tower of towers) {
       const def = TOWER_TYPES[tower.type];
-      const tx = tower.x;
-      const ty = tower.y;
       const angle = towerAngles.get(tower) || 0;
-      const tierScale = 1 + (tower.tier - 1) * 0.1;
-
+      const baseSize = 11 * (1 + (tower.tier - 1) * 0.1);
       ctx.save();
-      ctx.translate(tx, ty);
-
-      // Glow under tower
-      const glowGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, 14 * tierScale);
-      glowGrad.addColorStop(0, _hexAlpha(def.color, '40'));
-      glowGrad.addColorStop(1, 'transparent');
-      ctx.fillStyle = glowGrad;
-      ctx.fillRect(-16, -16, 32, 32);
-
-      // Base platform
-      const baseSize = 11 * tierScale;
-      const baseGrad = ctx.createLinearGradient(-baseSize, -baseSize, baseSize, baseSize);
-      baseGrad.addColorStop(0, def.color);
-      baseGrad.addColorStop(1, def.colorDark);
-      ctx.fillStyle = baseGrad;
-
-      // Different shapes per tower type
-      switch (def.id) {
-        case 'arrow':
-          // Diamond base
-          ctx.beginPath();
-          ctx.moveTo(0, -baseSize);
-          ctx.lineTo(baseSize, 0);
-          ctx.lineTo(0, baseSize);
-          ctx.lineTo(-baseSize, 0);
-          ctx.closePath();
-          ctx.fill();
-          // Turret
-          ctx.save();
-          ctx.rotate(angle);
-          ctx.fillStyle = '#8d6';
-          ctx.fillRect(-2, -2, 14, 4);
-          ctx.fillRect(10, -4, 4, 8); // arrowhead
-          ctx.restore();
-          break;
-
-        case 'cannon':
-          // Round base
-          ctx.beginPath();
-          ctx.arc(0, 0, baseSize, 0, Math.PI * 2);
-          ctx.fill();
-          // Barrel
-          ctx.save();
-          ctx.rotate(angle);
-          ctx.fillStyle = '#a64';
-          ctx.fillRect(-3, -3, 16, 6);
-          ctx.fillStyle = '#888';
-          ctx.fillRect(10, -5, 6, 10); // muzzle
-          ctx.restore();
-          break;
-
-        case 'frost':
-          // Hexagonal base
-          ctx.beginPath();
-          for (let p = 0; p < 6; ++p) {
-            const a = (Math.PI / 3) * p - Math.PI / 6;
-            const px = Math.cos(a) * baseSize;
-            const py = Math.sin(a) * baseSize;
-            if (p === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-          }
-          ctx.closePath();
-          ctx.fill();
-          // Ice crystal on top (rotating)
-          ctx.save();
-          ctx.rotate(animTime * 0.5);
-          ctx.strokeStyle = '#aef';
-          ctx.lineWidth = 2;
-          for (let p = 0; p < 6; ++p) {
-            const a = (Math.PI / 3) * p;
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(Math.cos(a) * 7, Math.sin(a) * 7);
-            ctx.stroke();
-          }
-          ctx.restore();
-          break;
-
-        case 'lightning':
-          // Square base with notched corners
-          ctx.fillRect(-baseSize, -baseSize, baseSize * 2, baseSize * 2);
-          // Lightning bolt symbol
-          ctx.save();
-          ctx.fillStyle = '#ff0';
-          ctx.beginPath();
-          ctx.moveTo(-3, -7);
-          ctx.lineTo(3, -2);
-          ctx.lineTo(0, -2);
-          ctx.lineTo(3, 7);
-          ctx.lineTo(-3, 2);
-          ctx.lineTo(0, 2);
-          ctx.closePath();
-          ctx.fill();
-          // Electric crackle effect
-          if (Math.random() < 0.3) {
-            ctx.strokeStyle = `rgba(255, 255, 100, ${0.3 + Math.random() * 0.4})`;
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            const ex = (Math.random() - 0.5) * 20;
-            const ey = (Math.random() - 0.5) * 20;
-            ctx.moveTo(0, 0);
-            ctx.lineTo(ex * 0.5, ey * 0.5);
-            ctx.lineTo(ex, ey);
-            ctx.stroke();
-          }
-          ctx.restore();
-          break;
-
-        case 'laser':
-          // Octagonal base
-          ctx.beginPath();
-          for (let p = 0; p < 8; ++p) {
-            const a = (Math.PI / 4) * p;
-            const px = Math.cos(a) * baseSize;
-            const py = Math.sin(a) * baseSize;
-            if (p === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
-          }
-          ctx.closePath();
-          ctx.fill();
-          // Laser emitter
-          ctx.save();
-          ctx.rotate(angle);
-          ctx.fillStyle = '#f8f';
-          ctx.fillRect(-2, -1.5, 16, 3);
-          // Lens
-          ctx.fillStyle = '#fff';
-          ctx.beginPath();
-          ctx.arc(14, 0, 2.5, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-          break;
-
-        case 'poison':
-          // Bubbling cauldron shape
-          ctx.beginPath();
-          ctx.arc(0, 2, baseSize, 0, Math.PI);
-          ctx.lineTo(-baseSize, -3);
-          ctx.quadraticCurveTo(-baseSize - 2, -baseSize, 0, -baseSize);
-          ctx.quadraticCurveTo(baseSize + 2, -baseSize, baseSize, -3);
-          ctx.closePath();
-          ctx.fill();
-          // Bubbles
-          const bubblePhase = animTime * 2;
-          for (let b = 0; b < 3; ++b) {
-            const bx = Math.sin(bubblePhase + b * 2) * 5;
-            const by = -5 - ((bubblePhase + b * 1.3) % 2) * 6;
-            const br = 1.5 + Math.sin(bubblePhase + b) * 0.5;
-            ctx.fillStyle = `rgba(80, 255, 120, ${0.5 - ((bubblePhase + b * 1.3) % 2) * 0.2})`;
-            ctx.beginPath();
-            ctx.arc(bx, by, br, 0, Math.PI * 2);
-            ctx.fill();
-          }
-          break;
-
-        case 'tesla':
-          // Cylindrical coil shape
-          ctx.beginPath();
-          ctx.arc(0, 0, baseSize, 0, Math.PI * 2);
-          ctx.fill();
-          // Tesla coil rings
-          ctx.strokeStyle = '#8ff';
-          ctx.lineWidth = 1.5;
-          for (let r = 0; r < 3; ++r) {
-            const rr = 4 + r * 3;
-            ctx.beginPath();
-            ctx.ellipse(0, 0, rr, rr * 0.4, animTime * 1.5 + r, 0, Math.PI * 2);
-            ctx.stroke();
-          }
-          // Sparks
-          if (Math.random() < 0.4) {
-            ctx.strokeStyle = `rgba(100, 220, 255, ${0.5 + Math.random() * 0.5})`;
-            ctx.lineWidth = 1;
-            const sa = Math.random() * Math.PI * 2;
-            const sr = baseSize + Math.random() * 6;
-            ctx.beginPath();
-            ctx.moveTo(Math.cos(sa) * (baseSize - 2), Math.sin(sa) * (baseSize - 2));
-            ctx.lineTo(Math.cos(sa) * sr, Math.sin(sa) * sr);
-            ctx.stroke();
-          }
-          break;
-
-        case 'mortar':
-          // Sturdy square with reinforced corners
-          ctx.fillRect(-baseSize, -baseSize, baseSize * 2, baseSize * 2);
-          // Corner reinforcements
-          ctx.fillStyle = def.colorDark;
-          const cs = 4;
-          ctx.fillRect(-baseSize, -baseSize, cs, cs);
-          ctx.fillRect(baseSize - cs, -baseSize, cs, cs);
-          ctx.fillRect(-baseSize, baseSize - cs, cs, cs);
-          ctx.fillRect(baseSize - cs, baseSize - cs, cs, cs);
-          // Mortar tube (angled up)
-          ctx.save();
-          ctx.rotate(angle);
-          ctx.fillStyle = '#b09878';
-          ctx.fillRect(-4, -4, 12, 8);
-          ctx.fillStyle = '#666';
-          ctx.beginPath();
-          ctx.arc(8, 0, 4, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-          break;
-
-        case 'flame':
-          // Triangular/flame-shaped base
-          ctx.beginPath();
-          ctx.moveTo(0, -baseSize);
-          ctx.lineTo(baseSize, baseSize * 0.7);
-          ctx.lineTo(-baseSize, baseSize * 0.7);
-          ctx.closePath();
-          ctx.fill();
-          // Animated flame on top
-          ctx.save();
-          ctx.rotate(angle);
-          const flicker = Math.sin(animTime * 8) * 2;
-          const flameGrad = ctx.createRadialGradient(8, 0, 1, 8, 0, 8 + flicker);
-          flameGrad.addColorStop(0, '#fff');
-          flameGrad.addColorStop(0.3, '#fa4');
-          flameGrad.addColorStop(0.7, '#f60');
-          flameGrad.addColorStop(1, 'rgba(255,100,0,0)');
-          ctx.fillStyle = flameGrad;
-          ctx.beginPath();
-          ctx.arc(8, 0, 8 + flicker, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-          break;
-
-        case 'ice':
-          // Snowflake-shaped base
-          ctx.beginPath();
-          for (let p = 0; p < 6; ++p) {
-            const a = (Math.PI / 3) * p - Math.PI / 6;
-            ctx.moveTo(0, 0);
-            ctx.lineTo(Math.cos(a) * baseSize, Math.sin(a) * baseSize);
-          }
-          ctx.strokeStyle = def.color;
-          ctx.lineWidth = 3;
-          ctx.stroke();
-          // Icy center
-          ctx.fillStyle = '#cff';
-          ctx.beginPath();
-          ctx.arc(0, 0, baseSize * 0.5, 0, Math.PI * 2);
-          ctx.fill();
-          // Rotating frost ring
-          ctx.save();
-          ctx.rotate(-animTime * 0.8);
-          ctx.strokeStyle = 'rgba(200,240,255,0.5)';
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.arc(0, 0, baseSize * 0.8, 0, Math.PI);
-          ctx.stroke();
-          ctx.restore();
-          break;
-
-        case 'fire':
-          // Circular fiery base
-          ctx.beginPath();
-          ctx.arc(0, 0, baseSize, 0, Math.PI * 2);
-          ctx.fill();
-          // Animated fire rings
-          for (let r = 0; r < 2; ++r) {
-            const firePhase = animTime * 6 + r * 1.5;
-            const fr = baseSize * (0.5 + 0.3 * Math.sin(firePhase));
-            ctx.strokeStyle = r === 0 ? '#f84' : '#fa4';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(0, 0, fr, firePhase, firePhase + Math.PI);
-            ctx.stroke();
-          }
-          break;
-
-        case 'chainlightning':
-          // Pentagon base
-          ctx.beginPath();
-          for (let p = 0; p < 5; ++p) {
-            const a = (Math.PI * 2 / 5) * p - Math.PI / 2;
-            if (p === 0) ctx.moveTo(Math.cos(a) * baseSize, Math.sin(a) * baseSize);
-            else ctx.lineTo(Math.cos(a) * baseSize, Math.sin(a) * baseSize);
-          }
-          ctx.closePath();
-          ctx.fill();
-          // Lightning arcs between vertices
-          ctx.strokeStyle = '#df4';
-          ctx.lineWidth = 1.5;
-          if (Math.random() < 0.5) {
-            const a1 = Math.random() * Math.PI * 2;
-            const a2 = a1 + 1.2 + Math.random();
-            ctx.beginPath();
-            ctx.moveTo(Math.cos(a1) * baseSize * 0.9, Math.sin(a1) * baseSize * 0.9);
-            const mx = (Math.random() - 0.5) * baseSize;
-            const my = (Math.random() - 0.5) * baseSize;
-            ctx.lineTo(mx, my);
-            ctx.lineTo(Math.cos(a2) * baseSize * 0.9, Math.sin(a2) * baseSize * 0.9);
-            ctx.stroke();
-          }
-          break;
-
-        case 'sniper':
-          // Long thin rectangle base
-          ctx.fillRect(-baseSize * 0.6, -baseSize, baseSize * 1.2, baseSize * 2);
-          // Crosshair
-          ctx.save();
-          ctx.rotate(angle);
-          ctx.strokeStyle = '#fff';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(0, -baseSize); ctx.lineTo(0, baseSize);
-          ctx.moveTo(-baseSize, 0); ctx.lineTo(baseSize, 0);
-          ctx.stroke();
-          // Scope lens
-          ctx.strokeStyle = '#f44';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.arc(0, 0, 4, 0, Math.PI * 2);
-          ctx.stroke();
-          // Long barrel
-          ctx.fillStyle = '#aaa';
-          ctx.fillRect(-1.5, -2, 20, 4);
-          ctx.restore();
-          break;
-      }
+      ctx.translate(tower.x, tower.y);
+      drawTowerShape(def, tower.tier, angle);
 
       // Tower HP bar (shown only when damaged)
       if (tower.hp < tower.maxHp) {
@@ -1942,17 +1889,193 @@
 
       ctx.restore();
 
-      // Range circle for selected tower
-      if (selectedTower === tower) {
-        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([4, 4]);
-        ctx.beginPath();
-        ctx.arc(tx, ty, tower.range, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
     }
+  }
+
+  function drawEnemyShape(e, faceAngle) {
+    const r = e.radius;
+    switch (e.type) {
+      case 'normal':
+        // Circle with inner gradient
+        {
+          const grad = ctx.createRadialGradient(0, -1, 1, 0, 0, r);
+          grad.addColorStop(0, '#f88');
+          grad.addColorStop(1, e.color);
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(0, 0, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        break;
+
+      case 'fast':
+        // Elongated diamond (shows speed)
+        ctx.save();
+        ctx.rotate(faceAngle);
+        {
+          const grad = ctx.createLinearGradient(-r, 0, r, 0);
+          grad.addColorStop(0, '#2a2');
+          grad.addColorStop(0.5, '#8f8');
+          grad.addColorStop(1, e.color);
+          ctx.fillStyle = grad;
+        }
+        ctx.beginPath();
+        ctx.moveTo(r + 2, 0);
+        ctx.lineTo(0, -r + 1);
+        ctx.lineTo(-r - 1, 0);
+        ctx.lineTo(0, r - 1);
+        ctx.closePath();
+        ctx.fill();
+        // Speed lines
+        ctx.strokeStyle = `rgba(100, 255, 100, ${0.3 + Math.sin(animTime * 10) * 0.2})`;
+        ctx.lineWidth = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(-r - 3, -2);
+        ctx.lineTo(-r - 7, -2);
+        ctx.moveTo(-r - 2, 2);
+        ctx.lineTo(-r - 6, 2);
+        ctx.stroke();
+        ctx.restore();
+        break;
+
+      case 'armored':
+        // Thick square with border (tank)
+        {
+          const grad = ctx.createLinearGradient(-r, -r, r, r);
+          grad.addColorStop(0, '#aaa');
+          grad.addColorStop(0.5, '#ccc');
+          grad.addColorStop(1, '#666');
+          ctx.fillStyle = grad;
+        }
+        ctx.fillRect(-r, -r, r * 2, r * 2);
+        ctx.strokeStyle = '#444';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(-r + 1, -r + 1, r * 2 - 2, r * 2 - 2);
+        break;
+
+      case 'flying':
+        // Wing shape
+        ctx.save();
+        ctx.rotate(faceAngle);
+        ctx.fillStyle = e.color;
+        ctx.beginPath();
+        ctx.moveTo(r, 0);
+        ctx.lineTo(-r, -r - 2);
+        ctx.lineTo(-r + 3, 0);
+        ctx.lineTo(-r, r + 2);
+        ctx.closePath();
+        ctx.fill();
+        // Animated wing flap
+        {
+          const wingFlap = Math.sin(animTime * 12) * 3;
+          ctx.strokeStyle = '#aaf';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(-2, 0);
+          ctx.lineTo(-4, -r - wingFlap);
+          ctx.moveTo(-2, 0);
+          ctx.lineTo(-4, r + wingFlap);
+          ctx.stroke();
+        }
+        ctx.restore();
+        break;
+
+      case 'boss':
+        // Large spiked circle
+        {
+          const grad = ctx.createRadialGradient(0, -2, 2, 0, 0, r);
+          grad.addColorStop(0, '#f8f');
+          grad.addColorStop(0.5, e.color);
+          grad.addColorStop(1, '#808');
+          ctx.fillStyle = grad;
+        }
+        // Spikes
+        ctx.beginPath();
+        const spikes = 8;
+        for (let s = 0; s < spikes; ++s) {
+          const a = (Math.PI * 2 / spikes) * s + animTime * 0.3;
+          const outerR = r + 4;
+          const innerR = r - 2;
+          ctx.lineTo(Math.cos(a) * outerR, Math.sin(a) * outerR);
+          const midA = a + Math.PI / spikes;
+          ctx.lineTo(Math.cos(midA) * innerR, Math.sin(midA) * innerR);
+        }
+        ctx.closePath();
+        ctx.fill();
+        // Inner eye
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(0, 0, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#f0f';
+        ctx.beginPath();
+        ctx.arc(0, 0, 2, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+
+      case 'healer':
+        // Green circle with cross
+        {
+          const grad = ctx.createRadialGradient(0, -1, 1, 0, 0, r);
+          grad.addColorStop(0, '#8f8');
+          grad.addColorStop(1, e.color);
+          ctx.fillStyle = grad;
+        }
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        // Plus/cross symbol
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(-1, -r + 2, 2, r * 2 - 4);
+        ctx.fillRect(-r + 2, -1, r * 2 - 4, 2);
+        // Healing aura pulse
+        {
+          const auraPulse = 0.2 + 0.2 * Math.sin(animTime * 4);
+          ctx.strokeStyle = `rgba(100, 255, 100, ${auraPulse})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(0, 0, r + 4, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        break;
+
+      case 'swarm':
+        // Tiny triangle (fast and numerous)
+        ctx.save();
+        ctx.rotate(faceAngle);
+        ctx.fillStyle = e.color;
+        ctx.beginPath();
+        ctx.moveTo(r, 0);
+        ctx.lineTo(-r, -r);
+        ctx.lineTo(-r, r);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        break;
+
+      case 'shield':
+        // Circle with shield ring
+        {
+          const grad = ctx.createRadialGradient(0, -1, 1, 0, 0, r);
+          grad.addColorStop(0, '#8ff');
+          grad.addColorStop(1, e.color);
+          ctx.fillStyle = grad;
+        }
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        // Shield ring (fades as shield depletes)
+        if (e.shieldHp > 0) {
+          const shieldRatio = e.shieldHp / (e.maxHp * 0.4);
+          ctx.strokeStyle = `rgba(80, 255, 255, ${shieldRatio * 0.7})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(0, 0, r + 3, 0, Math.PI * 2 * shieldRatio);
+          ctx.stroke();
+        }
+        break;
+    }
+
   }
 
   /* ── Improved enemy drawing with distinct shapes ── */
@@ -1974,193 +2097,8 @@
         faceAngle = Math.atan2(to.y - ey, to.x - ex);
       }
 
-      // Glow
-      ctx.shadowBlur = e.isBoss ? 10 : 4;
-      ctx.shadowColor = e.color;
+      drawEnemyShape(e, faceAngle);
 
-      switch (e.type) {
-        case 'normal':
-          // Circle with inner gradient
-          {
-            const grad = ctx.createRadialGradient(0, -1, 1, 0, 0, r);
-            grad.addColorStop(0, '#f88');
-            grad.addColorStop(1, e.color);
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.arc(0, 0, r, 0, Math.PI * 2);
-            ctx.fill();
-          }
-          break;
-
-        case 'fast':
-          // Elongated diamond (shows speed)
-          ctx.save();
-          ctx.rotate(faceAngle);
-          {
-            const grad = ctx.createLinearGradient(-r, 0, r, 0);
-            grad.addColorStop(0, '#2a2');
-            grad.addColorStop(0.5, '#8f8');
-            grad.addColorStop(1, e.color);
-            ctx.fillStyle = grad;
-          }
-          ctx.beginPath();
-          ctx.moveTo(r + 2, 0);
-          ctx.lineTo(0, -r + 1);
-          ctx.lineTo(-r - 1, 0);
-          ctx.lineTo(0, r - 1);
-          ctx.closePath();
-          ctx.fill();
-          // Speed lines
-          ctx.strokeStyle = `rgba(100, 255, 100, ${0.3 + Math.sin(animTime * 10) * 0.2})`;
-          ctx.lineWidth = 0.7;
-          ctx.beginPath();
-          ctx.moveTo(-r - 3, -2);
-          ctx.lineTo(-r - 7, -2);
-          ctx.moveTo(-r - 2, 2);
-          ctx.lineTo(-r - 6, 2);
-          ctx.stroke();
-          ctx.restore();
-          break;
-
-        case 'armored':
-          // Thick square with border (tank)
-          {
-            const grad = ctx.createLinearGradient(-r, -r, r, r);
-            grad.addColorStop(0, '#aaa');
-            grad.addColorStop(0.5, '#ccc');
-            grad.addColorStop(1, '#666');
-            ctx.fillStyle = grad;
-          }
-          ctx.fillRect(-r, -r, r * 2, r * 2);
-          ctx.strokeStyle = '#444';
-          ctx.lineWidth = 1.5;
-          ctx.strokeRect(-r + 1, -r + 1, r * 2 - 2, r * 2 - 2);
-          break;
-
-        case 'flying':
-          // Wing shape
-          ctx.save();
-          ctx.rotate(faceAngle);
-          ctx.fillStyle = e.color;
-          ctx.beginPath();
-          ctx.moveTo(r, 0);
-          ctx.lineTo(-r, -r - 2);
-          ctx.lineTo(-r + 3, 0);
-          ctx.lineTo(-r, r + 2);
-          ctx.closePath();
-          ctx.fill();
-          // Animated wing flap
-          {
-            const wingFlap = Math.sin(animTime * 12) * 3;
-            ctx.strokeStyle = '#aaf';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(-2, 0);
-            ctx.lineTo(-4, -r - wingFlap);
-            ctx.moveTo(-2, 0);
-            ctx.lineTo(-4, r + wingFlap);
-            ctx.stroke();
-          }
-          ctx.restore();
-          break;
-
-        case 'boss':
-          // Large spiked circle
-          {
-            const grad = ctx.createRadialGradient(0, -2, 2, 0, 0, r);
-            grad.addColorStop(0, '#f8f');
-            grad.addColorStop(0.5, e.color);
-            grad.addColorStop(1, '#808');
-            ctx.fillStyle = grad;
-          }
-          // Spikes
-          ctx.beginPath();
-          const spikes = 8;
-          for (let s = 0; s < spikes; ++s) {
-            const a = (Math.PI * 2 / spikes) * s + animTime * 0.3;
-            const outerR = r + 4;
-            const innerR = r - 2;
-            ctx.lineTo(Math.cos(a) * outerR, Math.sin(a) * outerR);
-            const midA = a + Math.PI / spikes;
-            ctx.lineTo(Math.cos(midA) * innerR, Math.sin(midA) * innerR);
-          }
-          ctx.closePath();
-          ctx.fill();
-          // Inner eye
-          ctx.fillStyle = '#fff';
-          ctx.beginPath();
-          ctx.arc(0, 0, 4, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = '#f0f';
-          ctx.beginPath();
-          ctx.arc(0, 0, 2, 0, Math.PI * 2);
-          ctx.fill();
-          break;
-
-        case 'healer':
-          // Green circle with cross
-          {
-            const grad = ctx.createRadialGradient(0, -1, 1, 0, 0, r);
-            grad.addColorStop(0, '#8f8');
-            grad.addColorStop(1, e.color);
-            ctx.fillStyle = grad;
-          }
-          ctx.beginPath();
-          ctx.arc(0, 0, r, 0, Math.PI * 2);
-          ctx.fill();
-          // Plus/cross symbol
-          ctx.fillStyle = '#fff';
-          ctx.fillRect(-1, -r + 2, 2, r * 2 - 4);
-          ctx.fillRect(-r + 2, -1, r * 2 - 4, 2);
-          // Healing aura pulse
-          {
-            const auraPulse = 0.2 + 0.2 * Math.sin(animTime * 4);
-            ctx.strokeStyle = `rgba(100, 255, 100, ${auraPulse})`;
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.arc(0, 0, r + 4, 0, Math.PI * 2);
-            ctx.stroke();
-          }
-          break;
-
-        case 'swarm':
-          // Tiny triangle (fast and numerous)
-          ctx.save();
-          ctx.rotate(faceAngle);
-          ctx.fillStyle = e.color;
-          ctx.beginPath();
-          ctx.moveTo(r, 0);
-          ctx.lineTo(-r, -r);
-          ctx.lineTo(-r, r);
-          ctx.closePath();
-          ctx.fill();
-          ctx.restore();
-          break;
-
-        case 'shield':
-          // Circle with shield ring
-          {
-            const grad = ctx.createRadialGradient(0, -1, 1, 0, 0, r);
-            grad.addColorStop(0, '#8ff');
-            grad.addColorStop(1, e.color);
-            ctx.fillStyle = grad;
-          }
-          ctx.beginPath();
-          ctx.arc(0, 0, r, 0, Math.PI * 2);
-          ctx.fill();
-          // Shield ring (fades as shield depletes)
-          if (e.shieldHp > 0) {
-            const shieldRatio = e.shieldHp / (e.maxHp * 0.4);
-            ctx.strokeStyle = `rgba(80, 255, 255, ${shieldRatio * 0.7})`;
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(0, 0, r + 3, 0, Math.PI * 2 * shieldRatio);
-            ctx.stroke();
-          }
-          break;
-      }
-
-      ctx.shadowBlur = 0;
 
       // Freeze indicator
       if (e.freezeTimer > 0) {
@@ -2248,469 +2186,6 @@
       ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
       ctx.fill();
       ctx.shadowBlur = 0;
-    }
-  }
-
-  /* ── Tower selection palette (always visible during gameplay) ── */
-  function drawTowerPalette() {
-    if (state !== STATE_BUILD && state !== STATE_PLAYING) return;
-
-    // Background bar
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-    ctx.fillRect(0, PALETTE_Y, CANVAS_W, PALETTE_H);
-    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, PALETTE_Y);
-    ctx.lineTo(CANVAS_W, PALETTE_Y);
-    ctx.stroke();
-
-    // Tower buttons
-    for (let i = 0; i < TOWER_TYPES.length; ++i) {
-      const def = TOWER_TYPES[i];
-      const bx = 4 + i * (getPaletteBtnW() + PALETTE_BTN_GAP);
-      const by = PALETTE_BTN_Y;
-      const selected = i === selectedTowerType;
-      const canAfford = gold >= def.cost;
-
-      // Button background
-      if (selected) {
-        ctx.fillStyle = 'rgba(255,255,255,0.15)';
-        ctx.strokeStyle = def.color;
-        ctx.lineWidth = 1.5;
-        ctx.fillRect(bx, by, getPaletteBtnW(), PALETTE_BTN_H);
-        ctx.strokeRect(bx, by, getPaletteBtnW(), PALETTE_BTN_H);
-      } else {
-        ctx.fillStyle = 'rgba(40,40,40,0.8)';
-        ctx.fillRect(bx, by, getPaletteBtnW(), PALETTE_BTN_H);
-      }
-
-      // Color swatch
-      ctx.fillStyle = canAfford ? def.color : '#555';
-      ctx.fillRect(bx + 3, by + 3, 10, 10);
-
-      // Name and cost
-      ctx.fillStyle = canAfford ? (selected ? '#fff' : '#bbb') : '#999';
-      ctx.font = '8px sans-serif';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      ctx.fillText(def.name, bx + 16, by + 2);
-      ctx.fillStyle = canAfford ? '#fa0' : '#644';
-      ctx.font = '7px sans-serif';
-      ctx.fillText(`${def.cost}g`, bx + 16, by + 12);
-
-      // Hotkey number
-      if (i < 10) {
-        ctx.fillStyle = 'rgba(255,255,255,0.3)';
-        ctx.font = '7px sans-serif';
-        ctx.textAlign = 'right';
-        ctx.fillText(i < 9 ? `${i + 1}` : '0', bx + getPaletteBtnW() - 3, by + 2);
-      }
-
-      // Brief description
-      ctx.fillStyle = selected ? '#aaa' : '#999';
-      ctx.font = '7px sans-serif';
-      ctx.textAlign = 'left';
-      ctx.fillText(def.desc, bx + 16, by + 22);
-    }
-
-    // Right-side HUD buttons
-    const rightX = CANVAS_W - 4;
-
-    // Start Wave / Next Wave button
-    if (state === STATE_BUILD) {
-      const btnX = rightX - HUD_BTN_W - 68 - 4;
-      const btnY = PALETTE_BTN_Y + 2;
-      ctx.fillStyle = '#2a5a2a';
-      ctx.strokeStyle = '#4a4';
-      ctx.lineWidth = 1;
-      ctx.fillRect(btnX, btnY, HUD_BTN_W + 4, HUD_BTN_H);
-      ctx.strokeRect(btnX, btnY, HUD_BTN_W + 4, HUD_BTN_H);
-      ctx.fillStyle = '#8f8';
-      ctx.font = 'bold 9px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('Start Wave', btnX + (HUD_BTN_W + 4) / 2, btnY + HUD_BTN_H / 2);
-    }
-
-    // Fast Forward button
-    if (state === STATE_PLAYING) {
-      const btnX = rightX - HUD_BTN_W - 68 - 4;
-      const btnY = PALETTE_BTN_Y + 2;
-      ctx.fillStyle = gameSpeed > 1 ? '#5a5a2a' : '#444';
-      ctx.strokeStyle = gameSpeed > 1 ? '#aa0' : '#666';
-      ctx.lineWidth = 1;
-      ctx.fillRect(btnX, btnY, HUD_BTN_W + 4, HUD_BTN_H);
-      ctx.strokeRect(btnX, btnY, HUD_BTN_W + 4, HUD_BTN_H);
-      ctx.fillStyle = gameSpeed > 1 ? '#ff0' : '#aaa';
-      ctx.font = 'bold 9px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`Speed ${gameSpeed}x`, btnX + (HUD_BTN_W + 4) / 2, btnY + HUD_BTN_H / 2);
-    }
-
-    // Auto-wave toggle
-    {
-      const btnX = rightX - 64;
-      const btnY = PALETTE_BTN_Y + 2;
-      ctx.fillStyle = autoWaveMode ? '#2a4a5a' : '#444';
-      ctx.strokeStyle = autoWaveMode ? '#4af' : '#666';
-      ctx.lineWidth = 1;
-      ctx.fillRect(btnX, btnY, 60, HUD_BTN_H);
-      ctx.strokeRect(btnX, btnY, 60, HUD_BTN_H);
-      ctx.fillStyle = autoWaveMode ? '#8cf' : '#888';
-      ctx.font = 'bold 8px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(autoWaveMode ? 'AUTO: ON' : 'AUTO: OFF', btnX + 30, btnY + HUD_BTN_H / 2);
-    }
-
-    // Auto-wave countdown
-    if (autoWaveMode && state === STATE_BUILD && waveComplete && autoWaveTimer > 0) {
-      const btnX = rightX - 64;
-      const btnY = PALETTE_BTN_Y + HUD_BTN_H + 4;
-      ctx.fillStyle = '#aaf';
-      ctx.font = '8px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillText(`Next: ${Math.ceil(autoWaveTimer)}s`, btnX + 30, btnY);
-    }
-
-    ctx.textAlign = 'start';
-    ctx.textBaseline = 'alphabetic';
-  }
-
-  /* ── Selected tower info panel ── */
-  function drawSelectedTowerInfo() {
-    if (!selectedTower) return;
-    if (state !== STATE_BUILD && state !== STATE_PLAYING) return;
-
-    const def = TOWER_TYPES[selectedTower.type];
-    const panelX = 4;
-    const panelH = selectedTower.hp < selectedTower.maxHp ? 72 : 54;
-    const panelY = PALETTE_Y - panelH - 4;
-    const panelW = 160;
-
-    ctx.fillStyle = 'rgba(0,0,0,0.85)';
-    ctx.fillRect(panelX, panelY, panelW, panelH);
-    ctx.strokeStyle = def.color;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(panelX, panelY, panelW, panelH);
-
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 10px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillText(`${def.name} (Tier ${selectedTower.tier})`, panelX + 4, panelY + 3);
-
-    ctx.fillStyle = '#aaa';
-    ctx.font = '9px sans-serif';
-    ctx.fillText(`DMG: ${selectedTower.damage}  RNG: ${selectedTower.range}  Kills: ${selectedTower.kills || 0}`, panelX + 4, panelY + 16);
-
-    // Upgrade button
-    if (selectedTower.tier < MAX_TIER) {
-      const uc = getUpgradeCost(selectedTower);
-      const canUp = gold >= uc;
-      ctx.fillStyle = canUp ? '#2a5a2a' : '#553a3a';
-      ctx.fillRect(panelX + 4, panelY + 30, 70, 16);
-      ctx.strokeStyle = canUp ? '#4a4' : '#644';
-      ctx.lineWidth = 0.5;
-      ctx.strokeRect(panelX + 4, panelY + 30, 70, 16);
-      ctx.fillStyle = canUp ? '#8f8' : '#866';
-      ctx.font = '8px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`Upgrade ${uc}g`, panelX + 39, panelY + 35);
-    } else {
-      ctx.fillStyle = '#666';
-      ctx.font = '8px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('MAX TIER', panelX + 39, panelY + 35);
-    }
-
-    // Sell button
-    const sv = getSellValue(selectedTower);
-    ctx.fillStyle = '#5a2a2a';
-    ctx.fillRect(panelX + 80, panelY + 30, 70, 16);
-    ctx.strokeStyle = '#a44';
-    ctx.lineWidth = 0.5;
-    ctx.strokeRect(panelX + 80, panelY + 30, 70, 16);
-    ctx.fillStyle = '#f88';
-    ctx.font = '8px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(`Sell +${sv}g`, panelX + 115, panelY + 35);
-
-    // Repair button (shown when tower is damaged)
-    if (selectedTower.hp < selectedTower.maxHp) {
-      const repairCost = Math.floor((selectedTower.maxHp - selectedTower.hp) * 0.3);
-      const canRepair = gold >= repairCost && repairCost > 0;
-      ctx.fillStyle = canRepair ? '#2a4a3a' : '#2a2a2a';
-      ctx.fillRect(panelX + 4, panelY + 50, 146, 16);
-      ctx.strokeStyle = canRepair ? '#4a8' : '#444';
-      ctx.lineWidth = 0.5;
-      ctx.strokeRect(panelX + 4, panelY + 50, 146, 16);
-      const hpPct = Math.floor(selectedTower.hp / selectedTower.maxHp * 100);
-      ctx.fillStyle = canRepair ? '#8f8' : '#666';
-      ctx.font = '8px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`Repair (${hpPct}% HP) -${repairCost}g`, panelX + 77, panelY + 55);
-    }
-
-    ctx.textAlign = 'start';
-    ctx.textBaseline = 'alphabetic';
-  }
-
-  /* ── Context menu (right-click on tower) ── */
-  function drawContextMenu() {
-    if (!contextMenu) return;
-
-    const { x, y, tower } = contextMenu;
-    const def = TOWER_TYPES[tower.type];
-    const menuW = 110;
-    const hasUpgrade = tower.tier < MAX_TIER;
-    const hasDamage = tower.hp < tower.maxHp;
-    let menuH = 18; // info line always
-    if (hasUpgrade) menuH += 18;
-    menuH += 18; // sell
-    if (hasDamage) menuH += 18; // repair
-
-    // Keep menu on screen
-    const mx = Math.min(x, CANVAS_W - menuW - 4);
-    const my = Math.min(y, CANVAS_H - menuH - 4);
-
-    ctx.fillStyle = 'rgba(30, 35, 50, 0.92)';
-    ctx.fillRect(mx, my, menuW, menuH);
-    ctx.strokeStyle = '#666';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(mx, my, menuW, menuH);
-
-    // Store menu bounds for click detection
-    contextMenu.mx = mx;
-    contextMenu.my = my;
-    contextMenu.menuW = menuW;
-    contextMenu.menuH = menuH;
-
-    let itemY = my + 2;
-
-    // Upgrade option
-    if (hasUpgrade) {
-      const uc = getUpgradeCost(tower);
-      const canUp = gold >= uc;
-      ctx.fillStyle = canUp ? '#8f8' : '#866';
-      ctx.font = '10px sans-serif';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      ctx.fillText(`Upgrade (${uc}g)`, mx + 6, itemY + 2);
-      contextMenu.upgradeY = itemY;
-      itemY += 18;
-    }
-
-    // Sell option
-    const sv = getSellValue(tower);
-    ctx.fillStyle = '#f88';
-    ctx.font = '10px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillText(`Sell (+${sv}g)`, mx + 6, itemY + 2);
-    contextMenu.sellY = itemY;
-    itemY += 18;
-
-    // Repair option
-    if (hasDamage) {
-      const repairCost = Math.floor((tower.maxHp - tower.hp) * 0.3);
-      const canRepair = gold >= repairCost && repairCost > 0;
-      ctx.fillStyle = canRepair ? '#8f8' : '#866';
-      ctx.font = '10px sans-serif';
-      ctx.fillText(`Repair (${repairCost}g)`, mx + 6, itemY + 2);
-      contextMenu.repairY = itemY;
-      itemY += 18;
-    }
-
-    // Info
-    ctx.fillStyle = '#aaa';
-    ctx.font = '8px sans-serif';
-    ctx.fillText(`${def.name} T${tower.tier} | Kills: ${tower.kills || 0}`, mx + 6, itemY + 2);
-
-    ctx.textAlign = 'start';
-    ctx.textBaseline = 'alphabetic';
-  }
-
-  /* ── Start screen buttons (shown when a saved game exists) ── */
-  const START_BTN_CONTINUE = { dx: -170, dy: 16, w: 160, h: 32 };
-  const START_BTN_NEW = { dx: 10, dy: 16, w: 160, h: 32 };
-
-  function hitStartButton(btn, mx, my) {
-    const x = CANVAS_W / 2 + btn.dx;
-    const y = CANVAS_H / 2 + btn.dy;
-    return mx >= x && mx <= x + btn.w && my >= y && my <= y + btn.h;
-  }
-
-  function drawStartButton(btn, label, detail, primary) {
-    const x = CANVAS_W / 2 + btn.dx;
-    const y = CANVAS_H / 2 + btn.dy;
-    const hover = hoverPoint && hitStartButton(btn, hoverPoint.x, hoverPoint.y);
-    ctx.fillStyle = primary ? (hover ? '#2a5a2a' : '#1e3e1e') : (hover ? '#3a3a4a' : '#262630');
-    ctx.fillRect(x, y, btn.w, btn.h);
-    ctx.strokeStyle = primary ? '#4c4' : '#888';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(x + 0.5, y + 0.5, btn.w - 1, btn.h - 1);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = primary ? '#cfc' : '#ddd';
-    ctx.font = 'bold 13px sans-serif';
-    ctx.fillText(label, x + btn.w / 2, y + 11);
-    ctx.fillStyle = '#999';
-    ctx.font = '9px sans-serif';
-    ctx.fillText(detail, x + btn.w / 2, y + 24);
-  }
-
-  function drawHUD() {
-    if (state === STATE_READY) {
-      ctx.fillStyle = 'rgba(0,0,0,0.85)';
-      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-      ctx.fillStyle = '#fa0';
-      ctx.font = 'bold 28px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('TOWER DEFENSE', CANVAS_W / 2, CANVAS_H / 2 - 80);
-
-      // Subtitle
-      ctx.fillStyle = '#888';
-      ctx.font = '12px sans-serif';
-      ctx.fillText(`Strategic tower defense with ${TOWER_TYPES.length} tower types and unique enemy varieties`, CANVAS_W / 2, CANVAS_H / 2 - 50);
-
-      ctx.fillStyle = '#aaa';
-      ctx.font = '14px sans-serif';
-      ctx.fillText(`Map: ${MAPS[currentMap].name}`, CANVAS_W / 2, CANVAS_H / 2 - 20);
-      ctx.fillText(`${MAPS[currentMap].waves} waves | ${MAPS[currentMap].startGold} gold | ${MAPS[currentMap].startLives} lives`, CANVAS_W / 2, CANVAS_H / 2 + 5);
-      if (savedGameInfo) {
-        drawStartButton(START_BTN_CONTINUE, 'Continue', `${MAPS[savedGameInfo.map].name} -- Wave ${savedGameInfo.wave}/${savedGameInfo.waves}`, true);
-        drawStartButton(START_BTN_NEW, 'New Game', 'Starts over on this map', false);
-        ctx.font = '10px sans-serif';
-        ctx.fillStyle = '#888';
-        ctx.fillText('C / Enter = Continue  |  N = New Game', CANVAS_W / 2, CANVAS_H / 2 + 57);
-      } else {
-        ctx.fillStyle = '#ccc';
-        ctx.fillText('Click or press Space to start', CANVAS_W / 2, CANVAS_H / 2 + 40);
-      }
-      if (saveNotice) {
-        ctx.fillStyle = '#f84';
-        ctx.font = '11px sans-serif';
-        ctx.fillText(saveNotice, CANVAS_W / 2, CANVAS_H / 2 - 120);
-      }
-
-      // Tower type preview
-      ctx.fillStyle = '#666';
-      ctx.font = '10px sans-serif';
-      ctx.fillText('Towers:', CANVAS_W / 2, CANVAS_H / 2 + 70);
-      const previewY = CANVAS_H / 2 + 85;
-      const previewSpacing = Math.min(56, Math.floor((CANVAS_W - 40) / TOWER_TYPES.length));
-      const totalW = TOWER_TYPES.length * previewSpacing;
-      const startX = CANVAS_W / 2 - totalW / 2;
-      for (let i = 0; i < TOWER_TYPES.length; ++i) {
-        const def = TOWER_TYPES[i];
-        const px = startX + i * previewSpacing;
-        ctx.fillStyle = def.color;
-        ctx.fillRect(px + previewSpacing / 2 - 4, previewY - 4, 8, 8);
-        ctx.fillStyle = '#999';
-        ctx.font = '7px sans-serif';
-        ctx.fillText(def.name, px + 2, previewY + 12);
-      }
-
-      ctx.textAlign = 'start';
-    }
-
-    if (state === STATE_PAUSED) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-      ctx.fillStyle = '#ff0';
-      ctx.font = 'bold 32px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('PAUSED', CANVAS_W / 2, CANVAS_H / 2);
-      ctx.fillStyle = '#aaa';
-      ctx.font = '14px sans-serif';
-      ctx.fillText('Press Escape or click to resume', CANVAS_W / 2, CANVAS_H / 2 + 30);
-      ctx.textAlign = 'start';
-    }
-
-    if (state === STATE_GAME_OVER) {
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-      ctx.fillStyle = '#f44';
-      ctx.font = 'bold 28px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('GAME OVER', CANVAS_W / 2, CANVAS_H / 2 - 20);
-      ctx.fillStyle = '#ccc';
-      ctx.font = '14px sans-serif';
-      ctx.fillText(`Survived ${currentWave} waves`, CANVAS_W / 2, CANVAS_H / 2 + 10);
-      ctx.fillText('Press F2 or click to try again', CANVAS_W / 2, CANVAS_H / 2 + 35);
-      ctx.textAlign = 'start';
-    }
-
-    if (state === STATE_VICTORY) {
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-      ctx.fillStyle = '#ffd700';
-      ctx.font = 'bold 28px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('VICTORY!', CANVAS_W / 2, CANVAS_H / 2 - 20);
-      ctx.fillStyle = '#ccc';
-      ctx.font = '14px sans-serif';
-      ctx.fillText(`${MAPS[currentMap].name} complete!`, CANVAS_W / 2, CANVAS_H / 2 + 10);
-      ctx.fillText('Press F2 or click for next map', CANVAS_W / 2, CANVAS_H / 2 + 35);
-      ctx.textAlign = 'start';
-    }
-
-    // Top HUD -- Wave / gold / lives
-    if (state === STATE_PLAYING || state === STATE_BUILD) {
-      // Top bar background
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      ctx.fillRect(0, 0, CANVAS_W, 22);
-
-      ctx.font = '11px sans-serif';
-      ctx.textBaseline = 'middle';
-
-      // Wave info (left)
-      ctx.fillStyle = '#fa0';
-      ctx.textAlign = 'left';
-      ctx.fillText(`Wave ${currentWave}/${totalWaves}`, 8, 11);
-
-      // Gold (center-left)
-      ctx.fillStyle = '#ff0';
-      ctx.textAlign = 'left';
-      ctx.fillText(`Gold: ${gold}`, 130, 11);
-
-      // Lives (center-right)
-      ctx.fillStyle = lives <= 5 ? '#f44' : '#4f4';
-      ctx.textAlign = 'left';
-      ctx.fillText(`Lives: ${lives}`, 250, 11);
-
-      // Speed indicator
-      if (gameSpeed > 1) {
-        ctx.fillStyle = '#ff0';
-        ctx.textAlign = 'left';
-        ctx.font = 'bold 11px sans-serif';
-        ctx.fillText(`${gameSpeed}x`, 350, 11);
-      }
-
-      // Auto-wave indicator
-      if (autoWaveMode) {
-        ctx.fillStyle = '#8cf';
-        ctx.textAlign = 'left';
-        ctx.font = '10px sans-serif';
-        ctx.fillText('AUTO', 390, 11);
-      }
-
-      // Map name (right)
-      ctx.fillStyle = '#888';
-      ctx.font = '10px sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText(MAPS[currentMap].name, CANVAS_W - 8, 11);
-
-      ctx.textAlign = 'start';
-      ctx.textBaseline = 'alphabetic';
     }
   }
 
@@ -2802,22 +2277,1814 @@
     }
   }
 
-  function drawGame() {
-    drawGrid();
+  /* ══════════════════════════════════════════════════════════════════
+     LAYOUT -- the canvas fills the window; the HUD lives on a virtual
+     screen of UI units (uiS screen px each), the map is scaled into the
+     space between the top bar and the build bar
+     ══════════════════════════════════════════════════════════════════ */
 
+  const TWO_PI = Math.PI * 2;
+  const WORLD_W = COLS * CELL;
+  const WORLD_H = ROWS * CELL;
+  const TOP_H = 54;            // top HUD bar (UI units)
+  const BOT_H = 92;            // build bar (UI units)
+
+  let canvasW = 960, canvasH = 640, dpr = 1;
+  let uiS = 1, UW = 960, UH = 640;
+  const view = { x: 0, y: 0, s: 1 };   // world -> screen px
+  let shakeX = 0, shakeY = 0;
+
+  function clamp(v, lo, hi) {
+    return v < lo ? lo : v > hi ? hi : v;
+  }
+
+  function setupCanvas() {
+    canvas.style.width = '0';
+    canvas.style.height = '0';
+    const parent = canvas.parentElement || document.body;
+    const rect = parent.getBoundingClientRect();
+    canvasW = Math.max(240, Math.floor(rect.width) || 960);
+    canvasH = Math.max(180, Math.floor(rect.height) || 640);
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.round(canvasW * dpr);
+    canvas.height = Math.round(canvasH * dpr);
+    canvas.style.width = canvasW + 'px';
+    canvas.style.height = canvasH + 'px';
+    uiS = clamp(Math.min(canvasW / 1000, canvasH / 660), 0.5, 1.8);
+    UW = canvasW / uiS;
+    UH = canvasH / uiS;
+    layoutView();
+  }
+
+  function layoutView() {
+    const top = (TOP_H + 2) * uiS;
+    const bottom = canvasH - (BOT_H + 2) * uiS;
+    const availW = canvasW - 8 * uiS;
+    const availH = Math.max(40, bottom - top);
+    view.s = Math.min(availW / WORLD_W, availH / WORLD_H);
+    view.x = (canvasW - WORLD_W * view.s) / 2;
+    view.y = top + (availH - WORLD_H * view.s) / 2;
+  }
+
+  function setUiTransform() {
+    ctx.setTransform(dpr * uiS, 0, 0, dpr * uiS, dpr * shakeX, dpr * shakeY);
+  }
+
+  function setWorldTransform() {
+    ctx.setTransform(dpr * view.s, 0, 0, dpr * view.s, dpr * (view.x + shakeX), dpr * (view.y + shakeY));
+  }
+
+  // World point -> UI units
+  function worldToUi(wx, wy) {
+    return { x: (view.x + wx * view.s) / uiS, y: (view.y + wy * view.s) / uiS };
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     PIXEL ART -- shapes are drawn at art resolution, then every pixel is
+     snapped to opaque/transparent and outlined; results are cached
+     ══════════════════════════════════════════════════════════════════ */
+
+  const OUTLINE = '#120c18';
+
+  function makeCanvas(w, h) {
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.ceil(w));
+    c.height = Math.max(1, Math.ceil(h));
+    return c;
+  }
+
+  function pixelize(c, outline) {
+    const g = c.getContext('2d');
+    const w = c.width, h = c.height;
+    const img = g.getImageData(0, 0, w, h);
+    const d = img.data;
+    for (let i = 3; i < d.length; i += 4)
+      d[i] = d[i] >= 100 ? 255 : 0;
+    if (outline) {
+      const solid = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; ++i)
+        solid[i] = d[i * 4 + 3] ? 1 : 0;
+      const [or, og, ob] = parseHex(outline);
+      for (let y = 0; y < h; ++y)
+        for (let x = 0; x < w; ++x) {
+          if (solid[y * w + x]) continue;
+          if ((x > 0 && solid[y * w + x - 1]) || (x < w - 1 && solid[y * w + x + 1]) || (y > 0 && solid[(y - 1) * w + x]) || (y < h - 1 && solid[(y + 1) * w + x])) {
+            const i = (y * w + x) * 4;
+            d[i] = or; d[i + 1] = og; d[i + 2] = ob; d[i + 3] = 255;
+          }
+        }
+    }
+    g.putImageData(img, 0, 0);
+    return c;
+  }
+
+  // draw(g, w, h) paints at art resolution; a 1px border is left for the outline
+  function pixelArt(w, h, draw, outline) {
+    const c = makeCanvas(w + 2, h + 2);
+    const g = c.getContext('2d');
+    g.translate(1, 1);
+    draw(g, w, h);
+    return pixelize(c, outline === undefined ? OUTLINE : outline);
+  }
+
+  function parseHex(hex) {
+    if (hex.length === 4)
+      return [parseInt(hex[1] + hex[1], 16), parseInt(hex[2] + hex[2], 16), parseInt(hex[3] + hex[3], 16)];
+    return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+  }
+
+  function hexToRgba(hex, alpha) {
+    const [r, g, b] = parseHex(hex);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  function shade(hex, f) {
+    const [r, g, b] = parseHex(hex);
+    const k = (v) => clamp(Math.round(f >= 0 ? v + (255 - v) * f : v * (1 + f)), 0, 255);
+    return '#' + [k(r), k(g), k(b)].map(v => v.toString(16).padStart(2, '0')).join('');
+  }
+
+  /* ── HUD icons (16x16 art pixels) ── */
+  const ICONS = {
+    heart: (g) => {
+      g.fillStyle = '#e8354a';
+      g.beginPath();
+      g.moveTo(8, 14); g.lineTo(1.5, 7); g.arc(4.6, 4.8, 3.6, Math.PI * 0.85, Math.PI * 1.9); g.arc(11.4, 4.8, 3.6, Math.PI * 1.1, Math.PI * 0.15); g.closePath();
+      g.fill();
+      g.fillStyle = '#ff8fa0'; g.fillRect(3, 3, 2, 2);
+      g.fillStyle = '#a3162b'; g.fillRect(8, 11, 2, 2); g.fillRect(11, 8, 2, 2);
+    },
+    coin: (g) => {
+      g.fillStyle = '#b8801a'; g.beginPath(); g.arc(8, 8.6, 6.6, 0, TWO_PI); g.fill();
+      g.fillStyle = '#ffd34a'; g.beginPath(); g.arc(8, 7.6, 6.2, 0, TWO_PI); g.fill();
+      g.fillStyle = '#ffeea0'; g.fillRect(4, 3, 3, 2);
+      g.fillStyle = '#c99220'; g.fillRect(7, 4, 2, 7); g.fillRect(5, 5, 6, 1); g.fillRect(5, 9, 6, 1);
+    },
+    flag: (g) => {
+      g.fillStyle = '#8a6a48'; g.fillRect(2, 1, 2, 14);
+      g.fillStyle = '#e8354a'; g.beginPath(); g.moveTo(4, 2); g.lineTo(14, 4.5); g.lineTo(4, 8.5); g.fill();
+      g.fillStyle = '#ff8fa0'; g.fillRect(5, 3, 3, 1);
+    },
+    skull: (g) => {
+      g.fillStyle = '#e8e2d4'; g.beginPath(); g.arc(8, 7, 6, 0, TWO_PI); g.fill(); g.fillRect(4, 10, 8, 4);
+      g.fillStyle = '#2a1e2e'; g.fillRect(4, 6, 3, 3); g.fillRect(9, 6, 3, 3); g.fillRect(7, 10, 2, 2);
+      g.fillStyle = '#9a9284'; g.fillRect(5, 13, 1, 2); g.fillRect(8, 13, 1, 2); g.fillRect(11, 13, 1, 1);
+    },
+    star: (g) => {
+      g.fillStyle = '#ffcf3a'; g.beginPath();
+      for (let i = 0; i < 10; ++i) {
+        const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 3.2 : 7.4;
+        g.lineTo(8 + Math.cos(a) * r, 8.4 + Math.sin(a) * r);
+      }
+      g.fill();
+      g.fillStyle = '#fff3a8'; g.fillRect(7, 4, 2, 3); g.fillRect(5, 7, 2, 1);
+    },
+    starEmpty: (g) => {
+      g.fillStyle = '#3a3a52'; g.beginPath();
+      for (let i = 0; i < 10; ++i) {
+        const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 3.2 : 7.4;
+        g.lineTo(8 + Math.cos(a) * r, 8.4 + Math.sin(a) * r);
+      }
+      g.fill();
+    },
+    lock: (g) => {
+      g.strokeStyle = '#a8b0c8'; g.lineWidth = 2; g.beginPath(); g.arc(8, 6, 3.5, Math.PI, 0); g.stroke();
+      g.fillRect(4.5, 6, 0.1, 0.1);
+      g.fillStyle = '#d8a83a'; g.fillRect(3, 7, 10, 8);
+      g.fillStyle = '#ffd86a'; g.fillRect(3, 7, 10, 2);
+      g.fillStyle = '#5a3a10'; g.fillRect(7, 10, 2, 3);
+    },
+    check: (g) => {
+      g.strokeStyle = '#5ee07a'; g.lineWidth = 3; g.lineCap = 'square';
+      g.beginPath(); g.moveTo(2.5, 8.5); g.lineTo(6.5, 12.5); g.lineTo(13.5, 3.5); g.stroke();
+    },
+    pause: (g) => {
+      g.fillStyle = '#e4eaf6'; g.fillRect(3, 2, 4, 12); g.fillRect(9, 2, 4, 12);
+    },
+    play: (g) => {
+      g.fillStyle = '#e4eaf6'; g.beginPath(); g.moveTo(4, 2); g.lineTo(14, 8); g.lineTo(4, 14); g.fill();
+    },
+    help: (g) => {
+      g.fillStyle = '#5ab8ff'; g.beginPath(); g.arc(8, 8, 7, 0, TWO_PI); g.fill();
+      g.fillStyle = '#fff'; g.font = 'bold 12px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('?', 8, 8.5);
+    },
+    menu: (g) => {
+      g.fillStyle = '#e4eaf6'; g.fillRect(2, 3, 12, 2); g.fillRect(2, 7, 12, 2); g.fillRect(2, 11, 12, 2);
+    },
+    loop: (g) => {
+      g.strokeStyle = '#7ad8ff'; g.lineWidth = 2; g.beginPath(); g.arc(8, 8, 5, 0.3, Math.PI * 1.6); g.stroke();
+      g.fillStyle = '#7ad8ff'; g.beginPath(); g.moveTo(13, 3); g.lineTo(14, 9); g.lineTo(8.5, 6.5); g.fill();
+    },
+    sword: (g) => {
+      g.save(); g.translate(8, 8); g.rotate(-Math.PI / 4);
+      g.fillStyle = '#d8e0f0'; g.fillRect(-1.5, -7.5, 3, 10);
+      g.fillStyle = '#ffffff'; g.fillRect(-1.5, -7.5, 1, 10);
+      g.fillStyle = '#d8a83a'; g.fillRect(-4, 2.5, 8, 2);
+      g.fillStyle = '#7a4a2a'; g.fillRect(-1, 4.5, 2, 3);
+      g.restore();
+    },
+    range: (g) => {
+      g.strokeStyle = '#7ad8ff'; g.lineWidth = 1.6; g.beginPath(); g.arc(8, 8, 6, 0, TWO_PI); g.stroke();
+      g.beginPath(); g.arc(8, 8, 2.6, 0, TWO_PI); g.stroke();
+      g.fillStyle = '#7ad8ff'; g.fillRect(7, 0, 2, 4); g.fillRect(7, 12, 2, 4); g.fillRect(0, 7, 4, 2); g.fillRect(12, 7, 4, 2);
+    },
+    clock: (g) => {
+      g.fillStyle = '#e4eaf6'; g.beginPath(); g.arc(8, 8, 7, 0, TWO_PI); g.fill();
+      g.fillStyle = '#2a3248'; g.fillRect(7, 3, 2, 6); g.fillRect(7, 7, 5, 2);
+    },
+    hammer: (g) => {
+      g.save(); g.translate(8, 8); g.rotate(Math.PI / 4);
+      g.fillStyle = '#8a5a30'; g.fillRect(-1, -2, 2, 10);
+      g.fillStyle = '#b8c0d8'; g.fillRect(-5, -7, 10, 5);
+      g.fillStyle = '#e8eef8'; g.fillRect(-5, -7, 10, 1);
+      g.restore();
+    },
+    up: (g) => {
+      g.fillStyle = '#5ee07a'; g.beginPath(); g.moveTo(8, 1); g.lineTo(15, 8); g.lineTo(11, 8); g.lineTo(11, 15); g.lineTo(5, 15); g.lineTo(5, 8); g.lineTo(1, 8); g.fill();
+      g.fillStyle = '#b8ffc8'; g.fillRect(7, 3, 2, 3);
+    },
+    wrench: (g) => {
+      g.save(); g.translate(8, 8); g.rotate(Math.PI / 4);
+      g.fillStyle = '#b8c0d8'; g.fillRect(-1.5, -3, 3, 11);
+      g.beginPath(); g.arc(0, -4, 4, 0, TWO_PI); g.fill();
+      g.fillStyle = '#2a3248'; g.fillRect(-1.2, -9, 2.4, 5);
+      g.restore();
+    },
+    crown: (g) => {
+      g.fillStyle = '#ffcf3a'; g.beginPath(); g.moveTo(1, 13); g.lineTo(2, 4); g.lineTo(5.5, 8); g.lineTo(8, 2); g.lineTo(10.5, 8); g.lineTo(14, 4); g.lineTo(15, 13); g.fill();
+      g.fillStyle = '#e8354a'; g.fillRect(7, 9, 2, 2);
+      g.fillStyle = '#c99220'; g.fillRect(1, 12, 14, 2);
+    },
+    bolt: (g) => {
+      g.fillStyle = '#ffe14a'; g.beginPath(); g.moveTo(9, 1); g.lineTo(3, 9); g.lineTo(7.5, 9); g.lineTo(6, 15); g.lineTo(13, 6); g.lineTo(8.5, 6); g.lineTo(10.5, 1); g.fill();
+    },
+    target: (g) => {
+      g.strokeStyle = '#ff6a6a'; g.lineWidth = 2; g.beginPath(); g.arc(8, 8, 6, 0, TWO_PI); g.stroke();
+      g.fillStyle = '#ff6a6a'; g.fillRect(7, 7, 2, 2); g.fillRect(7, 0, 2, 4); g.fillRect(7, 12, 2, 4); g.fillRect(0, 7, 4, 2); g.fillRect(12, 7, 4, 2);
+    },
+    shield: (g) => {
+      g.fillStyle = '#5ab8ff'; g.beginPath(); g.moveTo(8, 1); g.lineTo(14, 3); g.lineTo(13, 10); g.lineTo(8, 15); g.lineTo(3, 10); g.lineTo(2, 3); g.fill();
+      g.fillStyle = '#b8e4ff'; g.fillRect(5, 4, 2, 5);
+    },
+    flask: (g) => {
+      g.fillStyle = '#c8d4ec'; g.fillRect(6, 1, 4, 2);
+      g.fillStyle = '#7ad8ff'; g.beginPath(); g.moveTo(6.5, 3); g.lineTo(9.5, 3); g.lineTo(9.5, 7); g.lineTo(14, 14); g.lineTo(2, 14); g.lineTo(6.5, 7); g.fill();
+      g.fillStyle = '#c890ff'; g.beginPath(); g.moveTo(4.5, 10); g.lineTo(11.5, 10); g.lineTo(13.5, 13.5); g.lineTo(2.5, 13.5); g.fill();
+      g.fillStyle = '#ffffff'; g.fillRect(5, 11, 1, 1); g.fillRect(9, 12, 1, 1);
+    }
+  };
+
+  const iconCache = {};
+
+  function getIcon(key) {
+    let c = iconCache[key];
+    if (c === undefined) {
+      const fn = ICONS[key];
+      c = iconCache[key] = fn ? pixelArt(16, 16, fn) : null;
+    }
+    return c;
+  }
+
+  // Draw a cached pixel image centred at (cx, cy) with the given height
+  function drawPixelImage(img, cx, cy, size, alpha) {
+    if (!img) return;
+    const prevA = ctx.globalAlpha;
+    if (alpha !== undefined)
+      ctx.globalAlpha = prevA * alpha;
+    ctx.imageSmoothingEnabled = false;
+    const h = size, w = size * img.width / img.height;
+    ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
+    ctx.imageSmoothingEnabled = true;
+    ctx.globalAlpha = prevA;
+  }
+
+  function drawIcon(key, cx, cy, size, alpha) {
+    drawPixelImage(getIcon(key), cx, cy, size, alpha);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     TEXT LAYOUT -- every label is measured against the box it lives in
+     ══════════════════════════════════════════════════════════════════ */
+
+  const UI_FONT = "'Segoe UI', 'Trebuchet MS', 'Helvetica Neue', Arial, sans-serif";
+
+  function uiFont(px, weight) {
+    return (weight ? weight + ' ' : '') + px + 'px ' + UI_FONT;
+  }
+
+  // Text with inline [[icon]] tokens -- honours the current textAlign/textBaseline
+  function splitIconText(text) {
+    return String(text).split(/\[\[(\w+)\]\]/);
+  }
+
+  function getFontPx() {
+    const m = /(\d+(?:\.\d+)?)px/.exec(ctx.font);
+    return m ? parseFloat(m[1]) : 16;
+  }
+
+  function measureIconText(text) {
+    const parts = splitIconText(text);
+    const iconSize = Math.round(getFontPx() * 1.2);
+    let w = 0;
+    for (let i = 0; i < parts.length; ++i)
+      w += i % 2 ? iconSize + 2 : ctx.measureText(parts[i]).width;
+    return w;
+  }
+
+  function fillIconText(text, x, y) {
+    const parts = splitIconText(text);
+    if (parts.length === 1) {
+      ctx.fillText(text, x, y);
+      return;
+    }
+    const fontPx = getFontPx();
+    const iconSize = Math.round(fontPx * 1.2);
+    const align = ctx.textAlign;
+    const total = measureIconText(text);
+    let cx = x;
+    if (align === 'center')
+      cx = x - total / 2;
+    else if (align === 'right' || align === 'end')
+      cx = x - total;
+    const base = ctx.textBaseline;
+    let iconY = y;
+    if (base === 'top' || base === 'hanging')
+      iconY = y + fontPx * 0.55;
+    else if (base === 'alphabetic' || base === 'bottom' || base === 'ideographic')
+      iconY = y - fontPx * 0.35;
+    ctx.textAlign = 'left';
+    for (let i = 0; i < parts.length; ++i) {
+      if (i % 2) {
+        drawIcon(parts[i], cx + iconSize / 2 + 1, iconY, iconSize);
+        cx += iconSize + 2;
+      } else if (parts[i]) {
+        ctx.fillText(parts[i], cx, y);
+        cx += ctx.measureText(parts[i]).width;
+      }
+    }
+    ctx.textAlign = align;
+  }
+
+  const textFitCache = new Map();
+  function cachedLayout(key, build) {
+    let v = textFitCache.get(key);
+    if (v === undefined) {
+      if (textFitCache.size > 3000)
+        textFitCache.clear();
+      v = build();
+      textFitCache.set(key, v);
+    }
+    return v;
+  }
+
+  function textUnits(text) {
+    const parts = splitIconText(text);
+    const units = [];
+    for (let i = 0; i < parts.length; ++i)
+      if (i % 2)
+        units.push('[[' + parts[i] + ']]');
+      else
+        for (const ch of parts[i])
+          units.push(ch);
+    return units;
+  }
+
+  function ellipsize(text, maxW) {
+    text = String(text);
+    if (measureIconText(text) <= maxW)
+      return text;
+    const units = textUnits(text);
+    let lo = 0, hi = units.length;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (measureIconText(units.slice(0, mid).join('').trimEnd() + '…') <= maxW)
+        lo = mid;
+      else
+        hi = mid - 1;
+    }
+    return lo > 0 ? units.slice(0, lo).join('').trimEnd() + '…' : '';
+  }
+
+  // Largest font size in [minPx, px] that fits; ellipsizes if minPx is still too wide
+  function layoutLine(text, maxW, px, minPx, weight) {
+    text = String(text);
+    return cachedLayout('L' + text + '|' + Math.round(maxW) + '|' + px + '|' + minPx + '|' + (weight || ''), () => {
+      let size = px;
+      ctx.font = uiFont(size, weight);
+      let w = measureIconText(text);
+      if (w > maxW && size > minPx) {
+        size = Math.max(minPx, Math.floor(px * maxW / w));
+        ctx.font = uiFont(size, weight);
+        w = measureIconText(text);
+        while (w > maxW && size > minPx) {
+          size -= 0.5;
+          ctx.font = uiFont(size, weight);
+          w = measureIconText(text);
+        }
+      }
+      const out = w > maxW ? ellipsize(text, maxW) : text;
+      return { size, text: out, width: Math.min(w, maxW) };
+    });
+  }
+
+  // One line of text that never exceeds maxW; returns the drawn width
+  function fitText(text, x, y, maxW, px, opts) {
+    opts = opts || {};
+    const l = layoutLine(text, Math.max(1, maxW), px, opts.minPx || Math.max(7, Math.round(px * 0.6)), opts.weight);
+    ctx.font = uiFont(l.size, opts.weight);
+    if (opts.color)
+      ctx.fillStyle = opts.color;
+    if (opts.outline) {
+      ctx.save();
+      ctx.strokeStyle = opts.outline;
+      ctx.lineWidth = Math.max(2, l.size / 5);
+      ctx.lineJoin = 'round';
+      if (l.text.indexOf('[[') < 0)
+        ctx.strokeText(l.text, x, y);
+      ctx.restore();
+    }
+    fillIconText(l.text, x, y);
+    return l.width;
+  }
+
+  function wrapText(text, maxW) {
+    const lines = [];
+    for (const para of String(text).split('\n')) {
+      const words = para.split(' ');
+      let line = '';
+      for (const word of words) {
+        const trial = line ? line + ' ' + word : word;
+        if (!line || measureIconText(trial) <= maxW)
+          line = trial;
+        else {
+          lines.push(line);
+          line = word;
+        }
+        if (measureIconText(line) > maxW && line === word)
+          line = ellipsize(word, maxW);
+      }
+      lines.push(line);
+    }
+    return lines;
+  }
+
+  function layoutBlock(text, w, h, px, minPx, weight, lineGap) {
+    return cachedLayout('B' + text + '|' + Math.round(w) + '|' + Math.round(h) + '|' + px + '|' + minPx + '|' + (weight || '') + '|' + lineGap, () => {
+      let size = px, lines;
+      for (;;) {
+        ctx.font = uiFont(size, weight);
+        lines = wrapText(text, w);
+        if (lines.length * size * lineGap <= h || size <= minPx)
+          break;
+        size -= 0.5;
+      }
+      const maxLines = Math.max(1, Math.floor(h / (size * lineGap)));
+      if (lines.length > maxLines) {
+        lines = lines.slice(0, maxLines);
+        lines[maxLines - 1] = ellipsize(lines[maxLines - 1] + '…', w);
+      }
+      return { size, lines, lineH: size * lineGap };
+    });
+  }
+
+  // Wrapped text inside a box. align: 'left' | 'center'; valign: 'top' | 'middle'
+  function drawTextBlock(text, x, y, w, h, px, opts) {
+    opts = opts || {};
+    const b = layoutBlock(text, w, h, px, opts.minPx || Math.max(7, Math.round(px * 0.6)), opts.weight, opts.lineGap || 1.3);
+    ctx.font = uiFont(b.size, opts.weight);
+    if (opts.color)
+      ctx.fillStyle = opts.color;
+    const align = opts.align || 'left';
+    ctx.textAlign = align;
+    ctx.textBaseline = 'middle';
+    const tx = align === 'center' ? x + w / 2 : x;
+    let ty = y + b.lineH / 2;
+    if (opts.valign === 'middle')
+      ty += (h - b.lines.length * b.lineH) / 2;
+    for (const line of b.lines) {
+      fillIconText(line, tx, ty);
+      ty += b.lineH;
+    }
+    return b.lines.length * b.lineH;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     UI PANELS -- one frame style for every box on screen
+     ══════════════════════════════════════════════════════════════════ */
+
+  const UI = {
+    panelTop: 'rgba(24,32,56,0.95)',
+    panelBottom: 'rgba(10,13,26,0.95)',
+    edge: '#05070e',
+    rim: 'rgba(150,180,255,0.16)',
+    accent: '#5ab8ff',
+    gold: '#ffd75a',
+    goldDeep: '#c9952a',
+    text: '#e4eaf6',
+    textDim: '#93a0bb',
+    textMute: '#5d6884',
+    good: '#6fe08a',
+    bad: '#ff6a6a',
+    warn: '#ffb648'
+  };
+
+  function roundRectPath(x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+  }
+
+  // Framed panel: offset shadow, vertical gradient, dark edge, light rim,
+  // gold corner studs, accent strip and an optional title header
+  function drawPanel(x, y, w, h, opts) {
+    opts = opts || {};
+    const r = opts.radius !== undefined ? opts.radius : 9;
+    const accent = opts.accent || UI.gold;
+    ctx.save();
+    if (opts.alpha !== undefined)
+      ctx.globalAlpha *= opts.alpha;
+    if (!opts.flat) {
+      roundRectPath(x + 2, y + 4, w, h, r);
+      ctx.fillStyle = 'rgba(0,0,0,0.38)';
+      ctx.fill();
+    }
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, opts.top || UI.panelTop);
+    g.addColorStop(1, opts.bottom || UI.panelBottom);
+    roundRectPath(x, y, w, h, r);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = UI.edge;
+    ctx.stroke();
+    roundRectPath(x + 1.5, y + 1.5, w - 3, h - 3, r - 1.5);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = opts.glow ? hexToRgba(accent, 0.8) : UI.rim;
+    ctx.stroke();
+    // Accent strip along the top edge
+    const sg = ctx.createLinearGradient(x, 0, x + w, 0);
+    sg.addColorStop(0, hexToRgba(accent, 0));
+    sg.addColorStop(0.5, hexToRgba(accent, 0.9));
+    sg.addColorStop(1, hexToRgba(accent, 0));
+    ctx.fillStyle = sg;
+    ctx.fillRect(x + r, y + 1, w - r * 2, 2);
+    // Gold corner studs
+    if (!opts.noStuds && w > 40 && h > 30) {
+      ctx.fillStyle = hexToRgba(accent, 0.75);
+      const s = 3;
+      ctx.fillRect(x + 4, y + h - 4 - s, s, s);
+      ctx.fillRect(x + w - 4 - s, y + h - 4 - s, s, s);
+    }
+    let contentY = y + (opts.pad !== undefined ? opts.pad : 8);
+    if (opts.title) {
+      const hh = opts.headerH || 30;
+      ctx.fillStyle = 'rgba(255,255,255,0.04)';
+      ctx.fillRect(x + 2, y + 3, w - 4, hh - 3);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(x + 8, y + hh, w - 16, 1);
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      ctx.fillRect(x + 8, y + hh + 1, w - 16, 1);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const rpad = opts.titleRightPad || 0;
+      const rightW = opts.titleRight ? Math.min(w * 0.45, 170) : 0;
+      fitText(opts.title, x + 12, y + hh / 2 + 1, w - 24 - rightW - rpad, opts.titlePx || 16, { weight: 'bold', color: accent });
+      if (opts.titleRight) {
+        ctx.textAlign = 'right';
+        fitText(opts.titleRight, x + w - 12 - rpad, y + hh / 2 + 1, rightW - 6, 12, { color: opts.titleRightColor || UI.textDim, weight: 'bold' });
+      }
+      contentY = y + hh + 6;
+    }
+    ctx.restore();
+    return contentY;
+  }
+
+  function drawMeter(x, y, w, h, ratio, color, opts) {
+    opts = opts || {};
+    ratio = clamp(ratio, 0, 1);
+    ctx.save();
+    roundRectPath(x, y, w, h, h / 2);
+    ctx.fillStyle = opts.track || 'rgba(0,0,0,0.55)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.stroke();
+    if (ratio > 0) {
+      ctx.save();
+      roundRectPath(x, y, w, h, h / 2);
+      ctx.clip();
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, w * ratio, h);
+      ctx.fillStyle = 'rgba(255,255,255,0.28)';
+      ctx.fillRect(x, y, w * ratio, h * 0.42);
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.fillRect(x, y + h * 0.75, w * ratio, h * 0.25);
+      ctx.restore();
+    }
+    if (opts.label) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText(opts.label, x + w / 2, y + h / 2 + 1, w - 8, opts.labelPx || Math.round(h * 0.75), { weight: 'bold', color: '#fff', outline: 'rgba(0,0,0,0.75)' });
+    }
+    ctx.restore();
+  }
+
+  function drawChip(text, x, y, h, opts) {
+    opts = opts || {};
+    const px = opts.px || Math.round(h * 0.62);
+    ctx.font = uiFont(px, opts.weight || 'bold');
+    const w = Math.min(opts.maxW || 1e9, Math.ceil(measureIconText(text)) + h * 0.8);
+    const x0 = opts.align === 'right' ? x - w : (opts.align === 'center' ? x - w / 2 : x);
+    roundRectPath(x0, y, w, h, h / 2);
+    ctx.fillStyle = opts.bg || 'rgba(255,255,255,0.08)';
+    ctx.fill();
+    if (opts.border) {
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = opts.border;
+      ctx.stroke();
+    }
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(text, x0 + w / 2, y + h / 2 + 1, w - h * 0.5, px, { weight: opts.weight || 'bold', color: opts.color || UI.text });
+    return w;
+  }
+
+  // Keycap hints ("[S] Sell") centred on cx and scaled to stay within maxW
+  function drawKeyHints(hints, cx, cy, maxW, scale) {
+    const k = scale || 1;
+    const keyPx = 10 * k, labelPx = 11 * k, keyH = 16 * k, gap = 12 * k;
+    const parts = hints.map(h => {
+      ctx.font = uiFont(keyPx, 'bold');
+      const kw = Math.max(keyH, ctx.measureText(h.key).width + 8 * k);
+      ctx.font = uiFont(labelPx);
+      return { key: h.key, label: h.label, kw, lw: ctx.measureText(h.label).width };
+    });
+    let total = -gap;
+    for (const p of parts)
+      total += p.kw + 4 * k + p.lw + gap;
+    const s = Math.min(1, maxW / Math.max(1, total));
+    ctx.save();
+    ctx.translate(cx - total * s / 2, cy);
+    ctx.scale(s, s);
+    let x = 0;
+    for (const p of parts) {
+      roundRectPath(x, -keyH / 2, p.kw, keyH, 3 * k);
+      ctx.fillStyle = 'rgba(20,26,42,0.92)';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255,215,90,0.45)';
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(x + 3, keyH / 2 - 3, p.kw - 6, 2);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = uiFont(keyPx, 'bold');
+      ctx.fillStyle = '#ffe9a8';
+      ctx.fillText(p.key, x + p.kw / 2, 1);
+      ctx.textAlign = 'left';
+      ctx.font = uiFont(labelPx);
+      ctx.fillStyle = 'rgba(200,210,230,0.8)';
+      ctx.fillText(p.label, x + p.kw + 4 * k, 1);
+      x += p.kw + 4 * k + p.lw + gap;
+    }
+    ctx.restore();
+  }
+
+  // Small keycap in a corner (build cards, buttons)
+  function drawKeycap(key, x, y, px) {
+    ctx.font = uiFont(px, 'bold');
+    const w = Math.max(px + 4, ctx.measureText(key).width + 6);
+    const h = px + 5;
+    roundRectPath(x, y, w, h, 3);
+    ctx.fillStyle = 'rgba(8,10,20,0.85)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,215,90,0.4)';
+    ctx.stroke();
+    ctx.fillStyle = '#ffe9a8';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(key, x + w / 2, y + h / 2 + 0.5);
+    return w;
+  }
+
+  function drawHeadline(text, x, y, maxW, px, color, glow) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const l = layoutLine(text, maxW, px, Math.round(px * 0.4), 'bold');
+    ctx.font = uiFont(l.size, 'bold');
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(3, l.size / 7);
+    ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+    ctx.strokeText(l.text, x, y + 3);
+    ctx.strokeStyle = shade(glow || color, -0.55);
+    ctx.lineWidth = Math.max(2, l.size / 10);
+    ctx.strokeText(l.text, x, y);
+    const g = ctx.createLinearGradient(0, y - l.size / 2, 0, y + l.size / 2);
+    g.addColorStop(0, '#ffffff');
+    g.addColorStop(0.45, color);
+    g.addColorStop(1, glow || color);
+    ctx.fillStyle = g;
+    ctx.fillText(l.text, x, y);
+    ctx.restore();
+  }
+
+  let vignetteCanvas = null;
+  function drawScrim(alpha) {
+    ctx.fillStyle = `rgba(3,5,12,${alpha})`;
+    ctx.fillRect(-20, -20, UW + 40, UH + 40);
+    if (!vignetteCanvas) {
+      vignetteCanvas = makeCanvas(160, 120);
+      const v = vignetteCanvas.getContext('2d');
+      const g = v.createRadialGradient(80, 60, 20, 80, 60, 100);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(0,0,0,0.75)');
+      v.fillStyle = g;
+      v.fillRect(0, 0, 160, 120);
+    }
+    ctx.drawImage(vignetteCanvas, -20, -20, UW + 40, UH + 40);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     INTERACTIVE REGIONS -- every button registers itself while drawing;
+     clicks and hovers test last frame's list (what the player sees)
+     ══════════════════════════════════════════════════════════════════ */
+
+  let regions = [];
+  let prevRegions = [];
+  const pointer = { px: -1, py: -1, ux: -1, uy: -1, wx: -1, wy: -1, inside: false, type: 'mouse' };
+  let hoverId = null;
+  const pressFx = {};        // id -> time of the last press (button feedback)
+  let frameDt = 0.016;
+  let frameNo = 0;
+
+  function addRegion(r) {
+    regions.push(r);
+    return r;
+  }
+
+  function regionAt(ux, uy) {
+    for (let i = prevRegions.length - 1; i >= 0; --i) {
+      const r = prevRegions[i];
+      if (ux >= r.x && ux <= r.x + r.w && uy >= r.y && uy <= r.y + r.h)
+        return r;
+    }
+    return null;
+  }
+
+  function pressAmount(id) {
+    const t = pressFx[id];
+    if (t === undefined) return 0;
+    const k = (performance.now() - t) / 160;
+    if (k >= 1) {
+      delete pressFx[id];
+      return 0;
+    }
+    return 1 - k;
+  }
+
+  const BUTTON_STYLES = {
+    gold: ['#ffd75a', '#c9952a', '#3a2606', '#fff1b8'],
+    blue: ['#4aa0ff', '#1f4c98', '#ffffff', '#bfe0ff'],
+    green: ['#5ccf74', '#21783a', '#ffffff', '#c8ffd2'],
+    red: ['#ff6a6a', '#9a2a2a', '#ffffff', '#ffd0d0'],
+    dark: ['#2e3852', '#171c2c', '#d0d8ea', '#8a9ac0']
+  };
+
+  // Gradient button; registers a click region. opts: style, icon, px, disabled, key, onClick, tip, sub
+  function uiButton(id, x, y, w, h, label, opts) {
+    opts = opts || {};
+    const st = BUTTON_STYLES[opts.style || 'dark'];
+    const disabled = !!opts.disabled;
+    const hover = hoverId === id;
+    const press = pressAmount(id);
+    ctx.save();
+    if (disabled)
+      ctx.globalAlpha *= 0.45;
+    const dy = press * 2;
+    roundRectPath(x + 1, y + 3, w, h, Math.min(8, h / 3));
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fill();
+    const g = ctx.createLinearGradient(0, y + dy, 0, y + dy + h);
+    g.addColorStop(0, hover && !disabled ? shade(st[0], 0.18) : st[0]);
+    g.addColorStop(1, hover && !disabled ? shade(st[1], 0.12) : st[1]);
+    roundRectPath(x, y + dy, w, h, Math.min(8, h / 3));
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.lineWidth = opts.active ? 2 : 1.5;
+    ctx.strokeStyle = opts.active ? UI.gold : (hover && !disabled ? st[3] : UI.edge);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.14)';
+    roundRectPath(x + 2, y + dy + 2, w - 4, h * 0.42, Math.min(6, h / 4));
+    ctx.fill();
+    if (press > 0) {
+      roundRectPath(x - press * 4, y + dy - press * 4, w + press * 8, h + press * 8, 10);
+      ctx.strokeStyle = `rgba(255,240,180,${press * 0.6})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    const px = opts.px || Math.min(15, Math.round(h * 0.42));
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    let keyW = 0;
+    if (opts.key && w > 70) {
+      const kpx = Math.max(8, px - 3);
+      ctx.font = uiFont(kpx, 'bold');
+      const kw = Math.max(kpx + 4, ctx.measureText(opts.key).width + 6);
+      drawKeycap(opts.key, x + w - 6 - kw, y + dy + (h - kpx - 5) / 2, kpx);
+      keyW = kw + 6;
+    }
+    const iconW = opts.icon ? px * 1.3 : 0;
+    const avail = w - 12 - keyW - iconW;
+    const cy = y + dy + (opts.sub ? h * 0.38 : h / 2) + 1;
+    const lw = label ? layoutLine(label, avail, px, Math.max(7, px * 0.6), 'bold').width : 0;
+    const startX = x + 6 + (avail + iconW - (lw + iconW)) / 2;
+    if (opts.icon)
+      drawIcon(opts.icon, startX + iconW / 2 - 1, cy - 0.5, px * 1.15);
+    if (label) {
+      ctx.textAlign = 'left';
+      fitText(label, startX + iconW, cy, avail, px, { weight: 'bold', color: st[2] });
+    }
+    if (opts.sub) {
+      ctx.textAlign = 'center';
+      fitText(opts.sub, x + (w - keyW) / 2, y + dy + h * 0.74, w - 12 - keyW, Math.round(px * 0.72), { color: hexToRgba(st[2] === '#ffffff' ? '#ffffff' : st[2], 0.75) });
+    }
+    ctx.restore();
+    addRegion({ id, x, y, w, h, disabled, onClick: opts.onClick, onDisabled: opts.onDisabled, tip: opts.tip, sound: opts.sound });
+  }
+
+  /* ── Tooltip ── */
+  const tooltip = { id: null, t: 0, lines: null, anchor: null };
+  const TOOLTIP_DELAY = 0.25;
+
+  // lines: [title, ...] strings; a leading '✔' / '✘' / '⚠' / '•' colours the line;
+  // '--- Header ---' draws a divider
+  function drawTooltip() {
+    if (!tooltip.lines || tooltip.t < TOOLTIP_DELAY || !pointer.inside) return;
+    const lines = tooltip.lines;
+    const pad = 10;
+    const maxTextW = Math.min(300, UW * 0.42);
+    let fontSize = 12.5;
+    let rows, boxW, boxH;
+    for (;;) {
+      rows = [];
+      let maxW = 0;
+      for (let i = 0; i < lines.length; ++i) {
+        const line = lines[i];
+        const header = /^---\s*(.*?)\s*---$/.exec(line);
+        if (header) {
+          rows.push({ kind: 'header', text: header[1].toUpperCase(), h: fontSize + 6 });
+          continue;
+        }
+        ctx.font = uiFont(i === 0 ? fontSize + 2 : fontSize, i === 0 ? 'bold' : '');
+        for (const w of wrapText(line, maxTextW)) {
+          rows.push({ kind: i === 0 ? 'title' : 'text', text: w, h: (i === 0 ? fontSize + 2 : fontSize) * 1.38, src: line });
+          maxW = Math.max(maxW, measureIconText(w));
+        }
+      }
+      boxW = Math.ceil(maxW) + pad * 2;
+      boxH = pad * 2;
+      for (const r of rows)
+        boxH += r.h;
+      if (boxH <= UH - 16 || fontSize <= 9)
+        break;
+      fontSize -= 0.5;
+    }
+    boxW = Math.max(boxW, 140);
+    let bx, by;
+    const a = tooltip.anchor;
+    if (a) {
+      bx = a.x + a.w / 2 - boxW / 2;
+      by = a.y - boxH - 8;
+      if (by < 8) by = a.y + a.h + 8;
+    } else {
+      bx = pointer.ux + 18;
+      by = pointer.uy + 18;
+      if (bx + boxW > UW - 8) bx = pointer.ux - boxW - 12;
+      if (by + boxH > UH - 8) by = pointer.uy - boxH - 12;
+    }
+    bx = clamp(bx, 8, UW - 8 - boxW);
+    by = clamp(by, 8, UH - 8 - boxH);
+    ctx.save();
+    drawPanel(bx, by, boxW, boxH, { radius: 8 });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    let y = by + pad;
+    for (const r of rows) {
+      const cy = y + r.h / 2;
+      if (r.kind === 'header') {
+        ctx.font = uiFont(Math.max(8, fontSize - 3), 'bold');
+        ctx.fillStyle = UI.gold;
+        ctx.globalAlpha = 0.8;
+        ctx.fillText(r.text, bx + pad, cy + 1);
+        const tw = ctx.measureText(r.text).width;
+        ctx.fillStyle = 'rgba(255,215,90,0.25)';
+        ctx.fillRect(bx + pad + tw + 6, cy, boxW - pad * 2 - tw - 6, 1);
+        ctx.globalAlpha = 1;
+      } else {
+        const title = r.kind === 'title';
+        ctx.font = uiFont(title ? fontSize + 2 : fontSize, title ? 'bold' : '');
+        let color = '#c4cde0';
+        if (title) color = '#ffffff';
+        else if (r.src.startsWith('✔')) color = UI.good;
+        else if (r.src.startsWith('✘')) color = UI.bad;
+        else if (r.src.startsWith('⚠')) color = UI.warn;
+        else if (r.src.startsWith('★')) color = UI.gold;
+        ctx.fillStyle = color;
+        fillIconText(r.text, bx + pad, cy + 1);
+      }
+      y += r.h;
+    }
+    ctx.restore();
+  }
+
+  function updateTooltip(dt) {
+    let id = null, lines = null, anchor = null;
+    if (pointer.inside && !overlay) {
+      const r = regionAt(pointer.ux, pointer.uy);
+      if (r && r.tip) {
+        id = r.id;
+        lines = r.tip();
+        anchor = r.anchorTip ? { x: r.x, y: r.y, w: r.w, h: r.h } : null;
+      } else if (!r && isInGameState()) {
+        const e = enemyAtPointer();
+        if (e) {
+          id = 'enemy';
+          lines = enemyTooltip(e);
+        }
+      }
+    }
+    if (id !== tooltip.id) {
+      tooltip.id = id;
+      tooltip.t = 0;
+    }
+    tooltip.t += dt;
+    tooltip.lines = lines;
+    tooltip.anchor = anchor;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     HUD FADE -- panels with an enemy or tower behind them turn see-through
+     ══════════════════════════════════════════════════════════════════ */
+
+  const hudFade = {};
+  let hudActorCache = null, hudActorFrame = -1;
+
+  function hudActors() {
+    if (hudActorFrame === frameNo && hudActorCache) return hudActorCache;
+    const out = [];
+    const k = view.s / uiS;
+    for (const e of enemies) {
+      const p = worldToUi(e.x, e.y);
+      const r = (e.radius + 6) * k;
+      out.push({ x: p.x - r, y: p.y - r, w: r * 2, h: r * 2 });
+    }
+    for (const t of towers) {
+      const p = worldToUi(t.x, t.y);
+      const r = CELL * 0.5 * k;
+      out.push({ x: p.x - r, y: p.y - r, w: r * 2, h: r * 2, tower: t });
+    }
+    hudActorCache = out;
+    hudActorFrame = frameNo;
+    return out;
+  }
+
+  function overlapsActor(x, y, w, h, skipTower) {
+    for (const a of hudActors())
+      if (a.tower !== skipTower && a.x < x + w && a.x + a.w > x && a.y < y + h && a.y + a.h > y)
+        return true;
+    return false;
+  }
+
+  function hudAlpha(id, x, y, w, h, skipTower) {
+    const f = hudFade[id] || (hudFade[id] = { a: 1 });
+    const mouseInside = pointer.inside && pointer.ux >= x && pointer.ux <= x + w && pointer.uy >= y && pointer.uy <= y + h;
+    const live = (state === STATE_PLAYING || state === STATE_BUILD) && !overlay;
+    const target = live && !mouseInside && overlapsActor(x, y, w, h, skipTower) ? 0.28 : 1;
+    f.a += (target - f.a) * (1 - Math.exp(-frameDt * 10));
+    f.rect = { x, y, w, h };
+    f.frame = frameNo;
+    return f.a;
+  }
+
+  function beginHudPanel(id, x, y, w, h, skipTower) {
+    ctx.save();
+    ctx.globalAlpha *= hudAlpha(id, x, y, w, h, skipTower);
+  }
+
+  function endHudPanel() {
+    ctx.restore();
+  }
+
+  // A click on a faded panel with a tower behind it goes to the map
+  function hudPassThrough(ux, uy) {
+    for (const id in hudFade) {
+      const f = hudFade[id];
+      if (f.frame < frameNo - 2 || f.a > 0.6 || !f.rect) continue;
+      const r = f.rect;
+      if (ux >= r.x && ux <= r.x + r.w && uy >= r.y && uy <= r.y + r.h)
+        return true;
+    }
+    return false;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     SCREEN SHAKE
+     ══════════════════════════════════════════════════════════════════ */
+
+  let shakeMag = 0, shakeTime = 0, shakeDur = 1;
+
+  function addShake(intensity, ms) {
+    if (intensity >= shakeMag * (shakeTime / shakeDur)) {
+      shakeMag = intensity;
+      shakeDur = shakeTime = Math.max(0.05, ms / 1000);
+    }
+  }
+
+  function updateShake(dt) {
+    if (shakeTime > 0) {
+      shakeTime = Math.max(0, shakeTime - dt);
+      const k = shakeMag * (shakeTime / shakeDur) * view.s * 0.8;
+      shakeX = (Math.random() * 2 - 1) * k;
+      shakeY = (Math.random() * 2 - 1) * k;
+    } else
+      shakeX = shakeY = 0;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     HUD -- top bar: lives, gold, wave, next wave, speed and menu
+     ══════════════════════════════════════════════════════════════════ */
+
+  let shownGold = 0;
+  let goldPulse = 0, livesPulse = 0;
+  let overlay = null;          // 'help' while the help pages are open
+  let helpPage = 0;
+  const kbCursor = { col: 12, row: 8, active: false };
+
+  function hudPanel(id, x, y, w, h, accent) {
+    beginHudPanel(id, x, y, w, h);
+    drawPanel(x, y, w, h, { accent, noStuds: true, radius: 8 });
+  }
+
+  function speedButtons(x, y, h) {
+    const speeds = [1, 2, 3];
+    const bw = 34;
+    for (let i = 0; i < speeds.length; ++i) {
+      const s = speeds[i];
+      uiButton('speed' + s, x + i * (bw + 3), y, bw, h, s + '×', {
+        style: gameSpeed === s ? 'gold' : 'dark', px: 13,
+        onClick: () => setGameSpeed(s),
+        tip: () => [`Game speed ${s}×`, s === 1 ? 'Normal speed' : `Everything runs ${s} times as fast`, '• F cycles the speed']
+      });
+    }
+    return speeds.length * (bw + 3) - 3;
+  }
+
+  function drawTopBar() {
+    const y = 6, h = TOP_H - 12;
+    let x = 8;
+
+    // Lives
+    const lw = 88;
+    hudPanel('lives', x, y, lw, h, UI.bad);
+    drawIcon('heart', x + 21, y + h / 2, 22 * (1 + livesPulse * 0.35));
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText(String(lives), x + 37, y + h / 2 + 1, lw - 44, 21, { weight: 'bold', color: lives <= 5 ? UI.bad : '#ffffff' });
+    endHudPanel();
+    addRegion({ id: 'hud-lives', x, y, w: lw, h, tip: () => ['Lives', `${lives} of ${MAPS[currentMap].startLives} left`, 'Every enemy that reaches the exit costs a life (bosses cost more).'] });
+    x += lw + 6;
+
+    // Gold
+    const gw = 112;
+    hudPanel('gold', x, y, gw, h, UI.gold);
+    drawIcon('coin', x + 21, y + h / 2, 22 * (1 + goldPulse * 0.3));
+    ctx.textAlign = 'left';
+    fitText(String(Math.round(shownGold)), x + 37, y + h / 2 + 1, gw - 44, 21, { weight: 'bold', color: goldPulse > 0.05 ? '#fff5c0' : UI.gold });
+    endHudPanel();
+    addRegion({ id: 'hud-gold', x, y, w: gw, h, tip: () => ['Gold', `${gold} gold`, 'Earned by defeating enemies and clearing waves.', 'Spend it on towers and upgrades.'] });
+    goldHudPos.x = x + 21;
+    goldHudPos.y = y + h / 2;
+    x += gw + 6;
+
+    // Wave
+    const ww = 150;
+    hudPanel('wave', x, y, ww, h, UI.accent);
+    drawIcon('flag', x + 19, y + h / 2, 20);
+    ctx.textAlign = 'left';
+    fitText('WAVE', x + 34, y + 12, 50, 9, { weight: 'bold', color: UI.textDim });
+    fitText(`${currentWave} / ${totalWaves}`, x + 34, y + 27, ww - 42, 16, { weight: 'bold', color: '#ffffff' });
+    const left = waveEnemies.length + enemies.length;
+    const prog = state === STATE_PLAYING && waveSize > 0 ? 1 - left / waveSize : (currentWave >= totalWaves ? 1 : 0);
+    drawMeter(x + 92, y + h / 2 - 4, ww - 102, 8, state === STATE_PLAYING ? prog : currentWave / totalWaves, state === STATE_PLAYING ? UI.warn : UI.accent);
+    endHudPanel();
+    addRegion({ id: 'hud-wave', x, y, w: ww, h, tip: () => state === STATE_PLAYING
+      ? [`Wave ${currentWave} of ${totalWaves}`, `${left} enemies left in this wave`]
+      : [`Wave ${currentWave} of ${totalWaves}`, currentWave >= totalWaves ? 'All waves cleared' : `Next: wave ${currentWave + 1}`] });
+    x += ww + 6;
+
+    // Right group: speed, auto, help, pause
+    const bh = h - 8, by = y + 4;
+    const rightW = 3 * 37 - 3 + 6 + 56 + 6 + 34 + 4 + 34;
+    let rx = UW - 8 - rightW;
+    hudPanel('controls', rx - 6, y, rightW + 12, h, '#6a8ac8');
+    rx += speedButtons(rx, by, bh) + 6;
+    uiButton('auto', rx, by, 56, bh, 'AUTO', {
+      style: autoWaveMode ? 'blue' : 'dark', px: 11, icon: 'loop',
+      onClick: toggleAutoWave,
+      tip: () => ['Auto-wave ' + (autoWaveMode ? 'on' : 'off'), `Starts the next wave ${AUTO_WAVE_DELAY} seconds after a wave is cleared.`, '• A toggles']
+    });
+    rx += 62;
+    uiButton('help', rx, by, 34, bh, '', { icon: 'help', px: 14, onClick: () => openHelp(), tip: () => ['Help', 'How to play, towers, enemies and controls', '• H opens the help'] });
+    rx += 38;
+    uiButton('pause', rx, by, 34, bh, '', { icon: 'pause', px: 14, onClick: togglePause, tip: () => ['Pause', 'Pause menu', '• Esc pauses'] });
+    endHudPanel();
+
+    // Next wave panel fills the middle
+    const nx = x, nw = UW - 8 - rightW - 12 - x - 6;
+    if (nw > 120)
+      drawNextWavePanel(nx, y, nw, h);
+  }
+
+  function drawNextWavePanel(x, y, w, h) {
+    hudPanel('next', x, y, w, h, UI.warn);
+    const bw = Math.min(170, w * 0.5);
+    const bx = x + w - bw - 5;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    if (state === STATE_BUILD && currentWave < totalWaves) {
+      fitText('NEXT', x + 10, y + 12, 60, 9, { weight: 'bold', color: UI.textDim });
+      const autoIn = autoWaveMode && waveComplete && autoWaveTimer > 0 ? `  · auto in ${Math.ceil(autoWaveTimer)}s` : '';
+      fitText(`Wave ${currentWave + 1}${autoIn}`, x + 10, y + 27, bx - x - 16, 14, { weight: 'bold', color: '#ffffff' });
+      uiButton('startwave', bx, y + 4, bw, h - 8, 'Start Wave', {
+        style: 'gold', icon: 'play', px: 13, key: 'Space',
+        onClick: () => startNextWave(),
+        tip: () => [`Start wave ${currentWave + 1}`, 'Send the next wave now.']
+      });
+    } else if (state === STATE_PLAYING) {
+      const left = waveEnemies.length + enemies.length;
+      fitText('IN PROGRESS', x + 10, y + 12, 90, 9, { weight: 'bold', color: UI.textDim });
+      fitText(`${left} enemies left`, x + 10, y + 27, w - 20, 14, { weight: 'bold', color: UI.warn });
+    } else {
+      fitText(currentWave >= totalWaves ? 'All waves cleared' : '', x + 10, y + h / 2, w - 20, 14, { weight: 'bold', color: UI.good });
+    }
+    endHudPanel();
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     BUILD BAR -- one card per tower type
+     ══════════════════════════════════════════════════════════════════ */
+
+  function towerHotkey(i) {
+    return i < 9 ? String(i + 1) : i === 9 ? '0' : '';
+  }
+
+  function buildBarRect() {
+    return { x: 8, y: UH - BOT_H + 4, w: UW - 16, h: BOT_H - 10 };
+  }
+
+  function drawBuildBar() {
+    const r = buildBarRect();
+    beginHudPanel('build', r.x, r.y, r.w, r.h);
+    drawPanel(r.x, r.y, r.w, r.h, { accent: UI.gold, radius: 10 });
+    const n = TOWER_TYPES.length;
+    const gap = 5;
+    const innerX = r.x + 8, innerW = r.w - 16;
+    const cw = Math.min(92, (innerW - gap * (n - 1)) / n);
+    const ch = r.h - 14;
+    const total = n * cw + (n - 1) * gap;
+    let cx = innerX + (innerW - total) / 2;
+    const cy = r.y + 7;
+    for (let i = 0; i < n; ++i) {
+      drawBuildCard(i, cx, cy, cw, ch);
+      cx += cw + gap;
+    }
+    endHudPanel();
+  }
+
+  function drawBuildCard(i, x, y, w, h) {
+    const def = TOWER_TYPES[i];
+    const id = 'build' + i;
+    const selected = selectedTowerType === i;
+    const afford = gold >= def.cost;
+    const hover = hoverId === id;
+    const press = pressAmount(id);
+    const lift = (selected ? 3 : hover ? 1.5 : 0) - press * 2;
+    ctx.save();
+    roundRectPath(x, y - lift, w, h, 7);
+    const g = ctx.createLinearGradient(0, y - lift, 0, y - lift + h);
+    g.addColorStop(0, selected ? 'rgba(90,70,20,0.95)' : hover ? 'rgba(46,56,86,0.95)' : 'rgba(30,38,62,0.95)');
+    g.addColorStop(1, selected ? 'rgba(40,28,8,0.95)' : 'rgba(12,16,30,0.95)');
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.lineWidth = selected ? 2 : 1;
+    ctx.strokeStyle = selected ? UI.gold : hover ? 'rgba(255,215,90,0.55)' : 'rgba(150,180,255,0.18)';
+    ctx.stroke();
+    if (selected) {
+      roundRectPath(x - 2, y - lift - 2, w + 4, h + 4, 9);
+      ctx.strokeStyle = `rgba(255,215,90,${0.35 + 0.25 * Math.sin(animTime * 5)})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    // Icon
+    const iconSize = Math.min(w - 10, h - 30);
+    ctx.globalAlpha *= afford ? 1 : 0.5;
+    drawTowerIcon(i, 1, x + w / 2, y - lift + 4 + iconSize / 2, iconSize);
+    ctx.globalAlpha = afford ? ctx.globalAlpha : ctx.globalAlpha * 2;
+    // Name and cost
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(def.name, x + w / 2, y - lift + h - 21, w - 6, 11, { weight: 'bold', color: afford ? UI.text : UI.textDim, minPx: 7 });
+    fitText(`[[coin]]${def.cost}`, x + w / 2, y - lift + h - 8, w - 6, 11, { weight: 'bold', color: afford ? UI.gold : UI.bad, minPx: 7 });
+    const hk = towerHotkey(i);
+    if (hk)
+      drawKeycap(hk, x + 3, y - lift + 3, 9);
+    ctx.restore();
+    addRegion({
+      id, x, y: y - lift, w, h, anchorTip: true,
+      onClick: () => selectBuildType(i),
+      tip: () => buildTooltip(i)
+    });
+  }
+
+  function buildTooltip(i) {
+    const def = TOWER_TYPES[i];
+    const lines = [def.name + ' Tower', def.desc];
+    lines.push('--- Stats ---');
+    if (def.isFloorTrap)
+      lines.push(`[[sword]] ${def.damage} damage per second to enemies on it`, 'Placed on the path');
+    else {
+      lines.push(`[[sword]] Damage ${def.damage}   [[range]] Range ${Math.round(def.range / CELL * 10) / 10} tiles`);
+      lines.push(`[[clock]] Fires every ${def.fireRate}s`);
+    }
+    lines.push(gold >= def.cost ? `✔ Costs ${def.cost} gold` : `✘ Costs ${def.cost} gold (need ${def.cost - gold} more)`);
+    const hk = towerHotkey(i);
+    if (hk)
+      lines.push(`• Hotkey ${hk}`);
+    return lines;
+  }
+
+  function selectBuildType(i) {
+    if (selectedTowerType === i) {
+      selectedTowerType = -1;
+      audio.play('click', { pitch: 0.8 });
+      return;
+    }
+    selectedTowerType = i;
+    selectedTower = null;
+    audio.play('click');
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     INSPECTOR -- stats and actions of the selected tower
+     ══════════════════════════════════════════════════════════════════ */
+
+  const INSPECT_W = 236;
+
+  function inspectorRect() {
+    const t = selectedTower;
+    const h = 236 + (t && t.hp < t.maxHp ? 34 : 0);
+    // Stay clear of the tower: use the side of the screen away from it
+    const p = t ? worldToUi(t.x, t.y) : { x: UW };
+    const left = p.x > UW * 0.55;
+    return { x: left ? 8 : UW - 8 - INSPECT_W, y: TOP_H + 4, w: INSPECT_W, h };
+  }
+
+  function drawInspector() {
+    const t = selectedTower;
+    if (!t || (state !== STATE_BUILD && state !== STATE_PLAYING)) return;
+    const def = TOWER_TYPES[t.type];
+    const r = inspectorRect();
+    addRegion({ id: 'inspector-bg', x: r.x, y: r.y, w: r.w, h: r.h });
+    beginHudPanel('inspector', r.x, r.y, r.w, r.h);
+    let y = drawPanel(r.x, r.y, r.w, r.h, { title: def.name + ' Tower', titleRight: 'Tier ' + toRoman(t.tier), titleRightPad: 24, accent: UI.gold });
+    uiButton('insp-close', r.x + r.w - 26, r.y + 6, 20, 18, '×', { px: 13, onClick: () => { selectedTower = null; }, tip: () => ['Close', 'Esc'] });
+
+    // Portrait
+    const px = r.x + 10, pw = 64;
+    roundRectPath(px, y, pw, pw, 8);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,215,90,0.35)';
+    ctx.stroke();
+    drawTowerIcon(t.type, t.tier, px + pw / 2, y + pw / 2, pw - 10);
+    // Tier pips
+    for (let i = 0; i < MAX_TIER; ++i) {
+      ctx.fillStyle = i < t.tier ? UI.gold : 'rgba(255,255,255,0.15)';
+      ctx.fillRect(px + 8 + i * ((pw - 16) / MAX_TIER), y + pw + 4, (pw - 16) / MAX_TIER - 3, 4);
+    }
+
+    // Stats
+    const sx = px + pw + 10, sw = r.x + r.w - 10 - sx;
+    const rows = towerStatRows(t);
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i < rows.length; ++i) {
+      const ry = y + 8 + i * 17;
+      ctx.textAlign = 'left';
+      drawIcon(rows[i][0], sx + 7, ry, 13);
+      fitText(rows[i][1], sx + 17, ry + 1, sw * 0.5 - 17, 11, { color: UI.textDim });
+      ctx.textAlign = 'right';
+      fitText(rows[i][2], sx + sw, ry + 1, sw * 0.5, 12, { weight: 'bold', color: rows[i][3] || '#ffffff' });
+    }
+    y += pw + 14;
+
+    // Description
+    ctx.textAlign = 'left';
+    drawTextBlock(def.desc, r.x + 12, y, r.w - 24, 30, 11, { color: '#c4cde0', valign: 'middle' });
+    y += 34;
+
+    // Health
+    if (t.hp < t.maxHp) {
+      const ratio = t.hp / t.maxHp;
+      drawMeter(r.x + 12, y + 4, r.w - 24, 12, ratio, ratio > 0.5 ? UI.good : ratio > 0.25 ? UI.warn : UI.bad, { label: `Structure ${Math.ceil(ratio * 100)}%`, labelPx: 9 });
+      y += 22;
+    }
+
+    // Actions
+    const bw = r.w - 20;
+    if (t.tier < MAX_TIER) {
+      const uc = getUpgradeCost(t);
+      uiButton('insp-up', r.x + 10, y, bw, 38, `Upgrade to Tier ${toRoman(t.tier + 1)}`, {
+        style: 'gold', icon: 'up', key: 'U', sub: `${uc} gold`, disabled: gold < uc,
+        onClick: () => upgradeTower(t), onDisabled: () => audio.play('error'),
+        tip: () => upgradeTooltip(t)
+      });
+    } else
+      uiButton('insp-up', r.x + 10, y, bw, 38, 'Maximum tier', { style: 'dark', icon: 'crown', disabled: true });
+    y += 44;
+    const half = (bw - 6) / 2;
+    uiButton('insp-sell', r.x + 10, y, half, 30, `Sell +${getSellValue(t)}`, { style: 'red', key: 'S', px: 12, onClick: () => sellTower(t), tip: () => ['Sell tower', `Refunds ${getSellValue(t)} gold (half of everything spent).`] });
+    const rc = repairCost(t);
+    uiButton('insp-repair', r.x + 16 + half, y, half, 30, rc > 0 ? `Repair ${rc}` : 'Repaired', { style: 'green', key: 'R', px: 12, disabled: rc <= 0 || gold < rc, onClick: () => repairTower(t), onDisabled: () => rc > 0 && audio.play('error'), tip: () => ['Repair', rc > 0 ? `Restores the structure for ${rc} gold.` : 'The tower is undamaged.'] });
+    endHudPanel();
+  }
+
+  function towerStatRows(t) {
+    const def = TOWER_TYPES[t.type];
+    const rows = [];
+    if (def.isFloorTrap)
+      return [['sword', 'Damage', `${t.damage}/s`]];
+    rows.push(['sword', 'Damage', String(t.damage)]);
+    rows.push(['range', 'Range', (t.range / CELL).toFixed(1)]);
+    rows.push(['clock', 'Rate', `${(1 / t.fireRate).toFixed(2)}/s`]);
+    rows.push(['skull', 'Kills', String(t.kills || 0)]);
+    return rows;
+  }
+
+  function upgradeTooltip(t) {
+    const def = TOWER_TYPES[t.type];
+    const next = t.tier + 1;
+    const dmg = Math.floor(def.damage * UPGRADE_DAMAGE_MULT[next - 1]);
+    const rng = Math.floor(def.range * UPGRADE_RANGE_MULT[next - 1]);
+    const uc = getUpgradeCost(t);
+    return [`Upgrade to Tier ${toRoman(next)}`,
+      `[[sword]] Damage ${t.damage} → ${dmg}`,
+      `[[range]] Range ${(t.range / CELL).toFixed(1)} → ${(rng / CELL).toFixed(1)}`,
+      gold >= uc ? `✔ ${uc} gold` : `✘ ${uc} gold (need ${uc - gold} more)`];
+  }
+
+  function repairCost(t) {
+    return t.hp >= t.maxHp ? 0 : Math.max(1, Math.floor((t.maxHp - t.hp) * 0.3));
+  }
+
+  function toRoman(n) {
+    return ['I', 'II', 'III', 'IV', 'V', 'VI'][n - 1] || String(n);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     MAP OVERLAYS -- placement ghost, cursor, selection
+     ══════════════════════════════════════════════════════════════════ */
+
+  function cursorCell() {
+    if (kbCursor.active)
+      return { col: kbCursor.col, row: kbCursor.row };
+    if (!pointer.inside || pointer.wx < 0 || pointer.wy < 0 || pointer.wx >= WORLD_W || pointer.wy >= WORLD_H)
+      return null;
+    if (regionAt(pointer.ux, pointer.uy) && !hudPassThrough(pointer.ux, pointer.uy))
+      return null;
+    return { col: Math.floor(pointer.wx / CELL), row: Math.floor(pointer.wy / CELL) };
+  }
+
+  function canBuildAt(typeIndex, col, row) {
+    const def = TOWER_TYPES[typeIndex];
+    return def.isFloorTrap ? canPlaceSpike(col, row) : canPlace(col, row);
+  }
+
+  function towerAt(col, row) {
+    for (const t of towers)
+      if (t.col === col && t.row === row)
+        return t;
+    return null;
+  }
+
+  function drawMapOverlays() {
+    const c = cursorCell();
+    const pulse = 0.5 + 0.5 * Math.sin(animTime * 6);
+    // Selected tower: range and brackets
+    if (selectedTower) {
+      const t = selectedTower;
+      ctx.fillStyle = 'rgba(255,215,90,0.06)';
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.range, 0, TWO_PI);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,215,90,0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 5]);
+      ctx.lineDashOffset = -animTime * 12;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      drawBrackets(t.col * CELL, t.row * CELL, CELL, UI.gold, 2 + pulse * 1.5);
+    }
+    if (!c || (state !== STATE_BUILD && state !== STATE_PLAYING)) return;
+    if (selectedTowerType >= 0) {
+      const def = TOWER_TYPES[selectedTowerType];
+      const ok = canBuildAt(selectedTowerType, c.col, c.row) && !towerAt(c.col, c.row);
+      const afford = gold >= def.cost;
+      const cx = c.col * CELL + CELL / 2, cy = c.row * CELL + CELL / 2;
+      const good = ok && afford;
+      ctx.fillStyle = good ? 'rgba(80,255,120,0.18)' : 'rgba(255,70,70,0.22)';
+      ctx.fillRect(c.col * CELL, c.row * CELL, CELL, CELL);
+      if (def.range > 0 && ok) {
+        ctx.fillStyle = good ? 'rgba(120,255,150,0.07)' : 'rgba(255,120,120,0.06)';
+        ctx.beginPath();
+        ctx.arc(cx, cy, def.range, 0, TWO_PI);
+        ctx.fill();
+        ctx.strokeStyle = good ? 'rgba(140,255,170,0.6)' : 'rgba(255,140,140,0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      if (ok) {
+        ctx.save();
+        ctx.globalAlpha = 0.6;
+        drawTowerIconWorld(selectedTowerType, 1, cx, cy);
+        ctx.restore();
+      } else {
+        ctx.strokeStyle = 'rgba(255,90,90,0.9)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(cx - 8, cy - 8); ctx.lineTo(cx + 8, cy + 8);
+        ctx.moveTo(cx + 8, cy - 8); ctx.lineTo(cx - 8, cy + 8);
+        ctx.stroke();
+      }
+      drawBrackets(c.col * CELL, c.row * CELL, CELL, good ? '#8fff9f' : '#ff7a7a', 1.5 + pulse);
+    } else if (kbCursor.active || towerAt(c.col, c.row)) {
+      drawBrackets(c.col * CELL, c.row * CELL, CELL, kbCursor.active ? '#ffffff' : 'rgba(255,255,255,0.7)', 1 + pulse);
+    }
+  }
+
+  function drawBrackets(x, y, s, color, inset) {
+    const l = s * 0.3;
+    const i = -inset;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + i, y + i + l); ctx.lineTo(x + i, y + i); ctx.lineTo(x + i + l, y + i);
+    ctx.moveTo(x + s - i - l, y + i); ctx.lineTo(x + s - i, y + i); ctx.lineTo(x + s - i, y + i + l);
+    ctx.moveTo(x + s - i, y + s - i - l); ctx.lineTo(x + s - i, y + s - i); ctx.lineTo(x + s - i - l, y + s - i);
+    ctx.moveTo(x + i + l, y + s - i); ctx.lineTo(x + i, y + s - i); ctx.lineTo(x + i, y + s - i - l);
+    ctx.stroke();
+  }
+
+  function enemyAtPointer() {
+    if (!pointer.inside) return null;
+    let best = null, bd = 1e9;
+    for (const e of enemies) {
+      const d = Math.hypot(e.x - pointer.wx, e.y - pointer.wy);
+      if (d < e.radius + 6 && d < bd) {
+        bd = d;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  const ENEMY_NAMES = { normal: 'Grunt', fast: 'Runner', armored: 'Brute', flying: 'Bat', boss: 'Warlord', healer: 'Shaman', swarm: 'Swarmling', shield: 'Warden' };
+
+  function enemyTooltip(e) {
+    const lines = [ENEMY_NAMES[e.type] || e.type, `HP ${Math.ceil(e.hp)} / ${e.maxHp}`, `Speed ${Math.round(e.baseSpeed)}   Bounty ${e.bounty} gold`];
+    if (e.isShielded && e.shieldHp > 0) lines.push(`[[shield]] Shield ${Math.ceil(e.shieldHp)}`);
+    if (e.isHealer) lines.push('⚠ Heals nearby enemies');
+    if (e.isBoss) lines.push('⚠ Boss: damages nearby towers');
+    return lines;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     SCREENS -- title, pause, game over, victory, help
+     ══════════════════════════════════════════════════════════════════ */
+
+  function drawTitleScreen() {
+    drawScrim(0.55);
+    const cx = UW / 2;
+    const top = Math.max(40, UH * 0.16);
+    drawHeadline('TOWER DEFENSE', cx, top, UW - 60, 64, UI.gold, '#ff9a2a');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText('Hold the line. Build, upgrade, survive every wave.', cx, top + 44, UW - 80, 15, { color: UI.textDim });
+
+    const pw = Math.min(380, UW - 40), ph = savedGameInfo ? 222 : 172;
+    const px = cx - pw / 2, py = Math.min(top + 74, UH - ph - 50);
+    drawPanel(px, py, pw, ph, { accent: UI.gold, radius: 12 });
+    let y = py + 16;
+    // Map chooser
+    const m = MAPS[currentMap];
+    uiButton('map-prev', px + 14, y, 34, 34, '◀', { px: 14, onClick: () => cycleTitleMap(-1), tip: () => ['Previous map', '←'] });
+    uiButton('map-next', px + pw - 48, y, 34, 34, '▶', { px: 14, onClick: () => cycleTitleMap(1), tip: () => ['Next map', '→'] });
+    ctx.textAlign = 'center';
+    fitText(m.name, cx, y + 10, pw - 120, 17, { weight: 'bold', color: '#ffffff' });
+    fitText(`${m.waves} waves · ${m.startGold} gold · ${m.startLives} lives`, cx, y + 27, pw - 120, 11, { color: UI.textDim });
+    y += 48;
+    const bw = pw - 40;
+    if (savedGameInfo) {
+      const sm = MAPS[savedGameInfo.map];
+      uiButton('title-continue', px + 20, y, bw, 50, 'Continue', { style: 'gold', icon: 'play', px: 17, key: 'Enter', sub: `${sm.name} · wave ${savedGameInfo.wave} of ${savedGameInfo.waves}`, onClick: () => continueSavedGame() });
+      y += 58;
+      uiButton('title-new', px + 20, y, bw, 40, 'New Game', { style: 'dark', px: 14, key: 'N', onClick: () => requestNewGame(), tip: () => ['New game', `Starts ${m.name} from wave 1.`, '⚠ Replaces the saved game'] });
+      y += 48;
+    } else {
+      uiButton('title-start', px + 20, y, bw, 50, 'Start', { style: 'gold', icon: 'play', px: 17, key: 'Enter', sub: m.name, onClick: () => requestNewGame() });
+      y += 58;
+    }
+    uiButton('title-help', px + 20, y, bw, 36, 'How to play', { style: 'blue', icon: 'help', px: 13, key: 'H', onClick: () => openHelp() });
+    if (saveNotice) {
+      ctx.textAlign = 'center';
+      fitText(saveNotice, cx, py + ph + 18, UW - 40, 12, { color: UI.warn });
+    }
+    drawKeyHints([{ key: '←→', label: 'Map' }, { key: 'Enter', label: savedGameInfo ? 'Continue' : 'Start' }, { key: 'H', label: 'Help' }], cx, UH - 22, UW - 40);
+  }
+
+  function cycleTitleMap(dir) {
+    currentMap = (currentMap + dir + MAPS.length) % MAPS.length;
+    loadMapPreview();
+    audio.play('click');
+  }
+
+  function drawPauseScreen() {
+    drawScrim(0.6);
+    const pw = Math.min(320, UW - 40), ph = 262;
+    const px = UW / 2 - pw / 2, py = UH / 2 - ph / 2;
+    drawPanel(px, py, pw, ph, { title: 'Paused', titleRight: `${MAPS[currentMap].name} · wave ${currentWave}/${totalWaves}`, accent: UI.gold, radius: 12 });
+    let y = py + 44;
+    const bw = pw - 40;
+    uiButton('p-resume', px + 20, y, bw, 42, 'Resume', { style: 'gold', icon: 'play', key: 'Esc', px: 15, onClick: togglePause });
+    y += 50;
+    uiButton('p-help', px + 20, y, bw, 36, 'Help', { style: 'blue', icon: 'help', key: 'H', onClick: () => openHelp() });
+    y += 44;
+    uiButton('p-restart', px + 20, y, bw, 36, 'Restart map', { style: 'dark', key: 'F2', onClick: () => requestNewGame(), tip: () => ['Restart', 'Starts this map again from wave 1.'] });
+    y += 44;
+    uiButton('p-title', px + 20, y, bw, 36, 'Main menu', { style: 'dark', key: 'M', onClick: quitToTitle, tip: () => ['Main menu', 'Your game is saved; Continue picks it up again.'] });
+  }
+
+  function drawEndScreen(victory) {
+    drawScrim(0.62);
+    const cx = UW / 2;
+    const pw = Math.min(420, UW - 40), ph = victory ? 270 : 220;
+    const px = cx - pw / 2, py = Math.max(80, UH / 2 - ph / 2 + 20);
+    drawHeadline(victory ? 'VICTORY' : 'DEFEAT', cx, py - 40, UW - 40, 56, victory ? UI.gold : '#ff5a5a', victory ? '#ff9a2a' : '#9a1a1a');
+    drawPanel(px, py, pw, ph, { title: MAPS[currentMap].name, titleRight: victory ? 'Map cleared' : `Fell at wave ${currentWave}`, accent: victory ? UI.gold : UI.bad, radius: 12 });
+    const stats = [
+      ['flag', 'Waves survived', `${victory ? currentWave : Math.max(0, currentWave - 1)} / ${totalWaves}`],
+      ['skull', 'Enemies defeated', String(runStats.kills)],
+      ['coin', 'Gold earned', String(runStats.gold)],
+      ['heart', 'Lives left', `${lives} / ${MAPS[currentMap].startLives}`]
+    ];
+    let y = py + 48;
+    for (const [icon, label, value] of stats) {
+      drawIcon(icon, px + 30, y + 9, 16);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText(label, px + 46, y + 10, pw * 0.5, 13, { color: UI.textDim });
+      ctx.textAlign = 'right';
+      fitText(value, px + pw - 24, y + 10, pw * 0.35, 15, { weight: 'bold', color: '#ffffff' });
+      y += 26;
+    }
+    y += 12;
+    const bw = (pw - 52) / 2;
+    if (victory) {
+      uiButton('end-next', px + 20, y, bw, 44, 'Next map', { style: 'gold', icon: 'play', key: 'Enter', px: 14, onClick: () => { currentMap = (currentMap + 1) % MAPS.length; resetAndStart(); } });
+      uiButton('end-retry', px + 32 + bw, y, bw, 44, 'Play again', { style: 'dark', key: 'R', px: 14, onClick: resetAndStart });
+    } else {
+      uiButton('end-retry', px + 20, y, bw, 44, 'Try again', { style: 'gold', icon: 'play', key: 'Enter', px: 14, onClick: resetAndStart });
+      uiButton('end-title', px + 32 + bw, y, bw, 44, 'Main menu', { style: 'dark', key: 'M', px: 14, onClick: quitToTitle });
+    }
+    if (victory)
+      uiButton('end-title2', px + 20, y + 52, pw - 40, 30, 'Main menu', { style: 'dark', key: 'M', px: 12, onClick: quitToTitle });
+  }
+
+  /* ── Help pages ── */
+  const HELP_PAGES = [
+    { title: 'Basics', body: [
+      ['flag', 'Enemies walk the path from the green spawn gate to the red exit. Each one that gets through costs a life; lose them all and the map is lost.'],
+      ['hammer', 'Pick a tower in the build bar (or press 1-0), then click a free tile next to the path. Spike traps go on the path itself.'],
+      ['up', 'Click a tower to inspect it: upgrade it, repair it or sell it for half of what it cost.'],
+      ['coin', 'Defeated enemies drop gold. Every wave also pays a small bonus.'],
+      ['play', 'Press Start Wave (Space) when you are ready. Speed buttons run the battle 2× or 3× as fast; AUTO sends waves on its own.']
+    ] },
+    { title: 'Towers', towers: true },
+    { title: 'Enemies', enemies: true },
+    { title: 'Controls', keys: [
+      ['1 - 0', 'Choose a tower to build'], ['Click / Enter', 'Build or select'], ['Right click / Esc', 'Cancel building'],
+      ['Arrow keys', 'Move the build cursor'], ['U', 'Upgrade the selected tower'], ['S', 'Sell the selected tower'], ['R', 'Repair the selected tower'],
+      ['Space', 'Start the next wave'], ['F', 'Cycle game speed'], ['A', 'Auto-wave on/off'], ['H', 'Help'], ['Esc', 'Pause menu'], ['F2', 'New game']
+    ] }
+  ];
+
+  function openHelp(page) {
+    if (state === STATE_PLAYING)
+      togglePause();
+    overlay = 'help';
+    helpPage = page || 0;
+    audio.play('select');
+  }
+
+  function closeHelp() {
+    overlay = null;
+    audio.play('click', { pitch: 0.8 });
+  }
+
+  function drawHelp() {
+    drawScrim(0.7);
+    const pw = Math.min(720, UW - 32), ph = Math.min(500, UH - 32);
+    const px = UW / 2 - pw / 2, py = UH / 2 - ph / 2;
+    drawPanel(px, py, pw, ph, { title: 'How to play', titleRight: `${helpPage + 1} / ${HELP_PAGES.length}`, titleRightPad: 28, accent: UI.gold, radius: 12, headerH: 34 });
+    uiButton('help-close', px + pw - 30, py + 7, 22, 20, '×', { px: 14, onClick: closeHelp, tip: () => ['Close', 'Esc'] });
+    // Tabs
+    const tabW = Math.min(150, (pw - 24 - (HELP_PAGES.length - 1) * 6) / HELP_PAGES.length);
+    for (let i = 0; i < HELP_PAGES.length; ++i)
+      uiButton('help-tab' + i, px + 12 + i * (tabW + 6), py + 42, tabW, 28, HELP_PAGES[i].title, { style: i === helpPage ? 'gold' : 'dark', px: 12, onClick: () => { helpPage = i; audio.play('click'); } });
+    const cx = px + 16, cy = py + 82, cw = pw - 32, ch = ph - 82 - 40;
+    const page = HELP_PAGES[helpPage];
+    if (page.body) {
+      const rowH = Math.min(62, ch / page.body.length);
+      page.body.forEach(([icon, text], i) => {
+        const y = cy + i * rowH;
+        roundRectPath(cx, y + 2, 36, 36, 7);
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fill();
+        drawIcon(icon, cx + 18, y + 20, 22);
+        drawTextBlock(text, cx + 48, y, cw - 48, rowH - 6, 13, { color: UI.text, valign: 'middle' });
+      });
+    } else if (page.towers) {
+      drawHelpGrid(cx, cy, cw, ch, TOWER_TYPES.map((def, i) => ({ draw: (x, y, s) => drawTowerIcon(i, 1, x, y, s), name: def.name, text: `${def.desc} · ${def.cost} gold` })));
+    } else if (page.enemies) {
+      drawHelpGrid(cx, cy, cw, ch, Object.keys(ENEMY_TYPES).map(k => ({ draw: (x, y, s) => drawEnemyIcon(k, x, y, s), name: ENEMY_NAMES[k], text: ENEMY_INFO[k] })));
+    } else if (page.keys) {
+      const cols = cw > 520 ? 2 : 1;
+      const perCol = Math.ceil(page.keys.length / cols);
+      const colW = cw / cols;
+      const rowH = Math.min(30, ch / perCol);
+      page.keys.forEach(([key, label], i) => {
+        const col = Math.floor(i / perCol), row = i % perCol;
+        const x = cx + col * colW, y = cy + row * rowH;
+        ctx.font = uiFont(11, 'bold');
+        const kw = Math.min(colW * 0.45, Math.max(26, ctx.measureText(key).width + 12));
+        roundRectPath(x, y + 3, kw, rowH - 8, 4);
+        ctx.fillStyle = 'rgba(20,26,42,0.95)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,215,90,0.45)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        fitText(key, x + kw / 2, y + rowH / 2 - 1, kw - 6, 11, { weight: 'bold', color: '#ffe9a8' });
+        ctx.textAlign = 'left';
+        fitText(label, x + kw + 10, y + rowH / 2, colW - kw - 18, 13, { color: UI.text });
+      });
+    }
+    drawKeyHints([{ key: '←→', label: 'Page' }, { key: 'Esc', label: 'Close' }], UW / 2, py + ph - 18, pw - 40);
+  }
+
+  function drawHelpGrid(x, y, w, h, items) {
+    const cols = w > 560 ? 3 : 2;
+    const rowsN = Math.ceil(items.length / cols);
+    const cellW = (w - (cols - 1) * 8) / cols;
+    const cellH = Math.min(70, (h - (rowsN - 1) * 6) / rowsN);
+    items.forEach((it, i) => {
+      const cx = x + (i % cols) * (cellW + 8), cy = y + Math.floor(i / cols) * (cellH + 6);
+      roundRectPath(cx, cy, cellW, cellH, 7);
+      ctx.fillStyle = 'rgba(255,255,255,0.04)';
+      ctx.fill();
+      const s = Math.min(cellH - 10, 40);
+      it.draw(cx + 6 + s / 2, cy + cellH / 2, s);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText(it.name, cx + s + 14, cy + 13, cellW - s - 20, 13, { weight: 'bold', color: UI.gold });
+      drawTextBlock(it.text, cx + s + 14, cy + 22, cellW - s - 20, cellH - 25, 11, { color: '#c4cde0' });
+    });
+  }
+
+  const ENEMY_INFO = {
+    normal: 'Basic foot soldier.',
+    fast: 'Quick and fragile. Slow it down.',
+    armored: 'Lots of health; damages nearby towers.',
+    flying: 'Flies along the route.',
+    boss: 'Huge health; damages nearby towers.',
+    healer: 'Heals nearby enemies. Kill it first.',
+    swarm: 'Comes in packs. Use splash damage.',
+    shield: 'Its shield soaks damage first.'
+  };
+
+  /* ══════════════════════════════════════════════════════════════════
+     ICON HELPERS -- towers and enemies drawn into UI boxes
+     ══════════════════════════════════════════════════════════════════ */
+
+  function drawTowerIcon(typeIndex, tier, cx, cy, size) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    const k = size / 30;
+    ctx.scale(k, k);
+    drawTowerShape(TOWER_TYPES[typeIndex], tier, -Math.PI / 4);
+    ctx.restore();
+  }
+
+  function drawTowerIconWorld(typeIndex, tier, x, y) {
+    ctx.save();
+    ctx.translate(x, y);
+    drawTowerShape(TOWER_TYPES[typeIndex], tier, -Math.PI / 4);
+    ctx.restore();
+  }
+
+  function drawEnemyIcon(type, cx, cy, size) {
+    const def = ENEMY_TYPES[type];
+    const fake = { type, color: def.color, radius: def.radius, shieldHp: def.shielded ? 1 : 0, maxHp: 2.5 };
+    ctx.save();
+    ctx.translate(cx, cy);
+    const k = size / ((def.radius + 5) * 2);
+    ctx.scale(k, k);
+    drawEnemyShape(fake, 0);
+    ctx.restore();
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     FRAME
+     ══════════════════════════════════════════════════════════════════ */
+
+  function drawWorld() {
+    setWorldTransform();
+    // Frame around the battlefield
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(-6, -4, WORLD_W + 12, WORLD_H + 12);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, WORLD_W, WORLD_H);
+    ctx.clip();
+    drawGrid();
     if (state !== STATE_READY) {
       drawPathVisualization();
       drawFloorEffects();
       drawPreWaveWarning();
+      drawMapOverlays();
       drawTowers();
       drawEnemies();
       drawProjectiles();
-      drawTowerPalette();
-      drawSelectedTowerInfo();
-      drawContextMenu();
+      particles.draw(ctx);
+      floatingText.draw(ctx);
     }
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(255,215,90,0.35)';
+    ctx.lineWidth = 2 / view.s;
+    ctx.strokeRect(-1, -1, WORLD_W + 2, WORLD_H + 2);
+  }
 
-    drawHUD();
+  function drawFrame() {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#070a12';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawWorld();
+
+    setUiTransform();
+    regions = [];
+    if (state === STATE_READY) {
+      drawTitleScreen();
+    } else {
+      drawTopBar();
+      drawBuildBar();
+      drawInspector();
+      // Modal screens: the HUD underneath stops reacting
+      if (state === STATE_PAUSED && !overlay) {
+        regions = [];
+        drawPauseScreen();
+      } else if (state === STATE_GAME_OVER || state === STATE_VICTORY) {
+        regions = [];
+        drawEndScreen(state === STATE_VICTORY);
+      }
+    }
+    if (overlay === 'help') {
+      regions = [];
+      drawHelp();
+    }
+    drawTooltip();
+    prevRegions = regions;
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -2840,38 +4107,46 @@
     const rawDt = lastTimestamp ? (timestamp - lastTimestamp) / 1000 : 0;
     const dt = Math.min(rawDt, MAX_DT);
     lastTimestamp = timestamp;
+    frameDt = dt || 0.016;
+    ++frameNo;
 
-    updateGame(dt);
+    if (!overlay)
+      updateGame(dt);
+    else
+      animTime += dt;
 
     particles.update();
-    screenShake.update(dt * 1000);
     floatingText.update();
+    updateShake(dt);
+    shownGold += (gold - shownGold) * (1 - Math.exp(-dt * 10));
+    if (Math.abs(gold - shownGold) < 0.5)
+      shownGold = gold;
+    goldPulse = Math.max(0, goldPulse - dt * 3);
+    livesPulse = Math.max(0, livesPulse - dt * 2.5);
+    updateTooltip(dt);
+    updateHover();
 
-    ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-    ctx.save();
-    screenShake.apply(ctx);
-    drawGame();
-    particles.draw(ctx);
-    floatingText.draw(ctx);
-    screenShake.restore(ctx);
-    ctx.restore();
-
+    drawFrame();
     updateStatusBar();
-
     requestAnimationFrame(gameLoop);
   }
 
   /* ══════════════════════════════════════════════════════════════════
-     INPUT -- Mouse-only + keyboard support
+     ACTIONS
      ══════════════════════════════════════════════════════════════════ */
 
   function togglePause() {
-    if (state === STATE_PLAYING) {
+    if (state === STATE_PLAYING || state === STATE_BUILD) {
+      pausedFrom = state;
       state = STATE_PAUSED;
       saveGame();
-    } else if (state === STATE_PAUSED)
-      state = STATE_PLAYING;
+      audio.play('click', { pitch: 0.7 });
+    } else if (state === STATE_PAUSED) {
+      state = pausedFrom || STATE_PLAYING;
+      audio.play('click');
+    }
   }
+  let pausedFrom = null;
 
   /* Save when the page is hidden or closed */
   window.addEventListener('pagehide', saveGame);
@@ -2880,331 +4155,332 @@
       saveGame();
   });
 
-  /* Pause when the window is hidden or loses focus */
+  /* Pause when the window is hidden */
   SZ.GameAutoPause.attach({
     isRunning: () => state === STATE_PLAYING,
     pause: togglePause
   });
 
   function resetAndStart() {
+    overlay = null;
     loadMap(currentMap);
+    audio.play('select');
+  }
+
+  function quitToTitle() {
+    if (isInGameState())
+      saveGame();
+    overlay = null;
+    selectedTower = null;
+    state = STATE_READY;
+    refreshSavedGameInfo();
+    loadMapPreview();
+    updateWindowTitle();
+  }
+
+  // Shows the chosen map behind the title screen
+  function loadMapPreview() {
+    const mapDef = MAPS[currentMap];
+    buildPathCells(mapDef);
+    pathPoints = getPathPoints(mapDef);
+    totalWaves = mapDef.waves;
+  }
+
+  function setGameSpeed(s) {
+    gameSpeed = s;
+    audio.play('click', { pitch: 0.8 + s * 0.15 });
   }
 
   function toggleFastForward() {
-    gameSpeed = gameSpeed === 1 ? 2 : gameSpeed === 2 ? 3 : gameSpeed === 3 ? 5 : gameSpeed === 5 ? 10 : 1;
+    setGameSpeed(gameSpeed >= 3 ? 1 : gameSpeed + 1);
   }
 
-  function getCanvasCoords(e) {
+  function toggleAutoWave() {
+    autoWaveMode = !autoWaveMode;
+    if (autoWaveMode && state === STATE_BUILD && waveComplete)
+      autoWaveTimer = AUTO_WAVE_DELAY;
+    audio.play('click', { pitch: autoWaveMode ? 1.2 : 0.8 });
+  }
+
+  // Click or Enter on a map cell
+  function mapAction(col, row) {
+    if (state !== STATE_BUILD && state !== STATE_PLAYING) return;
+    const t = towerAt(col, row);
+    if (selectedTowerType >= 0) {
+      if (t) {
+        selectedTowerType = -1;
+        selectedTower = t;
+        audio.play('select');
+        return;
+      }
+      if (!placeTower(col, row, selectedTowerType))
+        audio.play('error');
+      return;
+    }
+    if (t) {
+      selectedTower = selectedTower === t ? null : t;
+      audio.play('select');
+      return;
+    }
+    selectedTower = null;
+  }
+
+  function cancelBuild() {
+    if (selectedTowerType >= 0) {
+      selectedTowerType = -1;
+      audio.play('click', { pitch: 0.7 });
+      return true;
+    }
+    if (selectedTower) {
+      selectedTower = null;
+      return true;
+    }
+    return false;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     INPUT -- mouse, touch and keyboard
+     ══════════════════════════════════════════════════════════════════ */
+
+  function readPointer(e) {
     const rect = canvas.getBoundingClientRect();
-    return {
-      x: (e.clientX - rect.left) * (CANVAS_W / rect.width),
-      y: (e.clientY - rect.top) * (CANVAS_H / rect.height)
-    };
+    pointer.px = (e.clientX - rect.left) * (canvasW / rect.width);
+    pointer.py = (e.clientY - rect.top) * (canvasH / rect.height);
+    pointer.ux = pointer.px / uiS;
+    pointer.uy = pointer.py / uiS;
+    pointer.wx = (pointer.px - view.x) / view.s;
+    pointer.wy = (pointer.py - view.y) / view.s;
+    pointer.inside = true;
+    pointer.type = e.pointerType || 'mouse';
   }
 
-  /* ── Palette click detection ── */
-  function handlePaletteClick(mx, my) {
-    if (my < PALETTE_Y || my > CANVAS_H) return false;
-
-    // Tower type buttons
-    for (let i = 0; i < TOWER_TYPES.length; ++i) {
-      const bx = 4 + i * (getPaletteBtnW() + PALETTE_BTN_GAP);
-      const by = PALETTE_BTN_Y;
-      if (mx >= bx && mx <= bx + getPaletteBtnW() && my >= by && my <= by + PALETTE_BTN_H) {
-        selectedTowerType = i;
-        audio.play('click');
-        return true;
-      }
+  function updateHover() {
+    const r = pointer.inside ? regionAt(pointer.ux, pointer.uy) : null;
+    const id = r && !r.disabled ? r.id : null;
+    if (id !== hoverId) {
+      hoverId = id;
+      canvas.style.cursor = id && r.onClick ? 'pointer' : 'default';
     }
-
-    // Start Wave button
-    if (state === STATE_BUILD) {
-      const btnX = CANVAS_W - 4 - HUD_BTN_W - 68 - 4;
-      const btnY = PALETTE_BTN_Y + 2;
-      if (mx >= btnX && mx <= btnX + HUD_BTN_W + 4 && my >= btnY && my <= btnY + HUD_BTN_H) {
-        startNextWave();
-        return true;
-      }
-    }
-
-    // Fast Forward button
-    if (state === STATE_PLAYING) {
-      const btnX = CANVAS_W - 4 - HUD_BTN_W - 68 - 4;
-      const btnY = PALETTE_BTN_Y + 2;
-      if (mx >= btnX && mx <= btnX + HUD_BTN_W + 4 && my >= btnY && my <= btnY + HUD_BTN_H) {
-        toggleFastForward();
-        return true;
-      }
-    }
-
-    // Auto-wave toggle button
-    {
-      const btnX = CANVAS_W - 4 - 64;
-      const btnY = PALETTE_BTN_Y + 2;
-      if (mx >= btnX && mx <= btnX + 60 && my >= btnY && my <= btnY + HUD_BTN_H) {
-        autoWaveMode = !autoWaveMode;
-        if (autoWaveMode && state === STATE_BUILD && waveComplete)
-          autoWaveTimer = AUTO_WAVE_DELAY;
-        return true;
-      }
-    }
-
-    return true; // Consumed by palette area
   }
 
-  /* ── Selected tower info panel click detection ── */
-  function handleInfoPanelClick(mx, my) {
-    if (!selectedTower) return false;
-    if (state !== STATE_BUILD && state !== STATE_PLAYING) return false;
+  canvas.addEventListener('pointermove', (e) => {
+    readPointer(e);
+    kbCursor.active = false;
+  });
 
-    const panelX = 4;
-    const panelH = selectedTower.hp < selectedTower.maxHp ? 72 : 54;
-    const panelY = PALETTE_Y - panelH - 4;
-    const panelW = 160;
+  canvas.addEventListener('pointerleave', () => {
+    pointer.inside = false;
+  });
 
-    if (mx < panelX || mx > panelX + panelW || my < panelY || my > panelY + panelH)
-      return false;
+  let touchPending = null;   // first tap of a touch placement: { col, row }
 
-    // Upgrade button area
-    if (selectedTower.tier < MAX_TIER && mx >= panelX + 4 && mx <= panelX + 74 && my >= panelY + 30 && my <= panelY + 46) {
-      upgradeTower(selectedTower);
-      return true;
+  canvas.addEventListener('pointerdown', (e) => {
+    readPointer(e);
+    kbCursor.active = false;
+    if (e.button === 2) return;
+    const r = regionAt(pointer.ux, pointer.uy);
+    if (r && !hudPassThrough(pointer.ux, pointer.uy)) {
+      if (r.disabled) {
+        if (r.onDisabled) r.onDisabled();
+        return;
+      }
+      if (r.onClick) {
+        pressFx[r.id] = performance.now();
+        if (r.sound !== false && !/^build/.test(r.id))
+          audio.play('click');
+        r.onClick();
+      }
+      return;
     }
-
-    // Sell button area
-    if (mx >= panelX + 80 && mx <= panelX + 150 && my >= panelY + 30 && my <= panelY + 46) {
-      sellTower(selectedTower);
-      return true;
+    if (overlay) return;
+    if (state === STATE_PAUSED) return;
+    if (state !== STATE_BUILD && state !== STATE_PLAYING) return;
+    if (pointer.wx < 0 || pointer.wy < 0 || pointer.wx >= WORLD_W || pointer.wy >= WORLD_H) {
+      cancelBuild();
+      return;
     }
-
-    // Repair button area
-    if (selectedTower.hp < selectedTower.maxHp && mx >= panelX + 4 && mx <= panelX + 150 && my >= panelY + 50 && my <= panelY + 66) {
-      repairTower(selectedTower);
-      return true;
+    const col = Math.floor(pointer.wx / CELL), row = Math.floor(pointer.wy / CELL);
+    // Touch: the first tap shows the ghost, a second tap on the same tile builds
+    if (pointer.type === 'touch' && selectedTowerType >= 0 && !towerAt(col, row)) {
+      if (!touchPending || touchPending.col !== col || touchPending.row !== row) {
+        touchPending = { col, row };
+        kbCursor.col = col;
+        kbCursor.row = row;
+        kbCursor.active = true;
+        return;
+      }
+      touchPending = null;
     }
+    mapAction(col, row);
+  });
 
-    return true; // Consumed by panel
+  canvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    readPointer(e);
+    if (overlay || (state !== STATE_BUILD && state !== STATE_PLAYING)) return;
+    if (cancelBuild()) return;
+    const col = Math.floor(pointer.wx / CELL), row = Math.floor(pointer.wy / CELL);
+    const t = towerAt(col, row);
+    if (t) {
+      selectedTower = t;
+      audio.play('select');
+      return;
+    }
+    // Right-click on a spike trap sells it
+    const spike = floorEffects.find(fe => fe.col === col && fe.row === row && fe.type === 'spike');
+    if (spike) {
+      const refund = Math.floor(spike.cost * 0.5);
+      gold += refund;
+      floatingText.add(spike.x, spike.y - 16, `+${refund}`, { color: '#ffd75a', font: 'bold 12px sans-serif' });
+      particles.burst(spike.x, spike.y, 6, { color: '#aaa', speed: 2, life: 0.3 });
+      audio.play('coin');
+      floorEffects.splice(floorEffects.indexOf(spike), 1);
+    }
+  });
+
+  function moveCursor(dc, dr) {
+    if (!kbCursor.active) {
+      const c = selectedTower ? { col: selectedTower.col, row: selectedTower.row } : { col: kbCursor.col, row: kbCursor.row };
+      kbCursor.col = c.col;
+      kbCursor.row = c.row;
+      kbCursor.active = true;
+    } else {
+      kbCursor.col = clamp(kbCursor.col + dc, 0, COLS - 1);
+      kbCursor.row = clamp(kbCursor.row + dr, 0, ROWS - 1);
+    }
+    audio.play('click', { pitch: 1.6, volume: 0.4 });
   }
 
-  /* ── Context menu click detection ── */
-  function handleContextMenuClick(mx, my) {
-    if (!contextMenu) return false;
-    const { mx: cmx, my: cmy, menuW, menuH, tower, upgradeY, sellY, repairY } = contextMenu;
-
-    if (mx < cmx || mx > cmx + menuW || my < cmy || my > cmy + menuH) {
-      contextMenu = null;
-      return false;
-    }
-
-    // Upgrade
-    if (upgradeY !== undefined && my >= upgradeY && my < upgradeY + 18) {
-      upgradeTower(tower);
-      contextMenu = null;
-      return true;
-    }
-
-    // Sell
-    if (sellY !== undefined && my >= sellY && my < sellY + 18) {
-      sellTower(tower);
-      contextMenu = null;
-      return true;
-    }
-
-    // Repair
-    if (repairY !== undefined && my >= repairY && my < repairY + 18) {
-      repairTower(tower);
-      contextMenu = null;
-      return true;
-    }
-
-    contextMenu = null;
-    return true;
-  }
-
-  /* ── Keyboard input ── */
   window.addEventListener('keydown', (e) => {
     // Leave keys to an open dialog
     if (document.querySelector('.dialog-overlay.visible'))
       return;
+    const code = e.code;
 
-    if (e.code === 'F2') {
+    if (code === 'F2') {
       e.preventDefault();
       requestNewGame();
       return;
     }
 
-    if (state === STATE_READY && savedGameInfo) {
-      if (e.code === 'KeyC' || e.code === 'Enter' || e.code === 'Space') {
-        e.preventDefault();
-        continueSavedGame();
-        return;
-      }
-      if (e.code === 'KeyN') {
-        e.preventDefault();
-        requestNewGame();
-        return;
-      }
-    }
-
-    if (e.code === 'Escape') {
+    if (overlay === 'help') {
+      if (code === 'Escape' || code === 'KeyH') closeHelp();
+      else if (code === 'ArrowRight' || code === 'Tab') { helpPage = (helpPage + 1) % HELP_PAGES.length; audio.play('click'); }
+      else if (code === 'ArrowLeft') { helpPage = (helpPage + HELP_PAGES.length - 1) % HELP_PAGES.length; audio.play('click'); }
       e.preventDefault();
-      if (contextMenu) {
-        contextMenu = null;
-        return;
-      }
-      togglePause();
       return;
     }
 
-    if (e.code === 'Space') {
+    if (code === 'KeyH') {
       e.preventDefault();
-      if (state === STATE_READY)
+      openHelp();
+      return;
+    }
+
+    if (state === STATE_READY) {
+      if (code === 'Enter' || code === 'Space' || code === 'KeyC') {
+        e.preventDefault();
+        if (savedGameInfo) continueSavedGame();
+        else requestNewGame();
+      } else if (code === 'KeyN') {
+        e.preventDefault();
+        requestNewGame();
+      } else if (code === 'ArrowLeft' || code === 'ArrowRight') {
+        e.preventDefault();
+        cycleTitleMap(code === 'ArrowLeft' ? -1 : 1);
+      }
+      return;
+    }
+
+    if (state === STATE_GAME_OVER || state === STATE_VICTORY) {
+      if (code === 'Enter' || code === 'Space') {
+        e.preventDefault();
+        if (state === STATE_VICTORY)
+          currentMap = (currentMap + 1) % MAPS.length;
         resetAndStart();
-      else if (state === STATE_BUILD)
+      } else if (code === 'KeyR') {
+        resetAndStart();
+      } else if (code === 'KeyM' || code === 'Escape') {
+        quitToTitle();
+      }
+      return;
+    }
+
+    if (state === STATE_PAUSED) {
+      if (code === 'Escape' || code === 'Space' || code === 'Enter') {
+        e.preventDefault();
+        togglePause();
+      } else if (code === 'KeyM') {
+        quitToTitle();
+      }
+      return;
+    }
+
+    if (code === 'Escape') {
+      e.preventDefault();
+      if (!cancelBuild())
+        togglePause();
+      return;
+    }
+
+    if (code === 'Space') {
+      e.preventDefault();
+      if (state === STATE_BUILD)
         startNextWave();
       else if (state === STATE_PLAYING)
         toggleFastForward();
       return;
     }
 
-    // Tower type selection (1-9, 0 for 10th)
-    if (e.code >= 'Digit1' && e.code <= 'Digit9') {
-      const idx = parseInt(e.code.charAt(5)) - 1;
+    if (code === 'KeyF') {
+      toggleFastForward();
+      return;
+    }
+
+    const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    if (arrows[code]) {
+      e.preventDefault();
+      moveCursor(arrows[code][0], arrows[code][1]);
+      return;
+    }
+
+    if (code === 'Enter' || code === 'NumpadEnter') {
+      e.preventDefault();
+      if (kbCursor.active)
+        mapAction(kbCursor.col, kbCursor.row);
+      return;
+    }
+
+    // Tower type selection (1-9, 0 for the 10th)
+    if (/^Digit[0-9]$/.test(code) || /^Numpad[0-9]$/.test(code)) {
+      const n = parseInt(code.slice(-1), 10);
+      const idx = n === 0 ? 9 : n - 1;
       if (idx < TOWER_TYPES.length)
-        selectedTowerType = idx;
-      return;
-    }
-    if (e.code === 'Digit0' && TOWER_TYPES.length > 9) {
-      selectedTowerType = 9;
+        selectBuildType(idx);
       return;
     }
 
-    // Upgrade selected tower
-    if (e.code === 'KeyU' && selectedTower) {
-      upgradeTower(selectedTower);
+    if (code === 'KeyU' && selectedTower) {
+      if (!upgradeTower(selectedTower))
+        audio.play('error');
+      else
+        pressFx['insp-up'] = performance.now();
       return;
     }
 
-    // Sell selected tower
-    if (e.code === 'KeyS' && selectedTower) {
+    if (code === 'KeyS' && selectedTower) {
       sellTower(selectedTower);
       return;
     }
 
-    // Repair selected tower
-    if (e.code === 'KeyR' && selectedTower) {
-      repairTower(selectedTower);
+    if (code === 'KeyR' && selectedTower) {
+      if (!repairTower(selectedTower))
+        audio.play('error');
       return;
     }
 
-    // Toggle auto-wave
-    if (e.code === 'KeyA') {
-      autoWaveMode = !autoWaveMode;
-      if (autoWaveMode && state === STATE_BUILD && waveComplete)
-        autoWaveTimer = AUTO_WAVE_DELAY;
-    }
-  });
-
-  /* ── Pointer move ── */
-  canvas.addEventListener('pointermove', (e) => {
-    const { x: mx, y: my } = getCanvasCoords(e);
-    hoverCell = { col: Math.floor(mx / CELL), row: Math.floor(my / CELL) };
-    hoverPoint = { x: mx, y: my };
-  });
-
-  /* ── Left click ── */
-  canvas.addEventListener('pointerdown', (e) => {
-    if (e.button === 2) return; // Right-click handled separately
-
-    const { x: mx, y: my } = getCanvasCoords(e);
-
-    // Close context menu on any left click
-    if (contextMenu) {
-      if (handleContextMenuClick(mx, my)) return;
-      contextMenu = null;
-    }
-
-    if (state === STATE_READY) {
-      if (!savedGameInfo)
-        resetAndStart();
-      else if (hitStartButton(START_BTN_CONTINUE, mx, my))
-        continueSavedGame();
-      else if (hitStartButton(START_BTN_NEW, mx, my))
-        requestNewGame();
-      return;
-    }
-
-    if (state === STATE_PAUSED) {
-      togglePause();
-      return;
-    }
-
-    if (state === STATE_GAME_OVER || state === STATE_VICTORY) {
-      if (state === STATE_VICTORY)
-        currentMap = (currentMap + 1) % MAPS.length;
-      resetAndStart();
-      return;
-    }
-
-    // Check info panel clicks
-    if (handleInfoPanelClick(mx, my)) return;
-
-    // Check palette clicks
-    if (my >= PALETTE_Y) {
-      handlePaletteClick(mx, my);
-      return;
-    }
-
-    const col = Math.floor(mx / CELL);
-    const row = Math.floor(my / CELL);
-
-    // Check if clicking on existing tower
-    for (const t of towers) {
-      if (t.col === col && t.row === row) {
-        selectedTower = t;
-        return;
-      }
-    }
-
-    // Deselect tower when clicking empty space
-    selectedTower = null;
-
-    // Try to place tower (allowed during build and playing phases)
-    if (state === STATE_BUILD || state === STATE_PLAYING)
-      placeTower(col, row, selectedTowerType);
-  });
-
-  /* ── Right click (context menu on tower or spike) ── */
-  canvas.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    const { x: mx, y: my } = getCanvasCoords(e);
-    const col = Math.floor(mx / CELL);
-    const row = Math.floor(my / CELL);
-
-    // Check if right-clicking on a tower
-    for (const t of towers) {
-      if (t.col === col && t.row === row) {
-        selectedTower = t;
-        contextMenu = { x: mx, y: my, tower: t };
-        return;
-      }
-    }
-
-    // Check if right-clicking on a spike floor effect
-    const spike = floorEffects.find(fe => fe.col === col && fe.row === row && fe.type === 'spike');
-    if (spike) {
-      const refund = Math.floor(spike.cost * 0.5);
-      gold += refund;
-      floatingText.add(spike.x, spike.y - 16, `+${refund}g`, { color: '#8f8', font: 'bold 11px sans-serif' });
-      particles.burst(spike.x, spike.y, 6, { color: '#aaa', speed: 2, life: 0.3 });
-      audio.play('coin');
-      const idx = floorEffects.indexOf(spike);
-      if (idx !== -1) floorEffects.splice(idx, 1);
-      return;
-    }
-
-    // Right-click on empty space closes context menu
-    contextMenu = null;
+    if (code === 'KeyA')
+      toggleAutoWave();
   });
 
   /* ══════════════════════════════════════════════════════════════════
@@ -3220,9 +4496,7 @@
         togglePause();
         break;
       case 'auto-wave':
-        autoWaveMode = !autoWaveMode;
-        if (autoWaveMode && state === STATE_BUILD && waveComplete)
-          autoWaveTimer = AUTO_WAVE_DELAY;
+        toggleAutoWave();
         break;
       case 'high-scores':
         renderHighScores();
@@ -3257,11 +4531,13 @@
 
   function updateWindowTitle() {
     const mapName = MAPS[currentMap]?.name || '';
-    const title = state === STATE_VICTORY
-      ? `Tower Defense -- ${mapName} Victory!`
-      : state === STATE_GAME_OVER
-        ? `Tower Defense -- ${mapName} Game Over`
-        : `Tower Defense -- ${mapName} Wave ${currentWave}/${totalWaves}`;
+    const title = state === STATE_READY
+      ? 'Tower Defense'
+      : state === STATE_VICTORY
+        ? `Tower Defense -- ${mapName} Victory!`
+        : state === STATE_GAME_OVER
+          ? `Tower Defense -- ${mapName} Game Over`
+          : `Tower Defense -- ${mapName} Wave ${currentWave}/${totalWaves}`;
     document.title = title;
     if (User32?.SetWindowText)
       User32.SetWindowText(title);
@@ -3291,6 +4567,9 @@
   setupCanvas();
   loadHighScores();
   refreshSavedGameInfo();
+  if (savedGameInfo)
+    currentMap = savedGameInfo.map;
+  loadMapPreview();
   updateWindowTitle();
   audio.attachMuteButton();
 
