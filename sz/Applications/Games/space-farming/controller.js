@@ -51,18 +51,20 @@
   // weather affinity: 'any' = unaffected, 'solar' = boosted by solar flare,
   //                   'cold-vulnerable' = damaged by meteor shower cold snap
   const CROPS = [
-    { name: 'Space Wheat',   sprite: 'wheat', color: '#da2',  growTime: 8,  stages: 4, sellPrice: 10, seedCost: 5,  weatherAffinity: null },
-    { name: 'Star Fruit',    sprite: 'starfruit', color: '#f80',  growTime: 14, stages: 4, sellPrice: 25, seedCost: 12, weatherAffinity: null },
-    { name: 'Nebula Berry',  sprite: 'berry', color: '#a3f',  growTime: 10, stages: 4, sellPrice: 15, seedCost: 8,  weatherAffinity: null },
-    { name: 'Lunar Lettuce', sprite: 'lettuce', color: '#5d5',  growTime: 6,  stages: 3, sellPrice: 8,  seedCost: 3,  weatherAffinity: null },
-    { name: 'Cosmic Corn',   sprite: 'corn', color: '#ec3',  growTime: 12, stages: 4, sellPrice: 20, seedCost: 10, weatherAffinity: null },
-    { name: 'Crystal Melon', sprite: 'melon', color: '#0da',  growTime: 18, stages: 5, sellPrice: 40, seedCost: 20, weatherAffinity: null },
-    { name: 'Solar Tomato',  sprite: 'tomato', color: '#e33',  growTime: 9,  stages: 4, sellPrice: 12, seedCost: 6,  weatherAffinity: null },
-    { name: 'Void Mushroom', sprite: 'mushroom', color: '#728',  growTime: 11, stages: 4, sellPrice: 18, seedCost: 9,  weatherAffinity: 'any' },
-    { name: 'Plasma Pepper', sprite: 'pepper', color: '#f52',  growTime: 6,  stages: 3, sellPrice: 30, seedCost: 15, weatherAffinity: 'cold-vulnerable' },
-    { name: 'Astral Flower', sprite: 'flower', color: '#8af',  growTime: 20, stages: 5, sellPrice: 55, seedCost: 28, weatherAffinity: 'solar' },
-    { name: 'Lunar Moss',   sprite: 'moss', color: '#679',  growTime: 35, stages: 4, sellPrice: 28, seedCost: 15, weatherAffinity: null, nightOnly: true },
-    { name: 'Solar Vine',   sprite: 'solarvine', color: '#fc0',  growTime: 30, stages: 4, sellPrice: 35, seedCost: 20, weatherAffinity: 'solar', dayOnly: true }
+    { name: 'Space Wheat',   sprite: 'wheat', color: '#da2',  growTime: 8,  stages: 4, sellPrice: 10, seedCost: 5,  weatherAffinity: null, favorite: 1 },
+    { name: 'Star Fruit',    sprite: 'starfruit', color: '#f80',  growTime: 14, stages: 4, sellPrice: 25, seedCost: 12, weatherAffinity: null, favorite: 1 },
+    { name: 'Nebula Berry',  sprite: 'berry', color: '#a3f',  growTime: 10, stages: 4, sellPrice: 15, seedCost: 8,  weatherAffinity: null, favorite: 0 },
+    { name: 'Lunar Lettuce', sprite: 'lettuce', color: '#5d5',  growTime: 6,  stages: 3, sellPrice: 8,  seedCost: 3,  weatherAffinity: null, favorite: 0 },
+    { name: 'Cosmic Corn',   sprite: 'corn', color: '#ec3',  growTime: 12, stages: 4, sellPrice: 20, seedCost: 10, weatherAffinity: null, favorite: 2 },
+    { name: 'Crystal Melon', sprite: 'melon', color: '#0da',  growTime: 18, stages: 5, sellPrice: 40, seedCost: 20, weatherAffinity: null, favorite: 1 },
+    { name: 'Solar Tomato',  sprite: 'tomato', color: '#e33',  growTime: 9,  stages: 4, sellPrice: 12, seedCost: 6,  weatherAffinity: null, favorite: 0 },
+    { name: 'Void Mushroom', sprite: 'mushroom', color: '#728',  growTime: 11, stages: 4, sellPrice: 18, seedCost: 9,  weatherAffinity: 'any', favorite: 2 },
+    { name: 'Plasma Pepper', sprite: 'pepper', color: '#f52',  growTime: 6,  stages: 3, sellPrice: 30, seedCost: 15, weatherAffinity: 'cold-vulnerable', favorite: 1 },
+    { name: 'Astral Flower', sprite: 'flower', color: '#8af',  growTime: 20, stages: 5, sellPrice: 55, seedCost: 28, weatherAffinity: 'solar', favorite: 0 },
+    { name: 'Lunar Moss',   sprite: 'moss', color: '#679',  growTime: 35, stages: 4, sellPrice: 28, seedCost: 15, weatherAffinity: null, nightOnly: true, favorite: 3 },
+    { name: 'Solar Vine',   sprite: 'solarvine', color: '#fc0',  growTime: 30, stages: 4, sellPrice: 35, seedCost: 20, weatherAffinity: 'solar', dayOnly: true, favorite: 1 },
+    { name: 'Comet Pumpkin', sprite: 'pumpkin', color: '#f82', growTime: 22, stages: 5, sellPrice: 60, seedCost: 30, weatherAffinity: null, favorite: 2 },
+    { name: 'Frost Kale',    sprite: 'kale', color: '#8df', growTime: 12, stages: 4, sellPrice: 22, seedCost: 10, weatherAffinity: null, favorite: 3, hardy: true }
   ];
 
   /* ── Livestock Definitions ── */
@@ -70,7 +72,9 @@
     { name: 'Space Cow',     sprite: 'cow', color: '#ddd', feedInterval: 12, produce: 'Milk',      produceSprite: 'milk', produceValue: 18, cost: 50 },
     { name: 'Star Hen',      sprite: 'hen', color: '#fb4', feedInterval: 8,  produce: 'Egg',       produceSprite: 'egg', produceValue: 10, cost: 30 },
     { name: 'Nebula Goat',   sprite: 'goat', color: '#c96', feedInterval: 10, produce: 'Wool',      produceSprite: 'wool', produceValue: 14, cost: 40 },
-    { name: 'Crystal Chick', sprite: 'chick', color: '#ff8', feedInterval: 6,  produce: 'Feather',   produceSprite: 'feather', produceValue: 6,  cost: 15 }
+    { name: 'Crystal Chick', sprite: 'chick', color: '#ff8', feedInterval: 6,  produce: 'Feather',   produceSprite: 'feather', produceValue: 6,  cost: 15 },
+    { name: 'Moon Rabbit',   sprite: 'rabbit', color: '#eef', feedInterval: 14, produce: 'Moon Fur',  produceSprite: 'fur', produceValue: 24, cost: 70 },
+    { name: 'Star Bees',     sprite: 'bee', color: '#fd4', feedInterval: 16, produce: 'Star Honey', produceSprite: 'honey', produceValue: 32, cost: 90 }
   ];
 
   /* ── Weather ── */
@@ -105,6 +109,8 @@
     { name: 'Auto-Planter L1', sprite: 'planter1', cost: 200, desc: 'Plants selected crop on adj. empty land (15s)', range: 1 },
     { name: 'Auto-Planter L2', sprite: 'planter2', cost: 500, desc: 'Plants highest-price crop on adj. land (15s)',  range: 1 },
     { name: 'Auto-Collector', sprite: 'collector', cost: 300, desc: 'Auto-collects adjacent livestock produce', range: 1 },
+    { name: 'Grow Lamp',    sprite: 'lamp', cost: 140, desc: 'Lights nearby crops at night: +15% growth, day crops keep growing', range: 1 },
+    { name: 'Pest Zapper',  sprite: 'zapper', cost: 180, desc: 'Zaps space mice that come close (+5 cr each)', range: 2 },
   ];
 
   const BUILDING_MAX_LEVEL = 6; // levels 1-6 (5 upgrades from L1)
@@ -872,6 +878,71 @@
     },
     eye: (p, P) => {
       p.ell(7.5, 8, 7, 4, P.white); p.disc(7.5, 8, 3, P.blue); p.disc(7.5, 8, 1.4, P.black, true); p.px(6, 7, P.white, true);
+    },
+    /* ── Tree-unlocked crops, animals and buildings ── */
+    pumpkin: (p, P) => {
+      p.ell(7.5, 10, 7, 5, P.orange);
+      p.ell(4, 10, 2.5, 4.5, P.gold); p.ell(11, 10, 2.5, 4.5, P.gold);
+      p.line(7.5, 6, 7.5, 15, P.brown, true);
+      p.rect(7, 2, 2, 4, P.leaf); p.ell(10.5, 3.5, 2, 1, P.green);
+      p.px(4, 8, P.cream, true); p.px(5, 7, P.yellow, true);
+      p.px(13, 6, P.cyan, true); p.px(2, 5, P.cyan, true);
+    },
+    kale: (p, P) => {
+      p.ell(7.5, 10, 6.5, 5, P.teal);
+      p.ell(4.5, 8, 3, 3.5, P.cyan); p.ell(10.5, 7.5, 3, 4, P.cyan); p.ell(7.5, 6, 2.5, 4, P.sky);
+      p.line(7.5, 4, 7.5, 14, P.white, true); p.line(4, 7, 6, 12, P.white, true); p.line(11, 6, 9, 12, P.white, true);
+      p.px(3, 5, P.white, true); p.px(12, 4, P.white, true);
+    },
+    rabbit: (p, P) => {
+      p.ell(9, 10.5, 5, 3.5, P.white);
+      p.disc(4.5, 8, 2.5, P.white);
+      p.rect(3, 1, 2, 6, P.white); p.rect(5, 2, 2, 5, P.white);
+      p.px(3, 3, P.pink, true); p.px(3, 4, P.pink, true); p.px(5, 4, P.pink, true);
+      p.px(3, 8, P.black, true); p.px(2, 9, P.pink, true);
+      p.disc(14, 9.5, 1.2, P.sky);
+      p.rect(6, 13, 2, 2, P.white); p.rect(11, 13, 2, 2, P.white);
+    },
+    bee: (p, P) => {
+      p.poly([[3, 15], [13, 15], [14, 9], [8, 4], [2, 9]], P.gold);
+      for (const y of [9, 11, 13]) p.line(3, y, 13, y, P.brown, true);
+      p.rect(6, 12, 4, 3, P.dbrown, true);
+      p.ell(12, 3, 2.5, 2, P.yellow); p.line(10, 3, 14, 3, P.black, true);
+      p.ell(12, 1, 2, 1, P.sky);
+      p.ell(4, 4, 2, 1.5, P.yellow); p.px(4, 3, P.black, true);
+    },
+    fur: (p, P) => {
+      p.ell(7.5, 9, 6.5, 5, P.steel);
+      p.ell(5, 7, 3, 2.5, P.white); p.ell(10, 8, 3, 2.5, P.white); p.ell(7.5, 11, 3, 2, P.white);
+      p.px(4, 6, P.sky, true); p.px(11, 7, P.sky, true);
+    },
+    honey: (p, P) => {
+      p.rect(4, 5, 8, 10, P.gold);
+      p.rect(3, 3, 10, 2, P.tan); p.rect(5, 1, 6, 2, P.cream);
+      p.rect(5, 7, 6, 3, P.cream, true);
+      p.px(6, 8, P.orange, true); p.px(9, 8, P.orange, true);
+      p.line(5, 12, 5, 14, P.yellow, true);
+    },
+    lamp: (p, P) => {
+      p.rect(7, 5, 2, 9, P.dgrey);
+      p.rect(5, 14, 6, 2, P.grey);
+      p.poly([[4, 5], [12, 5], [10, 1], [6, 1]], P.steel);
+      p.rect(5, 5, 6, 2, P.yellow, true);
+      p.px(7, 6, P.white, true);
+    },
+    zapper: (p, P) => {
+      p.rect(6, 6, 4, 8, P.grey);
+      for (const y of [7, 9, 11]) p.rect(5, y, 6, 1, P.orange, true);
+      p.rect(4, 14, 8, 2, P.dgrey);
+      p.disc(8, 3.5, 2.5, P.cyan);
+      p.px(7, 2, P.white, true);
+      p.px(3, 2, P.sky, true); p.px(13, 4, P.sky, true); p.px(2, 5, P.sky, true);
+    },
+    order: (p, P) => {
+      p.rect(2, 3, 12, 11, P.cream);
+      p.rect(2, 3, 12, 3, P.green);
+      p.line(4, 8, 11, 8, P.tan, true); p.line(4, 10, 9, 10, P.tan, true);
+      p.disc(11.5, 11.5, 2.5, P.gold); p.px(11, 11, P.yellow, true);
     },
     heart: (p, P) => {
       p.disc(5, 6, 3.5, P.red); p.disc(10.5, 6, 3.5, P.red);
@@ -1645,8 +1716,9 @@
     const land = Math.max(0, Math.floor(Number(up.plotExpansion) || 0));
     if (land)
       levels.eng_land = land;
+    const NEW_CONTENT = ['agri_kale', 'agri_pumpkin', 'husb_rabbit', 'husb_bees', 'eng_lamp', 'sci_zapper'];
     for (const n of TECH)
-      if (n.unlock)
+      if (n.unlock && !NEW_CONTENT.includes(n.id))
         levels[n.id] = 1;
     d.techLevels = levels;
     d.version = SAVE_VERSION;
@@ -1667,6 +1739,7 @@
       livestockPens: livestockPens.map(pen => ({ typeIndex: pen.typeIndex, feedTimer: pen.feedTimer, produceReady: !!pen.produceReady, gridRow: pen.gridRow, gridCol: pen.gridCol })),
       wildAnimals: wildAnimals.map(a => ({ x: a.x, y: a.y, targetCol: a.targetCol, targetRow: a.targetRow, moveTimer: a.moveTimer, hp: a.hp })),
       priceMultipliers, priceChangeTimer, inventory, techLevels, rainMakerDay, techBoughtTotal,
+      stats, goalIndex, orders, orderTimer, orderSerial,
       weatherType, weatherTimer, weatherInterval,
       currentSeason, dayPhase, energy, nextAnimalSpawn,
       buildingHarvestTimer, autoHarvestTimer, autoCollectorTimer, autoPlanterTimer,
@@ -1804,6 +1877,16 @@
       if (TECH_BY_ID[id] && isFiniteNumber(d.techLevels[id]) && d.techLevels[id] > 0)
         techLevels[id] = Math.floor(d.techLevels[id]);
     rainMakerDay = num(d.rainMakerDay, 0);
+    stats = newStats();
+    if (d.stats && typeof d.stats === 'object')
+      for (const k in stats)
+        stats[k] = num(d.stats[k], 0);
+    goalIndex = Math.max(0, Math.min(GOALS.length, Math.floor(num(d.goalIndex, 0))));
+    orders = Array.isArray(d.orders) ? d.orders.filter(o => o && typeof o.item === 'string' && isFiniteNumber(o.qty) && isFiniteNumber(o.reward) && isFiniteNumber(o.until) && itemSprite(o.item) !== 'crate')
+      .map(o => ({ id: Math.floor(num(o.id, 0)), item: o.item, qty: o.qty, reward: o.reward, until: o.until })) : [];
+    orderTimer = num(d.orderTimer, 25);
+    orderSerial = Math.floor(num(d.orderSerial, orders.length));
+    ++penVersion;
     techBoughtTotal = num(d.techBoughtTotal, 0);
     priceNext = null;
     nextWeather = null;
@@ -2426,8 +2509,14 @@
     dayCount = 1;
     inventory = {};
 
-    // Reset upgrades
+    // Reset upgrades and goals
     techLevels = {};
+    stats = newStats();
+    goalIndex = 0;
+    orders = [];
+    orderTimer = 25;
+    orderSerial = 0;
+    ++penVersion;
     rainMakerDay = 0;
     techBoughtTotal = 0;
     priceNext = null;
@@ -2580,6 +2669,7 @@
     if (credits < seedCost) return;
 
     credits -= seedCost;
+    ++stats.planted;
     farmGrid[row][col] = {
       cropIndex: selectedCropIndex,
       growthProgress: 0,
@@ -2655,6 +2745,7 @@
     if (!inventory[crop.name])
       inventory[crop.name] = 0;
     inventory[crop.name] += harvestCount;
+    stats.harvested += harvestCount;
 
     flyProduce(crop.sprite, tx, ty, harvestCount, auto);
     if (harvestCount > 1)
@@ -2763,6 +2854,7 @@
 
         // Per-crop weather affinity modifier
         let cropWeatherMul = weatherGrowthBoost;
+        const fi = r * gridCols + c;
         if (crop.weatherAffinity === 'any')
           cropWeatherMul = Math.max(1, weatherGrowthBoost); // never penalized
         else if (crop.weatherAffinity === 'solar' && weatherType === WEATHER_SOLAR_FLARE)
@@ -2785,24 +2877,30 @@
         if (c < gridCols - 1 && tileTypes[r]?.[c + 1] === TILE_WATER) waterBonus += 0.15;
 
         // Sprinkler bonus, Wind Turbine bonus, and Greenhouse growth bonus (all scale with level and range)
-        const fi = r * gridCols + c;
         const sprinklerBonus = field.sprinkler[fi];
         const windTurbineBonus = field.wind[fi];
         const greenhouseBonus = field.green[fi];
 
-        // Season growth modifier (Feature 5)
-        const seasonMul = getSeasonGrowthMultiplier();
+        // Season growth modifier (Feature 5); every crop loves one season
+        let seasonMul = getSeasonGrowthMultiplier();
+        if (crop.hardy && currentSeason === 3)
+          seasonMul = 1;
+        if (crop.favorite === currentSeason)
+          seasonMul *= 1.3;
+        if (crop.hardy && weatherType === WEATHER_SNOW)
+          cropWeatherMul = 1;
 
-        // Day/night crop restrictions (Feature 6)
+        // Day/night crop restrictions (Feature 6); grow lamps keep day crops going
         const isNight = dayPhase >= 0.5;
+        const lamp = isNight ? field.lamp[fi] : 0;
         if (crop.nightOnly && !isNight) continue; // nightOnly crops skip during day
-        if (crop.dayOnly && isNight) continue;     // dayOnly crops skip during night
+        if (crop.dayOnly && isNight && !lamp) continue;     // dayOnly crops skip during night
 
         // Winter: Astral Flower and some crops won't grow
         if (currentSeason === 3 && (crop.name === 'Astral Flower' || crop.dayOnly)) continue;
 
         // Advance growth progress (soil quality, tile type, water/sprinkler/wind/greenhouse bonuses are multiplicative/additive)
-        cell.growthProgress += (dt / crop.growTime) * cropWeatherMul * upgradeGrowthMul * tileSoil * tileTypeMul * seasonMul * (1 + waterBonus + sprinklerBonus + windTurbineBonus + greenhouseBonus);
+        cell.growthProgress += (dt / crop.growTime) * cropWeatherMul * upgradeGrowthMul * tileSoil * tileTypeMul * seasonMul * (1 + waterBonus + sprinklerBonus + windTurbineBonus + greenhouseBonus + lamp + field.bees[fi]);
 
         // Check stage advancement
         const newStage = Math.min(maxStage, Math.floor(cell.growthProgress * crop.stages));
@@ -3009,6 +3107,8 @@
     }
 
     credits -= def.cost;
+    ++stats.animals;
+    ++penVersion;
     livestockPens.push({
       typeIndex,
       feedTimer: getFeedInterval(def),
@@ -3052,6 +3152,7 @@
     }
 
     if (totalEarned > 0) {
+      stats.earned += totalEarned;
       toast(`Sold produce for ${totalEarned} credits`, UI.gold, 'coin');
       const L = hudLayout();
       const from = L.storage.h ? { x: L.storage.x + L.storage.w / 2, y: L.storage.y + L.storage.h - 30 } : { x: UW / 2, y: L.dock.y };
@@ -3088,6 +3189,7 @@
     }
 
     credits -= bcost;
+    ++stats.built;
     buildings[row][col] = { typeIndex: selectedBuildingIndex, level: 1 };
     invalidateField();
 
@@ -3308,6 +3410,7 @@
       if (Math.random() < 0.5 * (1 - resist)) {
         popText(wx, wy - 18, `${LIVESTOCK[pen.typeIndex].name} ran off!`, { color: UI.bad, font: 'bold 12px' });
         livestockPens.splice(i, 1);
+        ++penVersion;
       }
     } else if (roll < 0.7) {
       const r = Math.floor(Math.random() * gridRows), c = Math.floor(Math.random() * gridCols);
@@ -3614,6 +3717,8 @@
     updateAutoPlanter(dt);
     updateAutoCollector(dt);
     updateShuffleCache(dt);
+    updateGoals(dt);
+    updateOrders(dt);
   }
 
   /* ── Auto-Collector Buildings ── */
@@ -3866,6 +3971,20 @@
       if (animal.moveTimer > 0) continue;
       animal.moveTimer = 0.5; // move every 0.5s
 
+      // Pest zappers fry mice that come into range
+      const zapper = findZapperNear(animal);
+      if (zapper) {
+        const from = tileCenter(zapper.c, zapper.r);
+        const to = tileCenter(animal.rx !== undefined ? animal.rx : animal.x, animal.ry !== undefined ? animal.ry : animal.y);
+        zapArcs.push({ x0: from.x, y0: from.y - 30, x1: to.x, y1: to.y, t: 0 });
+        particles.burst(to.x, to.y, 10, { color: '#9ff0ff', speed: 3, life: 0.35 });
+        popText(to.x, to.y - 12, 'Zapped! +5', { color: '#9ff0ff', font: 'bold 12px' });
+        credits += 5;
+        SZ.GameAudio.play('zap', { volume: 0.7 });
+        wildAnimals.splice(i, 1);
+        continue;
+      }
+
       // Check if in scarecrow range -- flee (radius scales with level)
       let scared = false;
       for (let r = 0; r < gridRows && !scared; ++r)
@@ -3962,6 +4081,20 @@
   }
 
   let miceWarned = false;
+  const zapArcs = [];
+
+  function findZapperNear(animal) {
+    const ar = Math.round(animal.y), ac = Math.round(animal.x);
+    for (let r = 0; r < gridRows; ++r)
+      for (let c = 0; c < gridCols; ++c) {
+        const b = buildings[r]?.[c];
+        if (!b || BUILDINGS[b.typeIndex].name !== 'Pest Zapper') continue;
+        const range = getBuildingRange(b);
+        if (Math.abs(ar - r) <= range && Math.abs(ac - c) <= range)
+          return { r, c };
+      }
+    return null;
+  }
 
   function spawnAnimal() {
     // Spawn at a random edge
@@ -4230,9 +4363,9 @@
       else if (s < 2) p.px(4, 12, P.leaf, true);
     },
     shroom: (p, P) => {
-      p.rect(4, 10, 2, 5, P.cream); p.rect(10, 9, 2, 6, P.cream);
-      p.ell(5, 9, 3.5, 2, P.violet); p.ell(11, 8, 3.5, 2.5, P.purple);
-      p.px(4, 8, P.cyan, true); p.px(11, 7, P.cyan, true); p.px(12, 8, P.cyan, true);
+      p.rect(4, 10, 2, 5, P.cream); p.rect(10, 8, 2, 7, P.cream); p.rect(13, 12, 1, 3, P.cream);
+      p.ell(5, 9, 3.5, 1.5, P.teal); p.ell(11, 7, 3.5, 2, P.cyan); p.ell(13.5, 11.5, 1.5, 1, P.teal);
+      p.px(4, 8, P.white, true); p.px(10, 6, P.white, true); p.px(12, 6, P.white, true);
     },
     reeds: (p, P, s) => {
       const c = [P.leaf, P.green, P.tan, P.steel][s];
@@ -4499,7 +4632,7 @@
         drawSprite(decorSprite(kind, currentSeason), 0, -size / 2, size);
         ctx.restore();
         if (kind === 'shroom' || kind === 'crystal')
-          lightAt(x, y, T * 0.9, kind === 'shroom' ? '#a070ff' : '#4fe0d0', 0.5);
+          lightAt(x, y, T * 0.9, kind === 'shroom' ? '#5ff0e0' : '#a8e8ff', 0.5);
       }
   }
 
@@ -4892,6 +5025,31 @@
         }
         break;
       }
+      case 'Grow Lamp': {
+        const n = nightAmount();
+        if (n > 0.05) {
+          const g = ctx.createRadialGradient(cx, top + size * 0.2, 2, cx, top + size * 0.2, T * 1.2);
+          g.addColorStop(0, `rgba(255,236,160,${0.35 * n})`);
+          g.addColorStop(1, 'rgba(255,236,160,0)');
+          ctx.fillStyle = g;
+          ctx.fillRect(cx - T * 1.2, top + size * 0.2 - T * 1.2, T * 2.4, T * 2.4);
+        }
+        lightAt(cx, top + size * 0.25, T * (1.6 + getBuildingRange(bld) * 0.8), '#ffe8a0', 1);
+        break;
+      }
+      case 'Pest Zapper': {
+        if (Math.sin(animT * 7 + ph) > 0.6) {
+          ctx.strokeStyle = '#bff8ff';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(cx, top + size * 0.15);
+          for (let k = 1; k <= 3; ++k)
+            ctx.lineTo(cx + (Math.random() - 0.5) * 16, top + size * 0.15 - k * 4);
+          ctx.stroke();
+        }
+        lightAt(cx, top + size * 0.2, T * 0.8, '#9ff0ff', 0.7);
+        break;
+      }
       case 'Auto-Collector': {
         ctx.save();
         ctx.beginPath();
@@ -5066,6 +5224,15 @@
       ctx.rotate(-Math.abs(Math.sin(animT * 5)) * 0.12);
     drawSprite(def.sprite, 0, -size / 2, size);
     ctx.restore();
+    if (def.sprite === 'bee')
+      for (let k = 0; k < 4; ++k) {
+        const ang = animT * (2 + k * 0.4) + k * 1.7;
+        const bx = cx + Math.cos(ang) * (12 + k * 3), by = cy - 6 + Math.sin(ang * 1.3) * (8 + k);
+        ctx.fillStyle = '#ffd23f';
+        ctx.fillRect(bx - 1.5, by - 1, 3, 2);
+        ctx.fillStyle = 'rgba(220,240,255,0.8)';
+        ctx.fillRect(bx - 1, by - 3, 2, 2);
+      }
 
     if (pen.produceReady) {
       const by = y - 2 + Math.sin(animT * 4 + pen.gridCol) * 2;
@@ -5089,6 +5256,29 @@
       ctx.fillRect(x + 8, y + T - 6, (T - 16) * prog, 3);
     }
     lightAt(x + 4, y + 4, T * 0.5, '#ffc870', 0.45);
+  }
+
+  function drawZapArcs() {
+    for (let i = zapArcs.length - 1; i >= 0; --i) {
+      const z = zapArcs[i];
+      z.t += frameDt;
+      if (z.t > 0.3) {
+        zapArcs.splice(i, 1);
+        continue;
+      }
+      ctx.save();
+      ctx.strokeStyle = `rgba(190,248,255,${1 - z.t / 0.3})`;
+      ctx.shadowColor = '#9ff0ff';
+      ctx.shadowBlur = 10;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(z.x0, z.y0);
+      for (let k = 1; k < 6; ++k)
+        ctx.lineTo(z.x0 + (z.x1 - z.x0) * k / 6 + (Math.random() - 0.5) * 14, z.y0 + (z.y1 - z.y0) * k / 6 + (Math.random() - 0.5) * 14);
+      ctx.lineTo(z.x1, z.y1);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   /* ── Wild space mice ── */
@@ -5297,15 +5487,17 @@
   /* ── Field cache: building effects per tile, rebuilt when anything changes ── */
 
   let buildVersion = 0;
+  let penVersion = 0;
   let fieldCache = null, fieldKey = '';
 
   function getField() {
-    const key = gridRows + 'x' + gridCols + ':' + buildVersion;
+    const key = gridRows + 'x' + gridCols + ':' + buildVersion + ':' + penVersion + ':' + livestockPens.length;
     if (fieldCache && fieldKey === key) return fieldCache;
     const n = gridRows * gridCols;
     const f = {
       sprinkler: new Float32Array(n), wind: new Float32Array(n), green: new Float32Array(n),
-      compost: new Float32Array(n), shelter: new Uint8Array(n), wet: new Uint8Array(n)
+      compost: new Float32Array(n), shelter: new Uint8Array(n), wet: new Uint8Array(n),
+      lamp: new Float32Array(n), bees: new Float32Array(n)
     };
     for (let r = 0; r < gridRows; ++r)
       for (let c = 0; c < gridCols; ++c) {
@@ -5328,12 +5520,20 @@
               f.shelter[i] = 1;
             } else if (name === 'Compost Bin')
               f.compost[i] += getCompostBinBonus(bld);
+            else if (name === 'Grow Lamp')
+              f.lamp[i] = Math.max(f.lamp[i], 0.15 + ((bld.level || 1) - 1) * 0.05);
           }
       }
     for (let r = 0; r < gridRows; ++r)
       for (let c = 0; c < gridCols; ++c)
         if (tileTypes[r][c] !== TILE_WATER && isAdjacentToWater(r, c))
           f.wet[r * gridCols + c] = 1;
+    // star bee hives pollinate crops within two tiles
+    for (const pen of livestockPens)
+      if (LIVESTOCK[pen.typeIndex].sprite === 'bee')
+        for (let r = Math.max(0, pen.gridRow - 2); r <= Math.min(gridRows - 1, pen.gridRow + 2); ++r)
+          for (let c = Math.max(0, pen.gridCol - 2); c <= Math.min(gridCols - 1, pen.gridCol + 2); ++c)
+            f.bees[r * gridCols + c] = 0.15;
     fieldCache = f;
     fieldKey = key;
     return f;
@@ -5377,6 +5577,7 @@
       }
     }
     drawMice();
+    drawZapArcs();
     drawMeteorsWorld();
     particles.draw(ctx);
     ctx.restore();
@@ -5783,6 +5984,14 @@
   node('com_floor', 'com', 'Price Floor', 'coin', ['com_insight'], { cr: 450, 'Star Fruit': 10 }, 'Prices never fall below 80% of normal.');
   node('com_broker', 'com', 'Bulk Broker', 'market', ['com_market2'], { cr: 380, 'Cosmic Corn': 12 }, 'Selling 20 or more items at once pays 10% extra.');
 
+  node('agri_kale', 'agri', 'Frost Kale', 'kale', ['agri_soil1'], { cr: 220, 'Lunar Lettuce': 12 }, 'Unlocks Frost Kale, which shrugs off winter and snow.', { unlock: { crops: [13] } });
+  node('agri_pumpkin', 'agri', 'Comet Pumpkins', 'pumpkin', ['agri_orchard'], { cr: 350, 'Cosmic Corn': 10 }, 'Unlocks the Comet Pumpkin, an autumn giant.', { unlock: { crops: [12] } });
+  node('husb_rabbit', 'husb', 'Moon Rabbits', 'rabbit', ['husb_goat'], { cr: 300, 'Feather': 12 }, 'Unlocks the Moon Rabbit.', { unlock: { animals: [4] } });
+  node('husb_bees', 'husb', 'Star Bees', 'bee', ['husb_cow'], { cr: 520, 'Milk': 8 }, 'Unlocks Star Bees: honey, and crops near the hive grow 15% faster.', { unlock: { animals: [5] } });
+  node('eng_lamp', 'eng', 'Grow Lamps', 'lamp', ['eng_grid1'], { cr: 300, 'Solar Tomato': 12 }, 'Unlocks the Grow Lamp.', { unlock: { buildings: [12] } });
+  node('sci_zapper', 'sci', 'Pest Zapper', 'zapper', ['sci_repel1'], { cr: 340, 'Void Mushroom': 8 }, 'Unlocks the Pest Zapper.', { unlock: { buildings: [13] } });
+  chain('com_orders', 'com', 'Trade Network', 'order', ['com_market1'], [150, 450], [{ 'Space Wheat': 10 }, { 'Star Fruit': 10 }], 'One more trader order can be open at a time.');
+
   const TECH_BY_ID = {};
   for (const n of TECH)
     TECH_BY_ID[n.id] = n;
@@ -5888,6 +6097,8 @@
     }
     techLevels[n.id] = techLevel(n.id) + 1;
     if (n.id === 'eng_land') {
+      ++stats.surveys;
+      ++penVersion;
       expandGrid();
       relocateLivestockToPerimeter();
     }
@@ -6810,6 +7021,357 @@
   }
 
   /* ══════════════════════════════════════════════════════════════════
+     GOALS AND ORDERS — milestones with rewards, delivery orders from
+     visiting traders, and the market where produce is sold
+     ══════════════════════════════════════════════════════════════════ */
+
+  let stats = newStats();
+  let goalIndex = 0;
+  let goalCooldown = 0;
+  let orders = [];                   // { id, item, qty, reward, until }
+  let orderTimer = 25;
+  let orderSerial = 0;
+
+  function newStats() {
+    return { planted: 0, harvested: 0, earned: 0, orders: 0, built: 0, animals: 0, surveys: 0 };
+  }
+
+  function buildingCount() {
+    let n = 0;
+    for (let r = 0; r < gridRows; ++r)
+      for (let c = 0; c < gridCols; ++c)
+        if (buildings[r]?.[c]) ++n;
+    return n;
+  }
+
+  function ownedTechCount() {
+    let n = 0;
+    for (const t of TECH)
+      if (!t.repeat && techOwned(t.id)) ++n;
+    return n;
+  }
+
+  function unlockedCropCount() {
+    let n = 0;
+    for (let i = 0; i < CROPS.length; ++i)
+      if (isCropUnlocked(i)) ++n;
+    return n;
+  }
+
+  const GOALS = [
+    { title: 'Green thumb', desc: 'Plant 5 crops', icon: 'seedbag', need: 5, value: () => stats.planted, reward: 25 },
+    { title: 'First harvest', desc: 'Harvest 10 crops', icon: 'basket', need: 10, value: () => stats.harvested, reward: 40 },
+    { title: 'Market day', desc: 'Earn 150 credits from sales', icon: 'coin', need: 150, value: () => stats.earned, reward: 50 },
+    { title: 'Researcher', desc: 'Buy an upgrade in the tech tree', icon: 'techtree', need: 1, value: () => ownedTechCount(), reward: 60 },
+    { title: 'Builder', desc: 'Build any building', icon: 'hammer', need: 1, value: () => Math.max(stats.built, buildingCount()), reward: 60 },
+    { title: 'Rancher', desc: 'Buy an animal', icon: 'paw', need: 1, value: () => Math.max(stats.animals, livestockPens.length), reward: 60 },
+    { title: 'Trader', desc: 'Deliver an order', icon: 'order', need: 1, value: () => stats.orders, reward: 100 },
+    { title: 'New species', desc: 'Unlock a new crop', icon: 'starfruit', need: START_CROPS.length + 1, value: () => unlockedCropCount(), reward: 120 },
+    { title: 'Sunny days', desc: 'Reach summer', icon: 'sun', need: SEASON_DURATION + 1, value: () => dayCount, reward: 120 },
+    { title: 'Harvest moon', desc: 'Harvest 100 crops', icon: 'moon', need: 100, value: () => stats.harvested, reward: 200 },
+    { title: 'Engineer', desc: 'Own 5 buildings', icon: 'turbine', need: 5, value: () => buildingCount(), reward: 200 },
+    { title: 'Homesteader', desc: 'Survey new land twice', icon: 'map', need: 2, value: () => stats.surveys, reward: 250 },
+    { title: 'Merchant', desc: 'Earn 2,000 credits from sales', icon: 'chart', need: 2000, value: () => stats.earned, reward: 300 },
+    { title: 'Scientist', desc: 'Own 15 tech upgrades', icon: 'flask', need: 15, value: () => ownedTechCount(), reward: 400 },
+    { title: 'Trade baron', desc: 'Deliver 5 orders', icon: 'scroll', need: 5, value: () => stats.orders, reward: 400 },
+    { title: 'One full year', desc: 'Reach day 17', icon: 'winter', need: SEASON_DURATION * 4 + 1, value: () => dayCount, reward: 600 },
+    { title: 'Tycoon', desc: 'Earn 10,000 credits from sales', icon: 'coin', need: 10000, value: () => stats.earned, reward: 1000 },
+    { title: 'Master farmer', desc: 'Own 40 tech upgrades', icon: 'star', need: 40, value: () => ownedTechCount(), reward: 1500 },
+    { title: 'Galactic farm', desc: 'Own every tech upgrade', icon: 'techtree', need: () => TECH.filter(t => !t.repeat).length, value: () => ownedTechCount(), reward: 5000 }
+  ];
+
+  function goalNeed(g) {
+    return typeof g.need === 'function' ? g.need() : g.need;
+  }
+
+  function updateGoals(dt) {
+    goalCooldown = Math.max(0, goalCooldown - dt);
+    if (goalCooldown > 0 || goalIndex >= GOALS.length) return;
+    const g = GOALS[goalIndex];
+    if (g.value() >= goalNeed(g)) {
+      ++goalIndex;
+      credits += g.reward;
+      goalCooldown = 1.8;
+      announce('Goal reached: ' + g.title, `${g.desc} · +${g.reward} credits`, UI.good, g.icon);
+      SZ.GameAudio.play('win', { volume: 0.8 });
+      const L = hudLayout();
+      const G = goalPanelLayout(L);
+      celebrate(G.x + G.w / 2, G.y + 30, 34);
+      flyCoins(Math.min(10, 3 + Math.round(g.reward / 100)), G.x + G.w / 2, G.y + 40);
+    }
+  }
+
+  /* ── Orders ── */
+
+  function orderSlots() {
+    return 1 + techChainCount('com_orders');
+  }
+
+  function orderCandidates() {
+    const list = [];
+    CROPS.forEach((c, i) => {
+      if (isCropUnlocked(i))
+        list.push({ item: c.name, value: c.sellPrice, sprite: c.sprite, grow: c.growTime });
+    });
+    LIVESTOCK.forEach((l, i) => {
+      if (livestockPens.some(p => p.typeIndex === i))
+        list.push({ item: l.produce, value: l.produceValue, sprite: l.produceSprite, grow: l.feedInterval });
+    });
+    return list;
+  }
+
+  function newOrder() {
+    const list = orderCandidates().filter(c => !orders.some(o => o.item === c.item));
+    if (!list.length) return;
+    const pick = list[Math.floor(Math.random() * list.length)];
+    // cheap goods come in bigger batches; the trader pays a premium
+    const qty = Math.max(3, Math.min(30, Math.round((5 + Math.random() * 6 + dayCount * 0.35) * Math.min(2, 18 / pick.value))));
+    const reward = Math.round(qty * pick.value * (1.6 + Math.random() * 0.5) / 5) * 5;
+    orders.push({ id: ++orderSerial, item: pick.item, qty, reward, until: gameTime + DAY_CYCLE_PERIOD * (2.5 + Math.random()) });
+    toast(`New order: ${qty} × ${pick.item}`, '#9df08a', 'order');
+    SZ.GameAudio.play('blip', { pitch: 1.2 });
+  }
+
+  function updateOrders(dt) {
+    if (state !== STATE_PLAYING) return;
+    for (let i = orders.length - 1; i >= 0; --i)
+      if (gameTime > orders[i].until) {
+        toast(`Order for ${orders[i].item} expired`, UI.warn, 'order');
+        orders.splice(i, 1);
+      }
+    if (orders.length < orderSlots()) {
+      orderTimer -= dt;
+      if (orderTimer <= 0) {
+        orderTimer = 35 + Math.random() * 35;
+        newOrder();
+      }
+    }
+  }
+
+  function orderSprite(o) {
+    return itemSprite(o.item);
+  }
+
+  function canDeliver(o) {
+    return (inventory[o.item] || 0) >= o.qty;
+  }
+
+  function deliverOrder(o, fromX, fromY) {
+    if (state !== STATE_PLAYING) return;
+    if (!canDeliver(o)) {
+      SZ.GameAudio.play('error');
+      toast(`Need ${o.qty - (inventory[o.item] || 0)} more ${o.item}`, UI.warn, orderSprite(o));
+      return;
+    }
+    inventory[o.item] -= o.qty;
+    if (inventory[o.item] <= 0) delete inventory[o.item];
+    credits += o.reward;
+    stats.earned += o.reward;
+    ++stats.orders;
+    orders.splice(orders.indexOf(o), 1);
+    if (orders.length < orderSlots())
+      orderTimer = Math.min(orderTimer, 20);
+    announce('Order delivered!', `${o.qty} × ${o.item} · +${o.reward} credits`, '#9df08a', 'order');
+    SZ.GameAudio.play('win', { volume: 0.7 });
+    if (fromX !== undefined) {
+      flyCoins(Math.min(12, 3 + Math.round(o.reward / 60)), fromX, fromY);
+      celebrate(fromX, fromY, 22);
+    }
+  }
+
+  /* ── HUD: current goal and open orders under the quick panel ── */
+
+  function goalPanelLayout(L) {
+    const Q = quickPanelLayout();
+    const x = Q.x, w = Q.w, y = Q.y + Q.h + 8;
+    const rowH = 30;
+    const shown = Math.min(orders.length, 3);
+    const h = 36 + 52 + (shown ? 8 + shown * (rowH + 4) : 26) + 6;
+    return { x, y, w, h, rowH, shown };
+  }
+
+  function drawGoalPanel(L) {
+    const G = goalPanelLayout(L);
+    if (G.y + G.h > L.dock.y - 34) {
+      // not enough room: only the goal line
+      if (G.y + 96 > L.dock.y - 34) return;
+    }
+    const room = L.dock.y - 34 - G.y;
+    const h = Math.min(G.h, room);
+    beginHudPanel('goals', G.x, G.y, G.w, h);
+    const top = drawPanel(G.x, G.y, G.w, h, { title: 'Goals & orders', icon: 'target', titlePx: 14, headerH: 34, titleRight: goalIndex < GOALS.length ? `${goalIndex + 1} / ${GOALS.length}` : 'All done', titleRightColor: UI.good, accent: UI.good });
+    // goal
+    const g = GOALS[goalIndex];
+    const gy = top - 2;
+    if (g) {
+      const need = goalNeed(g), val = Math.min(need, g.value());
+      drawSprite(g.icon, G.x + 26, gy + 20, 26);
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      const rw = fitText(`+${g.reward} [[coin]]`, G.x + G.w - 12, gy + 10, 90, 12, { weight: 'bold', color: UI.gold });
+      ctx.textAlign = 'left';
+      fitText(g.title, G.x + 46, gy + 10, G.w - 46 - 12 - rw - 8, 14, { weight: 'bold', color: UI.text });
+      drawMeter(G.x + 46, gy + 24, G.w - 58, 14, val / need, UI.good, { label: `${g.desc}: ${Math.floor(val).toLocaleString('en-US')} / ${need.toLocaleString('en-US')}`, labelPx: 10 });
+      addRegion({ id: 'goal-row', x: G.x, y: gy, w: G.w, h: 44, tip: () => [`[[${g.icon}]] ${g.title}`, g.desc, `Progress: ${Math.floor(val)} / ${need}`, `Reward: ${g.reward} credits`, `Goal ${goalIndex + 1} of ${GOALS.length}`] });
+    } else {
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText('[[star]] Every goal reached!', G.x + 14, gy + 18, G.w - 28, 14, { weight: 'bold', color: UI.gold });
+    }
+    // orders
+    let oy = gy + 50;
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(G.x + 10, oy - 4, G.w - 20, 1);
+    if (!orders.length) {
+      ctx.textAlign = 'left';
+      fitText(`[[order]] Next trader in ${Math.ceil(Math.max(0, orderTimer))}s`, G.x + 14, oy + 10, G.w - 28, 12, { color: UI.textMute });
+    }
+    for (let i = 0; i < G.shown; ++i) {
+      const o = orders[i];
+      const ry = oy + i * (G.rowH + 4);
+      if (ry + G.rowH > G.y + h - 4) break;
+      const ok = canDeliver(o);
+      const id = 'order-' + o.id;
+      const hv = hoverAmount(id);
+      roundRectPath(G.x + 8, ry, G.w - 16, G.rowH, 8);
+      ctx.fillStyle = ok ? `rgba(111,224,138,${0.14 + hv * 0.12})` : `rgba(255,255,255,${0.04 + hv * 0.05})`;
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = ok ? 'rgba(111,224,138,0.6)' : 'rgba(255,255,255,0.12)';
+      ctx.stroke();
+      const left = (o.until - gameTime) / (DAY_CYCLE_PERIOD * 3);
+      ctx.fillStyle = left < 0.25 ? UI.bad : 'rgba(255,215,90,0.6)';
+      ctx.fillRect(G.x + 12, ry + G.rowH - 4, (G.w - 24) * Math.max(0, Math.min(1, left)), 2);
+      drawSprite(orderSprite(o), G.x + 24, ry + G.rowH / 2 - 1, 20);
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      const rew = fitText(`${o.reward} [[coin]]`, G.x + G.w - 14, ry + G.rowH / 2 - 1, 80, 12, { weight: 'bold', color: UI.gold });
+      ctx.textAlign = 'left';
+      const have = Math.min(o.qty, inventory[o.item] || 0);
+      fitText(`${have}/${o.qty} ${o.item}`, G.x + 40, ry + G.rowH / 2 - 1, G.w - 40 - 22 - rew, 12, { weight: 'bold', color: ok ? UI.good : UI.text });
+      addRegion({ id, x: G.x + 8, y: ry, w: G.w - 16, h: G.rowH, onClick: () => deliverOrder(o, G.x + G.w / 2, ry + G.rowH / 2), tip: () => orderTooltip(o) });
+    }
+    if (orders.length > G.shown) {
+      ctx.textAlign = 'left';
+      fitText(`+${orders.length - G.shown} more in the market (M)`, G.x + 14, oy + G.shown * (G.rowH + 4) + 6, G.w - 28, 11, { color: UI.textMute });
+    }
+    endHudPanel();
+  }
+
+  function orderTooltip(o) {
+    const have = inventory[o.item] || 0;
+    const secs = Math.max(0, Math.ceil(o.until - gameTime));
+    return [`[[order]] Order: ${o.qty} × ${o.item}`, `Pays ${o.reward} credits (about ${Math.round(o.reward / o.qty)} each)`,
+      have >= o.qty ? '✔ Ready: click to deliver' : `✘ You have ${have} of ${o.qty}`,
+      `Expires in ${secs}s`];
+  }
+
+  /* ── Market dialog: sell single items, see prices, deliver orders ── */
+
+  function sellItem(name) {
+    if (state !== STATE_PLAYING) return;
+    const count = inventory[name] || 0;
+    if (!count) return;
+    let price = 0;
+    for (const c of CROPS)
+      if (c.name === name) price = getEffectiveSellPrice(c);
+    for (const l of LIVESTOCK)
+      if (l.produce === name) price = getEffectiveProduceValue(l);
+    const bulk = techOwned('com_broker') && count >= 20 ? 1.1 : 1;
+    const earned = Math.round(count * price * bulk);
+    credits += earned;
+    stats.earned += earned;
+    delete inventory[name];
+    SZ.GameAudio.play('coin');
+    flyCoins(Math.min(8, 2 + Math.ceil(earned / 60)), pointerUX, pointerUY);
+    toast(`Sold ${count} × ${name} for ${earned} credits`, UI.gold, 'coin');
+  }
+
+  function drawMarketDialog() {
+    const c = beginDialog('Market', 820, 520, { icon: 'market', accent: UI.gold, titleRight: `${Math.round(credits).toLocaleString('en-US')} [[coin]]`, titleRightColor: UI.gold });
+    const split = c.w >= 640;
+    const leftW = split ? Math.round(c.w * 0.56) : c.w;
+    const rightX = c.x + leftW + 16, rightW = c.w - leftW - 16;
+    // Storage list
+    const items = storageItems();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText(`[[basket]] Storage ${getTotalInventoryCount()} / ${getStorageCapacity()}`, c.x, c.y + 8, leftW - 120, 14, { weight: 'bold', color: UI.text });
+    const rowH = 34;
+    const listY = c.y + 24, listH = c.h - 24 - 50;
+    const maxScroll = Math.max(0, items.length * (rowH + 4) - listH);
+    dialogScroll = Math.max(0, Math.min(maxScroll, dialogScroll));
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(c.x - 2, listY, leftW + 4, listH);
+    ctx.clip();
+    if (!items.length) {
+      ctx.textAlign = 'left';
+      fitText('Nothing to sell yet: harvest some crops first.', c.x + 8, listY + 20, leftW - 16, 13, { color: UI.textMute });
+    }
+    items.forEach((it, i) => {
+      const y = listY + i * (rowH + 4) - dialogScroll;
+      if (y + rowH < listY || y > listY + listH) return;
+      roundRectPath(c.x, y, leftW, rowH, 8);
+      ctx.fillStyle = i % 2 ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.06)';
+      ctx.fill();
+      drawSprite(it.sprite, c.x + 20, y + rowH / 2, 24);
+      const crop = CROPS.findIndex(cr => cr.name === it.name);
+      let trend = '';
+      if (crop >= 0) {
+        const pm = priceMultipliers[crop] || 1;
+        trend = pm > 1.05 ? ' ▲' : (pm < 0.95 ? ' ▼' : '');
+      }
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const bw = 92;
+      fitText(it.name, c.x + 40, y + rowH / 2 - 7, leftW - 40 - bw - 120, 13, { weight: 'bold', color: UI.text });
+      fitText(`${it.value} cr each${trend}`, c.x + 40, y + rowH / 2 + 8, leftW - 40 - bw - 120, 11, { color: trend === ' ▲' ? UI.good : (trend === ' ▼' ? UI.bad : UI.textDim) });
+      ctx.textAlign = 'right';
+      fitText(`×${it.count}`, c.x + leftW - bw - 16, y + rowH / 2, 100, 14, { weight: 'bold', color: UI.text });
+      if (y >= listY && y + rowH <= listY + listH)
+        drawButton({ id: 'sell-' + it.name, x: c.x + leftW - bw - 6, y: y + 4, w: bw, h: rowH - 8 }, { label: `${it.count * it.value} [[coin]]`, primary: true, color: '#59c96a', px: 12, onClick: () => sellItem(it.name), tip: () => [`Sell all ${it.name}`, `${it.count} × ${it.value} = ${it.count * it.value} credits`] });
+    });
+    ctx.restore();
+    addRegion({ id: 'market-wheel', x: c.x, y: listY, w: leftW, h: listH, modal: true, passive: true, onWheel: (dy) => { dialogScroll += dy > 0 ? 50 : -50; } });
+    reorderPassiveRegions();
+    const total = getEstimatedStorageValue();
+    drawButton({ id: 'market-sellall', x: c.x, y: c.y + c.h - 40, w: leftW, h: 36 }, { label: total ? `Sell everything · ${total} [[coin]]` : 'Sell everything', icon: 'coin', key: 'S', primary: total > 0, disabled: !total, color: '#59c96a', px: 14, onClick: sellAllProduce, tip: buildSellButtonTooltip });
+
+    // Orders
+    if (split) {
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fillRect(rightX - 9, c.y, 1, c.h);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText(`[[order]] Orders ${orders.length} / ${orderSlots()}`, rightX, c.y + 8, rightW, 14, { weight: 'bold', color: UI.text });
+      let y = c.y + 24;
+      if (!orders.length)
+        drawTextBlock(`Traders bring orders now and then; the next one arrives in about ${Math.ceil(Math.max(0, orderTimer))}s. Orders pay well above market prices.`, rightX, y + 4, rightW, 70, 12, { color: UI.textMute });
+      for (const o of orders) {
+        const h = 86;
+        if (y + h > c.y + c.h) break;
+        const ok = canDeliver(o);
+        roundRectPath(rightX, y, rightW, h, 10);
+        ctx.fillStyle = ok ? 'rgba(111,224,138,0.12)' : 'rgba(255,255,255,0.04)';
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = ok ? 'rgba(111,224,138,0.6)' : 'rgba(255,255,255,0.12)';
+        ctx.stroke();
+        drawSprite(orderSprite(o), rightX + 26, y + 26, 32);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        fitText(`${o.qty} × ${o.item}`, rightX + 50, y + 16, rightW - 60, 14, { weight: 'bold', color: UI.text });
+        fitText(`Pays ${o.reward} [[coin]] · ${Math.max(0, Math.ceil(o.until - gameTime))}s left`, rightX + 50, y + 34, rightW - 60, 12, { color: UI.gold });
+        const have = inventory[o.item] || 0;
+        drawButton({ id: 'deliver-' + o.id, x: rightX + 10, y: y + h - 34, w: rightW - 20, h: 26 }, { label: ok ? 'Deliver' : `Have ${have} / ${o.qty}`, primary: ok, disabled: !ok, color: UI.good, px: 12, onClick: () => deliverOrder(o, rightX + rightW / 2, y + h - 20), onDisabled: () => SZ.GameAudio.play('error'), tip: () => orderTooltip(o) });
+        y += h + 8;
+      }
+    }
+    endDialog();
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
      HUD — farm status, storage, clock, tool dock
      ══════════════════════════════════════════════════════════════════ */
 
@@ -7035,12 +7597,13 @@
       ctx.textAlign = 'left';
       fitText(`+${items.length - shown} more…`, r.x + 32, top + shown * rowH + rowH / 2 + 1, r.w - 44, 12, { color: UI.textMute });
     }
-    addRegion({ id: 'hud-storage-list', x: r.x, y: r.y, w: r.w, h: h - btnH - 6, tip: () => {
+    addRegion({ id: 'hud-storage-list', x: r.x, y: r.y, w: r.w, h: h - btnH - 6, onClick: () => toggleDialog('market'), tip: () => {
       if (!items.length) return ['[[basket]] Storage', 'Harvested crops and animal produce wait here until you sell them.'];
       const lines = ['[[basket]] Storage', '--- Contents ---'];
       for (const it of items)
         lines.push(`[[${it.sprite}]] ${it.name}: ${it.count} × ${it.value} cr`);
       lines.push(`Worth about ${value} credits right now.`);
+      lines.push('Click to open the market (M)');
       return lines;
     } });
     if (btnH)
@@ -7224,15 +7787,16 @@
     // Actions (right)
     const actions = [
       { id: 'act-sell', icon: 'coin', label: 'Sell', key: 'S', onClick: sellAllProduce, tip: buildSellButtonTooltip, color: '#59c96a' },
+      { id: 'act-market', icon: 'market', label: 'Market', key: 'M', onClick: () => toggleDialog('market'), tip: () => ['[[market]] Market', 'Sell single crops, check prices and deliver orders.', `${orders.length} order${orders.length === 1 ? '' : 's'} open`, 'Shortcut: M'], color: UI.gold },
       { id: 'act-animals', icon: 'paw', label: 'Animals', key: 'L', onClick: () => toggleDialog('livestock'), tip: () => ['[[paw]] Livestock', 'Buy animals for the pens around your farm.', `${livestockPens.length} animals on the farm.`, 'Shortcut: L'], color: '#ff9ac0' },
       { id: 'act-upgrades', icon: 'techtree', label: 'Tech tree', key: 'U', onClick: () => toggleTree(), tip: () => ['[[techtree]] Tech tree', 'Upgrades, new crops, animals and buildings.', 'Shortcut: U'], color: UI.gold }
     ];
-    const actW = 66;
+    const actW = 62;
     const actX0 = d.x + d.w - 10 - actions.length * (actW + 6) + 6;
     actions.forEach((a, i) => {
       drawButton({ id: a.id, x: actX0 + i * (actW + 6), y: top, w: actW, h: SLOT_H }, {
         label: a.label, icon: a.icon, vertical: true, color: a.color, px: 11, onClick: a.onClick, tip: a.tip,
-        active: (a.id === 'act-animals' && dialog === 'livestock') || (a.id === 'act-upgrades' && dialog === 'tree')
+        active: (a.id === 'act-animals' && dialog === 'livestock') || (a.id === 'act-market' && dialog === 'market') || (a.id === 'act-upgrades' && dialog === 'tree')
       });
     });
     ctx.fillStyle = 'rgba(255,255,255,0.08)';
@@ -7361,6 +7925,8 @@
         fitText(pm > 1 ? '▲' : '▼', x + SLOT_W - 5, yy + 10, 14, 11, { weight: 'bold', color: pm > 1 ? UI.good : UI.bad });
       }
     }
+    if (isCrop && def.favorite === currentSeason)
+      drawSprite(SEASON_SPRITES[def.favorite], x + SLOT_W - 9, yy + 36, 12);
     // Price
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -7525,6 +8091,7 @@
     drawStoragePanel(L);
     drawClockPanel(L);
     drawQuickPanel();
+    drawGoalPanel(L);
     drawDock(L);
     drawZoomChip(L);
     drawBanner(L);
@@ -7537,7 +8104,7 @@
      DIALOGS — modal panels that pause the farm
      ══════════════════════════════════════════════════════════════════ */
 
-  let dialog = null;                 // 'tree' | 'livestock' | 'help'
+  let dialog = null;                 // 'tree' | 'market' | 'livestock' | 'help'
   let dialogT = 0;                   // open animation 0..1
   let helpPage = 0;
   let dialogScroll = 0;
@@ -7620,11 +8187,11 @@
   /* ── Livestock shop ── */
 
   function drawLivestockDialog() {
-    const c = beginDialog('Livestock', 640, 420, { icon: 'paw', accent: '#ff9ac0', titleRight: `${Math.round(credits)} [[coin]]`, titleRightColor: UI.gold });
+    const c = beginDialog('Livestock', 660, 470, { icon: 'paw', accent: '#ff9ac0', titleRight: `${Math.round(credits).toLocaleString('en-US')} [[coin]]`, titleRightColor: UI.gold });
     const cols = c.w >= 520 ? 2 : 1;
     const gap = 10;
     const cardW = (c.w - gap * (cols - 1)) / cols;
-    const cardH = 104;
+    const cardH = Math.min(104, (c.h - 30 - gap * 2) / 3);
     LIVESTOCK.forEach((def, i) => {
       const x = c.x + (i % cols) * (cardW + gap);
       const y = c.y + Math.floor(i / cols) * (cardH + gap);
@@ -7693,7 +8260,8 @@
     { icon: 'hammer', title: 'Buildings', text: 'Press B for the build dock. Sprinklers and wind turbines speed up crops around them, greenhouses shield them from weather, silos add storage, harvesters and planters work on their own.\n\nClick a building to inspect it, upgrade it up to level 6 or remove it. Right-click upgrades directly, Shift+right-click removes.' },
     { icon: 'paw', title: 'Livestock', text: 'Animals live in pens around the field. When their produce is ready a bubble pops up: click the pen to collect it. Auto-collectors next to the pens do this for you.' },
     { icon: 'storm', title: 'Weather', text: 'Rain and solar flares make crops grow faster. Meteor showers and thunderstorms can destroy crops that are not protected by a greenhouse.\n\nVoid mushrooms ignore the weather, plasma peppers hate meteors, astral flowers and solar vines love the sun.' },
-    { icon: 'spring', title: 'Seasons & day', text: 'A day lasts 30 seconds and a season four days. Spring and summer speed up growth, autumn gives bigger harvests, winter slows everything down.\n\nLunar moss only grows at night, solar vines only by day.' },
+    { icon: 'spring', title: 'Seasons & day', text: 'A day lasts 30 seconds and a season four days. Spring and summer speed up growth, autumn gives bigger harvests, winter slows everything down.\n\nEvery crop loves one season and grows 30% faster in it: look for the season badge in the dock. Lunar moss only grows at night, solar vines only by day or under a grow lamp.' },
+    { icon: 'target', title: 'Goals & orders', text: 'The Goals & orders panel shows your next milestone; reaching it pays a credit reward.\n\nTraders also post orders for a batch of produce. Orders pay far more than the market, but they expire after a few days: click an order to deliver it, or open the market with M.' },
     { icon: 'mouse', title: 'Pests & energy', text: 'Space mice sneak in from the edges and eat crops. Click a mouse to chase it away for a reward, and build scarecrows and fences to keep them out.\n\nEnergy powers harvesters and drones. Solar panels charge by day, wind turbines at night and in storms.' },
     { icon: 'techtree', title: 'Tech tree', text: 'Press U for the tech tree. Its five branches improve crops, animals, buildings, science and trade, and unlock new crops, animals and buildings. Upgrades cost credits and produce, so keep some harvest in storage.\n\nThe Next upgrades panel on the right always shows the best next step of every branch: click a row to buy it straight away.' },
     { icon: 'techtree', title: 'Controls', text: 'Mouse wheel or +/- zooms, right-drag or Ctrl+drag pans, Home resets the view. Arrow keys move a tile cursor and Space acts on it. On touch screens pinch to zoom and drag with two fingers to pan.\n\nP seeds · B build · T hoe · S sell · L animals · U upgrades · H help · Esc pause.' }
@@ -8047,6 +8615,8 @@
     const water = adjacentWaterCount(row, col);
     if (water)
       lines.push(`✔ Water nearby: +${water * 15}% growth`);
+    if (crop.favorite === currentSeason)
+      lines.push(`✔ In season: +30% growth`);
     if (crop.nightOnly && dayPhase < 0.5)
       lines.push('⚠ Sleeping until night');
     if (crop.dayOnly && dayPhase >= 0.5)
@@ -8168,7 +8738,10 @@
     if (crop.nightOnly)
       lines.push('Grows only at night');
     if (crop.dayOnly)
-      lines.push('Grows only by day');
+      lines.push('Grows only by day (or under a grow lamp)');
+    if (crop.hardy)
+      lines.push('✔ Ignores winter and snowfall');
+    lines.push(crop.favorite === currentSeason ? `✔ In season: [[${SEASON_SPRITES[crop.favorite]}]] +30% growth` : `Loves [[${SEASON_SPRITES[crop.favorite]}]] ${SEASONS[crop.favorite].toLowerCase()} (+30% growth)`);
     return lines;
   }
 
@@ -8362,6 +8935,8 @@
       drawHUD();
       if (dialog === 'livestock')
         drawLivestockDialog();
+      else if (dialog === 'market')
+        drawMarketDialog();
       if (state === STATE_PAUSED && dialog !== 'help')
         drawPauseScreen();
     }
@@ -8676,8 +9251,10 @@
         e.preventDefault();
         return;
       }
-      if ((e.code === 'KeyU' && dialog === 'tree') || (e.code === 'KeyL' && dialog === 'livestock'))
+      if ((e.code === 'KeyU' && dialog === 'tree') || (e.code === 'KeyL' && dialog === 'livestock') || (e.code === 'KeyM' && dialog === 'market'))
         closeDialog();
+      else if (e.code === 'KeyS' && dialog === 'market')
+        sellAllProduce();
       return;
     }
 
@@ -8730,6 +9307,7 @@
       case 'KeyS': sellAllProduce(); break;
       case 'KeyU': toggleTree(); break;
       case 'KeyL': toggleDialog('livestock'); break;
+      case 'KeyM': toggleDialog('market'); break;
       case 'KeyP': setTool('plant'); dockFollow = true; break;
       case 'KeyB':
         if (selectedTool === TOOL_BUILD) {
