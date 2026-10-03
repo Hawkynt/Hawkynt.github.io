@@ -4602,6 +4602,7 @@
     ctx.restore();
 
     updateStatusBar();
+    updateWindowTitle();
 
     animFrameId = requestAnimationFrame(gameLoop);
   }
@@ -5233,10 +5234,16 @@
     setupCanvas();
   }
 
+  let shownTitle = '';
+
   function updateWindowTitle() {
     const title = state === STATE_GAME_OVER
       ? `Space Farming — Season Over — ${credits}cr`
       : `Space Farming — Day ${dayCount} — ${SEASONS[currentSeason]} — ${credits}cr`;
+    // called every frame: only a changed title goes to the desktop
+    if (title === shownTitle)
+      return;
+    shownTitle = title;
     document.title = title;
     if (User32?.SetWindowText)
       User32.SetWindowText(title);
