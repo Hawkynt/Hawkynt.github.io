@@ -12,7 +12,7 @@
     // -- Virtual File System --
     bootScreen.setProgress(10, 'Initializing VFS...');
     const kernel = new SZ.VFS.Kernel();
-    kernel.mount('/user', new SZ.VFS.LocalStorageDriver('sz-vfs-user:'));
+    kernel.mount('/user', typeof indexedDB !== 'undefined' ? new SZ.VFS.IndexedDBDriver('user', 'sz-vfs-user:') : new SZ.VFS.LocalStorageDriver('sz-vfs-user:'));
     try {
       await kernel.Mkdir('/system');
       await kernel.Mkdir('/system/wallpapers');
@@ -383,7 +383,7 @@
         case 'sz:vfs:WriteAllBytes': return handle(kernel.WriteAllBytes(path, new Uint8Array(data.bytes), data.meta).then(()=>{ if (_affectsDesktop(path)) _dskRefresh(); return {success:true}; }), 'sz:vfs:WriteAllBytesResult');
         case 'sz:vfs:ReadAllText': return handle(kernel.ReadAllText(path).then(text=>({text})), 'sz:vfs:ReadAllTextResult');
         case 'sz:vfs:ReadUri': return handle(kernel.ReadUri(path).then(uri=>({uri})), 'sz:vfs:ReadUriResult');
-        case 'sz:vfs:ReadAllBytes': return handle(kernel.ReadAllBytes(path).then(bytes=>({bytes: Array.from(bytes)})), 'sz:vfs:ReadAllBytesResult');
+        case 'sz:vfs:ReadAllBytes': return handle(kernel.ReadAllBytes(path).then(bytes=>({bytes})), 'sz:vfs:ReadAllBytesResult');
         case 'sz:vfs:ReadValue': return handle(kernel.ReadValue(path).then(value=>({value})), 'sz:vfs:ReadValueResult');
         case 'sz:vfs:WriteValue': return handle(kernel.WriteValue(path, data.value, data.meta).then(()=>{ if (_affectsDesktop(path)) _dskRefresh(); return {success:true}; }), 'sz:vfs:WriteValueResult');
         case 'sz:vfs:WriteUri': return handle(kernel.WriteUri(path, data.uri, data.meta).then(()=>{ if (_affectsDesktop(path)) _dskRefresh(); return {success:true}; }), 'sz:vfs:WriteUriResult');
