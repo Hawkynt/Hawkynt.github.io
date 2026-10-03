@@ -6155,4 +6155,12 @@
   applyPageSetup();
   updatePageBreakIndicators();
   editor.focus();
+
+  // the desktop's close button asks to save, like File > Exit
+  User32.RegisterWindowProc((msg) => {
+    if (msg !== WM_CLOSE)
+      return false;
+    doExit();
+    return true;
+  });
 })();
