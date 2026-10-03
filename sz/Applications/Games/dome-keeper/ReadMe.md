@@ -211,7 +211,7 @@ The player must immediately understand:
 - [x] As a player, I see the dome descend on thrusters and unpack at the start of every run
 - [x] As a player, I can find the site's Relocation Core in the lower strata (scanners point toward it)
 - [x] As a player, I can press Relocate (or L) once the core is found, confirm, and watch the dome pack up, lift off, fly over the planet map and land on a new site
-- [x] As a player, I keep all upgrades, drones and gadgets plus 75% of my resources, while the threat rises by 4 per relocation
+- [x] As a player, I keep all upgrades, drones and gadgets plus 75% of my resources; each new site starts 4 threat levels higher and its monsters are tougher
 - [x] As a player, I can skip the landing and flight with a click, Space or Esc
 
 ### Visual Effects
@@ -479,10 +479,10 @@ Monsters attack at night.
 ### Spawn Rules
 
 * Ground monsters come from the left and right edges, flyers from the upper sky, burrowers underground.
-* The **threat level** is the night number plus 4 per relocation; it sets HP, damage, speed and which types may appear. Every relocation also multiplies HP by +30% and damage by +20%.
+* The **threat level** is the number of nights at the current site plus 4 per relocation; it sets HP, damage, speed and which types may appear. Every relocation also multiplies HP by +30% and damage by +20%.
 * The night's budget grows with the threat and is scaled by the moon (x0.8 new moon .. x1.25 full moon) and the season.
 * The mix is weighted by season (spring: swarmers and splitters; summer: flyers, divers, spitters; autumn: burrowers, menders; winter: crawlers and menders) and weather (blizzards favour burrowers, storms ground the flyers).
-* A boss comes every fifth night once the threat reaches 10.
+* A boss comes every fifth night at a site once the threat reaches 10.
 
 ### Acceptance Criteria
 
@@ -739,7 +739,7 @@ Weather (weighted by season and biome, 30-60 s each, announced on change):
 * Each mine hides a **Relocation Core** in strata 7-8 on the first site (one stratum deeper per relocation). It looks like rock until the keeper is next to it, a Scanner is in range or a Probe Scanner reveals it; further away the scanner shows an arrow toward it.
 * Mining the core shows the **Relocate** button (key **L**). It is disabled while monsters attack or more are coming that night, with the reason shown.
 * After confirming: pack up, lift off, flight across the planet map, landing and unpacking on the new site.
-* Carry-over: upgrades, drones, gadgets and score stay; 75% of every resource comes along; the dome is repaired; the new site is a new biome with a new mine and core. Threat +4.
+* Carry-over: upgrades, drones, gadgets and score stay; 75% of every resource comes along; the dome is repaired; the new site is a new biome with a new mine and core. The threat restarts at the new site's baseline, 4 higher per relocation, and climbs again night by night.
 * A save taken during the flight finishes the landing on Continue; otherwise Continue never replays it.
 
 ## 8.18 Drones
@@ -963,8 +963,8 @@ Exact numbers can be tuned later, but the game must satisfy these balancing goal
 
 ### Later Sites
 
-* Each relocation adds 4 to the threat and makes monsters 30% tougher and 20% harder hitting, so later sites ramp up quickly
-* Staying at a site keeps raising the threat one night at a time, so relocating is both a reward (fresh shallow ore, new biome) and a step up in danger
+* Every site starts 4 threat levels above the previous site's start, with monsters 30% tougher and 20% harder hitting per relocation, so later sites ramp up quickly
+* Staying at a site keeps raising the threat one night at a time; relocating restarts that climb from the next site's higher baseline, so leaving trades 25% of the resources and a harder baseline for a fresh mine and a reset of the nightly climb
 
 ### Mid Game
 
@@ -1142,7 +1142,7 @@ These decisions have been resolved and implemented:
 
 7. **What carries over to a new site?**
 
-   * **Resolved:** upgrades, drones, gadgets and score; 75% of every resource; a repaired dome. Threat +4 per relocation.
+   * **Resolved:** upgrades, drones, gadgets and score; 75% of every resource; a repaired dome. Each site's threat starts 4 higher than the last and climbs per night.
 
 5. **Does the player avatar exist on the surface, or only underground?**
 
