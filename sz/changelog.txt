@@ -35,6 +35,7 @@ by Hawkynt 03.10.2026
 * Illusion Puzzle and Mind-Bending Puzzle: redrawn
 * Space Farming, Dome Keeper and Fantasy Puzzle: drawn pixel art instead of emoji
 * Dome Keeper: redesigned upgrade tree, new surface and mine art, text that always fits, sharp at any window size
++ Dome Keeper: day and night with moon phases, seasons and weather, six biomes, eleven monster types, drones, a deeper mine with new ores per layer, and relocation to new sites once the hidden core is found
 + Space Farming, Dome Keeper and Tower Defense: automatic saves with Continue
 # Card Games: dragging cards no longer throws errors
 + Tactical Realms: planes and portals: 30 planes of existence with their own lands, inhabitants and traits (burning, draining, weightless, wild magic), portals to travel between them
