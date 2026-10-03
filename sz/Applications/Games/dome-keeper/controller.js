@@ -7280,6 +7280,17 @@
     const alpha = getTransitionAlpha();
     ctx.globalAlpha = alpha;
 
+    // View switches slide the scene the way the keeper travels (down into the mine, up to the dome)
+    let slide = 0;
+    if (alpha < 1) {
+      const goingDown = (transitionTarget || currentView) === VIEW_UNDERGROUND;
+      const k = 1 - alpha;
+      const eased = k * k * (3 - 2 * k);
+      slide = (transitionPhase === 'fade-out' ? -eased : eased) * 90 * (goingDown ? 1 : -1);
+      ctx.save();
+      ctx.translate(0, slide);
+    }
+
     if (currentView === VIEW_SURFACE)
       drawSurface();
     else
@@ -7287,9 +7298,18 @@
 
     ctx.globalAlpha = 1;
 
-    // Transition overlay (black fade)
+    // Transition overlay: fade through black with a soft wipe band
     if (alpha < 1) {
+      ctx.restore();
+      ctx.globalAlpha = 1;
       ctx.fillStyle = `rgba(0,0,0,${1 - alpha})`;
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      const k = 1 - alpha;
+      const g = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+      g.addColorStop(0, `rgba(90,180,255,${0.12 * k})`);
+      g.addColorStop(0.5, 'rgba(90,180,255,0)');
+      g.addColorStop(1, `rgba(255,170,60,${0.12 * k})`);
+      ctx.fillStyle = g;
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     }
 
