@@ -299,6 +299,18 @@
       '............', '....3443....', '..34211243..', '.3421111243.',
       '.4211111124.', '.4211551124.', '.4211551124.', '.4211111124.',
       '.3421111243.', '..34211243..', '....3443....', '............'] },
+    drone: { ramps: ['steel', 'cyan', 'gold'], px: [
+      'ddd......ddd', '.3........3.', '.3.333333.3.', '.3344444433.',
+      '..34eeee43..', '..34e44e43..', '..34444443..', '...333333...',
+      '....3..3....', '...ffffff...', '...fhhhhf...', '...ffffff...'] },
+    gundrone: { ramps: ['steel', 'red', 'fire'], px: [
+      'ddd......ddd', '.3........3.', '.3.333333.3.', '.3344444433.',
+      '..34dd4443..', '..3444444333', '..34444443hh', '...333333...',
+      '....3..3....', '............', '............', '............'] },
+    medic: { ramps: ['steel', 'green', 'cyan'], px: [
+      'ddd......ddd', '.3........3.', '.3.333333.3.', '.3344444433.',
+      '..344cc443..', '..34cccc43..', '..344cc443..', '...333333...',
+      '....3..3....', '.....hh.....', '.....h......', '............'] },
     bag: { ramps: ['wood', 'gold'], px: [
       '............', '....3333....', '...3....3...', '.2222222222.',
       '.2444444442.', '.2433cc3342.', '.2433cc3342.', '.2433333342.',
@@ -1493,7 +1505,71 @@
       upgradeKey: 'freezeRay', type: 'stat' },
     { id: 'chainLightning2', name: 'Chain Light. L2', icon: 'bolt', branch: 'weapon',
       costs: [{ gold: 20, redstone: 18, emerald: 8 }], maxLevel: 1, prereqs: ['chainLightning'],
-      upgradeKey: 'chainLightning', type: 'stat' }
+      upgradeKey: 'chainLightning', type: 'stat' },
+
+    // =============================================================
+    // === Drone Branch (18 nodes) ===
+    // =============================================================
+    { id: 'droneBay', name: 'Drone Bay', icon: 'drone', branch: 'drone',
+      costs: [{ iron: 30, copper: 12 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'droneBay', type: 'gadget' },
+    // -- Flight speed and pickup radius --
+    { id: 'droneSpeed1', name: 'Drone Thrusters L1', icon: 'speed', branch: 'drone',
+      costs: [{ iron: 25, tin: 10 }], maxLevel: 1, prereqs: ['droneBay'],
+      upgradeKey: 'droneSpeed', type: 'stat' },
+    { id: 'droneSpeed2', name: 'Drone Thrusters L2', icon: 'speed', branch: 'drone',
+      costs: [{ silver: 12, cobalt: 15, tin: 15 }], maxLevel: 1, prereqs: ['droneSpeed1'],
+      upgradeKey: 'droneSpeed', type: 'stat' },
+    { id: 'droneSpeed3', name: 'Drone Thrusters L3', icon: 'speed', branch: 'drone',
+      costs: [{ gold: 15, titanium: 6, quartz: 10 }], maxLevel: 1, prereqs: ['droneSpeed2'],
+      upgradeKey: 'droneSpeed', type: 'stat' },
+    // -- Cargo hold --
+    { id: 'droneCargo1', name: 'Drone Cargo L1', icon: 'crate', branch: 'drone',
+      costs: [{ iron: 30, copper: 15 }], maxLevel: 1, prereqs: ['droneBay'],
+      upgradeKey: 'droneCargo', type: 'stat' },
+    { id: 'droneCargo2', name: 'Drone Cargo L2', icon: 'crate', branch: 'drone',
+      costs: [{ lead: 20, cobalt: 15, iron: 30 }], maxLevel: 1, prereqs: ['droneCargo1'],
+      upgradeKey: 'droneCargo', type: 'stat' },
+    { id: 'droneCargo3', name: 'Drone Cargo L3', icon: 'crate', branch: 'drone',
+      costs: [{ gold: 15, sapphire: 5, lead: 20 }], maxLevel: 1, prereqs: ['droneCargo2'],
+      upgradeKey: 'droneCargo', type: 'stat' },
+    // -- Mining drones --
+    { id: 'droneMiner', name: 'Mining Laser', icon: 'drill', branch: 'drone',
+      costs: [{ iron: 40, coal: 20, copper: 15 }], maxLevel: 1, prereqs: ['droneCargo1'],
+      upgradeKey: 'droneMiner', type: 'gadget' },
+    { id: 'droneMiner2', name: 'Mining Laser L2', icon: 'drill', branch: 'drone',
+      costs: [{ silver: 15, redstone: 10, cobalt: 20 }], maxLevel: 1, prereqs: ['droneMiner'],
+      upgradeKey: 'droneMining', type: 'stat' },
+    { id: 'droneMiner3', name: 'Mining Laser L3', icon: 'drill', branch: 'drone',
+      costs: [{ uranium: 5, titanium: 8, gold: 20 }], maxLevel: 1, prereqs: ['droneMiner2'],
+      upgradeKey: 'droneMining', type: 'stat' },
+    // -- Gun drones --
+    { id: 'combatDrone', name: 'Gun Drone', icon: 'gundrone', branch: 'drone',
+      costs: [{ iron: 45, copper: 20, coal: 15 }], maxLevel: 1, prereqs: ['droneSpeed1'],
+      upgradeKey: 'combatDrone', type: 'gadget' },
+    { id: 'combatDrone2', name: 'Gun Drone L2', icon: 'gundrone', branch: 'drone',
+      costs: [{ silver: 15, redstone: 12, cobalt: 20 }], maxLevel: 1, prereqs: ['combatDrone'],
+      upgradeKey: 'combatDroneLevel', type: 'stat' },
+    { id: 'combatDrone3', name: 'Gun Drone L3', icon: 'gundrone', branch: 'drone',
+      costs: [{ uranium: 6, ruby: 10, gold: 20 }], maxLevel: 1, prereqs: ['combatDrone2'],
+      upgradeKey: 'combatDroneLevel', type: 'stat' },
+    // -- Repair drone --
+    { id: 'repairDrone', name: 'Repair Drone', icon: 'medic', branch: 'drone',
+      costs: [{ iron: 40, water: 25, copper: 15 }], maxLevel: 1, prereqs: ['droneSpeed1'],
+      upgradeKey: 'repairDrone', type: 'gadget' },
+    { id: 'repairDrone2', name: 'Repair Drone L2', icon: 'medic', branch: 'drone',
+      costs: [{ silver: 15, water: 35, quartz: 10 }], maxLevel: 1, prereqs: ['repairDrone'],
+      upgradeKey: 'repairDroneLevel', type: 'stat' },
+    { id: 'repairDrone3', name: 'Repair Drone L3', icon: 'medic', branch: 'drone',
+      costs: [{ sapphire: 6, emerald: 10, water: 40 }], maxLevel: 1, prereqs: ['repairDrone2'],
+      upgradeKey: 'repairDroneLevel', type: 'stat' },
+    // -- More couriers --
+    { id: 'droneSwarm1', name: 'Drone Swarm L1', icon: 'drone', branch: 'drone',
+      costs: [{ gold: 20, titanium: 8, cobalt: 25 }], maxLevel: 1, prereqs: ['droneCargo2', 'droneSpeed2'],
+      upgradeKey: 'droneCount', type: 'stat' },
+    { id: 'droneSwarm2', name: 'Drone Swarm L2', icon: 'drone', branch: 'drone',
+      costs: [{ amethyst: 6, opal: 4, voidstone: 2 }], maxLevel: 1, prereqs: ['droneSwarm1'],
+      upgradeKey: 'droneCount', type: 'stat' }
   ];
 
   // Upgrade effect descriptions (keyed by upgradeKey)
@@ -1545,7 +1621,17 @@
     homingShots: 'Projectiles track nearest enemy automatically',
     turretSpeed: '+30% turret rotation speed per level',
     criticalHit: '15% chance to deal 2.5x damage (+5% per level)',
-    explosiveRounds: 'All shots explode on impact for 40% AoE'
+    explosiveRounds: 'All shots explode on impact for 40% AoE',
+    droneBay: 'A courier drone flies to the keeper, takes the cargo home and picks up loose ore',
+    droneSpeed: '+30% drone flight speed and +1 tile pickup radius per level',
+    droneCargo: '+15 drone cargo per level',
+    droneMiner: 'Couriers laser-mine exposed ore near the keeper while they have room',
+    droneMining: 'Mining lasers cut 35% faster and reach 2 tiles further per level',
+    combatDrone: 'A gun drone guards the dome and shoots monsters',
+    combatDroneLevel: 'Level 2: harder, faster shots. Level 3: a second gun drone',
+    repairDrone: 'A repair drone welds the dome back together',
+    repairDroneLevel: 'Repairs faster per level',
+    droneCount: '+1 courier drone per level'
   };
 
   // Mining difficulty label from depth multiplier
@@ -1560,9 +1646,11 @@
 
   // Precompute node positions for the tree layout
   // Layout: root at top center, 4 branches below
-  const TREE_BRANCH_ORDER = ['dome', 'mining', 'movement', 'weapon'];
-  const TREE_BRANCH_LABELS = { dome: 'DOME', mining: 'MINING', movement: 'MOVEMENT', weapon: 'WEAPON' };
-  const TREE_BRANCH_COLORS = { dome: '#4cb4ff', mining: '#ffae3a', movement: '#5ee07a', weapon: '#ff5e5e' };
+  const TREE_BRANCH_ORDER = ['dome', 'mining', 'movement', 'weapon', 'drone'];
+  const TREE_BRANCH_LABELS = { dome: 'DOME', mining: 'MINING', movement: 'MOVEMENT', weapon: 'WEAPON', drone: 'DRONES' };
+  const TREE_BRANCH_COLORS = { dome: '#4cb4ff', mining: '#ffae3a', movement: '#5ee07a', weapon: '#ff5e5e', drone: '#c890ff' };
+  // Branch regions, row by row
+  const TREE_REGION_ROWS = [['dome', 'mining'], ['movement', 'weapon', 'drone']];
   const TREE_CARD_W = 200;
   const TREE_CARD_H = 88;
   const TREE_GAP_X = 40;       // vertical channel between depth columns (connectors run here)
@@ -1799,7 +1887,7 @@
     { key: 'shield', name: 'Shield Generator', icon: 'shield', desc: ['Absorbs the first hit of each wave.', 'Recharges when a new wave starts.'] },
     { key: 'repellent', name: 'Repellent Field', icon: 'portal', desc: ['Press R: slows all enemies to 40%', 'for 5 seconds (30s cooldown).'] },
     { key: 'orchard', name: 'Orchard', icon: 'tree', desc: ['Every 20s grows a fruit that gives', '+30% mining speed for 10 seconds.'] },
-    { key: 'droneyard', name: 'Droneyard', icon: 'robot', desc: ['A drone auto-carries 10 resources', 'to surface every 15 seconds.'] }
+    { key: 'droneyard', name: 'Droneyard', icon: 'drone', desc: ['Starts with a courier drone that hauls', 'your cargo home. All drones work 50% faster.'] }
   ];
 
   const MINE_GADGETS = ['autoCannon', 'stunLaser', 'blastMining', 'probeScanner', 'domeArmor', 'condenser'];
@@ -2077,6 +2165,7 @@
     Object.assign(toolState, d.toolState);
 
     currentView = d.view === VIEW_UNDERGROUND && !d.mineOutdated ? VIEW_UNDERGROUND : VIEW_SURFACE;
+    syncDrones();
     if (currentView === VIEW_UNDERGROUND) {
       cameraX = Math.max(0, Math.min(GRID_COLS * TILE_SIZE - CANVAS_W, drillX * TILE_SIZE - CANVAS_W / 2 + TILE_SIZE / 2));
       cameraY = Math.max(0, Math.min(GRID_ROWS * TILE_SIZE - CANVAS_H, drillY * TILE_SIZE - CANVAS_H / 2 + TILE_SIZE / 2));
@@ -2437,6 +2526,11 @@
     primaryGadgetState = {};
     foundGadgets = [];
 
+    // Drones are rebuilt from the upgrades
+    drones = [];
+    gunDrones = [];
+    repairBot = null;
+
     // Reset tool/gadget state
     unlockedTools = {};
     activeToolKey = null;
@@ -2488,9 +2582,10 @@
         primaryGadgetState = { fruitTimer: 20, fruitReady: false, speedBoostTimer: 0 };
         break;
       case 'droneyard':
-        primaryGadgetState = { droneTimer: 15, droneY: 0, droneActive: false, dronePhase: 0 };
+        primaryGadgetState = {};
         break;
     }
+    syncDrones();
   }
 
   /* ======================================================================
@@ -2762,50 +2857,44 @@
      PATHFINDING (BFS for underground navigation)
      ====================================================================== */
 
+  // Breadth-first search through tunnels; typed arrays are reused between calls
+  let pathPrev = null, pathQueue = null, pathSeen = null, pathStamp = 0;
   function findPath(fromCol, fromRow, toCol, toRow) {
     if (fromCol === toCol && fromRow === toRow) return [];
     if (toCol < 0 || toCol >= GRID_COLS || toRow < 0 || toRow >= GRID_ROWS) return null;
+    if (fromCol < 0 || fromCol >= GRID_COLS || fromRow < 0 || fromRow >= GRID_ROWS) return null;
     if (undergroundGrid[toRow][toCol] !== TILE_EMPTY) return null;
-
-    const visited = [];
-    for (let r = 0; r < GRID_ROWS; ++r) {
-      visited.push([]);
-      for (let c = 0; c < GRID_COLS; ++c)
-        visited[r].push(false);
+    const N = GRID_ROWS * GRID_COLS;
+    if (!pathPrev || pathPrev.length !== N) {
+      pathPrev = new Int32Array(N);
+      pathQueue = new Int32Array(N);
+      pathSeen = new Uint32Array(N);
+      pathStamp = 0;
     }
-
-    const prev = [];
-    for (let r = 0; r < GRID_ROWS; ++r) {
-      prev.push([]);
-      for (let c = 0; c < GRID_COLS; ++c)
-        prev[r].push(null);
-    }
-
-    const queue = [{ col: fromCol, row: fromRow }];
-    visited[fromRow][fromCol] = true;
-    const dirs = [{ dc: 0, dr: -1 }, { dc: 0, dr: 1 }, { dc: -1, dr: 0 }, { dc: 1, dr: 0 }];
-
-    while (queue.length > 0) {
-      const cur = queue.shift();
-      if (cur.col === toCol && cur.row === toRow) {
-        // Reconstruct path
+    const stamp = ++pathStamp;
+    const start = fromRow * GRID_COLS + fromCol, goal = toRow * GRID_COLS + toCol;
+    let head = 0, tail = 0;
+    pathQueue[tail++] = start;
+    pathSeen[start] = stamp;
+    pathPrev[start] = -1;
+    while (head < tail) {
+      const cur = pathQueue[head++];
+      if (cur === goal) {
         const path = [];
-        let step = { col: toCol, row: toRow };
-        while (step.col !== fromCol || step.row !== fromRow) {
-          path.unshift(step);
-          step = prev[step.row][step.col];
-        }
-        return path;
+        for (let i = goal; i !== start; i = pathPrev[i])
+          path.push({ col: i % GRID_COLS, row: (i / GRID_COLS) | 0 });
+        return path.reverse();
       }
-      for (const d of dirs) {
-        const nc = cur.col + d.dc;
-        const nr = cur.row + d.dr;
-        if (nc < 0 || nc >= GRID_COLS || nr < 0 || nr >= GRID_ROWS) continue;
-        if (visited[nr][nc]) continue;
-        if (undergroundGrid[nr][nc] !== TILE_EMPTY) continue;
-        visited[nr][nc] = true;
-        prev[nr][nc] = { col: cur.col, row: cur.row };
-        queue.push({ col: nc, row: nr });
+      const r = (cur / GRID_COLS) | 0, c = cur - r * GRID_COLS;
+      for (let k = 0; k < 4; ++k) {
+        const nr = r + (k === 0 ? -1 : k === 1 ? 1 : 0);
+        const nc = c + (k === 2 ? -1 : k === 3 ? 1 : 0);
+        if (nr < 0 || nr >= GRID_ROWS || nc < 0 || nc >= GRID_COLS) continue;
+        const ni = nr * GRID_COLS + nc;
+        if (pathSeen[ni] === stamp || undergroundGrid[nr][nc] !== TILE_EMPTY) continue;
+        pathSeen[ni] = stamp;
+        pathPrev[ni] = cur;
+        pathQueue[tail++] = ni;
       }
     }
     return null; // no path found
@@ -3832,6 +3921,8 @@
       applyGadgetUnlock(node.upgradeKey);
     else
       applyStatUpgrade(node.upgradeKey);
+    if (node.branch === 'drone')
+      syncDrones(true);
 
     SZ.GameAudio.play('levelup');
     floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `${node.name} purchased!`, { color: '#ffd700', font: 'bold 28px sans-serif' });
@@ -3840,7 +3931,7 @@
   }
 
   // Passive gadgets that don't need selection
-  const PASSIVE_GADGETS = ['scanner', 'reinforcedDome', 'autoRepair', 'domeExpansion', 'energyShield', 'magnet', 'fortune', 'silkTouch', 'echoLocation', 'chainLightning', 'freezeRay', 'plasmaCannon', 'damageReflect', 'emergencyShield', 'fortifiedBase', 'lastStand', 'oreDetector', 'autoMine', 'tunnelBore', 'veinMiner', 'doubleJump', 'wallClimb', 'dash', 'undergroundRadar', 'multiShot', 'homingShots', 'criticalHit', 'explosiveRounds'];
+  const PASSIVE_GADGETS = ['scanner', 'reinforcedDome', 'autoRepair', 'domeExpansion', 'energyShield', 'magnet', 'fortune', 'silkTouch', 'echoLocation', 'chainLightning', 'freezeRay', 'plasmaCannon', 'damageReflect', 'emergencyShield', 'fortifiedBase', 'lastStand', 'oreDetector', 'autoMine', 'tunnelBore', 'veinMiner', 'doubleJump', 'wallClimb', 'dash', 'undergroundRadar', 'multiShot', 'homingShots', 'criticalHit', 'explosiveRounds', 'droneBay', 'droneMiner', 'combatDrone', 'repairDrone'];
 
   function applyGadgetUnlock(key) {
     unlockedTools[key] = true;
@@ -4003,16 +4094,31 @@
       branchGrids.push({ branch, branchNodes, depthOf, laneOf, rows: rowSpans.length, cols: maxDepth + 1 });
     }
 
-    // Regions in a 2x2 arrangement: dome | mining over movement | weapon
+    // Regions row by row (TREE_REGION_ROWS), each row centred
     const regionW = (g) => g.cols * pitchX - TREE_GAP_X + TREE_REGION_PAD * 2;
     const regionH = (g) => TREE_REGION_HEADER + g.rows * pitchY - TREE_GAP_Y + TREE_REGION_PAD;
-    const colW = [Math.max(regionW(branchGrids[0]), regionW(branchGrids[2])), Math.max(regionW(branchGrids[1]), regionW(branchGrids[3]))];
-    const rowH = [Math.max(regionH(branchGrids[0]), regionH(branchGrids[1])), Math.max(regionH(branchGrids[2]), regionH(branchGrids[3]))];
+    const gridOf = {};
+    for (const g of branchGrids)
+      gridOf[g.branch] = g;
+    const rowWidth = TREE_REGION_ROWS.map(row => row.reduce((w, b) => w + regionW(gridOf[b]), 0) + (row.length - 1) * TREE_REGION_GAP);
+    const totalW = Math.max(...rowWidth);
+    const placeOf = {};
+    let rowY = 0;
+    TREE_REGION_ROWS.forEach((row, ri) => {
+      let x = (totalW - rowWidth[ri]) / 2;
+      let h = 0;
+      for (const b of row) {
+        placeOf[b] = { x, y: rowY };
+        x += regionW(gridOf[b]) + TREE_REGION_GAP;
+        h = Math.max(h, regionH(gridOf[b]));
+      }
+      rowY += h + TREE_REGION_GAP;
+    });
+    const totalH = rowY - TREE_REGION_GAP;
     for (let i = 0; i < branchGrids.length; ++i) {
       const g = branchGrids[i];
-      const gx = i % 2 ? colW[0] + TREE_REGION_GAP : 0;
-      const gy = i >= 2 ? rowH[0] + TREE_REGION_GAP : 0;
-      const cx = gx + (colW[i % 2] - regionW(g)) / 2;
+      const cx = placeOf[g.branch].x;
+      const gy = placeOf[g.branch].y;
       regions[g.branch] = { x: cx, y: gy, w: regionW(g), h: regionH(g), branch: g.branch };
       for (const n of g.branchNodes)
         nodes.push({
@@ -4027,7 +4133,7 @@
     const byId = {};
     for (const ln of nodes)
       byId[ln.node.id] = ln;
-    regions.all = { x: 0, y: 0, w: colW[0] + colW[1] + TREE_REGION_GAP, h: rowH[0] + rowH[1] + TREE_REGION_GAP };
+    regions.all = { x: 0, y: 0, w: totalW, h: totalH };
     treeLayout = { nodes, byId, regions };
     return nodes;
   }
@@ -4090,7 +4196,7 @@
   // Header tabs: all branches plus one per branch
   function getTreeTabs() {
     const ids = ['all'].concat(TREE_BRANCH_ORDER);
-    const tabW = 196, gap = 10;
+    const tabW = 180, gap = 10;
     const x0 = CANVAS_W / 2 - (ids.length * tabW + (ids.length - 1) * gap) / 2;
     return ids.map((id, i) => ({ id, x: x0 + i * (tabW + gap), y: 66, w: tabW, h: 36 }));
   }
@@ -4388,7 +4494,7 @@
       setTreeTab(tabs[(i + (e.shiftKey ? tabs.length - 1 : 1)) % tabs.length]);
       return true;
     }
-    if (/^Digit[1-5]$/.test(e.code)) {
+    if (/^Digit[1-6]$/.test(e.code)) {
       setTreeTab(tabs[parseInt(e.code.slice(5), 10) - 1]);
       return true;
     }
@@ -4730,22 +4836,6 @@
       }
     }
 
-    if (primaryGadget === 'droneyard') {
-      primaryGadgetState.droneTimer -= dt;
-      if (primaryGadgetState.droneTimer <= 0) {
-        primaryGadgetState.droneTimer = 15;
-        // Auto-carry up to 10 resources from carried to deposited
-        if (carried > 0) {
-          const transfer = Math.min(carried, 10);
-          carried -= transfer;
-          SZ.GameAudio.play('coin', { pitch: 0.8 });
-          floatingText.add(DOME_X - 80, DOME_Y - 80, `Drone: +${transfer} delivered`, { color: '#4af', font: 'bold 22px sans-serif' });
-        }
-      }
-      // Animate drone phase for visual bob
-      primaryGadgetState.dronePhase = (primaryGadgetState.dronePhase || 0) + dt * 3;
-    }
-
     // -- Mine gadgets updates --
     // Auto Cannon
     if (foundGadgets.includes('autoCannon')) {
@@ -4884,6 +4974,497 @@
   }
 
   /* ======================================================================
+     DRONES -- couriers in the mine, gun and repair drones at the dome
+     ====================================================================== */
+
+  const DRONE_DOCK_TIME = 1.2;   // seconds a courier rests in the dome between trips
+  let drones = [];               // couriers: { x, y, state, path, pi, cargo, job, timer, ... }
+  let gunDrones = [];            // { angle, x, y, cooldown, flash, tx, ty }
+  let repairBot = null;          // { x, y, angle, beam, spark }
+
+  function droneShaftTile() {
+    return { col: Math.floor(GRID_COLS / 2), row: 0 };
+  }
+
+  function courierCount() {
+    let n = (unlockedTools.droneBay ? 1 : 0) + (primaryGadget === 'droneyard' ? 1 : 0);
+    if (n > 0)
+      n += getEffectiveLevel('droneCount');
+    return n;
+  }
+
+  function droneBoost() {
+    return primaryGadget === 'droneyard' ? 1.5 : 1;
+  }
+
+  // Flight speed in px/s, cargo size, pickup radius (tiles), laser reach (tiles) and laser speed
+  function droneSpeed() { return TILE_SIZE * 3.2 * Math.pow(1.3, getEffectiveLevel('droneSpeed')) * droneBoost(); }
+  function droneCargoCap() { return 15 + 15 * getEffectiveLevel('droneCargo'); }
+  function dronePickupRadius() { return 1 + getEffectiveLevel('droneSpeed'); }
+  function droneLaserReach() { return 4 + 2 * getEffectiveLevel('droneMining'); }
+  function droneLaserSpeed() { return Math.pow(1.35, getEffectiveLevel('droneMining')) * droneBoost(); }
+
+  // Bring the drone fleet in line with the upgrades (new drones start in the dome)
+  function syncDrones(announce) {
+    const shaft = droneShaftTile();
+    const want = courierCount();
+    while (drones.length < want) {
+      drones.push({ x: shaft.col * TILE_SIZE + TILE_SIZE / 2, y: -TILE_SIZE, state: 'dock', path: null, pi: 0, cargo: 0, job: null, timer: 0.5 + drones.length * 0.4, phase: Math.random() * TWO_PI, repath: 0, laser: 0 });
+      if (announce)
+        floatingText.add(DOME_X - 150, DOME_Y - 170, 'Courier drone ready!', { color: '#d8b8ff', font: 'bold 24px sans-serif' });
+    }
+    drones.length = Math.min(drones.length, want);
+    const guns = unlockedTools.combatDrone ? (getEffectiveLevel('combatDroneLevel') >= 2 ? 2 : 1) : 0;
+    while (gunDrones.length < guns)
+      gunDrones.push({ angle: gunDrones.length * Math.PI, x: DOME_X, y: DOME_Y - 160, cooldown: 0.5, flash: 0, tx: 0, ty: 0 });
+    gunDrones.length = guns;
+    if (unlockedTools.repairDrone && !repairBot)
+      repairBot = { x: DOME_X + 60, y: DOME_Y - 150, angle: 0, beam: 0, bx: DOME_X, by: DOME_Y - DOME_RADIUS };
+    if (!unlockedTools.repairDrone)
+      repairBot = null;
+  }
+
+  function droneTile(d) {
+    return { col: Math.max(0, Math.min(GRID_COLS - 1, Math.floor(d.x / TILE_SIZE))), row: Math.max(0, Math.min(GRID_ROWS - 1, Math.floor(d.y / TILE_SIZE))) };
+  }
+
+  // Exposed ore near the keeper that no one else is working on, nearest first
+  function findDroneOre(d) {
+    const R = droneLaserReach();
+    let best = null, bestD = Infinity;
+    for (let r = Math.max(0, drillY - R); r <= Math.min(GRID_ROWS - 1, drillY + R); ++r)
+      for (let c = Math.max(0, drillX - R); c <= Math.min(GRID_COLS - 1, drillX + R); ++c) {
+        const t = undergroundGrid[r][c];
+        if (!RESOURCE_TILES.includes(t)) continue;
+        const dist = Math.abs(r - drillY) + Math.abs(c - drillX);
+        if (dist > R || dist >= bestD) continue;
+        if (miningTarget && miningTarget.col === c && miningTarget.row === r) continue;
+        if (drones.some(o => o !== d && o.job && o.job.kind === 'mine' && o.job.col === c && o.job.row === r)) continue;
+        for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+          const ar = r + dr, ac = c + dc;
+          if (ar < 0 || ar >= GRID_ROWS || ac < 0 || ac >= GRID_COLS || undergroundGrid[ar][ac] !== TILE_EMPTY) continue;
+          best = { kind: 'mine', col: c, row: r, standCol: ac, standRow: ar };
+          bestD = dist;
+          break;
+        }
+      }
+    return best;
+  }
+
+  function nearestDrop(fromCol, fromRow) {
+    let best = null, bestD = Infinity;
+    for (const drop of droppedResources) {
+      if (drones.some(o => o.job && o.job.kind === 'drop' && o.job.drop === drop)) continue;
+      const dist = Math.abs(drop.col - fromCol) + Math.abs(drop.row - fromRow);
+      if (dist < bestD) {
+        bestD = dist;
+        best = drop;
+      }
+    }
+    return best;
+  }
+
+  // Next errand for a courier with room in its hold
+  function pickDroneJob(d) {
+    const room = droneCargoCap() - d.cargo;
+    if (room <= 0) return null;
+    const keeperBelow = currentView === VIEW_UNDERGROUND || transitionTarget === VIEW_UNDERGROUND;
+    if (keeperBelow && carried >= Math.min(10, carryCapacity * 0.25) && !drones.some(o => o !== d && o.job && o.job.kind === 'keeper'))
+      return { kind: 'keeper' };
+    const here = droneTile(d);
+    const drop = nearestDrop(here.col, here.row);
+    if (drop)
+      return { kind: 'drop', drop, col: drop.col, row: drop.row };
+    if (keeperBelow && unlockedTools.droneMiner)
+      return findDroneOre(d);
+    return null;
+  }
+
+  function jobTarget(d) {
+    if (d.job.kind === 'keeper') return { col: drillX, row: drillY };
+    if (d.job.kind === 'mine') return { col: d.job.standCol, row: d.job.standRow };
+    if (d.job.kind === 'home') return droneShaftTile();
+    return { col: d.job.col, row: d.job.row };
+  }
+
+  function routeDrone(d) {
+    const from = droneTile(d);
+    const to = jobTarget(d);
+    if (undergroundGrid[from.row][from.col] !== TILE_EMPTY) {
+      // Lost inside rock (should not happen): hop back to the shaft
+      const sh = droneShaftTile();
+      d.x = sh.col * TILE_SIZE + TILE_SIZE / 2;
+      d.y = TILE_SIZE / 2;
+    }
+    const path = findPath(droneTile(d).col, droneTile(d).row, to.col, to.row);
+    d.path = path;
+    d.pi = 0;
+    d.target = to;
+    return !!path;
+  }
+
+  function sendDroneHome(d) {
+    d.job = { kind: 'home' };
+    d.state = 'fly';
+    if (!routeDrone(d)) {
+      d.state = 'dock';
+      d.timer = DRONE_DOCK_TIME;
+    }
+  }
+
+  function dronePickupAt(d, col, row) {
+    const R = dronePickupRadius();
+    let got = 0;
+    for (let i = droppedResources.length - 1; i >= 0; --i) {
+      const drop = droppedResources[i];
+      if (Math.abs(drop.col - col) + Math.abs(drop.row - row) > R) continue;
+      const take = Math.min(drop.value, droneCargoCap() - d.cargo);
+      if (take <= 0) break;
+      resources[TILE_LABELS[drop.type]] += take;
+      d.cargo += take;
+      got += take;
+      drop.value -= take;
+      if (drop.value <= 0)
+        droppedResources.splice(i, 1);
+    }
+    return got;
+  }
+
+  // The drone's laser finished an ore tile: the ore goes straight into the hold
+  function droneMinedTile(d) {
+    const { col, row } = d.job;
+    const tile = undergroundGrid[row][col];
+    if (!RESOURCE_TILES.includes(tile)) return;
+    const value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(row));
+    resources[TILE_LABELS[tile]] += value;
+    d.cargo = Math.min(droneCargoCap(), d.cargo + value);
+    undergroundGrid[row][col] = TILE_EMPTY;
+    tileHP[row][col] = 0;
+    tileMaxHP[row][col] = 0;
+    if (currentView === VIEW_UNDERGROUND) {
+      const tx = col * TILE_SIZE + TILE_SIZE / 2 - cameraX, ty = row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      spawnCrumble(tx, ty, getTileBaseColor(tile, row));
+      particles.sparkle(tx, ty, 10, { color: TILE_HIGHLIGHT_COLORS[tile] || '#fff', speed: 2 });
+      floatingText.add(tx, ty - 26, `Drone +${value} ${TILE_LABELS[tile]}`, { color: '#d8b8ff', font: 'bold 18px sans-serif' });
+      SZ.GameAudio.play('pickup', { pitch: 1.4, volume: 0.4 });
+    }
+  }
+
+  function arriveDrone(d) {
+    const job = d.job;
+    if (job.kind === 'home') {
+      if (d.cargo > 0) {
+        if (currentView === VIEW_SURFACE) {
+          floatingText.add(DOME_X - 140, DOME_Y - 150, `Drone delivered ${d.cargo}`, { color: '#d8b8ff', font: 'bold 20px sans-serif' });
+          SZ.GameAudio.play('coin', { pitch: 1.3, volume: 0.5 });
+        }
+      }
+      d.cargo = 0;
+      d.job = null;
+      d.state = 'dock';
+      d.timer = DRONE_DOCK_TIME / droneBoost();
+      return;
+    }
+    if (job.kind === 'keeper') {
+      const take = Math.min(carried, droneCargoCap() - d.cargo);
+      if (take > 0) {
+        carried -= take;
+        d.cargo += take;
+        if (currentView === VIEW_UNDERGROUND)
+          floatingText.add(d.x - cameraX, d.y - cameraY - 30, `Drone took ${take} cargo`, { color: '#d8b8ff', font: 'bold 18px sans-serif' });
+        SZ.GameAudio.play('blip', { pitch: 1.5, volume: 0.4 });
+      }
+      dronePickupAt(d, drillX, drillY);
+    } else if (job.kind === 'drop') {
+      dronePickupAt(d, job.col, job.row);
+    } else if (job.kind === 'mine') {
+      if (undergroundGrid[job.row][job.col] !== TILE_EMPTY) {
+        d.state = 'mine';
+        const hard = getTileHardness(job.row, undergroundGrid[job.row][job.col]);
+        d.timer = d.laserTime = Math.max(0.4, hard * 1.6 / droneLaserSpeed());
+        return;
+      }
+    }
+    // Look for more work while there is room, otherwise head home
+    d.job = d.cargo < droneCargoCap() * 0.85 ? pickDroneJob(d) : null;
+    if (d.job && d.job.kind !== 'keeper') {
+      d.state = 'fly';
+      if (routeDrone(d)) return;
+    }
+    sendDroneHome(d);
+  }
+
+  function updateCourier(d, dt) {
+    d.phase += dt * 6;
+    if (d.state === 'dock') {
+      d.timer -= dt;
+      if (d.timer > 0) return;
+      d.job = pickDroneJob(d);
+      if (!d.job) {
+        d.timer = 0.6;
+        return;
+      }
+      const sh = droneShaftTile();
+      d.x = sh.col * TILE_SIZE + TILE_SIZE / 2;
+      d.y = TILE_SIZE / 2;
+      d.state = 'fly';
+      if (!routeDrone(d)) {
+        d.state = 'dock';
+        d.job = null;
+        d.timer = 1;
+      }
+      return;
+    }
+    if (d.state === 'mine') {
+      const job = d.job;
+      if (undergroundGrid[job.row][job.col] === TILE_EMPTY) {
+        arriveDrone(Object.assign(d, { state: 'fly' }));
+        return;
+      }
+      d.timer -= dt;
+      const ratio = 1 - Math.max(0, d.timer) / d.laserTime;
+      if (tileMaxHP[job.row][job.col] > 0)
+        tileHP[job.row][job.col] = Math.min(tileHP[job.row][job.col], tileMaxHP[job.row][job.col] * (1 - ratio));
+      if (currentView === VIEW_UNDERGROUND && Math.random() < dt * 14)
+        particles.sparkle(job.col * TILE_SIZE + TILE_SIZE / 2 - cameraX + (Math.random() - 0.5) * 16, job.row * TILE_SIZE + TILE_SIZE / 2 - cameraY + (Math.random() - 0.5) * 16, 1, { color: '#ff9adf', speed: 1.5 });
+      if (d.timer <= 0) {
+        droneMinedTile(d);
+        d.state = 'fly';
+        arriveDrone(Object.assign(d, { job: { kind: 'idle' } }));
+      }
+      return;
+    }
+    // Flying: chase the keeper if they moved, then follow the path
+    if (d.job && d.job.kind === 'keeper') {
+      d.repath -= dt;
+      if (d.repath <= 0 && (d.target.col !== drillX || d.target.row !== drillY)) {
+        d.repath = 0.4;
+        if (currentView !== VIEW_UNDERGROUND && transitionTarget !== VIEW_UNDERGROUND) {
+          sendDroneHome(d);
+          return;
+        }
+        routeDrone(d);
+      }
+    }
+    if (d.job && d.job.kind === 'drop' && !droppedResources.includes(d.job.drop)) {
+      arriveDrone(Object.assign(d, { job: { kind: 'idle' } }));
+      return;
+    }
+    if (!d.path) {
+      sendDroneHome(d);
+      return;
+    }
+    let move = droneSpeed() * dt;
+    while (move > 0 && d.pi < d.path.length) {
+      const step = d.path[d.pi];
+      const tx = step.col * TILE_SIZE + TILE_SIZE / 2, ty = step.row * TILE_SIZE + TILE_SIZE / 2;
+      const dx = tx - d.x, dy = ty - d.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist <= move) {
+        d.x = tx;
+        d.y = ty;
+        move -= dist;
+        ++d.pi;
+      } else {
+        d.x += dx / dist * move;
+        d.y += dy / dist * move;
+        d.face = dx < -0.5 ? -1 : dx > 0.5 ? 1 : d.face;
+        move = 0;
+      }
+    }
+    if (d.pi >= d.path.length) {
+      // Close the last gap to an off-centre start (the shaft mouth)
+      const t = d.target;
+      d.x = t.col * TILE_SIZE + TILE_SIZE / 2;
+      d.y = t.row * TILE_SIZE + TILE_SIZE / 2;
+      d.path = null;
+      arriveDrone(d);
+    }
+  }
+
+  function updateDrones(dt) {
+    for (const d of drones)
+      updateCourier(d, dt);
+
+    // Gun drones circle above the dome and shoot whatever comes closest
+    const gunLevel = getEffectiveLevel('combatDroneLevel');
+    gunDrones.forEach((g, i) => {
+      g.angle += dt * 0.7;
+      const side = i % 2 ? -1 : 1;
+      g.x = DOME_X + side * (190 + Math.sin(g.angle * 1.3) * 40) + Math.cos(g.angle) * 30;
+      g.y = DOME_Y - 175 + Math.sin(g.angle * 2) * 26;
+      g.cooldown -= dt;
+      g.flash = Math.max(0, g.flash - dt * 5);
+      if (g.cooldown > 0 || !enemies.length) return;
+      let target = null, best = 560 * 560;
+      for (const e of enemies) {
+        if (e.hidden) continue;
+        const dd = (e.x - g.x) * (e.x - g.x) + (e.y - g.y) * (e.y - g.y);
+        if (dd < best) {
+          best = dd;
+          target = e;
+        }
+      }
+      if (!target) return;
+      g.cooldown = 1 / ((1.1 + 0.5 * Math.min(1, gunLevel)) * droneBoost());
+      applyDamageToEnemy(target, 5 + 3 * Math.min(1, gunLevel) + (gunLevel >= 2 ? 2 : 0));
+      g.flash = 1;
+      g.tx = target.x;
+      g.ty = target.y;
+      if (currentView === VIEW_SURFACE) {
+        SZ.GameAudio.play('shoot', { pitch: 1.7 + i * 0.1, volume: 0.35 });
+        particles.burst(target.x, target.y, 4, { color: '#7af0ff', speed: 1.8, life: 0.25 });
+      }
+    });
+
+    // Repair drone welds the dome while it is damaged
+    if (repairBot) {
+      const r = repairBot;
+      r.angle += dt;
+      const healing = domeHP < maxDomeHP && domeHP > 0;
+      if (healing) {
+        const a = Math.PI + 0.35 + (Math.sin(r.angle * 0.4) * 0.5 + 0.5) * (Math.PI - 0.7);
+        r.bx = DOME_X + Math.cos(a) * DOME_RADIUS;
+        r.by = DOME_Y + Math.sin(a) * DOME_RADIUS;
+        r.x += (r.bx + Math.cos(a) * 46 - r.x) * Math.min(1, dt * 3);
+        r.y += (r.by + Math.sin(a) * 46 - 10 - r.y) * Math.min(1, dt * 3);
+        const rate = (0.5 + 0.45 * getEffectiveLevel('repairDroneLevel')) * droneBoost();
+        domeHP = Math.min(maxDomeHP, domeHP + rate * dt);
+        r.beam = 1;
+        if (currentView === VIEW_SURFACE && Math.random() < dt * 18)
+          particles.trail(r.bx, r.by, { vx: (Math.random() - 0.5) * 3, vy: -Math.random() * 2.5, color: Math.random() < 0.5 ? '#fff6a0' : '#7affb0', life: 0.3, size: 1.5, gravity: 0.1 });
+      } else {
+        r.beam = Math.max(0, r.beam - dt * 4);
+        r.x += (DOME_X + 70 + Math.cos(r.angle * 0.8) * 30 - r.x) * Math.min(1, dt * 2);
+        r.y += (DOME_Y - 160 + Math.sin(r.angle * 1.6) * 14 - r.y) * Math.min(1, dt * 2);
+      }
+    }
+  }
+
+  // Rotor blur and body of a drone sprite at screen position
+  function drawDroneSprite(sprite, x, y, size, face, phase, alpha) {
+    ctx.save();
+    if (alpha !== undefined)
+      ctx.globalAlpha *= alpha;
+    ctx.translate(x, y);
+    if (face < 0)
+      ctx.scale(-1, 1);
+    drawSprite(sprite, 0, 0, size);
+    ctx.strokeStyle = 'rgba(210,235,255,0.6)';
+    ctx.lineWidth = 2;
+    const blur = size * (0.22 + Math.abs(Math.sin(phase * 4)) * 0.12);
+    ctx.beginPath();
+    for (const sx of [-0.36, 0.36]) {
+      ctx.moveTo(size * sx - blur, -size * 0.47);
+      ctx.lineTo(size * sx + blur, -size * 0.47);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawUndergroundDrones() {
+    const ox = Math.round(cameraX), oy = Math.round(cameraY);
+    for (const d of drones) {
+      if (d.state === 'dock') continue;
+      const x = d.x - ox, y = d.y - oy + Math.sin(d.phase) * 3;
+      if (x < -60 || x > CANVAS_W + 60 || y < -60 || y > CANVAS_H + 60) continue;
+      drawGlow('#9ad8ff', x, y, 70, 0.22);
+      if (d.state === 'mine') {
+        const tx = d.job.col * TILE_SIZE + TILE_SIZE / 2 - ox, ty = d.job.row * TILE_SIZE + TILE_SIZE / 2 - oy;
+        const flick = 0.6 + Math.random() * 0.4;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = `rgba(255,90,200,${0.35 * flick})`;
+        ctx.lineWidth = 7;
+        ctx.beginPath();
+        ctx.moveTo(x, y + 6);
+        ctx.lineTo(tx, ty);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(255,220,250,${flick})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+        drawGlow('#ff7ad8', tx, ty, 26, 0.7 * flick);
+      }
+      drawDroneSprite('drone', x, y, 28, d.face || 1, d.phase);
+      const cap = droneCargoCap();
+      if (d.cargo > 0)
+        drawMeter(x - 16, y + 18, 32, 5, d.cargo / cap, '#d8b8ff', { track: 'rgba(0,0,0,0.7)' });
+      if (Math.random() < 0.15)
+        particles.trail(x - (d.face || 1) * 10, y + 4, { vx: -(d.face || 1) * 0.8, vy: 0.4, color: '#8ad0ff', life: 0.25, size: 1.2 });
+    }
+  }
+
+  function drawSurfaceDrones() {
+    // Couriers resting in the dome hover beside it
+    let slot = 0;
+    for (const d of drones) {
+      if (d.state !== 'dock') continue;
+      const x = DOME_X - 150 - slot * 38, y = DOME_Y - 120 + Math.sin(animTime * 2 + slot) * 6;
+      drawGlow('#9ad8ff', x, y + 12, 18, 0.45);
+      drawDroneSprite('drone', x, y, 26, 1, animTime * 3 + slot);
+      ++slot;
+    }
+    for (const g of gunDrones) {
+      if (g.flash > 0) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = `rgba(120,240,255,${g.flash})`;
+        ctx.lineWidth = 2 + g.flash * 2;
+        ctx.beginPath();
+        ctx.moveTo(g.x, g.y + 4);
+        ctx.lineTo(g.tx, g.ty);
+        ctx.stroke();
+        ctx.restore();
+        drawGlow('#7af0ff', g.x, g.y + 4, 16, g.flash);
+      }
+      drawGlow('#ff8a6a', g.x, g.y + 10, 16, 0.35);
+      drawDroneSprite('gundrone', g.x, g.y, 32, g.tx < g.x && g.flash > 0 ? -1 : 1, animTime * 3);
+    }
+    if (repairBot) {
+      const r = repairBot;
+      if (r.beam > 0) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const flick = 0.6 + Math.random() * 0.4;
+        ctx.strokeStyle = `rgba(120,255,170,${0.8 * r.beam * flick})`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(r.x, r.y + 10);
+        ctx.lineTo(r.bx, r.by);
+        ctx.stroke();
+        ctx.restore();
+        drawGlow('#fff6a0', r.bx, r.by, 22 * flick, r.beam);
+      }
+      drawDroneSprite('medic', r.x, r.y, 30, 1, animTime * 3);
+    }
+  }
+
+  function drawDroneHUD(x, y, w) {
+    if (!drones.length) return y;
+    const rowH = 28;
+    drawPanel(x, y, w, 12 + drones.length * rowH, { accent: '#c890ff', shadow: 10 });
+    const cap = droneCargoCap();
+    drones.forEach((d, i) => {
+      const ry = y + 6 + i * rowH + rowH / 2;
+      drawSprite('drone', x + 22, ry, 20);
+      let status, color = UI.textDim;
+      if (d.state === 'dock') status = 'In dome';
+      else if (d.state === 'mine') { status = 'Lasering ore'; color = '#ff9adf'; }
+      else if (d.job && d.job.kind === 'home') { status = 'Flying home'; color = '#d8b8ff'; }
+      else if (d.job && d.job.kind === 'keeper') { status = 'Coming to you'; color = UI.good; }
+      else if (d.job && d.job.kind === 'mine') { status = 'Flying to ore'; color = '#ff9adf'; }
+      else { status = 'Collecting'; color = '#ffd070'; }
+      const chip = drawChip(`${d.cargo}/${cap}`, x + w - 10, ry - 11, 22, { align: 'right', px: 12, bg: 'rgba(200,144,255,0.16)', color: '#e8d8ff' });
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText(status, x + 40, ry + 1, w - 40 - chip - 18, 16, { weight: 'bold', color });
+    });
+    return y + 12 + drones.length * rowH;
+  }
+
+  /* ======================================================================
      MOVEMENT (mouse-based underground navigation)
      ====================================================================== */
 
@@ -4966,6 +5547,7 @@
 
     updateEnemies(dt);
     updateWeapon(dt);
+    updateDrones(dt);
 
     autosaveTimer += dt;
     if (autosaveTimer >= AUTOSAVE_INTERVAL && state === STATE_PLAYING) {
@@ -6160,6 +6742,9 @@
     ctx.globalAlpha = 1;
     drawGlow('#ffcf80', pcx, pcy, 150, 0.16);
 
+    // Courier drones carry their own lights
+    drawUndergroundDrones();
+
     // Ore glints twinkle through the dark
     for (let i = 0; i < oreTiles.length; i += 2) {
       const r = oreTiles[i], c = oreTiles[i + 1];
@@ -6189,8 +6774,8 @@
       drawChip(`Blast [B]: ${primaryGadgetState.blastCharges}`, CANVAS_W - 58, CANVAS_H - 79, 26, { align: 'right', px: 15, bg: 'rgba(20,26,42,0.85)', border: 'rgba(255,160,64,0.6)', color: '#ffa040' });
     }
 
-    // Tool HUD (underground)
-    drawToolHUDUnderground();
+    // Tool and drone HUD (underground, right side)
+    drawDroneHUD(CANVAS_W - 296, drawToolHUDUnderground() + 12, 280);
 
     drawKeyHints([
       { key: 'Space', label: 'Surface' },
@@ -6717,9 +7302,10 @@
     fitText(`Depth ${drillY} m  ·  ${DEPTH_TIERS[getDepthTier(drillY)].name}`, carryX + 16, panelY + 68, carryW - 32, 15, { color: UI.textDim });
   }
 
+  // Returns the bottom edge of the panel
   function drawToolHUDUnderground() {
     const tools = TOOL_DEFS.filter(d => unlockedTools[d.key]);
-    if (!tools.length) return;
+    if (!tools.length) return 100;
 
     const hudX = CANVAS_W - 296, hudW = 280;
     const hudY = 112;
@@ -6759,6 +7345,7 @@
       ctx.textBaseline = 'middle';
       fitText(label, hudX + 66, y + 1, hudW - 66 - 20 - sw, 16, { weight: 'bold', color });
     }
+    return hudY + 12 + tools.length * rowH;
   }
 
   function parseHex(hex) {
@@ -6838,22 +7425,7 @@
       }
     }
 
-    // Droneyard: hovering drone
-    if (primaryGadget === 'droneyard') {
-      const dronePhase = primaryGadgetState.dronePhase || 0;
-      const droneY = DOME_Y - 100 + Math.sin(dronePhase) * 40;
-      const droneX = DOME_X + 70;
-      drawGlow('#7ac8ff', droneX, droneY + 14, 18, 0.5);
-      drawSprite('robot', droneX, droneY, 30);
-      // Propeller blur
-      ctx.strokeStyle = 'rgba(190,225,255,0.55)';
-      ctx.lineWidth = 2;
-      const propLen = 12 + Math.sin(animTime * 20) * 5;
-      ctx.beginPath();
-      ctx.moveTo(droneX - propLen, droneY - 17);
-      ctx.lineTo(droneX + propLen, droneY - 17);
-      ctx.stroke();
-    }
+    drawSurfaceDrones();
 
     // Auto Cannon: turret on top of dome (apex) so it can reach both sides
     if (foundGadgets.includes('autoCannon')) {
@@ -7030,8 +7602,18 @@
         rows.push({ icon: 'tree', text: 'Fruit ready! Click the tree', color: '#ffe060' });
       else
         rows.push({ icon: 'tree', text: `Orchard: ${Math.ceil(primaryGadgetState.fruitTimer)}s`, color: '#4ac080' });
-    } else if (primaryGadget === 'droneyard')
-      rows.push({ icon: 'robot', text: `Drone: ${Math.ceil(primaryGadgetState.droneTimer)}s`, color: '#9cc4e8' });
+    }
+    if (drones.length || gunDrones.length || repairBot) {
+      const out = drones.filter(d => d.state !== 'dock').length;
+      const parts = [];
+      if (drones.length)
+        parts.push(`${drones.length} courier${drones.length > 1 ? 's' : ''}${out ? ' (' + out + ' out)' : ''}`);
+      if (gunDrones.length)
+        parts.push(`${gunDrones.length} gun`);
+      if (repairBot)
+        parts.push('repair');
+      rows.push({ icon: 'drone', text: 'Drones: ' + parts.join(', '), color: '#d8b8ff' });
+    }
 
     if (foundGadgets.includes('blastMining') && (primaryGadgetState.blastCharges || 0) > 0)
       rows.push({ icon: 'bomb', text: `Blast [B]: ${primaryGadgetState.blastCharges} charges`, color: '#ffa040' });
