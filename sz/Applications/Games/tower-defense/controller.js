@@ -73,9 +73,9 @@
       strong: 'Groups, swarms', weak: 'Flyers (cannot hit them)',
       tiers: [{}, { damage: 1.6, range: 1.05, reload: 0.95 }, { damage: 2.4, range: 1.1, splash: 1.25, reload: 0.9 }],
       branches: [
-        { id: 'mortar', name: 'Siege Mortar', desc: 'Enormous range and a huge blast radius.',
-          t4: { damage: 5.0, range: 1.9, reload: 1.25, splash: 1.7 },
-          t5: { damage: 8.2, range: 2.1, reload: 1.15, splash: 2.0 } },
+        { id: 'bombard', name: 'Bombard', desc: 'Huge shells with a wide blast that briefly stuns.',
+          t4: { damage: 5.2, range: 1.2, reload: 1.3, splash: 1.6, stun: 0.35 },
+          t5: { damage: 8.0, range: 1.3, reload: 1.2, splash: 1.9, stun: 0.5 } },
         { id: 'shrapnel', name: 'Shrapnel', desc: 'Shells burst into bomblets that shred armor.',
           t4: { damage: 3.6, reload: 0.9, splash: 1.25, bomblets: 5, shred: 2 },
           t5: { damage: 5.2, reload: 0.85, splash: 1.35, bomblets: 8, shred: 4 } }
@@ -203,6 +203,99 @@
     }
   ];
 
+  // Families added later; they follow the first ten so old hotkeys stay put
+  TOWER_TYPES.push(
+    {
+      id: 'mortar', name: 'Mortar', cost: 120, color: '#c8a070', hits: 'ground', kind: 'shell',
+      damage: 38, range: 6.0, reload: 3.0, speed: 170, splash: 1.5, minRange: 1.6,
+      desc: 'Very long range artillery with a wide blast; cannot hit what stands right next to it.',
+      strong: 'Packs far down the road', weak: 'Flyers, enemies at its feet',
+      tiers: [{}, { damage: 1.6, range: 1.05 }, { damage: 2.4, range: 1.1, splash: 1.7 }],
+      branches: [
+        { id: 'barrage', name: 'Barrage', desc: 'Fires a salvo of three shells.',
+          t4: { damage: 3.0, range: 1.15, reload: 0.95, salvo: 3 },
+          t5: { damage: 4.4, range: 1.2, reload: 0.9, salvo: 4 } },
+        { id: 'incendiary', name: 'Incendiary', desc: 'Shells leave the road burning.',
+          t4: { damage: 4.2, range: 1.15, splash: 1.8, lava: 18 },
+          t5: { damage: 6.2, range: 1.2, splash: 2.0, lava: 30 } }
+      ]
+    },
+    {
+      id: 'storm', name: 'Storm', cost: 130, color: '#b8a0ff', hits: 'both', kind: 'skybolt', target: 'strong',
+      damage: 55, range: 4.2, reload: 2.6, splash: 0.7,
+      desc: 'Calls lightning from the sky onto the strongest enemy in range.',
+      strong: 'Tough targets, flyers', weak: 'Fast swarms',
+      tiers: [{}, { damage: 1.6, range: 1.05 }, { damage: 2.3, range: 1.1, splash: 0.8 }],
+      branches: [
+        { id: 'thunderhead', name: 'Thunderhead', desc: 'Each storm hurls several bolts.',
+          t4: { damage: 3.4, range: 1.15, bolts: 3 },
+          t5: { damage: 4.8, range: 1.2, bolts: 5 } },
+        { id: 'static', name: 'Static Field', desc: 'Bolts paralyse everything they strike.',
+          t4: { damage: 3.6, range: 1.15, splash: 1.2, stun: 1.0 },
+          t5: { damage: 5.0, range: 1.2, splash: 1.4, stun: 1.5 } }
+      ]
+    },
+    {
+      id: 'wind', name: 'Wind', cost: 90, color: '#a8f0e0', hits: 'both', kind: 'gust',
+      damage: 4, range: 2.4, reload: 2.4, cone: 0.6, push: 34,
+      desc: 'Gusts blow enemies back down the road.',
+      strong: 'Buying time, runners', weak: 'Bosses (too heavy to move)',
+      tiers: [{}, { damage: 1.6, range: 1.05, push: 44 }, { damage: 2.2, range: 1.1, push: 54 }],
+      branches: [
+        { id: 'cyclone', name: 'Cyclone', desc: 'A whirlwind that lifts enemies off their feet.',
+          t4: { damage: 3.0, range: 1.15, push: 40, stun: 0.9, cone: 0.9 },
+          t5: { damage: 4.2, range: 1.2, push: 50, stun: 1.3, cone: 1.1 } },
+        { id: 'gale', name: 'Gale', desc: 'Storm-force gusts that hurl enemies far back.',
+          t4: { damage: 3.0, range: 1.3, push: 85, reload: 0.9 },
+          t5: { damage: 4.2, range: 1.4, push: 115, reload: 0.85 } }
+      ]
+    },
+    {
+      id: 'missile', name: 'Missile', cost: 140, color: '#ff6a6a', hits: 'both', kind: 'missile',
+      damage: 30, range: 4.8, reload: 1.9, speed: 230, splash: 0.7, airBonus: 1.6,
+      desc: 'Homing rockets that seek flyers first; extra damage against them.',
+      strong: 'Flyers, wyverns, dragons', weak: 'Armor',
+      tiers: [{}, { damage: 1.6, range: 1.05 }, { damage: 2.3, range: 1.1 }],
+      branches: [
+        { id: 'swarm', name: 'Rocket Swarm', desc: 'Launches a swarm of small rockets.',
+          t4: { damage: 1.7, range: 1.15, reload: 0.9, multishot: 4 },
+          t5: { damage: 2.4, range: 1.2, reload: 0.85, multishot: 6 } },
+        { id: 'hellfire', name: 'Hellfire', desc: 'Heavy warheads with a fiery blast.',
+          t4: { damage: 4.6, range: 1.2, splash: 1.3, burn: 14, burnTime: 2.5 },
+          t5: { damage: 6.6, range: 1.25, splash: 1.5, burn: 24, burnTime: 3 } }
+      ]
+    },
+    {
+      id: 'beacon', name: 'Beacon', cost: 150, color: '#ffe08a', hits: 'none', kind: 'support',
+      damage: 0, range: 2.2, reload: 0, buffDmg: 0.15, buffRate: 0.1,
+      desc: 'Inspires every tower in range: they hit harder and shoot faster.',
+      strong: 'Tight clusters of towers', weak: 'Cannot attack',
+      tiers: [{}, { range: 1.05, buffDmg: 0.2, buffRate: 0.14 }, { range: 1.1, buffDmg: 0.25, buffRate: 0.18 }],
+      branches: [
+        { id: 'drum', name: 'War Drum', desc: 'A thundering rhythm: much more damage.',
+          t4: { range: 1.15, buffDmg: 0.4, buffRate: 0.2 },
+          t5: { range: 1.2, buffDmg: 0.55, buffRate: 0.25 } },
+        { id: 'oracle', name: 'Oracle', desc: 'Wider reach; towers in range spot stealthed enemies.',
+          t4: { range: 1.45, buffDmg: 0.25, buffRate: 0.2, reveal: true },
+          t5: { range: 1.65, buffDmg: 0.32, buffRate: 0.25, reveal: true } }
+      ]
+    },
+    {
+      id: 'arcane', name: 'Arcane', cost: 160, color: '#e070ff', hits: 'both', kind: 'orb', target: 'strong',
+      damage: 12, range: 3.4, reload: 1.5, speed: 190, maxHpDmg: 0.02,
+      desc: 'Orbs that ignore armor and shields and burn a share of the target\'s maximum health.',
+      strong: 'Bosses, juggernauts', weak: 'Many weak enemies',
+      tiers: [{}, { damage: 1.5, range: 1.05, maxHpDmg: 0.025 }, { damage: 2.0, range: 1.1, maxHpDmg: 0.03 }],
+      branches: [
+        { id: 'disintegrate', name: 'Disintegrate', desc: 'Orbs eat a much larger share of maximum health.',
+          t4: { damage: 2.6, range: 1.15, maxHpDmg: 0.05 },
+          t5: { damage: 3.4, range: 1.2, maxHpDmg: 0.075 } },
+        { id: 'ricochet', name: 'Ricochet', desc: 'Orbs bounce on to further enemies.',
+          t4: { damage: 2.6, range: 1.15, bounces: 3 },
+          t5: { damage: 3.6, range: 1.2, bounces: 5 } }
+      ]
+    }
+  );
   const TOWER_BY_ID = {};
   for (let i = 0; i < TOWER_TYPES.length; ++i) {
     TOWER_TYPES[i].index = i;
@@ -357,7 +450,8 @@
   /* Tower shots are throttled so a full board does not turn into noise */
   const SHOT_SOUNDS = {
     arrow: ['shoot', 1.4], cannon: ['thud', 1.1], frost: ['blip', 1.6], tesla: ['zap', 1.1],
-    flame: ['whoosh', 1.5], poison: ['bounce', 0.8], laser: ['laser', 1.3], sniper: ['shoot', 0.6]
+    flame: ['whoosh', 1.5], poison: ['bounce', 0.8], laser: ['laser', 1.3], sniper: ['shoot', 0.6],
+    mortar: ['thud', 0.6], missile: ['shoot', 0.85], arcane: ['laser', 2.2]
   };
   const lastShotSoundAt = {};
 
@@ -1092,7 +1186,7 @@
       type: typeIndex,
       tier: tier || 1,
       branch: branch === undefined ? -1 : branch,
-      target: 'first',
+      target: TOWER_TYPES[typeIndex].target || 'first',
       cooldown: 0,
       angle: -Math.PI / 2,
       kills: 0,
@@ -1486,8 +1580,9 @@
     if (e.freezeTimer > 0 && kind !== 'cold') dmg *= 1.25;
     if (e.acidTimer > 0) dmg *= 1.25;
     if (src && src.type !== undefined && lastStandActive()) dmg *= 1.25;
-    // Shields soak everything but poison; energy hits them twice as hard
-    if (e.shieldHp > 0 && kind !== 'poison') {
+    if (src && src.buffDmg > 1) dmg *= src.buffDmg;
+    // Shields soak everything but poison and arcane; energy hits them twice as hard
+    if (e.shieldHp > 0 && kind !== 'poison' && kind !== 'arcane') {
       const mul = kind === 'energy' ? 2 : 1;
       const absorb = Math.min(e.shieldHp, dmg * mul);
       e.shieldHp -= absorb;
@@ -1498,8 +1593,8 @@
         particles.glow(e.x, e.y - 6, e.radius * 2.5, '#5ad8ff', 0.25);
       }
     }
-    // Armor takes a flat bite out of every hit (not out of poison or burns)
-    if (dmg > 0 && kind !== 'poison' && !(opts && opts.dot)) {
+    // Armor takes a flat bite out of every hit (not out of poison, arcane or burns)
+    if (dmg > 0 && kind !== 'poison' && kind !== 'arcane' && !(opts && opts.dot)) {
       const armor = Math.max(0, e.armor - e.shred) * (e.acidTimer > 0 ? 0.5 : 1) * (1 - ((opts && opts.pierce) || 0));
       if (armor > 0)
         dmg = Math.max(dmg * 0.25, dmg - armor);
@@ -1567,7 +1662,7 @@
       for (let i = 0; i < towers.length && !seen; ++i) {
         const t = towers[i];
         const s = towerStats(t);
-        if (s.trueSight && Math.hypot(t.x - e.x, t.y - e.y) <= s.rangePx + e.radius)
+        if ((s.trueSight || t.revealBuff) && Math.hypot(t.x - e.x, t.y - e.y) <= Math.max(s.rangePx, CELL) + e.radius)
           seen = true;
       }
       e.revealed = seen;
@@ -1586,15 +1681,18 @@
   function findTargets(t, s, count, exclude) {
     const r = s.rangePx;
     const list = [];
+    const minR = (s.minRange || 0) * CELL;
     for (const e of enemies) {
       if (e.hp <= 0 || !canHit(s, e) || (exclude && exclude.indexOf(e) >= 0)) continue;
       const dx = e.x - t.x, dy = e.y - t.y;
-      if (dx * dx + dy * dy > (r + e.radius * 0.5) * (r + e.radius * 0.5)) continue;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > (r + e.radius * 0.5) * (r + e.radius * 0.5) || (minR && d2 < minR * minR)) continue;
       list.push(e);
     }
     if (list.length <= 1)
       return list;
-    const scored = list.map(e => [targetScore(t.target, t, e), e]);
+    // Missiles go for flyers first
+    const scored = list.map(e => [targetScore(t.target, t, e) + (s.airBonus && enemyFlags(e).flying ? 1e7 : 0), e]);
     scored.sort((a, b) => b[0] - a[0]);
     return scored.slice(0, count).map(p => p[1]);
   }
@@ -1649,8 +1747,74 @@
         const lead = predictPos(e, flight);
         aimAt(t, e);
         const mz = muzzleOf(t);
-        projectiles.push({ kind: 'shell', x: mz.x, y: mz.y, sx: mz.x, sy: mz.y, tx: lead.x, ty: lead.y, t: 0, dur: flight, damage: s.damage, tower: t, s, color: '#ffb36a' });
+        const salvo = s.salvo || 1;
+        for (let k = 0; k < salvo; ++k) {
+          const spread = salvo > 1 ? CELL * 0.9 : 0;
+          const ox = salvo > 1 ? (Math.random() - 0.5) * spread * 2 : 0, oy = salvo > 1 ? (Math.random() - 0.5) * spread * 2 : 0;
+          projectiles.push({ kind: 'shell', x: mz.x, y: mz.y, sx: mz.x, sy: mz.y, tx: lead.x + ox, ty: lead.y + oy, t: -k * 0.12, dur: flight, damage: s.damage, tower: t, s, color: '#ffb36a' });
+        }
+        break;
+      }
+      case 'skybolt': {
+        const targets = findTargets(t, s, s.bolts || 1);
+        if (!targets.length) return false;
+        aimAt(t, targets[0]);
+        for (const e of targets) {
+          for (const o of enemiesNear(e.x, e.y, s.splashPx, q => canHit(s, q))) {
+            hurt(o, s.damage * (o === e ? 1 : 0.5), t, 'energy', { area: o !== e });
+            if (s.stun && !enemyFlags(o).boss) o.stunTimer = Math.max(o.stunTimer, s.stun);
+          }
+          fxLines.push({ kind: 'sky', pts: [{ x: e.x + (Math.random() - 0.5) * 30, y: e.y - 240 }, { x: e.x, y: e.y - e.radius * 0.5 }], color: '#d8c8ff', t: 0, life: 0.28, seed: Math.random() * 1000 });
+          particles.glow(e.x, e.y - 4, 30, '#c8b8ff', 0.25);
+          particles.sparks(e.x, e.y - 4, 6, '#e8e0ff', 160);
+          addDecal(e.x, e.y + 3, 7, 'scorch');
+        }
+        addShake(2, 90);
+        playThrottled('thunder', 'thud', { pitch: 0.7, volume: 0.6 }, 150);
+        break;
+      }
+      case 'gust': {
+        const e = findTargets(t, s, 1)[0];
+        if (!e) return false;
         aimAt(t, e);
+        const cosCone = Math.cos(s.cone);
+        const ax = Math.cos(t.angle), ay = Math.sin(t.angle);
+        for (const o of enemies) {
+          if (o.hp <= 0 || !canHit(s, o)) continue;
+          const dx = o.x - t.x, dy = o.y - t.y;
+          const d = Math.hypot(dx, dy);
+          if (d > s.rangePx + o.radius) continue;
+          if (d > 6 && (dx * ax + dy * ay) / d < cosCone) continue;
+          hurt(o, s.damage, t, 'phys', { area: true });
+          const f = enemyFlags(o);
+          if (!f.boss) {
+            // Every gust an enemy weathers makes the next one weaker, so nothing is held forever
+            o.pushRes = o.pushRes || 0;
+            o.dist = Math.max(0, o.dist - s.push * (f.armor >= 8 ? 0.4 : 1) / (1 + o.pushRes));
+            o.pushRes += 0.35;
+            if (s.stun) o.stunTimer = Math.max(o.stunTimer, s.stun);
+          }
+        }
+        fxLines.push({ kind: 'gust', x: t.x, y: t.y - 8, r: s.rangePx, a: t.angle, cone: s.cone, color: '#e8fff8', t: 0, life: 0.45 });
+        playThrottled('gust', 'whoosh', { pitch: 1.6, volume: 0.35 }, 140);
+        break;
+      }
+      case 'missile': {
+        const targets = findTargets(t, s, s.multishot || 1);
+        if (!targets.length) return false;
+        aimAt(t, targets[0]);
+        const mz = muzzleOf(t);
+        targets.forEach((e, k) => {
+          const a = t.angle + (k - (targets.length - 1) / 2) * 0.5 + (Math.random() - 0.5) * 0.3;
+          projectiles.push({ kind: 'missile', x: mz.x, y: mz.y, vx: Math.cos(a) * 60, vy: Math.sin(a) * 60 - 30, target: e, speed: s.speed, damage: s.damage, tower: t, s, color: '#ffffff', trail: [], t: 0 });
+        });
+        break;
+      }
+      case 'orb': {
+        const e = findTargets(t, s, 1)[0];
+        if (!e) return false;
+        const mz = muzzleOf(t);
+        projectiles.push({ kind: 'orb', x: mz.x, y: mz.y, target: e, speed: s.speed, damage: s.damage, tower: t, s, color: '#e070ff', trail: [], bounces: s.bounces || 0, hit: [] });
         break;
       }
       case 'glob': {
@@ -1785,14 +1949,35 @@
     return pathPos(path, Math.min(path.total, e.dist + sp * time), out);
   }
 
+  // Beacons inspire the towers around them (the best beacon counts, they do not stack)
+  function updateBuffs() {
+    for (const t of towers) {
+      t.buffDmg = 1;
+      t.buffRate = 1;
+      t.revealBuff = false;
+    }
+    for (const b of towers) {
+      const bs = towerStats(b);
+      if (bs.kind !== 'support') continue;
+      for (const t of towers) {
+        if (t === b || towerStats(t).kind === 'support') continue;
+        if (Math.hypot(t.x - b.x, t.y - b.y) > bs.rangePx + 2) continue;
+        t.buffDmg = Math.max(t.buffDmg, 1 + bs.buffDmg);
+        t.buffRate = Math.max(t.buffRate, 1 + bs.buffRate);
+        if (bs.reveal) t.revealBuff = true;
+      }
+    }
+  }
+
   function updateTowers(dt) {
+    updateBuffs();
     for (const t of towers) {
       const def = TOWER_TYPES[t.type];
       const s = towerStats(t);
       t.flash = Math.max(0, t.flash - dt);
       t.recoil = Math.max(0, t.recoil - dt * 6);
       if (t.flameT) t.flameT = Math.max(0, t.flameT - dt);
-      if (s.kind === 'mine' || s.kind === 'trap') continue;
+      if (s.kind === 'mine' || s.kind === 'trap' || s.kind === 'support') continue;
       if (s.kind === 'beam') {
         fireTower(t, s, def);
         if (t.beamTargets.length) {
@@ -1816,7 +2001,7 @@
       t.cooldown -= dt;
       if (t.cooldown <= 0) {
         if (fireTower(t, s, def))
-          t.cooldown = s.reload;
+          t.cooldown = s.reload / (t.buffRate || 1);
         else
           t.cooldown = 0.05;
       }
@@ -1827,12 +2012,61 @@
      PROJECTILES
      ══════════════════════════════════════════════════════════════════ */
 
+  // Rockets steer towards their target, accelerating as they go
+  function updateMissile(p, i, dt) {
+    p.t += dt;
+    let t = p.target;
+    if (!t || t.hp <= 0) {
+      // Pick a new target nearby or fizzle out
+      t = p.target = findTargets({ x: p.x, y: p.y, target: 'close' }, p.s, 1)[0];
+      if (!t) {
+        projectiles.splice(i, 1);
+        particles.smoke(p.x, p.y, 2, '#8a8a8a', 5);
+        return;
+      }
+    }
+    const tx = t.x, ty = t.y - (enemyFlags(t).flying ? 12 : 4);
+    const dx = tx - p.x, dy = ty - p.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const speed = Math.min(p.speed * 1.8, p.speed * (0.5 + p.t * 1.6));
+    const steer = Math.min(1, dt * 7);
+    p.vx += (dx / dist * speed - p.vx) * steer;
+    p.vy += (dy / dist * speed - p.vy) * steer;
+    const step = Math.hypot(p.vx, p.vy) * dt;
+    p.trail.push(p.x, p.y);
+    if (p.trail.length > 12) p.trail.splice(0, 2);
+    if (Math.random() < dt * 20)
+      emit(p.x, p.y, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, 0.5, 4, '#8a8580', PK_SMOKE, -6, 1);
+    if (dist <= step + t.radius + 2 || p.t > 4) {
+      projectiles.splice(i, 1);
+      const s = p.s;
+      const mul = enemyFlags(t).flying ? s.airBonus || 1 : 1;
+      explode(t.x, t.y, Math.max(s.splashPx, CELL * 0.5), p.damage * mul, p.tower, s);
+      return;
+    }
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+  }
+
   function explode(x, y, radius, damage, src, s) {
     for (const e of enemiesNear(x, y, radius, o => canHit(s, o))) {
       const d = Math.hypot(e.x - x, e.y - y);
       const fall = d < radius * 0.4 ? 1 : 0.6;
       hurt(e, damage * fall, src, 'phys', { pierce: s.pierce || 0, area: true });
       if (s.shred) e.shred = Math.max(e.shred, s.shred);
+      if (s.stun && !enemyFlags(e).boss) e.stunTimer = Math.max(e.stunTimer, s.stun);
+      if (s.burn && (e.burnTimer <= 0 || s.burn >= e.burnDps)) {
+        e.burnDps = s.burn;
+        e.burnTimer = s.burnTime || 2;
+        e.burnSrc = src;
+      }
+    }
+    if (s.lava) {
+      const c0 = Math.floor(x / CELL), r0 = Math.floor(y / CELL);
+      for (let dr = -1; dr <= 1; ++dr)
+        for (let dc = -1; dc <= 1; ++dc)
+          if (Math.abs(dc) + Math.abs(dr) <= 1)
+            addFloorEffect(c0 + dc, r0 + dr, 'lava', 4, s.lava);
     }
     explosionFx(x, y, radius, s.bomblets && radius < CELL ? '#ffcf6a' : '#ff8a3a');
     if (radius >= CELL)
@@ -1846,7 +2080,7 @@
       const p = projectiles[i];
       if (p.kind === 'shell' || p.kind === 'glob' || p.kind === 'bomblet' || p.kind === 'airbomb') {
         p.t += dt;
-        const k = Math.min(1, p.t / p.dur);
+        const k = clamp(p.t / p.dur, 0, 1);
         p.x = p.sx + (p.tx - p.sx) * k;
         p.y = p.sy + (p.ty - p.sy) * k;
         p.z = p.kind === 'airbomb' ? (1 - k * k) * 70 : Math.sin(k * Math.PI) * Math.min(70, 20 + p.dur * 60) * (p.kind === 'bomblet' ? 0.4 : 1);
@@ -1875,6 +2109,10 @@
         }
         continue;
       }
+      if (p.kind === 'missile') {
+        updateMissile(p, i, dt);
+        continue;
+      }
       const t = p.target;
       if (!t || t.hp <= 0) {
         projectiles.splice(i, 1);
@@ -1895,6 +2133,23 @@
           if (crit > 1) {
             floatingText.add(t.x, t.y - 14, 'CRIT', { color: '#ffd75a', font: 'bold 10px sans-serif' });
             playThrottled('crit', 'hit', { pitch: 1.3, volume: 0.4 }, 120);
+          }
+        } else if (p.kind === 'orb') {
+          const extra = s.maxHpDmg * t.maxHp * (enemyFlags(t).boss ? 0.6 : 1);
+          hurt(t, p.damage + extra, p.tower, 'arcane');
+          particles.burst(t.x, t.y - 6, 8, { color: '#e8a0ff', speed: 2, life: 0.35 });
+          particles.glow(t.x, t.y - 6, 16, '#e070ff', 0.25);
+          playThrottled('arcane', 'blip', { pitch: 0.9, volume: 0.3 }, 110);
+          p.hit.push(t);
+          if (p.bounces > 0) {
+            let next = null, bd = CELL * 2.6;
+            for (const o of enemies) {
+              if (o.hp <= 0 || p.hit.indexOf(o) >= 0 || !canHit(s, o)) continue;
+              const d = Math.hypot(o.x - t.x, o.y - t.y);
+              if (d < bd) { bd = d; next = o; }
+            }
+            if (next)
+              projectiles.push({ kind: 'orb', x: t.x, y: t.y - 6, target: next, speed: p.speed * 1.2, damage: p.damage * 0.8, tower: p.tower, s, color: p.color, trail: [], bounces: p.bounces - 1, hit: p.hit });
           }
         } else if (p.kind === 'bolt') {
           particles.flakes(t.x, t.y - 6, 4);
@@ -3069,7 +3324,7 @@
      ══════════════════════════════════════════════════════════════════ */
 
   const HEAD_ANGLES = 16;
-  const ROTATING = { arrow: 1, cannon: 1, flame: 1, laser: 1, sniper: 1 };
+  const ROTATING = { arrow: 1, cannon: 1, flame: 1, laser: 1, sniper: 1, mortar: 1, missile: 1 };
   // Tower body height (art px above the tile's top face) per tier
   const BASE_HEIGHT = [0, 1, 2, 3, 4, 5];
 
@@ -3301,8 +3556,73 @@
     }
   };
 
+  HEADS.mortar = function (g, tier, branch, fam) {
+    const iron = tier >= 3 ? ['#3a2008', '#6a400e', '#9a6418', '#c8902a', '#ecbc4a', '#fff0a0'] : RAMPS.iron;
+    disc(g, -1, 0, 6, RAMPS.wood, 2);
+    const tubes = tier >= 4 && branch === 0 ? [-3.5, 0, 3.5] : [0];
+    for (const dy of tubes) {
+      const w = tubes.length > 1 ? 3.4 : 6 + Math.min(tier, 3) * 0.5;
+      px(g, -1, dy - w / 2, 7, w, iron[2]);
+      px(g, -1, dy - w / 2, 7, 1, iron[4]);
+      ellipseFill(g, 6.5, dy, 1.6, w / 2 + 0.6, iron[1]);
+      ellipseFill(g, 6.8, dy, 0.9, w / 2 - 0.6, '#0a0a0a');
+    }
+    if (tier >= 4 && branch === 1) { px(g, 0, -1, 5, 2, '#ff6a14'); px(g, 1, -0.5, 3, 1, '#ffe48a'); }
+    if (tier >= 2) px(g, -4, -1, 2, 2, iron[5]);
+  };
+  HEADS.missile = function (g, tier, branch, fam) {
+    const m = RAMPS.metal;
+    const cells = tier >= 4 && branch === 0 ? 6 : tier >= 4 ? 1 : 2;
+    px(g, -6, -5, 11, 10, m[2]); px(g, -6, -5, 11, 1, m[4]); px(g, -6, 4, 11, 1, m[1]);
+    if (cells === 1) {
+      px(g, -2, -2, 13, 4, '#d8d8e0'); poly(g, [11, -2, 15, 0, 11, 2], '#ff4a3a'); px(g, -2, -3, 3, 6, m[3]);
+    } else {
+      const rows = cells === 6 ? 3 : 2, cols = cells === 6 ? 2 : 1;
+      for (let r = 0; r < rows; ++r)
+        for (let c = 0; c < cols; ++c) {
+          const yy = -4 + r * (8 / rows) + 0.5, xx = 2 + c * 3;
+          px(g, xx, yy, 4, 8 / rows - 1, '#1a1a20');
+          px(g, xx + 3, yy + 0.5, 2, 8 / rows - 2, '#ff4a3a');
+        }
+    }
+    if (tier >= 3) px(g, -6, -1, 2, 2, RAMPS.gold[4]);
+    if (tier >= 2) px(g, -5, -6, 6, 1, fam[3]);
+  };
+
   // Static heads (not rotating) of the other families
   const STATIC_HEADS = {
+    storm(g, tier, branch, fam) {
+      const m = RAMPS.metal;
+      px(g, -1, -9, 2, 13, m[3]); px(g, -1, -9, 1, 13, m[5]);
+      for (let i = 0; i < Math.min(tier, 3); ++i) px(g, -3 + i * 0.5, -1 - i * 3, 6 - i, 1, RAMPS.gold[3]);
+      if (tier >= 4 && branch === 0) {
+        ellipseFill(g, 0, -11, 7, 3.5, '#4a4a6a'); ellipseFill(g, -2, -12, 4, 2.5, '#6a6a8a'); ellipseFill(g, 3, -12, 3, 2, '#5a5a7a');
+      } else
+        disc(g, 0, -10, 2.5 + (tier >= 4 ? 1 : 0), fam, 3);
+      if (tier >= 4 && branch === 1) { g.strokeStyle = fam[5]; g.lineWidth = 1; g.beginPath(); g.ellipse(0, -2, 6, 2, 0, 0, TWO_PI); g.stroke(); }
+    },
+    wind(g, tier, branch, fam) {
+      const w = RAMPS.wood;
+      px(g, -1.5, -6, 3, 9, tier >= 2 ? RAMPS.stone[3] : w[3]);
+      disc(g, 0, -7, 2.5, tier >= 3 ? RAMPS.gold : RAMPS.metal, 3);
+      if (tier >= 4) { px(g, -4, 0, 8, 2, fam[3]); }
+    },
+    beacon(g, tier, branch, fam) {
+      const s = tier >= 3 ? RAMPS.gold : RAMPS.stone;
+      poly(g, [-5, -2, 5, -2, 3, 3, -3, 3], s[2]);
+      px(g, -5, -3, 10, 2, s[4]);
+      if (branch === 0 && tier >= 4) { ellipseFill(g, 0, -4, 5, 3, '#8a3a1a'); px(g, -4, -5, 8, 1, '#e8c890'); }
+      if (branch === 1 && tier >= 4) disc(g, 0, -8, 3, ['#203a5a', '#2a5a8a', '#4a8ac8', '#7ab8ff', '#c8e8ff', '#ffffff'], 3);
+      px(g, -0.5, 3, 1, 3, s[1]);
+    },
+    arcane(g, tier, branch, fam) {
+      poly(g, [-4, 2, 4, 2, 2, 5, -2, 5], RAMPS.stone[3]);
+      const r = 2.6 + Math.min(tier, 4) * 0.5;
+      disc(g, 0, -5, r, fam, 3);
+      px(g, -1, -6.5, 1, 2, '#ffffff');
+      if (tier >= 4 && branch === 0) { poly(g, [0, -5 - r - 4, 1.5, -5 - r, -1.5, -5 - r], fam[5]); }
+      if (tier >= 4 && branch === 1) for (const a of [0.5, 2.6, 4.7]) px(g, Math.cos(a) * (r + 3) - 0.5, -5 + Math.sin(a) * (r + 3) - 0.5, 1.5, 1.5, fam[4]);
+    },
     frost(g, tier, branch, fam) {
       const ice = RAMPS.ice;
       if (tier >= 4 && branch === 1) {
@@ -3523,7 +3843,7 @@
     const hy = t.y + CELL / 2 + 2 - a.lift * AP - 2;
     const def = TOWER_TYPES[t.type];
     if (!a.heads)
-      return { x: t.x, y: hy - (def.id === 'tesla' ? 12 + t.tier * 2 : def.id === 'frost' ? 6 : 2) };
+      return { x: t.x, y: hy - ({ tesla: 12 + t.tier * 2, frost: 6, storm: 20, arcane: 10, wind: 14, beacon: 8 }[def.id] || 2) };
     const len = def.id === 'sniper' ? 26 : def.id === 'cannon' ? 20 : def.id === 'arrow' ? 18 : 18;
     return { x: t.x + Math.cos(t.angle) * len, y: hy + Math.sin(t.angle) * len };
   }
@@ -3969,6 +4289,41 @@
     } else if (s.kind === 'beam') {
       const m = muzzleOf(t);
       drawGlow(TOWER_TYPES[t.type].color, m.x, m.y, 6 + (t.beamTargets.length ? 6 : 0), 0.5);
+    } else if (s.kind === 'support') {
+      const m = muzzleOf(t);
+      const fl = Math.sin(animTime * 9 + t.col) * 1.5;
+      drawGlow(t.branch === 1 && t.tier >= 4 ? '#7ab8ff' : '#ffc84a', m.x, m.y - 2, 9 + fl, 0.75);
+      ctx.fillStyle = '#fff2b0';
+      ctx.fillRect(Math.round(m.x - 1), Math.round(m.y - 4 + fl * 0.5), 2, 3);
+      // Gentle ring showing the inspired area
+      const r = s.rangePx * (0.92 + 0.08 * Math.sin(animTime * 2));
+      ctx.strokeStyle = 'rgba(255,224,138,0.16)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.ellipse(t.x, t.y + 4, r, r * 0.75, 0, 0, TWO_PI); ctx.stroke();
+    } else if (s.kind === 'gust') {
+      // Turning windmill blades
+      const m = muzzleOf(t);
+      ctx.strokeStyle = t.tier >= 3 ? '#ffe08a' : '#e8e2d4';
+      ctx.lineWidth = 2;
+      const spin = animTime * (t.flash > 0 ? 18 : 5) + t.col;
+      for (let i = 0; i < 4; ++i) {
+        const a = spin + i * Math.PI / 2;
+        ctx.beginPath();
+        ctx.moveTo(m.x, m.y);
+        ctx.lineTo(m.x + Math.cos(a) * (8 + t.tier), m.y + Math.sin(a) * (8 + t.tier) * 0.8);
+        ctx.stroke();
+      }
+    } else if (s.kind === 'orb') {
+      const m = muzzleOf(t);
+      drawGlow('#e070ff', m.x, m.y + 4, 10 + t.tier * 1.5, 0.35 + 0.15 * Math.sin(animTime * 3 + t.col));
+      for (let i = 0; i < 3; ++i) {
+        const a = animTime * 2 + i * 2.1;
+        ctx.fillStyle = '#f0b8ff';
+        ctx.fillRect(Math.round(m.x + Math.cos(a) * 9), Math.round(m.y + 4 + Math.sin(a) * 3), 2, 2);
+      }
+    } else if (s.kind === 'skybolt') {
+      const m = muzzleOf(t);
+      drawGlow('#b8a0ff', m.x, m.y, 7 + t.tier, 0.4 + 0.2 * Math.sin(animTime * 6 + t.row));
     } else if (s.kind === 'bolt' && s.aura) {
       const m = muzzleOf(t);
       ctx.strokeStyle = 'rgba(220,245,255,0.35)';
@@ -4135,6 +4490,7 @@
       }
       const z = p.z || 0;
       if (p.kind === 'shell' || p.kind === 'glob' || p.kind === 'bomblet' || p.kind === 'airbomb') {
+        if (p.t < 0) continue;
         drawShadow(p.x, p.y + 2, 4, 2, 0.6);
         if (p.kind === 'glob') {
           drawGlow('#7ce35a', p.x, p.y - z, 9, 0.5);
@@ -4169,6 +4525,24 @@
         drawGlow('#9ae4ff', p.x, p.y, 8, 0.7);
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(Math.round(p.x - 1.5), Math.round(p.y - 1.5), 3, 3);
+      } else if (p.kind === 'missile') {
+        const a = Math.atan2(p.vy, p.vx);
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(a);
+        ctx.fillStyle = '#d8d8e0';
+        ctx.fillRect(-4, -1.5, 7, 3);
+        ctx.fillStyle = '#ff4a3a';
+        ctx.fillRect(3, -1.5, 2, 3);
+        ctx.restore();
+        drawGlow('#ffb050', p.x - Math.cos(a) * 5, p.y - Math.sin(a) * 5, 6, 0.8);
+      } else if (p.kind === 'orb') {
+        drawGlow('#e070ff', p.x, p.y, 10, 0.8);
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, TWO_PI); ctx.fill();
+        const ph = animTime * 10;
+        ctx.fillStyle = '#f0b8ff';
+        ctx.fillRect(Math.round(p.x + Math.cos(ph) * 5), Math.round(p.y + Math.sin(ph) * 5), 2, 2);
       }
     }
     ctx.lineCap = 'butt';
@@ -4205,15 +4579,28 @@
         continue;
       }
       const pts = f.pts;
-      if (f.kind === 'zap') {
+      if (f.kind === 'gust') {
+        // Curved wind streaks sweeping out of the tower
+        ctx.strokeStyle = `rgba(232,255,248,${k * 0.7})`;
+        ctx.lineWidth = 1.5;
+        const reach = f.r * (1.15 - k * 0.6);
+        for (let i = -2; i <= 2; ++i) {
+          const a = f.a + i * f.cone * 0.4;
+          ctx.beginPath();
+          ctx.arc(f.x, f.y, reach * (0.55 + Math.abs(i) * 0.1), a - 0.25, a + 0.25);
+          ctx.stroke();
+        }
+        continue;
+      }
+      if (f.kind === 'zap' || f.kind === 'sky') {
         // Jagged bolt: wide translucent glow pass, then a bright core
         const jag = [];
         for (let i = 1; i < pts.length; ++i) {
           const a = pts[i - 1], b = pts[i];
-          const n = 4;
+          const n = Math.max(4, Math.round(Math.hypot(b.x - a.x, b.y - a.y) / 16));
           for (let s = 0; s <= n; ++s) {
             const tt = s / n;
-            const off = s === 0 || s === n ? 0 : Math.sin(f.seed + i * 13.7 + s * 5.3 + f.t * 90) * 6;
+            const off = s === 0 || s === n ? 0 : Math.sin(f.seed + i * 13.7 + s * 5.3 + f.t * 90) * (f.kind === 'sky' ? 9 : 6);
             const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1;
             jag.push(a.x + dx * tt - dy / L * off, a.y + dy * tt + dx / L * off);
           }
@@ -5926,7 +6313,8 @@
   };
 
   // Families shown as lanes of the arsenal, with the unlock price of the locked ones
-  const ARSENAL_LANES = [['arrow', 0], ['cannon', 0], ['frost', 0], ['spikes', 0], ['tesla', 4], ['poison', 4], ['flame', 5], ['laser', 7], ['sniper', 7]];
+  const ARSENAL_LANES = [['arrow', 0], ['cannon', 0], ['frost', 0], ['spikes', 0], ['tesla', 4], ['poison', 4], ['flame', 5], ['laser', 7], ['sniper', 7],
+    ['mortar', 5], ['wind', 5], ['storm', 6], ['missile', 6], ['beacon', 8], ['arcane', 8]];
 
   const TREE = [];
   ARSENAL_LANES.forEach(([fam, unlockCost], row) => {
@@ -6921,7 +7309,7 @@
      ══════════════════════════════════════════════════════════════════ */
 
   function towerHotkey(i) {
-    return i < 9 ? String(i + 1) : i === 9 ? '0' : '';
+    return i < 9 ? String(i + 1) : i === 9 ? '0' : i < 19 ? '⇧' + (i - 9) : '';
   }
 
   function buildBarRect() {
@@ -6933,7 +7321,7 @@
     beginHudPanel('build', r.x, r.y, r.w, r.h);
     drawPanel(r.x, r.y, r.w, r.h, { accent: UI.gold, radius: 10 });
     const n = TOWER_TYPES.length;
-    const gap = 5;
+    const gap = n > 12 ? 3 : 5;
     const abW = abilityBarWidth();
     const innerX = r.x + 8, innerW = r.w - 16 - abW - 8;
     // Separator and ability buttons on the right
@@ -7041,6 +7429,10 @@
       case 'beam': return s.damage * (s.ramp + 1) / 2;
       case 'trap': return s.damage;
       case 'mine': return 0;
+      case 'support': return 0;
+      case 'gust': return s.damage / s.reload;
+      case 'skybolt': return s.damage * (s.bolts || 1) / s.reload;
+      case 'orb': return (s.damage + s.maxHpDmg * 400) / s.reload;
       case 'glob': return s.damage / s.reload + s.cloudDps;
       case 'flame': return s.damage / s.reload + s.burn;
       default: return s.damage * (s.crit ? 1 + s.crit * (s.critMul - 1) : 1) / Math.max(0.05, s.reload);
@@ -7056,6 +7448,20 @@
       if (s.bounty) out.push(`+${s.bounty} gold per kill nearby`);
       return out;
     }
+    if (s.kind === 'support') {
+      out.push(`+${Math.round(s.buffDmg * 100)}% damage nearby`);
+      out.push(`+${Math.round(s.buffRate * 100)}% fire rate nearby`);
+      if (s.reveal) out.push('Spots stealth nearby');
+      return out;
+    }
+    if (s.salvo) out.push(`${s.salvo} shells`);
+    if (s.minRange) out.push(`Blind within ${fmt(s.minRange)} tiles`);
+    if (s.bolts) out.push(`${s.bolts} bolts`);
+    if (s.push) out.push(`Pushes back ${fmt(s.push / CELL)} tiles`);
+    if (s.airBonus) out.push(`×${fmt(s.airBonus)} vs flyers`);
+    if (s.maxHpDmg) out.push(`${fmt(s.maxHpDmg * 100)}% max health`);
+    if (s.bounces) out.push(`Bounces ×${s.bounces}`);
+    if (s.kind === 'orb') out.push('Ignores armor & shields');
     if (s.splash) out.push(`Splash ${fmt(s.splash)} tiles`);
     if (s.bomblets) out.push(`${s.bomblets} bomblets`);
     if (s.shred) out.push(`Shreds ${s.shred} armor`);
@@ -7093,6 +7499,8 @@
     lines.push('--- Stats ---');
     if (s.kind === 'mine')
       lines.push(`[[coin]] +${s.income} gold after every wave`);
+    else if (s.kind === 'support')
+      lines.push(`[[up]] +${Math.round(s.buffDmg * 100)}% damage, +${Math.round(s.buffRate * 100)}% fire rate within ${fmt(s.range)} tiles`);
     else if (s.kind === 'trap')
       lines.push(`[[sword]] ${fmt(s.damage)} damage per second on its tile`);
     else
@@ -7109,7 +7517,7 @@
 
   function inspectorLayout(t) {
     const s = towerStats(t);
-    const attacks = s.kind !== 'mine' && s.kind !== 'trap';
+    const attacks = s.kind !== 'mine' && s.kind !== 'trap' && s.kind !== 'support';
     let h = 34 + 76 + 30;                         // header, portrait/stats, specials
     if (attacks) h += 30;                         // targeting
     h += t.tier === 3 ? 122 : 44;                 // upgrade area
@@ -7282,6 +7690,13 @@
       if (s.bounty) rows.push(['skull', 'Kill bonus', `+${s.bounty}`]);
       return rows;
     }
+    if (s.kind === 'support') {
+      rows.push(['range', 'Range', fmt(s.range)]);
+      rows.push(['sword', 'Damage', `+${Math.round(s.buffDmg * 100)}%`, UI.good]);
+      rows.push(['clock', 'Fire rate', `+${Math.round(s.buffRate * 100)}%`, UI.good]);
+      rows.push(['up', 'Inspiring', String(towers.filter(o => o !== t && towerStats(o).kind !== 'support' && Math.hypot(o.x - t.x, o.y - t.y) <= s.rangePx + 2).length)]);
+      return rows;
+    }
     rows.push(['sword', s.kind === 'trap' || s.kind === 'beam' ? 'Dmg/sec' : 'Damage', fmt(s.damage) + (s.multishot ? ` ×${s.multishot}` : '')]);
     if (s.kind !== 'trap') {
       rows.push(['range', 'Range', fmt(s.range)]);
@@ -7310,7 +7725,11 @@
       if (Math.abs(a - b) > 1e-6)
         lines.push(`${b > a ? '✔' : '•'} ${label} ${fmt(a)}${unit || ''} → ${fmt(b)}${unit || ''}`);
     };
-    if (cur.kind === 'mine') {
+    if (cur.kind === 'support') {
+      cmp('Range', cur.range, nxt.range, ' tiles');
+      cmp('Damage bonus %', cur.buffDmg * 100, nxt.buffDmg * 100);
+      cmp('Rate bonus %', cur.buffRate * 100, nxt.buffRate * 100);
+    } else if (cur.kind === 'mine') {
       cmp('Income', cur.income, nxt.income);
     } else {
       cmp('Damage', cur.damage, nxt.damage);
@@ -8409,10 +8828,11 @@
       return;
     }
 
-    // Tower type selection (1-9, 0 for the 10th)
+    // Tower type selection: 1-9 and 0 for the first ten, Shift+1-6 for the rest
     if (/^Digit[0-9]$/.test(code) || /^Numpad[0-9]$/.test(code)) {
       const n = parseInt(code.slice(-1), 10);
-      const idx = n === 0 ? 9 : n - 1;
+      const idx = e.shiftKey ? (n >= 1 ? 9 + n : -1) : (n === 0 ? 9 : n - 1);
+      if (idx < 0) return;
       if (idx < TOWER_TYPES.length)
         selectBuildType(idx);
       return;
@@ -8432,7 +8852,7 @@
 
     if (code === 'KeyT' && selectedTower) {
       const s = towerStats(selectedTower);
-      if (s.kind !== 'mine' && s.kind !== 'trap') {
+      if (s.kind !== 'mine' && s.kind !== 'trap' && s.kind !== 'support') {
         cycleTargeting(selectedTower, e.shiftKey ? -1 : 1);
         pressFx['insp-target-' + selectedTower.target] = performance.now();
       }
