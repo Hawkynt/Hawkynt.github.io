@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Dome Keeper — mine by day, defend your dome from alien swarms at night, and relocate to new biomes in the SynthelicZ Desktop.">
+<meta name="description" content="Dome Keeper — mine by day, craft bombs, crack secret chests for artifacts and defend your dome from ever stronger alien swarms at night in the SynthelicZ Desktop.">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Dome Keeper -- &raquo;SynthelicZ&laquo; Desktop">
@@ -16,7 +16,7 @@
   "@type": "WebApplication",
   "name": "Dome Keeper",
   "url": "https://hawkynt.github.io/sz/Applications/dome-keeper/index.html",
-  "description": "Hybrid mine-and-defend game with day and night, seasons, weather, biomes, drones, an upgrade tree and relocation between landing sites.",
+  "description": "Hybrid mine-and-defend game with day and night, seasons, weather, biomes, drones, bombs, secret chests with artifacts, skill-based combat, an upgrade tree and relocation between landing sites.",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -90,12 +90,18 @@
     <div class="dialog-title">Controls</div>
     <div class="dialog-body">
       <table class="controls-table">
-        <tr><td>Click/Tap</td><td>Fire weapon / Mine block / collect meteor ore</td></tr>
+        <tr><td>Click/Tap</td><td>Fire weapon (aim at the glowing weak point for a crit) / Mine block / collect meteor ore</td></tr>
+        <tr><td>Hold click / F</td><td>Charge a shot; release in the gold window for a perfect, piercing shot</td></tr>
+        <tr><td>E / Right click / tap the dome</td><td>Parry acid, lances, dives and shockwaves</td></tr>
         <tr><td>Arrow Keys / WASD</td><td>Move drill underground</td></tr>
         <tr><td>Space / Tab</td><td>Toggle surface / underground</td></tr>
-        <tr><td>U</td><td>Open the upgrade tree</td></tr>
+        <tr><td>U</td><td>Open the upgrade tree (with the Artifacts tab)</td></tr>
         <tr><td>1 - 5</td><td>Use tools bought in the tree</td></tr>
-        <tr><td>R / B</td><td>Repellent Field / Blast Mining charges</td></tr>
+        <tr><td>C</td><td>Bomb Workshop: craft and combine bombs</td></tr>
+        <tr><td>B</td><td>Drop a bomb (mine) / lob it at the cursor (surface)</td></tr>
+        <tr><td>T / Q / X</td><td>Throw mode / next bomb size / set off all bombs (Remote Detonator)</td></tr>
+        <tr><td>Space, Click, 1 - 6, Arrows</td><td>Play a secret chest minigame (Esc gives up)</td></tr>
+        <tr><td>R</td><td>Repellent Field</td></tr>
         <tr><td>L</td><td>Relocate (after finding the Relocation Core)</td></tr>
         <tr><td>Shift + direction</td><td>Dash through tunnels (after buying Dash)</td></tr>
         <tr><td>Click / Space / Esc</td><td>Skip the landing or flight</td></tr>
@@ -118,8 +124,10 @@
       <strong>Dome Keeper</strong><br><br>
       Hybrid mine-and-defend game. Mine sixteen rock strata by day and defend your dome from
       alien swarms at night, through moon phases, seasons and storms. Grow one upgrade tree with
-      Dome, Mining, Movement, Weapon and Drone branches, find each site's Relocation Core and fly
-      the dome to a new biome where the monsters are tougher.<br><br>
+      Dome, Mining, Movement, Weapon, Drone and Tools branches, craft bombs, crack the three secret
+      chests of every mine for unique artifacts, aim for weak points and parry the swarm's attacks,
+      then find each site's Relocation Core and fly the dome to a new biome where the monsters,
+      elites and bosses are tougher.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
@@ -153,14 +161,17 @@
 <li>Resource hauling and dome deposit mechanic with carry capacity</li>
 <li>Day and night with moon phases, four seasons and weather: rain, snow, blizzards, thunderstorms and meteor showers</li>
 <li>Six seeded biomes: Rocky Badlands, Dune Sea, Frozen Shelf, Alien Jungle, Ashen Caldera, Crystal Fields</li>
-<li>Eleven monster types including two bosses</li>
-<li>One upgrade tree with five branches, including courier, gun and repair drones</li>
+<li>Eleven monster types including two bosses, elites with auras and enraged monsters that grow stronger every night</li>
+<li>One upgrade tree with six branches, including courier, gun and repair drones and a Tools branch with bomb upgrades</li>
+<li>Bomb workshop: craft and combine five bomb sizes, drop and throw them in the mine, lob them at monsters</li>
+<li>Three secret chests per mine with lock picking, circuit and rune memory minigames and sixteen artifacts</li>
+<li>Skill combat: weak point crits, combos, charged perfect shots and parrying</li>
 <li>Relocation Cores, a landing and relocation sequence and rising threat per site</li>
 <li>4 primary gadgets: Shield Generator, Repellent Field, Orchard, Droneyard</li>
 <li>6 mine gadgets found in hidden underground chambers</li>
 <li>BFS pathfinding for mouse-based underground navigation</li>
 <li>Laser glow, impact sparks, mining debris, screen shake, and floating text</li>
-<li>Nine-page help, local high scores, and parallax sky with sun, moon and stars</li>
+<li>Thirteen-page help, local high scores, and parallax sky with sun, moon and stars</li>
 </ul>
 </div>
 <script>document.getElementById('seo-content')?.remove();</script>
