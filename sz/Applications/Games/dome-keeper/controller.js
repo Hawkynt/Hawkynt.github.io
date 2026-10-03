@@ -25,6 +25,7 @@
   const STATE_UPGRADE_DIALOG = 'UPGRADE_DIALOG';
   const STATE_CINEMATIC = 'CINEMATIC';       // landing / relocation sequence
   const STATE_CONFIRM = 'CONFIRM';           // relocation confirmation
+  const STATE_CRAFT = 'CRAFT';               // bomb workshop
 
   /* -- Storage -- */
   const STORAGE_PREFIX = 'sz-dome-keeper';
@@ -468,6 +469,22 @@
       '.......d.d..', '........c...', '.......b....', '....2222....',
       '..22333322..', '.2234433332.', '.2345433332.', '.2343333332.',
       '.2333333322.', '.2233333222.', '..22222222..', '....2222....'] },
+    bombCharge: { ramps: ['red', 'wood', 'fire'], px: [
+      '.........i..', '........h...', '.......c....', '..34.34c34..',
+      '..34.34.34..', '..34.34.34..', '.adddddddda.', '..34.34.34..',
+      '..34.34.34..', '..34.34.34..', '..23.23.23..', '............'] },
+    bombBig: { ramps: ['coal', 'steel', 'fire'], px: [
+      '.......ihi..', '.......dg...', '....2dd2....', '..22333322..',
+      '.2344433332.', '.2455433332.', '.cccccccccc.', '.2333333322.',
+      '.2333333322.', '..23333222..', '...222222...', '............'] },
+    bombMega: { ramps: ['gold', 'coal', 'fire'], px: [
+      '.....ih.....', '....ccdc....', '..32222223..', '..3b44b443..',
+      '..34b44b43..', '..344b44b3..', '..3b44b443..', '..34b44b43..',
+      '..344b44b3..', '..32222223..', '...cccccc...', '............'] },
+    bombVoid: { ramps: ['void', 'purple', 'cyan'], px: [
+      '......j.....', '.....i......', '....3bb3....', '..34d55d43..',
+      '.34d5ee5d43.', '.3d5eeee5d3.', '.3d5eeee5d3.', '.34d5ee5d43.',
+      '..34d55d43..', '...333333...', '............', '............'] },
     tree: { ramps: ['green', 'wood', 'red'], px: [
       '...333333...', '.3344444433.', '3344544h4433', '344444444443',
       '34h44444h443', '334444444433', '.3334444333.', '...33cc33...',
@@ -2034,7 +2051,7 @@
   let newGameConfirmOpen = false;
 
   function isRunActive() {
-    return primaryGadget !== null && (state === STATE_PLAYING || state === STATE_PAUSED || state === STATE_UPGRADE_DIALOG || state === STATE_CINEMATIC || state === STATE_CONFIRM);
+    return primaryGadget !== null && (state === STATE_PLAYING || state === STATE_PAUSED || state === STATE_UPGRADE_DIALOG || state === STATE_CINEMATIC || state === STATE_CONFIRM || state === STATE_CRAFT);
   }
 
   function saveRun() {
@@ -2061,7 +2078,8 @@
       droppedResources,
       primaryGadget, primaryGadgetState, foundGadgets, gadgetChambers,
       unlockedTools, activeToolKey, toolState,
-      site, relocationCore, landing: landingPending
+      site, relocationCore, landing: landingPending,
+      bombs: { inv: bombInv, sel: bombSel, placed: placedBombs.map(b => ({ r: b.r, c: b.c, tier: b.tier, fuse: Math.round(b.fuse * 100) / 100, maxFuse: b.maxFuse, sticky: !!b.sticky })) }
     };
     try {
       localStorage.setItem(STORAGE_SAVE, JSON.stringify(data));
@@ -2243,6 +2261,7 @@
         upgradeTreeLevels[t.key] = TREE_NODE_BY_ID[t.key].maxLevel;
     activeToolKey = typeof d.activeToolKey === 'string' ? d.activeToolKey : null;
     Object.assign(toolState, d.toolState);
+    restoreBombs(d);
 
     currentView = d.view === VIEW_UNDERGROUND && !d.mineOutdated ? VIEW_UNDERGROUND : VIEW_SURFACE;
     if (isPlainObject(d.weather) && WEATHER[d.weather.kind] && isNum(d.weather.timeLeft))
@@ -2265,6 +2284,26 @@
       startCinematic('arrive');
     }
     updateWindowTitle();
+  }
+
+  // Bomb stock and the bombs lying in the mine; blast charges of older saves become bombs
+  function restoreBombs(d) {
+    const b = d.bombs;
+    if (isPlainObject(b)) {
+      if (Array.isArray(b.inv))
+        bombInv = BOMB_TIERS.map((_, i) => Math.max(0, Math.min(99, Math.floor(Number(b.inv[i]) || 0))));
+      if (isNum(b.sel))
+        bombSel = Math.max(0, Math.min(BOMB_TIERS.length - 1, Math.floor(b.sel)));
+      if (Array.isArray(b.placed) && !d.mineOutdated)
+        placedBombs = b.placed
+          .filter(x => isPlainObject(x) && isNum(x.r) && isNum(x.c) && isNum(x.tier) && isNum(x.fuse) && x.r >= 0 && x.r < GRID_ROWS && x.c >= 0 && x.c < GRID_COLS && BOMB_TIERS[x.tier | 0])
+          .slice(0, 40)
+          .map(x => ({ r: x.r | 0, c: x.c | 0, tier: x.tier | 0, fuse: Math.max(0.3, Math.min(10, x.fuse)), maxFuse: isNum(x.maxFuse) ? Math.max(1, x.maxFuse) : BOMB_BASE_FUSE, sticky: !!x.sticky, fly: null }));
+    }
+    const charges = primaryGadgetState.blastCharges;
+    if (isNum(charges) && charges > 0)
+      bombInv[1] += Math.min(99, Math.floor(charges));
+    delete primaryGadgetState.blastCharges;
   }
 
   function continueRun() {
@@ -2638,6 +2677,17 @@
     primaryGadget = null;
     primaryGadgetState = {};
     foundGadgets = [];
+
+    // Bombs
+    bombInv = [0, 0, 0, 0, 0];
+    bombSel = 0;
+    placedBombs = [];
+    surfaceBombs = [];
+    pendingBlasts = [];
+    blasts = [];
+    bombThrowMode = false;
+    keeperStun = 0;
+    stateBeforeCraft = null;
 
     // Drones are rebuilt from the upgrades
     drones = [];
@@ -3932,6 +3982,12 @@
     meteorOre = [];
     meteors = [];
     bolts = [];
+    placedBombs = [];
+    surfaceBombs = [];
+    pendingBlasts = [];
+    blasts = [];
+    bombThrowMode = false;
+    keeperStun = 0;
     snowCover = 0;
     weather = { kind: 'clear', intensity: 1, timeLeft: 50 };
     waveActive = false;
@@ -5017,6 +5073,7 @@
   function tryMine(dx, dy) {
     if (state !== STATE_PLAYING) return;
     if (currentView !== VIEW_UNDERGROUND) return;
+    if (keeperStun > 0) return;
 
     const nx = drillX + dx;
     const ny = drillY + dy;
@@ -5355,8 +5412,8 @@
         floatingText.add(tx, ty - 90, '+50 Max HP!', { color: '#0f0', font: 'bold 24px sans-serif' });
         break;
       case 'blastMining':
-        primaryGadgetState.blastCharges = (primaryGadgetState.blastCharges || 0) + 2;
-        floatingText.add(tx, ty - 90, '+2 Blast Charges!', { color: '#f80', font: 'bold 24px sans-serif' });
+        bombInv[1] += 2;
+        floatingText.add(tx, ty - 90, '+2 Bombs!', { color: '#f80', font: 'bold 24px sans-serif' });
         break;
       case 'probeScanner':
         primaryGadgetState.probeTimer = 15;
@@ -5376,75 +5433,6 @@
         primaryGadgetState.condenserTimer = 0;
         break;
     }
-  }
-
-  function useBlastMining() {
-    if (!foundGadgets.includes('blastMining')) return;
-    if ((primaryGadgetState.blastCharges || 0) <= 0) return;
-    if (state !== STATE_PLAYING || currentView !== VIEW_UNDERGROUND) return;
-
-    --primaryGadgetState.blastCharges;
-    SZ.GameAudio.play('explode');
-    floatingText.add(
-      drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX,
-      drillY * TILE_SIZE - 10 - cameraY,
-      `BLAST! (${primaryGadgetState.blastCharges} left)`,
-      { color: '#f80', font: 'bold 28px sans-serif' }
-    );
-
-    // Clear 3x3 area around player
-    for (let dr = -1; dr <= 1; ++dr)
-      for (let dc = -1; dc <= 1; ++dc) {
-        const r = drillY + dr, c = drillX + dc;
-        if (r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS) continue;
-        const tile = undergroundGrid[r][c];
-        if (tile === TILE_EMPTY) continue;
-
-        const tx = c * TILE_SIZE + TILE_SIZE / 2 - cameraX;
-        const ty = r * TILE_SIZE + TILE_SIZE / 2 - cameraY;
-
-        if (tile === TILE_GADGET) {
-          const chamber = gadgetChambers.find(ch => {
-            for (let dr2 = 0; dr2 < 2; ++dr2)
-              for (let dc2 = 0; dc2 < 2; ++dc2)
-                if (ch.r + dr2 === r && ch.c + dc2 === c) return true;
-            return false;
-          });
-          if (chamber) {
-            grantMineGadget(chamber.gadgetType, tx, ty);
-            for (let dr2 = 0; dr2 < 2; ++dr2)
-              for (let dc2 = 0; dc2 < 2; ++dc2)
-                undergroundGrid[chamber.r + dr2][chamber.c + dc2] = TILE_EMPTY;
-          }
-        } else if (tile === TILE_CORE) {
-          collectRelocationCore(tx, ty);
-        } else if (RESOURCE_TILES.includes(tile)) {
-          const label = TILE_LABELS[tile];
-          const value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(r));
-          const fitsInInventory = Math.min(value, carryCapacity - carried);
-          const excess = value - fitsInInventory;
-          if (fitsInInventory > 0) {
-            resources[label] += fitsInInventory;
-            carried += fitsInInventory;
-          }
-          if (excess > 0)
-            droppedResources.push({ col: c, row: r, type: tile, value: excess, age: 0 });
-        }
-        undergroundGrid[r][c] = TILE_EMPTY;
-        if (tileHP[r]) tileHP[r][c] = 0;
-        if (tileMaxHP[r]) tileMaxHP[r][c] = 0;
-
-        // Red explosive flash particles
-        particles.burst(tx, ty, 8, { color: '#f44', speed: 2.5, life: 0.4 });
-        spawnCrumble(tx, ty, getTileBaseColor(tile, r));
-      }
-
-    // Big explosion effect
-    const cx = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
-    const cy = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
-    particles.burst(cx, cy, 30, { color: '#f80', speed: 4, life: 0.6 });
-    particles.burst(cx, cy, 15, { color: '#ff0', speed: 3, life: 0.4 });
-    screenShake.trigger(10, 300);
   }
 
   /* ======================================================================
@@ -5565,6 +5553,457 @@
     // Scanner and reinforcedDome are passive -- no selection needed
     if (key === 'scanner' || key === 'reinforcedDome') return;
     activeToolKey = activeToolKey === key ? null : key;
+  }
+
+  /* ======================================================================
+     BOMBS -- crafted in the dome, combined into bigger ones, dropped or
+     thrown in the mine and lobbed at monsters on the surface
+     ====================================================================== */
+
+  // radius in tiles, power in seconds of mining a blast does at its centre,
+  // monster damage when lobbed on the surface
+  const BOMB_TIERS = [
+    { key: 'charge', name: 'Charge', icon: 'bombCharge', radius: 1.3, power: 2.2, monster: 45, color: '#ff8a50',
+      recipe: { iron: 6, coal: 4 } },
+    { key: 'bomb', name: 'Bomb', icon: 'bomb', radius: 2.1, power: 4, monster: 90, color: '#ffb040',
+      recipe: { iron: 12, coal: 8, tin: 4 } },
+    { key: 'big', name: 'Big Bomb', icon: 'bombBig', radius: 3.1, power: 7, monster: 160, color: '#ffd060',
+      recipe: { cobalt: 8, coal: 14, redstone: 6 } },
+    { key: 'mega', name: 'Mega Bomb', icon: 'bombMega', radius: 4.3, power: 11, monster: 260, color: '#ffe680',
+      recipe: { titanium: 5, redstone: 10, uranium: 2 } },
+    { key: 'void', name: 'Void Bomb', icon: 'bombVoid', radius: 6.2, power: 18, monster: 450, color: '#c08aff',
+      recipe: { uranium: 6, amethyst: 4, voidstone: 2 } }
+  ];
+  const BOMB_COMBINE = 3;            // bombs of one size that merge into one of the next
+  const BOMB_BASE_FUSE = 2.5;        // seconds
+  const BOMB_BASE_CAPACITY = 8;
+  const BOMB_THROW_RANGE = 4;        // tiles
+  const KEEPER_STUN_TIME = 2.5;      // seconds a keeper caught in a blast is dazed
+
+  let bombInv = [0, 0, 0, 0, 0];     // bombs in stock per tier
+  let bombSel = 0;                   // tier dropped / thrown next
+  let placedBombs = [];              // in the mine: { r, c, tier, fuse, maxFuse, fly }
+  let surfaceBombs = [];             // lobbed at monsters: { x0, y0, tx, ty, t, dur, tier }
+  let pendingBlasts = [];            // chain reactions waiting to go off: { r, c, R, power, delay }
+  let blasts = [];                   // explosion visuals: { x, y, R, t, life, tier, under }
+  let bombThrowMode = false;         // next click throws the selected bomb
+  let keeperStun = 0;                // seconds the keeper stays dazed
+  let craftFocus = 0;                // workshop row selected by keyboard
+  let craftHover = null;             // { row, kind } under the mouse
+  let stateBeforeCraft = null;
+  const craftFlash = {};             // `${row}` -> time of the last craft (ms)
+
+  function bombCount() {
+    return bombInv.reduce((s, n) => s + n, 0);
+  }
+
+  function bombCapacity() {
+    return BOMB_BASE_CAPACITY + 4 * getEffectiveLevel('bombSatchel');
+  }
+
+  function bombRadius(tier) {
+    return BOMB_TIERS[tier].radius + 0.5 * getEffectiveLevel('blastRadius');
+  }
+
+  function bombPower(tier) {
+    return BOMB_TIERS[tier].power * (1 + 0.3 * getEffectiveLevel('bombPower'));
+  }
+
+  function bombFuse() {
+    return Math.max(1, BOMB_BASE_FUSE - 0.6 * getEffectiveLevel('bombFuse'));
+  }
+
+  // Share of the ore in blasted tiles that survives (the rest is pulverised)
+  function bombYield() {
+    return [0.5, 0.8, 1, 1.25][Math.min(3, getEffectiveLevel('bombYield'))];
+  }
+
+  function bombThrowRange() {
+    return BOMB_THROW_RANGE + (unlockedTools.stickyBombs ? 2 : 0);
+  }
+
+  function recipeKnown(tier) {
+    const node = BOMB_TIERS[tier].recipeNode;
+    return !node || isTreeNodeMaxed(node);
+  }
+
+  // Recipe with the Bombsmith discount
+  function craftCost(tier) {
+    const k = 1 - 0.15 * getEffectiveLevel('bombsmith');
+    const out = {};
+    const r = BOMB_TIERS[tier].recipe;
+    for (const key in r)
+      out[key] = Math.max(1, Math.ceil(r[key] * k));
+    return out;
+  }
+
+  function canPay(cost) {
+    for (const key in cost)
+      if ((resources[key] || 0) < cost[key])
+        return false;
+    return true;
+  }
+
+  // Why a bomb of this tier cannot be crafted right now (null when it can)
+  function craftBlocker(tier) {
+    if (!recipeKnown(tier)) return 'Recipe locked: buy it in the Tools branch';
+    if (bombCount() >= bombCapacity()) return `Bomb storage full (${bombCapacity()})`;
+    if (!canPay(craftCost(tier))) return 'Not enough resources';
+    return null;
+  }
+
+  function craftBomb(tier) {
+    const why = craftBlocker(tier);
+    if (why) {
+      SZ.GameAudio.play('error');
+      floatingText.add(CANVAS_W / 2, 140, why, { color: '#ff8a7a', font: 'bold 22px sans-serif' });
+      return false;
+    }
+    const cost = craftCost(tier);
+    for (const key in cost)
+      resources[key] -= cost[key];
+    ++bombInv[tier];
+    bombSel = tier;
+    craftFlash[tier] = performance.now();
+    SZ.GameAudio.play('pickup', { pitch: 0.8 + tier * 0.12 });
+    SZ.GameAudio.play('click', { pitch: 0.6 });
+    return true;
+  }
+
+  function combineBombs(tier) {
+    if (tier >= BOMB_TIERS.length - 1 || bombInv[tier] < BOMB_COMBINE) {
+      SZ.GameAudio.play('error');
+      return false;
+    }
+    bombInv[tier] -= BOMB_COMBINE;
+    ++bombInv[tier + 1];
+    bombSel = tier + 1;
+    craftFlash[tier + 1] = performance.now();
+    SZ.GameAudio.play('powerup', { pitch: 0.9 + tier * 0.1, volume: 0.8 });
+    return true;
+  }
+
+  // Next tier that is in stock, searching forward (dir 1) or back (-1)
+  function cycleBomb(dir) {
+    for (let i = 1; i <= BOMB_TIERS.length; ++i) {
+      const t = (bombSel + dir * i + BOMB_TIERS.length * 2) % BOMB_TIERS.length;
+      if (bombInv[t] > 0) {
+        bombSel = t;
+        SZ.GameAudio.play('blip', { pitch: 1 + t * 0.1, volume: 0.6 });
+        return;
+      }
+    }
+    SZ.GameAudio.play('error');
+  }
+
+  // A tier that can be used now: the selected one, otherwise the smallest in stock
+  function readyBombTier() {
+    if (bombInv[bombSel] > 0) return bombSel;
+    const t = bombInv.findIndex(n => n > 0);
+    if (t >= 0) bombSel = t;
+    return t;
+  }
+
+  function noBombsHint() {
+    SZ.GameAudio.play('error');
+    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 80, 'No bombs - press C to craft some', { color: '#ffb070', font: 'bold 24px sans-serif' });
+  }
+
+  function bombAt(r, c) {
+    return placedBombs.find(b => b.r === r && b.c === c);
+  }
+
+  // Drop the selected bomb at the keeper's feet
+  function placeBomb() {
+    if (state !== STATE_PLAYING || currentView !== VIEW_UNDERGROUND) return;
+    const tier = readyBombTier();
+    if (tier < 0) return noBombsHint();
+    if (bombAt(drillY, drillX)) {
+      SZ.GameAudio.play('error');
+      return;
+    }
+    --bombInv[tier];
+    placedBombs.push({ r: drillY, c: drillX, tier, fuse: bombFuse(), maxFuse: bombFuse(), fly: null });
+    bombThrowMode = false;
+    SZ.GameAudio.play('drop', { pitch: 0.8 });
+    floatingText.add(drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX, drillY * TILE_SIZE - 20 - cameraY, `${BOMB_TIERS[tier].name} placed - run!`, { color: '#ffb070', font: 'bold 20px sans-serif' });
+  }
+
+  // Tiles the flight passes through (keeper excluded, target included)
+  function throwLine(c0, r0, c1, r1) {
+    const pts = [];
+    const n = Math.max(Math.abs(c1 - c0), Math.abs(r1 - r0));
+    for (let i = 1; i <= n; ++i)
+      pts.push([Math.round(r0 + (r1 - r0) * i / n), Math.round(c0 + (c1 - c0) * i / n)]);
+    return pts;
+  }
+
+  // Can the keeper throw a bomb onto this tile? Open tunnel in reach with a free
+  // line of flight; Sticky Bombs also cling to a rock face next to a tunnel
+  function throwTarget(col, row) {
+    if (col < 0 || col >= GRID_COLS || row < 0 || row >= GRID_ROWS) return { ok: false, why: 'Out of the mine' };
+    if (Math.hypot(col - drillX, row - drillY) > bombThrowRange() + 0.5) return { ok: false, why: 'Too far to throw' };
+    if (col === drillX && row === drillY) return { ok: false, why: 'Use B to drop it here' };
+    const solid = undergroundGrid[row][col] !== TILE_EMPTY;
+    if (solid && !unlockedTools.stickyBombs) return { ok: false, why: 'Throw into an open tunnel' };
+    const line = throwLine(drillX, drillY, col, row);
+    for (let i = 0; i < line.length - 1; ++i)
+      if (undergroundGrid[line[i][0]][line[i][1]] !== TILE_EMPTY)
+        return { ok: false, why: 'Rock is in the way' };
+    if (bombAt(row, col)) return { ok: false, why: 'A bomb already lies there' };
+    return { ok: true, sticky: solid };
+  }
+
+  function throwBombAt(col, row) {
+    const tier = readyBombTier();
+    if (tier < 0) return noBombsHint();
+    const t = throwTarget(col, row);
+    if (!t.ok) {
+      SZ.GameAudio.play('error');
+      floatingText.add(col * TILE_SIZE + TILE_SIZE / 2 - cameraX, row * TILE_SIZE - 10 - cameraY, t.why, { color: '#ff8a7a', font: 'bold 18px sans-serif' });
+      return;
+    }
+    --bombInv[tier];
+    placedBombs.push({
+      r: row, c: col, tier, fuse: bombFuse(), maxFuse: bombFuse(), sticky: t.sticky,
+      fly: { x: drillX * TILE_SIZE + TILE_SIZE / 2, y: drillY * TILE_SIZE + TILE_SIZE / 2, t: 0, dur: 0.25 + Math.hypot(col - drillX, row - drillY) * 0.05 }
+    });
+    bombThrowMode = false;
+    SZ.GameAudio.play('whoosh', { pitch: 1.4, volume: 0.6 });
+  }
+
+  // Lob a bomb from the turret at a point on the battlefield
+  function lobSurfaceBomb(tx, ty) {
+    const tier = readyBombTier();
+    if (tier < 0) return noBombsHint();
+    ty = Math.min(DOME_Y - 8, ty);
+    const dd = Math.hypot(tx - DOME_X, ty - DOME_Y);
+    if (dd < DOME_RADIUS + 40) {
+      const a = Math.atan2(ty - DOME_Y, tx - DOME_X) || -Math.PI / 2;
+      tx = DOME_X + Math.cos(a) * (DOME_RADIUS + 40);
+      ty = Math.min(DOME_Y - 8, DOME_Y + Math.sin(a) * (DOME_RADIUS + 40));
+    }
+    --bombInv[tier];
+    const x0 = DOME_X + Math.cos(turretAngle) * (DOME_RADIUS + 30), y0 = DOME_Y + Math.sin(turretAngle) * (DOME_RADIUS + 30);
+    surfaceBombs.push({ x0, y0, tx, ty, t: 0, dur: 0.45 + Math.hypot(tx - x0, ty - y0) / 1400, tier });
+    bombThrowMode = false;
+    SZ.GameAudio.play('whoosh', { pitch: 0.9 });
+  }
+
+  // Add ore to a loose pile on the floor (piles of one kind on one tile merge)
+  function dropOre(r, c, tile, value) {
+    if (value <= 0) return;
+    const pile = droppedResources.find(d => d.col === c && d.row === r && d.type === tile);
+    if (pile) {
+      pile.value += value;
+      pile.age = 0;
+    } else
+      droppedResources.push({ col: c, row: r, type: tile, value, age: 0 });
+  }
+
+  // Break open the gadget chamber that owns (r, c)
+  function openChamberAt(r, c, tx, ty) {
+    const chamber = gadgetChambers.find(ch => r >= ch.r && r <= ch.r + 1 && c >= ch.c && c <= ch.c + 1);
+    if (!chamber) {
+      undergroundGrid[r][c] = TILE_EMPTY;
+      tileHP[r][c] = tileMaxHP[r][c] = 0;
+      return;
+    }
+    grantMineGadget(chamber.gadgetType, tx, ty);
+    for (let dr = 0; dr < 2; ++dr)
+      for (let dc = 0; dc < 2; ++dc)
+        if (undergroundGrid[chamber.r + dr][chamber.c + dc] === TILE_GADGET) {
+          undergroundGrid[chamber.r + dr][chamber.c + dc] = TILE_EMPTY;
+          tileHP[chamber.r + dr][chamber.c + dc] = tileMaxHP[chamber.r + dr][chamber.c + dc] = 0;
+        }
+  }
+
+  // Tiles a blast never breaks; it only lays them open
+  function isBlastProof(tile) {
+    return tile === TILE_CORE;
+  }
+
+  function revealBlastProof(r, c, tile) {
+    if (tile === TILE_CORE)
+      relocationCore.revealed = true;
+  }
+
+  // Explosion in the mine centred on tile (cr, cc): rock takes damage that
+  // falls off towards the rim, broken ore drops as loose piles
+  function blastUnderground(cr, cc, R, power, tier, chained) {
+    const onScreen = currentView === VIEW_UNDERGROUND;
+    let broken = 0, ore = 0;
+    const ext = Math.ceil(R);
+    const yieldK = bombYield();
+    for (let r = cr - ext; r <= cr + ext; ++r) {
+      if (r < 0 || r >= GRID_ROWS) continue;
+      for (let c = cc - ext; c <= cc + ext; ++c) {
+        if (c < 0 || c >= GRID_COLS) continue;
+        const d = Math.hypot(r - cr, c - cc);
+        if (d > R) continue;
+        const tile = undergroundGrid[r][c];
+        if (tile === TILE_EMPTY) continue;
+        const tx = c * TILE_SIZE + TILE_SIZE / 2 - cameraX, ty = r * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+        if (isBlastProof(tile)) {
+          revealBlastProof(r, c, tile);
+          continue;
+        }
+        if (tile === TILE_GADGET) {
+          openChamberAt(r, c, tx, ty);
+          continue;
+        }
+        const dmg = power * (1 - 0.45 * d / Math.max(1, R));
+        if (tileHP[r][c] > dmg) {
+          tileHP[r][c] -= dmg;          // cracked, not broken
+          continue;
+        }
+        if (RESOURCE_TILES.includes(tile)) {
+          const value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(r) * yieldK);
+          dropOre(r, c, tile, value);
+          ore += value;
+          // Chain Reaction: coal and uranium seams go off as well
+          if (unlockedTools.chainReaction && (tile === TILE_COAL || tile === TILE_URANIUM) && pendingBlasts.length < 12)
+            pendingBlasts.push({ r, c, R: tile === TILE_URANIUM ? 2.1 : 1.4, power: tile === TILE_URANIUM ? 5 : 2.6, delay: 0.12 + Math.random() * 0.25, tier: tile === TILE_URANIUM ? 2 : 0 });
+        }
+        if (onScreen) {
+          spawnCrumble(tx, ty, getTileBaseColor(tile, r));
+          if (Math.random() < 0.5)
+            particles.burst(tx, ty, 4, { color: getTileBaseColor(tile, r), speed: 2.5, life: 0.4, gravity: 0.1 });
+        }
+        undergroundGrid[r][c] = TILE_EMPTY;
+        tileHP[r][c] = tileMaxHP[r][c] = 0;
+        ++broken;
+      }
+    }
+    // Neighbouring bombs go off almost at once
+    for (const b of placedBombs)
+      if (!b.fly && Math.hypot(b.r - cr, b.c - cc) <= R + 0.5)
+        b.fuse = Math.min(b.fuse, 0.15);
+    // The keeper is knocked out unless wearing a Blast Suit
+    if (!unlockedTools.blastSuit && Math.hypot(drillY - cr, drillX - cc) <= R + 0.4) {
+      keeperStun = KEEPER_STUN_TIME;
+      cancelMining();
+      clearMoveTarget();
+      if (onScreen)
+        floatingText.add(drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX, drillY * TILE_SIZE - 30 - cameraY, 'Knocked out!', { color: '#ff7a6a', font: 'bold 24px sans-serif' });
+      SZ.GameAudio.play('hurt', { pitch: 1.3, volume: 0.7 });
+    }
+    // Light the tunnel walls the blast opened up
+    if (!relocationCore.revealed && Math.abs(relocationCore.r - cr) <= ext + 1 && Math.abs(relocationCore.c - cc) <= ext + 1)
+      relocationCore.revealed = true;
+    for (const ch of gadgetChambers)
+      if (!ch.revealed && Math.hypot(ch.r - cr, ch.c - cc) <= R + 1.5)
+        ch.revealed = true;
+
+    const wx = cc * TILE_SIZE + TILE_SIZE / 2, wy = cr * TILE_SIZE + TILE_SIZE / 2;
+    blasts.push({ x: wx, y: wy, R: (R + 0.4) * TILE_SIZE, t: 0, life: 0.55 + tier * 0.1, tier, under: true });
+    const vol = onScreen ? 1 : 0.35;
+    SZ.GameAudio.play('explode', { pitch: 1.25 - tier * 0.16, volume: (0.6 + tier * 0.1) * vol });
+    if (tier >= 2)
+      SZ.GameAudio.noise(0.5 + tier * 0.25, 0.14 * vol, 'lowpass', 500, 60);
+    if (tier === 4)
+      SZ.GameAudio.sweep(900, 60, 0.9, 'sawtooth', 0.06 * vol);
+    if (onScreen) {
+      const sx = wx - cameraX, sy = wy - cameraY;
+      particles.burst(sx, sy, 24 + tier * 12, { color: BOMB_TIERS[tier].color, speed: 3 + tier, life: 0.5 + tier * 0.08 });
+      particles.burst(sx, sy, 12 + tier * 6, { color: '#fff4c0', speed: 2 + tier * 0.6, life: 0.3 });
+      if (tier === 4)
+        particles.sparkle(sx, sy, 30, { color: '#d0a0ff', speed: 4 });
+      screenShake.trigger(Math.min(22, 7 + tier * 4), 260 + tier * 70);
+      if (!chained && (broken || ore))
+        floatingText.add(sx, sy - R * TILE_SIZE * 0.5 - 20, `BOOM! ${broken} ${broken === 1 ? 'block' : 'blocks'}` + (ore > 0 ? ` · ${ore} ore loose` : ''), { color: BOMB_TIERS[tier].color, font: 'bold 24px sans-serif' });
+    }
+  }
+
+  function detonateBomb(b) {
+    placedBombs.splice(placedBombs.indexOf(b), 1);
+    blastUnderground(b.r, b.c, bombRadius(b.tier), bombPower(b.tier), b.tier, false);
+  }
+
+  // A lobbed bomb lands among the monsters
+  function blastSurface(x, y, tier) {
+    const R = 70 + 26 * bombRadius(tier);
+    const dmg = BOMB_TIERS[tier].monster * (1 + 0.3 * getEffectiveLevel('bombPower'));
+    let hits = 0;
+    for (const e of enemies) {
+      if (e.hidden) continue;
+      const d = Math.hypot(e.x - x, e.y - y);
+      if (d > R + (e.size || 16)) continue;
+      applyDamageToEnemy(e, Math.ceil(dmg * (1 - 0.5 * Math.min(1, d / R))));
+      e.stunTimer = Math.max(e.stunTimer || 0, 0.6);
+      ++hits;
+    }
+    blasts.push({ x, y, R, t: 0, life: 0.55 + tier * 0.1, tier, under: false });
+    if (currentView === VIEW_SURFACE) {
+      particles.burst(x, y, 26 + tier * 12, { color: BOMB_TIERS[tier].color, speed: 3.5 + tier, life: 0.6, gravity: 0.05 });
+      particles.burst(x, Math.min(y, DOME_Y), 14, { color: '#7a6a58', speed: 2.5, life: 0.8, gravity: 0.12 });
+      screenShake.trigger(Math.min(20, 6 + tier * 3.5), 260 + tier * 60);
+      if (hits > 1)
+        floatingText.add(x, y - 60, `${hits} hit!`, { color: BOMB_TIERS[tier].color, font: 'bold 24px sans-serif' });
+    }
+    SZ.GameAudio.play('explode', { pitch: 1.2 - tier * 0.15, volume: 0.7 + tier * 0.08 });
+  }
+
+  function updateBombs(dt) {
+    if (keeperStun > 0)
+      keeperStun = Math.max(0, keeperStun - dt);
+    for (let i = placedBombs.length - 1; i >= 0; --i) {
+      const b = placedBombs[i];
+      if (b.fly) {
+        b.fly.t += dt / b.fly.dur;
+        if (b.fly.t >= 1) {
+          b.fly = null;
+          if (currentView === VIEW_UNDERGROUND)
+            SZ.GameAudio.play('drop', { pitch: b.sticky ? 1.4 : 0.8, volume: 0.7 });
+        }
+        continue;
+      }
+      const before = b.fuse;
+      b.fuse -= dt;
+      if (currentView === VIEW_UNDERGROUND && Math.ceil(before * 2) !== Math.ceil(b.fuse * 2) && b.fuse > 0)
+        SZ.GameAudio.play('blip', { pitch: b.fuse < 1 ? 1.6 : 1.1, volume: 0.35 });
+    }
+    // Several bombs may go off in one frame; detonate one by one
+    for (let guard = 0; guard < 40; ++guard) {
+      const b = placedBombs.find(x => !x.fly && x.fuse <= 0);
+      if (!b) break;
+      detonateBomb(b);
+    }
+    for (let i = pendingBlasts.length - 1; i >= 0; --i) {
+      const p = pendingBlasts[i];
+      p.delay -= dt;
+      if (p.delay > 0) continue;
+      pendingBlasts.splice(i, 1);
+      blastUnderground(p.r, p.c, p.R, p.power, p.tier, true);
+    }
+    for (let i = surfaceBombs.length - 1; i >= 0; --i) {
+      const s = surfaceBombs[i];
+      s.t += dt / s.dur;
+      if (s.t >= 1) {
+        surfaceBombs.splice(i, 1);
+        blastSurface(s.tx, s.ty, s.tier);
+      }
+    }
+  }
+
+  // Explosion visuals age with real time so they also fade while paused
+  function updateBlastVisuals(dt) {
+    for (let i = blasts.length - 1; i >= 0; --i) {
+      blasts[i].t += dt;
+      if (blasts[i].t >= blasts[i].life) blasts.splice(i, 1);
+    }
+  }
+
+  // Detonate every bomb lying in the mine (Remote Detonator)
+  function remoteDetonate() {
+    if (!unlockedTools.remoteDetonator) return;
+    const armed = placedBombs.filter(b => !b.fly);
+    if (!armed.length) {
+      SZ.GameAudio.play('error');
+      return;
+    }
+    armed.forEach((b, i) => { b.fuse = Math.min(b.fuse, 0.05 + i * 0.08); });
+    SZ.GameAudio.play('zap', { pitch: 1.6, volume: 0.6 });
   }
 
   /* ======================================================================
@@ -7223,6 +7662,7 @@
 
   function updateMovement(dt) {
     if (currentView !== VIEW_UNDERGROUND) return;
+    if (keeperStun > 0) return;
     // Block movement while mining
     if (miningTarget) {
       keeperIdle = 0;
@@ -7292,6 +7732,8 @@
     updateAnimations(dt);
     updateGadgets(dt);
     updateMining(dt);
+    updateBombs(dt);
+    updateBlastVisuals(dt);
     updateMovement(dt);
 
     // Standing next to the Relocation Core reveals it
@@ -9298,14 +9740,18 @@
 
     drawEnemyShots();
 
-    // Projectiles
+    // Projectiles, bombs and explosions
     drawProjectiles();
+    drawSurfaceBombs();
+    drawBlasts(false);
     drawWeather();
+    drawThrowPreview();
 
     drawSurfaceHUD();
 
-    // Upgrade panel
+    // Upgrade panel and bomb stock
     drawUpgradePanel();
+    drawBombBar();
   }
 
   /* ======================================================================
@@ -9489,6 +9935,11 @@
       ctx.fillRect(gx - 0.5, gy - 4 * k, 1, 8 * k);
     }
 
+    // Bombs lying in the mine, explosions and the throw preview
+    drawPlacedBombs();
+    drawBlasts(true);
+    drawThrowPreview();
+
     // Mining progress bar above the block being mined
     if (miningTarget && miningDuration > 0) {
       const progress = Math.min(miningProgress / miningDuration, 1);
@@ -9498,11 +9949,7 @@
     // Resource display (improved styling)
     drawResourceHUD();
 
-    // Blast charges
-    if (foundGadgets.includes('blastMining') && (primaryGadgetState.blastCharges || 0) > 0) {
-      drawSprite('bomb', CANVAS_W - 40, CANVAS_H - 66, 24);
-      drawChip(`Blast [B]: ${primaryGadgetState.blastCharges}`, CANVAS_W - 58, CANVAS_H - 79, 26, { align: 'right', px: 15, bg: 'rgba(20,26,42,0.85)', border: 'rgba(255,160,64,0.6)', color: '#ffa040' });
-    }
+    drawBombBar();
 
     // Tool and drone HUD (underground, right side)
     drawDroneHUD(CANVAS_W - 296, drawToolHUDUnderground() + 12, 280);
@@ -9511,8 +9958,10 @@
       { key: 'Space', label: 'Surface' },
       { key: 'WASD', label: 'Move & mine' },
       { key: 'Click', label: 'Walk / dig' },
+      { key: 'B', label: 'Bomb' },
+      { key: 'C', label: 'Craft' },
       { key: 'H', label: 'Help' }
-    ], CANVAS_W / 2, CANVAS_H - 24, 600);
+    ], CANVAS_W / 2 - 150, CANVAS_H - 24, 680);
   }
 
 
@@ -9963,6 +10412,15 @@
     ctx.restore();
 
     drawGlow('#fff0b0', lampX + face * 3, py + 6 + bob, 14, 0.7);
+
+    // Dazed by a blast: stars circle the helmet
+    if (keeperStun > 0) {
+      const cx = px + TILE_SIZE / 2, cy = py + 2 + bob;
+      for (let i = 0; i < 3; ++i) {
+        const a = animTime * 5 + i * TWO_PI / 3;
+        drawSprite('sparkle', cx + Math.cos(a) * 16, cy + Math.sin(a) * 5, 14, Math.min(1, keeperStun));
+      }
+    }
   }
 
   // Resource HUD display configuration
@@ -10321,9 +10779,10 @@
     drawKeyHints([
       { key: 'Space', label: 'Underground' },
       { key: 'U', label: 'Upgrade tree' },
+      { key: 'C', label: 'Bombs' },
       { key: 'H', label: 'Help' },
       { key: 'Esc', label: 'Pause' }
-    ], CANVAS_W / 2, CANVAS_H - 24, 560);
+    ], CANVAS_W / 2 - 60, CANVAS_H - 24, 600);
   }
 
   function drawGadgetHUD() {
@@ -10357,9 +10816,6 @@
         parts.push('repair');
       rows.push({ icon: 'drone', text: 'Drones: ' + parts.join(', '), color: '#d8b8ff' });
     }
-
-    if (foundGadgets.includes('blastMining') && (primaryGadgetState.blastCharges || 0) > 0)
-      rows.push({ icon: 'bomb', text: `Blast [B]: ${primaryGadgetState.blastCharges} charges`, color: '#ffa040' });
 
     for (const g of foundGadgets) {
       if (g === 'blastMining') continue;
@@ -10567,6 +11023,468 @@
       ctx.setLineDash([]);
       ctx.restore();
     }
+  }
+
+  /* ======================================================================
+     DRAWING -- BOMBS
+     ====================================================================== */
+
+  // Bombs lying in the mine (or still flying there) with their burning fuses
+  function drawPlacedBombs() {
+    const ox = Math.round(cameraX), oy = Math.round(cameraY);
+    for (const b of placedBombs) {
+      const T = BOMB_TIERS[b.tier];
+      const size = 26 + b.tier * 3;
+      let x = b.c * TILE_SIZE + TILE_SIZE / 2 - ox;
+      let y = b.r * TILE_SIZE + TILE_SIZE / 2 - oy + (b.sticky ? 0 : TILE_SIZE / 2 - size * 0.45);
+      let spin = 0;
+      if (b.fly) {
+        const k = b.fly.t;
+        x = b.fly.x - ox + (x - (b.fly.x - ox)) * k;
+        y = b.fly.y - oy + (y - (b.fly.y - oy)) * k - Math.sin(k * Math.PI) * 34;
+        spin = k * TWO_PI * 1.5;
+      }
+      if (x < -60 || x > CANVAS_W + 60 || y < -60 || y > CANVAS_H + 60) continue;
+      if (!b.fly) {
+        const k = Math.max(0, b.fuse / b.maxFuse);
+        const blink = Math.sin(animTime * (8 + (1 - k) * 34)) > 0;
+        drawGlow(blink ? '#ff4030' : T.color, x, y, 34 + b.tier * 8, blink ? 0.75 : 0.45);
+        // Fuse ring empties as the bomb counts down
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+        ctx.beginPath();
+        ctx.arc(x, y, size * 0.72, 0, TWO_PI);
+        ctx.stroke();
+        ctx.strokeStyle = k < 0.35 ? '#ff5040' : '#ffd060';
+        ctx.beginPath();
+        ctx.arc(x, y, size * 0.72, -Math.PI / 2, -Math.PI / 2 + TWO_PI * k);
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(spin);
+      drawSprite(T.icon, 0, 0, size);
+      ctx.restore();
+      if (!b.fly) {
+        if (Math.random() < 0.5)
+          particles.trail(x + size * 0.25, y - size * 0.45, { vx: (Math.random() - 0.5) * 1.5, vy: -1 - Math.random(), color: Math.random() < 0.5 ? '#ffe080' : '#ff7030', life: 0.25, size: 1.5, gravity: 0.03 });
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        fitText(String(Math.max(1, Math.ceil(b.fuse))), x, y - size * 0.72 - 14, 40, 20, { weight: 'bold', color: b.fuse < 1 ? '#ff7060' : '#fff0c0', outline: 'rgba(0,0,0,0.85)' });
+      }
+    }
+  }
+
+  // Bombs arcing from the turret to the battlefield
+  function drawSurfaceBombs() {
+    for (const s of surfaceBombs) {
+      const k = s.t;
+      const x = s.x0 + (s.tx - s.x0) * k;
+      const y = s.y0 + (s.ty - s.y0) * k - Math.sin(k * Math.PI) * (90 + Math.abs(s.tx - s.x0) * 0.25);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(k * TWO_PI * 2);
+      drawSprite(BOMB_TIERS[s.tier].icon, 0, 0, 28 + s.tier * 3);
+      ctx.restore();
+      if (Math.random() < 0.6)
+        particles.trail(x, y, { vx: (Math.random() - 0.5), vy: -0.5, color: '#ffb060', life: 0.3, size: 2 });
+      // Where it will land
+      ctx.strokeStyle = `rgba(255,140,80,${0.35 + Math.sin(animTime * 12) * 0.2})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(s.tx, Math.min(DOME_Y + 4, s.ty + 8), 26, 8, 0, 0, TWO_PI);
+      ctx.stroke();
+    }
+  }
+
+  // Fireballs, shock rings and smoke of explosions (in the mine or on the surface)
+  function drawBlasts(under) {
+    for (const b of blasts) {
+      if (b.under !== under) continue;
+      const x = under ? b.x - cameraX : b.x, y = under ? b.y - cameraY : b.y;
+      if (x < -b.R * 2 || x > CANVAS_W + b.R * 2 || y < -b.R * 2 || y > CANVAS_H + b.R * 2) continue;
+      const k = b.t / b.life;
+      const ease = 1 - Math.pow(1 - k, 3);
+      const color = BOMB_TIERS[b.tier] ? BOMB_TIERS[b.tier].color : '#ffb040';
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      // Fireball
+      const fr = b.R * (0.35 + ease * 0.75);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, fr);
+      g.addColorStop(0, `rgba(255,250,220,${0.95 * (1 - k)})`);
+      g.addColorStop(0.35, hexToRgba(color, 0.85 * (1 - k)));
+      g.addColorStop(0.75, `rgba(200,70,20,${0.4 * (1 - k)})`);
+      g.addColorStop(1, 'rgba(120,30,10,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, fr, 0, TWO_PI);
+      ctx.fill();
+      // Shock ring
+      ctx.strokeStyle = b.tier === 4 ? `rgba(200,150,255,${0.8 * (1 - k)})` : `rgba(255,230,180,${0.75 * (1 - k)})`;
+      ctx.lineWidth = Math.max(1, 9 * (1 - k));
+      ctx.beginPath();
+      ctx.arc(x, y, b.R * (0.25 + ease), 0, TWO_PI);
+      ctx.stroke();
+      // Void bombs pull light inwards before they burst
+      if (b.tier === 4) {
+        ctx.strokeStyle = `rgba(150,90,255,${0.7 * (1 - k)})`;
+        ctx.lineWidth = 4;
+        for (let i = 0; i < 3; ++i) {
+          ctx.beginPath();
+          ctx.arc(x, y, b.R * (1.2 - ease) * (0.5 + i * 0.25), 0, TWO_PI);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+      // Smoke left behind
+      if (k > 0.3) {
+        ctx.fillStyle = `rgba(40,34,30,${0.35 * (1 - k)})`;
+        for (let i = 0; i < 6; ++i) {
+          const a = i * 1.05 + b.x * 0.01;
+          ctx.beginPath();
+          ctx.arc(x + Math.cos(a) * b.R * 0.45 * ease, y + Math.sin(a) * b.R * 0.35 * ease - k * 20, b.R * 0.22 * (0.6 + ease * 0.5), 0, TWO_PI);
+          ctx.fill();
+        }
+      }
+      // White flash of the first instant
+      if (k < 0.18) {
+        ctx.fillStyle = `rgba(255,255,240,${0.6 * (1 - k / 0.18)})`;
+        ctx.beginPath();
+        ctx.arc(x, y, b.R * 0.5, 0, TWO_PI);
+        ctx.fill();
+      }
+    }
+  }
+
+  // Aim preview while throw mode is armed
+  function drawThrowPreview() {
+    if (!bombThrowMode || mouseAimX < 0) return;
+    const tier = readyBombTier();
+    if (tier < 0) return;
+    if (currentView === VIEW_UNDERGROUND) {
+      const col = Math.floor((mouseAimX + cameraX) / TILE_SIZE);
+      const row = Math.floor((mouseAimY + cameraY) / TILE_SIZE);
+      const t = throwTarget(col, row);
+      const px = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX, py = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      ctx.save();
+      ctx.setLineDash([6, 8]);
+      ctx.strokeStyle = 'rgba(255,190,110,0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(px, py, (bombThrowRange() + 0.5) * TILE_SIZE, 0, TWO_PI);
+      ctx.stroke();
+      const tx = col * TILE_SIZE + TILE_SIZE / 2 - cameraX, ty = row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      ctx.strokeStyle = t.ok ? 'rgba(140,255,160,0.85)' : 'rgba(255,110,100,0.85)';
+      ctx.lineDashOffset = -animTime * 30;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.quadraticCurveTo((px + tx) / 2, Math.min(py, ty) - 40, tx, ty);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.lineWidth = 3;
+      roundRectPath(col * TILE_SIZE + 3 - cameraX, row * TILE_SIZE + 3 - cameraY, TILE_SIZE - 6, TILE_SIZE - 6, 6);
+      ctx.stroke();
+      if (t.ok) {
+        // Blast radius around the target
+        ctx.strokeStyle = 'rgba(255,170,90,0.4)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(tx, ty, (bombRadius(tier) + 0.4) * TILE_SIZE, 0, TWO_PI);
+        ctx.stroke();
+        drawSprite(BOMB_TIERS[tier].icon, tx, ty, 26, 0.7);
+      }
+      ctx.restore();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText(t.ok ? 'Click to throw' : t.why, tx, ty - TILE_SIZE, 260, 16, { weight: 'bold', color: t.ok ? '#c8ffd0' : '#ffb0a8', outline: 'rgba(0,0,0,0.85)' });
+    } else {
+      const tx = mouseAimX, ty = Math.min(DOME_Y - 8, mouseAimY);
+      const R = 70 + 26 * bombRadius(tier);
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,150,80,${0.55 + Math.sin(animTime * 8) * 0.2})`;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 8]);
+      ctx.lineDashOffset = -animTime * 30;
+      ctx.beginPath();
+      ctx.arc(tx, ty, R, 0, TWO_PI);
+      ctx.stroke();
+      const x0 = DOME_X + Math.cos(turretAngle) * (DOME_RADIUS + 30), y0 = DOME_Y + Math.sin(turretAngle) * (DOME_RADIUS + 30);
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.quadraticCurveTo((x0 + tx) / 2, Math.min(y0, ty) - 90 - Math.abs(tx - x0) * 0.25, tx, ty);
+      ctx.stroke();
+      ctx.restore();
+      drawSprite(BOMB_TIERS[tier].icon, tx, ty, 26, 0.75);
+    }
+  }
+
+  // Bomb stock (bottom right): one slot per size, craft button and actions
+  function bombBarLayout() {
+    const w = 336, h = 128, x = CANVAS_W - 16 - w, y = CANVAS_H - 50 - h;
+    const slots = BOMB_TIERS.map((T, i) => ({ x: x + 12 + i * 63, y: y + 40, w: 58, h: 50, tier: i }));
+    const bw = Math.floor((w - 24 - 12) / 3);
+    const under = currentView === VIEW_UNDERGROUND;
+    const buttons = [
+      { id: 'drop', label: 'Drop', key: 'B', x: x + 12, y: y + 98, w: bw, h: 24, enabled: under },
+      { id: 'throw', label: 'Throw', key: under ? 'T' : 'T/B', x: x + 18 + bw, y: y + 98, w: bw, h: 24, enabled: true },
+      { id: 'next', label: 'Next', key: 'Q', x: x + 24 + bw * 2, y: y + 98, w: bw, h: 24, enabled: true }
+    ];
+    return { x, y, w, h, slots, buttons, craft: { x: x + w - 12 - 104, y: y + 9, w: 104, h: 24 } };
+  }
+
+  function inRect(mx, my, r) {
+    return mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h;
+  }
+
+  function hitBombBar(mx, my) {
+    if (state !== STATE_PLAYING) return null;
+    const L = bombBarLayout();
+    if (!inRect(mx, my, L)) return null;
+    if (inRect(mx, my, L.craft)) return { kind: 'craft' };
+    for (const s of L.slots)
+      if (inRect(mx, my, s)) return { kind: 'slot', tier: s.tier };
+    for (const b of L.buttons)
+      if (inRect(mx, my, b)) return { kind: b.id, enabled: b.enabled };
+    return { kind: 'panel' };
+  }
+
+  function useBombBar(hit) {
+    if (hit.kind === 'craft') openCraftDialog();
+    else if (hit.kind === 'slot') {
+      bombSel = hit.tier;
+      SZ.GameAudio.play('blip', { pitch: 1 + hit.tier * 0.1, volume: 0.6 });
+    } else if (hit.kind === 'drop' && hit.enabled) placeBomb();
+    else if (hit.kind === 'throw') {
+      if (readyBombTier() < 0) return noBombsHint();
+      bombThrowMode = !bombThrowMode;
+      SZ.GameAudio.play('select', { pitch: bombThrowMode ? 1.2 : 0.8 });
+    } else if (hit.kind === 'next') cycleBomb(1);
+  }
+
+  // Small framed button used by the bomb bar and the workshop
+  function drawSmallButton(b, label, enabled, hover, color, px) {
+    ctx.save();
+    roundRectPath(b.x, b.y, b.w, b.h, Math.min(9, b.h / 2));
+    const g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+    if (enabled) {
+      g.addColorStop(0, hexToRgba(color, hover ? 0.42 : 0.26));
+      g.addColorStop(1, hexToRgba(color, hover ? 0.24 : 0.1));
+    } else {
+      g.addColorStop(0, 'rgba(40,44,60,0.7)');
+      g.addColorStop(1, 'rgba(24,26,36,0.7)');
+    }
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.lineWidth = hover && enabled ? 2 : 1;
+    ctx.strokeStyle = enabled ? hexToRgba(color, hover ? 1 : 0.7) : 'rgba(120,130,160,0.35)';
+    ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(label, b.x + b.w / 2, b.y + b.h / 2 + 1, b.w - 12, px || 15, { weight: 'bold', color: enabled ? '#ffffff' : UI.textMute });
+    ctx.restore();
+  }
+
+  let bombBarHover = null;
+
+  function drawBombBar() {
+    const L = bombBarLayout();
+    drawPanel(L.x, L.y, L.w, L.h, { accent: '#ff9a40', shadow: 10 });
+    drawSprite('bomb', L.x + 24, L.y + 21, 24);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const tw = fitText('Bombs', L.x + 42, L.y + 22, 80, 18, { weight: 'bold', color: UI.text });
+    const full = bombCount() >= bombCapacity();
+    fitText(`${bombCount()} / ${bombCapacity()}`, L.x + 50 + tw, L.y + 22, L.craft.x - L.x - 58 - tw, 15, { weight: 'bold', color: full ? UI.warn : UI.textDim });
+    const hk = bombBarHover && bombBarHover.kind;
+    drawSmallButton(L.craft, 'Craft  [C]', true, hk === 'craft', '#ff9a40', 14);
+    for (const s of L.slots) {
+      const n = bombInv[s.tier];
+      const sel = bombSel === s.tier;
+      const hover = hk === 'slot' && bombBarHover.tier === s.tier;
+      roundRectPath(s.x, s.y, s.w, s.h, 8);
+      ctx.fillStyle = sel ? 'rgba(255,190,90,0.2)' : (hover ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.3)');
+      ctx.fill();
+      ctx.lineWidth = sel ? 2 : 1;
+      ctx.strokeStyle = sel ? UI.gold : 'rgba(255,255,255,0.12)';
+      ctx.stroke();
+      if (sel && bombThrowMode) {
+        ctx.save();
+        ctx.shadowColor = '#ff9a40';
+        ctx.shadowBlur = 10 + Math.sin(animTime * 8) * 5;
+        ctx.stroke();
+        ctx.restore();
+      }
+      drawSprite(BOMB_TIERS[s.tier].icon, s.x + s.w / 2, s.y + 21, 30, n > 0 ? 1 : 0.3);
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      fitText(String(n), s.x + s.w - 6, s.y + s.h - 9, s.w - 10, 14, { weight: 'bold', color: n > 0 ? '#ffffff' : UI.textMute, outline: 'rgba(0,0,0,0.8)' });
+    }
+    for (const b of L.buttons) {
+      const active = b.id === 'throw' && bombThrowMode;
+      drawSmallButton(b, `${active ? 'Aiming…' : b.label}  [${b.key}]`, b.enabled, hk === b.id || active, b.id === 'throw' ? '#ff7a50' : '#8aa8d8', 13);
+    }
+  }
+
+  /* -- Bomb workshop (crafting and combining) -- */
+  function craftLayout() {
+    const w = 1080, h = 724, x = (CANVAS_W - w) / 2, y = (CANVAS_H - h) / 2;
+    const rows = BOMB_TIERS.map((T, i) => {
+      const ry = y + 112 + i * 104;
+      return {
+        i, x: x + 24, y: ry, w: w - 48, h: 94,
+        craft: { x: x + w - 40 - 250 - 12 - 170, y: ry + 25, w: 170, h: 44 },
+        combine: i < BOMB_TIERS.length - 1 ? { x: x + w - 40 - 250, y: ry + 25, w: 250, h: 44 } : null
+      };
+    });
+    return { x, y, w, h, rows, close: { x: x + w - 54, y: y + 12, w: 40, h: 40 } };
+  }
+
+  function openCraftDialog() {
+    if (state !== STATE_PLAYING) return;
+    stateBeforeCraft = state;
+    state = STATE_CRAFT;
+    craftFocus = Math.max(0, bombSel);
+    craftHover = null;
+    bombThrowMode = false;
+    clearTooltip();
+    SZ.GameAudio.play('select');
+  }
+
+  function closeCraftDialog() {
+    state = stateBeforeCraft || STATE_PLAYING;
+    stateBeforeCraft = null;
+    craftHover = null;
+    SZ.GameAudio.play('click');
+    saveRun();
+  }
+
+  function hitCraftDialog(mx, my) {
+    const L = craftLayout();
+    if (inRect(mx, my, L.close)) return { kind: 'close' };
+    for (const r of L.rows) {
+      if (inRect(mx, my, r.craft)) return { kind: 'craft', row: r.i };
+      if (r.combine && inRect(mx, my, r.combine)) return { kind: 'combine', row: r.i };
+      if (inRect(mx, my, r)) return { kind: 'row', row: r.i };
+    }
+    return inRect(mx, my, L) ? { kind: 'panel' } : { kind: 'outside' };
+  }
+
+  function handleCraftClick(mx, my) {
+    const hit = hitCraftDialog(mx, my);
+    if (hit.kind === 'close' || hit.kind === 'outside') {
+      closeCraftDialog();
+      return;
+    }
+    if (hit.row !== undefined) {
+      craftFocus = hit.row;
+      if (hit.kind === 'craft') craftBomb(hit.row);
+      else if (hit.kind === 'combine') combineBombs(hit.row);
+      else {
+        bombSel = hit.row;
+        SZ.GameAudio.play('blip', { pitch: 1 + hit.row * 0.1, volume: 0.6 });
+      }
+    }
+  }
+
+  function handleCraftKey(e) {
+    const n = BOMB_TIERS.length;
+    if (e.code === 'ArrowUp' || e.code === 'KeyW') craftFocus = (craftFocus + n - 1) % n;
+    else if (e.code === 'ArrowDown' || e.code === 'KeyS') craftFocus = (craftFocus + 1) % n;
+    else if (/^Digit[1-5]$/.test(e.code)) craftFocus = parseInt(e.code.slice(5), 10) - 1;
+    else if (e.code === 'Enter' || e.code === 'Space' || e.code === 'NumpadEnter') craftBomb(craftFocus);
+    else if (e.code === 'ArrowRight' || e.code === 'KeyD' || e.code === 'KeyM') combineBombs(craftFocus);
+    else if (e.code === 'Escape' || e.code === 'KeyC') closeCraftDialog();
+    else return false;
+    bombSel = craftFocus;
+    return true;
+  }
+
+  function drawCraftDialog() {
+    drawScrim(0.66);
+    const L = craftLayout();
+    drawPanel(L.x, L.y, L.w, L.h, { accent: '#ff9a40', radius: 16, title: '[[bomb]] Bomb Workshop', titlePx: 28, headerH: 64, top: 'rgba(26,30,48,0.98)', bottom: 'rgba(12,14,24,0.98)' });
+    const ch = craftHover;
+    // Stock and close button
+    const full = bombCount() >= bombCapacity();
+    drawChip(`Stock ${bombCount()} / ${bombCapacity()}`, L.close.x - 14, L.y + 19, 28, { align: 'right', px: 16, maxW: 220, bg: full ? 'rgba(255,182,72,0.18)' : 'rgba(255,215,90,0.12)', border: full ? UI.warn : 'rgba(255,215,90,0.5)', color: full ? UI.warn : UI.gold });
+    drawSmallButton(L.close, '×', true, ch && ch.kind === 'close', '#8aa8d8', 22);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText('Craft bombs from stored ore and combine three of one size into one of the next. Drop or throw them in the mine, lob them at monsters.', L.x + 28, L.y + 88, L.w - 56, 16, { color: UI.textDim });
+    for (const r of L.rows) {
+      const T = BOMB_TIERS[r.i];
+      const focus = craftFocus === r.i;
+      const known = recipeKnown(r.i);
+      const why = craftBlocker(r.i);
+      ctx.save();
+      drawNodeFrame(r.x, r.y, r.w, r.h, T.color, known ? (why ? 'poor' : 'ready') : 'locked', ch && ch.row === r.i);
+      if (focus || bombSel === r.i) {
+        roundRectPath(r.x - 3, r.y - 3, r.w + 6, r.h + 6, 14);
+        ctx.lineWidth = focus ? 3 : 1.5;
+        ctx.strokeStyle = focus ? UI.gold : 'rgba(255,215,90,0.45)';
+        ctx.stroke();
+      }
+      // Icon well
+      const ix = r.x + 12, iy = r.y + 11;
+      roundRectPath(ix, iy, 72, 72, 12);
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fill();
+      drawGlow(T.color, ix + 36, iy + 36, 40, 0.35 + Math.sin(animTime * 3 + r.i) * 0.1);
+      drawSprite(T.icon, ix + 36, iy + 36, 52, known || bombInv[r.i] > 0 ? 1 : 0.45);
+      // Name, numbers and recipe
+      const tx = r.x + 100, tw = r.craft.x - 110 - tx;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText(T.name, tx, r.y + 22, tw, 22, { weight: 'bold', color: known ? '#ffffff' : '#9aa2b8' });
+      fitText(`Radius ${bombRadius(r.i).toFixed(1)} tiles · rock power ${bombPower(r.i).toFixed(1)} · ${Math.round(T.monster * (1 + 0.3 * getEffectiveLevel('bombPower')))} damage to monsters`, tx, r.y + 47, tw, 14, { color: UI.textDim });
+      if (known)
+        drawCostRow(craftCost(r.i), tx, r.y + 73, Math.min(tw, 300), 15);
+      else {
+        drawSprite('lock', tx + 9, r.y + 73, 18, 0.8);
+        fitText('Recipe locked - buy it in the Tools branch (combining still works)', tx + 24, r.y + 74, tw - 24, 14, { color: UI.warn });
+      }
+      // Stock
+      const sx = r.craft.x - 100;
+      roundRectPath(sx, r.y + 18, 86, 58, 10);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fill();
+      ctx.textAlign = 'center';
+      fitText('in stock', sx + 43, r.y + 32, 76, 12, { color: UI.textMute });
+      fitText(String(bombInv[r.i]), sx + 43, r.y + 57, 76, 26, { weight: 'bold', color: bombInv[r.i] > 0 ? UI.gold : UI.textMute });
+      // Buttons
+      drawSmallButton(r.craft, known ? 'Craft' : 'Locked', !why, ch && ch.kind === 'craft' && ch.row === r.i, '#5ac87a', 18);
+      if (r.combine) {
+        const can = bombInv[r.i] >= BOMB_COMBINE;
+        drawSmallButton(r.combine, `Combine ${BOMB_COMBINE} [[${T.icon}]] → 1 [[${BOMB_TIERS[r.i + 1].icon}]]`, can, ch && ch.kind === 'combine' && ch.row === r.i, '#ff9a40', 17);
+      } else {
+        ctx.textAlign = 'center';
+        fitText('The biggest bomb there is', r.x + r.w - 40 - 125, r.y + 48, 240, 15, { color: UI.textMute });
+      }
+      // Craft / combine flash
+      const fl = craftFlash[r.i];
+      if (fl !== undefined) {
+        const t = (performance.now() - fl) / 600;
+        if (t >= 1) delete craftFlash[r.i];
+        else {
+          roundRectPath(r.x, r.y, r.w, r.h, 12);
+          ctx.fillStyle = `rgba(255,240,200,${0.3 * (1 - t)})`;
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText('In the mine: [B] drops the selected bomb, [T] throws it, [Q] picks the next size  ·  on the surface [B] lobs it at the cursor', CANVAS_W / 2, L.y + L.h - 62, L.w - 60, 15, { color: UI.textDim });
+    drawKeyHints([
+      { key: '↑↓', label: 'Select' },
+      { key: 'Enter', label: 'Craft' },
+      { key: '→', label: 'Combine' },
+      { key: 'Esc', label: 'Close' }
+    ], CANVAS_W / 2, L.y + L.h - 26, L.w - 80);
   }
 
   /* ======================================================================
@@ -10892,6 +11810,9 @@
 
     if (state === STATE_CONFIRM)
       drawRelocateConfirm();
+
+    if (state === STATE_CRAFT)
+      drawCraftDialog();
 
     if (state === STATE_PAUSED) {
       drawScrim(0.45);
@@ -11472,6 +12393,12 @@
       return;
     }
 
+    if (state === STATE_CRAFT) {
+      if (handleCraftKey(e))
+        e.preventDefault();
+      return;
+    }
+
     if (e.key === 'h' || e.key === 'H') {
       if (state === STATE_PLAYING || state === STATE_PAUSED || state === STATE_READY || state === STATE_GADGET_SELECT) {
         showTutorial = !showTutorial;
@@ -11484,6 +12411,10 @@
       e.preventDefault();
       if (state === STATE_UPGRADE_DIALOG) {
         closeUpgradeDialog();
+        return;
+      }
+      if (state === STATE_PLAYING && bombThrowMode) {
+        bombThrowMode = false;
         return;
       }
       if (state === STATE_PLAYING) {
@@ -11585,9 +12516,29 @@
       }
     }
 
-    // Blast mining activation
-    if (e.code === 'KeyB')
-      useBlastMining();
+    // Bombs: drop (mine) or lob at the cursor (surface), throw mode, next size, workshop, remote detonation
+    if (e.code === 'KeyB') {
+      if (currentView === VIEW_UNDERGROUND)
+        placeBomb();
+      else if (mouseAimX >= 0 && mouseAimY >= 0 && mouseAimY < DOME_Y)
+        lobSurfaceBomb(mouseAimX, mouseAimY);
+      else
+        lobSurfaceBomb(DOME_X + Math.cos(turretAngle) * 420, DOME_Y + Math.sin(turretAngle) * 420);
+    }
+    if (e.code === 'KeyT') {
+      if (readyBombTier() < 0)
+        noBombsHint();
+      else
+        bombThrowMode = !bombThrowMode;
+    }
+    if (e.code === 'KeyQ')
+      cycleBomb(e.shiftKey ? -1 : 1);
+    if (e.code === 'KeyC') {
+      openCraftDialog();
+      return;
+    }
+    if (e.code === 'KeyX')
+      remoteDetonate();
 
     if (e.code === 'KeyL' && relocationCore.found)
       requestRelocation();
@@ -11641,6 +12592,11 @@
     }
     if (newGameConfirmOpen)
       return;
+    if (state === STATE_CRAFT) {
+      const rect = canvas.getBoundingClientRect();
+      handleCraftClick((e.clientX - rect.left) * CANVAS_W / rect.width, (e.clientY - rect.top) * CANVAS_H / rect.height);
+      return;
+    }
     if (state === STATE_READY && saveAvailable) {
       const rect = canvas.getBoundingClientRect();
       const hit = hitTitleButton((e.clientX - rect.left) * CANVAS_W / rect.width, (e.clientY - rect.top) * CANVAS_H / rect.height);
@@ -11700,9 +12656,24 @@
     const mx = (e.clientX - rect.left) * scaleX;
     const my = (e.clientY - rect.top) * scaleY;
 
+    // Bomb stock panel (both views); right click cancels an armed throw
+    const bombHit = hitBombBar(mx, my);
+    if (bombHit) {
+      useBombBar(bombHit);
+      return;
+    }
+    if (bombThrowMode && e.button === 2) {
+      bombThrowMode = false;
+      return;
+    }
+
     if (currentView === VIEW_UNDERGROUND) {
       const col = Math.floor((mx + cameraX) / TILE_SIZE);
       const row = Math.floor((my + cameraY) / TILE_SIZE);
+      if (bombThrowMode) {
+        throwBombAt(col, row);
+        return;
+      }
       if (col >= 0 && col < GRID_COLS && row >= 0 && row < GRID_ROWS) {
         const ddx = col - drillX;
         const ddy = row - drillY;
@@ -11769,6 +12740,10 @@
           openUpgradeDialog();
         return;
       }
+      if (bombThrowMode) {
+        lobSurfaceBomb(mx, my);
+        return;
+      }
       // Fire weapon toward current turret aim direction
       fireRequested = true;
     }
@@ -11788,7 +12763,7 @@
 
   /* -- Right-click pan for upgrade dialog -- */
   canvas.addEventListener('contextmenu', (e) => {
-    if (state === STATE_UPGRADE_DIALOG)
+    if (state === STATE_UPGRADE_DIALOG || state === STATE_PLAYING || state === STATE_CRAFT)
       e.preventDefault();
   });
 
@@ -11830,6 +12805,22 @@
     mouseAimY = (e.clientY - rect.top) * scaleY;
     quickPanelHover = null;
     relocateHover = null;
+    bombBarHover = null;
+    if (state === STATE_CRAFT) {
+      craftHover = hitCraftDialog(mouseAimX, mouseAimY);
+      return;
+    }
+    if (state === STATE_PLAYING) {
+      bombBarHover = hitBombBar(mouseAimX, mouseAimY);
+      if (bombBarHover) {
+        if (bombBarHover.kind === 'slot') {
+          const t = bombBarHover.tier, T = BOMB_TIERS[t];
+          setTooltip(mouseAimX, mouseAimY, [`[[${T.icon}]] ${T.name}`, `In stock: ${bombInv[t]}`, `Blast radius ${bombRadius(t).toFixed(1)} tiles, rock power ${bombPower(t).toFixed(1)}`, `Lobbed on the surface: up to ${Math.round(T.monster * (1 + 0.3 * getEffectiveLevel('bombPower')))} damage`, '\u2714 Click to select'], 'bombslot:' + t);
+        } else
+          clearTooltip();
+        return;
+      }
+    }
     if (state === STATE_CONFIRM) {
       for (const b of confirmButtons())
         if (mouseAimX >= b.x && mouseAimX <= b.x + b.w && mouseAimY >= b.y && mouseAimY <= b.y + b.h)
