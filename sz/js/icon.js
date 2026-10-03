@@ -17,10 +17,15 @@
       this.#element = document.createElement('div');
       this.#element.className = 'sz-icon';
       this.#element.dataset.appId = id;
-      this.#element.innerHTML = `
-        <img src="${iconSrc}" alt="${title}" draggable="false">
-        <div class="sz-icon-label">${title}</div>
-      `;
+      // titles come from file names, so they are set as text, never as markup
+      const img = document.createElement('img');
+      img.src = iconSrc;
+      img.alt = title;
+      img.draggable = false;
+      const label = document.createElement('div');
+      label.className = 'sz-icon-label';
+      label.textContent = title;
+      this.#element.append(img, label);
 
       this.#element.addEventListener('pointerdown', (e) => this.#onPointerDown(e));
       this.#element.addEventListener('pointermove', (e) => this.#onPointerMove(e));
