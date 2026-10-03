@@ -491,6 +491,71 @@
       '............', '..23333332..', '.2344444432.', '.2dcc44ccd2.',
       '.2222hh2222.', '.2333ih3332.', '.2343hh3432.', '.2343333432.',
       '.2dc3333cd2.', '.2222222222.', '............', '............'] },
+    /* -- artifacts from secret chests -- */
+    artTwinDrill: { ramps: ['steel', 'gold'], px: [
+      '............', '.cccc..cccc.', '.dddd..dddd.', '.2332..2332.',
+      '.2442..2442.', '..34....34..', '..43....43..', '..34....34..',
+      '...3....3...', '...2....2...', '............', '............'] },
+    artQuake: { ramps: ['steel', 'wood', 'fire'], px: [
+      '.2333332....', '.3444443....', '.3444443....', '.2333332....',
+      '....cc......', '....dc......', '....cc..h...', '....dc.h.h..',
+      '....cc.h..h.', '....dc......', '....cc.h.h..', '....bb..h...'] },
+    artMidas: { ramps: ['gold', 'wood'], px: [
+      '...3333.....', '..344443....', '.34455443...', '.34544443...',
+      '.34444443...', '.33444433...', '..333333c...', '........cc..',
+      '.........cc.', '..........c.', '............', '............'] },
+    artLodestone: { ramps: ['red', 'blue', 'gold'], px: [
+      'h..........h', '.h........h.', '..cc....cc..', '..cc....cc..',
+      '..34....34..', '..34....34..', '..344..443..', '..24444442..',
+      '...244442...', '....2222....', '............', '............'] },
+    artSunLamp: { ramps: ['gold', 'steel', 'fire'], px: [
+      '.....cc.....', '....c..c....', '...cccccc...', '...d4554d...',
+      '..hd5555dh..', '...d4554d...', '..hd4444dh..', '...d4444d...',
+      '...cccccc...', '....cccc....', '............', '............'] },
+    artStormCoil: { ramps: ['steel', 'cyan', 'gold'], px: [
+      '..e..d..e...', '...e.d.e....', '....dddd....', '...d4444d...',
+      '....3333....', '...244442...', '....3333....', '...244442...',
+      '....3333....', '..22222222..', '..33333333..', '............'] },
+    artAegis: { ramps: ['blue', 'red', 'cyan'], px: [
+      '...hhhhhh...', '..h......h..', '.h.cc..cc.h.', '.hcddccddch.',
+      '.hcddddddch.', '.h.cddddc.h.', '.h..cddc..h.', '..h..cc..h..',
+      '...h....h...', '....hhhh....', '............', '............'] },
+    artChrono: { ramps: ['wood', 'cyan', 'blue'], px: [
+      '.3333333333.', '..2dddddd2..', '...2dddd2...', '....2dd2....',
+      '.....22.....', '.....dd.....', '....2..2....', '...2.dd.2...',
+      '..2dddddd2..', '.3333333333.', '............', '............'] },
+    artBombCharm: { ramps: ['coal', 'gold', 'fire'], px: [
+      '.......ih...', '......d.....', '....2222....', '..22333322..',
+      '.2344333322.', '.234cccc322.', '.233cddc322.', '.233cccc322.',
+      '..23333322..', '....2222....', '............', '............'] },
+    artHive: { ramps: ['purple', 'gold'], px: [
+      '....3333....', '...344443...', '..34cddc43..', '..34dccd43..',
+      '...344443...', '.3333..3333.', '344443344443', '34cd4334dc43',
+      '344443344443', '.3333..3333.', '............', '............'] },
+    artWarp: { ramps: ['violet', 'steel'], px: [
+      '....cddc....', '....c..c....', '.....cc.....', '..3..cc..3..',
+      '.34..cc..43.', '.3...cc...3.', '.3...cc...3.', '..3.dccd.3..',
+      '...3dccd3...', '....3333....', '............', '............'] },
+    artEye: { ramps: ['cream', 'red', 'coal'], px: [
+      '............', '....3333....', '..33444433..', '.344cddc443.',
+      '34444chc4443', '.344cddc443.', '..33444433..', '....3333....',
+      '............', '............', '............', '............'] },
+    artOwl: { ramps: ['wood', 'green', 'gold'], px: [
+      '..3......3..', '..33....33..', '..34444443..', '.3hhh44hhh3.',
+      '.3hch44hch3.', '.3hhh44hhh3.', '..344dd443..', '..34444443..',
+      '...344443...', '...3.33.3...', '............', '............'] },
+    artAlchemist: { ramps: ['green', 'gold', 'red'], px: [
+      '.....cc.....', '.....dd.....', '....3dd3....', '....3..3....',
+      '...3....3...', '..3.hhhh.3..', '.3.hiiiih.3.', '.3hiiiiiih3.',
+      '.3hhiiiihh3.', '..33333333..', '............', '............'] },
+    artDowsing: { ramps: ['wood', 'purple'], px: [
+      '.d........d.', '.3d......d3.', '..3......3..', '...3....3...',
+      '....3..3....', '.....33.....', '.....33.....', '.....33.....',
+      '.....33.....', '.....22.....', '....eeee....', '.....ee.....'] },
+    artPhoenix: { ramps: ['fire', 'red'], px: [
+      '.........5..', '........45..', '.......443..', '......443...',
+      '....44443...', '...443d3....', '..443dd.....', '.443dc......',
+      '.43dc.......', '.3cc........', '.c..........', 'c...........'] },
     tree: { ramps: ['green', 'wood', 'red'], px: [
       '...333333...', '.3344444433.', '3344544h4433', '344444444443',
       '34h44444h443', '334444444433', '.3334444333.', '...33cc33...',
@@ -2190,6 +2255,8 @@
       primaryGadget, primaryGadgetState, foundGadgets, gadgetChambers,
       unlockedTools, activeToolKey, toolState,
       site, relocationCore, landing: landingPending,
+      artifacts: artifacts.slice(),
+      artifactState: { aegis: Math.round(artifactState.aegis), charmDawns: artifactState.charmDawns, phoenixUsed: artifactState.phoenixUsed },
       chests: chests.map(ch => ({ r: ch.r, c: ch.c, band: ch.band, kind: ch.kind, revealed: ch.revealed, opened: ch.opened, cooldown: Math.round(ch.cooldown) })),
       bombs: { inv: bombInv, sel: bombSel, placed: placedBombs.map(b => ({ r: b.r, c: b.c, tier: b.tier, fuse: Math.round(b.fuse * 100) / 100, maxFuse: b.maxFuse, sticky: !!b.sticky })) }
     };
@@ -2375,6 +2442,14 @@
     activeToolKey = typeof d.activeToolKey === 'string' ? d.activeToolKey : null;
     Object.assign(toolState, d.toolState);
     restoreBombs(d);
+    if (Array.isArray(d.artifacts))
+      artifacts = d.artifacts.filter((id, i, a) => typeof id === 'string' && ARTIFACT_BY_ID[id] && a.indexOf(id) === i);
+    if (isPlainObject(d.artifactState)) {
+      const as = d.artifactState;
+      artifactState.aegis = isNum(as.aegis) ? Math.max(0, Math.min(aegisMax(), as.aegis)) : 0;
+      artifactState.charmDawns = isNum(as.charmDawns) ? Math.max(0, Math.floor(as.charmDawns)) : 0;
+      artifactState.phoenixUsed = !!as.phoenixUsed;
+    }
 
     currentView = d.view === VIEW_UNDERGROUND && !d.mineOutdated ? VIEW_UNDERGROUND : VIEW_SURFACE;
     if (isPlainObject(d.weather) && WEATHER[d.weather.kind] && isNum(d.weather.timeLeft))
@@ -2816,6 +2891,11 @@
     primaryGadgetState = {};
     foundGadgets = [];
 
+    // Artifacts
+    artifacts = [];
+    artifactState = newArtifactState();
+    stormArcs = [];
+
     // Bombs
     bombInv = [0, 0, 0, 0, 0];
     bombSel = 0;
@@ -2922,6 +3002,7 @@
     if (transitionTarget === VIEW_SURFACE && carried > 0) {
       SZ.GameAudio.play('coin');
       floatingText.add(CANVAS_W / 2, CANVAS_H / 2, `+${carried} resources deposited`, { color: '#0f0', font: 'bold 28px sans-serif' });
+      depositScore(carried, CANVAS_W / 2, CANVAS_H / 2 + 40);
       carried = 0;
     }
   }
@@ -3313,6 +3394,7 @@
   }
 
   function startDay() {
+    artifactDawn();
     if ((world.day - 1) % SEASON_DAYS === 0)
       seasonBegins();
     else
@@ -3910,9 +3992,10 @@
     }
     // Blizzard fog: the far field disappears in white
     if (k === 'blizzard') {
+      const fog = I * (hasArtifact('owlSight') ? 0.35 : 1);
       const g = ctx.createLinearGradient(0, 0, 0, DOME_Y);
-      g.addColorStop(0, `rgba(225,235,248,${0.55 * I})`);
-      g.addColorStop(1, `rgba(225,235,248,${0.3 * I})`);
+      g.addColorStop(0, `rgba(225,235,248,${0.55 * fog})`);
+      g.addColorStop(1, `rgba(225,235,248,${0.3 * fog})`);
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     }
@@ -4126,6 +4209,9 @@
     blasts = [];
     bombThrowMode = false;
     keeperStun = 0;
+    artifactState.phoenixUsed = false;
+    artifactState.timeSlow = 0;
+    stormArcs = [];
     snowCover = 0;
     weather = { kind: 'clear', intensity: 1, timeLeft: 50 };
     waveActive = false;
@@ -4916,6 +5002,28 @@
     if (unlockedTools.reinforcedDome) effectiveDmg = Math.ceil(effectiveDmg * 0.75);
     if (unlockedTools.energyShield) effectiveDmg = Math.ceil(effectiveDmg * 0.85);
     if (unlockedTools.fortifiedBase) effectiveDmg = Math.ceil(effectiveDmg * 0.9);
+    // Chronoglass: a heavy hit slows the monsters down
+    if (hasArtifact('chronoGlass') && effectiveDmg >= 5 && artifactState.chronoCd <= 0) {
+      artifactState.timeSlow = 4;
+      artifactState.chronoCd = 20;
+      announce('Chronoglass', 'Time slows to a crawl for the monsters', '#a0c0ff', 'artChrono');
+      SZ.GameAudio.sweep(900, 200, 0.8, 'triangle', 0.08);
+    }
+    // Aegis Heart soaks up the hit first
+    if (hasArtifact('aegisHeart')) {
+      artifactState.aegisDelay = 4;
+      const soak = Math.min(artifactState.aegis, effectiveDmg);
+      if (soak > 0) {
+        artifactState.aegis -= soak;
+        effectiveDmg -= soak;
+        spawnShieldImpact(ex, ey);
+        particles.burst(ex, ey, 8, { color: '#9ae0ff', speed: 2.5, life: 0.35 });
+        if (effectiveDmg <= 0) {
+          SZ.GameAudio.play('hit', { pitch: 1.6, volume: 0.5 });
+          return false;
+        }
+      }
+    }
     // Damage Reflect sends part of a melee hit back
     if (attacker && unlockedTools.damageReflect && enemies.includes(attacker))
       applyDamageToEnemy(attacker, Math.ceil(effectiveDmg * 0.15 * getEffectiveLevel('damageReflect')));
@@ -4924,6 +5032,16 @@
       domeHP = 1;
       lastStandUsed = true;
       announce('Last Stand!', 'The dome refuses to break - once per night', '#ff6a6a', 'heart');
+    }
+    // Phoenix Feather: rise again once per site
+    if (domeHP <= 0 && hasArtifact('phoenixFeather') && !artifactState.phoenixUsed) {
+      artifactState.phoenixUsed = true;
+      domeHP = Math.ceil(maxDomeHP * 0.5);
+      announce('Phoenix Feather!', 'The dome rises from the flames - once per site', '#ff8a40', 'artPhoenix');
+      SZ.GameAudio.play('powerup', { pitch: 0.6 });
+      particles.burst(DOME_X, DOME_Y - 40, 60, { color: '#ff9a40', speed: 5, life: 0.9 });
+      particles.burst(DOME_X, DOME_Y - 40, 30, { color: '#ffe080', speed: 3, life: 0.7 });
+      screenShake.trigger(12, 400);
     }
     if (unlockedTools.emergencyShield && domeHP > 0 && domeHP < maxDomeHP * 0.15 && emergencyCooldown <= 0) {
       domeInvulnerable = 3;
@@ -5080,7 +5198,8 @@
       if (target) {
         // Critical hits
         let shot = weaponDamage;
-        if (unlockedTools.criticalHit && Math.random() < 0.15 + 0.05 * (getEffectiveLevel('criticalHit') - 1)) {
+        const critChance = (unlockedTools.criticalHit ? 0.15 + 0.05 * (getEffectiveLevel('criticalHit') - 1) : 0) + (hasArtifact('hunterEye') ? 0.2 : 0);
+        if (Math.random() < critChance) {
           shot = Math.round(shot * 2.5);
           floatingText.add(target.x, target.y - (target.size || 20) - 30, 'CRIT!', { color: '#ffd040', font: 'bold 24px sans-serif' });
         }
@@ -5325,6 +5444,12 @@
 
       if (unlockedTools.silkTouch)
         value = Math.round(value * 1.25);
+      // Midas Lens: one ore in four comes out doubled
+      if (hasArtifact('midasLens') && Math.random() < 0.25) {
+        value *= 2;
+        floatingText.add(tx, ty - 84, 'MIDAS x2', { color: '#ffe040', font: 'bold 24px sans-serif' });
+        particles.sparkle(tx, ty, 10, { color: '#ffe040', speed: 2.2 });
+      }
       // Fortune: 30% chance to double ore yield (+10% per extra level)
       if (unlockedTools.fortune && Math.random() < 0.3 + 0.1 * (getEffectiveLevel('fortune') - 1)) {
         value *= 2;
@@ -5415,6 +5540,27 @@
         if (t === TILE_EMPTY || t === TILE_GADGET || t === TILE_CORE || t === TILE_CHEST) break;
         breakTileInstant(rr, cc);
       }
+
+    // Twin Drill: the block beside the dug one goes too (above a sideways dig, right of a vertical one)
+    if (hasArtifact('twinDrill')) {
+      let sr = dx !== 0 ? ny - 1 : ny, sc = dx !== 0 ? nx : nx + 1;
+      if (sr < 0) sr = ny + 1;
+      if (sr >= 0 && sr < GRID_ROWS && sc >= 0 && sc < GRID_COLS && undergroundGrid[sr][sc] !== TILE_EMPTY) {
+        breakTileInstant(sr, sc);
+        particles.sparkle(sc * TILE_SIZE + TILE_SIZE / 2 - cameraX, sr * TILE_SIZE + TILE_SIZE / 2 - cameraY, 5, { color: '#ffc060', speed: 1.8 });
+      }
+    }
+    // Quake Hammer: the blow cracks the rock all around
+    if (hasArtifact('quakeHammer'))
+      for (let qr = ny - 1; qr <= ny + 1; ++qr)
+        for (let qc = nx - 1; qc <= nx + 1; ++qc) {
+          if (qr < 0 || qr >= GRID_ROWS || qc < 0 || qc >= GRID_COLS) continue;
+          const qt = undergroundGrid[qr][qc];
+          if (qt === TILE_EMPTY || qt === TILE_CHEST || qt === TILE_CORE || !(tileMaxHP[qr][qc] > 0)) continue;
+          tileHP[qr][qc] = Math.max(tileMaxHP[qr][qc] * 0.05, tileHP[qr][qc] - tileMaxHP[qr][qc] * 0.45);
+          if (Math.random() < 0.5)
+            spawnDust(qc * TILE_SIZE + TILE_SIZE / 2 - cameraX, qr * TILE_SIZE + TILE_SIZE / 2 - cameraY);
+        }
 
     // Track drill gadget consecutive column mining
     if (unlockedTools.drill && activeToolKey === 'drill') {
@@ -5669,11 +5815,12 @@
   }
 
   function useTeleporter() {
-    if (!unlockedTools.teleporter) return;
-    if (toolState.teleporterCooldown > 0) return;
+    const anchor = hasArtifact('warpAnchor');
+    if (!unlockedTools.teleporter && !anchor) return;
+    if (toolState.teleporterCooldown > 0 && !anchor) return;
     if (state !== STATE_PLAYING || currentView !== VIEW_UNDERGROUND) return;
 
-    toolState.teleporterCooldown = GADGET_TOOL_COOLDOWNS.teleporter - 5 * getEffectiveLevel('teleportCooldown');
+    toolState.teleporterCooldown = anchor ? 0 : GADGET_TOOL_COOLDOWNS.teleporter - 5 * getEffectiveLevel('teleportCooldown');
 
     // Teleport particles at origin
     const cx = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
@@ -5690,6 +5837,7 @@
     // Deposit carried resources
     if (carried > 0) {
       floatingText.add(CANVAS_W / 2, CANVAS_H / 2, `+${carried} resources deposited`, { color: '#0f0', font: 'bold 28px sans-serif' });
+      depositScore(carried, CANVAS_W / 2, CANVAS_H / 2 + 40);
       carried = 0;
     }
 
@@ -6305,7 +6453,7 @@
       ch.opened = true;
       undergroundGrid[ch.r][ch.c] = TILE_EMPTY;
       tileHP[ch.r][ch.c] = tileMaxHP[ch.r][ch.c] = 0;
-      m.reward = grantChestTreasure(ch);
+      m.reward = grantChestReward(ch);
       SZ.GameAudio.play('win', { volume: 0.8 });
       screenShake.trigger(6, 250);
     } else {
@@ -6790,7 +6938,10 @@
       if (m.phase === 'won') {
         drawHeadline('UNLOCKED!', L.cx, L.y + 240, L.w - 200, 46, '#ffe080', '#e0a020');
         const r = m.reward;
-        drawSprite(r.icon, L.cx, L.y + 325, 72);
+        if (r.artifact)
+          drawArtifactIcon(r.artifact, L.cx, L.y + 322, 92);
+        else
+          drawSprite(r.icon, L.cx, L.y + 325, 72);
         ctx.textAlign = 'center';
         fitText(r.title, L.cx, L.y + 395, L.w - 180, 24, { weight: 'bold', color: r.color });
         drawTextBlock(r.text, L.x + 100, L.y + 412, L.w - 200, 52, 17, { align: 'center', valign: 'middle', color: UI.text, minPx: 12 });
@@ -6969,6 +7120,25 @@
     }
   }
 
+  // Sunstone Lamp ore glow and Dowsing Rod arrows
+  function drawUndergroundArtifacts() {
+    if (hasArtifact('sunLamp')) {
+      const R = 5;
+      for (let r = Math.max(0, drillY - R); r <= Math.min(GRID_ROWS - 1, drillY + R); ++r)
+        for (let c = Math.max(0, drillX - R); c <= Math.min(GRID_COLS - 1, drillX + R); ++c) {
+          const t = undergroundGrid[r][c];
+          if (!RESOURCE_TILES.includes(t) || Math.abs(r - drillY) + Math.abs(c - drillX) > R) continue;
+          const x = c * TILE_SIZE + TILE_SIZE / 2 - cameraX, y = r * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+          drawGlow(TILE_HIGHLIGHT_COLORS[t] || '#fff', x, y, TILE_SIZE * 0.75, 0.35 + Math.sin(animTime * 2 + r + c) * 0.1);
+          drawSprite(TILE_ICONS[t], x, y, 24, 0.85);
+        }
+    }
+    if (hasArtifact('dowsingRod'))
+      for (const ch of chests)
+        if (!ch.opened && !ch.revealed)
+          drawPointer(ch.r, ch.c, 2.2, '#e0a0ff', 'artDowsing');
+  }
+
   // Secret chests in the rock: hidden ones barely glint, found ones glow
   function drawChests() {
     for (const ch of chests) {
@@ -7046,6 +7216,294 @@
     ctx.fill();
     ctx.restore();
     drawSprite(icon, ax - Math.cos(a) * 34, ay - Math.sin(a) * 34, 24, 0.6 + pulse * 0.4);
+  }
+
+  /* ======================================================================
+     ARTIFACTS -- unique finds from secret chests, kept for the whole run
+     ====================================================================== */
+
+  const ARTIFACTS = [
+    { id: 'twinDrill', name: 'Twin Drill', icon: 'artTwinDrill', color: '#ffb040', desc: 'Every dig also breaks the block beside it: tunnels come out two blocks wide' },
+    { id: 'quakeHammer', name: 'Quake Hammer', icon: 'artQuake', color: '#e0a070', desc: 'Every dig cracks the eight blocks around it, so the next digs go much faster' },
+    { id: 'midasLens', name: 'Midas Lens', icon: 'artMidas', color: '#ffd700', desc: 'One in four ores you dig comes out doubled' },
+    { id: 'lodestone', name: 'Lodestone', icon: 'artLodestone', color: '#ff7a7a', desc: 'Loose ore within 4 tiles flies to the keeper' },
+    { id: 'sunLamp', name: 'Sunstone Lamp', icon: 'artSunLamp', color: '#fff0a0', desc: 'The lamp shines 60% further and ore within 5 tiles glows through the rock' },
+    { id: 'stormCoil', name: 'Storm Coil', icon: 'artStormCoil', color: '#7ad8ff', desc: 'A lightning coil on the dome zaps a monster every 1.5 s and arcs on to 3 more' },
+    { id: 'aegisHeart', name: 'Aegis Heart', icon: 'artAegis', color: '#6cc8ff', desc: 'A regenerating shield over the dome soaks up hits: 40 plus a tenth of the dome' },
+    { id: 'chronoGlass', name: 'Chronoglass', icon: 'artChrono', color: '#a0c0ff', desc: 'A heavy hit on the dome slows the monsters to a crawl for 4 s (every 20 s)' },
+    { id: 'bombCharm', name: 'Bombsmith Charm', icon: 'artBombCharm', color: '#ff9a40', desc: 'Every dawn brings a free Bomb, every third dawn a Big Bomb as well' },
+    { id: 'hiveLink', name: 'Hive Link', icon: 'artHive', color: '#d8b8ff', desc: 'Drones carry twice as much and fly 25% faster' },
+    { id: 'warpAnchor', name: 'Warp Anchor', icon: 'artWarp', color: '#c890ff', desc: 'Teleport home with 5 at any time, without cooldown' },
+    { id: 'hunterEye', name: "Hunter's Eye", icon: 'artEye', color: '#ff6a5a', desc: '+20% chance for every turret shot to be a critical hit' },
+    { id: 'owlSight', name: 'Owl Sight', icon: 'artOwl', color: '#80ffb0', desc: 'Monsters glow in the dark, burrowers show under ground and blizzards hide nothing' },
+    { id: 'alchemist', name: "Alchemist's Stone", icon: 'artAlchemist', color: '#60e0a0', desc: 'Ore brought home also scores: 2 points per unit' },
+    { id: 'dowsingRod', name: 'Dowsing Rod', icon: 'artDowsing', color: '#e0a0ff', desc: 'Arrows point to every hidden chest; chests within 8 tiles reveal themselves' },
+    { id: 'phoenixFeather', name: 'Phoenix Feather', icon: 'artPhoenix', color: '#ff8a40', desc: 'Once per site the dome rises from destruction with half its HP' }
+  ];
+  const ARTIFACT_BY_ID = {};
+  for (const a of ARTIFACTS)
+    ARTIFACT_BY_ID[a.id] = a;
+
+  let artifacts = [];                // ids found this run, in order
+  let artifactState = newArtifactState();
+  let stormArcs = [];                // Storm Coil lightning: { pts, life }
+
+  function newArtifactState() {
+    return { aegis: 0, aegisDelay: 0, chronoCd: 0, timeSlow: 0, charmDawns: 0, phoenixUsed: false, stormT: 1 };
+  }
+
+  function hasArtifact(id) {
+    return artifacts.indexOf(id) >= 0;
+  }
+
+  function aegisMax() {
+    return Math.round(40 + 0.1 * maxDomeHP);
+  }
+
+  // A chest holds an artifact not found yet (seeded per site and chest); once all are found, treasure
+  function grantChestReward(ch) {
+    const left = ARTIFACTS.filter(a => !hasArtifact(a.id));
+    if (!left.length)
+      return grantChestTreasure(ch);
+    const rng = makeRng(chestSeed() ^ ((ch.band + 1) * 40503) ^ (artifacts.length * 7919));
+    const a = left[Math.floor(rng() * left.length)];
+    artifacts.push(a.id);
+    if (a.id === 'aegisHeart')
+      artifactState.aegis = aegisMax();
+    const pts = 200 * (ch.band + 1) * (site.index + 1);
+    score += pts;
+    return { artifact: a.id, icon: a.icon, title: a.name, text: a.desc, color: a.color };
+  }
+
+  // Artifact icon with a pulsing halo and turning light rays
+  function drawArtifactIcon(id, x, y, size, alpha) {
+    const a = ARTIFACT_BY_ID[id];
+    if (!a) return;
+    const k = alpha === undefined ? 1 : alpha;
+    const pulse = 0.75 + Math.sin(animTime * 3 + x * 0.05) * 0.25;
+    drawGlow(a.color, x, y, size * 0.95, 0.65 * pulse * k);
+    ctx.save();
+    ctx.globalAlpha *= k;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = hexToRgba(a.color, 0.45 * pulse);
+    ctx.lineWidth = Math.max(1, size * 0.04);
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 4; ++i) {
+      const ang = animTime * 0.8 + i * Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(x + Math.cos(ang) * size * 0.35, y + Math.sin(ang) * size * 0.35);
+      ctx.lineTo(x + Math.cos(ang) * size * 0.72, y + Math.sin(ang) * size * 0.72);
+      ctx.stroke();
+    }
+    ctx.restore();
+    drawSprite(a.icon, x, y, size * 0.78, k);
+  }
+
+  // Ongoing artifact effects (mine magnet, dowsing, storm coil, aegis, chronoglass)
+  function updateArtifacts(dt) {
+    const st = artifactState;
+    if (st.chronoCd > 0) st.chronoCd = Math.max(0, st.chronoCd - dt);
+    if (st.timeSlow > 0) st.timeSlow = Math.max(0, st.timeSlow - dt);
+    // Aegis Heart recharges a while after the last hit
+    if (hasArtifact('aegisHeart')) {
+      if (st.aegisDelay > 0) st.aegisDelay -= dt;
+      else st.aegis = Math.min(aegisMax(), st.aegis + 6 * dt);
+    }
+    // Lodestone pulls loose ore to the keeper
+    if (hasArtifact('lodestone') && currentView === VIEW_UNDERGROUND) {
+      for (let i = droppedResources.length - 1; i >= 0; --i) {
+        const drop = droppedResources[i];
+        if (Math.abs(drop.col - drillX) + Math.abs(drop.row - drillY) > 4) continue;
+        const room = carryCapacity - carried;
+        if (room <= 0) break;
+        const take = Math.min(drop.value, room);
+        resources[TILE_LABELS[drop.type]] += take;
+        carried += take;
+        drop.value -= take;
+        const sx = drop.col * TILE_SIZE + TILE_SIZE / 2 - cameraX, sy = drop.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+        const px = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX, py = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+        for (let k = 0; k < 6; ++k)
+          particles.trail(sx, sy, { vx: (px - sx) / 18 + (Math.random() - 0.5), vy: (py - sy) / 18 + (Math.random() - 0.5), color: TILE_HIGHLIGHT_COLORS[drop.type] || '#ffd0d0', life: 0.3, size: 2 });
+        floatingText.add(px, py - 30, `+${take} ${TILE_LABELS[drop.type]}`, { color: '#ff9a9a', font: 'bold 20px sans-serif' });
+        if (drop.value <= 0)
+          droppedResources.splice(i, 1);
+      }
+    }
+    // Dowsing Rod: chests close by give themselves away
+    if (hasArtifact('dowsingRod') && currentView === VIEW_UNDERGROUND)
+      revealChestsNear(drillY, drillX, 8, true);
+    // Storm Coil: lightning from the dome
+    for (let i = stormArcs.length - 1; i >= 0; --i) {
+      stormArcs[i].life -= dt;
+      if (stormArcs[i].life <= 0) stormArcs.splice(i, 1);
+    }
+    if (hasArtifact('stormCoil') && enemies.length) {
+      st.stormT -= dt;
+      if (st.stormT <= 0) {
+        const cx = STORM_COIL.x, cy = STORM_COIL.y - 20;
+        let target = null, best = 700 * 700;
+        for (const e of enemies) {
+          if (e.hidden) continue;
+          const d = (e.x - cx) * (e.x - cx) + (e.y - cy) * (e.y - cy);
+          if (d < best) {
+            best = d;
+            target = e;
+          }
+        }
+        if (target) {
+          st.stormT = 1.5;
+          const dmg = Math.max(8, weaponDamage * 0.8);
+          applyDamageToEnemy(target, Math.ceil(dmg));
+          target.stunTimer = Math.max(target.stunTimer || 0, 0.25);
+          stormArcs.push({ x0: cx, y0: cy, x1: target.x, y1: target.y, life: 0.3 });
+          let from = target;
+          const hit = [target];
+          for (let n = 0; n < 3; ++n) {
+            let next = null, nd = 220 * 220;
+            for (const e of enemies) {
+              if (e.hidden || hit.includes(e)) continue;
+              const d = (e.x - from.x) * (e.x - from.x) + (e.y - from.y) * (e.y - from.y);
+              if (d < nd) {
+                nd = d;
+                next = e;
+              }
+            }
+            if (!next) break;
+            applyDamageToEnemy(next, Math.ceil(dmg * 0.6));
+            stormArcs.push({ x0: from.x, y0: from.y, x1: next.x, y1: next.y, life: 0.25 });
+            hit.push(next);
+            from = next;
+          }
+          if (currentView === VIEW_SURFACE) {
+            SZ.GameAudio.play('zap', { pitch: 0.8 + Math.random() * 0.3, volume: 0.6 });
+            particles.burst(target.x, target.y, 8, { color: '#bff0ff', speed: 2.5, life: 0.3 });
+          }
+        } else
+          st.stormT = 0.3;
+      }
+    }
+  }
+
+  // Score for ore brought home (Alchemist's Stone)
+  function depositScore(amount, x, y) {
+    if (!hasArtifact('alchemist') || amount <= 0) return;
+    const pts = amount * 2;
+    score += pts;
+    floatingText.add(x, y, `Alchemy +${pts} points`, { color: '#60e0a0', font: 'bold 22px sans-serif' });
+  }
+
+  // Dawn gifts of the Bombsmith Charm
+  function artifactDawn() {
+    if (!hasArtifact('bombCharm')) return;
+    ++artifactState.charmDawns;
+    const gifts = [1];
+    if (artifactState.charmDawns % 3 === 0) gifts.push(2);
+    let given = 0;
+    for (const t of gifts)
+      if (bombCount() < bombCapacity()) {
+        ++bombInv[t];
+        ++given;
+      }
+    if (given)
+      announce('Bombsmith Charm', gifts.length > 1 ? 'A Bomb and a Big Bomb appeared in the workshop' : 'A Bomb appeared in the workshop', '#ff9a40', 'artBombCharm');
+  }
+
+  const STORM_COIL = { x: DOME_X - 52, y: DOME_Y - 84 };
+
+  // Artifact visuals on the surface: storm coil and its arcs, aegis bubble, time slow
+  function drawSurfaceArtifacts() {
+    if (hasArtifact('stormCoil')) {
+      const { x, y } = STORM_COIL;
+      drawGlow('#7ad8ff', x, y - 16, 26, 0.5 + Math.sin(animTime * 6) * 0.2);
+      drawSprite('artStormCoil', x, y - 10, 30);
+      if (Math.random() < 0.08)
+        SZ.GameEffects.drawElectricArc(ctx, x, y - 26, x + (Math.random() - 0.5) * 30, y - 40 - Math.random() * 14, { segments: 4, jitter: 6, color: 'rgba(220,250,255,0.9)', glowColor: 'rgba(120,210,255,0.6)', width: 1.5, glowWidth: 5 });
+    }
+    for (const a of stormArcs) {
+      const k = Math.min(1, a.life * 4);
+      SZ.GameEffects.drawElectricArc(ctx, a.x0, a.y0, a.x1, a.y1, { segments: 9, jitter: 16, color: `rgba(230,250,255,${k})`, glowColor: `rgba(110,200,255,${k * 0.8})`, width: 2.5, glowWidth: 10 });
+      drawGlow('#bff0ff', a.x1, a.y1, 30, k);
+    }
+    if (hasArtifact('aegisHeart') && artifactState.aegis > 0) {
+      const r = artifactState.aegis / aegisMax();
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 28, Math.PI, 0);
+      ctx.strokeStyle = `rgba(120,210,255,${0.25 + 0.45 * r})`;
+      ctx.lineWidth = 3 + 4 * r;
+      ctx.shadowColor = '#6cc8ff';
+      ctx.shadowBlur = 14;
+      ctx.setLineDash([16, 8]);
+      ctx.lineDashOffset = -animTime * 18;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawTimeSlowTint() {
+    const t = artifactState.timeSlow;
+    if (t <= 0) return;
+    const a = Math.min(1, t) * 0.18;
+    ctx.fillStyle = `rgba(110,150,255,${a})`;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.save();
+    ctx.strokeStyle = `rgba(190,210,255,${a * 2})`;
+    ctx.lineWidth = 3;
+    const r = ((animTime * 260) % 900);
+    ctx.beginPath();
+    ctx.arc(DOME_X, DOME_Y, r, Math.PI, 0);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Row of found artifact icons; returns the drawn width
+  function drawArtifactStrip(x, y, maxW, size) {
+    const step = size + 6;
+    const fit = Math.max(1, Math.floor((maxW + 6) / step));
+    const shown = artifacts.length > fit ? artifacts.slice(0, fit - 1) : artifacts;
+    shown.forEach((id, i) => drawArtifactIcon(id, x + size / 2 + i * step, y, size));
+    if (shown.length < artifacts.length) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText(`+${artifacts.length - shown.length}`, x + size / 2 + shown.length * step, y + 1, size + 4, 14, { weight: 'bold', color: UI.text });
+    }
+  }
+
+  /* -- Artifact gallery (a tab of the upgrade tree) -- */
+  function artifactCards() {
+    const cols = 4, gap = 18, top = TREE_VIEW.y + 54;
+    const w = Math.floor((CANVAS_W - 64 - gap * (cols - 1)) / cols);
+    const h = Math.floor((TREE_VIEW.y + TREE_VIEW.h - 14 - top - gap * 3) / 4);
+    return ARTIFACTS.map((a, i) => ({ a, x: 32 + (i % cols) * (w + gap), y: top + Math.floor(i / cols) * (h + gap), w, h }));
+  }
+
+  function drawArtifactGallery() {
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText(`Artifacts found: ${artifacts.length} / ${ARTIFACTS.length}`, 34, TREE_VIEW.y + 24, 420, 22, { weight: 'bold', color: '#e0b0ff' });
+    ctx.textAlign = 'right';
+    fitText('Each mine hides three secret chests. Beat their lock to claim an artifact - they stay with you on every site.', CANVAS_W - 34, TREE_VIEW.y + 24, CANVAS_W - 500, 15, { color: UI.textDim });
+    for (const card of artifactCards()) {
+      const found = hasArtifact(card.a.id);
+      ctx.save();
+      drawNodeFrame(card.x, card.y, card.w, card.h, card.a.color, found ? 'owned' : 'locked', false);
+      const ix = card.x + 14, iy = card.y + card.h / 2;
+      roundRectPath(ix, iy - 36, 72, 72, 12);
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fill();
+      if (found)
+        drawArtifactIcon(card.a.id, ix + 36, iy, 64);
+      else {
+        drawSprite('chest', ix + 36, iy, 40, 0.3);
+        ctx.textAlign = 'center';
+        fitText('?', ix + 36, iy + 2, 40, 30, { weight: 'bold', color: 'rgba(220,200,255,0.6)' });
+      }
+      const tx = ix + 86, tw = card.x + card.w - 12 - tx;
+      ctx.textAlign = 'left';
+      fitText(found ? card.a.name : 'Undiscovered', tx, card.y + 26, tw, 19, { weight: 'bold', color: found ? '#ffffff' : '#7a8298' });
+      drawTextBlock(found ? card.a.desc : 'Hidden in a secret chest somewhere in the mines', tx, card.y + 42, tw, card.h - 52, 15, { color: found ? '#c8d2e6' : UI.textMute, minPx: 11, lineGap: 1.25 });
+      ctx.restore();
+    }
   }
 
   /* ======================================================================
@@ -7382,6 +7840,7 @@
 
   function fitTreeView(tab, instant) {
     computeTreeLayout();
+    if (tab === 'artifacts') tab = 'all';
     const r = treeLayout.regions[tab] || treeLayout.regions.all;
     const pad = 24;
     const z = Math.max(TREE_MIN_ZOOM, Math.min(1, (TREE_VIEW.w - pad * 2) / r.w, (TREE_VIEW.h - pad * 2) / r.h));
@@ -7409,7 +7868,7 @@
 
   // Header tabs: all branches plus one per branch
   function getTreeTabs() {
-    const ids = ['all'].concat(TREE_BRANCH_ORDER);
+    const ids = ['all'].concat(TREE_BRANCH_ORDER, ['artifacts']);
     const gap = 10;
     const tabW = Math.min(180, Math.floor((CANVAS_W - 48 - (ids.length - 1) * gap) / ids.length));
     const x0 = CANVAS_W / 2 - (ids.length * tabW + (ids.length - 1) * gap) / 2;
@@ -7652,7 +8111,7 @@
   }
 
   function hitTreeNode(mx, my) {
-    if (my < TREE_VIEW.y || my > TREE_VIEW.y + TREE_VIEW.h) return null;
+    if (treeTab === 'artifacts' || my < TREE_VIEW.y || my > TREE_VIEW.y + TREE_VIEW.h) return null;
     const { x: tx, y: ty } = screenToTreeCoords(mx, my);
     for (const ln of computeTreeLayout())
       if (tx >= ln.x && tx <= ln.x + ln.w && ty >= ln.y && ty <= ln.y + ln.h)
@@ -7703,7 +8162,7 @@
   // Keyboard control of the upgrade tree; returns true when the key was used
   function handleUpgradeDialogKey(e) {
     const nodes = computeTreeLayout();
-    const tabs = ['all'].concat(TREE_BRANCH_ORDER);
+    const tabs = ['all'].concat(TREE_BRANCH_ORDER, ['artifacts']);
     if (e.code === 'Tab') {
       const i = tabs.indexOf(treeTab);
       setTreeTab(tabs[(i + (e.shiftKey ? tabs.length - 1 : 1)) % tabs.length]);
@@ -7727,6 +8186,8 @@
     }
     const dirs = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1], KeyA: [-1, 0], KeyD: [1, 0], KeyW: [0, -1], KeyS: [0, 1] };
     const dir = dirs[e.code];
+    if (treeTab === 'artifacts')
+      return !!dir;
     const inTab = (ln) => treeTab === 'all' || ln.branch === treeTab;
     if (dir) {
       const cur = treeFocusId && treeLayout.byId[treeFocusId];
@@ -7820,7 +8281,15 @@
 
     drawTreeBackground();
 
-    // ---- Tree content (zoom & pan) ----
+    // ---- Tree content (zoom & pan), or the artifact gallery ----
+    if (treeTab === 'artifacts')
+      drawArtifactGallery();
+    else
+      drawTreeContent();
+    drawTreeHeader();
+  }
+
+  function drawTreeContent() {
     ctx.save();
     ctx.beginPath();
     ctx.rect(TREE_VIEW.x, TREE_VIEW.y, TREE_VIEW.w, TREE_VIEW.h);
@@ -7914,7 +8383,9 @@
       const ln = treeLayout.byId[treeFocusId];
       tooltip.anchor = { x: upgradePanX + ln.x * upgradeZoom, y: upgradePanY + ln.y * upgradeZoom, w: ln.w * upgradeZoom, h: ln.h * upgradeZoom };
     }
+  }
 
+  function drawTreeHeader() {
     // ---- Header ----
     drawPanel(12, 8, CANVAS_W - 24, 142, { accent: UI.gold, radius: 14 });
     ctx.textAlign = 'left';
@@ -7931,15 +8402,15 @@
     for (const t of getTreeTabs()) {
       const active = treeTab === t.id;
       const hover = mouseAimX >= t.x && mouseAimX <= t.x + t.w && mouseAimY >= t.y && mouseAimY <= t.y + t.h;
-      const color = t.id === 'all' ? UI.gold : TREE_BRANCH_COLORS[t.id];
+      const color = t.id === 'all' ? UI.gold : (t.id === 'artifacts' ? '#e0a0ff' : TREE_BRANCH_COLORS[t.id]);
       roundRectPath(t.x, t.y, t.w, t.h, 9);
       ctx.fillStyle = active ? hexToRgba(color, 0.24) : (hover ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)');
       ctx.fill();
       ctx.lineWidth = active ? 2 : 1;
       ctx.strokeStyle = active ? color : 'rgba(255,255,255,0.1)';
       ctx.stroke();
-      let label = t.id === 'all' ? 'All' : TREE_BRANCH_LABELS[t.id].charAt(0) + TREE_BRANCH_LABELS[t.id].slice(1).toLowerCase();
-      if (t.id !== 'all') {
+      let label = t.id === 'all' ? 'All' : (t.id === 'artifacts' ? `Artifacts  ${artifacts.length}/${ARTIFACTS.length}` : TREE_BRANCH_LABELS[t.id].charAt(0) + TREE_BRANCH_LABELS[t.id].slice(1).toLowerCase());
+      if (t.id !== 'all' && t.id !== 'artifacts') {
         let o = 0, c = 0;
         for (const n of UPGRADE_TREE)
           if (n.branch === t.id) {
@@ -8251,8 +8722,8 @@
   }
 
   // Flight speed in px/s, cargo size, pickup radius (tiles), laser reach (tiles) and laser speed
-  function droneSpeed() { return TILE_SIZE * 3.2 * Math.pow(1.3, getEffectiveLevel('droneSpeed')) * droneBoost(); }
-  function droneCargoCap() { return 15 + 15 * getEffectiveLevel('droneCargo'); }
+  function droneSpeed() { return TILE_SIZE * 3.2 * Math.pow(1.3, getEffectiveLevel('droneSpeed')) * droneBoost() * (hasArtifact('hiveLink') ? 1.25 : 1); }
+  function droneCargoCap() { return (15 + 15 * getEffectiveLevel('droneCargo')) * (hasArtifact('hiveLink') ? 2 : 1); }
   function dronePickupRadius() { return 1 + getEffectiveLevel('droneSpeed'); }
   function droneLaserReach() { return 4 + 2 * getEffectiveLevel('droneMining'); }
   function droneLaserSpeed() { return Math.pow(1.35, getEffectiveLevel('droneMining')) * droneBoost(); }
@@ -8411,6 +8882,7 @@
           floatingText.add(DOME_X - 140, DOME_Y - 150, `Drone delivered ${d.cargo}`, { color: '#d8b8ff', font: 'bold 20px sans-serif' });
           SZ.GameAudio.play('coin', { pitch: 1.3, volume: 0.5 });
         }
+        depositScore(d.cargo, DOME_X - 140, DOME_Y - 190);
       }
       d.cargo = 0;
       d.job = null;
@@ -8822,7 +9294,8 @@
     updateWorldTime(dt);
     updateWeather(dt);
 
-    updateEnemies(dt);
+    updateArtifacts(dt);
+    updateEnemies(artifactState.timeSlow > 0 ? dt * 0.35 : dt);
     updateWeapon(dt);
     updateDrones(dt);
 
@@ -10084,6 +10557,22 @@
   };
 
   function drawEnemy(e) {
+    // Owl Sight: monsters glow at night, burrowers show under the ground
+    if (hasArtifact('owlSight') && daylight < 0.6) {
+      const sz = e.size || 16;
+      drawGlow('#80ffb0', e.x, e.hidden ? DOME_Y + 6 : e.y, sz * 2.4, 0.4 + Math.sin(animTime * 4 + e.x * 0.02) * 0.1);
+      if (e.hidden) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(128,255,176,0.75)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.ellipse(e.x, DOME_Y + 18, sz * 0.9, sz * 0.4, 0, 0, TWO_PI);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
     if (e.hidden)
       return drawBurrowMound(e);
     if (e.type === 'flyer')
@@ -10793,8 +11282,9 @@
     drawDome();
     drawSnowCover();
 
-    // Gadget visuals on surface
+    // Gadget and artifact visuals on surface
     drawSurfaceGadgets();
+    drawSurfaceArtifacts();
 
     // Enemies
     for (const e of enemies)
@@ -10807,6 +11297,7 @@
     drawSurfaceBombs();
     drawBlasts(false);
     drawWeather();
+    drawTimeSlowTint();
     drawThrowPreview();
 
     drawSurfaceHUD();
@@ -10967,7 +11458,7 @@
     const pcx = drillX * TILE_SIZE + TILE_SIZE / 2 - ox;
     const pcy = drillY * TILE_SIZE + TILE_SIZE / 2 - oy;
     const depth = drillY / GRID_ROWS;
-    const radar = 1 + 0.25 * getEffectiveLevel('undergroundRadar');
+    const radar = (1 + 0.25 * getEffectiveLevel('undergroundRadar')) * (hasArtifact('sunLamp') ? 1.6 : 1);
     const lw = CANVAS_W * 1.9 * radar, lh = CANVAS_H * 1.9 * 0.75 * radar;
     ctx.globalAlpha = 0.6 + depth * 0.35;
     ctx.drawImage(art.light, pcx - lw / 2, pcy - lh / 2, lw, lh);
@@ -10984,6 +11475,7 @@
     drawRelocationCoreMarker();
     drawChests();
     drawChestHints(toolState.scannerActive ? scannerRange() : 0);
+    drawUndergroundArtifacts();
 
     // Ore glints twinkle through the dark
     for (let i = 0; i < oreTiles.length; i += 2) {
@@ -11845,6 +12337,8 @@
     drawMeter(barX, barY, barW, barH, hpRatio, hpRatio > 0.5 ? '#46c862' : (hpRatio > 0.25 ? '#e8b030' : '#e84040'), {
       label: `Dome ${Math.ceil(domeHP)} / ${maxDomeHP}`, labelPx: 16
     });
+    if (hasArtifact('aegisHeart'))
+      drawMeter(barX + 20, barY + barH + 4, barW - 40, 7, artifactState.aegis / aegisMax(), '#6cc8ff', { track: 'rgba(0,10,30,0.7)' });
 
     drawKeyHints([
       { key: 'Space', label: 'Underground' },
@@ -11891,6 +12385,8 @@
       if (g === 'blastMining') continue;
       rows.push({ icon: 'gear', text: MINE_GADGET_NAMES[g] || g, color: '#d0c890' });
     }
+    if (artifacts.length)
+      rows.push({ artifacts: true });
 
     for (const def of TOOL_DEFS) {
       if (!unlockedTools[def.key]) continue;
@@ -11921,6 +12417,10 @@
     for (let i = 0; i < shown.length; ++i) {
       const r = shown[i];
       const y = py + 7 + i * rowH + rowH / 2;
+      if (r.artifacts) {
+        drawArtifactStrip(px + 12, y, pw - 24, 22);
+        continue;
+      }
       drawSprite(r.icon, px + 22, y, 20);
       fitText(r.text, px + 40, y + 1, pw - 52, 17, { weight: 'bold', color: r.color });
     }
@@ -13660,7 +14160,7 @@
         floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 40, 'Reinforced Dome active (passive)', { color: '#0f0', font: 'bold 22px sans-serif' });
     }
     if (e.code === 'Digit5' || e.key === '5') {
-      if (unlockedTools.teleporter)
+      if (unlockedTools.teleporter || hasArtifact('warpAnchor'))
         useTeleporter();
     }
   });
