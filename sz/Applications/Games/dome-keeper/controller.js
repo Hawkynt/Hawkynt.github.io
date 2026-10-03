@@ -1603,11 +1603,11 @@
   // Upgrade effect descriptions (keyed by upgradeKey)
   const UPGRADE_EFFECT_DESC = {
     domeHP: '+25 max dome HP per level',
-    shieldRecharge: 'Shield gadget recharges faster',
+    shieldRecharge: 'Shield Generator recharges 50 s after a hit, even at night (-8 s per level); Repellent cooldown -4 s per level',
     shieldRegen: '+1 HP/5s passive dome regen per level',
     reinforcedDome: 'Dome takes 25% less damage (passive)',
     autoRepair: 'Dome regenerates +2 HP every 5s',
-    autoRepairSpeed: 'Auto-repair heals faster per level',
+    autoRepairSpeed: 'Auto-repair ticks 60% more often per level',
     domeExpansion: '+75 max dome HP, instant heal',
     energyShield: 'Dome takes 15% less damage (stacks with Reinforced)',
     damageReflect: 'Reflects 15% damage back to attackers per level',
@@ -1620,23 +1620,23 @@
     magnet: 'Auto-collect dropped resources within 2 tiles',
     magnetRange: '+1 magnet range per level',
     fortune: '30% chance to double ore yield (+10% per extra level)',
-    silkTouch: 'Preserves full resource value when mining',
-    oreDetector: 'Highlights nearby ores through walls (+range per level)',
+    silkTouch: '+25% yield from every ore you mine',
+    oreDetector: 'Reveals hidden gadget chambers and the Relocation Core within 6 tiles (+3 per level)',
     speedMining: '-10% mining time per level (stacks with tools)',
-    autoMine: 'Auto-mines adjacent blocks when idle for 2s',
-    tunnelBore: 'Mine 3 blocks in a line in the direction you face',
-    veinMiner: 'Mining an ore mines the entire connected vein',
+    autoMine: 'Mines an adjacent ore by itself when the keeper stands idle for 2 s',
+    tunnelBore: 'Every dig also breaks the next 2 blocks in the same direction',
+    veinMiner: 'Mining an ore also mines up to 10 connected tiles of the same ore',
     moveSpeed: '15% faster movement per level',
     teleporter: 'Instantly return to surface (30s cooldown)',
     teleportCooldown: '-5s teleporter cooldown per level',
-    jetpack: 'Fly upward through empty tiles',
-    jetpackFuel: '+50% jetpack duration per level',
-    phaseShift: 'Pass through a single block once (+uses per level)',
+    jetpack: 'Climb tunnels twice as fast and dig upward 20% faster',
+    jetpackFuel: '+25% climbing speed per level',
+    phaseShift: 'The next block breaks instantly; recharges in 25 s (-8 s per level)',
     echoLocation: 'Extends scanner range by +2 tiles per level',
-    doubleJump: 'Jump up 2 empty tiles vertically at once',
-    wallClimb: 'Move up adjacent to solid walls without empty space',
-    dash: 'Quick-move 3 empty tiles in one direction (+range per level)',
-    undergroundRadar: 'Reveals wider area around player (+range per level)',
+    doubleJump: 'Moving up through a tunnel covers 2 tiles per step',
+    wallClimb: 'Digging upward is 30% faster',
+    dash: 'Shift + direction dashes 3 tunnel tiles (+1 per level), 2 s cooldown',
+    undergroundRadar: 'Your lamp lights 25% further per level',
     fireRate: '+0.3 shots/sec per level',
     weaponDamage: '+5 damage per level',
     drillSpeed: 'Every dig is faster (-0.05s drill interval per level)',
@@ -1645,8 +1645,8 @@
     chainLightning: 'Shots arc to 2 nearby enemies for 40% damage (+1 arc/level)',
     freezeRay: 'Shots stun enemies in 60px radius for 0.8s (+0.3s/level)',
     plasmaCannon: 'Shots deal 60% AoE damage in 70px radius',
-    multiShot: 'Fire 2 projectiles per shot (+1 per level)',
-    homingShots: 'Projectiles track nearest enemy automatically',
+    multiShot: 'Each shot also hits 1 more monster (+1 per level) for 60% damage',
+    homingShots: 'Shots home in on monsters far wider around your aim',
     turretSpeed: '+30% turret rotation speed per level',
     criticalHit: '15% chance to deal 2.5x damage (+5% per level)',
     explosiveRounds: 'All shots explode on impact for 40% AoE',
@@ -2586,6 +2586,11 @@
     snowCover = 0;
     enemyShots = [];
     shockwaves = [];
+    domeInvulnerable = 0;
+    emergencyCooldown = 0;
+    lastStandUsed = false;
+    keeperIdle = 0;
+    dashCooldown = 0;
     rainDrops = [];
     snowFlakes = [];
     leaves = [];
@@ -3110,6 +3115,7 @@
 
   function startNight() {
     world.bursts = 1;
+    lastStandUsed = false;
     const phase = MOON_PHASES[moonPhaseIndex(world.day)];
     const strength = moonStrength(world.day);
     spawnWave(false);
@@ -4461,7 +4467,7 @@
     e.attackTimer = T.attack;
     const lunge = Math.atan2(e.y - DOME_Y, e.x - DOME_X);
     e.lunge = 1;
-    if (damageDome(e.damage, DOME_X + Math.cos(lunge) * DOME_RADIUS, DOME_Y + Math.sin(lunge) * DOME_RADIUS))
+    if (damageDome(e.damage, DOME_X + Math.cos(lunge) * DOME_RADIUS, DOME_Y + Math.sin(lunge) * DOME_RADIUS, '', e))
       return true;
     particles.burst(e.x, e.y, 8, { color: T.color, speed: 2.5, life: 0.4 });
     if (e.type === 'crawler' || e.boss)
@@ -4582,7 +4588,7 @@
               if (vd <= step + 6) {
                 e.x = e.diveX;
                 e.y = e.diveY;
-                if (damageDome(e.damage, e.x, e.y))
+                if (damageDome(e.damage, e.x, e.y, '', e))
                   return;
                 SZ.GameAudio.play('hit', { pitch: 1.2 });
                 particles.burst(e.x, e.y, 12, { color: T.color, speed: 3, life: 0.4 });
@@ -4679,10 +4685,19 @@
   }
 
   let domeDamageShown = { t: 0, amount: 0, label: '' }; // hits within a moment are shown as one number
+  let domeInvulnerable = 0;    // Emergency Shield time left
+  let emergencyCooldown = 0;
+  let lastStandUsed = false;   // Last Stand saves the dome once per night
+  let keeperIdle = 0;          // seconds without keeper action (Auto-Mine)
+  let dashCooldown = 0;
 
   // Any hit on the dome: shield gadget, armour, effects and game over. Returns true when the dome is lost.
-  function damageDome(amount, ex, ey, label) {
+  function damageDome(amount, ex, ey, label, attacker) {
     if (state !== STATE_PLAYING) return false;
+    if (domeInvulnerable > 0) {
+      spawnShieldImpact(ex, ey);
+      return false;
+    }
     // Shield gadget absorbs the first hit of each night
     if (primaryGadget === 'shield' && primaryGadgetState.active) {
       primaryGadgetState.active = false;
@@ -4695,7 +4710,22 @@
     let effectiveDmg = amount;
     if (unlockedTools.reinforcedDome) effectiveDmg = Math.ceil(effectiveDmg * 0.75);
     if (unlockedTools.energyShield) effectiveDmg = Math.ceil(effectiveDmg * 0.85);
+    if (unlockedTools.fortifiedBase) effectiveDmg = Math.ceil(effectiveDmg * 0.9);
+    // Damage Reflect sends part of a melee hit back
+    if (attacker && unlockedTools.damageReflect && enemies.includes(attacker))
+      applyDamageToEnemy(attacker, Math.ceil(effectiveDmg * 0.15 * getEffectiveLevel('damageReflect')));
     domeHP -= effectiveDmg;
+    if (domeHP <= 0 && unlockedTools.lastStand && !lastStandUsed) {
+      domeHP = 1;
+      lastStandUsed = true;
+      announce('Last Stand!', 'The dome refuses to break - once per night', '#ff6a6a', 'heart');
+    }
+    if (unlockedTools.emergencyShield && domeHP > 0 && domeHP < maxDomeHP * 0.15 && emergencyCooldown <= 0) {
+      domeInvulnerable = 3;
+      emergencyCooldown = 60;
+      announce('Emergency Shield!', 'The dome is invulnerable for 3 seconds', '#6cc8ff', 'shield');
+      SZ.GameAudio.play('powerup', { pitch: 0.8 });
+    }
     domeHitFlash = 1.0;
     screenShake.trigger(8, 250);
     // several attackers hit at once: one groan per moment, not a chorus
@@ -4764,7 +4794,7 @@
     }
 
     // Keyboard aiming: Left/Right or A/D rotate barrel
-    const turnSpeed = TURRET_KEYBOARD_SPEED * (weather.kind === 'blizzard' ? 1 - 0.4 * weather.intensity : 1);
+    const turnSpeed = TURRET_KEYBOARD_SPEED * (1 + 0.3 * getEffectiveLevel('turretSpeed')) * (weather.kind === 'blizzard' ? 1 - 0.4 * weather.intensity : 1);
     if (keys['ArrowLeft'] || keys['KeyA'])
       turretAngle -= turnSpeed * dt;
     if (keys['ArrowRight'] || keys['KeyD'])
@@ -4793,7 +4823,8 @@
 
       // Find enemy closest to the projected aim line
       let target = null;
-      let bestDist = 80 * 80; // hit radius of 80px
+      const homing = !!unlockedTools.homingShots;
+      let bestDist = homing ? 220 * 220 : 80 * 80; // hit radius of 80px (220 with homing shots)
       for (const e of enemies) {
         if (e.hidden) continue;
         const dx = e.x - farX;
@@ -4807,7 +4838,7 @@
 
       // Also check enemies near the aim line (not just the far point)
       if (!target) {
-        let bestLineDist = 60;
+        let bestLineDist = homing ? 140 : 60;
         for (const e of enemies) {
           if (e.hidden) continue;
           // Distance from enemy to the aim ray
@@ -4839,15 +4870,41 @@
       });
 
       if (target) {
-        applyDamageToEnemy(target, weaponDamage);
+        // Critical hits
+        let shot = weaponDamage;
+        if (unlockedTools.criticalHit && Math.random() < 0.15 + 0.05 * (getEffectiveLevel('criticalHit') - 1)) {
+          shot = Math.round(shot * 2.5);
+          floatingText.add(target.x, target.y - (target.size || 20) - 30, 'CRIT!', { color: '#ffd040', font: 'bold 24px sans-serif' });
+        }
+        applyDamageToEnemy(target, shot);
 
-        // Chain Lightning: arc damage to 2 nearby enemies
+        // Multi-Shot: more beams at the monsters nearest to the target
+        if (unlockedTools.multiShot) {
+          const extra = enemies.filter(o => o !== target && !o.hidden)
+            .sort((a, b) => Math.hypot(a.x - target.x, a.y - target.y) - Math.hypot(b.x - target.x, b.y - target.y))
+            .slice(0, getEffectiveLevel('multiShot'));
+          for (const o of extra) {
+            applyDamageToEnemy(o, Math.ceil(weaponDamage * 0.6));
+            projectiles.push({ x: muzzleX, y: muzzleY, tx: o.x, ty: o.y, target: o, life: 0.25, maxLife: 0.25 });
+          }
+        }
+
+        // Explosive Rounds: every hit bursts
+        if (unlockedTools.explosiveRounds) {
+          for (const ce of enemies)
+            if (ce !== target && !ce.hidden && Math.hypot(ce.x - target.x, ce.y - target.y) < 110)
+              applyDamageToEnemy(ce, Math.ceil(weaponDamage * 0.4));
+          particles.burst(target.x, target.y, 12, { color: '#ffb040', speed: 3, life: 0.35 });
+        }
+
+        // Chain Lightning: arc damage to 2 nearby enemies (+1 per extra level)
         if (unlockedTools.chainLightning) {
           let chainCount = 0;
+          const arcs = 1 + getEffectiveLevel('chainLightning');
           const chainDamage = Math.ceil(weaponDamage * 0.4);
           for (const ce of enemies) {
-            if (ce.hidden) continue;
-            if (ce === target || chainCount >= 2) break;
+            if (ce.hidden || ce === target) continue;
+            if (chainCount >= arcs) break;
             const cdx = ce.x - target.x;
             const cdy = ce.y - target.y;
             if (cdx * cdx + cdy * cdy < 160 * 160) {
@@ -4867,7 +4924,7 @@
             const cdx = ce.x - target.x;
             const cdy = ce.y - target.y;
             if (cdx * cdx + cdy * cdy < 120 * 120)
-              ce.stunTimer = Math.max(ce.stunTimer || 0, 0.8);
+              ce.stunTimer = Math.max(ce.stunTimer || 0, 0.8 + 0.3 * (getEffectiveLevel('freezeRay') - 1));
           }
         }
 
@@ -4933,6 +4990,8 @@
 
     // Mining tools upgrade: each level reduces time by 20%
     time *= Math.pow(0.8, getEffectiveLevel('miningTools'));
+    // Speed Mining: -10% per level
+    time *= Math.pow(0.9, getEffectiveLevel('speedMining'));
 
     // Drill Gadget: 30% faster when mining consecutive tiles in the same column
     if (unlockedTools.drill && activeToolKey === 'drill' && toolState.drillConsecutive > 0)
@@ -4972,6 +5031,18 @@
     miningTarget = { col: nx, row: ny };
     miningDir = { dx, dy };
     miningDuration = getMiningTime(ny, tile);
+    // Digging upward: jetpack and wall climb help
+    if (dy < 0) {
+      if (unlockedTools.jetpack) miningDuration *= 0.8;
+      if (unlockedTools.wallClimb) miningDuration *= 0.7;
+    }
+    // Phase Shift: the next block gives way at once
+    if (unlockedTools.phaseShift && toolState.phaseShiftCooldown <= 0 && tile !== TILE_CORE) {
+      miningDuration = 0.05;
+      toolState.phaseShiftCooldown = 25 - 8 * (getEffectiveLevel('phaseShift') - 1);
+      floatingText.add(nx * TILE_SIZE + TILE_SIZE / 2 - cameraX, ny * TILE_SIZE - cameraY, 'Phase!', { color: '#c8b0ff', font: 'bold 20px sans-serif' });
+    }
+    keeperIdle = 0;
 
     // Restore partial progress from persistent tile HP
     if (tileMaxHP[ny] && tileMaxHP[ny][nx] > 0 && tileHP[ny][nx] < tileMaxHP[ny][nx])
@@ -5036,8 +5107,10 @@
       const label = TILE_LABELS[tile];
       let value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(ny));
 
-      // Fortune: 30% chance to double ore yield
-      if (unlockedTools.fortune && Math.random() < 0.3) {
+      if (unlockedTools.silkTouch)
+        value = Math.round(value * 1.25);
+      // Fortune: 30% chance to double ore yield (+10% per extra level)
+      if (unlockedTools.fortune && Math.random() < 0.3 + 0.1 * (getEffectiveLevel('fortune') - 1)) {
         value *= 2;
         const tx2 = nx * TILE_SIZE + TILE_SIZE / 2 - cameraX;
         const ty2 = ny * TILE_SIZE + TILE_SIZE / 2 - cameraY;
@@ -5099,6 +5172,33 @@
     if (tileMaxHP[ny]) tileMaxHP[ny][nx] = 0;
     drillX = nx;
     drillY = ny;
+
+    // Vein Miner and Tunnel Bore break more rock in one go
+    if (unlockedTools.veinMiner && RESOURCE_TILES.includes(tile)) {
+      const seen = new Set([ny * GRID_COLS + nx]);
+      const queue = [[ny, nx]];
+      let n = 0;
+      while (queue.length && n < 10) {
+        const [r, c] = queue.shift();
+        for (const [ddr, ddc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+          const rr = r + ddr, cc = c + ddc, key = rr * GRID_COLS + cc;
+          if (rr < 0 || rr >= GRID_ROWS || cc < 0 || cc >= GRID_COLS || seen.has(key)) continue;
+          seen.add(key);
+          if (undergroundGrid[rr][cc] !== tile || n >= 10) continue;
+          breakTileInstant(rr, cc);
+          queue.push([rr, cc]);
+          ++n;
+        }
+      }
+    }
+    if (unlockedTools.tunnelBore)
+      for (let k = 1; k <= 2; ++k) {
+        const rr = ny + dy * k, cc = nx + dx * k;
+        if (rr < 0 || rr >= GRID_ROWS || cc < 0 || cc >= GRID_COLS) break;
+        const t = undergroundGrid[rr][cc];
+        if (t === TILE_EMPTY || t === TILE_GADGET || t === TILE_CORE) break;
+        breakTileInstant(rr, cc);
+      }
 
     // Track drill gadget consecutive column mining
     if (unlockedTools.drill && activeToolKey === 'drill') {
@@ -5176,6 +5276,29 @@
 
     if (miningProgress >= miningDuration)
       completeMining();
+  }
+
+  // Break a tile at once (Vein Miner, Tunnel Bore): ore goes into the cargo, overflow drops
+  function breakTileInstant(r, c) {
+    const tile = undergroundGrid[r][c];
+    const tx = c * TILE_SIZE + TILE_SIZE / 2 - cameraX, ty = r * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+    if (RESOURCE_TILES.includes(tile)) {
+      let value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(r));
+      if (unlockedTools.silkTouch)
+        value = Math.round(value * 1.25);
+      const fits = Math.max(0, Math.min(value, carryCapacity - carried));
+      resources[TILE_LABELS[tile]] += fits;
+      carried += fits;
+      if (value > fits)
+        droppedResources.push({ col: c, row: r, type: tile, value: value - fits, age: 0 });
+      particles.sparkle(tx, ty, 6, { color: TILE_HIGHLIGHT_COLORS[tile] || '#fff', speed: 2 });
+    }
+    spawnCrumble(tx, ty, getTileBaseColor(tile, r));
+    undergroundGrid[r][c] = TILE_EMPTY;
+    tileHP[r][c] = 0;
+    tileMaxHP[r][c] = 0;
+    if (!relocationCore.revealed && Math.abs(relocationCore.r - r) + Math.abs(relocationCore.c - c) <= 1)
+      relocationCore.revealed = true;
   }
 
   function pickUpDroppedResources() {
@@ -5395,7 +5518,7 @@
     if (toolState.teleporterCooldown > 0) return;
     if (state !== STATE_PLAYING || currentView !== VIEW_UNDERGROUND) return;
 
-    toolState.teleporterCooldown = GADGET_TOOL_COOLDOWNS.teleporter;
+    toolState.teleporterCooldown = GADGET_TOOL_COOLDOWNS.teleporter - 5 * getEffectiveLevel('teleportCooldown');
 
     // Teleport particles at origin
     const cx = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
@@ -5518,9 +5641,9 @@
   function applyGadgetUnlock(key) {
     unlockedTools[key] = true;
     // Apply immediate effects for certain gadgets
-    if (key === 'domeExpansion') {
+    if (key === 'domeExpansion' || key === 'fortifiedBase') {
       maxDomeHP = computeMaxDomeHP();
-      domeHP = Math.min(domeHP + 75, maxDomeHP);
+      domeHP = Math.min(domeHP + (key === 'domeExpansion' ? 75 : 50), maxDomeHP);
     }
     // Auto-select non-passive tools
     if (!PASSIVE_GADGETS.includes(key))
@@ -5558,6 +5681,7 @@
   function computeMaxDomeHP() {
     let hp = BASE_DOME_HP + getEffectiveLevel('domeHP') * 25;
     if (unlockedTools.domeExpansion) hp += 75;
+    if (unlockedTools.fortifiedBase) hp += 50;
     hp += 50 * foundGadgets.filter(g => g === 'domeArmor').length;
     return hp;
   }
@@ -6402,7 +6526,7 @@
         primaryGadgetState.duration -= dt;
         if (primaryGadgetState.duration <= 0) {
           primaryGadgetState.active = false;
-          primaryGadgetState.cooldown = 30;
+          primaryGadgetState.cooldown = 30 - 4 * getEffectiveLevel('shieldRecharge');
         }
       } else if (primaryGadgetState.cooldown > 0)
         primaryGadgetState.cooldown -= dt;
@@ -6508,7 +6632,7 @@
     if (unlockedTools.autoRepair && domeHP < maxDomeHP) {
       toolState.autoRepairTimer = (toolState.autoRepairTimer || 0) - dt;
       if (toolState.autoRepairTimer <= 0) {
-        toolState.autoRepairTimer = 5; // heal every 5 seconds
+        toolState.autoRepairTimer = 5 / (1 + 0.6 * getEffectiveLevel('autoRepairSpeed')); // heal every 5 seconds (faster with upgrades)
         const heal = 2;
         domeHP = Math.min(domeHP + heal, maxDomeHP);
         floatingText.add(DOME_X + 60, DOME_Y - 40, `+${heal} HP`, { color: '#0f0', font: 'bold 18px sans-serif' });
@@ -6522,7 +6646,7 @@
       for (let i = droppedResources.length - 1; i >= 0; --i) {
         const drop = droppedResources[i];
         const dist = Math.abs(drop.col - drillX) + Math.abs(drop.row - drillY);
-        if (dist > 2) continue;
+        if (dist > 2 + getEffectiveLevel('magnetRange')) continue;
         const canCarry = carryCapacity - carried;
         if (canCarry <= 0) break;
         const pickUp = Math.min(drop.value, canCarry);
@@ -6552,6 +6676,34 @@
       toolState.blastToolCooldown = Math.max(0, toolState.blastToolCooldown - dt);
     if (toolState.teleporterCooldown > 0)
       toolState.teleporterCooldown = Math.max(0, toolState.teleporterCooldown - dt);
+
+    // Shield Regen: slow passive repair
+    const regen = getEffectiveLevel('shieldRegen');
+    if (regen > 0 && domeHP > 0 && domeHP < maxDomeHP)
+      domeHP = Math.min(maxDomeHP, domeHP + 0.2 * regen * dt);
+    // Shield Recharge: the Shield Generator comes back on its own after a while
+    const recharge = getEffectiveLevel('shieldRecharge');
+    if (primaryGadget === 'shield' && !primaryGadgetState.active && recharge > 0) {
+      primaryGadgetState.rechargeTimer = (primaryGadgetState.rechargeTimer || 0) + dt;
+      if (primaryGadgetState.rechargeTimer >= 50 - 8 * recharge) {
+        primaryGadgetState.active = true;
+        primaryGadgetState.rechargeTimer = 0;
+        if (currentView === VIEW_SURFACE)
+          floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 60, 'Shield Recharged!', { color: '#4af', font: 'bold 24px sans-serif' });
+      }
+    }
+    if (domeInvulnerable > 0) domeInvulnerable = Math.max(0, domeInvulnerable - dt);
+    if (emergencyCooldown > 0) emergencyCooldown = Math.max(0, emergencyCooldown - dt);
+    if (dashCooldown > 0) dashCooldown = Math.max(0, dashCooldown - dt);
+    // Ore Detector: hidden chambers and the Relocation Core show up nearby
+    if (unlockedTools.oreDetector) {
+      const R = 6 + 3 * (getEffectiveLevel('oreDetector') - 1);
+      for (const ch of gadgetChambers)
+        if (!ch.revealed && Math.abs(ch.r - drillY) + Math.abs(ch.c - drillX) <= R)
+          ch.revealed = true;
+      if (!relocationCore.revealed && Math.abs(relocationCore.r - drillY) + Math.abs(relocationCore.c - drillX) <= R)
+        relocationCore.revealed = true;
+    }
 
     // Scanner passive: always active when unlocked (echo location extends range)
     toolState.scannerActive = !!unlockedTools.scanner;
@@ -7056,7 +7208,23 @@
   function updateMovement(dt) {
     if (currentView !== VIEW_UNDERGROUND) return;
     // Block movement while mining
-    if (miningTarget) return;
+    if (miningTarget) {
+      keeperIdle = 0;
+      return;
+    }
+    // Auto-Mine: an idle keeper digs adjacent ore
+    keeperIdle += dt;
+    if (unlockedTools.autoMine && keeperIdle >= 2 && (!movePath || movePathIndex >= movePath.length) && state === STATE_PLAYING) {
+      for (const [ddx, ddy] of [[0, 1], [1, 0], [-1, 0], [0, -1]]) {
+        const rr = drillY + ddy, cc = drillX + ddx;
+        if (rr < 0 || rr >= GRID_ROWS || cc < 0 || cc >= GRID_COLS) continue;
+        if (RESOURCE_TILES.includes(undergroundGrid[rr][cc])) {
+          tryMine(ddx, ddy);
+          break;
+        }
+      }
+      keeperIdle = 0;
+    }
 
     if (!movePath || movePathIndex >= movePath.length) {
       // Arrived at destination -- check queued mine action
@@ -7070,9 +7238,12 @@
     }
 
     moveStepTimer -= dt;
+    keeperIdle = 0;
     if (moveStepTimer <= 0) {
-      moveStepTimer = moveStepInterval;
       const step = movePath[movePathIndex];
+      // Climbing up a tunnel is faster with the jetpack
+      const climbing = step.row < drillY && unlockedTools.jetpack;
+      moveStepTimer = climbing ? moveStepInterval / (2 * (1 + 0.25 * getEffectiveLevel('jetpackFuel'))) : moveStepInterval;
       // Spawn dust at old position
       const cx = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
       const cy = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
@@ -9274,7 +9445,8 @@
     const pcx = drillX * TILE_SIZE + TILE_SIZE / 2 - ox;
     const pcy = drillY * TILE_SIZE + TILE_SIZE / 2 - oy;
     const depth = drillY / GRID_ROWS;
-    const lw = CANVAS_W * 1.9, lh = CANVAS_H * 1.9 * 0.75;
+    const radar = 1 + 0.25 * getEffectiveLevel('undergroundRadar');
+    const lw = CANVAS_W * 1.9 * radar, lh = CANVAS_H * 1.9 * 0.75 * radar;
     ctx.globalAlpha = 0.6 + depth * 0.35;
     ctx.drawImage(art.light, pcx - lw / 2, pcy - lh / 2, lw, lh);
     ctx.fillStyle = '#000';
@@ -10022,6 +10194,20 @@
       ctx.lineTo(t.x, t.y);
       ctx.stroke();
       ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // Emergency Shield: golden bubble while invulnerable
+    if (domeInvulnerable > 0) {
+      const a = Math.min(1, domeInvulnerable) * (0.6 + Math.sin(animTime * 12) * 0.2);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 22, Math.PI, 0);
+      ctx.strokeStyle = `rgba(255,220,110,${a})`;
+      ctx.lineWidth = 7;
+      ctx.shadowColor = '#ffd060';
+      ctx.shadowBlur = 16;
+      ctx.stroke();
       ctx.restore();
     }
 
@@ -11339,6 +11525,32 @@
       else if (e.code === 'ArrowLeft' || e.code === 'KeyA') { newDx = -1; newDy = 0; }
       else if (e.code === 'ArrowRight' || e.code === 'KeyD') { newDx = 1; newDy = 0; }
 
+      keeperIdle = 0;
+      // Dash: Shift + direction rushes through the tunnel
+      if ((newDx !== 0 || newDy !== 0) && e.shiftKey && unlockedTools.dash && dashCooldown <= 0) {
+        let n = 0;
+        const range = 3 + (getEffectiveLevel('dash') - 1);
+        while (n < range) {
+          const rr = drillY + newDy, cc = drillX + newDx;
+          if (rr < 0 || rr >= GRID_ROWS || cc < 0 || cc >= GRID_COLS || undergroundGrid[rr][cc] !== TILE_EMPTY) break;
+          spawnDust(drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX, drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY);
+          drillX = cc;
+          drillY = rr;
+          ++n;
+        }
+        if (n > 0) {
+          dashCooldown = 2;
+          clearMoveTarget();
+          pickUpDroppedResources();
+          SZ.GameAudio.play('whoosh', { pitch: 1.8, volume: 0.6 });
+          newDx = newDy = 0;
+        }
+      }
+      // Double Jump: two tunnel tiles per step upward
+      if (newDy === -1 && unlockedTools.doubleJump && !miningTarget && drillY >= 2 && undergroundGrid[drillY - 1][drillX] === TILE_EMPTY && undergroundGrid[drillY - 2][drillX] === TILE_EMPTY) {
+        clearMoveTarget();
+        drillY -= 1;
+      }
       if (newDx !== 0 || newDy !== 0) {
         // Cancel mining if direction changed
         if (miningTarget && miningDir && (miningDir.dx !== newDx || miningDir.dy !== newDy))
