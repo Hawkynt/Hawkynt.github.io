@@ -6356,6 +6356,8 @@
           ++total;
           if (isTreeNodeMaxed(n.id)) ++owned;
         }
+      // Header only when its strip is on screen (the clip would hide it anyway)
+      if (r.y + TREE_REGION_HEADER < viewT || r.y > viewB || r.x + TREE_REGION_PAD < viewL - 40 || r.x > viewR) continue;
       const headPx = compact ? Math.min(48, 20 / upgradeZoom) : 30;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
