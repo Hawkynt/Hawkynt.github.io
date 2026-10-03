@@ -8325,6 +8325,14 @@
     try { localStorage.setItem(STORAGE_TUTORIAL, '1'); } catch (_) {}
   }
 
+  // Test hook for automated play-testing: with the storage flag
+  // sz-dome-keeper-debug = 1, SZ.DomeKeeperDebug.run('expr') evaluates an
+  // expression inside the game (read or change any game variable)
+  try {
+    if (localStorage.getItem(STORAGE_PREFIX + '-debug') === '1')
+      SZ.DomeKeeperDebug = { run: (src) => eval(src) };
+  } catch (_) {}
+
   lastTimestamp = 0;
   animFrameId = requestAnimationFrame(gameLoop);
 
