@@ -2492,7 +2492,7 @@
   /* ══════════════════════════════════════════════════════════════════
      TERRAIN -- every map is baked once into a pixel-art canvas: textured
      ground, roads with ragged edges, shores, cliffs, props and gates.
-     Water and lava get four animation frames of their own.
+     Water, lava and ice move with scrolling textures drawn every frame.
      ══════════════════════════════════════════════════════════════════ */
 
   const TERRAIN = {
@@ -2735,7 +2735,8 @@
       const i = (y * W + x) * 4;
       d[i] = rgb[0]; d[i + 1] = rgb[1]; d[i + 2] = rgb[2]; d[i + 3] = 255;
     };
-    const animated = [];   // [x, y, kind, depth] for water / lava / ice pixels
+    const animated = [];   // [x, y, depth] for water / lava / ice pixels
+    const foam = [];       // [x, y] shallow water along the shore
     const fr = RAMPS[T.feature === 'lava' ? 'lava' : T.feature === 'ice' ? 'ice' : 'water'];
     for (let y = 0; y < H; ++y) {
       for (let x = 0; x < W; ++x) {
@@ -2774,7 +2775,12 @@
         if (kind === 'water' || kind === 'ice' || kind === 'lava') {
           const ed = featEd;
           if (ed < 1.4) { put(x, y, kind === 'lava' ? '#0a0608' : T.shore); continue; }
-          if (ed < 2.4) { put(x, y, kind === 'lava' ? fr[1] : fr[4]); continue; }
+          if (ed < 2.4) {
+            put(x, y, kind === 'lava' ? fr[1] : fr[4]);
+            if (kind === 'water') foam.push(x, y);
+            continue;
+          }
+          if (kind === 'water' && ed < 3.6) foam.push(x, y);
           const depth = clamp((ed - 2) / 7, 0, 1);
           put(x, y, kind === 'ice'
             ? (hash2(Math.floor(x / 5), Math.floor(y / 4), seed) > 0.93 ? fr[4] : rampPick(fr, 0.75 - depth * 0.3 + (n - 0.5) * 0.25, x, y, 2, 4))
@@ -2855,8 +2861,10 @@
       g.drawImage(art, Math.round(it.x - art.width / 2), Math.round(it.y - art.height + 1));
     }
 
-    // Animation frames for water / lava / ice
-    const frames = [];
+    // Animated liquid: a mask of the liquid pixels plus two foam patterns
+    // for the shore; the motion itself is drawn every frame from scrolling
+    // tileable textures (see drawLiquid)
+    let liquid = null;
     if (animated.length) {
       let minX = W, minY = H, maxX = 0, maxY = 0;
       for (let i = 0; i < animated.length; i += 3) {
@@ -2864,38 +2872,29 @@
         minY = Math.min(minY, animated[i + 1]); maxY = Math.max(maxY, animated[i + 1]);
       }
       const fw = maxX - minX + 1, fh = maxY - minY + 1;
-      for (let f = 0; f < 4; ++f) {
-        const fc = makeCanvas(fw, fh);
-        const fg = fc.getContext('2d');
-        const fi = fg.createImageData(fw, fh);
-        const fd = fi.data;
-        for (let i = 0; i < animated.length; i += 3) {
-          const x = animated[i], y = animated[i + 1], depth = animated[i + 2];
-          let col = null;
-          if (T.feature === 'lava') {
-            const v = fbm(x / 7 + f * 0.25, y / 7 - f * 0.12, seed + 31);
-            const crust = fbm(x / 9 - f * 0.18, y / 9 + f * 0.1, seed + 33);
-            col = crust > 0.62 ? (crust > 0.7 ? '#2a0e08' : fr[1]) : rampPick(fr, 0.2 + v * 0.75 - depth * 0.1, x, y, 2, 5);
-          } else if (T.feature === 'water') {
-            const w = Math.sin(x * 0.7 + Math.sin(y * 0.35) * 2 + f * Math.PI / 2) * 0.8 + valueNoise(x / 5, y / 3, seed + 41 + f) * 1.4;
-            if (w > 1.75 && depth > 0.15) col = fr[5];
-            else if (w > 1.5) col = fr[4];
-          } else {
-            const w = hash2(x, y, seed + f * 3 + 51);
-            if (w > 0.994) col = '#ffffff';
-            else if ((x + y * 2 + f * 5) % 23 === 0 && valueNoise(x / 6, y / 6, seed) > 0.6) col = fr[5];
-          }
-          if (!col) continue;
-          const rgb = parseHex(col);
-          const j = ((y - minY) * fw + (x - minX)) * 4;
-          fd[j] = rgb[0]; fd[j + 1] = rgb[1]; fd[j + 2] = rgb[2]; fd[j + 3] = 255;
-        }
-        fg.putImageData(fi, 0, 0);
-        frames.push(fc);
+      const mask = makeCanvas(fw, fh);
+      const mg = mask.getContext('2d');
+      const mi = mg.createImageData(fw, fh);
+      for (let i = 0; i < animated.length; i += 3) {
+        const j = ((animated[i + 1] - minY) * fw + (animated[i] - minX)) * 4;
+        // Alpha carries depth: shallow water shows less of the deep shimmer
+        mi.data[j] = mi.data[j + 1] = mi.data[j + 2] = 255;
+        mi.data[j + 3] = Math.round(150 + animated[i + 2] * 105);
       }
-      frames.x = minX; frames.y = minY;
+      mg.putImageData(mi, 0, 0);
+      const foams = [];
+      if (foam.length)
+        for (let f = 0; f < 2; ++f) {
+          const fc = makeCanvas(W, H);
+          const fg = fc.getContext('2d');
+          fg.fillStyle = '#f2fbff';
+          for (let i = 0; i < foam.length; i += 2)
+            if (hash2(foam[i] >> 1, foam[i + 1] >> 1, seed + 61 + f * 7) > 0.55)
+              fg.fillRect(foam[i], foam[i + 1], 1, 1);
+          foams.push(fc);
+        }
+      liquid = { mask, x: minX, y: minY, w: fw, h: fh, foams, kind: T.feature };
     }
-
     // Lava glow points for night-light style flicker
     const lights = [];
     if (T.feature === 'lava')
@@ -2915,7 +2914,7 @@
       if (!gates.some(q => q.kind === exitKind && q.c === e[0] && q.r === e[1]))
         gates.push({ kind: exitKind, c: e[0], r: e[1] });
     }
-    return { base: canvas2, frames, lights, gates, biome: m.biome };
+    return { base: canvas2, liquid, lights, gates, biome: m.biome };
   }
 
   /* ── Drawing the battlefield ground ── */
@@ -2923,14 +2922,113 @@
     const t = getTerrain(currentMap);
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(t.base, 0, 0, WORLD_W, WORLD_H);
-    if (t.frames.length) {
-      const f = t.frames[Math.floor(animTime * 5) % 4];
-      ctx.drawImage(f, t.frames.x * AP, t.frames.y * AP, f.width * AP, f.height * AP);
-    }
+    if (t.liquid) drawLiquid(t.liquid);
     for (const l of t.lights)
       drawGlow('#ff6a1a', l.x, l.y, CELL * 1.1, 0.16 + 0.08 * Math.sin(animTime * 2 + l.ph));
   }
 
+  /* ── Liquids: tileable textures scrolled with sub-pixel offsets and
+     masked to the water / lava / ice of the map, redrawn every frame ── */
+  const LIQ_TILE = 48;
+  const liquidTex = {};
+
+  // Periodic value noise so the texture tiles seamlessly
+  function noiseP(x, y, p, seed) {
+    const x0 = Math.floor(x), y0 = Math.floor(y);
+    const fx = x - x0, fy = y - y0;
+    const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    const h = (a, b) => hash2(((a % p) + p) % p, ((b % p) + p) % p, seed);
+    const a = h(x0, y0), b = h(x0 + 1, y0), c = h(x0, y0 + 1), d = h(x0 + 1, y0 + 1);
+    return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+  }
+
+  function liquidTexture(key) {
+    if (liquidTex[key]) return liquidTex[key];
+    const N = LIQ_TILE;
+    const c = makeCanvas(N, N);
+    const g = c.getContext('2d');
+    const img = g.createImageData(N, N);
+    for (let y = 0; y < N; ++y)
+      for (let x = 0; x < N; ++x) {
+        const v = noiseP(x / 8, y / 8, N / 8, key.length * 13) * 0.65 + noiseP(x / 4, y / 4, N / 4, key.length * 29) * 0.35;
+        let r = 0, gg = 0, b = 0, a = 0;
+        if (key === 'caustic') {
+          // Thin bright ridges where the noise crosses its middle
+          const ridge = 1 - Math.abs(v - 0.5) * 2;
+          a = ridge > 0.86 ? 200 : ridge > 0.74 ? 90 : 0;
+          r = 190; gg = 236; b = 255;
+        } else if (key === 'veins') {
+          const ridge = 1 - Math.abs(v - 0.5) * 2;
+          a = ridge > 0.7 ? 255 : ridge > 0.5 ? 140 : 0;
+          r = 255; gg = ridge > 0.8 ? 236 : 168; b = ridge > 0.8 ? 138 : 40;
+        } else if (key === 'crust') {
+          a = v > 0.62 ? 235 : v > 0.56 ? 120 : 0;
+          r = 42; gg = 14; b = 8;
+        } else {
+          a = hash2(x, y, 99) > 0.985 ? 255 : 0;
+          r = gg = b = 255;
+        }
+        const i = (y * N + x) * 4;
+        img.data[i] = r; img.data[i + 1] = gg; img.data[i + 2] = b; img.data[i + 3] = a;
+      }
+    g.putImageData(img, 0, 0);
+    liquidTex[key] = c;
+    return c;
+  }
+
+  let liquidScratch = null;
+  function drawLiquid(L) {
+    const w = L.w * AP, h = L.h * AP;
+    if (!liquidScratch) liquidScratch = makeCanvas(16, 16);
+    if (liquidScratch.width < w || liquidScratch.height < h) {
+      liquidScratch.width = Math.max(liquidScratch.width, Math.ceil(w));
+      liquidScratch.height = Math.max(liquidScratch.height, Math.ceil(h));
+    }
+    const g = liquidScratch.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 1;
+    g.clearRect(0, 0, w, h);
+    g.imageSmoothingEnabled = false;
+    const t = animTime;
+    // Anchor the textures in the world so neighbouring pools line up
+    const layer = (key, ox, oy, alpha, op) => {
+      const pat = g.createPattern(liquidTexture(key), 'repeat');
+      pat.setTransform(new DOMMatrix().translateSelf(ox - L.x * AP, oy - L.y * AP).scaleSelf(AP, AP));
+      g.globalCompositeOperation = op || 'source-over';
+      g.globalAlpha = alpha;
+      g.fillStyle = pat;
+      g.fillRect(0, 0, w, h);
+    };
+    if (L.kind === 'lava') {
+      layer('veins', t * 6, t * 3.5, 0.6);
+      layer('veins', -t * 4.5, t * 5, 0.25, 'lighter');
+      layer('crust', t * 2.2, -t * 1.4, 0.95);
+    } else if (L.kind === 'water') {
+      layer('caustic', t * 7, t * 3, 0.65);
+      layer('caustic', -t * 5.5, t * 4.5, 0.5, 'lighter');
+    } else {
+      layer('glint', t * 2, t * 1, 0.8);
+    }
+    g.globalCompositeOperation = 'destination-in';
+    g.globalAlpha = 1;
+    g.drawImage(L.mask, 0, 0, w, h);
+    const prev = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = L.kind === 'lava' ? 'source-over' : 'lighter';
+    ctx.globalAlpha = L.kind === 'water' ? 0.42 : L.kind === 'lava' ? 0.85 : 1;
+    ctx.drawImage(liquidScratch, 0, 0, w, h, L.x * AP, L.y * AP, w, h);
+    ctx.globalCompositeOperation = prev;
+    ctx.globalAlpha = 1;
+    // Foam along the shore breathes in and out
+    if (L.foams.length) {
+      const k = 0.5 + 0.5 * Math.sin(t * 1.7);
+      ctx.globalAlpha = 0.25 + 0.55 * k;
+      ctx.drawImage(L.foams[0], 0, 0, WORLD_W, WORLD_H);
+      ctx.globalAlpha = 0.25 + 0.55 * (1 - k);
+      ctx.drawImage(L.foams[1], 0, 0, WORLD_W, WORLD_H);
+      ctx.globalAlpha = 1;
+    }
+  }
   // Gates are drawn with the actors so enemies appear from inside them
   function drawGates(front) {
     const t = getTerrain(currentMap);
