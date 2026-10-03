@@ -15,6 +15,8 @@
     InvalidValue: 'InvalidValue',
     PermissionDenied: 'PermissionDenied',
     DataTooLarge: 'DataTooLarge',
+    Conflict: 'Conflict',
+    Unsupported: 'Unsupported',
   };
 
   const SearchOption = Object.freeze({ TopOnly: 0, BreadthFirst: 1, DepthFirst: 2 });
@@ -92,7 +94,13 @@
 
     async PutNode(relPath, node) {
       super.PutNode(relPath);
-      localStorage.setItem(this.#prefix + relPath, JSON.stringify(node));
+      try {
+        localStorage.setItem(this.#prefix + relPath, JSON.stringify(node));
+      } catch (e) {
+        if (isQuotaError(e))
+          throw new VFSError(ERROR_CODES.DataTooLarge, relPath, 'Not enough storage space left in the browser to save this.');
+        throw e;
+      }
     }
     
     async DeleteNode(relPath) {
@@ -112,6 +120,137 @@
             if (name) children.add(name);
           }
         }
+      }
+      return [...children];
+    }
+  }
+
+  function isQuotaError(e) {
+    return !!e && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22 || e.code === 1014);
+  }
+
+  /**
+   * Stores nodes in IndexedDB, which holds far more than localStorage. On
+   * first use it takes over the nodes an older version kept in localStorage
+   * under `legacyPrefix` and removes them there. Where IndexedDB cannot be
+   * opened it keeps working on localStorage.
+   */
+  class IndexedDBDriver extends BaseDriver {
+    #store;
+    #legacyPrefix;
+    #ready = null;
+    #fallback = null;
+
+    constructor(storeName, legacyPrefix) {
+      super();
+      this.#store = storeName;
+      this.#legacyPrefix = legacyPrefix;
+    }
+
+    #open() {
+      if (this.#ready)
+        return this.#ready;
+      this.#ready = new Promise((resolve) => {
+        let req;
+        try {
+          req = indexedDB.open('sz-vfs-' + this.#store, 1);
+        } catch (_) {
+          resolve(null);
+          return;
+        }
+        req.onupgradeneeded = () => req.result.createObjectStore('nodes');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+        req.onblocked = () => resolve(null);
+      }).then(async (db) => {
+        if (!db) {
+          this.#fallback = new LocalStorageDriver(this.#legacyPrefix);
+          return null;
+        }
+        await this.#migrate(db);
+        return db;
+      });
+      return this.#ready;
+    }
+
+    async #migrate(db) {
+      const keys = [];
+      try {
+        for (let i = 0; i < localStorage.length; ++i) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(this.#legacyPrefix))
+            keys.push(key);
+        }
+      } catch (_) {
+        return;
+      }
+      if (!keys.length)
+        return;
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction('nodes', 'readwrite');
+        const store = tx.objectStore('nodes');
+        for (const key of keys)
+          try {
+            const node = JSON.parse(localStorage.getItem(key));
+            if (node)
+              store.put(node, key.substring(this.#legacyPrefix.length));
+          } catch (_) { /* skip a damaged entry */ }
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      for (const key of keys)
+        localStorage.removeItem(key);
+    }
+
+    async #request(mode, fn) {
+      const db = await this.#open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('nodes', mode);
+        const req = fn(tx.objectStore('nodes'));
+        let result;
+        req.onsuccess = () => { result = req.result; };
+        tx.oncomplete = () => resolve(result);
+        tx.onabort = tx.onerror = () => reject(tx.error || req.error);
+      });
+    }
+
+    async GetNode(relPath) {
+      if (!(await this.#open()))
+        return this.#fallback.GetNode(relPath);
+      return (await this.#request('readonly', s => s.get(relPath))) || null;
+    }
+
+    async PutNode(relPath, node) {
+      super.PutNode(relPath);
+      if (!(await this.#open()))
+        return this.#fallback.PutNode(relPath, node);
+      try {
+        await this.#request('readwrite', s => s.put(node, relPath));
+      } catch (e) {
+        if (isQuotaError(e))
+          throw new VFSError(ERROR_CODES.DataTooLarge, relPath, 'Not enough storage space left in the browser to save this.');
+        throw e;
+      }
+    }
+
+    async DeleteNode(relPath) {
+      super.DeleteNode(relPath);
+      if (!(await this.#open()))
+        return this.#fallback.DeleteNode(relPath);
+      await this.#request('readwrite', s => s.delete(relPath));
+    }
+
+    async ListChildren(relPath) {
+      if (!(await this.#open()))
+        return this.#fallback.ListChildren(relPath);
+      const dirPrefix = (relPath === '/' || relPath === '') ? '' : relPath + '/';
+      const range = dirPrefix ? IDBKeyRange.bound(dirPrefix, dirPrefix + '\uffff') : undefined;
+      const keys = await this.#request('readonly', s => s.getAllKeys(range));
+      const children = new Set();
+      for (const key of keys || []) {
+        const name = String(key).substring(dirPrefix.length).split('/')[0];
+        if (name)
+          children.add(name);
       }
       return [...children];
     }
@@ -328,7 +467,7 @@
 
     constructor() {
       // Default root mount
-      this.mount('/', new LocalStorageDriver('sz-vfs-root:'));
+      this.mount('/', typeof indexedDB !== 'undefined' ? new IndexedDBDriver('root', 'sz-vfs-root:') : new LocalStorageDriver('sz-vfs-root:'));
     }
 
     mount(prefix, driver) {
@@ -489,7 +628,11 @@
 
     // --- Typed Writes ---
     async WriteAllBytes(path, bytes, meta = {}) {
-      const b64 = btoa(String.fromCharCode.apply(null, bytes));
+      // in slices: one call with every byte overflows the stack on large files
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 0x8000)
+        binary += String.fromCharCode.apply(null, bytes.subarray ? bytes.subarray(i, i + 0x8000) : bytes.slice(i, i + 0x8000));
+      const b64 = btoa(binary);
       await this.#putNode(path, { k: 'bytes', c: { t: 'inline', b64 }, meta: { ...meta, mtime: Date.now(), size: bytes.length } });
     }
     
@@ -583,6 +726,7 @@
   SZ.VFS = {
     Kernel,
     LocalStorageDriver,
+    IndexedDBDriver,
     ReadOnlyObjectDriver,
     FileSystemAccessDriver,
     MountStore,

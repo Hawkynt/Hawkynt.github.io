@@ -18,6 +18,9 @@ body {
   align-items: center;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+  background: #05060d;
+  background: radial-gradient(ellipse at center, #141a30 0%, #070912 70%, #030409 100%);
 }
 
 .game-frame canvas {
@@ -25,6 +28,8 @@ body {
   width: 100%;
   height: 100%;
   background: #0a0a1a;
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.6);
+  touch-action: none;  /* hold to charge, taps on the dome and minigames need raw touches */
 }
 
 .status-bar {

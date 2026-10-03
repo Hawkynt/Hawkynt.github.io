@@ -293,8 +293,275 @@
       px(ctx, ox + Math.floor(r() * T), oy + Math.floor(r() * T), r() < 0.5 ? '#ff7a2a' : '#2a2628');
   }
 
+  // --- the planes -----------------------------------------------------------
+
+  // Fine mottling over a flat base: the ground of most planar tiles.
+  function mottle(ctx, ox, oy, r, base, spread = 0.12, step = 2) {
+    for (let y = 0; y < T; y += step)
+      for (let x = 0; x < T; x += step)
+        px(ctx, ox + x, oy + y, rgb(base, 1 - spread / 2 + r() * spread), step, step);
+  }
+
+  function specks(ctx, ox, oy, r, colors, n) {
+    for (let i = 0; i < n; ++i)
+      px(ctx, ox + Math.floor(r() * T), oy + Math.floor(r() * T), colors[Math.floor(r() * colors.length)]);
+  }
+
+  // Silver-violet nothing with drifting motes and a faint current.
+  function astral(ctx, ox, oy, r) {
+    mottle(ctx, ox, oy, r, '#3a3466', 0.16, 4);
+    const y0 = Math.floor(r() * T);
+    for (let x = 0; x < T; ++x)
+      if ((x + y0) % 5)
+        px(ctx, ox + x, oy + (y0 + (x >> 2)) % T, 'rgba(190,180,255,0.35)');
+    specks(ctx, ox, oy, r, ['#ffffff', '#c8c0ff', '#8a80d8'], 4);
+  }
+
+  // Grey stone drifting in the silver void, lit along its upper rim.
+  function driftRock(ctx, ox, oy, r) {
+    astral(ctx, ox, oy, r);
+    const cx = 8 + Math.floor(r() * 3) - 1, cy = 9;
+    for (let y = -5; y <= 5; ++y)
+      for (let x = -7; x <= 7; ++x)
+        if ((x * x) / 49 + (y * y) / 25 <= 1 - r() * 0.15)
+          px(ctx, ox + cx + x, oy + cy + y, rgb('#7a7890', y < -2 ? 1.25 : y > 2 ? 0.7 : 0.95 + r() * 0.1));
+    px(ctx, ox + cx - 3, oy + cy - 4, '#c8c4e0', 4, 1);
+  }
+
+  // Pale fog, swirled lighter and darker.
+  function mist(ctx, ox, oy, r) {
+    mottle(ctx, ox, oy, r, '#a8b4cc', 0.1, 2);
+    for (let i = 0; i < 3; ++i) {
+      const x = Math.floor(r() * 10), y = 2 + Math.floor(r() * 12), w = 4 + Math.floor(r() * 6);
+      px(ctx, ox + x, oy + y, 'rgba(240,246,255,0.55)', w, 1);
+      px(ctx, ox + x + 1, oy + y + 1, 'rgba(120,130,160,0.35)', w - 1, 1);
+    }
+  }
+
+  // Colourless grass of the plane of shadow.
+  function gloom(ctx, ox, oy, r) {
+    grass(ctx, ox, oy, r, '#3c4440', { flowers: 0 });
+    specks(ctx, ox, oy, r, ['#1e2220', '#5a6460'], 5);
+  }
+
+  // Scorched ground of the plane of fire: embers glow between the cinders.
+  function cinder(ctx, ox, oy, r) {
+    roughGround(ctx, ox, oy, r, '#4a2418');
+    specks(ctx, ox, oy, r, ['#ff7a1a', '#ffb03a', '#ff5a10'], 9);
+    const x = 2 + Math.floor(r() * 11), y = 3 + Math.floor(r() * 10);
+    px(ctx, ox + x, oy + y, '#ffd24a', 1, 2);
+    px(ctx, ox + x - 1, oy + y + 1, '#ff7a1a', 3, 1);
+  }
+
+  // Open water you can swim through: deep blue with lit wavelets.
+  function current(ctx, ox, oy, r) {
+    mottle(ctx, ox, oy, r, '#1c4c8c', 0.14, 2);
+    for (let i = 0; i < 4; ++i) {
+      const x = Math.floor(r() * 12), y = 1 + Math.floor(r() * 14);
+      px(ctx, ox + x, oy + y, '#3a7ac8', 4, 1);
+      px(ctx, ox + x + 1, oy + y - 1, '#8ac8f0', 2, 1);
+    }
+  }
+
+  function coral(ctx, ox, oy, r) {
+    current(ctx, ox, oy, r);
+    for (let i = 0; i < 3; ++i) {
+      const x = 2 + Math.floor(r() * 11), y = 4 + Math.floor(r() * 10);
+      const col = ['#e86a6a', '#f0a050', '#d870c0'][Math.floor(r() * 3)];
+      px(ctx, ox + x, oy + y - 3, col, 1, 4);
+      px(ctx, ox + x - 2, oy + y - 2, col, 1, 2);
+      px(ctx, ox + x + 2, oy + y - 2, col, 1, 2);
+      px(ctx, ox + x - 2, oy + y, col, 5, 1);
+    }
+  }
+
+  // Packed earth of the deep places, with the odd buried gem.
+  function bedrock(ctx, ox, oy, r) {
+    roughGround(ctx, ox, oy, r, '#6a5440');
+    if (r() < 0.45) {
+      const x = 2 + Math.floor(r() * 11), y = 2 + Math.floor(r() * 11);
+      const gem = ['#5ad0ff', '#ff5a8a', '#7aff8a', '#ffd24a'][Math.floor(r() * 4)];
+      px(ctx, ox + x, oy + y, gem, 2, 2);
+      px(ctx, ox + x, oy + y, '#ffffff');
+    }
+  }
+
+  // Open sky: blue with streaks of wind and wisps of cloud.
+  function sky(ctx, ox, oy, r) {
+    for (let y = 0; y < T; ++y)
+      px(ctx, ox, oy + y, rgb('#6aa8e8', 0.96 + (y % 8) * 0.01 + r() * 0.03), T, 1);
+    for (let i = 0; i < 2; ++i) {
+      const x = Math.floor(r() * 8), y = 2 + Math.floor(r() * 12), w = 5 + Math.floor(r() * 6);
+      px(ctx, ox + x, oy + y, 'rgba(255,255,255,0.6)', w, 1);
+      px(ctx, ox + x + 2, oy + y - 1, 'rgba(255,255,255,0.4)', w - 4, 1);
+    }
+  }
+
+  // A bank of cloud thick enough to stand on.
+  function cloudbank(ctx, ox, oy, r) {
+    px(ctx, ox, oy, '#c8d4e6', T, T);
+    for (let i = 0; i < 6; ++i) {
+      const cx = Math.floor(r() * T), cy = Math.floor(r() * T), rad = 3 + Math.floor(r() * 3);
+      for (let y = -rad; y <= rad; ++y)
+        for (let x = -rad; x <= rad; ++x)
+          if (x * x + y * y <= rad * rad && cx + x >= 0 && cx + x < T && cy + y >= 0 && cy + y < T)
+            px(ctx, ox + cx + x, oy + cy + y, y < 0 ? '#ffffff' : '#e6ecf6');
+    }
+  }
+
+  // The blinding brightness of the plane of positive energy.
+  function radiance(ctx, ox, oy, r) {
+    mottle(ctx, ox, oy, r, '#fff0bc', 0.08, 2);
+    specks(ctx, ox, oy, r, ['#ffffff', '#fff8e0'], 8);
+    const x = 3 + Math.floor(r() * 10), y = 3 + Math.floor(r() * 10);
+    px(ctx, ox + x - 2, oy + y, '#ffffff', 5, 1);
+    px(ctx, ox + x, oy + y - 2, '#ffffff', 1, 5);
+  }
+
+  // The black of the plane of negative energy, with drifting grey motes.
+  function darkness(ctx, ox, oy, r) {
+    mottle(ctx, ox, oy, r, '#120e1a', 0.4, 4);
+    specks(ctx, ox, oy, r, ['#4a4458', '#2a2434', '#6a5a7a'], 6);
+  }
+
+  // Golden grass of the upper planes, starred with white flowers.
+  function celestial(ctx, ox, oy, r) {
+    grass(ctx, ox, oy, r, '#b8c85a', { flowers: 0.7 });
+    specks(ctx, ox, oy, r, ['#fff8c8'], 2);
+  }
+
+  // Blue-green fey grass with glowing blooms.
+  function fey(ctx, ox, oy, r) {
+    grass(ctx, ox, oy, r, '#3aa88a', { flowers: 0 });
+    for (let i = 0; i < 2; ++i) {
+      const x = 2 + Math.floor(r() * 12), y = 2 + Math.floor(r() * 12);
+      const col = ['#ff8af0', '#b88aff', '#8affea'][Math.floor(r() * 3)];
+      px(ctx, ox + x - 1, oy + y, col, 3, 1);
+      px(ctx, ox + x, oy + y - 1, col, 1, 3);
+      px(ctx, ox + x, oy + y, '#ffffff');
+    }
+  }
+
+  // Red rock of the lower planes, crusted with sulphur.
+  function brimstone(ctx, ox, oy, r) {
+    roughGround(ctx, ox, oy, r, '#7a2c1c');
+    specks(ctx, ox, oy, r, ['#e8c828', '#c8a018'], 5);
+    px(ctx, ox + Math.floor(r() * 12), oy + Math.floor(r() * 15), '#4a140c', 4, 1);
+  }
+
+  // Purple-black rock of the Abyss with red veins.
+  function abyssal(ctx, ox, oy, r) {
+    mottle(ctx, ox, oy, r, '#4a1a3a', 0.3, 2);
+    let x = Math.floor(r() * T), y = 0;
+    while (y < T) {
+      px(ctx, ox + x, oy + y, r() < 0.6 ? '#c8203a' : '#ff5a4a');
+      if (r() < 0.45)
+        x = Math.max(0, Math.min(T - 1, x + (r() < 0.5 ? -1 : 1)));
+      else
+        ++y;
+    }
+    specks(ctx, ox, oy, r, ['#7a3a6a'], 3);
+  }
+
+  // Brass plates of the clockwork plane, a gear sunk into each.
+  function gears(ctx, ox, oy, r) {
+    mottle(ctx, ox, oy, r, '#a8823a', 0.1, 4);
+    px(ctx, ox, oy, '#6a4e1e', T, 1);
+    px(ctx, ox, oy, '#6a4e1e', 1, T);
+    const cx = 5 + Math.floor(r() * 6), cy = 5 + Math.floor(r() * 6);
+    for (let a = 0; a < 16; ++a) {
+      const rad = a % 2 ? 4 : 3;
+      px(ctx, ox + cx + Math.round(Math.cos(a / 16 * 6.283) * rad), oy + cy + Math.round(Math.sin(a / 16 * 6.283) * rad), '#6a4e1e');
+    }
+    px(ctx, ox + cx - 1, oy + cy - 1, '#d8b060', 2, 2);
+    for (const [x, y] of [[2, 2], [13, 2], [2, 13], [13, 13]])
+      px(ctx, ox + x, oy + y, '#e8c87a');
+  }
+
+  // Riveted iron, streaked with rust.
+  function ironPlate(ctx, ox, oy, r) {
+    mottle(ctx, ox, oy, r, '#5a6068', 0.12, 4);
+    px(ctx, ox, oy + 7, '#3a3e44', T, 1);
+    px(ctx, ox + 7, oy, '#3a3e44', 1, T);
+    for (const [x, y] of [[2, 2], [12, 2], [2, 11], [12, 11]])
+      px(ctx, ox + x, oy + y, '#9aa0a8');
+    px(ctx, ox + Math.floor(r() * 12), oy + Math.floor(r() * 12), '#8a4a22', 2, 3);
+  }
+
+  // Limbo: fire, water, earth and air churning side by side.
+  // each patch of Limbo is one element for now, streaked with the next
+  function chaos(ctx, ox, oy, r) {
+    const bases = ['#8a4a3a', '#3a5a9a', '#6a5a48', '#7a8aa8', '#6a4a8a'];
+    const i = Math.floor(r() * bases.length);
+    mottle(ctx, ox, oy, r, bases[i], 0.2, 2);
+    const streak = bases[(i + 1 + Math.floor(r() * 3)) % bases.length];
+    let y = Math.floor(r() * T);
+    for (let x = 0; x < T; ++x) {
+      px(ctx, ox + x, oy + y, rgb(streak, 1.3), 1, 2);
+      if (r() < 0.35)
+        y = Math.max(0, Math.min(T - 2, y + (r() < 0.5 ? -1 : 1)));
+    }
+    specks(ctx, ox, oy, r, ['#e8d8ff'], 2);
+  }
+
+  function ooze(ctx, ox, oy, r) {
+    mottle(ctx, ox, oy, r, '#5a7a2a', 0.18, 2);
+    for (let i = 0; i < 3; ++i) {
+      const x = 1 + Math.floor(r() * 13), y = 1 + Math.floor(r() * 13);
+      px(ctx, ox + x, oy + y, '#9ac84a', 2, 2);
+      px(ctx, ox + x, oy + y, '#d8f08a');
+    }
+  }
+
+  function smoke(ctx, ox, oy, r) {
+    mottle(ctx, ox, oy, r, '#5e5c62', 0.14, 2);
+    for (let i = 0; i < 3; ++i) {
+      const x = Math.floor(r() * 10), y = 1 + Math.floor(r() * 14);
+      px(ctx, ox + x, oy + y, 'rgba(200,200,205,0.35)', 5, 1);
+    }
+  }
+
+  // Dead grey dust of the gray waste.
+  function greyWaste(ctx, ox, oy, r) {
+    roughGround(ctx, ox, oy, r, '#7a7876');
+    specks(ctx, ox, oy, r, ['#5a5856', '#9a9896'], 6);
+  }
+
+  // A chasm into nothing: black with distant stars.
+  function rift(ctx, ox, oy, r) {
+    mottle(ctx, ox, oy, r, '#07060e', 0.5, 4);
+    specks(ctx, ox, oy, r, ['#ffffff', '#8a80d8', '#3a3466'], 3);
+  }
+
   const PAINTERS = Object.freeze({
-    savanna:        (ctx, x, y, r) => savanna(ctx, x, y, r),
+    astral:         (ctx, x, y, r) => astral(ctx, x, y, r),
+    astral_rock:    (ctx, x, y, r) => driftRock(ctx, x, y, r),
+    mist:           (ctx, x, y, r) => mist(ctx, x, y, r),
+    gloom:          (ctx, x, y, r) => gloom(ctx, x, y, r),
+    cinder:         (ctx, x, y, r) => cinder(ctx, x, y, r),
+    current:        (ctx, x, y, r) => current(ctx, x, y, r),
+    coral:          (ctx, x, y, r) => coral(ctx, x, y, r),
+    bedrock:        (ctx, x, y, r) => bedrock(ctx, x, y, r),
+    earth_wall:     (ctx, x, y, r) => rockWall(ctx, x, y, r, '#5a4636'),
+    sky:            (ctx, x, y, r) => sky(ctx, x, y, r),
+    cloudbank:      (ctx, x, y, r) => cloudbank(ctx, x, y, r),
+    radiance:       (ctx, x, y, r) => radiance(ctx, x, y, r),
+    darkness:       (ctx, x, y, r) => darkness(ctx, x, y, r),
+    celestial:      (ctx, x, y, r) => celestial(ctx, x, y, r),
+    fey:            (ctx, x, y, r) => fey(ctx, x, y, r),
+    brimstone:      (ctx, x, y, r) => brimstone(ctx, x, y, r),
+    abyssal:        (ctx, x, y, r) => abyssal(ctx, x, y, r),
+    gears:          (ctx, x, y, r) => gears(ctx, x, y, r),
+    iron_plate:     (ctx, x, y, r) => ironPlate(ctx, x, y, r),
+    chaos:          (ctx, x, y, r) => chaos(ctx, x, y, r),
+    ooze:           (ctx, x, y, r) => ooze(ctx, x, y, r),
+    smoke:          (ctx, x, y, r) => smoke(ctx, x, y, r),
+    grey_waste:     (ctx, x, y, r) => greyWaste(ctx, x, y, r),
+    rift:           (ctx, x, y, r) => rift(ctx, x, y, r),
+    marble:         (ctx, x, y, r) => flagstones(ctx, x, y, r, '#e8e2d4', '#a8a090'),
+    silver_path:    (ctx, x, y, r) => flagstones(ctx, x, y, r, '#a8a4c8', '#4a4670'),
+    hell_road:      (ctx, x, y, r) => flagstones(ctx, x, y, r, '#6a3026', '#2a0e0a'),
+    savanna:       (ctx, x, y, r) => savanna(ctx, x, y, r),
     glacier:        (ctx, x, y, r) => glacier(ctx, x, y, r),
     jungle_floor:   (ctx, x, y, r) => jungleFloor(ctx, x, y, r),
     badlands:       (ctx, x, y, r) => badlands(ctx, x, y, r),
@@ -328,6 +595,15 @@
   });
 
   const IDS = Object.freeze(Object.keys(PAINTERS));
+
+  // A flat colour per planar ground, for drawing without the sheet.
+  const COLORS = Object.freeze({
+    astral: '#3a3466', astral_rock: '#6a6880', mist: '#a8b4cc', gloom: '#3c4440', cinder: '#5a2a18',
+    current: '#1c4c8c', coral: '#2a5a8a', bedrock: '#6a5440', earth_wall: '#4a3a2c', sky: '#6aa8e8',
+    cloudbank: '#e0e8f2', radiance: '#fff0bc', darkness: '#120e1a', celestial: '#b8c85a', fey: '#3aa88a',
+    brimstone: '#7a2c1c', abyssal: '#4a1a3a', gears: '#a8823a', iron_plate: '#5a6068', chaos: '#8a3ac8',
+    ooze: '#5a7a2a', smoke: '#5e5c62', grey_waste: '#7a7876', rift: '#07060e',
+  });
 
   let _sheet = null;
 
@@ -363,6 +639,7 @@
 
   TR.TerrainArt = Object.freeze({
     TILE: T, VARIANTS, IDS, has, rect, sheet,
+    color: id => COLORS[id] || null,
     get: id => (id === 'terrain' ? sheet() : null),
   });
 })();

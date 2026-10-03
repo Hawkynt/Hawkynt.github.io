@@ -26,6 +26,7 @@ A grid-based cave exploration game for the SynthelicZ Desktop. Dig through under
 
 ### Level Progression
 - [x] As a player, I can advance through procedurally generated cave levels with increasing difficulty so that each level presents fresh challenges
+- [x] As a player, I can always finish a generated cave: enough diamonds and the exit are reachable without having to set any boulder rolling
 - [x] As a player, I can see gem quota requirements increase per level (8 + level x 2, capped at 30) so that later levels demand more exploration
 - [x] As a player, I can earn a time bonus for remaining seconds when completing a level so that speed is rewarded
 - [x] As a player, I can see the time limit decrease per level (150s down to 60s minimum) so that urgency increases

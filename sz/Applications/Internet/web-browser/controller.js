@@ -221,17 +221,37 @@
     writeToIframe(html);
   }
 
-  function writeToIframe(html) {
+  // Fetched or generated markup runs in a sandbox without our origin, so a
+  // proxied page can never reach the desktop, its files or its settings.
+  // Pages loaded by address keep their own origin, which is not ours anyway.
+  const SANDBOX = 'allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals';
+  let shownSource = '';
+
+  function titleOf(html) {
+    const m = /<title[^>]*>([^<]*)<\/title>/i.exec(html);
+    if (!m)
+      return '';
+    const t = document.createElement('textarea');
+    t.innerHTML = m[1];
+    return t.value.trim();
+  }
+
+  function showMarkup(html) {
+    shownSource = html;
     browserIframe.removeAttribute('src');
+    browserIframe.setAttribute('sandbox', SANDBOX);
+    browserIframe.srcdoc = html;
+  }
+
+  function navigateIframe(url) {
+    shownSource = '';
     browserIframe.removeAttribute('srcdoc');
-    try {
-      const doc = browserIframe.contentDocument;
-      doc.open();
-      doc.write(html);
-      doc.close();
-    } catch (_) {
-      browserIframe.srcdoc = html;
-    }
+    browserIframe.setAttribute('sandbox', isExternalUrl(url) ? SANDBOX + ' allow-same-origin' : SANDBOX);
+    browserIframe.src = url;
+  }
+
+  function writeToIframe(html) {
+    showMarkup(html);
   }
 
   function showProxyBar() {
@@ -298,13 +318,13 @@
         else
           html = '<head>' + baseTag + '</head>' + html;
 
-        browserIframe.removeAttribute('src');
-        browserIframe.srcdoc = html;
+        showMarkup(html);
         showProxyBar();
+        const proxiedTitle = titleOf(html);
         setLoading(false);
         statusText.textContent = 'Done (via proxy)';
         statusUrl.textContent = url;
-        updateTitle(url);
+        updateTitle(proxiedTitle || url);
       })
       .catch(err => {
         if (controller.signal.aborted)
@@ -345,8 +365,7 @@
     urlInput.value = url;
 
     if (!isExternalUrl(url)) {
-      browserIframe.removeAttribute('srcdoc');
-      browserIframe.src = url;
+      navigateIframe(url);
       return;
     }
 
@@ -404,8 +423,7 @@
     };
 
     browserIframe.addEventListener('load', onLoad);
-    browserIframe.removeAttribute('srcdoc');
-    browserIframe.src = url;
+    navigateIframe(url);
   }
 
   function setLoading(loading) {
@@ -422,11 +440,7 @@
     let pageUrl = '';
 
     if (isProxyMode) {
-      try {
-        const doc = browserIframe.contentDocument;
-        if (doc)
-          pageTitle = doc.title || '';
-      } catch (_) {}
+      pageTitle = titleOf(shownSource);
       if (pageTitle)
         updateTitle(pageTitle);
       setLoading(false);
@@ -627,9 +641,9 @@
     const nameInput = document.getElementById('dlg-bm-name');
     const urlInputDlg = document.getElementById('dlg-bm-url');
 
-    let pageTitle = '';
+    let pageTitle = titleOf(shownSource);
     try {
-      if (browserIframe.contentDocument)
+      if (!pageTitle && browserIframe.contentDocument)
         pageTitle = browserIframe.contentDocument.title || '';
     } catch (_) {}
 
@@ -711,6 +725,8 @@
 
     if (currentUrl === HOME_URL) {
       source = '<!-- New Tab Page -->\n<p>This is the built-in new tab page.</p>';
+    } else if (shownSource) {
+      source = shownSource;
     } else {
       try {
         const doc = browserIframe.contentDocument;

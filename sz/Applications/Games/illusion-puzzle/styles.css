@@ -2,7 +2,7 @@
 
 body {
   overflow: hidden;
-  background: #0a0a1a;
+  background: #1d1640;
   font-family: 'Segoe UI', system-ui, sans-serif;
 }
 
@@ -13,13 +13,19 @@ body {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  background: radial-gradient(ellipse at 50% 40%, #3b2763, #1d1640 70%);
 }
 
 canvas {
   display: block;
   width: 700px;
   height: 500px;
-  background: #0a0a1a;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  background: #1d1640;
 }
 
 .status-bar {

@@ -205,10 +205,10 @@
 
     it('drawInfiniteMap accepts dimension parameter without throwing', () => {
       const r = new Renderer(null);
-      r.drawInfiniteMap(() => 1, 'feywild');
-      r.drawInfiniteMap(() => 1, 'shadowfell');
+      r.drawInfiniteMap(() => 1, 'arborea');
+      r.drawInfiniteMap(() => 1, 'shadow');
       r.drawInfiniteMap(() => 1, 'nine_hells');
-      r.drawInfiniteMap(() => 1, 'underdark');
+      r.drawInfiniteMap(() => 1, 'elemental_earth');
       r.drawInfiniteMap(() => 1, 'abyss');
     });
 
@@ -227,7 +227,7 @@
       const TR = window.SZ.TacticalRealms;
       if (TR.CombatGrid) {
         const grid = TR.CombatGrid.generate(8, 8, new TR.PRNG(42), 'plains');
-        r.drawCombatGrid(grid, 32, 0, 0, 'plains', 'feywild');
+        r.drawCombatGrid(grid, 32, 0, 0, 'plains', 'arborea');
       }
     });
   });

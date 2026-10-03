@@ -18,6 +18,13 @@
   // darkness of underground boards (0 = lit)
   const UNDERGROUND_LIGHT = Object.freeze({ dungeon: 0.6, cave: 0.68, lava: 0.35 });
 
+  // colours of the planes' traits and of the damage their energy deals
+  const TRAIT_COLORS = Object.freeze({
+    weightless: '#c8d8ff', flooded: '#7ac8ff', hazard: '#ff9a5a', vital: '#fff2a0', element_magic: '#ffb86a',
+    potent_magic: '#d8a8ff', dulled_magic: '#a8a8b8', wild_magic: '#ff8af0', home_ground: '#f0d890', despair: '#9a9a9a',
+  });
+  const HAZARD_COLORS = Object.freeze({ fire: '#ff7a2a', cold: '#8ad8ff', acid: '#a8e84a', negative: '#b88aff' });
+
   const BATTLE_SCENE_KEY = 'sz-tactical-realms-battle-scenes';
   const BATTLE_SCENE_MODES = ['full', 'short', 'off'];
 
@@ -128,7 +135,15 @@
     #contextMenu;
     #contextMenuHover;
     #screenTime;
+    // the plane the party walks (a data/planes.js id)
     #dimension;
+    // every plane visited keeps its map, where the party last stood on it
+    // and which plane its gate home leads back to
+    #planeMaps = new Map();
+    #planePositions = {};
+    #planeReturn = {};
+    // the swirl of stepping through a portal: { t, dur, target, returning, switched }
+    #planeShift = null;
     #inventory;
     #shopStock;
     #shopType;
@@ -288,6 +303,8 @@
           setGold: (v) => { this.#gold = v; },
           setInventory: (v) => { this.#inventory = v; },
           setPlayerPos: (v) => { this.#playerPos = v; },
+          getPlane: () => this.#dimension,
+          travelToPlane: (id) => this.#beginPlaneShift(id, false),
           setRoster: (v) => { this.#roster = v; },
         });
     }
@@ -579,7 +596,10 @@
       if (this.#sm.current === GameState.DUNGEON && this.#crawl)
         this.#updateCrawl(dt);
 
-      if (this.#sm.current === GameState.OVERWORLD && this.#overworldMap) {
+      if (this.#planeShift)
+        this.#updatePlaneShift(dt);
+
+      if (this.#sm.current === GameState.OVERWORLD && this.#overworldMap && !this.#planeShift && !this.#crawlPrompt) {
         if (this.#isMoving) {
           this.#moveProgress += dt / MOVE_DURATION;
           if (this.#moveProgress >= 1) {
@@ -650,6 +670,10 @@
           this.#enterDungeon(loc);
           return;
         }
+        if (loc.tile === OverworldTile.PORTAL) {
+          this.#askPortal(loc);
+          return;
+        }
       }
 
       ++this.#stepsSinceEncounter;
@@ -671,19 +695,173 @@
       }
     }
 
+    // --- planes and portals ---------------------------------------------------
+
+    // Where a portal leads: a gate home goes back to the plane the party came
+    // from, any other portal to its own target.
+    #portalTarget(loc) {
+      if (loc.returnGate)
+        return this.#planeReturn[this.#dimension] || 'material';
+      return loc.targetPlane;
+    }
+
+    #askPortal(loc) {
+      const target = this.#portalTarget(loc);
+      if (!target || !TR.PlaneRegistry || !TR.PlaneRegistry.has(target))
+        return;
+      const where = TR.PlaneWorlds ? TR.PlaneWorlds.shortName(target) : target;
+      // what waits on the other side, so the step is a choice
+      const traits = TR.PlaneWorlds ? TR.PlaneWorlds.traits(target).map(t => t.name).join('  ·  ') : '';
+      this.#crawlPrompt = {
+        text: loc.name, sub: `Step through to ${where}?`, note: traits || null, yes: 'Step through',
+        act: () => this.#beginPlaneShift(target, !!loc.returnGate),
+      };
+    }
+
+    #beginPlaneShift(target, returning) {
+      if (this.#planeShift || !TR.PlaneRegistry || !TR.PlaneRegistry.has(target) || !this.#overworldMap)
+        return;
+      this.#walkPath = null;
+      this.#planeShift = { t: 0, dur: 2.2, target, returning, switched: false };
+    }
+
+    #updatePlaneShift(dt) {
+      const s = this.#planeShift;
+      s.t += dt;
+      if (!s.switched && s.t >= s.dur / 2) {
+        s.switched = true;
+        this.#travelToPlane(s.target, s.returning);
+      }
+      if (s.t >= s.dur)
+        this.#planeShift = null;
+    }
+
+    // Move the party to another plane: through a gate home back to where it
+    // stepped off, through any other portal to the target's own gate.
+    #travelToPlane(target, returning) {
+      const from = this.#dimension;
+      this.#planeMaps.set(from, this.#overworldMap);
+      this.#planePositions[from] = { col: this.#playerPos.col, row: this.#playerPos.row };
+      if (!returning)
+        this.#planeReturn[target] = from;
+      let map = this.#planeMaps.get(target);
+      if (!map) {
+        map = new OverworldMap(this.#overworldMap.worldSeed, target);
+        this.#planeMaps.set(target, map);
+      }
+      this.#overworldMap = map;
+      this.#dimension = target;
+      const back = returning ? this.#planePositions[target] : null;
+      this.#playerPos = back ? { col: back.col, row: back.row } : { col: 0, row: 0 };
+      this.#isMoving = false;
+      this.#moveTarget = null;
+      this.#moveFrom = null;
+      this.#walkPath = null;
+      this.#stepsSinceEncounter = 0;
+      const P = TR.PlaneWorlds ? TR.PlaneWorlds.get(target) : null;
+      const name = P ? P.name : (TR.PlaneRegistry.get(target) || {}).name || target;
+      const traits = TR.PlaneWorlds ? TR.PlaneWorlds.traits(target) : [];
+      this.#toast(name, '#d8c8ff', target === 'material' ? 'Home again.' : traits.map(t => t.name).join('  ·  ') || null);
+      this.#autoSave(GameState.OVERWORLD);
+    }
+
+    // A swirl of the target plane's colours closing in and opening again.
+    #drawPlaneShift(ctx) {
+      const s = this.#planeShift;
+      if (!s || !ctx)
+        return;
+      const k = Math.max(0, 1 - Math.abs(s.t / s.dur * 2 - 1));
+      const BB = TR.BattleBackdrop;
+      const tint = BB && BB.PLANE_TINTS[s.target];
+      const hue = tint ? tint.sky.replace(/[\d.]+\)$/, '1)') : 'rgba(150,130,230,1)';
+      const cx = CANVAS_W / 2, cy = CANVAS_H / 2;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, k * 1.4);
+      ctx.fillStyle = 'rgba(10,6,24,0.85)';
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      ctx.translate(cx, cy);
+      ctx.rotate(s.t * 2.4);
+      ctx.lineCap = 'round';
+      // soft wide arms under bright thin ones
+      for (const [width, alpha] of [[34, 0.25], [14, 0.65], [4, 1]])
+        for (let arm = 0; arm < 6; ++arm) {
+          ctx.globalAlpha = Math.min(1, k * 1.4) * alpha;
+          ctx.lineWidth = width;
+          ctx.strokeStyle = width === 4 ? '#ffffff' : arm % 2 ? hue : 'rgb(200,180,255)';
+          ctx.beginPath();
+          for (let i = 0; i <= 44; ++i) {
+            const a = arm / 6 * Math.PI * 2 + i * 0.15;
+            const rad = (1.25 - k * 0.65) * i * i * 0.42;
+            if (i === 0)
+              ctx.moveTo(Math.cos(a) * rad, Math.sin(a) * rad);
+            else
+              ctx.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+          }
+          ctx.stroke();
+        }
+      // motes drawn into the eye
+      ctx.globalAlpha = Math.min(1, k * 1.6);
+      for (let i = 0; i < 90; ++i) {
+        const a = i * 2.39996 - s.t * 3;
+        const rad = ((i * 37 + (1 - s.t / s.dur) * 900) % 700) * (1.1 - k * 0.5);
+        ctx.fillStyle = i % 3 ? '#ffffff' : hue;
+        ctx.fillRect(Math.cos(a) * rad, Math.sin(a) * rad, 3, 3);
+      }
+      ctx.restore();
+      // the flash as the planes change
+      const flash = Math.max(0, 1 - Math.abs(s.t - s.dur / 2) * 5);
+      if (flash > 0) {
+        ctx.fillStyle = `rgba(255,255,255,${flash.toFixed(3)})`;
+        ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      }
+    }
+
+    #drawPortalGlow(ctx, x, y) {
+      const t = this.#screenTime;
+      const r = 40 * (0.85 + 0.15 * Math.sin(t * 3.1));
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(x, y, 2, x, y, r);
+      g.addColorStop(0, 'rgba(190,150,255,0.5)');
+      g.addColorStop(1, 'rgba(120,80,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+      ctx.restore();
+    }
+
+    // The plane's traits take hold of a fight: burning air, weightless
+    // bodies, stronger or weaker magic. Damage it deals floats up like a hit.
+    #applyPlaneToCombat() {
+      const eng = this.#combatEngine;
+      if (!eng || !TR.PlaneWorlds)
+        return;
+      eng.setPlaneTraits(TR.PlaneWorlds.traits(this.#dimension));
+      eng.on('planeEffect', ({ unit, amount, kind }) => {
+        if (!this.#combatFx)
+          return;
+        const ts = this.#combatTileSize;
+        const x = this.#combatOffsetX + unit.position.col * ts + ts / 2;
+        const y = this.#combatOffsetY + unit.position.row * ts;
+        if (amount < 0)
+          this.#combatFx.heal(unit.id, x, y, -amount);
+        else
+          this.#combatFx.hit(unit.id, x, y, amount, { color: HAZARD_COLORS[kind] || '#ff8a4a' });
+      });
+    }
+
     // --- dungeon crawl ------------------------------------------------------
 
     #crawlKey() {
-      return `${this.#playerPos.col},${this.#playerPos.row}`;
+      return `${this.#dimension}:${this.#playerPos.col},${this.#playerPos.row}`;
     }
 
     #enterDungeon(loc) {
       if (!TR.DungeonCrawl || !TR.DungeonThemes)
         return;
-      const key = `${loc.col},${loc.row}`;
+      const key = `${this.#dimension}:${loc.col},${loc.row}`;
       let crawl = this.#crawlCache.get(key);
       if (!crawl) {
-        const world = this.#overworldMap ? this.#overworldMap.worldSeed : 1;
+        const world = this.#overworldMap ? this.#overworldMap.seed : 1;
         const seed = (world ^ Math.imul(loc.col, 73856093) ^ Math.imul(loc.row, 19349663)) >>> 0;
         crawl = new TR.DungeonCrawl({
           seed, theme: TR.DungeonThemes.themeForLocation(loc), name: loc.name,
@@ -931,8 +1109,14 @@
 
     #drawCrawlPrompt(ctx) {
       const b = this.#crawlPromptButtons();
-      TR.ScreenArt.frame(ctx, CANVAS_W / 2 - 210, CANVAS_H / 2 - 70, 420, 150);
-      this.#renderer.drawScreenText(CANVAS_W / 2, CANVAS_H / 2 - 22, this.#crawlPrompt.text, { color: '#f0d890', font: "bold 22px Georgia, 'Times New Roman', serif", align: 'center' });
+      const p = this.#crawlPrompt;
+      TR.ScreenArt.frame(ctx, CANVAS_W / 2 - 230, CANVAS_H / 2 - 80, 460, 160);
+      const top = p.note ? 48 : p.sub ? 36 : 22;
+      this.#renderer.drawScreenText(CANVAS_W / 2, CANVAS_H / 2 - top, p.text, { color: '#f0d890', font: "bold 22px Georgia, 'Times New Roman', serif", align: 'center' });
+      if (p.sub)
+        this.#renderer.drawScreenText(CANVAS_W / 2, CANVAS_H / 2 - top + 26, p.sub, { color: '#d8d0f0', font: "15px Georgia, 'Times New Roman', serif", align: 'center' });
+      if (p.note)
+        this.#renderer.drawScreenText(CANVAS_W / 2, CANVAS_H / 2 - top + 46, p.note, { color: '#ffb08a', font: '12px monospace', align: 'center' });
       this.#renderer.drawButton(b.yes.x, b.yes.y, b.yes.w, b.yes.h, this.#crawlPrompt.yes, { bg: '#2a4a2a' });
       this.#renderer.drawButton(b.no.x, b.no.y, b.no.w, b.no.h, 'Stay', { bg: '#444' });
     }
@@ -985,6 +1169,7 @@
         return hp >= ch.maxHp ? ch : Object.freeze({ ...ch, hp });
       });
       this.#combatEngine.initCombatAt(partyWithHp, setup.enemies, setup.grid, setup.partyPositions, setup.enemyPositions, { ambush });
+      this.#applyPlaneToCombat();
       this.#combatEngine.startTurn();
 
       // tiles stay readable; boards larger than the screen scroll
@@ -1265,7 +1450,7 @@
       if (this.#overworldMap) {
         const tile = (c, r) => this.#overworldMap.getTile(c, r);
         this.#renderer.drawInfiniteMap(tile, this.#dimension, (c, r) => this.#overworldMap.groundAt(c, r));
-        this.#renderer.drawOverworldAmbience(tile, this.#screenTime);
+        this.#renderer.drawOverworldAmbience(tile, this.#screenTime, this.#dimension);
       }
 
       if (this.#overworldMap) {
@@ -1276,6 +1461,8 @@
           const s = this.#renderer.worldToScreen(loc.col * ts + ts / 2, loc.row * ts);
           if (loc.tile === OverworldTile.CAMP && ctx)
             this.#drawCampGlow(ctx, s.x, s.y + ts * 0.6);
+          else if (loc.tile === OverworldTile.PORTAL && ctx)
+            this.#drawPortalGlow(ctx, s.x, s.y + ts * 0.55);
           this.#drawLocationPlate(ctx, s.x, s.y - 6, loc);
         }
       }
@@ -1323,12 +1510,50 @@
       }
 
       this.#renderOverworldPartyStatus();
+      this.#drawPlaneBanner();
+      if (this.#renderer.bufCtx) {
+        this.#drawToasts(this.#renderer.bufCtx);
+        if (this.#crawlPrompt)
+          this.#drawCrawlPrompt(this.#renderer.bufCtx);
+        this.#drawPlaneShift(this.#renderer.bufCtx);
+      }
 
       if (this.#encounterTimer > 0 && this.#encounterMsg) {
         this.#renderer.drawScreenText(CANVAS_W / 2, CANVAS_H / 2, this.#encounterMsg, { color: '#f44', font: 'bold 28px serif', align: 'center' });
       }
 
       this.#renderer.drawScreenText(10, CANVAS_H - 8, 'Arrow keys / WASD to move, Click to walk', { color: 'rgba(200,200,200,0.5)', font: '12px monospace' });
+    }
+
+    // Where the party is when it is not at home: the plane's name.
+    #drawPlaneBanner() {
+      const ctx = this.#renderer.bufCtx;
+      const P = TR.PlaneWorlds && this.#dimension !== 'material' ? TR.PlaneWorlds.get(this.#dimension) : null;
+      if (!ctx || !P || !TR.ScreenArt)
+        return;
+      ctx.save();
+      ctx.font = "bold 16px Georgia, 'Times New Roman', serif";
+      const w = Math.max(220, Math.ceil(ctx.measureText(P.name).width) + 32);
+      ctx.restore();
+      TR.ScreenArt.frame(ctx, 8, 8, w, 46, { alpha: 0.85 });
+      this.#renderer.drawScreenText(24, 30, P.name, { color: '#f0d890', font: "bold 16px Georgia, 'Times New Roman', serif" });
+      const kind = { transitive: 'Transitive Plane', inner: 'Inner Plane', outer: 'Outer Plane' }[P.category] || 'Plane';
+      this.#renderer.drawScreenText(24, 46, kind, { color: '#b8c0d8', font: '11px monospace' });
+      // the plane's traits, one line each
+      const traits = TR.PlaneWorlds.traits(this.#dimension);
+      if (!traits.length)
+        return;
+      const lineH = 30;
+      ctx.save();
+      ctx.font = '11px monospace';
+      const tw = Math.max(w, ...traits.map(t => Math.ceil(ctx.measureText(t.text).width) + 28));
+      ctx.restore();
+      TR.ScreenArt.frame(ctx, 8, 58, tw, 12 + traits.length * lineH, { alpha: 0.8 });
+      traits.forEach((t, i) => {
+        const y = 58 + 8 + i * lineH;
+        this.#renderer.drawScreenText(20, y + 12, t.name, { color: TRAIT_COLORS[t.id] || '#e8dcc0', font: "bold 12px Georgia, 'Times New Roman', serif" });
+        this.#renderer.drawScreenText(20, y + 25, t.text, { color: '#b8c0d8', font: '11px monospace' });
+      });
     }
 
     #renderOverworldPartyStatus() {
@@ -1361,7 +1586,7 @@
       const name = loc.name || '';
       if (!ctx || !name)
         return;
-      const accent = loc.tile === OverworldTile.DUNGEON ? '#e0604a' : loc.tile === OverworldTile.TOWN ? '#e8c85a' : '#6ad0e0';
+      const accent = loc.tile === OverworldTile.DUNGEON ? '#e0604a' : loc.tile === OverworldTile.TOWN ? '#e8c85a' : loc.tile === OverworldTile.PORTAL ? '#b88aff' : '#6ad0e0';
       ctx.save();
       ctx.font = "bold 12px Georgia, 'Times New Roman', serif";
       const w = Math.ceil(ctx.measureText(name).width) + 16;
@@ -1791,6 +2016,7 @@
       });
 
       this.#combatEngine.initCombat(partyWithHp, enemies, gridCols, gridRows, biome);
+      this.#applyPlaneToCombat();
       this.#combatEngine.startTurn();
       // Tiles fill the canvas: reserve 36px top (active char) + 36px bottom (init bar)
       const availW = CANVAS_W - 8;
@@ -1836,6 +2062,7 @@
       const partyGridPos = { col: Math.floor(gridCols / 2), row: Math.floor(gridRows / 2) };
 
       this.#combatEngine.initCombatWithGrid(partyWithHp, enemies, grid, biome, partyGridPos);
+      this.#applyPlaneToCombat();
       this.#combatEngine.startTurn();
       // Overworld combat uses the overworld tile size since background is the actual map
       this.#combatTileSize = TILE_SIZE;
@@ -2261,10 +2488,16 @@
         if (data && data.state) {
           if (data.state.playerPos)
             this.#playerPos = data.state.playerPos;
+          this.#dimension = TR.PlaneRegistry && TR.PlaneRegistry.has(data.state.plane) ? data.state.plane : 'material';
+          this.#planeMaps.clear();
+          this.#planePositions = data.state.planePositions && typeof data.state.planePositions === 'object' ? { ...data.state.planePositions } : {};
+          this.#planeReturn = data.state.planeReturn && typeof data.state.planeReturn === 'object' ? { ...data.state.planeReturn } : {};
+          this.#planeShift = null;
+          this.#crawlPrompt = null;
           if (data.state.overworldSeed != null)
-            this.#overworldMap = new OverworldMap(data.state.overworldSeed);
+            this.#overworldMap = new OverworldMap(data.state.overworldSeed, this.#dimension);
           else
-            this.#overworldMap = new OverworldMap(this.#prng.state);
+            this.#overworldMap = new OverworldMap(this.#prng.state, this.#dimension);
           if (data.state.party && Array.isArray(data.state.party)) {
             const restored = data.state.party.map(c => Character.deserialize(c)).filter(c => c !== null);
             this.#party = Object.freeze(restored);
@@ -2348,6 +2581,13 @@
           this.#lastRewards = null;
           this.#overworldMap = new OverworldMap(this.#prng.state);
           this.#playerPos = { col: 0, row: 0 };
+          this.#dimension = 'material';
+          this.#crawlCache.clear();
+          this.#planeMaps.clear();
+          this.#planePositions = {};
+          this.#planeReturn = {};
+          this.#planeShift = null;
+          this.#crawlPrompt = null;
           this.#isMoving = false;
           this.#moveTarget = null;
           this.#moveFrom = null;
@@ -2360,6 +2600,16 @@
     }
 
     #onClickOverworld(e) {
+      if (this.#planeShift)
+        return;
+      if (this.#crawlPrompt) {
+        const b = this.#crawlPromptButtons();
+        if (this.#hitButton(e, b.yes))
+          this.#answerCrawlPrompt(true);
+        else if (this.#hitButton(e, b.no))
+          this.#answerCrawlPrompt(false);
+        return;
+      }
       const tile = this.#input.screenToTile(e.x, e.y, this.#renderer.camera);
       if (tile.col === this.#playerPos.col && tile.row === this.#playerPos.row)
         return;
@@ -2449,7 +2699,7 @@
     }
 
     #onKey(e) {
-      if (this.#crawlPrompt && this.#sm.current === GameState.DUNGEON) {
+      if (this.#crawlPrompt && (this.#sm.current === GameState.DUNGEON || this.#sm.current === GameState.OVERWORLD)) {
         if (e.key === 'Enter')
           this.#answerCrawlPrompt(true);
         else if (e.key === 'Escape')
@@ -3273,23 +3523,29 @@
         if (this._combatUI) this._combatUI.hide();
       }
       this.#updateHistoryButton();
-      if (e.autoSave) {
-        try {
-          await this.#saveManager.save({
-            lastState: e.to,
-            playerPos: this.#playerPos,
-            overworldSeed: this.#overworldMap ? this.#overworldMap.worldSeed : null,
-            party: this.#party ? this.#party.map(c => Character.serialize(c)) : null,
-            partyHp: this.#partyHp ? this.#partyHp.slice() : null,
-            partyXp: this.#partyXp ? this.#partyXp.slice() : null,
-            gold: this.#gold,
-            inventory: Items ? Items.serializeInventory(this.#inventory) : [],
-            crawl: this.#crawl && e.to === GameState.DUNGEON ? { key: this.#crawlKey(), data: this.#crawl.serialize() } : null,
-            timestamp: Date.now()
-          });
-        } catch (err) {
-          console.warn('Auto-save failed:', err);
-        }
+      if (e.autoSave)
+        await this.#autoSave(e.to);
+    }
+
+    async #autoSave(state) {
+      try {
+        await this.#saveManager.save({
+          lastState: state,
+          playerPos: this.#playerPos,
+          plane: this.#dimension,
+          planePositions: { ...this.#planePositions },
+          planeReturn: { ...this.#planeReturn },
+          overworldSeed: this.#overworldMap ? this.#overworldMap.worldSeed : null,
+          party: this.#party ? this.#party.map(c => Character.serialize(c)) : null,
+          partyHp: this.#partyHp ? this.#partyHp.slice() : null,
+          partyXp: this.#partyXp ? this.#partyXp.slice() : null,
+          gold: this.#gold,
+          inventory: Items ? Items.serializeInventory(this.#inventory) : [],
+          crawl: this.#crawl && state === GameState.DUNGEON ? { key: this.#crawlKey(), data: this.#crawl.serialize() } : null,
+          timestamp: Date.now()
+        });
+      } catch (err) {
+        console.warn('Auto-save failed:', err);
       }
     }
 
