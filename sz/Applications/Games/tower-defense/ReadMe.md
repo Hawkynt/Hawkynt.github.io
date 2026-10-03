@@ -1,6 +1,6 @@
 # Tower Defense
 
-Pixel-art tower defense for the SynthelicZ Desktop. Hold twelve campaign maps across four biomes, then push your luck in endless mode, with sixteen tower families that branch into two specializations, research permanent upgrades between battles and call in airstrikes when the line is about to break.
+Pixel-art tower defense for the SynthelicZ Desktop. Hold twelve campaign maps across four biomes, where the waves never stop, with sixteen tower families that branch into two specializations, research permanent upgrades between battles and call in airstrikes when the line is about to break.
 
 ## User Stories
 
@@ -9,7 +9,9 @@ Pixel-art tower defense for the SynthelicZ Desktop. Hold twelve campaign maps ac
 - [x] As a player, I can pick a map on a campaign screen that shows a preview, waves, starting gold, lives, difficulty, roads and my best result
 - [x] As a player, I can earn up to three stars per map (based on the lives I keep) and unlock the next map by winning the previous one
 - [x] As a player, I can defend maps with two roads, crossing roads, a road that coils into a central keep, lakes, mesas, frozen lakes and lava rivers that block building
-- [x] As a player, I can play any map I have won in Endless mode, where waves never stop, bosses arrive every five waves (several at once later on), every wave earns research and my best wave is recorded
+- [x] As a player, I clear a map by holding its required waves; the waves never stop, so I can stay to grind gold and research while they grow, or press Next level (L) to move on — further maps pay more gold and research, and my best wave per map is recorded
+- [x] As a player, I take research, relics, unlocked towers and a quarter of my gold (up to 500) along to the next map; towers stay behind
+- [x] As a player, I watch my banner march across a world map to the next level, get a fly-over of each new map with its first wave and bosses, and a celebration when a map is cleared; every cutscene is skipped by any key, click or tap
 - [x] As a player, I can continue an unfinished game from the title screen; the game saves itself automatically, even in the middle of a wave
 
 ### Towers
@@ -25,6 +27,10 @@ Pixel-art tower defense for the SynthelicZ Desktop. Hold twelve campaign maps ac
 - [x] As a player, I can face grunts, runners, swarmlings, bats and hornet swarms that fly straight across the map, burrowing beetles, charging rhinos, armored brutes, slimes that split, regenerating ghouls, healing shamans, tower-jamming saboteurs, hexers that break slows, invisible phantoms, shield-casting wardens, wyverns and juggernauts, each with a clear counter, introduced step by step along the campaign
 - [x] As a player, I can face crowned elite enemies that hurry their neighbours along
 - [x] As a player, I can fight seven bosses introduced with a name card and a health bar: the Warlord (war cry jams towers), Slime King (splits), Lich King (summons), Troll Chieftain (regenerates), Dragon (flies), Sandworm (burrows) and Aegis Colossus (shield phases)
+
+### Boss rewards
+- [x] As a player, I win the Wind, Arcane and Storm towers only by defeating the Slime King, Lich King and Dragon, with a reveal moment
+- [x] As a player, I collect ten relics from bosses (Fletcher's Quiver, Storm Coil, Merchant's Seal, Frost Heart, Hawk-Eye Lens, Master's Hammer, Hourglass of Ages, Dragon Scale, Ember Core, Starforged Steel) with permanent effects, shown in a relics panel (K); no duplicates until all are found
 
 ### Research (persistent)
 - [x] As a player, I earn research points for every wave cleared, every map won and every new star
@@ -67,7 +73,9 @@ Pixel-art tower defense for the SynthelicZ Desktop. Hold twelve campaign maps ac
 | A | Auto-wave on/off (next wave one second after a clear) |
 | Q / W / E | Airstrike / Deep Freeze / Gold Rush |
 | H | Help |
-| E (campaign map) | Start Endless mode on a won map |
+| L | Next level (once the map is cleared) |
+| K | Relics |
+| Any key / click / tap | Skip a cutscene |
 | Esc | Pause menu |
 | F2 | New game |
 
@@ -75,7 +83,7 @@ Research screen: mouse wheel or +/- zooms, drag pans, arrow keys select, Enter b
 
 ## Saves
 
-The game in progress is stored under `sz-tower-defense-save-v2` (older `-save-v1` games are converted on first load; towers that no longer fit a redesigned map are refunded). Stars, best waves and research live separately under `sz-tower-defense-meta-v1`, so starting a new game never touches them.
+The game in progress is stored under `sz-tower-defense-save-v2` (older `-save-v1` games are converted on first load; towers that no longer fit a redesigned map are refunded). Stars, best waves, research, relics and boss trophies live separately under `sz-tower-defense-meta-v1`, so starting a new game never touches them.
 
 ## SEO Keywords
 
