@@ -311,6 +311,18 @@
       'ddd......ddd', '.3........3.', '.3.333333.3.', '.3344444433.',
       '..344cc443..', '..34cccc43..', '..344cc443..', '...333333...',
       '....3..3....', '.....hh.....', '.....h......', '............'] },
+    flower: { ramps: ['ruby', 'green', 'gold'], px: [
+      '.....22.....', '....2442....', '..22.44.22..', '.2442hh2442.',
+      '.2444hh4442.', '..22.44.22..', '....2442....', '.....22.....',
+      '.....cc.....', '...cccc.....', '.....cc.cc..', '.....cccc...'] },
+    leaf: { ramps: ['fire', 'wood'], px: [
+      '.........3..', '.......334..', '.....33443..', '...334443...',
+      '..3444433...', '.344443d....', '.34443d.....', '.3443d......',
+      '..33d.......', '...d........', '..d.........', '............'] },
+    meteor: { ramps: ['fire', 'coal'], px: [
+      '.........4..', '........43..', '.......43...', '.....343....',
+      '....3452....', '..cccc2.....', '.cddddc.....', 'cdeddddc....',
+      'cddddedc....', 'cdddddc.....', '.cdddc......', '..ccc.......'] },
     bag: { ramps: ['wood', 'gold'], px: [
       '............', '....3333....', '...3....3...', '.2222222222.',
       '.2444444442.', '.2433cc3342.', '.2433cc3342.', '.2433333342.',
@@ -1713,7 +1725,6 @@
   let surfaceArt = null;                 // cached sky, mountains, ground and plants of the site
   let daylight = 0;                      // 0 = night .. 1 = full day (sky and land colours)
   let duskGlow = 0;                      // warm sunrise / sunset tint
-  function windStrength() { return 0; }
   const enemyHitFlash = new WeakMap();   // enemy -> white flash strength after a hit
 
   /* ======================================================================
@@ -2009,6 +2020,8 @@
       resources, upgradeTreeLevels,
       waveNumber, waveTimer: secondsToNight(), waveActive, score,
       world: { day: world.day, t: world.t, bursts: world.bursts, warned: world.warned },
+      weather: { kind: weather.kind, timeLeft: weather.timeLeft }, snowCover,
+      meteorOre: meteorOre.map(o => ({ x: o.x, y: o.y, type: o.type, amount: o.amount })),
       enemies,
       grid: undergroundGrid.map(row => row.map(t => String.fromCharCode(48 + t)).join('')),
       partialHP,
@@ -2181,6 +2194,13 @@
     Object.assign(toolState, d.toolState);
 
     currentView = d.view === VIEW_UNDERGROUND && !d.mineOutdated ? VIEW_UNDERGROUND : VIEW_SURFACE;
+    if (isPlainObject(d.weather) && WEATHER[d.weather.kind] && isNum(d.weather.timeLeft))
+      weather = { kind: d.weather.kind, intensity: 1, timeLeft: Math.max(1, d.weather.timeLeft) };
+    if (isNum(d.snowCover))
+      snowCover = Math.max(0, Math.min(1, d.snowCover));
+    if (Array.isArray(d.meteorOre))
+      meteorOre = d.meteorOre.filter(o => isPlainObject(o) && isNum(o.x) && isNum(o.amount) && typeof o.type === 'string' && o.type in resources)
+        .slice(0, 14).map(o => ({ x: o.x, y: DOME_Y + 10, type: o.type, amount: o.amount, age: 0 }));
     syncDrones();
     if (currentView === VIEW_UNDERGROUND) {
       cameraX = Math.max(0, Math.min(GRID_COLS * TILE_SIZE - CANVAS_W, drillX * TILE_SIZE - CANVAS_W / 2 + TILE_SIZE / 2));
@@ -2504,6 +2524,14 @@
     world = newWorld();
     banners = [];
     computeSkyLight();
+    weather = { kind: 'clear', intensity: 1, timeLeft: 50 };
+    snowCover = 0;
+    rainDrops = [];
+    snowFlakes = [];
+    leaves = [];
+    meteors = [];
+    bolts = [];
+    meteorOre = [];
     score = 0;
 
     // Reset navigation state
@@ -2957,9 +2985,9 @@
     return { day: 1, t: 0.03, bursts: 0, warned: false };
   }
 
-  // Share of the cycle that is daylight
+  // Share of the cycle that is daylight (long summer days, short winter days)
   function dayFraction() {
-    return 0.6;
+    return currentSeason().dayFraction;
   }
 
   function moonPhaseIndex(day) {
@@ -3013,7 +3041,10 @@
   }
 
   function startDay() {
-    announce(`Day ${world.day}`, 'Sunrise - monsters left in the open burn away', '#ffd75a', 'sun');
+    if ((world.day - 1) % SEASON_DAYS === 0)
+      seasonBegins();
+    else
+      announce(`Day ${world.day}`, 'Sunrise - monsters left in the open burn away', '#ffd75a', 'sun');
     SZ.GameAudio.play('levelup', { pitch: 1.15, volume: 0.8 });
     saveRun();
   }
@@ -3222,9 +3253,10 @@
     drawTimeIcon(dx, dy, 30, night);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    fitText(`Day ${world.day}`, x + 72, y + 28, 150, 24, { weight: 'bold', color: UI.text });
-    ctx.textAlign = 'right';
-    fitText(MOON_PHASES[moonPhaseIndex(world.day)], x + w - 14, y + 28, 150, 14, { color: '#b8c8ff' });
+    fitText(`Day ${world.day}`, x + 72, y + 28, 110, 24, { weight: 'bold', color: UI.text });
+    const season = currentSeason();
+    const dayInSeason = (world.day - 1) % SEASON_DAYS + 1;
+    drawChip(`${season.name} ${dayInSeason}/${SEASON_DAYS}`, x + w - 12, y + 16, 24, { align: 'right', px: 14, maxW: 140, bg: hexToRgba(season.color, 0.16), border: hexToRgba(season.color, 0.55), color: season.color });
     ctx.textAlign = 'left';
     if (night) {
       const left = enemies.length;
@@ -3240,8 +3272,18 @@
       fitText(`${sec}s`, x + w - 14, y + 55, 64, 18, { weight: 'bold', color: warn ? '#ff9a50' : '#ffc870' });
       drawMeter(x + 72, y + 72, w - 86, 10, world.t / dayFraction(), warn ? '#ff7a40' : '#ffc040');
     }
+    // Moon phase and weather
+    const ph = moonPhaseIndex(world.day);
+    drawMoonDisc(x + 22, y + 96, 7, Math.max(1, ph), ph === 0 ? 0.5 : 1);
     ctx.textAlign = 'left';
-    fitText(`Waves survived: ${Math.max(0, waveNumber - (night ? 1 : 0))}`, x + 72, y + 96, w - 86, 14, { color: UI.textMute });
+    fitText(MOON_PHASES[ph], x + 36, y + 97, 130, 14, { color: '#b8c8ff' });
+    const wk = WEATHER[weather.kind];
+    ctx.textAlign = 'right';
+    const ww = fitText(wk.name.replace('!', ''), x + w - 14, y + 97, 130, 14, { weight: 'bold', color: wk.color });
+    if (wk.icon)
+      drawSprite(wk.icon, x + w - 26 - ww, y + 96, 16);
+    else
+      drawTimeIcon(x + w - 26 - ww, y + 96, 14, false);
   }
 
   // Time line inside the mine's cargo panel
@@ -3263,6 +3305,418 @@
   }
 
   /* ======================================================================
+     SEASONS AND WEATHER
+     ====================================================================== */
+
+  const SEASON_DAYS = 4;             // days per season, four seasons per year
+  // dayFraction: share of daylight; count / hp / size / damage / speed scale the night's monsters
+  const SEASONS = [
+    { key: 'spring', name: 'Spring', color: '#8affa0', dayFraction: 0.6, count: 1.45, hp: 0.7, size: 0.85, damage: 0.85, speed: 1,
+      desc: 'Blossoms lure more monsters - smaller and weaker ones', weather: { rain: 1.6, snow: 0.05, blizzard: 0, storm: 0.7, meteor: 1 } },
+    { key: 'summer', name: 'Summer', color: '#ffd060', dayFraction: 0.7, count: 1, hp: 1, size: 1, damage: 1, speed: 1.15,
+      desc: 'Long days - the heat makes monsters quicker', weather: { rain: 0.6, snow: 0, blizzard: 0, storm: 1.4, meteor: 1.3 } },
+    { key: 'autumn', name: 'Autumn', color: '#ff9a40', dayFraction: 0.55, count: 1.1, hp: 1.1, size: 1, damage: 1, speed: 1,
+      desc: 'Falling leaves and storms', weather: { rain: 1.6, snow: 0.3, blizzard: 0.1, storm: 1.7, meteor: 1 } },
+    { key: 'winter', name: 'Winter', color: '#bfe4ff', dayFraction: 0.45, count: 0.6, hp: 1.75, size: 1.15, damage: 1.3, speed: 0.95,
+      desc: 'Short days - few monsters, but much tougher', weather: { rain: 0.1, snow: 2.6, blizzard: 1.6, storm: 0.1, meteor: 1 } }
+  ];
+  const WEATHER = {
+    clear: { name: 'Clear skies', sub: 'Calm weather', icon: null, color: '#ffe080' },
+    rain: { name: 'Rain', sub: 'Mud slows the monsters a little', icon: 'water', color: '#7ab8ff' },
+    snow: { name: 'Snowfall', sub: 'Snow piles up and slows the monsters', icon: 'snowflake', color: '#d8f0ff' },
+    blizzard: { name: 'Blizzard!', sub: 'Poor sight, slow monsters - and a stiff turret', icon: 'snowflake', color: '#e8f8ff' },
+    storm: { name: 'Thunderstorm!', sub: 'Lightning strikes monsters - and sometimes the dome', icon: 'bolt', color: '#ffe060' },
+    meteor: { name: 'Meteor shower!', sub: 'Impacts hurt monsters and leave ore - click it to collect', icon: 'meteor', color: '#ffae60' }
+  };
+  let weather = { kind: 'clear', intensity: 0, timeLeft: 40 };
+  let snowCover = 0;                 // 0..1 snow lying on the ground and dome
+  let rainDrops = [], snowFlakes = [], leaves = [], meteors = [], bolts = [], meteorOre = [];
+  let lightningFlash = 0, lightningTimer = 4, meteorTimer = 2;
+
+  function seasonOf(day) {
+    return SEASONS[Math.floor((day - 1) / SEASON_DAYS) % SEASONS.length];
+  }
+
+  function currentSeason() {
+    return seasonOf(world.day);
+  }
+
+  function windStrength() {
+    const w = { clear: 0.15, rain: 0.5, snow: 0.35, blizzard: 2.2, storm: 1.4, meteor: 0.2 }[weather.kind] || 0;
+    return w * weather.intensity + (currentSeason().key === 'autumn' ? 0.4 : 0);
+  }
+
+  // Movement factor for monsters from the weather and the snow on the ground
+  function weatherSlow() {
+    let k = 1;
+    if (weather.kind === 'rain' || weather.kind === 'storm') k -= 0.1 * weather.intensity;
+    if (weather.kind === 'blizzard') k -= 0.3 * weather.intensity;
+    k -= 0.15 * snowCover;
+    return Math.max(0.5, k);
+  }
+
+  function rollWeather() {
+    const s = currentSeason(), b = currentBiome();
+    const weights = { clear: 3.2 };
+    for (const k of ['rain', 'snow', 'blizzard', 'storm', 'meteor'])
+      weights[k] = (s.weather[k] || 0) * (b.weather[k] === undefined ? 1 : b.weather[k]) * (k === 'meteor' ? 0.5 : 0.75);
+    // No blizzard without a cold season or biome
+    let total = 0;
+    for (const k in weights) total += weights[k];
+    let r = Math.random() * total;
+    let kind = 'clear';
+    for (const k in weights) {
+      r -= weights[k];
+      if (r <= 0) {
+        kind = k;
+        break;
+      }
+    }
+    return kind;
+  }
+
+  function setWeather(kind, duration) {
+    const changed = kind !== weather.kind;
+    weather.kind = kind;
+    weather.timeLeft = duration || (kind === 'clear' ? 35 + Math.random() * 40 : 28 + Math.random() * 36);
+    if (changed) {
+      weather.intensity = 0;
+      const w = WEATHER[kind];
+      announce(w.name, w.sub, w.color, w.icon || 'sun');
+      if (kind === 'storm')
+        SZ.GameAudio.noise(1.2, 0.15, 'lowpass', 300, 80);
+    }
+  }
+
+  function seasonBegins() {
+    const s = currentSeason();
+    announce(`${s.name} begins`, s.desc, s.color, s.key === 'winter' ? 'snowflake' : (s.key === 'spring' ? 'flower' : (s.key === 'autumn' ? 'leaf' : 'sun')));
+  }
+
+  function strikeLightning() {
+    // Most bolts seek a monster; some hit open ground or the dome
+    let x, target = null, domeHit = false;
+    const r = Math.random();
+    const visible = enemies.filter(e => !e.hidden);
+    if (visible.length && r < 0.65) {
+      target = visible[Math.floor(Math.random() * visible.length)];
+      x = target.x;
+    } else if (r < 0.73) {
+      x = DOME_X + (Math.random() - 0.5) * 60;
+      domeHit = true;
+    } else
+      x = 80 + Math.random() * (CANVAS_W - 160);
+    const y = target ? target.y : (domeHit ? DOME_Y - Math.sqrt(Math.max(0, DOME_RADIUS * DOME_RADIUS - (x - DOME_X) * (x - DOME_X))) : DOME_Y);
+    const pts = [[x + (Math.random() - 0.5) * 200, -10]];
+    for (let i = 1; i <= 9; ++i)
+      pts.push([pts[0][0] + (x - pts[0][0]) * i / 9 + (Math.random() - 0.5) * 40 * (i < 9 ? 1 : 0), -10 + (y + 10) * i / 9]);
+    bolts.push({ pts, life: 0.55 });
+    lightningFlash = 1;
+    const dmg = 22 + waveNumber * 2;
+    for (const e of enemies)
+      if (Math.hypot(e.x - x, e.y - y) < 80 && !e.hidden) {
+        applyDamageToEnemy(e, dmg);
+        e.stunTimer = Math.max(e.stunTimer || 0, 0.6);
+      }
+    if (domeHit)
+      damageDome(4, x, y, 'Lightning hit the dome!');
+    if (currentView === VIEW_SURFACE) {
+      particles.burst(x, y, 14, { color: '#fff6b0', speed: 3.5, life: 0.4 });
+      screenShake.trigger(5, 200);
+    }
+    SZ.GameAudio.noise(0.9, 0.22, 'lowpass', 900, 60, 0.05);
+    SZ.GameAudio.sweep(90, 40, 0.6, 'sine', 0.2, 0.05);
+  }
+
+  function spawnMeteor() {
+    const tx = 60 + Math.random() * (CANVAS_W - 120);
+    const fromLeft = Math.random() < 0.5;
+    meteors.push({ x: tx + (fromLeft ? -1 : 1) * (300 + Math.random() * 200), y: -40, tx, ty: DOME_Y + 6, t: 0, dur: 1.1 + Math.random() * 0.5, size: 6 + Math.random() * 6 });
+  }
+
+  function meteorImpact(m) {
+    const dmg = 26 + waveNumber * 2;
+    for (const e of enemies)
+      if (!e.hidden && Math.hypot(e.x - m.tx, e.y - m.ty) < 95)
+        applyDamageToEnemy(e, dmg);
+    if (Math.abs(m.tx - DOME_X) < DOME_RADIUS + 10)
+      damageDome(6, m.tx, DOME_Y - DOME_RADIUS * 0.6, 'Meteor hit the dome!');
+    else if (meteorOre.length < 14) {
+      // A chunk of space rock with ore in it
+      const pool = ['iron', 'iron', 'cobalt', 'copper', 'silver', 'gold', 'quartz', 'titanium', 'sapphire'];
+      meteorOre.push({ x: m.tx, y: DOME_Y + 10, type: pool[Math.floor(Math.random() * pool.length)], amount: 6 + Math.floor(Math.random() * 10), age: 0 });
+    }
+    if (currentView === VIEW_SURFACE) {
+      particles.burst(m.tx, m.ty, 24, { color: '#ffb060', speed: 4, life: 0.6, gravity: 0.08 });
+      particles.burst(m.tx, m.ty, 10, { color: '#6a5a50', speed: 2.5, life: 0.8, gravity: 0.1 });
+      screenShake.trigger(6, 220);
+      SZ.GameAudio.play('explode', { pitch: 1.3, volume: 0.6 });
+    }
+  }
+
+  function collectMeteorOre(o, byDrone) {
+    resources[o.type] = (resources[o.type] || 0) + o.amount;
+    meteorOre.splice(meteorOre.indexOf(o), 1);
+    if (currentView === VIEW_SURFACE) {
+      floatingText.add(o.x, o.y - 30, `${byDrone ? 'Drone: ' : ''}+${o.amount} ${o.type}`, { color: '#ffd080', font: 'bold 20px sans-serif' });
+      particles.sparkle(o.x, o.y, 8, { color: '#ffd080', speed: 2 });
+      SZ.GameAudio.play('pickup', { pitch: 1.1 });
+    }
+  }
+
+  function updateWeather(dt) {
+    weather.timeLeft -= dt;
+    if (weather.timeLeft <= 0)
+      setWeather(rollWeather());
+    weather.intensity = Math.min(1, weather.intensity + dt / 4);
+    const k = weather.kind, I = weather.intensity;
+    const season = currentSeason().key;
+    // Snow builds up while it snows and melts otherwise (slowly in winter)
+    if (k === 'snow' || k === 'blizzard')
+      snowCover = Math.min(1, snowCover + dt * (k === 'blizzard' ? 0.03 : 0.015) * I);
+    else
+      snowCover = Math.max(season === 'winter' ? 0.35 * (k === 'clear' ? 1 : 0.6) : 0, snowCover - dt * (season === 'summer' ? 0.03 : 0.008));
+    if (season === 'winter' && snowCover < 0.35)
+      snowCover = Math.min(0.35, snowCover + dt * 0.01);
+
+    if (k === 'storm') {
+      lightningTimer -= dt;
+      if (lightningTimer <= 0) {
+        lightningTimer = 2.5 + Math.random() * 5;
+        strikeLightning();
+      }
+    }
+    if (k === 'meteor') {
+      meteorTimer -= dt;
+      if (meteorTimer <= 0) {
+        meteorTimer = 0.7 + Math.random() * 1.6;
+        spawnMeteor();
+      }
+    }
+    for (let i = meteors.length - 1; i >= 0; --i) {
+      const m = meteors[i];
+      m.t += dt / m.dur;
+      if (m.t >= 1) {
+        meteorImpact(m);
+        meteors.splice(i, 1);
+      }
+    }
+    for (let i = bolts.length - 1; i >= 0; --i) {
+      bolts[i].life -= dt;
+      if (bolts[i].life <= 0) bolts.splice(i, 1);
+    }
+    lightningFlash = Math.max(0, lightningFlash - dt * 3);
+    // Docked couriers fetch meteor ore lying near the dome
+    for (const o of meteorOre) {
+      o.age += dt;
+      if (o.age > 6 && drones.some(d => d.state === 'dock')) {
+        collectMeteorOre(o, true);
+        break;
+      }
+    }
+
+    // Visual particles only while the surface is on screen
+    if (currentView !== VIEW_SURFACE) return;
+    const wind = windStrength();
+    const rainRate = (k === 'rain' ? 260 : (k === 'storm' ? 420 : 0)) * I;
+    const snowRate = (k === 'snow' ? 70 : (k === 'blizzard' ? 260 : 0)) * I;
+    for (let n = rainRate * dt + Math.random(); n >= 1 && rainDrops.length < 500; --n)
+      rainDrops.push({ x: Math.random() * (CANVAS_W + 300) - 150, y: -20 - Math.random() * 60, vy: 900 + Math.random() * 300, len: 14 + Math.random() * 10 });
+    for (let n = snowRate * dt + Math.random(); n >= 1 && snowFlakes.length < 600; --n)
+      snowFlakes.push({ x: Math.random() * (CANVAS_W + 400) - 200, y: -10, vy: 40 + Math.random() * 50, s: 1.5 + Math.random() * 2.5, p: Math.random() * TWO_PI });
+    if (season === 'autumn' && leaves.length < 26 && Math.random() < dt * 3)
+      leaves.push({ x: Math.random() * CANVAS_W, y: -10, vy: 30 + Math.random() * 30, p: Math.random() * TWO_PI, r: Math.random() * TWO_PI, c: ['#e07a20', '#c04a18', '#e8b030', '#a83a10'][Math.floor(Math.random() * 4)] });
+    for (let i = rainDrops.length - 1; i >= 0; --i) {
+      const d = rainDrops[i];
+      d.y += d.vy * dt;
+      d.x += wind * 160 * dt;
+      if (d.y > DOME_Y + 4 + (i % 7) * 4 || (Math.hypot(d.x - DOME_X, d.y - DOME_Y) < DOME_RADIUS + 2 && d.y < DOME_Y)) {
+        if (Math.random() < 0.25)
+          particles.trail(d.x, d.y, { vx: (Math.random() - 0.5) * 1.2, vy: -0.8 - Math.random(), color: 'rgba(170,200,255,0.8)', life: 0.18, size: 1 });
+        rainDrops.splice(i, 1);
+      }
+    }
+    for (let i = snowFlakes.length - 1; i >= 0; --i) {
+      const f = snowFlakes[i];
+      f.p += dt * 2;
+      f.y += f.vy * dt * (k === 'blizzard' ? 1.8 : 1);
+      f.x += (Math.sin(f.p) * 20 + wind * 120) * dt;
+      if (f.y > DOME_Y + 6 + (i % 5) * 6) snowFlakes.splice(i, 1);
+    }
+    for (let i = leaves.length - 1; i >= 0; --i) {
+      const l = leaves[i];
+      l.p += dt * 2.5;
+      l.r += dt * 3;
+      l.y += l.vy * dt;
+      l.x += (Math.sin(l.p) * 40 + wind * 60) * dt;
+      if (l.y > DOME_Y + 10) leaves.splice(i, 1);
+    }
+  }
+
+  // Precipitation, lightning, meteors and fog over the surface scene
+  function drawWeather() {
+    const k = weather.kind, I = weather.intensity;
+    const wind = windStrength();
+    // Clouds darken the scene while it rains, snows or storms
+    const gloom = ({ rain: 0.22, storm: 0.38, blizzard: 0.2, snow: 0.1 }[k] || 0) * I;
+    if (gloom > 0) {
+      ctx.fillStyle = k === 'blizzard' || k === 'snow' ? `rgba(200,215,235,${gloom * 0.6})` : `rgba(10,16,30,${gloom})`;
+      ctx.fillRect(0, 0, CANVAS_W, DOME_Y);
+    }
+    if (rainDrops.length) {
+      ctx.strokeStyle = 'rgba(180,205,255,0.45)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      for (const d of rainDrops) {
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(d.x - wind * 0.18 * d.len, d.y - d.len);
+      }
+      ctx.stroke();
+    }
+    if (snowFlakes.length) {
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      for (const f of snowFlakes)
+        ctx.fillRect(f.x - f.s / 2, f.y - f.s / 2, f.s, f.s);
+    }
+    for (const l of leaves) {
+      ctx.save();
+      ctx.translate(l.x, l.y);
+      ctx.rotate(l.r);
+      ctx.scale(1, Math.abs(Math.sin(l.p)) * 0.7 + 0.3);
+      ctx.fillStyle = l.c;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 6, 3, 0, 0, TWO_PI);
+      ctx.fill();
+      ctx.restore();
+    }
+    for (const m of meteors) {
+      const x = m.x + (m.tx - m.x) * m.t, y = m.y + (m.ty - m.y) * m.t;
+      const dx = (m.tx - m.x), dy = (m.ty - m.y), len = Math.hypot(dx, dy);
+      const tx = x - dx / len * 140, ty = y - dy / len * 140;
+      const g = ctx.createLinearGradient(tx, ty, x, y);
+      g.addColorStop(0, 'rgba(255,160,80,0)');
+      g.addColorStop(1, 'rgba(255,220,160,0.9)');
+      ctx.strokeStyle = g;
+      ctx.lineWidth = m.size * 0.8;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(tx, ty);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+      drawGlow('#ffa040', x, y, m.size * 5, 0.9);
+      ctx.fillStyle = '#fff4d0';
+      ctx.beginPath();
+      ctx.arc(x, y, m.size * 0.6, 0, TWO_PI);
+      ctx.fill();
+    }
+    for (const b of bolts) {
+      // Wide glow along the jagged path, then the crackling core
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineJoin = 'round';
+      for (const [wdt, col] of [[16, `rgba(140,170,255,${Math.min(0.35, b.life)})`], [6, `rgba(220,230,255,${Math.min(0.8, b.life * 2)})`]]) {
+        ctx.strokeStyle = col;
+        ctx.lineWidth = wdt;
+        ctx.beginPath();
+        b.pts.forEach(([px, py], i) => i ? ctx.lineTo(px, py) : ctx.moveTo(px, py));
+        ctx.stroke();
+      }
+      ctx.restore();
+      const end = b.pts[b.pts.length - 1];
+      drawGlow('#d8e0ff', end[0], end[1], 60, Math.min(1, b.life * 2));
+      SZ.GameEffects.drawElectricArc(ctx, b.pts[0][0], b.pts[0][1], b.pts[b.pts.length - 1][0], b.pts[b.pts.length - 1][1], {
+        segments: 10, jitter: 18, color: `rgba(255,255,230,${Math.min(1, b.life * 4)})`, glowColor: `rgba(160,190,255,${Math.min(1, b.life * 3)})`, width: 3, glowWidth: 12
+      });
+    }
+    if (lightningFlash > 0) {
+      ctx.fillStyle = `rgba(230,235,255,${lightningFlash * 0.35})`;
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    }
+    // Blizzard fog: the far field disappears in white
+    if (k === 'blizzard') {
+      const g = ctx.createLinearGradient(0, 0, 0, DOME_Y);
+      g.addColorStop(0, `rgba(225,235,248,${0.55 * I})`);
+      g.addColorStop(1, `rgba(225,235,248,${0.3 * I})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    }
+    // Summer heat haze over the ground
+    if (currentSeason().key === 'summer' && daylight > 0.5) {
+      ctx.save();
+      ctx.globalAlpha = 0.08 * daylight;
+      ctx.fillStyle = '#fff0c0';
+      for (let i = 0; i < 6; ++i) {
+        const y = DOME_Y - 70 + i * 12;
+        ctx.fillRect(Math.sin(animTime * 2 + i) * 20 - 20, y, CANVAS_W + 40, 3);
+      }
+      ctx.restore();
+    }
+  }
+
+  // Meteor ore lying on the ground (click to collect)
+  function drawMeteorOre() {
+    for (const o of meteorOre) {
+      const pulse = 0.6 + Math.sin(animTime * 4 + o.x) * 0.3;
+      drawGlow('#ffae60', o.x, o.y - 6, 40, pulse * 0.75);
+      ctx.fillStyle = SPRITE_OUTLINE;
+      ctx.beginPath();
+      ctx.ellipse(o.x, o.y - 4, 19, 13, 0, 0, TWO_PI);
+      ctx.fill();
+      const rg = ctx.createRadialGradient(o.x - 5, o.y - 10, 2, o.x, o.y - 4, 18);
+      rg.addColorStop(0, '#8a6a5a');
+      rg.addColorStop(1, '#3a2a24');
+      ctx.fillStyle = rg;
+      ctx.beginPath();
+      ctx.ellipse(o.x, o.y - 5, 17, 11, 0, 0, TWO_PI);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(255,150,60,${pulse})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(o.x - 12, o.y - 2);
+      ctx.lineTo(o.x - 4, o.y - 7);
+      ctx.lineTo(o.x + 3, o.y - 3);
+      ctx.lineTo(o.x + 12, o.y - 8);
+      ctx.stroke();
+      drawSprite(o.type, o.x, o.y - 8, 20);
+      if (Math.random() < 0.03)
+        particles.sparkle(o.x + (Math.random() - 0.5) * 24, o.y - 8, 1, { color: '#ffd080', speed: 0.6 });
+    }
+  }
+
+  function hitMeteorOre(mx, my) {
+    for (const o of meteorOre)
+      if (Math.abs(mx - o.x) < 22 && Math.abs(my - o.y) < 22)
+        return o;
+    return null;
+  }
+
+  // Snow lying on the ground line and on top of the dome
+  function drawSnowCover() {
+    if (snowCover <= 0.02) return;
+    const a = Math.min(1, snowCover * 1.2);
+    ctx.fillStyle = `rgba(244,250,255,${0.85 * a})`;
+    ctx.beginPath();
+    ctx.moveTo(0, DOME_Y + 4);
+    for (let x = 0; x <= CANVAS_W; x += 20)
+      ctx.lineTo(x, DOME_Y - snowCover * 6 - Math.abs(Math.sin(x * 0.05)) * 3 * snowCover);
+    ctx.lineTo(CANVAS_W, DOME_Y + 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = `rgba(230,240,255,${0.3 * a})`;
+    ctx.fillRect(0, DOME_Y + 4, CANVAS_W, 30 * snowCover);
+    // Cap on the dome
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 3, Math.PI * 1.22, Math.PI * 1.78);
+    ctx.lineWidth = 3 + snowCover * 7;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = `rgba(248,252,255,${0.9 * a})`;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /* ======================================================================
      ENEMY WAVES
      ====================================================================== */
 
@@ -3281,18 +3735,19 @@
     const isBossWave = !reinforcement && waveNumber >= 15 && waveNumber % 5 === 0;
 
     // Gradual count ramp: 2 at wave 1, slowly increases, capped at 20; the moon makes nights stronger or calmer
-    const baseCount = Math.max(1, Math.round(Math.min(20, 2 + Math.floor(waveNumber * 0.8)) * moonStrength(world.day) * (reinforcement ? 0.45 : 1)));
+    const baseCount = Math.max(1, Math.round(Math.min(20, 2 + Math.floor(waveNumber * 0.8)) * moonStrength(world.day) * currentSeason().count * (reinforcement ? 0.45 : 1)));
     // Flyer ratio: 0% for waves 1-4, ramps to ~40% by wave 10+
     const flyerRatio = waveNumber <= 4 ? 0 : Math.min(0.4, (waveNumber - 4) * 0.07);
     const flyerCount = Math.floor(baseCount * flyerRatio);
     const walkerCount = baseCount - flyerCount;
 
-    // HP scaling: starts very low (8-10 for wave 1), gradually increases
-    const baseHP = 8 + (waveNumber - 1) * 3;
+    // HP scaling: starts very low (8-10 for wave 1), gradually increases; the season shapes the swarm
+    const season = currentSeason();
+    const baseHP = (8 + (waveNumber - 1) * 3) * season.hp;
     // Damage scaling: starts at 2-3, gradually increases
-    const baseDamage = 2 + Math.floor((waveNumber - 1) * 0.8);
+    const baseDamage = Math.max(1, Math.round((2 + Math.floor((waveNumber - 1) * 0.8)) * season.damage));
     // Speed scaling
-    const baseSpeed = 15 + Math.min(25, waveNumber * 2);
+    const baseSpeed = (15 + Math.min(25, waveNumber * 2)) * season.speed;
 
     // Spawn ground walkers
     for (let i = 0; i < walkerCount; ++i) {
@@ -3323,7 +3778,7 @@
         legPhase: Math.random() * TWO_PI,
         eyeBlinkTimer: 2 + Math.random() * 3,
         eyeBlinking: false,
-        size: (20 + Math.random() * 8) * sizeMult,
+        size: (20 + Math.random() * 8) * sizeMult * season.size,
         armored: isArmored,
         shield: shieldVal,
         maxShield: shieldVal,
@@ -3355,7 +3810,7 @@
         wingPhase: Math.random() * TWO_PI,
         eyeBlinkTimer: 2 + Math.random() * 3,
         eyeBlinking: false,
-        size: 14 + Math.random() * 6,
+        size: (14 + Math.random() * 6) * season.size,
         armored: false,
         shield: shieldVal,
         maxShield: shieldVal,
@@ -3400,6 +3855,60 @@
     updateWindowTitle();
   }
 
+  // Any hit on the dome: shield gadget, armour, effects and game over. Returns true when the dome is lost.
+  function damageDome(amount, ex, ey, label) {
+    if (state !== STATE_PLAYING) return false;
+    // Shield gadget absorbs the first hit of each night
+    if (primaryGadget === 'shield' && primaryGadgetState.active) {
+      primaryGadgetState.active = false;
+      SZ.GameAudio.play('zap', { pitch: 0.7 });
+      floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 60, 'Shield Absorbed!', { color: '#4af', font: 'bold 28px sans-serif' });
+      particles.burst(ex, ey, 15, { color: '#4af', speed: 3, life: 0.5 });
+      spawnShieldImpact(ex, ey);
+      return false;
+    }
+    let effectiveDmg = amount;
+    if (unlockedTools.reinforcedDome) effectiveDmg = Math.ceil(effectiveDmg * 0.75);
+    if (unlockedTools.energyShield) effectiveDmg = Math.ceil(effectiveDmg * 0.85);
+    domeHP -= effectiveDmg;
+    domeHitFlash = 1.0;
+    screenShake.trigger(8, 250);
+    // several attackers hit at once: one groan per moment, not a chorus
+    const hurtNow = performance.now();
+    if (hurtNow - lastDomeHurtSound > 400) {
+      lastDomeHurtSound = hurtNow;
+      SZ.GameAudio.play('hurt', { volume: 0.7 });
+    }
+    floatingText.add(DOME_X + (Math.random() - 0.5) * 80, DOME_Y - 60, label ? `${label} -${effectiveDmg}` : `-${effectiveDmg} HP`, { color: '#f44', font: 'bold 28px sans-serif' });
+    spawnShieldImpact(ex, ey);
+    // Sparks along the shield surface
+    const impactAngle = Math.atan2(ey - DOME_Y, ex - DOME_X);
+    for (let s = 0; s < 12; ++s) {
+      const sa = impactAngle + (Math.random() - 0.5) * 0.6;
+      particles.trail(DOME_X + Math.cos(sa) * DOME_RADIUS, DOME_Y + Math.sin(sa) * DOME_RADIUS, {
+        vx: Math.cos(sa) * (1 + Math.random() * 2),
+        vy: Math.sin(sa) * (1 + Math.random() * 2) - 1,
+        color: Math.random() > 0.5 ? '#4af' : '#8cf',
+        life: 0.3 + Math.random() * 0.3,
+        size: 1 + Math.random() * 2
+      });
+    }
+    if (domeHP <= 0) {
+      domeHP = 0;
+      state = STATE_GAME_OVER;
+      particles.burst(DOME_X, DOME_Y, 40, { color: '#4af', speed: 5, life: 0.8 });
+      particles.burst(DOME_X, DOME_Y, 25, { color: '#f80', speed: 4, life: 0.6 });
+      screenShake.trigger(15, 500);
+      SZ.GameAudio.play('explode');
+      SZ.GameAudio.play('lose');
+      addHighScore(waveNumber, score);
+      clearSave();
+      updateWindowTitle();
+      return true;
+    }
+    return false;
+  }
+
   function updateEnemies(dt) {
     for (let i = enemies.length - 1; i >= 0; --i) {
       const e = enemies[i];
@@ -3409,7 +3918,7 @@
       const dist = Math.sqrt(dx * dx + dy * dy);
 
       // Repellent field slows enemies
-      const speedMult = (primaryGadget === 'repellent' && primaryGadgetState.active) ? 0.4 : 1.0;
+      const speedMult = ((primaryGadget === 'repellent' && primaryGadgetState.active) ? 0.4 : 1.0) * (e.type === 'flyer' ? 1 : weatherSlow());
       // Stun laser freezes targeted enemy
       const isStunned = e.stunTimer > 0;
       if (isStunned) {
@@ -3427,64 +3936,9 @@
         if (e.attackTimer <= 0) {
           e.attackTimer = 1.0;
 
-          // Shield gadget absorbs first hit
-          if (primaryGadget === 'shield' && primaryGadgetState.active) {
-            primaryGadgetState.active = false;
-            SZ.GameAudio.play('zap', { pitch: 0.7 });
-            floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 60, 'Shield Absorbed!', { color: '#4af', font: 'bold 28px sans-serif' });
-            particles.burst(e.x, e.y, 15, { color: '#4af', speed: 3, life: 0.5 });
-            spawnShieldImpact(e.x, e.y);
-            continue; // skip damage
-          }
-
-          let effectiveDmg = e.damage;
-          if (unlockedTools.reinforcedDome) effectiveDmg = Math.ceil(effectiveDmg * 0.75);
-          if (unlockedTools.energyShield) effectiveDmg = Math.ceil(effectiveDmg * 0.85);
-          domeHP -= effectiveDmg;
-          domeHitFlash = 1.0;
-          screenShake.trigger(8, 250);
-          // several attackers hit at once: one groan per moment, not a chorus
-          const hurtNow = performance.now();
-          if (hurtNow - lastDomeHurtSound > 400) {
-            lastDomeHurtSound = hurtNow;
-            SZ.GameAudio.play('hurt', { volume: 0.7 });
-          }
-          floatingText.add(DOME_X + (Math.random() - 0.5) * 80, DOME_Y - 60, `-${effectiveDmg} HP`, { color: '#f44', font: 'bold 28px sans-serif' });
-
-          // Shield impact flash
-          spawnShieldImpact(e.x, e.y);
-
-          // Dome-hit sparks along the shield surface
-          const impactAngle = Math.atan2(e.y - DOME_Y, e.x - DOME_X);
-          for (let s = 0; s < 12; ++s) {
-            const spread = (Math.random() - 0.5) * 0.6;
-            const sa = impactAngle + spread;
-            const ix = DOME_X + Math.cos(sa) * DOME_RADIUS;
-            const iy = DOME_Y + Math.sin(sa) * DOME_RADIUS;
-            particles.trail(ix, iy, {
-              vx: Math.cos(sa) * (1 + Math.random() * 2),
-              vy: Math.sin(sa) * (1 + Math.random() * 2) - 1,
-              color: Math.random() > 0.5 ? '#4af' : '#8cf',
-              life: 0.3 + Math.random() * 0.3,
-              size: 1 + Math.random() * 2
-            });
-          }
-          particles.burst(e.x, e.y, 10, { color: '#f44', speed: 2.5, life: 0.5 });
-
-          if (domeHP <= 0) {
-            domeHP = 0;
-            state = STATE_GAME_OVER;
-            // Dome destruction explosion
-            particles.burst(DOME_X, DOME_Y, 40, { color: '#4af', speed: 5, life: 0.8 });
-            particles.burst(DOME_X, DOME_Y, 25, { color: '#f80', speed: 4, life: 0.6 });
-            screenShake.trigger(15, 500);
-            SZ.GameAudio.play('explode');
-            SZ.GameAudio.play('lose');
-            addHighScore(waveNumber, score);
-            clearSave();
-            updateWindowTitle();
+          if (damageDome(e.damage, e.x, e.y))
             return;
-          }
+          particles.burst(e.x, e.y, 10, { color: '#f44', speed: 2.5, life: 0.5 });
         }
       }
 
@@ -3544,10 +3998,11 @@
     }
 
     // Keyboard aiming: Left/Right or A/D rotate barrel
+    const turnSpeed = TURRET_KEYBOARD_SPEED * (weather.kind === 'blizzard' ? 1 - 0.4 * weather.intensity : 1);
     if (keys['ArrowLeft'] || keys['KeyA'])
-      turretAngle -= TURRET_KEYBOARD_SPEED * dt;
+      turretAngle -= turnSpeed * dt;
     if (keys['ArrowRight'] || keys['KeyD'])
-      turretAngle += TURRET_KEYBOARD_SPEED * dt;
+      turretAngle += turnSpeed * dt;
 
     // Clamp turret to upper dome arc, above ground on both sides
     if (turretAngle > TURRET_MAX_ANGLE) turretAngle = TURRET_MAX_ANGLE;
@@ -3563,7 +4018,7 @@
     // Fire toward current turret aim direction on click
     if (fireRequested && fireCooldown <= 0) {
       fireRequested = false;
-      fireCooldown = 1.0 / fireRate;
+      fireCooldown = 1.0 / (fireRate * (weather.kind === 'blizzard' ? 1 - 0.25 * weather.intensity : 1));
 
       // Project a far-off aim point along the turret angle
       const aimDist = 400;
@@ -5887,6 +6342,7 @@
     }
 
     updateWorldTime(dt);
+    updateWeather(dt);
 
     updateEnemies(dt);
     updateWeapon(dt);
@@ -6598,7 +7054,11 @@
       ctx.globalAlpha = 1;
     }
     const shade = 0.55 + daylight * 0.45;
-    const col = (i) => mixHex('#000000', B.plantColors[i], shade);
+    const sk = currentSeason().key;
+    const tint = sk === 'autumn' ? ['#d0701c', 0.55] : (sk === 'winter' ? ['#dfeeff', 0.45] : (sk === 'summer' ? ['#c8c040', 0.15] : null));
+    const plantCols = B.plantColors.map(c => tint && B.plant !== 'ember' && B.plant !== 'shard' ? mixHex(c, tint[0], tint[1]) : c)
+      .map(c => c.charAt(0) === '#' ? c : '#' + c.match(/\d+/g).map(n => (+n).toString(16).padStart(2, '0')).join(''));
+    const col = (i) => mixHex('#000000', plantCols[i], shade);
     const Y = DOME_Y + 2;
     ctx.lineCap = 'round';
     for (const p of art.plants) {
@@ -6708,6 +7168,22 @@
           ctx.restore();
         }
         drawGlow(B.plantColors[(p.v * 3) | 0], p.x, Y - 12, 20, 0.25 + (1 - daylight) * 0.35);
+      }
+      // Spring blossoms
+      if (sk === 'spring' && p.v < 0.6 && B.plant !== 'ember') {
+        const fx = p.x + 6 + tilt * 3, fy = Y - 6 - p.s * 8;
+        const petal = ['#ff7ab0', '#ffe060', '#ffffff', '#c890ff'][(p.v * 6 | 0) % 4];
+        ctx.fillStyle = mixHex('#000000', petal, shade);
+        for (let k = 0; k < 5; ++k) {
+          const a = k * TWO_PI / 5 + p.p;
+          ctx.beginPath();
+          ctx.arc(fx + Math.cos(a) * 2.6, fy + Math.sin(a) * 2.6, 2.2, 0, TWO_PI);
+          ctx.fill();
+        }
+        ctx.fillStyle = '#ffd040';
+        ctx.beginPath();
+        ctx.arc(fx, fy, 1.6, 0, TWO_PI);
+        ctx.fill();
       }
     }
     ctx.lineCap = 'butt';
@@ -7307,9 +7783,11 @@
 
     // Ground layer with details
     drawGroundLayer();
+    drawMeteorOre();
 
     // Dome
     drawDome();
+    drawSnowCover();
 
     // Gadget visuals on surface
     drawSurfaceGadgets();
@@ -7320,6 +7798,7 @@
 
     // Projectiles
     drawProjectiles();
+    drawWeather();
 
     drawSurfaceHUD();
 
@@ -9618,7 +10097,12 @@
         }
       }
 
-      // Surface view: the quick upgrade panel first, then fire the weapon
+      // Surface view: meteor ore, the quick upgrade panel, then fire the weapon
+      const ore = hitMeteorOre(mx, my);
+      if (ore) {
+        collectMeteorOre(ore);
+        return;
+      }
       const qp = hitQuickPanel(mx, my);
       if (qp) {
         if (qp.kind === 'row')
