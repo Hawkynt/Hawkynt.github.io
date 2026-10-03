@@ -843,6 +843,7 @@ Readable pixel-art or stylized 2D rendering with bright effects over a dark sci-
 | 4                            | Reinforced Dome status (passive, if unlocked)        |
 | 5                            | Activate Teleporter (if unlocked)                    |
 | L                            | Relocate (after finding the Relocation Core)         |
+| Shift + direction            | Dash through tunnels (after buying Dash)             |
 | Click (surface ore chunk)    | Collect meteor ore                                   |
 | Click / Space / Esc          | Skip the landing or relocation sequence              |
 | Enter / Esc (confirmation)   | Lift off / stay                                      |
