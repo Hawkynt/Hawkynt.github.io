@@ -4687,7 +4687,7 @@
     e.elite = auras[Math.floor(Math.random() * auras.length)];
     e.hp = e.maxHP = e.maxHP * 2.2;
     e.size *= 1.25;
-    e.damage = Math.ceil(e.damage * 1.5);
+    e.damage = Math.ceil(e.damage * 1.35);
     e.speed *= 1.08;
     if (e.y < DOME_Y && enemyType(e).move === 'ground')
       e.y = groundY(e.size);
@@ -4715,12 +4715,12 @@
     const tk = threat - 1;
     const base = {
       threat,
-      hp: (8 + tk * 3.3 + 0.06 * tk * tk) * season.hp * (1 + 0.3 * site.index),
-      damage: (2 + tk * 0.85) * season.damage * (1 + 0.22 * site.index),
+      hp: (8 + tk * 3.3 + 0.07 * tk * tk) * season.hp * (1 + 0.38 * site.index),
+      damage: (2 + tk * 0.8) * season.damage * (1 + 0.22 * site.index),
       speed: (15 + Math.min(34, threat * 2.1)) * season.speed
     };
     // The night's budget: grows with the threat, the moon and the season
-    let budget = Math.min(36, 2 + threat * 0.85 + 0.008 * threat * threat) * moonStrength(world.day) * season.count * (reinforcement ? 0.5 : 1);
+    let budget = Math.min(40, 2 + threat * 0.85 + 0.012 * threat * threat) * moonStrength(world.day) * season.count * (reinforcement ? 0.5 : 1);
     const firstNew = enemies.length;
     const bias = SEASON_ENEMY_BIAS[season.key] || {};
     const wb = { blizzard: { burrower: 1.6, flyer: 0.5, diver: 0.5 }, storm: { flyer: 0.6, diver: 0.6 } }[weather.kind] || {};
@@ -4871,7 +4871,7 @@
       if (!e.enraged && !e.boss && threat >= ENRAGE_FROM && e.hp > 0 && e.hp < e.maxHP * 0.35 && !e.hidden) {
         e.enraged = true;
         e.speed *= 1.45;
-        e.damage = Math.ceil(e.damage * 1.35);
+        e.damage = Math.ceil(e.damage * 1.2);
         if (currentView === VIEW_SURFACE) {
           floatingText.add(e.x, e.y - (e.size || 20) - 34, 'ENRAGED', { color: '#ff5a3a', font: 'bold 18px sans-serif' });
           particles.burst(e.x, e.y, 10, { color: '#ff5a3a', speed: 2.5, life: 0.4 });
