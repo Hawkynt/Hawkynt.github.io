@@ -122,6 +122,16 @@
     return handled;
   }
 
+  // ── Desktop shortcuts pressed inside an app ─────────────────────
+  // Ctrl+Esc opens the desktop's start menu even while an app has focus.
+  if (_isInsideOS)
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && e.ctrlKey && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        _postToParent('sz:shellKey', { key: 'start' });
+      }
+    }, true);
+
   // ── Message listener ────────────────────────────────────────────
   if (_isInsideOS) {
     window.addEventListener('message', (e) => {

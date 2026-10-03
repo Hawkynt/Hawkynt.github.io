@@ -1778,7 +1778,7 @@
     try {
       content = await Kernel32.ReadAllBytes(result.path);
     } catch (err) {
-      alert('Could not read file: ' + err.message);
+      SZ.Dialog.alert('Could not read file: ' + err.message, 'Hex Editor');
       return;
     }
 
@@ -1798,7 +1798,7 @@
       : HexEngine.parseCSharpStruct(text);
 
     if (structs.length === 0) {
-      alert('No structures found in the file.');
+      SZ.Dialog.alert('No structures found in the file.', 'Hex Editor');
       return;
     }
 
@@ -1944,7 +1944,7 @@
         const bytes = await Kernel32.ReadAllBytes(result.path);
         loadFile(result.path, bytes);
       } catch (err) {
-        alert('Could not open file: ' + err.message);
+        SZ.Dialog.alert('Could not open file: ' + err.message, 'Hex Editor');
       }
     }
   }
@@ -2030,7 +2030,7 @@
     try {
       await Kernel32.WriteAllBytes(path, data);
     } catch (err) {
-      alert('Could not save file: ' + err.message);
+      SZ.Dialog.alert('Could not save file: ' + err.message, 'Hex Editor');
       return;
     }
     originalData = new Uint8Array(data);
