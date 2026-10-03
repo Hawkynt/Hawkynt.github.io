@@ -15,6 +15,24 @@
     desert:   ['desert', 'desert', 'desert', 'desert', 'plains', 'road'],
     snow:     ['snow', 'snow', 'snow', 'snow', 'mountain', 'road'],
     lava:     ['lava', 'lava', 'dungeon_floor', 'dungeon_floor', 'cave', 'cave'],
+    // the other planes
+    astral:    ['astral_void', 'astral_void', 'astral_void', 'rubble', 'rubble', 'astral_void'],
+    ethereal:  ['ethereal_mist', 'ethereal_mist', 'ethereal_mist', 'shadow_ground', 'ethereal_mist', 'plains'],
+    shadow:    ['shadow_ground', 'shadow_ground', 'shadow_ground', 'forest', 'rubble', 'dungeon_floor'],
+    fire:      ['infernal_waste', 'infernal_waste', 'infernal_waste', 'lava', 'desert_rock', 'rubble'],
+    water:     ['shallow_water', 'shallow_water', 'shallow_water', 'coral_reef', 'seabed', 'shallow_water'],
+    earth:     ['earth_packed', 'earth_packed', 'earth_packed', 'stalagmites', 'rubble', 'stone_wall'],
+    sky:       ['cloud', 'cloud', 'cloud', 'air_open', 'air_open', 'cloud'],
+    radiant:   ['celestial_garden', 'celestial_garden', 'celestial_garden', 'plains', 'celestial_garden', 'road'],
+    void:      ['shadow_ground', 'shadow_ground', 'shadow_ground', 'pit', 'rubble', 'shadow_ground'],
+    celestial: ['celestial_garden', 'celestial_garden', 'celestial_garden', 'forest', 'plains', 'road'],
+    fey:       ['feywild_grove', 'feywild_grove', 'feywild_grove', 'forest', 'plains', 'shallow_water'],
+    infernal:  ['infernal_waste', 'infernal_waste', 'infernal_waste', 'lava', 'rubble', 'desert_rock'],
+    abyss:     ['infernal_waste', 'infernal_waste', 'infernal_waste', 'lava', 'pit', 'rubble'],
+    clockwork: ['mechanus_grid', 'mechanus_grid', 'mechanus_grid', 'mechanus_grid', 'iron_door', 'road'],
+    chaos:     ['ethereal_mist', 'ethereal_mist', 'infernal_waste', 'shallow_water', 'earth_packed', 'cloud'],
+    ooze:      ['swamp', 'swamp', 'swamp', 'marsh', 'shallow_water', 'plains'],
+    grey:      ['shadow_ground', 'shadow_ground', 'shadow_ground', 'desert_rock', 'rubble', 'shadow_ground'],
   });
 
   function moveCostOf(id) {
@@ -165,6 +183,32 @@
         18: 'ice',         // ICE
         19: 'desert_rock', // ASH
         20: 'lava',        // LAVA
+        21: 'plains',      // PORTAL
+        // the other planes
+        22: 'astral_void',      // ASTRAL
+        23: 'rubble',           // DRIFT_ROCK
+        24: 'ethereal_mist',    // MIST
+        25: 'shadow_ground',    // GLOOM
+        26: 'infernal_waste',   // CINDER
+        27: 'shallow_water',    // CURRENT
+        28: 'coral_reef',       // CORAL
+        29: 'earth_packed',     // BEDROCK
+        30: 'stone_wall',       // SOLID_ROCK
+        31: 'air_open',         // SKY
+        32: 'cloud',            // CLOUD
+        33: 'celestial_garden', // RADIANCE
+        34: 'shadow_ground',    // DARKNESS
+        35: 'celestial_garden', // CELESTIAL
+        36: 'feywild_grove',    // FEY
+        37: 'infernal_waste',   // BRIMSTONE
+        38: 'infernal_waste',   // ABYSSAL
+        39: 'mechanus_grid',    // GEARS
+        40: 'ethereal_mist',    // CHAOS
+        41: 'swamp',            // OOZE
+        42: 'desert_rock',      // SMOKE
+        43: 'mechanus_grid',    // IRON
+        44: 'shadow_ground',    // GREY
+        45: 'pit',              // RIFT
       };
       const terrain = [];
       for (let i = 0; i < tileData.length; ++i)

@@ -151,6 +151,15 @@
       const y = BattleBackdrop.groundY(720);
       assert.ok(y > 360 && y < 720);
     });
+
+    it('plane tints use the plane registry ids, one for every plane but the Material', () => {
+      for (const id of Object.keys(BattleBackdrop.PLANE_TINTS))
+        assert.ok(TR.PlaneRegistry.has(id), `${id} is not a plane`);
+      for (const p of TR.PlaneRegistry.getAll())
+        if (p.id !== 'material')
+          assert.ok(BattleBackdrop.PLANE_TINTS[p.id], `${p.id} has no tint`);
+      assert.ok(!BattleBackdrop.PLANE_TINTS.material);
+    });
   });
 
   describe('BattleFx -- spell elements', () => {
