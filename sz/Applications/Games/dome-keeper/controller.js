@@ -4495,6 +4495,8 @@
       const T = enemyType(e);
       e.t += dt;
       e.lunge = Math.max(0, (e.lunge || 0) - dt * 4);
+      if (e.pop !== undefined && e.pop < 1)
+        e.pop = Math.min(1, e.pop + dt * 2.4);
       const isStunned = e.stunTimer > 0;
       if (isStunned)
         e.stunTimer = Math.max(0, e.stunTimer - dt);
@@ -8596,8 +8598,6 @@
     const face = e.x > DOME_X ? -1 : 1;
     const lunge = (e.lunge || 0) * 8 * face;
     const pop = e.pop !== undefined ? Math.min(1, e.pop) : 1;
-    if (e.pop !== undefined && e.pop < 1)
-      e.pop += 0.04;
 
     ctx.save();
     ctx.translate(e.x + lunge, e.y + wobble + (1 - pop) * sz * 1.4);
