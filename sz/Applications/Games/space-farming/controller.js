@@ -1971,7 +1971,7 @@
       livestockPens: livestockPens.map(pen => ({ typeIndex: pen.typeIndex, feedTimer: pen.feedTimer, produceReady: !!pen.produceReady, gridRow: pen.gridRow, gridCol: pen.gridCol })),
       wildAnimals: wildAnimals.map(a => ({ x: a.x, y: a.y, targetCol: a.targetCol, targetRow: a.targetRow, moveTimer: a.moveTimer, hp: a.hp })),
       priceMultipliers, priceChangeTimer, inventory, techLevels, rainMakerDay, techBoughtTotal,
-      stats, goalIndex, orders, orderTimer, orderSerial,
+      stats, goalIndex, goalsRev: 2, orders, orderTimer, orderSerial,
       weatherType, weatherTimer, weatherInterval,
       currentSeason, dayPhase, energy, nextAnimalSpawn,
       buildingHarvestTimer, autoHarvestTimer, autoCollectorTimer, autoPlanterTimer,
@@ -2114,6 +2114,9 @@
       for (const k in stats)
         stats[k] = num(d.stats[k], 0);
     goalIndex = Math.max(0, Math.min(GOALS.length, Math.floor(num(d.goalIndex, 0))));
+    // the 'More room' goal was added as the third goal later on
+    if (d.goalsRev !== 2 && goalIndex >= 2)
+      goalIndex = Math.min(GOALS.length, goalIndex + 1);
     orders = Array.isArray(d.orders) ? d.orders.filter(o => o && typeof o.item === 'string' && isFiniteNumber(o.qty) && isFiniteNumber(o.reward) && isFiniteNumber(o.until) && itemSprite(o.item) !== 'crate')
       .map(o => ({ id: Math.floor(num(o.id, 0)), item: o.item, qty: o.qty, reward: o.reward, until: o.until })) : [];
     orderTimer = num(d.orderTimer, 25);
@@ -5337,6 +5340,109 @@
     drawSprite(rockSprite(r, c), cx, baseY - T * 0.42, T * 0.92);
   }
 
+  /* ── Field expansion: ghost plots where the next strip of land will go ── */
+
+  const DIR_NAMES = ['west', 'east', 'north', 'south'];
+
+  /* Tiles (outside the grid) the next Expand Field adds */
+  function expansionTiles() {
+    const out = [];
+    if (expansionDirection === 0) for (let r = 0; r < gridRows; ++r) out.push({ r, c: -1 });
+    else if (expansionDirection === 1) for (let r = 0; r < gridRows; ++r) out.push({ r, c: gridCols });
+    else if (expansionDirection === 2) for (let c = 0; c < gridCols; ++c) out.push({ r: -1, c });
+    else for (let c = 0; c < gridCols; ++c) out.push({ r: gridRows, c });
+    return out;
+  }
+
+  function expansionAt(sx, sy) {
+    if (state !== STATE_PLAYING || dialog) return false;
+    const { col, row } = canvasToGrid(sx, sy);
+    return expansionTiles().some(t => t.r === row && t.c === col);
+  }
+
+  function expandCost() {
+    return nodeCost(TECH_BY_ID.eng_land).cr;
+  }
+
+  /* Buys the next strip, or shows it in the tech tree when it can't be paid */
+  function expandField() {
+    if (state !== STATE_PLAYING) return;
+    const n = TECH_BY_ID.eng_land;
+    if (canPay(nodeCost(n))) {
+      const dir = expansionDirection;
+      const tiles = expansionTiles();
+      if (tryPurchaseTreeNode(n)) {
+        // the strip is now part of the grid: west and north strips shifted the indices
+        const at = (tl) => tileCenter(tl.c + (dir === 0 ? 1 : 0), tl.r + (dir === 2 ? 1 : 0));
+        for (const tl of tiles) {
+          const p = at(tl);
+          dustRing(p.x, p.y + 14);
+        }
+        const p = at(tiles[Math.floor(tiles.length / 2)]);
+        const u = worldToUI(p.x, p.y);
+        celebrate(u.x, u.y, 30);
+        clampPan();
+      }
+    } else {
+      SZ.GameAudio.play('error', { volume: 0.5 });
+      toast(`Expanding the field needs ${expandCost()} credits`, UI.warn, 'map');
+    }
+  }
+
+  function drawExpansionStrip() {
+    expandChip = null;
+    expandBadge = null;
+    if (state !== STATE_PLAYING) return;
+    const T = BASE_TILE_SIZE;
+    const tiles = expansionTiles();
+    const cost = expandCost();
+    const afford = credits >= cost;
+    const hover = pointerInside && !hitRegion(pointerUX, pointerUY) && expansionAt(pointerX, pointerY);
+    const pulse = 0.5 + Math.sin(uiTime * 3) * 0.5;
+    ctx.save();
+    for (const tl of tiles) {
+      if (isPenSlot(tl.r, tl.c)) continue;
+      const x = GRID_OFFSET_X + tl.c * T, y = GRID_OFFSET_Y + tl.r * T;
+      ctx.fillStyle = hover ? 'rgba(120,90,50,0.55)' : 'rgba(110,80,45,0.28)';
+      ctx.fillRect(x + 3, y + 3, T - 6, T - 6);
+      ctx.setLineDash([5, 4]);
+      ctx.lineWidth = hover ? 2.5 : 1.5;
+      ctx.strokeStyle = hover ? 'rgba(255,230,140,0.95)' : `rgba(255,230,160,${0.35 + (afford ? pulse * 0.3 : 0)})`;
+      ctx.strokeRect(x + 3, y + 3, T - 6, T - 6);
+      ctx.setLineDash([]);
+    }
+    // the + badge in the middle of the strip
+    const mid = tiles[Math.floor((tiles.length - 1) / 2)];
+    const bx = GRID_OFFSET_X + (mid.c + 0.5) * T + (tiles.length % 2 === 0 && expansionDirection > 1 ? T / 2 : 0);
+    const by = GRID_OFFSET_Y + (mid.r + 0.5) * T + (tiles.length % 2 === 0 && expansionDirection < 2 ? T / 2 : 0);
+    expandBadge = { x: bx, y: by };
+    const rad = T * 0.3 * (1 + (afford && !hover ? pulse * 0.08 : 0)) * (hover ? 1.12 : 1);
+    if (afford)
+      drawGlow(bx, by, rad * 2.4, '#ffe68c', 0.35 + pulse * 0.2);
+    ctx.fillStyle = afford ? '#ffd75a' : 'rgba(160,160,170,0.85)';
+    ctx.beginPath();
+    ctx.arc(bx, by, rad, 0, TWO_PI);
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(40,24,8,0.85)';
+    ctx.stroke();
+    ctx.fillStyle = '#3a2408';
+    ctx.fillRect(bx - rad * 0.55, by - rad * 0.14, rad * 1.1, rad * 0.28);
+    ctx.fillRect(bx - rad * 0.14, by - rad * 0.55, rad * 0.28, rad * 1.1);
+    ctx.restore();
+    expandChip = hover ? { wx: bx, wy: by - T * 0.55, text: `[[map]] Expand ${DIR_NAMES[expansionDirection]}: +${tiles.length} plots · ${cost} [[coin]]`, afford } : null;
+  }
+
+  let expandChip = null;
+  let expandBadge = null;            // world position of the + badge
+
+  /* Price chip over the + badge, drawn with the HUD */
+  function drawExpandChip() {
+    if (!expandChip) return;
+    const u = worldToUI(expandChip.wx, expandChip.wy);
+    drawChip(expandChip.text, u.x, u.y - 24, 24, { align: 'center', px: 12, bg: 'rgba(8,12,24,0.9)', border: expandChip.afford ? 'rgba(255,215,90,0.8)' : 'rgba(255,106,106,0.7)', color: expandChip.afford ? UI.gold : '#ffc0b8', maxW: 420 });
+  }
+
   /* ── Buildings with animated details ── */
 
   const BLADE_SPRITE_KEY = 'turbineBlades';
@@ -6018,6 +6124,7 @@
     drawNutrients(v);
     drawWeatherWorld();
     drawFieldFence();
+    drawExpansionStrip();
     // Row by row so taller sprites overlap the row behind them
     const T = BASE_TILE_SIZE;
     const r0 = Math.max(-1, Math.floor((v.y0 - GRID_OFFSET_Y) / T) - 1), r1 = Math.min(gridRows, Math.ceil((v.y1 - GRID_OFFSET_Y) / T) + 1);
@@ -6434,7 +6541,7 @@
   chain('eng_irr', 'eng', 'Irrigation', 'drop', [], [140, 322, 741], [{ 'Lunar Lettuce': 6 }, { 'Solar Tomato': 10 }, { 'Cosmic Corn': 12 }], 'Weather damages 15% fewer crops.');
   chain('eng_grid', 'eng', 'Power Grid', 'bolt', ['eng_solar'], [180, 400, 900], [{ 'Space Wheat': 10 }, { 'Cosmic Corn': 10 }, { 'Crystal Melon': 10 }], '+25 max energy and +0.5 energy per second.');
   node('eng_builder', 'eng', 'Efficient Construction', 'hammer', ['eng_grid1'], { cr: 450, 'Solar Tomato': 15 }, 'Buildings and building upgrades cost 15% less.');
-  node('eng_land', 'eng', 'Land Survey', 'map', [], { cr: 0 }, 'Adds a new strip of land to the farm (west, east, north, south in turn).', { repeat: true });
+  node('eng_land', 'eng', 'Expand Field', 'map', [], { cr: 0 }, 'Adds a strip of new plots to the field (west, east, north, south in turn). Also sold at the + strip beside the field.', { repeat: true });
 
   // Science
   node('sci_forecast', 'sci', 'Weather Forecast', 'eye', [], { cr: 90, 'Lunar Lettuce': 5 }, 'Shows the coming weather and when it arrives.');
@@ -6585,7 +6692,7 @@
       announce('Unlocked: ' + names.join(' & '), title, TREE_BRANCH_COLORS[n.branch], n.icon);
       SZ.GameAudio.play('win', { volume: 0.7 });
     } else {
-      announce(title, n.desc, TREE_BRANCH_COLORS[n.branch], n.icon);
+      announce(title, n.id === 'eng_land' ? `${gridCols} × ${gridRows} plots now` : n.desc, TREE_BRANCH_COLORS[n.branch], n.icon);
       SZ.GameAudio.play('levelup');
     }
     ++techBoughtTotal;
@@ -7392,8 +7499,8 @@
           const have = k === 'cr' ? credits : (inventory[k] || 0);
           missing += Math.max(0, (cost[k] || 0) - have) * w;
         }
-        // repeatable land survey is offered last so real upgrades show first
-        const score = (afford ? price : 1e7 + missing * 10 + price) + (n.repeat ? 5e6 : 0);
+        // expanding the field shows up whenever it is affordable; otherwise real upgrades come first
+        const score = (afford ? price : 1e7 + missing * 10 + price) + (n.repeat && !afford ? 5e6 : 0);
         if (score < bestScore) {
           bestScore = score;
           best = n;
@@ -7524,7 +7631,7 @@
   let orderSerial = 0;
 
   function newStats() {
-    return { planted: 0, harvested: 0, earned: 0, orders: 0, built: 0, animals: 0, surveys: 0 };
+    return { planted: 0, harvested: 0, earned: 0, orders: 0, built: 0, animals: 0, surveys: 0, hintExpand: 0 };
   }
 
   function buildingCount() {
@@ -7552,6 +7659,7 @@
   const GOALS = [
     { title: 'Green thumb', desc: 'Plant 5 crops', icon: 'seedbag', need: 5, value: () => stats.planted, reward: 25 },
     { title: 'First harvest', desc: 'Harvest 10 crops', icon: 'basket', need: 10, value: () => stats.harvested, reward: 40 },
+    { title: 'More room', desc: 'Expand the field once', icon: 'map', need: 1, value: () => stats.surveys, reward: 40 },
     { title: 'Market day', desc: 'Earn 150 credits from sales', icon: 'coin', need: 150, value: () => stats.earned, reward: 50 },
     { title: 'Researcher', desc: 'Buy an upgrade in the tech tree', icon: 'techtree', need: 1, value: () => ownedTechCount(), reward: 60 },
     { title: 'Builder', desc: 'Build any building', icon: 'hammer', need: 1, value: () => Math.max(stats.built, buildingCount()), reward: 60 },
@@ -7575,7 +7683,16 @@
     return typeof g.need === 'function' ? g.need() : g.need;
   }
 
+  function updateExpandHint() {
+    if (stats.hintExpand || stats.surveys || state !== STATE_PLAYING) return;
+    if (credits >= expandCost() && dayCount >= 1 && gameTime > 20) {
+      stats.hintExpand = 1;
+      announce('Need more room?', 'Click the glowing + beside the field (or press E) to add new plots', UI.gold, 'map');
+    }
+  }
+
   function updateGoals(dt) {
+    updateExpandHint();
     goalCooldown = Math.max(0, goalCooldown - dt);
     if (goalCooldown > 0 || goalIndex >= GOALS.length) return;
     const g = GOALS[goalIndex];
@@ -7928,6 +8045,11 @@
     if (kbCursor.active) {
       const g = gridToScreen(kbCursor.col, kbCursor.row);
       add(g.x / uiS, g.y / uiS, ts, ts);
+    }
+    // the + badge of the next field strip stays reachable under the panels
+    if (expandBadge) {
+      const u = worldToUI(expandBadge.x, expandBadge.y);
+      add(u.x - ts * 0.4, u.y - ts * 0.4, ts * 0.8, ts * 0.8);
     }
     hudActorCache = out;
     hudActorFrame = hudFrame;
@@ -8618,6 +8740,7 @@
   function drawHUD() {
     const L = hudLayout();
     drawPops();
+    drawExpandChip();
     drawFarmPanel(L);
     drawStoragePanel(L);
     drawClockPanel(L);
@@ -8792,6 +8915,8 @@
       text: 'Ripe crops glow and sparkle. Click them to harvest; the produce flies into your storage. Storage is limited, so sell regularly with S, or open the market with M to sell single crops.\n\nPrices drift every minute: a green ▲ in the dock means a crop sells above its normal price, a red ▼ below.' },
     { icon: 'flask', title: 'Soil & terrain', strip: [['soil', 'Nutrients'], ['drop', 'Water'], ['hoe', 'Hoe'], ['rockpile', 'Rock']],
       text: 'Every plot has its own nutrients: the pips under empty plots show them (one pip per 30%), pale dusty soil is poor and dark soil is rich. Press N to colour every plot by its nutrients.\n\nNo crop grows on rock, but buildings can stand on it, or break it up with the Hoe (T) for 25 credits. The hoe also enriches soil beside water and turns sand into farmland.' },
+    { icon: 'map', title: 'More land', strip: [['map', 'Expand'], ['coin', 'Pay'], ['wheat', 'Plant']],
+      text: 'The field grows one strip at a time. The glowing + beside the field marks where the next strip goes: hover it to see the price, click it (or press E) to buy it. Strips are added west, east, north and south in turn, and every one costs a bit more.\n\nThe same upgrade is Expand Field in the Engineering branch of the tech tree.' },
     { icon: 'hammer', title: 'Buildings', strip: [['sprinkler', 'Water'], ['greenhouse', 'Shelter'], ['silo', 'Store'], ['harvester', 'Harvest'], ['turbine', 'Power']],
       text: 'Press B for the build dock. Sprinklers and wind turbines speed up crops around them, greenhouses shield them from weather, silos add storage, harvesters and planters work on their own.\n\nClick a building to inspect, upgrade (up to level 6) or remove it. Right-click upgrades directly, Shift+right-click removes.' },
     { icon: 'paw', title: 'Livestock', strip: [['hen', 'Eggs'], ['goat', 'Wool'], ['cow', 'Milk'], ['bee', 'Honey']],
@@ -8813,7 +8938,7 @@
       ['←↑→↓  Space', 'Tile cursor and act'], ['Home', 'Fit the farm'],
       ['1-9  0', 'Pick crop or building'], ['P  B  T', 'Seeds, build, hoe'],
       ['S  M', 'Sell all, market'], ['L  U', 'Animals, tech tree'],
-      ['N', 'Nutrient overlay'], ['H', 'This help'], ['Esc  F2', 'Pause, new farm']
+      ['N  E', 'Nutrients, expand field'], ['H', 'This help'], ['Esc  F2', 'Pause, new farm']
     ] }
   ];
 
@@ -9465,6 +9590,15 @@
     const pi = penAt(sx, sy);
     if (pi >= 0)
       return { key: 'pen:' + pi + ':' + (livestockPens[pi].produceReady ? 1 : 0), lines: buildLivestockPenTooltip(livestockPens[pi]) };
+    if (expansionAt(sx, sy)) {
+      const cost = expandCost();
+      return { key: 'expand:' + techLevel('eng_land') + ':' + (credits >= cost ? 1 : 0), lines: [
+        '[[map]] Expand the field',
+        `Adds ${expansionTiles().length} new plots on the ${DIR_NAMES[expansionDirection]} side.`,
+        (credits >= cost ? '✔ ' : '✘ ') + `Costs ${cost} credits`,
+        'Click or press E · also in the tech tree (Engineering)'
+      ] };
+    }
     const { col, row } = canvasToGrid(sx, sy);
     if (!isInsideGrid(col, row))
       return null;
@@ -9979,6 +10113,7 @@
       case 'KeyT': setTool(selectedTool === TOOL_HOE ? 'plant' : 'hoe'); break;
       case 'Home': resetView(); break;
       case 'KeyN': toggleSoilOverlay(); break;
+      case 'KeyE': expandField(); break;
       case 'Equal': case 'NumpadAdd': zoomAt(canvasW / 2, canvasH / 2, 1.15); break;
       case 'Minus': case 'NumpadSubtract': zoomAt(canvasW / 2, canvasH / 2, 1 / 1.15); break;
     }
@@ -10133,6 +10268,10 @@
     const pi = penAt(pointerX, pointerY);
     if (pi >= 0) {
       feedAndCollect(pi);
+      return;
+    }
+    if (expansionAt(pointerX, pointerY)) {
+      expandField();
       return;
     }
     inspect = null;
