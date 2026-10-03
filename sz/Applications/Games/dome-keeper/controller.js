@@ -1711,7 +1711,10 @@
       addFloating(x, y, text, opts);
     };
   }
-  let surfaceArt = null;                 // cached sky, mountains, ground, dome glass
+  let surfaceArt = null;                 // cached sky, mountains, ground and plants of the site
+  let daylight = 0;                      // 0 = night .. 1 = full day (sky and land colours)
+  let duskGlow = 0;                      // warm sunrise / sunset tint
+  function windStrength() { return 0; }
   const enemyHitFlash = new WeakMap();   // enemy -> white flash strength after a hit
 
   /* ======================================================================
@@ -2011,7 +2014,8 @@
       partialHP,
       droppedResources,
       primaryGadget, primaryGadgetState, foundGadgets, gadgetChambers,
-      unlockedTools, activeToolKey, toolState
+      unlockedTools, activeToolKey, toolState,
+      site
     };
     try {
       localStorage.setItem(STORAGE_SAVE, JSON.stringify(data));
@@ -2119,7 +2123,11 @@
 
   function restoreRun(d) {
     resetGame(); // fresh defaults for everything not stored
-    if (!d.mineOutdated) {
+    if (isPlainObject(d.site) && isNum(d.site.seed) && BIOMES[d.site.biome])
+      site = { index: Math.max(0, Math.floor(isNum(d.site.index) ? d.site.index : 0)), seed: d.site.seed | 0, biome: d.site.biome };
+    if (d.mineOutdated)
+      generateUnderground(makeRng(site.seed));
+    else {
       undergroundGrid = d.grid.map(row => Array.from(row, ch => ch.charCodeAt(0) - 48));
       gadgetChambers = d.gadgetChambers
         .filter(ch => ch.r >= 0 && ch.r < GRID_ROWS - 1 && ch.c >= 0 && ch.c < GRID_COLS - 1)
@@ -2357,10 +2365,11 @@
     for (let r = 0; r < GRID_ROWS; ++r)
       undergroundGrid.push(new Array(GRID_COLS).fill(TILE_DIRT));
 
-    // Ore veins: every cell may seed one vein, the type weighted by depth
+    // Ore veins: every cell may seed one vein, the type weighted by depth and biome
+    const oreBias = currentBiome().ore;
     for (let r = 0; r < GRID_ROWS; ++r) {
       const d = r / GRID_ROWS;
-      const weights = RESOURCE_TILES.map(t => getOreSpawnChance(r, t));
+      const weights = RESOURCE_TILES.map(t => getOreSpawnChance(r, t) * (oreBias[TILE_LABELS[t]] || 1));
       for (let c = 0; c < GRID_COLS; ++c) {
         if (undergroundGrid[r][c] !== TILE_DIRT) continue;
         for (let i = 0; i < RESOURCE_TILES.length; ++i) {
@@ -2563,13 +2572,16 @@
     // Reset tooltip
     clearTooltip();
 
-    generateUnderground();
+    // A new run lands on a fresh site
+    site = newSite(0, (Math.random() * 0x7fffffff) | 0);
+    generateUnderground(makeRng(site.seed));
     updateWindowTitle();
   }
 
   function startGameAfterGadgetSelect() {
     state = STATE_PLAYING;
     SZ.GameAudio.play('select');
+    floatingText.add(CANVAS_W / 2, 200, 'Landing site: ' + currentBiome().name, { color: '#ffe080', font: 'bold 34px sans-serif' });
     // Initialize primary gadget state
     switch (primaryGadget) {
       case 'shield':
@@ -5579,205 +5591,117 @@
     return c;
   }
 
-  // Sky, planets, nebula and faint stars -- rendered once
-  function buildSurfaceArt() {
-    if (surfaceArt) return surfaceArt;
-    const rng = makeRng(1337);
-    const sky = makeCanvas(CANVAS_W, DOME_Y);
-    const g = sky.getContext('2d');
-    const grad = g.createLinearGradient(0, 0, 0, DOME_Y);
-    grad.addColorStop(0, '#02030c');
-    grad.addColorStop(0.45, '#0a0f2e');
-    grad.addColorStop(0.72, '#1a1846');
-    grad.addColorStop(0.9, '#3a2458');
-    grad.addColorStop(1, '#6b3a5e');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, CANVAS_W, DOME_Y);
-    // Nebula clouds
-    const neb = [[300, 260, 340, '70,60,180', 0.18], [980, 180, 300, '40,140,170', 0.14], [700, 420, 420, '150,50,150', 0.12], [1250, 520, 260, '200,90,90', 0.08]];
-    for (const [x, y, r, col, a] of neb) {
-      const rg = g.createRadialGradient(x, y, 0, x, y, r);
-      rg.addColorStop(0, `rgba(${col},${a})`);
-      rg.addColorStop(0.6, `rgba(${col},${a * 0.4})`);
-      rg.addColorStop(1, `rgba(${col},0)`);
-      g.fillStyle = rg;
-      g.fillRect(x - r, y - r, r * 2, r * 2);
-    }
-    // Faint star dust
-    for (let i = 0; i < 420; ++i) {
-      const x = rng() * CANVAS_W, y = rng() * DOME_Y * 0.92;
-      g.fillStyle = `rgba(${200 + rng() * 55 | 0},${200 + rng() * 55 | 0},255,${0.08 + rng() * 0.35 * (1 - y / DOME_Y)})`;
-      g.fillRect(x, y, rng() < 0.15 ? 1.6 : 1, rng() < 0.15 ? 1.6 : 1);
-    }
-    // Ringed gas giant
-    const px = 470, py = 240, pr = 70;
-    g.save();
-    g.translate(px, py);
-    g.rotate(-0.35);
-    g.strokeStyle = 'rgba(220,190,255,0.25)';
-    g.lineWidth = 6;
-    g.beginPath();
-    g.ellipse(0, 0, pr * 1.9, pr * 0.42, 0, Math.PI, TWO_PI);
-    g.stroke();
-    g.restore();
-    const pg = g.createRadialGradient(px - pr * 0.45, py - pr * 0.45, pr * 0.1, px, py, pr);
-    pg.addColorStop(0, '#f0c8ff');
-    pg.addColorStop(0.35, '#a070d0');
-    pg.addColorStop(0.8, '#3a2470');
-    pg.addColorStop(1, '#1a1038');
-    g.fillStyle = pg;
-    g.beginPath();
-    g.arc(px, py, pr, 0, TWO_PI);
-    g.fill();
-    g.save();
-    g.beginPath();
-    g.arc(px, py, pr, 0, TWO_PI);
-    g.clip();
-    g.globalAlpha = 0.18;
-    for (let i = -3; i <= 3; ++i) {
-      g.fillStyle = i % 2 ? '#ffffff' : '#2a1050';
-      g.fillRect(px - pr, py + i * 18 - 4, pr * 2, 8);
-    }
-    g.restore();
-    g.save();
-    g.translate(px, py);
-    g.rotate(-0.35);
-    g.strokeStyle = 'rgba(230,200,255,0.45)';
-    g.lineWidth = 5;
-    g.beginPath();
-    g.ellipse(0, 0, pr * 1.9, pr * 0.42, 0, 0, Math.PI);
-    g.stroke();
-    g.restore();
-    // Small moon
-    const mg = g.createRadialGradient(830, 120, 2, 840, 130, 26);
-    mg.addColorStop(0, '#e8f0ff');
-    mg.addColorStop(0.7, '#8090b8');
-    mg.addColorStop(1, '#303a58');
-    g.fillStyle = mg;
-    g.beginPath();
-    g.arc(840, 130, 24, 0, TWO_PI);
-    g.fill();
-    g.fillStyle = 'rgba(40,50,80,0.35)';
-    for (const [cx, cy, cr] of [[834, 124, 5], [848, 138, 4], [844, 120, 2.5]]) {
-      g.beginPath();
-      g.arc(cx, cy, cr, 0, TWO_PI);
-      g.fill();
-    }
+  /* ======================================================================
+     BIOMES -- every landing site gets one, picked by the site's seed
+     ====================================================================== */
 
-    // Twinkling stars drawn live
-    const stars = [];
-    for (let i = 0; i < 90; ++i)
-      stars.push({ x: rng() * CANVAS_W, y: rng() * DOME_Y * 0.8, s: 0.8 + rng() * 1.6, p: rng() * TWO_PI, f: 0.6 + rng() * 2.2, big: rng() < 0.12 });
+  // sky*: gradient top -> horizon by day, night and dusk; ranges: far, mid and
+  // near mountain colours [top, foot]; ore: spawn multipliers per resource;
+  // weather: how often each kind of weather happens here
+  const BIOMES = {
+    rocky: {
+      name: 'Rocky Badlands', shape: 'ridge', plant: 'grass', decor: 'ringed',
+      plantColors: ['#3f8a70', '#5ab08e', '#2c6a54'],
+      skyDay: ['#2c5ca8', '#5c94d4', '#a8c8e8', '#e8c8b0'], skyNight: ['#02030c', '#0a0f2e', '#1a1846', '#4a2a5e'], skyDusk: ['#1c2460', '#5a3a80', '#c0607a', '#ffa868'],
+      nebula: ['70,60,180', '40,140,170', '150,50,150'],
+      ranges: [
+        { day: ['#9a92c4', '#7a72a8'], night: ['#3c2c62', '#2a2456'] },
+        { day: ['#6e6496', '#544a7e'], night: ['#251d48', '#17163a'] },
+        { day: ['#4a3e66', '#382e52'], night: ['#14122c', '#0c0b20'] }],
+      rim: ['rgba(255,240,230,0.45)', 'rgba(170,140,255,0.4)'],
+      ground: { day: ['#9a7488', '#7a5a6c', '#56404e', '#2e2030'], night: ['#4a3048', '#38243a', '#24172a', '#140c18'], pebble: [150, 110, 140], gems: ['#5ad0ff', '#c070ff', '#60f0b0'], edge: '#ffbedc' },
+      weather: { rain: 1, snow: 1, blizzard: 0.8, storm: 1, meteor: 1.3 },
+      ore: { iron: 1.3, tin: 1.2, titanium: 1.3 }
+    },
+    desert: {
+      name: 'Dune Sea', shape: 'mesa', plant: 'cactus', decor: 'none',
+      plantColors: ['#4a8a3a', '#6ab050', '#2e5e26'],
+      skyDay: ['#2a6cc0', '#6aaee6', '#c8e2f2', '#f8e2b0'], skyNight: ['#04040c', '#141028', '#2a1c38', '#5a3a40'], skyDusk: ['#2a1e50', '#7a3a5a', '#e0703a', '#ffd070'],
+      nebula: ['150,90,60', '120,60,120', '60,60,140'],
+      ranges: [
+        { day: ['#e8b484', '#d49a68'], night: ['#4a2e38', '#3a2430'] },
+        { day: ['#c8804c', '#b06a3c'], night: ['#331e26', '#28161e'] },
+        { day: ['#9a5630', '#824628'], night: ['#1e1014', '#160a0e'] }],
+      rim: ['rgba(255,240,200,0.55)', 'rgba(255,170,120,0.3)'],
+      ground: { day: ['#f0cc8a', '#d8aa68', '#b07e44', '#6a4a26'], night: ['#5a4234', '#463226', '#2e2018', '#18100a'], pebble: [180, 140, 90], gems: ['#ffd060', '#ff9a40', '#ffe8a0'], edge: '#fff0c0' },
+      weather: { rain: 0.25, snow: 0.05, blizzard: 0, storm: 0.6, meteor: 1.6 },
+      ore: { gold: 1.7, copper: 1.3, quartz: 1.3, water: 0.5 }
+    },
+    ice: {
+      name: 'Frozen Shelf', shape: 'peaks', plant: 'icicle', decor: 'aurora',
+      plantColors: ['#bfe8ff', '#e8f8ff', '#7ac0e8'],
+      skyDay: ['#3a74c4', '#7ab4e8', '#c8e6f8', '#eef8ff'], skyNight: ['#01040c', '#061428', '#0e2840', '#1e4058'], skyDusk: ['#1a2a6a', '#5a4a9a', '#c080c0', '#ffc8d0'],
+      nebula: ['40,140,170', '60,100,200', '80,180,160'],
+      ranges: [
+        { day: ['#dceaf8', '#b4c8e0'], night: ['#30405e', '#22304c'] },
+        { day: ['#a8bcd8', '#8aa0c0'], night: ['#1e2a44', '#141e36'] },
+        { day: ['#7a90b0', '#62789a'], night: ['#121a2e', '#0a1020'] }],
+      rim: ['rgba(255,255,255,0.7)', 'rgba(160,220,255,0.45)'],
+      ground: { day: ['#f0f8ff', '#d0e2f2', '#98b0cc', '#5a6a88'], night: ['#3a4a6a', '#2a3854', '#1a243a', '#0c1222'], pebble: [170, 190, 220], gems: ['#9ae0ff', '#e0f8ff', '#7ab8ff'], edge: '#ffffff' },
+      weather: { rain: 0.2, snow: 2.6, blizzard: 2.6, storm: 0.25, meteor: 1 },
+      ore: { water: 2, silver: 1.4, sapphire: 1.5 }
+    },
+    jungle: {
+      name: 'Alien Jungle', shape: 'hills', plant: 'fern', decor: 'giant',
+      plantColors: ['#2aa060', '#5ad080', '#1a7048'],
+      skyDay: ['#1a7a8a', '#4ab0a8', '#a8e0c0', '#e8f4c8'], skyNight: ['#010806', '#04160f', '#0c2a1e', '#1e4030'], skyDusk: ['#123048', '#3a5a6a', '#d0806a', '#f0d080'],
+      nebula: ['40,160,120', '30,120,160', '120,180,80'],
+      ranges: [
+        { day: ['#5aa88a', '#46907a'], night: ['#16382e', '#102c24'] },
+        { day: ['#3a845e', '#2c6c4c'], night: ['#0e2a1e', '#0a2018'] },
+        { day: ['#22603c', '#184c2e'], night: ['#08180e', '#041008'] }],
+      rim: ['rgba(230,255,200,0.45)', 'rgba(120,255,180,0.3)'],
+      ground: { day: ['#5a8a3a', '#46702e', '#2e4c20', '#162a12'], night: ['#1e3422', '#16281a', '#0e1a12', '#060e08'], pebble: [90, 130, 80], gems: ['#7aff9a', '#ffd040', '#ff7ad0'], edge: '#d0ffb0' },
+      weather: { rain: 2.4, snow: 0.15, blizzard: 0.05, storm: 1.8, meteor: 0.8 },
+      ore: { emerald: 1.8, copper: 1.4, coal: 1.3, uranium: 1.4 }
+    },
+    volcanic: {
+      name: 'Ashen Caldera', shape: 'volcano', plant: 'ember', decor: 'none',
+      plantColors: ['#ff7a20', '#ffd060', '#7a2a10'],
+      skyDay: ['#5a4a52', '#8a6a66', '#c09078', '#f0b080'], skyNight: ['#060102', '#1a0606', '#360c0a', '#6a1c10'], skyDusk: ['#2a1420', '#6a2a2a', '#d0502a', '#ffa040'],
+      nebula: ['180,60,40', '140,40,60', '200,100,40'],
+      ranges: [
+        { day: ['#7a6a6a', '#665656'], night: ['#2a1414', '#201010'] },
+        { day: ['#5a4646', '#4a3838'], night: ['#1c0c0c', '#160808'] },
+        { day: ['#3c2c2c', '#2e2020'], night: ['#100606', '#0a0404'] }],
+      rim: ['rgba(255,200,160,0.4)', 'rgba(255,90,40,0.55)'],
+      ground: { day: ['#5a4644', '#463634', '#2e2220', '#181010'], night: ['#2e1616', '#241010', '#180a0a', '#0c0404'], pebble: [90, 70, 70], gems: ['#ff6a20', '#ffb040', '#ff3a20'], edge: '#ff9a6a' },
+      weather: { rain: 0.5, snow: 0.2, blizzard: 0.1, storm: 1.3, meteor: 2.2 },
+      ore: { redstone: 1.8, ruby: 1.5, coal: 1.5, opal: 1.6 }
+    },
+    crystal: {
+      name: 'Crystal Fields', shape: 'spires', plant: 'shard', decor: 'shattered',
+      plantColors: ['#a0a0ff', '#e0c0ff', '#60e0ff'],
+      skyDay: ['#4a3ab0', '#8a7ae0', '#d0c0f0', '#f8e0f4'], skyNight: ['#03020c', '#100828', '#24104a', '#4a2068'], skyDusk: ['#22186a', '#5a3aa0', '#c060c0', '#ffb0e0'],
+      nebula: ['120,80,220', '200,80,200', '60,160,220'],
+      ranges: [
+        { day: ['#aab0f0', '#8a90d8'], night: ['#2a2a62', '#202052'] },
+        { day: ['#7a7ccc', '#6062b0'], night: ['#1a1a48', '#12123a'] },
+        { day: ['#4e4a96', '#3c387c'], night: ['#0e0c2a', '#08061c'] }],
+      rim: ['rgba(240,230,255,0.6)', 'rgba(180,140,255,0.5)'],
+      ground: { day: ['#8a80c0', '#6a60a0', '#463e76', '#221c44'], night: ['#2c2452', '#221c44', '#161032', '#0a081a'], pebble: [130, 120, 190], gems: ['#c0a0ff', '#80e8ff', '#ffa0e0'], edge: '#e8d8ff' },
+      weather: { rain: 0.8, snow: 0.8, blizzard: 0.5, storm: 0.9, meteor: 1.6 },
+      ore: { quartz: 2, diamond: 1.6, amethyst: 1.6, cobalt: 1.3 }
+    }
+  };
+  const BIOME_KEYS = Object.keys(BIOMES);
 
-    // Mountain ranges: far, mid, near (wider than the screen for parallax)
-    const ranges = [];
-    const specs = [
-      { base: 210, amp: 150, col1: '#2a2456', col2: '#3c2c62', rim: 'rgba(170,140,255,0.35)', seed: 11, depth: 6 },
-      { base: 130, amp: 100, col1: '#17163a', col2: '#251d48', rim: 'rgba(140,120,230,0.4)', seed: 23, depth: 14 },
-      { base: 60, amp: 50, col1: '#0c0b20', col2: '#14122c', rim: 'rgba(120,110,200,0.45)', seed: 37, depth: 26 }
-    ];
-    for (const sp of specs) {
-      const w = CANVAS_W + 120, h = sp.base + sp.amp + 20;
-      const c = makeCanvas(w, h);
-      const m = c.getContext('2d');
-      // Jagged ridge line by midpoint displacement
-      const r2 = makeRng(sp.seed);
-      const n = 256;
-      const hs = new Array(n + 1);
-      hs[0] = r2();
-      hs[n] = r2();
-      for (let span = n, disp = 1; span > 1; span >>= 1, disp *= 0.56)
-        for (let i = span >> 1; i < n; i += span)
-          hs[i] = (hs[i - (span >> 1)] + hs[i + (span >> 1)]) / 2 + (r2() - 0.5) * disp;
-      let lo = Infinity, hi = -Infinity;
-      for (const v of hs) {
-        lo = Math.min(lo, v);
-        hi = Math.max(hi, v);
-      }
-      const ridge = [];
-      for (let i = 0; i <= n; ++i) {
-        const y = sp.base - sp.amp * 0.5 + ((hs[i] - lo) / (hi - lo)) * sp.amp;
-        ridge.push([i * w / n, h - Math.max(10, y)]);
-      }
-      const mgrad = m.createLinearGradient(0, 0, 0, h);
-      mgrad.addColorStop(0, sp.col2);
-      mgrad.addColorStop(1, sp.col1);
-      m.fillStyle = mgrad;
-      m.beginPath();
-      m.moveTo(0, h);
-      for (const [x, y] of ridge)
-        m.lineTo(x, y);
-      m.lineTo(w, h);
-      m.closePath();
-      m.fill();
-      m.strokeStyle = sp.rim;
-      m.lineWidth = 2;
-      m.beginPath();
-      ridge.forEach(([x, y], i) => i ? m.lineTo(x, y + 1) : m.moveTo(x, y + 1));
-      m.stroke();
-      // Haze at the foot
-      const hz = m.createLinearGradient(0, h * 0.4, 0, h);
-      hz.addColorStop(0, 'rgba(120,70,140,0)');
-      hz.addColorStop(1, 'rgba(120,70,140,0.25)');
-      m.globalCompositeOperation = 'source-atop';
-      m.fillStyle = hz;
-      m.fillRect(0, 0, w, h);
-      m.globalCompositeOperation = 'source-over';
-      ranges.push({ canvas: c, depth: sp.depth, h });
-    }
+  // The landing site: index counts relocations, the seed drives biome, terrain and mine
+  let site = newSite(0, (Math.random() * 0x7fffffff) | 0);
 
-    // Ground strip with strata, rocks and crystals
-    const gh = CANVAS_H - DOME_Y;
-    const ground = makeCanvas(CANVAS_W, gh);
-    const gg = ground.getContext('2d');
-    const sg = gg.createLinearGradient(0, 0, 0, gh);
-    sg.addColorStop(0, '#4a3048');
-    sg.addColorStop(0.08, '#38243a');
-    sg.addColorStop(0.5, '#24172a');
-    sg.addColorStop(1, '#140c18');
-    gg.fillStyle = sg;
-    gg.fillRect(0, 0, CANVAS_W, gh);
-    const r3 = makeRng(99);
-    for (let band = 0; band < 4; ++band) {
-      const by = 18 + band * 22;
-      gg.strokeStyle = `rgba(0,0,0,${0.18 + band * 0.04})`;
-      gg.lineWidth = 2;
-      gg.beginPath();
-      for (let x = 0; x <= CANVAS_W; x += 10)
-        gg.lineTo(x, by + Math.sin(x * 0.01 + band) * 4 + Math.sin(x * 0.043 + band * 2) * 2);
-      gg.stroke();
-    }
-    for (let i = 0; i < 140; ++i) {
-      const x = r3() * CANVAS_W, y = 8 + r3() * (gh - 12), rr = 1.5 + r3() * 5;
-      gg.fillStyle = `rgba(${90 + r3() * 40 | 0},${60 + r3() * 30 | 0},${90 + r3() * 40 | 0},0.6)`;
-      gg.beginPath();
-      gg.ellipse(x, y, rr * 1.4, rr, 0, 0, TWO_PI);
-      gg.fill();
-      gg.fillStyle = 'rgba(255,220,255,0.12)';
-      gg.beginPath();
-      gg.ellipse(x - rr * 0.3, y - rr * 0.4, rr * 0.6, rr * 0.35, 0, 0, TWO_PI);
-      gg.fill();
-    }
-    for (let i = 0; i < 18; ++i) {
-      const x = r3() * CANVAS_W, y = 30 + r3() * (gh - 40);
-      const col = ['#5ad0ff', '#c070ff', '#60f0b0'][i % 3];
-      gg.fillStyle = col;
-      gg.globalAlpha = 0.55;
-      gg.beginPath();
-      gg.moveTo(x, y - 6);
-      gg.lineTo(x + 3, y);
-      gg.lineTo(x, y + 5);
-      gg.lineTo(x - 3, y);
-      gg.closePath();
-      gg.fill();
-      gg.globalAlpha = 1;
-    }
-    // Lit top edge
-    gg.fillStyle = 'rgba(255,190,220,0.35)';
-    gg.fillRect(0, 0, CANVAS_W, 2);
-    gg.fillStyle = 'rgba(0,0,0,0.3)';
-    gg.fillRect(0, 2, CANVAS_W, 2);
+  function newSite(index, seed) {
+    const rng = makeRng(seed ^ 0x2545f491);
+    return { index, seed, biome: BIOME_KEYS[Math.floor(rng() * BIOME_KEYS.length)] };
+  }
 
+  function currentBiome() {
+    return BIOMES[site.biome] || BIOMES.rocky;
+  }
+
+  // Effects that do not depend on the site: dome glass, cracks, glow sprite
+  let fxArt = null;
+  function buildFxArt() {
+    if (fxArt) return fxArt;
     // Dome glass (interior tint, hex lattice, highlights) at 2x for crisp scaling
     const R = DOME_RADIUS, S = 2;
     const glass = makeCanvas((R * 2 + 8) * S, (R + 8) * S);
@@ -5810,14 +5734,12 @@
         dg.closePath();
         dg.stroke();
       }
-    // Bottom shading where the glass meets the base
     const bg2 = dg.createLinearGradient(0, -R * 0.35, 0, 0);
     bg2.addColorStop(0, 'rgba(10,20,50,0)');
     bg2.addColorStop(1, 'rgba(10,20,50,0.45)');
     dg.fillStyle = bg2;
     dg.fillRect(-R, -R * 0.35, R * 2, R * 0.35);
     dg.restore();
-    // Specular crescent and rim light
     dg.save();
     dg.beginPath();
     dg.arc(0, 0, R - 8, Math.PI * 1.08, Math.PI * 1.5);
@@ -5866,13 +5788,332 @@
     gl.fillStyle = glg;
     gl.fillRect(0, 0, 64, 64);
 
-    surfaceArt = { sky, stars, ranges, ground, glass, glassScale: S, cracks, glow, tinted: {} };
+    fxArt = { glass, glassScale: S, cracks, glow, tinted: {} };
+    return fxArt;
+  }
+
+  function skyGradientCanvas(stops) {
+    const c = makeCanvas(CANVAS_W, DOME_Y);
+    const g = c.getContext('2d');
+    const grad = g.createLinearGradient(0, 0, 0, DOME_Y);
+    grad.addColorStop(0, stops[0]);
+    grad.addColorStop(0.42, stops[1]);
+    grad.addColorStop(0.78, stops[2]);
+    grad.addColorStop(1, stops[3]);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, CANVAS_W, DOME_Y);
+    return c;
+  }
+
+  // Ridge heights (0..1, 257 samples) for a mountain range in the biome's style
+  function ridgeProfile(shape, rng, layer) {
+    const n = 256;
+    const hs = new Array(n + 1);
+    hs[0] = rng();
+    hs[n] = rng();
+    const rough = { ridge: 0.56, mesa: 0.5, peaks: 0.66, hills: 0.42, volcano: 0.52, spires: 0.5 }[shape] || 0.56;
+    for (let span = n, disp = 1; span > 1; span >>= 1, disp *= rough)
+      for (let i = span >> 1; i < n; i += span)
+        hs[i] = (hs[i - (span >> 1)] + hs[i + (span >> 1)]) / 2 + (rng() - 0.5) * disp;
+    let lo = Infinity, hi = -Infinity;
+    for (const v of hs) {
+      lo = Math.min(lo, v);
+      hi = Math.max(hi, v);
+    }
+    let out = hs.map(v => (v - lo) / (hi - lo || 1));
+    const craters = [];
+    if (shape === 'hills') {
+      // Rounded rolling hills
+      for (let pass = 0; pass < 3; ++pass)
+        out = out.map((v, i) => (out[Math.max(0, i - 2)] + out[Math.max(0, i - 1)] + v + out[Math.min(n, i + 1)] + out[Math.min(n, i + 2)]) / 5);
+    } else if (shape === 'mesa') {
+      // Flat-topped buttes with steep sides
+      out = out.map(v => {
+        const q = Math.round(v * 3) / 3;
+        return q + (v - q) * 0.15;
+      });
+    } else if (shape === 'peaks') {
+      out = out.map(v => Math.pow(v, 1.5));
+    } else if (shape === 'volcano' && layer === 1) {
+      // One or two cones with a crater on the middle range
+      const count = 1 + (rng() < 0.5 ? 1 : 0);
+      for (let k = 0; k < count; ++k) {
+        const cx = Math.floor(n * (0.15 + rng() * 0.7)), w = 26 + rng() * 14;
+        for (let i = 0; i <= n; ++i) {
+          const d = Math.abs(i - cx) / w;
+          if (d < 1) {
+            let h = 1.25 - d * 0.75;
+            if (d < 0.12) h -= (0.12 - d) * 1.6; // crater
+            out[i] = Math.max(out[i], h);
+          }
+        }
+        craters.push(cx / n);
+      }
+    } else if (shape === 'spires') {
+      // Crystal spikes
+      for (let k = 0; k < 14; ++k) {
+        const cx = Math.floor(rng() * n), w = 2 + rng() * 4, h = 0.6 + rng() * 0.6;
+        for (let i = Math.max(0, cx - w); i <= Math.min(n, cx + w); ++i)
+          out[i] = Math.max(out[i], h * (1 - Math.abs(i - cx) / (w + 1)));
+      }
+    }
+    let top = 0;
+    for (const v of out)
+      top = Math.max(top, v);
+    return { heights: out.map(v => v / (top || 1)), craters };
+  }
+
+  // Sky layers, mountains, ground and plants of the current site -- rebuilt when the site changes
+  function buildSurfaceArt() {
+    if (surfaceArt && surfaceArt.seed === site.seed) return surfaceArt;
+    const B = currentBiome();
+    const rng = makeRng(site.seed ^ 0x1337);
+
+    const skyDay = skyGradientCanvas(B.skyDay);
+    const skyDusk = skyGradientCanvas(B.skyDusk);
+    const skyNight = skyGradientCanvas(B.skyNight);
+    const g = skyNight.getContext('2d');
+    // Nebula clouds and faint star dust on the night sky
+    const neb = [[300, 260, 340, B.nebula[0], 0.18], [980, 180, 300, B.nebula[1], 0.14], [700, 420, 420, B.nebula[2], 0.12]];
+    for (const [x, y, r, col, a] of neb) {
+      const rg = g.createRadialGradient(x, y, 0, x, y, r);
+      rg.addColorStop(0, `rgba(${col},${a})`);
+      rg.addColorStop(0.6, `rgba(${col},${a * 0.4})`);
+      rg.addColorStop(1, `rgba(${col},0)`);
+      g.fillStyle = rg;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    for (let i = 0; i < 420; ++i) {
+      const x = rng() * CANVAS_W, y = rng() * DOME_Y * 0.92;
+      g.fillStyle = `rgba(${200 + rng() * 55 | 0},${200 + rng() * 55 | 0},255,${0.08 + rng() * 0.35 * (1 - y / DOME_Y)})`;
+      g.fillRect(x, y, rng() < 0.15 ? 1.6 : 1, rng() < 0.15 ? 1.6 : 1);
+    }
+    // Thin high clouds by day
+    const dc = skyDay.getContext('2d');
+    for (let i = 0; i < 9; ++i) {
+      const x = rng() * CANVAS_W, y = 60 + rng() * DOME_Y * 0.45, w = 160 + rng() * 260;
+      const cg = dc.createRadialGradient(x, y, 0, x, y, w / 2);
+      cg.addColorStop(0, 'rgba(255,255,255,0.22)');
+      cg.addColorStop(1, 'rgba(255,255,255,0)');
+      dc.save();
+      dc.translate(x, y);
+      dc.scale(1, 0.18);
+      dc.translate(-x, -y);
+      dc.fillStyle = cg;
+      dc.fillRect(x - w / 2, y - w / 2, w, w);
+      dc.restore();
+    }
+
+    // Decoration hanging in the sky (planet, shattered moon); fades by day
+    const decor = makeCanvas(CANVAS_W, DOME_Y);
+    const d = decor.getContext('2d');
+    if (B.decor === 'ringed' || B.decor === 'giant' || B.decor === 'shattered') {
+      const px = 280 + rng() * 300, py = 180 + rng() * 120, pr = B.decor === 'giant' ? 120 : 70;
+      const cols = B.decor === 'giant' ? ['#d8fff0', '#60c0a0', '#1a5a50', '#0a2a28'] : (B.decor === 'shattered' ? ['#ffe8ff', '#b080e0', '#4a2a80', '#1a1038'] : ['#f0c8ff', '#a070d0', '#3a2470', '#1a1038']);
+      if (B.decor === 'ringed') {
+        d.save();
+        d.translate(px, py);
+        d.rotate(-0.35);
+        d.strokeStyle = 'rgba(220,190,255,0.25)';
+        d.lineWidth = 6;
+        d.beginPath();
+        d.ellipse(0, 0, pr * 1.9, pr * 0.42, 0, Math.PI, TWO_PI);
+        d.stroke();
+        d.restore();
+      }
+      const pg = d.createRadialGradient(px - pr * 0.45, py - pr * 0.45, pr * 0.1, px, py, pr);
+      pg.addColorStop(0, cols[0]);
+      pg.addColorStop(0.35, cols[1]);
+      pg.addColorStop(0.8, cols[2]);
+      pg.addColorStop(1, cols[3]);
+      d.fillStyle = pg;
+      d.beginPath();
+      d.arc(px, py, pr, 0, TWO_PI);
+      d.fill();
+      d.save();
+      d.beginPath();
+      d.arc(px, py, pr, 0, TWO_PI);
+      d.clip();
+      d.globalAlpha = 0.18;
+      for (let i = -3; i <= 3; ++i) {
+        d.fillStyle = i % 2 ? '#ffffff' : '#10202a';
+        d.fillRect(px - pr, py + i * pr * 0.26 - 4, pr * 2, 8);
+      }
+      d.restore();
+      if (B.decor === 'ringed') {
+        d.save();
+        d.translate(px, py);
+        d.rotate(-0.35);
+        d.strokeStyle = 'rgba(230,200,255,0.45)';
+        d.lineWidth = 5;
+        d.beginPath();
+        d.ellipse(0, 0, pr * 1.9, pr * 0.42, 0, 0, Math.PI);
+        d.stroke();
+        d.restore();
+      } else if (B.decor === 'shattered') {
+        // Fragments drifting away from the broken moon
+        for (let i = 0; i < 18; ++i) {
+          const a = rng() * TWO_PI, dist = pr * (1.15 + rng() * 0.9), s = 3 + rng() * 9;
+          const fx = px + Math.cos(a) * dist, fy = py + Math.sin(a) * dist * 0.55;
+          d.fillStyle = i % 3 ? '#b890f0' : '#f0d8ff';
+          d.beginPath();
+          d.moveTo(fx, fy - s);
+          d.lineTo(fx + s * 0.6, fy);
+          d.lineTo(fx, fy + s * 0.8);
+          d.lineTo(fx - s * 0.5, fy);
+          d.closePath();
+          d.fill();
+        }
+      }
+    }
+
+    // Twinkling stars drawn live
+    const stars = [];
+    for (let i = 0; i < 90; ++i)
+      stars.push({ x: rng() * CANVAS_W, y: rng() * DOME_Y * 0.8, s: 0.8 + rng() * 1.6, p: rng() * TWO_PI, f: 0.6 + rng() * 2.2, big: rng() < 0.12 });
+
+    // Mountain ranges: far, mid, near (wider than the screen for parallax), by day and by night
+    const ranges = [];
+    const specs = [
+      { base: 210, amp: 150, depth: 6 },
+      { base: 130, amp: 100, depth: 14 },
+      { base: 60, amp: 50, depth: 26 }
+    ];
+    if (B.shape === 'peaks') {
+      specs[0].amp = 200;
+      specs[1].amp = 130;
+    }
+    let craters = [];
+    specs.forEach((sp, layer) => {
+      const w = CANVAS_W + 120, h = sp.base + sp.amp + 70;
+      const prof = ridgeProfile(B.shape, makeRng(site.seed + 11 + layer * 12), layer);
+      const ridge = prof.heights.map((v, i) => [i * w / 256, h - Math.max(10, sp.base - sp.amp * 0.5 + v * sp.amp)]);
+      if (layer === 1)
+        craters = prof.craters.map(f => ({ x: f * w - 60, y: DOME_Y - h + 4 + ridge[Math.round(f * 256)][1] }));
+      const paint = (cols, rim, haze) => {
+        const c = makeCanvas(w, h);
+        const m = c.getContext('2d');
+        const mg = m.createLinearGradient(0, 0, 0, h);
+        mg.addColorStop(0, cols[0]);
+        mg.addColorStop(1, cols[1]);
+        m.fillStyle = mg;
+        m.beginPath();
+        m.moveTo(0, h);
+        for (const [x, y] of ridge)
+          m.lineTo(x, y);
+        m.lineTo(w, h);
+        m.closePath();
+        m.fill();
+        if (B.shape === 'peaks') {
+          // Snow caps on the higher slopes
+          m.save();
+          m.clip();
+          m.fillStyle = cols === B.ranges[layer].day ? 'rgba(255,255,255,0.85)' : 'rgba(150,170,215,0.26)';
+          m.beginPath();
+          m.moveTo(0, 0);
+          for (const [x, y] of ridge)
+            m.lineTo(x, Math.min(h, y + 10 + Math.max(0, (h - y) - sp.base) * 0.6));
+          m.lineTo(w, 0);
+          m.closePath();
+          m.fill();
+          m.restore();
+        }
+        m.strokeStyle = rim;
+        m.lineWidth = 2;
+        m.beginPath();
+        ridge.forEach(([x, y], i) => i ? m.lineTo(x, y + 1) : m.moveTo(x, y + 1));
+        m.stroke();
+        const hz = m.createLinearGradient(0, h * 0.4, 0, h);
+        hz.addColorStop(0, haze + '0)');
+        hz.addColorStop(1, haze + '0.28)');
+        m.globalCompositeOperation = 'source-atop';
+        m.fillStyle = hz;
+        m.fillRect(0, 0, w, h);
+        return c;
+      };
+      const hazeOf = (hex) => {
+        const [r, gg, b] = parseHex(hex);
+        return `rgba(${r},${gg},${b},`;
+      };
+      ranges.push({
+        day: paint(B.ranges[layer].day, B.rim[0], hazeOf(B.skyDay[3])),
+        night: paint(B.ranges[layer].night, B.rim[1], hazeOf(B.skyNight[3])),
+        depth: sp.depth, h
+      });
+    });
+
+    // Ground strip with strata, pebbles and gems, by day and by night
+    const gh = CANVAS_H - DOME_Y;
+    const paintGroundStrip = (stops, night) => {
+      const ground = makeCanvas(CANVAS_W, gh);
+      const gg = ground.getContext('2d');
+      const r3 = makeRng(site.seed ^ 99);
+      const sg = gg.createLinearGradient(0, 0, 0, gh);
+      sg.addColorStop(0, stops[0]);
+      sg.addColorStop(0.08, stops[1]);
+      sg.addColorStop(0.5, stops[2]);
+      sg.addColorStop(1, stops[3]);
+      gg.fillStyle = sg;
+      gg.fillRect(0, 0, CANVAS_W, gh);
+      for (let band = 0; band < 4; ++band) {
+        const by = 18 + band * 22;
+        gg.strokeStyle = `rgba(0,0,0,${0.16 + band * 0.04})`;
+        gg.lineWidth = 2;
+        gg.beginPath();
+        for (let x = 0; x <= CANVAS_W; x += 10)
+          gg.lineTo(x, by + Math.sin(x * 0.01 + band) * 4 + Math.sin(x * 0.043 + band * 2) * 2);
+        gg.stroke();
+      }
+      const [pr, pg, pb] = B.ground.pebble;
+      const k = night ? 0.45 : 1;
+      for (let i = 0; i < 140; ++i) {
+        const x = r3() * CANVAS_W, y = 8 + r3() * (gh - 12), rr = 1.5 + r3() * 5;
+        gg.fillStyle = `rgba(${(pr + r3() * 40) * k | 0},${(pg + r3() * 30) * k | 0},${(pb + r3() * 40) * k | 0},0.6)`;
+        gg.beginPath();
+        gg.ellipse(x, y, rr * 1.4, rr, 0, 0, TWO_PI);
+        gg.fill();
+        gg.fillStyle = `rgba(255,255,255,${night ? 0.08 : 0.18})`;
+        gg.beginPath();
+        gg.ellipse(x - rr * 0.3, y - rr * 0.4, rr * 0.6, rr * 0.35, 0, 0, TWO_PI);
+        gg.fill();
+      }
+      for (let i = 0; i < 18; ++i) {
+        const x = r3() * CANVAS_W, y = 30 + r3() * (gh - 40);
+        gg.fillStyle = B.ground.gems[i % B.ground.gems.length];
+        gg.globalAlpha = 0.55;
+        gg.beginPath();
+        gg.moveTo(x, y - 6);
+        gg.lineTo(x + 3, y);
+        gg.lineTo(x, y + 5);
+        gg.lineTo(x - 3, y);
+        gg.closePath();
+        gg.fill();
+        gg.globalAlpha = 1;
+      }
+      gg.fillStyle = hexToRgba(B.ground.edge, night ? 0.3 : 0.5);
+      gg.fillRect(0, 0, CANVAS_W, 2);
+      gg.fillStyle = 'rgba(0,0,0,0.3)';
+      gg.fillRect(0, 2, CANVAS_W, 2);
+      return ground;
+    };
+    const groundDay = paintGroundStrip(B.ground.day, false);
+    const groundNight = paintGroundStrip(B.ground.night, true);
+
+    // Plants along the ground line (drawn live so they sway)
+    const plants = [];
+    const rp = makeRng(site.seed ^ 0xbeef);
+    for (let x = 8 + rp() * 10; x < CANVAS_W; x += (B.plant === 'grass' || B.plant === 'fern' ? 18 : 46) + rp() * (B.plant === 'grass' ? 12 : 60)) {
+      if (Math.abs(x - DOME_X) < DOME_RADIUS + 30) continue;
+      plants.push({ x, s: 0.6 + rp() * 0.8, v: rp(), p: rp() * TWO_PI });
+    }
+
+    surfaceArt = { seed: site.seed, skyDay, skyDusk, skyNight, decor, stars, ranges, groundDay, groundNight, plants, craters };
     return surfaceArt;
   }
 
   // Coloured copy of the glow sprite (cached per colour)
   function getGlow(color) {
-    const art = buildSurfaceArt();
+    const art = buildFxArt();
     let c = art.tinted[color];
     if (!c) {
       c = makeCanvas(64, 64);
@@ -5896,61 +6137,257 @@
     ctx.globalCompositeOperation = prev;
   }
 
+  // Mix two '#rrggbb' colours
+  function mixHex(a, b, t) {
+    const A = parseHex(a), Bc = parseHex(b);
+    return `rgb(${A[0] + (Bc[0] - A[0]) * t | 0},${A[1] + (Bc[1] - A[1]) * t | 0},${A[2] + (Bc[2] - A[2]) * t | 0})`;
+  }
+
   function drawSky() {
     const art = buildSurfaceArt();
-    ctx.drawImage(art.sky, 0, 0);
-    // Twinkling stars
-    for (const s of art.stars) {
-      const tw = 0.45 + 0.55 * Math.sin(animTime * s.f + s.p);
-      if (tw <= 0.05) continue;
-      ctx.globalAlpha = tw * 0.9;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(s.x - s.s / 2, s.y - s.s / 2, s.s, s.s);
-      if (s.big) {
-        ctx.globalAlpha = tw * 0.35;
-        ctx.fillRect(s.x - s.s * 2.5, s.y - 0.5, s.s * 5, 1);
-        ctx.fillRect(s.x - 0.5, s.y - s.s * 2.5, 1, s.s * 5);
-      }
+    const B = currentBiome();
+    const night = 1 - daylight;
+    ctx.drawImage(art.skyNight, 0, 0);
+    if (daylight > 0.01) {
+      ctx.globalAlpha = daylight;
+      ctx.drawImage(art.skyDay, 0, 0);
+    }
+    if (duskGlow > 0.01) {
+      ctx.globalAlpha = duskGlow;
+      ctx.drawImage(art.skyDusk, 0, 0);
     }
     ctx.globalAlpha = 1;
-    // Occasional shooting star
-    const cycle = 11;
-    const t = (animTime % cycle) / 0.9;
-    if (t < 1) {
-      const k = Math.floor(animTime / cycle);
-      const sx = 200 + ((k * 7919) % 900), sy = 60 + ((k * 3571) % 220);
-      const hx = sx + t * 260, hy = sy + t * 90;
-      const g = ctx.createLinearGradient(hx - 120, hy - 42, hx, hy);
-      g.addColorStop(0, 'rgba(255,255,255,0)');
-      g.addColorStop(1, `rgba(255,255,255,${0.8 * (1 - t)})`);
-      ctx.strokeStyle = g;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(hx - 120, hy - 42);
-      ctx.lineTo(hx, hy);
-      ctx.stroke();
+    drawCelestials();
+    ctx.globalAlpha = Math.max(0.12, 1 - daylight * 0.85);
+    ctx.drawImage(art.decor, 0, 0);
+    ctx.globalAlpha = 1;
+    // Twinkling stars
+    if (night > 0.05) {
+      for (const s of art.stars) {
+        const tw = 0.45 + 0.55 * Math.sin(animTime * s.f + s.p);
+        if (tw <= 0.05) continue;
+        ctx.globalAlpha = tw * 0.9 * night;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(s.x - s.s / 2, s.y - s.s / 2, s.s, s.s);
+        if (s.big) {
+          ctx.globalAlpha = tw * 0.35 * night;
+          ctx.fillRect(s.x - s.s * 2.5, s.y - 0.5, s.s * 5, 1);
+          ctx.fillRect(s.x - 0.5, s.y - s.s * 2.5, 1, s.s * 5);
+        }
+      }
+      ctx.globalAlpha = 1;
+      // Occasional shooting star
+      const cycle = 11;
+      const t = (animTime % cycle) / 0.9;
+      if (t < 1) {
+        const k = Math.floor(animTime / cycle);
+        const sx = 200 + ((k * 7919) % 900), sy = 60 + ((k * 3571) % 220);
+        const hx = sx + t * 260, hy = sy + t * 90;
+        const g = ctx.createLinearGradient(hx - 120, hy - 42, hx, hy);
+        g.addColorStop(0, 'rgba(255,255,255,0)');
+        g.addColorStop(1, `rgba(255,255,255,${0.8 * (1 - t) * night})`);
+        ctx.strokeStyle = g;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(hx - 120, hy - 42);
+        ctx.lineTo(hx, hy);
+        ctx.stroke();
+      }
     }
-    // Mountain ranges with mouse parallax
+    // Aurora over the ice
+    if (B.decor === 'aurora' && night > 0.2) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let band = 0; band < 3; ++band) {
+        const y0 = 120 + band * 50;
+        const g = ctx.createLinearGradient(0, y0 - 140, 0, y0 + 40);
+        const col = band === 1 ? '120,255,200' : (band === 2 ? '160,120,255' : '90,220,255');
+        g.addColorStop(0, `rgba(${col},0)`);
+        g.addColorStop(0.7, `rgba(${col},${0.16 * night})`);
+        g.addColorStop(1, `rgba(${col},0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(0, y0 + 40);
+        for (let x = 0; x <= CANVAS_W; x += 40)
+          ctx.lineTo(x, y0 + Math.sin(x * 0.006 + animTime * 0.4 + band * 2) * 30 + Math.sin(x * 0.017 - animTime * 0.7) * 12);
+        for (let x = CANVAS_W; x >= 0; x -= 40)
+          ctx.lineTo(x, y0 - 140 + Math.sin(x * 0.006 + animTime * 0.4 + band * 2) * 30);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    // Mountain ranges with mouse parallax, night and day versions blended
     const sway = mouseAimX >= 0 ? (mouseAimX / CANVAS_W - 0.5) : 0;
-    for (const r of art.ranges)
-      ctx.drawImage(r.canvas, -60 - sway * r.depth * 2, DOME_Y - r.h + 4);
-    // Low drifting mist
+    for (const r of art.ranges) {
+      const x = -60 - sway * r.depth * 2, y = DOME_Y - r.h + 4;
+      ctx.drawImage(r.night, x, y);
+      if (daylight > 0.01) {
+        ctx.globalAlpha = daylight;
+        ctx.drawImage(r.day, x, y);
+        ctx.globalAlpha = 1;
+      }
+    }
+    // Volcano smoke and crater glow
+    for (const c of art.craters) {
+      const x = c.x - sway * 28;
+      drawGlow('#ff5a1a', x, c.y + 6, 46, 0.35 + night * 0.4 + Math.sin(animTime * 3) * 0.08);
+      for (let k = 0; k < 7; ++k) {
+        const t = (animTime * 0.12 + k / 7) % 1;
+        ctx.globalAlpha = (1 - t) * 0.32;
+        ctx.fillStyle = mixHex('#5a4a48', '#1a1414', night);
+        ctx.beginPath();
+        ctx.arc(x + Math.sin(t * 3 + k) * 18 + t * 70, c.y - t * 190, 10 + t * 42, 0, TWO_PI);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+    // Low drifting mist in the horizon colour
+    const mist = mixHex(B.skyNight[3], B.skyDay[3], daylight);
     const mx = (animTime * 12) % CANVAS_W;
     ctx.globalAlpha = 0.5;
     for (const off of [-CANVAS_W, 0]) {
       const x = mx + off;
       const mg = ctx.createRadialGradient(x + 500, DOME_Y - 10, 10, x + 500, DOME_Y - 10, 420);
-      mg.addColorStop(0, 'rgba(180,120,200,0.18)');
-      mg.addColorStop(1, 'rgba(180,120,200,0)');
+      mg.addColorStop(0, mist.replace('rgb', 'rgba').replace(')', ',0.22)'));
+      mg.addColorStop(1, mist.replace('rgb', 'rgba').replace(')', ',0)'));
       ctx.fillStyle = mg;
       ctx.fillRect(x + 80, DOME_Y - 120, 840, 140);
     }
     ctx.globalAlpha = 1;
   }
 
+  // Sun and moon are drawn by the world clock (see WORLD TIME)
+  function drawCelestials() {}
+
+  function drawGroundLayer() {
+    const art = buildSurfaceArt();
+    const B = currentBiome();
+    ctx.drawImage(art.groundNight, 0, DOME_Y);
+    if (daylight > 0.01) {
+      ctx.globalAlpha = daylight;
+      ctx.drawImage(art.groundDay, 0, DOME_Y);
+      ctx.globalAlpha = 1;
+    }
+    const shade = 0.55 + daylight * 0.45;
+    const col = (i) => mixHex('#000000', B.plantColors[i], shade);
+    const Y = DOME_Y + 2;
+    ctx.lineCap = 'round';
+    for (const p of art.plants) {
+      const tilt = Math.sin(p.x * 0.7 + animTime * 0.9 + p.p) * (1 + windStrength());
+      if (B.plant === 'grass') {
+        const h = (8 + Math.abs(Math.sin(p.x * 0.5)) * 14) * p.s;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = col(p.v < 0.66 ? 0 : 1);
+        ctx.beginPath();
+        ctx.moveTo(p.x, Y);
+        ctx.quadraticCurveTo(p.x + tilt * 6, Y - h * 0.6, p.x + tilt * 4, Y - h);
+        ctx.stroke();
+      } else if (B.plant === 'fern') {
+        const h = 16 + 18 * p.s;
+        ctx.lineWidth = 2.5;
+        for (const side of [-1, 1, 0]) {
+          ctx.strokeStyle = col(side === 0 ? 1 : 0);
+          ctx.beginPath();
+          ctx.moveTo(p.x, Y);
+          const ex = p.x + side * h * 0.6 + tilt * 5, ey = Y - h * (side === 0 ? 1 : 0.75);
+          ctx.quadraticCurveTo(p.x + side * h * 0.1 + tilt * 3, Y - h * 0.7, ex, ey);
+          ctx.stroke();
+          ctx.lineWidth = 1.5;
+          for (let k = 1; k < 4; ++k) {
+            const t = k / 4, lx = p.x + (ex - p.x) * t, ly = Y + (ey - Y) * t;
+            ctx.beginPath();
+            ctx.moveTo(lx, ly);
+            ctx.lineTo(lx + (side || 1) * 5 + tilt, ly - 4);
+            ctx.stroke();
+          }
+          ctx.lineWidth = 2.5;
+        }
+      } else if (B.plant === 'cactus') {
+        const h = 22 + 22 * p.s, w = 7 + 3 * p.s;
+        ctx.fillStyle = SPRITE_OUTLINE;
+        roundRectPath(p.x - w / 2 - 1.5, Y - h - 1.5, w + 3, h + 3, w / 2);
+        ctx.fill();
+        ctx.fillStyle = col(0);
+        roundRectPath(p.x - w / 2, Y - h, w, h, w / 2);
+        ctx.fill();
+        for (const side of p.v < 0.5 ? [-1] : [-1, 1]) {
+          const ay = Y - h * (0.45 + 0.15 * side * p.v);
+          ctx.strokeStyle = SPRITE_OUTLINE;
+          ctx.lineWidth = w * 0.75 + 3;
+          ctx.beginPath();
+          ctx.moveTo(p.x, ay);
+          ctx.lineTo(p.x + side * w * 1.3, ay);
+          ctx.lineTo(p.x + side * w * 1.3, ay - h * 0.3);
+          ctx.stroke();
+          ctx.strokeStyle = col(0);
+          ctx.lineWidth = w * 0.75;
+          ctx.stroke();
+        }
+        ctx.fillStyle = col(1);
+        ctx.fillRect(p.x - 1, Y - h + 3, 2, h - 6);
+      } else if (B.plant === 'icicle') {
+        for (let k = 0; k < 3; ++k) {
+          const ox = (k - 1) * 6 * p.s, h = (10 + (k === 1 ? 14 : 6) + p.v * 8) * p.s * 1.4;
+          ctx.fillStyle = SPRITE_OUTLINE;
+          ctx.beginPath();
+          ctx.moveTo(p.x + ox - 5, Y);
+          ctx.lineTo(p.x + ox + tilt * 0.5, Y - h - 2);
+          ctx.lineTo(p.x + ox + 5, Y);
+          ctx.fill();
+          ctx.fillStyle = col(k === 1 ? 1 : 0);
+          ctx.beginPath();
+          ctx.moveTo(p.x + ox - 3.5, Y);
+          ctx.lineTo(p.x + ox + tilt * 0.5, Y - h);
+          ctx.lineTo(p.x + ox + 3.5, Y);
+          ctx.fill();
+        }
+        if (daylight > 0.3 && Math.sin(animTime * 2 + p.p * 5) > 0.97)
+          drawGlow('#ffffff', p.x, Y - 14, 10, 0.8);
+      } else if (B.plant === 'ember') {
+        const w = 10 + 10 * p.s;
+        ctx.fillStyle = mixHex('#000000', '#4a3634', shade);
+        ctx.beginPath();
+        ctx.ellipse(p.x, Y, w, 6 + 4 * p.s, 0, Math.PI, 0);
+        ctx.fill();
+        const glow = 0.55 + Math.sin(animTime * 3 + p.p) * 0.25;
+        ctx.strokeStyle = `rgba(255,${120 + glow * 80 | 0},40,${glow})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(p.x - w * 0.6, Y - 1);
+        ctx.lineTo(p.x - w * 0.1, Y - 5 * p.s);
+        ctx.lineTo(p.x + w * 0.5, Y - 2);
+        ctx.stroke();
+        drawGlow('#ff6a20', p.x, Y - 3, 16 + 8 * p.s, glow * (0.35 + (1 - daylight) * 0.4));
+        if (Math.random() < 0.02)
+          particles.trail(p.x, Y - 6, { vx: (Math.random() - 0.5) * 0.6, vy: -1 - Math.random(), color: '#ffa040', life: 0.8, size: 1.5, gravity: -0.01 });
+      } else if (B.plant === 'shard') {
+        for (let k = 0; k < 3; ++k) {
+          const ang = (k - 1) * 0.35 + tilt * 0.02, h = (12 + (k === 1 ? 16 : 6) + p.v * 6) * p.s * 1.3, w = 4 + p.s * 2;
+          ctx.save();
+          ctx.translate(p.x + (k - 1) * 5, Y);
+          ctx.rotate(ang);
+          ctx.fillStyle = SPRITE_OUTLINE;
+          ctx.beginPath();
+          ctx.moveTo(-w - 1, 0); ctx.lineTo(-w - 1, -h * 0.75); ctx.lineTo(0, -h - 2); ctx.lineTo(w + 1, -h * 0.75); ctx.lineTo(w + 1, 0);
+          ctx.fill();
+          ctx.fillStyle = col(k % 3);
+          ctx.beginPath();
+          ctx.moveTo(-w, 0); ctx.lineTo(-w, -h * 0.75); ctx.lineTo(0, -h); ctx.lineTo(w, -h * 0.75); ctx.lineTo(w, 0);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,0.45)';
+          ctx.fillRect(-w + 1, -h * 0.7, 1.5, h * 0.6);
+          ctx.restore();
+        }
+        drawGlow(B.plantColors[(p.v * 3) | 0], p.x, Y - 12, 20, 0.25 + (1 - daylight) * 0.35);
+      }
+    }
+    ctx.lineCap = 'butt';
+  }
+
   // Pre-rendered enemy body (outline, shading, rim light) per variant
   function getEnemyBody(kind) {
-    const art = buildSurfaceArt();
+    const art = buildFxArt();
     const key = 'body:' + kind;
     if (art.tinted[key]) return art.tinted[key];
     const S = 96, c = makeCanvas(S, S), g = c.getContext('2d');
@@ -6053,27 +6490,9 @@
     }
   }
 
-  function drawGroundLayer() {
-    const art = buildSurfaceArt();
-    ctx.drawImage(art.ground, 0, DOME_Y);
-    // Alien grass swaying along the ground line
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    for (let gx = 10; gx < CANVAS_W; gx += 22 + Math.sin(gx * 0.3) * 8) {
-      if (Math.abs(gx - DOME_X) < DOME_RADIUS + 26) continue;
-      const tilt = Math.sin(gx * 0.7 + animTime * 0.9);
-      const h = 8 + Math.abs(Math.sin(gx * 0.5)) * 14;
-      ctx.strokeStyle = (gx | 0) % 3 ? '#3f8a70' : '#5ab08e';
-      ctx.beginPath();
-      ctx.moveTo(gx, DOME_Y + 2);
-      ctx.quadraticCurveTo(gx + tilt * 6, DOME_Y - h * 0.6, gx + tilt * 4, DOME_Y - h);
-      ctx.stroke();
-    }
-    ctx.lineCap = 'butt';
-  }
-
   function drawDome() {
-    const art = buildSurfaceArt();
+    const art = buildFxArt();
+    const sky = buildSurfaceArt();
     const pulse = Math.sin(domePulsePhase) * 0.5 + 0.5;
     const flashAlpha = domeHitFlash * 0.6;
     const hpRatio = Math.max(0, domeHP / maxDomeHP);
@@ -6091,7 +6510,7 @@
     ctx.clip();
     const mag = 1.12;
     ctx.globalAlpha = 0.55;
-    ctx.drawImage(art.sky, DOME_X - R, DOME_Y - R, R * 2, R, DOME_X - R * mag, DOME_Y - R * mag - 6, R * 2 * mag, R * mag);
+    ctx.drawImage(daylight > 0.5 ? sky.skyDay : sky.skyNight, DOME_X - R, DOME_Y - R, R * 2, R, DOME_X - R * mag, DOME_Y - R * mag - 6, R * 2 * mag, R * mag);
     ctx.globalAlpha = 1;
     ctx.fillStyle = 'rgba(20,60,120,0.25)';
     ctx.fillRect(DOME_X - R, DOME_Y - R, R * 2, R);
