@@ -1520,6 +1520,30 @@
   const particles = new SZ.GameEffects.ParticleSystem();
   const screenShake = new SZ.GameEffects.ScreenShake();
   const floatingText = new SZ.GameEffects.FloatingText();
+  {
+    // Floating messages use the UI font and are kept fully on screen
+    const addFloating = floatingText.add.bind(floatingText);
+    const recentFloats = [];
+    floatingText.add = (x, y, text, opts) => {
+      opts = Object.assign({}, opts);
+      opts.font = (opts.font || 'bold 14px sans-serif').replace(/sans-serif$/, UI_FONT);
+      ctx.save();
+      ctx.font = opts.font;
+      const half = ctx.measureText(String(text)).width / 2 + 8;
+      ctx.restore();
+      x = half * 2 >= CANVAS_W ? CANVAS_W / 2 : Math.max(half, Math.min(CANVAS_W - half, x));
+      y = Math.max(96, Math.min(CANVAS_H - 24, y));
+      // Stack messages that pop up at the same spot instead of overlapping them
+      const now = performance.now();
+      while (recentFloats.length && now - recentFloats[0].t > 700)
+        recentFloats.shift();
+      const lineH = (parseFloat((/(\d+(?:\.\d+)?)px/.exec(opts.font) || [0, 14])[1]) || 14) * 1.2;
+      for (let tries = 0; tries < 5 && recentFloats.some(r => Math.abs(r.x - x) < r.half + half && Math.abs(r.y - (now - r.t) * 0.09 - y) < lineH); ++tries)
+        y -= lineH;
+      recentFloats.push({ x, y, half, t: now }); // y drifts up ~0.09 px/ms
+      addFloating(x, y, text, opts);
+    };
+  }
   let surfaceArt = null;                 // cached sky, mountains, ground, dome glass
   const enemyHitFlash = new WeakMap();   // enemy -> white flash strength after a hit
 
@@ -6929,6 +6953,7 @@
           if (undergroundGrid[ch.r + dr][ch.c + dc] !== TILE_GADGET) continue;
           const x = (ch.c + dc) * TILE_SIZE - cameraX;
           const y = (ch.r + dr) * TILE_SIZE - cameraY;
+          if (x < -TILE_SIZE || x > CANVAS_W || y < -TILE_SIZE || y > CANVAS_H) continue;
 
           if (!ch.revealed) {
             // Hidden: looks like dirt but with faint shimmer
@@ -7116,6 +7141,7 @@
         if (isUnlocked) {
           const status = isPassive ? 'ON' : (isActive ? 'SEL' : 'OWNED');
           const sw = drawChip(status, px + pw - 18, ly + 4, 24, { align: 'right', px: 13, bg: 'rgba(111,224,138,0.16)', color: isActive ? UI.gold : UI.good });
+          ctx.textAlign = 'left';
           fitText(def.name, px + 76, ly + 17, pw - 76 - 26 - sw, 17, { weight: 'bold', color: nameColor });
         } else {
           let costText = `${def.costIron}[[iron]]`;
@@ -7126,6 +7152,7 @@
             bg: canAfford ? 'rgba(80,200,110,0.22)' : 'rgba(255,90,90,0.10)',
             color: canAfford ? UI.good : '#b06060'
           });
+          ctx.textAlign = 'left';
           fitText(def.name, px + 76, ly + 17, pw - 76 - 26 - cw, 17, { weight: 'bold', color: nameColor });
         }
       }
