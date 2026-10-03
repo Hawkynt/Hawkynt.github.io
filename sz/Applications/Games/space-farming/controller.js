@@ -78,6 +78,8 @@
   const WEATHER_METEOR_SHOWER = 'meteorShower';
   const WEATHER_RAIN = 'rain';
   const WEATHER_THUNDERSTORM = 'thunderstorm';
+  const WEATHER_SNOW = 'snow';
+  const WEATHER_DUST = 'dust';
   const WEATHER_DURATION = 8;
   const WEATHER_MIN_INTERVAL = 25;
   const WEATHER_MAX_INTERVAL = 50;
@@ -212,10 +214,7 @@
   let weatherTimer = 0;
   let weatherInterval = 0;
   let weatherEffect = 0; // visual overlay alpha
-  let overlayAlpha = 0;
 
-  // Weather visual particle arrays (persistent across frames)
-  let weatherParticles = [];
 
   // Upgrades
   let upgradeLevels = {}; // { upgradeId: level }
@@ -1780,12 +1779,11 @@
     inventory = plainCounts(d.inventory);
     upgradeLevels = plainCounts(d.upgradeLevels);
 
-    const weathers = [WEATHER_NONE, WEATHER_SOLAR_FLARE, WEATHER_METEOR_SHOWER, WEATHER_RAIN, WEATHER_THUNDERSTORM];
+    const weathers = [WEATHER_NONE, WEATHER_SOLAR_FLARE, WEATHER_METEOR_SHOWER, WEATHER_RAIN, WEATHER_THUNDERSTORM, WEATHER_SNOW, WEATHER_DUST];
     weatherType = weathers.includes(d.weatherType) ? d.weatherType : WEATHER_NONE;
     weatherTimer = num(d.weatherTimer, 0);
     weatherInterval = num(d.weatherInterval, WEATHER_MIN_INTERVAL);
-    overlayAlpha = 0;
-    weatherParticles = [];
+    resetWeatherVisuals();
 
     currentSeason = d.currentSeason;
     dayPhase = num(d.dayPhase, 0);
@@ -1824,6 +1822,8 @@
     }
     state = STATE_PLAYING;
     resetView();
+    lastCredits = null;
+    creditsShown = credits;
     SZ.GameAudio.play('select');
     updateWindowTitle();
   }
@@ -1999,6 +1999,7 @@
           else {
             if (currentSeason === 1) bonus *= 2; // summer
             if (weatherType === WEATHER_SOLAR_FLARE) bonus *= 3;
+            if (weatherType === WEATHER_DUST) bonus *= 0.3;
           }
           rate += bonus;
         } else if (bname === 'Wind Turbine') {
@@ -2069,8 +2070,12 @@
 
     const bdef = BUILDINGS[bld.typeIndex];
     const { x: tx, y: ty } = tileCenter(col, row);
-    popText(tx, ty - 10, `${bdef.name} L${bld.level}! -${cost}cr`, { color: '#0ff', font: 'bold 12px sans-serif' });
-    particles.confetti(tx, ty, 10, { speed: 3 });
+    popText(tx, ty - 24, `${bdef.name} Lv ${bld.level}!`, { color: '#7ad8ff', font: 'bold 13px' });
+    particles.confetti(tx, ty, 14, { speed: 3 });
+    for (let i = 0; i < 12; ++i) {
+      const a = i / 12 * TWO_PI;
+      particles.trail(tx, ty, { vx: Math.cos(a) * 2.5, vy: Math.sin(a) * 2.5, color: '#ffd75a', life: 0.5, size: 2.5, decay: 0.04, shape: 'star' });
+    }
     SZ.GameAudio.play('powerup', { pitch: 1 + Math.min(bld.level, 10) * 0.04 });
   }
 
@@ -2238,6 +2243,7 @@
     credits -= cost;
     upgradeLevels[def.id] = curLevel + 1;
     announce(`${def.name} ${def.maxLevel > 10 ? 'Lv ' + (curLevel + 1) : (curLevel + 1) + '/' + def.maxLevel}`, def.desc, UI.gold, def.sprite);
+    celebrate(UW / 2, UH / 2, 30);
     SZ.GameAudio.play('levelup');
 
     if (def.id === 'plotExpansion')
@@ -2478,8 +2484,7 @@
     weatherType = WEATHER_NONE;
     weatherTimer = 0;
     weatherInterval = WEATHER_MIN_INTERVAL + Math.random() * (WEATHER_MAX_INTERVAL - WEATHER_MIN_INTERVAL);
-    overlayAlpha = 0;
-    weatherParticles = [];
+    resetWeatherVisuals();
 
     // Price fluctuation reset
     priceMultipliers = [];
@@ -2508,6 +2513,8 @@
     autosaveTimer = 0;
     saveNotice = '';
     invalidateField();
+    lastCredits = null;
+    creditsShown = credits;
     state = STATE_PLAYING;
     SZ.GameAudio.play('select');
     updateWindowTitle();
@@ -2559,18 +2566,18 @@
     for (let i = 0; i < 5; ++i) {
       const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.6;
       const v = 1.5 + Math.random() * 2;
-      particles.trail(tx + (Math.random() - 0.5) * 10, ty, {
+      particles.trail(tx + (Math.random() - 0.5) * 10, ty + 6, {
         vx: Math.cos(angle) * v,
         vy: Math.sin(angle) * v - 1,
-        color: '#4af',
+        color: '#8fd3ff',
         life: 0.4 + Math.random() * 0.3,
         size: 2 + Math.random() * 2,
         gravity: 0.15,
         decay: 0.03
       });
     }
-    popText(tx, ty - 10, `-${crop.seedCost}cr`, { color: '#f88', font: 'bold 12px sans-serif' });
-    SZ.GameAudio.play('drop', { pitch: 1.4, volume: 0.6 });
+    particles.burst(tx, ty + 12, 6, { color: '#8a6038', speed: 1.8, life: 0.45, gravity: 0.12 });
+    SZ.GameAudio.play('drop', { pitch: 1.3 + Math.random() * 0.3, volume: 0.6 });
   }
 
   function harvestCrop(row, col, auto) {
@@ -2621,11 +2628,14 @@
       inventory[crop.name] = 0;
     inventory[crop.name] += harvestCount;
 
-    const label = harvestCount > 1 ? `+${harvestCount} ${crop.name}!` : `+1 ${crop.name}`;
-    const labelColor = harvestCount > 1 ? '#ff0' : '#0f0';
-    popText(tx, ty - 10, label, { color: labelColor, font: 'bold 12px sans-serif' });
-    if (!auto)
-      SZ.GameAudio.play('pickup', { pitch: harvestCount > 1 ? 1.25 : 1 });
+    flyProduce(crop.sprite, tx, ty, harvestCount, auto);
+    if (harvestCount > 1)
+      popText(tx, ty - 16, `×${harvestCount}!`, { color: '#ffd75a', font: 'bold 14px' });
+    if (!auto) {
+      ++harvestCombo;
+      harvestComboT = 0.8;
+      SZ.GameAudio.play('pickup', { pitch: 1 + Math.min(harvestCombo, 12) * 0.035 + (harvestCount > 1 ? 0.15 : 0) });
+    }
 
     farmGrid[row][col] = null; // clear tile
   }
@@ -2706,6 +2716,10 @@
       weatherGrowthBoost = 1.5;
     else if (weatherType === WEATHER_THUNDERSTORM)
       weatherGrowthBoost = 2;
+    else if (weatherType === WEATHER_SNOW)
+      weatherGrowthBoost = 0.8;
+    else if (weatherType === WEATHER_DUST)
+      weatherGrowthBoost = 0.75;
 
     // Upgrade growth speed multiplier
     const upgradeGrowthMul = getGrowthSpeedMultiplier();
@@ -2883,9 +2897,10 @@
     ++inventory[def.produce];
 
     const scr = penCenter(pen);
-    popText(scr.x, scr.y - 10, `+1 ${def.produce}`, { color: '#0f0', font: 'bold 12px sans-serif' });
-    particles.sparkle(scr.x, scr.y, 5, { color: def.color, speed: 1.5 });
+    flyProduce(def.produceSprite, scr.x, scr.y, 1, false);
+    particles.sparkle(scr.x, scr.y, 6, { color: def.color, speed: 1.5 });
     SZ.GameAudio.play('pickup', { pitch: 0.85 });
+    animalVoice(def.sprite);
   }
 
   /** Generate all perimeter positions around the current grid (one tile outside). */
@@ -3008,7 +3023,10 @@
 
     if (totalEarned > 0) {
       toast(`Sold produce for ${totalEarned} credits`, UI.gold, 'coin');
-      screenShake.trigger(3, 150);
+      const L = hudLayout();
+      const from = L.storage.h ? { x: L.storage.x + L.storage.w / 2, y: L.storage.y + L.storage.h - 30 } : { x: UW / 2, y: L.dock.y };
+      flyCoins(Math.min(14, 3 + Math.ceil(totalEarned / 40)), from.x, from.y);
+      screenShake.trigger(2, 120);
       SZ.GameAudio.play('coin');
     } else
       SZ.GameAudio.play('error', { volume: 0.6 });
@@ -3034,7 +3052,7 @@
     if (farmGrid[row][col] !== null) {
       farmGrid[row][col] = null;
       const { x: dx, y: dy } = tileCenter(col, row);
-      popText(dx, dy - 20, 'Crop removed', { color: '#f84', font: '9px sans-serif' });
+      popText(dx, dy + 6, 'Crop removed', { color: '#ffb080', font: 'bold 11px' });
     }
 
     credits -= bdef.cost;
@@ -3042,9 +3060,11 @@
     invalidateField();
 
     const { x: tx, y: ty } = tileCenter(col, row);
-    particles.sparkle(tx, ty, 8, { color: '#0ff', speed: 2 });
-    popText(tx, ty - 10, `-${bdef.cost}cr`, { color: '#f88', font: 'bold 12px sans-serif' });
-    SZ.GameAudio.play('thud');
+    buildAnim[row + ',' + col] = uiTime;
+    dustRing(tx, ty + 20);
+    popText(tx, ty - 24, `-${bdef.cost} cr`, { color: '#ff9a8a', font: 'bold 12px' });
+    SZ.GameAudio.play('whoosh', { pitch: 1.4, volume: 0.5 });
+    SZ.GameAudio.noise(0.15, 0.12, 'lowpass', 500, 100, 0.3);
   }
 
   function removeBuilding(row, col) {
@@ -3062,154 +3082,390 @@
      WEATHER EVENTS
      ══════════════════════════════════════════════════════════════════ */
 
+  /* ══════════════════════════════════════════════════════════════════
+     WEATHER EVENTS — chosen per season; meteors and lightning strike
+     real tiles, rain wets the soil, snow and dust slow the crops
+     ══════════════════════════════════════════════════════════════════ */
+
+  const WEATHER_TABLE = [
+    [[WEATHER_RAIN, 45], [WEATHER_SOLAR_FLARE, 20], [WEATHER_METEOR_SHOWER, 15], [WEATHER_THUNDERSTORM, 15], [WEATHER_DUST, 5]],
+    [[WEATHER_SOLAR_FLARE, 40], [WEATHER_THUNDERSTORM, 20], [WEATHER_DUST, 20], [WEATHER_METEOR_SHOWER, 10], [WEATHER_RAIN, 10]],
+    [[WEATHER_RAIN, 30], [WEATHER_THUNDERSTORM, 20], [WEATHER_DUST, 20], [WEATHER_METEOR_SHOWER, 20], [WEATHER_SOLAR_FLARE, 10]],
+    [[WEATHER_SNOW, 70], [WEATHER_METEOR_SHOWER, 15], [WEATHER_SOLAR_FLARE, 15]]
+  ];
+
+  let meteors = [];                  // { wx, wy, r, c, delay, t, smash }
+  let strikeTimer = 0;
+  let bolts = [];                    // { pts, t }
+  let decals = [];                   // { wx, wy, t, life, kind }
+  let splashes = [];                 // { wx, wy, t }
+  let flashA = 0;
+  let wxShown = WEATHER_NONE, wxK = 0;
+  let wxDrops = [];
+
   function updateWeather(dt) {
     if (state !== STATE_PLAYING) return;
-
     if (weatherType === WEATHER_NONE) {
       weatherInterval -= dt;
       if (weatherInterval <= 0)
         triggerWeather();
     } else {
       weatherTimer -= dt;
-      overlayAlpha = Math.min(0.3, overlayAlpha + dt * 0.5);
-
+      if (weatherType === WEATHER_THUNDERSTORM) {
+        strikeTimer -= dt;
+        if (strikeTimer <= 0) {
+          strikeTimer = 1.1 + Math.random() * 1.3;
+          strikeLightning();
+        }
+      }
       if (weatherTimer <= 0) {
         weatherType = WEATHER_NONE;
-        overlayAlpha = 0;
         weatherInterval = WEATHER_MIN_INTERVAL + Math.random() * (WEATHER_MAX_INTERVAL - WEATHER_MIN_INTERVAL);
       }
     }
+    updateMeteors(dt);
   }
 
-  function triggerWeather() {
-    // No weather events in Winter (Feature 5)
-    if (currentSeason === 3) {
-      weatherInterval = WEATHER_MIN_INTERVAL + Math.random() * (WEATHER_MAX_INTERVAL - WEATHER_MIN_INTERVAL);
-      return;
+  function pickWeather() {
+    const table = WEATHER_TABLE[currentSeason] || WEATHER_TABLE[0];
+    let total = 0;
+    for (const [, w] of table) total += w;
+    let roll = Math.random() * total;
+    for (const [kind, w] of table) {
+      roll -= w;
+      if (roll < 0) return kind;
     }
+    return table[0][0];
+  }
 
-    // Spawn persistent weather particles
-    weatherParticles = [];
+  function isSheltered(r, c) {
+    return !!getField().shelter[r * gridCols + c];
+  }
 
-    // 4-way weather: solar flare 30% (45% summer), meteor shower 25%, rain 30%, thunderstorm 15%
+  function triggerWeather(kind) {
+    weatherType = kind || pickWeather();
+    weatherTimer = weatherType === WEATHER_SNOW || weatherType === WEATHER_DUST ? 12 : WEATHER_DURATION;
+    switch (weatherType) {
+      case WEATHER_SOLAR_FLARE:
+        announce('Solar flare!', 'Crops grow twice as fast, sun-lovers three times', '#ffd23f', 'flare');
+        SZ.GameAudio.play('powerup', { pitch: 0.8 });
+        break;
+      case WEATHER_RAIN:
+        announce('Rain', 'Crops grow 50% faster', '#7ab8ff', 'rain');
+        SZ.GameAudio.play('whoosh', { pitch: 0.6 });
+        break;
+      case WEATHER_SNOW:
+        announce('Snowfall', 'Crops grow 20% slower while it snows', '#cfe8ff', 'snow');
+        SZ.GameAudio.tone(1320, 0.4, 'sine', 0.04);
+        SZ.GameAudio.tone(1760, 0.5, 'sine', 0.03, 0.15);
+        break;
+      case WEATHER_DUST:
+        announce('Dust storm', 'Crops grow 25% slower, solar panels are blinded', '#e0b878', 'dust');
+        SZ.GameAudio.noise(1.2, 0.08, 'bandpass', 300, 900);
+        break;
+      case WEATHER_THUNDERSTORM:
+        announce('Thunderstorm!', 'Double growth, but lightning may strike', '#c8b0ff', 'storm');
+        strikeTimer = 0.8;
+        SZ.GameAudio.play('thud', { pitch: 0.7 });
+        break;
+      case WEATHER_METEOR_SHOWER: {
+        announce('Meteor shower!', 'Unprotected crops may be smashed', '#ff7a4a', 'meteor');
+        SZ.GameAudio.play('whoosh', { pitch: 0.5 });
+        // the same odds as before, but each hit is a visible meteor
+        const resist = getWeatherResistance();
+        const span = WEATHER_DURATION - 1.5;
+        for (let r = 0; r < gridRows; ++r)
+          for (let c = 0; c < gridCols; ++c) {
+            const cell = farmGrid[r][c];
+            if (!cell) continue;
+            const crop = CROPS[cell.cropIndex];
+            if (crop.weatherAffinity === 'any' || isSheltered(r, c)) continue;
+            const chance = (crop.weatherAffinity === 'cold-vulnerable' ? 0.4 : 0.2) * (1 - resist);
+            if (Math.random() < chance) {
+              const p = tileCenter(c, r);
+              meteors.push({ wx: p.x, wy: p.y, r, c, delay: Math.random() * span, t: 0, smash: true });
+            }
+          }
+        const strays = 6 + Math.floor(Math.random() * 6);
+        for (let i = 0; i < strays; ++i) {
+          const wx = GRID_OFFSET_X + (Math.random() * (gridCols + 6) - 3) * BASE_TILE_SIZE;
+          const wy = GRID_OFFSET_Y + (Math.random() * (gridRows + 4) - 1) * BASE_TILE_SIZE;
+          meteors.push({ wx, wy, r: -1, c: -1, delay: Math.random() * span, t: 0, smash: false });
+        }
+        break;
+      }
+    }
+  }
+
+  const METEOR_FLIGHT = 0.9;
+
+  function updateMeteors(dt) {
+    for (let i = meteors.length - 1; i >= 0; --i) {
+      const m = meteors[i];
+      if (m.delay > 0) {
+        m.delay -= dt;
+        continue;
+      }
+      m.t += dt;
+      if (m.t >= METEOR_FLIGHT) {
+        meteors.splice(i, 1);
+        meteorImpact(m);
+      }
+    }
+  }
+
+  function meteorImpact(m) {
+    particles.burst(m.wx, m.wy, 14, { color: '#ffb048', speed: 4, life: 0.6, gravity: 0.08 });
+    particles.burst(m.wx, m.wy, 8, { color: '#6a5040', speed: 2.5, life: 0.8, gravity: 0.12 });
+    decals.push({ wx: m.wx, wy: m.wy, t: 0, life: 22, kind: 'crater' });
+    screenShake.trigger(m.smash ? 5 : 2.5, 200);
+    SZ.GameAudio.play('smallExplode', { volume: m.smash ? 0.9 : 0.5, pitch: 0.8 + Math.random() * 0.4 });
+    if (m.smash && farmGrid[m.r]?.[m.c] && !isSheltered(m.r, m.c)) {
+      farmGrid[m.r][m.c] = null;
+      popText(m.wx, m.wy - 16, 'Smashed!', { color: '#ff8a5a', font: 'bold 12px' });
+      particles.burst(m.wx, m.wy, 10, { color: '#7ad04a', speed: 3, life: 0.5 });
+    }
+  }
+
+  /* Picks a strike point: mostly the field, sometimes the meadow or a pen */
+  function strikeLightning() {
+    const resist = getWeatherResistance();
+    let wx, wy;
     const roll = Math.random();
-    const solarChance = currentSeason === 1 ? 0.45 : 0.30;
-    const meteorChance = solarChance + 0.25;
-    const rainChance = meteorChance + 0.30;
-
-    if (roll < solarChance) {
-      weatherType = WEATHER_SOLAR_FLARE;
-      announce('Solar flare!', 'Crops grow twice as fast, sun-lovers three times', '#ffd23f', 'flare');
-      SZ.GameAudio.play('powerup', { pitch: 0.8 });
-      // Seed solar glow particles
-      for (let i = 0; i < 25; ++i)
-        weatherParticles.push({
-          x: Math.random() * canvasW,
-          y: Math.random() * canvasH,
-          size: 3 + Math.random() * 6,
-          speed: 0.3 + Math.random() * 0.5,
-          phase: Math.random() * TWO_PI,
-          drift: (Math.random() - 0.5) * 0.3
-        });
-    } else if (roll < meteorChance) {
-      weatherType = WEATHER_METEOR_SHOWER;
-      announce('Meteor shower!', 'Unprotected crops may be smashed', '#ff7a4a', 'meteor');
-
-      // Seed meteor rain particles
-      for (let i = 0; i < 40; ++i)
-        weatherParticles.push({
-          x: Math.random() * canvasW,
-          y: -Math.random() * canvasH,
-          vx: -1 - Math.random() * 2,
-          vy: 3 + Math.random() * 5,
-          size: 2 + Math.random() * 3,
-          trail: 8 + Math.random() * 12
-        });
-
-      // Meteor damage with weather resistance, affinity, and Greenhouse protection
-      const resist = getWeatherResistance();
-      const baseDamageChance = 0.2;
-      for (let r = 0; r < gridRows; ++r) {
-        for (let c = 0; c < gridCols; ++c) {
-          const cell = farmGrid[r][c];
-          if (!cell) continue;
-          const crop = CROPS[cell.cropIndex];
-          // 'any' affinity crops are immune to meteor destruction
-          if (crop.weatherAffinity === 'any') continue;
-
-          // Check for Greenhouse protection (range scales with level)
-          if (getField().shelter[r * gridCols + c]) continue;
-
-          // cold-vulnerable crops have higher damage chance
-          let damageChance = baseDamageChance;
-          if (crop.weatherAffinity === 'cold-vulnerable')
-            damageChance = 0.4;
-          // Apply weather resistance upgrade
-          damageChance *= (1 - resist);
-          if (Math.random() < damageChance) {
-            const { x: tx, y: ty } = tileCenter(c, r);
-            particles.burst(tx, ty, 8, { color: '#f44', speed: 3, life: 0.4 });
-            farmGrid[r][c] = null; // destroy crop
-          }
-        }
+    if (roll < 0.08 && livestockPens.length) {
+      const i = Math.floor(Math.random() * livestockPens.length);
+      const pen = livestockPens[i];
+      ({ x: wx, y: wy } = penCenter(pen));
+      if (Math.random() < 0.5 * (1 - resist)) {
+        popText(wx, wy - 18, `${LIVESTOCK[pen.typeIndex].name} ran off!`, { color: UI.bad, font: 'bold 12px' });
+        livestockPens.splice(i, 1);
       }
-      screenShake.trigger(8, 400);
-      SZ.GameAudio.play('explode');
-    } else if (roll < rainChance) {
-      weatherType = WEATHER_RAIN;
-      announce('Rain', 'Crops grow 50% faster', '#7ab8ff', 'rain');
-      SZ.GameAudio.play('whoosh', { pitch: 0.6 });
-      for (let i = 0; i < 60; ++i)
-        weatherParticles.push({
-          x: Math.random() * canvasW,
-          y: -Math.random() * canvasH,
-          vx: -0.5 - Math.random(),
-          vy: 4 + Math.random() * 3,
-          size: 1 + Math.random() * 2
-        });
+    } else if (roll < 0.7) {
+      const r = Math.floor(Math.random() * gridRows), c = Math.floor(Math.random() * gridCols);
+      ({ x: wx, y: wy } = tileCenter(c, r));
+      wx += (Math.random() - 0.5) * 20;
+      const cell = farmGrid[r][c];
+      if (cell && CROPS[cell.cropIndex].weatherAffinity !== 'any' && !isSheltered(r, c) && !buildings[r][c] && Math.random() < 0.8 * (1 - resist)) {
+        farmGrid[r][c] = null;
+        popText(wx, wy - 16, 'Scorched!', { color: '#ffd75a', font: 'bold 12px' });
+        particles.burst(wx, wy, 10, { color: '#ffd23f', speed: 3, life: 0.4 });
+      }
     } else {
-      weatherType = WEATHER_THUNDERSTORM;
-      announce('Thunderstorm!', 'Double growth, but lightning may strike', '#c8b0ff', 'storm');
-      for (let i = 0; i < 80; ++i)
-        weatherParticles.push({
-          x: Math.random() * canvasW,
-          y: -Math.random() * canvasH,
-          vx: -1 - Math.random() * 2,
-          vy: 5 + Math.random() * 4,
-          size: 1.5 + Math.random() * 2.5
-        });
-
-      // Thunderstorm damage: may kill some crops and livestock
-      const resist = getWeatherResistance();
-      for (let r = 0; r < gridRows; ++r)
-        for (let c = 0; c < gridCols; ++c) {
-          const cell = farmGrid[r][c];
-          if (!cell) continue;
-          const crop = CROPS[cell.cropIndex];
-          if (crop.weatherAffinity === 'any') continue;
-          if (getField().shelter[r * gridCols + c]) continue;
-          let damageChance = 0.1 * (1 - resist);
-          if (Math.random() < damageChance) {
-            const { x: tx, y: ty } = tileCenter(c, r);
-            particles.burst(tx, ty, 6, { color: '#ff0', speed: 2.5, life: 0.3 });
-            farmGrid[r][c] = null;
-          }
-        }
-      // May kill some livestock
-      for (let i = livestockPens.length - 1; i >= 0; --i) {
-        if (Math.random() < 0.05 * (1 - resist)) {
-          const pen = livestockPens[i];
-          const scr = penCenter(pen);
-          popText(scr.x, scr.y - 10, `${LIVESTOCK[pen.typeIndex].name} lost!`, { color: '#f44', font: 'bold 12px sans-serif' });
-          livestockPens.splice(i, 1);
-        }
-      }
-      screenShake.trigger(6, 300);
-      SZ.GameAudio.play('zap', { pitch: 0.6 });
-      SZ.GameAudio.play('thud', { pitch: 0.7 });
+      wx = GRID_OFFSET_X + (Math.random() * (gridCols + 6) - 3) * BASE_TILE_SIZE;
+      wy = GRID_OFFSET_Y + (Math.random() * (gridRows + 3) - 1) * BASE_TILE_SIZE;
     }
-    weatherTimer = WEATHER_DURATION;
+    // jagged bolt from the clouds (screen top) to the strike point
+    const sx = viewPanX + wx * viewZoom, sy = viewPanY + wy * viewZoom;
+    const pts = [[sx + (Math.random() - 0.5) * 120, -10]];
+    const n = 9;
+    for (let i = 1; i < n; ++i) {
+      const k = i / n;
+      pts.push([pts[0][0] + (sx - pts[0][0]) * k + (Math.random() - 0.5) * 40, -10 + (sy + 10) * k]);
+    }
+    pts.push([sx, sy]);
+    bolts.push({ pts, t: 0, wx, wy });
+    flashA = 0.55;
+    decals.push({ wx, wy, t: 0, life: 12, kind: 'scorch' });
+    particles.burst(wx, wy, 12, { color: '#e0f0ff', speed: 3.5, life: 0.35 });
+    screenShake.trigger(4, 250);
+    SZ.GameAudio.play('zap', { pitch: 0.7 });
+    SZ.GameAudio.noise(1.1, 0.16, 'lowpass', 420, 60, 0.18);
   }
+
+  /* Visual weather state eases in and out instead of switching hard */
+  function updateWeatherVisuals(dt) {
+    if (weatherType !== WEATHER_NONE && wxShown !== weatherType) {
+      if (wxK < 0.05 || wxShown === WEATHER_NONE) {
+        wxShown = weatherType;
+        wxDrops = [];
+      } else
+        wxK = Math.max(0, wxK - dt * 1.5);
+    }
+    const target = weatherType !== WEATHER_NONE && wxShown === weatherType ? 1 : 0;
+    wxK += (target - wxK) * Math.min(1, dt * 1.2);
+    if (wxK < 0.01 && weatherType === WEATHER_NONE)
+      wxShown = WEATHER_NONE;
+    flashA = Math.max(0, flashA - dt * 2.2);
+    for (let i = bolts.length - 1; i >= 0; --i) {
+      bolts[i].t += dt;
+      if (bolts[i].t > 0.35) bolts.splice(i, 1);
+    }
+    for (let i = decals.length - 1; i >= 0; --i) {
+      decals[i].t += dt;
+      if (decals[i].t > decals[i].life) decals.splice(i, 1);
+    }
+    for (let i = splashes.length - 1; i >= 0; --i) {
+      splashes[i].t += dt;
+      if (splashes[i].t > 0.45) splashes.splice(i, 1);
+    }
+    // falling drops, flakes and dust in screen space
+    const area = canvasW * canvasH / (1000 * 700);
+    const want = {
+      [WEATHER_RAIN]: 160, [WEATHER_THUNDERSTORM]: 260, [WEATHER_SNOW]: 180, [WEATHER_DUST]: 140, [WEATHER_SOLAR_FLARE]: 40, [WEATHER_METEOR_SHOWER]: 0
+    }[wxShown] || 0;
+    const count = Math.round(want * area * wxK);
+    while (wxDrops.length < count)
+      wxDrops.push(newDrop(wxShown, true));
+    if (wxDrops.length > count)
+      wxDrops.length = count;
+    const wind = windStrength();
+    for (let i = 0; i < wxDrops.length; ++i) {
+      const d = wxDrops[i];
+      d.x += d.vx * dt * (wxShown === WEATHER_DUST ? 1 : 0.6 + wind * 0.2);
+      d.y += d.vy * dt;
+      d.t += dt;
+      if (wxShown === WEATHER_SNOW)
+        d.x += Math.sin(d.t * 1.5 + d.ph) * 18 * dt;
+      if (d.y > d.floor || d.x < -40 || d.x > canvasW + 40 || d.t > d.life) {
+        if ((wxShown === WEATHER_RAIN || wxShown === WEATHER_THUNDERSTORM) && d.y > d.floor && Math.random() < 0.35) {
+          const wx = (d.x - viewPanX) / viewZoom, wy = (d.y - viewPanY) / viewZoom;
+          if (wy > horizonWorldY())
+            splashes.push({ wx, wy, t: 0 });
+        }
+        wxDrops[i] = newDrop(wxShown, false);
+      }
+    }
+  }
+
+  function newDrop(kind, anywhere) {
+    const d = { x: Math.random() * (canvasW + 80) - 40, y: anywhere ? Math.random() * canvasH : -10 - Math.random() * 40, t: 0, ph: Math.random() * TWO_PI, life: 20 };
+    d.floor = canvasH * (0.35 + Math.random() * 0.7);
+    switch (kind) {
+      case WEATHER_RAIN:
+      case WEATHER_THUNDERSTORM:
+        d.vx = -60 - Math.random() * 40 - (kind === WEATHER_THUNDERSTORM ? 80 : 0);
+        d.vy = 520 + Math.random() * 220;
+        d.len = 10 + Math.random() * 10;
+        break;
+      case WEATHER_SNOW:
+        d.vx = -10 - Math.random() * 20;
+        d.vy = 40 + Math.random() * 50;
+        d.size = 1.5 + Math.random() * 2.5;
+        d.floor = canvasH + 10;
+        break;
+      case WEATHER_DUST:
+        d.x = anywhere ? d.x : -30;
+        d.y = Math.random() * canvasH;
+        d.vx = 260 + Math.random() * 260;
+        d.vy = (Math.random() - 0.5) * 40;
+        d.size = 1 + Math.random() * 3;
+        d.floor = canvasH + 10;
+        break;
+      default:
+        d.vx = (Math.random() - 0.5) * 20;
+        d.vy = -20 - Math.random() * 20;
+        d.y = anywhere ? Math.random() * canvasH : canvasH + 10;
+        d.floor = canvasH + 40;
+        d.life = 4 + Math.random() * 4;
+        d.size = 2 + Math.random() * 3;
+    }
+    return d;
+  }
+
+  /* World-space weather marks: craters, scorch marks, rain rings, incoming meteors */
+  function drawWeatherWorld() {
+    for (const d of decals) {
+      const a = Math.min(1, (d.life - d.t) / 4) * (d.kind === 'crater' ? 0.75 : 0.55);
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.fillStyle = d.kind === 'crater' ? '#2a1a12' : '#1a1418';
+      ctx.beginPath();
+      ctx.ellipse(d.wx, d.wy + 4, d.kind === 'crater' ? 14 : 10, d.kind === 'crater' ? 6 : 4, 0, 0, TWO_PI);
+      ctx.fill();
+      if (d.kind === 'crater' && d.t < 3) {
+        ctx.globalAlpha = (1 - d.t / 3) * 0.8;
+        ctx.fillStyle = '#ff8a3a';
+        ctx.beginPath();
+        ctx.ellipse(d.wx, d.wy + 4, 6, 2.5, 0, 0, TWO_PI);
+        ctx.fill();
+        lightAt(d.wx, d.wy, 50, '#ff8a3a', 1 - d.t / 3);
+      }
+      ctx.restore();
+    }
+    for (const s of splashes) {
+      const k = s.t / 0.45;
+      ctx.strokeStyle = `rgba(200,230,255,${0.6 * (1 - k)})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(s.wx, s.wy, 2 + k * 7, 1 + k * 3, 0, 0, TWO_PI);
+      ctx.stroke();
+    }
+  }
+
+  function drawMeteorsWorld() {
+    for (const m of meteors) {
+      if (m.delay > 0) continue;
+      const k = m.t / METEOR_FLIGHT;
+      const sx = m.wx + 420 * (1 - k), sy = m.wy - 640 * (1 - k);
+      const tx = sx + 420 * 0.16, ty = sy - 640 * 0.16;
+      const g = ctx.createLinearGradient(sx, sy, tx, ty);
+      g.addColorStop(0, 'rgba(255,240,180,0.95)');
+      g.addColorStop(0.3, 'rgba(255,140,60,0.7)');
+      g.addColorStop(1, 'rgba(255,80,40,0)');
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+      ctx.fillStyle = '#fff4d0';
+      ctx.beginPath();
+      ctx.arc(sx, sy, 4, 0, TWO_PI);
+      ctx.fill();
+      lightAt(sx, sy, 70, '#ffa050', 1);
+      // shadow of the incoming rock
+      ctx.fillStyle = `rgba(0,0,0,${0.3 * k})`;
+      ctx.beginPath();
+      ctx.ellipse(m.wx, m.wy + 4, 4 + k * 8, 2 + k * 3, 0, 0, TWO_PI);
+      ctx.fill();
+    }
+  }
+
+  /* Aurora ribbons in the sky during a solar flare */
+  function drawAurora() {
+    if (wxShown !== WEATHER_SOLAR_FLARE || wxK < 0.02) return;
+    const hy = viewPanY + horizonWorldY() * viewZoom;
+    if (hy <= 0) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const cols = ['80,255,170', '120,200,255', '255,160,240'];
+    for (let k = 0; k < 3; ++k) {
+      ctx.beginPath();
+      const base = hy * (0.25 + k * 0.15);
+      for (let x = 0; x <= canvasW; x += 16) {
+        const y = base + Math.sin(x * 0.006 + animT * 0.6 + k * 2) * 26 + Math.sin(x * 0.017 - animT * 0.9 + k) * 10;
+        if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      for (let x = canvasW; x >= 0; x -= 16) {
+        const y = base + 50 + Math.sin(x * 0.006 + animT * 0.6 + k * 2 + 0.4) * 26;
+        ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      const g = ctx.createLinearGradient(0, base - 30, 0, base + 80);
+      g.addColorStop(0, `rgba(${cols[k]},0)`);
+      g.addColorStop(0.5, `rgba(${cols[k]},${0.22 * wxK})`);
+      g.addColorStop(1, `rgba(${cols[k]},0)`);
+      ctx.fillStyle = g;
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /* Screen-space weather on top of the farm */
+
+  function resetWeatherVisuals() {
+    meteors = [];
+    bolts = [];
+    decals = [];
+    splashes = [];
+    wxDrops = [];
+    wxK = 0;
+    flashA = 0;
+    wxShown = WEATHER_NONE;
+  }
+
+
 
   /* ══════════════════════════════════════════════════════════════════
      DAY CYCLE
@@ -3226,7 +3482,12 @@
     }
 
     // Day/night phase: 0..1 within each game day
+    const prevPhase = dayPhase;
     dayPhase = (gameTime % DAY_CYCLE_PERIOD) / DAY_CYCLE_PERIOD;
+    if (prevPhase < 0.5 && dayPhase >= 0.5)
+      dayChime(false);
+    else if (prevPhase > 0.9 && dayPhase < 0.1)
+      dayChime(true);
 
     // Season: changes every SEASON_DURATION days
     currentSeason = Math.floor((dayCount - 1) / SEASON_DURATION) % SEASONS.length;
@@ -3263,7 +3524,6 @@
     updateCrops(dt);
     updateLivestock(dt);
     updateWeather(dt);
-    updateWeatherParticles();
     updatePriceFluctuation(dt);
     updateBuildingIncome(dt);
     updateAnimals(dt);
@@ -3321,7 +3581,7 @@
 
           if (viewZoom >= 0.5) {
             const scr = penCenter(pen);
-            popText(scr.x, scr.y - 10, `Auto: +1 ${def.produce}`, { color: '#0cf', font: 'bold 10px sans-serif' });
+            flyProduce(def.produceSprite, scr.x, scr.y, 1, true);
             particles.sparkle(scr.x, scr.y, Math.ceil(4 * viewZoom), { color: '#0cf', speed: 1.5 });
           }
         }
@@ -3489,8 +3749,21 @@
     buildingIncomeSurplusAccum -= surplusBonus;
 
     const total = earned + surplusBonus;
-    if (total > 0)
+    if (total > 0) {
       credits += total;
+      let shown = 0;
+      for (let r = 0; r < gridRows && shown < 2; ++r)
+        for (let c = 0; c < gridCols && shown < 2; ++c) {
+          const bld = buildings[r]?.[c];
+          if (!bld) continue;
+          const bname = BUILDINGS[bld.typeIndex].name;
+          if (bname !== 'Solar Panel' && bname !== 'Wind Turbine') continue;
+          const p = tileCenter(c, r);
+          const u = worldToUI(p.x, p.y - 20);
+          flyCoins(1, u.x, u.y, { size: 14 });
+          ++shown;
+        }
+    }
   }
 
   /* ── Wild Animals (Feature 8) ── */
@@ -3606,6 +3879,8 @@
     }
   }
 
+  let miceWarned = false;
+
   function spawnAnimal() {
     // Spawn at a random edge
     let x, y;
@@ -3617,6 +3892,11 @@
       default: x = Math.random() * gridCols; y = gridRows; break; // bottom
     }
     wildAnimals.push({ x, y, targetCol: -1, targetRow: -1, moveTimer: 0, hp: 1 });
+    squeak();
+    if (!miceWarned) {
+      miceWarned = true;
+      toast('A space mouse sneaks onto the farm: click it!', UI.warn, 'mouse');
+    }
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -4257,6 +4537,8 @@
       case WEATHER_THUNDERSTORM: return 3;
       case WEATHER_RAIN: return 1.8;
       case WEATHER_METEOR_SHOWER: return 1.4;
+      case WEATHER_DUST: return 2.6;
+      case WEATHER_SNOW: return 1.3;
       default: return currentSeason === 2 ? 1.5 : 1;
     }
   }
@@ -4421,6 +4703,18 @@
     ctx.fill();
 
     const size = 44 + Math.min(lvl - 1, 5) * 1.2;
+    const drop = buildingDrop(r, c);
+    if (drop > 0 && drop < 1) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, drop * 3);
+      ctx.translate(0, -(1 - drop * drop) * 70);
+    } else if (drop >= 1) {
+      const sq = Math.sin((drop - 1) / 0.35 * Math.PI) * 0.12;
+      ctx.save();
+      ctx.translate(cx, baseY);
+      ctx.scale(1 + sq, 1 - sq);
+      ctx.translate(-cx, -baseY);
+    }
     const top = baseY - 4 - size;
     if (name === 'Wind Turbine') {
       drawSprite('turbineTower', cx, top + size / 2, size);
@@ -4531,6 +4825,9 @@
         break;
       }
     }
+
+    if (drop > 0)
+      ctx.restore();
 
     // Level pips
     if (lvl > 1) {
@@ -4969,12 +5266,14 @@
   function drawWorldScene() {
     const v = viewWorldRect();
     drawSky();
+    drawAurora();
     ctx.save();
     ctx.translate(viewPanX, viewPanY);
     ctx.scale(viewZoom, viewZoom);
     drawGround(v);
     drawDecor(v);
     drawTiles(v);
+    drawWeatherWorld();
     drawFieldFence();
     // Row by row so taller sprites overlap the row behind them
     const T = BASE_TILE_SIZE;
@@ -4996,139 +5295,107 @@
       }
     }
     drawMice();
+    drawMeteorsWorld();
     particles.draw(ctx);
     ctx.restore();
     drawLighting();
     drawAmbient();
   }
 
-  function updateWeatherParticles() {
-    if (weatherType === WEATHER_NONE) {
-      weatherParticles = [];
-      return;
-    }
 
-    for (let i = 0; i < weatherParticles.length; ++i) {
-      const wp = weatherParticles[i];
-      if (weatherType === WEATHER_SOLAR_FLARE) {
-        wp.phase += 0.02;
-        wp.x += wp.drift;
-        wp.y -= wp.speed * 0.3;
-        if (wp.y < -10) { wp.y = canvasH + 10; wp.x = Math.random() * canvasW; }
-        if (wp.x < -10) wp.x = canvasW + 10;
-        if (wp.x > canvasW + 10) wp.x = -10;
-      } else if (weatherType === WEATHER_METEOR_SHOWER) {
-        wp.x += wp.vx;
-        wp.y += wp.vy;
-        if (wp.y > canvasH + 20 || wp.x < -30) {
-          wp.x = Math.random() * canvasW + 100;
-          wp.y = -Math.random() * 60;
-        }
-      } else if (weatherType === WEATHER_RAIN || weatherType === WEATHER_THUNDERSTORM) {
-        wp.x += wp.vx;
-        wp.y += wp.vy;
-        if (wp.y > canvasH + 10) {
-          wp.x = Math.random() * canvasW;
-          wp.y = -Math.random() * 20;
-        }
-      }
-    }
-  }
-
+  /* Screen-space weather on top of the farm */
   function drawWeatherOverlay() {
-    if (weatherType === WEATHER_NONE) return;
-
-    ctx.save();
-
-    if (weatherType === WEATHER_SOLAR_FLARE) {
-      // Tinted golden overlay
-      ctx.fillStyle = `rgba(255,200,0,${overlayAlpha * 0.4})`;
-      ctx.fillRect(0, 0, canvasW, canvasH);
-
-      // Radial solar glow from top-center
-      const grad = ctx.createRadialGradient(canvasW / 2, -30, 10, canvasW / 2, -30, canvasH * 0.9);
-      grad.addColorStop(0, `rgba(255,240,100,${overlayAlpha * 0.6})`);
-      grad.addColorStop(0.4, `rgba(255,200,50,${overlayAlpha * 0.2})`);
-      grad.addColorStop(1, 'rgba(255,200,50,0)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, canvasW, canvasH);
-
-      // Floating golden orbs
-      for (let i = 0; i < weatherParticles.length; ++i) {
-        const wp = weatherParticles[i];
-        const alpha = 0.25 + 0.25 * Math.sin(wp.phase);
-        ctx.globalAlpha = alpha;
-        ctx.shadowBlur = wp.size * 2;
-        ctx.shadowColor = '#ffa';
-        ctx.fillStyle = '#ffe866';
-        ctx.beginPath();
-        ctx.arc(wp.x, wp.y, wp.size, 0, TWO_PI);
-        ctx.fill();
+    const k = wxK;
+    if (k > 0.01) {
+      ctx.save();
+      switch (wxShown) {
+        case WEATHER_SOLAR_FLARE: {
+          ctx.fillStyle = `rgba(255,200,60,${0.10 * k})`;
+          ctx.fillRect(0, 0, canvasW, canvasH);
+          const g = ctx.createRadialGradient(canvasW * 0.5, -60, 20, canvasW * 0.5, -60, canvasH);
+          g.addColorStop(0, `rgba(255,240,140,${0.35 * k})`);
+          g.addColorStop(1, 'rgba(255,220,100,0)');
+          ctx.fillStyle = g;
+          ctx.fillRect(0, 0, canvasW, canvasH);
+          for (const d of wxDrops) {
+            const a = Math.min(1, d.t, d.life - d.t) * 0.7 * k;
+            ctx.globalAlpha = a * (0.5 + 0.5 * Math.sin(d.t * 4 + d.ph));
+            drawTwinkle(d.x, d.y, d.size * 1.6, 1);
+          }
+          break;
+        }
+        case WEATHER_RAIN:
+        case WEATHER_THUNDERSTORM: {
+          ctx.fillStyle = wxShown === WEATHER_RAIN ? `rgba(30,50,110,${0.16 * k})` : `rgba(15,15,40,${0.28 * k})`;
+          ctx.fillRect(0, 0, canvasW, canvasH);
+          ctx.strokeStyle = wxShown === WEATHER_RAIN ? `rgba(170,210,255,${0.55 * k})` : `rgba(190,200,255,${0.6 * k})`;
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          for (const d of wxDrops) {
+            const f = d.len / Math.hypot(d.vx, d.vy);
+            ctx.moveTo(d.x, d.y);
+            ctx.lineTo(d.x - d.vx * f, d.y - d.vy * f);
+          }
+          ctx.stroke();
+          break;
+        }
+        case WEATHER_SNOW: {
+          ctx.fillStyle = `rgba(220,235,255,${0.12 * k})`;
+          ctx.fillRect(0, 0, canvasW, canvasH);
+          ctx.fillStyle = `rgba(255,255,255,${0.9 * k})`;
+          for (const d of wxDrops) {
+            ctx.beginPath();
+            ctx.arc(d.x, d.y, d.size, 0, TWO_PI);
+            ctx.fill();
+          }
+          break;
+        }
+        case WEATHER_DUST: {
+          ctx.fillStyle = `rgba(190,140,80,${0.28 * k})`;
+          ctx.fillRect(0, 0, canvasW, canvasH);
+          for (let i = 0; i < 3; ++i) {
+            const y = canvasH * (0.2 + i * 0.3) + Math.sin(animT * 0.7 + i) * 40;
+            const g = ctx.createLinearGradient(0, y - 60, 0, y + 60);
+            g.addColorStop(0, 'rgba(210,160,90,0)');
+            g.addColorStop(0.5, `rgba(210,160,90,${0.18 * k})`);
+            g.addColorStop(1, 'rgba(210,160,90,0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(0, y - 60, canvasW, 120);
+          }
+          ctx.fillStyle = `rgba(230,190,130,${0.6 * k})`;
+          for (const d of wxDrops)
+            ctx.fillRect(d.x, d.y, d.size * 4, d.size * 0.8);
+          break;
+        }
+        case WEATHER_METEOR_SHOWER:
+          ctx.fillStyle = `rgba(120,30,20,${0.12 * k})`;
+          ctx.fillRect(0, 0, canvasW, canvasH);
+          break;
       }
-    } else if (weatherType === WEATHER_METEOR_SHOWER) {
-      // Tinted reddish overlay
-      ctx.fillStyle = `rgba(180,30,20,${overlayAlpha * 0.25})`;
-      ctx.fillRect(0, 0, canvasW, canvasH);
-
-      // Meteor rain particles with trails
-      for (let i = 0; i < weatherParticles.length; ++i) {
-        const wp = weatherParticles[i];
-        ctx.globalAlpha = 0.7;
-        ctx.strokeStyle = '#f80';
-        ctx.lineWidth = wp.size * 0.7;
-        ctx.shadowBlur = 4;
-        ctx.shadowColor = '#f60';
-        ctx.beginPath();
-        ctx.moveTo(wp.x, wp.y);
-        ctx.lineTo(wp.x - wp.vx * (wp.trail / wp.vy) * 0.6, wp.y - wp.trail);
-        ctx.stroke();
-
-        // Bright head
-        ctx.globalAlpha = 0.9;
-        ctx.fillStyle = '#fe8';
-        ctx.shadowBlur = 6;
-        ctx.shadowColor = '#f80';
-        ctx.beginPath();
-        ctx.arc(wp.x, wp.y, wp.size * 0.5, 0, TWO_PI);
-        ctx.fill();
-      }
-    } else if (weatherType === WEATHER_RAIN) {
-      ctx.fillStyle = `rgba(40,80,200,${overlayAlpha * 0.2})`;
-      ctx.fillRect(0, 0, canvasW, canvasH);
-      for (let i = 0; i < weatherParticles.length; ++i) {
-        const wp = weatherParticles[i];
-        ctx.globalAlpha = 0.5;
-        ctx.strokeStyle = '#6af';
-        ctx.lineWidth = wp.size * 0.4;
-        ctx.beginPath();
-        ctx.moveTo(wp.x, wp.y);
-        ctx.lineTo(wp.x + wp.vx * 2, wp.y - 8);
-        ctx.stroke();
-      }
-    } else if (weatherType === WEATHER_THUNDERSTORM) {
-      ctx.fillStyle = `rgba(20,20,40,${overlayAlpha * 0.35})`;
-      ctx.fillRect(0, 0, canvasW, canvasH);
-      for (let i = 0; i < weatherParticles.length; ++i) {
-        const wp = weatherParticles[i];
-        ctx.globalAlpha = 0.6;
-        ctx.strokeStyle = '#8bf';
-        ctx.lineWidth = wp.size * 0.5;
-        ctx.beginPath();
-        ctx.moveTo(wp.x, wp.y);
-        ctx.lineTo(wp.x + wp.vx * 2, wp.y - 10);
-        ctx.stroke();
-      }
-      // Random lightning flash
-      if (Math.random() < 0.02) {
-        ctx.globalAlpha = 0.15 + Math.random() * 0.15;
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(0, 0, canvasW, canvasH);
-      }
+      ctx.restore();
     }
-
-    ctx.shadowBlur = 0;
-    ctx.globalAlpha = 1;
-    ctx.restore();
+    // lightning bolts and flash
+    for (const b of bolts) {
+      const a = 1 - b.t / 0.35;
+      ctx.save();
+      ctx.strokeStyle = `rgba(200,220,255,${a})`;
+      ctx.shadowColor = '#a0c8ff';
+      ctx.shadowBlur = 14;
+      ctx.lineWidth = 3;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(b.pts[0][0], b.pts[0][1]);
+      for (const p of b.pts) ctx.lineTo(p[0], p[1]);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255,255,255,${a})`;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (flashA > 0) {
+      ctx.fillStyle = `rgba(230,240,255,${flashA * 0.5})`;
+      ctx.fillRect(0, 0, canvasW, canvasH);
+    }
   }
 
   function drawDragSelection() {
@@ -5196,6 +5463,156 @@
   }
 
 
+
+  /* ══════════════════════════════════════════════════════════════════
+     JUICE — produce and coins fly to their counters, buildings drop in,
+     celebrations burst confetti, sounds follow every action
+     ══════════════════════════════════════════════════════════════════ */
+
+  const uiParticles = new SZ.GameEffects.ParticleSystem();
+  const flyers = [];                 // { sprite, x0, y0, target, t, dur, size, arc, onArrive }
+  let storagePulse = 0;
+  const buildAnim = {};              // "r,c" -> uiTime of placement
+  let harvestCombo = 0, harvestComboT = 0;
+
+  function worldToUI(wx, wy) {
+    return { x: (viewPanX + wx * viewZoom) / uiS, y: (viewPanY + wy * viewZoom) / uiS };
+  }
+
+  function creditsTarget() {
+    const L = hudLayout();
+    return { x: L.farm.x + 26, y: L.farm.y + 26 };
+  }
+
+  function storageTarget() {
+    const L = hudLayout();
+    return { x: L.farm.x + 20, y: L.farm.y + 63 };
+  }
+
+  function addFlyer(sprite, x0, y0, targetFn, opts) {
+    opts = opts || {};
+    if (flyers.length > 80) return;
+    flyers.push({
+      sprite, x0, y0, target: targetFn, t: -(opts.delay || 0), dur: opts.dur || 0.75 + Math.random() * 0.2,
+      size: opts.size || 22, arc: opts.arc !== undefined ? opts.arc : 60 + Math.random() * 50,
+      spread: (Math.random() - 0.5) * 40, onArrive: opts.onArrive
+    });
+  }
+
+  /* Harvested produce hops up from the tile and flies into storage */
+  function flyProduce(sprite, wx, wy, count, small) {
+    const p = worldToUI(wx, wy);
+    for (let i = 0; i < Math.min(count, 4); ++i)
+      addFlyer(sprite, p.x, p.y - 10, storageTarget, {
+        delay: i * 0.08, size: small ? 16 : 24, arc: small ? 40 : 90,
+        onArrive: () => {
+          storagePulse = 1;
+          SZ.GameAudio.play('blip', { pitch: 1.6 + Math.random() * 0.3, volume: 0.25 });
+        }
+      });
+  }
+
+  /* Coins from a point (UI units) into the credit counter */
+  function flyCoins(n, ux, uy, opts) {
+    opts = opts || {};
+    for (let i = 0; i < n; ++i)
+      addFlyer('coin', ux + (Math.random() - 0.5) * 24, uy + (Math.random() - 0.5) * 12, creditsTarget, {
+        delay: i * (opts.stagger || 0.05), size: opts.size || 20, arc: 50 + Math.random() * 60,
+        onArrive: () => {
+          creditsPulse = 1;
+          SZ.GameAudio.play('coin', { pitch: 0.9 + Math.random() * 0.3, volume: 0.35 });
+        }
+      });
+  }
+
+  function updateFlyers(dt) {
+    for (let i = flyers.length - 1; i >= 0; --i) {
+      const f = flyers[i];
+      f.t += dt;
+      if (f.t >= f.dur) {
+        flyers.splice(i, 1);
+        if (f.onArrive) f.onArrive();
+      }
+    }
+    storagePulse = Math.max(0, storagePulse - dt * 3);
+    harvestComboT -= dt;
+    if (harvestComboT <= 0)
+      harvestCombo = 0;
+  }
+
+  function drawFlyers() {
+    for (const f of flyers) {
+      if (f.t < 0) continue;
+      const k = f.t / f.dur;
+      const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      const tg = f.target();
+      const cx = (f.x0 + tg.x) / 2 + f.spread, cy = Math.min(f.y0, tg.y) - f.arc;
+      const x = (1 - e) * (1 - e) * f.x0 + 2 * (1 - e) * e * cx + e * e * tg.x;
+      const y = (1 - e) * (1 - e) * f.y0 + 2 * (1 - e) * e * cy + e * e * tg.y;
+      const pop = k < 0.15 ? 0.5 + k / 0.15 * 0.7 : 1.2 - (k - 0.15) * 0.45;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, (1 - k) * 4 + 0.3);
+      ctx.shadowColor = 'rgba(255,230,140,0.8)';
+      ctx.shadowBlur = 8;
+      drawSprite(f.sprite, x, y, f.size * pop);
+      ctx.restore();
+    }
+  }
+
+  function celebrate(ux, uy, n) {
+    uiParticles.confetti(ux, uy, n || 26, { speed: 5 });
+  }
+
+  /* Building drop-in: falls from above, squashes on landing, dust ring */
+  function buildingDrop(r, c) {
+    const k = r + ',' + c;
+    if (buildAnim[k] === undefined) return 0;
+    const t = (uiTime - buildAnim[k]) / 0.45;
+    if (t >= 1.35) {
+      delete buildAnim[k];
+      return 0;
+    }
+    return t;
+  }
+
+  function dustRing(wx, wy, color) {
+    for (let i = 0; i < 14; ++i) {
+      const a = (i / 14) * TWO_PI;
+      particles.trail(wx + Math.cos(a) * 10, wy + Math.sin(a) * 4, {
+        vx: Math.cos(a) * 2.2, vy: Math.sin(a) * 0.8 - 0.3, color: color || '#d8c8a8',
+        life: 0.5 + Math.random() * 0.2, size: 3 + Math.random() * 2, decay: 0.035
+      });
+    }
+  }
+
+  /* Animal voices when produce is collected */
+  const ANIMAL_VOICES = {
+    cow: () => { SZ.GameAudio.sweep(230, 150, 0.32, 'sawtooth', 0.045); },
+    hen: () => { SZ.GameAudio.sweep(900, 1300, 0.07, 'square', 0.035); SZ.GameAudio.sweep(1000, 1400, 0.07, 'square', 0.03, 0.09); },
+    goat: () => { SZ.GameAudio.sweep(520, 380, 0.22, 'sawtooth', 0.04); SZ.GameAudio.sweep(500, 400, 0.18, 'sawtooth', 0.03, 0.2); },
+    chick: () => { SZ.GameAudio.sweep(1700, 2200, 0.05, 'square', 0.03); SZ.GameAudio.sweep(1800, 2300, 0.05, 'square', 0.025, 0.08); },
+    rabbit: () => { SZ.GameAudio.sweep(1200, 900, 0.06, 'triangle', 0.05); },
+    bee: () => { SZ.GameAudio.sweep(210, 240, 0.4, 'sawtooth', 0.03); }
+  };
+  let lastVoice = 0;
+
+  function animalVoice(sprite) {
+    if (uiTime - lastVoice < 0.25) return;
+    lastVoice = uiTime;
+    const v = ANIMAL_VOICES[sprite];
+    if (v) v();
+  }
+
+  function squeak() {
+    SZ.GameAudio.sweep(2400, 3000, 0.04, 'square', 0.025);
+    SZ.GameAudio.sweep(2600, 3200, 0.04, 'square', 0.02, 0.07);
+  }
+
+  /* Soft chimes at dawn and dusk */
+  function dayChime(dawn) {
+    const notes = dawn ? [523, 659, 784] : [659, 523, 392];
+    notes.forEach((f, i) => SZ.GameAudio.tone(f, 0.5, 'sine', 0.035, i * 0.18));
+  }
 
   /* ══════════════════════════════════════════════════════════════════
      HUD — farm status, storage, clock, tool dock
@@ -5343,7 +5760,7 @@
     const cap = getStorageCapacity();
     const used = getTotalInventoryCount();
     const full = used >= cap;
-    drawSprite('basket', r.x + 20, r.y + 63, 18);
+    drawSprite('basket', r.x + 20, r.y + 63, 18 * (1 + storagePulse * 0.35));
     drawMeter(r.x + 36, r.y + 55, r.w - 48, 16, used / cap, full ? UI.bad : (used / cap > 0.8 ? UI.warn : '#7ed46a'), { label: `${used} / ${cap}`, labelPx: 11 });
     addRegion({ id: 'hud-storage', x: r.x, y: r.y + 50, w: r.w, h: 26, tip: () => {
       const lines = ['[[basket]] Storage', `${used} of ${cap} slots used.`];
@@ -5443,7 +5860,9 @@
     solarFlare: { name: 'Solar flare', icon: 'flare', color: '#ffd23f' },
     meteorShower: { name: 'Meteor shower', icon: 'meteor', color: '#ff7a4a' },
     rain: { name: 'Rain', icon: 'rain', color: '#7ab8ff' },
-    thunderstorm: { name: 'Thunderstorm', icon: 'storm', color: '#c8b0ff' }
+    thunderstorm: { name: 'Thunderstorm', icon: 'storm', color: '#c8b0ff' },
+    snow: { name: 'Snowfall', icon: 'snow', color: '#cfe8ff' },
+    dust: { name: 'Dust storm', icon: 'dust', color: '#e0b878' }
   };
 
   function weatherInfo() {
@@ -6588,7 +7007,7 @@
       '✔ Spring: crops grow 10% faster',
       '✔ Summer: crops grow 25% faster, more solar flares',
       '✔ Autumn: 15% bigger harvests, 10% slower growth',
-      '⚠ Winter: 40% slower growth, no storms'
+      '⚠ Winter: 40% slower growth, snowfall'
     ];
     return [
       `[[${SEASON_SPRITES[currentSeason]}]] ${SEASONS[currentSeason]} · Day ${dayCount}`,
@@ -6605,8 +7024,10 @@
       case WEATHER_SOLAR_FLARE: lines.push('✔ Crops grow twice as fast, sun-lovers three times'); break;
       case WEATHER_METEOR_SHOWER: lines.push('✘ Meteors smash unprotected crops', 'Greenhouses and the weather shield help'); break;
       case WEATHER_RAIN: lines.push('✔ Crops grow 50% faster'); break;
-      case WEATHER_THUNDERSTORM: lines.push('✔ Crops grow twice as fast', '✘ Lightning may destroy crops or animals', 'Wind turbines charge three times faster'); break;
-      default: lines.push(currentSeason === 3 ? 'Winter brings calm skies.' : 'Weather changes every 25-50 seconds.');
+      case WEATHER_THUNDERSTORM: lines.push('✔ Crops grow twice as fast', '✘ Lightning may destroy crops or scare off animals', 'Wind turbines charge three times faster'); break;
+      case WEATHER_SNOW: lines.push('⚠ Crops grow 20% slower while it snows'); break;
+      case WEATHER_DUST: lines.push('⚠ Crops grow 25% slower', '⚠ Solar panels barely charge'); break;
+      default: lines.push(['Spring brings rain and the odd storm.', 'Summer brings solar flares, storms and dust.', 'Autumn brings rain, dust and meteors.', 'Winter brings snow and the odd meteor shower.'][currentSeason], 'Weather changes every 25-50 seconds.');
     }
     return lines;
   }
@@ -6656,8 +7077,11 @@
     if (tt === TILE_WATER)
       return { key, lines: buildEmptyTileTooltip(row, col) };
     const bld = buildings[row]?.[col];
-    if (bld)
+    if (bld) {
+      if (inspect && inspect.row === row && inspect.col === col)
+        return null;
       return { key: key + ':b' + (bld.level || 1), lines: buildBuildingTileTooltip(bld, row, col) };
+    }
     const cell = farmGrid[row][col];
     return { key: key + (cell ? ':c' + cell.growthStage : ':e'), lines: cell ? buildCropTileTooltip(cell, row, col) : buildEmptyTileTooltip(row, col) };
   }
@@ -6714,6 +7138,10 @@
         drawLivestockDialog();
       if (state === STATE_PAUSED && dialog !== 'help')
         drawPauseScreen();
+    }
+    if (playing) {
+      drawFlyers();
+      uiParticles.draw(ctx);
     }
     if (dialog === 'help')
       drawHelpDialog();
@@ -6806,6 +7234,9 @@
     if (state === STATE_PLAYING || state === STATE_PAUSED)
       updateAmbient(state === STATE_PLAYING && !dialog ? dt : 0);
     updatePops(dt);
+    updateFlyers(dt);
+    uiParticles.update();
+    updateWeatherVisuals(state === STATE_PLAYING && !dialog ? dt : 0);
 
     if (state === STATE_PLAYING) {
       autosaveTimer += dt;
@@ -6813,7 +7244,7 @@
         saveGame();
       if (lastSeason !== currentSeason) {
         if (lastSeason >= 0)
-          announce(`${SEASONS[currentSeason]} has arrived`, ['Crops grow 10% faster', 'Crops grow 25% faster', 'Harvests are 15% bigger', 'Crops grow 40% slower, no storms'][currentSeason], SEASON_COLORS[currentSeason], SEASON_SPRITES[currentSeason]);
+          announce(`${SEASONS[currentSeason]} has arrived`, ['Crops grow 10% faster', 'Crops grow 25% faster', 'Harvests are 15% bigger', 'Crops grow 40% slower, snow falls'][currentSeason], SEASON_COLORS[currentSeason], SEASON_SPRITES[currentSeason]);
         lastSeason = currentSeason;
       }
     }
@@ -7151,8 +7582,9 @@
     const animal = wildAnimals[i];
     credits += 10;
     const { x: tx, y: ty } = tileCenter(animal.rx !== undefined ? animal.rx : animal.x, animal.ry !== undefined ? animal.ry : animal.y);
-    popText(tx, ty - 10, '+10 cr', { color: '#6fe08a', font: uiFont(14, 'bold') });
-    popText(tx, ty + 8, 'Pest chased off!', { color: '#ffb648', font: uiFont(11, 'bold') });
+    popText(tx, ty - 10, 'Chased off! +10', { color: '#ffd75a', font: 'bold 13px' });
+    const up = worldToUI(tx, ty);
+    flyCoins(2, up.x, up.y, { size: 18 });
     particles.burst(tx, ty, 10, { color: '#ffd0a0', speed: 3, life: 0.4 });
     screenShake.trigger(2, 100);
     SZ.GameAudio.play('hit');
