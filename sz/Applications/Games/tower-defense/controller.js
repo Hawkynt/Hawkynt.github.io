@@ -157,14 +157,14 @@
     },
     {
       id: 'sniper', name: 'Sniper', cost: 160, color: '#e8e8f0', hits: 'both', kind: 'snipe',
-      damage: 75, range: 6.5, reload: 2.4, pierce: 0.6, trueSight: true,
+      damage: 70, range: 6.0, reload: 3.0, pierce: 0.6, trueSight: true,
       desc: 'Very long range, heavy single shots. Spots stealthed enemies.',
       strong: 'Stealth, healers, bosses', weak: 'Swarms',
       tiers: [{}, { damage: 1.5, range: 1.05, reload: 0.95 }, { damage: 2.1, range: 1.1, reload: 0.9 }],
       branches: [
         { id: 'railgun', name: 'Railgun', desc: 'Slugs pierce every enemy along the line.',
-          t4: { damage: 3.6, range: 1.2, reload: 0.95, rail: true, pierce: 1 },
-          t5: { damage: 5.4, range: 1.3, reload: 0.9, rail: true, pierce: 1 } },
+          t4: { damage: 3.2, range: 1.15, reload: 0.95, rail: true, pierce: 1 },
+          t5: { damage: 4.6, range: 1.25, reload: 0.9, rail: true, pierce: 1 } },
         { id: 'assassin', name: 'Assassin', desc: 'Crits often and executes weakened enemies.',
           t4: { damage: 3.0, range: 1.15, reload: 0.75, crit: 0.3, critMul: 2.5, execute: 0.2 },
           t5: { damage: 4.4, range: 1.2, reload: 0.7, crit: 0.4, critMul: 3, execute: 0.3 } }
@@ -402,47 +402,47 @@
       desc: 'A gentle road winding through the meadow. A fine place to learn the ropes.',
       paths: [[[0,8],[4,8],[4,3],[10,3],[10,13],[16,13],[16,5],[21,5],[21,11],[24,11]]],
       features: [['water', 12, 6, 14, 9], ['water', 0, 15, 6, 16], ['rock', 19, 14, 20, 15]] },
-    { name: 'Crossroads', biome: 'meadow', waves: 15, startGold: 300, startLives: 20, hpMul: 0.7,
+    { name: 'Crossroads', biome: 'meadow', waves: 15, startGold: 300, startLives: 20, hpMul: 0.63,
       desc: 'Two roads cross twice. Enemies come from the west and the north.',
       paths: [[[0,4],[17,4],[17,16]], [[7,0],[7,12],[24,12]]],
       features: [['water', 19, 0, 23, 2], ['water', 1, 13, 4, 15], ['rock', 11, 7, 13, 9]] },
-    { name: 'Spiral', biome: 'meadow', waves: 18, startGold: 230, startLives: 20, hpMul: 0.95,
+    { name: 'Spiral', biome: 'meadow', waves: 18, startGold: 230, startLives: 20, hpMul: 0.78,
       desc: 'The road coils inward to the old keep. Long, but every turn is a chance.',
       paths: [[[0,1],[22,1],[22,15],[2,15],[2,5],[18,5],[18,11],[7,11],[7,8],[13,8]]],
       features: [['water', 10, 12, 14, 13], ['rock', 15, 7, 16, 9]] },
-    { name: 'Zigzag', biome: 'desert', waves: 18, startGold: 240, startLives: 20, hpMul: 1.05,
+    { name: 'Zigzag', biome: 'desert', waves: 18, startGold: 240, startLives: 20, hpMul: 0.83,
       desc: 'Long switchbacks through the dunes, past a shaded oasis.',
       paths: [[[0,2],[6,2],[6,14],[12,14],[12,2],[18,2],[18,14],[24,14]]],
       features: [['water', 20, 5, 23, 9], ['rock', 8, 6, 10, 9], ['rock', 14, 9, 16, 11]] },
-    { name: 'Diamond', biome: 'desert', waves: 20, startGold: 250, startLives: 20, hpMul: 1.15,
+    { name: 'Diamond', biome: 'desert', waves: 20, startGold: 250, startLives: 20, hpMul: 0.86,
       desc: 'The road circles a great mesa and doubles back across itself.',
       paths: [[[0,8],[3,8],[3,2],[21,2],[21,14],[6,14],[6,6],[17,6],[17,10],[24,10]]],
       features: [['rock', 9, 9, 14, 12], ['water', 23, 13, 24, 16]] },
-    { name: 'Fortress', biome: 'desert', waves: 20, startGold: 260, startLives: 20, hpMul: 1.2,
+    { name: 'Fortress', biome: 'desert', waves: 20, startGold: 260, startLives: 20, hpMul: 0.89,
       desc: 'Two caravan routes join before the fortress gate.',
       paths: [[[0,3],[8,3],[8,8],[16,8],[16,4],[24,4]], [[0,13],[8,13],[8,8],[16,8],[16,4],[24,4]]],
       features: [['rock', 11, 11, 14, 14], ['water', 19, 9, 23, 12], ['rock', 11, 1, 13, 2]] },
-    { name: 'Canyon', biome: 'tundra', waves: 22, startGold: 250, startLives: 18, hpMul: 1.3,
+    { name: 'Canyon', biome: 'tundra', waves: 22, startGold: 250, startLives: 18, hpMul: 0.96, budgetMul: 1.15,
       desc: 'A frozen canyon cut into deep switchbacks.',
       paths: [[[0,14],[4,14],[4,2],[9,2],[9,14],[14,14],[14,2],[19,2],[19,14],[24,14]]],
       features: [['ice', 21, 4, 23, 9], ['rock', 6, 6, 7, 9], ['rock', 16, 6, 17, 9]] },
-    { name: 'Labyrinth', biome: 'tundra', waves: 22, startGold: 260, startLives: 18, hpMul: 1.4,
+    { name: 'Labyrinth', biome: 'tundra', waves: 22, startGold: 260, startLives: 18, hpMul: 1.0, budgetMul: 1.2,
       desc: 'An icy maze of twists and blind turns.',
       paths: [[[0,2],[5,2],[5,8],[1,8],[1,14],[10,14],[10,5],[15,5],[15,12],[20,12],[20,2],[24,2]]],
       features: [['ice', 12, 7, 13, 11], ['rock', 4, 10, 7, 11], ['ice', 22, 6, 24, 10]] },
-    { name: 'Twin Paths', biome: 'tundra', waves: 24, startGold: 280, startLives: 18, hpMul: 1.45,
+    { name: 'Twin Paths', biome: 'tundra', waves: 24, startGold: 280, startLives: 18, hpMul: 1.0, budgetMul: 1.25,
       desc: 'Two mirrored roads run side by side through the snow.',
       paths: [[[0,2],[8,2],[8,7],[16,7],[16,2],[24,2]], [[0,14],[8,14],[8,9],[16,9],[16,14],[24,14]]],
       features: [['ice', 10, 11, 14, 12], ['ice', 10, 4, 14, 5], ['rock', 2, 6, 4, 10], ['rock', 20, 6, 22, 10]] },
-    { name: 'Gauntlet', biome: 'volcano', waves: 25, startGold: 270, startLives: 15, hpMul: 1.62,
+    { name: 'Gauntlet', biome: 'volcano', waves: 25, startGold: 270, startLives: 15, hpMul: 1.09, budgetMul: 1.4,
       desc: 'Narrow ridges between rivers of lava. Space is precious.',
       paths: [[[0,8],[3,8],[3,2],[7,2],[7,14],[11,14],[11,2],[15,2],[15,14],[19,14],[19,2],[22,2],[22,8],[24,8]]],
       features: [['lava', 5, 4, 5, 12], ['lava', 13, 4, 13, 12], ['lava', 17, 4, 17, 12], ['lava', 21, 11, 24, 16]] },
-    { name: 'Wasteland', biome: 'volcano', waves: 25, startGold: 290, startLives: 15, hpMul: 1.75,
+    { name: 'Wasteland', biome: 'volcano', waves: 25, startGold: 290, startLives: 15, hpMul: 1.06, budgetMul: 1.45,
       desc: 'Ash plains where two war parties cut across each other.',
       paths: [[[0,2],[12,2],[12,14],[24,14]], [[24,2],[18,2],[18,8],[6,8],[6,16]]],
       features: [['lava', 1, 10, 4, 14], ['lava', 14, 3, 16, 6], ['rock', 19, 10, 22, 12]] },
-    { name: 'Final Stand', biome: 'volcano', waves: 30, startGold: 320, startLives: 10, hpMul: 1.95,
+    { name: 'Final Stand', biome: 'volcano', waves: 30, startGold: 320, startLives: 10, hpMul: 1.04, budgetMul: 1.5,
       desc: 'The last citadel. Both armies march on the heart of the fortress.',
       paths: [[[0,2],[9,2],[9,5],[3,5],[3,12],[8,12],[8,8],[12,8]], [[24,14],[15,14],[15,11],[21,11],[21,4],[16,4],[16,8],[12,8]]],
       features: [['lava', 10, 11, 13, 13], ['lava', 11, 3, 13, 5], ['rock', 0, 14, 2, 16], ['rock', 23, 0, 24, 2]] }
@@ -602,7 +602,7 @@
   let lastResult = null;     // outcome of the map just finished, for the end screen
 
   function defaultMeta() {
-    return { version: 1, maps: MAPS.map(() => ({ stars: 0, best: 0, wins: 0 })), rp: 0, rpEarned: 0, tree: {} };
+    return { version: 1, maps: MAPS.map(() => ({ stars: 0, best: 0, wins: 0 })), rp: 0, rpEarned: 0, tree: {}, relics: [], bossKills: {} };
   }
 
   function loadMeta() {
@@ -631,6 +631,12 @@
         for (const id in d.tree)
           if (TREE_BY_ID[id] && Number.isInteger(d.tree[id]) && d.tree[id] > 0)
             meta.tree[id] = Math.min(d.tree[id], TREE_BY_ID[id].max);
+      if (Array.isArray(d.relics))
+        for (const id of d.relics)
+          if (RELIC_BY_ID[id] && meta.relics.indexOf(id) < 0) meta.relics.push(id);
+      if (d.bossKills && typeof d.bossKills === 'object')
+        for (const k in d.bossKills)
+          if (ENEMY_TYPES[k] && ENEMY_TYPES[k].boss) meta.bossKills[k] = Math.max(0, Math.floor(num(d.bossKills[k], 0)));
     } else {
       // First start with campaign progress: honour maps already won before
       for (const h of highScores) {
@@ -1152,11 +1158,19 @@
     }
     for (const k in mods)
       s[k] = MUL_KEYS[k] ? def[k] * mods[k] : mods[k];
-    // Research bonuses
-    s.damage *= techDamageMul(def);
+    // Research and relic bonuses
+    const relicDmg = hasRelic('steel') ? 1.1 : 1;
+    s.damage *= techDamageMul(def) * relicDmg;
     s.range *= techRangeMul(def);
-    if (s.cloudDps) s.cloudDps *= techDamageMul(def);
-    if (s.burn) s.burn *= techDamageMul(def);
+    if (s.cloudDps) s.cloudDps *= techDamageMul(def) * relicDmg;
+    if (s.burn) s.burn *= techDamageMul(def) * relicDmg * (hasRelic('ember') ? 1.5 : 1);
+    if (s.lava && hasRelic('ember')) s.lava *= 1.5;
+    if (def.id === 'arrow' && hasRelic('quiver')) s.multishot = (s.multishot || 1) + 1;
+    if (def.id === 'tesla' && hasRelic('coil')) s.chains += 2;
+    if ((def.id === 'arrow' || def.id === 'sniper') && hasRelic('lens')) {
+      s.crit = (s.crit || 0) + 0.1;
+      s.critMul = s.critMul || 2;
+    }
     s.damage = Math.round(s.damage * 10) / 10;
     s.rangePx = s.range * CELL;
     s.splashPx = (s.splash || 0) * CELL;
@@ -1244,9 +1258,10 @@
       return false;
     }
     gold -= def.cost;
-    const tower = makeTower(col, row, typeIndex, 1, -1);
+    const startTier = 1;
+    const tower = makeTower(col, row, typeIndex, startTier, -1);
     tower.spent = def.cost;
-    tower.maxHp = tower.hp = towerMaxHp(1);
+    tower.maxHp = tower.hp = towerMaxHp(startTier);
     tower.builtWave = state === STATE_BUILD ? currentWave : -1;
     tower.bornAt = animTime;
     towers.push(tower);
@@ -1261,7 +1276,7 @@
 
   function getUpgradeCost(tower) {
     if (tower.tier >= MAX_TIER) return 0;
-    return Math.round(TOWER_TYPES[tower.type].cost * TIER_COST[tower.tier + 1] / 5) * 5;
+    return Math.round(TOWER_TYPES[tower.type].cost * TIER_COST[tower.tier + 1] * (hasRelic('hammer') ? 0.8 : 1) / 5) * 5;
   }
 
   // branch: required when going from tier 3 to 4
@@ -1464,18 +1479,17 @@
       particles.confetti(WORLD_W * (0.15 + i * 0.175), WORLD_H * 0.6, 24, {});
     screenShake.trigger(6, 300);
     audio.play('win');
-    const stars = '★'.repeat(lastResult.stars) + '☆'.repeat(3 - lastResult.stars);
-    showBanner('MAP CLEARED', `${stars}  ·  +${rp} research  ·  ${currentMap + 1 < MAPS.length ? 'next level open (L)' : 'hold as long as you can'}`, UI.gold, 3.2);
+    startCine('outro', { rp });
     updateWindowTitle();
   }
 
   // Further maps pay better: more gold per kill and more research per wave
   function mapBountyMul(mi) {
-    return 1 + mi * 0.06;
+    return 1 + mi * 0.04;
   }
 
   function mapResearchMul(mi) {
-    return 1 + mi * 0.15;
+    return 1 + mi * 0.08;
   }
 
   function startNextWave() {
@@ -1570,7 +1584,11 @@
     const w = Math.max(0, waveNo - 1);
     // Beyond the map's required waves health also grows by 7% a wave
     const extra = Math.max(0, waveNo - MAPS[currentMap].waves);
-    return (1 + 0.11 * w + 0.012 * w * w) * (MAPS[currentMap].hpMul || 1) * Math.pow(1.07, extra);
+    // Richer maps field tougher enemies in step with their higher bounty; the
+    // map's toughness phases in over the first half of its waves
+    const mapFactor = (MAPS[currentMap].hpMul || 1) * Math.pow(mapBountyMul(currentMap), 2.5);
+    const phase = clamp(waveNo / (MAPS[currentMap].waves * 0.6), 0.3, 1);
+    return (1 + 0.11 * w + 0.012 * w * w) * (1 + (mapFactor - 1) * phase) * Math.pow(1.07, extra);
   }
 
   function spawnEnemy(token, pathIndex, atDist) {
@@ -1665,7 +1683,7 @@
   }
 
   function startLives() {
-    return MAPS[currentMap].startLives + techLevel('fortify') * 3;
+    return MAPS[currentMap].startLives + techLevel('fortify') * 3 + (hasRelic('scale') ? 5 : 0);
   }
 
   function applySlow(e, mul, time) {
@@ -1957,15 +1975,18 @@
         const ex = t.x + Math.cos(t.angle) * s.rangePx * (s.rail ? 1.4 : 0), ey = t.y + Math.sin(t.angle) * s.rangePx * (s.rail ? 1.4 : 0);
         if (s.rail) {
           // Every enemy on the line takes the hit
+          // The slug loses a fifth of its force with every enemy it passes through
           const ax = Math.cos(t.angle), ay = Math.sin(t.angle);
+          const line = [];
           for (const o of enemies) {
             if (o.hp <= 0 || !canHit(s, o)) continue;
             const dx = o.x - t.x, dy = o.y - t.y;
             const along = dx * ax + dy * ay;
             if (along < 0 || along > s.rangePx * 1.4) continue;
-            if (Math.abs(dx * ay - dy * ax) <= o.radius + 4)
-              hurt(o, s.damage * crit, t, 'phys', { pierce: s.pierce });
+            if (Math.abs(dx * ay - dy * ax) <= o.radius + 4) line.push([along, o]);
           }
+          line.sort((a, b) => a[0] - b[0]);
+          line.forEach(([, o], k) => hurt(o, s.damage * crit * Math.pow(0.8, k), t, 'phys', { pierce: s.pierce }));
           fxLines.push({ kind: 'tracer', pts: [muzzleOf(t), { x: ex, y: ey }], color: '#9ad8ff', t: 0, life: 0.3, w: 4 });
         } else {
           if (s.execute && e.hp - s.damage * crit <= e.maxHp * s.execute && !enemyFlags(e).boss) {
@@ -2374,7 +2395,7 @@
     const f = enemyFlags(e);
     addCorpse(e);
     deathFx(e);
-    let bounty = Math.round(e.bounty * mapBountyMul(currentMap) * (1 + techLevel('bounty') * 0.1) * (rushTimer > 0 ? 2 : 1));
+    let bounty = Math.round(e.bounty * mapBountyMul(currentMap) * (1 + techLevel('bounty') * 0.1 + (hasRelic('seal') ? 0.15 : 0)) * (rushTimer > 0 ? 2 : 1));
     for (const t of towers) {
       const s = towerStats(t);
       if (s.bounty && Math.hypot(t.x - e.x, t.y - e.y) <= s.rangePx)
@@ -2402,6 +2423,7 @@
     if (f.boss) {
       particles.confetti(e.x, e.y, 30, {});
       showBanner(`${f.name.toUpperCase()} DEFEATED`, `+${bounty} gold`, UI.gold, 2.4);
+      rollBossReward(e);
       if (techLevel('medic') && lives < startLives()) {
         lives = Math.min(startLives(), lives + 2);
         livesPulse = 1;
@@ -2538,6 +2560,9 @@
         }
       }
 
+      // The Frost Heart chills everything close to the gatehouse
+      if (hasRelic('frostheart') && enemyPath(e).total - e.dist < CELL * 3)
+        applySlow(e, 0.6, 0.3);
       const sp = enemySpeed(e);
       e.walk += sp * dt * 0.25;
       e.dist += sp * dt;
@@ -6581,13 +6606,20 @@
 
   // Families shown as lanes of the arsenal, with the unlock price of the locked ones
   const ARSENAL_LANES = [['arrow', 0], ['cannon', 0], ['frost', 0], ['spikes', 0], ['tesla', 4], ['poison', 4], ['flame', 5], ['laser', 7], ['sniper', 7],
-    ['mortar', 5], ['wind', 5], ['storm', 6], ['missile', 6], ['beacon', 8], ['arcane', 8]];
+    ['mortar', 5], ['wind', -1], ['storm', -1], ['missile', 6], ['beacon', 8], ['arcane', -1]];
+  // Towers that only a boss can unlock (see BOSS_UNLOCKS)
+  const BOSS_TOWER = { wind: 'slimeking', arcane: 'lich', storm: 'dragon' };
 
   const TREE = [];
   ARSENAL_LANES.forEach(([fam, unlockCost], row) => {
     const def = TOWER_BY_ID[fam];
     let col = 0;
-    if (unlockCost) {
+    if (unlockCost < 0) {
+      const boss = BOSS_TOWER[fam];
+      TREE.push({ id: 'unlock_' + fam, branch: 'arsenal', col: 0, row, max: 1, cost: [0], req: [], tower: def.index, boss,
+        name: def.name, desc: `Only defeating the ${ENEMY_TYPES[boss].name} unlocks the ${def.name}.`, effect: () => 'Can be built' });
+      col = 1;
+    } else if (unlockCost) {
       TREE.push({ id: 'unlock_' + fam, branch: 'arsenal', col: 0, row, max: 1, cost: [unlockCost], req: [], tower: def.index,
         name: def.name, desc: `Unlocks the ${def.name} for building.`, effect: () => 'Can be built' });
       col = 1;
@@ -6649,7 +6681,7 @@
   function treeNodeState(n) {
     const lvl = techLevel(n.id);
     if (lvl >= n.max) return 'owned';
-    if (!n.req.every(r => techLevel(r) > 0)) return 'locked';
+    if (n.boss || !n.req.every(r => techLevel(r) > 0)) return 'locked';
     return meta.rp >= n.cost[lvl] ? 'ready' : 'poor';
   }
 
@@ -6827,7 +6859,8 @@
     lines.push('--- Effect ---');
     if (lvl > 0) lines.push(`✔ Now: ${n.effect(lvl)}`);
     if (lvl < n.max) lines.push(`★ Next: ${n.effect(lvl + 1)}`);
-    if (st === 'locked') lines.push(`✘ Requires ${n.req.map(r => TREE_BY_ID[r].name).join(', ')}`);
+    if (st === 'locked' && n.boss) lines.push(`✘ Defeat the ${ENEMY_TYPES[n.boss].name} to unlock it`);
+    else if (st === 'locked') lines.push(`✘ Requires ${n.req.map(r => TREE_BY_ID[r].name).join(', ')}`);
     else if (st === 'poor') lines.push(`✘ Costs ${n.cost[lvl]} research (you have ${meta.rp})`);
     else if (st === 'ready') lines.push(`✔ Costs ${n.cost[lvl]} research · click or Enter`);
     else lines.push('✔ Fully researched');
@@ -7002,7 +7035,7 @@
     if (st === 'owned')
       fitText('Researched', tx, y + h - 14, w - 70, 12, { weight: 'bold', color });
     else
-      fitText(`[[flask]] ${n.cost[lvl]}`, tx, y + h - 14, w - 70, 14, { weight: 'bold', color: st === 'ready' ? '#d8f5dc' : st === 'poor' ? '#ff8a8a' : '#6a7288' });
+      fitText(n.boss ? `[[skull]] ${ENEMY_TYPES[n.boss].name}` : `[[flask]] ${n.cost[lvl]}`, tx, y + h - 14, w - 70, 14, { weight: 'bold', color: st === 'ready' ? '#d8f5dc' : st === 'poor' ? '#ff8a8a' : '#6a7288' });
     // Purchase flash
     const f = treeFlash[n.id];
     if (f !== undefined) {
@@ -7153,7 +7186,7 @@
   }
 
   function abilityCooldown(a) {
-    return a.cooldown * (1 - techLevel('ab_cool') * 0.15);
+    return a.cooldown * (1 - techLevel('ab_cool') * 0.15) * (hasRelic('hourglass') ? 0.75 : 1);
   }
 
   function strikeDamage() {
@@ -7376,6 +7409,644 @@
     else if (abilityCd[a.id] > 0) lines.push(`⚠ Ready in ${Math.ceil(abilityCd[a.id])} s`);
     else lines.push('✔ Ready');
     return lines;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     BOSS REWARDS -- some towers are only unlocked by defeating a
+     particular boss; beyond that bosses may drop relics, rare permanent
+     items with strong effects (no duplicates until all are found)
+     ══════════════════════════════════════════════════════════════════ */
+
+  const BOSS_UNLOCKS = { slimeking: 'wind', lich: 'arcane', dragon: 'storm' };
+
+  const RELICS = [
+    { id: 'quiver', name: "Fletcher's Quiver", icon: 'r_quiver', color: '#c8a070', desc: 'Archer towers shoot one more target.' },
+    { id: 'coil', name: 'Storm Coil', icon: 'r_coil', color: '#7ae8ff', desc: 'Tesla lightning jumps to 2 more enemies.' },
+    { id: 'seal', name: "Merchant's Seal", icon: 'r_seal', color: '#ffd75a', desc: '+15% gold for every kill.' },
+    { id: 'frostheart', name: 'Frost Heart', icon: 'r_frost', color: '#9ae4ff', desc: 'Your gatehouse chills enemies near it: 40% slower.' },
+    { id: 'lens', name: 'Hawk-Eye Lens', icon: 'r_lens', color: '#ff8a8a', desc: 'Archers and Snipers gain 10% crit chance.' },
+    { id: 'hammer', name: "Master's Hammer", icon: 'r_hammer', color: '#d8d8e8', desc: 'Tower upgrades cost 20% less.' },
+    { id: 'hourglass', name: 'Hourglass of Ages', icon: 'r_glass', color: '#e0c890', desc: 'Ability cooldowns are 25% shorter.' },
+    { id: 'scale', name: 'Dragon Scale', icon: 'r_scale', color: '#ff6a4a', desc: '+5 lives on every map.' },
+    { id: 'ember', name: 'Ember Core', icon: 'r_ember', color: '#ff8a2a', desc: 'Burns deal 50% more damage.' },
+    { id: 'steel', name: 'Starforged Steel', icon: 'r_steel', color: '#b8c8ff', desc: 'All towers deal 10% more damage.' }
+  ];
+  const RELIC_BY_ID = {};
+  for (const r of RELICS) RELIC_BY_ID[r.id] = r;
+
+  function hasRelic(id) {
+    return !!(meta && meta.relics && meta.relics.indexOf(id) >= 0);
+  }
+
+  // Relic chance per boss kill: half of all first kills of a boss kind, rarely afterwards
+  function rollBossReward(e) {
+    const type = e.type;
+    meta.bossKills = meta.bossKills || {};
+    const first = !meta.bossKills[type];
+    meta.bossKills[type] = (meta.bossKills[type] || 0) + 1;
+    const fam = BOSS_UNLOCKS[type];
+    if (fam && techLevel('unlock_' + fam) <= 0) {
+      meta.tree['unlock_' + fam] = 1;
+      saveMeta();
+      queueReward({ kind: 'tower', fam, boss: type });
+      return;
+    }
+    if (Math.random() < (first ? 0.5 : 0.12)) {
+      const left = RELICS.filter(r => !hasRelic(r.id));
+      if (left.length) {
+        const r = left[Math.floor(Math.random() * left.length)];
+        meta.relics.push(r.id);
+        for (const t of towers) t.stats = null;
+        if (r.id === 'scale') { lives += 5; livesPulse = 1; }
+        saveMeta();
+        queueReward({ kind: 'relic', id: r.id, boss: type });
+      } else {
+        grantResearch(10);
+        queueReward({ kind: 'research', rp: 10, boss: type });
+      }
+    } else
+      saveMeta();
+  }
+
+  /* ── Relic icons (16 x 16) ── */
+  Object.assign(ICONS, {
+    r_quiver: (g) => {
+      g.fillStyle = '#7a4e2c'; g.fillRect(4, 5, 7, 10); g.fillStyle = '#9a663a'; g.fillRect(4, 5, 2, 10);
+      g.fillStyle = '#d8b07a'; for (const x of [5, 7, 9]) g.fillRect(x, 1, 1, 5);
+      g.fillStyle = '#e8e8f0'; for (const x of [4, 6, 8]) g.fillRect(x, 0, 3, 2);
+      g.fillStyle = '#ffd75a'; g.fillRect(4, 9, 7, 1);
+    },
+    r_coil: (g) => {
+      g.fillStyle = '#9a4c1c'; for (let i = 0; i < 4; ++i) g.fillRect(4, 4 + i * 3, 8, 2);
+      g.fillStyle = '#e8984a'; for (let i = 0; i < 4; ++i) g.fillRect(4, 4 + i * 3, 8, 1);
+      g.fillStyle = '#7ae8ff'; g.fillRect(7, 0, 2, 3); g.fillRect(2, 1, 1, 2); g.fillRect(13, 1, 1, 2);
+    },
+    r_seal: (g) => {
+      g.fillStyle = '#b8801a'; g.beginPath(); g.arc(8, 8, 7, 0, TWO_PI); g.fill();
+      g.fillStyle = '#ffd34a'; g.beginPath(); g.arc(8, 8, 5.5, 0, TWO_PI); g.fill();
+      g.fillStyle = '#8a5a14'; g.fillRect(5, 6, 6, 1); g.fillRect(7, 4, 2, 8); g.fillRect(5, 10, 6, 1);
+    },
+    r_frost: (g) => {
+      g.fillStyle = '#3f7eb0'; g.beginPath(); g.moveTo(8, 15); g.lineTo(1, 6); g.arc(4.6, 4.8, 3.6, Math.PI * 0.85, Math.PI * 1.9); g.arc(11.4, 4.8, 3.6, Math.PI * 1.1, Math.PI * 0.15); g.closePath(); g.fill();
+      g.fillStyle = '#b0dcf6'; g.fillRect(3, 3, 3, 2); g.fillStyle = '#ffffff'; g.fillRect(7, 6, 2, 5); g.fillRect(5, 8, 6, 1);
+    },
+    r_lens: (g) => {
+      g.strokeStyle = '#c8a070'; g.lineWidth = 2; g.beginPath(); g.arc(7, 7, 5, 0, TWO_PI); g.stroke();
+      g.fillStyle = 'rgba(150,220,255,0.9)'; g.beginPath(); g.arc(7, 7, 4, 0, TWO_PI); g.fill();
+      g.fillStyle = '#ffffff'; g.fillRect(5, 4, 2, 2);
+      g.fillStyle = '#7a4e2c'; g.save(); g.translate(11, 11); g.rotate(Math.PI / 4); g.fillRect(0, -1.5, 6, 3); g.restore();
+    },
+    r_hammer: (g) => {
+      g.save(); g.translate(8, 8); g.rotate(-Math.PI / 4);
+      g.fillStyle = '#8a5a30'; g.fillRect(-1, -1, 2, 9);
+      g.fillStyle = '#ffd34a'; g.fillRect(-6, -6, 12, 6); g.fillStyle = '#fff2a0'; g.fillRect(-6, -6, 12, 1);
+      g.restore();
+    },
+    r_glass: (g) => {
+      g.fillStyle = '#8a5a30'; g.fillRect(3, 1, 10, 2); g.fillRect(3, 13, 10, 2);
+      g.fillStyle = 'rgba(200,230,255,0.85)'; g.beginPath(); g.moveTo(4, 3); g.lineTo(12, 3); g.lineTo(8, 8); g.lineTo(12, 13); g.lineTo(4, 13); g.lineTo(8, 8); g.fill();
+      g.fillStyle = '#e8c068'; g.beginPath(); g.moveTo(5.5, 13); g.lineTo(10.5, 13); g.lineTo(8, 10); g.fill(); g.fillRect(7.5, 8, 1, 3);
+    },
+    r_scale: (g) => {
+      g.fillStyle = '#a82a12'; g.beginPath(); g.moveTo(8, 1); g.quadraticCurveTo(15, 6, 8, 15); g.quadraticCurveTo(1, 6, 8, 1); g.fill();
+      g.fillStyle = '#f06a3a'; g.beginPath(); g.moveTo(8, 3); g.quadraticCurveTo(12, 7, 8, 12); g.quadraticCurveTo(5, 7, 8, 3); g.fill();
+      g.fillStyle = '#ffb07a'; g.fillRect(7, 5, 1, 4);
+    },
+    r_ember: (g) => {
+      g.fillStyle = '#d03c0a'; g.beginPath(); g.arc(8, 9, 6, 0, TWO_PI); g.fill();
+      g.fillStyle = '#ff8a2a'; g.beginPath(); g.arc(8, 9, 4, 0, TWO_PI); g.fill();
+      g.fillStyle = '#ffe48a'; g.beginPath(); g.arc(8, 9, 2, 0, TWO_PI); g.fill();
+      g.fillStyle = '#ff6a14'; g.fillRect(7, 0, 2, 4); g.fillRect(3, 2, 1, 3); g.fillRect(12, 2, 1, 3);
+    },
+    r_steel: (g) => {
+      g.save(); g.translate(8, 8); g.rotate(Math.PI / 4);
+      g.fillStyle = '#c4ccdc'; g.fillRect(-1.5, -8, 3, 11); g.fillStyle = '#ffffff'; g.fillRect(-1.5, -8, 1, 11);
+      g.fillStyle = '#7a8ac8'; g.fillRect(-4, 3, 8, 2); g.fillStyle = '#5a4a3a'; g.fillRect(-1, 5, 2, 3);
+      g.restore();
+      g.fillStyle = '#b8c8ff'; g.fillRect(2, 2, 1, 1); g.fillRect(12, 12, 1, 1);
+    },
+    gift: (g) => {
+      g.fillStyle = '#7a4e2c'; g.fillRect(2, 6, 12, 9); g.fillStyle = '#9a663a'; g.fillRect(1, 4, 14, 4);
+      g.fillStyle = '#ffd75a'; g.fillRect(7, 4, 2, 11); g.fillRect(1, 6, 14, 1);
+      g.fillStyle = '#ffd75a'; g.fillRect(5, 1, 2, 3); g.fillRect(9, 1, 2, 3);
+    }
+  });
+
+  /* ══════════════════════════════════════════════════════════════════
+     RELICS PANEL
+     ══════════════════════════════════════════════════════════════════ */
+
+  function openRelics() {
+    if (state === STATE_PLAYING) togglePause();
+    overlay = 'relics';
+    audio.play('select');
+  }
+
+  function drawRelics() {
+    drawScrim(0.72);
+    const pw = Math.min(720, UW - 32), ph = Math.min(500, UH - 32);
+    const px = UW / 2 - pw / 2, py = UH / 2 - ph / 2;
+    const found = (meta.relics || []).length;
+    drawPanel(px, py, pw, ph, { title: 'Relics & boss trophies', titleRight: `${found} / ${RELICS.length} relics`, titleRightPad: 28, accent: UI.gold, radius: 12, headerH: 34 });
+    uiButton('relics-close', px + pw - 30, py + 7, 22, 20, '×', { px: 14, onClick: () => { overlay = null; audio.play('click', { pitch: 0.8 }); }, tip: () => ['Close', 'Esc'] });
+    const cx = px + 14, cw = pw - 28;
+    let y = py + 44;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText('Bosses sometimes drop relics (most often the first time you beat each kind). Their effects are permanent.', cx, y + 6, cw, 12, { color: UI.textDim });
+    y += 20;
+    const cols = cw > 560 ? 2 : 1;
+    const rowsN = Math.ceil(RELICS.length / cols);
+    const gap = 6;
+    const trophyH = 74;
+    const cellW = (cw - (cols - 1) * gap) / cols;
+    const cellH = Math.min(52, (py + ph - 16 - trophyH - y - (rowsN - 1) * gap) / rowsN);
+    RELICS.forEach((r, i) => {
+      const x = cx + (i % cols) * (cellW + gap), yy = y + Math.floor(i / cols) * (cellH + gap);
+      const own = hasRelic(r.id);
+      roundRectPath(x, yy, cellW, cellH, 7);
+      ctx.fillStyle = own ? hexToRgba(r.color, 0.14) : 'rgba(255,255,255,0.03)';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = own ? hexToRgba(r.color, 0.6) : 'rgba(150,170,210,0.15)';
+      ctx.stroke();
+      const s = cellH - 12;
+      roundRectPath(x + 5, yy + 5, s + 2, s + 2, 6);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fill();
+      if (own) {
+        drawGlow(r.color, x + 6 + s / 2, yy + 6 + s / 2, s * 0.8, 0.25);
+        drawIcon(r.icon, x + 6 + s / 2, yy + 6 + s / 2, s * 0.8);
+      } else {
+        ctx.textAlign = 'center';
+        fitText('?', x + 6 + s / 2, yy + 6 + s / 2, s, s * 0.6, { weight: 'bold', color: UI.textMute });
+      }
+      ctx.textAlign = 'left';
+      fitText(own ? r.name : 'Undiscovered relic', x + s + 16, yy + cellH * 0.32, cellW - s - 24, 13, { weight: 'bold', color: own ? '#ffffff' : UI.textMute });
+      fitText(own ? r.desc : 'Defeat bosses to find it.', x + s + 16, yy + cellH * 0.7, cellW - s - 24, 11, { color: own ? '#c4cde0' : UI.textMute });
+    });
+    // Towers that only bosses can unlock
+    const ty = py + ph - trophyH - 10;
+    ctx.fillStyle = 'rgba(255,215,90,0.25)';
+    ctx.fillRect(cx, ty - 4, cw, 1);
+    ctx.textAlign = 'left';
+    fitText('Towers won from bosses', cx, ty + 8, cw, 12, { weight: 'bold', color: UI.gold });
+    const keys = Object.keys(BOSS_UNLOCKS);
+    const tw = (cw - (keys.length - 1) * gap) / keys.length;
+    keys.forEach((boss, i) => {
+      const fam = BOSS_UNLOCKS[boss], def = TOWER_BY_ID[fam];
+      const own = techLevel('unlock_' + fam) > 0;
+      const x = cx + i * (tw + gap), yy = ty + 18;
+      roundRectPath(x, yy, tw, trophyH - 22, 7);
+      ctx.fillStyle = own ? hexToRgba(def.color, 0.14) : 'rgba(255,255,255,0.03)';
+      ctx.fill();
+      ctx.globalAlpha = own ? 1 : 0.35;
+      drawTowerIcon(def.index, own ? 3 : 1, x + 26, yy + (trophyH - 22) / 2, trophyH - 30);
+      ctx.globalAlpha = 1;
+      if (!own) drawIcon('lock', x + 26, yy + (trophyH - 22) / 2, 16);
+      ctx.textAlign = 'left';
+      fitText(def.name, x + 50, yy + 14, tw - 56, 13, { weight: 'bold', color: own ? '#ffffff' : UI.textMute });
+      fitText(own ? `Won from the ${ENEMY_TYPES[boss].name}` : `Defeat the ${ENEMY_TYPES[boss].name}`, x + 50, yy + 34, tw - 56, 11, { color: own ? UI.good : UI.textDim });
+    });
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     CINEMATICS -- travel across the world map between levels, a map
+     fly-over intro, a cleared-map outro and boss reward reveals. The
+     battle waits while one plays; any key, click or tap skips it.
+     ══════════════════════════════════════════════════════════════════ */
+
+  let cine = null;            // { kind, t, dur, data, done }
+  const cineQueue = [];
+
+  function startCine(kind, data, done) {
+    const durs = { travel: 4.6, intro: 4.2, outro: 3.0, reward: 4.0 };
+    const c = { kind, t: 0, dur: durs[kind] || 3, data: data || {}, done };
+    if (cine) cineQueue.push(c);
+    else cine = c;
+    if (kind === 'travel') audio.play('whoosh', { pitch: 0.6, volume: 0.6 });
+    if (kind === 'intro') audio.play('select', { pitch: 0.6 });
+  }
+
+  function finishCine(skipped) {
+    const c = cine;
+    cine = null;
+    if (c && c.done) c.done(skipped);
+    // Skipping one moment skips the chained ones too (travel -> intro), but not rewards
+    while (cineQueue.length) {
+      const n = cineQueue.shift();
+      if (!skipped || n.kind === 'reward') {
+        cine = n;
+        break;
+      }
+      if (n.done) n.done(true);
+    }
+  }
+
+  function skipCine() {
+    if (!cine) return;
+    audio.play('click', { pitch: 0.7 });
+    finishCine(true);
+  }
+
+  function updateCine(dt) {
+    if (!cine) return;
+    const prev = cine.t;
+    cine.t += dt;
+    if (cine.kind === 'reward' && prev < 0.55 && cine.t >= 0.55)
+      audio.play(cine.data.kind === 'tower' ? 'levelup' : 'powerup', { pitch: cine.data.kind === 'tower' ? 1 : 1.2 });
+    if (cine.kind === 'outro' && prev < 0.4 && cine.t >= 0.4)
+      audio.play('win');
+    if (cine.kind === 'travel' && prev < 3.1 && cine.t >= 3.1)
+      audio.play('lineClear', { pitch: 0.8 });
+    if (cine.t >= cine.dur) finishCine(false);
+  }
+
+  function queueReward(r) {
+    startCine('reward', r);
+  }
+
+  const ease = (v) => v < 0.5 ? 2 * v * v : 1 - Math.pow(-2 * v + 2, 2) / 2;
+
+  /* ── Camera for the intro and outro: world point, zoom ── */
+  function cineCamera() {
+    if (!cine) return null;
+    const c = cine, t = c.t;
+    if (c.kind === 'intro') {
+      const p = paths[0];
+      if (!p) return null;
+      const fly = clamp((t - 0.4) / 2.6, 0, 1);
+      const out = clamp((t - 3.1) / 0.8, 0, 1);
+      const q = pathPos(p, p.total * ease(fly), { x: 0, y: 0, angle: 0 });
+      const z = 2.1 - 1.1 * ease(out);
+      return { x: q.x + (WORLD_W / 2 - q.x) * ease(out), y: q.y + (WORLD_H / 2 - q.y) * ease(out), z };
+    }
+    if (c.kind === 'outro') {
+      const p = paths[0];
+      const e = p.pts[p.pts.length - 2] || p.pts[p.pts.length - 1];
+      const k = t < 0.5 ? ease(t / 0.5) : t > c.dur - 0.5 ? ease((c.dur - t) / 0.5) : 1;
+      return { x: WORLD_W / 2 + (e.x - WORLD_W / 2) * k, y: WORLD_H / 2 + (e.y - WORLD_H / 2) * k, z: 1 + 0.7 * k };
+    }
+    return null;
+  }
+
+  // Temporarily swap the view for the camera while the world is drawn
+  function withCineView(draw) {
+    const cam = cineCamera();
+    if (!cam) {
+      draw();
+      return;
+    }
+    const sx = view.x, sy = view.y, ss = view.s;
+    const cx = view.x + WORLD_W * view.s / 2, cy = view.y + WORLD_H * view.s / 2;
+    // Keep the zoomed view inside the battlefield
+    const hw = WORLD_W / (2 * cam.z), hh = WORLD_H / (2 * cam.z);
+    const camX = clamp(cam.x, hw, WORLD_W - hw), camY = clamp(cam.y, hh, WORLD_H - hh);
+    view.s = ss * cam.z;
+    view.x = cx - camX * view.s;
+    view.y = cy - camY * view.s;
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.beginPath();
+    ctx.rect(sx, sy, WORLD_W * ss, WORLD_H * ss);
+    ctx.clip();
+    draw();
+    ctx.restore();
+    view.x = sx; view.y = sy; view.s = ss;
+  }
+
+  /* ── World map ── */
+  const WORLD_ART_W = 400, WORLD_ART_H = 240;
+  const MAP_SPOTS = [[0.08, 0.7], [0.16, 0.38], [0.23, 0.66], [0.33, 0.32], [0.4, 0.62], [0.47, 0.3], [0.58, 0.56], [0.64, 0.28], [0.71, 0.62], [0.82, 0.38], [0.88, 0.7], [0.94, 0.36]];
+  let worldArt = null;
+
+  function spotPx(i) {
+    return { x: MAP_SPOTS[i][0] * WORLD_ART_W, y: MAP_SPOTS[i][1] * WORLD_ART_H };
+  }
+
+  // Route between two spots: a gentle curve through an offset midpoint
+  function routePoint(a, b, k) {
+    const pa = spotPx(a), pb = spotPx(b);
+    const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2 - 18 + (a % 2) * 36;
+    const u = 1 - k;
+    return { x: u * u * pa.x + 2 * u * k * mx + k * k * pb.x, y: u * u * pa.y + 2 * u * k * my + k * k * pb.y };
+  }
+
+  function buildWorldArt() {
+    const W = WORLD_ART_W, H = WORLD_ART_H;
+    const c = makeCanvas(W, H);
+    const g = c.getContext('2d');
+    const img = g.createImageData(W, H);
+    const seed = 4242;
+    for (let y = 0; y < H; ++y)
+      for (let x = 0; x < W; ++x) {
+        const n = fbm(x / 22, y / 22, seed);
+        const bi = clamp(Math.floor(x / W * 4 + (n - 0.5) * 0.7), 0, 3);
+        const T = TERRAIN[BIOME_ORDER[bi]];
+        // Sea around the edges of the continent
+        const edge = Math.min(x, W - 1 - x, y * 1.4, (H - 1 - y) * 1.4) + (fbm(x / 9, y / 9, seed + 3) - 0.5) * 26;
+        let col;
+        if (edge < 6) col = rampPick(RAMPS.water, 0.3 + (edge / 6) * 0.35, x, y, 0, 3);
+        else if (edge < 8) col = '#e8d8a8';
+        else {
+          col = rampPick(T.ground, 0.2 + n * 0.7, x, y, 1, 4);
+          // Mountain ridges between the biomes
+          const bf = x / W * 4 + (n - 0.5) * 0.7;
+          if (Math.abs(bf - Math.round(bf)) < 0.03 && bf > 0.5 && bf < 3.5) col = shade(T.ground[2], -0.35);
+        }
+        const rgb = parseHex(col);
+        const i = (y * W + x) * 4;
+        img.data[i] = rgb[0]; img.data[i + 1] = rgb[1]; img.data[i + 2] = rgb[2]; img.data[i + 3] = 255;
+      }
+    g.putImageData(img, 0, 0);
+    // Scattered biome props
+    const rng = makeRng(seed);
+    for (let i = 0; i < 140; ++i) {
+      const x = 12 + rng() * (W - 24), y = 12 + rng() * (H - 24);
+      const bi = clamp(Math.floor(x / W * 4), 0, 3);
+      const T = TERRAIN[BIOME_ORDER[bi]];
+      const art = propArt(rng() < 0.6 ? T.tree : T.boulder);
+      g.drawImage(art, Math.round(x - art.width / 4), Math.round(y - art.height / 2), Math.round(art.width / 2), Math.round(art.height / 2));
+    }
+    // Dotted route
+    g.fillStyle = 'rgba(60,40,20,0.75)';
+    for (let i = 0; i < MAPS.length - 1; ++i)
+      for (let k = 0; k <= 1; k += 0.05) {
+        const p = routePoint(i, i + 1, k);
+        g.fillRect(Math.round(p.x), Math.round(p.y), 2, 2);
+      }
+    return c;
+  }
+
+  function drawKeepMarker(x, y, s, lit, flagUp) {
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(x - 7 * s, y + 3 * s, 14 * s, 2 * s);
+    ctx.fillStyle = lit ? '#c8c8d8' : '#7a7a8a';
+    ctx.fillRect(x - 6 * s, y - 6 * s, 12 * s, 9 * s);
+    ctx.fillRect(x - 7 * s, y - 9 * s, 3 * s, 3 * s);
+    ctx.fillRect(x - 1.5 * s, y - 9 * s, 3 * s, 3 * s);
+    ctx.fillRect(x + 4 * s, y - 9 * s, 3 * s, 3 * s);
+    ctx.fillStyle = '#2a1a10';
+    ctx.fillRect(x - 1.5 * s, y - 2 * s, 3 * s, 5 * s);
+    // Flag on a pole, raised by flagUp (0..1)
+    ctx.fillStyle = '#5a3a20';
+    ctx.fillRect(x + 6 * s, y - 16 * s, 1 * s, 10 * s);
+    if (flagUp > 0) {
+      ctx.fillStyle = '#c8303a';
+      const fy = y - 16 * s + (1 - flagUp) * 7 * s;
+      ctx.fillRect(x + 7 * s, fy, 6 * s, 3.5 * s);
+    }
+  }
+
+  function drawTravel() {
+    const c = cine, t = c.t;
+    const from = c.data.from, to = c.data.to;
+    if (!worldArt) worldArt = buildWorldArt();
+    // Camera: starts on the old keep, follows the banner, settles on the new keep
+    const move = ease(clamp((t - 1.1) / 1.9, 0, 1));
+    const tok = routePoint(from, to, move);
+    const zoom = 1.7 + 0.25 * Math.sin(clamp((t - 1.1) / 1.9, 0, 1) * Math.PI);
+    const base = Math.max(UW / WORLD_ART_W, UH / WORLD_ART_H) * 1.02;
+    const s = base * zoom;
+    const ox = clamp(UW / 2 - tok.x * s, UW - WORLD_ART_W * s, 0);
+    const oy = clamp(UH / 2 - tok.y * s, UH - WORLD_ART_H * s, 0);
+    ctx.fillStyle = '#0a0e1a';
+    ctx.fillRect(-20, -20, UW + 40, UH + 40);
+    ctx.save();
+    ctx.translate(ox, oy);
+    ctx.scale(s, s);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(worldArt, 0, 0);
+    // Keeps of all maps: cleared ones fly a banner
+    for (let i = 0; i < MAPS.length; ++i) {
+      const p = spotPx(i);
+      const isFrom = i === from, isTo = i === to;
+      let flag = meta.maps[i].stars > 0 ? 1 : 0;
+      if (isFrom) flag = 1 - clamp((t - 0.5) / 0.6, 0, 1);
+      if (isTo) flag = clamp((t - 3.1) / 0.5, 0, 1);
+      if (isTo && t > 3.0) {
+        const k = clamp((t - 3.0) / 0.4, 0, 1);
+        drawGlow(BIOMES[MAPS[to].biome].color, p.x, p.y - 3, 22 * k, 0.6 * k);
+        // Rays
+        ctx.save();
+        ctx.translate(p.x, p.y - 3);
+        ctx.rotate(animTime * 0.6);
+        ctx.fillStyle = hexToRgba('#fff2c0', 0.25 * k);
+        for (let r = 0; r < 8; ++r) {
+          ctx.rotate(Math.PI / 4);
+          ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(28 * k, -3); ctx.lineTo(28 * k, 3); ctx.fill();
+        }
+        ctx.restore();
+      }
+      drawKeepMarker(p.x, p.y, 0.55, isFrom || isTo || meta.maps[i].stars > 0, flag);
+    }
+    // The travelling banner bearer with a trail of dust
+    if (t > 1.0) {
+      const bob = Math.abs(Math.sin(t * 14)) * 1.2;
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fillRect(tok.x - 3, tok.y + 1, 6, 1.5);
+      ctx.fillStyle = '#5a3a20';
+      ctx.fillRect(tok.x, tok.y - 11 - bob, 0.8, 11);
+      ctx.fillStyle = '#ffd75a';
+      const wave = Math.sin(t * 9) * 0.8;
+      ctx.beginPath(); ctx.moveTo(tok.x + 0.8, tok.y - 11 - bob); ctx.lineTo(tok.x + 7 + wave, tok.y - 9.5 - bob); ctx.lineTo(tok.x + 0.8, tok.y - 7.5 - bob); ctx.fill();
+      ctx.fillStyle = '#3a4a7a';
+      ctx.fillRect(tok.x - 2, tok.y - 4 - bob, 3, 4);
+      ctx.fillStyle = '#e8c8a0';
+      ctx.fillRect(tok.x - 1.5, tok.y - 6 - bob, 2, 2);
+      if (t < 3.0) {
+        for (let i = 1; i <= 5; ++i) {
+          const q = routePoint(from, to, Math.max(0, move - i * 0.03));
+          ctx.fillStyle = `rgba(230,210,170,${0.4 - i * 0.07})`;
+          ctx.fillRect(q.x - 1, q.y, 2, 1);
+        }
+      }
+    }
+    ctx.restore();
+    ctx.imageSmoothingEnabled = true;
+    // Captions
+    const cap = (title, sub, color, a) => {
+      if (a <= 0) return;
+      ctx.save();
+      ctx.globalAlpha = a;
+      const w = Math.min(520, UW - 40);
+      const x = UW / 2 - w / 2, y = UH - 120;
+      drawPanel(x, y, w, 70, { accent: color, radius: 12 });
+      drawHeadline(title, UW / 2, y + 28, w - 40, 26, color, shade(color, -0.4));
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText(sub, UW / 2, y + 54, w - 40, 13, { color: '#e4eaf6', weight: 'bold' });
+      ctx.restore();
+    };
+    const fade = (a, b) => clamp((t - a) / 0.3, 0, 1) * clamp((b - t) / 0.3, 0, 1);
+    cap(`Leaving ${MAPS[from].name}`, 'The garrison packs up and marches on', UI.gold, fade(0.3, 1.5));
+    const nb = BIOMES[MAPS[to].biome];
+    const newBiome = MAPS[from].biome !== MAPS[to].biome;
+    cap(newBiome ? `Entering ${nb.name}` : MAPS[to].name, newBiome ? `${nb.desc} Next: ${MAPS[to].name}.` : `${MAPS[to].waves} waves to clear · better pay ahead`, nb.color, fade(3.0, c.dur));
+    // Fade in from and out to black
+    const black = Math.max(clamp(1 - t / 0.4, 0, 1), clamp((t - (c.dur - 0.35)) / 0.35, 0, 1));
+    if (black > 0) {
+      ctx.fillStyle = `rgba(4,6,12,${black})`;
+      ctx.fillRect(-20, -20, UW + 40, UH + 40);
+    }
+    drawSkipHint();
+  }
+
+  /* ── Map intro: fly along the road, then the briefing card ── */
+  function drawIntroOverlay() {
+    const c = cine, t = c.t;
+    const k = clamp(t / 0.4, 0, 1) * clamp((c.dur - t) / 0.5, 0, 1);
+    const top = view.y / uiS, bottom = (view.y + WORLD_H * view.s) / uiS;
+    const bar = 36 * k;
+    ctx.fillStyle = 'rgba(0,0,0,0.88)';
+    ctx.fillRect(0, top - 2, UW, bar);
+    ctx.fillRect(0, bottom - bar + 2, UW, bar);
+    const m = MAPS[currentMap], b = BIOMES[m.biome];
+    ctx.save();
+    ctx.globalAlpha = clamp((t - 0.3) / 0.4, 0, 1) * clamp((c.dur - t) / 0.5, 0, 1);
+    drawHeadline(m.name.toUpperCase(), UW / 2, top + 70, UW - 60, 44, b.color, shade(b.color, -0.45));
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(`${b.name} · hold ${m.waves} waves · ${paths.length > 1 ? paths.length + ' roads' : 'one road'}`, UW / 2, top + 104, UW - 60, 15, { weight: 'bold', color: '#ffffff', outline: 'rgba(0,0,0,0.8)' });
+    // Briefing: first wave and the bosses of this map
+    const w = Math.min(560, UW - 40), h = 84;
+    const x = UW / 2 - w / 2, y = bottom - 36 - h - 12;
+    drawPanel(x, y, w, h, { accent: b.color, radius: 10 });
+    ctx.textAlign = 'left';
+    fitText('First wave', x + 14, y + 16, 120, 11, { weight: 'bold', color: UI.textDim });
+    const first = summarizeWave(generateWave(1));
+    first.slice(0, 4).forEach((r, i) => {
+      drawEnemyIcon(r.type, x + 30 + i * 46, y + 44, 26);
+      ctx.textAlign = 'center';
+      fitText(`×${r.count}`, x + 30 + i * 46, y + 68, 40, 11, { weight: 'bold', color: UI.text });
+    });
+    const bosses = [];
+    for (let wv = 5; wv <= m.waves; wv += 5) {
+      for (const tok of generateWave(wv)) {
+        const p = parseToken(tok);
+        if (p && ENEMY_TYPES[p.type].boss && bosses.indexOf(p.type) < 0) bosses.push(p.type);
+      }
+    }
+    if (m.waves % 5) for (const tok of generateWave(m.waves)) { const p = parseToken(tok); if (p && ENEMY_TYPES[p.type].boss && bosses.indexOf(p.type) < 0) bosses.push(p.type); }
+    ctx.textAlign = 'left';
+    fitText('Bosses', x + w / 2 + 10, y + 16, 120, 11, { weight: 'bold', color: '#ff8a8a' });
+    bosses.slice(0, 4).forEach((type, i) => {
+      const bx = x + w / 2 + 30 + i * 60;
+      drawEnemyIcon(type, bx, y + 44, 30);
+      ctx.textAlign = 'center';
+      fitText(ENEMY_TYPES[type].name, bx, y + 70, 58, 9, { weight: 'bold', color: '#ffd0d0' });
+    });
+    ctx.restore();
+    drawSkipHint();
+  }
+
+  /* ── Cleared map outro ── */
+  function drawOutroOverlay() {
+    const c = cine, t = c.t;
+    const a = clamp(t / 0.3, 0, 1) * clamp((c.dur - t) / 0.4, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = a;
+    const cy = UH * 0.32;
+    drawGlow('#ffd75a', UW / 2, cy, 220, 0.25);
+    ctx.save();
+    ctx.translate(UW / 2, cy);
+    ctx.rotate(animTime * 0.3);
+    ctx.fillStyle = 'rgba(255,236,170,0.12)';
+    for (let r = 0; r < 12; ++r) {
+      ctx.rotate(Math.PI / 6);
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(UW, -40); ctx.lineTo(UW, 40); ctx.fill();
+    }
+    ctx.restore();
+    drawHeadline('MAP CLEARED', UW / 2, cy, UW - 60, 60, UI.gold, '#ff9a2a');
+    const stars = (lastResult && lastResult.stars) || 0;
+    for (let i = 0; i < 3; ++i) {
+      const k = clamp((t - 0.5 - i * 0.3) / 0.25, 0, 1);
+      const earned = i < stars;
+      const s = earned ? 40 * (k < 1 ? 0.4 + 0.9 * Math.sin(k * Math.PI * 0.75) : 1) : 34;
+      drawIcon(earned && k > 0 ? 'star' : 'starEmpty', UW / 2 + (i - 1) * 54, cy + 60, s);
+    }
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const next = currentMap + 1 < MAPS.length ? `Next level open (L) · or stay and keep holding` : 'The last map is held · stay as long as you can';
+    fitText(`+${lastRp} research · ${next}`, UW / 2, cy + 100, UW - 60, 15, { weight: 'bold', color: '#ffffff', outline: 'rgba(0,0,0,0.8)' });
+    ctx.restore();
+    drawSkipHint();
+  }
+
+  /* ── Boss reward reveal ── */
+  function drawRewardReveal() {
+    const c = cine, t = c.t, r = c.data;
+    const a = clamp(t / 0.3, 0, 1) * clamp((c.dur - t) / 0.4, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = a;
+    drawScrim(0.7);
+    const cx = UW / 2, cy = UH * 0.42;
+    const color = r.kind === 'tower' ? TOWER_BY_ID[r.fam].color : r.kind === 'relic' ? RELIC_BY_ID[r.id].color : '#c890ff';
+    const pop = clamp((t - 0.45) / 0.35, 0, 1);
+    // Rays and glow behind the prize
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(animTime * 0.5);
+    ctx.fillStyle = hexToRgba(color, 0.18 * pop);
+    for (let i = 0; i < 10; ++i) {
+      ctx.rotate(TWO_PI / 10);
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(220, -24); ctx.lineTo(220, 24); ctx.fill();
+    }
+    ctx.restore();
+    drawGlow(color, cx, cy, 120 * pop, 0.5);
+    // The chest bursts open first, then the prize rises out of it
+    if (t < 0.6) {
+      const shake = Math.sin(t * 60) * 3 * (t / 0.6);
+      drawIcon('gift', cx + shake, cy + 10, 72);
+    }
+    const sc = pop < 1 ? 0.3 + 0.85 * Math.sin(pop * Math.PI * 0.6) : 1;
+    const rise = (1 - pop) * 30;
+    if (pop > 0) {
+      if (r.kind === 'tower')
+        drawTowerIcon(TOWER_BY_ID[r.fam].index, 3, cx, cy + rise, 110 * sc);
+      else if (r.kind === 'relic')
+        drawIcon(RELIC_BY_ID[r.id].icon, cx, cy + rise, 84 * sc);
+      else
+        drawIcon('flask', cx, cy + rise, 72 * sc);
+    }
+    const ta = clamp((t - 0.8) / 0.4, 0, 1);
+    ctx.globalAlpha = a * ta;
+    const boss = ENEMY_TYPES[r.boss] ? ENEMY_TYPES[r.boss].name : 'Boss';
+    let title, sub, desc;
+    if (r.kind === 'tower') {
+      const def = TOWER_BY_ID[r.fam];
+      title = 'NEW TOWER'; sub = def.name; desc = `${def.desc} Won from the ${boss}.`;
+    } else if (r.kind === 'relic') {
+      const rel = RELIC_BY_ID[r.id];
+      title = 'RELIC FOUND'; sub = rel.name; desc = rel.desc;
+    } else {
+      title = 'TROPHY'; sub = `+${r.rp} research`; desc = 'Every relic is already yours.';
+    }
+    drawHeadline(title, cx, cy - 110, UW - 60, 40, color, shade(color, -0.45));
+    const w = Math.min(460, UW - 40);
+    drawPanel(cx - w / 2, cy + 74, w, 78, { accent: color, radius: 10 });
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(sub, cx, cy + 98, w - 30, 20, { weight: 'bold', color: '#ffffff' });
+    drawTextBlock(desc, cx - w / 2 + 16, cy + 112, w - 32, 34, 13, { color: '#c4cde0', align: 'center', valign: 'middle' });
+    ctx.restore();
+    drawSkipHint();
+  }
+
+  function drawSkipHint() {
+    ctx.save();
+    ctx.globalAlpha = 0.75;
+    drawKeyHints([{ key: 'Any key', label: 'Skip' }], UW - 80, UH - 18, 150);
+    ctx.restore();
+  }
+
+  function drawCineOverlay() {
+    if (!cine) return false;
+    if (cine.kind === 'travel') drawTravel();
+    else if (cine.kind === 'intro') drawIntroOverlay();
+    else if (cine.kind === 'outro') drawOutroOverlay();
+    else if (cine.kind === 'reward') drawRewardReveal();
+    return true;
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -7695,7 +8366,7 @@
     ctx.textBaseline = 'middle';
     fitText(def.name, tx, y + h * 0.32, tw, 11, { weight: 'bold', color: locked ? UI.textMute : afford ? UI.text : UI.textDim, minPx: 8 });
     if (locked)
-      fitText('[[flask]] Research', tx, y + h * 0.72, tw - 18, 10, { weight: 'bold', color: '#b89aff', minPx: 8 });
+      fitText(BOSS_TOWER[def.id] ? '[[skull]] Boss' : '[[flask]] Research', tx, y + h * 0.72, tw - 18, 10, { weight: 'bold', color: BOSS_TOWER[def.id] ? '#ff8a8a' : '#b89aff', minPx: 8 });
     else
       fitText(`[[coin]]${def.cost}`, tx, y + h * 0.72, tw - 18, 11, { weight: 'bold', color: afford ? UI.gold : UI.bad, minPx: 8 });
     const hk = towerHotkey(i);
@@ -7707,7 +8378,7 @@
     addRegion({
       id, x, y, w, h, anchorTip: true,
       onClick: () => selectBuildType(i),
-      tip: () => towerUnlocked(i) ? buildTooltip(i) : [TOWER_TYPES[i].name, TOWER_TYPES[i].desc, '✘ Locked: unlock it in Research (from the title screen or the campaign map).']
+      tip: () => lockedTip(i)
     });
   }
 
@@ -7749,7 +8420,7 @@
     ctx.textBaseline = 'middle';
     fitText(def.name, x + w / 2, y - lift + h - 21, w - 6, 11, { weight: 'bold', color: locked ? UI.textMute : afford ? UI.text : UI.textDim, minPx: 7 });
     if (locked)
-      fitText('[[flask]] Research', x + w / 2, y - lift + h - 8, w - 6, 10, { weight: 'bold', color: '#b89aff', minPx: 7 });
+      fitText(BOSS_TOWER[def.id] ? '[[skull]] Boss' : '[[flask]] Research', x + w / 2, y - lift + h - 8, w - 6, 10, { weight: 'bold', color: BOSS_TOWER[def.id] ? '#ff8a8a' : '#b89aff', minPx: 7 });
     else
       fitText(`[[coin]]${def.cost}`, x + w / 2, y - lift + h - 8, w - 6, 11, { weight: 'bold', color: afford ? UI.gold : UI.bad, minPx: 7 });
     const hk = towerHotkey(i);
@@ -7759,14 +8430,20 @@
     addRegion({
       id, x, y: y - lift, w, h, anchorTip: true,
       onClick: () => selectBuildType(i),
-      tip: () => towerUnlocked(i) ? buildTooltip(i) : [TOWER_TYPES[i].name, TOWER_TYPES[i].desc, '✘ Locked: unlock it in Research (from the title screen or the campaign map).']
+      tip: () => lockedTip(i)
     });
+  }
+
+  function lockedTip(i) {
+    if (towerUnlocked(i)) return buildTooltip(i);
+    const boss = BOSS_TOWER[TOWER_TYPES[i].id];
+    return [TOWER_TYPES[i].name, TOWER_TYPES[i].desc, boss ? `✘ Locked: defeat the ${ENEMY_TYPES[boss].name} to win it.` : '✘ Locked: unlock it in Research (from the title screen or the campaign map).'];
   }
 
   function selectBuildType(i) {
     if (!towerUnlocked(i)) {
       audio.play('error');
-      floatingText.add(WORLD_W / 2, WORLD_H - 30, `${TOWER_TYPES[i].name} is locked: unlock it in Research`, { color: '#b89aff', font: 'bold 12px sans-serif', life: 1.8 });
+      floatingText.add(WORLD_W / 2, WORLD_H - 30, BOSS_TOWER[TOWER_TYPES[i].id] ? `${TOWER_TYPES[i].name} is won by defeating the ${ENEMY_TYPES[BOSS_TOWER[TOWER_TYPES[i].id]].name}` : `${TOWER_TYPES[i].name} is locked: unlock it in Research`, { color: '#b89aff', font: 'bold 12px sans-serif', life: 1.8 });
       return;
     }
     if (selectedTowerType === i) {
@@ -8290,6 +8967,7 @@
       return;
     }
     currentMap = mapSelectIndex;
+    introNext = true;
     requestNewGame();
   }
 
@@ -8362,7 +9040,8 @@
     ctx.textBaseline = 'middle';
     fitText('Campaign', pad + 16, 8 + hh / 2 + 1, 220, 22, { weight: 'bold', color: UI.gold });
     ctx.textAlign = 'right';
-    fitText(`[[star]] ${totalStars()} / ${MAPS.length * 3}`, UW - pad - 290, 8 + hh / 2 + 1, 120, 16, { weight: 'bold', color: '#ffffff' });
+    fitText(`[[star]] ${totalStars()} / ${MAPS.length * 3}`, UW - pad - 410, 8 + hh / 2 + 1, Math.max(40, UW - pad - 410 - 150), 16, { weight: 'bold', color: '#ffffff' });
+    uiButton('ms-relics', UW - pad - 400, 16, 120, hh - 16, `Relics ${(meta.relics || []).length}/${RELICS.length}`, { px: 12, icon: 'r_seal', key: 'K', onClick: openRelics });
     uiButton('ms-research', UW - pad - 274, 16, 156, hh - 16, `Research · ${meta.rp}`, { px: 12, icon: 'flask', key: 'R', onClick: () => openResearch() });
     uiButton('ms-back', UW - pad - 108, 16, 96, hh - 16, 'Back', { px: 13, key: 'Esc', onClick: () => quitToTitle() });
 
@@ -8494,7 +9173,7 @@
   }
   function drawPauseScreen() {
     drawScrim(0.6);
-    const pw = Math.min(320, UW - 40), ph = 262;
+    const pw = Math.min(320, UW - 40), ph = 306;
     const px = UW / 2 - pw / 2, py = UH / 2 - ph / 2;
     drawPanel(px, py, pw, ph, { title: 'Paused', titleRight: `${MAPS[currentMap].name} · wave ${currentWave}/${waveTotalText()}`, accent: UI.gold, radius: 12 });
     let y = py + 44;
@@ -8502,6 +9181,8 @@
     uiButton('p-resume', px + 20, y, bw, 42, 'Resume', { style: 'gold', icon: 'play', key: 'Esc', px: 15, onClick: togglePause });
     y += 50;
     uiButton('p-help', px + 20, y, bw, 36, 'Help', { style: 'blue', icon: 'help', key: 'H', onClick: () => openHelp() });
+    y += 44;
+    uiButton('p-relics', px + 20, y, bw, 36, `Relics · ${(meta.relics || []).length}/${RELICS.length}`, { style: 'dark', icon: 'r_seal', key: 'K', onClick: openRelics });
     y += 44;
     uiButton('p-restart', px + 20, y, bw, 36, 'Restart map', { style: 'dark', key: 'F2', onClick: () => requestNewGame(), tip: () => ['Restart', 'Starts this map again from wave 1.'] });
     y += 44;
@@ -8579,14 +9260,15 @@
       ['crown', 'Tier V masters a specialization. It needs the matching Mastery from the research tree.'],
       ['target', 'Targeting (T): First hits the enemy closest to your gate, Last the newest one, Strong the toughest, Close the nearest.'],
       ['flask', 'Clearing waves, winning maps and earning new stars gives research. Spend it on the title screen or the campaign map to unlock towers and abilities and to train your army for good.'],
-      ['bomb', 'Abilities (Q, W, E) are unlocked by research: Airstrike bombs the spot you click, Deep Freeze freezes the whole field, Gold Rush doubles kill gold.']
+      ['bomb', 'Abilities (Q, W, E) are unlocked by research: Airstrike bombs the spot you click, Deep Freeze freezes the whole field, Gold Rush doubles kill gold.'],
+      ['r_seal', 'Bosses drop rewards: the Slime King, Lich King and Dragon each unlock a tower that research cannot buy, and bosses may leave relics with permanent effects (most often the first time you beat each kind). See them with K.']
     ] },
     { title: 'Controls', keys: [
       ['1 - 0, ⇧1 - ⇧6', 'Choose a tower to build'], ['Click / Enter', 'Build or select'], ['Right click / Esc', 'Cancel'],
       ['Arrow keys', 'Move the build cursor'], ['U / I', 'Upgrade / pick a specialization'], ['T', 'Cycle targeting'],
       ['S / R', 'Sell / repair'], ['Space', 'Start the next wave'], ['N', 'Call the next wave early'],
       ['F, ⇧F, + / -', 'Faster / slower (1× to 20×)'], ['A', 'Auto-wave on/off'], ['Q / W / E', 'Abilities'],
-      ['H', 'Help'], ['Esc', 'Pause menu'], ['F2', 'New game'], ['Touch', 'Tap to preview, tap again to build'], ['L', 'Next level (once cleared)']
+      ['H', 'Help'], ['Esc', 'Pause menu'], ['F2', 'New game'], ['Touch', 'Tap to preview, tap again to build'], ['L', 'Next level (once cleared)'], ['K', 'Relics'], ['Any key / tap', 'Skip a cutscene']
     ] }
   ];
   function openHelp(page) {
@@ -8681,10 +9363,18 @@
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#070a12';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    drawWorld();
+    if (!cine || cine.kind !== 'travel')
+      withCineView(drawWorld);
 
     setUiTransform();
     regions = [];
+    if (cine && cine.kind !== 'reward') {
+      // Intros, outros and the world map take over the screen
+      drawCineOverlay();
+      drawTransition();
+      prevRegions = regions;
+      return;
+    }
     drawDanger();
     drawAbilityOverlays();
     if (state === STATE_PLAYING || state === STATE_BUILD || state === STATE_PAUSED)
@@ -8701,7 +9391,7 @@
       drawBuildBar();
       drawInspector();
       drawNextLevelButton();
-      drawBanner();
+      if (!cine) drawBanner();
       updateDrawCoins();
       // Modal screens: the HUD underneath stops reacting
       if (state === STATE_PAUSED && !overlay) {
@@ -8715,6 +9405,13 @@
     if (overlay === 'help') {
       regions = [];
       drawHelp();
+    } else if (overlay === 'relics') {
+      regions = [];
+      drawRelics();
+    }
+    if (cine) {
+      regions = [];
+      drawCineOverlay();
     }
     drawTooltip();
     drawTransition();
@@ -8761,10 +9458,11 @@
     frameDt = dt || 0.016;
     ++frameNo;
 
-    if (!overlay)
+    if (!overlay && !cine)
       updateGame(dt);
     else
       animTime += dt;
+    updateCine(dt);
 
     updateEffects(dt);
     updateShake(dt);
@@ -8815,11 +9513,18 @@
   function goNextLevel() {
     if (!nextLevelAvailable()) return;
     const carry = carryGold();
-    currentMap += 1;
-    resetAndStart(carry);
-    showBanner(MAPS[currentMap].name.toUpperCase(), `${BIOMES[MAPS[currentMap].biome].name} · ${carry} gold carried over`, BIOMES[MAPS[currentMap].biome].color, 2.6);
+    const from = currentMap;
     saveGame();
+    // March across the world map, then fly over the new map
+    startCine('travel', { from, to: from + 1 }, (skipped) => {
+      currentMap = from + 1;
+      introNext = !skipped;
+      resetAndStart(carry);
+      showBanner(MAPS[currentMap].name.toUpperCase(), `${BIOMES[MAPS[currentMap].biome].name} · ${carry} gold carried over`, BIOMES[MAPS[currentMap].biome].color, 2.6);
+      saveGame();
+    });
   }
+  let introNext = false;
 
   function resetAndStart(carry) {
     overlay = null;
@@ -8831,8 +9536,14 @@
     uiCoins.length = 0;
     banner = null;
     hitstop = 0;
+    cineQueue.length = 0;
+    if (cine && cine.kind !== 'travel') cine = null;
     loadMap(currentMap, carry || 0);
     audio.play('select');
+    if (introNext) {
+      introNext = false;
+      startCine('intro');
+    }
   }
 
   function quitToTitle() {
@@ -8840,6 +9551,8 @@
       saveGame();
     overlay = null;
     selectedTower = null;
+    cine = null;
+    cineQueue.length = 0;
     state = STATE_READY;
     refreshSavedGameInfo();
     if (savedGameInfo)
@@ -8978,6 +9691,10 @@
   canvas.addEventListener('pointerdown', (e) => {
     readPointer(e);
     kbCursor.active = false;
+    if (cine) {
+      skipCine();
+      return;
+    }
     if (e.button === 2) return;
     const r = regionAt(pointer.ux, pointer.uy);
     if (state === STATE_RESEARCH && (!r || /^tree-node-/.test(r.id))) {
@@ -9061,6 +9778,19 @@
       return;
     }
 
+    // Any key skips a cinematic
+    if (cine) {
+      e.preventDefault();
+      skipCine();
+      return;
+    }
+
+    if (overlay === 'relics') {
+      if (code === 'Escape' || code === 'Enter' || code === 'Space') overlay = null;
+      e.preventDefault();
+      return;
+    }
+
     if (overlay === 'help') {
       if (code === 'Escape' || code === 'KeyH') closeHelp();
       else if (code === 'ArrowRight' || code === 'Tab') { helpPage = (helpPage + 1) % HELP_PAGES.length; audio.play('click'); }
@@ -9111,6 +9841,8 @@
       } else if (code === 'KeyR') {
         e.preventDefault();
         openResearch();
+      } else if (code === 'KeyK') {
+        openRelics();
       }
       return;
     }
@@ -9132,6 +9864,10 @@
     }
 
     if (state === STATE_PAUSED) {
+      if (code === 'KeyK') {
+        openRelics();
+        return;
+      }
       if (code === 'Escape' || code === 'Space' || code === 'Enter') {
         e.preventDefault();
         togglePause();
@@ -9163,6 +9899,11 @@
         mapAction(kbCursor.col, kbCursor.row);
       else
         useAbility(a.id);
+      return;
+    }
+
+    if (code === 'KeyK') {
+      openRelics();
       return;
     }
 
@@ -9277,6 +10018,9 @@
         break;
       case 'howto':
         openHelp();
+        break;
+      case 'relics':
+        openRelics();
         break;
       case 'high-scores':
         renderHighScores();
