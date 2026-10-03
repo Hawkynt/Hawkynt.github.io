@@ -1501,9 +1501,23 @@
   // Layout: root at top center, 4 branches below
   const TREE_BRANCH_ORDER = ['dome', 'mining', 'movement', 'weapon'];
   const TREE_BRANCH_LABELS = { dome: 'DOME', mining: 'MINING', movement: 'MOVEMENT', weapon: 'WEAPON' };
-  const TREE_BRANCH_COLORS = { dome: '#4af', mining: '#fa0', movement: '#0f0', weapon: '#f44' };
-  const TREE_NODE_W = 240;
-  const TREE_NODE_H = 120;
+  const TREE_BRANCH_COLORS = { dome: '#4cb4ff', mining: '#ffae3a', movement: '#5ee07a', weapon: '#ff5e5e' };
+  const TREE_CARD_W = 200;
+  const TREE_CARD_H = 88;
+  const TREE_GAP_X = 40;       // vertical channel between depth columns (connectors run here)
+  const TREE_GAP_Y = 24;       // horizontal channel between lanes
+  const TREE_REGION_PAD = 30;
+  const TREE_REGION_HEADER = 74;
+  const TREE_REGION_GAP = 90;
+  const TREE_MIN_ZOOM = 0.2;
+  const TREE_MAX_ZOOM = 1.6;
+  // Full names for the abbreviated chain names used in the tree data
+  const TREE_NAME_EXPANSIONS = {
+    'Shield Cap.': 'Shield Capacity', 'Shield Rech.': 'Shield Recharge', 'Carry Cap.': 'Carry Capacity',
+    'Echo Loc.': 'Echo Location', 'Ore Detect': 'Ore Detector', 'Chain Light.': 'Chain Lightning',
+    'Teleport CDR': 'Teleport Cooldown', 'Critical': 'Critical Hit', 'Reflect': 'Damage Reflect',
+    'Radar': 'Ground Radar'
+  };
 
   /* ======================================================================
      DOM
@@ -1665,7 +1679,6 @@
   /* ── Upgrade Dialog (full-screen tree) ── */
   let upgradeTreeLevels = {};   // { nodeId: currentLevel }
   let upgradeDialogHover = null; // hovered node id
-  let upgradeDialogScroll = 0;  // vertical scroll offset
   let stateBeforeUpgradeDialog = null; // state to restore when closing dialog
 
   /* ── Tooltip ── */
@@ -1690,6 +1703,12 @@
   let upgradePanStartY = 0;     // drag start mouse Y
   let upgradePanBaseX = 0;      // pan offset at drag start
   let upgradePanBaseY = 0;      // pan offset at drag start
+  const treeCam = { tz: 1, tx: 0, ty: 0, last: 0 }; // camera target the view eases towards
+  let treeTab = 'dome';         // 'all' or a branch id
+  let treeFocusId = null;       // keyboard-selected node
+  let treeLayout = null;        // cached node positions and branch regions
+  let treeNodeInfo = null;      // cached display names / chain positions
+  const treePurchaseFlash = {}; // nodeId -> purchase time (ms) for the flash effect
 
   const PRIMARY_GADGETS = [
     { key: 'shield', name: 'Shield Generator', icon: 'shield', desc: ['Absorbs the first hit of each wave.', 'Recharges when a new wave starts.'] },
@@ -2332,13 +2351,13 @@
     for (const node of UPGRADE_TREE)
       upgradeTreeLevels[node.id] = 0;
     upgradeDialogHover = null;
-    upgradeDialogScroll = 0;
     stateBeforeUpgradeDialog = null;
     upgradeZoom = 1.0;
     upgradePanX = 0;
     upgradePanY = 0;
     upgradePanning = false;
     upgradeViewCustomized = false;
+    treeFocusId = null;
 
     // Reset tooltip
     clearTooltip();
@@ -3827,107 +3846,553 @@
   // and columns are assigned left-to-right per row. A fixed cell size
   // guarantees no two nodes can ever overlap.
   function computeTreeLayout() {
+    if (treeLayout)
+      return treeLayout.nodes;
     const nodes = [];
-    const margin = 40;
-    const branchGap = 32;
-    const startY = 200;
-    const cellW = 280;   // horizontal cell pitch
-    const cellH = 160;    // vertical cell pitch
+    const regions = {};
+    const pitchX = TREE_CARD_W + TREE_GAP_X;
+    const pitchY = TREE_CARD_H + TREE_GAP_Y;
 
-    // First pass: determine how many columns each branch needs so we can
-    // allocate horizontal space proportionally.
-    const branchGrids = []; // per-branch: { branch, gridNodes: [{node, row, col}], maxCol, maxRow }
-
+    // Per branch: depth = longest prerequisite chain (left to right);
+    // lanes = chains of nodes continuing a parent, packed into rows.
+    const branchGrids = [];
     for (const branch of TREE_BRANCH_ORDER) {
       const branchNodes = UPGRADE_TREE.filter(n => n.branch === branch);
       const nodeMap = {};
-      for (const n of branchNodes)
-        nodeMap[n.id] = n;
-
-      // --- Row assignment via topological depth ---
-      const rowOf = {};
-      const assignRow = (n) => {
-        if (rowOf[n.id] !== undefined) return rowOf[n.id];
+      branchNodes.forEach((n, i) => { nodeMap[n.id] = { n, i }; });
+      const depthOf = {};
+      const assignDepth = (n) => {
+        if (depthOf[n.id] !== undefined) return depthOf[n.id];
         let maxParent = -1;
         for (const pid of n.prereqs)
           if (nodeMap[pid])
-            maxParent = Math.max(maxParent, assignRow(nodeMap[pid]));
-        rowOf[n.id] = maxParent + 1;
-        return rowOf[n.id];
+            maxParent = Math.max(maxParent, assignDepth(nodeMap[pid].n));
+        depthOf[n.id] = maxParent + 1;
+        return depthOf[n.id];
       };
-      for (const n of branchNodes) assignRow(n);
+      branchNodes.forEach(assignDepth);
 
-      // --- Column assignment ---
-      // Group nodes by row, then assign columns left-to-right.
-      // To produce a visually pleasing tree we sort each row's nodes so that
-      // nodes sharing a common parent stay adjacent, ordered by their parent's
-      // column (assigned in the previous row).
-      const byRow = {};
-      let maxRow = 0;
-      for (const n of branchNodes) {
-        const r = rowOf[n.id];
-        if (!byRow[r]) byRow[r] = [];
-        byRow[r].push(n);
-        if (r > maxRow) maxRow = r;
+      const order = branchNodes.slice().sort((a, b) => depthOf[a.id] - depthOf[b.id] || nodeMap[a.id].i - nodeMap[b.id].i);
+      const lanes = [];
+      const laneOf = {};
+      const continued = {};
+      for (const n of order) {
+        const parents = n.prereqs.filter(p => nodeMap[p]).sort((a, b) => depthOf[b] - depthOf[a]);
+        const cont = parents.find(p => !continued[p]);
+        let lane;
+        if (cont) {
+          lane = laneOf[cont];
+          continued[cont] = true;
+          lane.ids.push(n.id);
+        } else {
+          lane = { ids: [n.id], parent: parents.length ? laneOf[parents[0]] : null, kids: [] };
+          lanes.push(lane);
+          if (lane.parent)
+            lane.parent.kids.push(lane);
+        }
+        laneOf[n.id] = lane;
       }
+      // Depth-first lane order keeps every sub-chain right below its parent;
+      // lanes share a row when their depth ranges leave a free cell between them
+      const ordered = [];
+      const visit = (l) => {
+        ordered.push(l);
+        l.kids.forEach(visit);
+      };
+      lanes.filter(l => !l.parent).forEach(visit);
+      const rowSpans = [];
+      for (const l of ordered) {
+        const ds = l.ids.map(id => depthOf[id]);
+        const lo = Math.min(...ds), hi = Math.max(...ds);
+        let r = l.parent ? l.parent.row + 1 : rowSpans.length;
+        for (;; ++r) {
+          rowSpans[r] = rowSpans[r] || [];
+          if (rowSpans[r].every(([a, b]) => hi < a - 1 || lo > b + 1))
+            break;
+        }
+        rowSpans[r].push([lo, hi]);
+        l.row = r;
+      }
+      let maxDepth = 0;
+      for (const n of branchNodes)
+        maxDepth = Math.max(maxDepth, depthOf[n.id]);
+      branchGrids.push({ branch, branchNodes, depthOf, laneOf, rows: rowSpans.length, cols: maxDepth + 1 });
+    }
 
-      const colOf = {};
-      let globalMaxCol = 0;
-      for (let r = 0; r <= maxRow; ++r) {
-        const rowNodes = byRow[r];
-        if (!rowNodes) continue;
-
-        // Sort: by minimum parent column (so children cluster under parents),
-        // then by definition order for stability.
-        rowNodes.sort((a, b) => {
-          const aParentCol = Math.min(...a.prereqs.filter(p => nodeMap[p]).map(p => colOf[p] ?? 0), Infinity);
-          const bParentCol = Math.min(...b.prereqs.filter(p => nodeMap[p]).map(p => colOf[p] ?? 0), Infinity);
-          const apc = aParentCol === Infinity ? 0 : aParentCol;
-          const bpc = bParentCol === Infinity ? 0 : bParentCol;
-          if (apc !== bpc) return apc - bpc;
-          return branchNodes.indexOf(a) - branchNodes.indexOf(b);
+    // Regions in a 2x2 arrangement: dome | mining over movement | weapon
+    const regionW = (g) => g.cols * pitchX - TREE_GAP_X + TREE_REGION_PAD * 2;
+    const regionH = (g) => TREE_REGION_HEADER + g.rows * pitchY - TREE_GAP_Y + TREE_REGION_PAD;
+    const colW = [Math.max(regionW(branchGrids[0]), regionW(branchGrids[2])), Math.max(regionW(branchGrids[1]), regionW(branchGrids[3]))];
+    const rowH = [Math.max(regionH(branchGrids[0]), regionH(branchGrids[1])), Math.max(regionH(branchGrids[2]), regionH(branchGrids[3]))];
+    for (let i = 0; i < branchGrids.length; ++i) {
+      const g = branchGrids[i];
+      const gx = i % 2 ? colW[0] + TREE_REGION_GAP : 0;
+      const gy = i >= 2 ? rowH[0] + TREE_REGION_GAP : 0;
+      const cx = gx + (colW[i % 2] - regionW(g)) / 2;
+      regions[g.branch] = { x: cx, y: gy, w: regionW(g), h: regionH(g), branch: g.branch };
+      for (const n of g.branchNodes)
+        nodes.push({
+          node: n,
+          x: cx + TREE_REGION_PAD + g.depthOf[n.id] * pitchX,
+          y: gy + TREE_REGION_HEADER + g.laneOf[n.id].row * pitchY,
+          w: TREE_CARD_W,
+          h: TREE_CARD_H,
+          branch: g.branch
         });
+    }
+    const byId = {};
+    for (const ln of nodes)
+      byId[ln.node.id] = ln;
+    regions.all = { x: 0, y: 0, w: colW[0] + colW[1] + TREE_REGION_GAP, h: rowH[0] + rowH[1] + TREE_REGION_GAP };
+    treeLayout = { nodes, byId, regions };
+    return nodes;
+  }
 
-        for (let c = 0; c < rowNodes.length; ++c) {
-          colOf[rowNodes[c].id] = c;
-          if (c > globalMaxCol) globalMaxCol = c;
+  // Screen area the tree is drawn into (below the header, above the footer)
+  const TREE_VIEW = { x: 0, y: 156, w: CANVAS_W, h: CANVAS_H - 156 - 58 };
+
+  // Display name and chain info for a tree node: "Shield Cap. L3" becomes
+  // "Shield Capacity" shown with level pip 3 of the 7-node chain.
+  function getTreeNodeInfo(node) {
+    if (treeNodeInfo)
+      return treeNodeInfo[node.id];
+    treeNodeInfo = {};
+    const chains = {};
+    for (const n of UPGRADE_TREE) {
+      const m = /^(.*?)\s+L(\d+)$/.exec(n.name);
+      let base = m ? m[1] : n.name;
+      base = TREE_NAME_EXPANSIONS[base] || base;
+      const step = m ? parseInt(m[2], 10) : 1;
+      const key = n.branch + '|' + base;
+      (chains[key] = chains[key] || []).push({ id: n.id, step });
+      treeNodeInfo[n.id] = { title: base, chain: chains[key] };
+    }
+    for (const key in chains)
+      chains[key].sort((a, b) => a.step - b.step);
+    for (const id in treeNodeInfo) {
+      const info = treeNodeInfo[id];
+      info.index = info.chain.findIndex(c => c.id === id);
+    }
+    return treeNodeInfo[node.id];
+  }
+
+  function fitTreeView(tab, instant) {
+    computeTreeLayout();
+    const r = treeLayout.regions[tab] || treeLayout.regions.all;
+    const pad = 24;
+    const z = Math.max(TREE_MIN_ZOOM, Math.min(1, (TREE_VIEW.w - pad * 2) / r.w, (TREE_VIEW.h - pad * 2) / r.h));
+    treeCam.tz = z;
+    treeCam.tx = TREE_VIEW.x + TREE_VIEW.w / 2 - (r.x + r.w / 2) * z;
+    treeCam.ty = TREE_VIEW.y + TREE_VIEW.h / 2 - (r.y + r.h / 2) * z;
+    if (instant) {
+      upgradeZoom = treeCam.tz;
+      upgradePanX = treeCam.tx;
+      upgradePanY = treeCam.ty;
+    }
+  }
+
+  function setTreeTab(tab) {
+    if (treeTab === tab) {
+      fitTreeView(tab);
+      return;
+    }
+    treeTab = tab;
+    fitTreeView(tab);
+    SZ.GameAudio.play('select');
+    if (tab !== 'all' && treeFocusId && computeTreeLayout() && treeLayout.byId[treeFocusId].branch !== tab)
+      treeFocusId = null;
+  }
+
+  // Header tabs: all branches plus one per branch
+  function getTreeTabs() {
+    const ids = ['all'].concat(TREE_BRANCH_ORDER);
+    const tabW = 196, gap = 10;
+    const x0 = CANVAS_W / 2 - (ids.length * tabW + (ids.length - 1) * gap) / 2;
+    return ids.map((id, i) => ({ id, x: x0 + i * (tabW + gap), y: 66, w: tabW, h: 36 }));
+  }
+
+  function treeNodeState(node) {
+    const lvl = getTreeNodeLevel(node.id);
+    if (lvl >= node.maxLevel) return 'owned';
+    if (!arePrereqsMet(node)) return 'locked';
+    return canAffordTreeNode(node) ? 'ready' : 'poor';
+  }
+
+  // Cost as "20 [iron] 10 [cobalt]" with per-resource colouring, shrunk to maxW
+  function drawCostRow(cost, x, y, maxW, px) {
+    const parts = [];
+    for (const key in cost)
+      if ((cost[key] || 0) > 0)
+        parts.push({ key, n: cost[key], ok: (resources[key] || 0) >= cost[key] });
+    if (!parts.length) return;
+    let size = px;
+    let total;
+    for (;;) {
+      ctx.font = uiFont(size, 'bold');
+      total = 0;
+      for (const p of parts)
+        total += ctx.measureText(String(p.n)).width + size * 1.15 + size * 0.5;
+      total -= size * 0.5;
+      if (total <= maxW || size <= 9) break;
+      --size;
+    }
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    let cx = x;
+    for (const p of parts) {
+      if (cx > x + maxW) break;
+      ctx.fillStyle = p.ok ? '#d8f5dc' : '#ff8a8a';
+      const label = String(p.n);
+      ctx.fillText(label, cx, y + 1);
+      cx += ctx.measureText(label).width + 2;
+      drawSprite(p.key, cx + size * 0.55, y, size * 1.1, p.ok ? 1 : 0.7);
+      cx += size * 1.15 + size * 0.5;
+    }
+  }
+
+  // Orthogonal connector with rounded corners routed through the empty
+  // channels between cards (never across a card)
+  function strokeTreeConnector(parent, child) {
+    const px = parent.x + parent.w, py = parent.y + parent.h / 2;
+    const cx = child.x, cy = child.y + child.h / 2;
+    const x1 = px + TREE_GAP_X / 2;
+    const x2 = cx - TREE_GAP_X / 2;
+    const pts = [[px, py]];
+    if (Math.abs(py - cy) < 0.5)
+      pts.push([cx, cy]);
+    else if (Math.abs(x1 - x2) < 0.5) {
+      pts.push([x1, py], [x1, cy], [cx, cy]);
+    } else {
+      // Run along the gap row next to the child's lane
+      const chY = cy > py ? child.y - TREE_GAP_Y / 2 : child.y + child.h + TREE_GAP_Y / 2;
+      pts.push([x1, py], [x1, chY], [x2, chY], [x2, cy], [cx, cy]);
+    }
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length - 1; ++i)
+      ctx.arcTo(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], 10);
+    ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
+    ctx.stroke();
+  }
+
+  let treeNebulaCanvas = null;
+
+  function drawTreeBackground() {
+    const g = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+    g.addColorStop(0, '#0b0f1e');
+    g.addColorStop(1, '#05060c');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    if (!treeNebulaCanvas) {
+      treeNebulaCanvas = document.createElement('canvas');
+      treeNebulaCanvas.width = 700;
+      treeNebulaCanvas.height = 500;
+      const n = treeNebulaCanvas.getContext('2d');
+      const blobs = [[160, 140, 220, '60,90,200'], [520, 120, 180, '150,60,190'], [420, 380, 240, '30,130,170'], [120, 420, 160, '190,90,60']];
+      for (const [bx, by, br, col] of blobs) {
+        const rg = n.createRadialGradient(bx, by, 0, bx, by, br);
+        rg.addColorStop(0, `rgba(${col},0.22)`);
+        rg.addColorStop(1, `rgba(${col},0)`);
+        n.fillStyle = rg;
+        n.fillRect(0, 0, 700, 500);
+      }
+      n.fillStyle = 'rgba(255,255,255,0.5)';
+      for (let i = 0; i < 140; ++i) {
+        const s = ((i * 7919) % 97) / 97;
+        n.globalAlpha = 0.15 + s * 0.5;
+        n.fillRect((i * 7307) % 700, (i * 5279) % 500, s > 0.8 ? 1.5 : 1, s > 0.8 ? 1.5 : 1);
+      }
+      n.globalAlpha = 1;
+    }
+    // Nebula drifts slightly with the pan for depth
+    const ox = ((upgradePanX * 0.05) % 140) - 70;
+    const oy = ((upgradePanY * 0.05) % 100) - 50;
+    ctx.drawImage(treeNebulaCanvas, ox - 70, oy - 50, CANVAS_W + 140, CANVAS_H + 100);
+
+    // Blueprint grid in tree space
+    const step = 64 * upgradeZoom;
+    if (step >= 10) {
+      ctx.save();
+      ctx.beginPath();
+      const sx = ((upgradePanX % step) + step) % step;
+      const sy = ((upgradePanY % step) + step) % step;
+      for (let x = sx; x < CANVAS_W; x += step) {
+        ctx.moveTo(Math.round(x) + 0.5, TREE_VIEW.y);
+        ctx.lineTo(Math.round(x) + 0.5, TREE_VIEW.y + TREE_VIEW.h);
+      }
+      for (let y = sy; y < CANVAS_H; y += step) {
+        if (y < TREE_VIEW.y || y > TREE_VIEW.y + TREE_VIEW.h) continue;
+        ctx.moveTo(0, Math.round(y) + 0.5);
+        ctx.lineTo(CANVAS_W, Math.round(y) + 0.5);
+      }
+      ctx.strokeStyle = 'rgba(110,150,255,0.05)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawTreeCard(ln, st, compact) {
+    const node = ln.node;
+    const x = ln.x, y = ln.y, w = ln.w, h = ln.h;
+    const color = TREE_BRANCH_COLORS[ln.branch];
+    const isHover = upgradeDialogHover === node.id;
+    const isFocus = treeFocusId === node.id;
+    const info = getTreeNodeInfo(node);
+    const dim = st === 'locked';
+
+    ctx.save();
+    // Drop shadow (cheap offset rect instead of blur)
+    roundRectPath(x + 3, y + 5, w, h, 12);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fill();
+
+    roundRectPath(x, y, w, h, 12);
+    if (st === 'owned')
+      ctx.fillStyle = hexToRgba(color, 0.26);
+    else if (st === 'ready')
+      ctx.fillStyle = isHover || isFocus ? hexToRgba(color, 0.3) : hexToRgba(color, 0.16);
+    else if (st === 'poor')
+      ctx.fillStyle = 'rgba(40,36,30,0.95)';
+    else
+      ctx.fillStyle = 'rgba(16,18,26,0.95)';
+    ctx.fill();
+    // Inner sheen
+    ctx.save();
+    ctx.clip();
+    ctx.fillStyle = st === 'locked' ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.06)';
+    ctx.fillRect(x, y, w, h * 0.45);
+    ctx.restore();
+
+    // Border by state
+    roundRectPath(x, y, w, h, 12);
+    if (st === 'owned') {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = color;
+    } else if (st === 'ready') {
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 8 + Math.sin(animTime * 4) * 4;
+    } else if (st === 'poor') {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,182,72,0.65)';
+    } else {
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(120,130,160,0.3)';
+      ctx.setLineDash([6, 5]);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+
+    if (isHover || isFocus) {
+      roundRectPath(x - 4, y - 4, w + 8, h + 8, 15);
+      ctx.lineWidth = isFocus ? 3 : 2;
+      ctx.strokeStyle = isFocus ? UI.gold : 'rgba(255,255,255,0.85)';
+      if (isFocus) {
+        ctx.shadowColor = UI.gold;
+        ctx.shadowBlur = 12;
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    // Icon well
+    roundRectPath(x + 10, y + 10, 44, 44, 9);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = st === 'locked' ? 'rgba(255,255,255,0.06)' : hexToRgba(color, 0.45);
+    ctx.stroke();
+    drawSprite(node.icon, x + 32, y + 32, 32, dim ? 0.4 : 1);
+
+    // Chain pips under the icon
+    if (info.chain.length > 1) {
+      const n = info.chain.length;
+      const pw = Math.min(8, (40 - (n - 1) * 2) / n);
+      const total = n * pw + (n - 1) * 2;
+      let px = x + 32 - total / 2;
+      for (let i = 0; i < n; ++i) {
+        const owned = isTreeNodeMaxed(info.chain[i].id);
+        ctx.fillStyle = owned ? color : (i === info.index ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.14)');
+        ctx.fillRect(px, y + 62, pw, 6);
+        if (i === info.index) {
+          ctx.fillStyle = 'rgba(255,255,255,0.9)';
+          ctx.fillRect(px, y + 70, pw, 2);
+        }
+        px += pw + 2;
+      }
+    } else if (node.type === 'gadget') {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText('GADGET', x + 32, y + 68, 48, 10, { weight: 'bold', color: dim ? UI.textMute : hexToRgba(color, 0.95), minPx: 8 });
+    }
+
+    // State badge (top-right)
+    if (st === 'owned')
+      drawSprite('check', x + w - 18, y + 18, 22);
+    else if (st === 'locked')
+      drawSprite('lock', x + w - 18, y + 18, 20, 0.7);
+
+    // Name, then cost
+    const textX = x + 64;
+    const textW = w - 64 - (st === 'owned' || st === 'locked' ? 32 : 10);
+    const nameColor = st === 'locked' ? '#6a7288' : (st === 'owned' ? '#ffffff' : UI.text);
+    if (compact) {
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      drawTextBlock(info.title + (info.chain.length > 1 ? ' ' + (info.index + 1) : ''), textX, y + 8, textW, h - 16, 24, { weight: 'bold', color: nameColor, valign: 'middle', minPx: 14, lineGap: 1.1 });
+    } else {
+      const titleText = info.title + (info.chain.length > 1 ? ' ' + toRoman(info.index + 1) : '');
+      drawTextBlock(titleText, textX, y + 7, textW, 44, 17, { weight: 'bold', color: nameColor, valign: 'middle', minPx: 11, lineGap: 1.15 });
+      if (st === 'owned') {
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        fitText('Owned', textX, y + h - 18, w - 64 - 12, 14, { weight: 'bold', color: color });
+      } else {
+        const cost = node.costs[Math.min(getTreeNodeLevel(node.id), node.costs.length - 1)];
+        ctx.save();
+        if (dim)
+          ctx.globalAlpha *= 0.55;
+        drawCostRow(cost, textX, y + h - 18, w - 64 - 12, 15);
+        ctx.restore();
+      }
+    }
+
+    // Purchase flash
+    const flash = treePurchaseFlash[node.id];
+    if (flash !== undefined) {
+      const t = (performance.now() - flash) / 600;
+      if (t >= 1)
+        delete treePurchaseFlash[node.id];
+      else {
+        roundRectPath(x - t * 16, y - t * 16, w + t * 32, h + t * 32, 12 + t * 10);
+        ctx.lineWidth = 4 * (1 - t);
+        ctx.strokeStyle = hexToRgba(color, 1 - t);
+        ctx.stroke();
+        roundRectPath(x, y, w, h, 12);
+        ctx.fillStyle = `rgba(255,255,255,${0.35 * (1 - t)})`;
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  function toRoman(n) {
+    return ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'][n - 1] || String(n);
+  }
+
+  function hitTreeNode(mx, my) {
+    if (my < TREE_VIEW.y || my > TREE_VIEW.y + TREE_VIEW.h) return null;
+    const { x: tx, y: ty } = screenToTreeCoords(mx, my);
+    for (const ln of computeTreeLayout())
+      if (tx >= ln.x && tx <= ln.x + ln.w && ty >= ln.y && ty <= ln.y + ln.h)
+        return ln;
+    return null;
+  }
+
+  function tryPurchaseTreeNode(node) {
+    const before = getTreeNodeLevel(node.id);
+    if (isTreeNodeAvailable(node) && canAffordTreeNode(node))
+      purchaseTreeNode(node);
+    else
+      SZ.GameAudio.play('error');
+    if (getTreeNodeLevel(node.id) > before)
+      treePurchaseFlash[node.id] = performance.now();
+  }
+
+  // Zoom the tree around a screen point (smoothly animated)
+  function zoomTreeAt(mx, my, factor) {
+    const z = Math.max(TREE_MIN_ZOOM, Math.min(TREE_MAX_ZOOM, treeCam.tz * factor));
+    const ratio = z / treeCam.tz;
+    treeCam.tx = mx - (mx - treeCam.tx) * ratio;
+    treeCam.ty = my - (my - treeCam.ty) * ratio;
+    treeCam.tz = z;
+  }
+
+  // Pan the camera target so a card is fully visible
+  function revealTreeNode(ln) {
+    const z = treeCam.tz;
+    const m = 40;
+    const sx = treeCam.tx + ln.x * z, sy = treeCam.ty + ln.y * z;
+    const sw = ln.w * z, sh = ln.h * z;
+    if (sx < TREE_VIEW.x + m) treeCam.tx += TREE_VIEW.x + m - sx;
+    else if (sx + sw > TREE_VIEW.x + TREE_VIEW.w - m) treeCam.tx -= sx + sw - (TREE_VIEW.x + TREE_VIEW.w - m);
+    if (sy < TREE_VIEW.y + m) treeCam.ty += TREE_VIEW.y + m - sy;
+    else if (sy + sh > TREE_VIEW.y + TREE_VIEW.h - m) treeCam.ty -= sy + sh - (TREE_VIEW.y + TREE_VIEW.h - m);
+  }
+
+  function focusTreeNode(ln) {
+    treeFocusId = ln.node.id;
+    upgradeDialogHover = null;
+    revealTreeNode(ln);
+    const z = treeCam.tz;
+    setTooltip(0, 0, buildUpgradeNodeTooltip(ln.node), 'focus:' + ln.node.id, { x: treeCam.tx + ln.x * z, y: treeCam.ty + ln.y * z, w: ln.w * z, h: ln.h * z });
+    tooltip.delayTimer = TOOLTIP_DELAY;
+  }
+
+  // Keyboard control of the upgrade tree; returns true when the key was used
+  function handleUpgradeDialogKey(e) {
+    const nodes = computeTreeLayout();
+    const tabs = ['all'].concat(TREE_BRANCH_ORDER);
+    if (e.code === 'Tab') {
+      const i = tabs.indexOf(treeTab);
+      setTreeTab(tabs[(i + (e.shiftKey ? tabs.length - 1 : 1)) % tabs.length]);
+      return true;
+    }
+    if (/^Digit[1-5]$/.test(e.code)) {
+      setTreeTab(tabs[parseInt(e.code.slice(5), 10) - 1]);
+      return true;
+    }
+    if (e.code === 'Equal' || e.code === 'NumpadAdd' || e.key === '+') {
+      zoomTreeAt(CANVAS_W / 2, TREE_VIEW.y + TREE_VIEW.h / 2, 1.2);
+      return true;
+    }
+    if (e.code === 'Minus' || e.code === 'NumpadSubtract' || e.key === '-') {
+      zoomTreeAt(CANVAS_W / 2, TREE_VIEW.y + TREE_VIEW.h / 2, 1 / 1.2);
+      return true;
+    }
+    if (e.code === 'Digit0' || e.code === 'Numpad0' || e.code === 'Home') {
+      fitTreeView(treeTab);
+      return true;
+    }
+    const dirs = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1], KeyA: [-1, 0], KeyD: [1, 0], KeyW: [0, -1], KeyS: [0, 1] };
+    const dir = dirs[e.code];
+    const inTab = (ln) => treeTab === 'all' || ln.branch === treeTab;
+    if (dir) {
+      const cur = treeFocusId && treeLayout.byId[treeFocusId];
+      if (!cur || !inTab(cur)) {
+        const first = nodes.find(ln => inTab(ln) && treeNodeState(ln.node) === 'ready') || nodes.find(inTab);
+        if (first)
+          focusTreeNode(first);
+        return true;
+      }
+      const cx = cur.x + cur.w / 2, cy = cur.y + cur.h / 2;
+      let best = null, bestScore = Infinity;
+      for (const ln of nodes) {
+        if (ln === cur || !inTab(ln)) continue;
+        const dx = ln.x + ln.w / 2 - cx, dy = ln.y + ln.h / 2 - cy;
+        const along = dx * dir[0] + dy * dir[1];
+        if (along <= 1) continue;
+        const across = Math.abs(dx * dir[1]) + Math.abs(dy * dir[0]);
+        const score = along + across * 2.5;
+        if (score < bestScore) {
+          bestScore = score;
+          best = ln;
         }
       }
-
-      const gridNodes = branchNodes.map(n => ({ node: n, row: rowOf[n.id], col: colOf[n.id] }));
-      branchGrids.push({ branch, gridNodes, maxCol: globalMaxCol, maxRow });
+      if (best)
+        focusTreeNode(best);
+      return true;
     }
-
-    // Second pass: compute pixel positions.
-    // Distribute branches across the available width, each getting space
-    // proportional to its column count (minimum 1 column).
-    const totalCols = branchGrids.reduce((s, bg) => s + bg.maxCol + 1, 0);
-    const totalBranchGaps = (TREE_BRANCH_ORDER.length - 1) * branchGap;
-    const availW = CANVAS_W - margin * 2 - totalBranchGaps;
-    const colUnit = availW / Math.max(1, totalCols);
-
-    let curX = margin;
-    for (const bg of branchGrids) {
-      const branchCols = bg.maxCol + 1;
-      const branchPixelW = branchCols * Math.max(colUnit, cellW);
-      const branchCenterX = curX + branchPixelW / 2;
-
-      for (const gn of bg.gridNodes) {
-        const nx = branchCenterX + (gn.col - (branchCols - 1) / 2) * cellW - TREE_NODE_W / 2;
-        const ny = startY + gn.row * cellH - upgradeDialogScroll;
-        nodes.push({
-          node: gn.node,
-          x: nx,
-          y: ny,
-          w: TREE_NODE_W,
-          h: TREE_NODE_H,
-          branch: bg.branch
-        });
-      }
-
-      curX += branchPixelW + branchGap;
+    if ((e.code === 'Enter' || e.code === 'Space' || e.code === 'NumpadEnter') && treeFocusId) {
+      const ln = treeLayout.byId[treeFocusId];
+      tryPurchaseTreeNode(ln.node);
+      focusTreeNode(ln);
+      return true;
     }
-    return nodes;
+    return false;
   }
 
   function openUpgradeDialog() {
@@ -3935,38 +4400,14 @@
     stateBeforeUpgradeDialog = state;
     state = STATE_UPGRADE_DIALOG;
     upgradeDialogHover = null;
-    upgradeDialogScroll = 0;
     upgradePanning = false;
-
-    // Only auto-fit on first open; preserve user's zoom/pan after manual interaction
+    clearTooltip();
+    // First open of a run fits the selected branch; afterwards the view is kept
     if (!upgradeViewCustomized) {
-      const layout = computeTreeLayout();
-      if (layout.length) {
-        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-        for (const ln of layout) {
-          if (ln.x < minX) minX = ln.x;
-          if (ln.x + ln.w > maxX) maxX = ln.x + ln.w;
-          if (ln.y < minY) minY = ln.y;
-          if (ln.y + ln.h > maxY) maxY = ln.y + ln.h;
-        }
-        const treeW = maxX - minX + 80; // padding
-        const treeH = maxY - minY + 80;
-        const headerH = 170; // space reserved for title + resource bar
-        const footerH = 50; // space for close hint
-        const fitZoomX = CANVAS_W / treeW;
-        const fitZoomY = (CANVAS_H - headerH - footerH) / treeH;
-        upgradeZoom = Math.min(fitZoomX, fitZoomY, 1.0);
-        upgradeZoom = Math.max(upgradeZoom, 0.3);
-        const centerX = (minX + maxX) / 2;
-        const centerY = (minY + maxY) / 2;
-        upgradePanX = CANVAS_W / 2 - centerX * upgradeZoom;
-        upgradePanY = (headerH + (CANVAS_H - headerH - footerH) / 2) - centerY * upgradeZoom;
-      } else {
-        upgradeZoom = 1.0;
-        upgradePanX = 0;
-        upgradePanY = 0;
-      }
+      fitTreeView(treeTab, true);
+      upgradeViewCustomized = true;
     }
+    treeCam.last = 0;
   }
 
   function closeUpgradeDialog() {
@@ -3977,231 +4418,200 @@
   }
 
   function drawUpgradeDialog() {
-    // Full-screen dark overlay
-    ctx.fillStyle = 'rgba(0,0,0,0.92)';
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    computeTreeLayout();
 
-    // Title (fixed, not affected by zoom/pan)
-    ctx.save();
-    ctx.shadowBlur = 15;
-    ctx.shadowColor = '#ffd700';
-    ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 44px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('UPGRADE TREE', CANVAS_W / 2, 60);
-    ctx.shadowBlur = 0;
-    ctx.restore();
-
-    // Resource bar at top (fixed)
-    const resY = 100;
-    ctx.fillStyle = 'rgba(20,25,40,0.9)';
-    ctx.fillRect(20, resY, CANVAS_W - 40, 56);
-    ctx.strokeStyle = '#3a4a6a';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(20, resY, CANVAS_W - 40, 56);
-
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    const resBarY = resY + 28;
-    let resBarX = 40;
-    for (const entry of RESOURCE_HUD_ENTRIES) {
-      if (resources[entry.key] <= 0 && entry.key !== 'iron' && entry.key !== 'water' && entry.key !== 'cobalt') continue;
-      ctx.fillStyle = entry.color;
-      const resText = `[[${entry.key}]] ${entry.label}:${resources[entry.key]}`;
-      fillIconText(resText, resBarX, resBarY);
-      resBarX += measureIconText(resText) + 20;
-      if (resBarX > CANVAS_W - 280) break;
+    // Smooth camera towards its target (frame-rate independent)
+    const now = performance.now();
+    const dt = treeCam.last ? Math.min(0.1, (now - treeCam.last) / 1000) : 1;
+    treeCam.last = now;
+    if (!upgradePanning) {
+      // Keep at least part of the tree on screen
+      const all = treeLayout.regions.all;
+      const keep = 160;
+      treeCam.tx = Math.min(TREE_VIEW.x + TREE_VIEW.w - keep - all.x * treeCam.tz, Math.max(TREE_VIEW.x + keep - (all.x + all.w) * treeCam.tz, treeCam.tx));
+      treeCam.ty = Math.min(TREE_VIEW.y + TREE_VIEW.h - keep - all.y * treeCam.tz, Math.max(TREE_VIEW.y + keep - (all.y + all.h) * treeCam.tz, treeCam.ty));
+      const k = 1 - Math.exp(-dt * 14);
+      upgradeZoom += (treeCam.tz - upgradeZoom) * k;
+      upgradePanX += (treeCam.tx - upgradePanX) * k;
+      upgradePanY += (treeCam.ty - upgradePanY) * k;
     }
 
-    // Total upgrades stat
-    let totalPurchased = 0, totalAvailable = 0;
-    for (const n of UPGRADE_TREE) {
-      totalPurchased += getTreeNodeLevel(n.id);
-      totalAvailable += n.maxLevel;
-    }
-    ctx.fillStyle = '#aaa';
-    ctx.textAlign = 'right';
-    ctx.fillText(`Upgrades: ${totalPurchased}/${totalAvailable}`, CANVAS_W - 40, resBarY);
+    drawTreeBackground();
 
-    // Apply zoom & pan transform for tree content
+    // ---- Tree content (zoom & pan) ----
     ctx.save();
+    ctx.beginPath();
+    ctx.rect(TREE_VIEW.x, TREE_VIEW.y, TREE_VIEW.w, TREE_VIEW.h);
+    ctx.clip();
     ctx.translate(upgradePanX, upgradePanY);
     ctx.scale(upgradeZoom, upgradeZoom);
 
-    // Compute node layout
-    const layoutNodes = computeTreeLayout();
+    const viewL = (TREE_VIEW.x - upgradePanX) / upgradeZoom;
+    const viewT = (TREE_VIEW.y - upgradePanY) / upgradeZoom;
+    const viewR = viewL + TREE_VIEW.w / upgradeZoom;
+    const viewB = viewT + TREE_VIEW.h / upgradeZoom;
+    const compact = upgradeZoom < 0.6;
 
-    // Branch headers -- derive center X from actual laid-out nodes
+    // Branch regions with headers and progress
     for (const branch of TREE_BRANCH_ORDER) {
-      const bNodes = layoutNodes.filter(ln => ln.branch === branch);
-      if (!bNodes.length) continue;
-      let minX = Infinity, maxX = -Infinity;
-      for (const ln of bNodes) {
-        if (ln.x < minX) minX = ln.x;
-        if (ln.x + ln.w > maxX) maxX = ln.x + ln.w;
-      }
-      const bcx = (minX + maxX) / 2;
-      ctx.fillStyle = TREE_BRANCH_COLORS[branch];
-      ctx.font = 'bold 24px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(TREE_BRANCH_LABELS[branch], bcx, 92 - upgradeDialogScroll);
-    }
-
-    // Draw connection lines first
-    ctx.lineWidth = 4;
-    for (const ln of layoutNodes) {
-      const node = ln.node;
-      for (const pid of node.prereqs) {
-        const parent = layoutNodes.find(l => l.node.id === pid);
-        if (!parent) continue;
-        const fromX = parent.x + parent.w / 2;
-        const fromY = parent.y + parent.h;
-        const toX = ln.x + ln.w / 2;
-        const toY = ln.y;
-
-        const purchased = isTreeNodeMaxed(pid);
-        const childAvail = isTreeNodeAvailable(node);
-
-        if (purchased && childAvail)
-          ctx.strokeStyle = canAffordTreeNode(node) ? TREE_BRANCH_COLORS[ln.branch] : 'rgba(255,165,0,0.5)';
-        else if (purchased)
-          ctx.strokeStyle = 'rgba(100,200,100,0.3)';
-        else
-          ctx.strokeStyle = 'rgba(100,100,100,0.2)';
-
-        ctx.setLineDash(purchased ? [] : [8, 8]);
-        ctx.beginPath();
-        ctx.moveTo(fromX, fromY);
-        // Curved connector
-        const midY = (fromY + toY) / 2;
-        ctx.bezierCurveTo(fromX, midY, toX, midY, toX, toY);
-        ctx.stroke();
-      }
-    }
-    ctx.setLineDash([]);
-
-    // Draw nodes
-    for (const ln of layoutNodes) {
-      const node = ln.node;
-      const x = ln.x, y = ln.y, w = ln.w, h = ln.h;
-      const lvl = getTreeNodeLevel(node.id);
-      const maxed = lvl >= node.maxLevel;
-      const prereqsMet = arePrereqsMet(node);
-      const affordable = canAffordTreeNode(node);
-      const available = prereqsMet && !maxed;
-      const isHover = upgradeDialogHover === node.id;
-
-      // Skip nodes that are fully off-screen
-      if (y + h < 50 || y > CANVAS_H) continue;
-
-      // Node background
-      let bgColor, borderColor, borderWidth;
-      if (maxed) {
-        bgColor = 'rgba(30,80,30,0.7)';
-        borderColor = '#0c0';
-        borderWidth = 2;
-      } else if (available && affordable) {
-        bgColor = isHover ? 'rgba(60,80,120,0.9)' : 'rgba(40,60,100,0.7)';
-        borderColor = isHover ? '#fff' : TREE_BRANCH_COLORS[ln.branch];
-        borderWidth = isHover ? 2.5 : 2;
-      } else if (available && !affordable) {
-        bgColor = 'rgba(40,40,40,0.7)';
-        borderColor = 'rgba(255,165,0,0.6)';
-        borderWidth = 1.5;
-      } else {
-        bgColor = 'rgba(25,25,25,0.6)';
-        borderColor = 'rgba(80,80,80,0.4)';
-        borderWidth = 1;
-      }
-
-      ctx.fillStyle = bgColor;
-      ctx.fillRect(x, y, w, h);
-      ctx.strokeStyle = borderColor;
-      ctx.lineWidth = borderWidth;
-      if (!prereqsMet)
-        ctx.setLineDash([6, 6]);
-      ctx.strokeRect(x, y, w, h);
-      ctx.setLineDash([]);
-
-      // Icon
-      drawSprite(node.icon, x + 22, y + h / 2 - 12, 28, maxed || available ? 1 : 0.55);
-      ctx.textBaseline = 'middle';
-
-      // Name
-      ctx.font = 'bold 18px sans-serif';
-      ctx.textAlign = 'left';
-      ctx.fillStyle = maxed ? '#8f8' : (available ? '#ddd' : '#666');
-      ctx.fillText(node.name, x + 44, y + 28);
-
-      // Cost display
-      if (!maxed) {
-        const cost = node.costs[Math.min(lvl, node.costs.length - 1)];
-        const COST_ABBREV = { iron: 'Fe', water: 'H2O', cobalt: 'Co', copper: 'Cu', tin: 'Sn', coal: 'C', lead: 'Pb', silver: 'Ag', gold: 'Au', quartz: 'Qz', redstone: 'Rs', emerald: 'Em', diamond: 'Di', ruby: 'Rb' };
-        let costParts = [];
-        for (const key in cost)
-          if ((cost[key] || 0) > 0)
-            costParts.push(`${cost[key]}${SPRITES[key] ? `[[${key}]]` : ''}${COST_ABBREV[key] || key}`);
-        const costStr = costParts.join(' ');
-
-        ctx.font = '16px sans-serif';
-        ctx.fillStyle = affordable ? '#0f0' : '#a44';
-        fillIconText(costStr, x + 44, y + 54);
-      }
-
-      // Level indicator / checkmark
-      if (maxed)
-        drawSprite('check', x + w - 22, y + h / 2, 28);
-      else if (!prereqsMet)
-        drawSprite('lock', x + w - 22, y + h / 2, 28, 0.8);
-
-      // Level bar at bottom
-      if (node.maxLevel > 1) {
-        const barX = x + 8;
-        const barY = y + h - 16;
-        const barW = w - 16;
-        const segW = barW / node.maxLevel;
-        for (let s = 0; s < node.maxLevel; ++s) {
-          ctx.fillStyle = s < lvl ? '#0c0' : '#222';
-          ctx.fillRect(barX + s * segW + 2, barY, segW - 4, 8);
+      const r = treeLayout.regions[branch];
+      if (r.x > viewR || r.x + r.w < viewL || r.y > viewB || r.y + r.h < viewT) continue;
+      const color = TREE_BRANCH_COLORS[branch];
+      roundRectPath(r.x, r.y, r.w, r.h, 22);
+      ctx.fillStyle = hexToRgba(color, 0.045);
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = hexToRgba(color, 0.22);
+      ctx.stroke();
+      let owned = 0, total = 0;
+      for (const n of UPGRADE_TREE)
+        if (n.branch === branch) {
+          ++total;
+          if (isTreeNodeMaxed(n.id)) ++owned;
         }
-      } else {
-        // Single-level: thin indicator line
-        const barX = x + 8;
-        const barY = y + h - 12;
-        const barW = w - 16;
-        ctx.fillStyle = maxed ? '#0c0' : '#222';
-        ctx.fillRect(barX, barY, barW, 6);
-      }
-
-      // Type indicator
-      if (node.type === 'gadget') {
-        ctx.font = '14px sans-serif';
-        ctx.textAlign = 'right';
-        ctx.fillStyle = maxed ? '#8f8' : '#888';
-        ctx.fillText('GADGET', x + w - 8, y + h - 20);
-      }
-
-      // Hover tooltip
-      if (isHover && !maxed && available) {
-        ctx.fillStyle = '#ffd700';
-        ctx.font = 'bold 16px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('Click to purchase', x + w / 2, y + h + 20);
+      const headPx = compact ? Math.min(48, 20 / upgradeZoom) : 30;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const labelW = fitText(TREE_BRANCH_LABELS[branch], r.x + TREE_REGION_PAD, r.y + TREE_REGION_HEADER / 2, r.w * 0.5, headPx, { weight: 'bold', color });
+      const mx = r.x + TREE_REGION_PAD + labelW + 24;
+      const mw = Math.min(260, r.x + r.w - TREE_REGION_PAD - mx - 90);
+      if (mw > 40) {
+        drawMeter(mx, r.y + TREE_REGION_HEADER / 2 - 6, mw, 12, owned / total, color);
+        fitText(`${owned} / ${total}`, mx + mw + 12, r.y + TREE_REGION_HEADER / 2, 80, compact ? headPx * 0.6 : 18, { weight: 'bold', color: UI.textDim });
       }
     }
 
-    // End zoom/pan transform
+    // Connectors: locked first, owned last so the brightest lines sit on top
+    const edges = [[], [], []];
+    for (const ln of treeLayout.nodes)
+      for (const pid of ln.node.prereqs) {
+        const parent = treeLayout.byId[pid];
+        if (!parent) continue;
+        const minX = Math.min(parent.x, ln.x) - TREE_GAP_X, maxX = Math.max(parent.x + parent.w, ln.x + ln.w) + TREE_GAP_X;
+        const minY = Math.min(parent.y, ln.y) - TREE_GAP_Y, maxY = Math.max(parent.y + parent.h, ln.y + ln.h) + TREE_GAP_Y;
+        if (minX > viewR || maxX < viewL || minY > viewB || maxY < viewT) continue;
+        const pOwned = isTreeNodeMaxed(pid);
+        edges[pOwned ? (isTreeNodeMaxed(ln.node.id) ? 2 : 1) : 0].push([parent, ln]);
+      }
+    ctx.lineCap = 'round';
+    for (let pass = 0; pass < 3; ++pass)
+      for (const [parent, ln] of edges[pass]) {
+        const color = TREE_BRANCH_COLORS[ln.branch];
+        if (pass === 0) {
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = 'rgba(130,140,170,0.28)';
+          ctx.setLineDash([7, 7]);
+        } else if (pass === 1) {
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = hexToRgba(color, 0.7);
+          ctx.setLineDash([]);
+        } else {
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = color;
+          ctx.setLineDash([]);
+        }
+        strokeTreeConnector(parent, ln);
+      }
+    ctx.setLineDash([]);
+    ctx.lineCap = 'butt';
+
+    // Cards
+    for (const ln of treeLayout.nodes) {
+      if (ln.x > viewR || ln.x + ln.w < viewL || ln.y > viewB || ln.y + ln.h < viewT) continue;
+      drawTreeCard(ln, treeNodeState(ln.node), compact);
+    }
     ctx.restore();
 
-    // Close hint (fixed, not affected by zoom/pan)
-    ctx.fillStyle = '#666';
-    ctx.font = '22px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText(`Press U or Escape to close  |  Scroll=Zoom (${Math.round(upgradeZoom * 100)}%)  |  Right-drag=Pan`, CANVAS_W / 2, CANVAS_H - 20);
+    // Keep the keyboard tooltip glued to the focused card while the camera moves
+    if (treeFocusId && tooltip.lastHoverKey === 'focus:' + treeFocusId) {
+      const ln = treeLayout.byId[treeFocusId];
+      tooltip.anchor = { x: upgradePanX + ln.x * upgradeZoom, y: upgradePanY + ln.y * upgradeZoom, w: ln.w * upgradeZoom, h: ln.h * upgradeZoom };
+    }
+
+    // ---- Header ----
+    drawPanel(12, 8, CANVAS_W - 24, 142, { accent: UI.gold, radius: 14 });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText('Upgrade Tree', 34, 38, 360, 30, { weight: 'bold', color: UI.gold });
+    let totalPurchased = 0;
+    for (const n of UPGRADE_TREE)
+      totalPurchased += getTreeNodeLevel(n.id);
+    ctx.textAlign = 'right';
+    fitText(`${totalPurchased} / ${UPGRADE_TREE.length} upgrades`, CANVAS_W - 300, 38, 220, 18, { weight: 'bold', color: UI.textDim });
+    drawMeter(CANVAS_W - 286, 32, 250, 12, totalPurchased / UPGRADE_TREE.length, UI.gold);
+
+    // Tabs
+    for (const t of getTreeTabs()) {
+      const active = treeTab === t.id;
+      const hover = mouseAimX >= t.x && mouseAimX <= t.x + t.w && mouseAimY >= t.y && mouseAimY <= t.y + t.h;
+      const color = t.id === 'all' ? UI.gold : TREE_BRANCH_COLORS[t.id];
+      roundRectPath(t.x, t.y, t.w, t.h, 9);
+      ctx.fillStyle = active ? hexToRgba(color, 0.24) : (hover ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)');
+      ctx.fill();
+      ctx.lineWidth = active ? 2 : 1;
+      ctx.strokeStyle = active ? color : 'rgba(255,255,255,0.1)';
+      ctx.stroke();
+      let label = t.id === 'all' ? 'All' : TREE_BRANCH_LABELS[t.id].charAt(0) + TREE_BRANCH_LABELS[t.id].slice(1).toLowerCase();
+      if (t.id !== 'all') {
+        let o = 0, c = 0;
+        for (const n of UPGRADE_TREE)
+          if (n.branch === t.id) {
+            ++c;
+            if (isTreeNodeMaxed(n.id)) ++o;
+          }
+        label += `  ${o}/${c}`;
+      }
+      ctx.beginPath();
+      ctx.arc(t.x + 18, t.y + t.h / 2, 5, 0, TWO_PI);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText(label, t.x + 32, t.y + t.h / 2 + 1, t.w - 42, 17, { weight: 'bold', color: active ? '#fff' : UI.textDim });
+    }
+
+    // Resource strip
+    const entries = RESOURCE_HUD_ENTRIES;
+    const slotW = (CANVAS_W - 72) / entries.length;
+    for (let i = 0; i < entries.length; ++i) {
+      const e = entries[i];
+      const sx = 36 + i * slotW;
+      const have = resources[e.key] || 0;
+      drawSprite(e.key, sx + 11, 126, 20, have > 0 ? 1 : 0.35);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText(String(have), sx + 25, 127, slotW - 30, 16, { weight: 'bold', color: have > 0 ? e.color : UI.textMute });
+    }
+
+    // ---- Footer: legend and controls ----
+    const fy = CANVAS_H - 50;
+    drawPanel(12, fy, CANVAS_W - 24, 42, { radius: 12, shadow: 8, accent: '#6a8ac8' });
+    const legend = [
+      ['Owned', 'owned'], ['Can buy', 'ready'], ['Need resources', 'poor'], ['Locked', 'locked']
+    ];
+    let lx = 30;
+    for (const [label, st] of legend) {
+      roundRectPath(lx, fy + 13, 26, 16, 5);
+      if (st === 'owned') ctx.fillStyle = hexToRgba(UI.accent, 0.35);
+      else if (st === 'ready') ctx.fillStyle = hexToRgba(UI.accent, 0.18);
+      else if (st === 'poor') ctx.fillStyle = 'rgba(40,36,30,0.95)';
+      else ctx.fillStyle = 'rgba(16,18,26,0.95)';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = st === 'poor' ? 'rgba(255,182,72,0.8)' : (st === 'locked' ? 'rgba(120,130,160,0.5)' : UI.accent);
+      ctx.stroke();
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      lx += 34 + fitText(label, lx + 34, fy + 22, 130, 15, { color: UI.textDim }) + 22;
+    }
+    drawKeyHints([
+      { key: 'Wheel', label: 'Zoom' },
+      { key: 'Drag', label: 'Pan' },
+      { key: '←↑→↓', label: 'Select' },
+      { key: 'Enter', label: 'Buy' },
+      { key: 'Tab', label: 'Branch' },
+      { key: 'Esc', label: 'Close' }
+    ], (lx + CANVAS_W - 24) / 2, fy + 21, CANVAS_W - 24 - lx - 16);
   }
 
   // Convert screen coords to tree-local coords (inverse zoom/pan)
@@ -4213,28 +4623,23 @@
   }
 
   function handleUpgradeDialogClick(mx, my) {
-    const { x: tx, y: ty } = screenToTreeCoords(mx, my);
-    const layoutNodes = computeTreeLayout();
-    for (const ln of layoutNodes) {
-      if (tx >= ln.x && tx <= ln.x + ln.w && ty >= ln.y && ty <= ln.y + ln.h) {
-        const node = ln.node;
-        if (isTreeNodeAvailable(node) && canAffordTreeNode(node))
-          purchaseTreeNode(node);
-        return;
+    for (const t of getTreeTabs())
+      if (mx >= t.x && mx <= t.x + t.w && my >= t.y && my <= t.y + t.h) {
+        setTreeTab(t.id);
+        return true;
       }
+    const ln = hitTreeNode(mx, my);
+    if (ln) {
+      treeFocusId = ln.node.id;
+      tryPurchaseTreeNode(ln.node);
+      return true;
     }
+    return my < TREE_VIEW.y || my > TREE_VIEW.y + TREE_VIEW.h;
   }
 
   function handleUpgradeDialogHover(mx, my) {
-    const { x: tx, y: ty } = screenToTreeCoords(mx, my);
-    const layoutNodes = computeTreeLayout();
-    upgradeDialogHover = null;
-    for (const ln of layoutNodes) {
-      if (tx >= ln.x && tx <= ln.x + ln.w && ty >= ln.y && ty <= ln.y + ln.h) {
-        upgradeDialogHover = ln.node.id;
-        return;
-      }
-    }
+    const ln = hitTreeNode(mx, my);
+    upgradeDialogHover = ln ? ln.node.id : null;
   }
 
   /* ======================================================================
@@ -6685,7 +7090,8 @@
     const lvl = getTreeNodeLevel(node.id);
     const maxed = lvl >= node.maxLevel;
 
-    lines.push('[[' + node.icon + ']] ' + node.name);
+    const info = getTreeNodeInfo(node);
+    lines.push('[[' + node.icon + ']] ' + info.title + (info.chain.length > 1 ? ' ' + toRoman(info.index + 1) : ''));
 
     // Effect description
     const effectDesc = UPGRADE_EFFECT_DESC[node.upgradeKey];
@@ -6696,10 +7102,10 @@
     lines.push('Type: ' + (node.type === 'gadget' ? 'Gadget (unlock)' : 'Stat upgrade'));
 
     // Level
+    if (info.chain.length > 1)
+      lines.push('Tier ' + (info.index + 1) + ' of ' + info.chain.length);
     if (maxed)
       lines.push('\u2714 Purchased');
-    else
-      lines.push('Level: ' + lvl + ' / ' + node.maxLevel);
 
     // Cost
     if (!maxed) {
@@ -6742,6 +7148,9 @@
           lines.push(u);
       }
     }
+
+    if (!maxed && arePrereqsMet(node))
+      lines.push(canAffordTreeNode(node) ? '\u2714 Click or press Enter to buy' : '\u26A0 Not enough resources');
 
     return lines;
   }
@@ -6908,7 +7317,12 @@
       }
     }
 
-    if (state === STATE_UPGRADE_DIALOG) return; // block other keys while dialog is open
+    if (state === STATE_UPGRADE_DIALOG) {
+      // Tree navigation; other keys are blocked while the dialog is open
+      if (handleUpgradeDialogKey(e))
+        e.preventDefault();
+      return;
+    }
     if (state !== STATE_PLAYING) return;
 
     if (e.code === 'Space' || e.code === 'Tab') {
@@ -7006,7 +7420,8 @@
       const scaleY = CANVAS_H / rect.height;
       const mx = (e.clientX - rect.left) * scaleX;
       const my = (e.clientY - rect.top) * scaleY;
-      handleUpgradeDialogClick(mx, my);
+      if (!handleUpgradeDialogClick(mx, my))
+        startTreePan(e, mx, my); // drag on empty space pans the tree
       return;
     }
 
@@ -7143,19 +7558,10 @@
   canvas.addEventListener('wheel', (e) => {
     if (state === STATE_UPGRADE_DIALOG) {
       e.preventDefault();
-      // Zoom with mouse wheel
-      const zoomDelta = e.deltaY > 0 ? -0.1 : 0.1;
-      const oldZoom = upgradeZoom;
-      upgradeZoom = Math.max(0.3, Math.min(2.0, upgradeZoom + zoomDelta));
-      // Adjust pan to zoom toward mouse position
       const rect = canvas.getBoundingClientRect();
-      const scaleX = CANVAS_W / rect.width;
-      const scaleY = CANVAS_H / rect.height;
-      const mx = (e.clientX - rect.left) * scaleX;
-      const my = (e.clientY - rect.top) * scaleY;
-      const zoomRatio = upgradeZoom / oldZoom;
-      upgradePanX = mx - (mx - upgradePanX) * zoomRatio;
-      upgradePanY = my - (my - upgradePanY) * zoomRatio;
+      const mx = (e.clientX - rect.left) * CANVAS_W / rect.width;
+      const my = (e.clientY - rect.top) * CANVAS_H / rect.height;
+      zoomTreeAt(mx, my, e.deltaY > 0 ? 1 / 1.15 : 1.15);
       upgradeViewCustomized = true;
     }
   }, { passive: false });
@@ -7166,26 +7572,32 @@
       e.preventDefault();
   });
 
+  function startTreePan(e, mx, my) {
+    upgradePanning = true;
+    upgradePanStartX = mx;
+    upgradePanStartY = my;
+    upgradePanBaseX = upgradePanX;
+    upgradePanBaseY = upgradePanY;
+    treeCam.tz = upgradeZoom;
+    upgradeViewCustomized = true;
+    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+  }
+
   canvas.addEventListener('pointerdown', (e) => {
     if (state === STATE_UPGRADE_DIALOG && e.button === 2) {
       e.preventDefault();
-      upgradePanning = true;
       const rect = canvas.getBoundingClientRect();
-      const scaleX = CANVAS_W / rect.width;
-      const scaleY = CANVAS_H / rect.height;
-      upgradePanStartX = (e.clientX - rect.left) * scaleX;
-      upgradePanStartY = (e.clientY - rect.top) * scaleY;
-      upgradePanBaseX = upgradePanX;
-      upgradePanBaseY = upgradePanY;
-      upgradeViewCustomized = true;
-      canvas.setPointerCapture(e.pointerId);
+      startTreePan(e, (e.clientX - rect.left) * CANVAS_W / rect.width, (e.clientY - rect.top) * CANVAS_H / rect.height);
     }
   });
 
   canvas.addEventListener('pointerup', (e) => {
-    if (upgradePanning && e.button === 2) {
+    if (upgradePanning && (e.button === 0 || e.button === 2)) {
       upgradePanning = false;
-      canvas.releasePointerCapture(e.pointerId);
+      treeCam.tx = upgradePanX;
+      treeCam.ty = upgradePanY;
+      treeCam.tz = upgradeZoom;
+      try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
     }
   });
 
@@ -7199,8 +7611,9 @@
 
     // Right-click drag panning in upgrade dialog
     if (upgradePanning && state === STATE_UPGRADE_DIALOG) {
-      upgradePanX = upgradePanBaseX + (mouseAimX - upgradePanStartX);
-      upgradePanY = upgradePanBaseY + (mouseAimY - upgradePanStartY);
+      upgradePanX = treeCam.tx = upgradePanBaseX + (mouseAimX - upgradePanStartX);
+      upgradePanY = treeCam.ty = upgradePanBaseY + (mouseAimY - upgradePanStartY);
+      upgradeZoom = treeCam.tz;
       clearTooltip();
       return;
     }
