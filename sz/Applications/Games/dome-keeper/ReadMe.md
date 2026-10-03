@@ -461,7 +461,7 @@ Monsters attack at night.
 | Monster | Moves | First threat | Behaviour |
 | ------- | ----- | -----------: | --------- |
 | Walker | ground | 0 | Plods to the dome and bites it |
-| Swarmer | ground | 2 | Tiny, fast, spawns in packs of 3-6 |
+| Swarmer | ground | 3 | Tiny, fast, spawns in packs of 2-5 (smaller at low threat) |
 | Flyer | air | 3 | Flies straight at the dome |
 | Armored Crawler | ground | 4 | Armor plates soak part of every hit (at least a quarter gets through) |
 | Diver | air | 5 | Circles high, then dives at the dome and climbs back |
@@ -720,7 +720,7 @@ Each biome has day, dusk and night skies, mountains and ground painted once into
 
 | Season | Days | Daylight | Swarm | Visuals |
 | ------ | ---- | -------: | ----- | ------- |
-| Spring | 1-4 | 60% | x1.45 count, x0.7 HP, smaller | blossoms on the plants |
+| Spring | 1-4 | 60% | x1.3 count, x0.7 HP, smaller | blossoms on the plants |
 | Summer | 5-8 | 70% | x1.15 speed | heat haze |
 | Autumn | 9-12 | 55% | x1.1 count and HP | falling leaves, plants turn orange |
 | Winter | 13-16 | 45% | x0.6 count, x1.75 HP, x1.3 damage | snow on the ground and the dome, frosted plants |
@@ -958,7 +958,7 @@ Exact numbers can be tuned later, but the game must satisfy these balancing goal
 ### Early Game
 
 * The first day gives about 90 seconds of daylight before the first night
-* Night 1 is a new-moon spring night: two or three walkers; swarmers appear from night 2
+* Night 1 is a new-moon spring night: two or three walkers; swarmer packs appear from night 3
 * Player can survive the first nights without upgrades if they return in time
 * First upgrade can be purchased after a short successful mining trip
 
