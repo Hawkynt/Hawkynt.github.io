@@ -349,6 +349,7 @@
       // Insert
       case 'insert-textbox': insertTextbox(); break;
       case 'insert-image': insertImage(); break;
+      case 'bg-choose-image': chooseBackgroundImage(); break;
       case 'insert-shape-rect': insertShape('rect'); break;
       case 'insert-shape-ellipse': insertShape('ellipse'); break;
       case 'insert-shape-rounded-rect': insertShape('rounded-rect'); break;
@@ -4363,6 +4364,31 @@
   // Format Background Dialog
   // ===============================================================
 
+  let pendingBackgroundImage = null;
+
+  function showBackgroundImagePreview() {
+    const box = document.getElementById('bg-image-preview');
+    if (!box)
+      return;
+    box.textContent = '';
+    if (!pendingBackgroundImage)
+      return;
+    const img = document.createElement('img');
+    img.src = pendingBackgroundImage;
+    img.alt = 'Background image';
+    img.style.maxWidth = '100%';
+    img.style.maxHeight = '80px';
+    box.appendChild(img);
+  }
+
+  async function chooseBackgroundImage() {
+    const result = await ComDlg32.ImportFile({ accept: 'image/*', readAs: 'dataURL' });
+    if (result.cancelled || !result.data)
+      return;
+    pendingBackgroundImage = result.data;
+    showBackgroundImagePreview();
+  }
+
   function showFormatBackgroundDialog() {
     const overlay = document.getElementById('dlg-format-bg');
     if (!overlay) {
@@ -4393,25 +4419,36 @@
 
     if (bgColorInput && slide.background?.type === 'color')
       _setSwatchColor(bgColorInput, slide.background.value || '#ffffff');
+    pendingBackgroundImage = slide.background?.type === 'image' ? slide.background.src : null;
+    showBackgroundImagePreview();
 
     SZ.Dialog.show('dlg-format-bg').then((result) => {
-      if (result !== 'ok')
+      if (result !== 'ok' && result !== 'apply-all')
         return;
 
-      pushUndo();
       const activeTab = document.querySelector('.bg-type-tab.active');
       const bgType = activeTab?.dataset.bgType || 'color';
 
-      if (bgType === 'color') {
-        slide.background = { type: 'color', value: _getSwatchColor(bgColorInput) };
+      let background;
+      if (bgType === 'solid' || bgType === 'color') {
+        background = { type: 'color', value: _getSwatchColor(bgColorInput) };
       } else if (bgType === 'gradient') {
         const c1 = _getSwatchColor(bgGradient1);
         const c2 = _getSwatchColor(bgGradient2);
         const dir = bgGradientDir?.value || 'to bottom';
-        slide.background = { type: 'gradient', value: 'linear-gradient(' + dir + ', ' + c1 + ', ' + c2 + ')' };
+        background = { type: 'gradient', value: 'linear-gradient(' + dir + ', ' + c1 + ', ' + c2 + ')' };
       } else if (bgType === 'image') {
-        // Already handled by image picker
+        if (!pendingBackgroundImage)
+          return;
+        background = { type: 'image', src: pendingBackgroundImage };
       }
+      if (!background)
+        return;
+
+      pushUndo();
+      const targets = result === 'apply-all' ? presentation.slides : [slide];
+      for (const s of targets)
+        s.background = { ...background };
 
       renderMainCanvas();
       refreshSlidePanel();

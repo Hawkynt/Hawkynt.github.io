@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Online XOR-based text encryption and decryption tool with hex encoding">
-<meta name="keywords" content="encryption, decryption, XOR cipher, hex encoding, text encryption, online encryptor, data encryption tool, cryptography demo">
+<meta name="description" content="Online AES-256-GCM text encryption and decryption tool with a passphrase">
+<meta name="keywords" content="encryption, decryption, AES-GCM, PBKDF2, passphrase, text encryption, online encryptor, data encryption tool, web crypto">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Data Encryption -- »SynthelicZ« Desktop">
@@ -44,12 +44,12 @@
 
   <div class="field-group">
     <label for="key">Key</label>
-    <input type="password" id="key" placeholder="Enter encryption key">
+    <input type="password" id="key" placeholder="Enter a passphrase">
   </div>
 
   <div class="textarea-group">
     <label for="input">Input</label>
-    <textarea id="input" placeholder="Text to encrypt or hex to decrypt"></textarea>
+    <textarea id="input" placeholder="Text to encrypt, or encrypted text to decrypt"></textarea>
   </div>
 
   <div class="button-row">
@@ -70,7 +70,7 @@
     <textarea id="output" readonly placeholder="Result will appear here"></textarea>
   </div>
 
-  <div class="disclaimer">XOR encryption is for demonstration purposes only and is not cryptographically secure.</div>
+  <div class="disclaimer">AES-256-GCM with a PBKDF2-derived key. Without the passphrase the text cannot be recovered.</div>
 
 <div class="dialog-overlay" id="dlg-about">
   <div class="dialog">
@@ -82,12 +82,13 @@
 
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
 <h1>Data Encryption - SZ Desktop Encryptor</h1>
-<p>A simple XOR-based text encryption and decryption utility for the SynthelicZ desktop. Encode text into hex-encoded ciphertext and decode it back using a user-provided key. Demonstrates basic cryptographic concepts in an accessible interface.</p>
+<p>A text encryption and decryption utility for the SynthelicZ desktop. Encrypts text of any language with AES-256-GCM under a passphrase and decrypts it back, entirely in the browser.</p>
 <h2>Features</h2>
 <ul>
-<li>XOR-based text encryption with user-provided key</li>
-<li>Hex-encoded ciphertext output and hex-to-plaintext decryption</li>
-<li>Input validation with descriptive error messages for malformed hex data</li>
+<li>AES-256-GCM encryption with a PBKDF2-SHA-256 key from your passphrase</li>
+<li>Unicode text in, compact base64 text out</li>
+<li>Tamper detection and clear messages for a wrong key or damaged text</li>
+<li>Decrypts text from the earlier XOR version</li>
 <li>Key validation with visual feedback for empty key attempts</li>
 <li>Clipboard integration to copy output text</li>
 <li>Swap input and output for efficient encrypt/decrypt round-trips</li>

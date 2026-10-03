@@ -280,6 +280,7 @@ html, body {
 
 .metadata-table tr:nth-child(even) td { background: rgba(0,0,0,0.015); }
 .metadata-table tr:hover td { background: rgba(49, 106, 197, 0.06); }
+.metadata-table tr.row-selected td { background: rgba(49, 106, 197, 0.18); }
 
 .field-label { color: var(--sz-color-gray-text, #808080); font-size: 10px; }
 

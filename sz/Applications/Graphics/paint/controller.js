@@ -1424,7 +1424,7 @@
     commitText();
     const result = await ComDlg32.GetOpenFileName({
       filters: [
-        { name: 'Images', ext: ['png', 'bmp', 'jpg', 'gif'] },
+        { name: 'Images', ext: ['png', 'bmp', 'jpg', 'jpeg', 'gif', 'webp'] },
         { name: 'All Files', ext: ['*'] }
       ],
       initialDir: '/user/documents',
@@ -1506,7 +1506,7 @@
     const dataUrl = flat.toDataURL('image/png');
     const result = await ComDlg32.GetSaveFileName({
       filters: [
-        { name: 'Images', ext: ['png', 'bmp', 'jpg', 'gif'] },
+        { name: 'Images', ext: ['png', 'bmp', 'jpg', 'jpeg', 'gif', 'webp'] },
         { name: 'All Files', ext: ['*'] }
       ],
       initialDir: '/user/documents',
@@ -1524,7 +1524,7 @@
 
   async function saveToPath(path, callback) {
     const flat = layerModel.flattenToCanvas();
-    const dataUrl = flat.toDataURL('image/png');
+    const dataUrl = SZ.PaintEncoders.canvasToDataUrl(flat, path);
     try {
       await Kernel32.WriteFile(path, dataUrl);
     } catch (err) {

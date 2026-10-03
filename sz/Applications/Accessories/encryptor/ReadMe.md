@@ -1,16 +1,17 @@
 # Data Encryption
 
-A simple XOR-based text encryption and decryption utility for the »SynthelicZ« desktop -- providing a straightforward interface for encoding text into hex-encoded ciphertext and decoding it back, primarily for demonstration purposes.
+A text encryption and decryption utility for the »SynthelicZ« desktop -- encrypts text of any language with AES-256-GCM under a passphrase and decrypts it back, entirely in the browser.
 
 ## Product Requirements
 
 ### Purpose
-Data Encryption provides a lightweight encryption tool within the »SynthelicZ« desktop, allowing users to experiment with basic XOR-based text encryption and decryption. It demonstrates cryptographic concepts in an accessible way while offering practical (albeit not production-grade) text obfuscation through a clean, easy-to-use interface.
+Data Encryption provides a lightweight encryption tool within the »SynthelicZ« desktop. Text is sealed with AES-256-GCM using a key derived from the user's passphrase (PBKDF2-SHA-256, random salt), so it can be shared or stored and only opened with the same passphrase.
 
 ### Key Capabilities
-- XOR-based text encryption with user-provided key
-- Hex-encoded ciphertext output and hex-to-plaintext decryption
-- Input validation with descriptive error messages for malformed hex data
+- AES-256-GCM encryption with a PBKDF2-SHA-256 key from the passphrase (250,000 iterations, random 16-byte salt, random 12-byte IV)
+- Unicode text in, compact text out: `sze1:` followed by base64 of salt, IV and ciphertext with tag
+- Tamper detection, with clear messages for a wrong passphrase or damaged text
+- Decrypts hex output of the earlier XOR version
 - Key validation with visual feedback for empty key attempts
 - Clipboard integration (copy output) with Clipboard API and execCommand fallback
 - Swap and Clear workflow actions for efficient encrypt/decrypt round-trips
@@ -22,6 +23,7 @@ Inspired by simple encryption utilities and hex editors, presenting a straightfo
 - Runs inside an iframe within the »SynthelicZ« desktop shell
 - Pure HTML, CSS, and JavaScript with no external frameworks or build steps
 - Must function offline when opened from the file:// protocol
+- Uses the browser's Web Crypto API (available on https, localhost and local files)
 - Themed via CSS custom properties injected by the »SynthelicZ« theme engine
 
 ## User Stories
@@ -30,15 +32,16 @@ Inspired by simple encryption utilities and hex editors, presenting a straightfo
 
 - [x] As a user, I can enter an encryption key in a password field
 - [x] As a user, I can enter plaintext in the input textarea
-- [x] As a user, I can click "Encrypt" to XOR-encrypt the input text with the key and produce hex output
-- [x] As a user, I can see the encrypted result displayed as a hexadecimal string in the output textarea
+- [x] As a user, I can click "Encrypt" to encrypt the input text with AES-256-GCM under my passphrase
+- [x] As a user, I can see the encrypted result as `sze1:` text in the output textarea
+- [x] As a user, I can encrypt text in any language, emoji included
 
 ### Decryption
 
-- [x] As a user, I can enter hex-encoded ciphertext in the input textarea
-- [x] As a user, I can click "Decrypt" to XOR-decrypt the hex input with the key and produce plaintext
-- [x] As a user, I can see an error message when the hex input is invalid (empty, odd length, or non-hex characters)
-- [x] As a user, I can see a specific explanation of why hex validation failed
+- [x] As a user, I can enter encrypted text in the input textarea
+- [x] As a user, I can click "Decrypt" to get the original text back with the same passphrase
+- [x] As a user, I can see an error message for a wrong passphrase, changed or incomplete text, or input that is not encrypted output
+- [x] As a user, I can still decrypt hex text made by the earlier XOR version
 
 ### Key Validation
 
@@ -54,7 +57,7 @@ Inspired by simple encryption utilities and hex editors, presenting a straightfo
 
 ### User Interface
 
-- [x] As a user, I can see a disclaimer stating that XOR encryption is for demonstration only
+- [x] As a user, I can see a note naming the cipher and that the text cannot be recovered without the passphrase
 - [x] As a user, I can see the output textarea is read-only
 - [x] As a user, I can see error output styled differently from normal output
 - [x] As a user, I can see themed visual styles matching the current desktop skin
@@ -62,7 +65,7 @@ Inspired by simple encryption utilities and hex editors, presenting a straightfo
 
 ### Aspirational Features
 
-- [ ] As a user, I can select from multiple encryption algorithms (AES, DES, Blowfish, etc.) via a dropdown
+- [ ] As a user, I can select from multiple encryption algorithms via a dropdown
 - [ ] As a user, I can toggle between text and file mode to encrypt/decrypt files
 - [ ] As a user, I can see a password strength indicator for the entered key
 - [ ] As a user, I can toggle key visibility (show/hide password)

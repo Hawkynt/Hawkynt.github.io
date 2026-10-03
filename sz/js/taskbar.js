@@ -546,6 +546,23 @@
     }
 
     /**
+     * Show or hide the clock in the system tray.
+     */
+    setShowClock(enabled) {
+      if (this.#clock)
+        this.#clock.style.display = enabled ? '' : 'none';
+    }
+
+    /**
+     * Auto-hide: the taskbar slides away and returns when the pointer
+     * touches the bottom edge or the start menu opens; windows get the
+     * whole screen.
+     */
+    setAutoHide(enabled) {
+      document.documentElement.classList.toggle('sz-taskbar-autohide', !!enabled);
+    }
+
+    /**
      * Apply skin colours and start button image.
      */
     applySkin(skin) {
@@ -678,6 +695,7 @@
     #toggleStartMenu() {
       const isOpen = this.#startMenu.classList.toggle('open');
       this.#startButton.classList.toggle('active', isOpen);
+      this.#element.classList.toggle('sz-taskbar-peek', isOpen);
       if (isOpen) {
         this.#startButton.style.backgroundPosition = `${this.#startButtonPressedPos} 0%`;
         // Reset to MRU view when opening
@@ -695,6 +713,7 @@
     #closeStartMenu() {
       this.#startMenu.classList.remove('open');
       this.#startButton.classList.remove('active');
+      this.#element.classList.remove('sz-taskbar-peek');
       this.#startButton.style.backgroundPosition = '0% 0%';
       this.#flyout?.classList.remove('visible');
     }
