@@ -729,7 +729,7 @@
     gold = Math.max(0, Math.floor(d.gold));
     lives = d.lives;
     currentWave = d.wave;
-    gameSpeed = [1, 2, 3].indexOf(d.gameSpeed) >= 0 ? d.gameSpeed : (isFiniteNumber(d.gameSpeed) && d.gameSpeed > 3 ? 3 : 1);
+    gameSpeed = GAME_SPEEDS.indexOf(d.gameSpeed) >= 0 ? d.gameSpeed : 1;
     autoWaveMode = !!d.autoWaveMode;
     autoWaveTimer = num(d.autoWaveTimer, 0);
     waveComplete = d.phase === 'build' ? true : !!d.waveComplete;
@@ -2237,6 +2237,11 @@
     }
   }
 
+  const SIM_STEP = 1 / 60;
+  const SIM_BUDGET_MS = 10;
+  const GAME_SPEEDS = [1, 2, 3, 5, 10, 20];
+  let simAcc = 0;
+
   function updateGame(dt) {
     animTime += dt;
     if (state === STATE_PLAYING) {
@@ -2245,11 +2250,18 @@
         hitstop -= dt;
         sdt *= 0.25;
       }
-      // Sub-steps keep fast-forward as accurate as normal speed
-      const steps = Math.ceil(sdt / 0.034);
-      const h = sdt / steps;
-      for (let i = 0; i < steps && state === STATE_PLAYING; ++i)
-        stepBattle(h);
+      // Fixed 1/60 s steps keep every speed as accurate as normal speed;
+      // a time budget per frame keeps 20x responsive on slow machines
+      simAcc += sdt;
+      const t0 = performance.now();
+      while (simAcc >= SIM_STEP && state === STATE_PLAYING) {
+        stepBattle(SIM_STEP);
+        simAcc -= SIM_STEP;
+        if (performance.now() - t0 > SIM_BUDGET_MS) {
+          simAcc = Math.min(simAcc, SIM_STEP * 2);
+          break;
+        }
+      }
     } else if (state === STATE_BUILD) {
       updateBuildCountdown(dt);
       updateFloorEffects(dt);
@@ -6638,14 +6650,14 @@
   }
 
   function speedButtons(x, y, h) {
-    const speeds = [1, 2, 3];
-    const bw = 34;
+    const speeds = GAME_SPEEDS;
+    const bw = 30;
     for (let i = 0; i < speeds.length; ++i) {
       const s = speeds[i];
       uiButton('speed' + s, x + i * (bw + 3), y, bw, h, s + '×', {
-        style: gameSpeed === s ? 'gold' : 'dark', px: 13,
+        style: gameSpeed === s ? 'gold' : 'dark', px: s >= 10 ? 11 : 12,
         onClick: () => setGameSpeed(s),
-        tip: () => [`Game speed ${s}×`, s === 1 ? 'Normal speed' : `Everything runs ${s} times as fast`, '• F cycles the speed']
+        tip: () => [`Game speed ${s}×`, s === 1 ? 'Normal speed' : `Everything runs ${s} times as fast`, '• F / + faster, Shift+F / - slower']
       });
     }
     return speeds.length * (bw + 3) - 3;
@@ -6696,7 +6708,7 @@
 
     // Right group: speed, auto, help, pause
     const bh = h - 8, by = y + 4;
-    const rightW = 3 * 37 - 3 + 6 + 56 + 6 + 34 + 4 + 34;
+    const rightW = GAME_SPEEDS.length * 33 - 3 + 6 + 56 + 6 + 34 + 4 + 34;
     let rx = UW - 8 - rightW;
     hudPanel('controls', rx - 6, y, rightW + 12, h, '#6a8ac8');
     rx += speedButtons(rx, by, bh) + 6;
@@ -7953,11 +7965,16 @@
 
   function setGameSpeed(s) {
     gameSpeed = s;
-    audio.play('click', { pitch: 0.8 + s * 0.15 });
+    audio.play('click', { pitch: 0.8 + GAME_SPEEDS.indexOf(s) * 0.15 });
   }
 
-  function toggleFastForward() {
-    setGameSpeed(gameSpeed >= 3 ? 1 : gameSpeed + 1);
+  // One step up or down the speed ladder; up from the top wraps to 1x
+  function toggleFastForward(dir) {
+    const i = GAME_SPEEDS.indexOf(gameSpeed);
+    if (dir < 0)
+      setGameSpeed(GAME_SPEEDS[Math.max(0, i - 1)]);
+    else
+      setGameSpeed(GAME_SPEEDS[(i + 1) % GAME_SPEEDS.length]);
   }
 
   function toggleAutoWave() {
@@ -8269,7 +8286,14 @@
     }
 
     if (code === 'KeyF') {
-      toggleFastForward();
+      toggleFastForward(e.shiftKey ? -1 : 1);
+      return;
+    }
+
+    if (code === 'Equal' || code === 'NumpadAdd' || code === 'Minus' || code === 'NumpadSubtract') {
+      const up = code === 'Equal' || code === 'NumpadAdd';
+      if (!up || gameSpeed < GAME_SPEEDS[GAME_SPEEDS.length - 1])
+        toggleFastForward(up ? 1 : -1);
       return;
     }
 
