@@ -1085,7 +1085,6 @@
   const BASE_CARRY_CAPACITY = 50;
 
   /* -- Waves -- */
-  const WAVE_INTERVAL = 40;
   const BASE_ENEMIES_PER_WAVE = 3;
 
   /* -- Mining time -- */
@@ -2008,7 +2007,8 @@
       weaponDamage, fireRate, drillSpeed, moveStepInterval,
       drillX, drillY, turretAngle,
       resources, upgradeTreeLevels,
-      waveNumber, waveTimer, waveActive, score,
+      waveNumber, waveTimer: secondsToNight(), waveActive, score,
+      world: { day: world.day, t: world.t, bursts: world.bursts, warned: world.warned },
       enemies,
       grid: undergroundGrid.map(row => row.map(t => String.fromCharCode(48 + t)).join('')),
       partialHP,
@@ -2158,6 +2158,14 @@
     waveNumber = d.waveNumber;
     waveTimer = d.waveTimer;
     waveActive = !!d.waveActive;
+    if (isPlainObject(d.world) && isNum(d.world.day) && isNum(d.world.t))
+      world = { day: Math.max(1, Math.floor(d.world.day)), t: Math.max(0, Math.min(0.999, d.world.t)), bursts: Math.max(0, Math.min(3, d.world.bursts | 0)), warned: !!d.world.warned };
+    else {
+      // Older saves: one day per survived wave, morning of the next
+      world = newWorld();
+      world.day = Math.max(1, Math.floor(d.waveNumber) + 1);
+    }
+    computeSkyLight();
     score = d.score;
     enemies = d.enemies.map(e => Object.assign({}, e));
     droppedResources = d.mineOutdated ? [] : d.droppedResources.map(dr => Object.assign({ age: 0 }, dr));
@@ -2491,8 +2499,11 @@
 
     enemies = [];
     waveNumber = 0;
-    waveTimer = 12;
+    waveTimer = 0;
     waveActive = false;
+    world = newWorld();
+    banners = [];
+    computeSkyLight();
     score = 0;
 
     // Reset navigation state
@@ -2581,7 +2592,7 @@
   function startGameAfterGadgetSelect() {
     state = STATE_PLAYING;
     SZ.GameAudio.play('select');
-    floatingText.add(CANVAS_W / 2, 200, 'Landing site: ' + currentBiome().name, { color: '#ffe080', font: 'bold 34px sans-serif' });
+    announce('Landing site: ' + currentBiome().name, 'Mine by day, defend the dome at night', '#ffe080', 'dome');
     // Initialize primary gadget state
     switch (primaryGadget) {
       case 'shield':
@@ -2932,23 +2943,345 @@
   }
 
   /* ======================================================================
+     WORLD TIME -- day and night, sun and moon, nightly attacks
+     ====================================================================== */
+
+  const DAY_LENGTH = 160;            // seconds for a full day and night
+  const DUSK_WARNING = 15;           // seconds of warning before nightfall
+  const MOON_PHASES = ['New Moon', 'Waxing Crescent', 'First Quarter', 'Waxing Gibbous', 'Full Moon', 'Waning Gibbous', 'Last Quarter', 'Waning Crescent'];
+  // t: 0 = sunrise .. dayFraction() = nightfall .. 1 = next sunrise
+  let world = { day: 1, t: 0.03, bursts: 0, warned: false };
+  let banners = [];                  // announcements: { title, sub, color, icon, age }
+
+  function newWorld() {
+    return { day: 1, t: 0.03, bursts: 0, warned: false };
+  }
+
+  // Share of the cycle that is daylight
+  function dayFraction() {
+    return 0.6;
+  }
+
+  function moonPhaseIndex(day) {
+    return ((day - 1) % 8 + 8) % 8;
+  }
+
+  // Night strength from the moon: 0.8 at new moon .. 1.25 at full moon
+  function moonStrength(day) {
+    return 0.8 + 0.45 * (1 - Math.abs(moonPhaseIndex(day) - 4) / 4);
+  }
+
+  function isNight() {
+    return world.t >= dayFraction();
+  }
+
+  function secondsToNight() {
+    return Math.max(0, (dayFraction() - world.t) * DAY_LENGTH);
+  }
+
+  function secondsToDawn() {
+    return Math.max(0, (1 - world.t) * DAY_LENGTH);
+  }
+
+  function smoothstep(a, b, x) {
+    const k = Math.max(0, Math.min(1, (x - a) / (b - a)));
+    return k * k * (3 - 2 * k);
+  }
+
+  function computeSkyLight() {
+    const f = dayFraction(), t = world.t, edge = 0.05;
+    daylight = t < f ? smoothstep(0, edge, t) * (1 - smoothstep(f - edge, f, t)) : 0;
+    // Glow straddles sunrise (t = 0, wrapping) and sunset (t = f)
+    const dist = Math.min(Math.abs(t - (f - 0.01)), Math.abs(t - 0.015), Math.abs(t - 1.015));
+    duskGlow = Math.max(0, 1 - dist / 0.07) * 0.85;
+  }
+
+  // Centre-top announcement panel (one at a time, queued)
+  function announce(title, sub, color, icon) {
+    if (banners.length > 4) banners.shift();
+    banners.push({ title, sub: sub || '', color: color || UI.gold, icon: icon || null, age: 0 });
+  }
+
+  function startNight() {
+    world.bursts = 1;
+    const phase = MOON_PHASES[moonPhaseIndex(world.day)];
+    const strength = moonStrength(world.day);
+    spawnWave(false);
+    announce(`Night ${world.day}`, phase + (strength > 1.1 ? ' - the swarm is restless' : (strength < 0.9 ? ' - a quiet night' : '')), '#9ab8ff', 'moon');
+    SZ.GameAudio.tone(196, 0.5, 'triangle', 0.12);
+    SZ.GameAudio.tone(147, 0.8, 'triangle', 0.12, 0.35);
+  }
+
+  function startDay() {
+    announce(`Day ${world.day}`, 'Sunrise - monsters left in the open burn away', '#ffd75a', 'sun');
+    SZ.GameAudio.play('levelup', { pitch: 1.15, volume: 0.8 });
+    saveRun();
+  }
+
+  function updateWorldTime(dt) {
+    const f = dayFraction();
+    const before = world.t;
+    world.t += dt / DAY_LENGTH;
+    if (!world.warned && before < f && (f - world.t) * DAY_LENGTH <= DUSK_WARNING) {
+      world.warned = true;
+      announce('Dusk is coming', `Night falls in ${DUSK_WARNING} s - get back to the dome!`, '#ff9a50', 'sun');
+      SZ.GameAudio.tone(330, 0.25, 'square', 0.07);
+      SZ.GameAudio.tone(262, 0.4, 'square', 0.07, 0.25);
+    }
+    if (before < f && world.t >= f)
+      startNight();
+    if (world.t >= f) {
+      const nightPos = (world.t - f) / (1 - f);
+      if (world.bursts === 1 && nightPos >= 0.4) {
+        world.bursts = 2;
+        spawnWave(true);
+      } else if (world.bursts === 2 && nightPos >= 0.72) {
+        world.bursts = 3;
+        spawnWave(true);
+      }
+    }
+    if (world.t >= 1) {
+      world.t -= 1;
+      ++world.day;
+      world.bursts = 0;
+      world.warned = false;
+      startDay();
+    }
+    computeSkyLight();
+    // Sunlight burns the monsters still out in the open (bosses resist)
+    if (daylight > 0.3)
+      for (const e of enemies) {
+        if (e.boss) continue;
+        e.hp -= e.maxHP * 0.07 * daylight * dt;
+        if (Math.random() < dt * 6)
+          particles.trail(e.x + (Math.random() - 0.5) * (e.size || 16), e.y - (e.size || 16) * 0.5, { vx: (Math.random() - 0.5) * 0.6, vy: -1.2, color: Math.random() < 0.5 ? '#ffb040' : '#706060', life: 0.5, size: 2, gravity: -0.02 });
+      }
+    // The current banner ages; a queue behind it shortens its stay
+    if (banners.length) {
+      const b = banners[0];
+      b.age += dt;
+      b.life = banners.length > 1 ? Math.min(b.life || 3.6, Math.max(1.6, b.age + 0.5)) : (b.life || 3.6);
+      if (b.age > b.life)
+        banners.shift();
+    }
+  }
+
+  // Path of the lit part of the moon for a phase index (0 new .. 4 full .. 7)
+  function moonLitPath(cx, cy, R, phaseIdx) {
+    const p = phaseIdx / 8;
+    const k = Math.cos(p * TWO_PI);
+    ctx.beginPath();
+    if (p < 0.5) {
+      ctx.arc(cx, cy, R, -Math.PI / 2, Math.PI / 2, false);
+      ctx.ellipse(cx, cy, R * Math.abs(k), R, 0, Math.PI / 2, -Math.PI / 2, k > 0);
+    } else {
+      ctx.arc(cx, cy, R, Math.PI / 2, Math.PI * 1.5, false);
+      ctx.ellipse(cx, cy, R * Math.abs(k), R, 0, -Math.PI / 2, Math.PI / 2, k > 0);
+    }
+    ctx.closePath();
+  }
+
+  function drawMoonDisc(cx, cy, R, phaseIdx, alpha) {
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    // Earthshine on the dark side
+    ctx.fillStyle = 'rgba(70,84,120,0.55)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, TWO_PI);
+    ctx.fill();
+    if (phaseIdx !== 0) {
+      const g = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.35, R * 0.1, cx, cy, R);
+      g.addColorStop(0, '#fbfcff');
+      g.addColorStop(0.7, '#cfd8ee');
+      g.addColorStop(1, '#8e9ac0');
+      moonLitPath(cx, cy, R, phaseIdx);
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.save();
+      ctx.clip();
+      ctx.fillStyle = 'rgba(90,100,140,0.32)';
+      for (const [dx, dy, r] of [[-0.3, -0.2, 0.22], [0.25, 0.3, 0.16], [0.1, -0.35, 0.1], [-0.15, 0.4, 0.12], [0.4, -0.05, 0.09]]) {
+        ctx.beginPath();
+        ctx.arc(cx + dx * R, cy + dy * R, r * R, 0, TWO_PI);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.strokeStyle = 'rgba(200,215,255,0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, TWO_PI);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawSunDisc(x, y, R, low, alpha) {
+    drawGlow(low > 0.5 ? '#ff9a50' : '#fff0b0', x, y, R * 5, 0.55 * alpha);
+    drawGlow('#ffffff', x, y, R * 2.2, 0.5 * alpha);
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, R);
+    g.addColorStop(0, '#ffffff');
+    g.addColorStop(0.6, low > 0.5 ? '#ffd080' : '#fff6c8');
+    g.addColorStop(1, low > 0.5 ? '#ff9040' : '#ffe080');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, R, 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Position on the sky arc for progress u (0 rising at the left .. 1 setting at the right)
+  function skyArc(u) {
+    return { x: 70 + u * (CANVAS_W - 140), y: DOME_Y + 40 - Math.sin(Math.max(0, Math.min(1, u)) * Math.PI) * (DOME_Y - 170) };
+  }
+
+  function drawCelestials() {
+    const f = dayFraction(), t = world.t;
+    if (t < f + 0.02) {
+      const u = t / f;
+      const p = skyArc(u);
+      drawSunDisc(p.x, p.y, 34, 1 - Math.sin(Math.max(0, Math.min(1, u)) * Math.PI), Math.min(1, daylight + duskGlow));
+    }
+    if (t > f - 0.03) {
+      const u = (t - f) / (1 - f);
+      const p = skyArc(u);
+      const ph = moonPhaseIndex(world.day);
+      const a = 1 - daylight;
+      drawGlow('#c8d8ff', p.x, p.y, 120, (0.12 + 0.3 * (1 - Math.abs(ph - 4) / 4)) * a);
+      drawMoonDisc(p.x, p.y, 30, ph, a);
+    }
+  }
+
+  // Small sun or moon icon for HUD rows
+  function drawTimeIcon(x, y, size, night) {
+    if (night)
+      drawMoonDisc(x, y, size / 2, Math.max(1, moonPhaseIndex(world.day)), 1);
+    else {
+      ctx.save();
+      ctx.strokeStyle = '#ffd060';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 8; ++i) {
+        const a = i * Math.PI / 4 + animTime * 0.3;
+        ctx.beginPath();
+        ctx.moveTo(x + Math.cos(a) * size * 0.42, y + Math.sin(a) * size * 0.42);
+        ctx.lineTo(x + Math.cos(a) * size * 0.6, y + Math.sin(a) * size * 0.6);
+        ctx.stroke();
+      }
+      const g = ctx.createRadialGradient(x - 2, y - 2, 1, x, y, size * 0.34);
+      g.addColorStop(0, '#fff8d0');
+      g.addColorStop(1, '#ffb020');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, size * 0.34, 0, TWO_PI);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawBanner() {
+    const b = banners[0];
+    if (!b || (state !== STATE_PLAYING && state !== STATE_PAUSED)) return;
+    const inA = Math.min(1, b.age / 0.35), outA = Math.min(1, ((b.life || 3.6) - b.age) / 0.5);
+    const a = Math.max(0, Math.min(inA, outA));
+    if (a <= 0) return;
+    const w = 600, h = 76, x = CANVAS_W / 2 - w / 2, y = 108 - (1 - inA) * 20;
+    ctx.save();
+    ctx.globalAlpha = a;
+    drawPanel(x, y, w, h, { accent: b.color, radius: 14, glow: true });
+    if (b.icon === 'moon' || b.icon === 'sun')
+      drawTimeIcon(x + 42, y + h / 2, 40, b.icon === 'moon');
+    else if (b.icon)
+      drawSprite(b.icon, x + 42, y + h / 2, 40);
+    const tx = x + (b.icon ? 78 : 24), tw = w - (b.icon ? 78 : 24) - 20;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText(b.title, tx, y + 26, tw, 26, { weight: 'bold', color: b.color });
+    fitText(b.sub, tx, y + 54, tw, 17, { color: UI.text });
+    ctx.restore();
+  }
+
+  // Day, time and moon (top left on the surface)
+  function drawClockPanel() {
+    const x = 16, y = 16, w = 330, h = 112;
+    const night = isNight();
+    const warn = !night && secondsToNight() <= DUSK_WARNING;
+    drawPanel(x, y, w, h, { accent: night ? '#7a9aff' : (warn ? '#ff8a50' : '#ffc860') });
+    // Dial: sky disc with the sun or moon
+    const dx = x + 38, dy = y + 40;
+    const sg = ctx.createLinearGradient(0, dy - 24, 0, dy + 24);
+    sg.addColorStop(0, night ? '#0a1030' : '#3a7ad0');
+    sg.addColorStop(1, night ? '#2a2050' : (duskGlow > 0.3 ? '#ff9a60' : '#a8d0f0'));
+    ctx.fillStyle = sg;
+    ctx.beginPath();
+    ctx.arc(dx, dy, 24, 0, TWO_PI);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    drawTimeIcon(dx, dy, 30, night);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText(`Day ${world.day}`, x + 72, y + 28, 150, 24, { weight: 'bold', color: UI.text });
+    ctx.textAlign = 'right';
+    fitText(MOON_PHASES[moonPhaseIndex(world.day)], x + w - 14, y + 28, 150, 14, { color: '#b8c8ff' });
+    ctx.textAlign = 'left';
+    if (night) {
+      const left = enemies.length;
+      fitText(left ? `${left} ${left === 1 ? 'monster' : 'monsters'} attacking` : 'The night is quiet...', x + 72, y + 55, w - 86, 16, { weight: 'bold', color: left ? '#ff8a7a' : UI.textDim });
+      ctx.textAlign = 'right';
+      fitText(`dawn ${Math.ceil(secondsToDawn())}s`, x + w - 14, y + 55, 90, 14, { color: UI.textDim });
+      drawMeter(x + 72, y + 72, w - 86, 10, (world.t - dayFraction()) / (1 - dayFraction()), '#7a9aff');
+    } else {
+      const sec = Math.ceil(secondsToNight());
+      const pulse = warn ? 0.6 + Math.sin(animTime * 8) * 0.4 : 1;
+      fitText(warn ? 'Get to the dome!' : 'Daytime: mine and build', x + 72, y + 55, w - 86 - 70, 16, { weight: 'bold', color: warn ? `rgba(255,140,80,${pulse})` : UI.textDim });
+      ctx.textAlign = 'right';
+      fitText(`${sec}s`, x + w - 14, y + 55, 64, 18, { weight: 'bold', color: warn ? '#ff9a50' : '#ffc870' });
+      drawMeter(x + 72, y + 72, w - 86, 10, world.t / dayFraction(), warn ? '#ff7a40' : '#ffc040');
+    }
+    ctx.textAlign = 'left';
+    fitText(`Waves survived: ${Math.max(0, waveNumber - (night ? 1 : 0))}`, x + 72, y + 96, w - 86, 14, { color: UI.textMute });
+  }
+
+  // Time line inside the mine's cargo panel
+  function drawMineClock(x, y, w) {
+    const night = isNight();
+    const warn = night || secondsToNight() <= DUSK_WARNING;
+    const text = night
+      ? `Night ${world.day}: ${enemies.length} at the dome`
+      : `Day ${world.day}: night in ${Math.ceil(secondsToNight())}s`;
+    if (warn) {
+      roundRectPath(x - 4, y - 13, w + 8, 26, 8);
+      ctx.fillStyle = `rgba(120,30,20,${0.45 + Math.sin(animTime * 6) * 0.2})`;
+      ctx.fill();
+    }
+    drawTimeIcon(x + 9, y, 18, night);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText(text, x + 24, y + 1, w - 24, 15, { weight: 'bold', color: warn ? '#ffb0a0' : UI.text });
+  }
+
+  /* ======================================================================
      ENEMY WAVES
      ====================================================================== */
 
-  function spawnWave() {
-    ++waveNumber;
+  // The main attack comes at nightfall; reinforcements (smaller, no boss) later in the night
+  function spawnWave(reinforcement) {
+    if (!reinforcement)
+      ++waveNumber;
     waveActive = true;
 
     // Recharge shield gadget at wave start
-    if (primaryGadget === 'shield') {
+    if (!reinforcement && primaryGadget === 'shield') {
       primaryGadgetState.active = true;
       floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 60, 'Shield Recharged!', { color: '#4af', font: 'bold 24px sans-serif' });
     }
 
-    const isBossWave = waveNumber >= 15 && waveNumber % 5 === 0;
+    const isBossWave = !reinforcement && waveNumber >= 15 && waveNumber % 5 === 0;
 
-    // Gradual count ramp: 2 at wave 1, slowly increases, capped at 20
-    const baseCount = Math.min(20, 2 + Math.floor(waveNumber * 0.8));
+    // Gradual count ramp: 2 at wave 1, slowly increases, capped at 20; the moon makes nights stronger or calmer
+    const baseCount = Math.max(1, Math.round(Math.min(20, 2 + Math.floor(waveNumber * 0.8)) * moonStrength(world.day) * (reinforcement ? 0.45 : 1)));
     // Flyer ratio: 0% for waves 1-4, ramps to ~40% by wave 10+
     const flyerRatio = waveNumber <= 4 ? 0 : Math.min(0.4, (waveNumber - 4) * 0.07);
     const flyerCount = Math.floor(baseCount * flyerRatio);
@@ -3060,7 +3393,10 @@
     } else
       SZ.GameAudio.play('select', { pitch: 0.75 });
 
-    floatingText.add(CANVAS_W / 2, 80, `WAVE ${waveNumber}`, { color: '#f80', font: 'bold 40px sans-serif' });
+    if (reinforcement) {
+      announce('More monsters!', 'A second swarm crawls out of the dark', '#ff8a6a', 'swords');
+      SZ.GameAudio.play('hurt', { pitch: 0.6, volume: 0.6 });
+    }
     updateWindowTitle();
   }
 
@@ -3178,9 +3514,8 @@
 
     if (waveActive && enemies.length === 0) {
       waveActive = false;
-      waveTimer = WAVE_INTERVAL;
       SZ.GameAudio.play('levelup');
-      floatingText.add(CANVAS_W / 2, 80, 'WAVE CLEAR!', { color: '#0f0', font: 'bold 36px sans-serif' });
+      announce('Swarm beaten!', isNight() && world.bursts < 3 ? 'More may come before dawn' : 'The dome holds', '#6fe08a', 'shield');
       saveRun();
     }
   }
@@ -5551,11 +5886,7 @@
       cameraY += (Math.max(0, Math.min(maxCamY, targetCamY)) - cameraY) * 0.15;
     }
 
-    if (!waveActive) {
-      waveTimer -= dt;
-      if (waveTimer <= 0)
-        spawnWave();
-    }
+    updateWorldTime(dt);
 
     updateEnemies(dt);
     updateWeapon(dt);
@@ -6256,9 +6587,6 @@
     }
     ctx.globalAlpha = 1;
   }
-
-  // Sun and moon are drawn by the world clock (see WORLD TIME)
-  function drawCelestials() {}
 
   function drawGroundLayer() {
     const art = buildSurfaceArt();
@@ -7708,7 +8036,7 @@
 
     // Cargo and depth (top-right)
     const carryX = CANVAS_W - 296, carryW = 280;
-    drawPanel(carryX, panelY, carryW, 84, { accent: '#e0c060', shadow: 10 });
+    drawPanel(carryX, panelY, carryW, 112, { accent: '#e0c060', shadow: 10 });
     const carryRatio = Math.min(carried / carryCapacity, 1);
     drawSprite('bag', carryX + 24, panelY + 24, 24);
     ctx.textAlign = 'left';
@@ -7719,15 +8047,16 @@
     drawMeter(carryX + 14, panelY + 42, carryW - 28, 10, carryRatio, carryRatio >= 1 ? '#e84040' : '#e0b030');
     ctx.textAlign = 'left';
     fitText(`Depth ${drillY} m  ·  ${DEPTH_TIERS[getDepthTier(drillY)].name}`, carryX + 16, panelY + 68, carryW - 32, 15, { color: UI.textDim });
+    drawMineClock(carryX + 14, panelY + 94, carryW - 28);
   }
 
   // Returns the bottom edge of the panel
   function drawToolHUDUnderground() {
     const tools = TOOL_DEFS.filter(d => unlockedTools[d.key]);
-    if (!tools.length) return 100;
+    if (!tools.length) return 128;
 
     const hudX = CANVAS_W - 296, hudW = 280;
-    const hudY = 112;
+    const hudY = 140;
     const rowH = 30;
     drawPanel(hudX, hudY, hudW, 12 + tools.length * rowH, { accent: '#9a7aff', shadow: 10 });
 
@@ -7959,20 +8288,8 @@
   }
 
   function drawSurfaceHUD() {
-    // Wave status (top-left)
-    drawPanel(16, 16, 300, 74, { accent: waveActive ? '#ff6a6a' : '#ffb648' });
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    if (waveActive) {
-      fitText(`Wave ${waveNumber}`, 32, 40, 268, 24, { weight: 'bold', color: '#ff8a7a' });
-      const left = enemies.length;
-      fitText(`${left} ${left === 1 ? 'enemy' : 'enemies'} remaining`, 32, 68, 268, 17, { color: UI.textDim });
-    } else {
-      fitText(`Wave ${waveNumber + 1} incoming`, 32, 38, 180, 17, { weight: 'bold', color: UI.textDim });
-      ctx.textAlign = 'right';
-      fitText(`${Math.ceil(waveTimer)}s`, 300, 38, 80, 24, { weight: 'bold', color: '#ffc870' });
-      drawMeter(32, 60, 268, 12, 1 - waveTimer / WAVE_INTERVAL, '#ff9a30');
-    }
+    // Day, time and moon (top-left)
+    drawClockPanel();
 
     drawGadgetHUD();
 
@@ -8603,6 +8920,7 @@
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     }
 
+    drawBanner();
     drawHUD();
 
     if (state === STATE_UPGRADE_DIALOG)
@@ -8953,7 +9271,7 @@
 
   function updateStatusBar() {
     if (statusView) statusView.textContent = `View: ${currentView}`;
-    if (statusWave) statusWave.textContent = `Wave: ${waveNumber}`;
+    if (statusWave) statusWave.textContent = isNight() ? `Night ${world.day}: ${enemies.length} monsters` : `Day ${world.day}: night in ${Math.ceil(secondsToNight())}s`;
     if (statusDome) statusDome.textContent = `Dome: ${Math.ceil(domeHP)}/${maxDomeHP}`;
     if (statusResources) {
       let resParts = [];
@@ -9513,7 +9831,7 @@
   function updateWindowTitle() {
     const title = state === STATE_GAME_OVER
       ? `Dome Keeper -- Game Over -- Wave ${waveNumber}`
-      : `Dome Keeper -- Wave ${waveNumber} -- Score ${score}`;
+      : `Dome Keeper -- Day ${world.day} -- Score ${score}`;
     document.title = title;
     if (User32?.SetWindowText)
       User32.SetWindowText(title);
