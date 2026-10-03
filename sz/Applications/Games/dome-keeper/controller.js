@@ -15049,6 +15049,10 @@
     const mx = (e.clientX - rect.left) * scaleX;
     const my = (e.clientY - rect.top) * scaleY;
 
+    // Touch has no hover: a tap also aims the turret at the tapped point
+    mouseAimX = mx;
+    mouseAimY = my;
+
     // A monster (or the keeper) seen through a faded panel takes the click
     const through = hudPassThrough(mx, my);
 
