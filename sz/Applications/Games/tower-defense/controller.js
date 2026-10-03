@@ -221,18 +221,51 @@
 
   /* ══════════════════════════════════════════════════════════════════
      ENEMY DEFINITIONS
+     hp/speed/bounty are wave-1 values; cost is the share of a wave's
+     budget; unlock is the share of the map's waves after which the type
+     can appear. The first eight keys are kept from format 1 saves.
      ══════════════════════════════════════════════════════════════════ */
 
   const ENEMY_TYPES = {
-    normal:  { hp: 40,  speed: 40, bounty: 10, color: '#c44', radius: 6 },
-    fast:    { hp: 25,  speed: 70, bounty: 12, color: '#4c4', radius: 5 },
-    armored: { hp: 120, speed: 25, bounty: 25, color: '#888', radius: 8, armor: 4 },
-    flying:  { hp: 35,  speed: 50, bounty: 15, color: '#88f', radius: 5, flying: true },
-    boss:    { hp: 500, speed: 20, bounty: 100, color: '#f0f', radius: 12, armor: 6, boss: true },
-    healer:  { hp: 60,  speed: 35, bounty: 20, color: '#4f4', radius: 6, heals: true },
-    swarm:   { hp: 15,  speed: 60, bounty: 5,  color: '#fa0', radius: 4 },
-    shield:  { hp: 80,  speed: 30, bounty: 30, color: '#4ff', radius: 7, shielded: true }
+    normal:   { name: 'Grunt', hp: 42, speed: 36, bounty: 5, radius: 7, color: '#d8584a', cost: 1, unlock: 0,
+                info: 'Basic foot soldier.', counter: 'Anything' },
+    fast:     { name: 'Runner', hp: 28, speed: 70, bounty: 5, radius: 6, color: '#5ad86a', cost: 1.1, unlock: 0.1, gap: 0.4,
+                info: 'Quick and fragile.', counter: 'Frost, Archer' },
+    swarm:    { name: 'Swarmling', hp: 14, speed: 58, bounty: 2, radius: 5, color: '#ffb03a', cost: 0.45, unlock: 0.16, gap: 0.22, pack: 6,
+                info: 'Tiny, arrives in packs.', counter: 'Cannon, Flamer, Spikes' },
+    flying:   { name: 'Bat', hp: 34, speed: 50, bounty: 7, radius: 6, color: '#9a8aff', cost: 1.6, unlock: 0.24, flying: true,
+                info: 'Flies straight across the map, ignoring the path.', counter: 'Archer, Tesla, Frost' },
+    armored:  { name: 'Brute', hp: 130, speed: 26, bounty: 13, radius: 9, color: '#9aa4b4', cost: 3.2, unlock: 0.3, armor: 5, gap: 1.0, batters: 1.2,
+                info: 'Heavy armor shrugs off small hits; dents towers it passes.', counter: 'Laser, Venom, Sniper' },
+    splitter: { name: 'Slime', hp: 80, speed: 32, bounty: 8, radius: 8, color: '#5ae0b4', cost: 3, unlock: 0.36, split: 'slimelet', splitCount: 3,
+                info: 'Splits into three slimelets when it dies.', counter: 'Cannon, Flamer' },
+    slimelet: { name: 'Slimelet', hp: 22, speed: 46, bounty: 1, radius: 5, color: '#8ff0d0', cost: 0, unlock: 2,
+                info: 'Leftover of a slime.', counter: 'Splash' },
+    healer:   { name: 'Shaman', hp: 60, speed: 33, bounty: 12, radius: 7, color: '#6aff8a', cost: 3, unlock: 0.44, heals: true,
+                info: 'Heals nearby enemies every few seconds.', counter: 'Sniper (Strong targeting)' },
+    stealth:  { name: 'Phantom', hp: 55, speed: 46, bounty: 10, radius: 7, color: '#b89aff', cost: 2.6, unlock: 0.5, stealth: true,
+                info: 'Invisible to towers until spotted or caught by area damage.', counter: 'Sniper, Longbow, splash' },
+    shield:   { name: 'Warden', hp: 75, speed: 30, bounty: 14, radius: 8, color: '#5ad8ff', cost: 3.6, unlock: 0.56, shielded: 0.5, shielder: true,
+                info: 'Carries an energy shield and shields allies around it.', counter: 'Tesla, Venom' },
+    drake:    { name: 'Wyvern', hp: 190, speed: 34, bounty: 18, radius: 10, color: '#ff7a5a', cost: 6, unlock: 0.68, flying: true, armor: 3, gap: 1.1,
+                info: 'Armored flyer.', counter: 'Sniper, Laser, Tesla' },
+    golem:    { name: 'Juggernaut', hp: 420, speed: 18, bounty: 32, radius: 12, color: '#b08a6a', cost: 11, unlock: 0.8, armor: 10, gap: 1.6, batters: 3,
+                info: 'Walking fortress with massive armor.', counter: 'Venom, Acid, Solar Lance' },
+    skeleton: { name: 'Skeleton', hp: 30, speed: 40, bounty: 1, radius: 6, color: '#e8e2d4', cost: 0, unlock: 2,
+                info: 'Raised by the Lich.', counter: 'Anything' },
+    boss:     { name: 'Warlord', hp: 1100, speed: 20, bounty: 120, radius: 15, color: '#ff4ad8', boss: true, armor: 6, lives: 5, batters: 5, gap: 2,
+                info: 'Boss. Huge health and armor; smashes towers it passes.', counter: 'Everything you have' },
+    dragon:   { name: 'Dragon', hp: 1250, speed: 26, bounty: 140, radius: 16, color: '#ff5a3a', boss: true, flying: true, armor: 4, lives: 5, gap: 2,
+                info: 'Flying boss that crosses the map in a straight line.', counter: 'Anti-air: Archer, Tesla, Sniper' },
+    lich:     { name: 'Lich King', hp: 1450, speed: 18, bounty: 160, radius: 15, color: '#8affd8', boss: true, armor: 2, lives: 5, summons: true, gap: 2,
+                info: 'Boss. Raises skeletons and grows furious when hurt.', counter: 'Splash for the skeletons, focus the Lich' }
   };
+
+  for (const k in ENEMY_TYPES)
+    ENEMY_TYPES[k].key = k;
+
+  const BOSS_ORDER = ['boss', 'dragon', 'lich'];
+  const ELITE_HP = 2.2;
 
   /* ══════════════════════════════════════════════════════════════════
      MAPS -- paths are waypoint sequences on a 25 x 17 grid
@@ -382,7 +415,7 @@
   const SAVE_VERSION = 2;
   const AUTOSAVE_INTERVAL = 5; // seconds of play between autosaves
   const ENEMY_SAVE_FIELDS = ['hp', 'maxHp', 'speed', 'bounty', 'radius', 'armor', 'dist', 'slowMul', 'slowTimer', 'freezeTimer', 'stunTimer',
-    'burnDps', 'burnTimer', 'poisonTimer', 'acidTimer', 'shred', 'shieldHp', 'shieldMax', 'healCooldown'];
+    'burnDps', 'burnTimer', 'poisonTimer', 'acidTimer', 'shred', 'shieldHp', 'shieldMax', 'healCooldown', 'abilityTimer', 'revealTimer'];
   let autosaveTimer = 0;
   let savedGameInfo = null; // { map, wave, waves } summary for the start screen, null when no save exists
   let saveNotice = '';      // shown on the start screen when a save had to be discarded
@@ -407,7 +440,7 @@
       wave: currentWave,
       phase: state === STATE_BUILD || (state === STATE_PAUSED && pausedFrom === STATE_BUILD) ? 'build' : 'wave',
       gameSpeed, autoWaveMode, autoWaveTimer,
-      waveComplete, waveCountdown, spawnTimer, waveSize,
+      waveComplete, waveCountdown, spawnTimer, waveSize, lastPaidWave,
       waveEnemies: waveEnemies.slice(),
       stats: { kills: runStats.kills, gold: runStats.gold, leaked: runStats.leaked },
       towers: towers.map(t => ({
@@ -417,7 +450,7 @@
       })),
       floor: floorEffects.map(fe => ({ col: fe.col, row: fe.row, type: fe.type, timer: fe.timer, damage: fe.damage })),
       enemies: enemies.filter(e => e.hp > 0).map(e => {
-        const o = { type: e.type, pi: e.pi };
+        const o = { type: e.type, pi: e.pi, elite: !!e.elite, enraged: !!e.enraged };
         for (const k of ENEMY_SAVE_FIELDS)
           o[k] = e[k];
         return o;
@@ -558,7 +591,8 @@
     waveComplete = d.phase === 'build' ? true : !!d.waveComplete;
     waveCountdown = num(d.waveCountdown, 3);
     spawnTimer = num(d.spawnTimer, 0);
-    waveEnemies = d.waveEnemies.filter(t => ENEMY_TYPES[t]);
+    waveEnemies = d.waveEnemies.filter(isQueueToken);
+    lastPaidWave = Number.isInteger(d.lastPaidWave) ? clamp(d.lastPaidWave, 0, currentWave) : (d.phase === 'build' ? currentWave : Math.max(0, currentWave - 1));
     if (d.stats)
       runStats = { kills: num(d.stats.kills, 0), gold: num(d.stats.gold, 0), leaked: num(d.stats.leaked, 0) };
 
@@ -593,17 +627,22 @@
     for (const o of d.enemies) {
       if (!o || !ENEMY_TYPES[o.type] || !isFiniteNumber(o.hp) || o.hp <= 0) continue;
       const pi = Number.isInteger(o.pi) && o.pi >= 0 && o.pi < paths.length ? o.pi : 0;
-      const e = spawnEnemy(o.type, pi);
+      const e = spawnEnemy(o.type + (o.elite ? '!' : ''), pi, 1);
+      e.enraged = !!o.enraged;
       for (const k of ENEMY_SAVE_FIELDS)
         if (isFiniteNumber(o[k]))
           e[k] = o[k];
+
+      const path = enemyPath(e);
       if (isFiniteNumber(o.share))
-        e.dist = o.share * paths[pi].total;
-      e.dist = clamp(e.dist, 0, paths[pi].total - 1);
+        e.dist = o.share * path.total;
+      e.dist = clamp(e.dist, 0, path.total - 1);
       e.maxHp = Math.max(e.maxHp, e.hp);
-      pathPos(paths[pi], e.dist, e);
+      e.spawnT = 1;
+      pathPos(path, e.dist, e);
     }
-    waveSize = Math.max(num(d.waveSize, 0), waveEnemies.length + enemies.length);
+    waveSize = Math.max(num(d.waveSize, 0), waveEnemies.filter(t => t !== '|').length + enemies.length);
+
     shownGold = gold;
 
     // A wave in progress resumes paused so the player can get their bearings
@@ -695,9 +734,15 @@
 
   function buildPaths(mapDef) {
     paths = mapPaths(mapDef).map(wp => makePath(getPathPoints(wp)));
+    // Flyers cut straight from the spawn to the exit
+    airPaths = paths.map(p => makePath([p.pts[0], p.pts[p.pts.length - 1]]));
     pathPoints = paths[0].pts;
   }
+  let airPaths = [];
 
+  function enemyPath(e) {
+    return ENEMY_TYPES[e.type].flying ? airPaths[e.pi] : paths[e.pi];
+  }
   // Position (and heading) at a distance along a path
   function pathPos(path, dist, out) {
     const cum = path.cum, pts = path.pts;
@@ -746,7 +791,11 @@
     warningTimer = 0;
     autoWaveTimer = 0;
     waveSize = 0;
+    lastPaidWave = 0;
+    bossIntro = null;
+    previewCache.key = '';
   }
+
 
   function loadMap(index) {
     currentMap = index;
@@ -967,36 +1016,96 @@
      WAVES
      ══════════════════════════════════════════════════════════════════ */
 
-  function generateWave(waveNum) {
+  // Small deterministic generator so a wave can be previewed before it starts
+  function makeRng(seed) {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // Queue tokens: an enemy key, optionally followed by '!' for an elite, or '|' for a pause
+  function parseToken(tok) {
+    if (typeof tok !== 'string' || tok === '|') return null;
+    const elite = tok.charAt(tok.length - 1) === '!';
+    const type = elite ? tok.slice(0, -1) : tok;
+    return ENEMY_TYPES[type] ? { type, elite } : null;
+  }
+
+  function isQueueToken(tok) {
+    return tok === '|' || !!parseToken(tok);
+  }
+
+  function isBossWave(waveNo, waves) {
+    return waveNo === waves || waveNo % 5 === 0;
+  }
+
+  // waveNo is 1-based. Picks a few enemy groups from the types unlocked so far
+  // and fills the wave's budget; every fifth wave and the last one bring a boss.
+  function generateWave(waveNo, mapIndex) {
+    const mi = mapIndex === undefined ? currentMap : mapIndex;
+    const mapDef = MAPS[mi];
+    const waves = mapDef.waves;
+    const rng = makeRng(mi * 7919 + waveNo * 104729 + 17);
+    const progress = (waveNo - 1) / Math.max(1, waves - 1);
+    const pool = Object.keys(ENEMY_TYPES).filter(k => ENEMY_TYPES[k].cost > 0 && !ENEMY_TYPES[k].boss && ENEMY_TYPES[k].unlock <= progress + 1e-6);
+    let budget = (7 + waveNo * 3.2 + waveNo * waveNo * 0.12) * (mapDef.budgetMul || 1);
     const queue = [];
-    const count = 5 + Math.floor(waveNum * 1.5);
-    for (let i = 0; i < count; ++i) {
-      let type = 'normal';
-      const roll = Math.random();
-      if (waveNum >= 8 && roll < 0.05)
-        type = 'boss';
-      else if (waveNum >= 6 && roll < 0.1)
-        type = 'shield';
-      else if (waveNum >= 5 && roll < 0.15)
-        type = 'healer';
-      else if (waveNum >= 4 && roll < 0.25)
-        type = 'armored';
-      else if (waveNum >= 2 && roll < 0.4)
-        type = 'fast';
-      else if (waveNum >= 3 && roll < 0.5)
-        type = 'flying';
-      else if (waveNum >= 1 && roll < 0.55)
-        type = 'swarm';
-      queue.push(type);
+    // The newest type gets the spotlight in the wave it first appears
+    const fresh = pool.filter(k => ENEMY_TYPES[k].unlock > (waveNo - 2) / Math.max(1, waves - 1));
+    const groups = [];
+    const nGroups = waveNo <= 2 ? 1 : Math.min(pool.length, 2 + Math.floor(rng() * 2));
+    for (let g = 0; g < nGroups; ++g) {
+      const k = g === 0 && fresh.length ? fresh[Math.floor(rng() * fresh.length)] : pool[Math.floor(rng() * pool.length)];
+      if (groups.indexOf(k) < 0) groups.push(k);
     }
-    if (waveNum % 2 === 1 && waveNum >= 3)
-      for (let i = 0; i < 4; ++i)
-        queue.push('swarm');
-    if (waveNum % 5 === 4)
-      queue.push('boss');
+    if (groups.indexOf('normal') < 0 && waveNo <= 4) groups.push('normal');
+    const eliteChance = clamp((progress - 0.4) * 0.5, 0, 0.22);
+    const boss = isBossWave(waveNo, waves);
+    if (boss) budget *= 0.6;
+    for (let g = 0; g < groups.length; ++g) {
+      const def = ENEMY_TYPES[groups[g]];
+      const share = budget / (groups.length - g);
+      let n = Math.max(1, Math.round(share / def.cost));
+      if (def.pack) n = Math.max(def.pack, Math.round(n / def.pack) * def.pack);
+      budget -= n * def.cost;
+      if (queue.length) queue.push('|');
+      for (let i = 0; i < n; ++i)
+        queue.push(groups[g] + (rng() < eliteChance && !def.pack ? '!' : ''));
+    }
+    if (boss) {
+      const bossType = waveNo === waves ? BOSS_ORDER[mi % BOSS_ORDER.length] : BOSS_ORDER[(Math.floor(waveNo / 5) - 1) % BOSS_ORDER.length];
+      queue.push('|');
+      queue.push(bossType + (waveNo === waves ? '!' : ''));
+    }
     return queue;
   }
 
+  // Count of each enemy kind in a queue, for the preview
+  function summarizeWave(queue) {
+    const out = [];
+    for (const tok of queue) {
+      const p = parseToken(tok);
+      if (!p) continue;
+      let row = out.find(r => r.type === p.type);
+      if (!row) out.push(row = { type: p.type, count: 0, elite: 0 });
+      ++row.count;
+      if (p.elite) ++row.elite;
+    }
+    return out;
+  }
+
+  let previewCache = { key: '', list: [] };
+  function nextWavePreview() {
+    const key = currentMap + ':' + (currentWave + 1);
+    if (previewCache.key !== key)
+      previewCache = { key, list: currentWave < totalWaves ? summarizeWave(generateWave(currentWave + 1)) : [] };
+    return previewCache.list;
+  }
   function triggerVictory() {
     state = STATE_VICTORY;
     clearSavedGame();
@@ -1008,33 +1117,58 @@
   }
 
   function startNextWave() {
-    if (state !== STATE_BUILD) return;
+    if (state !== STATE_BUILD && !canCallEarly()) return;
     if (currentWave >= totalWaves) {
-      triggerVictory();
+      if (state === STATE_BUILD)
+        triggerVictory();
       return;
     }
-    waveEnemies = generateWave(currentWave);
-    waveSize = waveEnemies.length;
-    spawnTimer = 0;
+    const early = state === STATE_PLAYING;
+    const queue = generateWave(currentWave + 1);
+    if (early) {
+      waveEnemies = waveEnemies.concat(['|', '|'], queue);
+      waveSize += queue.filter(t => t !== '|').length;
+      const bonus = 8 + currentWave * 2;
+      gold += bonus;
+      runStats.gold += bonus;
+      goldPulse = 1;
+      floatingText.add(WORLD_W / 2, 60, `Called early  +${bonus} gold`, { color: '#ffd75a', font: 'bold 13px sans-serif' });
+    } else {
+      waveEnemies = queue;
+      waveSize = queue.filter(t => t !== '|').length;
+      spawnTimer = 0;
+    }
     waveComplete = false;
     ++currentWave;
     state = STATE_PLAYING;
     warningActive = false;
     warningTimer = 0;
+    announceWave();
     audio.play('select', { pitch: 0.75 });
     updateWindowTitle();
     saveGame();
   }
 
+  // During a wave the next one may be called once the current one is fully on the field
+  function canCallEarly() {
+    return state === STATE_PLAYING && currentWave < totalWaves && waveEnemies.length === 0;
+  }
+
+  function announceWave() {
+    const boss = isBossWave(currentWave, totalWaves);
+    floatingText.add(WORLD_W / 2, WORLD_H / 2 - 20, currentWave === totalWaves ? 'FINAL WAVE' : `WAVE ${currentWave}`, { color: boss ? '#ff6a6a' : '#ffd75a', font: 'bold 26px sans-serif' });
+  }
   // Gold paid when a wave is cleared: flat bonus plus mines and banks
-  function payWaveIncome() {
-    let bonus = 10 + currentWave * 2;
+  function payWaveIncome(count) {
+    let bonus = 0;
+    for (let w = currentWave - count + 1; w <= currentWave; ++w)
+      bonus += 10 + w * 2;
     let bankInterest = 0, bankCap = 0;
     for (const t of towers) {
       const s = towerStats(t);
       if (s.income) {
-        bonus += s.income;
-        floatingText.add(t.x, t.y - 16, `+${s.income}`, { color: '#ffd75a', font: 'bold 12px sans-serif' });
+        bonus += s.income * count;
+        floatingText.add(t.x, t.y - 16, `+${s.income * count}`, { color: '#ffd75a', font: 'bold 12px sans-serif' });
         particles.sparkle(t.x, t.y, 6, { color: '#ffd75a', speed: 2 });
       }
       if (s.interest) {
@@ -1057,34 +1191,52 @@
     warningPulse = 0;
   }
 
-  function spawnEnemy(type, pathIndex) {
+  // Health multiplier of a wave (1-based) on the current map
+  function waveHpScale(waveNo) {
+    const w = Math.max(0, waveNo - 1);
+    return (1 + 0.11 * w + 0.009 * w * w) * (MAPS[currentMap].hpMul || 1);
+  }
+
+  function spawnEnemy(token, pathIndex, atDist) {
+    const p = parseToken(token) || { type: 'normal', elite: false };
+    const type = p.type;
     const def = ENEMY_TYPES[type];
-    const waveScale = 1 + currentWave * 0.1;
+    const scale = waveHpScale(Math.max(1, currentWave));
     const pi = pathIndex === undefined ? (spawnCounter++ % paths.length) : pathIndex;
-    const hp = Math.floor(def.hp * waveScale);
+    const hp = Math.floor(def.hp * scale * (p.elite ? ELITE_HP : 1));
+    const shield = def.shielded ? Math.floor(hp * def.shielded) : 0;
     const e = {
-      type,
+      type, elite: p.elite,
       hp, maxHp: hp,
-      speed: def.speed,
-      bounty: def.bounty,
-      radius: def.radius,
-      armor: def.armor || 0,
-      pi, dist: 0,
+      speed: def.speed * (p.elite ? 1.1 : 1),
+      bounty: Math.round(def.bounty * (1 + currentWave * 0.03) * (p.elite ? 2 : 1)),
+      radius: def.radius * (p.elite ? 1.15 : 1),
+      armor: (def.armor || 0) + (p.elite && def.armor ? 2 : 0),
+      pi, dist: atDist || 0,
       x: 0, y: 0, angle: 0,
       slowMul: 1, slowTimer: 0, freezeTimer: 0, stunTimer: 0,
       burnDps: 0, burnTimer: 0, poisonDps: 0, poisonTimer: 0, acidTimer: 0, shred: 0,
-      shieldHp: def.shielded ? Math.floor(hp * 0.4) : 0,
-      shieldMax: def.shielded ? Math.floor(hp * 0.4) : 0,
-      healCooldown: 1.5,
-      hitFlash: 0, walk: Math.random() * 10,
+      shieldHp: shield, shieldMax: shield,
+      healCooldown: 1.5 + Math.random(), abilityTimer: 3 + Math.random() * 2,
+      revealTimer: 0, revealed: false, haste: 1, enraged: false,
+      hitFlash: 0, walk: Math.random() * 10, spawnT: 0,
       lastHitBy: null, plague: false
     };
-    pathPos(paths[pi], 0, e);
+    pathPos(enemyPath(e), e.dist, e);
     enemies.push(e);
+    if (def.boss && !atDist)
+      onBossSpawn(e);
     return e;
   }
   let spawnCounter = 0;
 
+  function onBossSpawn(e) {
+    bossIntro = { e, t: 0 };
+    floatingText.add(WORLD_W / 2, WORLD_H / 2 + 10, ENEMY_TYPES[e.type].name.toUpperCase() + ' APPROACHES', { color: '#ff6a6a', font: 'bold 18px sans-serif' });
+    screenShake.trigger(5, 500);
+    audio.play('explode', { pitch: 0.5, volume: 0.6 });
+  }
+  let bossIntro = null;
   function enemyFlags(e) {
     return ENEMY_TYPES[e.type];
   }
@@ -1116,8 +1268,11 @@
         dmg = Math.max(dmg * 0.25, dmg - armor);
     }
     e.hp -= dmg;
+    if (opts && opts.area)
+      e.revealTimer = Math.max(e.revealTimer, 2);
     if (!(opts && opts.dot))
       e.hitFlash = 0.1;
+
     if (src) {
       e.lastHitBy = src;
       src.dealt += dmg;
@@ -1151,7 +1306,24 @@
     const f = enemyFlags(e);
     if (s.hits === 'ground' && f.flying) return false;
     if (s.hits === 'air' && !f.flying) return false;
+    if (f.stealth && !e.revealed) return false;
     return true;
+  }
+
+  // Phantoms show up while a true-sight tower has them in range or after area damage
+  function updateReveal(dt) {
+    for (const e of enemies) {
+      if (!enemyFlags(e).stealth) continue;
+      if (e.revealTimer > 0) e.revealTimer -= dt;
+      let seen = e.revealTimer > 0;
+      for (let i = 0; i < towers.length && !seen; ++i) {
+        const t = towers[i];
+        const s = towerStats(t);
+        if (s.trueSight && Math.hypot(t.x - e.x, t.y - e.y) <= s.rangePx + e.radius)
+          seen = true;
+      }
+      e.revealed = seen;
+    }
   }
 
   function targetScore(mode, t, e) {
@@ -1159,7 +1331,7 @@
       case 'last': return -e.dist;
       case 'strong': return e.hp + e.shieldHp;
       case 'close': return -Math.hypot(e.x - t.x, e.y - t.y);
-      default: return e.dist + (paths[e.pi] ? -paths[e.pi].total : 0);   // closest to its exit
+      default: return e.dist - enemyPath(e).total;   // closest to its exit
     }
   }
 
@@ -1206,7 +1378,7 @@
           const hit = enemiesNear(t.x, t.y, s.rangePx, e => canHit(s, e));
           if (!hit.length) return false;
           for (const e of hit) {
-            hurt(e, s.damage, t, 'cold');
+            hurt(e, s.damage, t, 'cold', { area: true });
             applySlow(e, 1 - s.slow, s.slowTime);
           }
           fxLines.push({ kind: 'ring', x: t.x, y: t.y, r: s.rangePx, color: '#bfeaff', t: 0, life: 0.45 });
@@ -1256,7 +1428,7 @@
           cur = best;
         }
         hit.forEach((e, i) => {
-          hurt(e, s.damage * Math.pow(0.85, i), t, 'energy');
+          hurt(e, s.damage * Math.pow(0.85, i), t, 'energy', { area: i > 0 });
           if (s.stun) e.stunTimer = Math.max(e.stunTimer, s.stun * (i === 0 ? 1 : 0.5));
         });
         fxLines.push({ kind: 'zap', pts, color: '#bff4ff', t: 0, life: 0.18, seed: Math.random() * 1000 });
@@ -1275,7 +1447,7 @@
           const d = Math.hypot(dx, dy);
           if (d > s.rangePx + o.radius) continue;
           if (d > 6 && (dx * ax + dy * ay) / d < cosCone) continue;
-          hurt(o, s.damage, t, 'fire');
+          hurt(o, s.damage, t, 'fire', { area: true });
           if (o.burnTimer <= 0 || s.burn >= o.burnDps) {
             o.burnDps = s.burn;
             o.burnTimer = s.burnTime;
@@ -1342,7 +1514,7 @@
   }
 
   function predictPos(e, time) {
-    const path = paths[e.pi];
+    const path = enemyPath(e);
     const sp = enemySpeed(e);
     const out = { x: 0, y: 0, angle: 0 };
     return pathPos(path, Math.min(path.total, e.dist + sp * time), out);
@@ -1392,7 +1564,7 @@
     for (const e of enemiesNear(x, y, radius, o => canHit(s, o))) {
       const d = Math.hypot(e.x - x, e.y - y);
       const fall = d < radius * 0.4 ? 1 : 0.6;
-      hurt(e, damage * fall, src, 'phys', { pierce: s.pierce || 0 });
+      hurt(e, damage * fall, src, 'phys', { pierce: s.pierce || 0, area: true });
       if (s.shred) e.shred = Math.max(e.shred, s.shred);
     }
     particles.burst(x, y, 14, { color: '#ffb36a', speed: 3.5, life: 0.4 });
@@ -1469,7 +1641,7 @@
         continue;
       }
       for (const e of enemiesNear(c.x, c.y, c.r)) {
-        hurt(e, c.dps * dt, c.tower, 'poison', { dot: true });
+        hurt(e, c.dps * dt, c.tower, 'poison', { dot: true, area: true });
         e.poisonTimer = Math.max(e.poisonTimer, 0.6);
         if (c.acid) e.acidTimer = Math.max(e.acidTimer, 1.2);
         if (c.plague) e.plague = c.tower;
@@ -1511,7 +1683,7 @@
 
   function enemySpeed(e) {
     if (e.freezeTimer > 0 || e.stunTimer > 0) return 0;
-    return e.speed * (e.slowTimer > 0 ? e.slowMul : 1);
+    return e.speed * e.haste * (e.enraged ? 1.4 : 1) * (e.slowTimer > 0 ? e.slowMul : 1);
   }
 
   function killEnemy(e) {
@@ -1530,6 +1702,15 @@
     if (e.lastHitBy)
       ++e.lastHitBy.kills;
     floatingText.add(e.x, e.y - 16, `+${bounty}`, { color: '#ffd75a', font: 'bold 11px sans-serif' });
+    // Slimes burst into slimelets
+    if (f.split) {
+      for (let i = 0; i < f.splitCount; ++i) {
+        const c = spawnEnemy(f.split, e.pi, Math.max(0, e.dist - 6 + i * 6));
+        c.maxHp = c.hp = Math.max(4, Math.floor(e.maxHp * 0.28));
+        c.spawnT = 0;
+      }
+      particles.burst(e.x, e.y, 16, { color: f.color, speed: 3, life: 0.5 });
+    }
     if (e.plague)
       clouds.push({ x: e.x, y: e.y, r: CELL * 0.8, t: 0, life: 2.2, dps: towerStats(e.plague).cloudDps * 0.6, acid: false, plague: true, tower: e.plague, seed: Math.random() * 100 });
     if (f.boss) {
@@ -1545,7 +1726,7 @@
 
   function enemyReachedGoal(e) {
     const f = enemyFlags(e);
-    const cost = f.boss ? 5 : 1;
+    const cost = f.lives || 1;
     lives = Math.max(0, lives - cost);
     runStats.leaked += cost;
     screenShake.trigger(4, 150);
@@ -1563,9 +1744,18 @@
   }
 
   function updateEnemies(dt) {
+    // Elites hurry the enemies around them along
+    for (const e of enemies)
+      e.haste = 1;
+    for (const e of enemies) {
+      if (!e.elite || e.hp <= 0) continue;
+      for (const o of enemiesNear(e.x, e.y, CELL * 1.6))
+        if (o !== e) o.haste = 1.2;
+    }
     for (const e of enemies) {
       if (e.hp <= 0) continue;
       const f = enemyFlags(e);
+      e.spawnT += dt;
       e.hitFlash = Math.max(0, e.hitFlash - dt);
       if (e.burnTimer > 0) {
         e.burnTimer -= dt;
@@ -1581,30 +1771,66 @@
       if (f.heals) {
         e.healCooldown -= dt;
         if (e.healCooldown <= 0) {
-          e.healCooldown = 2;
-          for (const o of enemiesNear(e.x, e.y, 60)) {
-            if (o === e) continue;
-            o.hp = Math.min(o.maxHp, o.hp + o.maxHp * 0.06);
-            particles.sparkle(o.x, o.y, 3, { color: '#4f4', speed: 1 });
+          e.healCooldown = 2.5;
+          let any = false;
+          for (const o of enemiesNear(e.x, e.y, CELL * 2)) {
+            if (o === e || o.hp >= o.maxHp || enemyFlags(o).boss) continue;
+            o.hp = Math.min(o.maxHp, o.hp + o.maxHp * 0.08);
+            particles.sparkle(o.x, o.y, 3, { color: '#6aff8a', speed: 1 });
+            any = true;
           }
+          if (any)
+            fxLines.push({ kind: 'ring', x: e.x, y: e.y, r: CELL * 2, color: '#6aff8a', t: 0, life: 0.5 });
+        }
+      }
+      if (f.shielder) {
+        e.abilityTimer -= dt;
+        if (e.abilityTimer <= 0) {
+          e.abilityTimer = 4;
+          for (const o of enemiesNear(e.x, e.y, CELL * 1.8)) {
+            if (o === e || enemyFlags(o).boss) continue;
+            const cap = Math.floor(o.maxHp * 0.25);
+            if (o.shieldHp < cap) {
+              o.shieldHp = cap;
+              o.shieldMax = Math.max(o.shieldMax, cap);
+            }
+          }
+          fxLines.push({ kind: 'ring', x: e.x, y: e.y, r: CELL * 1.8, color: '#5ad8ff', t: 0, life: 0.5 });
+        }
+      }
+      if (f.summons) {
+        e.abilityTimer -= dt;
+        if (e.abilityTimer <= 0) {
+          e.abilityTimer = e.enraged ? 4 : 6;
+          for (let i = 0; i < 3; ++i) {
+            const sk = spawnEnemy('skeleton', e.pi, Math.max(0, e.dist - 10 - i * 12));
+            sk.spawnT = 0;
+            particles.burst(sk.x, sk.y, 6, { color: '#8affd8', speed: 2, life: 0.4 });
+          }
+          audio.play('whoosh', { pitch: 0.6, volume: 0.5 });
+        }
+        if (!e.enraged && e.hp < e.maxHp * 0.5) {
+          e.enraged = true;
+          floatingText.add(e.x, e.y - 30, 'ENRAGED!', { color: '#ff5a5a', font: 'bold 14px sans-serif' });
+          screenShake.trigger(4, 300);
         }
       }
 
-      // Trap damage
+      // Traps and burning ground
       const col = Math.floor(e.x / CELL), row = Math.floor(e.y / CELL);
       if (!f.flying) {
         const trap = towerAt(col, row);
         if (trap) {
           const s = towerStats(trap);
           if (s.trap) {
-            hurt(e, s.damage * dt, trap, 'phys', { pierce: s.pierce || 0, dot: !s.pierce });
+            hurt(e, s.damage * dt, trap, 'phys', { pierce: s.pierce || 0, dot: !s.pierce, area: true });
             if (s.slow) applySlow(e, 1 - s.slow, s.slowTime);
           }
         }
         for (const fe of floorEffects) {
           if (fe.col !== col || fe.row !== row) continue;
           if (fe.type === 'lava') {
-            hurt(e, fe.damage * dt, null, 'fire', { dot: true });
+            hurt(e, fe.damage * dt, null, 'fire', { dot: true, area: true });
             if (e.burnTimer <= 0) { e.burnDps = fe.damage * 0.5; e.burnTimer = 1; }
           } else if (fe.type === 'ice')
             applySlow(e, 0.6, 0.4);
@@ -1614,7 +1840,7 @@
       const sp = enemySpeed(e);
       e.walk += sp * dt * 0.25;
       e.dist += sp * dt;
-      const path = paths[e.pi];
+      const path = enemyPath(e);
       pathPos(path, e.dist, e);
       if (e.dist >= path.total) {
         e.hp = 0;
@@ -1623,22 +1849,21 @@
         continue;
       }
 
-      // Bosses and brutes batter towers they pass
-      if (f.boss || e.type === 'armored') {
-        const reach = f.boss ? 50 : 30;
-        const dmg = f.boss ? 4 : 1.2;
+      // Heavy enemies batter the towers they pass
+      if (f.batters && !f.flying) {
+        const reach = e.radius + CELL * 0.7;
         for (const t of towers) {
           if (towerStats(t).trap) continue;
           const dx = t.x - e.x, dy = t.y - e.y;
           if (dx * dx + dy * dy < reach * reach) {
-            t.hp -= dmg * dt;
+            t.hp -= f.batters * dt;
+            t.hurtFlash = 0.15;
             if (t.hp <= 0) destroyTower(t);
           }
         }
       }
     }
   }
-
   // Remove dead enemies, paying out for the ones killed
   function sweepEnemies() {
     let w = 0;
@@ -1659,9 +1884,15 @@
   function updateSpawner(dt) {
     if (waveEnemies.length > 0) {
       spawnTimer -= dt;
-      if (spawnTimer <= 0) {
-        spawnEnemy(waveEnemies.shift());
-        spawnTimer = 0.6;
+      while (spawnTimer <= 0 && waveEnemies.length > 0) {
+        const tok = waveEnemies.shift();
+        if (tok === '|') {
+          spawnTimer += 1.4;
+          continue;
+        }
+        spawnEnemy(tok);
+        const p = parseToken(tok);
+        spawnTimer += (p && ENEMY_TYPES[p.type].gap) || 0.65;
       }
     }
     if (waveEnemies.length === 0 && enemies.length === 0 && !waveComplete && state === STATE_PLAYING) {
@@ -1670,6 +1901,7 @@
       state = STATE_BUILD;
       warningActive = false;
       projectiles = [];
+      bossIntro = null;
       for (const t of towers) {
         t.beamTargets = [];
         t.beamTime = 0;
@@ -1679,13 +1911,14 @@
       if (currentWave >= totalWaves)
         triggerVictory();
       else {
-        payWaveIncome();
+        payWaveIncome(Math.max(1, currentWave - lastPaidWave));
+        lastPaidWave = currentWave;
         audio.play('levelup');
         saveGame();
       }
     }
   }
-
+  let lastPaidWave = 0;
   function updateBuildCountdown(dt) {
     if (state !== STATE_BUILD) return;
     if (waveCountdown > 0)
@@ -1729,6 +1962,7 @@
   function stepBattle(h) {
     updateSpawner(h);
     updateEnemies(h);
+    updateReveal(h);
     updateTowers(h);
     updateProjectiles(h);
     updateClouds(h);
@@ -2461,8 +2695,13 @@
           ctx.stroke();
         }
         break;
+      default:
+        ctx.fillStyle = ENEMY_TYPES[e.type].color;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        break;
     }
-
   }
 
   /* ── Improved enemy drawing with distinct shapes ── */
@@ -3872,29 +4111,93 @@
 
   function drawNextWavePanel(x, y, w, h) {
     hudPanel('next', x, y, w, h, UI.warn);
-    const bw = Math.min(170, w * 0.5);
+    const bw = Math.min(150, w * 0.42);
     const bx = x + w - bw - 5;
+    const hasNext = currentWave < totalWaves;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    if (state === STATE_BUILD && currentWave < totalWaves) {
-      fitText('NEXT', x + 10, y + 12, 60, 9, { weight: 'bold', color: UI.textDim });
-      const autoIn = autoWaveMode && waveComplete && autoWaveTimer > 0 ? `  · auto in ${Math.ceil(autoWaveTimer)}s` : '';
-      fitText(`Wave ${currentWave + 1}${autoIn}`, x + 10, y + 27, bx - x - 16, 14, { weight: 'bold', color: '#ffffff' });
-      uiButton('startwave', bx, y + 4, bw, h - 8, 'Start Wave', {
-        style: 'gold', icon: 'play', px: 13, key: 'Space',
+    if (!hasNext) {
+      fitText(state === STATE_PLAYING ? 'Final wave on the field' : 'All waves cleared', x + 10, y + h / 2, w - 20, 14, { weight: 'bold', color: state === STATE_PLAYING ? UI.bad : UI.good });
+      endHudPanel();
+      return;
+    }
+    const nextNo = currentWave + 1;
+    const boss = isBossWave(nextNo, totalWaves);
+    const labelW = 62;
+    fitText('NEXT', x + 10, y + 12, labelW - 8, 9, { weight: 'bold', color: UI.textDim });
+    fitText(nextNo === totalWaves ? 'Final' : `Wave ${nextNo}`, x + 10, y + 27, labelW - 6, 13, { weight: 'bold', color: boss ? UI.bad : '#ffffff' });
+    // Enemy icons with counts
+    const list = nextWavePreview();
+    const ix = x + labelW + 4, iw = bx - ix - 6;
+    const cell = Math.min(46, iw / Math.max(1, list.length));
+    for (let i = 0; i < list.length; ++i) {
+      const row = list[i];
+      const cx = ix + i * cell;
+      if (cx + cell > ix + iw + 1) break;
+      const def = ENEMY_TYPES[row.type];
+      roundRectPath(cx + 1, y + 4, cell - 2, h - 8, 6);
+      ctx.fillStyle = def.boss ? 'rgba(255,80,80,0.18)' : 'rgba(255,255,255,0.05)';
+      ctx.fill();
+      drawEnemyIcon(row.type, cx + cell / 2, y + h / 2 - 5, Math.min(cell - 10, 20));
+      if (row.elite)
+        drawIcon('crown', cx + cell - 8, y + 9, 9);
+      ctx.textAlign = 'center';
+      fitText(`×${row.count}`, cx + cell / 2, y + h - 9, cell - 4, 10, { weight: 'bold', color: def.boss ? UI.bad : UI.text });
+      addRegion({ id: 'preview-' + row.type, x: cx, y, w: cell, h, anchorTip: true, tip: () => enemyTypeTooltip(row) });
+    }
+    ctx.textAlign = 'left';
+    if (state === STATE_BUILD) {
+      const autoIn = autoWaveMode && waveComplete && autoWaveTimer > 0 ? `in ${Math.ceil(autoWaveTimer)}s` : null;
+      uiButton('startwave', bx, y + 4, bw, h - 8, 'Start', {
+        style: 'gold', icon: 'play', px: 13, key: 'Space', sub: autoIn,
         onClick: () => startNextWave(),
-        tip: () => [`Start wave ${currentWave + 1}`, 'Send the next wave now.']
+        tip: () => [`Start wave ${nextNo}`, 'Send the next wave now.', boss ? '⚠ A boss is coming' : '• Enemies listed on the left']
       });
-    } else if (state === STATE_PLAYING) {
-      const left = waveEnemies.length + enemies.length;
-      fitText('IN PROGRESS', x + 10, y + 12, 90, 9, { weight: 'bold', color: UI.textDim });
-      fitText(`${left} enemies left`, x + 10, y + 27, w - 20, 14, { weight: 'bold', color: UI.warn });
     } else {
-      fitText(currentWave >= totalWaves ? 'All waves cleared' : '', x + 10, y + h / 2, w - 20, 14, { weight: 'bold', color: UI.good });
+      const bonus = 8 + currentWave * 2;
+      uiButton('startwave', bx, y + 4, bw, h - 8, 'Call early', {
+        style: 'green', icon: 'play', px: 12, key: 'N', sub: `+${bonus} gold`, disabled: !canCallEarly(),
+        onClick: () => startNextWave(), onDisabled: () => audio.play('error'),
+        tip: () => ['Call the next wave early', canCallEarly() ? `Sends wave ${nextNo} right away for ${bonus} bonus gold.` : 'Possible once the current wave is fully on the field.', '• N calls early']
+      });
     }
     endHudPanel();
   }
 
+  function enemyTypeTooltip(row) {
+    const def = ENEMY_TYPES[row.type];
+    const hp = Math.round(def.hp * waveHpScale(currentWave + 1));
+    const lines = [`${def.name}  ×${row.count}`, def.info];
+    lines.push(`[[heart]] ~${hp} health   Speed ${def.speed}${def.armor ? `   [[shield]] Armor ${def.armor}` : ''}`);
+    if (row.elite) lines.push(`⚠ ${row.elite} elite (crowned): twice the health, hurries its neighbours`);
+    if (def.boss) lines.push(`⚠ Costs ${def.lives} lives if it gets through`);
+    lines.push(`✔ Counter: ${def.counter}`);
+    return lines;
+  }
+
+  // Boss health bar under the top bar while a boss is on the field
+  function drawBossBar() {
+    let boss = null;
+    for (const e of enemies)
+      if (e.hp > 0 && ENEMY_TYPES[e.type].boss && (!boss || e.maxHp > boss.maxHp))
+        boss = e;
+    if (!boss) return;
+    const def = ENEMY_TYPES[boss.type];
+    const w = Math.min(360, UW * 0.4), h = 34;
+    const x = UW / 2 - w / 2, y = TOP_H + 2;
+    hudPanel('bossbar', x, y, w, h, UI.bad);
+    drawIcon('skull', x + 18, y + h / 2, 18);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText(def.name + (boss.enraged ? ' · enraged' : ''), x + 32, y + 11, w * 0.5, 11, { weight: 'bold', color: boss.enraged ? UI.bad : '#ffffff' });
+    const mx = x + 32, mw = w - 44;
+    drawMeter(mx, y + 19, mw, 9, boss.hp / boss.maxHp, boss.enraged ? '#ff3a3a' : '#d84ad8');
+    if (boss.shieldHp > 0)
+      drawMeter(mx, y + 19, mw * Math.min(1, boss.shieldHp / boss.maxHp), 4, 1, '#5ad8ff', { track: 'rgba(0,0,0,0)' });
+    ctx.textAlign = 'right';
+    fitText(`${Math.ceil(boss.hp)} / ${Math.ceil(boss.maxHp)}`, x + w - 12, y + 11, w * 0.4, 10, { weight: 'bold', color: UI.textDim });
+    endHudPanel();
+  }
   /* ══════════════════════════════════════════════════════════════════
      BUILD BAR -- one card per tower type
      ══════════════════════════════════════════════════════════════════ */
@@ -4380,19 +4683,17 @@
     return best;
   }
 
-  const ENEMY_NAMES = { normal: 'Grunt', fast: 'Runner', armored: 'Brute', flying: 'Bat', boss: 'Warlord', healer: 'Shaman', swarm: 'Swarmling', shield: 'Warden' };
-
   function enemyTooltip(e) {
     const f = enemyFlags(e);
-    const lines = [ENEMY_NAMES[e.type] || e.type, `[[heart]] ${Math.ceil(e.hp)} / ${Math.ceil(e.maxHp)}   Speed ${Math.round(e.speed)}`, `[[coin]] Bounty ${e.bounty}`];
+    const lines = [(e.elite ? 'Elite ' : '') + f.name, f.info, `[[heart]] ${Math.ceil(e.hp)} / ${Math.ceil(e.maxHp)}   Speed ${Math.round(enemySpeed(e))}   [[coin]] ${e.bounty}`];
     if (e.armor > 0) lines.push(`[[shield]] Armor ${Math.max(0, e.armor - e.shred)}${e.shred ? ' (shredded)' : ''}`);
     if (e.shieldHp > 0) lines.push(`[[bolt]] Shield ${Math.ceil(e.shieldHp)}`);
-    if (f.flying) lines.push('⚠ Flying: only towers that hit air can reach it');
-    if (f.heals) lines.push('⚠ Heals nearby enemies');
-    if (f.boss) lines.push('⚠ Boss: costs 5 lives and batters towers');
+    if (f.stealth) lines.push(e.revealed ? '✔ Spotted: towers can shoot it' : '⚠ Hidden: needs a Sniper, Longbow or area damage');
+    if (e.elite) lines.push('⚠ Elite: hurries nearby enemies');
+    if (f.boss) lines.push(`⚠ Boss: costs ${f.lives} lives if it gets through`);
+    lines.push(`✔ Counter: ${f.counter}`);
     return lines;
   }
-
   /* ══════════════════════════════════════════════════════════════════
      SCREENS -- title, pause, game over, victory, help
      ══════════════════════════════════════════════════════════════════ */
@@ -4551,7 +4852,7 @@
     } else if (page.towers) {
       drawHelpGrid(cx, cy, cw, ch, TOWER_TYPES.map((def, i) => ({ draw: (x, y, s) => drawTowerIcon(i, 1, x, y, s), name: def.name, text: `${def.desc} · ${def.cost} gold` })));
     } else if (page.enemies) {
-      drawHelpGrid(cx, cy, cw, ch, Object.keys(ENEMY_TYPES).map(k => ({ draw: (x, y, s) => drawEnemyIcon(k, x, y, s), name: ENEMY_NAMES[k], text: ENEMY_INFO[k] })));
+      drawHelpGrid(cx, cy, cw, ch, Object.keys(ENEMY_TYPES).filter(k => ENEMY_TYPES[k].unlock <= 1).map(k => ({ draw: (x, y, s) => drawEnemyIcon(k, x, y, s), name: ENEMY_TYPES[k].name, text: `${ENEMY_TYPES[k].info} Counter: ${ENEMY_TYPES[k].counter}.` })));
     } else if (page.keys) {
       const cols = cw > 520 ? 2 : 1;
       const perCol = Math.ceil(page.keys.length / cols);
@@ -4582,7 +4883,7 @@
     const cols = w > 560 ? 3 : 2;
     const rowsN = Math.ceil(items.length / cols);
     const cellW = (w - (cols - 1) * 8) / cols;
-    const cellH = Math.min(70, (h - (rowsN - 1) * 6) / rowsN);
+    const cellH = Math.min(70, (h - (rowsN - 1) * 5) / rowsN);
     items.forEach((it, i) => {
       const cx = x + (i % cols) * (cellW + 8), cy = y + Math.floor(i / cols) * (cellH + 6);
       roundRectPath(cx, cy, cellW, cellH, 7);
@@ -4596,17 +4897,6 @@
       drawTextBlock(it.text, cx + s + 14, cy + 22, cellW - s - 20, cellH - 25, 11, { color: '#c4cde0' });
     });
   }
-
-  const ENEMY_INFO = {
-    normal: 'Basic foot soldier.',
-    fast: 'Quick and fragile. Slow it down.',
-    armored: 'Lots of health; damages nearby towers.',
-    flying: 'Flies along the route.',
-    boss: 'Huge health; damages nearby towers.',
-    healer: 'Heals nearby enemies. Kill it first.',
-    swarm: 'Comes in packs. Use splash damage.',
-    shield: 'Its shield soaks damage first.'
-  };
 
   /* ══════════════════════════════════════════════════════════════════
      ICON HELPERS -- towers and enemies drawn into UI boxes
@@ -4684,6 +4974,7 @@
       drawTitleScreen();
     } else {
       drawTopBar();
+      drawBossBar();
       drawBuildBar();
       drawInspector();
       // Modal screens: the HUD underneath stops reacting
@@ -5035,6 +5326,14 @@
         startNextWave();
       else if (state === STATE_PLAYING)
         toggleFastForward();
+      return;
+    }
+
+    if (code === 'KeyN') {
+      if (state === STATE_BUILD || canCallEarly())
+        startNextWave();
+      else
+        audio.play('error');
       return;
     }
 
