@@ -2359,6 +2359,13 @@
       _updateTrailOptionsVisibility();
     }
 
+    // Taskbar settings
+    if (data.taskbar) {
+      document.getElementById('chk-show-clock').checked = data.taskbar.showClock !== false;
+      document.getElementById('chk-auto-hide').checked = !!data.taskbar.autoHide;
+      document.getElementById('chk-small-icons').checked = !!data.taskbar.smallIcons;
+    }
+
     // Snap/tab settings
     if (data.snap)
       _populateSnapSettings(data.snap);

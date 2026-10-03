@@ -2395,6 +2395,12 @@
     }
   }
 
+  /* Pause when the window is hidden or loses focus */
+  SZ.GameAutoPause.attach({
+    isRunning: () => gameState === 'playing',
+    pause: togglePause
+  });
+
   /* ================================================================
    *  HIGH SCORES
    * ================================================================ */
