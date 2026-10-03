@@ -209,18 +209,20 @@
     warlock: 'rgba(40,0,60,0.25)',
   });
 
-  // Dimension terrain sprites -- each plane swaps ground and vegetation for
-  // themed tiles of the overworld sheet; landmarks, roads and camps are shared.
+  // Fallback terrain sprites per plane (data/planes.js ids) for when the
+  // painted terrain sheet is missing: ground and vegetation swap for themed
+  // tiles of the overworld sheet; landmarks, roads and camps are shared.
+  // Planes without an entry use the Material Plane's tiles under their tint.
   // Indices verified against tools/sheet-preview.html.
   const DIMENSION_TERRAIN_SPRITES = Object.freeze({
     material: OVERWORLD_TERRAIN_SPRITES,
-    feywild: Object.freeze({
+    arborea: Object.freeze({
       ...OVERWORLD_TERRAIN_SPRITES,
       GRASS:  spriteRectM(402, OVERWORLD_COLS, OVERWORLD_MARGIN),
       FOREST: spriteRectM(529, OVERWORLD_COLS, OVERWORLD_MARGIN),
       SAND:   spriteRectM(65, OVERWORLD_COLS, OVERWORLD_MARGIN),
     }),
-    shadowfell: Object.freeze({
+    shadow: Object.freeze({
       ...OVERWORLD_TERRAIN_SPRITES,
       GRASS:  spriteRectM(64, OVERWORLD_COLS, OVERWORLD_MARGIN),
       FOREST: spriteRectM(597, OVERWORLD_COLS, OVERWORLD_MARGIN),
@@ -232,7 +234,7 @@
       FOREST: spriteRectM(654, OVERWORLD_COLS, OVERWORLD_MARGIN),
       SAND:   spriteRectM(8, OVERWORLD_COLS, OVERWORLD_MARGIN),
     }),
-    underdark: Object.freeze({
+    elemental_earth: Object.freeze({
       ...OVERWORLD_TERRAIN_SPRITES,
       GRASS:  spriteRectM(9, OVERWORLD_COLS, OVERWORLD_MARGIN),
       FOREST: spriteRectM(276, OVERWORLD_COLS, OVERWORLD_MARGIN),
