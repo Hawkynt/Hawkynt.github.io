@@ -23,6 +23,8 @@
   const STATE_PAUSED = 'PAUSED';
   const STATE_GAME_OVER = 'GAME_OVER';
   const STATE_UPGRADE_DIALOG = 'UPGRADE_DIALOG';
+  const STATE_CINEMATIC = 'CINEMATIC';       // landing / relocation sequence
+  const STATE_CONFIRM = 'CONFIRM';           // relocation confirmation
 
   /* -- Storage -- */
   const STORAGE_PREFIX = 'sz-dome-keeper';
@@ -64,7 +66,8 @@
   const TILE_AMETHYST = 20;
   const TILE_OPAL = 21;
   const TILE_VOIDSTONE = 22;
-  const TILE_MAX = TILE_VOIDSTONE;
+  const TILE_CORE = 23;          // the site's Relocation Core, hidden in the lower strata
+  const TILE_MAX = TILE_CORE;
 
   const TILE_COLORS = {
     [TILE_DIRT]: '#4a3a2a',
@@ -323,6 +326,14 @@
       '.........4..', '........43..', '.......43...', '.....343....',
       '....3452....', '..cccc2.....', '.cddddc.....', 'cdeddddc....',
       'cddddedc....', 'cdddddc.....', '.cdddc......', '..ccc.......'] },
+    flight: { ramps: ['blue', 'steel', 'fire'], px: [
+      '....3333....', '..33444433..', '.3454444443.', '.3444444443.',
+      '344444444443', 'cccccccccccc', '.dddddddddd.', '..dd....dd..',
+      '..hh....hh..', '..ih....hi..', '...i....i...', '............'] },
+    core: { ramps: ['cyan', 'gold'], px: [
+      '.....dd.....', '....d44d....', '...d4554d...', '..d455554d..',
+      '.d45555554d.', 'd4555445554d', '.d45555554d.', '..d455554d..',
+      '...d4554d...', '....d44d....', '.....dd.....', '............'] },
     bag: { ramps: ['wood', 'gold'], px: [
       '............', '....3333....', '...3....3...', '.2222222222.',
       '.2444444442.', '.2433cc3342.', '.2433cc3342.', '.2433333342.',
@@ -994,7 +1005,8 @@
     [TILE_URANIUM]: 'Uranium',
     [TILE_AMETHYST]: 'Amethyst',
     [TILE_OPAL]: 'Fire Opal',
-    [TILE_VOIDSTONE]: 'Voidstone'
+    [TILE_VOIDSTONE]: 'Voidstone',
+    [TILE_CORE]: 'Relocation Core'
   };
 
   const ORE_SPECKLE_COLORS = {
@@ -1123,7 +1135,8 @@
     [TILE_URANIUM]: 3.4,
     [TILE_AMETHYST]: 3.5,
     [TILE_OPAL]: 3.7,
-    [TILE_VOIDSTONE]: 4.0
+    [TILE_VOIDSTONE]: 4.0,
+    [TILE_CORE]: 3.5
   };
 
   /* -- Movement -- */
@@ -1968,7 +1981,7 @@
   }
 
   function addHighScore(waves, pts) {
-    highScores.push({ waves, score: pts });
+    highScores.push({ waves, score: pts, sites: site.index + 1, days: world.day });
     highScores.sort((a, b) => b.score - a.score);
     if (highScores.length > MAX_HIGH_SCORES)
       highScores.length = MAX_HIGH_SCORES;
@@ -1980,12 +1993,12 @@
     highScoresBody.innerHTML = '';
     for (let i = 0; i < highScores.length; ++i) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${i + 1}</td><td>${highScores[i].waves}</td><td>${highScores[i].score}</td>`;
+      tr.innerHTML = `<td>${i + 1}</td><td>${highScores[i].waves}</td><td>${highScores[i].sites || 1}</td><td>${highScores[i].score}</td>`;
       highScoresBody.appendChild(tr);
     }
     if (!highScores.length) {
       const tr = document.createElement('tr');
-      tr.innerHTML = '<td colspan="3" style="text-align:center">No scores yet</td>';
+      tr.innerHTML = '<td colspan="4" style="text-align:center">No scores yet</td>';
       highScoresBody.appendChild(tr);
     }
   }
@@ -2001,7 +2014,7 @@
   let newGameConfirmOpen = false;
 
   function isRunActive() {
-    return primaryGadget !== null && (state === STATE_PLAYING || state === STATE_PAUSED || state === STATE_UPGRADE_DIALOG);
+    return primaryGadget !== null && (state === STATE_PLAYING || state === STATE_PAUSED || state === STATE_UPGRADE_DIALOG || state === STATE_CINEMATIC || state === STATE_CONFIRM);
   }
 
   function saveRun() {
@@ -2028,7 +2041,7 @@
       droppedResources,
       primaryGadget, primaryGadgetState, foundGadgets, gadgetChambers,
       unlockedTools, activeToolKey, toolState,
-      site
+      site, relocationCore, landing: landingPending
     };
     try {
       localStorage.setItem(STORAGE_SAVE, JSON.stringify(data));
@@ -2141,10 +2154,16 @@
     if (d.mineOutdated)
       generateUnderground(makeRng(site.seed));
     else {
+      // The core lives in the grid; older saves get it placed now
+      const rc = d.relocationCore;
+      if (isPlainObject(rc) && isNum(rc.r) && isNum(rc.c))
+        relocationCore = { r: rc.r | 0, c: rc.c | 0, revealed: !!rc.revealed, found: !!rc.found };
       undergroundGrid = d.grid.map(row => Array.from(row, ch => ch.charCodeAt(0) - 48));
       gadgetChambers = d.gadgetChambers
         .filter(ch => ch.r >= 0 && ch.r < GRID_ROWS - 1 && ch.c >= 0 && ch.c < GRID_COLS - 1)
         .map(ch => ({ r: ch.r, c: ch.c, gadgetType: ch.gadgetType, revealed: !!ch.revealed }));
+      if (!relocationCore.found && !d.grid.some(row => row.indexOf(String.fromCharCode(48 + TILE_CORE)) >= 0))
+        placeRelocationCore(makeRng(site.seed ^ 0x5eed));
       initTileHP();
       for (const p of d.partialHP)
         if (Array.isArray(p) && tileHP[p[0]] && isNum(p[2]) && tileMaxHP[p[0]][p[1]] > 0)
@@ -2219,6 +2238,11 @@
     }
     autosaveTimer = 0;
     state = STATE_PLAYING;
+    // Saved on the way to a site: finish the landing
+    if (d.landing) {
+      landingPending = true;
+      startCinematic('arrive');
+    }
     updateWindowTitle();
   }
 
@@ -2463,6 +2487,7 @@
       }
     }
 
+    placeRelocationCore(rand);
     initTileHP();
   }
 
@@ -2625,16 +2650,23 @@
     clearTooltip();
 
     // A new run lands on a fresh site
+    cinematic = null;
+    landingPending = false;
     site = newSite(0, (Math.random() * 0x7fffffff) | 0);
     generateUnderground(makeRng(site.seed));
     updateWindowTitle();
   }
 
   function startGameAfterGadgetSelect() {
-    state = STATE_PLAYING;
     SZ.GameAudio.play('select');
-    announce('Landing site: ' + currentBiome().name, 'Mine by day, defend the dome at night', '#ffe080', 'dome');
-    // Initialize primary gadget state
+    initPrimaryGadgetState();
+    syncDrones();
+    // Every run begins with the dome landing on its first site
+    landingPending = true;
+    startCinematic('arrive');
+  }
+
+  function initPrimaryGadgetState() {
     switch (primaryGadget) {
       case 'shield':
         primaryGadgetState = { active: true };
@@ -2649,7 +2681,6 @@
         primaryGadgetState = {};
         break;
     }
-    syncDrones();
   }
 
   /* ======================================================================
@@ -2821,7 +2852,7 @@
         const spkC1 = Math.min(GRID_COLS, Math.ceil((cameraX + CANVAS_W) / TILE_SIZE));
         for (let r = spkR0; r < spkR1; ++r)
           for (let c = spkC0; c < spkC1; ++c)
-            if (undergroundGrid[r][c] !== TILE_EMPTY && undergroundGrid[r][c] !== TILE_DIRT && undergroundGrid[r][c] !== TILE_GADGET)
+            if (undergroundGrid[r][c] !== TILE_EMPTY && undergroundGrid[r][c] !== TILE_DIRT && undergroundGrid[r][c] !== TILE_GADGET && undergroundGrid[r][c] !== TILE_CORE)
               candidates.push({ r, c });
         if (candidates.length > 0) {
           const pick = candidates[Math.floor(Math.random() * candidates.length)];
@@ -3740,6 +3771,468 @@
   }
 
   /* ======================================================================
+     RELOCATION -- the Relocation Core, packing up, flight and landing
+     ====================================================================== */
+
+  const RELOCATE_KEEP = 0.75;        // share of every resource that comes along
+  const THREAT_PER_SITE = 4;
+  // Steps of the shared landing sequence; a relocation flies there first
+  const CINEMATIC_STEPS = {
+    relocate: [['pack', 2.0], ['liftoff', 2.4], ['flight', 3.6], ['descent', 2.6], ['touchdown', 0.5], ['unpack', 2.2]],
+    arrive: [['descent', 2.6], ['touchdown', 0.5], ['unpack', 2.2]]
+  };
+  let relocationCore = { r: 0, c: 0, revealed: false, found: false };
+  let cinematic = null;              // { steps, i, t, oldSite }
+  let landingPending = false;        // the dome is still on its way to the current site
+  let relocateHover = null;          // 'button' | 'yes' | 'no'
+
+  // Hide the core in the lower strata (deeper on every new site)
+  function placeRelocationCore(rand) {
+    const stratum = Math.min(STRATUM_COUNT - 3, 6 + site.index);
+    for (let attempt = 0; attempt < 200; ++attempt) {
+      const r = stratum * STRATUM_ROWS + 2 + Math.floor(rand() * (STRATUM_ROWS * 2 - 4));
+      const c = 8 + Math.floor(rand() * (GRID_COLS - 16));
+      if (undergroundGrid[r][c] === TILE_GADGET) continue;
+      undergroundGrid[r][c] = TILE_CORE;
+      relocationCore = { r, c, revealed: false, found: false };
+      return;
+    }
+  }
+
+  function coreDepthHint() {
+    return Math.floor(relocationCore.r / STRATUM_ROWS) * STRATUM_ROWS;
+  }
+
+  function collectRelocationCore(tx, ty) {
+    relocationCore.found = true;
+    relocationCore.revealed = true;
+    SZ.GameAudio.play('powerup');
+    SZ.GameAudio.play('win', { pitch: 1.2, volume: 0.6 });
+    particles.burst(tx, ty, 40, { color: '#7ae8ff', speed: 4, life: 0.8 });
+    particles.sparkle(tx, ty, 20, { color: '#ffe080', speed: 2.5 });
+    screenShake.trigger(8, 300);
+    floatingText.add(tx, ty - 50, 'RELOCATION CORE!', { color: '#7ae8ff', font: 'bold 30px sans-serif' });
+    announce('Relocation Core recovered!', 'Relocate from the surface whenever you are ready - or stay and keep mining', '#7ae8ff', 'core');
+    saveRun();
+  }
+
+  // Why the dome cannot leave right now (null when it can)
+  function relocateBlocker() {
+    if (enemies.length > 0)
+      return 'Not while monsters attack the dome';
+    if (isNight() && world.bursts < 3)
+      return 'More monsters are coming tonight - wait for dawn';
+    return null;
+  }
+
+  function relocateButtonRect() {
+    return { x: 16, y: 140, w: 330, h: 54 };
+  }
+
+  function hitRelocateButton(mx, my) {
+    if (!relocationCore.found || currentView !== VIEW_SURFACE || state !== STATE_PLAYING) return false;
+    const b = relocateButtonRect();
+    return mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h;
+  }
+
+  function requestRelocation() {
+    if (!relocationCore.found || state !== STATE_PLAYING) return;
+    const why = relocateBlocker();
+    if (why) {
+      SZ.GameAudio.play('error');
+      announce('Cannot relocate yet', why, '#ff9a6a', 'flight');
+      return;
+    }
+    if (currentView !== VIEW_SURFACE) {
+      SZ.GameAudio.play('error');
+      announce('Cannot relocate yet', 'Return to the dome first', '#ff9a6a', 'flight');
+      return;
+    }
+    state = STATE_CONFIRM;
+    relocateHover = null;
+    clearTooltip();
+    SZ.GameAudio.play('select');
+  }
+
+  function confirmButtons() {
+    const w = 260, h = 58, y = CANVAS_H / 2 + 70;
+    return [
+      { id: 'yes', label: 'Lift off', x: CANVAS_W / 2 - w - 14, y, w, h },
+      { id: 'no', label: 'Stay here', x: CANVAS_W / 2 + 14, y, w, h }
+    ];
+  }
+
+  function answerRelocation(yes) {
+    if (state !== STATE_CONFIRM) return;
+    if (yes)
+      beginRelocation();
+    else {
+      state = STATE_PLAYING;
+      SZ.GameAudio.play('click');
+    }
+  }
+
+  // Pack up: the new site is generated now; the flight and landing follow
+  function beginRelocation() {
+    const oldSite = site;
+    for (const k in resources)
+      resources[k] = Math.floor(resources[k] * RELOCATE_KEEP);
+    score += 500 * (oldSite.index + 1);
+    let seed = (Math.random() * 0x7fffffff) | 0;
+    for (let i = 0; i < 12 && newSite(0, seed).biome === oldSite.biome; ++i)
+      seed = (seed * 48271 + 11) & 0x7fffffff;
+    site = newSite(oldSite.index + 1, seed);
+    generateUnderground(makeRng(site.seed));
+
+    // Everything that belonged to the old site stays behind
+    cancelMining();
+    clearMoveTarget();
+    drillX = Math.floor(GRID_COLS / 2);
+    drillY = 0;
+    cameraX = cameraY = 0;
+    carried = 0;
+    droppedResources = [];
+    enemies = [];
+    enemyShots = [];
+    shockwaves = [];
+    projectiles = [];
+    meteorOre = [];
+    meteors = [];
+    bolts = [];
+    snowCover = 0;
+    weather = { kind: 'clear', intensity: 1, timeLeft: 50 };
+    waveActive = false;
+    domeHP = maxDomeHP;
+    world.day += 1;
+    world.t = 0.03;
+    world.bursts = 0;
+    world.warned = false;
+    computeSkyLight();
+    for (const d of drones) {
+      d.state = 'dock';
+      d.job = null;
+      d.path = null;
+      d.cargo = 0;
+      d.timer = 1;
+    }
+    initPrimaryGadgetState();
+    currentView = VIEW_SURFACE;
+    landingPending = true;
+    startCinematic('relocate', oldSite);
+    saveRun();
+    updateWindowTitle();
+  }
+
+  function startCinematic(kind, oldSite) {
+    cinematic = { kind, steps: CINEMATIC_STEPS[kind], i: 0, t: 0, oldSite: oldSite || null, sounds: {} };
+    state = STATE_CINEMATIC;
+    clearTooltip();
+    banners = [];
+  }
+
+  function cinematicStep() {
+    return cinematic ? cinematic.steps[cinematic.i][0] : null;
+  }
+
+  function finishCinematic() {
+    if (!cinematic) return;
+    const relocated = cinematic.kind === 'relocate';
+    cinematic = null;
+    landingPending = false;
+    state = STATE_PLAYING;
+    const B = currentBiome();
+    if (relocated)
+      announce(`Site ${site.index + 1}: ${B.name}`, `Threat +${THREAT_PER_SITE} - the monsters here are tougher. Find this site's Relocation Core.`, '#ffe080', 'flight');
+    else
+      announce('Landing site: ' + B.name, 'Mine by day, defend the dome at night', '#ffe080', 'dome');
+    SZ.GameAudio.play('select', { pitch: 1.2 });
+    saveRun();
+  }
+
+  function skipCinematic() {
+    if (state !== STATE_CINEMATIC) return;
+    SZ.GameAudio.play('click');
+    finishCinematic();
+  }
+
+  function updateCinematic(dt) {
+    if (!cinematic) return;
+    const c = cinematic;
+    c.t += dt;
+    const [name, dur] = c.steps[c.i];
+    const k = Math.min(1, c.t / dur);
+    const once = (id, fn) => {
+      if (!c.sounds[id]) {
+        c.sounds[id] = true;
+        fn();
+      }
+    };
+    const base = DOME_Y + 14;
+    if (name === 'pack') {
+      once('pack', () => SZ.GameAudio.sweep(500, 180, 1.2, 'square', 0.05));
+      if (k > 0.55) once('legs', () => SZ.GameAudio.play('thud', { pitch: 1.4 }));
+    } else if (name === 'liftoff') {
+      once('lift', () => {
+        SZ.GameAudio.noise(2.2, 0.18, 'lowpass', 300, 1800);
+        SZ.GameAudio.sweep(60, 220, 2, 'sawtooth', 0.06);
+      });
+      screenShake.trigger(3 * (1 - k), 60);
+      if (Math.random() < 0.8)
+        particles.trail(DOME_X + (Math.random() - 0.5) * 260, base + 6, { vx: (Math.random() - 0.5) * 6, vy: -Math.random() * 1.5, color: Math.random() < 0.5 ? '#9a8a7a' : '#6a5a4a', life: 0.9, size: 3 + Math.random() * 4, gravity: -0.01 });
+    } else if (name === 'flight') {
+      once('flight', () => SZ.GameAudio.play('whoosh', { pitch: 0.6 }));
+    } else if (name === 'descent') {
+      once('descent', () => {
+        SZ.GameAudio.noise(2.4, 0.14, 'lowpass', 1600, 300);
+        SZ.GameAudio.sweep(220, 70, 2.4, 'sawtooth', 0.05);
+      });
+      if (k > 0.6 && Math.random() < 0.9)
+        particles.trail(DOME_X + (Math.random() - 0.5) * 300, base + 6, { vx: (Math.random() - 0.5) * 7, vy: -Math.random() * 1.2, color: '#8a7a6a', life: 0.8, size: 3 + Math.random() * 4, gravity: -0.01 });
+    } else if (name === 'touchdown') {
+      once('touch', () => {
+        SZ.GameAudio.play('thud', { pitch: 0.6 });
+        SZ.GameAudio.play('explode', { pitch: 0.4, volume: 0.5 });
+        screenShake.trigger(10, 320);
+        for (const side of [-1, 1])
+          for (let i = 0; i < 26; ++i)
+            particles.trail(DOME_X + side * (60 + Math.random() * 90), base + 4, { vx: side * (2 + Math.random() * 6), vy: -Math.random() * 2.5, color: Math.random() < 0.5 ? '#a8987e' : '#7a6a58', life: 1 + Math.random() * 0.5, size: 3 + Math.random() * 5, gravity: 0.02 });
+      });
+    } else if (name === 'unpack') {
+      if (k > 0.05) once('legs2', () => SZ.GameAudio.play('thud', { pitch: 1.5 }));
+      if (k > 0.3) once('glass', () => SZ.GameAudio.sweep(200, 700, 0.8, 'triangle', 0.06));
+      if (k > 0.62) once('turret', () => SZ.GameAudio.play('click', { pitch: 0.6 }));
+      if (k > 0.8) once('lights', () => SZ.GameAudio.play('powerup', { pitch: 1.3, volume: 0.6 }));
+    }
+    if (c.t >= dur) {
+      c.t = 0;
+      ++c.i;
+      if (c.i >= c.steps.length)
+        finishCinematic();
+    }
+  }
+
+  // Dome pose for the current cinematic step: lift (px above the ground), unpack (0..1), legs (0..1), thrust (0..1)
+  function cinematicRig() {
+    const c = cinematic;
+    const [name, dur] = c.steps[c.i];
+    const k = Math.min(1, c.t / dur);
+    const ease = (x) => x * x * (3 - 2 * x);
+    switch (name) {
+      case 'pack': return { lift: 0, unpack: 1 - ease(Math.min(1, k * 1.25)), legs: k > 0.55 ? ease((k - 0.55) / 0.45) : 0, thrust: k > 0.8 ? (k - 0.8) * 2 : 0 };
+      case 'liftoff': return { lift: Math.pow(k, 2.2) * (DOME_Y + 220), unpack: 0, legs: 1 - ease(Math.min(1, k * 3)), thrust: 0.6 + k * 0.4 };
+      case 'descent': return { lift: Math.pow(1 - k, 2) * (DOME_Y + 220), unpack: 0, legs: k > 0.55 ? ease((k - 0.55) / 0.45) : 0, thrust: 0.35 + (1 - k) * 0.5 + (k > 0.75 ? 0.4 : 0) };
+      case 'touchdown': return { lift: 0, unpack: 0, legs: 1, thrust: Math.max(0, 0.5 - k), squash: Math.sin(k * Math.PI) * 0.06 };
+      case 'unpack': return { lift: 0, unpack: ease(k), legs: 1 - ease(Math.min(1, k * 2.5)) * 0.85, thrust: 0 };
+      default: return { lift: 0, unpack: 1, legs: 0, thrust: 0 };
+    }
+  }
+
+  function drawThrusters(rig) {
+    if (rig.thrust <= 0.01) return;
+    const y = DOME_Y + 14 - rig.lift;
+    for (const ox of [-72, 0, 72]) {
+      const x = DOME_X + ox;
+      const len = (34 + rig.thrust * 70) * (0.85 + Math.random() * 0.3);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createLinearGradient(0, y, 0, y + len);
+      g.addColorStop(0, `rgba(255,255,230,${0.95 * rig.thrust})`);
+      g.addColorStop(0.3, `rgba(255,190,80,${0.8 * rig.thrust})`);
+      g.addColorStop(1, 'rgba(255,80,20,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(x - 11, y);
+      ctx.quadraticCurveTo(x - 6, y + len * 0.6, x, y + len);
+      ctx.quadraticCurveTo(x + 6, y + len * 0.6, x + 11, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      drawGlow('#ffa040', x, y + 12, 34 + rig.thrust * 30, 0.7 * rig.thrust);
+      ctx.fillStyle = SPRITE_OUTLINE;
+      ctx.fillRect(x - 13, y - 2, 26, 9);
+      ctx.fillStyle = '#5a6a88';
+      ctx.fillRect(x - 11, y - 1, 22, 6);
+    }
+    if (rig.lift < 160 && Math.random() < 0.6)
+      particles.trail(DOME_X + (Math.random() - 0.5) * 200, DOME_Y + 10, { vx: (Math.random() - 0.5) * 6, vy: -Math.random() * 1.5, color: '#8a7a6a', life: 0.8, size: 3 + Math.random() * 3, gravity: -0.01 });
+  }
+
+  // Planet map shown during the flight between sites
+  function drawFlightMap(k) {
+    const c = cinematic;
+    const g = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+    g.addColorStop(0, '#04060e');
+    g.addColorStop(1, '#0a1022');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    const rng = makeRng((c.oldSite ? c.oldSite.seed : 1) ^ site.seed);
+    for (let i = 0; i < 160; ++i) {
+      ctx.fillStyle = `rgba(255,255,255,${0.15 + rng() * 0.5})`;
+      ctx.fillRect(rng() * CANVAS_W, rng() * CANVAS_H * 0.5, 1.5, 1.5);
+    }
+    // The planet's curve with patches of land in biome colours
+    const cx = CANVAS_W / 2, cy = CANVAS_H + 900, R = 1400;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, TWO_PI);
+    const pg = ctx.createRadialGradient(cx, cy - R * 0.6, R * 0.2, cx, cy, R);
+    pg.addColorStop(0, '#2a3a5a');
+    pg.addColorStop(1, '#141c30');
+    ctx.fillStyle = pg;
+    ctx.fill();
+    ctx.clip();
+    for (let i = 0; i < 70; ++i) {
+      const a = -Math.PI / 2 + (rng() - 0.5) * 1.1, d = R - 40 - rng() * 520;
+      const b = BIOMES[BIOME_KEYS[Math.floor(rng() * BIOME_KEYS.length)]];
+      ctx.fillStyle = hexToRgba(b.ground.day[1], 0.16 + rng() * 0.12);
+      ctx.beginPath();
+      ctx.ellipse(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 24 + rng() * 50, 10 + rng() * 22, rng() * 0.6 - 0.3, 0, TWO_PI);
+      ctx.fill();
+    }
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(120,180,255,0.5)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, Math.PI * 1.2, Math.PI * 1.8);
+    ctx.stroke();
+    drawGlow('#5aa8ff', cx, cy - R, 600, 0.12);
+
+    // Route from the old site to the new one
+    const p0 = { x: 280, y: 700 }, p1 = { x: CANVAS_W - 280, y: 690 };
+    const ctrl = { x: CANVAS_W / 2, y: 280 };
+    const at = (t) => ({ x: (1 - t) * (1 - t) * p0.x + 2 * (1 - t) * t * ctrl.x + t * t * p1.x, y: (1 - t) * (1 - t) * p0.y + 2 * (1 - t) * t * ctrl.y + t * t * p1.y });
+    ctx.setLineDash([10, 10]);
+    ctx.lineDashOffset = -animTime * 40;
+    ctx.strokeStyle = 'rgba(255,224,128,0.7)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.quadraticCurveTo(ctrl.x, ctrl.y, p1.x, p1.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const sites = [[p0, c.oldSite || site, false], [p1, site, true]];
+    for (const [p, s, isNew] of sites) {
+      const b = BIOMES[s.biome];
+      drawGlow(b.ground.day[0], p.x, p.y, 50, 0.6);
+      ctx.fillStyle = SPRITE_OUTLINE;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 13, 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = isNew ? '#ffe080' : '#8a9ab8';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 10, 0, TWO_PI);
+      ctx.fill();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText(`Site ${s.index + 1}`, p.x, p.y + 38, 260, 22, { weight: 'bold', color: isNew ? UI.gold : UI.textDim });
+      fitText(b.name, p.x, p.y + 64, 260, 18, { color: isNew ? UI.text : UI.textMute });
+    }
+    const t = k * k * (3 - 2 * k);
+    const pos = at(t), ahead = at(Math.min(1, t + 0.02));
+    ctx.save();
+    ctx.translate(pos.x, pos.y);
+    ctx.rotate(Math.atan2(ahead.y - pos.y, ahead.x - pos.x) * 0.3);
+    drawGlow('#ffa040', -20, 10, 40, 0.7);
+    drawSprite('flight', 0, 0, 56);
+    ctx.restore();
+    if (Math.random() < 0.6)
+      particles.trail(pos.x - 14, pos.y + 16, { vx: -1.5, vy: 0.5, color: '#ffb060', life: 0.5, size: 2.5 });
+    drawHeadline('Relocating', CANVAS_W / 2, 150, 800, 56, '#ffe080', '#e0a020');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(`Upgrades, drones and ${Math.round(RELOCATE_KEEP * 100)}% of the resources are on board  ·  threat +${THREAT_PER_SITE} at the new site`, CANVAS_W / 2, 214, 1100, 20, { color: UI.textDim });
+  }
+
+  function drawCinematic() {
+    const c = cinematic;
+    const name = cinematicStep();
+    const [, dur] = c.steps[c.i];
+    const k = Math.min(1, c.t / dur);
+    if (name === 'flight') {
+      drawFlightMap(k);
+    } else {
+      // Pack up and lift off at the old site, descend and unpack at the new one
+      const useOld = (name === 'pack' || name === 'liftoff') && c.oldSite;
+      const saved = site;
+      if (useOld) site = c.oldSite;
+      drawSky();
+      drawGroundLayer();
+      const rig = cinematicRig();
+      drawThrusters(rig);
+      drawDome(rig);
+      site = saved;
+    }
+    // Letterbox bars and caption
+    const bar = 70;
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(0, 0, CANVAS_W, bar);
+    ctx.fillRect(0, CANVAS_H - bar, CANVAS_W, bar);
+    const captions = {
+      pack: 'Packing up the dome...', liftoff: 'Lift off!', flight: '',
+      descent: `Approaching ${currentBiome().name}`, touchdown: 'Touchdown', unpack: 'Unpacking the dome...'
+    };
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    if (captions[name])
+      fitText(captions[name], CANVAS_W / 2, bar / 2 + 2, 900, 26, { weight: 'bold', color: '#ffe8b0' });
+    drawKeyHints([{ key: 'Click', label: 'Skip' }, { key: 'Space', label: 'Skip' }, { key: 'Esc', label: 'Skip' }], CANVAS_W / 2, CANVAS_H - bar / 2, 500);
+  }
+
+  // Relocate button under the clock panel (surface)
+  function drawRelocateButton() {
+    if (!relocationCore.found) return;
+    const b = relocateButtonRect();
+    const why = relocateBlocker();
+    const hover = relocateHover === 'button';
+    ctx.save();
+    roundRectPath(b.x, b.y, b.w, b.h, 12);
+    const g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+    if (why) {
+      g.addColorStop(0, 'rgba(40,44,60,0.92)');
+      g.addColorStop(1, 'rgba(24,26,36,0.92)');
+    } else {
+      g.addColorStop(0, hover ? '#3a9ae8' : '#2a7ad0');
+      g.addColorStop(1, hover ? '#1a5aa8' : '#16468a');
+    }
+    ctx.fillStyle = g;
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 10;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = why ? 'rgba(120,130,160,0.5)' : (hover ? '#cfe8ff' : `rgba(150,210,255,${0.6 + Math.sin(animTime * 4) * 0.3})`);
+    ctx.stroke();
+    drawSprite('flight', b.x + 30, b.y + b.h / 2, 36, why ? 0.5 : 1);
+    const kw = drawChip('L', b.x + b.w - 10, b.y + 15, 24, { align: 'right', px: 13, bg: 'rgba(0,0,0,0.4)', border: 'rgba(255,255,255,0.25)', color: UI.text });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText('Relocate', b.x + 56, b.y + 19, b.w - 70 - kw, 21, { weight: 'bold', color: why ? UI.textMute : '#ffffff' });
+    fitText(why || 'Fly the dome to a new site', b.x + 56, b.y + 40, b.w - 66, 14, { color: why ? '#e0a080' : '#cfe4ff' });
+    ctx.restore();
+  }
+
+  function drawRelocateConfirm() {
+    drawScrim(0.62);
+    const pw = 700, ph = 420, px = CANVAS_W / 2 - pw / 2, py = CANVAS_H / 2 - ph / 2 - 20;
+    drawPanel(px, py, pw, ph, { accent: '#5ab8ff', radius: 16, title: 'Relocate the dome?', titlePx: 28, headerH: 64, titleRight: `Site ${site.index + 1} → ${site.index + 2}` });
+    drawSprite('flight', px + 70, py + 150, 80);
+    const rows = [
+      ['check', 'Keep every upgrade, drone and gadget'],
+      ['bag', `Keep ${Math.round(RELOCATE_KEEP * 100)}% of every resource`],
+      ['pickaxe', 'A fresh mine in a new biome - with a new Relocation Core'],
+      ['swords', `The monsters there are tougher: threat +${THREAT_PER_SITE}`]
+    ];
+    rows.forEach(([icon, text], i) => {
+      const y = py + 100 + i * 44;
+      drawSprite(icon, px + 150, y, 24);
+      drawTextBlock(text, px + 172, y - 18, pw - 172 - 30, 36, 19, { valign: 'middle', color: UI.text, minPx: 13 });
+    });
+    for (const b of confirmButtons())
+      drawButton(b, b.id === 'yes', relocateHover === b.id);
+    drawKeyHints([{ key: 'Enter', label: 'Lift off' }, { key: 'Esc', label: 'Stay' }], CANVAS_W / 2, py + ph - 26, pw - 80);
+  }
+
+  /* ======================================================================
      ENEMY WAVES
      ====================================================================== */
 
@@ -4549,6 +5042,9 @@
       screenShake.trigger(5, 150);
     }
 
+    if (tile === TILE_CORE)
+      collectRelocationCore(tx, ty);
+
     // Gadget chamber tile -- grant the chamber's gadget
     if (tile === TILE_GADGET) {
       const chamber = gadgetChambers.find(ch => {
@@ -4589,7 +5085,9 @@
     // Pick up dropped resources at destination
     pickUpDroppedResources();
 
-    // Reveal adjacent gadget chambers
+    // Reveal an adjacent Relocation Core and gadget chambers
+    if (!relocationCore.revealed && Math.abs(relocationCore.r - ny) + Math.abs(relocationCore.c - nx) <= 1)
+      relocationCore.revealed = true;
     for (const ch of gadgetChambers) {
       if (ch.revealed) continue;
       for (let dr = 0; dr < 2; ++dr)
@@ -4754,6 +5252,8 @@
               for (let dc2 = 0; dc2 < 2; ++dc2)
                 undergroundGrid[chamber.r + dr2][chamber.c + dc2] = TILE_EMPTY;
           }
+        } else if (tile === TILE_CORE) {
+          collectRelocationCore(tx, ty);
         } else if (RESOURCE_TILES.includes(tile)) {
           const label = TILE_LABELS[tile];
           const value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(r));
@@ -4835,6 +5335,8 @@
               for (let dc2 = 0; dc2 < 2; ++dc2)
                 undergroundGrid[chamber.r + dr2][chamber.c + dc2] = TILE_EMPTY;
           }
+        } else if (tile === TILE_CORE) {
+          collectRelocationCore(tx, ty);
         } else if (RESOURCE_TILES.includes(tile)) {
           const label = TILE_LABELS[tile];
           const value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(r));
@@ -6577,6 +7079,10 @@
     updateMining(dt);
     updateMovement(dt);
 
+    // Standing next to the Relocation Core reveals it
+    if (!relocationCore.revealed && !relocationCore.found && Math.abs(relocationCore.r - drillY) + Math.abs(relocationCore.c - drillX) <= 1)
+      relocationCore.revealed = true;
+
     // Age dropped resources; despawn after 120s
     for (let i = droppedResources.length - 1; i >= 0; --i) {
       droppedResources[i].age += dt;
@@ -6904,8 +7410,14 @@
   }
 
   // Sky layers, mountains, ground and plants of the current site -- rebuilt when the site changes
+  let previousSurfaceArt = null;
   function buildSurfaceArt() {
     if (surfaceArt && surfaceArt.seed === site.seed) return surfaceArt;
+    if (previousSurfaceArt && previousSurfaceArt.seed === site.seed) {
+      [surfaceArt, previousSurfaceArt] = [previousSurfaceArt, surfaceArt];
+      return surfaceArt;
+    }
+    previousSurfaceArt = surfaceArt;
     const B = currentBiome();
     const rng = makeRng(site.seed ^ 0x1337);
 
@@ -7561,17 +8073,63 @@
     }
   }
 
-  function drawDome() {
+  // rig (landing / relocation): lift above the ground, unpack 0 (packed) .. 1, legs 0..1
+  function drawDome(rig) {
     const art = buildFxArt();
     const sky = buildSurfaceArt();
     const pulse = Math.sin(domePulsePhase) * 0.5 + 0.5;
-    const flashAlpha = domeHitFlash * 0.6;
+    const flashAlpha = rig ? 0 : domeHitFlash * 0.6;
     const hpRatio = Math.max(0, domeHP / maxDomeHP);
     const R = DOME_RADIUS;
     const shieldLevel = getEffectiveLevel('domeHP');
+    const unpack = rig ? rig.unpack : 1;
+    const glassK = smoothstep(0.2, 0.62, unpack);
+    const lift = rig ? rig.lift : 0;
 
     // Light pool on the ground
-    drawGlow('#4aa8ff', DOME_X, DOME_Y + 6, R * 1.7, 0.18 + pulse * 0.05);
+    if (lift < 40)
+      drawGlow('#4aa8ff', DOME_X, DOME_Y + 6, R * 1.7, (0.18 + pulse * 0.05) * (1 - lift / 40) * (0.3 + 0.7 * unpack));
+
+    ctx.save();
+    ctx.translate(0, -lift);
+    if (rig && rig.squash) {
+      ctx.translate(DOME_X, DOME_Y + 14);
+      ctx.scale(1 + rig.squash, 1 - rig.squash);
+      ctx.translate(-DOME_X, -DOME_Y - 14);
+    }
+
+    // Landing legs fold out of the base
+    const legs = rig ? rig.legs : 0;
+    if (legs > 0.01)
+      for (const side of [-1, 1])
+        for (const inner of [0, 1]) {
+          const x0 = DOME_X + side * (inner ? R * 0.55 : R + 10), y0 = DOME_Y + 10;
+          const x1 = x0 + side * (inner ? 8 : 22) * legs, y1 = y0 + 26 * legs;
+          ctx.strokeStyle = SPRITE_OUTLINE;
+          ctx.lineWidth = 9;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(x0, y0);
+          ctx.lineTo(x1, y1);
+          ctx.stroke();
+          ctx.strokeStyle = '#7a8aa8';
+          ctx.lineWidth = 5;
+          ctx.stroke();
+          ctx.fillStyle = SPRITE_OUTLINE;
+          ctx.fillRect(x1 - 10, y1 - 2, 20, 6);
+          ctx.fillStyle = '#5a6a88';
+          ctx.fillRect(x1 - 9, y1 - 1, 18, 4);
+          ctx.lineCap = 'butt';
+        }
+
+    // The glass shell rises out of the base while unpacking
+    if (glassK < 0.999) {
+      ctx.save();
+      ctx.translate(DOME_X, DOME_Y);
+      ctx.scale(1, Math.max(0.001, glassK));
+      ctx.translate(-DOME_X, -DOME_Y);
+    }
+    if (glassK > 0.01) {
 
     // Refraction: the sky behind the glass, slightly magnified and tinted
     ctx.save();
@@ -7669,8 +8227,34 @@
     ctx.shadowBlur = 0;
     ctx.restore();
 
+    }
+    if (glassK < 0.999) {
+      ctx.restore();
+      // Packed: an armoured lid closes over the base
+      const lid = 1 - glassK;
+      ctx.fillStyle = SPRITE_OUTLINE;
+      ctx.beginPath();
+      ctx.ellipse(DOME_X, DOME_Y - 4, R + 4, 26 * lid + 4, 0, Math.PI, 0);
+      ctx.fill();
+      const lg = ctx.createLinearGradient(0, DOME_Y - 30, 0, DOME_Y);
+      lg.addColorStop(0, '#b8c8e0');
+      lg.addColorStop(1, '#4a5878');
+      ctx.fillStyle = lg;
+      ctx.beginPath();
+      ctx.ellipse(DOME_X, DOME_Y - 4, R + 1, 26 * lid + 1, 0, Math.PI, 0);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(20,30,50,0.6)';
+      ctx.lineWidth = 2;
+      for (const k of [-0.5, 0, 0.5]) {
+        ctx.beginPath();
+        ctx.moveTo(DOME_X + k * R, DOME_Y - 4);
+        ctx.lineTo(DOME_X + k * R * 0.8, DOME_Y - 4 - 24 * lid * Math.sqrt(1 - k * k));
+        ctx.stroke();
+      }
+    }
+
     // Shield impact flashes
-    for (const impact of shieldImpacts) {
+    for (const impact of (rig ? [] : shieldImpacts)) {
       const ia = impact.angle;
       const il = impact.life;
       ctx.save();
@@ -7706,20 +8290,26 @@
     ctx.fillRect(DOME_X - R - 12, DOME_Y - 5, (R + 12) * 2, 1.5);
     for (let i = 0; i < 9; ++i) {
       const lx = DOME_X - R + 4 + i * (R * 2 - 8) / 8;
-      const on = Math.sin(animTime * 3 - i * 0.7) > 0.3;
+      const on = unpack > 0.78 + i * 0.022 && Math.sin(animTime * 3 - i * 0.7) > 0.3;
       ctx.fillStyle = on ? '#7fe0ff' : '#24405a';
       ctx.fillRect(lx - 3, DOME_Y + 3, 6, 4);
       if (on)
         drawGlow('#4cf', lx, DOME_Y + 5, 9, 0.6);
     }
 
-    // Turret on the dome arc
-    const nozzleDrawR = R + 16;
+    // Turret on the dome arc (slides out of the shell when unpacking)
+    const turretK = smoothstep(0.6, 0.85, unpack);
+    if (turretK <= 0.01) {
+      ctx.restore();
+      return;
+    }
+    const nozzleDrawR = R + 16 * turretK;
     const tbx = DOME_X + Math.cos(turretAngle) * nozzleDrawR;
     const tby = DOME_Y + Math.sin(turretAngle) * nozzleDrawR;
     ctx.save();
     ctx.translate(tbx, tby);
     ctx.rotate(turretAngle);
+    ctx.scale(turretK, turretK);
     // Mount
     ctx.fillStyle = '#1a2236';
     roundRectPath(-14, -11, 22, 22, 5);
@@ -7750,11 +8340,13 @@
     const ready = fireCooldown <= 0;
     const mx = tbx + Math.cos(turretAngle) * TURRET_BARREL_LENGTH;
     const my = tby + Math.sin(turretAngle) * TURRET_BARREL_LENGTH;
-    drawGlow('#ff6040', mx, my, ready ? 16 + pulse * 4 : 8, ready ? 0.8 : 0.35);
+    if (turretK > 0.9)
+      drawGlow('#ff6040', mx, my, ready ? 16 + pulse * 4 : 8, ready ? 0.8 : 0.35);
     ctx.fillStyle = '#d8e4ff';
     ctx.beginPath();
     ctx.arc(tbx, tby, 4, 0, TWO_PI);
     ctx.fill();
+    ctx.restore();
   }
 
   // How each ground creature is put together (body palette, legs, face and extras)
@@ -8528,8 +9120,8 @@
           ctx.drawImage(art.cave[getDepthTier(r)][tileVariant(r, c) % art.VARIANTS], x, y);
           continue;
         }
-        drawTile(x, y, tile === TILE_GADGET ? TILE_DIRT : tile, r, c);
-        if (tile !== TILE_DIRT && tile !== TILE_GADGET)
+        drawTile(x, y, tile === TILE_GADGET || tile === TILE_CORE ? TILE_DIRT : tile, r, c);
+        if (tile !== TILE_DIRT && tile !== TILE_GADGET && tile !== TILE_CORE)
           oreTiles.push(r, c);
 
         // Cracks on partially-mined tiles
@@ -8662,8 +9254,9 @@
     ctx.globalAlpha = 1;
     drawGlow('#ffcf80', pcx, pcy, 150, 0.16);
 
-    // Courier drones carry their own lights
+    // Courier drones carry their own lights; the core glows through the dark
     drawUndergroundDrones();
+    drawRelocationCoreMarker();
 
     // Ore glints twinkle through the dark
     for (let i = 0; i < oreTiles.length; i += 2) {
@@ -9463,18 +10056,28 @@
   function drawSurfaceHUD() {
     // Day, time and moon (top-left)
     drawClockPanel();
+    drawRelocateButton();
 
     drawGadgetHUD();
 
     // Score and stock (top-right)
     const sx = CANVAS_W - 340;
-    drawPanel(sx, 16, 320, 74, { accent: UI.gold });
+    drawPanel(sx, 16, 320, 118, { accent: UI.gold });
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     fitText('SCORE', sx + 16, 38, 90, 14, { weight: 'bold', color: UI.textDim });
-    fitText(`[[crate]] ${totalResources()} resources`, sx + 16, 66, 180, 16, { color: UI.textDim });
+    fitText(`[[crate]] ${totalResources()} resources`, sx + 16, 64, 170, 16, { color: UI.textDim });
     ctx.textAlign = 'right';
     fitText(String(score), sx + 304, 42, 200, 30, { weight: 'bold', color: UI.gold });
+    // Site, threat and the Relocation Core
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.fillRect(sx + 14, 79, 292, 1);
+    ctx.textAlign = 'left';
+    fitText(`Site ${site.index + 1} · ${currentBiome().name}`, sx + 16, 96, 200, 16, { weight: 'bold', color: UI.text });
+    const threat = threatLevel() + 1;
+    drawChip(`Threat ${threat}`, sx + 306, 84, 24, { align: 'right', px: 13, maxW: 96, bg: 'rgba(255,90,90,0.14)', border: 'rgba(255,120,110,0.55)', color: '#ffa090' });
+    ctx.textAlign = 'left';
+    fitText(relocationCore.found ? '[[core]] Core found: relocate when ready' : `[[core]] Core hidden below ${coreDepthHint()} m`, sx + 16, 120, 290, 14, { color: relocationCore.found ? '#7ae8ff' : UI.textMute });
 
     // Dome integrity under the dome
     const hpRatio = Math.max(0, domeHP / maxDomeHP);
@@ -9566,6 +10169,56 @@
     }
   }
 
+  // The Relocation Core in the rock, and the scanner's hint towards it
+  function drawRelocationCoreMarker() {
+    const rc = relocationCore;
+    if (rc.found) return;
+    const x = rc.c * TILE_SIZE - cameraX, y = rc.r * TILE_SIZE - cameraY;
+    if (rc.revealed && x > -TILE_SIZE && x < CANVAS_W && y > -TILE_SIZE && y < CANVAS_H) {
+      const pulse = Math.sin(animTime * 3) * 0.5 + 0.5;
+      drawGlow('#7ae8ff', x + TILE_SIZE / 2, y + TILE_SIZE / 2, TILE_SIZE * (1.2 + pulse * 0.4), 0.55);
+      drawSprite('core', x + TILE_SIZE / 2, y + TILE_SIZE / 2 + Math.sin(animTime * 2) * 2, 30);
+      if (Math.random() < 0.05)
+        particles.sparkle(x + Math.random() * TILE_SIZE, y + Math.random() * TILE_SIZE, 1, { color: '#bff4ff', speed: 0.6 });
+    }
+    // Scanners sense the core: in range it shows up, further away an arrow points to it
+    const scanRange = toolState.scannerActive ? 3 + (toolState.echoLocationActive ? 2 + getEffectiveLevel('echoLocation') : 0) : 0;
+    if (!scanRange) return;
+    const dist = Math.abs(rc.r - drillY) + Math.abs(rc.c - drillX);
+    if (dist <= scanRange) {
+      rc.revealed = true;
+      return;
+    }
+    if (dist > scanRange * 8) return;
+    const px = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX, py = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+    const a = Math.atan2(rc.r - drillY, rc.c - drillX);
+    const rr = (scanRange + 0.8) * TILE_SIZE;
+    const ax = px + Math.cos(a) * rr, ay = py + Math.sin(a) * rr;
+    const pulse = 0.5 + Math.sin(animTime * 5) * 0.4;
+    drawGlow('#7ae8ff', ax, ay, 34, pulse * 0.8);
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(a);
+    ctx.fillStyle = SPRITE_OUTLINE;
+    ctx.beginPath();
+    ctx.moveTo(22, 0);
+    ctx.lineTo(-12, -15);
+    ctx.lineTo(-5, 0);
+    ctx.lineTo(-12, 15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = `rgba(150,240,255,${0.55 + pulse * 0.45})`;
+    ctx.beginPath();
+    ctx.moveTo(18, 0);
+    ctx.lineTo(-9, -11);
+    ctx.lineTo(-3, 0);
+    ctx.lineTo(-9, 11);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    drawSprite('core', ax - Math.cos(a) * 34, ay - Math.sin(a) * 34, 24, 0.6 + pulse * 0.4);
+  }
+
   function drawUndergroundGadgets() {
     // Draw gadget chamber tiles
     for (const ch of gadgetChambers) {
@@ -9633,6 +10286,8 @@
       for (let r = probeR0; r < probeR1; ++r)
         for (let c = probeC0; c < probeC1; ++c) {
           const tile = undergroundGrid[r][c];
+          if (tile === TILE_CORE && Math.abs(r - pr) + Math.abs(c - pc) <= 4)
+            relocationCore.revealed = true;
           if (!RESOURCE_TILES.includes(tile)) continue;
           if (Math.abs(r - pr) + Math.abs(c - pc) > 4) continue;
           const x = c * TILE_SIZE - cameraX;
@@ -9688,7 +10343,7 @@
      ====================================================================== */
 
   /* -- Quick upgrade panel: the next node of every tree branch -- */
-  const QUICK_PANEL_X = CANVAS_W - 340, QUICK_PANEL_Y = 100, QUICK_PANEL_W = 320;
+  const QUICK_PANEL_X = CANVAS_W - 340, QUICK_PANEL_Y = 146, QUICK_PANEL_W = 320;
   const QUICK_HEADER_H = 44, QUICK_ROW_H = 58, QUICK_ROW_GAP = 6;
   let resourceWeights = null;
 
@@ -9930,7 +10585,7 @@
       fitText('Defend your dome. Mine resources. Upgrade.', CANVAS_W / 2, 370, 660, 26, { color: UI.textDim });
       const best = highScores[0];
       if (best)
-        fitText(`Best run: ${best.score} points  ·  wave ${best.waves}`, CANVAS_W / 2, 420, 660, 18, { color: UI.gold });
+        fitText(`Best run: ${best.score} points  ·  wave ${best.waves}  ·  ${best.sites || 1} site${(best.sites || 1) > 1 ? 's' : ''}`, CANVAS_W / 2, 420, 660, 18, { color: UI.gold });
       ctx.fillStyle = 'rgba(120,180,255,0.25)';
       ctx.fillRect(CANVAS_W / 2 - 220, 450, 440, 1);
 
@@ -10004,6 +10659,9 @@
       }
     }
 
+    if (state === STATE_CONFIRM)
+      drawRelocateConfirm();
+
     if (state === STATE_PAUSED) {
       drawScrim(0.45);
       const pw = 520, ph = 250, px = CANVAS_W / 2 - pw / 2, py = CANVAS_H / 2 - ph / 2;
@@ -10019,13 +10677,14 @@
       drawScrim(0.6);
       ctx.fillStyle = 'rgba(120,0,0,0.12)';
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-      const pw = 640, ph = 400, px = CANVAS_W / 2 - pw / 2, py = CANVAS_H / 2 - ph / 2;
+      const pw = 640, ph = 460, px = CANVAS_W / 2 - pw / 2, py = CANVAS_H / 2 - ph / 2;
       drawPanel(px, py, pw, ph, { accent: '#ff5050', radius: 16 });
       drawHeadline('DOME DESTROYED', CANVAS_W / 2, py + 78, pw - 60, 60, '#ff7a6a', '#c01818');
 
       const best = highScores[0];
       const stats = [
-        ['Waves survived', String(waveNumber)],
+        ['Nights survived', String(Math.max(0, waveNumber - 1))],
+        ['Sites visited', String(site.index + 1)],
         ['Score', String(score)],
         ['Best score', best ? String(best.score) : String(score)]
       ];
@@ -10041,7 +10700,7 @@
         fitText(stats[i][1], px + pw - 80, ry + 20, 220, 24, { weight: 'bold', color: i === 1 ? UI.gold : UI.text });
       }
       if (best && score > 0 && best.score === score && best.waves === waveNumber)
-        drawChip('New high score!', CANVAS_W / 2 - 90, py + 290, 30, { px: 17, maxW: 180, bg: 'rgba(255,215,90,0.18)', border: UI.gold, color: UI.gold });
+        drawChip('New high score!', CANVAS_W / 2 - 90, py + 344, 30, { px: 17, maxW: 180, bg: 'rgba(255,215,90,0.18)', border: UI.gold, color: UI.gold });
 
       ctx.save();
       ctx.globalAlpha = 0.6 + pulse * 0.4;
@@ -10071,7 +10730,9 @@
       ctx.translate(0, slide);
     }
 
-    if (currentView === VIEW_SURFACE)
+    if (state === STATE_CINEMATIC && cinematic)
+      drawCinematic();
+    else if (currentView === VIEW_SURFACE)
       drawSurface();
     else
       drawUnderground();
@@ -10297,7 +10958,11 @@
     const depthTier = DEPTH_TIERS[getDepthTier(row)];
     const depthMult = getDepthMineMultiplier(row);
 
-    if (tile === TILE_DIRT) {
+    if (tile === TILE_CORE && relocationCore.revealed) {
+      lines.push('[[core]] Relocation Core');
+      lines.push('Mine it to unlock relocating the dome');
+      lines.push('Mining: ' + getMiningDifficultyLabel(depthMult));
+    } else if (tile === TILE_DIRT || tile === TILE_CORE) {
       lines.push(depthTier.name);
       lines.push('Depth tier: ' + depthTier.name);
       lines.push('Mining: ' + getMiningDifficultyLabel(depthMult));
@@ -10461,6 +11126,8 @@
     // Always update animations (even on title/pause/game-over for visual polish)
     animTime += state !== STATE_PLAYING ? dt : 0;
     updateGame(dt);
+    if (state === STATE_CINEMATIC)
+      updateCinematic(dt);
     updateTooltipHover(dt);
 
     particles.update();
@@ -10519,6 +11186,22 @@
     if (e.code === 'F2') {
       e.preventDefault();
       requestNewGame();
+      return;
+    }
+
+    if (state === STATE_CINEMATIC && !showTutorial) {
+      if (e.code === 'Space' || e.code === 'Escape' || e.code === 'Enter') {
+        e.preventDefault();
+        skipCinematic();
+      }
+      return;
+    }
+    if (state === STATE_CONFIRM) {
+      e.preventDefault();
+      if (e.code === 'Enter' || e.code === 'KeyY')
+        answerRelocation(true);
+      else if (e.code === 'Escape' || e.code === 'KeyN')
+        answerRelocation(false);
       return;
     }
 
@@ -10635,6 +11318,9 @@
     if (e.code === 'KeyB')
       useBlastMining();
 
+    if (e.code === 'KeyL' && relocationCore.found)
+      requestRelocation();
+
     // Tool/Gadget shortcuts (1-5)
     if (e.code === 'Digit1' || e.key === '1') {
       if (unlockedTools.drill)
@@ -10664,6 +11350,18 @@
 
   /* -- Click/Tap handling -- */
   canvas.addEventListener('pointerdown', (e) => {
+    if (state === STATE_CINEMATIC && !showTutorial) {
+      skipCinematic();
+      return;
+    }
+    if (state === STATE_CONFIRM) {
+      const rect = canvas.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) * CANVAS_W / rect.width, my = (e.clientY - rect.top) * CANVAS_H / rect.height;
+      for (const b of confirmButtons())
+        if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h)
+          answerRelocation(b.id === 'yes');
+      return;
+    }
     if (showTutorial) {
       ++tutorialPage;
       if (tutorialPage >= TUTORIAL_PAGES.length)
@@ -10782,7 +11480,11 @@
         }
       }
 
-      // Surface view: meteor ore, the quick upgrade panel, then fire the weapon
+      // Surface view: relocate button, meteor ore, the quick upgrade panel, then fire the weapon
+      if (hitRelocateButton(mx, my)) {
+        requestRelocation();
+        return;
+      }
       const ore = hitMeteorOre(mx, my);
       if (ore) {
         collectMeteorOre(ore);
@@ -10856,6 +11558,18 @@
     mouseAimX = (e.clientX - rect.left) * scaleX;
     mouseAimY = (e.clientY - rect.top) * scaleY;
     quickPanelHover = null;
+    relocateHover = null;
+    if (state === STATE_CONFIRM) {
+      for (const b of confirmButtons())
+        if (mouseAimX >= b.x && mouseAimX <= b.x + b.w && mouseAimY >= b.y && mouseAimY <= b.y + b.h)
+          relocateHover = b.id;
+      return;
+    }
+    if (hitRelocateButton(mouseAimX, mouseAimY)) {
+      relocateHover = 'button';
+      setTooltip(mouseAimX, mouseAimY, ['[[flight]] Relocate', 'Pack up the dome and fly to a new site', relocateBlocker() ? '\u26A0 ' + relocateBlocker() : '\u2714 Click or press L'], 'relocate');
+      return;
+    }
 
     // Right-click drag panning in upgrade dialog
     if (upgradePanning && state === STATE_UPGRADE_DIALOG) {
