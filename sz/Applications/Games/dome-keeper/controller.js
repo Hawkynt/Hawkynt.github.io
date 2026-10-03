@@ -1273,7 +1273,7 @@
       upgradeKey: 'lastStand', type: 'gadget' },
 
     // =============================================================
-    // === Mining Branch (39 nodes) ===
+    // === Mining Branch (29 nodes) ===
     // =============================================================
     // -- Mining Tools chain (7 levels) --
     { id: 'mining1', name: 'Mining Tools L1', icon: 'pickaxe', branch: 'mining',
@@ -1314,9 +1314,6 @@
       costs: [{ titanium: 8, gold: 25, lead: 20 }], maxLevel: 1, prereqs: ['carry4'],
       upgradeKey: 'carryCapacity', type: 'stat' },
     // -- Gadgets --
-    { id: 'drill', name: 'Drill Gadget', icon: 'drill', branch: 'mining',
-      costs: [{ iron: 25 }], maxLevel: 1, prereqs: ['mining1'],
-      upgradeKey: 'drill', type: 'gadget' },
     { id: 'magnet', name: 'Magnet', icon: 'magnet', branch: 'mining',
       costs: [{ iron: 40, copper: 25, lead: 15 }], maxLevel: 1, prereqs: ['carry2'],
       upgradeKey: 'magnet', type: 'gadget' },
@@ -1327,12 +1324,6 @@
       costs: [{ diamond: 8, emerald: 10, ruby: 5, gold: 15 }], maxLevel: 1, prereqs: ['fortune', 'mining4'],
       upgradeKey: 'silkTouch', type: 'gadget' },
     // -- New mining abilities --
-    { id: 'oreDetector', name: 'Ore Detector', icon: 'radar', branch: 'mining',
-      costs: [{ iron: 30, copper: 15, cobalt: 10 }], maxLevel: 1, prereqs: ['mining2'],
-      upgradeKey: 'oreDetector', type: 'gadget' },
-    { id: 'oreDetector2', name: 'Ore Detect L2', icon: 'radar', branch: 'mining',
-      costs: [{ silver: 15, quartz: 12, cobalt: 20 }], maxLevel: 1, prereqs: ['oreDetector'],
-      upgradeKey: 'oreDetector', type: 'stat' },
     { id: 'speedMining1', name: 'Speed Mining L1', icon: 'speed', branch: 'mining',
       costs: [{ iron: 35, coal: 20 }], maxLevel: 1, prereqs: ['mining2'],
       upgradeKey: 'speedMining', type: 'stat' },
@@ -1346,7 +1337,7 @@
       costs: [{ gold: 20, cobalt: 25, copper: 30 }], maxLevel: 1, prereqs: ['mining4', 'speedMining2'],
       upgradeKey: 'autoMine', type: 'gadget' },
     { id: 'tunnelBore', name: 'Tunnel Bore', icon: 'drill', branch: 'mining',
-      costs: [{ gold: 25, redstone: 15, diamond: 5, cobalt: 30 }], maxLevel: 1, prereqs: ['mining5', 'drill'],
+      costs: [{ gold: 25, redstone: 15, diamond: 5, cobalt: 30 }], maxLevel: 1, prereqs: ['mining5', 'drillSpeed3'],
       upgradeKey: 'tunnelBore', type: 'gadget' },
     { id: 'magnetRange1', name: 'Magnet Range L1', icon: 'magnet', branch: 'mining',
       costs: [{ silver: 15, copper: 20, lead: 10 }], maxLevel: 1, prereqs: ['magnet'],
@@ -1376,31 +1367,9 @@
     { id: 'drillSpeed5', name: 'Drill Speed L5', icon: 'drill', branch: 'mining',
       costs: [{ titanium: 6, gold: 20, redstone: 15 }], maxLevel: 1, prereqs: ['drillSpeed4'],
       upgradeKey: 'drillSpeed', type: 'stat' },
-    // -- Prospecting and excavation tools --
-    { id: 'blastTool', name: 'Blast Mining', icon: 'explosion', branch: 'mining',
-      costs: [{ iron: 30, coal: 10 }], maxLevel: 1, prereqs: ['drillSpeed1'],
-      upgradeKey: 'blastTool', type: 'gadget' },
-    { id: 'scanner', name: 'Scanner', icon: 'magnifier', branch: 'mining',
-      costs: [{ iron: 35, cobalt: 10 }], maxLevel: 1, prereqs: ['drillSpeed1'],
-      upgradeKey: 'scanner', type: 'gadget' },
-    { id: 'echoLocation', name: 'Echo Location', icon: 'radar', branch: 'mining',
-      costs: [{ copper: 15, tin: 20, cobalt: 15 }], maxLevel: 1, prereqs: ['scanner'],
-      upgradeKey: 'echoLocation', type: 'gadget' },
-    { id: 'echoLocation2', name: 'Echo Loc. L2', icon: 'radar', branch: 'mining',
-      costs: [{ silver: 15, gold: 10, redstone: 8 }], maxLevel: 1, prereqs: ['echoLocation'],
-      upgradeKey: 'echoLocation', type: 'stat' },
-    { id: 'echoLocation3', name: 'Echo Loc. L3', icon: 'radar', branch: 'mining',
-      costs: [{ gold: 20, quartz: 15, redstone: 12 }], maxLevel: 1, prereqs: ['echoLocation2'],
-      upgradeKey: 'echoLocation', type: 'stat' },
-    { id: 'undergroundRadar', name: 'Ground Radar', icon: 'radar', branch: 'mining',
-      costs: [{ silver: 20, copper: 25, quartz: 10 }], maxLevel: 1, prereqs: ['echoLocation'],
-      upgradeKey: 'undergroundRadar', type: 'gadget' },
-    { id: 'undergroundRadar2', name: 'Radar L2', icon: 'radar', branch: 'mining',
-      costs: [{ gold: 18, quartz: 15, redstone: 10 }], maxLevel: 1, prereqs: ['undergroundRadar'],
-      upgradeKey: 'undergroundRadar', type: 'stat' },
 
     // =============================================================
-    // === Movement Branch (19 nodes) ===
+    // === Movement Branch (16 nodes) ===
     // =============================================================
     // -- Move Speed chain (7 levels) --
     { id: 'speed1', name: 'Move Speed L1', icon: 'boot', branch: 'movement',
@@ -1425,9 +1394,6 @@
       costs: [{ titanium: 10, sapphire: 6, emerald: 8 }], maxLevel: 1, prereqs: ['speed6'],
       upgradeKey: 'moveSpeed', type: 'stat' },
     // -- Gadgets --
-    { id: 'teleporter', name: 'Teleporter', icon: 'portal', branch: 'movement',
-      costs: [{ iron: 30, cobalt: 15 }], maxLevel: 1, prereqs: ['speed1'],
-      upgradeKey: 'teleporter', type: 'gadget' },
     { id: 'jetpack', name: 'Jetpack', icon: 'rocket', branch: 'movement',
       costs: [{ iron: 45, copper: 20, coal: 25 }], maxLevel: 1, prereqs: ['speed3'],
       upgradeKey: 'jetpack', type: 'gadget' },
@@ -1447,12 +1413,6 @@
     { id: 'dash2', name: 'Dash L2', icon: 'speed', branch: 'movement',
       costs: [{ gold: 12, redstone: 10, cobalt: 18 }], maxLevel: 1, prereqs: ['dash'],
       upgradeKey: 'dash', type: 'stat' },
-    { id: 'teleportCooldown1', name: 'Teleport CDR L1', icon: 'portal', branch: 'movement',
-      costs: [{ silver: 12, cobalt: 15, copper: 10 }], maxLevel: 1, prereqs: ['teleporter'],
-      upgradeKey: 'teleportCooldown', type: 'stat' },
-    { id: 'teleportCooldown2', name: 'Teleport CDR L2', icon: 'portal', branch: 'movement',
-      costs: [{ gold: 15, quartz: 12, redstone: 8 }], maxLevel: 1, prereqs: ['teleportCooldown1'],
-      upgradeKey: 'teleportCooldown', type: 'stat' },
     { id: 'jetpackFuel1', name: 'Jetpack Fuel L1', icon: 'rocket', branch: 'movement',
       costs: [{ copper: 25, coal: 30, cobalt: 15 }], maxLevel: 1, prereqs: ['jetpack'],
       upgradeKey: 'jetpackFuel', type: 'stat' },
@@ -1614,7 +1574,132 @@
       upgradeKey: 'droneCount', type: 'stat' },
     { id: 'droneSwarm2', name: 'Drone Swarm L2', icon: 'drone', branch: 'drone',
       costs: [{ amethyst: 6, opal: 4, voidstone: 2 }], maxLevel: 1, prereqs: ['droneSwarm1'],
-      upgradeKey: 'droneCount', type: 'stat' }
+      upgradeKey: 'droneCount', type: 'stat' },
+
+    // =============================================================
+    // === Tools Branch: mining tools, prospecting and bombs ===
+    // =============================================================
+    // -- Drill, blast tool and teleporter --
+    { id: 'drill', name: 'Drill Gadget', icon: 'drill', branch: 'tools',
+      costs: [{ iron: 25 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'drill', type: 'gadget' },
+    { id: 'drill2', name: 'Drill Gadget L2', icon: 'drill', branch: 'tools',
+      costs: [{ iron: 40, copper: 15, tin: 10 }], maxLevel: 1, prereqs: ['drill'],
+      upgradeKey: 'drillCombo', type: 'stat' },
+    { id: 'blastTool', name: 'Blast Mining', icon: 'explosion', branch: 'tools',
+      costs: [{ iron: 30, coal: 10 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'blastTool', type: 'gadget' },
+    { id: 'blastTool2', name: 'Blast Mining L2', icon: 'explosion', branch: 'tools',
+      costs: [{ iron: 45, coal: 20, copper: 10 }], maxLevel: 1, prereqs: ['blastTool'],
+      upgradeKey: 'blastToolLevel', type: 'stat' },
+    { id: 'teleporter', name: 'Teleporter', icon: 'portal', branch: 'tools',
+      costs: [{ iron: 30, cobalt: 15 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'teleporter', type: 'gadget' },
+    { id: 'teleportCooldown1', name: 'Teleport CDR L1', icon: 'portal', branch: 'tools',
+      costs: [{ silver: 12, cobalt: 15, copper: 10 }], maxLevel: 1, prereqs: ['teleporter'],
+      upgradeKey: 'teleportCooldown', type: 'stat' },
+    { id: 'teleportCooldown2', name: 'Teleport CDR L2', icon: 'portal', branch: 'tools',
+      costs: [{ gold: 15, quartz: 12, redstone: 8 }], maxLevel: 1, prereqs: ['teleportCooldown1'],
+      upgradeKey: 'teleportCooldown', type: 'stat' },
+    // -- Prospecting --
+    { id: 'scanner', name: 'Scanner', icon: 'magnifier', branch: 'tools',
+      costs: [{ iron: 35, cobalt: 10 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'scanner', type: 'gadget' },
+    { id: 'echoLocation', name: 'Echo Location', icon: 'radar', branch: 'tools',
+      costs: [{ copper: 15, tin: 20, cobalt: 15 }], maxLevel: 1, prereqs: ['scanner'],
+      upgradeKey: 'echoLocation', type: 'gadget' },
+    { id: 'echoLocation2', name: 'Echo Loc. L2', icon: 'radar', branch: 'tools',
+      costs: [{ silver: 15, gold: 10, redstone: 8 }], maxLevel: 1, prereqs: ['echoLocation'],
+      upgradeKey: 'echoLocation', type: 'stat' },
+    { id: 'echoLocation3', name: 'Echo Loc. L3', icon: 'radar', branch: 'tools',
+      costs: [{ gold: 20, quartz: 15, redstone: 12 }], maxLevel: 1, prereqs: ['echoLocation2'],
+      upgradeKey: 'echoLocation', type: 'stat' },
+    { id: 'undergroundRadar', name: 'Ground Radar', icon: 'radar', branch: 'tools',
+      costs: [{ silver: 20, copper: 25, quartz: 10 }], maxLevel: 1, prereqs: ['echoLocation'],
+      upgradeKey: 'undergroundRadar', type: 'gadget' },
+    { id: 'undergroundRadar2', name: 'Radar L2', icon: 'radar', branch: 'tools',
+      costs: [{ gold: 18, quartz: 15, redstone: 10 }], maxLevel: 1, prereqs: ['undergroundRadar'],
+      upgradeKey: 'undergroundRadar', type: 'stat' },
+    { id: 'oreDetector', name: 'Ore Detector', icon: 'radar', branch: 'tools',
+      costs: [{ iron: 30, copper: 15, cobalt: 10 }], maxLevel: 1, prereqs: ['scanner'],
+      upgradeKey: 'oreDetector', type: 'gadget' },
+    { id: 'oreDetector2', name: 'Ore Detect L2', icon: 'radar', branch: 'tools',
+      costs: [{ silver: 15, quartz: 12, cobalt: 20 }], maxLevel: 1, prereqs: ['oreDetector'],
+      upgradeKey: 'oreDetector', type: 'stat' },
+    // -- Bomb recipes (Charges are always known) --
+    { id: 'recipeBomb', group: 'bombs', name: 'Bomb Recipe', icon: 'bomb', branch: 'tools',
+      costs: [{ iron: 20, coal: 10 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'recipeBomb', type: 'gadget' },
+    { id: 'recipeBig', group: 'bombs', name: 'Big Bomb Recipe', icon: 'bombBig', branch: 'tools',
+      costs: [{ cobalt: 15, redstone: 8, coal: 20 }], maxLevel: 1, prereqs: ['recipeBomb'],
+      upgradeKey: 'recipeBig', type: 'gadget' },
+    { id: 'recipeMega', group: 'bombs', name: 'Mega Bomb Recipe', icon: 'bombMega', branch: 'tools',
+      costs: [{ titanium: 6, redstone: 12, gold: 10 }], maxLevel: 1, prereqs: ['recipeBig'],
+      upgradeKey: 'recipeMega', type: 'gadget' },
+    { id: 'recipeVoid', group: 'bombs', name: 'Void Bomb Recipe', icon: 'bombVoid', branch: 'tools',
+      costs: [{ uranium: 6, amethyst: 5, voidstone: 2 }], maxLevel: 1, prereqs: ['recipeMega'],
+      upgradeKey: 'recipeVoid', type: 'gadget' },
+    // -- Bomb upgrades --
+    { id: 'blastRadius1', group: 'bombs', name: 'Blast Radius L1', icon: 'explosion', branch: 'tools',
+      costs: [{ iron: 30, coal: 20 }], maxLevel: 1, prereqs: ['recipeBomb'],
+      upgradeKey: 'blastRadius', type: 'stat' },
+    { id: 'blastRadius2', group: 'bombs', name: 'Blast Radius L2', icon: 'explosion', branch: 'tools',
+      costs: [{ cobalt: 15, coal: 25, silver: 8 }], maxLevel: 1, prereqs: ['blastRadius1'],
+      upgradeKey: 'blastRadius', type: 'stat' },
+    { id: 'blastRadius3', group: 'bombs', name: 'Blast Radius L3', icon: 'explosion', branch: 'tools',
+      costs: [{ titanium: 6, redstone: 12, gold: 12 }], maxLevel: 1, prereqs: ['blastRadius2'],
+      upgradeKey: 'blastRadius', type: 'stat' },
+    { id: 'bombPower1', group: 'bombs', name: 'Shaped Charges L1', icon: 'bolt', branch: 'tools',
+      costs: [{ iron: 25, copper: 15, coal: 10 }], maxLevel: 1, prereqs: ['recipeBig'],
+      upgradeKey: 'bombPower', type: 'stat' },
+    { id: 'bombPower2', group: 'bombs', name: 'Shaped Charges L2', icon: 'bolt', branch: 'tools',
+      costs: [{ silver: 12, cobalt: 15, quartz: 8 }], maxLevel: 1, prereqs: ['bombPower1'],
+      upgradeKey: 'bombPower', type: 'stat' },
+    { id: 'bombPower3', group: 'bombs', name: 'Shaped Charges L3', icon: 'bolt', branch: 'tools',
+      costs: [{ sapphire: 5, diamond: 6, redstone: 12 }], maxLevel: 1, prereqs: ['bombPower2'],
+      upgradeKey: 'bombPower', type: 'stat' },
+    { id: 'chainReaction', group: 'bombs', name: 'Chain Reaction', icon: 'fire', branch: 'tools',
+      costs: [{ redstone: 12, coal: 30, uranium: 3 }], maxLevel: 1, prereqs: ['bombPower3'],
+      upgradeKey: 'chainReaction', type: 'gadget' },
+    { id: 'bombYield1', group: 'bombs', name: 'Careful Blasting L1', icon: 'sparkle', branch: 'tools',
+      costs: [{ copper: 20, tin: 15 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'bombYield', type: 'stat' },
+    { id: 'bombYield2', group: 'bombs', name: 'Careful Blasting L2', icon: 'sparkle', branch: 'tools',
+      costs: [{ silver: 15, gold: 8, lead: 12 }], maxLevel: 1, prereqs: ['bombYield1'],
+      upgradeKey: 'bombYield', type: 'stat' },
+    { id: 'bombYield3', group: 'bombs', name: 'Careful Blasting L3', icon: 'sparkle', branch: 'tools',
+      costs: [{ emerald: 6, ruby: 5, gold: 15 }], maxLevel: 1, prereqs: ['bombYield2'],
+      upgradeKey: 'bombYield', type: 'stat' },
+    { id: 'bombFuse1', group: 'bombs', name: 'Quick Fuse L1', icon: 'fire', branch: 'tools',
+      costs: [{ coal: 20, copper: 10 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'bombFuse', type: 'stat' },
+    { id: 'bombFuse2', group: 'bombs', name: 'Quick Fuse L2', icon: 'fire', branch: 'tools',
+      costs: [{ redstone: 10, coal: 30 }], maxLevel: 1, prereqs: ['bombFuse1'],
+      upgradeKey: 'bombFuse', type: 'stat' },
+    { id: 'remoteDetonator', group: 'bombs', name: 'Remote Detonator', icon: 'radar', branch: 'tools',
+      costs: [{ copper: 25, silver: 12, redstone: 8 }], maxLevel: 1, prereqs: ['bombFuse2'],
+      upgradeKey: 'remoteDetonator', type: 'gadget' },
+    { id: 'stickyBombs', group: 'bombs', name: 'Sticky Bombs', icon: 'target', branch: 'tools',
+      costs: [{ lead: 20, quartz: 10, coal: 15 }], maxLevel: 1, prereqs: ['remoteDetonator'],
+      upgradeKey: 'stickyBombs', type: 'gadget' },
+    { id: 'bombSatchel1', group: 'bombs', name: 'Bomb Satchel L1', icon: 'bag', branch: 'tools',
+      costs: [{ iron: 25, lead: 10 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'bombSatchel', type: 'stat' },
+    { id: 'bombSatchel2', group: 'bombs', name: 'Bomb Satchel L2', icon: 'bag', branch: 'tools',
+      costs: [{ lead: 20, cobalt: 12, tin: 15 }], maxLevel: 1, prereqs: ['bombSatchel1'],
+      upgradeKey: 'bombSatchel', type: 'stat' },
+    { id: 'bombSatchel3', group: 'bombs', name: 'Bomb Satchel L3', icon: 'bag', branch: 'tools',
+      costs: [{ titanium: 6, lead: 25, gold: 10 }], maxLevel: 1, prereqs: ['bombSatchel2'],
+      upgradeKey: 'bombSatchel', type: 'stat' },
+    { id: 'bombsmith1', group: 'bombs', name: 'Bomb Forge L1', icon: 'wrench', branch: 'tools',
+      costs: [{ iron: 40, copper: 20, coal: 20 }], maxLevel: 1, prereqs: ['bombSatchel1'],
+      upgradeKey: 'bombsmith', type: 'stat' },
+    { id: 'bombsmith2', group: 'bombs', name: 'Bomb Forge L2', icon: 'wrench', branch: 'tools',
+      costs: [{ gold: 15, silver: 15, redstone: 10 }], maxLevel: 1, prereqs: ['bombsmith1'],
+      upgradeKey: 'bombsmith', type: 'stat' },
+    { id: 'blastSuit', group: 'bombs', name: 'Blast Suit', icon: 'shield', branch: 'tools',
+      costs: [{ iron: 40, lead: 20, tin: 15 }], maxLevel: 1, prereqs: ['bombSatchel1'],
+      upgradeKey: 'blastSuit', type: 'gadget' }
   ];
 
   // Upgrade effect descriptions (keyed by upgradeKey)
@@ -1676,7 +1761,23 @@
     combatDroneLevel: 'Level 2: harder, faster shots. Level 3: a second gun drone',
     repairDrone: 'A repair drone welds the dome back together',
     repairDroneLevel: 'Repairs faster per level',
-    droneCount: '+1 courier drone per level'
+    droneCount: '+1 courier drone per level',
+    drillCombo: 'Drill Gadget digs a column 50% faster instead of 30%',
+    blastToolLevel: 'Blast Mining recharges in 2.5 s and costs only 5 iron',
+    recipeBomb: 'Craft Bombs (radius 2) in the workshop',
+    recipeBig: 'Craft Big Bombs (radius 3) in the workshop',
+    recipeMega: 'Craft Mega Bombs (radius 4) in the workshop',
+    recipeVoid: 'Craft Void Bombs (radius 6) that crack even the Abyssal Core',
+    blastRadius: '+0.5 tiles blast radius for every bomb per level',
+    bombPower: '+30% bomb damage to rock and monsters per level',
+    bombYield: 'Blasted ore kept: 80% / 100% / 125% (from 50%)',
+    bombFuse: 'Bomb fuses burn 0.6 s shorter per level',
+    bombSatchel: '+4 bomb storage per level',
+    bombsmith: 'Bombs cost 15% less to craft per level',
+    chainReaction: 'Coal and uranium caught in a blast explode as well',
+    remoteDetonator: 'Press X to set off every bomb in the mine at once',
+    stickyBombs: 'Thrown bombs stick to rock faces; throw range +2 tiles',
+    blastSuit: 'Your own bombs no longer knock the keeper out'
   };
 
   // Mining difficulty label from depth multiplier
@@ -1691,11 +1792,13 @@
 
   // Precompute node positions for the tree layout
   // Layout: root at top center, 4 branches below
-  const TREE_BRANCH_ORDER = ['dome', 'mining', 'movement', 'weapon', 'drone'];
-  const TREE_BRANCH_LABELS = { dome: 'DOME', mining: 'MINING', movement: 'MOVEMENT', weapon: 'WEAPON', drone: 'DRONES' };
-  const TREE_BRANCH_COLORS = { dome: '#4cb4ff', mining: '#ffae3a', movement: '#5ee07a', weapon: '#ff5e5e', drone: '#c890ff' };
+  const TREE_BRANCH_ORDER = ['dome', 'mining', 'movement', 'weapon', 'drone', 'tools'];
+  const TREE_BRANCH_LABELS = { dome: 'DOME', mining: 'MINING', movement: 'MOVEMENT', weapon: 'WEAPON', drone: 'DRONES', tools: 'TOOLS' };
+  const TREE_BRANCH_COLORS = { dome: '#4cb4ff', mining: '#ffae3a', movement: '#5ee07a', weapon: '#ff5e5e', drone: '#c890ff', tools: '#3ad8c0' };
+  // Captions of the node groups inside a branch region
+  const TREE_GROUP_LABELS = { bombs: '[[bomb]] BOMBS' };
   // Branch regions, row by row
-  const TREE_REGION_ROWS = [['dome', 'mining'], ['movement', 'weapon', 'drone']];
+  const TREE_REGION_ROWS = [['dome', 'mining'], ['movement', 'weapon', 'drone'], ['tools']];
   const TREE_CARD_W = 200;
   const TREE_CARD_H = 88;
   const TREE_GAP_X = 40;       // vertical channel between depth columns (connectors run here)
@@ -5065,7 +5168,7 @@
 
     // Drill Gadget: 30% faster when mining consecutive tiles in the same column
     if (unlockedTools.drill && activeToolKey === 'drill' && toolState.drillConsecutive > 0)
-      time *= 0.7;
+      time *= getEffectiveLevel('drillCombo') > 0 ? 0.5 : 0.7;
 
     return time;
   }
@@ -5443,24 +5546,26 @@
     if (!unlockedTools.blastTool) return;
     if (toolState.blastToolCooldown > 0) return;
     if (state !== STATE_PLAYING || currentView !== VIEW_UNDERGROUND) return;
-    if (resources.iron < 10) {
+    const upgraded = getEffectiveLevel('blastToolLevel') > 0;
+    const ironCost = upgraded ? 5 : 10;
+    if (resources.iron < ironCost) {
       SZ.GameAudio.play('error');
       floatingText.add(
         drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX,
         drillY * TILE_SIZE - 10 - cameraY,
-        'Need 10 iron!', { color: '#f44', font: 'bold 24px sans-serif' }
+        `Need ${ironCost} iron!`, { color: '#f44', font: 'bold 24px sans-serif' }
       );
       return;
     }
 
-    resources.iron -= 10;
-    toolState.blastToolCooldown = GADGET_TOOL_COOLDOWNS.blastTool;
+    resources.iron -= ironCost;
+    toolState.blastToolCooldown = upgraded ? GADGET_TOOL_COOLDOWNS.blastTool / 2 : GADGET_TOOL_COOLDOWNS.blastTool;
     SZ.GameAudio.play('explode');
 
     floatingText.add(
       drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX,
       drillY * TILE_SIZE - 10 - cameraY,
-      'BLAST! (-10 iron)', { color: '#f80', font: 'bold 28px sans-serif' }
+      `BLAST! (-${ironCost} iron)`, { color: '#f80', font: 'bold 28px sans-serif' }
     );
 
     // Clear 3x3 area around player
@@ -5566,13 +5671,13 @@
     { key: 'charge', name: 'Charge', icon: 'bombCharge', radius: 1.3, power: 2.2, monster: 45, color: '#ff8a50',
       recipe: { iron: 6, coal: 4 } },
     { key: 'bomb', name: 'Bomb', icon: 'bomb', radius: 2.1, power: 4, monster: 90, color: '#ffb040',
-      recipe: { iron: 12, coal: 8, tin: 4 } },
+      recipe: { iron: 12, coal: 8, tin: 4 }, recipeNode: 'recipeBomb' },
     { key: 'big', name: 'Big Bomb', icon: 'bombBig', radius: 3.1, power: 7, monster: 160, color: '#ffd060',
-      recipe: { cobalt: 8, coal: 14, redstone: 6 } },
+      recipe: { cobalt: 8, coal: 14, redstone: 6 }, recipeNode: 'recipeBig' },
     { key: 'mega', name: 'Mega Bomb', icon: 'bombMega', radius: 4.3, power: 11, monster: 260, color: '#ffe680',
-      recipe: { titanium: 5, redstone: 10, uranium: 2 } },
+      recipe: { titanium: 5, redstone: 10, uranium: 2 }, recipeNode: 'recipeMega' },
     { key: 'void', name: 'Void Bomb', icon: 'bombVoid', radius: 6.2, power: 18, monster: 450, color: '#c08aff',
-      recipe: { uranium: 6, amethyst: 4, voidstone: 2 } }
+      recipe: { uranium: 6, amethyst: 4, voidstone: 2 }, recipeNode: 'recipeVoid' }
   ];
   const BOMB_COMBINE = 3;            // bombs of one size that merge into one of the next
   const BOMB_BASE_FUSE = 2.5;        // seconds
@@ -6089,7 +6194,7 @@
   }
 
   // Passive gadgets that don't need selection
-  const PASSIVE_GADGETS = ['scanner', 'reinforcedDome', 'autoRepair', 'domeExpansion', 'energyShield', 'magnet', 'fortune', 'silkTouch', 'echoLocation', 'chainLightning', 'freezeRay', 'plasmaCannon', 'damageReflect', 'emergencyShield', 'fortifiedBase', 'lastStand', 'oreDetector', 'autoMine', 'tunnelBore', 'veinMiner', 'doubleJump', 'wallClimb', 'dash', 'undergroundRadar', 'multiShot', 'homingShots', 'criticalHit', 'explosiveRounds', 'droneBay', 'droneMiner', 'combatDrone', 'repairDrone'];
+  const PASSIVE_GADGETS = ['scanner', 'reinforcedDome', 'autoRepair', 'domeExpansion', 'energyShield', 'magnet', 'fortune', 'silkTouch', 'echoLocation', 'chainLightning', 'freezeRay', 'plasmaCannon', 'damageReflect', 'emergencyShield', 'fortifiedBase', 'lastStand', 'oreDetector', 'autoMine', 'tunnelBore', 'veinMiner', 'doubleJump', 'wallClimb', 'dash', 'undergroundRadar', 'multiShot', 'homingShots', 'criticalHit', 'explosiveRounds', 'droneBay', 'droneMiner', 'combatDrone', 'repairDrone', 'recipeBomb', 'recipeBig', 'recipeMega', 'recipeVoid', 'chainReaction', 'remoteDetonator', 'stickyBombs', 'blastSuit'];
 
   function applyGadgetUnlock(key) {
     unlockedTools[key] = true;
@@ -6191,66 +6296,79 @@
     // lanes = chains of nodes continuing a parent, packed into rows.
     const branchGrids = [];
     for (const branch of TREE_BRANCH_ORDER) {
-      const branchNodes = UPGRADE_TREE.filter(n => n.branch === branch);
-      const nodeMap = {};
-      branchNodes.forEach((n, i) => { nodeMap[n.id] = { n, i }; });
-      const depthOf = {};
-      const assignDepth = (n) => {
-        if (depthOf[n.id] !== undefined) return depthOf[n.id];
-        let maxParent = -1;
-        for (const pid of n.prereqs)
-          if (nodeMap[pid])
-            maxParent = Math.max(maxParent, assignDepth(nodeMap[pid].n));
-        depthOf[n.id] = maxParent + 1;
-        return depthOf[n.id];
-      };
-      branchNodes.forEach(assignDepth);
+      // Groups of a branch (the Tools branch has tools and bombs) sit side by side
+      const groupNames = [];
+      for (const n of UPGRADE_TREE)
+        if (n.branch === branch && groupNames.indexOf(n.group || '') < 0)
+          groupNames.push(n.group || '');
+      let colOffset = 0, rows = 0;
+      const depthOf = {}, laneOf = {}, groupX = [];
+      for (const group of groupNames) {
+        const branchNodes = UPGRADE_TREE.filter(n => n.branch === branch && (n.group || '') === group);
+        const nodeMap = {};
+        branchNodes.forEach((n, i) => { nodeMap[n.id] = { n, i }; });
+        const gDepth = {};
+        const assignDepth = (n) => {
+          if (gDepth[n.id] !== undefined) return gDepth[n.id];
+          let maxParent = -1;
+          for (const pid of n.prereqs)
+            if (nodeMap[pid])
+              maxParent = Math.max(maxParent, assignDepth(nodeMap[pid].n));
+          gDepth[n.id] = maxParent + 1;
+          return gDepth[n.id];
+        };
+        branchNodes.forEach(assignDepth);
 
-      const order = branchNodes.slice().sort((a, b) => depthOf[a.id] - depthOf[b.id] || nodeMap[a.id].i - nodeMap[b.id].i);
-      const lanes = [];
-      const laneOf = {};
-      const continued = {};
-      for (const n of order) {
-        const parents = n.prereqs.filter(p => nodeMap[p]).sort((a, b) => depthOf[b] - depthOf[a]);
-        const cont = parents.find(p => !continued[p]);
-        let lane;
-        if (cont) {
-          lane = laneOf[cont];
-          continued[cont] = true;
-          lane.ids.push(n.id);
-        } else {
-          lane = { ids: [n.id], parent: parents.length ? laneOf[parents[0]] : null, kids: [] };
-          lanes.push(lane);
-          if (lane.parent)
-            lane.parent.kids.push(lane);
+        const order = branchNodes.slice().sort((a, b) => gDepth[a.id] - gDepth[b.id] || nodeMap[a.id].i - nodeMap[b.id].i);
+        const lanes = [];
+        const continued = {};
+        for (const n of order) {
+          const parents = n.prereqs.filter(p => nodeMap[p]).sort((a, b) => gDepth[b] - gDepth[a]);
+          const cont = parents.find(p => !continued[p]);
+          let lane;
+          if (cont) {
+            lane = laneOf[cont];
+            continued[cont] = true;
+            lane.ids.push(n.id);
+          } else {
+            lane = { ids: [n.id], parent: parents.length ? laneOf[parents[0]] : null, kids: [] };
+            lanes.push(lane);
+            if (lane.parent)
+              lane.parent.kids.push(lane);
+          }
+          laneOf[n.id] = lane;
         }
-        laneOf[n.id] = lane;
-      }
-      // Depth-first lane order keeps every sub-chain right below its parent;
-      // lanes share a row when their depth ranges leave a free cell between them
-      const ordered = [];
-      const visit = (l) => {
-        ordered.push(l);
-        l.kids.forEach(visit);
-      };
-      lanes.filter(l => !l.parent).forEach(visit);
-      const rowSpans = [];
-      for (const l of ordered) {
-        const ds = l.ids.map(id => depthOf[id]);
-        const lo = Math.min(...ds), hi = Math.max(...ds);
-        let r = l.parent ? l.parent.row + 1 : rowSpans.length;
-        for (;; ++r) {
-          rowSpans[r] = rowSpans[r] || [];
-          if (rowSpans[r].every(([a, b]) => hi < a - 1 || lo > b + 1))
-            break;
+        // Depth-first lane order keeps every sub-chain right below its parent;
+        // lanes share a row when their depth ranges leave a free cell between them
+        const ordered = [];
+        const visit = (l) => {
+          ordered.push(l);
+          l.kids.forEach(visit);
+        };
+        lanes.filter(l => !l.parent).forEach(visit);
+        const rowSpans = [];
+        for (const l of ordered) {
+          const ds = l.ids.map(id => gDepth[id]);
+          const lo = Math.min(...ds), hi = Math.max(...ds);
+          let r = l.parent ? l.parent.row + 1 : rowSpans.length;
+          for (;; ++r) {
+            rowSpans[r] = rowSpans[r] || [];
+            if (rowSpans[r].every(([a, b]) => hi < a - 1 || lo > b + 1))
+              break;
+          }
+          rowSpans[r].push([lo, hi]);
+          l.row = r;
         }
-        rowSpans[r].push([lo, hi]);
-        l.row = r;
+        let maxDepth = 0;
+        for (const n of branchNodes)
+          maxDepth = Math.max(maxDepth, gDepth[n.id]);
+        groupX.push({ group, col: colOffset });
+        for (const n of branchNodes)
+          depthOf[n.id] = gDepth[n.id] + colOffset;
+        colOffset += maxDepth + 1 + 0.5;
+        rows = Math.max(rows, rowSpans.length);
       }
-      let maxDepth = 0;
-      for (const n of branchNodes)
-        maxDepth = Math.max(maxDepth, depthOf[n.id]);
-      branchGrids.push({ branch, branchNodes, depthOf, laneOf, rows: rowSpans.length, cols: maxDepth + 1 });
+      branchGrids.push({ branch, branchNodes: UPGRADE_TREE.filter(n => n.branch === branch), depthOf, laneOf, rows, cols: colOffset - 0.5, groupX });
     }
 
     // Regions row by row (TREE_REGION_ROWS), each row centred
@@ -6278,7 +6396,7 @@
       const g = branchGrids[i];
       const cx = placeOf[g.branch].x;
       const gy = placeOf[g.branch].y;
-      regions[g.branch] = { x: cx, y: gy, w: regionW(g), h: regionH(g), branch: g.branch };
+      regions[g.branch] = { x: cx, y: gy, w: regionW(g), h: regionH(g), branch: g.branch, groups: g.groupX.map(q => ({ group: q.group, x: cx + TREE_REGION_PAD + q.col * pitchX })) };
       for (const n of g.branchNodes)
         nodes.push({
           node: n,
@@ -6355,7 +6473,8 @@
   // Header tabs: all branches plus one per branch
   function getTreeTabs() {
     const ids = ['all'].concat(TREE_BRANCH_ORDER);
-    const tabW = 180, gap = 10;
+    const gap = 10;
+    const tabW = Math.min(180, Math.floor((CANVAS_W - 48 - (ids.length - 1) * gap) / ids.length));
     const x0 = CANVAS_W / 2 - (ids.length * tabW + (ids.length - 1) * gap) / 2;
     return ids.map((id, i) => ({ id, x: x0 + i * (tabW + gap), y: 66, w: tabW, h: 36 }));
   }
@@ -6653,7 +6772,7 @@
       setTreeTab(tabs[(i + (e.shiftKey ? tabs.length - 1 : 1)) % tabs.length]);
       return true;
     }
-    if (/^Digit[1-6]$/.test(e.code)) {
+    if (/^Digit[1-9]$/.test(e.code) && parseInt(e.code.slice(5), 10) <= tabs.length) {
       setTreeTab(tabs[parseInt(e.code.slice(5), 10) - 1]);
       return true;
     }
@@ -6807,6 +6926,9 @@
         drawMeter(mx, r.y + TREE_REGION_HEADER / 2 - 6, mw, 12, owned / total, color);
         fitText(`${owned} / ${total}`, mx + mw + 12, r.y + TREE_REGION_HEADER / 2, 80, compact ? headPx * 0.6 : 18, { weight: 'bold', color: UI.textDim });
       }
+      for (const g of r.groups || [])
+        if (g.group && TREE_GROUP_LABELS[g.group])
+          fitText(TREE_GROUP_LABELS[g.group], g.x, r.y + TREE_REGION_HEADER / 2, TREE_CARD_W * 2, headPx * 0.85, { weight: 'bold', color });
     }
 
     // Connectors: locked first, owned last so the brightest lines sit on top
@@ -6814,7 +6936,7 @@
     for (const ln of treeLayout.nodes)
       for (const pid of ln.node.prereqs) {
         const parent = treeLayout.byId[pid];
-        if (!parent) continue;
+        if (!parent || parent.branch !== ln.branch) continue;
         const minX = Math.min(parent.x, ln.x) - TREE_GAP_X, maxX = Math.max(parent.x + parent.w, ln.x + ln.w) + TREE_GAP_X;
         const minY = Math.min(parent.y, ln.y) - TREE_GAP_Y, maxY = Math.max(parent.y + parent.h, ln.y + ln.h) + TREE_GAP_Y;
         if (minX > viewR || maxX < viewL || minY > viewB || maxY < viewT) continue;
@@ -11230,7 +11352,9 @@
     const buttons = [
       { id: 'drop', label: 'Drop', key: 'B', x: x + 12, y: y + 98, w: bw, h: 24, enabled: under },
       { id: 'throw', label: 'Throw', key: under ? 'T' : 'T/B', x: x + 18 + bw, y: y + 98, w: bw, h: 24, enabled: true },
-      { id: 'next', label: 'Next', key: 'Q', x: x + 24 + bw * 2, y: y + 98, w: bw, h: 24, enabled: true }
+      unlockedTools.remoteDetonator && placedBombs.some(b => !b.fly)
+        ? { id: 'detonate', label: 'Detonate', key: 'X', x: x + 24 + bw * 2, y: y + 98, w: bw, h: 24, enabled: true }
+        : { id: 'next', label: 'Next', key: 'Q', x: x + 24 + bw * 2, y: y + 98, w: bw, h: 24, enabled: true }
     ];
     return { x, y, w, h, slots, buttons, craft: { x: x + w - 12 - 104, y: y + 9, w: 104, h: 24 } };
   }
@@ -11262,6 +11386,7 @@
       bombThrowMode = !bombThrowMode;
       SZ.GameAudio.play('select', { pitch: bombThrowMode ? 1.2 : 0.8 });
     } else if (hit.kind === 'next') cycleBomb(1);
+    else if (hit.kind === 'detonate') remoteDetonate();
   }
 
   // Small framed button used by the bomb bar and the workshop
@@ -11324,7 +11449,7 @@
     }
     for (const b of L.buttons) {
       const active = b.id === 'throw' && bombThrowMode;
-      drawSmallButton(b, `${active ? 'Aiming…' : b.label}  [${b.key}]`, b.enabled, hk === b.id || active, b.id === 'throw' ? '#ff7a50' : '#8aa8d8', 13);
+      drawSmallButton(b, `${active ? 'Aiming…' : b.label}  [${b.key}]`, b.enabled, hk === b.id || active, b.id === 'throw' || b.id === 'detonate' ? '#ff7a50' : '#8aa8d8', 13);
     }
   }
 
