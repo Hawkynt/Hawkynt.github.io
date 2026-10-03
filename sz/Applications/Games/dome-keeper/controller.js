@@ -3395,7 +3395,7 @@
   const SEASON_DAYS = 4;             // days per season, four seasons per year
   // dayFraction: share of daylight; count / hp / size / damage / speed scale the night's monsters
   const SEASONS = [
-    { key: 'spring', name: 'Spring', color: '#8affa0', dayFraction: 0.6, count: 1.45, hp: 0.7, size: 0.85, damage: 0.85, speed: 1,
+    { key: 'spring', name: 'Spring', color: '#8affa0', dayFraction: 0.6, count: 1.3, hp: 0.7, size: 0.85, damage: 0.85, speed: 1,
       desc: 'Blossoms lure more monsters - smaller and weaker ones', weather: { rain: 1.6, snow: 0.05, blizzard: 0, storm: 0.7, meteor: 1 } },
     { key: 'summer', name: 'Summer', color: '#ffd060', dayFraction: 0.7, count: 1, hp: 1, size: 1, damage: 1, speed: 1.15,
       desc: 'Long days - the heat makes monsters quicker', weather: { rain: 0.6, snow: 0, blizzard: 0, storm: 1.4, meteor: 1.3 } },
@@ -3485,7 +3485,7 @@
     if (visible.length && r < 0.65) {
       target = visible[Math.floor(Math.random() * visible.length)];
       x = target.x;
-    } else if (r < 0.73) {
+    } else if (r < 0.7) {
       x = DOME_X + (Math.random() - 0.5) * 60;
       domeHit = true;
     } else
@@ -3503,7 +3503,7 @@
         e.stunTimer = Math.max(e.stunTimer || 0, 0.6);
       }
     if (domeHit)
-      damageDome(4, x, y, 'Lightning hit the dome!');
+      damageDome(3, x, y, 'Lightning hit the dome!');
     if (currentView === VIEW_SURFACE) {
       particles.burst(x, y, 14, { color: '#fff6b0', speed: 3.5, life: 0.4 });
       screenShake.trigger(5, 200);
@@ -3513,7 +3513,10 @@
   }
 
   function spawnMeteor() {
-    const tx = 60 + Math.random() * (CANVAS_W - 120);
+    let tx = 60 + Math.random() * (CANVAS_W - 120);
+    // Most meteors heading for the dome miss it
+    if (Math.abs(tx - DOME_X) < DOME_RADIUS + 10 && Math.random() < 0.7)
+      tx += (tx < DOME_X ? -1 : 1) * (DOME_RADIUS + 40 + Math.random() * 120);
     const fromLeft = Math.random() < 0.5;
     meteors.push({ x: tx + (fromLeft ? -1 : 1) * (300 + Math.random() * 200), y: -40, tx, ty: DOME_Y + 6, t: 0, dur: 1.1 + Math.random() * 0.5, size: 6 + Math.random() * 6 });
   }
@@ -3524,7 +3527,7 @@
       if (!e.hidden && Math.hypot(e.x - m.tx, e.y - m.ty) < 95)
         applyDamageToEnemy(e, dmg);
     if (Math.abs(m.tx - DOME_X) < DOME_RADIUS + 10)
-      damageDome(6, m.tx, DOME_Y - DOME_RADIUS * 0.6, 'Meteor hit the dome!');
+      damageDome(4, m.tx, DOME_Y - DOME_RADIUS * 0.6, 'Meteor hit the dome!');
     else if (meteorOre.length < 14) {
       // A chunk of space rock with ore in it
       const pool = ['iron', 'iron', 'cobalt', 'copper', 'silver', 'gold', 'quartz', 'titanium', 'sapphire'];
@@ -4273,7 +4276,7 @@
   const ENEMY_TYPES = {
     walker:   { name: 'Walker', move: 'ground', hp: 1, speed: 1, damage: 1, size: [20, 28], cost: 1, level: 0, weight: 10, score: 1, attack: 1, color: '#e0403a',
       desc: 'Plods to the dome and bites it' },
-    swarmer:  { name: 'Swarmer', move: 'ground', hp: 0.3, speed: 1.9, damage: 0.45, size: [9, 12], cost: 0.35, level: 2, weight: 5, score: 0.4, attack: 0.7, group: [3, 6], color: '#c8d040',
+    swarmer:  { name: 'Swarmer', move: 'ground', hp: 0.3, speed: 1.9, damage: 0.4, size: [9, 12], cost: 0.6, level: 3, weight: 5, score: 0.5, attack: 0.9, group: [2, 5], color: '#c8d040',
       desc: 'Tiny and fast, always in packs' },
     flyer:    { name: 'Flyer', move: 'air', hp: 0.6, speed: 1.3, damage: 0.8, size: [14, 20], cost: 0.9, level: 3, weight: 6, score: 1, attack: 1, color: '#a050c8',
       desc: 'Flies straight at the dome' },
@@ -4405,7 +4408,8 @@
         key = budget >= 1 || !pool.includes('swarmer') ? 'walker' : 'swarmer';
       const T = ENEMY_TYPES[key];
       if (T.group) {
-        const n = Math.max(1, Math.min(T.group[0] + Math.floor(Math.random() * (T.group[1] - T.group[0] + 1)), Math.ceil(budget / T.cost)));
+        // Packs grow with the threat and never overspend the budget
+        const n = Math.max(1, Math.min(T.group[0] + Math.floor(Math.random() * (T.group[1] - T.group[0] + 1)), 2 + Math.floor(threat / 3), Math.ceil(budget / T.cost)));
         const lead = spawnEnemy(key, base);
         for (let i = 1; i < n; ++i)
           spawnEnemy(key, base, { x: lead.x + (lead.x < DOME_X ? -1 : 1) * i * 22, y: lead.y + (Math.random() - 0.5) * 16 });
