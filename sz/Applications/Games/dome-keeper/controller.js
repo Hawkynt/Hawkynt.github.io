@@ -6667,53 +6667,36 @@
     if (primaryGadget === 'orchard') {
       const treeX = DOME_X - 60;
       const treeY = DOME_Y - 16;
-      // Trunk
-      ctx.fillStyle = '#654';
-      ctx.fillRect(treeX - 4, treeY - 30, 8, 30);
-      // Canopy
-      ctx.fillStyle = '#2a6';
-      ctx.beginPath();
-      ctx.arc(treeX, treeY - 36, 16, 0, TWO_PI);
-      ctx.fill();
-      ctx.fillStyle = '#3a8';
-      ctx.beginPath();
-      ctx.arc(treeX - 6, treeY - 32, 10, 0, TWO_PI);
-      ctx.fill();
+      drawSprite('tree', treeX, treeY - 26, 52);
       // Fruit (glowing when ready)
       if (primaryGadgetState.fruitReady) {
-        ctx.save();
         const fruitGlow = Math.sin(animTime * 5) * 0.3 + 0.7;
-        ctx.shadowBlur = 8;
-        ctx.shadowColor = '#ff0';
+        drawGlow('#ffd040', treeX + 10, treeY - 30, 18, fruitGlow);
+        ctx.fillStyle = SPRITE_OUTLINE;
+        ctx.beginPath();
+        ctx.arc(treeX + 10, treeY - 30, 7, 0, TWO_PI);
+        ctx.fill();
         ctx.fillStyle = `rgba(255,200,50,${fruitGlow})`;
         ctx.beginPath();
-        ctx.arc(treeX + 10, treeY - 30, 6, 0, TWO_PI);
+        ctx.arc(treeX + 10, treeY - 30, 5.5, 0, TWO_PI);
         ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.restore();
       }
     }
 
-    // Droneyard: small diamond drone flying
+    // Droneyard: hovering drone
     if (primaryGadget === 'droneyard') {
       const dronePhase = primaryGadgetState.dronePhase || 0;
       const droneY = DOME_Y - 100 + Math.sin(dronePhase) * 40;
       const droneX = DOME_X + 70;
-      ctx.save();
-      ctx.translate(droneX, droneY);
-      ctx.rotate(Math.PI / 4);
-      ctx.fillStyle = '#8ac';
-      ctx.fillRect(-8, -8, 16, 16);
-      ctx.fillStyle = '#adf';
-      ctx.fillRect(-4, -4, 8, 8);
-      ctx.restore();
-      // Propeller lines
-      ctx.strokeStyle = 'rgba(150,200,255,0.4)';
+      drawGlow('#7ac8ff', droneX, droneY + 14, 18, 0.5);
+      drawSprite('robot', droneX, droneY, 30);
+      // Propeller blur
+      ctx.strokeStyle = 'rgba(190,225,255,0.55)';
       ctx.lineWidth = 2;
-      const propLen = 10 + Math.sin(animTime * 20) * 4;
+      const propLen = 12 + Math.sin(animTime * 20) * 5;
       ctx.beginPath();
-      ctx.moveTo(droneX - propLen, droneY - 4);
-      ctx.lineTo(droneX + propLen, droneY - 4);
+      ctx.moveTo(droneX - propLen, droneY - 17);
+      ctx.lineTo(droneX + propLen, droneY - 17);
       ctx.stroke();
     }
 
