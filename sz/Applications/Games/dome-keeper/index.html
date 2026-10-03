@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Dome Keeper — defend your dome from alien waves while mining resources underground in the SynthelicZ Desktop.">
+<meta name="description" content="Dome Keeper — mine by day, defend your dome from alien swarms at night, and relocate to new biomes in the SynthelicZ Desktop.">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Dome Keeper -- &raquo;SynthelicZ&laquo; Desktop">
-<meta property="og:description" content="Hybrid mine-and-defend game. Toggle between surface defense and underground mining, collect iron, water, and cobalt, upgrade weapons and dome.">
+<meta property="og:description" content="Hybrid mine-and-defend game. Mine 16 rock strata by day, defend the dome at night through seasons and storms, build drones and relocate to new biomes.">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/dome-keeper/index.html">
 <link rel="canonical" href="index.html">
 <script type="application/ld+json">
@@ -16,7 +16,7 @@
   "@type": "WebApplication",
   "name": "Dome Keeper",
   "url": "https://hawkynt.github.io/sz/Applications/dome-keeper/index.html",
-  "description": "Hybrid mine-and-defend game with split surface/underground views, resource mining, weapon upgrades, and wave-based dome defense.",
+  "description": "Hybrid mine-and-defend game with day and night, seasons, weather, biomes, drones, an upgrade tree and relocation between landing sites.",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -72,7 +72,7 @@
     <div class="dialog-body">
       <table class="high-scores-table">
         <thead>
-          <tr><th>#</th><th>Waves</th><th>Score</th></tr>
+          <tr><th>#</th><th>Waves</th><th>Sites</th><th>Score</th></tr>
         </thead>
         <tbody id="highScoresBody"></tbody>
       </table>
@@ -90,10 +90,15 @@
     <div class="dialog-title">Controls</div>
     <div class="dialog-body">
       <table class="controls-table">
-        <tr><td>Click/Tap</td><td>Fire weapon / Mine block</td></tr>
+        <tr><td>Click/Tap</td><td>Fire weapon / Mine block / collect meteor ore</td></tr>
         <tr><td>Arrow Keys / WASD</td><td>Move drill underground</td></tr>
         <tr><td>Space / Tab</td><td>Toggle surface / underground</td></tr>
-        <tr><td>U</td><td>Open upgrades</td></tr>
+        <tr><td>U</td><td>Open the upgrade tree</td></tr>
+        <tr><td>1 - 5</td><td>Use tools bought in the tree</td></tr>
+        <tr><td>R / B</td><td>Repellent Field / Blast Mining charges</td></tr>
+        <tr><td>L</td><td>Relocate (after finding the Relocation Core)</td></tr>
+        <tr><td>Shift + direction</td><td>Dash through tunnels (after buying Dash)</td></tr>
+        <tr><td>Click / Space / Esc</td><td>Skip the landing or flight</td></tr>
         <tr><td>F2</td><td>New game</td></tr>
         <tr><td>Escape</td><td>Pause / Resume</td></tr>
         <tr><td>H</td><td>How to Play</td></tr>
@@ -111,10 +116,10 @@
     <div class="dialog-title">About Dome Keeper</div>
     <div class="dialog-body">
       <strong>Dome Keeper</strong><br><br>
-      Hybrid mine-and-defend game. Protect your dome from alien waves on the surface while mining
-      iron, water, and cobalt underground. Upgrade your weapon, dome armor, drill speed, fire rate,
-      and carry capacity to survive increasingly difficult waves. Features laser glow effects,
-      mining debris particles, dome-hit screen shake, and smooth surface/underground transitions.<br><br>
+      Hybrid mine-and-defend game. Mine sixteen rock strata by day and defend your dome from
+      alien swarms at night, through moon phases, seasons and storms. Grow one upgrade tree with
+      Dome, Mining, Movement, Weapon and Drone branches, find each site's Relocation Core and fly
+      the dome to a new biome where the monsters are tougher.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
@@ -139,21 +144,23 @@
 
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
 <h1>Dome Keeper - Free Online Mine-and-Defend Strategy Game</h1>
-<p>Play Dome Keeper free in your browser -- defend your dome from alien waves on the surface while mining iron, water, and cobalt underground. Upgrade weapons, dome armor, and mining gear in this hybrid action-strategy game.</p>
+<p>Play Dome Keeper free in your browser -- mine by day, defend your dome from alien swarms at night, and relocate to new biomes. Upgrade weapons, dome armor, mining gear and drones in this hybrid action-strategy game.</p>
 <h2>Features</h2>
 <ul>
 <li>Dual-scene gameplay: surface dome defense and underground resource mining</li>
 <li>Manual-aim dome turret weapon with mouse tracking and aim-assist</li>
-<li>Destructible underground tile grid with 3 resource types: iron, water, cobalt</li>
+<li>Destructible mine of 16 rock strata with 20 resource types, including six deep ores</li>
 <li>Resource hauling and dome deposit mechanic with carry capacity</li>
-<li>Timed enemy waves with gradual difficulty scaling</li>
-<li>2 enemy types with armored, shielded, and boss variants</li>
-<li>5 upgrades: weapon damage, fire rate, dome HP, drill speed, carry capacity</li>
+<li>Day and night with moon phases, four seasons and weather: rain, snow, blizzards, thunderstorms and meteor showers</li>
+<li>Six seeded biomes: Rocky Badlands, Dune Sea, Frozen Shelf, Alien Jungle, Ashen Caldera, Crystal Fields</li>
+<li>Eleven monster types including two bosses</li>
+<li>One upgrade tree with five branches, including courier, gun and repair drones</li>
+<li>Relocation Cores, a landing and relocation sequence and rising threat per site</li>
 <li>4 primary gadgets: Shield Generator, Repellent Field, Orchard, Droneyard</li>
 <li>6 mine gadgets found in hidden underground chambers</li>
 <li>BFS pathfinding for mouse-based underground navigation</li>
 <li>Laser glow, impact sparks, mining debris, screen shake, and floating text</li>
-<li>3-page tutorial, local high scores, and parallax starfield background</li>
+<li>Nine-page help, local high scores, and parallax sky with sun, moon and stars</li>
 </ul>
 </div>
 <script>document.getElementById('seo-content')?.remove();</script>

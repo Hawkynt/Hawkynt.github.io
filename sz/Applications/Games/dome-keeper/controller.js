@@ -23,6 +23,8 @@
   const STATE_PAUSED = 'PAUSED';
   const STATE_GAME_OVER = 'GAME_OVER';
   const STATE_UPGRADE_DIALOG = 'UPGRADE_DIALOG';
+  const STATE_CINEMATIC = 'CINEMATIC';       // landing / relocation sequence
+  const STATE_CONFIRM = 'CONFIRM';           // relocation confirmation
 
   /* -- Storage -- */
   const STORAGE_PREFIX = 'sz-dome-keeper';
@@ -31,8 +33,10 @@
   const MAX_HIGH_SCORES = 5;
 
   /* -- Underground Grid -- */
-  const GRID_COLS = 110;
-  const GRID_ROWS = 80;
+  const STRATUM_ROWS = 14;                 // rows per rock layer
+  const STRATUM_COUNT = 16;
+  const GRID_COLS = 165;                   // every layer spans the full width
+  const GRID_ROWS = STRATUM_ROWS * STRATUM_COUNT;
   const TILE_SIZE = 40;
   const GRID_OFFSET_X = 140;
   const GRID_OFFSET_Y = 120;
@@ -55,6 +59,15 @@
   const TILE_DIAMOND = 14;
   const TILE_EMERALD = 15;
   const TILE_RUBY = 16;
+  // Deep ores: one signature ore for each of the six deepest strata
+  const TILE_TITANIUM = 17;
+  const TILE_SAPPHIRE = 18;
+  const TILE_URANIUM = 19;
+  const TILE_AMETHYST = 20;
+  const TILE_OPAL = 21;
+  const TILE_VOIDSTONE = 22;
+  const TILE_CORE = 23;          // the site's Relocation Core, hidden in the lower strata
+  const TILE_MAX = TILE_CORE;
 
   const TILE_COLORS = {
     [TILE_DIRT]: '#4a3a2a',
@@ -71,7 +84,13 @@
     [TILE_REDSTONE]: '#cc0000',
     [TILE_DIAMOND]: '#b9f2ff',
     [TILE_EMERALD]: '#50c878',
-    [TILE_RUBY]: '#e0115f'
+    [TILE_RUBY]: '#e0115f',
+    [TILE_TITANIUM]: '#8aa0bc',
+    [TILE_SAPPHIRE]: '#2a64e0',
+    [TILE_URANIUM]: '#58d030',
+    [TILE_AMETHYST]: '#9a4ad8',
+    [TILE_OPAL]: '#ff9a40',
+    [TILE_VOIDSTONE]: '#5a3aa0'
   };
 
   const TILE_HIGHLIGHT_COLORS = {
@@ -88,7 +107,13 @@
     [TILE_REDSTONE]: '#ff3333',
     [TILE_DIAMOND]: '#dff8ff',
     [TILE_EMERALD]: '#80e8a0',
-    [TILE_RUBY]: '#ff4488'
+    [TILE_RUBY]: '#ff4488',
+    [TILE_TITANIUM]: '#c8dcf4',
+    [TILE_SAPPHIRE]: '#6aa0ff',
+    [TILE_URANIUM]: '#9aff5a',
+    [TILE_AMETHYST]: '#d090ff',
+    [TILE_OPAL]: '#ffd080',
+    [TILE_VOIDSTONE]: '#b48aff'
   };
 
   const TILE_VALUES = {
@@ -105,7 +130,13 @@
     [TILE_REDSTONE]: 45,
     [TILE_EMERALD]: 60,
     [TILE_DIAMOND]: 80,
-    [TILE_RUBY]: 70
+    [TILE_RUBY]: 70,
+    [TILE_TITANIUM]: 90,
+    [TILE_SAPPHIRE]: 110,
+    [TILE_URANIUM]: 130,
+    [TILE_AMETHYST]: 150,
+    [TILE_OPAL]: 180,
+    [TILE_VOIDSTONE]: 220
   };
 
   const TILE_LABELS = {
@@ -122,7 +153,13 @@
     [TILE_REDSTONE]: 'redstone',
     [TILE_DIAMOND]: 'diamond',
     [TILE_EMERALD]: 'emerald',
-    [TILE_RUBY]: 'ruby'
+    [TILE_RUBY]: 'ruby',
+    [TILE_TITANIUM]: 'titanium',
+    [TILE_SAPPHIRE]: 'sapphire',
+    [TILE_URANIUM]: 'uranium',
+    [TILE_AMETHYST]: 'amethyst',
+    [TILE_OPAL]: 'opal',
+    [TILE_VOIDSTONE]: 'voidstone'
   };
 
   // Pixel-art sprite drawn on each resource tile (see SPRITES)
@@ -140,7 +177,13 @@
     [TILE_REDSTONE]: 'redstone',
     [TILE_DIAMOND]: 'diamond',
     [TILE_EMERALD]: 'emerald',
-    [TILE_RUBY]: 'ruby'
+    [TILE_RUBY]: 'ruby',
+    [TILE_TITANIUM]: 'titanium',
+    [TILE_SAPPHIRE]: 'sapphire',
+    [TILE_URANIUM]: 'uranium',
+    [TILE_AMETHYST]: 'amethyst',
+    [TILE_OPAL]: 'opal',
+    [TILE_VOIDSTONE]: 'voidstone'
   };
 
   /* ======================================================================
@@ -167,7 +210,13 @@
     cream:  ['#6a5a48', '#a89878', '#d8ccb4', '#f2ead8', '#ffffff'],
     coal:   ['#141218', '#25222c', '#3a3644', '#5e5a6c', '#9a96a8'],
     cyan:   ['#0e4a6a', '#1e88b0', '#58c8e8', '#a8ecff', '#f0ffff'],
-    fire:   ['#7a1a08', '#d04010', '#ff8a20', '#ffd040', '#fff8c0']
+    fire:   ['#7a1a08', '#d04010', '#ff8a20', '#ffd040', '#fff8c0'],
+    titan:  ['#2a3442', '#4a5a70', '#7a90b0', '#b0c4dc', '#eef6ff'],
+    sapph:  ['#0a1a5a', '#1438a0', '#2a64e0', '#6aa0ff', '#d0e4ff'],
+    uran:   ['#0e3a08', '#1e7a10', '#40c020', '#90ff50', '#e8ffc0'],
+    purple: ['#2a0a4a', '#5a1a8a', '#8a3ac8', '#c080f0', '#f0d8ff'],
+    opal:   ['#6a2a10', '#c05a20', '#ff9a40', '#ffd080', '#fff4e0'],
+    void:   ['#0a0418', '#24104a', '#4a2a8a', '#9a6aff', '#f0e0ff']
   };
   const SPRITE_OUTLINE = '#120c18';
 
@@ -229,6 +278,66 @@
       '............', '....3333....', '..33444433..', '.3445544443.',
       '.3455444433.', '334544443332', '334444433322', '.3444433322.',
       '.3333332222.', '..22322222..', '....2222....', '............'] },
+    titanium: { ramps: ['titan', 'cyan'], px: [
+      '............', '...3....4...', '..343..454..', '..3443.444..',
+      '.34443.3443.', '.344432344d.', '.3444323443.', '23443323343.',
+      '2333322333..', '.222222222..', '............', '............'] },
+    sapphire: { ramps: ['sapph'], px: [
+      '............', '....3333....', '..33455433..', '.3455544443.',
+      '.3455444443.', '334444444433', '.3444444433.', '.2344443332.',
+      '..23333322..', '...222222...', '............', '............'] },
+    uranium: { ramps: ['uran', 'steel'], px: [
+      '............', '.ccc..ccc...', '.c4c..c4c.cc', '.c5c..c5c.c4',
+      '.c4c..c4c.c5', '.c4c..c4c.c4', '.c4c..c4c.c4', '.c3c..c3c.c3',
+      '.ccc..ccc.cc', '..23444432..', '...222222...', '............'] },
+    amethyst: { ramps: ['purple'], px: [
+      '.....4......', '....454.....', '..4.444..4..', '.454434.454.',
+      '.444434.434.', '.434434.434.', '.434334.334.', '.334334.334.',
+      '.334334.234.', '222222222222', '.2222222222.', '............'] },
+    opal: { ramps: ['opal', 'cyan', 'green'], px: [
+      '............', '...333333...', '..34444443..', '.344cc44h43.',
+      '.34cdc4hh43.', '.344c444443.', '.3444hh4c43.', '.344hhh4dc3.',
+      '..34444443..', '...222222...', '............', '............'] },
+    voidstone: { ramps: ['void'], px: [
+      '............', '....3443....', '..34211243..', '.3421111243.',
+      '.4211111124.', '.4211551124.', '.4211551124.', '.4211111124.',
+      '.3421111243.', '..34211243..', '....3443....', '............'] },
+    drone: { ramps: ['steel', 'cyan', 'gold'], px: [
+      'ddd......ddd', '.3........3.', '.3.333333.3.', '.3344444433.',
+      '..34eeee43..', '..34e44e43..', '..34444443..', '...333333...',
+      '....3..3....', '...ffffff...', '...fhhhhf...', '...ffffff...'] },
+    gundrone: { ramps: ['steel', 'red', 'fire'], px: [
+      'ddd......ddd', '.3........3.', '.3.333333.3.', '.3344444433.',
+      '..34dd4443..', '..3444444333', '..34444443hh', '...333333...',
+      '....3..3....', '............', '............', '............'] },
+    medic: { ramps: ['steel', 'green', 'cyan'], px: [
+      'ddd......ddd', '.3........3.', '.3.333333.3.', '.3344444433.',
+      '..344cc443..', '..34cccc43..', '..344cc443..', '...333333...',
+      '....3..3....', '.....hh.....', '.....h......', '............'] },
+    flower: { ramps: ['ruby', 'green', 'gold'], px: [
+      '.....22.....', '....2442....', '..22.44.22..', '.2442hh2442.',
+      '.2444hh4442.', '..22.44.22..', '....2442....', '.....22.....',
+      '.....cc.....', '...cccc.....', '.....cc.cc..', '.....cccc...'] },
+    leaf: { ramps: ['fire', 'wood'], px: [
+      '.........3..', '.......334..', '.....33443..', '...334443...',
+      '..3444433...', '.344443d....', '.34443d.....', '.3443d......',
+      '..33d.......', '...d........', '..d.........', '............'] },
+    meteor: { ramps: ['fire', 'coal'], px: [
+      '.........4..', '........43..', '.......43...', '.....343....',
+      '....3452....', '..cccc2.....', '.cddddc.....', 'cdeddddc....',
+      'cddddedc....', 'cdddddc.....', '.cdddc......', '..ccc.......'] },
+    flight: { ramps: ['blue', 'steel', 'fire'], px: [
+      '....3333....', '..33444433..', '.3454444443.', '.3444444443.',
+      '344444444443', 'cccccccccccc', '.dddddddddd.', '..dd....dd..',
+      '..hh....hh..', '..ih....hi..', '...i....i...', '............'] },
+    core: { ramps: ['cyan', 'gold'], px: [
+      '.....dd.....', '....d44d....', '...d4554d...', '..d455554d..',
+      '.d45555554d.', 'd4555445554d', '.d45555554d.', '..d455554d..',
+      '...d4554d...', '....d44d....', '.....dd.....', '............'] },
+    moon: { ramps: ['cream'], px: [
+      '....3333....', '..334444....', '.3344.......', '.344........',
+      '3445........', '3444........', '3444........', '3444........',
+      '.344........', '.3344.......', '..334444....', '....3333....'] },
     bag: { ramps: ['wood', 'gold'], px: [
       '............', '....3333....', '...3....3...', '.2222222222.',
       '.2444444442.', '.2433cc3342.', '.2433cc3342.', '.2433333342.',
@@ -894,7 +1003,14 @@
     [TILE_REDSTONE]: 'Redstone',
     [TILE_DIAMOND]: 'Diamond',
     [TILE_EMERALD]: 'Emerald',
-    [TILE_RUBY]: 'Ruby'
+    [TILE_RUBY]: 'Ruby',
+    [TILE_TITANIUM]: 'Titanium Ore',
+    [TILE_SAPPHIRE]: 'Sapphire',
+    [TILE_URANIUM]: 'Uranium',
+    [TILE_AMETHYST]: 'Amethyst',
+    [TILE_OPAL]: 'Fire Opal',
+    [TILE_VOIDSTONE]: 'Voidstone',
+    [TILE_CORE]: 'Relocation Core'
   };
 
   const ORE_SPECKLE_COLORS = {
@@ -911,35 +1027,55 @@
     [TILE_REDSTONE]: ['#ff3333', '#cc0000', '#ff5555', '#aa0000'],
     [TILE_DIAMOND]: ['#dff8ff', '#b9f2ff', '#c8f0ff', '#a0e8ff'],
     [TILE_EMERALD]: ['#80e8a0', '#50c878', '#60d888', '#40b868'],
-    [TILE_RUBY]: ['#ff4488', '#e0115f', '#ff2070', '#c00048']
+    [TILE_RUBY]: ['#ff4488', '#e0115f', '#ff2070', '#c00048'],
+    [TILE_TITANIUM]: ['#c8dcf4', '#8aa0bc', '#e8f2ff', '#6a80a0'],
+    [TILE_SAPPHIRE]: ['#6aa0ff', '#2a64e0', '#a0c4ff', '#1438a0'],
+    [TILE_URANIUM]: ['#9aff5a', '#58d030', '#d0ff90', '#30a010'],
+    [TILE_AMETHYST]: ['#d090ff', '#9a4ad8', '#f0c8ff', '#6a20a8'],
+    [TILE_OPAL]: ['#ffd080', '#ff9a40', '#80e8ff', '#60f0a0'],
+    [TILE_VOIDSTONE]: ['#b48aff', '#5a3aa0', '#f0e0ff', '#2a1458']
   };
 
   // All resource tile types (used for detection in various places)
   const RESOURCE_TILES = [
     TILE_IRON, TILE_WATER, TILE_COBALT,
     TILE_COPPER, TILE_GOLD, TILE_TIN, TILE_SILVER, TILE_LEAD, TILE_COAL,
-    TILE_QUARTZ, TILE_REDSTONE, TILE_DIAMOND, TILE_EMERALD, TILE_RUBY
+    TILE_QUARTZ, TILE_REDSTONE, TILE_DIAMOND, TILE_EMERALD, TILE_RUBY,
+    TILE_TITANIUM, TILE_SAPPHIRE, TILE_URANIUM, TILE_AMETHYST, TILE_OPAL, TILE_VOIDSTONE
   ];
 
-  /* -- Depth-based dirt tiers (10 levels) -- */
-  // Each tier: { name, base, highlight, shadow } colors
+  function emptyResources() {
+    const r = {};
+    for (const t of RESOURCE_TILES)
+      r[TILE_LABELS[t]] = 0;
+    return r;
+  }
+
+  /* -- Rock strata, STRATUM_ROWS rows each -- */
+  // style picks the texture painter; ore names the signature ore of a deep layer
   const DEPTH_TIERS = [
-    { name: 'Sand',        base: '#c2a55a', highlight: '#d4bb78', shadow: '#8a7438' },  // 0-10%
-    { name: 'Loose Soil',  base: '#8b6c42', highlight: '#a88558', shadow: '#5e4628' },  // 10-20%
-    { name: 'Dirt',        base: '#4a3a2a', highlight: '#6a5540', shadow: '#2a1a0a' },  // 20-30% (original)
-    { name: 'Packed Dirt', base: '#3d2e1e', highlight: '#584630', shadow: '#221508' },  // 30-40%
-    { name: 'Clay',        base: '#6b3a2a', highlight: '#885040', shadow: '#3e1e12' },  // 40-50%
-    { name: 'Gravel',      base: '#5a5040', highlight: '#706858', shadow: '#3a3228' },  // 50-60%
-    { name: 'Soft Stone',  base: '#7a7a7a', highlight: '#949494', shadow: '#505050' },  // 60-70%
-    { name: 'Stone',       base: '#5a5a5a', highlight: '#707070', shadow: '#383838' },  // 70-80%
-    { name: 'Hard Stone',  base: '#3e3e3e', highlight: '#525252', shadow: '#222222' },  // 80-90%
-    { name: 'Bedrock',     base: '#1e1e1e', highlight: '#303030', shadow: '#0a0a0a' }   // 90-100%
+    { name: 'Sand',         base: '#c2a55a', highlight: '#d4bb78', shadow: '#8a7438', style: 'soil' },
+    { name: 'Loose Soil',   base: '#8b6c42', highlight: '#a88558', shadow: '#5e4628', style: 'soil' },
+    { name: 'Dirt',         base: '#4a3a2a', highlight: '#6a5540', shadow: '#2a1a0a', style: 'soil' },
+    { name: 'Packed Dirt',  base: '#3d2e1e', highlight: '#584630', shadow: '#221508', style: 'soil' },
+    { name: 'Clay',         base: '#6b3a2a', highlight: '#885040', shadow: '#3e1e12', style: 'soil' },
+    { name: 'Gravel',       base: '#5a5040', highlight: '#706858', shadow: '#3a3228', style: 'gravel' },
+    { name: 'Soft Stone',   base: '#7a7a7a', highlight: '#949494', shadow: '#505050', style: 'stone' },
+    { name: 'Stone',        base: '#5a5a5a', highlight: '#707070', shadow: '#383838', style: 'stone' },
+    { name: 'Hard Stone',   base: '#3e3e3e', highlight: '#525252', shadow: '#222222', style: 'stone' },
+    { name: 'Bedrock',      base: '#2a2628', highlight: '#3c3638', shadow: '#121012', style: 'stone' },
+    { name: 'Slate',        base: '#3a4654', highlight: '#4e5c6c', shadow: '#1e2630', style: 'slate', ore: TILE_TITANIUM },
+    { name: 'Granite',      base: '#6a4a48', highlight: '#866460', shadow: '#3a2826', style: 'granite', ore: TILE_SAPPHIRE },
+    { name: 'Basalt',       base: '#262a2e', highlight: '#363c42', shadow: '#101316', style: 'basalt', ore: TILE_URANIUM },
+    { name: 'Obsidian',     base: '#1a1424', highlight: '#2c2240', shadow: '#08060e', style: 'obsidian', ore: TILE_AMETHYST },
+    { name: 'Magma Rock',   base: '#3a1a12', highlight: '#5a2618', shadow: '#1a0806', style: 'magma', ore: TILE_OPAL },
+    { name: 'Abyssal Core', base: '#140e26', highlight: '#22183c', shadow: '#06040e', style: 'abyss', ore: TILE_VOIDSTONE }
   ];
+  const DEEP_STRATUM = 10; // first layer of the deep strata (signature ores)
 
-  // Get depth tier index (0-9) for a given row
+  // Stratum index (0..STRATUM_COUNT-1) for a given row
   function getDepthTier(row) {
-    const t = Math.floor((row / GRID_ROWS) * DEPTH_TIERS.length);
-    return Math.min(t, DEPTH_TIERS.length - 1);
+    return Math.max(0, Math.min(DEPTH_TIERS.length - 1, Math.floor(row / STRATUM_ROWS)));
   }
 
   // Get depth-based colors for dirt at a given row
@@ -947,9 +1083,14 @@
     return DEPTH_TIERS[getDepthTier(row)];
   }
 
-  // Depth-based mining time multiplier: 0.5 at surface, ~4.0 at bottom
+  // Depth-based mining time multiplier: 0.5 at the surface, rising every row (about 5 at the core)
   function getDepthMineMultiplier(row) {
-    return 0.5 + (row / GRID_ROWS) * 3.5;
+    return 0.5 + (row / STRATUM_ROWS) * 0.28;
+  }
+
+  // Ore found deeper is richer: up to +60% yield at the bottom of the mine
+  function getDepthValueMultiplier(row) {
+    return 1 + 0.6 * Math.max(0, Math.min(1, row / (GRID_ROWS - 1)));
   }
 
   // Get the display color for any tile, accounting for depth-based dirt
@@ -972,7 +1113,6 @@
   const BASE_CARRY_CAPACITY = 50;
 
   /* -- Waves -- */
-  const WAVE_INTERVAL = 40;
   const BASE_ENEMIES_PER_WAVE = 3;
 
   /* -- Mining time -- */
@@ -993,57 +1133,34 @@
     [TILE_REDSTONE]: 2.3,
     [TILE_EMERALD]: 2.5,
     [TILE_DIAMOND]: 3.0,
-    [TILE_RUBY]: 2.8
+    [TILE_RUBY]: 2.8,
+    [TILE_TITANIUM]: 3.0,
+    [TILE_SAPPHIRE]: 3.2,
+    [TILE_URANIUM]: 3.4,
+    [TILE_AMETHYST]: 3.5,
+    [TILE_OPAL]: 3.7,
+    [TILE_VOIDSTONE]: 4.0,
+    [TILE_CORE]: 3.5
   };
 
   /* -- Movement -- */
   const BASE_MOVE_INTERVAL = 0.15; // seconds per tile (base, before upgrades)
 
-  /* -- Upgrade costs (resource units) -- */
-  const UPGRADE_DEFS = [
-    { name: 'Weapon Damage', key: 'weaponDamage', baseCost: 30, perLevel: 20 },
-    { name: 'Fire Rate', key: 'fireRate', baseCost: 25, perLevel: 15 },
-    { name: 'Dome HP', key: 'domeHP', baseCost: 40, perLevel: 25 },
-    { name: 'Drill Speed', key: 'drillSpeed', baseCost: 20, perLevel: 10 },
-    { name: 'Carry Capacity', key: 'carryCapacity', baseCost: 20, perLevel: 10 },
-    { name: 'Move Speed', key: 'moveSpeed', baseCost: 25, perLevel: 15 },
-    { name: 'Mining Tools', key: 'miningTools', baseCost: 35, perLevel: 20 }
+  /* -- Tools bought in the upgrade tree (HUD rows and number-key shortcuts) -- */
+  const TOOL_DEFS = [
+    { key: 'drill', name: 'Drill Gadget', icon: 'drill', shortcut: '1' },
+    { key: 'blastTool', name: 'Blast Mining', icon: 'explosion', shortcut: '2' },
+    { key: 'scanner', name: 'Scanner', icon: 'magnifier', shortcut: '3' },
+    { key: 'reinforcedDome', name: 'Reinforced Dome', icon: 'shield', shortcut: '4' },
+    { key: 'teleporter', name: 'Teleporter', icon: 'portal', shortcut: '5' }
   ];
 
-  // Sprite shown next to each quick upgrade
-  const UPGRADE_ICONS = {
-    weaponDamage: 'swords', fireRate: 'fire', domeHP: 'shield', drillSpeed: 'drill',
-    carryCapacity: 'bag', moveSpeed: 'boot', miningTools: 'pickaxe'
+  // Saves from before the single upgrade tree kept a separate quick-upgrade
+  // level per stat; those levels become the first nodes of the matching chain
+  const LEGACY_UPGRADE_CHAINS = {
+    weaponDamage: 'damage', fireRate: 'fireRate', domeHP: 'shield', drillSpeed: 'drillSpeed',
+    carryCapacity: 'carry', moveSpeed: 'speed', miningTools: 'mining'
   };
-
-  /* -- Unlockable Gadgets/Tools -- */
-  const GADGET_DEFS = [
-    {
-      key: 'drill', name: 'Drill Gadget', icon: 'drill',
-      desc: 'Mines a column downward. 30% faster on consecutive same-column tiles.',
-      costIron: 25, costCobalt: 0, shortcut: '1'
-    },
-    {
-      key: 'blastTool', name: 'Blast Mining', icon: 'explosion',
-      desc: 'Clears a 3x3 area. Costs 10 iron per blast. 5s cooldown.',
-      costIron: 30, costCobalt: 0, shortcut: '2'
-    },
-    {
-      key: 'scanner', name: 'Scanner', icon: 'magnifier',
-      desc: 'Reveals resource types in a 3-tile radius around the miner.',
-      costIron: 35, costCobalt: 10, shortcut: '3'
-    },
-    {
-      key: 'reinforcedDome', name: 'Reinforced Dome', icon: 'shield',
-      desc: 'Dome takes 25% less damage from enemies. Passive.',
-      costIron: 50, costCobalt: 25, shortcut: '4'
-    },
-    {
-      key: 'teleporter', name: 'Teleporter', icon: 'portal',
-      desc: 'Instantly return to dome surface. 30s cooldown.',
-      costIron: 30, costCobalt: 15, shortcut: '5'
-    }
-  ];
 
   const GADGET_TOOL_COOLDOWNS = {
     blastTool: 5,   // seconds
@@ -1078,7 +1195,7 @@
       costs: [{ gold: 30, diamond: 10, ruby: 5 }], maxLevel: 1, prereqs: ['shield5'],
       upgradeKey: 'domeHP', type: 'stat' },
     { id: 'shield7', name: 'Shield Cap. L7', icon: 'shield', branch: 'dome',
-      costs: [{ diamond: 15, ruby: 12, emerald: 10 }], maxLevel: 1, prereqs: ['shield6'],
+      costs: [{ sapphire: 8, titanium: 12, diamond: 15 }], maxLevel: 1, prereqs: ['shield6'],
       upgradeKey: 'domeHP', type: 'stat' },
     // -- Shield Recharge chain (4 levels) --
     { id: 'shieldRecharge1', name: 'Shield Rech. L1', icon: 'bolt', branch: 'dome',
@@ -1120,7 +1237,7 @@
       costs: [{ gold: 20, redstone: 15, ruby: 5 }], maxLevel: 1, prereqs: ['damageReflect'],
       upgradeKey: 'damageReflect', type: 'stat' },
     { id: 'emergencyShield', name: 'Emergency Shield', icon: 'shield', branch: 'dome',
-      costs: [{ diamond: 12, emerald: 15, ruby: 10, gold: 25 }], maxLevel: 1, prereqs: ['energyShield', 'shieldRecharge4'],
+      costs: [{ amethyst: 6, diamond: 12, emerald: 15 }], maxLevel: 1, prereqs: ['energyShield', 'shieldRecharge4'],
       upgradeKey: 'emergencyShield', type: 'gadget' },
     { id: 'shieldRegen1', name: 'Shield Regen L1', icon: 'regen', branch: 'dome',
       costs: [{ iron: 30, water: 15 }], maxLevel: 1, prereqs: ['shieldRecharge1'],
@@ -1132,14 +1249,14 @@
       costs: [{ silver: 15, water: 35, quartz: 10 }], maxLevel: 1, prereqs: ['shieldRegen2'],
       upgradeKey: 'shieldRegen', type: 'stat' },
     { id: 'fortifiedBase', name: 'Fortified Base', icon: 'castle', branch: 'dome',
-      costs: [{ gold: 30, cobalt: 35, diamond: 8 }], maxLevel: 1, prereqs: ['shield5', 'reinforcedDome'],
+      costs: [{ titanium: 10, cobalt: 35, diamond: 8 }], maxLevel: 1, prereqs: ['shield5', 'reinforcedDome'],
       upgradeKey: 'fortifiedBase', type: 'gadget' },
     { id: 'lastStand', name: 'Last Stand', icon: 'heart', branch: 'dome',
-      costs: [{ ruby: 15, diamond: 10, emerald: 12 }], maxLevel: 1, prereqs: ['emergencyShield'],
+      costs: [{ voidstone: 3, opal: 5, ruby: 15 }], maxLevel: 1, prereqs: ['emergencyShield'],
       upgradeKey: 'lastStand', type: 'gadget' },
 
     // =============================================================
-    // === Mining Branch (27 nodes) ===
+    // === Mining Branch (39 nodes) ===
     // =============================================================
     // -- Mining Tools chain (7 levels) --
     { id: 'mining1', name: 'Mining Tools L1', icon: 'pickaxe', branch: 'mining',
@@ -1161,7 +1278,7 @@
       costs: [{ gold: 30, redstone: 15, emerald: 8 }], maxLevel: 1, prereqs: ['mining5'],
       upgradeKey: 'miningTools', type: 'stat' },
     { id: 'mining7', name: 'Mining Tools L7', icon: 'pickaxe', branch: 'mining',
-      costs: [{ diamond: 12, ruby: 10, redstone: 20 }], maxLevel: 1, prereqs: ['mining6'],
+      costs: [{ uranium: 6, titanium: 10, diamond: 12 }], maxLevel: 1, prereqs: ['mining6'],
       upgradeKey: 'miningTools', type: 'stat' },
     // -- Carry Capacity chain (5 levels) --
     { id: 'carry1', name: 'Carry Cap. L1', icon: 'crate', branch: 'mining',
@@ -1177,7 +1294,7 @@
       costs: [{ gold: 15, cobalt: 20, tin: 20 }], maxLevel: 1, prereqs: ['carry3'],
       upgradeKey: 'carryCapacity', type: 'stat' },
     { id: 'carry5', name: 'Carry Cap. L5', icon: 'crate', branch: 'mining',
-      costs: [{ gold: 25, diamond: 5, lead: 20 }], maxLevel: 1, prereqs: ['carry4'],
+      costs: [{ titanium: 8, gold: 25, lead: 20 }], maxLevel: 1, prereqs: ['carry4'],
       upgradeKey: 'carryCapacity', type: 'stat' },
     // -- Gadgets --
     { id: 'drill', name: 'Drill Gadget', icon: 'drill', branch: 'mining',
@@ -1224,11 +1341,49 @@
       costs: [{ gold: 25, emerald: 10, ruby: 8 }], maxLevel: 1, prereqs: ['fortune'],
       upgradeKey: 'fortune', type: 'stat' },
     { id: 'veinMiner', name: 'Vein Miner', icon: 'diamond', branch: 'mining',
-      costs: [{ diamond: 10, ruby: 8, emerald: 12, gold: 20 }], maxLevel: 1, prereqs: ['silkTouch', 'tunnelBore'],
+      costs: [{ amethyst: 5, diamond: 10, emerald: 12 }], maxLevel: 1, prereqs: ['silkTouch', 'tunnelBore'],
       upgradeKey: 'veinMiner', type: 'gadget' },
+    // -- Drill Speed chain (5 levels) --
+    { id: 'drillSpeed1', name: 'Drill Speed L1', icon: 'drill', branch: 'mining',
+      costs: [{ iron: 20 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'drillSpeed', type: 'stat' },
+    { id: 'drillSpeed2', name: 'Drill Speed L2', icon: 'drill', branch: 'mining',
+      costs: [{ iron: 35, cobalt: 10, tin: 8 }], maxLevel: 1, prereqs: ['drillSpeed1'],
+      upgradeKey: 'drillSpeed', type: 'stat' },
+    { id: 'drillSpeed3', name: 'Drill Speed L3', icon: 'drill', branch: 'mining',
+      costs: [{ iron: 50, silver: 10, coal: 15 }], maxLevel: 1, prereqs: ['drillSpeed2'],
+      upgradeKey: 'drillSpeed', type: 'stat' },
+    { id: 'drillSpeed4', name: 'Drill Speed L4', icon: 'drill', branch: 'mining',
+      costs: [{ gold: 12, redstone: 10, cobalt: 20 }], maxLevel: 1, prereqs: ['drillSpeed3'],
+      upgradeKey: 'drillSpeed', type: 'stat' },
+    { id: 'drillSpeed5', name: 'Drill Speed L5', icon: 'drill', branch: 'mining',
+      costs: [{ titanium: 6, gold: 20, redstone: 15 }], maxLevel: 1, prereqs: ['drillSpeed4'],
+      upgradeKey: 'drillSpeed', type: 'stat' },
+    // -- Prospecting and excavation tools --
+    { id: 'blastTool', name: 'Blast Mining', icon: 'explosion', branch: 'mining',
+      costs: [{ iron: 30, coal: 10 }], maxLevel: 1, prereqs: ['drillSpeed1'],
+      upgradeKey: 'blastTool', type: 'gadget' },
+    { id: 'scanner', name: 'Scanner', icon: 'magnifier', branch: 'mining',
+      costs: [{ iron: 35, cobalt: 10 }], maxLevel: 1, prereqs: ['drillSpeed1'],
+      upgradeKey: 'scanner', type: 'gadget' },
+    { id: 'echoLocation', name: 'Echo Location', icon: 'radar', branch: 'mining',
+      costs: [{ copper: 15, tin: 20, cobalt: 15 }], maxLevel: 1, prereqs: ['scanner'],
+      upgradeKey: 'echoLocation', type: 'gadget' },
+    { id: 'echoLocation2', name: 'Echo Loc. L2', icon: 'radar', branch: 'mining',
+      costs: [{ silver: 15, gold: 10, redstone: 8 }], maxLevel: 1, prereqs: ['echoLocation'],
+      upgradeKey: 'echoLocation', type: 'stat' },
+    { id: 'echoLocation3', name: 'Echo Loc. L3', icon: 'radar', branch: 'mining',
+      costs: [{ gold: 20, quartz: 15, redstone: 12 }], maxLevel: 1, prereqs: ['echoLocation2'],
+      upgradeKey: 'echoLocation', type: 'stat' },
+    { id: 'undergroundRadar', name: 'Ground Radar', icon: 'radar', branch: 'mining',
+      costs: [{ silver: 20, copper: 25, quartz: 10 }], maxLevel: 1, prereqs: ['echoLocation'],
+      upgradeKey: 'undergroundRadar', type: 'gadget' },
+    { id: 'undergroundRadar2', name: 'Radar L2', icon: 'radar', branch: 'mining',
+      costs: [{ gold: 18, quartz: 15, redstone: 10 }], maxLevel: 1, prereqs: ['undergroundRadar'],
+      upgradeKey: 'undergroundRadar', type: 'stat' },
 
     // =============================================================
-    // === Movement Branch (25 nodes) ===
+    // === Movement Branch (19 nodes) ===
     // =============================================================
     // -- Move Speed chain (7 levels) --
     { id: 'speed1', name: 'Move Speed L1', icon: 'boot', branch: 'movement',
@@ -1250,7 +1405,7 @@
       costs: [{ gold: 25, redstone: 12, emerald: 5 }], maxLevel: 1, prereqs: ['speed5'],
       upgradeKey: 'moveSpeed', type: 'stat' },
     { id: 'speed7', name: 'Move Speed L7', icon: 'boot', branch: 'movement',
-      costs: [{ diamond: 8, ruby: 8, emerald: 8 }], maxLevel: 1, prereqs: ['speed6'],
+      costs: [{ titanium: 10, sapphire: 6, emerald: 8 }], maxLevel: 1, prereqs: ['speed6'],
       upgradeKey: 'moveSpeed', type: 'stat' },
     // -- Gadgets --
     { id: 'teleporter', name: 'Teleporter', icon: 'portal', branch: 'movement',
@@ -1262,15 +1417,6 @@
     { id: 'phaseShift', name: 'Phase Shift', icon: 'ghost', branch: 'movement',
       costs: [{ silver: 20, gold: 10, quartz: 15, cobalt: 20 }], maxLevel: 1, prereqs: ['speed4'],
       upgradeKey: 'phaseShift', type: 'gadget' },
-    { id: 'echoLocation', name: 'Echo Location', icon: 'radar', branch: 'movement',
-      costs: [{ copper: 15, tin: 20, cobalt: 15 }], maxLevel: 1, prereqs: ['speed2'],
-      upgradeKey: 'echoLocation', type: 'gadget' },
-    { id: 'echoLocation2', name: 'Echo Loc. L2', icon: 'radar', branch: 'movement',
-      costs: [{ silver: 15, gold: 10, redstone: 8 }], maxLevel: 1, prereqs: ['echoLocation'],
-      upgradeKey: 'echoLocation', type: 'stat' },
-    { id: 'echoLocation3', name: 'Echo Loc. L3', icon: 'radar', branch: 'movement',
-      costs: [{ gold: 20, quartz: 15, redstone: 12 }], maxLevel: 1, prereqs: ['echoLocation2'],
-      upgradeKey: 'echoLocation', type: 'stat' },
     // -- New movement abilities --
     { id: 'doubleJump', name: 'Double Jump', icon: 'spring', branch: 'movement',
       costs: [{ iron: 35, copper: 20, cobalt: 12 }], maxLevel: 1, prereqs: ['speed2'],
@@ -1284,12 +1430,6 @@
     { id: 'dash2', name: 'Dash L2', icon: 'speed', branch: 'movement',
       costs: [{ gold: 12, redstone: 10, cobalt: 18 }], maxLevel: 1, prereqs: ['dash'],
       upgradeKey: 'dash', type: 'stat' },
-    { id: 'undergroundRadar', name: 'Ground Radar', icon: 'radar', branch: 'movement',
-      costs: [{ silver: 20, copper: 25, quartz: 10 }], maxLevel: 1, prereqs: ['echoLocation'],
-      upgradeKey: 'undergroundRadar', type: 'gadget' },
-    { id: 'undergroundRadar2', name: 'Radar L2', icon: 'radar', branch: 'movement',
-      costs: [{ gold: 18, quartz: 15, redstone: 10 }], maxLevel: 1, prereqs: ['undergroundRadar'],
-      upgradeKey: 'undergroundRadar', type: 'stat' },
     { id: 'teleportCooldown1', name: 'Teleport CDR L1', icon: 'portal', branch: 'movement',
       costs: [{ silver: 12, cobalt: 15, copper: 10 }], maxLevel: 1, prereqs: ['teleporter'],
       upgradeKey: 'teleportCooldown', type: 'stat' },
@@ -1303,7 +1443,7 @@
       costs: [{ gold: 15, coal: 35, redstone: 10 }], maxLevel: 1, prereqs: ['jetpackFuel1'],
       upgradeKey: 'jetpackFuel', type: 'stat' },
     { id: 'phaseShift2', name: 'Phase Shift L2', icon: 'ghost', branch: 'movement',
-      costs: [{ gold: 20, quartz: 20, diamond: 5 }], maxLevel: 1, prereqs: ['phaseShift'],
+      costs: [{ voidstone: 2, quartz: 20, diamond: 5 }], maxLevel: 1, prereqs: ['phaseShift'],
       upgradeKey: 'phaseShift', type: 'stat' },
 
     // =============================================================
@@ -1326,7 +1466,7 @@
       costs: [{ gold: 20, redstone: 15, ruby: 5 }], maxLevel: 1, prereqs: ['fireRate4'],
       upgradeKey: 'fireRate', type: 'stat' },
     { id: 'fireRate6', name: 'Fire Rate L6', icon: 'fire', branch: 'weapon',
-      costs: [{ diamond: 8, ruby: 10, redstone: 18 }], maxLevel: 1, prereqs: ['fireRate5'],
+      costs: [{ opal: 4, sapphire: 8, ruby: 10 }], maxLevel: 1, prereqs: ['fireRate5'],
       upgradeKey: 'fireRate', type: 'stat' },
     // -- Damage chain (7 levels) --
     { id: 'damage1', name: 'Damage L1', icon: 'swords', branch: 'weapon',
@@ -1345,34 +1485,12 @@
       costs: [{ diamond: 8, ruby: 10, emerald: 8, gold: 20 }], maxLevel: 1, prereqs: ['damage4'],
       upgradeKey: 'weaponDamage', type: 'stat' },
     { id: 'damage6', name: 'Damage L6', icon: 'swords', branch: 'weapon',
-      costs: [{ diamond: 12, ruby: 12, gold: 25 }], maxLevel: 1, prereqs: ['damage5'],
+      costs: [{ sapphire: 6, ruby: 12, gold: 25 }], maxLevel: 1, prereqs: ['damage5'],
       upgradeKey: 'weaponDamage', type: 'stat' },
     { id: 'damage7', name: 'Damage L7', icon: 'swords', branch: 'weapon',
-      costs: [{ diamond: 15, ruby: 15, emerald: 12 }], maxLevel: 1, prereqs: ['damage6'],
+      costs: [{ amethyst: 6, uranium: 6, ruby: 15 }], maxLevel: 1, prereqs: ['damage6'],
       upgradeKey: 'weaponDamage', type: 'stat' },
-    // -- Drill Speed chain (5 levels) --
-    { id: 'drillSpeed1', name: 'Drill Speed L1', icon: 'drill', branch: 'weapon',
-      costs: [{ iron: 20 }], maxLevel: 1, prereqs: [],
-      upgradeKey: 'drillSpeed', type: 'stat' },
-    { id: 'drillSpeed2', name: 'Drill Speed L2', icon: 'drill', branch: 'weapon',
-      costs: [{ iron: 35, cobalt: 10, tin: 8 }], maxLevel: 1, prereqs: ['drillSpeed1'],
-      upgradeKey: 'drillSpeed', type: 'stat' },
-    { id: 'drillSpeed3', name: 'Drill Speed L3', icon: 'drill', branch: 'weapon',
-      costs: [{ iron: 50, silver: 10, coal: 15 }], maxLevel: 1, prereqs: ['drillSpeed2'],
-      upgradeKey: 'drillSpeed', type: 'stat' },
-    { id: 'drillSpeed4', name: 'Drill Speed L4', icon: 'drill', branch: 'weapon',
-      costs: [{ gold: 12, redstone: 10, cobalt: 20 }], maxLevel: 1, prereqs: ['drillSpeed3'],
-      upgradeKey: 'drillSpeed', type: 'stat' },
-    { id: 'drillSpeed5', name: 'Drill Speed L5', icon: 'drill', branch: 'weapon',
-      costs: [{ gold: 20, diamond: 5, redstone: 15 }], maxLevel: 1, prereqs: ['drillSpeed4'],
-      upgradeKey: 'drillSpeed', type: 'stat' },
     // -- Gadgets --
-    { id: 'blastTool', name: 'Blast Mining', icon: 'explosion', branch: 'weapon',
-      costs: [{ iron: 30, coal: 10 }], maxLevel: 1, prereqs: ['damage1'],
-      upgradeKey: 'blastTool', type: 'gadget' },
-    { id: 'scanner', name: 'Scanner', icon: 'magnifier', branch: 'weapon',
-      costs: [{ iron: 35, cobalt: 10 }], maxLevel: 1, prereqs: ['drillSpeed1'],
-      upgradeKey: 'scanner', type: 'gadget' },
     { id: 'chainLightning', name: 'Chain Lightning', icon: 'bolt', branch: 'weapon',
       costs: [{ silver: 20, copper: 25, redstone: 15 }], maxLevel: 1, prereqs: ['damage3', 'fireRate2'],
       upgradeKey: 'chainLightning', type: 'gadget' },
@@ -1380,7 +1498,7 @@
       costs: [{ water: 30, quartz: 15, silver: 10 }], maxLevel: 1, prereqs: ['fireRate3'],
       upgradeKey: 'freezeRay', type: 'gadget' },
     { id: 'plasmaCannon', name: 'Plasma Cannon', icon: 'explosion', branch: 'weapon',
-      costs: [{ diamond: 10, ruby: 12, redstone: 15, gold: 20 }], maxLevel: 1, prereqs: ['damage4', 'chainLightning'],
+      costs: [{ uranium: 5, ruby: 12, redstone: 15 }], maxLevel: 1, prereqs: ['damage4', 'chainLightning'],
       upgradeKey: 'plasmaCannon', type: 'gadget' },
     // -- New weapon abilities --
     { id: 'multiShot', name: 'Multi-Shot', icon: 'multishot', branch: 'weapon',
@@ -1408,24 +1526,88 @@
       costs: [{ gold: 25, ruby: 8, redstone: 18 }], maxLevel: 1, prereqs: ['criticalHit'],
       upgradeKey: 'criticalHit', type: 'stat' },
     { id: 'explosiveRounds', name: 'Explosive Rounds', icon: 'bomb', branch: 'weapon',
-      costs: [{ diamond: 8, ruby: 10, redstone: 20, gold: 15 }], maxLevel: 1, prereqs: ['plasmaCannon', 'criticalHit'],
+      costs: [{ uranium: 8, ruby: 10, redstone: 20 }], maxLevel: 1, prereqs: ['plasmaCannon', 'criticalHit'],
       upgradeKey: 'explosiveRounds', type: 'gadget' },
     { id: 'freezeRay2', name: 'Freeze Ray L2', icon: 'snowflake', branch: 'weapon',
-      costs: [{ water: 40, quartz: 20, diamond: 5 }], maxLevel: 1, prereqs: ['freezeRay'],
+      costs: [{ sapphire: 5, water: 40, quartz: 20 }], maxLevel: 1, prereqs: ['freezeRay'],
       upgradeKey: 'freezeRay', type: 'stat' },
     { id: 'chainLightning2', name: 'Chain Light. L2', icon: 'bolt', branch: 'weapon',
       costs: [{ gold: 20, redstone: 18, emerald: 8 }], maxLevel: 1, prereqs: ['chainLightning'],
-      upgradeKey: 'chainLightning', type: 'stat' }
+      upgradeKey: 'chainLightning', type: 'stat' },
+
+    // =============================================================
+    // === Drone Branch (18 nodes) ===
+    // =============================================================
+    { id: 'droneBay', name: 'Drone Bay', icon: 'drone', branch: 'drone',
+      costs: [{ iron: 30, copper: 12 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'droneBay', type: 'gadget' },
+    // -- Flight speed and pickup radius --
+    { id: 'droneSpeed1', name: 'Drone Thrusters L1', icon: 'speed', branch: 'drone',
+      costs: [{ iron: 25, tin: 10 }], maxLevel: 1, prereqs: ['droneBay'],
+      upgradeKey: 'droneSpeed', type: 'stat' },
+    { id: 'droneSpeed2', name: 'Drone Thrusters L2', icon: 'speed', branch: 'drone',
+      costs: [{ silver: 12, cobalt: 15, tin: 15 }], maxLevel: 1, prereqs: ['droneSpeed1'],
+      upgradeKey: 'droneSpeed', type: 'stat' },
+    { id: 'droneSpeed3', name: 'Drone Thrusters L3', icon: 'speed', branch: 'drone',
+      costs: [{ gold: 15, titanium: 6, quartz: 10 }], maxLevel: 1, prereqs: ['droneSpeed2'],
+      upgradeKey: 'droneSpeed', type: 'stat' },
+    // -- Cargo hold --
+    { id: 'droneCargo1', name: 'Drone Cargo L1', icon: 'crate', branch: 'drone',
+      costs: [{ iron: 30, copper: 15 }], maxLevel: 1, prereqs: ['droneBay'],
+      upgradeKey: 'droneCargo', type: 'stat' },
+    { id: 'droneCargo2', name: 'Drone Cargo L2', icon: 'crate', branch: 'drone',
+      costs: [{ lead: 20, cobalt: 15, iron: 30 }], maxLevel: 1, prereqs: ['droneCargo1'],
+      upgradeKey: 'droneCargo', type: 'stat' },
+    { id: 'droneCargo3', name: 'Drone Cargo L3', icon: 'crate', branch: 'drone',
+      costs: [{ gold: 15, sapphire: 5, lead: 20 }], maxLevel: 1, prereqs: ['droneCargo2'],
+      upgradeKey: 'droneCargo', type: 'stat' },
+    // -- Mining drones --
+    { id: 'droneMiner', name: 'Mining Laser', icon: 'drill', branch: 'drone',
+      costs: [{ iron: 40, coal: 20, copper: 15 }], maxLevel: 1, prereqs: ['droneCargo1'],
+      upgradeKey: 'droneMiner', type: 'gadget' },
+    { id: 'droneMiner2', name: 'Mining Laser L2', icon: 'drill', branch: 'drone',
+      costs: [{ silver: 15, redstone: 10, cobalt: 20 }], maxLevel: 1, prereqs: ['droneMiner'],
+      upgradeKey: 'droneMining', type: 'stat' },
+    { id: 'droneMiner3', name: 'Mining Laser L3', icon: 'drill', branch: 'drone',
+      costs: [{ uranium: 5, titanium: 8, gold: 20 }], maxLevel: 1, prereqs: ['droneMiner2'],
+      upgradeKey: 'droneMining', type: 'stat' },
+    // -- Gun drones --
+    { id: 'combatDrone', name: 'Gun Drone', icon: 'gundrone', branch: 'drone',
+      costs: [{ iron: 45, copper: 20, coal: 15 }], maxLevel: 1, prereqs: ['droneSpeed1'],
+      upgradeKey: 'combatDrone', type: 'gadget' },
+    { id: 'combatDrone2', name: 'Gun Drone L2', icon: 'gundrone', branch: 'drone',
+      costs: [{ silver: 15, redstone: 12, cobalt: 20 }], maxLevel: 1, prereqs: ['combatDrone'],
+      upgradeKey: 'combatDroneLevel', type: 'stat' },
+    { id: 'combatDrone3', name: 'Gun Drone L3', icon: 'gundrone', branch: 'drone',
+      costs: [{ uranium: 6, ruby: 10, gold: 20 }], maxLevel: 1, prereqs: ['combatDrone2'],
+      upgradeKey: 'combatDroneLevel', type: 'stat' },
+    // -- Repair drone --
+    { id: 'repairDrone', name: 'Repair Drone', icon: 'medic', branch: 'drone',
+      costs: [{ iron: 40, water: 25, copper: 15 }], maxLevel: 1, prereqs: ['droneSpeed1'],
+      upgradeKey: 'repairDrone', type: 'gadget' },
+    { id: 'repairDrone2', name: 'Repair Drone L2', icon: 'medic', branch: 'drone',
+      costs: [{ silver: 15, water: 35, quartz: 10 }], maxLevel: 1, prereqs: ['repairDrone'],
+      upgradeKey: 'repairDroneLevel', type: 'stat' },
+    { id: 'repairDrone3', name: 'Repair Drone L3', icon: 'medic', branch: 'drone',
+      costs: [{ sapphire: 6, emerald: 10, water: 40 }], maxLevel: 1, prereqs: ['repairDrone2'],
+      upgradeKey: 'repairDroneLevel', type: 'stat' },
+    // -- More couriers --
+    { id: 'droneSwarm1', name: 'Drone Swarm L1', icon: 'drone', branch: 'drone',
+      costs: [{ gold: 20, titanium: 8, cobalt: 25 }], maxLevel: 1, prereqs: ['droneCargo2', 'droneSpeed2'],
+      upgradeKey: 'droneCount', type: 'stat' },
+    { id: 'droneSwarm2', name: 'Drone Swarm L2', icon: 'drone', branch: 'drone',
+      costs: [{ amethyst: 6, opal: 4, voidstone: 2 }], maxLevel: 1, prereqs: ['droneSwarm1'],
+      upgradeKey: 'droneCount', type: 'stat' }
   ];
 
   // Upgrade effect descriptions (keyed by upgradeKey)
   const UPGRADE_EFFECT_DESC = {
     domeHP: '+25 max dome HP per level',
-    shieldRecharge: 'Shield gadget recharges faster',
+    shieldRecharge: 'Shield Generator recharges 50 s after a hit, even at night (-8 s per level); Repellent cooldown -4 s per level',
     shieldRegen: '+1 HP/5s passive dome regen per level',
     reinforcedDome: 'Dome takes 25% less damage (passive)',
     autoRepair: 'Dome regenerates +2 HP every 5s',
-    autoRepairSpeed: 'Auto-repair heals faster per level',
+    autoRepairSpeed: 'Auto-repair ticks 60% more often per level',
     domeExpansion: '+75 max dome HP, instant heal',
     energyShield: 'Dome takes 15% less damage (stacks with Reinforced)',
     damageReflect: 'Reflects 15% damage back to attackers per level',
@@ -1438,36 +1620,46 @@
     magnet: 'Auto-collect dropped resources within 2 tiles',
     magnetRange: '+1 magnet range per level',
     fortune: '30% chance to double ore yield (+10% per extra level)',
-    silkTouch: 'Preserves full resource value when mining',
-    oreDetector: 'Highlights nearby ores through walls (+range per level)',
+    silkTouch: '+25% yield from every ore you mine',
+    oreDetector: 'Reveals hidden gadget chambers and the Relocation Core within 6 tiles (+3 per level)',
     speedMining: '-10% mining time per level (stacks with tools)',
-    autoMine: 'Auto-mines adjacent blocks when idle for 2s',
-    tunnelBore: 'Mine 3 blocks in a line in the direction you face',
-    veinMiner: 'Mining an ore mines the entire connected vein',
+    autoMine: 'Mines an adjacent ore by itself when the keeper stands idle for 2 s',
+    tunnelBore: 'Every dig also breaks the next 2 blocks in the same direction',
+    veinMiner: 'Mining an ore also mines up to 10 connected tiles of the same ore',
     moveSpeed: '15% faster movement per level',
     teleporter: 'Instantly return to surface (30s cooldown)',
     teleportCooldown: '-5s teleporter cooldown per level',
-    jetpack: 'Fly upward through empty tiles',
-    jetpackFuel: '+50% jetpack duration per level',
-    phaseShift: 'Pass through a single block once (+uses per level)',
+    jetpack: 'Climb tunnels twice as fast and dig upward 20% faster',
+    jetpackFuel: '+25% climbing speed per level',
+    phaseShift: 'The next block breaks instantly; recharges in 25 s (-8 s per level)',
     echoLocation: 'Extends scanner range by +2 tiles per level',
-    doubleJump: 'Jump up 2 empty tiles vertically at once',
-    wallClimb: 'Move up adjacent to solid walls without empty space',
-    dash: 'Quick-move 3 empty tiles in one direction (+range per level)',
-    undergroundRadar: 'Reveals wider area around player (+range per level)',
+    doubleJump: 'Moving up through a tunnel covers 2 tiles per step',
+    wallClimb: 'Digging upward is 30% faster',
+    dash: 'Shift + direction dashes 3 tunnel tiles (+1 per level), 2 s cooldown',
+    undergroundRadar: 'Your lamp lights 25% further per level',
     fireRate: '+0.3 shots/sec per level',
     weaponDamage: '+5 damage per level',
-    drillSpeed: '-0.05s drill interval per level',
+    drillSpeed: 'Every dig is faster (-0.05s drill interval per level)',
     blastTool: 'Clears a 3x3 area (costs 10 iron, 5s cooldown)',
     scanner: 'Reveals resources in 3-tile radius (passive)',
     chainLightning: 'Shots arc to 2 nearby enemies for 40% damage (+1 arc/level)',
     freezeRay: 'Shots stun enemies in 60px radius for 0.8s (+0.3s/level)',
     plasmaCannon: 'Shots deal 60% AoE damage in 70px radius',
-    multiShot: 'Fire 2 projectiles per shot (+1 per level)',
-    homingShots: 'Projectiles track nearest enemy automatically',
+    multiShot: 'Each shot also hits 1 more monster (+1 per level) for 60% damage',
+    homingShots: 'Shots home in on monsters far wider around your aim',
     turretSpeed: '+30% turret rotation speed per level',
     criticalHit: '15% chance to deal 2.5x damage (+5% per level)',
-    explosiveRounds: 'All shots explode on impact for 40% AoE'
+    explosiveRounds: 'All shots explode on impact for 40% AoE',
+    droneBay: 'A courier drone flies to the keeper, takes the cargo home and picks up loose ore',
+    droneSpeed: '+30% drone flight speed and +1 tile pickup radius per level',
+    droneCargo: '+15 drone cargo per level',
+    droneMiner: 'Couriers laser-mine exposed ore near the keeper while they have room',
+    droneMining: 'Mining lasers cut 35% faster and reach 2 tiles further per level',
+    combatDrone: 'A gun drone guards the dome and shoots monsters',
+    combatDroneLevel: 'Level 2: harder, faster shots. Level 3: a second gun drone',
+    repairDrone: 'A repair drone welds the dome back together',
+    repairDroneLevel: 'Repairs faster per level',
+    droneCount: '+1 courier drone per level'
   };
 
   // Mining difficulty label from depth multiplier
@@ -1476,14 +1668,17 @@
     if (depthMult < 1.8) return 'Easy';
     if (depthMult < 2.4) return 'Medium';
     if (depthMult < 3.0) return 'Hard';
-    return 'Very Hard';
+    if (depthMult < 4.0) return 'Very Hard';
+    return 'Extreme';
   }
 
   // Precompute node positions for the tree layout
   // Layout: root at top center, 4 branches below
-  const TREE_BRANCH_ORDER = ['dome', 'mining', 'movement', 'weapon'];
-  const TREE_BRANCH_LABELS = { dome: 'DOME', mining: 'MINING', movement: 'MOVEMENT', weapon: 'WEAPON' };
-  const TREE_BRANCH_COLORS = { dome: '#4cb4ff', mining: '#ffae3a', movement: '#5ee07a', weapon: '#ff5e5e' };
+  const TREE_BRANCH_ORDER = ['dome', 'mining', 'movement', 'weapon', 'drone'];
+  const TREE_BRANCH_LABELS = { dome: 'DOME', mining: 'MINING', movement: 'MOVEMENT', weapon: 'WEAPON', drone: 'DRONES' };
+  const TREE_BRANCH_COLORS = { dome: '#4cb4ff', mining: '#ffae3a', movement: '#5ee07a', weapon: '#ff5e5e', drone: '#c890ff' };
+  // Branch regions, row by row
+  const TREE_REGION_ROWS = [['dome', 'mining'], ['movement', 'weapon', 'drone']];
   const TREE_CARD_W = 200;
   const TREE_CARD_H = 88;
   const TREE_GAP_X = 40;       // vertical channel between depth columns (connectors run here)
@@ -1544,7 +1739,9 @@
       addFloating(x, y, text, opts);
     };
   }
-  let surfaceArt = null;                 // cached sky, mountains, ground, dome glass
+  let surfaceArt = null;                 // cached sky, mountains, ground and plants of the site
+  let daylight = 0;                      // 0 = night .. 1 = full day (sky and land colours)
+  let duskGlow = 0;                      // warm sunrise / sunset tint
   const enemyHitFlash = new WeakMap();   // enemy -> white flash strength after a hit
 
   /* ======================================================================
@@ -1594,16 +1791,31 @@
   // Each page: intro paragraph plus rows of [key, text] (key null = plain bullet)
   const TUTORIAL_PAGES = [
     { title: 'How to Play', icon: 'dome',
-      intro: 'Defend your dome from alien waves on the surface while mining resources underground!',
-      items: [['Click', 'Fire the laser (surface) / dig (underground)'], ['WASD / Arrows', 'Move the keeper and mine underground'], ['Space / Tab', 'Switch between surface and mine']] },
+      intro: 'Mine by day, defend the dome at night. Dig resources underground, bring them home and spend them on upgrades.',
+      items: [['Click', 'Fire the laser (surface) / dig (underground)'], ['WASD / Arrows', 'Move the keeper and mine underground'], ['Space / Tab', 'Switch between surface and mine'], ['Esc', 'Pause - the run is saved automatically']] },
+    { title: 'Day & Night', icon: 'moon',
+      intro: 'Monsters attack after nightfall. A warning sounds before dusk - get back to the dome in time.',
+      items: [[null, 'The sun crosses the sky by day, the moon by night'], [null, 'Full-moon nights bring bigger swarms, new-moon nights are calm'], [null, 'More monsters can arrive later in the night'], [null, 'Sunlight burns the monsters still out at dawn'], [null, 'Day, time, moon phase and weather sit in the top-left panel']] },
+    { title: 'Seasons & Weather', icon: 'flower',
+      intro: 'A new season begins every four days and changes the swarm and the weather.',
+      items: [['Spring', 'Blossoms lure more monsters - smaller and weaker'], ['Summer', 'Long days, the heat makes monsters faster'], ['Autumn', 'Falling leaves, rain and thunderstorms'], ['Winter', 'Short days, snow, few but much tougher monsters'], [null, 'Lightning and meteors hit monsters - and sometimes the dome'], ['Click', 'Collect the ore a meteor leaves behind']] },
+    { title: 'Monsters', icon: 'swords',
+      intro: 'The swarm grows more varied with every night and every new site. Hover a monster to read about it.',
+      items: [['Swarmers', 'Tiny, fast and always in packs'], ['Crawlers', 'Armor soaks part of every hit'], ['Divers', 'Circle high, then dive at the dome'], ['Burrowers', 'Tunnel unseen and pop up at the dome'], ['Spitters', 'Shoot acid from a distance'], ['Splitters', 'Burst into swarmers; Menders heal others'], ['Bosses', 'Behemoth and Hive Queen on every fifth night']] },
     { title: 'Upgrades & Tips', icon: 'pickaxe',
-      intro: 'Mine iron, copper, gold, gems and more, then spend them on upgrades.',
-      items: [['U', 'Open the upgrade tree (on the surface)'], [null, 'Upgrade weapon, dome armor, drill and fire rate'], [null, 'Return to the surface before a wave arrives!'], ['H', 'Show this help again anytime']] },
+      intro: 'Everything is bought in one upgrade tree with five branches: Dome, Mining, Movement, Weapon and Drones.',
+      items: [['U', 'Open the upgrade tree (on the surface)'], [null, 'The Next upgrades panel shows the next node of every branch: click to buy it'], [null, 'Deeper strata hold new ores that pay for the top tiers'], ['H', 'Show this help again anytime']] },
+    { title: 'Drones', icon: 'drone',
+      intro: 'Buy the Drone Bay in the Drones branch and a courier drone starts working for you.',
+      items: [[null, 'Couriers fly to the keeper, take the cargo home and pick up loose ore'], [null, 'Mining Lasers let couriers dig ore near the keeper'], [null, 'Gun drones guard the dome, the repair drone welds it'], [null, 'Drone Swarm adds couriers; the Droneyard gadget gives a free one']] },
+    { title: 'Relocation', icon: 'core',
+      intro: 'Every mine hides a Relocation Core in its lower strata. Scanners point toward it once it is close.',
+      items: [[null, 'Mine the core to unlock the Relocate button'], ['L', 'Relocate when no monsters are attacking'], [null, 'Keep all upgrades and drones plus 75% of the resources'], [null, 'Each new site: a new biome and mine, and tougher monsters']] },
     { title: 'Gadgets', icon: 'gear',
       intro: 'Choose a primary gadget at the start of each run. Golden 2x2 gadget chambers underground hide more of them.',
       items: [['R', 'Activate the Repellent Field'], ['B', 'Use Blast Mining charges'], [null, 'Gadgets from chambers activate on pickup!']] },
     { title: 'Tools', icon: 'drill',
-      intro: 'Unlock tools in the Tools section of the upgrade panel, then use them with the number keys.',
+      intro: 'Tools are nodes of the upgrade tree (mostly the Mining branch). Once bought, use them with the number keys.',
       items: [['1', 'Drill: fast column mining'], ['2', 'Blast: clears a 3x3 area'], ['3', 'Scanner: reveals nearby ores'], ['4', 'Reinforced Dome: takes less damage'], ['5', 'Teleporter: instant return to the surface']] }
   ];
 
@@ -1615,7 +1827,7 @@
   let domeHP = BASE_DOME_HP;
   let maxDomeHP = BASE_DOME_HP;
 
-  let resources = { iron: 0, water: 0, cobalt: 0, copper: 0, gold: 0, tin: 0, silver: 0, lead: 0, coal: 0, quartz: 0, redstone: 0, diamond: 0, emerald: 0, ruby: 0 };
+  let resources = emptyResources();
   let carried = 0;
   let carryCapacity = BASE_CARRY_CAPACITY;
 
@@ -1638,10 +1850,9 @@
   let cameraX = 0;
   let cameraY = 0;
 
-  let upgradeLevels = { weaponDamage: 0, fireRate: 0, domeHP: 0, drillSpeed: 0, carryCapacity: 0, moveSpeed: 0, miningTools: 0 };
-
   let enemies = [];
-  let waveNumber = 0;
+  let waveNumber = 0;          // nights survived in the whole run
+  let siteNights = 0;          // nights at the current site (threat restarts per site)
   let waveTimer = 0;
   let waveActive = false;
   let score = 0;
@@ -1681,7 +1892,6 @@
   let unlockedTools = {};       // { drill: true, blastTool: true, ... }
   let activeToolKey = null;     // currently selected tool key
   let toolState = {};           // per-tool runtime state
-  let showToolPanel = false;    // whether tool unlock panel is visible in upgrade menu
 
   /* ── Upgrade Dialog (full-screen tree) ── */
   let upgradeTreeLevels = {};   // { nodeId: currentLevel }
@@ -1716,12 +1926,14 @@
   let treeLayout = null;        // cached node positions and branch regions
   let treeNodeInfo = null;      // cached display names / chain positions
   const treePurchaseFlash = {}; // nodeId -> purchase time (ms) for the flash effect
+  const quickPanelFlash = {};   // branch -> purchase time (ms) for the quick panel row flash
+  let quickPanelHover = null;   // hovered quick panel hit target
 
   const PRIMARY_GADGETS = [
-    { key: 'shield', name: 'Shield Generator', icon: 'shield', desc: ['Absorbs the first hit of each wave.', 'Recharges when a new wave starts.'] },
+    { key: 'shield', name: 'Shield Generator', icon: 'shield', desc: ['Absorbs the first hit of each night.', 'Recharges at nightfall.'] },
     { key: 'repellent', name: 'Repellent Field', icon: 'portal', desc: ['Press R: slows all enemies to 40%', 'for 5 seconds (30s cooldown).'] },
     { key: 'orchard', name: 'Orchard', icon: 'tree', desc: ['Every 20s grows a fruit that gives', '+30% mining speed for 10 seconds.'] },
-    { key: 'droneyard', name: 'Droneyard', icon: 'robot', desc: ['A drone auto-carries 10 resources', 'to surface every 15 seconds.'] }
+    { key: 'droneyard', name: 'Droneyard', icon: 'drone', desc: ['Starts with a courier drone that hauls', 'your cargo home. All drones work 50% faster.'] }
   ];
 
   const MINE_GADGETS = ['autoCannon', 'stunLaser', 'blastMining', 'probeScanner', 'domeArmor', 'condenser'];
@@ -1789,7 +2001,7 @@
   }
 
   function addHighScore(waves, pts) {
-    highScores.push({ waves, score: pts });
+    highScores.push({ waves, score: pts, sites: site.index + 1, days: world.day });
     highScores.sort((a, b) => b.score - a.score);
     if (highScores.length > MAX_HIGH_SCORES)
       highScores.length = MAX_HIGH_SCORES;
@@ -1801,19 +2013,20 @@
     highScoresBody.innerHTML = '';
     for (let i = 0; i < highScores.length; ++i) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${i + 1}</td><td>${highScores[i].waves}</td><td>${highScores[i].score}</td>`;
+      tr.innerHTML = `<td>${i + 1}</td><td>${highScores[i].waves}</td><td>${highScores[i].sites || 1}</td><td>${highScores[i].score}</td>`;
       highScoresBody.appendChild(tr);
     }
     if (!highScores.length) {
       const tr = document.createElement('tr');
-      tr.innerHTML = '<td colspan="3" style="text-align:center">No scores yet</td>';
+      tr.innerHTML = '<td colspan="4" style="text-align:center">No scores yet</td>';
       highScoresBody.appendChild(tr);
     }
   }
 
   /* -- Run save / resume (plain data only; objects are rebuilt on load) -- */
-  const STORAGE_SAVE = STORAGE_PREFIX + '-save-v1';
-  const SAVE_VERSION = 1;
+  const STORAGE_SAVE = STORAGE_PREFIX + '-save-v2';
+  const STORAGE_SAVE_V1 = STORAGE_PREFIX + '-save-v1'; // older format, migrated on load
+  const SAVE_VERSION = 2;
   const AUTOSAVE_INTERVAL = 5; // seconds of play between autosaves
   let autosaveTimer = 0;
   let saveAvailable = false;   // a resumable run is stored
@@ -1821,7 +2034,7 @@
   let newGameConfirmOpen = false;
 
   function isRunActive() {
-    return primaryGadget !== null && (state === STATE_PLAYING || state === STATE_PAUSED || state === STATE_UPGRADE_DIALOG);
+    return primaryGadget !== null && (state === STATE_PLAYING || state === STATE_PAUSED || state === STATE_UPGRADE_DIALOG || state === STATE_CINEMATIC || state === STATE_CONFIRM);
   }
 
   function saveRun() {
@@ -1837,14 +2050,18 @@
       domeHP, maxDomeHP, carried, carryCapacity,
       weaponDamage, fireRate, drillSpeed, moveStepInterval,
       drillX, drillY, turretAngle,
-      resources, upgradeLevels, upgradeTreeLevels,
-      waveNumber, waveTimer, waveActive, score,
+      resources, upgradeTreeLevels,
+      waveNumber, siteNights, waveTimer: secondsToNight(), waveActive, score,
+      world: { day: world.day, t: world.t, bursts: world.bursts, warned: world.warned },
+      weather: { kind: weather.kind, timeLeft: weather.timeLeft }, snowCover,
+      meteorOre: meteorOre.map(o => ({ x: o.x, y: o.y, type: o.type, amount: o.amount })),
       enemies,
       grid: undergroundGrid.map(row => row.map(t => String.fromCharCode(48 + t)).join('')),
       partialHP,
       droppedResources,
       primaryGadget, primaryGadgetState, foundGadgets, gadgetChambers,
-      unlockedTools, activeToolKey, toolState
+      unlockedTools, activeToolKey, toolState,
+      site, relocationCore, landing: landingPending
     };
     try {
       localStorage.setItem(STORAGE_SAVE, JSON.stringify(data));
@@ -1854,7 +2071,10 @@
 
   function clearSave() {
     saveAvailable = false;
-    try { localStorage.removeItem(STORAGE_SAVE); } catch (_) {}
+    try {
+      localStorage.removeItem(STORAGE_SAVE);
+      localStorage.removeItem(STORAGE_SAVE_V1);
+    } catch (_) {}
   }
 
   function isNum(v) {
@@ -1866,34 +2086,62 @@
   }
 
   // Read and validate the stored run; a broken or outdated save is discarded with a notice
+  // A version 1 run keeps its upgrades, gadgets, resources and score; its
+  // smaller mine cannot be carried over, so the site is generated anew
+  function migrateV1Save(d) {
+    if (!isPlainObject(d) || d.version !== 1)
+      throw new Error('not a version 1 save');
+    d.version = SAVE_VERSION;
+    d.migratedFrom = 1;
+    d.mineOutdated = true;
+    d.view = VIEW_SURFACE;
+    d.enemies = [];
+    d.waveActive = false;
+    d.partialHP = [];
+    d.droppedResources = [];
+    d.gadgetChambers = [];
+    if (!isNum(d.drillX)) d.drillX = 0;
+    if (!isNum(d.drillY)) d.drillY = 0;
+    return d;
+  }
+
   function readSavedRun() {
-    let raw = null;
-    try { raw = localStorage.getItem(STORAGE_SAVE); } catch (_) { return null; }
+    let raw = null, legacy = false;
+    try {
+      raw = localStorage.getItem(STORAGE_SAVE);
+      if (!raw) {
+        raw = localStorage.getItem(STORAGE_SAVE_V1);
+        legacy = !!raw;
+      }
+    } catch (_) { return null; }
     if (!raw)
       return null;
     try {
-      const d = JSON.parse(raw);
+      let d = JSON.parse(raw);
+      if (legacy)
+        d = migrateV1Save(d);
       if (!isPlainObject(d) || d.version !== SAVE_VERSION)
         throw new Error('unsupported save version');
       for (const k of ['domeHP', 'maxDomeHP', 'carried', 'carryCapacity', 'weaponDamage', 'fireRate', 'drillSpeed', 'moveStepInterval', 'drillX', 'drillY', 'turretAngle', 'waveNumber', 'waveTimer', 'score'])
         if (!isNum(d[k]))
           throw new Error('bad ' + k);
-      if (!Array.isArray(d.grid) || d.grid.length !== GRID_ROWS)
+      if (!Array.isArray(d.grid))
         throw new Error('bad grid');
-      for (const row of d.grid) {
-        if (typeof row !== 'string' || row.length !== GRID_COLS)
-          throw new Error('bad grid row');
-        for (let c = 0; c < row.length; ++c) {
-          const t = row.charCodeAt(c) - 48;
-          if (t < TILE_EMPTY || t > TILE_RUBY)
-            throw new Error('bad tile');
-        }
+      // A mine of another size (older version) is rebuilt; the run itself is kept
+      d.mineOutdated = d.grid.length !== GRID_ROWS || d.grid.some(row => typeof row !== 'string' || row.length !== GRID_COLS);
+      if (!d.mineOutdated) {
+        for (const row of d.grid)
+          for (let c = 0; c < row.length; ++c) {
+            const t = row.charCodeAt(c) - 48;
+            if (t < TILE_EMPTY || t > TILE_MAX)
+              throw new Error('bad tile');
+          }
+        if (d.drillX < 0 || d.drillX >= GRID_COLS || d.drillY < 0 || d.drillY >= GRID_ROWS)
+          throw new Error('bad position');
       }
-      if (d.drillX < 0 || d.drillX >= GRID_COLS || d.drillY < 0 || d.drillY >= GRID_ROWS)
-        throw new Error('bad position');
       if (!PRIMARY_GADGETS.some(g => g.key === d.primaryGadget))
         throw new Error('bad gadget');
-      for (const k of ['resources', 'upgradeLevels', 'upgradeTreeLevels', 'primaryGadgetState', 'unlockedTools', 'toolState'])
+      for (const k of ['resources', 'upgradeTreeLevels', 'primaryGadgetState', 'unlockedTools', 'toolState'])
         if (!isPlainObject(d[k]))
           throw new Error('bad ' + k);
       for (const k of ['enemies', 'partialHP', 'droppedResources', 'foundGadgets', 'gadgetChambers'])
@@ -1921,14 +2169,26 @@
 
   function restoreRun(d) {
     resetGame(); // fresh defaults for everything not stored
-    undergroundGrid = d.grid.map(row => Array.from(row, ch => ch.charCodeAt(0) - 48));
-    gadgetChambers = d.gadgetChambers
-      .filter(ch => ch.r >= 0 && ch.r < GRID_ROWS - 1 && ch.c >= 0 && ch.c < GRID_COLS - 1)
-      .map(ch => ({ r: ch.r, c: ch.c, gadgetType: ch.gadgetType, revealed: !!ch.revealed }));
-    initTileHP();
-    for (const p of d.partialHP)
-      if (Array.isArray(p) && tileHP[p[0]] && isNum(p[2]) && tileMaxHP[p[0]][p[1]] > 0)
-        tileHP[p[0]][p[1]] = Math.max(0, Math.min(tileMaxHP[p[0]][p[1]], p[2]));
+    if (isPlainObject(d.site) && isNum(d.site.seed) && BIOMES[d.site.biome])
+      site = { index: Math.max(0, Math.floor(isNum(d.site.index) ? d.site.index : 0)), seed: d.site.seed | 0, biome: d.site.biome };
+    if (d.mineOutdated)
+      generateUnderground(makeRng(site.seed));
+    else {
+      // The core lives in the grid; older saves get it placed now
+      const rc = d.relocationCore;
+      if (isPlainObject(rc) && isNum(rc.r) && isNum(rc.c))
+        relocationCore = { r: rc.r | 0, c: rc.c | 0, revealed: !!rc.revealed, found: !!rc.found };
+      undergroundGrid = d.grid.map(row => Array.from(row, ch => ch.charCodeAt(0) - 48));
+      gadgetChambers = d.gadgetChambers
+        .filter(ch => ch.r >= 0 && ch.r < GRID_ROWS - 1 && ch.c >= 0 && ch.c < GRID_COLS - 1)
+        .map(ch => ({ r: ch.r, c: ch.c, gadgetType: ch.gadgetType, revealed: !!ch.revealed }));
+      if (!relocationCore.found && !d.grid.some(row => row.indexOf(String.fromCharCode(48 + TILE_CORE)) >= 0))
+        placeRelocationCore(makeRng(site.seed ^ 0x5eed));
+      initTileHP();
+      for (const p of d.partialHP)
+        if (Array.isArray(p) && tileHP[p[0]] && isNum(p[2]) && tileMaxHP[p[0]][p[1]] > 0)
+          tileHP[p[0]][p[1]] = Math.max(0, Math.min(tileMaxHP[p[0]][p[1]], p[2]));
+    }
 
     domeHP = d.domeHP;
     maxDomeHP = d.maxDomeHP;
@@ -1938,32 +2198,72 @@
     fireRate = d.fireRate;
     drillSpeed = d.drillSpeed;
     moveStepInterval = d.moveStepInterval;
-    drillX = d.drillX;
-    drillY = d.drillY;
+    if (!d.mineOutdated) {
+      drillX = d.drillX;
+      drillY = d.drillY;
+    }
     turretAngle = d.turretAngle;
     Object.assign(resources, d.resources);
-    Object.assign(upgradeLevels, d.upgradeLevels);
     Object.assign(upgradeTreeLevels, d.upgradeTreeLevels);
+    if (isPlainObject(d.upgradeLevels))
+      absorbLegacyUpgrades(d.upgradeLevels);
     waveNumber = d.waveNumber;
     waveTimer = d.waveTimer;
     waveActive = !!d.waveActive;
+    siteNights = isNum(d.siteNights) ? Math.max(0, Math.floor(d.siteNights)) : waveNumber;
+    if (isPlainObject(d.world) && isNum(d.world.day) && isNum(d.world.t))
+      world = { day: Math.max(1, Math.floor(d.world.day)), t: Math.max(0, Math.min(0.999, d.world.t)), bursts: Math.max(0, Math.min(3, d.world.bursts | 0)), warned: !!d.world.warned };
+    else {
+      // Older saves: one day per survived wave, morning of the next
+      world = newWorld();
+      world.day = Math.max(1, Math.floor(d.waveNumber) + 1);
+    }
+    computeSkyLight();
     score = d.score;
-    enemies = d.enemies.map(e => Object.assign({}, e));
-    droppedResources = d.droppedResources.map(dr => Object.assign({ age: 0 }, dr));
+    // Older saves only knew walkers, armoured walkers, bosses and flyers
+    enemies = d.enemies.map(e => {
+      const o = Object.assign({}, e);
+      if (!ENEMY_TYPES[o.type])
+        o.type = o.boss ? 'behemoth' : (o.type === 'flyer' ? 'flyer' : (o.armored ? 'crawler' : 'walker'));
+      if (!isNum(o.size)) o.size = 20;
+      if (!isNum(o.speed)) o.speed = 20;
+      if (!isNum(o.damage)) o.damage = 2;
+      o.phase = o.phase || 'approach';
+      o.t = isNum(o.t) ? o.t : 0;
+      return o;
+    });
+    droppedResources = d.mineOutdated ? [] : d.droppedResources.map(dr => Object.assign({ age: 0 }, dr));
     primaryGadget = d.primaryGadget;
     primaryGadgetState = Object.assign({}, d.primaryGadgetState);
     foundGadgets = d.foundGadgets.filter(g => typeof g === 'string');
     unlockedTools = Object.assign({}, d.unlockedTools);
+    // Tools bought on the old tools panel are the same nodes in the tree
+    for (const t of TOOL_DEFS)
+      if (unlockedTools[t.key] && TREE_NODE_BY_ID[t.key])
+        upgradeTreeLevels[t.key] = TREE_NODE_BY_ID[t.key].maxLevel;
     activeToolKey = typeof d.activeToolKey === 'string' ? d.activeToolKey : null;
     Object.assign(toolState, d.toolState);
 
-    currentView = d.view === VIEW_UNDERGROUND ? VIEW_UNDERGROUND : VIEW_SURFACE;
+    currentView = d.view === VIEW_UNDERGROUND && !d.mineOutdated ? VIEW_UNDERGROUND : VIEW_SURFACE;
+    if (isPlainObject(d.weather) && WEATHER[d.weather.kind] && isNum(d.weather.timeLeft))
+      weather = { kind: d.weather.kind, intensity: 1, timeLeft: Math.max(1, d.weather.timeLeft) };
+    if (isNum(d.snowCover))
+      snowCover = Math.max(0, Math.min(1, d.snowCover));
+    if (Array.isArray(d.meteorOre))
+      meteorOre = d.meteorOre.filter(o => isPlainObject(o) && isNum(o.x) && isNum(o.amount) && typeof o.type === 'string' && o.type in resources)
+        .slice(0, 14).map(o => ({ x: o.x, y: DOME_Y + 10, type: o.type, amount: o.amount, age: 0 }));
+    syncDrones();
     if (currentView === VIEW_UNDERGROUND) {
       cameraX = Math.max(0, Math.min(GRID_COLS * TILE_SIZE - CANVAS_W, drillX * TILE_SIZE - CANVAS_W / 2 + TILE_SIZE / 2));
       cameraY = Math.max(0, Math.min(GRID_ROWS * TILE_SIZE - CANVAS_H, drillY * TILE_SIZE - CANVAS_H / 2 + TILE_SIZE / 2));
     }
     autosaveTimer = 0;
     state = STATE_PLAYING;
+    // Saved on the way to a site: finish the landing
+    if (d.landing) {
+      landingPending = true;
+      startCinematic('arrive');
+    }
     updateWindowTitle();
   }
 
@@ -1974,6 +2274,11 @@
     try {
       restoreRun(d);
       saveNotice = '';
+      if (d.migratedFrom) {
+        saveRun();
+        try { localStorage.removeItem(STORAGE_SAVE_V1); } catch (_) {}
+        floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 110, 'Saved run updated: your dome landed on a fresh, deeper site', { color: '#ffd75a', font: 'bold 24px sans-serif' });
+      }
       SZ.GameAudio.play('select');
       floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `Run resumed -- Wave ${waveNumber}`, { color: '#4af', font: 'bold 32px sans-serif' });
     } catch (_) {
@@ -2055,34 +2360,56 @@
     // Gems: veins of 1-3, short but valuable
     [TILE_DIAMOND]:  { seedChance: 0.010, minLen: 1, maxLen: 3, depthLenBonus: 1 },
     [TILE_EMERALD]:  { seedChance: 0.012, minLen: 1, maxLen: 3, depthLenBonus: 1 },
-    [TILE_RUBY]:     { seedChance: 0.011, minLen: 1, maxLen: 3, depthLenBonus: 1 }
+    [TILE_RUBY]:     { seedChance: 0.011, minLen: 1, maxLen: 3, depthLenBonus: 1 },
+    // Deep signature ores: plentiful in their own stratum
+    [TILE_TITANIUM]:  { seedChance: 0.042, minLen: 3, maxLen: 6, depthLenBonus: 1 },
+    [TILE_SAPPHIRE]:  { seedChance: 0.038, minLen: 2, maxLen: 5, depthLenBonus: 1 },
+    [TILE_URANIUM]:   { seedChance: 0.036, minLen: 2, maxLen: 5, depthLenBonus: 1 },
+    [TILE_AMETHYST]:  { seedChance: 0.034, minLen: 2, maxLen: 5, depthLenBonus: 1 },
+    [TILE_OPAL]:      { seedChance: 0.032, minLen: 2, maxLen: 4, depthLenBonus: 1 },
+    [TILE_VOIDSTONE]: { seedChance: 0.030, minLen: 1, maxLen: 4, depthLenBonus: 1 }
   };
 
-  // Depth-based ore availability: which ores can spawn at a given depth factor (0..1)
-  function getOreSpawnChance(d, tileType) {
+  // Ore availability at a row. The classic ores keep their old depth curves
+  // across the upper ten strata and thin out below; each deep stratum adds
+  // its own signature ore (with a short tail into the next layer)
+  function getOreSpawnChance(row, tileType) {
+    const d = row / (DEEP_STRATUM * STRATUM_ROWS);        // 0..1 over the upper strata
+    const deep = Math.max(0, d - 1) * DEEP_STRATUM;       // strata below the upper ones
     const ramp = (start, end) => d < start ? 0 : d > end ? 1 : (d - start) / (end - start);
     const bell = (center, width) => Math.max(0, 1 - Math.pow((d - center) / width, 2));
+    const common = Math.max(0, 1 - deep * 0.8);           // base metals fade fast below bedrock
+    const mid = Math.max(0.1, 1 - deep * 0.45);           // precious metals thin out
+    const rare = Math.max(0.15, 1 - deep * 0.22);         // gems linger
     switch (tileType) {
-      case TILE_IRON:     return 0.4 + 0.6 * bell(0.2, 0.3) - 0.2 * ramp(0.6, 1.0);
-      case TILE_COPPER:   return 0.1 + 0.9 * bell(0.25, 0.3);
-      case TILE_TIN:      return 0.05 + 0.95 * bell(0.3, 0.3);
-      case TILE_COAL:     return 0.1 + 0.9 * bell(0.35, 0.35);
+      case TILE_IRON:     return (0.4 + 0.6 * bell(0.2, 0.3) - 0.2 * ramp(0.6, 1.0)) * common;
+      case TILE_COPPER:   return (0.1 + 0.9 * bell(0.25, 0.3)) * common;
+      case TILE_TIN:      return (0.05 + 0.95 * bell(0.3, 0.3)) * common;
+      case TILE_COAL:     return (0.1 + 0.9 * bell(0.35, 0.35)) * common;
       case TILE_LEAD:     return bell(0.45, 0.25);
-      case TILE_SILVER:   return ramp(0.2, 0.5) * (1 - 0.4 * ramp(0.8, 1.0));
-      case TILE_WATER:    return 0.3 + 0.7 * bell(0.4, 0.35);
-      case TILE_COBALT:   return ramp(0.2, 0.5) + 0.5 * ramp(0.5, 0.9);
-      case TILE_GOLD:     return ramp(0.35, 0.7) * (1 - 0.3 * ramp(0.9, 1.0));
-      case TILE_QUARTZ:   return ramp(0.3, 0.65);
-      case TILE_REDSTONE: return ramp(0.55, 0.85);
-      case TILE_EMERALD:  return ramp(0.6, 0.9);
-      case TILE_DIAMOND:  return ramp(0.65, 0.95);
-      case TILE_RUBY:     return ramp(0.63, 0.92);
-      default: return 0;
+      case TILE_SILVER:   return ramp(0.2, 0.5) * (1 - 0.4 * ramp(0.8, 1.0)) * common;
+      case TILE_WATER:    return (0.3 + 0.7 * bell(0.4, 0.35)) * Math.max(0.2, common);
+      case TILE_COBALT:   return (ramp(0.2, 0.5) + 0.5 * ramp(0.5, 0.9)) * mid;
+      case TILE_GOLD:     return ramp(0.35, 0.7) * (1 - 0.3 * ramp(0.9, 1.0)) * mid;
+      case TILE_QUARTZ:   return ramp(0.3, 0.65) * mid;
+      case TILE_REDSTONE: return ramp(0.55, 0.85) * mid;
+      case TILE_EMERALD:  return ramp(0.6, 0.9) * rare;
+      case TILE_DIAMOND:  return ramp(0.65, 0.95) * rare;
+      case TILE_RUBY:     return ramp(0.63, 0.92) * rare;
+      default: {
+        // Signature ore of a deep stratum
+        const home = DEPTH_TIERS.findIndex(t => t.ore === tileType);
+        if (home < 0) return 0;
+        const st = row / STRATUM_ROWS;
+        if (st < home - 0.25) return 0;
+        if (st < home + 1) return 1;
+        return Math.max(0, 0.35 - (st - home - 1) * 0.15);
+      }
     }
   }
 
   // Grow a vein from a seed point using random walk / BFS flood
-  function growVein(grid, seedR, seedC, tileType, targetLen) {
+  function growVein(grid, seedR, seedC, tileType, targetLen, rand) {
     const placed = [];
     const frontier = [{ r: seedR, c: seedC }];
     const visited = new Set();
@@ -2090,7 +2417,7 @@
 
     while (placed.length < targetLen && frontier.length > 0) {
       // Pick a random frontier cell
-      const idx = Math.floor(Math.random() * frontier.length);
+      const idx = Math.floor(rand() * frontier.length);
       const { r, c } = frontier[idx];
       frontier.splice(idx, 1);
 
@@ -2115,50 +2442,31 @@
     return placed.length;
   }
 
-  function generateUnderground() {
-    // Step 1: Fill entire grid with dirt
+  // Build a fresh mine; rand is the site's seeded generator
+  function generateUnderground(rand) {
+    rand = rand || Math.random;
     undergroundGrid = [];
-    for (let r = 0; r < GRID_ROWS; ++r) {
-      const row = [];
-      for (let c = 0; c < GRID_COLS; ++c)
-        row.push(TILE_DIRT);
-      undergroundGrid.push(row);
-    }
+    for (let r = 0; r < GRID_ROWS; ++r)
+      undergroundGrid.push(new Array(GRID_COLS).fill(TILE_DIRT));
 
-    // Step 2: Spawn ore veins from seed points
-    // Scan the grid at every cell; each cell has a chance to seed a vein
-    // The ore type picked depends on depth probabilities
-    const oreTypes = [
-      TILE_IRON, TILE_COPPER, TILE_TIN, TILE_COAL,
-      TILE_LEAD, TILE_SILVER, TILE_WATER, TILE_COBALT,
-      TILE_GOLD, TILE_QUARTZ,
-      TILE_REDSTONE, TILE_EMERALD, TILE_DIAMOND, TILE_RUBY
-    ];
-
+    // Ore veins: every cell may seed one vein, the type weighted by depth and biome
+    const oreBias = currentBiome().ore;
     for (let r = 0; r < GRID_ROWS; ++r) {
-      const d = r / GRID_ROWS; // depth factor 0..1
+      const d = r / GRID_ROWS;
+      const weights = RESOURCE_TILES.map(t => getOreSpawnChance(r, t) * (oreBias[TILE_LABELS[t]] || 1));
       for (let c = 0; c < GRID_COLS; ++c) {
-        // Only seed on dirt tiles (skip already placed veins)
         if (undergroundGrid[r][c] !== TILE_DIRT) continue;
-
-        // For each ore type, check if this cell seeds a vein
-        for (const oreType of oreTypes) {
-          const cfg = VEIN_CONFIG[oreType];
-          const depthWeight = getOreSpawnChance(d, oreType);
+        for (let i = 0; i < RESOURCE_TILES.length; ++i) {
+          const depthWeight = weights[i];
           if (depthWeight <= 0) continue;
-
-          // Effective seed chance scaled by depth availability
-          // Divide by average vein length to keep overall density similar
+          const oreType = RESOURCE_TILES[i];
+          const cfg = VEIN_CONFIG[oreType];
+          // Divide by the average vein length to keep the overall density similar
           const avgLen = (cfg.minLen + cfg.maxLen) / 2;
-          const effectiveChance = (cfg.seedChance * depthWeight) / avgLen;
-
-          if (Math.random() < effectiveChance) {
-            // Determine vein length: base range + depth bonus
-            const depthBonus = Math.floor(d * cfg.depthLenBonus);
-            const minL = cfg.minLen;
-            const maxL = cfg.maxLen + depthBonus;
-            const targetLen = minL + Math.floor(Math.random() * (maxL - minL + 1));
-            growVein(undergroundGrid, r, c, oreType, targetLen);
+          if (rand() < (cfg.seedChance * depthWeight) / avgLen) {
+            const maxL = cfg.maxLen + Math.floor(d * cfg.depthLenBonus);
+            const targetLen = cfg.minLen + Math.floor(rand() * (maxL - cfg.minLen + 1));
+            growVein(undergroundGrid, r, c, oreType, targetLen, rand);
             break; // only one vein type per seed point
           }
         }
@@ -2171,15 +2479,17 @@
     undergroundGrid[0][spawnCol - 1] = TILE_EMPTY;
     undergroundGrid[0][spawnCol + 1] = TILE_EMPTY;
 
-    // Place 4-8 gadget chambers (2x2 TILE_GADGET blocks) spread throughout the larger grid
+    // Gadget chambers (2x2 TILE_GADGET blocks), one band of depth each so they
+    // are spread over all strata
     gadgetChambers = [];
-    const chamberCount = 4 + Math.floor(Math.random() * 5); // 4, 5, 6, 7, or 8
+    const chamberCount = 10 + Math.floor(rand() * 5);
     for (let n = 0; n < chamberCount; ++n) {
+      const bandTop = 2 + Math.floor(n * (GRID_ROWS - 4) / chamberCount);
+      const bandH = Math.max(2, Math.floor((GRID_ROWS - 4) / chamberCount));
       let placed = false;
       for (let attempt = 0; attempt < 80 && !placed; ++attempt) {
-        const cr = 2 + Math.floor(Math.random() * (GRID_ROWS - 3)); // rows 2..GRID_ROWS-2
-        const cc = 1 + Math.floor(Math.random() * (GRID_COLS - 3)); // cols 1..GRID_COLS-3
-        // Check no overlap with start area (rows 0-1, near spawn) or other chambers
+        const cr = Math.min(GRID_ROWS - 2, bandTop + Math.floor(rand() * bandH));
+        const cc = 1 + Math.floor(rand() * (GRID_COLS - 3));
         let ok = true;
         for (let dr = 0; dr < 2 && ok; ++dr)
           for (let dc = 0; dc < 2 && ok; ++dc) {
@@ -2187,11 +2497,9 @@
             if (undergroundGrid[cr + dr][cc + dc] === TILE_GADGET) ok = false;
           }
         if (!ok) continue;
-        // Pick a random mine gadget for this chamber
         const available = MINE_GADGETS.filter(g => !gadgetChambers.some(ch => ch.gadgetType === g));
-        const gadgetType = available.length > 0
-          ? available[Math.floor(Math.random() * available.length)]
-          : MINE_GADGETS[Math.floor(Math.random() * MINE_GADGETS.length)];
+        const pool = available.length > 0 ? available : MINE_GADGETS;
+        const gadgetType = pool[Math.floor(rand() * pool.length)];
         gadgetChambers.push({ r: cr, c: cc, gadgetType, revealed: false });
         for (let dr = 0; dr < 2; ++dr)
           for (let dc = 0; dc < 2; ++dc)
@@ -2200,9 +2508,8 @@
       }
     }
 
-    // Initialize persistent tile mining HP arrays
+    placeRelocationCore(rand);
     initTileHP();
-
   }
 
   // Get intrinsic tile hardness (independent of player upgrades)
@@ -2248,7 +2555,7 @@
 
     domeHP = BASE_DOME_HP;
     maxDomeHP = BASE_DOME_HP;
-    resources = { iron: 0, water: 0, cobalt: 0, copper: 0, gold: 0, tin: 0, silver: 0, lead: 0, coal: 0, quartz: 0, redstone: 0, diamond: 0, emerald: 0, ruby: 0 };
+    resources = emptyResources();
     carried = 0;
     carryCapacity = BASE_CARRY_CAPACITY;
 
@@ -2267,12 +2574,29 @@
     cameraX = 0;
     cameraY = 0;
 
-    upgradeLevels = { weaponDamage: 0, fireRate: 0, domeHP: 0, drillSpeed: 0, carryCapacity: 0, moveSpeed: 0, miningTools: 0 };
-
     enemies = [];
     waveNumber = 0;
-    waveTimer = 12;
+    siteNights = 0;
+    waveTimer = 0;
     waveActive = false;
+    world = newWorld();
+    banners = [];
+    computeSkyLight();
+    weather = { kind: 'clear', intensity: 1, timeLeft: 50 };
+    snowCover = 0;
+    enemyShots = [];
+    shockwaves = [];
+    domeInvulnerable = 0;
+    emergencyCooldown = 0;
+    lastStandUsed = false;
+    keeperIdle = 0;
+    dashCooldown = 0;
+    rainDrops = [];
+    snowFlakes = [];
+    leaves = [];
+    meteors = [];
+    bolts = [];
+    meteorOre = [];
     score = 0;
 
     // Reset navigation state
@@ -2315,6 +2639,11 @@
     primaryGadgetState = {};
     foundGadgets = [];
 
+    // Drones are rebuilt from the upgrades
+    drones = [];
+    gunDrones = [];
+    repairBot = null;
+
     // Reset tool/gadget state
     unlockedTools = {};
     activeToolKey = null;
@@ -2329,7 +2658,6 @@
       phaseShiftCooldown: 0,     // phase shift cooldown timer
       echoLocationActive: false  // echo location passive
     };
-    showToolPanel = false;
     gadgetSelectHover = -1;
 
     // Reset upgrade tree
@@ -2348,14 +2676,24 @@
     // Reset tooltip
     clearTooltip();
 
-    generateUnderground();
+    // A new run lands on a fresh site
+    cinematic = null;
+    landingPending = false;
+    site = newSite(0, (Math.random() * 0x7fffffff) | 0);
+    generateUnderground(makeRng(site.seed));
     updateWindowTitle();
   }
 
   function startGameAfterGadgetSelect() {
-    state = STATE_PLAYING;
     SZ.GameAudio.play('select');
-    // Initialize primary gadget state
+    initPrimaryGadgetState();
+    syncDrones();
+    // Every run begins with the dome landing on its first site
+    landingPending = true;
+    startCinematic('arrive');
+  }
+
+  function initPrimaryGadgetState() {
     switch (primaryGadget) {
       case 'shield':
         primaryGadgetState = { active: true };
@@ -2367,7 +2705,7 @@
         primaryGadgetState = { fruitTimer: 20, fruitReady: false, speedBoostTimer: 0 };
         break;
       case 'droneyard':
-        primaryGadgetState = { droneTimer: 15, droneY: 0, droneActive: false, dronePhase: 0 };
+        primaryGadgetState = {};
         break;
     }
   }
@@ -2386,6 +2724,8 @@
     transitionTarget = currentView === VIEW_SURFACE ? VIEW_UNDERGROUND : VIEW_SURFACE;
     transitionProgress = 0;
     transitionPhase = 'fade-out';
+    clearTooltip();
+    quickPanelHover = null;
 
     // Cancel any active mining when switching views
     cancelMining();
@@ -2541,7 +2881,7 @@
         const spkC1 = Math.min(GRID_COLS, Math.ceil((cameraX + CANVAS_W) / TILE_SIZE));
         for (let r = spkR0; r < spkR1; ++r)
           for (let c = spkC0; c < spkC1; ++c)
-            if (undergroundGrid[r][c] !== TILE_EMPTY && undergroundGrid[r][c] !== TILE_DIRT && undergroundGrid[r][c] !== TILE_GADGET)
+            if (undergroundGrid[r][c] !== TILE_EMPTY && undergroundGrid[r][c] !== TILE_DIRT && undergroundGrid[r][c] !== TILE_GADGET && undergroundGrid[r][c] !== TILE_CORE)
               candidates.push({ r, c });
         if (candidates.length > 0) {
           const pick = candidates[Math.floor(Math.random() * candidates.length)];
@@ -2565,8 +2905,8 @@
         enemyHitFlash.set(e, Math.max(0, hf - dt * 6));
       e.wobblePhase += dt * 4;
       e.legPhase += dt * 8;
-      if (e.type === 'flyer')
-        e.wingPhase = (e.wingPhase || 0) + dt * 12;
+      if (e.type === 'flyer' || e.type === 'diver' || e.type === 'queen')
+        e.wingPhase = (e.wingPhase || 0) + dt * (e.type === 'queen' ? 18 : 12);
       e.eyeBlinkTimer -= dt;
       if (e.eyeBlinkTimer <= 0) {
         e.eyeBlinking = !e.eyeBlinking;
@@ -2620,6 +2960,7 @@
      ====================================================================== */
 
   function applyDamageToEnemy(e, amount) {
+    if (e.hidden) return;
     enemyHitFlash.set(e, 0.8);
     if (e.shield > 0) {
       const absorbed = Math.min(e.shield, amount);
@@ -2634,6 +2975,15 @@
         particles.sparkle(e.x, e.y, 8, { color: '#8cf', speed: 2 });
       }
     }
+    // Armour plates soak part of every hit (at least a quarter always gets through)
+    if (e.armor > 0 && amount > 0) {
+      const soaked = Math.min(e.armor, amount * 0.75);
+      amount -= soaked;
+      if (soaked > 0 && currentView === VIEW_SURFACE && Math.random() < 0.5) {
+        particles.sparkle(e.x, e.y - (e.size || 20) * 0.3, 3, { color: '#fff0c0', speed: 2 });
+        SZ.GameAudio.play('hit', { pitch: 1.8, volume: 0.35 });
+      }
+    }
     e.hp -= amount;
   }
 
@@ -2641,50 +2991,44 @@
      PATHFINDING (BFS for underground navigation)
      ====================================================================== */
 
+  // Breadth-first search through tunnels; typed arrays are reused between calls
+  let pathPrev = null, pathQueue = null, pathSeen = null, pathStamp = 0;
   function findPath(fromCol, fromRow, toCol, toRow) {
     if (fromCol === toCol && fromRow === toRow) return [];
     if (toCol < 0 || toCol >= GRID_COLS || toRow < 0 || toRow >= GRID_ROWS) return null;
+    if (fromCol < 0 || fromCol >= GRID_COLS || fromRow < 0 || fromRow >= GRID_ROWS) return null;
     if (undergroundGrid[toRow][toCol] !== TILE_EMPTY) return null;
-
-    const visited = [];
-    for (let r = 0; r < GRID_ROWS; ++r) {
-      visited.push([]);
-      for (let c = 0; c < GRID_COLS; ++c)
-        visited[r].push(false);
+    const N = GRID_ROWS * GRID_COLS;
+    if (!pathPrev || pathPrev.length !== N) {
+      pathPrev = new Int32Array(N);
+      pathQueue = new Int32Array(N);
+      pathSeen = new Uint32Array(N);
+      pathStamp = 0;
     }
-
-    const prev = [];
-    for (let r = 0; r < GRID_ROWS; ++r) {
-      prev.push([]);
-      for (let c = 0; c < GRID_COLS; ++c)
-        prev[r].push(null);
-    }
-
-    const queue = [{ col: fromCol, row: fromRow }];
-    visited[fromRow][fromCol] = true;
-    const dirs = [{ dc: 0, dr: -1 }, { dc: 0, dr: 1 }, { dc: -1, dr: 0 }, { dc: 1, dr: 0 }];
-
-    while (queue.length > 0) {
-      const cur = queue.shift();
-      if (cur.col === toCol && cur.row === toRow) {
-        // Reconstruct path
+    const stamp = ++pathStamp;
+    const start = fromRow * GRID_COLS + fromCol, goal = toRow * GRID_COLS + toCol;
+    let head = 0, tail = 0;
+    pathQueue[tail++] = start;
+    pathSeen[start] = stamp;
+    pathPrev[start] = -1;
+    while (head < tail) {
+      const cur = pathQueue[head++];
+      if (cur === goal) {
         const path = [];
-        let step = { col: toCol, row: toRow };
-        while (step.col !== fromCol || step.row !== fromRow) {
-          path.unshift(step);
-          step = prev[step.row][step.col];
-        }
-        return path;
+        for (let i = goal; i !== start; i = pathPrev[i])
+          path.push({ col: i % GRID_COLS, row: (i / GRID_COLS) | 0 });
+        return path.reverse();
       }
-      for (const d of dirs) {
-        const nc = cur.col + d.dc;
-        const nr = cur.row + d.dr;
-        if (nc < 0 || nc >= GRID_COLS || nr < 0 || nr >= GRID_ROWS) continue;
-        if (visited[nr][nc]) continue;
-        if (undergroundGrid[nr][nc] !== TILE_EMPTY) continue;
-        visited[nr][nc] = true;
-        prev[nr][nc] = { col: cur.col, row: cur.row };
-        queue.push({ col: nc, row: nr });
+      const r = (cur / GRID_COLS) | 0, c = cur - r * GRID_COLS;
+      for (let k = 0; k < 4; ++k) {
+        const nr = r + (k === 0 ? -1 : k === 1 ? 1 : 0);
+        const nc = c + (k === 2 ? -1 : k === 3 ? 1 : 0);
+        if (nr < 0 || nr >= GRID_ROWS || nc < 0 || nc >= GRID_COLS) continue;
+        const ni = nr * GRID_COLS + nc;
+        if (pathSeen[ni] === stamp || undergroundGrid[nr][nc] !== TILE_EMPTY) continue;
+        pathSeen[ni] = stamp;
+        pathPrev[ni] = cur;
+        pathQueue[tail++] = ni;
       }
     }
     return null; // no path found
@@ -2710,257 +3054,1731 @@
   }
 
   /* ======================================================================
+     WORLD TIME -- day and night, sun and moon, nightly attacks
+     ====================================================================== */
+
+  const DAY_LENGTH = 160;            // seconds for a full day and night
+  const DUSK_WARNING = 15;           // seconds of warning before nightfall
+  const MOON_PHASES = ['New Moon', 'Waxing Crescent', 'First Quarter', 'Waxing Gibbous', 'Full Moon', 'Waning Gibbous', 'Last Quarter', 'Waning Crescent'];
+  // t: 0 = sunrise .. dayFraction() = nightfall .. 1 = next sunrise
+  let world = { day: 1, t: 0.03, bursts: 0, warned: false };
+  let banners = [];                  // announcements: { title, sub, color, icon, age }
+
+  function newWorld() {
+    return { day: 1, t: 0.03, bursts: 0, warned: false };
+  }
+
+  // Share of the cycle that is daylight (long summer days, short winter days)
+  function dayFraction() {
+    return currentSeason().dayFraction;
+  }
+
+  function moonPhaseIndex(day) {
+    return ((day - 1) % 8 + 8) % 8;
+  }
+
+  // Night strength from the moon: 0.8 at new moon .. 1.25 at full moon
+  function moonStrength(day) {
+    return 0.8 + 0.45 * (1 - Math.abs(moonPhaseIndex(day) - 4) / 4);
+  }
+
+  function isNight() {
+    return world.t >= dayFraction();
+  }
+
+  function secondsToNight() {
+    return Math.max(0, (dayFraction() - world.t) * DAY_LENGTH);
+  }
+
+  function secondsToDawn() {
+    return Math.max(0, (1 - world.t) * DAY_LENGTH);
+  }
+
+  function smoothstep(a, b, x) {
+    const k = Math.max(0, Math.min(1, (x - a) / (b - a)));
+    return k * k * (3 - 2 * k);
+  }
+
+  function computeSkyLight() {
+    const f = dayFraction(), t = world.t, edge = 0.05;
+    daylight = t < f ? smoothstep(0, edge, t) * (1 - smoothstep(f - edge, f, t)) : 0;
+    // Glow straddles sunrise (t = 0, wrapping) and sunset (t = f)
+    const dist = Math.min(Math.abs(t - (f - 0.01)), Math.abs(t - 0.015), Math.abs(t - 1.015));
+    duskGlow = Math.max(0, 1 - dist / 0.07) * 0.85;
+  }
+
+  // Centre-top announcement panel (one at a time, queued)
+  function announce(title, sub, color, icon) {
+    if (banners.length > 4) banners.shift();
+    banners.push({ title, sub: sub || '', color: color || UI.gold, icon: icon || null, age: 0 });
+  }
+
+  function startNight() {
+    world.bursts = 1;
+    lastStandUsed = false;
+    const phase = MOON_PHASES[moonPhaseIndex(world.day)];
+    const strength = moonStrength(world.day);
+    spawnWave(false);
+    announce(`Night ${world.day}`, phase + (strength > 1.1 ? ' - the swarm is restless' : (strength < 0.9 ? ' - a quiet night' : '')), '#9ab8ff', 'moon');
+    SZ.GameAudio.tone(196, 0.5, 'triangle', 0.12);
+    SZ.GameAudio.tone(147, 0.8, 'triangle', 0.12, 0.35);
+  }
+
+  function startDay() {
+    if ((world.day - 1) % SEASON_DAYS === 0)
+      seasonBegins();
+    else
+      announce(`Day ${world.day}`, 'Sunrise - monsters left in the open burn away', '#ffd75a', 'sun');
+    SZ.GameAudio.play('levelup', { pitch: 1.15, volume: 0.8 });
+    saveRun();
+  }
+
+  function updateWorldTime(dt) {
+    const f = dayFraction();
+    const before = world.t;
+    world.t += dt / DAY_LENGTH;
+    if (!world.warned && before < f && (f - world.t) * DAY_LENGTH <= DUSK_WARNING) {
+      world.warned = true;
+      announce('Dusk is coming', `Night falls in ${DUSK_WARNING} s - get back to the dome!`, '#ff9a50', 'sun');
+      SZ.GameAudio.tone(330, 0.25, 'square', 0.07);
+      SZ.GameAudio.tone(262, 0.4, 'square', 0.07, 0.25);
+    }
+    if (before < f && world.t >= f)
+      startNight();
+    if (world.t >= f) {
+      const nightPos = (world.t - f) / (1 - f);
+      if (world.bursts === 1 && nightPos >= 0.4) {
+        world.bursts = 2;
+        spawnWave(true);
+      } else if (world.bursts === 2 && nightPos >= 0.72) {
+        world.bursts = 3;
+        spawnWave(true);
+      }
+    }
+    if (world.t >= 1) {
+      world.t -= 1;
+      ++world.day;
+      world.bursts = 0;
+      world.warned = false;
+      startDay();
+    }
+    computeSkyLight();
+    // Sunlight burns the monsters still out in the open (bosses resist)
+    if (daylight > 0.3)
+      for (const e of enemies) {
+        if (e.boss) continue;
+        e.hp -= e.maxHP * 0.07 * daylight * dt;
+        if (Math.random() < dt * 6)
+          particles.trail(e.x + (Math.random() - 0.5) * (e.size || 16), e.y - (e.size || 16) * 0.5, { vx: (Math.random() - 0.5) * 0.6, vy: -1.2, color: Math.random() < 0.5 ? '#ffb040' : '#706060', life: 0.5, size: 2, gravity: -0.02 });
+      }
+    // The current banner ages; a queue behind it shortens its stay
+    if (banners.length) {
+      const b = banners[0];
+      b.age += dt;
+      b.life = banners.length > 1 ? Math.min(b.life || 3.6, Math.max(1.6, b.age + 0.5)) : (b.life || 3.6);
+      if (b.age > b.life)
+        banners.shift();
+    }
+  }
+
+  // Path of the lit part of the moon for a phase index (0 new .. 4 full .. 7)
+  function moonLitPath(cx, cy, R, phaseIdx) {
+    const p = phaseIdx / 8;
+    const k = Math.cos(p * TWO_PI);
+    ctx.beginPath();
+    if (p < 0.5) {
+      ctx.arc(cx, cy, R, -Math.PI / 2, Math.PI / 2, false);
+      ctx.ellipse(cx, cy, R * Math.abs(k), R, 0, Math.PI / 2, -Math.PI / 2, k > 0);
+    } else {
+      ctx.arc(cx, cy, R, Math.PI / 2, Math.PI * 1.5, false);
+      ctx.ellipse(cx, cy, R * Math.abs(k), R, 0, -Math.PI / 2, Math.PI / 2, k > 0);
+    }
+    ctx.closePath();
+  }
+
+  function drawMoonDisc(cx, cy, R, phaseIdx, alpha) {
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    // Earthshine on the dark side
+    ctx.fillStyle = 'rgba(70,84,120,0.55)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, TWO_PI);
+    ctx.fill();
+    if (phaseIdx !== 0) {
+      const g = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.35, R * 0.1, cx, cy, R);
+      g.addColorStop(0, '#fbfcff');
+      g.addColorStop(0.7, '#cfd8ee');
+      g.addColorStop(1, '#8e9ac0');
+      moonLitPath(cx, cy, R, phaseIdx);
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.save();
+      ctx.clip();
+      ctx.fillStyle = 'rgba(90,100,140,0.32)';
+      for (const [dx, dy, r] of [[-0.3, -0.2, 0.22], [0.25, 0.3, 0.16], [0.1, -0.35, 0.1], [-0.15, 0.4, 0.12], [0.4, -0.05, 0.09]]) {
+        ctx.beginPath();
+        ctx.arc(cx + dx * R, cy + dy * R, r * R, 0, TWO_PI);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.strokeStyle = 'rgba(200,215,255,0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, TWO_PI);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawSunDisc(x, y, R, low, alpha) {
+    drawGlow(low > 0.5 ? '#ff9a50' : '#fff0b0', x, y, R * 5, 0.55 * alpha);
+    drawGlow('#ffffff', x, y, R * 2.2, 0.5 * alpha);
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, R);
+    g.addColorStop(0, '#ffffff');
+    g.addColorStop(0.6, low > 0.5 ? '#ffd080' : '#fff6c8');
+    g.addColorStop(1, low > 0.5 ? '#ff9040' : '#ffe080');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, R, 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Position on the sky arc for progress u (0 rising at the left .. 1 setting at the right)
+  function skyArc(u) {
+    return { x: 70 + u * (CANVAS_W - 140), y: DOME_Y + 40 - Math.sin(Math.max(0, Math.min(1, u)) * Math.PI) * (DOME_Y - 170) };
+  }
+
+  function drawCelestials() {
+    const f = dayFraction(), t = world.t;
+    if (t < f + 0.02) {
+      const u = t / f;
+      const p = skyArc(u);
+      drawSunDisc(p.x, p.y, 34, 1 - Math.sin(Math.max(0, Math.min(1, u)) * Math.PI), Math.min(1, daylight + duskGlow));
+    }
+    if (t > f - 0.03) {
+      const u = (t - f) / (1 - f);
+      const p = skyArc(u);
+      const ph = moonPhaseIndex(world.day);
+      const a = 1 - daylight;
+      drawGlow('#c8d8ff', p.x, p.y, 120, (0.12 + 0.3 * (1 - Math.abs(ph - 4) / 4)) * a);
+      drawMoonDisc(p.x, p.y, 30, ph, a);
+    }
+  }
+
+  // Small sun or moon icon for HUD rows
+  function drawTimeIcon(x, y, size, night) {
+    if (night)
+      drawMoonDisc(x, y, size / 2, Math.max(1, moonPhaseIndex(world.day)), 1);
+    else {
+      ctx.save();
+      ctx.strokeStyle = '#ffd060';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 8; ++i) {
+        const a = i * Math.PI / 4 + animTime * 0.3;
+        ctx.beginPath();
+        ctx.moveTo(x + Math.cos(a) * size * 0.42, y + Math.sin(a) * size * 0.42);
+        ctx.lineTo(x + Math.cos(a) * size * 0.6, y + Math.sin(a) * size * 0.6);
+        ctx.stroke();
+      }
+      const g = ctx.createRadialGradient(x - 2, y - 2, 1, x, y, size * 0.34);
+      g.addColorStop(0, '#fff8d0');
+      g.addColorStop(1, '#ffb020');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, size * 0.34, 0, TWO_PI);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawBanner() {
+    const b = banners[0];
+    if (!b || (state !== STATE_PLAYING && state !== STATE_PAUSED)) return;
+    const inA = Math.min(1, b.age / 0.35), outA = Math.min(1, ((b.life || 3.6) - b.age) / 0.5);
+    const a = Math.max(0, Math.min(inA, outA));
+    if (a <= 0) return;
+    const w = 600, h = 76, x = CANVAS_W / 2 - w / 2, y = 108 - (1 - inA) * 20;
+    ctx.save();
+    ctx.globalAlpha = a;
+    drawPanel(x, y, w, h, { accent: b.color, radius: 14, glow: true });
+    if (b.icon === 'moon' || b.icon === 'sun')
+      drawTimeIcon(x + 42, y + h / 2, 40, b.icon === 'moon');
+    else if (b.icon)
+      drawSprite(b.icon, x + 42, y + h / 2, 40);
+    const tx = x + (b.icon ? 78 : 24), tw = w - (b.icon ? 78 : 24) - 20;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText(b.title, tx, y + 26, tw, 26, { weight: 'bold', color: b.color });
+    fitText(b.sub, tx, y + 54, tw, 17, { color: UI.text });
+    ctx.restore();
+  }
+
+  // Day, time and moon (top left on the surface)
+  function drawClockPanel() {
+    const x = 16, y = 16, w = 330, h = 112;
+    const night = isNight();
+    const warn = !night && secondsToNight() <= DUSK_WARNING;
+    drawPanel(x, y, w, h, { accent: night ? '#7a9aff' : (warn ? '#ff8a50' : '#ffc860') });
+    // Dial: sky disc with the sun or moon
+    const dx = x + 38, dy = y + 40;
+    const sg = ctx.createLinearGradient(0, dy - 24, 0, dy + 24);
+    sg.addColorStop(0, night ? '#0a1030' : '#3a7ad0');
+    sg.addColorStop(1, night ? '#2a2050' : (duskGlow > 0.3 ? '#ff9a60' : '#a8d0f0'));
+    ctx.fillStyle = sg;
+    ctx.beginPath();
+    ctx.arc(dx, dy, 24, 0, TWO_PI);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    drawTimeIcon(dx, dy, 30, night);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText(`Day ${world.day}`, x + 72, y + 28, 110, 24, { weight: 'bold', color: UI.text });
+    const season = currentSeason();
+    const dayInSeason = (world.day - 1) % SEASON_DAYS + 1;
+    drawChip(`${season.name} ${dayInSeason}/${SEASON_DAYS}`, x + w - 12, y + 16, 24, { align: 'right', px: 14, maxW: 140, bg: hexToRgba(season.color, 0.16), border: hexToRgba(season.color, 0.55), color: season.color });
+    ctx.textAlign = 'left';
+    if (night) {
+      const left = enemies.length;
+      fitText(left ? `${left} ${left === 1 ? 'monster' : 'monsters'} attacking` : 'The night is quiet...', x + 72, y + 55, w - 86, 16, { weight: 'bold', color: left ? '#ff8a7a' : UI.textDim });
+      ctx.textAlign = 'right';
+      fitText(`dawn ${Math.ceil(secondsToDawn())}s`, x + w - 14, y + 55, 90, 14, { color: UI.textDim });
+      drawMeter(x + 72, y + 72, w - 86, 10, (world.t - dayFraction()) / (1 - dayFraction()), '#7a9aff');
+    } else {
+      const sec = Math.ceil(secondsToNight());
+      const pulse = warn ? 0.6 + Math.sin(animTime * 8) * 0.4 : 1;
+      fitText(warn ? 'Get to the dome!' : 'Daytime: mine and build', x + 72, y + 55, w - 86 - 70, 16, { weight: 'bold', color: warn ? `rgba(255,140,80,${pulse})` : UI.textDim });
+      ctx.textAlign = 'right';
+      fitText(`${sec}s`, x + w - 14, y + 55, 64, 18, { weight: 'bold', color: warn ? '#ff9a50' : '#ffc870' });
+      drawMeter(x + 72, y + 72, w - 86, 10, world.t / dayFraction(), warn ? '#ff7a40' : '#ffc040');
+    }
+    // Moon phase and weather
+    const ph = moonPhaseIndex(world.day);
+    drawMoonDisc(x + 22, y + 96, 7, Math.max(1, ph), ph === 0 ? 0.5 : 1);
+    ctx.textAlign = 'left';
+    fitText(MOON_PHASES[ph], x + 36, y + 97, 130, 14, { color: '#b8c8ff' });
+    const wk = WEATHER[weather.kind];
+    ctx.textAlign = 'right';
+    const ww = fitText(wk.name.replace('!', ''), x + w - 14, y + 97, 130, 14, { weight: 'bold', color: wk.color });
+    if (wk.icon)
+      drawSprite(wk.icon, x + w - 26 - ww, y + 96, 16);
+    else
+      drawTimeIcon(x + w - 26 - ww, y + 96, 14, false);
+  }
+
+  // Time line inside the mine's cargo panel
+  function drawMineClock(x, y, w) {
+    const night = isNight();
+    const warn = night || secondsToNight() <= DUSK_WARNING;
+    const text = night
+      ? `Night ${world.day}: ${enemies.length} at the dome`
+      : `Day ${world.day}: night in ${Math.ceil(secondsToNight())}s`;
+    if (warn) {
+      roundRectPath(x - 4, y - 13, w + 8, 26, 8);
+      ctx.fillStyle = `rgba(120,30,20,${0.45 + Math.sin(animTime * 6) * 0.2})`;
+      ctx.fill();
+    }
+    drawTimeIcon(x + 9, y, 18, night);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText(text, x + 24, y + 1, w - 24, 15, { weight: 'bold', color: warn ? '#ffb0a0' : UI.text });
+  }
+
+  /* ======================================================================
+     SEASONS AND WEATHER
+     ====================================================================== */
+
+  const SEASON_DAYS = 4;             // days per season, four seasons per year
+  // dayFraction: share of daylight; count / hp / size / damage / speed scale the night's monsters
+  const SEASONS = [
+    { key: 'spring', name: 'Spring', color: '#8affa0', dayFraction: 0.6, count: 1.3, hp: 0.7, size: 0.85, damage: 0.85, speed: 1,
+      desc: 'Blossoms lure more monsters - smaller and weaker ones', weather: { rain: 1.6, snow: 0.05, blizzard: 0, storm: 0.7, meteor: 1 } },
+    { key: 'summer', name: 'Summer', color: '#ffd060', dayFraction: 0.7, count: 1, hp: 1, size: 1, damage: 1, speed: 1.15,
+      desc: 'Long days - the heat makes monsters quicker', weather: { rain: 0.6, snow: 0, blizzard: 0, storm: 1.4, meteor: 1.3 } },
+    { key: 'autumn', name: 'Autumn', color: '#ff9a40', dayFraction: 0.55, count: 1.1, hp: 1.1, size: 1, damage: 1, speed: 1,
+      desc: 'Falling leaves and storms', weather: { rain: 1.6, snow: 0.3, blizzard: 0.1, storm: 1.7, meteor: 1 } },
+    { key: 'winter', name: 'Winter', color: '#bfe4ff', dayFraction: 0.45, count: 0.6, hp: 1.75, size: 1.15, damage: 1.3, speed: 0.95,
+      desc: 'Short days - few monsters, but much tougher', weather: { rain: 0.1, snow: 2.6, blizzard: 1.6, storm: 0.1, meteor: 1 } }
+  ];
+  const WEATHER = {
+    clear: { name: 'Clear skies', sub: 'Calm weather', icon: null, color: '#ffe080' },
+    rain: { name: 'Rain', sub: 'Mud slows the monsters a little', icon: 'water', color: '#7ab8ff' },
+    snow: { name: 'Snowfall', sub: 'Snow piles up and slows the monsters', icon: 'snowflake', color: '#d8f0ff' },
+    blizzard: { name: 'Blizzard!', sub: 'Poor sight, slow monsters - and a stiff turret', icon: 'snowflake', color: '#e8f8ff' },
+    storm: { name: 'Thunderstorm!', sub: 'Lightning strikes monsters - and sometimes the dome', icon: 'bolt', color: '#ffe060' },
+    meteor: { name: 'Meteor shower!', sub: 'Impacts hurt monsters and leave ore - click it to collect', icon: 'meteor', color: '#ffae60' }
+  };
+  let weather = { kind: 'clear', intensity: 0, timeLeft: 40 };
+  let snowCover = 0;                 // 0..1 snow lying on the ground and dome
+  let rainDrops = [], snowFlakes = [], leaves = [], meteors = [], bolts = [], meteorOre = [];
+  let lightningFlash = 0, lightningTimer = 4, meteorTimer = 2;
+
+  function seasonOf(day) {
+    return SEASONS[Math.floor((day - 1) / SEASON_DAYS) % SEASONS.length];
+  }
+
+  function currentSeason() {
+    return seasonOf(world.day);
+  }
+
+  function windStrength() {
+    const w = { clear: 0.15, rain: 0.5, snow: 0.35, blizzard: 2.2, storm: 1.4, meteor: 0.2 }[weather.kind] || 0;
+    return w * weather.intensity + (currentSeason().key === 'autumn' ? 0.4 : 0);
+  }
+
+  // Movement factor for monsters from the weather and the snow on the ground
+  function weatherSlow() {
+    let k = 1;
+    if (weather.kind === 'rain' || weather.kind === 'storm') k -= 0.1 * weather.intensity;
+    if (weather.kind === 'blizzard') k -= 0.3 * weather.intensity;
+    k -= 0.15 * snowCover;
+    return Math.max(0.5, k);
+  }
+
+  function rollWeather() {
+    const s = currentSeason(), b = currentBiome();
+    const weights = { clear: 3.2 };
+    for (const k of ['rain', 'snow', 'blizzard', 'storm', 'meteor'])
+      weights[k] = (s.weather[k] || 0) * (b.weather[k] === undefined ? 1 : b.weather[k]) * (k === 'meteor' ? 0.5 : 0.75);
+    // No blizzard without a cold season or biome
+    let total = 0;
+    for (const k in weights) total += weights[k];
+    let r = Math.random() * total;
+    let kind = 'clear';
+    for (const k in weights) {
+      r -= weights[k];
+      if (r <= 0) {
+        kind = k;
+        break;
+      }
+    }
+    return kind;
+  }
+
+  function setWeather(kind, duration) {
+    const changed = kind !== weather.kind;
+    weather.kind = kind;
+    weather.timeLeft = duration || (kind === 'clear' ? 35 + Math.random() * 40 : 28 + Math.random() * 36);
+    if (changed) {
+      weather.intensity = 0;
+      const w = WEATHER[kind];
+      announce(w.name, w.sub, w.color, w.icon || 'sun');
+      if (kind === 'storm')
+        SZ.GameAudio.noise(1.2, 0.15, 'lowpass', 300, 80);
+    }
+  }
+
+  function seasonBegins() {
+    const s = currentSeason();
+    announce(`${s.name} begins`, s.desc, s.color, s.key === 'winter' ? 'snowflake' : (s.key === 'spring' ? 'flower' : (s.key === 'autumn' ? 'leaf' : 'sun')));
+  }
+
+  function strikeLightning() {
+    // Most bolts seek a monster; some hit open ground or the dome
+    let x, target = null, domeHit = false;
+    const r = Math.random();
+    const visible = enemies.filter(e => !e.hidden);
+    if (visible.length && r < 0.65) {
+      target = visible[Math.floor(Math.random() * visible.length)];
+      x = target.x;
+    } else if (r < 0.7) {
+      x = DOME_X + (Math.random() - 0.5) * 60;
+      domeHit = true;
+    } else
+      x = 80 + Math.random() * (CANVAS_W - 160);
+    const y = target ? target.y : (domeHit ? DOME_Y - Math.sqrt(Math.max(0, DOME_RADIUS * DOME_RADIUS - (x - DOME_X) * (x - DOME_X))) : DOME_Y);
+    const pts = [[x + (Math.random() - 0.5) * 200, -10]];
+    for (let i = 1; i <= 9; ++i)
+      pts.push([pts[0][0] + (x - pts[0][0]) * i / 9 + (Math.random() - 0.5) * 40 * (i < 9 ? 1 : 0), -10 + (y + 10) * i / 9]);
+    bolts.push({ pts, life: 0.55 });
+    lightningFlash = 1;
+    const dmg = 22 + waveNumber * 2;
+    for (const e of enemies)
+      if (Math.hypot(e.x - x, e.y - y) < 80 && !e.hidden) {
+        applyDamageToEnemy(e, dmg);
+        e.stunTimer = Math.max(e.stunTimer || 0, 0.6);
+      }
+    if (domeHit)
+      damageDome(3, x, y, 'Lightning hit the dome!');
+    if (currentView === VIEW_SURFACE) {
+      particles.burst(x, y, 14, { color: '#fff6b0', speed: 3.5, life: 0.4 });
+      screenShake.trigger(5, 200);
+    }
+    SZ.GameAudio.noise(0.9, 0.22, 'lowpass', 900, 60, 0.05);
+    SZ.GameAudio.sweep(90, 40, 0.6, 'sine', 0.2, 0.05);
+  }
+
+  function spawnMeteor() {
+    let tx = 60 + Math.random() * (CANVAS_W - 120);
+    // Most meteors heading for the dome miss it
+    if (Math.abs(tx - DOME_X) < DOME_RADIUS + 10 && Math.random() < 0.7)
+      tx += (tx < DOME_X ? -1 : 1) * (DOME_RADIUS + 40 + Math.random() * 120);
+    const fromLeft = Math.random() < 0.5;
+    meteors.push({ x: tx + (fromLeft ? -1 : 1) * (300 + Math.random() * 200), y: -40, tx, ty: DOME_Y + 6, t: 0, dur: 1.1 + Math.random() * 0.5, size: 6 + Math.random() * 6 });
+  }
+
+  function meteorImpact(m) {
+    const dmg = 26 + waveNumber * 2;
+    for (const e of enemies)
+      if (!e.hidden && Math.hypot(e.x - m.tx, e.y - m.ty) < 95)
+        applyDamageToEnemy(e, dmg);
+    if (Math.abs(m.tx - DOME_X) < DOME_RADIUS + 10)
+      damageDome(4, m.tx, DOME_Y - DOME_RADIUS * 0.6, 'Meteor hit the dome!');
+    else if (meteorOre.length < 14) {
+      // A chunk of space rock with ore in it
+      const pool = ['iron', 'iron', 'cobalt', 'copper', 'silver', 'gold', 'quartz', 'titanium', 'sapphire'];
+      meteorOre.push({ x: m.tx, y: DOME_Y + 10, type: pool[Math.floor(Math.random() * pool.length)], amount: 6 + Math.floor(Math.random() * 10), age: 0 });
+    }
+    if (currentView === VIEW_SURFACE) {
+      particles.burst(m.tx, m.ty, 24, { color: '#ffb060', speed: 4, life: 0.6, gravity: 0.08 });
+      particles.burst(m.tx, m.ty, 10, { color: '#6a5a50', speed: 2.5, life: 0.8, gravity: 0.1 });
+      screenShake.trigger(6, 220);
+      SZ.GameAudio.play('explode', { pitch: 1.3, volume: 0.6 });
+    }
+  }
+
+  function collectMeteorOre(o, byDrone) {
+    resources[o.type] = (resources[o.type] || 0) + o.amount;
+    meteorOre.splice(meteorOre.indexOf(o), 1);
+    if (currentView === VIEW_SURFACE) {
+      floatingText.add(o.x, o.y - 30, `${byDrone ? 'Drone: ' : ''}+${o.amount} ${o.type}`, { color: '#ffd080', font: 'bold 20px sans-serif' });
+      particles.sparkle(o.x, o.y, 8, { color: '#ffd080', speed: 2 });
+      SZ.GameAudio.play('pickup', { pitch: 1.1 });
+    }
+  }
+
+  function updateWeather(dt) {
+    weather.timeLeft -= dt;
+    if (weather.timeLeft <= 0)
+      setWeather(rollWeather());
+    weather.intensity = Math.min(1, weather.intensity + dt / 4);
+    const k = weather.kind, I = weather.intensity;
+    const season = currentSeason().key;
+    // Snow builds up while it snows and melts otherwise (slowly in winter)
+    if (k === 'snow' || k === 'blizzard')
+      snowCover = Math.min(1, snowCover + dt * (k === 'blizzard' ? 0.03 : 0.015) * I);
+    else
+      snowCover = Math.max(season === 'winter' ? 0.35 * (k === 'clear' ? 1 : 0.6) : 0, snowCover - dt * (season === 'summer' ? 0.03 : 0.008));
+    if (season === 'winter' && snowCover < 0.35)
+      snowCover = Math.min(0.35, snowCover + dt * 0.01);
+
+    if (k === 'storm') {
+      lightningTimer -= dt;
+      if (lightningTimer <= 0) {
+        lightningTimer = 2.5 + Math.random() * 5;
+        strikeLightning();
+      }
+    }
+    if (k === 'meteor') {
+      meteorTimer -= dt;
+      if (meteorTimer <= 0) {
+        meteorTimer = 0.7 + Math.random() * 1.6;
+        spawnMeteor();
+      }
+    }
+    for (let i = meteors.length - 1; i >= 0; --i) {
+      const m = meteors[i];
+      m.t += dt / m.dur;
+      if (m.t >= 1) {
+        meteorImpact(m);
+        meteors.splice(i, 1);
+      }
+    }
+    for (let i = bolts.length - 1; i >= 0; --i) {
+      bolts[i].life -= dt;
+      if (bolts[i].life <= 0) bolts.splice(i, 1);
+    }
+    lightningFlash = Math.max(0, lightningFlash - dt * 3);
+    // Docked couriers fetch meteor ore lying near the dome
+    for (const o of meteorOre) {
+      o.age += dt;
+      if (o.age > 6 && drones.some(d => d.state === 'dock')) {
+        collectMeteorOre(o, true);
+        break;
+      }
+    }
+
+    // Visual particles only while the surface is on screen
+    if (currentView !== VIEW_SURFACE) return;
+    const wind = windStrength();
+    const rainRate = (k === 'rain' ? 260 : (k === 'storm' ? 420 : 0)) * I;
+    const snowRate = (k === 'snow' ? 70 : (k === 'blizzard' ? 260 : 0)) * I;
+    for (let n = rainRate * dt + Math.random(); n >= 1 && rainDrops.length < 500; --n)
+      rainDrops.push({ x: Math.random() * (CANVAS_W + 300) - 150, y: -20 - Math.random() * 60, vy: 900 + Math.random() * 300, len: 14 + Math.random() * 10 });
+    for (let n = snowRate * dt + Math.random(); n >= 1 && snowFlakes.length < 600; --n)
+      snowFlakes.push({ x: Math.random() * (CANVAS_W + 400) - 200, y: -10, vy: 40 + Math.random() * 50, s: 1.5 + Math.random() * 2.5, p: Math.random() * TWO_PI });
+    if (season === 'autumn' && leaves.length < 26 && Math.random() < dt * 3)
+      leaves.push({ x: Math.random() * CANVAS_W, y: -10, vy: 30 + Math.random() * 30, p: Math.random() * TWO_PI, r: Math.random() * TWO_PI, c: ['#e07a20', '#c04a18', '#e8b030', '#a83a10'][Math.floor(Math.random() * 4)] });
+    for (let i = rainDrops.length - 1; i >= 0; --i) {
+      const d = rainDrops[i];
+      d.y += d.vy * dt;
+      d.x += wind * 160 * dt;
+      if (d.y > DOME_Y + 4 + (i % 7) * 4 || (Math.hypot(d.x - DOME_X, d.y - DOME_Y) < DOME_RADIUS + 2 && d.y < DOME_Y)) {
+        if (Math.random() < 0.25)
+          particles.trail(d.x, d.y, { vx: (Math.random() - 0.5) * 1.2, vy: -0.8 - Math.random(), color: 'rgba(170,200,255,0.8)', life: 0.18, size: 1 });
+        rainDrops.splice(i, 1);
+      }
+    }
+    for (let i = snowFlakes.length - 1; i >= 0; --i) {
+      const f = snowFlakes[i];
+      f.p += dt * 2;
+      f.y += f.vy * dt * (k === 'blizzard' ? 1.8 : 1);
+      f.x += (Math.sin(f.p) * 20 + wind * 120) * dt;
+      if (f.y > DOME_Y + 6 + (i % 5) * 6) snowFlakes.splice(i, 1);
+    }
+    for (let i = leaves.length - 1; i >= 0; --i) {
+      const l = leaves[i];
+      l.p += dt * 2.5;
+      l.r += dt * 3;
+      l.y += l.vy * dt;
+      l.x += (Math.sin(l.p) * 40 + wind * 60) * dt;
+      if (l.y > DOME_Y + 10) leaves.splice(i, 1);
+    }
+  }
+
+  // Precipitation, lightning, meteors and fog over the surface scene
+  function drawWeather() {
+    const k = weather.kind, I = weather.intensity;
+    const wind = windStrength();
+    // Clouds darken the scene while it rains, snows or storms
+    const gloom = ({ rain: 0.22, storm: 0.38, blizzard: 0.2, snow: 0.1 }[k] || 0) * I;
+    if (gloom > 0) {
+      ctx.fillStyle = k === 'blizzard' || k === 'snow' ? `rgba(200,215,235,${gloom * 0.6})` : `rgba(10,16,30,${gloom})`;
+      ctx.fillRect(0, 0, CANVAS_W, DOME_Y);
+    }
+    if (rainDrops.length) {
+      ctx.strokeStyle = 'rgba(180,205,255,0.45)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      for (const d of rainDrops) {
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(d.x - wind * 0.18 * d.len, d.y - d.len);
+      }
+      ctx.stroke();
+    }
+    if (snowFlakes.length) {
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      for (const f of snowFlakes)
+        ctx.fillRect(f.x - f.s / 2, f.y - f.s / 2, f.s, f.s);
+    }
+    for (const l of leaves) {
+      ctx.save();
+      ctx.translate(l.x, l.y);
+      ctx.rotate(l.r);
+      ctx.scale(1, Math.abs(Math.sin(l.p)) * 0.7 + 0.3);
+      ctx.fillStyle = l.c;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 6, 3, 0, 0, TWO_PI);
+      ctx.fill();
+      ctx.restore();
+    }
+    for (const m of meteors) {
+      const x = m.x + (m.tx - m.x) * m.t, y = m.y + (m.ty - m.y) * m.t;
+      const dx = (m.tx - m.x), dy = (m.ty - m.y), len = Math.hypot(dx, dy);
+      const tx = x - dx / len * 140, ty = y - dy / len * 140;
+      const g = ctx.createLinearGradient(tx, ty, x, y);
+      g.addColorStop(0, 'rgba(255,160,80,0)');
+      g.addColorStop(1, 'rgba(255,220,160,0.9)');
+      ctx.strokeStyle = g;
+      ctx.lineWidth = m.size * 0.8;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(tx, ty);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+      drawGlow('#ffa040', x, y, m.size * 5, 0.9);
+      ctx.fillStyle = '#fff4d0';
+      ctx.beginPath();
+      ctx.arc(x, y, m.size * 0.6, 0, TWO_PI);
+      ctx.fill();
+    }
+    for (const b of bolts) {
+      // Wide glow along the jagged path, then the crackling core
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineJoin = 'round';
+      for (const [wdt, col] of [[16, `rgba(140,170,255,${Math.min(0.35, b.life)})`], [6, `rgba(220,230,255,${Math.min(0.8, b.life * 2)})`]]) {
+        ctx.strokeStyle = col;
+        ctx.lineWidth = wdt;
+        ctx.beginPath();
+        b.pts.forEach(([px, py], i) => i ? ctx.lineTo(px, py) : ctx.moveTo(px, py));
+        ctx.stroke();
+      }
+      ctx.restore();
+      const end = b.pts[b.pts.length - 1];
+      drawGlow('#d8e0ff', end[0], end[1], 60, Math.min(1, b.life * 2));
+      SZ.GameEffects.drawElectricArc(ctx, b.pts[0][0], b.pts[0][1], b.pts[b.pts.length - 1][0], b.pts[b.pts.length - 1][1], {
+        segments: 10, jitter: 18, color: `rgba(255,255,230,${Math.min(1, b.life * 4)})`, glowColor: `rgba(160,190,255,${Math.min(1, b.life * 3)})`, width: 3, glowWidth: 12
+      });
+    }
+    if (lightningFlash > 0) {
+      ctx.fillStyle = `rgba(230,235,255,${lightningFlash * 0.35})`;
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    }
+    // Blizzard fog: the far field disappears in white
+    if (k === 'blizzard') {
+      const g = ctx.createLinearGradient(0, 0, 0, DOME_Y);
+      g.addColorStop(0, `rgba(225,235,248,${0.55 * I})`);
+      g.addColorStop(1, `rgba(225,235,248,${0.3 * I})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    }
+    // Summer heat haze over the ground
+    if (currentSeason().key === 'summer' && daylight > 0.5) {
+      ctx.save();
+      ctx.globalAlpha = 0.08 * daylight;
+      ctx.fillStyle = '#fff0c0';
+      for (let i = 0; i < 6; ++i) {
+        const y = DOME_Y - 70 + i * 12;
+        ctx.fillRect(Math.sin(animTime * 2 + i) * 20 - 20, y, CANVAS_W + 40, 3);
+      }
+      ctx.restore();
+    }
+  }
+
+  // Meteor ore lying on the ground (click to collect)
+  function drawMeteorOre() {
+    for (const o of meteorOre) {
+      const pulse = 0.6 + Math.sin(animTime * 4 + o.x) * 0.3;
+      drawGlow('#ffae60', o.x, o.y - 6, 40, pulse * 0.75);
+      ctx.fillStyle = SPRITE_OUTLINE;
+      ctx.beginPath();
+      ctx.ellipse(o.x, o.y - 4, 19, 13, 0, 0, TWO_PI);
+      ctx.fill();
+      const rg = ctx.createRadialGradient(o.x - 5, o.y - 10, 2, o.x, o.y - 4, 18);
+      rg.addColorStop(0, '#8a6a5a');
+      rg.addColorStop(1, '#3a2a24');
+      ctx.fillStyle = rg;
+      ctx.beginPath();
+      ctx.ellipse(o.x, o.y - 5, 17, 11, 0, 0, TWO_PI);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(255,150,60,${pulse})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(o.x - 12, o.y - 2);
+      ctx.lineTo(o.x - 4, o.y - 7);
+      ctx.lineTo(o.x + 3, o.y - 3);
+      ctx.lineTo(o.x + 12, o.y - 8);
+      ctx.stroke();
+      drawSprite(o.type, o.x, o.y - 8, 20);
+      if (Math.random() < 0.03)
+        particles.sparkle(o.x + (Math.random() - 0.5) * 24, o.y - 8, 1, { color: '#ffd080', speed: 0.6 });
+    }
+  }
+
+  function hitMeteorOre(mx, my) {
+    for (const o of meteorOre)
+      if (Math.abs(mx - o.x) < 22 && Math.abs(my - o.y) < 22)
+        return o;
+    return null;
+  }
+
+  // Snow lying on the ground line and on top of the dome
+  function drawSnowCover() {
+    if (snowCover <= 0.02) return;
+    const a = Math.min(1, snowCover * 1.2);
+    ctx.fillStyle = `rgba(244,250,255,${0.85 * a})`;
+    ctx.beginPath();
+    ctx.moveTo(0, DOME_Y + 4);
+    for (let x = 0; x <= CANVAS_W; x += 20)
+      ctx.lineTo(x, DOME_Y - snowCover * 6 - Math.abs(Math.sin(x * 0.05)) * 3 * snowCover);
+    ctx.lineTo(CANVAS_W, DOME_Y + 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = `rgba(230,240,255,${0.3 * a})`;
+    ctx.fillRect(0, DOME_Y + 4, CANVAS_W, 30 * snowCover);
+    // Cap on the dome
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 3, Math.PI * 1.22, Math.PI * 1.78);
+    ctx.lineWidth = 3 + snowCover * 7;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = `rgba(248,252,255,${0.9 * a})`;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /* ======================================================================
+     RELOCATION -- the Relocation Core, packing up, flight and landing
+     ====================================================================== */
+
+  const RELOCATE_KEEP = 0.75;        // share of every resource that comes along
+  const THREAT_PER_SITE = 4;
+  // Steps of the shared landing sequence; a relocation flies there first
+  const CINEMATIC_STEPS = {
+    relocate: [['pack', 2.0], ['liftoff', 2.4], ['flight', 3.6], ['descent', 2.6], ['touchdown', 0.5], ['unpack', 2.2]],
+    arrive: [['descent', 2.6], ['touchdown', 0.5], ['unpack', 2.2]]
+  };
+  let relocationCore = { r: 0, c: 0, revealed: false, found: false };
+  let cinematic = null;              // { steps, i, t, oldSite }
+  let landingPending = false;        // the dome is still on its way to the current site
+  let relocateHover = null;          // 'button' | 'yes' | 'no'
+
+  // Hide the core in the lower strata (deeper on every new site)
+  function placeRelocationCore(rand) {
+    const stratum = Math.min(STRATUM_COUNT - 3, 6 + site.index);
+    for (let attempt = 0; attempt < 200; ++attempt) {
+      const r = stratum * STRATUM_ROWS + 2 + Math.floor(rand() * (STRATUM_ROWS * 2 - 4));
+      const c = 8 + Math.floor(rand() * (GRID_COLS - 16));
+      if (undergroundGrid[r][c] === TILE_GADGET) continue;
+      undergroundGrid[r][c] = TILE_CORE;
+      relocationCore = { r, c, revealed: false, found: false };
+      return;
+    }
+  }
+
+  function coreDepthHint() {
+    return Math.floor(relocationCore.r / STRATUM_ROWS) * STRATUM_ROWS;
+  }
+
+  function collectRelocationCore(tx, ty) {
+    relocationCore.found = true;
+    relocationCore.revealed = true;
+    SZ.GameAudio.play('powerup');
+    SZ.GameAudio.play('win', { pitch: 1.2, volume: 0.6 });
+    particles.burst(tx, ty, 40, { color: '#7ae8ff', speed: 4, life: 0.8 });
+    particles.sparkle(tx, ty, 20, { color: '#ffe080', speed: 2.5 });
+    screenShake.trigger(8, 300);
+    floatingText.add(tx, ty - 50, 'RELOCATION CORE!', { color: '#7ae8ff', font: 'bold 30px sans-serif' });
+    announce('Relocation Core recovered!', 'Relocate from the surface whenever you are ready - or stay and keep mining', '#7ae8ff', 'core');
+    saveRun();
+  }
+
+  // Why the dome cannot leave right now (null when it can)
+  function relocateBlocker() {
+    if (enemies.length > 0)
+      return 'Not while monsters attack the dome';
+    if (isNight() && world.bursts < 3)
+      return 'More monsters are coming tonight - wait for dawn';
+    return null;
+  }
+
+  function relocateButtonRect() {
+    return { x: 16, y: 140, w: 330, h: 54 };
+  }
+
+  function hitRelocateButton(mx, my) {
+    if (!relocationCore.found || currentView !== VIEW_SURFACE || state !== STATE_PLAYING) return false;
+    const b = relocateButtonRect();
+    return mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h;
+  }
+
+  function requestRelocation() {
+    if (!relocationCore.found || state !== STATE_PLAYING) return;
+    const why = relocateBlocker();
+    if (why) {
+      SZ.GameAudio.play('error');
+      announce('Cannot relocate yet', why, '#ff9a6a', 'flight');
+      return;
+    }
+    if (currentView !== VIEW_SURFACE) {
+      SZ.GameAudio.play('error');
+      announce('Cannot relocate yet', 'Return to the dome first', '#ff9a6a', 'flight');
+      return;
+    }
+    state = STATE_CONFIRM;
+    relocateHover = null;
+    clearTooltip();
+    SZ.GameAudio.play('select');
+  }
+
+  function confirmButtons() {
+    const w = 260, h = 58, y = CANVAS_H / 2 + 70;
+    return [
+      { id: 'yes', label: 'Lift off', x: CANVAS_W / 2 - w - 14, y, w, h },
+      { id: 'no', label: 'Stay here', x: CANVAS_W / 2 + 14, y, w, h }
+    ];
+  }
+
+  function answerRelocation(yes) {
+    if (state !== STATE_CONFIRM) return;
+    if (yes)
+      beginRelocation();
+    else {
+      state = STATE_PLAYING;
+      SZ.GameAudio.play('click');
+    }
+  }
+
+  // Pack up: the new site is generated now; the flight and landing follow
+  function beginRelocation() {
+    const oldSite = site;
+    for (const k in resources)
+      resources[k] = Math.floor(resources[k] * RELOCATE_KEEP);
+    score += 500 * (oldSite.index + 1);
+    let seed = (Math.random() * 0x7fffffff) | 0;
+    for (let i = 0; i < 12 && newSite(0, seed).biome === oldSite.biome; ++i)
+      seed = (seed * 48271 + 11) & 0x7fffffff;
+    site = newSite(oldSite.index + 1, seed);
+    generateUnderground(makeRng(site.seed));
+
+    // Everything that belonged to the old site stays behind
+    cancelMining();
+    clearMoveTarget();
+    drillX = Math.floor(GRID_COLS / 2);
+    drillY = 0;
+    cameraX = cameraY = 0;
+    carried = 0;
+    droppedResources = [];
+    enemies = [];
+    enemyShots = [];
+    shockwaves = [];
+    projectiles = [];
+    meteorOre = [];
+    meteors = [];
+    bolts = [];
+    snowCover = 0;
+    weather = { kind: 'clear', intensity: 1, timeLeft: 50 };
+    waveActive = false;
+    domeHP = maxDomeHP;
+    siteNights = 0;
+    world.day += 1;
+    world.t = 0.03;
+    world.bursts = 0;
+    world.warned = false;
+    computeSkyLight();
+    for (const d of drones) {
+      d.state = 'dock';
+      d.job = null;
+      d.path = null;
+      d.cargo = 0;
+      d.timer = 1;
+    }
+    initPrimaryGadgetState();
+    currentView = VIEW_SURFACE;
+    landingPending = true;
+    startCinematic('relocate', oldSite);
+    saveRun();
+    updateWindowTitle();
+  }
+
+  function startCinematic(kind, oldSite) {
+    cinematic = { kind, steps: CINEMATIC_STEPS[kind], i: 0, t: 0, oldSite: oldSite || null, sounds: {} };
+    state = STATE_CINEMATIC;
+    clearTooltip();
+    banners = [];
+  }
+
+  function cinematicStep() {
+    return cinematic ? cinematic.steps[cinematic.i][0] : null;
+  }
+
+  function finishCinematic() {
+    if (!cinematic) return;
+    const relocated = cinematic.kind === 'relocate';
+    cinematic = null;
+    landingPending = false;
+    state = STATE_PLAYING;
+    const B = currentBiome();
+    if (relocated)
+      announce(`Site ${site.index + 1}: ${B.name}`, `Threat +${THREAT_PER_SITE} - the monsters here are tougher. Find this site's Relocation Core.`, '#ffe080', 'flight');
+    else
+      announce('Landing site: ' + B.name, 'Mine by day, defend the dome at night', '#ffe080', 'dome');
+    SZ.GameAudio.play('select', { pitch: 1.2 });
+    saveRun();
+  }
+
+  function skipCinematic() {
+    if (state !== STATE_CINEMATIC) return;
+    SZ.GameAudio.play('click');
+    finishCinematic();
+  }
+
+  function updateCinematic(dt) {
+    if (!cinematic) return;
+    const c = cinematic;
+    c.t += dt;
+    const [name, dur] = c.steps[c.i];
+    const k = Math.min(1, c.t / dur);
+    const once = (id, fn) => {
+      if (!c.sounds[id]) {
+        c.sounds[id] = true;
+        fn();
+      }
+    };
+    const base = DOME_Y + 14;
+    if (name === 'pack') {
+      once('pack', () => SZ.GameAudio.sweep(500, 180, 1.2, 'square', 0.05));
+      if (k > 0.55) once('legs', () => SZ.GameAudio.play('thud', { pitch: 1.4 }));
+    } else if (name === 'liftoff') {
+      once('lift', () => {
+        SZ.GameAudio.noise(2.2, 0.18, 'lowpass', 300, 1800);
+        SZ.GameAudio.sweep(60, 220, 2, 'sawtooth', 0.06);
+      });
+      screenShake.trigger(3 * (1 - k), 60);
+      if (Math.random() < 0.8)
+        particles.trail(DOME_X + (Math.random() - 0.5) * 260, base + 6, { vx: (Math.random() - 0.5) * 6, vy: -Math.random() * 1.5, color: Math.random() < 0.5 ? '#9a8a7a' : '#6a5a4a', life: 0.9, size: 3 + Math.random() * 4, gravity: -0.01 });
+    } else if (name === 'flight') {
+      once('flight', () => SZ.GameAudio.play('whoosh', { pitch: 0.6 }));
+    } else if (name === 'descent') {
+      once('descent', () => {
+        SZ.GameAudio.noise(2.4, 0.14, 'lowpass', 1600, 300);
+        SZ.GameAudio.sweep(220, 70, 2.4, 'sawtooth', 0.05);
+      });
+      if (k > 0.6 && Math.random() < 0.9)
+        particles.trail(DOME_X + (Math.random() - 0.5) * 300, base + 6, { vx: (Math.random() - 0.5) * 7, vy: -Math.random() * 1.2, color: '#8a7a6a', life: 0.8, size: 3 + Math.random() * 4, gravity: -0.01 });
+    } else if (name === 'touchdown') {
+      once('touch', () => {
+        SZ.GameAudio.play('thud', { pitch: 0.6 });
+        SZ.GameAudio.play('explode', { pitch: 0.4, volume: 0.5 });
+        screenShake.trigger(10, 320);
+        for (const side of [-1, 1])
+          for (let i = 0; i < 26; ++i)
+            particles.trail(DOME_X + side * (60 + Math.random() * 90), base + 4, { vx: side * (2 + Math.random() * 6), vy: -Math.random() * 2.5, color: Math.random() < 0.5 ? '#a8987e' : '#7a6a58', life: 1 + Math.random() * 0.5, size: 3 + Math.random() * 5, gravity: 0.02 });
+      });
+    } else if (name === 'unpack') {
+      if (k > 0.05) once('legs2', () => SZ.GameAudio.play('thud', { pitch: 1.5 }));
+      if (k > 0.3) once('glass', () => SZ.GameAudio.sweep(200, 700, 0.8, 'triangle', 0.06));
+      if (k > 0.62) once('turret', () => SZ.GameAudio.play('click', { pitch: 0.6 }));
+      if (k > 0.8) once('lights', () => SZ.GameAudio.play('powerup', { pitch: 1.3, volume: 0.6 }));
+    }
+    if (c.t >= dur) {
+      c.t = 0;
+      ++c.i;
+      if (c.i >= c.steps.length)
+        finishCinematic();
+    }
+  }
+
+  // Dome pose for the current cinematic step: lift (px above the ground), unpack (0..1), legs (0..1), thrust (0..1)
+  function cinematicRig() {
+    const c = cinematic;
+    const [name, dur] = c.steps[c.i];
+    const k = Math.min(1, c.t / dur);
+    const ease = (x) => x * x * (3 - 2 * x);
+    switch (name) {
+      case 'pack': return { lift: 0, unpack: 1 - ease(Math.min(1, k * 1.25)), legs: k > 0.55 ? ease((k - 0.55) / 0.45) : 0, thrust: k > 0.8 ? (k - 0.8) * 2 : 0 };
+      case 'liftoff': return { lift: Math.pow(k, 2.2) * (DOME_Y + 220), unpack: 0, legs: 1 - ease(Math.min(1, k * 3)), thrust: 0.6 + k * 0.4 };
+      case 'descent': return { lift: Math.pow(1 - k, 2) * (DOME_Y + 220), unpack: 0, legs: k > 0.55 ? ease((k - 0.55) / 0.45) : 0, thrust: 0.35 + (1 - k) * 0.5 + (k > 0.75 ? 0.4 : 0) };
+      case 'touchdown': return { lift: 0, unpack: 0, legs: 1, thrust: Math.max(0, 0.5 - k), squash: Math.sin(k * Math.PI) * 0.06 };
+      case 'unpack': return { lift: 0, unpack: ease(k), legs: 1 - ease(Math.min(1, k * 2.5)) * 0.85, thrust: 0 };
+      default: return { lift: 0, unpack: 1, legs: 0, thrust: 0 };
+    }
+  }
+
+  function drawThrusters(rig) {
+    if (rig.thrust <= 0.01) return;
+    const y = DOME_Y + 14 - rig.lift;
+    for (const ox of [-72, 0, 72]) {
+      const x = DOME_X + ox;
+      const len = (34 + rig.thrust * 70) * (0.85 + Math.random() * 0.3);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createLinearGradient(0, y, 0, y + len);
+      g.addColorStop(0, `rgba(255,255,230,${0.95 * rig.thrust})`);
+      g.addColorStop(0.3, `rgba(255,190,80,${0.8 * rig.thrust})`);
+      g.addColorStop(1, 'rgba(255,80,20,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(x - 11, y);
+      ctx.quadraticCurveTo(x - 6, y + len * 0.6, x, y + len);
+      ctx.quadraticCurveTo(x + 6, y + len * 0.6, x + 11, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      drawGlow('#ffa040', x, y + 12, 34 + rig.thrust * 30, 0.7 * rig.thrust);
+      ctx.fillStyle = SPRITE_OUTLINE;
+      ctx.fillRect(x - 13, y - 2, 26, 9);
+      ctx.fillStyle = '#5a6a88';
+      ctx.fillRect(x - 11, y - 1, 22, 6);
+    }
+    if (rig.lift < 160 && Math.random() < 0.6)
+      particles.trail(DOME_X + (Math.random() - 0.5) * 200, DOME_Y + 10, { vx: (Math.random() - 0.5) * 6, vy: -Math.random() * 1.5, color: '#8a7a6a', life: 0.8, size: 3 + Math.random() * 3, gravity: -0.01 });
+  }
+
+  // Planet map shown during the flight between sites
+  function drawFlightMap(k) {
+    const c = cinematic;
+    const g = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+    g.addColorStop(0, '#04060e');
+    g.addColorStop(1, '#0a1022');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    const rng = makeRng((c.oldSite ? c.oldSite.seed : 1) ^ site.seed);
+    for (let i = 0; i < 160; ++i) {
+      ctx.fillStyle = `rgba(255,255,255,${0.15 + rng() * 0.5})`;
+      ctx.fillRect(rng() * CANVAS_W, rng() * CANVAS_H * 0.5, 1.5, 1.5);
+    }
+    // The planet's curve with patches of land in biome colours
+    const cx = CANVAS_W / 2, cy = CANVAS_H + 900, R = 1400;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, TWO_PI);
+    const pg = ctx.createRadialGradient(cx, cy - R * 0.6, R * 0.2, cx, cy, R);
+    pg.addColorStop(0, '#2a3a5a');
+    pg.addColorStop(1, '#141c30');
+    ctx.fillStyle = pg;
+    ctx.fill();
+    ctx.clip();
+    for (let i = 0; i < 70; ++i) {
+      const a = -Math.PI / 2 + (rng() - 0.5) * 1.1, d = R - 40 - rng() * 520;
+      const b = BIOMES[BIOME_KEYS[Math.floor(rng() * BIOME_KEYS.length)]];
+      ctx.fillStyle = hexToRgba(b.ground.day[1], 0.16 + rng() * 0.12);
+      ctx.beginPath();
+      ctx.ellipse(cx + Math.cos(a) * d, cy + Math.sin(a) * d, 24 + rng() * 50, 10 + rng() * 22, rng() * 0.6 - 0.3, 0, TWO_PI);
+      ctx.fill();
+    }
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(120,180,255,0.5)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, Math.PI * 1.2, Math.PI * 1.8);
+    ctx.stroke();
+    drawGlow('#5aa8ff', cx, cy - R, 600, 0.12);
+
+    // Route from the old site to the new one
+    const p0 = { x: 280, y: 700 }, p1 = { x: CANVAS_W - 280, y: 690 };
+    const ctrl = { x: CANVAS_W / 2, y: 280 };
+    const at = (t) => ({ x: (1 - t) * (1 - t) * p0.x + 2 * (1 - t) * t * ctrl.x + t * t * p1.x, y: (1 - t) * (1 - t) * p0.y + 2 * (1 - t) * t * ctrl.y + t * t * p1.y });
+    ctx.setLineDash([10, 10]);
+    ctx.lineDashOffset = -animTime * 40;
+    ctx.strokeStyle = 'rgba(255,224,128,0.7)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.quadraticCurveTo(ctrl.x, ctrl.y, p1.x, p1.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const sites = [[p0, c.oldSite || site, false], [p1, site, true]];
+    for (const [p, s, isNew] of sites) {
+      const b = BIOMES[s.biome];
+      drawGlow(b.ground.day[0], p.x, p.y, 50, 0.6);
+      ctx.fillStyle = SPRITE_OUTLINE;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 13, 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = isNew ? '#ffe080' : '#8a9ab8';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 10, 0, TWO_PI);
+      ctx.fill();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText(`Site ${s.index + 1}`, p.x, p.y + 38, 260, 22, { weight: 'bold', color: isNew ? UI.gold : UI.textDim });
+      fitText(b.name, p.x, p.y + 64, 260, 18, { color: isNew ? UI.text : UI.textMute });
+    }
+    const t = k * k * (3 - 2 * k);
+    const pos = at(t), ahead = at(Math.min(1, t + 0.02));
+    ctx.save();
+    ctx.translate(pos.x, pos.y);
+    ctx.rotate(Math.atan2(ahead.y - pos.y, ahead.x - pos.x) * 0.3);
+    drawGlow('#ffa040', -20, 10, 40, 0.7);
+    drawSprite('flight', 0, 0, 56);
+    ctx.restore();
+    if (Math.random() < 0.6)
+      particles.trail(pos.x - 14, pos.y + 16, { vx: -1.5, vy: 0.5, color: '#ffb060', life: 0.5, size: 2.5 });
+    drawHeadline('Relocating', CANVAS_W / 2, 150, 800, 56, '#ffe080', '#e0a020');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(`Upgrades, drones and ${Math.round(RELOCATE_KEEP * 100)}% of the resources are on board  ·  threat +${THREAT_PER_SITE} at the new site`, CANVAS_W / 2, 214, 1100, 20, { color: UI.textDim });
+  }
+
+  function drawCinematic() {
+    const c = cinematic;
+    const name = cinematicStep();
+    const [, dur] = c.steps[c.i];
+    const k = Math.min(1, c.t / dur);
+    if (name === 'flight') {
+      drawFlightMap(k);
+    } else {
+      // Pack up and lift off at the old site, descend and unpack at the new one
+      const useOld = (name === 'pack' || name === 'liftoff') && c.oldSite;
+      const saved = site;
+      if (useOld) site = c.oldSite;
+      drawSky();
+      drawGroundLayer();
+      const rig = cinematicRig();
+      drawThrusters(rig);
+      drawDome(rig);
+      site = saved;
+    }
+    // Letterbox bars and caption
+    const bar = 70;
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(0, 0, CANVAS_W, bar);
+    ctx.fillRect(0, CANVAS_H - bar, CANVAS_W, bar);
+    const captions = {
+      pack: 'Packing up the dome...', liftoff: 'Lift off!', flight: '',
+      descent: `Approaching ${currentBiome().name}`, touchdown: 'Touchdown', unpack: 'Unpacking the dome...'
+    };
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    if (captions[name])
+      fitText(captions[name], CANVAS_W / 2, bar / 2 + 2, 900, 26, { weight: 'bold', color: '#ffe8b0' });
+    drawKeyHints([{ key: 'Click', label: 'Skip' }, { key: 'Space', label: 'Skip' }, { key: 'Esc', label: 'Skip' }], CANVAS_W / 2, CANVAS_H - bar / 2, 500);
+  }
+
+  // Relocate button under the clock panel (surface)
+  function drawRelocateButton() {
+    if (!relocationCore.found) return;
+    const b = relocateButtonRect();
+    const why = relocateBlocker();
+    const hover = relocateHover === 'button';
+    ctx.save();
+    roundRectPath(b.x, b.y, b.w, b.h, 12);
+    const g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+    if (why) {
+      g.addColorStop(0, 'rgba(40,44,60,0.92)');
+      g.addColorStop(1, 'rgba(24,26,36,0.92)');
+    } else {
+      g.addColorStop(0, hover ? '#3a9ae8' : '#2a7ad0');
+      g.addColorStop(1, hover ? '#1a5aa8' : '#16468a');
+    }
+    ctx.fillStyle = g;
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 10;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = why ? 'rgba(120,130,160,0.5)' : (hover ? '#cfe8ff' : `rgba(150,210,255,${0.6 + Math.sin(animTime * 4) * 0.3})`);
+    ctx.stroke();
+    drawSprite('flight', b.x + 30, b.y + b.h / 2, 36, why ? 0.5 : 1);
+    const kw = drawChip('L', b.x + b.w - 10, b.y + 15, 24, { align: 'right', px: 13, bg: 'rgba(0,0,0,0.4)', border: 'rgba(255,255,255,0.25)', color: UI.text });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText('Relocate', b.x + 56, b.y + 19, b.w - 70 - kw, 21, { weight: 'bold', color: why ? UI.textMute : '#ffffff' });
+    fitText(why || 'Fly the dome to a new site', b.x + 56, b.y + 40, b.w - 66, 14, { color: why ? '#e0a080' : '#cfe4ff' });
+    ctx.restore();
+  }
+
+  function drawRelocateConfirm() {
+    drawScrim(0.62);
+    const pw = 700, ph = 420, px = CANVAS_W / 2 - pw / 2, py = CANVAS_H / 2 - ph / 2 - 20;
+    drawPanel(px, py, pw, ph, { accent: '#5ab8ff', radius: 16, title: 'Relocate the dome?', titlePx: 28, headerH: 64, titleRight: `Site ${site.index + 1} → ${site.index + 2}` });
+    drawSprite('flight', px + 70, py + 150, 80);
+    const rows = [
+      ['check', 'Keep every upgrade, drone and gadget'],
+      ['bag', `Keep ${Math.round(RELOCATE_KEEP * 100)}% of every resource`],
+      ['pickaxe', 'A fresh mine in a new biome - with a new Relocation Core'],
+      ['swords', `The monsters there are tougher: threat +${THREAT_PER_SITE}`]
+    ];
+    rows.forEach(([icon, text], i) => {
+      const y = py + 100 + i * 44;
+      drawSprite(icon, px + 150, y, 24);
+      drawTextBlock(text, px + 172, y - 18, pw - 172 - 30, 36, 19, { valign: 'middle', color: UI.text, minPx: 13 });
+    });
+    for (const b of confirmButtons())
+      drawButton(b, b.id === 'yes', relocateHover === b.id);
+    drawKeyHints([{ key: 'Enter', label: 'Lift off' }, { key: 'Esc', label: 'Stay' }], CANVAS_W / 2, py + ph - 26, pw - 80);
+  }
+
+  /* ======================================================================
      ENEMY WAVES
      ====================================================================== */
 
-  function spawnWave() {
-    ++waveNumber;
+  /* -- Monster roster -- */
+  // hp / speed / damage scale the night's base stats, cost is the share of the
+  // night's budget, level the threat level the type first appears at
+  const ENEMY_TYPES = {
+    walker:   { name: 'Walker', move: 'ground', hp: 1, speed: 1, damage: 1, size: [20, 28], cost: 1, level: 0, weight: 10, score: 1, attack: 1, color: '#e0403a',
+      desc: 'Plods to the dome and bites it' },
+    swarmer:  { name: 'Swarmer', move: 'ground', hp: 0.3, speed: 1.9, damage: 0.4, size: [9, 12], cost: 0.6, level: 3, weight: 5, score: 0.5, attack: 0.9, group: [2, 5], color: '#c8d040',
+      desc: 'Tiny and fast, always in packs' },
+    flyer:    { name: 'Flyer', move: 'air', hp: 0.6, speed: 1.3, damage: 0.8, size: [14, 20], cost: 0.9, level: 3, weight: 6, score: 1, attack: 1, color: '#a050c8',
+      desc: 'Flies straight at the dome' },
+    crawler:  { name: 'Armored Crawler', move: 'ground', hp: 2.4, speed: 0.55, damage: 1.6, size: [26, 32], cost: 2.2, level: 4, weight: 5, score: 2.5, attack: 1.4, armor: 3, color: '#a08a5a',
+      desc: 'Armor plates shrug off part of every hit' },
+    diver:    { name: 'Diver', move: 'dive', hp: 0.7, speed: 1.2, damage: 2.2, size: [16, 20], cost: 1.4, level: 5, weight: 5, score: 1.5, attack: 1, color: '#3ab0c8',
+      desc: 'Circles high, then dives at the dome' },
+    burrower: { name: 'Burrower', move: 'burrow', hp: 1.3, speed: 1.15, damage: 1.3, size: [20, 24], cost: 1.4, level: 6, weight: 4, score: 1.5, attack: 1, color: '#d0609a',
+      desc: 'Tunnels unseen and pops up beside the dome' },
+    spitter:  { name: 'Spitter', move: 'ranged', hp: 0.9, speed: 0.8, damage: 1.2, size: [20, 24], cost: 1.5, level: 7, weight: 4, score: 1.6, attack: 2.6, color: '#60d040',
+      desc: 'Keeps its distance and spits acid' },
+    splitter: { name: 'Splitter', move: 'ground', hp: 1.5, speed: 0.8, damage: 1.1, size: [24, 28], cost: 1.8, level: 8, weight: 3, score: 1.8, attack: 1, color: '#ff9030',
+      desc: 'Bursts into swarmers when killed' },
+    mender:   { name: 'Mender', move: 'ground', hp: 1.4, speed: 0.75, damage: 0.9, size: [22, 26], cost: 1.8, level: 9, weight: 3, score: 2, attack: 1.2, color: '#40e0a0',
+      desc: 'Regenerates and heals the monsters around it' },
+    behemoth: { name: 'Behemoth', move: 'ground', hp: 9, speed: 0.45, damage: 3, size: [46, 54], cost: 0, level: 10, weight: 0, score: 8, attack: 1.6, armor: 2, boss: true, color: '#b81848',
+      desc: 'Boss: stomps shockwaves into the dome' },
+    queen:    { name: 'Hive Queen', move: 'queen', hp: 7, speed: 0.5, damage: 2.5, size: [36, 42], cost: 0, level: 15, weight: 0, score: 9, attack: 1.2, boss: true, color: '#e040c0',
+      desc: 'Boss: hovers over the field dropping swarmers' }
+  };
+  // Seasons shift the mix
+  const SEASON_ENEMY_BIAS = {
+    spring: { swarmer: 2.5, splitter: 1.5, crawler: 0.5 },
+    summer: { flyer: 1.6, diver: 1.6, spitter: 1.4 },
+    autumn: { burrower: 1.8, mender: 1.3, walker: 1.2 },
+    winter: { crawler: 2.2, mender: 1.5, swarmer: 0.3, flyer: 0.6 }
+  };
+  let enemyShots = [];               // acid globs: { x0, y0, tx, ty, t, dur, dmg }
+  let shockwaves = [];               // behemoth stomps: { x, r, hit }
+
+  // Threat climbs with every night at a site; every site starts higher than the last
+  // Body centre of a ground monster standing on the ground line (its shadow sits at y + 0.75 size)
+  function groundY(size) {
+    return DOME_Y - size * 0.7;
+  }
+
+  function threatLevel() {
+    return siteNights + site.index * THREAT_PER_SITE;
+  }
+
+  function enemyType(e) {
+    return ENEMY_TYPES[e.type] || ENEMY_TYPES.walker;
+  }
+
+  function spawnEnemy(key, base, at) {
+    const T = ENEMY_TYPES[key];
+    const season = currentSeason();
+    const size = (T.size[0] + Math.random() * (T.size[1] - T.size[0])) * (T.boss ? 1 : season.size);
+    const hp = base.hp * T.hp * (0.88 + Math.random() * 0.24);
+    const e = {
+      type: key, x: 0, y: 0, hp, maxHP: hp,
+      speed: base.speed * T.speed * (0.9 + Math.random() * 0.2),
+      damage: Math.max(1, Math.round(base.damage * T.damage)),
+      attackTimer: 0.4 + Math.random() * 0.5, stunTimer: 0, size,
+      armor: T.armor ? Math.round(T.armor * (1 + base.threat * 0.06)) : 0,
+      shield: 0, maxShield: 0, boss: !!T.boss, phase: 'approach', t: 0,
+      wobblePhase: Math.random() * TWO_PI, legPhase: Math.random() * TWO_PI, wingPhase: Math.random() * TWO_PI,
+      eyeBlinkTimer: 2 + Math.random() * 3, eyeBlinking: false
+    };
+    if (at) {
+      e.x = at.x;
+      e.y = at.y;
+    } else if (T.move === 'air' || T.move === 'dive' || T.move === 'queen') {
+      const angle = Math.PI + 0.15 + Math.random() * (Math.PI - 0.3);
+      const dist = 640 + Math.random() * 200;
+      e.x = DOME_X + Math.cos(angle) * dist;
+      e.y = Math.max(-80, DOME_Y + Math.sin(angle) * dist * 0.75);
+      e.hoverX = DOME_X + (Math.random() < 0.5 ? -1 : 1) * (120 + Math.random() * 200);
+      e.hoverY = 230 + Math.random() * 160;
+    } else {
+      const fromLeft = Math.random() < 0.5;
+      e.x = fromLeft ? -60 - Math.random() * 180 : CANVAS_W + 60 + Math.random() * 180;
+      e.y = groundY(size) + Math.random() * 10;
+      if (T.move === 'burrow') {
+        e.hidden = true;
+        e.y = DOME_Y + 14;
+      }
+    }
+    // Shields show up as the threat grows
+    if (base.threat >= 11 && !T.boss && Math.random() < Math.min(0.3, (base.threat - 10) * 0.05)) {
+      e.shield = e.maxShield = Math.floor(hp * 0.5 + base.threat);
+    } else if (T.boss) {
+      e.shield = e.maxShield = Math.floor(hp * 0.35);
+    }
+    enemies.push(e);
+    return e;
+  }
+
+  // The main attack comes at nightfall; reinforcements (smaller, no boss) later in the night
+  function spawnWave(reinforcement) {
+    if (!reinforcement) {
+      ++waveNumber;
+      ++siteNights;
+    }
     waveActive = true;
 
     // Recharge shield gadget at wave start
-    if (primaryGadget === 'shield') {
+    if (!reinforcement && primaryGadget === 'shield') {
       primaryGadgetState.active = true;
       floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 60, 'Shield Recharged!', { color: '#4af', font: 'bold 24px sans-serif' });
     }
 
-    const isBossWave = waveNumber >= 15 && waveNumber % 5 === 0;
-
-    // Gradual count ramp: 2 at wave 1, slowly increases, capped at 20
-    const baseCount = Math.min(20, 2 + Math.floor(waveNumber * 0.8));
-    // Flyer ratio: 0% for waves 1-4, ramps to ~40% by wave 10+
-    const flyerRatio = waveNumber <= 4 ? 0 : Math.min(0.4, (waveNumber - 4) * 0.07);
-    const flyerCount = Math.floor(baseCount * flyerRatio);
-    const walkerCount = baseCount - flyerCount;
-
-    // HP scaling: starts very low (8-10 for wave 1), gradually increases
-    const baseHP = 8 + (waveNumber - 1) * 3;
-    // Damage scaling: starts at 2-3, gradually increases
-    const baseDamage = 2 + Math.floor((waveNumber - 1) * 0.8);
-    // Speed scaling
-    const baseSpeed = 15 + Math.min(25, waveNumber * 2);
-
-    // Spawn ground walkers
-    for (let i = 0; i < walkerCount; ++i) {
-      // Ground walkers approach from left or right at ground level
-      const fromLeft = Math.random() < 0.5;
-      const spawnX = fromLeft ? -60 - Math.random() * 160 : CANVAS_W + 60 + Math.random() * 160;
-      const spawnY = DOME_Y + (Math.random() - 0.5) * 40;
-
-      const isArmored = waveNumber >= 9 && Math.random() < Math.min(0.35, (waveNumber - 8) * 0.07);
-      const hpMult = isArmored ? 2.0 : 1.0;
-      const spdMult = isArmored ? 0.75 : 1.0;
-      const sizeMult = isArmored ? 1.3 : 1.0;
-      const hp = (baseHP + Math.random() * 5) * hpMult;
-      const hasShield = waveNumber >= 11 && Math.random() < Math.min(0.3, (waveNumber - 10) * 0.05);
-      const shieldVal = hasShield ? Math.floor(hp * 0.5 + waveNumber) : 0;
-
-      enemies.push({
-        type: 'ground',
-        x: spawnX,
-        y: spawnY,
-        hp: hp,
-        maxHP: hp,
-        speed: (baseSpeed + Math.random() * 10) * spdMult,
-        damage: baseDamage + Math.floor(Math.random() * 2),
-        attackTimer: 0,
-        stunTimer: 0,
-        wobblePhase: Math.random() * TWO_PI,
-        legPhase: Math.random() * TWO_PI,
-        eyeBlinkTimer: 2 + Math.random() * 3,
-        eyeBlinking: false,
-        size: (20 + Math.random() * 8) * sizeMult,
-        armored: isArmored,
-        shield: shieldVal,
-        maxShield: shieldVal,
-        boss: false
-      });
+    const threat = Math.max(1, threatLevel());
+    const season = currentSeason();
+    const base = {
+      threat,
+      hp: (8 + (threat - 1) * 3) * season.hp * (1 + 0.3 * site.index),
+      damage: (2 + (threat - 1) * 0.8) * season.damage * (1 + 0.2 * site.index),
+      speed: (15 + Math.min(25, threat * 2)) * season.speed
+    };
+    // The night's budget: grows with the threat, the moon and the season
+    let budget = Math.min(24, 2 + threat * 0.8) * moonStrength(world.day) * season.count * (reinforcement ? 0.45 : 1);
+    const bias = SEASON_ENEMY_BIAS[season.key] || {};
+    const wb = { blizzard: { burrower: 1.6, flyer: 0.5, diver: 0.5 }, storm: { flyer: 0.6, diver: 0.6 } }[weather.kind] || {};
+    const pool = Object.keys(ENEMY_TYPES).filter(k => !ENEMY_TYPES[k].boss && ENEMY_TYPES[k].level <= threat);
+    const weightOf = (k) => ENEMY_TYPES[k].weight * (bias[k] || 1) * (wb[k] || 1);
+    let total = 0;
+    for (const k of pool) total += weightOf(k);
+    for (let guard = 0; budget > 0.25 && guard < 60; ++guard) {
+      let r = Math.random() * total, key = pool[0];
+      for (const k of pool) {
+        r -= weightOf(k);
+        if (r <= 0) {
+          key = k;
+          break;
+        }
+      }
+      if (ENEMY_TYPES[key].cost > budget + 0.4)
+        key = budget >= 1 || !pool.includes('swarmer') ? 'walker' : 'swarmer';
+      const T = ENEMY_TYPES[key];
+      if (T.group) {
+        // Packs grow with the threat and never overspend the budget
+        const n = Math.max(1, Math.min(T.group[0] + Math.floor(Math.random() * (T.group[1] - T.group[0] + 1)), 2 + Math.floor(threat / 3), Math.ceil(budget / T.cost)));
+        const lead = spawnEnemy(key, base);
+        for (let i = 1; i < n; ++i)
+          spawnEnemy(key, base, { x: lead.x + (lead.x < DOME_X ? -1 : 1) * i * 22, y: lead.y + (Math.random() - 0.5) * 16 });
+        budget -= T.cost * n;
+      } else {
+        spawnEnemy(key, base);
+        budget -= T.cost;
+      }
     }
 
-    // Spawn airborne flyers
-    for (let i = 0; i < flyerCount; ++i) {
-      // Flyers approach from upper hemisphere at any angle
-      const angle = Math.PI + Math.random() * Math.PI;
-      const dist = 600 + Math.random() * 200;
-      const flyerHP = (baseHP * 0.6 + Math.random() * 3);
-      const hasShield = waveNumber >= 11 && Math.random() < Math.min(0.2, (waveNumber - 10) * 0.04);
-      const shieldVal = hasShield ? Math.floor(flyerHP * 0.4 + waveNumber * 0.5) : 0;
-
-      enemies.push({
-        type: 'flyer',
-        x: DOME_X + Math.cos(angle) * dist,
-        y: DOME_Y + Math.sin(angle) * dist * 0.6,
-        hp: flyerHP,
-        maxHP: flyerHP,
-        speed: baseSpeed * 1.3 + Math.random() * 12,
-        damage: Math.max(1, baseDamage - 1),
-        attackTimer: 0,
-        stunTimer: 0,
-        wobblePhase: Math.random() * TWO_PI,
-        legPhase: Math.random() * TWO_PI,
-        wingPhase: Math.random() * TWO_PI,
-        eyeBlinkTimer: 2 + Math.random() * 3,
-        eyeBlinking: false,
-        size: 14 + Math.random() * 6,
-        armored: false,
-        shield: shieldVal,
-        maxShield: shieldVal,
-        boss: false
-      });
-    }
-
-    // Boss enemy every 5 waves starting at wave 15
-    if (isBossWave) {
-      const bossHP = baseHP * 8 + waveNumber * 5;
-      const bossShield = Math.floor(bossHP * 0.4);
-      const fromLeft = Math.random() < 0.5;
-      enemies.push({
-        type: 'ground',
-        x: fromLeft ? -120 : CANVAS_W + 120,
-        y: DOME_Y - 20,
-        hp: bossHP,
-        maxHP: bossHP,
-        speed: baseSpeed * 0.5,
-        damage: baseDamage * 3,
-        attackTimer: 0,
-        stunTimer: 0,
-        wobblePhase: Math.random() * TWO_PI,
-        legPhase: Math.random() * TWO_PI,
-        eyeBlinkTimer: 2 + Math.random() * 3,
-        eyeBlinking: false,
-        size: 44 + Math.random() * 8,
-        armored: true,
-        shield: bossShield,
-        maxShield: bossShield,
-        boss: true
-      });
-      floatingText.add(CANVAS_W / 2, 140, 'BOSS INCOMING!', { color: '#f00', font: 'bold 48px sans-serif' });
+    // A boss every fifth night once the threat is high enough
+    if (!reinforcement && siteNights % 5 === 0 && threat >= 10) {
+      const bossKey = threat >= 15 && Math.floor(waveNumber / 5) % 2 === 0 ? 'queen' : 'behemoth';
+      spawnEnemy(bossKey, base);
+      const T = ENEMY_TYPES[bossKey];
+      announce(`${T.name} approaches!`, T.desc, '#ff5a5a', 'swords');
       SZ.GameAudio.play('hurt', { pitch: 0.5 });
-    } else
-      SZ.GameAudio.play('select', { pitch: 0.75 });
-
-    floatingText.add(CANVAS_W / 2, 80, `WAVE ${waveNumber}`, { color: '#f80', font: 'bold 40px sans-serif' });
+      if (bossKey === 'queen')
+        SZ.GameAudio.sweep(300, 1400, 0.7, 'sawtooth', 0.06, 0.2);
+    }
+    if (reinforcement) {
+      announce('More monsters!', 'A second swarm crawls out of the dark', '#ff8a6a', 'swords');
+      SZ.GameAudio.play('hurt', { pitch: 0.6, volume: 0.6 });
+    }
     updateWindowTitle();
   }
 
+  // Kill effects, score and special deaths (splitters burst into swarmers)
+  function killEnemy(e, i) {
+    const T = enemyType(e);
+    const pts = Math.round((10 + waveNumber * 5) * T.score);
+    score += pts;
+    enemies.splice(i, 1);
+    const pitch = { swarmer: 1.6, flyer: 1.2, diver: 1.3, crawler: 0.7, burrower: 0.8, spitter: 1, splitter: 0.9, mender: 1.1, behemoth: 0.5, queen: 0.6 }[e.type] || 1;
+    SZ.GameAudio.play(e.boss || e.type === 'crawler' ? 'explode' : 'smallExplode', { pitch: pitch * (0.9 + Math.random() * 0.2), volume: e.type === 'swarmer' ? 0.5 : 1 });
+    if (e.type === 'mender')
+      SZ.GameAudio.play('zap', { pitch: 0.6, volume: 0.5 });
+    const n = e.boss ? 3 : 1;
+    particles.burst(e.x, e.y, 20 * n, { color: T.color, speed: 3.5 * Math.sqrt(n), life: 0.6, gravity: 0.05 });
+    particles.burst(e.x, e.y, 10 * n, { color: '#ffa040', speed: 2, life: 0.4 });
+    particles.sparkle(e.x, e.y, 6, { color: '#ff0', speed: 1.5 });
+    for (let g = 0; g < 5 * n; ++g)
+      particles.trail(e.x + (Math.random() - 0.5) * 8, e.y + (Math.random() - 0.5) * 8, {
+        vx: (Math.random() - 0.5) * 4, vy: -Math.random() * 3 - 1, color: T.color,
+        life: 0.5 + Math.random() * 0.3, size: 3 + Math.random() * 3, gravity: 0.12, shape: 'square'
+      });
+    if (e.boss)
+      screenShake.trigger(12, 400);
+    floatingText.add(e.x, e.y - 30, `+${pts}`, { color: '#ff0', font: 'bold 24px sans-serif' });
+    if (e.type === 'splitter') {
+      const base = { threat: threatLevel(), hp: e.maxHP / ENEMY_TYPES.splitter.hp * 0.9, damage: e.damage / ENEMY_TYPES.splitter.damage, speed: e.speed / ENEMY_TYPES.splitter.speed };
+      for (let k = 0; k < 3; ++k) {
+        const s = spawnEnemy('swarmer', base, { x: e.x + (k - 1) * 18, y: e.y + (Math.random() - 0.5) * 10 });
+        s.attackTimer = 0.8;
+      }
+      SZ.GameAudio.play('bounce', { pitch: 0.6 });
+      waveActive = true;
+    }
+  }
+
+  function enemyMelee(e, T, dt) {
+    e.attackTimer -= dt;
+    if (e.attackTimer > 0) return false;
+    e.attackTimer = T.attack;
+    const lunge = Math.atan2(e.y - DOME_Y, e.x - DOME_X);
+    e.lunge = 1;
+    if (damageDome(e.damage, DOME_X + Math.cos(lunge) * DOME_RADIUS, DOME_Y + Math.sin(lunge) * DOME_RADIUS, '', e))
+      return true;
+    particles.burst(e.x, e.y, 8, { color: T.color, speed: 2.5, life: 0.4 });
+    if (e.type === 'crawler' || e.boss)
+      SZ.GameAudio.play('thud', { pitch: 0.6, volume: 0.7 });
+    else if (e.type === 'swarmer')
+      SZ.GameAudio.play('click', { pitch: 0.7, volume: 0.6 });
+    return false;
+  }
+
   function updateEnemies(dt) {
+    const repel = (primaryGadget === 'repellent' && primaryGadgetState.active) ? 0.4 : 1.0;
+    const slowGround = weatherSlow();
+    const slowAir = weather.kind === 'blizzard' ? 1 - 0.3 * weather.intensity : 1;
     for (let i = enemies.length - 1; i >= 0; --i) {
       const e = enemies[i];
-
-      const dx = DOME_X - e.x;
-      const dy = DOME_Y - e.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      // Repellent field slows enemies
-      const speedMult = (primaryGadget === 'repellent' && primaryGadgetState.active) ? 0.4 : 1.0;
-      // Stun laser freezes targeted enemy
+      const T = enemyType(e);
+      e.t += dt;
+      e.lunge = Math.max(0, (e.lunge || 0) - dt * 4);
+      if (e.pop !== undefined && e.pop < 1)
+        e.pop = Math.min(1, e.pop + dt * 2.4);
       const isStunned = e.stunTimer > 0;
-      if (isStunned) {
-        e.stunTimer -= dt;
-        if (e.stunTimer < 0) e.stunTimer = 0;
-      }
+      if (isStunned)
+        e.stunTimer = Math.max(0, e.stunTimer - dt);
+      const air = T.move === 'air' || T.move === 'dive' || T.move === 'queen';
+      const spd = e.speed * repel * (air ? slowAir : slowGround);
+      const dx = DOME_X - e.x, dy = DOME_Y - e.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const reach = DOME_RADIUS + (air ? 10 : e.size * 0.45);
 
-      if (dist > DOME_RADIUS + 10) {
-        if (!isStunned) {
-          e.x += (dx / dist) * e.speed * speedMult * dt;
-          e.y += (dy / dist) * e.speed * speedMult * dt;
+      // Menders regenerate and patch up the monsters near them
+      if (e.type === 'mender') {
+        e.hp = Math.min(e.maxHP, e.hp + e.maxHP * 0.05 * dt);
+        for (const o of enemies)
+          if (o !== e && !o.hidden && Math.abs(o.x - e.x) < 130 && Math.abs(o.y - e.y) < 130)
+            o.hp = Math.min(o.maxHP, o.hp + o.maxHP * 0.03 * dt);
+      }
+      // Monsters dropped by the queen fall to the ground first
+      if (e.fall !== undefined) {
+        e.fall = Math.min(1, e.fall + dt * 1.8);
+        e.y = e.fallFrom + (groundY(e.size) - e.fallFrom) * e.fall * e.fall;
+        if (e.fall >= 1) {
+          delete e.fall;
+          particles.burst(e.x, e.y + e.size * 0.4, 5, { color: '#8a7a6a', speed: 1.5, life: 0.3 });
         }
       } else if (!isStunned) {
-        e.attackTimer -= dt;
-        if (e.attackTimer <= 0) {
-          e.attackTimer = 1.0;
-
-          // Shield gadget absorbs first hit
-          if (primaryGadget === 'shield' && primaryGadgetState.active) {
-            primaryGadgetState.active = false;
-            SZ.GameAudio.play('zap', { pitch: 0.7 });
-            floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 60, 'Shield Absorbed!', { color: '#4af', font: 'bold 28px sans-serif' });
-            particles.burst(e.x, e.y, 15, { color: '#4af', speed: 3, life: 0.5 });
-            spawnShieldImpact(e.x, e.y);
-            continue; // skip damage
+        switch (T.move) {
+          case 'burrow':
+            if (e.hidden) {
+              e.x += Math.sign(dx) * spd * 1.15 * dt;
+              if (currentView === VIEW_SURFACE && Math.random() < dt * 14)
+                particles.trail(e.x + (Math.random() - 0.5) * 20, DOME_Y + 6, { vx: (Math.random() - 0.5) * 2, vy: -1.5 - Math.random() * 1.5, color: '#7a6248', life: 0.4, size: 2.5, gravity: 0.12, shape: 'square' });
+              if (Math.abs(dx) < DOME_RADIUS + 70) {
+                e.hidden = false;
+                e.pop = 0;
+                e.y = groundY(e.size);
+                if (currentView === VIEW_SURFACE) {
+                  particles.burst(e.x, DOME_Y, 22, { color: '#8a6a48', speed: 4, life: 0.6, gravity: 0.15 });
+                  screenShake.trigger(4, 150);
+                }
+                SZ.GameAudio.play('thud', { pitch: 0.5 });
+                SZ.GameAudio.noise(0.3, 0.12, 'lowpass', 600, 120);
+              }
+              break;
+            }
+            // surfaced: fall through to ground behaviour
+          case 'ground':
+            if (dist > reach)
+              e.x += Math.sign(dx) * spd * dt;
+            else if (enemyMelee(e, T, dt))
+              return;
+            break;
+          case 'ranged': {
+            if (Math.abs(dx) > 330) {
+              e.x += Math.sign(dx) * spd * dt;
+            } else {
+              e.attackTimer -= dt;
+              e.charge = Math.max(0, 1 - e.attackTimer / 0.8);
+              if (e.attackTimer <= 0) {
+                e.attackTimer = T.attack;
+                const tx = DOME_X + (Math.random() - 0.5) * 90;
+                enemyShots.push({ x0: e.x + Math.sign(dx) * e.size * 0.5, y0: e.y - e.size * 0.5, tx, ty: DOME_Y - Math.sqrt(Math.max(0, DOME_RADIUS * DOME_RADIUS - (tx - DOME_X) * (tx - DOME_X))), t: 0, dur: 1.1, dmg: e.damage });
+                if (currentView === VIEW_SURFACE)
+                  SZ.GameAudio.play('drop', { pitch: 0.7, volume: 0.6 });
+              }
+            }
+            break;
           }
-
-          let effectiveDmg = e.damage;
-          if (unlockedTools.reinforcedDome) effectiveDmg = Math.ceil(effectiveDmg * 0.75);
-          if (unlockedTools.energyShield) effectiveDmg = Math.ceil(effectiveDmg * 0.85);
-          domeHP -= effectiveDmg;
-          domeHitFlash = 1.0;
-          screenShake.trigger(8, 250);
-          // several attackers hit at once: one groan per moment, not a chorus
-          const hurtNow = performance.now();
-          if (hurtNow - lastDomeHurtSound > 400) {
-            lastDomeHurtSound = hurtNow;
-            SZ.GameAudio.play('hurt', { volume: 0.7 });
+          case 'air':
+            if (dist > reach) {
+              e.x += dx / dist * spd * dt;
+              e.y += dy / dist * spd * dt;
+            } else if (enemyMelee(e, T, dt))
+              return;
+            break;
+          case 'dive': {
+            if (e.phase === 'approach' || e.phase === 'climb') {
+              const hx = e.hoverX - e.x, hy = e.hoverY - e.y, hd = Math.hypot(hx, hy) || 1;
+              e.x += hx / hd * spd * (e.phase === 'climb' ? 1.6 : 1) * dt;
+              e.y += hy / hd * spd * (e.phase === 'climb' ? 1.6 : 1) * dt;
+              if (hd < 12) {
+                e.phase = 'circle';
+                e.t = 0;
+                e.circleFor = 1.6 + Math.random() * 2;
+              }
+            } else if (e.phase === 'circle') {
+              e.x = e.hoverX + Math.sin(e.t * 2.2) * 70;
+              e.y = e.hoverY + Math.sin(e.t * 4.4) * 18;
+              if (e.t > e.circleFor) {
+                e.phase = 'dive';
+                const tx = DOME_X + (Math.random() - 0.5) * 70;
+                e.diveX = tx;
+                e.diveY = DOME_Y - Math.sqrt(Math.max(0, DOME_RADIUS * DOME_RADIUS - (tx - DOME_X) * (tx - DOME_X)));
+                if (currentView === VIEW_SURFACE)
+                  SZ.GameAudio.sweep(1900, 500, 0.55, 'sawtooth', 0.04);
+              }
+            } else if (e.phase === 'dive') {
+              const vx = e.diveX - e.x, vy = e.diveY - e.y, vd = Math.hypot(vx, vy) || 1;
+              const step = spd * 5.2 * dt;
+              e.angle = Math.atan2(vy, vx);
+              if (vd <= step + 6) {
+                e.x = e.diveX;
+                e.y = e.diveY;
+                if (damageDome(e.damage, e.x, e.y, '', e))
+                  return;
+                SZ.GameAudio.play('hit', { pitch: 1.2 });
+                particles.burst(e.x, e.y, 12, { color: T.color, speed: 3, life: 0.4 });
+                e.phase = 'climb';
+                e.hoverX = DOME_X + (Math.random() < 0.5 ? -1 : 1) * (120 + Math.random() * 200);
+                e.hoverY = 230 + Math.random() * 160;
+              } else {
+                e.x += vx / vd * step;
+                e.y += vy / vd * step;
+              }
+            }
+            break;
           }
-          floatingText.add(DOME_X + (Math.random() - 0.5) * 80, DOME_Y - 60, `-${effectiveDmg} HP`, { color: '#f44', font: 'bold 28px sans-serif' });
-
-          // Shield impact flash
-          spawnShieldImpact(e.x, e.y);
-
-          // Dome-hit sparks along the shield surface
-          const impactAngle = Math.atan2(e.y - DOME_Y, e.x - DOME_X);
-          for (let s = 0; s < 12; ++s) {
-            const spread = (Math.random() - 0.5) * 0.6;
-            const sa = impactAngle + spread;
-            const ix = DOME_X + Math.cos(sa) * DOME_RADIUS;
-            const iy = DOME_Y + Math.sin(sa) * DOME_RADIUS;
-            particles.trail(ix, iy, {
-              vx: Math.cos(sa) * (1 + Math.random() * 2),
-              vy: Math.sin(sa) * (1 + Math.random() * 2) - 1,
-              color: Math.random() > 0.5 ? '#4af' : '#8cf',
-              life: 0.3 + Math.random() * 0.3,
-              size: 1 + Math.random() * 2
-            });
+          case 'queen': {
+            // Hovers above the field, drops swarmers; comes down to fight when wounded
+            const angry = e.hp < e.maxHP * 0.5;
+            const tx = angry ? DOME_X : DOME_X + Math.sin(e.t * 0.35) * 380;
+            const ty = angry ? DOME_Y - DOME_RADIUS - 30 : 250 + Math.sin(e.t * 0.9) * 40;
+            const qx = tx - e.x, qy = ty - e.y, qd = Math.hypot(qx, qy) || 1;
+            const qstep = Math.min(qd, spd * 1.6 * dt);
+            e.x += qx / qd * qstep;
+            e.y += qy / qd * qstep;
+            if (angry && dist <= reach + 30 && enemyMelee(e, T, dt))
+              return;
+            e.spawnTimer = (e.spawnTimer === undefined ? 3 : e.spawnTimer) - dt;
+            if (e.spawnTimer <= 0 && enemies.length < 60) {
+              e.spawnTimer = 5.5;
+              const base = { threat: threatLevel(), hp: e.maxHP / T.hp * 0.8, damage: e.damage / T.damage, speed: e.speed / T.speed };
+              for (let k = 0; k < 3; ++k) {
+                const s = spawnEnemy('swarmer', base, { x: e.x + (k - 1) * 26, y: e.y + 20 });
+                s.fall = 0;
+                s.fallFrom = e.y + 20;
+              }
+              if (currentView === VIEW_SURFACE)
+                SZ.GameAudio.sweep(500, 1100, 0.25, 'square', 0.04);
+            }
+            break;
           }
-          particles.burst(e.x, e.y, 10, { color: '#f44', speed: 2.5, life: 0.5 });
-
-          if (domeHP <= 0) {
-            domeHP = 0;
-            state = STATE_GAME_OVER;
-            // Dome destruction explosion
-            particles.burst(DOME_X, DOME_Y, 40, { color: '#4af', speed: 5, life: 0.8 });
-            particles.burst(DOME_X, DOME_Y, 25, { color: '#f80', speed: 4, life: 0.6 });
-            screenShake.trigger(15, 500);
-            SZ.GameAudio.play('explode');
-            SZ.GameAudio.play('lose');
-            addHighScore(waveNumber, score);
-            clearSave();
-            updateWindowTitle();
-            return;
+        }
+        // Behemoth stomp: a shockwave that rolls into the dome
+        if (e.type === 'behemoth' && dist < 360) {
+          e.stomp = (e.stomp === undefined ? 2 : e.stomp) - dt;
+          if (e.stomp <= 0) {
+            e.stomp = 5.5;
+            e.stompAnim = 0.5;
+            shockwaves.push({ x: e.x, r: 10, from: e.x, hit: false, dmg: Math.ceil(e.damage * 0.6) });
+            if (currentView === VIEW_SURFACE) {
+              screenShake.trigger(7, 260);
+              SZ.GameAudio.play('explode', { pitch: 0.55, volume: 0.6 });
+            }
           }
         }
       }
+      if (e.stompAnim > 0)
+        e.stompAnim = Math.max(0, e.stompAnim - dt);
 
-      // Remove dead enemies with death animation
-      if (e.hp <= 0) {
-        score += 10 + waveNumber * 5;
-        SZ.GameAudio.play(e.boss ? 'explode' : 'smallExplode', { pitch: 0.85 + Math.random() * 0.3 });
-        // Chunky death explosion
-        particles.burst(e.x, e.y, 20, { color: '#fa0', speed: 3.5, life: 0.6, gravity: 0.05 });
-        particles.burst(e.x, e.y, 10, { color: '#f44', speed: 2, life: 0.4 });
-        particles.sparkle(e.x, e.y, 6, { color: '#ff0', speed: 1.5 });
-        // Gore chunks (squares)
-        for (let g = 0; g < 5; ++g)
-          particles.trail(e.x + (Math.random() - 0.5) * 8, e.y + (Math.random() - 0.5) * 8, {
-            vx: (Math.random() - 0.5) * 4,
-            vy: -Math.random() * 3 - 1,
-            color: '#c33',
-            life: 0.5 + Math.random() * 0.3,
-            size: 3 + Math.random() * 3,
-            gravity: 0.12,
-            shape: 'square'
-          });
-        floatingText.add(e.x, e.y - 30, `+${10 + waveNumber * 5}`, { color: '#ff0', font: 'bold 24px sans-serif' });
-        enemies.splice(i, 1);
+      if (e.hp <= 0)
+        killEnemy(e, i);
+    }
+
+    // Acid globs arc through the air
+    for (let i = enemyShots.length - 1; i >= 0; --i) {
+      const s = enemyShots[i];
+      s.t += dt / s.dur;
+      if (s.t >= 1) {
+        enemyShots.splice(i, 1);
+        if (currentView === VIEW_SURFACE) {
+          particles.burst(s.tx, s.ty, 14, { color: '#8aff50', speed: 2.5, life: 0.5, gravity: 0.1 });
+          SZ.GameAudio.play('bounce', { pitch: 0.5, volume: 0.6 });
+        }
+        if (damageDome(s.dmg, s.tx, s.ty, 'Acid'))
+          return;
       }
+    }
+    // Stomp shockwaves
+    for (let i = shockwaves.length - 1; i >= 0; --i) {
+      const w = shockwaves[i];
+      w.r += 420 * dt;
+      if (!w.hit && w.r >= Math.abs(w.from - DOME_X) - DOME_RADIUS) {
+        w.hit = true;
+        if (damageDome(w.dmg, DOME_X + Math.sign(w.from - DOME_X) * DOME_RADIUS, DOME_Y - 10, 'Shockwave'))
+          return;
+      }
+      if (w.r > 700)
+        shockwaves.splice(i, 1);
     }
 
     if (waveActive && enemies.length === 0) {
       waveActive = false;
-      waveTimer = WAVE_INTERVAL;
       SZ.GameAudio.play('levelup');
-      floatingText.add(CANVAS_W / 2, 80, 'WAVE CLEAR!', { color: '#0f0', font: 'bold 36px sans-serif' });
+      announce('Swarm beaten!', isNight() && world.bursts < 3 ? 'More may come before dawn' : 'The dome holds', '#6fe08a', 'shield');
       saveRun();
     }
+  }
+
+  let domeDamageShown = { t: 0, amount: 0, label: '' }; // hits within a moment are shown as one number
+  let domeInvulnerable = 0;    // Emergency Shield time left
+  let emergencyCooldown = 0;
+  let lastStandUsed = false;   // Last Stand saves the dome once per night
+  let keeperIdle = 0;          // seconds without keeper action (Auto-Mine)
+  let dashCooldown = 0;
+
+  // Any hit on the dome: shield gadget, armour, effects and game over. Returns true when the dome is lost.
+  function damageDome(amount, ex, ey, label, attacker) {
+    if (state !== STATE_PLAYING) return false;
+    if (domeInvulnerable > 0) {
+      spawnShieldImpact(ex, ey);
+      return false;
+    }
+    // Shield gadget absorbs the first hit of each night
+    if (primaryGadget === 'shield' && primaryGadgetState.active) {
+      primaryGadgetState.active = false;
+      SZ.GameAudio.play('zap', { pitch: 0.7 });
+      floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 60, 'Shield Absorbed!', { color: '#4af', font: 'bold 28px sans-serif' });
+      particles.burst(ex, ey, 15, { color: '#4af', speed: 3, life: 0.5 });
+      spawnShieldImpact(ex, ey);
+      return false;
+    }
+    let effectiveDmg = amount;
+    if (unlockedTools.reinforcedDome) effectiveDmg = Math.ceil(effectiveDmg * 0.75);
+    if (unlockedTools.energyShield) effectiveDmg = Math.ceil(effectiveDmg * 0.85);
+    if (unlockedTools.fortifiedBase) effectiveDmg = Math.ceil(effectiveDmg * 0.9);
+    // Damage Reflect sends part of a melee hit back
+    if (attacker && unlockedTools.damageReflect && enemies.includes(attacker))
+      applyDamageToEnemy(attacker, Math.ceil(effectiveDmg * 0.15 * getEffectiveLevel('damageReflect')));
+    domeHP -= effectiveDmg;
+    if (domeHP <= 0 && unlockedTools.lastStand && !lastStandUsed) {
+      domeHP = 1;
+      lastStandUsed = true;
+      announce('Last Stand!', 'The dome refuses to break - once per night', '#ff6a6a', 'heart');
+    }
+    if (unlockedTools.emergencyShield && domeHP > 0 && domeHP < maxDomeHP * 0.15 && emergencyCooldown <= 0) {
+      domeInvulnerable = 3;
+      emergencyCooldown = 60;
+      announce('Emergency Shield!', 'The dome is invulnerable for 3 seconds', '#6cc8ff', 'shield');
+      SZ.GameAudio.play('powerup', { pitch: 0.8 });
+    }
+    domeHitFlash = 1.0;
+    screenShake.trigger(8, 250);
+    // several attackers hit at once: one groan per moment, not a chorus
+    const hurtNow = performance.now();
+    if (hurtNow - lastDomeHurtSound > 400) {
+      lastDomeHurtSound = hurtNow;
+      SZ.GameAudio.play('hurt', { volume: 0.7 });
+    }
+    domeDamageShown.amount += effectiveDmg;
+    if (label) domeDamageShown.label = label;
+    const nowMs = performance.now();
+    if (nowMs - domeDamageShown.t > 450) {
+      floatingText.add(DOME_X + (Math.random() - 0.5) * 80, DOME_Y - 60, domeDamageShown.label ? `${domeDamageShown.label} -${domeDamageShown.amount}` : `-${domeDamageShown.amount} HP`, { color: '#f44', font: 'bold 28px sans-serif' });
+      domeDamageShown = { t: nowMs, amount: 0, label: '' };
+    }
+    spawnShieldImpact(ex, ey);
+    // Sparks along the shield surface
+    const impactAngle = Math.atan2(ey - DOME_Y, ex - DOME_X);
+    for (let s = 0; s < 12; ++s) {
+      const sa = impactAngle + (Math.random() - 0.5) * 0.6;
+      particles.trail(DOME_X + Math.cos(sa) * DOME_RADIUS, DOME_Y + Math.sin(sa) * DOME_RADIUS, {
+        vx: Math.cos(sa) * (1 + Math.random() * 2),
+        vy: Math.sin(sa) * (1 + Math.random() * 2) - 1,
+        color: Math.random() > 0.5 ? '#4af' : '#8cf',
+        life: 0.3 + Math.random() * 0.3,
+        size: 1 + Math.random() * 2
+      });
+    }
+    if (domeHP <= 0) {
+      domeHP = 0;
+      state = STATE_GAME_OVER;
+      particles.burst(DOME_X, DOME_Y, 40, { color: '#4af', speed: 5, life: 0.8 });
+      particles.burst(DOME_X, DOME_Y, 25, { color: '#f80', speed: 4, life: 0.6 });
+      screenShake.trigger(15, 500);
+      SZ.GameAudio.play('explode');
+      SZ.GameAudio.play('lose');
+      addHighScore(waveNumber, score);
+      clearSave();
+      updateWindowTitle();
+      return true;
+    }
+    return false;
   }
 
   /* ======================================================================
@@ -2982,15 +4800,19 @@
         if (ady < 0)
           // Mouse is above ground — atan2 with negative ady always yields [-PI, 0]
           turretAngle = Math.atan2(ady, adx);
-        // When mouse is below ground, don't change turret angle — avoids snapping
+        else if (ady < 45)
+          // Just below the ground line (monster feet): aim flat along the ground
+          turretAngle = adx < 0 ? -Math.PI : 0;
+        // Further below ground the angle stays put, so the HUD does not swing the turret
       }
     }
 
     // Keyboard aiming: Left/Right or A/D rotate barrel
+    const turnSpeed = TURRET_KEYBOARD_SPEED * (1 + 0.3 * getEffectiveLevel('turretSpeed')) * (weather.kind === 'blizzard' ? 1 - 0.4 * weather.intensity : 1);
     if (keys['ArrowLeft'] || keys['KeyA'])
-      turretAngle -= TURRET_KEYBOARD_SPEED * dt;
+      turretAngle -= turnSpeed * dt;
     if (keys['ArrowRight'] || keys['KeyD'])
-      turretAngle += TURRET_KEYBOARD_SPEED * dt;
+      turretAngle += turnSpeed * dt;
 
     // Clamp turret to upper dome arc, above ground on both sides
     if (turretAngle > TURRET_MAX_ANGLE) turretAngle = TURRET_MAX_ANGLE;
@@ -3006,7 +4828,7 @@
     // Fire toward current turret aim direction on click
     if (fireRequested && fireCooldown <= 0) {
       fireRequested = false;
-      fireCooldown = 1.0 / fireRate;
+      fireCooldown = 1.0 / (fireRate * (weather.kind === 'blizzard' ? 1 - 0.25 * weather.intensity : 1));
 
       // Project a far-off aim point along the turret angle
       const aimDist = 400;
@@ -3015,8 +4837,10 @@
 
       // Find enemy closest to the projected aim line
       let target = null;
-      let bestDist = 80 * 80; // hit radius of 80px
+      const homing = !!unlockedTools.homingShots;
+      let bestDist = homing ? 220 * 220 : 80 * 80; // hit radius of 80px (220 with homing shots)
       for (const e of enemies) {
+        if (e.hidden) continue;
         const dx = e.x - farX;
         const dy = e.y - farY;
         const d = dx * dx + dy * dy;
@@ -3028,8 +4852,9 @@
 
       // Also check enemies near the aim line (not just the far point)
       if (!target) {
-        let bestLineDist = 60;
+        let bestLineDist = homing ? 140 : 60;
         for (const e of enemies) {
+          if (e.hidden) continue;
           // Distance from enemy to the aim ray
           const ex = e.x - turretBaseX;
           const ey = e.y - turretBaseY;
@@ -3059,14 +4884,41 @@
       });
 
       if (target) {
-        applyDamageToEnemy(target, weaponDamage);
+        // Critical hits
+        let shot = weaponDamage;
+        if (unlockedTools.criticalHit && Math.random() < 0.15 + 0.05 * (getEffectiveLevel('criticalHit') - 1)) {
+          shot = Math.round(shot * 2.5);
+          floatingText.add(target.x, target.y - (target.size || 20) - 30, 'CRIT!', { color: '#ffd040', font: 'bold 24px sans-serif' });
+        }
+        applyDamageToEnemy(target, shot);
 
-        // Chain Lightning: arc damage to 2 nearby enemies
+        // Multi-Shot: more beams at the monsters nearest to the target
+        if (unlockedTools.multiShot) {
+          const extra = enemies.filter(o => o !== target && !o.hidden)
+            .sort((a, b) => Math.hypot(a.x - target.x, a.y - target.y) - Math.hypot(b.x - target.x, b.y - target.y))
+            .slice(0, getEffectiveLevel('multiShot'));
+          for (const o of extra) {
+            applyDamageToEnemy(o, Math.ceil(weaponDamage * 0.6));
+            projectiles.push({ x: muzzleX, y: muzzleY, tx: o.x, ty: o.y, target: o, life: 0.25, maxLife: 0.25 });
+          }
+        }
+
+        // Explosive Rounds: every hit bursts
+        if (unlockedTools.explosiveRounds) {
+          for (const ce of enemies)
+            if (ce !== target && !ce.hidden && Math.hypot(ce.x - target.x, ce.y - target.y) < 110)
+              applyDamageToEnemy(ce, Math.ceil(weaponDamage * 0.4));
+          particles.burst(target.x, target.y, 12, { color: '#ffb040', speed: 3, life: 0.35 });
+        }
+
+        // Chain Lightning: arc damage to 2 nearby enemies (+1 per extra level)
         if (unlockedTools.chainLightning) {
           let chainCount = 0;
+          const arcs = 1 + getEffectiveLevel('chainLightning');
           const chainDamage = Math.ceil(weaponDamage * 0.4);
           for (const ce of enemies) {
-            if (ce === target || chainCount >= 2) break;
+            if (ce.hidden || ce === target) continue;
+            if (chainCount >= arcs) break;
             const cdx = ce.x - target.x;
             const cdy = ce.y - target.y;
             if (cdx * cdx + cdy * cdy < 160 * 160) {
@@ -3082,10 +4934,11 @@
         // Freeze Ray: slow enemies near target
         if (unlockedTools.freezeRay) {
           for (const ce of enemies) {
+            if (ce.hidden) continue;
             const cdx = ce.x - target.x;
             const cdy = ce.y - target.y;
             if (cdx * cdx + cdy * cdy < 120 * 120)
-              ce.stunTimer = Math.max(ce.stunTimer || 0, 0.8);
+              ce.stunTimer = Math.max(ce.stunTimer || 0, 0.8 + 0.3 * (getEffectiveLevel('freezeRay') - 1));
           }
         }
 
@@ -3093,6 +4946,7 @@
         if (unlockedTools.plasmaCannon) {
           const aoeDamage = Math.ceil(weaponDamage * 0.6);
           for (const ce of enemies) {
+            if (ce.hidden) continue;
             if (ce === target) continue;
             const cdx = ce.x - target.x;
             const cdy = ce.y - target.y;
@@ -3150,6 +5004,8 @@
 
     // Mining tools upgrade: each level reduces time by 20%
     time *= Math.pow(0.8, getEffectiveLevel('miningTools'));
+    // Speed Mining: -10% per level
+    time *= Math.pow(0.9, getEffectiveLevel('speedMining'));
 
     // Drill Gadget: 30% faster when mining consecutive tiles in the same column
     if (unlockedTools.drill && activeToolKey === 'drill' && toolState.drillConsecutive > 0)
@@ -3189,6 +5045,18 @@
     miningTarget = { col: nx, row: ny };
     miningDir = { dx, dy };
     miningDuration = getMiningTime(ny, tile);
+    // Digging upward: jetpack and wall climb help
+    if (dy < 0) {
+      if (unlockedTools.jetpack) miningDuration *= 0.8;
+      if (unlockedTools.wallClimb) miningDuration *= 0.7;
+    }
+    // Phase Shift: the next block gives way at once
+    if (unlockedTools.phaseShift && toolState.phaseShiftCooldown <= 0 && tile !== TILE_CORE) {
+      miningDuration = 0.05;
+      toolState.phaseShiftCooldown = 25 - 8 * (getEffectiveLevel('phaseShift') - 1);
+      floatingText.add(nx * TILE_SIZE + TILE_SIZE / 2 - cameraX, ny * TILE_SIZE - cameraY, 'Phase!', { color: '#c8b0ff', font: 'bold 20px sans-serif' });
+    }
+    keeperIdle = 0;
 
     // Restore partial progress from persistent tile HP
     if (tileMaxHP[ny] && tileMaxHP[ny][nx] > 0 && tileHP[ny][nx] < tileMaxHP[ny][nx])
@@ -3251,10 +5119,12 @@
 
     if (RESOURCE_TILES.includes(tile)) {
       const label = TILE_LABELS[tile];
-      let value = TILE_VALUES[tile];
+      let value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(ny));
 
-      // Fortune: 30% chance to double ore yield
-      if (unlockedTools.fortune && Math.random() < 0.3) {
+      if (unlockedTools.silkTouch)
+        value = Math.round(value * 1.25);
+      // Fortune: 30% chance to double ore yield (+10% per extra level)
+      if (unlockedTools.fortune && Math.random() < 0.3 + 0.1 * (getEffectiveLevel('fortune') - 1)) {
         value *= 2;
         const tx2 = nx * TILE_SIZE + TILE_SIZE / 2 - cameraX;
         const ty2 = ny * TILE_SIZE + TILE_SIZE / 2 - cameraY;
@@ -3286,6 +5156,9 @@
       screenShake.trigger(5, 150);
     }
 
+    if (tile === TILE_CORE)
+      collectRelocationCore(tx, ty);
+
     // Gadget chamber tile -- grant the chamber's gadget
     if (tile === TILE_GADGET) {
       const chamber = gadgetChambers.find(ch => {
@@ -3314,6 +5187,33 @@
     drillX = nx;
     drillY = ny;
 
+    // Vein Miner and Tunnel Bore break more rock in one go
+    if (unlockedTools.veinMiner && RESOURCE_TILES.includes(tile)) {
+      const seen = new Set([ny * GRID_COLS + nx]);
+      const queue = [[ny, nx]];
+      let n = 0;
+      while (queue.length && n < 10) {
+        const [r, c] = queue.shift();
+        for (const [ddr, ddc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+          const rr = r + ddr, cc = c + ddc, key = rr * GRID_COLS + cc;
+          if (rr < 0 || rr >= GRID_ROWS || cc < 0 || cc >= GRID_COLS || seen.has(key)) continue;
+          seen.add(key);
+          if (undergroundGrid[rr][cc] !== tile || n >= 10) continue;
+          breakTileInstant(rr, cc);
+          queue.push([rr, cc]);
+          ++n;
+        }
+      }
+    }
+    if (unlockedTools.tunnelBore)
+      for (let k = 1; k <= 2; ++k) {
+        const rr = ny + dy * k, cc = nx + dx * k;
+        if (rr < 0 || rr >= GRID_ROWS || cc < 0 || cc >= GRID_COLS) break;
+        const t = undergroundGrid[rr][cc];
+        if (t === TILE_EMPTY || t === TILE_GADGET || t === TILE_CORE) break;
+        breakTileInstant(rr, cc);
+      }
+
     // Track drill gadget consecutive column mining
     if (unlockedTools.drill && activeToolKey === 'drill') {
       if (dy === 1 && dx === 0 && nx === toolState.drillLastCol)
@@ -3326,7 +5226,9 @@
     // Pick up dropped resources at destination
     pickUpDroppedResources();
 
-    // Reveal adjacent gadget chambers
+    // Reveal an adjacent Relocation Core and gadget chambers
+    if (!relocationCore.revealed && Math.abs(relocationCore.r - ny) + Math.abs(relocationCore.c - nx) <= 1)
+      relocationCore.revealed = true;
     for (const ch of gadgetChambers) {
       if (ch.revealed) continue;
       for (let dr = 0; dr < 2; ++dr)
@@ -3390,6 +5292,29 @@
       completeMining();
   }
 
+  // Break a tile at once (Vein Miner, Tunnel Bore): ore goes into the cargo, overflow drops
+  function breakTileInstant(r, c) {
+    const tile = undergroundGrid[r][c];
+    const tx = c * TILE_SIZE + TILE_SIZE / 2 - cameraX, ty = r * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+    if (RESOURCE_TILES.includes(tile)) {
+      let value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(r));
+      if (unlockedTools.silkTouch)
+        value = Math.round(value * 1.25);
+      const fits = Math.max(0, Math.min(value, carryCapacity - carried));
+      resources[TILE_LABELS[tile]] += fits;
+      carried += fits;
+      if (value > fits)
+        droppedResources.push({ col: c, row: r, type: tile, value: value - fits, age: 0 });
+      particles.sparkle(tx, ty, 6, { color: TILE_HIGHLIGHT_COLORS[tile] || '#fff', speed: 2 });
+    }
+    spawnCrumble(tx, ty, getTileBaseColor(tile, r));
+    undergroundGrid[r][c] = TILE_EMPTY;
+    tileHP[r][c] = 0;
+    tileMaxHP[r][c] = 0;
+    if (!relocationCore.revealed && Math.abs(relocationCore.r - r) + Math.abs(relocationCore.c - c) <= 1)
+      relocationCore.revealed = true;
+  }
+
   function pickUpDroppedResources() {
     for (let i = droppedResources.length - 1; i >= 0; --i) {
       const drop = droppedResources[i];
@@ -3425,7 +5350,7 @@
 
     switch (type) {
       case 'domeArmor':
-        maxDomeHP += 50;
+        maxDomeHP = computeMaxDomeHP();
         domeHP = Math.min(domeHP + 50, maxDomeHP);
         floatingText.add(tx, ty - 90, '+50 Max HP!', { color: '#0f0', font: 'bold 24px sans-serif' });
         break;
@@ -3491,9 +5416,11 @@
               for (let dc2 = 0; dc2 < 2; ++dc2)
                 undergroundGrid[chamber.r + dr2][chamber.c + dc2] = TILE_EMPTY;
           }
+        } else if (tile === TILE_CORE) {
+          collectRelocationCore(tx, ty);
         } else if (RESOURCE_TILES.includes(tile)) {
           const label = TILE_LABELS[tile];
-          const value = TILE_VALUES[tile];
+          const value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(r));
           const fitsInInventory = Math.min(value, carryCapacity - carried);
           const excess = value - fitsInInventory;
           if (fitsInInventory > 0) {
@@ -3572,9 +5499,11 @@
               for (let dc2 = 0; dc2 < 2; ++dc2)
                 undergroundGrid[chamber.r + dr2][chamber.c + dc2] = TILE_EMPTY;
           }
+        } else if (tile === TILE_CORE) {
+          collectRelocationCore(tx, ty);
         } else if (RESOURCE_TILES.includes(tile)) {
           const label = TILE_LABELS[tile];
-          const value = TILE_VALUES[tile];
+          const value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(r));
           const fitsInInventory = Math.min(value, carryCapacity - carried);
           const excess = value - fitsInInventory;
           if (fitsInInventory > 0) {
@@ -3603,7 +5532,7 @@
     if (toolState.teleporterCooldown > 0) return;
     if (state !== STATE_PLAYING || currentView !== VIEW_UNDERGROUND) return;
 
-    toolState.teleporterCooldown = GADGET_TOOL_COOLDOWNS.teleporter;
+    toolState.teleporterCooldown = GADGET_TOOL_COOLDOWNS.teleporter - 5 * getEffectiveLevel('teleportCooldown');
 
     // Teleport particles at origin
     const cx = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
@@ -3638,69 +5567,15 @@
     activeToolKey = activeToolKey === key ? null : key;
   }
 
-  function unlockTool(idx) {
-    if (state !== STATE_PLAYING) return;
-    const def = GADGET_DEFS[idx];
-    if (unlockedTools[def.key]) return;
-    if (resources.iron < def.costIron || resources.cobalt < def.costCobalt) return;
-
-    resources.iron -= def.costIron;
-    resources.cobalt -= def.costCobalt;
-    unlockedTools[def.key] = true;
-
-    SZ.GameAudio.play('powerup');
-    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `${def.name} Unlocked!`, { color: '#ffd700', font: 'bold 28px sans-serif' });
-    particles.sparkle(CANVAS_W / 2, CANVAS_H / 2, 15, { color: '#ffd700', speed: 2.5 });
-    screenShake.trigger(5, 150);
-
-    // Auto-select non-passive tools
-    if (def.key !== 'scanner' && def.key !== 'reinforcedDome')
-      activeToolKey = def.key;
-  }
-
   /* ======================================================================
      UPGRADE SYSTEM
      ====================================================================== */
-
-  function getUpgradeCost(idx) {
-    const def = UPGRADE_DEFS[idx];
-    return def.baseCost + upgradeLevels[def.key] * def.perLevel;
-  }
 
   function totalResources() {
     let total = 0;
     for (const key in resources)
       total += resources[key];
     return total;
-  }
-
-  function spendResources(amount) {
-    let remaining = amount;
-    // Spend from most valuable first
-    for (const key of ['ruby', 'diamond', 'emerald', 'redstone', 'quartz', 'cobalt', 'gold', 'silver', 'lead', 'tin', 'copper', 'coal', 'water', 'iron']) {
-      const spend = Math.min(resources[key] || 0, remaining);
-      resources[key] -= spend;
-      remaining -= spend;
-      if (remaining <= 0) break;
-    }
-  }
-
-  function applyUpgrade(idx) {
-    if (state !== STATE_PLAYING) return;
-
-    const cost = getUpgradeCost(idx);
-    if (totalResources() < cost) return;
-
-    spendResources(cost);
-    const def = UPGRADE_DEFS[idx];
-    ++upgradeLevels[def.key];
-
-    // Recalculate using effective level (legacy + tree combined)
-    applyStatUpgrade(def.key);
-
-    SZ.GameAudio.play('levelup');
-    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `${def.name} Lv${getEffectiveLevel(def.key)}`, { color: '#4af', font: 'bold 28px sans-serif' });
-    particles.sparkle(CANVAS_W / 2, CANVAS_H / 2, 10, { color: '#4af', speed: 2 });
   }
 
   /* ======================================================================
@@ -3711,8 +5586,12 @@
     return upgradeTreeLevels[id] || 0;
   }
 
+  const TREE_NODE_BY_ID = {};
+  for (const n of UPGRADE_TREE)
+    TREE_NODE_BY_ID[n.id] = n;
+
   function isTreeNodeMaxed(id) {
-    const node = UPGRADE_TREE.find(n => n.id === id);
+    const node = TREE_NODE_BY_ID[id];
     if (!node) return false;
     return getTreeNodeLevel(id) >= node.maxLevel;
   }
@@ -3761,6 +5640,8 @@
       applyGadgetUnlock(node.upgradeKey);
     else
       applyStatUpgrade(node.upgradeKey);
+    if (node.branch === 'drone')
+      syncDrones(true);
 
     SZ.GameAudio.play('levelup');
     floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `${node.name} purchased!`, { color: '#ffd700', font: 'bold 28px sans-serif' });
@@ -3769,14 +5650,14 @@
   }
 
   // Passive gadgets that don't need selection
-  const PASSIVE_GADGETS = ['scanner', 'reinforcedDome', 'autoRepair', 'domeExpansion', 'energyShield', 'magnet', 'fortune', 'silkTouch', 'echoLocation', 'chainLightning', 'freezeRay', 'plasmaCannon', 'damageReflect', 'emergencyShield', 'fortifiedBase', 'lastStand', 'oreDetector', 'autoMine', 'tunnelBore', 'veinMiner', 'doubleJump', 'wallClimb', 'dash', 'undergroundRadar', 'multiShot', 'homingShots', 'criticalHit', 'explosiveRounds'];
+  const PASSIVE_GADGETS = ['scanner', 'reinforcedDome', 'autoRepair', 'domeExpansion', 'energyShield', 'magnet', 'fortune', 'silkTouch', 'echoLocation', 'chainLightning', 'freezeRay', 'plasmaCannon', 'damageReflect', 'emergencyShield', 'fortifiedBase', 'lastStand', 'oreDetector', 'autoMine', 'tunnelBore', 'veinMiner', 'doubleJump', 'wallClimb', 'dash', 'undergroundRadar', 'multiShot', 'homingShots', 'criticalHit', 'explosiveRounds', 'droneBay', 'droneMiner', 'combatDrone', 'repairDrone'];
 
   function applyGadgetUnlock(key) {
     unlockedTools[key] = true;
     // Apply immediate effects for certain gadgets
-    if (key === 'domeExpansion') {
-      maxDomeHP += 75;
-      domeHP = Math.min(domeHP + 75, maxDomeHP);
+    if (key === 'domeExpansion' || key === 'fortifiedBase') {
+      maxDomeHP = computeMaxDomeHP();
+      domeHP = Math.min(domeHP + (key === 'domeExpansion' ? 75 : 50), maxDomeHP);
     }
     // Auto-select non-passive tools
     if (!PASSIVE_GADGETS.includes(key))
@@ -3784,12 +5665,39 @@
   }
 
   function getEffectiveLevel(key) {
-    // Sum of tree-based levels AND legacy upgrade levels for this key
-    let treeLevels = 0;
+    let levels = 0;
     for (const n of UPGRADE_TREE)
       if (n.upgradeKey === key)
-        treeLevels += getTreeNodeLevel(n.id);
-    return treeLevels + (upgradeLevels[key] || 0);
+        levels += getTreeNodeLevel(n.id);
+    return levels;
+  }
+
+  // Map quick-upgrade levels of an old save onto the matching tree chain:
+  // the chain is owned up to (tree levels + legacy levels) nodes
+  function absorbLegacyUpgrades(levels) {
+    for (const key in LEGACY_UPGRADE_CHAINS) {
+      const extra = Math.max(0, Math.floor(Number(levels[key]) || 0));
+      if (!extra) continue;
+      const prefix = LEGACY_UPGRADE_CHAINS[key];
+      const chain = UPGRADE_TREE
+        .filter(n => n.type === 'stat' && n.upgradeKey === key && new RegExp('^' + prefix + '\\d+$').test(n.id))
+        .sort((a, b) => parseInt(a.id.slice(prefix.length), 10) - parseInt(b.id.slice(prefix.length), 10));
+      let owned = 0;
+      for (const n of chain)
+        if (getTreeNodeLevel(n.id) >= n.maxLevel) ++owned;
+      const target = Math.min(chain.length, owned + extra);
+      for (let i = 0; i < target; ++i)
+        upgradeTreeLevels[chain[i].id] = chain[i].maxLevel;
+    }
+  }
+
+  // Dome capacity from every source: shield chain, dome gadgets and armour found in the mine
+  function computeMaxDomeHP() {
+    let hp = BASE_DOME_HP + getEffectiveLevel('domeHP') * 25;
+    if (unlockedTools.domeExpansion) hp += 75;
+    if (unlockedTools.fortifiedBase) hp += 50;
+    hp += 50 * foundGadgets.filter(g => g === 'domeArmor').length;
+    return hp;
   }
 
   function applyStatUpgrade(key) {
@@ -3803,7 +5711,7 @@
         fireRate = BASE_FIRE_RATE + totalLevels * 0.3;
         break;
       case 'domeHP':
-        maxDomeHP = BASE_DOME_HP + totalLevels * 25;
+        maxDomeHP = computeMaxDomeHP();
         domeHP = Math.min(domeHP + 25, maxDomeHP);
         break;
       case 'drillSpeed':
@@ -3906,16 +5814,31 @@
       branchGrids.push({ branch, branchNodes, depthOf, laneOf, rows: rowSpans.length, cols: maxDepth + 1 });
     }
 
-    // Regions in a 2x2 arrangement: dome | mining over movement | weapon
+    // Regions row by row (TREE_REGION_ROWS), each row centred
     const regionW = (g) => g.cols * pitchX - TREE_GAP_X + TREE_REGION_PAD * 2;
     const regionH = (g) => TREE_REGION_HEADER + g.rows * pitchY - TREE_GAP_Y + TREE_REGION_PAD;
-    const colW = [Math.max(regionW(branchGrids[0]), regionW(branchGrids[2])), Math.max(regionW(branchGrids[1]), regionW(branchGrids[3]))];
-    const rowH = [Math.max(regionH(branchGrids[0]), regionH(branchGrids[1])), Math.max(regionH(branchGrids[2]), regionH(branchGrids[3]))];
+    const gridOf = {};
+    for (const g of branchGrids)
+      gridOf[g.branch] = g;
+    const rowWidth = TREE_REGION_ROWS.map(row => row.reduce((w, b) => w + regionW(gridOf[b]), 0) + (row.length - 1) * TREE_REGION_GAP);
+    const totalW = Math.max(...rowWidth);
+    const placeOf = {};
+    let rowY = 0;
+    TREE_REGION_ROWS.forEach((row, ri) => {
+      let x = (totalW - rowWidth[ri]) / 2;
+      let h = 0;
+      for (const b of row) {
+        placeOf[b] = { x, y: rowY };
+        x += regionW(gridOf[b]) + TREE_REGION_GAP;
+        h = Math.max(h, regionH(gridOf[b]));
+      }
+      rowY += h + TREE_REGION_GAP;
+    });
+    const totalH = rowY - TREE_REGION_GAP;
     for (let i = 0; i < branchGrids.length; ++i) {
       const g = branchGrids[i];
-      const gx = i % 2 ? colW[0] + TREE_REGION_GAP : 0;
-      const gy = i >= 2 ? rowH[0] + TREE_REGION_GAP : 0;
-      const cx = gx + (colW[i % 2] - regionW(g)) / 2;
+      const cx = placeOf[g.branch].x;
+      const gy = placeOf[g.branch].y;
       regions[g.branch] = { x: cx, y: gy, w: regionW(g), h: regionH(g), branch: g.branch };
       for (const n of g.branchNodes)
         nodes.push({
@@ -3930,7 +5853,7 @@
     const byId = {};
     for (const ln of nodes)
       byId[ln.node.id] = ln;
-    regions.all = { x: 0, y: 0, w: colW[0] + colW[1] + TREE_REGION_GAP, h: rowH[0] + rowH[1] + TREE_REGION_GAP };
+    regions.all = { x: 0, y: 0, w: totalW, h: totalH };
     treeLayout = { nodes, byId, regions };
     return nodes;
   }
@@ -3993,7 +5916,7 @@
   // Header tabs: all branches plus one per branch
   function getTreeTabs() {
     const ids = ['all'].concat(TREE_BRANCH_ORDER);
-    const tabW = 196, gap = 10;
+    const tabW = 180, gap = 10;
     const x0 = CANVAS_W / 2 - (ids.length * tabW + (ids.length - 1) * gap) / 2;
     return ids.map((id, i) => ({ id, x: x0 + i * (tabW + gap), y: 66, w: tabW, h: 36 }));
   }
@@ -4134,44 +6057,7 @@
     ctx.fillStyle = 'rgba(0,0,0,0.45)';
     ctx.fill();
 
-    roundRectPath(x, y, w, h, 12);
-    if (st === 'owned')
-      ctx.fillStyle = hexToRgba(color, 0.26);
-    else if (st === 'ready')
-      ctx.fillStyle = isHover || isFocus ? hexToRgba(color, 0.3) : hexToRgba(color, 0.16);
-    else if (st === 'poor')
-      ctx.fillStyle = 'rgba(40,36,30,0.95)';
-    else
-      ctx.fillStyle = 'rgba(16,18,26,0.95)';
-    ctx.fill();
-    // Inner sheen
-    ctx.save();
-    ctx.clip();
-    ctx.fillStyle = st === 'locked' ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.06)';
-    ctx.fillRect(x, y, w, h * 0.45);
-    ctx.restore();
-
-    // Border by state
-    roundRectPath(x, y, w, h, 12);
-    if (st === 'owned') {
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = color;
-    } else if (st === 'ready') {
-      ctx.lineWidth = 2.5;
-      ctx.strokeStyle = color;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 8 + Math.sin(animTime * 4) * 4;
-    } else if (st === 'poor') {
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = 'rgba(255,182,72,0.65)';
-    } else {
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = 'rgba(120,130,160,0.3)';
-      ctx.setLineDash([6, 5]);
-    }
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.shadowBlur = 0;
+    drawNodeFrame(x, y, w, h, color, st, isHover || isFocus);
 
     if (isHover || isFocus) {
       roundRectPath(x - 4, y - 4, w + 8, h + 8, 15);
@@ -4328,7 +6214,7 @@
       setTreeTab(tabs[(i + (e.shiftKey ? tabs.length - 1 : 1)) % tabs.length]);
       return true;
     }
-    if (/^Digit[1-5]$/.test(e.code)) {
+    if (/^Digit[1-6]$/.test(e.code)) {
       setTreeTab(tabs[parseInt(e.code.slice(5), 10) - 1]);
       return true;
     }
@@ -4382,15 +6268,28 @@
     return false;
   }
 
-  function openUpgradeDialog() {
+  // Optionally opens on a branch tab or with a node focused (from the quick panel)
+  function openUpgradeDialog(focusId, tab) {
     if (state !== STATE_PLAYING && state !== STATE_PAUSED) return;
     stateBeforeUpgradeDialog = state;
     state = STATE_UPGRADE_DIALOG;
     upgradeDialogHover = null;
     upgradePanning = false;
     clearTooltip();
-    // First open of a run fits the selected branch; afterwards the view is kept
-    if (!upgradeViewCustomized) {
+    computeTreeLayout();
+    const focus = focusId && treeLayout.byId[focusId];
+    if (focus || tab) {
+      treeTab = focus ? focus.branch : tab;
+      fitTreeView(treeTab, true);
+      upgradeViewCustomized = true;
+      if (focus) {
+        treeCam.tz = upgradeZoom = Math.max(upgradeZoom, 0.75);
+        treeCam.tx = upgradePanX = TREE_VIEW.x + TREE_VIEW.w / 2 - (focus.x + focus.w / 2) * upgradeZoom;
+        treeCam.ty = upgradePanY = TREE_VIEW.y + TREE_VIEW.h / 2 - (focus.y + focus.h / 2) * upgradeZoom;
+        focusTreeNode(focus);
+      }
+    } else if (!upgradeViewCustomized) {
+      // First open of a run fits the selected branch; afterwards the view is kept
       fitTreeView(treeTab, true);
       upgradeViewCustomized = true;
     }
@@ -4398,6 +6297,7 @@
   }
 
   function closeUpgradeDialog() {
+    clearTooltip();
     state = stateBeforeUpgradeDialog || STATE_PLAYING;
     stateBeforeUpgradeDialog = null;
     upgradeDialogHover = null;
@@ -4456,6 +6356,8 @@
           ++total;
           if (isTreeNodeMaxed(n.id)) ++owned;
         }
+      // Header only when its strip is on screen (the clip would hide it anyway)
+      if (r.y + TREE_REGION_HEADER < viewT || r.y > viewB || r.x + TREE_REGION_PAD < viewL - 40 || r.x > viewR) continue;
       const headPx = compact ? Math.min(48, 20 / upgradeZoom) : 30;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
@@ -4640,7 +6542,7 @@
         primaryGadgetState.duration -= dt;
         if (primaryGadgetState.duration <= 0) {
           primaryGadgetState.active = false;
-          primaryGadgetState.cooldown = 30;
+          primaryGadgetState.cooldown = 30 - 4 * getEffectiveLevel('shieldRecharge');
         }
       } else if (primaryGadgetState.cooldown > 0)
         primaryGadgetState.cooldown -= dt;
@@ -4655,22 +6557,6 @@
         if (primaryGadgetState.fruitTimer <= 0)
           primaryGadgetState.fruitReady = true;
       }
-    }
-
-    if (primaryGadget === 'droneyard') {
-      primaryGadgetState.droneTimer -= dt;
-      if (primaryGadgetState.droneTimer <= 0) {
-        primaryGadgetState.droneTimer = 15;
-        // Auto-carry up to 10 resources from carried to deposited
-        if (carried > 0) {
-          const transfer = Math.min(carried, 10);
-          carried -= transfer;
-          SZ.GameAudio.play('coin', { pitch: 0.8 });
-          floatingText.add(DOME_X - 80, DOME_Y - 80, `Drone: +${transfer} delivered`, { color: '#4af', font: 'bold 22px sans-serif' });
-        }
-      }
-      // Animate drone phase for visual bob
-      primaryGadgetState.dronePhase = (primaryGadgetState.dronePhase || 0) + dt * 3;
     }
 
     // -- Mine gadgets updates --
@@ -4691,6 +6577,7 @@
           // Find nearest enemy
           let nearest = null, bestD = Infinity;
           for (const e of enemies) {
+            if (e.hidden) continue;
             const dx = e.x - DOME_X;
             const dy = e.y - DOME_Y;
             const d = dx * dx + dy * dy;
@@ -4724,6 +6611,7 @@
           primaryGadgetState.stunLaserTimer = 8;
           let nearest = null, bestD = Infinity;
           for (const e of enemies) {
+            if (e.hidden) continue;
             const dx = e.x - DOME_X;
             const dy = e.y - DOME_Y;
             const d = dx * dx + dy * dy;
@@ -4760,7 +6648,7 @@
     if (unlockedTools.autoRepair && domeHP < maxDomeHP) {
       toolState.autoRepairTimer = (toolState.autoRepairTimer || 0) - dt;
       if (toolState.autoRepairTimer <= 0) {
-        toolState.autoRepairTimer = 5; // heal every 5 seconds
+        toolState.autoRepairTimer = 5 / (1 + 0.6 * getEffectiveLevel('autoRepairSpeed')); // heal every 5 seconds (faster with upgrades)
         const heal = 2;
         domeHP = Math.min(domeHP + heal, maxDomeHP);
         floatingText.add(DOME_X + 60, DOME_Y - 40, `+${heal} HP`, { color: '#0f0', font: 'bold 18px sans-serif' });
@@ -4774,7 +6662,7 @@
       for (let i = droppedResources.length - 1; i >= 0; --i) {
         const drop = droppedResources[i];
         const dist = Math.abs(drop.col - drillX) + Math.abs(drop.row - drillY);
-        if (dist > 2) continue;
+        if (dist > 2 + getEffectiveLevel('magnetRange')) continue;
         const canCarry = carryCapacity - carried;
         if (canCarry <= 0) break;
         const pickUp = Math.min(drop.value, canCarry);
@@ -4805,9 +6693,528 @@
     if (toolState.teleporterCooldown > 0)
       toolState.teleporterCooldown = Math.max(0, toolState.teleporterCooldown - dt);
 
+    // Shield Regen: slow passive repair
+    const regen = getEffectiveLevel('shieldRegen');
+    if (regen > 0 && domeHP > 0 && domeHP < maxDomeHP)
+      domeHP = Math.min(maxDomeHP, domeHP + 0.2 * regen * dt);
+    // Shield Recharge: the Shield Generator comes back on its own after a while
+    const recharge = getEffectiveLevel('shieldRecharge');
+    if (primaryGadget === 'shield' && !primaryGadgetState.active && recharge > 0) {
+      primaryGadgetState.rechargeTimer = (primaryGadgetState.rechargeTimer || 0) + dt;
+      if (primaryGadgetState.rechargeTimer >= 50 - 8 * recharge) {
+        primaryGadgetState.active = true;
+        primaryGadgetState.rechargeTimer = 0;
+        if (currentView === VIEW_SURFACE)
+          floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 60, 'Shield Recharged!', { color: '#4af', font: 'bold 24px sans-serif' });
+      }
+    }
+    if (domeInvulnerable > 0) domeInvulnerable = Math.max(0, domeInvulnerable - dt);
+    if (emergencyCooldown > 0) emergencyCooldown = Math.max(0, emergencyCooldown - dt);
+    if (dashCooldown > 0) dashCooldown = Math.max(0, dashCooldown - dt);
+    // Ore Detector: hidden chambers and the Relocation Core show up nearby
+    if (unlockedTools.oreDetector) {
+      const R = 6 + 3 * (getEffectiveLevel('oreDetector') - 1);
+      for (const ch of gadgetChambers)
+        if (!ch.revealed && Math.abs(ch.r - drillY) + Math.abs(ch.c - drillX) <= R)
+          ch.revealed = true;
+      if (!relocationCore.revealed && Math.abs(relocationCore.r - drillY) + Math.abs(relocationCore.c - drillX) <= R)
+        relocationCore.revealed = true;
+    }
+
     // Scanner passive: always active when unlocked (echo location extends range)
     toolState.scannerActive = !!unlockedTools.scanner;
     toolState.echoLocationActive = !!unlockedTools.echoLocation;
+  }
+
+  /* ======================================================================
+     DRONES -- couriers in the mine, gun and repair drones at the dome
+     ====================================================================== */
+
+  const DRONE_DOCK_TIME = 1.2;   // seconds a courier rests in the dome between trips
+  let drones = [];               // couriers: { x, y, state, path, pi, cargo, job, timer, ... }
+  let gunDrones = [];            // { angle, x, y, cooldown, flash, tx, ty }
+  let repairBot = null;          // { x, y, angle, beam, spark }
+
+  function droneShaftTile() {
+    return { col: Math.floor(GRID_COLS / 2), row: 0 };
+  }
+
+  function courierCount() {
+    let n = (unlockedTools.droneBay ? 1 : 0) + (primaryGadget === 'droneyard' ? 1 : 0);
+    if (n > 0)
+      n += getEffectiveLevel('droneCount');
+    return n;
+  }
+
+  function droneBoost() {
+    return primaryGadget === 'droneyard' ? 1.5 : 1;
+  }
+
+  // Flight speed in px/s, cargo size, pickup radius (tiles), laser reach (tiles) and laser speed
+  function droneSpeed() { return TILE_SIZE * 3.2 * Math.pow(1.3, getEffectiveLevel('droneSpeed')) * droneBoost(); }
+  function droneCargoCap() { return 15 + 15 * getEffectiveLevel('droneCargo'); }
+  function dronePickupRadius() { return 1 + getEffectiveLevel('droneSpeed'); }
+  function droneLaserReach() { return 4 + 2 * getEffectiveLevel('droneMining'); }
+  function droneLaserSpeed() { return Math.pow(1.35, getEffectiveLevel('droneMining')) * droneBoost(); }
+
+  // Bring the drone fleet in line with the upgrades (new drones start in the dome)
+  function syncDrones(announce) {
+    const shaft = droneShaftTile();
+    const want = courierCount();
+    while (drones.length < want) {
+      drones.push({ x: shaft.col * TILE_SIZE + TILE_SIZE / 2, y: -TILE_SIZE, state: 'dock', path: null, pi: 0, cargo: 0, job: null, timer: 0.5 + drones.length * 0.4, phase: Math.random() * TWO_PI, repath: 0, laser: 0 });
+      if (announce)
+        floatingText.add(DOME_X - 150, DOME_Y - 170, 'Courier drone ready!', { color: '#d8b8ff', font: 'bold 24px sans-serif' });
+    }
+    drones.length = Math.min(drones.length, want);
+    const guns = unlockedTools.combatDrone ? (getEffectiveLevel('combatDroneLevel') >= 2 ? 2 : 1) : 0;
+    while (gunDrones.length < guns)
+      gunDrones.push({ angle: gunDrones.length * Math.PI, x: DOME_X, y: DOME_Y - 160, cooldown: 0.5, flash: 0, tx: 0, ty: 0 });
+    gunDrones.length = guns;
+    if (unlockedTools.repairDrone && !repairBot)
+      repairBot = { x: DOME_X + 60, y: DOME_Y - 150, angle: 0, beam: 0, bx: DOME_X, by: DOME_Y - DOME_RADIUS };
+    if (!unlockedTools.repairDrone)
+      repairBot = null;
+  }
+
+  function droneTile(d) {
+    return { col: Math.max(0, Math.min(GRID_COLS - 1, Math.floor(d.x / TILE_SIZE))), row: Math.max(0, Math.min(GRID_ROWS - 1, Math.floor(d.y / TILE_SIZE))) };
+  }
+
+  // Exposed ore near the keeper that no one else is working on, nearest first
+  function findDroneOre(d) {
+    const R = droneLaserReach();
+    let best = null, bestD = Infinity;
+    for (let r = Math.max(0, drillY - R); r <= Math.min(GRID_ROWS - 1, drillY + R); ++r)
+      for (let c = Math.max(0, drillX - R); c <= Math.min(GRID_COLS - 1, drillX + R); ++c) {
+        const t = undergroundGrid[r][c];
+        if (!RESOURCE_TILES.includes(t)) continue;
+        const dist = Math.abs(r - drillY) + Math.abs(c - drillX);
+        if (dist > R || dist >= bestD) continue;
+        if (miningTarget && miningTarget.col === c && miningTarget.row === r) continue;
+        if (drones.some(o => o !== d && o.job && o.job.kind === 'mine' && o.job.col === c && o.job.row === r)) continue;
+        for (const [dr, dc] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+          const ar = r + dr, ac = c + dc;
+          if (ar < 0 || ar >= GRID_ROWS || ac < 0 || ac >= GRID_COLS || undergroundGrid[ar][ac] !== TILE_EMPTY) continue;
+          best = { kind: 'mine', col: c, row: r, standCol: ac, standRow: ar };
+          bestD = dist;
+          break;
+        }
+      }
+    return best;
+  }
+
+  function nearestDrop(fromCol, fromRow) {
+    let best = null, bestD = Infinity;
+    for (const drop of droppedResources) {
+      if (drones.some(o => o.job && o.job.kind === 'drop' && o.job.drop === drop)) continue;
+      const dist = Math.abs(drop.col - fromCol) + Math.abs(drop.row - fromRow);
+      if (dist < bestD) {
+        bestD = dist;
+        best = drop;
+      }
+    }
+    return best;
+  }
+
+  // Next errand for a courier with room in its hold
+  function pickDroneJob(d) {
+    const room = droneCargoCap() - d.cargo;
+    if (room <= 0) return null;
+    const keeperBelow = currentView === VIEW_UNDERGROUND || transitionTarget === VIEW_UNDERGROUND;
+    if (keeperBelow && carried >= Math.min(10, carryCapacity * 0.25) && !drones.some(o => o !== d && o.job && o.job.kind === 'keeper'))
+      return { kind: 'keeper' };
+    const here = droneTile(d);
+    const drop = nearestDrop(here.col, here.row);
+    if (drop)
+      return { kind: 'drop', drop, col: drop.col, row: drop.row };
+    if (keeperBelow && unlockedTools.droneMiner)
+      return findDroneOre(d);
+    return null;
+  }
+
+  function jobTarget(d) {
+    if (d.job.kind === 'keeper') return { col: drillX, row: drillY };
+    if (d.job.kind === 'mine') return { col: d.job.standCol, row: d.job.standRow };
+    if (d.job.kind === 'home') return droneShaftTile();
+    return { col: d.job.col, row: d.job.row };
+  }
+
+  function routeDrone(d) {
+    const from = droneTile(d);
+    const to = jobTarget(d);
+    if (undergroundGrid[from.row][from.col] !== TILE_EMPTY) {
+      // Lost inside rock (should not happen): hop back to the shaft
+      const sh = droneShaftTile();
+      d.x = sh.col * TILE_SIZE + TILE_SIZE / 2;
+      d.y = TILE_SIZE / 2;
+    }
+    const path = findPath(droneTile(d).col, droneTile(d).row, to.col, to.row);
+    d.path = path;
+    d.pi = 0;
+    d.target = to;
+    return !!path;
+  }
+
+  function sendDroneHome(d) {
+    d.job = { kind: 'home' };
+    d.state = 'fly';
+    if (!routeDrone(d)) {
+      d.state = 'dock';
+      d.timer = DRONE_DOCK_TIME;
+    }
+  }
+
+  function dronePickupAt(d, col, row) {
+    const R = dronePickupRadius();
+    let got = 0;
+    for (let i = droppedResources.length - 1; i >= 0; --i) {
+      const drop = droppedResources[i];
+      if (Math.abs(drop.col - col) + Math.abs(drop.row - row) > R) continue;
+      const take = Math.min(drop.value, droneCargoCap() - d.cargo);
+      if (take <= 0) break;
+      resources[TILE_LABELS[drop.type]] += take;
+      d.cargo += take;
+      got += take;
+      drop.value -= take;
+      if (drop.value <= 0)
+        droppedResources.splice(i, 1);
+    }
+    return got;
+  }
+
+  // The drone's laser finished an ore tile: the ore goes straight into the hold
+  function droneMinedTile(d) {
+    const { col, row } = d.job;
+    const tile = undergroundGrid[row][col];
+    if (!RESOURCE_TILES.includes(tile)) return;
+    const value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(row));
+    resources[TILE_LABELS[tile]] += value;
+    d.cargo = Math.min(droneCargoCap(), d.cargo + value);
+    undergroundGrid[row][col] = TILE_EMPTY;
+    tileHP[row][col] = 0;
+    tileMaxHP[row][col] = 0;
+    if (currentView === VIEW_UNDERGROUND) {
+      const tx = col * TILE_SIZE + TILE_SIZE / 2 - cameraX, ty = row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      spawnCrumble(tx, ty, getTileBaseColor(tile, row));
+      particles.sparkle(tx, ty, 10, { color: TILE_HIGHLIGHT_COLORS[tile] || '#fff', speed: 2 });
+      floatingText.add(tx, ty - 26, `Drone +${value} ${TILE_LABELS[tile]}`, { color: '#d8b8ff', font: 'bold 18px sans-serif' });
+      SZ.GameAudio.play('pickup', { pitch: 1.4, volume: 0.4 });
+    }
+  }
+
+  function arriveDrone(d) {
+    const job = d.job;
+    if (job.kind === 'home') {
+      if (d.cargo > 0) {
+        if (currentView === VIEW_SURFACE) {
+          floatingText.add(DOME_X - 140, DOME_Y - 150, `Drone delivered ${d.cargo}`, { color: '#d8b8ff', font: 'bold 20px sans-serif' });
+          SZ.GameAudio.play('coin', { pitch: 1.3, volume: 0.5 });
+        }
+      }
+      d.cargo = 0;
+      d.job = null;
+      d.state = 'dock';
+      d.timer = DRONE_DOCK_TIME / droneBoost();
+      return;
+    }
+    if (job.kind === 'keeper') {
+      const take = Math.min(carried, droneCargoCap() - d.cargo);
+      if (take > 0) {
+        carried -= take;
+        d.cargo += take;
+        if (currentView === VIEW_UNDERGROUND)
+          floatingText.add(d.x - cameraX, d.y - cameraY - 30, `Drone took ${take} cargo`, { color: '#d8b8ff', font: 'bold 18px sans-serif' });
+        SZ.GameAudio.play('blip', { pitch: 1.5, volume: 0.4 });
+      }
+      dronePickupAt(d, drillX, drillY);
+    } else if (job.kind === 'drop') {
+      dronePickupAt(d, job.col, job.row);
+    } else if (job.kind === 'mine') {
+      if (undergroundGrid[job.row][job.col] !== TILE_EMPTY) {
+        d.state = 'mine';
+        const hard = getTileHardness(job.row, undergroundGrid[job.row][job.col]);
+        d.timer = d.laserTime = Math.max(0.4, hard * 1.6 / droneLaserSpeed());
+        return;
+      }
+    }
+    // Look for more work while there is room, otherwise head home
+    d.job = d.cargo < droneCargoCap() * 0.85 ? pickDroneJob(d) : null;
+    if (d.job && d.job.kind !== 'keeper') {
+      d.state = 'fly';
+      if (routeDrone(d)) return;
+    }
+    sendDroneHome(d);
+  }
+
+  function updateCourier(d, dt) {
+    d.phase += dt * 6;
+    if (d.state === 'dock') {
+      d.timer -= dt;
+      if (d.timer > 0) return;
+      d.job = pickDroneJob(d);
+      if (!d.job) {
+        d.timer = 0.6;
+        return;
+      }
+      const sh = droneShaftTile();
+      d.x = sh.col * TILE_SIZE + TILE_SIZE / 2;
+      d.y = TILE_SIZE / 2;
+      d.state = 'fly';
+      if (!routeDrone(d)) {
+        d.state = 'dock';
+        d.job = null;
+        d.timer = 1;
+      }
+      return;
+    }
+    if (d.state === 'mine') {
+      const job = d.job;
+      if (undergroundGrid[job.row][job.col] === TILE_EMPTY) {
+        arriveDrone(Object.assign(d, { state: 'fly' }));
+        return;
+      }
+      d.timer -= dt;
+      const ratio = 1 - Math.max(0, d.timer) / d.laserTime;
+      if (tileMaxHP[job.row][job.col] > 0)
+        tileHP[job.row][job.col] = Math.min(tileHP[job.row][job.col], tileMaxHP[job.row][job.col] * (1 - ratio));
+      if (currentView === VIEW_UNDERGROUND && Math.random() < dt * 14)
+        particles.sparkle(job.col * TILE_SIZE + TILE_SIZE / 2 - cameraX + (Math.random() - 0.5) * 16, job.row * TILE_SIZE + TILE_SIZE / 2 - cameraY + (Math.random() - 0.5) * 16, 1, { color: '#ff9adf', speed: 1.5 });
+      if (d.timer <= 0) {
+        droneMinedTile(d);
+        d.state = 'fly';
+        arriveDrone(Object.assign(d, { job: { kind: 'idle' } }));
+      }
+      return;
+    }
+    // Flying: chase the keeper if they moved, then follow the path
+    if (d.job && d.job.kind === 'keeper') {
+      d.repath -= dt;
+      if (d.repath <= 0 && (d.target.col !== drillX || d.target.row !== drillY)) {
+        d.repath = 0.4;
+        if (currentView !== VIEW_UNDERGROUND && transitionTarget !== VIEW_UNDERGROUND) {
+          sendDroneHome(d);
+          return;
+        }
+        routeDrone(d);
+      }
+    }
+    if (d.job && d.job.kind === 'drop' && !droppedResources.includes(d.job.drop)) {
+      arriveDrone(Object.assign(d, { job: { kind: 'idle' } }));
+      return;
+    }
+    if (!d.path) {
+      sendDroneHome(d);
+      return;
+    }
+    let move = droneSpeed() * dt;
+    while (move > 0 && d.pi < d.path.length) {
+      const step = d.path[d.pi];
+      const tx = step.col * TILE_SIZE + TILE_SIZE / 2, ty = step.row * TILE_SIZE + TILE_SIZE / 2;
+      const dx = tx - d.x, dy = ty - d.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist <= move) {
+        d.x = tx;
+        d.y = ty;
+        move -= dist;
+        ++d.pi;
+      } else {
+        d.x += dx / dist * move;
+        d.y += dy / dist * move;
+        d.face = dx < -0.5 ? -1 : dx > 0.5 ? 1 : d.face;
+        move = 0;
+      }
+    }
+    if (d.pi >= d.path.length) {
+      // Close the last gap to an off-centre start (the shaft mouth)
+      const t = d.target;
+      d.x = t.col * TILE_SIZE + TILE_SIZE / 2;
+      d.y = t.row * TILE_SIZE + TILE_SIZE / 2;
+      d.path = null;
+      arriveDrone(d);
+    }
+  }
+
+  function updateDrones(dt) {
+    for (const d of drones)
+      updateCourier(d, dt);
+
+    // Gun drones circle above the dome and shoot whatever comes closest
+    const gunLevel = getEffectiveLevel('combatDroneLevel');
+    gunDrones.forEach((g, i) => {
+      g.angle += dt * 0.7;
+      const side = i % 2 ? -1 : 1;
+      g.x = DOME_X + side * (190 + Math.sin(g.angle * 1.3) * 40) + Math.cos(g.angle) * 30;
+      g.y = DOME_Y - 175 + Math.sin(g.angle * 2) * 26;
+      g.cooldown -= dt;
+      g.flash = Math.max(0, g.flash - dt * 5);
+      if (g.cooldown > 0 || !enemies.length) return;
+      let target = null, best = 560 * 560;
+      for (const e of enemies) {
+        if (e.hidden) continue;
+        const dd = (e.x - g.x) * (e.x - g.x) + (e.y - g.y) * (e.y - g.y);
+        if (dd < best) {
+          best = dd;
+          target = e;
+        }
+      }
+      if (!target) return;
+      g.cooldown = 1 / ((1.1 + 0.5 * Math.min(1, gunLevel)) * droneBoost());
+      applyDamageToEnemy(target, 5 + 3 * Math.min(1, gunLevel) + (gunLevel >= 2 ? 2 : 0));
+      g.flash = 1;
+      g.tx = target.x;
+      g.ty = target.y;
+      if (currentView === VIEW_SURFACE) {
+        SZ.GameAudio.play('shoot', { pitch: 1.7 + i * 0.1, volume: 0.35 });
+        particles.burst(target.x, target.y, 4, { color: '#7af0ff', speed: 1.8, life: 0.25 });
+      }
+    });
+
+    // Repair drone welds the dome while it is damaged
+    if (repairBot) {
+      const r = repairBot;
+      r.angle += dt;
+      const healing = domeHP < maxDomeHP && domeHP > 0;
+      if (healing) {
+        const a = Math.PI + 0.35 + (Math.sin(r.angle * 0.4) * 0.5 + 0.5) * (Math.PI - 0.7);
+        r.bx = DOME_X + Math.cos(a) * DOME_RADIUS;
+        r.by = DOME_Y + Math.sin(a) * DOME_RADIUS;
+        r.x += (r.bx + Math.cos(a) * 46 - r.x) * Math.min(1, dt * 3);
+        r.y += (r.by + Math.sin(a) * 46 - 10 - r.y) * Math.min(1, dt * 3);
+        const rate = (0.5 + 0.45 * getEffectiveLevel('repairDroneLevel')) * droneBoost();
+        domeHP = Math.min(maxDomeHP, domeHP + rate * dt);
+        r.beam = 1;
+        if (currentView === VIEW_SURFACE && Math.random() < dt * 18)
+          particles.trail(r.bx, r.by, { vx: (Math.random() - 0.5) * 3, vy: -Math.random() * 2.5, color: Math.random() < 0.5 ? '#fff6a0' : '#7affb0', life: 0.3, size: 1.5, gravity: 0.1 });
+      } else {
+        r.beam = Math.max(0, r.beam - dt * 4);
+        r.x += (DOME_X + 70 + Math.cos(r.angle * 0.8) * 30 - r.x) * Math.min(1, dt * 2);
+        r.y += (DOME_Y - 160 + Math.sin(r.angle * 1.6) * 14 - r.y) * Math.min(1, dt * 2);
+      }
+    }
+  }
+
+  // Rotor blur and body of a drone sprite at screen position
+  function drawDroneSprite(sprite, x, y, size, face, phase, alpha) {
+    ctx.save();
+    if (alpha !== undefined)
+      ctx.globalAlpha *= alpha;
+    ctx.translate(x, y);
+    if (face < 0)
+      ctx.scale(-1, 1);
+    drawSprite(sprite, 0, 0, size);
+    ctx.strokeStyle = 'rgba(210,235,255,0.6)';
+    ctx.lineWidth = 2;
+    const blur = size * (0.22 + Math.abs(Math.sin(phase * 4)) * 0.12);
+    ctx.beginPath();
+    for (const sx of [-0.36, 0.36]) {
+      ctx.moveTo(size * sx - blur, -size * 0.47);
+      ctx.lineTo(size * sx + blur, -size * 0.47);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawUndergroundDrones() {
+    const ox = Math.round(cameraX), oy = Math.round(cameraY);
+    for (const d of drones) {
+      if (d.state === 'dock') continue;
+      const x = d.x - ox, y = d.y - oy + Math.sin(d.phase) * 3;
+      if (x < -60 || x > CANVAS_W + 60 || y < -60 || y > CANVAS_H + 60) continue;
+      drawGlow('#9ad8ff', x, y, 70, 0.22);
+      if (d.state === 'mine') {
+        const tx = d.job.col * TILE_SIZE + TILE_SIZE / 2 - ox, ty = d.job.row * TILE_SIZE + TILE_SIZE / 2 - oy;
+        const flick = 0.6 + Math.random() * 0.4;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = `rgba(255,90,200,${0.35 * flick})`;
+        ctx.lineWidth = 7;
+        ctx.beginPath();
+        ctx.moveTo(x, y + 6);
+        ctx.lineTo(tx, ty);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(255,220,250,${flick})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+        drawGlow('#ff7ad8', tx, ty, 26, 0.7 * flick);
+      }
+      drawDroneSprite('drone', x, y, 28, d.face || 1, d.phase);
+      const cap = droneCargoCap();
+      if (d.cargo > 0)
+        drawMeter(x - 16, y + 18, 32, 5, d.cargo / cap, '#d8b8ff', { track: 'rgba(0,0,0,0.7)' });
+      if (Math.random() < 0.15)
+        particles.trail(x - (d.face || 1) * 10, y + 4, { vx: -(d.face || 1) * 0.8, vy: 0.4, color: '#8ad0ff', life: 0.25, size: 1.2 });
+    }
+  }
+
+  function drawSurfaceDrones() {
+    // Couriers resting in the dome hover beside it
+    let slot = 0;
+    for (const d of drones) {
+      if (d.state !== 'dock') continue;
+      const x = DOME_X - 150 - slot * 38, y = DOME_Y - 120 + Math.sin(animTime * 2 + slot) * 6;
+      drawGlow('#9ad8ff', x, y + 12, 18, 0.45);
+      drawDroneSprite('drone', x, y, 26, 1, animTime * 3 + slot);
+      ++slot;
+    }
+    for (const g of gunDrones) {
+      if (g.flash > 0) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = `rgba(120,240,255,${g.flash})`;
+        ctx.lineWidth = 2 + g.flash * 2;
+        ctx.beginPath();
+        ctx.moveTo(g.x, g.y + 4);
+        ctx.lineTo(g.tx, g.ty);
+        ctx.stroke();
+        ctx.restore();
+        drawGlow('#7af0ff', g.x, g.y + 4, 16, g.flash);
+      }
+      drawGlow('#ff8a6a', g.x, g.y + 10, 16, 0.35);
+      drawDroneSprite('gundrone', g.x, g.y, 32, g.tx < g.x && g.flash > 0 ? -1 : 1, animTime * 3);
+    }
+    if (repairBot) {
+      const r = repairBot;
+      if (r.beam > 0) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const flick = 0.6 + Math.random() * 0.4;
+        ctx.strokeStyle = `rgba(120,255,170,${0.8 * r.beam * flick})`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(r.x, r.y + 10);
+        ctx.lineTo(r.bx, r.by);
+        ctx.stroke();
+        ctx.restore();
+        drawGlow('#fff6a0', r.bx, r.by, 22 * flick, r.beam);
+      }
+      drawDroneSprite('medic', r.x, r.y, 30, 1, animTime * 3);
+    }
+  }
+
+  function drawDroneHUD(x, y, w) {
+    if (!drones.length) return y;
+    const rowH = 28;
+    drawPanel(x, y, w, 12 + drones.length * rowH, { accent: '#c890ff', shadow: 10 });
+    const cap = droneCargoCap();
+    drones.forEach((d, i) => {
+      const ry = y + 6 + i * rowH + rowH / 2;
+      drawSprite('drone', x + 22, ry, 20);
+      let status, color = UI.textDim;
+      if (d.state === 'dock') status = 'In dome';
+      else if (d.state === 'mine') { status = 'Lasering ore'; color = '#ff9adf'; }
+      else if (d.job && d.job.kind === 'home') { status = 'Flying home'; color = '#d8b8ff'; }
+      else if (d.job && d.job.kind === 'keeper') { status = 'Coming to you'; color = UI.good; }
+      else if (d.job && d.job.kind === 'mine') { status = 'Flying to ore'; color = '#ff9adf'; }
+      else { status = 'Collecting'; color = '#ffd070'; }
+      const chip = drawChip(`${d.cargo}/${cap}`, x + w - 10, ry - 11, 22, { align: 'right', px: 12, bg: 'rgba(200,144,255,0.16)', color: '#e8d8ff' });
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText(status, x + 40, ry + 1, w - 40 - chip - 18, 16, { weight: 'bold', color });
+    });
+    return y + 12 + drones.length * rowH;
   }
 
   /* ======================================================================
@@ -4817,7 +7224,23 @@
   function updateMovement(dt) {
     if (currentView !== VIEW_UNDERGROUND) return;
     // Block movement while mining
-    if (miningTarget) return;
+    if (miningTarget) {
+      keeperIdle = 0;
+      return;
+    }
+    // Auto-Mine: an idle keeper digs adjacent ore
+    keeperIdle += dt;
+    if (unlockedTools.autoMine && keeperIdle >= 2 && (!movePath || movePathIndex >= movePath.length) && state === STATE_PLAYING) {
+      for (const [ddx, ddy] of [[0, 1], [1, 0], [-1, 0], [0, -1]]) {
+        const rr = drillY + ddy, cc = drillX + ddx;
+        if (rr < 0 || rr >= GRID_ROWS || cc < 0 || cc >= GRID_COLS) continue;
+        if (RESOURCE_TILES.includes(undergroundGrid[rr][cc])) {
+          tryMine(ddx, ddy);
+          break;
+        }
+      }
+      keeperIdle = 0;
+    }
 
     if (!movePath || movePathIndex >= movePath.length) {
       // Arrived at destination -- check queued mine action
@@ -4831,9 +7254,12 @@
     }
 
     moveStepTimer -= dt;
+    keeperIdle = 0;
     if (moveStepTimer <= 0) {
-      moveStepTimer = moveStepInterval;
       const step = movePath[movePathIndex];
+      // Climbing up a tunnel is faster with the jetpack
+      const climbing = step.row < drillY && unlockedTools.jetpack;
+      moveStepTimer = climbing ? moveStepInterval / (2 * (1 + 0.25 * getEffectiveLevel('jetpackFuel'))) : moveStepInterval;
       // Spawn dust at old position
       const cx = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
       const cy = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
@@ -4868,6 +7294,10 @@
     updateMining(dt);
     updateMovement(dt);
 
+    // Standing next to the Relocation Core reveals it
+    if (!relocationCore.revealed && !relocationCore.found && Math.abs(relocationCore.r - drillY) + Math.abs(relocationCore.c - drillX) <= 1)
+      relocationCore.revealed = true;
+
     // Age dropped resources; despawn after 120s
     for (let i = droppedResources.length - 1; i >= 0; --i) {
       droppedResources[i].age += dt;
@@ -4885,14 +7315,12 @@
       cameraY += (Math.max(0, Math.min(maxCamY, targetCamY)) - cameraY) * 0.15;
     }
 
-    if (!waveActive) {
-      waveTimer -= dt;
-      if (waveTimer <= 0)
-        spawnWave();
-    }
+    updateWorldTime(dt);
+    updateWeather(dt);
 
     updateEnemies(dt);
     updateWeapon(dt);
+    updateDrones(dt);
 
     autosaveTimer += dt;
     if (autosaveTimer >= AUTOSAVE_INTERVAL && state === STATE_PLAYING) {
@@ -4924,205 +7352,117 @@
     return c;
   }
 
-  // Sky, planets, nebula and faint stars -- rendered once
-  function buildSurfaceArt() {
-    if (surfaceArt) return surfaceArt;
-    const rng = makeRng(1337);
-    const sky = makeCanvas(CANVAS_W, DOME_Y);
-    const g = sky.getContext('2d');
-    const grad = g.createLinearGradient(0, 0, 0, DOME_Y);
-    grad.addColorStop(0, '#02030c');
-    grad.addColorStop(0.45, '#0a0f2e');
-    grad.addColorStop(0.72, '#1a1846');
-    grad.addColorStop(0.9, '#3a2458');
-    grad.addColorStop(1, '#6b3a5e');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, CANVAS_W, DOME_Y);
-    // Nebula clouds
-    const neb = [[300, 260, 340, '70,60,180', 0.18], [980, 180, 300, '40,140,170', 0.14], [700, 420, 420, '150,50,150', 0.12], [1250, 520, 260, '200,90,90', 0.08]];
-    for (const [x, y, r, col, a] of neb) {
-      const rg = g.createRadialGradient(x, y, 0, x, y, r);
-      rg.addColorStop(0, `rgba(${col},${a})`);
-      rg.addColorStop(0.6, `rgba(${col},${a * 0.4})`);
-      rg.addColorStop(1, `rgba(${col},0)`);
-      g.fillStyle = rg;
-      g.fillRect(x - r, y - r, r * 2, r * 2);
-    }
-    // Faint star dust
-    for (let i = 0; i < 420; ++i) {
-      const x = rng() * CANVAS_W, y = rng() * DOME_Y * 0.92;
-      g.fillStyle = `rgba(${200 + rng() * 55 | 0},${200 + rng() * 55 | 0},255,${0.08 + rng() * 0.35 * (1 - y / DOME_Y)})`;
-      g.fillRect(x, y, rng() < 0.15 ? 1.6 : 1, rng() < 0.15 ? 1.6 : 1);
-    }
-    // Ringed gas giant
-    const px = 470, py = 240, pr = 70;
-    g.save();
-    g.translate(px, py);
-    g.rotate(-0.35);
-    g.strokeStyle = 'rgba(220,190,255,0.25)';
-    g.lineWidth = 6;
-    g.beginPath();
-    g.ellipse(0, 0, pr * 1.9, pr * 0.42, 0, Math.PI, TWO_PI);
-    g.stroke();
-    g.restore();
-    const pg = g.createRadialGradient(px - pr * 0.45, py - pr * 0.45, pr * 0.1, px, py, pr);
-    pg.addColorStop(0, '#f0c8ff');
-    pg.addColorStop(0.35, '#a070d0');
-    pg.addColorStop(0.8, '#3a2470');
-    pg.addColorStop(1, '#1a1038');
-    g.fillStyle = pg;
-    g.beginPath();
-    g.arc(px, py, pr, 0, TWO_PI);
-    g.fill();
-    g.save();
-    g.beginPath();
-    g.arc(px, py, pr, 0, TWO_PI);
-    g.clip();
-    g.globalAlpha = 0.18;
-    for (let i = -3; i <= 3; ++i) {
-      g.fillStyle = i % 2 ? '#ffffff' : '#2a1050';
-      g.fillRect(px - pr, py + i * 18 - 4, pr * 2, 8);
-    }
-    g.restore();
-    g.save();
-    g.translate(px, py);
-    g.rotate(-0.35);
-    g.strokeStyle = 'rgba(230,200,255,0.45)';
-    g.lineWidth = 5;
-    g.beginPath();
-    g.ellipse(0, 0, pr * 1.9, pr * 0.42, 0, 0, Math.PI);
-    g.stroke();
-    g.restore();
-    // Small moon
-    const mg = g.createRadialGradient(830, 120, 2, 840, 130, 26);
-    mg.addColorStop(0, '#e8f0ff');
-    mg.addColorStop(0.7, '#8090b8');
-    mg.addColorStop(1, '#303a58');
-    g.fillStyle = mg;
-    g.beginPath();
-    g.arc(840, 130, 24, 0, TWO_PI);
-    g.fill();
-    g.fillStyle = 'rgba(40,50,80,0.35)';
-    for (const [cx, cy, cr] of [[834, 124, 5], [848, 138, 4], [844, 120, 2.5]]) {
-      g.beginPath();
-      g.arc(cx, cy, cr, 0, TWO_PI);
-      g.fill();
-    }
+  /* ======================================================================
+     BIOMES -- every landing site gets one, picked by the site's seed
+     ====================================================================== */
 
-    // Twinkling stars drawn live
-    const stars = [];
-    for (let i = 0; i < 90; ++i)
-      stars.push({ x: rng() * CANVAS_W, y: rng() * DOME_Y * 0.8, s: 0.8 + rng() * 1.6, p: rng() * TWO_PI, f: 0.6 + rng() * 2.2, big: rng() < 0.12 });
+  // sky*: gradient top -> horizon by day, night and dusk; ranges: far, mid and
+  // near mountain colours [top, foot]; ore: spawn multipliers per resource;
+  // weather: how often each kind of weather happens here
+  const BIOMES = {
+    rocky: {
+      name: 'Rocky Badlands', shape: 'ridge', plant: 'grass', decor: 'ringed',
+      plantColors: ['#3f8a70', '#5ab08e', '#2c6a54'],
+      skyDay: ['#2c5ca8', '#5c94d4', '#a8c8e8', '#e8c8b0'], skyNight: ['#02030c', '#0a0f2e', '#1a1846', '#4a2a5e'], skyDusk: ['#1c2460', '#5a3a80', '#c0607a', '#ffa868'],
+      nebula: ['70,60,180', '40,140,170', '150,50,150'],
+      ranges: [
+        { day: ['#9a92c4', '#7a72a8'], night: ['#3c2c62', '#2a2456'] },
+        { day: ['#6e6496', '#544a7e'], night: ['#251d48', '#17163a'] },
+        { day: ['#4a3e66', '#382e52'], night: ['#14122c', '#0c0b20'] }],
+      rim: ['rgba(255,240,230,0.45)', 'rgba(170,140,255,0.4)'],
+      ground: { day: ['#9a7488', '#7a5a6c', '#56404e', '#2e2030'], night: ['#4a3048', '#38243a', '#24172a', '#140c18'], pebble: [150, 110, 140], gems: ['#5ad0ff', '#c070ff', '#60f0b0'], edge: '#ffbedc' },
+      weather: { rain: 1, snow: 1, blizzard: 0.8, storm: 1, meteor: 1.3 },
+      ore: { iron: 1.3, tin: 1.2, titanium: 1.3 }
+    },
+    desert: {
+      name: 'Dune Sea', shape: 'mesa', plant: 'cactus', decor: 'none',
+      plantColors: ['#4a8a3a', '#6ab050', '#2e5e26'],
+      skyDay: ['#2a6cc0', '#6aaee6', '#c8e2f2', '#f8e2b0'], skyNight: ['#04040c', '#141028', '#2a1c38', '#5a3a40'], skyDusk: ['#2a1e50', '#7a3a5a', '#e0703a', '#ffd070'],
+      nebula: ['150,90,60', '120,60,120', '60,60,140'],
+      ranges: [
+        { day: ['#e8b484', '#d49a68'], night: ['#4a2e38', '#3a2430'] },
+        { day: ['#c8804c', '#b06a3c'], night: ['#331e26', '#28161e'] },
+        { day: ['#9a5630', '#824628'], night: ['#1e1014', '#160a0e'] }],
+      rim: ['rgba(255,240,200,0.55)', 'rgba(255,170,120,0.3)'],
+      ground: { day: ['#f0cc8a', '#d8aa68', '#b07e44', '#6a4a26'], night: ['#5a4234', '#463226', '#2e2018', '#18100a'], pebble: [180, 140, 90], gems: ['#ffd060', '#ff9a40', '#ffe8a0'], edge: '#fff0c0' },
+      weather: { rain: 0.25, snow: 0.05, blizzard: 0, storm: 0.6, meteor: 1.6 },
+      ore: { gold: 1.7, copper: 1.3, quartz: 1.3, water: 0.5 }
+    },
+    ice: {
+      name: 'Frozen Shelf', shape: 'peaks', plant: 'icicle', decor: 'aurora',
+      plantColors: ['#bfe8ff', '#e8f8ff', '#7ac0e8'],
+      skyDay: ['#3a74c4', '#7ab4e8', '#c8e6f8', '#eef8ff'], skyNight: ['#01040c', '#061428', '#0e2840', '#1e4058'], skyDusk: ['#1a2a6a', '#5a4a9a', '#c080c0', '#ffc8d0'],
+      nebula: ['40,140,170', '60,100,200', '80,180,160'],
+      ranges: [
+        { day: ['#dceaf8', '#b4c8e0'], night: ['#30405e', '#22304c'] },
+        { day: ['#a8bcd8', '#8aa0c0'], night: ['#1e2a44', '#141e36'] },
+        { day: ['#7a90b0', '#62789a'], night: ['#121a2e', '#0a1020'] }],
+      rim: ['rgba(255,255,255,0.7)', 'rgba(160,220,255,0.45)'],
+      ground: { day: ['#f0f8ff', '#d0e2f2', '#98b0cc', '#5a6a88'], night: ['#3a4a6a', '#2a3854', '#1a243a', '#0c1222'], pebble: [170, 190, 220], gems: ['#9ae0ff', '#e0f8ff', '#7ab8ff'], edge: '#ffffff' },
+      weather: { rain: 0.2, snow: 2.6, blizzard: 2.6, storm: 0.25, meteor: 1 },
+      ore: { water: 2, silver: 1.4, sapphire: 1.5 }
+    },
+    jungle: {
+      name: 'Alien Jungle', shape: 'hills', plant: 'fern', decor: 'giant',
+      plantColors: ['#2aa060', '#5ad080', '#1a7048'],
+      skyDay: ['#1a7a8a', '#4ab0a8', '#a8e0c0', '#e8f4c8'], skyNight: ['#010806', '#04160f', '#0c2a1e', '#1e4030'], skyDusk: ['#123048', '#3a5a6a', '#d0806a', '#f0d080'],
+      nebula: ['40,160,120', '30,120,160', '120,180,80'],
+      ranges: [
+        { day: ['#5aa88a', '#46907a'], night: ['#16382e', '#102c24'] },
+        { day: ['#3a845e', '#2c6c4c'], night: ['#0e2a1e', '#0a2018'] },
+        { day: ['#22603c', '#184c2e'], night: ['#08180e', '#041008'] }],
+      rim: ['rgba(230,255,200,0.45)', 'rgba(120,255,180,0.3)'],
+      ground: { day: ['#5a8a3a', '#46702e', '#2e4c20', '#162a12'], night: ['#1e3422', '#16281a', '#0e1a12', '#060e08'], pebble: [90, 130, 80], gems: ['#7aff9a', '#ffd040', '#ff7ad0'], edge: '#d0ffb0' },
+      weather: { rain: 2.4, snow: 0.15, blizzard: 0.05, storm: 1.8, meteor: 0.8 },
+      ore: { emerald: 1.8, copper: 1.4, coal: 1.3, uranium: 1.4 }
+    },
+    volcanic: {
+      name: 'Ashen Caldera', shape: 'volcano', plant: 'ember', decor: 'none',
+      plantColors: ['#ff7a20', '#ffd060', '#7a2a10'],
+      skyDay: ['#5a4a52', '#8a6a66', '#c09078', '#f0b080'], skyNight: ['#060102', '#1a0606', '#360c0a', '#6a1c10'], skyDusk: ['#2a1420', '#6a2a2a', '#d0502a', '#ffa040'],
+      nebula: ['180,60,40', '140,40,60', '200,100,40'],
+      ranges: [
+        { day: ['#7a6a6a', '#665656'], night: ['#2a1414', '#201010'] },
+        { day: ['#5a4646', '#4a3838'], night: ['#1c0c0c', '#160808'] },
+        { day: ['#3c2c2c', '#2e2020'], night: ['#100606', '#0a0404'] }],
+      rim: ['rgba(255,200,160,0.4)', 'rgba(255,90,40,0.55)'],
+      ground: { day: ['#5a4644', '#463634', '#2e2220', '#181010'], night: ['#2e1616', '#241010', '#180a0a', '#0c0404'], pebble: [90, 70, 70], gems: ['#ff6a20', '#ffb040', '#ff3a20'], edge: '#ff9a6a' },
+      weather: { rain: 0.5, snow: 0.2, blizzard: 0.1, storm: 1.3, meteor: 2.2 },
+      ore: { redstone: 1.8, ruby: 1.5, coal: 1.5, opal: 1.6 }
+    },
+    crystal: {
+      name: 'Crystal Fields', shape: 'spires', plant: 'shard', decor: 'shattered',
+      plantColors: ['#a0a0ff', '#e0c0ff', '#60e0ff'],
+      skyDay: ['#4a3ab0', '#8a7ae0', '#d0c0f0', '#f8e0f4'], skyNight: ['#03020c', '#100828', '#24104a', '#4a2068'], skyDusk: ['#22186a', '#5a3aa0', '#c060c0', '#ffb0e0'],
+      nebula: ['120,80,220', '200,80,200', '60,160,220'],
+      ranges: [
+        { day: ['#aab0f0', '#8a90d8'], night: ['#2a2a62', '#202052'] },
+        { day: ['#7a7ccc', '#6062b0'], night: ['#1a1a48', '#12123a'] },
+        { day: ['#4e4a96', '#3c387c'], night: ['#0e0c2a', '#08061c'] }],
+      rim: ['rgba(240,230,255,0.6)', 'rgba(180,140,255,0.5)'],
+      ground: { day: ['#8a80c0', '#6a60a0', '#463e76', '#221c44'], night: ['#2c2452', '#221c44', '#161032', '#0a081a'], pebble: [130, 120, 190], gems: ['#c0a0ff', '#80e8ff', '#ffa0e0'], edge: '#e8d8ff' },
+      weather: { rain: 0.8, snow: 0.8, blizzard: 0.5, storm: 0.9, meteor: 1.6 },
+      ore: { quartz: 2, diamond: 1.6, amethyst: 1.6, cobalt: 1.3 }
+    }
+  };
+  const BIOME_KEYS = Object.keys(BIOMES);
 
-    // Mountain ranges: far, mid, near (wider than the screen for parallax)
-    const ranges = [];
-    const specs = [
-      { base: 210, amp: 150, col1: '#2a2456', col2: '#3c2c62', rim: 'rgba(170,140,255,0.35)', seed: 11, depth: 6 },
-      { base: 130, amp: 100, col1: '#17163a', col2: '#251d48', rim: 'rgba(140,120,230,0.4)', seed: 23, depth: 14 },
-      { base: 60, amp: 50, col1: '#0c0b20', col2: '#14122c', rim: 'rgba(120,110,200,0.45)', seed: 37, depth: 26 }
-    ];
-    for (const sp of specs) {
-      const w = CANVAS_W + 120, h = sp.base + sp.amp + 20;
-      const c = makeCanvas(w, h);
-      const m = c.getContext('2d');
-      // Jagged ridge line by midpoint displacement
-      const r2 = makeRng(sp.seed);
-      const n = 256;
-      const hs = new Array(n + 1);
-      hs[0] = r2();
-      hs[n] = r2();
-      for (let span = n, disp = 1; span > 1; span >>= 1, disp *= 0.56)
-        for (let i = span >> 1; i < n; i += span)
-          hs[i] = (hs[i - (span >> 1)] + hs[i + (span >> 1)]) / 2 + (r2() - 0.5) * disp;
-      let lo = Infinity, hi = -Infinity;
-      for (const v of hs) {
-        lo = Math.min(lo, v);
-        hi = Math.max(hi, v);
-      }
-      const ridge = [];
-      for (let i = 0; i <= n; ++i) {
-        const y = sp.base - sp.amp * 0.5 + ((hs[i] - lo) / (hi - lo)) * sp.amp;
-        ridge.push([i * w / n, h - Math.max(10, y)]);
-      }
-      const mgrad = m.createLinearGradient(0, 0, 0, h);
-      mgrad.addColorStop(0, sp.col2);
-      mgrad.addColorStop(1, sp.col1);
-      m.fillStyle = mgrad;
-      m.beginPath();
-      m.moveTo(0, h);
-      for (const [x, y] of ridge)
-        m.lineTo(x, y);
-      m.lineTo(w, h);
-      m.closePath();
-      m.fill();
-      m.strokeStyle = sp.rim;
-      m.lineWidth = 2;
-      m.beginPath();
-      ridge.forEach(([x, y], i) => i ? m.lineTo(x, y + 1) : m.moveTo(x, y + 1));
-      m.stroke();
-      // Haze at the foot
-      const hz = m.createLinearGradient(0, h * 0.4, 0, h);
-      hz.addColorStop(0, 'rgba(120,70,140,0)');
-      hz.addColorStop(1, 'rgba(120,70,140,0.25)');
-      m.globalCompositeOperation = 'source-atop';
-      m.fillStyle = hz;
-      m.fillRect(0, 0, w, h);
-      m.globalCompositeOperation = 'source-over';
-      ranges.push({ canvas: c, depth: sp.depth, h });
-    }
+  // The landing site: index counts relocations, the seed drives biome, terrain and mine
+  let site = newSite(0, (Math.random() * 0x7fffffff) | 0);
 
-    // Ground strip with strata, rocks and crystals
-    const gh = CANVAS_H - DOME_Y;
-    const ground = makeCanvas(CANVAS_W, gh);
-    const gg = ground.getContext('2d');
-    const sg = gg.createLinearGradient(0, 0, 0, gh);
-    sg.addColorStop(0, '#4a3048');
-    sg.addColorStop(0.08, '#38243a');
-    sg.addColorStop(0.5, '#24172a');
-    sg.addColorStop(1, '#140c18');
-    gg.fillStyle = sg;
-    gg.fillRect(0, 0, CANVAS_W, gh);
-    const r3 = makeRng(99);
-    for (let band = 0; band < 4; ++band) {
-      const by = 18 + band * 22;
-      gg.strokeStyle = `rgba(0,0,0,${0.18 + band * 0.04})`;
-      gg.lineWidth = 2;
-      gg.beginPath();
-      for (let x = 0; x <= CANVAS_W; x += 10)
-        gg.lineTo(x, by + Math.sin(x * 0.01 + band) * 4 + Math.sin(x * 0.043 + band * 2) * 2);
-      gg.stroke();
-    }
-    for (let i = 0; i < 140; ++i) {
-      const x = r3() * CANVAS_W, y = 8 + r3() * (gh - 12), rr = 1.5 + r3() * 5;
-      gg.fillStyle = `rgba(${90 + r3() * 40 | 0},${60 + r3() * 30 | 0},${90 + r3() * 40 | 0},0.6)`;
-      gg.beginPath();
-      gg.ellipse(x, y, rr * 1.4, rr, 0, 0, TWO_PI);
-      gg.fill();
-      gg.fillStyle = 'rgba(255,220,255,0.12)';
-      gg.beginPath();
-      gg.ellipse(x - rr * 0.3, y - rr * 0.4, rr * 0.6, rr * 0.35, 0, 0, TWO_PI);
-      gg.fill();
-    }
-    for (let i = 0; i < 18; ++i) {
-      const x = r3() * CANVAS_W, y = 30 + r3() * (gh - 40);
-      const col = ['#5ad0ff', '#c070ff', '#60f0b0'][i % 3];
-      gg.fillStyle = col;
-      gg.globalAlpha = 0.55;
-      gg.beginPath();
-      gg.moveTo(x, y - 6);
-      gg.lineTo(x + 3, y);
-      gg.lineTo(x, y + 5);
-      gg.lineTo(x - 3, y);
-      gg.closePath();
-      gg.fill();
-      gg.globalAlpha = 1;
-    }
-    // Lit top edge
-    gg.fillStyle = 'rgba(255,190,220,0.35)';
-    gg.fillRect(0, 0, CANVAS_W, 2);
-    gg.fillStyle = 'rgba(0,0,0,0.3)';
-    gg.fillRect(0, 2, CANVAS_W, 2);
+  function newSite(index, seed) {
+    const rng = makeRng(seed ^ 0x2545f491);
+    return { index, seed, biome: BIOME_KEYS[Math.floor(rng() * BIOME_KEYS.length)] };
+  }
 
+  function currentBiome() {
+    return BIOMES[site.biome] || BIOMES.rocky;
+  }
+
+  // Effects that do not depend on the site: dome glass, cracks, glow sprite
+  let fxArt = null;
+  function buildFxArt() {
+    if (fxArt) return fxArt;
     // Dome glass (interior tint, hex lattice, highlights) at 2x for crisp scaling
     const R = DOME_RADIUS, S = 2;
     const glass = makeCanvas((R * 2 + 8) * S, (R + 8) * S);
@@ -5155,14 +7495,12 @@
         dg.closePath();
         dg.stroke();
       }
-    // Bottom shading where the glass meets the base
     const bg2 = dg.createLinearGradient(0, -R * 0.35, 0, 0);
     bg2.addColorStop(0, 'rgba(10,20,50,0)');
     bg2.addColorStop(1, 'rgba(10,20,50,0.45)');
     dg.fillStyle = bg2;
     dg.fillRect(-R, -R * 0.35, R * 2, R * 0.35);
     dg.restore();
-    // Specular crescent and rim light
     dg.save();
     dg.beginPath();
     dg.arc(0, 0, R - 8, Math.PI * 1.08, Math.PI * 1.5);
@@ -5211,13 +7549,338 @@
     gl.fillStyle = glg;
     gl.fillRect(0, 0, 64, 64);
 
-    surfaceArt = { sky, stars, ranges, ground, glass, glassScale: S, cracks, glow, tinted: {} };
+    fxArt = { glass, glassScale: S, cracks, glow, tinted: {} };
+    return fxArt;
+  }
+
+  function skyGradientCanvas(stops) {
+    const c = makeCanvas(CANVAS_W, DOME_Y);
+    const g = c.getContext('2d');
+    const grad = g.createLinearGradient(0, 0, 0, DOME_Y);
+    grad.addColorStop(0, stops[0]);
+    grad.addColorStop(0.42, stops[1]);
+    grad.addColorStop(0.78, stops[2]);
+    grad.addColorStop(1, stops[3]);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, CANVAS_W, DOME_Y);
+    return c;
+  }
+
+  // Ridge heights (0..1, 257 samples) for a mountain range in the biome's style
+  function ridgeProfile(shape, rng, layer) {
+    const n = 256;
+    const hs = new Array(n + 1);
+    hs[0] = rng();
+    hs[n] = rng();
+    const rough = { ridge: 0.56, mesa: 0.5, peaks: 0.66, hills: 0.42, volcano: 0.52, spires: 0.5 }[shape] || 0.56;
+    for (let span = n, disp = 1; span > 1; span >>= 1, disp *= rough)
+      for (let i = span >> 1; i < n; i += span)
+        hs[i] = (hs[i - (span >> 1)] + hs[i + (span >> 1)]) / 2 + (rng() - 0.5) * disp;
+    let lo = Infinity, hi = -Infinity;
+    for (const v of hs) {
+      lo = Math.min(lo, v);
+      hi = Math.max(hi, v);
+    }
+    let out = hs.map(v => (v - lo) / (hi - lo || 1));
+    const craters = [];
+    if (shape === 'hills') {
+      // Rounded rolling hills
+      for (let pass = 0; pass < 3; ++pass)
+        out = out.map((v, i) => (out[Math.max(0, i - 2)] + out[Math.max(0, i - 1)] + v + out[Math.min(n, i + 1)] + out[Math.min(n, i + 2)]) / 5);
+    } else if (shape === 'mesa') {
+      // Flat-topped buttes with steep sides
+      out = out.map(v => {
+        const q = Math.round(v * 3) / 3;
+        return q + (v - q) * 0.15;
+      });
+    } else if (shape === 'peaks') {
+      out = out.map(v => Math.pow(v, 1.5));
+    } else if (shape === 'volcano' && layer === 1) {
+      // One or two cones with a crater on the middle range
+      const count = 1 + (rng() < 0.5 ? 1 : 0);
+      for (let k = 0; k < count; ++k) {
+        const cx = Math.floor(n * (0.15 + rng() * 0.7)), w = 26 + rng() * 14;
+        for (let i = 0; i <= n; ++i) {
+          const d = Math.abs(i - cx) / w;
+          if (d < 1) {
+            let h = 1.25 - d * 0.75;
+            if (d < 0.12) h -= (0.12 - d) * 1.6; // crater
+            out[i] = Math.max(out[i], h);
+          }
+        }
+        craters.push(cx / n);
+      }
+    } else if (shape === 'spires') {
+      // Crystal spikes
+      for (let k = 0; k < 14; ++k) {
+        const cx = Math.floor(rng() * n), w = 2 + rng() * 4, h = 0.6 + rng() * 0.6;
+        for (let i = Math.max(0, cx - w); i <= Math.min(n, cx + w); ++i)
+          out[i] = Math.max(out[i], h * (1 - Math.abs(i - cx) / (w + 1)));
+      }
+    }
+    let top = 0;
+    for (const v of out)
+      top = Math.max(top, v);
+    return { heights: out.map(v => v / (top || 1)), craters };
+  }
+
+  // Sky layers, mountains, ground and plants of the current site -- rebuilt when the site changes
+  let previousSurfaceArt = null;
+  function buildSurfaceArt() {
+    if (surfaceArt && surfaceArt.seed === site.seed) return surfaceArt;
+    if (previousSurfaceArt && previousSurfaceArt.seed === site.seed) {
+      [surfaceArt, previousSurfaceArt] = [previousSurfaceArt, surfaceArt];
+      return surfaceArt;
+    }
+    previousSurfaceArt = surfaceArt;
+    const B = currentBiome();
+    const rng = makeRng(site.seed ^ 0x1337);
+
+    const skyDay = skyGradientCanvas(B.skyDay);
+    const skyDusk = skyGradientCanvas(B.skyDusk);
+    const skyNight = skyGradientCanvas(B.skyNight);
+    const g = skyNight.getContext('2d');
+    // Nebula clouds and faint star dust on the night sky
+    const neb = [[300, 260, 340, B.nebula[0], 0.18], [980, 180, 300, B.nebula[1], 0.14], [700, 420, 420, B.nebula[2], 0.12]];
+    for (const [x, y, r, col, a] of neb) {
+      const rg = g.createRadialGradient(x, y, 0, x, y, r);
+      rg.addColorStop(0, `rgba(${col},${a})`);
+      rg.addColorStop(0.6, `rgba(${col},${a * 0.4})`);
+      rg.addColorStop(1, `rgba(${col},0)`);
+      g.fillStyle = rg;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    for (let i = 0; i < 420; ++i) {
+      const x = rng() * CANVAS_W, y = rng() * DOME_Y * 0.92;
+      g.fillStyle = `rgba(${200 + rng() * 55 | 0},${200 + rng() * 55 | 0},255,${0.08 + rng() * 0.35 * (1 - y / DOME_Y)})`;
+      g.fillRect(x, y, rng() < 0.15 ? 1.6 : 1, rng() < 0.15 ? 1.6 : 1);
+    }
+    // Thin high clouds by day
+    const dc = skyDay.getContext('2d');
+    for (let i = 0; i < 9; ++i) {
+      const x = rng() * CANVAS_W, y = 60 + rng() * DOME_Y * 0.45, w = 160 + rng() * 260;
+      const cg = dc.createRadialGradient(x, y, 0, x, y, w / 2);
+      cg.addColorStop(0, 'rgba(255,255,255,0.22)');
+      cg.addColorStop(1, 'rgba(255,255,255,0)');
+      dc.save();
+      dc.translate(x, y);
+      dc.scale(1, 0.18);
+      dc.translate(-x, -y);
+      dc.fillStyle = cg;
+      dc.fillRect(x - w / 2, y - w / 2, w, w);
+      dc.restore();
+    }
+
+    // Decoration hanging in the sky (planet, shattered moon); fades by day
+    const decor = makeCanvas(CANVAS_W, DOME_Y);
+    const d = decor.getContext('2d');
+    if (B.decor === 'ringed' || B.decor === 'giant' || B.decor === 'shattered') {
+      const px = 280 + rng() * 300, py = 180 + rng() * 120, pr = B.decor === 'giant' ? 120 : 70;
+      const cols = B.decor === 'giant' ? ['#d8fff0', '#60c0a0', '#1a5a50', '#0a2a28'] : (B.decor === 'shattered' ? ['#ffe8ff', '#b080e0', '#4a2a80', '#1a1038'] : ['#f0c8ff', '#a070d0', '#3a2470', '#1a1038']);
+      if (B.decor === 'ringed') {
+        d.save();
+        d.translate(px, py);
+        d.rotate(-0.35);
+        d.strokeStyle = 'rgba(220,190,255,0.25)';
+        d.lineWidth = 6;
+        d.beginPath();
+        d.ellipse(0, 0, pr * 1.9, pr * 0.42, 0, Math.PI, TWO_PI);
+        d.stroke();
+        d.restore();
+      }
+      const pg = d.createRadialGradient(px - pr * 0.45, py - pr * 0.45, pr * 0.1, px, py, pr);
+      pg.addColorStop(0, cols[0]);
+      pg.addColorStop(0.35, cols[1]);
+      pg.addColorStop(0.8, cols[2]);
+      pg.addColorStop(1, cols[3]);
+      d.fillStyle = pg;
+      d.beginPath();
+      d.arc(px, py, pr, 0, TWO_PI);
+      d.fill();
+      d.save();
+      d.beginPath();
+      d.arc(px, py, pr, 0, TWO_PI);
+      d.clip();
+      d.globalAlpha = 0.18;
+      for (let i = -3; i <= 3; ++i) {
+        d.fillStyle = i % 2 ? '#ffffff' : '#10202a';
+        d.fillRect(px - pr, py + i * pr * 0.26 - 4, pr * 2, 8);
+      }
+      d.restore();
+      if (B.decor === 'ringed') {
+        d.save();
+        d.translate(px, py);
+        d.rotate(-0.35);
+        d.strokeStyle = 'rgba(230,200,255,0.45)';
+        d.lineWidth = 5;
+        d.beginPath();
+        d.ellipse(0, 0, pr * 1.9, pr * 0.42, 0, 0, Math.PI);
+        d.stroke();
+        d.restore();
+      } else if (B.decor === 'shattered') {
+        // Fragments drifting away from the broken moon
+        for (let i = 0; i < 18; ++i) {
+          const a = rng() * TWO_PI, dist = pr * (1.15 + rng() * 0.9), s = 3 + rng() * 9;
+          const fx = px + Math.cos(a) * dist, fy = py + Math.sin(a) * dist * 0.55;
+          d.fillStyle = i % 3 ? '#b890f0' : '#f0d8ff';
+          d.beginPath();
+          d.moveTo(fx, fy - s);
+          d.lineTo(fx + s * 0.6, fy);
+          d.lineTo(fx, fy + s * 0.8);
+          d.lineTo(fx - s * 0.5, fy);
+          d.closePath();
+          d.fill();
+        }
+      }
+    }
+
+    // Twinkling stars drawn live
+    const stars = [];
+    for (let i = 0; i < 90; ++i)
+      stars.push({ x: rng() * CANVAS_W, y: rng() * DOME_Y * 0.8, s: 0.8 + rng() * 1.6, p: rng() * TWO_PI, f: 0.6 + rng() * 2.2, big: rng() < 0.12 });
+
+    // Mountain ranges: far, mid, near (wider than the screen for parallax), by day and by night
+    const ranges = [];
+    const specs = [
+      { base: 210, amp: 150, depth: 6 },
+      { base: 130, amp: 100, depth: 14 },
+      { base: 60, amp: 50, depth: 26 }
+    ];
+    if (B.shape === 'peaks') {
+      specs[0].amp = 200;
+      specs[1].amp = 130;
+    }
+    let craters = [];
+    specs.forEach((sp, layer) => {
+      const w = CANVAS_W + 120, h = sp.base + sp.amp + 70;
+      const prof = ridgeProfile(B.shape, makeRng(site.seed + 11 + layer * 12), layer);
+      const ridge = prof.heights.map((v, i) => [i * w / 256, h - Math.max(10, sp.base - sp.amp * 0.5 + v * sp.amp)]);
+      if (layer === 1)
+        craters = prof.craters.map(f => ({ x: f * w - 60, y: DOME_Y - h + 4 + ridge[Math.round(f * 256)][1] }));
+      const paint = (cols, rim, haze) => {
+        const c = makeCanvas(w, h);
+        const m = c.getContext('2d');
+        const mg = m.createLinearGradient(0, 0, 0, h);
+        mg.addColorStop(0, cols[0]);
+        mg.addColorStop(1, cols[1]);
+        m.fillStyle = mg;
+        m.beginPath();
+        m.moveTo(0, h);
+        for (const [x, y] of ridge)
+          m.lineTo(x, y);
+        m.lineTo(w, h);
+        m.closePath();
+        m.fill();
+        if (B.shape === 'peaks') {
+          // Snow caps on the higher slopes
+          m.save();
+          m.clip();
+          m.fillStyle = cols === B.ranges[layer].day ? 'rgba(255,255,255,0.85)' : 'rgba(150,170,215,0.26)';
+          m.beginPath();
+          m.moveTo(0, 0);
+          for (const [x, y] of ridge)
+            m.lineTo(x, Math.min(h, y + 10 + Math.max(0, (h - y) - sp.base) * 0.6));
+          m.lineTo(w, 0);
+          m.closePath();
+          m.fill();
+          m.restore();
+        }
+        m.strokeStyle = rim;
+        m.lineWidth = 2;
+        m.beginPath();
+        ridge.forEach(([x, y], i) => i ? m.lineTo(x, y + 1) : m.moveTo(x, y + 1));
+        m.stroke();
+        const hz = m.createLinearGradient(0, h * 0.4, 0, h);
+        hz.addColorStop(0, haze + '0)');
+        hz.addColorStop(1, haze + '0.28)');
+        m.globalCompositeOperation = 'source-atop';
+        m.fillStyle = hz;
+        m.fillRect(0, 0, w, h);
+        return c;
+      };
+      const hazeOf = (hex) => {
+        const [r, gg, b] = parseHex(hex);
+        return `rgba(${r},${gg},${b},`;
+      };
+      ranges.push({
+        day: paint(B.ranges[layer].day, B.rim[0], hazeOf(B.skyDay[3])),
+        night: paint(B.ranges[layer].night, B.rim[1], hazeOf(B.skyNight[3])),
+        depth: sp.depth, h
+      });
+    });
+
+    // Ground strip with strata, pebbles and gems, by day and by night
+    const gh = CANVAS_H - DOME_Y;
+    const paintGroundStrip = (stops, night) => {
+      const ground = makeCanvas(CANVAS_W, gh);
+      const gg = ground.getContext('2d');
+      const r3 = makeRng(site.seed ^ 99);
+      const sg = gg.createLinearGradient(0, 0, 0, gh);
+      sg.addColorStop(0, stops[0]);
+      sg.addColorStop(0.08, stops[1]);
+      sg.addColorStop(0.5, stops[2]);
+      sg.addColorStop(1, stops[3]);
+      gg.fillStyle = sg;
+      gg.fillRect(0, 0, CANVAS_W, gh);
+      for (let band = 0; band < 4; ++band) {
+        const by = 18 + band * 22;
+        gg.strokeStyle = `rgba(0,0,0,${0.16 + band * 0.04})`;
+        gg.lineWidth = 2;
+        gg.beginPath();
+        for (let x = 0; x <= CANVAS_W; x += 10)
+          gg.lineTo(x, by + Math.sin(x * 0.01 + band) * 4 + Math.sin(x * 0.043 + band * 2) * 2);
+        gg.stroke();
+      }
+      const [pr, pg, pb] = B.ground.pebble;
+      const k = night ? 0.45 : 1;
+      for (let i = 0; i < 140; ++i) {
+        const x = r3() * CANVAS_W, y = 8 + r3() * (gh - 12), rr = 1.5 + r3() * 5;
+        gg.fillStyle = `rgba(${(pr + r3() * 40) * k | 0},${(pg + r3() * 30) * k | 0},${(pb + r3() * 40) * k | 0},0.6)`;
+        gg.beginPath();
+        gg.ellipse(x, y, rr * 1.4, rr, 0, 0, TWO_PI);
+        gg.fill();
+        gg.fillStyle = `rgba(255,255,255,${night ? 0.08 : 0.18})`;
+        gg.beginPath();
+        gg.ellipse(x - rr * 0.3, y - rr * 0.4, rr * 0.6, rr * 0.35, 0, 0, TWO_PI);
+        gg.fill();
+      }
+      for (let i = 0; i < 18; ++i) {
+        const x = r3() * CANVAS_W, y = 30 + r3() * (gh - 40);
+        gg.fillStyle = B.ground.gems[i % B.ground.gems.length];
+        gg.globalAlpha = 0.55;
+        gg.beginPath();
+        gg.moveTo(x, y - 6);
+        gg.lineTo(x + 3, y);
+        gg.lineTo(x, y + 5);
+        gg.lineTo(x - 3, y);
+        gg.closePath();
+        gg.fill();
+        gg.globalAlpha = 1;
+      }
+      gg.fillStyle = hexToRgba(B.ground.edge, night ? 0.3 : 0.5);
+      gg.fillRect(0, 0, CANVAS_W, 2);
+      gg.fillStyle = 'rgba(0,0,0,0.3)';
+      gg.fillRect(0, 2, CANVAS_W, 2);
+      return ground;
+    };
+    const groundDay = paintGroundStrip(B.ground.day, false);
+    const groundNight = paintGroundStrip(B.ground.night, true);
+
+    // Plants along the ground line (drawn live so they sway)
+    const plants = [];
+    const rp = makeRng(site.seed ^ 0xbeef);
+    for (let x = 8 + rp() * 10; x < CANVAS_W; x += (B.plant === 'grass' || B.plant === 'fern' ? 18 : 46) + rp() * (B.plant === 'grass' ? 12 : 60)) {
+      if (Math.abs(x - DOME_X) < DOME_RADIUS + 30) continue;
+      plants.push({ x, s: 0.6 + rp() * 0.8, v: rp(), p: rp() * TWO_PI });
+    }
+
+    surfaceArt = { seed: site.seed, skyDay, skyDusk, skyNight, decor, stars, ranges, groundDay, groundNight, plants, craters };
     return surfaceArt;
   }
 
   // Coloured copy of the glow sprite (cached per colour)
   function getGlow(color) {
-    const art = buildSurfaceArt();
+    const art = buildFxArt();
     let c = art.tinted[color];
     if (!c) {
       c = makeCanvas(64, 64);
@@ -5241,61 +7904,277 @@
     ctx.globalCompositeOperation = prev;
   }
 
+  // Mix two '#rrggbb' colours
+  function mixHex(a, b, t) {
+    const A = parseHex(a), Bc = parseHex(b);
+    return `rgb(${A[0] + (Bc[0] - A[0]) * t | 0},${A[1] + (Bc[1] - A[1]) * t | 0},${A[2] + (Bc[2] - A[2]) * t | 0})`;
+  }
+
   function drawSky() {
     const art = buildSurfaceArt();
-    ctx.drawImage(art.sky, 0, 0);
-    // Twinkling stars
-    for (const s of art.stars) {
-      const tw = 0.45 + 0.55 * Math.sin(animTime * s.f + s.p);
-      if (tw <= 0.05) continue;
-      ctx.globalAlpha = tw * 0.9;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(s.x - s.s / 2, s.y - s.s / 2, s.s, s.s);
-      if (s.big) {
-        ctx.globalAlpha = tw * 0.35;
-        ctx.fillRect(s.x - s.s * 2.5, s.y - 0.5, s.s * 5, 1);
-        ctx.fillRect(s.x - 0.5, s.y - s.s * 2.5, 1, s.s * 5);
-      }
+    const B = currentBiome();
+    const night = 1 - daylight;
+    if (daylight < 0.995)
+      ctx.drawImage(art.skyNight, 0, 0);
+    if (daylight > 0.01) {
+      ctx.globalAlpha = daylight;
+      ctx.drawImage(art.skyDay, 0, 0);
+    }
+    if (duskGlow > 0.01) {
+      ctx.globalAlpha = duskGlow;
+      ctx.drawImage(art.skyDusk, 0, 0);
     }
     ctx.globalAlpha = 1;
-    // Occasional shooting star
-    const cycle = 11;
-    const t = (animTime % cycle) / 0.9;
-    if (t < 1) {
-      const k = Math.floor(animTime / cycle);
-      const sx = 200 + ((k * 7919) % 900), sy = 60 + ((k * 3571) % 220);
-      const hx = sx + t * 260, hy = sy + t * 90;
-      const g = ctx.createLinearGradient(hx - 120, hy - 42, hx, hy);
-      g.addColorStop(0, 'rgba(255,255,255,0)');
-      g.addColorStop(1, `rgba(255,255,255,${0.8 * (1 - t)})`);
-      ctx.strokeStyle = g;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(hx - 120, hy - 42);
-      ctx.lineTo(hx, hy);
-      ctx.stroke();
+    drawCelestials();
+    ctx.globalAlpha = Math.max(0.12, 1 - daylight * 0.85);
+    ctx.drawImage(art.decor, 0, 0);
+    ctx.globalAlpha = 1;
+    // Twinkling stars
+    if (night > 0.05) {
+      for (const s of art.stars) {
+        const tw = 0.45 + 0.55 * Math.sin(animTime * s.f + s.p);
+        if (tw <= 0.05) continue;
+        ctx.globalAlpha = tw * 0.9 * night;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(s.x - s.s / 2, s.y - s.s / 2, s.s, s.s);
+        if (s.big) {
+          ctx.globalAlpha = tw * 0.35 * night;
+          ctx.fillRect(s.x - s.s * 2.5, s.y - 0.5, s.s * 5, 1);
+          ctx.fillRect(s.x - 0.5, s.y - s.s * 2.5, 1, s.s * 5);
+        }
+      }
+      ctx.globalAlpha = 1;
+      // Occasional shooting star
+      const cycle = 11;
+      const t = (animTime % cycle) / 0.9;
+      if (t < 1) {
+        const k = Math.floor(animTime / cycle);
+        const sx = 200 + ((k * 7919) % 900), sy = 60 + ((k * 3571) % 220);
+        const hx = sx + t * 260, hy = sy + t * 90;
+        const g = ctx.createLinearGradient(hx - 120, hy - 42, hx, hy);
+        g.addColorStop(0, 'rgba(255,255,255,0)');
+        g.addColorStop(1, `rgba(255,255,255,${0.8 * (1 - t) * night})`);
+        ctx.strokeStyle = g;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(hx - 120, hy - 42);
+        ctx.lineTo(hx, hy);
+        ctx.stroke();
+      }
     }
-    // Mountain ranges with mouse parallax
+    // Aurora over the ice
+    if (B.decor === 'aurora' && night > 0.2) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let band = 0; band < 3; ++band) {
+        const y0 = 120 + band * 50;
+        const g = ctx.createLinearGradient(0, y0 - 140, 0, y0 + 40);
+        const col = band === 1 ? '120,255,200' : (band === 2 ? '160,120,255' : '90,220,255');
+        g.addColorStop(0, `rgba(${col},0)`);
+        g.addColorStop(0.7, `rgba(${col},${0.16 * night})`);
+        g.addColorStop(1, `rgba(${col},0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(0, y0 + 40);
+        for (let x = 0; x <= CANVAS_W; x += 40)
+          ctx.lineTo(x, y0 + Math.sin(x * 0.006 + animTime * 0.4 + band * 2) * 30 + Math.sin(x * 0.017 - animTime * 0.7) * 12);
+        for (let x = CANVAS_W; x >= 0; x -= 40)
+          ctx.lineTo(x, y0 - 140 + Math.sin(x * 0.006 + animTime * 0.4 + band * 2) * 30);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    // Mountain ranges with mouse parallax, night and day versions blended
     const sway = mouseAimX >= 0 ? (mouseAimX / CANVAS_W - 0.5) : 0;
-    for (const r of art.ranges)
-      ctx.drawImage(r.canvas, -60 - sway * r.depth * 2, DOME_Y - r.h + 4);
-    // Low drifting mist
+    for (const r of art.ranges) {
+      const x = -60 - sway * r.depth * 2, y = DOME_Y - r.h + 4;
+      if (daylight < 0.995)
+        ctx.drawImage(r.night, x, y);
+      if (daylight > 0.01) {
+        ctx.globalAlpha = daylight;
+        ctx.drawImage(r.day, x, y);
+        ctx.globalAlpha = 1;
+      }
+    }
+    // Volcano smoke and crater glow
+    for (const c of art.craters) {
+      const x = c.x - sway * 28;
+      drawGlow('#ff5a1a', x, c.y + 6, 46, 0.35 + night * 0.4 + Math.sin(animTime * 3) * 0.08);
+      for (let k = 0; k < 7; ++k) {
+        const t = (animTime * 0.12 + k / 7) % 1;
+        ctx.globalAlpha = (1 - t) * 0.32;
+        ctx.fillStyle = mixHex('#5a4a48', '#1a1414', night);
+        ctx.beginPath();
+        ctx.arc(x + Math.sin(t * 3 + k) * 18 + t * 70, c.y - t * 190, 10 + t * 42, 0, TWO_PI);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+    // Low drifting mist in the horizon colour
+    const mist = mixHex(B.skyNight[3], B.skyDay[3], daylight);
     const mx = (animTime * 12) % CANVAS_W;
     ctx.globalAlpha = 0.5;
     for (const off of [-CANVAS_W, 0]) {
       const x = mx + off;
       const mg = ctx.createRadialGradient(x + 500, DOME_Y - 10, 10, x + 500, DOME_Y - 10, 420);
-      mg.addColorStop(0, 'rgba(180,120,200,0.18)');
-      mg.addColorStop(1, 'rgba(180,120,200,0)');
+      mg.addColorStop(0, mist.replace('rgb', 'rgba').replace(')', ',0.22)'));
+      mg.addColorStop(1, mist.replace('rgb', 'rgba').replace(')', ',0)'));
       ctx.fillStyle = mg;
       ctx.fillRect(x + 80, DOME_Y - 120, 840, 140);
     }
     ctx.globalAlpha = 1;
   }
 
+  function drawGroundLayer() {
+    const art = buildSurfaceArt();
+    const B = currentBiome();
+    if (daylight < 0.995)
+      ctx.drawImage(art.groundNight, 0, DOME_Y);
+    if (daylight > 0.01) {
+      ctx.globalAlpha = daylight;
+      ctx.drawImage(art.groundDay, 0, DOME_Y);
+      ctx.globalAlpha = 1;
+    }
+    const shade = 0.55 + daylight * 0.45;
+    const sk = currentSeason().key;
+    const tint = sk === 'autumn' ? ['#d0701c', 0.55] : (sk === 'winter' ? ['#dfeeff', 0.45] : (sk === 'summer' ? ['#c8c040', 0.15] : null));
+    const plantCols = B.plantColors.map(c => tint && B.plant !== 'ember' && B.plant !== 'shard' ? mixHex(c, tint[0], tint[1]) : c)
+      .map(c => c.charAt(0) === '#' ? c : '#' + c.match(/\d+/g).map(n => (+n).toString(16).padStart(2, '0')).join(''));
+    const col = (i) => mixHex('#000000', plantCols[i], shade);
+    const Y = DOME_Y + 2;
+    ctx.lineCap = 'round';
+    for (const p of art.plants) {
+      const tilt = Math.sin(p.x * 0.7 + animTime * 0.9 + p.p) * (1 + windStrength());
+      if (B.plant === 'grass') {
+        const h = (8 + Math.abs(Math.sin(p.x * 0.5)) * 14) * p.s;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = col(p.v < 0.66 ? 0 : 1);
+        ctx.beginPath();
+        ctx.moveTo(p.x, Y);
+        ctx.quadraticCurveTo(p.x + tilt * 6, Y - h * 0.6, p.x + tilt * 4, Y - h);
+        ctx.stroke();
+      } else if (B.plant === 'fern') {
+        const h = 16 + 18 * p.s;
+        ctx.lineWidth = 2.5;
+        for (const side of [-1, 1, 0]) {
+          ctx.strokeStyle = col(side === 0 ? 1 : 0);
+          ctx.beginPath();
+          ctx.moveTo(p.x, Y);
+          const ex = p.x + side * h * 0.6 + tilt * 5, ey = Y - h * (side === 0 ? 1 : 0.75);
+          ctx.quadraticCurveTo(p.x + side * h * 0.1 + tilt * 3, Y - h * 0.7, ex, ey);
+          ctx.stroke();
+          ctx.lineWidth = 1.5;
+          for (let k = 1; k < 4; ++k) {
+            const t = k / 4, lx = p.x + (ex - p.x) * t, ly = Y + (ey - Y) * t;
+            ctx.beginPath();
+            ctx.moveTo(lx, ly);
+            ctx.lineTo(lx + (side || 1) * 5 + tilt, ly - 4);
+            ctx.stroke();
+          }
+          ctx.lineWidth = 2.5;
+        }
+      } else if (B.plant === 'cactus') {
+        const h = 22 + 22 * p.s, w = 7 + 3 * p.s;
+        ctx.fillStyle = SPRITE_OUTLINE;
+        roundRectPath(p.x - w / 2 - 1.5, Y - h - 1.5, w + 3, h + 3, w / 2);
+        ctx.fill();
+        ctx.fillStyle = col(0);
+        roundRectPath(p.x - w / 2, Y - h, w, h, w / 2);
+        ctx.fill();
+        for (const side of p.v < 0.5 ? [-1] : [-1, 1]) {
+          const ay = Y - h * (0.45 + 0.15 * side * p.v);
+          ctx.strokeStyle = SPRITE_OUTLINE;
+          ctx.lineWidth = w * 0.75 + 3;
+          ctx.beginPath();
+          ctx.moveTo(p.x, ay);
+          ctx.lineTo(p.x + side * w * 1.3, ay);
+          ctx.lineTo(p.x + side * w * 1.3, ay - h * 0.3);
+          ctx.stroke();
+          ctx.strokeStyle = col(0);
+          ctx.lineWidth = w * 0.75;
+          ctx.stroke();
+        }
+        ctx.fillStyle = col(1);
+        ctx.fillRect(p.x - 1, Y - h + 3, 2, h - 6);
+      } else if (B.plant === 'icicle') {
+        for (let k = 0; k < 3; ++k) {
+          const ox = (k - 1) * 6 * p.s, h = (10 + (k === 1 ? 14 : 6) + p.v * 8) * p.s * 1.4;
+          ctx.fillStyle = SPRITE_OUTLINE;
+          ctx.beginPath();
+          ctx.moveTo(p.x + ox - 5, Y);
+          ctx.lineTo(p.x + ox + tilt * 0.5, Y - h - 2);
+          ctx.lineTo(p.x + ox + 5, Y);
+          ctx.fill();
+          ctx.fillStyle = col(k === 1 ? 1 : 0);
+          ctx.beginPath();
+          ctx.moveTo(p.x + ox - 3.5, Y);
+          ctx.lineTo(p.x + ox + tilt * 0.5, Y - h);
+          ctx.lineTo(p.x + ox + 3.5, Y);
+          ctx.fill();
+        }
+        if (daylight > 0.3 && Math.sin(animTime * 2 + p.p * 5) > 0.97)
+          drawGlow('#ffffff', p.x, Y - 14, 10, 0.8);
+      } else if (B.plant === 'ember') {
+        const w = 10 + 10 * p.s;
+        ctx.fillStyle = mixHex('#000000', '#4a3634', shade);
+        ctx.beginPath();
+        ctx.ellipse(p.x, Y, w, 6 + 4 * p.s, 0, Math.PI, 0);
+        ctx.fill();
+        const glow = 0.55 + Math.sin(animTime * 3 + p.p) * 0.25;
+        ctx.strokeStyle = `rgba(255,${120 + glow * 80 | 0},40,${glow})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(p.x - w * 0.6, Y - 1);
+        ctx.lineTo(p.x - w * 0.1, Y - 5 * p.s);
+        ctx.lineTo(p.x + w * 0.5, Y - 2);
+        ctx.stroke();
+        drawGlow('#ff6a20', p.x, Y - 3, 16 + 8 * p.s, glow * (0.35 + (1 - daylight) * 0.4));
+        if (Math.random() < 0.02)
+          particles.trail(p.x, Y - 6, { vx: (Math.random() - 0.5) * 0.6, vy: -1 - Math.random(), color: '#ffa040', life: 0.8, size: 1.5, gravity: -0.01 });
+      } else if (B.plant === 'shard') {
+        for (let k = 0; k < 3; ++k) {
+          const ang = (k - 1) * 0.35 + tilt * 0.02, h = (12 + (k === 1 ? 16 : 6) + p.v * 6) * p.s * 1.3, w = 4 + p.s * 2;
+          ctx.save();
+          ctx.translate(p.x + (k - 1) * 5, Y);
+          ctx.rotate(ang);
+          ctx.fillStyle = SPRITE_OUTLINE;
+          ctx.beginPath();
+          ctx.moveTo(-w - 1, 0); ctx.lineTo(-w - 1, -h * 0.75); ctx.lineTo(0, -h - 2); ctx.lineTo(w + 1, -h * 0.75); ctx.lineTo(w + 1, 0);
+          ctx.fill();
+          ctx.fillStyle = col(k % 3);
+          ctx.beginPath();
+          ctx.moveTo(-w, 0); ctx.lineTo(-w, -h * 0.75); ctx.lineTo(0, -h); ctx.lineTo(w, -h * 0.75); ctx.lineTo(w, 0);
+          ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,255,0.45)';
+          ctx.fillRect(-w + 1, -h * 0.7, 1.5, h * 0.6);
+          ctx.restore();
+        }
+        drawGlow(B.plantColors[(p.v * 3) | 0], p.x, Y - 12, 20, 0.25 + (1 - daylight) * 0.35);
+      }
+      // Spring blossoms
+      if (sk === 'spring' && p.v < 0.6 && B.plant !== 'ember') {
+        const fx = p.x + 6 + tilt * 3, fy = Y - 6 - p.s * 8;
+        const petal = ['#ff7ab0', '#ffe060', '#ffffff', '#c890ff'][(p.v * 6 | 0) % 4];
+        ctx.fillStyle = mixHex('#000000', petal, shade);
+        for (let k = 0; k < 5; ++k) {
+          const a = k * TWO_PI / 5 + p.p;
+          ctx.beginPath();
+          ctx.arc(fx + Math.cos(a) * 2.6, fy + Math.sin(a) * 2.6, 2.2, 0, TWO_PI);
+          ctx.fill();
+        }
+        ctx.fillStyle = '#ffd040';
+        ctx.beginPath();
+        ctx.arc(fx, fy, 1.6, 0, TWO_PI);
+        ctx.fill();
+      }
+    }
+    ctx.lineCap = 'butt';
+  }
+
   // Pre-rendered enemy body (outline, shading, rim light) per variant
   function getEnemyBody(kind) {
-    const art = buildSurfaceArt();
+    const art = buildFxArt();
     const key = 'body:' + kind;
     if (art.tinted[key]) return art.tinted[key];
     const S = 96, c = makeCanvas(S, S), g = c.getContext('2d');
@@ -5305,11 +8184,19 @@
       walker: ['#ff9a8a', '#e0403a', '#8a1420', '#3a0610'],
       armored: ['#e8d8a8', '#a08a5a', '#5a4828', '#241a0c'],
       boss: ['#ff7aa0', '#b81848', '#5a0420', '#20020a'],
-      flyer: ['#f0a8ff', '#a050c8', '#4a1868', '#1a0628']
+      flyer: ['#f0a8ff', '#a050c8', '#4a1868', '#1a0628'],
+      swarmer: ['#f4ffb0', '#c8d040', '#6a7a10', '#283008'],
+      diver: ['#b8f4ff', '#3ab0c8', '#145a70', '#06242e'],
+      burrower: ['#ffc0e0', '#d0609a', '#7a2050', '#300a20'],
+      spitter: ['#dcffb8', '#60b040', '#2a6a18', '#0e300a'],
+      splitter: ['#ffe0b0', '#ff9030', '#a04a10', '#401a04'],
+      mender: ['#c8fff0', '#40c890', '#127a54', '#063020'],
+      queen: ['#ffc0f0', '#e040c0', '#7a1468', '#30062a']
     }[kind];
+    const drop = kind === 'flyer' || kind === 'diver';
     g.fillStyle = SPRITE_OUTLINE;
     g.beginPath();
-    if (kind === 'flyer') {
+    if (drop) {
       g.moveTo(0, -r - 4);
       g.quadraticCurveTo(r * 0.9, -r * 0.1, r * 0.7 + 4, r * 0.6 + 4);
       g.quadraticCurveTo(0, r * 0.35 + 4, -r * 0.7 - 4, r * 0.6 + 4);
@@ -5319,7 +8206,7 @@
     g.fill();
     const bodyPath = () => {
       g.beginPath();
-      if (kind === 'flyer') {
+      if (drop) {
         g.moveTo(0, -r);
         g.quadraticCurveTo(r * 0.85, -r * 0.1, r * 0.7, r * 0.6);
         g.quadraticCurveTo(0, r * 0.35, -r * 0.7, r * 0.6);
@@ -5339,7 +8226,13 @@
     bodyPath();
     g.clip();
     // Spots / plates
-    if (kind === 'armored') {
+    if (kind === 'splitter' || kind === 'spitter') {
+      // Translucent membrane
+      g.fillStyle = 'rgba(255,255,255,0.12)';
+      g.beginPath();
+      g.arc(0, 0, r * 0.8, 0, TWO_PI);
+      g.fill();
+    } else if (kind === 'armored') {
       g.strokeStyle = 'rgba(30,20,8,0.7)';
       g.lineWidth = 3;
       for (const y of [-12, 6, 22]) {
@@ -5398,35 +8291,63 @@
     }
   }
 
-  function drawGroundLayer() {
-    const art = buildSurfaceArt();
-    ctx.drawImage(art.ground, 0, DOME_Y);
-    // Alien grass swaying along the ground line
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    for (let gx = 10; gx < CANVAS_W; gx += 22 + Math.sin(gx * 0.3) * 8) {
-      if (Math.abs(gx - DOME_X) < DOME_RADIUS + 26) continue;
-      const tilt = Math.sin(gx * 0.7 + animTime * 0.9);
-      const h = 8 + Math.abs(Math.sin(gx * 0.5)) * 14;
-      ctx.strokeStyle = (gx | 0) % 3 ? '#3f8a70' : '#5ab08e';
-      ctx.beginPath();
-      ctx.moveTo(gx, DOME_Y + 2);
-      ctx.quadraticCurveTo(gx + tilt * 6, DOME_Y - h * 0.6, gx + tilt * 4, DOME_Y - h);
-      ctx.stroke();
-    }
-    ctx.lineCap = 'butt';
-  }
-
-  function drawDome() {
-    const art = buildSurfaceArt();
+  // rig (landing / relocation): lift above the ground, unpack 0 (packed) .. 1, legs 0..1
+  function drawDome(rig) {
+    const art = buildFxArt();
+    const sky = buildSurfaceArt();
     const pulse = Math.sin(domePulsePhase) * 0.5 + 0.5;
-    const flashAlpha = domeHitFlash * 0.6;
+    const flashAlpha = rig ? 0 : domeHitFlash * 0.6;
     const hpRatio = Math.max(0, domeHP / maxDomeHP);
     const R = DOME_RADIUS;
     const shieldLevel = getEffectiveLevel('domeHP');
+    const unpack = rig ? rig.unpack : 1;
+    const glassK = smoothstep(0.2, 0.62, unpack);
+    const lift = rig ? rig.lift : 0;
 
     // Light pool on the ground
-    drawGlow('#4aa8ff', DOME_X, DOME_Y + 6, R * 1.7, 0.18 + pulse * 0.05);
+    if (lift < 40)
+      drawGlow('#4aa8ff', DOME_X, DOME_Y + 6, R * 1.7, (0.18 + pulse * 0.05) * (1 - lift / 40) * (0.3 + 0.7 * unpack));
+
+    ctx.save();
+    ctx.translate(0, -lift);
+    if (rig && rig.squash) {
+      ctx.translate(DOME_X, DOME_Y + 14);
+      ctx.scale(1 + rig.squash, 1 - rig.squash);
+      ctx.translate(-DOME_X, -DOME_Y - 14);
+    }
+
+    // Landing legs fold out of the base
+    const legs = rig ? rig.legs : 0;
+    if (legs > 0.01)
+      for (const side of [-1, 1])
+        for (const inner of [0, 1]) {
+          const x0 = DOME_X + side * (inner ? R * 0.55 : R + 10), y0 = DOME_Y + 10;
+          const x1 = x0 + side * (inner ? 8 : 22) * legs, y1 = y0 + 26 * legs;
+          ctx.strokeStyle = SPRITE_OUTLINE;
+          ctx.lineWidth = 9;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(x0, y0);
+          ctx.lineTo(x1, y1);
+          ctx.stroke();
+          ctx.strokeStyle = '#7a8aa8';
+          ctx.lineWidth = 5;
+          ctx.stroke();
+          ctx.fillStyle = SPRITE_OUTLINE;
+          ctx.fillRect(x1 - 10, y1 - 2, 20, 6);
+          ctx.fillStyle = '#5a6a88';
+          ctx.fillRect(x1 - 9, y1 - 1, 18, 4);
+          ctx.lineCap = 'butt';
+        }
+
+    // The glass shell rises out of the base while unpacking
+    if (glassK < 0.999) {
+      ctx.save();
+      ctx.translate(DOME_X, DOME_Y);
+      ctx.scale(1, Math.max(0.001, glassK));
+      ctx.translate(-DOME_X, -DOME_Y);
+    }
+    if (glassK > 0.01) {
 
     // Refraction: the sky behind the glass, slightly magnified and tinted
     ctx.save();
@@ -5436,7 +8357,7 @@
     ctx.clip();
     const mag = 1.12;
     ctx.globalAlpha = 0.55;
-    ctx.drawImage(art.sky, DOME_X - R, DOME_Y - R, R * 2, R, DOME_X - R * mag, DOME_Y - R * mag - 6, R * 2 * mag, R * mag);
+    ctx.drawImage(daylight > 0.5 ? sky.skyDay : sky.skyNight, DOME_X - R, DOME_Y - R, R * 2, R, DOME_X - R * mag, DOME_Y - R * mag - 6, R * 2 * mag, R * mag);
     ctx.globalAlpha = 1;
     ctx.fillStyle = 'rgba(20,60,120,0.25)';
     ctx.fillRect(DOME_X - R, DOME_Y - R, R * 2, R);
@@ -5524,8 +8445,34 @@
     ctx.shadowBlur = 0;
     ctx.restore();
 
+    }
+    if (glassK < 0.999) {
+      ctx.restore();
+      // Packed: an armoured lid closes over the base
+      const lid = 1 - glassK;
+      ctx.fillStyle = SPRITE_OUTLINE;
+      ctx.beginPath();
+      ctx.ellipse(DOME_X, DOME_Y - 4, R + 4, 26 * lid + 4, 0, Math.PI, 0);
+      ctx.fill();
+      const lg = ctx.createLinearGradient(0, DOME_Y - 30, 0, DOME_Y);
+      lg.addColorStop(0, '#b8c8e0');
+      lg.addColorStop(1, '#4a5878');
+      ctx.fillStyle = lg;
+      ctx.beginPath();
+      ctx.ellipse(DOME_X, DOME_Y - 4, R + 1, 26 * lid + 1, 0, Math.PI, 0);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(20,30,50,0.6)';
+      ctx.lineWidth = 2;
+      for (const k of [-0.5, 0, 0.5]) {
+        ctx.beginPath();
+        ctx.moveTo(DOME_X + k * R, DOME_Y - 4);
+        ctx.lineTo(DOME_X + k * R * 0.8, DOME_Y - 4 - 24 * lid * Math.sqrt(1 - k * k));
+        ctx.stroke();
+      }
+    }
+
     // Shield impact flashes
-    for (const impact of shieldImpacts) {
+    for (const impact of (rig ? [] : shieldImpacts)) {
       const ia = impact.angle;
       const il = impact.life;
       ctx.save();
@@ -5561,20 +8508,26 @@
     ctx.fillRect(DOME_X - R - 12, DOME_Y - 5, (R + 12) * 2, 1.5);
     for (let i = 0; i < 9; ++i) {
       const lx = DOME_X - R + 4 + i * (R * 2 - 8) / 8;
-      const on = Math.sin(animTime * 3 - i * 0.7) > 0.3;
+      const on = unpack > 0.78 + i * 0.022 && Math.sin(animTime * 3 - i * 0.7) > 0.3;
       ctx.fillStyle = on ? '#7fe0ff' : '#24405a';
       ctx.fillRect(lx - 3, DOME_Y + 3, 6, 4);
       if (on)
         drawGlow('#4cf', lx, DOME_Y + 5, 9, 0.6);
     }
 
-    // Turret on the dome arc
-    const nozzleDrawR = R + 16;
+    // Turret on the dome arc (slides out of the shell when unpacking)
+    const turretK = smoothstep(0.6, 0.85, unpack);
+    if (turretK <= 0.01) {
+      ctx.restore();
+      return;
+    }
+    const nozzleDrawR = R + 16 * turretK;
     const tbx = DOME_X + Math.cos(turretAngle) * nozzleDrawR;
     const tby = DOME_Y + Math.sin(turretAngle) * nozzleDrawR;
     ctx.save();
     ctx.translate(tbx, tby);
     ctx.rotate(turretAngle);
+    ctx.scale(turretK, turretK);
     // Mount
     ctx.fillStyle = '#1a2236';
     roundRectPath(-14, -11, 22, 22, 5);
@@ -5605,55 +8558,103 @@
     const ready = fireCooldown <= 0;
     const mx = tbx + Math.cos(turretAngle) * TURRET_BARREL_LENGTH;
     const my = tby + Math.sin(turretAngle) * TURRET_BARREL_LENGTH;
-    drawGlow('#ff6040', mx, my, ready ? 16 + pulse * 4 : 8, ready ? 0.8 : 0.35);
+    if (turretK > 0.9)
+      drawGlow('#ff6040', mx, my, ready ? 16 + pulse * 4 : 8, ready ? 0.8 : 0.35);
     ctx.fillStyle = '#d8e4ff';
     ctx.beginPath();
     ctx.arc(tbx, tby, 4, 0, TWO_PI);
     ctx.fill();
+    ctx.restore();
   }
+
+  // How each ground creature is put together (body palette, legs, face and extras)
+  const CREATURE_LOOK = {
+    walker:   { body: 'walker', legs: 2, legCol: '#8a2028', eyes: '#fff27a', mouth: 'fangs' },
+    swarmer:  { body: 'swarmer', legs: 3, legCol: '#5a6a10', eyes: '#ff5040', mouth: 'mandibles', sx: 1.3, sy: 0.8, antennae: true, legSpeed: 2.2 },
+    crawler:  { body: 'armored', legs: 4, legCol: '#5a4a2a', eyes: '#ffb030', mouth: 'mandibles', sx: 1.35, sy: 0.85, plates: true, legSpeed: 0.6 },
+    splitter: { body: 'splitter', legs: 2, legCol: '#a04a10', eyes: '#ffffff', mouth: 'fangs', cores: true },
+    mender:   { body: 'mender', legs: 0, eyes: '#e0fff0', mouth: 'none', sx: 1.35, sy: 0.72, crystals: true },
+    spitter:  { body: 'spitter', legs: 2, legCol: '#2a6a18', eyes: '#ffff80', mouth: 'tube', sac: true },
+    burrower: { body: 'burrower', legs: 0, eyes: '#ffe0f0', mouth: 'drill', worm: true },
+    behemoth: { body: 'boss', legs: 3, legCol: '#6a1028', eyes: '#ff4040', mouth: 'fangs', crown: true, horns: true, legSpeed: 0.5 }
+  };
 
   function drawEnemy(e) {
+    if (e.hidden)
+      return drawBurrowMound(e);
     if (e.type === 'flyer')
       return drawFlyer(e);
-    return drawGroundEnemy(e);
+    if (e.type === 'diver')
+      return drawDiver(e);
+    if (e.type === 'queen')
+      return drawQueen(e);
+    return drawCreature(e, CREATURE_LOOK[e.type] || CREATURE_LOOK.walker);
   }
 
-  function drawGroundEnemy(e) {
+  function drawCreature(e, look) {
     const sz = e.size || 10;
-    const wobble = Math.sin(e.wobblePhase) * 3;
-    const legOffset = Math.sin(e.legPhase) * 6;
-    const kind = e.boss ? 'boss' : (e.armored ? 'armored' : 'walker');
+    const legSpeed = look.legSpeed || 1;
+    const wobble = Math.sin(e.wobblePhase * legSpeed) * (look.worm ? 1 : 3);
+    const legOffset = Math.sin(e.legPhase * legSpeed) * 6 * Math.min(1, sz / 20);
     const flash = enemyHitFlash.get(e) || 0;
+    const face = e.x > DOME_X ? -1 : 1;
+    const lunge = (e.lunge || 0) * 8 * face;
+    const pop = e.pop !== undefined ? Math.min(1, e.pop) : 1;
 
     ctx.save();
-    ctx.translate(e.x, e.y + wobble);
+    ctx.translate(e.x + lunge, e.y + wobble + (1 - pop) * sz * 1.4);
+    if (look.worm && pop < 1) {
+      ctx.beginPath();
+      ctx.rect(-sz * 3, -sz * 4, sz * 6, DOME_Y - e.y + sz * 4 - wobble - (1 - pop) * sz * 1.4);
+      ctx.clip();
+    }
 
     // Ground shadow
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
-    ctx.ellipse(0, sz + 4 - wobble, sz * 0.9, 6, 0, 0, TWO_PI);
+    ctx.ellipse(0, sz * 0.75 + 4 - wobble, sz * 0.95 * (look.sx || 1), 6, 0, 0, TWO_PI);
     ctx.fill();
 
+    // Behemoth stomp: the front feet rise and slam
+    const stomp = e.stompAnim > 0 ? Math.sin((1 - e.stompAnim / 0.5) * Math.PI) * sz * 0.35 : 0;
+
     // Legs with outlines and feet
-    const legCol = e.armored ? '#6a5a38' : (e.boss ? '#6a1028' : '#8a2028');
-    const legs = [[-0.4, 0.3, -0.85, 0.75, legOffset], [-0.25, 0.15, -0.75, 0.45, -legOffset], [0.4, 0.3, 0.85, 0.75, -legOffset], [0.25, 0.15, 0.75, 0.45, legOffset]];
-    for (const pass of [0, 1]) {
-      ctx.strokeStyle = pass ? legCol : SPRITE_OUTLINE;
-      ctx.lineWidth = (e.boss ? 7 : 5) + (pass ? 0 : 3);
-      ctx.lineCap = 'round';
-      for (const [x0, y0, x1, y1, o] of legs) {
-        ctx.beginPath();
-        ctx.moveTo(sz * x0, sz * y0);
-        ctx.quadraticCurveTo(sz * x1, sz * (y0 - 0.1), sz * x1, sz * y1 + o);
-        ctx.stroke();
+    if (look.legs) {
+      const legs = [];
+      for (let k = 0; k < look.legs; ++k) {
+        const t = look.legs === 1 ? 0.5 : k / (look.legs - 1);
+        const ox = (0.2 + t * 0.25) * (look.sx || 1), spread = (0.7 + t * 0.2) * (look.sx || 1);
+        const o = (k % 2 ? -1 : 1) * legOffset;
+        legs.push([-ox, 0.25, -spread, 0.6 + t * 0.15, o - (k === 0 ? stomp : 0)], [ox, 0.25, spread, 0.6 + t * 0.15, -o - (k === 0 ? stomp : 0)]);
+      }
+      const lw = Math.max(2.5, sz * 0.2);
+      for (const pass of [0, 1]) {
+        ctx.strokeStyle = pass ? look.legCol : SPRITE_OUTLINE;
+        ctx.lineWidth = lw + (pass ? 0 : 3);
+        ctx.lineCap = 'round';
+        for (const [x0, y0, x1, y1, o] of legs) {
+          ctx.beginPath();
+          ctx.moveTo(sz * x0, sz * y0);
+          ctx.quadraticCurveTo(sz * x1, sz * (y0 - 0.15), sz * x1, sz * y1 + o);
+          ctx.stroke();
+        }
+      }
+      ctx.lineCap = 'butt';
+    }
+
+    // Worm segments trailing into the ground
+    if (look.worm) {
+      const body = getEnemyBody(look.body);
+      for (let k = 3; k >= 1; --k) {
+        const s = sz * (1 - k * 0.12) * 2 * (96 / 72);
+        ctx.drawImage(body, -face * k * sz * 0.45 - s / 2, k * sz * 0.38 - s / 2 + Math.sin(e.t * 6 + k) * 2, s, s);
       }
     }
-    ctx.lineCap = 'butt';
 
     // Body with squash and stretch
-    const squash = 1 + Math.sin(e.wobblePhase * 2) * 0.05;
-    const body = getEnemyBody(kind);
-    const bw = sz * 2 * (96 / 72) / squash, bh = sz * 2 * (96 / 72) * squash;
+    const squash = 1 + Math.sin(e.wobblePhase * 2 * legSpeed) * 0.05;
+    const body = getEnemyBody(look.body);
+    const bw = sz * 2 * (96 / 72) * (look.sx || 1) / squash, bh = sz * 2 * (96 / 72) * (look.sy || 1) * squash;
     ctx.drawImage(body, -bw / 2, -bh / 2, bw, bh);
     if (flash > 0) {
       ctx.globalCompositeOperation = 'lighter';
@@ -5663,8 +8664,117 @@
       ctx.globalCompositeOperation = 'source-over';
     }
 
-    // Boss crown
-    if (e.boss) {
+    // Spitter's acid sac swells before each shot
+    if (look.sac) {
+      const swell = 1 + (e.charge || 0) * 0.35 + Math.sin(animTime * 5) * 0.04;
+      const sr = sz * 0.5 * swell;
+      ctx.fillStyle = SPRITE_OUTLINE;
+      ctx.beginPath();
+      ctx.arc(-face * sz * 0.3, -sz * 0.78, sr + 2.5, 0, TWO_PI);
+      ctx.fill();
+      const sg = ctx.createRadialGradient(-face * sz * 0.4, -sz * 0.95, 2, -face * sz * 0.3, -sz * 0.78, sr);
+      sg.addColorStop(0, '#f0ffc0');
+      sg.addColorStop(0.5, '#9aff50');
+      sg.addColorStop(1, '#3a8a18');
+      ctx.fillStyle = sg;
+      ctx.beginPath();
+      ctx.arc(-face * sz * 0.3, -sz * 0.78, sr, 0, TWO_PI);
+      ctx.fill();
+      drawGlow('#8aff50', -face * sz * 0.3, -sz * 0.78, sr * 1.8, 0.25 + (e.charge || 0) * 0.5);
+    }
+
+    // Armour plates
+    if (look.plates) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(0, 0, sz * (look.sx || 1), sz * (look.sy || 1), 0, 0, TWO_PI);
+      ctx.clip();
+      // Overlapping shell segments from head to tail
+      const W = sz * (look.sx || 1);
+      for (let k = -1; k <= 2; ++k) {
+        const x = k * W * 0.42 - W * 0.2;
+        ctx.strokeStyle = SPRITE_OUTLINE;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(x - sz * 0.12, -sz);
+        ctx.quadraticCurveTo(x + sz * 0.22, 0, x - sz * 0.12, sz);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,240,200,0.4)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x - sz * 0.05, -sz * 0.8);
+        ctx.quadraticCurveTo(x + sz * 0.28, 0, x - sz * 0.05, sz * 0.4);
+        ctx.stroke();
+      }
+      for (const [rx, ry] of [[-0.55, -0.35], [0.1, -0.5], [0.6, -0.3]]) {
+        ctx.fillStyle = 'rgba(255,240,210,0.55)';
+        ctx.beginPath();
+        ctx.arc(rx * W, ry * sz, sz * 0.07, 0, TWO_PI);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Splitter cores swirling inside the membrane
+    if (look.cores) {
+      for (let k = 0; k < 3; ++k) {
+        const a = animTime * 2.4 + k * TWO_PI / 3;
+        const cx = Math.cos(a) * sz * 0.5, cy = Math.sin(a) * sz * 0.14 + sz * 0.5;
+        ctx.fillStyle = SPRITE_OUTLINE;
+        ctx.beginPath();
+        ctx.arc(cx, cy, sz * 0.2 + 1.5, 0, TWO_PI);
+        ctx.fill();
+        ctx.fillStyle = '#fff0a0';
+        ctx.beginPath();
+        ctx.arc(cx, cy, sz * 0.2, 0, TWO_PI);
+        ctx.fill();
+      }
+    }
+
+    // Mender: glowing crystals and a healing pulse
+    if (look.crystals) {
+      const pulse = (animTime * 0.8 + e.wobblePhase) % 1;
+      ctx.strokeStyle = `rgba(90,255,170,${0.5 * (1 - pulse)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(0, sz * 0.4, sz * (1 + pulse * 3), sz * (0.4 + pulse * 1.2), 0, 0, TWO_PI);
+      ctx.stroke();
+      for (let k = -1; k <= 1; ++k) {
+        const h = sz * (0.7 + (k === 0 ? 0.35 : 0));
+        ctx.fillStyle = SPRITE_OUTLINE;
+        ctx.beginPath();
+        ctx.moveTo(k * sz * 0.45 - 5, -sz * 0.45);
+        ctx.lineTo(k * sz * 0.45, -sz * 0.45 - h - 2);
+        ctx.lineTo(k * sz * 0.45 + 5, -sz * 0.45);
+        ctx.fill();
+        ctx.fillStyle = '#7affc8';
+        ctx.beginPath();
+        ctx.moveTo(k * sz * 0.45 - 3.5, -sz * 0.45);
+        ctx.lineTo(k * sz * 0.45, -sz * 0.45 - h);
+        ctx.lineTo(k * sz * 0.45 + 3.5, -sz * 0.45);
+        ctx.fill();
+        drawGlow('#5affb0', k * sz * 0.45, -sz * 0.45 - h * 0.5, sz * 0.5, 0.5);
+      }
+    }
+
+    // Boss horns and crown
+    if (look.horns) {
+      for (const side of [-1, 1]) {
+        ctx.fillStyle = SPRITE_OUTLINE;
+        ctx.beginPath();
+        ctx.moveTo(side * sz * 0.55, -sz * 0.55);
+        ctx.quadraticCurveTo(side * sz * 1.25, -sz * 0.9, side * sz * 1.05, -sz * 1.45);
+        ctx.quadraticCurveTo(side * sz * 0.95, -sz * 0.95, side * sz * 0.35, -sz * 0.75);
+        ctx.fill();
+        ctx.fillStyle = '#e8dcc0';
+        ctx.beginPath();
+        ctx.moveTo(side * sz * 0.55, -sz * 0.6);
+        ctx.quadraticCurveTo(side * sz * 1.15, -sz * 0.92, side * sz * 1.02, -sz * 1.35);
+        ctx.quadraticCurveTo(side * sz * 0.92, -sz * 0.95, side * sz * 0.4, -sz * 0.75);
+        ctx.fill();
+      }
+    }
+    if (look.crown) {
       ctx.fillStyle = SPRITE_OUTLINE;
       ctx.beginPath();
       ctx.moveTo(-sz * 0.6, -sz * 0.8);
@@ -5691,25 +8801,78 @@
       ctx.closePath();
       ctx.fill();
     }
+    if (look.antennae) {
+      ctx.strokeStyle = SPRITE_OUTLINE;
+      ctx.lineWidth = 1.5;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(side * sz * 0.3, -sz * 0.55);
+        ctx.quadraticCurveTo(side * sz * 0.5 + face * sz * 0.4, -sz * 1.3, side * sz * 0.2 + face * sz * 0.9, -sz * 1.1 + Math.sin(animTime * 9 + side) * 2);
+        ctx.stroke();
+      }
+    }
 
-    drawEnemyEyes(sz, e.eyeBlinking, e.boss ? '#ff4040' : '#fff27a', '#200');
-
-    // Mouth with fangs
-    ctx.fillStyle = '#2a0008';
-    ctx.beginPath();
-    ctx.moveTo(-sz * 0.28, sz * 0.22);
-    ctx.quadraticCurveTo(0, sz * 0.5, sz * 0.28, sz * 0.22);
-    ctx.quadraticCurveTo(0, sz * 0.32, -sz * 0.28, sz * 0.22);
-    ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.moveTo(-sz * 0.14, sz * 0.27);
-    ctx.lineTo(-sz * 0.09, sz * 0.38);
-    ctx.lineTo(-sz * 0.04, sz * 0.29);
-    ctx.moveTo(sz * 0.04, sz * 0.29);
-    ctx.lineTo(sz * 0.09, sz * 0.38);
-    ctx.lineTo(sz * 0.14, sz * 0.27);
-    ctx.fill();
+    // Face: eyes looking toward the dome and a mouth
+    ctx.save();
+    ctx.translate(face * sz * 0.12 * (look.sx || 1), 0);
+    drawEnemyEyes(sz * (look.sy || 1), e.eyeBlinking, look.eyes, '#200');
+    const ms = sz * (look.sy || 1);
+    if (look.mouth === 'fangs') {
+      ctx.fillStyle = '#2a0008';
+      ctx.beginPath();
+      ctx.moveTo(-ms * 0.28, ms * 0.22);
+      ctx.quadraticCurveTo(0, ms * 0.5, ms * 0.28, ms * 0.22);
+      ctx.quadraticCurveTo(0, ms * 0.32, -ms * 0.28, ms * 0.22);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.moveTo(-ms * 0.14, ms * 0.27);
+      ctx.lineTo(-ms * 0.09, ms * 0.38);
+      ctx.lineTo(-ms * 0.04, ms * 0.29);
+      ctx.moveTo(ms * 0.04, ms * 0.29);
+      ctx.lineTo(ms * 0.09, ms * 0.38);
+      ctx.lineTo(ms * 0.14, ms * 0.27);
+      ctx.fill();
+    } else if (look.mouth === 'mandibles') {
+      const open = 0.25 + Math.abs(Math.sin(animTime * 6 + e.wobblePhase)) * 0.25;
+      ctx.strokeStyle = SPRITE_OUTLINE;
+      ctx.lineWidth = Math.max(2, ms * 0.14);
+      ctx.lineCap = 'round';
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(side * ms * 0.2, ms * 0.3);
+        ctx.quadraticCurveTo(side * ms * (0.35 + open), ms * 0.6, side * ms * 0.05, ms * 0.72);
+        ctx.stroke();
+      }
+      ctx.lineCap = 'butt';
+    } else if (look.mouth === 'tube') {
+      ctx.fillStyle = SPRITE_OUTLINE;
+      roundRectPath(face > 0 ? ms * 0.1 : -ms * 0.75, ms * 0.12, ms * 0.65, ms * 0.32, ms * 0.12);
+      ctx.fill();
+      ctx.fillStyle = '#4a9a28';
+      roundRectPath(face > 0 ? ms * 0.14 : -ms * 0.71, ms * 0.16, ms * 0.57, ms * 0.22, ms * 0.1);
+      ctx.fill();
+      ctx.fillStyle = '#c8ff80';
+      ctx.beginPath();
+      ctx.arc(face * ms * 0.72, ms * 0.27, ms * 0.07, 0, TWO_PI);
+      ctx.fill();
+    } else if (look.mouth === 'drill') {
+      // Ring of teeth turning like a drill
+      ctx.fillStyle = '#3a0820';
+      ctx.beginPath();
+      ctx.arc(0, ms * 0.3, ms * 0.3, 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = '#ffe8f0';
+      for (let k = 0; k < 6; ++k) {
+        const a = k * TWO_PI / 6 + animTime * 5;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * ms * 0.3, ms * 0.3 + Math.sin(a) * ms * 0.3);
+        ctx.lineTo(Math.cos(a + 0.25) * ms * 0.12, ms * 0.3 + Math.sin(a + 0.25) * ms * 0.12);
+        ctx.lineTo(Math.cos(a + 0.5) * ms * 0.3, ms * 0.3 + Math.sin(a + 0.5) * ms * 0.3);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
 
     // Stun overlay
     if (e.stunTimer > 0) {
@@ -5722,12 +8885,227 @@
         drawSprite('snowflake', Math.cos(a) * sz * 0.9, -sz * 1.1 + Math.sin(a) * 4, 14);
       }
     }
-
     ctx.restore();
 
     if (e.shield > 0)
       drawEnemyShield(e, wobble);
     drawEnemyHPBar(e, sz, wobble);
+  }
+
+  // A burrower travelling under the surface: a moving hump of dirt
+  function drawBurrowMound(e) {
+    const x = e.x, y = DOME_Y + 2;
+    const w = e.size * 1.1, h = 8 + Math.sin(e.t * 9) * 2;
+    ctx.fillStyle = SPRITE_OUTLINE;
+    ctx.beginPath();
+    ctx.ellipse(x, y, w + 2, h + 2, 0, Math.PI, 0);
+    ctx.fill();
+    ctx.fillStyle = '#6a5038';
+    ctx.beginPath();
+    ctx.ellipse(x, y, w, h, 0, Math.PI, 0);
+    ctx.fill();
+    ctx.fillStyle = '#8a6c4c';
+    for (let k = -2; k <= 2; ++k) {
+      ctx.fillRect(x + k * w * 0.35 - 2, y - h * (0.5 + 0.3 * Math.sin(e.t * 7 + k)), 4, 3);
+    }
+    ctx.strokeStyle = 'rgba(30,20,10,0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x - w * 0.5, y - h * 0.4);
+    ctx.lineTo(x - w * 0.1, y - h * 0.8);
+    ctx.lineTo(x + w * 0.3, y - h * 0.5);
+    ctx.stroke();
+  }
+
+  function drawDiver(e) {
+    const sz = e.size || 16;
+    const flash = enemyHitFlash.get(e) || 0;
+    const diving = e.phase === 'dive';
+    const flap = diving ? 0.2 : Math.sin(e.wingPhase || 0);
+    const ang = diving ? e.angle + Math.PI / 2 : Math.sin(e.t * 2.2) * 0.25;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.16)';
+    ctx.beginPath();
+    ctx.ellipse(e.x, DOME_Y + 6, sz * 0.7, 3.5, 0, 0, TWO_PI);
+    ctx.fill();
+    ctx.translate(e.x, e.y);
+    ctx.rotate(ang);
+    if (diving)
+      for (let k = 1; k <= 4; ++k) {
+        ctx.fillStyle = `rgba(160,230,255,${0.18 - k * 0.035})`;
+        ctx.beginPath();
+        ctx.ellipse(0, -k * sz * 0.55, sz * 0.4, sz * 0.7, 0, 0, TWO_PI);
+        ctx.fill();
+      }
+    // Swept wings
+    for (const side of [-1, 1]) {
+      const span = diving ? 0.8 : 1.9;
+      const tipY = -sz * 0.2 + flap * sz * 0.7;
+      ctx.beginPath();
+      ctx.moveTo(side * sz * 0.25, -sz * 0.25);
+      ctx.lineTo(side * sz * span, tipY - sz * 0.35);
+      ctx.lineTo(side * sz * span * 0.7, tipY + sz * 0.15);
+      ctx.lineTo(side * sz * 0.3, sz * 0.35);
+      ctx.closePath();
+      ctx.fillStyle = '#1e7890';
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = SPRITE_OUTLINE;
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(180,240,255,0.55)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(side * sz * 0.3, -sz * 0.2);
+      ctx.lineTo(side * sz * span * 0.85, tipY - sz * 0.25);
+      ctx.stroke();
+    }
+    const body = getEnemyBody('diver');
+    const bs = sz * 2 * (96 / 72);
+    ctx.save();
+    ctx.scale(0.8, 1.15);
+    ctx.drawImage(body, -bs / 2, -bs / 2, bs, bs);
+    if (flash > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = flash;
+      ctx.drawImage(body, -bs / 2, -bs / 2, bs, bs);
+    }
+    ctx.restore();
+    // Beak and eyes
+    ctx.fillStyle = SPRITE_OUTLINE;
+    ctx.beginPath();
+    ctx.moveTo(-sz * 0.22, sz * 0.55);
+    ctx.lineTo(0, sz * 1.15);
+    ctx.lineTo(sz * 0.22, sz * 0.55);
+    ctx.fill();
+    ctx.fillStyle = '#ffd040';
+    ctx.beginPath();
+    ctx.moveTo(-sz * 0.15, sz * 0.58);
+    ctx.lineTo(0, sz * 1.02);
+    ctx.lineTo(sz * 0.15, sz * 0.58);
+    ctx.fill();
+    for (const sx of [-1, 1]) {
+      ctx.fillStyle = '#ffee60';
+      ctx.beginPath();
+      ctx.arc(sx * sz * 0.24, sz * 0.2, sz * 0.13, 0, TWO_PI);
+      ctx.fill();
+      drawGlow('#ffe040', sx * sz * 0.24, sz * 0.2, sz * 0.4, 0.5);
+    }
+    ctx.restore();
+    if (e.shield > 0)
+      drawEnemyShield(e, 0);
+    drawEnemyHPBar(e, sz, 0);
+  }
+
+  function drawQueen(e) {
+    const sz = e.size || 40;
+    const flash = enemyHitFlash.get(e) || 0;
+    const bob = Math.sin(e.wobblePhase) * 6;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(e.x, DOME_Y + 6, sz * 1.2, 7, 0, 0, TWO_PI);
+    ctx.fill();
+    ctx.translate(e.x, e.y + bob);
+    // Two pairs of shimmering wings
+    for (const [side, k] of [[-1, 0], [1, 0], [-1, 1], [1, 1]]) {
+      const flap = Math.sin((e.wingPhase || 0) * 1.4 + k * 0.6);
+      ctx.save();
+      ctx.rotate(side * (0.45 + k * 0.5 + flap * 0.25));
+      ctx.fillStyle = `rgba(255,180,240,${0.35 - k * 0.08})`;
+      ctx.strokeStyle = 'rgba(255,220,250,0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(side * sz * 0.2, -sz * (1.05 - k * 0.15), sz * 0.35, sz * (1.05 - k * 0.25), 0, 0, TWO_PI);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    // Striped abdomen
+    ctx.fillStyle = SPRITE_OUTLINE;
+    ctx.beginPath();
+    ctx.ellipse(0, sz * 0.75, sz * 0.55, sz * 0.8, 0, 0, TWO_PI);
+    ctx.fill();
+    const ag = ctx.createLinearGradient(-sz * 0.5, 0, sz * 0.5, 0);
+    ag.addColorStop(0, '#7a1468');
+    ag.addColorStop(0.5, '#ff70d8');
+    ag.addColorStop(1, '#7a1468');
+    ctx.fillStyle = ag;
+    ctx.beginPath();
+    ctx.ellipse(0, sz * 0.75, sz * 0.5, sz * 0.75, 0, 0, TWO_PI);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(40,0,30,0.55)';
+    for (let k = 0; k < 4; ++k)
+      ctx.fillRect(-sz * 0.48, sz * (0.35 + k * 0.28), sz * 0.96, sz * 0.09);
+    // Thorax / head
+    const body = getEnemyBody('queen');
+    const bs = sz * 2 * (96 / 72) * 0.8;
+    ctx.drawImage(body, -bs / 2, -bs / 2 - sz * 0.1, bs, bs);
+    if (flash > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = flash;
+      ctx.drawImage(body, -bs / 2, -bs / 2 - sz * 0.1, bs, bs);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    drawEnemyEyes(sz * 0.8, e.eyeBlinking, '#ff60e0', '#300');
+    // Crown
+    ctx.fillStyle = SPRITE_OUTLINE;
+    ctx.beginPath();
+    ctx.moveTo(-sz * 0.45, -sz * 0.55);
+    ctx.lineTo(-sz * 0.35, -sz * 1.0);
+    ctx.lineTo(-sz * 0.12, -sz * 0.75);
+    ctx.lineTo(0, -sz * 1.15);
+    ctx.lineTo(sz * 0.12, -sz * 0.75);
+    ctx.lineTo(sz * 0.35, -sz * 1.0);
+    ctx.lineTo(sz * 0.45, -sz * 0.55);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#ffd860';
+    ctx.beginPath();
+    ctx.moveTo(-sz * 0.39, -sz * 0.6);
+    ctx.lineTo(-sz * 0.32, -sz * 0.9);
+    ctx.lineTo(-sz * 0.12, -sz * 0.7);
+    ctx.lineTo(0, -sz * 1.04);
+    ctx.lineTo(sz * 0.12, -sz * 0.7);
+    ctx.lineTo(sz * 0.32, -sz * 0.9);
+    ctx.lineTo(sz * 0.39, -sz * 0.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    if (e.shield > 0)
+      drawEnemyShield(e, bob);
+    drawEnemyHPBar(e, sz, bob - sz * 0.2);
+  }
+
+  // Acid globs in flight and behemoth shockwaves
+  function drawEnemyShots() {
+    for (const s of enemyShots) {
+      const x = s.x0 + (s.tx - s.x0) * s.t;
+      const y = s.y0 + (s.ty - s.y0) * s.t - Math.sin(s.t * Math.PI) * 150;
+      drawGlow('#8aff50', x, y, 22, 0.6);
+      ctx.fillStyle = SPRITE_OUTLINE;
+      ctx.beginPath();
+      ctx.arc(x, y, 7.5, 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = '#b8ff70';
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = '#f0ffd0';
+      ctx.fillRect(x - 3, y - 3, 2, 2);
+      if (Math.random() < 0.4)
+        particles.trail(x, y, { vx: (Math.random() - 0.5), vy: 0.5, color: '#8aff50', life: 0.3, size: 1.5, gravity: 0.05 });
+    }
+    for (const w of shockwaves) {
+      const a = Math.max(0, 1 - w.r / 700);
+      ctx.strokeStyle = `rgba(255,170,120,${0.7 * a})`;
+      ctx.lineWidth = 5 * a + 1;
+      for (const dir of [-1, 1]) {
+        ctx.beginPath();
+        ctx.ellipse(w.from + dir * w.r * 0.0, DOME_Y + 4, w.r, 12 + w.r * 0.02, 0, dir > 0 ? -0.6 : Math.PI - 0.6, dir > 0 ? 0.6 : Math.PI + 0.6);
+        ctx.stroke();
+      }
+    }
   }
 
   function drawFlyer(e) {
@@ -5905,9 +9283,11 @@
 
     // Ground layer with details
     drawGroundLayer();
+    drawMeteorOre();
 
     // Dome
     drawDome();
+    drawSnowCover();
 
     // Gadget visuals on surface
     drawSurfaceGadgets();
@@ -5916,8 +9296,11 @@
     for (const e of enemies)
       drawEnemy(e);
 
+    drawEnemyShots();
+
     // Projectiles
     drawProjectiles();
+    drawWeather();
 
     drawSurfaceHUD();
 
@@ -5953,8 +9336,8 @@
           ctx.drawImage(art.cave[getDepthTier(r)][tileVariant(r, c) % art.VARIANTS], x, y);
           continue;
         }
-        drawTile(x, y, tile === TILE_GADGET ? TILE_DIRT : tile, r, c);
-        if (tile !== TILE_DIRT && tile !== TILE_GADGET)
+        drawTile(x, y, tile === TILE_GADGET || tile === TILE_CORE ? TILE_DIRT : tile, r, c);
+        if (tile !== TILE_DIRT && tile !== TILE_GADGET && tile !== TILE_CORE)
           oreTiles.push(r, c);
 
         // Cracks on partially-mined tiles
@@ -6076,7 +9459,8 @@
     const pcx = drillX * TILE_SIZE + TILE_SIZE / 2 - ox;
     const pcy = drillY * TILE_SIZE + TILE_SIZE / 2 - oy;
     const depth = drillY / GRID_ROWS;
-    const lw = CANVAS_W * 1.9, lh = CANVAS_H * 1.9 * 0.75;
+    const radar = 1 + 0.25 * getEffectiveLevel('undergroundRadar');
+    const lw = CANVAS_W * 1.9 * radar, lh = CANVAS_H * 1.9 * 0.75 * radar;
     ctx.globalAlpha = 0.6 + depth * 0.35;
     ctx.drawImage(art.light, pcx - lw / 2, pcy - lh / 2, lw, lh);
     ctx.fillStyle = '#000';
@@ -6086,6 +9470,10 @@
     if (pcy + lh / 2 < CANVAS_H) ctx.fillRect(0, pcy + lh / 2, CANVAS_W, CANVAS_H - pcy - lh / 2);
     ctx.globalAlpha = 1;
     drawGlow('#ffcf80', pcx, pcy, 150, 0.16);
+
+    // Courier drones carry their own lights; the core glows through the dark
+    drawUndergroundDrones();
+    drawRelocationCoreMarker();
 
     // Ore glints twinkle through the dark
     for (let i = 0; i < oreTiles.length; i += 2) {
@@ -6116,8 +9504,8 @@
       drawChip(`Blast [B]: ${primaryGadgetState.blastCharges}`, CANVAS_W - 58, CANVAS_H - 79, 26, { align: 'right', px: 15, bg: 'rgba(20,26,42,0.85)', border: 'rgba(255,160,64,0.6)', color: '#ffa040' });
     }
 
-    // Tool HUD (underground)
-    drawToolHUDUnderground();
+    // Tool and drone HUD (underground, right side)
+    drawDroneHUD(CANVAS_W - 296, drawToolHUDUnderground() + 12, 280);
 
     drawKeyHints([
       { key: 'Space', label: 'Surface' },
@@ -6179,14 +9567,90 @@
       }
     };
 
+    // Extra surface detail that gives each deep stratum its own look
+    const paintStyle = (g, style, base, rng, variant) => {
+      const c = rgb(base);
+      const line = (pts, col, w) => {
+        g.strokeStyle = col;
+        g.lineWidth = w;
+        g.beginPath();
+        pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y));
+        g.stroke();
+      };
+      if (style === 'slate') {
+        // Thin cleavage layers
+        for (let y = 3 + rng() * 4; y < T; y += 5 + rng() * 4) {
+          line([[0, y], [T * 0.4, y + (rng() - 0.5) * 2], [T, y + (rng() - 0.5) * 3]], shade(c, 0.7), 1);
+          line([[0, y + 1], [T, y + 1 + (rng() - 0.5) * 2]], shade(c, 1.25), 1);
+        }
+      } else if (style === 'granite') {
+        // Feldspar and mica flecks
+        for (let i = 0; i < 26; ++i) {
+          const x = rng() * T, y = rng() * T, k = rng();
+          g.fillStyle = k < 0.35 ? 'rgba(255,220,210,0.55)' : (k < 0.7 ? 'rgba(20,10,10,0.55)' : 'rgba(255,255,255,0.7)');
+          g.fillRect(x | 0, y | 0, k > 0.85 ? 2 : 1 + (rng() * 2 | 0), 1 + (rng() * 2 | 0));
+        }
+      } else if (style === 'basalt') {
+        // Column joints
+        const x1 = T * 0.33 + (rng() - 0.5) * 4, x2 = T * 0.68 + (rng() - 0.5) * 4, ym = T * (0.3 + rng() * 0.4);
+        for (const [pts, a] of [[[[x1, 0], [x1 + 2, ym], [x1, T]], 0.75], [[[x2, 0], [x2 - 2, T - ym], [x2 + 1, T]], 0.75], [[[x1 + 2, ym], [x2 - 1, ym + 3]], 0.6]]) {
+          line(pts, shade(c, 0.45), 2);
+          line(pts.map(([x, y]) => [x + 1, y + 1]), `rgba(255,255,255,${0.08 * a})`, 1);
+        }
+      } else if (style === 'obsidian') {
+        // Glassy glints and a conchoidal fracture now and then
+        for (let i = 0; i < 3; ++i) {
+          const x = rng() * T, y = rng() * T, l = 3 + rng() * 6;
+          line([[x, y], [x + l, y - l * 0.6]], `rgba(210,190,255,${0.12 + rng() * 0.18})`, 1);
+        }
+        if (rng() < 0.5) {
+          g.strokeStyle = 'rgba(220,200,255,0.16)';
+          g.lineWidth = 1;
+          g.beginPath();
+          g.arc(rng() * T, rng() * T, 5 + rng() * 6, rng() * 3, rng() * 3 + 1.6);
+          g.stroke();
+        }
+      } else if (style === 'magma') {
+        // A glowing fissure in some tiles, embers in the rest
+        if (variant === 1) {
+          const horiz = rng() < 0.5;
+          let a = rng() * T, b = 0;
+          const pts = [];
+          while (b <= T + 6) {
+            pts.push(horiz ? [b, a] : [a, b]);
+            a = Math.max(4, Math.min(T - 4, a + (rng() - 0.5) * 10));
+            b += 5 + rng() * 6;
+          }
+          line(pts, 'rgba(255,90,20,0.3)', 4);
+          line(pts, '#e8601a', 1.6);
+          line(pts, '#ffd070', 0.6);
+        }
+        for (let i = 0; i < 3; ++i) {
+          g.fillStyle = `rgba(255,${120 + rng() * 100 | 0},40,${0.4 + rng() * 0.4})`;
+          g.fillRect(rng() * T | 0, rng() * T | 0, 1 + (rng() < 0.3 ? 1 : 0), 1);
+        }
+      } else if (style === 'abyss') {
+        // Faint violet veins and pinpoint lights
+        line([[0, rng() * T], [T * 0.5, rng() * T], [T, rng() * T]], 'rgba(140,90,255,0.35)', 1);
+        for (let i = 0; i < 5; ++i) {
+          g.fillStyle = `rgba(${200 + rng() * 55 | 0},180,255,${0.35 + rng() * 0.5})`;
+          g.fillRect(rng() * T | 0, rng() * T | 0, 1, 1);
+        }
+      }
+    };
+    const STONY = { gravel: true, stone: true, slate: false, granite: true, basalt: true, obsidian: false, magma: true, abyss: false };
+
     const rng = makeRng(777);
     const dirt = [], cave = [];
     for (let t = 0; t < DEPTH_TIERS.length; ++t) {
       dirt.push([]);
       cave.push([]);
+      const tier = DEPTH_TIERS[t];
       for (let v = 0; v < VARIANTS; ++v) {
         const d = makeCanvas(T, T);
-        paintGround(d.getContext('2d'), DEPTH_TIERS[t].base, rng, t >= 5, 0.22);
+        const dg = d.getContext('2d');
+        paintGround(dg, tier.base, rng, !!STONY[tier.style], tier.style === 'obsidian' ? 0.12 : 0.22);
+        paintStyle(dg, tier.style, tier.base, rng, v);
         dirt[t].push(d);
         const cv = makeCanvas(T, T);
         const cg = cv.getContext('2d');
@@ -6516,7 +9980,13 @@
     { key: 'redstone', label: 'Rs', color: '#ff3333' },
     { key: 'emerald', label: 'Em', color: '#50c878' },
     { key: 'diamond', label: 'Di', color: '#b9f2ff' },
-    { key: 'ruby', label: 'Rb', color: '#ff4488' }
+    { key: 'ruby', label: 'Rb', color: '#ff4488' },
+    { key: 'titanium', label: 'Ti', color: '#c8dcf4' },
+    { key: 'sapphire', label: 'Sa', color: '#6aa0ff' },
+    { key: 'uranium', label: 'U', color: '#9aff5a' },
+    { key: 'amethyst', label: 'Am', color: '#d090ff' },
+    { key: 'opal', label: 'Op', color: '#ffd080' },
+    { key: 'voidstone', label: 'Vd', color: '#b48aff' }
   ];
 
   function drawResourceHUD() {
@@ -6549,7 +10019,7 @@
 
     // Cargo and depth (top-right)
     const carryX = CANVAS_W - 296, carryW = 280;
-    drawPanel(carryX, panelY, carryW, 84, { accent: '#e0c060', shadow: 10 });
+    drawPanel(carryX, panelY, carryW, 112, { accent: '#e0c060', shadow: 10 });
     const carryRatio = Math.min(carried / carryCapacity, 1);
     drawSprite('bag', carryX + 24, panelY + 24, 24);
     ctx.textAlign = 'left';
@@ -6560,14 +10030,16 @@
     drawMeter(carryX + 14, panelY + 42, carryW - 28, 10, carryRatio, carryRatio >= 1 ? '#e84040' : '#e0b030');
     ctx.textAlign = 'left';
     fitText(`Depth ${drillY} m  ·  ${DEPTH_TIERS[getDepthTier(drillY)].name}`, carryX + 16, panelY + 68, carryW - 32, 15, { color: UI.textDim });
+    drawMineClock(carryX + 14, panelY + 94, carryW - 28);
   }
 
+  // Returns the bottom edge of the panel
   function drawToolHUDUnderground() {
-    const tools = GADGET_DEFS.filter(d => unlockedTools[d.key]);
-    if (!tools.length) return;
+    const tools = TOOL_DEFS.filter(d => unlockedTools[d.key]);
+    if (!tools.length) return 128;
 
     const hudX = CANVAS_W - 296, hudW = 280;
-    const hudY = 112;
+    const hudY = 140;
     const rowH = 30;
     drawPanel(hudX, hudY, hudW, 12 + tools.length * rowH, { accent: '#9a7aff', shadow: 10 });
 
@@ -6604,6 +10076,7 @@
       ctx.textBaseline = 'middle';
       fitText(label, hudX + 66, y + 1, hudW - 66 - 20 - sw, 16, { weight: 'bold', color });
     }
+    return hudY + 12 + tools.length * rowH;
   }
 
   function parseHex(hex) {
@@ -6683,22 +10156,7 @@
       }
     }
 
-    // Droneyard: hovering drone
-    if (primaryGadget === 'droneyard') {
-      const dronePhase = primaryGadgetState.dronePhase || 0;
-      const droneY = DOME_Y - 100 + Math.sin(dronePhase) * 40;
-      const droneX = DOME_X + 70;
-      drawGlow('#7ac8ff', droneX, droneY + 14, 18, 0.5);
-      drawSprite('robot', droneX, droneY, 30);
-      // Propeller blur
-      ctx.strokeStyle = 'rgba(190,225,255,0.55)';
-      ctx.lineWidth = 2;
-      const propLen = 12 + Math.sin(animTime * 20) * 5;
-      ctx.beginPath();
-      ctx.moveTo(droneX - propLen, droneY - 17);
-      ctx.lineTo(droneX + propLen, droneY - 17);
-      ctx.stroke();
-    }
+    drawSurfaceDrones();
 
     // Auto Cannon: turret on top of dome (apex) so it can reach both sides
     if (foundGadgets.includes('autoCannon')) {
@@ -6750,6 +10208,20 @@
       ctx.lineTo(t.x, t.y);
       ctx.stroke();
       ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // Emergency Shield: golden bubble while invulnerable
+    if (domeInvulnerable > 0) {
+      const a = Math.min(1, domeInvulnerable) * (0.6 + Math.sin(animTime * 12) * 0.2);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 22, Math.PI, 0);
+      ctx.strokeStyle = `rgba(255,220,110,${a})`;
+      ctx.lineWidth = 7;
+      ctx.shadowColor = '#ffd060';
+      ctx.shadowBlur = 16;
+      ctx.stroke();
       ctx.restore();
     }
 
@@ -6813,32 +10285,30 @@
   }
 
   function drawSurfaceHUD() {
-    // Wave status (top-left)
-    drawPanel(16, 16, 300, 74, { accent: waveActive ? '#ff6a6a' : '#ffb648' });
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    if (waveActive) {
-      fitText(`Wave ${waveNumber}`, 32, 40, 268, 24, { weight: 'bold', color: '#ff8a7a' });
-      const left = enemies.length;
-      fitText(`${left} ${left === 1 ? 'enemy' : 'enemies'} remaining`, 32, 68, 268, 17, { color: UI.textDim });
-    } else {
-      fitText(`Wave ${waveNumber + 1} incoming`, 32, 38, 180, 17, { weight: 'bold', color: UI.textDim });
-      ctx.textAlign = 'right';
-      fitText(`${Math.ceil(waveTimer)}s`, 300, 38, 80, 24, { weight: 'bold', color: '#ffc870' });
-      drawMeter(32, 60, 268, 12, 1 - waveTimer / WAVE_INTERVAL, '#ff9a30');
-    }
+    // Day, time and moon (top-left)
+    drawClockPanel();
+    drawRelocateButton();
 
     drawGadgetHUD();
 
     // Score and stock (top-right)
     const sx = CANVAS_W - 340;
-    drawPanel(sx, 16, 320, 74, { accent: UI.gold });
+    drawPanel(sx, 16, 320, 118, { accent: UI.gold });
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     fitText('SCORE', sx + 16, 38, 90, 14, { weight: 'bold', color: UI.textDim });
-    fitText(`[[crate]] ${totalResources()} resources`, sx + 16, 66, 180, 16, { color: UI.textDim });
+    fitText(`[[crate]] ${totalResources()} resources`, sx + 16, 64, 170, 16, { color: UI.textDim });
     ctx.textAlign = 'right';
     fitText(String(score), sx + 304, 42, 200, 30, { weight: 'bold', color: UI.gold });
+    // Site, threat and the Relocation Core
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.fillRect(sx + 14, 79, 292, 1);
+    ctx.textAlign = 'left';
+    fitText(`Site ${site.index + 1} · ${currentBiome().name}`, sx + 16, 96, 200, 16, { weight: 'bold', color: UI.text });
+    const threat = isNight() ? Math.max(1, threatLevel()) : threatLevel() + 1; // tonight's threat
+    drawChip(`Threat ${threat}`, sx + 306, 84, 24, { align: 'right', px: 13, maxW: 96, bg: 'rgba(255,90,90,0.14)', border: 'rgba(255,120,110,0.55)', color: '#ffa090' });
+    ctx.textAlign = 'left';
+    fitText(relocationCore.found ? '[[core]] Core found: relocate when ready' : `[[core]] Core hidden below ${coreDepthHint()} m`, sx + 16, 120, 290, 14, { color: relocationCore.found ? '#7ae8ff' : UI.textMute });
 
     // Dome integrity under the dome
     const hpRatio = Math.max(0, domeHP / maxDomeHP);
@@ -6875,8 +10345,18 @@
         rows.push({ icon: 'tree', text: 'Fruit ready! Click the tree', color: '#ffe060' });
       else
         rows.push({ icon: 'tree', text: `Orchard: ${Math.ceil(primaryGadgetState.fruitTimer)}s`, color: '#4ac080' });
-    } else if (primaryGadget === 'droneyard')
-      rows.push({ icon: 'robot', text: `Drone: ${Math.ceil(primaryGadgetState.droneTimer)}s`, color: '#9cc4e8' });
+    }
+    if (drones.length || gunDrones.length || repairBot) {
+      const out = drones.filter(d => d.state !== 'dock').length;
+      const parts = [];
+      if (drones.length)
+        parts.push(`${drones.length} courier${drones.length > 1 ? 's' : ''}${out ? ' (' + out + ' out)' : ''}`);
+      if (gunDrones.length)
+        parts.push(`${gunDrones.length} gun`);
+      if (repairBot)
+        parts.push('repair');
+      rows.push({ icon: 'drone', text: 'Drones: ' + parts.join(', '), color: '#d8b8ff' });
+    }
 
     if (foundGadgets.includes('blastMining') && (primaryGadgetState.blastCharges || 0) > 0)
       rows.push({ icon: 'bomb', text: `Blast [B]: ${primaryGadgetState.blastCharges} charges`, color: '#ffa040' });
@@ -6886,7 +10366,7 @@
       rows.push({ icon: 'gear', text: MINE_GADGET_NAMES[g] || g, color: '#d0c890' });
     }
 
-    for (const def of GADGET_DEFS) {
+    for (const def of TOOL_DEFS) {
       if (!unlockedTools[def.key]) continue;
       const isActive = activeToolKey === def.key;
       const isPassive = def.key === 'scanner' || def.key === 'reinforcedDome';
@@ -6918,6 +10398,56 @@
       drawSprite(r.icon, px + 22, y, 20);
       fitText(r.text, px + 40, y + 1, pw - 52, 17, { weight: 'bold', color: r.color });
     }
+  }
+
+  // The Relocation Core in the rock, and the scanner's hint towards it
+  function drawRelocationCoreMarker() {
+    const rc = relocationCore;
+    if (rc.found) return;
+    const x = rc.c * TILE_SIZE - cameraX, y = rc.r * TILE_SIZE - cameraY;
+    if (rc.revealed && x > -TILE_SIZE && x < CANVAS_W && y > -TILE_SIZE && y < CANVAS_H) {
+      const pulse = Math.sin(animTime * 3) * 0.5 + 0.5;
+      drawGlow('#7ae8ff', x + TILE_SIZE / 2, y + TILE_SIZE / 2, TILE_SIZE * (1.2 + pulse * 0.4), 0.55);
+      drawSprite('core', x + TILE_SIZE / 2, y + TILE_SIZE / 2 + Math.sin(animTime * 2) * 2, 30);
+      if (Math.random() < 0.05)
+        particles.sparkle(x + Math.random() * TILE_SIZE, y + Math.random() * TILE_SIZE, 1, { color: '#bff4ff', speed: 0.6 });
+    }
+    // Scanners sense the core: in range it shows up, further away an arrow points to it
+    const scanRange = toolState.scannerActive ? 3 + (toolState.echoLocationActive ? 2 + getEffectiveLevel('echoLocation') : 0) : 0;
+    if (!scanRange) return;
+    const dist = Math.abs(rc.r - drillY) + Math.abs(rc.c - drillX);
+    if (dist <= scanRange) {
+      rc.revealed = true;
+      return;
+    }
+    if (dist > scanRange * 8) return;
+    const px = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX, py = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+    const a = Math.atan2(rc.r - drillY, rc.c - drillX);
+    const rr = (scanRange + 0.8) * TILE_SIZE;
+    const ax = px + Math.cos(a) * rr, ay = py + Math.sin(a) * rr;
+    const pulse = 0.5 + Math.sin(animTime * 5) * 0.4;
+    drawGlow('#7ae8ff', ax, ay, 34, pulse * 0.8);
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(a);
+    ctx.fillStyle = SPRITE_OUTLINE;
+    ctx.beginPath();
+    ctx.moveTo(22, 0);
+    ctx.lineTo(-12, -15);
+    ctx.lineTo(-5, 0);
+    ctx.lineTo(-12, 15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = `rgba(150,240,255,${0.55 + pulse * 0.45})`;
+    ctx.beginPath();
+    ctx.moveTo(18, 0);
+    ctx.lineTo(-9, -11);
+    ctx.lineTo(-3, 0);
+    ctx.lineTo(-9, 11);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    drawSprite('core', ax - Math.cos(a) * 34, ay - Math.sin(a) * 34, 24, 0.6 + pulse * 0.4);
   }
 
   function drawUndergroundGadgets() {
@@ -6987,6 +10517,8 @@
       for (let r = probeR0; r < probeR1; ++r)
         for (let c = probeC0; c < probeC1; ++c) {
           const tile = undergroundGrid[r][c];
+          if (tile === TILE_CORE && Math.abs(r - pr) + Math.abs(c - pc) <= 4)
+            relocationCore.revealed = true;
           if (!RESOURCE_TILES.includes(tile)) continue;
           if (Math.abs(r - pr) + Math.abs(c - pc) > 4) continue;
           const x = c * TILE_SIZE - cameraX;
@@ -7041,105 +10573,229 @@
      DRAWING -- UPGRADE PANEL
      ====================================================================== */
 
-  function drawUpgradePanel() {
-    const px = CANVAS_W - 340;
-    const py = 100;
-    const pw = 320;
-    const toolSectionH = showToolPanel ? 44 + GADGET_DEFS.length * 44 : 36;
-    const panelH = 60 + UPGRADE_DEFS.length * 48 + toolSectionH;
+  /* -- Quick upgrade panel: the next node of every tree branch -- */
+  const QUICK_PANEL_X = CANVAS_W - 340, QUICK_PANEL_Y = 146, QUICK_PANEL_W = 320;
+  const QUICK_HEADER_H = 44, QUICK_ROW_H = 58, QUICK_ROW_GAP = 6;
+  let resourceWeights = null;
 
-    drawPanel(px, py, pw, panelH, { title: 'Upgrades', titleRight: '[U] Full Tree', titleRightColor: UI.gold, headerH: 44 });
+  // Rarer resources weigh more when ranking which node comes next
+  function resourceWeight(key) {
+    if (!resourceWeights) {
+      resourceWeights = {};
+      for (const t in TILE_LABELS)
+        resourceWeights[TILE_LABELS[t]] = TILE_VALUES[t] || 10;
+    }
+    return resourceWeights[key] || 10;
+  }
 
-    const total = totalResources();
-    for (let i = 0; i < UPGRADE_DEFS.length; ++i) {
-      const def = UPGRADE_DEFS[i];
-      const cost = getUpgradeCost(i);
-      const ly = py + 56 + i * 48;
-      const canAfford = total >= cost;
-      const hover = mouseAimX >= px && mouseAimX <= px + pw && mouseAimY >= ly && mouseAimY < ly + 48;
+  function currentNodeCost(node) {
+    return node.costs[Math.min(getTreeNodeLevel(node.id), node.costs.length - 1)];
+  }
 
-      roundRectPath(px + 8, ly - 2, pw - 16, 44, 8);
-      ctx.fillStyle = canAfford ? (hover ? 'rgba(90,184,255,0.22)' : 'rgba(90,184,255,0.10)') : 'rgba(255,255,255,0.03)';
-      ctx.fill();
-      if (hover && canAfford) {
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = 'rgba(140,200,255,0.6)';
+  // Per branch: the cheapest node that can be bought now, otherwise the
+  // unlocked node that is closest to affordable
+  function getQuickPicks() {
+    const picks = [];
+    for (const branch of TREE_BRANCH_ORDER) {
+      let best = null, bestScore = Infinity, buyable = 0, owned = 0, total = 0;
+      for (const n of UPGRADE_TREE) {
+        if (n.branch !== branch) continue;
+        ++total;
+        if (isTreeNodeMaxed(n.id)) {
+          ++owned;
+          continue;
+        }
+        if (!arePrereqsMet(n)) continue;
+        const cost = currentNodeCost(n);
+        const afford = canAffordTreeNode(n);
+        if (afford) ++buyable;
+        let price = 0, missing = 0;
+        for (const k in cost) {
+          const w = resourceWeight(k);
+          price += cost[k] * w;
+          missing += Math.max(0, cost[k] - (resources[k] || 0)) * w;
+        }
+        const score = afford ? price : 1e7 + missing * 10 + price;
+        if (score < bestScore) {
+          bestScore = score;
+          best = n;
+        }
+      }
+      picks.push({ branch, node: best, buyable, owned, total });
+    }
+    return picks;
+  }
+
+  function getQuickPanelLayout() {
+    const x = QUICK_PANEL_X, w = QUICK_PANEL_W;
+    let y = QUICK_PANEL_Y + QUICK_HEADER_H + 8;
+    const rows = getQuickPicks().map(p => {
+      const r = Object.assign({ x: x + 10, y, w: w - 20, h: QUICK_ROW_H }, p);
+      y += QUICK_ROW_H + QUICK_ROW_GAP;
+      return r;
+    });
+    const button = { x: x + 10, y: y + 2, w: w - 20, h: 36 };
+    return { x, y: QUICK_PANEL_Y, w, h: button.y + button.h + 10 - QUICK_PANEL_Y, rows, button };
+  }
+
+  function hitQuickPanel(mx, my) {
+    if (currentView !== VIEW_SURFACE || state !== STATE_PLAYING) return null;
+    const L = getQuickPanelLayout();
+    if (mx < L.x || mx > L.x + L.w || my < L.y || my > L.y + L.h) return null;
+    for (const r of L.rows)
+      if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h)
+        return { kind: 'row', row: r };
+    const b = L.button;
+    if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h)
+      return { kind: 'tree' };
+    return { kind: 'panel' };
+  }
+
+  // A row buys its node when affordable; otherwise it opens the tree on that node
+  function activateQuickRow(r) {
+    if (!r.node) {
+      openUpgradeDialog(null, r.branch);
+      return;
+    }
+    if (treeNodeState(r.node) === 'ready') {
+      const before = getTreeNodeLevel(r.node.id);
+      tryPurchaseTreeNode(r.node);
+      if (getTreeNodeLevel(r.node.id) > before)
+        quickPanelFlash[r.branch] = performance.now();
+    } else
+      openUpgradeDialog(r.node.id);
+  }
+
+  // Background and border of an upgrade card, shared by the tree and the quick panel
+  function drawNodeFrame(x, y, w, h, color, st, highlight) {
+    roundRectPath(x, y, w, h, 12);
+    if (st === 'owned')
+      ctx.fillStyle = hexToRgba(color, 0.26);
+    else if (st === 'ready')
+      ctx.fillStyle = highlight ? hexToRgba(color, 0.3) : hexToRgba(color, 0.16);
+    else if (st === 'poor')
+      ctx.fillStyle = highlight ? 'rgba(54,48,38,0.95)' : 'rgba(40,36,30,0.95)';
+    else
+      ctx.fillStyle = 'rgba(16,18,26,0.95)';
+    ctx.fill();
+    ctx.save();
+    ctx.clip();
+    ctx.fillStyle = st === 'locked' ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.06)';
+    ctx.fillRect(x, y, w, h * 0.45);
+    ctx.restore();
+    roundRectPath(x, y, w, h, 12);
+    if (st === 'owned') {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = color;
+    } else if (st === 'ready') {
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 8 + Math.sin(animTime * 4) * 4;
+    } else if (st === 'poor') {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,182,72,0.65)';
+    } else {
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(120,130,160,0.3)';
+      ctx.setLineDash([6, 5]);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+  }
+
+  function drawQuickRow(r, hover) {
+    const color = TREE_BRANCH_COLORS[r.branch];
+    const node = r.node;
+    const complete = !node && r.owned >= r.total;
+    const st = node ? treeNodeState(node) : (complete ? 'owned' : 'locked');
+    ctx.save();
+    drawNodeFrame(r.x, r.y, r.w, r.h, color, st, hover);
+    if (hover) {
+      roundRectPath(r.x - 2, r.y - 2, r.w + 4, r.h + 4, 13);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+      ctx.stroke();
+    }
+    // Icon well
+    const ix = r.x + 8, iy = r.y + (r.h - 42) / 2;
+    roundRectPath(ix, iy, 42, 42, 9);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = hexToRgba(color, 0.45);
+    ctx.stroke();
+    drawSprite(node ? node.icon : 'check', ix + 21, iy + 21, 30, st === 'locked' ? 0.5 : 1);
+
+    const tx = r.x + 60, tw = r.w - 60 - 10;
+    // Branch name and progress (top right)
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    const tagW = fitText(TREE_BRANCH_LABELS[r.branch], r.x + r.w - 10, r.y + 15, 78, 11, { weight: 'bold', color: hexToRgba(color, 0.95), minPx: 9 });
+    ctx.textAlign = 'left';
+    if (node) {
+      const info = getTreeNodeInfo(node);
+      const title = info.title + (info.chain.length > 1 ? ' ' + toRoman(info.index + 1) : '');
+      fitText(title, tx, r.y + 16, tw - tagW - 8, 16, { weight: 'bold', color: st === 'locked' ? '#7a8298' : UI.text, minPx: 11 });
+      let extraW = 0;
+      if (r.buyable > 1) {
+        ctx.font = uiFont(12, 'bold');
+        extraW = drawChip('+' + (r.buyable - 1), r.x + r.w - 8, r.y + r.h - 28, 20, { align: 'right', px: 12, bg: hexToRgba(color, 0.2), border: hexToRgba(color, 0.6), color: '#fff' }) + 6;
+      }
+      drawCostRow(currentNodeCost(node), tx, r.y + r.h - 18, tw - extraW, 14);
+    } else {
+      fitText(complete ? 'Branch complete' : 'Nothing unlocked yet', tx, r.y + 16, tw - tagW - 8, 16, { weight: 'bold', color: complete ? UI.good : UI.textMute });
+      fitText(`${r.owned} / ${r.total} upgrades`, tx, r.y + r.h - 18, tw, 14, { color: UI.textDim });
+    }
+    // Purchase flash
+    const flash = quickPanelFlash[r.branch];
+    if (flash !== undefined) {
+      const t = (performance.now() - flash) / 600;
+      if (t >= 1)
+        delete quickPanelFlash[r.branch];
+      else {
+        roundRectPath(r.x, r.y, r.w, r.h, 12);
+        ctx.fillStyle = `rgba(255,255,255,${0.35 * (1 - t)})`;
+        ctx.fill();
+        roundRectPath(r.x - t * 10, r.y - t * 10, r.w + t * 20, r.h + t * 20, 12 + t * 6);
+        ctx.lineWidth = 3 * (1 - t);
+        ctx.strokeStyle = hexToRgba(color, 1 - t);
         ctx.stroke();
       }
-
-      drawSprite(UPGRADE_ICONS[def.key] || 'gear', px + 32, ly + 20, 26, canAfford ? 1 : 0.5);
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      fitText(def.name, px + 54, ly + 11, 160, 18, { weight: 'bold', color: canAfford ? UI.text : UI.textMute });
-      fitText('Level ' + getEffectiveLevel(def.key), px + 54, ly + 30, 160, 14, { color: canAfford ? UI.textDim : UI.textMute });
-      drawChip(String(cost), px + pw - 18, ly + 8, 26, {
-        align: 'right', maxW: 90, px: 16,
-        bg: canAfford ? 'rgba(80,200,110,0.22)' : 'rgba(255,90,90,0.10)',
-        border: canAfford ? 'rgba(111,224,138,0.7)' : 'rgba(255,106,106,0.35)',
-        color: canAfford ? UI.good : '#b06060'
-      });
     }
+    ctx.restore();
+  }
 
-    // -- Tool/Gadget section --
-    const toolY = py + 56 + UPGRADE_DEFS.length * 48 + 8;
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fillRect(px + 10, toolY - 4, pw - 20, 1);
-    ctx.fillStyle = 'rgba(255,255,255,0.06)';
-    ctx.fillRect(px + 10, toolY - 3, pw - 20, 1);
+  function drawUpgradePanel() {
+    const L = getQuickPanelLayout();
+    let owned = 0;
+    for (const r of L.rows)
+      owned += r.owned;
+    drawPanel(L.x, L.y, L.w, L.h, { title: 'Next upgrades', titleRight: `${owned} / ${UPGRADE_TREE.length}`, titleRightColor: UI.gold, headerH: QUICK_HEADER_H });
+    const hover = quickPanelHover;
+    for (const r of L.rows)
+      drawQuickRow(r, !!(hover && hover.kind === 'row' && hover.row.branch === r.branch));
 
+    // Button that opens the full tree
+    const b = L.button;
+    const hb = !!(hover && hover.kind === 'tree');
+    ctx.save();
+    roundRectPath(b.x, b.y, b.w, b.h, 9);
+    const g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+    g.addColorStop(0, hb ? 'rgba(255,215,90,0.32)' : 'rgba(255,215,90,0.16)');
+    g.addColorStop(1, hb ? 'rgba(160,110,20,0.32)' : 'rgba(120,80,10,0.18)');
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.lineWidth = hb ? 2 : 1;
+    ctx.strokeStyle = hb ? UI.gold : 'rgba(255,215,90,0.5)';
+    ctx.stroke();
+    const kw = drawChip('U', b.x + b.w - 8, b.y + 7, 22, { align: 'right', px: 13, bg: 'rgba(0,0,0,0.45)', border: 'rgba(255,255,255,0.25)', color: UI.text });
+    drawSprite('gear', b.x + 22, b.y + b.h / 2, 22);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    fitText((showToolPanel ? '▾ ' : '▸ ') + 'Tools', px + 16, toolY + 13, 120, 19, { weight: 'bold', color: UI.gold });
-    ctx.textAlign = 'right';
-    fitText(showToolPanel ? 'click to collapse' : 'click to expand', px + pw - 16, toolY + 13, 160, 14, { color: UI.textMute });
-
-    if (showToolPanel) {
-      for (let i = 0; i < GADGET_DEFS.length; ++i) {
-        const def = GADGET_DEFS[i];
-        const ly = toolY + 32 + i * 44;
-        const isUnlocked = !!unlockedTools[def.key];
-        const canAfford = !isUnlocked && resources.iron >= def.costIron && resources.cobalt >= def.costCobalt;
-        const isActive = activeToolKey === def.key;
-        const isPassive = def.key === 'scanner' || def.key === 'reinforcedDome';
-
-        roundRectPath(px + 8, ly - 4, pw - 16, 40, 8);
-        if (isUnlocked)
-          ctx.fillStyle = isActive ? 'rgba(255,215,90,0.16)' : 'rgba(111,224,138,0.10)';
-        else
-          ctx.fillStyle = canAfford ? 'rgba(90,184,255,0.10)' : 'rgba(255,255,255,0.03)';
-        ctx.fill();
-        if (isActive) {
-          ctx.lineWidth = 1;
-          ctx.strokeStyle = UI.gold;
-          ctx.stroke();
-        }
-
-        drawChip(def.shortcut, px + 16, ly + 4, 24, { px: 14, bg: 'rgba(0,0,0,0.45)', border: 'rgba(255,255,255,0.18)', color: UI.textDim });
-        drawSprite(def.icon, px + 58, ly + 16, 24, isUnlocked || canAfford ? 1 : 0.5);
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        let nameColor = canAfford ? UI.text : UI.textMute;
-        if (isUnlocked)
-          nameColor = isActive ? UI.gold : (isPassive ? UI.good : UI.text);
-        if (isUnlocked) {
-          const status = isPassive ? 'ON' : (isActive ? 'SEL' : 'OWNED');
-          const sw = drawChip(status, px + pw - 18, ly + 4, 24, { align: 'right', px: 13, bg: 'rgba(111,224,138,0.16)', color: isActive ? UI.gold : UI.good });
-          ctx.textAlign = 'left';
-          fitText(def.name, px + 76, ly + 17, pw - 76 - 26 - sw, 17, { weight: 'bold', color: nameColor });
-        } else {
-          let costText = `${def.costIron}[[iron]]`;
-          if (def.costCobalt > 0)
-            costText += ` ${def.costCobalt}[[cobalt]]`;
-          const cw = drawChip(costText, px + pw - 18, ly + 4, 24, {
-            align: 'right', px: 13, maxW: 120,
-            bg: canAfford ? 'rgba(80,200,110,0.22)' : 'rgba(255,90,90,0.10)',
-            color: canAfford ? UI.good : '#b06060'
-          });
-          ctx.textAlign = 'left';
-          fitText(def.name, px + 76, ly + 17, pw - 76 - 26 - cw, 17, { weight: 'bold', color: nameColor });
-        }
-      }
-    }
+    fitText('Open upgrade tree', b.x + 40, b.y + b.h / 2 + 1, b.w - 40 - kw - 16, 17, { weight: 'bold', color: UI.gold });
+    ctx.restore();
   }
 
 
@@ -7160,7 +10816,7 @@
       fitText('Defend your dome. Mine resources. Upgrade.', CANVAS_W / 2, 370, 660, 26, { color: UI.textDim });
       const best = highScores[0];
       if (best)
-        fitText(`Best run: ${best.score} points  ·  wave ${best.waves}`, CANVAS_W / 2, 420, 660, 18, { color: UI.gold });
+        fitText(`Best run: ${best.score} points  ·  wave ${best.waves}  ·  ${best.sites || 1} site${(best.sites || 1) > 1 ? 's' : ''}`, CANVAS_W / 2, 420, 660, 18, { color: UI.gold });
       ctx.fillStyle = 'rgba(120,180,255,0.25)';
       ctx.fillRect(CANVAS_W / 2 - 220, 450, 440, 1);
 
@@ -7234,6 +10890,9 @@
       }
     }
 
+    if (state === STATE_CONFIRM)
+      drawRelocateConfirm();
+
     if (state === STATE_PAUSED) {
       drawScrim(0.45);
       const pw = 520, ph = 250, px = CANVAS_W / 2 - pw / 2, py = CANVAS_H / 2 - ph / 2;
@@ -7249,13 +10908,14 @@
       drawScrim(0.6);
       ctx.fillStyle = 'rgba(120,0,0,0.12)';
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-      const pw = 640, ph = 400, px = CANVAS_W / 2 - pw / 2, py = CANVAS_H / 2 - ph / 2;
+      const pw = 640, ph = 460, px = CANVAS_W / 2 - pw / 2, py = CANVAS_H / 2 - ph / 2;
       drawPanel(px, py, pw, ph, { accent: '#ff5050', radius: 16 });
       drawHeadline('DOME DESTROYED', CANVAS_W / 2, py + 78, pw - 60, 60, '#ff7a6a', '#c01818');
 
       const best = highScores[0];
       const stats = [
-        ['Waves survived', String(waveNumber)],
+        ['Nights survived', String(Math.max(0, waveNumber - 1))],
+        ['Sites visited', String(site.index + 1)],
         ['Score', String(score)],
         ['Best score', best ? String(best.score) : String(score)]
       ];
@@ -7271,7 +10931,7 @@
         fitText(stats[i][1], px + pw - 80, ry + 20, 220, 24, { weight: 'bold', color: i === 1 ? UI.gold : UI.text });
       }
       if (best && score > 0 && best.score === score && best.waves === waveNumber)
-        drawChip('New high score!', CANVAS_W / 2 - 90, py + 290, 30, { px: 17, maxW: 180, bg: 'rgba(255,215,90,0.18)', border: UI.gold, color: UI.gold });
+        drawChip('New high score!', CANVAS_W / 2 - 90, py + 344, 30, { px: 17, maxW: 180, bg: 'rgba(255,215,90,0.18)', border: UI.gold, color: UI.gold });
 
       ctx.save();
       ctx.globalAlpha = 0.6 + pulse * 0.4;
@@ -7301,7 +10961,12 @@
       ctx.translate(0, slide);
     }
 
-    if (currentView === VIEW_SURFACE)
+    const treeOpen = state === STATE_UPGRADE_DIALOG;
+    if (state === STATE_CINEMATIC && cinematic)
+      drawCinematic();
+    else if (treeOpen)
+      ; // the tree is opaque and drawn below
+    else if (currentView === VIEW_SURFACE)
       drawSurface();
     else
       drawUnderground();
@@ -7323,7 +10988,10 @@
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     }
 
-    drawHUD();
+    if (!treeOpen) {
+      drawBanner();
+      drawHUD();
+    }
 
     if (state === STATE_UPGRADE_DIALOG)
       drawUpgradeDialog();
@@ -7413,6 +11081,7 @@
   }
 
   function clearTooltip() {
+    tooltip.enemy = null;
     tooltip.lines = [];
     tooltip.visible = false;
     tooltip.delayTimer = 0;
@@ -7421,6 +11090,7 @@
   }
 
   function setTooltip(x, y, lines, hoverKey, anchor) {
+    tooltip.enemy = null;
     if (hoverKey !== tooltip.lastHoverKey) {
       tooltip.delayTimer = 0;
       tooltip.visible = false;
@@ -7435,6 +11105,13 @@
   function drawTooltip() {
     if (!tooltip.visible || tooltip.lines.length === 0) return;
     if (state !== STATE_PLAYING && state !== STATE_UPGRADE_DIALOG) return;
+    if (tooltip.enemy) {
+      if (!enemies.includes(tooltip.enemy) || tooltip.enemy.hidden || currentView !== VIEW_SURFACE) {
+        clearTooltip();
+        return;
+      }
+      tooltip.lines = buildEnemyTooltip(tooltip.enemy);
+    }
 
     const padding = 14;
     const maxTextW = 440;
@@ -7526,7 +11203,11 @@
     const depthTier = DEPTH_TIERS[getDepthTier(row)];
     const depthMult = getDepthMineMultiplier(row);
 
-    if (tile === TILE_DIRT) {
+    if (tile === TILE_CORE && relocationCore.revealed) {
+      lines.push('[[core]] Relocation Core');
+      lines.push('Mine it to unlock relocating the dome');
+      lines.push('Mining: ' + getMiningDifficultyLabel(depthMult));
+    } else if (tile === TILE_DIRT || tile === TILE_CORE) {
       lines.push(depthTier.name);
       lines.push('Depth tier: ' + depthTier.name);
       lines.push('Mining: ' + getMiningDifficultyLabel(depthMult));
@@ -7547,7 +11228,7 @@
       const icon = TILE_ICONS[tile] || '';
       lines.push((icon ? '[[' + icon + ']] ' : '') + displayName);
       if (TILE_VALUES[tile])
-        lines.push('Value: ' + TILE_VALUES[tile] + ' resources');
+        lines.push('Value: ' + Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(row)) + ' ' + TILE_LABELS[tile]);
       lines.push('Depth: ' + depthTier.name);
       lines.push('Mining: ' + getMiningDifficultyLabel(depthMult));
     }
@@ -7566,32 +11247,23 @@
 
   // Build tooltip content for an enemy
   function buildEnemyTooltip(e) {
-    const lines = [];
-    let typeName;
-    if (e.boss)
-      typeName = 'Boss';
-    else if (e.type === 'flyer')
-      typeName = 'Flyer';
-    else
-      typeName = 'Walker';
-
-    lines.push(typeName + (e.armored ? ' (Armored)' : ''));
+    const T = enemyType(e);
+    const lines = [T.name, T.desc];
     lines.push('HP: ' + Math.ceil(e.hp) + ' / ' + Math.ceil(e.maxHP));
     if (e.shield > 0)
       lines.push('Shield: ' + Math.ceil(e.shield) + ' / ' + Math.ceil(e.maxShield));
     else if (e.maxShield > 0)
       lines.push('\u2718 Shield broken');
-    if (e.armored)
-      lines.push('\u26A0 Armored: 2x HP, 0.75x speed');
+    if (e.armor > 0)
+      lines.push('\u26A0 Armor: blocks ' + e.armor + ' damage per hit');
     lines.push('Damage: ' + e.damage + ' per hit');
     if (e.stunTimer > 0)
       lines.push('\u26A0 Stunned: ' + e.stunTimer.toFixed(1) + 's');
-
     return lines;
   }
 
-  // Build tooltip content for an upgrade tree node
-  function buildUpgradeNodeTooltip(node) {
+  // Build tooltip content for an upgrade tree node (quick: shown on the quick panel)
+  function buildUpgradeNodeTooltip(node, quick) {
     const lines = [];
     const lvl = getTreeNodeLevel(node.id);
     const maxed = lvl >= node.maxLevel;
@@ -7620,7 +11292,9 @@
         iron: 'Iron', water: 'Water', cobalt: 'Cobalt', copper: 'Copper',
         tin: 'Tin', coal: 'Coal', lead: 'Lead', silver: 'Silver',
         gold: 'Gold', quartz: 'Quartz', redstone: 'Redstone',
-        emerald: 'Emerald', diamond: 'Diamond', ruby: 'Ruby'
+        emerald: 'Emerald', diamond: 'Diamond', ruby: 'Ruby',
+        titanium: 'Titanium', sapphire: 'Sapphire', uranium: 'Uranium',
+        amethyst: 'Amethyst', opal: 'Fire Opal', voidstone: 'Voidstone'
       };
       let costParts = [];
       for (const key in cost)
@@ -7655,8 +11329,12 @@
       }
     }
 
-    if (!maxed && arePrereqsMet(node))
-      lines.push(canAffordTreeNode(node) ? '\u2714 Click or press Enter to buy' : '\u26A0 Not enough resources');
+    if (!maxed && arePrereqsMet(node)) {
+      if (canAffordTreeNode(node))
+        lines.push(quick ? '\u2714 Click to buy' : '\u2714 Click or press Enter to buy');
+      else
+        lines.push(quick ? '\u26A0 Not enough resources - click to see it in the tree' : '\u26A0 Not enough resources');
+    }
 
     return lines;
   }
@@ -7667,7 +11345,7 @@
 
   function updateStatusBar() {
     if (statusView) statusView.textContent = `View: ${currentView}`;
-    if (statusWave) statusWave.textContent = `Wave: ${waveNumber}`;
+    if (statusWave) statusWave.textContent = isNight() ? `Night ${world.day}: ${enemies.length} monsters` : `Day ${world.day}: night in ${Math.ceil(secondsToNight())}s`;
     if (statusDome) statusDome.textContent = `Dome: ${Math.ceil(domeHP)}/${maxDomeHP}`;
     if (statusResources) {
       let resParts = [];
@@ -7693,6 +11371,8 @@
     // Always update animations (even on title/pause/game-over for visual polish)
     animTime += state !== STATE_PLAYING ? dt : 0;
     updateGame(dt);
+    if (state === STATE_CINEMATIC)
+      updateCinematic(dt);
     updateTooltipHover(dt);
 
     particles.update();
@@ -7751,6 +11431,22 @@
     if (e.code === 'F2') {
       e.preventDefault();
       requestNewGame();
+      return;
+    }
+
+    if (state === STATE_CINEMATIC && !showTutorial) {
+      if (e.code === 'Space' || e.code === 'Escape' || e.code === 'Enter') {
+        e.preventDefault();
+        skipCinematic();
+      }
+      return;
+    }
+    if (state === STATE_CONFIRM) {
+      e.preventDefault();
+      if (e.code === 'Enter' || e.code === 'KeyY')
+        answerRelocation(true);
+      else if (e.code === 'Escape' || e.code === 'KeyN')
+        answerRelocation(false);
       return;
     }
 
@@ -7843,6 +11539,32 @@
       else if (e.code === 'ArrowLeft' || e.code === 'KeyA') { newDx = -1; newDy = 0; }
       else if (e.code === 'ArrowRight' || e.code === 'KeyD') { newDx = 1; newDy = 0; }
 
+      keeperIdle = 0;
+      // Dash: Shift + direction rushes through the tunnel
+      if ((newDx !== 0 || newDy !== 0) && e.shiftKey && unlockedTools.dash && dashCooldown <= 0) {
+        let n = 0;
+        const range = 3 + (getEffectiveLevel('dash') - 1);
+        while (n < range) {
+          const rr = drillY + newDy, cc = drillX + newDx;
+          if (rr < 0 || rr >= GRID_ROWS || cc < 0 || cc >= GRID_COLS || undergroundGrid[rr][cc] !== TILE_EMPTY) break;
+          spawnDust(drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX, drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY);
+          drillX = cc;
+          drillY = rr;
+          ++n;
+        }
+        if (n > 0) {
+          dashCooldown = 2;
+          clearMoveTarget();
+          pickUpDroppedResources();
+          SZ.GameAudio.play('whoosh', { pitch: 1.8, volume: 0.6 });
+          newDx = newDy = 0;
+        }
+      }
+      // Double Jump: two tunnel tiles per step upward
+      if (newDy === -1 && unlockedTools.doubleJump && !miningTarget && drillY >= 2 && undergroundGrid[drillY - 1][drillX] === TILE_EMPTY && undergroundGrid[drillY - 2][drillX] === TILE_EMPTY) {
+        clearMoveTarget();
+        drillY -= 1;
+      }
       if (newDx !== 0 || newDy !== 0) {
         // Cancel mining if direction changed
         if (miningTarget && miningDir && (miningDir.dx !== newDx || miningDir.dy !== newDy))
@@ -7866,6 +11588,9 @@
     // Blast mining activation
     if (e.code === 'KeyB')
       useBlastMining();
+
+    if (e.code === 'KeyL' && relocationCore.found)
+      requestRelocation();
 
     // Tool/Gadget shortcuts (1-5)
     if (e.code === 'Digit1' || e.key === '1') {
@@ -7896,6 +11621,18 @@
 
   /* -- Click/Tap handling -- */
   canvas.addEventListener('pointerdown', (e) => {
+    if (state === STATE_CINEMATIC && !showTutorial) {
+      skipCinematic();
+      return;
+    }
+    if (state === STATE_CONFIRM) {
+      const rect = canvas.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) * CANVAS_W / rect.width, my = (e.clientY - rect.top) * CANVAS_H / rect.height;
+      for (const b of confirmButtons())
+        if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h)
+          answerRelocation(b.id === 'yes');
+      return;
+    }
     if (showTutorial) {
       ++tutorialPage;
       if (tutorialPage >= TUTORIAL_PAGES.length)
@@ -8014,46 +11751,23 @@
         }
       }
 
-      // Surface view: check upgrade panel first, then fire weapon
-      const px = CANVAS_W - 340;
-      const py = 100;
-      if (mx >= px && mx <= px + 320) {
-        // Check upgrade rows
-        for (let i = 0; i < UPGRADE_DEFS.length; ++i) {
-          const ly = py + 56 + i * 48;
-          if (my >= ly && my <= ly + 48) {
-            applyUpgrade(i);
-            return;
-          }
-        }
-
-        // Check tool section header (toggle expand/collapse)
-        const toolHeaderY = py + 56 + UPGRADE_DEFS.length * 48 + 8;
-        if (my >= toolHeaderY - 8 && my <= toolHeaderY + 28) {
-          showToolPanel = !showToolPanel;
-          return;
-        }
-
-        // Check tool rows (when panel is expanded)
-        if (showToolPanel) {
-          for (let i = 0; i < GADGET_DEFS.length; ++i) {
-            const ly = toolHeaderY + 32 + i * 44;
-            if (my >= ly - 4 && my <= ly + 40) {
-              const def = GADGET_DEFS[i];
-              if (unlockedTools[def.key]) {
-                // Already unlocked -- select/activate it
-                if (def.key === 'blastTool')
-                  useBlastTool();
-                else if (def.key === 'teleporter')
-                  useTeleporter();
-                else
-                  selectTool(def.key);
-              } else
-                unlockTool(i);
-              return;
-            }
-          }
-        }
+      // Surface view: relocate button, meteor ore, the quick upgrade panel, then fire the weapon
+      if (hitRelocateButton(mx, my)) {
+        requestRelocation();
+        return;
+      }
+      const ore = hitMeteorOre(mx, my);
+      if (ore) {
+        collectMeteorOre(ore);
+        return;
+      }
+      const qp = hitQuickPanel(mx, my);
+      if (qp) {
+        if (qp.kind === 'row')
+          activateQuickRow(qp.row);
+        else if (qp.kind === 'tree')
+          openUpgradeDialog();
+        return;
       }
       // Fire weapon toward current turret aim direction
       fireRequested = true;
@@ -8114,6 +11828,19 @@
     const scaleY = CANVAS_H / rect.height;
     mouseAimX = (e.clientX - rect.left) * scaleX;
     mouseAimY = (e.clientY - rect.top) * scaleY;
+    quickPanelHover = null;
+    relocateHover = null;
+    if (state === STATE_CONFIRM) {
+      for (const b of confirmButtons())
+        if (mouseAimX >= b.x && mouseAimX <= b.x + b.w && mouseAimY >= b.y && mouseAimY <= b.y + b.h)
+          relocateHover = b.id;
+      return;
+    }
+    if (hitRelocateButton(mouseAimX, mouseAimY)) {
+      relocateHover = 'button';
+      setTooltip(mouseAimX, mouseAimY, ['[[flight]] Relocate', 'Pack up the dome and fly to a new site', relocateBlocker() ? '\u26A0 ' + relocateBlocker() : '\u2714 Click or press L'], 'relocate');
+      return;
+    }
 
     // Right-click drag panning in upgrade dialog
     if (upgradePanning && state === STATE_UPGRADE_DIALOG) {
@@ -8173,16 +11900,31 @@
         } else
           clearTooltip();
       } else if (currentView === VIEW_SURFACE) {
+        quickPanelHover = hitQuickPanel(mouseAimX, mouseAimY);
+        if (quickPanelHover) {
+          const r = quickPanelHover.row;
+          if (quickPanelHover.kind === 'row' && r.node)
+            setTooltip(mouseAimX, mouseAimY, buildUpgradeNodeTooltip(r.node, true), 'quick:' + r.node.id, { x: r.x, y: r.y, w: r.w, h: r.h });
+          else
+            clearTooltip();
+          return;
+        }
         // Surface: detect enemy under mouse
         let foundEnemy = false;
         for (const e of enemies) {
+          if (e.hidden) continue;
           const sz = e.size || 10;
           const dx = mouseAimX - e.x;
           const dy = mouseAimY - e.y;
           if (dx * dx + dy * dy < (sz + 8) * (sz + 8)) {
             const ttLines = buildEnemyTooltip(e);
-            // Use enemy position as identity since enemies don't have IDs
-            setTooltip(mouseAimX, mouseAimY, ttLines, 'enemy:' + Math.round(e.x) + ',' + Math.round(e.y));
+            if (tooltip.enemy !== e)
+              setTooltip(mouseAimX, mouseAimY, ttLines, 'enemy:' + enemies.indexOf(e) + ':' + e.type);
+            else {
+              tooltip.x = mouseAimX;
+              tooltip.y = mouseAimY;
+            }
+            tooltip.enemy = e;
             foundEnemy = true;
             break;
           }
@@ -8249,7 +11991,7 @@
   function updateWindowTitle() {
     const title = state === STATE_GAME_OVER
       ? `Dome Keeper -- Game Over -- Wave ${waveNumber}`
-      : `Dome Keeper -- Wave ${waveNumber} -- Score ${score}`;
+      : `Dome Keeper -- Day ${world.day} -- Score ${score}`;
     document.title = title;
     if (User32?.SetWindowText)
       User32.SetWindowText(title);
