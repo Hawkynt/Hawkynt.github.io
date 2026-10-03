@@ -26,7 +26,6 @@
   const STATE_PAUSED = 'PAUSED';
   const STATE_BUILD = 'BUILD';
   const STATE_GAME_OVER = 'GAME_OVER';
-  const STATE_VICTORY = 'VICTORY';
   const STATE_MAP_SELECT = 'MAP_SELECT';
   const STATE_RESEARCH = 'RESEARCH';
 
@@ -511,11 +510,10 @@
   let lives = 20;
   let currentWave = 0;
   let totalWaves = 15;
-  let endless = false;          // endless mode: waves never stop, totalWaves is Infinity
-  let endlessChoice = false;    // mode the next (re)start of a map uses
+  let cleared = false;          // the map's required waves have been held this run
 
   function waveTotalText() {
-    return endless ? '∞' : String(totalWaves);
+    return String(totalWaves);
   }
   let gameSpeed = 1;
   let selectedTowerType = -1;   // tower type chosen in the build bar, -1 = none
@@ -547,7 +545,7 @@
   let animTime = 0;
 
   /* ── Run statistics and HUD bookkeeping ── */
-  let runStats = { kills: 0, gold: 0, leaked: 0 };
+  let runStats = { kills: 0, gold: 0, leaked: 0, rp: 0 };
   let waveSize = 0;                       // enemies in the current wave
   const goldHudPos = { x: 0, y: 0 };      // where gold counts up (UI units)
 
@@ -604,7 +602,7 @@
   let lastResult = null;     // outcome of the map just finished, for the end screen
 
   function defaultMeta() {
-    return { version: 1, maps: MAPS.map(() => ({ stars: 0, best: 0, wins: 0, endless: 0 })), rp: 0, rpEarned: 0, tree: {} };
+    return { version: 1, maps: MAPS.map(() => ({ stars: 0, best: 0, wins: 0 })), rp: 0, rpEarned: 0, tree: {} };
   }
 
   function loadMeta() {
@@ -622,9 +620,9 @@
           if (i < MAPS.length && m && typeof m === 'object')
             meta.maps[i] = {
               stars: clamp(Math.floor(num(m.stars, 0)), 0, 3),
-              best: clamp(Math.floor(num(m.best, 0)), 0, MAPS[i].waves),
-              wins: Math.max(0, Math.floor(num(m.wins, 0))),
-              endless: Math.max(0, Math.floor(num(m.endless, 0)))
+              // best: furthest wave ever reached on the map
+              best: clamp(Math.floor(Math.max(num(m.best, 0), num(m.endless, 0))), 0, 9999),
+              wins: Math.max(0, Math.floor(num(m.wins, 0)))
             };
         });
       meta.rp = Math.max(0, Math.floor(num(d.rp, 0)));
@@ -663,25 +661,19 @@
     return i === 0 || meta.maps[i].stars > 0 || meta.maps[i - 1].stars > 0 || (!!savedGameInfo && savedGameInfo.map === i);
   }
 
-  function recordResult(victory) {
+  // clearedNow: the required waves were just held; reached: furthest wave of the run
+  function recordResult(clearedNow, reached) {
     const m = meta.maps[currentMap];
-    const waves = victory ? currentWave : Math.max(0, currentWave - 1);
-    if (endless) {
-      const prev = m.endless || 0;
-      m.endless = Math.max(prev, waves);
-      lastResult = { victory: false, endless: true, stars: 0, prevStars: m.stars, newBest: waves > prev, prevBest: prev, waves, t: 0 };
-      saveMeta();
-      return;
-    }
     const prevStars = m.stars;
-    const stars = victory ? starsForRun() : 0;
+    const stars = clearedNow ? starsForRun() : 0;
     const prevBest = m.best;
-    m.best = Math.max(m.best, waves);
-    if (victory) {
+    m.best = Math.max(m.best, reached);
+    if (clearedNow) {
       m.stars = Math.max(m.stars, stars);
       ++m.wins;
     }
-    lastResult = { victory, stars, prevStars, newBest: waves > prevBest, waves, t: 0, unlocked: victory && prevStars === 0 && currentMap + 1 < MAPS.length };
+    lastResult = { cleared: clearedNow || cleared, stars: clearedNow ? stars : (lastResult && lastResult.stars) || m.stars, prevStars, newBest: reached > prevBest, prevBest, waves: reached, t: 0,
+      unlocked: clearedNow && prevStars === 0 && currentMap + 1 < MAPS.length };
     saveMeta();
   }
   const SAVE_VERSION = 2;
@@ -708,7 +700,7 @@
     return {
       version: SAVE_VERSION,
       map: currentMap,
-      endless,
+      cleared,
       gold, lives,
       wave: currentWave,
       phase: state === STATE_BUILD || (state === STATE_PAUSED && pausedFrom === STATE_BUILD) ? 'build' : 'wave',
@@ -716,7 +708,7 @@
       waveComplete, waveCountdown, spawnTimer, waveSize, lastPaidWave,
       abilities: { strike: abilityCd.strike, freeze: abilityCd.freeze, rush: abilityCd.rush, rushTimer },
       waveEnemies: waveEnemies.slice(),
-      stats: { kills: runStats.kills, gold: runStats.gold, leaked: runStats.leaked },
+      stats: { kills: runStats.kills, gold: runStats.gold, leaked: runStats.leaked, rp: runStats.rp || 0 },
       towers: towers.map(t => ({
         col: t.col, row: t.row, type: TOWER_TYPES[t.type].id, tier: t.tier, branch: t.branch,
         target: t.target, kills: t.kills, dealt: Math.round(t.dealt), hp: t.hp, maxHp: t.maxHp,
@@ -738,7 +730,7 @@
     try {
       const data = serializeGame();
       localStorage.setItem(STORAGE_SAVE, JSON.stringify(data));
-      savedGameInfo = { map: data.map, wave: data.wave, waves: MAPS[data.map].waves, endless: !!data.endless };
+      savedGameInfo = { map: data.map, wave: data.wave, waves: MAPS[data.map].waves };
     } catch (_) {}
     autosaveTimer = 0;
   }
@@ -822,7 +814,7 @@
       if (!Number.isInteger(d.map) || d.map < 0 || d.map >= MAPS.length)
         throw new Error('map');
       const mapDef = MAPS[d.map];
-      if (!Number.isInteger(d.wave) || d.wave < 0 || (!d.endless && d.wave > mapDef.waves))
+      if (!Number.isInteger(d.wave) || d.wave < 0 || d.wave > 9999)
         throw new Error('wave');
       if (!isFiniteNumber(d.gold) || !Number.isInteger(d.lives) || d.lives <= 0)
         throw new Error('stats');
@@ -845,7 +837,7 @@
 
   function refreshSavedGameInfo() {
     const d = readSavedGame();
-    savedGameInfo = d ? { map: d.map, wave: d.wave, waves: MAPS[d.map].waves, endless: !!d.endless } : null;
+    savedGameInfo = d ? { map: d.map, wave: d.wave, waves: MAPS[d.map].waves } : null;
   }
 
   function continueSavedGame() {
@@ -855,8 +847,8 @@
       return false;
     }
 
-    loadMap(d.map, !!d.endless);
-    endlessChoice = !!d.endless;
+    loadMap(d.map);
+    cleared = !!d.cleared || !!d.endless || d.wave > MAPS[d.map].waves;
     gold = Math.max(0, Math.floor(d.gold));
     lives = d.lives;
     currentWave = d.wave;
@@ -869,7 +861,7 @@
     waveEnemies = d.waveEnemies.filter(isQueueToken);
     lastPaidWave = Number.isInteger(d.lastPaidWave) ? clamp(d.lastPaidWave, 0, currentWave) : (d.phase === 'build' ? currentWave : Math.max(0, currentWave - 1));
     if (d.stats)
-      runStats = { kills: num(d.stats.kills, 0), gold: num(d.stats.gold, 0), leaked: num(d.stats.leaked, 0) };
+      runStats = { kills: num(d.stats.kills, 0), gold: num(d.stats.gold, 0), leaked: num(d.stats.leaked, 0), rp: num(d.stats.rp, 0) };
 
     // Towers: anything that no longer fits the map is refunded
     for (const o of d.towers) {
@@ -1120,19 +1112,20 @@
   }
 
 
-  function loadMap(index, isEndless) {
+  // carry: gold brought along from the previous map
+  function loadMap(index, carry) {
     currentMap = index;
     const mapDef = MAPS[currentMap];
-    endless = !!isEndless;
-    gold = mapDef.startGold + techLevel('chest') * 25;
+    cleared = false;
+    gold = mapDef.startGold + techLevel('chest') * 25 + (carry || 0);
     lives = startLives();
-    totalWaves = endless ? Infinity : mapDef.waves;
+    totalWaves = mapDef.waves;
     currentWave = 0;
     gameSpeed = 1;
     resetBattlefield();
     buildPathCells(mapDef);
     buildPaths(mapDef);
-    runStats = { kills: 0, gold: 0, leaked: 0 };
+    runStats = { kills: 0, gold: 0, leaked: 0, rp: 0 };
     shownGold = gold;
     state = STATE_BUILD;
     updateWindowTitle();
@@ -1413,7 +1406,7 @@
       if (groups.indexOf(k) < 0) groups.push(k);
     }
     if (groups.indexOf('normal') < 0 && waveNo <= 4) groups.push('normal');
-    // Past the map's last wave (endless mode) elites keep growing more common
+    // Past the map's required waves elites keep growing more common
     const eliteChance = waveNo > waves ? Math.min(0.4, 0.22 + (waveNo - waves) * 0.01) : clamp((progress - 0.4) * 0.5, 0, 0.22);
     const boss = isBossWave(waveNo, waves);
     if (boss) budget *= 0.6;
@@ -1428,7 +1421,7 @@
         queue.push(groups[g] + (rng() < eliteChance && !def.pack ? '!' : ''));
     }
     if (boss) {
-      // Deep into endless mode several bosses march together
+      // Long after the required waves several bosses march together
       const count = waveNo > waves ? 1 + Math.floor((waveNo - waves) / 20) : 1;
       for (let b = 0; b < count; ++b) {
         const bossType = waveNo === waves ? bossPool[mi % bossPool.length] : bossPool[(Math.floor(waveNo / 5) - 1 + b * 3) % bossPool.length];
@@ -1457,29 +1450,36 @@
   function nextWavePreview() {
     const key = currentMap + ':' + (currentWave + 1);
     if (previewCache.key !== key)
-      previewCache = { key, list: currentWave < totalWaves ? summarizeWave(generateWave(currentWave + 1)) : [] };
+      previewCache = { key, list: summarizeWave(generateWave(currentWave + 1)) };
     return previewCache.list;
   }
-  function triggerVictory() {
-    state = STATE_VICTORY;
-    clearSavedGame();
-    addHighScore(MAPS[currentMap].name, currentWave);
-    recordResult(true);
-    awardResearch(true, Math.max(0, lastResult.stars - lastResult.prevStars));
+  // The map's required waves are held: stars, research and the next level open up,
+  // but the waves keep coming for as long as the player wants to stay
+  function mapCleared() {
+    cleared = true;
+    recordResult(true, currentWave);
+    const newStars = Math.max(0, lastResult.stars - lastResult.prevStars);
+    const rp = awardResearch(true, newStars);
     for (let i = 0; i < 5; ++i)
       particles.confetti(WORLD_W * (0.15 + i * 0.175), WORLD_H * 0.6, 24, {});
     screenShake.trigger(6, 300);
     audio.play('win');
+    const stars = '★'.repeat(lastResult.stars) + '☆'.repeat(3 - lastResult.stars);
+    showBanner('MAP CLEARED', `${stars}  ·  +${rp} research  ·  ${currentMap + 1 < MAPS.length ? 'next level open (L)' : 'hold as long as you can'}`, UI.gold, 3.2);
     updateWindowTitle();
+  }
+
+  // Further maps pay better: more gold per kill and more research per wave
+  function mapBountyMul(mi) {
+    return 1 + mi * 0.06;
+  }
+
+  function mapResearchMul(mi) {
+    return 1 + mi * 0.15;
   }
 
   function startNextWave() {
     if (state !== STATE_BUILD && !canCallEarly()) return;
-    if (currentWave >= totalWaves) {
-      if (state === STATE_BUILD)
-        triggerVictory();
-      return;
-    }
     const early = state === STATE_PLAYING;
     const queue = generateWave(currentWave + 1);
     if (early) {
@@ -1513,7 +1513,7 @@
 
   // During a wave the next one may be called once the current one is fully on the field
   function canCallEarly() {
-    return state === STATE_PLAYING && currentWave < totalWaves && waveEnemies.length === 0;
+    return state === STATE_PLAYING && waveEnemies.length === 0;
   }
 
   function announceWave() {
@@ -1568,7 +1568,7 @@
   // Health multiplier of a wave (1-based) on the current map
   function waveHpScale(waveNo) {
     const w = Math.max(0, waveNo - 1);
-    // Beyond the map's last wave (endless mode) health also grows by 7% a wave
+    // Beyond the map's required waves health also grows by 7% a wave
     const extra = Math.max(0, waveNo - MAPS[currentMap].waves);
     return (1 + 0.11 * w + 0.012 * w * w) * (MAPS[currentMap].hpMul || 1) * Math.pow(1.07, extra);
   }
@@ -2374,7 +2374,7 @@
     const f = enemyFlags(e);
     addCorpse(e);
     deathFx(e);
-    let bounty = Math.round(e.bounty * (1 + techLevel('bounty') * 0.1) * (rushTimer > 0 ? 2 : 1));
+    let bounty = Math.round(e.bounty * mapBountyMul(currentMap) * (1 + techLevel('bounty') * 0.1) * (rushTimer > 0 ? 2 : 1));
     for (const t of towers) {
       const s = towerStats(t);
       if (s.bounty && Math.hypot(t.x - e.x, t.y - e.y) <= s.rangePx)
@@ -2429,9 +2429,10 @@
       audio.play('lose');
       state = STATE_GAME_OVER;
       clearSavedGame();
-      addHighScore(MAPS[currentMap].name + (endless ? ' (endless)' : ''), Math.max(0, currentWave - 1));
-      recordResult(false);
-      awardResearch(false, 0);
+      addHighScore(MAPS[currentMap].name, Math.max(0, currentWave - 1));
+      recordResult(false, Math.max(0, currentWave - 1));
+      if (!cleared) awardResearch(false, 0);
+      else lastRp = runStats.rp || 0;
       screenShake.trigger(8, 500);
       updateWindowTitle();
     }
@@ -2608,14 +2609,15 @@
       }
       if (autoWaveMode)
         autoWaveTimer = AUTO_WAVE_DELAY;
-      if (currentWave >= totalWaves)
-        triggerVictory();
+      payWaveIncome(Math.max(1, currentWave - lastPaidWave));
+      lastPaidWave = currentWave;
+      if (!cleared && currentWave >= totalWaves)
+        mapCleared();
       else {
-        payWaveIncome(Math.max(1, currentWave - lastPaidWave));
-        lastPaidWave = currentWave;
+        if (cleared) awardWaveResearch();
         audio.play('levelup');
-        saveGame();
       }
+      saveGame();
     }
   }
   let lastPaidWave = 0;
@@ -6666,17 +6668,30 @@
     return true;
   }
 
-  // Research points: one per wave cleared, more for winning and for new stars
+  // Research points: one per wave held, more for clearing a map and for new stars;
+  // further maps multiply all of it
   let lastRp = 0;
   function awardResearch(victory, newStars) {
     const waves = victory ? currentWave : Math.max(0, currentWave - 1);
-    // Endless runs pay for every wave plus a bonus every ten waves
-    const rp = endless ? waves + Math.floor(waves / 10) * 5 : waves + (victory ? 5 : 0) + newStars * 5;
+    const rp = Math.round((waves + (victory ? 5 : 0) + newStars * 5) * mapResearchMul(currentMap));
+    grantResearch(rp);
+    lastRp = runStats.rp;
+    return rp;
+  }
+
+  // Each wave held after the map is cleared pays its research right away
+  function awardWaveResearch() {
+    const rp = Math.max(1, Math.round(mapResearchMul(currentMap)));
+    grantResearch(rp);
+    floatingText.add(WORLD_W / 2, WORLD_H * 0.22, `+${rp} research`, { color: '#d8b8ff', font: 'bold 13px sans-serif' });
+    return rp;
+  }
+
+  function grantResearch(rp) {
     meta.rp += rp;
     meta.rpEarned += rp;
-    lastRp = rp;
+    runStats.rp = (runStats.rp || 0) + rp;
     saveMeta();
-    return rp;
   }
 
   /* ── Effects of the research on a match ── */
@@ -7448,14 +7463,18 @@
     drawIcon('flag', x + 19, y + h / 2, 20);
     ctx.textAlign = 'left';
     fitText('WAVE', x + 34, y + 12, 50, 9, { weight: 'bold', color: UI.textDim });
-    fitText(`${currentWave} / ${waveTotalText()}`, x + 34, y + 27, ww - 42, 16, { weight: 'bold', color: '#ffffff' });
+    fitText(cleared ? `${currentWave} ✓` : `${currentWave} / ${totalWaves}`, x + 34, y + 27, ww - 42, 16, { weight: 'bold', color: cleared ? UI.gold : '#ffffff' });
     const left = waveEnemies.length + enemies.length;
-    const prog = state === STATE_PLAYING && waveSize > 0 ? 1 - left / waveSize : (currentWave >= totalWaves ? 1 : 0);
-    drawMeter(x + 92, y + h / 2 - 4, ww - 102, 8, state === STATE_PLAYING ? prog : (endless ? 0 : currentWave / totalWaves), state === STATE_PLAYING ? UI.warn : UI.accent);
+    const prog = state === STATE_PLAYING && waveSize > 0 ? 1 - left / waveSize : 0;
+    drawMeter(x + 92, y + h / 2 - 4, ww - 102, 8, state === STATE_PLAYING ? prog : Math.min(1, currentWave / totalWaves), state === STATE_PLAYING ? UI.warn : cleared ? UI.gold : UI.accent);
     endHudPanel();
-    addRegion({ id: 'hud-wave', x, y, w: ww, h, tip: () => state === STATE_PLAYING
-      ? [`Wave ${currentWave} of ${waveTotalText()}`, `${left} enemies left in this wave`]
-      : [`Wave ${currentWave} of ${waveTotalText()}`, endless ? `Endless mode · best ${meta.maps[currentMap].endless || 0}` : currentWave >= totalWaves ? 'All waves cleared' : `Next: wave ${currentWave + 1}`] });
+    addRegion({ id: 'hud-wave', x, y, w: ww, h, tip: () => {
+      const lines = [`Wave ${currentWave}`, cleared ? `Map cleared: you held the ${totalWaves} required waves.` : `Hold ${totalWaves} waves to clear the map (${Math.max(0, totalWaves - currentWave)} to go).`];
+      if (state === STATE_PLAYING) lines.push(`${left} enemies left in this wave`);
+      if (cleared) lines.push('• Waves keep coming and growing; each one now pays research.');
+      lines.push(`★ Best on this map: wave ${meta.maps[currentMap].best}`);
+      return lines;
+    } });
     x += ww + 6;
 
     // Right group: speed, auto, help, pause
@@ -7485,19 +7504,13 @@
     hudPanel('next', x, y, w, h, UI.warn);
     const bw = Math.min(150, w * 0.42);
     const bx = x + w - bw - 5;
-    const hasNext = currentWave < totalWaves;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    if (!hasNext) {
-      fitText(state === STATE_PLAYING ? 'Final wave on the field' : 'All waves cleared', x + 10, y + h / 2, w - 20, 14, { weight: 'bold', color: state === STATE_PLAYING ? UI.bad : UI.good });
-      endHudPanel();
-      return;
-    }
     const nextNo = currentWave + 1;
     const boss = isBossWave(nextNo, totalWaves);
     const labelW = 62;
     fitText('NEXT', x + 10, y + 12, labelW - 8, 9, { weight: 'bold', color: UI.textDim });
-    fitText(nextNo === totalWaves ? 'Final' : `Wave ${nextNo}`, x + 10, y + 27, labelW - 6, 13, { weight: 'bold', color: boss ? UI.bad : '#ffffff' });
+    fitText(nextNo === totalWaves ? 'Goal!' : `Wave ${nextNo}`, x + 10, y + 27, labelW - 6, 13, { weight: 'bold', color: boss ? UI.bad : nextNo === totalWaves ? UI.gold : '#ffffff' });
     // Enemy icons with counts
     const list = nextWavePreview();
     const ix = x + labelW + 4, iw = bx - ix - 6;
@@ -7533,6 +7546,52 @@
         tip: () => ['Call the next wave early', canCallEarly() ? `Sends wave ${nextNo} right away for ${bonus} bonus gold.` : 'Possible once the current wave is fully on the field.', '• N calls early']
       });
     }
+    endHudPanel();
+  }
+
+  /* ── Next level: offered once the map is cleared ── */
+  function carryGold() {
+    return Math.floor(Math.min(gold, 2000) * 0.25);
+  }
+
+  function nextLevelAvailable() {
+    return cleared && currentMap + 1 < MAPS.length && (state === STATE_BUILD || state === STATE_PLAYING || state === STATE_GAME_OVER);
+  }
+
+  function nextLevelGains() {
+    const n = currentMap + 1;
+    const b = Math.round((mapBountyMul(n) / mapBountyMul(currentMap) - 1) * 100);
+    const r = Math.round((mapResearchMul(n) / mapResearchMul(currentMap) - 1) * 100);
+    return { bounty: b, research: r, carry: carryGold() };
+  }
+
+  function nextLevelTooltip() {
+    const n = MAPS[currentMap + 1], g = nextLevelGains();
+    return [`Next level: ${n.name}`, BIOMES[n.biome].name + ' · ' + n.waves + ' waves to clear',
+      '--- Moving on ---',
+      `✔ +${g.bounty}% gold per kill, +${g.research}% research per wave`,
+      `✔ Brings ${g.carry} gold along (a quarter of what you hold, up to 500)`,
+      '✔ Research, relics and unlocked towers always come with you',
+      '⚠ Towers stay behind: you build anew on the next map',
+      '• Staying here keeps the waves coming, but they grow fast', '• Key L'];
+  }
+
+  function drawNextLevelButton() {
+    if (!nextLevelAvailable() || state === STATE_GAME_OVER) return;
+    const n = MAPS[currentMap + 1], g = nextLevelGains();
+    const w = Math.min(340, UW - 40), h = 44;
+    const x = UW / 2 - w / 2, y = UH - BOT_H - h - 8;
+    beginHudPanel('nextlevel', x, y, w, h);
+    const glow = 0.35 + 0.25 * Math.sin(animTime * 3);
+    roundRectPath(x - 3, y - 3, w + 6, h + 6, 12);
+    ctx.strokeStyle = `rgba(255,215,90,${glow})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    uiButton('next-level', x, y, w, h, `Next level: ${n.name}`, {
+      style: 'gold', icon: 'play', px: 14, key: 'L',
+      sub: `+${g.bounty}% gold · +${g.research}% research · carry ${g.carry} gold`,
+      onClick: goNextLevel, tip: nextLevelTooltip
+    });
     endHudPanel();
   }
 
@@ -8188,7 +8247,7 @@
     const bw = pw - 40;
     if (savedGameInfo) {
       const sm = MAPS[savedGameInfo.map];
-      uiButton('title-continue', px + 20, y, bw, 52, 'Continue', { style: 'gold', icon: 'play', px: 17, key: 'Enter', sub: savedGameInfo.endless ? `${sm.name} · endless · wave ${savedGameInfo.wave}` : `${sm.name} · wave ${savedGameInfo.wave} of ${savedGameInfo.waves}`, onClick: () => continueSavedGame() });
+      uiButton('title-continue', px + 20, y, bw, 52, 'Continue', { style: 'gold', icon: 'play', px: 17, key: 'Enter', sub: `${sm.name} · wave ${savedGameInfo.wave}`, onClick: () => continueSavedGame() });
       y += 60;
     }
     uiButton('title-campaign', px + 20, y, bw, savedGameInfo ? 42 : 52, 'Campaign', { style: savedGameInfo ? 'dark' : 'gold', icon: 'flag', px: savedGameInfo ? 15 : 17, key: savedGameInfo ? 'C' : 'Enter',
@@ -8225,19 +8284,13 @@
     loadMapPreview();
   }
 
-  function playSelectedMap(isEndless) {
-    if (!mapUnlocked(mapSelectIndex) || (isEndless && !endlessUnlocked(mapSelectIndex))) {
+  function playSelectedMap() {
+    if (!mapUnlocked(mapSelectIndex)) {
       audio.play('error');
       return;
     }
     currentMap = mapSelectIndex;
-    endlessChoice = !!isEndless;
     requestNewGame();
-  }
-
-  // Endless mode opens once the map has been won
-  function endlessUnlocked(i) {
-    return meta.maps[i].stars > 0;
   }
 
   function difficultyOf(i) {
@@ -8370,7 +8423,7 @@
     ctx.textBaseline = 'middle';
     const ny = ty + th + (h - th - 6) / 2 - 1;
     fitText(`${i + 1}. ${m.name}`, x + 8, ny - 7, w * 0.62, 12, { weight: 'bold', color: locked ? UI.textMute : '#ffffff' });
-    fitText((rec.best ? `Best ${rec.best}/${m.waves}` : `${m.waves} waves`) + (rec.endless ? ` · ∞${rec.endless}` : ''), x + 8, ny + 8, w * 0.6, 10, { color: UI.textDim });
+    fitText(rec.best ? `Best wave ${rec.best} · goal ${m.waves}` : `Goal ${m.waves} waves`, x + 8, ny + 8, w * 0.6, 10, { color: UI.textDim });
     drawStars(rec.stars, x + w - 8 - Math.min(13, w * 0.09) * 1.6, ny, Math.min(13, w * 0.09));
     ctx.restore();
     addRegion({ id, x, y, w, h, onClick: () => {
@@ -8395,12 +8448,13 @@
       cy += 52;
     }
     const rows = [
-      ['flag', 'Waves', String(m.waves)],
+      ['flag', 'Waves to clear', String(m.waves)],
+      ['up', 'Rewards', `+${Math.round((mapBountyMul(i) - 1) * 100)}% gold, +${Math.round((mapResearchMul(i) - 1) * 100)}% research`],
       ['coin', 'Starting gold', String(m.startGold + techLevel('chest') * 25)],
       ['heart', 'Lives', String(m.startLives + techLevel('fortify') * 3)],
       ['skull', 'Difficulty', '●'.repeat(difficultyOf(i)) + '○'.repeat(5 - difficultyOf(i))],
       ['range', 'Roads', m.paths.length > 1 ? `${m.paths.length} (enemies split)` : '1'],
-      ['crown', 'Best', (rec.best ? `wave ${rec.best}` : '—') + (rec.endless ? ` · ∞ ${rec.endless}` : '')]
+      ['crown', 'Best', rec.best ? `wave ${rec.best}` : '—']
     ];
     const colW = wide ? (w - 24 - 170) / 2 : w - 24;
     rows.forEach((r, k) => {
@@ -8412,7 +8466,7 @@
       ctx.textAlign = 'right';
       fitText(r[2], rx + colW - 6, ry + 9, colW * 0.5, 12, { weight: 'bold', color: '#ffffff' });
     });
-    const by = wide ? y + h - 52 : y + h - 130;
+    const by = wide ? y + h - 52 : y + h - 92;
     const bx = wide ? x + w - 170 : x + 12, bw = wide ? 158 : w - 24;
     if (!wide) {
       drawStars(rec.stars, x + w / 2, by - 8, 20);
@@ -8420,18 +8474,12 @@
     uiButton('ms-play', bx, wide ? y + 34 : by + 10, bw, wide ? 40 : 44, locked ? 'Locked' : (savedGameInfo && savedGameInfo.map === i ? 'Restart' : 'Play'), {
       style: locked ? 'dark' : 'gold', icon: locked ? 'lock' : 'play', px: 15, key: 'Enter', disabled: locked,
       sub: locked ? 'Win the previous map first' : `${['', '★', '★★', '★★★'][rec.stars] || 'Not yet won'}`,
-      onClick: () => playSelectedMap(false), onDisabled: () => audio.play('error')
+      onClick: () => playSelectedMap(), onDisabled: () => audio.play('error')
     });
-    const eOpen = endlessUnlocked(i);
-    uiButton('ms-endless', bx, wide ? y + 80 : by + 60, bw, wide ? 32 : 36, eOpen ? 'Endless' : 'Endless (win first)', {
-      style: eOpen ? 'blue' : 'dark', icon: eOpen ? 'loop' : 'lock', px: 13, key: 'E', disabled: !eOpen,
-      sub: eOpen ? `Best wave ${rec.endless || 0}` : null,
-      onClick: () => playSelectedMap(true), onDisabled: () => audio.play('error'),
-      tip: () => ['Endless mode', 'Waves never stop and keep getting harder; bosses come every five waves.', 'Every wave cleared earns research, with a bonus every ten.', eOpen ? `★ Best: wave ${rec.endless || 0}` : '✘ Win this map to open it']
-    });
+
     if (!wide && savedGameInfo && savedGameInfo.map !== i) {
       ctx.textAlign = 'center';
-      fitText('⚠ Starting replaces your saved game', x + w / 2, by + 106, w - 20, 10, { color: UI.warn });
+      fitText('⚠ Starting replaces your saved game', x + w / 2, by + 68, w - 20, 10, { color: UI.warn });
     }
   }
 
@@ -8460,43 +8508,27 @@
     uiButton('p-title', px + 20, y, bw, 36, 'Main menu', { style: 'dark', key: 'M', onClick: quitToTitle, tip: () => ['Main menu', 'Your game is saved; Continue picks it up again.'] });
   }
 
-  function drawEndScreen(victory) {
+  // The run is over: a defeat before the map was cleared, or the end of a stand after it
+  function drawEndScreen() {
     drawScrim(0.62);
     const cx = UW / 2;
-    const res = lastResult || { stars: 0, prevStars: 0 };
-    res.t = (res.t || 0) + frameDt;
-    const pw = Math.min(440, UW - 40), ph = victory ? 340 : 296;
+    const res = lastResult || { stars: 0, prevStars: 0, waves: 0, prevBest: 0 };
+    const held = !!res.cleared;
+    const hasNext = held && currentMap + 1 < MAPS.length;
+    const pw = Math.min(440, UW - 40), ph = held ? 330 : 296;
     const px = cx - pw / 2, py = clamp(UH / 2 - ph / 2 + 30, 80, UH - ph - 10);
-    const isEndless = !!res.endless;
-    drawHeadline(isEndless ? 'ENDLESS OVER' : victory ? 'VICTORY' : 'DEFEAT', cx, py - 40, UW - 40, 58, isEndless ? '#7ab8ff' : victory ? UI.gold : '#ff5a5a', isEndless ? '#2a5a9a' : victory ? '#ff9a2a' : '#9a1a1a');
-    drawPanel(px, py, pw, ph, { title: MAPS[currentMap].name + (isEndless ? ' · Endless' : ''), titleRight: victory ? 'Map cleared' : `Fell at wave ${currentWave}`, accent: isEndless ? '#7ab8ff' : victory ? UI.gold : UI.bad, radius: 12 });
+    drawHeadline(held ? 'STAND ENDED' : 'DEFEAT', cx, py - 40, UW - 40, 58, held ? UI.gold : '#ff5a5a', held ? '#ff9a2a' : '#9a1a1a');
+    drawPanel(px, py, pw, ph, { title: MAPS[currentMap].name, titleRight: held ? 'Map cleared' : `Fell at wave ${currentWave}`, accent: held ? UI.gold : UI.bad, radius: 12 });
     let y = py + 44;
-    if (isEndless) {
+    if (held) {
+      drawStars(meta.maps[currentMap].stars, cx, y + 12, 26);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      fitText(res.newBest ? `New record: wave ${res.waves}!` : `Reached wave ${res.waves} · record ${res.prevBest}`, cx, y + 4, pw - 40, 15, { weight: 'bold', color: res.newBest ? UI.gold : UI.text });
-      y += 22;
-    }
-    if (victory) {
-      // Stars pop in one after another
-      for (let i = 0; i < 3; ++i) {
-        const t = clamp((res.t - 0.3 - i * 0.35) / 0.3, 0, 1);
-        const earned = i < res.stars;
-        const s = earned ? 34 * (t < 1 ? 0.4 + 0.9 * Math.sin(t * Math.PI * 0.75) : 1) : 30;
-        drawIcon(earned && t > 0 ? 'star' : 'starEmpty', cx + (i - 1) * 46, y + 22, s);
-        if (earned && t > 0 && t < 1 && !res['snd' + i]) {
-          res['snd' + i] = true;
-          audio.play('coin', { pitch: 1 + i * 0.2 });
-        }
-      }
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const msg = res.stars > res.prevStars ? (res.prevStars ? 'New best rating!' : res.unlocked ? 'Next map unlocked!' : 'Map won!') : 'Map won again';
-      fitText(msg, cx, y + 52, pw - 40, 12, { weight: 'bold', color: UI.good });
-      y += 66;
+      fitText(res.newBest ? `New record on this map: wave ${res.waves}!` : `Held to wave ${res.waves} · record ${Math.max(res.prevBest, res.waves)}`, cx, y + 38, pw - 40, 13, { weight: 'bold', color: res.newBest ? UI.gold : UI.text });
+      y += 54;
     }
     const stats = [
-      ['flag', 'Waves survived', `${victory ? currentWave : Math.max(0, currentWave - 1)} / ${waveTotalText()}`],
+      ['flag', 'Waves held', `${Math.max(0, currentWave - 1)} (goal ${totalWaves})`],
       ['skull', 'Enemies defeated', String(runStats.kills)],
       ['coin', 'Gold earned', String(runStats.gold)],
       ['heart', 'Lives left', `${lives} / ${startLives()}`]
@@ -8507,7 +8539,7 @@
       ctx.textBaseline = 'middle';
       fitText(label, px + 46, y + 10, pw * 0.5, 13, { color: UI.textDim });
       ctx.textAlign = 'right';
-      fitText(value, px + pw - 24, y + 10, pw * 0.35, 15, { weight: 'bold', color: '#ffffff' });
+      fitText(value, px + pw - 24, y + 10, pw * 0.4, 15, { weight: 'bold', color: '#ffffff' });
       y += 24;
     }
     drawIcon('flask', px + 30, y + 9, 16);
@@ -8517,20 +8549,19 @@
     fitText(`+${lastRp}  (${meta.rp} to spend)`, px + pw - 24, y + 10, pw * 0.45, 15, { weight: 'bold', color: '#e0ccff' });
     y += 34;
     const bw = (pw - 52) / 2;
-    if (victory) {
-      const hasNext = currentMap + 1 < MAPS.length;
-      uiButton('end-next', px + 20, y, bw, 44, hasNext ? 'Next map' : 'Campaign', { style: 'gold', icon: 'play', key: 'Enter', px: 14,
-        onClick: () => { if (hasNext) { currentMap += 1; resetAndStart(); } else openMapSelect(); } });
-      uiButton('end-retry', px + 32 + bw, y, bw, 44, 'Play again', { style: 'dark', key: 'R', px: 14, onClick: resetAndStart });
-      uiButton('end-maps', px + 20, y + 52, bw, 32, 'Campaign map', { style: 'dark', key: 'M', px: 12, onClick: openMapSelect });
-      uiButton('end-research', px + 32 + bw, y + 52, bw, 32, 'Research', { style: 'dark', icon: 'flask', key: 'T', px: 12, onClick: openResearch });
+    if (hasNext) {
+      uiButton('end-next', px + 20, y, bw, 44, 'Next level', { style: 'gold', icon: 'play', key: 'L', px: 14, onClick: goNextLevel, tip: nextLevelTooltip });
+      uiButton('end-retry', px + 32 + bw, y, bw, 44, 'Try again', { style: 'dark', key: 'Enter', px: 14, onClick: resetAndStart });
     } else {
       uiButton('end-retry', px + 20, y, bw, 44, 'Try again', { style: 'gold', icon: 'play', key: 'Enter', px: 14, onClick: resetAndStart });
       uiButton('end-maps', px + 32 + bw, y, bw, 44, 'Campaign map', { style: 'dark', key: 'M', px: 13, onClick: openMapSelect });
-      uiButton('end-research', px + 20, y + 52, pw - 40, 32, `Research · ${meta.rp} to spend`, { style: 'dark', icon: 'flask', key: 'T', px: 12, onClick: openResearch });
     }
+    if (hasNext) {
+      uiButton('end-maps', px + 20, y + 52, bw, 32, 'Campaign map', { style: 'dark', key: 'M', px: 12, onClick: openMapSelect });
+      uiButton('end-research', px + 32 + bw, y + 52, bw, 32, 'Research', { style: 'dark', icon: 'flask', key: 'T', px: 12, onClick: openResearch });
+    } else
+      uiButton('end-research', px + 20, y + 52, pw - 40, 32, `Research · ${meta.rp} to spend`, { style: 'dark', icon: 'flask', key: 'T', px: 12, onClick: openResearch });
   }
-
   /* ── Help pages ── */
   const HELP_PAGES = [
     { title: 'Basics', body: [
@@ -8538,8 +8569,8 @@
       ['hammer', 'Choose a tower in the build bar (or press 1-0) and click a free tile beside the road. Spike traps go on the road itself. A green outline means you can build there.'],
       ['eye', 'The NEXT panel shows the enemies of the coming wave. Hover them to learn what counters them. Press Start (Space) when you are ready, or call a wave early (N) for bonus gold.'],
       ['coin', 'Defeated enemies drop gold and every cleared wave pays a bonus. Gold Mines dig up more.'],
-      ['star', 'Win a map to unlock the next one. Keep 50% of your lives for two stars and 90% for three.'],
-      ['loop', 'Every map you have won also opens its Endless mode: waves never stop, bosses come every five waves, and your best wave is recorded.']
+      ['star', 'Hold a map\'s required waves to clear it: keep 50% of your lives for two stars, 90% for three. The waves never stop, though: stay to grind gold and research, or press Next level (L).'],
+      ['loop', 'Further maps pay more gold and research. Moving on brings research, relics, unlocked towers and a quarter of your gold (up to 500); towers stay behind. Your best wave per map is recorded.']
     ] },
     { title: 'Towers', towers: true },
     { title: 'Enemies', enemies: true },
@@ -8555,7 +8586,7 @@
       ['Arrow keys', 'Move the build cursor'], ['U / I', 'Upgrade / pick a specialization'], ['T', 'Cycle targeting'],
       ['S / R', 'Sell / repair'], ['Space', 'Start the next wave'], ['N', 'Call the next wave early'],
       ['F, ⇧F, + / -', 'Faster / slower (1× to 20×)'], ['A', 'Auto-wave on/off'], ['Q / W / E', 'Abilities'],
-      ['H', 'Help'], ['Esc', 'Pause menu'], ['F2', 'New game'], ['Touch', 'Tap to preview, tap again to build'], ['E (campaign map)', 'Start Endless mode']
+      ['H', 'Help'], ['Esc', 'Pause menu'], ['F2', 'New game'], ['Touch', 'Tap to preview, tap again to build'], ['L', 'Next level (once cleared)']
     ] }
   ];
   function openHelp(page) {
@@ -8669,15 +8700,16 @@
       if (!bossIntro) drawBossBar();
       drawBuildBar();
       drawInspector();
+      drawNextLevelButton();
       drawBanner();
       updateDrawCoins();
       // Modal screens: the HUD underneath stops reacting
       if (state === STATE_PAUSED && !overlay) {
         regions = [];
         drawPauseScreen();
-      } else if (state === STATE_GAME_OVER || state === STATE_VICTORY) {
+      } else if (state === STATE_GAME_OVER) {
         regions = [];
-        drawEndScreen(state === STATE_VICTORY);
+        drawEndScreen();
       }
     }
     if (overlay === 'help') {
@@ -8778,7 +8810,18 @@
     pause: togglePause
   });
 
-  function resetAndStart() {
+  // Moving on: research, relics and unlocks stay, the towers stay behind and a
+  // quarter of the banked gold comes along
+  function goNextLevel() {
+    if (!nextLevelAvailable()) return;
+    const carry = carryGold();
+    currentMap += 1;
+    resetAndStart(carry);
+    showBanner(MAPS[currentMap].name.toUpperCase(), `${BIOMES[MAPS[currentMap].biome].name} · ${carry} gold carried over`, BIOMES[MAPS[currentMap].biome].color, 2.6);
+    saveGame();
+  }
+
+  function resetAndStart(carry) {
     overlay = null;
     lastResult = null;
     particles.clear();
@@ -8788,7 +8831,7 @@
     uiCoins.length = 0;
     banner = null;
     hitstop = 0;
-    loadMap(currentMap, endlessChoice);
+    loadMap(currentMap, carry || 0);
     audio.play('select');
   }
 
@@ -8811,7 +8854,6 @@
     buildPathCells(mapDef);
     buildPaths(mapDef);
     totalWaves = mapDef.waves;
-    endless = false;
   }
 
   function setGameSpeed(s) {
@@ -9062,11 +9104,7 @@
       } else if (code === 'Enter' || code === 'Space') {
         e.preventDefault();
         pressFx['ms-play'] = performance.now();
-        playSelectedMap(false);
-      } else if (code === 'KeyE') {
-        e.preventDefault();
-        pressFx['ms-endless'] = performance.now();
-        playSelectedMap(true);
+        playSelectedMap();
       } else if (code === 'Escape') {
         e.preventDefault();
         quitToTitle();
@@ -9077,16 +9115,12 @@
       return;
     }
 
-    if (state === STATE_GAME_OVER || state === STATE_VICTORY) {
+    if (state === STATE_GAME_OVER) {
       if (code === 'Enter' || code === 'Space') {
         e.preventDefault();
-        if (state === STATE_VICTORY && currentMap + 1 < MAPS.length) {
-          currentMap += 1;
-          resetAndStart();
-        } else if (state === STATE_VICTORY)
-          openMapSelect();
-        else
-          resetAndStart();
+        resetAndStart();
+      } else if (code === 'KeyL' && nextLevelAvailable()) {
+        goNextLevel();
       } else if (code === 'KeyR') {
         resetAndStart();
       } else if (code === 'KeyM' || code === 'Escape') {
@@ -9129,6 +9163,12 @@
         mapAction(kbCursor.col, kbCursor.row);
       else
         useAbility(a.id);
+      return;
+    }
+
+    if (code === 'KeyL') {
+      if (nextLevelAvailable()) goNextLevel();
+      else audio.play('error');
       return;
     }
 
@@ -9277,11 +9317,9 @@
         ? 'Tower Defense -- Campaign'
         : state === STATE_RESEARCH
           ? 'Tower Defense -- Research'
-      : state === STATE_VICTORY
-        ? `Tower Defense -- ${mapName} Victory!`
         : state === STATE_GAME_OVER
           ? `Tower Defense -- ${mapName} Game Over`
-          : `Tower Defense -- ${mapName}${endless ? ' Endless' : ''} Wave ${currentWave}/${waveTotalText()}`;
+          : `Tower Defense -- ${mapName} Wave ${currentWave}/${waveTotalText()}${cleared ? ' (cleared)' : ''}`;
     document.title = title;
     if (User32?.SetWindowText)
       User32.SetWindowText(title);
