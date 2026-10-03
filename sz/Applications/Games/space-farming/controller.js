@@ -151,7 +151,134 @@
   const { User32 } = SZ?.Dlls ?? {};
 
   /* ── Effects ── */
-  const particles = new SZ.GameEffects.ParticleSystem();
+  /* Pooled particle system with the shared burst/trail/sparkle/confetti API;
+     the pool has a hard cap, so big bursts never pile up */
+  class FarmParticles {
+    constructor(cap) {
+      this.cap = cap;
+      this.list = [];
+      this.free = [];
+      this.last = 0;
+    }
+
+    get count() { return this.list.length; }
+
+    add(x, y, o) {
+      if (this.list.length >= this.cap * (lowQuality ? 0.5 : 1))
+        return;
+      const p = this.free.pop() || {};
+      p.x = x; p.y = y;
+      p.vx = o.vx; p.vy = o.vy;
+      p.life = o.life; p.decay = o.decay;
+      p.size = o.size; p.shrink = o.shrink;
+      p.color = o.color; p.gravity = o.gravity || 0; p.friction = o.friction || 1;
+      p.shape = o.shape || 'circle';
+      p.rot = Math.random() * TWO_PI;
+      p.spin = o.spin !== undefined ? o.spin : (Math.random() - 0.5) * 0.2;
+      this.list.push(p);
+    }
+
+    burst(x, y, count, opts = {}) {
+      for (let i = 0; i < count; ++i) {
+        const speed = opts.speed ?? 4, angle = Math.random() * TWO_PI, v = Math.random() * speed;
+        this.add(x, y, { vx: Math.cos(angle) * v + (opts.vx ?? 0), vy: Math.sin(angle) * v + (opts.vy ?? 0), life: opts.life ?? (0.6 + Math.random() * 0.4),
+          decay: opts.decay ?? 0.02, size: opts.size ?? (2 + Math.random() * 3), shrink: opts.shrink ?? 0.97, color: opts.color ?? '#fff', gravity: opts.gravity, friction: opts.friction, shape: opts.shape });
+      }
+    }
+
+    trail(x, y, opts = {}) {
+      this.add(x, y, { vx: (opts.vx ?? 0) + (Math.random() - 0.5) * 0.5, vy: (opts.vy ?? 0) + (Math.random() - 0.5) * 0.5, life: opts.life ?? 0.5,
+        decay: opts.decay ?? 0.03, size: opts.size ?? 2, shrink: opts.shrink ?? 0.95, color: opts.color ?? '#ff0', gravity: opts.gravity, shape: opts.shape });
+    }
+
+    sparkle(x, y, count, opts = {}) {
+      for (let i = 0; i < count; ++i) {
+        const angle = Math.random() * TWO_PI, v = Math.random() * (opts.speed ?? 2);
+        this.add(x, y, { vx: Math.cos(angle) * v, vy: Math.sin(angle) * v, life: 0.3 + Math.random() * 0.5, decay: 0.04,
+          size: 1 + Math.random() * 2, shrink: 0.98, color: opts.color ?? '#fff', shape: opts.shape ?? 'star' });
+      }
+    }
+
+    confetti(x, y, count, opts = {}) {
+      const colors = opts.colors ?? ['#f44', '#4f4', '#44f', '#ff4', '#f4f', '#4ff'];
+      for (let i = 0; i < count; ++i) {
+        const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.8, v = 2 + Math.random() * (opts.speed ?? 5);
+        this.add(x, y, { vx: Math.cos(angle) * v, vy: Math.sin(angle) * v, life: 1, decay: 0.01, size: 3 + Math.random() * 3, shrink: 0.99,
+          color: colors[Math.floor(Math.random() * colors.length)], gravity: opts.gravity ?? 0.1, friction: 0.99, shape: 'square', spin: (Math.random() - 0.5) * 0.3 });
+      }
+    }
+
+    update() {
+      // steps are measured in 60 Hz frames, like the shared effects
+      const now = performance.now();
+      const f = this.last ? Math.min(3, (now - this.last) / (1000 / 60)) : 1;
+      this.last = now;
+      const list = this.list;
+      let j = 0;
+      for (let i = 0; i < list.length; ++i) {
+        const p = list[i];
+        p.vy += p.gravity * f;
+        if (p.friction !== 1) {
+          const fr = Math.pow(p.friction, f);
+          p.vx *= fr;
+          p.vy *= fr;
+        }
+        p.x += p.vx * f;
+        p.y += p.vy * f;
+        p.life -= p.decay * f;
+        p.size *= Math.pow(p.shrink, f);
+        p.rot += p.spin * f;
+        if (p.life <= 0 || p.size < 0.3)
+          this.free.push(p);
+        else
+          list[j++] = p;
+      }
+      list.length = j;
+    }
+
+    draw(c) {
+      const base = c.getTransform();
+      const a0 = c.globalAlpha;
+      for (const p of this.list) {
+        c.globalAlpha = a0 * Math.min(1, p.life);
+        c.fillStyle = p.color;
+        const s = p.size;
+        if (p.shape === 'square') {
+          const co = Math.cos(p.rot), si = Math.sin(p.rot);
+          c.setTransform(base.a * co + base.c * si, base.b * co + base.d * si, base.c * co - base.a * si, base.d * co - base.b * si,
+            base.a * p.x + base.c * p.y + base.e, base.b * p.x + base.d * p.y + base.f);
+          c.fillRect(-s / 2, -s / 2, s, s);
+        } else if (p.shape === 'star') {
+          c.setTransform(base);
+          c.beginPath();
+          for (let i = 0; i < 5; ++i) {
+            const a = p.rot + (i * 4 * Math.PI) / 5 - Math.PI / 2;
+            if (i) c.lineTo(p.x + Math.cos(a) * s, p.y + Math.sin(a) * s);
+            else c.moveTo(p.x + Math.cos(a) * s, p.y + Math.sin(a) * s);
+          }
+          c.closePath();
+          c.fill();
+        } else if (s < 2.2) {
+          c.setTransform(base);
+          c.fillRect(p.x - s, p.y - s, s * 2, s * 2);
+        } else {
+          c.setTransform(base);
+          c.beginPath();
+          c.arc(p.x, p.y, s, 0, TWO_PI);
+          c.fill();
+        }
+      }
+      c.setTransform(base);
+      c.globalAlpha = a0;
+    }
+
+    clear() {
+      this.free.push(...this.list);
+      this.list.length = 0;
+    }
+  }
+
+  const particles = new FarmParticles(700);
   const screenShake = new SZ.GameEffects.ScreenShake();
 
   /* ══════════════════════════════════════════════════════════════════
@@ -983,6 +1110,8 @@
     return spr;
   }
 
+  let spriteScale = 1;                // device pixels per drawing unit of the current pass
+
   /* Draws a sprite centred on (cx, cy) with the given on-screen size */
   function drawSprite(key, cx, cy, size, alpha) {
     const spr = typeof key === 'string' ? getSprite(key) : key;
@@ -990,7 +1119,7 @@
     const prevSmooth = ctx.imageSmoothingEnabled;
     const prevAlpha = ctx.globalAlpha;
     // crisp pixels when enlarged, smooth when shrunk
-    ctx.imageSmoothingEnabled = size * ctx.getTransform().a / spr.width < 1.5;
+    ctx.imageSmoothingEnabled = size * spriteScale / spr.width < 1.5;
     if (alpha !== undefined)
       ctx.globalAlpha = prevAlpha * alpha;
     const s = Math.round(size);
@@ -1278,49 +1407,111 @@
 
   /* Framed panel: shadow, gradient, dark edge, light rim, accent strip and an
      optional title header. Returns the y where the content starts. */
+  /* Frame (shadow, gradient, edges, accent strip, header band) of a panel,
+     baked into a bitmap per size and style: blurred shadows are costly to
+     draw every frame */
+  const panelCache = new Map();
+
+  function paintPanelFrame(g, x, y, w, h, opts) {
+    const r = opts.radius !== undefined ? opts.radius : 10;
+    const accent = opts.accent || UI.accent;
+    const path = (px, py, pw, ph, pr) => {
+      pr = Math.max(0, Math.min(pr, pw / 2, ph / 2));
+      g.beginPath();
+      g.moveTo(px + pr, py);
+      g.arcTo(px + pw, py, px + pw, py + ph, pr);
+      g.arcTo(px + pw, py + ph, px, py + ph, pr);
+      g.arcTo(px, py + ph, px, py, pr);
+      g.arcTo(px, py, px + pw, py, pr);
+      g.closePath();
+    };
+    if (!opts.flat) {
+      g.shadowColor = 'rgba(0,0,0,0.55)';
+      g.shadowBlur = opts.shadow !== undefined ? opts.shadow : 16;
+      g.shadowOffsetY = 3;
+    }
+    const grad = g.createLinearGradient(0, y, 0, y + h);
+    grad.addColorStop(0, opts.top || UI.panelTop);
+    grad.addColorStop(1, opts.bottom || UI.panelBottom);
+    path(x, y, w, h, r);
+    g.fillStyle = grad;
+    g.fill();
+    g.shadowColor = 'transparent';
+    g.shadowBlur = 0;
+    g.shadowOffsetY = 0;
+    g.lineWidth = 2;
+    g.strokeStyle = UI.edge;
+    g.stroke();
+    path(x + 1.5, y + 1.5, w - 3, h - 3, r - 1.5);
+    g.lineWidth = 1;
+    g.strokeStyle = opts.glow ? hexToRgba(accent, 0.75) : UI.rim;
+    g.stroke();
+    const sg = g.createLinearGradient(x, 0, x + w, 0);
+    sg.addColorStop(0, hexToRgba(accent, 0));
+    sg.addColorStop(0.5, hexToRgba(accent, 0.9));
+    sg.addColorStop(1, hexToRgba(accent, 0));
+    g.fillStyle = sg;
+    g.fillRect(x + r, y + 1, w - r * 2, 2);
+    if (opts.title) {
+      const hh = opts.headerH || 34;
+      g.fillStyle = 'rgba(255,255,255,0.04)';
+      g.fillRect(x + 2, y + 3, w - 4, hh - 3);
+      g.fillStyle = 'rgba(0,0,0,0.35)';
+      g.fillRect(x + 8, y + hh, w - 16, 1);
+      g.fillStyle = 'rgba(255,255,255,0.06)';
+      g.fillRect(x + 8, y + hh + 1, w - 16, 1);
+    }
+  }
+
+  /* Draws a w x h shape (plus pad around it) from a bitmap cache; paint(g, x, y)
+     fills it on first use at the current scale */
+  function drawBaked(key, x, y, w, h, pad, paint) {
+    const m = ctx.getTransform();
+    const s = Math.max(0.25, Math.round(Math.hypot(m.a, m.b) * 8) / 8);
+    const W = Math.round(w), H = Math.round(h);
+    const full = key + '|' + W + '|' + H + '|' + s;
+    let cv = panelCache.get(full);
+    if (!cv) {
+      if (panelCache.size > 400)
+        panelCache.clear();
+      cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.ceil((W + pad * 2) * s));
+      cv.height = Math.max(1, Math.ceil((H + pad * 2) * s));
+      const g = cv.getContext('2d');
+      g.scale(s, s);
+      paint(g, pad, pad, W, H);
+      panelCache.set(full, cv);
+    }
+    ctx.drawImage(cv, x - pad, y - pad, W + pad * 2, H + pad * 2);
+  }
+
+  function rrPath(g, x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r);
+    g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r);
+    g.arcTo(x, y, x + w, y, r);
+    g.closePath();
+  }
+
+  function drawPanelFrame(x, y, w, h, opts) {
+    const pad = opts.flat ? 3 : Math.ceil((opts.shadow !== undefined ? opts.shadow : 16) + 6);
+    const key = ['panel', opts.radius, opts.accent, opts.glow ? 1 : 0, opts.flat ? 1 : 0, opts.shadow, opts.top, opts.bottom, opts.title ? (opts.headerH || 34) : 0].join('|');
+    drawBaked(key, x, y, w, h, pad, (g, px, py, W, H) => paintPanelFrame(g, px, py, W, H, opts));
+  }
+
   function drawPanel(x, y, w, h, opts) {
     opts = opts || {};
-    const r = opts.radius !== undefined ? opts.radius : 10;
     const accent = opts.accent || UI.accent;
     ctx.save();
     if (opts.alpha !== undefined)
       ctx.globalAlpha *= opts.alpha;
-    if (!opts.flat) {
-      ctx.shadowColor = 'rgba(0,0,0,0.55)';
-      ctx.shadowBlur = opts.shadow !== undefined ? opts.shadow : 16;
-      ctx.shadowOffsetY = 3;
-    }
-    const g = ctx.createLinearGradient(0, y, 0, y + h);
-    g.addColorStop(0, opts.top || UI.panelTop);
-    g.addColorStop(1, opts.bottom || UI.panelBottom);
-    roundRectPath(x, y, w, h, r);
-    ctx.fillStyle = g;
-    ctx.fill();
-    ctx.shadowColor = 'transparent';
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetY = 0;
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = UI.edge;
-    ctx.stroke();
-    roundRectPath(x + 1.5, y + 1.5, w - 3, h - 3, r - 1.5);
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = opts.glow ? hexToRgba(accent, 0.75) : UI.rim;
-    ctx.stroke();
-    const sg = ctx.createLinearGradient(x, 0, x + w, 0);
-    sg.addColorStop(0, hexToRgba(accent, 0));
-    sg.addColorStop(0.5, hexToRgba(accent, 0.9));
-    sg.addColorStop(1, hexToRgba(accent, 0));
-    ctx.fillStyle = sg;
-    ctx.fillRect(x + r, y + 1, w - r * 2, 2);
+    drawPanelFrame(x, y, w, h, opts);
     let contentY = y + (opts.pad !== undefined ? opts.pad : 8);
     if (opts.title) {
       const hh = opts.headerH || 34;
-      ctx.fillStyle = 'rgba(255,255,255,0.04)';
-      ctx.fillRect(x + 2, y + 3, w - 4, hh - 3);
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.fillRect(x + 8, y + hh, w - 16, 1);
-      ctx.fillStyle = 'rgba(255,255,255,0.06)';
-      ctx.fillRect(x + 8, y + hh + 1, w - 16, 1);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       let titleX = x + 12;
@@ -1539,27 +1730,31 @@
     ctx.save();
     if (disabled)
       ctx.globalAlpha *= 0.55;
-    ctx.shadowColor = 'rgba(0,0,0,0.5)';
-    ctx.shadowBlur = 8 + hv * 6;
-    ctx.shadowOffsetY = pressed ? 1 : 3;
-    roundRectPath(b.x, b.y + lift, b.w, b.h, opts.radius || 9);
-    const g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
-    if (opts.primary) {
-      g.addColorStop(0, hexToRgba(color, 0.55 + hv * 0.2));
-      g.addColorStop(1, hexToRgba(color, 0.22 + hv * 0.15));
-    } else {
-      g.addColorStop(0, hv ? `rgba(58,69,96,${0.92})` : 'rgba(42,50,72,0.92)');
-      g.addColorStop(1, hv ? 'rgba(35,42,62,0.92)' : 'rgba(24,29,44,0.92)');
-    }
-    ctx.fillStyle = g;
-    ctx.fill();
-    ctx.shadowColor = 'transparent';
-    ctx.lineWidth = opts.active ? 2.5 : 1.5;
-    ctx.strokeStyle = opts.active ? color : (opts.primary ? hexToRgba(color, 0.9) : `rgba(140,160,210,${0.35 + hv * 0.4})`);
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.10)';
-    roundRectPath(b.x + 3, b.y + lift + 3, b.w - 6, b.h * 0.42, 6);
-    ctx.fill();
+    // the face is baked per size, colour and (stepped) hover amount
+    const hq = Math.round(hv * 8) / 8;
+    const radius = opts.radius || 9;
+    drawBaked(['btn', radius, color, opts.primary ? 1 : 0, opts.active ? 1 : 0, pressed ? 1 : 0, hq].join('|'), b.x, b.y + lift, b.w, b.h, 6, (g, x, y, w, h) => {
+      rrPath(g, x + 1, y + (pressed ? 2 : 4), w, h, radius);
+      g.fillStyle = `rgba(0,0,0,${0.32 + hq * 0.1})`;
+      g.fill();
+      rrPath(g, x, y, w, h, radius);
+      const gr = g.createLinearGradient(0, y, 0, y + h);
+      if (opts.primary) {
+        gr.addColorStop(0, hexToRgba(color, 0.55 + hq * 0.2));
+        gr.addColorStop(1, hexToRgba(color, 0.22 + hq * 0.15));
+      } else {
+        gr.addColorStop(0, hq ? 'rgba(58,69,96,0.92)' : 'rgba(42,50,72,0.92)');
+        gr.addColorStop(1, hq ? 'rgba(35,42,62,0.92)' : 'rgba(24,29,44,0.92)');
+      }
+      g.fillStyle = gr;
+      g.fill();
+      g.lineWidth = opts.active ? 2.5 : 1.5;
+      g.strokeStyle = opts.active ? color : (opts.primary ? hexToRgba(color, 0.9) : `rgba(140,160,210,${0.35 + hq * 0.4})`);
+      g.stroke();
+      g.fillStyle = 'rgba(255,255,255,0.10)';
+      rrPath(g, x + 3, y + 3, w - 6, h * 0.42, 6);
+      g.fill();
+    });
     const hasIcon = !!opts.icon;
     const keyW = opts.key ? 20 : 0;
     if (opts.chevron) {
@@ -3479,7 +3674,7 @@
     const want = {
       [WEATHER_RAIN]: 160, [WEATHER_THUNDERSTORM]: 260, [WEATHER_SNOW]: 180, [WEATHER_DUST]: 140, [WEATHER_SOLAR_FLARE]: 40, [WEATHER_METEOR_SHOWER]: 0
     }[wxShown] || 0;
-    const count = Math.round(want * area * wxK);
+    const count = Math.round(want * area * wxK * (lowQuality ? 0.55 : 1));
     while (wxDrops.length < count)
       wxDrops.push(newDrop(wxShown, true));
     if (wxDrops.length > count)
@@ -3626,6 +3821,23 @@
       ctx.fill();
     }
     ctx.restore();
+  }
+
+  let dustBandCanvas = null;
+  function dustBand() {
+    if (!dustBandCanvas) {
+      dustBandCanvas = document.createElement('canvas');
+      dustBandCanvas.width = 4;
+      dustBandCanvas.height = 120;
+      const g = dustBandCanvas.getContext('2d');
+      const gr = g.createLinearGradient(0, 0, 0, 120);
+      gr.addColorStop(0, 'rgba(210,160,90,0)');
+      gr.addColorStop(0.5, 'rgba(210,160,90,0.18)');
+      gr.addColorStop(1, 'rgba(210,160,90,0)');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, 4, 120);
+    }
+    return dustBandCanvas;
   }
 
   /* Screen-space weather on top of the farm */
@@ -4394,6 +4606,36 @@
     return spriteCache[key];
   }
 
+  /* Soft round glow (white or tinted), baked once and scaled with drawImage */
+  const glowCache = {};
+  function glowSprite(color) {
+    const key = color || '#ffffff';
+    let cv = glowCache[key];
+    if (!cv) {
+      cv = document.createElement('canvas');
+      cv.width = cv.height = 64;
+      const g = cv.getContext('2d');
+      const [r, gg, b] = parseHex(key);
+      const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      grad.addColorStop(0, `rgba(${r},${gg},${b},1)`);
+      grad.addColorStop(0.35, `rgba(${r},${gg},${b},0.55)`);
+      grad.addColorStop(1, `rgba(${r},${gg},${b},0)`);
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 64, 64);
+      glowCache[key] = cv;
+    }
+    return cv;
+  }
+
+  /* Draws a glow of radius rad and opacity a (in the current transform) */
+  function drawGlow(x, y, rad, color, a) {
+    if (a <= 0.01 || rad <= 0.5) return;
+    const prev = ctx.globalAlpha;
+    ctx.globalAlpha = prev * Math.min(1, a);
+    ctx.drawImage(glowSprite(color), x - rad, y - rad, rad * 2, rad * 2);
+    ctx.globalAlpha = prev;
+  }
+
   /* ── Sky: gradient by time of day and season, stars, planets, sun, moon ── */
 
   const skyStars = [];
@@ -4411,8 +4653,11 @@
     return pts;
   });
 
-  function skyColors() {
-    const n = nightAmount(), d = duskAmount();
+  function skyColors(n, d) {
+    if (n === undefined) {
+      n = nightAmount();
+      d = duskAmount();
+    }
     const season = currentSeason;
     let top = mixHex(['#3a7ae0', '#3a86e8', '#4a6ab8', '#7a9ad0'][season], '#070a1e', n);
     let mid = mixHex(['#8ad8e8', '#a8dcf0', '#e0a87a', '#c8dcef'][season], '#1a1840', n);
@@ -4430,72 +4675,159 @@
     return GRID_OFFSET_Y - BASE_TILE_SIZE * 2.2;
   }
 
-  function drawSky() {
-    const sc = skyColors();
-    const hy = viewPanY + horizonWorldY() * viewZoom;
-    const g = ctx.createLinearGradient(0, Math.min(0, hy - canvasH), 0, Math.max(hy, 10));
-    g.addColorStop(0, sc.top);
-    g.addColorStop(0.65, sc.mid);
-    g.addColorStop(1, sc.low);
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, canvasW, Math.max(0, Math.min(canvasH, hy + 4)));
-    if (hy <= 0) return;
+  /* The sky gradient, nebula, planets and mountains only change slowly, so
+     they are baked into two screen-wide bitmaps (behind and in front of the
+     sun and moon) and repainted when the light or the view changes */
+  const skyLayers = { back: null, front: null, key: '' };
 
-    // Stars and nebula at night
+  function skyLayerCanvas(name, W, H) {
+    let cv = skyLayers[name];
+    if (!cv)
+      cv = skyLayers[name] = document.createElement('canvas');
+    if (cv.width !== W || cv.height !== H) {
+      cv.width = W;
+      cv.height = H;
+    }
+    return cv;
+  }
+
+  function drawSky() {
+    // the light is stepped in small increments so the layers are reused between steps
+    const qn = Math.round(nightAmount() * 48) / 48, qd = Math.round(duskAmount() * 48) / 48;
+    const sc = skyColors(qn, qd);
+    const hy = viewPanY + horizonWorldY() * viewZoom;
+    const R = Math.min(canvasW, canvasH) * 0.12;
+    if (hy <= 0) {
+      const g = ctx.createLinearGradient(0, Math.min(0, hy - canvasH), 0, Math.max(hy, 10));
+      g.addColorStop(0, sc.top);
+      g.addColorStop(0.65, sc.mid);
+      g.addColorStop(1, sc.low);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, canvasW, Math.max(0, Math.min(canvasH, hy + 4)));
+      return;
+    }
+    const dpr = window.devicePixelRatio || 1;
+    const skyH = Math.max(1, Math.min(canvasH, Math.ceil(hy + 4)));
+    const W = Math.round(canvasW * dpr), H = Math.round(skyH * dpr);
+    const key = [W, H, dpr, qn, qd, currentSeason, viewZoom.toFixed(4), viewPanX.toFixed(1), viewPanY.toFixed(1)].join('|');
+    const back = skyLayerCanvas('back', W, H), front = skyLayerCanvas('front', W, H);
+    const gx = canvasW * 0.8 + viewPanX * 0.04, gy = Math.max(R * 0.75, hy - R * 1.6) + viewPanY * 0.02;
+    if (key !== skyLayers.key) {
+      skyLayers.key = key;
+      let g = back.getContext('2d');
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, canvasW, skyH);
+      const gr = g.createLinearGradient(0, Math.min(0, hy - canvasH), 0, Math.max(hy, 10));
+      gr.addColorStop(0, sc.top);
+      gr.addColorStop(0.65, sc.mid);
+      gr.addColorStop(1, sc.low);
+      g.fillStyle = gr;
+      g.fillRect(0, 0, canvasW, Math.max(0, Math.min(canvasH, hy + 4)));
+      if (sc.n > 0.05) {
+        g.save();
+        g.globalAlpha = sc.n * 0.25;
+        const ng = g.createRadialGradient(canvasW * 0.3, hy * 0.35, 10, canvasW * 0.3, hy * 0.35, canvasW * 0.35);
+        ng.addColorStop(0, '#a060d0');
+        ng.addColorStop(1, 'rgba(160,96,208,0)');
+        g.fillStyle = ng;
+        g.fillRect(0, 0, canvasW, hy);
+        g.restore();
+      }
+      // Ringed gas giant and a small moon, drifting with a hint of parallax
+      g.save();
+      g.globalAlpha = 0.55 + sc.n * 0.4;
+      const pg = g.createRadialGradient(gx - R * 0.4, gy - R * 0.4, R * 0.1, gx, gy, R);
+      pg.addColorStop(0, '#ffe0b0');
+      pg.addColorStop(0.55, '#e08a6a');
+      pg.addColorStop(1, '#6a3060');
+      g.fillStyle = pg;
+      g.beginPath();
+      g.arc(gx, gy, R, 0, TWO_PI);
+      g.fill();
+      g.translate(gx, gy);
+      g.rotate(-0.3);
+      g.scale(1, 0.26);
+      g.lineWidth = R * 0.22;
+      g.strokeStyle = 'rgba(255,225,180,0.5)';
+      g.beginPath();
+      g.arc(0, 0, R * 1.6, Math.PI * 0.02, Math.PI * 0.98);
+      g.stroke();
+      g.restore();
+      const mx = canvasW * 0.18 + viewPanX * 0.06, my = hy - R * 2.2 + viewPanY * 0.03;
+      g.save();
+      g.globalAlpha = 0.5 + sc.n * 0.5;
+      g.fillStyle = '#c8d0e8';
+      g.beginPath();
+      g.arc(mx, my, R * 0.28, 0, TWO_PI);
+      g.fill();
+      g.fillStyle = 'rgba(120,130,170,0.6)';
+      g.beginPath();
+      g.arc(mx - R * 0.08, my - R * 0.06, R * 0.07, 0, TWO_PI);
+      g.arc(mx + R * 0.1, my + R * 0.08, R * 0.05, 0, TWO_PI);
+      g.fill();
+      g.restore();
+
+      g = front.getContext('2d');
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, canvasW, skyH);
+      // Mountain layers with atmospheric perspective
+      const layerCols = [
+        mixHex(sc.mid, '#3a4a7a', 0.45 + sc.n * 0.2),
+        mixHex(sc.mid, '#24405a', 0.65 + sc.n * 0.15),
+        mixHex(SEASON_PAL[currentSeason].turf[0], '#0a1424', 0.25 + sc.n * 0.5)
+      ];
+      const heights = [1, 0.62, 0.3];
+      const para = [0.15, 0.3, 0.55];
+      for (let k = 0; k < 3; ++k) {
+        const pts = MOUNTAINS[k];
+        const period = 1600 * Math.max(0.5, viewZoom) * (1 + k * 0.3);
+        const amp = Math.min(hy * 0.75, 160 * Math.max(0.5, Math.min(1.4, viewZoom))) * heights[k];
+        const base = hy + 2 - k * 2;
+        const off = ((viewPanX * para[k]) % period + period) % period;
+        g.fillStyle = layerCols[k];
+        g.beginPath();
+        g.moveTo(0, base);
+        for (let x = 0; x <= canvasW + 8; x += 8) {
+          const u = ((x - off) / period % 1 + 1) % 1;
+          const i = u * 256, i0 = Math.floor(i), fr = i - i0;
+          const v = pts[i0] * (1 - fr) + pts[Math.min(256, i0 + 1)] * fr;
+          g.lineTo(x, base - amp * (0.55 + v * 0.45));
+        }
+        g.lineTo(canvasW, base);
+        g.closePath();
+        g.fill();
+        if (currentSeason === 3 && k < 2) {
+          g.save();
+          g.clip();
+          g.fillStyle = 'rgba(240,246,255,0.55)';
+          g.fillRect(0, base - amp * 1.1, canvasW, amp * 0.35);
+          g.restore();
+        }
+      }
+      // Summer haze / horizon glow
+      const hz = g.createLinearGradient(0, hy - 60, 0, hy + 4);
+      hz.addColorStop(0, 'rgba(255,255,255,0)');
+      hz.addColorStop(1, currentSeason === 1 ? `rgba(255,236,180,${0.35 * (1 - sc.n)})` : `rgba(220,240,255,${0.18 * (1 - sc.n)})`);
+      g.fillStyle = hz;
+      g.fillRect(0, hy - 60, canvasW, 64);
+    }
+    ctx.drawImage(back, 0, 0, canvasW, skyH);
+
+    // Stars at night (not in front of the planet)
     if (sc.n > 0.05) {
       ctx.save();
       for (const s of skyStars) {
         const sy = s.y * hy;
         if (sy > hy - 10) continue;
+        const sx = ((s.x * canvasW + viewPanX * 0.03) % canvasW + canvasW) % canvasW;
+        if ((sx - gx) * (sx - gx) + (sy - gy) * (sy - gy) < R * R * 1.1) continue;
         ctx.globalAlpha = sc.n * (0.3 + 0.7 * Math.abs(Math.sin(animT * (0.4 + s.s) + s.p)));
         ctx.fillStyle = s.s > 0.88 ? '#ffe8b0' : '#cfe0ff';
         const sz = s.s > 0.92 ? 2 : 1;
-        ctx.fillRect(((s.x * canvasW + viewPanX * 0.03) % canvasW + canvasW) % canvasW, sy, sz, sz);
+        ctx.fillRect(sx, sy, sz, sz);
       }
-      ctx.globalAlpha = sc.n * 0.25;
-      const ng = ctx.createRadialGradient(canvasW * 0.3, hy * 0.35, 10, canvasW * 0.3, hy * 0.35, canvasW * 0.35);
-      ng.addColorStop(0, '#a060d0');
-      ng.addColorStop(1, 'rgba(160,96,208,0)');
-      ctx.fillStyle = ng;
-      ctx.fillRect(0, 0, canvasW, hy);
       ctx.restore();
     }
-
-    // Ringed gas giant and a small moon, drifting with a hint of parallax
-    const R = Math.min(canvasW, canvasH) * 0.12;
-    const gx = canvasW * 0.8 + viewPanX * 0.04, gy = Math.max(R * 0.75, hy - R * 1.6) + viewPanY * 0.02;
-    ctx.save();
-    ctx.globalAlpha = 0.55 + sc.n * 0.4;
-    const pg = ctx.createRadialGradient(gx - R * 0.4, gy - R * 0.4, R * 0.1, gx, gy, R);
-    pg.addColorStop(0, '#ffe0b0');
-    pg.addColorStop(0.55, '#e08a6a');
-    pg.addColorStop(1, '#6a3060');
-    ctx.fillStyle = pg;
-    ctx.beginPath();
-    ctx.arc(gx, gy, R, 0, TWO_PI);
-    ctx.fill();
-    ctx.translate(gx, gy);
-    ctx.rotate(-0.3);
-    ctx.scale(1, 0.26);
-    ctx.lineWidth = R * 0.22;
-    ctx.strokeStyle = 'rgba(255,225,180,0.5)';
-    ctx.beginPath();
-    ctx.arc(0, 0, R * 1.6, Math.PI * 0.02, Math.PI * 0.98);
-    ctx.stroke();
-    ctx.restore();
-    const mx = canvasW * 0.18 + viewPanX * 0.06, my = hy - R * 2.2 + viewPanY * 0.03;
-    ctx.save();
-    ctx.globalAlpha = 0.5 + sc.n * 0.5;
-    ctx.fillStyle = '#c8d0e8';
-    ctx.beginPath();
-    ctx.arc(mx, my, R * 0.28, 0, TWO_PI);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(120,130,170,0.6)';
-    ctx.beginPath();
-    ctx.arc(mx - R * 0.08, my - R * 0.06, R * 0.07, 0, TWO_PI);
-    ctx.arc(mx + R * 0.1, my + R * 0.08, R * 0.05, 0, TWO_PI);
-    ctx.fill();
-    ctx.restore();
 
     // Sun by day, moon by night, travelling over the sky
     const arcX = (u) => canvasW * (0.1 + 0.8 * u);
@@ -4504,11 +4836,7 @@
       const u = dayPhase / 0.55;
       const sx = arcX(u), sy = arcY(u);
       const sr = Math.max(10, R * 0.32);
-      const glow = ctx.createRadialGradient(sx, sy, sr * 0.5, sx, sy, sr * 4);
-      glow.addColorStop(0, `rgba(255,240,180,${0.55 * (1 - sc.n)})`);
-      glow.addColorStop(1, 'rgba(255,240,180,0)');
-      ctx.fillStyle = glow;
-      ctx.fillRect(sx - sr * 4, sy - sr * 4, sr * 8, sr * 8);
+      drawGlow(sx, sy, sr * 4, '#fff0b4', 0.55 * (1 - sc.n));
       ctx.fillStyle = sc.d > 0.3 ? '#ffb070' : '#fff4c8';
       ctx.beginPath();
       ctx.arc(sx, sy, sr, 0, TWO_PI);
@@ -4519,11 +4847,7 @@
       const sr = Math.max(8, R * 0.24);
       ctx.save();
       ctx.globalAlpha = Math.min(1, sc.n * 1.4);
-      const glow = ctx.createRadialGradient(sx, sy, sr * 0.5, sx, sy, sr * 3.5);
-      glow.addColorStop(0, 'rgba(200,220,255,0.35)');
-      glow.addColorStop(1, 'rgba(200,220,255,0)');
-      ctx.fillStyle = glow;
-      ctx.fillRect(sx - sr * 4, sy - sr * 4, sr * 8, sr * 8);
+      drawGlow(sx, sy, sr * 3.5, '#c8dcff', 0.35);
       ctx.fillStyle = '#eef2ff';
       ctx.beginPath();
       ctx.arc(sx, sy, sr, 0, TWO_PI);
@@ -4535,46 +4859,7 @@
       ctx.restore();
     }
 
-    // Mountain layers with atmospheric perspective
-    const layerCols = [
-      mixHex(sc.mid, '#3a4a7a', 0.45 + sc.n * 0.2),
-      mixHex(sc.mid, '#24405a', 0.65 + sc.n * 0.15),
-      mixHex(SEASON_PAL[currentSeason].turf[0], '#0a1424', 0.25 + sc.n * 0.5)
-    ];
-    const heights = [1, 0.62, 0.3];
-    const para = [0.15, 0.3, 0.55];
-    for (let k = 0; k < 3; ++k) {
-      const pts = MOUNTAINS[k];
-      const period = 1600 * Math.max(0.5, viewZoom) * (1 + k * 0.3);
-      const amp = Math.min(hy * 0.75, 160 * Math.max(0.5, Math.min(1.4, viewZoom))) * heights[k];
-      const base = hy + 2 - k * 2;
-      const off = ((viewPanX * para[k]) % period + period) % period;
-      ctx.fillStyle = layerCols[k];
-      ctx.beginPath();
-      ctx.moveTo(0, base);
-      for (let x = 0; x <= canvasW + 8; x += 8) {
-        const u = ((x - off) / period % 1 + 1) % 1;
-        const i = u * 256, i0 = Math.floor(i), fr = i - i0;
-        const v = pts[i0] * (1 - fr) + pts[Math.min(256, i0 + 1)] * fr;
-        ctx.lineTo(x, base - amp * (0.55 + v * 0.45));
-      }
-      ctx.lineTo(canvasW, base);
-      ctx.closePath();
-      ctx.fill();
-      if (currentSeason === 3 && k < 2) {
-        ctx.save();
-        ctx.clip();
-        ctx.fillStyle = 'rgba(240,246,255,0.55)';
-        ctx.fillRect(0, base - amp * 1.1, canvasW, amp * 0.35);
-        ctx.restore();
-      }
-    }
-    // Summer haze / horizon glow
-    const hz = ctx.createLinearGradient(0, hy - 60, 0, hy + 4);
-    hz.addColorStop(0, 'rgba(255,255,255,0)');
-    hz.addColorStop(1, currentSeason === 1 ? `rgba(255,236,180,${0.35 * (1 - sc.n)})` : `rgba(220,240,255,${0.18 * (1 - sc.n)})`);
-    ctx.fillStyle = hz;
-    ctx.fillRect(0, hy - 60, canvasW, 64);
+    ctx.drawImage(front, 0, 0, canvasW, skyH);
   }
 
   /* ── Ground: meadow, decorations and the field's fence ── */
@@ -4588,18 +4873,43 @@
     };
   }
 
+  let groundCanvas = null, groundKey = '';
+
+  /* The meadow only changes with the view and the season, so it is painted
+     into a screen-sized bitmap and reused until one of them changes */
   function drawGround(v) {
     const hy = horizonWorldY();
     const top = Math.max(v.y0, hy);
     if (top >= v.y1) return;
-    ctx.fillStyle = turfPattern(currentSeason);
-    ctx.fillRect(v.x0 - 4, top, v.x1 - v.x0 + 8, v.y1 - top + 4);
-    // soft shadow just below the horizon
-    const g = ctx.createLinearGradient(0, hy, 0, hy + 40);
-    g.addColorStop(0, 'rgba(10,20,30,0.45)');
-    g.addColorStop(1, 'rgba(10,20,30,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(v.x0, hy, v.x1 - v.x0, 40);
+    const key = [canvasW, canvasH, window.devicePixelRatio || 1, viewZoom.toFixed(4), viewPanX.toFixed(1), viewPanY.toFixed(1), currentSeason, gridRows, gridCols, gridColOffset, lowQuality].join('|');
+    if (key !== groundKey || !groundCanvas) {
+      if (!groundCanvas)
+        groundCanvas = document.createElement('canvas');
+      const dpr = window.devicePixelRatio || 1;
+      const W = Math.round(canvasW * dpr), H = Math.round(canvasH * dpr);
+      if (groundCanvas.width !== W || groundCanvas.height !== H) {
+        groundCanvas.width = W;
+        groundCanvas.height = H;
+      }
+      const g = groundCanvas.getContext('2d');
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.clearRect(0, 0, W, H);
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.translate(viewPanX, viewPanY);
+      g.scale(viewZoom, viewZoom);
+      g.fillStyle = turfPattern(currentSeason);
+      g.fillRect(v.x0 - 4, top, v.x1 - v.x0 + 8, v.y1 - top + 4);
+      // soft shadow just below the horizon
+      const sh = g.createLinearGradient(0, hy, 0, hy + 40);
+      sh.addColorStop(0, 'rgba(10,20,30,0.45)');
+      sh.addColorStop(1, 'rgba(10,20,30,0)');
+      g.fillStyle = sh;
+      g.fillRect(v.x0, hy, v.x1 - v.x0, 40);
+      drawDecor(v, 'bake', g);
+      groundKey = key;
+    }
+    // drawn in screen space, before the world transform
+    ctx.drawImage(groundCanvas, 0, 0, canvasW, canvasH);
   }
 
   function isPenSlot(r, c) {
@@ -4608,12 +4918,20 @@
     return false;
   }
 
-  function drawDecor(v, layer) {
+  const SWAYING_DECOR = { tree: 1, reeds: 1, bloom: 1 };
+
+  /* mode 'bake' paints shadows and still decorations into g (world units);
+     mode 'live' draws the swaying ones and registers the glowing ones */
+  function drawDecor(v, mode, g) {
     const T = BASE_TILE_SIZE;
     const c0 = Math.floor((v.x0 - GRID_OFFSET_X) / T) - 1, c1 = Math.ceil((v.x1 - GRID_OFFSET_X) / T) + 1;
     const r0 = Math.floor((Math.max(v.y0, horizonWorldY()) - GRID_OFFSET_Y) / T), r1 = Math.ceil((v.y1 - GRID_OFFSET_Y) / T) + 1;
     if ((c1 - c0) * (r1 - r0) > 6000) return;
     const offC = gridColOffset;
+    const bake = mode === 'bake';
+    const still = (kind) => !SWAYING_DECOR[kind] || lowQuality;
+    if (bake)
+      g.imageSmoothingEnabled = viewZoom < 0.5;
     for (let r = r0; r <= r1; ++r)
       for (let c = c0; c <= c1; ++c) {
         if (r >= -1 && r <= gridRows && c >= -1 && c <= gridCols) continue;
@@ -4625,16 +4943,24 @@
         if (y - 30 < horizonWorldY()) continue;
         const big = kind === 'tree' ? 1.6 : 1;
         const size = T * 0.85 * big;
-        const sway = kind === 'tree' || kind === 'reeds' || kind === 'bloom' ? Math.sin(animT * 1.3 + h * 40) * 0.05 * windStrength() : 0;
-        ctx.fillStyle = 'rgba(0,0,0,0.22)';
-        ctx.beginPath();
-        ctx.ellipse(x, y + size * 0.42, size * 0.35, size * 0.1, 0, 0, TWO_PI);
-        ctx.fill();
-        ctx.save();
-        ctx.translate(x, y + size * 0.5);
-        ctx.transform(1, 0, sway, 1, 0, 0);
-        drawSprite(decorSprite(kind, currentSeason), 0, -size / 2, size);
-        ctx.restore();
+        const spr = decorSprite(kind, currentSeason);
+        if (bake) {
+          g.fillStyle = 'rgba(0,0,0,0.22)';
+          g.beginPath();
+          g.ellipse(x, y + size * 0.42, size * 0.35, size * 0.1, 0, 0, TWO_PI);
+          g.fill();
+          if (still(kind))
+            g.drawImage(spr, x - size / 2, y + size * 0.5 - size, size, size);
+          continue;
+        }
+        if (!still(kind)) {
+          const sway = Math.sin(animT * 1.3 + h * 40) * 0.05 * windStrength();
+          ctx.save();
+          ctx.translate(x, y + size * 0.5);
+          ctx.transform(1, 0, sway, 1, 0, 0);
+          drawSprite(spr, 0, -size / 2, size);
+          ctx.restore();
+        }
         if (kind === 'shroom' || kind === 'crystal')
           lightAt(x, y, T * 0.9, kind === 'shroom' ? '#5ff0e0' : '#a8e8ff', 0.5);
       }
@@ -4801,14 +5127,8 @@
     const size = vis.size * pop;
     const sleeping = (crop.nightOnly && dayPhase < 0.5) || (crop.dayOnly && dayPhase >= 0.5);
 
-    if (mature) {
-      const glow = 0.18 + Math.sin(animT * 3 + ph) * 0.08;
-      const g = ctx.createRadialGradient(cx, baseY - 14, 2, cx, baseY - 14, T * 0.55);
-      g.addColorStop(0, hexToRgba(crop.color, glow));
-      g.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(cx - T / 2, baseY - 14 - T / 2, T, T);
-    }
+    if (mature)
+      drawGlow(cx, baseY - 14, T * 0.55, crop.color, 0.18 + Math.sin(animT * 3 + ph) * 0.08);
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.beginPath();
     ctx.ellipse(cx, baseY, size * 0.32, size * 0.08, 0, 0, TWO_PI);
@@ -5031,13 +5351,8 @@
       }
       case 'Grow Lamp': {
         const n = nightAmount();
-        if (n > 0.05) {
-          const g = ctx.createRadialGradient(cx, top + size * 0.2, 2, cx, top + size * 0.2, T * 1.2);
-          g.addColorStop(0, `rgba(255,236,160,${0.35 * n})`);
-          g.addColorStop(1, 'rgba(255,236,160,0)');
-          ctx.fillStyle = g;
-          ctx.fillRect(cx - T * 1.2, top + size * 0.2 - T * 1.2, T * 2.4, T * 2.4);
-        }
+        if (n > 0.05)
+          drawGlow(cx, top + size * 0.2, T * 1.2, '#ffeca0', 0.35 * n);
         lightAt(cx, top + size * 0.25, T * (1.6 + getBuildingRange(bld) * 0.8), '#ffe8a0', 1);
         break;
       }
@@ -5056,15 +5371,16 @@
       }
       case 'Auto-Collector': {
         ctx.save();
-        ctx.beginPath();
-        ctx.rect(cx - size * 0.45, baseY - 12, size * 0.9, 6);
-        ctx.clip();
         ctx.fillStyle = '#3a3e4a';
         ctx.fillRect(cx - size * 0.45, baseY - 12, size * 0.9, 6);
         ctx.fillStyle = '#7a7e8a';
         const off = (animT * 18) % 8;
-        for (let x = cx - size * 0.45 - 8 + off; x < cx + size * 0.45; x += 8)
-          ctx.fillRect(x, baseY - 12, 3, 6);
+        const bl = cx - size * 0.45, br = cx + size * 0.45;
+        for (let x = bl - 8 + off; x < br; x += 8) {
+          const x0 = Math.max(bl, x), x1 = Math.min(br, x + 3);
+          if (x1 > x0)
+            ctx.fillRect(x0, baseY - 12, x1 - x0, 6);
+        }
         ctx.restore();
         break;
       }
@@ -5271,15 +5587,18 @@
         continue;
       }
       ctx.save();
-      ctx.strokeStyle = `rgba(190,248,255,${1 - z.t / 0.3})`;
-      ctx.shadowColor = '#9ff0ff';
-      ctx.shadowBlur = 10;
-      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
       ctx.beginPath();
       ctx.moveTo(z.x0, z.y0);
       for (let k = 1; k < 6; ++k)
         ctx.lineTo(z.x0 + (z.x1 - z.x0) * k / 6 + (Math.random() - 0.5) * 14, z.y0 + (z.y1 - z.y0) * k / 6 + (Math.random() - 0.5) * 14);
       ctx.lineTo(z.x1, z.y1);
+      // soft halo as a wide faint stroke under the bright core
+      ctx.strokeStyle = `rgba(159,240,255,${0.3 * (1 - z.t / 0.3)})`;
+      ctx.lineWidth = 7;
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(190,248,255,${1 - z.t / 0.3})`;
+      ctx.lineWidth = 2;
       ctx.stroke();
       ctx.restore();
     }
@@ -5332,6 +5651,7 @@
   /* ── Lighting: the night darkens the world, lamps and glowing things cut holes ── */
 
   let lightCanvas = null, lightCtx = null;
+  let lowQuality = false;            // set by the frame-time monitor when frames get slow
   let lights = [];
 
   function lightAt(wx, wy, radius, color, strength) {
@@ -5346,7 +5666,9 @@
       lights = [];
       return;
     }
-    const W = Math.ceil(canvasW / 2), H = Math.ceil(canvasH / 2);
+    // the mask is smooth, so a quarter-size canvas is plenty
+    const div = lowQuality ? 3 : 2;
+    const W = Math.ceil(canvasW / div), H = Math.ceil(canvasH / div);
     if (!lightCanvas) {
       lightCanvas = document.createElement('canvas');
       lightCtx = lightCanvas.getContext('2d');
@@ -5356,39 +5678,37 @@
       lightCanvas.height = H;
     }
     const L = lightCtx;
+    const white = glowSprite('#ffffff');
     L.globalCompositeOperation = 'source-over';
+    L.globalAlpha = 1;
     L.clearRect(0, 0, W, H);
     L.fillStyle = `rgba(8,12,40,${dark})`;
     L.fillRect(0, 0, W, H);
     L.globalCompositeOperation = 'destination-out';
-    const toS = (wx, wy) => [(viewPanX + wx * viewZoom) / 2, (viewPanY + wy * viewZoom) / 2];
     for (const l of lights) {
-      const [sx, sy] = toS(l.wx, l.wy);
-      const rr = l.radius * viewZoom / 2;
+      const sx = (viewPanX + l.wx * viewZoom) / div, sy = (viewPanY + l.wy * viewZoom) / div;
+      const rr = l.radius * viewZoom / div;
       if (sx + rr < 0 || sy + rr < 0 || sx - rr > W || sy - rr > H) continue;
-      const g = L.createRadialGradient(sx, sy, 0, sx, sy, rr);
-      g.addColorStop(0, `rgba(0,0,0,${Math.min(1, l.strength)})`);
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      L.fillStyle = g;
-      L.fillRect(sx - rr, sy - rr, rr * 2, rr * 2);
+      L.globalAlpha = Math.min(1, l.strength);
+      L.drawImage(white, sx - rr, sy - rr, rr * 2, rr * 2);
     }
+    L.globalAlpha = 1;
+    L.globalCompositeOperation = 'source-over';
     // the horizon sky is lit by its own colours
-    const hy = (viewPanY + horizonWorldY() * viewZoom) / 2;
+    const hy = (viewPanY + horizonWorldY() * viewZoom) / div;
     if (hy > 0)
       L.clearRect(0, 0, W, hy);
-    ctx.drawImage(lightCanvas, 0, 0, canvasW, canvasH);
-    // warm colour glow on top
     ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(lightCanvas, 0, 0, canvasW, canvasH);
+    ctx.imageSmoothingEnabled = true;
+    // warm colour glow on top
     ctx.globalCompositeOperation = 'lighter';
     for (const l of lights) {
       const sx = viewPanX + l.wx * viewZoom, sy = viewPanY + l.wy * viewZoom;
       const rr = l.radius * viewZoom * 0.8;
       if (sx + rr < 0 || sy + rr < 0 || sx - rr > canvasW || sy - rr > canvasH) continue;
-      const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, rr);
-      g.addColorStop(0, hexToRgba(l.color, 0.22 * dark * l.strength));
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(sx - rr, sy - rr, rr * 2, rr * 2);
+      drawGlow(sx, sy, rr, l.color, 0.22 * dark * l.strength);
     }
     ctx.restore();
     lights = [];
@@ -5401,7 +5721,7 @@
   function updateAmbient(dt) {
     const season = currentSeason;
     const night = nightAmount();
-    const want = season === 1 ? Math.round(18 * night) + 6 : (season === 3 ? 70 : 26);
+    const want = Math.round((season === 1 ? Math.round(18 * night) + 6 : (season === 3 ? 70 : 26)) * (lowQuality ? 0.5 : 1));
     while (ambient.length < want)
       ambient.push(spawnAmbient(season, true));
     if (ambient.length > want)
@@ -5458,12 +5778,8 @@
       const fade = Math.min(1, a.t * 2, (a.life - a.t) * 2);
       if (a.kind === 'firefly') {
         const blink = 0.5 + 0.5 * Math.sin(a.t * 3 + a.ph);
-        ctx.globalAlpha = night * fade * blink;
-        const g = ctx.createRadialGradient(a.x, a.y, 0, a.x, a.y, 7);
-        g.addColorStop(0, 'rgba(230,255,120,0.9)');
-        g.addColorStop(1, 'rgba(230,255,120,0)');
-        ctx.fillStyle = g;
-        ctx.fillRect(a.x - 7, a.y - 7, 14, 14);
+        ctx.globalAlpha = night * fade * blink * 0.9;
+        ctx.drawImage(glowSprite('#e6ff78'), a.x - 7, a.y - 7, 14, 14);
       } else if (a.kind === 'mote') {
         ctx.globalAlpha = (1 - night) * fade * 0.5;
         ctx.fillStyle = '#fff4c0';
@@ -5553,11 +5869,12 @@
     const v = viewWorldRect();
     drawSky();
     drawAurora();
+    drawGround(v);
     ctx.save();
     ctx.translate(viewPanX, viewPanY);
     ctx.scale(viewZoom, viewZoom);
-    drawGround(v);
-    drawDecor(v);
+    spriteScale = viewZoom * (window.devicePixelRatio || 1);
+    drawDecor(v, 'live');
     drawTiles(v);
     drawWeatherWorld();
     drawFieldFence();
@@ -5585,6 +5902,7 @@
     drawMeteorsWorld();
     particles.draw(ctx);
     ctx.restore();
+    spriteScale = window.devicePixelRatio || 1;
     drawLighting();
     drawAmbient();
   }
@@ -5640,15 +5958,15 @@
         case WEATHER_DUST: {
           ctx.fillStyle = `rgba(190,140,80,${0.28 * k})`;
           ctx.fillRect(0, 0, canvasW, canvasH);
+          const band = dustBand();
+          ctx.imageSmoothingEnabled = false;
+          ctx.globalAlpha = k;
           for (let i = 0; i < 3; ++i) {
             const y = canvasH * (0.2 + i * 0.3) + Math.sin(animT * 0.7 + i) * 40;
-            const g = ctx.createLinearGradient(0, y - 60, 0, y + 60);
-            g.addColorStop(0, 'rgba(210,160,90,0)');
-            g.addColorStop(0.5, `rgba(210,160,90,${0.18 * k})`);
-            g.addColorStop(1, 'rgba(210,160,90,0)');
-            ctx.fillStyle = g;
-            ctx.fillRect(0, y - 60, canvasW, 120);
+            ctx.drawImage(band, 0, y - 60, canvasW, 120);
           }
+          ctx.imageSmoothingEnabled = true;
+          ctx.globalAlpha = 1;
           ctx.fillStyle = `rgba(230,190,130,${0.6 * k})`;
           for (const d of wxDrops)
             ctx.fillRect(d.x, d.y, d.size * 4, d.size * 0.8);
@@ -5665,14 +5983,15 @@
     for (const b of bolts) {
       const a = 1 - b.t / 0.35;
       ctx.save();
-      ctx.strokeStyle = `rgba(200,220,255,${a})`;
-      ctx.shadowColor = '#a0c8ff';
-      ctx.shadowBlur = 14;
-      ctx.lineWidth = 3;
       ctx.lineJoin = 'round';
       ctx.beginPath();
       ctx.moveTo(b.pts[0][0], b.pts[0][1]);
       for (const p of b.pts) ctx.lineTo(p[0], p[1]);
+      ctx.strokeStyle = `rgba(160,200,255,${0.25 * a})`;
+      ctx.lineWidth = 12;
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(200,220,255,${a})`;
+      ctx.lineWidth = 3;
       ctx.stroke();
       ctx.strokeStyle = `rgba(255,255,255,${a})`;
       ctx.lineWidth = 1.2;
@@ -5756,7 +6075,7 @@
      celebrations burst confetti, sounds follow every action
      ══════════════════════════════════════════════════════════════════ */
 
-  const uiParticles = new SZ.GameEffects.ParticleSystem();
+  const uiParticles = new FarmParticles(400);
   const flyers = [];                 // { sprite, x0, y0, target, t, dur, size, arc, onArrive }
   let storagePulse = 0;
   const buildAnim = {};              // "r,c" -> uiTime of placement
@@ -5778,7 +6097,7 @@
 
   function addFlyer(sprite, x0, y0, targetFn, opts) {
     opts = opts || {};
-    if (flyers.length > 80) return;
+    if (flyers.length > (lowQuality ? 40 : 80)) return;
     flyers.push({
       sprite, x0, y0, target: targetFn, t: -(opts.delay || 0), dur: opts.dur || 0.75 + Math.random() * 0.2,
       size: opts.size || 22, arc: opts.arc !== undefined ? opts.arc : 60 + Math.random() * 50,
@@ -5839,8 +6158,7 @@
       const pop = k < 0.15 ? 0.5 + k / 0.15 * 0.7 : 1.2 - (k - 0.15) * 0.45;
       ctx.save();
       ctx.globalAlpha = Math.min(1, (1 - k) * 4 + 0.3);
-      ctx.shadowColor = 'rgba(255,230,140,0.8)';
-      ctx.shadowBlur = 8;
+      drawGlow(x, y, f.size * pop * 0.8, '#ffe68c', 0.55);
       drawSprite(f.sprite, x, y, f.size * pop);
       ctx.restore();
     }
@@ -6398,12 +6716,10 @@
 
   let treeNebula = null;
 
+  let treeBackCanvas = null, treeBackKey = '';
+
+  /* Gradient and drifting nebula, baked at screen size whenever the drift moves */
   function drawTreeBackground() {
-    const g = ctx.createLinearGradient(0, 0, 0, UH);
-    g.addColorStop(0, '#0b0f1e');
-    g.addColorStop(1, '#05060c');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, UW, UH);
     if (!treeNebula) {
       treeNebula = document.createElement('canvas');
       treeNebula.width = 700;
@@ -6424,8 +6740,28 @@
       }
       n.globalAlpha = 1;
     }
-    const ox = ((treeCam.x * 0.05) % 140) - 70, oy = ((treeCam.y * 0.05) % 100) - 50;
-    ctx.drawImage(treeNebula, ox - 70, oy - 50, UW + 140, UH + 100);
+    const ox = Math.round(((treeCam.x * 0.05) % 140) - 70), oy = Math.round(((treeCam.y * 0.05) % 100) - 50);
+    const s = uiS * (window.devicePixelRatio || 1);
+    const W = Math.round(UW * s), H = Math.round(UH * s);
+    const key = [W, H, ox, oy].join('|');
+    if (key !== treeBackKey || !treeBackCanvas) {
+      treeBackKey = key;
+      if (!treeBackCanvas)
+        treeBackCanvas = document.createElement('canvas');
+      if (treeBackCanvas.width !== W || treeBackCanvas.height !== H) {
+        treeBackCanvas.width = W;
+        treeBackCanvas.height = H;
+      }
+      const b = treeBackCanvas.getContext('2d');
+      b.setTransform(s, 0, 0, s, 0, 0);
+      const g = b.createLinearGradient(0, 0, 0, UH);
+      g.addColorStop(0, '#0b0f1e');
+      g.addColorStop(1, '#05060c');
+      b.fillStyle = g;
+      b.fillRect(0, 0, UW, UH);
+      b.drawImage(treeNebula, ox - 70, oy - 50, UW + 140, UH + 100);
+    }
+    ctx.drawImage(treeBackCanvas, 0, 0, UW, UH);
     const V = treeView();
     const step = 64 * treeCam.z;
     if (step >= 10) {
@@ -6489,20 +6825,20 @@
     else if (st === 'poor') ctx.fillStyle = highlight ? 'rgba(54,48,38,0.95)' : 'rgba(40,36,30,0.95)';
     else ctx.fillStyle = 'rgba(16,18,26,0.95)';
     ctx.fill();
-    ctx.save();
-    ctx.clip();
+    // gloss on the upper part (a rounded strip instead of a clip, which is costly)
+    roundRectPath(x + 1, y + 1, w - 2, h * 0.45, 11);
     ctx.fillStyle = st === 'locked' ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.06)';
-    ctx.fillRect(x, y, w, h * 0.45);
-    ctx.restore();
+    ctx.fill();
     roundRectPath(x, y, w, h, 12);
     if (st === 'owned') {
       ctx.lineWidth = 2;
       ctx.strokeStyle = color;
     } else if (st === 'ready') {
+      ctx.lineWidth = 7 + Math.sin(uiTime * 4) * 2;
+      ctx.strokeStyle = hexToRgba(color, 0.22);
+      ctx.stroke();
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = color;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 8 + Math.sin(uiTime * 4) * 4;
     } else if (st === 'poor') {
       ctx.lineWidth = 2;
       ctx.strokeStyle = 'rgba(255,182,72,0.65)';
@@ -6513,7 +6849,6 @@
     }
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.shadowBlur = 0;
   }
 
   function drawTreeCard(ln, st, compact) {
@@ -6529,14 +6864,14 @@
     drawNodeFrame(x, y, w, h, color, st, hover || focus);
     if (hover || focus) {
       roundRectPath(x - 4, y - 4, w + 8, h + 8, 15);
+      if (focus) {
+        ctx.lineWidth = 9;
+        ctx.strokeStyle = 'rgba(255,215,90,0.25)';
+        ctx.stroke();
+      }
       ctx.lineWidth = focus ? 3 : 2;
       ctx.strokeStyle = focus ? UI.gold : 'rgba(255,255,255,0.85)';
-      if (focus) {
-        ctx.shadowColor = UI.gold;
-        ctx.shadowBlur = 12;
-      }
       ctx.stroke();
-      ctx.shadowBlur = 0;
     }
     roundRectPath(x + 10, y + 10, 44, 44, 9);
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
@@ -6637,6 +6972,7 @@
     ctx.clip();
     ctx.translate(treeCam.x, treeCam.y);
     ctx.scale(treeCam.z, treeCam.z);
+    spriteScale = uiS * treeCam.z * (window.devicePixelRatio || 1);
     const viewL = (V.x - treeCam.x) / treeCam.z, viewT = (V.y - treeCam.y) / treeCam.z;
     const viewR = viewL + V.w / treeCam.z, viewB = viewT + V.h / treeCam.z;
     const compact = treeCam.z < 0.6;
@@ -6706,6 +7042,7 @@
       drawTreeCard(ln, treeNodeState(ln.node), compact);
     }
     ctx.restore();
+    spriteScale = uiS * (window.devicePixelRatio || 1);
   }
 
   function treeTabs() {
@@ -7878,23 +8215,27 @@
     const lift = pressed ? 1 : -hv * 3;
     const yy = y + lift;
     ctx.save();
-    roundRectPath(x, yy, SLOT_W, SLOT_H, 10);
-    const g = ctx.createLinearGradient(0, yy, 0, yy + SLOT_H);
-    g.addColorStop(0, selected ? 'rgba(126,224,106,0.32)' : `rgba(44,54,80,${0.85 + hv * 0.1})`);
-    g.addColorStop(1, selected ? 'rgba(40,90,40,0.45)' : 'rgba(20,24,38,0.9)');
-    ctx.fillStyle = g;
-    ctx.fill();
     if (selected) {
-      ctx.shadowColor = UI.leaf;
-      ctx.shadowBlur = 10 + Math.sin(uiTime * 4) * 4;
+      roundRectPath(x, yy, SLOT_W, SLOT_H, 10);
+      ctx.lineWidth = 7 + Math.sin(uiTime * 4) * 2;
+      ctx.strokeStyle = 'rgba(126,224,106,0.22)';
+      ctx.stroke();
     }
-    ctx.lineWidth = selected ? 2.5 : 1.2;
-    ctx.strokeStyle = selected ? UI.leaf : `rgba(140,160,210,${0.25 + hv * 0.45})`;
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = 'rgba(255,255,255,0.07)';
-    roundRectPath(x + 2, yy + 2, SLOT_W - 4, SLOT_H * 0.4, 8);
-    ctx.fill();
+    const hq = Math.round(hv * 8) / 8;
+    drawBaked(['slot', selected ? 1 : 0, hq].join('|'), x, yy, SLOT_W, SLOT_H, 3, (g, px, py, w, h) => {
+      rrPath(g, px, py, w, h, 10);
+      const gr = g.createLinearGradient(0, py, 0, py + h);
+      gr.addColorStop(0, selected ? 'rgba(126,224,106,0.32)' : `rgba(44,54,80,${0.85 + hq * 0.1})`);
+      gr.addColorStop(1, selected ? 'rgba(40,90,40,0.45)' : 'rgba(20,24,38,0.9)');
+      g.fillStyle = gr;
+      g.fill();
+      g.lineWidth = selected ? 2.5 : 1.2;
+      g.strokeStyle = selected ? UI.leaf : `rgba(140,160,210,${0.25 + hq * 0.45})`;
+      g.stroke();
+      g.fillStyle = 'rgba(255,255,255,0.07)';
+      rrPath(g, px + 2, py + 2, w - 4, h * 0.4, 8);
+      g.fill();
+    });
     // Icon
     const bob = selected ? Math.sin(uiTime * 3) * 1.5 : 0;
     if (locked) {
@@ -8992,6 +9333,7 @@
 
     ctx.save();
     ctx.scale(uiS, uiS);
+    spriteScale = uiS * (window.devicePixelRatio || 1);
     if (state === STATE_READY)
       drawTitleScreen();
     else if (playing && !covered) {
@@ -9084,8 +9426,33 @@
   let animFrameId = null;
   let lastSeason = -1;
 
+  /* Frame-time monitor: when frames stay slow the lighter path kicks in
+     (coarser night mask, fewer drops, flakes and particles, still trees),
+     and it switches back once there is headroom again */
+  const frameMon = { avg: 16.7, slow: 0, fast: 0 };
+
+  function monitorFrame(ms) {
+    if (!(ms > 0) || ms > 250) return;
+    frameMon.avg += (ms - frameMon.avg) * 0.05;
+    if (!lowQuality) {
+      frameMon.slow = frameMon.avg > 30 ? frameMon.slow + ms : 0;
+      if (frameMon.slow > 2000) {
+        lowQuality = true;
+        frameMon.fast = 0;
+      }
+    } else {
+      frameMon.fast = frameMon.avg < 19 ? frameMon.fast + ms : 0;
+      if (frameMon.fast > 4000) {
+        lowQuality = false;
+        frameMon.slow = 0;
+      }
+    }
+  }
+
   function gameLoop(timestamp) {
     const rawDt = lastTimestamp ? (timestamp - lastTimestamp) / 1000 : 0;
+    if (state === STATE_PLAYING && !document.hidden)
+      monitorFrame(rawDt * 1000);
     const dt = Math.min(rawDt, MAX_DT);
     lastTimestamp = timestamp;
     frameDt = Math.max(0.001, dt);
