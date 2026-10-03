@@ -571,12 +571,253 @@
      DRAWING
      ══════════════════════════════════════════════════════════════════ */
 
+  /* ── Drawing helpers ── */
+  const UI = {
+    panelTop: 'rgba(30,28,60,',
+    panelBottom: 'rgba(14,12,32,',
+    text: '#eef0ff',
+    textDim: 'rgba(225,228,255,0.62)',
+    gold: '#ffd76a',
+    good: '#7dffb2',
+    font: '"Segoe UI", system-ui, sans-serif'
+  };
+
+  function shade(hex, amount) {
+    const n = parseInt(hex.length === 4 ? hex.replace(/^#(.)(.)(.)$/, '#$1$1$2$2$3$3').slice(1) : hex.slice(1, 7), 16);
+    const f = (v) => Math.max(0, Math.min(255, Math.round(v + (amount < 0 ? v * amount : (255 - v) * amount))));
+    const r = f(n >> 16), g = f((n >> 8) & 255), b = f(n & 255);
+    return '#' + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1);
+  }
+
+  function withAlpha(hex, a) {
+    const full = shade(hex, 0);
+    const n = parseInt(full.slice(1), 16);
+    return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+  }
+
+  function roundRectPath(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  function panel(x, y, w, h, alpha, accent) {
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 14;
+    ctx.shadowOffsetY = 4;
+    roundRectPath(x, y, w, h, 10);
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, UI.panelTop + alpha + ')');
+    g.addColorStop(1, UI.panelBottom + alpha + ')');
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = accent ? withAlpha(accent, 0.55) : 'rgba(255,255,255,0.16)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function centeredText(text, y, font, color, glow) {
+    ctx.save();
+    ctx.font = font;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    if (glow) {
+      ctx.shadowColor = glow;
+      ctx.shadowBlur = 16;
+    }
+    ctx.fillStyle = color;
+    ctx.fillText(text, canvasW / 2, y);
+    ctx.restore();
+  }
+
+  function pill(text, y, color) {
+    ctx.save();
+    ctx.font = 'bold 14px ' + UI.font;
+    const w = ctx.measureText(text).width + 36;
+    const pulse = 0.75 + 0.25 * Math.sin(performance.now() / 350);
+    roundRectPath(canvasW / 2 - w / 2, y - 16, w, 32, 16);
+    ctx.fillStyle = withAlpha(color, 0.16 + 0.1 * pulse);
+    ctx.fill();
+    ctx.strokeStyle = withAlpha(color, 0.5 + 0.4 * pulse);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, canvasW / 2, y + 1);
+    ctx.restore();
+  }
+
+  /* Floor: soft-lit room with tiles, seams in the room's accent and a vignette */
+  function drawFloor(def) {
+    const base = def.color;
+    const g = ctx.createRadialGradient(canvasW / 2, canvasH / 2, 40, canvasW / 2, canvasH / 2, Math.max(canvasW, canvasH) * 0.75);
+    g.addColorStop(0, shade(base, 0.16));
+    g.addColorStop(1, shade(base, -0.35));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    // Checkered floor tiles
+    ctx.fillStyle = 'rgba(255,255,255,0.025)';
+    for (let y = 0; y < canvasH; y += TILE)
+      for (let x = ((y / TILE) % 2) * TILE; x < canvasW; x += TILE * 2)
+        ctx.fillRect(x, y, TILE, TILE);
+    ctx.strokeStyle = withAlpha(def.accentColor, 0.09);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = 0.5; x < canvasW; x += TILE) {
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, canvasH);
+    }
+    for (let y = 0.5; y < canvasH; y += TILE) {
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvasW, y);
+    }
+    ctx.stroke();
+
+    // Room border: a recessed frame
+    ctx.strokeStyle = withAlpha(def.accentColor, 0.25);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(6, 6, canvasW - 12, canvasH - 12);
+
+    const v = ctx.createRadialGradient(canvasW / 2, canvasH / 2, Math.min(canvasW, canvasH) * 0.35, canvasW / 2, canvasH / 2, Math.max(canvasW, canvasH) * 0.75);
+    v.addColorStop(0, 'rgba(0,0,0,0)');
+    v.addColorStop(1, 'rgba(0,0,0,0.55)');
+    ctx.fillStyle = v;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+  }
+
+  /* Beveled stone block with a cast shadow */
+  function drawStone(x, y, w, h, tint) {
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(x + 5, y + 6, w, h);
+    const g = ctx.createLinearGradient(x, y, x, y + h);
+    g.addColorStop(0, shade(tint, 0.25));
+    g.addColorStop(1, shade(tint, -0.2));
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    ctx.fillRect(x, y, w, 2);
+    ctx.fillRect(x, y, 2, h);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(x, y + h - 2, w, 2);
+    ctx.fillRect(x + w - 2, y, 2, h);
+    // Mortar lines on long blocks
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (w >= h)
+      for (let sx = x + 40; sx < x + w - 4; sx += 40) {
+        ctx.moveTo(sx + 0.5, y + 2);
+        ctx.lineTo(sx + 0.5, y + h - 2);
+      }
+    else
+      for (let sy = y + 40; sy < y + h - 4; sy += 40) {
+        ctx.moveTo(x + 2, sy + 0.5);
+        ctx.lineTo(x + w - 2, sy + 0.5);
+      }
+    ctx.stroke();
+  }
+
+  function glowCircle(x, y, r, inner, outer) {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, inner);
+    g.addColorStop(1, outer);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /* Arched doorway with a swirling portal inside */
+  function drawDoor(p, accent, t) {
+    const cx = p.x + p.w / 2;
+    const top = p.y + p.w / 2;
+    // Light spill on the floor
+    glowCircle(cx, p.y + p.h, p.w * 1.3, withAlpha(accent, 0.28), withAlpha(accent, 0));
+    // Frame
+    ctx.save();
+    ctx.shadowColor = accent;
+    ctx.shadowBlur = 12 + Math.sin(t * 2.5) * 5;
+    ctx.fillStyle = shade(accent, -0.55);
+    ctx.beginPath();
+    ctx.moveTo(p.x - 4, p.y + p.h + 2);
+    ctx.lineTo(p.x - 4, top);
+    ctx.arc(cx, top, p.w / 2 + 4, Math.PI, 0);
+    ctx.lineTo(p.x + p.w + 4, p.y + p.h + 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    // Portal surface
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y + p.h);
+    ctx.lineTo(p.x, top);
+    ctx.arc(cx, top, p.w / 2, Math.PI, 0);
+    ctx.lineTo(p.x + p.w, p.y + p.h);
+    ctx.closePath();
+    const g = ctx.createLinearGradient(0, p.y, 0, p.y + p.h);
+    g.addColorStop(0, shade(accent, 0.55));
+    g.addColorStop(1, shade(accent, -0.15));
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = 1.5;
+    const sy = p.y + p.h * 0.55;
+    for (let i = 0; i < 3; ++i) {
+      ctx.beginPath();
+      ctx.ellipse(cx, sy, 4 + i * 6, 3 + i * 5, t * (1.2 + i * 0.4), 0.4, Math.PI * 1.6);
+      ctx.stroke();
+    }
+    ctx.restore();
+    // Threshold
+    ctx.fillStyle = shade(accent, -0.35);
+    ctx.fillRect(p.x - 6, p.y + p.h, p.w + 12, 4);
+  }
+
+  function drawWisp(x, y, color, alpha, dir) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(x, y + PLAYER_SIZE / 2 + 3, PLAYER_SIZE * 0.55, 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    glowCircle(x, y, PLAYER_SIZE * 1.4, withAlpha(color, 0.35), withAlpha(color, 0));
+    const g = ctx.createRadialGradient(x - 3, y - 4, 1, x, y, PLAYER_SIZE / 2 + 1);
+    g.addColorStop(0, '#ffffff');
+    g.addColorStop(0.45, shade(color, 0.35));
+    g.addColorStop(1, shade(color, -0.25));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, PLAYER_SIZE / 2 + 1, 0, Math.PI * 2);
+    ctx.fill();
+    // Eyes look where the wisp is heading
+    ctx.fillStyle = '#1b1b3a';
+    const ex = dir.x * 2.5, ey = dir.y * 2;
+    ctx.beginPath();
+    ctx.arc(x - 3 + ex, y - 1 + ey, 1.7, 0, Math.PI * 2);
+    ctx.arc(x + 3 + ex, y - 1 + ey, 1.7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   function drawRoom() {
     const def = ROOMS[currentRoom];
+    const t = performance.now() / 1000;
 
-    // Room background
-    ctx.fillStyle = def.color;
-    ctx.fillRect(0, 0, canvasW, canvasH);
+    drawFloor(def);
 
     // Warp distortion overlay
     if (warpActive) {
@@ -585,7 +826,7 @@
         const offset = Math.sin(y * 0.05 + time) * waveAmplitude * warpEffect;
         ctx.save();
         ctx.translate(offset, 0);
-        ctx.globalAlpha = 0.03;
+        ctx.globalAlpha = 0.05;
         ctx.fillStyle = def.accentColor;
         ctx.fillRect(0, y, canvasW, 4);
         ctx.restore();
@@ -604,201 +845,283 @@
       ctx.translate(-canvasW / 2, -canvasH / 2);
     }
 
-    // Draw grid lines for atmosphere
-    ctx.strokeStyle = def.accentColor + '22';
-    ctx.lineWidth = 1;
-    for (let x = 0; x < canvasW; x += TILE) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvasH);
-      ctx.stroke();
-    }
-    for (let y = 0; y < canvasH; y += TILE) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(canvasW, y);
-      ctx.stroke();
-    }
-
     // Objects
     for (const obj of def.objects) {
+      const cx = obj.x + obj.w / 2;
+      const cy = obj.y + obj.h / 2;
       switch (obj.type) {
-        case 'clue':
-          ctx.fillStyle = '#ff0';
-          ctx.shadowBlur = 12;
-          ctx.shadowColor = '#ff0';
-          ctx.fillRect(obj.x, obj.y, obj.w, obj.h);
-          ctx.shadowBlur = 0;
+        case 'clue': {
+          // Floating rune stone with a question mark
+          const bob = Math.sin(t * 2.2 + obj.x) * 3;
+          ctx.fillStyle = 'rgba(0,0,0,0.3)';
+          ctx.beginPath();
+          ctx.ellipse(cx, obj.y + obj.h + 4, 9, 3, 0, 0, Math.PI * 2);
+          ctx.fill();
+          glowCircle(cx, cy + bob, 26, 'rgba(255,230,120,0.35)', 'rgba(255,230,120,0)');
+          ctx.save();
+          ctx.translate(cx, cy + bob);
+          ctx.rotate(Math.PI / 4);
+          const g = ctx.createLinearGradient(-10, -10, 10, 10);
+          g.addColorStop(0, '#fff6c0');
+          g.addColorStop(1, '#e0a92a');
+          ctx.fillStyle = g;
+          ctx.fillRect(-10, -10, 20, 20);
+          ctx.strokeStyle = 'rgba(120,70,0,0.6)';
+          ctx.strokeRect(-10, -10, 20, 20);
+          ctx.restore();
+          ctx.fillStyle = '#6a3d00';
+          ctx.font = 'bold 14px ' + UI.font;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('?', cx, cy + bob + 1);
+          ctx.textAlign = 'start';
+          ctx.textBaseline = 'alphabetic';
           break;
+        }
         case 'platform':
-        case 'stairPlatform':
-          ctx.fillStyle = '#555';
-          ctx.fillRect(obj.x, obj.y, obj.w, obj.h);
+          drawStone(obj.x, obj.y, obj.w, obj.h, shade(def.accentColor, -0.45));
           break;
+        case 'stairPlatform': {
+          drawStone(obj.x, obj.y, obj.w, obj.h, shade(def.accentColor, -0.5));
+          // Step notches that seem to climb forever
+          ctx.fillStyle = 'rgba(255,255,255,0.12)';
+          for (let sx = obj.x + 6; sx < obj.x + obj.w - 10; sx += 24)
+            ctx.fillRect(sx, obj.y + 4 + ((sx - obj.x) / 24 % 4), 14, 3);
+          break;
+        }
         case 'wall':
-          ctx.fillStyle = '#444';
-          ctx.fillRect(obj.x, obj.y, obj.w, obj.h);
+          drawStone(obj.x, obj.y, obj.w, obj.h, shade(def.accentColor, -0.55));
           break;
-        case 'colorTile':
-          ctx.fillStyle = obj.tileColor || '#888';
-          ctx.globalAlpha = 0.6;
-          ctx.fillRect(obj.x, obj.y, obj.w, obj.h);
-          ctx.globalAlpha = 1;
+        case 'colorTile': {
+          const c = obj.tileColor || '#888';
+          ctx.save();
+          ctx.shadowColor = c;
+          ctx.shadowBlur = 10 + Math.sin(t * 3 + obj.x) * 4;
+          roundRectPath(obj.x + 2, obj.y + 2, obj.w - 4, obj.h - 4, 6);
+          const g = ctx.createLinearGradient(obj.x, obj.y, obj.x + obj.w, obj.y + obj.h);
+          g.addColorStop(0, shade(c, 0.35));
+          g.addColorStop(1, shade(c, -0.25));
+          ctx.fillStyle = g;
+          ctx.fill();
+          ctx.restore();
+          ctx.fillStyle = 'rgba(255,255,255,0.3)';
+          roundRectPath(obj.x + 6, obj.y + 5, obj.w - 12, 6, 3);
+          ctx.fill();
           break;
-        case 'shadow':
-          ctx.fillStyle = '#000';
-          ctx.globalAlpha = 0.8;
-          ctx.fillRect(obj.x, obj.y, obj.w, obj.h);
-          ctx.globalAlpha = 1;
-          break;
-        case 'fracture':
-          ctx.strokeStyle = '#f00';
-          ctx.lineWidth = 2;
-          ctx.shadowBlur = 8;
-          ctx.shadowColor = '#f00';
+        }
+        case 'shadow': {
+          glowCircle(cx, cy, obj.w, 'rgba(0,0,0,0.85)', 'rgba(0,0,0,0)');
+          ctx.fillStyle = 'rgba(160,180,200,0.5)';
           ctx.beginPath();
-          ctx.moveTo(obj.x, obj.y);
-          for (let fy = obj.y; fy < obj.y + obj.h; fy += 10) {
-            ctx.lineTo(obj.x + (Math.random() - 0.5) * 6, fy);
+          ctx.arc(cx - 5, cy - 2, 1.6, 0, Math.PI * 2);
+          ctx.arc(cx + 5, cy - 2, 1.6, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        }
+        case 'fracture': {
+          // Jagged glowing crack; its shape shifts a few times per second
+          const seed = Math.floor(t * 6);
+          ctx.save();
+          ctx.shadowColor = '#ff3040';
+          ctx.shadowBlur = 14;
+          for (const [w, col] of [[6, 'rgba(255,60,80,0.35)'], [2, '#ffd0d0']]) {
+            ctx.strokeStyle = col;
+            ctx.lineWidth = w;
+            ctx.beginPath();
+            ctx.moveTo(obj.x + obj.w / 2, obj.y);
+            for (let fy = obj.y + 10, i = 0; fy <= obj.y + obj.h; fy += 10, ++i) {
+              const n = Math.sin((i + 1) * 12.9898 + seed * 78.233) * 43758.5453;
+              ctx.lineTo(obj.x + obj.w / 2 + (n - Math.floor(n) - 0.5) * 12, fy);
+            }
+            ctx.stroke();
           }
-          ctx.stroke();
-          ctx.shadowBlur = 0;
+          ctx.restore();
           break;
-        case 'phantomBridge':
+        }
+        case 'phantomBridge': {
+          const a = 0.3 + Math.sin(t * 2) * 0.2;
+          ctx.save();
+          ctx.globalAlpha = a;
           ctx.fillStyle = def.accentColor;
-          ctx.globalAlpha = 0.3 + Math.sin(performance.now() / 500) * 0.2;
-          ctx.fillRect(obj.x, obj.y, obj.w, obj.h);
-          ctx.globalAlpha = 1;
+          for (let px = obj.x; px < obj.x + obj.w; px += 18)
+            ctx.fillRect(px, obj.y, 14, obj.h);
+          ctx.globalAlpha = a * 0.6;
+          ctx.fillRect(obj.x, obj.y - 3, obj.w, 2);
+          ctx.fillRect(obj.x, obj.y + obj.h + 1, obj.w, 2);
+          ctx.restore();
           break;
-        case 'nexusOrb':
-          ctx.fillStyle = '#fff';
-          ctx.shadowBlur = 20;
-          ctx.shadowColor = '#fff';
-          ctx.beginPath();
-          ctx.arc(obj.x + obj.w / 2, obj.y + obj.h / 2, obj.w / 2, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.shadowBlur = 0;
+        }
+        case 'nexusOrb': {
+          glowCircle(cx, cy, obj.w * 1.6, 'rgba(255,255,255,0.45)', 'rgba(255,255,255,0)');
+          ctx.save();
+          ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+          ctx.lineWidth = 1.5;
+          for (let i = 0; i < 2; ++i) {
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, obj.w * 0.95, obj.w * 0.35, t * (i ? -1.1 : 0.8) + i, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+          ctx.restore();
+          glowCircle(cx, cy, obj.w / 2, '#ffffff', '#b8c4ff');
           break;
+        }
         case 'echo':
-          ctx.fillStyle = '#00ccff';
-          ctx.globalAlpha = 0.4;
-          ctx.fillRect(obj.x, obj.y, PLAYER_SIZE, PLAYER_SIZE);
-          ctx.globalAlpha = 1;
+          drawWisp(cx, cy, '#00ccff', 0.35 + Math.sin(t * 3) * 0.15, { x: Math.sin(t), y: 0 });
           break;
-        case 'goal':
-          ctx.fillStyle = '#ffd700';
-          ctx.shadowBlur = 16;
+        case 'goal': {
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(t * 0.4);
+          ctx.fillStyle = 'rgba(255,215,0,0.35)';
+          for (let i = 0; i < 12; ++i) {
+            ctx.rotate(Math.PI / 6);
+            ctx.beginPath();
+            ctx.moveTo(-3, obj.w * 0.55);
+            ctx.lineTo(0, obj.w * 1.15);
+            ctx.lineTo(3, obj.w * 0.55);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.restore();
+          ctx.save();
           ctx.shadowColor = '#ffd700';
-          ctx.beginPath();
-          ctx.arc(obj.x + obj.w / 2, obj.y + obj.h / 2, obj.w / 2, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.shadowBlur = 0;
+          ctx.shadowBlur = 20;
+          glowCircle(cx, cy, obj.w / 2, '#fffbe0', '#ffb300');
+          ctx.restore();
           break;
+        }
       }
     }
 
     // Portals / Doors
-    if (def.portals) {
-      for (const p of def.portals) {
-        ctx.fillStyle = def.accentColor;
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = def.accentColor;
-        ctx.fillRect(p.x, p.y, p.w, p.h);
-        ctx.shadowBlur = 0;
-
-        // Door glow pulse
-        const pulse = 0.5 + Math.sin(performance.now() / 400) * 0.3;
-        ctx.strokeStyle = def.accentColor;
-        ctx.globalAlpha = pulse;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(p.x - 2, p.y - 2, p.w + 4, p.h + 4);
-        ctx.globalAlpha = 1;
-      }
-    }
+    if (def.portals)
+      for (const p of def.portals)
+        drawDoor(p, def.accentColor, t);
 
     if (transitionProgress < 1)
       ctx.restore();
   }
 
   function drawPlayer() {
-    // Player glow
-    ctx.fillStyle = '#0af';
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = '#0af';
-    ctx.beginPath();
-    ctx.arc(player.x, player.y, PLAYER_SIZE / 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
+    const dir = { x: 0, y: 0 };
+    if (keys['ArrowLeft'] || keys['KeyA']) dir.x = -1;
+    if (keys['ArrowRight'] || keys['KeyD']) dir.x = 1;
+    if (keys['ArrowUp'] || keys['KeyW']) dir.y = -1;
+    if (keys['ArrowDown'] || keys['KeyS']) dir.y = 1;
+    drawWisp(player.x, player.y, '#3cc8ff', 1, dir);
+  }
 
-    // Inner dot
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(player.x, player.y, 3, 0, Math.PI * 2);
-    ctx.fill();
+  /* Title art: a door standing alone, opening onto another room */
+  function drawTitleArt(cx, cy, t) {
+    // Floor ellipse
+    glowCircle(cx, cy + 62, 120, 'rgba(120,140,255,0.25)', 'rgba(120,140,255,0)');
+    ctx.strokeStyle = 'rgba(160,170,255,0.25)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i <= 3; ++i) {
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + 62, 40 * i, 9 * i, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    drawDoor({ x: cx - 30, y: cy - 50, w: 60, h: 110 }, '#9d7bff', t);
+    // Stairs drifting through the doorway
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    for (let i = 0; i < 4; ++i)
+      ctx.fillRect(cx - 18 + i * 7, cy + 40 - i * 12, 14, 4);
+    drawWisp(cx - 70, cy + 52 + Math.sin(t * 2) * 3, '#3cc8ff', 1, { x: 1, y: 0 });
   }
 
   function drawHUD() {
+    const t = performance.now() / 1000;
+
     if (state === STATE_READY) {
-      ctx.fillStyle = 'rgba(0,0,0,0.85)';
+      const bg = ctx.createLinearGradient(0, 0, 0, canvasH);
+      bg.addColorStop(0, '#0f0e2a');
+      bg.addColorStop(1, '#2a1846');
+      ctx.fillStyle = bg;
       ctx.fillRect(0, 0, canvasW, canvasH);
-      ctx.fillStyle = '#88f';
-      ctx.font = 'bold 28px sans-serif';
+      drawTitleArt(canvasW / 2, canvasH / 2 - 80, t);
+      centeredText('MIND-BENDING PUZZLE', canvasH / 2 + 60, 'bold 30px ' + UI.font, UI.text, 'rgba(150,130,255,0.9)');
+      centeredText('Discover the hidden rule of each surreal room', canvasH / 2 + 94, 'italic 15px ' + UI.font, UI.textDim);
+      pill('Tap or press F2 to start', canvasH / 2 + 140, UI.gold);
+      centeredText('Arrows / WASD move   ·   E / Space interact   ·   Q shift perspective   ·   Esc pause', canvasH / 2 + 190, '12px ' + UI.font, UI.textDim);
+    }
+
+    if (state === STATE_EXPLORING || state === STATE_PAUSED) {
+      const def = ROOMS[currentRoom];
+      const known = !!discoveredRules[currentRoom];
+      const roomLabel = `ROOM ${currentRoom + 1} / ${ROOMS.length}`;
+      const ruleText = known ? def.rule : 'Rule unknown';
+      ctx.save();
+      ctx.font = 'bold 11px ' + UI.font;
+      const labelW = ctx.measureText(roomLabel).width;
+      ctx.font = 'bold 15px ' + UI.font;
+      const headW = labelW + 12 + ctx.measureText(def.name).width;
+      ctx.font = '12px ' + UI.font;
+      const w = Math.max(220, ctx.measureText(ruleText).width + 54, headW + 36);
+      ctx.restore();
+      panel(12, 12, w, 52, 0.8, def.accentColor);
+      ctx.save();
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = def.accentColor;
+      ctx.font = 'bold 11px ' + UI.font;
+      ctx.fillText(roomLabel, 24, 26);
+      ctx.fillStyle = UI.text;
+      ctx.font = 'bold 15px ' + UI.font;
+      ctx.fillText(def.name, 24 + labelW + 12, 26);
+      // Rule line with a lock or check mark
+      ctx.font = '12px ' + UI.font;
+      ctx.fillStyle = known ? UI.good : UI.textDim;
+      ctx.strokeStyle = ctx.fillStyle;
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      if (known) {
+        // check mark
+        ctx.moveTo(25, 48);
+        ctx.lineTo(29, 52);
+        ctx.lineTo(36, 43);
+        ctx.stroke();
+      } else {
+        // padlock
+        ctx.arc(30, 46, 3.5, Math.PI, 0);
+        ctx.stroke();
+        ctx.fillRect(25, 46, 10, 7);
+      }
+      ctx.fillText(ruleText, 42, 48);
+      ctx.restore();
+
+      // Discovered rules counter
+      const discovered = Object.keys(discoveredRules).length;
+      panel(canvasW - 120, 12, 108, 52, 0.8);
+      ctx.save();
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('MIND-BENDING PUZZLE', canvasW / 2, canvasH / 2 - 50);
-      ctx.fillStyle = '#aaa';
-      ctx.font = '14px sans-serif';
-      ctx.fillText('Discover hidden rules in surreal rooms', canvasW / 2, canvasH / 2 - 10);
-      ctx.fillText('Tap or press F2 to Start', canvasW / 2, canvasH / 2 + 20);
-      ctx.textAlign = 'start';
+      ctx.fillStyle = UI.textDim;
+      ctx.font = 'bold 10px ' + UI.font;
+      ctx.fillText('RULES FOUND', canvasW - 66, 27);
+      ctx.fillStyle = UI.gold;
+      ctx.font = 'bold 18px ' + UI.font;
+      ctx.fillText(`${discovered} / ${ROOMS.length}`, canvasW - 66, 47);
+      ctx.restore();
     }
 
     if (state === STATE_PAUSED) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillStyle = 'rgba(8,6,24,0.55)';
       ctx.fillRect(0, 0, canvasW, canvasH);
-      ctx.fillStyle = '#ff0';
-      ctx.font = 'bold 32px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('PAUSED', canvasW / 2, canvasH / 2);
-      ctx.textAlign = 'start';
+      panel(canvasW / 2 - 130, canvasH / 2 - 55, 260, 110, 0.92);
+      centeredText('PAUSED', canvasH / 2 - 15, 'bold 28px ' + UI.font, UI.text, 'rgba(150,130,255,0.8)');
+      centeredText('Press Esc to resume', canvasH / 2 + 22, '13px ' + UI.font, UI.textDim);
     }
 
     if (state === STATE_GAME_OVER) {
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillStyle = 'rgba(8,6,24,0.6)';
       ctx.fillRect(0, 0, canvasW, canvasH);
-      ctx.fillStyle = '#ffd700';
-      ctx.font = 'bold 28px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('AWAKENED', canvasW / 2, canvasH / 2 - 40);
-      ctx.fillStyle = '#ccc';
-      ctx.font = '16px sans-serif';
+      panel(canvasW / 2 - 180, canvasH / 2 - 90, 360, 180, 0.94, '#ffd700');
+      centeredText('AWAKENED', canvasH / 2 - 50, 'bold 30px ' + UI.font, UI.gold, 'rgba(255,200,80,0.8)');
       const discovered = Object.keys(discoveredRules).length;
-      ctx.fillText(`Rules Discovered: ${discovered} / ${ROOMS.length}`, canvasW / 2, canvasH / 2);
-      ctx.fillText('Tap or press F2 to play again', canvasW / 2, canvasH / 2 + 30);
-      ctx.textAlign = 'start';
-    }
-
-    // Room info HUD (top)
-    if (state === STATE_EXPLORING) {
-      const def = ROOMS[currentRoom];
-      ctx.fillStyle = '#aaa';
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText(`Room ${currentRoom + 1}/${ROOMS.length}: ${def.name}`, canvasW - 10, 18);
-
-      // Show rule hint if discovered
-      if (discoveredRules[currentRoom]) {
-        ctx.fillStyle = '#0f0';
-        ctx.font = '11px sans-serif';
-        ctx.fillText(`Rule: ${def.rule}`, canvasW - 10, 34);
-      } else {
-        ctx.fillStyle = '#666';
-        ctx.font = '11px sans-serif';
-        ctx.fillText('Rule: ???', canvasW - 10, 34);
-      }
-      ctx.textAlign = 'start';
+      centeredText(`Rules discovered: ${discovered} / ${ROOMS.length}`, canvasH / 2 - 12, 'bold 15px ' + UI.font, UI.text);
+      centeredText(`Time: ${Math.floor(elapsedTime / 60)}:${String(Math.floor(elapsedTime % 60)).padStart(2, '0')}`, canvasH / 2 + 14, '14px ' + UI.font, UI.textDim);
+      pill('Tap or press F2 to play again', canvasH / 2 + 55, UI.gold);
     }
   }
 
@@ -806,7 +1129,7 @@
     ctx.fillStyle = '#0a0a1a';
     ctx.fillRect(0, 0, canvasW, canvasH);
 
-    if (state === STATE_EXPLORING || state === STATE_GAME_OVER) {
+    if (state === STATE_EXPLORING || state === STATE_PAUSED || state === STATE_GAME_OVER) {
       drawRoom();
       drawPlayer();
     }
@@ -996,6 +1319,15 @@
   loadHighScores();
   updateWindowTitle();
   SZ.GameAudio.attachMuteButton();
+  SZ.TouchControls.attach({
+    container: document.querySelector('.game-frame'),
+    stick: 'eight',
+    buttons: [
+      { label: 'Use', code: 'KeyE' },
+      { label: 'Shift', code: 'KeyQ' }
+    ],
+    extra: [{ label: 'II', code: 'Escape', title: 'Pause' }]
+  });
 
   lastTimestamp = 0;
   animFrameId = requestAnimationFrame(gameLoop);

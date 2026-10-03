@@ -10,8 +10,9 @@
   const CANVAS_W = 700;
   const CANVAS_H = 500;
   const MAX_DT = 0.05;
-  const TILE_W = 64;
-  const TILE_H = 32;
+  const TILE_W = 96;
+  const TILE_H = 48;
+  const BOARD_ORIGIN_Y = 160;
   const PLAYER_SPEED = 6;
 
   /* ── Game states ── */
@@ -37,7 +38,7 @@
 
   function toIso(col, row) {
     const isoX = (col - row) * (TILE_W / 2) + CANVAS_W / 2;
-    const isoY = (col + row) * (TILE_H / 2) + 60;
+    const isoY = (col + row) * (TILE_H / 2) + BOARD_ORIGIN_Y;
     return { x: isoX, y: isoY };
   }
 
@@ -254,8 +255,6 @@
     const goalPos = toScreen(LEVELS[currentLevel].grid[0].length - 1, LEVELS[currentLevel].grid.length - 1);
     particles.burst(goalPos.x, goalPos.y, 20, { color: '#0f0', speed: 4, life: 0.8 });
     particles.sparkle(goalPos.x, goalPos.y, 15, { color: '#ff0', speed: 3 });
-    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 50, `Level ${currentLevel + 1} Complete!`, { color: '#ff0', font: 'bold 18px sans-serif' });
-    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 20, `Moves: ${moves}`, { color: '#ccc', font: '14px sans-serif' });
     screenShake.trigger(4, 200);
     SZ.GameAudio.play('levelup');
     updateWindowTitle();
@@ -425,124 +424,361 @@
      DRAWING
      ══════════════════════════════════════════════════════════════════ */
 
+  /* ── Palette ── */
+  const PAL = {
+    skyTop: '#1d1640',
+    skyMid: '#3b2763',
+    skyLow: '#7a4775',
+    star: 'rgba(255,240,220,',
+    floorTop: ['#f7e7cf', '#e7c9a2'],
+    floorLeft: '#c7798a',
+    floorRight: '#9b5269',
+    raisedTop: ['#fbefdc', '#edd3ae'],
+    stairTop: ['#d9ccff', '#a690ea'],
+    stairDim: ['#8a82a8', '#6c6390'],
+    stairLeft: '#7d68c4',
+    stairRight: '#5c4a9e',
+    goalTop: ['#b9f7e9', '#4fd3b8'],
+    goalLeft: '#3aa892',
+    goalRight: '#2a8072',
+    edge: 'rgba(255,255,255,0.55)',
+    gem: ['#fff4b8', '#ffd24a', '#e8962a'],
+    ink: '#2a1f45',
+    text: '#f6ecff',
+    textDim: 'rgba(246,236,255,0.65)',
+    accent: '#ffcf6b'
+  };
+
+  const BLOCK_DEPTH = 22;
+  const ELEVATION_RAISED = 0.5;
+
+  /* Twinkling background stars (fixed positions) */
+  const STARS = [];
+  for (let i = 0; i < 70; ++i)
+    STARS.push({ x: (i * 197) % CANVAS_W, y: (i * 89 + (i % 7) * 31) % (CANVAS_H * 0.75), r: 0.6 + (i % 3) * 0.5, p: i * 0.7 });
+
+  function roundRectPath(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  function panel(x, y, w, h, alpha) {
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.45)';
+    ctx.shadowBlur = 14;
+    ctx.shadowOffsetY = 4;
+    roundRectPath(x, y, w, h, 10);
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, `rgba(58,40,98,${alpha})`);
+    g.addColorStop(1, `rgba(30,22,60,${alpha})`);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawBackground() {
+    const g = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+    g.addColorStop(0, PAL.skyTop);
+    g.addColorStop(0.6, PAL.skyMid);
+    g.addColorStop(1, PAL.skyLow);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+    const t = performance.now() / 1000;
+    for (const s of STARS) {
+      const a = 0.35 + 0.35 * Math.sin(t * 1.3 + s.p);
+      ctx.fillStyle = PAL.star + a.toFixed(2) + ')';
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Soft glow behind the board
+    const glow = ctx.createRadialGradient(CANVAS_W / 2, CANVAS_H * 0.55, 20, CANVAS_W / 2, CANVAS_H * 0.55, 330);
+    glow.addColorStop(0, 'rgba(255,200,170,0.20)');
+    glow.addColorStop(1, 'rgba(255,200,170,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  }
+
+  /* An isometric block: top diamond centred at (x, yTop), sides down to yBase */
+  function drawBlock(x, yTop, yBase, hw, hh, top, left, right) {
+    // Left face
+    let g = ctx.createLinearGradient(0, yTop, 0, yBase + hh * 2);
+    g.addColorStop(0, left);
+    g.addColorStop(1, shade(left, -0.35));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(x - hw, yTop);
+    ctx.lineTo(x, yTop + hh);
+    ctx.lineTo(x, yBase + hh);
+    ctx.lineTo(x - hw, yBase);
+    ctx.closePath();
+    ctx.fill();
+
+    // Right face
+    g = ctx.createLinearGradient(0, yTop, 0, yBase + hh * 2);
+    g.addColorStop(0, right);
+    g.addColorStop(1, shade(right, -0.35));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(x + hw, yTop);
+    ctx.lineTo(x, yTop + hh);
+    ctx.lineTo(x, yBase + hh);
+    ctx.lineTo(x + hw, yBase);
+    ctx.closePath();
+    ctx.fill();
+
+    // Top face
+    g = ctx.createLinearGradient(x - hw, yTop - hh, x + hw, yTop + hh);
+    g.addColorStop(0, top[0]);
+    g.addColorStop(1, top[1]);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(x, yTop - hh);
+    ctx.lineTo(x + hw, yTop);
+    ctx.lineTo(x, yTop + hh);
+    ctx.lineTo(x - hw, yTop);
+    ctx.closePath();
+    ctx.fill();
+
+    // Lit back edges
+    ctx.strokeStyle = PAL.edge;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x - hw, yTop);
+    ctx.lineTo(x, yTop - hh);
+    ctx.lineTo(x + hw, yTop);
+    ctx.stroke();
+    // Front edge line
+    ctx.strokeStyle = 'rgba(40,20,60,0.35)';
+    ctx.beginPath();
+    ctx.moveTo(x - hw, yTop);
+    ctx.lineTo(x, yTop + hh);
+    ctx.lineTo(x + hw, yTop);
+    ctx.stroke();
+  }
+
+  function shade(hex, amount) {
+    const n = parseInt(hex.slice(1), 16);
+    const f = (v) => Math.max(0, Math.min(255, Math.round(v + (amount < 0 ? v * amount : (255 - v) * amount))));
+    const r = f(n >> 16), g = f((n >> 8) & 255), b = f(n & 255);
+    return '#' + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1);
+  }
+
+  function cellElevation(row, col) {
+    const cell = LEVELS[currentLevel].grid[row]?.[col];
+    return cell === 2 ? ELEVATION_RAISED : 0;
+  }
+
   function drawIsometricTile(col, row, cellType, elevation) {
     const pos = toScreen(col, row, elevation);
+    const base = toScreen(col, row, 0);
     const hw = TILE_W / 2;
     const hh = TILE_H / 2;
-
-    // Tile diamond
-    ctx.beginPath();
-    ctx.moveTo(pos.x, pos.y - hh);
-    ctx.lineTo(pos.x + hw, pos.y);
-    ctx.lineTo(pos.x, pos.y + hh);
-    ctx.lineTo(pos.x - hw, pos.y);
-    ctx.closePath();
+    const yBase = base.y + BLOCK_DEPTH;
 
     switch (cellType) {
       case 1:
-        ctx.fillStyle = '#334';
+        drawBlock(pos.x, pos.y, yBase, hw, hh, PAL.floorTop, PAL.floorLeft, PAL.floorRight);
         break;
       case 2:
-        ctx.fillStyle = '#445';
+        drawBlock(pos.x, pos.y, yBase, hw, hh, PAL.raisedTop, shade(PAL.floorLeft, 0.08), shade(PAL.floorRight, 0.08));
+        // Small inset square marks a raised terrace
+        ctx.strokeStyle = 'rgba(160,100,90,0.35)';
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y - hh * 0.55);
+        ctx.lineTo(pos.x + hw * 0.55, pos.y);
+        ctx.lineTo(pos.x, pos.y + hh * 0.55);
+        ctx.lineTo(pos.x - hw * 0.55, pos.y);
+        ctx.closePath();
+        ctx.stroke();
         break;
-      case 3:
-        ctx.fillStyle = '#426';
-        ctx.shadowBlur = 6;
-        ctx.shadowColor = '#66f';
+      case 3: {
+        const open = isWalkable(row, col);
+        drawBlock(pos.x, pos.y, yBase, hw, hh, open ? PAL.stairTop : PAL.stairDim, PAL.stairLeft, PAL.stairRight);
+        // Penrose steps drawn on the top face, glowing while the stair is usable
+        ctx.save();
+        if (open) {
+          ctx.shadowColor = '#c8b6ff';
+          ctx.shadowBlur = 10 + Math.sin(performance.now() / 300) * 4;
+        }
+        ctx.strokeStyle = open ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.35)';
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 4; ++i) {
+          const f = 0.75 - i * 0.18;
+          const y = pos.y - i * 3;
+          ctx.beginPath();
+          ctx.moveTo(pos.x - hw * f, y);
+          ctx.lineTo(pos.x, y - hh * f);
+          ctx.lineTo(pos.x + hw * f, y);
+          ctx.stroke();
+        }
+        ctx.restore();
         break;
-      case 4:
-        ctx.fillStyle = '#063';
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#0f0';
+      }
+      case 4: {
+        drawBlock(pos.x, pos.y, yBase, hw, hh, PAL.goalTop, PAL.goalLeft, PAL.goalRight);
+        drawArch(pos.x, pos.y);
         break;
-      default:
-        return;
+      }
     }
+  }
 
+  function drawArch(x, y) {
+    const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 400);
+    const archW = 18, archH = 40;
+    ctx.save();
+    ctx.shadowColor = '#7fffe0';
+    ctx.shadowBlur = 18 * pulse;
+    const g = ctx.createLinearGradient(0, y - archH, 0, y);
+    g.addColorStop(0, 'rgba(220,255,248,0.95)');
+    g.addColorStop(1, 'rgba(90,230,200,0.55)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(x - archW / 2, y);
+    ctx.lineTo(x - archW / 2, y - archH + archW / 2);
+    ctx.arc(x, y - archH + archW / 2, archW / 2, Math.PI, 0);
+    ctx.lineTo(x + archW / 2, y);
+    ctx.closePath();
     ctx.fill();
-    ctx.shadowBlur = 0;
-
-    // Tile outline
-    ctx.strokeStyle = '#556';
-    ctx.lineWidth = 1;
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(30,110,95,0.8)';
+    ctx.lineWidth = 2;
     ctx.stroke();
-
-    // Side faces for raised tiles
-    if (cellType === 2 || cellType === 3) {
-      const depth = 8;
-      ctx.fillStyle = '#223';
-      ctx.beginPath();
-      ctx.moveTo(pos.x, pos.y + hh);
-      ctx.lineTo(pos.x + hw, pos.y);
-      ctx.lineTo(pos.x + hw, pos.y + depth);
-      ctx.lineTo(pos.x, pos.y + hh + depth);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.fillStyle = '#112';
-      ctx.beginPath();
-      ctx.moveTo(pos.x, pos.y + hh);
-      ctx.lineTo(pos.x - hw, pos.y);
-      ctx.lineTo(pos.x - hw, pos.y + depth);
-      ctx.lineTo(pos.x, pos.y + hh + depth);
-      ctx.closePath();
-      ctx.fill();
-    }
   }
 
   function drawTrail() {
     if (trail.length < 2) return;
-
-    ctx.strokeStyle = '#0af';
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,236,190,0.55)';
     ctx.lineWidth = 3;
-    ctx.shadowBlur = 8;
-    ctx.shadowColor = '#0af';
+    ctx.setLineDash([2, 7]);
+    ctx.lineCap = 'round';
     ctx.beginPath();
     for (let i = 0; i < trail.length; ++i) {
-      const pos = toScreen(trail[i].col, trail[i].row);
+      const pos = toScreen(trail[i].col, trail[i].row, cellElevation(trail[i].row, trail[i].col));
       if (i === 0) ctx.moveTo(pos.x, pos.y);
       else ctx.lineTo(pos.x, pos.y);
     }
     ctx.stroke();
-    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  function drawGem(x, y, size, bob) {
+    // Shadow on the tile
+    ctx.fillStyle = 'rgba(60,30,60,0.28)';
+    ctx.beginPath();
+    ctx.ellipse(x, y + 2, size * 0.8, size * 0.35, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const gy = y - size * 1.6 - bob;
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,210,90,0.9)';
+    ctx.shadowBlur = 12;
+    // Crown and pavilion facets
+    ctx.fillStyle = PAL.gem[1];
+    ctx.beginPath();
+    ctx.moveTo(x - size, gy);
+    ctx.lineTo(x - size * 0.5, gy - size * 0.6);
+    ctx.lineTo(x + size * 0.5, gy - size * 0.6);
+    ctx.lineTo(x + size, gy);
+    ctx.lineTo(x, gy + size * 1.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = PAL.gem[0];
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.5, gy - size * 0.6);
+    ctx.lineTo(x + size * 0.1, gy - size * 0.6);
+    ctx.lineTo(x - size * 0.2, gy);
+    ctx.lineTo(x - size, gy);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = PAL.gem[2];
+    ctx.beginPath();
+    ctx.moveTo(x + size, gy);
+    ctx.lineTo(x, gy + size * 1.2);
+    ctx.lineTo(x + size * 0.2, gy);
+    ctx.closePath();
+    ctx.fill();
   }
 
   function drawCollectibles() {
     const def = LEVELS[currentLevel];
     if (!def.collectibles) return;
+    const t = performance.now() / 1000;
     for (let i = 0; i < def.collectibles.length; ++i) {
       if (collected.includes(i)) continue;
       const gem = def.collectibles[i];
-      const pos = toScreen(gem.col, gem.row);
-      const pulse = Math.sin(performance.now() / 300) * 0.3 + 0.7;
-
-      ctx.fillStyle = '#ff0';
-      ctx.shadowBlur = 12 * pulse;
-      ctx.shadowColor = '#ff0';
-      ctx.beginPath();
-      // Diamond shape
-      ctx.moveTo(pos.x, pos.y - 8);
-      ctx.lineTo(pos.x + 6, pos.y);
-      ctx.lineTo(pos.x, pos.y + 8);
-      ctx.lineTo(pos.x - 6, pos.y);
-      ctx.closePath();
-      ctx.fill();
-      ctx.shadowBlur = 0;
+      const pos = toScreen(gem.col, gem.row, cellElevation(gem.row, gem.col));
+      drawGem(pos.x, pos.y, 10, 4 + Math.sin(t * 2.4 + i) * 3);
     }
   }
 
-  function drawPlayer() {
-    ctx.fillStyle = '#0af';
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = '#0af';
-    ctx.beginPath();
-    ctx.arc(player.x, player.y - 6, 8, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
+  let playerLift = 0;
 
-    ctx.fillStyle = '#fff';
+  function drawPlayer() {
+    // Ease the figure up and down terraces
+    const targetLift = cellElevation(player.row, player.col) * TILE_H;
+    playerLift += (targetLift - playerLift) * 0.2;
+    const x = player.x;
+    const y = player.y - playerLift;
+    const bob = player.moveProgress < 1 ? Math.sin(player.moveProgress * Math.PI) * 5 : 0;
+
+    drawFigure(x, y, bob);
+  }
+
+  function drawFigure(x, y, bob) {
+    // Shadow
+    ctx.fillStyle = 'rgba(50,20,60,0.35)';
     ctx.beginPath();
-    ctx.arc(player.x, player.y - 6, 3, 0, Math.PI * 2);
+    ctx.ellipse(x, y + 2, 11, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const fy = y - bob;
+    // Robe
+    const robe = ctx.createLinearGradient(x - 9, 0, x + 9, 0);
+    robe.addColorStop(0, '#ffffff');
+    robe.addColorStop(1, '#cfc8e8');
+    ctx.fillStyle = robe;
+    ctx.beginPath();
+    ctx.moveTo(x - 9, fy);
+    ctx.quadraticCurveTo(x - 7, fy - 16, x - 3, fy - 22);
+    ctx.lineTo(x + 3, fy - 22);
+    ctx.quadraticCurveTo(x + 7, fy - 16, x + 9, fy);
+    ctx.quadraticCurveTo(x, fy + 4, x - 9, fy);
+    ctx.closePath();
+    ctx.fill();
+    // Head
+    ctx.fillStyle = '#fbe3cf';
+    ctx.beginPath();
+    ctx.arc(x, fy - 25, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Pointed hat
+    ctx.fillStyle = PAL.ink;
+    ctx.beginPath();
+    ctx.moveTo(x - 6, fy - 26);
+    ctx.lineTo(x + 6, fy - 26);
+    ctx.lineTo(x + 1, fy - 40);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = PAL.accent;
+    ctx.beginPath();
+    ctx.arc(x + 1, fy - 40, 1.8, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -565,7 +801,7 @@
       for (let c = 0; c < cols; ++c) {
         const cell = def.grid[r][c];
         if (cell === 0) continue;
-        const elevation = cell === 2 ? 0.5 : 0;
+        const elevation = cell === 2 ? ELEVATION_RAISED : 0;
         drawIsometricTile(c, r, cell, elevation);
       }
 
@@ -577,77 +813,182 @@
       ctx.restore();
   }
 
+  function centeredText(text, y, font, color, glow) {
+    ctx.save();
+    ctx.font = font;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    if (glow) {
+      ctx.shadowColor = glow;
+      ctx.shadowBlur = 16;
+    }
+    ctx.fillStyle = color;
+    ctx.fillText(text, CANVAS_W / 2, y);
+    ctx.restore();
+  }
+
+  function pill(text, y) {
+    ctx.save();
+    ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
+    const w = ctx.measureText(text).width + 36;
+    const pulse = 0.75 + 0.25 * Math.sin(performance.now() / 350);
+    roundRectPath(CANVAS_W / 2 - w / 2, y - 16, w, 32, 16);
+    ctx.fillStyle = `rgba(255,207,107,${0.18 + 0.12 * pulse})`;
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255,207,107,${0.55 + 0.35 * pulse})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.fillStyle = PAL.accent;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, CANVAS_W / 2, y + 1);
+    ctx.restore();
+  }
+
+  /* Title art: a small floating island built from the game's own pieces */
+  function drawTitleIsland(cx, cy) {
+    const hw = 34, hh = 17;
+    const cells = [[1, 1, 2], [3, 1, 1], [2, 1, 4]];
+    const at = (r, c, lift) => ({ x: cx + (c - r) * hw, y: cy + (c + r) * hh - lift });
+    for (let r = 0; r < 3; ++r)
+      for (let c = 0; c < 3; ++c) {
+        const cell = cells[r][c];
+        const lift = cell === 2 ? hh : 0;
+        const p = at(r, c, lift);
+        const yBase = cy + (c + r) * hh + 26;
+        if (cell === 1)
+          drawBlock(p.x, p.y, yBase, hw, hh, PAL.floorTop, PAL.floorLeft, PAL.floorRight);
+        else if (cell === 2)
+          drawBlock(p.x, p.y, yBase, hw, hh, PAL.raisedTop, shade(PAL.floorLeft, 0.08), shade(PAL.floorRight, 0.08));
+        else if (cell === 3)
+          drawBlock(p.x, p.y, yBase, hw, hh, PAL.stairTop, PAL.stairLeft, PAL.stairRight);
+        else {
+          drawBlock(p.x, p.y, yBase, hw, hh, PAL.goalTop, PAL.goalLeft, PAL.goalRight);
+          drawArch(p.x, p.y);
+        }
+      }
+    const t = performance.now() / 1000;
+    const gem = at(1, 2, 0);
+    drawGem(gem.x, gem.y, 9, 4 + Math.sin(t * 2.4) * 3);
+    const hero = at(0, 0, 0);
+    drawFigure(hero.x, hero.y, 0);
+  }
+
   function drawHUD() {
     if (state === STATE_READY) {
-      ctx.fillStyle = 'rgba(0,0,0,0.85)';
-      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-      ctx.fillStyle = '#88f';
-      ctx.font = 'bold 26px sans-serif';
-      ctx.textAlign = 'center';
+      drawTitleIsland(CANVAS_W / 2, 105);
+      centeredText('OPTICAL ILLUSION PUZZLE', 270, 'bold 30px "Segoe UI", system-ui, sans-serif', PAL.text, 'rgba(200,170,255,0.9)');
+      centeredText('Navigate impossible architecture', 306, 'italic 15px "Segoe UI", system-ui, sans-serif', PAL.textDim);
+      pill('Tap or press F2 to start', 360);
+      centeredText('Arrows / WASD move   ·   Q / E rotate the view   ·   Esc pause', 420, '12px "Segoe UI", system-ui, sans-serif', PAL.textDim);
+    }
+
+    if (state === STATE_PLAYING || state === STATE_PAUSED) {
+      const def = LEVELS[currentLevel];
+      // Level card
+      panel(10, 10, 230, 46, 0.78);
+      ctx.save();
       ctx.textBaseline = 'middle';
-      ctx.fillText('OPTICAL ILLUSION PUZZLE', CANVAS_W / 2, CANVAS_H / 2 - 50);
-      ctx.fillStyle = '#aaa';
-      ctx.font = '14px sans-serif';
-      ctx.fillText('Navigate impossible architecture', CANVAS_W / 2, CANVAS_H / 2 - 10);
-      ctx.fillText('Tap or press F2 to Start', CANVAS_W / 2, CANVAS_H / 2 + 20);
-      ctx.textAlign = 'start';
+      ctx.fillStyle = PAL.accent;
+      ctx.font = 'bold 11px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText(`LEVEL ${currentLevel + 1} / ${LEVELS.length}`, 22, 25);
+      ctx.fillStyle = PAL.text;
+      ctx.font = 'bold 15px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText(def.name, 22, 42);
+      ctx.restore();
+
+      // Gems and moves
+      const total = def.collectibles.length;
+      const w = 34 + total * 22 + 70;
+      panel(CANVAS_W - w - 10, 10, w, 46, 0.78);
+      for (let i = 0; i < total; ++i) {
+        const gx = CANVAS_W - w + 12 + i * 22;
+        if (i < collected.length)
+          drawGem(gx, 44, 6, 0);
+        else {
+          ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(gx - 6, 34);
+          ctx.lineTo(gx, 27);
+          ctx.lineTo(gx + 6, 34);
+          ctx.lineTo(gx, 41);
+          ctx.closePath();
+          ctx.stroke();
+        }
+      }
+      ctx.save();
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = PAL.textDim;
+      ctx.font = 'bold 10px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText('MOVES', CANVAS_W - 22, 24);
+      ctx.fillStyle = PAL.text;
+      ctx.font = 'bold 17px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText(String(moves), CANVAS_W - 22, 42);
+      ctx.restore();
+
+      // View indicator: which of the four perspectives is active
+      const cx = CANVAS_W / 2;
+      panel(cx - 64, CANVAS_H - 40, 128, 30, 0.7);
+      ctx.save();
+      ctx.font = 'bold 10px "Segoe UI", system-ui, sans-serif';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = PAL.textDim;
+      ctx.fillText('VIEW', cx - 52, CANVAS_H - 25);
+      for (let i = 0; i < 4; ++i) {
+        const dx = cx - 8 + i * 17;
+        const active = i === (rotationProgress < 1 ? rotationTo : perspective);
+        ctx.fillStyle = active ? PAL.stairTop[0] : 'rgba(255,255,255,0.18)';
+        if (active) {
+          ctx.shadowColor = '#b9a6ff';
+          ctx.shadowBlur = 8;
+        }
+        ctx.beginPath();
+        ctx.moveTo(dx, CANVAS_H - 32);
+        ctx.lineTo(dx + 6, CANVAS_H - 25);
+        ctx.lineTo(dx, CANVAS_H - 18);
+        ctx.lineTo(dx - 6, CANVAS_H - 25);
+        ctx.closePath();
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+      ctx.restore();
     }
 
     if (state === STATE_PAUSED) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillStyle = 'rgba(15,10,35,0.55)';
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-      ctx.fillStyle = '#ff0';
-      ctx.font = 'bold 32px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('PAUSED', CANVAS_W / 2, CANVAS_H / 2);
-      ctx.textAlign = 'start';
+      panel(CANVAS_W / 2 - 130, CANVAS_H / 2 - 55, 260, 110, 0.92);
+      centeredText('PAUSED', CANVAS_H / 2 - 15, 'bold 28px "Segoe UI", system-ui, sans-serif', PAL.text, 'rgba(200,170,255,0.8)');
+      centeredText('Press Esc to resume', CANVAS_H / 2 + 22, '13px "Segoe UI", system-ui, sans-serif', PAL.textDim);
     }
 
     if (state === STATE_LEVEL_COMPLETE) {
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillStyle = 'rgba(15,10,35,0.45)';
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-      ctx.fillStyle = '#ff0';
-      ctx.font = 'bold 20px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('LEVEL COMPLETE!', CANVAS_W / 2, CANVAS_H / 2 - 10);
-      ctx.fillStyle = '#ccc';
-      ctx.font = '14px sans-serif';
-      ctx.fillText('Tap or press any key for next level', CANVAS_W / 2, CANVAS_H / 2 + 20);
-      ctx.textAlign = 'start';
+      panel(CANVAS_W / 2 - 160, CANVAS_H / 2 - 80, 320, 160, 0.92);
+      centeredText('LEVEL COMPLETE', CANVAS_H / 2 - 45, 'bold 24px "Segoe UI", system-ui, sans-serif', PAL.accent, 'rgba(255,200,100,0.7)');
+      const def = LEVELS[currentLevel];
+      centeredText(def.name, CANVAS_H / 2 - 15, 'italic 14px "Segoe UI", system-ui, sans-serif', PAL.textDim);
+      centeredText(`Moves ${moves}   ·   Gems ${collected.length} / ${def.collectibles.length}`, CANVAS_H / 2 + 12, 'bold 14px "Segoe UI", system-ui, sans-serif', PAL.text);
+      pill('Tap or press any key', CANVAS_H / 2 + 50);
     }
 
     if (state === STATE_GAME_OVER) {
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillStyle = 'rgba(15,10,35,0.6)';
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-      ctx.fillStyle = '#ffd700';
-      ctx.font = 'bold 28px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('ALL LEVELS COMPLETE!', CANVAS_W / 2, CANVAS_H / 2 - 30);
-      ctx.fillStyle = '#ccc';
-      ctx.font = '16px sans-serif';
-      ctx.fillText('Tap or press F2 to play again', CANVAS_W / 2, CANVAS_H / 2 + 10);
-      ctx.textAlign = 'start';
-    }
-
-    // Level info
-    if (state === STATE_PLAYING) {
-      ctx.fillStyle = '#aaa';
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText(`Level ${currentLevel + 1}/${LEVELS.length}: ${LEVELS[currentLevel].name}`, CANVAS_W - 10, 18);
-      ctx.fillText(`Moves: ${moves} | Gems: ${collected.length}/${LEVELS[currentLevel].collectibles.length}`, CANVAS_W - 10, 34);
-      ctx.textAlign = 'start';
+      panel(CANVAS_W / 2 - 180, CANVAS_H / 2 - 80, 360, 160, 0.94);
+      centeredText('ALL LEVELS COMPLETE!', CANVAS_H / 2 - 40, 'bold 26px "Segoe UI", system-ui, sans-serif', PAL.accent, 'rgba(255,200,100,0.8)');
+      centeredText('The impossible is now familiar ground.', CANVAS_H / 2 - 6, 'italic 14px "Segoe UI", system-ui, sans-serif', PAL.textDim);
+      pill('Tap or press F2 to play again', CANVAS_H / 2 + 45);
     }
   }
 
   function drawGame() {
-    ctx.fillStyle = '#0a0a1a';
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    drawBackground();
 
-    if (state === STATE_PLAYING || state === STATE_LEVEL_COMPLETE || state === STATE_GAME_OVER)
+    if (state === STATE_PLAYING || state === STATE_PAUSED || state === STATE_LEVEL_COMPLETE || state === STATE_GAME_OVER)
       drawGrid();
 
     drawHUD();
@@ -836,6 +1177,16 @@
 
   setupCanvas();
   SZ.GameAudio.attachMuteButton();
+  SZ.TouchControls.attach({
+    container: document.querySelector('.game-frame'),
+    stick: 'four',
+    repeat: 170,
+    buttons: [
+      { label: '\u21BB', code: 'KeyE', title: 'Rotate right' },
+      { label: '\u21BA', code: 'KeyQ', title: 'Rotate left' }
+    ],
+    extra: [{ label: 'II', code: 'Escape', title: 'Pause' }]
+  });
   loadProgress();
   loadHighScores();
   updateWindowTitle();
