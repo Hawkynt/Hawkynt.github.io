@@ -814,6 +814,7 @@
       maze[pacman.tileY][pacman.tileX] = T_EMPTY;
       score += 10 * scoreMultiplier;
       ++dotsEaten;
+      SZ.GameAudio.play('click', { pitch: dotsEaten % 2 ? 0.55 : 0.65, volume: 0.6 });
 
       /* Chain tracking */
       ++dotChainCount;
@@ -824,6 +825,7 @@
 
       for (const thresh of DOT_CHAIN_THRESHOLDS) {
         if (dotChainCount === thresh) {
+          SZ.GameAudio.play('coin');
           particles.confetti(pacman.x, pacman.y - 10, 15);
           floatingText.add(pacman.x, pacman.y - 15, dotChainCount + 'x CHAIN!', {
             color: '#FFD700', font: 'bold 14px sans-serif', decay: 0.012
@@ -848,6 +850,7 @@
       score += 50 * scoreMultiplier;
       ++dotsEaten;
       enterFrightenedMode();
+      SZ.GameAudio.play('powerup', { pitch: 0.8 });
       particles.sparkle(pacman.x, pacman.y, 6, { color: '#fff', speed: 2 });
       if (dotsEaten >= totalDots) {
         if (bossActive) {
@@ -885,6 +888,7 @@
     const pts = GHOST_EAT_POINTS[Math.min(ghostsEatenThisRound, 3)] * scoreMultiplier;
     score += pts;
     ++ghostsEatenThisRound;
+    SZ.GameAudio.play('zap', { pitch: 0.75 + 0.25 * ghostsEatenThisRound });
     floatingText.add(ghost.x, ghost.y, String(pts), {
       color: '#00FFFF', font: 'bold 12px sans-serif', decay: 0.015
     });
@@ -922,6 +926,7 @@
       const fruit = FRUIT_TABLE[fruitIndex];
       score += fruit.pts * scoreMultiplier;
       fruitActive = false;
+      SZ.GameAudio.play('pickup');
       floatingText.add(fx, fy, String(fruit.pts), {
         color: fruit.color, font: 'bold 12px sans-serif', decay: 0.012
       });
@@ -998,6 +1003,7 @@
     fieldPowerup = null;
 
     applyPowerup(type, timestamp);
+    SZ.GameAudio.play(type.id === 'extralife' ? 'levelup' : 'pickup', { pitch: 1.2 });
     particles.burst(px, py, 15, { color: type.color, speed: 3 });
     floatingText.add(px, py, type.name, { color: type.color, font: 'bold 12px sans-serif' });
   }
@@ -1054,6 +1060,7 @@
   function startBossIntro() {
     bossWarningTimer = BOSS_WARNING_DURATION;
     gameState = 'bossIntro';
+    SZ.GameAudio.play('lose', { pitch: 0.6, volume: 0.7 });
 
     /* Prepare maze for boss fight */
     maze = cloneMaze();
@@ -1211,6 +1218,7 @@
         break;
     }
 
+    SZ.GameAudio.play('whoosh', { pitch: 0.7 });
     particles.burst(boss.x, boss.y, 15, { color: boss.type.color, speed: 3 });
     floatingText.add(boss.x, boss.y - TILE, boss.type.ability.toUpperCase() + '!', {
       color: boss.type.color, font: 'bold 14px sans-serif'
@@ -1238,6 +1246,7 @@
         if (frightenedTimer > 0) {
           m.life = 0;
           score += 200 * scoreMultiplier;
+          SZ.GameAudio.play('smallExplode');
           particles.burst(m.x, m.y, 10, { color: m.color, speed: 3 });
         } else {
           startDying();
@@ -1253,6 +1262,7 @@
     boss.vulnerable = false;
 
     screenShake.trigger(6, 300);
+    SZ.GameAudio.play('hit');
     particles.burst(boss.x, boss.y, 30, { color: '#FFFFFF', speed: 5 });
     floatingText.add(boss.x, boss.y, '-1 HP', { color: '#FF4444', font: 'bold 16px sans-serif' });
 
@@ -1270,6 +1280,8 @@
     score += pts * scoreMultiplier;
 
     screenShake.trigger(12, 800);
+    SZ.GameAudio.play('explode');
+    SZ.GameAudio.play('win');
     particles.burst(boss.x, boss.y, 60, { color: boss.type.color, speed: 6, gravity: 0.03, life: 1 });
     particles.confetti(boss.x, boss.y, 40);
     floatingText.add(boss.x, boss.y, String(pts), { color: '#FFD700', font: 'bold 20px sans-serif', decay: 0.008 });
@@ -1291,6 +1303,7 @@
     gameState = 'dying';
     dyingTimer = 1500;
     screenShake.trigger(12, 600);
+    SZ.GameAudio.play('hurt');
     particles.burst(pacman.x, pacman.y, 50, {
       color: '#FFD700', speed: 4, gravity: 0.05, life: 0.8
     });
@@ -1301,6 +1314,7 @@
     updateStatus();
     if (lives <= 0) {
       gameState = 'gameover';
+      SZ.GameAudio.play('lose');
       bossActive = false;
       boss = null;
       bossMinions = [];
@@ -1333,6 +1347,7 @@
     gameState = 'levelcomplete';
     levelCompleteTimer = 2000;
     levelFlashCount = 0;
+    SZ.GameAudio.play('levelup');
 
     particles.confetti(CANVAS_W / 2, CANVAS_H / 2, 30);
     particles.sparkle(50, 50, 10, { color: '#FFD700', speed: 3 });
@@ -1430,6 +1445,7 @@
     initLevel();
     updateStatus();
     startReady();
+    SZ.GameAudio.play('select');
     lastTime = performance.now();
     animFrameId = requestAnimationFrame(gameLoop);
   }
@@ -2602,6 +2618,7 @@
 
   function init() {
     SZ.Dlls.User32.EnableVisualStyles();
+    SZ.GameAudio.attachMuteButton();
     setupCanvas();
     loadHighScores();
 

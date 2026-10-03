@@ -703,6 +703,7 @@
 
     if (data.mine) {
       data.hitMine = true;
+      SZ.GameAudio.play('explode');
       renderCell(r, c);
       doGameOver(false);
       return;
@@ -774,6 +775,7 @@
             renderCell(r, c);
           }
       updateMineCounter();
+      SZ.GameAudio.play('win');
 
       // Canvas confetti from 3 burst points
       ensureEffectsCanvas();
@@ -864,6 +866,7 @@
                   currentGrid[row][col].el.classList.remove('mine-reveal-stagger');
                   currentGrid[row][col].el.removeEventListener('animationend', handler);
                 });
+                SZ.GameAudio.play('smallExplode', { pitch: 0.8 + Math.random() * 0.4, volume: 0.4 });
                 // Canvas particle burst for each mine (8 particles)
                 ensureEffectsCanvas();
                 const center = getCellCenter(row, col);
@@ -972,6 +975,7 @@
         }
         renderCell(r, c);
         updateMineCounter();
+        SZ.GameAudio.play(data.flagged ? 'drop' : 'click', data.flagged ? { pitch: 1.4, volume: 0.6 } : undefined);
         if (data.flagged && !wasFlagged) {
           data.el.classList.add('flag-placed');
           data.el.addEventListener('animationend', function handler() {
@@ -1023,7 +1027,10 @@
 
         revealOriginR = r;
         revealOriginC = c;
+        const before = revealedCount;
         chordCell(r, c);
+        if (!gameOver && revealedCount > before)
+          SZ.GameAudio.play(revealedCount - before > 3 ? 'whoosh' : 'click');
         revealOriginR = -1;
         revealOriginC = -1;
         if (!gameOver) {
@@ -1046,7 +1053,10 @@
         }
         revealOriginR = r;
         revealOriginC = c;
+        const before = revealedCount;
         revealCell(r, c);
+        if (!gameOver)
+          SZ.GameAudio.play(revealedCount - before > 1 ? 'whoosh' : 'click');
         revealOriginR = -1;
         revealOriginC = -1;
         if (!gameOver)
@@ -1168,6 +1178,12 @@
     updateMarksCheck();
     newGame();
     requestWindowResize();
+
+    const muteBtn = SZ.GameAudio.attachMuteButton(document.getElementById('menuBar'));
+    muteBtn.style.position = 'static';
+    muteBtn.style.margin = '0 2px 0 auto';
+    muteBtn.style.width = muteBtn.style.height = '18px';
+    muteBtn.style.font = '11px/16px sans-serif';
   }
 
   init();

@@ -271,6 +271,9 @@
   const particles = new ParticleSystem();
   const shake = new ScreenShake();
   const floatingText = new FloatingText();
+  const sfx = SZ.GameAudio;
+  const MARCH_PITCHES = [1, 0.89, 0.79, 0.75];
+  let marchStep = 0;
   let starfield = new Starfield(GAME_W, GAME_H, 80);
 
   /* ================================================================
@@ -911,6 +914,8 @@
 
     particles.clear();
     floatingText.clear();
+    marchStep = 0;
+    sfx.play('select');
 
     const modeConf = MODES[gameMode];
     const isBossLevel = modeConf.bossEvery > 0 && level % modeConf.bossEvery === 0;
@@ -1043,6 +1048,8 @@
   function moveAliens() {
     let hitEdge = false;
     const alive = aliens.filter(a => a.alive && !a.diving);
+    if (alive.length > 0)
+      sfx.play('thud', { pitch: MARCH_PITCHES[marchStep++ % MARCH_PITCHES.length], volume: 0.35 });
 
     for (const a of alive) {
       a.x += alienDir * 4;
@@ -1078,6 +1085,7 @@
 
     alien.diving = true;
     alien.divePhase = 0;
+    sfx.play('whoosh', { pitch: 0.7, volume: 0.6 });
     divers.push(alien);
   }
 
@@ -1133,6 +1141,7 @@
 
     const shooters = [...bottomAliens.values()];
     const shooter = shooters[Math.floor(Math.random() * shooters.length)];
+    sfx.play('zap', { pitch: 0.5, volume: 0.5 });
 
     alienBullets.push({
       x: shooter.x + shooter.w / 2 - ALIEN_BULLET_W / 2,
@@ -1158,6 +1167,7 @@
       dir: goRight ? 1 : -1,
       points: [50, 100, 150, 200, 300][Math.floor(Math.random() * 5)],
     };
+    sfx.play('whoosh', { pitch: 1.6 });
   }
 
   /* ================================================================
@@ -1189,6 +1199,7 @@
         p.x, p.y + Math.sin(gameTime * 0.004) * 3, POWERUP_SIZE, POWERUP_SIZE,
         player.x, player.y, PLAYER_W, PLAYER_H
       )) {
+        sfx.play(p.def.id === 'bomb' ? 'explode' : 'powerup');
         collectPowerup(p.def);
         particles.sparkle(p.x + POWERUP_SIZE / 2, p.y + POWERUP_SIZE / 2, 12, { color: p.def.color });
         floatingText.add(p.x + POWERUP_SIZE / 2, p.y, p.def.name, {
@@ -1287,11 +1298,13 @@
     const gained = points * comboMultiplier;
     score += gained;
 
-    if (comboMultiplier > 1 && (comboCount === 3 || comboCount === 5 || comboCount === 8 || comboCount === 12))
+    if (comboMultiplier > 1 && (comboCount === 3 || comboCount === 5 || comboCount === 8 || comboCount === 12)) {
+      sfx.play('coin', { pitch: 0.8 + comboMultiplier * 0.1 });
       floatingText.add(GAME_W / 2, 60, 'x' + comboMultiplier + ' COMBO!', {
         color: comboMultiplier >= 4 ? '#f44' : comboMultiplier >= 3 ? '#fa0' : '#ff0',
         font: 'bold 18px sans-serif',
       });
+    }
 
     return gained;
   }
@@ -1374,6 +1387,7 @@
   function bossAttack() {
     if (!boss) return;
     const pattern = boss.patterns[boss.currentPattern % boss.patterns.length];
+    sfx.play('laser', { pitch: 0.6 });
     const bx = boss.x + BOSS_W / 2;
     const by = boss.y + BOSS_H;
 
@@ -1441,6 +1455,7 @@
   function damageBoss() {
     if (!boss) return;
     --boss.hp;
+    sfx.play('hit', { pitch: 1.4, volume: 0.6 });
 
     particles.burst(boss.x + BOSS_W / 2, boss.y + BOSS_H / 2, 6, {
       speed: 2,
@@ -1475,6 +1490,8 @@
     particles.confetti(bx + BOSS_W / 2, by + BOSS_H / 2, 40);
     shake.trigger(12, 600);
     triggerFlash('#fff', 0.5);
+    sfx.play('explode', { pitch: 0.7 });
+    sfx.play('win');
 
     floatingText.add(bx + BOSS_W / 2, by, '+' + bossScore, {
       color: '#ff0',
@@ -1504,6 +1521,7 @@
       activePowerups.shield = 0;
       delete activePowerups.shield;
       particles.sparkle(player.x + PLAYER_W / 2, player.y + PLAYER_H / 2, 15, { color: '#88f' });
+      sfx.play('bounce');
       triggerFlash('#88f', 0.3);
       shake.trigger(4, 200);
       return;
@@ -1528,6 +1546,7 @@
     });
     shake.trigger(10, 500);
     triggerFlash('#f44', 0.3);
+    sfx.play('explode');
   }
 
   /* ================================================================
@@ -1590,6 +1609,7 @@
         if (lives <= 0) {
           gameState = 'gameover';
           titlePulse = 0;
+          sfx.play('lose');
           checkHighScore();
         } else {
           player.x = GAME_W / 2 - PLAYER_W / 2;
@@ -1672,6 +1692,7 @@
           });
 
         playerShootCooldown = cooldown;
+        sfx.play(isLaser ? 'laser' : 'shoot', { volume: 0.7 });
       }
     }
 
@@ -1764,6 +1785,7 @@
           --a.shieldHP;
           if (a.shieldHP <= 0) a.shielded = false;
           particles.sparkle(a.x + a.w / 2, a.y + a.h / 2, 8, { color: '#4ff' });
+          sfx.play('click', { pitch: 0.7 });
           if (!b.piercing) {
             playerBullets.splice(bi, 1);
             hitSomething = true;
@@ -1774,6 +1796,7 @@
 
         a.alive = false;
         const gained = addComboKill(a.points);
+        sfx.play('smallExplode', { pitch: Math.min(1.6, 0.9 + comboCount * 0.05) });
 
         particles.burst(a.x + a.w / 2, a.y + a.h / 2, 15, {
           speed: 3,
@@ -1804,6 +1827,8 @@
       // Player bullets vs UFO
       if (ufo && rectsOverlap(b.x, b.y, bw, bh, ufo.x, ufo.y, ufo.w, ufo.h)) {
         score += ufo.points;
+        sfx.play('explode', { pitch: 1.4, volume: 0.7 });
+        sfx.play('coin');
         particles.burst(ufo.x + ufo.w / 2, ufo.y + ufo.h / 2, 20, {
           speed: 4,
           color: '#f0f',
@@ -1906,6 +1931,7 @@
         });
         shake.trigger(10, 500);
         triggerFlash('#f44', 0.3);
+        sfx.play('explode');
         break;
       }
     }
@@ -1918,10 +1944,12 @@
         gameState = 'levelComplete';
         levelCompleteTimer = 800;
         particles.confetti(GAME_W / 2, GAME_H * 0.4, 20);
+        sfx.play('levelup');
       } else {
         gameState = 'levelComplete';
         levelCompleteTimer = 1500;
         particles.confetti(GAME_W / 2, GAME_H * 0.4, 30);
+        sfx.play('levelup');
       }
     }
 
@@ -2464,6 +2492,7 @@
    * ================================================================ */
 
   User32.EnableVisualStyles();
+  sfx.attachMuteButton();
 
   resizeCanvas();
   updateStatusBar();

@@ -667,6 +667,7 @@
     particles.burst(mine.x, mine.y, 20, { speed: 4, color: '#ffcc00', size: 3, life: 0.6, decay: 0.02 });
     addShockwave(mine.x, mine.y, { maxRadius: 60, speed: 4, color: '#ffcc00' });
     shake.trigger(5, 200);
+    SZ.GameAudio.play('explode', { pitch: 1.3, volume: 0.7 });
     if (ship && invulnTimer <= 0 && distWrapped(ship, mine) < 60) {
       fireDamageCooldown = FIRE_DAMAGE_COOLDOWN;
       destroyShip();
@@ -764,6 +765,7 @@
       }
       floatingText.add(ship.x, ship.y - 20, '+1 LIFE', { color: '#44ff44', decay: 0.015, font: scaledFont(16) });
       particles.sparkle(ship.x, ship.y, 15, { color: '#44ff44' });
+      SZ.GameAudio.play('powerup');
       return;
     }
 
@@ -776,6 +778,7 @@
       powerupState[type].active = true;
       powerupState[type].timer = def.duration;
     }
+    SZ.GameAudio.play('pickup');
     floatingText.add(ship.x, ship.y - 20, def.label.toUpperCase(), { color: def.color, decay: 0.02, font: scaledFont(14) });
   }
 
@@ -799,6 +802,7 @@
     score += Math.round(scoreGained * getComboMultiplier() * cfg.scoreMult);
     triggerScreenFlash(0.6);
     shake.trigger(10, 500);
+    SZ.GameAudio.play('explode', { pitch: 0.5 });
     floatingText.add(W / 2, H / 2, 'NUKE! +' + scoreGained, { color: '#ffff44', decay: 0.012, font: scaledFont(20) });
     updateDisplays();
   }
@@ -988,10 +992,12 @@
       stats.shotsFired += 2;
     } else
       bullets.push(createBullet(tipX, tipY, ship.angle));
+    SZ.GameAudio.play('shoot', { volume: 0.6 });
   }
 
   function enemyShoot(enemy) {
     if (!ship) return;
+    const bulletsBefore = enemyBullets.length;
     let angle;
     if (enemy.type === 'ufo')
       angle = randomAngle();
@@ -1043,6 +1049,8 @@
         vy: Math.sin(angle) * BULLET_SPEED * 0.7,
         life: BULLET_LIFETIME
       });
+    if (enemyBullets.length > bulletsBefore)
+      SZ.GameAudio.play('laser', { pitch: enemy.type === 'boss' ? 0.7 : 1, volume: 0.4 });
   }
 
   /* ============================== HYPERSPACE ============================== */
@@ -1052,6 +1060,7 @@
 
     particles.burst(ship.x, ship.y, 12, { speed: 3, color: '#88aaff', size: 2, life: 0.4, decay: 0.04 });
     addShockwave(ship.x, ship.y, { maxRadius: 30, speed: 4, color: '#88aaff' });
+    SZ.GameAudio.play('whoosh', { pitch: 1.5 });
 
     ship.x = Math.random() * W;
     ship.y = Math.random() * H;
@@ -1077,6 +1086,7 @@
       particles.burst(asteroid.x, asteroid.y, 4, {
         speed: 2, color: asteroid.palette.edge, size: 2, life: 0.3, decay: 0.05
       });
+      SZ.GameAudio.play('hit', { pitch: 1.6, volume: 0.5 });
       return;
     }
 
@@ -1102,6 +1112,16 @@
 
     if (asteroid.size === 'large')
       triggerScreenFlash(0.08);
+
+    const comboPitch = 1 + Math.min(combo.count - 1, 8) * 0.04;
+    if (asteroid.rockType === 'exploding')
+      SZ.GameAudio.play('explode');
+    else if (asteroid.rockType === 'electric')
+      SZ.GameAudio.play('zap', { pitch: 0.8 });
+    else if (asteroid.size === 'large')
+      SZ.GameAudio.play('explode', { pitch: comboPitch * 1.2, volume: 0.6 });
+    else
+      SZ.GameAudio.play('smallExplode', { pitch: comboPitch * (asteroid.size === 'small' ? 1.4 : 1) });
 
     /* Rock-type-specific death effects */
     if (asteroid.rockType === 'exploding') {
@@ -1178,6 +1198,7 @@
       addShockwave(ship.x, ship.y, { maxRadius: 40, speed: 3, color: '#44aaff' });
       invulnTimer = 500;
       floatingText.add(ship.x, ship.y - 20, 'SHIELD!', { color: '#44aaff', decay: 0.02, font: scaledFont(14) });
+      SZ.GameAudio.play('zap', { pitch: 0.6 });
       return;
     }
 
@@ -1187,6 +1208,7 @@
     addShockwave(ship.x, ship.y, { maxRadius: 80, speed: 3, color: '#f80' });
     triggerScreenFlash(0.3);
     shake.trigger(10, 500);
+    SZ.GameAudio.play('explode', { pitch: 0.7 });
 
     if (lives !== Infinity)
       --lives;
@@ -1224,6 +1246,7 @@
     particles.burst(enemy.x, enemy.y, Math.round(burstCount / 2), { speed: 2, color: '#fff', size: 2, life: 0.4, decay: 0.03 });
     addShockwave(enemy.x, enemy.y, { maxRadius: shockRadius, speed: 3, color });
     triggerScreenFlash(isBoss ? 0.3 : 0.12);
+    SZ.GameAudio.play('explode', { pitch: isBoss ? 0.5 : 1.1, volume: isBoss ? 1 : 0.7 });
 
     if (isBoss) {
       shake.trigger(12, 600);
@@ -1254,6 +1277,7 @@
     particles.burst(ally.x, ally.y, 20, { speed: 4, color: '#44ffaa', size: 3, life: 0.6, decay: 0.02 });
     addShockwave(ally.x, ally.y, { maxRadius: 40, speed: 3, color: '#44ffaa' });
     floatingText.add(ally.x, ally.y - 20, 'ALLY LOST!', { color: '#ff4444', decay: 0.015, font: scaledFont(14) });
+    SZ.GameAudio.play('hurt');
     trySpawnPowerup(ally.x, ally.y, 0.50);
   }
 
@@ -1264,6 +1288,7 @@
       updateDisplays();
       floatingText.add(W / 2, H / 3, 'EXTRA LIFE!', { color: '#44ff44', decay: 0.012, font: scaledFont(20) });
       particles.sparkle(W / 2, H / 3, 20, { color: '#44ff44', speed: 3 });
+      SZ.GameAudio.play('powerup');
       nextExtraLife += modeConfig().bonusLifeEvery;
     }
   }
@@ -1436,6 +1461,7 @@
       ++level;
       allySpawnedForLevel = false;
       updateDisplays();
+      SZ.GameAudio.play('levelup');
       startWarp();
     }
   }
@@ -3021,6 +3047,7 @@
   function doGameOver() {
     gameActive = false;
     gameOverFlag = true;
+    SZ.GameAudio.play('lose');
     checkHighScore();
   }
 
@@ -3284,6 +3311,7 @@
     const idx = FIELD_SIZE_KEYS.indexOf(fieldSizeKey);
     const newIdx = (idx + dir + FIELD_SIZE_KEYS.length) % FIELD_SIZE_KEYS.length;
     fieldSizeKey = FIELD_SIZE_KEYS[newIdx];
+    SZ.GameAudio.play('click');
     try { localStorage.setItem(FIELD_STORAGE_KEY, fieldSizeKey); } catch (_) {}
     setupField();
   }
@@ -3311,6 +3339,7 @@
 
     gameMode = mode || 'classic';
     const cfg = modeConfig();
+    SZ.GameAudio.play('select');
 
     score = 0;
     lives = cfg.lives;
@@ -3393,6 +3422,7 @@
     loadHighScores();
     showModeSelect();
     requestWindowResize();
+    SZ.GameAudio.attachMuteButton();
   }
 
   init();

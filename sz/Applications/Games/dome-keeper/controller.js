@@ -801,6 +801,7 @@
   // Dome pulse
   let domePulsePhase = 0;
   let domeHitFlash = 0; // flash timer when dome is hit
+  let lastDomeHurtSound = 0;
 
   // Player idle bob (underground)
   let playerBob = 0;
@@ -1362,6 +1363,7 @@
 
   function startGameAfterGadgetSelect() {
     state = STATE_PLAYING;
+    SZ.GameAudio.play('select');
     // Initialize primary gadget state
     switch (primaryGadget) {
       case 'shield':
@@ -1396,8 +1398,10 @@
 
     // Cancel any active mining when switching views
     cancelMining();
+    SZ.GameAudio.play('whoosh', { pitch: transitionTarget === VIEW_SURFACE ? 1.3 : 0.8 });
 
     if (transitionTarget === VIEW_SURFACE && carried > 0) {
+      SZ.GameAudio.play('coin');
       floatingText.add(CANVAS_W / 2, CANVAS_H / 2, `+${carried} resources deposited`, { color: '#0f0', font: 'bold 28px sans-serif' });
       carried = 0;
     }
@@ -1632,6 +1636,7 @@
       particles.burst(e.x, e.y, 6, { color: '#4af', speed: 2, life: 0.3 });
       if (e.shield <= 0) {
         e.shield = 0;
+        SZ.GameAudio.play('zap');
         floatingText.add(e.x, e.y - (e.size || 20) - 36, 'SHIELD BROKEN', { color: '#4af', font: 'bold 22px sans-serif' });
         particles.burst(e.x, e.y, 15, { color: '#4af', speed: 3.5, life: 0.5 });
         particles.sparkle(e.x, e.y, 8, { color: '#8cf', speed: 2 });
@@ -1837,7 +1842,9 @@
         boss: true
       });
       floatingText.add(CANVAS_W / 2, 140, 'BOSS INCOMING!', { color: '#f00', font: 'bold 48px sans-serif' });
-    }
+      SZ.GameAudio.play('hurt', { pitch: 0.5 });
+    } else
+      SZ.GameAudio.play('select', { pitch: 0.75 });
 
     floatingText.add(CANVAS_W / 2, 80, `WAVE ${waveNumber}`, { color: '#f80', font: 'bold 40px sans-serif' });
     updateWindowTitle();
@@ -1873,6 +1880,7 @@
           // Shield gadget absorbs first hit
           if (primaryGadget === 'shield' && primaryGadgetState.active) {
             primaryGadgetState.active = false;
+            SZ.GameAudio.play('zap', { pitch: 0.7 });
             floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 60, 'Shield Absorbed!', { color: '#4af', font: 'bold 28px sans-serif' });
             particles.burst(e.x, e.y, 15, { color: '#4af', speed: 3, life: 0.5 });
             spawnShieldImpact(e.x, e.y);
@@ -1885,6 +1893,12 @@
           domeHP -= effectiveDmg;
           domeHitFlash = 1.0;
           screenShake.trigger(8, 250);
+          // several attackers hit at once: one groan per moment, not a chorus
+          const hurtNow = performance.now();
+          if (hurtNow - lastDomeHurtSound > 400) {
+            lastDomeHurtSound = hurtNow;
+            SZ.GameAudio.play('hurt', { volume: 0.7 });
+          }
           floatingText.add(DOME_X + (Math.random() - 0.5) * 80, DOME_Y - 60, `-${effectiveDmg} HP`, { color: '#f44', font: 'bold 28px sans-serif' });
 
           // Shield impact flash
@@ -1914,6 +1928,8 @@
             particles.burst(DOME_X, DOME_Y, 40, { color: '#4af', speed: 5, life: 0.8 });
             particles.burst(DOME_X, DOME_Y, 25, { color: '#f80', speed: 4, life: 0.6 });
             screenShake.trigger(15, 500);
+            SZ.GameAudio.play('explode');
+            SZ.GameAudio.play('lose');
             addHighScore(waveNumber, score);
             updateWindowTitle();
             return;
@@ -1924,6 +1940,7 @@
       // Remove dead enemies with death animation
       if (e.hp <= 0) {
         score += 10 + waveNumber * 5;
+        SZ.GameAudio.play(e.boss ? 'explode' : 'smallExplode', { pitch: 0.85 + Math.random() * 0.3 });
         // Chunky death explosion
         particles.burst(e.x, e.y, 20, { color: '#fa0', speed: 3.5, life: 0.6, gravity: 0.05 });
         particles.burst(e.x, e.y, 10, { color: '#f44', speed: 2, life: 0.4 });
@@ -1947,6 +1964,7 @@
     if (waveActive && enemies.length === 0) {
       waveActive = false;
       waveTimer = WAVE_INTERVAL;
+      SZ.GameAudio.play('levelup');
       floatingText.add(CANVAS_W / 2, 80, 'WAVE CLEAR!', { color: '#0f0', font: 'bold 36px sans-serif' });
     }
   }
@@ -2094,6 +2112,7 @@
       }
 
       particles.burst(muzzleX, muzzleY, 4, { color: '#faa', speed: 1.5, life: 0.15, size: 2 });
+      SZ.GameAudio.play('laser', { pitch: 0.95 + Math.random() * 0.1, volume: 0.7 });
     }
 
     fireRequested = false;
@@ -2184,6 +2203,7 @@
       miningProgress = 0;
 
     lastMineDir = { dx, dy };
+    SZ.GameAudio.play('click', { pitch: 0.5 });
 
     // Trigger pickaxe swing animation
     pickaxeSwinging = true;
@@ -2233,6 +2253,7 @@
 
     // Stronger shake for mining
     screenShake.trigger(4, 120);
+    SZ.GameAudio.play('thud', { pitch: 0.9 + Math.random() * 0.2, volume: 0.7 });
 
     if (RESOURCE_TILES.includes(tile)) {
       const label = TILE_LABELS[tile];
@@ -2262,6 +2283,7 @@
         floatingText.add(tx, ty - 60, `${excess} ${label} dropped!`, { color: '#f80', font: 'bold 22px sans-serif' });
       }
 
+      SZ.GameAudio.play('pickup', { pitch: 0.9 + RESOURCE_TILES.indexOf(tile) * 0.04 });
       // Resource reveal glow burst
       spawnResourceGlow(tx, ty, TILE_HIGHLIGHT_COLORS[tile] || '#fff');
       particles.sparkle(tx, ty, 12, { color: TILE_HIGHLIGHT_COLORS[tile] || '#fff', speed: 2.5 });
@@ -2391,6 +2413,7 @@
       const tx = drop.col * TILE_SIZE + TILE_SIZE / 2 - cameraX;
       const ty = drop.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
       floatingText.add(tx, ty - 30, `+${pickUp} ${label}`, { color: '#0f0', font: 'bold 22px sans-serif' });
+      SZ.GameAudio.play('pickup', { volume: 0.6 });
 
       if (drop.value <= 0)
         droppedResources.splice(i, 1);
@@ -2400,6 +2423,7 @@
   function grantMineGadget(type, tx, ty) {
     foundGadgets.push(type);
     const name = MINE_GADGET_NAMES[type] || type;
+    SZ.GameAudio.play('powerup');
     floatingText.add(tx, ty - 50, `GADGET: ${name}!`, { color: '#ffd700', font: 'bold 28px sans-serif' });
     particles.burst(tx, ty, 25, { color: '#ffd700', speed: 3, life: 0.7 });
     particles.sparkle(tx, ty, 15, { color: '#ffaa00', speed: 2 });
@@ -2441,6 +2465,7 @@
     if (state !== STATE_PLAYING || currentView !== VIEW_UNDERGROUND) return;
 
     --primaryGadgetState.blastCharges;
+    SZ.GameAudio.play('explode');
     floatingText.add(
       drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX,
       drillY * TILE_SIZE - 10 - cameraY,
@@ -2510,6 +2535,7 @@
     if (toolState.blastToolCooldown > 0) return;
     if (state !== STATE_PLAYING || currentView !== VIEW_UNDERGROUND) return;
     if (resources.iron < 10) {
+      SZ.GameAudio.play('error');
       floatingText.add(
         drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX,
         drillY * TILE_SIZE - 10 - cameraY,
@@ -2520,6 +2546,7 @@
 
     resources.iron -= 10;
     toolState.blastToolCooldown = GADGET_TOOL_COOLDOWNS.blastTool;
+    SZ.GameAudio.play('explode');
 
     floatingText.add(
       drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX,
@@ -2590,6 +2617,7 @@
     particles.burst(cx, cy, 20, { color: '#a0f', speed: 3, life: 0.5 });
     particles.sparkle(cx, cy, 10, { color: '#c4f', speed: 2 });
     screenShake.trigger(6, 200);
+    SZ.GameAudio.play('whoosh', { pitch: 1.6 });
 
     // Cancel mining and movement
     cancelMining();
@@ -2626,6 +2654,7 @@
     resources.cobalt -= def.costCobalt;
     unlockedTools[def.key] = true;
 
+    SZ.GameAudio.play('powerup');
     floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `${def.name} Unlocked!`, { color: '#ffd700', font: 'bold 28px sans-serif' });
     particles.sparkle(CANVAS_W / 2, CANVAS_H / 2, 15, { color: '#ffd700', speed: 2.5 });
     screenShake.trigger(5, 150);
@@ -2675,6 +2704,7 @@
     // Recalculate using effective level (legacy + tree combined)
     applyStatUpgrade(def.key);
 
+    SZ.GameAudio.play('levelup');
     floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `${def.name} Lv${getEffectiveLevel(def.key)}`, { color: '#4af', font: 'bold 28px sans-serif' });
     particles.sparkle(CANVAS_W / 2, CANVAS_H / 2, 10, { color: '#4af', speed: 2 });
   }
@@ -2721,8 +2751,10 @@
     const cost = node.costs[Math.min(lvl, node.costs.length - 1)];
     // Check affordability for all resource types in the cost
     for (const key in cost)
-      if ((cost[key] || 0) > 0 && (resources[key] || 0) < cost[key])
+      if ((cost[key] || 0) > 0 && (resources[key] || 0) < cost[key]) {
+        SZ.GameAudio.play('error');
         return;
+      }
 
     // Deduct all costs
     for (const key in cost)
@@ -2736,6 +2768,7 @@
     else
       applyStatUpgrade(node.upgradeKey);
 
+    SZ.GameAudio.play('levelup');
     floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `${node.name} purchased!`, { color: '#ffd700', font: 'bold 28px sans-serif' });
     particles.sparkle(CANVAS_W / 2, CANVAS_H / 2, 12, { color: '#ffd700', speed: 2.5 });
     screenShake.trigger(4, 120);
@@ -3262,6 +3295,7 @@
         if (carried > 0) {
           const transfer = Math.min(carried, 10);
           carried -= transfer;
+          SZ.GameAudio.play('coin', { pitch: 0.8 });
           floatingText.add(DOME_X - 80, DOME_Y - 80, `Drone: +${transfer} delivered`, { color: '#4af', font: 'bold 22px sans-serif' });
         }
       }
@@ -3297,6 +3331,7 @@
             // Store last target for drawing
             primaryGadgetState.autoCannonTarget = { x: nearest.x, y: nearest.y };
             primaryGadgetState.autoCannonFlash = 0.3;
+            SZ.GameAudio.play('shoot', { volume: 0.5 });
             particles.burst(nearest.x, nearest.y, 6, { color: '#ff0', speed: 2, life: 0.3 });
           }
         }
@@ -3328,6 +3363,7 @@
             nearest.stunTimer = 2;
             primaryGadgetState.stunLaserTarget = { x: nearest.x, y: nearest.y };
             primaryGadgetState.stunLaserFlash = 0.4;
+            SZ.GameAudio.play('zap', { pitch: 1.3 });
             floatingText.add(nearest.x, nearest.y - 40, 'STUNNED!', { color: '#4af', font: 'bold 22px sans-serif' });
           }
         }
@@ -5948,6 +5984,7 @@
       if (!primaryGadgetState.active && primaryGadgetState.cooldown <= 0) {
         primaryGadgetState.active = true;
         primaryGadgetState.duration = 5;
+        SZ.GameAudio.play('zap', { pitch: 0.5 });
         floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 60, 'Repellent Field!', { color: '#a0f', font: 'bold 28px sans-serif' });
         particles.burst(DOME_X, DOME_Y, 20, { color: '#a0f', speed: 3, life: 0.5 });
       }
@@ -6085,6 +6122,7 @@
           primaryGadgetState.fruitReady = false;
           primaryGadgetState.fruitTimer = 20;
           primaryGadgetState.speedBoostTimer = 10;
+          SZ.GameAudio.play('pickup', { pitch: 1.2 });
           floatingText.add(treeX, treeY - 40, '+30% Mining Speed!', { color: '#0f0', font: 'bold 24px sans-serif' });
           particles.sparkle(treeX, treeY - 15, 8, { color: '#ff0', speed: 2 });
           return;
@@ -6353,6 +6391,14 @@
   const menu = new SZ.MenuBar({
     onAction: handleAction
   });
+
+  {
+    const muteBtn = SZ.GameAudio.attachMuteButton(document.querySelector('.status-bar'));
+    muteBtn.style.position = 'static';
+    muteBtn.style.margin = '0 0 0 auto';
+    muteBtn.style.width = muteBtn.style.height = '18px';
+    muteBtn.style.font = '11px/16px sans-serif';
+  }
 
   setupCanvas();
   loadHighScores();

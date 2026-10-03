@@ -278,6 +278,7 @@
     else {
       state = STATE_GAME_OVER;
       floatingText.add(canvasW / 2, canvasH / 2 - 40, 'ALL LEVELS COMPLETE!', { color: '#ff0', font: 'bold 20px sans-serif' });
+      SZ.GameAudio.play('win');
       updateWindowTitle();
     }
   }
@@ -320,6 +321,7 @@
     particles.burst(launcher.x, launcher.y, 8, { color: '#fa0', speed: 3, life: 0.4 });
     floatingText.add(launcher.x, launcher.y - 20, 'Launch!', { color: '#fa0', font: 'bold 12px sans-serif' });
     screenShake.trigger(3, 100);
+    SZ.GameAudio.play('shoot', { pitch: 0.5 + clampedPower / MAX_POWER * 0.5 });
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -346,22 +348,26 @@
 
     // Floor/ceiling/wall bounce
     if (projectile.y + projectile.radius > canvasH) {
+      impactSound(Math.abs(projectile.vy));
       projectile.y = canvasH - projectile.radius;
       projectile.vy = -projectile.vy * RESTITUTION;
       projectile.vx *= FRICTION;
       emitCollisionSparks(projectile.x, canvasH);
     }
     if (projectile.y - projectile.radius < 0) {
+      impactSound(Math.abs(projectile.vy));
       projectile.y = projectile.radius;
       projectile.vy = -projectile.vy * RESTITUTION;
       emitCollisionSparks(projectile.x, 0);
     }
     if (projectile.x + projectile.radius > canvasW) {
+      impactSound(Math.abs(projectile.vx));
       projectile.x = canvasW - projectile.radius;
       projectile.vx = -projectile.vx * RESTITUTION;
       emitCollisionSparks(canvasW, projectile.y);
     }
     if (projectile.x - projectile.radius < 0) {
+      impactSound(Math.abs(projectile.vx));
       projectile.x = projectile.radius;
       projectile.vx = -projectile.vx * RESTITUTION;
       emitCollisionSparks(0, projectile.y);
@@ -382,13 +388,16 @@
         particles.burst(obj.x + obj.w / 2, obj.y, 10, { color: '#0f0', speed: 3, life: 0.4 });
         floatingText.add(obj.x + obj.w / 2, obj.y - 15, 'Bounce!', { color: '#0f0', font: 'bold 11px sans-serif' });
         screenShake.trigger(3, 80);
+        sfx('jump', { pitch: 1.3 });
       } else if (obj.type === OBJ_RAMP && circleRectCollision(projectile, obj)) {
         // Ramp deflects upward
         projectile.vy = -Math.abs(projectile.vy) * 0.8 - 100;
         projectile.vx *= 1.1;
         particles.burst(obj.x + obj.w / 2, obj.y, 6, { color: '#88f', speed: 2, life: 0.3 });
+        sfx('whoosh', { pitch: 1.4 });
       } else if (obj.type === OBJ_BLOCK && circleRectCollision(projectile, obj)) {
         // Block — solid bounce
+        sfx('thud', { volume: 0.7 });
         projectile.vx = -projectile.vx * RESTITUTION;
         emitCollisionSparks(obj.x + obj.w / 2, obj.y + obj.h / 2);
       }
@@ -406,6 +415,7 @@
     if (speed < 5 && Math.abs(projectile.y - (canvasH - projectile.radius)) < 2) {
       projectile.active = false;
       floatingText.add(projectile.x, projectile.y - 20, 'Missed!', { color: '#f44', font: 'bold 12px sans-serif' });
+      SZ.GameAudio.play('error');
       // Go back to aiming
       state = STATE_AIMING;
     }
@@ -413,8 +423,23 @@
     // Off-screen check
     if (projectile.x < -50 || projectile.x > canvasW + 50 || projectile.y > canvasH + 50) {
       projectile.active = false;
+      SZ.GameAudio.play('error');
       state = STATE_AIMING;
     }
+  }
+
+  const sfxLast = {};
+  function sfx(name, opts) {
+    const now = performance.now();
+    if (now - (sfxLast[name] || 0) < 120)
+      return;
+    sfxLast[name] = now;
+    SZ.GameAudio.play(name, opts);
+  }
+
+  function impactSound(speed) {
+    if (speed > 60)
+      sfx('bounce', { volume: Math.min(1, speed / 500), pitch: 0.8 + Math.min(0.5, speed / 1500) });
   }
 
   function circleRectCollision(circle, rect) {
@@ -436,10 +461,12 @@
 
     if (s.hp <= 0) {
       s.destroyed = true;
+      sfx('smallExplode');
       // Dust/debris particles on structure collapse
       emitCollapseDust(sx, sy);
       floatingText.add(sx, sy - 15, 'Destroyed!', { color: '#f80', font: 'bold 12px sans-serif' });
     } else {
+      sfx('hit', { volume: 0.7 });
       floatingText.add(sx, sy - 15, 'Hit!', { color: '#ff0', font: 'bold 11px sans-serif' });
     }
 
@@ -481,6 +508,7 @@
     floatingText.add(canvasW / 2, canvasH / 2 - 60, `Level ${currentLevel + 1} Complete!`, { color: '#ff0', font: 'bold 18px sans-serif' });
     floatingText.add(canvasW / 2, canvasH / 2 - 30, `${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}`, { color: '#fc0', font: 'bold 24px sans-serif' });
     screenShake.trigger(5, 250);
+    SZ.GameAudio.play(stars === 3 ? 'win' : 'levelup');
 
     // Confetti on 3-star
     if (stars === 3)
@@ -499,11 +527,13 @@
     placedObjects.push(obj);
     particles.sparkle(x, y, 6, { color: '#4f4', speed: 1.5 });
     floatingText.add(x, y - 15, `Placed ${selectedPlaceable}!`, { color: '#4f4', font: 'bold 11px sans-serif' });
+    SZ.GameAudio.play('drop');
     selectedPlaceable = null;
   }
 
   function startAimingPhase() {
     state = STATE_AIMING;
+    SZ.GameAudio.play('select');
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -1543,9 +1573,12 @@
 
     // Build mode: select placeable
     if (state === STATE_BUILDING) {
+      const before = selectedPlaceable;
       if (e.key === '1' || e.code === 'KeyR') selectedPlaceable = OBJ_RAMP;
       if (e.key === '2' || e.code === 'KeyB') selectedPlaceable = OBJ_BLOCK;
       if (e.key === '3' || e.code === 'KeyS') selectedPlaceable = OBJ_SPRING;
+      if (selectedPlaceable !== before)
+        SZ.GameAudio.play('click');
     }
   });
 
@@ -1585,8 +1618,10 @@
         const def = LEVELS[currentLevel];
         for (let i = 0; i < def.placeable.length; ++i) {
           const bx = 10 + i * 90;
-          if (mx >= bx && mx <= bx + 80 && my >= barY + 24)
+          if (mx >= bx && mx <= bx + 80 && my >= barY + 24) {
             selectedPlaceable = def.placeable[i];
+            SZ.GameAudio.play('click');
+          }
         }
         // Check ready button
         if (mx >= canvasW - 80 && my >= barY + 24)
@@ -1735,6 +1770,9 @@
   loadProgress();
   loadHighScores();
   updateWindowTitle();
+  // small enough to stay inside the status bar, clear of the canvas "Ready" button
+  const muteBtn = SZ.GameAudio.attachMuteButton();
+  Object.assign(muteBtn.style, { right: '4px', bottom: '2px', width: '18px', height: '18px', font: '10px/16px sans-serif' });
 
   try { tutorialSeen = localStorage.getItem(STORAGE_TUTORIAL) === '1'; } catch (_) { tutorialSeen = false; }
   if (!tutorialSeen) {

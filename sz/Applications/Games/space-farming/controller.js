@@ -598,6 +598,7 @@
     const { x: tx, y: ty } = gridCenterToScreen(col, row);
     floatingText.add(tx, ty - 10, `${bdef.icon} L${bld.level}! -${cost}cr`, { color: '#0ff', font: 'bold 12px sans-serif' });
     particles.confetti(tx, ty, 10, { speed: 3 });
+    SZ.GameAudio.play('powerup', { pitch: 1 + Math.min(bld.level, 10) * 0.04 });
   }
 
   /** Get the effective range of a building based on its level. Base range + (level - 1). */
@@ -765,6 +766,7 @@
     upgradeLevels[def.id] = curLevel + 1;
     floatingText.add(canvasW / 2, canvasH / 2 - 30, `${def.icon} ${def.name} Lv${curLevel + 1}!`, { color: '#0ff', font: 'bold 14px sans-serif' });
     particles.confetti(canvasW / 2, canvasH / 2, 15, { speed: 4 });
+    SZ.GameAudio.play('levelup');
 
     if (def.id === 'plotExpansion')
       expandGrid();
@@ -1034,6 +1036,7 @@
     buildingIncomeSurplusAccum = 0;
 
     state = STATE_PLAYING;
+    SZ.GameAudio.play('select');
     updateWindowTitle();
   }
 
@@ -1090,9 +1093,10 @@
       });
     }
     floatingText.add(tx, ty - 10, `-${crop.seedCost}cr`, { color: '#f88', font: 'bold 12px sans-serif' });
+    SZ.GameAudio.play('drop', { pitch: 1.4, volume: 0.6 });
   }
 
-  function harvestCrop(row, col) {
+  function harvestCrop(row, col, auto) {
     if (state !== STATE_PLAYING) return;
     const cell = farmGrid[row][col];
     if (!cell) return;
@@ -1106,6 +1110,8 @@
     // Check storage capacity (Feature 7)
     if (getTotalInventoryCount() >= getStorageCapacity()) {
       floatingText.add(tx, ty - 10, 'Storage Full!', { color: '#f44', font: 'bold 13px sans-serif' });
+      if (!auto)
+        SZ.GameAudio.play('error');
       return;
     }
 
@@ -1141,6 +1147,8 @@
     const label = harvestCount > 1 ? `+${harvestCount} ${crop.name}!` : `+1 ${crop.name}`;
     const labelColor = harvestCount > 1 ? '#ff0' : '#0f0';
     floatingText.add(tx, ty - 10, label, { color: labelColor, font: 'bold 12px sans-serif' });
+    if (!auto)
+      SZ.GameAudio.play('pickup', { pitch: harvestCount > 1 ? 1.25 : 1 });
 
     farmGrid[row][col] = null; // clear tile
   }
@@ -1165,6 +1173,7 @@
     const { x: tx, y: ty } = gridCenterToScreen(col, row);
     floatingText.add(tx, ty - 10, `+Fertility (${Math.round(newFert * 100)}%)`, { color: '#4d4', font: 'bold 11px sans-serif' });
     particles.sparkle(tx, ty, 5, { color: '#4a2', speed: 1.5 });
+    SZ.GameAudio.play('thud', { pitch: 1.6, volume: 0.5 });
     return true;
   }
 
@@ -1202,6 +1211,7 @@
     const { x: tx, y: ty } = gridCenterToScreen(col, row);
     floatingText.add(tx, ty - 10, `Uprooted! +${refund}cr`, { color: '#fa0', font: 'bold 11px sans-serif' });
     particles.burst(tx, ty, 6, { color: '#a62', speed: 2, life: 0.4 });
+    SZ.GameAudio.play('whoosh', { pitch: 0.8, volume: 0.7 });
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -1351,7 +1361,7 @@
                 if (adjCell && adjCell.growthStage >= CROPS[adjCell.cropIndex].stages - 1) {
                   if (energy >= 1) {
                     energy -= 1;
-                    harvestCrop(nr, nc);
+                    harvestCrop(nr, nc, true);
                   }
                 }
               }
@@ -1373,7 +1383,7 @@
       }
     if (!matureTiles.length) return;
     const pick = matureTiles[Math.floor(Math.random() * matureTiles.length)];
-    harvestCrop(pick.r, pick.c);
+    harvestCrop(pick.r, pick.c, true);
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -1409,6 +1419,7 @@
     const scr = livestockPenToScreen(pen);
     floatingText.add(scr.x, scr.y - 10, `+1 ${def.produce}`, { color: '#0f0', font: 'bold 12px sans-serif' });
     particles.sparkle(scr.x, scr.y, 5, { color: def.color, speed: 1.5 });
+    SZ.GameAudio.play('pickup', { pitch: 0.85 });
   }
 
   /** Generate all perimeter positions around the current grid (one tile outside). */
@@ -1483,6 +1494,7 @@
     const slot = findNextPerimeterSlot();
     if (!slot) {
       floatingText.add(canvasW / 2, canvasH / 2 - 20, 'No perimeter space!', { color: '#f44', font: 'bold 13px sans-serif' });
+      SZ.GameAudio.play('error');
       return;
     }
 
@@ -1497,6 +1509,7 @@
 
     const scr = livestockPenToScreen(livestockPens[livestockPens.length - 1]);
     floatingText.add(scr.x, scr.y - 15, `-${def.cost}cr`, { color: '#f88', font: 'bold 12px sans-serif' });
+    SZ.GameAudio.play('select');
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -1530,7 +1543,9 @@
     if (totalEarned > 0) {
       floatingText.add(canvasW / 2, canvasH / 2 - 20, `+${totalEarned} credits`, { color: '#ff0', font: 'bold 16px sans-serif' });
       screenShake.trigger(3, 150);
-    }
+      SZ.GameAudio.play('coin');
+    } else
+      SZ.GameAudio.play('error', { volume: 0.6 });
   }
 
   function buySeed(cropIndex) {
@@ -1562,6 +1577,7 @@
     const { x: tx, y: ty } = gridCenterToScreen(col, row);
     particles.sparkle(tx, ty, 8, { color: '#0ff', speed: 2 });
     floatingText.add(tx, ty - 10, `-${bdef.cost}cr`, { color: '#f88', font: 'bold 12px sans-serif' });
+    SZ.GameAudio.play('thud');
   }
 
   function removeBuilding(row, col) {
@@ -1571,6 +1587,7 @@
     buildings[row][col] = null;
     const { x: tx, y: ty } = gridCenterToScreen(col, row);
     floatingText.add(tx, ty - 10, `Removed ${bdef.name}`, { color: '#fa0', font: 'bold 11px sans-serif' });
+    SZ.GameAudio.play('smallExplode', { volume: 0.6 });
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -1615,6 +1632,7 @@
     if (roll < solarChance) {
       weatherType = WEATHER_SOLAR_FLARE;
       floatingText.add(canvasW / 2, 30, 'SOLAR FLARE -- Growth Boost!', { color: '#ff0', font: 'bold 14px sans-serif' });
+      SZ.GameAudio.play('powerup', { pitch: 0.8 });
       // Seed solar glow particles
       for (let i = 0; i < 25; ++i)
         weatherParticles.push({
@@ -1675,9 +1693,11 @@
         }
       }
       screenShake.trigger(8, 400);
+      SZ.GameAudio.play('explode');
     } else if (roll < rainChance) {
       weatherType = WEATHER_RAIN;
       floatingText.add(canvasW / 2, 30, 'RAIN -- Growth Boost!', { color: '#48f', font: 'bold 14px sans-serif' });
+      SZ.GameAudio.play('whoosh', { pitch: 0.6 });
       for (let i = 0; i < 60; ++i)
         weatherParticles.push({
           x: Math.random() * canvasW,
@@ -1731,6 +1751,8 @@
         }
       }
       screenShake.trigger(6, 300);
+      SZ.GameAudio.play('zap', { pitch: 0.6 });
+      SZ.GameAudio.play('thud', { pitch: 0.7 });
     }
     weatherTimer = WEATHER_DURATION;
   }
@@ -2096,6 +2118,7 @@
           const { x: tx, y: ty } = gridCenterToScreen(bestC, bestR);
           floatingText.add(tx, ty - 10, 'Eaten!', { color: '#f44', font: 'bold 11px sans-serif' });
           particles.burst(tx, ty, 6, { color: '#f88', speed: 2, life: 0.3 });
+          SZ.GameAudio.play('hurt', { volume: 0.6 });
         }
         // Animal leaves after eating
         wildAnimals.splice(i, 1);
@@ -2114,6 +2137,7 @@
             const { x: fx, y: fy } = gridCenterToScreen(nextC, nextR);
             floatingText.add(fx, fy - 10, 'Zapped!', { color: '#f44', font: 'bold 10px sans-serif' });
             particles.burst(fx, fy, 6, { color: '#ff0', speed: 2.5, life: 0.3 });
+            SZ.GameAudio.play('zap', { volume: 0.6 });
             wildAnimals.splice(i, 1);
             continue;
           }
@@ -3868,20 +3892,24 @@
       if (e.key === '0' && CROPS.length >= 10) {
         selectedCropIndex = 9;
         selectedTool = TOOL_PLANT;
+        SZ.GameAudio.play('click');
       } else if (num >= 1 && num <= CROPS.length) {
         selectedCropIndex = num - 1;
         selectedTool = TOOL_PLANT;
+        SZ.GameAudio.play('click');
       }
       if (e.code === 'KeyS')
         sellAllProduce();
       if (e.code === 'KeyU') {
         showUpgradeShop = !showUpgradeShop;
         showLivestockShop = false;
+        SZ.GameAudio.play('click');
         return;
       }
       if (e.code === 'KeyL') {
         showLivestockShop = !showLivestockShop;
         showUpgradeShop = false;
+        SZ.GameAudio.play('click');
         return;
       }
       if (e.code === 'KeyB') {
@@ -3896,12 +3924,14 @@
           selectedBuildingIndex = 0;
           selectedTool = TOOL_BUILD;
         }
+        SZ.GameAudio.play('click');
         return;
       }
       if (e.code === 'KeyT') {
         // Toggle hoe tool
         selectedTool = selectedTool === TOOL_HOE ? TOOL_PLANT : TOOL_HOE;
         selectedBuildingIndex = -1;
+        SZ.GameAudio.play('click');
         return;
       }
       if (e.code === 'Home') {
@@ -4083,6 +4113,7 @@
         if (mx >= cancelX && mx <= cancelX + 40) {
           selectedTool = TOOL_PLANT;
           selectedBuildingIndex = -1;
+          SZ.GameAudio.play('click');
           return;
         }
       }
@@ -4091,6 +4122,7 @@
       if (bldIdx >= 0 && bldIdx < BUILDINGS.length && mx >= bldStartX) {
         selectedBuildingIndex = bldIdx;
         selectedTool = TOOL_BUILD;
+        SZ.GameAudio.play('click');
         return;
       }
     }
@@ -4106,6 +4138,7 @@
     if (mx >= clkUpgBtnX && mx <= clkUpgBtnX + 70 && my >= barY + 4 && my <= barY + 41) {
       showUpgradeShop = !showUpgradeShop;
       showLivestockShop = false;
+      SZ.GameAudio.play('click');
       return;
     }
 
@@ -4113,6 +4146,7 @@
     if (mx >= clkLivBtnX && mx <= clkLivBtnX + 70 && my >= barY + 4 && my <= barY + 41) {
       showLivestockShop = !showLivestockShop;
       showUpgradeShop = false;
+      SZ.GameAudio.play('click');
       return;
     }
 
@@ -4126,6 +4160,7 @@
     if (mx >= clkHoeBtnX && mx <= clkHoeBtnX + 58 && my >= barY + 4 && my <= barY + 41) {
       selectedTool = selectedTool === TOOL_HOE ? TOOL_PLANT : TOOL_HOE;
       selectedBuildingIndex = -1;
+      SZ.GameAudio.play('click');
       return;
     }
 
@@ -4136,6 +4171,7 @@
         selectedCropIndex = cropIdx;
         selectedTool = TOOL_PLANT;
         selectedBuildingIndex = -1;
+        SZ.GameAudio.play('click');
       }
       return;
     }
@@ -4233,6 +4269,7 @@
               floatingText.add(tx, ty + 5, 'Pest eliminated!', { color: '#fa0', font: 'bold 10px sans-serif' });
               particles.burst(tx, ty, 8, { color: '#f44', speed: 3, life: 0.4 });
               screenShake.trigger(2, 100);
+              SZ.GameAudio.play('hit');
               wildAnimals.splice(i, 1);
               clickedAnimal = true;
               break;
@@ -4410,6 +4447,9 @@
   });
 
   setupCanvas();
+  // the bottom-right corner holds the Upgrades button, so the sound switch sits in the menu bar
+  const muteButton = SZ.GameAudio.attachMuteButton();
+  Object.assign(muteButton.style, { top: '2px', bottom: 'auto', width: '20px', height: '20px', font: '11px/18px sans-serif' });
   loadHighScores();
   try { tutorialSeen = localStorage.getItem(STORAGE_TUTORIAL) === '1'; } catch (_) { tutorialSeen = false; }
   updateWindowTitle();

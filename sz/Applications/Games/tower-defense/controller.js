@@ -190,6 +190,25 @@
   const particles = new SZ.GameEffects.ParticleSystem();
   const screenShake = new SZ.GameEffects.ScreenShake();
   const floatingText = new SZ.GameEffects.FloatingText();
+  const audio = SZ.GameAudio;
+
+  /* Tower shots are throttled so a full board does not turn into noise */
+  const SHOT_SOUNDS = {
+    arrow: ['shoot', 1.4], cannon: ['thud', 1.2], frost: ['blip', 1.6], lightning: ['zap', 1],
+    laser: ['laser', 1.3], poison: ['bounce', 0.8], tesla: ['zap', 1.3], mortar: ['thud', 0.8],
+    flame: ['whoosh', 1.5], ice: ['blip', 1.3], fire: ['whoosh', 1.2], chainlightning: ['zap', 0.8],
+    sniper: ['shoot', 0.7]
+  };
+  let lastShotSoundAt = 0;
+
+  function playShotSound(def) {
+    const now = performance.now();
+    const snd = SHOT_SOUNDS[def.id];
+    if (!snd || now - lastShotSoundAt < 90)
+      return;
+    lastShotSoundAt = now;
+    audio.play(snd[0], { pitch: snd[1] * (0.95 + Math.random() * 0.1), volume: 0.35 });
+  }
 
   /* ══════════════════════════════════════════════════════════════════
      GAME STATE
@@ -388,7 +407,10 @@
 
   function placeTower(col, row, typeIndex) {
     const def = TOWER_TYPES[typeIndex];
-    if (gold < def.cost) return false;
+    if (gold < def.cost) {
+      audio.play('error');
+      return false;
+    }
 
     // Spike traps are placed as floor effects on path cells
     if (def.isFloorTrap) {
@@ -405,6 +427,7 @@
         cost: def.cost
       });
       particles.sparkle(fx, fy, 8, { color: '#999', speed: 2 });
+      audio.play('click', { pitch: 0.8 });
       floatingText.add(fx, fy - 16, `-${def.cost}g`, { color: '#fa0', font: 'bold 11px sans-serif' });
       return true;
     }
@@ -430,6 +453,7 @@
     towerAngles.set(tower, 0);
 
     particles.sparkle(tower.x, tower.y, 12, { color: def.color, speed: 3 });
+    audio.play('drop');
     floatingText.add(tower.x, tower.y - 16, `-${def.cost}g`, { color: '#fa0', font: 'bold 11px sans-serif' });
 
     return true;
@@ -451,6 +475,7 @@
     particles.burst(tower.x, tower.y, 8, { color: def.color, speed: 2, life: 0.5 });
     floatingText.add(tower.x, tower.y - 16, `Tier ${tower.tier}!`, { color: '#ff0', font: 'bold 12px sans-serif' });
     screenShake.trigger(2, 80);
+    audio.play('powerup', { pitch: 0.9 + tower.tier * 0.1 });
 
     return true;
   }
@@ -468,6 +493,7 @@
     towerAngles.delete(tower);
     floatingText.add(tower.x, tower.y - 16, `+${refund}g`, { color: '#8f8', font: 'bold 11px sans-serif' });
     particles.burst(tower.x, tower.y, 8, { color: '#aaa', speed: 2, life: 0.4 });
+    audio.play('coin');
     if (selectedTower === tower)
       selectedTower = null;
   }
@@ -528,6 +554,7 @@
     floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 30, 'VICTORY!', { color: '#ffd700', font: 'bold 24px sans-serif' });
     particles.confetti(CANVAS_W / 2, CANVAS_H / 2, 40, { speed: 6, gravity: 0.08 });
     screenShake.trigger(6, 300);
+    audio.play('win');
     updateWindowTitle();
   }
 
@@ -547,6 +574,7 @@
     contextMenu = null;
 
     floatingText.add(CANVAS_W / 2, 30, `Wave ${currentWave}`, { color: '#ff0', font: 'bold 16px sans-serif' });
+    audio.play('select', { pitch: 0.75 });
 
     // Wave bonus/interest
     const bonus = Math.floor(gold * 0.05) + 10;
@@ -557,6 +585,7 @@
 
   function beginPreWaveWarning() {
     warningActive = true;
+    audio.play('blip', { pitch: 0.6 });
     warningTimer = WARNING_DURATION;
     warningPulse = 0;
   }
@@ -630,6 +659,8 @@
       trail: []
     });
 
+    playShotSound(def);
+
     // Update turret angle
     const dx = target.x - tower.x;
     const dy = target.y - tower.y;
@@ -654,8 +685,10 @@
       screenShake.trigger(8, 400);
       particles.confetti(enemy.x, enemy.y, 20, { speed: 5, gravity: 0.06 });
       floatingText.add(enemy.x, enemy.y - 30, 'BOSS KILL!', { color: '#f0f', font: 'bold 14px sans-serif' });
+      audio.play('explode');
     } else {
       screenShake.trigger(2, 60);
+      audio.play('smallExplode', { pitch: 0.9 + Math.random() * 0.3, volume: 0.6 });
     }
 
     enemies.splice(index, 1);
@@ -666,8 +699,10 @@
     enemies.splice(index, 1);
     screenShake.trigger(4, 150);
     floatingText.add(CANVAS_W - 40, 20, '-1 Life!', { color: '#f44', font: 'bold 12px sans-serif' });
+    audio.play('hurt');
 
     if (lives <= 0) {
+      audio.play('lose');
       state = STATE_GAME_OVER;
       addHighScore(MAPS[currentMap].name, currentWave);
       floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 30, 'GAME OVER', { color: '#f44', font: 'bold 24px sans-serif' });
@@ -786,6 +821,7 @@
     particles.burst(tower.x, tower.y, 15, { color: '#f44', speed: 4, life: 0.5 });
     floatingText.add(tower.x, tower.y - 16, 'DESTROYED!', { color: '#f44', font: 'bold 10px sans-serif' });
     screenShake.trigger(4, 200);
+    audio.play('explode', { pitch: 1.3, volume: 0.7 });
   }
 
   function repairTower(tower) {
@@ -795,6 +831,7 @@
     gold -= repairCost;
     tower.hp = tower.maxHp;
     particles.sparkle(tower.x, tower.y, 8, { color: '#4f4', speed: 2 });
+    audio.play('pickup');
     floatingText.add(tower.x, tower.y - 16, `Repaired -${repairCost}g`, { color: '#8f8', font: 'bold 9px sans-serif' });
     return true;
   }
@@ -1010,6 +1047,8 @@
 
       if (currentWave >= totalWaves)
         triggerVictory();
+      else
+        audio.play('levelup');
     }
   }
 
@@ -2608,6 +2647,7 @@
       const by = PALETTE_BTN_Y;
       if (mx >= bx && mx <= bx + getPaletteBtnW() && my >= by && my <= by + PALETTE_BTN_H) {
         selectedTowerType = i;
+        audio.play('click');
         return true;
       }
     }
@@ -2869,6 +2909,7 @@
       gold += refund;
       floatingText.add(spike.x, spike.y - 16, `+${refund}g`, { color: '#8f8', font: 'bold 11px sans-serif' });
       particles.burst(spike.x, spike.y, 6, { color: '#aaa', speed: 2, life: 0.3 });
+      audio.play('coin');
       const idx = floorEffects.indexOf(spike);
       if (idx !== -1) floorEffects.splice(idx, 1);
       return;
@@ -2962,6 +3003,7 @@
   setupCanvas();
   loadHighScores();
   updateWindowTitle();
+  audio.attachMuteButton();
 
   lastTimestamp = 0;
   requestAnimationFrame(gameLoop);
