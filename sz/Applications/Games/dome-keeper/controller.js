@@ -26,6 +26,7 @@
   const STATE_CINEMATIC = 'CINEMATIC';       // landing / relocation sequence
   const STATE_CONFIRM = 'CONFIRM';           // relocation confirmation
   const STATE_CRAFT = 'CRAFT';               // bomb workshop
+  const STATE_MINIGAME = 'MINIGAME';         // opening a secret chest
 
   /* -- Storage -- */
   const STORAGE_PREFIX = 'sz-dome-keeper';
@@ -68,7 +69,8 @@
   const TILE_OPAL = 21;
   const TILE_VOIDSTONE = 22;
   const TILE_CORE = 23;          // the site's Relocation Core, hidden in the lower strata
-  const TILE_MAX = TILE_CORE;
+  const TILE_CHEST = 24;         // one of the site's three secret chests
+  const TILE_MAX = TILE_CHEST;
 
   const TILE_COLORS = {
     [TILE_DIRT]: '#4a3a2a',
@@ -485,6 +487,10 @@
       '......j.....', '.....i......', '....3bb3....', '..34d55d43..',
       '.34d5ee5d43.', '.3d5eeee5d3.', '.3d5eeee5d3.', '.34d5ee5d43.',
       '..34d55d43..', '...333333...', '............', '............'] },
+    chest: { ramps: ['wood', 'gold', 'purple'], px: [
+      '............', '..23333332..', '.2344444432.', '.2dcc44ccd2.',
+      '.2222hh2222.', '.2333ih3332.', '.2343hh3432.', '.2343333432.',
+      '.2dc3333cd2.', '.2222222222.', '............', '............'] },
     tree: { ramps: ['green', 'wood', 'red'], px: [
       '...333333...', '.3344444433.', '3344544h4433', '344444444443',
       '34h44444h443', '334444444433', '.3334444333.', '...33cc33...',
@@ -1027,7 +1033,8 @@
     [TILE_AMETHYST]: 'Amethyst',
     [TILE_OPAL]: 'Fire Opal',
     [TILE_VOIDSTONE]: 'Voidstone',
-    [TILE_CORE]: 'Relocation Core'
+    [TILE_CORE]: 'Relocation Core',
+    [TILE_CHEST]: 'Secret Chest'
   };
 
   const ORE_SPECKLE_COLORS = {
@@ -1157,7 +1164,8 @@
     [TILE_AMETHYST]: 3.5,
     [TILE_OPAL]: 3.7,
     [TILE_VOIDSTONE]: 4.0,
-    [TILE_CORE]: 3.5
+    [TILE_CORE]: 3.5,
+    [TILE_CHEST]: 3
   };
 
   /* -- Movement -- */
@@ -2154,7 +2162,7 @@
   let newGameConfirmOpen = false;
 
   function isRunActive() {
-    return primaryGadget !== null && (state === STATE_PLAYING || state === STATE_PAUSED || state === STATE_UPGRADE_DIALOG || state === STATE_CINEMATIC || state === STATE_CONFIRM || state === STATE_CRAFT);
+    return primaryGadget !== null && (state === STATE_PLAYING || state === STATE_PAUSED || state === STATE_UPGRADE_DIALOG || state === STATE_CINEMATIC || state === STATE_CONFIRM || state === STATE_CRAFT || state === STATE_MINIGAME);
   }
 
   function saveRun() {
@@ -2182,6 +2190,7 @@
       primaryGadget, primaryGadgetState, foundGadgets, gadgetChambers,
       unlockedTools, activeToolKey, toolState,
       site, relocationCore, landing: landingPending,
+      chests: chests.map(ch => ({ r: ch.r, c: ch.c, band: ch.band, kind: ch.kind, revealed: ch.revealed, opened: ch.opened, cooldown: Math.round(ch.cooldown) })),
       bombs: { inv: bombInv, sel: bombSel, placed: placedBombs.map(b => ({ r: b.r, c: b.c, tier: b.tier, fuse: Math.round(b.fuse * 100) / 100, maxFuse: b.maxFuse, sticky: !!b.sticky })) }
     };
     try {
@@ -2305,6 +2314,7 @@
         .map(ch => ({ r: ch.r, c: ch.c, gadgetType: ch.gadgetType, revealed: !!ch.revealed }));
       if (!relocationCore.found && !d.grid.some(row => row.indexOf(String.fromCharCode(48 + TILE_CORE)) >= 0))
         placeRelocationCore(makeRng(site.seed ^ 0x5eed));
+      restoreChests(d);
       initTileHP();
       for (const p of d.partialHP)
         if (Array.isArray(p) && tileHP[p[0]] && isNum(p[2]) && tileMaxHP[p[0]][p[1]] > 0)
@@ -2387,6 +2397,30 @@
       startCinematic('arrive');
     }
     updateWindowTitle();
+  }
+
+  // Secret chests of the site; saves from before chests get theirs hidden now
+  function restoreChests(d) {
+    if (!Array.isArray(d.chests)) {
+      placeSecretChests(makeRng(chestSeed()));
+      return;
+    }
+    chests = d.chests
+      .filter(ch => isPlainObject(ch) && isNum(ch.r) && isNum(ch.c) && ch.r >= 0 && ch.r < GRID_ROWS && ch.c >= 0 && ch.c < GRID_COLS)
+      .slice(0, CHEST_BANDS.length)
+      .map((ch, i) => ({
+        r: ch.r | 0, c: ch.c | 0, band: isNum(ch.band) ? Math.max(0, Math.min(2, ch.band | 0)) : i,
+        kind: MINIGAME_KINDS.includes(ch.kind) ? ch.kind : MINIGAME_KINDS[i % 3],
+        revealed: !!ch.revealed, opened: !!ch.opened, cooldown: isNum(ch.cooldown) ? Math.max(0, Math.min(CHEST_RETRY, ch.cooldown)) : 0
+      }));
+    // The grid and the list agree: unopened chests sit in the rock
+    for (const ch of chests)
+      if (!ch.opened)
+        undergroundGrid[ch.r][ch.c] = TILE_CHEST;
+    for (let r = 0; r < GRID_ROWS; ++r)
+      for (let c = 0; c < GRID_COLS; ++c)
+        if (undergroundGrid[r][c] === TILE_CHEST && !chestAt(r, c))
+          undergroundGrid[r][c] = TILE_DIRT;
   }
 
   // Bomb stock and the bombs lying in the mine; blast charges of older saves become bombs
@@ -2651,6 +2685,7 @@
     }
 
     placeRelocationCore(rand);
+    placeSecretChests(makeRng(chestSeed()));
     initTileHP();
   }
 
@@ -3034,7 +3069,7 @@
         const spkC1 = Math.min(GRID_COLS, Math.ceil((cameraX + CANVAS_W) / TILE_SIZE));
         for (let r = spkR0; r < spkR1; ++r)
           for (let c = spkC0; c < spkC1; ++c)
-            if (undergroundGrid[r][c] !== TILE_EMPTY && undergroundGrid[r][c] !== TILE_DIRT && undergroundGrid[r][c] !== TILE_GADGET && undergroundGrid[r][c] !== TILE_CORE)
+            if (undergroundGrid[r][c] !== TILE_EMPTY && undergroundGrid[r][c] !== TILE_DIRT && undergroundGrid[r][c] !== TILE_GADGET && undergroundGrid[r][c] !== TILE_CORE && undergroundGrid[r][c] !== TILE_CHEST)
               candidates.push({ r, c });
         if (candidates.length > 0) {
           const pick = candidates[Math.floor(Math.random() * candidates.length)];
@@ -5196,6 +5231,13 @@
       return;
     }
 
+    // A secret chest is opened, not dug out
+    if (tile === TILE_CHEST) {
+      lastMineDir = { dx, dy };
+      tryOpenChest(chestAt(ny, nx));
+      return;
+    }
+
     // If already mining the same block, ignore repeated starts
     if (miningTarget && miningTarget.col === nx && miningTarget.row === ny)
       return;
@@ -5370,7 +5412,7 @@
         const rr = ny + dy * k, cc = nx + dx * k;
         if (rr < 0 || rr >= GRID_ROWS || cc < 0 || cc >= GRID_COLS) break;
         const t = undergroundGrid[rr][cc];
-        if (t === TILE_EMPTY || t === TILE_GADGET || t === TILE_CORE) break;
+        if (t === TILE_EMPTY || t === TILE_GADGET || t === TILE_CORE || t === TILE_CHEST) break;
         breakTileInstant(rr, cc);
       }
 
@@ -5386,9 +5428,10 @@
     // Pick up dropped resources at destination
     pickUpDroppedResources();
 
-    // Reveal an adjacent Relocation Core and gadget chambers
+    // Reveal an adjacent Relocation Core, secret chests and gadget chambers
     if (!relocationCore.revealed && Math.abs(relocationCore.r - ny) + Math.abs(relocationCore.c - nx) <= 1)
       relocationCore.revealed = true;
+    revealChestsNear(ny, nx, 1, true);
     for (const ch of gadgetChambers) {
       if (ch.revealed) continue;
       for (let dr = 0; dr < 2; ++dr)
@@ -5455,6 +5498,7 @@
   // Break a tile at once (Vein Miner, Tunnel Bore): ore goes into the cargo, overflow drops
   function breakTileInstant(r, c) {
     const tile = undergroundGrid[r][c];
+    if (tile === TILE_CHEST || tile === TILE_CORE || tile === TILE_GADGET || tile === TILE_EMPTY) return;
     const tx = c * TILE_SIZE + TILE_SIZE / 2 - cameraX, ty = r * TILE_SIZE + TILE_SIZE / 2 - cameraY;
     if (RESOURCE_TILES.includes(tile)) {
       let value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(r));
@@ -5579,6 +5623,10 @@
         const tx = c * TILE_SIZE + TILE_SIZE / 2 - cameraX;
         const ty = r * TILE_SIZE + TILE_SIZE / 2 - cameraY;
 
+        if (tile === TILE_CHEST) {
+          revealChest(chestAt(r, c), true);
+          continue;
+        }
         if (tile === TILE_GADGET) {
           const chamber = gadgetChambers.find(ch => {
             for (let dr2 = 0; dr2 < 2; ++dr2)
@@ -5925,12 +5973,14 @@
 
   // Tiles a blast never breaks; it only lays them open
   function isBlastProof(tile) {
-    return tile === TILE_CORE;
+    return tile === TILE_CORE || tile === TILE_CHEST;
   }
 
   function revealBlastProof(r, c, tile) {
     if (tile === TILE_CORE)
       relocationCore.revealed = true;
+    else if (tile === TILE_CHEST && chestAt(r, c))
+      revealChest(chestAt(r, c), true);
   }
 
   // Explosion in the mine centred on tile (cr, cc): rock takes damage that
@@ -6109,6 +6159,893 @@
     }
     armed.forEach((b, i) => { b.fuse = Math.min(b.fuse, 0.05 + i * 0.08); });
     SZ.GameAudio.play('zap', { pitch: 1.6, volume: 0.6 });
+  }
+
+  /* ======================================================================
+     SECRET CHESTS -- three per site, opened by beating a short minigame
+     ====================================================================== */
+
+  const CHEST_BANDS = [[2, 4], [6, 8], [10, 13]];   // strata: shallow-mid, mid, deep
+  const CHEST_RETRY = 20;                            // seconds a failed lock stays jammed
+  const MINIGAME_KINDS = ['lock', 'circuit', 'runes'];
+  const MINIGAME_NAMES = { lock: 'Lock Picking', circuit: 'Power Circuit', runes: 'Rune Memory' };
+  let chests = [];                   // { r, c, band, kind, revealed, opened, cooldown }
+  let minigame = null;               // the chest being opened (see startMinigame)
+
+  // Hide three chests in plain rock, one per depth band, far apart
+  function placeSecretChests(rand) {
+    chests = [];
+    const kinds = MINIGAME_KINDS.map((k, i) => MINIGAME_KINDS[(i + site.index) % MINIGAME_KINDS.length]);
+    CHEST_BANDS.forEach(([s0, s1], band) => {
+      for (let attempt = 0; attempt < 400; ++attempt) {
+        const r = Math.min(GRID_ROWS - 2, s0 * STRATUM_ROWS + Math.floor(rand() * (s1 - s0 + 1) * STRATUM_ROWS));
+        const c = 6 + Math.floor(rand() * (GRID_COLS - 12));
+        if (undergroundGrid[r][c] !== TILE_DIRT) continue;
+        if (Math.abs(r - relocationCore.r) + Math.abs(c - relocationCore.c) < 6) continue;
+        if (chests.some(ch => Math.abs(ch.c - c) < 24 && Math.abs(ch.r - r) < 12)) continue;
+        undergroundGrid[r][c] = TILE_CHEST;
+        chests.push({ r, c, band, kind: kinds[band], revealed: false, opened: false, cooldown: 0 });
+        break;
+      }
+    });
+  }
+
+  function chestSeed() {
+    return site.seed ^ 0x0c4e57;
+  }
+
+  function chestAt(r, c) {
+    return chests.find(ch => ch.r === r && ch.c === c && !ch.opened);
+  }
+
+  function chestsOpened() {
+    return chests.filter(ch => ch.opened).length;
+  }
+
+  function revealChest(ch, announceIt) {
+    if (ch.revealed || ch.opened) return;
+    ch.revealed = true;
+    if (announceIt && currentView === VIEW_UNDERGROUND) {
+      const tx = ch.c * TILE_SIZE + TILE_SIZE / 2 - cameraX, ty = ch.r * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      floatingText.add(tx, ty - 40, 'Secret chest!', { color: '#e0b0ff', font: 'bold 24px sans-serif' });
+      particles.sparkle(tx, ty, 16, { color: '#ffd8ff', speed: 2 });
+      SZ.GameAudio.play('coin', { pitch: 0.8 });
+    }
+  }
+
+  // Reveal chests within a tile distance of (r, c)
+  function revealChestsNear(r, c, dist, announceIt) {
+    for (const ch of chests)
+      if (!ch.revealed && !ch.opened && Math.abs(ch.r - r) + Math.abs(ch.c - c) <= dist)
+        revealChest(ch, announceIt);
+  }
+
+  // Difficulty 0..1 grows with the depth band and the site
+  function chestDifficulty(ch) {
+    return Math.max(0, Math.min(1, 0.15 + ch.band * 0.3 + site.index * 0.08));
+  }
+
+  function tryOpenChest(ch) {
+    if (!ch || ch.opened) return;
+    revealChest(ch, false);
+    if (ch.cooldown > 0) {
+      SZ.GameAudio.play('error');
+      floatingText.add(ch.c * TILE_SIZE + TILE_SIZE / 2 - cameraX, ch.r * TILE_SIZE - 10 - cameraY, `The lock is jammed: ${Math.ceil(ch.cooldown)} s`, { color: '#ffb0a8', font: 'bold 20px sans-serif' });
+      return;
+    }
+    cancelMining();
+    clearMoveTarget();
+    startMinigame(ch);
+  }
+
+  function updateChests(dt) {
+    for (const ch of chests)
+      if (ch.cooldown > 0) ch.cooldown = Math.max(0, ch.cooldown - dt);
+  }
+
+  // What a chest holds: rare ore of its depth plus points
+  function grantChestTreasure(ch) {
+    const pools = [['silver', 'gold', 'quartz', 'cobalt'], ['redstone', 'emerald', 'diamond', 'ruby'], ['titanium', 'sapphire', 'uranium', 'amethyst', 'opal']];
+    const pool = pools[ch.band];
+    const rng = makeRng(chestSeed() ^ (ch.r * 977 + ch.c));
+    const got = [];
+    for (let i = 0; i < 3; ++i) {
+      const key = pool[Math.floor(rng() * pool.length)];
+      const n = Math.round((14 + rng() * 14) * (1 + ch.band * 0.4));
+      resources[key] = (resources[key] || 0) + n;
+      got.push(`${n} [[${key}]]`);
+    }
+    const pts = 250 * (ch.band + 1) * (site.index + 1);
+    score += pts;
+    return { icon: 'chest', title: 'Treasure!', text: `${got.join('  ')}  and ${pts} points`, color: UI.gold };
+  }
+
+  /* -- Minigames: lock picking, power circuit, rune memory -- */
+  function startMinigame(ch) {
+    const diff = chestDifficulty(ch);
+    const m = { kind: ch.kind, chest: ch, diff, t: 0, limit: 40, phase: 'play', endT: 0, shake: 0, flash: 0, flashOk: true, reward: null, hover: null };
+    if (m.kind === 'lock') {
+      m.total = 3 + Math.round(diff * 3);
+      m.set = 0;
+      m.lives = 3;
+      m.angle = -Math.PI / 2;
+      m.dir = 1;
+      m.speed = 2.0 + diff * 1.6;
+      m.hw = 0.42 - diff * 0.18;
+      m.target = Math.PI * (0.25 + Math.random() * 0.5);
+      m.limit = 40;
+    } else if (m.kind === 'circuit') {
+      buildCircuit(m, 4 + Math.round(diff * 2));
+      m.limit = 35 + 4 * m.n;
+    } else {
+      m.len = 4 + Math.round(diff * 3);
+      m.seq = [];
+      for (let i = 0; i < m.len; ++i) m.seq.push(Math.floor(Math.random() * 6));
+      m.round = 3;
+      m.lives = 3;
+      m.limit = 45 + m.len * 3;
+      m.lit = -1;
+      m.litT = 0;
+      startRuneShow(m, 0.8);
+    }
+    minigame = m;
+    state = STATE_MINIGAME;
+    bombThrowMode = false;
+    clearTooltip();
+    SZ.GameAudio.play('powerup', { pitch: 0.7, volume: 0.6 });
+  }
+
+  function finishMinigame(win, why) {
+    const m = minigame;
+    if (!m || m.phase !== 'play') return;
+    m.phase = win ? 'won' : 'lost';
+    m.endT = 0;
+    if (win) {
+      const ch = m.chest;
+      ch.opened = true;
+      undergroundGrid[ch.r][ch.c] = TILE_EMPTY;
+      tileHP[ch.r][ch.c] = tileMaxHP[ch.r][ch.c] = 0;
+      m.reward = grantChestTreasure(ch);
+      SZ.GameAudio.play('win', { volume: 0.8 });
+      screenShake.trigger(6, 250);
+    } else {
+      m.chest.cooldown = CHEST_RETRY;
+      m.why = why || 'The chest stays locked';
+      SZ.GameAudio.play('lose', { volume: 0.7 });
+    }
+  }
+
+  function closeMinigame() {
+    const m = minigame;
+    minigame = null;
+    state = STATE_PLAYING;
+    if (m && m.phase === 'won') {
+      const tx = m.chest.c * TILE_SIZE + TILE_SIZE / 2 - cameraX, ty = m.chest.r * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      particles.burst(tx, ty, 40, { color: '#ffd870', speed: 4, life: 0.8 });
+      particles.sparkle(tx, ty, 24, { color: '#ffe8ff', speed: 3 });
+      announce(m.reward.title, m.reward.text, m.reward.color, m.reward.icon);
+    }
+    saveRun();
+  }
+
+  function giveUpMinigame() {
+    if (minigame && minigame.phase === 'play')
+      finishMinigame(false, 'You stepped away from the chest');
+  }
+
+  function updateMinigame(dt) {
+    const m = minigame;
+    if (!m) return;
+    m.shake = Math.max(0, m.shake - dt * 3);
+    m.flash = Math.max(0, m.flash - dt * 2.5);
+    if (m.msg && (m.msg.t -= dt) <= 0) m.msg = null;
+    if (m.phase !== 'play') {
+      m.endT += dt;
+      return;
+    }
+    const showing = m.kind === 'runes' && m.show;
+    if (!showing) m.t += dt;
+    if (m.t >= m.limit) {
+      finishMinigame(false, 'Time ran out');
+      return;
+    }
+    if (m.kind === 'lock')
+      m.angle += m.dir * m.speed * dt;
+    else if (m.kind === 'runes')
+      updateRunes(m, dt);
+  }
+
+  function minigameMessage(m, text, color) {
+    m.msg = { text, color, t: 1.2 };
+  }
+
+  function angleGap(a, b) {
+    let d = (a - b) % TWO_PI;
+    if (d > Math.PI) d -= TWO_PI;
+    if (d < -Math.PI) d += TWO_PI;
+    return Math.abs(d);
+  }
+
+  function lockPress(m) {
+    const gap = angleGap(m.angle, m.target);
+    if (gap <= m.hw) {
+      ++m.set;
+      m.flash = 1;
+      m.flashOk = true;
+      SZ.GameAudio.play('select', { pitch: 1 + m.set * 0.12 });
+      SZ.GameAudio.play('click', { pitch: 0.7 });
+      minigameMessage(m, gap <= m.hw * 0.35 ? 'PERFECT!' : 'Pin set!', gap <= m.hw * 0.35 ? UI.gold : UI.good);
+      if (m.set >= m.total) {
+        finishMinigame(true);
+        return;
+      }
+      m.dir = -m.dir;
+      m.speed *= 1.12;
+      m.hw = Math.max(0.13, m.hw * 0.9);
+      m.target = m.angle + m.dir * (Math.PI * 0.55 + Math.random() * Math.PI * 0.9);
+    } else {
+      --m.lives;
+      m.flash = 1;
+      m.flashOk = false;
+      m.shake = 1;
+      SZ.GameAudio.play('error');
+      minigameMessage(m, 'The pick slipped!', UI.bad);
+      if (m.lives <= 0)
+        finishMinigame(false, 'Your last lock pick snapped');
+    }
+  }
+
+  /* Power circuit: rotate the tiles until power flows from the battery to the lock.
+     Connections are bits N=1, E=2, S=4, W=8 */
+  function rotMask(mask, k) {
+    for (let i = 0; i < ((k % 4) + 4) % 4; ++i)
+      mask = ((mask << 1) | (mask >> 3)) & 15;
+    return mask;
+  }
+
+  function buildCircuit(m, n) {
+    m.n = n;
+    const base = [];
+    for (let r = 0; r < n; ++r) base.push(new Array(n).fill(0));
+    // Random spanning tree (depth-first maze)
+    const seen = new Set([0]);
+    const stack = [[0, 0]];
+    const dirs = [[-1, 0, 1, 4], [0, 1, 2, 8], [1, 0, 4, 1], [0, -1, 8, 2]];
+    while (stack.length) {
+      const [r, c] = stack[stack.length - 1];
+      const opts = dirs.filter(([dr, dc]) => r + dr >= 0 && r + dr < n && c + dc >= 0 && c + dc < n && !seen.has((r + dr) * n + c + dc));
+      if (!opts.length) {
+        stack.pop();
+        continue;
+      }
+      const [dr, dc, bit, back] = opts[Math.floor(Math.random() * opts.length)];
+      base[r][c] |= bit;
+      base[r + dr][c + dc] |= back;
+      seen.add((r + dr) * n + c + dc);
+      stack.push([r + dr, c + dc]);
+    }
+    m.src = Math.floor(Math.random() * n);
+    m.snk = Math.floor(Math.random() * n);
+    base[m.src][0] |= 8;
+    base[m.snk][n - 1] |= 2;
+    m.base = base;
+    m.cur = { r: m.src, c: 0 };
+    for (let tries = 0; tries < 20; ++tries) {
+      m.rot = base.map(row => row.map(() => Math.floor(Math.random() * 4)));
+      if (!circuitPowered(m).done) break;
+    }
+    m.spin = base.map(row => row.map(() => 0));
+  }
+
+  function circuitMask(m, r, c) {
+    return rotMask(m.base[r][c], m.rot[r][c]);
+  }
+
+  // Tiles reached by power from the battery; done when the lock tile is live
+  function circuitPowered(m) {
+    const n = m.n, on = new Set();
+    if (circuitMask(m, m.src, 0) & 8) {
+      const q = [[m.src, 0]];
+      on.add(m.src * n);
+      while (q.length) {
+        const [r, c] = q.shift();
+        const mk = circuitMask(m, r, c);
+        for (const [dr, dc, bit, back] of [[-1, 0, 1, 4], [0, 1, 2, 8], [1, 0, 4, 1], [0, -1, 8, 2]]) {
+          const rr = r + dr, cc = c + dc;
+          if (!(mk & bit) || rr < 0 || rr >= n || cc < 0 || cc >= n || on.has(rr * n + cc)) continue;
+          if (circuitMask(m, rr, cc) & back) {
+            on.add(rr * n + cc);
+            q.push([rr, cc]);
+          }
+        }
+      }
+    }
+    return { on, done: on.has(m.snk * n + n - 1) && !!(circuitMask(m, m.snk, n - 1) & 2) };
+  }
+
+  function rotateCircuitTile(m, r, c, dir) {
+    m.rot[r][c] = (m.rot[r][c] + dir + 4) % 4;
+    m.spin[r][c] = dir;
+    m.cur = { r, c };
+    SZ.GameAudio.play('click', { pitch: 1.2 + Math.random() * 0.2, volume: 0.7 });
+    if (circuitPowered(m).done) {
+      SZ.GameAudio.play('zap', { pitch: 1.4 });
+      finishMinigame(true);
+    }
+  }
+
+  /* Rune memory: watch the runes light up, then repeat the sequence */
+  const RUNE_COLORS = ['#ff6a6a', '#ffb648', '#ffe66a', '#6fe08a', '#5ab8ff', '#c890ff'];
+  const RUNE_TONES = [262, 330, 392, 440, 523, 659];
+
+  function startRuneShow(m, delay) {
+    m.show = true;
+    m.showI = -1;
+    m.showT = -(delay || 0.6);
+    m.input = 0;
+    m.lit = -1;
+  }
+
+  function runeStep(m) {
+    return Math.max(0.32, 0.6 - m.diff * 0.22);
+  }
+
+  function updateRunes(m, dt) {
+    if (m.litT > 0) {
+      m.litT -= dt;
+      if (m.litT <= 0) m.lit = -1;
+    }
+    if (!m.show) return;
+    m.showT += dt;
+    const step = runeStep(m);
+    const i = Math.floor(m.showT / (step + 0.16));
+    if (m.showT < 0) return;
+    if (i >= m.round) {
+      m.show = false;
+      m.lit = -1;
+      return;
+    }
+    if (i !== m.showI) {
+      m.showI = i;
+      lightRune(m, m.seq[i], step);
+    }
+  }
+
+  function lightRune(m, k, dur) {
+    m.lit = k;
+    m.litT = dur;
+    SZ.GameAudio.tone(RUNE_TONES[k], dur * 0.9, 'triangle', 0.12);
+  }
+
+  function runePress(m, k) {
+    if (m.show || m.phase !== 'play') return;
+    lightRune(m, k, 0.25);
+    if (k === m.seq[m.input]) {
+      ++m.input;
+      if (m.input >= m.round) {
+        if (m.round >= m.len) {
+          finishMinigame(true);
+          return;
+        }
+        ++m.round;
+        m.flash = 1;
+        m.flashOk = true;
+        minigameMessage(m, 'Correct!', UI.good);
+        startRuneShow(m, 0.9);
+      }
+    } else {
+      --m.lives;
+      m.flash = 1;
+      m.flashOk = false;
+      m.shake = 1;
+      SZ.GameAudio.play('error');
+      minigameMessage(m, 'Wrong rune - watch again', UI.bad);
+      if (m.lives <= 0)
+        finishMinigame(false, 'The runes went dark');
+      else
+        startRuneShow(m, 1.0);
+    }
+  }
+
+  /* -- Minigame layout, input and drawing -- */
+  function minigameLayout() {
+    const w = 900, h = 680, x = (CANVAS_W - w) / 2, y = (CANVAS_H - h) / 2;
+    return { x, y, w, h, cx: x + w / 2, bodyY: y + 112, bodyH: h - 112 - 64 };
+  }
+
+  function runeSpots() {
+    const L = minigameLayout();
+    const cx = L.cx, cy = L.bodyY + L.bodyH / 2 + 6;
+    return RUNE_COLORS.map((col, i) => {
+      const a = -Math.PI / 2 + i * TWO_PI / 6;
+      return { x: cx + Math.cos(a) * 170, y: cy + Math.sin(a) * 170, r: 52, i };
+    });
+  }
+
+  function circuitGeom(m) {
+    const L = minigameLayout();
+    const cell = Math.min(86, Math.floor(430 / m.n));
+    const gw = cell * m.n;
+    return { cell, gx: L.cx - gw / 2, gy: L.bodyY + (L.bodyH - gw) / 2 + 8 };
+  }
+
+  function minigameKey(e) {
+    const m = minigame;
+    if (!m) return false;
+    if (m.phase !== 'play') {
+      if (m.endT > 0.35 && (e.code === 'Enter' || e.code === 'Space' || e.code === 'Escape' || e.code === 'NumpadEnter'))
+        closeMinigame();
+      return true;
+    }
+    if (e.code === 'Escape') {
+      giveUpMinigame();
+      return true;
+    }
+    if (m.kind === 'lock') {
+      if (e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'KeyE') {
+        if (!e.repeat) lockPress(m);
+        return true;
+      }
+    } else if (m.kind === 'circuit') {
+      const mv = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1], KeyW: [-1, 0], KeyS: [1, 0], KeyA: [0, -1], KeyD: [0, 1] }[e.code];
+      if (mv) {
+        m.cur = { r: Math.max(0, Math.min(m.n - 1, m.cur.r + mv[0])), c: Math.max(0, Math.min(m.n - 1, m.cur.c + mv[1])) };
+        return true;
+      }
+      if (e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter') {
+        rotateCircuitTile(m, m.cur.r, m.cur.c, e.shiftKey ? -1 : 1);
+        return true;
+      }
+    } else if (/^(Digit|Numpad)[1-6]$/.test(e.code)) {
+      runePress(m, parseInt(e.code.slice(-1), 10) - 1);
+      return true;
+    }
+    return true;
+  }
+
+  function minigameClick(mx, my, button) {
+    const m = minigame;
+    if (!m) return;
+    if (m.phase !== 'play') {
+      if (m.endT > 0.35) closeMinigame();
+      return;
+    }
+    const L = minigameLayout();
+    if (inRect(mx, my, { x: L.x + L.w - 54, y: L.y + 12, w: 40, h: 40 })) {
+      giveUpMinigame();
+      return;
+    }
+    if (m.kind === 'lock')
+      lockPress(m);
+    else if (m.kind === 'circuit') {
+      const g = circuitGeom(m);
+      const c = Math.floor((mx - g.gx) / g.cell), r = Math.floor((my - g.gy) / g.cell);
+      if (r >= 0 && r < m.n && c >= 0 && c < m.n)
+        rotateCircuitTile(m, r, c, button === 2 ? -1 : 1);
+    } else {
+      for (const sp of runeSpots())
+        if (Math.hypot(mx - sp.x, my - sp.y) <= sp.r + 6) {
+          runePress(m, sp.i);
+          break;
+        }
+    }
+  }
+
+  function minigameHover(mx, my) {
+    const m = minigame;
+    if (!m) return;
+    m.hover = null;
+    if (m.kind === 'circuit' && m.phase === 'play') {
+      const g = circuitGeom(m);
+      const c = Math.floor((mx - g.gx) / g.cell), r = Math.floor((my - g.gy) / g.cell);
+      if (r >= 0 && r < m.n && c >= 0 && c < m.n) m.hover = { r, c };
+    } else if (m.kind === 'runes') {
+      for (const sp of runeSpots())
+        if (Math.hypot(mx - sp.x, my - sp.y) <= sp.r + 6) m.hover = sp.i;
+    }
+  }
+
+  // Rune glyph: a few strokes inside a unit circle
+  const RUNE_GLYPHS = [
+    [[0, -0.7, 0, 0.7], [0, -0.1, 0.5, -0.6], [0, 0.2, -0.5, -0.3]],
+    [[-0.5, -0.6, 0.5, -0.6], [0.5, -0.6, -0.4, 0.7], [-0.3, 0, 0.4, 0]],
+    [[-0.55, 0.6, 0, -0.65], [0, -0.65, 0.55, 0.6], [-0.3, 0.1, 0.3, 0.1]],
+    [[-0.5, -0.6, -0.5, 0.6], [0.5, -0.6, 0.5, 0.6], [-0.5, -0.6, 0.5, 0.6]],
+    [[0, -0.7, 0, 0.7], [-0.55, -0.3, 0.55, -0.3], [-0.55, 0.3, 0.55, 0.3]],
+    [[-0.5, -0.5, 0.5, 0.5], [0.5, -0.5, -0.5, 0.5], [0, -0.7, 0, -0.35], [0, 0.35, 0, 0.7]]
+  ];
+
+  function drawRune(k, x, y, r, lit, hover) {
+    const col = RUNE_COLORS[k];
+    ctx.save();
+    if (lit) drawGlow(col, x, y, r * 2.2, 0.9);
+    const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, 2, x, y, r);
+    g.addColorStop(0, lit ? '#ffffff' : hexToRgba(col, hover ? 0.5 : 0.32));
+    g.addColorStop(1, lit ? col : 'rgba(20,24,40,0.95)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TWO_PI);
+    ctx.fill();
+    ctx.lineWidth = lit ? 4 : 2.5;
+    ctx.strokeStyle = lit ? '#ffffff' : hexToRgba(col, hover ? 1 : 0.7);
+    ctx.stroke();
+    ctx.strokeStyle = lit ? '#2a1030' : col;
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (const [x0, y0, x1, y1] of RUNE_GLYPHS[k]) {
+      ctx.moveTo(x + x0 * r * 0.6, y + y0 * r * 0.6);
+      ctx.lineTo(x + x1 * r * 0.6, y + y1 * r * 0.6);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawPipeTile(m, r, c, x, y, cell, powered, hover, focus) {
+    ctx.save();
+    roundRectPath(x + 3, y + 3, cell - 6, cell - 6, 9);
+    ctx.fillStyle = hover ? 'rgba(60,70,100,0.95)' : 'rgba(26,30,48,0.95)';
+    ctx.fill();
+    ctx.lineWidth = focus ? 3 : 1;
+    ctx.strokeStyle = focus ? UI.gold : 'rgba(150,180,255,0.18)';
+    ctx.stroke();
+    const mask = circuitMask(m, r, c);
+    const cx = x + cell / 2, cy = y + cell / 2, L = cell / 2 - 3;
+    const segs = [];
+    if (mask & 1) segs.push([0, -L]);
+    if (mask & 2) segs.push([L, 0]);
+    if (mask & 4) segs.push([0, L]);
+    if (mask & 8) segs.push([-L, 0]);
+    ctx.lineCap = 'round';
+    for (const [wdt, col] of powered ? [[cell * 0.26, 'rgba(90,220,255,0.35)'], [cell * 0.13, '#8af0ff']] : [[cell * 0.18, '#0a0c16'], [cell * 0.11, '#5a6688']]) {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = wdt;
+      ctx.beginPath();
+      for (const [dx, dy] of segs) {
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + dx, cy + dy);
+      }
+      ctx.stroke();
+    }
+    if (powered) {
+      // Current flowing along the pipes
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 8]);
+      ctx.lineDashOffset = -animTime * 40;
+      ctx.beginPath();
+      for (const [dx, dy] of segs) {
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + dx, cy + dy);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.fillStyle = powered ? '#c8f8ff' : '#3a4460';
+    ctx.beginPath();
+    ctx.arc(cx, cy, cell * 0.1, 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawMinigame() {
+    const m = minigame;
+    if (!m) return;
+    drawScrim(0.7);
+    const L = minigameLayout();
+    const shake = m.shake > 0 ? Math.sin(animTime * 70) * 8 * m.shake : 0;
+    ctx.save();
+    ctx.translate(shake, 0);
+    drawPanel(L.x, L.y, L.w, L.h, { accent: '#c890ff', radius: 16, title: `[[chest]] Secret Chest: ${MINIGAME_NAMES[m.kind]}`, titlePx: 26, headerH: 64, top: 'rgba(28,24,48,0.98)', bottom: 'rgba(12,10,24,0.98)', glow: true });
+    if (m.phase === 'play')
+      drawSmallButton({ x: L.x + L.w - 54, y: L.y + 12, w: 40, h: 40 }, '×', true, false, '#8aa8d8', 22);
+    // Difficulty pips and depth
+    const pips = 1 + Math.round(m.diff * 4);
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    fitText(`Depth ${m.chest.r} m`, L.x + L.w - 70, L.y + 33, 140, 15, { color: UI.textDim });
+    for (let i = 0; i < 5; ++i) {
+      ctx.fillStyle = i < pips ? '#e0a0ff' : 'rgba(255,255,255,0.12)';
+      ctx.beginPath();
+      ctx.arc(L.x + L.w - 300 + i * 18, L.y + 33, 6, 0, TWO_PI);
+      ctx.fill();
+    }
+    // Timer
+    const left = Math.max(0, m.limit - m.t);
+    drawMeter(L.x + 30, L.y + 80, L.w - 60, 12, left / m.limit, left < 8 ? '#ff6a5a' : '#c890ff', { track: 'rgba(0,0,0,0.6)' });
+    ctx.textAlign = 'right';
+    fitText(`${Math.ceil(left)} s`, L.x + L.w - 30, L.y + 101, 80, 14, { weight: 'bold', color: left < 8 ? '#ff8a7a' : UI.textDim });
+    ctx.textAlign = 'left';
+    const hintY = L.y + 101;
+    ctx.save();
+    if (m.phase !== 'play')
+      ctx.globalAlpha *= 0.3;
+    if (m.kind === 'lock') drawLockGame(m, L);
+    else if (m.kind === 'circuit') drawCircuitGame(m, L);
+    else drawRuneGame(m, L);
+    ctx.restore();
+    if (m.msg && m.phase === 'play') {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, m.msg.t * 3);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText(m.msg.text, L.cx, L.y + 140 - (1.2 - m.msg.t) * 12, 420, 24, { weight: 'bold', color: m.msg.color, outline: 'rgba(0,0,0,0.8)' });
+      ctx.restore();
+    }
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const hint = { lock: 'Press when the needle crosses the gold zone', circuit: 'Rotate tiles until power reaches the lock', runes: 'Watch the runes, then repeat them in order' }[m.kind];
+    fitText(hint, L.x + 30, hintY, L.w - 160, 15, { color: UI.text });
+    // Result
+    if (m.phase !== 'play') {
+      const k = Math.min(1, m.endT / 0.3);
+      ctx.save();
+      ctx.globalAlpha = k;
+      roundRectPath(L.x + 60, L.y + 190, L.w - 120, 300, 16);
+      ctx.fillStyle = 'rgba(8,8,18,0.97)';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = m.phase === 'won' ? UI.gold : '#ff7a6a';
+      ctx.stroke();
+      if (m.phase === 'won') {
+        drawHeadline('UNLOCKED!', L.cx, L.y + 240, L.w - 200, 46, '#ffe080', '#e0a020');
+        const r = m.reward;
+        drawSprite(r.icon, L.cx, L.y + 325, 72);
+        ctx.textAlign = 'center';
+        fitText(r.title, L.cx, L.y + 395, L.w - 180, 24, { weight: 'bold', color: r.color });
+        drawTextBlock(r.text, L.x + 100, L.y + 412, L.w - 200, 52, 17, { align: 'center', valign: 'middle', color: UI.text, minPx: 12 });
+      } else {
+        drawHeadline('LOCKED', L.cx, L.y + 250, L.w - 200, 46, '#ff8a7a', '#c01818');
+        drawSprite('lock', L.cx, L.y + 330, 64);
+        ctx.textAlign = 'center';
+        fitText(m.why, L.cx, L.y + 400, L.w - 180, 22, { weight: 'bold', color: UI.text });
+        fitText(`Try again in ${CHEST_RETRY} s`, L.cx, L.y + 438, L.w - 180, 17, { color: UI.textDim });
+      }
+      ctx.restore();
+    }
+    const keys = m.phase !== 'play' ? [{ key: 'Click', label: 'Continue' }, { key: 'Enter', label: 'Continue' }]
+      : m.kind === 'lock' ? [{ key: 'Space', label: 'Set pin' }, { key: 'Click', label: 'Set pin' }, { key: 'Esc', label: 'Give up' }]
+      : m.kind === 'circuit' ? [{ key: 'Click', label: 'Rotate' }, { key: 'Right click', label: 'Back' }, { key: '←↑→↓', label: 'Select' }, { key: 'Space', label: 'Rotate' }, { key: 'Esc', label: 'Give up' }]
+      : [{ key: '1-6', label: 'Rune' }, { key: 'Click', label: 'Rune' }, { key: 'Esc', label: 'Give up' }];
+    drawKeyHints(keys, L.cx, L.y + L.h - 30, L.w - 80);
+    ctx.restore();
+  }
+
+  function drawLives(m, L, icon) {
+    for (let i = 0; i < 3; ++i)
+      drawSprite(icon, L.x + L.w - 50 - i * 34, L.y + 140, 28, i < m.lives ? 1 : 0.2);
+  }
+
+  function drawLockGame(m, L) {
+    const cx = L.cx, cy = L.bodyY + 230, R = 165;
+    drawLives(m, L, 'wrench');
+    // Ring track with tick marks
+    ctx.save();
+    ctx.lineWidth = 26;
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, TWO_PI);
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(200,170,255,0.25)';
+    for (let i = 0; i < 48; ++i) {
+      const a = i * TWO_PI / 48, l = i % 4 ? 6 : 12;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * (R - 13), cy + Math.sin(a) * (R - 13));
+      ctx.lineTo(cx + Math.cos(a) * (R - 13 - l), cy + Math.sin(a) * (R - 13 - l));
+      ctx.stroke();
+    }
+    // Gold zone (perfect core is brighter)
+    ctx.shadowColor = UI.gold;
+    ctx.shadowBlur = 16;
+    ctx.lineWidth = 22;
+    ctx.strokeStyle = 'rgba(255,200,80,0.75)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, m.target - m.hw, m.target + m.hw);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = 22;
+    ctx.strokeStyle = '#fff2b0';
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, m.target - m.hw * 0.35, m.target + m.hw * 0.35);
+    ctx.stroke();
+    // Lock body with keyhole
+    const flashCol = m.flash > 0 ? (m.flashOk ? `rgba(120,255,150,${m.flash * 0.6})` : `rgba(255,90,80,${m.flash * 0.6})`) : null;
+    const g = ctx.createRadialGradient(cx - 30, cy - 30, 10, cx, cy, 110);
+    g.addColorStop(0, '#5a4a7a');
+    g.addColorStop(1, '#1a1428');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 110, 0, TWO_PI);
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#c8a0ff';
+    ctx.stroke();
+    if (flashCol) {
+      ctx.fillStyle = flashCol;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 110, 0, TWO_PI);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#0a0612';
+    ctx.beginPath();
+    ctx.arc(cx, cy - 14, 18, 0, TWO_PI);
+    ctx.fill();
+    ctx.fillRect(cx - 8, cy - 8, 16, 40);
+    // Needle
+    const nx = cx + Math.cos(m.angle) * (R + 6), ny = cy + Math.sin(m.angle) * (R + 6);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(m.angle) * 100, cy + Math.sin(m.angle) * 100);
+    ctx.lineTo(nx, ny);
+    ctx.stroke();
+    drawGlow('#ffffff', nx, ny, 22, 0.9);
+    ctx.fillStyle = '#ffe8ff';
+    ctx.beginPath();
+    ctx.arc(nx, ny, 9, 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+    // Pins
+    const pw = 34, gap = 14, total = m.total * pw + (m.total - 1) * gap;
+    for (let i = 0; i < m.total; ++i) {
+      const px = cx - total / 2 + i * (pw + gap), py = cy + R + 44;
+      roundRectPath(px, py, pw, 46, 7);
+      ctx.fillStyle = i < m.set ? 'rgba(255,215,90,0.85)' : 'rgba(0,0,0,0.5)';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = i < m.set ? '#fff2b0' : 'rgba(200,170,255,0.35)';
+      ctx.stroke();
+      ctx.fillStyle = i < m.set ? '#5a3a08' : 'rgba(200,170,255,0.4)';
+      ctx.fillRect(px + pw / 2 - 3, py + (i < m.set ? 8 : 20), 6, 18);
+    }
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(`Pins ${m.set} / ${m.total}`, cx, cy + R + 108, 300, 18, { weight: 'bold', color: UI.text });
+  }
+
+  function drawCircuitGame(m, L) {
+    const g = circuitGeom(m);
+    const pw = circuitPowered(m);
+    for (let r = 0; r < m.n; ++r)
+      for (let c = 0; c < m.n; ++c) {
+        const hover = m.hover && m.hover.r === r && m.hover.c === c;
+        drawPipeTile(m, r, c, g.gx + c * g.cell, g.gy + r * g.cell, g.cell, pw.on.has(r * m.n + c), hover, m.cur.r === r && m.cur.c === c);
+      }
+    // Battery on the left, lock on the right
+    const by = g.gy + m.src * g.cell + g.cell / 2, sy = g.gy + m.snk * g.cell + g.cell / 2;
+    ctx.save();
+    ctx.strokeStyle = '#8af0ff';
+    ctx.lineWidth = g.cell * 0.13;
+    ctx.beginPath();
+    ctx.moveTo(g.gx - 40, by);
+    ctx.lineTo(g.gx + 3, by);
+    ctx.stroke();
+    ctx.strokeStyle = pw.done ? '#8af0ff' : '#5a6688';
+    ctx.beginPath();
+    ctx.moveTo(g.gx + g.cell * m.n - 3, sy);
+    ctx.lineTo(g.gx + g.cell * m.n + 40, sy);
+    ctx.stroke();
+    ctx.restore();
+    drawGlow('#8af0ff', g.gx - 60, by, 50, 0.6 + Math.sin(animTime * 5) * 0.2);
+    drawSprite('bolt', g.gx - 62, by, 44);
+    drawGlow(pw.done ? '#ffe080' : '#c890ff', g.gx + g.cell * m.n + 64, sy, 50, 0.5);
+    drawSprite('chest', g.gx + g.cell * m.n + 64, sy, 48);
+    drawSprite('lock', g.gx + g.cell * m.n + 64, sy - 34, 22, pw.done ? 0.3 : 1);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(`${pw.on.size} of ${m.n * m.n} tiles powered`, L.cx, g.gy + g.cell * m.n + 26, 400, 16, { color: UI.textDim });
+  }
+
+  function drawRuneGame(m, L) {
+    drawLives(m, L, 'heart');
+    const cx = L.cx, cy = L.bodyY + L.bodyH / 2 + 6;
+    // Centre emblem: round and progress
+    ctx.save();
+    const g = ctx.createRadialGradient(cx, cy, 10, cx, cy, 90);
+    g.addColorStop(0, m.flash > 0 ? (m.flashOk ? 'rgba(120,255,160,0.6)' : 'rgba(255,90,80,0.6)') : 'rgba(80,60,120,0.6)');
+    g.addColorStop(1, 'rgba(20,16,36,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 90, 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(m.show ? 'Watch…' : 'Your turn', cx, cy - 22, 150, 22, { weight: 'bold', color: m.show ? '#e0c8ff' : UI.gold });
+    fitText(`Round ${m.round - 2} of ${m.len - 2}`, cx, cy + 6, 150, 15, { color: UI.textDim });
+    // Dots for the sequence entered so far
+    for (let i = 0; i < m.round; ++i) {
+      ctx.fillStyle = i < m.input ? UI.gold : 'rgba(255,255,255,0.18)';
+      ctx.beginPath();
+      ctx.arc(cx - (m.round - 1) * 9 + i * 18, cy + 34, 5, 0, TWO_PI);
+      ctx.fill();
+    }
+    for (const sp of runeSpots()) {
+      drawRune(sp.i, sp.x, sp.y, sp.r, m.lit === sp.i, m.hover === sp.i && !m.show);
+      ctx.textAlign = 'center';
+      fitText(String(sp.i + 1), sp.x + sp.r * 0.78, sp.y + sp.r * 0.78, 24, 14, { weight: 'bold', color: UI.textDim, outline: 'rgba(0,0,0,0.8)' });
+    }
+  }
+
+  // Secret chests in the rock: hidden ones barely glint, found ones glow
+  function drawChests() {
+    for (const ch of chests) {
+      if (ch.opened) continue;
+      const x = ch.c * TILE_SIZE - cameraX, y = ch.r * TILE_SIZE - cameraY;
+      if (x < -TILE_SIZE || x > CANVAS_W || y < -TILE_SIZE || y > CANVAS_H) continue;
+      if (!ch.revealed) {
+        if (Math.sin(animTime * 0.9 + ch.c) > 0.985)
+          particles.sparkle(x + Math.random() * TILE_SIZE, y + Math.random() * TILE_SIZE, 1, { color: '#f0d8ff', speed: 0.4 });
+        continue;
+      }
+      const pulse = Math.sin(animTime * 3 + ch.c) * 0.5 + 0.5;
+      const cx = x + TILE_SIZE / 2, cy = y + TILE_SIZE / 2;
+      drawGlow(ch.cooldown > 0 ? '#ff7060' : '#d890ff', cx, cy, TILE_SIZE * (1.1 + pulse * 0.3), 0.55);
+      drawGlow('#ffe080', cx, cy, TILE_SIZE * 0.7, 0.3 + pulse * 0.2);
+      drawSprite('chest', cx, cy + Math.sin(animTime * 2 + ch.r) * 1.5, 34);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      if (ch.cooldown > 0) {
+        drawSprite('lock', cx, cy - 30, 18);
+        fitText(`${Math.ceil(ch.cooldown)} s`, cx, cy + 28, 60, 14, { weight: 'bold', color: '#ffb0a8', outline: 'rgba(0,0,0,0.85)' });
+      } else
+        fitText('!', cx, cy - 30 + Math.sin(animTime * 5) * 3, 30, 22, { weight: 'bold', color: '#ffe8a0', outline: 'rgba(60,20,80,0.9)' });
+      if (Math.random() < 0.04)
+        particles.sparkle(x + Math.random() * TILE_SIZE, y + Math.random() * TILE_SIZE, 1, { color: '#ffe0ff', speed: 0.6 });
+    }
+  }
+
+  // Scanners sense the nearest hidden chest: an arrow points the way
+  function drawChestHints(scanRange) {
+    if (!scanRange) return;
+    let best = null, bestD = Infinity;
+    for (const ch of chests) {
+      if (ch.opened || ch.revealed) continue;
+      const d = Math.abs(ch.r - drillY) + Math.abs(ch.c - drillX);
+      if (d <= scanRange) {
+        revealChest(ch, true);
+        continue;
+      }
+      if (d < bestD) {
+        bestD = d;
+        best = ch;
+      }
+    }
+    if (!best || bestD > scanRange * 8) return;
+    drawPointer(best.r, best.c, scanRange, '#e0a0ff', 'chest');
+  }
+
+  // Arrow at the edge of the scanner ring that points to a tile
+  function drawPointer(r, c, scanRange, color, icon) {
+    const px = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX, py = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+    const a = Math.atan2(r - drillY, c - drillX);
+    const rr = (scanRange + 0.8) * TILE_SIZE;
+    const ax = px + Math.cos(a) * rr, ay = py + Math.sin(a) * rr;
+    const pulse = 0.5 + Math.sin(animTime * 5) * 0.4;
+    drawGlow(color, ax, ay, 34, pulse * 0.8);
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(a);
+    ctx.fillStyle = SPRITE_OUTLINE;
+    ctx.beginPath();
+    ctx.moveTo(22, 0);
+    ctx.lineTo(-12, -15);
+    ctx.lineTo(-5, 0);
+    ctx.lineTo(-12, 15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = hexToRgba(color, 0.55 + pulse * 0.45);
+    ctx.beginPath();
+    ctx.moveTo(18, 0);
+    ctx.lineTo(-9, -11);
+    ctx.lineTo(-3, 0);
+    ctx.lineTo(-9, 11);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    drawSprite(icon, ax - Math.cos(a) * 34, ay - Math.sin(a) * 34, 24, 0.6 + pulse * 0.4);
   }
 
   /* ======================================================================
@@ -7280,6 +8217,8 @@
           ch.revealed = true;
       if (!relocationCore.revealed && Math.abs(relocationCore.r - drillY) + Math.abs(relocationCore.c - drillX) <= R)
         relocationCore.revealed = true;
+      if (currentView === VIEW_UNDERGROUND)
+        revealChestsNear(drillY, drillX, R, true);
     }
 
     // Scanner passive: always active when unlocked (echo location extends range)
@@ -7856,6 +8795,7 @@
     updateMining(dt);
     updateBombs(dt);
     updateBlastVisuals(dt);
+    updateChests(dt);
     updateMovement(dt);
 
     // Standing next to the Relocation Core reveals it
@@ -9904,8 +10844,8 @@
           ctx.drawImage(art.cave[getDepthTier(r)][tileVariant(r, c) % art.VARIANTS], x, y);
           continue;
         }
-        drawTile(x, y, tile === TILE_GADGET || tile === TILE_CORE ? TILE_DIRT : tile, r, c);
-        if (tile !== TILE_DIRT && tile !== TILE_GADGET && tile !== TILE_CORE)
+        drawTile(x, y, tile === TILE_GADGET || tile === TILE_CORE || tile === TILE_CHEST ? TILE_DIRT : tile, r, c);
+        if (tile !== TILE_DIRT && tile !== TILE_GADGET && tile !== TILE_CORE && tile !== TILE_CHEST)
           oreTiles.push(r, c);
 
         // Cracks on partially-mined tiles
@@ -10042,6 +10982,8 @@
     // Courier drones carry their own lights; the core glows through the dark
     drawUndergroundDrones();
     drawRelocationCoreMarker();
+    drawChests();
+    drawChestHints(toolState.scannerActive ? scannerRange() : 0);
 
     // Ore glints twinkle through the dark
     for (let i = 0; i < oreTiles.length; i += 2) {
@@ -10609,7 +11551,10 @@
     fitText(`${carried} / ${carryCapacity}`, carryX + carryW - 16, panelY + 25, 130, 18, { weight: 'bold', color: carryRatio >= 1 ? UI.bad : '#f0d070' });
     drawMeter(carryX + 14, panelY + 42, carryW - 28, 10, carryRatio, carryRatio >= 1 ? '#e84040' : '#e0b030');
     ctx.textAlign = 'left';
-    fitText(`Depth ${drillY} m  ·  ${DEPTH_TIERS[getDepthTier(drillY)].name}`, carryX + 16, panelY + 68, carryW - 32, 15, { color: UI.textDim });
+    ctx.textAlign = 'right';
+    const chw = fitText(`[[chest]] ${chestsOpened()} / ${chests.length}`, carryX + carryW - 16, panelY + 68, 80, 15, { weight: 'bold', color: '#e0b0ff' });
+    ctx.textAlign = 'left';
+    fitText(`Depth ${drillY} m  ·  ${DEPTH_TIERS[getDepthTier(drillY)].name}`, carryX + 16, panelY + 68, carryW - 40 - chw, 15, { color: UI.textDim });
     drawMineClock(carryX + 14, panelY + 94, carryW - 28);
   }
 
@@ -10888,7 +11833,10 @@
     const threat = isNight() ? Math.max(1, threatLevel()) : threatLevel() + 1; // tonight's threat
     drawChip(`Threat ${threat}`, sx + 306, 84, 24, { align: 'right', px: 13, maxW: 96, bg: 'rgba(255,90,90,0.14)', border: 'rgba(255,120,110,0.55)', color: '#ffa090' });
     ctx.textAlign = 'left';
-    fitText(relocationCore.found ? '[[core]] Core found: relocate when ready' : `[[core]] Core hidden below ${coreDepthHint()} m`, sx + 16, 120, 290, 14, { color: relocationCore.found ? '#7ae8ff' : UI.textMute });
+    ctx.textAlign = 'right';
+    const chw = fitText(`[[chest]] ${chestsOpened()} / ${chests.length}`, sx + 306, 120, 70, 14, { weight: 'bold', color: '#e0b0ff' });
+    ctx.textAlign = 'left';
+    fitText(relocationCore.found ? '[[core]] Core found: relocate when ready' : `[[core]] Core hidden below ${coreDepthHint()} m`, sx + 16, 120, 282 - chw, 14, { color: relocationCore.found ? '#7ae8ff' : UI.textMute });
 
     // Dome integrity under the dome
     const hpRatio = Math.max(0, domeHP / maxDomeHP);
@@ -10978,6 +11926,11 @@
     }
   }
 
+  // Tiles the scanner sees around the keeper
+  function scannerRange() {
+    return 3 + (toolState.echoLocationActive ? 2 + getEffectiveLevel('echoLocation') : 0);
+  }
+
   // The Relocation Core in the rock, and the scanner's hint towards it
   function drawRelocationCoreMarker() {
     const rc = relocationCore;
@@ -10991,7 +11944,7 @@
         particles.sparkle(x + Math.random() * TILE_SIZE, y + Math.random() * TILE_SIZE, 1, { color: '#bff4ff', speed: 0.6 });
     }
     // Scanners sense the core: in range it shows up, further away an arrow points to it
-    const scanRange = toolState.scannerActive ? 3 + (toolState.echoLocationActive ? 2 + getEffectiveLevel('echoLocation') : 0) : 0;
+    const scanRange = toolState.scannerActive ? scannerRange() : 0;
     if (!scanRange) return;
     const dist = Math.abs(rc.r - drillY) + Math.abs(rc.c - drillX);
     if (dist <= scanRange) {
@@ -11097,6 +12050,8 @@
           const tile = undergroundGrid[r][c];
           if (tile === TILE_CORE && Math.abs(r - pr) + Math.abs(c - pc) <= 4)
             relocationCore.revealed = true;
+          if (tile === TILE_CHEST && Math.abs(r - pr) + Math.abs(c - pc) <= 4 && chestAt(r, c))
+            revealChest(chestAt(r, c), false);
           if (!RESOURCE_TILES.includes(tile)) continue;
           if (Math.abs(r - pr) + Math.abs(c - pc) > 4) continue;
           const x = c * TILE_SIZE - cameraX;
@@ -11939,6 +12894,9 @@
     if (state === STATE_CRAFT)
       drawCraftDialog();
 
+    if (state === STATE_MINIGAME)
+      drawMinigame();
+
     if (state === STATE_PAUSED) {
       drawScrim(0.45);
       const pw = 520, ph = 250, px = CANVAS_W / 2 - pw / 2, py = CANVAS_H / 2 - ph / 2;
@@ -12249,11 +13207,20 @@
     const depthTier = DEPTH_TIERS[getDepthTier(row)];
     const depthMult = getDepthMineMultiplier(row);
 
+    const chest = tile === TILE_CHEST ? chestAt(row, col) : null;
+    if (chest && chest.revealed) {
+      lines.push('[[chest]] Secret Chest');
+      lines.push(`Dig into it to open its ${MINIGAME_NAMES[chest.kind].toLowerCase()} lock`);
+      lines.push('Difficulty: ' + ['Easy', 'Fair', 'Tricky', 'Hard', 'Fiendish'][Math.min(4, Math.round(chestDifficulty(chest) * 4))]);
+      if (chest.cooldown > 0)
+        lines.push(`\u26A0 Jammed for ${Math.ceil(chest.cooldown)} s`);
+      return lines;
+    }
     if (tile === TILE_CORE && relocationCore.revealed) {
       lines.push('[[core]] Relocation Core');
       lines.push('Mine it to unlock relocating the dome');
       lines.push('Mining: ' + getMiningDifficultyLabel(depthMult));
-    } else if (tile === TILE_DIRT || tile === TILE_CORE) {
+    } else if (tile === TILE_DIRT || tile === TILE_CORE || tile === TILE_CHEST) {
       lines.push(depthTier.name);
       lines.push('Depth tier: ' + depthTier.name);
       lines.push('Mining: ' + getMiningDifficultyLabel(depthMult));
@@ -12419,6 +13386,8 @@
     updateGame(dt);
     if (state === STATE_CINEMATIC)
       updateCinematic(dt);
+    if (state === STATE_MINIGAME)
+      updateMinigame(dt);
     updateTooltipHover(dt);
 
     particles.update();
@@ -12520,6 +13489,11 @@
 
     if (state === STATE_CRAFT) {
       if (handleCraftKey(e))
+        e.preventDefault();
+      return;
+    }
+    if (state === STATE_MINIGAME) {
+      if (minigameKey(e))
         e.preventDefault();
       return;
     }
@@ -12722,6 +13696,11 @@
       handleCraftClick((e.clientX - rect.left) * CANVAS_W / rect.width, (e.clientY - rect.top) * CANVAS_H / rect.height);
       return;
     }
+    if (state === STATE_MINIGAME) {
+      const rect = canvas.getBoundingClientRect();
+      minigameClick((e.clientX - rect.left) * CANVAS_W / rect.width, (e.clientY - rect.top) * CANVAS_H / rect.height, e.button);
+      return;
+    }
     if (state === STATE_READY && saveAvailable) {
       const rect = canvas.getBoundingClientRect();
       const hit = hitTitleButton((e.clientX - rect.left) * CANVAS_W / rect.width, (e.clientY - rect.top) * CANVAS_H / rect.height);
@@ -12888,7 +13867,7 @@
 
   /* -- Right-click pan for upgrade dialog -- */
   canvas.addEventListener('contextmenu', (e) => {
-    if (state === STATE_UPGRADE_DIALOG || state === STATE_PLAYING || state === STATE_CRAFT)
+    if (state === STATE_UPGRADE_DIALOG || state === STATE_PLAYING || state === STATE_CRAFT || state === STATE_MINIGAME)
       e.preventDefault();
   });
 
@@ -12933,6 +13912,10 @@
     bombBarHover = null;
     if (state === STATE_CRAFT) {
       craftHover = hitCraftDialog(mouseAimX, mouseAimY);
+      return;
+    }
+    if (state === STATE_MINIGAME) {
+      minigameHover(mouseAimX, mouseAimY);
       return;
     }
     if (state === STATE_PLAYING) {
