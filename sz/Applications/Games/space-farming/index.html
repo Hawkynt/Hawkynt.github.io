@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Space Farming — grow 10 crop types with weather affinities, purchase upgrades, tend livestock, survive enhanced weather events, and sell produce on your space station in the SynthelicZ Desktop.">
+<meta name="description" content="Space Farming — grow alien crops through the seasons, raise space critters, research a five-branch tech tree, fill trader orders and weather meteor showers on a pixel-art farm planet in the SynthelicZ Desktop.">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Space Farming -- &raquo;SynthelicZ&laquo; Desktop">
-<meta property="og:description" content="Casual farm sim on a space station. Grow 10 crop types with weather affinities, buy upgrades, tend livestock, survive enhanced space weather, and sell produce for credits.">
+<meta property="og:description" content="Casual pixel-art farm sim on an alien planet. Grow 14 crops through four seasons, raise six kinds of animals, research a tech tree, fill trader orders and survive meteor showers and storms.">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/space-farming/index.html">
 <link rel="canonical" href="index.html">
 <script type="application/ld+json">
@@ -16,7 +16,7 @@
   "@type": "WebApplication",
   "name": "Space Farming",
   "url": "https://hawkynt.github.io/sz/Applications/space-farming/index.html",
-  "description": "Casual space station farming game with 10 crop types, weather affinities, upgrade shop, livestock, enhanced space weather effects, and a produce shop system.",
+  "description": "Casual pixel-art farming game on an alien planet with 14 crops, six animals, a five-branch tech tree, goals, trader orders, seasons, day and night, and dynamic weather.",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -90,12 +90,19 @@
     <div class="dialog-title">Controls</div>
     <div class="dialog-body">
       <table class="controls-table">
-        <tr><td>Click/Tap</td><td>Plant / Harvest / Feed</td></tr>
-        <tr><td>1-9, 0</td><td>Select crop type (0=10th)</td></tr>
-        <tr><td>S</td><td>Sell all produce</td></tr>
-        <tr><td>U</td><td>Toggle upgrade shop</td></tr>
+        <tr><td>Click/Tap</td><td>Plant / Harvest / Collect / Inspect building</td></tr>
+        <tr><td>Drag</td><td>Plant or harvest an area</td></tr>
+        <tr><td>Right-drag, Ctrl+drag</td><td>Pan the view (two fingers on touch screens)</td></tr>
+        <tr><td>Wheel, +/-</td><td>Zoom (pinch on touch screens)</td></tr>
+        <tr><td>Home</td><td>Fit the whole farm</td></tr>
+        <tr><td>Right-click building</td><td>Upgrade it (Shift: remove it)</td></tr>
+        <tr><td>Arrow keys, Space</td><td>Move the tile cursor and act on it</td></tr>
+        <tr><td>1-9, 0</td><td>Pick a crop or building</td></tr>
+        <tr><td>P / B / T</td><td>Seeds / Build / Hoe</td></tr>
+        <tr><td>S / M</td><td>Sell all / Market</td></tr>
+        <tr><td>L / U</td><td>Livestock / Tech tree</td></tr>
         <tr><td>F2</td><td>New game</td></tr>
-        <tr><td>Escape</td><td>Pause / Resume / Close shop</td></tr>
+        <tr><td>Escape</td><td>Pause / Resume / Close a panel</td></tr>
         <tr><td>H</td><td>How to Play</td></tr>
       </table>
     </div>
@@ -125,10 +132,10 @@
     <div class="dialog-title">About Space Farming</div>
     <div class="dialog-body">
       <strong>Space Farming</strong><br><br>
-      Casual farm simulation on a space station. Grow 10 crop types through growth stages, including Void Mushrooms,
-      Plasma Peppers, and Astral Flowers with unique weather affinities. Tend 4 livestock types,
-      survive space weather events with enhanced visual effects, and purchase upgrades from the upgrade shop
-      (growth boost, yield multiplier, weather shield, auto-harvester). Sell produce for credits.<br><br>
+      Casual pixel-art farm simulation on an alien planet. Grow 14 crops that love their own season,
+      raise six kinds of space critters, and research a tech tree with Agriculture, Husbandry, Engineering,
+      Science and Commerce branches. Reach goals, fill trader orders, and weather rain, snow, dust storms,
+      solar flares, thunderstorms and meteor showers.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
@@ -142,18 +149,15 @@
 <p>Grow crops through multiple growth stages, tend livestock, survive space weather events, and sell produce for credits in this casual space station farming game playable directly in your browser.</p>
 <h2>Features</h2>
 <ul>
-<li>Grid-based farm with 8x6 plantable tiles</li>
-<li>7 crop types: Space Wheat, Star Fruit, Nebula Berry, Lunar Lettuce, Cosmic Corn, Crystal Melon, Solar Tomato</li>
-<li>4 livestock types: Space Cow, Star Hen, Nebula Goat, Crystal Chick</li>
-<li>Growth stages with sparkle particle effects and visual progression</li>
-<li>Space weather events: solar flares boost growth, meteor showers damage crops</li>
-<li>Shop system to sell produce and buy seeds and livestock</li>
-<li>Drag selection for batch planting and harvesting</li>
-<li>Day/night cycle with day counter</li>
-<li>Tooltip system showing contextual information on hover</li>
-<li>Window maximize support for larger farm view</li>
-<li>Tutorial overlay for new players</li>
-<li>High score tracking for credits earned and days survived</li>
+<li>Pixel-art farm on an alien meadow under a parallax sky with planets, sun, moon and stars</li>
+<li>14 crops with growth stages and favourite seasons, from Space Wheat to Comet Pumpkins and Frost Kale</li>
+<li>6 livestock types including Moon Rabbits and pollinating Star Bees</li>
+<li>Tech tree with Agriculture, Husbandry, Engineering, Science and Commerce branches</li>
+<li>Goals with rewards, trader orders and a market</li>
+<li>Seasons, day and night, rain, snow, dust storms, solar flares, thunderstorms and meteor showers</li>
+<li>14 buildings including sprinklers, greenhouses, wind turbines, grow lamps and pest zappers</li>
+<li>Drag selection for batch planting and harvesting, keyboard and touch controls</li>
+<li>Autosave with Continue</li>
 </ul>
 </div>
 <script>document.getElementById('seo-content')?.remove();</script>
