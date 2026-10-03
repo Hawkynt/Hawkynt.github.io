@@ -7594,16 +7594,62 @@
     ctx.fillStyle = 'rgba(255,215,90,0.25)';
     ctx.fillRect(r.x + r.w - abW - 10, r.y + 10, 1, r.h - 20);
     drawAbilityButtons(r.x + r.w - abW - 2, r.y + 7, r.h - 14);
-    const cw = Math.min(92, (innerW - gap * (n - 1)) / n);
-    const ch = r.h - 14;
-    const total = n * cw + (n - 1) * gap;
-    let cx = innerX + (innerW - total) / 2;
-    const cy = r.y + 7;
+    // One row of tall cards when there is room, otherwise two rows of wide ones
+    const twoRows = (innerW - gap * (n - 1)) / n < 58;
+    const perRow = twoRows ? Math.ceil(n / 2) : n;
+    const cw = Math.min(92 * (twoRows ? 1.6 : 1), (innerW - gap * (perRow - 1)) / perRow);
+    const ch = twoRows ? (r.h - 14 - gap) / 2 : r.h - 14;
+    const total = perRow * cw + (perRow - 1) * gap;
     for (let i = 0; i < n; ++i) {
-      drawBuildCard(i, cx, cy, cw, ch);
-      cx += cw + gap;
+      const row = Math.floor(i / perRow), col = i % perRow;
+      const cx = innerX + (innerW - total) / 2 + col * (cw + gap);
+      const cy = r.y + 7 + row * (ch + gap);
+      if (twoRows) drawBuildCardWide(i, cx, cy, cw, ch);
+      else drawBuildCard(i, cx, cy, cw, ch);
     }
     endHudPanel();
+  }
+
+  // Compact card for narrow windows: icon on the left, name and cost on the right
+  function drawBuildCardWide(i, x, y, w, h) {
+    const def = TOWER_TYPES[i];
+    const id = 'build' + i;
+    const selected = selectedTowerType === i;
+    const locked = !towerUnlocked(i);
+    const afford = gold >= def.cost && !locked;
+    const hover = hoverId === id;
+    ctx.save();
+    roundRectPath(x, y, w, h, 6);
+    ctx.fillStyle = selected ? 'rgba(90,70,20,0.95)' : hover ? 'rgba(46,56,86,0.95)' : 'rgba(26,32,54,0.95)';
+    ctx.fill();
+    ctx.lineWidth = selected ? 2 : 1;
+    ctx.strokeStyle = selected ? UI.gold : hover ? 'rgba(255,215,90,0.55)' : 'rgba(150,180,255,0.18)';
+    ctx.stroke();
+    const is = h - 4;
+    const pa = ctx.globalAlpha;
+    ctx.globalAlpha = pa * (locked ? 0.25 : afford ? 1 : 0.5);
+    drawTowerIcon(i, 1, x + 2 + is / 2, y + h / 2, is);
+    ctx.globalAlpha = pa;
+    if (locked) drawIcon('lock', x + 2 + is / 2, y + h / 2, Math.min(16, is * 0.6));
+    const tx = x + is + 5, tw = w - is - 8;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText(def.name, tx, y + h * 0.32, tw, 11, { weight: 'bold', color: locked ? UI.textMute : afford ? UI.text : UI.textDim, minPx: 8 });
+    if (locked)
+      fitText('[[flask]] Research', tx, y + h * 0.72, tw - 18, 10, { weight: 'bold', color: '#b89aff', minPx: 8 });
+    else
+      fitText(`[[coin]]${def.cost}`, tx, y + h * 0.72, tw - 18, 11, { weight: 'bold', color: afford ? UI.gold : UI.bad, minPx: 8 });
+    const hk = towerHotkey(i);
+    if (hk) {
+      ctx.font = uiFont(8, 'bold');
+      drawKeycap(hk, x + w - 4 - Math.max(12, ctx.measureText(hk).width + 6), y + h - 15, 8);
+    }
+    ctx.restore();
+    addRegion({
+      id, x, y, w, h, anchorTip: true,
+      onClick: () => selectBuildType(i),
+      tip: () => towerUnlocked(i) ? buildTooltip(i) : [TOWER_TYPES[i].name, TOWER_TYPES[i].desc, '✘ Locked: unlock it in Research (from the title screen or the campaign map).']
+    });
   }
 
   function drawBuildCard(i, x, y, w, h) {
@@ -8492,7 +8538,8 @@
       ['hammer', 'Choose a tower in the build bar (or press 1-0) and click a free tile beside the road. Spike traps go on the road itself. A green outline means you can build there.'],
       ['eye', 'The NEXT panel shows the enemies of the coming wave. Hover them to learn what counters them. Press Start (Space) when you are ready, or call a wave early (N) for bonus gold.'],
       ['coin', 'Defeated enemies drop gold and every cleared wave pays a bonus. Gold Mines dig up more.'],
-      ['star', 'Win a map to unlock the next one. Keep 50% of your lives for two stars and 90% for three.']
+      ['star', 'Win a map to unlock the next one. Keep 50% of your lives for two stars and 90% for three.'],
+      ['loop', 'Every map you have won also opens its Endless mode: waves never stop, bosses come every five waves, and your best wave is recorded.']
     ] },
     { title: 'Towers', towers: true },
     { title: 'Enemies', enemies: true },
@@ -8504,11 +8551,11 @@
       ['bomb', 'Abilities (Q, W, E) are unlocked by research: Airstrike bombs the spot you click, Deep Freeze freezes the whole field, Gold Rush doubles kill gold.']
     ] },
     { title: 'Controls', keys: [
-      ['1 - 0', 'Choose a tower to build'], ['Click / Enter', 'Build or select'], ['Right click / Esc', 'Cancel'],
+      ['1 - 0, ⇧1 - ⇧6', 'Choose a tower to build'], ['Click / Enter', 'Build or select'], ['Right click / Esc', 'Cancel'],
       ['Arrow keys', 'Move the build cursor'], ['U / I', 'Upgrade / pick a specialization'], ['T', 'Cycle targeting'],
       ['S / R', 'Sell / repair'], ['Space', 'Start the next wave'], ['N', 'Call the next wave early'],
-      ['F', 'Cycle game speed'], ['A', 'Auto-wave on/off'], ['Q / W / E', 'Abilities'],
-      ['H', 'Help'], ['Esc', 'Pause menu'], ['F2', 'New game'], ['Touch', 'Tap to preview, tap again to build']
+      ['F, ⇧F, + / -', 'Faster / slower (1× to 20×)'], ['A', 'Auto-wave on/off'], ['Q / W / E', 'Abilities'],
+      ['H', 'Help'], ['Esc', 'Pause menu'], ['F2', 'New game'], ['Touch', 'Tap to preview, tap again to build'], ['E (campaign map)', 'Start Endless mode']
     ] }
   ];
   function openHelp(page) {
