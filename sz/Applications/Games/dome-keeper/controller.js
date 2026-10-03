@@ -1985,7 +1985,7 @@
   const TUTORIAL_PAGES = [
     { title: 'How to Play', icon: 'dome',
       intro: 'Mine by day, defend the dome at night. Dig resources underground, bring them home and spend them on upgrades.',
-      items: [['Click', 'Fire the laser (surface) / dig (underground)'], ['WASD / Arrows', 'Move the keeper and mine underground'], ['Space / Tab', 'Switch between surface and mine'], ['Esc', 'Pause - the run is saved automatically']] },
+      items: [['Click', 'Fire the laser (surface) / dig (underground)'], ['WASD / Arrows', 'Move the keeper and mine underground'], ['Space / Tab', 'Switch between surface and mine'], ['C', 'Open the Bomb Workshop'], ['Esc', 'Pause - the run is saved automatically']] },
     { title: 'Day & Night', icon: 'moon',
       intro: 'Monsters attack after nightfall. A warning sounds before dusk - get back to the dome in time.',
       items: [[null, 'The sun crosses the sky by day, the moon by night'], [null, 'Full-moon nights bring bigger swarms, new-moon nights are calm'], [null, 'More monsters can arrive later in the night'], [null, 'Sunlight burns the monsters still out at dawn'], [null, 'Day, time, moon phase and weather sit in the top-left panel']] },
@@ -1995,9 +1995,15 @@
     { title: 'Monsters', icon: 'swords',
       intro: 'The swarm grows more varied with every night and every new site. Hover a monster to read about it.',
       items: [['Swarmers', 'Tiny, fast and always in packs'], ['Crawlers', 'Armor soaks part of every hit'], ['Divers', 'Circle high, then dive at the dome'], ['Burrowers', 'Tunnel unseen and pop up at the dome'], ['Spitters', 'Shoot acid from a distance'], ['Splitters', 'Burst into swarmers; Menders heal others'], ['Bosses', 'Behemoth and Hive Queen on every fifth night']] },
+    { title: 'Stronger Every Night', icon: 'swords',
+      intro: 'Each night at a site raises the threat, each new site adds four more. Monsters get tougher faster than you might think.',
+      items: [['Threat', 'More, tougher and faster monsters; the chip turns red and violet'], ['Elites', 'Crest and ring: double health and an aura for their pack'], ['Auras', 'Haste (faster), Ward (less damage), Fury (harder bites)'], ['Enraged', 'Wounded monsters glow red, run and bite harder'], [null, 'Late elites spit acid; extra armour grows with the threat']] },
+    { title: 'Combat Skill', icon: 'target',
+      intro: 'Aim matters: shots that only graze a monster do less and break your combo. Hover a monster to see its weak point.',
+      items: [['Weak point', 'Hit the gold reticle for double damage - CRIT!'], ['Combo', 'Hits in a row add up to 60% damage; a miss resets it'], ['Hold click / F', 'Charge; release when the ring meets the gold circle: PERFECT, piercing shot'], ['E / Right click', 'Parry (or tap the dome): acid and lances fly back, divers bounce'], ['!', 'Bosses warn before they strike - parry at the impact']] },
     { title: 'Upgrades & Tips', icon: 'pickaxe',
-      intro: 'Everything is bought in one upgrade tree with five branches: Dome, Mining, Movement, Weapon and Drones.',
-      items: [['U', 'Open the upgrade tree (on the surface)'], [null, 'The Next upgrades panel shows the next node of every branch: click to buy it'], [null, 'Deeper strata hold new ores that pay for the top tiers'], ['H', 'Show this help again anytime']] },
+      intro: 'Everything is bought in one upgrade tree with six branches: Dome, Mining, Movement, Weapon, Drones and Tools.',
+      items: [['U', 'Open the upgrade tree (on the surface)'], [null, 'The Next upgrades panel shows the next node of every branch: click to buy it'], [null, 'Deeper strata hold new ores that pay for the top tiers'], [null, 'Panels fade when something is behind them; click monsters right through them'], ['H', 'Show this help again anytime']] },
     { title: 'Drones', icon: 'drone',
       intro: 'Buy the Drone Bay in the Drones branch and a courier drone starts working for you.',
       items: [[null, 'Couriers fly to the keeper, take the cargo home and pick up loose ore'], [null, 'Mining Lasers let couriers dig ore near the keeper'], [null, 'Gun drones guard the dome, the repair drone welds it'], [null, 'Drone Swarm adds couriers; the Droneyard gadget gives a free one']] },
@@ -2006,10 +2012,16 @@
       items: [[null, 'Mine the core to unlock the Relocate button'], ['L', 'Relocate when no monsters are attacking'], [null, 'Keep all upgrades and drones plus 75% of the resources'], [null, 'Each new site: a new biome and mine, and tougher monsters']] },
     { title: 'Gadgets', icon: 'gear',
       intro: 'Choose a primary gadget at the start of each run. Golden 2x2 gadget chambers underground hide more of them.',
-      items: [['R', 'Activate the Repellent Field'], ['B', 'Use Blast Mining charges'], [null, 'Gadgets from chambers activate on pickup!']] },
+      items: [['R', 'Activate the Repellent Field'], [null, 'The Blast Mining chamber adds two Bombs to your stock'], [null, 'Gadgets from chambers activate on pickup!']] },
     { title: 'Tools', icon: 'drill',
-      intro: 'Tools are nodes of the upgrade tree (mostly the Mining branch). Once bought, use them with the number keys.',
-      items: [['1', 'Drill: fast column mining'], ['2', 'Blast: clears a 3x3 area'], ['3', 'Scanner: reveals nearby ores'], ['4', 'Reinforced Dome: takes less damage'], ['5', 'Teleporter: instant return to the surface']] }
+      intro: 'Tools are nodes of the Tools branch of the upgrade tree. Once bought, use them with the number keys.',
+      items: [['1', 'Drill: fast column mining'], ['2', 'Blast: clears a 3x3 area'], ['3', 'Scanner: reveals ores, points to the core and to chests'], ['4', 'Reinforced Dome: takes less damage'], ['5', 'Teleporter: instant return to the surface']] },
+    { title: 'Bombs', icon: 'bomb',
+      intro: 'Craft bombs from ore in the workshop. Three of a size combine into one of the next - up to the Void Bomb. Recipes and bomb upgrades live in the Tools branch.',
+      items: [['C', 'Bomb Workshop: craft and combine'], ['B', 'Drop a bomb in the mine - then run! / lob it at monsters'], ['T', 'Throw mode: click a tunnel tile (or the battlefield)'], ['Q', 'Next bomb size'], ['X', 'Set off all bombs (Remote Detonator)'], [null, 'Blasts free the ore, spare the core and chests, and daze a keeper too close']] },
+    { title: 'Secret Chests', icon: 'chest',
+      intro: 'Every mine hides three secret chests - shallow, middle and deep. Scanners point the way; dig into one to try its lock.',
+      items: [['Lock Picking', 'Stop the needle in the gold zone for every pin'], ['Power Circuit', 'Rotate pipes until power reaches the lock'], ['Rune Memory', 'Repeat the runes in the order they lit up'], [null, 'Fail and the lock jams for 20 s - then try again'], [null, 'Each chest holds an artifact: a strong, unique power for the whole run (see the Artifacts tab)']] }
   ];
 
   let state = STATE_READY;
