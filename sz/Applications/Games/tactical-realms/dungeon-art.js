@@ -84,8 +84,39 @@
     mesa: c => { shadow(c, 8, 15, 14); px(c, 2, 6, '#a8583a', 12, 9); px(c, 3, 4, '#c8784a', 10, 3); px(c, 2, 9, '#7a3a22', 12, 1); px(c, 2, 12, '#8a4a2a', 12, 1); },
     vent: c => { disc(c, 8, 11, 3, '#2a2628'); px(c, 7, 10, '#ff7a2a', 2, 2); for (let i = 0; i < 4; ++i) px(c, 7 + (i % 2), 7 - i * 2, 'rgba(120,120,120,0.6)', 2, 2); },
     snow_rock: c => { shadow(c, 8, 14, 12); disc(c, 8, 10, 4, '#7a7a86'); px(c, 4, 6, '#f4f8fc', 8, 2); px(c, 5, 5, '#ffffff', 5, 1); },
+    // the planes
+    portal: c => {
+      // standing stones around a swirling ring of light
+      shadow(c, 8, 15, 14);
+      px(c, 1, 4, '#6a6478', 2, 11); px(c, 13, 4, '#6a6478', 2, 11); px(c, 1, 3, '#8a849a', 14, 2);
+      for (let a = 0; a < 28; ++a) {
+        const t = a / 28 * 6.283;
+        for (const [rad, col] of [[5, '#6a3ad8'], [4, '#a87aff'], [2, '#e8d8ff']])
+          px(c, 8 + Math.round(Math.cos(t + rad) * rad), 9 + Math.round(Math.sin(t + rad) * rad * 1.1), col);
+      }
+      px(c, 7, 8, '#ffffff', 2, 2);
+    },
+    astral_shard: c => { for (let y = 0; y < 10; ++y) { const w = y < 5 ? 1 + y : 10 - y; px(c, 8 - (w >> 1), 2 + y, y < 5 ? '#d8d0ff' : '#8a80d8', w, 1); } px(c, 7, 4, '#ffffff', 1, 2); px(c, 4, 15, 'rgba(160,150,255,0.35)', 8, 1); },
+    fey_tree: c => {
+      shadow(c, 8, 15, 10);
+      px(c, 7, 9, '#5a3a5a', 2, 6); px(c, 5, 13, '#5a3a5a', 2, 1); px(c, 9, 14, '#5a3a5a', 2, 1);
+      disc(c, 8, 6, 5, '#2a8a7a'); disc(c, 7, 5, 3, '#4ac8a8');
+      for (const [x, y, col] of [[4, 4, '#ff8af0'], [11, 6, '#b88aff'], [7, 8, '#8affea'], [9, 3, '#ffffff']]) px(c, x, y, col);
+    },
+    hell_spire: c => { shadow(c, 8, 15, 8); for (let y = 0; y < 13; ++y) { const w = 1 + Math.floor(y / 2.2); px(c, 8 - (w >> 1), 2 + y, y % 4 === 1 ? '#3a1410' : '#5a2018', w, 1); } px(c, 7, 9, '#ff7a1a', 1, 1); px(c, 8, 12, '#ffb03a', 1, 1); },
+    cog: c => {
+      for (let a = 0; a < 32; ++a) {
+        const t = a / 32 * 6.283;
+        const rad = (a >> 1) % 2 ? 6 : 5;
+        for (let k = 3; k <= rad; ++k) px(c, 8 + Math.round(Math.cos(t) * k), 8 + Math.round(Math.sin(t) * k), k === rad ? '#7a5a22' : '#c8a050');
+      }
+      disc(c, 8, 8, 1, '#4a3a1a');
+    },
+    coral_fan: c => { for (const [x, col] of [[4, '#e86a6a'], [8, '#f0a050'], [12, '#d870c0']]) { px(c, x, 7, col, 1, 8); px(c, x - 2, 5, col, 1, 4); px(c, x + 2, 4, col, 1, 4); px(c, x - 2, 8, col, 5, 1); } },
+    light_pillar: c => { px(c, 6, 0, 'rgba(255,248,210,0.55)', 4, 16); px(c, 7, 0, '#ffffff', 2, 16); px(c, 3, 14, '#fff0bc', 10, 2); },
+    grey_tree: c => { shadow(c, 8, 15, 8); px(c, 7, 4, '#5a5856', 2, 11); px(c, 3, 6, '#5a5856', 4, 1); px(c, 3, 4, '#5a5856', 1, 2); px(c, 9, 8, '#5a5856', 4, 1); px(c, 12, 6, '#5a5856', 1, 2); px(c, 6, 2, '#5a5856', 1, 3); },
     // interactive features
-    chest: c => { shadow(c, 8, 14, 12); px(c, 3, 6, '#8a5a2a', 10, 8); px(c, 3, 6, '#a87238', 10, 3); px(c, 3, 9, '#5a3a1a', 10, 1); px(c, 7, 8, '#e8c14a', 2, 3); px(c, 3, 6, '#5a3a1a', 1, 8); px(c, 12, 6, '#5a3a1a', 1, 8); },
+    chest:c => { shadow(c, 8, 14, 12); px(c, 3, 6, '#8a5a2a', 10, 8); px(c, 3, 6, '#a87238', 10, 3); px(c, 3, 9, '#5a3a1a', 10, 1); px(c, 7, 8, '#e8c14a', 2, 3); px(c, 3, 6, '#5a3a1a', 1, 8); px(c, 12, 6, '#5a3a1a', 1, 8); },
     chest_open: c => { shadow(c, 8, 14, 12); px(c, 3, 8, '#8a5a2a', 10, 6); px(c, 3, 3, '#5a3a1a', 10, 4); px(c, 4, 7, '#1a1010', 8, 2); px(c, 3, 13, '#5a3a1a', 10, 1); },
     trap: c => { px(c, 2, 2, 'rgba(60,50,40,0.6)', 12, 12); for (let y = 4; y < 13; y += 4) for (let x = 4; x < 13; x += 4) { px(c, x, y, '#c8ccd4', 1, 2); px(c, x, y - 1, '#ffffff'); } },
     fountain: c => { shadow(c, 8, 14, 14); px(c, 2, 9, '#8a8a96', 12, 5); px(c, 3, 9, '#3a8ac8', 10, 3); px(c, 7, 3, '#8a8a96', 2, 7); px(c, 6, 2, '#7ac8f0', 4, 1); px(c, 5, 4, '#a8e0ff', 1, 3); px(c, 10, 4, '#a8e0ff', 1, 3); },

@@ -96,8 +96,17 @@
     inevitable_zelekhut: { skin: 'gold', body: 'plate', bodyColor: '#d8b44a', trim: '#f0e6c0', legs: '#a8843a', headgear: 'helm', eyes: '#7ae0ff', weapon: 'mace', scale: 1.15, width: 1.2 },
     inevitable_kolyarut: { skin: 'gold', body: 'plate', bodyColor: '#c8a040', trim: '#e8d8a0', legs: '#9a7a30', headgear: 'helm', eyes: '#7ae0ff', weapon: 'sword', cape: '#5a3a8a' },
     inevitable_marut:  { skin: 'gold', body: 'plate', bodyColor: '#2a2a32', trim: '#e8c14a', legs: '#1e1e26', headgear: 'helm', eyes: '#ffd84a', weapon: 'none', scale: 1.4, width: 1.35 },
+    // the celestial hosts
+    hound_archon:      { skin: 'brown', body: 'plate', bodyColor: '#c8b48a', trim: '#e8d8a0', legs: '#8a7a5a', headgear: 'none', hair: 'wild', hairColor: '#6a4a2a', ears: true, eyes: '#ffd84a', weapon: 'sword', scale: 1.05 },
+    trumpet_archon:    { skin: 'light', body: 'robe', bodyColor: '#f0ecd8', trim: '#e8c14a', legs: '#d8d0b0', headgear: 'circlet', hair: 'long', hairColor: '#f0e0a0', weapon: 'sword', cape: '#f8f4e8' },
+    astral_deva:       { skin: 'light', body: 'robe', bodyColor: '#e8ecf8', trim: '#c8b4ff', legs: '#d0d4e8', headgear: 'circlet', hair: 'long', hairColor: '#f4f0e0', eyes: '#7ae0ff', weapon: 'mace', cape: '#f4f6ff', scale: 1.05 },
+    planetar:          { skin: 'leaf', body: 'plate', bodyColor: '#e8e4d0', trim: '#5ac85a', legs: '#c8c4b0', headgear: 'none', hair: 'bald', eyes: '#f4fff4', weapon: 'greataxe', cape: '#f4f8f0', scale: 1.35, width: 1.2 },
+    solar:             { skin: 'gold', body: 'plate', bodyColor: '#f4e6a8', trim: '#fff4c0', legs: '#d8c47a', headgear: 'circlet', hair: 'long', hairColor: '#fff4d0', eyes: '#ffffff', weapon: 'sword', cape: '#fff8e0', scale: 1.4, width: 1.2 },
+    bralani_eladrin:   { skin: 'light', body: 'leather', bodyColor: '#7aa8c8', trim: '#e8f0ff', legs: '#5a7a98', headgear: 'none', hair: 'long', hairColor: '#e8e8f0', ears: true, eyes: '#7ae0ff', weapon: 'sword' },
+    ghaele_eladrin:    { skin: 'light', body: 'plate', bodyColor: '#e8d8a0', trim: '#ffffff', legs: '#b8a870', headgear: 'none', hair: 'long', hairColor: '#ffe8a0', ears: true, eyes: '#ffd84a', weapon: 'sword', cape: '#f8f0d0' },
+    triton:            { skin: 'sea', body: 'mail', bodyColor: '#3a7a9a', trim: '#c8e0f0', legs: '#2a5a7a', headgear: 'none', hair: 'long', hairColor: '#2a6a5a', weapon: 'staff', gem: '#7ae0ff' },
     // giants
-    firbolg:           { skin: 'light', body: 'leather', bodyColor: '#5a6a3a', trim: '#8a6a3a', legs: '#4a3a2a', headgear: 'none', hair: 'long', hairColor: '#c8783a', beard: '#c8783a', weapon: 'greataxe', scale: 1.35, width: 1.2 },
+    firbolg:          { skin: 'light', body: 'leather', bodyColor: '#5a6a3a', trim: '#8a6a3a', legs: '#4a3a2a', headgear: 'none', hair: 'long', hairColor: '#c8783a', beard: '#c8783a', weapon: 'greataxe', scale: 1.35, width: 1.2 },
     verbeeg:           { skin: 'tan', body: 'tunic', bodyColor: '#6a5a4a', trim: '#3a2a1a', legs: '#4a3a2a', headgear: 'none', hair: 'wild', hairColor: '#5a4030', weapon: 'club', scale: 1.35, width: 1.1 },
     cyclops:           { skin: 'tan', body: 'bare', trim: '#5a3a1e', legs: '#5a3a1e', headgear: 'none', hair: 'bald', eyes: '#ffd84a', weapon: 'club', scale: 1.45, width: 1.35 },
     ettin:             { skin: 'brown', body: 'leather', bodyColor: '#4a3a2a', trim: '#2a2018', legs: '#3a2a1e', headgear: 'none', hair: 'wild', hairColor: '#2a2018', tusks: true, weapon: 'club', scale: 1.45, width: 1.45 },

@@ -31,9 +31,37 @@
     ICE: 18,
     ASH: 19,
     LAVA: 20,
+    // a gate to another plane (a location)
+    PORTAL: 21,
+    // the ground of the other planes
+    ASTRAL: 22,
+    DRIFT_ROCK: 23,
+    MIST: 24,
+    GLOOM: 25,
+    CINDER: 26,
+    CURRENT: 27,
+    CORAL: 28,
+    BEDROCK: 29,
+    SOLID_ROCK: 30,
+    SKY: 31,
+    CLOUD: 32,
+    RADIANCE: 33,
+    DARKNESS: 34,
+    CELESTIAL: 35,
+    FEY: 36,
+    BRIMSTONE: 37,
+    ABYSSAL: 38,
+    GEARS: 39,
+    CHAOS: 40,
+    OOZE: 41,
+    SMOKE: 42,
+    IRON: 43,
+    GREY: 44,
+    RIFT: 45,
   });
 
-  const IMPASSABLE = Object.freeze(new Set([Tile.VOID, Tile.MOUNTAIN, Tile.WATER, Tile.ICE, Tile.LAVA]));
+  const IMPASSABLE = Object.freeze(new Set([Tile.VOID, Tile.MOUNTAIN, Tile.WATER, Tile.ICE, Tile.LAVA, Tile.SOLID_ROCK, Tile.RIFT]));
+  const LOCATION_TILES = Object.freeze(new Set([Tile.DUNGEON, Tile.TOWN, Tile.CAMP, Tile.PORTAL]));
 
   // Per tile: D&D biome id (data/biomes.js), battle biome (combat palette and
   // backdrop), travel cost, encounter chance and the painted ground under
@@ -56,6 +84,30 @@
     [Tile.ICE]:      { biome: 'arctic_glacier',   battle: 'snow',     cost: -1,  encounter: 0 },
     [Tile.ASH]:      { biome: 'ash_waste',        battle: 'ash',      cost: 1.3, encounter: 0.035 },
     [Tile.LAVA]:     { biome: 'lava_field',       battle: 'lava',     cost: -1,  encounter: 0 },
+    [Tile.ASTRAL]:     { biome: 'astral_void',      battle: 'astral',    cost: 1,   encounter: 0.02 },
+    [Tile.DRIFT_ROCK]: { biome: 'astral_void',      battle: 'astral',    cost: 1.3, encounter: 0.03 },
+    [Tile.MIST]:       { biome: 'ethereal_mist',    battle: 'ethereal',  cost: 1,   encounter: 0.022 },
+    [Tile.GLOOM]:      { biome: 'shadow',           battle: 'shadow',    cost: 1.2, encounter: 0.03 },
+    [Tile.CINDER]:     { biome: 'elemental_fire',   battle: 'fire',      cost: 1.4, encounter: 0.03 },
+    [Tile.CURRENT]:    { biome: 'elemental_water',  battle: 'water',     cost: 1.6, encounter: 0.03 },
+    [Tile.CORAL]:      { biome: 'elemental_water',  battle: 'water',     cost: 1.8, encounter: 0.035 },
+    [Tile.BEDROCK]:    { biome: 'elemental_earth',  battle: 'earth',     cost: 1.3, encounter: 0.028 },
+    [Tile.SOLID_ROCK]: { biome: 'elemental_earth',  battle: 'earth',     cost: -1,  encounter: 0 },
+    [Tile.SKY]:        { biome: 'elemental_air',    battle: 'sky',       cost: 1,   encounter: 0.02 },
+    [Tile.CLOUD]:      { biome: 'cloud',            battle: 'sky',       cost: 1.2, encounter: 0.025 },
+    [Tile.RADIANCE]:   { biome: 'celestial_garden', battle: 'radiant',   cost: 1,   encounter: 0.018 },
+    [Tile.DARKNESS]:   { biome: 'shadow',           battle: 'void',      cost: 1.2, encounter: 0.03 },
+    [Tile.CELESTIAL]:  { biome: 'celestial_garden', battle: 'celestial', cost: 1,   encounter: 0.022 },
+    [Tile.FEY]:        { biome: 'feywild_grove',    battle: 'fey',       cost: 1.3, encounter: 0.03 },
+    [Tile.BRIMSTONE]:  { biome: 'infernal_waste',   battle: 'infernal',  cost: 1.4, encounter: 0.035 },
+    [Tile.ABYSSAL]:    { biome: 'abyss',            battle: 'abyss',     cost: 1.5, encounter: 0.04 },
+    [Tile.GEARS]:      { biome: 'mechanus_grid',    battle: 'clockwork', cost: 1,   encounter: 0.022 },
+    [Tile.CHAOS]:      { biome: 'ethereal_mist',    battle: 'chaos',     cost: 1.5, encounter: 0.035 },
+    [Tile.OOZE]:       { biome: 'swamp',            battle: 'ooze',      cost: 1.8, encounter: 0.035 },
+    [Tile.SMOKE]:      { biome: 'ash_waste',        battle: 'ash',       cost: 1.3, encounter: 0.03 },
+    [Tile.IRON]:       { biome: 'mechanus_grid',    battle: 'clockwork', cost: 1.1, encounter: 0.025 },
+    [Tile.GREY]:       { biome: 'shadow',           battle: 'grey',      cost: 1.3, encounter: 0.03 },
+    [Tile.RIFT]:       { biome: 'astral_void',      battle: 'astral',    cost: -1,  encounter: 0 },
   });
 
   // Which overworld regions suit a location's own biome.
@@ -92,6 +144,12 @@
     [Tile.SNOW]: 'snow', [Tile.TAIGA]: 'snow', [Tile.ICE]: 'glacier', [Tile.JUNGLE]: 'jungle_floor',
     [Tile.DESERT]: 'desert', [Tile.SAND]: 'desert', [Tile.BADLANDS]: 'badlands', [Tile.SWAMP]: 'swamp',
     [Tile.ASH]: 'ash', [Tile.LAVA]: 'lava',
+    [Tile.ASTRAL]: 'astral', [Tile.DRIFT_ROCK]: 'astral_rock', [Tile.MIST]: 'mist', [Tile.GLOOM]: 'gloom',
+    [Tile.CINDER]: 'cinder', [Tile.CURRENT]: 'current', [Tile.CORAL]: 'coral', [Tile.BEDROCK]: 'bedrock',
+    [Tile.SOLID_ROCK]: 'earth_wall', [Tile.SKY]: 'sky', [Tile.CLOUD]: 'cloudbank', [Tile.RADIANCE]: 'radiance',
+    [Tile.DARKNESS]: 'darkness', [Tile.CELESTIAL]: 'celestial', [Tile.FEY]: 'fey', [Tile.BRIMSTONE]: 'brimstone',
+    [Tile.ABYSSAL]: 'abyssal', [Tile.GEARS]: 'gears', [Tile.CHAOS]: 'chaos', [Tile.OOZE]: 'ooze',
+    [Tile.SMOKE]: 'smoke', [Tile.IRON]: 'iron_plate', [Tile.GREY]: 'grey_waste', [Tile.RIFT]: 'rift',
   });
 
   const LOCATION_TYPES = Object.freeze([
@@ -213,8 +271,21 @@
     Object.freeze({ col: -6, row: -5, type: 1 }),
   ]);
 
+  // Seed of a plane's own world, derived from the campaign's world seed.
+  function planeSeed(worldSeed, plane) {
+    if (!plane || plane === 'material')
+      return worldSeed >>> 0;
+    let h = 2166136261;
+    for (let i = 0; i < plane.length; ++i)
+      h = Math.imul(h ^ plane.charCodeAt(i), 16777619);
+    return hashCoords(h | 0, 7, worldSeed) >>> 0;
+  }
+
   class OverworldMap {
     #worldSeed;
+    #plane;
+    #profile;
+    #seed;
     #tempShift;
     #terrainCache = new Map();
     #chunks;
@@ -222,11 +293,16 @@
     #roads;
     #pathCache;
 
-    constructor(worldSeed) {
+    // plane: a data/planes.js id; every plane is a world of its own, grown
+    // from the same world seed.
+    constructor(worldSeed, plane = 'material') {
       this.#worldSeed = worldSeed >>> 0;
+      this.#plane = plane || 'material';
+      this.#profile = this.#plane !== 'material' && TR.PlaneWorlds ? TR.PlaneWorlds.get(this.#plane) : null;
+      this.#seed = planeSeed(this.#worldSeed, this.#plane);
       // every world starts in a temperate land; the correction fades with
       // distance so the rest of the world keeps its own climate
-      this.#tempShift = 0.5 - temperatureNoise(0, 0, this.#worldSeed);
+      this.#tempShift = this.#profile ? 0 : 0.5 - temperatureNoise(0, 0, this.#seed);
       this.#chunks = new Map();
       this.#locations = new Map();
       this.#roads = new Set();
@@ -234,6 +310,9 @@
     }
 
     get worldSeed() { return this.#worldSeed; }
+    get plane() { return this.#plane; }
+    // the seed this plane's land grows from
+    get seed() { return this.#seed; }
 
     getTile(col, row) {
       const key = this.#locationKey(col, row);
@@ -268,7 +347,7 @@
     temperatureAt(col, row) {
       const d = Math.sqrt(col * col + row * row);
       const homeward = d < 40 ? 1 : d > 90 ? 0 : 1 - (d - 40) / 50;
-      return Math.max(0, Math.min(1, temperatureNoise(col, row, this.#worldSeed) + this.#tempShift * homeward));
+      return Math.max(0, Math.min(1, temperatureNoise(col, row, this.#seed) + this.#tempShift * homeward));
     }
 
     // The D&D biome a cell belongs to (data/biomes.js ids).
@@ -284,7 +363,10 @@
 
     #regionTile(col, row) {
       const t = this.#baseTerrain(col, row);
-      // overlays (mountains) take the climate of their surroundings
+      // overlays (mountains) take the climate of their surroundings, on the
+      // other planes the plane's own ground
+      if ((t === Tile.MOUNTAIN || t === Tile.WATER) && this.#profile)
+        return Tile[this.#profile.base] || Tile.GRASS;
       if (t === Tile.MOUNTAIN || t === Tile.WATER) {
         const temp = this.temperatureAt(col, row);
         return temp < 0.25 ? Tile.SNOW : temp > 0.74 ? Tile.DESERT : Tile.GRASS;
@@ -313,9 +395,13 @@
     }
 
     #computeTerrain(col, row) {
-      const seed = this.#worldSeed;
+      const seed = this.#seed;
       const height = elevationNoise(col, row, seed);
       const moisture = moistureNoise(col, row, seed);
+      if (this.#profile && this.#profile.terrain) {
+        const name = this.#profile.terrain(height, moisture, volcanismNoise(col, row, seed), col, row);
+        return Tile[name] !== undefined ? Tile[name] : Tile.GRASS;
+      }
       const temp = this.temperatureAt(col, row);
 
       // rare volcanic country: ash plains around rivers of lava
@@ -371,11 +457,14 @@
         return;
       this.#chunks.set(cellKey, true);
 
-      const seed = hashCoords(gcx, gcy, this.#worldSeed + 99991);
+      const seed = hashCoords(gcx, gcy, this.#seed + 99991);
       const rng = new PRNG(seed);
 
       if (gcx === 0 && gcy === 0) {
-        this.#placeStartingArea(rng);
+        if (this.#profile)
+          this.#placeArrival();
+        else
+          this.#placeStartingArea(rng);
         return;
       }
 
@@ -383,7 +472,9 @@
       const baseRow = gcy * LOCATION_SPACING + rng.nextInt(3, LOCATION_SPACING - 4);
 
       const dist = Math.sqrt(gcx * gcx + gcy * gcy);
-      const locType = this.#pickLocationType(rng, dist, this.#regionTile(baseCol, baseRow));
+      const locType = this.#pickPortal(gcx, gcy, dist) || (this.#profile
+        ? this.#pickPlanarLocation(rng, dist)
+        : this.#pickLocationType(rng, dist, this.#regionTile(baseCol, baseRow)));
       const key = this.#locationKey(baseCol, baseRow);
       this.#locations.set(key, Object.freeze({ ...locType, col: baseCol, row: baseRow }));
 
@@ -450,6 +541,69 @@
         this.#clearTerrainAround(p.col, p.row);
         this.#drawRoad(0, 0, p.col, p.row);
       }
+    }
+
+    // On another plane the party arrives at the gate home, with the plane's
+    // own places around it, all joined by roads.
+    #placeArrival() {
+      const P = this.#profile;
+      this.#locations.set(this.#locationKey(0, 0), Object.freeze({
+        tile: Tile.PORTAL, name: P.gate || 'Gate', difficulty: 0, col: 0, row: 0, returnGate: true,
+      }));
+      const towns = P.towns.map(name => ({ tile: Tile.TOWN, name, difficulty: 0 }));
+      const sites = P.sites.map((s, i) => this.#site(s, 0, i));
+      const around = [sites[0], towns[0] || sites[1 % sites.length], sites[1 % sites.length], sites[2 % sites.length]];
+      STARTING_LOCATIONS.slice(1).forEach((p, i) => {
+        const type = around[i];
+        if (!type)
+          return;
+        this.#locations.set(this.#locationKey(p.col, p.row), Object.freeze({ ...type, col: p.col, row: p.row }));
+        this.#drawRoad(0, 0, p.col, p.row);
+      });
+    }
+
+    // A planar site as a map location: harder with the plane and the distance.
+    #site(s, dist, salt) {
+      const P = this.#profile;
+      const R = TR.MonsterRoster;
+      const enemies = (s.enemies || []).filter(id => !R || R.crOf(id) != null);
+      const native = TR.PlaneWorlds ? TR.PlaneWorlds.natives(this.#plane) : [];
+      return {
+        tile: Tile.DUNGEON, name: s.name, theme: s.theme, plane: this.#plane, biome: P.base.toLowerCase(),
+        difficulty: Math.min(10, P.siteDifficulty + (s.tier || 0) + Math.floor(dist / 3)),
+        enemies: enemies.length ? enemies : native.slice(0, 3), minCount: 1, maxCount: 4, salt,
+      };
+    }
+
+    #pickPlanarLocation(rng, dist) {
+      const P = this.#profile;
+      const roll = rng.next();
+      if (roll < 0.14 && P.towns.length)
+        return { tile: Tile.TOWN, name: P.towns[rng.nextInt(0, P.towns.length - 1)], difficulty: 0 };
+      if (!P.sites.length)
+        return { tile: Tile.CAMP, name: 'Wayfarer Camp', difficulty: 0 };
+      return this.#site(P.sites[rng.nextInt(0, P.sites.length - 1)], dist, 0);
+    }
+
+    // Now and then a location cell holds a portal to a neighbouring plane;
+    // never right next to home on the Material Plane. Portals roll their own
+    // dice so the rest of the world stays as it was.
+    #pickPortal(gcx, gcy, dist) {
+      const P = TR.PlaneWorlds ? TR.PlaneWorlds.get(this.#plane) : null;
+      const chance = P ? P.portalChance : 0;
+      if (!TR.Portal || !chance || (!this.#profile && dist < 2))
+        return null;
+      const rng = new PRNG(hashCoords(gcx, gcy, this.#seed + 424243));
+      if (rng.next() >= chance)
+        return null;
+      const conn = TR.Portal.pickConnection(this.#plane, rng);
+      if (!conn)
+        return null;
+      const target = TR.PlaneRegistry.get(conn.targetPlane);
+      return {
+        tile: Tile.PORTAL, name: TR.Portal.nameFor(conn, target), difficulty: 0,
+        targetPlane: conn.targetPlane, portalType: conn.portalType,
+      };
     }
 
     // Towns and camps are common everywhere; dungeons get harder with
@@ -529,7 +683,7 @@
 
     encounterChance(col, row) {
       const info = TILE_INFO[this.getTile(col, row)];
-      return info ? info.encounter : 0;
+      return info ? info.encounter * (this.#profile ? this.#profile.encounterScale : 1) : 0;
     }
 
     // Map distance-based tier to AI behavior tier (0-4)
@@ -549,8 +703,12 @@
 
       // the full monster roster knows who lives where
       if (TR.MonsterRoster && typeof TR.MonsterRoster.encounter === 'function') {
-        // far from home the land gets more dangerous than the party
-        const list = TR.MonsterRoster.encounter(biome, avgLevel + Math.round(tier * 0.6), prng);
+        // far from home the land gets more dangerous than the party, and
+        // the other planes more dangerous still, their natives first
+        const P = this.#profile;
+        const natives = P && TR.PlaneWorlds ? TR.PlaneWorlds.natives(this.#plane) : [];
+        const level = avgLevel + Math.round(tier * 0.6) + (P ? P.levelBonus : 0);
+        const list = TR.MonsterRoster.encounter(biome, level, prng, { natives });
         if (list && list.length)
           return list;
       }
@@ -598,7 +756,7 @@
       const t = this.getTile(col, row);
       if (IMPASSABLE.has(t))
         return -1;
-      if (t === Tile.DUNGEON || t === Tile.TOWN || t === Tile.CAMP) {
+      if (LOCATION_TILES.has(t)) {
         if (col === goalCol && row === goalRow)
           return 1;
         return -1;
@@ -784,13 +942,13 @@
     }
 
     serialize() {
-      return { worldSeed: this.#worldSeed };
+      return { worldSeed: this.#worldSeed, plane: this.#plane };
     }
 
     static deserialize(data) {
       if (!data || typeof data.worldSeed !== 'number')
         return null;
-      return new OverworldMap(data.worldSeed);
+      return new OverworldMap(data.worldSeed, data.plane || 'material');
     }
   }
 
@@ -805,6 +963,7 @@
   }
 
   TR.OverworldTile = Tile;
+  TR.OverworldGround = GROUND;
   TR.encounterPacing = encounterPacing;
   TR.OverworldTileInfo = TILE_INFO;
   TR.CHUNK_SIZE = CHUNK_SIZE;
