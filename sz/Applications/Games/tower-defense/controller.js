@@ -49,6 +49,7 @@
   /* ── Storage ── */
   const STORAGE_PREFIX = 'sz-tower-defense';
   const STORAGE_HIGHSCORES = STORAGE_PREFIX + '-highscores';
+  const STORAGE_SAVE = STORAGE_PREFIX + '-save-v1';
   const MAX_HIGH_SCORES = 10;
 
   /* ── Pre-wave warning timing ── */
@@ -224,6 +225,7 @@
   let selectedTowerType = 0;
   let selectedTower = null;
   let hoverCell = null;
+  let hoverPoint = null;
 
   let towers = [];
   let enemies = [];
@@ -315,6 +317,208 @@
       tr.innerHTML = '<td colspan="3" style="text-align:center">No scores yet</td>';
       highScoresBody.appendChild(tr);
     }
+  }
+
+  /* ── Saved game (plain data only; objects are rebuilt on load) ── */
+
+  const SAVE_VERSION = 1;
+  const AUTOSAVE_INTERVAL = 5; // seconds of play between autosaves
+  const ENEMY_SAVE_FIELDS = ['hp', 'maxHp', 'speed', 'baseSpeed', 'bounty', 'radius', 'pathIndex', 'pathProgress', 'x', 'y',
+    'slowTimer', 'freezeTimer', 'dotTimer', 'dotDamage', 'shieldHp', 'healCooldown'];
+  let autosaveTimer = 0;
+  let savedGameInfo = null; // { map, wave, waves } summary for the start screen, null when no save exists
+  let saveNotice = '';      // shown on the start screen when a save had to be discarded
+
+  function isFiniteNumber(v) {
+    return typeof v === 'number' && isFinite(v);
+  }
+
+  function isInGameState() {
+    return state === STATE_PLAYING || state === STATE_BUILD || state === STATE_PAUSED;
+  }
+
+  function serializeGame() {
+    return {
+      version: SAVE_VERSION,
+      map: currentMap,
+      gold, lives,
+      wave: currentWave,
+      phase: state === STATE_BUILD ? 'build' : 'wave',
+      gameSpeed, autoWaveMode, autoWaveTimer,
+      waveComplete, waveCountdown, spawnTimer,
+      waveEnemies: waveEnemies.slice(),
+      towers: towers.map(t => ({
+        col: t.col, row: t.row, type: t.type, tier: t.tier,
+        damage: t.damage, range: t.range, fireRate: t.fireRate,
+        kills: t.kills, hp: t.hp, maxHp: t.maxHp
+      })),
+      floorEffects: floorEffects.map(fe => ({
+        col: fe.col, row: fe.row, type: fe.type,
+        timer: fe.timer === Infinity ? -1 : fe.timer,
+        damage: fe.damage, cost: fe.cost
+      })),
+      enemies: enemies.filter(e => e.hp > 0).map(e => {
+        const o = { type: e.type };
+        for (const k of ENEMY_SAVE_FIELDS)
+          o[k] = e[k];
+        return o;
+      })
+    };
+  }
+
+  function saveGame() {
+    if (!isInGameState())
+      return;
+    try {
+      const data = serializeGame();
+      localStorage.setItem(STORAGE_SAVE, JSON.stringify(data));
+      savedGameInfo = { map: data.map, wave: data.wave, waves: MAPS[data.map].waves };
+    } catch (_) {}
+    autosaveTimer = 0;
+  }
+
+  function clearSavedGame() {
+    try {
+      localStorage.removeItem(STORAGE_SAVE);
+    } catch (_) {}
+    savedGameInfo = null;
+  }
+
+  // Parses and validates a save; returns the plain data or null (with saveNotice set) when unusable.
+  function readSavedGame() {
+    let raw = null;
+    try {
+      raw = localStorage.getItem(STORAGE_SAVE);
+    } catch (_) {
+      return null;
+    }
+    if (!raw)
+      return null;
+
+    try {
+      const d = JSON.parse(raw);
+      if (!d || d.version !== SAVE_VERSION)
+        throw new Error('version');
+      if (!Number.isInteger(d.map) || d.map < 0 || d.map >= MAPS.length)
+        throw new Error('map');
+      const mapDef = MAPS[d.map];
+      if (!Number.isInteger(d.wave) || d.wave < 0 || d.wave > mapDef.waves)
+        throw new Error('wave');
+      if (!isFiniteNumber(d.gold) || !Number.isInteger(d.lives) || d.lives <= 0)
+        throw new Error('stats');
+      if (!Array.isArray(d.towers) || !Array.isArray(d.enemies) || !Array.isArray(d.floorEffects) || !Array.isArray(d.waveEnemies))
+        throw new Error('lists');
+      for (const t of d.towers)
+        if (!t || !Number.isInteger(t.type) || !TOWER_TYPES[t.type] || !Number.isInteger(t.col) || !Number.isInteger(t.row)
+          || t.col < 0 || t.col >= COLS || t.row < 0 || t.row >= ROWS
+          || !Number.isInteger(t.tier) || t.tier < 1 || t.tier > MAX_TIER
+          || !['damage', 'range', 'fireRate', 'kills', 'hp', 'maxHp'].every(k => isFiniteNumber(t[k])))
+          throw new Error('tower');
+      for (const fe of d.floorEffects)
+        if (!fe || ['spike', 'lava', 'ice'].indexOf(fe.type) < 0 || !Number.isInteger(fe.col) || !Number.isInteger(fe.row)
+          || !isFiniteNumber(fe.timer) || !isFiniteNumber(fe.damage || 0))
+          throw new Error('floor');
+      const pathLen = getPathPoints(mapDef).length;
+      for (const e of d.enemies)
+        if (!e || !ENEMY_TYPES[e.type] || !ENEMY_SAVE_FIELDS.every(k => isFiniteNumber(e[k]))
+          || !Number.isInteger(e.pathIndex) || e.pathIndex < 0 || e.pathIndex >= pathLen - 1)
+          throw new Error('enemy');
+      for (const type of d.waveEnemies)
+        if (!ENEMY_TYPES[type])
+          throw new Error('queue');
+      return d;
+    } catch (_) {
+      clearSavedGame();
+      saveNotice = 'The saved game could not be read and was discarded.';
+      return null;
+    }
+  }
+
+  function refreshSavedGameInfo() {
+    const d = readSavedGame();
+    savedGameInfo = d ? { map: d.map, wave: d.wave, waves: MAPS[d.map].waves } : null;
+  }
+
+  function continueSavedGame() {
+    const d = readSavedGame();
+    if (!d) {
+      savedGameInfo = null;
+      return false;
+    }
+
+    loadMap(d.map);
+    gold = d.gold;
+    lives = d.lives;
+    currentWave = d.wave;
+    gameSpeed = [1, 2, 3, 5, 10].indexOf(d.gameSpeed) >= 0 ? d.gameSpeed : 1;
+    autoWaveMode = !!d.autoWaveMode;
+    autoWaveTimer = isFiniteNumber(d.autoWaveTimer) ? d.autoWaveTimer : 0;
+    waveComplete = d.phase === 'build' ? true : !!d.waveComplete;
+    waveCountdown = isFiniteNumber(d.waveCountdown) ? d.waveCountdown : 3;
+    spawnTimer = isFiniteNumber(d.spawnTimer) ? d.spawnTimer : 0;
+    waveEnemies = d.waveEnemies.slice();
+
+    towers = d.towers.map(t => ({
+      col: t.col, row: t.row,
+      x: t.col * CELL + CELL / 2,
+      y: t.row * CELL + CELL / 2,
+      type: t.type, tier: t.tier,
+      damage: t.damage, range: t.range, fireRate: t.fireRate,
+      fireCooldown: 0,
+      kills: t.kills, hp: t.hp, maxHp: t.maxHp
+    }));
+    for (const t of towers)
+      towerAngles.set(t, 0);
+
+    floorEffects = d.floorEffects.map(fe => ({
+      col: fe.col, row: fe.row,
+      x: fe.col * CELL + CELL / 2,
+      y: fe.row * CELL + CELL / 2,
+      type: fe.type,
+      timer: fe.timer < 0 ? Infinity : fe.timer,
+      damage: fe.damage,
+      cost: fe.cost
+    }));
+
+    enemies = d.enemies.map(e => {
+      const def = ENEMY_TYPES[e.type];
+      const enemy = {
+        type: e.type,
+        color: def.color,
+        isBoss: e.type === 'boss',
+        isHealer: def.heals || false,
+        isShielded: def.shielded || false
+      };
+      for (const k of ENEMY_SAVE_FIELDS)
+        enemy[k] = e[k];
+      return enemy;
+    });
+
+    // A wave in progress resumes paused so the player can get their bearings
+    state = d.phase === 'build' ? STATE_BUILD : STATE_PAUSED;
+    saveNotice = '';
+    autosaveTimer = 0;
+    updateWindowTitle();
+    return true;
+  }
+
+  // New Game: asks first when it would overwrite an existing save.
+  function requestNewGame() {
+    if (!savedGameInfo) {
+      resetAndStart();
+      return;
+    }
+    if (state === STATE_PLAYING)
+      state = STATE_PAUSED;
+    // The inner box may still carry the hidden flag from the previous answer
+    for (const box of document.querySelectorAll('#dlg-new-game .dialog'))
+      box.hidden = false;
+    SZ.Dialog.show('dlg-new-game').then((result) => {
+      if (result !== 'yes')
+        return;
+      clearSavedGame();
+      resetAndStart();
+    });
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -550,6 +754,7 @@
 
   function triggerVictory() {
     state = STATE_VICTORY;
+    clearSavedGame();
     addHighScore(MAPS[currentMap].name, currentWave);
     floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 30, 'VICTORY!', { color: '#ffd700', font: 'bold 24px sans-serif' });
     particles.confetti(CANVAS_W / 2, CANVAS_H / 2, 40, { speed: 6, gravity: 0.08 });
@@ -581,6 +786,7 @@
     gold += bonus;
     floatingText.add(CANVAS_W / 2, 50, `+${bonus}g interest`, { color: '#8f8', font: '11px sans-serif' });
     updateWindowTitle();
+    saveGame();
   }
 
   function beginPreWaveWarning() {
@@ -704,6 +910,7 @@
     if (lives <= 0) {
       audio.play('lose');
       state = STATE_GAME_OVER;
+      clearSavedGame();
       addHighScore(MAPS[currentMap].name, currentWave);
       floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 30, 'GAME OVER', { color: '#f44', font: 'bold 24px sans-serif' });
       screenShake.trigger(8, 500);
@@ -1047,8 +1254,10 @@
 
       if (currentWave >= totalWaves)
         triggerVictory();
-      else
+      else {
         audio.play('levelup');
+        saveGame();
+      }
     }
   }
 
@@ -1157,6 +1366,12 @@
     } else if (state === STATE_BUILD) {
       updateBuildCountdown(dt);
       updateFloorEffects(dt); // Decay lava/ice tiles between waves
+    }
+
+    if (state === STATE_PLAYING || state === STATE_BUILD) {
+      autosaveTimer += dt;
+      if (autosaveTimer >= AUTOSAVE_INTERVAL)
+        saveGame();
     }
   }
 
@@ -2319,6 +2534,35 @@
     ctx.textBaseline = 'alphabetic';
   }
 
+  /* ── Start screen buttons (shown when a saved game exists) ── */
+  const START_BTN_CONTINUE = { dx: -170, dy: 16, w: 160, h: 32 };
+  const START_BTN_NEW = { dx: 10, dy: 16, w: 160, h: 32 };
+
+  function hitStartButton(btn, mx, my) {
+    const x = CANVAS_W / 2 + btn.dx;
+    const y = CANVAS_H / 2 + btn.dy;
+    return mx >= x && mx <= x + btn.w && my >= y && my <= y + btn.h;
+  }
+
+  function drawStartButton(btn, label, detail, primary) {
+    const x = CANVAS_W / 2 + btn.dx;
+    const y = CANVAS_H / 2 + btn.dy;
+    const hover = hoverPoint && hitStartButton(btn, hoverPoint.x, hoverPoint.y);
+    ctx.fillStyle = primary ? (hover ? '#2a5a2a' : '#1e3e1e') : (hover ? '#3a3a4a' : '#262630');
+    ctx.fillRect(x, y, btn.w, btn.h);
+    ctx.strokeStyle = primary ? '#4c4' : '#888';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x + 0.5, y + 0.5, btn.w - 1, btn.h - 1);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = primary ? '#cfc' : '#ddd';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.fillText(label, x + btn.w / 2, y + 11);
+    ctx.fillStyle = '#999';
+    ctx.font = '9px sans-serif';
+    ctx.fillText(detail, x + btn.w / 2, y + 24);
+  }
+
   function drawHUD() {
     if (state === STATE_READY) {
       ctx.fillStyle = 'rgba(0,0,0,0.85)';
@@ -2338,8 +2582,21 @@
       ctx.font = '14px sans-serif';
       ctx.fillText(`Map: ${MAPS[currentMap].name}`, CANVAS_W / 2, CANVAS_H / 2 - 20);
       ctx.fillText(`${MAPS[currentMap].waves} waves | ${MAPS[currentMap].startGold} gold | ${MAPS[currentMap].startLives} lives`, CANVAS_W / 2, CANVAS_H / 2 + 5);
-      ctx.fillStyle = '#ccc';
-      ctx.fillText('Click or press Space to start', CANVAS_W / 2, CANVAS_H / 2 + 40);
+      if (savedGameInfo) {
+        drawStartButton(START_BTN_CONTINUE, 'Continue', `${MAPS[savedGameInfo.map].name} -- Wave ${savedGameInfo.wave}/${savedGameInfo.waves}`, true);
+        drawStartButton(START_BTN_NEW, 'New Game', 'Starts over on this map', false);
+        ctx.font = '10px sans-serif';
+        ctx.fillStyle = '#888';
+        ctx.fillText('C / Enter = Continue  |  N = New Game', CANVAS_W / 2, CANVAS_H / 2 + 57);
+      } else {
+        ctx.fillStyle = '#ccc';
+        ctx.fillText('Click or press Space to start', CANVAS_W / 2, CANVAS_H / 2 + 40);
+      }
+      if (saveNotice) {
+        ctx.fillStyle = '#f84';
+        ctx.font = '11px sans-serif';
+        ctx.fillText(saveNotice, CANVAS_W / 2, CANVAS_H / 2 - 120);
+      }
 
       // Tower type preview
       ctx.fillStyle = '#666';
@@ -2609,11 +2866,19 @@
      ══════════════════════════════════════════════════════════════════ */
 
   function togglePause() {
-    if (state === STATE_PLAYING)
+    if (state === STATE_PLAYING) {
       state = STATE_PAUSED;
-    else if (state === STATE_PAUSED)
+      saveGame();
+    } else if (state === STATE_PAUSED)
       state = STATE_PLAYING;
   }
+
+  /* Save when the page is hidden or closed */
+  window.addEventListener('pagehide', saveGame);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden)
+      saveGame();
+  });
 
   /* Pause when the window is hidden or loses focus */
   SZ.GameAutoPause.attach({
@@ -2758,10 +3023,27 @@
 
   /* ── Keyboard input ── */
   window.addEventListener('keydown', (e) => {
+    // Leave keys to an open dialog
+    if (document.querySelector('.dialog-overlay.visible'))
+      return;
+
     if (e.code === 'F2') {
       e.preventDefault();
-      resetAndStart();
+      requestNewGame();
       return;
+    }
+
+    if (state === STATE_READY && savedGameInfo) {
+      if (e.code === 'KeyC' || e.code === 'Enter' || e.code === 'Space') {
+        e.preventDefault();
+        continueSavedGame();
+        return;
+      }
+      if (e.code === 'KeyN') {
+        e.preventDefault();
+        requestNewGame();
+        return;
+      }
     }
 
     if (e.code === 'Escape') {
@@ -2827,6 +3109,7 @@
   canvas.addEventListener('pointermove', (e) => {
     const { x: mx, y: my } = getCanvasCoords(e);
     hoverCell = { col: Math.floor(mx / CELL), row: Math.floor(my / CELL) };
+    hoverPoint = { x: mx, y: my };
   });
 
   /* ── Left click ── */
@@ -2842,7 +3125,12 @@
     }
 
     if (state === STATE_READY) {
-      resetAndStart();
+      if (!savedGameInfo)
+        resetAndStart();
+      else if (hitStartButton(START_BTN_CONTINUE, mx, my))
+        continueSavedGame();
+      else if (hitStartButton(START_BTN_NEW, mx, my))
+        requestNewGame();
       return;
     }
 
@@ -2926,7 +3214,7 @@
   function handleAction(action) {
     switch (action) {
       case 'new':
-        resetAndStart();
+        requestNewGame();
         break;
       case 'pause':
         togglePause();
@@ -3002,6 +3290,7 @@
 
   setupCanvas();
   loadHighScores();
+  refreshSavedGameInfo();
   updateWindowTitle();
   audio.attachMuteButton();
 
