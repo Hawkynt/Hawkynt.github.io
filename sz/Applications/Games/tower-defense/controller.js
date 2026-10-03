@@ -349,18 +349,38 @@
                 info: 'Walking fortress with massive armor.', counter: 'Venom, Acid, Solar Lance' },
     skeleton: { name: 'Skeleton', hp: 30, speed: 40, bounty: 1, radius: 6, color: '#e8e2d4', cost: 0, unlock: 2,
                 info: 'Raised by the Lich.', counter: 'Anything' },
-    boss:     { name: 'Warlord', hp: 1100, speed: 20, bounty: 120, radius: 15, color: '#ff4ad8', boss: true, armor: 6, lives: 5, batters: 5, gap: 2,
-                info: 'Boss. Huge health and armor; smashes towers it passes.', counter: 'Everything you have' },
+    beetle:   { name: 'Burrower', hp: 70, speed: 34, bounty: 9, radius: 7, color: '#c8904a', cost: 2.4, unlock: 0.2, burrows: true,
+                info: 'Digs under the road now and then, out of reach of towers.', counter: 'Spikes, slows' },
+    hornet:   { name: 'Hornet', hp: 18, speed: 64, bounty: 3, radius: 5, color: '#ffd23a', cost: 0.6, unlock: 0.28, flying: true, gap: 0.25, pack: 5,
+                info: 'Fast flying swarm.', counter: 'Missile, Tesla, Storm' },
+    rhino:    { name: 'Charger', hp: 110, speed: 28, bounty: 12, radius: 9, color: '#8a8aa8', cost: 3.2, unlock: 0.34, armor: 2, charges: true,
+                info: 'Every few seconds it charges at triple speed.', counter: 'Frost, Wind' },
+    ghoul:    { name: 'Ghoul', hp: 95, speed: 32, bounty: 11, radius: 7, color: '#8ab070', cost: 3, unlock: 0.4, regen: 0.03,
+                info: 'Regenerates quickly unless it is burning or poisoned.', counter: 'Flamer, Venom' },
+    gremlin:  { name: 'Saboteur', hp: 60, speed: 44, bounty: 14, radius: 6, color: '#5ac8a0', cost: 3, unlock: 0.48, sabotage: true,
+                info: 'Jams towers it runs past for a few seconds.', counter: 'Long range: Sniper, Mortar' },
+    hexer:    { name: 'Hexer', hp: 70, speed: 30, bounty: 14, radius: 7, color: '#c86aff', cost: 3.2, unlock: 0.6, cleanses: true,
+                info: 'Breaks slows, freezes and stuns on enemies around it.', counter: 'Burst damage, kill it first' },
+    boss:     { name: 'Warlord', hp: 1100, speed: 20, bounty: 120, radius: 15, color: '#ff4ad8', boss: true, armor: 6, lives: 5, batters: 5, gap: 2, warcry: true,
+                info: 'Boss. Huge armor; its war cry jams the towers around it.', counter: 'Spread your towers out' },
     dragon:   { name: 'Dragon', hp: 1250, speed: 26, bounty: 140, radius: 16, color: '#ff5a3a', boss: true, flying: true, armor: 4, lives: 5, gap: 2,
                 info: 'Flying boss that crosses the map in a straight line.', counter: 'Anti-air: Archer, Tesla, Sniper' },
     lich:     { name: 'Lich King', hp: 1450, speed: 18, bounty: 160, radius: 15, color: '#8affd8', boss: true, armor: 2, lives: 5, summons: true, gap: 2,
-                info: 'Boss. Raises skeletons and grows furious when hurt.', counter: 'Splash for the skeletons, focus the Lich' }
+                info: 'Boss. Raises skeletons and grows furious when hurt.', counter: 'Splash for the skeletons, focus the Lich' },
+    colossus: { name: 'Aegis Colossus', hp: 1500, speed: 17, bounty: 170, radius: 16, color: '#7ab8ff', boss: true, armor: 5, lives: 5, gap: 2, phases: true,
+                info: 'Boss. Raises a huge energy shield at two thirds and one third health.', counter: 'Tesla breaks shields, Venom and Arcane ignore them' },
+    sandworm: { name: 'Sandworm', hp: 1350, speed: 24, bounty: 160, radius: 15, color: '#d8a860', boss: true, armor: 3, lives: 5, gap: 2, burrows: true,
+                info: 'Boss. Dives under the ground and races ahead.', counter: 'Spikes and slows on the road' },
+    slimeking:{ name: 'Slime King', hp: 1300, speed: 18, bounty: 150, radius: 17, color: '#4ae0a8', boss: true, lives: 5, gap: 2, split: 'splitter', splitCount: 4,
+                info: 'Boss. Bursts into four big slimes when it falls.', counter: 'Splash damage behind the boss' },
+    troll:    { name: 'Troll Chieftain', hp: 1600, speed: 19, bounty: 170, radius: 16, color: '#6a9a5a', boss: true, armor: 4, lives: 5, gap: 2, regen: 0.02,
+                info: 'Boss. Regenerates fast unless it burns or is poisoned.', counter: 'Flamer, Venom, Inferno' }
   };
 
   for (const k in ENEMY_TYPES)
     ENEMY_TYPES[k].key = k;
 
-  const BOSS_ORDER = ['boss', 'dragon', 'lich'];
+  const BOSS_ORDER = ['boss', 'dragon', 'lich', 'colossus', 'sandworm', 'slimeking', 'troll'];
   const ELITE_HP = 2.2;
 
   /* ══════════════════════════════════════════════════════════════════
@@ -651,7 +671,7 @@
   }
   const SAVE_VERSION = 2;
   const AUTOSAVE_INTERVAL = 5; // seconds of play between autosaves
-  const ENEMY_SAVE_FIELDS = ['hp', 'maxHp', 'speed', 'bounty', 'radius', 'armor', 'dist', 'slowMul', 'slowTimer', 'freezeTimer', 'stunTimer',
+  const ENEMY_SAVE_FIELDS = ['hp', 'maxHp', 'speed', 'bounty', 'radius', 'armor', 'dist', 'slowMul', 'slowTimer', 'freezeTimer', 'stunTimer', 'phase',
     'burnDps', 'burnTimer', 'poisonTimer', 'acidTimer', 'shred', 'shieldHp', 'shieldMax', 'healCooldown', 'abilityTimer', 'revealTimer'];
   let autosaveTimer = 0;
   let savedGameInfo = null; // { map, wave, waves } summary for the start screen, null when no save exists
@@ -1647,6 +1667,7 @@
     if (s.hits === 'ground' && f.flying) return false;
     if (s.hits === 'air' && !f.flying) return false;
     if (f.stealth && !e.revealed) return false;
+    if (e.burrowT > 0) return false;
     return true;
   }
 
@@ -1978,6 +1999,11 @@
       t.recoil = Math.max(0, t.recoil - dt * 6);
       if (t.flameT) t.flameT = Math.max(0, t.flameT - dt);
       if (s.kind === 'mine' || s.kind === 'trap' || s.kind === 'support') continue;
+      if (t.jamT > 0) {
+        t.jamT -= dt;
+        t.beamTargets = [];
+        continue;
+      }
       if (s.kind === 'beam') {
         fireTower(t, s, def);
         if (t.beamTargets.length) {
@@ -2222,7 +2248,98 @@
 
   function enemySpeed(e) {
     if (e.freezeTimer > 0 || e.stunTimer > 0) return 0;
-    return e.speed * e.haste * (e.enraged ? 1.4 : 1) * (e.slowTimer > 0 ? e.slowMul : 1);
+    return e.speed * e.haste * (e.enraged ? 1.4 : 1) * (e.slowTimer > 0 ? e.slowMul : 1) * (e.chargeT > 0 ? 3 : 1) * (e.burrowT > 0 ? 1.5 : 1);
+  }
+
+  // Special abilities of the newer monsters and bosses
+  function updateEnemyAbilities(e, f, dt) {
+    if (f.burrows) {
+      e.burrowCd = (e.burrowCd === undefined ? 3 + Math.random() * 2 : e.burrowCd) - dt;
+      if (e.burrowT > 0) {
+        e.burrowT -= dt;
+        if (Math.random() < dt * 12) particles.debris(e.x, e.y + 4, 1, ['#8a6a40', '#6a5030'], 0.5);
+        if (e.burrowT <= 0) {
+          particles.debris(e.x, e.y, 8, ['#8a6a40', '#6a5030', '#a8885a'], 1);
+          playThrottled('unburrow', 'drop', { pitch: 0.5, volume: 0.4 }, 200);
+        }
+      } else if (e.burrowCd <= 0) {
+        e.burrowCd = f.boss ? 6 : 4.5;
+        e.burrowT = f.boss ? 2.5 : 1.8;
+        particles.debris(e.x, e.y, 8, ['#8a6a40', '#6a5030', '#a8885a'], 1);
+        playThrottled('burrow', 'thud', { pitch: 0.8, volume: 0.4 }, 200);
+      }
+    }
+    if (f.charges) {
+      e.chargeCd = (e.chargeCd === undefined ? 2 + Math.random() * 2 : e.chargeCd) - dt;
+      if (e.chargeT > 0) e.chargeT -= dt;
+      else if (e.chargeCd <= 0 && e.freezeTimer <= 0 && e.stunTimer <= 0) {
+        e.chargeCd = 4;
+        e.chargeT = 1;
+        playThrottled('charge', 'whoosh', { pitch: 0.7, volume: 0.35 }, 250);
+      }
+      if (e.chargeT > 0 && Math.random() < dt * 25) particles.smoke(e.x, e.y + 4, 1, '#b8a890', 4);
+    }
+    if (f.regen && e.burnTimer <= 0 && e.poisonTimer <= 0 && e.hp < e.maxHp) {
+      e.hp = Math.min(e.maxHp, e.hp + e.maxHp * f.regen * dt);
+      if (Math.random() < dt * 3) particles.sparkle(e.x, e.y - 8, 1, { color: '#8aff8a', speed: 1 });
+    }
+    if (f.sabotage) {
+      e.abilityTimer -= dt;
+      if (e.abilityTimer <= 0) {
+        for (const t of towers) {
+          if (towerStats(t).trap || Math.hypot(t.x - e.x, t.y - e.y) > CELL * 1.3) continue;
+          jamTower(t, 3);
+          e.abilityTimer = 6;
+          fxLines.push({ kind: 'zap', pts: [{ x: e.x, y: e.y - 6 }, { x: t.x, y: t.y - 10 }], color: '#7affc8', t: 0, life: 0.3, seed: Math.random() * 100 });
+          playThrottled('jam', 'zap', { pitch: 0.5, volume: 0.45 }, 200);
+          break;
+        }
+      }
+    }
+    if (f.warcry) {
+      e.cryCd = (e.cryCd === undefined ? 5 : e.cryCd) - dt;
+      if (e.cryCd <= 0) {
+        e.cryCd = 8;
+        let n = 0;
+        for (const t of towers)
+          if (!towerStats(t).trap && Math.hypot(t.x - e.x, t.y - e.y) <= CELL * 2.5) { jamTower(t, 2); ++n; }
+        fxLines.push({ kind: 'ring', x: e.x, y: e.y, r: CELL * 2.5, color: '#ff4ad8', t: 0, life: 0.6 });
+        if (n) floatingText.add(e.x, e.y - 34, 'WAR CRY!', { color: '#ff7ae0', font: 'bold 13px sans-serif' });
+        audio.play('hurt', { pitch: 0.35, volume: 0.7 });
+        addShake(3, 200);
+      }
+    }
+    if (f.cleanses) {
+      e.abilityTimer -= dt;
+      if (e.abilityTimer <= 0) {
+        e.abilityTimer = 3;
+        let any = false;
+        for (const o of enemiesNear(e.x, e.y, CELL * 2)) {
+          if (o.slowTimer > 0 || o.freezeTimer > 0 || o.stunTimer > 0) any = true;
+          o.slowTimer = o.freezeTimer = o.stunTimer = 0;
+          o.slowMul = 1;
+        }
+        if (any) {
+          fxLines.push({ kind: 'ring', x: e.x, y: e.y, r: CELL * 2, color: '#c86aff', t: 0, life: 0.5 });
+          playThrottled('hex', 'blip', { pitch: 0.55, volume: 0.3 }, 300);
+        }
+      }
+    }
+    if (f.phases) {
+      const ph = e.hp < e.maxHp / 3 ? 2 : e.hp < e.maxHp * 2 / 3 ? 1 : 0;
+      if (ph > (e.phase || 0)) {
+        e.phase = ph;
+        e.shieldMax = e.shieldHp = Math.floor(e.maxHp * 0.3);
+        showBanner('AEGIS RAISED', 'Break the shield: Tesla, Venom, Arcane', '#7ab8ff', 1.8);
+        particles.glow(e.x, e.y - 10, 60, '#7ab8ff', 0.5);
+        audio.play('powerup', { pitch: 0.6 });
+      }
+    }
+  }
+
+  function jamTower(t, time) {
+    if ((t.jamT || 0) <= 0) particles.sparks(t.x, t.y - 12, 6, '#7affc8', 120);
+    t.jamT = Math.max(t.jamT || 0, time);
   }
 
   function killEnemy(e) {
@@ -2246,8 +2363,8 @@
     // Slimes burst into slimelets
     if (f.split) {
       for (let i = 0; i < f.splitCount; ++i) {
-        const c = spawnEnemy(f.split, e.pi, Math.max(0, e.dist - 6 + i * 6));
-        c.maxHp = c.hp = Math.max(4, Math.floor(e.maxHp * 0.28));
+        const c = spawnEnemy(f.split + (f.boss ? '!' : ''), e.pi, Math.max(0, e.dist - 6 + i * 6));
+        c.maxHp = c.hp = Math.max(4, Math.floor(e.maxHp * (f.boss ? 0.18 : 0.28)));
         c.spawnT = 0;
       }
 
@@ -2265,7 +2382,7 @@
       audio.play('explode');
     } else {
       screenShake.trigger(1.5, 60);
-      audio.play('smallExplode', { pitch: 0.9 + Math.random() * 0.3, volume: 0.5 });
+      audio.play('smallExplode', { pitch: (f.flying ? 1.3 : e.radius > 8 ? 0.7 : 1) + Math.random() * 0.2, volume: 0.5 });
     }
   }
 
@@ -2350,6 +2467,7 @@
           playThrottled('ward', 'blip', { pitch: 0.7, volume: 0.2 }, 400);
         }
       }
+      updateEnemyAbilities(e, f, dt);
       if (f.summons) {
         e.abilityTimer -= dt;
         if (e.abilityTimer <= 0) {
@@ -4056,6 +4174,101 @@
     }]
   };
 
+  Object.assign(ENEMY_ART, {
+    beetle: [16, 10, (g, f) => {
+      // Burrowing beetle with digging claws
+      const c = ['#3a2410', '#5a3a1a', '#7a5228', '#9a6c38', '#c8904a', '#e8b878'];
+      for (let i = 0; i < 3; ++i) px(g, 3 + i * 3 + (f % 2 ? 1 : -1) * (i % 2 ? 1 : -1) * 0.5, 7, 1, 3, c[0]);
+      ellipseFill(g, 7, 5, 6.5, 4, c[2]);
+      ellipseFill(g, 6.5, 4, 5.5, 2.8, c[3]);
+      px(g, 7, 1, 1, 7, c[1]);
+      px(g, 4, 2, 2, 1, c[5]);
+      poly(g, [12, 3, 16, 2 + (f % 2), 14, 5], c[4]); poly(g, [12, 6, 16, 7 - (f % 2), 14, 5], c[4]);
+      px(g, 12, 4, 1, 1, '#1a0a0a');
+    }],
+    hornet: [12, 10, (g, f) => {
+      const up = [-3, 0, 2, 0][f];
+      poly(g, [5, 4, 2, 0 + up, 7, 3], 'rgba(220,240,255,0.95)');
+      poly(g, [7, 4, 10, 0 + up, 9, 4], 'rgba(200,225,255,0.95)');
+      ellipseFill(g, 6, 6, 4.5, 2.5, '#ffd23a');
+      px(g, 3, 5, 1, 3, '#2a1a08'); px(g, 6, 4, 1, 4, '#2a1a08');
+      px(g, 10, 5, 2, 2, '#2a1a08');
+      poly(g, [1, 6, -1, 7, 1, 7.5], '#2a1a08');
+    }],
+    rhino: [22, 16, (g, f) => {
+      const c = ['#2a2a38', '#40405a', '#5a5a78', '#7a7a98', '#a0a0bc', '#c8c8dc'];
+      const b = BOB[f];
+      const leg = [[0, 2], [2, 0], [0, -2], [-2, 0]][f];
+      px(g, 4 + leg[0], 11 + b, 3, 5, c[1]); px(g, 8 - leg[0], 11 + b, 3, 5, c[2]);
+      px(g, 13 + leg[1], 11 + b, 3, 5, c[1]); px(g, 16 - leg[1], 11 + b, 3, 5, c[2]);
+      block(g, 3, 4 + b, 15, 8, c, 3);
+      px(g, 5, 4 + b, 10, 1, c[5]);
+      block(g, 16, 5 + b, 6, 6, c, 3);
+      poly(g, [21, 6 + b, 24, 2 + b, 22, 8 + b], '#e8e2d4');
+      px(g, 18, 6 + b, 1, 1, '#ff3a1a');
+      block(g, 6, 3 + b, 6, 3, RAMPS.metal, 4);
+    }],
+    ghoul: [14, 18, (g, f) => {
+      const r = biped(g, f, { body: '#4a5a3a', leg: '#3a4030', skin: '#8ab070', eye: '#ffff6a' }, { x: 3, y: 7, w: 8, h: 6, legH: 5 });
+      px(g, r.bx + r.w, r.by + 3, 3, 1, '#c8d8a0'); px(g, r.bx + r.w + 2, r.by + 2, 1, 3, '#c8d8a0');
+      px(g, r.bx + 1, r.by + 2, 2, 2, '#6a1a1a');
+    }],
+    gremlin: [12, 14, (g, f) => {
+      const r = biped(g, f, { body: '#2a5a4a', leg: '#1a3a30', skin: '#5ac8a0', eye: '#ffef4a' }, { x: 2, y: 6, w: 7, h: 4, legH: 4, head: 5,
+        weapon: (g, x, y) => { px(g, x, y - 5, 1, 6, RAMPS.metal[4]); px(g, x - 1, y - 6, 3, 2, '#7affc8'); } });
+      poly(g, [r.hx - 1, r.hy + 1, r.hx - 3, r.hy - 2, r.hx + 1, r.hy], '#5ac8a0');
+      poly(g, [r.hx + r.hs, r.hy + 1, r.hx + r.hs + 2, r.hy - 2, r.hx + r.hs - 1, r.hy], '#5ac8a0');
+      px(g, r.bx, r.by - 1, 3, 4, '#8a6a40');
+    }],
+    hexer: [14, 19, (g, f) => {
+      const r = biped(g, f, { body: '#5a2a7a', leg: '#3a1a50', skin: '#c8a888', belt: '#ffd75a', eye: '#ff4aff' }, { x: 3, y: 8, w: 8, h: 7, legH: 4 });
+      poly(g, [r.hx - 2, r.hy + 2, r.hx + r.hs / 2, r.hy - 6, r.hx + r.hs + 2, r.hy + 2], '#3a1a50');
+      px(g, r.hx + 1, r.hy - 3, 1, 1, '#ffd75a');
+      px(g, r.bx + r.w + 1, r.by - 4, 1, 12, '#2a1a10');
+      poly(g, [r.bx + r.w - 1, r.by - 4, r.bx + r.w + 1.5, r.by - 8, r.bx + r.w + 4, r.by - 4], '#c86aff');
+    }],
+    colossus: [30, 34, (g, f) => {
+      const b = BOB[f];
+      const c = ['#1a2a4a', '#2a4070', '#3a5a98', '#5a7ab8', '#8ab0e0', '#c8dcff'];
+      px(g, 8 + LEG[f], 24 + b, 6, 10 - b, c[1]); px(g, 17 - LEG[f], 24 + b, 6, 10 - b, c[2]);
+      block(g, 4, 9 + b, 22, 16, c, 3);
+      block(g, 10, 1 + b, 10, 9, RAMPS.metal, 4);
+      px(g, 12, 4 + b, 6, 2, '#7affff');
+      block(g, -1 - LEG[f], 10 + b, 6, 13, c, 2); block(g, 25 + LEG[f], 10 + b, 6, 13, c, 2);
+      disc(g, 15, 16 + b, 4, ['#003a5a', '#005a8a', '#2a9ad0', '#7ad8ff', '#c8f4ff', '#ffffff'], 3);
+      px(g, 4, 9 + b, 22, 1, RAMPS.gold[4]); px(g, 4, 24 + b, 22, 1, RAMPS.gold[2]);
+    }],
+    sandworm: [36, 22, (g, f) => {
+      const c = ['#5a3a18', '#7a5228', '#a07038', '#c8904a', '#e0b070', '#f6d8a0'];
+      const wv = [0, 1, 0, -1][f];
+      for (let i = 0; i < 6; ++i) {
+        const x = 3 + i * 5, y = 12 + Math.sin(i * 1.2 + f * 1.5) * 2;
+        disc(g, x, y, 4.5 - i * 0.2, c, 3);
+        px(g, x - 2, y - 4, 4, 1, c[5]);
+      }
+      disc(g, 31, 10 + wv, 6, c, 3);
+      ellipseFill(g, 35, 10 + wv, 2.5, 4, '#2a0a0a');
+      for (let i = 0; i < 4; ++i) px(g, 34 + (i % 2), 6 + wv + i * 2, 2, 1, '#f6f2e2');
+      px(g, 29, 7 + wv, 2, 1, '#ff3a1a');
+    }],
+    slimeking: [30, 26, (g, f) => {
+      const c = ['#0e4a3a', '#167058', '#24967a', '#3ab898', '#4ae0a8', '#aaffe4'];
+      const sq = [0, 1, 0, -1][f];
+      ellipseFill(g, 15, 17 + sq * 0.5, 14 + sq, 9 - sq * 0.6, c[2]);
+      ellipseFill(g, 13, 15 + sq * 0.5, 11 + sq, 7 - sq * 0.5, c[3]);
+      px(g, 7, 11, 5, 2, c[5]);
+      px(g, 17, 13, 3, 3, '#ffffff'); px(g, 22, 13, 3, 3, '#ffffff'); px(g, 18, 14, 2, 2, '#0a2a20'); px(g, 23, 14, 2, 2, '#0a2a20');
+      for (let i = 0; i < 4; ++i) poly(g, [9 + i * 4, 9 - sq, 10 + i * 4, 3 - sq - (i % 2) * 2, 11 + i * 4, 9 - sq], RAMPS.gold[4]);
+      px(g, 11, 7 - sq, 9, 2, RAMPS.gold[3]);
+    }],
+    troll: [28, 32, (g, f) => {
+      const r = biped(g, f, { body: '#4a3a2a', leg: '#3a3020', skin: '#6a9a5a', helm: '#5a4a3a', belt: '#8a6a40', eye: '#ffef4a' }, { x: 7, y: 12, w: 13, h: 11, legH: 7, head: 8,
+        weapon: (g, x, y) => { px(g, x, y - 15, 3, 18, RAMPS.wood[2]); disc(g, x + 1.5, y - 15, 4, RAMPS.wood, 3); for (let i = 0; i < 3; ++i) px(g, x - 2 + i * 2, y - 19, 1, 2, '#e8e2d4'); } });
+      px(g, r.hx + 1, r.hy + r.hs - 2, 2, 2, '#f6f2e2'); px(g, r.hx + r.hs - 3, r.hy + r.hs - 2, 2, 2, '#f6f2e2');
+      block(g, r.bx - 2, r.by, 4, 5, RAMPS.wood, 3);
+      px(g, r.bx + 3, r.by + 3, 6, 1, '#8a2a1a');
+    }]
+  });
   const enemyArtCache = {};
   function enemyFrames(type) {
     let fr = enemyArtCache[type];
@@ -4334,6 +4547,18 @@
         ctx.fillRect(Math.round(m.x + Math.cos(a) * 12), Math.round(m.y + Math.sin(a) * 5 - 2), 2, 2);
       }
     }
+    // Jammed by a saboteur or a war cry: crackling static
+    if (t.jamT > 0) {
+      ctx.strokeStyle = `rgba(122,255,200,${0.5 + 0.4 * Math.sin(animTime * 40)})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 0; i < 3; ++i) {
+        const a = animTime * 17 + i * 2.1;
+        ctx.moveTo(t.x + Math.cos(a) * 6, t.y - 14 + Math.sin(a) * 4);
+        ctx.lineTo(t.x + Math.cos(a + 1) * 11, t.y - 18 + Math.sin(a * 1.3) * 6);
+      }
+      ctx.stroke();
+    }
     // Muzzle flash
     if (t.flash > 0) {
       const m = muzzleOf(t);
@@ -4353,6 +4578,18 @@
 
   function drawEnemy(e) {
     const def = ENEMY_TYPES[e.type];
+    if (e.burrowT > 0) {
+      // Only a travelling mound of earth shows where it digs
+      const r = e.radius * 1.1;
+      ctx.fillStyle = '#4a3418';
+      ctx.beginPath(); ctx.ellipse(e.x, e.y + 3, r, r * 0.45, 0, 0, TWO_PI); ctx.fill();
+      ctx.fillStyle = '#8a6a40';
+      for (let i = 0; i < 4; ++i) {
+        const a = animTime * 9 + i * 1.6 + e.walk;
+        ctx.fillRect(Math.round(e.x + Math.cos(a) * r * 0.6 - 1.5), Math.round(e.y + 1 + Math.sin(a) * 2), 3, 3);
+      }
+      return;
+    }
     const img = enemyFrame(e);
     const sc = enemyScale(e) * (def.boss ? 1 : 1);
     if (Math.abs(Math.cos(e.angle)) > 0.2) e.face = Math.cos(e.angle) < 0 ? -1 : 1;
