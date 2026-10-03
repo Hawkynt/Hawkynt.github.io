@@ -153,15 +153,33 @@
     if (!isFinite(num))
       return 'Error';
 
-    const str = String(num);
+    // whole numbers are exact: show every digit that fits
+    if (Number.isSafeInteger(num))
+      if (String(num).length <= MAX_DIGITS)
+        return String(num);
+
+    // 15 significant digits drop binary noise: 0.1 + 0.2 shows as 0.3
+    const clean = Number(num.toPrecision(15));
+    const str = String(clean);
     if (str.length <= MAX_DIGITS)
       return str;
 
-    const exp = num.toExponential(MAX_DIGITS - 6);
-    if (exp.length <= MAX_DIGITS)
-      return exp;
+    // too many decimals: round them away while the integer part fits
+    const mag = Math.abs(clean);
+    if (mag >= 1e-6 && mag < 10 ** (MAX_DIGITS - 2)) {
+      const intDigits = mag >= 1 ? Math.floor(Math.log10(mag)) + 1 : 1;
+      const decimals = Math.max(0, MAX_DIGITS - intDigits - 1 - (clean < 0 ? 1 : 0));
+      const fixed = clean.toFixed(Math.min(decimals, 20)).replace(/\.?0+$/, '');
+      if (fixed.length <= MAX_DIGITS && Number(fixed) !== 0)
+        return fixed;
+    }
 
-    return num.toPrecision(MAX_DIGITS - 4);
+    for (let digits = MAX_DIGITS - 6; digits >= 0; --digits) {
+      const exp = clean.toExponential(digits).replace(/\.?0+e/, 'e');
+      if (exp.length <= MAX_DIGITS)
+        return exp;
+    }
+    return clean.toExponential(0);
   }
 
   function clearError() {
