@@ -380,7 +380,8 @@
   for (const k in ENEMY_TYPES)
     ENEMY_TYPES[k].key = k;
 
-  const BOSS_ORDER = ['boss', 'dragon', 'lich', 'colossus', 'sandworm', 'slimeking', 'troll'];
+  // Bosses in the order the campaign introduces them
+  const BOSS_ORDER = ['boss', 'slimeking', 'lich', 'troll', 'dragon', 'sandworm', 'colossus'];
   const ELITE_HP = 2.2;
 
   /* ══════════════════════════════════════════════════════════════════
@@ -402,7 +403,7 @@
       desc: 'A gentle road winding through the meadow. A fine place to learn the ropes.',
       paths: [[[0,8],[4,8],[4,3],[10,3],[10,13],[16,13],[16,5],[21,5],[21,11],[24,11]]],
       features: [['water', 12, 6, 14, 9], ['water', 0, 15, 6, 16], ['rock', 19, 14, 20, 15]] },
-    { name: 'Crossroads', biome: 'meadow', waves: 15, startGold: 270, startLives: 20, hpMul: 0.8,
+    { name: 'Crossroads', biome: 'meadow', waves: 15, startGold: 300, startLives: 20, hpMul: 0.7,
       desc: 'Two roads cross twice. Enemies come from the west and the north.',
       paths: [[[0,4],[17,4],[17,16]], [[7,0],[7,12],[24,12]]],
       features: [['water', 19, 0, 23, 2], ['water', 1, 13, 4, 15], ['rock', 11, 7, 13, 9]] },
@@ -434,15 +435,15 @@
       desc: 'Two mirrored roads run side by side through the snow.',
       paths: [[[0,2],[8,2],[8,7],[16,7],[16,2],[24,2]], [[0,14],[8,14],[8,9],[16,9],[16,14],[24,14]]],
       features: [['ice', 10, 11, 14, 12], ['ice', 10, 4, 14, 5], ['rock', 2, 6, 4, 10], ['rock', 20, 6, 22, 10]] },
-    { name: 'Gauntlet', biome: 'volcano', waves: 25, startGold: 270, startLives: 15, hpMul: 1.55,
+    { name: 'Gauntlet', biome: 'volcano', waves: 25, startGold: 270, startLives: 15, hpMul: 1.62,
       desc: 'Narrow ridges between rivers of lava. Space is precious.',
       paths: [[[0,8],[3,8],[3,2],[7,2],[7,14],[11,14],[11,2],[15,2],[15,14],[19,14],[19,2],[22,2],[22,8],[24,8]]],
       features: [['lava', 5, 4, 5, 12], ['lava', 13, 4, 13, 12], ['lava', 17, 4, 17, 12], ['lava', 21, 11, 24, 16]] },
-    { name: 'Wasteland', biome: 'volcano', waves: 25, startGold: 290, startLives: 15, hpMul: 1.65,
+    { name: 'Wasteland', biome: 'volcano', waves: 25, startGold: 290, startLives: 15, hpMul: 1.75,
       desc: 'Ash plains where two war parties cut across each other.',
       paths: [[[0,2],[12,2],[12,14],[24,14]], [[24,2],[18,2],[18,8],[6,8],[6,16]]],
       features: [['lava', 1, 10, 4, 14], ['lava', 14, 3, 16, 6], ['rock', 19, 10, 22, 12]] },
-    { name: 'Final Stand', biome: 'volcano', waves: 30, startGold: 320, startLives: 10, hpMul: 1.8,
+    { name: 'Final Stand', biome: 'volcano', waves: 30, startGold: 320, startLives: 10, hpMul: 1.95,
       desc: 'The last citadel. Both armies march on the heart of the fortress.',
       paths: [[[0,2],[9,2],[9,5],[3,5],[3,12],[8,12],[8,8],[12,8]], [[24,14],[15,14],[15,11],[21,11],[21,4],[16,4],[16,8],[12,8]]],
       features: [['lava', 10, 11, 13, 13], ['lava', 11, 3, 13, 5], ['rock', 0, 14, 2, 16], ['rock', 23, 0, 24, 2]] }
@@ -1397,11 +1398,14 @@
     const waves = mapDef.waves;
     const rng = makeRng(mi * 7919 + waveNo * 104729 + 17);
     const progress = (waveNo - 1) / Math.max(1, waves - 1);
-    const pool = Object.keys(ENEMY_TYPES).filter(k => ENEMY_TYPES[k].cost > 0 && !ENEMY_TYPES[k].boss && ENEMY_TYPES[k].unlock <= progress + 1e-6);
+    // Early maps only show part of the bestiary; it opens up along the campaign
+    const reach = waveNo > waves ? 1 : Math.min(1, 0.4 + mi * 0.06);
+    const pool = Object.keys(ENEMY_TYPES).filter(k => ENEMY_TYPES[k].cost > 0 && !ENEMY_TYPES[k].boss && ENEMY_TYPES[k].unlock <= Math.min(1, progress) * reach + 1e-6);
+    const bossPool = waveNo > waves ? BOSS_ORDER : BOSS_ORDER.slice(0, Math.min(BOSS_ORDER.length, 2 + mi));
     let budget = (7 + waveNo * 3.2 + waveNo * waveNo * 0.12) * (mapDef.budgetMul || 1);
     const queue = [];
     // The newest type gets the spotlight in the wave it first appears
-    const fresh = pool.filter(k => ENEMY_TYPES[k].unlock > (waveNo - 2) / Math.max(1, waves - 1));
+    const fresh = pool.filter(k => ENEMY_TYPES[k].unlock > Math.min(1, (waveNo - 2) / Math.max(1, waves - 1)) * reach);
     const groups = [];
     const nGroups = waveNo <= 2 ? 1 : Math.min(pool.length, 2 + Math.floor(rng() * 2));
     for (let g = 0; g < nGroups; ++g) {
@@ -1427,7 +1431,7 @@
       // Deep into endless mode several bosses march together
       const count = waveNo > waves ? 1 + Math.floor((waveNo - waves) / 20) : 1;
       for (let b = 0; b < count; ++b) {
-        const bossType = waveNo === waves ? BOSS_ORDER[mi % BOSS_ORDER.length] : BOSS_ORDER[(Math.floor(waveNo / 5) - 1 + b * 3) % BOSS_ORDER.length];
+        const bossType = waveNo === waves ? bossPool[mi % bossPool.length] : bossPool[(Math.floor(waveNo / 5) - 1 + b * 3) % bossPool.length];
         queue.push('|');
         queue.push(bossType + (waveNo === waves || waveNo > waves + 10 ? '!' : ''));
       }
