@@ -17,7 +17,8 @@
   const CELL = 32;
   const COLS = 25;
   const ROWS = 17;
-  const MAX_TIER = 3;
+  const MAX_TIER = 5;          // I-III linear, IV picks a branch, V masters it
+  const BRANCH_TIER = 4;
 
   /* ── Game states ── */
   const STATE_READY = 'READY';
@@ -30,115 +31,211 @@
   /* ── Storage ── */
   const STORAGE_PREFIX = 'sz-tower-defense';
   const STORAGE_HIGHSCORES = STORAGE_PREFIX + '-highscores';
-  const STORAGE_SAVE = STORAGE_PREFIX + '-save-v1';
+  const STORAGE_SAVE_V1 = STORAGE_PREFIX + '-save-v1';
+  const STORAGE_SAVE = STORAGE_PREFIX + '-save-v2';
   const MAX_HIGH_SCORES = 10;
 
-  /* ── Pre-wave warning timing ── */
+  /* ── Wave timing ── */
   const WARNING_DURATION = 3;
   const AUTO_WAVE_DELAY = 5;
 
   /* ══════════════════════════════════════════════════════════════════
-     TOWER DEFINITIONS
-     13 tower types with unique abilities
+     TOWER FAMILIES
+     Stats are base values; tiers and branches multiply damage, range
+     and reload and may set any special value. Range is in tiles.
      ══════════════════════════════════════════════════════════════════ */
+
+  const MUL_KEYS = { damage: 1, range: 1, reload: 1 };
 
   const TOWER_TYPES = [
     {
-      id: 'arrow', name: 'Arrow', cost: 50, damage: 10, range: 120, fireRate: 0.8,
-      color: '#6b4', colorDark: '#3a2', projectileColor: '#8d6', projectileSpeed: 300,
-      desc: 'Fast, cheap'
+      id: 'arrow', name: 'Archer', cost: 50, color: '#8fd16a', hits: 'both', kind: 'arrow',
+      damage: 9, range: 3.6, reload: 0.7, speed: 460,
+      desc: 'Quick arrows at a single target. Hits flyers.',
+      strong: 'Flyers, fast enemies', weak: 'Heavy armor',
+      tiers: [{}, { damage: 1.6, range: 1.08, reload: 0.92 }, { damage: 2.4, range: 1.15, reload: 0.85 }],
+      branches: [
+        { id: 'longbow', name: 'Longbow', desc: 'Long-range heavy shots that pierce armor and crit; spots stealth.',
+          t4: { damage: 5.2, range: 1.5, reload: 1.15, pierce: 0.5, crit: 0.25, critMul: 2.5, trueSight: true },
+          t5: { damage: 8.4, range: 1.65, reload: 1.1, pierce: 0.7, crit: 0.35, critMul: 3, trueSight: true } },
+        { id: 'volley', name: 'Volley', desc: 'Looses arrows at three enemies at once.',
+          t4: { damage: 2.9, range: 1.15, reload: 0.75, multishot: 3 },
+          t5: { damage: 4.2, range: 1.2, reload: 0.68, multishot: 5 } }
+      ]
     },
     {
-      id: 'cannon', name: 'Cannon', cost: 80, damage: 35, range: 90, fireRate: 1.5,
-      color: '#a63', colorDark: '#742', projectileColor: '#f80', projectileSpeed: 200,
-      splash: 30, desc: 'Splash dmg'
+      id: 'cannon', name: 'Cannon', cost: 80, color: '#e0894a', hits: 'ground', kind: 'shell',
+      damage: 24, range: 3.0, reload: 1.5, speed: 260, splash: 1.1,
+      desc: 'Lobs shells that blast every enemy near the impact.',
+      strong: 'Groups, swarms', weak: 'Flyers (cannot hit them)',
+      tiers: [{}, { damage: 1.6, range: 1.05, reload: 0.95 }, { damage: 2.4, range: 1.1, splash: 1.25, reload: 0.9 }],
+      branches: [
+        { id: 'mortar', name: 'Siege Mortar', desc: 'Enormous range and a huge blast radius.',
+          t4: { damage: 5.0, range: 1.9, reload: 1.25, splash: 1.7 },
+          t5: { damage: 8.2, range: 2.1, reload: 1.15, splash: 2.0 } },
+        { id: 'shrapnel', name: 'Shrapnel', desc: 'Shells burst into bomblets that shred armor.',
+          t4: { damage: 3.6, reload: 0.9, splash: 1.25, bomblets: 5, shred: 2 },
+          t5: { damage: 5.2, reload: 0.85, splash: 1.35, bomblets: 8, shred: 4 } }
+      ]
     },
     {
-      id: 'frost', name: 'Frost', cost: 70, damage: 8, range: 100, fireRate: 1.0,
-      color: '#6af', colorDark: '#38c', projectileColor: '#aef', projectileSpeed: 250,
-      slow: 0.5, desc: 'Slows enemies'
+      id: 'frost', name: 'Frost', cost: 70, color: '#7fd4ff', hits: 'both', kind: 'bolt',
+      damage: 5, range: 3.0, reload: 1.0, speed: 320, slow: 0.4, slowTime: 2,
+      desc: 'Ice bolts slow their target down.',
+      strong: 'Fast enemies, bosses', weak: 'Low damage',
+      tiers: [{}, { damage: 1.6, range: 1.08, slow: 0.45 }, { damage: 2.2, range: 1.15, slow: 0.5, slowTime: 2.5 }],
+      branches: [
+        { id: 'glacier', name: 'Glacier', desc: 'Bolts may freeze enemies solid; frozen enemies shatter for extra damage.',
+          t4: { damage: 4, range: 1.2, slow: 0.5, slowTime: 2.5, freeze: 0.2, freezeTime: 1.4 },
+          t5: { damage: 6.5, range: 1.25, slow: 0.55, slowTime: 3, freeze: 0.33, freezeTime: 1.8 } },
+        { id: 'blizzard', name: 'Blizzard', desc: 'A freezing storm slows everything in range.',
+          t4: { damage: 2.6, range: 1.05, reload: 0.9, slow: 0.5, slowTime: 1.2, aura: true },
+          t5: { damage: 4.2, range: 1.15, reload: 0.8, slow: 0.62, slowTime: 1.4, aura: true } }
+      ]
     },
     {
-      id: 'lightning', name: 'Lightning', cost: 120, damage: 25, range: 140, fireRate: 1.2,
-      color: '#ff0', colorDark: '#aa0', projectileColor: '#ff8', projectileSpeed: 600,
-      chain: 2, desc: 'Chain hits'
+      id: 'tesla', name: 'Tesla', cost: 120, color: '#7ae8ff', hits: 'both', kind: 'chain',
+      damage: 16, range: 2.8, reload: 1.15, chains: 3, chainRange: 2.0,
+      desc: 'Lightning jumps between enemies. Double damage to shields.',
+      strong: 'Shields, packs', weak: 'Lone tough targets',
+      tiers: [{}, { damage: 1.55, range: 1.05 }, { damage: 2.2, range: 1.1, chains: 4 }],
+      branches: [
+        { id: 'storm', name: 'Storm Spire', desc: 'Bolts arc through many more enemies.',
+          t4: { damage: 3.0, range: 1.15, chains: 7, chainRange: 2.4 },
+          t5: { damage: 4.2, range: 1.2, chains: 10, chainRange: 2.8 } },
+        { id: 'overload', name: 'Overload', desc: 'Massive bolts that stun what they hit.',
+          t4: { damage: 4.4, range: 1.1, reload: 1.1, chains: 3, stun: 0.6 },
+          t5: { damage: 6.8, range: 1.15, reload: 1.05, chains: 4, stun: 0.9 } }
+      ]
     },
     {
-      id: 'laser', name: 'Laser', cost: 150, damage: 50, range: 160, fireRate: 2.0,
-      color: '#f0f', colorDark: '#a0a', projectileColor: '#f8f', projectileSpeed: 800,
-      desc: 'High damage'
+      id: 'flame', name: 'Flamer', cost: 100, color: '#ff8a3a', hits: 'ground', kind: 'flame',
+      damage: 4, range: 2.0, reload: 0.15, cone: 0.5, burn: 6, burnTime: 2.5,
+      desc: 'Short-range jet of fire that burns everything in its cone.',
+      strong: 'Swarms, groups', weak: 'Flyers, range',
+      tiers: [{}, { damage: 1.55, range: 1.05, burn: 9 }, { damage: 2.2, range: 1.1, burn: 13 }],
+      branches: [
+        { id: 'inferno', name: 'Inferno', desc: 'Leaves pools of burning ground on the path.',
+          t4: { damage: 3.0, range: 1.15, burn: 18, lava: 14 },
+          t5: { damage: 4.2, range: 1.2, burn: 26, lava: 22 } },
+        { id: 'dragon', name: 'Dragon Breath', desc: 'Longer flames that melt armor.',
+          t4: { damage: 3.2, range: 1.5, burn: 16, melt: 3, cone: 0.42 },
+          t5: { damage: 4.6, range: 1.7, burn: 22, melt: 6, cone: 0.42 } }
+      ]
     },
     {
-      id: 'poison', name: 'Poison', cost: 90, damage: 5, range: 110, fireRate: 0.9,
-      color: '#0c4', colorDark: '#083', projectileColor: '#4f8', projectileSpeed: 220,
-      dot: 15, dotDuration: 3, desc: 'Damage/time'
+      id: 'poison', name: 'Venom', cost: 90, color: '#7ce35a', hits: 'both', kind: 'glob',
+      damage: 4, range: 3.0, reload: 1.6, speed: 240, cloud: 0.9, cloudTime: 3, cloudDps: 9,
+      desc: 'Toxic clouds that ignore armor and shields.',
+      strong: 'Armor, shields', weak: 'Fast enemies',
+      tiers: [{}, { damage: 1.5, range: 1.05, cloudDps: 14 }, { damage: 2.1, range: 1.1, cloudDps: 20, cloud: 1.0 }],
+      branches: [
+        { id: 'plague', name: 'Plague', desc: 'Poisoned enemies burst into new clouds when they die.',
+          t4: { damage: 3, range: 1.15, cloudDps: 30, cloud: 1.1, plague: true },
+          t5: { damage: 4, range: 1.2, cloudDps: 44, cloud: 1.2, plague: true } },
+        { id: 'acid', name: 'Acid', desc: 'Corrodes armor and makes enemies take more damage.',
+          t4: { damage: 3, range: 1.15, cloudDps: 26, cloud: 1.05, acid: true },
+          t5: { damage: 4, range: 1.2, cloudDps: 38, cloud: 1.15, acid: true } }
+      ]
     },
     {
-      id: 'tesla', name: 'Tesla', cost: 140, damage: 18, range: 100, fireRate: 0.6,
-      color: '#4df', colorDark: '#29a', projectileColor: '#8ff', projectileSpeed: 500,
-      chain: 4, desc: 'Multi-chain'
+      id: 'laser', name: 'Laser', cost: 150, color: '#ff5ad2', hits: 'both', kind: 'beam',
+      damage: 22, range: 3.2, reload: 0, ramp: 2.5, rampTime: 2.2, pierce: 0.5,
+      desc: 'Continuous beam that heats up on the same target. Half ignores armor.',
+      strong: 'Bosses, armor', weak: 'Swarms',
+      tiers: [{}, { damage: 1.5, range: 1.05 }, { damage: 2.1, range: 1.1, ramp: 3 }],
+      branches: [
+        { id: 'prism', name: 'Prism', desc: 'Splits into three beams.',
+          t4: { damage: 2.4, range: 1.15, beams: 3, ramp: 2.5 },
+          t5: { damage: 3.4, range: 1.2, beams: 4, ramp: 2.8 } },
+        { id: 'solar', name: 'Solar Lance', desc: 'Searing beam that ramps far higher.',
+          t4: { damage: 2.8, range: 1.25, ramp: 5, rampTime: 2.6, pierce: 0.8 },
+          t5: { damage: 4.0, range: 1.35, ramp: 7, rampTime: 2.8, pierce: 1 } }
+      ]
     },
     {
-      id: 'mortar', name: 'Mortar', cost: 110, damage: 45, range: 180, fireRate: 2.5,
-      color: '#a86', colorDark: '#754', projectileColor: '#da8', projectileSpeed: 150,
-      splash: 50, desc: 'Long-range AoE'
+      id: 'sniper', name: 'Sniper', cost: 160, color: '#e8e8f0', hits: 'both', kind: 'snipe',
+      damage: 75, range: 6.5, reload: 2.4, pierce: 0.6, trueSight: true,
+      desc: 'Very long range, heavy single shots. Spots stealthed enemies.',
+      strong: 'Stealth, healers, bosses', weak: 'Swarms',
+      tiers: [{}, { damage: 1.5, range: 1.05, reload: 0.95 }, { damage: 2.1, range: 1.1, reload: 0.9 }],
+      branches: [
+        { id: 'railgun', name: 'Railgun', desc: 'Slugs pierce every enemy along the line.',
+          t4: { damage: 3.6, range: 1.2, reload: 0.95, rail: true, pierce: 1 },
+          t5: { damage: 5.4, range: 1.3, reload: 0.9, rail: true, pierce: 1 } },
+        { id: 'assassin', name: 'Assassin', desc: 'Crits often and executes weakened enemies.',
+          t4: { damage: 3.0, range: 1.15, reload: 0.75, crit: 0.3, critMul: 2.5, execute: 0.2 },
+          t5: { damage: 4.4, range: 1.2, reload: 0.7, crit: 0.4, critMul: 3, execute: 0.3 } }
+      ]
     },
     {
-      id: 'flame', name: 'Flame', cost: 100, damage: 12, range: 60, fireRate: 0.3,
-      color: '#f60', colorDark: '#a40', projectileColor: '#fa4', projectileSpeed: 400,
-      aoe: 40, dot: 8, dotDuration: 2, desc: 'Close AoE + burn'
+      id: 'spikes', name: 'Spikes', cost: 30, color: '#b8c0cc', hits: 'ground', kind: 'trap', trap: true,
+      damage: 12, range: 0.5, reload: 0,
+      desc: 'Trap on the path; hurts every enemy walking over it.',
+      strong: 'Chokepoints, swarms', weak: 'Flyers',
+      tiers: [{}, { damage: 1.7 }, { damage: 2.6 }],
+      branches: [
+        { id: 'tar', name: 'Tar Pit', desc: 'Sticky tar slows enemies crossing it.',
+          t4: { damage: 3.4, slow: 0.45, slowTime: 0.6 },
+          t5: { damage: 4.8, slow: 0.6, slowTime: 0.8 } },
+        { id: 'razor', name: 'Razor Field', desc: 'Blades that tear through armor.',
+          t4: { damage: 6, pierce: 1 },
+          t5: { damage: 9, pierce: 1 } }
+      ]
     },
     {
-      id: 'ice', name: 'Ice', cost: 130, damage: 15, range: 100, fireRate: 1.4,
-      color: '#8ef', colorDark: '#4ac', projectileColor: '#cff', projectileSpeed: 280,
-      freeze: 1.5, desc: 'Freezes enemies'
-    },
-    {
-      id: 'fire', name: 'Fire', cost: 110, damage: 8, range: 80, fireRate: 0.8,
-      color: '#f44', colorDark: '#a22', projectileColor: '#f88', projectileSpeed: 300,
-      splash: 35, dot: 20, dotDuration: 3, desc: 'AoE burn zone'
-    },
-    {
-      id: 'chainlightning', name: 'ChainLt', cost: 160, damage: 30, range: 130, fireRate: 1.3,
-      color: '#af0', colorDark: '#7a0', projectileColor: '#df4', projectileSpeed: 550,
-      chain: 3, desc: 'Chains to 3'
-    },
-    {
-      id: 'sniper', name: 'Sniper', cost: 180, damage: 80, range: 250, fireRate: 3.0,
-      color: '#ddd', colorDark: '#888', projectileColor: '#fff', projectileSpeed: 900,
-      desc: 'Long-range snipe'
-    },
-    {
-      id: 'spike', name: 'Spikes', cost: 30, damage: 3, range: 0, fireRate: 0,
-      color: '#999', colorDark: '#555', projectileColor: '#999', projectileSpeed: 0,
-      isFloorTrap: true, desc: 'Ground trap'
+      id: 'mine', name: 'Gold Mine', cost: 110, color: '#ffd75a', hits: 'none', kind: 'mine',
+      damage: 0, range: 0, reload: 0, income: 14,
+      desc: 'Digs up gold at the end of every wave.',
+      strong: 'Economy', weak: 'Cannot attack',
+      tiers: [{}, { income: 24 }, { income: 36 }],
+      branches: [
+        { id: 'bank', name: 'Bank', desc: 'Pays interest on the gold you keep (up to a limit).',
+          t4: { income: 40, interest: 0.03, interestCap: 60 },
+          t5: { income: 50, interest: 0.05, interestCap: 110 } },
+        { id: 'alchemist', name: 'Alchemist', desc: 'Enemies dying nearby drop extra gold.',
+          t4: { income: 40, range: 3, bounty: 2 },
+          t5: { income: 50, range: 3.5, bounty: 4 } }
+      ]
     }
   ];
 
-  /* ── Upgrade multipliers per tier ── */
-  const UPGRADE_COST_MULT = [0, 0.6, 1.0, 1.5];
-  const UPGRADE_DAMAGE_MULT = [1, 1.4, 1.8, 2.4];
-  const UPGRADE_RANGE_MULT = [1, 1.1, 1.2, 1.35];
+  const TOWER_BY_ID = {};
+  for (let i = 0; i < TOWER_TYPES.length; ++i) {
+    TOWER_TYPES[i].index = i;
+    TOWER_BY_ID[TOWER_TYPES[i].id] = TOWER_TYPES[i];
+    TOWER_TYPES[i].colorDark = shade(TOWER_TYPES[i].color, -0.45);
+  }
+
+  // Upgrade cost to reach tier n (index n), as a multiple of the build cost
+  const TIER_COST = [0, 0, 0.7, 1.1, 1.8, 2.8];
+
+  const TARGET_MODES = ['first', 'last', 'strong', 'close'];
+  const TARGET_LABELS = { first: 'First', last: 'Last', strong: 'Strong', close: 'Close' };
+  const TARGET_DESC = {
+    first: 'The enemy furthest along the path',
+    last: 'The enemy that just entered the range',
+    strong: 'The enemy with the most health',
+    close: 'The enemy nearest to the tower'
+  };
 
   /* ══════════════════════════════════════════════════════════════════
      ENEMY DEFINITIONS
-     Types: normal, fast, armored, flying, boss, healer, swarm, shield
      ══════════════════════════════════════════════════════════════════ */
 
   const ENEMY_TYPES = {
     normal:  { hp: 40,  speed: 40, bounty: 10, color: '#c44', radius: 6 },
     fast:    { hp: 25,  speed: 70, bounty: 12, color: '#4c4', radius: 5 },
-    armored: { hp: 120, speed: 25, bounty: 25, color: '#888', radius: 8 },
-    flying:  { hp: 35,  speed: 50, bounty: 15, color: '#88f', radius: 5 },
-    boss:    { hp: 500, speed: 20, bounty: 100, color: '#f0f', radius: 12 },
+    armored: { hp: 120, speed: 25, bounty: 25, color: '#888', radius: 8, armor: 4 },
+    flying:  { hp: 35,  speed: 50, bounty: 15, color: '#88f', radius: 5, flying: true },
+    boss:    { hp: 500, speed: 20, bounty: 100, color: '#f0f', radius: 12, armor: 6, boss: true },
     healer:  { hp: 60,  speed: 35, bounty: 20, color: '#4f4', radius: 6, heals: true },
     swarm:   { hp: 15,  speed: 60, bounty: 5,  color: '#fa0', radius: 4 },
     shield:  { hp: 80,  speed: 30, bounty: 30, color: '#4ff', radius: 7, shielded: true }
   };
 
   /* ══════════════════════════════════════════════════════════════════
-     MAPS -- 12 maps with paths defined as waypoint sequences
-     Grid: 0 = buildable, 1 = path, 2 = blocked
+     MAPS -- paths are waypoint sequences on a 25 x 17 grid
      ══════════════════════════════════════════════════════════════════ */
 
   const MAPS = [
@@ -176,20 +273,18 @@
 
   /* Tower shots are throttled so a full board does not turn into noise */
   const SHOT_SOUNDS = {
-    arrow: ['shoot', 1.4], cannon: ['thud', 1.2], frost: ['blip', 1.6], lightning: ['zap', 1],
-    laser: ['laser', 1.3], poison: ['bounce', 0.8], tesla: ['zap', 1.3], mortar: ['thud', 0.8],
-    flame: ['whoosh', 1.5], ice: ['blip', 1.3], fire: ['whoosh', 1.2], chainlightning: ['zap', 0.8],
-    sniper: ['shoot', 0.7]
+    arrow: ['shoot', 1.4], cannon: ['thud', 1.1], frost: ['blip', 1.6], tesla: ['zap', 1.1],
+    flame: ['whoosh', 1.5], poison: ['bounce', 0.8], laser: ['laser', 1.3], sniper: ['shoot', 0.6]
   };
-  let lastShotSoundAt = 0;
+  const lastShotSoundAt = {};
 
   function playShotSound(def) {
     const now = performance.now();
     const snd = SHOT_SOUNDS[def.id];
-    if (!snd || now - lastShotSoundAt < 90)
+    if (!snd || now - (lastShotSoundAt[def.id] || 0) < 110)
       return;
-    lastShotSoundAt = now;
-    audio.play(snd[0], { pitch: snd[1] * (0.95 + Math.random() * 0.1), volume: 0.35 });
+    lastShotSoundAt[def.id] = now;
+    audio.play(snd[0], { pitch: snd[1] * (0.95 + Math.random() * 0.1), volume: 0.3 });
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -205,13 +300,13 @@
   let gameSpeed = 1;
   let selectedTowerType = -1;   // tower type chosen in the build bar, -1 = none
   let selectedTower = null;
-  let hoverCell = null;
-  let hoverPoint = null;
 
   let towers = [];
   let enemies = [];
   let projectiles = [];
-  let floorEffects = [];
+  let clouds = [];              // poison clouds
+  let fxLines = [];             // lightning arcs, sniper tracers (drawn briefly)
+  let floorEffects = [];        // burning ground and ice patches
   let pathCells = new Set();
   let waveEnemies = [];
   let spawnTimer = 0;
@@ -228,25 +323,24 @@
   let warningActive = false;
   let warningPulse = 0;
 
-  /* ── Tower angle tracking for turret rotation ── */
-  let towerAngles = new Map();
-
   /* ── Global animation timer ── */
   let animTime = 0;
 
   /* ── Run statistics and HUD bookkeeping ── */
-  let runStats = { kills: 0, gold: 0 };
+  let runStats = { kills: 0, gold: 0, leaked: 0 };
   let waveSize = 0;                       // enemies in the current wave
   const goldHudPos = { x: 0, y: 0 };      // where gold counts up (UI units)
 
   /* ══════════════════════════════════════════════════════════════════
-     PERSISTENCE
+     PERSISTENCE -- high scores and the saved game (format 2; format 1
+     saves are converted once and then removed)
      ══════════════════════════════════════════════════════════════════ */
 
   function loadHighScores() {
     try {
       const raw = localStorage.getItem(STORAGE_HIGHSCORES);
-      if (raw) highScores = JSON.parse(raw);
+      const list = raw ? JSON.parse(raw) : [];
+      highScores = Array.isArray(list) ? list.filter(h => h && typeof h.map === 'string' && isFiniteNumber(h.waves)) : [];
     } catch (_) {
       highScores = [];
     }
@@ -271,7 +365,11 @@
     highScoresBody.innerHTML = '';
     for (let i = 0; i < highScores.length; ++i) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${i + 1}</td><td>${highScores[i].map}</td><td>${highScores[i].waves}</td>`;
+      for (const v of [i + 1, highScores[i].map, highScores[i].waves]) {
+        const td = document.createElement('td');
+        td.textContent = String(v);
+        tr.appendChild(td);
+      }
       highScoresBody.appendChild(tr);
     }
     if (!highScores.length) {
@@ -281,18 +379,20 @@
     }
   }
 
-  /* ── Saved game (plain data only; objects are rebuilt on load) ── */
-
-  const SAVE_VERSION = 1;
+  const SAVE_VERSION = 2;
   const AUTOSAVE_INTERVAL = 5; // seconds of play between autosaves
-  const ENEMY_SAVE_FIELDS = ['hp', 'maxHp', 'speed', 'baseSpeed', 'bounty', 'radius', 'pathIndex', 'pathProgress', 'x', 'y',
-    'slowTimer', 'freezeTimer', 'dotTimer', 'dotDamage', 'shieldHp', 'healCooldown'];
+  const ENEMY_SAVE_FIELDS = ['hp', 'maxHp', 'speed', 'bounty', 'radius', 'armor', 'dist', 'slowMul', 'slowTimer', 'freezeTimer', 'stunTimer',
+    'burnDps', 'burnTimer', 'poisonTimer', 'acidTimer', 'shred', 'shieldHp', 'shieldMax', 'healCooldown'];
   let autosaveTimer = 0;
   let savedGameInfo = null; // { map, wave, waves } summary for the start screen, null when no save exists
   let saveNotice = '';      // shown on the start screen when a save had to be discarded
 
   function isFiniteNumber(v) {
     return typeof v === 'number' && isFinite(v);
+  }
+
+  function num(v, fallback) {
+    return isFiniteNumber(v) ? v : fallback;
   }
 
   function isInGameState() {
@@ -305,23 +405,19 @@
       map: currentMap,
       gold, lives,
       wave: currentWave,
-      phase: state === STATE_BUILD ? 'build' : 'wave',
+      phase: state === STATE_BUILD || (state === STATE_PAUSED && pausedFrom === STATE_BUILD) ? 'build' : 'wave',
       gameSpeed, autoWaveMode, autoWaveTimer,
-      waveComplete, waveCountdown, spawnTimer,
+      waveComplete, waveCountdown, spawnTimer, waveSize,
       waveEnemies: waveEnemies.slice(),
-      stats: { kills: runStats.kills, gold: runStats.gold },
+      stats: { kills: runStats.kills, gold: runStats.gold, leaked: runStats.leaked },
       towers: towers.map(t => ({
-        col: t.col, row: t.row, type: t.type, tier: t.tier,
-        damage: t.damage, range: t.range, fireRate: t.fireRate,
-        kills: t.kills, hp: t.hp, maxHp: t.maxHp
+        col: t.col, row: t.row, type: TOWER_TYPES[t.type].id, tier: t.tier, branch: t.branch,
+        target: t.target, kills: t.kills, dealt: Math.round(t.dealt), hp: t.hp, maxHp: t.maxHp,
+        spent: t.spent, builtWave: t.builtWave
       })),
-      floorEffects: floorEffects.map(fe => ({
-        col: fe.col, row: fe.row, type: fe.type,
-        timer: fe.timer === Infinity ? -1 : fe.timer,
-        damage: fe.damage, cost: fe.cost
-      })),
+      floor: floorEffects.map(fe => ({ col: fe.col, row: fe.row, type: fe.type, timer: fe.timer, damage: fe.damage })),
       enemies: enemies.filter(e => e.hp > 0).map(e => {
-        const o = { type: e.type };
+        const o = { type: e.type, pi: e.pi };
         for (const k of ENEMY_SAVE_FIELDS)
           o[k] = e[k];
         return o;
@@ -343,23 +439,77 @@
   function clearSavedGame() {
     try {
       localStorage.removeItem(STORAGE_SAVE);
+      localStorage.removeItem(STORAGE_SAVE_V1);
     } catch (_) {}
     savedGameInfo = null;
   }
 
-  // Parses and validates a save; returns the plain data or null (with saveNotice set) when unusable.
+  /* ── Format 1 conversion ── */
+
+  // Format 1 tower types, in their old order, mapped to today's families
+  const V1_TOWERS = ['arrow', 'cannon', 'frost', 'tesla', 'laser', 'poison', 'tesla', 'cannon', 'flame', 'frost', 'flame', 'tesla', 'sniper', 'spikes'];
+  // Number of path tiles of each map in format 1 (enemy progress is kept as a share of it)
+  const V1_PATH_TILES = [43, 49, 129, 49, 25, 45, 85, 65, 41, 57, 37, 25];
+
+  function tierSpent(def, tier) {
+    let spent = def.cost;
+    for (let n = 2; n <= tier; ++n)
+      spent += Math.round(def.cost * TIER_COST[n] / 5) * 5;
+    return spent;
+  }
+
+  function migrateV1(d) {
+    if (!d || d.version !== 1 || !Number.isInteger(d.map) || d.map < 0 || d.map >= MAPS.length)
+      throw new Error('v1');
+    const out = {
+      version: 2, map: d.map, gold: num(d.gold, 0), lives: d.lives, wave: d.wave,
+      phase: d.phase === 'build' ? 'build' : 'wave',
+      gameSpeed: d.gameSpeed, autoWaveMode: !!d.autoWaveMode, autoWaveTimer: num(d.autoWaveTimer, 0),
+      waveComplete: !!d.waveComplete, waveCountdown: num(d.waveCountdown, 3), spawnTimer: num(d.spawnTimer, 0),
+      waveEnemies: Array.isArray(d.waveEnemies) ? d.waveEnemies.filter(t => ENEMY_TYPES[t]) : [],
+      towers: [], floor: [], enemies: []
+    };
+    for (const t of Array.isArray(d.towers) ? d.towers : []) {
+      if (!t || !Number.isInteger(t.type) || !V1_TOWERS[t.type]) continue;
+      const def = TOWER_BY_ID[V1_TOWERS[t.type]];
+      const tier = clamp(Number.isInteger(t.tier) ? t.tier : 1, 1, 3);
+      out.towers.push({ col: t.col, row: t.row, type: def.id, tier, branch: -1, target: 'first', kills: num(t.kills, 0), dealt: 0,
+        hp: num(t.hp, 100), maxHp: num(t.maxHp, 100), spent: tierSpent(def, tier), builtWave: -1 });
+    }
+    for (const fe of Array.isArray(d.floorEffects) ? d.floorEffects : []) {
+      if (!fe) continue;
+      if (fe.type === 'spike')
+        out.towers.push({ col: fe.col, row: fe.row, type: 'spikes', tier: 1, branch: -1, target: 'first', kills: 0, dealt: 0, hp: 100, maxHp: 100, spent: TOWER_BY_ID.spikes.cost, builtWave: -1 });
+      else if ((fe.type === 'lava' || fe.type === 'ice') && isFiniteNumber(fe.timer) && fe.timer > 0)
+        out.floor.push({ col: fe.col, row: fe.row, type: fe.type, timer: fe.timer, damage: num(fe.damage, 0) });
+    }
+    const tiles = V1_PATH_TILES[d.map] || 2;
+    for (const e of Array.isArray(d.enemies) ? d.enemies : []) {
+      if (!e || !ENEMY_TYPES[e.type] || !isFiniteNumber(e.hp) || e.hp <= 0) continue;
+      const def = ENEMY_TYPES[e.type];
+      const share = clamp((num(e.pathIndex, 0) + num(e.pathProgress, 0)) / Math.max(1, tiles - 1), 0, 0.98);
+      out.enemies.push({ type: e.type, pi: 0, share, hp: e.hp, maxHp: num(e.maxHp, e.hp), speed: num(e.baseSpeed, def.speed),
+        bounty: num(e.bounty, def.bounty), radius: num(e.radius, def.radius), armor: def.armor || 0,
+        shieldHp: num(e.shieldHp, 0), shieldMax: num(e.shieldHp, 0), slowTimer: num(e.slowTimer, 0), freezeTimer: num(e.freezeTimer, 0) });
+    }
+    return out;
+  }
+
+  // Parses and validates a save; returns plain format-2 data or null (with saveNotice set) when unusable
   function readSavedGame() {
-    let raw = null;
+    let raw = null, rawV1 = null;
     try {
       raw = localStorage.getItem(STORAGE_SAVE);
+      if (!raw)
+        rawV1 = localStorage.getItem(STORAGE_SAVE_V1);
     } catch (_) {
       return null;
     }
-    if (!raw)
+    if (!raw && !rawV1)
       return null;
 
     try {
-      const d = JSON.parse(raw);
+      const d = raw ? JSON.parse(raw) : migrateV1(JSON.parse(rawV1));
       if (!d || d.version !== SAVE_VERSION)
         throw new Error('version');
       if (!Number.isInteger(d.map) || d.map < 0 || d.map >= MAPS.length)
@@ -369,26 +519,15 @@
         throw new Error('wave');
       if (!isFiniteNumber(d.gold) || !Number.isInteger(d.lives) || d.lives <= 0)
         throw new Error('stats');
-      if (!Array.isArray(d.towers) || !Array.isArray(d.enemies) || !Array.isArray(d.floorEffects) || !Array.isArray(d.waveEnemies))
+      if (!Array.isArray(d.towers) || !Array.isArray(d.enemies) || !Array.isArray(d.waveEnemies))
         throw new Error('lists');
-      for (const t of d.towers)
-        if (!t || !Number.isInteger(t.type) || !TOWER_TYPES[t.type] || !Number.isInteger(t.col) || !Number.isInteger(t.row)
-          || t.col < 0 || t.col >= COLS || t.row < 0 || t.row >= ROWS
-          || !Number.isInteger(t.tier) || t.tier < 1 || t.tier > MAX_TIER
-          || !['damage', 'range', 'fireRate', 'kills', 'hp', 'maxHp'].every(k => isFiniteNumber(t[k])))
-          throw new Error('tower');
-      for (const fe of d.floorEffects)
-        if (!fe || ['spike', 'lava', 'ice'].indexOf(fe.type) < 0 || !Number.isInteger(fe.col) || !Number.isInteger(fe.row)
-          || !isFiniteNumber(fe.timer) || !isFiniteNumber(fe.damage || 0))
-          throw new Error('floor');
-      const pathLen = getPathPoints(mapDef).length;
-      for (const e of d.enemies)
-        if (!e || !ENEMY_TYPES[e.type] || !ENEMY_SAVE_FIELDS.every(k => isFiniteNumber(e[k]))
-          || !Number.isInteger(e.pathIndex) || e.pathIndex < 0 || e.pathIndex >= pathLen - 1)
-          throw new Error('enemy');
-      for (const type of d.waveEnemies)
-        if (!ENEMY_TYPES[type])
-          throw new Error('queue');
+      if (rawV1) {
+        // Converted once: from now on the game lives in the new slot
+        try {
+          localStorage.setItem(STORAGE_SAVE, JSON.stringify(d));
+          localStorage.removeItem(STORAGE_SAVE_V1);
+        } catch (_) {}
+      }
       return d;
     } catch (_) {
       clearSavedGame();
@@ -410,59 +549,70 @@
     }
 
     loadMap(d.map);
-    gold = d.gold;
+    gold = Math.max(0, Math.floor(d.gold));
     lives = d.lives;
     currentWave = d.wave;
     gameSpeed = [1, 2, 3].indexOf(d.gameSpeed) >= 0 ? d.gameSpeed : (isFiniteNumber(d.gameSpeed) && d.gameSpeed > 3 ? 3 : 1);
     autoWaveMode = !!d.autoWaveMode;
-    autoWaveTimer = isFiniteNumber(d.autoWaveTimer) ? d.autoWaveTimer : 0;
+    autoWaveTimer = num(d.autoWaveTimer, 0);
     waveComplete = d.phase === 'build' ? true : !!d.waveComplete;
-    waveCountdown = isFiniteNumber(d.waveCountdown) ? d.waveCountdown : 3;
-    spawnTimer = isFiniteNumber(d.spawnTimer) ? d.spawnTimer : 0;
-    waveEnemies = d.waveEnemies.slice();
-    waveSize = waveEnemies.length + d.enemies.length;
-    if (d.stats && isFiniteNumber(d.stats.kills) && isFiniteNumber(d.stats.gold))
-      runStats = { kills: d.stats.kills, gold: d.stats.gold };
+    waveCountdown = num(d.waveCountdown, 3);
+    spawnTimer = num(d.spawnTimer, 0);
+    waveEnemies = d.waveEnemies.filter(t => ENEMY_TYPES[t]);
+    if (d.stats)
+      runStats = { kills: num(d.stats.kills, 0), gold: num(d.stats.gold, 0), leaked: num(d.stats.leaked, 0) };
+
+    // Towers: anything that no longer fits the map is refunded
+    for (const o of d.towers) {
+      const def = o && TOWER_BY_ID[o.type];
+      if (!def || !Number.isInteger(o.col) || !Number.isInteger(o.row)) continue;
+      const tier = clamp(Number.isInteger(o.tier) ? o.tier : 1, 1, MAX_TIER);
+      const branch = tier >= BRANCH_TIER ? (o.branch === 1 ? 1 : 0) : -1;
+      const spent = num(o.spent, tierSpent(def, tier));
+      if (!canBuildAt(def.index, o.col, o.row)) {
+        gold += spent;
+        continue;
+      }
+      const t = makeTower(o.col, o.row, def.index, tier, branch);
+      t.target = TARGET_MODES.indexOf(o.target) >= 0 ? o.target : 'first';
+      t.kills = num(o.kills, 0);
+      t.dealt = num(o.dealt, 0);
+      t.maxHp = Math.max(1, num(o.maxHp, 100));
+      t.hp = clamp(num(o.hp, t.maxHp), 1, t.maxHp);
+      t.spent = spent;
+      t.builtWave = num(o.builtWave, -1);
+      towers.push(t);
+    }
+
+    floorEffects = [];
+    for (const fe of Array.isArray(d.floor) ? d.floor : [])
+      if (fe && (fe.type === 'lava' || fe.type === 'ice') && isFiniteNumber(fe.timer) && fe.timer > 0)
+        addFloorEffect(fe.col, fe.row, fe.type, fe.timer, num(fe.damage, 0));
+
+    enemies = [];
+    for (const o of d.enemies) {
+      if (!o || !ENEMY_TYPES[o.type] || !isFiniteNumber(o.hp) || o.hp <= 0) continue;
+      const pi = Number.isInteger(o.pi) && o.pi >= 0 && o.pi < paths.length ? o.pi : 0;
+      const e = spawnEnemy(o.type, pi);
+      for (const k of ENEMY_SAVE_FIELDS)
+        if (isFiniteNumber(o[k]))
+          e[k] = o[k];
+      if (isFiniteNumber(o.share))
+        e.dist = o.share * paths[pi].total;
+      e.dist = clamp(e.dist, 0, paths[pi].total - 1);
+      e.maxHp = Math.max(e.maxHp, e.hp);
+      pathPos(paths[pi], e.dist, e);
+    }
+    waveSize = Math.max(num(d.waveSize, 0), waveEnemies.length + enemies.length);
     shownGold = gold;
 
-    towers = d.towers.map(t => ({
-      col: t.col, row: t.row,
-      x: t.col * CELL + CELL / 2,
-      y: t.row * CELL + CELL / 2,
-      type: t.type, tier: t.tier,
-      damage: t.damage, range: t.range, fireRate: t.fireRate,
-      fireCooldown: 0,
-      kills: t.kills, hp: t.hp, maxHp: t.maxHp
-    }));
-    for (const t of towers)
-      towerAngles.set(t, 0);
-
-    floorEffects = d.floorEffects.map(fe => ({
-      col: fe.col, row: fe.row,
-      x: fe.col * CELL + CELL / 2,
-      y: fe.row * CELL + CELL / 2,
-      type: fe.type,
-      timer: fe.timer < 0 ? Infinity : fe.timer,
-      damage: fe.damage,
-      cost: fe.cost
-    }));
-
-    enemies = d.enemies.map(e => {
-      const def = ENEMY_TYPES[e.type];
-      const enemy = {
-        type: e.type,
-        color: def.color,
-        isBoss: e.type === 'boss',
-        isHealer: def.heals || false,
-        isShielded: def.shielded || false
-      };
-      for (const k of ENEMY_SAVE_FIELDS)
-        enemy[k] = e[k];
-      return enemy;
-    });
-
     // A wave in progress resumes paused so the player can get their bearings
-    state = d.phase === 'build' ? STATE_BUILD : STATE_PAUSED;
+    if (d.phase === 'build')
+      state = STATE_BUILD;
+    else {
+      state = STATE_PAUSED;
+      pausedFrom = STATE_PLAYING;
+    }
     saveNotice = '';
     autosaveTimer = 0;
     updateWindowTitle();
@@ -475,8 +625,10 @@
       resetAndStart();
       return;
     }
-    if (state === STATE_PLAYING)
+    if (state === STATE_PLAYING) {
+      pausedFrom = state;
       state = STATE_PAUSED;
+    }
     // The inner box may still carry the hidden flag from the previous answer
     for (const box of document.querySelectorAll('#dlg-new-game .dialog'))
       box.hidden = false;
@@ -489,8 +641,12 @@
   }
 
   /* ══════════════════════════════════════════════════════════════════
-     PATH UTILITIES
+     PATHS -- polylines with cumulative lengths; enemies store how far
+     along their path they are
      ══════════════════════════════════════════════════════════════════ */
+
+  let paths = [];
+  let pathPoints = [];          // points of the first path (markers, previews)
 
   function walkPath(waypoints, visit) {
     for (let i = 0; i < waypoints.length - 1; ++i) {
@@ -508,22 +664,89 @@
     visit(last[0], last[1]);
   }
 
-  function buildPathCells(mapDef) {
-    pathCells = new Set();
-    walkPath(mapDef.path, (x, y) => pathCells.add(`${x},${y}`));
+  function mapPaths(mapDef) {
+    return mapDef.paths || [mapDef.path];
   }
 
-  function getPathPoints(mapDef) {
+  function buildPathCells(mapDef) {
+    pathCells = new Set();
+    for (const wp of mapDef.paths || [mapDef.path])
+      walkPath(wp, (x, y) => pathCells.add(`${x},${y}`));
+  }
+
+  function makePath(points) {
+    const cum = [0];
+    for (let i = 1; i < points.length; ++i)
+      cum.push(cum[i - 1] + Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y));
+    return { pts: points, cum, total: cum[cum.length - 1] };
+  }
+
+  function getPathPoints(waypoints) {
     const points = [];
-    walkPath(mapDef.path, (x, y) => points.push({ x: x * CELL + CELL / 2, y: y * CELL + CELL / 2 }));
+    walkPath(waypoints, (x, y) => points.push({ x: x * CELL + CELL / 2, y: y * CELL + CELL / 2 }));
+    // Enemies enter from just outside the field and leave past the exit
+    const extend = (a, b) => ({ x: a.x + (a.x - b.x) * 1.2, y: a.y + (a.y - b.y) * 1.2 });
+    if (points.length > 1) {
+      points.unshift(extend(points[0], points[1]));
+      points.push(extend(points[points.length - 1], points[points.length - 2]));
+    }
     return points;
   }
 
-  let pathPoints = [];
+  function buildPaths(mapDef) {
+    paths = mapPaths(mapDef).map(wp => makePath(getPathPoints(wp)));
+    pathPoints = paths[0].pts;
+  }
+
+  // Position (and heading) at a distance along a path
+  function pathPos(path, dist, out) {
+    const cum = path.cum, pts = path.pts;
+    if (dist <= 0) {
+      out.x = pts[0].x; out.y = pts[0].y;
+      out.angle = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
+      return out;
+    }
+    let lo = 0, hi = cum.length - 1;
+    if (dist >= path.total) {
+      out.x = pts[hi].x; out.y = pts[hi].y;
+      out.angle = Math.atan2(pts[hi].y - pts[hi - 1].y, pts[hi].x - pts[hi - 1].x);
+      return out;
+    }
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (cum[mid] <= dist) lo = mid;
+      else hi = mid;
+    }
+    const seg = cum[hi] - cum[lo] || 1;
+    const t = (dist - cum[lo]) / seg;
+    out.x = pts[lo].x + (pts[hi].x - pts[lo].x) * t;
+    out.y = pts[lo].y + (pts[hi].y - pts[lo].y) * t;
+    out.angle = Math.atan2(pts[hi].y - pts[lo].y, pts[hi].x - pts[lo].x);
+    return out;
+  }
 
   /* ══════════════════════════════════════════════════════════════════
      MAP LOADING
      ══════════════════════════════════════════════════════════════════ */
+
+  function resetBattlefield() {
+    towers = [];
+    enemies = [];
+    projectiles = [];
+    clouds = [];
+    fxLines = [];
+    floorEffects = [];
+    selectedTower = null;
+    selectedTowerType = -1;
+    waveEnemies = [];
+    spawnTimer = 0;
+    waveComplete = true;
+    waveCountdown = 3;
+    warningActive = false;
+    warningTimer = 0;
+    autoWaveTimer = 0;
+    waveSize = 0;
+  }
 
   function loadMap(index) {
     currentMap = index;
@@ -532,160 +755,216 @@
     lives = mapDef.startLives;
     totalWaves = mapDef.waves;
     currentWave = 0;
-    towers = [];
-    enemies = [];
-    projectiles = [];
-    floorEffects = [];
-    selectedTower = null;
     gameSpeed = 1;
-    waveEnemies = [];
-    spawnTimer = 0;
-    waveComplete = true;
-    waveCountdown = 3;
-    towerAngles = new Map();
-    warningActive = false;
-    warningTimer = 0;
-    autoWaveTimer = 0;
-
+    resetBattlefield();
     buildPathCells(mapDef);
-    pathPoints = getPathPoints(mapDef);
-    runStats = { kills: 0, gold: 0 };
+    buildPaths(mapDef);
+    runStats = { kills: 0, gold: 0, leaked: 0 };
     shownGold = gold;
-    selectedTowerType = -1;
-
     state = STATE_BUILD;
     updateWindowTitle();
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     TOWER STATS
+     ══════════════════════════════════════════════════════════════════ */
+
+  // Effective stats of a tower type at a tier / branch (range and splash in px)
+  function computeStats(def, tier, branch) {
+    const s = {};
+    for (const k in def)
+      if (typeof def[k] === 'number' || typeof def[k] === 'boolean')
+        s[k] = def[k];
+    s.kind = def.kind;
+    s.hits = def.hits;
+    let mods;
+    if (tier <= 3)
+      mods = def.tiers[tier - 1] || {};
+    else {
+      const b = def.branches[branch] || def.branches[0];
+      mods = tier >= 5 ? b.t5 : b.t4;
+    }
+    for (const k in mods)
+      s[k] = MUL_KEYS[k] ? def[k] * mods[k] : mods[k];
+    s.damage = Math.round(s.damage * 10) / 10;
+    s.rangePx = s.range * CELL;
+    s.splashPx = (s.splash || 0) * CELL;
+    s.chainPx = (s.chainRange || 0) * CELL;
+    s.cloudPx = (s.cloud || 0) * CELL;
+    return s;
+  }
+
+  function towerStats(t) {
+    if (!t.stats)
+      t.stats = computeStats(TOWER_TYPES[t.type], t.tier, t.branch);
+    return t.stats;
+  }
+
+  function towerDef(t) {
+    return TOWER_TYPES[t.type];
+  }
+
+  // Display name: the branch name once a branch is chosen
+  function towerName(t) {
+    const def = towerDef(t);
+    return t.branch >= 0 ? def.branches[t.branch].name : def.name;
   }
 
   /* ══════════════════════════════════════════════════════════════════
      TOWER PLACEMENT & UPGRADE & SELL
      ══════════════════════════════════════════════════════════════════ */
 
+  function towerAt(col, row) {
+    for (const t of towers)
+      if (t.col === col && t.row === row)
+        return t;
+    return null;
+  }
+
   function canPlace(col, row) {
     if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return false;
     if (pathCells.has(`${col},${row}`)) return false;
-    for (const t of towers)
-      if (t.col === col && t.row === row) return false;
-    return true;
+    return !towerAt(col, row);
   }
 
-  function canPlaceSpike(col, row) {
+  function canPlaceTrap(col, row) {
     if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return false;
-    if (!pathCells.has(`${col},${row}`)) return false; // spikes must go ON the path
-    // No duplicate spikes on same cell
-    for (const fe of floorEffects)
-      if (fe.col === col && fe.row === row && fe.type === 'spike') return false;
-    return true;
+    if (!pathCells.has(`${col},${row}`)) return false;
+    return !towerAt(col, row);
   }
 
-  function placeTower(col, row, typeIndex) {
-    const def = TOWER_TYPES[typeIndex];
-    if (gold < def.cost) {
-      audio.play('error');
-      return false;
-    }
+  function canBuildAt(typeIndex, col, row) {
+    return TOWER_TYPES[typeIndex].trap ? canPlaceTrap(col, row) : canPlace(col, row);
+  }
 
-    // Spike traps are placed as floor effects on path cells
-    if (def.isFloorTrap) {
-      if (!canPlaceSpike(col, row)) return false;
-      gold -= def.cost;
-      const fx = col * CELL + CELL / 2;
-      const fy = row * CELL + CELL / 2;
-      floorEffects.push({
-        col, row,
-        x: fx, y: fy,
-        type: 'spike',
-        timer: Infinity, // permanent until sold
-        damage: def.damage,
-        cost: def.cost
-      });
-      particles.sparkle(fx, fy, 8, { color: '#999', speed: 2 });
-      audio.play('click', { pitch: 0.8 });
-      floatingText.add(fx, fy - 16, `-${def.cost}g`, { color: '#fa0', font: 'bold 11px sans-serif' });
-      return true;
-    }
-
-    if (!canPlace(col, row)) return false;
-
-    gold -= def.cost;
-    const tower = {
+  function makeTower(col, row, typeIndex, tier, branch) {
+    return {
       col, row,
       x: col * CELL + CELL / 2,
       y: row * CELL + CELL / 2,
       type: typeIndex,
-      tier: 1,
-      damage: def.damage,
-      range: def.range,
-      fireRate: def.fireRate,
-      fireCooldown: 0,
+      tier: tier || 1,
+      branch: branch === undefined ? -1 : branch,
+      target: 'first',
+      cooldown: 0,
+      angle: -Math.PI / 2,
       kills: 0,
+      dealt: 0,
       hp: 100,
-      maxHp: 100
+      maxHp: 100,
+      spent: 0,
+      builtWave: -1,
+      flash: 0,
+      recoil: 0,
+      beamTarget: null,
+      beamTime: 0,
+      beamTargets: [],
+      stats: null
     };
+  }
+
+  function placeTower(col, row, typeIndex) {
+    const def = TOWER_TYPES[typeIndex];
+    if (!canBuildAt(typeIndex, col, row))
+      return false;
+    if (gold < def.cost) {
+      audio.play('error');
+      return false;
+    }
+    gold -= def.cost;
+    const tower = makeTower(col, row, typeIndex, 1, -1);
+    tower.spent = def.cost;
+    tower.builtWave = state === STATE_BUILD ? currentWave : -1;
     towers.push(tower);
-    towerAngles.set(tower, 0);
-
     particles.sparkle(tower.x, tower.y, 12, { color: def.color, speed: 3 });
-    audio.play('drop');
-    floatingText.add(tower.x, tower.y - 16, `-${def.cost}g`, { color: '#fa0', font: 'bold 11px sans-serif' });
-
+    audio.play(def.trap ? 'click' : 'drop', def.trap ? { pitch: 0.8 } : undefined);
+    floatingText.add(tower.x, tower.y - 16, `-${def.cost}`, { color: '#ffd75a', font: 'bold 11px sans-serif' });
     return true;
   }
 
-  function upgradeTower(tower) {
+  function getUpgradeCost(tower) {
+    if (tower.tier >= MAX_TIER) return 0;
+    return Math.round(TOWER_TYPES[tower.type].cost * TIER_COST[tower.tier + 1] / 5) * 5;
+  }
+
+  // branch: required when going from tier 3 to 4
+  function upgradeTower(tower, branch) {
     if (tower.tier >= MAX_TIER) return false;
+    if (tower.tier + 1 === BRANCH_TIER && branch !== 0 && branch !== 1) return false;
     const def = TOWER_TYPES[tower.type];
-    const upgradeCost = Math.floor(def.cost * UPGRADE_COST_MULT[tower.tier]);
-    if (gold < upgradeCost) return false;
-
-    gold -= upgradeCost;
+    const cost = getUpgradeCost(tower);
+    if (gold < cost) return false;
+    gold -= cost;
+    tower.spent += cost;
     ++tower.tier;
-    tower.damage = Math.floor(def.damage * UPGRADE_DAMAGE_MULT[tower.tier - 1]);
-    tower.range = Math.floor(def.range * UPGRADE_RANGE_MULT[tower.tier - 1]);
-    tower.fireRate = def.fireRate * 0.85;
-
-    particles.sparkle(tower.x, tower.y, 15, { color: '#ff0', speed: 4 });
+    if (tower.tier === BRANCH_TIER)
+      tower.branch = branch;
+    tower.stats = null;
+    const hpBefore = tower.hp / tower.maxHp;
+    tower.maxHp = 100 + (tower.tier - 1) * 25;
+    tower.hp = tower.maxHp * hpBefore;
+    particles.sparkle(tower.x, tower.y, 15, { color: '#ffd75a', speed: 4 });
     particles.burst(tower.x, tower.y, 8, { color: def.color, speed: 2, life: 0.5 });
-    floatingText.add(tower.x, tower.y - 16, `Tier ${tower.tier}!`, { color: '#ff0', font: 'bold 12px sans-serif' });
+    floatingText.add(tower.x, tower.y - 16, tower.tier === BRANCH_TIER ? towerName(tower) + '!' : `Tier ${toRoman(tower.tier)}!`, { color: '#ffd75a', font: 'bold 12px sans-serif' });
     screenShake.trigger(2, 80);
-    audio.play('powerup', { pitch: 0.9 + tower.tier * 0.1 });
-
+    audio.play('powerup', { pitch: 0.85 + tower.tier * 0.08 });
     return true;
+  }
+
+  function getSellValue(tower) {
+    // Full refund for a tower built during this build phase
+    if (state === STATE_BUILD && tower.builtWave === currentWave)
+      return tower.spent;
+    return Math.floor(tower.spent * 0.6);
   }
 
   function sellTower(tower) {
-    const def = TOWER_TYPES[tower.type];
-    // Calculate total investment: base cost + all upgrade costs
-    let totalInvested = def.cost;
-    for (let t = 1; t < tower.tier; ++t)
-      totalInvested += Math.floor(def.cost * UPGRADE_COST_MULT[t]);
-    const refund = Math.floor(totalInvested * 0.5);
+    const refund = getSellValue(tower);
     gold += refund;
     const idx = towers.indexOf(tower);
     if (idx !== -1) towers.splice(idx, 1);
-    towerAngles.delete(tower);
-    floatingText.add(tower.x, tower.y - 16, `+${refund}g`, { color: '#8f8', font: 'bold 11px sans-serif' });
+    floatingText.add(tower.x, tower.y - 16, `+${refund}`, { color: '#ffd75a', font: 'bold 11px sans-serif' });
     particles.burst(tower.x, tower.y, 8, { color: '#aaa', speed: 2, life: 0.4 });
     audio.play('coin');
     if (selectedTower === tower)
       selectedTower = null;
   }
 
-  function getUpgradeCost(tower) {
-    if (tower.tier >= MAX_TIER) return 0;
-    return Math.floor(TOWER_TYPES[tower.type].cost * UPGRADE_COST_MULT[tower.tier]);
+  function repairCost(t) {
+    return t.hp >= t.maxHp ? 0 : Math.max(1, Math.floor((t.maxHp - t.hp) * 0.3));
   }
 
-  function getSellValue(tower) {
-    const def = TOWER_TYPES[tower.type];
-    let totalInvested = def.cost;
-    for (let t = 1; t < tower.tier; ++t)
-      totalInvested += Math.floor(def.cost * UPGRADE_COST_MULT[t]);
-    return Math.floor(totalInvested * 0.5);
+  function repairTower(tower) {
+    const cost = repairCost(tower);
+    if (cost <= 0 || gold < cost) return false;
+    gold -= cost;
+    tower.hp = tower.maxHp;
+    particles.sparkle(tower.x, tower.y, 8, { color: '#4f4', speed: 2 });
+    audio.play('pickup');
+    floatingText.add(tower.x, tower.y - 16, `Repaired -${cost}`, { color: '#8f8', font: 'bold 9px sans-serif' });
+    return true;
+  }
+
+  function destroyTower(tower) {
+    const idx = towers.indexOf(tower);
+    if (idx === -1) return;
+    towers.splice(idx, 1);
+    if (selectedTower === tower)
+      selectedTower = null;
+    particles.burst(tower.x, tower.y, 15, { color: '#f44', speed: 4, life: 0.5 });
+    floatingText.add(tower.x, tower.y - 16, 'DESTROYED!', { color: '#f44', font: 'bold 10px sans-serif' });
+    screenShake.trigger(4, 200);
+    audio.play('explode', { pitch: 1.3, volume: 0.7 });
+  }
+
+  function cycleTargeting(tower, dir) {
+    const i = TARGET_MODES.indexOf(tower.target);
+    tower.target = TARGET_MODES[(i + (dir || 1) + TARGET_MODES.length) % TARGET_MODES.length];
+    audio.play('click', { pitch: 1.1 });
   }
 
   /* ══════════════════════════════════════════════════════════════════
-     WAVE SPAWNING
+     WAVES
      ══════════════════════════════════════════════════════════════════ */
 
   function generateWave(waveNum) {
@@ -710,12 +989,9 @@
         type = 'swarm';
       queue.push(type);
     }
-    // Swarm burst on even waves
     if (waveNum % 2 === 1 && waveNum >= 3)
       for (let i = 0; i < 4; ++i)
         queue.push('swarm');
-
-    // Boss wave every 5 waves
     if (waveNum % 5 === 4)
       queue.push('boss');
     return queue;
@@ -732,11 +1008,11 @@
   }
 
   function startNextWave() {
+    if (state !== STATE_BUILD) return;
     if (currentWave >= totalWaves) {
       triggerVictory();
       return;
     }
-
     waveEnemies = generateWave(currentWave);
     waveSize = waveEnemies.length;
     spawnTimer = 0;
@@ -745,16 +1021,33 @@
     state = STATE_PLAYING;
     warningActive = false;
     warningTimer = 0;
-
     audio.play('select', { pitch: 0.75 });
-
-    // Wave bonus/interest
-    const bonus = Math.floor(gold * 0.05) + 10;
-    gold += bonus;
-    runStats.gold += bonus;
-    floatingText.add(WORLD_W / 2, 40, `+${bonus} gold wave bonus`, { color: '#8f8', font: 'bold 12px sans-serif' });
     updateWindowTitle();
     saveGame();
+  }
+
+  // Gold paid when a wave is cleared: flat bonus plus mines and banks
+  function payWaveIncome() {
+    let bonus = 10 + currentWave * 2;
+    let bankInterest = 0, bankCap = 0;
+    for (const t of towers) {
+      const s = towerStats(t);
+      if (s.income) {
+        bonus += s.income;
+        floatingText.add(t.x, t.y - 16, `+${s.income}`, { color: '#ffd75a', font: 'bold 12px sans-serif' });
+        particles.sparkle(t.x, t.y, 6, { color: '#ffd75a', speed: 2 });
+      }
+      if (s.interest) {
+        bankInterest += s.interest;
+        bankCap += s.interestCap;
+      }
+    }
+    if (bankInterest > 0)
+      bonus += Math.min(bankCap, Math.floor(gold * bankInterest));
+    gold += bonus;
+    runStats.gold += bonus;
+    floatingText.add(WORLD_W / 2, 40, `Wave cleared  +${bonus} gold`, { color: '#ffd75a', font: 'bold 14px sans-serif' });
+    goldPulse = 1;
   }
 
   function beginPreWaveWarning() {
@@ -764,124 +1057,502 @@
     warningPulse = 0;
   }
 
-  function spawnEnemy(type) {
+  function spawnEnemy(type, pathIndex) {
     const def = ENEMY_TYPES[type];
     const waveScale = 1 + currentWave * 0.1;
-    enemies.push({
+    const pi = pathIndex === undefined ? (spawnCounter++ % paths.length) : pathIndex;
+    const hp = Math.floor(def.hp * waveScale);
+    const e = {
       type,
-      hp: Math.floor(def.hp * waveScale),
-      maxHp: Math.floor(def.hp * waveScale),
+      hp, maxHp: hp,
       speed: def.speed,
-      baseSpeed: def.speed,
       bounty: def.bounty,
-      color: def.color,
       radius: def.radius,
-      pathIndex: 0,
-      pathProgress: 0,
-      x: pathPoints[0].x,
-      y: pathPoints[0].y,
-      slowTimer: 0,
-      freezeTimer: 0,
-      dotTimer: 0,
-      dotDamage: 0,
-      isBoss: type === 'boss',
-      isHealer: def.heals || false,
-      isShielded: def.shielded || false,
-      shieldHp: def.shielded ? Math.floor(def.hp * waveScale * 0.4) : 0,
-      healCooldown: 0
-    });
+      armor: def.armor || 0,
+      pi, dist: 0,
+      x: 0, y: 0, angle: 0,
+      slowMul: 1, slowTimer: 0, freezeTimer: 0, stunTimer: 0,
+      burnDps: 0, burnTimer: 0, poisonDps: 0, poisonTimer: 0, acidTimer: 0, shred: 0,
+      shieldHp: def.shielded ? Math.floor(hp * 0.4) : 0,
+      shieldMax: def.shielded ? Math.floor(hp * 0.4) : 0,
+      healCooldown: 1.5,
+      hitFlash: 0, walk: Math.random() * 10,
+      lastHitBy: null, plague: false
+    };
+    pathPos(paths[pi], 0, e);
+    enemies.push(e);
+    return e;
+  }
+  let spawnCounter = 0;
+
+  function enemyFlags(e) {
+    return ENEMY_TYPES[e.type];
   }
 
   /* ══════════════════════════════════════════════════════════════════
-     TARGETING & PROJECTILES
+     DAMAGE
      ══════════════════════════════════════════════════════════════════ */
 
-  function findTarget(tower) {
-    let closest = null;
-    let bestDist = tower.range + 1;
-    for (const enemy of enemies) {
-      if (enemy.hp <= 0)
+  // kind: 'phys' | 'fire' | 'cold' | 'energy' | 'poison'
+  // opts: { pierce: 0..1 share of armor ignored, dot: true for damage over time }
+  function hurt(e, amount, src, kind, opts) {
+    if (e.hp <= 0 || amount <= 0) return 0;
+    let dmg = amount;
+    if (e.freezeTimer > 0 && kind !== 'cold') dmg *= 1.25;
+    if (e.acidTimer > 0) dmg *= 1.25;
+    // Shields soak everything but poison; energy hits them twice as hard
+    if (e.shieldHp > 0 && kind !== 'poison') {
+      const mul = kind === 'energy' ? 2 : 1;
+      const absorb = Math.min(e.shieldHp, dmg * mul);
+      e.shieldHp -= absorb;
+      dmg -= absorb / mul;
+      if (e.shieldHp <= 0)
+        particles.burst(e.x, e.y, 10, { color: '#7ae8ff', speed: 3, life: 0.4 });
+    }
+    // Armor takes a flat bite out of every hit (not out of poison or burns)
+    if (dmg > 0 && kind !== 'poison' && !(opts && opts.dot)) {
+      const armor = Math.max(0, e.armor - e.shred) * (e.acidTimer > 0 ? 0.5 : 1) * (1 - ((opts && opts.pierce) || 0));
+      if (armor > 0)
+        dmg = Math.max(dmg * 0.25, dmg - armor);
+    }
+    e.hp -= dmg;
+    if (!(opts && opts.dot))
+      e.hitFlash = 0.1;
+    if (src) {
+      e.lastHitBy = src;
+      src.dealt += dmg;
+    }
+    return dmg;
+  }
+
+  function applySlow(e, mul, time) {
+    if (enemyFlags(e).boss) mul = 1 - (1 - mul) * 0.6;
+    if (mul < e.slowMul || e.slowTimer <= 0) e.slowMul = Math.min(e.slowTimer > 0 ? e.slowMul : 1, mul);
+    e.slowTimer = Math.max(e.slowTimer, time);
+  }
+
+  function enemiesNear(x, y, r, filter) {
+    const out = [];
+    const r2 = r * r;
+    for (const e of enemies) {
+      if (e.hp <= 0) continue;
+      const dx = e.x - x, dy = e.y - y;
+      if (dx * dx + dy * dy <= (r + e.radius) * (r + e.radius) && (!filter || filter(e)))
+        out.push(e);
+    }
+    return out;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     TARGETING
+     ══════════════════════════════════════════════════════════════════ */
+
+  function canHit(s, e) {
+    const f = enemyFlags(e);
+    if (s.hits === 'ground' && f.flying) return false;
+    if (s.hits === 'air' && !f.flying) return false;
+    return true;
+  }
+
+  function targetScore(mode, t, e) {
+    switch (mode) {
+      case 'last': return -e.dist;
+      case 'strong': return e.hp + e.shieldHp;
+      case 'close': return -Math.hypot(e.x - t.x, e.y - t.y);
+      default: return e.dist + (paths[e.pi] ? -paths[e.pi].total : 0);   // closest to its exit
+    }
+  }
+
+  function findTargets(t, s, count, exclude) {
+    const r = s.rangePx;
+    const list = [];
+    for (const e of enemies) {
+      if (e.hp <= 0 || !canHit(s, e) || (exclude && exclude.indexOf(e) >= 0)) continue;
+      const dx = e.x - t.x, dy = e.y - t.y;
+      if (dx * dx + dy * dy > (r + e.radius * 0.5) * (r + e.radius * 0.5)) continue;
+      list.push(e);
+    }
+    if (list.length <= 1)
+      return list;
+    const scored = list.map(e => [targetScore(t.target, t, e), e]);
+    scored.sort((a, b) => b[0] - a[0]);
+    return scored.slice(0, count).map(p => p[1]);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     TOWER ATTACKS
+     ══════════════════════════════════════════════════════════════════ */
+
+  function aimAt(t, e) {
+    t.angle = Math.atan2(e.y - t.y, e.x - t.x);
+  }
+
+  function rollCrit(s) {
+    return s.crit && Math.random() < s.crit ? s.critMul : 1;
+  }
+
+  function fireTower(t, s, def) {
+    switch (s.kind) {
+      case 'arrow': {
+        const targets = findTargets(t, s, s.multishot || 1);
+        if (!targets.length) return false;
+        for (const e of targets)
+          projectiles.push({ kind: 'arrow', x: t.x, y: t.y, target: e, speed: s.speed, damage: s.damage, tower: t, s, color: def.color, trail: [] });
+        aimAt(t, targets[0]);
+        break;
+      }
+      case 'bolt': {
+        if (s.aura) {
+          const hit = enemiesNear(t.x, t.y, s.rangePx, e => canHit(s, e));
+          if (!hit.length) return false;
+          for (const e of hit) {
+            hurt(e, s.damage, t, 'cold');
+            applySlow(e, 1 - s.slow, s.slowTime);
+          }
+          fxLines.push({ kind: 'ring', x: t.x, y: t.y, r: s.rangePx, color: '#bfeaff', t: 0, life: 0.45 });
+          break;
+        }
+        const e = findTargets(t, s, 1)[0];
+        if (!e) return false;
+        projectiles.push({ kind: 'bolt', x: t.x, y: t.y, target: e, speed: s.speed, damage: s.damage, tower: t, s, color: '#bfeaff', trail: [] });
+        aimAt(t, e);
+        break;
+      }
+      case 'shell': {
+        const e = findTargets(t, s, 1)[0];
+        if (!e) return false;
+        // Aim where the target will be when the shell lands
+        const flight = Math.hypot(e.x - t.x, e.y - t.y) / s.speed + 0.15;
+        const lead = predictPos(e, flight);
+        projectiles.push({ kind: 'shell', x: t.x, y: t.y, sx: t.x, sy: t.y, tx: lead.x, ty: lead.y, t: 0, dur: flight, damage: s.damage, tower: t, s, color: '#ffb36a' });
+        aimAt(t, e);
+        break;
+      }
+      case 'glob': {
+        const e = findTargets(t, s, 1)[0];
+        if (!e) return false;
+        const flight = Math.hypot(e.x - t.x, e.y - t.y) / s.speed + 0.1;
+        const lead = predictPos(e, flight);
+        projectiles.push({ kind: 'glob', x: t.x, y: t.y, sx: t.x, sy: t.y, tx: lead.x, ty: lead.y, t: 0, dur: flight, damage: s.damage, tower: t, s, color: '#7ce35a' });
+        aimAt(t, e);
+        break;
+      }
+      case 'chain': {
+        const first = findTargets(t, s, 1)[0];
+        if (!first) return false;
+        const hit = [first];
+        const pts = [{ x: t.x, y: t.y - 10 }, { x: first.x, y: first.y }];
+        let cur = first;
+        for (let i = 1; i < s.chains; ++i) {
+          let best = null, bd = s.chainPx;
+          for (const e of enemies) {
+            if (e.hp <= 0 || hit.indexOf(e) >= 0 || !canHit(s, e)) continue;
+            const d = Math.hypot(e.x - cur.x, e.y - cur.y);
+            if (d < bd) { bd = d; best = e; }
+          }
+          if (!best) break;
+          hit.push(best);
+          pts.push({ x: best.x, y: best.y });
+          cur = best;
+        }
+        hit.forEach((e, i) => {
+          hurt(e, s.damage * Math.pow(0.85, i), t, 'energy');
+          if (s.stun) e.stunTimer = Math.max(e.stunTimer, s.stun * (i === 0 ? 1 : 0.5));
+        });
+        fxLines.push({ kind: 'zap', pts, color: '#bff4ff', t: 0, life: 0.18, seed: Math.random() * 1000 });
+        aimAt(t, first);
+        break;
+      }
+      case 'flame': {
+        const e = findTargets(t, s, 1)[0];
+        if (!e) return false;
+        aimAt(t, e);
+        const cosCone = Math.cos(s.cone);
+        const ax = Math.cos(t.angle), ay = Math.sin(t.angle);
+        for (const o of enemies) {
+          if (o.hp <= 0 || !canHit(s, o)) continue;
+          const dx = o.x - t.x, dy = o.y - t.y;
+          const d = Math.hypot(dx, dy);
+          if (d > s.rangePx + o.radius) continue;
+          if (d > 6 && (dx * ax + dy * ay) / d < cosCone) continue;
+          hurt(o, s.damage, t, 'fire');
+          if (o.burnTimer <= 0 || s.burn >= o.burnDps) {
+            o.burnDps = s.burn;
+            o.burnTimer = s.burnTime;
+            o.burnSrc = t;
+          }
+          if (s.melt) o.shred = Math.max(o.shred, s.melt);
+          if (s.lava && Math.random() < 0.08)
+            addFloorEffect(Math.floor(o.x / CELL), Math.floor(o.y / CELL), 'lava', 5, s.lava);
+        }
+        t.flameT = 0.25;
+        break;
+      }
+      case 'beam': {
+        const n = s.beams || 1;
+        const targets = findTargets(t, s, n);
+        if (!targets.length) {
+          t.beamTargets = [];
+          t.beamTime = 0;
+          return false;
+        }
+        if (targets[0] !== t.beamTargets[0])
+          t.beamTime = 0;
+        t.beamTargets = targets;
+        aimAt(t, targets[0]);
+        return true;
+      }
+      case 'snipe': {
+        const e = findTargets(t, s, 1)[0];
+        if (!e) return false;
+        aimAt(t, e);
+        const crit = rollCrit(s);
+        const ex = t.x + Math.cos(t.angle) * s.rangePx * (s.rail ? 1.4 : 0), ey = t.y + Math.sin(t.angle) * s.rangePx * (s.rail ? 1.4 : 0);
+        if (s.rail) {
+          // Every enemy on the line takes the hit
+          const ax = Math.cos(t.angle), ay = Math.sin(t.angle);
+          for (const o of enemies) {
+            if (o.hp <= 0 || !canHit(s, o)) continue;
+            const dx = o.x - t.x, dy = o.y - t.y;
+            const along = dx * ax + dy * ay;
+            if (along < 0 || along > s.rangePx * 1.4) continue;
+            if (Math.abs(dx * ay - dy * ax) <= o.radius + 4)
+              hurt(o, s.damage * crit, t, 'phys', { pierce: s.pierce });
+          }
+          fxLines.push({ kind: 'tracer', pts: [{ x: t.x, y: t.y }, { x: ex, y: ey }], color: '#9ad8ff', t: 0, life: 0.3, w: 4 });
+        } else {
+          if (s.execute && e.hp - s.damage * crit <= e.maxHp * s.execute && !enemyFlags(e).boss) {
+            hurt(e, e.hp + e.shieldHp + 999, t, 'phys', { pierce: 1 });
+            floatingText.add(e.x, e.y - 14, 'EXECUTE', { color: '#ff5a5a', font: 'bold 11px sans-serif' });
+          } else
+            hurt(e, s.damage * crit, t, 'phys', { pierce: s.pierce });
+          fxLines.push({ kind: 'tracer', pts: [{ x: t.x, y: t.y }, { x: e.x, y: e.y }], color: '#ffffff', t: 0, life: 0.18, w: 2 });
+          if (crit > 1)
+            floatingText.add(e.x, e.y - 14, 'CRIT', { color: '#ffd75a', font: 'bold 11px sans-serif' });
+        }
+        break;
+      }
+      default:
+        return false;
+    }
+    t.flash = 0.1;
+    t.recoil = 1;
+    playShotSound(def);
+    return true;
+  }
+
+  function predictPos(e, time) {
+    const path = paths[e.pi];
+    const sp = enemySpeed(e);
+    const out = { x: 0, y: 0, angle: 0 };
+    return pathPos(path, Math.min(path.total, e.dist + sp * time), out);
+  }
+
+  function updateTowers(dt) {
+    for (const t of towers) {
+      const def = TOWER_TYPES[t.type];
+      const s = towerStats(t);
+      t.flash = Math.max(0, t.flash - dt);
+      t.recoil = Math.max(0, t.recoil - dt * 6);
+      if (t.flameT) t.flameT = Math.max(0, t.flameT - dt);
+      if (s.kind === 'mine' || s.kind === 'trap') continue;
+      if (s.kind === 'beam') {
+        fireTower(t, s, def);
+        if (t.beamTargets.length) {
+          t.beamTime += dt;
+          const ramp = 1 + (s.ramp - 1) * Math.min(1, t.beamTime / s.rampTime);
+          for (let i = 0; i < t.beamTargets.length; ++i) {
+            const e = t.beamTargets[i];
+            if (e.hp <= 0) continue;
+            hurt(e, s.damage * (i === 0 ? ramp : 1) * dt, t, 'energy', { pierce: s.pierce, dot: true });
+          }
+          t.beamSound = (t.beamSound || 0) - dt;
+          if (t.beamSound <= 0) {
+            t.beamSound = 0.6;
+            playShotSound(def);
+          }
+        }
         continue;
-      const dx = enemy.x - tower.x;
-      const dy = enemy.y - tower.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < bestDist) {
-        bestDist = dist;
-        closest = enemy;
+      }
+      t.cooldown -= dt;
+      if (t.cooldown <= 0) {
+        if (fireTower(t, s, def))
+          t.cooldown = s.reload;
+        else
+          t.cooldown = 0.05;
       }
     }
-    return closest;
-  }
-
-  function fireProjectile(tower, target) {
-    const def = TOWER_TYPES[tower.type];
-    projectiles.push({
-      x: tower.x,
-      y: tower.y,
-      targetEnemy: target,
-      speed: def.projectileSpeed,
-      damage: tower.damage,
-      color: def.projectileColor,
-      splash: def.splash || 0,
-      slow: def.slow || 0,
-      freeze: def.freeze ? def.freeze * (1 + (tower.tier - 1) * 0.2) : 0,
-      chain: def.chain || 0,
-      dot: def.dot ? Math.floor(def.dot * UPGRADE_DAMAGE_MULT[tower.tier - 1]) : 0,
-      dotDuration: def.dotDuration || 0,
-      aoe: def.aoe || 0,
-      towerType: tower.type,
-      tower,
-      trail: []
-    });
-
-    playShotSound(def);
-
-    // Update turret angle
-    const dx = target.x - tower.x;
-    const dy = target.y - tower.y;
-    towerAngles.set(tower, Math.atan2(dy, dx));
   }
 
   /* ══════════════════════════════════════════════════════════════════
-     ENEMY DEATH & LEAK
+     PROJECTILES
      ══════════════════════════════════════════════════════════════════ */
 
-  function killEnemy(enemy, index) {
-    // Guard: if already removed from array, skip
-    if (index < 0 || index >= enemies.length || enemies[index] !== enemy)
-      return;
-
-    particles.burst(enemy.x, enemy.y, 12, { color: enemy.color, speed: 3, life: 0.6 });
-
-    gold += enemy.bounty;
-    ++runStats.kills;
-    runStats.gold += enemy.bounty;
-    if (enemy.lastHitBy)
-      ++enemy.lastHitBy.kills;
-    floatingText.add(enemy.x, enemy.y - 16, `+${enemy.bounty}g`, { color: '#ff0', font: 'bold 11px sans-serif' });
-
-    if (enemy.isBoss) {
-      screenShake.trigger(8, 400);
-      particles.confetti(enemy.x, enemy.y, 20, { speed: 5, gravity: 0.06 });
-      floatingText.add(enemy.x, enemy.y - 30, 'BOSS KILL!', { color: '#f0f', font: 'bold 14px sans-serif' });
-      audio.play('explode');
-    } else {
-      screenShake.trigger(2, 60);
-      audio.play('smallExplode', { pitch: 0.9 + Math.random() * 0.3, volume: 0.6 });
+  function explode(x, y, radius, damage, src, s) {
+    for (const e of enemiesNear(x, y, radius, o => canHit(s, o))) {
+      const d = Math.hypot(e.x - x, e.y - y);
+      const fall = d < radius * 0.4 ? 1 : 0.6;
+      hurt(e, damage * fall, src, 'phys', { pierce: s.pierce || 0 });
+      if (s.shred) e.shred = Math.max(e.shred, s.shred);
     }
-
-    enemies.splice(index, 1);
+    particles.burst(x, y, 14, { color: '#ffb36a', speed: 3.5, life: 0.4 });
+    if (radius > CELL * 1.5) screenShake.trigger(2, 90);
   }
 
-  function enemyReachedGoal(enemy, index) {
-    --lives;
-    enemies.splice(index, 1);
+  function updateProjectiles(dt) {
+    for (let i = projectiles.length - 1; i >= 0; --i) {
+      const p = projectiles[i];
+      if (p.kind === 'shell' || p.kind === 'glob' || p.kind === 'bomblet') {
+        p.t += dt;
+        const k = Math.min(1, p.t / p.dur);
+        p.x = p.sx + (p.tx - p.sx) * k;
+        p.y = p.sy + (p.ty - p.sy) * k;
+        p.z = Math.sin(k * Math.PI) * Math.min(70, 20 + p.dur * 60) * (p.kind === 'bomblet' ? 0.4 : 1);
+        if (k >= 1) {
+          projectiles.splice(i, 1);
+          if (p.kind === 'glob')
+            clouds.push({ x: p.tx, y: p.ty, r: p.s.cloudPx, t: 0, life: p.s.cloudTime, dps: p.s.cloudDps, acid: !!p.s.acid, plague: !!p.s.plague, tower: p.tower, seed: Math.random() * 100 });
+          else {
+            explode(p.tx, p.ty, p.kind === 'bomblet' ? CELL * 0.6 : p.s.splashPx, p.damage, p.tower, p.s);
+            if (p.kind === 'shell' && p.s.bomblets) {
+              for (let b = 0; b < p.s.bomblets; ++b) {
+                const a = (b / p.s.bomblets) * TWO_PI + Math.random() * 0.5;
+                const r = p.s.splashPx * (0.8 + Math.random() * 0.6);
+                projectiles.push({ kind: 'bomblet', x: p.tx, y: p.ty, sx: p.tx, sy: p.ty, tx: p.tx + Math.cos(a) * r, ty: p.ty + Math.sin(a) * r, t: 0, dur: 0.35 + Math.random() * 0.15, damage: p.damage * 0.3, tower: p.tower, s: p.s, color: '#ffcf6a' });
+              }
+            }
+          }
+        }
+        continue;
+      }
+      const t = p.target;
+      if (!t || t.hp <= 0) {
+        projectiles.splice(i, 1);
+        continue;
+      }
+      p.trail.push(p.x, p.y);
+      if (p.trail.length > 10) p.trail.splice(0, 2);
+      const dx = t.x - p.x, dy = t.y - p.y;
+      const dist = Math.hypot(dx, dy);
+      const move = p.speed * dt;
+      if (dist <= move + t.radius) {
+        projectiles.splice(i, 1);
+        const s = p.s;
+        if (p.kind === 'arrow') {
+          const crit = rollCrit(s);
+          hurt(t, p.damage * crit, p.tower, 'phys', { pierce: s.pierce || 0 });
+          if (crit > 1)
+            floatingText.add(t.x, t.y - 14, 'CRIT', { color: '#ffd75a', font: 'bold 10px sans-serif' });
+        } else if (p.kind === 'bolt') {
+          hurt(t, p.damage, p.tower, 'cold');
+          applySlow(t, 1 - s.slow, s.slowTime);
+          if (s.freeze && Math.random() < s.freeze && !enemyFlags(t).boss) {
+            t.freezeTimer = s.freezeTime;
+            particles.sparkle(t.x, t.y, 8, { color: '#e8fbff', speed: 1.5 });
+            if (Math.random() < 0.5)
+              addFloorEffect(Math.floor(t.x / CELL), Math.floor(t.y / CELL), 'ice', 4, 0);
+          }
+        }
+      } else {
+        p.x += dx / dist * move;
+        p.y += dy / dist * move;
+      }
+    }
+  }
+
+  function updateClouds(dt) {
+    for (let i = clouds.length - 1; i >= 0; --i) {
+      const c = clouds[i];
+      c.t += dt;
+      if (c.t >= c.life) {
+        clouds.splice(i, 1);
+        continue;
+      }
+      for (const e of enemiesNear(c.x, c.y, c.r)) {
+        hurt(e, c.dps * dt, c.tower, 'poison', { dot: true });
+        e.poisonTimer = Math.max(e.poisonTimer, 0.6);
+        if (c.acid) e.acidTimer = Math.max(e.acidTimer, 1.2);
+        if (c.plague) e.plague = c.tower;
+      }
+    }
+  }
+
+  function addFloorEffect(col, row, type, time, damage) {
+    if (!pathCells.has(`${col},${row}`)) return;
+    const existing = floorEffects.find(fe => fe.col === col && fe.row === row && fe.type === type);
+    if (existing) {
+      existing.timer = Math.max(existing.timer, time);
+      existing.damage = Math.max(existing.damage, damage);
+      return;
+    }
+    if (floorEffects.length > 60) return;
+    floorEffects.push({ col, row, x: col * CELL + CELL / 2, y: row * CELL + CELL / 2, type, timer: time, damage });
+  }
+
+  function updateFloorEffects(dt) {
+    for (let i = floorEffects.length - 1; i >= 0; --i) {
+      floorEffects[i].timer -= dt;
+      if (floorEffects[i].timer <= 0)
+        floorEffects.splice(i, 1);
+    }
+  }
+
+  function updateFx(dt) {
+    for (let i = fxLines.length - 1; i >= 0; --i) {
+      fxLines[i].t += dt;
+      if (fxLines[i].t >= fxLines[i].life)
+        fxLines.splice(i, 1);
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     ENEMIES
+     ══════════════════════════════════════════════════════════════════ */
+
+  function enemySpeed(e) {
+    if (e.freezeTimer > 0 || e.stunTimer > 0) return 0;
+    return e.speed * (e.slowTimer > 0 ? e.slowMul : 1);
+  }
+
+  function killEnemy(e) {
+    const f = enemyFlags(e);
+    particles.burst(e.x, e.y, 12, { color: f.color, speed: 3, life: 0.6 });
+    let bounty = e.bounty;
+    for (const t of towers) {
+      const s = towerStats(t);
+      if (s.bounty && Math.hypot(t.x - e.x, t.y - e.y) <= s.rangePx)
+        bounty += s.bounty;
+    }
+    gold += bounty;
+    goldPulse = Math.max(goldPulse, 0.5);
+    ++runStats.kills;
+    runStats.gold += bounty;
+    if (e.lastHitBy)
+      ++e.lastHitBy.kills;
+    floatingText.add(e.x, e.y - 16, `+${bounty}`, { color: '#ffd75a', font: 'bold 11px sans-serif' });
+    if (e.plague)
+      clouds.push({ x: e.x, y: e.y, r: CELL * 0.8, t: 0, life: 2.2, dps: towerStats(e.plague).cloudDps * 0.6, acid: false, plague: true, tower: e.plague, seed: Math.random() * 100 });
+    if (f.boss) {
+      screenShake.trigger(8, 400);
+      particles.confetti(e.x, e.y, 20, { speed: 5, gravity: 0.06 });
+      floatingText.add(e.x, e.y - 30, 'BOSS DOWN!', { color: '#f0f', font: 'bold 14px sans-serif' });
+      audio.play('explode');
+    } else {
+      screenShake.trigger(1.5, 60);
+      audio.play('smallExplode', { pitch: 0.9 + Math.random() * 0.3, volume: 0.5 });
+    }
+  }
+
+  function enemyReachedGoal(e) {
+    const f = enemyFlags(e);
+    const cost = f.boss ? 5 : 1;
+    lives = Math.max(0, lives - cost);
+    runStats.leaked += cost;
     screenShake.trigger(4, 150);
-    floatingText.add(enemy.x, enemy.y - 12, '-1 life', { color: '#f44', font: 'bold 12px sans-serif' });
+    floatingText.add(e.x, e.y - 12, `-${cost} ${cost > 1 ? 'lives' : 'life'}`, { color: '#f44', font: 'bold 12px sans-serif' });
     livesPulse = 1;
     audio.play('hurt');
-
-    if (lives <= 0) {
+    if (lives <= 0 && state === STATE_PLAYING) {
       audio.play('lose');
       state = STATE_GAME_OVER;
       clearSavedGame();
@@ -891,319 +1562,98 @@
     }
   }
 
-  /* ══════════════════════════════════════════════════════════════════
-     UPDATE
-     ══════════════════════════════════════════════════════════════════ */
-
   function updateEnemies(dt) {
-    for (let i = enemies.length - 1; i >= 0; --i) {
-      const e = enemies[i];
-
-      // Skip dead enemies (will be cleaned up in sweep)
-      if (e.hp <= 0)
-        continue;
-
-      // DoT (damage over time)
-      if (e.dotTimer > 0) {
-        e.dotTimer -= dt;
-        e.hp -= e.dotDamage * dt;
-        // Poison particle trail
-        if (Math.random() < 0.3)
-          particles.sparkle(e.x + (Math.random() - 0.5) * 6, e.y + (Math.random() - 0.5) * 6, 1, { color: '#0f4', speed: 1 });
-        if (e.hp <= 0) {
-          killEnemy(e, i);
-          continue;
-        }
+    for (const e of enemies) {
+      if (e.hp <= 0) continue;
+      const f = enemyFlags(e);
+      e.hitFlash = Math.max(0, e.hitFlash - dt);
+      if (e.burnTimer > 0) {
+        e.burnTimer -= dt;
+        hurt(e, e.burnDps * dt, e.burnSrc, 'fire', { dot: true });
       }
+      if (e.poisonTimer > 0) e.poisonTimer -= dt;
+      if (e.acidTimer > 0) e.acidTimer -= dt;
+      if (e.slowTimer > 0) e.slowTimer -= dt;
+      if (e.freezeTimer > 0) e.freezeTimer -= dt;
+      if (e.stunTimer > 0) e.stunTimer -= dt;
+      if (e.hp <= 0) continue;
 
-      // Healer: heal nearby enemies
-      if (e.isHealer) {
+      if (f.heals) {
         e.healCooldown -= dt;
         if (e.healCooldown <= 0) {
           e.healCooldown = 2;
-          for (const other of enemies) {
-            if (other === e || other.hp <= 0) continue;
-            const hdx = other.x - e.x;
-            const hdy = other.y - e.y;
-            if (Math.sqrt(hdx * hdx + hdy * hdy) < 60) {
-              other.hp = Math.min(other.maxHp, other.hp + Math.floor(other.maxHp * 0.05));
-              particles.sparkle(other.x, other.y, 3, { color: '#4f4', speed: 1 });
-            }
+          for (const o of enemiesNear(e.x, e.y, 60)) {
+            if (o === e) continue;
+            o.hp = Math.min(o.maxHp, o.hp + o.maxHp * 0.06);
+            particles.sparkle(o.x, o.y, 3, { color: '#4f4', speed: 1 });
           }
         }
       }
 
-      // Freeze effect (completely stops enemy)
-      if (e.freezeTimer > 0) {
-        e.freezeTimer -= dt;
-        e.speed = 0;
-        // Frozen visual particle
-        if (Math.random() < 0.15)
-          particles.sparkle(e.x + (Math.random() - 0.5) * 8, e.y + (Math.random() - 0.5) * 8, 1, { color: '#cff', speed: 0.5 });
-      }
-      // Slow effect
-      else if (e.slowTimer > 0) {
-        e.slowTimer -= dt;
-        e.speed = e.baseSpeed * 0.5;
-      } else {
-        e.speed = e.baseSpeed;
-      }
-
-      // Move along path
-      if (e.pathIndex < pathPoints.length - 1) {
-        const from = pathPoints[e.pathIndex];
-        const to = pathPoints[e.pathIndex + 1];
-        const dx = to.x - from.x;
-        const dy = to.y - from.y;
-        const segLen = Math.sqrt(dx * dx + dy * dy);
-        e.pathProgress += (e.speed * dt) / segLen;
-
-        if (e.pathProgress >= 1) {
-          e.pathProgress -= 1;
-          ++e.pathIndex;
-          if (e.pathIndex >= pathPoints.length - 1) {
-            enemyReachedGoal(e, i);
-            continue;
+      // Trap damage
+      const col = Math.floor(e.x / CELL), row = Math.floor(e.y / CELL);
+      if (!f.flying) {
+        const trap = towerAt(col, row);
+        if (trap) {
+          const s = towerStats(trap);
+          if (s.trap) {
+            hurt(e, s.damage * dt, trap, 'phys', { pierce: s.pierce || 0, dot: !s.pierce });
+            if (s.slow) applySlow(e, 1 - s.slow, s.slowTime);
           }
         }
-
-        const t = e.pathProgress;
-        const cfrom = pathPoints[e.pathIndex];
-        const cto = pathPoints[Math.min(e.pathIndex + 1, pathPoints.length - 1)];
-        e.x = cfrom.x + (cto.x - cfrom.x) * t;
-        e.y = cfrom.y + (cto.y - cfrom.y) * t;
-      }
-
-      // Boss and armored enemies deal splash damage to nearby towers
-      if (e.isBoss || e.type === 'armored') {
-        const splashRange = e.isBoss ? 50 : 30;
-        const splashDmg = e.isBoss ? 3 : 1;
-        for (const tower of towers) {
-          const tdx = tower.x - e.x;
-          const tdy = tower.y - e.y;
-          if (tdx * tdx + tdy * tdy < splashRange * splashRange) {
-            tower.hp -= splashDmg * dt;
-            if (tower.hp <= 0)
-              destroyTower(tower);
-          }
+        for (const fe of floorEffects) {
+          if (fe.col !== col || fe.row !== row) continue;
+          if (fe.type === 'lava') {
+            hurt(e, fe.damage * dt, null, 'fire', { dot: true });
+            if (e.burnTimer <= 0) { e.burnDps = fe.damage * 0.5; e.burnTimer = 1; }
+          } else if (fe.type === 'ice')
+            applySlow(e, 0.6, 0.4);
         }
       }
-    }
-  }
 
-  function destroyTower(tower) {
-    const idx = towers.indexOf(tower);
-    if (idx === -1) return;
-    towers.splice(idx, 1);
-    towerAngles.delete(tower);
-    if (selectedTower === tower)
-      selectedTower = null;
-    particles.burst(tower.x, tower.y, 15, { color: '#f44', speed: 4, life: 0.5 });
-    floatingText.add(tower.x, tower.y - 16, 'DESTROYED!', { color: '#f44', font: 'bold 10px sans-serif' });
-    screenShake.trigger(4, 200);
-    audio.play('explode', { pitch: 1.3, volume: 0.7 });
-  }
-
-  function repairTower(tower) {
-    if (tower.hp >= tower.maxHp) return false;
-    const repairCost = Math.floor((tower.maxHp - tower.hp) * 0.3);
-    if (repairCost < 1 || gold < repairCost) return false;
-    gold -= repairCost;
-    tower.hp = tower.maxHp;
-    particles.sparkle(tower.x, tower.y, 8, { color: '#4f4', speed: 2 });
-    audio.play('pickup');
-    floatingText.add(tower.x, tower.y - 16, `Repaired -${repairCost}g`, { color: '#8f8', font: 'bold 9px sans-serif' });
-    return true;
-  }
-
-  function updateTowers(dt) {
-    for (const tower of towers) {
-      tower.fireCooldown -= dt;
-      if (tower.fireCooldown <= 0) {
-        const target = findTarget(tower);
-        if (target) {
-          fireProjectile(tower, target);
-          tower.fireCooldown = tower.fireRate;
-        }
-      }
-    }
-  }
-
-  function applyProjectileHit(p, target) {
-    // Shield absorbs damage first
-    if (target.isShielded && target.shieldHp > 0) {
-      const absorbed = Math.min(target.shieldHp, p.damage);
-      target.shieldHp -= absorbed;
-      const remaining = p.damage - absorbed;
-      if (remaining > 0)
-        target.hp -= remaining;
-      particles.sparkle(target.x, target.y, 4, { color: '#4ff', speed: 2 });
-    } else {
-      target.hp -= p.damage;
-    }
-    target.lastHitBy = p.tower;
-
-    // Freeze (stronger than slow -- stops enemy completely)
-    if (p.freeze > 0) {
-      target.freezeTimer = p.freeze;
-      particles.sparkle(target.x, target.y, 6, { color: '#cff', speed: 1 });
-    }
-
-    // Slow
-    if (p.slow > 0)
-      target.slowTimer = 2;
-
-    // DoT (poison/flame)
-    if (p.dot > 0) {
-      target.dotTimer = p.dotDuration;
-      target.dotDamage = p.dot;
-    }
-
-    // Splash damage
-    if (p.splash > 0) {
-      for (const other of enemies) {
-        if (other === target || other.hp <= 0) continue;
-        const sdx = other.x - target.x;
-        const sdy = other.y - target.y;
-        if (Math.sqrt(sdx * sdx + sdy * sdy) < p.splash) {
-          other.hp -= Math.floor(p.damage * 0.5);
-          if (p.dot > 0) {
-            other.dotTimer = p.dotDuration;
-            other.dotDamage = Math.floor(p.dot * 0.5);
-          }
-        }
-      }
-      // Splash visual
-      particles.burst(target.x, target.y, 10, { color: p.color, speed: 3, life: 0.3 });
-    }
-
-    // AoE cone (flame tower)
-    if (p.aoe > 0) {
-      for (const other of enemies) {
-        if (other === target || other.hp <= 0) continue;
-        const adx = other.x - p.x;
-        const ady = other.y - p.y;
-        if (Math.sqrt(adx * adx + ady * ady) < p.aoe) {
-          other.hp -= Math.floor(p.damage * 0.6);
-          if (p.dot > 0) {
-            other.dotTimer = p.dotDuration;
-            other.dotDamage = Math.floor(p.dot * 0.5);
-          }
-        }
-      }
-    }
-
-    // Chain (lightning/tesla)
-    if (p.chain > 0) {
-      let chainTarget = target;
-      let chainsLeft = p.chain;
-      const hit = new Set([target]);
-      while (chainsLeft > 0) {
-        let bestDist = 80;
-        let nextTarget = null;
-        for (const other of enemies) {
-          if (hit.has(other) || other.hp <= 0) continue;
-          const cdx = other.x - chainTarget.x;
-          const cdy = other.y - chainTarget.y;
-          const d = Math.sqrt(cdx * cdx + cdy * cdy);
-          if (d < bestDist) {
-            bestDist = d;
-            nextTarget = other;
-          }
-        }
-        if (!nextTarget) break;
-        hit.add(nextTarget);
-        nextTarget.hp -= Math.floor(p.damage * 0.6);
-        // Chain lightning visual line
-        particles.sparkle(
-          (chainTarget.x + nextTarget.x) / 2,
-          (chainTarget.y + nextTarget.y) / 2,
-          3, { color: p.color, speed: 2 }
-        );
-        chainTarget = nextTarget;
-        --chainsLeft;
-      }
-    }
-
-    // Floor effect: Fire Tower projectile creates lava tile at impact
-    if (TOWER_TYPES[p.towerType]?.id === 'fire') {
-      const impactCol = Math.floor(target.x / CELL);
-      const impactRow = Math.floor(target.y / CELL);
-      if (pathCells.has(`${impactCol},${impactRow}`)) {
-        // Don't stack lava on same cell -- refresh timer instead
-        const existing = floorEffects.find(fe => fe.col === impactCol && fe.row === impactRow && fe.type === 'lava');
-        if (existing) {
-          existing.timer = 5 + Math.random() * 3;
-        } else {
-          floorEffects.push({
-            col: impactCol, row: impactRow,
-            x: impactCol * CELL + CELL / 2,
-            y: impactRow * CELL + CELL / 2,
-            type: 'lava',
-            timer: 5 + Math.random() * 3,
-            damage: Math.floor(p.dot * 0.6) || 8
-          });
-        }
-      }
-    }
-
-    // Floor effect: Ice Tower projectile creates ice tile at impact
-    if (TOWER_TYPES[p.towerType]?.id === 'ice') {
-      const impactCol = Math.floor(target.x / CELL);
-      const impactRow = Math.floor(target.y / CELL);
-      if (pathCells.has(`${impactCol},${impactRow}`)) {
-        const existing = floorEffects.find(fe => fe.col === impactCol && fe.row === impactRow && fe.type === 'ice');
-        if (existing) {
-          existing.timer = 5 + Math.random() * 3;
-        } else {
-          floorEffects.push({
-            col: impactCol, row: impactRow,
-            x: impactCol * CELL + CELL / 2,
-            y: impactRow * CELL + CELL / 2,
-            type: 'ice',
-            timer: 5 + Math.random() * 3,
-            damage: 0
-          });
-        }
-      }
-    }
-  }
-
-  function updateProjectiles(dt) {
-    for (let i = projectiles.length - 1; i >= 0; --i) {
-      const p = projectiles[i];
-      const t = p.targetEnemy;
-
-      if (!t || t.hp <= 0 || !enemies.includes(t)) {
-        projectiles.splice(i, 1);
+      const sp = enemySpeed(e);
+      e.walk += sp * dt * 0.25;
+      e.dist += sp * dt;
+      const path = paths[e.pi];
+      pathPos(path, e.dist, e);
+      if (e.dist >= path.total) {
+        e.hp = 0;
+        e.leaked = true;
+        enemyReachedGoal(e);
         continue;
       }
 
-      // Store trail position
-      p.trail.push({ x: p.x, y: p.y });
-      if (p.trail.length > 6)
-        p.trail.shift();
-
-      const dx = t.x - p.x;
-      const dy = t.y - p.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const moveBy = p.speed * dt;
-
-      if (dist <= moveBy + t.radius) {
-        applyProjectileHit(p, t);
-
-        // Check death
-        if (t.hp <= 0) {
-          const idx = enemies.indexOf(t);
-          if (idx !== -1) killEnemy(t, idx);
+      // Bosses and brutes batter towers they pass
+      if (f.boss || e.type === 'armored') {
+        const reach = f.boss ? 50 : 30;
+        const dmg = f.boss ? 4 : 1.2;
+        for (const t of towers) {
+          if (towerStats(t).trap) continue;
+          const dx = t.x - e.x, dy = t.y - e.y;
+          if (dx * dx + dy * dy < reach * reach) {
+            t.hp -= dmg * dt;
+            if (t.hp <= 0) destroyTower(t);
+          }
         }
-
-        projectiles.splice(i, 1);
-      } else {
-        p.x += (dx / dist) * moveBy;
-        p.y += (dy / dist) * moveBy;
       }
     }
+  }
+
+  // Remove dead enemies, paying out for the ones killed
+  function sweepEnemies() {
+    let w = 0;
+    for (let i = 0; i < enemies.length; ++i) {
+      const e = enemies[i];
+      if (e.hp > 0) {
+        enemies[w++] = e;
+        continue;
+      }
+      if (!e.leaked)
+        killEnemy(e);
+    }
+    enemies.length = w;
+    if (selectedTower && towers.indexOf(selectedTower) < 0)
+      selectedTower = null;
   }
 
   function updateSpawner(dt) {
@@ -1214,108 +1664,40 @@
         spawnTimer = 0.6;
       }
     }
-
-    // Wave complete check
-    if (waveEnemies.length === 0 && enemies.length === 0 && !waveComplete) {
+    if (waveEnemies.length === 0 && enemies.length === 0 && !waveComplete && state === STATE_PLAYING) {
       waveComplete = true;
       waveCountdown = 3;
       state = STATE_BUILD;
       warningActive = false;
-
-      // Start auto-wave timer
+      projectiles = [];
+      for (const t of towers) {
+        t.beamTargets = [];
+        t.beamTime = 0;
+      }
       if (autoWaveMode)
         autoWaveTimer = AUTO_WAVE_DELAY;
-
       if (currentWave >= totalWaves)
         triggerVictory();
       else {
+        payWaveIncome();
         audio.play('levelup');
         saveGame();
       }
     }
   }
 
-  function updateFloorEffects(dt) {
-    // Expire timed floor effects
-    for (let i = floorEffects.length - 1; i >= 0; --i) {
-      const fe = floorEffects[i];
-      if (fe.timer !== Infinity) {
-        fe.timer -= dt;
-        if (fe.timer <= 0) {
-          floorEffects.splice(i, 1);
-          continue;
-        }
-      }
-    }
-
-    // Apply floor effects to enemies standing on them
-    for (const e of enemies) {
-      if (e.hp <= 0)
-        continue;
-      const eCol = Math.floor(e.x / CELL);
-      const eRow = Math.floor(e.y / CELL);
-
-      for (const fe of floorEffects) {
-        if (fe.col !== eCol || fe.row !== eRow)
-          continue;
-
-        if (fe.type === 'lava') {
-          // Burn damage over time
-          e.hp -= fe.damage * dt;
-          // Apply burn DoT if not already burning
-          if (e.dotTimer <= 0) {
-            e.dotTimer = 1;
-            e.dotDamage = fe.damage;
-          }
-          // Lava particle effect on enemy
-          if (Math.random() < 0.2)
-            particles.sparkle(e.x + (Math.random() - 0.5) * 8, e.y + (Math.random() - 0.5) * 8, 1, { color: '#f60', speed: 1.5 });
-          if (e.hp <= 0) {
-            const idx = enemies.indexOf(e);
-            if (idx !== -1) killEnemy(e, idx);
-            break;
-          }
-        } else if (fe.type === 'ice') {
-          // Significant slow (50% speed reduction)
-          if (e.freezeTimer <= 0)
-            e.slowTimer = Math.max(e.slowTimer, 0.5);
-          // Ice particle effect on enemy
-          if (Math.random() < 0.15)
-            particles.sparkle(e.x + (Math.random() - 0.5) * 6, e.y + (Math.random() - 0.5) * 6, 1, { color: '#aef', speed: 0.8 });
-        } else if (fe.type === 'spike') {
-          // Constant small damage
-          e.hp -= fe.damage * dt;
-          // Spark on contact
-          if (Math.random() < 0.1)
-            particles.sparkle(e.x, e.y + e.radius, 1, { color: '#ccc', speed: 1 });
-          if (e.hp <= 0) {
-            const idx = enemies.indexOf(e);
-            if (idx !== -1) killEnemy(e, idx);
-            break;
-          }
-        }
-      }
-    }
-  }
-
   function updateBuildCountdown(dt) {
     if (state !== STATE_BUILD) return;
-
     if (waveCountdown > 0)
       waveCountdown -= dt;
-
-    // Pre-wave warning: activate when countdown gets low
     if (!warningActive && waveCountdown <= WARNING_DURATION && waveCountdown > 0)
       beginPreWaveWarning();
-
     if (warningActive) {
       warningTimer -= dt;
       warningPulse += dt * 4;
       if (warningTimer <= 0)
         warningActive = false;
     }
-
-    // Auto-wave mode
     if (autoWaveMode && waveComplete) {
       autoWaveTimer -= dt;
       if (autoWaveTimer <= 0)
@@ -1325,23 +1707,18 @@
 
   function updateGame(dt) {
     animTime += dt;
-
     if (state === STATE_PLAYING) {
-      const scaledDt = dt * gameSpeed;
-      updateSpawner(scaledDt);
-      updateEnemies(scaledDt);
-      updateTowers(scaledDt);
-      updateProjectiles(scaledDt);
-      // Cleanup pass: remove any enemies that reached 0 hp from splash/AoE/chain
-      for (let i = enemies.length - 1; i >= 0; --i)
-        if (enemies[i].hp <= 0)
-          killEnemy(enemies[i], i);
-      updateFloorEffects(scaledDt);
+      const sdt = dt * gameSpeed;
+      // Sub-steps keep fast-forward as accurate as normal speed
+      const steps = Math.ceil(sdt / 0.034);
+      const h = sdt / steps;
+      for (let i = 0; i < steps && state === STATE_PLAYING; ++i)
+        stepBattle(h);
     } else if (state === STATE_BUILD) {
       updateBuildCountdown(dt);
-      updateFloorEffects(dt); // Decay lava/ice tiles between waves
+      updateFloorEffects(dt);
+      updateFx(dt);
     }
-
     if (state === STATE_PLAYING || state === STATE_BUILD) {
       autosaveTimer += dt;
       if (autosaveTimer >= AUTOSAVE_INTERVAL)
@@ -1349,6 +1726,16 @@
     }
   }
 
+  function stepBattle(h) {
+    updateSpawner(h);
+    updateEnemies(h);
+    updateTowers(h);
+    updateProjectiles(h);
+    updateClouds(h);
+    updateFloorEffects(h);
+    updateFx(h);
+    sweepEnemies();
+  }
   /* ══════════════════════════════════════════════════════════════════
      DRAWING -- IMPROVED VISUALS
      ══════════════════════════════════════════════════════════════════ */
@@ -1534,7 +1921,7 @@
   }
 
   /* ── Improved tower drawing with distinct shapes ── */
-  function drawTowerShape(def, tier, angle) {
+  function drawTowerShape(def, tier, angle, branch) {
     const tierScale = 1 + (tier - 1) * 0.1;
     const baseSize = 11 * tierScale;
     // Glow under tower
@@ -1612,7 +1999,7 @@
         ctx.restore();
         break;
 
-      case 'lightning':
+      case 'mine':
         // Square base with notched corners
         ctx.fillRect(-baseSize, -baseSize, baseSize * 2, baseSize * 2);
         // Lightning bolt symbol
@@ -1716,7 +2103,7 @@
         }
         break;
 
-      case 'mortar':
+      case 'spikes':
         // Sturdy square with reinforced corners
         ctx.fillRect(-baseSize, -baseSize, baseSize * 2, baseSize * 2);
         // Corner reinforcements
@@ -1862,11 +2249,11 @@
   function drawTowers() {
     for (const tower of towers) {
       const def = TOWER_TYPES[tower.type];
-      const angle = towerAngles.get(tower) || 0;
+      const angle = tower.angle;
       const baseSize = 11 * (1 + (tower.tier - 1) * 0.1);
       ctx.save();
       ctx.translate(tower.x, tower.y);
-      drawTowerShape(def, tower.tier, angle);
+      drawTowerShape(def, tower.tier, angle, tower.branch);
 
       // Tower HP bar (shown only when damaged)
       if (tower.hp < tower.maxHp) {
@@ -1900,7 +2287,7 @@
         {
           const grad = ctx.createRadialGradient(0, -1, 1, 0, 0, r);
           grad.addColorStop(0, '#f88');
-          grad.addColorStop(1, e.color);
+          grad.addColorStop(1, ENEMY_TYPES[e.type].color);
           ctx.fillStyle = grad;
           ctx.beginPath();
           ctx.arc(0, 0, r, 0, Math.PI * 2);
@@ -1916,7 +2303,7 @@
           const grad = ctx.createLinearGradient(-r, 0, r, 0);
           grad.addColorStop(0, '#2a2');
           grad.addColorStop(0.5, '#8f8');
-          grad.addColorStop(1, e.color);
+          grad.addColorStop(1, ENEMY_TYPES[e.type].color);
           ctx.fillStyle = grad;
         }
         ctx.beginPath();
@@ -1957,7 +2344,7 @@
         // Wing shape
         ctx.save();
         ctx.rotate(faceAngle);
-        ctx.fillStyle = e.color;
+        ctx.fillStyle = ENEMY_TYPES[e.type].color;
         ctx.beginPath();
         ctx.moveTo(r, 0);
         ctx.lineTo(-r, -r - 2);
@@ -1985,7 +2372,7 @@
         {
           const grad = ctx.createRadialGradient(0, -2, 2, 0, 0, r);
           grad.addColorStop(0, '#f8f');
-          grad.addColorStop(0.5, e.color);
+          grad.addColorStop(0.5, ENEMY_TYPES[e.type].color);
           grad.addColorStop(1, '#808');
           ctx.fillStyle = grad;
         }
@@ -2018,7 +2405,7 @@
         {
           const grad = ctx.createRadialGradient(0, -1, 1, 0, 0, r);
           grad.addColorStop(0, '#8f8');
-          grad.addColorStop(1, e.color);
+          grad.addColorStop(1, ENEMY_TYPES[e.type].color);
           ctx.fillStyle = grad;
         }
         ctx.beginPath();
@@ -2043,7 +2430,7 @@
         // Tiny triangle (fast and numerous)
         ctx.save();
         ctx.rotate(faceAngle);
-        ctx.fillStyle = e.color;
+        ctx.fillStyle = ENEMY_TYPES[e.type].color;
         ctx.beginPath();
         ctx.moveTo(r, 0);
         ctx.lineTo(-r, -r);
@@ -2058,7 +2445,7 @@
         {
           const grad = ctx.createRadialGradient(0, -1, 1, 0, 0, r);
           grad.addColorStop(0, '#8ff');
-          grad.addColorStop(1, e.color);
+          grad.addColorStop(1, ENEMY_TYPES[e.type].color);
           ctx.fillStyle = grad;
         }
         ctx.beginPath();
@@ -2066,7 +2453,7 @@
         ctx.fill();
         // Shield ring (fades as shield depletes)
         if (e.shieldHp > 0) {
-          const shieldRatio = e.shieldHp / (e.maxHp * 0.4);
+          const shieldRatio = e.shieldHp / Math.max(1, e.shieldMax);
           ctx.strokeStyle = `rgba(80, 255, 255, ${shieldRatio * 0.7})`;
           ctx.lineWidth = 2;
           ctx.beginPath();
@@ -2092,10 +2479,7 @@
 
       // Direction for facing
       let faceAngle = 0;
-      if (e.pathIndex < pathPoints.length - 1) {
-        const to = pathPoints[Math.min(e.pathIndex + 1, pathPoints.length - 1)];
-        faceAngle = Math.atan2(to.y - ey, to.x - ex);
-      }
+      faceAngle = e.angle;
 
       drawEnemyShape(e, faceAngle);
 
@@ -2154,8 +2538,8 @@
       ctx.fillRect(barX, barY, barW * hpRatio, barH);
 
       // Shield bar (below health bar)
-      if (e.isShielded && e.shieldHp > 0) {
-        const shieldRatio = e.shieldHp / (e.maxHp * 0.4);
+      if (e.shieldHp > 0) {
+        const shieldRatio = e.shieldHp / Math.max(1, e.shieldMax);
         ctx.fillStyle = '#048';
         ctx.fillRect(barX, barY + barH + 1, barW, 2);
         ctx.fillStyle = '#4ff';
@@ -2165,28 +2549,98 @@
   }
 
   function drawProjectiles() {
+    ctx.lineCap = 'round';
     for (const p of projectiles) {
-      // Trail
-      if (p.trail.length > 1) {
-        ctx.strokeStyle = _hexAlpha(p.color, '40');
+      if (p.trail && p.trail.length > 3) {
+        ctx.strokeStyle = hexToRgba(p.color.length === 7 ? p.color : '#ffffff', 0.35);
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(p.trail[0].x, p.trail[0].y);
-        for (let t = 1; t < p.trail.length; ++t)
-          ctx.lineTo(p.trail[t].x, p.trail[t].y);
+        ctx.moveTo(p.trail[0], p.trail[1]);
+        for (let i = 2; i < p.trail.length; i += 2)
+          ctx.lineTo(p.trail[i], p.trail[i + 1]);
         ctx.lineTo(p.x, p.y);
         ctx.stroke();
       }
-
-      // Projectile body
+      const z = p.z || 0;
+      if (z) {
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y + 2, 4, 2, 0, 0, TWO_PI);
+        ctx.fill();
+      }
       ctx.fillStyle = p.color;
-      ctx.shadowBlur = 6;
-      ctx.shadowColor = p.color;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y - z, p.kind === 'shell' ? 4 : p.kind === 'bomblet' ? 2.5 : 3, 0, TWO_PI);
       ctx.fill();
-      ctx.shadowBlur = 0;
     }
+    ctx.lineCap = 'butt';
+  }
+
+  function drawClouds() {
+    for (const c of clouds) {
+      const a = Math.min(1, c.t * 4, (c.life - c.t) * 2) * 0.35;
+      ctx.fillStyle = c.acid ? `rgba(200,255,60,${a})` : `rgba(90,220,70,${a})`;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, c.r, 0, TWO_PI);
+      ctx.fill();
+    }
+  }
+
+  function drawFxLines() {
+    ctx.lineCap = 'round';
+    for (const f of fxLines) {
+      const k = 1 - f.t / f.life;
+      if (f.kind === 'ring') {
+        ctx.strokeStyle = hexToRgba(f.color, k * 0.6);
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.r * (1 - k * 0.5), 0, TWO_PI);
+        ctx.stroke();
+        continue;
+      }
+      ctx.strokeStyle = hexToRgba(f.color, k);
+      ctx.lineWidth = (f.w || 2) * k + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(f.pts[0].x, f.pts[0].y);
+      for (let i = 1; i < f.pts.length; ++i) {
+        const a = f.pts[i - 1], b = f.pts[i];
+        if (f.kind === 'zap') {
+          const mx = (a.x + b.x) / 2 + Math.sin(f.seed + i * 7.1 + f.t * 60) * 6;
+          const my = (a.y + b.y) / 2 + Math.cos(f.seed + i * 3.3 + f.t * 60) * 6;
+          ctx.lineTo(mx, my);
+        }
+        ctx.lineTo(b.x, b.y);
+      }
+      ctx.stroke();
+    }
+    // Beams and flames come straight from the towers
+    for (const t of towers) {
+      const s = towerStats(t);
+      if (s.kind === 'beam' && t.beamTargets.length && state === STATE_PLAYING) {
+        const heat = Math.min(1, t.beamTime / s.rampTime);
+        for (const e of t.beamTargets) {
+          if (e.hp <= 0) continue;
+          ctx.strokeStyle = `rgba(255,90,210,${0.35 + heat * 0.3})`;
+          ctx.lineWidth = 3 + heat * 3;
+          ctx.beginPath();
+          ctx.moveTo(t.x, t.y - 6);
+          ctx.lineTo(e.x, e.y);
+          ctx.stroke();
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 1 + heat;
+          ctx.stroke();
+        }
+      }
+      if (s.kind === 'flame' && t.flameT > 0) {
+        ctx.fillStyle = `rgba(255,140,40,${t.flameT * 1.6})`;
+        ctx.beginPath();
+        ctx.moveTo(t.x, t.y);
+        ctx.arc(t.x, t.y, s.rangePx, t.angle - s.cone, t.angle + s.cone);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    ctx.lineCap = 'butt';
   }
 
   function drawFloorEffects() {
@@ -3517,23 +3971,6 @@
     });
   }
 
-  function buildTooltip(i) {
-    const def = TOWER_TYPES[i];
-    const lines = [def.name + ' Tower', def.desc];
-    lines.push('--- Stats ---');
-    if (def.isFloorTrap)
-      lines.push(`[[sword]] ${def.damage} damage per second to enemies on it`, 'Placed on the path');
-    else {
-      lines.push(`[[sword]] Damage ${def.damage}   [[range]] Range ${Math.round(def.range / CELL * 10) / 10} tiles`);
-      lines.push(`[[clock]] Fires every ${def.fireRate}s`);
-    }
-    lines.push(gold >= def.cost ? `✔ Costs ${def.cost} gold` : `✘ Costs ${def.cost} gold (need ${def.cost - gold} more)`);
-    const hk = towerHotkey(i);
-    if (hk)
-      lines.push(`• Hotkey ${hk}`);
-    return lines;
-  }
-
   function selectBuildType(i) {
     if (selectedTowerType === i) {
       selectedTowerType = -1;
@@ -3549,113 +3986,298 @@
      INSPECTOR -- stats and actions of the selected tower
      ══════════════════════════════════════════════════════════════════ */
 
-  const INSPECT_W = 236;
+  /* ══════════════════════════════════════════════════════════════════
+     INSPECTOR -- stats, targeting, upgrade paths and sell of the
+     selected tower
+     ══════════════════════════════════════════════════════════════════ */
+
+  const INSPECT_W = 252;
+
+  function fmt(v) {
+    return v >= 100 ? String(Math.round(v)) : v >= 10 ? v.toFixed(1).replace(/\.0$/, '') : v.toFixed(2).replace(/0$/, '').replace(/\.0$/, '');
+  }
+
+  // Damage per second against a single unarmored target (rough guide)
+  function towerDps(s) {
+    switch (s.kind) {
+      case 'beam': return s.damage * (s.ramp + 1) / 2;
+      case 'trap': return s.damage;
+      case 'mine': return 0;
+      case 'glob': return s.damage / s.reload + s.cloudDps;
+      case 'flame': return s.damage / s.reload + s.burn;
+      default: return s.damage * (s.crit ? 1 + s.crit * (s.critMul - 1) : 1) / Math.max(0.05, s.reload);
+    }
+  }
+
+  // Short feature list of a stat block
+  function towerSpecials(s) {
+    const out = [];
+    if (s.kind === 'mine') {
+      out.push(`+${s.income} gold per wave`);
+      if (s.interest) out.push(`${Math.round(s.interest * 100)}% interest (max ${s.interestCap})`);
+      if (s.bounty) out.push(`+${s.bounty} gold per kill nearby`);
+      return out;
+    }
+    if (s.splash) out.push(`Splash ${fmt(s.splash)} tiles`);
+    if (s.bomblets) out.push(`${s.bomblets} bomblets`);
+    if (s.shred) out.push(`Shreds ${s.shred} armor`);
+    if (s.multishot) out.push(`${s.multishot} targets`);
+    if (s.slow) out.push(`Slows ${Math.round(s.slow * 100)}%`);
+    if (s.freeze) out.push(`${Math.round(s.freeze * 100)}% freeze`);
+    if (s.aura) out.push('Hits all in range');
+    if (s.chains) out.push(`Chains ×${s.chains}`);
+    if (s.stun) out.push(`Stuns ${fmt(s.stun)}s`);
+    if (s.burn) out.push(`Burns ${fmt(s.burn)}/s`);
+    if (s.melt) out.push(`Melts ${s.melt} armor`);
+    if (s.lava) out.push('Burning ground');
+    if (s.cloudDps) out.push(`Cloud ${fmt(s.cloudDps)}/s`);
+    if (s.acid) out.push('Acid: +25% damage taken');
+    if (s.plague) out.push('Spreads on death');
+    if (s.beams) out.push(`${s.beams} beams`);
+    if (s.ramp && s.kind === 'beam') out.push(`Heats up to ×${fmt(s.ramp)}`);
+    if (s.crit) out.push(`${Math.round(s.crit * 100)}% crit ×${fmt(s.critMul)}`);
+    if (s.execute) out.push(`Executes below ${Math.round(s.execute * 100)}%`);
+    if (s.rail) out.push('Pierces the line');
+    if (s.pierce && !s.rail) out.push(`Ignores ${Math.round(s.pierce * 100)}% armor`);
+    if (s.trueSight) out.push('Spots stealth');
+    if (s.hits === 'ground') out.push('Ground only');
+    return out;
+  }
+
+  function hitsLabel(s) {
+    return s.hits === 'both' ? 'Ground & air' : s.hits === 'ground' ? 'Ground only' : s.hits === 'air' ? 'Air only' : '—';
+  }
+
+  function buildTooltip(i) {
+    const def = TOWER_TYPES[i];
+    const s = computeStats(def, 1, -1);
+    const lines = [def.name, def.desc];
+    lines.push('--- Stats ---');
+    if (s.kind === 'mine')
+      lines.push(`[[coin]] +${s.income} gold after every wave`);
+    else if (s.kind === 'trap')
+      lines.push(`[[sword]] ${fmt(s.damage)} damage per second on its tile`);
+    else
+      lines.push(`[[sword]] ${fmt(towerDps(s))} dps   [[range]] ${fmt(s.range)} tiles   ${hitsLabel(s)}`);
+    const sp = towerSpecials(s).filter(x => x !== 'Ground only');
+    if (sp.length) lines.push('• ' + sp.join(' · '));
+    lines.push(`✔ Strong vs: ${def.strong}`);
+    lines.push(`⚠ Weak vs: ${def.weak}`);
+    lines.push('--- Specializations at tier IV ---');
+    lines.push(`• ${def.branches[0].name} / ${def.branches[1].name}`);
+    lines.push(gold >= def.cost ? `★ ${def.cost} gold` : `✘ ${def.cost} gold (need ${def.cost - gold} more)`);
+    return lines;
+  }
+
+  function inspectorLayout(t) {
+    const s = towerStats(t);
+    const attacks = s.kind !== 'mine' && s.kind !== 'trap';
+    let h = 34 + 76 + 30;                         // header, portrait/stats, specials
+    if (attacks) h += 30;                         // targeting
+    h += t.tier === 3 ? 122 : 44;                 // upgrade area
+    if (t.hp < t.maxHp) h += 22;
+    h += 38;                                      // sell / repair
+    return { attacks, h };
+  }
 
   function inspectorRect() {
     const t = selectedTower;
-    const h = 236 + (t && t.hp < t.maxHp ? 34 : 0);
-    // Stay clear of the tower: use the side of the screen away from it
-    const p = t ? worldToUi(t.x, t.y) : { x: UW };
+    const L = inspectorLayout(t);
+    // Use the side of the screen away from the tower
+    const p = worldToUi(t.x, t.y);
     const left = p.x > UW * 0.55;
-    return { x: left ? 8 : UW - 8 - INSPECT_W, y: TOP_H + 4, w: INSPECT_W, h };
+    return { x: left ? 8 : UW - 8 - INSPECT_W, y: TOP_H + 4, w: INSPECT_W, h: Math.min(L.h, UH - TOP_H - BOT_H - 8), L };
   }
 
   function drawInspector() {
     const t = selectedTower;
     if (!t || (state !== STATE_BUILD && state !== STATE_PLAYING)) return;
     const def = TOWER_TYPES[t.type];
+    const s = towerStats(t);
     const r = inspectorRect();
     addRegion({ id: 'inspector-bg', x: r.x, y: r.y, w: r.w, h: r.h });
     beginHudPanel('inspector', r.x, r.y, r.w, r.h);
-    let y = drawPanel(r.x, r.y, r.w, r.h, { title: def.name + ' Tower', titleRight: 'Tier ' + toRoman(t.tier), titleRightPad: 24, accent: UI.gold });
+    let y = drawPanel(r.x, r.y, r.w, r.h, { title: towerName(t), titleRight: 'Tier ' + toRoman(t.tier), titleRightPad: 24, accent: t.branch >= 0 ? def.color : UI.gold });
     uiButton('insp-close', r.x + r.w - 26, r.y + 6, 20, 18, '×', { px: 13, onClick: () => { selectedTower = null; }, tip: () => ['Close', 'Esc'] });
 
-    // Portrait
+    // Portrait with tier pips
     const px = r.x + 10, pw = 64;
     roundRectPath(px, y, pw, pw, 8);
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
     ctx.fill();
     ctx.lineWidth = 1;
-    ctx.strokeStyle = 'rgba(255,215,90,0.35)';
+    ctx.strokeStyle = hexToRgba(def.color, 0.45);
     ctx.stroke();
-    drawTowerIcon(t.type, t.tier, px + pw / 2, y + pw / 2, pw - 10);
-    // Tier pips
+    drawTowerIcon(t.type, t.tier, px + pw / 2, y + pw / 2, pw - 8, t.branch);
+    const pipW = (pw - 8) / MAX_TIER;
     for (let i = 0; i < MAX_TIER; ++i) {
-      ctx.fillStyle = i < t.tier ? UI.gold : 'rgba(255,255,255,0.15)';
-      ctx.fillRect(px + 8 + i * ((pw - 16) / MAX_TIER), y + pw + 4, (pw - 16) / MAX_TIER - 3, 4);
+      ctx.fillStyle = i < t.tier ? (i >= 3 ? def.color : UI.gold) : 'rgba(255,255,255,0.15)';
+      ctx.fillRect(px + 4 + i * pipW, y + pw + 4, pipW - 2, 4);
     }
 
-    // Stats
+    // Stat rows
     const sx = px + pw + 10, sw = r.x + r.w - 10 - sx;
-    const rows = towerStatRows(t);
+    const rows = towerStatRows(t, s);
     ctx.textBaseline = 'middle';
     for (let i = 0; i < rows.length; ++i) {
-      const ry = y + 8 + i * 17;
+      const ry = y + 7 + i * 16;
       ctx.textAlign = 'left';
-      drawIcon(rows[i][0], sx + 7, ry, 13);
-      fitText(rows[i][1], sx + 17, ry + 1, sw * 0.5 - 17, 11, { color: UI.textDim });
+      drawIcon(rows[i][0], sx + 6, ry, 12);
+      fitText(rows[i][1], sx + 16, ry + 1, sw * 0.5 - 16, 11, { color: UI.textDim });
       ctx.textAlign = 'right';
       fitText(rows[i][2], sx + sw, ry + 1, sw * 0.5, 12, { weight: 'bold', color: rows[i][3] || '#ffffff' });
     }
-    y += pw + 14;
+    y += pw + 12;
 
-    // Description
-    ctx.textAlign = 'left';
-    drawTextBlock(def.desc, r.x + 12, y, r.w - 24, 30, 11, { color: '#c4cde0', valign: 'middle' });
-    y += 34;
+    // Specials as chips
+    const sp = towerSpecials(s);
+    ctx.save();
+    roundRectPath(r.x + 8, y - 2, r.w - 16, 26, 6);
+    ctx.clip();
+    let cx = r.x + 10;
+    for (const text of sp) {
+      ctx.font = uiFont(10, 'bold');
+      const w = Math.min(r.w - 20, ctx.measureText(text).width + 14);
+      if (cx + w > r.x + r.w - 10) break;
+      drawChip(text, cx, y + 2, 18, { px: 10, bg: hexToRgba(def.color, 0.16), border: hexToRgba(def.color, 0.4), color: '#e8eef8', maxW: r.w - 20 });
+      cx += w + 4;
+    }
+    ctx.restore();
+    y += 30;
 
-    // Health
+    // Targeting
+    if (r.L.attacks) {
+      const n = TARGET_MODES.length;
+      const bw = (r.w - 20 - (n - 1) * 4) / n;
+      for (let i = 0; i < n; ++i) {
+        const m = TARGET_MODES[i];
+        uiButton('insp-target-' + m, r.x + 10 + i * (bw + 4), y, bw, 24, TARGET_LABELS[m], {
+          style: t.target === m ? 'blue' : 'dark', px: 11,
+          onClick: () => { t.target = m; },
+          tip: () => [`Target: ${TARGET_LABELS[m]}`, TARGET_DESC[m], '• T cycles the targeting']
+        });
+      }
+      y += 30;
+    }
+
+    // Upgrade paths
+    const bw = r.w - 20;
+    const uc = getUpgradeCost(t);
+    if (t.tier < 3 || t.tier === 4) {
+      const label = t.tier === 4 ? `Master ${towerName(t)}` : `Upgrade to Tier ${toRoman(t.tier + 1)}`;
+      uiButton('insp-up', r.x + 10, y, bw, 38, label, {
+        style: 'gold', icon: 'up', key: 'U', sub: `${uc} gold`, disabled: gold < uc,
+        onClick: () => upgradeTower(t), onDisabled: () => audio.play('error'),
+        tip: () => upgradeTooltip(t, t.branch)
+      });
+      y += 44;
+    } else if (t.tier === 3) {
+      ctx.textAlign = 'left';
+      fitText('Choose a specialization', r.x + 12, y + 7, bw, 11, { weight: 'bold', color: UI.gold });
+      const cw = (bw - 6) / 2;
+      for (let b = 0; b < 2; ++b)
+        drawBranchCard(t, b, r.x + 10 + b * (cw + 6), y + 16, cw, 100, uc);
+      y += 122;
+    } else {
+      uiButton('insp-up', r.x + 10, y, bw, 38, 'Fully mastered', { style: 'dark', icon: 'crown', disabled: true });
+      y += 44;
+    }
+
     if (t.hp < t.maxHp) {
       const ratio = t.hp / t.maxHp;
-      drawMeter(r.x + 12, y + 4, r.w - 24, 12, ratio, ratio > 0.5 ? UI.good : ratio > 0.25 ? UI.warn : UI.bad, { label: `Structure ${Math.ceil(ratio * 100)}%`, labelPx: 9 });
+      drawMeter(r.x + 12, y + 2, r.w - 24, 12, ratio, ratio > 0.5 ? UI.good : ratio > 0.25 ? UI.warn : UI.bad, { label: `Structure ${Math.ceil(ratio * 100)}%`, labelPx: 9 });
       y += 22;
     }
 
-    // Actions
-    const bw = r.w - 20;
-    if (t.tier < MAX_TIER) {
-      const uc = getUpgradeCost(t);
-      uiButton('insp-up', r.x + 10, y, bw, 38, `Upgrade to Tier ${toRoman(t.tier + 1)}`, {
-        style: 'gold', icon: 'up', key: 'U', sub: `${uc} gold`, disabled: gold < uc,
-        onClick: () => upgradeTower(t), onDisabled: () => audio.play('error'),
-        tip: () => upgradeTooltip(t)
-      });
-    } else
-      uiButton('insp-up', r.x + 10, y, bw, 38, 'Maximum tier', { style: 'dark', icon: 'crown', disabled: true });
-    y += 44;
     const half = (bw - 6) / 2;
-    uiButton('insp-sell', r.x + 10, y, half, 30, `Sell +${getSellValue(t)}`, { style: 'red', key: 'S', px: 12, onClick: () => sellTower(t), tip: () => ['Sell tower', `Refunds ${getSellValue(t)} gold (half of everything spent).`] });
+    const sv = getSellValue(t);
+    uiButton('insp-sell', r.x + 10, y, half, 30, `Sell +${sv}`, { style: 'red', key: 'S', px: 12, onClick: () => sellTower(t),
+      tip: () => ['Sell tower', sv === t.spent ? `Full refund of ${sv} gold: it was built during this break.` : `Refunds ${sv} gold (60% of the ${t.spent} spent).`] });
     const rc = repairCost(t);
-    uiButton('insp-repair', r.x + 16 + half, y, half, 30, rc > 0 ? `Repair ${rc}` : 'Repaired', { style: 'green', key: 'R', px: 12, disabled: rc <= 0 || gold < rc, onClick: () => repairTower(t), onDisabled: () => rc > 0 && audio.play('error'), tip: () => ['Repair', rc > 0 ? `Restores the structure for ${rc} gold.` : 'The tower is undamaged.'] });
+    uiButton('insp-repair', r.x + 16 + half, y, half, 30, rc > 0 ? `Repair ${rc}` : 'Intact', { style: 'green', key: 'R', px: 12, disabled: rc <= 0 || gold < rc,
+      onClick: () => repairTower(t), onDisabled: () => rc > 0 && audio.play('error'),
+      tip: () => ['Repair', rc > 0 ? `Restores the structure for ${rc} gold.` : 'The tower is undamaged.'] });
     endHudPanel();
   }
 
-  function towerStatRows(t) {
+  function drawBranchCard(t, b, x, y, w, h, cost) {
     const def = TOWER_TYPES[t.type];
+    const br = def.branches[b];
+    const id = 'insp-branch' + b;
+    const hover = hoverId === id;
+    const afford = gold >= cost;
+    const press = pressAmount(id);
+    ctx.save();
+    roundRectPath(x, y + press * 2, w, h, 8);
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, hover ? 'rgba(70,60,30,0.95)' : 'rgba(40,46,70,0.95)');
+    g.addColorStop(1, 'rgba(14,16,30,0.95)');
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.lineWidth = hover ? 2 : 1;
+    ctx.strokeStyle = hover ? UI.gold : hexToRgba(def.color, 0.5);
+    ctx.stroke();
+    if (!afford) ctx.globalAlpha *= 0.6;
+    drawTowerIcon(t.type, BRANCH_TIER, x + 20, y + 21 + press * 2, 30, b);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    drawTextBlock(br.name, x + 38, y + 5 + press * 2, w - 42, 32, 12, { weight: 'bold', color: '#ffffff', valign: 'middle', lineGap: 1.1 });
+    drawTextBlock(br.desc, x + 6, y + 40 + press * 2, w - 12, h - 62, 10, { color: '#c4cde0', lineGap: 1.2 });
+    ctx.textAlign = 'left';
+    fitText(`[[coin]]${cost}`, x + 6, y + h - 11 + press * 2, w - 32, 11, { weight: 'bold', color: afford ? UI.gold : UI.bad });
+    drawKeycap(b === 0 ? 'U' : 'I', x + w - 20, y + h - 19 + press * 2, 9);
+    ctx.restore();
+    addRegion({ id, x, y, w, h, disabled: !afford, onDisabled: () => audio.play('error'),
+      onClick: () => upgradeTower(t, b), tip: () => upgradeTooltip(t, b) });
+  }
+
+  function towerStatRows(t, s) {
     const rows = [];
-    if (def.isFloorTrap)
-      return [['sword', 'Damage', `${t.damage}/s`]];
-    rows.push(['sword', 'Damage', String(t.damage)]);
-    rows.push(['range', 'Range', (t.range / CELL).toFixed(1)]);
-    rows.push(['clock', 'Rate', `${(1 / t.fireRate).toFixed(2)}/s`]);
+    if (s.kind === 'mine') {
+      rows.push(['coin', 'Income', `+${s.income}`, UI.gold]);
+      if (s.interest) rows.push(['coin', 'Interest', `${Math.round(s.interest * 100)}%`]);
+      if (s.bounty) rows.push(['skull', 'Kill bonus', `+${s.bounty}`]);
+      return rows;
+    }
+    rows.push(['sword', s.kind === 'trap' || s.kind === 'beam' ? 'Dmg/sec' : 'Damage', fmt(s.damage) + (s.multishot ? ` ×${s.multishot}` : '')]);
+    if (s.kind !== 'trap') {
+      rows.push(['range', 'Range', fmt(s.range)]);
+      rows.push(['clock', 'Rate', s.kind === 'beam' ? 'beam' : `${fmt(1 / s.reload)}/s`]);
+    }
+    rows.push(['bolt', 'DPS', fmt(towerDps(s)), UI.warn]);
     rows.push(['skull', 'Kills', String(t.kills || 0)]);
     return rows;
   }
 
-  function upgradeTooltip(t) {
+  function upgradeTooltip(t, branch) {
     const def = TOWER_TYPES[t.type];
     const next = t.tier + 1;
-    const dmg = Math.floor(def.damage * UPGRADE_DAMAGE_MULT[next - 1]);
-    const rng = Math.floor(def.range * UPGRADE_RANGE_MULT[next - 1]);
+    const nb = next >= BRANCH_TIER ? branch : -1;
+    const cur = towerStats(t);
+    const nxt = computeStats(def, next, nb);
     const uc = getUpgradeCost(t);
-    return [`Upgrade to Tier ${toRoman(next)}`,
-      `[[sword]] Damage ${t.damage} → ${dmg}`,
-      `[[range]] Range ${(t.range / CELL).toFixed(1)} → ${(rng / CELL).toFixed(1)}`,
-      gold >= uc ? `✔ ${uc} gold` : `✘ ${uc} gold (need ${uc - gold} more)`];
-  }
-
-  function repairCost(t) {
-    return t.hp >= t.maxHp ? 0 : Math.max(1, Math.floor((t.maxHp - t.hp) * 0.3));
+    const title = next === BRANCH_TIER ? `Specialize: ${def.branches[branch].name}` : next === 5 ? `Master ${def.branches[t.branch].name}` : `Upgrade to Tier ${toRoman(next)}`;
+    const lines = [title];
+    if (next === BRANCH_TIER) lines.push(def.branches[branch].desc);
+    lines.push('--- Changes ---');
+    const cmp = (label, a, b, unit) => {
+      if (Math.abs(a - b) > 1e-6)
+        lines.push(`${b > a ? '✔' : '•'} ${label} ${fmt(a)}${unit || ''} → ${fmt(b)}${unit || ''}`);
+    };
+    if (cur.kind === 'mine') {
+      cmp('Income', cur.income, nxt.income);
+    } else {
+      cmp('Damage', cur.damage, nxt.damage);
+      cmp('Range', cur.range, nxt.range, ' tiles');
+      if (cur.kind !== 'beam' && cur.kind !== 'trap') cmp('Shots/sec', 1 / cur.reload, 1 / nxt.reload);
+      cmp('DPS', towerDps(cur), towerDps(nxt));
+    }
+    const before = towerSpecials(cur);
+    for (const sp of towerSpecials(nxt))
+      if (before.indexOf(sp) < 0)
+        lines.push(`★ ${sp}`);
+    lines.push(gold >= uc ? `✔ ${uc} gold` : `✘ ${uc} gold (need ${uc - gold} more)`);
+    return lines;
   }
 
   function toRoman(n) {
@@ -3676,18 +4298,6 @@
     return { col: Math.floor(pointer.wx / CELL), row: Math.floor(pointer.wy / CELL) };
   }
 
-  function canBuildAt(typeIndex, col, row) {
-    const def = TOWER_TYPES[typeIndex];
-    return def.isFloorTrap ? canPlaceSpike(col, row) : canPlace(col, row);
-  }
-
-  function towerAt(col, row) {
-    for (const t of towers)
-      if (t.col === col && t.row === row)
-        return t;
-    return null;
-  }
-
   function drawMapOverlays() {
     const c = cursorCell();
     const pulse = 0.5 + 0.5 * Math.sin(animTime * 6);
@@ -3696,7 +4306,7 @@
       const t = selectedTower;
       ctx.fillStyle = 'rgba(255,215,90,0.06)';
       ctx.beginPath();
-      ctx.arc(t.x, t.y, t.range, 0, TWO_PI);
+      ctx.arc(t.x, t.y, Math.max(towerStats(t).rangePx, 1), 0, TWO_PI);
       ctx.fill();
       ctx.strokeStyle = 'rgba(255,215,90,0.55)';
       ctx.lineWidth = 1.5;
@@ -3709,16 +4319,17 @@
     if (!c || (state !== STATE_BUILD && state !== STATE_PLAYING)) return;
     if (selectedTowerType >= 0) {
       const def = TOWER_TYPES[selectedTowerType];
-      const ok = canBuildAt(selectedTowerType, c.col, c.row) && !towerAt(c.col, c.row);
+      const ok = canBuildAt(selectedTowerType, c.col, c.row);
       const afford = gold >= def.cost;
       const cx = c.col * CELL + CELL / 2, cy = c.row * CELL + CELL / 2;
       const good = ok && afford;
       ctx.fillStyle = good ? 'rgba(80,255,120,0.18)' : 'rgba(255,70,70,0.22)';
       ctx.fillRect(c.col * CELL, c.row * CELL, CELL, CELL);
-      if (def.range > 0 && ok) {
+      const range = def.range * CELL;
+      if (def.range > 0 && ok && !def.trap) {
         ctx.fillStyle = good ? 'rgba(120,255,150,0.07)' : 'rgba(255,120,120,0.06)';
         ctx.beginPath();
-        ctx.arc(cx, cy, def.range, 0, TWO_PI);
+        ctx.arc(cx, cy, range, 0, TWO_PI);
         ctx.fill();
         ctx.strokeStyle = good ? 'rgba(140,255,170,0.6)' : 'rgba(255,140,140,0.5)';
         ctx.lineWidth = 1.5;
@@ -3772,10 +4383,13 @@
   const ENEMY_NAMES = { normal: 'Grunt', fast: 'Runner', armored: 'Brute', flying: 'Bat', boss: 'Warlord', healer: 'Shaman', swarm: 'Swarmling', shield: 'Warden' };
 
   function enemyTooltip(e) {
-    const lines = [ENEMY_NAMES[e.type] || e.type, `HP ${Math.ceil(e.hp)} / ${e.maxHp}`, `Speed ${Math.round(e.baseSpeed)}   Bounty ${e.bounty} gold`];
-    if (e.isShielded && e.shieldHp > 0) lines.push(`[[shield]] Shield ${Math.ceil(e.shieldHp)}`);
-    if (e.isHealer) lines.push('⚠ Heals nearby enemies');
-    if (e.isBoss) lines.push('⚠ Boss: damages nearby towers');
+    const f = enemyFlags(e);
+    const lines = [ENEMY_NAMES[e.type] || e.type, `[[heart]] ${Math.ceil(e.hp)} / ${Math.ceil(e.maxHp)}   Speed ${Math.round(e.speed)}`, `[[coin]] Bounty ${e.bounty}`];
+    if (e.armor > 0) lines.push(`[[shield]] Armor ${Math.max(0, e.armor - e.shred)}${e.shred ? ' (shredded)' : ''}`);
+    if (e.shieldHp > 0) lines.push(`[[bolt]] Shield ${Math.ceil(e.shieldHp)}`);
+    if (f.flying) lines.push('⚠ Flying: only towers that hit air can reach it');
+    if (f.heals) lines.push('⚠ Heals nearby enemies');
+    if (f.boss) lines.push('⚠ Boss: costs 5 lives and batters towers');
     return lines;
   }
 
@@ -3998,25 +4612,25 @@
      ICON HELPERS -- towers and enemies drawn into UI boxes
      ══════════════════════════════════════════════════════════════════ */
 
-  function drawTowerIcon(typeIndex, tier, cx, cy, size) {
+  function drawTowerIcon(typeIndex, tier, cx, cy, size, branch) {
     ctx.save();
     ctx.translate(cx, cy);
     const k = size / 30;
     ctx.scale(k, k);
-    drawTowerShape(TOWER_TYPES[typeIndex], tier, -Math.PI / 4);
+    drawTowerShape(TOWER_TYPES[typeIndex], tier, -Math.PI / 4, branch === undefined ? -1 : branch);
     ctx.restore();
   }
 
   function drawTowerIconWorld(typeIndex, tier, x, y) {
     ctx.save();
     ctx.translate(x, y);
-    drawTowerShape(TOWER_TYPES[typeIndex], tier, -Math.PI / 4);
+    drawTowerShape(TOWER_TYPES[typeIndex], tier, -Math.PI / 4, -1);
     ctx.restore();
   }
 
   function drawEnemyIcon(type, cx, cy, size) {
     const def = ENEMY_TYPES[type];
-    const fake = { type, color: def.color, radius: def.radius, shieldHp: def.shielded ? 1 : 0, maxHp: 2.5 };
+    const fake = { type, radius: def.radius, shieldHp: def.shielded ? 1 : 0, shieldMax: 1, maxHp: 1 };
     ctx.save();
     ctx.translate(cx, cy);
     const k = size / ((def.radius + 5) * 2);
@@ -4042,11 +4656,13 @@
     if (state !== STATE_READY) {
       drawPathVisualization();
       drawFloorEffects();
+      drawClouds();
       drawPreWaveWarning();
       drawMapOverlays();
       drawTowers();
       drawEnemies();
       drawProjectiles();
+      drawFxLines();
       particles.draw(ctx);
       floatingText.draw(ctx);
     }
@@ -4182,7 +4798,7 @@
   function loadMapPreview() {
     const mapDef = MAPS[currentMap];
     buildPathCells(mapDef);
-    pathPoints = getPathPoints(mapDef);
+    buildPaths(mapDef);
     totalWaves = mapDef.waves;
   }
 
@@ -4326,16 +4942,6 @@
       audio.play('select');
       return;
     }
-    // Right-click on a spike trap sells it
-    const spike = floorEffects.find(fe => fe.col === col && fe.row === row && fe.type === 'spike');
-    if (spike) {
-      const refund = Math.floor(spike.cost * 0.5);
-      gold += refund;
-      floatingText.add(spike.x, spike.y - 16, `+${refund}`, { color: '#ffd75a', font: 'bold 12px sans-serif' });
-      particles.burst(spike.x, spike.y, 6, { color: '#aaa', speed: 2, life: 0.3 });
-      audio.play('coin');
-      floorEffects.splice(floorEffects.indexOf(spike), 1);
-    }
   });
 
   function moveCursor(dc, dr) {
@@ -4460,11 +5066,24 @@
       return;
     }
 
-    if (code === 'KeyU' && selectedTower) {
-      if (!upgradeTower(selectedTower))
+    if ((code === 'KeyU' || code === 'KeyI') && selectedTower) {
+      const t = selectedTower;
+      const branch = t.tier === BRANCH_TIER - 1 ? (code === 'KeyI' ? 1 : 0) : t.branch;
+      if (code === 'KeyI' && t.tier !== BRANCH_TIER - 1)
+        return;
+      if (!upgradeTower(t, branch))
         audio.play('error');
       else
-        pressFx['insp-up'] = performance.now();
+        pressFx[t.tier === BRANCH_TIER ? 'insp-branch' + branch : 'insp-up'] = performance.now();
+      return;
+    }
+
+    if (code === 'KeyT' && selectedTower) {
+      const s = towerStats(selectedTower);
+      if (s.kind !== 'mine' && s.kind !== 'trap') {
+        cycleTargeting(selectedTower, e.shiftKey ? -1 : 1);
+        pressFx['insp-target-' + selectedTower.target] = performance.now();
+      }
       return;
     }
 
