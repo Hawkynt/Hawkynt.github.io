@@ -40,7 +40,7 @@
 
   /* ── Wave timing ── */
   const WARNING_DURATION = 3;
-  const AUTO_WAVE_DELAY = 5;
+  const AUTO_WAVE_DELAY = 1;
 
   /* ══════════════════════════════════════════════════════════════════
      TOWER FAMILIES
@@ -6715,7 +6715,7 @@
     uiButton('auto', rx, by, 56, bh, 'AUTO', {
       style: autoWaveMode ? 'blue' : 'dark', px: 11, icon: 'loop',
       onClick: toggleAutoWave,
-      tip: () => ['Auto-wave ' + (autoWaveMode ? 'on' : 'off'), `Starts the next wave ${AUTO_WAVE_DELAY} seconds after a wave is cleared.`, '• A toggles']
+      tip: () => ['Auto-wave ' + (autoWaveMode ? 'on' : 'off'), `Starts the next wave ${AUTO_WAVE_DELAY === 1 ? "one second" : AUTO_WAVE_DELAY + " seconds"} after a wave is cleared.`, '• A toggles']
     });
     rx += 62;
     uiButton('help', rx, by, 34, bh, '', { icon: 'help', px: 14, onClick: () => openHelp(), tip: () => ['Help', 'How to play, towers, enemies and controls', '• H opens the help'] });
