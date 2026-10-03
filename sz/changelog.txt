@@ -1,3 +1,61 @@
+Main: 6.29
+by Hawkynt 03.10.2026
+# Desktop: only the desktop's own app windows can talk to it; framing sites and pages shown in the Web Browser can no longer read, delete or launch anything
+# Desktop: file and folder names show as plain text on icons, in the start menu and on the boot error screen
+# Web Browser: proxied pages run in a sandbox that cannot reach the desktop
+# Markdown Editor: preview links only lead to web pages, mail addresses and relative paths; code stays untouched
+# Desktop: direct links to an app (e.g. /sz/Applications/Office/calculator/) open that app
+* Desktop: text browsers, old browsers and browsers without script get a plain list of every app with working links
+# Desktop: app versions are generated again and kept current after every deploy, so changed apps are not served from the browser cache
+# Function Plotter: loads its current version when online instead of an outdated offline copy
++ Desktop: message boxes with Yes, No and Cancel, keyboard control and screen-reader roles
+# Desktop: closing a window asks its app first; Notepad, WordPad, Paint, Spreadsheet and eight more editors ask to save unsaved changes
+* Desktop: files are stored in IndexedDB instead of the 5 MB of localStorage (taken over automatically); large files save without crashing; a full disk reports a clear error
+* Desktop: windows open maximized on phones; desktop icons open with a single tap on touch screens and with Enter from the keyboard
++ Desktop: start menu and taskbar work from the keyboard (Ctrl+Esc, arrows, letters, Enter, Escape)
++ Apps: menu bars and ribbons work from the keyboard (Alt, F10, Alt+letter, arrows) and expose their structure to screen readers
++ Apps: dialogs close with Escape, keep the focus inside and replace the browser pop-ups (prompt and alert) in every app
+# Apps: dialogs opened a second time show their content again
+# Skins: buttons in apps look like buttons again in Luna Extended
+# Calculator: 0.1 + 0.2 shows 0.3; long decimals are rounded instead of switching to exponents
+* Encryptor: AES-256-GCM with a passphrase; text in any language; old XOR text still decrypts
+# Presentations: Format Background applies solid colours, images and Apply to All
+# Paint: saves in the format of the chosen extension (PNG, JPEG, WebP, BMP, GIF)
++ Formats: GIF encoder
+# Control Panel: Show the clock, Auto-hide the taskbar and small start-menu icons take effect and are remembered
+# Metadata Viewer: Copy Selected Value works
+# WordPad: undo and redo cover every change, restore the selection and undo typing word by word
+# Games: Breakout, Asteroids, Space Invaders, Space Racing, Space Mining and all particle effects run at the same speed on 144 Hz screens
++ Games: real-time games pause themselves when their window is hidden or loses focus
++ Games: sound effects in every game, with one shared mute switch
++ Games: touch controls for Bubble Bobble, Bomberman, Platformer, Mind-Bending Puzzle and Illusion Puzzle; Minesweeper flags with a long press
++ Tetris: hold piece, five-piece preview, lock delay and line-clear flashes
+# Boulder Dash: every cave is solvable
+* Platformer: six designed levels instead of random layouts
+* Illusion Puzzle and Mind-Bending Puzzle: redrawn
+* Space Farming, Dome Keeper and Fantasy Puzzle: drawn pixel art instead of emoji
++ Space Farming, Dome Keeper and Tower Defense: automatic saves with Continue
+# Card Games: dragging cards no longer throws errors
++ Tactical Realms: planes and portals: 30 planes of existence with their own lands, inhabitants and traits (burning, draining, weightless, wild magic), portals to travel between them
+
+Main: 6.28
+by Hawkynt 02.10.2026
++ Tactical Realms: Shining Force style battle scenes for every attack and spell, with combat feedback on the board (damage numbers, particles, shake, knockback)
++ Tactical Realms: illustrated title, party, camp, town, shop, victory and defeat screens; pixel portraits in the combat HUD
+* Tactical Realms: painted overworld and battle boards (meadows, roads, water, sand, snow, swamp, rocky slopes), torch-lit dungeons, gold-framed HUD
++ Tactical Realms: dungeons to explore: themed, multi-floor, with monster groups to sneak past or ambush and enemies that position themselves before the first strike
++ Tactical Realms: overworld with climate regions (jungle, desert, tundra, swamp, hills, ash fields and more), each with its own ground, features and creatures
++ Tactical Realms: full monster roster with sprites, stat blocks, natural attacks and special abilities (breath weapons, gazes, webs); fair encounters matched to the party
+* Tactical Realms: overworld ambushes come far less often
+# Tactical Realms: sprites show the intended pictures; the party is never stranded at Home Camp; battles end when a side is wiped out
+- Tactical Realms: the copyrighted handbook text is no longer part of the repository
+
+Main: 6.27
+by Hawkynt 13.04.2026
++ Tactical Realms: playable alpha with combat history
++ Tactical Realms: multi-resolution asset pipeline
+# Dome Keeper: turrets hit again and enemies despawn
+
 Main: 6.26
 by Hawkynt 15.03.2026
 + Tactical Realms: PRD and game folder (Shining Force-style tactical RPG with D&D Forgotten Realms setting, paper-doll sprites, procedural dungeons/overworld, time-gated content rotation, 40+ enemy bestiary, companion creatures, holiday events, entitlement system stub)
