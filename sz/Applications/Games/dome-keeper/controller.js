@@ -1333,13 +1333,30 @@
      CANVAS SETUP
      ====================================================================== */
 
+  // Backing-store pixels per logical (CANVAS_W x CANVAS_H) unit
+  let renderScale = 1;
+
   function setupCanvas() {
-    // Fixed internal resolution -- CSS (width:100%; height:100%) scales the
-    // canvas to fill the client area. This avoids per-element scaling, keeps
-    // tile count constant, and all mouse handlers already translate coordinates
-    // via CANVAS_W/rect.width.
-    canvas.width = CANVAS_W;
-    canvas.height = CANVAS_H;
+    // Fixed logical resolution, letterboxed into the client area so the
+    // aspect ratio never distorts. The backing store matches the on-screen
+    // size (times devicePixelRatio) so text and sprites stay sharp; every
+    // frame starts with a scale transform. Mouse handlers translate
+    // coordinates via CANVAS_W / rect.width, which still holds.
+    const frame = canvas.parentElement;
+    const fw = (frame && frame.clientWidth) || CANVAS_W;
+    const fh = (frame && frame.clientHeight) || CANVAS_H;
+    const fit = Math.min(fw / CANVAS_W, fh / CANVAS_H);
+    const cssW = Math.max(1, Math.floor(CANVAS_W * fit));
+    const cssH = Math.max(1, Math.floor(CANVAS_H * fit));
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    renderScale = Math.max(0.25, Math.min(2, (cssW / CANVAS_W) * (window.devicePixelRatio || 1)));
+    const bw = Math.round(CANVAS_W * renderScale);
+    const bh = Math.round(CANVAS_H * renderScale);
+    if (canvas.width !== bw || canvas.height !== bh) {
+      canvas.width = bw;
+      canvas.height = bh;
+    }
   }
 
   /* ======================================================================
@@ -6439,6 +6456,7 @@
     screenShake.update(dt * 1000);
     floatingText.update();
 
+    ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
     ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
     ctx.save();
     screenShake.apply(ctx);
@@ -7000,6 +7018,8 @@
   }
 
   window.addEventListener('resize', handleResize);
+  if (typeof ResizeObserver === 'function' && canvas.parentElement)
+    new ResizeObserver(handleResize).observe(canvas.parentElement);
 
   /* ======================================================================
      INIT
