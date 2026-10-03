@@ -31,8 +31,10 @@
   const MAX_HIGH_SCORES = 5;
 
   /* -- Underground Grid -- */
-  const GRID_COLS = 110;
-  const GRID_ROWS = 80;
+  const STRATUM_ROWS = 14;                 // rows per rock layer
+  const STRATUM_COUNT = 16;
+  const GRID_COLS = 165;                   // every layer spans the full width
+  const GRID_ROWS = STRATUM_ROWS * STRATUM_COUNT;
   const TILE_SIZE = 40;
   const GRID_OFFSET_X = 140;
   const GRID_OFFSET_Y = 120;
@@ -55,6 +57,14 @@
   const TILE_DIAMOND = 14;
   const TILE_EMERALD = 15;
   const TILE_RUBY = 16;
+  // Deep ores: one signature ore for each of the six deepest strata
+  const TILE_TITANIUM = 17;
+  const TILE_SAPPHIRE = 18;
+  const TILE_URANIUM = 19;
+  const TILE_AMETHYST = 20;
+  const TILE_OPAL = 21;
+  const TILE_VOIDSTONE = 22;
+  const TILE_MAX = TILE_VOIDSTONE;
 
   const TILE_COLORS = {
     [TILE_DIRT]: '#4a3a2a',
@@ -71,7 +81,13 @@
     [TILE_REDSTONE]: '#cc0000',
     [TILE_DIAMOND]: '#b9f2ff',
     [TILE_EMERALD]: '#50c878',
-    [TILE_RUBY]: '#e0115f'
+    [TILE_RUBY]: '#e0115f',
+    [TILE_TITANIUM]: '#8aa0bc',
+    [TILE_SAPPHIRE]: '#2a64e0',
+    [TILE_URANIUM]: '#58d030',
+    [TILE_AMETHYST]: '#9a4ad8',
+    [TILE_OPAL]: '#ff9a40',
+    [TILE_VOIDSTONE]: '#5a3aa0'
   };
 
   const TILE_HIGHLIGHT_COLORS = {
@@ -88,7 +104,13 @@
     [TILE_REDSTONE]: '#ff3333',
     [TILE_DIAMOND]: '#dff8ff',
     [TILE_EMERALD]: '#80e8a0',
-    [TILE_RUBY]: '#ff4488'
+    [TILE_RUBY]: '#ff4488',
+    [TILE_TITANIUM]: '#c8dcf4',
+    [TILE_SAPPHIRE]: '#6aa0ff',
+    [TILE_URANIUM]: '#9aff5a',
+    [TILE_AMETHYST]: '#d090ff',
+    [TILE_OPAL]: '#ffd080',
+    [TILE_VOIDSTONE]: '#b48aff'
   };
 
   const TILE_VALUES = {
@@ -105,7 +127,13 @@
     [TILE_REDSTONE]: 45,
     [TILE_EMERALD]: 60,
     [TILE_DIAMOND]: 80,
-    [TILE_RUBY]: 70
+    [TILE_RUBY]: 70,
+    [TILE_TITANIUM]: 90,
+    [TILE_SAPPHIRE]: 110,
+    [TILE_URANIUM]: 130,
+    [TILE_AMETHYST]: 150,
+    [TILE_OPAL]: 180,
+    [TILE_VOIDSTONE]: 220
   };
 
   const TILE_LABELS = {
@@ -122,7 +150,13 @@
     [TILE_REDSTONE]: 'redstone',
     [TILE_DIAMOND]: 'diamond',
     [TILE_EMERALD]: 'emerald',
-    [TILE_RUBY]: 'ruby'
+    [TILE_RUBY]: 'ruby',
+    [TILE_TITANIUM]: 'titanium',
+    [TILE_SAPPHIRE]: 'sapphire',
+    [TILE_URANIUM]: 'uranium',
+    [TILE_AMETHYST]: 'amethyst',
+    [TILE_OPAL]: 'opal',
+    [TILE_VOIDSTONE]: 'voidstone'
   };
 
   // Pixel-art sprite drawn on each resource tile (see SPRITES)
@@ -140,7 +174,13 @@
     [TILE_REDSTONE]: 'redstone',
     [TILE_DIAMOND]: 'diamond',
     [TILE_EMERALD]: 'emerald',
-    [TILE_RUBY]: 'ruby'
+    [TILE_RUBY]: 'ruby',
+    [TILE_TITANIUM]: 'titanium',
+    [TILE_SAPPHIRE]: 'sapphire',
+    [TILE_URANIUM]: 'uranium',
+    [TILE_AMETHYST]: 'amethyst',
+    [TILE_OPAL]: 'opal',
+    [TILE_VOIDSTONE]: 'voidstone'
   };
 
   /* ======================================================================
@@ -167,7 +207,13 @@
     cream:  ['#6a5a48', '#a89878', '#d8ccb4', '#f2ead8', '#ffffff'],
     coal:   ['#141218', '#25222c', '#3a3644', '#5e5a6c', '#9a96a8'],
     cyan:   ['#0e4a6a', '#1e88b0', '#58c8e8', '#a8ecff', '#f0ffff'],
-    fire:   ['#7a1a08', '#d04010', '#ff8a20', '#ffd040', '#fff8c0']
+    fire:   ['#7a1a08', '#d04010', '#ff8a20', '#ffd040', '#fff8c0'],
+    titan:  ['#2a3442', '#4a5a70', '#7a90b0', '#b0c4dc', '#eef6ff'],
+    sapph:  ['#0a1a5a', '#1438a0', '#2a64e0', '#6aa0ff', '#d0e4ff'],
+    uran:   ['#0e3a08', '#1e7a10', '#40c020', '#90ff50', '#e8ffc0'],
+    purple: ['#2a0a4a', '#5a1a8a', '#8a3ac8', '#c080f0', '#f0d8ff'],
+    opal:   ['#6a2a10', '#c05a20', '#ff9a40', '#ffd080', '#fff4e0'],
+    void:   ['#0a0418', '#24104a', '#4a2a8a', '#9a6aff', '#f0e0ff']
   };
   const SPRITE_OUTLINE = '#120c18';
 
@@ -229,6 +275,30 @@
       '............', '....3333....', '..33444433..', '.3445544443.',
       '.3455444433.', '334544443332', '334444433322', '.3444433322.',
       '.3333332222.', '..22322222..', '....2222....', '............'] },
+    titanium: { ramps: ['titan', 'cyan'], px: [
+      '............', '...3....4...', '..343..454..', '..3443.444..',
+      '.34443.3443.', '.344432344d.', '.3444323443.', '23443323343.',
+      '2333322333..', '.222222222..', '............', '............'] },
+    sapphire: { ramps: ['sapph'], px: [
+      '............', '....3333....', '..33455433..', '.3455544443.',
+      '.3455444443.', '334444444433', '.3444444433.', '.2344443332.',
+      '..23333322..', '...222222...', '............', '............'] },
+    uranium: { ramps: ['uran', 'steel'], px: [
+      '............', '.ccc..ccc...', '.c4c..c4c.cc', '.c5c..c5c.c4',
+      '.c4c..c4c.c5', '.c4c..c4c.c4', '.c4c..c4c.c4', '.c3c..c3c.c3',
+      '.ccc..ccc.cc', '..23444432..', '...222222...', '............'] },
+    amethyst: { ramps: ['purple'], px: [
+      '.....4......', '....454.....', '..4.444..4..', '.454434.454.',
+      '.444434.434.', '.434434.434.', '.434334.334.', '.334334.334.',
+      '.334334.234.', '222222222222', '.2222222222.', '............'] },
+    opal: { ramps: ['opal', 'cyan', 'green'], px: [
+      '............', '...333333...', '..34444443..', '.344cc44h43.',
+      '.34cdc4hh43.', '.344c444443.', '.3444hh4c43.', '.344hhh4dc3.',
+      '..34444443..', '...222222...', '............', '............'] },
+    voidstone: { ramps: ['void'], px: [
+      '............', '....3443....', '..34211243..', '.3421111243.',
+      '.4211111124.', '.4211551124.', '.4211551124.', '.4211111124.',
+      '.3421111243.', '..34211243..', '....3443....', '............'] },
     bag: { ramps: ['wood', 'gold'], px: [
       '............', '....3333....', '...3....3...', '.2222222222.',
       '.2444444442.', '.2433cc3342.', '.2433cc3342.', '.2433333342.',
@@ -894,7 +964,13 @@
     [TILE_REDSTONE]: 'Redstone',
     [TILE_DIAMOND]: 'Diamond',
     [TILE_EMERALD]: 'Emerald',
-    [TILE_RUBY]: 'Ruby'
+    [TILE_RUBY]: 'Ruby',
+    [TILE_TITANIUM]: 'Titanium Ore',
+    [TILE_SAPPHIRE]: 'Sapphire',
+    [TILE_URANIUM]: 'Uranium',
+    [TILE_AMETHYST]: 'Amethyst',
+    [TILE_OPAL]: 'Fire Opal',
+    [TILE_VOIDSTONE]: 'Voidstone'
   };
 
   const ORE_SPECKLE_COLORS = {
@@ -911,35 +987,55 @@
     [TILE_REDSTONE]: ['#ff3333', '#cc0000', '#ff5555', '#aa0000'],
     [TILE_DIAMOND]: ['#dff8ff', '#b9f2ff', '#c8f0ff', '#a0e8ff'],
     [TILE_EMERALD]: ['#80e8a0', '#50c878', '#60d888', '#40b868'],
-    [TILE_RUBY]: ['#ff4488', '#e0115f', '#ff2070', '#c00048']
+    [TILE_RUBY]: ['#ff4488', '#e0115f', '#ff2070', '#c00048'],
+    [TILE_TITANIUM]: ['#c8dcf4', '#8aa0bc', '#e8f2ff', '#6a80a0'],
+    [TILE_SAPPHIRE]: ['#6aa0ff', '#2a64e0', '#a0c4ff', '#1438a0'],
+    [TILE_URANIUM]: ['#9aff5a', '#58d030', '#d0ff90', '#30a010'],
+    [TILE_AMETHYST]: ['#d090ff', '#9a4ad8', '#f0c8ff', '#6a20a8'],
+    [TILE_OPAL]: ['#ffd080', '#ff9a40', '#80e8ff', '#60f0a0'],
+    [TILE_VOIDSTONE]: ['#b48aff', '#5a3aa0', '#f0e0ff', '#2a1458']
   };
 
   // All resource tile types (used for detection in various places)
   const RESOURCE_TILES = [
     TILE_IRON, TILE_WATER, TILE_COBALT,
     TILE_COPPER, TILE_GOLD, TILE_TIN, TILE_SILVER, TILE_LEAD, TILE_COAL,
-    TILE_QUARTZ, TILE_REDSTONE, TILE_DIAMOND, TILE_EMERALD, TILE_RUBY
+    TILE_QUARTZ, TILE_REDSTONE, TILE_DIAMOND, TILE_EMERALD, TILE_RUBY,
+    TILE_TITANIUM, TILE_SAPPHIRE, TILE_URANIUM, TILE_AMETHYST, TILE_OPAL, TILE_VOIDSTONE
   ];
 
-  /* -- Depth-based dirt tiers (10 levels) -- */
-  // Each tier: { name, base, highlight, shadow } colors
+  function emptyResources() {
+    const r = {};
+    for (const t of RESOURCE_TILES)
+      r[TILE_LABELS[t]] = 0;
+    return r;
+  }
+
+  /* -- Rock strata, STRATUM_ROWS rows each -- */
+  // style picks the texture painter; ore names the signature ore of a deep layer
   const DEPTH_TIERS = [
-    { name: 'Sand',        base: '#c2a55a', highlight: '#d4bb78', shadow: '#8a7438' },  // 0-10%
-    { name: 'Loose Soil',  base: '#8b6c42', highlight: '#a88558', shadow: '#5e4628' },  // 10-20%
-    { name: 'Dirt',        base: '#4a3a2a', highlight: '#6a5540', shadow: '#2a1a0a' },  // 20-30% (original)
-    { name: 'Packed Dirt', base: '#3d2e1e', highlight: '#584630', shadow: '#221508' },  // 30-40%
-    { name: 'Clay',        base: '#6b3a2a', highlight: '#885040', shadow: '#3e1e12' },  // 40-50%
-    { name: 'Gravel',      base: '#5a5040', highlight: '#706858', shadow: '#3a3228' },  // 50-60%
-    { name: 'Soft Stone',  base: '#7a7a7a', highlight: '#949494', shadow: '#505050' },  // 60-70%
-    { name: 'Stone',       base: '#5a5a5a', highlight: '#707070', shadow: '#383838' },  // 70-80%
-    { name: 'Hard Stone',  base: '#3e3e3e', highlight: '#525252', shadow: '#222222' },  // 80-90%
-    { name: 'Bedrock',     base: '#1e1e1e', highlight: '#303030', shadow: '#0a0a0a' }   // 90-100%
+    { name: 'Sand',         base: '#c2a55a', highlight: '#d4bb78', shadow: '#8a7438', style: 'soil' },
+    { name: 'Loose Soil',   base: '#8b6c42', highlight: '#a88558', shadow: '#5e4628', style: 'soil' },
+    { name: 'Dirt',         base: '#4a3a2a', highlight: '#6a5540', shadow: '#2a1a0a', style: 'soil' },
+    { name: 'Packed Dirt',  base: '#3d2e1e', highlight: '#584630', shadow: '#221508', style: 'soil' },
+    { name: 'Clay',         base: '#6b3a2a', highlight: '#885040', shadow: '#3e1e12', style: 'soil' },
+    { name: 'Gravel',       base: '#5a5040', highlight: '#706858', shadow: '#3a3228', style: 'gravel' },
+    { name: 'Soft Stone',   base: '#7a7a7a', highlight: '#949494', shadow: '#505050', style: 'stone' },
+    { name: 'Stone',        base: '#5a5a5a', highlight: '#707070', shadow: '#383838', style: 'stone' },
+    { name: 'Hard Stone',   base: '#3e3e3e', highlight: '#525252', shadow: '#222222', style: 'stone' },
+    { name: 'Bedrock',      base: '#2a2628', highlight: '#3c3638', shadow: '#121012', style: 'stone' },
+    { name: 'Slate',        base: '#3a4654', highlight: '#4e5c6c', shadow: '#1e2630', style: 'slate', ore: TILE_TITANIUM },
+    { name: 'Granite',      base: '#6a4a48', highlight: '#866460', shadow: '#3a2826', style: 'granite', ore: TILE_SAPPHIRE },
+    { name: 'Basalt',       base: '#262a2e', highlight: '#363c42', shadow: '#101316', style: 'basalt', ore: TILE_URANIUM },
+    { name: 'Obsidian',     base: '#1a1424', highlight: '#2c2240', shadow: '#08060e', style: 'obsidian', ore: TILE_AMETHYST },
+    { name: 'Magma Rock',   base: '#3a1a12', highlight: '#5a2618', shadow: '#1a0806', style: 'magma', ore: TILE_OPAL },
+    { name: 'Abyssal Core', base: '#140e26', highlight: '#22183c', shadow: '#06040e', style: 'abyss', ore: TILE_VOIDSTONE }
   ];
+  const DEEP_STRATUM = 10; // first layer of the deep strata (signature ores)
 
-  // Get depth tier index (0-9) for a given row
+  // Stratum index (0..STRATUM_COUNT-1) for a given row
   function getDepthTier(row) {
-    const t = Math.floor((row / GRID_ROWS) * DEPTH_TIERS.length);
-    return Math.min(t, DEPTH_TIERS.length - 1);
+    return Math.max(0, Math.min(DEPTH_TIERS.length - 1, Math.floor(row / STRATUM_ROWS)));
   }
 
   // Get depth-based colors for dirt at a given row
@@ -947,9 +1043,14 @@
     return DEPTH_TIERS[getDepthTier(row)];
   }
 
-  // Depth-based mining time multiplier: 0.5 at surface, ~4.0 at bottom
+  // Depth-based mining time multiplier: 0.5 at the surface, rising every row (4.7 at the core)
   function getDepthMineMultiplier(row) {
-    return 0.5 + (row / GRID_ROWS) * 3.5;
+    return 0.5 + (row / STRATUM_ROWS) * 0.28;
+  }
+
+  // Ore found deeper is richer: up to +60% yield at the bottom of the mine
+  function getDepthValueMultiplier(row) {
+    return 1 + 0.6 * Math.max(0, Math.min(1, row / (GRID_ROWS - 1)));
   }
 
   // Get the display color for any tile, accounting for depth-based dirt
@@ -993,7 +1094,13 @@
     [TILE_REDSTONE]: 2.3,
     [TILE_EMERALD]: 2.5,
     [TILE_DIAMOND]: 3.0,
-    [TILE_RUBY]: 2.8
+    [TILE_RUBY]: 2.8,
+    [TILE_TITANIUM]: 3.0,
+    [TILE_SAPPHIRE]: 3.2,
+    [TILE_URANIUM]: 3.4,
+    [TILE_AMETHYST]: 3.5,
+    [TILE_OPAL]: 3.7,
+    [TILE_VOIDSTONE]: 4.0
   };
 
   /* -- Movement -- */
@@ -1048,7 +1155,7 @@
       costs: [{ gold: 30, diamond: 10, ruby: 5 }], maxLevel: 1, prereqs: ['shield5'],
       upgradeKey: 'domeHP', type: 'stat' },
     { id: 'shield7', name: 'Shield Cap. L7', icon: 'shield', branch: 'dome',
-      costs: [{ diamond: 15, ruby: 12, emerald: 10 }], maxLevel: 1, prereqs: ['shield6'],
+      costs: [{ sapphire: 8, titanium: 12, diamond: 15 }], maxLevel: 1, prereqs: ['shield6'],
       upgradeKey: 'domeHP', type: 'stat' },
     // -- Shield Recharge chain (4 levels) --
     { id: 'shieldRecharge1', name: 'Shield Rech. L1', icon: 'bolt', branch: 'dome',
@@ -1090,7 +1197,7 @@
       costs: [{ gold: 20, redstone: 15, ruby: 5 }], maxLevel: 1, prereqs: ['damageReflect'],
       upgradeKey: 'damageReflect', type: 'stat' },
     { id: 'emergencyShield', name: 'Emergency Shield', icon: 'shield', branch: 'dome',
-      costs: [{ diamond: 12, emerald: 15, ruby: 10, gold: 25 }], maxLevel: 1, prereqs: ['energyShield', 'shieldRecharge4'],
+      costs: [{ amethyst: 6, diamond: 12, emerald: 15 }], maxLevel: 1, prereqs: ['energyShield', 'shieldRecharge4'],
       upgradeKey: 'emergencyShield', type: 'gadget' },
     { id: 'shieldRegen1', name: 'Shield Regen L1', icon: 'regen', branch: 'dome',
       costs: [{ iron: 30, water: 15 }], maxLevel: 1, prereqs: ['shieldRecharge1'],
@@ -1102,10 +1209,10 @@
       costs: [{ silver: 15, water: 35, quartz: 10 }], maxLevel: 1, prereqs: ['shieldRegen2'],
       upgradeKey: 'shieldRegen', type: 'stat' },
     { id: 'fortifiedBase', name: 'Fortified Base', icon: 'castle', branch: 'dome',
-      costs: [{ gold: 30, cobalt: 35, diamond: 8 }], maxLevel: 1, prereqs: ['shield5', 'reinforcedDome'],
+      costs: [{ titanium: 10, cobalt: 35, diamond: 8 }], maxLevel: 1, prereqs: ['shield5', 'reinforcedDome'],
       upgradeKey: 'fortifiedBase', type: 'gadget' },
     { id: 'lastStand', name: 'Last Stand', icon: 'heart', branch: 'dome',
-      costs: [{ ruby: 15, diamond: 10, emerald: 12 }], maxLevel: 1, prereqs: ['emergencyShield'],
+      costs: [{ voidstone: 3, opal: 5, ruby: 15 }], maxLevel: 1, prereqs: ['emergencyShield'],
       upgradeKey: 'lastStand', type: 'gadget' },
 
     // =============================================================
@@ -1131,7 +1238,7 @@
       costs: [{ gold: 30, redstone: 15, emerald: 8 }], maxLevel: 1, prereqs: ['mining5'],
       upgradeKey: 'miningTools', type: 'stat' },
     { id: 'mining7', name: 'Mining Tools L7', icon: 'pickaxe', branch: 'mining',
-      costs: [{ diamond: 12, ruby: 10, redstone: 20 }], maxLevel: 1, prereqs: ['mining6'],
+      costs: [{ uranium: 6, titanium: 10, diamond: 12 }], maxLevel: 1, prereqs: ['mining6'],
       upgradeKey: 'miningTools', type: 'stat' },
     // -- Carry Capacity chain (5 levels) --
     { id: 'carry1', name: 'Carry Cap. L1', icon: 'crate', branch: 'mining',
@@ -1147,7 +1254,7 @@
       costs: [{ gold: 15, cobalt: 20, tin: 20 }], maxLevel: 1, prereqs: ['carry3'],
       upgradeKey: 'carryCapacity', type: 'stat' },
     { id: 'carry5', name: 'Carry Cap. L5', icon: 'crate', branch: 'mining',
-      costs: [{ gold: 25, diamond: 5, lead: 20 }], maxLevel: 1, prereqs: ['carry4'],
+      costs: [{ titanium: 8, gold: 25, lead: 20 }], maxLevel: 1, prereqs: ['carry4'],
       upgradeKey: 'carryCapacity', type: 'stat' },
     // -- Gadgets --
     { id: 'drill', name: 'Drill Gadget', icon: 'drill', branch: 'mining',
@@ -1194,7 +1301,7 @@
       costs: [{ gold: 25, emerald: 10, ruby: 8 }], maxLevel: 1, prereqs: ['fortune'],
       upgradeKey: 'fortune', type: 'stat' },
     { id: 'veinMiner', name: 'Vein Miner', icon: 'diamond', branch: 'mining',
-      costs: [{ diamond: 10, ruby: 8, emerald: 12, gold: 20 }], maxLevel: 1, prereqs: ['silkTouch', 'tunnelBore'],
+      costs: [{ amethyst: 5, diamond: 10, emerald: 12 }], maxLevel: 1, prereqs: ['silkTouch', 'tunnelBore'],
       upgradeKey: 'veinMiner', type: 'gadget' },
     // -- Drill Speed chain (5 levels) --
     { id: 'drillSpeed1', name: 'Drill Speed L1', icon: 'drill', branch: 'mining',
@@ -1210,7 +1317,7 @@
       costs: [{ gold: 12, redstone: 10, cobalt: 20 }], maxLevel: 1, prereqs: ['drillSpeed3'],
       upgradeKey: 'drillSpeed', type: 'stat' },
     { id: 'drillSpeed5', name: 'Drill Speed L5', icon: 'drill', branch: 'mining',
-      costs: [{ gold: 20, diamond: 5, redstone: 15 }], maxLevel: 1, prereqs: ['drillSpeed4'],
+      costs: [{ titanium: 6, gold: 20, redstone: 15 }], maxLevel: 1, prereqs: ['drillSpeed4'],
       upgradeKey: 'drillSpeed', type: 'stat' },
     // -- Prospecting and excavation tools --
     { id: 'blastTool', name: 'Blast Mining', icon: 'explosion', branch: 'mining',
@@ -1258,7 +1365,7 @@
       costs: [{ gold: 25, redstone: 12, emerald: 5 }], maxLevel: 1, prereqs: ['speed5'],
       upgradeKey: 'moveSpeed', type: 'stat' },
     { id: 'speed7', name: 'Move Speed L7', icon: 'boot', branch: 'movement',
-      costs: [{ diamond: 8, ruby: 8, emerald: 8 }], maxLevel: 1, prereqs: ['speed6'],
+      costs: [{ titanium: 10, sapphire: 6, emerald: 8 }], maxLevel: 1, prereqs: ['speed6'],
       upgradeKey: 'moveSpeed', type: 'stat' },
     // -- Gadgets --
     { id: 'teleporter', name: 'Teleporter', icon: 'portal', branch: 'movement',
@@ -1296,7 +1403,7 @@
       costs: [{ gold: 15, coal: 35, redstone: 10 }], maxLevel: 1, prereqs: ['jetpackFuel1'],
       upgradeKey: 'jetpackFuel', type: 'stat' },
     { id: 'phaseShift2', name: 'Phase Shift L2', icon: 'ghost', branch: 'movement',
-      costs: [{ gold: 20, quartz: 20, diamond: 5 }], maxLevel: 1, prereqs: ['phaseShift'],
+      costs: [{ voidstone: 2, quartz: 20, diamond: 5 }], maxLevel: 1, prereqs: ['phaseShift'],
       upgradeKey: 'phaseShift', type: 'stat' },
 
     // =============================================================
@@ -1319,7 +1426,7 @@
       costs: [{ gold: 20, redstone: 15, ruby: 5 }], maxLevel: 1, prereqs: ['fireRate4'],
       upgradeKey: 'fireRate', type: 'stat' },
     { id: 'fireRate6', name: 'Fire Rate L6', icon: 'fire', branch: 'weapon',
-      costs: [{ diamond: 8, ruby: 10, redstone: 18 }], maxLevel: 1, prereqs: ['fireRate5'],
+      costs: [{ opal: 4, sapphire: 8, ruby: 10 }], maxLevel: 1, prereqs: ['fireRate5'],
       upgradeKey: 'fireRate', type: 'stat' },
     // -- Damage chain (7 levels) --
     { id: 'damage1', name: 'Damage L1', icon: 'swords', branch: 'weapon',
@@ -1338,10 +1445,10 @@
       costs: [{ diamond: 8, ruby: 10, emerald: 8, gold: 20 }], maxLevel: 1, prereqs: ['damage4'],
       upgradeKey: 'weaponDamage', type: 'stat' },
     { id: 'damage6', name: 'Damage L6', icon: 'swords', branch: 'weapon',
-      costs: [{ diamond: 12, ruby: 12, gold: 25 }], maxLevel: 1, prereqs: ['damage5'],
+      costs: [{ sapphire: 6, ruby: 12, gold: 25 }], maxLevel: 1, prereqs: ['damage5'],
       upgradeKey: 'weaponDamage', type: 'stat' },
     { id: 'damage7', name: 'Damage L7', icon: 'swords', branch: 'weapon',
-      costs: [{ diamond: 15, ruby: 15, emerald: 12 }], maxLevel: 1, prereqs: ['damage6'],
+      costs: [{ amethyst: 6, uranium: 6, ruby: 15 }], maxLevel: 1, prereqs: ['damage6'],
       upgradeKey: 'weaponDamage', type: 'stat' },
     // -- Gadgets --
     { id: 'chainLightning', name: 'Chain Lightning', icon: 'bolt', branch: 'weapon',
@@ -1351,7 +1458,7 @@
       costs: [{ water: 30, quartz: 15, silver: 10 }], maxLevel: 1, prereqs: ['fireRate3'],
       upgradeKey: 'freezeRay', type: 'gadget' },
     { id: 'plasmaCannon', name: 'Plasma Cannon', icon: 'explosion', branch: 'weapon',
-      costs: [{ diamond: 10, ruby: 12, redstone: 15, gold: 20 }], maxLevel: 1, prereqs: ['damage4', 'chainLightning'],
+      costs: [{ uranium: 5, ruby: 12, redstone: 15 }], maxLevel: 1, prereqs: ['damage4', 'chainLightning'],
       upgradeKey: 'plasmaCannon', type: 'gadget' },
     // -- New weapon abilities --
     { id: 'multiShot', name: 'Multi-Shot', icon: 'multishot', branch: 'weapon',
@@ -1379,10 +1486,10 @@
       costs: [{ gold: 25, ruby: 8, redstone: 18 }], maxLevel: 1, prereqs: ['criticalHit'],
       upgradeKey: 'criticalHit', type: 'stat' },
     { id: 'explosiveRounds', name: 'Explosive Rounds', icon: 'bomb', branch: 'weapon',
-      costs: [{ diamond: 8, ruby: 10, redstone: 20, gold: 15 }], maxLevel: 1, prereqs: ['plasmaCannon', 'criticalHit'],
+      costs: [{ uranium: 8, ruby: 10, redstone: 20 }], maxLevel: 1, prereqs: ['plasmaCannon', 'criticalHit'],
       upgradeKey: 'explosiveRounds', type: 'gadget' },
     { id: 'freezeRay2', name: 'Freeze Ray L2', icon: 'snowflake', branch: 'weapon',
-      costs: [{ water: 40, quartz: 20, diamond: 5 }], maxLevel: 1, prereqs: ['freezeRay'],
+      costs: [{ sapphire: 5, water: 40, quartz: 20 }], maxLevel: 1, prereqs: ['freezeRay'],
       upgradeKey: 'freezeRay', type: 'stat' },
     { id: 'chainLightning2', name: 'Chain Light. L2', icon: 'bolt', branch: 'weapon',
       costs: [{ gold: 20, redstone: 18, emerald: 8 }], maxLevel: 1, prereqs: ['chainLightning'],
@@ -1447,7 +1554,8 @@
     if (depthMult < 1.8) return 'Easy';
     if (depthMult < 2.4) return 'Medium';
     if (depthMult < 3.0) return 'Hard';
-    return 'Very Hard';
+    if (depthMult < 4.0) return 'Very Hard';
+    return 'Extreme';
   }
 
   // Precompute node positions for the tree layout
@@ -1586,7 +1694,7 @@
   let domeHP = BASE_DOME_HP;
   let maxDomeHP = BASE_DOME_HP;
 
-  let resources = { iron: 0, water: 0, cobalt: 0, copper: 0, gold: 0, tin: 0, silver: 0, lead: 0, coal: 0, quartz: 0, redstone: 0, diamond: 0, emerald: 0, ruby: 0 };
+  let resources = emptyResources();
   let carried = 0;
   let carryCapacity = BASE_CARRY_CAPACITY;
 
@@ -1848,19 +1956,20 @@
       for (const k of ['domeHP', 'maxDomeHP', 'carried', 'carryCapacity', 'weaponDamage', 'fireRate', 'drillSpeed', 'moveStepInterval', 'drillX', 'drillY', 'turretAngle', 'waveNumber', 'waveTimer', 'score'])
         if (!isNum(d[k]))
           throw new Error('bad ' + k);
-      if (!Array.isArray(d.grid) || d.grid.length !== GRID_ROWS)
+      if (!Array.isArray(d.grid))
         throw new Error('bad grid');
-      for (const row of d.grid) {
-        if (typeof row !== 'string' || row.length !== GRID_COLS)
-          throw new Error('bad grid row');
-        for (let c = 0; c < row.length; ++c) {
-          const t = row.charCodeAt(c) - 48;
-          if (t < TILE_EMPTY || t > TILE_RUBY)
-            throw new Error('bad tile');
-        }
+      // A mine of another size (older version) is rebuilt; the run itself is kept
+      d.mineOutdated = d.grid.length !== GRID_ROWS || d.grid.some(row => typeof row !== 'string' || row.length !== GRID_COLS);
+      if (!d.mineOutdated) {
+        for (const row of d.grid)
+          for (let c = 0; c < row.length; ++c) {
+            const t = row.charCodeAt(c) - 48;
+            if (t < TILE_EMPTY || t > TILE_MAX)
+              throw new Error('bad tile');
+          }
+        if (d.drillX < 0 || d.drillX >= GRID_COLS || d.drillY < 0 || d.drillY >= GRID_ROWS)
+          throw new Error('bad position');
       }
-      if (d.drillX < 0 || d.drillX >= GRID_COLS || d.drillY < 0 || d.drillY >= GRID_ROWS)
-        throw new Error('bad position');
       if (!PRIMARY_GADGETS.some(g => g.key === d.primaryGadget))
         throw new Error('bad gadget');
       for (const k of ['resources', 'upgradeTreeLevels', 'primaryGadgetState', 'unlockedTools', 'toolState'])
@@ -1891,14 +2000,16 @@
 
   function restoreRun(d) {
     resetGame(); // fresh defaults for everything not stored
-    undergroundGrid = d.grid.map(row => Array.from(row, ch => ch.charCodeAt(0) - 48));
-    gadgetChambers = d.gadgetChambers
-      .filter(ch => ch.r >= 0 && ch.r < GRID_ROWS - 1 && ch.c >= 0 && ch.c < GRID_COLS - 1)
-      .map(ch => ({ r: ch.r, c: ch.c, gadgetType: ch.gadgetType, revealed: !!ch.revealed }));
-    initTileHP();
-    for (const p of d.partialHP)
-      if (Array.isArray(p) && tileHP[p[0]] && isNum(p[2]) && tileMaxHP[p[0]][p[1]] > 0)
-        tileHP[p[0]][p[1]] = Math.max(0, Math.min(tileMaxHP[p[0]][p[1]], p[2]));
+    if (!d.mineOutdated) {
+      undergroundGrid = d.grid.map(row => Array.from(row, ch => ch.charCodeAt(0) - 48));
+      gadgetChambers = d.gadgetChambers
+        .filter(ch => ch.r >= 0 && ch.r < GRID_ROWS - 1 && ch.c >= 0 && ch.c < GRID_COLS - 1)
+        .map(ch => ({ r: ch.r, c: ch.c, gadgetType: ch.gadgetType, revealed: !!ch.revealed }));
+      initTileHP();
+      for (const p of d.partialHP)
+        if (Array.isArray(p) && tileHP[p[0]] && isNum(p[2]) && tileMaxHP[p[0]][p[1]] > 0)
+          tileHP[p[0]][p[1]] = Math.max(0, Math.min(tileMaxHP[p[0]][p[1]], p[2]));
+    }
 
     domeHP = d.domeHP;
     maxDomeHP = d.maxDomeHP;
@@ -1908,8 +2019,10 @@
     fireRate = d.fireRate;
     drillSpeed = d.drillSpeed;
     moveStepInterval = d.moveStepInterval;
-    drillX = d.drillX;
-    drillY = d.drillY;
+    if (!d.mineOutdated) {
+      drillX = d.drillX;
+      drillY = d.drillY;
+    }
     turretAngle = d.turretAngle;
     Object.assign(resources, d.resources);
     Object.assign(upgradeTreeLevels, d.upgradeTreeLevels);
@@ -1920,7 +2033,7 @@
     waveActive = !!d.waveActive;
     score = d.score;
     enemies = d.enemies.map(e => Object.assign({}, e));
-    droppedResources = d.droppedResources.map(dr => Object.assign({ age: 0 }, dr));
+    droppedResources = d.mineOutdated ? [] : d.droppedResources.map(dr => Object.assign({ age: 0 }, dr));
     primaryGadget = d.primaryGadget;
     primaryGadgetState = Object.assign({}, d.primaryGadgetState);
     foundGadgets = d.foundGadgets.filter(g => typeof g === 'string');
@@ -1928,7 +2041,7 @@
     activeToolKey = typeof d.activeToolKey === 'string' ? d.activeToolKey : null;
     Object.assign(toolState, d.toolState);
 
-    currentView = d.view === VIEW_UNDERGROUND ? VIEW_UNDERGROUND : VIEW_SURFACE;
+    currentView = d.view === VIEW_UNDERGROUND && !d.mineOutdated ? VIEW_UNDERGROUND : VIEW_SURFACE;
     if (currentView === VIEW_UNDERGROUND) {
       cameraX = Math.max(0, Math.min(GRID_COLS * TILE_SIZE - CANVAS_W, drillX * TILE_SIZE - CANVAS_W / 2 + TILE_SIZE / 2));
       cameraY = Math.max(0, Math.min(GRID_ROWS * TILE_SIZE - CANVAS_H, drillY * TILE_SIZE - CANVAS_H / 2 + TILE_SIZE / 2));
@@ -2026,34 +2139,56 @@
     // Gems: veins of 1-3, short but valuable
     [TILE_DIAMOND]:  { seedChance: 0.010, minLen: 1, maxLen: 3, depthLenBonus: 1 },
     [TILE_EMERALD]:  { seedChance: 0.012, minLen: 1, maxLen: 3, depthLenBonus: 1 },
-    [TILE_RUBY]:     { seedChance: 0.011, minLen: 1, maxLen: 3, depthLenBonus: 1 }
+    [TILE_RUBY]:     { seedChance: 0.011, minLen: 1, maxLen: 3, depthLenBonus: 1 },
+    // Deep signature ores: plentiful in their own stratum
+    [TILE_TITANIUM]:  { seedChance: 0.042, minLen: 3, maxLen: 6, depthLenBonus: 1 },
+    [TILE_SAPPHIRE]:  { seedChance: 0.038, minLen: 2, maxLen: 5, depthLenBonus: 1 },
+    [TILE_URANIUM]:   { seedChance: 0.036, minLen: 2, maxLen: 5, depthLenBonus: 1 },
+    [TILE_AMETHYST]:  { seedChance: 0.034, minLen: 2, maxLen: 5, depthLenBonus: 1 },
+    [TILE_OPAL]:      { seedChance: 0.032, minLen: 2, maxLen: 4, depthLenBonus: 1 },
+    [TILE_VOIDSTONE]: { seedChance: 0.030, minLen: 1, maxLen: 4, depthLenBonus: 1 }
   };
 
-  // Depth-based ore availability: which ores can spawn at a given depth factor (0..1)
-  function getOreSpawnChance(d, tileType) {
+  // Ore availability at a row. The classic ores keep their old depth curves
+  // across the upper ten strata and thin out below; each deep stratum adds
+  // its own signature ore (with a short tail into the next layer)
+  function getOreSpawnChance(row, tileType) {
+    const d = row / (DEEP_STRATUM * STRATUM_ROWS);        // 0..1 over the upper strata
+    const deep = Math.max(0, d - 1) * DEEP_STRATUM;       // strata below the upper ones
     const ramp = (start, end) => d < start ? 0 : d > end ? 1 : (d - start) / (end - start);
     const bell = (center, width) => Math.max(0, 1 - Math.pow((d - center) / width, 2));
+    const common = Math.max(0, 1 - deep * 0.8);           // base metals fade fast below bedrock
+    const mid = Math.max(0.1, 1 - deep * 0.45);           // precious metals thin out
+    const rare = Math.max(0.15, 1 - deep * 0.22);         // gems linger
     switch (tileType) {
-      case TILE_IRON:     return 0.4 + 0.6 * bell(0.2, 0.3) - 0.2 * ramp(0.6, 1.0);
-      case TILE_COPPER:   return 0.1 + 0.9 * bell(0.25, 0.3);
-      case TILE_TIN:      return 0.05 + 0.95 * bell(0.3, 0.3);
-      case TILE_COAL:     return 0.1 + 0.9 * bell(0.35, 0.35);
+      case TILE_IRON:     return (0.4 + 0.6 * bell(0.2, 0.3) - 0.2 * ramp(0.6, 1.0)) * common;
+      case TILE_COPPER:   return (0.1 + 0.9 * bell(0.25, 0.3)) * common;
+      case TILE_TIN:      return (0.05 + 0.95 * bell(0.3, 0.3)) * common;
+      case TILE_COAL:     return (0.1 + 0.9 * bell(0.35, 0.35)) * common;
       case TILE_LEAD:     return bell(0.45, 0.25);
-      case TILE_SILVER:   return ramp(0.2, 0.5) * (1 - 0.4 * ramp(0.8, 1.0));
-      case TILE_WATER:    return 0.3 + 0.7 * bell(0.4, 0.35);
-      case TILE_COBALT:   return ramp(0.2, 0.5) + 0.5 * ramp(0.5, 0.9);
-      case TILE_GOLD:     return ramp(0.35, 0.7) * (1 - 0.3 * ramp(0.9, 1.0));
-      case TILE_QUARTZ:   return ramp(0.3, 0.65);
-      case TILE_REDSTONE: return ramp(0.55, 0.85);
-      case TILE_EMERALD:  return ramp(0.6, 0.9);
-      case TILE_DIAMOND:  return ramp(0.65, 0.95);
-      case TILE_RUBY:     return ramp(0.63, 0.92);
-      default: return 0;
+      case TILE_SILVER:   return ramp(0.2, 0.5) * (1 - 0.4 * ramp(0.8, 1.0)) * common;
+      case TILE_WATER:    return (0.3 + 0.7 * bell(0.4, 0.35)) * Math.max(0.2, common);
+      case TILE_COBALT:   return (ramp(0.2, 0.5) + 0.5 * ramp(0.5, 0.9)) * mid;
+      case TILE_GOLD:     return ramp(0.35, 0.7) * (1 - 0.3 * ramp(0.9, 1.0)) * mid;
+      case TILE_QUARTZ:   return ramp(0.3, 0.65) * mid;
+      case TILE_REDSTONE: return ramp(0.55, 0.85) * mid;
+      case TILE_EMERALD:  return ramp(0.6, 0.9) * rare;
+      case TILE_DIAMOND:  return ramp(0.65, 0.95) * rare;
+      case TILE_RUBY:     return ramp(0.63, 0.92) * rare;
+      default: {
+        // Signature ore of a deep stratum
+        const home = DEPTH_TIERS.findIndex(t => t.ore === tileType);
+        if (home < 0) return 0;
+        const st = row / STRATUM_ROWS;
+        if (st < home - 0.25) return 0;
+        if (st < home + 1) return 1;
+        return Math.max(0, 0.35 - (st - home - 1) * 0.15);
+      }
     }
   }
 
   // Grow a vein from a seed point using random walk / BFS flood
-  function growVein(grid, seedR, seedC, tileType, targetLen) {
+  function growVein(grid, seedR, seedC, tileType, targetLen, rand) {
     const placed = [];
     const frontier = [{ r: seedR, c: seedC }];
     const visited = new Set();
@@ -2061,7 +2196,7 @@
 
     while (placed.length < targetLen && frontier.length > 0) {
       // Pick a random frontier cell
-      const idx = Math.floor(Math.random() * frontier.length);
+      const idx = Math.floor(rand() * frontier.length);
       const { r, c } = frontier[idx];
       frontier.splice(idx, 1);
 
@@ -2086,50 +2221,30 @@
     return placed.length;
   }
 
-  function generateUnderground() {
-    // Step 1: Fill entire grid with dirt
+  // Build a fresh mine; rand is the site's seeded generator
+  function generateUnderground(rand) {
+    rand = rand || Math.random;
     undergroundGrid = [];
-    for (let r = 0; r < GRID_ROWS; ++r) {
-      const row = [];
-      for (let c = 0; c < GRID_COLS; ++c)
-        row.push(TILE_DIRT);
-      undergroundGrid.push(row);
-    }
+    for (let r = 0; r < GRID_ROWS; ++r)
+      undergroundGrid.push(new Array(GRID_COLS).fill(TILE_DIRT));
 
-    // Step 2: Spawn ore veins from seed points
-    // Scan the grid at every cell; each cell has a chance to seed a vein
-    // The ore type picked depends on depth probabilities
-    const oreTypes = [
-      TILE_IRON, TILE_COPPER, TILE_TIN, TILE_COAL,
-      TILE_LEAD, TILE_SILVER, TILE_WATER, TILE_COBALT,
-      TILE_GOLD, TILE_QUARTZ,
-      TILE_REDSTONE, TILE_EMERALD, TILE_DIAMOND, TILE_RUBY
-    ];
-
+    // Ore veins: every cell may seed one vein, the type weighted by depth
     for (let r = 0; r < GRID_ROWS; ++r) {
-      const d = r / GRID_ROWS; // depth factor 0..1
+      const d = r / GRID_ROWS;
+      const weights = RESOURCE_TILES.map(t => getOreSpawnChance(r, t));
       for (let c = 0; c < GRID_COLS; ++c) {
-        // Only seed on dirt tiles (skip already placed veins)
         if (undergroundGrid[r][c] !== TILE_DIRT) continue;
-
-        // For each ore type, check if this cell seeds a vein
-        for (const oreType of oreTypes) {
-          const cfg = VEIN_CONFIG[oreType];
-          const depthWeight = getOreSpawnChance(d, oreType);
+        for (let i = 0; i < RESOURCE_TILES.length; ++i) {
+          const depthWeight = weights[i];
           if (depthWeight <= 0) continue;
-
-          // Effective seed chance scaled by depth availability
-          // Divide by average vein length to keep overall density similar
+          const oreType = RESOURCE_TILES[i];
+          const cfg = VEIN_CONFIG[oreType];
+          // Divide by the average vein length to keep the overall density similar
           const avgLen = (cfg.minLen + cfg.maxLen) / 2;
-          const effectiveChance = (cfg.seedChance * depthWeight) / avgLen;
-
-          if (Math.random() < effectiveChance) {
-            // Determine vein length: base range + depth bonus
-            const depthBonus = Math.floor(d * cfg.depthLenBonus);
-            const minL = cfg.minLen;
-            const maxL = cfg.maxLen + depthBonus;
-            const targetLen = minL + Math.floor(Math.random() * (maxL - minL + 1));
-            growVein(undergroundGrid, r, c, oreType, targetLen);
+          if (rand() < (cfg.seedChance * depthWeight) / avgLen) {
+            const maxL = cfg.maxLen + Math.floor(d * cfg.depthLenBonus);
+            const targetLen = cfg.minLen + Math.floor(rand() * (maxL - cfg.minLen + 1));
+            growVein(undergroundGrid, r, c, oreType, targetLen, rand);
             break; // only one vein type per seed point
           }
         }
@@ -2142,15 +2257,17 @@
     undergroundGrid[0][spawnCol - 1] = TILE_EMPTY;
     undergroundGrid[0][spawnCol + 1] = TILE_EMPTY;
 
-    // Place 4-8 gadget chambers (2x2 TILE_GADGET blocks) spread throughout the larger grid
+    // Gadget chambers (2x2 TILE_GADGET blocks), one band of depth each so they
+    // are spread over all strata
     gadgetChambers = [];
-    const chamberCount = 4 + Math.floor(Math.random() * 5); // 4, 5, 6, 7, or 8
+    const chamberCount = 10 + Math.floor(rand() * 5);
     for (let n = 0; n < chamberCount; ++n) {
+      const bandTop = 2 + Math.floor(n * (GRID_ROWS - 4) / chamberCount);
+      const bandH = Math.max(2, Math.floor((GRID_ROWS - 4) / chamberCount));
       let placed = false;
       for (let attempt = 0; attempt < 80 && !placed; ++attempt) {
-        const cr = 2 + Math.floor(Math.random() * (GRID_ROWS - 3)); // rows 2..GRID_ROWS-2
-        const cc = 1 + Math.floor(Math.random() * (GRID_COLS - 3)); // cols 1..GRID_COLS-3
-        // Check no overlap with start area (rows 0-1, near spawn) or other chambers
+        const cr = Math.min(GRID_ROWS - 2, bandTop + Math.floor(rand() * bandH));
+        const cc = 1 + Math.floor(rand() * (GRID_COLS - 3));
         let ok = true;
         for (let dr = 0; dr < 2 && ok; ++dr)
           for (let dc = 0; dc < 2 && ok; ++dc) {
@@ -2158,11 +2275,9 @@
             if (undergroundGrid[cr + dr][cc + dc] === TILE_GADGET) ok = false;
           }
         if (!ok) continue;
-        // Pick a random mine gadget for this chamber
         const available = MINE_GADGETS.filter(g => !gadgetChambers.some(ch => ch.gadgetType === g));
-        const gadgetType = available.length > 0
-          ? available[Math.floor(Math.random() * available.length)]
-          : MINE_GADGETS[Math.floor(Math.random() * MINE_GADGETS.length)];
+        const pool = available.length > 0 ? available : MINE_GADGETS;
+        const gadgetType = pool[Math.floor(rand() * pool.length)];
         gadgetChambers.push({ r: cr, c: cc, gadgetType, revealed: false });
         for (let dr = 0; dr < 2; ++dr)
           for (let dc = 0; dc < 2; ++dc)
@@ -2171,9 +2286,7 @@
       }
     }
 
-    // Initialize persistent tile mining HP arrays
     initTileHP();
-
   }
 
   // Get intrinsic tile hardness (independent of player upgrades)
@@ -2219,7 +2332,7 @@
 
     domeHP = BASE_DOME_HP;
     maxDomeHP = BASE_DOME_HP;
-    resources = { iron: 0, water: 0, cobalt: 0, copper: 0, gold: 0, tin: 0, silver: 0, lead: 0, coal: 0, quartz: 0, redstone: 0, diamond: 0, emerald: 0, ruby: 0 };
+    resources = emptyResources();
     carried = 0;
     carryCapacity = BASE_CARRY_CAPACITY;
 
@@ -3219,7 +3332,7 @@
 
     if (RESOURCE_TILES.includes(tile)) {
       const label = TILE_LABELS[tile];
-      let value = TILE_VALUES[tile];
+      let value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(ny));
 
       // Fortune: 30% chance to double ore yield
       if (unlockedTools.fortune && Math.random() < 0.3) {
@@ -3461,7 +3574,7 @@
           }
         } else if (RESOURCE_TILES.includes(tile)) {
           const label = TILE_LABELS[tile];
-          const value = TILE_VALUES[tile];
+          const value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(r));
           const fitsInInventory = Math.min(value, carryCapacity - carried);
           const excess = value - fitsInInventory;
           if (fitsInInventory > 0) {
@@ -3542,7 +3655,7 @@
           }
         } else if (RESOURCE_TILES.includes(tile)) {
           const label = TILE_LABELS[tile];
-          const value = TILE_VALUES[tile];
+          const value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(r));
           const fitsInInventory = Math.min(value, carryCapacity - carried);
           const excess = value - fitsInInventory;
           if (fitsInInventory > 0) {
@@ -6099,14 +6212,90 @@
       }
     };
 
+    // Extra surface detail that gives each deep stratum its own look
+    const paintStyle = (g, style, base, rng, variant) => {
+      const c = rgb(base);
+      const line = (pts, col, w) => {
+        g.strokeStyle = col;
+        g.lineWidth = w;
+        g.beginPath();
+        pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y));
+        g.stroke();
+      };
+      if (style === 'slate') {
+        // Thin cleavage layers
+        for (let y = 3 + rng() * 4; y < T; y += 5 + rng() * 4) {
+          line([[0, y], [T * 0.4, y + (rng() - 0.5) * 2], [T, y + (rng() - 0.5) * 3]], shade(c, 0.7), 1);
+          line([[0, y + 1], [T, y + 1 + (rng() - 0.5) * 2]], shade(c, 1.25), 1);
+        }
+      } else if (style === 'granite') {
+        // Feldspar and mica flecks
+        for (let i = 0; i < 26; ++i) {
+          const x = rng() * T, y = rng() * T, k = rng();
+          g.fillStyle = k < 0.35 ? 'rgba(255,220,210,0.55)' : (k < 0.7 ? 'rgba(20,10,10,0.55)' : 'rgba(255,255,255,0.7)');
+          g.fillRect(x | 0, y | 0, k > 0.85 ? 2 : 1 + (rng() * 2 | 0), 1 + (rng() * 2 | 0));
+        }
+      } else if (style === 'basalt') {
+        // Column joints
+        const x1 = T * 0.33 + (rng() - 0.5) * 4, x2 = T * 0.68 + (rng() - 0.5) * 4, ym = T * (0.3 + rng() * 0.4);
+        for (const [pts, a] of [[[[x1, 0], [x1 + 2, ym], [x1, T]], 0.75], [[[x2, 0], [x2 - 2, T - ym], [x2 + 1, T]], 0.75], [[[x1 + 2, ym], [x2 - 1, ym + 3]], 0.6]]) {
+          line(pts, shade(c, 0.45), 2);
+          line(pts.map(([x, y]) => [x + 1, y + 1]), `rgba(255,255,255,${0.08 * a})`, 1);
+        }
+      } else if (style === 'obsidian') {
+        // Glassy glints and a conchoidal fracture now and then
+        for (let i = 0; i < 3; ++i) {
+          const x = rng() * T, y = rng() * T, l = 3 + rng() * 6;
+          line([[x, y], [x + l, y - l * 0.6]], `rgba(210,190,255,${0.12 + rng() * 0.18})`, 1);
+        }
+        if (rng() < 0.5) {
+          g.strokeStyle = 'rgba(220,200,255,0.16)';
+          g.lineWidth = 1;
+          g.beginPath();
+          g.arc(rng() * T, rng() * T, 5 + rng() * 6, rng() * 3, rng() * 3 + 1.6);
+          g.stroke();
+        }
+      } else if (style === 'magma') {
+        // A glowing fissure in some tiles, embers in the rest
+        if (variant === 1) {
+          const horiz = rng() < 0.5;
+          let a = rng() * T, b = 0;
+          const pts = [];
+          while (b <= T + 6) {
+            pts.push(horiz ? [b, a] : [a, b]);
+            a = Math.max(4, Math.min(T - 4, a + (rng() - 0.5) * 10));
+            b += 5 + rng() * 6;
+          }
+          line(pts, 'rgba(255,90,20,0.3)', 4);
+          line(pts, '#e8601a', 1.6);
+          line(pts, '#ffd070', 0.6);
+        }
+        for (let i = 0; i < 3; ++i) {
+          g.fillStyle = `rgba(255,${120 + rng() * 100 | 0},40,${0.4 + rng() * 0.4})`;
+          g.fillRect(rng() * T | 0, rng() * T | 0, 1 + (rng() < 0.3 ? 1 : 0), 1);
+        }
+      } else if (style === 'abyss') {
+        // Faint violet veins and pinpoint lights
+        line([[0, rng() * T], [T * 0.5, rng() * T], [T, rng() * T]], 'rgba(140,90,255,0.35)', 1);
+        for (let i = 0; i < 5; ++i) {
+          g.fillStyle = `rgba(${200 + rng() * 55 | 0},180,255,${0.35 + rng() * 0.5})`;
+          g.fillRect(rng() * T | 0, rng() * T | 0, 1, 1);
+        }
+      }
+    };
+    const STONY = { gravel: true, stone: true, slate: false, granite: true, basalt: true, obsidian: false, magma: true, abyss: false };
+
     const rng = makeRng(777);
     const dirt = [], cave = [];
     for (let t = 0; t < DEPTH_TIERS.length; ++t) {
       dirt.push([]);
       cave.push([]);
+      const tier = DEPTH_TIERS[t];
       for (let v = 0; v < VARIANTS; ++v) {
         const d = makeCanvas(T, T);
-        paintGround(d.getContext('2d'), DEPTH_TIERS[t].base, rng, t >= 5, 0.22);
+        const dg = d.getContext('2d');
+        paintGround(dg, tier.base, rng, !!STONY[tier.style], tier.style === 'obsidian' ? 0.12 : 0.22);
+        paintStyle(dg, tier.style, tier.base, rng, v);
         dirt[t].push(d);
         const cv = makeCanvas(T, T);
         const cg = cv.getContext('2d');
@@ -6436,7 +6625,13 @@
     { key: 'redstone', label: 'Rs', color: '#ff3333' },
     { key: 'emerald', label: 'Em', color: '#50c878' },
     { key: 'diamond', label: 'Di', color: '#b9f2ff' },
-    { key: 'ruby', label: 'Rb', color: '#ff4488' }
+    { key: 'ruby', label: 'Rb', color: '#ff4488' },
+    { key: 'titanium', label: 'Ti', color: '#c8dcf4' },
+    { key: 'sapphire', label: 'Sa', color: '#6aa0ff' },
+    { key: 'uranium', label: 'U', color: '#9aff5a' },
+    { key: 'amethyst', label: 'Am', color: '#d090ff' },
+    { key: 'opal', label: 'Op', color: '#ffd080' },
+    { key: 'voidstone', label: 'Vd', color: '#b48aff' }
   ];
 
   function drawResourceHUD() {
@@ -7591,7 +7786,7 @@
       const icon = TILE_ICONS[tile] || '';
       lines.push((icon ? '[[' + icon + ']] ' : '') + displayName);
       if (TILE_VALUES[tile])
-        lines.push('Value: ' + TILE_VALUES[tile] + ' resources');
+        lines.push('Value: ' + Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(row)) + ' ' + TILE_LABELS[tile]);
       lines.push('Depth: ' + depthTier.name);
       lines.push('Mining: ' + getMiningDifficultyLabel(depthMult));
     }
@@ -7664,7 +7859,9 @@
         iron: 'Iron', water: 'Water', cobalt: 'Cobalt', copper: 'Copper',
         tin: 'Tin', coal: 'Coal', lead: 'Lead', silver: 'Silver',
         gold: 'Gold', quartz: 'Quartz', redstone: 'Redstone',
-        emerald: 'Emerald', diamond: 'Diamond', ruby: 'Ruby'
+        emerald: 'Emerald', diamond: 'Diamond', ruby: 'Ruby',
+        titanium: 'Titanium', sapphire: 'Sapphire', uranium: 'Uranium',
+        amethyst: 'Amethyst', opal: 'Fire Opal', voidstone: 'Voidstone'
       };
       let costParts = [];
       for (const key in cost)
