@@ -1948,7 +1948,8 @@
   let pickaxeSwinging = false;
   let pickaxeSwingTimer = 0;
   const PICKAXE_SWING_DURATION = 0.25;
-  let lastMineDir = { dx: 1, dy: 0 }; // direction of last mine action
+  let lastMineDir = { dx: 1, dy: 0 }; // where the keeper looks: last move or mine direction (sprite and headlamp)
+  let keeperFaceX = 1; // last left/right facing, kept while looking up or down
 
   // Dome pulse
   let domePulsePhase = 0;
@@ -5724,6 +5725,8 @@
     if (currentView !== VIEW_UNDERGROUND) return;
     if (keeperStun > 0) return;
 
+    // every step or dig turns the keeper and his lamp that way
+    lastMineDir = { dx, dy };
     const nx = drillX + dx;
     const ny = drillY + dy;
     if (nx < 0 || nx >= GRID_COLS || ny < 0 || ny >= GRID_ROWS) return;
@@ -9632,6 +9635,7 @@
       const cx = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
       const cy = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
       spawnDust(cx, cy);
+      lastMineDir = { dx: Math.sign(step.col - drillX), dy: Math.sign(step.row - drillY) };
       drillX = step.col;
       drillY = step.row;
       ++movePathIndex;
@@ -12316,7 +12320,9 @@
     const px = drillX * TILE_SIZE - Math.round(cameraX);
     const py = drillY * TILE_SIZE - Math.round(cameraY);
     const bob = playerBob;
-    const face = lastMineDir.dx < 0 ? -1 : 1;
+    if (lastMineDir.dx)
+      keeperFaceX = lastMineDir.dx < 0 ? -1 : 1;
+    const face = keeperFaceX;
 
     // Selection brackets
     const sel = 0.55 + Math.sin(animTime * 5) * 0.25;
@@ -14854,6 +14860,7 @@
       keeperIdle = 0;
       // Dash: Shift + direction rushes through the tunnel
       if ((newDx !== 0 || newDy !== 0) && e.shiftKey && unlockedTools.dash && dashCooldown <= 0) {
+        lastMineDir = { dx: newDx, dy: newDy };
         let n = 0;
         const range = 3 + (getEffectiveLevel('dash') - 1);
         while (n < range) {
