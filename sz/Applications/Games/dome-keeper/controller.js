@@ -4305,6 +4305,11 @@
   let shockwaves = [];               // behemoth stomps: { x, r, hit }
 
   // Threat climbs with every night at a site; every site starts higher than the last
+  // Body centre of a ground monster standing on the ground line (its shadow sits at y + 0.75 size)
+  function groundY(size) {
+    return DOME_Y - size * 0.7;
+  }
+
   function threatLevel() {
     return siteNights + site.index * THREAT_PER_SITE;
   }
@@ -4341,7 +4346,7 @@
     } else {
       const fromLeft = Math.random() < 0.5;
       e.x = fromLeft ? -60 - Math.random() * 180 : CANVAS_W + 60 + Math.random() * 180;
-      e.y = DOME_Y - size * 0.35 + (Math.random() - 0.5) * 24;
+      e.y = groundY(size) + Math.random() * 10;
       if (T.move === 'burrow') {
         e.hidden = true;
         e.y = DOME_Y + 14;
@@ -4505,7 +4510,7 @@
       // Monsters dropped by the queen fall to the ground first
       if (e.fall !== undefined) {
         e.fall = Math.min(1, e.fall + dt * 1.8);
-        e.y = e.fallFrom + (DOME_Y - e.size * 0.35 - e.fallFrom) * e.fall * e.fall;
+        e.y = e.fallFrom + (groundY(e.size) - e.fallFrom) * e.fall * e.fall;
         if (e.fall >= 1) {
           delete e.fall;
           particles.burst(e.x, e.y + e.size * 0.4, 5, { color: '#8a7a6a', speed: 1.5, life: 0.3 });
@@ -4520,7 +4525,7 @@
               if (Math.abs(dx) < DOME_RADIUS + 70) {
                 e.hidden = false;
                 e.pop = 0;
-                e.y = DOME_Y - e.size * 0.35;
+                e.y = groundY(e.size);
                 if (currentView === VIEW_SURFACE) {
                   particles.burst(e.x, DOME_Y, 22, { color: '#8a6a48', speed: 4, life: 0.6, gravity: 0.15 });
                   screenShake.trigger(4, 150);
@@ -4789,7 +4794,10 @@
         if (ady < 0)
           // Mouse is above ground — atan2 with negative ady always yields [-PI, 0]
           turretAngle = Math.atan2(ady, adx);
-        // When mouse is below ground, don't change turret angle — avoids snapping
+        else if (ady < 45)
+          // Just below the ground line (monster feet): aim flat along the ground
+          turretAngle = adx < 0 ? -Math.PI : 0;
+        // Further below ground the angle stays put, so the HUD does not swing the turret
       }
     }
 
