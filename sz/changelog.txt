@@ -1,3 +1,12 @@
+Main: 6.30
+by Hawkynt 03.10.2026
+* Space Farming: one panel style for HUD, dock, shops, tooltips, title, pause and help, with text that always fits
+* Space Farming: pixel-art meadow with parallax sky, seasons, day and night lighting, animated crops, animals and buildings
++ Space Farming: seasonal weather (rain, snow, dust storms, thunderstorms, meteors) that hits real spots, flying produce and coins, sounds for every action
++ Space Farming: tech tree with 77 nodes in five branches (Agriculture, Husbandry, Engineering, Science, Commerce) and a Next upgrades panel
++ Space Farming: goals, trader orders, a market, favourite seasons and new crops, animals and buildings
+* Space Farming: illustrated help pages and controls
+
 Main: 6.29
 by Hawkynt 03.10.2026
 # Desktop: only the desktop's own app windows can talk to it; framing sites and pages shown in the Web Browser can no longer read, delete or launch anything
