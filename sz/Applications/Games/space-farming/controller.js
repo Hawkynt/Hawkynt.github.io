@@ -1162,7 +1162,9 @@
   }
 
   /* Greedy word wrap in the current font; overlong words are ellipsized */
+  let wrapCut = false;               // set when the last wrap had to cut a word
   function wrapText(text, maxW) {
+    wrapCut = false;
     const lines = [];
     for (const para of String(text).split('\n')) {
       const words = para.split(' ');
@@ -1175,8 +1177,10 @@
           lines.push(line);
           line = word;
         }
-        if (line === word && measureIconText(line) > maxW)
+        if (line === word && measureIconText(line) > maxW) {
           line = ellipsize(word, maxW);
+          wrapCut = true;
+        }
       }
       lines.push(line);
     }
@@ -1190,7 +1194,7 @@
       for (;;) {
         ctx.font = uiFont(size, weight);
         lines = wrapText(text, w);
-        if (lines.length * size * lineGap <= h || size <= minPx)
+        if ((lines.length * size * lineGap <= h && !wrapCut) || size <= minPx)
           break;
         --size;
       }
@@ -6742,10 +6746,11 @@
         treeCam.y = treeCam.ty = treePanning.ty + dy;
         treeCam.tz = treeCam.z;
       },
-      onDragEnd: () => {
+      onDragEnd: (button) => {
         const moved = treePanning && treePanning.moved;
         treePanning = null;
-        if (!moved) {
+        // a left click on a card buys it; right and middle buttons only pan
+        if (!moved && !button) {
           const ln = hitTreeNode(pointerUX, pointerUY);
           if (ln) {
             treeFocusId = ln.node.id;
@@ -6943,7 +6948,6 @@
 
   function drawQuickPanel() {
     const Q = quickPanelLayout();
-    if (Q.x < hudLayout().clock.x + hudLayout().clock.w + 8 && !quickCollapsed && UW < 900) return;
     beginHudPanel('quick', Q.x, Q.y, Q.w, Q.h);
     let owned = 0, total = 0, ready = 0;
     for (const n of TECH)
@@ -7677,7 +7681,8 @@
     ctx.stroke();
     drawSprite(wi.icon, wx + 20, r.y + r.h / 2, 24);
     ctx.textAlign = 'left';
-    fitText(wi.name, wx + 36, r.y + r.h / 2 - (weatherType !== WEATHER_NONE ? 7 : 0), weatherW - 42, 12, { weight: 'bold', color: wi.color });
+    const twoLines = weatherType !== WEATHER_NONE || techOwned('sci_forecast');
+    fitText(wi.name, wx + 36, r.y + r.h / 2 - (twoLines ? 7 : 0), weatherW - 42, 12, { weight: 'bold', color: wi.color });
     if (weatherType !== WEATHER_NONE)
       fitText(`${Math.ceil(weatherTimer)}s left`, wx + 36, r.y + r.h / 2 + 9, weatherW - 42, 11, { color: UI.textDim });
     else if (techOwned('sci_forecast')) {
@@ -7688,7 +7693,7 @@
     if (techOwned('sci_rain')) {
       const ready = canCallRain();
       drawButton({ id: 'hud-rain', x: r.x + r.w - 96, y: r.y + r.h + 4, w: 90, h: 24 }, {
-        label: ready ? 'Call rain' : `Day ${rainMakerDay}`, icon: currentSeason === 3 ? 'snow' : 'rain', px: 11, primary: ready, color: '#7ab8ff', disabled: !ready,
+        label: ready || dayCount >= rainMakerDay ? 'Call rain' : `Day ${rainMakerDay}`, icon: currentSeason === 3 ? 'snow' : 'rain', px: 11, primary: ready, color: '#7ab8ff', disabled: !ready,
         onClick: callRain, onDisabled: () => SZ.GameAudio.play('error'),
         tip: () => ['[[rain]] Rain Maker', currentSeason === 3 ? 'Calls snowfall in winter.' : 'Calls a rain shower: crops grow 50% faster.', ready ? '✔ Ready' : (weatherType !== WEATHER_NONE ? '⚠ Wait for the current weather to pass' : `⚠ Recharges on day ${rainMakerDay}`)]
       });
