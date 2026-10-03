@@ -3,7 +3,9 @@
   const SZ = window.SZ || (window.SZ = {});
 
   /*
-   * Pauses a running game when its page is hidden or its window loses focus.
+   * Pauses a running game when the browser tab is hidden (switched away or
+   * minimized). Losing focus does not pause: clicking the desktop, its title
+   * bar or another window keeps the game running, as in a real desktop.
    * Never resumes on its own; the player resumes with the game's usual controls.
    *
    *   SZ.GameAutoPause.attach({
@@ -26,12 +28,10 @@
     }
 
     document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('blur', pauseIfRunning);
 
     return {
       detach() {
         document.removeEventListener('visibilitychange', onVisibilityChange);
-        window.removeEventListener('blur', pauseIfRunning);
       }
     };
   }
