@@ -8036,7 +8036,7 @@
   function drawSkipHint() {
     ctx.save();
     ctx.globalAlpha = 0.75;
-    drawKeyHints([{ key: 'Any key', label: 'Skip' }], UW - 80, UH - 18, 150);
+    drawKeyHints([{ key: 'Any key', label: 'Skip' }], UW - 80, 20, 150);
     ctx.restore();
   }
 
