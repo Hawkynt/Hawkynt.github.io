@@ -4229,7 +4229,7 @@
     if (compact) {
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      drawTextBlock(info.title + (info.chain.length > 1 ? ' ' + (info.index + 1) : ''), textX, y + 8, textW, h - 16, 24, { weight: 'bold', color: nameColor, valign: 'middle', minPx: 14, lineGap: 1.1 });
+      drawTextBlock(info.title + (info.chain.length > 1 ? ' ' + toRoman(info.index + 1) : ''), textX, y + 8, textW, h - 16, 24, { weight: 'bold', color: nameColor, valign: 'middle', minPx: 14, lineGap: 1.1 });
     } else {
       const titleText = info.title + (info.chain.length > 1 ? ' ' + toRoman(info.index + 1) : '');
       drawTextBlock(titleText, textX, y + 7, textW, 44, 17, { weight: 'bold', color: nameColor, valign: 'middle', minPx: 11, lineGap: 1.15 });
