@@ -3416,12 +3416,12 @@
         livestockPens.splice(i, 1);
         ++penVersion;
       }
-    } else if (roll < 0.7) {
+    } else if (roll < 0.55) {
       const r = Math.floor(Math.random() * gridRows), c = Math.floor(Math.random() * gridCols);
       ({ x: wx, y: wy } = tileCenter(c, r));
       wx += (Math.random() - 0.5) * 20;
       const cell = farmGrid[r][c];
-      if (cell && CROPS[cell.cropIndex].weatherAffinity !== 'any' && !isSheltered(r, c) && !buildings[r][c] && Math.random() < 0.8 * (1 - resist)) {
+      if (cell && CROPS[cell.cropIndex].weatherAffinity !== 'any' && !isSheltered(r, c) && !buildings[r][c] && Math.random() < 0.5 * (1 - resist)) {
         farmGrid[r][c] = null;
         popText(wx, wy - 16, 'Scorched!', { color: '#ffd75a', font: 'bold 12px' });
         particles.burst(wx, wy, 10, { color: '#ffd23f', speed: 3, life: 0.4 });
