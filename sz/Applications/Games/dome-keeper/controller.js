@@ -143,22 +143,371 @@
     [TILE_RUBY]: 'ruby'
   };
 
+  // Pixel-art sprite drawn on each resource tile (see SPRITES)
   const TILE_ICONS = {
-    [TILE_IRON]: '\u2699',      // ⚙
-    [TILE_WATER]: '\u{1F4A7}',  // 💧
-    [TILE_COBALT]: '\u{1F48E}', // 💎 (blue gem)
-    [TILE_COPPER]: '\u{1FA99}', // 🪙
-    [TILE_GOLD]: '\u{1F451}',   // 👑
-    [TILE_TIN]: '\u{1F52A}',    // 🔪
-    [TILE_SILVER]: '\u2B50',    // ⭐
-    [TILE_LEAD]: '\u26D3',      // ⛓
-    [TILE_COAL]: '\u{1F525}',   // 🔥
-    [TILE_QUARTZ]: '\u{1F52E}', // 🔮
-    [TILE_REDSTONE]: '\u2764',  // ❤
-    [TILE_DIAMOND]: '\u{1F4A0}',// 💠
-    [TILE_EMERALD]: '\u{1F49A}',// 💚
-    [TILE_RUBY]: '\u2763'       // ❣
+    [TILE_IRON]: 'iron',
+    [TILE_WATER]: 'water',
+    [TILE_COBALT]: 'cobalt',
+    [TILE_COPPER]: 'copper',
+    [TILE_GOLD]: 'gold',
+    [TILE_TIN]: 'tin',
+    [TILE_SILVER]: 'silver',
+    [TILE_LEAD]: 'lead',
+    [TILE_COAL]: 'coal',
+    [TILE_QUARTZ]: 'quartz',
+    [TILE_REDSTONE]: 'redstone',
+    [TILE_DIAMOND]: 'diamond',
+    [TILE_EMERALD]: 'emerald',
+    [TILE_RUBY]: 'ruby'
   };
+
+  /* ======================================================================
+     PIXEL-ART SPRITES (drawn once into offscreen canvases)
+     ====================================================================== */
+
+  // Colour ramps, darkest to lightest. Sprite pixels '1'-'5' use the sprite's
+  // first ramp, 'a'-'e' its second and 'f'-'j' its third; '.' is transparent.
+  const RAMP = {
+    steel:  ['#3c4048', '#5c626c', '#8a919c', '#b8bec8', '#eef2f6'],
+    tin:    ['#5a5e66', '#8a8f98', '#b8bcc4', '#dde0e6', '#f8fafc'],
+    silver: ['#4a5260', '#7a8496', '#b4bccc', '#e0e6f0', '#ffffff'],
+    lead:   ['#22263a', '#3a4058', '#5a6280', '#8890b0', '#c0c8e0'],
+    gold:   ['#7a4a10', '#b8741a', '#f0b020', '#ffe066', '#fff6c0'],
+    wood:   ['#4a2a12', '#6e4220', '#9a6232', '#c08850', '#e0b080'],
+    blue:   ['#16306e', '#2456b0', '#3a8ee8', '#7ac0ff', '#d8f2ff'],
+    cobalt: ['#1a1a5a', '#2e3aa0', '#4a62d8', '#86a4ff', '#dce6ff'],
+    red:    ['#5a0a14', '#9a1424', '#d8303a', '#ff6a5a', '#ffc8b8'],
+    ruby:   ['#4a0418', '#8a0c30', '#d81c50', '#ff5a80', '#ffd0dc'],
+    green:  ['#0e4020', '#17703a', '#2ea858', '#6ade80', '#d0ffd8'],
+    violet: ['#2a1a6a', '#4a34a8', '#6a5ad8', '#a090ff', '#e4dcff'],
+    copper: ['#4a2008', '#7a3a14', '#c0642a', '#e8925a', '#ffd4ac'],
+    patina: ['#0e5a50', '#1a8a78', '#3ac0a8', '#80e8d0', '#d0fff4'],
+    cream:  ['#6a5a48', '#a89878', '#d8ccb4', '#f2ead8', '#ffffff'],
+    coal:   ['#141218', '#25222c', '#3a3644', '#5e5a6c', '#9a96a8'],
+    cyan:   ['#0e4a6a', '#1e88b0', '#58c8e8', '#a8ecff', '#f0ffff'],
+    fire:   ['#7a1a08', '#d04010', '#ff8a20', '#ffd040', '#fff8c0']
+  };
+  const SPRITE_OUTLINE = '#120c18';
+
+  const SPRITES = {
+    /* -- ores & resources -- */
+    iron: { ramps: ['steel', 'copper'], px: [
+      '............', '....2333....', '..23344432..', '.2344443332.',
+      '.234c33c332.', '23333333c332', '2333c3333332', '233333333c32',
+      '.2333c333322', '.2233333322.', '...222222...', '............'] },
+    water: { ramps: ['blue'], px: [
+      '.....33.....', '.....33.....', '....3443....', '....3443....',
+      '...344443...', '..34544443..', '..35444443..', '.3544444443.',
+      '.3444444433.', '..33444433..', '...333333...', '............'] },
+    cobalt: { ramps: ['cobalt'], px: [
+      '......5.....', '.....454....', '..4..444....', '.454.434....',
+      '.444.434..4.', '.434.434.454', '.434.434.444', '.434.334.434',
+      '.334.334.334', '222222222222', '.2222222222.', '............'] },
+    copper: { ramps: ['copper', 'patina'], px: [
+      '............', '............', '..2332......', '.234432.....',
+      '.2345432....', '.2344c32.22.', '.2333332234.', '..23332.2343',
+      '...222.2c332', '.......22222', '............', '............'] },
+    gold: { ramps: ['gold'], px: [
+      '............', '.....233....', '...2344432..', '..234554432.',
+      '.23455443332', '234554433332', '234444333432', '233333334432',
+      '.2333333332.', '..22333222..', '....2222....', '............'] },
+    tin: { ramps: ['tin'], px: [
+      '............', '............', '............', '...444444...',
+      '..45555554..', '.4555555544.', '.4444444443.', '.3333333332.',
+      '.3333333322.', '.2222222222.', '............', '............'] },
+    silver: { ramps: ['silver'], px: [
+      '.........5..', '........555.', '.........5..', '...3333.....',
+      '..344443....', '.344554433..', '3445444433..', '34444433332.',
+      '2344333332..', '.22333322...', '...2222.....', '............'] },
+    lead: { ramps: ['lead'], px: [
+      '............', '....4444....', '...455554...', '...333333...',
+      '...222222...', '.4444..4444.', '.45544.45544', '.33333.33333',
+      '.22222.22222', '............', '............', '............'] },
+    coal: { ramps: ['coal'], px: [
+      '............', '....222.....', '...23432....', '..2344332...',
+      '.234333322..', '.2333332332.', '223333234432', '233332344332',
+      '233322333332', '.2222.23332.', '......22222.', '............'] },
+    quartz: { ramps: ['cream'], px: [
+      '....4.......', '...454......', '...444...4..', '...434..454.',
+      '.4.434..434.', '454434..434.', '444434..334.', '434334..334.',
+      '334334..334.', '222222222222', '.2222222222.', '............'] },
+    redstone: { ramps: ['red'], px: [
+      '............', '..5......5..', '............', '.....33.....',
+      '....3443....', '...345443...', '..34454443..', '.3445444543.',
+      '334444544433', '233333333332', '.2222222222.', '............'] },
+    diamond: { ramps: ['cyan'], px: [
+      '............', '...333333...', '..34555443..', '.3455544443.',
+      '333333333333', '.2344444432.', '..23444432..', '...234432...',
+      '....2442....', '.....22.....', '............', '............'] },
+    emerald: { ramps: ['green'], px: [
+      '............', '...333333...', '..34444443..', '.3445554443.',
+      '.3454444443.', '.3454444443.', '.3444444423.', '.3444444223.',
+      '..32222223..', '...222222...', '............', '............'] },
+    ruby: { ramps: ['ruby'], px: [
+      '............', '....3333....', '..33444433..', '.3445544443.',
+      '.3455444433.', '334544443332', '334444433322', '.3444433322.',
+      '.3333332222.', '..22322222..', '....2222....', '............'] },
+    bag: { ramps: ['wood', 'gold'], px: [
+      '............', '....3333....', '...3....3...', '.2222222222.',
+      '.2444444442.', '.2433cc3342.', '.2433cc3342.', '.2433333342.',
+      '.2433333342.', '.2333333332.', '.2222222222.', '............'] },
+
+    /* -- upgrade, tool and gadget icons -- */
+    pickaxe: { ramps: ['steel', 'wood'], px: [
+      '...233332...', '.2344444432.', '23...cc...32', '2....cc....2',
+      '.....cc.....', '.....dc.....', '.....cc.....', '.....cc.....',
+      '.....dc.....', '.....cc.....', '.....bb.....', '............'] },
+    shield: { ramps: ['blue', 'steel'], px: [
+      '............', '.dddddddddd.', '.d44444333d.', '.d45544333d.',
+      '.d44443332d.', '.d44433332d.', '.d34333322d.', '..d333322d..',
+      '..d233222d..', '...d2222d...', '....dddd....', '............'] },
+    bolt: { ramps: ['gold'], px: [
+      '......2332..', '.....2342...', '....2342....', '...23442....',
+      '..23444432..', '.....2342...', '....2342....', '...2342.....',
+      '..232.......', '.22.........', '............', '............'] },
+    wrench: { ramps: ['steel'], px: [
+      '........3..3', '........34.4', '.......34443', '......34443.',
+      '.....3443...', '....343.....', '...343......', '..343.......',
+      '.343........', '3443........', '343.........', '.3..........'] },
+    dome: { ramps: ['blue', 'steel'], px: [
+      '............', '............', '....3333....', '..33444433..',
+      '.3345444443.', '.3454444443.', '344444444443', '344444444443',
+      'cccccccccccc', 'bbbbbbbbbbbb', '............', '............'] },
+    reflect: { ramps: ['red', 'steel'], px: [
+      'dd......4...', 'dd.....4....', 'dd....4.....', 'dd...4......',
+      'dd..4.......', 'dd.4........', 'dd.4........', 'dd..4.......',
+      'dd...4...4..', 'dd....4..4..', 'dd.....4.4..', 'dd...44444..'] },
+    heart: { ramps: ['red'], px: [
+      '............', '.2332..2332.', '234443344432', '245444444432',
+      '244444444432', '.2444444432.', '..24444432..', '...244432...',
+      '....2432....', '.....22.....', '............', '............'] },
+    regen: { ramps: ['green'], px: [
+      '............', '.2332..2332.', '234443344432', '245444444432',
+      '244444444432', '.2444444432.', '..24444432..', '...244432...',
+      '....2432....', '.....22.....', '............', '............'] },
+    castle: { ramps: ['steel'], px: [
+      '............', '.3.3.33.3.3.', '.3333333333.', '.3444443333.',
+      '.3433333333.', '.3333113333.', '.3343113433.', '.3331111333.',
+      '.2221111222.', '.2222222222.', '............', '............'] },
+    crate: { ramps: ['wood'], px: [
+      '............', '.2222222222.', '.2444444442.', '.2433333342.',
+      '.2343333432.', '.2334334332.', '.2333443332.', '.2334334332.',
+      '.2343333432.', '.2433333342.', '.2222222222.', '............'] },
+    magnet: { ramps: ['red', 'steel'], px: [
+      '............', '.dddd..dddd.', '.cccc..cccc.', '.3443..3443.',
+      '.3443..3443.', '.3443..3443.', '.3443333443.', '.2444444442.',
+      '..24444442..', '...222222...', '............', '............'] },
+    sparkle: { ramps: ['gold'], px: [
+      '.....3......', '.....4......', '....454.....', '.3445554433.',
+      '....454.....', '.....4......', '.....3...3..', '........343.',
+      '.........3..', '..3.........', '.343........', '..3.........'] },
+    radar: { ramps: ['steel', 'gold'], px: [
+      '.........dd.', '..33....d...', '.3443..d....', '.34443d.....',
+      '.344443.....', '..344443....', '...344443...', '....33333...',
+      '.....22.....', '....2222....', '...222222...', '............'] },
+    speed: { ramps: ['cyan'], px: [
+      '............', '......4444..', '..........4.', '.55555555.4.',
+      '.........4..', '............', '...444444444', '............',
+      '.33333333...', '.........3..', '.......33...', '............'] },
+    robot: { ramps: ['steel', 'cyan'], px: [
+      '.....e......', '.....3......', '.2333333332.', '.2444444442.',
+      '.24cc44cc42.', '.24dc44dc42.', '.2444444442.', '.2442222442.',
+      '.2444444442.', '.2222222222.', '...3....3...', '..33....33..'] },
+    drill: { ramps: ['steel', 'gold'], px: [
+      '..cccccccc..', '..dddddddd..', '.2333333332.', '.2344444432.',
+      '..23434432..', '..24343432..', '...234432...', '...243432...',
+      '....2342....', '....2432....', '.....22.....', '............'] },
+    boot: { ramps: ['wood', 'cyan'], px: [
+      '............', '....22222...', '....24432...', '....24332...',
+      'dd..24332...', '....243332..', '.dd.2433332.', '....24333332',
+      'dd..24444442', '....22222222', '............', '............'] },
+    portal: { ramps: ['violet'], px: [
+      '............', '....3333....', '..33444433..', '.344....443.',
+      '.34..22..43.', '34..2552..43', '34..2552..43', '.34..22..43.',
+      '.344....443.', '..33444433..', '....3333....', '............'] },
+    rocket: { ramps: ['steel', 'blue', 'fire'], px: [
+      '.....44.....', '....4554....', '....4444....', '....4cc4....',
+      '....4dc4....', '....4444....', '...g4444g...', '..gg3333gg..',
+      '..g.3333.g..', '....ihhi....', '.....ii.....', '.....j......'] },
+    ghost: { ramps: ['cream'], px: [
+      '............', '...344443...', '..34444443..', '.3441441443.',
+      '.3441441443.', '.3444444443.', '.3444444443.', '.3444444443.',
+      '.3443443443.', '.3.33.33.3..', '............', '............'] },
+    spring: { ramps: ['green'], px: [
+      '............', '.....33.....', '....3443....', '...34..43...',
+      '..34....43..', '............', '.....33.....', '....3443....',
+      '...34..43...', '..34....43..', '............', '............'] },
+    ladder: { ramps: ['wood'], px: [
+      '..3.....3...', '..34444443..', '..3.....3...', '..3.....3...',
+      '..34444443..', '..3.....3...', '..3.....3...', '..34444443..',
+      '..3.....3...', '..3.....3...', '..34444443..', '..3.....3...'] },
+    fire: { ramps: ['fire'], px: [
+      '......2.....', '.....232....', '.....2332...', '..2..23432..',
+      '..22234432..', '.2334444432.', '.2344554432.', '.2345555432.',
+      '.2345555432.', '..23455432..', '...233332...', '............'] },
+    swords: { ramps: ['steel', 'gold'], px: [
+      '4..........4', '.4........4.', '..4......4..', '...4....4...',
+      '....4..4....', '.....44.....', '...c.44.c...', '....4..4....',
+      '...b.cc.b...', '..b......b..', '.b........b.', 'd..........d'] },
+    explosion: { ramps: ['fire'], px: [
+      '.....3......', '.3...4...3..', '..3.343.3...', '...34543....',
+      '.3345554433.', '334555554433', '.3345554433.', '...34543....',
+      '..3.343.3...', '.3...4...3..', '.....3......', '............'] },
+    magnifier: { ramps: ['steel', 'blue', 'wood'], px: [
+      '...3333.....', '..3dddd3....', '.3deddcc3...', '.3ddcccc3...',
+      '.3dccccc3...', '.3ccccbc3...', '..3cccc3....', '...3333h....',
+      '.......hh...', '........hh..', '.........hh.', '..........h.'] },
+    snowflake: { ramps: ['cyan'], px: [
+      '.....4......', '...4.4.4....', '....444.....', '.4...4...4..',
+      '..4..4..4...', '4444454444..', '..4..4..4...', '.4...4...4..',
+      '....444.....', '...4.4.4....', '.....4......', '............'] },
+    multishot: { ramps: ['gold', 'fire'], px: [
+      '.....3......', '.3..353..3..', '353..3..353.', '.3.......3..',
+      '..c..c..c...', '...c.c.c....', '....ccc.....', '.....c......',
+      '....ddd.....', '....ddd.....', '............', '............'] },
+    target: { ramps: ['red', 'cream'], px: [
+      '...33333....', '.33eeeee33..', '.3eeeeeee3..', '3eee333eee3.',
+      '3ee34443ee3.', '3ee34543ee3.', '3ee34443ee3.', '3eee333eee3.',
+      '.3eeeeeee3..', '.33eeeee33..', '...33333....', '............'] },
+    gear: { ramps: ['steel'], px: [
+      '.....44.....', '..4..44..4..', '.4443333444.', '..43322334..',
+      '..432..234..', '4443....3444', '4443....3444', '..432..234..',
+      '..43322334..', '.4443333444.', '..4..44..4..', '.....44.....'] },
+    bomb: { ramps: ['coal', 'fire'], px: [
+      '.......d.d..', '........c...', '.......b....', '....2222....',
+      '..22333322..', '.2234433332.', '.2345433332.', '.2343333332.',
+      '.2333333322.', '.2233333222.', '..22222222..', '....2222....'] },
+    tree: { ramps: ['green', 'wood', 'red'], px: [
+      '...333333...', '.3344444433.', '3344544h4433', '344444444443',
+      '34h44444h443', '334444444433', '.3334444333.', '...33cc33...',
+      '.....cc.....', '.....dc.....', '....cccc....', '............'] },
+    lock: { ramps: ['steel', 'gold'], px: [
+      '............', '....3333....', '...3....3...', '...3....3...',
+      '..cccccccc..', '..cddddddc..', '..cddaaddc..', '..cdddaddc..',
+      '..cddddddc..', '..cccccccc..', '............', '............'] },
+    check: { ramps: ['green'], px: [
+      '............', '............', '..........4.', '.........44.',
+      '........44..', '.4.....44...', '.44...44....', '..44.44.....',
+      '...444......', '....4.......', '............', '............'] }
+  };
+
+  const spriteCache = {};
+
+  function buildSprite(key) {
+    const def = SPRITES[key];
+    if (!def) return null;
+    const rows = def.px;
+    const h = rows.length;
+    const w = rows[0].length;
+    const ramps = def.ramps.map(name => RAMP[name]);
+    const colorOf = (ch) => {
+      if (ch >= '1' && ch <= '5') return ramps[0][ch.charCodeAt(0) - 49];
+      if (ch >= 'a' && ch <= 'e') return ramps[1] && ramps[1][ch.charCodeAt(0) - 97];
+      if (ch >= 'f' && ch <= 'j') return ramps[2] && ramps[2][ch.charCodeAt(0) - 102];
+      return null;
+    };
+    const c = document.createElement('canvas');
+    c.width = w + 2;
+    c.height = h + 2;
+    const g = c.getContext('2d');
+    const solid = (x, y) => y >= 0 && y < h && x >= 0 && x < w && rows[y][x] !== '.' && !!colorOf(rows[y][x]);
+    // 1px dark outline around every opaque pixel (8-neighbourhood)
+    g.fillStyle = SPRITE_OUTLINE;
+    for (let y = -1; y <= h; ++y)
+      for (let x = -1; x <= w; ++x) {
+        if (solid(x, y)) continue;
+        let near = false;
+        for (let dy = -1; dy <= 1 && !near; ++dy)
+          for (let dx = -1; dx <= 1 && !near; ++dx)
+            if (solid(x + dx, y + dy)) near = true;
+        if (near) g.fillRect(x + 1, y + 1, 1, 1);
+      }
+    for (let y = 0; y < h; ++y)
+      for (let x = 0; x < w; ++x) {
+        const col = colorOf(rows[y][x]);
+        if (!col || rows[y][x] === '.') continue;
+        g.fillStyle = col;
+        g.fillRect(x + 1, y + 1, 1, 1);
+      }
+    return c;
+  }
+
+  function getSprite(key) {
+    if (!(key in spriteCache))
+      spriteCache[key] = buildSprite(key);
+    return spriteCache[key];
+  }
+
+  // Draw a sprite centred at (cx, cy) with the given on-screen size
+  function drawSprite(key, cx, cy, size, alpha) {
+    const img = getSprite(key);
+    if (!img) return;
+    const prevSmooth = ctx.imageSmoothingEnabled;
+    const prevAlpha = ctx.globalAlpha;
+    // Crisp pixels when enlarged; smooth when the view shrinks a sprite below 1.5x
+    ctx.imageSmoothingEnabled = size * ctx.getTransform().a / img.width < 1.5;
+    if (alpha !== undefined)
+      ctx.globalAlpha = prevAlpha * alpha;
+    const s = Math.round(size);
+    ctx.drawImage(img, Math.round(cx - s / 2), Math.round(cy - s / 2), s, s);
+    ctx.imageSmoothingEnabled = prevSmooth;
+    ctx.globalAlpha = prevAlpha;
+  }
+
+  // Text with inline [[sprite]] tokens -- honours the current textAlign/textBaseline
+  function splitIconText(text) {
+    return String(text).split(/\[\[(\w+)\]\]/); // odd entries are sprite keys
+  }
+
+  function getFontPx() {
+    const m = /(\d+(?:\.\d+)?)px/.exec(ctx.font);
+    return m ? parseFloat(m[1]) : 16;
+  }
+
+  function measureIconText(text) {
+    const parts = splitIconText(text);
+    const iconSize = Math.round(getFontPx() * 1.25);
+    let w = 0;
+    for (let i = 0; i < parts.length; ++i)
+      w += i % 2 ? iconSize : ctx.measureText(parts[i]).width;
+    return w;
+  }
+
+  function fillIconText(text, x, y) {
+    const parts = splitIconText(text);
+    if (parts.length === 1) {
+      ctx.fillText(text, x, y);
+      return;
+    }
+    const fontPx = getFontPx();
+    const iconSize = Math.round(fontPx * 1.25);
+    const align = ctx.textAlign;
+    const total = measureIconText(text);
+    let cx = x;
+    if (align === 'center')
+      cx = x - total / 2;
+    else if (align === 'right' || align === 'end')
+      cx = x - total;
+    const base = ctx.textBaseline;
+    let iconY = y;
+    if (base === 'top' || base === 'hanging')
+      iconY = y + fontPx * 0.55;
+    else if (base === 'alphabetic' || base === 'bottom' || base === 'ideographic')
+      iconY = y - fontPx * 0.35;
+    ctx.textAlign = 'left';
+    for (let i = 0; i < parts.length; ++i) {
+      if (i % 2) {
+        drawSprite(parts[i], cx + iconSize / 2, iconY, iconSize);
+        cx += iconSize;
+      } else if (parts[i]) {
+        ctx.fillText(parts[i], cx, y);
+        cx += ctx.measureText(parts[i]).width;
+      }
+    }
+    ctx.textAlign = align;
+  }
+
+
 
   const TILE_DISPLAY_NAMES = {
     [TILE_EMPTY]: 'Empty',
@@ -296,27 +645,27 @@
   /* -- Unlockable Gadgets/Tools -- */
   const GADGET_DEFS = [
     {
-      key: 'drill', name: 'Drill Gadget', icon: '\u26CF',
+      key: 'drill', name: 'Drill Gadget', icon: 'drill',
       desc: 'Mines a column downward. 30% faster on consecutive same-column tiles.',
       costIron: 25, costCobalt: 0, shortcut: '1'
     },
     {
-      key: 'blastTool', name: 'Blast Mining', icon: '\u{1F4A5}',
+      key: 'blastTool', name: 'Blast Mining', icon: 'explosion',
       desc: 'Clears a 3x3 area. Costs 10 iron per blast. 5s cooldown.',
       costIron: 30, costCobalt: 0, shortcut: '2'
     },
     {
-      key: 'scanner', name: 'Scanner', icon: '\u{1F50D}',
+      key: 'scanner', name: 'Scanner', icon: 'magnifier',
       desc: 'Reveals resource types in a 3-tile radius around the miner.',
       costIron: 35, costCobalt: 10, shortcut: '3'
     },
     {
-      key: 'reinforcedDome', name: 'Reinforced Dome', icon: '\u{1F6E1}',
+      key: 'reinforcedDome', name: 'Reinforced Dome', icon: 'shield',
       desc: 'Dome takes 25% less damage from enemies. Passive.',
       costIron: 50, costCobalt: 25, shortcut: '4'
     },
     {
-      key: 'teleporter', name: 'Teleporter', icon: '\u{1F300}',
+      key: 'teleporter', name: 'Teleporter', icon: 'portal',
       desc: 'Instantly return to dome surface. 30s cooldown.',
       costIron: 30, costCobalt: 15, shortcut: '5'
     }
@@ -336,82 +685,82 @@
     // === Dome Branch (25 nodes) ===
     // =============================================================
     // -- Shield Capacity chain (7 levels) --
-    { id: 'shield1', name: 'Shield Cap. L1', icon: '\u{1F6E1}', branch: 'dome',
+    { id: 'shield1', name: 'Shield Cap. L1', icon: 'shield', branch: 'dome',
       costs: [{ iron: 20 }], maxLevel: 1, prereqs: [],
       upgradeKey: 'domeHP', type: 'stat' },
-    { id: 'shield2', name: 'Shield Cap. L2', icon: '\u{1F6E1}', branch: 'dome',
+    { id: 'shield2', name: 'Shield Cap. L2', icon: 'shield', branch: 'dome',
       costs: [{ iron: 35, cobalt: 10 }], maxLevel: 1, prereqs: ['shield1'],
       upgradeKey: 'domeHP', type: 'stat' },
-    { id: 'shield3', name: 'Shield Cap. L3', icon: '\u{1F6E1}', branch: 'dome',
+    { id: 'shield3', name: 'Shield Cap. L3', icon: 'shield', branch: 'dome',
       costs: [{ iron: 50, cobalt: 20, copper: 10 }], maxLevel: 1, prereqs: ['shield2'],
       upgradeKey: 'domeHP', type: 'stat' },
-    { id: 'shield4', name: 'Shield Cap. L4', icon: '\u{1F6E1}', branch: 'dome',
+    { id: 'shield4', name: 'Shield Cap. L4', icon: 'shield', branch: 'dome',
       costs: [{ iron: 60, silver: 15, cobalt: 25 }], maxLevel: 1, prereqs: ['shield3'],
       upgradeKey: 'domeHP', type: 'stat' },
-    { id: 'shield5', name: 'Shield Cap. L5', icon: '\u{1F6E1}', branch: 'dome',
+    { id: 'shield5', name: 'Shield Cap. L5', icon: 'shield', branch: 'dome',
       costs: [{ gold: 20, cobalt: 30, diamond: 5 }], maxLevel: 1, prereqs: ['shield4'],
       upgradeKey: 'domeHP', type: 'stat' },
-    { id: 'shield6', name: 'Shield Cap. L6', icon: '\u{1F6E1}', branch: 'dome',
+    { id: 'shield6', name: 'Shield Cap. L6', icon: 'shield', branch: 'dome',
       costs: [{ gold: 30, diamond: 10, ruby: 5 }], maxLevel: 1, prereqs: ['shield5'],
       upgradeKey: 'domeHP', type: 'stat' },
-    { id: 'shield7', name: 'Shield Cap. L7', icon: '\u{1F6E1}', branch: 'dome',
+    { id: 'shield7', name: 'Shield Cap. L7', icon: 'shield', branch: 'dome',
       costs: [{ diamond: 15, ruby: 12, emerald: 10 }], maxLevel: 1, prereqs: ['shield6'],
       upgradeKey: 'domeHP', type: 'stat' },
     // -- Shield Recharge chain (4 levels) --
-    { id: 'shieldRecharge1', name: 'Shield Rech. L1', icon: '\u26A1', branch: 'dome',
+    { id: 'shieldRecharge1', name: 'Shield Rech. L1', icon: 'bolt', branch: 'dome',
       costs: [{ iron: 25 }], maxLevel: 1, prereqs: [],
       upgradeKey: 'shieldRecharge', type: 'stat' },
-    { id: 'shieldRecharge2', name: 'Shield Rech. L2', icon: '\u26A1', branch: 'dome',
+    { id: 'shieldRecharge2', name: 'Shield Rech. L2', icon: 'bolt', branch: 'dome',
       costs: [{ iron: 40, cobalt: 15, water: 10 }], maxLevel: 1, prereqs: ['shieldRecharge1'],
       upgradeKey: 'shieldRecharge', type: 'stat' },
-    { id: 'shieldRecharge3', name: 'Shield Rech. L3', icon: '\u26A1', branch: 'dome',
+    { id: 'shieldRecharge3', name: 'Shield Rech. L3', icon: 'bolt', branch: 'dome',
       costs: [{ iron: 55, silver: 12, water: 20 }], maxLevel: 1, prereqs: ['shieldRecharge2'],
       upgradeKey: 'shieldRecharge', type: 'stat' },
-    { id: 'shieldRecharge4', name: 'Shield Rech. L4', icon: '\u26A1', branch: 'dome',
+    { id: 'shieldRecharge4', name: 'Shield Rech. L4', icon: 'bolt', branch: 'dome',
       costs: [{ gold: 15, quartz: 20, cobalt: 25 }], maxLevel: 1, prereqs: ['shieldRecharge3'],
       upgradeKey: 'shieldRecharge', type: 'stat' },
     // -- Gadgets --
-    { id: 'reinforcedDome', name: 'Reinforced Dome', icon: '\u{1F6E1}', branch: 'dome',
+    { id: 'reinforcedDome', name: 'Reinforced Dome', icon: 'shield', branch: 'dome',
       costs: [{ iron: 50, cobalt: 25, copper: 15 }], maxLevel: 1, prereqs: ['shield2'],
       upgradeKey: 'reinforcedDome', type: 'gadget' },
-    { id: 'autoRepair', name: 'Auto-Repair L1', icon: '\u{1F527}', branch: 'dome',
+    { id: 'autoRepair', name: 'Auto-Repair L1', icon: 'wrench', branch: 'dome',
       costs: [{ iron: 40, copper: 20, coal: 15 }], maxLevel: 1, prereqs: ['shieldRecharge2'],
       upgradeKey: 'autoRepair', type: 'gadget' },
-    { id: 'autoRepair2', name: 'Auto-Repair L2', icon: '\u{1F527}', branch: 'dome',
+    { id: 'autoRepair2', name: 'Auto-Repair L2', icon: 'wrench', branch: 'dome',
       costs: [{ silver: 20, gold: 10, cobalt: 20 }], maxLevel: 1, prereqs: ['autoRepair'],
       upgradeKey: 'autoRepairSpeed', type: 'stat' },
-    { id: 'autoRepair3', name: 'Auto-Repair L3', icon: '\u{1F527}', branch: 'dome',
+    { id: 'autoRepair3', name: 'Auto-Repair L3', icon: 'wrench', branch: 'dome',
       costs: [{ gold: 25, quartz: 15, diamond: 5 }], maxLevel: 1, prereqs: ['autoRepair2'],
       upgradeKey: 'autoRepairSpeed', type: 'stat' },
-    { id: 'domeExpansion', name: 'Dome Expansion', icon: '\u{1F310}', branch: 'dome',
+    { id: 'domeExpansion', name: 'Dome Expansion', icon: 'dome', branch: 'dome',
       costs: [{ silver: 25, gold: 15, cobalt: 30 }], maxLevel: 1, prereqs: ['shield3'],
       upgradeKey: 'domeExpansion', type: 'gadget' },
-    { id: 'energyShield', name: 'Energy Shield', icon: '\u26A1', branch: 'dome',
+    { id: 'energyShield', name: 'Energy Shield', icon: 'bolt', branch: 'dome',
       costs: [{ diamond: 10, ruby: 8, emerald: 10, gold: 20 }], maxLevel: 1, prereqs: ['shield4', 'domeExpansion'],
       upgradeKey: 'energyShield', type: 'gadget' },
     // -- New dome abilities --
-    { id: 'damageReflect', name: 'Damage Reflect', icon: '\u{1F4A2}', branch: 'dome',
+    { id: 'damageReflect', name: 'Damage Reflect', icon: 'reflect', branch: 'dome',
       costs: [{ silver: 18, copper: 25, redstone: 10 }], maxLevel: 1, prereqs: ['reinforcedDome'],
       upgradeKey: 'damageReflect', type: 'gadget' },
-    { id: 'damageReflect2', name: 'Reflect L2', icon: '\u{1F4A2}', branch: 'dome',
+    { id: 'damageReflect2', name: 'Reflect L2', icon: 'reflect', branch: 'dome',
       costs: [{ gold: 20, redstone: 15, ruby: 5 }], maxLevel: 1, prereqs: ['damageReflect'],
       upgradeKey: 'damageReflect', type: 'stat' },
-    { id: 'emergencyShield', name: 'Emergency Shield', icon: '\u{1F6E1}', branch: 'dome',
+    { id: 'emergencyShield', name: 'Emergency Shield', icon: 'shield', branch: 'dome',
       costs: [{ diamond: 12, emerald: 15, ruby: 10, gold: 25 }], maxLevel: 1, prereqs: ['energyShield', 'shieldRecharge4'],
       upgradeKey: 'emergencyShield', type: 'gadget' },
-    { id: 'shieldRegen1', name: 'Shield Regen L1', icon: '\u{1F49A}', branch: 'dome',
+    { id: 'shieldRegen1', name: 'Shield Regen L1', icon: 'regen', branch: 'dome',
       costs: [{ iron: 30, water: 15 }], maxLevel: 1, prereqs: ['shieldRecharge1'],
       upgradeKey: 'shieldRegen', type: 'stat' },
-    { id: 'shieldRegen2', name: 'Shield Regen L2', icon: '\u{1F49A}', branch: 'dome',
+    { id: 'shieldRegen2', name: 'Shield Regen L2', icon: 'regen', branch: 'dome',
       costs: [{ iron: 50, water: 25, cobalt: 15 }], maxLevel: 1, prereqs: ['shieldRegen1'],
       upgradeKey: 'shieldRegen', type: 'stat' },
-    { id: 'shieldRegen3', name: 'Shield Regen L3', icon: '\u{1F49A}', branch: 'dome',
+    { id: 'shieldRegen3', name: 'Shield Regen L3', icon: 'regen', branch: 'dome',
       costs: [{ silver: 15, water: 35, quartz: 10 }], maxLevel: 1, prereqs: ['shieldRegen2'],
       upgradeKey: 'shieldRegen', type: 'stat' },
-    { id: 'fortifiedBase', name: 'Fortified Base', icon: '\u{1F3F0}', branch: 'dome',
+    { id: 'fortifiedBase', name: 'Fortified Base', icon: 'castle', branch: 'dome',
       costs: [{ gold: 30, cobalt: 35, diamond: 8 }], maxLevel: 1, prereqs: ['shield5', 'reinforcedDome'],
       upgradeKey: 'fortifiedBase', type: 'gadget' },
-    { id: 'lastStand', name: 'Last Stand', icon: '\u{1F4AA}', branch: 'dome',
+    { id: 'lastStand', name: 'Last Stand', icon: 'heart', branch: 'dome',
       costs: [{ ruby: 15, diamond: 10, emerald: 12 }], maxLevel: 1, prereqs: ['emergencyShield'],
       upgradeKey: 'lastStand', type: 'gadget' },
 
@@ -419,88 +768,88 @@
     // === Mining Branch (27 nodes) ===
     // =============================================================
     // -- Mining Tools chain (7 levels) --
-    { id: 'mining1', name: 'Mining Tools L1', icon: '\u26CF', branch: 'mining',
+    { id: 'mining1', name: 'Mining Tools L1', icon: 'pickaxe', branch: 'mining',
       costs: [{ iron: 15 }], maxLevel: 1, prereqs: [],
       upgradeKey: 'miningTools', type: 'stat' },
-    { id: 'mining2', name: 'Mining Tools L2', icon: '\u26CF', branch: 'mining',
+    { id: 'mining2', name: 'Mining Tools L2', icon: 'pickaxe', branch: 'mining',
       costs: [{ iron: 30, cobalt: 10 }], maxLevel: 1, prereqs: ['mining1'],
       upgradeKey: 'miningTools', type: 'stat' },
-    { id: 'mining3', name: 'Mining Tools L3', icon: '\u26CF', branch: 'mining',
+    { id: 'mining3', name: 'Mining Tools L3', icon: 'pickaxe', branch: 'mining',
       costs: [{ iron: 50, cobalt: 25, copper: 10 }], maxLevel: 1, prereqs: ['mining2'],
       upgradeKey: 'miningTools', type: 'stat' },
-    { id: 'mining4', name: 'Mining Tools L4', icon: '\u26CF', branch: 'mining',
+    { id: 'mining4', name: 'Mining Tools L4', icon: 'pickaxe', branch: 'mining',
       costs: [{ iron: 60, silver: 15, coal: 20 }], maxLevel: 1, prereqs: ['mining3'],
       upgradeKey: 'miningTools', type: 'stat' },
-    { id: 'mining5', name: 'Mining Tools L5', icon: '\u26CF', branch: 'mining',
+    { id: 'mining5', name: 'Mining Tools L5', icon: 'pickaxe', branch: 'mining',
       costs: [{ gold: 20, cobalt: 30, redstone: 10 }], maxLevel: 1, prereqs: ['mining4'],
       upgradeKey: 'miningTools', type: 'stat' },
-    { id: 'mining6', name: 'Mining Tools L6', icon: '\u26CF', branch: 'mining',
+    { id: 'mining6', name: 'Mining Tools L6', icon: 'pickaxe', branch: 'mining',
       costs: [{ gold: 30, redstone: 15, emerald: 8 }], maxLevel: 1, prereqs: ['mining5'],
       upgradeKey: 'miningTools', type: 'stat' },
-    { id: 'mining7', name: 'Mining Tools L7', icon: '\u26CF', branch: 'mining',
+    { id: 'mining7', name: 'Mining Tools L7', icon: 'pickaxe', branch: 'mining',
       costs: [{ diamond: 12, ruby: 10, redstone: 20 }], maxLevel: 1, prereqs: ['mining6'],
       upgradeKey: 'miningTools', type: 'stat' },
     // -- Carry Capacity chain (5 levels) --
-    { id: 'carry1', name: 'Carry Cap. L1', icon: '\u{1F4E6}', branch: 'mining',
+    { id: 'carry1', name: 'Carry Cap. L1', icon: 'crate', branch: 'mining',
       costs: [{ iron: 20 }], maxLevel: 1, prereqs: [],
       upgradeKey: 'carryCapacity', type: 'stat' },
-    { id: 'carry2', name: 'Carry Cap. L2', icon: '\u{1F4E6}', branch: 'mining',
+    { id: 'carry2', name: 'Carry Cap. L2', icon: 'crate', branch: 'mining',
       costs: [{ iron: 35, cobalt: 15, tin: 10 }], maxLevel: 1, prereqs: ['carry1'],
       upgradeKey: 'carryCapacity', type: 'stat' },
-    { id: 'carry3', name: 'Carry Cap. L3', icon: '\u{1F4E6}', branch: 'mining',
+    { id: 'carry3', name: 'Carry Cap. L3', icon: 'crate', branch: 'mining',
       costs: [{ iron: 50, silver: 10, lead: 15 }], maxLevel: 1, prereqs: ['carry2'],
       upgradeKey: 'carryCapacity', type: 'stat' },
-    { id: 'carry4', name: 'Carry Cap. L4', icon: '\u{1F4E6}', branch: 'mining',
+    { id: 'carry4', name: 'Carry Cap. L4', icon: 'crate', branch: 'mining',
       costs: [{ gold: 15, cobalt: 20, tin: 20 }], maxLevel: 1, prereqs: ['carry3'],
       upgradeKey: 'carryCapacity', type: 'stat' },
-    { id: 'carry5', name: 'Carry Cap. L5', icon: '\u{1F4E6}', branch: 'mining',
+    { id: 'carry5', name: 'Carry Cap. L5', icon: 'crate', branch: 'mining',
       costs: [{ gold: 25, diamond: 5, lead: 20 }], maxLevel: 1, prereqs: ['carry4'],
       upgradeKey: 'carryCapacity', type: 'stat' },
     // -- Gadgets --
-    { id: 'drill', name: 'Drill Gadget', icon: '\u26CF', branch: 'mining',
+    { id: 'drill', name: 'Drill Gadget', icon: 'drill', branch: 'mining',
       costs: [{ iron: 25 }], maxLevel: 1, prereqs: ['mining1'],
       upgradeKey: 'drill', type: 'gadget' },
-    { id: 'magnet', name: 'Magnet', icon: '\u{1F9F2}', branch: 'mining',
+    { id: 'magnet', name: 'Magnet', icon: 'magnet', branch: 'mining',
       costs: [{ iron: 40, copper: 25, lead: 15 }], maxLevel: 1, prereqs: ['carry2'],
       upgradeKey: 'magnet', type: 'gadget' },
-    { id: 'fortune', name: 'Fortune', icon: '\u2728', branch: 'mining',
+    { id: 'fortune', name: 'Fortune', icon: 'sparkle', branch: 'mining',
       costs: [{ gold: 15, silver: 20, quartz: 10 }], maxLevel: 1, prereqs: ['mining3'],
       upgradeKey: 'fortune', type: 'gadget' },
-    { id: 'silkTouch', name: 'Silk Touch', icon: '\u{1F48E}', branch: 'mining',
+    { id: 'silkTouch', name: 'Silk Touch', icon: 'diamond', branch: 'mining',
       costs: [{ diamond: 8, emerald: 10, ruby: 5, gold: 15 }], maxLevel: 1, prereqs: ['fortune', 'mining4'],
       upgradeKey: 'silkTouch', type: 'gadget' },
     // -- New mining abilities --
-    { id: 'oreDetector', name: 'Ore Detector', icon: '\u{1F4E1}', branch: 'mining',
+    { id: 'oreDetector', name: 'Ore Detector', icon: 'radar', branch: 'mining',
       costs: [{ iron: 30, copper: 15, cobalt: 10 }], maxLevel: 1, prereqs: ['mining2'],
       upgradeKey: 'oreDetector', type: 'gadget' },
-    { id: 'oreDetector2', name: 'Ore Detect L2', icon: '\u{1F4E1}', branch: 'mining',
+    { id: 'oreDetector2', name: 'Ore Detect L2', icon: 'radar', branch: 'mining',
       costs: [{ silver: 15, quartz: 12, cobalt: 20 }], maxLevel: 1, prereqs: ['oreDetector'],
       upgradeKey: 'oreDetector', type: 'stat' },
-    { id: 'speedMining1', name: 'Speed Mining L1', icon: '\u{1F4A8}', branch: 'mining',
+    { id: 'speedMining1', name: 'Speed Mining L1', icon: 'speed', branch: 'mining',
       costs: [{ iron: 35, coal: 20 }], maxLevel: 1, prereqs: ['mining2'],
       upgradeKey: 'speedMining', type: 'stat' },
-    { id: 'speedMining2', name: 'Speed Mining L2', icon: '\u{1F4A8}', branch: 'mining',
+    { id: 'speedMining2', name: 'Speed Mining L2', icon: 'speed', branch: 'mining',
       costs: [{ iron: 55, silver: 10, coal: 25 }], maxLevel: 1, prereqs: ['speedMining1'],
       upgradeKey: 'speedMining', type: 'stat' },
-    { id: 'speedMining3', name: 'Speed Mining L3', icon: '\u{1F4A8}', branch: 'mining',
+    { id: 'speedMining3', name: 'Speed Mining L3', icon: 'speed', branch: 'mining',
       costs: [{ gold: 15, redstone: 12, cobalt: 20 }], maxLevel: 1, prereqs: ['speedMining2'],
       upgradeKey: 'speedMining', type: 'stat' },
-    { id: 'autoMine', name: 'Auto-Mine', icon: '\u{1F916}', branch: 'mining',
+    { id: 'autoMine', name: 'Auto-Mine', icon: 'robot', branch: 'mining',
       costs: [{ gold: 20, cobalt: 25, copper: 30 }], maxLevel: 1, prereqs: ['mining4', 'speedMining2'],
       upgradeKey: 'autoMine', type: 'gadget' },
-    { id: 'tunnelBore', name: 'Tunnel Bore', icon: '\u{1F6A7}', branch: 'mining',
+    { id: 'tunnelBore', name: 'Tunnel Bore', icon: 'drill', branch: 'mining',
       costs: [{ gold: 25, redstone: 15, diamond: 5, cobalt: 30 }], maxLevel: 1, prereqs: ['mining5', 'drill'],
       upgradeKey: 'tunnelBore', type: 'gadget' },
-    { id: 'magnetRange1', name: 'Magnet Range L1', icon: '\u{1F9F2}', branch: 'mining',
+    { id: 'magnetRange1', name: 'Magnet Range L1', icon: 'magnet', branch: 'mining',
       costs: [{ silver: 15, copper: 20, lead: 10 }], maxLevel: 1, prereqs: ['magnet'],
       upgradeKey: 'magnetRange', type: 'stat' },
-    { id: 'magnetRange2', name: 'Magnet Range L2', icon: '\u{1F9F2}', branch: 'mining',
+    { id: 'magnetRange2', name: 'Magnet Range L2', icon: 'magnet', branch: 'mining',
       costs: [{ gold: 15, quartz: 10, lead: 20 }], maxLevel: 1, prereqs: ['magnetRange1'],
       upgradeKey: 'magnetRange', type: 'stat' },
-    { id: 'fortuneL2', name: 'Fortune L2', icon: '\u2728', branch: 'mining',
+    { id: 'fortuneL2', name: 'Fortune L2', icon: 'sparkle', branch: 'mining',
       costs: [{ gold: 25, emerald: 10, ruby: 8 }], maxLevel: 1, prereqs: ['fortune'],
       upgradeKey: 'fortune', type: 'stat' },
-    { id: 'veinMiner', name: 'Vein Miner', icon: '\u{1F48E}', branch: 'mining',
+    { id: 'veinMiner', name: 'Vein Miner', icon: 'diamond', branch: 'mining',
       costs: [{ diamond: 10, ruby: 8, emerald: 12, gold: 20 }], maxLevel: 1, prereqs: ['silkTouch', 'tunnelBore'],
       upgradeKey: 'veinMiner', type: 'gadget' },
 
@@ -508,78 +857,78 @@
     // === Movement Branch (25 nodes) ===
     // =============================================================
     // -- Move Speed chain (7 levels) --
-    { id: 'speed1', name: 'Move Speed L1', icon: '\u{1F3C3}', branch: 'movement',
+    { id: 'speed1', name: 'Move Speed L1', icon: 'boot', branch: 'movement',
       costs: [{ iron: 15 }], maxLevel: 1, prereqs: [],
       upgradeKey: 'moveSpeed', type: 'stat' },
-    { id: 'speed2', name: 'Move Speed L2', icon: '\u{1F3C3}', branch: 'movement',
+    { id: 'speed2', name: 'Move Speed L2', icon: 'boot', branch: 'movement',
       costs: [{ iron: 25, cobalt: 8 }], maxLevel: 1, prereqs: ['speed1'],
       upgradeKey: 'moveSpeed', type: 'stat' },
-    { id: 'speed3', name: 'Move Speed L3', icon: '\u{1F3C3}', branch: 'movement',
+    { id: 'speed3', name: 'Move Speed L3', icon: 'boot', branch: 'movement',
       costs: [{ iron: 40, cobalt: 15, copper: 10 }], maxLevel: 1, prereqs: ['speed2'],
       upgradeKey: 'moveSpeed', type: 'stat' },
-    { id: 'speed4', name: 'Move Speed L4', icon: '\u{1F3C3}', branch: 'movement',
+    { id: 'speed4', name: 'Move Speed L4', icon: 'boot', branch: 'movement',
       costs: [{ iron: 55, silver: 12, coal: 15 }], maxLevel: 1, prereqs: ['speed3'],
       upgradeKey: 'moveSpeed', type: 'stat' },
-    { id: 'speed5', name: 'Move Speed L5', icon: '\u{1F3C3}', branch: 'movement',
+    { id: 'speed5', name: 'Move Speed L5', icon: 'boot', branch: 'movement',
       costs: [{ gold: 15, cobalt: 25, redstone: 8 }], maxLevel: 1, prereqs: ['speed4'],
       upgradeKey: 'moveSpeed', type: 'stat' },
-    { id: 'speed6', name: 'Move Speed L6', icon: '\u{1F3C3}', branch: 'movement',
+    { id: 'speed6', name: 'Move Speed L6', icon: 'boot', branch: 'movement',
       costs: [{ gold: 25, redstone: 12, emerald: 5 }], maxLevel: 1, prereqs: ['speed5'],
       upgradeKey: 'moveSpeed', type: 'stat' },
-    { id: 'speed7', name: 'Move Speed L7', icon: '\u{1F3C3}', branch: 'movement',
+    { id: 'speed7', name: 'Move Speed L7', icon: 'boot', branch: 'movement',
       costs: [{ diamond: 8, ruby: 8, emerald: 8 }], maxLevel: 1, prereqs: ['speed6'],
       upgradeKey: 'moveSpeed', type: 'stat' },
     // -- Gadgets --
-    { id: 'teleporter', name: 'Teleporter', icon: '\u{1F300}', branch: 'movement',
+    { id: 'teleporter', name: 'Teleporter', icon: 'portal', branch: 'movement',
       costs: [{ iron: 30, cobalt: 15 }], maxLevel: 1, prereqs: ['speed1'],
       upgradeKey: 'teleporter', type: 'gadget' },
-    { id: 'jetpack', name: 'Jetpack', icon: '\u{1F680}', branch: 'movement',
+    { id: 'jetpack', name: 'Jetpack', icon: 'rocket', branch: 'movement',
       costs: [{ iron: 45, copper: 20, coal: 25 }], maxLevel: 1, prereqs: ['speed3'],
       upgradeKey: 'jetpack', type: 'gadget' },
-    { id: 'phaseShift', name: 'Phase Shift', icon: '\u{1F47B}', branch: 'movement',
+    { id: 'phaseShift', name: 'Phase Shift', icon: 'ghost', branch: 'movement',
       costs: [{ silver: 20, gold: 10, quartz: 15, cobalt: 20 }], maxLevel: 1, prereqs: ['speed4'],
       upgradeKey: 'phaseShift', type: 'gadget' },
-    { id: 'echoLocation', name: 'Echo Location', icon: '\u{1F4E1}', branch: 'movement',
+    { id: 'echoLocation', name: 'Echo Location', icon: 'radar', branch: 'movement',
       costs: [{ copper: 15, tin: 20, cobalt: 15 }], maxLevel: 1, prereqs: ['speed2'],
       upgradeKey: 'echoLocation', type: 'gadget' },
-    { id: 'echoLocation2', name: 'Echo Loc. L2', icon: '\u{1F4E1}', branch: 'movement',
+    { id: 'echoLocation2', name: 'Echo Loc. L2', icon: 'radar', branch: 'movement',
       costs: [{ silver: 15, gold: 10, redstone: 8 }], maxLevel: 1, prereqs: ['echoLocation'],
       upgradeKey: 'echoLocation', type: 'stat' },
-    { id: 'echoLocation3', name: 'Echo Loc. L3', icon: '\u{1F4E1}', branch: 'movement',
+    { id: 'echoLocation3', name: 'Echo Loc. L3', icon: 'radar', branch: 'movement',
       costs: [{ gold: 20, quartz: 15, redstone: 12 }], maxLevel: 1, prereqs: ['echoLocation2'],
       upgradeKey: 'echoLocation', type: 'stat' },
     // -- New movement abilities --
-    { id: 'doubleJump', name: 'Double Jump', icon: '\u{1F998}', branch: 'movement',
+    { id: 'doubleJump', name: 'Double Jump', icon: 'spring', branch: 'movement',
       costs: [{ iron: 35, copper: 20, cobalt: 12 }], maxLevel: 1, prereqs: ['speed2'],
       upgradeKey: 'doubleJump', type: 'gadget' },
-    { id: 'wallClimb', name: 'Wall Climb', icon: '\u{1F9D7}', branch: 'movement',
+    { id: 'wallClimb', name: 'Wall Climb', icon: 'ladder', branch: 'movement',
       costs: [{ iron: 45, cobalt: 20, tin: 15 }], maxLevel: 1, prereqs: ['speed3', 'doubleJump'],
       upgradeKey: 'wallClimb', type: 'gadget' },
-    { id: 'dash', name: 'Dash', icon: '\u{1F4A8}', branch: 'movement',
+    { id: 'dash', name: 'Dash', icon: 'speed', branch: 'movement',
       costs: [{ silver: 15, copper: 20, coal: 15 }], maxLevel: 1, prereqs: ['speed3'],
       upgradeKey: 'dash', type: 'gadget' },
-    { id: 'dash2', name: 'Dash L2', icon: '\u{1F4A8}', branch: 'movement',
+    { id: 'dash2', name: 'Dash L2', icon: 'speed', branch: 'movement',
       costs: [{ gold: 12, redstone: 10, cobalt: 18 }], maxLevel: 1, prereqs: ['dash'],
       upgradeKey: 'dash', type: 'stat' },
-    { id: 'undergroundRadar', name: 'Ground Radar', icon: '\u{1F4E1}', branch: 'movement',
+    { id: 'undergroundRadar', name: 'Ground Radar', icon: 'radar', branch: 'movement',
       costs: [{ silver: 20, copper: 25, quartz: 10 }], maxLevel: 1, prereqs: ['echoLocation'],
       upgradeKey: 'undergroundRadar', type: 'gadget' },
-    { id: 'undergroundRadar2', name: 'Radar L2', icon: '\u{1F4E1}', branch: 'movement',
+    { id: 'undergroundRadar2', name: 'Radar L2', icon: 'radar', branch: 'movement',
       costs: [{ gold: 18, quartz: 15, redstone: 10 }], maxLevel: 1, prereqs: ['undergroundRadar'],
       upgradeKey: 'undergroundRadar', type: 'stat' },
-    { id: 'teleportCooldown1', name: 'Teleport CDR L1', icon: '\u{1F300}', branch: 'movement',
+    { id: 'teleportCooldown1', name: 'Teleport CDR L1', icon: 'portal', branch: 'movement',
       costs: [{ silver: 12, cobalt: 15, copper: 10 }], maxLevel: 1, prereqs: ['teleporter'],
       upgradeKey: 'teleportCooldown', type: 'stat' },
-    { id: 'teleportCooldown2', name: 'Teleport CDR L2', icon: '\u{1F300}', branch: 'movement',
+    { id: 'teleportCooldown2', name: 'Teleport CDR L2', icon: 'portal', branch: 'movement',
       costs: [{ gold: 15, quartz: 12, redstone: 8 }], maxLevel: 1, prereqs: ['teleportCooldown1'],
       upgradeKey: 'teleportCooldown', type: 'stat' },
-    { id: 'jetpackFuel1', name: 'Jetpack Fuel L1', icon: '\u{1F680}', branch: 'movement',
+    { id: 'jetpackFuel1', name: 'Jetpack Fuel L1', icon: 'rocket', branch: 'movement',
       costs: [{ copper: 25, coal: 30, cobalt: 15 }], maxLevel: 1, prereqs: ['jetpack'],
       upgradeKey: 'jetpackFuel', type: 'stat' },
-    { id: 'jetpackFuel2', name: 'Jetpack Fuel L2', icon: '\u{1F680}', branch: 'movement',
+    { id: 'jetpackFuel2', name: 'Jetpack Fuel L2', icon: 'rocket', branch: 'movement',
       costs: [{ gold: 15, coal: 35, redstone: 10 }], maxLevel: 1, prereqs: ['jetpackFuel1'],
       upgradeKey: 'jetpackFuel', type: 'stat' },
-    { id: 'phaseShift2', name: 'Phase Shift L2', icon: '\u{1F47B}', branch: 'movement',
+    { id: 'phaseShift2', name: 'Phase Shift L2', icon: 'ghost', branch: 'movement',
       costs: [{ gold: 20, quartz: 20, diamond: 5 }], maxLevel: 1, prereqs: ['phaseShift'],
       upgradeKey: 'phaseShift', type: 'stat' },
 
@@ -587,110 +936,110 @@
     // === Weapon Branch (27 nodes) ===
     // =============================================================
     // -- Fire Rate chain (6 levels) --
-    { id: 'fireRate1', name: 'Fire Rate L1', icon: '\u{1F525}', branch: 'weapon',
+    { id: 'fireRate1', name: 'Fire Rate L1', icon: 'fire', branch: 'weapon',
       costs: [{ iron: 20 }], maxLevel: 1, prereqs: [],
       upgradeKey: 'fireRate', type: 'stat' },
-    { id: 'fireRate2', name: 'Fire Rate L2', icon: '\u{1F525}', branch: 'weapon',
+    { id: 'fireRate2', name: 'Fire Rate L2', icon: 'fire', branch: 'weapon',
       costs: [{ iron: 35, cobalt: 12 }], maxLevel: 1, prereqs: ['fireRate1'],
       upgradeKey: 'fireRate', type: 'stat' },
-    { id: 'fireRate3', name: 'Fire Rate L3', icon: '\u{1F525}', branch: 'weapon',
+    { id: 'fireRate3', name: 'Fire Rate L3', icon: 'fire', branch: 'weapon',
       costs: [{ iron: 50, copper: 15, coal: 10 }], maxLevel: 1, prereqs: ['fireRate2'],
       upgradeKey: 'fireRate', type: 'stat' },
-    { id: 'fireRate4', name: 'Fire Rate L4', icon: '\u{1F525}', branch: 'weapon',
+    { id: 'fireRate4', name: 'Fire Rate L4', icon: 'fire', branch: 'weapon',
       costs: [{ silver: 15, gold: 10, redstone: 12 }], maxLevel: 1, prereqs: ['fireRate3'],
       upgradeKey: 'fireRate', type: 'stat' },
-    { id: 'fireRate5', name: 'Fire Rate L5', icon: '\u{1F525}', branch: 'weapon',
+    { id: 'fireRate5', name: 'Fire Rate L5', icon: 'fire', branch: 'weapon',
       costs: [{ gold: 20, redstone: 15, ruby: 5 }], maxLevel: 1, prereqs: ['fireRate4'],
       upgradeKey: 'fireRate', type: 'stat' },
-    { id: 'fireRate6', name: 'Fire Rate L6', icon: '\u{1F525}', branch: 'weapon',
+    { id: 'fireRate6', name: 'Fire Rate L6', icon: 'fire', branch: 'weapon',
       costs: [{ diamond: 8, ruby: 10, redstone: 18 }], maxLevel: 1, prereqs: ['fireRate5'],
       upgradeKey: 'fireRate', type: 'stat' },
     // -- Damage chain (7 levels) --
-    { id: 'damage1', name: 'Damage L1', icon: '\u2694', branch: 'weapon',
+    { id: 'damage1', name: 'Damage L1', icon: 'swords', branch: 'weapon',
       costs: [{ iron: 25 }], maxLevel: 1, prereqs: [],
       upgradeKey: 'weaponDamage', type: 'stat' },
-    { id: 'damage2', name: 'Damage L2', icon: '\u2694', branch: 'weapon',
+    { id: 'damage2', name: 'Damage L2', icon: 'swords', branch: 'weapon',
       costs: [{ iron: 40, cobalt: 15 }], maxLevel: 1, prereqs: ['damage1'],
       upgradeKey: 'weaponDamage', type: 'stat' },
-    { id: 'damage3', name: 'Damage L3', icon: '\u2694', branch: 'weapon',
+    { id: 'damage3', name: 'Damage L3', icon: 'swords', branch: 'weapon',
       costs: [{ iron: 60, cobalt: 30, copper: 15 }], maxLevel: 1, prereqs: ['damage2'],
       upgradeKey: 'weaponDamage', type: 'stat' },
-    { id: 'damage4', name: 'Damage L4', icon: '\u2694', branch: 'weapon',
+    { id: 'damage4', name: 'Damage L4', icon: 'swords', branch: 'weapon',
       costs: [{ silver: 20, gold: 15, redstone: 10 }], maxLevel: 1, prereqs: ['damage3'],
       upgradeKey: 'weaponDamage', type: 'stat' },
-    { id: 'damage5', name: 'Damage L5', icon: '\u2694', branch: 'weapon',
+    { id: 'damage5', name: 'Damage L5', icon: 'swords', branch: 'weapon',
       costs: [{ diamond: 8, ruby: 10, emerald: 8, gold: 20 }], maxLevel: 1, prereqs: ['damage4'],
       upgradeKey: 'weaponDamage', type: 'stat' },
-    { id: 'damage6', name: 'Damage L6', icon: '\u2694', branch: 'weapon',
+    { id: 'damage6', name: 'Damage L6', icon: 'swords', branch: 'weapon',
       costs: [{ diamond: 12, ruby: 12, gold: 25 }], maxLevel: 1, prereqs: ['damage5'],
       upgradeKey: 'weaponDamage', type: 'stat' },
-    { id: 'damage7', name: 'Damage L7', icon: '\u2694', branch: 'weapon',
+    { id: 'damage7', name: 'Damage L7', icon: 'swords', branch: 'weapon',
       costs: [{ diamond: 15, ruby: 15, emerald: 12 }], maxLevel: 1, prereqs: ['damage6'],
       upgradeKey: 'weaponDamage', type: 'stat' },
     // -- Drill Speed chain (5 levels) --
-    { id: 'drillSpeed1', name: 'Drill Speed L1', icon: '\u{1F529}', branch: 'weapon',
+    { id: 'drillSpeed1', name: 'Drill Speed L1', icon: 'drill', branch: 'weapon',
       costs: [{ iron: 20 }], maxLevel: 1, prereqs: [],
       upgradeKey: 'drillSpeed', type: 'stat' },
-    { id: 'drillSpeed2', name: 'Drill Speed L2', icon: '\u{1F529}', branch: 'weapon',
+    { id: 'drillSpeed2', name: 'Drill Speed L2', icon: 'drill', branch: 'weapon',
       costs: [{ iron: 35, cobalt: 10, tin: 8 }], maxLevel: 1, prereqs: ['drillSpeed1'],
       upgradeKey: 'drillSpeed', type: 'stat' },
-    { id: 'drillSpeed3', name: 'Drill Speed L3', icon: '\u{1F529}', branch: 'weapon',
+    { id: 'drillSpeed3', name: 'Drill Speed L3', icon: 'drill', branch: 'weapon',
       costs: [{ iron: 50, silver: 10, coal: 15 }], maxLevel: 1, prereqs: ['drillSpeed2'],
       upgradeKey: 'drillSpeed', type: 'stat' },
-    { id: 'drillSpeed4', name: 'Drill Speed L4', icon: '\u{1F529}', branch: 'weapon',
+    { id: 'drillSpeed4', name: 'Drill Speed L4', icon: 'drill', branch: 'weapon',
       costs: [{ gold: 12, redstone: 10, cobalt: 20 }], maxLevel: 1, prereqs: ['drillSpeed3'],
       upgradeKey: 'drillSpeed', type: 'stat' },
-    { id: 'drillSpeed5', name: 'Drill Speed L5', icon: '\u{1F529}', branch: 'weapon',
+    { id: 'drillSpeed5', name: 'Drill Speed L5', icon: 'drill', branch: 'weapon',
       costs: [{ gold: 20, diamond: 5, redstone: 15 }], maxLevel: 1, prereqs: ['drillSpeed4'],
       upgradeKey: 'drillSpeed', type: 'stat' },
     // -- Gadgets --
-    { id: 'blastTool', name: 'Blast Mining', icon: '\u{1F4A5}', branch: 'weapon',
+    { id: 'blastTool', name: 'Blast Mining', icon: 'explosion', branch: 'weapon',
       costs: [{ iron: 30, coal: 10 }], maxLevel: 1, prereqs: ['damage1'],
       upgradeKey: 'blastTool', type: 'gadget' },
-    { id: 'scanner', name: 'Scanner', icon: '\u{1F50D}', branch: 'weapon',
+    { id: 'scanner', name: 'Scanner', icon: 'magnifier', branch: 'weapon',
       costs: [{ iron: 35, cobalt: 10 }], maxLevel: 1, prereqs: ['drillSpeed1'],
       upgradeKey: 'scanner', type: 'gadget' },
-    { id: 'chainLightning', name: 'Chain Lightning', icon: '\u26A1', branch: 'weapon',
+    { id: 'chainLightning', name: 'Chain Lightning', icon: 'bolt', branch: 'weapon',
       costs: [{ silver: 20, copper: 25, redstone: 15 }], maxLevel: 1, prereqs: ['damage3', 'fireRate2'],
       upgradeKey: 'chainLightning', type: 'gadget' },
-    { id: 'freezeRay', name: 'Freeze Ray', icon: '\u2744', branch: 'weapon',
+    { id: 'freezeRay', name: 'Freeze Ray', icon: 'snowflake', branch: 'weapon',
       costs: [{ water: 30, quartz: 15, silver: 10 }], maxLevel: 1, prereqs: ['fireRate3'],
       upgradeKey: 'freezeRay', type: 'gadget' },
-    { id: 'plasmaCannon', name: 'Plasma Cannon', icon: '\u{1F4A5}', branch: 'weapon',
+    { id: 'plasmaCannon', name: 'Plasma Cannon', icon: 'explosion', branch: 'weapon',
       costs: [{ diamond: 10, ruby: 12, redstone: 15, gold: 20 }], maxLevel: 1, prereqs: ['damage4', 'chainLightning'],
       upgradeKey: 'plasmaCannon', type: 'gadget' },
     // -- New weapon abilities --
-    { id: 'multiShot', name: 'Multi-Shot', icon: '\u{1F4AB}', branch: 'weapon',
+    { id: 'multiShot', name: 'Multi-Shot', icon: 'multishot', branch: 'weapon',
       costs: [{ silver: 18, copper: 20, coal: 15 }], maxLevel: 1, prereqs: ['fireRate2', 'damage2'],
       upgradeKey: 'multiShot', type: 'gadget' },
-    { id: 'multiShot2', name: 'Multi-Shot L2', icon: '\u{1F4AB}', branch: 'weapon',
+    { id: 'multiShot2', name: 'Multi-Shot L2', icon: 'multishot', branch: 'weapon',
       costs: [{ gold: 15, redstone: 12, cobalt: 20 }], maxLevel: 1, prereqs: ['multiShot'],
       upgradeKey: 'multiShot', type: 'stat' },
-    { id: 'homingShots', name: 'Homing Shots', icon: '\u{1F3AF}', branch: 'weapon',
+    { id: 'homingShots', name: 'Homing Shots', icon: 'target', branch: 'weapon',
       costs: [{ gold: 20, quartz: 15, redstone: 12 }], maxLevel: 1, prereqs: ['damage3', 'fireRate3'],
       upgradeKey: 'homingShots', type: 'gadget' },
-    { id: 'turretSpeed1', name: 'Turret Speed L1', icon: '\u{1F504}', branch: 'weapon',
+    { id: 'turretSpeed1', name: 'Turret Speed L1', icon: 'gear', branch: 'weapon',
       costs: [{ iron: 25, copper: 15 }], maxLevel: 1, prereqs: ['fireRate1'],
       upgradeKey: 'turretSpeed', type: 'stat' },
-    { id: 'turretSpeed2', name: 'Turret Speed L2', icon: '\u{1F504}', branch: 'weapon',
+    { id: 'turretSpeed2', name: 'Turret Speed L2', icon: 'gear', branch: 'weapon',
       costs: [{ iron: 40, cobalt: 15, tin: 10 }], maxLevel: 1, prereqs: ['turretSpeed1'],
       upgradeKey: 'turretSpeed', type: 'stat' },
-    { id: 'turretSpeed3', name: 'Turret Speed L3', icon: '\u{1F504}', branch: 'weapon',
+    { id: 'turretSpeed3', name: 'Turret Speed L3', icon: 'gear', branch: 'weapon',
       costs: [{ silver: 15, gold: 10, redstone: 8 }], maxLevel: 1, prereqs: ['turretSpeed2'],
       upgradeKey: 'turretSpeed', type: 'stat' },
-    { id: 'criticalHit', name: 'Critical Hit', icon: '\u{1F4A5}', branch: 'weapon',
+    { id: 'criticalHit', name: 'Critical Hit', icon: 'explosion', branch: 'weapon',
       costs: [{ gold: 18, redstone: 15, cobalt: 20 }], maxLevel: 1, prereqs: ['damage3'],
       upgradeKey: 'criticalHit', type: 'gadget' },
-    { id: 'criticalHit2', name: 'Critical L2', icon: '\u{1F4A5}', branch: 'weapon',
+    { id: 'criticalHit2', name: 'Critical L2', icon: 'explosion', branch: 'weapon',
       costs: [{ gold: 25, ruby: 8, redstone: 18 }], maxLevel: 1, prereqs: ['criticalHit'],
       upgradeKey: 'criticalHit', type: 'stat' },
-    { id: 'explosiveRounds', name: 'Explosive Rounds', icon: '\u{1F4A3}', branch: 'weapon',
+    { id: 'explosiveRounds', name: 'Explosive Rounds', icon: 'bomb', branch: 'weapon',
       costs: [{ diamond: 8, ruby: 10, redstone: 20, gold: 15 }], maxLevel: 1, prereqs: ['plasmaCannon', 'criticalHit'],
       upgradeKey: 'explosiveRounds', type: 'gadget' },
-    { id: 'freezeRay2', name: 'Freeze Ray L2', icon: '\u2744', branch: 'weapon',
+    { id: 'freezeRay2', name: 'Freeze Ray L2', icon: 'snowflake', branch: 'weapon',
       costs: [{ water: 40, quartz: 20, diamond: 5 }], maxLevel: 1, prereqs: ['freezeRay'],
       upgradeKey: 'freezeRay', type: 'stat' },
-    { id: 'chainLightning2', name: 'Chain Light. L2', icon: '\u26A1', branch: 'weapon',
+    { id: 'chainLightning2', name: 'Chain Light. L2', icon: 'bolt', branch: 'weapon',
       costs: [{ gold: 20, redstone: 18, emerald: 8 }], maxLevel: 1, prereqs: ['chainLightning'],
       upgradeKey: 'chainLightning', type: 'stat' }
   ];
@@ -941,10 +1290,10 @@
   let upgradePanBaseY = 0;      // pan offset at drag start
 
   const PRIMARY_GADGETS = [
-    { key: 'shield', name: 'Shield Generator', icon: '\u{1F6E1}', desc: ['Absorbs the first hit of each wave.', 'Recharges when a new wave starts.'] },
-    { key: 'repellent', name: 'Repellent Field', icon: '\u{1F300}', desc: ['Press R: slows all enemies to 40%', 'for 5 seconds (30s cooldown).'] },
-    { key: 'orchard', name: 'Orchard', icon: '\u{1F333}', desc: ['Every 20s grows a fruit that gives', '+30% mining speed for 10 seconds.'] },
-    { key: 'droneyard', name: 'Droneyard', icon: '\u{1F916}', desc: ['A drone auto-carries 10 resources', 'to surface every 15 seconds.'] }
+    { key: 'shield', name: 'Shield Generator', icon: 'shield', desc: ['Absorbs the first hit of each wave.', 'Recharges when a new wave starts.'] },
+    { key: 'repellent', name: 'Repellent Field', icon: 'portal', desc: ['Press R: slows all enemies to 40%', 'for 5 seconds (30s cooldown).'] },
+    { key: 'orchard', name: 'Orchard', icon: 'tree', desc: ['Every 20s grows a fruit that gives', '+30% mining speed for 10 seconds.'] },
+    { key: 'droneyard', name: 'Droneyard', icon: 'robot', desc: ['A drone auto-carries 10 resources', 'to surface every 15 seconds.'] }
   ];
 
   const MINE_GADGETS = ['autoCannon', 'stunLaser', 'blastMining', 'probeScanner', 'domeArmor', 'condenser'];
@@ -1034,6 +1383,224 @@
       tr.innerHTML = '<td colspan="3" style="text-align:center">No scores yet</td>';
       highScoresBody.appendChild(tr);
     }
+  }
+
+  /* -- Run save / resume (plain data only; objects are rebuilt on load) -- */
+  const STORAGE_SAVE = STORAGE_PREFIX + '-save-v1';
+  const SAVE_VERSION = 1;
+  const AUTOSAVE_INTERVAL = 5; // seconds of play between autosaves
+  let autosaveTimer = 0;
+  let saveAvailable = false;   // a resumable run is stored
+  let saveNotice = '';         // shown on the title screen (e.g. discarded save)
+  let newGameConfirmOpen = false;
+
+  function isRunActive() {
+    return primaryGadget !== null && (state === STATE_PLAYING || state === STATE_PAUSED || state === STATE_UPGRADE_DIALOG);
+  }
+
+  function saveRun() {
+    if (!isRunActive()) return;
+    const partialHP = [];
+    for (let r = 0; r < GRID_ROWS; ++r)
+      for (let c = 0; c < GRID_COLS; ++c)
+        if (tileMaxHP[r] && tileMaxHP[r][c] > 0 && tileHP[r][c] < tileMaxHP[r][c])
+          partialHP.push([r, c, Math.round(tileHP[r][c] * 1000) / 1000]);
+    const data = {
+      version: SAVE_VERSION,
+      view: transitionTarget || currentView,
+      domeHP, maxDomeHP, carried, carryCapacity,
+      weaponDamage, fireRate, drillSpeed, moveStepInterval,
+      drillX, drillY, turretAngle,
+      resources, upgradeLevels, upgradeTreeLevels,
+      waveNumber, waveTimer, waveActive, score,
+      enemies,
+      grid: undergroundGrid.map(row => row.map(t => String.fromCharCode(48 + t)).join('')),
+      partialHP,
+      droppedResources,
+      primaryGadget, primaryGadgetState, foundGadgets, gadgetChambers,
+      unlockedTools, activeToolKey, toolState
+    };
+    try {
+      localStorage.setItem(STORAGE_SAVE, JSON.stringify(data));
+      saveAvailable = true;
+    } catch (_) {}
+  }
+
+  function clearSave() {
+    saveAvailable = false;
+    try { localStorage.removeItem(STORAGE_SAVE); } catch (_) {}
+  }
+
+  function isNum(v) {
+    return typeof v === 'number' && isFinite(v);
+  }
+
+  function isPlainObject(v) {
+    return !!v && typeof v === 'object' && !Array.isArray(v);
+  }
+
+  // Read and validate the stored run; a broken or outdated save is discarded with a notice
+  function readSavedRun() {
+    let raw = null;
+    try { raw = localStorage.getItem(STORAGE_SAVE); } catch (_) { return null; }
+    if (!raw)
+      return null;
+    try {
+      const d = JSON.parse(raw);
+      if (!isPlainObject(d) || d.version !== SAVE_VERSION)
+        throw new Error('unsupported save version');
+      for (const k of ['domeHP', 'maxDomeHP', 'carried', 'carryCapacity', 'weaponDamage', 'fireRate', 'drillSpeed', 'moveStepInterval', 'drillX', 'drillY', 'turretAngle', 'waveNumber', 'waveTimer', 'score'])
+        if (!isNum(d[k]))
+          throw new Error('bad ' + k);
+      if (!Array.isArray(d.grid) || d.grid.length !== GRID_ROWS)
+        throw new Error('bad grid');
+      for (const row of d.grid) {
+        if (typeof row !== 'string' || row.length !== GRID_COLS)
+          throw new Error('bad grid row');
+        for (let c = 0; c < row.length; ++c) {
+          const t = row.charCodeAt(c) - 48;
+          if (t < TILE_EMPTY || t > TILE_RUBY)
+            throw new Error('bad tile');
+        }
+      }
+      if (d.drillX < 0 || d.drillX >= GRID_COLS || d.drillY < 0 || d.drillY >= GRID_ROWS)
+        throw new Error('bad position');
+      if (!PRIMARY_GADGETS.some(g => g.key === d.primaryGadget))
+        throw new Error('bad gadget');
+      for (const k of ['resources', 'upgradeLevels', 'upgradeTreeLevels', 'primaryGadgetState', 'unlockedTools', 'toolState'])
+        if (!isPlainObject(d[k]))
+          throw new Error('bad ' + k);
+      for (const k of ['enemies', 'partialHP', 'droppedResources', 'foundGadgets', 'gadgetChambers'])
+        if (!Array.isArray(d[k]))
+          throw new Error('bad ' + k);
+      for (const k in d.resources)
+        if (!isNum(d.resources[k]))
+          throw new Error('bad resource');
+      for (const e of d.enemies)
+        if (!isPlainObject(e) || !isNum(e.x) || !isNum(e.y) || !isNum(e.hp) || !isNum(e.maxHP))
+          throw new Error('bad enemy');
+      for (const ch of d.gadgetChambers)
+        if (!isPlainObject(ch) || !isNum(ch.r) || !isNum(ch.c))
+          throw new Error('bad chamber');
+      for (const dr of d.droppedResources)
+        if (!isPlainObject(dr) || !isNum(dr.col) || !isNum(dr.row) || !isNum(dr.value))
+          throw new Error('bad drop');
+      return d;
+    } catch (_) {
+      clearSave();
+      saveNotice = 'The saved run could not be read and was discarded.';
+      return null;
+    }
+  }
+
+  function restoreRun(d) {
+    resetGame(); // fresh defaults for everything not stored
+    undergroundGrid = d.grid.map(row => Array.from(row, ch => ch.charCodeAt(0) - 48));
+    gadgetChambers = d.gadgetChambers
+      .filter(ch => ch.r >= 0 && ch.r < GRID_ROWS - 1 && ch.c >= 0 && ch.c < GRID_COLS - 1)
+      .map(ch => ({ r: ch.r, c: ch.c, gadgetType: ch.gadgetType, revealed: !!ch.revealed }));
+    initTileHP();
+    for (const p of d.partialHP)
+      if (Array.isArray(p) && tileHP[p[0]] && isNum(p[2]) && tileMaxHP[p[0]][p[1]] > 0)
+        tileHP[p[0]][p[1]] = Math.max(0, Math.min(tileMaxHP[p[0]][p[1]], p[2]));
+
+    domeHP = d.domeHP;
+    maxDomeHP = d.maxDomeHP;
+    carried = d.carried;
+    carryCapacity = d.carryCapacity;
+    weaponDamage = d.weaponDamage;
+    fireRate = d.fireRate;
+    drillSpeed = d.drillSpeed;
+    moveStepInterval = d.moveStepInterval;
+    drillX = d.drillX;
+    drillY = d.drillY;
+    turretAngle = d.turretAngle;
+    Object.assign(resources, d.resources);
+    Object.assign(upgradeLevels, d.upgradeLevels);
+    Object.assign(upgradeTreeLevels, d.upgradeTreeLevels);
+    waveNumber = d.waveNumber;
+    waveTimer = d.waveTimer;
+    waveActive = !!d.waveActive;
+    score = d.score;
+    enemies = d.enemies.map(e => Object.assign({}, e));
+    droppedResources = d.droppedResources.map(dr => Object.assign({ age: 0 }, dr));
+    primaryGadget = d.primaryGadget;
+    primaryGadgetState = Object.assign({}, d.primaryGadgetState);
+    foundGadgets = d.foundGadgets.filter(g => typeof g === 'string');
+    unlockedTools = Object.assign({}, d.unlockedTools);
+    activeToolKey = typeof d.activeToolKey === 'string' ? d.activeToolKey : null;
+    Object.assign(toolState, d.toolState);
+
+    currentView = d.view === VIEW_UNDERGROUND ? VIEW_UNDERGROUND : VIEW_SURFACE;
+    if (currentView === VIEW_UNDERGROUND) {
+      cameraX = Math.max(0, Math.min(GRID_COLS * TILE_SIZE - CANVAS_W, drillX * TILE_SIZE - CANVAS_W / 2 + TILE_SIZE / 2));
+      cameraY = Math.max(0, Math.min(GRID_ROWS * TILE_SIZE - CANVAS_H, drillY * TILE_SIZE - CANVAS_H / 2 + TILE_SIZE / 2));
+    }
+    autosaveTimer = 0;
+    state = STATE_PLAYING;
+    updateWindowTitle();
+  }
+
+  function continueRun() {
+    const d = readSavedRun();
+    if (!d)
+      return;
+    try {
+      restoreRun(d);
+      saveNotice = '';
+      SZ.GameAudio.play('select');
+      floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `Run resumed -- Wave ${waveNumber}`, { color: '#4af', font: 'bold 32px sans-serif' });
+    } catch (_) {
+      clearSave();
+      primaryGadget = null;
+      state = STATE_READY;
+      saveNotice = 'The saved run could not be restored and was discarded.';
+    }
+  }
+
+  function startNewRun() {
+    clearSave();
+    saveNotice = '';
+    resetGame();
+  }
+
+  // New Game: ask before throwing away a stored run
+  function requestNewGame() {
+    if (newGameConfirmOpen)
+      return;
+    if (!saveAvailable) {
+      startNewRun();
+      return;
+    }
+    if (state === STATE_PLAYING)
+      state = STATE_PAUSED;
+    saveRun();
+    newGameConfirmOpen = true;
+    // The shared click wiring hides the inner box too; make sure it shows again
+    const box = document.querySelector('#dlg-new-game .dialog');
+    if (box)
+      box.hidden = false;
+    SZ.Dialog.show('dlg-new-game').then((result) => {
+      newGameConfirmOpen = false;
+      if (result === 'yes')
+        startNewRun();
+    });
+  }
+
+  // Title-screen buttons shown when a saved run exists
+  function getTitleButtons() {
+    const w = 360, h = 60, x = CANVAS_W / 2 - w / 2;
+    return [
+      { id: 'continue', label: 'Continue', x, y: CANVAS_H / 2 + 10, w, h },
+      { id: 'new', label: 'New Game', x, y: CANVAS_H / 2 + 90, w, h }
+    ];
+  }
+
+  function hitTitleButton(mx, my) {
+    for (const b of getTitleButtons())
+      if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h)
+        return b.id;
+    return null;
   }
 
   /* ======================================================================
@@ -1931,6 +2498,7 @@
             SZ.GameAudio.play('explode');
             SZ.GameAudio.play('lose');
             addHighScore(waveNumber, score);
+            clearSave();
             updateWindowTitle();
             return;
           }
@@ -1966,6 +2534,7 @@
       waveTimer = WAVE_INTERVAL;
       SZ.GameAudio.play('levelup');
       floatingText.add(CANVAS_W / 2, 80, 'WAVE CLEAR!', { color: '#0f0', font: 'bold 36px sans-serif' });
+      saveRun();
     }
   }
 
@@ -2985,6 +3554,7 @@
     state = stateBeforeUpgradeDialog || STATE_PLAYING;
     stateBeforeUpgradeDialog = null;
     upgradeDialogHover = null;
+    saveRun();
   }
 
   function drawUpgradeDialog() {
@@ -3020,9 +3590,9 @@
     for (const entry of RESOURCE_HUD_ENTRIES) {
       if (resources[entry.key] <= 0 && entry.key !== 'iron' && entry.key !== 'water' && entry.key !== 'cobalt') continue;
       ctx.fillStyle = entry.color;
-      const resText = `${entry.icon} ${entry.label}:${resources[entry.key]}`;
-      ctx.fillText(resText, resBarX, resBarY);
-      resBarX += ctx.measureText(resText).width + 20;
+      const resText = `[[${entry.key}]] ${entry.label}:${resources[entry.key]}`;
+      fillIconText(resText, resBarX, resBarY);
+      resBarX += measureIconText(resText) + 20;
       if (resBarX > CANVAS_W - 280) break;
     }
 
@@ -3138,11 +3708,8 @@
       ctx.setLineDash([]);
 
       // Icon
-      ctx.font = '32px sans-serif';
-      ctx.textAlign = 'left';
+      drawSprite(node.icon, x + 22, y + h / 2 - 12, 28, maxed || available ? 1 : 0.55);
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = maxed ? '#0f0' : (available ? '#fff' : '#555');
-      ctx.fillText(node.icon, x + 8, y + h / 2 - 12);
 
       // Name
       ctx.font = 'bold 18px sans-serif';
@@ -3154,30 +3721,22 @@
       if (!maxed) {
         const cost = node.costs[Math.min(lvl, node.costs.length - 1)];
         const COST_ABBREV = { iron: 'Fe', water: 'H2O', cobalt: 'Co', copper: 'Cu', tin: 'Sn', coal: 'C', lead: 'Pb', silver: 'Ag', gold: 'Au', quartz: 'Qz', redstone: 'Rs', emerald: 'Em', diamond: 'Di', ruby: 'Rb' };
-        const COST_ICONS = { iron: '\u2699', water: '\u{1F4A7}', cobalt: '\u{1F48E}', copper: '\u{1FA99}', tin: '\u{1F52A}', coal: '\u{1F525}', lead: '\u26D3', silver: '\u2B50', gold: '\u{1F451}', quartz: '\u{1F52E}', redstone: '\u2764', emerald: '\u{1F49A}', diamond: '\u{1F4A0}', ruby: '\u2763' };
         let costParts = [];
         for (const key in cost)
           if ((cost[key] || 0) > 0)
-            costParts.push(`${cost[key]}${COST_ICONS[key] || ''}${COST_ABBREV[key] || key}`);
+            costParts.push(`${cost[key]}${SPRITES[key] ? `[[${key}]]` : ''}${COST_ABBREV[key] || key}`);
         const costStr = costParts.join(' ');
 
         ctx.font = '16px sans-serif';
         ctx.fillStyle = affordable ? '#0f0' : '#a44';
-        ctx.fillText(costStr, x + 44, y + 54);
+        fillIconText(costStr, x + 44, y + 54);
       }
 
       // Level indicator / checkmark
-      if (maxed) {
-        ctx.fillStyle = '#0f0';
-        ctx.font = 'bold 28px sans-serif';
-        ctx.textAlign = 'right';
-        ctx.fillText('\u2714', x + w - 8, y + h / 2);
-      } else if (!prereqsMet) {
-        ctx.fillStyle = '#888';
-        ctx.font = '24px sans-serif';
-        ctx.textAlign = 'right';
-        ctx.fillText('\u{1F512}', x + w - 8, y + h / 2);
-      }
+      if (maxed)
+        drawSprite('check', x + w - 22, y + h / 2, 28);
+      else if (!prereqsMet)
+        drawSprite('lock', x + w - 22, y + h / 2, 28, 0.8);
 
       // Level bar at bottom
       if (node.maxLevel > 1) {
@@ -3523,6 +4082,12 @@
 
     updateEnemies(dt);
     updateWeapon(dt);
+
+    autosaveTimer += dt;
+    if (autosaveTimer >= AUTOSAVE_INTERVAL && state === STATE_PLAYING) {
+      autosaveTimer = 0;
+      saveRun();
+    }
   }
 
   /* ======================================================================
@@ -4529,14 +5094,10 @@
         }
       }
 
-      // Resource icon
+      // Resource sprite
       const tIcon = TILE_ICONS[tile];
-      if (tIcon) {
-        ctx.font = '16px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(tIcon, x + TILE_SIZE / 2, y + TILE_SIZE / 2 + 8);
-      }
+      if (tIcon)
+        drawSprite(tIcon, x + TILE_SIZE / 2, y + TILE_SIZE / 2, 28);
     }
   }
 
@@ -4688,20 +5249,20 @@
 
   // Resource HUD display configuration
   const RESOURCE_HUD_ENTRIES = [
-    { key: 'iron', label: 'Fe', color: '#bbb', icon: '\u2699' },
-    { key: 'water', label: 'H2O', color: '#6af', icon: '\u{1F4A7}' },
-    { key: 'cobalt', label: 'Co', color: '#88c', icon: '\u{1F48E}' },
-    { key: 'copper', label: 'Cu', color: '#d4944d', icon: '\u{1FA99}' },
-    { key: 'tin', label: 'Sn', color: '#d4d4d4', icon: '\u{1F52A}' },
-    { key: 'coal', label: 'C', color: '#888', icon: '\u{1F525}' },
-    { key: 'lead', label: 'Pb', color: '#999', icon: '\u26D3' },
-    { key: 'silver', label: 'Ag', color: '#e0e0e0', icon: '\u2B50' },
-    { key: 'gold', label: 'Au', color: '#ffd700', icon: '\u{1F451}' },
-    { key: 'quartz', label: 'Qz', color: '#f0e6d3', icon: '\u{1F52E}' },
-    { key: 'redstone', label: 'Rs', color: '#ff3333', icon: '\u2764' },
-    { key: 'emerald', label: 'Em', color: '#50c878', icon: '\u{1F49A}' },
-    { key: 'diamond', label: 'Di', color: '#b9f2ff', icon: '\u{1F4A0}' },
-    { key: 'ruby', label: 'Rb', color: '#ff4488', icon: '\u2763' }
+    { key: 'iron', label: 'Fe', color: '#bbb' },
+    { key: 'water', label: 'H2O', color: '#6af' },
+    { key: 'cobalt', label: 'Co', color: '#88c' },
+    { key: 'copper', label: 'Cu', color: '#d4944d' },
+    { key: 'tin', label: 'Sn', color: '#d4d4d4' },
+    { key: 'coal', label: 'C', color: '#888' },
+    { key: 'lead', label: 'Pb', color: '#999' },
+    { key: 'silver', label: 'Ag', color: '#e0e0e0' },
+    { key: 'gold', label: 'Au', color: '#ffd700' },
+    { key: 'quartz', label: 'Qz', color: '#f0e6d3' },
+    { key: 'redstone', label: 'Rs', color: '#ff3333' },
+    { key: 'emerald', label: 'Em', color: '#50c878' },
+    { key: 'diamond', label: 'Di', color: '#b9f2ff' },
+    { key: 'ruby', label: 'Rb', color: '#ff4488' }
   ];
 
   function drawResourceHUD() {
@@ -4737,7 +5298,7 @@
       const x = panelX + 12 + col * 220;
       const y = panelY + 3 + row * lineH;
       ctx.fillStyle = e.color;
-      ctx.fillText(`${e.icon} ${e.label}: ${resources[e.key]}`, x, y);
+      fillIconText(`[[${e.key}]] ${e.label}: ${resources[e.key]}`, x, y);
     }
 
     // Carried indicator (right side)
@@ -4750,7 +5311,7 @@
 
     ctx.fillStyle = '#cc8';
     ctx.font = 'bold 22px sans-serif';
-    ctx.fillText(`\u{1F392} Carried: ${carried}/${carryCapacity}`, carryX + 12, panelY + 10);
+    fillIconText(`[[bag]] Carried: ${carried}/${carryCapacity}`, carryX + 12, panelY + 10);
 
     // Carry capacity bar
     const carryRatio = Math.min(carried / carryCapacity, 1);
@@ -4787,17 +5348,17 @@
       if (def.key === 'blastTool') {
         ctx.fillStyle = toolState.blastToolCooldown > 0 ? '#555' : (isActive ? '#ffd700' : '#f80');
         const cd = toolState.blastToolCooldown > 0 ? ` ${Math.ceil(toolState.blastToolCooldown)}s` : ' RDY';
-        ctx.fillText(`[2] ${def.icon} Blast${cd}`, hudX + 8, hudY);
+        fillIconText(`[2] [[${def.icon}]] Blast${cd}`, hudX + 8, hudY);
       } else if (def.key === 'teleporter') {
         ctx.fillStyle = toolState.teleporterCooldown > 0 ? '#555' : '#a0f';
         const cd = toolState.teleporterCooldown > 0 ? ` ${Math.ceil(toolState.teleporterCooldown)}s` : ' RDY';
-        ctx.fillText(`[5] ${def.icon} Teleport${cd}`, hudX + 8, hudY);
+        fillIconText(`[5] [[${def.icon}]] Teleport${cd}`, hudX + 8, hudY);
       } else if (def.key === 'drill') {
         ctx.fillStyle = isActive ? '#ffd700' : '#aaa';
-        ctx.fillText(`[1] ${def.icon} Drill${isActive ? ' SEL' : ''}`, hudX + 8, hudY);
+        fillIconText(`[1] [[${def.icon}]] Drill${isActive ? ' SEL' : ''}`, hudX + 8, hudY);
       } else if (isPassive) {
         ctx.fillStyle = '#0f0';
-        ctx.fillText(`[${def.shortcut}] ${def.icon} ${def.name}`, hudX + 8, hudY);
+        fillIconText(`[${def.shortcut}] [[${def.icon}]] ${def.name}`, hudX + 8, hudY);
       }
       hudY += 28;
     }
@@ -5065,29 +5626,29 @@
       if (def.key === 'blastTool') {
         if (toolState.blastToolCooldown > 0) {
           ctx.fillStyle = '#555';
-          ctx.fillText(`${def.icon} Blast [2]: ${Math.ceil(toolState.blastToolCooldown)}s CD`, hudX, hudY);
+          fillIconText(`[[${def.icon}]] Blast [2]: ${Math.ceil(toolState.blastToolCooldown)}s CD`, hudX, hudY);
         } else {
           ctx.fillStyle = isActive ? '#ffd700' : '#f80';
-          ctx.fillText(`${def.icon} Blast [2]: READY`, hudX, hudY);
+          fillIconText(`[[${def.icon}]] Blast [2]: READY`, hudX, hudY);
         }
         hudY -= 28;
       } else if (def.key === 'teleporter') {
         if (toolState.teleporterCooldown > 0) {
           ctx.fillStyle = '#555';
-          ctx.fillText(`${def.icon} Teleport [5]: ${Math.ceil(toolState.teleporterCooldown)}s CD`, hudX, hudY);
+          fillIconText(`[[${def.icon}]] Teleport [5]: ${Math.ceil(toolState.teleporterCooldown)}s CD`, hudX, hudY);
         } else {
           ctx.fillStyle = isActive ? '#ffd700' : '#a0f';
-          ctx.fillText(`${def.icon} Teleport [5]: READY`, hudX, hudY);
+          fillIconText(`[[${def.icon}]] Teleport [5]: READY`, hudX, hudY);
         }
         hudY -= 28;
       } else if (def.key === 'drill') {
         ctx.fillStyle = isActive ? '#ffd700' : '#aaa';
         const combo = isActive && toolState.drillConsecutive > 0 ? ` (x${toolState.drillConsecutive} combo)` : '';
-        ctx.fillText(`${def.icon} Drill [1]${combo}`, hudX, hudY);
+        fillIconText(`[[${def.icon}]] Drill [1]${combo}`, hudX, hudY);
         hudY -= 28;
       } else if (isPassive) {
         ctx.fillStyle = '#0f0';
-        ctx.fillText(`${def.icon} ${def.name} [${def.shortcut}]: ON`, hudX, hudY);
+        fillIconText(`[[${def.icon}]] ${def.name} [${def.shortcut}]: ON`, hudX, hudY);
         hudY -= 28;
       }
     }
@@ -5188,12 +5749,8 @@
           ctx.lineWidth = 1.5;
           ctx.strokeRect(x + 3, y + 3, TILE_SIZE - 6, TILE_SIZE - 6);
 
-          // Small resource type icon
-          ctx.fillStyle = hexToRgba(tileColor, 0.7 * scanPulse);
-          ctx.font = '16px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(TILE_ICONS[tile] || '', x + TILE_SIZE / 2, y + TILE_SIZE / 2);
+          // Small resource type sprite
+          drawSprite(TILE_ICONS[tile], x + TILE_SIZE / 2, y + TILE_SIZE / 2, 20, 0.7 * scanPulse);
         }
 
       // Scanner radius ring around player
@@ -5320,10 +5877,10 @@
         if (isUnlocked) {
           ctx.fillStyle = isActive ? '#ffd700' : (isPassive ? '#0f0' : '#aaa');
           const status = isPassive ? ' [ON]' : (isActive ? ' [SEL]' : '');
-          ctx.fillText(`[${def.shortcut}] ${def.icon} ${def.name}${status}`, px + 12, ly + 20);
+          fillIconText(`[${def.shortcut}] [[${def.icon}]] ${def.name}${status}`, px + 12, ly + 20);
         } else {
           ctx.fillStyle = canAfford ? '#ccc' : '#555';
-          ctx.fillText(`[${def.shortcut}] ${def.icon} ${def.name}`, px + 12, ly + 20);
+          fillIconText(`[${def.shortcut}] [[${def.icon}]] ${def.name}`, px + 12, ly + 20);
           // Cost display
           let costText = `${def.costIron}Fe`;
           if (def.costCobalt > 0)
@@ -5366,11 +5923,34 @@
       ctx.textBaseline = 'middle';
       ctx.fillText('Defend your dome. Mine resources. Upgrade.', CANVAS_W / 2, CANVAS_H / 2 - 30);
 
-      // Pulsing start prompt
       const startPulse = Math.sin(animTime * 3) * 0.3 + 0.7;
-      ctx.fillStyle = `rgba(170,170,170,${startPulse})`;
-      ctx.font = '28px sans-serif';
-      ctx.fillText('Tap or press F2 to Start', CANVAS_W / 2, CANVAS_H / 2 + 40);
+      if (saveAvailable) {
+        // Continue / New Game buttons
+        for (const b of getTitleButtons()) {
+          const primary = b.id === 'continue';
+          ctx.fillStyle = primary ? 'rgba(40,90,160,0.9)' : 'rgba(30,35,50,0.9)';
+          ctx.fillRect(b.x, b.y, b.w, b.h);
+          ctx.strokeStyle = primary ? `rgba(120,200,255,${startPulse})` : '#4a5a7a';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(b.x, b.y, b.w, b.h);
+          ctx.fillStyle = primary ? '#fff' : '#bbb';
+          ctx.font = 'bold 28px sans-serif';
+          ctx.fillText(b.label, CANVAS_W / 2, b.y + b.h / 2);
+        }
+        ctx.fillStyle = '#777';
+        ctx.font = '20px sans-serif';
+        ctx.fillText('Enter = Continue  |  F2 = New Game', CANVAS_W / 2, CANVAS_H / 2 + 180);
+      } else {
+        // Pulsing start prompt
+        ctx.fillStyle = `rgba(170,170,170,${startPulse})`;
+        ctx.font = '28px sans-serif';
+        ctx.fillText('Tap or press F2 to Start', CANVAS_W / 2, CANVAS_H / 2 + 40);
+      }
+      if (saveNotice) {
+        ctx.fillStyle = '#fa0';
+        ctx.font = '22px sans-serif';
+        ctx.fillText(saveNotice, CANVAS_W / 2, CANVAS_H / 2 + (saveAvailable ? 220 : 90));
+      }
 
       // Decorative dome outline
       ctx.beginPath();
@@ -5445,11 +6025,9 @@
         }
 
         // Icon
-        ctx.font = '64px sans-serif';
+        drawSprite(g.icon, cx + cardW / 2, cardY + 70, 70);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#fff';
-        ctx.fillText(g.icon, cx + cardW / 2, cardY + 70);
 
         // Name
         ctx.fillStyle = isHover ? '#ffd700' : '#ccc';
@@ -5621,7 +6199,7 @@
     // Measure max line width
     let maxW = 0;
     for (const line of tooltip.lines) {
-      const w = ctx.measureText(line).width;
+      const w = measureIconText(line);
       if (w > maxW) maxW = w;
     }
 
@@ -5677,7 +6255,7 @@
         else
           ctx.fillStyle = '#ccc';
       }
-      ctx.fillText(line, bx + padding, by + padding + i * lineH);
+      fillIconText(line, bx + padding, by + padding + i * lineH);
     }
     ctx.restore();
   }
@@ -5711,7 +6289,7 @@
       lines.push('Mining: ' + getMiningDifficultyLabel(depthMult));
     } else {
       const icon = TILE_ICONS[tile] || '';
-      lines.push((icon ? icon + ' ' : '') + displayName);
+      lines.push((icon ? '[[' + icon + ']] ' : '') + displayName);
       if (TILE_VALUES[tile])
         lines.push('Value: ' + TILE_VALUES[tile] + ' resources');
       lines.push('Depth: ' + depthTier.name);
@@ -5762,7 +6340,7 @@
     const lvl = getTreeNodeLevel(node.id);
     const maxed = lvl >= node.maxLevel;
 
-    lines.push(node.icon + ' ' + node.name);
+    lines.push('[[' + node.icon + ']] ' + node.name);
 
     // Effect description
     const effectDesc = UPGRADE_EFFECT_DESC[node.upgradeKey];
@@ -5788,13 +6366,12 @@
         emerald: 'Emerald', diamond: 'Diamond', ruby: 'Ruby'
       };
       let costParts = [];
-      const TT_ICONS = { iron: '\u2699', water: '\u{1F4A7}', cobalt: '\u{1F48E}', copper: '\u{1FA99}', tin: '\u{1F52A}', coal: '\u{1F525}', lead: '\u26D3', silver: '\u2B50', gold: '\u{1F451}', quartz: '\u{1F52E}', redstone: '\u2764', emerald: '\u{1F49A}', diamond: '\u{1F4A0}', ruby: '\u2763' };
       for (const key in cost)
         if ((cost[key] || 0) > 0) {
           const have = resources[key] || 0;
           const need = cost[key];
           const mark = have >= need ? '\u2714' : '\u2718';
-          const ico = TT_ICONS[key] || '';
+          const ico = SPRITES[key] ? '[[' + key + ']] ' : '';
           costParts.push(mark + ' ' + ico + (COST_NAMES[key] || key) + ': ' + have + '/' + need);
         }
       if (costParts.length > 0) {
@@ -5836,7 +6413,7 @@
       let resParts = [];
       for (const entry of RESOURCE_HUD_ENTRIES)
         if (resources[entry.key] > 0)
-          resParts.push(`${entry.icon}${entry.label}:${resources[entry.key]}`);
+          resParts.push(`${entry.label}:${resources[entry.key]}`);
       statusResources.textContent = resParts.join(' ') || 'Fe:0 H2O:0 Co:0';
     }
   }
@@ -5888,15 +6465,31 @@
     isRunning: () => state === STATE_PLAYING,
     pause: () => {
       state = STATE_PAUSED;
+      saveRun();
     }
+  });
+
+  /* Keep the run when the page goes away or is hidden */
+  window.addEventListener('pagehide', () => saveRun());
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden)
+      saveRun();
   });
 
   window.addEventListener('keydown', (e) => {
     keys[e.code] = true;
 
+    if (newGameConfirmOpen) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        SZ.Dialog.close('dlg-new-game');
+      }
+      return;
+    }
+
     if (e.code === 'F2') {
       e.preventDefault();
-      resetGame();
+      requestNewGame();
       return;
     }
 
@@ -5936,11 +6529,25 @@
         closeUpgradeDialog();
         return;
       }
-      if (state === STATE_PLAYING)
+      if (state === STATE_PLAYING) {
         state = STATE_PAUSED;
-      else if (state === STATE_PAUSED)
+        saveRun();
+      } else if (state === STATE_PAUSED)
         state = STATE_PLAYING;
       return;
+    }
+
+    // Title screen with a saved run: Enter/C continues, N starts over
+    if (state === STATE_READY && saveAvailable) {
+      if (e.code === 'Enter' || e.code === 'KeyC') {
+        e.preventDefault();
+        continueRun();
+        return;
+      }
+      if (e.code === 'KeyN') {
+        requestNewGame();
+        return;
+      }
     }
 
     // U key: open/close upgrade dialog
@@ -6029,8 +6636,19 @@
         showTutorial = false;
       return;
     }
+    if (newGameConfirmOpen)
+      return;
+    if (state === STATE_READY && saveAvailable) {
+      const rect = canvas.getBoundingClientRect();
+      const hit = hitTitleButton((e.clientX - rect.left) * CANVAS_W / rect.width, (e.clientY - rect.top) * CANVAS_H / rect.height);
+      if (hit === 'continue')
+        continueRun();
+      else if (hit === 'new')
+        requestNewGame();
+      return;
+    }
     if (state === STATE_READY || state === STATE_GAME_OVER) {
-      resetGame();
+      startNewRun();
       return;
     }
 
@@ -6319,12 +6937,13 @@
   function handleAction(action) {
     switch (action) {
       case 'new':
-        resetGame();
+        requestNewGame();
         break;
       case 'pause':
-        if (state === STATE_PLAYING)
+        if (state === STATE_PLAYING) {
           state = STATE_PAUSED;
-        else if (state === STATE_PAUSED)
+          saveRun();
+        } else if (state === STATE_PAUSED)
           state = STATE_PLAYING;
         break;
       case 'high-scores':
@@ -6402,6 +7021,7 @@
 
   setupCanvas();
   loadHighScores();
+  saveAvailable = !!readSavedRun();
   try { tutorialSeen = localStorage.getItem(STORAGE_TUTORIAL) === '1'; } catch (_) { tutorialSeen = false; }
   updateWindowTitle();
 
