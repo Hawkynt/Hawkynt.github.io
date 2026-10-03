@@ -41,8 +41,9 @@
   const STORAGE_PREFIX = 'sz-space-farming';
   const STORAGE_HIGHSCORES = STORAGE_PREFIX + '-highscores';
   const STORAGE_TUTORIAL = STORAGE_PREFIX + '-tutorial-seen';
-  const STORAGE_SAVE = STORAGE_PREFIX + '-save-v1';
-  const SAVE_VERSION = 1;
+  const STORAGE_SAVE = STORAGE_PREFIX + '-save-v2';
+  const STORAGE_SAVE_V1 = STORAGE_PREFIX + '-save-v1';
+  const SAVE_VERSION = 2;
   const AUTOSAVE_INTERVAL = 5; // seconds of play between autosaves
   const MAX_HIGH_SCORES = 5;
 
@@ -89,18 +90,6 @@
   const TOOL_HARVEST = 'harvest';
   const TOOL_FEED = 'feed';
   const TOOL_HOE = 'hoe';
-
-  /* ── Upgrade Definitions ── */
-  const UPGRADES = [
-    { id: 'growSpeed',       name: 'Growth Boost',       sprite: 'growth', maxLevel: 5, baseCost: 50,  costScale: 1.8, desc: 'Crops grow faster (+25%/lvl)' },
-    { id: 'yieldMultiplier', name: 'Yield Multiplier',   sprite: 'crate', maxLevel: 5, baseCost: 80,  costScale: 2.0, desc: 'Harvest more per crop (+20%/lvl)' },
-    { id: 'weatherResist',   name: 'Weather Shield',     sprite: 'shield', maxLevel: 3, baseCost: 120, costScale: 2.5, desc: 'Reduce meteor damage chance' },
-    { id: 'autoHarvest',     name: 'Auto-Harvester',     sprite: 'robot', maxLevel: 3, baseCost: 200, costScale: 3.0, desc: 'Auto-harvest mature crops' },
-    { id: 'plotExpansion',   name: 'Plot Expansion',     sprite: 'map', maxLevel: 99, baseCost: 150, costScale: 1.5, desc: 'Expand farm by 1 strip (L/R/T/B cycle)' },
-    { id: 'soilQuality',    name: 'Soil Quality',        sprite: 'flask', maxLevel: 5, baseCost: 100, costScale: 1.9, desc: 'All tiles grow faster (+15%/lvl)' },
-    { id: 'marketAccess',   name: 'Market Access',       sprite: 'chart', maxLevel: 5, baseCost: 120, costScale: 2.0, desc: 'Sell prices +10% per level' },
-    { id: 'irrigation',     name: 'Irrigation System',   sprite: 'drop', maxLevel: 3, baseCost: 140, costScale: 2.3, desc: 'Reduce crop damage -15%/lvl (stacks w/ Shield)' }
-  ];
 
   /* ── Building Definitions ── */
   const BUILDINGS = [
@@ -216,8 +205,6 @@
   let weatherEffect = 0; // visual overlay alpha
 
 
-  // Upgrades
-  let upgradeLevels = {}; // { upgradeId: level }
 
   // Auto-harvest timer (ticks every second-ish based on upgrade level)
   let autoHarvestTimer = 0;
@@ -885,6 +872,11 @@
     },
     eye: (p, P) => {
       p.ell(7.5, 8, 7, 4, P.white); p.disc(7.5, 8, 3, P.blue); p.disc(7.5, 8, 1.4, P.black, true); p.px(6, 7, P.white, true);
+    },
+    heart: (p, P) => {
+      p.disc(5, 6, 3.5, P.red); p.disc(10.5, 6, 3.5, P.red);
+      p.poly([[1.5, 7], [14, 7], [7.75, 14.5]], P.red);
+      p.px(4, 4, P.pink, true); p.px(5, 4, P.pink, true); p.px(4, 5, P.pink, true);
     },
     zoom: (p, P) => {
       p.disc(6.5, 6.5, 5, P.steel); p.disc(6.5, 6.5, 3.5, P.sky); p.px(5, 5, P.white, true);
@@ -1626,15 +1618,40 @@
 
   function readSavedGameRaw() {
     try {
-      return localStorage.getItem(STORAGE_SAVE);
+      return localStorage.getItem(STORAGE_SAVE) || localStorage.getItem(STORAGE_SAVE_V1);
     } catch (_) {
       return null;
     }
   }
 
   function clearSavedGame() {
-    try { localStorage.removeItem(STORAGE_SAVE); } catch (_) {}
+    try {
+      localStorage.removeItem(STORAGE_SAVE);
+      localStorage.removeItem(STORAGE_SAVE_V1);
+    } catch (_) {}
     savedGameAvailable = false;
+  }
+
+  /* A farm from before the tech tree: its upgrade levels become owned tree
+     tiers, and everything it could already plant, raise or build stays unlocked */
+  function migrateV1Save(d) {
+    const levels = {};
+    const up = d.upgradeLevels || {};
+    for (const key in LEGACY_CHAINS) {
+      const lv = Math.max(0, Math.floor(Number(up[key]) || 0));
+      for (let i = 1; i <= lv && TECH_BY_ID[LEGACY_CHAINS[key] + i]; ++i)
+        levels[LEGACY_CHAINS[key] + i] = 1;
+    }
+    const land = Math.max(0, Math.floor(Number(up.plotExpansion) || 0));
+    if (land)
+      levels.eng_land = land;
+    for (const n of TECH)
+      if (n.unlock)
+        levels[n.id] = 1;
+    d.techLevels = levels;
+    d.version = SAVE_VERSION;
+    delete d.upgradeLevels;
+    return d;
   }
 
   function saveGame() {
@@ -1649,7 +1666,7 @@
       buildings: buildings.map(row => row.map(bld => bld ? { typeIndex: bld.typeIndex, level: bld.level || 1 } : null)),
       livestockPens: livestockPens.map(pen => ({ typeIndex: pen.typeIndex, feedTimer: pen.feedTimer, produceReady: !!pen.produceReady, gridRow: pen.gridRow, gridCol: pen.gridCol })),
       wildAnimals: wildAnimals.map(a => ({ x: a.x, y: a.y, targetCol: a.targetCol, targetRow: a.targetRow, moveTimer: a.moveTimer, hp: a.hp })),
-      priceMultipliers, priceChangeTimer, inventory, upgradeLevels,
+      priceMultipliers, priceChangeTimer, inventory, techLevels, rainMakerDay, techBoughtTotal,
       weatherType, weatherTimer, weatherInterval,
       currentSeason, dayPhase, energy, nextAnimalSpawn,
       buildingHarvestTimer, autoHarvestTimer, autoCollectorTimer, autoPlanterTimer,
@@ -1676,7 +1693,7 @@
   }
 
   function isValidSave(d) {
-    if (!d || typeof d !== 'object' || d.version !== SAVE_VERSION) return false;
+    if (!d || typeof d !== 'object' || (d.version !== 1 && d.version !== SAVE_VERSION)) return false;
     const rows = d.gridRows, cols = d.gridCols;
     if (!Number.isInteger(rows) || !Number.isInteger(cols) || rows < 1 || cols < 1 || rows > 400 || cols > 400) return false;
     if (!isFiniteNumber(d.credits) || !Number.isInteger(d.dayCount) || !isFiniteNumber(d.gameTime)) return false;
@@ -1691,9 +1708,10 @@
     if (!Array.isArray(d.livestockPens) || !d.livestockPens.every(pen => pen && isIndex(pen.typeIndex, LIVESTOCK.length)
       && isFiniteNumber(pen.feedTimer) && Number.isInteger(pen.gridRow) && Number.isInteger(pen.gridCol))) return false;
     if (!Array.isArray(d.wildAnimals) || !d.wildAnimals.every(a => a && isFiniteNumber(a.x) && isFiniteNumber(a.y))) return false;
-    if (!Array.isArray(d.priceMultipliers) || d.priceMultipliers.length !== CROPS.length || !d.priceMultipliers.every(isFiniteNumber)) return false;
+    if (!Array.isArray(d.priceMultipliers) || d.priceMultipliers.length > CROPS.length || !d.priceMultipliers.every(isFiniteNumber)) return false;
     if (!d.inventory || typeof d.inventory !== 'object' || Array.isArray(d.inventory)) return false;
-    if (!d.upgradeLevels || typeof d.upgradeLevels !== 'object' || Array.isArray(d.upgradeLevels)) return false;
+    const levels = d.version === 1 ? d.upgradeLevels : d.techLevels;
+    if (!levels || typeof levels !== 'object' || Array.isArray(levels)) return false;
     if (!isIndex(d.currentSeason, SEASONS.length)) return false;
     return true;
   }
@@ -1716,6 +1734,8 @@
       saveNotice = 'The saved farm could not be loaded and was discarded.';
       return null;
     }
+    if (d.version === 1)
+      migrateV1Save(d);
     savedGameAvailable = true;
     return d;
   }
@@ -1775,9 +1795,22 @@
       hp: num(a.hp, 1)
     }));
     priceMultipliers = d.priceMultipliers.slice();
+    if (dialog === 'tree')
+      dialog = null;
     priceChangeTimer = num(d.priceChangeTimer, PRICE_CHANGE_INTERVAL);
     inventory = plainCounts(d.inventory);
-    upgradeLevels = plainCounts(d.upgradeLevels);
+    techLevels = {};
+    for (const id in d.techLevels)
+      if (TECH_BY_ID[id] && isFiniteNumber(d.techLevels[id]) && d.techLevels[id] > 0)
+        techLevels[id] = Math.floor(d.techLevels[id]);
+    rainMakerDay = num(d.rainMakerDay, 0);
+    techBoughtTotal = num(d.techBoughtTotal, 0);
+    priceNext = null;
+    nextWeather = null;
+    while (priceMultipliers.length < CROPS.length)
+      priceMultipliers.push(1);
+    if (!isCropUnlocked(selectedCropIndex))
+      selectedCropIndex = 0;
 
     const weathers = [WEATHER_NONE, WEATHER_SOLAR_FLARE, WEATHER_METEOR_SHOWER, WEATHER_RAIN, WEATHER_THUNDERSTORM, WEATHER_SNOW, WEATHER_DUST];
     weatherType = weathers.includes(d.weatherType) ? d.weatherType : WEATHER_NONE;
@@ -1820,7 +1853,12 @@
       SZ.GameAudio.play('error');
       return;
     }
+    treeLayout = null;
+    treeCam.init = false;
     state = STATE_PLAYING;
+    // an older save now lives on under the current version
+    saveGame();
+    try { localStorage.removeItem(STORAGE_SAVE_V1); } catch (_) {}
     resetView();
     lastCredits = null;
     creditsShown = credits;
@@ -1862,12 +1900,18 @@
 
   /* ── Upgrade Helpers ── */
 
+  /* Levels of the old flat upgrades, now counted from their tree chains */
   function getUpgradeLevel(id) {
-    return upgradeLevels[id] || 0;
+    const prefix = LEGACY_CHAINS[id];
+    return prefix ? techChainCount(prefix) : 0;
   }
 
-  function getUpgradeCost(def, level) {
-    return Math.round(def.baseCost * Math.pow(def.costScale, level));
+  function getSeedCost(crop) {
+    return Math.max(1, Math.round(crop.seedCost * (techOwned('agri_seedbank') ? 0.8 : 1)));
+  }
+
+  function getBuildingCost(bdef) {
+    return Math.round(bdef.cost * (techOwned('eng_builder') ? 0.85 : 1));
   }
 
   function getGrowthSpeedMultiplier() {
@@ -1926,7 +1970,7 @@
   }
 
   function getStorageCapacity() {
-    let totalStorage = 50;
+    let totalStorage = 50 + techChainCount('com_storage') * 40;
     for (let r = 0; r < gridRows; ++r)
       for (let c = 0; c < gridCols; ++c) {
         const bld = buildings[r]?.[c];
@@ -1948,7 +1992,7 @@
       case 0: return 1.10; // Spring: +10%
       case 1: return 1.25; // Summer: +25%
       case 2: return 0.90; // Autumn: -10%
-      case 3: return 0.60; // Winter: -40%
+      case 3: return techOwned('sci_frost') ? 0.8 : 0.60; // Winter: -40% (-20% with frost hardiness)
       default: return 1.0;
     }
   }
@@ -1959,16 +2003,18 @@
 
   function getEffectiveSellPrice(crop) {
     const cropIdx = CROPS.indexOf(crop);
-    const priceMult = (cropIdx >= 0 && cropIdx < priceMultipliers.length) ? priceMultipliers[cropIdx] : 1;
+    let priceMult = (cropIdx >= 0 && cropIdx < priceMultipliers.length) ? priceMultipliers[cropIdx] : 1;
+    if (techOwned('com_floor'))
+      priceMult = Math.max(0.8, priceMult);
     return Math.round(crop.sellPrice * getMarketPriceMultiplier() * priceMult * getSiloBonusMultiplier());
   }
 
   function getEffectiveProduceValue(live) {
-    return Math.round(live.produceValue * getMarketPriceMultiplier());
+    return Math.round(live.produceValue * getMarketPriceMultiplier() * (1 + techChainCount('husb_premium') * 0.15));
   }
 
   function getEnergyMax() {
-    let total = ENERGY_BASE_MAX;
+    let total = ENERGY_BASE_MAX + techChainCount('eng_grid') * 25;
     for (let r = 0; r < gridRows; ++r)
       for (let c = 0; c < gridCols; ++c) {
         const bld = buildings[r]?.[c];
@@ -1983,7 +2029,7 @@
   }
 
   function getEnergyRegenRate() {
-    let rate = ENERGY_REGEN_BASE;
+    let rate = ENERGY_REGEN_BASE + techChainCount('eng_grid') * 0.5;
     const isNight = dayPhase >= 0.5;
 
     for (let r = 0; r < gridRows; ++r)
@@ -2048,7 +2094,7 @@
 
   function getBuildingUpgradeCost(bld) {
     const bdef = BUILDINGS[bld.typeIndex];
-    return Math.round(bdef.cost * 0.5);
+    return Math.round(bdef.cost * 0.5 * (techOwned('eng_builder') ? 0.85 : 1));
   }
 
   function canUpgradeBuilding(bld) {
@@ -2224,31 +2270,6 @@
     return (expansionDirection < 2) ? gridRows : gridCols;
   }
 
-  function purchaseUpgrade(upgradeIndex) {
-    if (state !== STATE_PLAYING) return;
-    const def = UPGRADES[upgradeIndex];
-    const curLevel = getUpgradeLevel(def.id);
-    if (curLevel >= def.maxLevel) return;
-
-    let cost;
-    if (def.id === 'plotExpansion') {
-      // Price based on number of new tiles in the next strip
-      const newTiles = getNextExpansionTileCount();
-      cost = newTiles * 8;
-    } else
-      cost = getUpgradeCost(def, curLevel);
-
-    if (credits < cost) return;
-
-    credits -= cost;
-    upgradeLevels[def.id] = curLevel + 1;
-    announce(`${def.name} ${def.maxLevel > 10 ? 'Lv ' + (curLevel + 1) : (curLevel + 1) + '/' + def.maxLevel}`, def.desc, UI.gold, def.sprite);
-    celebrate(UW / 2, UH / 2, 30);
-    SZ.GameAudio.play('levelup');
-
-    if (def.id === 'plotExpansion')
-      expandGrid();
-  }
 
   /** WFC-inspired tile generation: weighted random based on neighbor types. */
   function wfcTileType(neighbors) {
@@ -2406,7 +2427,12 @@
     inventory = {};
 
     // Reset upgrades
-    upgradeLevels = {};
+    techLevels = {};
+    rainMakerDay = 0;
+    techBoughtTotal = 0;
+    priceNext = null;
+    nextWeather = null;
+    treeCam.init = false;
     closeAllDialogs();
     lastSeason = -1;
     screenFade = 1;
@@ -2503,7 +2529,7 @@
 
     // Animals reset
     wildAnimals = [];
-    nextAnimalSpawn = ANIMAL_SPAWN_MIN + Math.random() * (ANIMAL_SPAWN_MAX - ANIMAL_SPAWN_MIN);
+    nextAnimalSpawn = (ANIMAL_SPAWN_MIN + Math.random() * (ANIMAL_SPAWN_MAX - ANIMAL_SPAWN_MIN)) * Math.pow(1.4, techChainCount('sci_repel'));
 
     // Building income timer reset
     buildingIncomeTimer = 0;
@@ -2549,9 +2575,11 @@
     if (buildings[row]?.[col]) return; // tile has a building
     if (farmGrid[row][col] !== null) return; // not empty
     const crop = CROPS[selectedCropIndex];
-    if (credits < crop.seedCost) return;
+    if (!isCropUnlocked(selectedCropIndex)) return;
+    const seedCost = getSeedCost(crop);
+    if (credits < seedCost) return;
 
-    credits -= crop.seedCost;
+    credits -= seedCost;
     farmGrid[row][col] = {
       cropIndex: selectedCropIndex,
       growthProgress: 0,
@@ -2691,7 +2719,7 @@
     if (!cell) return;
 
     const crop = CROPS[cell.cropIndex];
-    const refund = Math.floor(crop.seedCost * 0.5);
+    const refund = Math.floor(getSeedCost(crop) * 0.5);
     credits += refund;
     farmGrid[row][col] = null;
 
@@ -2717,7 +2745,7 @@
     else if (weatherType === WEATHER_THUNDERSTORM)
       weatherGrowthBoost = 2;
     else if (weatherType === WEATHER_SNOW)
-      weatherGrowthBoost = 0.8;
+      weatherGrowthBoost = techOwned('sci_frost') ? 1 : 0.8;
     else if (weatherType === WEATHER_DUST)
       weatherGrowthBoost = 0.75;
 
@@ -2889,15 +2917,16 @@
 
     const def = LIVESTOCK[pen.typeIndex];
     pen.produceReady = false;
-    pen.feedTimer = def.feedInterval;
+    pen.feedTimer = getFeedInterval(def);
 
-    // Collect produce
-    if (!inventory[def.produce])
-      inventory[def.produce] = 0;
-    ++inventory[def.produce];
+    // Collect produce (happy herds sometimes give two)
+    const amount = techOwned('husb_happy') && Math.random() < 0.2 ? 2 : 1;
+    inventory[def.produce] = (inventory[def.produce] || 0) + amount;
 
     const scr = penCenter(pen);
-    flyProduce(def.produceSprite, scr.x, scr.y, 1, false);
+    flyProduce(def.produceSprite, scr.x, scr.y, amount, false);
+    if (amount > 1)
+      popText(scr.x, scr.y - 20, '×2!', { color: '#ffd75a', font: 'bold 14px' });
     particles.sparkle(scr.x, scr.y, 6, { color: def.color, speed: 1.5 });
     SZ.GameAudio.play('pickup', { pitch: 0.85 });
     animalVoice(def.sprite);
@@ -2970,7 +2999,7 @@
   function buyLivestock(typeIndex) {
     if (state !== STATE_PLAYING) return;
     const def = LIVESTOCK[typeIndex];
-    if (credits < def.cost) return;
+    if (!isAnimalUnlocked(typeIndex) || credits < def.cost) return;
 
     const slot = findNextPerimeterSlot();
     if (!slot) {
@@ -2982,7 +3011,7 @@
     credits -= def.cost;
     livestockPens.push({
       typeIndex,
-      feedTimer: def.feedInterval,
+      feedTimer: getFeedInterval(def),
       produceReady: false,
       gridRow: slot.gridRow,
       gridCol: slot.gridCol
@@ -3000,11 +3029,12 @@
   function sellAllProduce() {
     if (state !== STATE_PLAYING) return;
     let totalEarned = 0;
+    const bulk = techOwned('com_broker') && getTotalInventoryCount() >= 20 ? 1.1 : 1;
 
     for (const crop of CROPS) {
       const count = inventory[crop.name] || 0;
       if (count > 0) {
-        const earned = count * getEffectiveSellPrice(crop);
+        const earned = Math.round(count * getEffectiveSellPrice(crop) * bulk);
         credits += earned;
         totalEarned += earned;
         delete inventory[crop.name];
@@ -3014,7 +3044,7 @@
     for (const live of LIVESTOCK) {
       const count = inventory[live.produce] || 0;
       if (count > 0) {
-        const earned = count * getEffectiveProduceValue(live);
+        const earned = Math.round(count * getEffectiveProduceValue(live) * bulk);
         credits += earned;
         totalEarned += earned;
         delete inventory[live.produce];
@@ -3046,7 +3076,9 @@
     if (buildings[row]?.[col]) return; // already has a building
 
     const bdef = BUILDINGS[selectedBuildingIndex];
-    if (credits < bdef.cost) return;
+    if (!isBuildingUnlocked(selectedBuildingIndex)) return;
+    const bcost = getBuildingCost(bdef);
+    if (credits < bcost) return;
 
     // Destroy existing crop if any
     if (farmGrid[row][col] !== null) {
@@ -3055,14 +3087,14 @@
       popText(dx, dy + 6, 'Crop removed', { color: '#ffb080', font: 'bold 11px' });
     }
 
-    credits -= bdef.cost;
+    credits -= bcost;
     buildings[row][col] = { typeIndex: selectedBuildingIndex, level: 1 };
     invalidateField();
 
     const { x: tx, y: ty } = tileCenter(col, row);
     buildAnim[row + ',' + col] = uiTime;
     dustRing(tx, ty + 20);
-    popText(tx, ty - 24, `-${bdef.cost} cr`, { color: '#ff9a8a', font: 'bold 12px' });
+    popText(tx, ty - 24, `-${bcost} cr`, { color: '#ff9a8a', font: 'bold 12px' });
     SZ.GameAudio.play('whoosh', { pitch: 1.4, volume: 0.5 });
     SZ.GameAudio.noise(0.15, 0.12, 'lowpass', 500, 100, 0.3);
   }
@@ -3103,6 +3135,21 @@
   let wxShown = WEATHER_NONE, wxK = 0;
   let wxDrops = [];
 
+  let rainMakerDay = 0;              // first day the rain maker can be used again
+
+  function canCallRain() {
+    return techOwned('sci_rain') && weatherType === WEATHER_NONE && dayCount >= rainMakerDay && state === STATE_PLAYING;
+  }
+
+  function callRain() {
+    if (!canCallRain()) {
+      SZ.GameAudio.play('error');
+      return;
+    }
+    rainMakerDay = dayCount + 1;
+    triggerWeather(currentSeason === 3 ? WEATHER_SNOW : WEATHER_RAIN);
+  }
+
   function updateWeather(dt) {
     if (state !== STATE_PLAYING) return;
     if (weatherType === WEATHER_NONE) {
@@ -3120,7 +3167,7 @@
       }
       if (weatherTimer <= 0) {
         weatherType = WEATHER_NONE;
-        weatherInterval = WEATHER_MIN_INTERVAL + Math.random() * (WEATHER_MAX_INTERVAL - WEATHER_MIN_INTERVAL);
+        scheduleWeather();
       }
     }
     updateMeteors(dt);
@@ -3142,8 +3189,23 @@
     return !!getField().shelter[r * gridCols + c];
   }
 
+  let nextWeather = null;
+
+  function scheduleWeather() {
+    weatherInterval = WEATHER_MIN_INTERVAL + Math.random() * (WEATHER_MAX_INTERVAL - WEATHER_MIN_INTERVAL);
+    nextWeather = null;
+  }
+
+  /* The forecast keeps the weather it promised unless the season changed meanwhile */
+  function forecastWeather() {
+    if (!nextWeather || !(WEATHER_TABLE[currentSeason] || []).some(([k]) => k === nextWeather))
+      nextWeather = pickWeather();
+    return nextWeather;
+  }
+
   function triggerWeather(kind) {
-    weatherType = kind || pickWeather();
+    weatherType = kind || forecastWeather();
+    nextWeather = null;
     weatherTimer = weatherType === WEATHER_SNOW || weatherType === WEATHER_DUST ? 12 : WEATHER_DURATION;
     switch (weatherType) {
       case WEATHER_SOLAR_FLARE:
@@ -3220,6 +3282,13 @@
     decals.push({ wx: m.wx, wy: m.wy, t: 0, life: 22, kind: 'crater' });
     screenShake.trigger(m.smash ? 5 : 2.5, 200);
     SZ.GameAudio.play('smallExplode', { volume: m.smash ? 0.9 : 0.5, pitch: 0.8 + Math.random() * 0.4 });
+    if (techOwned('sci_meteor')) {
+      const gain = 8 + Math.floor(Math.random() * 10);
+      credits += gain;
+      popText(m.wx, m.wy - 32, `+${gain} stardust`, { color: '#d8c0ff', font: 'bold 12px' });
+      const u = worldToUI(m.wx, m.wy);
+      flyCoins(1, u.x, u.y, { size: 16 });
+    }
     if (m.smash && farmGrid[m.r]?.[m.c] && !isSheltered(m.r, m.c)) {
       farmGrid[m.r][m.c] = null;
       popText(m.wx, m.wy - 16, 'Smashed!', { color: '#ff8a5a', font: 'bold 12px' });
@@ -3506,15 +3575,29 @@
     priceChangeTimer -= dt;
     if (priceChangeTimer <= 0) {
       priceChangeTimer = PRICE_CHANGE_INTERVAL;
+      const next = getNextPrices();
+      for (let i = 0; i < CROPS.length; ++i)
+        priceMultipliers[i] = next[i];
+      priceNext = null;
+      toast('Market prices changed', '#8cf', 'chart');
+    }
+  }
+
+  let priceNext = null;
+
+  /* The coming price change, rolled once so Market Insight can show it early */
+  function getNextPrices() {
+    if (!priceNext || priceNext.length !== CROPS.length) {
+      priceNext = [];
       for (let i = 0; i < CROPS.length; ++i) {
         // Drift toward 1.0 with random perturbation
         const old = priceMultipliers[i] || 1;
         const drift = (1 - old) * 0.3; // mean-reversion
         const noise = (Math.random() - 0.5) * 0.6;
-        priceMultipliers[i] = Math.max(PRICE_MIN_MULT, Math.min(PRICE_MAX_MULT, old + drift + noise));
+        priceNext.push(Math.max(PRICE_MIN_MULT, Math.min(PRICE_MAX_MULT, old + drift + noise)));
       }
-      toast('Market prices changed', '#8cf', 'chart');
     }
+    return priceNext;
   }
 
   function updateGame(dt) {
@@ -3573,11 +3656,9 @@
           // Auto-collect the produce
           const def = LIVESTOCK[pen.typeIndex];
           pen.produceReady = false;
-          pen.feedTimer = def.feedInterval;
+          pen.feedTimer = getFeedInterval(def);
 
-          if (!inventory[def.produce])
-            inventory[def.produce] = 0;
-          ++inventory[def.produce];
+          inventory[def.produce] = (inventory[def.produce] || 0) + (techOwned('husb_happy') && Math.random() < 0.2 ? 2 : 1);
 
           if (viewZoom >= 0.5) {
             const scr = penCenter(pen);
@@ -3658,14 +3739,14 @@
           let bestFactor = -Infinity;
           for (let ci = 0; ci < CROPS.length; ++ci) {
             const factor = priceMultipliers[ci] || 1;
-            if (factor > bestFactor)
+            if (factor > bestFactor && isCropUnlocked(ci))
               bestFactor = factor;
           }
           // Collect all crops within 0.15 of the best for diversification
           l2Candidates = [];
           for (let ci = 0; ci < CROPS.length; ++ci) {
             const factor = priceMultipliers[ci] || 1;
-            if (bestFactor - factor <= 0.15)
+            if (bestFactor - factor <= 0.15 && isCropUnlocked(ci))
               l2Candidates.push(ci);
           }
         }
@@ -3694,8 +3775,9 @@
             ? l2Candidates[Math.floor(Math.random() * l2Candidates.length)]
             : selectedCropIndex;
           const crop = CROPS[cropIdx];
-          if (credits < crop.seedCost) break;
-          credits -= crop.seedCost;
+          const seedCost = getSeedCost(crop);
+          if (credits < seedCost) break;
+          credits -= seedCost;
           farmGrid[nr][nc] = {
             cropIndex: cropIdx,
             growthProgress: 0,
@@ -3705,7 +3787,7 @@
           if (viewZoom >= 0.5) {
             const { x: tx, y: ty } = tileCenter(nc, nr);
             particles.sparkle(tx, ty, Math.ceil(4 * viewZoom), { color: crop.color, speed: 1.5 });
-            popText(tx, ty - 10, `Auto: -${crop.seedCost}cr`, { color: '#8af', font: 'bold 10px sans-serif' });
+            popText(tx, ty - 10, `-${seedCost}`, { color: '#8af', font: 'bold 10px' });
           }
         }
       }
@@ -3773,7 +3855,7 @@
     // Spawn timer
     nextAnimalSpawn -= dt;
     if (nextAnimalSpawn <= 0) {
-      nextAnimalSpawn = ANIMAL_SPAWN_MIN + Math.random() * (ANIMAL_SPAWN_MAX - ANIMAL_SPAWN_MIN);
+      nextAnimalSpawn = (ANIMAL_SPAWN_MIN + Math.random() * (ANIMAL_SPAWN_MAX - ANIMAL_SPAWN_MIN)) * Math.pow(1.4, techChainCount('sci_repel'));
       spawnAnimal();
     }
 
@@ -5000,7 +5082,7 @@
       ctx.lineWidth = 2;
       ctx.strokeRect(x + 2, y + 2, T - 4, T - 4);
     } else {
-      const prog = 1 - Math.max(0, pen.feedTimer / def.feedInterval);
+      const prog = 1 - Math.max(0, pen.feedTimer / getFeedInterval(def));
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
       ctx.fillRect(x + 8, y + T - 6, T - 16, 3);
       ctx.fillStyle = '#9df08a';
@@ -5615,6 +5697,1119 @@
   }
 
   /* ══════════════════════════════════════════════════════════════════
+     TECH TREE — five branches of upgrades bought with credits and
+     produce; unlocks crops, animals and buildings
+     ══════════════════════════════════════════════════════════════════ */
+
+  const TREE_BRANCH_ORDER = ['agri', 'husb', 'eng', 'sci', 'com'];
+  const TREE_BRANCH_LABELS = { agri: 'AGRICULTURE', husb: 'HUSBANDRY', eng: 'ENGINEERING', sci: 'SCIENCE', com: 'COMMERCE' };
+  const TREE_BRANCH_SHORT = { agri: 'Crops', husb: 'Animals', eng: 'Engineering', sci: 'Science', com: 'Commerce' };
+  const TREE_BRANCH_COLORS = { agri: '#7ee06a', husb: '#ff9ac0', eng: '#4cc4ff', sci: '#c890ff', com: '#ffc94a' };
+  const TREE_BRANCH_ICONS = { agri: 'growth', husb: 'paw', eng: 'hammer', sci: 'flask', com: 'coin' };
+  const TREE_REGION_ROWS = [['agri', 'husb', 'com'], ['eng', 'sci']];
+  const TREE_CARD_W = 200, TREE_CARD_H = 88;
+  const TREE_GAP_X = 40, TREE_GAP_Y = 24;
+  const TREE_REGION_PAD = 30, TREE_REGION_HEADER = 74, TREE_REGION_GAP = 90;
+  const TREE_MIN_ZOOM = 0.18, TREE_MAX_ZOOM = 1.6;
+
+  /* Crops, animals and buildings available from the first day */
+  const START_CROPS = [0, 2, 3, 6];
+  const START_ANIMALS = [1, 3];
+  const START_BUILDINGS = [0, 3, 6, 7, 8];
+
+  const TECH = [];
+  function node(id, branch, name, icon, prereqs, cost, desc, extra) {
+    const n = Object.assign({ id, branch, name, icon, prereqs, cost, desc, chain: null, tier: 0 }, extra || {});
+    TECH.push(n);
+    return n;
+  }
+  /* A chain of tiers "Name I..N" where every tier needs the one before */
+  function chain(prefix, branch, name, icon, rootPrereqs, crs, items, desc) {
+    for (let i = 0; i < crs.length; ++i) {
+      const cost = Object.assign({ cr: crs[i] }, items[i] || {});
+      node(prefix + (i + 1), branch, name, icon, i === 0 ? rootPrereqs : [prefix + i], cost, desc, { chain: prefix, tier: i + 1, tiers: crs.length });
+    }
+  }
+
+  // Agriculture
+  chain('agri_growth', 'agri', 'Growth Boost', 'growth', [], [50, 90, 160, 290, 520],
+    [null, { 'Space Wheat': 6 }, { 'Lunar Lettuce': 10 }, { 'Cosmic Corn': 10 }, { 'Crystal Melon': 8 }], 'All crops grow 25% faster.');
+  chain('agri_soil', 'agri', 'Rich Soil', 'flask', [], [100, 190, 360, 690, 1300],
+    [{ 'Space Wheat': 5 }, { 'Nebula Berry': 8 }, { 'Solar Tomato': 10 }, { 'Star Fruit': 10 }, { 'Crystal Melon': 10 }], 'Every plot grows 15% faster and gains 15% fertility.');
+  chain('agri_yield', 'agri', 'Bountiful Harvest', 'crate', [], [80, 160, 320, 640, 1280],
+    [{ 'Lunar Lettuce': 6 }, { 'Solar Tomato': 8 }, { 'Nebula Berry': 12 }, { 'Cosmic Corn': 12 }, { 'Astral Flower': 6 }], '+20% chance to harvest a bonus crop.');
+  node('agri_orchard', 'agri', 'Orchard Seeds', 'starfruit', [], { cr: 120, 'Space Wheat': 8 }, 'Unlocks Star Fruit and Cosmic Corn.', { unlock: { crops: [1, 4] } });
+  node('agri_melon', 'agri', 'Crystal Hydroponics', 'melon', ['agri_orchard'], { cr: 300, 'Star Fruit': 8 }, 'Unlocks the Crystal Melon.', { unlock: { crops: [5] } });
+  node('agri_seedbank', 'agri', 'Seed Bank', 'seedbag', ['agri_soil2'], { cr: 400, 'Cosmic Corn': 10 }, 'All seeds cost 20% less.');
+
+  // Husbandry
+  node('husb_goat', 'husb', 'Goat Herding', 'goat', [], { cr: 150, 'Egg': 6 }, 'Unlocks the Nebula Goat.', { unlock: { animals: [2] } });
+  node('husb_cow', 'husb', 'Space Dairy', 'cow', ['husb_goat'], { cr: 260, 'Wool': 6 }, 'Unlocks the Space Cow.', { unlock: { animals: [0] } });
+  node('husb_collector', 'husb', 'Auto-Collectors', 'collector', ['husb_cow'], { cr: 300, 'Milk': 6 }, 'Unlocks the Auto-Collector building.', { unlock: { buildings: [11] } });
+  chain('husb_care', 'husb', 'Animal Care', 'paw', [], [100, 220, 480], [{ 'Feather': 6 }, { 'Egg': 10 }, { 'Wool': 10 }], 'Animals produce 12% faster.');
+  chain('husb_premium', 'husb', 'Premium Produce', 'star', ['husb_care1'], [140, 300, 640], [{ 'Egg': 8 }, { 'Wool': 8 }, { 'Milk': 10 }], 'Animal produce sells for 15% more.');
+  node('husb_happy', 'husb', 'Happy Herds', 'heart', ['husb_premium2'], { cr: 500, 'Milk': 12 }, '20% chance to collect double produce.');
+
+  // Engineering
+  node('eng_solar', 'eng', 'Solar Power', 'solarpanel', [], { cr: 150, 'Space Wheat': 10 }, 'Unlocks the Solar Panel.', { unlock: { buildings: [4] } });
+  node('eng_wind', 'eng', 'Wind Power', 'turbine', ['eng_solar'], { cr: 250, 'Solar Tomato': 10 }, 'Unlocks the Wind Turbine.', { unlock: { buildings: [5] } });
+  node('eng_greenhouse', 'eng', 'Greenhouses', 'greenhouse', ['eng_solar'], { cr: 220, 'Lunar Lettuce': 12 }, 'Unlocks the Greenhouse.', { unlock: { buildings: [2] } });
+  node('eng_harvester', 'eng', 'Harvester Bots', 'harvester', ['eng_solar'], { cr: 200, 'Nebula Berry': 10 }, 'Unlocks the Harvester building.', { unlock: { buildings: [1] } });
+  chain('eng_drones', 'eng', 'Harvest Drones', 'robot', ['eng_harvester'], [200, 600, 1800], [{ 'Cosmic Corn': 8 }, { 'Star Fruit': 12 }, { 'Crystal Melon': 12 }], 'Drones harvest ripe crops anywhere on the farm, faster with every tier.');
+  node('eng_planter', 'eng', 'Auto-Planters', 'planter1', ['eng_harvester'], { cr: 260, 'Nebula Berry': 12 }, 'Unlocks the Auto-Planter.', { unlock: { buildings: [9] } });
+  node('eng_planter2', 'eng', 'Market Planters', 'planter2', ['eng_planter'], { cr: 600, 'Star Fruit': 12 }, 'Unlocks the Auto-Planter L2 that plants the best-paying crop.', { unlock: { buildings: [10] } });
+  chain('eng_irr', 'eng', 'Irrigation', 'drop', [], [140, 322, 741], [{ 'Lunar Lettuce': 6 }, { 'Solar Tomato': 10 }, { 'Cosmic Corn': 12 }], 'Weather damages 15% fewer crops.');
+  chain('eng_grid', 'eng', 'Power Grid', 'bolt', ['eng_solar'], [180, 400, 900], [{ 'Space Wheat': 10 }, { 'Cosmic Corn': 10 }, { 'Crystal Melon': 10 }], '+25 max energy and +0.5 energy per second.');
+  node('eng_builder', 'eng', 'Efficient Construction', 'hammer', ['eng_grid1'], { cr: 450, 'Solar Tomato': 15 }, 'Buildings and building upgrades cost 15% less.');
+  node('eng_land', 'eng', 'Land Survey', 'map', [], { cr: 0 }, 'Adds a new strip of land to the farm (west, east, north, south in turn).', { repeat: true });
+
+  // Science
+  node('sci_forecast', 'sci', 'Weather Forecast', 'eye', [], { cr: 90, 'Lunar Lettuce': 5 }, 'Shows the coming weather and when it arrives.');
+  chain('sci_shield', 'sci', 'Weather Shield', 'shield', [], [120, 300, 750], [{ 'Nebula Berry': 6 }, { 'Star Fruit': 8 }, { 'Plasma Pepper': 8 }], 'Weather damages 25% fewer crops.');
+  node('sci_rain', 'sci', 'Rain Maker', 'rain', ['sci_forecast', 'sci_shield1'], { cr: 350, 'Lunar Lettuce': 15 }, 'Call a rain shower from the clock panel once a day.');
+  node('sci_fungi', 'sci', 'Fungal Lab', 'mushroom', [], { cr: 180, 'Nebula Berry': 8 }, 'Unlocks the Void Mushroom.', { unlock: { crops: [7] } });
+  node('sci_plasma', 'sci', 'Plasma Botany', 'pepper', ['sci_fungi'], { cr: 320, 'Void Mushroom': 8 }, 'Unlocks the Plasma Pepper.', { unlock: { crops: [8] } });
+  node('sci_astral', 'sci', 'Astral Botany', 'flower', ['sci_plasma'], { cr: 520, 'Plasma Pepper': 8 }, 'Unlocks the Astral Flower.', { unlock: { crops: [9] } });
+  node('sci_cycles', 'sci', 'Day & Night Genetics', 'moss', ['sci_astral'], { cr: 700, 'Astral Flower': 6 }, 'Unlocks Lunar Moss and the Solar Vine.', { unlock: { crops: [10, 11] } });
+  chain('sci_repel', 'sci', 'Pest Repellent', 'mouse', [], [120, 360], [{ 'Solar Tomato': 6 }, { 'Void Mushroom': 8 }], 'Space mice show up 40% less often.');
+  node('sci_frost', 'sci', 'Frost Hardiness', 'winter', ['sci_shield1'], { cr: 380, 'Lunar Lettuce': 15 }, 'Winter only slows crops by 20% and snowfall no longer slows them.');
+  node('sci_meteor', 'sci', 'Meteor Harvesting', 'meteor', ['sci_shield2'], { cr: 600, 'Plasma Pepper': 10 }, 'Every meteor leaves stardust worth 8-17 credits.');
+
+  // Commerce
+  chain('com_market', 'com', 'Market Access', 'chart', [], [120, 240, 480, 960, 1920],
+    [{ 'Space Wheat': 8 }, { 'Solar Tomato': 10 }, { 'Star Fruit': 10 }, { 'Crystal Melon': 8 }, { 'Astral Flower': 8 }], 'Everything sells for 10% more.');
+  chain('com_storage', 'com', 'Warehousing', 'basket', [], [100, 250, 600], [{ 'Nebula Berry': 6 }, { 'Cosmic Corn': 10 }, { 'Milk': 8 }], '+40 storage space.');
+  node('com_insight', 'com', 'Market Insight', 'scroll', ['com_market1'], { cr: 200, 'Lunar Lettuce': 10 }, 'See the next price change before it happens.');
+  node('com_floor', 'com', 'Price Floor', 'coin', ['com_insight'], { cr: 450, 'Star Fruit': 10 }, 'Prices never fall below 80% of normal.');
+  node('com_broker', 'com', 'Bulk Broker', 'market', ['com_market2'], { cr: 380, 'Cosmic Corn': 12 }, 'Selling 20 or more items at once pays 10% extra.');
+
+  const TECH_BY_ID = {};
+  for (const n of TECH)
+    TECH_BY_ID[n.id] = n;
+
+  /* Upgrades of the old flat shop and the tree chain each one became */
+  const LEGACY_CHAINS = { growSpeed: 'agri_growth', soilQuality: 'agri_soil', yieldMultiplier: 'agri_yield', weatherResist: 'sci_shield', irrigation: 'eng_irr', autoHarvest: 'eng_drones', marketAccess: 'com_market' };
+
+  let techLevels = {};               // node id -> level (1 = owned; repeatable nodes count up)
+
+  function techLevel(id) {
+    return techLevels[id] || 0;
+  }
+
+  function techOwned(id) {
+    return techLevel(id) >= 1;
+  }
+
+  function techChainCount(prefix) {
+    let n = 0;
+    for (let i = 1; TECH_BY_ID[prefix + i]; ++i)
+      if (techOwned(prefix + i)) ++n;
+    return n;
+  }
+
+  function isNodeDone(n) {
+    return !n.repeat && techOwned(n.id);
+  }
+
+  function arePrereqsMet(n) {
+    for (const p of n.prereqs)
+      if (!techOwned(p)) return false;
+    return true;
+  }
+
+  function nodeCost(n) {
+    if (n.id === 'eng_land')
+      return { cr: getNextExpansionTileCount() * 8 };
+    return n.cost;
+  }
+
+  function canPay(cost) {
+    for (const k in cost) {
+      const need = cost[k] || 0;
+      if (!need) continue;
+      if (k === 'cr' ? credits < need : (inventory[k] || 0) < need)
+        return false;
+    }
+    return true;
+  }
+
+  function treeNodeState(n) {
+    if (isNodeDone(n)) return 'owned';
+    if (!arePrereqsMet(n)) return 'locked';
+    return canPay(nodeCost(n)) ? 'ready' : 'poor';
+  }
+
+  function unlockedByTech(kind, index) {
+    for (const n of TECH)
+      if (n.unlock && n.unlock[kind] && n.unlock[kind].includes(index))
+        return n;
+    return null;
+  }
+
+  function isCropUnlocked(i) {
+    if (START_CROPS.includes(i)) return true;
+    const n = unlockedByTech('crops', i);
+    return !!n && techOwned(n.id);
+  }
+
+  function isAnimalUnlocked(i) {
+    if (START_ANIMALS.includes(i)) return true;
+    const n = unlockedByTech('animals', i);
+    return !!n && techOwned(n.id);
+  }
+
+  function isBuildingUnlocked(i) {
+    if (START_BUILDINGS.includes(i)) return true;
+    const n = unlockedByTech('buildings', i);
+    return !!n && techOwned(n.id);
+  }
+
+  function itemSprite(name) {
+    if (name === 'cr') return 'coin';
+    for (const c of CROPS)
+      if (c.name === name) return c.sprite;
+    for (const l of LIVESTOCK)
+      if (l.produce === name) return l.produceSprite;
+    return 'crate';
+  }
+
+  function purchaseTreeNode(n) {
+    if (state !== STATE_PLAYING || isNodeDone(n) || !arePrereqsMet(n)) return false;
+    const cost = nodeCost(n);
+    if (!canPay(cost)) return false;
+    const title = nodeTitle(n);
+    for (const k in cost) {
+      if (!cost[k]) continue;
+      if (k === 'cr') credits -= cost[k];
+      else {
+        inventory[k] -= cost[k];
+        if (inventory[k] <= 0) delete inventory[k];
+      }
+    }
+    techLevels[n.id] = techLevel(n.id) + 1;
+    if (n.id === 'eng_land') {
+      expandGrid();
+      relocateLivestockToPerimeter();
+    }
+    invalidateField();
+    const names = [];
+    if (n.unlock) {
+      for (const i of n.unlock.crops || []) names.push(CROPS[i].name);
+      for (const i of n.unlock.animals || []) names.push(LIVESTOCK[i].name);
+      for (const i of n.unlock.buildings || []) names.push(BUILDINGS[i].name);
+    }
+    if (names.length) {
+      announce('Unlocked: ' + names.join(' & '), title, TREE_BRANCH_COLORS[n.branch], n.icon);
+      SZ.GameAudio.play('win', { volume: 0.7 });
+    } else {
+      announce(title, n.desc, TREE_BRANCH_COLORS[n.branch], n.icon);
+      SZ.GameAudio.play('levelup');
+    }
+    ++techBoughtTotal;
+    saveGame();
+    return true;
+  }
+  let techBoughtTotal = 0;
+
+  function toRoman(n) {
+    return ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'][n - 1] || String(n);
+  }
+
+  function nodeTitle(n) {
+    if (n.repeat) return n.name + ' ' + (techLevel(n.id) + 1);
+    return n.chain ? n.name + ' ' + toRoman(n.tier) : n.name;
+  }
+
+  /* ── Layout (ported from the Dome Keeper tree): depth columns, lanes, regions ── */
+
+  let treeLayout = null;
+
+  function computeTreeLayout() {
+    if (treeLayout) return treeLayout.nodes;
+    const nodes = [];
+    const regions = {};
+    const pitchX = TREE_CARD_W + TREE_GAP_X;
+    const pitchY = TREE_CARD_H + TREE_GAP_Y;
+    const grids = [];
+    for (const branch of TREE_BRANCH_ORDER) {
+      const bn = TECH.filter(n => n.branch === branch);
+      const map = {};
+      bn.forEach((n, i) => { map[n.id] = { n, i }; });
+      const depth = {};
+      const assign = (n) => {
+        if (depth[n.id] !== undefined) return depth[n.id];
+        let d = -1;
+        for (const p of n.prereqs)
+          if (map[p]) d = Math.max(d, assign(map[p].n));
+        depth[n.id] = d + 1;
+        return depth[n.id];
+      };
+      bn.forEach(assign);
+      const order = bn.slice().sort((a, b) => depth[a.id] - depth[b.id] || map[a.id].i - map[b.id].i);
+      const lanes = [], laneOf = {}, continued = {};
+      for (const n of order) {
+        const parents = n.prereqs.filter(p => map[p]).sort((a, b) => depth[b] - depth[a]);
+        const cont = parents.find(p => !continued[p]);
+        let lane;
+        if (cont) {
+          lane = laneOf[cont];
+          continued[cont] = true;
+          lane.ids.push(n.id);
+        } else {
+          lane = { ids: [n.id], parent: parents.length ? laneOf[parents[0]] : null, kids: [] };
+          lanes.push(lane);
+          if (lane.parent) lane.parent.kids.push(lane);
+        }
+        laneOf[n.id] = lane;
+      }
+      const ordered = [];
+      const visit = (l) => { ordered.push(l); l.kids.forEach(visit); };
+      lanes.filter(l => !l.parent).forEach(visit);
+      const rowSpans = [];
+      for (const l of ordered) {
+        const ds = l.ids.map(id => depth[id]);
+        const lo = Math.min(...ds), hi = Math.max(...ds);
+        let r = l.parent ? l.parent.row + 1 : rowSpans.length;
+        for (;; ++r) {
+          rowSpans[r] = rowSpans[r] || [];
+          if (rowSpans[r].every(([a, b]) => hi < a - 1 || lo > b + 1)) break;
+        }
+        rowSpans[r].push([lo, hi]);
+        l.row = r;
+      }
+      let maxDepth = 0;
+      for (const n of bn) maxDepth = Math.max(maxDepth, depth[n.id]);
+      grids.push({ branch, bn, depth, laneOf, rows: rowSpans.length, cols: maxDepth + 1 });
+    }
+    const regionW = (g) => g.cols * pitchX - TREE_GAP_X + TREE_REGION_PAD * 2;
+    const regionH = (g) => TREE_REGION_HEADER + g.rows * pitchY - TREE_GAP_Y + TREE_REGION_PAD;
+    const gridOf = {};
+    for (const g of grids) gridOf[g.branch] = g;
+    const rowWidth = TREE_REGION_ROWS.map(row => row.reduce((w, b) => w + regionW(gridOf[b]), 0) + (row.length - 1) * TREE_REGION_GAP);
+    const totalW = Math.max(...rowWidth);
+    const placeOf = {};
+    let rowY = 0;
+    TREE_REGION_ROWS.forEach((row, ri) => {
+      let x = (totalW - rowWidth[ri]) / 2, h = 0;
+      for (const b of row) {
+        placeOf[b] = { x, y: rowY };
+        x += regionW(gridOf[b]) + TREE_REGION_GAP;
+        h = Math.max(h, regionH(gridOf[b]));
+      }
+      rowY += h + TREE_REGION_GAP;
+    });
+    for (const g of grids) {
+      const p = placeOf[g.branch];
+      regions[g.branch] = { x: p.x, y: p.y, w: regionW(g), h: regionH(g), branch: g.branch };
+      for (const n of g.bn)
+        nodes.push({ node: n, branch: g.branch, w: TREE_CARD_W, h: TREE_CARD_H,
+          x: p.x + TREE_REGION_PAD + g.depth[n.id] * pitchX,
+          y: p.y + TREE_REGION_HEADER + g.laneOf[n.id].row * pitchY });
+    }
+    const byId = {};
+    for (const ln of nodes) byId[ln.node.id] = ln;
+    regions.all = { x: 0, y: 0, w: totalW, h: rowY - TREE_REGION_GAP };
+    treeLayout = { nodes, byId, regions };
+    return nodes;
+  }
+
+  /* ── Tree dialog state ── */
+
+  let treeTab = 'all';
+  const treeCam = { tx: 0, ty: 0, tz: 0.5, x: 0, y: 0, z: 0.5, init: false };
+  let treeFocusId = null;
+  let treeHoverId = null;
+  let treePanning = null;            // { x, y, tx, ty, moved }
+  const treeFlash = {};
+
+  function treeView() {
+    return { x: 0, y: 112, w: UW, h: UH - 112 - 50 };
+  }
+
+  function fitTreeView(tab, instant) {
+    computeTreeLayout();
+    const r = treeLayout.regions[tab] || treeLayout.regions.all;
+    const V = treeView();
+    const pad = 20;
+    const z = Math.max(TREE_MIN_ZOOM, Math.min(1, (V.w - pad * 2) / r.w, (V.h - pad * 2) / r.h));
+    treeCam.tz = z;
+    treeCam.tx = V.x + V.w / 2 - (r.x + r.w / 2) * z;
+    treeCam.ty = V.y + V.h / 2 - (r.y + r.h / 2) * z;
+    if (instant) {
+      treeCam.z = treeCam.tz;
+      treeCam.x = treeCam.tx;
+      treeCam.y = treeCam.ty;
+    }
+  }
+
+  function setTreeTab(tab) {
+    if (treeTab !== tab) {
+      treeTab = tab;
+      SZ.GameAudio.play('select', { volume: 0.6 });
+      if (tab !== 'all' && treeFocusId && treeLayout.byId[treeFocusId].branch !== tab)
+        treeFocusId = null;
+    }
+    fitTreeView(tab);
+  }
+
+  function openTree(focusId, tab) {
+    if (state !== STATE_PLAYING) return;
+    computeTreeLayout();
+    openDialog('tree');
+    const focus = focusId && treeLayout.byId[focusId];
+    if (focus || tab) {
+      treeTab = focus ? focus.branch : tab;
+      fitTreeView(treeTab, true);
+      if (focus) {
+        const V = treeView();
+        treeCam.tz = treeCam.z = Math.max(treeCam.z, 0.8);
+        treeCam.tx = treeCam.x = V.x + V.w / 2 - (focus.x + focus.w / 2) * treeCam.z;
+        treeCam.ty = treeCam.y = V.y + V.h / 2 - (focus.y + focus.h / 2) * treeCam.z;
+        treeFocusId = focus.node.id;
+      }
+    } else if (!treeCam.init)
+      fitTreeView(treeTab, true);
+    treeCam.init = true;
+  }
+
+  function zoomTreeAt(ux, uy, factor) {
+    const z = Math.max(TREE_MIN_ZOOM, Math.min(TREE_MAX_ZOOM, treeCam.tz * factor));
+    const ratio = z / treeCam.tz;
+    treeCam.tx = ux - (ux - treeCam.tx) * ratio;
+    treeCam.ty = uy - (uy - treeCam.ty) * ratio;
+    treeCam.tz = z;
+  }
+
+  function revealTreeNode(ln) {
+    const V = treeView();
+    const z = treeCam.tz, m = 40;
+    const sx = treeCam.tx + ln.x * z, sy = treeCam.ty + ln.y * z, sw = ln.w * z, sh = ln.h * z;
+    if (sx < V.x + m) treeCam.tx += V.x + m - sx;
+    else if (sx + sw > V.x + V.w - m) treeCam.tx -= sx + sw - (V.x + V.w - m);
+    if (sy < V.y + m) treeCam.ty += V.y + m - sy;
+    else if (sy + sh > V.y + V.h - m) treeCam.ty -= sy + sh - (V.y + V.h - m);
+  }
+
+  function hitTreeNode(ux, uy) {
+    const V = treeView();
+    if (uy < V.y || uy > V.y + V.h) return null;
+    const tx = (ux - treeCam.x) / treeCam.z, ty = (uy - treeCam.y) / treeCam.z;
+    for (const ln of computeTreeLayout())
+      if (tx >= ln.x && tx <= ln.x + ln.w && ty >= ln.y && ty <= ln.y + ln.h)
+        return ln;
+    return null;
+  }
+
+  function tryPurchaseTreeNode(n) {
+    if (purchaseTreeNode(n)) {
+      treeFlash[n.id] = uiTime;
+      const ln = treeLayout && treeLayout.byId[n.id];
+      if (ln && dialog === 'tree')
+        celebrate(treeCam.x + (ln.x + ln.w / 2) * treeCam.z, treeCam.y + (ln.y + ln.h / 2) * treeCam.z, 24);
+      return true;
+    }
+    SZ.GameAudio.play('error');
+    return false;
+  }
+
+  /* Keyboard control of the tree; returns true when the key was used */
+  function handleTreeKey(e) {
+    const nodes = computeTreeLayout();
+    const tabs = ['all'].concat(TREE_BRANCH_ORDER);
+    const V = treeView();
+    if (e.code === 'Tab') {
+      const i = tabs.indexOf(treeTab);
+      setTreeTab(tabs[(i + (e.shiftKey ? tabs.length - 1 : 1)) % tabs.length]);
+      return true;
+    }
+    if (/^Digit[1-6]$/.test(e.code)) {
+      setTreeTab(tabs[parseInt(e.code.slice(5), 10) - 1]);
+      return true;
+    }
+    if (e.code === 'Equal' || e.code === 'NumpadAdd') {
+      zoomTreeAt(V.x + V.w / 2, V.y + V.h / 2, 1.2);
+      return true;
+    }
+    if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
+      zoomTreeAt(V.x + V.w / 2, V.y + V.h / 2, 1 / 1.2);
+      return true;
+    }
+    if (e.code === 'Digit0' || e.code === 'Home') {
+      fitTreeView(treeTab);
+      return true;
+    }
+    const dirs = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1], KeyA: [-1, 0], KeyD: [1, 0], KeyW: [0, -1], KeyS: [0, 1] };
+    const dir = dirs[e.code];
+    const inTab = (ln) => treeTab === 'all' || ln.branch === treeTab;
+    if (dir) {
+      const cur = treeFocusId && treeLayout.byId[treeFocusId];
+      if (!cur || !inTab(cur)) {
+        const first = nodes.find(ln => inTab(ln) && treeNodeState(ln.node) === 'ready') || nodes.find(inTab);
+        if (first) {
+          treeFocusId = first.node.id;
+          revealTreeNode(first);
+        }
+        return true;
+      }
+      const cx = cur.x + cur.w / 2, cy = cur.y + cur.h / 2;
+      let best = null, bestScore = Infinity;
+      for (const ln of nodes) {
+        if (ln === cur || !inTab(ln)) continue;
+        const dx = ln.x + ln.w / 2 - cx, dy = ln.y + ln.h / 2 - cy;
+        const along = dx * dir[0] + dy * dir[1];
+        if (along <= 1) continue;
+        const across = Math.abs(dx * dir[1]) + Math.abs(dy * dir[0]);
+        const score = along + across * 2.5;
+        if (score < bestScore) {
+          bestScore = score;
+          best = ln;
+        }
+      }
+      if (best) {
+        treeFocusId = best.node.id;
+        revealTreeNode(best);
+        SZ.GameAudio.play('click', { volume: 0.4 });
+      }
+      return true;
+    }
+    if ((e.code === 'Enter' || e.code === 'Space' || e.code === 'NumpadEnter') && treeFocusId) {
+      tryPurchaseTreeNode(treeLayout.byId[treeFocusId].node);
+      return true;
+    }
+    return false;
+  }
+
+  /* ── Tree drawing ── */
+
+  let treeNebula = null;
+
+  function drawTreeBackground() {
+    const g = ctx.createLinearGradient(0, 0, 0, UH);
+    g.addColorStop(0, '#0b0f1e');
+    g.addColorStop(1, '#05060c');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, UW, UH);
+    if (!treeNebula) {
+      treeNebula = document.createElement('canvas');
+      treeNebula.width = 700;
+      treeNebula.height = 500;
+      const n = treeNebula.getContext('2d');
+      for (const [bx, by, br, col] of [[160, 140, 220, '60,160,90'], [520, 120, 180, '150,60,190'], [420, 380, 240, '30,130,170'], [120, 420, 160, '190,150,60']]) {
+        const rg = n.createRadialGradient(bx, by, 0, bx, by, br);
+        rg.addColorStop(0, `rgba(${col},0.22)`);
+        rg.addColorStop(1, `rgba(${col},0)`);
+        n.fillStyle = rg;
+        n.fillRect(0, 0, 700, 500);
+      }
+      n.fillStyle = 'rgba(255,255,255,0.5)';
+      for (let i = 0; i < 140; ++i) {
+        const s = ((i * 7919) % 97) / 97;
+        n.globalAlpha = 0.15 + s * 0.5;
+        n.fillRect((i * 7307) % 700, (i * 5279) % 500, s > 0.8 ? 1.5 : 1, s > 0.8 ? 1.5 : 1);
+      }
+      n.globalAlpha = 1;
+    }
+    const ox = ((treeCam.x * 0.05) % 140) - 70, oy = ((treeCam.y * 0.05) % 100) - 50;
+    ctx.drawImage(treeNebula, ox - 70, oy - 50, UW + 140, UH + 100);
+    const V = treeView();
+    const step = 64 * treeCam.z;
+    if (step >= 10) {
+      ctx.beginPath();
+      const sx = ((treeCam.x % step) + step) % step, sy = ((treeCam.y % step) + step) % step;
+      for (let x = sx; x < UW; x += step) {
+        ctx.moveTo(Math.round(x) + 0.5, V.y);
+        ctx.lineTo(Math.round(x) + 0.5, V.y + V.h);
+      }
+      for (let y = sy; y < UH; y += step) {
+        if (y < V.y || y > V.y + V.h) continue;
+        ctx.moveTo(0, Math.round(y) + 0.5);
+        ctx.lineTo(UW, Math.round(y) + 0.5);
+      }
+      ctx.strokeStyle = 'rgba(110,200,150,0.05)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  /* Cost as "120 [coin] 8 [wheat]", red where you are short, shrunk to maxW */
+  function drawCostRow(cost, x, y, maxW, px) {
+    const parts = [];
+    for (const k in cost)
+      if ((cost[k] || 0) > 0)
+        parts.push({ k, n: cost[k], ok: k === 'cr' ? credits >= cost[k] : (inventory[k] || 0) >= cost[k] });
+    if (!parts.length) {
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText('Free', x, y + 1, maxW, px, { weight: 'bold', color: UI.good });
+      return;
+    }
+    let size = px, total;
+    for (;;) {
+      ctx.font = uiFont(size, 'bold');
+      total = 0;
+      for (const p of parts)
+        total += ctx.measureText(String(p.n)).width + size * 1.15 + size * 0.6;
+      total -= size * 0.6;
+      if (total <= maxW || size <= 8) break;
+      --size;
+    }
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    let cx = x;
+    for (const p of parts) {
+      if (cx > x + maxW) break;
+      ctx.fillStyle = p.ok ? '#d8f5dc' : '#ff8a8a';
+      const label = String(p.n);
+      ctx.fillText(label, cx, y + 1);
+      cx += ctx.measureText(label).width + 2;
+      drawSprite(itemSprite(p.k), cx + size * 0.55, y, size * 1.15, p.ok ? 1 : 0.6);
+      cx += size * 1.15 + size * 0.6;
+    }
+  }
+
+  function drawNodeFrame(x, y, w, h, color, st, highlight) {
+    roundRectPath(x, y, w, h, 12);
+    if (st === 'owned') ctx.fillStyle = hexToRgba(color, 0.26);
+    else if (st === 'ready') ctx.fillStyle = highlight ? hexToRgba(color, 0.3) : hexToRgba(color, 0.16);
+    else if (st === 'poor') ctx.fillStyle = highlight ? 'rgba(54,48,38,0.95)' : 'rgba(40,36,30,0.95)';
+    else ctx.fillStyle = 'rgba(16,18,26,0.95)';
+    ctx.fill();
+    ctx.save();
+    ctx.clip();
+    ctx.fillStyle = st === 'locked' ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.06)';
+    ctx.fillRect(x, y, w, h * 0.45);
+    ctx.restore();
+    roundRectPath(x, y, w, h, 12);
+    if (st === 'owned') {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = color;
+    } else if (st === 'ready') {
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 8 + Math.sin(uiTime * 4) * 4;
+    } else if (st === 'poor') {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,182,72,0.65)';
+    } else {
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(120,130,160,0.3)';
+      ctx.setLineDash([6, 5]);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+  }
+
+  function drawTreeCard(ln, st, compact) {
+    const n = ln.node;
+    const { x, y, w, h } = ln;
+    const color = TREE_BRANCH_COLORS[ln.branch];
+    const hover = treeHoverId === n.id, focus = treeFocusId === n.id;
+    const dim = st === 'locked';
+    ctx.save();
+    roundRectPath(x + 3, y + 5, w, h, 12);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fill();
+    drawNodeFrame(x, y, w, h, color, st, hover || focus);
+    if (hover || focus) {
+      roundRectPath(x - 4, y - 4, w + 8, h + 8, 15);
+      ctx.lineWidth = focus ? 3 : 2;
+      ctx.strokeStyle = focus ? UI.gold : 'rgba(255,255,255,0.85)';
+      if (focus) {
+        ctx.shadowColor = UI.gold;
+        ctx.shadowBlur = 12;
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    roundRectPath(x + 10, y + 10, 44, 44, 9);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = dim ? 'rgba(255,255,255,0.06)' : hexToRgba(color, 0.45);
+    ctx.stroke();
+    drawSprite(n.icon, x + 32, y + 32, 34, dim ? 0.4 : 1);
+    if (n.chain) {
+      const k = n.tiers;
+      const pw = Math.min(8, (40 - (k - 1) * 2) / k);
+      let px = x + 32 - (k * pw + (k - 1) * 2) / 2;
+      for (let i = 1; i <= k; ++i) {
+        const owned = techOwned(n.chain + i);
+        ctx.fillStyle = owned ? color : (i === n.tier ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.14)');
+        ctx.fillRect(px, y + 62, pw, 6);
+        if (i === n.tier) {
+          ctx.fillStyle = 'rgba(255,255,255,0.9)';
+          ctx.fillRect(px, y + 70, pw, 2);
+        }
+        px += pw + 2;
+      }
+    } else if (n.unlock) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText('UNLOCK', x + 32, y + 68, 50, 10, { weight: 'bold', color: dim ? UI.textMute : hexToRgba(color, 0.95), minPx: 7 });
+    } else if (n.repeat) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText('Lv ' + techLevel(n.id), x + 32, y + 68, 50, 11, { weight: 'bold', color: hexToRgba(color, 0.95), minPx: 7 });
+    }
+    if (st === 'owned')
+      drawSprite('check', x + w - 18, y + 18, 22);
+    else if (st === 'locked')
+      drawSprite('lock', x + w - 18, y + 18, 20, 0.7);
+    const textX = x + 64;
+    const textW = w - 64 - (st === 'owned' || st === 'locked' ? 32 : 10);
+    const nameColor = dim ? '#6a7288' : (st === 'owned' ? '#ffffff' : UI.text);
+    if (compact)
+      drawTextBlock(nodeTitle(n), textX, y + 8, textW, h - 16, 24, { weight: 'bold', color: nameColor, valign: 'middle', minPx: 14, lineGap: 1.1 });
+    else {
+      drawTextBlock(nodeTitle(n), textX, y + 7, textW, 44, 17, { weight: 'bold', color: nameColor, valign: 'middle', minPx: 11, lineGap: 1.15 });
+      if (st === 'owned') {
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        fitText('Owned', textX, y + h - 18, w - 64 - 12, 14, { weight: 'bold', color });
+      } else {
+        ctx.save();
+        if (dim) ctx.globalAlpha *= 0.55;
+        drawCostRow(nodeCost(n), textX, y + h - 18, w - 64 - 12, 15);
+        ctx.restore();
+      }
+    }
+    const flash = treeFlash[n.id];
+    if (flash !== undefined) {
+      const t = (uiTime - flash) / 0.6;
+      if (t >= 1) delete treeFlash[n.id];
+      else {
+        roundRectPath(x - t * 16, y - t * 16, w + t * 32, h + t * 32, 12 + t * 10);
+        ctx.lineWidth = 4 * (1 - t);
+        ctx.strokeStyle = hexToRgba(color, 1 - t);
+        ctx.stroke();
+        roundRectPath(x, y, w, h, 12);
+        ctx.fillStyle = `rgba(255,255,255,${0.35 * (1 - t)})`;
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  /* Orthogonal connector with rounded corners through the channels between cards */
+  function strokeTreeConnector(parent, child) {
+    const px = parent.x + parent.w, py = parent.y + parent.h / 2;
+    const cx = child.x, cy = child.y + child.h / 2;
+    const x1 = px + TREE_GAP_X / 2, x2 = cx - TREE_GAP_X / 2;
+    const pts = [[px, py]];
+    if (Math.abs(py - cy) < 0.5)
+      pts.push([cx, cy]);
+    else if (Math.abs(x1 - x2) < 0.5)
+      pts.push([x1, py], [x1, cy], [cx, cy]);
+    else {
+      const chY = cy > py ? child.y - TREE_GAP_Y / 2 : child.y + child.h + TREE_GAP_Y / 2;
+      pts.push([x1, py], [x1, chY], [x2, chY], [x2, cy], [cx, cy]);
+    }
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length - 1; ++i)
+      ctx.arcTo(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], 10);
+    ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
+    ctx.stroke();
+  }
+
+  function drawTreeContent() {
+    const V = treeView();
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(V.x, V.y, V.w, V.h);
+    ctx.clip();
+    ctx.translate(treeCam.x, treeCam.y);
+    ctx.scale(treeCam.z, treeCam.z);
+    const viewL = (V.x - treeCam.x) / treeCam.z, viewT = (V.y - treeCam.y) / treeCam.z;
+    const viewR = viewL + V.w / treeCam.z, viewB = viewT + V.h / treeCam.z;
+    const compact = treeCam.z < 0.6;
+    for (const branch of TREE_BRANCH_ORDER) {
+      const r = treeLayout.regions[branch];
+      if (r.x > viewR || r.x + r.w < viewL || r.y > viewB || r.y + r.h < viewT) continue;
+      const color = TREE_BRANCH_COLORS[branch];
+      roundRectPath(r.x, r.y, r.w, r.h, 22);
+      ctx.fillStyle = hexToRgba(color, 0.045);
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = hexToRgba(color, 0.22);
+      ctx.stroke();
+      let owned = 0, total = 0;
+      for (const n of TECH)
+        if (n.branch === branch && !n.repeat) {
+          ++total;
+          if (techOwned(n.id)) ++owned;
+        }
+      const headPx = compact ? Math.min(48, 20 / treeCam.z) : 30;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      drawSprite(TREE_BRANCH_ICONS[branch], r.x + TREE_REGION_PAD + headPx * 0.6, r.y + TREE_REGION_HEADER / 2, headPx * 1.2);
+      const lx = r.x + TREE_REGION_PAD + headPx * 1.4;
+      const labelW = fitText(TREE_BRANCH_LABELS[branch], lx, r.y + TREE_REGION_HEADER / 2, r.w * 0.55, headPx, { weight: 'bold', color });
+      const mx = lx + labelW + 24;
+      const mw = Math.min(260, r.x + r.w - TREE_REGION_PAD - mx - 90);
+      if (mw > 40) {
+        drawMeter(mx, r.y + TREE_REGION_HEADER / 2 - 6, mw, 12, owned / total, color);
+        fitText(`${owned} / ${total}`, mx + mw + 12, r.y + TREE_REGION_HEADER / 2, 80, compact ? headPx * 0.6 : 18, { weight: 'bold', color: UI.textDim });
+      }
+    }
+    const edges = [[], [], []];
+    for (const ln of treeLayout.nodes)
+      for (const pid of ln.node.prereqs) {
+        const parent = treeLayout.byId[pid];
+        if (!parent || parent.branch !== ln.branch) continue;
+        const minX = Math.min(parent.x, ln.x) - TREE_GAP_X, maxX = Math.max(parent.x + parent.w, ln.x + ln.w) + TREE_GAP_X;
+        const minY = Math.min(parent.y, ln.y) - TREE_GAP_Y, maxY = Math.max(parent.y + parent.h, ln.y + ln.h) + TREE_GAP_Y;
+        if (minX > viewR || maxX < viewL || minY > viewB || maxY < viewT) continue;
+        const pOwned = techOwned(pid);
+        edges[pOwned ? (isNodeDone(ln.node) ? 2 : 1) : 0].push([parent, ln]);
+      }
+    ctx.lineCap = 'round';
+    for (let pass = 0; pass < 3; ++pass)
+      for (const [parent, ln] of edges[pass]) {
+        const color = TREE_BRANCH_COLORS[ln.branch];
+        if (pass === 0) {
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = 'rgba(130,140,170,0.28)';
+          ctx.setLineDash([7, 7]);
+        } else if (pass === 1) {
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = hexToRgba(color, 0.7);
+          ctx.setLineDash([]);
+        } else {
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = color;
+          ctx.setLineDash([]);
+        }
+        strokeTreeConnector(parent, ln);
+      }
+    ctx.setLineDash([]);
+    ctx.lineCap = 'butt';
+    for (const ln of treeLayout.nodes) {
+      if (ln.x > viewR || ln.x + ln.w < viewL || ln.y > viewB || ln.y + ln.h < viewT) continue;
+      drawTreeCard(ln, treeNodeState(ln.node), compact);
+    }
+    ctx.restore();
+  }
+
+  function treeTabs() {
+    const ids = ['all'].concat(TREE_BRANCH_ORDER);
+    const gap = 8;
+    const tabW = Math.min(180, Math.floor((UW - 40 - (ids.length - 1) * gap) / ids.length));
+    const x0 = UW / 2 - (ids.length * tabW + (ids.length - 1) * gap) / 2;
+    return ids.map((id, i) => ({ id, x: x0 + i * (tabW + gap), y: 62, w: tabW, h: 32 }));
+  }
+
+  function drawTreeDialog() {
+    computeTreeLayout();
+    dialogT = Math.min(1, dialogT + frameDt * 6);
+    if (!treePanning) {
+      const all = treeLayout.regions.all, V = treeView(), keep = 140;
+      treeCam.tx = Math.min(V.x + V.w - keep - all.x * treeCam.tz, Math.max(V.x + keep - (all.x + all.w) * treeCam.tz, treeCam.tx));
+      treeCam.ty = Math.min(V.y + V.h - keep - all.y * treeCam.tz, Math.max(V.y + keep - (all.y + all.h) * treeCam.tz, treeCam.ty));
+      const k = 1 - Math.exp(-frameDt * 14);
+      treeCam.z += (treeCam.tz - treeCam.z) * k;
+      treeCam.x += (treeCam.tx - treeCam.x) * k;
+      treeCam.y += (treeCam.ty - treeCam.y) * k;
+    }
+    const e = 1 - Math.pow(1 - dialogT, 3);
+    addRegion({ id: 'tree-scrim', x: 0, y: 0, w: UW, h: UH, modal: true });
+    ctx.save();
+    ctx.globalAlpha *= e;
+    drawTreeBackground();
+    const V = treeView();
+    addRegion({
+      id: 'tree-view', x: V.x, y: V.y, w: V.w, h: V.h, modal: true,
+      onWheel: (dy) => zoomTreeAt(pointerUX, pointerUY, dy < 0 ? 1.12 : 1 / 1.12),
+      onDragStart: () => { treePanning = { x: pointerUX, y: pointerUY, tx: treeCam.x, ty: treeCam.y, moved: false }; },
+      onDrag: () => {
+        if (!treePanning) return;
+        const dx = pointerUX - treePanning.x, dy = pointerUY - treePanning.y;
+        if (Math.hypot(dx, dy) > 4) treePanning.moved = true;
+        treeCam.x = treeCam.tx = treePanning.tx + dx;
+        treeCam.y = treeCam.ty = treePanning.ty + dy;
+        treeCam.tz = treeCam.z;
+      },
+      onDragEnd: () => {
+        const moved = treePanning && treePanning.moved;
+        treePanning = null;
+        if (!moved) {
+          const ln = hitTreeNode(pointerUX, pointerUY);
+          if (ln) {
+            treeFocusId = ln.node.id;
+            tryPurchaseTreeNode(ln.node);
+          }
+        }
+      },
+      tipKey: () => { const ln = hitTreeNode(pointerUX, pointerUY); return ln ? 'tree:' + ln.node.id + ':' + treeNodeState(ln.node) + ':' + techLevel(ln.node.id) : 'tree:none'; },
+      tip: () => { const ln = hitTreeNode(pointerUX, pointerUY); return ln ? buildTechTooltip(ln.node) : null; }
+    });
+    const hv = hitTreeNode(pointerUX, pointerUY);
+    treeHoverId = hv && pointerInside ? hv.node.id : null;
+    drawTreeContent();
+    drawTreeHeader();
+    ctx.restore();
+  }
+
+  function drawTreeHeader() {
+    drawPanel(10, 6, UW - 20, 100, { accent: UI.gold, radius: 14 });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    drawSprite('techtree', 34, 32, 28);
+    fitText('Tech Tree', 54, 32, 220, 24, { weight: 'bold', color: UI.gold });
+    let owned = 0, total = 0;
+    for (const n of TECH)
+      if (!n.repeat) {
+        ++total;
+        if (techOwned(n.id)) ++owned;
+      }
+    const mw = Math.min(220, UW * 0.2);
+    drawMeter(UW - 70 - mw, 26, mw, 12, owned / total, UI.gold);
+    ctx.textAlign = 'right';
+    fitText(`${owned} / ${total}`, UW - 80 - mw, 32, 90, 15, { weight: 'bold', color: UI.textDim });
+    // credits and storage at a glance
+    ctx.textAlign = 'left';
+    const credX = 290;
+    const credW = UW - 70 - mw - 90 - credX - 40;
+    if (credW > 120)
+      fitText(`[[coin]] ${Math.round(credits).toLocaleString('en-US')}   [[basket]] ${getTotalInventoryCount()} / ${getStorageCapacity()}`, credX, 32, credW, 15, { weight: 'bold', color: UI.text });
+    drawCloseButton('tree-close', UW - 46, 18, 26, closeDialog);
+    for (const t of treeTabs()) {
+      const active = treeTab === t.id;
+      const hover = pointerUX >= t.x && pointerUX <= t.x + t.w && pointerUY >= t.y && pointerUY <= t.y + t.h;
+      const color = t.id === 'all' ? UI.gold : TREE_BRANCH_COLORS[t.id];
+      roundRectPath(t.x, t.y, t.w, t.h, 9);
+      ctx.fillStyle = active ? hexToRgba(color, 0.24) : (hover ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)');
+      ctx.fill();
+      ctx.lineWidth = active ? 2 : 1;
+      ctx.strokeStyle = active ? color : 'rgba(255,255,255,0.1)';
+      ctx.stroke();
+      let label = t.id === 'all' ? 'All' : TREE_BRANCH_SHORT[t.id];
+      if (t.id !== 'all') {
+        let o = 0, c = 0, ready = 0;
+        for (const n of TECH)
+          if (n.branch === t.id && !n.repeat) {
+            ++c;
+            if (techOwned(n.id)) ++o;
+            else if (treeNodeState(n) === 'ready') ++ready;
+          }
+        label += `  ${o}/${c}`;
+        if (ready)
+          drawChip(String(ready), t.x + t.w - 4, t.y - 6, 16, { align: 'right', px: 10, bg: color, color: '#10141e' });
+      }
+      if (t.id === 'all')
+        drawSprite('techtree', t.x + 18, t.y + t.h / 2, 16);
+      else
+        drawSprite(TREE_BRANCH_ICONS[t.id], t.x + 18, t.y + t.h / 2, 16);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText(label, t.x + 32, t.y + t.h / 2 + 1, t.w - 40, 14, { weight: 'bold', color: active ? '#fff' : UI.textDim });
+      addRegion({ id: 'tree-tab-' + t.id, x: t.x, y: t.y, w: t.w, h: t.h, modal: true, onClick: () => setTreeTab(t.id), tip: () => t.id === 'all' ? ['All branches', 'Shortcut: 1 or Tab'] : [`[[${TREE_BRANCH_ICONS[t.id]}]] ${TREE_BRANCH_LABELS[t.id].charAt(0) + TREE_BRANCH_LABELS[t.id].slice(1).toLowerCase()}`, ['Crops, soil and harvests', 'Animals and their produce', 'Buildings, energy, automation and land', 'Weather, pests and new crop species', 'Prices, storage and trade'][TREE_BRANCH_ORDER.indexOf(t.id)], 'Shortcut: Tab'] });
+    }
+    // Footer: legend and controls
+    const fy = UH - 44;
+    drawPanel(10, fy, UW - 20, 38, { radius: 12, shadow: 8, accent: '#6a8ac8' });
+    let lx = 26;
+    for (const [label, st] of [['Owned', 'owned'], ['Can buy', 'ready'], ['Need more', 'poor'], ['Locked', 'locked']]) {
+      roundRectPath(lx, fy + 11, 24, 16, 5);
+      ctx.fillStyle = st === 'owned' ? hexToRgba(UI.leaf, 0.35) : (st === 'ready' ? hexToRgba(UI.leaf, 0.18) : (st === 'poor' ? 'rgba(40,36,30,0.95)' : 'rgba(16,18,26,0.95)'));
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = st === 'poor' ? 'rgba(255,182,72,0.8)' : (st === 'locked' ? 'rgba(120,130,160,0.5)' : UI.leaf);
+      ctx.stroke();
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      lx += 30 + fitText(label, lx + 30, fy + 20, 110, 13, { color: UI.textDim }) + 18;
+    }
+    drawKeyHints([
+      { key: 'Wheel', label: 'Zoom' }, { key: 'Drag', label: 'Pan' }, { key: '←↑→↓', label: 'Select' },
+      { key: 'Enter', label: 'Buy' }, { key: 'Tab', label: 'Branch' }, { key: 'Esc', label: 'Close' }
+    ], (lx + UW - 20) / 2, fy + 19, UW - 20 - lx - 16);
+  }
+
+  function buildTechTooltip(n) {
+    const st = treeNodeState(n);
+    const lines = [`[[${n.icon}]] ${nodeTitle(n)}`, n.desc];
+    lines.push(`${TREE_BRANCH_LABELS[n.branch].charAt(0) + TREE_BRANCH_LABELS[n.branch].slice(1).toLowerCase()}` + (n.chain ? ` · tier ${n.tier} of ${n.tiers}` : '') + (n.repeat ? ` · level ${techLevel(n.id)}` : ''));
+    if (st === 'owned') {
+      lines.push('✔ Owned');
+      return lines;
+    }
+    if (n.prereqs.length) {
+      lines.push('--- Requires ---');
+      for (const p of n.prereqs)
+        lines.push((techOwned(p) ? '✔ ' : '✘ ') + nodeTitle(TECH_BY_ID[p]));
+    }
+    const cost = nodeCost(n);
+    lines.push('--- Cost ---');
+    for (const k in cost) {
+      if (!cost[k]) continue;
+      const have = k === 'cr' ? Math.floor(credits) : (inventory[k] || 0);
+      lines.push((have >= cost[k] ? '✔ ' : '✘ ') + `[[${itemSprite(k)}]] ${k === 'cr' ? 'Credits' : k}: ${have} / ${cost[k]}`);
+    }
+    if (st === 'ready')
+      lines.push('Click or Enter to buy');
+    return lines;
+  }
+
+  /* ── "Next upgrades" quick panel: the best next node of every branch ── */
+
+  let quickCollapsed = false;
+  const quickFlash = {};
+
+  function itemWeight(k) {
+    if (k === 'cr') return 1;
+    for (const c of CROPS)
+      if (c.name === k) return c.sellPrice;
+    for (const l of LIVESTOCK)
+      if (l.produce === k) return l.produceValue;
+    return 10;
+  }
+
+  function getQuickPicks() {
+    const picks = [];
+    for (const branch of TREE_BRANCH_ORDER) {
+      let best = null, bestScore = Infinity, buyable = 0, owned = 0, total = 0;
+      for (const n of TECH) {
+        if (n.branch !== branch) continue;
+        if (!n.repeat) ++total;
+        if (isNodeDone(n)) {
+          ++owned;
+          continue;
+        }
+        if (!arePrereqsMet(n)) continue;
+        const cost = nodeCost(n);
+        const afford = canPay(cost);
+        if (afford) ++buyable;
+        let price = 0, missing = 0;
+        for (const k in cost) {
+          const w = itemWeight(k);
+          price += (cost[k] || 0) * w;
+          const have = k === 'cr' ? credits : (inventory[k] || 0);
+          missing += Math.max(0, (cost[k] || 0) - have) * w;
+        }
+        // repeatable land survey is offered last so real upgrades show first
+        const score = (afford ? price : 1e7 + missing * 10 + price) + (n.repeat ? 5e6 : 0);
+        if (score < bestScore) {
+          bestScore = score;
+          best = n;
+        }
+      }
+      picks.push({ branch, node: best, buyable, owned, total });
+    }
+    return picks;
+  }
+
+  function quickPanelLayout() {
+    const w = 272, x = UW - w - HUD_M, y = HUD_M;
+    const headerH = 36, rowH = 52, gap = 6;
+    if (quickCollapsed)
+      return { x, y, w, h: headerH + 4, rows: [], headerH };
+    let ry = y + headerH + 8;
+    const rows = getQuickPicks().map(p => {
+      const r = Object.assign({ x: x + 8, y: ry, w: w - 16, h: rowH }, p);
+      ry += rowH + gap;
+      return r;
+    });
+    const button = { x: x + 8, y: ry + 2, w: w - 16, h: 32 };
+    return { x, y, w, h: button.y + button.h + 8 - y, rows, button, headerH };
+  }
+
+  function activateQuickRow(r) {
+    if (!r.node) {
+      openTree(null, r.branch);
+      return;
+    }
+    if (treeNodeState(r.node) === 'ready') {
+      if (tryPurchaseTreeNode(r.node)) {
+        quickFlash[r.branch] = uiTime;
+        celebrate(r.x + r.w / 2, r.y + r.h / 2, 18);
+      }
+    } else
+      openTree(r.node.id);
+  }
+
+  function drawQuickPanel() {
+    const Q = quickPanelLayout();
+    if (Q.x < hudLayout().clock.x + hudLayout().clock.w + 8 && !quickCollapsed && UW < 900) return;
+    beginHudPanel('quick', Q.x, Q.y, Q.w, Q.h);
+    let owned = 0, total = 0, ready = 0;
+    for (const n of TECH)
+      if (!n.repeat) {
+        ++total;
+        if (techOwned(n.id)) ++owned;
+        else if (treeNodeState(n) === 'ready') ++ready;
+      }
+    drawPanel(Q.x, Q.y, Q.w, Q.h, { title: 'Next upgrades', icon: 'techtree', titlePx: 14, headerH: Q.headerH, titleRight: `${owned} / ${total}  ${quickCollapsed ? '▾' : '▴'}`, titleRightColor: UI.gold, accent: UI.gold });
+    addRegion({ id: 'quick-header', x: Q.x, y: Q.y, w: Q.w, h: Q.headerH, onClick: () => { quickCollapsed = !quickCollapsed; SZ.GameAudio.play('click'); }, tip: () => ['Next upgrades', 'The best next upgrade of every branch.', ready ? `✔ ${ready} upgrade${ready === 1 ? '' : 's'} affordable now` : 'Nothing affordable right now', 'Click the header to fold the panel.'] });
+    if (quickCollapsed && ready)
+      drawChip(String(ready), Q.x + Q.w - 8, Q.y - 6, 18, { align: 'right', px: 11, bg: UI.leaf, color: '#10141e' });
+    for (const r of Q.rows)
+      drawQuickRow(r);
+    if (Q.button)
+      drawButton({ id: 'quick-tree', x: Q.button.x, y: Q.button.y, w: Q.button.w, h: Q.button.h }, { label: 'Open tech tree', icon: 'techtree', key: 'U', color: UI.gold, primary: true, px: 13, onClick: () => openTree(), tip: () => ['[[techtree]] Tech tree', 'All upgrades of every branch.', 'Shortcut: U'] });
+    endHudPanel();
+  }
+
+  function drawQuickRow(r) {
+    const color = TREE_BRANCH_COLORS[r.branch];
+    const n = r.node;
+    const complete = !n && r.owned >= r.total;
+    const st = n ? treeNodeState(n) : (complete ? 'owned' : 'locked');
+    const id = 'quick-' + r.branch;
+    const hv = hoverAmount(id);
+    ctx.save();
+    drawNodeFrame(r.x, r.y, r.w, r.h, color, st, hv > 0.5);
+    if (hv > 0.05) {
+      roundRectPath(r.x - 2, r.y - 2, r.w + 4, r.h + 4, 13);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = `rgba(255,255,255,${0.75 * hv})`;
+      ctx.stroke();
+    }
+    const ix = r.x + 7, iy = r.y + (r.h - 38) / 2;
+    roundRectPath(ix, iy, 38, 38, 8);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = hexToRgba(color, 0.45);
+    ctx.stroke();
+    drawSprite(n ? n.icon : (complete ? 'check' : 'lock'), ix + 19, iy + 19, 28, st === 'locked' ? 0.5 : 1);
+    const tx = r.x + 52, tw = r.w - 52 - 8;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    const tagW = fitText(TREE_BRANCH_SHORT[r.branch].toUpperCase(), r.x + r.w - 8, r.y + 13, 74, 10, { weight: 'bold', color: hexToRgba(color, 0.95), minPx: 7 });
+    ctx.textAlign = 'left';
+    if (n) {
+      fitText(nodeTitle(n), tx, r.y + 15, tw - tagW - 8, 14, { weight: 'bold', color: st === 'locked' ? '#7a8298' : UI.text, minPx: 9 });
+      let extraW = 0;
+      if (r.buyable > 1)
+        extraW = drawChip('+' + (r.buyable - 1), r.x + r.w - 6, r.y + r.h - 25, 18, { align: 'right', px: 11, bg: hexToRgba(color, 0.2), border: hexToRgba(color, 0.6), color: '#fff' }) + 6;
+      drawCostRow(nodeCost(n), tx, r.y + r.h - 15, tw - extraW, 13);
+    } else {
+      fitText(complete ? 'Branch complete' : 'Nothing unlocked yet', tx, r.y + 15, tw - tagW - 8, 14, { weight: 'bold', color: complete ? UI.good : UI.textMute });
+      fitText(`${r.owned} / ${r.total} upgrades`, tx, r.y + r.h - 15, tw, 12, { color: UI.textDim });
+    }
+    const flash = quickFlash[r.branch];
+    if (flash !== undefined) {
+      const t = (uiTime - flash) / 0.6;
+      if (t >= 1) delete quickFlash[r.branch];
+      else {
+        roundRectPath(r.x, r.y, r.w, r.h, 12);
+        ctx.fillStyle = `rgba(255,255,255,${0.35 * (1 - t)})`;
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+    addRegion({ id, x: r.x, y: r.y, w: r.w, h: r.h, onClick: () => activateQuickRow(r), tip: () => {
+      if (!n) return [TREE_BRANCH_LABELS[r.branch], complete ? '✔ Every upgrade of this branch is owned' : 'Unlock other branches first'];
+      const lines = buildTechTooltip(n);
+      lines.push(st === 'ready' ? '✔ Click to buy now' : 'Click to open it in the tree');
+      return lines;
+    } });
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
      HUD — farm status, storage, clock, tool dock
      ══════════════════════════════════════════════════════════════════ */
 
@@ -5922,28 +7117,61 @@
     fitText(wi.name, wx + 36, r.y + r.h / 2 - (weatherType !== WEATHER_NONE ? 7 : 0), weatherW - 42, 12, { weight: 'bold', color: wi.color });
     if (weatherType !== WEATHER_NONE)
       fitText(`${Math.ceil(weatherTimer)}s left`, wx + 36, r.y + r.h / 2 + 9, weatherW - 42, 11, { color: UI.textDim });
+    else if (techOwned('sci_forecast')) {
+      const nx = WEATHER_INFO[forecastWeather()] || WEATHER_INFO.none;
+      fitText(`[[${nx.icon}]] in ${Math.ceil(weatherInterval)}s`, wx + 36, r.y + r.h / 2 + 9, weatherW - 42, 11, { color: UI.textDim });
+    }
     addRegion({ id: 'hud-weather', x: wx, y: r.y, w: weatherW, h: r.h, tip: buildWeatherTooltip });
+    if (techOwned('sci_rain')) {
+      const ready = canCallRain();
+      drawButton({ id: 'hud-rain', x: r.x + r.w - 96, y: r.y + r.h + 4, w: 90, h: 24 }, {
+        label: ready ? 'Call rain' : `Day ${rainMakerDay}`, icon: currentSeason === 3 ? 'snow' : 'rain', px: 11, primary: ready, color: '#7ab8ff', disabled: !ready,
+        onClick: callRain, onDisabled: () => SZ.GameAudio.play('error'),
+        tip: () => ['[[rain]] Rain Maker', currentSeason === 3 ? 'Calls snowfall in winter.' : 'Calls a rain shower: crops grow 50% faster.', ready ? '✔ Ready' : (weatherType !== WEATHER_NONE ? '⚠ Wait for the current weather to pass' : `⚠ Recharges on day ${rainMakerDay}`)]
+      });
+    }
     endHudPanel();
   }
 
   /* ── Tool dock ── */
 
   function dockItems(mode) {
-    if (mode === 'plant')
-      return CROPS.map((c, i) => ({ kind: 'crop', index: i }));
-    if (mode === 'build')
-      return BUILDINGS.map((b, i) => ({ kind: 'building', index: i }));
+    if (mode === 'plant') {
+      const open = [], shut = [];
+      CROPS.forEach((c, i) => (isCropUnlocked(i) ? open : shut).push({ kind: 'crop', index: i, locked: !isCropUnlocked(i) }));
+      return open.concat(shut);
+    }
+    if (mode === 'build') {
+      const open = [], shut = [];
+      BUILDINGS.forEach((b, i) => (isBuildingUnlocked(i) ? open : shut).push({ kind: 'building', index: i, locked: !isBuildingUnlocked(i) }));
+      return open.concat(shut);
+    }
     return [];
   }
 
   function selectCrop(i) {
+    if (!isCropUnlocked(i)) {
+      lockedHint(unlockedByTech('crops', i));
+      return;
+    }
     selectedCropIndex = i;
     selectedTool = TOOL_PLANT;
     selectedBuildingIndex = -1;
     SZ.GameAudio.play('click');
   }
 
+  /* A locked item was picked: show where it is unlocked */
+  function lockedHint(n) {
+    SZ.GameAudio.play('error', { volume: 0.5 });
+    if (n)
+      openTree(n.id);
+  }
+
   function selectBuilding(i) {
+    if (!isBuildingUnlocked(i)) {
+      lockedHint(unlockedByTech('buildings', i));
+      return;
+    }
     selectedBuildingIndex = i;
     selectedTool = TOOL_BUILD;
     SZ.GameAudio.play('click');
@@ -5955,7 +7183,7 @@
       selectedBuildingIndex = -1;
     } else if (mode === 'build') {
       selectedTool = TOOL_BUILD;
-      if (selectedBuildingIndex < 0)
+      if (selectedBuildingIndex < 0 || !isBuildingUnlocked(selectedBuildingIndex))
         selectedBuildingIndex = 0;
     } else {
       selectedTool = TOOL_HOE;
@@ -5997,14 +7225,14 @@
     const actions = [
       { id: 'act-sell', icon: 'coin', label: 'Sell', key: 'S', onClick: sellAllProduce, tip: buildSellButtonTooltip, color: '#59c96a' },
       { id: 'act-animals', icon: 'paw', label: 'Animals', key: 'L', onClick: () => toggleDialog('livestock'), tip: () => ['[[paw]] Livestock', 'Buy animals for the pens around your farm.', `${livestockPens.length} animals on the farm.`, 'Shortcut: L'], color: '#ff9ac0' },
-      { id: 'act-upgrades', icon: 'techtree', label: 'Upgrades', key: 'U', onClick: () => toggleDialog('upgrades'), tip: () => ['[[techtree]] Upgrades', 'Permanent improvements for the whole farm.', 'Shortcut: U'], color: UI.gold }
+      { id: 'act-upgrades', icon: 'techtree', label: 'Tech tree', key: 'U', onClick: () => toggleTree(), tip: () => ['[[techtree]] Tech tree', 'Upgrades, new crops, animals and buildings.', 'Shortcut: U'], color: UI.gold }
     ];
     const actW = 66;
     const actX0 = d.x + d.w - 10 - actions.length * (actW + 6) + 6;
     actions.forEach((a, i) => {
       drawButton({ id: a.id, x: actX0 + i * (actW + 6), y: top, w: actW, h: SLOT_H }, {
         label: a.label, icon: a.icon, vertical: true, color: a.color, px: 11, onClick: a.onClick, tip: a.tip,
-        active: (a.id === 'act-animals' && dialog === 'livestock') || (a.id === 'act-upgrades' && dialog === 'upgrades')
+        active: (a.id === 'act-animals' && dialog === 'livestock') || (a.id === 'act-upgrades' && dialog === 'tree')
       });
     });
     ctx.fillStyle = 'rgba(255,255,255,0.08)';
@@ -6044,7 +7272,7 @@
       }
       addRegion({ id: 'dock-slots-wheel', x: sx0, y: d.y, w: areaW, h: d.h, passive: true, onWheel: (dy) => { dockScroll[mode] += dy > 0 ? 64 : -64; } });
       // keep the selected slot visible
-      const sel = mode === 'plant' ? selectedCropIndex : selectedBuildingIndex;
+      const sel = items.findIndex(it => it.index === (mode === 'plant' ? selectedCropIndex : selectedBuildingIndex));
       if (sel >= 0 && dockFollow) {
         const sx = sel * (SLOT_W + SLOT_GAP);
         if (sx < dockScroll[mode]) dockScroll[mode] = sx;
@@ -6075,8 +7303,9 @@
     const isCrop = it.kind === 'crop';
     const def = isCrop ? CROPS[it.index] : BUILDINGS[it.index];
     const selected = isCrop ? (selectedTool === TOOL_PLANT && selectedCropIndex === it.index) : (selectedTool === TOOL_BUILD && selectedBuildingIndex === it.index);
-    const cost = isCrop ? def.seedCost : def.cost;
+    const cost = isCrop ? getSeedCost(def) : getBuildingCost(def);
     const afford = credits >= cost;
+    const locked = it.locked;
     const lift = pressed ? 1 : -hv * 3;
     const yy = y + lift;
     ctx.save();
@@ -6099,6 +7328,18 @@
     ctx.fill();
     // Icon
     const bob = selected ? Math.sin(uiTime * 3) * 1.5 : 0;
+    if (locked) {
+      drawSprite(def.sprite, x + SLOT_W / 2, yy + 25, 32, 0.25);
+      drawSprite('lock', x + SLOT_W / 2, yy + 27, 20, 0.9);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText('Tech tree', x + SLOT_W / 2, yy + SLOT_H - 11, SLOT_W - 6, 10, { weight: 'bold', color: UI.textMute });
+      ctx.restore();
+      const rx0 = Math.max(x, clipL), rx1 = Math.min(x + SLOT_W, clipR);
+      if (rx1 - rx0 > 6)
+        addRegion({ id, x: rx0, y, w: rx1 - rx0, h: SLOT_H, onClick: () => isCrop ? selectCrop(it.index) : selectBuilding(it.index), tip: () => lockedTooltip(isCrop ? 'crops' : 'buildings', it.index) });
+      return;
+    }
     drawSprite(def.sprite, x + SLOT_W / 2, yy + 25 + bob, 32, afford ? 1 : 0.55);
     // Number key
     if (i < 10)
@@ -6106,6 +7347,14 @@
     // Market trend
     if (isCrop) {
       const pm = priceMultipliers[it.index] || 1;
+      if (techOwned('com_insight')) {
+        const nx = getNextPrices()[it.index];
+        if (Math.abs(nx - pm) > 0.03) {
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'middle';
+          fitText(nx > pm ? '↗' : '↘', x + SLOT_W - 5, yy + 24, 14, 11, { weight: 'bold', color: nx > pm ? '#9df0ff' : '#ffb0a0' });
+        }
+      }
       if (pm > 1.05 || pm < 0.95) {
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
@@ -6126,13 +7375,25 @@
       });
   }
 
+  function lockedTooltip(kind, index) {
+    const def = kind === 'crops' ? CROPS[index] : (kind === 'animals' ? LIVESTOCK[index] : BUILDINGS[index]);
+    const n = unlockedByTech(kind, index);
+    const lines = [`[[${def.sprite}]] ${def.name}`, '✘ Locked'];
+    if (n) {
+      lines.push(`Unlock it with [[${n.icon}]] ${nodeTitle(n)} in the ${TREE_BRANCH_SHORT[n.branch]} branch.`);
+      lines.push(arePrereqsMet(n) ? (canPay(nodeCost(n)) ? '✔ You can unlock it now' : '⚠ Not affordable yet') : '⚠ Its branch needs earlier upgrades first');
+      lines.push('Click to show it in the tech tree');
+    }
+    return lines;
+  }
+
   function drawActionHint(d) {
     let text;
     const mode = dockMode();
     if (mode === 'plant')
-      text = `[[${CROPS[selectedCropIndex].sprite}]] Plant ${CROPS[selectedCropIndex].name} · drag to plant or harvest an area · click a building to inspect it`;
+      text = `[[${CROPS[selectedCropIndex].sprite}]] Plant ${CROPS[selectedCropIndex].name} (${getSeedCost(CROPS[selectedCropIndex])} cr) · drag to plant or harvest an area · click a building to inspect it`;
     else if (mode === 'build' && selectedBuildingIndex >= 0)
-      text = `[[${BUILDINGS[selectedBuildingIndex].sprite}]] Place ${BUILDINGS[selectedBuildingIndex].name} (${BUILDINGS[selectedBuildingIndex].cost} cr) · right-click a building to upgrade it`;
+      text = `[[${BUILDINGS[selectedBuildingIndex].sprite}]] Place ${BUILDINGS[selectedBuildingIndex].name} (${getBuildingCost(BUILDINGS[selectedBuildingIndex])} cr) · right-click a building to upgrade it`;
     else
       text = '[[hoe]] Hoe · click soil beside water to enrich it · right-click a crop to uproot it';
     ctx.save();
@@ -6263,6 +7524,7 @@
     drawFarmPanel(L);
     drawStoragePanel(L);
     drawClockPanel(L);
+    drawQuickPanel();
     drawDock(L);
     drawZoomChip(L);
     drawBanner(L);
@@ -6275,7 +7537,7 @@
      DIALOGS — modal panels that pause the farm
      ══════════════════════════════════════════════════════════════════ */
 
-  let dialog = null;                 // 'upgrades' | 'livestock' | 'help'
+  let dialog = null;                 // 'tree' | 'livestock' | 'help'
   let dialogT = 0;                   // open animation 0..1
   let helpPage = 0;
   let dialogScroll = 0;
@@ -6307,6 +7569,13 @@
       closeDialog();
     else
       openDialog(kind);
+  }
+
+  function toggleTree() {
+    if (dialog === 'tree')
+      closeDialog();
+    else
+      openTree();
   }
 
   function closeAllDialogs() {
@@ -6345,87 +7614,8 @@
 
   /* ── Upgrade shop (permanent farm upgrades) ── */
 
-  function upgradeCostNow(def) {
-    if (def.id === 'plotExpansion')
-      return getNextExpansionTileCount() * 8;
-    return getUpgradeCost(def, getUpgradeLevel(def.id));
-  }
 
-  function drawUpgradesDialog() {
-    const c = beginDialog('Farm Upgrades', 760, 560, { icon: 'techtree', titleRight: `${Math.round(credits)} [[coin]]`, titleRightColor: UI.gold });
-    const cols = c.w >= 600 ? 2 : 1;
-    const gap = 10;
-    const cardW = (c.w - gap * (cols - 1)) / cols;
-    const cardH = 86;
-    const rows = Math.ceil(UPGRADES.length / cols);
-    const contentH = rows * (cardH + gap) - gap;
-    const viewH = c.h - 30;
-    const maxScroll = Math.max(0, contentH - viewH);
-    dialogScroll = Math.max(0, Math.min(maxScroll, dialogScroll));
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(c.x - 4, c.y, c.w + 8, viewH);
-    ctx.clip();
-    UPGRADES.forEach((def, i) => {
-      const cx = c.x + (i % cols) * (cardW + gap);
-      const cy = c.y + Math.floor(i / cols) * (cardH + gap) - dialogScroll;
-      if (cy + cardH < c.y || cy > c.y + viewH) return;
-      drawUpgradeCard(def, i, cx, cy, cardW, cardH, c.y, c.y + viewH);
-    });
-    ctx.restore();
-    addRegion({ id: 'dlg-upg-wheel', x: c.x, y: c.y, w: c.w, h: viewH, modal: true, passive: true, onWheel: (dy) => { dialogScroll += dy > 0 ? 60 : -60; } });
-    reorderPassiveRegions();
-    drawKeyHints([{ key: 'Click', label: 'Buy' }, { key: 'Wheel', label: 'Scroll' }, { key: 'U', label: 'Close' }], c.x + c.w / 2, c.y + c.h - 8, c.w);
-    endDialog();
-  }
 
-  function drawUpgradeCard(def, i, x, y, w, h, clipT, clipB) {
-    const lvl = getUpgradeLevel(def.id);
-    const maxed = lvl >= def.maxLevel;
-    const cost = maxed ? 0 : upgradeCostNow(def);
-    const afford = credits >= cost;
-    const id = 'upg-' + def.id;
-    const hv = hoverAmount(id);
-    const color = maxed ? UI.good : (afford ? UI.gold : UI.warn);
-    ctx.save();
-    roundRectPath(x, y, w, h, 12);
-    ctx.fillStyle = maxed ? 'rgba(111,224,138,0.12)' : (afford ? `rgba(255,215,90,${0.1 + hv * 0.08})` : 'rgba(40,36,30,0.9)');
-    ctx.fill();
-    ctx.lineWidth = afford && !maxed ? 2 : 1.5;
-    ctx.strokeStyle = hexToRgba(color, 0.4 + hv * 0.4);
-    ctx.stroke();
-    roundRectPath(x + 10, y + 10, 46, 46, 9);
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.fill();
-    drawSprite(def.sprite, x + 33, y + 33, 34);
-    // Pips
-    if (def.maxLevel <= 10) {
-      const n = def.maxLevel, pw = Math.min(8, (44 - (n - 1) * 2) / n);
-      let px = x + 33 - (n * pw + (n - 1) * 2) / 2;
-      for (let k = 0; k < n; ++k) {
-        ctx.fillStyle = k < lvl ? color : 'rgba(255,255,255,0.14)';
-        ctx.fillRect(px, y + 64, pw, 6);
-        px += pw + 2;
-      }
-    } else {
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      fitText(`Lv ${lvl}`, x + 33, y + 68, 48, 11, { weight: 'bold', color: UI.textDim });
-    }
-    const tx = x + 66, tw = w - 66 - 12;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    fitText(def.name + (def.maxLevel <= 10 ? `  ${lvl}/${def.maxLevel}` : ''), tx, y + 18, tw - 96, 15, { weight: 'bold', color: UI.text });
-    drawTextBlock(def.desc, tx, y + 30, tw - 96, 40, 12, { color: UI.textDim });
-    ctx.restore();
-    const btn = { id, x: x + w - 100, y: y + h / 2 - 17, w: 90, h: 34 };
-    if (maxed) {
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      drawChip('MAX', btn.x + btn.w / 2, btn.y + 7, 20, { align: 'center', px: 11, bg: 'rgba(111,224,138,0.18)', border: 'rgba(111,224,138,0.6)', color: UI.good });
-    } else if (btn.y >= clipT && btn.y + btn.h <= clipB)
-      drawButton(btn, { label: `${cost} [[coin]]`, primary: afford, color: UI.gold, px: 13, disabled: !afford, onClick: () => purchaseUpgrade(i), onDisabled: () => SZ.GameAudio.play('error'), tip: () => [`[[${def.sprite}]] ${def.name}`, def.desc, afford ? `✔ Costs ${cost} credits` : `✘ Needs ${cost} credits (${cost - Math.floor(credits)} more)`] });
-  }
 
   /* ── Livestock shop ── */
 
@@ -6442,6 +7632,30 @@
       const afford = credits >= def.cost;
       const id = 'buy-animal-' + i;
       const hv = hoverAmount(id);
+      if (!isAnimalUnlocked(i)) {
+        const n = unlockedByTech('animals', i);
+        roundRectPath(x, y, cardW, cardH, 12);
+        ctx.fillStyle = 'rgba(16,18,26,0.95)';
+        ctx.fill();
+        ctx.setLineDash([6, 5]);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = 'rgba(120,130,160,0.4)';
+        ctx.stroke();
+        ctx.setLineDash([]);
+        roundRectPath(x + 10, y + 10, 60, 60, 10);
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fill();
+        drawSprite(def.sprite, x + 40, y + 40, 48, 0.25);
+        drawSprite('lock', x + 40, y + 42, 24);
+        const tx = x + 80, tw = cardW - 92;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        fitText(def.name, tx, y + 20, tw, 16, { weight: 'bold', color: '#7a8298' });
+        fitText(`[[${def.produceSprite}]] ${def.produce}, worth ${getEffectiveProduceValue(def)} cr`, tx, y + 42, tw, 12, { color: UI.textMute });
+        if (n)
+          drawButton({ id, x: tx, y: y + cardH - 34, w: tw, h: 26 }, { label: `Unlock: ${nodeTitle(n)}`, icon: 'techtree', px: 11, onClick: () => openTree(n.id), tip: () => lockedTooltip('animals', i) });
+        return;
+      }
       roundRectPath(x, y, cardW, cardH, 12);
       ctx.fillStyle = afford ? `rgba(255,154,192,${0.08 + hv * 0.06})` : 'rgba(40,36,30,0.9)';
       ctx.fill();
@@ -6467,7 +7681,7 @@
   }
 
   function getFeedInterval(def) {
-    return def.feedInterval;
+    return Math.round(def.feedInterval * (1 - techChainCount('husb_care') * 0.12) * 10) / 10;
   }
 
   /* ── Help ── */
@@ -6481,6 +7695,7 @@
     { icon: 'storm', title: 'Weather', text: 'Rain and solar flares make crops grow faster. Meteor showers and thunderstorms can destroy crops that are not protected by a greenhouse.\n\nVoid mushrooms ignore the weather, plasma peppers hate meteors, astral flowers and solar vines love the sun.' },
     { icon: 'spring', title: 'Seasons & day', text: 'A day lasts 30 seconds and a season four days. Spring and summer speed up growth, autumn gives bigger harvests, winter slows everything down.\n\nLunar moss only grows at night, solar vines only by day.' },
     { icon: 'mouse', title: 'Pests & energy', text: 'Space mice sneak in from the edges and eat crops. Click a mouse to chase it away for a reward, and build scarecrows and fences to keep them out.\n\nEnergy powers harvesters and drones. Solar panels charge by day, wind turbines at night and in storms.' },
+    { icon: 'techtree', title: 'Tech tree', text: 'Press U for the tech tree. Its five branches improve crops, animals, buildings, science and trade, and unlock new crops, animals and buildings. Upgrades cost credits and produce, so keep some harvest in storage.\n\nThe Next upgrades panel on the right always shows the best next step of every branch: click a row to buy it straight away.' },
     { icon: 'techtree', title: 'Controls', text: 'Mouse wheel or +/- zooms, right-drag or Ctrl+drag pans, Home resets the view. Arrow keys move a tile cursor and Space acts on it. On touch screens pinch to zoom and drag with two fingers to pan.\n\nP seeds · B build · T hoe · S sell · L animals · U upgrades · H help · Esc pause.' }
   ];
 
@@ -6704,8 +7919,9 @@
     const through = r && !r.modal && hudPassThrough(pointerUX, pointerUY);
     if (r && !through) {
       hoverRegionId = r.onClick || r.disabledClick ? r.id : null;
-      if (r.tip)
-        setTooltip('r:' + r.id, r.tip());
+      const lines = r.tip ? r.tip() : null;
+      if (lines)
+        setTooltip(r.tipKey ? r.tipKey() : 'r:' + r.id, lines);
       else
         clearTooltip();
       return;
@@ -6911,14 +8127,14 @@
     const lines = [tt === TILE_ROCK ? 'Rocky ground' : (tt === TILE_SAND ? 'Sandy plot' : 'Empty plot')];
     if (selectedTool === TOOL_BUILD && selectedBuildingIndex >= 0) {
       const b = BUILDINGS[selectedBuildingIndex];
-      lines.push((credits >= b.cost ? '✔ ' : '✘ ') + `Click to build ${b.name} (${b.cost} cr)`);
+      lines.push((credits >= getBuildingCost(b) ? '✔ ' : '✘ ') + `Click to build ${b.name} (${getBuildingCost(b)} cr)`);
     } else if (selectedTool === TOOL_HOE) {
       lines.push(isAdjacentToWater(row, col) ? '✔ Click to enrich the soil' : '⚠ Too far from water to enrich');
     } else if (tt === TILE_ROCK)
       lines.push('⚠ Crops grow here, but rock suits buildings best');
     else {
       const crop = CROPS[selectedCropIndex];
-      lines.push((credits >= crop.seedCost ? '✔ ' : '✘ ') + `Click to plant ${crop.name} (${crop.seedCost} cr)`);
+      lines.push((credits >= getSeedCost(crop) ? '✔ ' : '✘ ') + `Click to plant ${crop.name} (${getSeedCost(crop)} cr)`);
     }
     if (tt !== TILE_ROCK)
       lines.push(fertilityLine(row, col));
@@ -6934,11 +8150,15 @@
     const crop = CROPS[cropIndex];
     const effPrice = getEffectiveSellPrice(crop);
     const pm = priceMultipliers[cropIndex] || 1;
-    const lines = [`[[${crop.sprite}]] ${crop.name}`, `Seed ${crop.seedCost} cr · sells for ${effPrice} cr`, `Grows in ${crop.growTime}s over ${crop.stages} stages`];
+    const lines = [`[[${crop.sprite}]] ${crop.name}`, `Seed ${getSeedCost(crop)} cr · sells for ${effPrice} cr`, `Grows in ${crop.growTime}s over ${crop.stages} stages`];
     if (pm > 1.05)
       lines.push(`✔ Market ${pm.toFixed(2)}×: good time to sell`);
     else if (pm < 0.95)
       lines.push(`⚠ Market ${pm.toFixed(2)}×: prices are low`);
+    if (techOwned('com_insight')) {
+      const nx = getNextPrices()[cropIndex];
+      lines.push(`[[scroll]] In ${Math.ceil(priceChangeTimer)}s: ${nx.toFixed(2)}× ` + (nx > pm + 0.03 ? '(rising)' : (nx < pm - 0.03 ? '(falling)' : '(steady)')));
+    }
     if (crop.weatherAffinity === 'any')
       lines.push('✔ Ignores weather and meteors');
     else if (crop.weatherAffinity === 'solar')
@@ -6954,7 +8174,7 @@
 
   function buildBuildingShopTooltip(i) {
     const b = BUILDINGS[i];
-    const lines = [`[[${b.sprite}]] ${b.name}`, b.desc, (credits >= b.cost ? '✔ ' : '✘ ') + `Costs ${b.cost} cr`];
+    const lines = [`[[${b.sprite}]] ${b.name}`, b.desc, (credits >= getBuildingCost(b) ? '✔ ' : '✘ ') + `Costs ${getBuildingCost(b)} cr`];
     lines.push(b.range > 0 ? `Works on tiles within ${b.range} (grows with level)` : 'Affects the whole farm');
     if (b.name === 'Silo')
       lines.push(`Storage now ${getTotalInventoryCount()}/${getStorageCapacity()}: +50 per silo`);
@@ -7027,7 +8247,13 @@
       case WEATHER_THUNDERSTORM: lines.push('✔ Crops grow twice as fast', '✘ Lightning may destroy crops or scare off animals', 'Wind turbines charge three times faster'); break;
       case WEATHER_SNOW: lines.push('⚠ Crops grow 20% slower while it snows'); break;
       case WEATHER_DUST: lines.push('⚠ Crops grow 25% slower', '⚠ Solar panels barely charge'); break;
-      default: lines.push(['Spring brings rain and the odd storm.', 'Summer brings solar flares, storms and dust.', 'Autumn brings rain, dust and meteors.', 'Winter brings snow and the odd meteor shower.'][currentSeason], 'Weather changes every 25-50 seconds.');
+      default:
+        if (techOwned('sci_forecast')) {
+          const nx = WEATHER_INFO[forecastWeather()] || WEATHER_INFO.none;
+          lines.push(`[[eye]] Forecast: ${nx.name} in ${Math.ceil(weatherInterval)}s`);
+        }
+        lines.push(['Spring brings rain and the odd storm.', 'Summer brings solar flares, storms and dust.', 'Autumn brings rain, dust and meteors.', 'Winter brings snow and the odd meteor shower.'][currentSeason], 'Weather changes every 25-50 seconds.');
+        break;
     }
     return lines;
   }
@@ -7119,9 +8345,11 @@
     frameRegions = [];
     ++hudFrame;
     const playing = state === STATE_PLAYING || state === STATE_PAUSED;
+    // the tech tree covers the whole screen once it is open
+    const covered = dialog === 'tree' && dialogT >= 1;
     ctx.save();
     screenShake.apply(ctx);
-    if (playing)
+    if (playing && !covered)
       drawWorld();
     screenShake.restore(ctx);
     ctx.restore();
@@ -7130,15 +8358,15 @@
     ctx.scale(uiS, uiS);
     if (state === STATE_READY)
       drawTitleScreen();
-    else if (playing) {
+    else if (playing && !covered) {
       drawHUD();
-      if (dialog === 'upgrades')
-        drawUpgradesDialog();
-      else if (dialog === 'livestock')
+      if (dialog === 'livestock')
         drawLivestockDialog();
       if (state === STATE_PAUSED && dialog !== 'help')
         drawPauseScreen();
     }
+    if (dialog === 'tree')
+      drawTreeDialog();
     if (playing) {
       drawFlyers();
       uiParticles.draw(ctx);
@@ -7172,7 +8400,7 @@
     const cell = farmGrid[row][col];
     let ok = true, ghost = null;
     if (selectedTool === TOOL_BUILD && selectedBuildingIndex >= 0) {
-      ok = tt !== TILE_WATER && !bld && credits >= BUILDINGS[selectedBuildingIndex].cost;
+      ok = tt !== TILE_WATER && !bld && credits >= getBuildingCost(BUILDINGS[selectedBuildingIndex]);
       ghost = BUILDINGS[selectedBuildingIndex].sprite;
       const range = BUILDINGS[selectedBuildingIndex].range;
       if (range > 0 && tt !== TILE_WATER) {
@@ -7188,7 +8416,7 @@
     } else if (selectedTool === TOOL_HOE) {
       ok = tt === TILE_WATER || (tt !== TILE_ROCK && isAdjacentToWater(row, col));
     } else if (!bld && !cell && tt !== TILE_WATER) {
-      ok = credits >= CROPS[selectedCropIndex].seedCost;
+      ok = credits >= getSeedCost(CROPS[selectedCropIndex]);
       ghost = CROPS[selectedCropIndex].sprite;
     } else if (cell) {
       ok = cell.growthStage >= CROPS[cell.cropIndex].stages - 1;
@@ -7359,7 +8587,7 @@
   /* Pans the view so a tile stays inside the area between the HUD panels */
   function revealTile(col, row) {
     const g = gridToScreen(col, row);
-    const left = 270 * uiS, right = canvasW - 30 * uiS, top = 90 * uiS, bottom = canvasH - (DOCK_H + 50) * uiS;
+    const left = 270 * uiS, right = canvasW - 300 * uiS, top = 90 * uiS, bottom = canvasH - (DOCK_H + 50) * uiS;
     if (g.x < left) viewPanX += left - g.x;
     else if (g.x + g.size > right) viewPanX -= g.x + g.size - right;
     if (g.y < top) viewPanY += top - g.y;
@@ -7444,7 +8672,11 @@
       return;
 
     if (dialog) {
-      if ((e.code === 'KeyU' && dialog === 'upgrades') || (e.code === 'KeyL' && dialog === 'livestock'))
+      if (dialog === 'tree' && e.code !== 'KeyU' && handleTreeKey(e)) {
+        e.preventDefault();
+        return;
+      }
+      if ((e.code === 'KeyU' && dialog === 'tree') || (e.code === 'KeyL' && dialog === 'livestock'))
         closeDialog();
       return;
     }
@@ -7454,11 +8686,13 @@
     if (digit) {
       const n = parseInt(digit[1], 10);
       const idx = n === 0 ? 9 : n - 1;
-      if (selectedTool === TOOL_BUILD) {
-        if (idx < BUILDINGS.length)
-          selectBuilding(idx);
-      } else if (idx < CROPS.length)
-        selectCrop(idx);
+      const items = dockItems(selectedTool === TOOL_BUILD ? 'build' : 'plant');
+      if (idx < items.length) {
+        if (selectedTool === TOOL_BUILD)
+          selectBuilding(items[idx].index);
+        else
+          selectCrop(items[idx].index);
+      }
       dockFollow = true;
       return;
     }
@@ -7494,13 +8728,15 @@
 
     switch (e.code) {
       case 'KeyS': sellAllProduce(); break;
-      case 'KeyU': toggleDialog('upgrades'); break;
+      case 'KeyU': toggleTree(); break;
       case 'KeyL': toggleDialog('livestock'); break;
       case 'KeyP': setTool('plant'); dockFollow = true; break;
       case 'KeyB':
-        if (selectedTool === TOOL_BUILD)
-          selectBuilding((selectedBuildingIndex + 1) % BUILDINGS.length);
-        else
+        if (selectedTool === TOOL_BUILD) {
+          let i = selectedBuildingIndex;
+          do i = (i + 1) % BUILDINGS.length; while (!isBuildingUnlocked(i));
+          selectBuilding(i);
+        } else
           setTool('build');
         dockFollow = true;
         break;
@@ -7607,6 +8843,12 @@
 
     const region = hitRegion(pointerUX, pointerUY);
     const through = region && !region.modal && hudPassThrough(pointerUX, pointerUY);
+    if (region && !through && region.onDragStart) {
+      dragRegion = region;
+      region.onDragStart(e.button);
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
     if (region && !through) {
       if (e.button !== 0 && e.pointerType === 'mouse') {
         if (!region.modal && state === STATE_PLAYING && !dialog && (e.button === 1 || e.button === 2))
@@ -7671,8 +8913,14 @@
     canvas.setPointerCapture(e.pointerId);
   }
 
+  let dragRegion = null;
+
   canvas.addEventListener('pointermove', (e) => {
     updatePointer(e);
+    if (dragRegion) {
+      dragRegion.onDrag();
+      return;
+    }
     if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
       touches.set(e.pointerId, { x: pointerX, y: pointerY });
       if (pinch && touches.size >= 2) {
@@ -7714,6 +8962,13 @@
 
   canvas.addEventListener('pointerup', (e) => {
     updatePointer(e);
+    if (dragRegion) {
+      const r = dragRegion;
+      dragRegion = null;
+      try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+      r.onDragEnd(e.button);
+      return;
+    }
     if (e.pointerType === 'touch') {
       touches.delete(e.pointerId);
       if (pinch) {
@@ -7779,6 +9034,10 @@
   });
 
   canvas.addEventListener('pointercancel', (e) => {
+    if (dragRegion) {
+      dragRegion = null;
+      treePanning = null;
+    }
     touches.delete(e.pointerId);
     pinch = null;
     pressStart = null;
@@ -7806,7 +9065,7 @@
   /* Fits the whole farm between the HUD panels, with a strip of sky above it */
   function resetView() {
     const T = BASE_TILE_SIZE;
-    const left = 270 * uiS, right = canvasW - 24 * uiS;
+    const left = 270 * uiS, right = canvasW - 300 * uiS;
     const top = canvasH * 0.03, bottom = canvasH - (DOCK_H + 56) * uiS;
     const wx0 = GRID_OFFSET_X - T * 1.2, wx1 = GRID_OFFSET_X + (gridCols + 1.2) * T;
     const wy0 = horizonWorldY() - T * 2.4, wy1 = GRID_OFFSET_Y + (gridRows + 1.3) * T;
