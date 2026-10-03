@@ -156,7 +156,6 @@
   /* ── Effects ── */
   const particles = new SZ.GameEffects.ParticleSystem();
   const screenShake = new SZ.GameEffects.ScreenShake();
-  const floatingText = new SZ.GameEffects.FloatingText();
 
   /* ══════════════════════════════════════════════════════════════════
      GAME STATE
@@ -1814,6 +1813,7 @@
     cachedPlantOrder = [];
     autosaveTimer = 0;
     saveNotice = '';
+    invalidateField();
     return true;
   }
 
@@ -1823,6 +1823,7 @@
       return;
     }
     state = STATE_PLAYING;
+    resetView();
     SZ.GameAudio.play('select');
     updateWindowTitle();
   }
@@ -1907,18 +1908,8 @@
     let bonus = getUpgradeLevel('soilQuality') * 0.15;
 
     // Compost Bin bonus (scales with building level and range)
-    if (col !== undefined) {
-      for (let r2 = 0; r2 < gridRows; ++r2)
-        for (let c2 = 0; c2 < gridCols; ++c2) {
-          if (r2 === row && c2 === col) continue;
-          const bld = buildings[r2]?.[c2];
-          if (!bld) continue;
-          const bdef = BUILDINGS[bld.typeIndex];
-          if (bdef.name !== 'Compost Bin') continue;
-          if (isInBuildingRange(bld, r2, c2, row, col))
-            bonus += getCompostBinBonus(bld);
-        }
-    }
+    if (col !== undefined && row >= 0 && row < gridRows && col >= 0 && col < gridCols)
+      bonus += getField().compost[row * gridCols + col];
 
     return Math.min(1.5, base + bonus);
   }
@@ -2074,10 +2065,11 @@
 
     credits -= cost;
     bld.level = (bld.level || 1) + 1;
+    invalidateField();
 
     const bdef = BUILDINGS[bld.typeIndex];
-    const { x: tx, y: ty } = gridCenterToScreen(col, row);
-    floatingText.add(tx, ty - 10, `${bdef.name} L${bld.level}! -${cost}cr`, { color: '#0ff', font: 'bold 12px sans-serif' });
+    const { x: tx, y: ty } = tileCenter(col, row);
+    popText(tx, ty - 10, `${bdef.name} L${bld.level}! -${cost}cr`, { color: '#0ff', font: 'bold 12px sans-serif' });
     particles.confetti(tx, ty, 10, { speed: 3 });
     SZ.GameAudio.play('powerup', { pitch: 1 + Math.min(bld.level, 10) * 0.04 });
   }
@@ -2245,8 +2237,7 @@
 
     credits -= cost;
     upgradeLevels[def.id] = curLevel + 1;
-    floatingText.add(canvasW / 2, canvasH / 2 - 30, `${def.name} Lv${curLevel + 1}!`, { color: '#0ff', font: 'bold 14px sans-serif' });
-    particles.confetti(canvasW / 2, canvasH / 2, 15, { speed: 4 });
+    announce(`${def.name} ${def.maxLevel > 10 ? 'Lv ' + (curLevel + 1) : (curLevel + 1) + '/' + def.maxLevel}`, def.desc, UI.gold, def.sprite);
     SZ.GameAudio.play('levelup');
 
     if (def.id === 'plotExpansion')
@@ -2394,6 +2385,7 @@
 
     // Advance direction: L -> R -> T -> B -> L -> ...
     expansionDirection = (expansionDirection + 1) % 4;
+    invalidateField();
 
     // Refresh shuffle cache since grid dimensions changed
     refreshShuffleCache();
@@ -2515,6 +2507,7 @@
 
     autosaveTimer = 0;
     saveNotice = '';
+    invalidateField();
     state = STATE_PLAYING;
     SZ.GameAudio.play('select');
     updateWindowTitle();
@@ -2533,9 +2526,13 @@
     };
   }
 
-  function gridCenterToScreen(col, row) {
-    const g = gridToScreen(col, row);
-    return { x: g.x + g.size / 2, y: g.y + g.size / 2 };
+  /* Centre of a tile in world units */
+  function tileCenter(col, row) {
+    return { x: GRID_OFFSET_X + (col + 0.5) * BASE_TILE_SIZE, y: GRID_OFFSET_Y + (row + 0.5) * BASE_TILE_SIZE };
+  }
+
+  function penCenter(pen) {
+    return tileCenter(pen.gridCol, pen.gridRow);
   }
 
   function plantCrop(row, col) {
@@ -2556,7 +2553,7 @@
     };
 
     // Planting animation: seed sparkle + water droplet splash
-    const { x: tx, y: ty } = gridCenterToScreen(col, row);
+    const { x: tx, y: ty } = tileCenter(col, row);
     particles.sparkle(tx, ty, 6, { color: crop.color, speed: 2 });
     // Water droplet splash effect
     for (let i = 0; i < 5; ++i) {
@@ -2572,7 +2569,7 @@
         decay: 0.03
       });
     }
-    floatingText.add(tx, ty - 10, `-${crop.seedCost}cr`, { color: '#f88', font: 'bold 12px sans-serif' });
+    popText(tx, ty - 10, `-${crop.seedCost}cr`, { color: '#f88', font: 'bold 12px sans-serif' });
     SZ.GameAudio.play('drop', { pitch: 1.4, volume: 0.6 });
   }
 
@@ -2585,11 +2582,11 @@
     const maxStage = crop.stages - 1;
     if (cell.growthStage < maxStage) return; // not mature yet
 
-    const { x: tx, y: ty } = gridCenterToScreen(col, row);
+    const { x: tx, y: ty } = tileCenter(col, row);
 
     // Check storage capacity (Feature 7)
     if (getTotalInventoryCount() >= getStorageCapacity()) {
-      floatingText.add(tx, ty - 10, 'Storage Full!', { color: '#f44', font: 'bold 13px sans-serif' });
+      popText(tx, ty - 10, 'Storage Full!', { color: '#f44', font: 'bold 13px sans-serif' });
       if (!auto)
         SZ.GameAudio.play('error');
       return;
@@ -2626,7 +2623,7 @@
 
     const label = harvestCount > 1 ? `+${harvestCount} ${crop.name}!` : `+1 ${crop.name}`;
     const labelColor = harvestCount > 1 ? '#ff0' : '#0f0';
-    floatingText.add(tx, ty - 10, label, { color: labelColor, font: 'bold 12px sans-serif' });
+    popText(tx, ty - 10, label, { color: labelColor, font: 'bold 12px sans-serif' });
     if (!auto)
       SZ.GameAudio.play('pickup', { pitch: harvestCount > 1 ? 1.25 : 1 });
 
@@ -2640,8 +2637,8 @@
     // Hoeing sand converts it to farmland
     if (tt === TILE_SAND) {
       tileTypes[row][col] = TILE_FARMLAND;
-      const { x: tx, y: ty } = gridCenterToScreen(col, row);
-      floatingText.add(tx, ty - 20, 'Soil improved!', { color: '#a84', font: 'bold 10px sans-serif' });
+      const { x: tx, y: ty } = tileCenter(col, row);
+      popText(tx, ty - 20, 'Soil improved!', { color: '#a84', font: 'bold 10px sans-serif' });
     }
     if (buildings[row]?.[col]) return false;
     const curFert = tileFertility[row]?.[col] ?? 0.5;
@@ -2650,8 +2647,8 @@
     tileFertility[row][col] = newFert;
     if (hoedTiles[row])
       hoedTiles[row][col] = true;
-    const { x: tx, y: ty } = gridCenterToScreen(col, row);
-    floatingText.add(tx, ty - 10, `+Fertility (${Math.round(newFert * 100)}%)`, { color: '#4d4', font: 'bold 11px sans-serif' });
+    const { x: tx, y: ty } = tileCenter(col, row);
+    popText(tx, ty - 10, `+Fertility (${Math.round(newFert * 100)}%)`, { color: '#4d4', font: 'bold 11px sans-serif' });
     particles.sparkle(tx, ty, 5, { color: '#4a2', speed: 1.5 });
     SZ.GameAudio.play('thud', { pitch: 1.6, volume: 0.5 });
     return true;
@@ -2688,8 +2685,8 @@
     credits += refund;
     farmGrid[row][col] = null;
 
-    const { x: tx, y: ty } = gridCenterToScreen(col, row);
-    floatingText.add(tx, ty - 10, `Uprooted! +${refund}cr`, { color: '#fa0', font: 'bold 11px sans-serif' });
+    const { x: tx, y: ty } = tileCenter(col, row);
+    popText(tx, ty - 10, `Uprooted! +${refund}cr`, { color: '#fa0', font: 'bold 11px sans-serif' });
     particles.burst(tx, ty, 6, { color: '#a62', speed: 2, life: 0.4 });
     SZ.GameAudio.play('whoosh', { pitch: 0.8, volume: 0.7 });
   }
@@ -2712,6 +2709,7 @@
 
     // Upgrade growth speed multiplier
     const upgradeGrowthMul = getGrowthSpeedMultiplier();
+    const field = getField();
 
     for (let r = 0; r < gridRows; ++r) {
       for (let c = 0; c < gridCols; ++c) {
@@ -2745,22 +2743,10 @@
         if (c < gridCols - 1 && tileTypes[r]?.[c + 1] === TILE_WATER) waterBonus += 0.15;
 
         // Sprinkler bonus, Wind Turbine bonus, and Greenhouse growth bonus (all scale with level and range)
-        let sprinklerBonus = 0;
-        let windTurbineBonus = 0;
-        let greenhouseBonus = 0;
-        for (let br = 0; br < gridRows; ++br)
-          for (let bc = 0; bc < gridCols; ++bc) {
-            if (br === r && bc === c) continue;
-            const adjBld = buildings[br]?.[bc];
-            if (!adjBld) continue;
-            const bdef = BUILDINGS[adjBld.typeIndex];
-            if (bdef.name === 'Sprinkler' && isInBuildingRange(adjBld, br, bc, r, c))
-              sprinklerBonus += getSprinklerBonus(adjBld);
-            else if (bdef.name === 'Wind Turbine' && isInBuildingRange(adjBld, br, bc, r, c))
-              windTurbineBonus += getWindTurbineGrowthBonus(adjBld);
-            else if (bdef.name === 'Greenhouse' && isInBuildingRange(adjBld, br, bc, r, c))
-              greenhouseBonus += getGreenhouseGrowthBonus(adjBld);
-          }
+        const fi = r * gridCols + c;
+        const sprinklerBonus = field.sprinkler[fi];
+        const windTurbineBonus = field.wind[fi];
+        const greenhouseBonus = field.green[fi];
 
         // Season growth modifier (Feature 5)
         const seasonMul = getSeasonGrowthMultiplier();
@@ -2782,7 +2768,7 @@
           cell.growthStage = newStage;
           // Enhanced growth particles: green sparkles rising (scaled with zoom)
           if (viewZoom >= 0.5) {
-            const { x: tx, y: ty } = gridCenterToScreen(c, r);
+            const { x: tx, y: ty } = tileCenter(c, r);
             particles.sparkle(tx, ty, Math.ceil(4 * viewZoom), { color: crop.color, speed: 1.5 });
             const trailCount = Math.ceil(3 * viewZoom);
             for (let p = 0; p < trailCount; ++p)
@@ -2896,8 +2882,8 @@
       inventory[def.produce] = 0;
     ++inventory[def.produce];
 
-    const scr = livestockPenToScreen(pen);
-    floatingText.add(scr.x, scr.y - 10, `+1 ${def.produce}`, { color: '#0f0', font: 'bold 12px sans-serif' });
+    const scr = penCenter(pen);
+    popText(scr.x, scr.y - 10, `+1 ${def.produce}`, { color: '#0f0', font: 'bold 12px sans-serif' });
     particles.sparkle(scr.x, scr.y, 5, { color: def.color, speed: 1.5 });
     SZ.GameAudio.play('pickup', { pitch: 0.85 });
   }
@@ -2973,7 +2959,7 @@
 
     const slot = findNextPerimeterSlot();
     if (!slot) {
-      floatingText.add(canvasW / 2, canvasH / 2 - 20, 'No perimeter space!', { color: '#f44', font: 'bold 13px sans-serif' });
+      toast('No room left for another pen', UI.bad, 'paw');
       SZ.GameAudio.play('error');
       return;
     }
@@ -2987,8 +2973,8 @@
       gridCol: slot.gridCol
     });
 
-    const scr = livestockPenToScreen(livestockPens[livestockPens.length - 1]);
-    floatingText.add(scr.x, scr.y - 15, `-${def.cost}cr`, { color: '#f88', font: 'bold 12px sans-serif' });
+    const scr = penCenter(livestockPens[livestockPens.length - 1]);
+    popText(scr.x, scr.y - 15, `-${def.cost}cr`, { color: '#f88', font: 'bold 12px sans-serif' });
     SZ.GameAudio.play('select');
   }
 
@@ -3021,7 +3007,7 @@
     }
 
     if (totalEarned > 0) {
-      floatingText.add(canvasW / 2, canvasH / 2 - 20, `+${totalEarned} credits`, { color: '#ff0', font: 'bold 16px sans-serif' });
+      toast(`Sold produce for ${totalEarned} credits`, UI.gold, 'coin');
       screenShake.trigger(3, 150);
       SZ.GameAudio.play('coin');
     } else
@@ -3047,16 +3033,17 @@
     // Destroy existing crop if any
     if (farmGrid[row][col] !== null) {
       farmGrid[row][col] = null;
-      const { x: dx, y: dy } = gridCenterToScreen(col, row);
-      floatingText.add(dx, dy - 20, 'Crop removed', { color: '#f84', font: '9px sans-serif' });
+      const { x: dx, y: dy } = tileCenter(col, row);
+      popText(dx, dy - 20, 'Crop removed', { color: '#f84', font: '9px sans-serif' });
     }
 
     credits -= bdef.cost;
     buildings[row][col] = { typeIndex: selectedBuildingIndex, level: 1 };
+    invalidateField();
 
-    const { x: tx, y: ty } = gridCenterToScreen(col, row);
+    const { x: tx, y: ty } = tileCenter(col, row);
     particles.sparkle(tx, ty, 8, { color: '#0ff', speed: 2 });
-    floatingText.add(tx, ty - 10, `-${bdef.cost}cr`, { color: '#f88', font: 'bold 12px sans-serif' });
+    popText(tx, ty - 10, `-${bdef.cost}cr`, { color: '#f88', font: 'bold 12px sans-serif' });
     SZ.GameAudio.play('thud');
   }
 
@@ -3065,8 +3052,9 @@
     if (!buildings[row]?.[col]) return;
     const bdef = BUILDINGS[buildings[row][col].typeIndex];
     buildings[row][col] = null;
-    const { x: tx, y: ty } = gridCenterToScreen(col, row);
-    floatingText.add(tx, ty - 10, `Removed ${bdef.name}`, { color: '#fa0', font: 'bold 11px sans-serif' });
+    invalidateField();
+    const { x: tx, y: ty } = tileCenter(col, row);
+    popText(tx, ty - 10, `Removed ${bdef.name}`, { color: '#fa0', font: 'bold 11px sans-serif' });
     SZ.GameAudio.play('smallExplode', { volume: 0.6 });
   }
 
@@ -3111,7 +3099,7 @@
 
     if (roll < solarChance) {
       weatherType = WEATHER_SOLAR_FLARE;
-      floatingText.add(canvasW / 2, 30, 'SOLAR FLARE -- Growth Boost!', { color: '#ff0', font: 'bold 14px sans-serif' });
+      announce('Solar flare!', 'Crops grow twice as fast, sun-lovers three times', '#ffd23f', 'flare');
       SZ.GameAudio.play('powerup', { pitch: 0.8 });
       // Seed solar glow particles
       for (let i = 0; i < 25; ++i)
@@ -3125,7 +3113,7 @@
         });
     } else if (roll < meteorChance) {
       weatherType = WEATHER_METEOR_SHOWER;
-      floatingText.add(canvasW / 2, 30, 'METEOR SHOWER -- Crop Damage!', { color: '#f44', font: 'bold 14px sans-serif' });
+      announce('Meteor shower!', 'Unprotected crops may be smashed', '#ff7a4a', 'meteor');
 
       // Seed meteor rain particles
       for (let i = 0; i < 40; ++i)
@@ -3150,14 +3138,7 @@
           if (crop.weatherAffinity === 'any') continue;
 
           // Check for Greenhouse protection (range scales with level)
-          let greenhouseProtected = false;
-          for (let gr = 0; gr < gridRows && !greenhouseProtected; ++gr)
-            for (let gc = 0; gc < gridCols && !greenhouseProtected; ++gc) {
-              const gBld = buildings[gr]?.[gc];
-              if (gBld && BUILDINGS[gBld.typeIndex].name === 'Greenhouse' && isInBuildingRange(gBld, gr, gc, r, c))
-                greenhouseProtected = true;
-            }
-          if (greenhouseProtected) continue;
+          if (getField().shelter[r * gridCols + c]) continue;
 
           // cold-vulnerable crops have higher damage chance
           let damageChance = baseDamageChance;
@@ -3166,7 +3147,7 @@
           // Apply weather resistance upgrade
           damageChance *= (1 - resist);
           if (Math.random() < damageChance) {
-            const { x: tx, y: ty } = gridCenterToScreen(c, r);
+            const { x: tx, y: ty } = tileCenter(c, r);
             particles.burst(tx, ty, 8, { color: '#f44', speed: 3, life: 0.4 });
             farmGrid[r][c] = null; // destroy crop
           }
@@ -3176,7 +3157,7 @@
       SZ.GameAudio.play('explode');
     } else if (roll < rainChance) {
       weatherType = WEATHER_RAIN;
-      floatingText.add(canvasW / 2, 30, 'RAIN -- Growth Boost!', { color: '#48f', font: 'bold 14px sans-serif' });
+      announce('Rain', 'Crops grow 50% faster', '#7ab8ff', 'rain');
       SZ.GameAudio.play('whoosh', { pitch: 0.6 });
       for (let i = 0; i < 60; ++i)
         weatherParticles.push({
@@ -3188,7 +3169,7 @@
         });
     } else {
       weatherType = WEATHER_THUNDERSTORM;
-      floatingText.add(canvasW / 2, 30, 'THUNDERSTORM -- Double Growth, Danger!', { color: '#ff0', font: 'bold 14px sans-serif' });
+      announce('Thunderstorm!', 'Double growth, but lightning may strike', '#c8b0ff', 'storm');
       for (let i = 0; i < 80; ++i)
         weatherParticles.push({
           x: Math.random() * canvasW,
@@ -3206,17 +3187,10 @@
           if (!cell) continue;
           const crop = CROPS[cell.cropIndex];
           if (crop.weatherAffinity === 'any') continue;
-          let greenhouseProtected = false;
-          for (let gr = 0; gr < gridRows && !greenhouseProtected; ++gr)
-            for (let gc = 0; gc < gridCols && !greenhouseProtected; ++gc) {
-              const gBld = buildings[gr]?.[gc];
-              if (gBld && BUILDINGS[gBld.typeIndex].name === 'Greenhouse' && isInBuildingRange(gBld, gr, gc, r, c))
-                greenhouseProtected = true;
-            }
-          if (greenhouseProtected) continue;
+          if (getField().shelter[r * gridCols + c]) continue;
           let damageChance = 0.1 * (1 - resist);
           if (Math.random() < damageChance) {
-            const { x: tx, y: ty } = gridCenterToScreen(c, r);
+            const { x: tx, y: ty } = tileCenter(c, r);
             particles.burst(tx, ty, 6, { color: '#ff0', speed: 2.5, life: 0.3 });
             farmGrid[r][c] = null;
           }
@@ -3225,8 +3199,8 @@
       for (let i = livestockPens.length - 1; i >= 0; --i) {
         if (Math.random() < 0.05 * (1 - resist)) {
           const pen = livestockPens[i];
-          const scr = livestockPenToScreen(pen);
-          floatingText.add(scr.x, scr.y - 10, `${LIVESTOCK[pen.typeIndex].name} lost!`, { color: '#f44', font: 'bold 12px sans-serif' });
+          const scr = penCenter(pen);
+          popText(scr.x, scr.y - 10, `${LIVESTOCK[pen.typeIndex].name} lost!`, { color: '#f44', font: 'bold 12px sans-serif' });
           livestockPens.splice(i, 1);
         }
       }
@@ -3278,7 +3252,7 @@
         const noise = (Math.random() - 0.5) * 0.6;
         priceMultipliers[i] = Math.max(PRICE_MIN_MULT, Math.min(PRICE_MAX_MULT, old + drift + noise));
       }
-      floatingText.add(canvasW / 2, 50, 'Market prices updated!', { color: '#8cf', font: 'bold 12px sans-serif' });
+      toast('Market prices changed', '#8cf', 'chart');
     }
   }
 
@@ -3346,8 +3320,8 @@
           ++inventory[def.produce];
 
           if (viewZoom >= 0.5) {
-            const scr = livestockPenToScreen(pen);
-            floatingText.add(scr.x, scr.y - 10, `Auto: +1 ${def.produce}`, { color: '#0cf', font: 'bold 10px sans-serif' });
+            const scr = penCenter(pen);
+            popText(scr.x, scr.y - 10, `Auto: +1 ${def.produce}`, { color: '#0cf', font: 'bold 10px sans-serif' });
             particles.sparkle(scr.x, scr.y, Math.ceil(4 * viewZoom), { color: '#0cf', speed: 1.5 });
           }
         }
@@ -3469,9 +3443,9 @@
             plantAnim: 1.0
           };
           if (viewZoom >= 0.5) {
-            const { x: tx, y: ty } = gridCenterToScreen(nc, nr);
+            const { x: tx, y: ty } = tileCenter(nc, nr);
             particles.sparkle(tx, ty, Math.ceil(4 * viewZoom), { color: crop.color, speed: 1.5 });
-            floatingText.add(tx, ty - 10, `Auto: -${crop.seedCost}cr`, { color: '#8af', font: 'bold 10px sans-serif' });
+            popText(tx, ty - 10, `Auto: -${crop.seedCost}cr`, { color: '#8af', font: 'bold 10px sans-serif' });
           }
         }
       }
@@ -3515,13 +3489,8 @@
     buildingIncomeSurplusAccum -= surplusBonus;
 
     const total = earned + surplusBonus;
-    if (total > 0) {
+    if (total > 0)
       credits += total;
-      if (surplusBonus > 0)
-        floatingText.add(canvasW / 2, 40, `+${total}cr (${earned}+${surplusBonus} surplus)`, { color: '#0ff', font: 'bold 12px sans-serif' });
-      else
-        floatingText.add(canvasW / 2, 40, `+${total}cr (energy income)`, { color: '#0cf', font: 'bold 11px sans-serif' });
-    }
   }
 
   /* ── Wild Animals (Feature 8) ── */
@@ -3595,8 +3564,8 @@
         const eatenCell = farmGrid[bestR][bestC];
         if (eatenCell) {
           farmGrid[bestR][bestC] = null;
-          const { x: tx, y: ty } = gridCenterToScreen(bestC, bestR);
-          floatingText.add(tx, ty - 10, 'Eaten!', { color: '#f44', font: 'bold 11px sans-serif' });
+          const { x: tx, y: ty } = tileCenter(bestC, bestR);
+          popText(tx, ty - 10, 'Eaten!', { color: '#f44', font: 'bold 11px sans-serif' });
           particles.burst(tx, ty, 6, { color: '#f88', speed: 2, life: 0.3 });
           SZ.GameAudio.play('hurt', { volume: 0.6 });
         }
@@ -3614,8 +3583,8 @@
           const fLvl = fBld.level || 1;
           if (fLvl >= 5) {
             // L5+: block AND damage -- kill animal
-            const { x: fx, y: fy } = gridCenterToScreen(nextC, nextR);
-            floatingText.add(fx, fy - 10, 'Zapped!', { color: '#f44', font: 'bold 10px sans-serif' });
+            const { x: fx, y: fy } = tileCenter(nextC, nextR);
+            popText(fx, fy - 10, 'Zapped!', { color: '#f44', font: 'bold 10px sans-serif' });
             particles.burst(fx, fy, 6, { color: '#ff0', speed: 2.5, life: 0.3 });
             SZ.GameAudio.play('zap', { volume: 0.6 });
             wildAnimals.splice(i, 1);
@@ -3654,280 +3623,1383 @@
      DRAWING
      ══════════════════════════════════════════════════════════════════ */
 
-  function drawGrid() {
-    const ts = BASE_TILE_SIZE * viewZoom;
-    for (let r = 0; r < gridRows; ++r) {
-      for (let c = 0; c < gridCols; ++c) {
-        const x = (GRID_OFFSET_X + c * BASE_TILE_SIZE) * viewZoom + viewPanX;
-        const y = (GRID_OFFSET_Y + r * BASE_TILE_SIZE) * viewZoom + viewPanY;
-        const cell = farmGrid[r][c];
-        const tt = tileTypes[r]?.[c] ?? TILE_FARMLAND;
-        const bld = buildings[r]?.[c];
 
-        // Skip tiles fully off-screen
-        if (x + ts < 0 || x > canvasW || y + ts < 0 || y > canvasH) continue;
 
-        // Draw tile base by type
-        if (tt === TILE_ROCK) {
-          // Gray stone base
-          ctx.fillStyle = '#666';
-          ctx.fillRect(x + 1, y + 1, ts - 2, ts - 2);
-          // Lighter gray stone spots
-          const seed = r * 31 + c * 17;
-          for (let si = 0; si < 4; ++si) {
-            const sx = x + 4 + ((seed * (si + 1) * 7) % ((ts - 8) | 1));
-            const sy = y + 4 + ((seed * (si + 1) * 13) % ((ts - 8) | 1));
-            const sr = 2 + (si % 2) * 1.5;
-            ctx.fillStyle = '#888';
-            ctx.beginPath();
-            ctx.arc(sx, sy, sr * viewZoom, 0, TWO_PI);
-            ctx.fill();
-          }
-          ctx.strokeStyle = '#555';
-          ctx.lineWidth = 0.5;
-          ctx.strokeRect(x + 1, y + 1, ts - 2, ts - 2);
-          // Rock tiles can now have buildings and crops (Feature 2)
+  /* ══════════════════════════════════════════════════════════════════
+     WORLD ART — sky, ground, tiles, crops, buildings, animals, light
+     Everything below the HUD is drawn in world units inside the view
+     transform; tile textures and decorations are baked once per season
+     ══════════════════════════════════════════════════════════════════ */
+
+  const TEX = 14;                    // texels per tile edge (4 world units each)
+  let animT = 0;                     // world animation clock (stops while paused)
+
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function hash2(x, y) {
+    let h = (x * 374761393 + y * 668265263) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  }
+
+  function smoothstep(a, b, x) {
+    const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  }
+
+  function mixHex(a, b, t) {
+    const A = parseHex(a), B = parseHex(b);
+    const m = (i) => Math.round(A[i] + (B[i] - A[i]) * t);
+    return '#' + ((1 << 24) | (m(0) << 16) | (m(1) << 8) | m(2)).toString(16).slice(1);
+  }
+
+  /* 0 at noon .. 1 at midnight, with soft dusk and dawn */
+  function nightAmount() {
+    const p = dayPhase;
+    if (p < 0.42) return p < 0.04 ? 1 - smoothstep(-0.04, 0.04, p) : 0;
+    if (p < 0.54) return smoothstep(0.42, 0.54, p);
+    if (p < 0.92) return 1;
+    return 1 - smoothstep(0.92, 1.04, p);
+  }
+
+  /* 0..1 how golden the light is (sunrise and sunset) */
+  function duskAmount() {
+    const p = dayPhase;
+    return Math.max(0, 1 - Math.abs(p - 0.48) / 0.07, 1 - Math.abs(p - 0.97) / 0.06, p < 0.03 ? 1 - p / 0.06 : 0);
+  }
+
+  const SEASON_PAL = [
+    { name: 'spring', turf: ['#1f6a54', '#2a8a62', '#3aa872', '#62c88a'], flower: ['#ff9ad0', '#ffffff', '#c890ff'], soil: ['#4e3220', '#64412a', '#7d5634'] },
+    { name: 'summer', turf: ['#3a6a2a', '#4f8a32', '#6aa83a', '#9cc85a'], flower: ['#ffd23f', '#ff7a4a', '#ffffff'], soil: ['#5a3a20', '#73502c', '#906a3a'] },
+    { name: 'autumn', turf: ['#5a4a26', '#7a6430', '#9a7a36', '#c49a4a'], flower: ['#ff7a2a', '#e23b3b', '#ffb648'], soil: ['#4a3020', '#62402a', '#7a5434'] },
+    { name: 'winter', turf: ['#a8b8d0', '#c8d6ea', '#dfe9f5', '#ffffff'], flower: ['#8fd3ff', '#ffffff', '#c8d6ea'], soil: ['#40302a', '#54403a', '#6a564c'] }
+  ];
+
+  /* Bakes a TEX x TEX texture scaled to the full tile size with crisp pixels */
+  const texCache = {};
+  function bakeTexture(key, w, h, scale, paint) {
+    let cv = texCache[key];
+    if (cv) return cv;
+    const src = document.createElement('canvas');
+    src.width = w;
+    src.height = h;
+    const g = src.getContext('2d');
+    const put = (x, y, c) => {
+      if (x < 0 || y < 0 || x >= w || y >= h || !c) return;
+      g.fillStyle = c;
+      g.fillRect(x, y, 1, 1);
+    };
+    paint(put, g);
+    cv = document.createElement('canvas');
+    cv.width = w * scale;
+    cv.height = h * scale;
+    const g2 = cv.getContext('2d');
+    g2.imageSmoothingEnabled = false;
+    g2.drawImage(src, 0, 0, w * scale, h * scale);
+    texCache[key] = cv;
+    return cv;
+  }
+
+  function tileTexture(type, variant, season, flags) {
+    const pal = SEASON_PAL[season];
+    const winter = season === 3;
+    const key = `t${type}:${variant}:${season}:${flags}`;
+    return bakeTexture(key, TEX, TEX, 4, (put) => {
+      const rnd = mulberry32(variant * 7919 + type * 131 + season * 17 + flags * 3);
+      const wet = flags & 1, rich = flags & 2;
+      if (type === TILE_FARMLAND) {
+        let [dk, md, lt] = pal.soil;
+        if (wet) {
+          dk = shadeColor(dk, -0.28); md = shadeColor(md, -0.28); lt = shadeColor(lt, -0.25);
         }
-
-        else if (tt === TILE_WATER) {
-          // Blue water tile with animated shimmer
-          ctx.fillStyle = '#2288cc';
-          ctx.fillRect(x + 1, y + 1, ts - 2, ts - 2);
-          // Animated wave shimmer
-          const wave1 = 0.15 + 0.1 * Math.sin(gameTime * 2 + r * 1.5 + c * 2.3);
-          ctx.fillStyle = `rgba(100,200,255,${wave1})`;
-          ctx.fillRect(x + 1, y + 1, ts - 2, ts / 3);
-          const wave2 = 0.1 + 0.08 * Math.sin(gameTime * 3 + r * 2.7 + c * 1.1);
-          ctx.fillStyle = `rgba(150,230,255,${wave2})`;
-          ctx.fillRect(x + 1, y + ts * 0.5, ts - 2, ts / 4);
-          ctx.strokeStyle = '#1a6699';
-          ctx.lineWidth = 0.5;
-          ctx.strokeRect(x + 1, y + 1, ts - 2, ts - 2);
-          continue; // no crops or buildings on water
+        if (rich) {
+          dk = mixHex(dk, '#2a2a18', 0.3); md = mixHex(md, '#3a3420', 0.3);
         }
-
-        else if (tt === TILE_SAND) {
-          // Sandy yellow tile
-          ctx.fillStyle = '#c4a855';
-          ctx.fillRect(x + 1, y + 1, ts - 2, ts - 2);
-          // Subtle sand grain texture
-          ctx.fillStyle = 'rgba(180,160,100,0.2)';
-          const gseed = r * 41 + c * 23;
-          for (let gi = 0; gi < 3; ++gi) {
-            const gx = x + 3 + ((gseed * (gi + 1) * 11) % ((ts - 6) | 1));
-            const gy = y + 3 + ((gseed * (gi + 1) * 19) % ((ts - 6) | 1));
-            ctx.beginPath();
-            ctx.arc(gx, gy, (1 + gi * 0.5) * viewZoom, 0, TWO_PI);
-            ctx.fill();
+        for (let y = 0; y < TEX; ++y)
+          for (let x = 0; x < TEX; ++x) {
+            const row = (y + 1) % 4;
+            let c = row === 0 ? lt : (row === 2 ? dk : md);
+            if (rnd() < 0.08) c = row === 0 ? md : lt;
+            put(x, y, c);
           }
-          ctx.strokeStyle = '#a89040';
-          ctx.lineWidth = 0.5;
-          ctx.strokeRect(x + 1, y + 1, ts - 2, ts - 2);
+        for (let i = 0; i < 3; ++i)
+          put(Math.floor(rnd() * TEX), Math.floor(rnd() * TEX), wet ? '#7a6a62' : '#a8927a');
+        if (wet)
+          for (let i = 0; i < 4; ++i)
+            put(Math.floor(rnd() * TEX), (Math.floor(rnd() * 4) * 4 + 1) % TEX, '#8ab0d0');
+        if (rich)
+          for (let i = 0; i < 3; ++i)
+            put(Math.floor(rnd() * TEX), Math.floor(rnd() * TEX), '#5aa040');
+        if (winter)
+          for (let y = 3; y < TEX; y += 4)
+            for (let x = 0; x < TEX; ++x)
+              if (rnd() < 0.55) put(x, y, rnd() < 0.7 ? '#eef4ff' : '#c8d6ea');
+      } else if (type === TILE_SAND) {
+        const base = winter ? '#d8d0c0' : '#d6b46a', dark = winter ? '#bab4aa' : '#c09a52', light = winter ? '#f4f4f8' : '#ecd08c';
+        for (let y = 0; y < TEX; ++y)
+          for (let x = 0; x < TEX; ++x)
+            put(x, y, base);
+        for (let k = 0; k < 3; ++k) {
+          const y0 = 2 + k * 4 + Math.floor(rnd() * 2);
+          for (let x = 0; x < TEX; ++x) {
+            const y = y0 + Math.round(Math.sin((x + k * 3) * 0.7));
+            put(x, y, dark);
+            put(x, y - 1, light);
+          }
+        }
+        for (let i = 0; i < 4; ++i)
+          put(Math.floor(rnd() * TEX), Math.floor(rnd() * TEX), rnd() < 0.5 ? '#f8e6b0' : '#a88a4a');
+      } else if (type === TILE_ROCK) {
+        const [dk, md] = pal.soil;
+        for (let y = 0; y < TEX; ++y)
+          for (let x = 0; x < TEX; ++x)
+            put(x, y, rnd() < 0.3 ? dk : md);
+        const boulders = 1 + Math.floor(rnd() * 2);
+        for (let b = 0; b < boulders; ++b) {
+          const cx = 3 + rnd() * 8, cy = 4 + rnd() * 6, rx = 2.5 + rnd() * 2.5, ry = 2 + rnd() * 1.8;
+          for (let y = 0; y < TEX; ++y)
+            for (let x = 0; x < TEX; ++x) {
+              const dx = (x - cx) / rx, dy = (y - cy) / ry;
+              const d = dx * dx + dy * dy;
+              if (d > 1) continue;
+              let c = '#8a8a96';
+              if (dy < -0.35 && dx < 0.3) c = '#b4b4c2';
+              else if (dy > 0.45 || dx > 0.6) c = '#5e5e6c';
+              if (d > 0.82) c = '#3e3e4a';
+              if (winter && dy < -0.3) c = '#f0f6ff';
+              put(x, y, c);
+            }
+          if (!winter && season < 2 && rnd() < 0.7)
+            put(Math.round(cx - rx * 0.5), Math.round(cy + ry * 0.4), '#4a9a4a');
+        }
+      } else if (type === TILE_WATER) {
+        // flags carries the animation frame for water
+        const frame = flags;
+        if (winter) {
+          for (let y = 0; y < TEX; ++y)
+            for (let x = 0; x < TEX; ++x)
+              put(x, y, (x + y) % 7 === 0 ? '#c8e8f8' : '#9ccbe8');
+          for (let i = 0; i < 6; ++i)
+            put(Math.floor(rnd() * TEX), Math.floor(rnd() * TEX), '#eef8ff');
+          let x = Math.floor(rnd() * TEX), y = 0;
+          while (y < TEX) {
+            put(x, y, '#6a9cc0');
+            x += Math.floor(rnd() * 3) - 1;
+            ++y;
+          }
         } else {
-          // TILE_FARMLAND: existing brown/green rendering
-          const q = getTileSoilQuality(r, c);
-          ctx.fillStyle = cell ? '#3a2a1a' : '#2a1a0a';
-          ctx.fillRect(x + 1, y + 1, ts - 2, ts - 2);
-
-          // Soil quality tint overlay: greener = better, yellower = worse
-          if (q >= 0.9) {
-            const ga = Math.min(0.2, (q - 0.9) * 0.5);
-            ctx.fillStyle = `rgba(0,180,40,${ga})`;
-          } else {
-            const ya = Math.min(0.25, (0.9 - q) * 0.4);
-            ctx.fillStyle = `rgba(180,160,40,${ya})`;
-          }
-          ctx.fillRect(x + 1, y + 1, ts - 2, ts - 2);
-
-          ctx.strokeStyle = '#5a4a3a';
-          ctx.lineWidth = 0.5;
-          ctx.strokeRect(x + 1, y + 1, ts - 2, ts - 2);
-        }
-
-        // Hoed tile indicator: draw furrow lines on fertilized farmland
-        if (hoedTiles[r]?.[c] && (tt === TILE_FARMLAND || tt === TILE_SAND)) {
-          ctx.save();
-          ctx.strokeStyle = 'rgba(100,180,60,0.35)';
-          ctx.lineWidth = Math.max(0.5, viewZoom);
-          const furrowGap = Math.max(4, 6 * viewZoom);
-          for (let fy = y + 4 * viewZoom; fy < y + ts - 2 * viewZoom; fy += furrowGap) {
-            ctx.beginPath();
-            ctx.moveTo(x + 3 * viewZoom, fy);
-            ctx.lineTo(x + ts - 3 * viewZoom, fy);
-            ctx.stroke();
-          }
-          ctx.restore();
-        }
-
-        // Draw building on tile
-        if (bld) {
-          const bdef = BUILDINGS[bld.typeIndex];
-          const bLvl = bld.level || 1;
-
-          // Building border indicator (brighter at higher levels)
-          const borderBright = Math.min(255, 150 + bLvl * 20);
-          ctx.strokeStyle = `rgb(0,${borderBright},${borderBright})`;
-          ctx.lineWidth = 1.5 + (bLvl - 1) * 0.3;
-          ctx.strokeRect(x + 2, y + 2, ts - 4, ts - 4);
-
-          // Dark backdrop for icon visibility
-          const pad = 4 * viewZoom;
-          ctx.fillStyle = 'rgba(0,0,0,0.55)';
-          ctx.beginPath();
-          ctx.arc(x + ts / 2, y + ts / 2, ts / 3, 0, TWO_PI);
-          ctx.fill();
-
-          // Building sprite (slightly larger at higher levels)
-          const iconScale = 1 + (bLvl - 1) * 0.06;
-          drawSprite(bdef.sprite, x + ts / 2, y + ts / 2, 32 * viewZoom * iconScale);
-
-          // Level badge in top-right corner
-          if (bLvl > 1) {
-            const badgeSize = Math.round(12 * viewZoom);
-            const badgeX = x + ts - badgeSize - 1;
-            const badgeY = y + 1;
-            ctx.fillStyle = 'rgba(0,180,255,0.85)';
-            ctx.beginPath();
-            ctx.arc(badgeX + badgeSize / 2, badgeY + badgeSize / 2, badgeSize / 2, 0, TWO_PI);
-            ctx.fill();
-            ctx.fillStyle = '#fff';
-            ctx.font = `bold ${Math.round(8 * viewZoom)}px sans-serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(`L${bLvl}`, badgeX + badgeSize / 2, badgeY + badgeSize / 2);
-          }
-
-          continue; // buildings occupy the tile, no crop rendering
-        }
-
-        if (cell) {
-          const crop = CROPS[cell.cropIndex];
-          const maxStage = crop.stages - 1;
-          const mature = cell.growthStage >= maxStage;
-
-          // Growth indicator bar
-          const progress = Math.min(1, cell.growthProgress);
-          ctx.fillStyle = mature ? '#4a4' : crop.color;
-          ctx.fillRect(x + 3, y + ts - 6 * viewZoom, (ts - 6) * progress, 2 * viewZoom);
-
-          // Special crop background effects
-          if (crop.weatherAffinity === 'any') {
-            ctx.fillStyle = `rgba(90,30,120,${0.15 + 0.05 * Math.sin(gameTime * 2 + r * 3 + c)})`;
-            ctx.fillRect(x + 2, y + 2, ts - 4, ts - 4);
-          } else if (crop.weatherAffinity === 'cold-vulnerable') {
-            const pulse = 0.1 + 0.08 * Math.sin(gameTime * 4 + c * 2);
-            ctx.fillStyle = `rgba(255,80,20,${pulse})`;
-            ctx.fillRect(x + 2, y + 2, ts - 4, ts - 4);
-            // Outer glow via shadow — use save/restore to isolate shadow state
-            ctx.save();
-            ctx.shadowBlur = 6;
-            ctx.shadowColor = '#f52';
-            ctx.fillStyle = `rgba(255,80,20,${pulse * 0.5})`;
-            ctx.fillRect(x + 2, y + 2, ts - 4, ts - 4);
-            ctx.restore();
-          } else if (crop.weatherAffinity === 'solar') {
-            const shimmer = 0.08 + 0.06 * Math.sin(gameTime * 3 + r + c * 5);
-            ctx.fillStyle = `rgba(140,180,255,${shimmer})`;
-            ctx.fillRect(x + 2, y + 2, ts - 4, ts - 4);
-            const sparkleT = gameTime * 5 + r * 7 + c * 11;
-            const sx = x + ts / 2 + Math.sin(sparkleT) * 14 * viewZoom;
-            const sy = y + ts / 2 + Math.cos(sparkleT * 1.3) * 10 * viewZoom;
-            ctx.globalAlpha = 0.5 + 0.4 * Math.sin(sparkleT * 2);
-            ctx.fillStyle = '#fff';
-            ctx.beginPath();
-            ctx.arc(sx, sy, 1.2 * viewZoom, 0, TWO_PI);
-            ctx.fill();
-            ctx.globalAlpha = 1;
-          }
-
-          // Crop icon with plantAnim scale bounce
-          const scale = cell.plantAnim > 0 ? 1 + Math.sin(cell.plantAnim * Math.PI) * 0.4 : 1;
-          ctx.save();
-          ctx.translate(x + ts / 2, y + ts / 2 - 4 * viewZoom);
-          ctx.scale(scale, scale);
-          drawSprite(getCropStageSprite(crop, cell.growthStage), 0, 0, (mature ? 48 : 28 + cell.growthStage * 4) * viewZoom);
-          ctx.restore();
-
-          // Light glow on mature crops
-          if (mature) {
-            ctx.save();
-            ctx.shadowBlur = 4;
-            ctx.shadowColor = crop.color;
-            ctx.strokeStyle = `${crop.color}55`;
-            ctx.lineWidth = 1.5;
-            ctx.strokeRect(x + 3, y + 3, ts - 6, ts - 6);
-            ctx.restore();
+          for (let y = 0; y < TEX; ++y)
+            for (let x = 0; x < TEX; ++x)
+              put(x, y, y < 3 ? '#2f6ac8' : (y > 10 ? '#20509e' : '#2a5fb8'));
+          for (let k = 0; k < 5; ++k) {
+            const wx = (Math.floor(rnd() * TEX) + frame * 2) % TEX, wy = Math.floor(rnd() * TEX);
+            put(wx, wy, '#8fd3ff');
+            put((wx + 1) % TEX, wy, '#5aa8f0');
           }
         }
       }
+    });
+  }
+
+  function turfPattern(season) {
+    const key = 'turfpat:' + season;
+    if (texCache[key]) return texCache[key];
+    const pal = SEASON_PAL[season];
+    const S = TEX * 4;
+    const tex = bakeTexture('turf:' + season, S, S, 4, (put) => {
+      const rnd = mulberry32(4242 + season);
+      for (let y = 0; y < S; ++y)
+        for (let x = 0; x < S; ++x) {
+          const n = Math.sin(x * 0.31) + Math.cos(y * 0.27) + Math.sin((x + y) * 0.13);
+          put(x, y, n > 1 ? pal.turf[2] : (n < -1 ? pal.turf[0] : pal.turf[1]));
+        }
+      for (let i = 0; i < 260; ++i) {
+        const x = Math.floor(rnd() * S), y = Math.floor(rnd() * S);
+        put(x, y, pal.turf[3]);
+        put(x, y + 1, pal.turf[2]);
+      }
+      for (let i = 0; i < 14; ++i) {
+        const x = Math.floor(rnd() * S), y = Math.floor(rnd() * S);
+        const c = pal.flower[Math.floor(rnd() * pal.flower.length)];
+        put(x, y, c);
+        if (season !== 3) {
+          put(x - 1, y, c); put(x + 1, y, c); put(x, y - 1, c); put(x, y + 1, '#2a5a3a');
+          put(x, y, '#ffe48a');
+        }
+      }
+    });
+    const pat = ctx.createPattern(tex, 'repeat');
+    texCache[key] = pat;
+    return pat;
+  }
+
+  /* ── Decorations scattered on the meadow around the field ── */
+
+  const DECOR_PAINTERS = {
+    tree: (p, P, s) => {
+      p.rect(7, 9, 2, 6, P.dbrown);
+      const leaf = [P.teal, P.green, P.orange, '#e8f0ff'][s];
+      const leaf2 = [P.cyan, P.lime, P.yellow, '#ffffff'][s];
+      p.disc(8, 6, 5, leaf);
+      p.disc(5, 8, 3, leaf); p.disc(11, 8, 3, leaf);
+      p.disc(7, 4, 2, leaf2, true);
+      if (s === 0) { p.px(5, 5, P.pink, true); p.px(10, 7, P.pink, true); p.px(8, 9, P.pink, true); }
+      if (s === 1) { p.px(5, 6, P.red, true); p.px(10, 5, P.red, true); }
+    },
+    crystal: (p, P) => {
+      p.poly([[6, 15], [4, 7], [7, 2], [9, 7], [8, 15]], P.cyan);
+      p.poly([[9, 15], [10, 9], [13, 6], [13, 12], [11, 15]], P.violet);
+      p.poly([[3, 15], [2, 11], [5, 10], [6, 15]], P.sky);
+      p.line(6, 4, 6, 12, P.white, true);
+    },
+    boulder: (p, P, s) => {
+      p.ell(8, 11, 6, 4, P.grey);
+      p.ell(7, 9, 4, 3, P.steel);
+      if (s === 3) p.ell(7, 8, 4, 1.5, P.white);
+      else if (s < 2) p.px(4, 12, P.leaf, true);
+    },
+    shroom: (p, P) => {
+      p.rect(4, 10, 2, 5, P.cream); p.rect(10, 9, 2, 6, P.cream);
+      p.ell(5, 9, 3.5, 2, P.violet); p.ell(11, 8, 3.5, 2.5, P.purple);
+      p.px(4, 8, P.cyan, true); p.px(11, 7, P.cyan, true); p.px(12, 8, P.cyan, true);
+    },
+    reeds: (p, P, s) => {
+      const c = [P.leaf, P.green, P.tan, P.steel][s];
+      for (const x of [4, 7, 10, 12]) p.line(x, 15, x + 1, 5 + (x % 3), c);
+      p.ell(5, 5, 0.8, 1.6, P.brown); p.ell(11, 6, 0.8, 1.6, P.brown);
+    },
+    bloom: (p, P, s) => {
+      const col = [[P.pink, P.white], [P.yellow, P.orange], [P.orange, P.red], [P.sky, P.white]][s];
+      for (const [x, y, i] of [[4, 8, 0], [9, 6, 1], [12, 10, 0], [6, 12, 1]]) {
+        p.line(x, y + 1, x, 15, P.leaf);
+        p.disc(x, y, 1.5, col[i]);
+        p.px(x, y, P.yellow, true);
+      }
+    }
+  };
+  const DECOR_KINDS = ['tree', 'crystal', 'boulder', 'shroom', 'reeds', 'bloom', 'bloom', 'tree'];
+
+  function decorSprite(kind, season) {
+    const key = 'decor:' + kind + ':' + season;
+    if (!spriteCache[key])
+      spriteCache[key] = bakeSprite((p, P) => DECOR_PAINTERS[kind](p, P, season));
+    return spriteCache[key];
+  }
+
+  /* ── Sky: gradient by time of day and season, stars, planets, sun, moon ── */
+
+  const skyStars = [];
+  for (let i = 0; i < 220; ++i)
+    skyStars.push({ x: Math.random(), y: Math.random(), s: Math.random(), p: Math.random() * TWO_PI });
+
+  const MOUNTAINS = [0, 1, 2].map(k => {
+    const pts = [];
+    const rnd = mulberry32(99 + k * 31);
+    const f = [rnd() * 3, rnd() * 3, rnd() * 3];
+    for (let i = 0; i <= 256; ++i) {
+      const x = i / 256 * TWO_PI;
+      pts.push(Math.sin(x * 2 + f[0]) * 0.45 + Math.sin(x * 5 + f[1]) * 0.3 + Math.sin(x * 11 + f[2]) * 0.15 + (k === 0 ? Math.max(0, Math.sin(x * 3 + f[0])) * 0.5 : 0));
+    }
+    return pts;
+  });
+
+  function skyColors() {
+    const n = nightAmount(), d = duskAmount();
+    const season = currentSeason;
+    let top = mixHex(['#3a7ae0', '#3a86e8', '#4a6ab8', '#7a9ad0'][season], '#070a1e', n);
+    let mid = mixHex(['#8ad8e8', '#a8dcf0', '#e0a87a', '#c8dcef'][season], '#1a1840', n);
+    let low = mixHex(['#c8f0d8', '#fff0b0', '#ffc890', '#f0f4ff'][season], '#2a2050', n);
+    if (d > 0) {
+      top = mixHex(top, '#4a3a8a', d * 0.6);
+      mid = mixHex(mid, '#ff8a6a', d * 0.7);
+      low = mixHex(low, '#ffc86a', d * 0.8);
+    }
+    return { top, mid, low, n, d };
+  }
+
+  /* World y of the horizon line (a few tiles above the field) */
+  function horizonWorldY() {
+    return GRID_OFFSET_Y - BASE_TILE_SIZE * 2.2;
+  }
+
+  function drawSky() {
+    const sc = skyColors();
+    const hy = viewPanY + horizonWorldY() * viewZoom;
+    const g = ctx.createLinearGradient(0, Math.min(0, hy - canvasH), 0, Math.max(hy, 10));
+    g.addColorStop(0, sc.top);
+    g.addColorStop(0.65, sc.mid);
+    g.addColorStop(1, sc.low);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, canvasW, Math.max(0, Math.min(canvasH, hy + 4)));
+    if (hy <= 0) return;
+
+    // Stars and nebula at night
+    if (sc.n > 0.05) {
+      ctx.save();
+      for (const s of skyStars) {
+        const sy = s.y * hy;
+        if (sy > hy - 10) continue;
+        ctx.globalAlpha = sc.n * (0.3 + 0.7 * Math.abs(Math.sin(animT * (0.4 + s.s) + s.p)));
+        ctx.fillStyle = s.s > 0.88 ? '#ffe8b0' : '#cfe0ff';
+        const sz = s.s > 0.92 ? 2 : 1;
+        ctx.fillRect(((s.x * canvasW + viewPanX * 0.03) % canvasW + canvasW) % canvasW, sy, sz, sz);
+      }
+      ctx.globalAlpha = sc.n * 0.25;
+      const ng = ctx.createRadialGradient(canvasW * 0.3, hy * 0.35, 10, canvasW * 0.3, hy * 0.35, canvasW * 0.35);
+      ng.addColorStop(0, '#a060d0');
+      ng.addColorStop(1, 'rgba(160,96,208,0)');
+      ctx.fillStyle = ng;
+      ctx.fillRect(0, 0, canvasW, hy);
+      ctx.restore();
+    }
+
+    // Ringed gas giant and a small moon, drifting with a hint of parallax
+    const R = Math.min(canvasW, canvasH) * 0.12;
+    const gx = canvasW * 0.8 + viewPanX * 0.04, gy = Math.max(R * 0.75, hy - R * 1.6) + viewPanY * 0.02;
+    ctx.save();
+    ctx.globalAlpha = 0.55 + sc.n * 0.4;
+    const pg = ctx.createRadialGradient(gx - R * 0.4, gy - R * 0.4, R * 0.1, gx, gy, R);
+    pg.addColorStop(0, '#ffe0b0');
+    pg.addColorStop(0.55, '#e08a6a');
+    pg.addColorStop(1, '#6a3060');
+    ctx.fillStyle = pg;
+    ctx.beginPath();
+    ctx.arc(gx, gy, R, 0, TWO_PI);
+    ctx.fill();
+    ctx.translate(gx, gy);
+    ctx.rotate(-0.3);
+    ctx.scale(1, 0.26);
+    ctx.lineWidth = R * 0.22;
+    ctx.strokeStyle = 'rgba(255,225,180,0.5)';
+    ctx.beginPath();
+    ctx.arc(0, 0, R * 1.6, Math.PI * 0.02, Math.PI * 0.98);
+    ctx.stroke();
+    ctx.restore();
+    const mx = canvasW * 0.18 + viewPanX * 0.06, my = hy - R * 2.2 + viewPanY * 0.03;
+    ctx.save();
+    ctx.globalAlpha = 0.5 + sc.n * 0.5;
+    ctx.fillStyle = '#c8d0e8';
+    ctx.beginPath();
+    ctx.arc(mx, my, R * 0.28, 0, TWO_PI);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(120,130,170,0.6)';
+    ctx.beginPath();
+    ctx.arc(mx - R * 0.08, my - R * 0.06, R * 0.07, 0, TWO_PI);
+    ctx.arc(mx + R * 0.1, my + R * 0.08, R * 0.05, 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+
+    // Sun by day, moon by night, travelling over the sky
+    const arcX = (u) => canvasW * (0.1 + 0.8 * u);
+    const arcY = (u) => hy - Math.sin(u * Math.PI) * Math.min(hy * 0.8, canvasH * 0.5) + 30;
+    if (dayPhase < 0.55) {
+      const u = dayPhase / 0.55;
+      const sx = arcX(u), sy = arcY(u);
+      const sr = Math.max(10, R * 0.32);
+      const glow = ctx.createRadialGradient(sx, sy, sr * 0.5, sx, sy, sr * 4);
+      glow.addColorStop(0, `rgba(255,240,180,${0.55 * (1 - sc.n)})`);
+      glow.addColorStop(1, 'rgba(255,240,180,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(sx - sr * 4, sy - sr * 4, sr * 8, sr * 8);
+      ctx.fillStyle = sc.d > 0.3 ? '#ffb070' : '#fff4c8';
+      ctx.beginPath();
+      ctx.arc(sx, sy, sr, 0, TWO_PI);
+      ctx.fill();
+    } else {
+      const u = (dayPhase - 0.5) / 0.5;
+      const sx = arcX(u), sy = arcY(u);
+      const sr = Math.max(8, R * 0.24);
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, sc.n * 1.4);
+      const glow = ctx.createRadialGradient(sx, sy, sr * 0.5, sx, sy, sr * 3.5);
+      glow.addColorStop(0, 'rgba(200,220,255,0.35)');
+      glow.addColorStop(1, 'rgba(200,220,255,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(sx - sr * 4, sy - sr * 4, sr * 8, sr * 8);
+      ctx.fillStyle = '#eef2ff';
+      ctx.beginPath();
+      ctx.arc(sx, sy, sr, 0, TWO_PI);
+      ctx.fill();
+      ctx.fillStyle = sc.top;
+      ctx.beginPath();
+      ctx.arc(sx + sr * 0.45, sy - sr * 0.2, sr * 0.85, 0, TWO_PI);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Mountain layers with atmospheric perspective
+    const layerCols = [
+      mixHex(sc.mid, '#3a4a7a', 0.45 + sc.n * 0.2),
+      mixHex(sc.mid, '#24405a', 0.65 + sc.n * 0.15),
+      mixHex(SEASON_PAL[currentSeason].turf[0], '#0a1424', 0.25 + sc.n * 0.5)
+    ];
+    const heights = [1, 0.62, 0.3];
+    const para = [0.15, 0.3, 0.55];
+    for (let k = 0; k < 3; ++k) {
+      const pts = MOUNTAINS[k];
+      const period = 1600 * Math.max(0.5, viewZoom) * (1 + k * 0.3);
+      const amp = Math.min(hy * 0.75, 160 * Math.max(0.5, Math.min(1.4, viewZoom))) * heights[k];
+      const base = hy + 2 - k * 2;
+      const off = ((viewPanX * para[k]) % period + period) % period;
+      ctx.fillStyle = layerCols[k];
+      ctx.beginPath();
+      ctx.moveTo(0, base);
+      for (let x = 0; x <= canvasW + 8; x += 8) {
+        const u = ((x - off) / period % 1 + 1) % 1;
+        const i = u * 256, i0 = Math.floor(i), fr = i - i0;
+        const v = pts[i0] * (1 - fr) + pts[Math.min(256, i0 + 1)] * fr;
+        ctx.lineTo(x, base - amp * (0.55 + v * 0.45));
+      }
+      ctx.lineTo(canvasW, base);
+      ctx.closePath();
+      ctx.fill();
+      if (currentSeason === 3 && k < 2) {
+        ctx.save();
+        ctx.clip();
+        ctx.fillStyle = 'rgba(240,246,255,0.55)';
+        ctx.fillRect(0, base - amp * 1.1, canvasW, amp * 0.35);
+        ctx.restore();
+      }
+    }
+    // Summer haze / horizon glow
+    const hz = ctx.createLinearGradient(0, hy - 60, 0, hy + 4);
+    hz.addColorStop(0, 'rgba(255,255,255,0)');
+    hz.addColorStop(1, currentSeason === 1 ? `rgba(255,236,180,${0.35 * (1 - sc.n)})` : `rgba(220,240,255,${0.18 * (1 - sc.n)})`);
+    ctx.fillStyle = hz;
+    ctx.fillRect(0, hy - 60, canvasW, 64);
+  }
+
+  /* ── Ground: meadow, decorations and the field's fence ── */
+
+  function viewWorldRect() {
+    return {
+      x0: -viewPanX / viewZoom,
+      y0: -viewPanY / viewZoom,
+      x1: (canvasW - viewPanX) / viewZoom,
+      y1: (canvasH - viewPanY) / viewZoom
+    };
+  }
+
+  function drawGround(v) {
+    const hy = horizonWorldY();
+    const top = Math.max(v.y0, hy);
+    if (top >= v.y1) return;
+    ctx.fillStyle = turfPattern(currentSeason);
+    ctx.fillRect(v.x0 - 4, top, v.x1 - v.x0 + 8, v.y1 - top + 4);
+    // soft shadow just below the horizon
+    const g = ctx.createLinearGradient(0, hy, 0, hy + 40);
+    g.addColorStop(0, 'rgba(10,20,30,0.45)');
+    g.addColorStop(1, 'rgba(10,20,30,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(v.x0, hy, v.x1 - v.x0, 40);
+  }
+
+  function isPenSlot(r, c) {
+    for (const pen of livestockPens)
+      if (pen.gridRow === r && pen.gridCol === c) return true;
+    return false;
+  }
+
+  function drawDecor(v, layer) {
+    const T = BASE_TILE_SIZE;
+    const c0 = Math.floor((v.x0 - GRID_OFFSET_X) / T) - 1, c1 = Math.ceil((v.x1 - GRID_OFFSET_X) / T) + 1;
+    const r0 = Math.floor((Math.max(v.y0, horizonWorldY()) - GRID_OFFSET_Y) / T), r1 = Math.ceil((v.y1 - GRID_OFFSET_Y) / T) + 1;
+    if ((c1 - c0) * (r1 - r0) > 6000) return;
+    const offC = gridColOffset;
+    for (let r = r0; r <= r1; ++r)
+      for (let c = c0; c <= c1; ++c) {
+        if (r >= -1 && r <= gridRows && c >= -1 && c <= gridCols) continue;
+        const h = hash2(c - offC, r);
+        if (h > 0.2) continue;
+        const kind = DECOR_KINDS[Math.floor(hash2(r + 7, c - offC + 3) * DECOR_KINDS.length)];
+        const ox = (hash2(c - offC, r + 11) - 0.5) * T * 0.5, oy = (hash2(c - offC + 5, r) - 0.5) * T * 0.4;
+        const x = GRID_OFFSET_X + (c + 0.5) * T + ox, y = GRID_OFFSET_Y + (r + 0.5) * T + oy;
+        if (y - 30 < horizonWorldY()) continue;
+        const big = kind === 'tree' ? 1.6 : 1;
+        const size = T * 0.85 * big;
+        const sway = kind === 'tree' || kind === 'reeds' || kind === 'bloom' ? Math.sin(animT * 1.3 + h * 40) * 0.05 * windStrength() : 0;
+        ctx.fillStyle = 'rgba(0,0,0,0.22)';
+        ctx.beginPath();
+        ctx.ellipse(x, y + size * 0.42, size * 0.35, size * 0.1, 0, 0, TWO_PI);
+        ctx.fill();
+        ctx.save();
+        ctx.translate(x, y + size * 0.5);
+        ctx.transform(1, 0, sway, 1, 0, 0);
+        drawSprite(decorSprite(kind, currentSeason), 0, -size / 2, size);
+        ctx.restore();
+        if (kind === 'shroom' || kind === 'crystal')
+          lightAt(x, y, T * 0.9, kind === 'shroom' ? '#a070ff' : '#4fe0d0', 0.5);
+      }
+  }
+
+  /* Wooden fence around the field with posts on every tile corner */
+  function drawFieldFence() {
+    const T = BASE_TILE_SIZE;
+    const x0 = GRID_OFFSET_X - 3, y0 = GRID_OFFSET_Y - 3;
+    const x1 = GRID_OFFSET_X + gridCols * T + 3, y1 = GRID_OFFSET_Y + gridRows * T + 3;
+    const winter = currentSeason === 3;
+    ctx.save();
+    // dark border so the field reads as one plot of land
+    ctx.fillStyle = 'rgba(30,18,10,0.55)';
+    ctx.fillRect(x0 - 4, y0 - 4, x1 - x0 + 8, 4);
+    ctx.fillRect(x0 - 4, y1, x1 - x0 + 8, 6);
+    ctx.fillRect(x0 - 4, y0, 4, y1 - y0);
+    ctx.fillRect(x1, y0, 4, y1 - y0);
+    const rail = (ax, ay, bx, by) => {
+      ctx.fillStyle = '#5e3820';
+      if (ay === by) {
+        ctx.fillRect(ax, ay - 7, bx - ax, 3);
+        ctx.fillRect(ax, ay - 2, bx - ax, 3);
+        ctx.fillStyle = '#9a5b34';
+        ctx.fillRect(ax, ay - 7, bx - ax, 1);
+        ctx.fillRect(ax, ay - 2, bx - ax, 1);
+      } else {
+        ctx.fillRect(ax - 2, ay, 3, by - ay);
+        ctx.fillStyle = '#9a5b34';
+        ctx.fillRect(ax - 2, ay, 1, by - ay);
+      }
+    };
+    rail(x0, y0, x1, y0);
+    rail(x0, y1, x1, y1);
+    rail(x0, y0, x0, y1);
+    rail(x1, y0, x1, y1);
+    const post = (px, py) => {
+      ctx.fillStyle = '#4a2a16';
+      ctx.fillRect(px - 3, py - 10, 6, 12);
+      ctx.fillStyle = '#b07a4a';
+      ctx.fillRect(px - 3, py - 10, 2, 12);
+      if (winter) {
+        ctx.fillStyle = '#f4f8ff';
+        ctx.fillRect(px - 3, py - 12, 6, 3);
+      }
+    };
+    for (let c = 0; c <= gridCols; ++c) {
+      post(GRID_OFFSET_X + c * T, y0);
+      post(GRID_OFFSET_X + c * T, y1);
+    }
+    for (let r = 1; r < gridRows; ++r) {
+      post(x0, GRID_OFFSET_Y + r * T);
+      post(x1, GRID_OFFSET_Y + r * T);
+    }
+    ctx.restore();
+  }
+
+  /* ── Field tiles ── */
+
+  function drawTiles(v) {
+    const T = BASE_TILE_SIZE;
+    const F = getField();
+    const c0 = Math.max(0, Math.floor((v.x0 - GRID_OFFSET_X) / T)), c1 = Math.min(gridCols - 1, Math.floor((v.x1 - GRID_OFFSET_X) / T));
+    const r0 = Math.max(0, Math.floor((v.y0 - GRID_OFFSET_Y) / T)), r1 = Math.min(gridRows - 1, Math.floor((v.y1 - GRID_OFFSET_Y) / T));
+    const smooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = viewZoom < 0.5;
+    const waterFrame = Math.floor(animT * 2.5) % 4;
+    const rainWet = weatherType === WEATHER_RAIN || weatherType === WEATHER_THUNDERSTORM;
+    for (let r = r0; r <= r1; ++r)
+      for (let c = c0; c <= c1; ++c) {
+        const tt = tileTypes[r][c];
+        const x = GRID_OFFSET_X + c * T, y = GRID_OFFSET_Y + r * T;
+        const variant = Math.floor(hash2(c - gridColOffset, r) * 4);
+        let flags = 0;
+        if (tt === TILE_WATER)
+          flags = waterFrame;
+        else if (tt === TILE_FARMLAND) {
+          if (F.wet[r * gridCols + c] || rainWet) flags |= 1;
+          if (hoedTiles[r][c]) flags |= 2;
+        }
+        ctx.drawImage(tileTexture(tt, variant, currentSeason, flags), x, y, T, T);
+      }
+    ctx.imageSmoothingEnabled = smooth;
+
+    // Shorelines, plot seams and soil quality tint
+    for (let r = r0; r <= r1; ++r)
+      for (let c = c0; c <= c1; ++c) {
+        const tt = tileTypes[r][c];
+        const x = GRID_OFFSET_X + c * T, y = GRID_OFFSET_Y + r * T;
+        if (tt === TILE_WATER) {
+          const foam = currentSeason === 3 ? 'rgba(255,255,255,0.7)' : `rgba(200,240,255,${0.55 + Math.sin(animT * 3 + r + c) * 0.2})`;
+          ctx.fillStyle = foam;
+          if (r > 0 && tileTypes[r - 1][c] !== TILE_WATER) ctx.fillRect(x, y, T, 3);
+          if (r < gridRows - 1 && tileTypes[r + 1][c] !== TILE_WATER) ctx.fillRect(x, y + T - 3, T, 3);
+          if (c > 0 && tileTypes[r][c - 1] !== TILE_WATER) ctx.fillRect(x, y, 3, T);
+          if (c < gridCols - 1 && tileTypes[r][c + 1] !== TILE_WATER) ctx.fillRect(x + T - 3, y, 3, T);
+          continue;
+        }
+        if (tt === TILE_FARMLAND) {
+          const q = getTileSoilQuality(r, c);
+          if (q < 0.75) {
+            ctx.fillStyle = `rgba(200,170,90,${Math.min(0.22, (0.75 - q) * 0.6)})`;
+            ctx.fillRect(x, y, T, T);
+          } else if (q > 1.05) {
+            ctx.fillStyle = `rgba(40,90,30,${Math.min(0.25, (q - 1.05) * 0.5)})`;
+            ctx.fillRect(x, y, T, T);
+          }
+        }
+        ctx.fillStyle = 'rgba(0,0,0,0.16)';
+        ctx.fillRect(x + T - 1, y, 1, T);
+        ctx.fillRect(x, y + T - 1, T, 1);
+      }
+  }
+
+  /* ── Crops ── */
+
+  function windStrength() {
+    switch (weatherType) {
+      case WEATHER_THUNDERSTORM: return 3;
+      case WEATHER_RAIN: return 1.8;
+      case WEATHER_METEOR_SHOWER: return 1.4;
+      default: return currentSeason === 2 ? 1.5 : 1;
     }
   }
 
-  function drawLivestock() {
-    const ts = BASE_TILE_SIZE * viewZoom;
-    for (let i = 0; i < livestockPens.length; ++i) {
-      const pen = livestockPens[i];
-      const def = LIVESTOCK[pen.typeIndex];
-      const scr = livestockPenToScreen(pen);
-      const halfTs = ts / 2;
+  function youngFruitSprite(crop) {
+    const key = 'bud:' + crop.sprite;
+    if (!spriteCache[key])
+      spriteCache[key] = bakeSprite((p, P) => {
+        p.ell(7.5, 14, 6, 1.5, P.soil);
+        p.line(7.5, 14, 7.5, 5, P.leaf);
+        p.line(7.5, 11, 3, 8, P.leaf); p.line(7.5, 10, 12, 7, P.leaf);
+        p.ell(3, 8, 2.5, 1.2, P.green); p.ell(12, 7, 2.5, 1.2, P.green);
+        p.ell(6, 4, 2, 1, P.green); p.ell(10, 3.5, 2, 1, P.green);
+        p.disc(7.5, 4, 2.2, shadeColor(crop.color, -0.15));
+        p.disc(3.5, 11, 1.4, crop.color); p.disc(11.5, 10.5, 1.4, crop.color);
+        p.px(7, 3, P.white, true);
+      });
+    return spriteCache[key];
+  }
 
-      // Skip pens fully off-screen
-      if (scr.x + halfTs < 0 || scr.x - halfTs > canvasW || scr.y + halfTs < 0 || scr.y - halfTs > canvasH - 45) continue;
+  function cropVisual(crop, cell) {
+    const maxStage = crop.stages - 1;
+    const st = Math.min(cell.growthStage, maxStage);
+    if (st >= maxStage) return { spr: getSprite(crop.sprite), size: 46 };
+    const within = Math.max(0, Math.min(1, cell.growthProgress * crop.stages - st));
+    if (st === 0) return { spr: getSprite('sprout'), size: 26 + within * 8 };
+    if (st === maxStage - 1 && maxStage >= 3) return { spr: youngFruitSprite(crop), size: 40 + within * 4 };
+    return { spr: getYoungCropSprite(crop), size: 32 + (st / maxStage) * 8 + within * 4 };
+  }
 
-      // Pen background
-      ctx.fillStyle = '#1a2a1a';
-      ctx.fillRect(scr.x - halfTs, scr.y - halfTs, ts, ts);
-      ctx.strokeStyle = '#4a5a4a';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(scr.x - halfTs, scr.y - halfTs, ts, ts);
+  function drawCrop(r, c, cell) {
+    const T = BASE_TILE_SIZE;
+    const crop = CROPS[cell.cropIndex];
+    const mature = cell.growthStage >= crop.stages - 1;
+    const cx = GRID_OFFSET_X + (c + 0.5) * T, baseY = GRID_OFFSET_Y + (r + 1) * T - 7;
+    const vis = cropVisual(crop, cell);
+    const pop = cell.plantAnim > 0 ? 1 + Math.sin(cell.plantAnim * Math.PI) * 0.35 : 1;
+    const ph = hash2(c * 3 + 1, r * 5 + 2) * TWO_PI;
+    const shear = Math.sin(animT * 1.8 + ph + c * 0.4) * 0.06 * windStrength();
+    const bob = mature ? Math.sin(animT * 2.4 + ph) * 0.6 : 0;
+    const size = vis.size * pop;
+    const sleeping = (crop.nightOnly && dayPhase < 0.5) || (crop.dayOnly && dayPhase >= 0.5);
 
-      // Fence marks on pen border
-      ctx.strokeStyle = '#6a7a6a';
-      ctx.lineWidth = 0.5;
-      const marks = 4;
-      for (let m = 1; m < marks; ++m) {
-        const frac = m / marks;
-        // Top/bottom
-        const mx = scr.x - halfTs + ts * frac;
-        ctx.beginPath(); ctx.moveTo(mx, scr.y - halfTs); ctx.lineTo(mx, scr.y - halfTs + 3 * viewZoom); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(mx, scr.y + halfTs); ctx.lineTo(mx, scr.y + halfTs - 3 * viewZoom); ctx.stroke();
-        // Left/right
-        const my = scr.y - halfTs + ts * frac;
-        ctx.beginPath(); ctx.moveTo(scr.x - halfTs, my); ctx.lineTo(scr.x - halfTs + 3 * viewZoom, my); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(scr.x + halfTs, my); ctx.lineTo(scr.x + halfTs - 3 * viewZoom, my); ctx.stroke();
+    if (mature) {
+      const glow = 0.18 + Math.sin(animT * 3 + ph) * 0.08;
+      const g = ctx.createRadialGradient(cx, baseY - 14, 2, cx, baseY - 14, T * 0.55);
+      g.addColorStop(0, hexToRgba(crop.color, glow));
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(cx - T / 2, baseY - 14 - T / 2, T, T);
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(cx, baseY, size * 0.32, size * 0.08, 0, 0, TWO_PI);
+    ctx.fill();
+    ctx.save();
+    ctx.translate(cx, baseY + bob);
+    ctx.transform(1, 0, shear, 1, 0, 0);
+    drawSprite(vis.spr, 0, -size / 2, size, sleeping ? 0.75 : 1);
+    ctx.restore();
+    if (currentSeason === 3) {
+      ctx.fillStyle = 'rgba(240,248,255,0.55)';
+      ctx.fillRect(cx - size * 0.25, baseY - size * 0.92, size * 0.5, 2);
+    }
+    if (sleeping) {
+      ctx.save();
+      ctx.globalAlpha = 0.6 + Math.sin(animT * 2 + ph) * 0.3;
+      ctx.fillStyle = '#cfe0ff';
+      ctx.font = uiFont(9, 'bold');
+      ctx.textAlign = 'center';
+      ctx.fillText('z', cx + 12, baseY - size + 6 - (animT * 6 + ph) % 8);
+      ctx.restore();
+    }
+    // Ripe sparkle
+    if (mature) {
+      const k = (animT * 0.9 + ph) % 1.6;
+      if (k < 0.5) {
+        const a = Math.sin(k / 0.5 * Math.PI);
+        const sx = cx + (hash2(Math.floor(animT * 0.9 + ph), c) - 0.5) * T * 0.6;
+        const sy = baseY - 10 - hash2(r, Math.floor(animT * 0.9 + ph)) * T * 0.6;
+        drawTwinkle(sx, sy, 5 * a, a);
       }
+      if (crop.name === 'Astral Flower' || crop.name === 'Lunar Moss' || crop.name === 'Solar Vine')
+        lightAt(cx, baseY - 16, T * 0.9, crop.color, 0.7);
+    }
+    // Growth progress ring for growing crops
+    if (!mature && viewZoom >= 0.55) {
+      const prog = Math.min(1, cell.growthProgress);
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(cx + T * 0.34, baseY - T + 16, 4, 0, TWO_PI);
+      ctx.stroke();
+      ctx.strokeStyle = '#9df08a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx + T * 0.34, baseY - T + 16, 4, -Math.PI / 2, -Math.PI / 2 + prog * TWO_PI);
+      ctx.stroke();
+    }
+  }
 
-      // Animal sprite
-      drawSprite(def.sprite, scr.x, scr.y - 3 * viewZoom, 48 * viewZoom);
+  function drawTwinkle(x, y, s, a) {
+    if (s < 0.5) return;
+    ctx.save();
+    ctx.globalAlpha *= a;
+    ctx.fillStyle = '#fffbe0';
+    ctx.beginPath();
+    ctx.moveTo(x, y - s);
+    ctx.lineTo(x + s * 0.25, y - s * 0.25);
+    ctx.lineTo(x + s, y);
+    ctx.lineTo(x + s * 0.25, y + s * 0.25);
+    ctx.lineTo(x, y + s);
+    ctx.lineTo(x - s * 0.25, y + s * 0.25);
+    ctx.lineTo(x - s, y);
+    ctx.lineTo(x - s * 0.25, y - s * 0.25);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
 
-      // Feed timer bar
-      if (!pen.produceReady) {
-        const barW = ts * 0.7;
-        const barH = 3 * viewZoom;
-        const barX = scr.x - barW / 2;
-        const barY = scr.y + halfTs - 6 * viewZoom;
-        const progress = 1 - Math.max(0, pen.feedTimer / def.feedInterval);
-        ctx.fillStyle = 'rgba(0,0,0,0.5)';
-        ctx.fillRect(barX, barY, barW, barH);
-        ctx.fillStyle = '#4a4';
-        ctx.fillRect(barX, barY, barW * progress, barH);
+  /* ── Buildings with animated details ── */
+
+  const BLADE_SPRITE_KEY = 'turbineBlades';
+  SPRITE_PAINTERS[BLADE_SPRITE_KEY] = (p, P) => {
+    p.poly([[8, 7.5], [7, 0], [9, 0]], P.white);
+    p.poly([[8, 7.5], [15, 11], [14, 12.5]], P.white);
+    p.poly([[8, 7.5], [1, 11], [2, 12.5]], P.white);
+    p.disc(8, 7.5, 1.4, P.grey);
+  };
+  SPRITE_PAINTERS.turbineTower = (p, P) => {
+    p.poly([[7, 6], [9, 6], [10.5, 15], [5.5, 15]], P.white);
+    p.rect(6, 5, 4, 3, P.steel);
+    p.rect(4, 14, 8, 2, P.dgrey);
+  };
+
+  function drawBuilding(r, c, bld) {
+    const T = BASE_TILE_SIZE;
+    const bdef = BUILDINGS[bld.typeIndex];
+    const lvl = bld.level || 1;
+    const cx = GRID_OFFSET_X + (c + 0.5) * T, cy = GRID_OFFSET_Y + (r + 0.5) * T;
+    const baseY = GRID_OFFSET_Y + (r + 1) * T - 6;
+    const ph = hash2(c * 7, r * 3) * TWO_PI;
+    const name = bdef.name;
+    const night = nightAmount();
+
+    if (name === 'Fence') {
+      drawFenceTile(r, c, lvl);
+      return;
+    }
+    // Stone pad
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(cx, baseY - 2, T * 0.42, T * 0.13, 0, 0, TWO_PI);
+    ctx.fill();
+    ctx.fillStyle = currentSeason === 3 ? '#c8d0dc' : '#7a7468';
+    ctx.beginPath();
+    ctx.ellipse(cx, baseY - 4, T * 0.38, T * 0.11, 0, 0, TWO_PI);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.beginPath();
+    ctx.ellipse(cx, baseY - 5, T * 0.3, T * 0.06, 0, Math.PI, TWO_PI);
+    ctx.fill();
+
+    const size = 44 + Math.min(lvl - 1, 5) * 1.2;
+    const top = baseY - 4 - size;
+    if (name === 'Wind Turbine') {
+      drawSprite('turbineTower', cx, top + size / 2, size);
+      const speed = (1.2 + windStrength() * 1.4) * (dayPhase >= 0.5 ? 1.3 : 1);
+      ctx.save();
+      ctx.translate(cx, top + size * 0.34);
+      ctx.rotate(animT * speed + ph);
+      drawSprite(BLADE_SPRITE_KEY, 0, 0, size * 1.05);
+      ctx.restore();
+    } else if (name === 'Scarecrow') {
+      ctx.save();
+      ctx.translate(cx, baseY - 4);
+      ctx.rotate(Math.sin(animT * 1.4 + ph) * 0.05 * windStrength());
+      drawSprite(bdef.sprite, 0, -size / 2, size);
+      ctx.restore();
+    } else if (name === 'Harvester') {
+      const bob = Math.abs(Math.sin(animT * 3 + ph)) * 2;
+      drawSprite(bdef.sprite, cx, top + size / 2 - bob, size);
+      ctx.fillStyle = `rgba(120,255,200,${0.6 + Math.sin(animT * 6) * 0.3})`;
+      ctx.fillRect(cx - size * 0.16, top + size * 0.39 - bob, 3, 3);
+      ctx.fillRect(cx + size * 0.09, top + size * 0.39 - bob, 3, 3);
+      lightAt(cx, top + size * 0.4, T * 0.6, '#7affc8', 0.5);
+    } else {
+      drawSprite(bdef.sprite, cx, top + size / 2, size);
+    }
+
+    // Animated details
+    switch (name) {
+      case 'Sprinkler': {
+        const n = 10;
+        for (let i = 0; i < n; ++i) {
+          const t = (animT * 0.9 + i / n) % 1;
+          const ang = animT * 2.2 + i * (TWO_PI / n) + ph;
+          const dist = t * T * (0.7 + Math.min(4, getBuildingRange(bld) - 1) * 0.12);
+          const hgt = Math.sin(t * Math.PI) * 16;
+          const dx = Math.cos(ang) * dist, dy = Math.sin(ang) * dist * 0.5;
+          ctx.fillStyle = `rgba(160,220,255,${0.85 * (1 - t)})`;
+          ctx.fillRect(cx + dx - 1, top + size * 0.3 + dy - hgt + t * 14, 2, 3);
+        }
+        break;
       }
-
-      // Ready indicator
-      if (pen.produceReady) {
+      case 'Solar Panel': {
+        if (night < 0.5) {
+          const k = (animT * 0.35 + ph) % 2;
+          if (k < 1) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(cx - size * 0.45, top + size * 0.15, size * 0.9, size * 0.5);
+            ctx.clip();
+            const gx = cx - size * 0.6 + k * size * 1.2;
+            const g = ctx.createLinearGradient(gx - 8, 0, gx + 8, 0);
+            g.addColorStop(0, 'rgba(255,255,255,0)');
+            g.addColorStop(0.5, 'rgba(255,255,255,0.65)');
+            g.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(gx - 10, top, 20, size);
+            ctx.restore();
+          }
+        }
+        break;
+      }
+      case 'Greenhouse':
+        if (night > 0.2) {
+          ctx.fillStyle = `rgba(200,255,190,${0.25 * night})`;
+          ctx.fillRect(cx - size * 0.4, top + size * 0.35, size * 0.8, size * 0.55);
+        }
+        lightAt(cx, top + size * 0.6, T * 1.3, '#d0ffc0', 0.9);
+        break;
+      case 'Silo': {
+        const blink = Math.sin(animT * 4 + ph) > 0.4;
+        if (blink) {
+          ctx.fillStyle = '#ff5a5a';
+          ctx.fillRect(cx - 2, top + size * 0.12, 4, 4);
+          lightAt(cx, top + size * 0.14, T * 0.5, '#ff6a5a', 0.5);
+        }
+        break;
+      }
+      case 'Compost Bin':
+        for (let i = 0; i < 3; ++i) {
+          const t = (animT * 0.4 + i / 3 + ph) % 1;
+          ctx.fillStyle = `rgba(220,230,210,${0.35 * (1 - t)})`;
+          ctx.beginPath();
+          ctx.arc(cx + Math.sin(t * 6 + i) * 4, top + size * 0.15 - t * 22, 3 + t * 5, 0, TWO_PI);
+          ctx.fill();
+        }
+        break;
+      case 'Auto-Planter L1':
+      case 'Auto-Planter L2': {
+        const k = (animT * 1.5 + ph) % 2;
+        if (k < 1) {
+          ctx.fillStyle = '#c8a050';
+          ctx.fillRect(cx - 2 + Math.sin(k * Math.PI) * 6, top + size * 0.2 - Math.sin(k * Math.PI) * 10, 3, 3);
+        }
+        break;
+      }
+      case 'Auto-Collector': {
         ctx.save();
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#0f0';
-        drawSprite(def.produceSprite, scr.x + 14 * viewZoom, scr.y - 12 * viewZoom, 16 * viewZoom);
+        ctx.beginPath();
+        ctx.rect(cx - size * 0.45, baseY - 12, size * 0.9, 6);
+        ctx.clip();
+        ctx.fillStyle = '#3a3e4a';
+        ctx.fillRect(cx - size * 0.45, baseY - 12, size * 0.9, 6);
+        ctx.fillStyle = '#7a7e8a';
+        const off = (animT * 18) % 8;
+        for (let x = cx - size * 0.45 - 8 + off; x < cx + size * 0.45; x += 8)
+          ctx.fillRect(x, baseY - 12, 3, 6);
         ctx.restore();
-
-        // Pulsing green border
-        const pulse = 0.4 + 0.3 * Math.sin(gameTime * 4);
-        ctx.strokeStyle = `rgba(0,255,0,${pulse})`;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(scr.x - halfTs + 1, scr.y - halfTs + 1, ts - 2, ts - 2);
+        break;
       }
     }
+
+    // Level pips
+    if (lvl > 1) {
+      const n = lvl - 1;
+      const w = n * 6 - 2;
+      for (let i = 0; i < n; ++i) {
+        ctx.fillStyle = '#2a1a08';
+        ctx.fillRect(cx - w / 2 + i * 6 - 1, baseY - 1, 6, 6);
+        ctx.fillStyle = '#ffd75a';
+        ctx.fillRect(cx - w / 2 + i * 6, baseY, 4, 4);
+      }
+    }
+    if (inspect && inspect.row === r && inspect.col === c) {
+      ctx.strokeStyle = `rgba(76,196,255,${0.6 + Math.sin(animT * 5) * 0.3})`;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(GRID_OFFSET_X + c * T + 2, GRID_OFFSET_Y + r * T + 2, T - 4, T - 4);
+    }
+  }
+
+  function isFenceAt(r, c) {
+    const b = buildings[r]?.[c];
+    return !!b && BUILDINGS[b.typeIndex].name === 'Fence';
+  }
+
+  /* Fences join up with neighbouring fences */
+  function drawFenceTile(r, c, lvl) {
+    const T = BASE_TILE_SIZE;
+    const x = GRID_OFFSET_X + c * T, y = GRID_OFFSET_Y + r * T;
+    const cx = x + T / 2, cy = y + T / 2 + 6;
+    const wood = lvl >= 5 ? '#8a8ea0' : '#9a5b34', dark = lvl >= 5 ? '#4a4e60' : '#5e3820', light = lvl >= 5 ? '#d0d8e8' : '#c88a54';
+    const railTo = (tx, ty) => {
+      ctx.fillStyle = dark;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 9);
+      ctx.lineTo(tx, ty - 9);
+      ctx.lineTo(tx, ty - 6);
+      ctx.lineTo(cx, cy - 6);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 2);
+      ctx.lineTo(tx, ty - 2);
+      ctx.lineTo(tx, ty + 1);
+      ctx.lineTo(cx, cy + 1);
+      ctx.fill();
+    };
+    const n = isFenceAt(r - 1, c), s = isFenceAt(r + 1, c), w = isFenceAt(r, c - 1), e = isFenceAt(r, c + 1);
+    if (w || (!n && !s && !e)) railTo(x, cy);
+    if (e || (!n && !s && !w)) railTo(x + T, cy);
+    if (n) railTo(cx, y + 6);
+    if (s) railTo(cx, y + T + 6);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 4, 7, 3, 0, 0, TWO_PI);
+    ctx.fill();
+    ctx.fillStyle = dark;
+    ctx.fillRect(cx - 4, cy - 16, 8, 20);
+    ctx.fillStyle = wood;
+    ctx.fillRect(cx - 3, cy - 15, 6, 18);
+    ctx.fillStyle = light;
+    ctx.fillRect(cx - 3, cy - 15, 2, 18);
+    if (currentSeason === 3) {
+      ctx.fillStyle = '#f4f8ff';
+      ctx.fillRect(cx - 4, cy - 18, 8, 3);
+    }
+    if (lvl >= 5 && Math.sin(animT * 9 + r + c) > 0.85) {
+      ctx.strokeStyle = '#9ff0ff';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 16);
+      ctx.lineTo(cx + 5, cy - 10);
+      ctx.lineTo(cx - 2, cy - 6);
+      ctx.lineTo(cx + 4, cy);
+      ctx.stroke();
+      lightAt(cx, cy - 8, T * 0.5, '#9ff0ff', 0.6);
+    }
+  }
+
+  /* ── Livestock pens with wandering animals ── */
+
+  const penAnim = new WeakMap();
+
+  function animalState(pen) {
+    let a = penAnim.get(pen);
+    if (!a) {
+      a = { x: (Math.random() - 0.5) * 0.3, dir: Math.random() < 0.5 ? -1 : 1, mode: 'idle', t: Math.random() * 2, hop: 0 };
+      penAnim.set(pen, a);
+    }
+    return a;
+  }
+
+  function updatePenAnimals(dt) {
+    for (const pen of livestockPens) {
+      const a = animalState(pen);
+      a.t -= dt;
+      if (a.t <= 0) {
+        const roll = Math.random();
+        a.mode = roll < 0.45 ? 'walk' : (roll < 0.75 ? 'idle' : 'eat');
+        a.t = 1 + Math.random() * 2.5;
+        if (a.mode === 'walk' && Math.random() < 0.5)
+          a.dir = -a.dir;
+      }
+      if (a.mode === 'walk') {
+        a.x += a.dir * dt * 0.12;
+        if (a.x > 0.22) { a.x = 0.22; a.dir = -1; }
+        if (a.x < -0.22) { a.x = -0.22; a.dir = 1; }
+      }
+      a.hop = Math.max(0, a.hop - dt * 4);
+    }
+  }
+
+  function drawPen(pen) {
+    const T = BASE_TILE_SIZE;
+    const def = LIVESTOCK[pen.typeIndex];
+    const x = GRID_OFFSET_X + pen.gridCol * T, y = GRID_OFFSET_Y + pen.gridRow * T;
+    const cx = x + T / 2, cy = y + T / 2;
+    const winter = currentSeason === 3;
+    // paddock floor
+    ctx.fillStyle = winter ? '#d8e2ee' : '#8aa848';
+    ctx.fillRect(x + 3, y + 3, T - 6, T - 6);
+    ctx.fillStyle = winter ? '#eef4fc' : '#d8b860';
+    ctx.fillRect(x + 6, y + T - 14, 14, 6);
+    ctx.fillStyle = winter ? '#c8d4e4' : '#c09a40';
+    ctx.fillRect(x + 6, y + T - 10, 14, 2);
+    // trough
+    ctx.fillStyle = '#5e3820';
+    ctx.fillRect(x + T - 20, y + T - 15, 14, 7);
+    ctx.fillStyle = winter ? '#bfe0f0' : '#4a8ad8';
+    ctx.fillRect(x + T - 18, y + T - 14, 10, 3);
+    // posts and rails
+    ctx.fillStyle = '#6e4228';
+    ctx.fillRect(x + 2, y + 6, T - 4, 2);
+    ctx.fillRect(x + 2, y + T - 4, T - 4, 2);
+    ctx.fillRect(x + 2, y + 6, 2, T - 10);
+    ctx.fillRect(x + T - 4, y + 6, 2, T - 10);
+    ctx.fillStyle = '#4a2a16';
+    for (const [px, py] of [[x + 1, y + 2], [x + T - 5, y + 2], [x + 1, y + T - 8], [x + T - 5, y + T - 8]])
+      ctx.fillRect(px, py, 4, 8);
+
+    const a = animalState(pen);
+    const walking = a.mode === 'walk';
+    const ax = cx + a.x * T;
+    const bob = walking ? Math.abs(Math.sin(animT * 9 + pen.gridCol)) * 2.5 : (a.mode === 'idle' ? Math.sin(animT * 2) * 0.6 : 0);
+    const size = 36;
+    const baseY = cy + 12;
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(ax, baseY, size * 0.3, 3, 0, 0, TWO_PI);
+    ctx.fill();
+    ctx.save();
+    ctx.translate(ax, baseY - bob - a.hop * 6);
+    // sprites face left; flip when walking right
+    ctx.scale(a.dir > 0 ? -1 : 1, 1);
+    if (a.mode === 'eat')
+      ctx.rotate(-Math.abs(Math.sin(animT * 5)) * 0.12);
+    drawSprite(def.sprite, 0, -size / 2, size);
+    ctx.restore();
+
+    if (pen.produceReady) {
+      const by = y - 2 + Math.sin(animT * 4 + pen.gridCol) * 2;
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      roundRectPath(cx - 11, by - 11, 22, 20, 7);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(cx - 3, by + 9);
+      ctx.lineTo(cx + 3, by + 9);
+      ctx.lineTo(cx, by + 14);
+      ctx.fill();
+      drawSprite(def.produceSprite, cx, by - 1, 16);
+      ctx.strokeStyle = `rgba(111,224,138,${0.5 + Math.sin(animT * 5) * 0.3})`;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + 2, y + 2, T - 4, T - 4);
+    } else {
+      const prog = 1 - Math.max(0, pen.feedTimer / def.feedInterval);
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(x + 8, y + T - 6, T - 16, 3);
+      ctx.fillStyle = '#9df08a';
+      ctx.fillRect(x + 8, y + T - 6, (T - 16) * prog, 3);
+    }
+    lightAt(x + 4, y + 4, T * 0.5, '#ffc870', 0.45);
+  }
+
+  /* ── Wild space mice ── */
+
+  function drawMice() {
+    const T = BASE_TILE_SIZE;
+    for (const m of wildAnimals) {
+      if (m.rx === undefined) {
+        m.rx = m.x;
+        m.ry = m.y;
+        m.face = 1;
+      }
+      const k = Math.min(1, frameDt * 6);
+      const dx = m.x - m.rx;
+      if (Math.abs(dx) > 0.01) m.face = dx > 0 ? -1 : 1;
+      m.rx += (m.x - m.rx) * k;
+      m.ry += (m.y - m.ry) * k;
+      const moving = Math.hypot(m.x - m.rx, m.y - m.ry) > 0.02;
+      const cx = GRID_OFFSET_X + (m.rx + 0.5) * T, cy = GRID_OFFSET_Y + (m.ry + 0.5) * T;
+      const hop = moving ? Math.abs(Math.sin(animT * 14 + m.x)) * 4 : 0;
+      const ar = Math.round(m.y), ac = Math.round(m.x);
+      let nearCrop = false;
+      for (let dr = -1; dr <= 1 && !nearCrop; ++dr)
+        for (let dc = -1; dc <= 1 && !nearCrop; ++dc)
+          if (farmGrid[ar + dr]?.[ac + dc]) nearCrop = true;
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + 10, 9, 3, 0, 0, TWO_PI);
+      ctx.fill();
+      ctx.save();
+      ctx.translate(cx, cy + 10 - hop);
+      ctx.scale(m.face, 1);
+      drawSprite('mouse', 0, -12, 26);
+      ctx.restore();
+      if (nearCrop) {
+        const a = 0.6 + Math.sin(animT * 8) * 0.3;
+        ctx.fillStyle = `rgba(255,80,80,${a})`;
+        ctx.font = uiFont(14, 'bold');
+        ctx.textAlign = 'center';
+        ctx.fillText('!', cx, cy - 14 - hop);
+      }
+      if (moving && Math.random() < 0.08)
+        particles.burst(cx, cy + 10, 1, { color: currentSeason === 3 ? '#ffffff' : '#c8b088', speed: 0.6, life: 0.4, size: 2 });
+    }
+  }
+
+  /* ── Lighting: the night darkens the world, lamps and glowing things cut holes ── */
+
+  let lightCanvas = null, lightCtx = null;
+  let lights = [];
+
+  function lightAt(wx, wy, radius, color, strength) {
+    lights.push({ wx, wy, radius, color, strength });
+  }
+
+  function drawLighting() {
+    const n = nightAmount();
+    const storm = weatherType === WEATHER_THUNDERSTORM ? 0.25 : (weatherType === WEATHER_RAIN ? 0.12 : 0);
+    const dark = Math.min(0.62, n * 0.55 + storm);
+    if (dark <= 0.01) {
+      lights = [];
+      return;
+    }
+    const W = Math.ceil(canvasW / 2), H = Math.ceil(canvasH / 2);
+    if (!lightCanvas) {
+      lightCanvas = document.createElement('canvas');
+      lightCtx = lightCanvas.getContext('2d');
+    }
+    if (lightCanvas.width !== W || lightCanvas.height !== H) {
+      lightCanvas.width = W;
+      lightCanvas.height = H;
+    }
+    const L = lightCtx;
+    L.globalCompositeOperation = 'source-over';
+    L.clearRect(0, 0, W, H);
+    L.fillStyle = `rgba(8,12,40,${dark})`;
+    L.fillRect(0, 0, W, H);
+    L.globalCompositeOperation = 'destination-out';
+    const toS = (wx, wy) => [(viewPanX + wx * viewZoom) / 2, (viewPanY + wy * viewZoom) / 2];
+    for (const l of lights) {
+      const [sx, sy] = toS(l.wx, l.wy);
+      const rr = l.radius * viewZoom / 2;
+      if (sx + rr < 0 || sy + rr < 0 || sx - rr > W || sy - rr > H) continue;
+      const g = L.createRadialGradient(sx, sy, 0, sx, sy, rr);
+      g.addColorStop(0, `rgba(0,0,0,${Math.min(1, l.strength)})`);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      L.fillStyle = g;
+      L.fillRect(sx - rr, sy - rr, rr * 2, rr * 2);
+    }
+    // the horizon sky is lit by its own colours
+    const hy = (viewPanY + horizonWorldY() * viewZoom) / 2;
+    if (hy > 0)
+      L.clearRect(0, 0, W, hy);
+    ctx.drawImage(lightCanvas, 0, 0, canvasW, canvasH);
+    // warm colour glow on top
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const l of lights) {
+      const sx = viewPanX + l.wx * viewZoom, sy = viewPanY + l.wy * viewZoom;
+      const rr = l.radius * viewZoom * 0.8;
+      if (sx + rr < 0 || sy + rr < 0 || sx - rr > canvasW || sy - rr > canvasH) continue;
+      const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, rr);
+      g.addColorStop(0, hexToRgba(l.color, 0.22 * dark * l.strength));
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(sx - rr, sy - rr, rr * 2, rr * 2);
+    }
+    ctx.restore();
+    lights = [];
+  }
+
+  /* ── Seasonal ambience: petals, fireflies, leaves, snow ── */
+
+  const ambient = [];
+
+  function updateAmbient(dt) {
+    const season = currentSeason;
+    const night = nightAmount();
+    const want = season === 1 ? Math.round(18 * night) + 6 : (season === 3 ? 70 : 26);
+    while (ambient.length < want)
+      ambient.push(spawnAmbient(season, true));
+    if (ambient.length > want)
+      ambient.length = want;
+    const wind = windStrength();
+    for (let i = 0; i < ambient.length; ++i) {
+      const a = ambient[i];
+      if (a.season !== season) {
+        ambient[i] = spawnAmbient(season, false);
+        continue;
+      }
+      a.t += dt;
+      a.x += (a.vx + Math.sin(a.t * a.wob + a.ph) * a.sway) * dt * (0.6 + wind * 0.4);
+      a.y += a.vy * dt;
+      if (a.kind === 'firefly') {
+        a.x += Math.sin(a.t * 1.3 + a.ph) * 8 * dt;
+        a.y += Math.cos(a.t * 1.7 + a.ph) * 8 * dt;
+      }
+      if (a.y > canvasH + 10 || a.x < -20 || a.x > canvasW + 20 || a.t > a.life)
+        ambient[i] = spawnAmbient(season, false);
+    }
+  }
+
+  function spawnAmbient(season, anywhere) {
+    const kinds = ['petal', 'firefly', 'leaf', 'snow'];
+    const kind = season === 1 ? (Math.random() < 0.7 ? 'firefly' : 'mote') : kinds[season];
+    const a = {
+      kind, season, t: 0, ph: Math.random() * TWO_PI, wob: 1 + Math.random() * 2,
+      x: Math.random() * canvasW, y: anywhere ? Math.random() * canvasH : -10,
+      vx: 10 + Math.random() * 20, vy: 14 + Math.random() * 18, sway: 20 + Math.random() * 20,
+      life: 30, size: 2 + Math.random() * 2, spin: Math.random() * TWO_PI
+    };
+    if (kind === 'firefly' || kind === 'mote') {
+      a.vx = (Math.random() - 0.5) * 6;
+      a.vy = (Math.random() - 0.5) * 4;
+      a.y = Math.random() * canvasH;
+      a.life = 6 + Math.random() * 6;
+      a.sway = 4;
+    } else if (kind === 'snow') {
+      a.vx = -8 + Math.random() * 10;
+      a.vy = 18 + Math.random() * 26;
+      a.size = 1.5 + Math.random() * 2;
+    } else if (kind === 'leaf') {
+      a.colour = ['#ff7a2a', '#e23b3b', '#ffb648', '#c87a2a'][Math.floor(Math.random() * 4)];
+    } else
+      a.colour = ['#ffb0d8', '#ffffff', '#e0b0ff'][Math.floor(Math.random() * 3)];
+    return a;
+  }
+
+  function drawAmbient() {
+    const night = nightAmount();
+    ctx.save();
+    for (const a of ambient) {
+      const fade = Math.min(1, a.t * 2, (a.life - a.t) * 2);
+      if (a.kind === 'firefly') {
+        const blink = 0.5 + 0.5 * Math.sin(a.t * 3 + a.ph);
+        ctx.globalAlpha = night * fade * blink;
+        const g = ctx.createRadialGradient(a.x, a.y, 0, a.x, a.y, 7);
+        g.addColorStop(0, 'rgba(230,255,120,0.9)');
+        g.addColorStop(1, 'rgba(230,255,120,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(a.x - 7, a.y - 7, 14, 14);
+      } else if (a.kind === 'mote') {
+        ctx.globalAlpha = (1 - night) * fade * 0.5;
+        ctx.fillStyle = '#fff4c0';
+        ctx.fillRect(a.x, a.y, 2, 2);
+      } else if (a.kind === 'snow') {
+        ctx.globalAlpha = 0.85 * fade;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(a.x, a.y, a.size, 0, TWO_PI);
+        ctx.fill();
+      } else {
+        ctx.globalAlpha = 0.9 * fade;
+        ctx.fillStyle = a.colour;
+        ctx.save();
+        ctx.translate(a.x, a.y);
+        ctx.rotate(a.spin + a.t * 2);
+        ctx.scale(1, Math.abs(Math.sin(a.t * 3 + a.ph)) * 0.7 + 0.3);
+        ctx.fillRect(-a.size, -a.size * 0.6, a.size * 2, a.size * 1.2);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+
+  /* ── Field cache: building effects per tile, rebuilt when anything changes ── */
+
+  let buildVersion = 0;
+  let fieldCache = null, fieldKey = '';
+
+  function getField() {
+    const key = gridRows + 'x' + gridCols + ':' + buildVersion;
+    if (fieldCache && fieldKey === key) return fieldCache;
+    const n = gridRows * gridCols;
+    const f = {
+      sprinkler: new Float32Array(n), wind: new Float32Array(n), green: new Float32Array(n),
+      compost: new Float32Array(n), shelter: new Uint8Array(n), wet: new Uint8Array(n)
+    };
+    for (let r = 0; r < gridRows; ++r)
+      for (let c = 0; c < gridCols; ++c) {
+        const bld = buildings[r]?.[c];
+        if (!bld) continue;
+        const name = BUILDINGS[bld.typeIndex].name;
+        const range = getBuildingRange(bld);
+        if (!range) continue;
+        for (let rr = Math.max(0, r - range); rr <= Math.min(gridRows - 1, r + range); ++rr)
+          for (let cc = Math.max(0, c - range); cc <= Math.min(gridCols - 1, c + range); ++cc) {
+            if (rr === r && cc === c) continue;
+            const i = rr * gridCols + cc;
+            if (name === 'Sprinkler') {
+              f.sprinkler[i] += getSprinklerBonus(bld);
+              f.wet[i] = 1;
+            } else if (name === 'Wind Turbine')
+              f.wind[i] += getWindTurbineGrowthBonus(bld);
+            else if (name === 'Greenhouse') {
+              f.green[i] += getGreenhouseGrowthBonus(bld);
+              f.shelter[i] = 1;
+            } else if (name === 'Compost Bin')
+              f.compost[i] += getCompostBinBonus(bld);
+          }
+      }
+    for (let r = 0; r < gridRows; ++r)
+      for (let c = 0; c < gridCols; ++c)
+        if (tileTypes[r][c] !== TILE_WATER && isAdjacentToWater(r, c))
+          f.wet[r * gridCols + c] = 1;
+    fieldCache = f;
+    fieldKey = key;
+    return f;
+  }
+
+  function invalidateField() {
+    ++buildVersion;
+  }
+
+  /* ── World pass ── */
+
+  function drawWorldScene() {
+    const v = viewWorldRect();
+    drawSky();
+    ctx.save();
+    ctx.translate(viewPanX, viewPanY);
+    ctx.scale(viewZoom, viewZoom);
+    drawGround(v);
+    drawDecor(v);
+    drawTiles(v);
+    drawFieldFence();
+    // Row by row so taller sprites overlap the row behind them
+    const T = BASE_TILE_SIZE;
+    const r0 = Math.max(-1, Math.floor((v.y0 - GRID_OFFSET_Y) / T) - 1), r1 = Math.min(gridRows, Math.ceil((v.y1 - GRID_OFFSET_Y) / T) + 1);
+    const c0 = Math.max(0, Math.floor((v.x0 - GRID_OFFSET_X) / T) - 1), c1 = Math.min(gridCols - 1, Math.ceil((v.x1 - GRID_OFFSET_X) / T) + 1);
+    const pensByRow = {};
+    for (const pen of livestockPens)
+      (pensByRow[pen.gridRow] = pensByRow[pen.gridRow] || []).push(pen);
+    for (let r = r0; r <= r1; ++r) {
+      if (pensByRow[r])
+        for (const pen of pensByRow[r]) drawPen(pen);
+      if (r < 0 || r >= gridRows) continue;
+      for (let c = c0; c <= c1; ++c) {
+        const bld = buildings[r][c];
+        if (bld)
+          drawBuilding(r, c, bld);
+        else if (farmGrid[r][c] && tileTypes[r][c] !== TILE_WATER)
+          drawCrop(r, c, farmGrid[r][c]);
+      }
+    }
+    drawMice();
+    particles.draw(ctx);
+    ctx.restore();
+    drawLighting();
+    drawAmbient();
   }
 
   function updateWeatherParticles() {
@@ -4123,51 +5195,7 @@
     ctx.setLineDash([]);
   }
 
-  function drawDayNightOverlay() {
-    if (state !== STATE_PLAYING) return;
-    // Night phase: dayPhase 0.5..1.0 is night
-    if (dayPhase < 0.5) return;
-    // Fade in/out: smooth transition
-    const nightProgress = (dayPhase - 0.5) * 2; // 0..1
-    const fade = Math.sin(nightProgress * Math.PI); // bell curve fade
-    const alpha = fade * 0.25; // max 25% darkness
-    ctx.fillStyle = `rgba(10,20,60,${alpha})`;
-    ctx.fillRect(0, 0, canvasW, canvasH);
-  }
 
-  function drawAnimals() {
-    if (state !== STATE_PLAYING) return;
-    for (let i = 0; i < wildAnimals.length; ++i) {
-      const animal = wildAnimals[i];
-      const g = gridToScreen(animal.x, animal.y);
-      const sx = g.x + g.size / 2;
-      const sy = g.y + g.size / 2;
-
-      // Check if animal is near a crop (damaging) -- highlight in red
-      const animalR = Math.round(animal.y);
-      const animalC = Math.round(animal.x);
-      let nearCrop = false;
-      for (let dr = -1; dr <= 1 && !nearCrop; ++dr)
-        for (let dc = -1; dc <= 1 && !nearCrop; ++dc) {
-          const nr = animalR + dr, nc = animalC + dc;
-          if (nr >= 0 && nr < gridRows && nc >= 0 && nc < gridCols && farmGrid[nr]?.[nc])
-            nearCrop = true;
-        }
-
-      // Red pulsing highlight for crop-damaging animals
-      if (nearCrop) {
-        const pulse = 0.3 + 0.2 * Math.sin(gameTime * 6);
-        ctx.fillStyle = `rgba(255,50,50,${pulse})`;
-        ctx.beginPath();
-        ctx.arc(sx, sy, 10 * viewZoom, 0, TWO_PI);
-        ctx.fill();
-      }
-
-      // Mouse sprite
-      drawSprite('mouse', sx, sy, 32 * viewZoom);
-
-    }
-  }
 
   /* ══════════════════════════════════════════════════════════════════
      HUD — farm status, storage, clock, tool dock
@@ -4252,7 +5280,7 @@
     const f = hudFade[id] || (hudFade[id] = { a: 1 });
     const mouseInside = pointerUX >= x && pointerUX <= x + w && pointerUY >= y && pointerUY <= y + h && pointerInside;
     const live = state === STATE_PLAYING && !dialog;
-    const target = live && !mouseInside && overlapsActor(x, y, w, h) ? HUD_FADED : 1;
+    const target = live && !mouseInside && overlapsActor(x, y, w, h) ? (id === 'dock' ? 0.55 : HUD_FADED) : 1;
     f.a += (target - f.a) * (1 - Math.exp(-frameDt * 9));
     f.rect = { x, y, w, h };
     f.frame = hudFrame;
@@ -4744,14 +5772,82 @@
     ctx.restore();
   }
 
+
+  /* ── Pop texts (anchored to the farm) and toasts ── */
+
+  const pops = [];
+  const toasts = [];
+
+  function popText(wx, wy, text, opts) {
+    opts = opts || {};
+    const m = /(\d+)px/.exec(opts.font || '');
+    const size = m ? Math.max(11, parseInt(m[1], 10) + 1) : 13;
+    pops.push({ wx, wy, text: String(text), color: opts.color || '#fff', size, t: 0, life: 1.3, dx: (Math.random() - 0.5) * 10 });
+    if (pops.length > 60)
+      pops.shift();
+  }
+
+  function toast(text, color, icon) {
+    toasts.push({ text, color: color || UI.text, icon, t: 0 });
+    if (toasts.length > 4)
+      toasts.shift();
+  }
+
+  function updatePops(dt) {
+    for (let i = pops.length - 1; i >= 0; --i) {
+      pops[i].t += dt;
+      if (pops[i].t >= pops[i].life)
+        pops.splice(i, 1);
+    }
+    for (let i = toasts.length - 1; i >= 0; --i) {
+      toasts[i].t += dt;
+      if (toasts[i].t >= 3)
+        toasts.splice(i, 1);
+    }
+  }
+
+  function drawPops() {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const p of pops) {
+      const k = p.t / p.life;
+      const sx = (viewPanX + p.wx * viewZoom) / uiS + p.dx * k;
+      const sy = (viewPanY + p.wy * viewZoom) / uiS - k * 34 - Math.sin(Math.min(1, k * 4) * Math.PI) * 6;
+      const scale = k < 0.12 ? 0.6 + k / 0.12 * 0.5 : (k < 0.25 ? 1.1 - (k - 0.12) / 0.13 * 0.1 : 1);
+      ctx.globalAlpha = Math.min(1, (1 - k) * 2.5);
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.scale(scale, scale);
+      fitText(p.text, 0, 0, 260, p.size, { weight: 'bold', color: p.color, outline: 'rgba(0,0,0,0.8)' });
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function drawToasts(L) {
+    let y = L.clock.y + L.clock.h + 10 + (banner ? 78 : 0);
+    for (const tst of toasts) {
+      const a = Math.min(1, tst.t * 5, (3 - tst.t) * 2);
+      ctx.save();
+      ctx.globalAlpha *= a;
+      const text = (tst.icon ? `[[${tst.icon}]] ` : '') + tst.text;
+      drawChip(text, UW / 2, y - (1 - Math.min(1, tst.t * 5)) * 8, 24, { align: 'center', px: 12, bg: 'rgba(8,12,24,0.85)', border: hexToRgba(tst.color, 0.6), color: tst.color, maxW: UW - 40 });
+      ctx.restore();
+      y += 30;
+    }
+  }
+
   function drawHUD() {
     const L = hudLayout();
+    drawPops();
     drawFarmPanel(L);
     drawStoragePanel(L);
     drawClockPanel(L);
     drawDock(L);
     drawZoomChip(L);
     drawBanner(L);
+    drawToasts(L);
     if (inspect)
       drawInspector();
   }
@@ -5589,14 +6685,9 @@
      ══════════════════════════════════════════════════════════════════ */
 
   function drawWorld() {
-    ctx.fillStyle = '#0a0a1a';
-    ctx.fillRect(0, 0, canvasW, canvasH);
-    drawGrid();
-    drawAnimals();
-    drawLivestock();
+    drawWorldScene();
     drawCursorPreview();
     drawDragSelection();
-    drawDayNightOverlay();
     drawWeatherOverlay();
   }
 
@@ -5606,11 +6697,8 @@
     const playing = state === STATE_PLAYING || state === STATE_PAUSED;
     ctx.save();
     screenShake.apply(ctx);
-    if (playing) {
+    if (playing)
       drawWorld();
-      particles.draw(ctx);
-      floatingText.draw(ctx);
-    }
     screenShake.restore(ctx);
     ctx.restore();
 
@@ -5711,6 +6799,13 @@
 
     if (!dialog)
       updateGame(dt);
+    if (state === STATE_PLAYING && !dialog) {
+      animT += dt;
+      updatePenAnimals(dt);
+    }
+    if (state === STATE_PLAYING || state === STATE_PAUSED)
+      updateAmbient(state === STATE_PLAYING && !dialog ? dt : 0);
+    updatePops(dt);
 
     if (state === STATE_PLAYING) {
       autosaveTimer += dt;
@@ -5733,9 +6828,9 @@
     creditsDeltaT = Math.max(0, creditsDeltaT - dt * 0.8);
     screenFade = Math.max(0, screenFade - dt * 2.5);
 
-    particles.update();
+    if (state !== STATE_PAUSED && !dialog)
+      particles.update();
     screenShake.update(dt * 1000);
-    floatingText.update();
     refreshHover();
     updateTooltipTimer(dt);
 
@@ -6055,9 +7150,9 @@
   function chaseMouse(i) {
     const animal = wildAnimals[i];
     credits += 10;
-    const { x: tx, y: ty } = gridCenterToScreen(animal.rx !== undefined ? animal.rx : animal.x, animal.ry !== undefined ? animal.ry : animal.y);
-    floatingText.add(tx, ty - 10, '+10 cr', { color: '#6fe08a', font: uiFont(14, 'bold') });
-    floatingText.add(tx, ty + 8, 'Pest chased off!', { color: '#ffb648', font: uiFont(11, 'bold') });
+    const { x: tx, y: ty } = tileCenter(animal.rx !== undefined ? animal.rx : animal.x, animal.ry !== undefined ? animal.ry : animal.y);
+    popText(tx, ty - 10, '+10 cr', { color: '#6fe08a', font: uiFont(14, 'bold') });
+    popText(tx, ty + 8, 'Pest chased off!', { color: '#ffb648', font: uiFont(11, 'bold') });
     particles.burst(tx, ty, 10, { color: '#ffd0a0', speed: 3, life: 0.4 });
     screenShake.trigger(2, 100);
     SZ.GameAudio.play('hit');
@@ -6276,15 +7371,17 @@
     viewPanY = Math.max(-gridH - oy + margin, Math.min(canvasH - oy - margin, viewPanY));
   }
 
-  /* Fits the whole farm between the HUD panels */
+  /* Fits the whole farm between the HUD panels, with a strip of sky above it */
   function resetView() {
-    const availW = canvasW - 280 * uiS - 30 * uiS;
-    const availH = canvasH - 90 * uiS - (DOCK_H + 60) * uiS;
-    const fieldW = (gridCols + 2) * BASE_TILE_SIZE, fieldH = (gridRows + 2) * BASE_TILE_SIZE;
-    viewZoom = Math.max(VIEW_ZOOM_MIN, Math.min(1.4, availW / fieldW, availH / fieldH));
-    const cx = 270 * uiS + availW / 2, cy = 90 * uiS + availH / 2;
-    viewPanX = cx - (GRID_OFFSET_X + gridCols * BASE_TILE_SIZE / 2) * viewZoom;
-    viewPanY = cy - (GRID_OFFSET_Y + gridRows * BASE_TILE_SIZE / 2) * viewZoom;
+    const T = BASE_TILE_SIZE;
+    const left = 270 * uiS, right = canvasW - 24 * uiS;
+    const top = canvasH * 0.03, bottom = canvasH - (DOCK_H + 56) * uiS;
+    const wx0 = GRID_OFFSET_X - T * 1.2, wx1 = GRID_OFFSET_X + (gridCols + 1.2) * T;
+    const wy0 = horizonWorldY() - T * 2.4, wy1 = GRID_OFFSET_Y + (gridRows + 1.3) * T;
+    viewZoom = Math.max(VIEW_ZOOM_MIN, Math.min(1.5, (right - left) / (wx1 - wx0), (bottom - top) / (wy1 - wy0)));
+    viewPanX = (left + right) / 2 - (wx0 + wx1) / 2 * viewZoom;
+    viewPanY = (top + bottom) / 2 - (wy0 + wy1) / 2 * viewZoom;
+    clampPan();
   }
 
   canvas.addEventListener('wheel', (e) => {
