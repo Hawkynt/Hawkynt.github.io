@@ -1,6 +1,6 @@
 # Tower Defense
 
-Pixel-art tower defense for the SynthelicZ Desktop. Hold twelve campaign maps across four biomes with ten tower families that branch into two specializations, research permanent upgrades between battles and call in airstrikes when the line is about to break.
+Pixel-art tower defense for the SynthelicZ Desktop. Hold twelve campaign maps across four biomes, then push your luck in endless mode, with sixteen tower families that branch into two specializations, research permanent upgrades between battles and call in airstrikes when the line is about to break.
 
 ## User Stories
 
@@ -9,11 +9,12 @@ Pixel-art tower defense for the SynthelicZ Desktop. Hold twelve campaign maps ac
 - [x] As a player, I can pick a map on a campaign screen that shows a preview, waves, starting gold, lives, difficulty, roads and my best result
 - [x] As a player, I can earn up to three stars per map (based on the lives I keep) and unlock the next map by winning the previous one
 - [x] As a player, I can defend maps with two roads, crossing roads, a road that coils into a central keep, lakes, mesas, frozen lakes and lava rivers that block building
+- [x] As a player, I can play any map I have won in Endless mode, where waves never stop, bosses arrive every five waves (several at once later on), every wave earns research and my best wave is recorded
 - [x] As a player, I can continue an unfinished game from the title screen; the game saves itself automatically, even in the middle of a wave
 
 ### Towers
-- [x] As a player, I can build ten tower families: Archer, Cannon, Frost, Tesla, Flamer, Venom, Laser, Sniper, Spike traps (on the road) and the Gold Mine
-- [x] As a player, I can upgrade a tower through tiers I-III, choose one of two specializations at tier IV (for example Longbow or Volley, Siege Mortar or Shrapnel, Glacier or Blizzard) and master it at tier V
+- [x] As a player, I can build sixteen tower families: Archer, Cannon, Frost, Tesla, Flamer, Venom, Laser, Sniper, Spike traps (on the road), Gold Mine, Mortar (long-range artillery), Storm (lightning from the sky), Wind (knocks enemies back), Missile (homing anti-air rockets), Beacon (inspires nearby towers) and Arcane (orbs that ignore armor and burn a share of maximum health)
+- [x] As a player, I can upgrade a tower through tiers I-III, choose one of two specializations at tier IV (for example Longbow or Volley, Bombard or Shrapnel, Glacier or Blizzard) and master it at tier V
 - [x] As a player, I can see every tower grow with its tier (wooden scaffold, stone, gold trim, family stone, crown) and its head turn towards its target
 - [x] As a player, I can set each tower's targeting to First, Last, Strong or Close
 - [x] As a player, I can inspect a tower to see damage, range, rate, DPS, kills and its special effects, and compare every upgrade before buying it
@@ -21,9 +22,9 @@ Pixel-art tower defense for the SynthelicZ Desktop. Hold twelve campaign maps ac
 
 ### Enemies & Waves
 - [x] As a player, I can see the next wave's enemies with counts before I start it, and call a wave early for bonus gold
-- [x] As a player, I can face grunts, runners, swarmlings, bats that fly straight across the map, armored brutes, slimes that split, healing shamans, invisible phantoms, shield-casting wardens, wyverns and juggernauts, each with a clear counter
+- [x] As a player, I can face grunts, runners, swarmlings, bats and hornet swarms that fly straight across the map, burrowing beetles, charging rhinos, armored brutes, slimes that split, regenerating ghouls, healing shamans, tower-jamming saboteurs, hexers that break slows, invisible phantoms, shield-casting wardens, wyverns and juggernauts, each with a clear counter, introduced step by step along the campaign
 - [x] As a player, I can face crowned elite enemies that hurry their neighbours along
-- [x] As a player, I can fight three bosses (Warlord, Dragon, Lich King) introduced with a name card and a health bar
+- [x] As a player, I can fight seven bosses introduced with a name card and a health bar: the Warlord (war cry jams towers), Slime King (splits), Lich King (summons), Troll Chieftain (regenerates), Dragon (flies), Sandworm (burrows) and Aegis Colossus (shield phases)
 
 ### Research (persistent)
 - [x] As a player, I earn research points for every wave cleared, every map won and every new star
@@ -54,7 +55,7 @@ Pixel-art tower defense for the SynthelicZ Desktop. Hold twelve campaign maps ac
 |-------|--------|
 | Click / tap | Build the chosen tower, select a tower, press buttons |
 | Right click / Esc | Cancel building or aiming |
-| 1-9, 0 | Choose a tower to build |
+| 1-9, 0, Shift+1-6 | Choose a tower to build |
 | Arrow keys / Enter | Move the build cursor / build or select there |
 | U / I | Upgrade (at tier III: choose the left or right specialization) |
 | T | Cycle targeting (Shift+T backwards) |
@@ -62,10 +63,11 @@ Pixel-art tower defense for the SynthelicZ Desktop. Hold twelve campaign maps ac
 | R | Repair the selected tower |
 | Space | Start the next wave |
 | N | Call the next wave early |
-| F | Cycle game speed (1x, 2x, 3x) |
-| A | Auto-wave on/off |
+| F / Shift+F, + / - | Faster / slower (1x, 2x, 3x, 5x, 10x, 20x) |
+| A | Auto-wave on/off (next wave one second after a clear) |
 | Q / W / E | Airstrike / Deep Freeze / Gold Rush |
 | H | Help |
+| E (campaign map) | Start Endless mode on a won map |
 | Esc | Pause menu |
 | F2 | New game |
 
