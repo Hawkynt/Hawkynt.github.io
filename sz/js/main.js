@@ -181,8 +181,14 @@
       const { data } = e;
       if (!data?.type?.startsWith('sz:')) return;
 
-      const { type, requestId, path } = data;
+      // only the desktop itself and the apps in its own windows may talk to it
+      if (e.origin !== location.origin)
+        return;
       const win = windowManager.getWindowByIframe(e.source);
+      if (!win && e.source !== window)
+        return;
+
+      const { type, requestId, path } = data;
 
       const respond = (responseType, payload) => e.source?.postMessage({ type: responseType, requestId, path, ...payload }, '*');
       const handle = (p, type) => p.then(res => respond(type, res)).catch(err => respond(type, { error: { message: err.message, code: err.code } }));
@@ -1027,6 +1033,11 @@
   
   boot().catch(err => {
       console.error('[SZ] Boot failed:', err);
-      document.getElementById('sz-boot-screen').innerHTML = `<h1>Boot Failed</h1><p>${err.message}</p><pre>${err.stack}</pre>`;
+      const screen = document.getElementById('sz-boot-screen');
+      const h1 = document.createElement('h1'), p = document.createElement('p'), pre = document.createElement('pre');
+      h1.textContent = 'Boot Failed';
+      p.textContent = err.message;
+      pre.textContent = err.stack || '';
+      screen.replaceChildren(h1, p, pre);
   });
 })();

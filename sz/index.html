@@ -43,74 +43,129 @@
   <link rel="stylesheet" href="css/common-dialogs.css">
   <link rel="stylesheet" href="css/cursor-effects.css">
   <link rel="stylesheet" href="css/snap-overlay.css">
+  <script>
+    // the desktop needs a current browser; any other one gets the plain app index
+    (function () {
+      var ok = false;
+      try { ok = !!(window.Promise && window.fetch && new Function('class A { #a = 1; static b() { return 1; } } return A;')()); } catch (e) {}
+      document.documentElement.className += ok ? ' sz-capable' : ' sz-legacy';
+    })();
+  </script>
+  <style>
+    #sz-static-index { position: relative; z-index: 10; padding: 8px 16px; background: #fff; color: #000; font-family: Tahoma, Verdana, sans-serif; }
+    .sz-capable #sz-static-index { display: none; }
+    .sz-legacy #sz-boot-screen, .sz-legacy #sz-desktop, .sz-legacy #sz-taskbar { display: none; }
+    .sz-legacy, .sz-legacy body { overflow: auto; height: auto; }
+  </style>
+  <noscript>
+    <style>
+      #sz-boot-screen, #sz-desktop, #sz-taskbar { display: none; }
+      html, body { overflow: auto; height: auto; }
+    </style>
+  </noscript>
 </head>
 <body>
-  <noscript>
+  <!-- Plain app index: what text browsers, old browsers and browsers without
+       script see. Hidden as soon as the browser can run the desktop. -->
+  <div id="sz-static-index">
     <h1>»SynthelicZ« Desktop</h1>
-    <p>A browser-based desktop operating system with 50+ applications. Enable JavaScript to launch the desktop.</p>
-    <h2>Productivity</h2>
+    <p>A browser-based desktop operating system with 50+ applications. Your browser cannot run the desktop itself, but every application below opens on its own page.</p>
+    <h2>Office</h2>
     <ul>
-      <li><a href="Applications/calculator/index.html">Calculator</a> -- standard, scientific, and programmer modes</li>
-      <li><a href="Applications/notepad/index.html">Notepad</a> -- text editor for code and notes</li>
-      <li><a href="Applications/wordpad/index.html">WordPad</a> -- rich text editor</li>
-      <li><a href="Applications/spreadsheet/index.html">Spreadsheet</a> -- formulas and CSV/TSV support</li>
-      <li><a href="Applications/markdown-editor/index.html">Markdown Editor</a> -- live preview</li>
-      <li><a href="Applications/resume-builder/index.html">Resume Builder</a> -- 6 templates, PDF/DOCX export</li>
-      <li><a href="Applications/email-signature/index.html">E-Mail Signature Generator</a> -- HTML email signatures</li>
+      <li><a href="Applications/Office/calculator/index.html">Calculator</a> -- standard, scientific, and programmer modes</li>
+      <li><a href="Applications/Office/notepad/index.html">Notepad</a> -- text editor for code and notes</li>
+      <li><a href="Applications/Office/wordpad/index.html">WordPad</a> -- rich text editor</li>
+      <li><a href="Applications/Office/markdown-editor/index.html">Markdown Editor</a> -- live preview</li>
+      <li><a href="Applications/Office/spreadsheet/index.html">Spreadsheet</a> -- formulas and CSV/TSV support</li>
+      <li><a href="Applications/Office/function-plotter/index.html">Function Plotter</a> -- graphing tool</li>
+      <li><a href="Applications/Office/resume-builder/index.html">Resume Builder</a> -- 6 templates, PDF/DOCX export</li>
+      <li><a href="Applications/Office/email-signature/index.html">E-Mail Signature Generator</a> -- HTML email signatures</li>
+      <li><a href="Applications/Office/presentations/index.html">Presentations</a> -- slide decks with a slideshow mode</li>
     </ul>
-    <h2>Graphics &amp; Media</h2>
+    <h2>Accessories</h2>
     <ul>
-      <li><a href="Applications/paint/index.html">Paint</a> -- drawing tools, layers, image editing</li>
-      <li><a href="Applications/image-viewer/index.html">Image Viewer</a> -- PNG, JPG, GIF, WebP</li>
-      <li><a href="Applications/media-player/index.html">Media Player</a> -- MP3, WAV, OGG, MP4, WebM</li>
-      <li><a href="Applications/svg-editor/index.html">SVG Editor</a> -- vector graphics</li>
-      <li><a href="Applications/icon-editor/index.html">Icon Editor</a> -- ICO and cursor files</li>
-      <li><a href="Applications/font-viewer/index.html">Font Viewer</a> -- TTF, OTF, WOFF, WOFF2</li>
-      <li><a href="Applications/color-picker/index.html">Color Picker</a> -- hex, RGB, HSL</li>
-      <li><a href="Applications/gradient-generator/index.html">Gradient Generator</a> -- CSS gradients</li>
-      <li><a href="Applications/font-pairing/index.html">Font Pairing Tool</a> -- typography specimen with curated pairs</li>
+      <li><a href="Applications/Accessories/about/index.html">About »SynthelicZ«</a></li>
+      <li><a href="Applications/Accessories/encryptor/index.html">Data Encryption</a> -- encryption and decryption</li>
+      <li><a href="Applications/Accessories/clock/index.html">Date and Time</a></li>
+      <li><a href="Applications/Accessories/qr-generator/index.html">QR Code Generator</a> -- QR codes from text or URLs</li>
+    </ul>
+    <h2>Graphics</h2>
+    <ul>
+      <li><a href="Applications/Graphics/image-viewer/index.html">Image Viewer</a> -- PNG, JPG, GIF, WebP</li>
+      <li><a href="Applications/Graphics/paint/index.html">Paint</a> -- drawing tools, layers, image editing</li>
+      <li><a href="Applications/Graphics/color-picker/index.html">Color Picker</a> -- hex, RGB, HSL</li>
+      <li><a href="Applications/Graphics/font-viewer/index.html">Font Viewer</a> -- TTF, OTF, WOFF, WOFF2</li>
+      <li><a href="Applications/Graphics/font-pairing/index.html">Font Pairing Tool</a> -- typography specimen with curated pairs</li>
+      <li><a href="Applications/Graphics/icon-editor/index.html">Icon Editor</a> -- ICO and cursor files</li>
+      <li><a href="Applications/Graphics/svg-editor/index.html">SVG Editor</a> -- vector graphics</li>
+    </ul>
+    <h2>Entertainment</h2>
+    <ul>
+      <li><a href="Applications/Entertainment/media-player/index.html">Media Player</a> -- MP3, WAV, OGG, MP4, WebM</li>
+    </ul>
+    <h2>Internet</h2>
+    <ul>
+      <li><a href="Applications/Internet/web-browser/index.html">Web Browser</a></li>
     </ul>
     <h2>Developer Tools</h2>
     <ul>
-      <li><a href="Applications/terminal/index.html">Terminal</a> -- command-line with virtual filesystem</li>
-      <li><a href="Applications/hex-editor/index.html">Hex Editor</a> -- binary file editing</li>
-      <li><a href="Applications/json-viewer/index.html">JSON Viewer</a> -- tree and raw views</li>
-      <li><a href="Applications/regex-tester/index.html">Regex Tester</a> -- live matching and replace</li>
-      <li><a href="Applications/diff-viewer/index.html">Diff Viewer</a> -- side-by-side comparison</li>
-      <li><a href="Applications/qr-generator/index.html">QR Generator</a> -- QR codes from text or URLs</li>
-      <li><a href="Applications/function-plotter/index.html">Function Plotter</a> -- graphing tool</li>
-      <li><a href="Applications/cron-visualizer/index.html">Cron Visualizer</a> -- schedule tester</li>
-      <li><a href="Applications/subnet-calculator/index.html">Subnet Calculator</a> -- IPv4 network planning</li>
-      <li><a href="Applications/encryptor/index.html">Encryptor</a> -- encryption and decryption</li>
-      <li><a href="Applications/readme-generator/index.html">README Generator</a> -- template-based README builder</li>
-      <li><a href="Applications/cookie-banner/index.html">Cookie Banner Generator</a> -- GDPR/CCPA consent banners</li>
-      <li><a href="Applications/mock-data/index.html">Mock Data Generator</a> -- fake test data in JSON, CSV, SQL</li>
-      <li><a href="Applications/metadata-viewer/index.html">Metadata Viewer</a> -- file format analysis and metadata inspection</li>
+      <li><a href="Applications/Development/hex-editor/index.html">Hex Editor</a> -- binary file editing</li>
+      <li><a href="Applications/Development/json-viewer/index.html">JSON Viewer</a> -- tree and raw views</li>
+      <li><a href="Applications/Development/regex-tester/index.html">Regex Tester</a> -- live matching and replace</li>
+      <li><a href="Applications/Development/diff-viewer/index.html">Diff Viewer</a> -- side-by-side comparison</li>
+      <li><a href="Applications/Development/cron-visualizer/index.html">Cron Visualizer</a> -- schedule tester</li>
+      <li><a href="Applications/Development/subnet-calculator/index.html">Subnet Calculator</a> -- IPv4 network planning</li>
+      <li><a href="Applications/Development/gradient-generator/index.html">Gradient Generator</a> -- CSS gradients</li>
+      <li><a href="Applications/Development/readme-generator/index.html">README Generator</a> -- template-based README builder</li>
+      <li><a href="Applications/Development/cookie-banner/index.html">Cookie Banner Generator</a> -- GDPR/CCPA consent banners</li>
+      <li><a href="Applications/Development/metadata-viewer/index.html">Metadata Viewer</a> -- file format analysis and metadata inspection</li>
+      <li><a href="Applications/Development/mock-data/index.html">Mock Data Generator</a> -- fake test data in JSON, CSV, SQL</li>
     </ul>
     <h2>Games</h2>
     <ul>
-      <li><a href="Applications/minesweeper/index.html">Minesweeper</a></li>
-      <li><a href="Applications/tetris/index.html">Tetris</a></li>
-      <li><a href="Applications/solitaire/index.html">Solitaire</a></li>
-      <li><a href="Applications/freecell/index.html">FreeCell</a></li>
-      <li><a href="Applications/spider-solitaire/index.html">Spider Solitaire</a></li>
-      <li><a href="Applications/snake/index.html">Snake</a> -- classic with particle effects</li>
-      <li><a href="Applications/breakout/index.html">Breakout</a> -- brick-breaker with power-ups</li>
-      <li><a href="Applications/space-invaders/index.html">Space Invaders</a> -- classic arcade shooter</li>
-      <li><a href="Applications/asteroids/index.html">Asteroids</a> -- enhanced with 4 game modes</li>
-      <li><a href="Applications/pacman/index.html">Pac-Man</a> -- maze chase with 4-ghost AI</li>
+      <li><a href="Applications/Games/minesweeper/index.html">Minesweeper</a></li>
+      <li><a href="Applications/Games/tetris/index.html">Tetris</a></li>
+      <li><a href="Applications/Games/snake/index.html">Snake</a> -- classic with particle effects</li>
+      <li><a href="Applications/Games/breakout/index.html">Breakout</a> -- brick-breaker with power-ups</li>
+      <li><a href="Applications/Games/space-invaders/index.html">Space Invaders</a> -- classic arcade shooter</li>
+      <li><a href="Applications/Games/asteroids/index.html">Asteroids</a> -- enhanced with 4 game modes</li>
+      <li><a href="Applications/Games/pacman/index.html">Pac-Man</a> -- maze chase with 4-ghost AI</li>
+      <li><a href="Applications/Games/flappy-bird/index.html">Flappy Bird</a> -- one-button flyer</li>
+      <li><a href="Applications/Games/cookie-clicker/index.html">Cookie Clicker</a> -- incremental clicker</li>
+      <li><a href="Applications/Games/endless-runner/index.html">Endless Runner</a> -- jump and dodge</li>
+      <li><a href="Applications/Games/space-combat/index.html">Space Combat</a> -- dogfights in space</li>
+      <li><a href="Applications/Games/bomberman/index.html">Bomberman</a> -- blast your way through the maze</li>
+      <li><a href="Applications/Games/boulder-dash/index.html">Boulder Dash</a> -- dig for gems, mind the rocks</li>
+      <li><a href="Applications/Games/bubble-bobble/index.html">Bubble Bobble</a> -- trap monsters in bubbles</li>
+      <li><a href="Applications/Games/platformer/index.html">Platformer</a> -- jump-and-run</li>
+      <li><a href="Applications/Games/space-puzzle/index.html">Space Puzzle</a> -- puzzles among the stars</li>
+      <li><a href="Applications/Games/space-mining/index.html">Space Mining</a> -- mine asteroids for ore</li>
+      <li><a href="Applications/Games/space-racing/index.html">Space Racing</a> -- races through space</li>
+      <li><a href="Applications/Games/space-farming/index.html">Space Farming</a> -- farm on a far planet</li>
+      <li><a href="Applications/Games/dome-keeper/index.html">Dome Keeper</a> -- dig for resources, defend the dome</li>
+      <li><a href="Applications/Games/fantasy-puzzle/index.html">Fantasy Puzzle</a> -- match-three adventure</li>
+      <li><a href="Applications/Games/physics-puzzle/index.html">Physics Puzzle</a> -- physics-based puzzles</li>
+      <li><a href="Applications/Games/mind-puzzle/index.html">Mind-Bending Puzzle</a> -- logic puzzles</li>
+      <li><a href="Applications/Games/illusion-puzzle/index.html">Optical Illusion Puzzle</a> -- optical illusion puzzles</li>
+      <li><a href="Applications/Games/tower-defense/index.html">Tower Defense</a> -- build towers, hold the line</li>
+      <li><a href="Applications/Games/fantasy-cards/index.html">Fantasy Cards</a> -- collectible card battles</li>
+      <li><a href="Applications/Games/card-games/index.html">Card Games Suite</a> -- Solitaire, FreeCell, Spider and more</li>
+      <li><a href="Applications/Games/cooking-game/index.html">Cooking Game</a> -- run a busy kitchen</li>
+      <li><a href="Applications/Games/rhythm-game/index.html">Rhythm Game</a> -- hit the notes on the beat</li>
+      <li><a href="Applications/Games/tactical-realms/index.html">Tactical Realms</a> -- tactical fantasy role-playing game</li>
+    </ul>
+    <h2>System Tools</h2>
+    <ul>
+      <li><a href="Applications/System%20Tools/terminal/index.html">Terminal</a> -- command-line with virtual filesystem</li>
+      <li><a href="Applications/System%20Tools/skin-tester/index.html">Skin Tester</a></li>
+      <li><a href="Applications/System%20Tools/display-tester/index.html">Display Tester</a> -- dead pixel, color, HDR, FPS tests</li>
+      <li><a href="Applications/System%20Tools/archiver/index.html">Archiver</a> -- 69 archive formats</li>
     </ul>
     <h2>System</h2>
     <ul>
-      <li><a href="Applications/explorer/index.html">Explorer</a> -- file browser</li>
-      <li><a href="Applications/web-browser/index.html">Web Browser</a></li>
-      <li><a href="Applications/clock/index.html">Clock</a></li>
-      <li><a href="Applications/task-manager/index.html">Task Manager</a></li>
-      <li><a href="Applications/control-panel/index.html">Control Panel</a></li>
-      <li><a href="Applications/archiver/index.html">Archiver</a> -- 69 archive formats</li>
-      <li><a href="Applications/skin-tester/index.html">Skin Tester</a></li>
-      <li><a href="Applications/display-tester/index.html">Display Tester</a> -- dead pixel, color, HDR, FPS tests</li>
-      <li><a href="Applications/about/index.html">About</a></li>
+      <li><a href="Applications/System/explorer/index.html">Explorer</a> -- file browser</li>
+      <li><a href="Applications/System/task-manager/index.html">Task Manager</a></li>
+      <li><a href="Applications/System/control-panel/index.html">Control Panel</a></li>
     </ul>
     <h2>More from »SynthelicZ«</h2>
     <ul>
@@ -124,7 +179,7 @@
       <li><a href="../History/index.html">History</a> -- development timeline</li>
       <li><a href="../Drums/ABCPlayer.html">ABC Music Player</a> -- drum pattern editor</li>
     </ul>
-  </noscript>
+  </div>
 
   <!-- Boot screen overlay (shown while assets load) -->
   <div id="sz-boot-screen"></div>
