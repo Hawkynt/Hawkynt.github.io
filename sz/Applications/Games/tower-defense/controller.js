@@ -568,6 +568,7 @@
       phase: state === STATE_BUILD || (state === STATE_PAUSED && pausedFrom === STATE_BUILD) ? 'build' : 'wave',
       gameSpeed, autoWaveMode, autoWaveTimer,
       waveComplete, waveCountdown, spawnTimer, waveSize, lastPaidWave,
+      abilities: { strike: abilityCd.strike, freeze: abilityCd.freeze, rush: abilityCd.rush, rushTimer },
       waveEnemies: waveEnemies.slice(),
       stats: { kills: runStats.kills, gold: runStats.gold, leaked: runStats.leaked },
       towers: towers.map(t => ({
@@ -769,6 +770,11 @@
       pathPos(path, e.dist, e);
     }
     waveSize = Math.max(num(d.waveSize, 0), waveEnemies.filter(t => t !== '|').length + enemies.length);
+    if (d.abilities && typeof d.abilities === 'object') {
+      for (const k of ['strike', 'freeze', 'rush'])
+        abilityCd[k] = clamp(num(d.abilities[k], 0), 0, 120);
+      rushTimer = clamp(num(d.abilities.rushTimer, 0), 0, 60);
+    }
 
     shownGold = gold;
 
@@ -959,6 +965,10 @@
     waveSize = 0;
     lastPaidWave = 0;
     bossIntro = null;
+    abilityCd.strike = abilityCd.freeze = abilityCd.rush = 0;
+    rushTimer = 0;
+    strikes = [];
+    abilityAim = null;
     previewCache.key = '';
   }
 
@@ -1809,14 +1819,18 @@
   function updateProjectiles(dt) {
     for (let i = projectiles.length - 1; i >= 0; --i) {
       const p = projectiles[i];
-      if (p.kind === 'shell' || p.kind === 'glob' || p.kind === 'bomblet') {
+      if (p.kind === 'shell' || p.kind === 'glob' || p.kind === 'bomblet' || p.kind === 'airbomb') {
         p.t += dt;
         const k = Math.min(1, p.t / p.dur);
         p.x = p.sx + (p.tx - p.sx) * k;
         p.y = p.sy + (p.ty - p.sy) * k;
-        p.z = Math.sin(k * Math.PI) * Math.min(70, 20 + p.dur * 60) * (p.kind === 'bomblet' ? 0.4 : 1);
+        p.z = p.kind === 'airbomb' ? (1 - k * k) * 70 : Math.sin(k * Math.PI) * Math.min(70, 20 + p.dur * 60) * (p.kind === 'bomblet' ? 0.4 : 1);
         if (k >= 1) {
           projectiles.splice(i, 1);
+          if (p.kind === 'airbomb') {
+            airbombHit(p);
+            continue;
+          }
           if (p.kind === 'glob') {
             particles.burst(p.tx, p.ty, 8, { color: p.s.acid ? '#c8ff4a' : '#7ce35a', speed: 2, life: 0.4 });
             addDecal(p.tx, p.ty, p.s.cloudPx * 0.5, 'slime');
@@ -1932,7 +1946,7 @@
     const f = enemyFlags(e);
     addCorpse(e);
     deathFx(e);
-    let bounty = Math.round(e.bounty * (1 + techLevel('bounty') * 0.1));
+    let bounty = Math.round(e.bounty * (1 + techLevel('bounty') * 0.1) * (rushTimer > 0 ? 2 : 1));
     for (const t of towers) {
       const s = towerStats(t);
       if (s.bounty && Math.hypot(t.x - e.x, t.y - e.y) <= s.rangePx)
@@ -2217,6 +2231,7 @@
 
   function stepBattle(h) {
     updateSpawner(h);
+    updateAbilities(h);
     updateEnemies(h);
     updateReveal(h);
     updateTowers(h);
@@ -3636,6 +3651,7 @@
       drawCorpses();
       drawProjectiles();
       drawFxLines();
+      drawStrikes();
     }
     drawGates(true);
     drawAmbient();
@@ -3975,7 +3991,7 @@
         ctx.stroke();
       }
       const z = p.z || 0;
-      if (p.kind === 'shell' || p.kind === 'glob' || p.kind === 'bomblet') {
+      if (p.kind === 'shell' || p.kind === 'glob' || p.kind === 'bomblet' || p.kind === 'airbomb') {
         drawShadow(p.x, p.y + 2, 4, 2, 0.6);
         if (p.kind === 'glob') {
           drawGlow('#7ce35a', p.x, p.y - z, 9, 0.5);
@@ -3984,7 +4000,7 @@
           ctx.fillStyle = '#d4ffb0';
           ctx.fillRect(Math.round(p.x - 2), Math.round(p.y - z - 2), 2, 2);
         } else {
-          const r = p.kind === 'bomblet' ? 2.2 : 4;
+          const r = p.kind === 'bomblet' ? 2.2 : p.kind === 'airbomb' ? 5 : 4;
           ctx.fillStyle = '#1a1a20';
           ctx.beginPath(); ctx.arc(p.x, p.y - z, r, 0, TWO_PI); ctx.fill();
           ctx.fillStyle = '#6a6a78';
@@ -4950,6 +4966,27 @@
       g.fillStyle = '#5ab8ff'; g.beginPath(); g.moveTo(8, 1); g.lineTo(14, 3); g.lineTo(13, 10); g.lineTo(8, 15); g.lineTo(3, 10); g.lineTo(2, 3); g.fill();
       g.fillStyle = '#b8e4ff'; g.fillRect(5, 4, 2, 5);
     },
+    bomb: (g) => {
+      g.fillStyle = '#2a2a34'; g.beginPath(); g.arc(7, 9.5, 5.5, 0, TWO_PI); g.fill();
+      g.fillStyle = '#5a5a6a'; g.fillRect(4, 6, 2, 2);
+      g.fillStyle = '#8a6a48'; g.fillRect(10, 2, 2, 4);
+      g.fillStyle = '#ffd75a'; g.fillRect(11, 0, 3, 2);
+      g.fillStyle = '#ff6a1a'; g.fillRect(13, 1, 2, 1);
+    },
+    snow: (g) => {
+      g.strokeStyle = '#bfeaff'; g.lineWidth = 2;
+      for (let i = 0; i < 3; ++i) {
+        const a = i * Math.PI / 3;
+        g.beginPath(); g.moveTo(8 + Math.cos(a) * 7, 8 + Math.sin(a) * 7); g.lineTo(8 - Math.cos(a) * 7, 8 - Math.sin(a) * 7); g.stroke();
+      }
+      g.fillStyle = '#ffffff'; g.fillRect(7, 7, 2, 2);
+    },
+    rush: (g) => {
+      g.fillStyle = '#8a5a20'; g.beginPath(); g.arc(8, 10, 5.5, 0, TWO_PI); g.fill();
+      g.fillStyle = '#b8803a'; g.fillRect(5, 3, 6, 3);
+      g.fillStyle = '#ffd34a'; g.beginPath(); g.arc(8, 10, 2.6, 0, TWO_PI); g.fill();
+      g.fillStyle = '#ffd34a'; g.fillRect(1, 1, 2, 2); g.fillRect(13, 2, 2, 2); g.fillRect(14, 12, 2, 2);
+    },
     flask: (g) => {
       g.fillStyle = '#c8d4ec'; g.fillRect(6, 1, 4, 2);
       g.fillStyle = '#7ad8ff'; g.beginPath(); g.moveTo(6.5, 3); g.lineTo(9.5, 3); g.lineTo(9.5, 7); g.lineTo(14, 14); g.lineTo(2, 14); g.lineTo(6.5, 7); g.fill();
@@ -5727,7 +5764,7 @@
      by clearing waves and winning maps
      ══════════════════════════════════════════════════════════════════ */
 
-  const TREE_BRANCHES = ['arsenal', 'economy', 'defense'];
+  const TREE_BRANCHES = ['arsenal', 'economy', 'defense', 'abilities'];
   const TREE_BRANCH_INFO = {
     arsenal: { name: 'Arsenal', color: '#ff8a5a', icon: 'sword' },
     economy: { name: 'Economy', color: '#ffd75a', icon: 'coin' },
@@ -5859,8 +5896,7 @@
   let treeReturn = STATE_READY;
 
   function treeBranches() {
-    const extra = typeof ABILITY_BRANCH !== 'undefined' && ABILITY_BRANCH ? ['abilities'] : [];
-    return TREE_BRANCHES.concat(extra);
+    return TREE_BRANCHES;
   }
 
   function computeTreeLayout() {
@@ -6254,6 +6290,273 @@
   }
 
   /* ══════════════════════════════════════════════════════════════════
+     ABILITIES -- airstrike, deep freeze and gold rush, with cooldowns;
+     unlocked and improved in the Abilities branch of the research
+     ══════════════════════════════════════════════════════════════════ */
+
+  TREE.push(
+    { id: 'ab_strike', branch: 'abilities', col: 0, row: 1, max: 1, cost: [3], req: [], icon: 'bomb',
+      name: 'Airstrike', desc: 'Call bombers onto a spot of your choice (Q).', effect: () => 'Airstrike unlocked' },
+    { id: 'ab_strike2', branch: 'abilities', col: 1, row: 0, max: 2, cost: [5, 8], req: ['ab_strike'], icon: 'bomb',
+      name: 'Heavy Payload', desc: 'Bigger bombs for the airstrike.', effect: (l) => `+${l * 35}% airstrike damage` },
+    { id: 'ab_freeze', branch: 'abilities', col: 1, row: 1, max: 1, cost: [6], req: ['ab_strike'], icon: 'snow',
+      name: 'Deep Freeze', desc: 'Freeze every enemy on the field solid (W).', effect: () => 'Deep Freeze unlocked' },
+    { id: 'ab_freeze2', branch: 'abilities', col: 2, row: 1, max: 2, cost: [5, 8], req: ['ab_freeze'], icon: 'snow',
+      name: 'Permafrost', desc: 'The freeze lasts longer.', effect: (l) => `+${l} s freeze` },
+    { id: 'ab_rush', branch: 'abilities', col: 1, row: 2, max: 1, cost: [6], req: ['ab_strike'], icon: 'rush',
+      name: 'Gold Rush', desc: 'For a while every kill pays double (E).', effect: () => 'Gold Rush unlocked' },
+    { id: 'ab_rush2', branch: 'abilities', col: 2, row: 2, max: 2, cost: [5, 8], req: ['ab_rush'], icon: 'rush',
+      name: 'Long Rush', desc: 'The gold rush lasts longer.', effect: (l) => `+${l * 4} s gold rush` },
+    { id: 'ab_cool', branch: 'abilities', col: 2, row: 0, max: 2, cost: [6, 10], req: ['ab_strike2'], icon: 'clock',
+      name: 'Quick Command', desc: 'All abilities recharge faster.', effect: (l) => `-${l * 15}% cooldowns` }
+  );
+  for (const n of TREE) TREE_BY_ID[n.id] = n;
+
+  const ABILITIES = [
+    { id: 'strike', key: 'Q', node: 'ab_strike', name: 'Airstrike', icon: 'bomb', color: '#ff8a3a', cooldown: 40, aim: true,
+      desc: 'Bombers carpet a line through the chosen spot.' },
+    { id: 'freeze', key: 'W', node: 'ab_freeze', name: 'Deep Freeze', icon: 'snow', color: '#9ae4ff', cooldown: 60,
+      desc: 'Every enemy on the field freezes solid; bosses are slowed.' },
+    { id: 'rush', key: 'E', node: 'ab_rush', name: 'Gold Rush', icon: 'rush', color: '#ffd75a', cooldown: 75,
+      desc: 'Every kill pays double gold for a while.' }
+  ];
+
+  const abilityCd = { strike: 0, freeze: 0, rush: 0 };
+  let rushTimer = 0;
+  let abilityAim = null;            // 'strike' while choosing the target
+  let strikes = [];                 // bomber runs in flight
+
+  function abilityUnlocked(a) {
+    return techLevel(a.node) > 0;
+  }
+
+  function abilityCooldown(a) {
+    return a.cooldown * (1 - techLevel('ab_cool') * 0.15);
+  }
+
+  function strikeDamage() {
+    return 70 * waveHpScale(Math.max(1, currentWave)) * 0.55 * (1 + techLevel('ab_strike2') * 0.35);
+  }
+
+  function freezeTime() {
+    return 3 + techLevel('ab_freeze2');
+  }
+
+  function rushTime() {
+    return 12 + techLevel('ab_rush2') * 4;
+  }
+
+  function abilityReady(a) {
+    return abilityUnlocked(a) && abilityCd[a.id] <= 0 && state === STATE_PLAYING;
+  }
+
+  function useAbility(id, wx, wy) {
+    const a = ABILITIES.find(q => q.id === id);
+    if (!a) return false;
+    if (!abilityUnlocked(a) || state !== STATE_PLAYING || abilityCd[id] > 0) {
+      audio.play('error');
+      if (!abilityUnlocked(a))
+        floatingText.add(WORLD_W / 2, WORLD_H - 30, `${a.name} is locked: unlock it in Research`, { color: '#c890ff', font: 'bold 12px sans-serif', life: 1.8 });
+      return false;
+    }
+    if (a.aim && wx === undefined) {
+      abilityAim = abilityAim === id ? null : id;
+      selectedTowerType = -1;
+      audio.play('select', { pitch: 1.2 });
+      return true;
+    }
+    abilityAim = null;
+    abilityCd[id] = abilityCooldown(a);
+    pressFx['ability-' + id] = performance.now();
+    if (id === 'strike') {
+      strikes.push({ x: clamp(wx, 0, WORLD_W), y: clamp(wy, 0, WORLD_H), t: 0, dropped: 0 });
+      audio.play('whoosh', { pitch: 0.6, volume: 0.8 });
+    } else if (id === 'freeze') {
+      for (const e of enemies) {
+        if (e.hp <= 0) continue;
+        if (ENEMY_TYPES[e.type].boss) applySlow(e, 0.5, freezeTime());
+        else e.freezeTimer = Math.max(e.freezeTimer, freezeTime());
+        particles.flakes(e.x, e.y - 6, 6);
+      }
+      fxLines.push({ kind: 'ring', x: WORLD_W / 2, y: WORLD_H / 2, r: WORLD_W * 0.7, color: '#e6f8ff', t: 0, life: 0.7 });
+      particles.glow(WORLD_W / 2, WORLD_H / 2, WORLD_W * 0.5, '#bfeaff', 0.4);
+      freezeFlash = 1;
+      audio.play('zap', { pitch: 0.5 });
+      audio.play('lineClear', { pitch: 1.4, volume: 0.6 });
+      showBanner('DEEP FREEZE', `${freezeTime()} seconds`, '#9ae4ff', 1.6);
+    } else if (id === 'rush') {
+      rushTimer = rushTime();
+      audio.play('powerup', { pitch: 1.3 });
+      showBanner('GOLD RUSH', `Double gold for ${rushTime()} seconds`, UI.gold, 1.6);
+    }
+    return true;
+  }
+  let freezeFlash = 0;
+
+  function updateAbilities(dt) {
+    for (const a of ABILITIES)
+      if (abilityCd[a.id] > 0) abilityCd[a.id] = Math.max(0, abilityCd[a.id] - dt);
+    if (rushTimer > 0) rushTimer = Math.max(0, rushTimer - dt);
+    for (let i = strikes.length - 1; i >= 0; --i) {
+      const s = strikes[i];
+      s.t += dt;
+      // Three bombs fall along the flight line, then explode where they land
+      const drops = [0.42, 0.52, 0.62];
+      while (s.dropped < 3 && s.t >= drops[s.dropped]) {
+        const off = (s.dropped - 1) * CELL * 1.3;
+        projectiles.push({ kind: 'airbomb', x: s.x + off, y: s.y, sx: s.x + off, sy: s.y, tx: s.x + off, ty: s.y, t: 0, dur: 0.35, damage: strikeDamage(), tower: null, s: { pierce: 0.5, splash: 1.4 }, color: '#2a2a30' });
+        ++s.dropped;
+      }
+      if (s.t > 1.6) strikes.splice(i, 1);
+    }
+  }
+
+  // Bombs of the airstrike land here (called from the projectile update)
+  function airbombHit(p) {
+    const r = CELL * 1.4;
+    for (const e of enemiesNear(p.tx, p.ty, r))
+      hurt(e, p.damage, null, 'phys', { pierce: 0.5, area: true });
+    explosionFx(p.tx, p.ty, r, '#ff7a2a');
+    addShake(5, 220);
+    audio.play('explode', { pitch: 0.9 + Math.random() * 0.2, volume: 0.7 });
+  }
+
+  /* ── Drawing ── */
+  let planeArt = null;
+  function drawStrikes() {
+    if (!planeArt)
+      planeArt = pixelArt(30, 22, (g) => {
+        const m = RAMPS.metal;
+        px(g, 2, 9, 26, 5, m[3]); px(g, 2, 9, 26, 1, m[5]);
+        poly(g, [26, 9, 30, 11, 26, 14], m[2]);
+        poly(g, [10, 9, 16, 0, 20, 0, 18, 9], m[4]);
+        poly(g, [10, 14, 16, 22, 20, 22, 18, 14], m[2]);
+        poly(g, [0, 8, 5, 4, 7, 4, 5, 9], m[3]);
+        px(g, 22, 10, 3, 2, '#7ad8ff');
+        px(g, 12, 11, 2, 1, '#c8303a');
+      });
+    for (const s of strikes) {
+      const k = s.t / 1.2;
+      if (k > 1.2) continue;
+      const x = -60 + (WORLD_W + 120) * k, y = s.y - 40;
+      drawShadow(x, s.y + 6, 24, 7, 0.45);
+      blitArt(planeArt, x, y + 22, false, 1, 1.4);
+    }
+    // Aiming reticle
+    if (abilityAim === 'strike') {
+      const c = cursorWorld();
+      if (c) {
+        const pulse = 0.5 + 0.5 * Math.sin(animTime * 8);
+        ctx.strokeStyle = `rgba(255,120,60,${0.6 + pulse * 0.4})`;
+        ctx.lineWidth = 2;
+        for (let i = -1; i <= 1; ++i) {
+          ctx.beginPath();
+          ctx.arc(c.x + i * CELL * 1.3, c.y, CELL * 1.4, 0, TWO_PI);
+          ctx.stroke();
+        }
+        ctx.fillStyle = 'rgba(255,90,40,0.12)';
+        ctx.fillRect(c.x - CELL * 2.7, c.y - CELL * 1.4, CELL * 5.4, CELL * 2.8);
+        drawBrackets(c.x - CELL / 2, c.y - CELL / 2, CELL, '#ff8a3a', 2 + pulse * 2);
+      }
+    }
+  }
+
+  function cursorWorld() {
+    if (kbCursor.active)
+      return { x: kbCursor.col * CELL + CELL / 2, y: kbCursor.row * CELL + CELL / 2 };
+    if (!pointer.inside || pointer.wx < 0 || pointer.wy < 0 || pointer.wx >= WORLD_W || pointer.wy >= WORLD_H) return null;
+    return { x: pointer.wx, y: pointer.wy };
+  }
+
+  function drawAbilityOverlays() {
+    if (freezeFlash > 0) {
+      ctx.fillStyle = `rgba(220,245,255,${freezeFlash * 0.45})`;
+      ctx.fillRect(-20, -20, UW + 40, UH + 40);
+      freezeFlash = Math.max(0, freezeFlash - frameDt * 2.5);
+    }
+    if (rushTimer > 0 && (state === STATE_PLAYING || state === STATE_PAUSED)) {
+      const a = 0.25 + 0.15 * Math.sin(animTime * 6);
+      ctx.strokeStyle = `rgba(255,215,90,${a})`;
+      ctx.lineWidth = 6;
+      ctx.strokeRect(view.x / uiS + 3, view.y / uiS + 3, WORLD_W * view.s / uiS - 6, WORLD_H * view.s / uiS - 6);
+    }
+  }
+
+  // Three round buttons at the right end of the build bar
+  function abilityBarWidth() {
+    return ABILITIES.length * 62 + 6;
+  }
+
+  function drawAbilityButtons(x, y, h) {
+    ABILITIES.forEach((a, i) => {
+      const bx = x + i * 62, w = 56;
+      const id = 'ability-' + a.id;
+      const unlocked = abilityUnlocked(a);
+      const cd = abilityCd[a.id], total = abilityCooldown(a);
+      const ready = unlocked && cd <= 0;
+      const active = abilityAim === a.id || (a.id === 'rush' && rushTimer > 0);
+      const hover = hoverId === id;
+      const press = pressAmount(id);
+      ctx.save();
+      roundRectPath(bx, y + press * 2, w, h, 10);
+      const g = ctx.createLinearGradient(0, y, 0, y + h);
+      g.addColorStop(0, ready ? shade(a.color, hover ? -0.35 : -0.5) : 'rgba(30,34,50,0.95)');
+      g.addColorStop(1, ready ? shade(a.color, -0.78) : 'rgba(12,14,24,0.95)');
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.lineWidth = active ? 2.5 : 1.5;
+      ctx.strokeStyle = active ? '#ffffff' : ready ? a.color : 'rgba(150,170,210,0.25)';
+      ctx.stroke();
+      if (ready) {
+        roundRectPath(bx - 2, y - 2 + press * 2, w + 4, h + 4, 12);
+        ctx.strokeStyle = hexToRgba(a.color, 0.25 + 0.2 * Math.sin(animTime * 4 + i));
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      const cx = bx + w / 2, cy = y + h / 2 - 6 + press * 2;
+      drawIcon(unlocked ? a.icon : 'lock', cx, cy, unlocked ? 26 : 20, unlocked ? (ready ? 1 : 0.45) : 0.6);
+      if (unlocked && cd > 0) {
+        // Cooldown sweep
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, 17, -Math.PI / 2, -Math.PI / 2 + TWO_PI * (cd / total));
+        ctx.closePath();
+        ctx.fill();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        fitText(String(Math.ceil(cd)), cx, cy, 30, 13, { weight: 'bold', color: '#ffffff', outline: 'rgba(0,0,0,0.8)' });
+      }
+      if (a.id === 'rush' && rushTimer > 0)
+        drawMeter(bx + 6, y + h - 22, w - 12, 5, rushTimer / rushTime(), UI.gold);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText(a.name, cx, y + h - 9 + press * 2, w - 6, 9, { weight: 'bold', color: unlocked ? UI.text : UI.textMute, minPx: 7 });
+      drawKeycap(a.key, bx + 3, y + 3, 9);
+      ctx.restore();
+      addRegion({ id, x: bx, y, w, h, anchorTip: true, sound: false,
+        onClick: () => useAbility(a.id),
+        tip: () => abilityTooltip(a) });
+    });
+  }
+
+  function abilityTooltip(a) {
+    const lines = [a.name, a.desc];
+    if (!abilityUnlocked(a)) {
+      lines.push('✘ Locked: unlock it in Research (Abilities)');
+      return lines;
+    }
+    if (a.id === 'strike') lines.push(`[[sword]] ${Math.round(strikeDamage())} damage per bomb, three bombs`);
+    if (a.id === 'freeze') lines.push(`[[clock]] ${freezeTime()} seconds`);
+    if (a.id === 'rush') lines.push(`[[clock]] ${rushTime()} seconds of double gold`);
+    lines.push(`• Cooldown ${Math.round(abilityCooldown(a))} s · key ${a.key}`);
+    if (state !== STATE_PLAYING) lines.push('⚠ Usable while a wave is running');
+    else if (abilityCd[a.id] > 0) lines.push(`⚠ Ready in ${Math.ceil(abilityCd[a.id])} s`);
+    else lines.push('✔ Ready');
+    return lines;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
      SCREEN SHAKE
      ══════════════════════════════════════════════════════════════════ */
 
@@ -6478,7 +6781,12 @@
     drawPanel(r.x, r.y, r.w, r.h, { accent: UI.gold, radius: 10 });
     const n = TOWER_TYPES.length;
     const gap = 5;
-    const innerX = r.x + 8, innerW = r.w - 16;
+    const abW = abilityBarWidth();
+    const innerX = r.x + 8, innerW = r.w - 16 - abW - 8;
+    // Separator and ability buttons on the right
+    ctx.fillStyle = 'rgba(255,215,90,0.25)';
+    ctx.fillRect(r.x + r.w - abW - 10, r.y + 10, 1, r.h - 20);
+    drawAbilityButtons(r.x + r.w - abW - 2, r.y + 7, r.h - 14);
     const cw = Math.min(92, (innerW - gap * (n - 1)) / n);
     const ch = r.h - 14;
     const total = n * cw + (n - 1) * gap;
@@ -7431,6 +7739,7 @@
     setUiTransform();
     regions = [];
     drawDanger();
+    drawAbilityOverlays();
     if (state === STATE_PLAYING || state === STATE_BUILD || state === STATE_PAUSED)
       drawBossIntro();
     if (state === STATE_READY) {
@@ -7589,8 +7898,12 @@
   }
 
   // Click or Enter on a map cell
-  function mapAction(col, row) {
+  function mapAction(col, row, wx, wy) {
     if (state !== STATE_BUILD && state !== STATE_PLAYING) return;
+    if (abilityAim) {
+      useAbility(abilityAim, wx === undefined ? col * CELL + CELL / 2 : wx, wy === undefined ? row * CELL + CELL / 2 : wy);
+      return;
+    }
     const t = towerAt(col, row);
     if (selectedTowerType >= 0) {
       if (t) {
@@ -7612,6 +7925,11 @@
   }
 
   function cancelBuild() {
+    if (abilityAim) {
+      abilityAim = null;
+      audio.play('click', { pitch: 0.7 });
+      return true;
+    }
     if (selectedTowerType >= 0) {
       selectedTowerType = -1;
       audio.play('click', { pitch: 0.7 });
@@ -7721,7 +8039,7 @@
       }
       touchPending = null;
     }
-    mapAction(col, row);
+    mapAction(col, row, pointer.wx, pointer.wy);
   });
 
   canvas.addEventListener('contextmenu', (e) => {
@@ -7860,6 +8178,15 @@
         startNextWave();
       else if (state === STATE_PLAYING)
         toggleFastForward();
+      return;
+    }
+
+    if (code === 'KeyQ' || code === 'KeyW' || code === 'KeyE') {
+      const a = ABILITIES.find(q => 'Key' + q.key === code);
+      if (a.aim && abilityAim === a.id && kbCursor.active)
+        mapAction(kbCursor.col, kbCursor.row);
+      else
+        useAbility(a.id);
       return;
     }
 
