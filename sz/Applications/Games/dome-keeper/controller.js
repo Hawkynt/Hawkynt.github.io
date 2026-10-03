@@ -13860,8 +13860,8 @@
     return node.costs[Math.min(getTreeNodeLevel(node.id), node.costs.length - 1)];
   }
 
-  // Per branch: the cheapest node that can be bought now, otherwise the
-  // unlocked node that is closest to affordable
+  // Per unfinished branch: the cheapest node that can be bought now,
+  // otherwise the unlocked node that is closest to affordable
   function getQuickPicks() {
     const picks = [];
     for (const branch of TREE_BRANCH_ORDER) {
@@ -13889,7 +13889,9 @@
           best = n;
         }
       }
-      picks.push({ branch, node: best, buyable, owned, total });
+      // a finished branch leaves the panel; the rows below move up
+      if (owned < total)
+        picks.push({ branch, node: best, buyable, owned, total });
     }
     return picks;
   }
