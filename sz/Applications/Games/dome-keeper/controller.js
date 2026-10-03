@@ -334,6 +334,10 @@
       '.....dd.....', '....d44d....', '...d4554d...', '..d455554d..',
       '.d45555554d.', 'd4555445554d', '.d45555554d.', '..d455554d..',
       '...d4554d...', '....d44d....', '.....dd.....', '............'] },
+    moon: { ramps: ['cream'], px: [
+      '....3333....', '..334444....', '.3344.......', '.344........',
+      '3445........', '3444........', '3444........', '3444........',
+      '.344........', '.3344.......', '..334444....', '....3333....'] },
     bag: { ramps: ['wood', 'gold'], px: [
       '............', '....3333....', '...3....3...', '.2222222222.',
       '.2444444442.', '.2433cc3342.', '.2433cc3342.', '.2433333342.',
@@ -1079,7 +1083,7 @@
     return DEPTH_TIERS[getDepthTier(row)];
   }
 
-  // Depth-based mining time multiplier: 0.5 at the surface, rising every row (4.7 at the core)
+  // Depth-based mining time multiplier: 0.5 at the surface, rising every row (about 5 at the core)
   function getDepthMineMultiplier(row) {
     return 0.5 + (row / STRATUM_ROWS) * 0.28;
   }
@@ -1787,11 +1791,26 @@
   // Each page: intro paragraph plus rows of [key, text] (key null = plain bullet)
   const TUTORIAL_PAGES = [
     { title: 'How to Play', icon: 'dome',
-      intro: 'Defend your dome from alien waves on the surface while mining resources underground!',
-      items: [['Click', 'Fire the laser (surface) / dig (underground)'], ['WASD / Arrows', 'Move the keeper and mine underground'], ['Space / Tab', 'Switch between surface and mine']] },
+      intro: 'Mine by day, defend the dome at night. Dig resources underground, bring them home and spend them on upgrades.',
+      items: [['Click', 'Fire the laser (surface) / dig (underground)'], ['WASD / Arrows', 'Move the keeper and mine underground'], ['Space / Tab', 'Switch between surface and mine'], ['Esc', 'Pause - the run is saved automatically']] },
+    { title: 'Day & Night', icon: 'moon',
+      intro: 'Monsters attack after nightfall. A warning sounds before dusk - get back to the dome in time.',
+      items: [[null, 'The sun crosses the sky by day, the moon by night'], [null, 'Full-moon nights bring bigger swarms, new-moon nights are calm'], [null, 'More monsters can arrive later in the night'], [null, 'Sunlight burns the monsters still out at dawn'], [null, 'Day, time, moon phase and weather sit in the top-left panel']] },
+    { title: 'Seasons & Weather', icon: 'flower',
+      intro: 'A new season begins every four days and changes the swarm and the weather.',
+      items: [['Spring', 'Blossoms lure more monsters - smaller and weaker'], ['Summer', 'Long days, the heat makes monsters faster'], ['Autumn', 'Falling leaves, rain and thunderstorms'], ['Winter', 'Short days, snow, few but much tougher monsters'], [null, 'Lightning and meteors hit monsters - and sometimes the dome'], ['Click', 'Collect the ore a meteor leaves behind']] },
+    { title: 'Monsters', icon: 'swords',
+      intro: 'The swarm grows more varied with every night and every new site. Hover a monster to read about it.',
+      items: [['Swarmers', 'Tiny, fast and always in packs'], ['Crawlers', 'Armor soaks part of every hit'], ['Divers', 'Circle high, then dive at the dome'], ['Burrowers', 'Tunnel unseen and pop up at the dome'], ['Spitters', 'Shoot acid from a distance'], ['Splitters', 'Burst into swarmers; Menders heal others'], ['Bosses', 'Behemoth and Hive Queen on every fifth night']] },
     { title: 'Upgrades & Tips', icon: 'pickaxe',
-      intro: 'Mine iron, copper, gold, gems and more, then spend them on upgrades.',
-      items: [['U', 'Open the upgrade tree (on the surface)'], [null, 'The Next upgrades panel shows the next node of every branch: click to buy it'], [null, 'Return to the surface before a wave arrives!'], ['H', 'Show this help again anytime']] },
+      intro: 'Everything is bought in one upgrade tree with five branches: Dome, Mining, Movement, Weapon and Drones.',
+      items: [['U', 'Open the upgrade tree (on the surface)'], [null, 'The Next upgrades panel shows the next node of every branch: click to buy it'], [null, 'Deeper strata hold new ores that pay for the top tiers'], ['H', 'Show this help again anytime']] },
+    { title: 'Drones', icon: 'drone',
+      intro: 'Buy the Drone Bay in the Drones branch and a courier drone starts working for you.',
+      items: [[null, 'Couriers fly to the keeper, take the cargo home and pick up loose ore'], [null, 'Mining Lasers let couriers dig ore near the keeper'], [null, 'Gun drones guard the dome, the repair drone welds it'], [null, 'Drone Swarm adds couriers; the Droneyard gadget gives a free one']] },
+    { title: 'Relocation', icon: 'core',
+      intro: 'Every mine hides a Relocation Core in its lower strata. Scanners point toward it once it is close.',
+      items: [[null, 'Mine the core to unlock the Relocate button'], ['L', 'Relocate when no monsters are attacking'], [null, 'Keep all upgrades and drones plus 75% of the resources'], [null, 'Each new site: a new biome and mine, and tougher monsters']] },
     { title: 'Gadgets', icon: 'gear',
       intro: 'Choose a primary gadget at the start of each run. Golden 2x2 gadget chambers underground hide more of them.',
       items: [['R', 'Activate the Repellent Field'], ['B', 'Use Blast Mining charges'], [null, 'Gadgets from chambers activate on pickup!']] },
