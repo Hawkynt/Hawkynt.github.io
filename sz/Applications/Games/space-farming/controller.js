@@ -1071,6 +1071,39 @@
       p.line(4, 8, 11, 8, P.tan, true); p.line(4, 10, 9, 10, P.tan, true);
       p.disc(11.5, 11.5, 2.5, P.gold); p.px(11, 11, P.yellow, true);
     },
+    rockpile: (p, P) => {
+      p.ell(6, 10, 5.5, 4.5, P.dgrey);
+      p.ell(10.5, 11, 4.5, 3.5, P.grey);
+      p.ell(6, 8.5, 4, 3.5, P.grey);
+      p.ell(5, 7.5, 2, 1.5, P.steel, true);
+      p.ell(11, 10, 2, 1, P.steel, true);
+      p.line(7, 9, 9, 12, P.black, true);
+      p.line(3, 11, 5, 13, P.black, true);
+      p.rect(2, 14, 13, 1, P.dgrey);
+    },
+    rockpile2: (p, P) => {
+      p.poly([[2, 14], [3, 7], [7, 3], [11, 4], [14, 9], [14, 14]], P.grey);
+      p.poly([[3, 9], [7, 4], [10, 5], [8, 9], [4, 11]], P.steel);
+      p.line(8, 9, 12, 13, P.dgrey, true);
+      p.line(8, 9, 6, 13, P.dgrey, true);
+      p.px(6, 5, P.white, true);
+      p.ell(12.5, 13, 2, 1.5, P.dgrey);
+    },
+    pick: (p, P) => {
+      p.line(4, 15, 10, 5, P.brown); p.line(5, 15, 11, 5, P.tan);
+      p.poly([[3, 4], [8, 1], [13, 2], [15, 5], [12, 4], [8, 3.5], [5, 6]], P.steel);
+      p.px(13, 3, P.white, true);
+    },
+    soil: (p, P) => {
+      p.rect(1, 9, 14, 6, P.soil);
+      p.rect(1, 9, 14, 1, P.brown, true);
+      for (const x of [3, 7, 11]) {
+        p.line(x, 9, x, 4, P.leaf);
+        p.ell(x - 1, 5, 1.2, 0.8, P.green);
+        p.ell(x + 1, 4, 1.2, 0.8, P.lime);
+      }
+      p.px(4, 12, P.lime, true); p.px(9, 13, P.lime, true); p.px(12, 11, P.lime, true);
+    },
     heart: (p, P) => {
       p.disc(5, 6, 3.5, P.red); p.disc(10.5, 6, 3.5, P.red);
       p.poly([[1.5, 7], [14, 7], [7.75, 14.5]], P.red);
@@ -2958,6 +2991,37 @@
     farmGrid[row][col] = null; // clear tile
   }
 
+  const ROCK_CLEAR_COST = 25;
+
+  /* The hoe (as a pick) breaks up a rock into poor farmland */
+  function clearRock(row, col) {
+    if (state !== STATE_PLAYING || tileTypes[row]?.[col] !== TILE_ROCK) return false;
+    const { x: tx, y: ty } = tileCenter(col, row);
+    if (buildings[row][col]) {
+      popText(tx, ty - 14, 'A building stands here', { color: '#ffb080', font: 'bold 11px' });
+      SZ.GameAudio.play('error', { volume: 0.5 });
+      return false;
+    }
+    if (credits < ROCK_CLEAR_COST) {
+      popText(tx, ty - 14, `Need ${ROCK_CLEAR_COST} cr`, { color: '#ff8a8a', font: 'bold 12px' });
+      SZ.GameAudio.play('error', { volume: 0.5 });
+      return false;
+    }
+    credits -= ROCK_CLEAR_COST;
+    tileTypes[row][col] = TILE_FARMLAND;
+    tileFertility[row][col] = Math.min(tileFertility[row][col] ?? 0.5, 0.55);
+    farmGrid[row][col] = null;
+    invalidateField();
+    particles.burst(tx, ty + 6, 14, { color: '#8e8984', speed: 3, life: 0.6, gravity: 0.15 });
+    particles.burst(tx, ty + 6, 8, { color: '#d8dee8', speed: 2, life: 0.4 });
+    dustRing(tx, ty + 18, '#b8b0a8');
+    popText(tx, ty - 14, `Rock cleared -${ROCK_CLEAR_COST}`, { color: '#e0d8c8', font: 'bold 12px' });
+    screenShake.trigger(2, 100);
+    SZ.GameAudio.play('smallExplode', { volume: 0.6, pitch: 1.3 });
+    SZ.GameAudio.play('thud', { pitch: 0.8 });
+    return true;
+  }
+
   /** Hoe a single tile: boost fertility +0.2 (cap 1.5). Returns true if tile was fertilized. */
   function hoeFertilizeTile(row, col) {
     const tt = tileTypes[row]?.[col];
@@ -2997,7 +3061,10 @@
       return;
     }
 
-    if (tt === TILE_ROCK) return;
+    if (tt === TILE_ROCK) {
+      clearRock(row, col);
+      return;
+    }
     if (!isAdjacentToWater(row, col)) return;
     hoeFertilizeTile(row, col);
   }
@@ -4470,27 +4537,16 @@
         for (let i = 0; i < 4; ++i)
           put(Math.floor(rnd() * TEX), Math.floor(rnd() * TEX), rnd() < 0.5 ? '#f8e6b0' : '#a88a4a');
       } else if (type === TILE_ROCK) {
-        const [dk, md] = pal.soil;
+        // grey gravel bed; the boulders on it are drawn as objects
+        const base = winter ? '#9aa0ae' : '#6e6a66', dark = winter ? '#7e8494' : '#55514e', light = winter ? '#d8dee8' : '#8e8984';
         for (let y = 0; y < TEX; ++y)
-          for (let x = 0; x < TEX; ++x)
-            put(x, y, rnd() < 0.3 ? dk : md);
-        const boulders = 1 + Math.floor(rnd() * 2);
-        for (let b = 0; b < boulders; ++b) {
-          const cx = 3 + rnd() * 8, cy = 4 + rnd() * 6, rx = 2.5 + rnd() * 2.5, ry = 2 + rnd() * 1.8;
-          for (let y = 0; y < TEX; ++y)
-            for (let x = 0; x < TEX; ++x) {
-              const dx = (x - cx) / rx, dy = (y - cy) / ry;
-              const d = dx * dx + dy * dy;
-              if (d > 1) continue;
-              let c = '#8a8a96';
-              if (dy < -0.35 && dx < 0.3) c = '#b4b4c2';
-              else if (dy > 0.45 || dx > 0.6) c = '#5e5e6c';
-              if (d > 0.82) c = '#3e3e4a';
-              if (winter && dy < -0.3) c = '#f0f6ff';
-              put(x, y, c);
-            }
-          if (!winter && season < 2 && rnd() < 0.7)
-            put(Math.round(cx - rx * 0.5), Math.round(cy + ry * 0.4), '#4a9a4a');
+          for (let x = 0; x < TEX; ++x) {
+            const r = rnd();
+            put(x, y, r < 0.25 ? dark : (r > 0.85 ? light : base));
+          }
+        for (let x = 0; x < TEX; ++x) {
+          put(x, 0, dark);
+          put(0, x, dark);
         }
       } else if (type === TILE_WATER) {
         // flags carries the animation frame for water
@@ -5059,19 +5115,75 @@
           if (c < gridCols - 1 && tileTypes[r][c + 1] !== TILE_WATER) ctx.fillRect(x + T - 3, y, 3, T);
           continue;
         }
-        if (tt === TILE_FARMLAND) {
+        if (tt === TILE_FARMLAND || tt === TILE_SAND) {
+          // poor soil looks pale and dusty, rich soil dark and green-flecked
           const q = getTileSoilQuality(r, c);
-          if (q < 0.75) {
-            ctx.fillStyle = `rgba(200,170,90,${Math.min(0.22, (0.75 - q) * 0.6)})`;
+          if (q < 0.85) {
+            ctx.fillStyle = `rgba(214,196,150,${Math.min(0.42, (0.85 - q) * 0.9)})`;
             ctx.fillRect(x, y, T, T);
-          } else if (q > 1.05) {
-            ctx.fillStyle = `rgba(40,90,30,${Math.min(0.25, (q - 1.05) * 0.5)})`;
+          } else if (q > 1.0) {
+            ctx.fillStyle = `rgba(20,40,14,${Math.min(0.35, (q - 1.0) * 0.7)})`;
             ctx.fillRect(x, y, T, T);
           }
         }
         ctx.fillStyle = 'rgba(0,0,0,0.16)';
         ctx.fillRect(x + T - 1, y, 1, T);
         ctx.fillRect(x, y + T - 1, T, 1);
+      }
+  }
+
+  /* ── Soil nutrients: pip bars on every plot, plus a heat-map overlay ── */
+
+  let soilOverlay = false;           // toggled with N
+
+  function showNutrients() {
+    return soilOverlay || selectedTool === TOOL_HOE || (selectedTool === TOOL_PLANT && !dialog);
+  }
+
+  function nutrientColor(q) {
+    return q < 0.65 ? '#ff6a5a' : (q < 0.9 ? '#ffc24a' : (q < 1.15 ? '#9be35a' : '#4fe08a'));
+  }
+
+  /* 5 pips: one per 30% of fertility */
+  function nutrientPips(q) {
+    return Math.max(1, Math.min(5, Math.round(q / 0.3)));
+  }
+
+  function drawNutrients(v) {
+    if (!showNutrients()) return;
+    const T = BASE_TILE_SIZE;
+    const c0 = Math.max(0, Math.floor((v.x0 - GRID_OFFSET_X) / T)), c1 = Math.min(gridCols - 1, Math.floor((v.x1 - GRID_OFFSET_X) / T));
+    const r0 = Math.max(0, Math.floor((v.y0 - GRID_OFFSET_Y) / T)), r1 = Math.min(gridRows - 1, Math.floor((v.y1 - GRID_OFFSET_Y) / T));
+    const full = soilOverlay || selectedTool === TOOL_HOE;
+    for (let r = r0; r <= r1; ++r)
+      for (let c = c0; c <= c1; ++c) {
+        const tt = tileTypes[r][c];
+        const x = GRID_OFFSET_X + c * T, y = GRID_OFFSET_Y + r * T;
+        if (tt === TILE_WATER) continue;
+        if (tt === TILE_ROCK) {
+          if (full) {
+            ctx.fillStyle = 'rgba(40,40,52,0.35)';
+            ctx.fillRect(x, y, T, T);
+          }
+          continue;
+        }
+        if (buildings[r][c]) continue;
+        // seed mode marks the empty plots only, so ripe crops stay readable
+        if (!full && farmGrid[r][c]) continue;
+        const q = getTileSoilQuality(r, c);
+        const col = nutrientColor(q);
+        if (full) {
+          ctx.fillStyle = hexToRgba(col, 0.2);
+          ctx.fillRect(x + 1, y + 1, T - 2, T - 2);
+        }
+        const n = nutrientPips(q);
+        const pw = 7, ph = 5, gap = 2, bx = x + 4, by = y + T - ph - 4;
+        ctx.fillStyle = 'rgba(10,8,6,0.7)';
+        ctx.fillRect(bx - 2, by - 2, 5 * (pw + gap) - gap + 4, ph + 4);
+        for (let i = 0; i < 5; ++i) {
+          ctx.fillStyle = i < n ? col : 'rgba(255,255,255,0.14)';
+          ctx.fillRect(bx + i * (pw + gap), by, pw, ph);
+        }
       }
   }
 
@@ -5196,6 +5308,33 @@
     ctx.closePath();
     ctx.fill();
     ctx.restore();
+  }
+
+  /* Boulders on rock tiles: obstacles for crops, ground for buildings */
+  function rockSprite(r, c) {
+    const v = hash2(c - gridColOffset + 17, r + 3) < 0.5 ? 'rockpile' : 'rockpile2';
+    const key = v + ':' + currentSeason;
+    if (!spriteCache[key])
+      spriteCache[key] = bakeSprite((p, P) => {
+        SPRITE_PAINTERS[v](p, P);
+        if (currentSeason === 3) {
+          p.ell(6, 6, 3.5, 1.2, P.white, true);
+          p.ell(10.5, 8.5, 2.5, 0.9, P.white, true);
+        } else if (currentSeason < 2) {
+          p.px(4, 12, P.leaf, true); p.px(12, 12, P.green, true);
+        }
+      });
+    return spriteCache[key];
+  }
+
+  function drawRock(r, c) {
+    const T = BASE_TILE_SIZE;
+    const cx = GRID_OFFSET_X + (c + 0.5) * T, baseY = GRID_OFFSET_Y + (r + 1) * T - 5;
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(cx, baseY - 2, T * 0.42, T * 0.12, 0, 0, TWO_PI);
+    ctx.fill();
+    drawSprite(rockSprite(r, c), cx, baseY - T * 0.42, T * 0.92);
   }
 
   /* ── Buildings with animated details ── */
@@ -5876,6 +6015,7 @@
     spriteScale = viewZoom * (window.devicePixelRatio || 1);
     drawDecor(v, 'live');
     drawTiles(v);
+    drawNutrients(v);
     drawWeatherWorld();
     drawFieldFence();
     // Row by row so taller sprites overlap the row behind them
@@ -5893,6 +6033,8 @@
         const bld = buildings[r][c];
         if (bld)
           drawBuilding(r, c, bld);
+        else if (tileTypes[r][c] === TILE_ROCK)
+          drawRock(r, c);
         else if (farmGrid[r][c] && tileTypes[r][c] !== TILE_WATER)
           drawCrop(r, c, farmGrid[r][c]);
       }
@@ -6026,6 +6168,9 @@
           } else if (tt === TILE_SAND) {
             ctx.fillStyle = 'rgba(160,130,60,0.25)';
             ctx.fillRect(tx + 1, ty + 1, ts - 2, ts - 2);
+          } else if (tt === TILE_ROCK && !buildings[r]?.[c]) {
+            ctx.fillStyle = 'rgba(220,210,190,0.25)';
+            ctx.fillRect(tx + 1, ty + 1, ts - 2, ts - 2);
           } else if (tt !== TILE_ROCK && !buildings[r]?.[c]) {
             ctx.fillStyle = 'rgba(80,200,60,0.15)';
             ctx.fillRect(tx + 1, ty + 1, ts - 2, ts - 2);
@@ -6033,8 +6178,13 @@
           continue;
         }
 
-        // Skip unusable tiles (only water blocks)
+        // Water and rock take no crops
         if (tt === TILE_WATER) continue;
+        if (tt === TILE_ROCK) {
+          ctx.fillStyle = 'rgba(255,60,60,0.22)';
+          ctx.fillRect(tx + 1, ty + 1, ts - 2, ts - 2);
+          continue;
+        }
         // Skip tiles with buildings
         if (buildings[r]?.[c]) continue;
 
@@ -7745,7 +7895,7 @@
     const dockW = Math.min(UW - HUD_M * 2, 1180);
     const dock = { x: Math.round((UW - dockW) / 2), y: UH - DOCK_H - HUD_M, w: dockW, h: DOCK_H };
     const storeTop = farm.y + farm.h + 8;
-    const storage = { x: HUD_M, y: storeTop, w: farm.w, h: 0, maxH: dock.y - 40 - storeTop };
+    const storage = { x: HUD_M, y: storeTop, w: farm.w, h: 0, maxH: dock.y - 68 - storeTop };
     return { farm, clock, dock, storage };
   }
 
@@ -8152,7 +8302,7 @@
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
       ctx.fill();
       drawSprite('hoe', sx0 + 30, top + SLOT_H / 2, 32);
-      drawTextBlock('Click soil beside water (or water itself) to enrich it: +20% fertility, sand turns into farmland. Right-click a crop to uproot it for half its seed cost.', sx0 + 56, top + 4, sx1 - sx0 - 66, SLOT_H - 8, 12, { color: UI.textDim, valign: 'middle' });
+      drawTextBlock(`Click soil beside water (or water itself) to enrich it: +20% nutrients, sand turns into farmland. Click a rock to break it up (${ROCK_CLEAR_COST} cr). Right-click a crop to uproot it for half its seed cost.`, sx0 + 56, top + 4, sx1 - sx0 - 66, SLOT_H - 8, 12, { color: UI.textDim, valign: 'middle' });
     } else {
       const areaW = sx1 - sx0;
       const total = items.length * (SLOT_W + SLOT_GAP) - SLOT_GAP;
@@ -8307,7 +8457,7 @@
     else if (mode === 'build' && selectedBuildingIndex >= 0)
       text = `[[${BUILDINGS[selectedBuildingIndex].sprite}]] Place ${BUILDINGS[selectedBuildingIndex].name} (${getBuildingCost(BUILDINGS[selectedBuildingIndex])} cr) · right-click a building to upgrade it`;
     else
-      text = '[[hoe]] Hoe · click soil beside water to enrich it · right-click a crop to uproot it';
+      text = '[[hoe]] Hoe · click soil beside water to enrich it · click a rock to clear it · right-click a crop to uproot it';
     ctx.save();
     ctx.globalAlpha *= hudFade.dock ? Math.max(0.35, hudFade.dock.a) : 1;
     drawChip(text, d.x + d.w / 2, d.y - 28, 22, { align: 'center', px: 12, weight: '', bg: 'rgba(8,12,24,0.78)', border: 'rgba(126,224,106,0.35)', color: UI.text, maxW: d.w - 40 });
@@ -8317,6 +8467,41 @@
   /* ── Zoom chip ── */
 
   let zoomChipT = 0, zoomChipLast = 1;
+
+  function drawSoilLegend(L) {
+    if (!showNutrients() || state !== STATE_PLAYING) return;
+    const full = soilOverlay || selectedTool === TOOL_HOE;
+    const y = L.dock.y - 58;
+    let x = L.dock.x + 4;
+    const items = [['#ff6a5a', 'Poor'], ['#ffc24a', 'Fair'], ['#9be35a', 'Good'], ['#4fe08a', 'Rich']];
+    ctx.save();
+    ctx.globalAlpha *= hudFade.dock ? Math.max(0.4, hudFade.dock.a) : 1;
+    const w = 330, h = 24;
+    roundRectPath(x, y, w, h, 12);
+    ctx.fillStyle = 'rgba(8,12,24,0.8)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    let cx = x + 10;
+    cx += fitText('[[soil]] Nutrients', cx, y + h / 2 + 1, 90, 11, { weight: 'bold', color: UI.text }) + 8;
+    for (const [col, label] of items) {
+      ctx.fillStyle = col;
+      ctx.fillRect(cx, y + h / 2 - 3, 10, 6);
+      cx += 13;
+      cx += fitText(label, cx, y + h / 2 + 1, 40, 11, { color: UI.textDim }) + 7;
+    }
+    fitText(full ? 'N hides' : 'N shows all', cx, y + h / 2 + 1, x + w - 8 - cx, 10, { color: UI.textMute });
+    ctx.restore();
+    addRegion({ id: 'soil-legend', x, y, w, h, onClick: toggleSoilOverlay, tip: () => ['[[soil]] Soil nutrients', 'Pips under each plot: one per 30% fertility.', 'More nutrients, faster crops (up to 150%).', 'Raise them with the hoe beside water, compost bins and the Rich Soil upgrades.', 'Click or press N to show the overlay on every plot.'] });
+  }
+
+  function toggleSoilOverlay() {
+    soilOverlay = !soilOverlay;
+    SZ.GameAudio.play('click');
+  }
 
   function drawZoomChip(L) {
     if (Math.abs(viewZoom - zoomChipLast) > 0.001) {
@@ -8440,6 +8625,7 @@
     drawGoalPanel(L);
     drawDock(L);
     drawZoomChip(L);
+    drawSoilLegend(L);
     drawBanner(L);
     drawToasts(L);
     if (inspect)
@@ -8604,8 +8790,8 @@
       text: 'Your little farm sits on an alien planet. Plant seeds, harvest what grows, sell it for credits and turn those credits into a thriving space farm.\n\nPick a crop in the dock at the bottom (or press 1-9, 0), then click empty soil. Drag across the field to plant or harvest a whole area at once.' },
     { icon: 'coin', title: 'Harvest & sell', strip: [['basket', 'Storage'], ['coin', 'Sell all'], ['market', 'Market']],
       text: 'Ripe crops glow and sparkle. Click them to harvest; the produce flies into your storage. Storage is limited, so sell regularly with S, or open the market with M to sell single crops.\n\nPrices drift every minute: a green ▲ in the dock means a crop sells above its normal price, a red ▼ below.' },
-    { icon: 'flask', title: 'Soil & terrain', strip: [['drop', 'Water'], ['hoe', 'Hoe'], ['flask', 'Fertility']],
-      text: 'Every plot has its own fertility. Water and sprinklers keep the soil wet and boost the crops next to them, sand grows slowly and rock suits buildings best.\n\nThe Hoe (T) enriches soil beside water and turns sand into farmland. Right-click a crop with the hoe to uproot it for half its seed cost.' },
+    { icon: 'flask', title: 'Soil & terrain', strip: [['soil', 'Nutrients'], ['drop', 'Water'], ['hoe', 'Hoe'], ['rockpile', 'Rock']],
+      text: 'Every plot has its own nutrients: the pips under empty plots show them (one pip per 30%), pale dusty soil is poor and dark soil is rich. Press N to colour every plot by its nutrients.\n\nNo crop grows on rock, but buildings can stand on it, or break it up with the Hoe (T) for 25 credits. The hoe also enriches soil beside water and turns sand into farmland.' },
     { icon: 'hammer', title: 'Buildings', strip: [['sprinkler', 'Water'], ['greenhouse', 'Shelter'], ['silo', 'Store'], ['harvester', 'Harvest'], ['turbine', 'Power']],
       text: 'Press B for the build dock. Sprinklers and wind turbines speed up crops around them, greenhouses shield them from weather, silos add storage, harvesters and planters work on their own.\n\nClick a building to inspect, upgrade (up to level 6) or remove it. Right-click upgrades directly, Shift+right-click removes.' },
     { icon: 'paw', title: 'Livestock', strip: [['hen', 'Eggs'], ['goat', 'Wool'], ['cow', 'Milk'], ['bee', 'Honey']],
@@ -8627,7 +8813,7 @@
       ['←↑→↓  Space', 'Tile cursor and act'], ['Home', 'Fit the farm'],
       ['1-9  0', 'Pick crop or building'], ['P  B  T', 'Seeds, build, hoe'],
       ['S  M', 'Sell all, market'], ['L  U', 'Animals, tech tree'],
-      ['H', 'This help'], ['Esc  F2', 'Pause, new farm']
+      ['N', 'Nutrient overlay'], ['H', 'This help'], ['Esc  F2', 'Pause, new farm']
     ] }
   ];
 
@@ -8997,11 +9183,12 @@
   function fertilityLine(row, col) {
     const sq = getTileSoilQuality(row, col);
     const pct = Math.round(sq * 100);
+    const pips = '●'.repeat(nutrientPips(sq)) + '○'.repeat(5 - nutrientPips(sq));
     if (sq < 1)
-      return `⚠ Fertility ${pct}%: slower growth`;
+      return `⚠ Nutrients ${pips} ${pct}%: crops grow ${100 - pct}% slower`;
     if (sq > 1)
-      return `✔ Fertility ${pct}%: faster growth`;
-    return `Fertility ${pct}%`;
+      return `✔ Nutrients ${pips} ${pct}%: crops grow ${pct - 100}% faster`;
+    return `Nutrients ${pips} ${pct}%`;
   }
 
   function buildCropTileTooltip(cell, row, col) {
@@ -9097,21 +9284,27 @@
   function buildEmptyTileTooltip(row, col) {
     const tt = tileTypes[row]?.[col] ?? TILE_FARMLAND;
     if (tt === TILE_WATER)
-      return ['Water', '✔ Crops next to it grow 15% faster', 'Click with the hoe to enrich the soil around it', '✘ Nothing can be built here'];
-    const lines = [tt === TILE_ROCK ? 'Rocky ground' : (tt === TILE_SAND ? 'Sandy plot' : 'Empty plot')];
+      return ['Water', '✔ Crops next to it grow 15% faster', 'Click with the hoe to enrich the soil around it', '✘ Nothing can be planted or built here'];
+    if (tt === TILE_ROCK) {
+      const lines = ['[[rockpile]] Rock', '✘ Crops can\'t grow on rock', '✔ Buildings can stand on it'];
+      if (selectedTool === TOOL_BUILD && selectedBuildingIndex >= 0) {
+        const b = BUILDINGS[selectedBuildingIndex];
+        lines.push((credits >= getBuildingCost(b) ? '✔ ' : '✘ ') + `Click to build ${b.name} (${getBuildingCost(b)} cr)`);
+      } else
+        lines.push(selectedTool === TOOL_HOE ? ((credits >= ROCK_CLEAR_COST ? '✔ ' : '✘ ') + `Click to clear it (${ROCK_CLEAR_COST} cr)`) : `[[hoe]] Clear it with the hoe (T) for ${ROCK_CLEAR_COST} cr`);
+      return lines;
+    }
+    const lines = [tt === TILE_SAND ? 'Sandy plot' : 'Empty plot'];
     if (selectedTool === TOOL_BUILD && selectedBuildingIndex >= 0) {
       const b = BUILDINGS[selectedBuildingIndex];
       lines.push((credits >= getBuildingCost(b) ? '✔ ' : '✘ ') + `Click to build ${b.name} (${getBuildingCost(b)} cr)`);
     } else if (selectedTool === TOOL_HOE) {
       lines.push(isAdjacentToWater(row, col) ? '✔ Click to enrich the soil' : '⚠ Too far from water to enrich');
-    } else if (tt === TILE_ROCK)
-      lines.push('⚠ Crops grow here, but rock suits buildings best');
-    else {
+    } else {
       const crop = CROPS[selectedCropIndex];
       lines.push((credits >= getSeedCost(crop) ? '✔ ' : '✘ ') + `Click to plant ${crop.name} (${getSeedCost(crop)} cr)`);
     }
-    if (tt !== TILE_ROCK)
-      lines.push(fertilityLine(row, col));
+    lines.push(fertilityLine(row, col));
     if (tt === TILE_SAND)
       lines.push('⚠ Sandy soil: 70% growth');
     const water = adjacentWaterCount(row, col);
@@ -9240,7 +9433,7 @@
       return ['[[seedbag]] Seeds', 'Pick a crop below, then click or drag over empty soil.', 'Clicking ripe crops harvests them.', 'Shortcut: P, number keys pick crops'];
     if (mode === 'build')
       return ['[[hammer]] Build', 'Pick a building below, then click a tile.', 'Buildings work on the tiles around them.', 'Shortcut: B'];
-    return ['[[hoe]] Hoe', 'Enrich soil beside water (+20% fertility).', 'Turns sand into farmland.', 'Right-click a crop to uproot it.', 'Shortcut: T'];
+    return ['[[hoe]] Hoe', 'Enrich soil beside water (+20% nutrients).', 'Turns sand into farmland.', `Breaks up rocks for ${ROCK_CLEAR_COST} cr.`, 'Right-click a crop to uproot it.', 'Shortcut: T'];
   }
 
   function nearestAnimalAt(sx, sy) {
@@ -9363,6 +9556,34 @@
   }
 
   /* Ghost of the selected crop or building on the tile under the pointer */
+  /* What the selected tool would do on a tile: { ok, ghost, blocked, hint } */
+  function toolPreview(row, col) {
+    const tt = tileTypes[row][col];
+    const bld = buildings[row][col];
+    const cell = farmGrid[row][col];
+    if (selectedTool === TOOL_BUILD && selectedBuildingIndex >= 0) {
+      const b = BUILDINGS[selectedBuildingIndex];
+      if (tt === TILE_WATER) return { ok: false, blocked: true, hint: 'Water: nothing can be built here' };
+      if (bld) return { ok: true, ghost: null, hint: null };
+      return { ok: credits >= getBuildingCost(b), ghost: b.sprite, range: b.range, hint: credits >= getBuildingCost(b) ? null : `Need ${getBuildingCost(b)} cr` };
+    }
+    if (selectedTool === TOOL_HOE) {
+      if (tt === TILE_ROCK)
+        return bld ? { ok: false, blocked: true, hint: 'A building stands on this rock' }
+          : { ok: credits >= ROCK_CLEAR_COST, pick: true, hint: credits >= ROCK_CLEAR_COST ? `Clear rock: ${ROCK_CLEAR_COST} cr` : `Clearing needs ${ROCK_CLEAR_COST} cr` };
+      if (tt === TILE_WATER) return { ok: true, hint: null };
+      if (bld) return { ok: false, blocked: true, hint: null };
+      return isAdjacentToWater(row, col) ? { ok: true, hint: null } : { ok: false, hint: 'Too far from water to enrich' };
+    }
+    if (bld) return { ok: true, hint: null };
+    if (tt === TILE_WATER) return { ok: false, blocked: true, hint: 'Water: crops can\'t grow here' };
+    if (tt === TILE_ROCK) return { ok: false, blocked: true, hint: `Rock: clear it with the hoe (T) for ${ROCK_CLEAR_COST} cr` };
+    if (cell) return { ok: cell.growthStage >= CROPS[cell.cropIndex].stages - 1, ripe: true, hint: null };
+    const cost = getSeedCost(CROPS[selectedCropIndex]);
+    return { ok: credits >= cost, ghost: CROPS[selectedCropIndex].sprite, hint: credits >= cost ? null : `Need ${cost} cr` };
+  }
+
+  /* Ghost of the selected crop or building on the tile under the pointer */
   function drawCursorPreview() {
     if (state !== STATE_PLAYING || dialog || isDragging || isPanning) return;
     let col, row;
@@ -9375,47 +9596,54 @@
     }
     if (!isInsideGrid(col, row)) return;
     const g = gridToScreen(col, row);
-    const tt = tileTypes[row][col];
-    const bld = buildings[row][col];
-    const cell = farmGrid[row][col];
-    let ok = true, ghost = null;
-    if (selectedTool === TOOL_BUILD && selectedBuildingIndex >= 0) {
-      ok = tt !== TILE_WATER && !bld && credits >= getBuildingCost(BUILDINGS[selectedBuildingIndex]);
-      ghost = BUILDINGS[selectedBuildingIndex].sprite;
-      const range = BUILDINGS[selectedBuildingIndex].range;
-      if (range > 0 && tt !== TILE_WATER) {
-        const r0 = gridToScreen(col - range, row - range);
-        ctx.fillStyle = 'rgba(90,184,255,0.10)';
-        ctx.fillRect(r0.x, r0.y, g.size * (range * 2 + 1), g.size * (range * 2 + 1));
-        ctx.strokeStyle = 'rgba(90,184,255,0.55)';
-        ctx.setLineDash([6, 4]);
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(r0.x, r0.y, g.size * (range * 2 + 1), g.size * (range * 2 + 1));
-        ctx.setLineDash([]);
-      }
-    } else if (selectedTool === TOOL_HOE) {
-      ok = tt === TILE_WATER || (tt !== TILE_ROCK && isAdjacentToWater(row, col));
-    } else if (!bld && !cell && tt !== TILE_WATER) {
-      ok = credits >= getSeedCost(CROPS[selectedCropIndex]);
-      ghost = CROPS[selectedCropIndex].sprite;
-    } else if (cell) {
-      ok = cell.growthStage >= CROPS[cell.cropIndex].stages - 1;
-    } else if (bld)
-      ok = true;
-    else
-      ok = false;
-    const color = ok ? (cell ? '#ffd75a' : '#7ee06a') : '#ff6a6a';
+    const pv = toolPreview(row, col);
+    if (pv.range > 0) {
+      const r0 = gridToScreen(col - pv.range, row - pv.range);
+      ctx.fillStyle = 'rgba(90,184,255,0.10)';
+      ctx.fillRect(r0.x, r0.y, g.size * (pv.range * 2 + 1), g.size * (pv.range * 2 + 1));
+      ctx.strokeStyle = 'rgba(90,184,255,0.55)';
+      ctx.setLineDash([6, 4]);
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(r0.x, r0.y, g.size * (pv.range * 2 + 1), g.size * (pv.range * 2 + 1));
+      ctx.setLineDash([]);
+    }
+    const color = pv.ok ? (pv.ripe ? '#ffd75a' : '#7ee06a') : '#ff6a6a';
     const pulse = 0.6 + Math.sin(uiTime * 6) * 0.25;
     ctx.save();
     ctx.lineWidth = 2;
     ctx.strokeStyle = hexToRgba(color, pulse);
     roundRectPath(g.x + 2, g.y + 2, g.size - 4, g.size - 4, Math.max(3, 6 * viewZoom));
     ctx.stroke();
-    if (ghost && ok) {
+    if (pv.blocked) {
+      // a red cross over tiles where the tool can't act
+      ctx.fillStyle = 'rgba(255,60,60,0.16)';
+      ctx.fillRect(g.x + 2, g.y + 2, g.size - 4, g.size - 4);
+      const m = g.size * 0.3;
+      ctx.strokeStyle = 'rgba(255,90,90,0.9)';
+      ctx.lineWidth = Math.max(2, 3 * viewZoom);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(g.x + m, g.y + m);
+      ctx.lineTo(g.x + g.size - m, g.y + g.size - m);
+      ctx.moveTo(g.x + g.size - m, g.y + m);
+      ctx.lineTo(g.x + m, g.y + g.size - m);
+      ctx.stroke();
+    }
+    if (pv.pick)
+      drawSprite('pick', g.x + g.size * 0.78, g.y + g.size * 0.24, 22 * viewZoom + 6);
+    if (pv.ghost && pv.ok) {
       ctx.globalAlpha = 0.55;
-      drawSprite(ghost, g.x + g.size / 2, g.y + g.size / 2 - 2 * viewZoom, 40 * viewZoom);
+      drawSprite(pv.ghost, g.x + g.size / 2, g.y + g.size / 2 - 2 * viewZoom, 40 * viewZoom);
     }
     ctx.restore();
+    if (pv.hint) {
+      // hint chip above the tile, in HUD units
+      ctx.save();
+      ctx.scale(uiS, uiS);
+      const ux = (g.x + g.size / 2) / uiS, uy = g.y / uiS - 16;
+      drawChip(pv.hint, ux, Math.max(4, uy - 11), 22, { align: 'center', px: 12, weight: '', bg: 'rgba(30,8,8,0.88)', border: pv.ok ? 'rgba(255,255,255,0.25)' : 'rgba(255,106,106,0.7)', color: pv.ok ? UI.text : '#ffc0b8', maxW: 360 });
+      ctx.restore();
+    }
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -9750,6 +9978,7 @@
         break;
       case 'KeyT': setTool(selectedTool === TOOL_HOE ? 'plant' : 'hoe'); break;
       case 'Home': resetView(); break;
+      case 'KeyN': toggleSoilOverlay(); break;
       case 'Equal': case 'NumpadAdd': zoomAt(canvasW / 2, canvasH / 2, 1.15); break;
       case 'Minus': case 'NumpadSubtract': zoomAt(canvasW / 2, canvasH / 2, 1 / 1.15); break;
     }
