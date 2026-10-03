@@ -1929,7 +1929,7 @@
   let quickPanelHover = null;   // hovered quick panel hit target
 
   const PRIMARY_GADGETS = [
-    { key: 'shield', name: 'Shield Generator', icon: 'shield', desc: ['Absorbs the first hit of each wave.', 'Recharges when a new wave starts.'] },
+    { key: 'shield', name: 'Shield Generator', icon: 'shield', desc: ['Absorbs the first hit of each night.', 'Recharges at nightfall.'] },
     { key: 'repellent', name: 'Repellent Field', icon: 'portal', desc: ['Press R: slows all enemies to 40%', 'for 5 seconds (30s cooldown).'] },
     { key: 'orchard', name: 'Orchard', icon: 'tree', desc: ['Every 20s grows a fruit that gives', '+30% mining speed for 10 seconds.'] },
     { key: 'droneyard', name: 'Droneyard', icon: 'drone', desc: ['Starts with a courier drone that hauls', 'your cargo home. All drones work 50% faster.'] }
@@ -2716,6 +2716,8 @@
     transitionTarget = currentView === VIEW_SURFACE ? VIEW_UNDERGROUND : VIEW_SURFACE;
     transitionProgress = 0;
     transitionPhase = 'fade-out';
+    clearTooltip();
+    quickPanelHover = null;
 
     // Cancel any active mining when switching views
     cancelMining();
@@ -6151,6 +6153,7 @@
   }
 
   function closeUpgradeDialog() {
+    clearTooltip();
     state = stateBeforeUpgradeDialog || STATE_PLAYING;
     stateBeforeUpgradeDialog = null;
     upgradeDialogHover = null;
@@ -10872,6 +10875,7 @@
   }
 
   function clearTooltip() {
+    tooltip.enemy = null;
     tooltip.lines = [];
     tooltip.visible = false;
     tooltip.delayTimer = 0;
@@ -10880,6 +10884,7 @@
   }
 
   function setTooltip(x, y, lines, hoverKey, anchor) {
+    tooltip.enemy = null;
     if (hoverKey !== tooltip.lastHoverKey) {
       tooltip.delayTimer = 0;
       tooltip.visible = false;
@@ -10894,6 +10899,13 @@
   function drawTooltip() {
     if (!tooltip.visible || tooltip.lines.length === 0) return;
     if (state !== STATE_PLAYING && state !== STATE_UPGRADE_DIALOG) return;
+    if (tooltip.enemy) {
+      if (!enemies.includes(tooltip.enemy) || tooltip.enemy.hidden || currentView !== VIEW_SURFACE) {
+        clearTooltip();
+        return;
+      }
+      tooltip.lines = buildEnemyTooltip(tooltip.enemy);
+    }
 
     const padding = 14;
     const maxTextW = 440;
@@ -11674,8 +11686,13 @@
           const dy = mouseAimY - e.y;
           if (dx * dx + dy * dy < (sz + 8) * (sz + 8)) {
             const ttLines = buildEnemyTooltip(e);
-            // Use enemy position as identity since enemies don't have IDs
-            setTooltip(mouseAimX, mouseAimY, ttLines, 'enemy:' + Math.round(e.x) + ',' + Math.round(e.y));
+            if (tooltip.enemy !== e)
+              setTooltip(mouseAimX, mouseAimY, ttLines, 'enemy:' + enemies.indexOf(e) + ':' + e.type);
+            else {
+              tooltip.x = mouseAimX;
+              tooltip.y = mouseAimY;
+            }
+            tooltip.enemy = e;
             foundEnemy = true;
             break;
           }
