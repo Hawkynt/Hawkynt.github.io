@@ -181,6 +181,10 @@ The player must immediately understand:
 - [x] As a player, the game pauses while the upgrade dialog is open so that I can plan upgrades without time pressure
 - [x] As a player, I can see my current iron, cobalt, and water totals at the top of the dialog along with total upgrades purchased vs available so that resource planning is informed
 - [x] As a player, I can scroll the upgrade tree if it extends beyond the screen so that all nodes remain accessible
+- [x] As a player, I can switch between the whole tree and a single branch with tabs (click, Tab / Shift+Tab or 1-5) so that each branch is shown at a readable size
+- [x] As a player, I can zoom smoothly with the mouse wheel or +/-, drag the tree with the left or right mouse button and press 0 to fit the current tab so that navigating a large tree is easy
+- [x] As a player, I can select upgrades with the arrow keys or WASD and buy the selected one with Enter or Space so that the tree works without a mouse
+- [x] As a player, I can see the tier of each upgrade chain as pips and a roman numeral, with connectors routed between the cards, so that progress along a chain is clear
 - [x] As a player, I can still use the quick upgrade panel in the corner for basic upgrades or press U for the comprehensive tree view so that both quick and detailed upgrade paths are available
 - [x] As a player, I can see that basic upgrades cost iron only, advanced upgrades cost iron + cobalt, and elite/gadget upgrades cost iron + cobalt + water so that deeper resource types are more valuable
 
@@ -894,6 +898,11 @@ Readable pixel-art or stylized 2D rendering with bright effects over a dark sci-
 | Left/Right or A/D (surface)  | Keyboard turret rotation                             |
 | Space / Tab                  | Toggle surface / underground                         |
 | U                            | Open/close full-screen upgrade tree dialog (surface) |
+| Tab / Shift+Tab, 1-5 (tree)  | Switch upgrade tree tab (All, Dome, Mining, ...)     |
+| Arrows / WASD (tree)         | Select an upgrade card                               |
+| Enter / Space (tree)         | Buy the selected upgrade                             |
+| Wheel, + / - (tree)          | Zoom the upgrade tree; 0 fits the current tab        |
+| Drag (tree)                  | Pan the upgrade tree (left or right mouse button)    |
 | R                            | Activate Repellent Field gadget (if available)        |
 | B                            | Use Blast Mining charge (if available)                |
 | 1                            | Select Drill Gadget tool (if unlocked)               |
