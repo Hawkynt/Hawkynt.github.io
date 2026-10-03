@@ -29,6 +29,7 @@ body {
   height: 100%;
   background: #0a0a1a;
   box-shadow: 0 0 24px rgba(0, 0, 0, 0.6);
+  touch-action: none;  /* hold to charge, taps on the dome and minigames need raw touches */
 }
 
 .status-bar {
