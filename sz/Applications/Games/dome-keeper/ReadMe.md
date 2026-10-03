@@ -850,7 +850,7 @@ Couriers follow BFS paths through the tunnels, carry their own lights and show t
 | -------- | ---- | -------- | ---------- |
 | Lock Picking | Stop a rotating needle inside a gold zone to set each pin; 3 lock picks | Space / Enter / click / tap | 3-6 pins, faster needle and smaller zone per pin, 40 s |
 | Power Circuit | Rotate pipe tiles until power flows from the battery to the lock | Click / tap rotates, right click back; arrows + Space | 4x4 to 6x6 grid, 51-59 s |
-| Rune Memory | Watch the runes light up, then repeat the sequence; rounds grow by one; 3 lives | 1-6 / click / tap | sequences of 4-7, faster playback, 57-66 s |
+| Rune Memory | Watch the runes light up, then repeat the sequence; rounds grow by one; 3 lives | 1-6 / click / tap | sequences of 4-7, faster playback, 52-60 s (the clock stops while the runes play) |
 
 * Winning opens the chest for an artifact and points. Losing (or giving up with Esc / the close button) jams the chest for **20 s**; then it can be tried again at no other cost.
 * Chests (position, kind, revealed, opened, jam time) are saved; older saves get their chests placed on load.
