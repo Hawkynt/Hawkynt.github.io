@@ -3231,6 +3231,8 @@
   function applyDamageToEnemy(e, amount) {
     if (e.hidden) return;
     enemyHitFlash.set(e, 0.8);
+    if (e.aura === 'ward')
+      amount *= 0.75;
     if (e.shield > 0) {
       const absorbed = Math.min(e.shield, amount);
       e.shield -= absorbed;
@@ -3388,7 +3390,10 @@
     const phase = MOON_PHASES[moonPhaseIndex(world.day)];
     const strength = moonStrength(world.day);
     spawnWave(false);
-    announce(`Night ${world.day}`, phase + (strength > 1.1 ? ' - the swarm is restless' : (strength < 0.9 ? ' - a quiet night' : '')), '#9ab8ff', 'moon');
+    const threat = Math.max(1, threatLevel());
+    let sub = phase + (strength > 1.1 ? ' - the swarm is restless' : (strength < 0.9 ? ' - a quiet night' : ''));
+    sub += ` · threat ${threat}` + (lastNightElites ? ` · ${lastNightElites} elite${lastNightElites > 1 ? 's' : ''}` : '');
+    announce(`Night ${world.day}`, sub, '#9ab8ff', 'moon');
     SZ.GameAudio.tone(196, 0.5, 'triangle', 0.12);
     SZ.GameAudio.tone(147, 0.8, 'triangle', 0.12, 0.35);
   }
@@ -4584,6 +4589,15 @@
     autumn: { burrower: 1.8, mender: 1.3, walker: 1.2 },
     winter: { crawler: 2.2, mender: 1.5, swarmer: 0.3, flyer: 0.6 }
   };
+  // Elite auras strengthen the monsters around an elite
+  const ELITE_AURAS = {
+    haste: { name: 'Haste aura', color: '#5ae0ff', desc: 'Monsters nearby move 30% faster' },
+    ward: { name: 'Ward aura', color: '#ffd75a', desc: 'Monsters nearby take 25% less damage' },
+    fury: { name: 'Fury aura', color: '#ff5a5a', desc: 'Monsters nearby hit 30% harder' }
+  };
+  const ELITE_FROM = 7;              // threat at which elites appear
+  const ENRAGE_FROM = 5;             // threat at which wounded monsters enrage
+  const ELITE_RANGED_FROM = 12;      // threat at which elites also spit acid
   let enemyShots = [];               // acid globs: { x0, y0, tx, ty, t, dur, dmg }
   let shockwaves = [];               // behemoth stomps: { x, r, hit }
 
@@ -4597,6 +4611,13 @@
     return siteNights + site.index * THREAT_PER_SITE;
   }
 
+  let lastNightElites = 0;           // elites in tonight's main attack (for the night banner)
+
+  // Colour of the threat chip: calm green to deadly violet
+  function threatColor(t) {
+    return t < 5 ? '#7ae07a' : (t < 10 ? '#ffc048' : (t < 16 ? '#ff6a5a' : '#d070ff'));
+  }
+
   function enemyType(e) {
     return ENEMY_TYPES[e.type] || ENEMY_TYPES.walker;
   }
@@ -4606,12 +4627,14 @@
     const season = currentSeason();
     const size = (T.size[0] + Math.random() * (T.size[1] - T.size[0])) * (T.boss ? 1 : season.size);
     const hp = base.hp * T.hp * (0.88 + Math.random() * 0.24);
+    // Plates grow thicker with the threat; later every bigger monster carries some
+    const armorBonus = base.threat >= 9 && key !== 'swarmer' ? Math.floor((base.threat - 5) / 4) : 0;
     const e = {
       type: key, x: 0, y: 0, hp, maxHP: hp,
       speed: base.speed * T.speed * (0.9 + Math.random() * 0.2),
       damage: Math.max(1, Math.round(base.damage * T.damage)),
       attackTimer: 0.4 + Math.random() * 0.5, stunTimer: 0, size,
-      armor: T.armor ? Math.round(T.armor * (1 + base.threat * 0.06)) : 0,
+      armor: (T.armor ? Math.round(T.armor * (1 + base.threat * 0.06)) : 0) + armorBonus,
       shield: 0, maxShield: 0, boss: !!T.boss, phase: 'approach', t: 0,
       wobblePhase: Math.random() * TWO_PI, legPhase: Math.random() * TWO_PI, wingPhase: Math.random() * TWO_PI,
       eyeBlinkTimer: 2 + Math.random() * 3, eyeBlinking: false
@@ -4645,6 +4668,20 @@
     return e;
   }
 
+  // Turn a monster into an elite: tougher, bigger, with an aura for its pack
+  function makeElite(e, threat) {
+    const auras = Object.keys(ELITE_AURAS);
+    e.elite = auras[Math.floor(Math.random() * auras.length)];
+    e.hp = e.maxHP = e.maxHP * 2.2;
+    e.size *= 1.25;
+    e.damage = Math.ceil(e.damage * 1.5);
+    e.speed *= 1.08;
+    if (e.y < DOME_Y && enemyType(e).move === 'ground')
+      e.y = groundY(e.size);
+    if (threat >= ELITE_RANGED_FROM && (enemyType(e).move === 'ground' || enemyType(e).move === 'air'))
+      e.spit = 2 + Math.random() * 2;
+  }
+
   // The main attack comes at nightfall; reinforcements (smaller, no boss) later in the night
   function spawnWave(reinforcement) {
     if (!reinforcement) {
@@ -4661,14 +4698,17 @@
 
     const threat = Math.max(1, threatLevel());
     const season = currentSeason();
+    // Monsters grow faster than linearly with the threat, and every site adds a further edge
+    const tk = threat - 1;
     const base = {
       threat,
-      hp: (8 + (threat - 1) * 3) * season.hp * (1 + 0.3 * site.index),
-      damage: (2 + (threat - 1) * 0.8) * season.damage * (1 + 0.2 * site.index),
-      speed: (15 + Math.min(25, threat * 2)) * season.speed
+      hp: (8 + tk * 3.3 + 0.06 * tk * tk) * season.hp * (1 + 0.3 * site.index),
+      damage: (2 + tk * 0.85) * season.damage * (1 + 0.22 * site.index),
+      speed: (15 + Math.min(34, threat * 2.1)) * season.speed
     };
     // The night's budget: grows with the threat, the moon and the season
-    let budget = Math.min(24, 2 + threat * 0.8) * moonStrength(world.day) * season.count * (reinforcement ? 0.45 : 1);
+    let budget = Math.min(36, 2 + threat * 0.85 + 0.008 * threat * threat) * moonStrength(world.day) * season.count * (reinforcement ? 0.5 : 1);
+    const firstNew = enemies.length;
     const bias = SEASON_ENEMY_BIAS[season.key] || {};
     const wb = { blizzard: { burrower: 1.6, flyer: 0.5, diver: 0.5 }, storm: { flyer: 0.6, diver: 0.6 } }[weather.kind] || {};
     const pool = Object.keys(ENEMY_TYPES).filter(k => !ENEMY_TYPES[k].boss && ENEMY_TYPES[k].level <= threat);
@@ -4700,6 +4740,26 @@
       }
     }
 
+    // Elites lead the pack once the threat is high enough
+    if (threat >= ELITE_FROM) {
+      const chance = Math.min(0.32, 0.05 + (threat - ELITE_FROM) * 0.02);
+      let left = 1 + Math.floor((threat - ELITE_FROM) / 4) - (reinforcement ? 1 : 0);
+      const fresh = enemies.slice(firstNew).filter(e => !e.boss && e.type !== 'swarmer');
+      // At least one elite on the main attack
+      if (!reinforcement && fresh.length && left > 0) {
+        makeElite(fresh.splice(Math.floor(Math.random() * fresh.length), 1)[0], threat);
+        --left;
+      }
+      for (const e of fresh)
+        if (left > 0 && Math.random() < chance) {
+          makeElite(e, threat);
+          --left;
+        }
+    }
+    const elites = enemies.slice(firstNew).filter(e => e.elite).length;
+    if (!reinforcement)
+      lastNightElites = elites;
+
     // A boss every fifth night once the threat is high enough
     if (!reinforcement && siteNights % 5 === 0 && threat >= 10) {
       const bossKey = threat >= 15 && Math.floor(waveNumber / 5) % 2 === 0 ? 'queen' : 'behemoth';
@@ -4711,7 +4771,7 @@
         SZ.GameAudio.sweep(300, 1400, 0.7, 'sawtooth', 0.06, 0.2);
     }
     if (reinforcement) {
-      announce('More monsters!', 'A second swarm crawls out of the dark', '#ff8a6a', 'swords');
+      announce('More monsters!', elites ? `A second swarm crawls out of the dark, led by ${elites} elite${elites > 1 ? 's' : ''}` : 'A second swarm crawls out of the dark', '#ff8a6a', 'swords');
       SZ.GameAudio.play('hurt', { pitch: 0.6, volume: 0.6 });
     }
     updateWindowTitle();
@@ -4720,7 +4780,7 @@
   // Kill effects, score and special deaths (splitters burst into swarmers)
   function killEnemy(e, i) {
     const T = enemyType(e);
-    const pts = Math.round((10 + waveNumber * 5) * T.score);
+    const pts = Math.round((10 + waveNumber * 5) * T.score * (e.elite ? 3 : 1));
     score += pts;
     enemies.splice(i, 1);
     const pitch = { swarmer: 1.6, flyer: 1.2, diver: 1.3, crawler: 0.7, burrower: 0.8, spitter: 1, splitter: 0.9, mender: 1.1, behemoth: 0.5, queen: 0.6 }[e.type] || 1;
@@ -4736,9 +4796,11 @@
         vx: (Math.random() - 0.5) * 4, vy: -Math.random() * 3 - 1, color: T.color,
         life: 0.5 + Math.random() * 0.3, size: 3 + Math.random() * 3, gravity: 0.12, shape: 'square'
       });
-    if (e.boss)
-      screenShake.trigger(12, 400);
-    floatingText.add(e.x, e.y - 30, `+${pts}`, { color: '#ff0', font: 'bold 24px sans-serif' });
+    if (e.boss || e.elite)
+      screenShake.trigger(e.boss ? 12 : 7, e.boss ? 400 : 250);
+    if (e.elite)
+      particles.sparkle(e.x, e.y, 16, { color: ELITE_AURAS[e.elite].color, speed: 3 });
+    floatingText.add(e.x, e.y - 30, e.elite ? `Elite +${pts}` : `+${pts}`, { color: e.elite ? ELITE_AURAS[e.elite].color : '#ff0', font: 'bold 24px sans-serif' });
     if (e.type === 'splitter') {
       const base = { threat: threatLevel(), hp: e.maxHP / ENEMY_TYPES.splitter.hp * 0.9, damage: e.damage / ENEMY_TYPES.splitter.damage, speed: e.speed / ENEMY_TYPES.splitter.speed };
       for (let k = 0; k < 3; ++k) {
@@ -4756,7 +4818,7 @@
     e.attackTimer = T.attack;
     const lunge = Math.atan2(e.y - DOME_Y, e.x - DOME_X);
     e.lunge = 1;
-    if (damageDome(e.damage, DOME_X + Math.cos(lunge) * DOME_RADIUS, DOME_Y + Math.sin(lunge) * DOME_RADIUS, '', e))
+    if (damageDome(e.aura === 'fury' ? Math.ceil(e.damage * 1.3) : e.damage, DOME_X + Math.cos(lunge) * DOME_RADIUS, DOME_Y + Math.sin(lunge) * DOME_RADIUS, '', e))
       return true;
     particles.burst(e.x, e.y, 8, { color: T.color, speed: 2.5, life: 0.4 });
     if (e.type === 'crawler' || e.boss)
@@ -4766,14 +4828,54 @@
     return false;
   }
 
+  // Elite auras reach the monsters around each elite (refreshed every frame)
+  function applyEliteAuras() {
+    for (const e of enemies)
+      e.aura = null;
+    for (const el of enemies) {
+      if (!el.elite || el.hidden) continue;
+      for (const o of enemies)
+        if (!o.hidden && !o.aura && Math.abs(o.x - el.x) < 160 && Math.abs(o.y - el.y) < 160)
+          o.aura = el.elite;
+    }
+    // An elite always carries its own aura
+    for (const e of enemies)
+      if (e.elite)
+        e.aura = e.elite;
+  }
+
   function updateEnemies(dt) {
     const repel = (primaryGadget === 'repellent' && primaryGadgetState.active) ? 0.4 : 1.0;
     const slowGround = weatherSlow();
     const slowAir = weather.kind === 'blizzard' ? 1 - 0.3 * weather.intensity : 1;
+    const threat = threatLevel();
+    applyEliteAuras();
     for (let i = enemies.length - 1; i >= 0; --i) {
       const e = enemies[i];
       const T = enemyType(e);
       e.t += dt;
+      // Wounded monsters fly into a rage once the threat is high enough
+      if (!e.enraged && !e.boss && threat >= ENRAGE_FROM && e.hp > 0 && e.hp < e.maxHP * 0.35 && !e.hidden) {
+        e.enraged = true;
+        e.speed *= 1.45;
+        e.damage = Math.ceil(e.damage * 1.35);
+        if (currentView === VIEW_SURFACE) {
+          floatingText.add(e.x, e.y - (e.size || 20) - 34, 'ENRAGED', { color: '#ff5a3a', font: 'bold 18px sans-serif' });
+          particles.burst(e.x, e.y, 10, { color: '#ff5a3a', speed: 2.5, life: 0.4 });
+        }
+      }
+      // Elites of high threats spit acid on the way in
+      if (e.spit !== undefined && !e.hidden && e.stunTimer <= 0) {
+        e.spit -= dt;
+        const far = Math.hypot(DOME_X - e.x, DOME_Y - e.y);
+        if (e.spit <= 0 && far < 620 && far > DOME_RADIUS + 60) {
+          e.spit = 4.5;
+          const tx = DOME_X + (Math.random() - 0.5) * 90;
+          enemyShots.push({ x0: e.x, y0: e.y - e.size * 0.5, tx, ty: DOME_Y - Math.sqrt(Math.max(0, DOME_RADIUS * DOME_RADIUS - (tx - DOME_X) * (tx - DOME_X))), t: 0, dur: 1.2, dmg: Math.ceil(e.damage * 0.7) });
+          if (currentView === VIEW_SURFACE)
+            SZ.GameAudio.play('drop', { pitch: 0.6, volume: 0.5 });
+        }
+      }
       e.lunge = Math.max(0, (e.lunge || 0) - dt * 4);
       if (e.pop !== undefined && e.pop < 1)
         e.pop = Math.min(1, e.pop + dt * 2.4);
@@ -4781,7 +4883,7 @@
       if (isStunned)
         e.stunTimer = Math.max(0, e.stunTimer - dt);
       const air = T.move === 'air' || T.move === 'dive' || T.move === 'queen';
-      const spd = e.speed * repel * (air ? slowAir : slowGround);
+      const spd = e.speed * repel * (air ? slowAir : slowGround) * (e.aura === 'haste' ? 1.3 : 1);
       const dx = DOME_X - e.x, dy = DOME_Y - e.y;
       const dist = Math.hypot(dx, dy) || 1;
       const reach = DOME_RADIUS + (air ? 10 : e.size * 0.45);
@@ -10575,6 +10677,31 @@
     }
     if (e.hidden)
       return drawBurrowMound(e);
+    const sz = e.size || 16;
+    if (e.enraged)
+      drawGlow('#ff3a20', e.x, e.y, sz * 2.2, 0.45 + Math.sin(animTime * 10 + e.x) * 0.15);
+    if (e.elite) {
+      const A = ELITE_AURAS[e.elite];
+      const ground = enemyType(e).move !== 'air' && enemyType(e).move !== 'dive' && enemyType(e).move !== 'queen';
+      ctx.save();
+      ctx.strokeStyle = hexToRgba(A.color, 0.7);
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 6]);
+      ctx.lineDashOffset = -animTime * 30;
+      ctx.beginPath();
+      if (ground)
+        ctx.ellipse(e.x, e.y + sz * 0.72, sz * 1.5, sz * 0.4, 0, 0, TWO_PI);
+      else
+        ctx.arc(e.x, e.y, sz * 1.6, 0, TWO_PI);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+      drawGlow(A.color, e.x, e.y, sz * 2.6, 0.22);
+    } else if (e.aura) {
+      drawGlow(ELITE_AURAS[e.aura].color, e.x, e.y, sz * 1.6, 0.18);
+    }
+    if (e.enraged && Math.random() < 0.25 && currentView === VIEW_SURFACE)
+      particles.trail(e.x + (Math.random() - 0.5) * sz, e.y - sz * 0.6, { vx: (Math.random() - 0.5) * 0.8, vy: -1.2, color: '#ff6a40', life: 0.35, size: 2, gravity: -0.02 });
     if (e.type === 'flyer')
       return drawFlyer(e);
     if (e.type === 'diver')
@@ -11204,6 +11331,28 @@
     const barX = e.x - barW / 2;
     const barY = e.y - sz * (e.boss ? 1.75 : 1.2) - 16 + vertOffset;
     drawMeter(barX, barY, barW, 7, hpR, hpR > 0.5 ? '#ff6a5a' : '#ff3a3a', { track: 'rgba(20,0,0,0.75)' });
+    // Elite crest beside the bar
+    if (e.elite) {
+      const A = ELITE_AURAS[e.elite];
+      const cx = barX - 12, cy = barY + 3;
+      drawGlow(A.color, cx, cy, 16, 0.7);
+      ctx.fillStyle = SPRITE_OUTLINE;
+      ctx.beginPath();
+      for (let k = 0; k < 10; ++k) {
+        const a = -Math.PI / 2 + k * Math.PI / 5, rr = k % 2 ? 4.5 : 10;
+        ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = A.color;
+      ctx.beginPath();
+      for (let k = 0; k < 10; ++k) {
+        const a = -Math.PI / 2 + k * Math.PI / 5, rr = k % 2 ? 3 : 7.5;
+        ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
     if (e.shield > 0 && e.maxShield > 0)
       drawMeter(barX, barY - 8, barW, 5, e.shield / e.maxShield, '#5ab8ff', { track: 'rgba(0,10,30,0.75)' });
   }
@@ -12323,7 +12472,8 @@
     ctx.textAlign = 'left';
     fitText(`Site ${site.index + 1} · ${currentBiome().name}`, sx + 16, 96, 200, 16, { weight: 'bold', color: UI.text });
     const threat = isNight() ? Math.max(1, threatLevel()) : threatLevel() + 1; // tonight's threat
-    drawChip(`Threat ${threat}`, sx + 306, 84, 24, { align: 'right', px: 13, maxW: 96, bg: 'rgba(255,90,90,0.14)', border: 'rgba(255,120,110,0.55)', color: '#ffa090' });
+    const tc = threatColor(threat);
+    drawChip(`Threat ${threat}`, sx + 306, 84, 24, { align: 'right', px: 13, maxW: 96, bg: hexToRgba(tc, 0.16), border: hexToRgba(tc, 0.6), color: tc });
     ctx.textAlign = 'left';
     ctx.textAlign = 'right';
     const chw = fitText(`[[chest]] ${chestsOpened()} / ${chests.length}`, sx + 306, 120, 70, 14, { weight: 'bold', color: '#e0b0ff' });
@@ -13761,7 +13911,13 @@
   // Build tooltip content for an enemy
   function buildEnemyTooltip(e) {
     const T = enemyType(e);
-    const lines = [T.name, T.desc];
+    const lines = [(e.elite ? 'Elite ' : '') + (e.enraged ? 'Enraged ' : '') + T.name, T.desc];
+    if (e.elite)
+      lines.push(`\u26A0 ${ELITE_AURAS[e.elite].name}: ${ELITE_AURAS[e.elite].desc}`);
+    else if (e.aura)
+      lines.push(`\u26A0 Strengthened by a ${ELITE_AURAS[e.aura].name.toLowerCase()}`);
+    if (e.spit !== undefined)
+      lines.push('\u26A0 Spits acid on its way in');
     lines.push('HP: ' + Math.ceil(e.hp) + ' / ' + Math.ceil(e.maxHP));
     if (e.shield > 0)
       lines.push('Shield: ' + Math.ceil(e.shield) + ' / ' + Math.ceil(e.maxShield));
