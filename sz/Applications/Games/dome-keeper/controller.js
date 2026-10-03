@@ -1851,7 +1851,8 @@
   let cameraY = 0;
 
   let enemies = [];
-  let waveNumber = 0;
+  let waveNumber = 0;          // nights survived in the whole run
+  let siteNights = 0;          // nights at the current site (threat restarts per site)
   let waveTimer = 0;
   let waveActive = false;
   let score = 0;
@@ -2050,7 +2051,7 @@
       weaponDamage, fireRate, drillSpeed, moveStepInterval,
       drillX, drillY, turretAngle,
       resources, upgradeTreeLevels,
-      waveNumber, waveTimer: secondsToNight(), waveActive, score,
+      waveNumber, siteNights, waveTimer: secondsToNight(), waveActive, score,
       world: { day: world.day, t: world.t, bursts: world.bursts, warned: world.warned },
       weather: { kind: weather.kind, timeLeft: weather.timeLeft }, snowCover,
       meteorOre: meteorOre.map(o => ({ x: o.x, y: o.y, type: o.type, amount: o.amount })),
@@ -2209,6 +2210,7 @@
     waveNumber = d.waveNumber;
     waveTimer = d.waveTimer;
     waveActive = !!d.waveActive;
+    siteNights = isNum(d.siteNights) ? Math.max(0, Math.floor(d.siteNights)) : waveNumber;
     if (isPlainObject(d.world) && isNum(d.world.day) && isNum(d.world.t))
       world = { day: Math.max(1, Math.floor(d.world.day)), t: Math.max(0, Math.min(0.999, d.world.t)), bursts: Math.max(0, Math.min(3, d.world.bursts | 0)), warned: !!d.world.warned };
     else {
@@ -2574,6 +2576,7 @@
 
     enemies = [];
     waveNumber = 0;
+    siteNights = 0;
     waveTimer = 0;
     waveActive = false;
     world = newWorld();
@@ -3924,6 +3927,7 @@
     weather = { kind: 'clear', intensity: 1, timeLeft: 50 };
     waveActive = false;
     domeHP = maxDomeHP;
+    siteNights = 0;
     world.day += 1;
     world.t = 0.03;
     world.bursts = 0;
@@ -4294,9 +4298,9 @@
   let enemyShots = [];               // acid globs: { x0, y0, tx, ty, t, dur, dmg }
   let shockwaves = [];               // behemoth stomps: { x, r, hit }
 
-  // Threat climbs with every night and every relocation
+  // Threat climbs with every night at a site; every site starts higher than the last
   function threatLevel() {
-    return waveNumber + site.index * 4;
+    return siteNights + site.index * THREAT_PER_SITE;
   }
 
   function enemyType(e) {
@@ -4349,8 +4353,10 @@
 
   // The main attack comes at nightfall; reinforcements (smaller, no boss) later in the night
   function spawnWave(reinforcement) {
-    if (!reinforcement)
+    if (!reinforcement) {
       ++waveNumber;
+      ++siteNights;
+    }
     waveActive = true;
 
     // Recharge shield gadget at wave start
@@ -4400,7 +4406,7 @@
     }
 
     // A boss every fifth night once the threat is high enough
-    if (!reinforcement && waveNumber % 5 === 0 && threat >= 10) {
+    if (!reinforcement && siteNights % 5 === 0 && threat >= 10) {
       const bossKey = threat >= 15 && Math.floor(waveNumber / 5) % 2 === 0 ? 'queen' : 'behemoth';
       spawnEnemy(bossKey, base);
       const T = ENEMY_TYPES[bossKey];
@@ -10099,7 +10105,7 @@
     ctx.fillRect(sx + 14, 79, 292, 1);
     ctx.textAlign = 'left';
     fitText(`Site ${site.index + 1} · ${currentBiome().name}`, sx + 16, 96, 200, 16, { weight: 'bold', color: UI.text });
-    const threat = threatLevel() + 1;
+    const threat = isNight() ? Math.max(1, threatLevel()) : threatLevel() + 1; // tonight's threat
     drawChip(`Threat ${threat}`, sx + 306, 84, 24, { align: 'right', px: 13, maxW: 96, bg: 'rgba(255,90,90,0.14)', border: 'rgba(255,120,110,0.55)', color: '#ffa090' });
     ctx.textAlign = 'left';
     fitText(relocationCore.found ? '[[core]] Core found: relocate when ready' : `[[core]] Core hidden below ${coreDepthHint()} m`, sx + 16, 120, 290, 14, { color: relocationCore.found ? '#7ae8ff' : UI.textMute });
