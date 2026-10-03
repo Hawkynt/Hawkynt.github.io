@@ -999,51 +999,21 @@
   /* -- Movement -- */
   const BASE_MOVE_INTERVAL = 0.15; // seconds per tile (base, before upgrades)
 
-  /* -- Upgrade costs (resource units) -- */
-  const UPGRADE_DEFS = [
-    { name: 'Weapon Damage', key: 'weaponDamage', baseCost: 30, perLevel: 20 },
-    { name: 'Fire Rate', key: 'fireRate', baseCost: 25, perLevel: 15 },
-    { name: 'Dome HP', key: 'domeHP', baseCost: 40, perLevel: 25 },
-    { name: 'Drill Speed', key: 'drillSpeed', baseCost: 20, perLevel: 10 },
-    { name: 'Carry Capacity', key: 'carryCapacity', baseCost: 20, perLevel: 10 },
-    { name: 'Move Speed', key: 'moveSpeed', baseCost: 25, perLevel: 15 },
-    { name: 'Mining Tools', key: 'miningTools', baseCost: 35, perLevel: 20 }
+  /* -- Tools bought in the upgrade tree (HUD rows and number-key shortcuts) -- */
+  const TOOL_DEFS = [
+    { key: 'drill', name: 'Drill Gadget', icon: 'drill', shortcut: '1' },
+    { key: 'blastTool', name: 'Blast Mining', icon: 'explosion', shortcut: '2' },
+    { key: 'scanner', name: 'Scanner', icon: 'magnifier', shortcut: '3' },
+    { key: 'reinforcedDome', name: 'Reinforced Dome', icon: 'shield', shortcut: '4' },
+    { key: 'teleporter', name: 'Teleporter', icon: 'portal', shortcut: '5' }
   ];
 
-  // Sprite shown next to each quick upgrade
-  const UPGRADE_ICONS = {
-    weaponDamage: 'swords', fireRate: 'fire', domeHP: 'shield', drillSpeed: 'drill',
-    carryCapacity: 'bag', moveSpeed: 'boot', miningTools: 'pickaxe'
+  // Saves from before the single upgrade tree kept a separate quick-upgrade
+  // level per stat; those levels become the first nodes of the matching chain
+  const LEGACY_UPGRADE_CHAINS = {
+    weaponDamage: 'damage', fireRate: 'fireRate', domeHP: 'shield', drillSpeed: 'drillSpeed',
+    carryCapacity: 'carry', moveSpeed: 'speed', miningTools: 'mining'
   };
-
-  /* -- Unlockable Gadgets/Tools -- */
-  const GADGET_DEFS = [
-    {
-      key: 'drill', name: 'Drill Gadget', icon: 'drill',
-      desc: 'Mines a column downward. 30% faster on consecutive same-column tiles.',
-      costIron: 25, costCobalt: 0, shortcut: '1'
-    },
-    {
-      key: 'blastTool', name: 'Blast Mining', icon: 'explosion',
-      desc: 'Clears a 3x3 area. Costs 10 iron per blast. 5s cooldown.',
-      costIron: 30, costCobalt: 0, shortcut: '2'
-    },
-    {
-      key: 'scanner', name: 'Scanner', icon: 'magnifier',
-      desc: 'Reveals resource types in a 3-tile radius around the miner.',
-      costIron: 35, costCobalt: 10, shortcut: '3'
-    },
-    {
-      key: 'reinforcedDome', name: 'Reinforced Dome', icon: 'shield',
-      desc: 'Dome takes 25% less damage from enemies. Passive.',
-      costIron: 50, costCobalt: 25, shortcut: '4'
-    },
-    {
-      key: 'teleporter', name: 'Teleporter', icon: 'portal',
-      desc: 'Instantly return to dome surface. 30s cooldown.',
-      costIron: 30, costCobalt: 15, shortcut: '5'
-    }
-  ];
 
   const GADGET_TOOL_COOLDOWNS = {
     blastTool: 5,   // seconds
@@ -1599,12 +1569,12 @@
       items: [['Click', 'Fire the laser (surface) / dig (underground)'], ['WASD / Arrows', 'Move the keeper and mine underground'], ['Space / Tab', 'Switch between surface and mine']] },
     { title: 'Upgrades & Tips', icon: 'pickaxe',
       intro: 'Mine iron, copper, gold, gems and more, then spend them on upgrades.',
-      items: [['U', 'Open the upgrade tree (on the surface)'], [null, 'Upgrade weapon, dome armor, drill and fire rate'], [null, 'Return to the surface before a wave arrives!'], ['H', 'Show this help again anytime']] },
+      items: [['U', 'Open the upgrade tree (on the surface)'], [null, 'The Next upgrades panel shows the next node of every branch: click to buy it'], [null, 'Return to the surface before a wave arrives!'], ['H', 'Show this help again anytime']] },
     { title: 'Gadgets', icon: 'gear',
       intro: 'Choose a primary gadget at the start of each run. Golden 2x2 gadget chambers underground hide more of them.',
       items: [['R', 'Activate the Repellent Field'], ['B', 'Use Blast Mining charges'], [null, 'Gadgets from chambers activate on pickup!']] },
     { title: 'Tools', icon: 'drill',
-      intro: 'Unlock tools in the Tools section of the upgrade panel, then use them with the number keys.',
+      intro: 'Tools are nodes of the upgrade tree (mostly the Mining branch). Once bought, use them with the number keys.',
       items: [['1', 'Drill: fast column mining'], ['2', 'Blast: clears a 3x3 area'], ['3', 'Scanner: reveals nearby ores'], ['4', 'Reinforced Dome: takes less damage'], ['5', 'Teleporter: instant return to the surface']] }
   ];
 
@@ -1638,8 +1608,6 @@
 
   let cameraX = 0;
   let cameraY = 0;
-
-  let upgradeLevels = { weaponDamage: 0, fireRate: 0, domeHP: 0, drillSpeed: 0, carryCapacity: 0, moveSpeed: 0, miningTools: 0 };
 
   let enemies = [];
   let waveNumber = 0;
@@ -1682,7 +1650,6 @@
   let unlockedTools = {};       // { drill: true, blastTool: true, ... }
   let activeToolKey = null;     // currently selected tool key
   let toolState = {};           // per-tool runtime state
-  let showToolPanel = false;    // whether tool unlock panel is visible in upgrade menu
 
   /* ── Upgrade Dialog (full-screen tree) ── */
   let upgradeTreeLevels = {};   // { nodeId: currentLevel }
@@ -1717,6 +1684,8 @@
   let treeLayout = null;        // cached node positions and branch regions
   let treeNodeInfo = null;      // cached display names / chain positions
   const treePurchaseFlash = {}; // nodeId -> purchase time (ms) for the flash effect
+  const quickPanelFlash = {};   // branch -> purchase time (ms) for the quick panel row flash
+  let quickPanelHover = null;   // hovered quick panel hit target
 
   const PRIMARY_GADGETS = [
     { key: 'shield', name: 'Shield Generator', icon: 'shield', desc: ['Absorbs the first hit of each wave.', 'Recharges when a new wave starts.'] },
@@ -1838,7 +1807,7 @@
       domeHP, maxDomeHP, carried, carryCapacity,
       weaponDamage, fireRate, drillSpeed, moveStepInterval,
       drillX, drillY, turretAngle,
-      resources, upgradeLevels, upgradeTreeLevels,
+      resources, upgradeTreeLevels,
       waveNumber, waveTimer, waveActive, score,
       enemies,
       grid: undergroundGrid.map(row => row.map(t => String.fromCharCode(48 + t)).join('')),
@@ -1894,7 +1863,7 @@
         throw new Error('bad position');
       if (!PRIMARY_GADGETS.some(g => g.key === d.primaryGadget))
         throw new Error('bad gadget');
-      for (const k of ['resources', 'upgradeLevels', 'upgradeTreeLevels', 'primaryGadgetState', 'unlockedTools', 'toolState'])
+      for (const k of ['resources', 'upgradeTreeLevels', 'primaryGadgetState', 'unlockedTools', 'toolState'])
         if (!isPlainObject(d[k]))
           throw new Error('bad ' + k);
       for (const k of ['enemies', 'partialHP', 'droppedResources', 'foundGadgets', 'gadgetChambers'])
@@ -1943,8 +1912,9 @@
     drillY = d.drillY;
     turretAngle = d.turretAngle;
     Object.assign(resources, d.resources);
-    Object.assign(upgradeLevels, d.upgradeLevels);
     Object.assign(upgradeTreeLevels, d.upgradeTreeLevels);
+    if (isPlainObject(d.upgradeLevels))
+      absorbLegacyUpgrades(d.upgradeLevels);
     waveNumber = d.waveNumber;
     waveTimer = d.waveTimer;
     waveActive = !!d.waveActive;
@@ -2268,8 +2238,6 @@
     cameraX = 0;
     cameraY = 0;
 
-    upgradeLevels = { weaponDamage: 0, fireRate: 0, domeHP: 0, drillSpeed: 0, carryCapacity: 0, moveSpeed: 0, miningTools: 0 };
-
     enemies = [];
     waveNumber = 0;
     waveTimer = 12;
@@ -2330,7 +2298,6 @@
       phaseShiftCooldown: 0,     // phase shift cooldown timer
       echoLocationActive: false  // echo location passive
     };
-    showToolPanel = false;
     gadgetSelectHover = -1;
 
     // Reset upgrade tree
@@ -3426,7 +3393,7 @@
 
     switch (type) {
       case 'domeArmor':
-        maxDomeHP += 50;
+        maxDomeHP = computeMaxDomeHP();
         domeHP = Math.min(domeHP + 50, maxDomeHP);
         floatingText.add(tx, ty - 90, '+50 Max HP!', { color: '#0f0', font: 'bold 24px sans-serif' });
         break;
@@ -3639,69 +3606,15 @@
     activeToolKey = activeToolKey === key ? null : key;
   }
 
-  function unlockTool(idx) {
-    if (state !== STATE_PLAYING) return;
-    const def = GADGET_DEFS[idx];
-    if (unlockedTools[def.key]) return;
-    if (resources.iron < def.costIron || resources.cobalt < def.costCobalt) return;
-
-    resources.iron -= def.costIron;
-    resources.cobalt -= def.costCobalt;
-    unlockedTools[def.key] = true;
-
-    SZ.GameAudio.play('powerup');
-    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `${def.name} Unlocked!`, { color: '#ffd700', font: 'bold 28px sans-serif' });
-    particles.sparkle(CANVAS_W / 2, CANVAS_H / 2, 15, { color: '#ffd700', speed: 2.5 });
-    screenShake.trigger(5, 150);
-
-    // Auto-select non-passive tools
-    if (def.key !== 'scanner' && def.key !== 'reinforcedDome')
-      activeToolKey = def.key;
-  }
-
   /* ======================================================================
      UPGRADE SYSTEM
      ====================================================================== */
-
-  function getUpgradeCost(idx) {
-    const def = UPGRADE_DEFS[idx];
-    return def.baseCost + upgradeLevels[def.key] * def.perLevel;
-  }
 
   function totalResources() {
     let total = 0;
     for (const key in resources)
       total += resources[key];
     return total;
-  }
-
-  function spendResources(amount) {
-    let remaining = amount;
-    // Spend from most valuable first
-    for (const key of ['ruby', 'diamond', 'emerald', 'redstone', 'quartz', 'cobalt', 'gold', 'silver', 'lead', 'tin', 'copper', 'coal', 'water', 'iron']) {
-      const spend = Math.min(resources[key] || 0, remaining);
-      resources[key] -= spend;
-      remaining -= spend;
-      if (remaining <= 0) break;
-    }
-  }
-
-  function applyUpgrade(idx) {
-    if (state !== STATE_PLAYING) return;
-
-    const cost = getUpgradeCost(idx);
-    if (totalResources() < cost) return;
-
-    spendResources(cost);
-    const def = UPGRADE_DEFS[idx];
-    ++upgradeLevels[def.key];
-
-    // Recalculate using effective level (legacy + tree combined)
-    applyStatUpgrade(def.key);
-
-    SZ.GameAudio.play('levelup');
-    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `${def.name} Lv${getEffectiveLevel(def.key)}`, { color: '#4af', font: 'bold 28px sans-serif' });
-    particles.sparkle(CANVAS_W / 2, CANVAS_H / 2, 10, { color: '#4af', speed: 2 });
   }
 
   /* ======================================================================
@@ -3712,8 +3625,12 @@
     return upgradeTreeLevels[id] || 0;
   }
 
+  const TREE_NODE_BY_ID = {};
+  for (const n of UPGRADE_TREE)
+    TREE_NODE_BY_ID[n.id] = n;
+
   function isTreeNodeMaxed(id) {
-    const node = UPGRADE_TREE.find(n => n.id === id);
+    const node = TREE_NODE_BY_ID[id];
     if (!node) return false;
     return getTreeNodeLevel(id) >= node.maxLevel;
   }
@@ -3776,7 +3693,7 @@
     unlockedTools[key] = true;
     // Apply immediate effects for certain gadgets
     if (key === 'domeExpansion') {
-      maxDomeHP += 75;
+      maxDomeHP = computeMaxDomeHP();
       domeHP = Math.min(domeHP + 75, maxDomeHP);
     }
     // Auto-select non-passive tools
@@ -3785,12 +3702,38 @@
   }
 
   function getEffectiveLevel(key) {
-    // Sum of tree-based levels AND legacy upgrade levels for this key
-    let treeLevels = 0;
+    let levels = 0;
     for (const n of UPGRADE_TREE)
       if (n.upgradeKey === key)
-        treeLevels += getTreeNodeLevel(n.id);
-    return treeLevels + (upgradeLevels[key] || 0);
+        levels += getTreeNodeLevel(n.id);
+    return levels;
+  }
+
+  // Map quick-upgrade levels of an old save onto the matching tree chain:
+  // the chain is owned up to (tree levels + legacy levels) nodes
+  function absorbLegacyUpgrades(levels) {
+    for (const key in LEGACY_UPGRADE_CHAINS) {
+      const extra = Math.max(0, Math.floor(Number(levels[key]) || 0));
+      if (!extra) continue;
+      const prefix = LEGACY_UPGRADE_CHAINS[key];
+      const chain = UPGRADE_TREE
+        .filter(n => n.type === 'stat' && n.upgradeKey === key && new RegExp('^' + prefix + '\\d+$').test(n.id))
+        .sort((a, b) => parseInt(a.id.slice(prefix.length), 10) - parseInt(b.id.slice(prefix.length), 10));
+      let owned = 0;
+      for (const n of chain)
+        if (getTreeNodeLevel(n.id) >= n.maxLevel) ++owned;
+      const target = Math.min(chain.length, owned + extra);
+      for (let i = 0; i < target; ++i)
+        upgradeTreeLevels[chain[i].id] = chain[i].maxLevel;
+    }
+  }
+
+  // Dome capacity from every source: shield chain, dome gadgets and armour found in the mine
+  function computeMaxDomeHP() {
+    let hp = BASE_DOME_HP + getEffectiveLevel('domeHP') * 25;
+    if (unlockedTools.domeExpansion) hp += 75;
+    hp += 50 * foundGadgets.filter(g => g === 'domeArmor').length;
+    return hp;
   }
 
   function applyStatUpgrade(key) {
@@ -3804,7 +3747,7 @@
         fireRate = BASE_FIRE_RATE + totalLevels * 0.3;
         break;
       case 'domeHP':
-        maxDomeHP = BASE_DOME_HP + totalLevels * 25;
+        maxDomeHP = computeMaxDomeHP();
         domeHP = Math.min(domeHP + 25, maxDomeHP);
         break;
       case 'drillSpeed':
@@ -4135,44 +4078,7 @@
     ctx.fillStyle = 'rgba(0,0,0,0.45)';
     ctx.fill();
 
-    roundRectPath(x, y, w, h, 12);
-    if (st === 'owned')
-      ctx.fillStyle = hexToRgba(color, 0.26);
-    else if (st === 'ready')
-      ctx.fillStyle = isHover || isFocus ? hexToRgba(color, 0.3) : hexToRgba(color, 0.16);
-    else if (st === 'poor')
-      ctx.fillStyle = 'rgba(40,36,30,0.95)';
-    else
-      ctx.fillStyle = 'rgba(16,18,26,0.95)';
-    ctx.fill();
-    // Inner sheen
-    ctx.save();
-    ctx.clip();
-    ctx.fillStyle = st === 'locked' ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.06)';
-    ctx.fillRect(x, y, w, h * 0.45);
-    ctx.restore();
-
-    // Border by state
-    roundRectPath(x, y, w, h, 12);
-    if (st === 'owned') {
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = color;
-    } else if (st === 'ready') {
-      ctx.lineWidth = 2.5;
-      ctx.strokeStyle = color;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 8 + Math.sin(animTime * 4) * 4;
-    } else if (st === 'poor') {
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = 'rgba(255,182,72,0.65)';
-    } else {
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = 'rgba(120,130,160,0.3)';
-      ctx.setLineDash([6, 5]);
-    }
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.shadowBlur = 0;
+    drawNodeFrame(x, y, w, h, color, st, isHover || isFocus);
 
     if (isHover || isFocus) {
       roundRectPath(x - 4, y - 4, w + 8, h + 8, 15);
@@ -4383,15 +4289,28 @@
     return false;
   }
 
-  function openUpgradeDialog() {
+  // Optionally opens on a branch tab or with a node focused (from the quick panel)
+  function openUpgradeDialog(focusId, tab) {
     if (state !== STATE_PLAYING && state !== STATE_PAUSED) return;
     stateBeforeUpgradeDialog = state;
     state = STATE_UPGRADE_DIALOG;
     upgradeDialogHover = null;
     upgradePanning = false;
     clearTooltip();
-    // First open of a run fits the selected branch; afterwards the view is kept
-    if (!upgradeViewCustomized) {
+    computeTreeLayout();
+    const focus = focusId && treeLayout.byId[focusId];
+    if (focus || tab) {
+      treeTab = focus ? focus.branch : tab;
+      fitTreeView(treeTab, true);
+      upgradeViewCustomized = true;
+      if (focus) {
+        treeCam.tz = upgradeZoom = Math.max(upgradeZoom, 0.75);
+        treeCam.tx = upgradePanX = TREE_VIEW.x + TREE_VIEW.w / 2 - (focus.x + focus.w / 2) * upgradeZoom;
+        treeCam.ty = upgradePanY = TREE_VIEW.y + TREE_VIEW.h / 2 - (focus.y + focus.h / 2) * upgradeZoom;
+        focusTreeNode(focus);
+      }
+    } else if (!upgradeViewCustomized) {
+      // First open of a run fits the selected branch; afterwards the view is kept
       fitTreeView(treeTab, true);
       upgradeViewCustomized = true;
     }
@@ -6564,7 +6483,7 @@
   }
 
   function drawToolHUDUnderground() {
-    const tools = GADGET_DEFS.filter(d => unlockedTools[d.key]);
+    const tools = TOOL_DEFS.filter(d => unlockedTools[d.key]);
     if (!tools.length) return;
 
     const hudX = CANVAS_W - 296, hudW = 280;
@@ -6887,7 +6806,7 @@
       rows.push({ icon: 'gear', text: MINE_GADGET_NAMES[g] || g, color: '#d0c890' });
     }
 
-    for (const def of GADGET_DEFS) {
+    for (const def of TOOL_DEFS) {
       if (!unlockedTools[def.key]) continue;
       const isActive = activeToolKey === def.key;
       const isPassive = def.key === 'scanner' || def.key === 'reinforcedDome';
@@ -7042,105 +6961,229 @@
      DRAWING -- UPGRADE PANEL
      ====================================================================== */
 
-  function drawUpgradePanel() {
-    const px = CANVAS_W - 340;
-    const py = 100;
-    const pw = 320;
-    const toolSectionH = showToolPanel ? 44 + GADGET_DEFS.length * 44 : 36;
-    const panelH = 60 + UPGRADE_DEFS.length * 48 + toolSectionH;
+  /* -- Quick upgrade panel: the next node of every tree branch -- */
+  const QUICK_PANEL_X = CANVAS_W - 340, QUICK_PANEL_Y = 100, QUICK_PANEL_W = 320;
+  const QUICK_HEADER_H = 44, QUICK_ROW_H = 58, QUICK_ROW_GAP = 6;
+  let resourceWeights = null;
 
-    drawPanel(px, py, pw, panelH, { title: 'Upgrades', titleRight: '[U] Full Tree', titleRightColor: UI.gold, headerH: 44 });
+  // Rarer resources weigh more when ranking which node comes next
+  function resourceWeight(key) {
+    if (!resourceWeights) {
+      resourceWeights = {};
+      for (const t in TILE_LABELS)
+        resourceWeights[TILE_LABELS[t]] = TILE_VALUES[t] || 10;
+    }
+    return resourceWeights[key] || 10;
+  }
 
-    const total = totalResources();
-    for (let i = 0; i < UPGRADE_DEFS.length; ++i) {
-      const def = UPGRADE_DEFS[i];
-      const cost = getUpgradeCost(i);
-      const ly = py + 56 + i * 48;
-      const canAfford = total >= cost;
-      const hover = mouseAimX >= px && mouseAimX <= px + pw && mouseAimY >= ly && mouseAimY < ly + 48;
+  function currentNodeCost(node) {
+    return node.costs[Math.min(getTreeNodeLevel(node.id), node.costs.length - 1)];
+  }
 
-      roundRectPath(px + 8, ly - 2, pw - 16, 44, 8);
-      ctx.fillStyle = canAfford ? (hover ? 'rgba(90,184,255,0.22)' : 'rgba(90,184,255,0.10)') : 'rgba(255,255,255,0.03)';
-      ctx.fill();
-      if (hover && canAfford) {
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = 'rgba(140,200,255,0.6)';
+  // Per branch: the cheapest node that can be bought now, otherwise the
+  // unlocked node that is closest to affordable
+  function getQuickPicks() {
+    const picks = [];
+    for (const branch of TREE_BRANCH_ORDER) {
+      let best = null, bestScore = Infinity, buyable = 0, owned = 0, total = 0;
+      for (const n of UPGRADE_TREE) {
+        if (n.branch !== branch) continue;
+        ++total;
+        if (isTreeNodeMaxed(n.id)) {
+          ++owned;
+          continue;
+        }
+        if (!arePrereqsMet(n)) continue;
+        const cost = currentNodeCost(n);
+        const afford = canAffordTreeNode(n);
+        if (afford) ++buyable;
+        let price = 0, missing = 0;
+        for (const k in cost) {
+          const w = resourceWeight(k);
+          price += cost[k] * w;
+          missing += Math.max(0, cost[k] - (resources[k] || 0)) * w;
+        }
+        const score = afford ? price : 1e7 + missing * 10 + price;
+        if (score < bestScore) {
+          bestScore = score;
+          best = n;
+        }
+      }
+      picks.push({ branch, node: best, buyable, owned, total });
+    }
+    return picks;
+  }
+
+  function getQuickPanelLayout() {
+    const x = QUICK_PANEL_X, w = QUICK_PANEL_W;
+    let y = QUICK_PANEL_Y + QUICK_HEADER_H + 8;
+    const rows = getQuickPicks().map(p => {
+      const r = Object.assign({ x: x + 10, y, w: w - 20, h: QUICK_ROW_H }, p);
+      y += QUICK_ROW_H + QUICK_ROW_GAP;
+      return r;
+    });
+    const button = { x: x + 10, y: y + 2, w: w - 20, h: 36 };
+    return { x, y: QUICK_PANEL_Y, w, h: button.y + button.h + 10 - QUICK_PANEL_Y, rows, button };
+  }
+
+  function hitQuickPanel(mx, my) {
+    if (currentView !== VIEW_SURFACE || state !== STATE_PLAYING) return null;
+    const L = getQuickPanelLayout();
+    if (mx < L.x || mx > L.x + L.w || my < L.y || my > L.y + L.h) return null;
+    for (const r of L.rows)
+      if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h)
+        return { kind: 'row', row: r };
+    const b = L.button;
+    if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h)
+      return { kind: 'tree' };
+    return { kind: 'panel' };
+  }
+
+  // A row buys its node when affordable; otherwise it opens the tree on that node
+  function activateQuickRow(r) {
+    if (!r.node) {
+      openUpgradeDialog(null, r.branch);
+      return;
+    }
+    if (treeNodeState(r.node) === 'ready') {
+      const before = getTreeNodeLevel(r.node.id);
+      tryPurchaseTreeNode(r.node);
+      if (getTreeNodeLevel(r.node.id) > before)
+        quickPanelFlash[r.branch] = performance.now();
+    } else
+      openUpgradeDialog(r.node.id);
+  }
+
+  // Background and border of an upgrade card, shared by the tree and the quick panel
+  function drawNodeFrame(x, y, w, h, color, st, highlight) {
+    roundRectPath(x, y, w, h, 12);
+    if (st === 'owned')
+      ctx.fillStyle = hexToRgba(color, 0.26);
+    else if (st === 'ready')
+      ctx.fillStyle = highlight ? hexToRgba(color, 0.3) : hexToRgba(color, 0.16);
+    else if (st === 'poor')
+      ctx.fillStyle = highlight ? 'rgba(54,48,38,0.95)' : 'rgba(40,36,30,0.95)';
+    else
+      ctx.fillStyle = 'rgba(16,18,26,0.95)';
+    ctx.fill();
+    ctx.save();
+    ctx.clip();
+    ctx.fillStyle = st === 'locked' ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.06)';
+    ctx.fillRect(x, y, w, h * 0.45);
+    ctx.restore();
+    roundRectPath(x, y, w, h, 12);
+    if (st === 'owned') {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = color;
+    } else if (st === 'ready') {
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 8 + Math.sin(animTime * 4) * 4;
+    } else if (st === 'poor') {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,182,72,0.65)';
+    } else {
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(120,130,160,0.3)';
+      ctx.setLineDash([6, 5]);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+  }
+
+  function drawQuickRow(r, hover) {
+    const color = TREE_BRANCH_COLORS[r.branch];
+    const node = r.node;
+    const complete = !node && r.owned >= r.total;
+    const st = node ? treeNodeState(node) : (complete ? 'owned' : 'locked');
+    ctx.save();
+    drawNodeFrame(r.x, r.y, r.w, r.h, color, st, hover);
+    if (hover) {
+      roundRectPath(r.x - 2, r.y - 2, r.w + 4, r.h + 4, 13);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+      ctx.stroke();
+    }
+    // Icon well
+    const ix = r.x + 8, iy = r.y + (r.h - 42) / 2;
+    roundRectPath(ix, iy, 42, 42, 9);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = hexToRgba(color, 0.45);
+    ctx.stroke();
+    drawSprite(node ? node.icon : 'check', ix + 21, iy + 21, 30, st === 'locked' ? 0.5 : 1);
+
+    const tx = r.x + 60, tw = r.w - 60 - 10;
+    // Branch name and progress (top right)
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    const tagW = fitText(TREE_BRANCH_LABELS[r.branch], r.x + r.w - 10, r.y + 15, 78, 11, { weight: 'bold', color: hexToRgba(color, 0.95), minPx: 9 });
+    ctx.textAlign = 'left';
+    if (node) {
+      const info = getTreeNodeInfo(node);
+      const title = info.title + (info.chain.length > 1 ? ' ' + toRoman(info.index + 1) : '');
+      fitText(title, tx, r.y + 16, tw - tagW - 8, 16, { weight: 'bold', color: st === 'locked' ? '#7a8298' : UI.text, minPx: 11 });
+      let extraW = 0;
+      if (r.buyable > 1) {
+        ctx.font = uiFont(12, 'bold');
+        extraW = drawChip('+' + (r.buyable - 1), r.x + r.w - 8, r.y + r.h - 28, 20, { align: 'right', px: 12, bg: hexToRgba(color, 0.2), border: hexToRgba(color, 0.6), color: '#fff' }) + 6;
+      }
+      drawCostRow(currentNodeCost(node), tx, r.y + r.h - 18, tw - extraW, 14);
+    } else {
+      fitText(complete ? 'Branch complete' : 'Nothing unlocked yet', tx, r.y + 16, tw - tagW - 8, 16, { weight: 'bold', color: complete ? UI.good : UI.textMute });
+      fitText(`${r.owned} / ${r.total} upgrades`, tx, r.y + r.h - 18, tw, 14, { color: UI.textDim });
+    }
+    // Purchase flash
+    const flash = quickPanelFlash[r.branch];
+    if (flash !== undefined) {
+      const t = (performance.now() - flash) / 600;
+      if (t >= 1)
+        delete quickPanelFlash[r.branch];
+      else {
+        roundRectPath(r.x, r.y, r.w, r.h, 12);
+        ctx.fillStyle = `rgba(255,255,255,${0.35 * (1 - t)})`;
+        ctx.fill();
+        roundRectPath(r.x - t * 10, r.y - t * 10, r.w + t * 20, r.h + t * 20, 12 + t * 6);
+        ctx.lineWidth = 3 * (1 - t);
+        ctx.strokeStyle = hexToRgba(color, 1 - t);
         ctx.stroke();
       }
-
-      drawSprite(UPGRADE_ICONS[def.key] || 'gear', px + 32, ly + 20, 26, canAfford ? 1 : 0.5);
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      fitText(def.name, px + 54, ly + 11, 160, 18, { weight: 'bold', color: canAfford ? UI.text : UI.textMute });
-      fitText('Level ' + getEffectiveLevel(def.key), px + 54, ly + 30, 160, 14, { color: canAfford ? UI.textDim : UI.textMute });
-      drawChip(String(cost), px + pw - 18, ly + 8, 26, {
-        align: 'right', maxW: 90, px: 16,
-        bg: canAfford ? 'rgba(80,200,110,0.22)' : 'rgba(255,90,90,0.10)',
-        border: canAfford ? 'rgba(111,224,138,0.7)' : 'rgba(255,106,106,0.35)',
-        color: canAfford ? UI.good : '#b06060'
-      });
     }
+    ctx.restore();
+  }
 
-    // -- Tool/Gadget section --
-    const toolY = py + 56 + UPGRADE_DEFS.length * 48 + 8;
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fillRect(px + 10, toolY - 4, pw - 20, 1);
-    ctx.fillStyle = 'rgba(255,255,255,0.06)';
-    ctx.fillRect(px + 10, toolY - 3, pw - 20, 1);
+  function drawUpgradePanel() {
+    const L = getQuickPanelLayout();
+    let owned = 0;
+    for (const r of L.rows)
+      owned += r.owned;
+    drawPanel(L.x, L.y, L.w, L.h, { title: 'Next upgrades', titleRight: `${owned} / ${UPGRADE_TREE.length}`, titleRightColor: UI.gold, headerH: QUICK_HEADER_H });
+    const hover = quickPanelHover;
+    for (const r of L.rows)
+      drawQuickRow(r, !!(hover && hover.kind === 'row' && hover.row.branch === r.branch));
 
+    // Button that opens the full tree
+    const b = L.button;
+    const hb = !!(hover && hover.kind === 'tree');
+    ctx.save();
+    roundRectPath(b.x, b.y, b.w, b.h, 9);
+    const g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+    g.addColorStop(0, hb ? 'rgba(255,215,90,0.32)' : 'rgba(255,215,90,0.16)');
+    g.addColorStop(1, hb ? 'rgba(160,110,20,0.32)' : 'rgba(120,80,10,0.18)');
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.lineWidth = hb ? 2 : 1;
+    ctx.strokeStyle = hb ? UI.gold : 'rgba(255,215,90,0.5)';
+    ctx.stroke();
+    const kw = drawChip('U', b.x + b.w - 8, b.y + 7, 22, { align: 'right', px: 13, bg: 'rgba(0,0,0,0.45)', border: 'rgba(255,255,255,0.25)', color: UI.text });
+    drawSprite('gear', b.x + 22, b.y + b.h / 2, 22);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    fitText((showToolPanel ? '▾ ' : '▸ ') + 'Tools', px + 16, toolY + 13, 120, 19, { weight: 'bold', color: UI.gold });
-    ctx.textAlign = 'right';
-    fitText(showToolPanel ? 'click to collapse' : 'click to expand', px + pw - 16, toolY + 13, 160, 14, { color: UI.textMute });
-
-    if (showToolPanel) {
-      for (let i = 0; i < GADGET_DEFS.length; ++i) {
-        const def = GADGET_DEFS[i];
-        const ly = toolY + 32 + i * 44;
-        const isUnlocked = !!unlockedTools[def.key];
-        const canAfford = !isUnlocked && resources.iron >= def.costIron && resources.cobalt >= def.costCobalt;
-        const isActive = activeToolKey === def.key;
-        const isPassive = def.key === 'scanner' || def.key === 'reinforcedDome';
-
-        roundRectPath(px + 8, ly - 4, pw - 16, 40, 8);
-        if (isUnlocked)
-          ctx.fillStyle = isActive ? 'rgba(255,215,90,0.16)' : 'rgba(111,224,138,0.10)';
-        else
-          ctx.fillStyle = canAfford ? 'rgba(90,184,255,0.10)' : 'rgba(255,255,255,0.03)';
-        ctx.fill();
-        if (isActive) {
-          ctx.lineWidth = 1;
-          ctx.strokeStyle = UI.gold;
-          ctx.stroke();
-        }
-
-        drawChip(def.shortcut, px + 16, ly + 4, 24, { px: 14, bg: 'rgba(0,0,0,0.45)', border: 'rgba(255,255,255,0.18)', color: UI.textDim });
-        drawSprite(def.icon, px + 58, ly + 16, 24, isUnlocked || canAfford ? 1 : 0.5);
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        let nameColor = canAfford ? UI.text : UI.textMute;
-        if (isUnlocked)
-          nameColor = isActive ? UI.gold : (isPassive ? UI.good : UI.text);
-        if (isUnlocked) {
-          const status = isPassive ? 'ON' : (isActive ? 'SEL' : 'OWNED');
-          const sw = drawChip(status, px + pw - 18, ly + 4, 24, { align: 'right', px: 13, bg: 'rgba(111,224,138,0.16)', color: isActive ? UI.gold : UI.good });
-          ctx.textAlign = 'left';
-          fitText(def.name, px + 76, ly + 17, pw - 76 - 26 - sw, 17, { weight: 'bold', color: nameColor });
-        } else {
-          let costText = `${def.costIron}[[iron]]`;
-          if (def.costCobalt > 0)
-            costText += ` ${def.costCobalt}[[cobalt]]`;
-          const cw = drawChip(costText, px + pw - 18, ly + 4, 24, {
-            align: 'right', px: 13, maxW: 120,
-            bg: canAfford ? 'rgba(80,200,110,0.22)' : 'rgba(255,90,90,0.10)',
-            color: canAfford ? UI.good : '#b06060'
-          });
-          ctx.textAlign = 'left';
-          fitText(def.name, px + 76, ly + 17, pw - 76 - 26 - cw, 17, { weight: 'bold', color: nameColor });
-        }
-      }
-    }
+    fitText('Open upgrade tree', b.x + 40, b.y + b.h / 2 + 1, b.w - 40 - kw - 16, 17, { weight: 'bold', color: UI.gold });
+    ctx.restore();
   }
 
 
@@ -7591,8 +7634,8 @@
     return lines;
   }
 
-  // Build tooltip content for an upgrade tree node
-  function buildUpgradeNodeTooltip(node) {
+  // Build tooltip content for an upgrade tree node (quick: shown on the quick panel)
+  function buildUpgradeNodeTooltip(node, quick) {
     const lines = [];
     const lvl = getTreeNodeLevel(node.id);
     const maxed = lvl >= node.maxLevel;
@@ -7656,8 +7699,12 @@
       }
     }
 
-    if (!maxed && arePrereqsMet(node))
-      lines.push(canAffordTreeNode(node) ? '\u2714 Click or press Enter to buy' : '\u26A0 Not enough resources');
+    if (!maxed && arePrereqsMet(node)) {
+      if (canAffordTreeNode(node))
+        lines.push(quick ? '\u2714 Click to buy' : '\u2714 Click or press Enter to buy');
+      else
+        lines.push(quick ? '\u26A0 Not enough resources - click to see it in the tree' : '\u26A0 Not enough resources');
+    }
 
     return lines;
   }
@@ -8015,46 +8062,14 @@
         }
       }
 
-      // Surface view: check upgrade panel first, then fire weapon
-      const px = CANVAS_W - 340;
-      const py = 100;
-      if (mx >= px && mx <= px + 320) {
-        // Check upgrade rows
-        for (let i = 0; i < UPGRADE_DEFS.length; ++i) {
-          const ly = py + 56 + i * 48;
-          if (my >= ly && my <= ly + 48) {
-            applyUpgrade(i);
-            return;
-          }
-        }
-
-        // Check tool section header (toggle expand/collapse)
-        const toolHeaderY = py + 56 + UPGRADE_DEFS.length * 48 + 8;
-        if (my >= toolHeaderY - 8 && my <= toolHeaderY + 28) {
-          showToolPanel = !showToolPanel;
-          return;
-        }
-
-        // Check tool rows (when panel is expanded)
-        if (showToolPanel) {
-          for (let i = 0; i < GADGET_DEFS.length; ++i) {
-            const ly = toolHeaderY + 32 + i * 44;
-            if (my >= ly - 4 && my <= ly + 40) {
-              const def = GADGET_DEFS[i];
-              if (unlockedTools[def.key]) {
-                // Already unlocked -- select/activate it
-                if (def.key === 'blastTool')
-                  useBlastTool();
-                else if (def.key === 'teleporter')
-                  useTeleporter();
-                else
-                  selectTool(def.key);
-              } else
-                unlockTool(i);
-              return;
-            }
-          }
-        }
+      // Surface view: the quick upgrade panel first, then fire the weapon
+      const qp = hitQuickPanel(mx, my);
+      if (qp) {
+        if (qp.kind === 'row')
+          activateQuickRow(qp.row);
+        else if (qp.kind === 'tree')
+          openUpgradeDialog();
+        return;
       }
       // Fire weapon toward current turret aim direction
       fireRequested = true;
@@ -8115,6 +8130,7 @@
     const scaleY = CANVAS_H / rect.height;
     mouseAimX = (e.clientX - rect.left) * scaleX;
     mouseAimY = (e.clientY - rect.top) * scaleY;
+    quickPanelHover = null;
 
     // Right-click drag panning in upgrade dialog
     if (upgradePanning && state === STATE_UPGRADE_DIALOG) {
@@ -8174,6 +8190,15 @@
         } else
           clearTooltip();
       } else if (currentView === VIEW_SURFACE) {
+        quickPanelHover = hitQuickPanel(mouseAimX, mouseAimY);
+        if (quickPanelHover) {
+          const r = quickPanelHover.row;
+          if (quickPanelHover.kind === 'row' && r.node)
+            setTooltip(mouseAimX, mouseAimY, buildUpgradeNodeTooltip(r.node, true), 'quick:' + r.node.id, { x: r.x, y: r.y, w: r.w, h: r.h });
+          else
+            clearTooltip();
+          return;
+        }
         // Surface: detect enemy under mouse
         let foundEnemy = false;
         for (const e of enemies) {
