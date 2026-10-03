@@ -7507,6 +7507,7 @@
     }
     for (const sp of runeSpots()) {
       drawRune(sp.i, sp.x, sp.y, sp.r, m.lit === sp.i, m.hover === sp.i && !m.show);
+      if (m.phase !== 'play') continue;
       ctx.textAlign = 'center';
       fitText(String(sp.i + 1), sp.x + sp.r * 0.78, sp.y + sp.r * 0.78, 24, 14, { weight: 'bold', color: UI.textDim, outline: 'rgba(0,0,0,0.8)' });
     }
@@ -12925,6 +12926,8 @@
         continue;
       }
       drawSprite(r.icon, px + 22, y, 20);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
       fitText(r.text, px + 40, y + 1, pw - 52, 17, { weight: 'bold', color: r.color });
     }
     endHudPanel();
