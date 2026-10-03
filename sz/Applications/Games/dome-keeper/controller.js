@@ -9549,6 +9549,7 @@
   function drawDroneHUD(x, y, w) {
     if (!drones.length) return y;
     const rowH = 28;
+    beginHudPanel('drones', x, y, w, 12 + drones.length * rowH);
     drawPanel(x, y, w, 12 + drones.length * rowH, { accent: '#c890ff', shadow: 10 });
     const cap = droneCargoCap();
     drones.forEach((d, i) => {
@@ -9566,6 +9567,7 @@
       ctx.textBaseline = 'middle';
       fitText(status, x + 40, ry + 1, w - 40 - chip - 18, 16, { weight: 'bold', color });
     });
+    endHudPanel();
     return y + 12 + drones.length * rowH;
   }
 
@@ -12487,6 +12489,7 @@
     const panelW = 16 + (useColumns ? 2 : 1) * colW;
     const panelH = 14 + colEntries * lineH;
 
+    beginHudPanel('resources', panelX, panelY, panelW, panelH);
     drawPanel(panelX, panelY, panelW, panelH, { accent: '#c8a060', shadow: 10 });
     ctx.textBaseline = 'middle';
     for (let i = 0; i < visibleEntries.length; ++i) {
@@ -12501,9 +12504,11 @@
       ctx.textAlign = 'right';
       fitText(String(resources[e.key]), x + colW - 12, y + 1, colW - 84, 18, { weight: 'bold', color: e.color });
     }
+    endHudPanel();
 
     // Cargo and depth (top-right)
     const carryX = CANVAS_W - 296, carryW = 280;
+    beginHudPanel('cargo', carryX, panelY, carryW, 112);
     drawPanel(carryX, panelY, carryW, 112, { accent: '#e0c060', shadow: 10 });
     const carryRatio = Math.min(carried / carryCapacity, 1);
     drawSprite('bag', carryX + 24, panelY + 24, 24);
@@ -12519,6 +12524,7 @@
     ctx.textAlign = 'left';
     fitText(`Depth ${drillY} m  ·  ${DEPTH_TIERS[getDepthTier(drillY)].name}`, carryX + 16, panelY + 68, carryW - 40 - chw, 15, { color: UI.textDim });
     drawMineClock(carryX + 14, panelY + 94, carryW - 28);
+    endHudPanel();
   }
 
   // Returns the bottom edge of the panel
@@ -12529,6 +12535,7 @@
     const hudX = CANVAS_W - 296, hudW = 280;
     const hudY = 140;
     const rowH = 30;
+    beginHudPanel('tools', hudX, hudY, hudW, 12 + tools.length * rowH);
     drawPanel(hudX, hudY, hudW, 12 + tools.length * rowH, { accent: '#9a7aff', shadow: 10 });
 
     for (let i = 0; i < tools.length; ++i) {
@@ -12564,6 +12571,7 @@
       ctx.textBaseline = 'middle';
       fitText(label, hudX + 66, y + 1, hudW - 66 - 20 - sw, 16, { weight: 'bold', color });
     }
+    endHudPanel();
     return hudY + 12 + tools.length * rowH;
   }
 
@@ -12774,13 +12782,21 @@
 
   function drawSurfaceHUD() {
     // Day, time and moon (top-left)
+    beginHudPanel('clock', 16, 16, 330, 112);
     drawClockPanel();
-    drawRelocateButton();
+    endHudPanel();
+    if (relocationCore.found) {
+      const rb = relocateButtonRect();
+      beginHudPanel('relocate', rb.x, rb.y, rb.w, rb.h);
+      drawRelocateButton();
+      endHudPanel();
+    }
 
     drawGadgetHUD();
 
     // Score and stock (top-right)
     const sx = CANVAS_W - 340;
+    beginHudPanel('score', sx, 16, 320, 118);
     drawPanel(sx, 16, 320, 118, { accent: UI.gold });
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
@@ -12801,6 +12817,7 @@
     const chw = fitText(`[[chest]] ${chestsOpened()} / ${chests.length}`, sx + 306, 120, 70, 14, { weight: 'bold', color: '#e0b0ff' });
     ctx.textAlign = 'left';
     fitText(relocationCore.found ? '[[core]] Core found: relocate when ready' : `[[core]] Core hidden below ${coreDepthHint()} m`, sx + 16, 120, 282 - chw, 14, { color: relocationCore.found ? '#7ae8ff' : UI.textMute });
+    endHudPanel();
 
     // Dome integrity under the dome
     const hpRatio = Math.max(0, domeHP / maxDomeHP);
@@ -12884,6 +12901,7 @@
     const shown = rows.slice(0, maxRows);
     const ph = 14 + shown.length * rowH;
     const px = 16, py = CANVAS_H - 58 - ph;
+    beginHudPanel('gadgets', px, py, pw, ph);
     drawPanel(px, py, pw, ph, { accent: '#9a7aff', shadow: 10 });
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
@@ -12897,6 +12915,7 @@
       drawSprite(r.icon, px + 22, y, 20);
       fitText(r.text, px + 40, y + 1, pw - 52, 17, { weight: 'bold', color: r.color });
     }
+    endHudPanel();
   }
 
   // Tiles the scanner sees around the keeper
@@ -13344,6 +13363,7 @@
 
   function drawBombBar() {
     const L = bombBarLayout();
+    beginHudPanel('bombs', L.x, L.y, L.w, L.h);
     drawPanel(L.x, L.y, L.w, L.h, { accent: '#ff9a40', shadow: 10 });
     drawSprite('bomb', L.x + 24, L.y + 21, 24);
     ctx.textAlign = 'left';
@@ -13379,6 +13399,7 @@
       const active = b.id === 'throw' && bombThrowMode;
       drawSmallButton(b, `${active ? 'Aiming…' : b.label}  [${b.key}]`, b.enabled, hk === b.id || active, b.id === 'throw' || b.id === 'detonate' ? '#ff7a50' : '#8aa8d8', 13);
     }
+    endHudPanel();
   }
 
   /* -- Bomb workshop (crafting and combining) -- */
@@ -13717,6 +13738,91 @@
   }
 
   /* ======================================================================
+     HUD FADING -- panels turn see-through while the keeper, a monster, a
+     shot or a drone is behind them; a click on a monster under a faded
+     panel goes to the monster
+     ====================================================================== */
+
+  const HUD_FADED = 0.3;             // opacity of a panel with something behind it
+  const hudFade = {};                // panel id -> { a, rect, frame }
+  let hudFrame = 0, frameDt = 1 / 60;
+  let hudActorCache = null, hudActorFrame = -1;
+
+  // Screen rectangles of everything that must stay visible
+  function hudActors() {
+    if (hudActorFrame === hudFrame && hudActorCache) return hudActorCache;
+    const out = [];
+    const add = (x, y, w, h) => out.push({ x, y, w, h });
+    if (currentView === VIEW_SURFACE) {
+      for (const e of enemies) {
+        if (e.hidden) continue;
+        const s = e.size || 16;
+        add(e.x - s * 1.5, e.y - s * (e.boss ? 1.9 : 1.4) - 22, s * 3, s * (e.boss ? 2.9 : 2.4) + 22);
+      }
+      for (const sh of enemyShots) {
+        const x = sh.x0 + (sh.tx - sh.x0) * sh.t, y = sh.y0 + (sh.ty - sh.y0) * sh.t - (sh.kind === 'lance' ? 0 : Math.sin(sh.t * Math.PI) * 150);
+        add(x - 14, y - 14, 28, 28);
+      }
+      for (const g of gunDrones) add(g.x - 22, g.y - 22, 44, 44);
+      if (repairBot) add(repairBot.x - 22, repairBot.y - 22, 44, 44);
+      for (const b of surfaceBombs) {
+        const x = b.x0 + (b.tx - b.x0) * b.t, y = b.y0 + (b.ty - b.y0) * b.t - Math.sin(b.t * Math.PI) * (90 + Math.abs(b.tx - b.x0) * 0.25);
+        add(x - 18, y - 18, 36, 36);
+      }
+      for (const r of reflected) add(r.x0 + (r.tx - r.x0) * r.t - 12, r.y0 + (r.ty - r.y0) * r.t - 52, 24, 64);
+    } else if (currentView === VIEW_UNDERGROUND) {
+      add(drillX * TILE_SIZE - cameraX - 8, drillY * TILE_SIZE - cameraY - 22, TILE_SIZE + 16, TILE_SIZE + 30);
+      for (const d of drones)
+        if (d.state !== 'dock') add(d.x - cameraX - 20, d.y - cameraY - 20, 40, 44);
+      for (const b of placedBombs) add(b.c * TILE_SIZE - cameraX - 6, b.r * TILE_SIZE - cameraY - 34, TILE_SIZE + 12, TILE_SIZE + 40);
+    }
+    hudActorCache = out;
+    hudActorFrame = hudFrame;
+    return out;
+  }
+
+  function overlapsActor(x, y, w, h) {
+    for (const a of hudActors())
+      if (a.x < x + w && a.x + a.w > x && a.y < y + h && a.y + a.h > y)
+        return true;
+    return false;
+  }
+
+  // Opacity of a HUD panel this frame, easing towards faded or solid
+  function hudAlpha(id, x, y, w, h) {
+    const f = hudFade[id] || (hudFade[id] = { a: 1 });
+    const live = state === STATE_PLAYING;
+    const target = live && overlapsActor(x, y, w, h) ? HUD_FADED : 1;
+    f.a += (target - f.a) * (1 - Math.exp(-frameDt * 9));
+    f.rect = { x, y, w, h };
+    f.frame = hudFrame;
+    return f.a;
+  }
+
+  function beginHudPanel(id, x, y, w, h) {
+    ctx.save();
+    ctx.globalAlpha *= hudAlpha(id, x, y, w, h);
+  }
+
+  function endHudPanel() {
+    ctx.restore();
+  }
+
+  // A click on a monster (or the keeper) seen through a faded panel goes to the world
+  function hudPassThrough(mx, my) {
+    for (const id in hudFade) {
+      const f = hudFade[id];
+      if (f.frame < hudFrame - 2 || f.a > 0.6 || !f.rect) continue;
+      const r = f.rect;
+      if (mx < r.x || mx > r.x + r.w || my < r.y || my > r.y + r.h) continue;
+      for (const a of hudActors())
+        if (mx >= a.x - 10 && mx <= a.x + a.w + 10 && my >= a.y - 10 && my <= a.y + a.h + 10)
+          return true;
+    }
+    return false;
+  }
+
+  /* ======================================================================
      DRAWING -- UPGRADE PANEL
      ====================================================================== */
 
@@ -13916,6 +14022,7 @@
 
   function drawUpgradePanel() {
     const L = getQuickPanelLayout();
+    beginHudPanel('quick', L.x, L.y, L.w, L.h);
     let owned = 0;
     for (const r of L.rows)
       owned += r.owned;
@@ -13943,6 +14050,7 @@
     ctx.textBaseline = 'middle';
     fitText('Open upgrade tree', b.x + 40, b.y + b.h / 2 + 1, b.w - 40 - kw - 16, 17, { weight: 'bold', color: UI.gold });
     ctx.restore();
+    endHudPanel();
   }
 
 
@@ -14535,6 +14643,8 @@
     const rawDt = lastTimestamp ? (timestamp - lastTimestamp) / 1000 : 0;
     const dt = Math.min(rawDt, MAX_DT);
     lastTimestamp = timestamp;
+    frameDt = dt;
+    ++hudFrame;
 
     // Always update animations (even on title/pause/game-over for visual polish)
     animTime += state !== STATE_PLAYING ? dt : 0;
@@ -14927,8 +15037,11 @@
     const mx = (e.clientX - rect.left) * scaleX;
     const my = (e.clientY - rect.top) * scaleY;
 
+    // A monster (or the keeper) seen through a faded panel takes the click
+    const through = hudPassThrough(mx, my);
+
     // Bomb stock panel (both views); right click cancels an armed throw
-    const bombHit = hitBombBar(mx, my);
+    const bombHit = through ? null : hitBombBar(mx, my);
     if (bombHit) {
       useBombBar(bombHit);
       return;
@@ -14994,7 +15107,7 @@
       }
 
       // Surface view: relocate button, meteor ore, the quick upgrade panel, then fire the weapon
-      if (hitRelocateButton(mx, my)) {
+      if (!through && hitRelocateButton(mx, my)) {
         requestRelocation();
         return;
       }
@@ -15003,7 +15116,7 @@
         collectMeteorOre(ore);
         return;
       }
-      const qp = hitQuickPanel(mx, my);
+      const qp = through ? null : hitQuickPanel(mx, my);
       if (qp) {
         if (qp.kind === 'row')
           activateQuickRow(qp.row);
@@ -15095,7 +15208,8 @@
       minigameHover(mouseAimX, mouseAimY);
       return;
     }
-    if (state === STATE_PLAYING) {
+    const passHover = state === STATE_PLAYING && hudPassThrough(mouseAimX, mouseAimY);
+    if (state === STATE_PLAYING && !passHover) {
       bombBarHover = hitBombBar(mouseAimX, mouseAimY);
       if (bombBarHover) {
         if (bombBarHover.kind === 'slot') {
@@ -15112,7 +15226,7 @@
           relocateHover = b.id;
       return;
     }
-    if (hitRelocateButton(mouseAimX, mouseAimY)) {
+    if (!passHover && hitRelocateButton(mouseAimX, mouseAimY)) {
       relocateHover = 'button';
       setTooltip(mouseAimX, mouseAimY, ['[[flight]] Relocate', 'Pack up the dome and fly to a new site', relocateBlocker() ? '\u26A0 ' + relocateBlocker() : '\u2714 Click or press L'], 'relocate');
       return;
@@ -15176,7 +15290,7 @@
         } else
           clearTooltip();
       } else if (currentView === VIEW_SURFACE) {
-        quickPanelHover = hitQuickPanel(mouseAimX, mouseAimY);
+        quickPanelHover = passHover ? null : hitQuickPanel(mouseAimX, mouseAimY);
         if (quickPanelHover) {
           const r = quickPanelHover.row;
           if (quickPanelHover.kind === 'row' && r.node)
