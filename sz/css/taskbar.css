@@ -282,7 +282,9 @@
   color: var(--sz-color-button-text, black);
 }
 
-.sz-menu-item:hover {
+.sz-menu-item:hover,
+.sz-menu-item:focus {
+  outline: none;
   background: var(--sz-color-highlight, #316ac5);
   color: var(--sz-color-highlight-text, white);
 }
@@ -478,4 +480,11 @@
 
 .sz-taskbar-autohide #sz-window-area {
   inset: 0;
+}
+
+/* keyboard focus on the start button and taskbar buttons */
+#sz-start-button:focus-visible,
+.sz-taskbar-button:focus-visible {
+  outline: 1px dotted var(--sz-taskbar-btn-text, #fff);
+  outline-offset: -3px;
 }

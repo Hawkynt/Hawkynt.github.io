@@ -12,7 +12,7 @@
     // -- Virtual File System --
     bootScreen.setProgress(10, 'Initializing VFS...');
     const kernel = new SZ.VFS.Kernel();
-    kernel.mount('/user', new SZ.VFS.LocalStorageDriver('sz-vfs-user:'));
+    kernel.mount('/user', typeof indexedDB !== 'undefined' ? new SZ.VFS.IndexedDBDriver('user', 'sz-vfs-user:') : new SZ.VFS.LocalStorageDriver('sz-vfs-user:'));
     try {
       await kernel.Mkdir('/system');
       await kernel.Mkdir('/system/wallpapers');
@@ -184,8 +184,14 @@
       const { data } = e;
       if (!data?.type?.startsWith('sz:')) return;
 
-      const { type, requestId, path } = data;
+      // only the desktop itself and the apps in its own windows may talk to it
+      if (e.origin !== location.origin)
+        return;
       const win = windowManager.getWindowByIframe(e.source);
+      if (!win && e.source !== window)
+        return;
+
+      const { type, requestId, path } = data;
 
       const respond = (responseType, payload) => e.source?.postMessage({ type: responseType, requestId, path, ...payload }, '*');
       const handle = (p, type) => p.then(res => respond(type, res)).catch(err => respond(type, { error: { message: err.message, code: err.code } }));
@@ -210,6 +216,7 @@
         case 'sz:getTheme': return respond('sz:themeCSS', { css: themeEngine.styleText });
         case 'sz:setTitle': if (win) { win.setTitle(data.title); taskbar.updateTitle(win.id, data.title); } return;
         case 'sz:close': if (win) windowManager.closeWindow(win.id); return;
+        case 'sz:closeReply': if (win) windowManager.handleCloseReply(win.id, data.closeRequest, !!data.handled); return;
         case 'sz:resize': if (win) win.resizeContentTo(data.width, data.height); return;
         case 'sz:setFrameless': if (win) win.setFrameless(data.value); return;
         case 'sz:closeWindow': if (data.windowId) windowManager.closeWindow(data.windowId); return;
@@ -386,13 +393,14 @@
         case 'sz:vfs:WriteAllBytes': return handle(kernel.WriteAllBytes(path, new Uint8Array(data.bytes), data.meta).then(()=>{ if (_affectsDesktop(path)) _dskRefresh(); return {success:true}; }), 'sz:vfs:WriteAllBytesResult');
         case 'sz:vfs:ReadAllText': return handle(kernel.ReadAllText(path).then(text=>({text})), 'sz:vfs:ReadAllTextResult');
         case 'sz:vfs:ReadUri': return handle(kernel.ReadUri(path).then(uri=>({uri})), 'sz:vfs:ReadUriResult');
-        case 'sz:vfs:ReadAllBytes': return handle(kernel.ReadAllBytes(path).then(bytes=>({bytes: Array.from(bytes)})), 'sz:vfs:ReadAllBytesResult');
+        case 'sz:vfs:ReadAllBytes': return handle(kernel.ReadAllBytes(path).then(bytes=>({bytes})), 'sz:vfs:ReadAllBytesResult');
         case 'sz:vfs:ReadValue': return handle(kernel.ReadValue(path).then(value=>({value})), 'sz:vfs:ReadValueResult');
         case 'sz:vfs:WriteValue': return handle(kernel.WriteValue(path, data.value, data.meta).then(()=>{ if (_affectsDesktop(path)) _dskRefresh(); return {success:true}; }), 'sz:vfs:WriteValueResult');
         case 'sz:vfs:WriteUri': return handle(kernel.WriteUri(path, data.uri, data.meta).then(()=>{ if (_affectsDesktop(path)) _dskRefresh(); return {success:true}; }), 'sz:vfs:WriteUriResult');
         case 'sz:vfs:Copy': return handle(kernel.ReadAllBytes(data.from).then(bytes => kernel.WriteAllBytes(data.to, bytes)).then(()=>{ if (_affectsDesktop(data.to)) _dskRefresh(); return {success:true}; }), 'sz:vfs:CopyResult');
         case 'sz:desktopRefresh': _dskRefresh(); return;
         case 'sz:clipboardUpdate': window._szClipboard = data.clipboard; return;
+        case 'sz:shellKey': if (data.key === 'start') taskbar.toggleStartMenuFromKeyboard(); return;
 
         // Mount/unmount local directories
         case 'sz:vfs:MountLocal': {
@@ -430,20 +438,8 @@
           return respond('sz:vfs:ListMountsResult', { mounts: kernel.listMounts() });
 
         // MessageBox
-        case 'sz:messageBox': {
-            const mbType = (data.flags || 0) & 0x0F;
-            const prompt = (data.caption ? data.caption + '\n\n' : '') + (data.text || '');
-            let result;
-            if (mbType === 4 || mbType === 3) // MB_YESNO, MB_YESNOCANCEL
-              result = confirm(prompt) ? 6 : 7; // IDYES : IDNO
-            else if (mbType === 1) // MB_OKCANCEL
-              result = confirm(prompt) ? 1 : 2; // IDOK : IDCANCEL
-            else {
-              alert(prompt);
-              result = 1; // IDOK
-            }
-            return respond('sz:messageBoxResult', { result });
-        }
+        case 'sz:messageBox':
+            return handle(SZ.MessageBox.show(data.text, data.caption, data.flags).then(result => ({ result })), 'sz:messageBoxResult');
 
         // System metrics
         case 'sz:getSystemMetrics': {
@@ -1037,6 +1033,11 @@
   
   boot().catch(err => {
       console.error('[SZ] Boot failed:', err);
-      document.getElementById('sz-boot-screen').innerHTML = `<h1>Boot Failed</h1><p>${err.message}</p><pre>${err.stack}</pre>`;
+      const screen = document.getElementById('sz-boot-screen');
+      const h1 = document.createElement('h1'), p = document.createElement('p'), pre = document.createElement('pre');
+      h1.textContent = 'Boot Failed';
+      p.textContent = err.message;
+      pre.textContent = err.stack || '';
+      screen.replaceChildren(h1, p, pre);
   });
 })();

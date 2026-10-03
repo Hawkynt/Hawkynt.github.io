@@ -36,16 +36,17 @@
 
   const commentStore = { comments: [], nextId: 1 };
 
-  function addComment() {
+  async function addComment() {
     const sel = window.getSelection();
     if (!sel.rangeCount || sel.isCollapsed) {
-      alert('Select text to add a comment.');
+      SZ.Dialog.alert('Select text to add a comment.', 'WordPad');
       return;
     }
-    const text = prompt('Enter comment:');
+    const range = sel.getRangeAt(0).cloneRange();
+    const text = await SZ.Dialog.prompt('Enter comment:', '', 'WordPad');
+    sel.removeAllRanges();
+    sel.addRange(range);
     if (!text) return;
-
-    const range = sel.getRangeAt(0);
     const span = document.createElement('span');
     span.className = 'wp-comment-range';
     const id = commentStore.nextId++;
@@ -67,11 +68,11 @@
     _editor.focus();
   }
 
-  function addReply(parentId) {
+  async function addReply(parentId) {
     const parent = commentStore.comments.find(c => c.id === parentId);
     if (!parent) return;
 
-    const text = prompt('Reply to comment:');
+    const text = await SZ.Dialog.prompt('Reply to comment:', '', 'WordPad');
     if (!text) return;
 
     const id = commentStore.nextId++;

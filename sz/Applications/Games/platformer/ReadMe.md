@@ -1,6 +1,6 @@
 # Platformer
 
-A side-scrolling platformer for the SynthelicZ Desktop. Run, jump, collect coins, stomp enemies, grab power-ups, and defeat bosses across procedurally generated levels with scrolling camera. Part of the SynthelicZ Desktop.
+A side-scrolling platformer for the SynthelicZ Desktop. Run, jump, collect coins, stomp enemies, grab power-ups, and defeat bosses across six hand-designed levels with scrolling camera. Part of the SynthelicZ Desktop.
 
 ## How It Works
 
@@ -83,7 +83,7 @@ A side-scrolling platformer for the SynthelicZ Desktop. Run, jump, collect coins
 - **Engine**: Vanilla JavaScript canvas 2D with IIFE pattern and `window.SZ` namespace
 - **Physics**: Gravity, platform landing, and collision response
 - **Camera**: Smooth scrolling following player position
-- **Level generation**: Procedural levels with increasing difficulty parameters
+- **Levels**: Six hand-designed layouts (tile maps in `LEVELS`) of rising difficulty with gaps, steps, platforms, enemies, coins, power-ups and a goal flag; after the sixth they repeat with faster enemies
 - **Effects**: SZ.GameEffects (ParticleSystem, ScreenShake, FloatingText)
 - **Persistence**: localStorage for high scores
 - **OS integration**: SetWindowText, RegisterWindowProc
@@ -92,7 +92,6 @@ A side-scrolling platformer for the SynthelicZ Desktop. Run, jump, collect coins
 
 - No sound effects
 - No level select screen
-- Procedural levels may occasionally generate unfair enemy placement
 
 ## SEO Keywords
 

@@ -17,7 +17,8 @@
 }
 
 .menu-item:hover,
-.menu-item.open {
+.menu-item.open,
+.menu-item.focused {
   background: var(--sz-color-highlight);
   color: var(--sz-color-highlight-text);
 }
@@ -49,7 +50,8 @@
   align-items: center;
 }
 
-.menu-entry:hover {
+.menu-entry:hover,
+.menu-entry.focused {
   background: var(--sz-color-highlight);
   color: var(--sz-color-highlight-text);
 }
@@ -87,4 +89,14 @@
   height: 1px;
   background: var(--sz-color-button-shadow);
   margin: 2px 4px;
+}
+
+/* keyboard use: the highlight shows focus, submenus open on Right */
+.menu-item:focus,
+.menu-entry:focus {
+  outline: none;
+}
+
+.menu-entry.has-submenu.open > .menu-submenu {
+  display: block;
 }

@@ -17,10 +17,25 @@
       this.#element = document.createElement('div');
       this.#element.className = 'sz-icon';
       this.#element.dataset.appId = id;
-      this.#element.innerHTML = `
-        <img src="${iconSrc}" alt="${title}" draggable="false">
-        <div class="sz-icon-label">${title}</div>
-      `;
+      // titles come from file names, so they are set as text, never as markup
+      const img = document.createElement('img');
+      img.src = iconSrc;
+      img.alt = title;
+      img.draggable = false;
+      const label = document.createElement('div');
+      label.className = 'sz-icon-label';
+      label.textContent = title;
+      this.#element.append(img, label);
+      // reachable and launchable from the keyboard
+      this.#element.tabIndex = 0;
+      this.#element.setAttribute('role', 'button');
+      this.#element.setAttribute('aria-label', title);
+      this.#element.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && onLaunch) {
+          e.preventDefault();
+          onLaunch(id);
+        }
+      });
 
       this.#element.addEventListener('pointerdown', (e) => this.#onPointerDown(e));
       this.#element.addEventListener('pointermove', (e) => this.#onPointerMove(e));
@@ -107,6 +122,12 @@
       this.#element.classList.remove('dragging');
       this.#element.style.transform = '';
       this.#dragState = null;
+
+      // a tap opens at once on touch screens, where double taps zoom
+      if (!wasDragging && e.pointerType !== 'mouse' && this.#config.onLaunch) {
+        this.#config.onLaunch(this.#config.id);
+        return;
+      }
 
       if (wasDragging && this.#onDragEnd) {
         const rawX = this.#x + dx;

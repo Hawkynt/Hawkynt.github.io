@@ -1756,6 +1756,12 @@
   setupCanvas();
   resetGame();
   SZ.GameAudio.attachMuteButton();
+  SZ.TouchControls.attach({
+    container: document.querySelector('.game-frame'),
+    stick: 'four',
+    buttons: [{ label: 'Bomb', code: 'Space' }],
+    extra: [{ label: 'II', code: 'Escape', title: 'Pause' }]
+  });
   if (!tutorialSeen) {
     showTutorial = true;
     tutorialPage = 0;

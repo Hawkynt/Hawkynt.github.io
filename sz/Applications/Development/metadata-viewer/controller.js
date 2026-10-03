@@ -3760,7 +3760,7 @@
     const defaultName = currentFileName || 'modified_file';
 
     if (currentFilePath) {
-      Kernel32.WriteAllBytes(currentFilePath, newBytes).then(() => {
+      return Kernel32.WriteAllBytes(currentFilePath, newBytes).then(() => {
         currentBytes = newBytes;
         modifications.clear();
         dirty = false;
@@ -3838,7 +3838,7 @@
       case 'import': doImport(); break;
       case 'save': saveModified(); break;
       case 'export': exportFile(); break;
-      case 'exit': User32.DestroyWindow(); break;
+      case 'exit': User32.RequestClose(); break;
       case 'copy-all': copyAllMetadata(); break;
       case 'copy-value': copySelectedValue(); break;
       case 'revert': revertChanges(); break;
@@ -3952,4 +3952,7 @@
   updateTitle();
   handleCommandLine();
 
+
+  // closing with unsaved changes asks to save them first
+  User32.SetCloseGuard(() => dirty, () => saveModified(), () => currentFileName);
 })();

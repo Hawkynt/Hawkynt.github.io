@@ -19,6 +19,11 @@
  * WindowProc:
  *   SZ.Dlls.User32.RegisterWindowProc(fn)
  *   fn receives (msg, wParam, lParam) when the OS broadcasts WM_ messages.
+ *   For WM_CLOSE, a proc that returns true keeps the window open and closes
+ *   it itself later (DestroyWindow), e.g. after asking to save changes.
+ *   SZ.Dlls.User32.SetCloseGuard(isDirty, save) does exactly that for apps
+ *   with unsaved changes; SZ.Dlls.User32.RequestClose() runs the same
+ *   check from the app's own File > Exit.
  *
  * Constants:
  *   WM_CLOSE, WM_THEMECHANGED, WM_SETTINGCHANGE, etc.
@@ -34,13 +39,20 @@
   const _isInsideOS = (window.parent !== window);
 
   // ── Standalone redirect ──────────────────────────────────────────
-  if (!_isInsideOS) {
+  // only where the desktop can run; elsewhere the app stays on its own page
+  let _desktopCapable = false;
+  try {
+    _desktopCapable = !!new Function('class A { #a = 1; } return A;')();
+  } catch (_) {}
+
+  if (!_isInsideOS && _desktopCapable) {
     const pathParts = location.pathname.replace(/\\/g, '/').split('/');
     const htmlIndex = pathParts.findIndex(p => p === 'Applications');
     let appId = null;
 
-    if (htmlIndex >= 0 && htmlIndex + 1 < pathParts.length)
-      appId = pathParts[htmlIndex + 1];
+    // apps live in Applications/<category>/<app-id>/
+    if (htmlIndex >= 0 && htmlIndex + 2 < pathParts.length - 1)
+      appId = decodeURIComponent(pathParts[htmlIndex + 2]);
 
     if (appId) {
       const baseParts = pathParts.slice(0, htmlIndex);
@@ -97,9 +109,35 @@
   // ── WindowProc dispatch ─────────────────────────────────────────
   const _windowProcs = [];
 
+  // true when a proc took care of the message (for WM_CLOSE: keeps the window)
+  function _dispatchWindowProc(msg, wParam, lParam) {
+    let handled = false;
+    for (const proc of _windowProcs.slice())
+      try {
+        if (proc(msg, wParam, lParam) === true)
+          handled = true;
+      } catch (err) {
+        console.error(err);
+      }
+    return handled;
+  }
+
+  // ── Desktop shortcuts pressed inside an app ─────────────────────
+  // Ctrl+Esc opens the desktop's start menu even while an app has focus.
+  if (_isInsideOS)
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && e.ctrlKey && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        _postToParent('sz:shellKey', { key: 'start' });
+      }
+    }, true);
+
   // ── Message listener ────────────────────────────────────────────
   if (_isInsideOS) {
     window.addEventListener('message', (e) => {
+      // only the desktop hosting this app may talk to it
+      if (e.source !== window.parent || e.origin !== location.origin)
+        return;
       const data = e.data;
       if (!data || typeof data !== 'object')
         return;
@@ -122,8 +160,9 @@
 
       // WM_ broadcast from OS
       if (data.type === 'sz:wm') {
-        for (const proc of _windowProcs)
-          proc(data.msg, data.wParam ?? 0, data.lParam ?? 0);
+        const handled = _dispatchWindowProc(data.msg, data.wParam ?? 0, data.lParam ?? 0);
+        if (data.closeRequest)
+          _postToParent('sz:closeReply', { closeRequest: data.closeRequest, handled });
         return;
       }
     });
@@ -310,6 +349,48 @@
 
     DestroyWindow() {
       _postToParent('sz:close');
+    },
+
+    // Closes the window the way the desktop's close button does: window
+    // procs (and a close guard) may keep it open.
+    RequestClose() {
+      if (!_dispatchWindowProc(WM_CLOSE, 0, 0))
+        _postToParent('sz:close');
+    },
+
+    // Asks to save unsaved changes before the window closes.
+    //   isDirty(): true while there are unsaved changes
+    //   save(done): saves; calls done() or returns a promise when finished
+    //   name(): optional document name for the question
+    SetCloseGuard(isDirty, save, name) {
+      let asking = false;
+      _windowProcs.push((msg) => {
+        if (msg !== WM_CLOSE || !isDirty())
+          return false;
+        if (asking)
+          return true;
+        asking = true;
+        const doc = (typeof name === 'function' && name()) || 'this document';
+        Dlls.User32.MessageBox('Do you want to save the changes to ' + doc + '?', document.title || 'Unsaved changes', MB_YESNOCANCEL | MB_ICONWARNING).then((answer) => {
+          asking = false;
+          if (answer === IDYES) {
+            let finished = false;
+            const done = () => {
+              if (finished)
+                return;
+              finished = true;
+              if (!isDirty())
+                _postToParent('sz:close');
+            };
+            const pending = save(done);
+            if (pending && typeof pending.then === 'function')
+              pending.then(done, () => {});
+          }
+          else if (answer === IDNO)
+            _postToParent('sz:close');
+        }, () => { asking = false; });
+        return true;
+      });
     },
 
     MoveWindow(width, height) {
@@ -639,7 +720,7 @@
     WriteFile(path, data) {
       // String → store as bytes (UTF-8 encoded)
       if (typeof data === 'string') {
-        const bytes = Array.from(new TextEncoder().encode(data));
+        const bytes = new TextEncoder().encode(data);
         return _sendMessage('sz:vfs:WriteAllBytes', { path, bytes }).then(r => {
           if (r.error)
             throw new Error(r.error.message || r.error);
@@ -656,7 +737,7 @@
         });
 
       // Binary / array → store as bytes
-      const bytes = Array.from(_toUint8Array(data));
+      const bytes = _toUint8Array(data);
       return _sendMessage('sz:vfs:WriteAllBytes', { path, bytes }).then(r => {
         if (r.error)
           throw new Error(r.error.message || r.error);
@@ -665,7 +746,7 @@
     },
 
     WriteAllBytes(path, bytes) {
-      const payload = Array.from(_toUint8Array(bytes));
+      const payload = _toUint8Array(bytes);
       return _sendMessage('sz:vfs:WriteAllBytes', { path, bytes: payload }).then(r => {
         if (r.error)
           throw new Error(r.error.message || r.error);

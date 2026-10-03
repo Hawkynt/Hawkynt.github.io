@@ -89,6 +89,7 @@ tryLoad('data/monsters-magical-beasts.js');
 tryLoad('data/monsters-oozes-plants.js');
 tryLoad('data/monsters-undead.js');
 tryLoad('data/monsters-misc.js');
+tryLoad('data/monsters-outsiders.js');
 load('creature-registry.js');
 
 // Data files: classes (push to _pending.classes)
@@ -131,6 +132,7 @@ tryLoad('data/planes.js');
 load('terrain-registry.js');
 load('plane-registry.js');
 load('portal.js');
+load('plane-worlds.js');
 tryLoad('data/spell-terrain-effects.js');
 load('passability.js');
 load('terrain.js');
@@ -239,6 +241,9 @@ loadTest('test-sprite-resolver.js');
 loadTest('test-sprite-mapping.js');
 loadTest('test-autotile.js');
 loadTest('test-overworld-map.js');
+loadTest('test-plane-worlds.js');
+loadTest('test-portal.js');
+loadTest('test-plane-traits.js');
 loadTest('test-dungeon-gen.js');
 loadTest('test-dungeon-crawl.js');
 loadTest('test-debug-console.js');

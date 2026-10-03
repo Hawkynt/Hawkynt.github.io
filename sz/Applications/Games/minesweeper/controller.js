@@ -755,7 +755,7 @@
     return false;
   }
 
-  function doGameOver(won) {
+  async function doGameOver(won) {
     gameOver = true;
     gameWon = won;
     stopTimer();
@@ -799,7 +799,7 @@
       // Best time check
       if (difficulty !== 'custom' && bestTimes[difficulty] && timerValue < bestTimes[difficulty].time) {
         bestTimes[difficulty].time = timerValue;
-        const name = prompt('You have the fastest time for ' + difficulty + ' level.\nPlease enter your name:', 'Anonymous');
+        const name = await SZ.Dialog.prompt('You have the fastest time for ' + difficulty + ' level.\nPlease enter your name:', 'Anonymous', 'Minesweeper');
         bestTimes[difficulty].name = name || 'Anonymous';
         saveBestTimes();
       }
@@ -926,9 +926,116 @@
   }
 
   /* ---- Pointer Handling ---- */
+  const LONG_PRESS_MS = 450;
+  const LONG_PRESS_SLOP = 10;
   let leftDown = false;
   let rightDown = false;
   let bothDown = false;
+  let touchPress = null;
+
+  function toggleMark(r, c, flagOnly) {
+    const data = grid[r][c];
+    if (data.revealed)
+      return;
+    const wasFlagged = data.flagged;
+    if (!data.flagged && (!data.question || flagOnly)) {
+      data.flagged = true;
+      data.question = false;
+      ++flagCount;
+    } else if (data.flagged) {
+      data.flagged = false;
+      --flagCount;
+      if (marksEnabled && !flagOnly)
+        data.question = true;
+    } else {
+      data.question = false;
+    }
+    renderCell(r, c);
+    updateMineCounter();
+    SZ.GameAudio.play(data.flagged ? 'drop' : 'click', data.flagged ? { pitch: 1.4, volume: 0.6 } : undefined);
+    if (data.flagged && !wasFlagged) {
+      data.el.classList.add('flag-placed');
+      data.el.addEventListener('animationend', function handler() {
+        data.el.classList.remove('flag-placed');
+        data.el.removeEventListener('animationend', handler);
+      });
+    }
+  }
+
+  function revealAt(r, c) {
+    const data = grid[r][c];
+    if (data.flagged || data.question || data.revealed)
+      return;
+    if (firstClick) {
+      placeMines(r, c);
+      firstClick = false;
+      gameStarted = true;
+      startTimer();
+    }
+    revealOriginR = r;
+    revealOriginC = c;
+    const before = revealedCount;
+    revealCell(r, c);
+    if (!gameOver)
+      SZ.GameAudio.play(revealedCount - before > 1 ? 'whoosh' : 'click');
+    revealOriginR = -1;
+    revealOriginC = -1;
+    if (!gameOver)
+      checkWin();
+  }
+
+  /* Touch: a tap reveals, holding a cell flags or unflags it */
+  function cancelTouchPress() {
+    if (!touchPress)
+      return;
+    clearTimeout(touchPress.timer);
+    touchPress = null;
+    if (!gameOver)
+      setSmiley(FACE_NORMAL);
+  }
+
+  function onTouchDown(e, cell) {
+    cancelTouchPress();
+    const r = +cell.dataset.r;
+    const c = +cell.dataset.c;
+    const press = { id: e.pointerId, r, c, x: e.clientX, y: e.clientY, held: false, timer: 0 };
+    press.timer = setTimeout(() => {
+      press.held = true;
+      if (gameOver)
+        return;
+      toggleMark(r, c, true);
+      setSmiley(FACE_NORMAL);
+      if (navigator.vibrate)
+        try { navigator.vibrate(25); } catch (_) {}
+    }, LONG_PRESS_MS);
+    touchPress = press;
+    if (!grid[r][c].revealed && !grid[r][c].flagged)
+      setSmiley(FACE_CLICK);
+  }
+
+  function onTouchUp(e) {
+    const press = touchPress;
+    if (!press || press.id !== e.pointerId)
+      return;
+    clearTimeout(press.timer);
+    touchPress = null;
+    if (gameOver)
+      return;
+    if (!press.held)
+      revealAt(press.r, press.c);
+    if (!gameOver)
+      setSmiley(FACE_NORMAL);
+  }
+
+  minefield.addEventListener('pointermove', e => {
+    if (touchPress && touchPress.id === e.pointerId && !touchPress.held
+        && Math.hypot(e.clientX - touchPress.x, e.clientY - touchPress.y) > LONG_PRESS_SLOP)
+      cancelTouchPress();
+  });
+  minefield.addEventListener('pointercancel', e => {
+    if (touchPress && touchPress.id === e.pointerId)
+      cancelTouchPress();
+  });
 
   minefield.addEventListener('contextmenu', e => e.preventDefault());
 
@@ -939,6 +1046,12 @@
     const cell = e.target.closest('.cell');
     if (!cell)
       return;
+
+    if (e.pointerType === 'touch') {
+      if (e.isPrimary)
+        onTouchDown(e, cell);
+      return;
+    }
 
     if (e.button === 0) {
       leftDown = true;
@@ -956,38 +1069,16 @@
     if ((e.button === 0 && !bothDown) || bothDown)
       setSmiley(FACE_CLICK);
 
-    if (e.button === 2 && !leftDown) {
-      const r = +cell.dataset.r;
-      const c = +cell.dataset.c;
-      const data = grid[r][c];
-      if (!data.revealed) {
-        const wasFlagged = data.flagged;
-        if (!data.flagged && !data.question) {
-          data.flagged = true;
-          ++flagCount;
-        } else if (data.flagged) {
-          data.flagged = false;
-          --flagCount;
-          if (marksEnabled)
-            data.question = true;
-        } else {
-          data.question = false;
-        }
-        renderCell(r, c);
-        updateMineCounter();
-        SZ.GameAudio.play(data.flagged ? 'drop' : 'click', data.flagged ? { pitch: 1.4, volume: 0.6 } : undefined);
-        if (data.flagged && !wasFlagged) {
-          data.el.classList.add('flag-placed');
-          data.el.addEventListener('animationend', function handler() {
-            data.el.classList.remove('flag-placed');
-            data.el.removeEventListener('animationend', handler);
-          });
-        }
-      }
-    }
+    if (e.button === 2 && !leftDown)
+      toggleMark(+cell.dataset.r, +cell.dataset.c);
   });
 
   minefield.addEventListener('pointerup', e => {
+    if (e.pointerType === 'touch') {
+      onTouchUp(e);
+      return;
+    }
+
     if (gameOver) {
       leftDown = false;
       rightDown = false;
@@ -1043,25 +1134,7 @@
 
     if (e.button === 0) {
       leftDown = false;
-      const data = grid[r][c];
-      if (!data.flagged && !data.question && !data.revealed) {
-        if (firstClick) {
-          placeMines(r, c);
-          firstClick = false;
-          gameStarted = true;
-          startTimer();
-        }
-        revealOriginR = r;
-        revealOriginC = c;
-        const before = revealedCount;
-        revealCell(r, c);
-        if (!gameOver)
-          SZ.GameAudio.play(revealedCount - before > 1 ? 'whoosh' : 'click');
-        revealOriginR = -1;
-        revealOriginC = -1;
-        if (!gameOver)
-          checkWin();
-      }
+      revealAt(r, c);
       if (!gameOver)
         setSmiley(FACE_NORMAL);
     }
@@ -1081,6 +1154,7 @@
   /* ---- New Game ---- */
   function newGame() {
     stopTimer();
+    cancelTouchPress();
 
     // Cancel in-flight mine reveal timeouts (also covers aftermath + skull phase timers)
     for (const tid of mineRevealTimeouts)
