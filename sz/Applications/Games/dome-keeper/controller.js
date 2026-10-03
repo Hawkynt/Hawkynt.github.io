@@ -25,6 +25,8 @@
   const STATE_UPGRADE_DIALOG = 'UPGRADE_DIALOG';
   const STATE_CINEMATIC = 'CINEMATIC';       // landing / relocation sequence
   const STATE_CONFIRM = 'CONFIRM';           // relocation confirmation
+  const STATE_CRAFT = 'CRAFT';               // bomb workshop
+  const STATE_MINIGAME = 'MINIGAME';         // opening a secret chest
 
   /* -- Storage -- */
   const STORAGE_PREFIX = 'sz-dome-keeper';
@@ -67,7 +69,8 @@
   const TILE_OPAL = 21;
   const TILE_VOIDSTONE = 22;
   const TILE_CORE = 23;          // the site's Relocation Core, hidden in the lower strata
-  const TILE_MAX = TILE_CORE;
+  const TILE_CHEST = 24;         // one of the site's three secret chests
+  const TILE_MAX = TILE_CHEST;
 
   const TILE_COLORS = {
     [TILE_DIRT]: '#4a3a2a',
@@ -468,6 +471,91 @@
       '.......d.d..', '........c...', '.......b....', '....2222....',
       '..22333322..', '.2234433332.', '.2345433332.', '.2343333332.',
       '.2333333322.', '.2233333222.', '..22222222..', '....2222....'] },
+    bombCharge: { ramps: ['red', 'wood', 'fire'], px: [
+      '.........i..', '........h...', '.......c....', '..34.34c34..',
+      '..34.34.34..', '..34.34.34..', '.adddddddda.', '..34.34.34..',
+      '..34.34.34..', '..34.34.34..', '..23.23.23..', '............'] },
+    bombBig: { ramps: ['coal', 'steel', 'fire'], px: [
+      '.......ihi..', '.......dg...', '....2dd2....', '..22333322..',
+      '.2344433332.', '.2455433332.', '.cccccccccc.', '.2333333322.',
+      '.2333333322.', '..23333222..', '...222222...', '............'] },
+    bombMega: { ramps: ['gold', 'coal', 'fire'], px: [
+      '.....ih.....', '....ccdc....', '..32222223..', '..3b44b443..',
+      '..34b44b43..', '..344b44b3..', '..3b44b443..', '..34b44b43..',
+      '..344b44b3..', '..32222223..', '...cccccc...', '............'] },
+    bombVoid: { ramps: ['void', 'purple', 'cyan'], px: [
+      '......j.....', '.....i......', '....3bb3....', '..34d55d43..',
+      '.34d5ee5d43.', '.3d5eeee5d3.', '.3d5eeee5d3.', '.34d5ee5d43.',
+      '..34d55d43..', '...333333...', '............', '............'] },
+    chest: { ramps: ['wood', 'gold', 'purple'], px: [
+      '............', '..23333332..', '.2344444432.', '.2dcc44ccd2.',
+      '.2222hh2222.', '.2333ih3332.', '.2343hh3432.', '.2343333432.',
+      '.2dc3333cd2.', '.2222222222.', '............', '............'] },
+    /* -- artifacts from secret chests -- */
+    artTwinDrill: { ramps: ['steel', 'gold'], px: [
+      '............', '.cccc..cccc.', '.dddd..dddd.', '.2332..2332.',
+      '.2442..2442.', '..34....34..', '..43....43..', '..34....34..',
+      '...3....3...', '...2....2...', '............', '............'] },
+    artQuake: { ramps: ['steel', 'wood', 'fire'], px: [
+      '.2333332....', '.3444443....', '.3444443....', '.2333332....',
+      '....cc......', '....dc......', '....cc..h...', '....dc.h.h..',
+      '....cc.h..h.', '....dc......', '....cc.h.h..', '....bb..h...'] },
+    artMidas: { ramps: ['gold', 'wood'], px: [
+      '...3333.....', '..344443....', '.34455443...', '.34544443...',
+      '.34444443...', '.33444433...', '..333333c...', '........cc..',
+      '.........cc.', '..........c.', '............', '............'] },
+    artLodestone: { ramps: ['red', 'blue', 'gold'], px: [
+      'h..........h', '.h........h.', '..cc....cc..', '..cc....cc..',
+      '..34....34..', '..34....34..', '..344..443..', '..24444442..',
+      '...244442...', '....2222....', '............', '............'] },
+    artSunLamp: { ramps: ['gold', 'steel', 'fire'], px: [
+      '.....cc.....', '....c..c....', '...cccccc...', '...d4554d...',
+      '..hd5555dh..', '...d4554d...', '..hd4444dh..', '...d4444d...',
+      '...cccccc...', '....cccc....', '............', '............'] },
+    artStormCoil: { ramps: ['steel', 'cyan', 'gold'], px: [
+      '..e..d..e...', '...e.d.e....', '....dddd....', '...d4444d...',
+      '....3333....', '...244442...', '....3333....', '...244442...',
+      '....3333....', '..22222222..', '..33333333..', '............'] },
+    artAegis: { ramps: ['blue', 'red', 'cyan'], px: [
+      '...hhhhhh...', '..h......h..', '.h.cc..cc.h.', '.hcddccddch.',
+      '.hcddddddch.', '.h.cddddc.h.', '.h..cddc..h.', '..h..cc..h..',
+      '...h....h...', '....hhhh....', '............', '............'] },
+    artChrono: { ramps: ['wood', 'cyan', 'blue'], px: [
+      '.3333333333.', '..2dddddd2..', '...2dddd2...', '....2dd2....',
+      '.....22.....', '.....dd.....', '....2..2....', '...2.dd.2...',
+      '..2dddddd2..', '.3333333333.', '............', '............'] },
+    artBombCharm: { ramps: ['coal', 'gold', 'fire'], px: [
+      '.......ih...', '......d.....', '....2222....', '..22333322..',
+      '.2344333322.', '.234cccc322.', '.233cddc322.', '.233cccc322.',
+      '..23333322..', '....2222....', '............', '............'] },
+    artHive: { ramps: ['purple', 'gold'], px: [
+      '....3333....', '...344443...', '..34cddc43..', '..34dccd43..',
+      '...344443...', '.3333..3333.', '344443344443', '34cd4334dc43',
+      '344443344443', '.3333..3333.', '............', '............'] },
+    artWarp: { ramps: ['violet', 'steel'], px: [
+      '....cddc....', '....c..c....', '.....cc.....', '..3..cc..3..',
+      '.34..cc..43.', '.3...cc...3.', '.3...cc...3.', '..3.dccd.3..',
+      '...3dccd3...', '....3333....', '............', '............'] },
+    artEye: { ramps: ['cream', 'red', 'coal'], px: [
+      '............', '....3333....', '..33444433..', '.344cddc443.',
+      '34444chc4443', '.344cddc443.', '..33444433..', '....3333....',
+      '............', '............', '............', '............'] },
+    artOwl: { ramps: ['wood', 'green', 'gold'], px: [
+      '..3......3..', '..33....33..', '..34444443..', '.3hhh44hhh3.',
+      '.3hch44hch3.', '.3hhh44hhh3.', '..344dd443..', '..34444443..',
+      '...344443...', '...3.33.3...', '............', '............'] },
+    artAlchemist: { ramps: ['green', 'gold', 'red'], px: [
+      '.....cc.....', '.....dd.....', '....3dd3....', '....3..3....',
+      '...3....3...', '..3.hhhh.3..', '.3.hiiiih.3.', '.3hiiiiiih3.',
+      '.3hhiiiihh3.', '..33333333..', '............', '............'] },
+    artDowsing: { ramps: ['wood', 'purple'], px: [
+      '.d........d.', '.3d......d3.', '..3......3..', '...3....3...',
+      '....3..3....', '.....33.....', '.....33.....', '.....33.....',
+      '.....33.....', '.....22.....', '....eeee....', '.....ee.....'] },
+    artPhoenix: { ramps: ['fire', 'red'], px: [
+      '.........5..', '........45..', '.......443..', '......443...',
+      '....44443...', '...443d3....', '..443dd.....', '.443dc......',
+      '.43dc.......', '.3cc........', '.c..........', 'c...........'] },
     tree: { ramps: ['green', 'wood', 'red'], px: [
       '...333333...', '.3344444433.', '3344544h4433', '344444444443',
       '34h44444h443', '334444444433', '.3334444333.', '...33cc33...',
@@ -1010,7 +1098,8 @@
     [TILE_AMETHYST]: 'Amethyst',
     [TILE_OPAL]: 'Fire Opal',
     [TILE_VOIDSTONE]: 'Voidstone',
-    [TILE_CORE]: 'Relocation Core'
+    [TILE_CORE]: 'Relocation Core',
+    [TILE_CHEST]: 'Secret Chest'
   };
 
   const ORE_SPECKLE_COLORS = {
@@ -1140,7 +1229,8 @@
     [TILE_AMETHYST]: 3.5,
     [TILE_OPAL]: 3.7,
     [TILE_VOIDSTONE]: 4.0,
-    [TILE_CORE]: 3.5
+    [TILE_CORE]: 3.5,
+    [TILE_CHEST]: 3
   };
 
   /* -- Movement -- */
@@ -1256,7 +1346,7 @@
       upgradeKey: 'lastStand', type: 'gadget' },
 
     // =============================================================
-    // === Mining Branch (39 nodes) ===
+    // === Mining Branch (29 nodes) ===
     // =============================================================
     // -- Mining Tools chain (7 levels) --
     { id: 'mining1', name: 'Mining Tools L1', icon: 'pickaxe', branch: 'mining',
@@ -1297,9 +1387,6 @@
       costs: [{ titanium: 8, gold: 25, lead: 20 }], maxLevel: 1, prereqs: ['carry4'],
       upgradeKey: 'carryCapacity', type: 'stat' },
     // -- Gadgets --
-    { id: 'drill', name: 'Drill Gadget', icon: 'drill', branch: 'mining',
-      costs: [{ iron: 25 }], maxLevel: 1, prereqs: ['mining1'],
-      upgradeKey: 'drill', type: 'gadget' },
     { id: 'magnet', name: 'Magnet', icon: 'magnet', branch: 'mining',
       costs: [{ iron: 40, copper: 25, lead: 15 }], maxLevel: 1, prereqs: ['carry2'],
       upgradeKey: 'magnet', type: 'gadget' },
@@ -1310,12 +1397,6 @@
       costs: [{ diamond: 8, emerald: 10, ruby: 5, gold: 15 }], maxLevel: 1, prereqs: ['fortune', 'mining4'],
       upgradeKey: 'silkTouch', type: 'gadget' },
     // -- New mining abilities --
-    { id: 'oreDetector', name: 'Ore Detector', icon: 'radar', branch: 'mining',
-      costs: [{ iron: 30, copper: 15, cobalt: 10 }], maxLevel: 1, prereqs: ['mining2'],
-      upgradeKey: 'oreDetector', type: 'gadget' },
-    { id: 'oreDetector2', name: 'Ore Detect L2', icon: 'radar', branch: 'mining',
-      costs: [{ silver: 15, quartz: 12, cobalt: 20 }], maxLevel: 1, prereqs: ['oreDetector'],
-      upgradeKey: 'oreDetector', type: 'stat' },
     { id: 'speedMining1', name: 'Speed Mining L1', icon: 'speed', branch: 'mining',
       costs: [{ iron: 35, coal: 20 }], maxLevel: 1, prereqs: ['mining2'],
       upgradeKey: 'speedMining', type: 'stat' },
@@ -1329,7 +1410,7 @@
       costs: [{ gold: 20, cobalt: 25, copper: 30 }], maxLevel: 1, prereqs: ['mining4', 'speedMining2'],
       upgradeKey: 'autoMine', type: 'gadget' },
     { id: 'tunnelBore', name: 'Tunnel Bore', icon: 'drill', branch: 'mining',
-      costs: [{ gold: 25, redstone: 15, diamond: 5, cobalt: 30 }], maxLevel: 1, prereqs: ['mining5', 'drill'],
+      costs: [{ gold: 25, redstone: 15, diamond: 5, cobalt: 30 }], maxLevel: 1, prereqs: ['mining5', 'drillSpeed3'],
       upgradeKey: 'tunnelBore', type: 'gadget' },
     { id: 'magnetRange1', name: 'Magnet Range L1', icon: 'magnet', branch: 'mining',
       costs: [{ silver: 15, copper: 20, lead: 10 }], maxLevel: 1, prereqs: ['magnet'],
@@ -1359,31 +1440,9 @@
     { id: 'drillSpeed5', name: 'Drill Speed L5', icon: 'drill', branch: 'mining',
       costs: [{ titanium: 6, gold: 20, redstone: 15 }], maxLevel: 1, prereqs: ['drillSpeed4'],
       upgradeKey: 'drillSpeed', type: 'stat' },
-    // -- Prospecting and excavation tools --
-    { id: 'blastTool', name: 'Blast Mining', icon: 'explosion', branch: 'mining',
-      costs: [{ iron: 30, coal: 10 }], maxLevel: 1, prereqs: ['drillSpeed1'],
-      upgradeKey: 'blastTool', type: 'gadget' },
-    { id: 'scanner', name: 'Scanner', icon: 'magnifier', branch: 'mining',
-      costs: [{ iron: 35, cobalt: 10 }], maxLevel: 1, prereqs: ['drillSpeed1'],
-      upgradeKey: 'scanner', type: 'gadget' },
-    { id: 'echoLocation', name: 'Echo Location', icon: 'radar', branch: 'mining',
-      costs: [{ copper: 15, tin: 20, cobalt: 15 }], maxLevel: 1, prereqs: ['scanner'],
-      upgradeKey: 'echoLocation', type: 'gadget' },
-    { id: 'echoLocation2', name: 'Echo Loc. L2', icon: 'radar', branch: 'mining',
-      costs: [{ silver: 15, gold: 10, redstone: 8 }], maxLevel: 1, prereqs: ['echoLocation'],
-      upgradeKey: 'echoLocation', type: 'stat' },
-    { id: 'echoLocation3', name: 'Echo Loc. L3', icon: 'radar', branch: 'mining',
-      costs: [{ gold: 20, quartz: 15, redstone: 12 }], maxLevel: 1, prereqs: ['echoLocation2'],
-      upgradeKey: 'echoLocation', type: 'stat' },
-    { id: 'undergroundRadar', name: 'Ground Radar', icon: 'radar', branch: 'mining',
-      costs: [{ silver: 20, copper: 25, quartz: 10 }], maxLevel: 1, prereqs: ['echoLocation'],
-      upgradeKey: 'undergroundRadar', type: 'gadget' },
-    { id: 'undergroundRadar2', name: 'Radar L2', icon: 'radar', branch: 'mining',
-      costs: [{ gold: 18, quartz: 15, redstone: 10 }], maxLevel: 1, prereqs: ['undergroundRadar'],
-      upgradeKey: 'undergroundRadar', type: 'stat' },
 
     // =============================================================
-    // === Movement Branch (19 nodes) ===
+    // === Movement Branch (16 nodes) ===
     // =============================================================
     // -- Move Speed chain (7 levels) --
     { id: 'speed1', name: 'Move Speed L1', icon: 'boot', branch: 'movement',
@@ -1408,9 +1467,6 @@
       costs: [{ titanium: 10, sapphire: 6, emerald: 8 }], maxLevel: 1, prereqs: ['speed6'],
       upgradeKey: 'moveSpeed', type: 'stat' },
     // -- Gadgets --
-    { id: 'teleporter', name: 'Teleporter', icon: 'portal', branch: 'movement',
-      costs: [{ iron: 30, cobalt: 15 }], maxLevel: 1, prereqs: ['speed1'],
-      upgradeKey: 'teleporter', type: 'gadget' },
     { id: 'jetpack', name: 'Jetpack', icon: 'rocket', branch: 'movement',
       costs: [{ iron: 45, copper: 20, coal: 25 }], maxLevel: 1, prereqs: ['speed3'],
       upgradeKey: 'jetpack', type: 'gadget' },
@@ -1430,12 +1486,6 @@
     { id: 'dash2', name: 'Dash L2', icon: 'speed', branch: 'movement',
       costs: [{ gold: 12, redstone: 10, cobalt: 18 }], maxLevel: 1, prereqs: ['dash'],
       upgradeKey: 'dash', type: 'stat' },
-    { id: 'teleportCooldown1', name: 'Teleport CDR L1', icon: 'portal', branch: 'movement',
-      costs: [{ silver: 12, cobalt: 15, copper: 10 }], maxLevel: 1, prereqs: ['teleporter'],
-      upgradeKey: 'teleportCooldown', type: 'stat' },
-    { id: 'teleportCooldown2', name: 'Teleport CDR L2', icon: 'portal', branch: 'movement',
-      costs: [{ gold: 15, quartz: 12, redstone: 8 }], maxLevel: 1, prereqs: ['teleportCooldown1'],
-      upgradeKey: 'teleportCooldown', type: 'stat' },
     { id: 'jetpackFuel1', name: 'Jetpack Fuel L1', icon: 'rocket', branch: 'movement',
       costs: [{ copper: 25, coal: 30, cobalt: 15 }], maxLevel: 1, prereqs: ['jetpack'],
       upgradeKey: 'jetpackFuel', type: 'stat' },
@@ -1597,7 +1647,132 @@
       upgradeKey: 'droneCount', type: 'stat' },
     { id: 'droneSwarm2', name: 'Drone Swarm L2', icon: 'drone', branch: 'drone',
       costs: [{ amethyst: 6, opal: 4, voidstone: 2 }], maxLevel: 1, prereqs: ['droneSwarm1'],
-      upgradeKey: 'droneCount', type: 'stat' }
+      upgradeKey: 'droneCount', type: 'stat' },
+
+    // =============================================================
+    // === Tools Branch: mining tools, prospecting and bombs ===
+    // =============================================================
+    // -- Drill, blast tool and teleporter --
+    { id: 'drill', name: 'Drill Gadget', icon: 'drill', branch: 'tools',
+      costs: [{ iron: 25 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'drill', type: 'gadget' },
+    { id: 'drill2', name: 'Drill Gadget L2', icon: 'drill', branch: 'tools',
+      costs: [{ iron: 40, copper: 15, tin: 10 }], maxLevel: 1, prereqs: ['drill'],
+      upgradeKey: 'drillCombo', type: 'stat' },
+    { id: 'blastTool', name: 'Blast Mining', icon: 'explosion', branch: 'tools',
+      costs: [{ iron: 30, coal: 10 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'blastTool', type: 'gadget' },
+    { id: 'blastTool2', name: 'Blast Mining L2', icon: 'explosion', branch: 'tools',
+      costs: [{ iron: 45, coal: 20, copper: 10 }], maxLevel: 1, prereqs: ['blastTool'],
+      upgradeKey: 'blastToolLevel', type: 'stat' },
+    { id: 'teleporter', name: 'Teleporter', icon: 'portal', branch: 'tools',
+      costs: [{ iron: 30, cobalt: 15 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'teleporter', type: 'gadget' },
+    { id: 'teleportCooldown1', name: 'Teleport CDR L1', icon: 'portal', branch: 'tools',
+      costs: [{ silver: 12, cobalt: 15, copper: 10 }], maxLevel: 1, prereqs: ['teleporter'],
+      upgradeKey: 'teleportCooldown', type: 'stat' },
+    { id: 'teleportCooldown2', name: 'Teleport CDR L2', icon: 'portal', branch: 'tools',
+      costs: [{ gold: 15, quartz: 12, redstone: 8 }], maxLevel: 1, prereqs: ['teleportCooldown1'],
+      upgradeKey: 'teleportCooldown', type: 'stat' },
+    // -- Prospecting --
+    { id: 'scanner', name: 'Scanner', icon: 'magnifier', branch: 'tools',
+      costs: [{ iron: 35, cobalt: 10 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'scanner', type: 'gadget' },
+    { id: 'echoLocation', name: 'Echo Location', icon: 'radar', branch: 'tools',
+      costs: [{ copper: 15, tin: 20, cobalt: 15 }], maxLevel: 1, prereqs: ['scanner'],
+      upgradeKey: 'echoLocation', type: 'gadget' },
+    { id: 'echoLocation2', name: 'Echo Loc. L2', icon: 'radar', branch: 'tools',
+      costs: [{ silver: 15, gold: 10, redstone: 8 }], maxLevel: 1, prereqs: ['echoLocation'],
+      upgradeKey: 'echoLocation', type: 'stat' },
+    { id: 'echoLocation3', name: 'Echo Loc. L3', icon: 'radar', branch: 'tools',
+      costs: [{ gold: 20, quartz: 15, redstone: 12 }], maxLevel: 1, prereqs: ['echoLocation2'],
+      upgradeKey: 'echoLocation', type: 'stat' },
+    { id: 'undergroundRadar', name: 'Ground Radar', icon: 'radar', branch: 'tools',
+      costs: [{ silver: 20, copper: 25, quartz: 10 }], maxLevel: 1, prereqs: ['echoLocation'],
+      upgradeKey: 'undergroundRadar', type: 'gadget' },
+    { id: 'undergroundRadar2', name: 'Radar L2', icon: 'radar', branch: 'tools',
+      costs: [{ gold: 18, quartz: 15, redstone: 10 }], maxLevel: 1, prereqs: ['undergroundRadar'],
+      upgradeKey: 'undergroundRadar', type: 'stat' },
+    { id: 'oreDetector', name: 'Ore Detector', icon: 'radar', branch: 'tools',
+      costs: [{ iron: 30, copper: 15, cobalt: 10 }], maxLevel: 1, prereqs: ['scanner'],
+      upgradeKey: 'oreDetector', type: 'gadget' },
+    { id: 'oreDetector2', name: 'Ore Detect L2', icon: 'radar', branch: 'tools',
+      costs: [{ silver: 15, quartz: 12, cobalt: 20 }], maxLevel: 1, prereqs: ['oreDetector'],
+      upgradeKey: 'oreDetector', type: 'stat' },
+    // -- Bomb recipes (Charges are always known) --
+    { id: 'recipeBomb', group: 'bombs', name: 'Bomb Recipe', icon: 'bomb', branch: 'tools',
+      costs: [{ iron: 20, coal: 10 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'recipeBomb', type: 'gadget' },
+    { id: 'recipeBig', group: 'bombs', name: 'Big Bomb Recipe', icon: 'bombBig', branch: 'tools',
+      costs: [{ cobalt: 15, redstone: 8, coal: 20 }], maxLevel: 1, prereqs: ['recipeBomb'],
+      upgradeKey: 'recipeBig', type: 'gadget' },
+    { id: 'recipeMega', group: 'bombs', name: 'Mega Bomb Recipe', icon: 'bombMega', branch: 'tools',
+      costs: [{ titanium: 6, redstone: 12, gold: 10 }], maxLevel: 1, prereqs: ['recipeBig'],
+      upgradeKey: 'recipeMega', type: 'gadget' },
+    { id: 'recipeVoid', group: 'bombs', name: 'Void Bomb Recipe', icon: 'bombVoid', branch: 'tools',
+      costs: [{ uranium: 6, amethyst: 5, voidstone: 2 }], maxLevel: 1, prereqs: ['recipeMega'],
+      upgradeKey: 'recipeVoid', type: 'gadget' },
+    // -- Bomb upgrades --
+    { id: 'blastRadius1', group: 'bombs', name: 'Blast Radius L1', icon: 'explosion', branch: 'tools',
+      costs: [{ iron: 30, coal: 20 }], maxLevel: 1, prereqs: ['recipeBomb'],
+      upgradeKey: 'blastRadius', type: 'stat' },
+    { id: 'blastRadius2', group: 'bombs', name: 'Blast Radius L2', icon: 'explosion', branch: 'tools',
+      costs: [{ cobalt: 15, coal: 25, silver: 8 }], maxLevel: 1, prereqs: ['blastRadius1'],
+      upgradeKey: 'blastRadius', type: 'stat' },
+    { id: 'blastRadius3', group: 'bombs', name: 'Blast Radius L3', icon: 'explosion', branch: 'tools',
+      costs: [{ titanium: 6, redstone: 12, gold: 12 }], maxLevel: 1, prereqs: ['blastRadius2'],
+      upgradeKey: 'blastRadius', type: 'stat' },
+    { id: 'bombPower1', group: 'bombs', name: 'Shaped Charges L1', icon: 'bolt', branch: 'tools',
+      costs: [{ iron: 25, copper: 15, coal: 10 }], maxLevel: 1, prereqs: ['recipeBig'],
+      upgradeKey: 'bombPower', type: 'stat' },
+    { id: 'bombPower2', group: 'bombs', name: 'Shaped Charges L2', icon: 'bolt', branch: 'tools',
+      costs: [{ silver: 12, cobalt: 15, quartz: 8 }], maxLevel: 1, prereqs: ['bombPower1'],
+      upgradeKey: 'bombPower', type: 'stat' },
+    { id: 'bombPower3', group: 'bombs', name: 'Shaped Charges L3', icon: 'bolt', branch: 'tools',
+      costs: [{ sapphire: 5, diamond: 6, redstone: 12 }], maxLevel: 1, prereqs: ['bombPower2'],
+      upgradeKey: 'bombPower', type: 'stat' },
+    { id: 'chainReaction', group: 'bombs', name: 'Chain Reaction', icon: 'fire', branch: 'tools',
+      costs: [{ redstone: 12, coal: 30, uranium: 3 }], maxLevel: 1, prereqs: ['bombPower3'],
+      upgradeKey: 'chainReaction', type: 'gadget' },
+    { id: 'bombYield1', group: 'bombs', name: 'Careful Blasting L1', icon: 'sparkle', branch: 'tools',
+      costs: [{ copper: 20, tin: 15 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'bombYield', type: 'stat' },
+    { id: 'bombYield2', group: 'bombs', name: 'Careful Blasting L2', icon: 'sparkle', branch: 'tools',
+      costs: [{ silver: 15, gold: 8, lead: 12 }], maxLevel: 1, prereqs: ['bombYield1'],
+      upgradeKey: 'bombYield', type: 'stat' },
+    { id: 'bombYield3', group: 'bombs', name: 'Careful Blasting L3', icon: 'sparkle', branch: 'tools',
+      costs: [{ emerald: 6, ruby: 5, gold: 15 }], maxLevel: 1, prereqs: ['bombYield2'],
+      upgradeKey: 'bombYield', type: 'stat' },
+    { id: 'bombFuse1', group: 'bombs', name: 'Quick Fuse L1', icon: 'fire', branch: 'tools',
+      costs: [{ coal: 20, copper: 10 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'bombFuse', type: 'stat' },
+    { id: 'bombFuse2', group: 'bombs', name: 'Quick Fuse L2', icon: 'fire', branch: 'tools',
+      costs: [{ redstone: 10, coal: 30 }], maxLevel: 1, prereqs: ['bombFuse1'],
+      upgradeKey: 'bombFuse', type: 'stat' },
+    { id: 'remoteDetonator', group: 'bombs', name: 'Remote Detonator', icon: 'radar', branch: 'tools',
+      costs: [{ copper: 25, silver: 12, redstone: 8 }], maxLevel: 1, prereqs: ['bombFuse2'],
+      upgradeKey: 'remoteDetonator', type: 'gadget' },
+    { id: 'stickyBombs', group: 'bombs', name: 'Sticky Bombs', icon: 'target', branch: 'tools',
+      costs: [{ lead: 20, quartz: 10, coal: 15 }], maxLevel: 1, prereqs: ['remoteDetonator'],
+      upgradeKey: 'stickyBombs', type: 'gadget' },
+    { id: 'bombSatchel1', group: 'bombs', name: 'Bomb Satchel L1', icon: 'bag', branch: 'tools',
+      costs: [{ iron: 25, lead: 10 }], maxLevel: 1, prereqs: [],
+      upgradeKey: 'bombSatchel', type: 'stat' },
+    { id: 'bombSatchel2', group: 'bombs', name: 'Bomb Satchel L2', icon: 'bag', branch: 'tools',
+      costs: [{ lead: 20, cobalt: 12, tin: 15 }], maxLevel: 1, prereqs: ['bombSatchel1'],
+      upgradeKey: 'bombSatchel', type: 'stat' },
+    { id: 'bombSatchel3', group: 'bombs', name: 'Bomb Satchel L3', icon: 'bag', branch: 'tools',
+      costs: [{ titanium: 6, lead: 25, gold: 10 }], maxLevel: 1, prereqs: ['bombSatchel2'],
+      upgradeKey: 'bombSatchel', type: 'stat' },
+    { id: 'bombsmith1', group: 'bombs', name: 'Bomb Forge L1', icon: 'wrench', branch: 'tools',
+      costs: [{ iron: 40, copper: 20, coal: 20 }], maxLevel: 1, prereqs: ['bombSatchel1'],
+      upgradeKey: 'bombsmith', type: 'stat' },
+    { id: 'bombsmith2', group: 'bombs', name: 'Bomb Forge L2', icon: 'wrench', branch: 'tools',
+      costs: [{ gold: 15, silver: 15, redstone: 10 }], maxLevel: 1, prereqs: ['bombsmith1'],
+      upgradeKey: 'bombsmith', type: 'stat' },
+    { id: 'blastSuit', group: 'bombs', name: 'Blast Suit', icon: 'shield', branch: 'tools',
+      costs: [{ iron: 40, lead: 20, tin: 15 }], maxLevel: 1, prereqs: ['bombSatchel1'],
+      upgradeKey: 'blastSuit', type: 'gadget' }
   ];
 
   // Upgrade effect descriptions (keyed by upgradeKey)
@@ -1659,7 +1834,23 @@
     combatDroneLevel: 'Level 2: harder, faster shots. Level 3: a second gun drone',
     repairDrone: 'A repair drone welds the dome back together',
     repairDroneLevel: 'Repairs faster per level',
-    droneCount: '+1 courier drone per level'
+    droneCount: '+1 courier drone per level',
+    drillCombo: 'Drill Gadget digs a column 50% faster instead of 30%',
+    blastToolLevel: 'Blast Mining recharges in 2.5 s and costs only 5 iron',
+    recipeBomb: 'Craft Bombs (radius 2) in the workshop',
+    recipeBig: 'Craft Big Bombs (radius 3) in the workshop',
+    recipeMega: 'Craft Mega Bombs (radius 4) in the workshop',
+    recipeVoid: 'Craft Void Bombs (radius 6) that crack even the Abyssal Core',
+    blastRadius: '+0.5 tiles blast radius for every bomb per level',
+    bombPower: '+30% bomb damage to rock and monsters per level',
+    bombYield: 'Blasted ore kept: 80% / 100% / 125% (from 50%)',
+    bombFuse: 'Bomb fuses burn 0.6 s shorter per level',
+    bombSatchel: '+4 bomb storage per level',
+    bombsmith: 'Bombs cost 15% less to craft per level',
+    chainReaction: 'Coal and uranium caught in a blast explode as well',
+    remoteDetonator: 'Press X to set off every bomb in the mine at once',
+    stickyBombs: 'Thrown bombs stick to rock faces; throw range +2 tiles',
+    blastSuit: 'Your own bombs no longer knock the keeper out'
   };
 
   // Mining difficulty label from depth multiplier
@@ -1674,11 +1865,13 @@
 
   // Precompute node positions for the tree layout
   // Layout: root at top center, 4 branches below
-  const TREE_BRANCH_ORDER = ['dome', 'mining', 'movement', 'weapon', 'drone'];
-  const TREE_BRANCH_LABELS = { dome: 'DOME', mining: 'MINING', movement: 'MOVEMENT', weapon: 'WEAPON', drone: 'DRONES' };
-  const TREE_BRANCH_COLORS = { dome: '#4cb4ff', mining: '#ffae3a', movement: '#5ee07a', weapon: '#ff5e5e', drone: '#c890ff' };
+  const TREE_BRANCH_ORDER = ['dome', 'mining', 'movement', 'weapon', 'drone', 'tools'];
+  const TREE_BRANCH_LABELS = { dome: 'DOME', mining: 'MINING', movement: 'MOVEMENT', weapon: 'WEAPON', drone: 'DRONES', tools: 'TOOLS' };
+  const TREE_BRANCH_COLORS = { dome: '#4cb4ff', mining: '#ffae3a', movement: '#5ee07a', weapon: '#ff5e5e', drone: '#c890ff', tools: '#3ad8c0' };
+  // Captions of the node groups inside a branch region
+  const TREE_GROUP_LABELS = { bombs: '[[bomb]] BOMBS' };
   // Branch regions, row by row
-  const TREE_REGION_ROWS = [['dome', 'mining'], ['movement', 'weapon', 'drone']];
+  const TREE_REGION_ROWS = [['dome', 'mining'], ['movement', 'weapon', 'drone'], ['tools']];
   const TREE_CARD_W = 200;
   const TREE_CARD_H = 88;
   const TREE_GAP_X = 40;       // vertical channel between depth columns (connectors run here)
@@ -1755,7 +1948,8 @@
   let pickaxeSwinging = false;
   let pickaxeSwingTimer = 0;
   const PICKAXE_SWING_DURATION = 0.25;
-  let lastMineDir = { dx: 1, dy: 0 }; // direction of last mine action
+  let lastMineDir = { dx: 1, dy: 0 }; // where the keeper looks: last move or mine direction (sprite and headlamp)
+  let keeperFaceX = 1; // last left/right facing, kept while looking up or down
 
   // Dome pulse
   let domePulsePhase = 0;
@@ -1792,7 +1986,7 @@
   const TUTORIAL_PAGES = [
     { title: 'How to Play', icon: 'dome',
       intro: 'Mine by day, defend the dome at night. Dig resources underground, bring them home and spend them on upgrades.',
-      items: [['Click', 'Fire the laser (surface) / dig (underground)'], ['WASD / Arrows', 'Move the keeper and mine underground'], ['Space / Tab', 'Switch between surface and mine'], ['Esc', 'Pause - the run is saved automatically']] },
+      items: [['Click', 'Fire the laser (surface) / dig (underground)'], ['WASD / Arrows', 'Move the keeper and mine underground'], ['Space / Tab', 'Switch between surface and mine'], ['C', 'Open the Bomb Workshop'], ['Esc', 'Pause - the run is saved automatically']] },
     { title: 'Day & Night', icon: 'moon',
       intro: 'Monsters attack after nightfall. A warning sounds before dusk - get back to the dome in time.',
       items: [[null, 'The sun crosses the sky by day, the moon by night'], [null, 'Full-moon nights bring bigger swarms, new-moon nights are calm'], [null, 'More monsters can arrive later in the night'], [null, 'Sunlight burns the monsters still out at dawn'], [null, 'Day, time, moon phase and weather sit in the top-left panel']] },
@@ -1802,9 +1996,15 @@
     { title: 'Monsters', icon: 'swords',
       intro: 'The swarm grows more varied with every night and every new site. Hover a monster to read about it.',
       items: [['Swarmers', 'Tiny, fast and always in packs'], ['Crawlers', 'Armor soaks part of every hit'], ['Divers', 'Circle high, then dive at the dome'], ['Burrowers', 'Tunnel unseen and pop up at the dome'], ['Spitters', 'Shoot acid from a distance'], ['Splitters', 'Burst into swarmers; Menders heal others'], ['Bosses', 'Behemoth and Hive Queen on every fifth night']] },
+    { title: 'Stronger Every Night', icon: 'swords',
+      intro: 'Each night at a site raises the threat, each new site adds four more. Monsters get tougher faster than you might think.',
+      items: [['Threat', 'More, tougher and faster monsters; the chip turns red and violet'], ['Elites', 'Crest and ring: double health and an aura for their pack'], ['Auras', 'Haste (faster), Ward (less damage), Fury (harder bites)'], ['Enraged', 'Wounded monsters glow red, run and bite harder'], [null, 'Late elites spit acid; extra armour grows with the threat']] },
+    { title: 'Combat Skill', icon: 'target',
+      intro: 'Aim matters: shots that only graze a monster do less and break your combo. Hover a monster to see its weak point.',
+      items: [['Weak point', 'Hit the gold reticle for double damage - CRIT!'], ['Combo', 'Hits in a row add up to 60% damage; a miss resets it'], ['Hold click / F', 'Charge; release when the ring meets the gold circle: PERFECT, piercing shot'], ['E / Right click', 'Parry (or tap the dome): acid and lances fly back, divers bounce'], ['!', 'Bosses warn before they strike - parry at the impact']] },
     { title: 'Upgrades & Tips', icon: 'pickaxe',
-      intro: 'Everything is bought in one upgrade tree with five branches: Dome, Mining, Movement, Weapon and Drones.',
-      items: [['U', 'Open the upgrade tree (on the surface)'], [null, 'The Next upgrades panel shows the next node of every branch: click to buy it'], [null, 'Deeper strata hold new ores that pay for the top tiers'], ['H', 'Show this help again anytime']] },
+      intro: 'Everything is bought in one upgrade tree with six branches: Dome, Mining, Movement, Weapon, Drones and Tools.',
+      items: [['U', 'Open the upgrade tree (on the surface)'], [null, 'The Next upgrades panel shows the next node of every branch: click to buy it'], [null, 'Deeper strata hold new ores that pay for the top tiers'], [null, 'Panels fade when something is behind them; click monsters right through them'], ['H', 'Show this help again anytime']] },
     { title: 'Drones', icon: 'drone',
       intro: 'Buy the Drone Bay in the Drones branch and a courier drone starts working for you.',
       items: [[null, 'Couriers fly to the keeper, take the cargo home and pick up loose ore'], [null, 'Mining Lasers let couriers dig ore near the keeper'], [null, 'Gun drones guard the dome, the repair drone welds it'], [null, 'Drone Swarm adds couriers; the Droneyard gadget gives a free one']] },
@@ -1813,10 +2013,16 @@
       items: [[null, 'Mine the core to unlock the Relocate button'], ['L', 'Relocate when no monsters are attacking'], [null, 'Keep all upgrades and drones plus 75% of the resources'], [null, 'Each new site: a new biome and mine, and tougher monsters']] },
     { title: 'Gadgets', icon: 'gear',
       intro: 'Choose a primary gadget at the start of each run. Golden 2x2 gadget chambers underground hide more of them.',
-      items: [['R', 'Activate the Repellent Field'], ['B', 'Use Blast Mining charges'], [null, 'Gadgets from chambers activate on pickup!']] },
+      items: [['R', 'Activate the Repellent Field'], [null, 'The Blast Mining chamber adds two Bombs to your stock'], [null, 'Gadgets from chambers activate on pickup!']] },
     { title: 'Tools', icon: 'drill',
-      intro: 'Tools are nodes of the upgrade tree (mostly the Mining branch). Once bought, use them with the number keys.',
-      items: [['1', 'Drill: fast column mining'], ['2', 'Blast: clears a 3x3 area'], ['3', 'Scanner: reveals nearby ores'], ['4', 'Reinforced Dome: takes less damage'], ['5', 'Teleporter: instant return to the surface']] }
+      intro: 'Tools are nodes of the Tools branch of the upgrade tree. Once bought, use them with the number keys.',
+      items: [['1', 'Drill: fast column mining'], ['2', 'Blast: clears a 3x3 area'], ['3', 'Scanner: reveals ores, points to the core and to chests'], ['4', 'Reinforced Dome: takes less damage'], ['5', 'Teleporter: instant return to the surface']] },
+    { title: 'Bombs', icon: 'bomb',
+      intro: 'Craft bombs from ore in the workshop. Three of a size combine into one of the next - up to the Void Bomb. Recipes and bomb upgrades live in the Tools branch.',
+      items: [['C', 'Bomb Workshop: craft and combine'], ['B', 'Drop a bomb in the mine - then run! / lob it at monsters'], ['T', 'Throw mode: click a tunnel tile (or the battlefield)'], ['Q', 'Next bomb size'], ['X', 'Set off all bombs (Remote Detonator)'], [null, 'Blasts free the ore, spare the core and chests, and daze a keeper too close']] },
+    { title: 'Secret Chests', icon: 'chest',
+      intro: 'Every mine hides three secret chests - shallow, middle and deep. Scanners point the way; dig into one to try its lock.',
+      items: [['Lock Picking', 'Stop the needle in the gold zone for every pin'], ['Power Circuit', 'Rotate pipes until power reaches the lock'], ['Rune Memory', 'Repeat the runes in the order they lit up'], [null, 'Fail and the lock jams for 20 s - then try again'], [null, 'Each chest holds an artifact: a strong, unique power for the whole run (see the Artifacts tab)']] }
   ];
 
   let state = STATE_READY;
@@ -2034,7 +2240,7 @@
   let newGameConfirmOpen = false;
 
   function isRunActive() {
-    return primaryGadget !== null && (state === STATE_PLAYING || state === STATE_PAUSED || state === STATE_UPGRADE_DIALOG || state === STATE_CINEMATIC || state === STATE_CONFIRM);
+    return primaryGadget !== null && (state === STATE_PLAYING || state === STATE_PAUSED || state === STATE_UPGRADE_DIALOG || state === STATE_CINEMATIC || state === STATE_CONFIRM || state === STATE_CRAFT || state === STATE_MINIGAME);
   }
 
   function saveRun() {
@@ -2061,7 +2267,11 @@
       droppedResources,
       primaryGadget, primaryGadgetState, foundGadgets, gadgetChambers,
       unlockedTools, activeToolKey, toolState,
-      site, relocationCore, landing: landingPending
+      site, relocationCore, landing: landingPending,
+      artifacts: artifacts.slice(),
+      artifactState: { aegis: Math.round(artifactState.aegis), charmDawns: artifactState.charmDawns, phoenixUsed: artifactState.phoenixUsed },
+      chests: chests.map(ch => ({ r: ch.r, c: ch.c, band: ch.band, kind: ch.kind, revealed: ch.revealed, opened: ch.opened, cooldown: Math.round(ch.cooldown) })),
+      bombs: { inv: bombInv, sel: bombSel, placed: placedBombs.map(b => ({ r: b.r, c: b.c, tier: b.tier, fuse: Math.round(b.fuse * 100) / 100, maxFuse: b.maxFuse, sticky: !!b.sticky })) }
     };
     try {
       localStorage.setItem(STORAGE_SAVE, JSON.stringify(data));
@@ -2184,6 +2394,7 @@
         .map(ch => ({ r: ch.r, c: ch.c, gadgetType: ch.gadgetType, revealed: !!ch.revealed }));
       if (!relocationCore.found && !d.grid.some(row => row.indexOf(String.fromCharCode(48 + TILE_CORE)) >= 0))
         placeRelocationCore(makeRng(site.seed ^ 0x5eed));
+      restoreChests(d);
       initTileHP();
       for (const p of d.partialHP)
         if (Array.isArray(p) && tileHP[p[0]] && isNum(p[2]) && tileMaxHP[p[0]][p[1]] > 0)
@@ -2243,6 +2454,15 @@
         upgradeTreeLevels[t.key] = TREE_NODE_BY_ID[t.key].maxLevel;
     activeToolKey = typeof d.activeToolKey === 'string' ? d.activeToolKey : null;
     Object.assign(toolState, d.toolState);
+    restoreBombs(d);
+    if (Array.isArray(d.artifacts))
+      artifacts = d.artifacts.filter((id, i, a) => typeof id === 'string' && ARTIFACT_BY_ID[id] && a.indexOf(id) === i);
+    if (isPlainObject(d.artifactState)) {
+      const as = d.artifactState;
+      artifactState.aegis = isNum(as.aegis) ? Math.max(0, Math.min(aegisMax(), as.aegis)) : 0;
+      artifactState.charmDawns = isNum(as.charmDawns) ? Math.max(0, Math.floor(as.charmDawns)) : 0;
+      artifactState.phoenixUsed = !!as.phoenixUsed;
+    }
 
     currentView = d.view === VIEW_UNDERGROUND && !d.mineOutdated ? VIEW_UNDERGROUND : VIEW_SURFACE;
     if (isPlainObject(d.weather) && WEATHER[d.weather.kind] && isNum(d.weather.timeLeft))
@@ -2265,6 +2485,50 @@
       startCinematic('arrive');
     }
     updateWindowTitle();
+  }
+
+  // Secret chests of the site; saves from before chests get theirs hidden now
+  function restoreChests(d) {
+    if (!Array.isArray(d.chests)) {
+      placeSecretChests(makeRng(chestSeed()));
+      return;
+    }
+    chests = d.chests
+      .filter(ch => isPlainObject(ch) && isNum(ch.r) && isNum(ch.c) && ch.r >= 0 && ch.r < GRID_ROWS && ch.c >= 0 && ch.c < GRID_COLS)
+      .slice(0, CHEST_BANDS.length)
+      .map((ch, i) => ({
+        r: ch.r | 0, c: ch.c | 0, band: isNum(ch.band) ? Math.max(0, Math.min(2, ch.band | 0)) : i,
+        kind: MINIGAME_KINDS.includes(ch.kind) ? ch.kind : MINIGAME_KINDS[i % 3],
+        revealed: !!ch.revealed, opened: !!ch.opened, cooldown: isNum(ch.cooldown) ? Math.max(0, Math.min(CHEST_RETRY, ch.cooldown)) : 0
+      }));
+    // The grid and the list agree: unopened chests sit in the rock
+    for (const ch of chests)
+      if (!ch.opened)
+        undergroundGrid[ch.r][ch.c] = TILE_CHEST;
+    for (let r = 0; r < GRID_ROWS; ++r)
+      for (let c = 0; c < GRID_COLS; ++c)
+        if (undergroundGrid[r][c] === TILE_CHEST && !chestAt(r, c))
+          undergroundGrid[r][c] = TILE_DIRT;
+  }
+
+  // Bomb stock and the bombs lying in the mine; blast charges of older saves become bombs
+  function restoreBombs(d) {
+    const b = d.bombs;
+    if (isPlainObject(b)) {
+      if (Array.isArray(b.inv))
+        bombInv = BOMB_TIERS.map((_, i) => Math.max(0, Math.min(99, Math.floor(Number(b.inv[i]) || 0))));
+      if (isNum(b.sel))
+        bombSel = Math.max(0, Math.min(BOMB_TIERS.length - 1, Math.floor(b.sel)));
+      if (Array.isArray(b.placed) && !d.mineOutdated)
+        placedBombs = b.placed
+          .filter(x => isPlainObject(x) && isNum(x.r) && isNum(x.c) && isNum(x.tier) && isNum(x.fuse) && x.r >= 0 && x.r < GRID_ROWS && x.c >= 0 && x.c < GRID_COLS && BOMB_TIERS[x.tier | 0])
+          .slice(0, 40)
+          .map(x => ({ r: x.r | 0, c: x.c | 0, tier: x.tier | 0, fuse: Math.max(0.3, Math.min(10, x.fuse)), maxFuse: isNum(x.maxFuse) ? Math.max(1, x.maxFuse) : BOMB_BASE_FUSE, sticky: !!x.sticky, fly: null }));
+    }
+    const charges = primaryGadgetState.blastCharges;
+    if (isNum(charges) && charges > 0)
+      bombInv[1] += Math.min(99, Math.floor(charges));
+    delete primaryGadgetState.blastCharges;
   }
 
   function continueRun() {
@@ -2509,6 +2773,7 @@
     }
 
     placeRelocationCore(rand);
+    placeSecretChests(makeRng(chestSeed()));
     initTileHP();
   }
 
@@ -2639,6 +2904,30 @@
     primaryGadgetState = {};
     foundGadgets = [];
 
+    // Combat skill
+    combo = 0;
+    comboTimer = 0;
+    bestCombo = 0;
+    charge = null;
+    parryT = parryCd = hitstop = screenFlash = 0;
+    reflected = [];
+
+    // Artifacts
+    artifacts = [];
+    artifactState = newArtifactState();
+    stormArcs = [];
+
+    // Bombs
+    bombInv = [0, 0, 0, 0, 0];
+    bombSel = 0;
+    placedBombs = [];
+    surfaceBombs = [];
+    pendingBlasts = [];
+    blasts = [];
+    bombThrowMode = false;
+    keeperStun = 0;
+    stateBeforeCraft = null;
+
     // Drones are rebuilt from the upgrades
     drones = [];
     gunDrones = [];
@@ -2734,6 +3023,7 @@
     if (transitionTarget === VIEW_SURFACE && carried > 0) {
       SZ.GameAudio.play('coin');
       floatingText.add(CANVAS_W / 2, CANVAS_H / 2, `+${carried} resources deposited`, { color: '#0f0', font: 'bold 28px sans-serif' });
+      depositScore(carried, CANVAS_W / 2, CANVAS_H / 2 + 40);
       carried = 0;
     }
   }
@@ -2803,6 +3093,8 @@
 
     // Dome pulse
     domePulsePhase += dt * 2.0;
+
+    screenFlash = Math.max(0, screenFlash - dt * 3);
 
     // Dome hit flash decay
     if (domeHitFlash > 0)
@@ -2881,7 +3173,7 @@
         const spkC1 = Math.min(GRID_COLS, Math.ceil((cameraX + CANVAS_W) / TILE_SIZE));
         for (let r = spkR0; r < spkR1; ++r)
           for (let c = spkC0; c < spkC1; ++c)
-            if (undergroundGrid[r][c] !== TILE_EMPTY && undergroundGrid[r][c] !== TILE_DIRT && undergroundGrid[r][c] !== TILE_GADGET && undergroundGrid[r][c] !== TILE_CORE)
+            if (undergroundGrid[r][c] !== TILE_EMPTY && undergroundGrid[r][c] !== TILE_DIRT && undergroundGrid[r][c] !== TILE_GADGET && undergroundGrid[r][c] !== TILE_CORE && undergroundGrid[r][c] !== TILE_CHEST)
               candidates.push({ r, c });
         if (candidates.length > 0) {
           const pick = candidates[Math.floor(Math.random() * candidates.length)];
@@ -2962,6 +3254,8 @@
   function applyDamageToEnemy(e, amount) {
     if (e.hidden) return;
     enemyHitFlash.set(e, 0.8);
+    if (e.aura === 'ward')
+      amount *= 0.75;
     if (e.shield > 0) {
       const absorbed = Math.min(e.shield, amount);
       e.shield -= absorbed;
@@ -3119,12 +3413,16 @@
     const phase = MOON_PHASES[moonPhaseIndex(world.day)];
     const strength = moonStrength(world.day);
     spawnWave(false);
-    announce(`Night ${world.day}`, phase + (strength > 1.1 ? ' - the swarm is restless' : (strength < 0.9 ? ' - a quiet night' : '')), '#9ab8ff', 'moon');
+    const threat = Math.max(1, threatLevel());
+    let sub = phase + (strength > 1.1 ? ' - the swarm is restless' : (strength < 0.9 ? ' - a quiet night' : ''));
+    sub += ` · threat ${threat}` + (lastNightElites ? ` · ${lastNightElites} elite${lastNightElites > 1 ? 's' : ''}` : '');
+    announce(`Night ${world.day}`, sub, '#9ab8ff', 'moon');
     SZ.GameAudio.tone(196, 0.5, 'triangle', 0.12);
     SZ.GameAudio.tone(147, 0.8, 'triangle', 0.12, 0.35);
   }
 
   function startDay() {
+    artifactDawn();
     if ((world.day - 1) % SEASON_DAYS === 0)
       seasonBegins();
     else
@@ -3722,9 +4020,10 @@
     }
     // Blizzard fog: the far field disappears in white
     if (k === 'blizzard') {
+      const fog = I * (hasArtifact('owlSight') ? 0.35 : 1);
       const g = ctx.createLinearGradient(0, 0, 0, DOME_Y);
-      g.addColorStop(0, `rgba(225,235,248,${0.55 * I})`);
-      g.addColorStop(1, `rgba(225,235,248,${0.3 * I})`);
+      g.addColorStop(0, `rgba(225,235,248,${0.55 * fog})`);
+      g.addColorStop(1, `rgba(225,235,248,${0.3 * fog})`);
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     }
@@ -3932,6 +4231,18 @@
     meteorOre = [];
     meteors = [];
     bolts = [];
+    placedBombs = [];
+    surfaceBombs = [];
+    pendingBlasts = [];
+    blasts = [];
+    bombThrowMode = false;
+    keeperStun = 0;
+    artifactState.phoenixUsed = false;
+    artifactState.timeSlow = 0;
+    stormArcs = [];
+    reflected = [];
+    combo = 0;
+    charge = null;
     snowCover = 0;
     weather = { kind: 'clear', intensity: 1, timeLeft: 50 };
     waveActive = false;
@@ -4304,6 +4615,15 @@
     autumn: { burrower: 1.8, mender: 1.3, walker: 1.2 },
     winter: { crawler: 2.2, mender: 1.5, swarmer: 0.3, flyer: 0.6 }
   };
+  // Elite auras strengthen the monsters around an elite
+  const ELITE_AURAS = {
+    haste: { name: 'Haste aura', color: '#5ae0ff', desc: 'Monsters nearby move 30% faster' },
+    ward: { name: 'Ward aura', color: '#ffd75a', desc: 'Monsters nearby take 25% less damage' },
+    fury: { name: 'Fury aura', color: '#ff5a5a', desc: 'Monsters nearby hit 30% harder' }
+  };
+  const ELITE_FROM = 7;              // threat at which elites appear
+  const ENRAGE_FROM = 5;             // threat at which wounded monsters enrage
+  const ELITE_RANGED_FROM = 12;      // threat at which elites also spit acid
   let enemyShots = [];               // acid globs: { x0, y0, tx, ty, t, dur, dmg }
   let shockwaves = [];               // behemoth stomps: { x, r, hit }
 
@@ -4317,6 +4637,13 @@
     return siteNights + site.index * THREAT_PER_SITE;
   }
 
+  let lastNightElites = 0;           // elites in tonight's main attack (for the night banner)
+
+  // Colour of the threat chip: calm green to deadly violet
+  function threatColor(t) {
+    return t < 5 ? '#7ae07a' : (t < 10 ? '#ffc048' : (t < 16 ? '#ff6a5a' : '#d070ff'));
+  }
+
   function enemyType(e) {
     return ENEMY_TYPES[e.type] || ENEMY_TYPES.walker;
   }
@@ -4326,12 +4653,14 @@
     const season = currentSeason();
     const size = (T.size[0] + Math.random() * (T.size[1] - T.size[0])) * (T.boss ? 1 : season.size);
     const hp = base.hp * T.hp * (0.88 + Math.random() * 0.24);
+    // Plates grow thicker with the threat; later every bigger monster carries some
+    const armorBonus = base.threat >= 9 && key !== 'swarmer' ? Math.floor((base.threat - 5) / 4) : 0;
     const e = {
       type: key, x: 0, y: 0, hp, maxHP: hp,
       speed: base.speed * T.speed * (0.9 + Math.random() * 0.2),
       damage: Math.max(1, Math.round(base.damage * T.damage)),
       attackTimer: 0.4 + Math.random() * 0.5, stunTimer: 0, size,
-      armor: T.armor ? Math.round(T.armor * (1 + base.threat * 0.06)) : 0,
+      armor: (T.armor ? Math.round(T.armor * (1 + base.threat * 0.06)) : 0) + armorBonus,
       shield: 0, maxShield: 0, boss: !!T.boss, phase: 'approach', t: 0,
       wobblePhase: Math.random() * TWO_PI, legPhase: Math.random() * TWO_PI, wingPhase: Math.random() * TWO_PI,
       eyeBlinkTimer: 2 + Math.random() * 3, eyeBlinking: false
@@ -4365,6 +4694,20 @@
     return e;
   }
 
+  // Turn a monster into an elite: tougher, bigger, with an aura for its pack
+  function makeElite(e, threat) {
+    const auras = Object.keys(ELITE_AURAS);
+    e.elite = auras[Math.floor(Math.random() * auras.length)];
+    e.hp = e.maxHP = e.maxHP * 2.2;
+    e.size *= 1.25;
+    e.damage = Math.ceil(e.damage * 1.35);
+    e.speed *= 1.08;
+    if (e.y < DOME_Y && enemyType(e).move === 'ground')
+      e.y = groundY(e.size);
+    if (threat >= ELITE_RANGED_FROM && (enemyType(e).move === 'ground' || enemyType(e).move === 'air'))
+      e.spit = 2 + Math.random() * 2;
+  }
+
   // The main attack comes at nightfall; reinforcements (smaller, no boss) later in the night
   function spawnWave(reinforcement) {
     if (!reinforcement) {
@@ -4381,14 +4724,17 @@
 
     const threat = Math.max(1, threatLevel());
     const season = currentSeason();
+    // Monsters grow faster than linearly with the threat, and every site adds a further edge
+    const tk = threat - 1;
     const base = {
       threat,
-      hp: (8 + (threat - 1) * 3) * season.hp * (1 + 0.3 * site.index),
-      damage: (2 + (threat - 1) * 0.8) * season.damage * (1 + 0.2 * site.index),
-      speed: (15 + Math.min(25, threat * 2)) * season.speed
+      hp: (8 + tk * 3.3 + 0.07 * tk * tk) * season.hp * (1 + 0.38 * site.index),
+      damage: (2 + tk * 0.8) * season.damage * (1 + 0.22 * site.index),
+      speed: (15 + Math.min(34, threat * 2.1)) * season.speed
     };
     // The night's budget: grows with the threat, the moon and the season
-    let budget = Math.min(24, 2 + threat * 0.8) * moonStrength(world.day) * season.count * (reinforcement ? 0.45 : 1);
+    let budget = Math.min(40, 2 + threat * 0.85 + 0.012 * threat * threat) * moonStrength(world.day) * season.count * (reinforcement ? 0.5 : 1);
+    const firstNew = enemies.length;
     const bias = SEASON_ENEMY_BIAS[season.key] || {};
     const wb = { blizzard: { burrower: 1.6, flyer: 0.5, diver: 0.5 }, storm: { flyer: 0.6, diver: 0.6 } }[weather.kind] || {};
     const pool = Object.keys(ENEMY_TYPES).filter(k => !ENEMY_TYPES[k].boss && ENEMY_TYPES[k].level <= threat);
@@ -4420,6 +4766,26 @@
       }
     }
 
+    // Elites lead the pack once the threat is high enough
+    if (threat >= ELITE_FROM) {
+      const chance = Math.min(0.32, 0.05 + (threat - ELITE_FROM) * 0.02);
+      let left = 1 + Math.floor((threat - ELITE_FROM) / 4) - (reinforcement ? 1 : 0);
+      const fresh = enemies.slice(firstNew).filter(e => !e.boss && e.type !== 'swarmer');
+      // At least one elite on the main attack
+      if (!reinforcement && fresh.length && left > 0) {
+        makeElite(fresh.splice(Math.floor(Math.random() * fresh.length), 1)[0], threat);
+        --left;
+      }
+      for (const e of fresh)
+        if (left > 0 && Math.random() < chance) {
+          makeElite(e, threat);
+          --left;
+        }
+    }
+    const elites = enemies.slice(firstNew).filter(e => e.elite).length;
+    if (!reinforcement)
+      lastNightElites = elites;
+
     // A boss every fifth night once the threat is high enough
     if (!reinforcement && siteNights % 5 === 0 && threat >= 10) {
       const bossKey = threat >= 15 && Math.floor(waveNumber / 5) % 2 === 0 ? 'queen' : 'behemoth';
@@ -4431,7 +4797,7 @@
         SZ.GameAudio.sweep(300, 1400, 0.7, 'sawtooth', 0.06, 0.2);
     }
     if (reinforcement) {
-      announce('More monsters!', 'A second swarm crawls out of the dark', '#ff8a6a', 'swords');
+      announce('More monsters!', elites ? `A second swarm crawls out of the dark, led by ${elites} elite${elites > 1 ? 's' : ''}` : 'A second swarm crawls out of the dark', '#ff8a6a', 'swords');
       SZ.GameAudio.play('hurt', { pitch: 0.6, volume: 0.6 });
     }
     updateWindowTitle();
@@ -4440,7 +4806,7 @@
   // Kill effects, score and special deaths (splitters burst into swarmers)
   function killEnemy(e, i) {
     const T = enemyType(e);
-    const pts = Math.round((10 + waveNumber * 5) * T.score);
+    const pts = Math.round((10 + waveNumber * 5) * T.score * (e.elite ? 3 : 1));
     score += pts;
     enemies.splice(i, 1);
     const pitch = { swarmer: 1.6, flyer: 1.2, diver: 1.3, crawler: 0.7, burrower: 0.8, spitter: 1, splitter: 0.9, mender: 1.1, behemoth: 0.5, queen: 0.6 }[e.type] || 1;
@@ -4456,9 +4822,11 @@
         vx: (Math.random() - 0.5) * 4, vy: -Math.random() * 3 - 1, color: T.color,
         life: 0.5 + Math.random() * 0.3, size: 3 + Math.random() * 3, gravity: 0.12, shape: 'square'
       });
-    if (e.boss)
-      screenShake.trigger(12, 400);
-    floatingText.add(e.x, e.y - 30, `+${pts}`, { color: '#ff0', font: 'bold 24px sans-serif' });
+    if (e.boss || e.elite)
+      screenShake.trigger(e.boss ? 12 : 7, e.boss ? 400 : 250);
+    if (e.elite)
+      particles.sparkle(e.x, e.y, 16, { color: ELITE_AURAS[e.elite].color, speed: 3 });
+    floatingText.add(e.x, e.y - 30, e.elite ? `Elite +${pts}` : `+${pts}`, { color: e.elite ? ELITE_AURAS[e.elite].color : '#ff0', font: 'bold 24px sans-serif' });
     if (e.type === 'splitter') {
       const base = { threat: threatLevel(), hp: e.maxHP / ENEMY_TYPES.splitter.hp * 0.9, damage: e.damage / ENEMY_TYPES.splitter.damage, speed: e.speed / ENEMY_TYPES.splitter.speed };
       for (let k = 0; k < 3; ++k) {
@@ -4476,7 +4844,7 @@
     e.attackTimer = T.attack;
     const lunge = Math.atan2(e.y - DOME_Y, e.x - DOME_X);
     e.lunge = 1;
-    if (damageDome(e.damage, DOME_X + Math.cos(lunge) * DOME_RADIUS, DOME_Y + Math.sin(lunge) * DOME_RADIUS, '', e))
+    if (damageDome(e.aura === 'fury' ? Math.ceil(e.damage * 1.3) : e.damage, DOME_X + Math.cos(lunge) * DOME_RADIUS, DOME_Y + Math.sin(lunge) * DOME_RADIUS, '', e))
       return true;
     particles.burst(e.x, e.y, 8, { color: T.color, speed: 2.5, life: 0.4 });
     if (e.type === 'crawler' || e.boss)
@@ -4486,14 +4854,54 @@
     return false;
   }
 
+  // Elite auras reach the monsters around each elite (refreshed every frame)
+  function applyEliteAuras() {
+    for (const e of enemies)
+      e.aura = null;
+    for (const el of enemies) {
+      if (!el.elite || el.hidden) continue;
+      for (const o of enemies)
+        if (!o.hidden && !o.aura && Math.abs(o.x - el.x) < 160 && Math.abs(o.y - el.y) < 160)
+          o.aura = el.elite;
+    }
+    // An elite always carries its own aura
+    for (const e of enemies)
+      if (e.elite)
+        e.aura = e.elite;
+  }
+
   function updateEnemies(dt) {
     const repel = (primaryGadget === 'repellent' && primaryGadgetState.active) ? 0.4 : 1.0;
     const slowGround = weatherSlow();
     const slowAir = weather.kind === 'blizzard' ? 1 - 0.3 * weather.intensity : 1;
+    const threat = threatLevel();
+    applyEliteAuras();
     for (let i = enemies.length - 1; i >= 0; --i) {
       const e = enemies[i];
       const T = enemyType(e);
       e.t += dt;
+      // Wounded monsters fly into a rage once the threat is high enough
+      if (!e.enraged && !e.boss && threat >= ENRAGE_FROM && e.hp > 0 && e.hp < e.maxHP * 0.35 && !e.hidden) {
+        e.enraged = true;
+        e.speed *= 1.45;
+        e.damage = Math.ceil(e.damage * 1.2);
+        if (currentView === VIEW_SURFACE) {
+          floatingText.add(e.x, e.y - (e.size || 20) - 34, 'ENRAGED', { color: '#ff5a3a', font: 'bold 18px sans-serif' });
+          particles.burst(e.x, e.y, 10, { color: '#ff5a3a', speed: 2.5, life: 0.4 });
+        }
+      }
+      // Elites of high threats spit acid on the way in
+      if (e.spit !== undefined && !e.hidden && e.stunTimer <= 0) {
+        e.spit -= dt;
+        const far = Math.hypot(DOME_X - e.x, DOME_Y - e.y);
+        if (e.spit <= 0 && far < 620 && far > DOME_RADIUS + 60) {
+          e.spit = 4.5;
+          const tx = DOME_X + (Math.random() - 0.5) * 90;
+          enemyShots.push({ x0: e.x, y0: e.y - e.size * 0.5, tx, ty: DOME_Y - Math.sqrt(Math.max(0, DOME_RADIUS * DOME_RADIUS - (tx - DOME_X) * (tx - DOME_X))), t: 0, dur: 1.2, dmg: Math.ceil(e.damage * 0.7), src: e });
+          if (currentView === VIEW_SURFACE)
+            SZ.GameAudio.play('drop', { pitch: 0.6, volume: 0.5 });
+        }
+      }
       e.lunge = Math.max(0, (e.lunge || 0) - dt * 4);
       if (e.pop !== undefined && e.pop < 1)
         e.pop = Math.min(1, e.pop + dt * 2.4);
@@ -4501,7 +4909,7 @@
       if (isStunned)
         e.stunTimer = Math.max(0, e.stunTimer - dt);
       const air = T.move === 'air' || T.move === 'dive' || T.move === 'queen';
-      const spd = e.speed * repel * (air ? slowAir : slowGround);
+      const spd = e.speed * repel * (air ? slowAir : slowGround) * (e.aura === 'haste' ? 1.3 : 1);
       const dx = DOME_X - e.x, dy = DOME_Y - e.y;
       const dist = Math.hypot(dx, dy) || 1;
       const reach = DOME_RADIUS + (air ? 10 : e.size * 0.45);
@@ -4557,7 +4965,7 @@
               if (e.attackTimer <= 0) {
                 e.attackTimer = T.attack;
                 const tx = DOME_X + (Math.random() - 0.5) * 90;
-                enemyShots.push({ x0: e.x + Math.sign(dx) * e.size * 0.5, y0: e.y - e.size * 0.5, tx, ty: DOME_Y - Math.sqrt(Math.max(0, DOME_RADIUS * DOME_RADIUS - (tx - DOME_X) * (tx - DOME_X))), t: 0, dur: 1.1, dmg: e.damage });
+                enemyShots.push({ x0: e.x + Math.sign(dx) * e.size * 0.5, y0: e.y - e.size * 0.5, tx, ty: DOME_Y - Math.sqrt(Math.max(0, DOME_RADIUS * DOME_RADIUS - (tx - DOME_X) * (tx - DOME_X))), t: 0, dur: 1.1, dmg: e.damage, src: e });
                 if (currentView === VIEW_SURFACE)
                   SZ.GameAudio.play('drop', { pitch: 0.7, volume: 0.6 });
               }
@@ -4599,7 +5007,14 @@
               if (vd <= step + 6) {
                 e.x = e.diveX;
                 e.y = e.diveY;
-                if (damageDome(e.damage, e.x, e.y, '', e))
+                const pc = parryCheck();
+                if (pc) {
+                  // Parried: the diver bounces off stunned and hurt
+                  parryFeedback(e.x, e.y, pc === 2);
+                  applyDamageToEnemy(e, Math.round(weaponDamage * (pc === 2 ? 4 : 3)));
+                  e.stunTimer = 2;
+                  e.y -= 30;
+                } else if (damageDome(e.damage, e.x, e.y, '', e))
                   return;
                 SZ.GameAudio.play('hit', { pitch: 1.2 });
                 particles.burst(e.x, e.y, 12, { color: T.color, speed: 3, life: 0.4 });
@@ -4624,6 +5039,21 @@
             e.y += qy / qd * qstep;
             if (angry && dist <= reach + 30 && enemyMelee(e, T, dt))
               return;
+            // Venom lance: aims for a second (the tell), then strikes - parry it back
+            e.lance = (e.lance === undefined ? 4 : e.lance) - dt;
+            if (e.lance <= 1.1 && !e.lanceAim) {
+              const ax = DOME_X + (Math.random() - 0.5) * 120;
+              e.lanceAim = { tx: ax, ty: DOME_Y - Math.sqrt(Math.max(0, DOME_RADIUS * DOME_RADIUS - (ax - DOME_X) * (ax - DOME_X))) };
+              if (currentView === VIEW_SURFACE)
+                SZ.GameAudio.sweep(400, 1600, 1.0, 'sine', 0.05);
+            }
+            if (e.lance <= 0 && e.lanceAim) {
+              e.lance = 6.5;
+              enemyShots.push({ kind: 'lance', x0: e.x, y0: e.y + e.size * 0.3, tx: e.lanceAim.tx, ty: e.lanceAim.ty, t: 0, dur: 0.35, dmg: Math.ceil(e.damage * 1.6), src: e });
+              e.lanceAim = null;
+              if (currentView === VIEW_SURFACE)
+                SZ.GameAudio.play('zap', { pitch: 0.5 });
+            }
             e.spawnTimer = (e.spawnTimer === undefined ? 3 : e.spawnTimer) - dt;
             if (e.spawnTimer <= 0 && enemies.length < 60) {
               e.spawnTimer = 5.5;
@@ -4666,11 +5096,17 @@
       s.t += dt / s.dur;
       if (s.t >= 1) {
         enemyShots.splice(i, 1);
+        const pc = parryCheck();
+        if (pc) {
+          parryFeedback(s.tx, s.ty, pc === 2);
+          reflectShot(s.tx, s.ty, s.src, Math.round((s.dmg * 3 + weaponDamage) * (pc === 2 ? 1.5 : 1)), s.kind || 'acid');
+          continue;
+        }
         if (currentView === VIEW_SURFACE) {
-          particles.burst(s.tx, s.ty, 14, { color: '#8aff50', speed: 2.5, life: 0.5, gravity: 0.1 });
+          particles.burst(s.tx, s.ty, 14, { color: s.kind === 'lance' ? '#ff80e0' : '#8aff50', speed: 2.5, life: 0.5, gravity: 0.1 });
           SZ.GameAudio.play('bounce', { pitch: 0.5, volume: 0.6 });
         }
-        if (damageDome(s.dmg, s.tx, s.ty, 'Acid'))
+        if (damageDome(s.dmg, s.tx, s.ty, s.kind === 'lance' ? 'Venom lance' : 'Acid'))
           return;
       }
     }
@@ -4680,7 +5116,10 @@
       w.r += 420 * dt;
       if (!w.hit && w.r >= Math.abs(w.from - DOME_X) - DOME_RADIUS) {
         w.hit = true;
-        if (damageDome(w.dmg, DOME_X + Math.sign(w.from - DOME_X) * DOME_RADIUS, DOME_Y - 10, 'Shockwave'))
+        const pc = parryCheck();
+        if (pc)
+          parryFeedback(DOME_X + Math.sign(w.from - DOME_X) * DOME_RADIUS, DOME_Y - 10, pc === 2);
+        else if (damageDome(w.dmg, DOME_X + Math.sign(w.from - DOME_X) * DOME_RADIUS, DOME_Y - 10, 'Shockwave'))
           return;
       }
       if (w.r > 700)
@@ -4722,6 +5161,28 @@
     if (unlockedTools.reinforcedDome) effectiveDmg = Math.ceil(effectiveDmg * 0.75);
     if (unlockedTools.energyShield) effectiveDmg = Math.ceil(effectiveDmg * 0.85);
     if (unlockedTools.fortifiedBase) effectiveDmg = Math.ceil(effectiveDmg * 0.9);
+    // Chronoglass: a heavy hit slows the monsters down
+    if (hasArtifact('chronoGlass') && effectiveDmg >= 5 && artifactState.chronoCd <= 0) {
+      artifactState.timeSlow = 4;
+      artifactState.chronoCd = 20;
+      announce('Chronoglass', 'Time slows to a crawl for the monsters', '#a0c0ff', 'artChrono');
+      SZ.GameAudio.sweep(900, 200, 0.8, 'triangle', 0.08);
+    }
+    // Aegis Heart soaks up the hit first
+    if (hasArtifact('aegisHeart')) {
+      artifactState.aegisDelay = 4;
+      const soak = Math.min(artifactState.aegis, effectiveDmg);
+      if (soak > 0) {
+        artifactState.aegis -= soak;
+        effectiveDmg -= soak;
+        spawnShieldImpact(ex, ey);
+        particles.burst(ex, ey, 8, { color: '#9ae0ff', speed: 2.5, life: 0.35 });
+        if (effectiveDmg <= 0) {
+          SZ.GameAudio.play('hit', { pitch: 1.6, volume: 0.5 });
+          return false;
+        }
+      }
+    }
     // Damage Reflect sends part of a melee hit back
     if (attacker && unlockedTools.damageReflect && enemies.includes(attacker))
       applyDamageToEnemy(attacker, Math.ceil(effectiveDmg * 0.15 * getEffectiveLevel('damageReflect')));
@@ -4730,6 +5191,16 @@
       domeHP = 1;
       lastStandUsed = true;
       announce('Last Stand!', 'The dome refuses to break - once per night', '#ff6a6a', 'heart');
+    }
+    // Phoenix Feather: rise again once per site
+    if (domeHP <= 0 && hasArtifact('phoenixFeather') && !artifactState.phoenixUsed) {
+      artifactState.phoenixUsed = true;
+      domeHP = Math.ceil(maxDomeHP * 0.5);
+      announce('Phoenix Feather!', 'The dome rises from the flames - once per site', '#ff8a40', 'artPhoenix');
+      SZ.GameAudio.play('powerup', { pitch: 0.6 });
+      particles.burst(DOME_X, DOME_Y - 40, 60, { color: '#ff9a40', speed: 5, life: 0.9 });
+      particles.burst(DOME_X, DOME_Y - 40, 30, { color: '#ffe080', speed: 3, life: 0.7 });
+      screenShake.trigger(12, 400);
     }
     if (unlockedTools.emergencyShield && domeHP > 0 && domeHP < maxDomeHP * 0.15 && emergencyCooldown <= 0) {
       domeInvulnerable = 3;
@@ -4782,11 +5253,365 @@
   }
 
   /* ======================================================================
-     WEAPON SYSTEM
+     WEAPON SYSTEM -- aimed shots, weak points, charged shots, combos, parry
      ====================================================================== */
 
+  // Weak point of each monster: offset (towards the dome, down) and radius, in body sizes
+  const WEAK_POINTS = {
+    walker: [0.35, -0.35, 0.34], swarmer: [0.3, -0.1, 0.42], flyer: [0, -0.2, 0.32], crawler: [0.6, -0.1, 0.26],
+    diver: [0.2, -0.1, 0.34], burrower: [0.3, -0.45, 0.3], spitter: [-0.3, -0.55, 0.3], splitter: [0, 0, 0.32],
+    mender: [0, -0.5, 0.3], behemoth: [0.45, -0.55, 0.22], queen: [0, -0.35, 0.26]
+  };
+  const COMBO_TIMEOUT = 3;           // seconds without a hit before the combo ends
+  const CHARGE_TIME = 1.0;           // seconds to a full charge
+  const PERFECT_FROM = 0.82;         // share of the charge where the perfect window opens
+  const CHARGE_OVERHEAT = 1.2;       // held past this the charge fizzles and restarts
+  const PARRY_WINDOW = 0.3;          // seconds the parry shield stays up
+  const PARRY_COOLDOWN = 0.9;
+  let combo = 0, comboTimer = 0, bestCombo = 0;
+  let charge = null;                 // { t } while the fire button is held
+  let parryT = 0, parryCd = 0;       // parry shield time left and cooldown
+  let hitstop = 0;                   // brief freeze of the battle after a big hit
+  let screenFlash = 0, screenFlashColor = '255,255,255';
+  let reflected = [];                // parried globs and lances flying back: { x0, y0, target, tx, ty, t, dur, dmg, kind }
+  let lastShotAt = -10;              // animTime of the last turret shot (monster tooltips wait while shooting)
+
+  function weakPoint(e) {
+    const [fx, fy, fr] = WEAK_POINTS[e.type] || [0, -0.3, 0.3];
+    const face = e.x > DOME_X ? -1 : 1;
+    const sz = e.size || 16;
+    const bob = e.type === 'flyer' ? Math.sin(e.wobblePhase || 0) * 8 : 0;
+    return { x: e.x + fx * face * sz, y: e.y + fy * sz + bob, r: Math.max(7, fr * sz) };
+  }
+
+  function comboMult() {
+    return 1 + Math.min(combo, 20) * 0.03;
+  }
+
+  function comboHit(x, y) {
+    ++combo;
+    comboTimer = COMBO_TIMEOUT;
+    bestCombo = Math.max(bestCombo, combo);
+    if (combo >= 5 && combo % 5 === 0) {
+      floatingText.add(x, y - 70, `COMBO x${combo}!`, { color: '#ffb0ff', font: 'bold 26px sans-serif' });
+      SZ.GameAudio.play('powerup', { pitch: 1 + Math.min(combo, 30) * 0.02, volume: 0.5 });
+    }
+  }
+
+  function comboBreak(x, y) {
+    if (combo >= 3)
+      floatingText.add(x, y, 'Combo lost', { color: '#9aa2b8', font: 'bold 18px sans-serif' });
+    combo = 0;
+  }
+
+  function flashScreen(alpha, rgb) {
+    screenFlash = Math.max(screenFlash, alpha);
+    screenFlashColor = rgb || '255,255,255';
+  }
+
+  // How well a shot was aimed at its target: weak point, body or a graze
+  function classifyHit(target, bx, by) {
+    const wp = weakPoint(target);
+    let ax, ay;
+    if (mouseAimX >= 0 && mouseAimY >= 0 && mouseAimY < DOME_Y + 45) {
+      ax = mouseAimX;
+      ay = mouseAimY;
+    } else {
+      // Keyboard aiming: the point of the aim ray closest to the weak point
+      const vx = Math.cos(turretAngle), vy = Math.sin(turretAngle);
+      const proj = (wp.x - bx) * vx + (wp.y - by) * vy;
+      ax = bx + vx * proj;
+      ay = by + vy * proj;
+    }
+    if (Math.hypot(ax - wp.x, ay - wp.y) <= wp.r + 5) return 'weak';
+    if (Math.hypot(ax - target.x, ay - target.y) <= (target.size || 16) + 8) return 'body';
+    return 'graze';
+  }
+
+  // One turret shot; charged = null or { mult, perfect }
+  function fireTurret(charged) {
+    lastShotAt = animTime;
+    if (tooltip.enemy)
+      clearTooltip();
+    const nozzleR = DOME_RADIUS + 16;
+    const turretBaseX = DOME_X + Math.cos(turretAngle) * nozzleR;
+    const turretBaseY = DOME_Y + Math.sin(turretAngle) * nozzleR;
+    // Project a far-off aim point along the turret angle
+    const aimDist = 400;
+    const farX = turretBaseX + Math.cos(turretAngle) * aimDist;
+    const farY = turretBaseY + Math.sin(turretAngle) * aimDist;
+
+    // Find enemy closest to the projected aim line
+    let target = null;
+    const homing = !!unlockedTools.homingShots;
+    let bestDist = homing ? 220 * 220 : 80 * 80; // hit radius of 80px (220 with homing shots)
+    // A click right on a monster always aims at that monster
+    if (mouseAimX >= 0 && mouseAimY >= 0)
+      for (const e of enemies) {
+        if (e.hidden) continue;
+        const d = (e.x - mouseAimX) * (e.x - mouseAimX) + (e.y - mouseAimY) * (e.y - mouseAimY);
+        const r = (e.size || 16) + 10;
+        if (d < r * r && d < bestDist) {
+          bestDist = d;
+          target = e;
+        }
+      }
+    if (!target)
+      for (const e of enemies) {
+        if (e.hidden) continue;
+        const dx = e.x - farX;
+        const dy = e.y - farY;
+        const d = dx * dx + dy * dy;
+        if (d < bestDist) {
+          bestDist = d;
+          target = e;
+        }
+      }
+
+    // Also check enemies near the aim line (not just the far point)
+    if (!target) {
+      let bestLineDist = homing ? 140 : 60;
+      for (const e of enemies) {
+        if (e.hidden) continue;
+        // Distance from enemy to the aim ray
+        const ex = e.x - turretBaseX;
+        const ey = e.y - turretBaseY;
+        const projLen = ex * Math.cos(turretAngle) + ey * Math.sin(turretAngle);
+        if (projLen < -nozzleR) continue; // skip only enemies truly behind dome center
+        const perpDist = Math.abs(-ex * Math.sin(turretAngle) + ey * Math.cos(turretAngle));
+        if (perpDist < bestLineDist) {
+          bestLineDist = perpDist;
+          target = e;
+        }
+      }
+    }
+
+    const muzzleX = turretBaseX + Math.cos(turretAngle) * TURRET_BARREL_LENGTH;
+    const muzzleY = turretBaseY + Math.sin(turretAngle) * TURRET_BARREL_LENGTH;
+    const perfect = !!(charged && charged.perfect);
+    const kind = target ? classifyHit(target, turretBaseX, turretBaseY) : 'miss';
+    const wp = target && kind === 'weak' ? weakPoint(target) : null;
+    let tx = wp ? wp.x : (target ? target.x : farX);
+    let ty = wp ? wp.y : (target ? target.y : farY);
+    // A perfect shot pierces: its beam runs on through the target
+    if (perfect) {
+      const len = Math.hypot(tx - muzzleX, ty - muzzleY) || 1;
+      tx = muzzleX + (tx - muzzleX) / len * 1600;
+      ty = muzzleY + (ty - muzzleY) / len * 1600;
+    }
+    projectiles.push({ x: muzzleX, y: muzzleY, tx, ty, target, life: charged ? 0.4 : 0.3, maxLife: charged ? 0.4 : 0.3, charged: !!charged, perfect });
+
+    if (target) {
+      const ty0 = target.y - (target.size || 20) - 30;
+      if (kind === 'graze')
+        comboBreak(target.x, ty0 + 24);
+      else
+        comboHit(target.x, ty0);
+      const power = weaponDamage * comboMult();
+      let shot = power * (kind === 'weak' ? 2 : (kind === 'graze' ? 0.7 : 1)) * (charged ? charged.mult : 1);
+      // Lucky critical hits (Critical Hit node, Hunter's Eye)
+      const critChance = (unlockedTools.criticalHit ? 0.15 + 0.05 * (getEffectiveLevel('criticalHit') - 1) : 0) + (hasArtifact('hunterEye') ? 0.2 : 0);
+      const lucky = Math.random() < critChance;
+      if (lucky) shot *= 2.5;
+      shot = Math.round(shot);
+      applyDamageToEnemy(target, shot);
+      // Feedback
+      if (perfect) {
+        floatingText.add(target.x, ty0 - 26, `PERFECT! ${shot}`, { color: '#ffe060', font: 'bold 30px sans-serif' });
+        hitstop = 0.09;
+        flashScreen(0.35, '255,240,190');
+        screenShake.trigger(7, 180);
+        SZ.GameAudio.play('levelup', { pitch: 1.5, volume: 0.6 });
+        SZ.GameAudio.play('explode', { pitch: 1.6, volume: 0.4 });
+      } else if (charged) {
+        floatingText.add(target.x, ty0 - 26, `Charged ${shot}`, { color: '#ffc070', font: 'bold 22px sans-serif' });
+        SZ.GameAudio.play('shoot', { pitch: 0.7, volume: 0.6 });
+      }
+      if (kind === 'weak' || lucky) {
+        floatingText.add(target.x, ty0, kind === 'weak' && lucky ? 'DOUBLE CRIT!' : 'CRIT!', { color: kind === 'weak' ? '#ffd040' : '#ffa040', font: 'bold 26px sans-serif' });
+        particles.burst(wp ? wp.x : target.x, wp ? wp.y : target.y, 10, { color: '#ffe080', speed: 3, life: 0.3 });
+        SZ.GameAudio.play('hit', { pitch: 1.6, volume: 0.6 });
+        if (!perfect) {
+          hitstop = Math.max(hitstop, 0.04);
+          flashScreen(0.12);
+        }
+      } else if (kind === 'graze')
+        floatingText.add(target.x, ty0, 'graze', { color: '#9aa2b8', font: 'bold 16px sans-serif' });
+
+      // Perfect shots pierce: everything else on the line takes most of the damage
+      if (perfect) {
+        const lx = tx - muzzleX, ly = ty - muzzleY, ll = Math.hypot(lx, ly) || 1;
+        let n = 0;
+        for (const e of enemies) {
+          if (e === target || e.hidden || n >= 4) continue;
+          const ex = e.x - muzzleX, ey = e.y - muzzleY;
+          const along = (ex * lx + ey * ly) / ll;
+          const across = Math.abs(ex * ly - ey * lx) / ll;
+          if (along > 0 && across < (e.size || 16) + 14) {
+            applyDamageToEnemy(e, Math.round(shot * 0.8));
+            particles.burst(e.x, e.y, 8, { color: '#ffe080', speed: 2.5, life: 0.3 });
+            ++n;
+          }
+        }
+      }
+
+      // Multi-Shot: more beams at the monsters nearest to the target
+      if (unlockedTools.multiShot) {
+        const extra = enemies.filter(o => o !== target && !o.hidden)
+          .sort((a, b) => Math.hypot(a.x - target.x, a.y - target.y) - Math.hypot(b.x - target.x, b.y - target.y))
+          .slice(0, getEffectiveLevel('multiShot'));
+        for (const o of extra) {
+          applyDamageToEnemy(o, Math.ceil(power * 0.6));
+          projectiles.push({ x: muzzleX, y: muzzleY, tx: o.x, ty: o.y, target: o, life: 0.25, maxLife: 0.25 });
+        }
+      }
+
+      // Explosive Rounds: every hit bursts
+      if (unlockedTools.explosiveRounds) {
+        for (const ce of enemies)
+          if (ce !== target && !ce.hidden && Math.hypot(ce.x - target.x, ce.y - target.y) < 110)
+            applyDamageToEnemy(ce, Math.ceil(power * 0.4));
+        particles.burst(target.x, target.y, 12, { color: '#ffb040', speed: 3, life: 0.35 });
+      }
+
+      // Chain Lightning: arc damage to 2 nearby enemies (+1 per extra level)
+      if (unlockedTools.chainLightning) {
+        let chainCount = 0;
+        const arcs = 1 + getEffectiveLevel('chainLightning');
+        const chainDamage = Math.ceil(power * 0.4);
+        for (const ce of enemies) {
+          if (ce.hidden || ce === target) continue;
+          if (chainCount >= arcs) break;
+          const cdx = ce.x - target.x;
+          const cdy = ce.y - target.y;
+          if (cdx * cdx + cdy * cdy < 160 * 160) {
+            applyDamageToEnemy(ce, chainDamage);
+            particles.burst(ce.x, ce.y, 4, { color: '#4af', speed: 2, life: 0.2 });
+            // Arc visual
+            projectiles.push({ x: target.x, y: target.y, tx: ce.x, ty: ce.y, life: 0.15, maxLife: 0.15 });
+            ++chainCount;
+          }
+        }
+      }
+
+      // Freeze Ray: slow enemies near target
+      if (unlockedTools.freezeRay) {
+        for (const ce of enemies) {
+          if (ce.hidden) continue;
+          const cdx = ce.x - target.x;
+          const cdy = ce.y - target.y;
+          if (cdx * cdx + cdy * cdy < 120 * 120)
+            ce.stunTimer = Math.max(ce.stunTimer || 0, 0.8 + 0.3 * (getEffectiveLevel('freezeRay') - 1));
+        }
+      }
+
+      // Plasma Cannon: AoE damage around target
+      if (unlockedTools.plasmaCannon) {
+        const aoeDamage = Math.ceil(power * 0.6);
+        for (const ce of enemies) {
+          if (ce.hidden) continue;
+          if (ce === target) continue;
+          const cdx = ce.x - target.x;
+          const cdy = ce.y - target.y;
+          if (cdx * cdx + cdy * cdy < 140 * 140) {
+            applyDamageToEnemy(ce, aoeDamage);
+            particles.burst(ce.x, ce.y, 6, { color: '#f80', speed: 2, life: 0.3 });
+          }
+        }
+        particles.burst(target.x, target.y, 15, { color: '#f80', speed: 3, life: 0.4 });
+      }
+    } else
+      comboBreak(farX, farY);
+
+    particles.burst(muzzleX, muzzleY, charged ? 10 : 4, { color: charged ? '#ffe0a0' : '#faa', speed: charged ? 2.5 : 1.5, life: 0.15, size: 2 });
+    SZ.GameAudio.play('laser', { pitch: (charged ? 0.7 : 0.95) + Math.random() * 0.1, volume: 0.7 });
+  }
+
+  // Hold the fire button to charge; let go in the gold window for a perfect shot
+  function startCharge() {
+    if (state !== STATE_PLAYING || currentView !== VIEW_SURFACE) return;
+    charge = { t: 0 };
+  }
+
+  function releaseCharge() {
+    const c = charge;
+    charge = null;
+    if (!c || state !== STATE_PLAYING || currentView !== VIEW_SURFACE) return;
+    const k = c.t / CHARGE_TIME;
+    if (k < 0.35) return;           // a tap: the normal shot already went off
+    const perfect = k >= PERFECT_FROM && k <= 1;
+    fireCooldown = 1 / fireRate;
+    fireTurret({ mult: perfect ? 3 : (k >= 0.5 ? 1.8 : 1.25), perfect });
+  }
+
+  // Raise the parry shield for a moment: acid, lances, dives and shockwaves bounce off
+  function tryParry() {
+    if (state !== STATE_PLAYING || currentView !== VIEW_SURFACE || parryCd > 0) return;
+    parryT = PARRY_WINDOW;
+    parryCd = PARRY_COOLDOWN;
+    SZ.GameAudio.play('whoosh', { pitch: 1.8, volume: 0.5 });
+  }
+
+  // Did the shield catch this hit? Returns 0 (no), 1 (parry) or 2 (perfect: pressed just in time)
+  function parryCheck() {
+    if (parryT <= 0) return 0;
+    return parryT > PARRY_WINDOW - 0.12 ? 2 : 1;
+  }
+
+  function parryFeedback(x, y, perfect) {
+    floatingText.add(x, y - 40, perfect ? 'PERFECT PARRY!' : 'PARRY!', { color: perfect ? '#ffe060' : '#8ae8ff', font: 'bold 28px sans-serif' });
+    particles.burst(x, y, perfect ? 22 : 14, { color: perfect ? '#ffe080' : '#9ae8ff', speed: 3.5, life: 0.4 });
+    SZ.GameAudio.play('zap', { pitch: 1.7 });
+    SZ.GameAudio.play('select', { pitch: perfect ? 1.6 : 1.2, volume: 0.7 });
+    spawnShieldImpact(x, y);
+    hitstop = Math.max(hitstop, perfect ? 0.08 : 0.05);
+    flashScreen(perfect ? 0.25 : 0.12, perfect ? '255,240,190' : '180,230,255');
+    comboHit(x, y - 40);
+  }
+
+  // Send a parried shot back at whoever fired it (or the nearest monster)
+  function reflectShot(x, y, src, dmg, kind) {
+    let target = src && enemies.includes(src) && !src.hidden ? src : null;
+    if (!target) {
+      let best = 1e12;
+      for (const e of enemies) {
+        if (e.hidden) continue;
+        const d = (e.x - x) * (e.x - x) + (e.y - y) * (e.y - y);
+        if (d < best) {
+          best = d;
+          target = e;
+        }
+      }
+    }
+    if (target)
+      reflected.push({ x0: x, y0: y, target, tx: target.x, ty: target.y, t: 0, dur: kind === 'lance' ? 0.3 : 0.5, dmg, kind });
+  }
+
+  function updateReflected(dt) {
+    for (let i = reflected.length - 1; i >= 0; --i) {
+      const r = reflected[i];
+      if (enemies.includes(r.target)) {
+        r.tx = r.target.x;
+        r.ty = r.target.y;
+      }
+      r.t += dt / r.dur;
+      if (r.t < 1) continue;
+      reflected.splice(i, 1);
+      if (enemies.includes(r.target)) {
+        applyDamageToEnemy(r.target, r.dmg);
+        r.target.stunTimer = Math.max(r.target.stunTimer || 0, r.kind === 'lance' ? 1.5 : 0.8);
+        floatingText.add(r.tx, r.ty - (r.target.size || 20) - 30, `-${Math.round(r.dmg)}`, { color: '#9ae8ff', font: 'bold 24px sans-serif' });
+      }
+      if (currentView === VIEW_SURFACE)
+        particles.burst(r.tx, r.ty, 14, { color: r.kind === 'lance' ? '#ff80e0' : '#b8ff70', speed: 3, life: 0.4 });
+    }
+  }
+
   function updateWeapon(dt) {
-    if (currentView !== VIEW_SURFACE) return;
+    if (currentView !== VIEW_SURFACE) {
+      charge = null;
+      return;
+    }
 
     // Turret aiming: track mouse position continuously
     // Nozzle moves along dome arc — compute aim angle from dome center
@@ -4818,152 +5643,33 @@
     if (turretAngle > TURRET_MAX_ANGLE) turretAngle = TURRET_MAX_ANGLE;
     if (turretAngle < TURRET_MIN_ANGLE) turretAngle = TURRET_MIN_ANGLE;
 
-    // Nozzle position on dome arc
-    const nozzleR = DOME_RADIUS + 16;
-    const turretBaseX = DOME_X + Math.cos(turretAngle) * nozzleR;
-    const turretBaseY = DOME_Y + Math.sin(turretAngle) * nozzleR;
-
     fireCooldown -= dt;
+
+    // Holding too long overheats the charge: it fizzles and starts over
+    if (charge) {
+      charge.t += dt;
+      if (charge.t > CHARGE_TIME * CHARGE_OVERHEAT) {
+        charge.t = 0;
+        SZ.GameAudio.play('error', { pitch: 1.8, volume: 0.35 });
+        floatingText.add(DOME_X, DOME_Y - DOME_RADIUS - 80, 'Overheated - release in the gold window', { color: '#ff9a7a', font: 'bold 18px sans-serif' });
+      }
+    }
 
     // Fire toward current turret aim direction on click
     if (fireRequested && fireCooldown <= 0) {
       fireRequested = false;
       fireCooldown = 1.0 / (fireRate * (weather.kind === 'blizzard' ? 1 - 0.25 * weather.intensity : 1));
-
-      // Project a far-off aim point along the turret angle
-      const aimDist = 400;
-      const farX = turretBaseX + Math.cos(turretAngle) * aimDist;
-      const farY = turretBaseY + Math.sin(turretAngle) * aimDist;
-
-      // Find enemy closest to the projected aim line
-      let target = null;
-      const homing = !!unlockedTools.homingShots;
-      let bestDist = homing ? 220 * 220 : 80 * 80; // hit radius of 80px (220 with homing shots)
-      for (const e of enemies) {
-        if (e.hidden) continue;
-        const dx = e.x - farX;
-        const dy = e.y - farY;
-        const d = dx * dx + dy * dy;
-        if (d < bestDist) {
-          bestDist = d;
-          target = e;
-        }
-      }
-
-      // Also check enemies near the aim line (not just the far point)
-      if (!target) {
-        let bestLineDist = homing ? 140 : 60;
-        for (const e of enemies) {
-          if (e.hidden) continue;
-          // Distance from enemy to the aim ray
-          const ex = e.x - turretBaseX;
-          const ey = e.y - turretBaseY;
-          const projLen = ex * Math.cos(turretAngle) + ey * Math.sin(turretAngle);
-          if (projLen < -nozzleR) continue; // skip only enemies truly behind dome center
-          const perpDist = Math.abs(-ex * Math.sin(turretAngle) + ey * Math.cos(turretAngle));
-          if (perpDist < bestLineDist) {
-            bestLineDist = perpDist;
-            target = e;
-          }
-        }
-      }
-
-      const tx = target ? target.x : farX;
-      const ty = target ? target.y : farY;
-
-      const muzzleX = turretBaseX + Math.cos(turretAngle) * TURRET_BARREL_LENGTH;
-      const muzzleY = turretBaseY + Math.sin(turretAngle) * TURRET_BARREL_LENGTH;
-
-      projectiles.push({
-        x: muzzleX,
-        y: muzzleY,
-        tx, ty,
-        target,
-        life: 0.3,
-        maxLife: 0.3
-      });
-
-      if (target) {
-        // Critical hits
-        let shot = weaponDamage;
-        if (unlockedTools.criticalHit && Math.random() < 0.15 + 0.05 * (getEffectiveLevel('criticalHit') - 1)) {
-          shot = Math.round(shot * 2.5);
-          floatingText.add(target.x, target.y - (target.size || 20) - 30, 'CRIT!', { color: '#ffd040', font: 'bold 24px sans-serif' });
-        }
-        applyDamageToEnemy(target, shot);
-
-        // Multi-Shot: more beams at the monsters nearest to the target
-        if (unlockedTools.multiShot) {
-          const extra = enemies.filter(o => o !== target && !o.hidden)
-            .sort((a, b) => Math.hypot(a.x - target.x, a.y - target.y) - Math.hypot(b.x - target.x, b.y - target.y))
-            .slice(0, getEffectiveLevel('multiShot'));
-          for (const o of extra) {
-            applyDamageToEnemy(o, Math.ceil(weaponDamage * 0.6));
-            projectiles.push({ x: muzzleX, y: muzzleY, tx: o.x, ty: o.y, target: o, life: 0.25, maxLife: 0.25 });
-          }
-        }
-
-        // Explosive Rounds: every hit bursts
-        if (unlockedTools.explosiveRounds) {
-          for (const ce of enemies)
-            if (ce !== target && !ce.hidden && Math.hypot(ce.x - target.x, ce.y - target.y) < 110)
-              applyDamageToEnemy(ce, Math.ceil(weaponDamage * 0.4));
-          particles.burst(target.x, target.y, 12, { color: '#ffb040', speed: 3, life: 0.35 });
-        }
-
-        // Chain Lightning: arc damage to 2 nearby enemies (+1 per extra level)
-        if (unlockedTools.chainLightning) {
-          let chainCount = 0;
-          const arcs = 1 + getEffectiveLevel('chainLightning');
-          const chainDamage = Math.ceil(weaponDamage * 0.4);
-          for (const ce of enemies) {
-            if (ce.hidden || ce === target) continue;
-            if (chainCount >= arcs) break;
-            const cdx = ce.x - target.x;
-            const cdy = ce.y - target.y;
-            if (cdx * cdx + cdy * cdy < 160 * 160) {
-              applyDamageToEnemy(ce, chainDamage);
-              particles.burst(ce.x, ce.y, 4, { color: '#4af', speed: 2, life: 0.2 });
-              // Arc visual
-              projectiles.push({ x: target.x, y: target.y, tx: ce.x, ty: ce.y, life: 0.15, maxLife: 0.15 });
-              ++chainCount;
-            }
-          }
-        }
-
-        // Freeze Ray: slow enemies near target
-        if (unlockedTools.freezeRay) {
-          for (const ce of enemies) {
-            if (ce.hidden) continue;
-            const cdx = ce.x - target.x;
-            const cdy = ce.y - target.y;
-            if (cdx * cdx + cdy * cdy < 120 * 120)
-              ce.stunTimer = Math.max(ce.stunTimer || 0, 0.8 + 0.3 * (getEffectiveLevel('freezeRay') - 1));
-          }
-        }
-
-        // Plasma Cannon: AoE damage around target
-        if (unlockedTools.plasmaCannon) {
-          const aoeDamage = Math.ceil(weaponDamage * 0.6);
-          for (const ce of enemies) {
-            if (ce.hidden) continue;
-            if (ce === target) continue;
-            const cdx = ce.x - target.x;
-            const cdy = ce.y - target.y;
-            if (cdx * cdx + cdy * cdy < 140 * 140) {
-              applyDamageToEnemy(ce, aoeDamage);
-              particles.burst(ce.x, ce.y, 6, { color: '#f80', speed: 2, life: 0.3 });
-            }
-          }
-          particles.burst(target.x, target.y, 15, { color: '#f80', speed: 3, life: 0.4 });
-        }
-      }
-
-      particles.burst(muzzleX, muzzleY, 4, { color: '#faa', speed: 1.5, life: 0.15, size: 2 });
-      SZ.GameAudio.play('laser', { pitch: 0.95 + Math.random() * 0.1, volume: 0.7 });
+      fireTurret(null);
     }
 
     fireRequested = false;
+
+    // The combo fades without hits
+    if (combo > 0) {
+      comboTimer -= dt;
+      if (comboTimer <= 0)
+        combo = 0;
+    }
 
     for (let i = projectiles.length - 1; i >= 0; --i) {
       projectiles[i].life -= dt;
@@ -5009,7 +5715,7 @@
 
     // Drill Gadget: 30% faster when mining consecutive tiles in the same column
     if (unlockedTools.drill && activeToolKey === 'drill' && toolState.drillConsecutive > 0)
-      time *= 0.7;
+      time *= getEffectiveLevel('drillCombo') > 0 ? 0.5 : 0.7;
 
     return time;
   }
@@ -5017,7 +5723,10 @@
   function tryMine(dx, dy) {
     if (state !== STATE_PLAYING) return;
     if (currentView !== VIEW_UNDERGROUND) return;
+    if (keeperStun > 0) return;
 
+    // every step or dig turns the keeper and his lamp that way
+    lastMineDir = { dx, dy };
     const nx = drillX + dx;
     const ny = drillY + dy;
     if (nx < 0 || nx >= GRID_COLS || ny < 0 || ny >= GRID_ROWS) return;
@@ -5033,6 +5742,13 @@
       drillY = ny;
       // Pick up dropped resources at destination
       pickUpDroppedResources();
+      return;
+    }
+
+    // A secret chest is opened, not dug out
+    if (tile === TILE_CHEST) {
+      lastMineDir = { dx, dy };
+      tryOpenChest(chestAt(ny, nx));
       return;
     }
 
@@ -5123,6 +5839,12 @@
 
       if (unlockedTools.silkTouch)
         value = Math.round(value * 1.25);
+      // Midas Lens: one ore in four comes out doubled
+      if (hasArtifact('midasLens') && Math.random() < 0.25) {
+        value *= 2;
+        floatingText.add(tx, ty - 84, 'MIDAS x2', { color: '#ffe040', font: 'bold 24px sans-serif' });
+        particles.sparkle(tx, ty, 10, { color: '#ffe040', speed: 2.2 });
+      }
       // Fortune: 30% chance to double ore yield (+10% per extra level)
       if (unlockedTools.fortune && Math.random() < 0.3 + 0.1 * (getEffectiveLevel('fortune') - 1)) {
         value *= 2;
@@ -5210,9 +5932,30 @@
         const rr = ny + dy * k, cc = nx + dx * k;
         if (rr < 0 || rr >= GRID_ROWS || cc < 0 || cc >= GRID_COLS) break;
         const t = undergroundGrid[rr][cc];
-        if (t === TILE_EMPTY || t === TILE_GADGET || t === TILE_CORE) break;
+        if (t === TILE_EMPTY || t === TILE_GADGET || t === TILE_CORE || t === TILE_CHEST) break;
         breakTileInstant(rr, cc);
       }
+
+    // Twin Drill: the block beside the dug one goes too (above a sideways dig, right of a vertical one)
+    if (hasArtifact('twinDrill')) {
+      let sr = dx !== 0 ? ny - 1 : ny, sc = dx !== 0 ? nx : nx + 1;
+      if (sr < 0) sr = ny + 1;
+      if (sr >= 0 && sr < GRID_ROWS && sc >= 0 && sc < GRID_COLS && undergroundGrid[sr][sc] !== TILE_EMPTY) {
+        breakTileInstant(sr, sc);
+        particles.sparkle(sc * TILE_SIZE + TILE_SIZE / 2 - cameraX, sr * TILE_SIZE + TILE_SIZE / 2 - cameraY, 5, { color: '#ffc060', speed: 1.8 });
+      }
+    }
+    // Quake Hammer: the blow cracks the rock all around
+    if (hasArtifact('quakeHammer'))
+      for (let qr = ny - 1; qr <= ny + 1; ++qr)
+        for (let qc = nx - 1; qc <= nx + 1; ++qc) {
+          if (qr < 0 || qr >= GRID_ROWS || qc < 0 || qc >= GRID_COLS) continue;
+          const qt = undergroundGrid[qr][qc];
+          if (qt === TILE_EMPTY || qt === TILE_CHEST || qt === TILE_CORE || !(tileMaxHP[qr][qc] > 0)) continue;
+          tileHP[qr][qc] = Math.max(tileMaxHP[qr][qc] * 0.05, tileHP[qr][qc] - tileMaxHP[qr][qc] * 0.45);
+          if (Math.random() < 0.5)
+            spawnDust(qc * TILE_SIZE + TILE_SIZE / 2 - cameraX, qr * TILE_SIZE + TILE_SIZE / 2 - cameraY);
+        }
 
     // Track drill gadget consecutive column mining
     if (unlockedTools.drill && activeToolKey === 'drill') {
@@ -5226,9 +5969,10 @@
     // Pick up dropped resources at destination
     pickUpDroppedResources();
 
-    // Reveal an adjacent Relocation Core and gadget chambers
+    // Reveal an adjacent Relocation Core, secret chests and gadget chambers
     if (!relocationCore.revealed && Math.abs(relocationCore.r - ny) + Math.abs(relocationCore.c - nx) <= 1)
       relocationCore.revealed = true;
+    revealChestsNear(ny, nx, 1, true);
     for (const ch of gadgetChambers) {
       if (ch.revealed) continue;
       for (let dr = 0; dr < 2; ++dr)
@@ -5295,6 +6039,7 @@
   // Break a tile at once (Vein Miner, Tunnel Bore): ore goes into the cargo, overflow drops
   function breakTileInstant(r, c) {
     const tile = undergroundGrid[r][c];
+    if (tile === TILE_CHEST || tile === TILE_CORE || tile === TILE_GADGET || tile === TILE_EMPTY) return;
     const tx = c * TILE_SIZE + TILE_SIZE / 2 - cameraX, ty = r * TILE_SIZE + TILE_SIZE / 2 - cameraY;
     if (RESOURCE_TILES.includes(tile)) {
       let value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(r));
@@ -5355,8 +6100,8 @@
         floatingText.add(tx, ty - 90, '+50 Max HP!', { color: '#0f0', font: 'bold 24px sans-serif' });
         break;
       case 'blastMining':
-        primaryGadgetState.blastCharges = (primaryGadgetState.blastCharges || 0) + 2;
-        floatingText.add(tx, ty - 90, '+2 Blast Charges!', { color: '#f80', font: 'bold 24px sans-serif' });
+        bombInv[1] += 2;
+        floatingText.add(tx, ty - 90, '+2 Bombs!', { color: '#f80', font: 'bold 24px sans-serif' });
         break;
       case 'probeScanner':
         primaryGadgetState.probeTimer = 15;
@@ -5378,75 +6123,6 @@
     }
   }
 
-  function useBlastMining() {
-    if (!foundGadgets.includes('blastMining')) return;
-    if ((primaryGadgetState.blastCharges || 0) <= 0) return;
-    if (state !== STATE_PLAYING || currentView !== VIEW_UNDERGROUND) return;
-
-    --primaryGadgetState.blastCharges;
-    SZ.GameAudio.play('explode');
-    floatingText.add(
-      drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX,
-      drillY * TILE_SIZE - 10 - cameraY,
-      `BLAST! (${primaryGadgetState.blastCharges} left)`,
-      { color: '#f80', font: 'bold 28px sans-serif' }
-    );
-
-    // Clear 3x3 area around player
-    for (let dr = -1; dr <= 1; ++dr)
-      for (let dc = -1; dc <= 1; ++dc) {
-        const r = drillY + dr, c = drillX + dc;
-        if (r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS) continue;
-        const tile = undergroundGrid[r][c];
-        if (tile === TILE_EMPTY) continue;
-
-        const tx = c * TILE_SIZE + TILE_SIZE / 2 - cameraX;
-        const ty = r * TILE_SIZE + TILE_SIZE / 2 - cameraY;
-
-        if (tile === TILE_GADGET) {
-          const chamber = gadgetChambers.find(ch => {
-            for (let dr2 = 0; dr2 < 2; ++dr2)
-              for (let dc2 = 0; dc2 < 2; ++dc2)
-                if (ch.r + dr2 === r && ch.c + dc2 === c) return true;
-            return false;
-          });
-          if (chamber) {
-            grantMineGadget(chamber.gadgetType, tx, ty);
-            for (let dr2 = 0; dr2 < 2; ++dr2)
-              for (let dc2 = 0; dc2 < 2; ++dc2)
-                undergroundGrid[chamber.r + dr2][chamber.c + dc2] = TILE_EMPTY;
-          }
-        } else if (tile === TILE_CORE) {
-          collectRelocationCore(tx, ty);
-        } else if (RESOURCE_TILES.includes(tile)) {
-          const label = TILE_LABELS[tile];
-          const value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(r));
-          const fitsInInventory = Math.min(value, carryCapacity - carried);
-          const excess = value - fitsInInventory;
-          if (fitsInInventory > 0) {
-            resources[label] += fitsInInventory;
-            carried += fitsInInventory;
-          }
-          if (excess > 0)
-            droppedResources.push({ col: c, row: r, type: tile, value: excess, age: 0 });
-        }
-        undergroundGrid[r][c] = TILE_EMPTY;
-        if (tileHP[r]) tileHP[r][c] = 0;
-        if (tileMaxHP[r]) tileMaxHP[r][c] = 0;
-
-        // Red explosive flash particles
-        particles.burst(tx, ty, 8, { color: '#f44', speed: 2.5, life: 0.4 });
-        spawnCrumble(tx, ty, getTileBaseColor(tile, r));
-      }
-
-    // Big explosion effect
-    const cx = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
-    const cy = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
-    particles.burst(cx, cy, 30, { color: '#f80', speed: 4, life: 0.6 });
-    particles.burst(cx, cy, 15, { color: '#ff0', speed: 3, life: 0.4 });
-    screenShake.trigger(10, 300);
-  }
-
   /* ======================================================================
      TOOL ACTIONS
      ====================================================================== */
@@ -5455,24 +6131,26 @@
     if (!unlockedTools.blastTool) return;
     if (toolState.blastToolCooldown > 0) return;
     if (state !== STATE_PLAYING || currentView !== VIEW_UNDERGROUND) return;
-    if (resources.iron < 10) {
+    const upgraded = getEffectiveLevel('blastToolLevel') > 0;
+    const ironCost = upgraded ? 5 : 10;
+    if (resources.iron < ironCost) {
       SZ.GameAudio.play('error');
       floatingText.add(
         drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX,
         drillY * TILE_SIZE - 10 - cameraY,
-        'Need 10 iron!', { color: '#f44', font: 'bold 24px sans-serif' }
+        `Need ${ironCost} iron!`, { color: '#f44', font: 'bold 24px sans-serif' }
       );
       return;
     }
 
-    resources.iron -= 10;
-    toolState.blastToolCooldown = GADGET_TOOL_COOLDOWNS.blastTool;
+    resources.iron -= ironCost;
+    toolState.blastToolCooldown = upgraded ? GADGET_TOOL_COOLDOWNS.blastTool / 2 : GADGET_TOOL_COOLDOWNS.blastTool;
     SZ.GameAudio.play('explode');
 
     floatingText.add(
       drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX,
       drillY * TILE_SIZE - 10 - cameraY,
-      'BLAST! (-10 iron)', { color: '#f80', font: 'bold 28px sans-serif' }
+      `BLAST! (-${ironCost} iron)`, { color: '#f80', font: 'bold 28px sans-serif' }
     );
 
     // Clear 3x3 area around player
@@ -5486,6 +6164,10 @@
         const tx = c * TILE_SIZE + TILE_SIZE / 2 - cameraX;
         const ty = r * TILE_SIZE + TILE_SIZE / 2 - cameraY;
 
+        if (tile === TILE_CHEST) {
+          revealChest(chestAt(r, c), true);
+          continue;
+        }
         if (tile === TILE_GADGET) {
           const chamber = gadgetChambers.find(ch => {
             for (let dr2 = 0; dr2 < 2; ++dr2)
@@ -5528,11 +6210,12 @@
   }
 
   function useTeleporter() {
-    if (!unlockedTools.teleporter) return;
-    if (toolState.teleporterCooldown > 0) return;
+    const anchor = hasArtifact('warpAnchor');
+    if (!unlockedTools.teleporter && !anchor) return;
+    if (toolState.teleporterCooldown > 0 && !anchor) return;
     if (state !== STATE_PLAYING || currentView !== VIEW_UNDERGROUND) return;
 
-    toolState.teleporterCooldown = GADGET_TOOL_COOLDOWNS.teleporter - 5 * getEffectiveLevel('teleportCooldown');
+    toolState.teleporterCooldown = anchor ? 0 : GADGET_TOOL_COOLDOWNS.teleporter - 5 * getEffectiveLevel('teleportCooldown');
 
     // Teleport particles at origin
     const cx = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
@@ -5549,6 +6232,7 @@
     // Deposit carried resources
     if (carried > 0) {
       floatingText.add(CANVAS_W / 2, CANVAS_H / 2, `+${carried} resources deposited`, { color: '#0f0', font: 'bold 28px sans-serif' });
+      depositScore(carried, CANVAS_W / 2, CANVAS_H / 2 + 40);
       carried = 0;
     }
 
@@ -5565,6 +6249,1657 @@
     // Scanner and reinforcedDome are passive -- no selection needed
     if (key === 'scanner' || key === 'reinforcedDome') return;
     activeToolKey = activeToolKey === key ? null : key;
+  }
+
+  /* ======================================================================
+     BOMBS -- crafted in the dome, combined into bigger ones, dropped or
+     thrown in the mine and lobbed at monsters on the surface
+     ====================================================================== */
+
+  // radius in tiles, power in seconds of mining a blast does at its centre,
+  // monster damage when lobbed on the surface
+  const BOMB_TIERS = [
+    { key: 'charge', name: 'Charge', icon: 'bombCharge', radius: 1.3, power: 2.2, monster: 45, color: '#ff8a50',
+      recipe: { iron: 6, coal: 4 } },
+    { key: 'bomb', name: 'Bomb', icon: 'bomb', radius: 2.1, power: 4, monster: 90, color: '#ffb040',
+      recipe: { iron: 12, coal: 8, tin: 4 }, recipeNode: 'recipeBomb' },
+    { key: 'big', name: 'Big Bomb', icon: 'bombBig', radius: 3.1, power: 7, monster: 160, color: '#ffd060',
+      recipe: { cobalt: 8, coal: 14, redstone: 6 }, recipeNode: 'recipeBig' },
+    { key: 'mega', name: 'Mega Bomb', icon: 'bombMega', radius: 4.3, power: 11, monster: 260, color: '#ffe680',
+      recipe: { titanium: 5, redstone: 10, uranium: 2 }, recipeNode: 'recipeMega' },
+    { key: 'void', name: 'Void Bomb', icon: 'bombVoid', radius: 6.2, power: 18, monster: 450, color: '#c08aff',
+      recipe: { uranium: 6, amethyst: 4, voidstone: 2 }, recipeNode: 'recipeVoid' }
+  ];
+  const BOMB_COMBINE = 3;            // bombs of one size that merge into one of the next
+  const BOMB_BASE_FUSE = 2.5;        // seconds
+  const BOMB_BASE_CAPACITY = 8;
+  const BOMB_THROW_RANGE = 4;        // tiles
+  const KEEPER_STUN_TIME = 2.5;      // seconds a keeper caught in a blast is dazed
+
+  let bombInv = [0, 0, 0, 0, 0];     // bombs in stock per tier
+  let bombSel = 0;                   // tier dropped / thrown next
+  let placedBombs = [];              // in the mine: { r, c, tier, fuse, maxFuse, fly }
+  let surfaceBombs = [];             // lobbed at monsters: { x0, y0, tx, ty, t, dur, tier }
+  let pendingBlasts = [];            // chain reactions waiting to go off: { r, c, R, power, delay }
+  let blasts = [];                   // explosion visuals: { x, y, R, t, life, tier, under }
+  let bombThrowMode = false;         // next click throws the selected bomb
+  let keeperStun = 0;                // seconds the keeper stays dazed
+  let craftFocus = 0;                // workshop row selected by keyboard
+  let craftHover = null;             // { row, kind } under the mouse
+  let stateBeforeCraft = null;
+  const craftFlash = {};             // `${row}` -> time of the last craft (ms)
+
+  function bombCount() {
+    return bombInv.reduce((s, n) => s + n, 0);
+  }
+
+  function bombCapacity() {
+    return BOMB_BASE_CAPACITY + 4 * getEffectiveLevel('bombSatchel');
+  }
+
+  function bombRadius(tier) {
+    return BOMB_TIERS[tier].radius + 0.5 * getEffectiveLevel('blastRadius');
+  }
+
+  function bombPower(tier) {
+    return BOMB_TIERS[tier].power * (1 + 0.3 * getEffectiveLevel('bombPower'));
+  }
+
+  function bombFuse() {
+    return Math.max(1, BOMB_BASE_FUSE - 0.6 * getEffectiveLevel('bombFuse'));
+  }
+
+  // Share of the ore in blasted tiles that survives (the rest is pulverised)
+  function bombYield() {
+    return [0.5, 0.8, 1, 1.25][Math.min(3, getEffectiveLevel('bombYield'))];
+  }
+
+  function bombThrowRange() {
+    return BOMB_THROW_RANGE + (unlockedTools.stickyBombs ? 2 : 0);
+  }
+
+  function recipeKnown(tier) {
+    const node = BOMB_TIERS[tier].recipeNode;
+    return !node || isTreeNodeMaxed(node);
+  }
+
+  // Recipe with the Bombsmith discount
+  function craftCost(tier) {
+    const k = 1 - 0.15 * getEffectiveLevel('bombsmith');
+    const out = {};
+    const r = BOMB_TIERS[tier].recipe;
+    for (const key in r)
+      out[key] = Math.max(1, Math.ceil(r[key] * k));
+    return out;
+  }
+
+  function canPay(cost) {
+    for (const key in cost)
+      if ((resources[key] || 0) < cost[key])
+        return false;
+    return true;
+  }
+
+  // Why a bomb of this tier cannot be crafted right now (null when it can)
+  function craftBlocker(tier) {
+    if (!recipeKnown(tier)) return 'Recipe locked: buy it in the Tools branch';
+    if (bombCount() >= bombCapacity()) return `Bomb storage full (${bombCapacity()})`;
+    if (!canPay(craftCost(tier))) return 'Not enough resources';
+    return null;
+  }
+
+  function craftBomb(tier) {
+    const why = craftBlocker(tier);
+    if (why) {
+      SZ.GameAudio.play('error');
+      floatingText.add(CANVAS_W / 2, 140, why, { color: '#ff8a7a', font: 'bold 22px sans-serif' });
+      return false;
+    }
+    const cost = craftCost(tier);
+    for (const key in cost)
+      resources[key] -= cost[key];
+    ++bombInv[tier];
+    bombSel = tier;
+    craftFlash[tier] = performance.now();
+    SZ.GameAudio.play('pickup', { pitch: 0.8 + tier * 0.12 });
+    SZ.GameAudio.play('click', { pitch: 0.6 });
+    return true;
+  }
+
+  function combineBombs(tier) {
+    if (tier >= BOMB_TIERS.length - 1 || bombInv[tier] < BOMB_COMBINE) {
+      SZ.GameAudio.play('error');
+      return false;
+    }
+    bombInv[tier] -= BOMB_COMBINE;
+    ++bombInv[tier + 1];
+    bombSel = tier + 1;
+    craftFlash[tier + 1] = performance.now();
+    SZ.GameAudio.play('powerup', { pitch: 0.9 + tier * 0.1, volume: 0.8 });
+    return true;
+  }
+
+  // Next tier that is in stock, searching forward (dir 1) or back (-1)
+  function cycleBomb(dir) {
+    for (let i = 1; i <= BOMB_TIERS.length; ++i) {
+      const t = (bombSel + dir * i + BOMB_TIERS.length * 2) % BOMB_TIERS.length;
+      if (bombInv[t] > 0) {
+        bombSel = t;
+        SZ.GameAudio.play('blip', { pitch: 1 + t * 0.1, volume: 0.6 });
+        return;
+      }
+    }
+    SZ.GameAudio.play('error');
+  }
+
+  // A tier that can be used now: the selected one, otherwise the smallest in stock
+  function readyBombTier() {
+    if (bombInv[bombSel] > 0) return bombSel;
+    const t = bombInv.findIndex(n => n > 0);
+    if (t >= 0) bombSel = t;
+    return t;
+  }
+
+  function noBombsHint() {
+    SZ.GameAudio.play('error');
+    floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 80, 'No bombs - press C to craft some', { color: '#ffb070', font: 'bold 24px sans-serif' });
+  }
+
+  function bombAt(r, c) {
+    return placedBombs.find(b => b.r === r && b.c === c);
+  }
+
+  // Drop the selected bomb at the keeper's feet
+  function placeBomb() {
+    if (state !== STATE_PLAYING || currentView !== VIEW_UNDERGROUND) return;
+    const tier = readyBombTier();
+    if (tier < 0) return noBombsHint();
+    if (bombAt(drillY, drillX)) {
+      SZ.GameAudio.play('error');
+      return;
+    }
+    --bombInv[tier];
+    placedBombs.push({ r: drillY, c: drillX, tier, fuse: bombFuse(), maxFuse: bombFuse(), fly: null });
+    bombThrowMode = false;
+    SZ.GameAudio.play('drop', { pitch: 0.8 });
+    floatingText.add(drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX, drillY * TILE_SIZE - 20 - cameraY, `${BOMB_TIERS[tier].name} placed - run!`, { color: '#ffb070', font: 'bold 20px sans-serif' });
+  }
+
+  // Tiles the flight passes through (keeper excluded, target included)
+  function throwLine(c0, r0, c1, r1) {
+    const pts = [];
+    const n = Math.max(Math.abs(c1 - c0), Math.abs(r1 - r0));
+    for (let i = 1; i <= n; ++i)
+      pts.push([Math.round(r0 + (r1 - r0) * i / n), Math.round(c0 + (c1 - c0) * i / n)]);
+    return pts;
+  }
+
+  // Can the keeper throw a bomb onto this tile? Open tunnel in reach with a free
+  // line of flight; Sticky Bombs also cling to a rock face next to a tunnel
+  function throwTarget(col, row) {
+    if (col < 0 || col >= GRID_COLS || row < 0 || row >= GRID_ROWS) return { ok: false, why: 'Out of the mine' };
+    if (Math.hypot(col - drillX, row - drillY) > bombThrowRange() + 0.5) return { ok: false, why: 'Too far to throw' };
+    if (col === drillX && row === drillY) return { ok: false, why: 'Use B to drop it here' };
+    const solid = undergroundGrid[row][col] !== TILE_EMPTY;
+    if (solid && !unlockedTools.stickyBombs) return { ok: false, why: 'Throw into an open tunnel' };
+    const line = throwLine(drillX, drillY, col, row);
+    for (let i = 0; i < line.length - 1; ++i)
+      if (undergroundGrid[line[i][0]][line[i][1]] !== TILE_EMPTY)
+        return { ok: false, why: 'Rock is in the way' };
+    if (bombAt(row, col)) return { ok: false, why: 'A bomb already lies there' };
+    return { ok: true, sticky: solid };
+  }
+
+  function throwBombAt(col, row) {
+    const tier = readyBombTier();
+    if (tier < 0) return noBombsHint();
+    const t = throwTarget(col, row);
+    if (!t.ok) {
+      SZ.GameAudio.play('error');
+      floatingText.add(col * TILE_SIZE + TILE_SIZE / 2 - cameraX, row * TILE_SIZE - 10 - cameraY, t.why, { color: '#ff8a7a', font: 'bold 18px sans-serif' });
+      return;
+    }
+    --bombInv[tier];
+    placedBombs.push({
+      r: row, c: col, tier, fuse: bombFuse(), maxFuse: bombFuse(), sticky: t.sticky,
+      fly: { x: drillX * TILE_SIZE + TILE_SIZE / 2, y: drillY * TILE_SIZE + TILE_SIZE / 2, t: 0, dur: 0.25 + Math.hypot(col - drillX, row - drillY) * 0.05 }
+    });
+    bombThrowMode = false;
+    SZ.GameAudio.play('whoosh', { pitch: 1.4, volume: 0.6 });
+  }
+
+  // Lob a bomb from the turret at a point on the battlefield
+  function lobSurfaceBomb(tx, ty) {
+    const tier = readyBombTier();
+    if (tier < 0) return noBombsHint();
+    ty = Math.min(DOME_Y - 8, ty);
+    const dd = Math.hypot(tx - DOME_X, ty - DOME_Y);
+    if (dd < DOME_RADIUS + 40) {
+      const a = Math.atan2(ty - DOME_Y, tx - DOME_X) || -Math.PI / 2;
+      tx = DOME_X + Math.cos(a) * (DOME_RADIUS + 40);
+      ty = Math.min(DOME_Y - 8, DOME_Y + Math.sin(a) * (DOME_RADIUS + 40));
+    }
+    --bombInv[tier];
+    const x0 = DOME_X + Math.cos(turretAngle) * (DOME_RADIUS + 30), y0 = DOME_Y + Math.sin(turretAngle) * (DOME_RADIUS + 30);
+    surfaceBombs.push({ x0, y0, tx, ty, t: 0, dur: 0.45 + Math.hypot(tx - x0, ty - y0) / 1400, tier });
+    bombThrowMode = false;
+    SZ.GameAudio.play('whoosh', { pitch: 0.9 });
+  }
+
+  // Add ore to a loose pile on the floor (piles of one kind on one tile merge)
+  function dropOre(r, c, tile, value) {
+    if (value <= 0) return;
+    const pile = droppedResources.find(d => d.col === c && d.row === r && d.type === tile);
+    if (pile) {
+      pile.value += value;
+      pile.age = 0;
+    } else
+      droppedResources.push({ col: c, row: r, type: tile, value, age: 0 });
+  }
+
+  // Break open the gadget chamber that owns (r, c)
+  function openChamberAt(r, c, tx, ty) {
+    const chamber = gadgetChambers.find(ch => r >= ch.r && r <= ch.r + 1 && c >= ch.c && c <= ch.c + 1);
+    if (!chamber) {
+      undergroundGrid[r][c] = TILE_EMPTY;
+      tileHP[r][c] = tileMaxHP[r][c] = 0;
+      return;
+    }
+    grantMineGadget(chamber.gadgetType, tx, ty);
+    for (let dr = 0; dr < 2; ++dr)
+      for (let dc = 0; dc < 2; ++dc)
+        if (undergroundGrid[chamber.r + dr][chamber.c + dc] === TILE_GADGET) {
+          undergroundGrid[chamber.r + dr][chamber.c + dc] = TILE_EMPTY;
+          tileHP[chamber.r + dr][chamber.c + dc] = tileMaxHP[chamber.r + dr][chamber.c + dc] = 0;
+        }
+  }
+
+  // Tiles a blast never breaks; it only lays them open
+  function isBlastProof(tile) {
+    return tile === TILE_CORE || tile === TILE_CHEST;
+  }
+
+  function revealBlastProof(r, c, tile) {
+    if (tile === TILE_CORE)
+      relocationCore.revealed = true;
+    else if (tile === TILE_CHEST && chestAt(r, c))
+      revealChest(chestAt(r, c), true);
+  }
+
+  // Explosion in the mine centred on tile (cr, cc): rock takes damage that
+  // falls off towards the rim, broken ore drops as loose piles
+  function blastUnderground(cr, cc, R, power, tier, chained) {
+    const onScreen = currentView === VIEW_UNDERGROUND;
+    let broken = 0, ore = 0;
+    const ext = Math.ceil(R);
+    const yieldK = bombYield();
+    for (let r = cr - ext; r <= cr + ext; ++r) {
+      if (r < 0 || r >= GRID_ROWS) continue;
+      for (let c = cc - ext; c <= cc + ext; ++c) {
+        if (c < 0 || c >= GRID_COLS) continue;
+        const d = Math.hypot(r - cr, c - cc);
+        if (d > R) continue;
+        const tile = undergroundGrid[r][c];
+        if (tile === TILE_EMPTY) continue;
+        const tx = c * TILE_SIZE + TILE_SIZE / 2 - cameraX, ty = r * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+        if (isBlastProof(tile)) {
+          revealBlastProof(r, c, tile);
+          continue;
+        }
+        if (tile === TILE_GADGET) {
+          openChamberAt(r, c, tx, ty);
+          continue;
+        }
+        const dmg = power * (1 - 0.45 * d / Math.max(1, R));
+        if (tileHP[r][c] > dmg) {
+          tileHP[r][c] -= dmg;          // cracked, not broken
+          continue;
+        }
+        if (RESOURCE_TILES.includes(tile)) {
+          const value = Math.round(TILE_VALUES[tile] * getDepthValueMultiplier(r) * yieldK);
+          dropOre(r, c, tile, value);
+          ore += value;
+          // Chain Reaction: coal and uranium seams go off as well
+          if (unlockedTools.chainReaction && (tile === TILE_COAL || tile === TILE_URANIUM) && pendingBlasts.length < 12)
+            pendingBlasts.push({ r, c, R: tile === TILE_URANIUM ? 2.1 : 1.4, power: tile === TILE_URANIUM ? 5 : 2.6, delay: 0.12 + Math.random() * 0.25, tier: tile === TILE_URANIUM ? 2 : 0 });
+        }
+        if (onScreen) {
+          spawnCrumble(tx, ty, getTileBaseColor(tile, r));
+          if (Math.random() < 0.5)
+            particles.burst(tx, ty, 4, { color: getTileBaseColor(tile, r), speed: 2.5, life: 0.4, gravity: 0.1 });
+        }
+        undergroundGrid[r][c] = TILE_EMPTY;
+        tileHP[r][c] = tileMaxHP[r][c] = 0;
+        ++broken;
+      }
+    }
+    // Neighbouring bombs go off almost at once
+    for (const b of placedBombs)
+      if (!b.fly && Math.hypot(b.r - cr, b.c - cc) <= R + 0.5)
+        b.fuse = Math.min(b.fuse, 0.15);
+    // The keeper is knocked out unless wearing a Blast Suit
+    if (!unlockedTools.blastSuit && Math.hypot(drillY - cr, drillX - cc) <= R + 0.4) {
+      keeperStun = KEEPER_STUN_TIME;
+      cancelMining();
+      clearMoveTarget();
+      if (onScreen)
+        floatingText.add(drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX, drillY * TILE_SIZE - 30 - cameraY, 'Knocked out!', { color: '#ff7a6a', font: 'bold 24px sans-serif' });
+      SZ.GameAudio.play('hurt', { pitch: 1.3, volume: 0.7 });
+    }
+    // Light the tunnel walls the blast opened up
+    if (!relocationCore.revealed && Math.abs(relocationCore.r - cr) <= ext + 1 && Math.abs(relocationCore.c - cc) <= ext + 1)
+      relocationCore.revealed = true;
+    for (const ch of gadgetChambers)
+      if (!ch.revealed && Math.hypot(ch.r - cr, ch.c - cc) <= R + 1.5)
+        ch.revealed = true;
+
+    const wx = cc * TILE_SIZE + TILE_SIZE / 2, wy = cr * TILE_SIZE + TILE_SIZE / 2;
+    blasts.push({ x: wx, y: wy, R: (R + 0.4) * TILE_SIZE, t: 0, life: 0.55 + tier * 0.1, tier, under: true });
+    const vol = onScreen ? 1 : 0.35;
+    SZ.GameAudio.play('explode', { pitch: 1.25 - tier * 0.16, volume: (0.6 + tier * 0.1) * vol });
+    if (tier >= 2)
+      SZ.GameAudio.noise(0.5 + tier * 0.25, 0.14 * vol, 'lowpass', 500, 60);
+    if (tier === 4)
+      SZ.GameAudio.sweep(900, 60, 0.9, 'sawtooth', 0.06 * vol);
+    if (onScreen) {
+      const sx = wx - cameraX, sy = wy - cameraY;
+      particles.burst(sx, sy, 24 + tier * 12, { color: BOMB_TIERS[tier].color, speed: 3 + tier, life: 0.5 + tier * 0.08 });
+      particles.burst(sx, sy, 12 + tier * 6, { color: '#fff4c0', speed: 2 + tier * 0.6, life: 0.3 });
+      if (tier === 4)
+        particles.sparkle(sx, sy, 30, { color: '#d0a0ff', speed: 4 });
+      screenShake.trigger(Math.min(22, 7 + tier * 4), 260 + tier * 70);
+      if (!chained && (broken || ore))
+        floatingText.add(sx, sy - R * TILE_SIZE * 0.5 - 20, `BOOM! ${broken} ${broken === 1 ? 'block' : 'blocks'}` + (ore > 0 ? ` · ${ore} ore loose` : ''), { color: BOMB_TIERS[tier].color, font: 'bold 24px sans-serif' });
+    }
+  }
+
+  function detonateBomb(b) {
+    placedBombs.splice(placedBombs.indexOf(b), 1);
+    blastUnderground(b.r, b.c, bombRadius(b.tier), bombPower(b.tier), b.tier, false);
+  }
+
+  // A lobbed bomb lands among the monsters
+  function blastSurface(x, y, tier) {
+    const R = 70 + 26 * bombRadius(tier);
+    const dmg = BOMB_TIERS[tier].monster * (1 + 0.3 * getEffectiveLevel('bombPower'));
+    let hits = 0;
+    for (const e of enemies) {
+      if (e.hidden) continue;
+      const d = Math.hypot(e.x - x, e.y - y);
+      if (d > R + (e.size || 16)) continue;
+      applyDamageToEnemy(e, Math.ceil(dmg * (1 - 0.5 * Math.min(1, d / R))));
+      e.stunTimer = Math.max(e.stunTimer || 0, 0.6);
+      ++hits;
+    }
+    blasts.push({ x, y, R, t: 0, life: 0.55 + tier * 0.1, tier, under: false });
+    if (currentView === VIEW_SURFACE) {
+      particles.burst(x, y, 26 + tier * 12, { color: BOMB_TIERS[tier].color, speed: 3.5 + tier, life: 0.6, gravity: 0.05 });
+      particles.burst(x, Math.min(y, DOME_Y), 14, { color: '#7a6a58', speed: 2.5, life: 0.8, gravity: 0.12 });
+      screenShake.trigger(Math.min(20, 6 + tier * 3.5), 260 + tier * 60);
+      if (hits > 1)
+        floatingText.add(x, y - 60, `${hits} hit!`, { color: BOMB_TIERS[tier].color, font: 'bold 24px sans-serif' });
+    }
+    SZ.GameAudio.play('explode', { pitch: 1.2 - tier * 0.15, volume: 0.7 + tier * 0.08 });
+  }
+
+  function updateBombs(dt) {
+    if (keeperStun > 0)
+      keeperStun = Math.max(0, keeperStun - dt);
+    for (let i = placedBombs.length - 1; i >= 0; --i) {
+      const b = placedBombs[i];
+      if (b.fly) {
+        b.fly.t += dt / b.fly.dur;
+        if (b.fly.t >= 1) {
+          b.fly = null;
+          if (currentView === VIEW_UNDERGROUND)
+            SZ.GameAudio.play('drop', { pitch: b.sticky ? 1.4 : 0.8, volume: 0.7 });
+        }
+        continue;
+      }
+      const before = b.fuse;
+      b.fuse -= dt;
+      if (currentView === VIEW_UNDERGROUND && Math.ceil(before * 2) !== Math.ceil(b.fuse * 2) && b.fuse > 0)
+        SZ.GameAudio.play('blip', { pitch: b.fuse < 1 ? 1.6 : 1.1, volume: 0.35 });
+    }
+    // Several bombs may go off in one frame; detonate one by one
+    for (let guard = 0; guard < 40; ++guard) {
+      const b = placedBombs.find(x => !x.fly && x.fuse <= 0);
+      if (!b) break;
+      detonateBomb(b);
+    }
+    for (let i = pendingBlasts.length - 1; i >= 0; --i) {
+      const p = pendingBlasts[i];
+      p.delay -= dt;
+      if (p.delay > 0) continue;
+      pendingBlasts.splice(i, 1);
+      blastUnderground(p.r, p.c, p.R, p.power, p.tier, true);
+    }
+    for (let i = surfaceBombs.length - 1; i >= 0; --i) {
+      const s = surfaceBombs[i];
+      s.t += dt / s.dur;
+      if (s.t >= 1) {
+        surfaceBombs.splice(i, 1);
+        blastSurface(s.tx, s.ty, s.tier);
+      }
+    }
+  }
+
+  // Explosion visuals age with real time so they also fade while paused
+  function updateBlastVisuals(dt) {
+    for (let i = blasts.length - 1; i >= 0; --i) {
+      blasts[i].t += dt;
+      if (blasts[i].t >= blasts[i].life) blasts.splice(i, 1);
+    }
+  }
+
+  // Detonate every bomb lying in the mine (Remote Detonator)
+  function remoteDetonate() {
+    if (!unlockedTools.remoteDetonator) return;
+    const armed = placedBombs.filter(b => !b.fly);
+    if (!armed.length) {
+      SZ.GameAudio.play('error');
+      return;
+    }
+    armed.forEach((b, i) => { b.fuse = Math.min(b.fuse, 0.05 + i * 0.08); });
+    SZ.GameAudio.play('zap', { pitch: 1.6, volume: 0.6 });
+  }
+
+  /* ======================================================================
+     SECRET CHESTS -- three per site, opened by beating a short minigame
+     ====================================================================== */
+
+  const CHEST_BANDS = [[2, 4], [6, 8], [10, 13]];   // strata: shallow-mid, mid, deep
+  const CHEST_RETRY = 20;                            // seconds a failed lock stays jammed
+  const MINIGAME_KINDS = ['lock', 'circuit', 'runes'];
+  const MINIGAME_NAMES = { lock: 'Lock Picking', circuit: 'Power Circuit', runes: 'Rune Memory' };
+  let chests = [];                   // { r, c, band, kind, revealed, opened, cooldown }
+  let minigame = null;               // the chest being opened (see startMinigame)
+
+  // Hide three chests in plain rock, one per depth band, far apart
+  function placeSecretChests(rand) {
+    chests = [];
+    const kinds = MINIGAME_KINDS.map((k, i) => MINIGAME_KINDS[(i + site.index) % MINIGAME_KINDS.length]);
+    CHEST_BANDS.forEach(([s0, s1], band) => {
+      for (let attempt = 0; attempt < 400; ++attempt) {
+        const r = Math.min(GRID_ROWS - 2, s0 * STRATUM_ROWS + Math.floor(rand() * (s1 - s0 + 1) * STRATUM_ROWS));
+        const c = 6 + Math.floor(rand() * (GRID_COLS - 12));
+        if (undergroundGrid[r][c] !== TILE_DIRT) continue;
+        if (Math.abs(r - relocationCore.r) + Math.abs(c - relocationCore.c) < 6) continue;
+        if (chests.some(ch => Math.abs(ch.c - c) < 24 && Math.abs(ch.r - r) < 12)) continue;
+        undergroundGrid[r][c] = TILE_CHEST;
+        chests.push({ r, c, band, kind: kinds[band], revealed: false, opened: false, cooldown: 0 });
+        break;
+      }
+    });
+  }
+
+  function chestSeed() {
+    return site.seed ^ 0x0c4e57;
+  }
+
+  function chestAt(r, c) {
+    return chests.find(ch => ch.r === r && ch.c === c && !ch.opened);
+  }
+
+  function chestsOpened() {
+    return chests.filter(ch => ch.opened).length;
+  }
+
+  function revealChest(ch, announceIt) {
+    if (ch.revealed || ch.opened) return;
+    ch.revealed = true;
+    if (announceIt && currentView === VIEW_UNDERGROUND) {
+      const tx = ch.c * TILE_SIZE + TILE_SIZE / 2 - cameraX, ty = ch.r * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      floatingText.add(tx, ty - 40, 'Secret chest!', { color: '#e0b0ff', font: 'bold 24px sans-serif' });
+      particles.sparkle(tx, ty, 16, { color: '#ffd8ff', speed: 2 });
+      SZ.GameAudio.play('coin', { pitch: 0.8 });
+    }
+  }
+
+  // Reveal chests within a tile distance of (r, c)
+  function revealChestsNear(r, c, dist, announceIt) {
+    for (const ch of chests)
+      if (!ch.revealed && !ch.opened && Math.abs(ch.r - r) + Math.abs(ch.c - c) <= dist)
+        revealChest(ch, announceIt);
+  }
+
+  // Difficulty 0..1 grows with the depth band and the site
+  function chestDifficulty(ch) {
+    return Math.max(0, Math.min(1, 0.15 + ch.band * 0.3 + site.index * 0.08));
+  }
+
+  function tryOpenChest(ch) {
+    if (!ch || ch.opened) return;
+    revealChest(ch, false);
+    if (ch.cooldown > 0) {
+      SZ.GameAudio.play('error');
+      floatingText.add(ch.c * TILE_SIZE + TILE_SIZE / 2 - cameraX, ch.r * TILE_SIZE - 10 - cameraY, `The lock is jammed: ${Math.ceil(ch.cooldown)} s`, { color: '#ffb0a8', font: 'bold 20px sans-serif' });
+      return;
+    }
+    cancelMining();
+    clearMoveTarget();
+    startMinigame(ch);
+  }
+
+  function updateChests(dt) {
+    for (const ch of chests)
+      if (ch.cooldown > 0) ch.cooldown = Math.max(0, ch.cooldown - dt);
+  }
+
+  // What a chest holds: rare ore of its depth plus points
+  function grantChestTreasure(ch) {
+    const pools = [['silver', 'gold', 'quartz', 'cobalt'], ['redstone', 'emerald', 'diamond', 'ruby'], ['titanium', 'sapphire', 'uranium', 'amethyst', 'opal']];
+    const pool = pools[ch.band];
+    const rng = makeRng(chestSeed() ^ (ch.r * 977 + ch.c));
+    const got = [];
+    for (let i = 0; i < 3; ++i) {
+      const key = pool[Math.floor(rng() * pool.length)];
+      const n = Math.round((14 + rng() * 14) * (1 + ch.band * 0.4));
+      resources[key] = (resources[key] || 0) + n;
+      got.push(`${n} [[${key}]]`);
+    }
+    const pts = 250 * (ch.band + 1) * (site.index + 1);
+    score += pts;
+    return { icon: 'chest', title: 'Treasure!', text: `${got.join('  ')}  and ${pts} points`, color: UI.gold };
+  }
+
+  /* -- Minigames: lock picking, power circuit, rune memory -- */
+  function startMinigame(ch) {
+    const diff = chestDifficulty(ch);
+    const m = { kind: ch.kind, chest: ch, diff, t: 0, limit: 40, phase: 'play', endT: 0, shake: 0, flash: 0, flashOk: true, reward: null, hover: null };
+    if (m.kind === 'lock') {
+      m.total = 3 + Math.round(diff * 3);
+      m.set = 0;
+      m.lives = 3;
+      m.angle = -Math.PI / 2;
+      m.dir = 1;
+      m.speed = 2.0 + diff * 1.6;
+      m.hw = 0.42 - diff * 0.18;
+      m.target = Math.PI * (0.25 + Math.random() * 0.5);
+      m.limit = 40;
+    } else if (m.kind === 'circuit') {
+      buildCircuit(m, 4 + Math.round(diff * 2));
+      m.limit = 35 + 4 * m.n;
+    } else {
+      m.len = 4 + Math.round(diff * 3);
+      m.seq = [];
+      for (let i = 0; i < m.len; ++i) m.seq.push(Math.floor(Math.random() * 6));
+      m.round = 3;
+      m.lives = 3;
+      m.limit = Math.min(60, 42 + m.len * 2.5);   // the clock stops while the runes play
+      m.lit = -1;
+      m.litT = 0;
+      startRuneShow(m, 0.8);
+    }
+    minigame = m;
+    state = STATE_MINIGAME;
+    bombThrowMode = false;
+    clearTooltip();
+    SZ.GameAudio.play('powerup', { pitch: 0.7, volume: 0.6 });
+  }
+
+  function finishMinigame(win, why) {
+    const m = minigame;
+    if (!m || m.phase !== 'play') return;
+    m.phase = win ? 'won' : 'lost';
+    m.endT = 0;
+    if (win) {
+      const ch = m.chest;
+      ch.opened = true;
+      undergroundGrid[ch.r][ch.c] = TILE_EMPTY;
+      tileHP[ch.r][ch.c] = tileMaxHP[ch.r][ch.c] = 0;
+      m.reward = grantChestReward(ch);
+      SZ.GameAudio.play('win', { volume: 0.8 });
+      screenShake.trigger(6, 250);
+    } else {
+      m.chest.cooldown = CHEST_RETRY;
+      m.why = why || 'The chest stays locked';
+      SZ.GameAudio.play('lose', { volume: 0.7 });
+    }
+  }
+
+  function closeMinigame() {
+    const m = minigame;
+    minigame = null;
+    state = STATE_PLAYING;
+    if (m && m.phase === 'won') {
+      const tx = m.chest.c * TILE_SIZE + TILE_SIZE / 2 - cameraX, ty = m.chest.r * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      particles.burst(tx, ty, 40, { color: '#ffd870', speed: 4, life: 0.8 });
+      particles.sparkle(tx, ty, 24, { color: '#ffe8ff', speed: 3 });
+      announce(m.reward.title, m.reward.text, m.reward.color, m.reward.icon);
+    }
+    saveRun();
+  }
+
+  function giveUpMinigame() {
+    if (minigame && minigame.phase === 'play')
+      finishMinigame(false, 'You stepped away from the chest');
+  }
+
+  function updateMinigame(dt) {
+    const m = minigame;
+    if (!m) return;
+    m.shake = Math.max(0, m.shake - dt * 3);
+    m.flash = Math.max(0, m.flash - dt * 2.5);
+    if (m.msg && (m.msg.t -= dt) <= 0) m.msg = null;
+    if (m.phase !== 'play') {
+      m.endT += dt;
+      return;
+    }
+    const showing = m.kind === 'runes' && m.show;
+    if (!showing) m.t += dt;
+    if (m.t >= m.limit) {
+      finishMinigame(false, 'Time ran out');
+      return;
+    }
+    if (m.kind === 'lock')
+      m.angle += m.dir * m.speed * dt;
+    else if (m.kind === 'runes')
+      updateRunes(m, dt);
+  }
+
+  function minigameMessage(m, text, color) {
+    m.msg = { text, color, t: 1.2 };
+  }
+
+  function angleGap(a, b) {
+    let d = (a - b) % TWO_PI;
+    if (d > Math.PI) d -= TWO_PI;
+    if (d < -Math.PI) d += TWO_PI;
+    return Math.abs(d);
+  }
+
+  function lockPress(m) {
+    const gap = angleGap(m.angle, m.target);
+    if (gap <= m.hw) {
+      ++m.set;
+      m.flash = 1;
+      m.flashOk = true;
+      SZ.GameAudio.play('select', { pitch: 1 + m.set * 0.12 });
+      SZ.GameAudio.play('click', { pitch: 0.7 });
+      minigameMessage(m, gap <= m.hw * 0.35 ? 'PERFECT!' : 'Pin set!', gap <= m.hw * 0.35 ? UI.gold : UI.good);
+      if (m.set >= m.total) {
+        finishMinigame(true);
+        return;
+      }
+      m.dir = -m.dir;
+      m.speed *= 1.12;
+      m.hw = Math.max(0.13, m.hw * 0.9);
+      m.target = m.angle + m.dir * (Math.PI * 0.55 + Math.random() * Math.PI * 0.9);
+    } else {
+      --m.lives;
+      m.flash = 1;
+      m.flashOk = false;
+      m.shake = 1;
+      SZ.GameAudio.play('error');
+      minigameMessage(m, 'The pick slipped!', UI.bad);
+      if (m.lives <= 0)
+        finishMinigame(false, 'Your last lock pick snapped');
+    }
+  }
+
+  /* Power circuit: rotate the tiles until power flows from the battery to the lock.
+     Connections are bits N=1, E=2, S=4, W=8 */
+  function rotMask(mask, k) {
+    for (let i = 0; i < ((k % 4) + 4) % 4; ++i)
+      mask = ((mask << 1) | (mask >> 3)) & 15;
+    return mask;
+  }
+
+  function buildCircuit(m, n) {
+    m.n = n;
+    const base = [];
+    for (let r = 0; r < n; ++r) base.push(new Array(n).fill(0));
+    // Random spanning tree (depth-first maze)
+    const seen = new Set([0]);
+    const stack = [[0, 0]];
+    const dirs = [[-1, 0, 1, 4], [0, 1, 2, 8], [1, 0, 4, 1], [0, -1, 8, 2]];
+    while (stack.length) {
+      const [r, c] = stack[stack.length - 1];
+      const opts = dirs.filter(([dr, dc]) => r + dr >= 0 && r + dr < n && c + dc >= 0 && c + dc < n && !seen.has((r + dr) * n + c + dc));
+      if (!opts.length) {
+        stack.pop();
+        continue;
+      }
+      const [dr, dc, bit, back] = opts[Math.floor(Math.random() * opts.length)];
+      base[r][c] |= bit;
+      base[r + dr][c + dc] |= back;
+      seen.add((r + dr) * n + c + dc);
+      stack.push([r + dr, c + dc]);
+    }
+    m.src = Math.floor(Math.random() * n);
+    m.snk = Math.floor(Math.random() * n);
+    base[m.src][0] |= 8;
+    base[m.snk][n - 1] |= 2;
+    m.base = base;
+    m.cur = { r: m.src, c: 0 };
+    for (let tries = 0; tries < 20; ++tries) {
+      m.rot = base.map(row => row.map(() => Math.floor(Math.random() * 4)));
+      if (!circuitPowered(m).done) break;
+    }
+    m.spin = base.map(row => row.map(() => 0));
+  }
+
+  function circuitMask(m, r, c) {
+    return rotMask(m.base[r][c], m.rot[r][c]);
+  }
+
+  // Tiles reached by power from the battery; done when the lock tile is live
+  function circuitPowered(m) {
+    const n = m.n, on = new Set();
+    if (circuitMask(m, m.src, 0) & 8) {
+      const q = [[m.src, 0]];
+      on.add(m.src * n);
+      while (q.length) {
+        const [r, c] = q.shift();
+        const mk = circuitMask(m, r, c);
+        for (const [dr, dc, bit, back] of [[-1, 0, 1, 4], [0, 1, 2, 8], [1, 0, 4, 1], [0, -1, 8, 2]]) {
+          const rr = r + dr, cc = c + dc;
+          if (!(mk & bit) || rr < 0 || rr >= n || cc < 0 || cc >= n || on.has(rr * n + cc)) continue;
+          if (circuitMask(m, rr, cc) & back) {
+            on.add(rr * n + cc);
+            q.push([rr, cc]);
+          }
+        }
+      }
+    }
+    return { on, done: on.has(m.snk * n + n - 1) && !!(circuitMask(m, m.snk, n - 1) & 2) };
+  }
+
+  function rotateCircuitTile(m, r, c, dir) {
+    m.rot[r][c] = (m.rot[r][c] + dir + 4) % 4;
+    m.spin[r][c] = dir;
+    m.cur = { r, c };
+    SZ.GameAudio.play('click', { pitch: 1.2 + Math.random() * 0.2, volume: 0.7 });
+    if (circuitPowered(m).done) {
+      SZ.GameAudio.play('zap', { pitch: 1.4 });
+      finishMinigame(true);
+    }
+  }
+
+  /* Rune memory: watch the runes light up, then repeat the sequence */
+  const RUNE_COLORS = ['#ff6a6a', '#ffb648', '#ffe66a', '#6fe08a', '#5ab8ff', '#c890ff'];
+  const RUNE_TONES = [262, 330, 392, 440, 523, 659];
+
+  function startRuneShow(m, delay) {
+    m.show = true;
+    m.showI = -1;
+    m.showT = -(delay || 0.6);
+    m.input = 0;
+    m.lit = -1;
+  }
+
+  function runeStep(m) {
+    return Math.max(0.32, 0.6 - m.diff * 0.22);
+  }
+
+  function updateRunes(m, dt) {
+    if (m.litT > 0) {
+      m.litT -= dt;
+      if (m.litT <= 0) m.lit = -1;
+    }
+    if (!m.show) return;
+    m.showT += dt;
+    const step = runeStep(m);
+    const i = Math.floor(m.showT / (step + 0.16));
+    if (m.showT < 0) return;
+    if (i >= m.round) {
+      m.show = false;
+      m.lit = -1;
+      return;
+    }
+    if (i !== m.showI) {
+      m.showI = i;
+      lightRune(m, m.seq[i], step);
+    }
+  }
+
+  function lightRune(m, k, dur) {
+    m.lit = k;
+    m.litT = dur;
+    SZ.GameAudio.tone(RUNE_TONES[k], dur * 0.9, 'triangle', 0.12);
+  }
+
+  function runePress(m, k) {
+    if (m.show || m.phase !== 'play') return;
+    lightRune(m, k, 0.25);
+    if (k === m.seq[m.input]) {
+      ++m.input;
+      if (m.input >= m.round) {
+        if (m.round >= m.len) {
+          finishMinigame(true);
+          return;
+        }
+        ++m.round;
+        m.flash = 1;
+        m.flashOk = true;
+        minigameMessage(m, 'Correct!', UI.good);
+        startRuneShow(m, 0.9);
+      }
+    } else {
+      --m.lives;
+      m.flash = 1;
+      m.flashOk = false;
+      m.shake = 1;
+      SZ.GameAudio.play('error');
+      minigameMessage(m, 'Wrong rune - watch again', UI.bad);
+      if (m.lives <= 0)
+        finishMinigame(false, 'The runes went dark');
+      else
+        startRuneShow(m, 1.0);
+    }
+  }
+
+  /* -- Minigame layout, input and drawing -- */
+  function minigameLayout() {
+    const w = 900, h = 680, x = (CANVAS_W - w) / 2, y = (CANVAS_H - h) / 2;
+    return { x, y, w, h, cx: x + w / 2, bodyY: y + 112, bodyH: h - 112 - 64 };
+  }
+
+  function runeSpots() {
+    const L = minigameLayout();
+    const cx = L.cx, cy = L.bodyY + L.bodyH / 2 + 6;
+    return RUNE_COLORS.map((col, i) => {
+      const a = -Math.PI / 2 + i * TWO_PI / 6;
+      return { x: cx + Math.cos(a) * 170, y: cy + Math.sin(a) * 170, r: 52, i };
+    });
+  }
+
+  function circuitGeom(m) {
+    const L = minigameLayout();
+    const cell = Math.min(86, Math.floor(430 / m.n));
+    const gw = cell * m.n;
+    return { cell, gx: L.cx - gw / 2, gy: L.bodyY + (L.bodyH - gw) / 2 + 8 };
+  }
+
+  function minigameKey(e) {
+    const m = minigame;
+    if (!m) return false;
+    if (m.phase !== 'play') {
+      if (m.endT > 0.35 && (e.code === 'Enter' || e.code === 'Space' || e.code === 'Escape' || e.code === 'NumpadEnter'))
+        closeMinigame();
+      return true;
+    }
+    if (e.code === 'Escape') {
+      giveUpMinigame();
+      return true;
+    }
+    if (m.kind === 'lock') {
+      if (e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'KeyE') {
+        if (!e.repeat) lockPress(m);
+        return true;
+      }
+    } else if (m.kind === 'circuit') {
+      const mv = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1], KeyW: [-1, 0], KeyS: [1, 0], KeyA: [0, -1], KeyD: [0, 1] }[e.code];
+      if (mv) {
+        m.cur = { r: Math.max(0, Math.min(m.n - 1, m.cur.r + mv[0])), c: Math.max(0, Math.min(m.n - 1, m.cur.c + mv[1])) };
+        return true;
+      }
+      if (e.code === 'Space' || e.code === 'Enter' || e.code === 'NumpadEnter') {
+        rotateCircuitTile(m, m.cur.r, m.cur.c, e.shiftKey ? -1 : 1);
+        return true;
+      }
+    } else if (/^(Digit|Numpad)[1-6]$/.test(e.code)) {
+      runePress(m, parseInt(e.code.slice(-1), 10) - 1);
+      return true;
+    }
+    return true;
+  }
+
+  function minigameClick(mx, my, button) {
+    const m = minigame;
+    if (!m) return;
+    if (m.phase !== 'play') {
+      if (m.endT > 0.35) closeMinigame();
+      return;
+    }
+    const L = minigameLayout();
+    if (inRect(mx, my, { x: L.x + L.w - 54, y: L.y + 12, w: 40, h: 40 })) {
+      giveUpMinigame();
+      return;
+    }
+    if (m.kind === 'lock')
+      lockPress(m);
+    else if (m.kind === 'circuit') {
+      const g = circuitGeom(m);
+      const c = Math.floor((mx - g.gx) / g.cell), r = Math.floor((my - g.gy) / g.cell);
+      if (r >= 0 && r < m.n && c >= 0 && c < m.n)
+        rotateCircuitTile(m, r, c, button === 2 ? -1 : 1);
+    } else {
+      for (const sp of runeSpots())
+        if (Math.hypot(mx - sp.x, my - sp.y) <= sp.r + 6) {
+          runePress(m, sp.i);
+          break;
+        }
+    }
+  }
+
+  function minigameHover(mx, my) {
+    const m = minigame;
+    if (!m) return;
+    m.hover = null;
+    if (m.kind === 'circuit' && m.phase === 'play') {
+      const g = circuitGeom(m);
+      const c = Math.floor((mx - g.gx) / g.cell), r = Math.floor((my - g.gy) / g.cell);
+      if (r >= 0 && r < m.n && c >= 0 && c < m.n) m.hover = { r, c };
+    } else if (m.kind === 'runes') {
+      for (const sp of runeSpots())
+        if (Math.hypot(mx - sp.x, my - sp.y) <= sp.r + 6) m.hover = sp.i;
+    }
+  }
+
+  // Rune glyph: a few strokes inside a unit circle
+  const RUNE_GLYPHS = [
+    [[0, -0.7, 0, 0.7], [0, -0.1, 0.5, -0.6], [0, 0.2, -0.5, -0.3]],
+    [[-0.5, -0.6, 0.5, -0.6], [0.5, -0.6, -0.4, 0.7], [-0.3, 0, 0.4, 0]],
+    [[-0.55, 0.6, 0, -0.65], [0, -0.65, 0.55, 0.6], [-0.3, 0.1, 0.3, 0.1]],
+    [[-0.5, -0.6, -0.5, 0.6], [0.5, -0.6, 0.5, 0.6], [-0.5, -0.6, 0.5, 0.6]],
+    [[0, -0.7, 0, 0.7], [-0.55, -0.3, 0.55, -0.3], [-0.55, 0.3, 0.55, 0.3]],
+    [[-0.5, -0.5, 0.5, 0.5], [0.5, -0.5, -0.5, 0.5], [0, -0.7, 0, -0.35], [0, 0.35, 0, 0.7]]
+  ];
+
+  function drawRune(k, x, y, r, lit, hover) {
+    const col = RUNE_COLORS[k];
+    ctx.save();
+    if (lit) drawGlow(col, x, y, r * 2.2, 0.9);
+    const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, 2, x, y, r);
+    g.addColorStop(0, lit ? '#ffffff' : hexToRgba(col, hover ? 0.5 : 0.32));
+    g.addColorStop(1, lit ? col : 'rgba(20,24,40,0.95)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TWO_PI);
+    ctx.fill();
+    ctx.lineWidth = lit ? 4 : 2.5;
+    ctx.strokeStyle = lit ? '#ffffff' : hexToRgba(col, hover ? 1 : 0.7);
+    ctx.stroke();
+    ctx.strokeStyle = lit ? '#2a1030' : col;
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (const [x0, y0, x1, y1] of RUNE_GLYPHS[k]) {
+      ctx.moveTo(x + x0 * r * 0.6, y + y0 * r * 0.6);
+      ctx.lineTo(x + x1 * r * 0.6, y + y1 * r * 0.6);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawPipeTile(m, r, c, x, y, cell, powered, hover, focus) {
+    ctx.save();
+    roundRectPath(x + 3, y + 3, cell - 6, cell - 6, 9);
+    ctx.fillStyle = hover ? 'rgba(60,70,100,0.95)' : 'rgba(26,30,48,0.95)';
+    ctx.fill();
+    ctx.lineWidth = focus ? 3 : 1;
+    ctx.strokeStyle = focus ? UI.gold : 'rgba(150,180,255,0.18)';
+    ctx.stroke();
+    const mask = circuitMask(m, r, c);
+    const cx = x + cell / 2, cy = y + cell / 2, L = cell / 2 - 3;
+    const segs = [];
+    if (mask & 1) segs.push([0, -L]);
+    if (mask & 2) segs.push([L, 0]);
+    if (mask & 4) segs.push([0, L]);
+    if (mask & 8) segs.push([-L, 0]);
+    ctx.lineCap = 'round';
+    for (const [wdt, col] of powered ? [[cell * 0.26, 'rgba(90,220,255,0.35)'], [cell * 0.13, '#8af0ff']] : [[cell * 0.18, '#0a0c16'], [cell * 0.11, '#5a6688']]) {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = wdt;
+      ctx.beginPath();
+      for (const [dx, dy] of segs) {
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + dx, cy + dy);
+      }
+      ctx.stroke();
+    }
+    if (powered) {
+      // Current flowing along the pipes
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 8]);
+      ctx.lineDashOffset = -animTime * 40;
+      ctx.beginPath();
+      for (const [dx, dy] of segs) {
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + dx, cy + dy);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.fillStyle = powered ? '#c8f8ff' : '#3a4460';
+    ctx.beginPath();
+    ctx.arc(cx, cy, cell * 0.1, 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawMinigame() {
+    const m = minigame;
+    if (!m) return;
+    drawScrim(0.7);
+    const L = minigameLayout();
+    const shake = m.shake > 0 ? Math.sin(animTime * 70) * 8 * m.shake : 0;
+    ctx.save();
+    ctx.translate(shake, 0);
+    drawPanel(L.x, L.y, L.w, L.h, { accent: '#c890ff', radius: 16, title: `[[chest]] Secret Chest: ${MINIGAME_NAMES[m.kind]}`, titlePx: 26, headerH: 64, top: 'rgba(28,24,48,0.98)', bottom: 'rgba(12,10,24,0.98)', glow: true });
+    if (m.phase === 'play')
+      drawSmallButton({ x: L.x + L.w - 54, y: L.y + 12, w: 40, h: 40 }, '×', true, false, '#8aa8d8', 22);
+    // Difficulty pips and depth
+    const pips = 1 + Math.round(m.diff * 4);
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    fitText(`Depth ${m.chest.r} m`, L.x + L.w - 70, L.y + 33, 140, 15, { color: UI.textDim });
+    for (let i = 0; i < 5; ++i) {
+      ctx.fillStyle = i < pips ? '#e0a0ff' : 'rgba(255,255,255,0.12)';
+      ctx.beginPath();
+      ctx.arc(L.x + L.w - 300 + i * 18, L.y + 33, 6, 0, TWO_PI);
+      ctx.fill();
+    }
+    // Timer
+    const left = Math.max(0, m.limit - m.t);
+    drawMeter(L.x + 30, L.y + 80, L.w - 60, 12, left / m.limit, left < 8 ? '#ff6a5a' : '#c890ff', { track: 'rgba(0,0,0,0.6)' });
+    ctx.textAlign = 'right';
+    fitText(`${Math.ceil(left)} s`, L.x + L.w - 30, L.y + 101, 80, 14, { weight: 'bold', color: left < 8 ? '#ff8a7a' : UI.textDim });
+    ctx.textAlign = 'left';
+    const hintY = L.y + 101;
+    ctx.save();
+    if (m.phase !== 'play')
+      ctx.globalAlpha *= 0.3;
+    if (m.kind === 'lock') drawLockGame(m, L);
+    else if (m.kind === 'circuit') drawCircuitGame(m, L);
+    else drawRuneGame(m, L);
+    ctx.restore();
+    if (m.msg && m.phase === 'play') {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, m.msg.t * 3);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText(m.msg.text, L.cx, L.y + 140 - (1.2 - m.msg.t) * 12, 420, 24, { weight: 'bold', color: m.msg.color, outline: 'rgba(0,0,0,0.8)' });
+      ctx.restore();
+    }
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const hint = { lock: 'Press when the needle crosses the gold zone', circuit: 'Rotate tiles until power reaches the lock', runes: 'Watch the runes, then repeat them in order' }[m.kind];
+    fitText(hint, L.x + 30, hintY, L.w - 160, 15, { color: UI.text });
+    // Result
+    if (m.phase !== 'play') {
+      const k = Math.min(1, m.endT / 0.3);
+      ctx.save();
+      ctx.globalAlpha = k;
+      roundRectPath(L.x + 60, L.y + 190, L.w - 120, 300, 16);
+      ctx.fillStyle = 'rgba(8,8,18,0.97)';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = m.phase === 'won' ? UI.gold : '#ff7a6a';
+      ctx.stroke();
+      if (m.phase === 'won') {
+        drawHeadline('UNLOCKED!', L.cx, L.y + 240, L.w - 200, 46, '#ffe080', '#e0a020');
+        const r = m.reward;
+        if (r.artifact)
+          drawArtifactIcon(r.artifact, L.cx, L.y + 322, 92);
+        else
+          drawSprite(r.icon, L.cx, L.y + 325, 72);
+        ctx.textAlign = 'center';
+        fitText(r.title, L.cx, L.y + 395, L.w - 180, 24, { weight: 'bold', color: r.color });
+        drawTextBlock(r.text, L.x + 100, L.y + 412, L.w - 200, 52, 17, { align: 'center', valign: 'middle', color: UI.text, minPx: 12 });
+      } else {
+        drawHeadline('LOCKED', L.cx, L.y + 250, L.w - 200, 46, '#ff8a7a', '#c01818');
+        drawSprite('lock', L.cx, L.y + 330, 64);
+        ctx.textAlign = 'center';
+        fitText(m.why, L.cx, L.y + 400, L.w - 180, 22, { weight: 'bold', color: UI.text });
+        fitText(`Try again in ${CHEST_RETRY} s`, L.cx, L.y + 438, L.w - 180, 17, { color: UI.textDim });
+      }
+      ctx.restore();
+    }
+    const keys = m.phase !== 'play' ? [{ key: 'Click', label: 'Continue' }, { key: 'Enter', label: 'Continue' }]
+      : m.kind === 'lock' ? [{ key: 'Space', label: 'Set pin' }, { key: 'Click', label: 'Set pin' }, { key: 'Esc', label: 'Give up' }]
+      : m.kind === 'circuit' ? [{ key: 'Click', label: 'Rotate' }, { key: 'Right click', label: 'Back' }, { key: '←↑→↓', label: 'Select' }, { key: 'Space', label: 'Rotate' }, { key: 'Esc', label: 'Give up' }]
+      : [{ key: '1-6', label: 'Rune' }, { key: 'Click', label: 'Rune' }, { key: 'Esc', label: 'Give up' }];
+    drawKeyHints(keys, L.cx, L.y + L.h - 30, L.w - 80);
+    ctx.restore();
+  }
+
+  function drawLives(m, L, icon) {
+    for (let i = 0; i < 3; ++i)
+      drawSprite(icon, L.x + L.w - 50 - i * 34, L.y + 140, 28, i < m.lives ? 1 : 0.2);
+  }
+
+  function drawLockGame(m, L) {
+    const cx = L.cx, cy = L.bodyY + 230, R = 165;
+    drawLives(m, L, 'wrench');
+    // Ring track with tick marks
+    ctx.save();
+    ctx.lineWidth = 26;
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, TWO_PI);
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(200,170,255,0.25)';
+    for (let i = 0; i < 48; ++i) {
+      const a = i * TWO_PI / 48, l = i % 4 ? 6 : 12;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * (R - 13), cy + Math.sin(a) * (R - 13));
+      ctx.lineTo(cx + Math.cos(a) * (R - 13 - l), cy + Math.sin(a) * (R - 13 - l));
+      ctx.stroke();
+    }
+    // Gold zone (perfect core is brighter)
+    ctx.shadowColor = UI.gold;
+    ctx.shadowBlur = 16;
+    ctx.lineWidth = 22;
+    ctx.strokeStyle = 'rgba(255,200,80,0.75)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, m.target - m.hw, m.target + m.hw);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = 22;
+    ctx.strokeStyle = '#fff2b0';
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, m.target - m.hw * 0.35, m.target + m.hw * 0.35);
+    ctx.stroke();
+    // Lock body with keyhole
+    const flashCol = m.flash > 0 ? (m.flashOk ? `rgba(120,255,150,${m.flash * 0.6})` : `rgba(255,90,80,${m.flash * 0.6})`) : null;
+    const g = ctx.createRadialGradient(cx - 30, cy - 30, 10, cx, cy, 110);
+    g.addColorStop(0, '#5a4a7a');
+    g.addColorStop(1, '#1a1428');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 110, 0, TWO_PI);
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#c8a0ff';
+    ctx.stroke();
+    if (flashCol) {
+      ctx.fillStyle = flashCol;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 110, 0, TWO_PI);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#0a0612';
+    ctx.beginPath();
+    ctx.arc(cx, cy - 14, 18, 0, TWO_PI);
+    ctx.fill();
+    ctx.fillRect(cx - 8, cy - 8, 16, 40);
+    // Needle
+    const nx = cx + Math.cos(m.angle) * (R + 6), ny = cy + Math.sin(m.angle) * (R + 6);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(m.angle) * 100, cy + Math.sin(m.angle) * 100);
+    ctx.lineTo(nx, ny);
+    ctx.stroke();
+    drawGlow('#ffffff', nx, ny, 22, 0.9);
+    ctx.fillStyle = '#ffe8ff';
+    ctx.beginPath();
+    ctx.arc(nx, ny, 9, 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+    // Pins
+    const pw = 34, gap = 14, total = m.total * pw + (m.total - 1) * gap;
+    for (let i = 0; i < m.total; ++i) {
+      const px = cx - total / 2 + i * (pw + gap), py = cy + R + 44;
+      roundRectPath(px, py, pw, 46, 7);
+      ctx.fillStyle = i < m.set ? 'rgba(255,215,90,0.85)' : 'rgba(0,0,0,0.5)';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = i < m.set ? '#fff2b0' : 'rgba(200,170,255,0.35)';
+      ctx.stroke();
+      ctx.fillStyle = i < m.set ? '#5a3a08' : 'rgba(200,170,255,0.4)';
+      ctx.fillRect(px + pw / 2 - 3, py + (i < m.set ? 8 : 20), 6, 18);
+    }
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(`Pins ${m.set} / ${m.total}`, cx, cy + R + 108, 300, 18, { weight: 'bold', color: UI.text });
+  }
+
+  function drawCircuitGame(m, L) {
+    const g = circuitGeom(m);
+    const pw = circuitPowered(m);
+    for (let r = 0; r < m.n; ++r)
+      for (let c = 0; c < m.n; ++c) {
+        const hover = m.hover && m.hover.r === r && m.hover.c === c;
+        drawPipeTile(m, r, c, g.gx + c * g.cell, g.gy + r * g.cell, g.cell, pw.on.has(r * m.n + c), hover, m.cur.r === r && m.cur.c === c);
+      }
+    // Battery on the left, lock on the right
+    const by = g.gy + m.src * g.cell + g.cell / 2, sy = g.gy + m.snk * g.cell + g.cell / 2;
+    ctx.save();
+    ctx.strokeStyle = '#8af0ff';
+    ctx.lineWidth = g.cell * 0.13;
+    ctx.beginPath();
+    ctx.moveTo(g.gx - 40, by);
+    ctx.lineTo(g.gx + 3, by);
+    ctx.stroke();
+    ctx.strokeStyle = pw.done ? '#8af0ff' : '#5a6688';
+    ctx.beginPath();
+    ctx.moveTo(g.gx + g.cell * m.n - 3, sy);
+    ctx.lineTo(g.gx + g.cell * m.n + 40, sy);
+    ctx.stroke();
+    ctx.restore();
+    drawGlow('#8af0ff', g.gx - 60, by, 50, 0.6 + Math.sin(animTime * 5) * 0.2);
+    drawSprite('bolt', g.gx - 62, by, 44);
+    drawGlow(pw.done ? '#ffe080' : '#c890ff', g.gx + g.cell * m.n + 64, sy, 50, 0.5);
+    drawSprite('chest', g.gx + g.cell * m.n + 64, sy, 48);
+    drawSprite('lock', g.gx + g.cell * m.n + 64, sy - 34, 22, pw.done ? 0.3 : 1);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(`${pw.on.size} of ${m.n * m.n} tiles powered`, L.cx, g.gy + g.cell * m.n + 26, 400, 16, { color: UI.textDim });
+  }
+
+  function drawRuneGame(m, L) {
+    drawLives(m, L, 'heart');
+    const cx = L.cx, cy = L.bodyY + L.bodyH / 2 + 6;
+    // Centre emblem: round and progress
+    ctx.save();
+    const g = ctx.createRadialGradient(cx, cy, 10, cx, cy, 90);
+    g.addColorStop(0, m.flash > 0 ? (m.flashOk ? 'rgba(120,255,160,0.6)' : 'rgba(255,90,80,0.6)') : 'rgba(80,60,120,0.6)');
+    g.addColorStop(1, 'rgba(20,16,36,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 90, 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(m.show ? 'Watch…' : 'Your turn', cx, cy - 22, 150, 22, { weight: 'bold', color: m.show ? '#e0c8ff' : UI.gold });
+    fitText(`Round ${m.round - 2} of ${m.len - 2}`, cx, cy + 6, 150, 15, { color: UI.textDim });
+    // Dots for the sequence entered so far
+    for (let i = 0; i < m.round; ++i) {
+      ctx.fillStyle = i < m.input ? UI.gold : 'rgba(255,255,255,0.18)';
+      ctx.beginPath();
+      ctx.arc(cx - (m.round - 1) * 9 + i * 18, cy + 34, 5, 0, TWO_PI);
+      ctx.fill();
+    }
+    for (const sp of runeSpots()) {
+      drawRune(sp.i, sp.x, sp.y, sp.r, m.lit === sp.i, m.hover === sp.i && !m.show);
+      if (m.phase !== 'play') continue;
+      ctx.textAlign = 'center';
+      fitText(String(sp.i + 1), sp.x + sp.r * 0.78, sp.y + sp.r * 0.78, 24, 14, { weight: 'bold', color: UI.textDim, outline: 'rgba(0,0,0,0.8)' });
+    }
+  }
+
+  // Sunstone Lamp ore glow and Dowsing Rod arrows
+  function drawUndergroundArtifacts() {
+    if (hasArtifact('sunLamp')) {
+      const R = 5;
+      for (let r = Math.max(0, drillY - R); r <= Math.min(GRID_ROWS - 1, drillY + R); ++r)
+        for (let c = Math.max(0, drillX - R); c <= Math.min(GRID_COLS - 1, drillX + R); ++c) {
+          const t = undergroundGrid[r][c];
+          if (!RESOURCE_TILES.includes(t) || Math.abs(r - drillY) + Math.abs(c - drillX) > R) continue;
+          const x = c * TILE_SIZE + TILE_SIZE / 2 - cameraX, y = r * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+          drawGlow(TILE_HIGHLIGHT_COLORS[t] || '#fff', x, y, TILE_SIZE * 0.75, 0.35 + Math.sin(animTime * 2 + r + c) * 0.1);
+          drawSprite(TILE_ICONS[t], x, y, 24, 0.85);
+        }
+    }
+    if (hasArtifact('dowsingRod'))
+      for (const ch of chests)
+        if (!ch.opened && !ch.revealed)
+          drawPointer(ch.r, ch.c, 2.2, '#e0a0ff', 'artDowsing');
+  }
+
+  // Secret chests in the rock: hidden ones barely glint, found ones glow
+  function drawChests() {
+    for (const ch of chests) {
+      if (ch.opened) continue;
+      const x = ch.c * TILE_SIZE - cameraX, y = ch.r * TILE_SIZE - cameraY;
+      if (x < -TILE_SIZE || x > CANVAS_W || y < -TILE_SIZE || y > CANVAS_H) continue;
+      if (!ch.revealed) {
+        if (Math.sin(animTime * 0.9 + ch.c) > 0.985)
+          particles.sparkle(x + Math.random() * TILE_SIZE, y + Math.random() * TILE_SIZE, 1, { color: '#f0d8ff', speed: 0.4 });
+        continue;
+      }
+      const pulse = Math.sin(animTime * 3 + ch.c) * 0.5 + 0.5;
+      const cx = x + TILE_SIZE / 2, cy = y + TILE_SIZE / 2;
+      drawGlow(ch.cooldown > 0 ? '#ff7060' : '#d890ff', cx, cy, TILE_SIZE * (1.1 + pulse * 0.3), 0.55);
+      drawGlow('#ffe080', cx, cy, TILE_SIZE * 0.7, 0.3 + pulse * 0.2);
+      drawSprite('chest', cx, cy + Math.sin(animTime * 2 + ch.r) * 1.5, 34);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      if (ch.cooldown > 0) {
+        drawSprite('lock', cx, cy - 30, 18);
+        fitText(`${Math.ceil(ch.cooldown)} s`, cx, cy + 28, 60, 14, { weight: 'bold', color: '#ffb0a8', outline: 'rgba(0,0,0,0.85)' });
+      } else
+        fitText('!', cx, cy - 30 + Math.sin(animTime * 5) * 3, 30, 22, { weight: 'bold', color: '#ffe8a0', outline: 'rgba(60,20,80,0.9)' });
+      if (Math.random() < 0.04)
+        particles.sparkle(x + Math.random() * TILE_SIZE, y + Math.random() * TILE_SIZE, 1, { color: '#ffe0ff', speed: 0.6 });
+    }
+  }
+
+  // Scanners sense the nearest hidden chest: an arrow points the way
+  function drawChestHints(scanRange) {
+    if (!scanRange) return;
+    let best = null, bestD = Infinity;
+    for (const ch of chests) {
+      if (ch.opened || ch.revealed) continue;
+      const d = Math.abs(ch.r - drillY) + Math.abs(ch.c - drillX);
+      if (d <= scanRange) {
+        revealChest(ch, true);
+        continue;
+      }
+      if (d < bestD) {
+        bestD = d;
+        best = ch;
+      }
+    }
+    if (!best || bestD > scanRange * 8) return;
+    drawPointer(best.r, best.c, scanRange, '#e0a0ff', 'chest');
+  }
+
+  // Arrow at the edge of the scanner ring that points to a tile
+  function drawPointer(r, c, scanRange, color, icon) {
+    const px = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX, py = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+    const a = Math.atan2(r - drillY, c - drillX);
+    const rr = (scanRange + 0.8) * TILE_SIZE;
+    const ax = px + Math.cos(a) * rr, ay = py + Math.sin(a) * rr;
+    const pulse = 0.5 + Math.sin(animTime * 5) * 0.4;
+    drawGlow(color, ax, ay, 34, pulse * 0.8);
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(a);
+    ctx.fillStyle = SPRITE_OUTLINE;
+    ctx.beginPath();
+    ctx.moveTo(22, 0);
+    ctx.lineTo(-12, -15);
+    ctx.lineTo(-5, 0);
+    ctx.lineTo(-12, 15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = hexToRgba(color, 0.55 + pulse * 0.45);
+    ctx.beginPath();
+    ctx.moveTo(18, 0);
+    ctx.lineTo(-9, -11);
+    ctx.lineTo(-3, 0);
+    ctx.lineTo(-9, 11);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    drawSprite(icon, ax - Math.cos(a) * 34, ay - Math.sin(a) * 34, 24, 0.6 + pulse * 0.4);
+  }
+
+  /* ======================================================================
+     ARTIFACTS -- unique finds from secret chests, kept for the whole run
+     ====================================================================== */
+
+  const ARTIFACTS = [
+    { id: 'twinDrill', name: 'Twin Drill', icon: 'artTwinDrill', color: '#ffb040', desc: 'Every dig also breaks the block beside it: tunnels come out two blocks wide' },
+    { id: 'quakeHammer', name: 'Quake Hammer', icon: 'artQuake', color: '#e0a070', desc: 'Every dig cracks the eight blocks around it, so the next digs go much faster' },
+    { id: 'midasLens', name: 'Midas Lens', icon: 'artMidas', color: '#ffd700', desc: 'One in four ores you dig comes out doubled' },
+    { id: 'lodestone', name: 'Lodestone', icon: 'artLodestone', color: '#ff7a7a', desc: 'Loose ore within 4 tiles flies to the keeper' },
+    { id: 'sunLamp', name: 'Sunstone Lamp', icon: 'artSunLamp', color: '#fff0a0', desc: 'The lamp shines 60% further and ore within 5 tiles glows through the rock' },
+    { id: 'stormCoil', name: 'Storm Coil', icon: 'artStormCoil', color: '#7ad8ff', desc: 'A lightning coil on the dome zaps a monster every 1.5 s and arcs on to 3 more' },
+    { id: 'aegisHeart', name: 'Aegis Heart', icon: 'artAegis', color: '#6cc8ff', desc: 'A regenerating shield over the dome soaks up hits: 40 plus a tenth of the dome' },
+    { id: 'chronoGlass', name: 'Chronoglass', icon: 'artChrono', color: '#a0c0ff', desc: 'A heavy hit on the dome slows the monsters to a crawl for 4 s (every 20 s)' },
+    { id: 'bombCharm', name: 'Bombsmith Charm', icon: 'artBombCharm', color: '#ff9a40', desc: 'Every dawn brings a free Bomb, every third dawn a Big Bomb as well' },
+    { id: 'hiveLink', name: 'Hive Link', icon: 'artHive', color: '#d8b8ff', desc: 'Drones carry twice as much and fly 25% faster' },
+    { id: 'warpAnchor', name: 'Warp Anchor', icon: 'artWarp', color: '#c890ff', desc: 'Teleport home with 5 at any time, without cooldown' },
+    { id: 'hunterEye', name: "Hunter's Eye", icon: 'artEye', color: '#ff6a5a', desc: '+20% chance for every turret shot to be a critical hit' },
+    { id: 'owlSight', name: 'Owl Sight', icon: 'artOwl', color: '#80ffb0', desc: 'Monsters glow in the dark, burrowers show under ground and blizzards hide nothing' },
+    { id: 'alchemist', name: "Alchemist's Stone", icon: 'artAlchemist', color: '#60e0a0', desc: 'Ore brought home also scores: 2 points per unit' },
+    { id: 'dowsingRod', name: 'Dowsing Rod', icon: 'artDowsing', color: '#e0a0ff', desc: 'Arrows point to every hidden chest; chests within 8 tiles reveal themselves' },
+    { id: 'phoenixFeather', name: 'Phoenix Feather', icon: 'artPhoenix', color: '#ff8a40', desc: 'Once per site the dome rises from destruction with half its HP' }
+  ];
+  const ARTIFACT_BY_ID = {};
+  for (const a of ARTIFACTS)
+    ARTIFACT_BY_ID[a.id] = a;
+
+  let artifacts = [];                // ids found this run, in order
+  let artifactState = newArtifactState();
+  let stormArcs = [];                // Storm Coil lightning: { pts, life }
+
+  function newArtifactState() {
+    return { aegis: 0, aegisDelay: 0, chronoCd: 0, timeSlow: 0, charmDawns: 0, phoenixUsed: false, stormT: 1 };
+  }
+
+  function hasArtifact(id) {
+    return artifacts.indexOf(id) >= 0;
+  }
+
+  function aegisMax() {
+    return Math.round(40 + 0.1 * maxDomeHP);
+  }
+
+  // A chest holds an artifact not found yet (seeded per site and chest); once all are found, treasure
+  function grantChestReward(ch) {
+    const left = ARTIFACTS.filter(a => !hasArtifact(a.id));
+    if (!left.length)
+      return grantChestTreasure(ch);
+    const rng = makeRng(chestSeed() ^ ((ch.band + 1) * 40503) ^ (artifacts.length * 7919));
+    const a = left[Math.floor(rng() * left.length)];
+    artifacts.push(a.id);
+    if (a.id === 'aegisHeart')
+      artifactState.aegis = aegisMax();
+    const pts = 200 * (ch.band + 1) * (site.index + 1);
+    score += pts;
+    return { artifact: a.id, icon: a.icon, title: a.name, text: a.desc, color: a.color };
+  }
+
+  // Artifact icon with a pulsing halo and turning light rays
+  function drawArtifactIcon(id, x, y, size, alpha) {
+    const a = ARTIFACT_BY_ID[id];
+    if (!a) return;
+    const k = alpha === undefined ? 1 : alpha;
+    const pulse = 0.75 + Math.sin(animTime * 3 + x * 0.05) * 0.25;
+    drawGlow(a.color, x, y, size * 0.95, 0.65 * pulse * k);
+    ctx.save();
+    ctx.globalAlpha *= k;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = hexToRgba(a.color, 0.45 * pulse);
+    ctx.lineWidth = Math.max(1, size * 0.04);
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 4; ++i) {
+      const ang = animTime * 0.8 + i * Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(x + Math.cos(ang) * size * 0.35, y + Math.sin(ang) * size * 0.35);
+      ctx.lineTo(x + Math.cos(ang) * size * 0.72, y + Math.sin(ang) * size * 0.72);
+      ctx.stroke();
+    }
+    ctx.restore();
+    drawSprite(a.icon, x, y, size * 0.78, k);
+  }
+
+  // Ongoing artifact effects (mine magnet, dowsing, storm coil, aegis, chronoglass)
+  function updateArtifacts(dt) {
+    const st = artifactState;
+    if (st.chronoCd > 0) st.chronoCd = Math.max(0, st.chronoCd - dt);
+    if (st.timeSlow > 0) st.timeSlow = Math.max(0, st.timeSlow - dt);
+    // Aegis Heart recharges a while after the last hit
+    if (hasArtifact('aegisHeart')) {
+      if (st.aegisDelay > 0) st.aegisDelay -= dt;
+      else st.aegis = Math.min(aegisMax(), st.aegis + 6 * dt);
+    }
+    // Lodestone pulls loose ore to the keeper
+    if (hasArtifact('lodestone') && currentView === VIEW_UNDERGROUND) {
+      for (let i = droppedResources.length - 1; i >= 0; --i) {
+        const drop = droppedResources[i];
+        if (Math.abs(drop.col - drillX) + Math.abs(drop.row - drillY) > 4) continue;
+        const room = carryCapacity - carried;
+        if (room <= 0) break;
+        const take = Math.min(drop.value, room);
+        resources[TILE_LABELS[drop.type]] += take;
+        carried += take;
+        drop.value -= take;
+        const sx = drop.col * TILE_SIZE + TILE_SIZE / 2 - cameraX, sy = drop.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+        const px = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX, py = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+        for (let k = 0; k < 6; ++k)
+          particles.trail(sx, sy, { vx: (px - sx) / 18 + (Math.random() - 0.5), vy: (py - sy) / 18 + (Math.random() - 0.5), color: TILE_HIGHLIGHT_COLORS[drop.type] || '#ffd0d0', life: 0.3, size: 2 });
+        floatingText.add(px, py - 30, `+${take} ${TILE_LABELS[drop.type]}`, { color: '#ff9a9a', font: 'bold 20px sans-serif' });
+        if (drop.value <= 0)
+          droppedResources.splice(i, 1);
+      }
+    }
+    // Dowsing Rod: chests close by give themselves away
+    if (hasArtifact('dowsingRod') && currentView === VIEW_UNDERGROUND)
+      revealChestsNear(drillY, drillX, 8, true);
+    // Storm Coil: lightning from the dome
+    for (let i = stormArcs.length - 1; i >= 0; --i) {
+      stormArcs[i].life -= dt;
+      if (stormArcs[i].life <= 0) stormArcs.splice(i, 1);
+    }
+    if (hasArtifact('stormCoil') && enemies.length) {
+      st.stormT -= dt;
+      if (st.stormT <= 0) {
+        const cx = STORM_COIL.x, cy = STORM_COIL.y - 20;
+        let target = null, best = 700 * 700;
+        for (const e of enemies) {
+          if (e.hidden) continue;
+          const d = (e.x - cx) * (e.x - cx) + (e.y - cy) * (e.y - cy);
+          if (d < best) {
+            best = d;
+            target = e;
+          }
+        }
+        if (target) {
+          st.stormT = 1.5;
+          const dmg = Math.max(8, weaponDamage * 0.8);
+          applyDamageToEnemy(target, Math.ceil(dmg));
+          target.stunTimer = Math.max(target.stunTimer || 0, 0.25);
+          stormArcs.push({ x0: cx, y0: cy, x1: target.x, y1: target.y, life: 0.3 });
+          let from = target;
+          const hit = [target];
+          for (let n = 0; n < 3; ++n) {
+            let next = null, nd = 220 * 220;
+            for (const e of enemies) {
+              if (e.hidden || hit.includes(e)) continue;
+              const d = (e.x - from.x) * (e.x - from.x) + (e.y - from.y) * (e.y - from.y);
+              if (d < nd) {
+                nd = d;
+                next = e;
+              }
+            }
+            if (!next) break;
+            applyDamageToEnemy(next, Math.ceil(dmg * 0.6));
+            stormArcs.push({ x0: from.x, y0: from.y, x1: next.x, y1: next.y, life: 0.25 });
+            hit.push(next);
+            from = next;
+          }
+          if (currentView === VIEW_SURFACE) {
+            SZ.GameAudio.play('zap', { pitch: 0.8 + Math.random() * 0.3, volume: 0.6 });
+            particles.burst(target.x, target.y, 8, { color: '#bff0ff', speed: 2.5, life: 0.3 });
+          }
+        } else
+          st.stormT = 0.3;
+      }
+    }
+  }
+
+  // Score for ore brought home (Alchemist's Stone)
+  function depositScore(amount, x, y) {
+    if (!hasArtifact('alchemist') || amount <= 0) return;
+    const pts = amount * 2;
+    score += pts;
+    floatingText.add(x, y, `Alchemy +${pts} points`, { color: '#60e0a0', font: 'bold 22px sans-serif' });
+  }
+
+  // Dawn gifts of the Bombsmith Charm
+  function artifactDawn() {
+    if (!hasArtifact('bombCharm')) return;
+    ++artifactState.charmDawns;
+    const gifts = [1];
+    if (artifactState.charmDawns % 3 === 0) gifts.push(2);
+    let given = 0;
+    for (const t of gifts)
+      if (bombCount() < bombCapacity()) {
+        ++bombInv[t];
+        ++given;
+      }
+    if (given)
+      announce('Bombsmith Charm', gifts.length > 1 ? 'A Bomb and a Big Bomb appeared in the workshop' : 'A Bomb appeared in the workshop', '#ff9a40', 'artBombCharm');
+  }
+
+  const STORM_COIL = { x: DOME_X - 52, y: DOME_Y - 84 };
+
+  // Artifact visuals on the surface: storm coil and its arcs, aegis bubble, time slow
+  function drawSurfaceArtifacts() {
+    if (hasArtifact('stormCoil')) {
+      const { x, y } = STORM_COIL;
+      drawGlow('#7ad8ff', x, y - 16, 26, 0.5 + Math.sin(animTime * 6) * 0.2);
+      drawSprite('artStormCoil', x, y - 10, 30);
+      if (Math.random() < 0.08)
+        SZ.GameEffects.drawElectricArc(ctx, x, y - 26, x + (Math.random() - 0.5) * 30, y - 40 - Math.random() * 14, { segments: 4, jitter: 6, color: 'rgba(220,250,255,0.9)', glowColor: 'rgba(120,210,255,0.6)', width: 1.5, glowWidth: 5 });
+    }
+    for (const a of stormArcs) {
+      const k = Math.min(1, a.life * 4);
+      SZ.GameEffects.drawElectricArc(ctx, a.x0, a.y0, a.x1, a.y1, { segments: 9, jitter: 16, color: `rgba(230,250,255,${k})`, glowColor: `rgba(110,200,255,${k * 0.8})`, width: 2.5, glowWidth: 10 });
+      drawGlow('#bff0ff', a.x1, a.y1, 30, k);
+    }
+    if (hasArtifact('aegisHeart') && artifactState.aegis > 0) {
+      const r = artifactState.aegis / aegisMax();
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 28, Math.PI, 0);
+      ctx.strokeStyle = `rgba(120,210,255,${0.25 + 0.45 * r})`;
+      ctx.lineWidth = 3 + 4 * r;
+      ctx.shadowColor = '#6cc8ff';
+      ctx.shadowBlur = 14;
+      ctx.setLineDash([16, 8]);
+      ctx.lineDashOffset = -animTime * 18;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawTimeSlowTint() {
+    const t = artifactState.timeSlow;
+    if (t <= 0) return;
+    const a = Math.min(1, t) * 0.18;
+    ctx.fillStyle = `rgba(110,150,255,${a})`;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.save();
+    ctx.strokeStyle = `rgba(190,210,255,${a * 2})`;
+    ctx.lineWidth = 3;
+    const r = ((animTime * 260) % 900);
+    ctx.beginPath();
+    ctx.arc(DOME_X, DOME_Y, r, Math.PI, 0);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Row of found artifact icons; returns the drawn width
+  function drawArtifactStrip(x, y, maxW, size) {
+    const step = size + 6;
+    const fit = Math.max(1, Math.floor((maxW + 6) / step));
+    const shown = artifacts.length > fit ? artifacts.slice(0, fit - 1) : artifacts;
+    shown.forEach((id, i) => drawArtifactIcon(id, x + size / 2 + i * step, y, size));
+    if (shown.length < artifacts.length) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText(`+${artifacts.length - shown.length}`, x + size / 2 + shown.length * step, y + 1, size + 4, 14, { weight: 'bold', color: UI.text });
+    }
+  }
+
+  /* -- Artifact gallery (a tab of the upgrade tree) -- */
+  function artifactCards() {
+    const cols = 4, gap = 18, top = TREE_VIEW.y + 54;
+    const w = Math.floor((CANVAS_W - 64 - gap * (cols - 1)) / cols);
+    const h = Math.floor((TREE_VIEW.y + TREE_VIEW.h - 14 - top - gap * 3) / 4);
+    return ARTIFACTS.map((a, i) => ({ a, x: 32 + (i % cols) * (w + gap), y: top + Math.floor(i / cols) * (h + gap), w, h }));
+  }
+
+  function drawArtifactGallery() {
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText(`Artifacts found: ${artifacts.length} / ${ARTIFACTS.length}`, 34, TREE_VIEW.y + 24, 420, 22, { weight: 'bold', color: '#e0b0ff' });
+    ctx.textAlign = 'right';
+    fitText('Each mine hides three secret chests. Beat their lock to claim an artifact - they stay with you on every site.', CANVAS_W - 34, TREE_VIEW.y + 24, CANVAS_W - 500, 15, { color: UI.textDim });
+    for (const card of artifactCards()) {
+      const found = hasArtifact(card.a.id);
+      ctx.save();
+      drawNodeFrame(card.x, card.y, card.w, card.h, card.a.color, found ? 'owned' : 'locked', false);
+      const ix = card.x + 14, iy = card.y + card.h / 2;
+      roundRectPath(ix, iy - 36, 72, 72, 12);
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fill();
+      if (found)
+        drawArtifactIcon(card.a.id, ix + 36, iy, 64);
+      else {
+        drawSprite('chest', ix + 36, iy, 40, 0.3);
+        ctx.textAlign = 'center';
+        fitText('?', ix + 36, iy + 2, 40, 30, { weight: 'bold', color: 'rgba(220,200,255,0.6)' });
+      }
+      const tx = ix + 86, tw = card.x + card.w - 12 - tx;
+      ctx.textAlign = 'left';
+      fitText(found ? card.a.name : 'Undiscovered', tx, card.y + 26, tw, 19, { weight: 'bold', color: found ? '#ffffff' : '#7a8298' });
+      drawTextBlock(found ? card.a.desc : 'Hidden in a secret chest somewhere in the mines', tx, card.y + 42, tw, card.h - 52, 15, { color: found ? '#c8d2e6' : UI.textMute, minPx: 11, lineGap: 1.25 });
+      ctx.restore();
+    }
   }
 
   /* ======================================================================
@@ -5650,7 +7985,7 @@
   }
 
   // Passive gadgets that don't need selection
-  const PASSIVE_GADGETS = ['scanner', 'reinforcedDome', 'autoRepair', 'domeExpansion', 'energyShield', 'magnet', 'fortune', 'silkTouch', 'echoLocation', 'chainLightning', 'freezeRay', 'plasmaCannon', 'damageReflect', 'emergencyShield', 'fortifiedBase', 'lastStand', 'oreDetector', 'autoMine', 'tunnelBore', 'veinMiner', 'doubleJump', 'wallClimb', 'dash', 'undergroundRadar', 'multiShot', 'homingShots', 'criticalHit', 'explosiveRounds', 'droneBay', 'droneMiner', 'combatDrone', 'repairDrone'];
+  const PASSIVE_GADGETS = ['scanner', 'reinforcedDome', 'autoRepair', 'domeExpansion', 'energyShield', 'magnet', 'fortune', 'silkTouch', 'echoLocation', 'chainLightning', 'freezeRay', 'plasmaCannon', 'damageReflect', 'emergencyShield', 'fortifiedBase', 'lastStand', 'oreDetector', 'autoMine', 'tunnelBore', 'veinMiner', 'doubleJump', 'wallClimb', 'dash', 'undergroundRadar', 'multiShot', 'homingShots', 'criticalHit', 'explosiveRounds', 'droneBay', 'droneMiner', 'combatDrone', 'repairDrone', 'recipeBomb', 'recipeBig', 'recipeMega', 'recipeVoid', 'chainReaction', 'remoteDetonator', 'stickyBombs', 'blastSuit'];
 
   function applyGadgetUnlock(key) {
     unlockedTools[key] = true;
@@ -5752,66 +8087,79 @@
     // lanes = chains of nodes continuing a parent, packed into rows.
     const branchGrids = [];
     for (const branch of TREE_BRANCH_ORDER) {
-      const branchNodes = UPGRADE_TREE.filter(n => n.branch === branch);
-      const nodeMap = {};
-      branchNodes.forEach((n, i) => { nodeMap[n.id] = { n, i }; });
-      const depthOf = {};
-      const assignDepth = (n) => {
-        if (depthOf[n.id] !== undefined) return depthOf[n.id];
-        let maxParent = -1;
-        for (const pid of n.prereqs)
-          if (nodeMap[pid])
-            maxParent = Math.max(maxParent, assignDepth(nodeMap[pid].n));
-        depthOf[n.id] = maxParent + 1;
-        return depthOf[n.id];
-      };
-      branchNodes.forEach(assignDepth);
+      // Groups of a branch (the Tools branch has tools and bombs) sit side by side
+      const groupNames = [];
+      for (const n of UPGRADE_TREE)
+        if (n.branch === branch && groupNames.indexOf(n.group || '') < 0)
+          groupNames.push(n.group || '');
+      let colOffset = 0, rows = 0;
+      const depthOf = {}, laneOf = {}, groupX = [];
+      for (const group of groupNames) {
+        const branchNodes = UPGRADE_TREE.filter(n => n.branch === branch && (n.group || '') === group);
+        const nodeMap = {};
+        branchNodes.forEach((n, i) => { nodeMap[n.id] = { n, i }; });
+        const gDepth = {};
+        const assignDepth = (n) => {
+          if (gDepth[n.id] !== undefined) return gDepth[n.id];
+          let maxParent = -1;
+          for (const pid of n.prereqs)
+            if (nodeMap[pid])
+              maxParent = Math.max(maxParent, assignDepth(nodeMap[pid].n));
+          gDepth[n.id] = maxParent + 1;
+          return gDepth[n.id];
+        };
+        branchNodes.forEach(assignDepth);
 
-      const order = branchNodes.slice().sort((a, b) => depthOf[a.id] - depthOf[b.id] || nodeMap[a.id].i - nodeMap[b.id].i);
-      const lanes = [];
-      const laneOf = {};
-      const continued = {};
-      for (const n of order) {
-        const parents = n.prereqs.filter(p => nodeMap[p]).sort((a, b) => depthOf[b] - depthOf[a]);
-        const cont = parents.find(p => !continued[p]);
-        let lane;
-        if (cont) {
-          lane = laneOf[cont];
-          continued[cont] = true;
-          lane.ids.push(n.id);
-        } else {
-          lane = { ids: [n.id], parent: parents.length ? laneOf[parents[0]] : null, kids: [] };
-          lanes.push(lane);
-          if (lane.parent)
-            lane.parent.kids.push(lane);
+        const order = branchNodes.slice().sort((a, b) => gDepth[a.id] - gDepth[b.id] || nodeMap[a.id].i - nodeMap[b.id].i);
+        const lanes = [];
+        const continued = {};
+        for (const n of order) {
+          const parents = n.prereqs.filter(p => nodeMap[p]).sort((a, b) => gDepth[b] - gDepth[a]);
+          const cont = parents.find(p => !continued[p]);
+          let lane;
+          if (cont) {
+            lane = laneOf[cont];
+            continued[cont] = true;
+            lane.ids.push(n.id);
+          } else {
+            lane = { ids: [n.id], parent: parents.length ? laneOf[parents[0]] : null, kids: [] };
+            lanes.push(lane);
+            if (lane.parent)
+              lane.parent.kids.push(lane);
+          }
+          laneOf[n.id] = lane;
         }
-        laneOf[n.id] = lane;
-      }
-      // Depth-first lane order keeps every sub-chain right below its parent;
-      // lanes share a row when their depth ranges leave a free cell between them
-      const ordered = [];
-      const visit = (l) => {
-        ordered.push(l);
-        l.kids.forEach(visit);
-      };
-      lanes.filter(l => !l.parent).forEach(visit);
-      const rowSpans = [];
-      for (const l of ordered) {
-        const ds = l.ids.map(id => depthOf[id]);
-        const lo = Math.min(...ds), hi = Math.max(...ds);
-        let r = l.parent ? l.parent.row + 1 : rowSpans.length;
-        for (;; ++r) {
-          rowSpans[r] = rowSpans[r] || [];
-          if (rowSpans[r].every(([a, b]) => hi < a - 1 || lo > b + 1))
-            break;
+        // Depth-first lane order keeps every sub-chain right below its parent;
+        // lanes share a row when their depth ranges leave a free cell between them
+        const ordered = [];
+        const visit = (l) => {
+          ordered.push(l);
+          l.kids.forEach(visit);
+        };
+        lanes.filter(l => !l.parent).forEach(visit);
+        const rowSpans = [];
+        for (const l of ordered) {
+          const ds = l.ids.map(id => gDepth[id]);
+          const lo = Math.min(...ds), hi = Math.max(...ds);
+          let r = l.parent ? l.parent.row + 1 : rowSpans.length;
+          for (;; ++r) {
+            rowSpans[r] = rowSpans[r] || [];
+            if (rowSpans[r].every(([a, b]) => hi < a - 1 || lo > b + 1))
+              break;
+          }
+          rowSpans[r].push([lo, hi]);
+          l.row = r;
         }
-        rowSpans[r].push([lo, hi]);
-        l.row = r;
+        let maxDepth = 0;
+        for (const n of branchNodes)
+          maxDepth = Math.max(maxDepth, gDepth[n.id]);
+        groupX.push({ group, col: colOffset });
+        for (const n of branchNodes)
+          depthOf[n.id] = gDepth[n.id] + colOffset;
+        colOffset += maxDepth + 1 + 0.5;
+        rows = Math.max(rows, rowSpans.length);
       }
-      let maxDepth = 0;
-      for (const n of branchNodes)
-        maxDepth = Math.max(maxDepth, depthOf[n.id]);
-      branchGrids.push({ branch, branchNodes, depthOf, laneOf, rows: rowSpans.length, cols: maxDepth + 1 });
+      branchGrids.push({ branch, branchNodes: UPGRADE_TREE.filter(n => n.branch === branch), depthOf, laneOf, rows, cols: colOffset - 0.5, groupX });
     }
 
     // Regions row by row (TREE_REGION_ROWS), each row centred
@@ -5839,7 +8187,7 @@
       const g = branchGrids[i];
       const cx = placeOf[g.branch].x;
       const gy = placeOf[g.branch].y;
-      regions[g.branch] = { x: cx, y: gy, w: regionW(g), h: regionH(g), branch: g.branch };
+      regions[g.branch] = { x: cx, y: gy, w: regionW(g), h: regionH(g), branch: g.branch, groups: g.groupX.map(q => ({ group: q.group, x: cx + TREE_REGION_PAD + q.col * pitchX })) };
       for (const n of g.branchNodes)
         nodes.push({
           node: n,
@@ -5888,6 +8236,7 @@
 
   function fitTreeView(tab, instant) {
     computeTreeLayout();
+    if (tab === 'artifacts') tab = 'all';
     const r = treeLayout.regions[tab] || treeLayout.regions.all;
     const pad = 24;
     const z = Math.max(TREE_MIN_ZOOM, Math.min(1, (TREE_VIEW.w - pad * 2) / r.w, (TREE_VIEW.h - pad * 2) / r.h));
@@ -5915,8 +8264,9 @@
 
   // Header tabs: all branches plus one per branch
   function getTreeTabs() {
-    const ids = ['all'].concat(TREE_BRANCH_ORDER);
-    const tabW = 180, gap = 10;
+    const ids = ['all'].concat(TREE_BRANCH_ORDER, ['artifacts']);
+    const gap = 10;
+    const tabW = Math.min(180, Math.floor((CANVAS_W - 48 - (ids.length - 1) * gap) / ids.length));
     const x0 = CANVAS_W / 2 - (ids.length * tabW + (ids.length - 1) * gap) / 2;
     return ids.map((id, i) => ({ id, x: x0 + i * (tabW + gap), y: 66, w: tabW, h: 36 }));
   }
@@ -6157,7 +8507,7 @@
   }
 
   function hitTreeNode(mx, my) {
-    if (my < TREE_VIEW.y || my > TREE_VIEW.y + TREE_VIEW.h) return null;
+    if (treeTab === 'artifacts' || my < TREE_VIEW.y || my > TREE_VIEW.y + TREE_VIEW.h) return null;
     const { x: tx, y: ty } = screenToTreeCoords(mx, my);
     for (const ln of computeTreeLayout())
       if (tx >= ln.x && tx <= ln.x + ln.w && ty >= ln.y && ty <= ln.y + ln.h)
@@ -6208,13 +8558,13 @@
   // Keyboard control of the upgrade tree; returns true when the key was used
   function handleUpgradeDialogKey(e) {
     const nodes = computeTreeLayout();
-    const tabs = ['all'].concat(TREE_BRANCH_ORDER);
+    const tabs = ['all'].concat(TREE_BRANCH_ORDER, ['artifacts']);
     if (e.code === 'Tab') {
       const i = tabs.indexOf(treeTab);
       setTreeTab(tabs[(i + (e.shiftKey ? tabs.length - 1 : 1)) % tabs.length]);
       return true;
     }
-    if (/^Digit[1-6]$/.test(e.code)) {
+    if (/^Digit[1-9]$/.test(e.code) && parseInt(e.code.slice(5), 10) <= tabs.length) {
       setTreeTab(tabs[parseInt(e.code.slice(5), 10) - 1]);
       return true;
     }
@@ -6232,6 +8582,8 @@
     }
     const dirs = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1], KeyA: [-1, 0], KeyD: [1, 0], KeyW: [0, -1], KeyS: [0, 1] };
     const dir = dirs[e.code];
+    if (treeTab === 'artifacts')
+      return !!dir;
     const inTab = (ln) => treeTab === 'all' || ln.branch === treeTab;
     if (dir) {
       const cur = treeFocusId && treeLayout.byId[treeFocusId];
@@ -6325,7 +8677,15 @@
 
     drawTreeBackground();
 
-    // ---- Tree content (zoom & pan) ----
+    // ---- Tree content (zoom & pan), or the artifact gallery ----
+    if (treeTab === 'artifacts')
+      drawArtifactGallery();
+    else
+      drawTreeContent();
+    drawTreeHeader();
+  }
+
+  function drawTreeContent() {
     ctx.save();
     ctx.beginPath();
     ctx.rect(TREE_VIEW.x, TREE_VIEW.y, TREE_VIEW.w, TREE_VIEW.h);
@@ -6368,6 +8728,9 @@
         drawMeter(mx, r.y + TREE_REGION_HEADER / 2 - 6, mw, 12, owned / total, color);
         fitText(`${owned} / ${total}`, mx + mw + 12, r.y + TREE_REGION_HEADER / 2, 80, compact ? headPx * 0.6 : 18, { weight: 'bold', color: UI.textDim });
       }
+      for (const g of r.groups || [])
+        if (g.group && TREE_GROUP_LABELS[g.group])
+          fitText(TREE_GROUP_LABELS[g.group], g.x, r.y + TREE_REGION_HEADER / 2, TREE_CARD_W * 2, headPx * 0.85, { weight: 'bold', color });
     }
 
     // Connectors: locked first, owned last so the brightest lines sit on top
@@ -6375,7 +8738,7 @@
     for (const ln of treeLayout.nodes)
       for (const pid of ln.node.prereqs) {
         const parent = treeLayout.byId[pid];
-        if (!parent) continue;
+        if (!parent || parent.branch !== ln.branch) continue;
         const minX = Math.min(parent.x, ln.x) - TREE_GAP_X, maxX = Math.max(parent.x + parent.w, ln.x + ln.w) + TREE_GAP_X;
         const minY = Math.min(parent.y, ln.y) - TREE_GAP_Y, maxY = Math.max(parent.y + parent.h, ln.y + ln.h) + TREE_GAP_Y;
         if (minX > viewR || maxX < viewL || minY > viewB || maxY < viewT) continue;
@@ -6416,7 +8779,9 @@
       const ln = treeLayout.byId[treeFocusId];
       tooltip.anchor = { x: upgradePanX + ln.x * upgradeZoom, y: upgradePanY + ln.y * upgradeZoom, w: ln.w * upgradeZoom, h: ln.h * upgradeZoom };
     }
+  }
 
+  function drawTreeHeader() {
     // ---- Header ----
     drawPanel(12, 8, CANVAS_W - 24, 142, { accent: UI.gold, radius: 14 });
     ctx.textAlign = 'left';
@@ -6433,15 +8798,15 @@
     for (const t of getTreeTabs()) {
       const active = treeTab === t.id;
       const hover = mouseAimX >= t.x && mouseAimX <= t.x + t.w && mouseAimY >= t.y && mouseAimY <= t.y + t.h;
-      const color = t.id === 'all' ? UI.gold : TREE_BRANCH_COLORS[t.id];
+      const color = t.id === 'all' ? UI.gold : (t.id === 'artifacts' ? '#e0a0ff' : TREE_BRANCH_COLORS[t.id]);
       roundRectPath(t.x, t.y, t.w, t.h, 9);
       ctx.fillStyle = active ? hexToRgba(color, 0.24) : (hover ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)');
       ctx.fill();
       ctx.lineWidth = active ? 2 : 1;
       ctx.strokeStyle = active ? color : 'rgba(255,255,255,0.1)';
       ctx.stroke();
-      let label = t.id === 'all' ? 'All' : TREE_BRANCH_LABELS[t.id].charAt(0) + TREE_BRANCH_LABELS[t.id].slice(1).toLowerCase();
-      if (t.id !== 'all') {
+      let label = t.id === 'all' ? 'All' : (t.id === 'artifacts' ? `Artifacts  ${artifacts.length}/${ARTIFACTS.length}` : TREE_BRANCH_LABELS[t.id].charAt(0) + TREE_BRANCH_LABELS[t.id].slice(1).toLowerCase());
+      if (t.id !== 'all' && t.id !== 'artifacts') {
         let o = 0, c = 0;
         for (const n of UPGRADE_TREE)
           if (n.branch === t.id) {
@@ -6719,6 +9084,8 @@
           ch.revealed = true;
       if (!relocationCore.revealed && Math.abs(relocationCore.r - drillY) + Math.abs(relocationCore.c - drillX) <= R)
         relocationCore.revealed = true;
+      if (currentView === VIEW_UNDERGROUND)
+        revealChestsNear(drillY, drillX, R, true);
     }
 
     // Scanner passive: always active when unlocked (echo location extends range)
@@ -6751,8 +9118,8 @@
   }
 
   // Flight speed in px/s, cargo size, pickup radius (tiles), laser reach (tiles) and laser speed
-  function droneSpeed() { return TILE_SIZE * 3.2 * Math.pow(1.3, getEffectiveLevel('droneSpeed')) * droneBoost(); }
-  function droneCargoCap() { return 15 + 15 * getEffectiveLevel('droneCargo'); }
+  function droneSpeed() { return TILE_SIZE * 3.2 * Math.pow(1.3, getEffectiveLevel('droneSpeed')) * droneBoost() * (hasArtifact('hiveLink') ? 1.25 : 1); }
+  function droneCargoCap() { return (15 + 15 * getEffectiveLevel('droneCargo')) * (hasArtifact('hiveLink') ? 2 : 1); }
   function dronePickupRadius() { return 1 + getEffectiveLevel('droneSpeed'); }
   function droneLaserReach() { return 4 + 2 * getEffectiveLevel('droneMining'); }
   function droneLaserSpeed() { return Math.pow(1.35, getEffectiveLevel('droneMining')) * droneBoost(); }
@@ -6911,6 +9278,7 @@
           floatingText.add(DOME_X - 140, DOME_Y - 150, `Drone delivered ${d.cargo}`, { color: '#d8b8ff', font: 'bold 20px sans-serif' });
           SZ.GameAudio.play('coin', { pitch: 1.3, volume: 0.5 });
         }
+        depositScore(d.cargo, DOME_X - 140, DOME_Y - 190);
       }
       d.cargo = 0;
       d.job = null;
@@ -7197,6 +9565,7 @@
   function drawDroneHUD(x, y, w) {
     if (!drones.length) return y;
     const rowH = 28;
+    beginHudPanel('drones', x, y, w, 12 + drones.length * rowH);
     drawPanel(x, y, w, 12 + drones.length * rowH, { accent: '#c890ff', shadow: 10 });
     const cap = droneCargoCap();
     drones.forEach((d, i) => {
@@ -7214,6 +9583,7 @@
       ctx.textBaseline = 'middle';
       fitText(status, x + 40, ry + 1, w - 40 - chip - 18, 16, { weight: 'bold', color });
     });
+    endHudPanel();
     return y + 12 + drones.length * rowH;
   }
 
@@ -7223,6 +9593,7 @@
 
   function updateMovement(dt) {
     if (currentView !== VIEW_UNDERGROUND) return;
+    if (keeperStun > 0) return;
     // Block movement while mining
     if (miningTarget) {
       keeperIdle = 0;
@@ -7264,6 +9635,7 @@
       const cx = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
       const cy = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
       spawnDust(cx, cy);
+      lastMineDir = { dx: Math.sign(step.col - drillX), dy: Math.sign(step.row - drillY) };
       drillX = step.col;
       drillY = step.row;
       ++movePathIndex;
@@ -7292,6 +9664,9 @@
     updateAnimations(dt);
     updateGadgets(dt);
     updateMining(dt);
+    updateBombs(dt);
+    updateBlastVisuals(dt);
+    updateChests(dt);
     updateMovement(dt);
 
     // Standing next to the Relocation Core reveals it
@@ -7318,7 +9693,14 @@
     updateWorldTime(dt);
     updateWeather(dt);
 
-    updateEnemies(dt);
+    updateArtifacts(dt);
+    // Hitstop: the battle freezes for an instant after a big hit
+    const battleDt = hitstop > 0 ? dt * 0.1 : dt;
+    hitstop = Math.max(0, hitstop - dt);
+    parryT = Math.max(0, parryT - dt);
+    parryCd = Math.max(0, parryCd - dt);
+    updateEnemies(artifactState.timeSlow > 0 ? battleDt * 0.35 : battleDt);
+    updateReflected(battleDt);
     updateWeapon(dt);
     updateDrones(dt);
 
@@ -8580,8 +10962,49 @@
   };
 
   function drawEnemy(e) {
+    // Owl Sight: monsters glow at night, burrowers show under the ground
+    if (hasArtifact('owlSight') && daylight < 0.6) {
+      const sz = e.size || 16;
+      drawGlow('#80ffb0', e.x, e.hidden ? DOME_Y + 6 : e.y, sz * 2.4, 0.4 + Math.sin(animTime * 4 + e.x * 0.02) * 0.1);
+      if (e.hidden) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(128,255,176,0.75)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.ellipse(e.x, DOME_Y + 18, sz * 0.9, sz * 0.4, 0, 0, TWO_PI);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
     if (e.hidden)
       return drawBurrowMound(e);
+    const sz = e.size || 16;
+    if (e.enraged)
+      drawGlow('#ff3a20', e.x, e.y, sz * 2.2, 0.45 + Math.sin(animTime * 10 + e.x) * 0.15);
+    if (e.elite) {
+      const A = ELITE_AURAS[e.elite];
+      const ground = enemyType(e).move !== 'air' && enemyType(e).move !== 'dive' && enemyType(e).move !== 'queen';
+      ctx.save();
+      ctx.strokeStyle = hexToRgba(A.color, 0.7);
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 6]);
+      ctx.lineDashOffset = -animTime * 30;
+      ctx.beginPath();
+      if (ground)
+        ctx.ellipse(e.x, e.y + sz * 0.72, sz * 1.5, sz * 0.4, 0, 0, TWO_PI);
+      else
+        ctx.arc(e.x, e.y, sz * 1.6, 0, TWO_PI);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+      drawGlow(A.color, e.x, e.y, sz * 2.6, 0.22);
+    } else if (e.aura) {
+      drawGlow(ELITE_AURAS[e.aura].color, e.x, e.y, sz * 1.6, 0.18);
+    }
+    if (e.enraged && Math.random() < 0.25 && currentView === VIEW_SURFACE)
+      particles.trail(e.x + (Math.random() - 0.5) * sz, e.y - sz * 0.6, { vx: (Math.random() - 0.5) * 0.8, vy: -1.2, color: '#ff6a40', life: 0.35, size: 2, gravity: -0.02 });
     if (e.type === 'flyer')
       return drawFlyer(e);
     if (e.type === 'diver')
@@ -9080,6 +11503,25 @@
   // Acid globs in flight and behemoth shockwaves
   function drawEnemyShots() {
     for (const s of enemyShots) {
+      if (s.kind === 'lance') {
+        const x = s.x0 + (s.tx - s.x0) * s.t, y = s.y0 + (s.ty - s.y0) * s.t;
+        const bx = s.x0 + (s.tx - s.x0) * Math.max(0, s.t - 0.25), by = s.y0 + (s.ty - s.y0) * Math.max(0, s.t - 0.25);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = 'rgba(255,90,220,0.5)';
+        ctx.lineWidth = 12;
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        ctx.strokeStyle = '#ffd8f8';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+        ctx.restore();
+        drawGlow('#ff70e0', x, y, 30, 0.9);
+        continue;
+      }
       const x = s.x0 + (s.tx - s.x0) * s.t;
       const y = s.y0 + (s.ty - s.y0) * s.t - Math.sin(s.t * Math.PI) * 150;
       drawGlow('#8aff50', x, y, 22, 0.6);
@@ -9211,6 +11653,28 @@
     const barX = e.x - barW / 2;
     const barY = e.y - sz * (e.boss ? 1.75 : 1.2) - 16 + vertOffset;
     drawMeter(barX, barY, barW, 7, hpR, hpR > 0.5 ? '#ff6a5a' : '#ff3a3a', { track: 'rgba(20,0,0,0.75)' });
+    // Elite crest beside the bar
+    if (e.elite) {
+      const A = ELITE_AURAS[e.elite];
+      const cx = barX - 12, cy = barY + 3;
+      drawGlow(A.color, cx, cy, 16, 0.7);
+      ctx.fillStyle = SPRITE_OUTLINE;
+      ctx.beginPath();
+      for (let k = 0; k < 10; ++k) {
+        const a = -Math.PI / 2 + k * Math.PI / 5, rr = k % 2 ? 4.5 : 10;
+        ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = A.color;
+      ctx.beginPath();
+      for (let k = 0; k < 10; ++k) {
+        const a = -Math.PI / 2 + k * Math.PI / 5, rr = k % 2 ? 3 : 7.5;
+        ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
     if (e.shield > 0 && e.maxShield > 0)
       drawMeter(barX, barY - 8, barW, 5, e.shield / e.maxShield, '#5ab8ff', { track: 'rgba(0,10,30,0.75)' });
   }
@@ -9219,6 +11683,18 @@
     const prevOp = ctx.globalCompositeOperation;
     for (const p of projectiles) {
       const alpha = Math.max(0, p.life / p.maxLife);
+      if (p.charged) {
+        // Charged beam: a wide golden core under the red laser
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = p.perfect ? `rgba(255,230,120,${alpha * 0.55})` : `rgba(255,170,80,${alpha * 0.4})`;
+        ctx.lineWidth = (p.perfect ? 30 : 20) * alpha + 4;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.tx, p.ty);
+        ctx.stroke();
+        ctx.globalCompositeOperation = prevOp;
+      }
 
       // Beam: wide soft glow, colored body, white-hot core
       ctx.globalCompositeOperation = 'lighter';
@@ -9289,8 +11765,9 @@
     drawDome();
     drawSnowCover();
 
-    // Gadget visuals on surface
+    // Gadget and artifact visuals on surface
     drawSurfaceGadgets();
+    drawSurfaceArtifacts();
 
     // Enemies
     for (const e of enemies)
@@ -9298,14 +11775,26 @@
 
     drawEnemyShots();
 
-    // Projectiles
+    drawCombatOverlays();
+
+    // Projectiles, bombs and explosions
     drawProjectiles();
+    drawSurfaceBombs();
+    drawBlasts(false);
     drawWeather();
+    drawTimeSlowTint();
+    drawThrowPreview();
+    drawChargeRing();
+    if (screenFlash > 0) {
+      ctx.fillStyle = `rgba(${screenFlashColor},${screenFlash})`;
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    }
 
     drawSurfaceHUD();
 
-    // Upgrade panel
+    // Upgrade panel and bomb stock
     drawUpgradePanel();
+    drawBombBar();
   }
 
   /* ======================================================================
@@ -9336,8 +11825,8 @@
           ctx.drawImage(art.cave[getDepthTier(r)][tileVariant(r, c) % art.VARIANTS], x, y);
           continue;
         }
-        drawTile(x, y, tile === TILE_GADGET || tile === TILE_CORE ? TILE_DIRT : tile, r, c);
-        if (tile !== TILE_DIRT && tile !== TILE_GADGET && tile !== TILE_CORE)
+        drawTile(x, y, tile === TILE_GADGET || tile === TILE_CORE || tile === TILE_CHEST ? TILE_DIRT : tile, r, c);
+        if (tile !== TILE_DIRT && tile !== TILE_GADGET && tile !== TILE_CORE && tile !== TILE_CHEST)
           oreTiles.push(r, c);
 
         // Cracks on partially-mined tiles
@@ -9459,7 +11948,7 @@
     const pcx = drillX * TILE_SIZE + TILE_SIZE / 2 - ox;
     const pcy = drillY * TILE_SIZE + TILE_SIZE / 2 - oy;
     const depth = drillY / GRID_ROWS;
-    const radar = 1 + 0.25 * getEffectiveLevel('undergroundRadar');
+    const radar = (1 + 0.25 * getEffectiveLevel('undergroundRadar')) * (hasArtifact('sunLamp') ? 1.6 : 1);
     const lw = CANVAS_W * 1.9 * radar, lh = CANVAS_H * 1.9 * 0.75 * radar;
     ctx.globalAlpha = 0.6 + depth * 0.35;
     ctx.drawImage(art.light, pcx - lw / 2, pcy - lh / 2, lw, lh);
@@ -9474,6 +11963,9 @@
     // Courier drones carry their own lights; the core glows through the dark
     drawUndergroundDrones();
     drawRelocationCoreMarker();
+    drawChests();
+    drawChestHints(toolState.scannerActive ? scannerRange() : 0);
+    drawUndergroundArtifacts();
 
     // Ore glints twinkle through the dark
     for (let i = 0; i < oreTiles.length; i += 2) {
@@ -9489,6 +11981,11 @@
       ctx.fillRect(gx - 0.5, gy - 4 * k, 1, 8 * k);
     }
 
+    // Bombs lying in the mine, explosions and the throw preview
+    drawPlacedBombs();
+    drawBlasts(true);
+    drawThrowPreview();
+
     // Mining progress bar above the block being mined
     if (miningTarget && miningDuration > 0) {
       const progress = Math.min(miningProgress / miningDuration, 1);
@@ -9498,11 +11995,7 @@
     // Resource display (improved styling)
     drawResourceHUD();
 
-    // Blast charges
-    if (foundGadgets.includes('blastMining') && (primaryGadgetState.blastCharges || 0) > 0) {
-      drawSprite('bomb', CANVAS_W - 40, CANVAS_H - 66, 24);
-      drawChip(`Blast [B]: ${primaryGadgetState.blastCharges}`, CANVAS_W - 58, CANVAS_H - 79, 26, { align: 'right', px: 15, bg: 'rgba(20,26,42,0.85)', border: 'rgba(255,160,64,0.6)', color: '#ffa040' });
-    }
+    drawBombBar();
 
     // Tool and drone HUD (underground, right side)
     drawDroneHUD(CANVAS_W - 296, drawToolHUDUnderground() + 12, 280);
@@ -9511,8 +12004,10 @@
       { key: 'Space', label: 'Surface' },
       { key: 'WASD', label: 'Move & mine' },
       { key: 'Click', label: 'Walk / dig' },
+      { key: 'B', label: 'Bomb' },
+      { key: 'C', label: 'Craft' },
       { key: 'H', label: 'Help' }
-    ], CANVAS_W / 2, CANVAS_H - 24, 600);
+    ], CANVAS_W / 2 - 150, CANVAS_H - 24, 680);
   }
 
 
@@ -9825,7 +12320,9 @@
     const px = drillX * TILE_SIZE - Math.round(cameraX);
     const py = drillY * TILE_SIZE - Math.round(cameraY);
     const bob = playerBob;
-    const face = lastMineDir.dx < 0 ? -1 : 1;
+    if (lastMineDir.dx)
+      keeperFaceX = lastMineDir.dx < 0 ? -1 : 1;
+    const face = keeperFaceX;
 
     // Selection brackets
     const sel = 0.55 + Math.sin(animTime * 5) * 0.25;
@@ -9963,6 +12460,15 @@
     ctx.restore();
 
     drawGlow('#fff0b0', lampX + face * 3, py + 6 + bob, 14, 0.7);
+
+    // Dazed by a blast: stars circle the helmet
+    if (keeperStun > 0) {
+      const cx = px + TILE_SIZE / 2, cy = py + 2 + bob;
+      for (let i = 0; i < 3; ++i) {
+        const a = animTime * 5 + i * TWO_PI / 3;
+        drawSprite('sparkle', cx + Math.cos(a) * 16, cy + Math.sin(a) * 5, 14, Math.min(1, keeperStun));
+      }
+    }
   }
 
   // Resource HUD display configuration
@@ -10002,6 +12508,7 @@
     const panelW = 16 + (useColumns ? 2 : 1) * colW;
     const panelH = 14 + colEntries * lineH;
 
+    beginHudPanel('resources', panelX, panelY, panelW, panelH);
     drawPanel(panelX, panelY, panelW, panelH, { accent: '#c8a060', shadow: 10 });
     ctx.textBaseline = 'middle';
     for (let i = 0; i < visibleEntries.length; ++i) {
@@ -10016,9 +12523,11 @@
       ctx.textAlign = 'right';
       fitText(String(resources[e.key]), x + colW - 12, y + 1, colW - 84, 18, { weight: 'bold', color: e.color });
     }
+    endHudPanel();
 
     // Cargo and depth (top-right)
     const carryX = CANVAS_W - 296, carryW = 280;
+    beginHudPanel('cargo', carryX, panelY, carryW, 112);
     drawPanel(carryX, panelY, carryW, 112, { accent: '#e0c060', shadow: 10 });
     const carryRatio = Math.min(carried / carryCapacity, 1);
     drawSprite('bag', carryX + 24, panelY + 24, 24);
@@ -10029,8 +12538,12 @@
     fitText(`${carried} / ${carryCapacity}`, carryX + carryW - 16, panelY + 25, 130, 18, { weight: 'bold', color: carryRatio >= 1 ? UI.bad : '#f0d070' });
     drawMeter(carryX + 14, panelY + 42, carryW - 28, 10, carryRatio, carryRatio >= 1 ? '#e84040' : '#e0b030');
     ctx.textAlign = 'left';
-    fitText(`Depth ${drillY} m  ·  ${DEPTH_TIERS[getDepthTier(drillY)].name}`, carryX + 16, panelY + 68, carryW - 32, 15, { color: UI.textDim });
+    ctx.textAlign = 'right';
+    const chw = fitText(`[[chest]] ${chestsOpened()} / ${chests.length}`, carryX + carryW - 16, panelY + 68, 80, 15, { weight: 'bold', color: '#e0b0ff' });
+    ctx.textAlign = 'left';
+    fitText(`Depth ${drillY} m  ·  ${DEPTH_TIERS[getDepthTier(drillY)].name}`, carryX + 16, panelY + 68, carryW - 40 - chw, 15, { color: UI.textDim });
     drawMineClock(carryX + 14, panelY + 94, carryW - 28);
+    endHudPanel();
   }
 
   // Returns the bottom edge of the panel
@@ -10041,6 +12554,7 @@
     const hudX = CANVAS_W - 296, hudW = 280;
     const hudY = 140;
     const rowH = 30;
+    beginHudPanel('tools', hudX, hudY, hudW, 12 + tools.length * rowH);
     drawPanel(hudX, hudY, hudW, 12 + tools.length * rowH, { accent: '#9a7aff', shadow: 10 });
 
     for (let i = 0; i < tools.length; ++i) {
@@ -10076,6 +12590,7 @@
       ctx.textBaseline = 'middle';
       fitText(label, hudX + 66, y + 1, hudW - 66 - 20 - sw, 16, { weight: 'bold', color });
     }
+    endHudPanel();
     return hudY + 12 + tools.length * rowH;
   }
 
@@ -10286,13 +12801,21 @@
 
   function drawSurfaceHUD() {
     // Day, time and moon (top-left)
+    beginHudPanel('clock', 16, 16, 330, 112);
     drawClockPanel();
-    drawRelocateButton();
+    endHudPanel();
+    if (relocationCore.found) {
+      const rb = relocateButtonRect();
+      beginHudPanel('relocate', rb.x, rb.y, rb.w, rb.h);
+      drawRelocateButton();
+      endHudPanel();
+    }
 
     drawGadgetHUD();
 
     // Score and stock (top-right)
     const sx = CANVAS_W - 340;
+    beginHudPanel('score', sx, 16, 320, 118);
     drawPanel(sx, 16, 320, 118, { accent: UI.gold });
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
@@ -10306,9 +12829,14 @@
     ctx.textAlign = 'left';
     fitText(`Site ${site.index + 1} · ${currentBiome().name}`, sx + 16, 96, 200, 16, { weight: 'bold', color: UI.text });
     const threat = isNight() ? Math.max(1, threatLevel()) : threatLevel() + 1; // tonight's threat
-    drawChip(`Threat ${threat}`, sx + 306, 84, 24, { align: 'right', px: 13, maxW: 96, bg: 'rgba(255,90,90,0.14)', border: 'rgba(255,120,110,0.55)', color: '#ffa090' });
+    const tc = threatColor(threat);
+    drawChip(`Threat ${threat}`, sx + 306, 84, 24, { align: 'right', px: 13, maxW: 96, bg: hexToRgba(tc, 0.16), border: hexToRgba(tc, 0.6), color: tc });
     ctx.textAlign = 'left';
-    fitText(relocationCore.found ? '[[core]] Core found: relocate when ready' : `[[core]] Core hidden below ${coreDepthHint()} m`, sx + 16, 120, 290, 14, { color: relocationCore.found ? '#7ae8ff' : UI.textMute });
+    ctx.textAlign = 'right';
+    const chw = fitText(`[[chest]] ${chestsOpened()} / ${chests.length}`, sx + 306, 120, 70, 14, { weight: 'bold', color: '#e0b0ff' });
+    ctx.textAlign = 'left';
+    fitText(relocationCore.found ? '[[core]] Core found: relocate when ready' : `[[core]] Core hidden below ${coreDepthHint()} m`, sx + 16, 120, 282 - chw, 14, { color: relocationCore.found ? '#7ae8ff' : UI.textMute });
+    endHudPanel();
 
     // Dome integrity under the dome
     const hpRatio = Math.max(0, domeHP / maxDomeHP);
@@ -10317,13 +12845,17 @@
     drawMeter(barX, barY, barW, barH, hpRatio, hpRatio > 0.5 ? '#46c862' : (hpRatio > 0.25 ? '#e8b030' : '#e84040'), {
       label: `Dome ${Math.ceil(domeHP)} / ${maxDomeHP}`, labelPx: 16
     });
+    if (hasArtifact('aegisHeart'))
+      drawMeter(barX + 20, barY + barH + 4, barW - 40, 7, artifactState.aegis / aegisMax(), '#6cc8ff', { track: 'rgba(0,10,30,0.7)' });
+    drawCombatHUD(barX, barY, barW, barH);
 
     drawKeyHints([
       { key: 'Space', label: 'Underground' },
       { key: 'U', label: 'Upgrade tree' },
+      { key: 'C', label: 'Bombs' },
       { key: 'H', label: 'Help' },
       { key: 'Esc', label: 'Pause' }
-    ], CANVAS_W / 2, CANVAS_H - 24, 560);
+    ], CANVAS_W / 2 - 60, CANVAS_H - 24, 600);
   }
 
   function drawGadgetHUD() {
@@ -10358,13 +12890,12 @@
       rows.push({ icon: 'drone', text: 'Drones: ' + parts.join(', '), color: '#d8b8ff' });
     }
 
-    if (foundGadgets.includes('blastMining') && (primaryGadgetState.blastCharges || 0) > 0)
-      rows.push({ icon: 'bomb', text: `Blast [B]: ${primaryGadgetState.blastCharges} charges`, color: '#ffa040' });
-
     for (const g of foundGadgets) {
       if (g === 'blastMining') continue;
       rows.push({ icon: 'gear', text: MINE_GADGET_NAMES[g] || g, color: '#d0c890' });
     }
+    if (artifacts.length)
+      rows.push({ artifacts: true });
 
     for (const def of TOOL_DEFS) {
       if (!unlockedTools[def.key]) continue;
@@ -10389,15 +12920,28 @@
     const shown = rows.slice(0, maxRows);
     const ph = 14 + shown.length * rowH;
     const px = 16, py = CANVAS_H - 58 - ph;
+    beginHudPanel('gadgets', px, py, pw, ph);
     drawPanel(px, py, pw, ph, { accent: '#9a7aff', shadow: 10 });
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     for (let i = 0; i < shown.length; ++i) {
       const r = shown[i];
       const y = py + 7 + i * rowH + rowH / 2;
+      if (r.artifacts) {
+        drawArtifactStrip(px + 12, y, pw - 24, 22);
+        continue;
+      }
       drawSprite(r.icon, px + 22, y, 20);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
       fitText(r.text, px + 40, y + 1, pw - 52, 17, { weight: 'bold', color: r.color });
     }
+    endHudPanel();
+  }
+
+  // Tiles the scanner sees around the keeper
+  function scannerRange() {
+    return 3 + (toolState.echoLocationActive ? 2 + getEffectiveLevel('echoLocation') : 0);
   }
 
   // The Relocation Core in the rock, and the scanner's hint towards it
@@ -10413,7 +12957,7 @@
         particles.sparkle(x + Math.random() * TILE_SIZE, y + Math.random() * TILE_SIZE, 1, { color: '#bff4ff', speed: 0.6 });
     }
     // Scanners sense the core: in range it shows up, further away an arrow points to it
-    const scanRange = toolState.scannerActive ? 3 + (toolState.echoLocationActive ? 2 + getEffectiveLevel('echoLocation') : 0) : 0;
+    const scanRange = toolState.scannerActive ? scannerRange() : 0;
     if (!scanRange) return;
     const dist = Math.abs(rc.r - drillY) + Math.abs(rc.c - drillX);
     if (dist <= scanRange) {
@@ -10519,6 +13063,8 @@
           const tile = undergroundGrid[r][c];
           if (tile === TILE_CORE && Math.abs(r - pr) + Math.abs(c - pc) <= 4)
             relocationCore.revealed = true;
+          if (tile === TILE_CHEST && Math.abs(r - pr) + Math.abs(c - pc) <= 4 && chestAt(r, c))
+            revealChest(chestAt(r, c), false);
           if (!RESOURCE_TILES.includes(tile)) continue;
           if (Math.abs(r - pr) + Math.abs(c - pc) > 4) continue;
           const x = c * TILE_SIZE - cameraX;
@@ -10570,6 +13116,734 @@
   }
 
   /* ======================================================================
+     DRAWING -- BOMBS
+     ====================================================================== */
+
+  // Bombs lying in the mine (or still flying there) with their burning fuses
+  function drawPlacedBombs() {
+    const ox = Math.round(cameraX), oy = Math.round(cameraY);
+    for (const b of placedBombs) {
+      const T = BOMB_TIERS[b.tier];
+      const size = 26 + b.tier * 3;
+      let x = b.c * TILE_SIZE + TILE_SIZE / 2 - ox;
+      let y = b.r * TILE_SIZE + TILE_SIZE / 2 - oy + (b.sticky ? 0 : TILE_SIZE / 2 - size * 0.45);
+      let spin = 0;
+      if (b.fly) {
+        const k = b.fly.t;
+        x = b.fly.x - ox + (x - (b.fly.x - ox)) * k;
+        y = b.fly.y - oy + (y - (b.fly.y - oy)) * k - Math.sin(k * Math.PI) * 34;
+        spin = k * TWO_PI * 1.5;
+      }
+      if (x < -60 || x > CANVAS_W + 60 || y < -60 || y > CANVAS_H + 60) continue;
+      if (!b.fly) {
+        const k = Math.max(0, b.fuse / b.maxFuse);
+        const blink = Math.sin(animTime * (8 + (1 - k) * 34)) > 0;
+        drawGlow(blink ? '#ff4030' : T.color, x, y, 34 + b.tier * 8, blink ? 0.75 : 0.45);
+        // Fuse ring empties as the bomb counts down
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+        ctx.beginPath();
+        ctx.arc(x, y, size * 0.72, 0, TWO_PI);
+        ctx.stroke();
+        ctx.strokeStyle = k < 0.35 ? '#ff5040' : '#ffd060';
+        ctx.beginPath();
+        ctx.arc(x, y, size * 0.72, -Math.PI / 2, -Math.PI / 2 + TWO_PI * k);
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(spin);
+      drawSprite(T.icon, 0, 0, size);
+      ctx.restore();
+      if (!b.fly) {
+        if (Math.random() < 0.5)
+          particles.trail(x + size * 0.25, y - size * 0.45, { vx: (Math.random() - 0.5) * 1.5, vy: -1 - Math.random(), color: Math.random() < 0.5 ? '#ffe080' : '#ff7030', life: 0.25, size: 1.5, gravity: 0.03 });
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        fitText(String(Math.max(1, Math.ceil(b.fuse))), x, y - size * 0.72 - 14, 40, 20, { weight: 'bold', color: b.fuse < 1 ? '#ff7060' : '#fff0c0', outline: 'rgba(0,0,0,0.85)' });
+      }
+    }
+  }
+
+  // Bombs arcing from the turret to the battlefield
+  function drawSurfaceBombs() {
+    for (const s of surfaceBombs) {
+      const k = s.t;
+      const x = s.x0 + (s.tx - s.x0) * k;
+      const y = s.y0 + (s.ty - s.y0) * k - Math.sin(k * Math.PI) * (90 + Math.abs(s.tx - s.x0) * 0.25);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(k * TWO_PI * 2);
+      drawSprite(BOMB_TIERS[s.tier].icon, 0, 0, 28 + s.tier * 3);
+      ctx.restore();
+      if (Math.random() < 0.6)
+        particles.trail(x, y, { vx: (Math.random() - 0.5), vy: -0.5, color: '#ffb060', life: 0.3, size: 2 });
+      // Where it will land
+      ctx.strokeStyle = `rgba(255,140,80,${0.35 + Math.sin(animTime * 12) * 0.2})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(s.tx, Math.min(DOME_Y + 4, s.ty + 8), 26, 8, 0, 0, TWO_PI);
+      ctx.stroke();
+    }
+  }
+
+  // Fireballs, shock rings and smoke of explosions (in the mine or on the surface)
+  function drawBlasts(under) {
+    for (const b of blasts) {
+      if (b.under !== under) continue;
+      const x = under ? b.x - cameraX : b.x, y = under ? b.y - cameraY : b.y;
+      if (x < -b.R * 2 || x > CANVAS_W + b.R * 2 || y < -b.R * 2 || y > CANVAS_H + b.R * 2) continue;
+      const k = b.t / b.life;
+      const ease = 1 - Math.pow(1 - k, 3);
+      const color = BOMB_TIERS[b.tier] ? BOMB_TIERS[b.tier].color : '#ffb040';
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      // Fireball
+      const fr = b.R * (0.35 + ease * 0.75);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, fr);
+      g.addColorStop(0, `rgba(255,250,220,${0.95 * (1 - k)})`);
+      g.addColorStop(0.35, hexToRgba(color, 0.85 * (1 - k)));
+      g.addColorStop(0.75, `rgba(200,70,20,${0.4 * (1 - k)})`);
+      g.addColorStop(1, 'rgba(120,30,10,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, fr, 0, TWO_PI);
+      ctx.fill();
+      // Shock ring
+      ctx.strokeStyle = b.tier === 4 ? `rgba(200,150,255,${0.8 * (1 - k)})` : `rgba(255,230,180,${0.75 * (1 - k)})`;
+      ctx.lineWidth = Math.max(1, 9 * (1 - k));
+      ctx.beginPath();
+      ctx.arc(x, y, b.R * (0.25 + ease), 0, TWO_PI);
+      ctx.stroke();
+      // Void bombs pull light inwards before they burst
+      if (b.tier === 4) {
+        ctx.strokeStyle = `rgba(150,90,255,${0.7 * (1 - k)})`;
+        ctx.lineWidth = 4;
+        for (let i = 0; i < 3; ++i) {
+          ctx.beginPath();
+          ctx.arc(x, y, b.R * (1.2 - ease) * (0.5 + i * 0.25), 0, TWO_PI);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+      // Smoke left behind
+      if (k > 0.3) {
+        ctx.fillStyle = `rgba(40,34,30,${0.35 * (1 - k)})`;
+        for (let i = 0; i < 6; ++i) {
+          const a = i * 1.05 + b.x * 0.01;
+          ctx.beginPath();
+          ctx.arc(x + Math.cos(a) * b.R * 0.45 * ease, y + Math.sin(a) * b.R * 0.35 * ease - k * 20, b.R * 0.22 * (0.6 + ease * 0.5), 0, TWO_PI);
+          ctx.fill();
+        }
+      }
+      // White flash of the first instant
+      if (k < 0.18) {
+        ctx.fillStyle = `rgba(255,255,240,${0.6 * (1 - k / 0.18)})`;
+        ctx.beginPath();
+        ctx.arc(x, y, b.R * 0.5, 0, TWO_PI);
+        ctx.fill();
+      }
+    }
+  }
+
+  // Aim preview while throw mode is armed
+  function drawThrowPreview() {
+    if (!bombThrowMode || mouseAimX < 0) return;
+    const tier = readyBombTier();
+    if (tier < 0) return;
+    if (currentView === VIEW_UNDERGROUND) {
+      const col = Math.floor((mouseAimX + cameraX) / TILE_SIZE);
+      const row = Math.floor((mouseAimY + cameraY) / TILE_SIZE);
+      const t = throwTarget(col, row);
+      const px = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX, py = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      ctx.save();
+      ctx.setLineDash([6, 8]);
+      ctx.strokeStyle = 'rgba(255,190,110,0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(px, py, (bombThrowRange() + 0.5) * TILE_SIZE, 0, TWO_PI);
+      ctx.stroke();
+      const tx = col * TILE_SIZE + TILE_SIZE / 2 - cameraX, ty = row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      ctx.strokeStyle = t.ok ? 'rgba(140,255,160,0.85)' : 'rgba(255,110,100,0.85)';
+      ctx.lineDashOffset = -animTime * 30;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.quadraticCurveTo((px + tx) / 2, Math.min(py, ty) - 40, tx, ty);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.lineWidth = 3;
+      roundRectPath(col * TILE_SIZE + 3 - cameraX, row * TILE_SIZE + 3 - cameraY, TILE_SIZE - 6, TILE_SIZE - 6, 6);
+      ctx.stroke();
+      if (t.ok) {
+        // Blast radius around the target
+        ctx.strokeStyle = 'rgba(255,170,90,0.4)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(tx, ty, (bombRadius(tier) + 0.4) * TILE_SIZE, 0, TWO_PI);
+        ctx.stroke();
+        drawSprite(BOMB_TIERS[tier].icon, tx, ty, 26, 0.7);
+      }
+      ctx.restore();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText(t.ok ? 'Click to throw' : t.why, tx, ty - TILE_SIZE, 260, 16, { weight: 'bold', color: t.ok ? '#c8ffd0' : '#ffb0a8', outline: 'rgba(0,0,0,0.85)' });
+    } else {
+      const tx = mouseAimX, ty = Math.min(DOME_Y - 8, mouseAimY);
+      const R = 70 + 26 * bombRadius(tier);
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,150,80,${0.55 + Math.sin(animTime * 8) * 0.2})`;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 8]);
+      ctx.lineDashOffset = -animTime * 30;
+      ctx.beginPath();
+      ctx.arc(tx, ty, R, 0, TWO_PI);
+      ctx.stroke();
+      const x0 = DOME_X + Math.cos(turretAngle) * (DOME_RADIUS + 30), y0 = DOME_Y + Math.sin(turretAngle) * (DOME_RADIUS + 30);
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.quadraticCurveTo((x0 + tx) / 2, Math.min(y0, ty) - 90 - Math.abs(tx - x0) * 0.25, tx, ty);
+      ctx.stroke();
+      ctx.restore();
+      drawSprite(BOMB_TIERS[tier].icon, tx, ty, 26, 0.75);
+    }
+  }
+
+  // Bomb stock (bottom right): one slot per size, craft button and actions
+  function bombBarLayout() {
+    const w = 336, h = 128, x = CANVAS_W - 16 - w, y = CANVAS_H - 50 - h;
+    const slots = BOMB_TIERS.map((T, i) => ({ x: x + 12 + i * 63, y: y + 40, w: 58, h: 50, tier: i }));
+    const bw = Math.floor((w - 24 - 12) / 3);
+    const under = currentView === VIEW_UNDERGROUND;
+    const buttons = [
+      { id: 'drop', label: 'Drop', key: 'B', x: x + 12, y: y + 98, w: bw, h: 24, enabled: under },
+      { id: 'throw', label: 'Throw', key: under ? 'T' : 'T/B', x: x + 18 + bw, y: y + 98, w: bw, h: 24, enabled: true },
+      unlockedTools.remoteDetonator && placedBombs.some(b => !b.fly)
+        ? { id: 'detonate', label: 'Detonate', key: 'X', x: x + 24 + bw * 2, y: y + 98, w: bw, h: 24, enabled: true }
+        : { id: 'next', label: 'Next', key: 'Q', x: x + 24 + bw * 2, y: y + 98, w: bw, h: 24, enabled: true }
+    ];
+    return { x, y, w, h, slots, buttons, craft: { x: x + w - 12 - 104, y: y + 9, w: 104, h: 24 } };
+  }
+
+  function inRect(mx, my, r) {
+    return mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h;
+  }
+
+  function hitBombBar(mx, my) {
+    if (state !== STATE_PLAYING) return null;
+    const L = bombBarLayout();
+    if (!inRect(mx, my, L)) return null;
+    if (inRect(mx, my, L.craft)) return { kind: 'craft' };
+    for (const s of L.slots)
+      if (inRect(mx, my, s)) return { kind: 'slot', tier: s.tier };
+    for (const b of L.buttons)
+      if (inRect(mx, my, b)) return { kind: b.id, enabled: b.enabled };
+    return { kind: 'panel' };
+  }
+
+  function useBombBar(hit) {
+    if (hit.kind === 'craft') openCraftDialog();
+    else if (hit.kind === 'slot') {
+      bombSel = hit.tier;
+      SZ.GameAudio.play('blip', { pitch: 1 + hit.tier * 0.1, volume: 0.6 });
+    } else if (hit.kind === 'drop' && hit.enabled) placeBomb();
+    else if (hit.kind === 'throw') {
+      if (readyBombTier() < 0) return noBombsHint();
+      bombThrowMode = !bombThrowMode;
+      SZ.GameAudio.play('select', { pitch: bombThrowMode ? 1.2 : 0.8 });
+    } else if (hit.kind === 'next') cycleBomb(1);
+    else if (hit.kind === 'detonate') remoteDetonate();
+  }
+
+  // Small framed button used by the bomb bar and the workshop
+  function drawSmallButton(b, label, enabled, hover, color, px) {
+    ctx.save();
+    roundRectPath(b.x, b.y, b.w, b.h, Math.min(9, b.h / 2));
+    const g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+    if (enabled) {
+      g.addColorStop(0, hexToRgba(color, hover ? 0.42 : 0.26));
+      g.addColorStop(1, hexToRgba(color, hover ? 0.24 : 0.1));
+    } else {
+      g.addColorStop(0, 'rgba(40,44,60,0.7)');
+      g.addColorStop(1, 'rgba(24,26,36,0.7)');
+    }
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.lineWidth = hover && enabled ? 2 : 1;
+    ctx.strokeStyle = enabled ? hexToRgba(color, hover ? 1 : 0.7) : 'rgba(120,130,160,0.35)';
+    ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(label, b.x + b.w / 2, b.y + b.h / 2 + 1, b.w - 12, px || 15, { weight: 'bold', color: enabled ? '#ffffff' : UI.textMute });
+    ctx.restore();
+  }
+
+  let bombBarHover = null;
+
+  function drawBombBar() {
+    const L = bombBarLayout();
+    beginHudPanel('bombs', L.x, L.y, L.w, L.h);
+    drawPanel(L.x, L.y, L.w, L.h, { accent: '#ff9a40', shadow: 10 });
+    drawSprite('bomb', L.x + 24, L.y + 21, 24);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const tw = fitText('Bombs', L.x + 42, L.y + 22, 80, 18, { weight: 'bold', color: UI.text });
+    const full = bombCount() >= bombCapacity();
+    fitText(`${bombCount()} / ${bombCapacity()}`, L.x + 50 + tw, L.y + 22, L.craft.x - L.x - 58 - tw, 15, { weight: 'bold', color: full ? UI.warn : UI.textDim });
+    const hk = bombBarHover && bombBarHover.kind;
+    drawSmallButton(L.craft, 'Craft  [C]', true, hk === 'craft', '#ff9a40', 14);
+    for (const s of L.slots) {
+      const n = bombInv[s.tier];
+      const sel = bombSel === s.tier;
+      const hover = hk === 'slot' && bombBarHover.tier === s.tier;
+      roundRectPath(s.x, s.y, s.w, s.h, 8);
+      ctx.fillStyle = sel ? 'rgba(255,190,90,0.2)' : (hover ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.3)');
+      ctx.fill();
+      ctx.lineWidth = sel ? 2 : 1;
+      ctx.strokeStyle = sel ? UI.gold : 'rgba(255,255,255,0.12)';
+      ctx.stroke();
+      if (sel && bombThrowMode) {
+        ctx.save();
+        ctx.shadowColor = '#ff9a40';
+        ctx.shadowBlur = 10 + Math.sin(animTime * 8) * 5;
+        ctx.stroke();
+        ctx.restore();
+      }
+      drawSprite(BOMB_TIERS[s.tier].icon, s.x + s.w / 2, s.y + 21, 30, n > 0 ? 1 : 0.3);
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      fitText(String(n), s.x + s.w - 6, s.y + s.h - 9, s.w - 10, 14, { weight: 'bold', color: n > 0 ? '#ffffff' : UI.textMute, outline: 'rgba(0,0,0,0.8)' });
+    }
+    for (const b of L.buttons) {
+      const active = b.id === 'throw' && bombThrowMode;
+      drawSmallButton(b, `${active ? 'Aiming…' : b.label}  [${b.key}]`, b.enabled, hk === b.id || active, b.id === 'throw' || b.id === 'detonate' ? '#ff7a50' : '#8aa8d8', 13);
+    }
+    endHudPanel();
+  }
+
+  /* -- Bomb workshop (crafting and combining) -- */
+  function craftLayout() {
+    const w = 1080, h = 724, x = (CANVAS_W - w) / 2, y = (CANVAS_H - h) / 2;
+    const rows = BOMB_TIERS.map((T, i) => {
+      const ry = y + 112 + i * 104;
+      return {
+        i, x: x + 24, y: ry, w: w - 48, h: 94,
+        craft: { x: x + w - 40 - 250 - 12 - 170, y: ry + 25, w: 170, h: 44 },
+        combine: i < BOMB_TIERS.length - 1 ? { x: x + w - 40 - 250, y: ry + 25, w: 250, h: 44 } : null
+      };
+    });
+    return { x, y, w, h, rows, close: { x: x + w - 54, y: y + 12, w: 40, h: 40 } };
+  }
+
+  function openCraftDialog() {
+    if (state !== STATE_PLAYING) return;
+    stateBeforeCraft = state;
+    state = STATE_CRAFT;
+    craftFocus = Math.max(0, bombSel);
+    craftHover = null;
+    bombThrowMode = false;
+    clearTooltip();
+    SZ.GameAudio.play('select');
+  }
+
+  function closeCraftDialog() {
+    state = stateBeforeCraft || STATE_PLAYING;
+    stateBeforeCraft = null;
+    craftHover = null;
+    SZ.GameAudio.play('click');
+    saveRun();
+  }
+
+  function hitCraftDialog(mx, my) {
+    const L = craftLayout();
+    if (inRect(mx, my, L.close)) return { kind: 'close' };
+    for (const r of L.rows) {
+      if (inRect(mx, my, r.craft)) return { kind: 'craft', row: r.i };
+      if (r.combine && inRect(mx, my, r.combine)) return { kind: 'combine', row: r.i };
+      if (inRect(mx, my, r)) return { kind: 'row', row: r.i };
+    }
+    return inRect(mx, my, L) ? { kind: 'panel' } : { kind: 'outside' };
+  }
+
+  function handleCraftClick(mx, my) {
+    const hit = hitCraftDialog(mx, my);
+    if (hit.kind === 'close' || hit.kind === 'outside') {
+      closeCraftDialog();
+      return;
+    }
+    if (hit.row !== undefined) {
+      craftFocus = hit.row;
+      if (hit.kind === 'craft') craftBomb(hit.row);
+      else if (hit.kind === 'combine') combineBombs(hit.row);
+      else {
+        bombSel = hit.row;
+        SZ.GameAudio.play('blip', { pitch: 1 + hit.row * 0.1, volume: 0.6 });
+      }
+    }
+  }
+
+  function handleCraftKey(e) {
+    const n = BOMB_TIERS.length;
+    if (e.code === 'ArrowUp' || e.code === 'KeyW') craftFocus = (craftFocus + n - 1) % n;
+    else if (e.code === 'ArrowDown' || e.code === 'KeyS') craftFocus = (craftFocus + 1) % n;
+    else if (/^Digit[1-5]$/.test(e.code)) craftFocus = parseInt(e.code.slice(5), 10) - 1;
+    else if (e.code === 'Enter' || e.code === 'Space' || e.code === 'NumpadEnter') craftBomb(craftFocus);
+    else if (e.code === 'ArrowRight' || e.code === 'KeyD' || e.code === 'KeyM') combineBombs(craftFocus);
+    else if (e.code === 'Escape' || e.code === 'KeyC') closeCraftDialog();
+    else return false;
+    bombSel = craftFocus;
+    return true;
+  }
+
+  function drawCraftDialog() {
+    drawScrim(0.66);
+    const L = craftLayout();
+    drawPanel(L.x, L.y, L.w, L.h, { accent: '#ff9a40', radius: 16, title: '[[bomb]] Bomb Workshop', titlePx: 28, headerH: 64, top: 'rgba(26,30,48,0.98)', bottom: 'rgba(12,14,24,0.98)' });
+    const ch = craftHover;
+    // Stock and close button
+    const full = bombCount() >= bombCapacity();
+    drawChip(`Stock ${bombCount()} / ${bombCapacity()}`, L.close.x - 14, L.y + 19, 28, { align: 'right', px: 16, maxW: 220, bg: full ? 'rgba(255,182,72,0.18)' : 'rgba(255,215,90,0.12)', border: full ? UI.warn : 'rgba(255,215,90,0.5)', color: full ? UI.warn : UI.gold });
+    drawSmallButton(L.close, '×', true, ch && ch.kind === 'close', '#8aa8d8', 22);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText('Craft bombs from stored ore and combine three of one size into one of the next. Drop or throw them in the mine, lob them at monsters.', L.x + 28, L.y + 88, L.w - 56, 16, { color: UI.textDim });
+    for (const r of L.rows) {
+      const T = BOMB_TIERS[r.i];
+      const focus = craftFocus === r.i;
+      const known = recipeKnown(r.i);
+      const why = craftBlocker(r.i);
+      ctx.save();
+      drawNodeFrame(r.x, r.y, r.w, r.h, T.color, known ? (why ? 'poor' : 'ready') : 'locked', ch && ch.row === r.i);
+      if (focus || bombSel === r.i) {
+        roundRectPath(r.x - 3, r.y - 3, r.w + 6, r.h + 6, 14);
+        ctx.lineWidth = focus ? 3 : 1.5;
+        ctx.strokeStyle = focus ? UI.gold : 'rgba(255,215,90,0.45)';
+        ctx.stroke();
+      }
+      // Icon well
+      const ix = r.x + 12, iy = r.y + 11;
+      roundRectPath(ix, iy, 72, 72, 12);
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fill();
+      drawGlow(T.color, ix + 36, iy + 36, 40, 0.35 + Math.sin(animTime * 3 + r.i) * 0.1);
+      drawSprite(T.icon, ix + 36, iy + 36, 52, known || bombInv[r.i] > 0 ? 1 : 0.45);
+      // Name, numbers and recipe
+      const tx = r.x + 100, tw = r.craft.x - 110 - tx;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText(T.name, tx, r.y + 22, tw, 22, { weight: 'bold', color: known ? '#ffffff' : '#9aa2b8' });
+      fitText(`Radius ${bombRadius(r.i).toFixed(1)} tiles · rock power ${bombPower(r.i).toFixed(1)} · ${Math.round(T.monster * (1 + 0.3 * getEffectiveLevel('bombPower')))} damage to monsters`, tx, r.y + 47, tw, 14, { color: UI.textDim });
+      if (known)
+        drawCostRow(craftCost(r.i), tx, r.y + 73, Math.min(tw, 300), 15);
+      else {
+        drawSprite('lock', tx + 9, r.y + 73, 18, 0.8);
+        fitText('Recipe locked - buy it in the Tools branch (combining still works)', tx + 24, r.y + 74, tw - 24, 14, { color: UI.warn });
+      }
+      // Stock
+      const sx = r.craft.x - 100;
+      roundRectPath(sx, r.y + 18, 86, 58, 10);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fill();
+      ctx.textAlign = 'center';
+      fitText('in stock', sx + 43, r.y + 32, 76, 12, { color: UI.textMute });
+      fitText(String(bombInv[r.i]), sx + 43, r.y + 57, 76, 26, { weight: 'bold', color: bombInv[r.i] > 0 ? UI.gold : UI.textMute });
+      // Buttons
+      drawSmallButton(r.craft, known ? 'Craft' : 'Locked', !why, ch && ch.kind === 'craft' && ch.row === r.i, '#5ac87a', 18);
+      if (r.combine) {
+        const can = bombInv[r.i] >= BOMB_COMBINE;
+        drawSmallButton(r.combine, `Combine ${BOMB_COMBINE} [[${T.icon}]] → 1 [[${BOMB_TIERS[r.i + 1].icon}]]`, can, ch && ch.kind === 'combine' && ch.row === r.i, '#ff9a40', 17);
+      } else {
+        ctx.textAlign = 'center';
+        fitText('The biggest bomb there is', r.x + r.w - 40 - 125, r.y + 48, 240, 15, { color: UI.textMute });
+      }
+      // Craft / combine flash
+      const fl = craftFlash[r.i];
+      if (fl !== undefined) {
+        const t = (performance.now() - fl) / 600;
+        if (t >= 1) delete craftFlash[r.i];
+        else {
+          roundRectPath(r.x, r.y, r.w, r.h, 12);
+          ctx.fillStyle = `rgba(255,240,200,${0.3 * (1 - t)})`;
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText('In the mine: [B] drops the selected bomb, [T] throws it, [Q] picks the next size  ·  on the surface [B] lobs it at the cursor', CANVAS_W / 2, L.y + L.h - 62, L.w - 60, 15, { color: UI.textDim });
+    drawKeyHints([
+      { key: '↑↓', label: 'Select' },
+      { key: 'Enter', label: 'Craft' },
+      { key: '→', label: 'Combine' },
+      { key: 'Esc', label: 'Close' }
+    ], CANVAS_W / 2, L.y + L.h - 26, L.w - 80);
+  }
+
+  /* ======================================================================
+     DRAWING -- COMBAT SKILL (weak points, charge ring, parry, tells, combo)
+     ====================================================================== */
+
+  // Monster under the cursor (or the one a charge is aimed at)
+  function hoveredEnemy() {
+    if (mouseAimX < 0 || state !== STATE_PLAYING) return null;
+    let best = null, bd = Infinity;
+    for (const e of enemies) {
+      if (e.hidden) continue;
+      const d = Math.hypot(mouseAimX - e.x, mouseAimY - e.y);
+      const r = (e.size || 16) + (charge ? 60 : 14);
+      if (d < r && d < bd) {
+        bd = d;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  function drawWeakPointReticle(e) {
+    const w = weakPoint(e);
+    const pulse = 0.6 + Math.sin(animTime * 10) * 0.4;
+    ctx.save();
+    drawGlow('#ffd040', w.x, w.y, w.r * 2.4, 0.45 * pulse);
+    ctx.strokeStyle = `rgba(255,220,90,${0.6 + pulse * 0.4})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(w.x, w.y, w.r, 0, TWO_PI);
+    ctx.stroke();
+    const g = w.r + 7;
+    ctx.beginPath();
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      ctx.moveTo(w.x + dx * (w.r - 3), w.y + dy * (w.r - 3));
+      ctx.lineTo(w.x + dx * g, w.y + dy * g);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Shown under the HUD: weak points, boss tells, the parry shield and parried shots
+  function drawCombatOverlays() {
+    // Boss and diver tells
+    for (const e of enemies) {
+      if (e.hidden) continue;
+      let tell = 0;
+      if (e.type === 'behemoth' && e.stomp !== undefined && e.stomp < 0.9 && Math.abs(e.x - DOME_X) < 360) {
+        tell = 1 - e.stomp / 0.9;
+        drawGlow('#ff7040', e.x, DOME_Y + 4, 60 + tell * 50, 0.35 + tell * 0.4);
+      }
+      if (e.type === 'queen' && e.lanceAim) {
+        tell = 1 - Math.max(0, e.lance) / 1.1;
+        ctx.save();
+        ctx.setLineDash([12, 10]);
+        ctx.lineDashOffset = -animTime * 60;
+        ctx.strokeStyle = `rgba(255,90,220,${0.35 + tell * 0.55})`;
+        ctx.lineWidth = 2 + tell * 4;
+        ctx.beginPath();
+        ctx.moveTo(e.x, e.y + e.size * 0.3);
+        ctx.lineTo(e.lanceAim.tx, e.lanceAim.ty);
+        ctx.stroke();
+        ctx.restore();
+        drawGlow('#ff70e0', e.lanceAim.tx, e.lanceAim.ty, 26 + tell * 20, 0.5 + tell * 0.4);
+      }
+      if (e.type === 'diver' && e.phase === 'dive')
+        tell = 1;
+      if (tell > 0) {
+        const y = e.y - (e.size || 20) * (e.boss ? 2.2 : 1.6) - 26;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        fitText('!', e.x, y + Math.sin(animTime * 18) * 2, 30, 22 + tell * 10, { weight: 'bold', color: tell > 0.7 ? '#ff5a3a' : '#ffd040', outline: 'rgba(0,0,0,0.85)' });
+      }
+    }
+    // Weak point of the monster under the cursor
+    const he = currentView === VIEW_SURFACE && !bombThrowMode ? hoveredEnemy() : null;
+    if (he)
+      drawWeakPointReticle(he);
+    // Parry shield
+    if (parryT > 0) {
+      const k = parryT / PARRY_WINDOW;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.beginPath();
+      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 18, Math.PI, 0);
+      ctx.strokeStyle = `rgba(150,230,255,${0.9 * k})`;
+      ctx.lineWidth = 10 * k + 3;
+      ctx.shadowColor = '#8ae8ff';
+      ctx.shadowBlur = 20;
+      ctx.stroke();
+      ctx.restore();
+    }
+    // Parried shots flying back
+    for (const r of reflected) {
+      const x = r.x0 + (r.tx - r.x0) * r.t, y = r.y0 + (r.ty - r.y0) * r.t - Math.sin(r.t * Math.PI) * 40;
+      drawGlow(r.kind === 'lance' ? '#ff70e0' : '#8ae8ff', x, y, 28, 0.9);
+      ctx.fillStyle = '#f0ffff';
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, TWO_PI);
+      ctx.fill();
+      if (Math.random() < 0.6)
+        particles.trail(x, y, { vx: (Math.random() - 0.5), vy: (Math.random() - 0.5), color: '#9ae8ff', life: 0.25, size: 2 });
+    }
+  }
+
+  // Timing ring while charging: the outer ring closes in, release when it meets the gold circle
+  function drawChargeRing() {
+    if (!charge || currentView !== VIEW_SURFACE || charge.t < 0.15) return;
+    const k = charge.t / CHARGE_TIME;
+    let x, y;
+    if (mouseAimX >= 0 && mouseAimY < DOME_Y + 45) {
+      x = mouseAimX;
+      y = mouseAimY;
+    } else {
+      x = DOME_X + Math.cos(turretAngle) * 320;
+      y = DOME_Y + Math.sin(turretAngle) * 320;
+    }
+    const inWindow = k >= PERFECT_FROM && k <= 1;
+    const R0 = 70, Rt = 20;
+    const r = Math.max(8, R0 - (R0 - Rt) * Math.min(1.2, k));
+    ctx.save();
+    // Gold target circle
+    ctx.strokeStyle = inWindow ? '#fff2a0' : 'rgba(255,215,90,0.75)';
+    ctx.lineWidth = inWindow ? 5 : 3;
+    if (inWindow) {
+      ctx.shadowColor = UI.gold;
+      ctx.shadowBlur = 18;
+    }
+    ctx.beginPath();
+    ctx.arc(x, y, Rt, 0, TWO_PI);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    // Closing ring
+    ctx.strokeStyle = k > 1 ? 'rgba(255,90,70,0.9)' : (inWindow ? '#ffffff' : 'rgba(150,220,255,0.85)');
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TWO_PI);
+    ctx.stroke();
+    // Charge arc around the turret
+    const tx = DOME_X + Math.cos(turretAngle) * (DOME_RADIUS + 16), ty = DOME_Y + Math.sin(turretAngle) * (DOME_RADIUS + 16);
+    drawGlow(inWindow ? '#ffe060' : '#ffb070', tx, ty, 20 + Math.min(1, k) * 30, 0.4 + Math.min(1, k) * 0.5);
+    ctx.restore();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(inWindow ? 'RELEASE!' : (k > 1 ? 'Too late…' : 'Charging'), x, y + R0 + 12, 160, 16, { weight: 'bold', color: inWindow ? UI.gold : (k > 1 ? '#ff8a7a' : '#bfe0ff'), outline: 'rgba(0,0,0,0.8)' });
+  }
+
+  // Combo meter right of the dome bar, parry readiness left of it
+  function drawCombatHUD(barX, barY, barW, barH) {
+    // Parry
+    const px = barX - 26, py = barY + barH / 2;
+    const ready = parryCd <= 0;
+    ctx.save();
+    ctx.fillStyle = 'rgba(10,14,26,0.85)';
+    ctx.beginPath();
+    ctx.arc(px, py, 18, 0, TWO_PI);
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.stroke();
+    ctx.strokeStyle = ready ? '#8ae8ff' : 'rgba(138,232,255,0.5)';
+    ctx.beginPath();
+    ctx.arc(px, py, 18, -Math.PI / 2, -Math.PI / 2 + TWO_PI * (1 - parryCd / PARRY_COOLDOWN));
+    ctx.stroke();
+    ctx.restore();
+    drawSprite('shield', px, py, 20, ready ? 1 : 0.45);
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    fitText('Parry [E]', px - 24, py + 1, 90, 13, { weight: 'bold', color: ready ? '#bff0ff' : UI.textMute });
+    // Combo
+    if (combo >= 2) {
+      const cx = barX + barW + 12;
+      const w = drawChip(`Combo x${combo}  ·  ${comboMult().toFixed(2)}x`, cx, barY, barH, { px: 15, maxW: 190, bg: 'rgba(255,120,255,0.16)', border: 'rgba(255,160,255,0.6)', color: '#ffc8ff' });
+      drawMeter(cx + 6, barY + barH + 3, w - 12, 4, comboTimer / COMBO_TIMEOUT, '#ff9aff', { track: 'rgba(0,0,0,0.5)' });
+    }
+  }
+
+  /* ======================================================================
+     HUD FADING -- panels turn see-through while the keeper, a monster, a
+     shot or a drone is behind them; a click on a monster under a faded
+     panel goes to the monster
+     ====================================================================== */
+
+  const HUD_FADED = 0.3;             // opacity of a panel with something behind it
+  const hudFade = {};                // panel id -> { a, rect, frame }
+  let hudFrame = 0, frameDt = 1 / 60;
+  let hudActorCache = null, hudActorFrame = -1;
+
+  // Screen rectangles of everything that must stay visible
+  function hudActors() {
+    if (hudActorFrame === hudFrame && hudActorCache) return hudActorCache;
+    const out = [];
+    const add = (x, y, w, h) => out.push({ x, y, w, h });
+    if (currentView === VIEW_SURFACE) {
+      for (const e of enemies) {
+        if (e.hidden) continue;
+        const s = e.size || 16;
+        add(e.x - s * 1.5, e.y - s * (e.boss ? 1.9 : 1.4) - 22, s * 3, s * (e.boss ? 2.9 : 2.4) + 22);
+      }
+      for (const sh of enemyShots) {
+        const x = sh.x0 + (sh.tx - sh.x0) * sh.t, y = sh.y0 + (sh.ty - sh.y0) * sh.t - (sh.kind === 'lance' ? 0 : Math.sin(sh.t * Math.PI) * 150);
+        add(x - 14, y - 14, 28, 28);
+      }
+      for (const g of gunDrones) add(g.x - 22, g.y - 22, 44, 44);
+      if (repairBot) add(repairBot.x - 22, repairBot.y - 22, 44, 44);
+      for (const b of surfaceBombs) {
+        const x = b.x0 + (b.tx - b.x0) * b.t, y = b.y0 + (b.ty - b.y0) * b.t - Math.sin(b.t * Math.PI) * (90 + Math.abs(b.tx - b.x0) * 0.25);
+        add(x - 18, y - 18, 36, 36);
+      }
+      for (const r of reflected) add(r.x0 + (r.tx - r.x0) * r.t - 12, r.y0 + (r.ty - r.y0) * r.t - 52, 24, 64);
+    } else if (currentView === VIEW_UNDERGROUND) {
+      add(drillX * TILE_SIZE - cameraX - 8, drillY * TILE_SIZE - cameraY - 22, TILE_SIZE + 16, TILE_SIZE + 30);
+      for (const d of drones)
+        if (d.state !== 'dock') add(d.x - cameraX - 20, d.y - cameraY - 20, 40, 44);
+      for (const b of placedBombs) add(b.c * TILE_SIZE - cameraX - 6, b.r * TILE_SIZE - cameraY - 34, TILE_SIZE + 12, TILE_SIZE + 40);
+    }
+    hudActorCache = out;
+    hudActorFrame = hudFrame;
+    return out;
+  }
+
+  function overlapsActor(x, y, w, h) {
+    for (const a of hudActors())
+      if (a.x < x + w && a.x + a.w > x && a.y < y + h && a.y + a.h > y)
+        return true;
+    return false;
+  }
+
+  // Opacity of a HUD panel this frame, easing towards faded or solid
+  function hudAlpha(id, x, y, w, h) {
+    const f = hudFade[id] || (hudFade[id] = { a: 1 });
+    const live = state === STATE_PLAYING;
+    const target = live && overlapsActor(x, y, w, h) ? HUD_FADED : 1;
+    f.a += (target - f.a) * (1 - Math.exp(-frameDt * 9));
+    f.rect = { x, y, w, h };
+    f.frame = hudFrame;
+    return f.a;
+  }
+
+  function beginHudPanel(id, x, y, w, h) {
+    ctx.save();
+    ctx.globalAlpha *= hudAlpha(id, x, y, w, h);
+  }
+
+  function endHudPanel() {
+    ctx.restore();
+  }
+
+  // A click on a monster (or the keeper) seen through a faded panel goes to the world
+  function hudPassThrough(mx, my) {
+    for (const id in hudFade) {
+      const f = hudFade[id];
+      if (f.frame < hudFrame - 2 || f.a > 0.6 || !f.rect) continue;
+      const r = f.rect;
+      if (mx < r.x || mx > r.x + r.w || my < r.y || my > r.y + r.h) continue;
+      for (const a of hudActors())
+        if (mx >= a.x - 10 && mx <= a.x + a.w + 10 && my >= a.y - 10 && my <= a.y + a.h + 10)
+          return true;
+    }
+    return false;
+  }
+
+  /* ======================================================================
      DRAWING -- UPGRADE PANEL
      ====================================================================== */
 
@@ -10592,8 +13866,8 @@
     return node.costs[Math.min(getTreeNodeLevel(node.id), node.costs.length - 1)];
   }
 
-  // Per branch: the cheapest node that can be bought now, otherwise the
-  // unlocked node that is closest to affordable
+  // Per unfinished branch: the cheapest node that can be bought now,
+  // otherwise the unlocked node that is closest to affordable
   function getQuickPicks() {
     const picks = [];
     for (const branch of TREE_BRANCH_ORDER) {
@@ -10621,7 +13895,9 @@
           best = n;
         }
       }
-      picks.push({ branch, node: best, buyable, owned, total });
+      // a finished branch leaves the panel; the rows below move up
+      if (owned < total)
+        picks.push({ branch, node: best, buyable, owned, total });
     }
     return picks;
   }
@@ -10769,6 +14045,7 @@
 
   function drawUpgradePanel() {
     const L = getQuickPanelLayout();
+    beginHudPanel('quick', L.x, L.y, L.w, L.h);
     let owned = 0;
     for (const r of L.rows)
       owned += r.owned;
@@ -10796,6 +14073,7 @@
     ctx.textBaseline = 'middle';
     fitText('Open upgrade tree', b.x + 40, b.y + b.h / 2 + 1, b.w - 40 - kw - 16, 17, { weight: 'bold', color: UI.gold });
     ctx.restore();
+    endHudPanel();
   }
 
 
@@ -10892,6 +14170,12 @@
 
     if (state === STATE_CONFIRM)
       drawRelocateConfirm();
+
+    if (state === STATE_CRAFT)
+      drawCraftDialog();
+
+    if (state === STATE_MINIGAME)
+      drawMinigame();
 
     if (state === STATE_PAUSED) {
       drawScrim(0.45);
@@ -11203,11 +14487,20 @@
     const depthTier = DEPTH_TIERS[getDepthTier(row)];
     const depthMult = getDepthMineMultiplier(row);
 
+    const chest = tile === TILE_CHEST ? chestAt(row, col) : null;
+    if (chest && chest.revealed) {
+      lines.push('[[chest]] Secret Chest');
+      lines.push(`Dig into it to open its ${MINIGAME_NAMES[chest.kind].toLowerCase()} lock`);
+      lines.push('Difficulty: ' + ['Easy', 'Fair', 'Tricky', 'Hard', 'Fiendish'][Math.min(4, Math.round(chestDifficulty(chest) * 4))]);
+      if (chest.cooldown > 0)
+        lines.push(`\u26A0 Jammed for ${Math.ceil(chest.cooldown)} s`);
+      return lines;
+    }
     if (tile === TILE_CORE && relocationCore.revealed) {
       lines.push('[[core]] Relocation Core');
       lines.push('Mine it to unlock relocating the dome');
       lines.push('Mining: ' + getMiningDifficultyLabel(depthMult));
-    } else if (tile === TILE_DIRT || tile === TILE_CORE) {
+    } else if (tile === TILE_DIRT || tile === TILE_CORE || tile === TILE_CHEST) {
       lines.push(depthTier.name);
       lines.push('Depth tier: ' + depthTier.name);
       lines.push('Mining: ' + getMiningDifficultyLabel(depthMult));
@@ -11248,7 +14541,13 @@
   // Build tooltip content for an enemy
   function buildEnemyTooltip(e) {
     const T = enemyType(e);
-    const lines = [T.name, T.desc];
+    const lines = [(e.elite ? 'Elite ' : '') + (e.enraged ? 'Enraged ' : '') + T.name, T.desc];
+    if (e.elite)
+      lines.push(`\u26A0 ${ELITE_AURAS[e.elite].name}: ${ELITE_AURAS[e.elite].desc}`);
+    else if (e.aura)
+      lines.push(`\u26A0 Strengthened by a ${ELITE_AURAS[e.aura].name.toLowerCase()}`);
+    if (e.spit !== undefined)
+      lines.push('\u26A0 Spits acid on its way in');
     lines.push('HP: ' + Math.ceil(e.hp) + ' / ' + Math.ceil(e.maxHP));
     if (e.shield > 0)
       lines.push('Shield: ' + Math.ceil(e.shield) + ' / ' + Math.ceil(e.maxShield));
@@ -11367,12 +14666,16 @@
     const rawDt = lastTimestamp ? (timestamp - lastTimestamp) / 1000 : 0;
     const dt = Math.min(rawDt, MAX_DT);
     lastTimestamp = timestamp;
+    frameDt = dt;
+    ++hudFrame;
 
     // Always update animations (even on title/pause/game-over for visual polish)
     animTime += state !== STATE_PLAYING ? dt : 0;
     updateGame(dt);
     if (state === STATE_CINEMATIC)
       updateCinematic(dt);
+    if (state === STATE_MINIGAME)
+      updateMinigame(dt);
     updateTooltipHover(dt);
 
     particles.update();
@@ -11472,6 +14775,17 @@
       return;
     }
 
+    if (state === STATE_CRAFT) {
+      if (handleCraftKey(e))
+        e.preventDefault();
+      return;
+    }
+    if (state === STATE_MINIGAME) {
+      if (minigameKey(e))
+        e.preventDefault();
+      return;
+    }
+
     if (e.key === 'h' || e.key === 'H') {
       if (state === STATE_PLAYING || state === STATE_PAUSED || state === STATE_READY || state === STATE_GADGET_SELECT) {
         showTutorial = !showTutorial;
@@ -11484,6 +14798,10 @@
       e.preventDefault();
       if (state === STATE_UPGRADE_DIALOG) {
         closeUpgradeDialog();
+        return;
+      }
+      if (state === STATE_PLAYING && bombThrowMode) {
+        bombThrowMode = false;
         return;
       }
       if (state === STATE_PLAYING) {
@@ -11542,6 +14860,7 @@
       keeperIdle = 0;
       // Dash: Shift + direction rushes through the tunnel
       if ((newDx !== 0 || newDy !== 0) && e.shiftKey && unlockedTools.dash && dashCooldown <= 0) {
+        lastMineDir = { dx: newDx, dy: newDy };
         let n = 0;
         const range = 3 + (getEffectiveLevel('dash') - 1);
         while (n < range) {
@@ -11585,9 +14904,39 @@
       }
     }
 
-    // Blast mining activation
-    if (e.code === 'KeyB')
-      useBlastMining();
+    // Bombs: drop (mine) or lob at the cursor (surface), throw mode, next size, workshop, remote detonation
+    if (e.code === 'KeyB') {
+      if (currentView === VIEW_UNDERGROUND)
+        placeBomb();
+      else if (mouseAimX >= 0 && mouseAimY >= 0 && mouseAimY < DOME_Y)
+        lobSurfaceBomb(mouseAimX, mouseAimY);
+      else
+        lobSurfaceBomb(DOME_X + Math.cos(turretAngle) * 420, DOME_Y + Math.sin(turretAngle) * 420);
+    }
+    if (e.code === 'KeyT') {
+      if (readyBombTier() < 0)
+        noBombsHint();
+      else
+        bombThrowMode = !bombThrowMode;
+    }
+    if (e.code === 'KeyQ')
+      cycleBomb(e.shiftKey ? -1 : 1);
+    if (e.code === 'KeyC') {
+      openCraftDialog();
+      return;
+    }
+    if (e.code === 'KeyX')
+      remoteDetonate();
+
+    // Surface combat: F fires (hold to charge), E parries
+    if (currentView === VIEW_SURFACE && !e.repeat) {
+      if (e.code === 'KeyF') {
+        fireRequested = true;
+        startCharge();
+      }
+      if (e.code === 'KeyE')
+        tryParry();
+    }
 
     if (e.code === 'KeyL' && relocationCore.found)
       requestRelocation();
@@ -11610,13 +14959,15 @@
         floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 40, 'Reinforced Dome active (passive)', { color: '#0f0', font: 'bold 22px sans-serif' });
     }
     if (e.code === 'Digit5' || e.key === '5') {
-      if (unlockedTools.teleporter)
+      if (unlockedTools.teleporter || hasArtifact('warpAnchor'))
         useTeleporter();
     }
   });
 
   window.addEventListener('keyup', (e) => {
     keys[e.code] = false;
+    if (e.code === 'KeyF' && charge)
+      releaseCharge();
   });
 
   /* -- Click/Tap handling -- */
@@ -11641,6 +14992,16 @@
     }
     if (newGameConfirmOpen)
       return;
+    if (state === STATE_CRAFT) {
+      const rect = canvas.getBoundingClientRect();
+      handleCraftClick((e.clientX - rect.left) * CANVAS_W / rect.width, (e.clientY - rect.top) * CANVAS_H / rect.height);
+      return;
+    }
+    if (state === STATE_MINIGAME) {
+      const rect = canvas.getBoundingClientRect();
+      minigameClick((e.clientX - rect.left) * CANVAS_W / rect.width, (e.clientY - rect.top) * CANVAS_H / rect.height, e.button);
+      return;
+    }
     if (state === STATE_READY && saveAvailable) {
       const rect = canvas.getBoundingClientRect();
       const hit = hitTitleButton((e.clientX - rect.left) * CANVAS_W / rect.width, (e.clientY - rect.top) * CANVAS_H / rect.height);
@@ -11700,9 +15061,31 @@
     const mx = (e.clientX - rect.left) * scaleX;
     const my = (e.clientY - rect.top) * scaleY;
 
+    // Touch has no hover: a tap also aims the turret at the tapped point
+    mouseAimX = mx;
+    mouseAimY = my;
+
+    // A monster (or the keeper) seen through a faded panel takes the click
+    const through = hudPassThrough(mx, my);
+
+    // Bomb stock panel (both views); right click cancels an armed throw
+    const bombHit = through ? null : hitBombBar(mx, my);
+    if (bombHit) {
+      useBombBar(bombHit);
+      return;
+    }
+    if (bombThrowMode && e.button === 2) {
+      bombThrowMode = false;
+      return;
+    }
+
     if (currentView === VIEW_UNDERGROUND) {
       const col = Math.floor((mx + cameraX) / TILE_SIZE);
       const row = Math.floor((my + cameraY) / TILE_SIZE);
+      if (bombThrowMode) {
+        throwBombAt(col, row);
+        return;
+      }
       if (col >= 0 && col < GRID_COLS && row >= 0 && row < GRID_ROWS) {
         const ddx = col - drillX;
         const ddy = row - drillY;
@@ -11752,7 +15135,7 @@
       }
 
       // Surface view: relocate button, meteor ore, the quick upgrade panel, then fire the weapon
-      if (hitRelocateButton(mx, my)) {
+      if (!through && hitRelocateButton(mx, my)) {
         requestRelocation();
         return;
       }
@@ -11761,7 +15144,7 @@
         collectMeteorOre(ore);
         return;
       }
-      const qp = hitQuickPanel(mx, my);
+      const qp = through ? null : hitQuickPanel(mx, my);
       if (qp) {
         if (qp.kind === 'row')
           activateQuickRow(qp.row);
@@ -11769,8 +15152,18 @@
           openUpgradeDialog();
         return;
       }
-      // Fire weapon toward current turret aim direction
+      if (bombThrowMode) {
+        lobSurfaceBomb(mx, my);
+        return;
+      }
+      // Right click or a tap on the dome raises the parry shield
+      if (e.button === 2 || (Math.hypot(mx - DOME_X, my - DOME_Y) < DOME_RADIUS + 6 && my < DOME_Y + 8)) {
+        tryParry();
+        return;
+      }
+      // Fire weapon toward current turret aim direction; holding charges a stronger shot
       fireRequested = true;
+      startCharge();
     }
   });
 
@@ -11788,7 +15181,7 @@
 
   /* -- Right-click pan for upgrade dialog -- */
   canvas.addEventListener('contextmenu', (e) => {
-    if (state === STATE_UPGRADE_DIALOG)
+    if (state === STATE_UPGRADE_DIALOG || state === STATE_PLAYING || state === STATE_CRAFT || state === STATE_MINIGAME)
       e.preventDefault();
   });
 
@@ -11811,7 +15204,11 @@
     }
   });
 
+  canvas.addEventListener('pointercancel', () => { charge = null; });
+
   canvas.addEventListener('pointerup', (e) => {
+    if (charge && e.button === 0)
+      releaseCharge();
     if (upgradePanning && (e.button === 0 || e.button === 2)) {
       upgradePanning = false;
       treeCam.tx = upgradePanX;
@@ -11830,13 +15227,34 @@
     mouseAimY = (e.clientY - rect.top) * scaleY;
     quickPanelHover = null;
     relocateHover = null;
+    bombBarHover = null;
+    if (state === STATE_CRAFT) {
+      craftHover = hitCraftDialog(mouseAimX, mouseAimY);
+      return;
+    }
+    if (state === STATE_MINIGAME) {
+      minigameHover(mouseAimX, mouseAimY);
+      return;
+    }
+    const passHover = state === STATE_PLAYING && hudPassThrough(mouseAimX, mouseAimY);
+    if (state === STATE_PLAYING && !passHover) {
+      bombBarHover = hitBombBar(mouseAimX, mouseAimY);
+      if (bombBarHover) {
+        if (bombBarHover.kind === 'slot') {
+          const t = bombBarHover.tier, T = BOMB_TIERS[t];
+          setTooltip(mouseAimX, mouseAimY, [`[[${T.icon}]] ${T.name}`, `In stock: ${bombInv[t]}`, `Blast radius ${bombRadius(t).toFixed(1)} tiles, rock power ${bombPower(t).toFixed(1)}`, `Lobbed on the surface: up to ${Math.round(T.monster * (1 + 0.3 * getEffectiveLevel('bombPower')))} damage`, '\u2714 Click to select'], 'bombslot:' + t);
+        } else
+          clearTooltip();
+        return;
+      }
+    }
     if (state === STATE_CONFIRM) {
       for (const b of confirmButtons())
         if (mouseAimX >= b.x && mouseAimX <= b.x + b.w && mouseAimY >= b.y && mouseAimY <= b.y + b.h)
           relocateHover = b.id;
       return;
     }
-    if (hitRelocateButton(mouseAimX, mouseAimY)) {
+    if (!passHover && hitRelocateButton(mouseAimX, mouseAimY)) {
       relocateHover = 'button';
       setTooltip(mouseAimX, mouseAimY, ['[[flight]] Relocate', 'Pack up the dome and fly to a new site', relocateBlocker() ? '\u26A0 ' + relocateBlocker() : '\u2714 Click or press L'], 'relocate');
       return;
@@ -11900,7 +15318,7 @@
         } else
           clearTooltip();
       } else if (currentView === VIEW_SURFACE) {
-        quickPanelHover = hitQuickPanel(mouseAimX, mouseAimY);
+        quickPanelHover = passHover ? null : hitQuickPanel(mouseAimX, mouseAimY);
         if (quickPanelHover) {
           const r = quickPanelHover.row;
           if (quickPanelHover.kind === 'row' && r.node)
@@ -11909,9 +15327,9 @@
             clearTooltip();
           return;
         }
-        // Surface: detect enemy under mouse
+        // Surface: detect enemy under mouse (not while aiming and shooting)
         let foundEnemy = false;
-        for (const e of enemies) {
+        for (const e of (charge || animTime - lastShotAt < 2 ? [] : enemies)) {
           if (e.hidden) continue;
           const sz = e.size || 10;
           const dx = mouseAimX - e.x;
