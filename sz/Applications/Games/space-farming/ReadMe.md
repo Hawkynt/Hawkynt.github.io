@@ -57,7 +57,7 @@ Casual pixel-art farm simulation on an alien planet for the SynthelicZ Desktop. 
 - [x] As a player, I can unlock crops, animals and buildings in the tree so that new content arrives over time
 - [x] As a player, I can buy stat upgrades such as Growth Boost, Rich Soil, Bountiful Harvest, Animal Care, Premium Produce, Power Grid, Irrigation, Weather Shield, Market Access and Warehousing
 - [x] As a player, I can buy automation and utility upgrades such as Harvest Drones, Seed Bank, Efficient Construction, Weather Forecast, Rain Maker, Pest Repellent, Frost Hardiness, Meteor Harvesting, Market Insight, Price Floor, Bulk Broker and Trade Network
-- [x] As a player, I can expand my farm with repeatable Land Surveys that add a strip of land west, east, north and south in turn
+- [x] As a player, I can expand my field by clicking the glowing + strip beside it (or pressing E), which shows where the new plots go and what they cost; the same repeatable Expand Field upgrade sits in the Engineering branch and shows up in Next upgrades whenever it is affordable
 - [x] As a player, I can zoom, pan and switch branches in the tree and buy with mouse or keyboard
 - [x] As a player, I can see every card as owned, buyable, short of resources or locked, with tiers, pips and costs
 - [x] As a player, I can use the Next upgrades panel to buy the best next upgrade of every branch with one click
@@ -132,6 +132,7 @@ Casual pixel-art farm simulation on an alien planet for the SynthelicZ Desktop. 
 | 1-9, 0 | Pick a crop (or a building in build mode) |
 | P / B / T | Seeds / Build / Hoe |
 | N | Nutrient overlay |
+| E | Expand the field |
 | S | Sell all produce |
 | M | Market and orders |
 | L | Livestock |
