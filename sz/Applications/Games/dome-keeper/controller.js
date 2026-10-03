@@ -91,24 +91,6 @@
     [TILE_RUBY]: '#ff4488'
   };
 
-  const TILE_SHADOW_COLORS = {
-    [TILE_DIRT]: '#2a1a0a',
-    [TILE_IRON]: '#555555',
-    [TILE_WATER]: '#2266aa',
-    [TILE_COBALT]: '#222288',
-    [TILE_COPPER]: '#7a4a1a',
-    [TILE_GOLD]: '#aa8800',
-    [TILE_TIN]: '#999999',
-    [TILE_SILVER]: '#888888',
-    [TILE_LEAD]: '#333333',
-    [TILE_COAL]: '#111111',
-    [TILE_QUARTZ]: '#b0a890',
-    [TILE_REDSTONE]: '#880000',
-    [TILE_DIAMOND]: '#6ab0c0',
-    [TILE_EMERALD]: '#2a7844',
-    [TILE_RUBY]: '#900030'
-  };
-
   const TILE_VALUES = {
     [TILE_IRON]: 10,
     [TILE_WATER]: 20,
@@ -1727,29 +1709,10 @@
   const keys = {};
 
   /* ======================================================================
-     DETERMINISTIC SEED FOR TERRAIN TEXTURE
+     CACHED ART
      ====================================================================== */
 
-  // Pre-generate dirt texture noise offsets for each tile
-  let dirtNoise = [];
-  function generateDirtNoise() {
-    dirtNoise = [];
-    for (let r = 0; r < GRID_ROWS; ++r) {
-      const row = [];
-      for (let c = 0; c < GRID_COLS; ++c) {
-        const dots = [];
-        for (let d = 0; d < 6; ++d)
-          dots.push({
-            ox: Math.random() * (TILE_SIZE - 6) + 3,
-            oy: Math.random() * (TILE_SIZE - 6) + 3,
-            size: 1 + Math.random() * 2.5,
-            shade: Math.random() * 0.3
-          });
-        row.push(dots);
-      }
-      dirtNoise.push(row);
-    }
-  }
+  let tileArt = null; // cached underground textures (see buildTileArt)
 
   /* ======================================================================
      CANVAS SETUP
@@ -2216,8 +2179,6 @@
     // Initialize persistent tile mining HP arrays
     initTileHP();
 
-    generateDirtNoise();
-    generateOreSpeckles();
   }
 
   // Get intrinsic tile hardness (independent of player upgrades)
@@ -5945,8 +5906,8 @@
      ====================================================================== */
 
   function drawUnderground() {
-    // Dark cavern background (flat fill for performance)
-    ctx.fillStyle = '#0a0604';
+    const art = buildTileArt();
+    ctx.fillStyle = '#070403';
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
     // Grid tiles (viewport culled)
@@ -5954,75 +5915,64 @@
     const endCol = Math.min(GRID_COLS, Math.ceil((cameraX + CANVAS_W) / TILE_SIZE));
     const startRow = Math.max(0, Math.floor(cameraY / TILE_SIZE));
     const endRow = Math.min(GRID_ROWS, Math.ceil((cameraY + CANVAS_H) / TILE_SIZE));
+    const ox = Math.round(cameraX), oy = Math.round(cameraY);
+    const oreTiles = [];
 
     for (let r = startRow; r < endRow; ++r) {
+      const row = undergroundGrid[r];
       for (let c = startCol; c < endCol; ++c) {
-        const x = c * TILE_SIZE - cameraX;
-        const y = r * TILE_SIZE - cameraY;
-        const tile = undergroundGrid[r][c];
+        const x = c * TILE_SIZE - ox;
+        const y = r * TILE_SIZE - oy;
+        const tile = row[c];
 
         if (tile === TILE_EMPTY) {
-          // Empty cave space (flat fill for performance)
-          ctx.fillStyle = '#140f0a';
-          ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
-        } else if (tile === TILE_GADGET) {
-          // Gadget tiles rendered by drawUndergroundGadgets() -- draw dirt base here
-          drawTile(x, y, TILE_DIRT, r, c);
-        } else {
-          drawTile(x, y, tile, r, c);
+          ctx.drawImage(art.cave[getDepthTier(r)][tileVariant(r, c) % art.VARIANTS], x, y);
+          continue;
         }
+        drawTile(x, y, tile === TILE_GADGET ? TILE_DIRT : tile, r, c);
+        if (tile !== TILE_DIRT && tile !== TILE_GADGET)
+          oreTiles.push(r, c);
 
-        // Draw crack overlay for partially-mined tiles
-        if (tile !== TILE_EMPTY && tileHP[r] && tileMaxHP[r] && tileMaxHP[r][c] > 0) {
+        // Cracks on partially-mined tiles
+        if (tileHP[r] && tileMaxHP[r] && tileMaxHP[r][c] > 0) {
           const hpRatio = tileHP[r][c] / tileMaxHP[r][c];
           if (hpRatio < 0.99) {
-            const damage = 1 - hpRatio; // 0 = pristine, 1 = about to break
-            // Darken overlay proportional to damage
-            ctx.fillStyle = `rgba(0,0,0,${damage * 0.4})`;
-            ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
-            // Draw crack lines that grow with damage
-            ctx.strokeStyle = `rgba(0,0,0,${0.2 + damage * 0.5})`;
-            ctx.lineWidth = 0.8 + damage * 1.2;
-            const seed = r * GRID_COLS + c;
-            const cx = x + TILE_SIZE / 2;
-            const cy = y + TILE_SIZE / 2;
-            ctx.beginPath();
-            ctx.moveTo(cx, cy);
-            ctx.lineTo(cx + (seed % 13 - 6) * damage, cy + (seed % 11 - 5) * damage);
-            ctx.lineTo(cx + (seed % 17 - 8) * damage, cy + (seed % 9 - 4) * damage * 1.5);
-            ctx.stroke();
-            if (damage > 0.4) {
-              ctx.beginPath();
-              ctx.moveTo(cx - 3, cy + 2);
-              ctx.lineTo(cx + (seed % 7 - 3) * damage * 1.3, cy - (seed % 5 + 2) * damage);
-              ctx.stroke();
-            }
+            const damage = 1 - hpRatio;
+            ctx.fillStyle = `rgba(0,0,0,${damage * 0.3})`;
+            ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+            ctx.drawImage(art.cracks[Math.min(3, Math.floor(damage * 4))], x, y);
           }
         }
-
-        // Grid lines
-        ctx.strokeStyle = '#2a2010';
-        ctx.lineWidth = 0.5;
-        ctx.strokeRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
       }
     }
 
     // Gadget chamber overlays and probe highlights
     drawUndergroundGadgets();
 
+    // Edges between rock and tunnel: rim light on rock, occlusion in the tunnel
+    const solidAt = (r, c) => r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS || undergroundGrid[r][c] !== TILE_EMPTY;
+    for (let r = startRow; r < endRow; ++r)
+      for (let c = startCol; c < endCol; ++c) {
+        const x = c * TILE_SIZE - ox;
+        const y = r * TILE_SIZE - oy;
+        const solid = undergroundGrid[r][c] !== TILE_EMPTY;
+        const up = solidAt(r - 1, c), down = solidAt(r + 1, c), left = solidAt(r, c - 1), right = solidAt(r, c + 1);
+        if (solid) {
+          if (!up) ctx.drawImage(art.rimTop, x, y);
+          if (!down) ctx.drawImage(art.rimBottom, x, y);
+          if (!left) ctx.drawImage(art.rimLeft, x, y);
+          if (!right) ctx.drawImage(art.rimRight, x, y);
+        } else {
+          if (up) ctx.drawImage(art.aoTop, x, y);
+          if (down) ctx.drawImage(art.aoBottom, x, y);
+          if (left) ctx.drawImage(art.aoLeft, x, y);
+          if (right) ctx.drawImage(art.aoRight, x, y);
+        }
+      }
+
     // Resource reveal glows (drawn over tiles)
-    for (const g of resourceGlows) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(g.x, g.y, g.radius, 0, TWO_PI);
-      const glowGrad = ctx.createRadialGradient(g.x, g.y, 0, g.x, g.y, g.radius);
-      glowGrad.addColorStop(0, `rgba(255,255,255,${g.life * 0.4})`);
-      glowGrad.addColorStop(0.5, hexToRgba(g.color, g.life * 0.2));
-      glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = glowGrad;
-      ctx.fill();
-      ctx.restore();
-    }
+    for (const g of resourceGlows)
+      drawGlow(g.color, g.x, g.y, g.radius, Math.max(0, g.life) * 0.6);
 
     // Rock crumble debris
     for (const crumble of crumbleEffects) {
@@ -6032,6 +5982,8 @@
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(p.rot);
+        ctx.fillStyle = SPRITE_OUTLINE;
+        ctx.fillRect(-p.size / 2 - 1, -p.size / 2 - 1, p.size + 2, p.size + 2);
         ctx.fillStyle = p.color;
         ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
         ctx.restore();
@@ -6042,104 +5994,94 @@
     // Dust clouds
     for (const d of dustClouds) {
       ctx.save();
-      ctx.globalAlpha = d.alpha;
+      ctx.globalAlpha = d.alpha * 0.8;
       ctx.beginPath();
       ctx.arc(d.x, d.y, d.radius, 0, TWO_PI);
-      ctx.fillStyle = '#8a7a5a';
+      ctx.fillStyle = '#9a8a6a';
       ctx.fill();
       ctx.restore();
     }
 
-    // Draw dropped resources as small colored dots (viewport-culled)
+    // Dropped resources: bobbing ore icons with their value
     for (const drop of droppedResources) {
-      const dx = drop.col * TILE_SIZE + TILE_SIZE / 2 - cameraX;
-      const dy = drop.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      const dx = drop.col * TILE_SIZE + TILE_SIZE / 2 - ox;
+      const dy = drop.row * TILE_SIZE + TILE_SIZE / 2 - oy;
       if (dx < -TILE_SIZE || dx > CANVAS_W + TILE_SIZE || dy < -TILE_SIZE || dy > CANVAS_H + TILE_SIZE) continue;
-      const dropColor = TILE_HIGHLIGHT_COLORS[drop.type] || '#fff';
-      const pulse = Math.sin(animTime * 4 + drop.col + drop.row) * 0.3 + 0.7;
-      ctx.fillStyle = dropColor;
-      ctx.globalAlpha = pulse;
-      ctx.fillRect(dx - 10, dy - 8, 8, 8);
-      ctx.fillRect(dx + 2, dy - 2, 7, 7);
-      ctx.fillRect(dx - 4, dy + 4, 6, 6);
-      ctx.globalAlpha = 1;
+      const bob = Math.sin(animTime * 4 + drop.col + drop.row) * 3;
+      drawGlow(TILE_HIGHLIGHT_COLORS[drop.type] || '#fff', dx, dy + bob, 22, 0.35);
+      drawSprite(TILE_ICONS[drop.type] || 'crate', dx, dy + bob, 22);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
-      fitText(String(drop.value), dx, dy - 10, TILE_SIZE + 8, 15, { weight: 'bold', color: '#fff', outline: 'rgba(0,0,0,0.8)' });
+      fitText(String(drop.value), dx, dy - 10 + bob, TILE_SIZE + 8, 15, { weight: 'bold', color: '#fff', outline: 'rgba(0,0,0,0.8)' });
     }
 
-    // Draw mining progress bar above the block being mined
-    if (miningTarget && miningDuration > 0) {
-      const mx = miningTarget.col * TILE_SIZE - cameraX;
-      const my = miningTarget.row * TILE_SIZE - cameraY;
-      const barW = TILE_SIZE - 8;
-      const barH = 5;
-      const barX = mx + 4;
-      const barY = my - barH - 3;
-      const progress = Math.min(miningProgress / miningDuration, 1);
-
-      // Bar background
-      ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
-      ctx.fillStyle = '#222';
-      ctx.fillRect(barX, barY, barW, barH);
-
-      // Bar fill (gradient from yellow to green as it completes)
-      const barGrad = ctx.createLinearGradient(barX, barY, barX + barW * progress, barY);
-      barGrad.addColorStop(0, '#da2');
-      barGrad.addColorStop(1, progress > 0.8 ? '#0c0' : '#fa0');
-      ctx.fillStyle = barGrad;
-      ctx.fillRect(barX, barY, barW * progress, barH);
-
-      // Bar highlight
-      ctx.fillStyle = 'rgba(255,255,255,0.2)';
-      ctx.fillRect(barX, barY, barW * progress, barH / 2);
-
-      // Bar border
-      ctx.strokeStyle = '#555';
-      ctx.lineWidth = 0.5;
-      ctx.strokeRect(barX, barY, barW, barH);
-    }
-
-    // Draw planned path dots
+    // Planned path
     if (movePath && movePathIndex < movePath.length) {
-      ctx.fillStyle = 'rgba(100,200,255,0.3)';
-      for (let pi = movePathIndex; pi < movePath.length; ++pi) {
-        const step = movePath[pi];
-        const px = step.col * TILE_SIZE + TILE_SIZE / 2 - cameraX;
-        const py = step.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
-        ctx.beginPath();
-        ctx.arc(px, py, 3, 0, TWO_PI);
-        ctx.fill();
-      }
-      // Draw dots connecting them
-      ctx.strokeStyle = 'rgba(100,200,255,0.15)';
+      ctx.strokeStyle = 'rgba(120,210,255,0.35)';
       ctx.lineWidth = 2;
-      ctx.setLineDash([3, 5]);
+      ctx.setLineDash([4, 6]);
+      ctx.lineDashOffset = -animTime * 20;
       ctx.beginPath();
-      const pathStartX = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
-      const pathStartY = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
-      ctx.moveTo(pathStartX, pathStartY);
+      ctx.moveTo(drillX * TILE_SIZE + TILE_SIZE / 2 - ox, drillY * TILE_SIZE + TILE_SIZE / 2 - oy);
       for (let pi = movePathIndex; pi < movePath.length; ++pi) {
         const step = movePath[pi];
-        ctx.lineTo(step.col * TILE_SIZE + TILE_SIZE / 2 - cameraX,
-                   step.row * TILE_SIZE + TILE_SIZE / 2 - cameraY);
+        ctx.lineTo(step.col * TILE_SIZE + TILE_SIZE / 2 - ox, step.row * TILE_SIZE + TILE_SIZE / 2 - oy);
       }
       ctx.stroke();
       ctx.setLineDash([]);
-
-      // Show mine target marker
+      ctx.lineDashOffset = 0;
+      ctx.fillStyle = 'rgba(140,220,255,0.6)';
+      for (let pi = movePathIndex; pi < movePath.length; ++pi) {
+        const step = movePath[pi];
+        ctx.beginPath();
+        ctx.arc(step.col * TILE_SIZE + TILE_SIZE / 2 - ox, step.row * TILE_SIZE + TILE_SIZE / 2 - oy, pi === movePath.length - 1 ? 5 : 2.5, 0, TWO_PI);
+        ctx.fill();
+      }
       if (mineTarget) {
-        ctx.strokeStyle = 'rgba(255,100,50,0.4)';
-        ctx.lineWidth = 4;
-        ctx.strokeRect(mineTarget.col * TILE_SIZE + 2 - cameraX,
-                       mineTarget.row * TILE_SIZE + 2 - cameraY,
-                       TILE_SIZE - 4, TILE_SIZE - 4);
+        ctx.strokeStyle = `rgba(255,140,60,${0.5 + Math.sin(animTime * 6) * 0.2})`;
+        ctx.lineWidth = 3;
+        roundRectPath(mineTarget.col * TILE_SIZE + 3 - ox, mineTarget.row * TILE_SIZE + 3 - oy, TILE_SIZE - 6, TILE_SIZE - 6, 5);
+        ctx.stroke();
       }
     }
 
     // Draw drill/player character
     drawPlayer();
+
+    // Lamp light: darkness deepens with depth, warm glow around the keeper
+    const pcx = drillX * TILE_SIZE + TILE_SIZE / 2 - ox;
+    const pcy = drillY * TILE_SIZE + TILE_SIZE / 2 - oy;
+    const depth = drillY / GRID_ROWS;
+    const lw = CANVAS_W * 1.9, lh = CANVAS_H * 1.9 * 0.75;
+    ctx.globalAlpha = 0.6 + depth * 0.35;
+    ctx.drawImage(art.light, pcx - lw / 2, pcy - lh / 2, lw, lh);
+    ctx.fillStyle = '#000';
+    if (pcx - lw / 2 > 0) ctx.fillRect(0, 0, pcx - lw / 2, CANVAS_H);
+    if (pcx + lw / 2 < CANVAS_W) ctx.fillRect(pcx + lw / 2, 0, CANVAS_W - pcx - lw / 2, CANVAS_H);
+    if (pcy - lh / 2 > 0) ctx.fillRect(0, 0, CANVAS_W, pcy - lh / 2);
+    if (pcy + lh / 2 < CANVAS_H) ctx.fillRect(0, pcy + lh / 2, CANVAS_W, CANVAS_H - pcy - lh / 2);
+    ctx.globalAlpha = 1;
+    drawGlow('#ffcf80', pcx, pcy, 150, 0.16);
+
+    // Ore glints twinkle through the dark
+    for (let i = 0; i < oreTiles.length; i += 2) {
+      const r = oreTiles[i], c = oreTiles[i + 1];
+      const h = tileVariant(r, c);
+      const tw = Math.sin(animTime * 1.7 + (h % 628) / 100);
+      if (tw < 0.9) continue;
+      const k = (tw - 0.9) * 10;
+      const gx = c * TILE_SIZE - ox + 8 + (h % 24), gy = r * TILE_SIZE - oy + 8 + ((h >>> 5) % 24);
+      drawGlow(TILE_HIGHLIGHT_COLORS[undergroundGrid[r][c]] || '#fff', gx, gy, 10 + k * 6, k);
+      ctx.fillStyle = `rgba(255,255,255,${k})`;
+      ctx.fillRect(gx - 4 * k, gy - 0.5, 8 * k, 1);
+      ctx.fillRect(gx - 0.5, gy - 4 * k, 1, 8 * k);
+    }
+
+    // Mining progress bar above the block being mined
+    if (miningTarget && miningDuration > 0) {
+      const progress = Math.min(miningProgress / miningDuration, 1);
+      drawMeter(miningTarget.col * TILE_SIZE - ox + 2, miningTarget.row * TILE_SIZE - oy - 10, TILE_SIZE - 4, 7, progress, progress > 0.8 ? '#5ae070' : '#ffb030');
+    }
 
     // Resource display (improved styling)
     drawResourceHUD();
@@ -6162,289 +6104,377 @@
   }
 
 
-  // Pre-generate deterministic ore speckle positions per tile
-  let oreSpeckles = [];
-  function generateOreSpeckles() {
-    oreSpeckles = [];
-    for (let r = 0; r < GRID_ROWS; ++r) {
-      const row = [];
-      for (let c = 0; c < GRID_COLS; ++c) {
-        const dots = [];
-        for (let d = 0; d < 10; ++d)
-          dots.push({
-            ox: 4 + Math.random() * (TILE_SIZE - 8),
-            oy: 4 + Math.random() * (TILE_SIZE - 8),
-            size: 1.5 + Math.random() * 2.5,
-            brightness: 0.4 + Math.random() * 0.6
-          });
-        row.push(dots);
+  // Tile textures, edge overlays, cracks and light maps -- built once
+  function buildTileArt() {
+    if (tileArt) return tileArt;
+    const T = TILE_SIZE;
+    const VARIANTS = 4;
+    const rgb = (hex) => parseHex(hex);
+    const shade = ([r, g, b], k) => `rgb(${Math.max(0, Math.min(255, r * k)) | 0},${Math.max(0, Math.min(255, g * k)) | 0},${Math.max(0, Math.min(255, b * k)) | 0})`;
+
+    const paintGround = (g, base, rng, stony, density) => {
+      const c = rgb(base);
+      g.fillStyle = shade(c, 1);
+      g.fillRect(0, 0, T, T);
+      // 2px pixel noise for a hand-made texture
+      for (let y = 0; y < T; y += 2)
+        for (let x = 0; x < T; x += 2) {
+          const v = rng();
+          if (v < density) {
+            g.fillStyle = shade(c, 0.78 + rng() * 0.1);
+            g.fillRect(x, y, 2, 2);
+          } else if (v > 1 - density * 0.6) {
+            g.fillStyle = shade(c, 1.12 + rng() * 0.1);
+            g.fillRect(x, y, 2, 2);
+          }
+        }
+      // Pebbles / stones with a lit top
+      const n = stony ? 3 : 2;
+      for (let i = 0; i < n; ++i) {
+        const px = 4 + rng() * (T - 8), py = 4 + rng() * (T - 8);
+        const w = (stony ? 5 : 3) + rng() * 4, h = 2 + rng() * 3;
+        g.fillStyle = shade(c, 0.62);
+        g.fillRect(px - w / 2, py - h / 2 + 1, w, h);
+        g.fillStyle = shade(c, stony ? 1.3 : 1.22);
+        g.fillRect(px - w / 2, py - h / 2, w, h - 1);
+        g.fillStyle = shade(c, 1.5);
+        g.fillRect(px - w / 2, py - h / 2, w * 0.6, 1);
       }
-      oreSpeckles.push(row);
+      if (stony) {
+        g.strokeStyle = shade(c, 0.6);
+        g.lineWidth = 1;
+        g.beginPath();
+        let x = rng() * T, y = 0;
+        g.moveTo(x, y);
+        for (let k = 0; k < 4; ++k) {
+          x += (rng() - 0.5) * 14;
+          y += T / 4;
+          g.lineTo(x, y);
+        }
+        g.stroke();
+      }
+    };
+
+    const rng = makeRng(777);
+    const dirt = [], cave = [];
+    for (let t = 0; t < DEPTH_TIERS.length; ++t) {
+      dirt.push([]);
+      cave.push([]);
+      for (let v = 0; v < VARIANTS; ++v) {
+        const d = makeCanvas(T, T);
+        paintGround(d.getContext('2d'), DEPTH_TIERS[t].base, rng, t >= 5, 0.22);
+        dirt[t].push(d);
+        const cv = makeCanvas(T, T);
+        const cg = cv.getContext('2d');
+        const base = rgb(DEPTH_TIERS[t].base);
+        paintGround(cg, shade(base, 0.32).replace(/rgb\((\d+),(\d+),(\d+)\)/, (m, r, g2, b) => '#' + [r, g2, b].map(n => (+n).toString(16).padStart(2, '0')).join('')), rng, false, 0.3);
+        cave[t].push(cv);
+      }
     }
+
+    // First row of each tier: the tier above reaches down with a jagged edge
+    const seam = [null];
+    for (let t = 1; t < DEPTH_TIERS.length; ++t) {
+      seam.push([]);
+      for (let v = 0; v < VARIANTS; ++v) {
+        const sc = makeCanvas(T, T);
+        const g = sc.getContext('2d');
+        const pts = [];
+        for (let x = 0; x <= T; x += 5)
+          pts.push([x, 3 + rng() * 11]);
+        g.beginPath();
+        g.moveTo(0, 0);
+        for (const [x, y] of pts)
+          g.lineTo(x, y);
+        g.lineTo(T, 0);
+        g.closePath();
+        g.save();
+        g.clip();
+        g.drawImage(dirt[t - 1][v], 0, 0);
+        g.restore();
+        g.strokeStyle = 'rgba(0,0,0,0.35)';
+        g.lineWidth = 2;
+        g.beginPath();
+        pts.forEach(([x, y], i) => i ? g.lineTo(x, y + 1) : g.moveTo(x, y + 1));
+        g.stroke();
+        seam[t].push(sc);
+      }
+    }
+
+    // Embedded ore chunks per resource type
+    const ore = {};
+    for (const tile of RESOURCE_TILES) {
+      ore[tile] = [];
+      const cols = ORE_SPECKLE_COLORS[tile] || ['#fff'];
+      for (let v = 0; v < VARIANTS; ++v) {
+        const oc = makeCanvas(T, T);
+        const g = oc.getContext('2d');
+        for (let i = 0; i < 9; ++i) {
+          const x = 4 + rng() * (T - 8), y = 4 + rng() * (T - 8);
+          // keep the centre free for the sprite
+          if (Math.abs(x - T / 2) < 12 && Math.abs(y - T / 2) < 12) continue;
+          const s = 2 + rng() * 2.5;
+          g.fillStyle = SPRITE_OUTLINE;
+          g.fillRect(x - s / 2 - 1, y - s / 2 - 1, s + 2, s + 2);
+          g.fillStyle = cols[i % cols.length];
+          g.fillRect(x - s / 2, y - s / 2, s, s);
+          g.fillStyle = 'rgba(255,255,255,0.55)';
+          g.fillRect(x - s / 2, y - s / 2, Math.max(1, s / 2), 1);
+        }
+        ore[tile].push(oc);
+      }
+    }
+
+    // Edge overlays on solid tiles that border a tunnel (rim light / lip)
+    const edge = (draw) => {
+      const c = makeCanvas(T, T);
+      draw(c.getContext('2d'));
+      return c;
+    };
+    const rimTop = edge(g => {
+      g.fillStyle = 'rgba(255,240,210,0.28)';
+      g.fillRect(0, 0, T, 3);
+      g.fillStyle = 'rgba(255,255,255,0.35)';
+      g.fillRect(0, 0, T, 1);
+      g.fillStyle = 'rgba(0,0,0,0.25)';
+      g.fillRect(0, 3, T, 1);
+    });
+    const rimBottom = edge(g => {
+      g.fillStyle = 'rgba(0,0,0,0.5)';
+      g.fillRect(0, T - 4, T, 4);
+      g.fillStyle = 'rgba(255,255,255,0.08)';
+      g.fillRect(0, T - 5, T, 1);
+    });
+    const rimLeft = edge(g => {
+      g.fillStyle = 'rgba(255,240,210,0.14)';
+      g.fillRect(0, 0, 2, T);
+      g.fillStyle = 'rgba(0,0,0,0.25)';
+      g.fillRect(2, 0, 1, T);
+    });
+    const rimRight = edge(g => {
+      g.fillStyle = 'rgba(0,0,0,0.38)';
+      g.fillRect(T - 3, 0, 3, T);
+    });
+    // Ambient occlusion inside tunnels next to solid rock
+    const ao = (x0, y0, x1, y1) => edge(g => {
+      const gr = g.createLinearGradient(x0, y0, x1, y1);
+      gr.addColorStop(0, 'rgba(0,0,0,0.55)');
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, T, T);
+    });
+    const aoTop = ao(0, 0, 0, T * 0.45), aoBottom = ao(0, T, 0, T * 0.6), aoLeft = ao(0, 0, T * 0.4, 0), aoRight = ao(T, 0, T * 0.6, 0);
+
+    // Crack stages for partly mined tiles
+    const cracks = [];
+    for (let stage = 1; stage <= 4; ++stage) {
+      const c = makeCanvas(T, T);
+      const g = c.getContext('2d');
+      const r2 = makeRng(stage * 31);
+      g.lineCap = 'round';
+      for (let k = 0; k < stage + 1; ++k) {
+        let x = T / 2 + (r2() - 0.5) * 8, y = T / 2 + (r2() - 0.5) * 8;
+        let a = r2() * TWO_PI;
+        const pts = [[x, y]];
+        for (let i = 0; i < 2 + stage; ++i) {
+          a += (r2() - 0.5) * 1.2;
+          x += Math.cos(a) * (4 + stage * 1.5);
+          y += Math.sin(a) * (4 + stage * 1.5);
+          pts.push([x, y]);
+        }
+        for (const [col, w, oy] of [['rgba(255,255,255,0.25)', 1.5, 1], ['rgba(0,0,0,0.75)', 1.5 + stage * 0.4, 0]]) {
+          g.strokeStyle = col;
+          g.lineWidth = w;
+          g.beginPath();
+          pts.forEach(([px, py], i) => i ? g.lineTo(px, py + oy) : g.moveTo(px, py + oy));
+          g.stroke();
+        }
+      }
+      cracks.push(c);
+    }
+
+    // Darkness map around the miner's lamp (scaled up when drawn)
+    const LW = 400, LH = 300;
+    const light = makeCanvas(LW, LH);
+    const lg = light.getContext('2d');
+    const lgr = lg.createRadialGradient(LW / 2, LH / 2, 18, LW / 2, LH / 2, LW * 0.42);
+    lgr.addColorStop(0, 'rgba(0,0,0,0)');
+    lgr.addColorStop(0.35, 'rgba(0,0,0,0.25)');
+    lgr.addColorStop(1, 'rgba(0,0,0,1)');
+    lg.fillStyle = lgr;
+    lg.fillRect(0, 0, LW, LH);
+
+    tileArt = { dirt, cave, seam, ore, VARIANTS, rimTop, rimBottom, rimLeft, rimRight, aoTop, aoBottom, aoLeft, aoRight, cracks, light };
+    return tileArt;
+  }
+
+  function tileVariant(r, c) {
+    return ((r * 73856093) ^ (c * 19349663)) >>> 0;
   }
 
   function drawTile(x, y, tile, r, c) {
-    // Depth-based colors for dirt tiles
-    let baseColor, shadowColor, highlightColor;
-    if (tile === TILE_DIRT) {
-      const tier = getDepthDirtColors(r);
-      baseColor = tier.base;
-      shadowColor = tier.shadow;
-      highlightColor = tier.highlight;
-    } else {
-      baseColor = TILE_COLORS[tile] || '#3a2a1a';
-      shadowColor = TILE_SHADOW_COLORS[tile] || '#1a0f05';
-      highlightColor = TILE_HIGHLIGHT_COLORS[tile];
-    }
-    const bevel = 3; // bevel thickness in pixels
-
-    // Main tile fill (flat base)
-    ctx.fillStyle = baseColor;
-    ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
-
-    // === Minecraft-style 3D bevel ===
-    // Top bevel (bright highlight)
-    ctx.fillStyle = highlightColor || lightenColor(baseColor, 40);
-    ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, bevel);
-
-    // Left bevel (slightly less bright)
-    ctx.fillStyle = lightenColor(baseColor, 25);
-    ctx.fillRect(x + 1, y + 1 + bevel, bevel, TILE_SIZE - 2 - bevel * 2);
-
-    // Bottom bevel (dark shadow)
-    ctx.fillStyle = shadowColor;
-    ctx.fillRect(x + 1, y + TILE_SIZE - 1 - bevel, TILE_SIZE - 2, bevel);
-
-    // Right bevel (medium shadow)
-    ctx.fillStyle = lightenColor(shadowColor.startsWith('#') ? shadowColor : '#1a0f05', 15);
-    ctx.fillRect(x + TILE_SIZE - 1 - bevel, y + 1 + bevel, bevel, TILE_SIZE - 2 - bevel * 2);
-
-    // Inner face (flat fill for performance -- avoids per-tile gradient creation)
-    ctx.fillStyle = baseColor;
-    ctx.fillRect(x + 1 + bevel, y + 1 + bevel, TILE_SIZE - 2 - bevel * 2, TILE_SIZE - 2 - bevel * 2);
-
-    // Dirt texture noise dots
-    if (tile === TILE_DIRT && dirtNoise[r] && dirtNoise[r][c]) {
-      for (const dot of dirtNoise[r][c]) {
-        ctx.fillStyle = `rgba(0,0,0,${dot.shade})`;
-        ctx.beginPath();
-        ctx.arc(x + dot.ox, y + dot.oy, dot.size * 0.6, 0, TWO_PI);
-        ctx.fill();
-      }
-      // Small cracks on dirt
-      ctx.strokeStyle = 'rgba(0,0,0,0.12)';
-      ctx.lineWidth = 0.5;
-      const seed = r * GRID_COLS + c;
-      ctx.beginPath();
-      ctx.moveTo(x + 8 + (seed % 10), y + 5 + (seed % 7));
-      ctx.lineTo(x + 15 + (seed % 12), y + 18 + (seed % 5));
-      ctx.lineTo(x + 20 + (seed % 8), y + 28 + (seed % 9));
-      ctx.stroke();
-    }
-
-    // === Ore-specific decorations ===
-    if (tile !== TILE_DIRT) {
-      const colors = ORE_SPECKLE_COLORS[tile] || ['#fff'];
-      if (oreSpeckles[r] && oreSpeckles[r][c]) {
-        for (const dot of oreSpeckles[r][c]) {
-          const ci = Math.floor(dot.brightness * colors.length) % colors.length;
-          ctx.fillStyle = colors[ci];
-          const sz = dot.size;
-          ctx.fillRect(x + dot.ox - sz / 2, y + dot.oy - sz / 2, sz, sz);
-        }
-      }
-
-      // Glowing edge around resource tiles (no shadowBlur for performance)
-      const glowPulse = Math.sin(animTime * 3 + r * 0.5 + c * 0.7) * 0.3 + 0.3;
-      ctx.strokeStyle = highlightColor || baseColor;
-      ctx.lineWidth = 2;
-      ctx.globalAlpha = 0.5 + glowPulse;
-      ctx.strokeRect(x + 3, y + 3, TILE_SIZE - 6, TILE_SIZE - 6);
-      ctx.globalAlpha = 1;
-
-      // Resource-specific animated details (only near player to save draw calls)
-      const nearPlayer = Math.abs(r - drillY) + Math.abs(c - drillX) <= 6;
-      if (nearPlayer) {
-        if (tile === TILE_IRON) {
-          ctx.fillStyle = 'rgba(200,200,200,0.15)';
-          ctx.fillRect(x + 8, y + 10, 3, 20);
-          ctx.fillRect(x + 18, y + 6, 3, 15);
-          ctx.fillRect(x + 28, y + 12, 3, 18);
-        } else if (tile === TILE_WATER) {
-          ctx.strokeStyle = 'rgba(100,180,255,0.3)';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          for (let wx = x + 5; wx < x + TILE_SIZE - 5; wx += 4) {
-            const wy = y + TILE_SIZE / 2 + Math.sin((wx - x) * 0.3 + animTime * 4) * 3;
-            if (wx === x + 5)
-              ctx.moveTo(wx, wy);
-            else
-              ctx.lineTo(wx, wy);
-          }
-          ctx.stroke();
-        } else if (tile === TILE_COBALT) {
-          ctx.fillStyle = 'rgba(100,100,200,0.2)';
-          ctx.beginPath();
-          ctx.moveTo(x + 12, y + 8);
-          ctx.lineTo(x + 20, y + 5);
-          ctx.lineTo(x + 28, y + 14);
-          ctx.lineTo(x + 22, y + 20);
-          ctx.closePath();
-          ctx.fill();
-        }
-      }
-
-      // Resource sprite
-      const tIcon = TILE_ICONS[tile];
-      if (tIcon)
-        drawSprite(tIcon, x + TILE_SIZE / 2, y + TILE_SIZE / 2, 28);
-    }
+    const art = buildTileArt();
+    const h = tileVariant(r, c);
+    const tier = getDepthTier(r);
+    ctx.drawImage(art.dirt[tier][h % art.VARIANTS], x, y);
+    if (tier > 0 && getDepthTier(r - 1) !== tier)
+      ctx.drawImage(art.seam[tier][(h >>> 5) % art.VARIANTS], x, y);
+    if (tile === TILE_DIRT || tile === TILE_GADGET)
+      return;
+    const ores = art.ore[tile];
+    if (ores)
+      ctx.drawImage(ores[(h >>> 3) % art.VARIANTS], x, y);
+    // Soft colour bloom so ore tiles read at a glance
+    const hl = TILE_HIGHLIGHT_COLORS[tile];
+    if (hl)
+      drawGlow(hl, x + TILE_SIZE / 2, y + TILE_SIZE / 2, TILE_SIZE * 0.62, 0.3);
+    const tIcon = TILE_ICONS[tile];
+    if (tIcon)
+      drawSprite(tIcon, x + TILE_SIZE / 2, y + TILE_SIZE / 2, 26);
   }
 
   function drawPlayer() {
-    const px = drillX * TILE_SIZE - cameraX;
-    const py = drillY * TILE_SIZE - cameraY;
-    const cx = px + TILE_SIZE / 2;
-    const cy = px + TILE_SIZE / 2; // intentionally kept but we use py below
+    const px = drillX * TILE_SIZE - Math.round(cameraX);
+    const py = drillY * TILE_SIZE - Math.round(cameraY);
     const bob = playerBob;
+    const face = lastMineDir.dx < 0 ? -1 : 1;
 
-    // Selection highlight (animated border)
-    const selPulse = Math.sin(animTime * 5) * 0.3 + 0.7;
-    ctx.strokeStyle = `rgba(255,255,0,${selPulse})`;
-    ctx.lineWidth = 4;
-    ctx.setLineDash([8, 6]);
-    ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
-    ctx.setLineDash([]);
+    // Selection brackets
+    const sel = 0.55 + Math.sin(animTime * 5) * 0.25;
+    ctx.strokeStyle = `rgba(255,220,90,${sel})`;
+    ctx.lineWidth = 3;
+    const L = 10, t = TILE_SIZE;
+    ctx.beginPath();
+    ctx.moveTo(px, py + L); ctx.lineTo(px, py); ctx.lineTo(px + L, py);
+    ctx.moveTo(px + t - L, py); ctx.lineTo(px + t, py); ctx.lineTo(px + t, py + L);
+    ctx.moveTo(px + t, py + t - L); ctx.lineTo(px + t, py + t); ctx.lineTo(px + t - L, py + t);
+    ctx.moveTo(px + L, py + t); ctx.lineTo(px, py + t); ctx.lineTo(px, py + t - L);
+    ctx.stroke();
 
-    // Player body
-    const bodyX = px + TILE_SIZE / 2;
-    const bodyY = py + TILE_SIZE / 2 + bob;
-
+    // Headlamp beam in the facing / mining direction
+    const lampX = px + TILE_SIZE / 2 + face * 2, lampY = py + 10 + bob;
+    const dirX = lastMineDir.dx || (lastMineDir.dy ? 0 : face), dirY = lastMineDir.dy || 0;
+    const ang = Math.atan2(dirY, dirX);
     ctx.save();
-    ctx.translate(bodyX, bodyY);
-    ctx.scale(0.5, 0.5);
-
-    // Mining helmet (top arc)
-    ctx.fillStyle = '#da2';
+    ctx.globalCompositeOperation = 'lighter';
+    const cone = ctx.createRadialGradient(lampX, lampY, 4, lampX, lampY, 150);
+    cone.addColorStop(0, 'rgba(255,230,160,0.28)');
+    cone.addColorStop(1, 'rgba(255,230,160,0)');
+    ctx.fillStyle = cone;
     ctx.beginPath();
-    ctx.arc(0, -8, 16, Math.PI, 0);
-    ctx.fill();
-    // Helmet highlight
-    ctx.fillStyle = '#fc4';
-    ctx.beginPath();
-    ctx.arc(-4, -12, 6, Math.PI, 0);
-    ctx.fill();
-    // Headlamp
-    ctx.fillStyle = '#ff8';
-    ctx.beginPath();
-    ctx.arc(0, -16, 5, 0, TWO_PI);
-    ctx.fill();
-    // Headlamp glow
-    ctx.save();
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = '#ff8';
-    ctx.beginPath();
-    ctx.arc(0, -16, 4, 0, TWO_PI);
-    ctx.fillStyle = 'rgba(255,255,128,0.3)';
-    ctx.fill();
-    ctx.restore();
-
-    // Face
-    ctx.fillStyle = '#d8a060';
-    ctx.beginPath();
-    ctx.arc(0, 0, 12, 0, TWO_PI);
-    ctx.fill();
-
-    // Eyes
-    ctx.fillStyle = '#333';
-    ctx.beginPath();
-    ctx.arc(-5, -2, 2.4, 0, TWO_PI);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(5, -2, 2.4, 0, TWO_PI);
-    ctx.fill();
-
-    // Mouth
-    ctx.strokeStyle = '#733';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(0, 4, 5, 0.2, Math.PI - 0.2);
-    ctx.stroke();
-
-    // Body/suit
-    ctx.fillStyle = '#36a';
-    ctx.fillRect(-10, 12, 20, 16);
-
-    // Arms (one holds pickaxe)
-    ctx.strokeStyle = '#d8a060';
-    ctx.lineWidth = 5;
-    // Left arm
-    ctx.beginPath();
-    ctx.moveTo(-10, 16);
-    ctx.lineTo(-18, 28);
-    ctx.stroke();
-    // Right arm (holding pickaxe, animated)
-    ctx.beginPath();
-    ctx.moveTo(10, 16);
-    if (pickaxeSwinging) {
-      const swingDir = lastMineDir.dx !== 0 ? lastMineDir.dx : lastMineDir.dy;
-      ctx.lineTo(10 + Math.cos(-pickaxeAngle * swingDir) * 16, 16 + Math.sin(pickaxeAngle) * 8);
-    } else
-      ctx.lineTo(18, 28);
-    ctx.stroke();
-
-    // Pickaxe in right hand
-    ctx.save();
-    if (pickaxeSwinging) {
-      const swingAngle = pickaxeAngle * (lastMineDir.dx >= 0 ? 1 : -1);
-      ctx.translate(14, 20);
-      ctx.rotate(-0.5 + swingAngle * 1.5);
-    } else {
-      ctx.translate(18, 26);
-      ctx.rotate(-0.3);
-    }
-    // Handle
-    ctx.strokeStyle = '#854';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(16, -12);
-    ctx.stroke();
-    // Pick head
-    ctx.fillStyle = '#999';
-    ctx.beginPath();
-    ctx.moveTo(16, -12);
-    ctx.lineTo(26, -16);
-    ctx.lineTo(20, -8);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(16, -12);
-    ctx.lineTo(10, -20);
-    ctx.lineTo(12, -10);
+    ctx.moveTo(lampX, lampY);
+    ctx.arc(lampX, lampY, 150, ang - 0.42, ang + 0.42);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
 
-    // Legs
-    ctx.strokeStyle = '#248';
-    ctx.lineWidth = 5;
-    const legAnim = pickaxeSwinging ? Math.sin(animTime * 15) * 1 : 0;
-    ctx.beginPath();
-    ctx.moveTo(-6, 28);
-    ctx.lineTo(-8 + legAnim * 2, 40);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(6, 28);
-    ctx.lineTo(8 - legAnim * 2, 40);
-    ctx.stroke();
+    ctx.save();
+    ctx.translate(px + TILE_SIZE / 2, py + TILE_SIZE / 2 + bob);
+    ctx.scale(face, 1);
+    const O = SPRITE_OUTLINE;
+    const legAnim = pickaxeSwinging ? Math.sin(animTime * 15) * 1.5 : 0;
 
-    // Boots
-    ctx.fillStyle = '#543';
-    ctx.fillRect(-12 + legAnim * 2, 36, 10, 6);
-    ctx.fillRect(4 - legAnim * 2, 36, 10, 6);
+    // Backpack
+    ctx.fillStyle = O;
+    roundRectPath(-13, -4, 9, 14, 2);
+    ctx.fill();
+    ctx.fillStyle = '#c87a2a';
+    roundRectPath(-12, -3, 7, 12, 2);
+    ctx.fill();
 
+    // Legs and boots
+    ctx.fillStyle = O;
+    ctx.fillRect(-7 + legAnim, 9, 6, 9);
+    ctx.fillRect(1 - legAnim, 9, 6, 9);
+    ctx.fillStyle = '#2a4a8a';
+    ctx.fillRect(-6 + legAnim, 9, 4, 7);
+    ctx.fillRect(2 - legAnim, 9, 4, 7);
+    ctx.fillStyle = '#4a3020';
+    ctx.fillRect(-7 + legAnim, 15, 6, 3);
+    ctx.fillRect(1 - legAnim, 15, 6, 3);
+
+    // Suit
+    ctx.fillStyle = O;
+    roundRectPath(-9, -3, 18, 15, 4);
+    ctx.fill();
+    const sg = ctx.createLinearGradient(-8, 0, 8, 0);
+    sg.addColorStop(0, '#5a8ae8');
+    sg.addColorStop(1, '#2a4aa0');
+    ctx.fillStyle = sg;
+    roundRectPath(-8, -2, 16, 13, 3);
+    ctx.fill();
+    ctx.fillStyle = '#ffd040';
+    ctx.fillRect(-8, 6, 16, 2);
+
+    // Head and helmet
+    ctx.fillStyle = O;
+    ctx.beginPath();
+    ctx.arc(0, -8, 8.5, 0, TWO_PI);
+    ctx.fill();
+    ctx.fillStyle = '#f0c090';
+    ctx.beginPath();
+    ctx.arc(0, -7, 7, 0, TWO_PI);
+    ctx.fill();
+    ctx.fillStyle = '#2a1a10';
+    ctx.fillRect(2, -8, 2, 2);
+    ctx.fillRect(-3, -8, 2, 2);
+    ctx.fillStyle = O;
+    ctx.beginPath();
+    ctx.arc(0, -10, 9, Math.PI, 0);
+    ctx.lineTo(10, -9);
+    ctx.lineTo(-10, -9);
+    ctx.closePath();
+    ctx.fill();
+    const hg = ctx.createLinearGradient(0, -18, 0, -9);
+    hg.addColorStop(0, '#ffe070');
+    hg.addColorStop(1, '#d09010');
+    ctx.fillStyle = hg;
+    ctx.beginPath();
+    ctx.arc(0, -10, 7.5, Math.PI, 0);
+    ctx.lineTo(9, -10);
+    ctx.lineTo(-9, -10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#fff8d0';
+    ctx.beginPath();
+    ctx.arc(5, -13, 2.5, 0, TWO_PI);
+    ctx.fill();
+
+    // Arm and pickaxe
+    ctx.save();
+    ctx.translate(6, 1);
+    const swing = pickaxeSwinging ? -1.2 + pickaxeAngle * 1.8 : -0.5;
+    ctx.rotate(swing);
+    ctx.fillStyle = O;
+    ctx.fillRect(-1, -2, 15, 4);
+    ctx.fillStyle = '#8a5a2a';
+    ctx.fillRect(0, -1, 14, 2);
+    ctx.fillStyle = O;
+    ctx.beginPath();
+    ctx.moveTo(10, -9);
+    ctx.quadraticCurveTo(17, -2, 12, 9);
+    ctx.lineTo(14, 9);
+    ctx.quadraticCurveTo(20, -2, 12, -10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#c8d0e0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(11, -8);
+    ctx.quadraticCurveTo(17, -2, 13, 8);
+    ctx.stroke();
     ctx.restore();
+    ctx.fillStyle = O;
+    ctx.beginPath();
+    ctx.arc(6, 2, 3.2, 0, TWO_PI);
+    ctx.fill();
+    ctx.fillStyle = '#f0c090';
+    ctx.beginPath();
+    ctx.arc(6, 2, 2, 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+
+    drawGlow('#fff0b0', lampX + face * 3, py + 6 + bob, 14, 0.7);
   }
 
   // Resource HUD display configuration
@@ -6556,16 +6586,6 @@
     if (hex.length === 4)
       return [parseInt(hex[1] + hex[1], 16), parseInt(hex[2] + hex[2], 16), parseInt(hex[3] + hex[3], 16)];
     return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
-  }
-
-  const _lightenCache = {};
-  function lightenColor(hex, amount) {
-    const key = hex + '|' + amount;
-    if (_lightenCache[key]) return _lightenCache[key];
-    const [r, g, b] = parseHex(hex);
-    const result = `rgb(${Math.min(255, r + amount)},${Math.min(255, g + amount)},${Math.min(255, b + amount)})`;
-    _lightenCache[key] = result;
-    return result;
   }
 
   function hexToRgba(hex, alpha) {
@@ -6913,27 +6933,28 @@
           if (!ch.revealed) {
             // Hidden: looks like dirt but with faint shimmer
             drawTile(x, y, TILE_DIRT, ch.r + dr, ch.c + dc);
-            const shimmer = Math.sin(animTime * 3 + dr + dc) * 0.1 + 0.1;
-            ctx.fillStyle = `rgba(255,215,0,${shimmer})`;
-            ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+            const shimmer = Math.sin(animTime * 3 + dr + dc) * 0.5 + 0.5;
+            drawGlow('#ffd040', x + TILE_SIZE / 2, y + TILE_SIZE / 2, TILE_SIZE * 0.55, 0.12 + shimmer * 0.18);
           } else {
-            // Revealed: golden glowing tile with "?" symbol
+            // Revealed: golden plate with a pulsing "?"
             const pulse = Math.sin(animTime * 4) * 0.15 + 0.85;
-            ctx.fillStyle = `rgba(200,160,0,${0.7 * pulse})`;
-            ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
-
-            // Bevel
-            ctx.fillStyle = `rgba(255,240,150,${0.4 * pulse})`;
-            ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, 3);
-            ctx.fillStyle = `rgba(100,80,0,${0.5 * pulse})`;
-            ctx.fillRect(x + 1, y + TILE_SIZE - 4, TILE_SIZE - 2, 3);
-
-            // "?" symbol
-            ctx.fillStyle = `rgba(255,255,200,${pulse})`;
-            ctx.font = 'bold 36px sans-serif';
+            drawTile(x, y, TILE_DIRT, ch.r + dr, ch.c + dc);
+            const pg = ctx.createLinearGradient(0, y + 3, 0, y + TILE_SIZE - 3);
+            pg.addColorStop(0, '#ffe680');
+            pg.addColorStop(0.5, '#d8a020');
+            pg.addColorStop(1, '#8a5a08');
+            roundRectPath(x + 3, y + 3, TILE_SIZE - 6, TILE_SIZE - 6, 6);
+            ctx.fillStyle = pg;
+            ctx.globalAlpha = 0.75 + pulse * 0.25;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = SPRITE_OUTLINE;
+            ctx.stroke();
+            drawGlow('#ffd040', x + TILE_SIZE / 2, y + TILE_SIZE / 2, TILE_SIZE * 0.8, 0.25 * pulse);
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('?', x + TILE_SIZE / 2, y + TILE_SIZE / 2);
+            fitText('?', x + TILE_SIZE / 2, y + TILE_SIZE / 2 + 1, TILE_SIZE - 10, 26, { weight: 'bold', color: '#fffbe0', outline: 'rgba(80,40,0,0.9)' });
 
             // Sparkle particles on border
             if (Math.random() < 0.03)
