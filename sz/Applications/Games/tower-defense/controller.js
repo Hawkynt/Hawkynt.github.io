@@ -5714,7 +5714,11 @@
       const r = regionAt(pointer.ux, pointer.uy);
       if (r && r.tip) {
         id = r.id;
-        lines = r.tip();
+        try {
+          lines = r.tip();
+        } catch (_) {
+          lines = null;
+        }
         anchor = r.anchorTip ? { x: r.x, y: r.y, w: r.w, h: r.h } : null;
       } else if (!r && isInGameState()) {
         const e = enemyAtPointer();
@@ -7181,6 +7185,9 @@
   function upgradeTooltip(t, branch) {
     const def = TOWER_TYPES[t.type];
     const next = t.tier + 1;
+    // A hover left over from before the tower reached tier III has no branch yet
+    if (t.tier >= MAX_TIER || (next === BRANCH_TIER && branch !== 0 && branch !== 1) || (next > BRANCH_TIER && !def.branches[t.branch]))
+      return [towerName(t), next === BRANCH_TIER ? 'Choose one of the two specializations below.' : 'Fully upgraded.'];
     const nb = next >= BRANCH_TIER ? branch : -1;
     const cur = towerStats(t);
     const nxt = computeStats(def, next, nb);
@@ -7836,7 +7843,24 @@
 
   let lastTimestamp = 0;
 
+  // An error in one frame must never stop the game: report it once and keep running
+  let frameErrorLogged = false;
   function gameLoop(timestamp) {
+    requestAnimationFrame(gameLoop);
+    try {
+      runFrame(timestamp);
+    } catch (err) {
+      if (!frameErrorLogged) {
+        frameErrorLogged = true;
+        console.error('Tower Defense frame error:', err);
+      }
+      try {
+        ctx.restore();
+      } catch (_) {}
+    }
+  }
+
+  function runFrame(timestamp) {
     const rawDt = lastTimestamp ? (timestamp - lastTimestamp) / 1000 : 0;
     const dt = Math.min(rawDt, MAX_DT);
     lastTimestamp = timestamp;
@@ -7860,7 +7884,6 @@
 
     drawFrame();
     updateStatusBar();
-    requestAnimationFrame(gameLoop);
   }
 
   /* ══════════════════════════════════════════════════════════════════
