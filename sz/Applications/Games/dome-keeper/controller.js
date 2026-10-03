@@ -6823,7 +6823,7 @@
       for (let i = 0; i < m.len; ++i) m.seq.push(Math.floor(Math.random() * 6));
       m.round = 3;
       m.lives = 3;
-      m.limit = 45 + m.len * 3;
+      m.limit = Math.min(60, 42 + m.len * 2.5);   // the clock stops while the runes play
       m.lit = -1;
       m.litT = 0;
       startRuneShow(m, 0.8);
