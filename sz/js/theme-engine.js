@@ -2,6 +2,9 @@
   'use strict';
   const SZ = window.SZ || (window.SZ = {});
 
+  // below this visible share a push-button mask is not taken as a region mask
+  const MIN_BUTTON_MASK_SHARE = 0.25;
+
   class ThemeEngine {
     #styleText = '';
     #skin = null;
@@ -80,6 +83,26 @@
     // Extract a sub-region from img, apply magenta (255,0,255)
     // transparency and optional mask-based alpha.  Returns a data: URL,
     // or null when the canvas is tainted (file:// cross-origin).
+    // Share of a mask region that a region mask leaves visible (non-black);
+    // 1 when the mask cannot be read.
+    #visibleShare(maskImg, sx, sy, sw, sh) {
+      try {
+        const c = document.createElement('canvas');
+        c.width = sw;
+        c.height = sh;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(maskImg, sx, sy, sw, sh, 0, 0, sw, sh);
+        const d = ctx.getImageData(0, 0, sw, sh).data;
+        let visible = 0;
+        for (let i = 0; i < d.length; i += 4)
+          if (d[i] || d[i + 1] || d[i + 2])
+            ++visible;
+        return visible / (sw * sh);
+      } catch {
+        return 1;
+      }
+    }
+
     #processImageRegion(img, sx, sy, sw, sh, maskImg) {
       try {
         const canvas = document.createElement('canvas');
@@ -323,6 +346,12 @@
       } else {
         hoverIdx = -1;
       }
+
+      // A real region mask leaves most of a button visible. Some skins ship a
+      // button mask that is black almost everywhere (Luna Extended): applied
+      // as a region it erased the whole button, so such a mask is ignored.
+      if (maskImg && this.#visibleShare(maskImg, 0, 0, frameW, h) < MIN_BUTTON_MASK_SHARE)
+        maskImg = null;
 
       // Try canvas extraction for each frame
       const dataUrls = [];
