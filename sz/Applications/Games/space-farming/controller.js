@@ -9,6 +9,8 @@
 
   let canvasW = 700;
   let canvasH = 500;
+  let uiS = 1;                       // HUD scale (screen px per UI unit)
+  let UW = 700, UH = 500;            // HUD size in UI units
   const MAX_DT = 0.05;
   const TWO_PI = Math.PI * 2;
 
@@ -162,20 +164,6 @@
 
   /* ── Tutorial ── */
   let tutorialSeen = false;
-  let showTutorial = false;
-  let tutorialPage = 0;
-  const TUTORIAL_PAGES = [
-    { title: 'Welcome, Farmer!', lines: ['Grow crops and tend livestock on your', 'space station farm. Sell produce for credits!', '', 'Click a plot to plant, water, or harvest.', 'Press 1-0 to select crop type.', 'Press S to sell all produce.'] },
-    { title: 'Terrain & Land', lines: ['Your farm has varied terrain:', 'Brown = farmland, Yellow = sandy (0.7x growth),', 'Blue = water (boosts adjacent +15%), Gray = rock.', '', 'Each tile has unique fertility (50-100%).', 'Only water blocks building placement.'] },
-    { title: 'Buildings', lines: ['Press B or use the building bar to place buildings.', 'Sprinkler: +20% growth | Harvester: auto-harvest', 'Greenhouse: weather shield | Silo: +10% sell, +50 storage', 'Solar/Wind: income + energy | Auto-Planter: auto-plant', 'Right-click buildings to upgrade (up to L6)!', 'Shift+right-click to remove. Upgrades cost 50% of base.'] },
-    { title: 'Crops & Weather', lines: ['Void Mushroom grows in any weather.', 'Plasma Pepper is fast but cold-vulnerable.', 'Astral Flower/Solar Vine grow best in sunlight.', 'Lunar Moss only grows at night!', 'Solar flares boost growth; meteor showers', 'damage unprotected crops!'] },
-    { title: 'Upgrades', lines: ['Press U or click UPGRADES to open the shop.', '', 'Growth Boost, Yield, Weather Shield, Auto-Harvest,', 'Plot Expansion (more rows!), Soil Quality,', 'Market Access (better prices), Irrigation.', 'Each has multiple levels. Invest wisely!'] },
-    { title: 'Market & Land', lines: ['Crop prices fluctuate every 60 seconds!', 'Green arrow = high price, red = low price.', 'Buy seeds when cheap, sell when prices are high.', '', 'Land expands one strip at a time (L/R/T/B cycle).', 'New terrain uses biome-aware generation.'] },
-    { title: 'Seasons & Day/Night', lines: ['Seasons change every 4 days:', 'Spring: +10% growth | Summer: +25% growth', 'Autumn: +15% harvest, -10% growth', 'Winter: -40% growth, no weather events', '', 'Day/night cycles affect some crops & visuals.'] },
-    { title: 'Animals & Storage', lines: ['Wild space mice spawn and eat your crops!', 'Build Scarecrows and Fences to protect crops.', 'Right-click animals to kill them for 10cr.', 'Crop-threatening animals glow red!', 'Storage is limited: 50 + 50 per Silo.', 'Inventory shows estimated total value.'] },
-    { title: 'Tools & Energy', lines: ['Press T to toggle the Hoe tool:', 'Left-click near water: boost fertility +0.2', 'Right-click on crop: uproot (50% seed refund)', '', 'Energy (blue bar) powers auto-harvesters.', 'Solar Panels & Wind Turbines add energy & regen.'] },
-    { title: 'Controls', lines: ['Mouse wheel: zoom in/out (0.1x-2.0x).', 'Right-click drag or Ctrl+drag: pan view.', 'Short right-click: upgrade building.', 'Shift+right-click: remove building.', 'Home key: reset zoom & pan.', 'Press H anytime to see this help again.'] }
-  ];
 
   let state = STATE_READY;
   let credits = 100;
@@ -230,14 +218,8 @@
   // Weather visual particle arrays (persistent across frames)
   let weatherParticles = [];
 
-  // Upgrade shop
+  // Upgrades
   let upgradeLevels = {}; // { upgradeId: level }
-  let showUpgradeShop = false;
-  let upgradeShopScroll = 0;
-
-  // Livestock shop
-  let showLivestockShop = false;
-  let livestockShopScroll = 0;
 
   // Auto-harvest timer (ticks every second-ish based on upgrade level)
   let autoHarvestTimer = 0;
@@ -307,17 +289,11 @@
   let dragCurrentY = 0;
   let dragStartedOnGrid = false;
 
-  // Tooltip
-  let tooltipLines = [];
-  let tooltipX = 0;
-  let tooltipY = 0;
-
   // Saved farm
   let savedGameAvailable = false;
   let autosaveTimer = 0;
   let saveNotice = '';
   let newGameConfirmOpen = false;
-  const startButtons = { cont: null, fresh: null };
 
   /* ══════════════════════════════════════════════════════════════════
      SPRITES — 16x16 pixel art drawn once into offscreen canvases
@@ -794,7 +770,128 @@
       p.rect(1, 13, 14, 1, P.brown, true);
       p.line(3, 9, 9, 3, P.steel); p.line(9, 3, 11, 9, P.steel);
       p.rect(10, 8, 3, 2, P.yellow);
-    }
+    },
+
+    /* ── Interface icons ── */
+    coin: (p, P) => {
+      p.disc(7.5, 7.5, 6.5, P.gold);
+      p.disc(7.5, 7.5, 4.5, P.yellow);
+      p.rect(7, 4, 2, 7, P.gold, true);
+      p.rect(5, 5, 5, 1, P.gold, true); p.rect(6, 7, 3, 1, P.gold, true); p.rect(5, 9, 5, 1, P.gold, true);
+      p.px(4, 3, P.cream, true); p.px(3, 4, P.cream, true);
+    },
+    lock: (p, P) => {
+      p.rect(4, 2, 8, 2, P.steel); p.rect(4, 2, 2, 6, P.steel); p.rect(10, 2, 2, 6, P.steel);
+      p.rect(2, 7, 12, 8, P.gold);
+      p.rect(7, 9, 2, 4, P.dbrown, true);
+      p.rect(3, 8, 10, 1, P.yellow, true);
+    },
+    check: (p, P) => {
+      p.disc(7.5, 7.5, 7, P.green);
+      p.line(4, 8, 6, 11, P.white, true); p.line(6, 11, 11, 4, P.white, true);
+      p.line(4, 7, 6, 10, P.white, true); p.line(6, 10, 11, 3, P.white, true);
+    },
+    bolt: (p, P) => {
+      p.poly([[9, 0], [3, 9], [7.5, 9], [5, 16], [13, 6], [8.5, 6], [11, 0]], P.yellow);
+      p.line(9, 2, 6, 7, P.cream, true);
+    },
+    seedbag: (p, P) => {
+      p.poly([[3, 6], [13, 6], [14, 15], [2, 15]], P.tan);
+      p.rect(5, 3, 6, 3, P.tan);
+      p.rect(4, 5, 8, 1, P.brown, true);
+      p.line(8, 4, 8, 1, P.leaf); p.ell(6, 1, 1.5, 0.8, P.green); p.ell(10, 1.5, 1.5, 0.8, P.green);
+      p.disc(8, 11, 2, P.lime, true); p.px(8, 11, P.leaf, true);
+    },
+    hammer: (p, P) => {
+      p.line(4, 15, 10, 6, P.brown); p.line(5, 15, 11, 6, P.tan);
+      p.poly([[6, 2], [12, 1], [15, 4], [13, 9], [10, 7], [8, 5]], P.steel);
+      p.line(12, 2, 14, 5, P.white, true);
+    },
+    paw: (p, P) => {
+      p.ell(8, 11, 4, 3.5, P.pink);
+      p.disc(3, 6, 1.6, P.pink); p.disc(6, 3, 1.6, P.pink); p.disc(10, 3, 1.6, P.pink); p.disc(13, 6, 1.6, P.pink);
+      p.ell(8, 11.5, 2, 1.5, P.maroon, true);
+    },
+    techtree: (p, P) => {
+      p.line(8, 14, 8, 4, P.cyan); p.line(8, 9, 3, 5, P.cyan); p.line(8, 9, 13, 5, P.cyan); p.line(8, 14, 3, 11, P.cyan);
+      p.disc(8, 3, 2, P.yellow); p.disc(3, 4.5, 1.6, P.lime); p.disc(13, 4.5, 1.6, P.pink); p.disc(2.5, 11, 1.6, P.sky);
+      p.rect(5, 13, 6, 3, P.steel);
+    },
+    star: (p, P) => {
+      const pts = [];
+      for (let i = 0; i < 10; ++i) {
+        const ang = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 3 : 7;
+        pts.push([7.5 + Math.cos(ang) * r, 8.3 + Math.sin(ang) * r]);
+      }
+      p.poly(pts, P.yellow);
+      p.px(7, 6, P.cream, true); p.px(6, 7, P.cream, true);
+    },
+    basket: (p, P) => {
+      p.poly([[1, 7], [15, 7], [13, 15], [3, 15]], P.tan);
+      for (let x = 3; x < 14; x += 3) p.line(x, 8, x - 0.5, 14, P.brown, true);
+      p.rect(1, 7, 14, 1, P.brown, true);
+      p.disc(5, 5, 2, P.red); p.disc(9, 4.5, 2, P.lime); p.disc(12, 5.5, 1.6, P.purple);
+    },
+    cloud: (p, P) => {
+      p.ell(8, 10, 6.5, 3.5, P.white);
+      p.disc(5, 8, 3, P.white); p.disc(9.5, 6.5, 3.5, P.white);
+      p.rect(2, 12, 12, 1, P.steel, true);
+    },
+    rain: (p, P) => {
+      p.ell(8, 6, 6.5, 3, P.steel); p.disc(5, 4.5, 2.5, P.steel); p.disc(9.5, 3.5, 3, P.steel);
+      for (const [x, y] of [[4, 11], [8, 12], [12, 11], [6, 14], [10, 15]]) p.line(x, y, x - 1, y + 1, P.sky, true);
+    },
+    storm: (p, P) => {
+      p.ell(8, 6, 6.5, 3, P.dgrey); p.disc(5, 4.5, 2.5, P.dgrey); p.disc(9.5, 3.5, 3, P.dgrey);
+      p.poly([[9, 8], [5, 12], [8, 12], [6, 16], [12, 10], [9, 10], [11, 8]], P.yellow);
+    },
+    meteor: (p, P) => {
+      p.line(1, 1, 9, 9, P.orange); p.line(2, 1, 10, 8, P.red); p.line(1, 2, 8, 9, P.yellow);
+      p.disc(11, 11, 3.5, P.brown); p.px(10, 10, P.tan, true); p.px(12, 12, P.dbrown, true);
+    },
+    flare: (p, P) => {
+      paintSun(p, P, 7.5, 7.5, 3.5);
+      p.px(1, 1, P.yellow, true); p.px(14, 2, P.yellow, true); p.px(13, 14, P.yellow, true);
+    },
+    dust: (p, P) => {
+      for (const [y, x0, x1] of [[4, 2, 12], [7, 4, 15], [10, 1, 11], [13, 5, 13]]) p.line(x0, y, x1, y, P.tan);
+      p.disc(13, 4, 1.5, P.tan); p.disc(3, 10, 1.5, P.tan);
+      p.px(6, 4, P.cream, true); p.px(9, 7, P.cream, true);
+    },
+    snow: (p, P) => {
+      p.ell(8, 5.5, 6.5, 3, P.steel); p.disc(5, 4, 2.5, P.steel); p.disc(9.5, 3, 3, P.steel);
+      for (const [x, y] of [[4, 11], [8, 12], [12, 10], [6, 14], [11, 14]]) { p.px(x, y, P.white, true); p.px(x + 1, y, P.white, true); p.px(x, y + 1, P.white, true); }
+    },
+    target: (p, P) => {
+      p.disc(7.5, 7.5, 7, P.red); p.disc(7.5, 7.5, 5, P.white); p.disc(7.5, 7.5, 3, P.red); p.disc(7.5, 7.5, 1, P.white, true);
+    },
+    scroll: (p, P) => {
+      p.rect(3, 2, 10, 12, P.cream);
+      p.rect(2, 1, 12, 2, P.tan); p.rect(2, 13, 12, 2, P.tan);
+      for (let y = 5; y <= 11; y += 2) p.line(5, y, 11, y, P.tan, true);
+      p.disc(11, 11, 1.5, P.red, true);
+    },
+    pause: (p, P) => {
+      p.rect(3, 2, 4, 12, P.steel); p.rect(9, 2, 4, 12, P.steel);
+    },
+    book: (p, P) => {
+      p.rect(2, 2, 12, 12, P.blue); p.rect(4, 2, 10, 11, P.cream); p.rect(2, 12, 12, 2, P.violet);
+      p.line(6, 5, 11, 5, P.tan, true); p.line(6, 7, 11, 7, P.tan, true); p.line(6, 9, 10, 9, P.tan, true);
+    },
+    market: (p, P) => {
+      p.rect(2, 8, 12, 7, P.tan);
+      p.poly([[1, 7], [3, 2], [13, 2], [15, 7]], P.red);
+      for (let x = 3; x < 14; x += 4) p.poly([[x, 2], [x + 2, 2], [x + 2.5, 7], [x - 0.5, 7]], P.white, true);
+      p.rect(4, 9, 3, 3, P.lime, true); p.rect(9, 9, 3, 3, P.orange, true);
+      p.rect(2, 14, 12, 1, P.brown, true);
+    },
+    eye: (p, P) => {
+      p.ell(7.5, 8, 7, 4, P.white); p.disc(7.5, 8, 3, P.blue); p.disc(7.5, 8, 1.4, P.black, true); p.px(6, 7, P.white, true);
+    },
+    zoom: (p, P) => {
+      p.disc(6.5, 6.5, 5, P.steel); p.disc(6.5, 6.5, 3.5, P.sky); p.px(5, 5, P.white, true);
+      p.line(10, 10, 14, 14, P.brown); p.line(11, 10, 15, 14, P.brown);
+    },
   };
 
   const spriteCache = {};
@@ -826,14 +923,19 @@
   }
 
   /* Draws a sprite centred on (cx, cy) with the given on-screen size */
-  function drawSprite(key, cx, cy, size, g) {
+  function drawSprite(key, cx, cy, size, alpha) {
     const spr = typeof key === 'string' ? getSprite(key) : key;
     if (!spr) return;
-    const c = g || ctx;
-    const smoothing = c.imageSmoothingEnabled;
-    c.imageSmoothingEnabled = false;
-    c.drawImage(spr, Math.round(cx - size / 2), Math.round(cy - size / 2), Math.round(size), Math.round(size));
-    c.imageSmoothingEnabled = smoothing;
+    const prevSmooth = ctx.imageSmoothingEnabled;
+    const prevAlpha = ctx.globalAlpha;
+    // crisp pixels when enlarged, smooth when shrunk
+    ctx.imageSmoothingEnabled = size * ctx.getTransform().a / spr.width < 1.5;
+    if (alpha !== undefined)
+      ctx.globalAlpha = prevAlpha * alpha;
+    const s = Math.round(size);
+    ctx.drawImage(spr, Math.round(cx - s / 2), Math.round(cy - s / 2), s, s);
+    ctx.imageSmoothingEnabled = prevSmooth;
+    ctx.globalAlpha = prevAlpha;
   }
 
   function getCropStageSprite(crop, stage) {
@@ -841,6 +943,616 @@
     if (stage >= maxStage) return getSprite(crop.sprite);
     if (stage <= 0) return getSprite('sprout');
     return getYoungCropSprite(crop);
+  }
+
+
+  /* ══════════════════════════════════════════════════════════════════
+     TEXT LAYOUT — every label is measured against the box it lives in
+     ══════════════════════════════════════════════════════════════════ */
+
+  const UI_FONT = "'Segoe UI', 'Trebuchet MS', 'Helvetica Neue', Arial, sans-serif";
+
+  function uiFont(px, weight) {
+    return (weight ? weight + ' ' : '') + px + 'px ' + UI_FONT;
+  }
+
+  /* Text with inline [[sprite]] tokens; odd entries of the split are sprite keys */
+  function splitIconText(text) {
+    return String(text).split(/\[\[(\w+)\]\]/);
+  }
+
+  function getFontPx() {
+    const m = /(\d+(?:\.\d+)?)px/.exec(ctx.font);
+    return m ? parseFloat(m[1]) : 16;
+  }
+
+  function measureIconText(text) {
+    const parts = splitIconText(text);
+    const iconSize = Math.round(getFontPx() * 1.25);
+    let w = 0;
+    for (let i = 0; i < parts.length; ++i)
+      w += i % 2 ? iconSize : ctx.measureText(parts[i]).width;
+    return w;
+  }
+
+  /* Draws icon text honouring the current textAlign / textBaseline */
+  function fillIconText(text, x, y) {
+    const parts = splitIconText(text);
+    if (parts.length === 1) {
+      ctx.fillText(text, x, y);
+      return;
+    }
+    const fontPx = getFontPx();
+    const iconSize = Math.round(fontPx * 1.25);
+    const align = ctx.textAlign;
+    const total = measureIconText(text);
+    let cx = x;
+    if (align === 'center')
+      cx = x - total / 2;
+    else if (align === 'right' || align === 'end')
+      cx = x - total;
+    const base = ctx.textBaseline;
+    let iconY = y;
+    if (base === 'top' || base === 'hanging')
+      iconY = y + fontPx * 0.55;
+    else if (base === 'alphabetic' || base === 'bottom' || base === 'ideographic')
+      iconY = y - fontPx * 0.35;
+    ctx.textAlign = 'left';
+    for (let i = 0; i < parts.length; ++i) {
+      if (i % 2) {
+        drawSprite(parts[i], cx + iconSize / 2, iconY, iconSize);
+        cx += iconSize;
+      } else if (parts[i]) {
+        ctx.fillText(parts[i], cx, y);
+        cx += ctx.measureText(parts[i]).width;
+      }
+    }
+    ctx.textAlign = align;
+  }
+
+  /* Layouts are cached per (text, box, font) since the same labels repeat every frame */
+  const textFitCache = new Map();
+  function cachedLayout(key, build) {
+    let v = textFitCache.get(key);
+    if (v === undefined) {
+      if (textFitCache.size > 4000)
+        textFitCache.clear();
+      v = build();
+      textFitCache.set(key, v);
+    }
+    return v;
+  }
+
+  function textUnits(text) {
+    const parts = splitIconText(text);
+    const units = [];
+    for (let i = 0; i < parts.length; ++i)
+      if (i % 2)
+        units.push('[[' + parts[i] + ']]');
+      else
+        for (const ch of parts[i])
+          units.push(ch);
+    return units;
+  }
+
+  /* Shortens text with an ellipsis until it fits maxW in the current font */
+  function ellipsize(text, maxW) {
+    text = String(text);
+    if (measureIconText(text) <= maxW)
+      return text;
+    const units = textUnits(text);
+    let lo = 0, hi = units.length;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (measureIconText(units.slice(0, mid).join('').trimEnd() + '…') <= maxW)
+        lo = mid;
+      else
+        hi = mid - 1;
+    }
+    return lo > 0 ? units.slice(0, lo).join('').trimEnd() + '…' : '';
+  }
+
+  /* Largest font size in [minPx, px] that fits; ellipsizes when even minPx is too wide */
+  function layoutLine(text, maxW, px, minPx, weight) {
+    text = String(text);
+    return cachedLayout('L' + text + '|' + Math.round(maxW) + '|' + px + '|' + minPx + '|' + (weight || ''), () => {
+      let size = px;
+      ctx.font = uiFont(size, weight);
+      let w = measureIconText(text);
+      if (w > maxW && size > minPx) {
+        size = Math.max(minPx, Math.floor(px * maxW / w));
+        ctx.font = uiFont(size, weight);
+        w = measureIconText(text);
+        while (w > maxW && size > minPx) {
+          --size;
+          ctx.font = uiFont(size, weight);
+          w = measureIconText(text);
+        }
+      }
+      const out = w > maxW ? ellipsize(text, maxW) : text;
+      if (out !== text) {
+        ctx.font = uiFont(size, weight);
+        w = measureIconText(out);
+      }
+      return { size, text: out, width: Math.min(w, maxW) };
+    });
+  }
+
+  /* One line of (icon) text that never exceeds maxW; returns the drawn width */
+  function fitText(text, x, y, maxW, px, opts) {
+    opts = opts || {};
+    if (maxW <= 4)
+      return 0;
+    const l = layoutLine(text, maxW, px, opts.minPx || Math.max(8, Math.round(px * 0.62)), opts.weight);
+    ctx.font = uiFont(l.size, opts.weight);
+    if (opts.color)
+      ctx.fillStyle = opts.color;
+    if (opts.outline) {
+      ctx.save();
+      ctx.strokeStyle = opts.outline;
+      ctx.lineWidth = Math.max(2, l.size / 5);
+      ctx.lineJoin = 'round';
+      if (l.text.indexOf('[[') < 0)
+        ctx.strokeText(l.text, x, y);
+      ctx.restore();
+    }
+    fillIconText(l.text, x, y);
+    return l.width;
+  }
+
+  /* Greedy word wrap in the current font; overlong words are ellipsized */
+  function wrapText(text, maxW) {
+    const lines = [];
+    for (const para of String(text).split('\n')) {
+      const words = para.split(' ');
+      let line = '';
+      for (const word of words) {
+        const trial = line ? line + ' ' + word : word;
+        if (!line || measureIconText(trial) <= maxW)
+          line = trial;
+        else {
+          lines.push(line);
+          line = word;
+        }
+        if (line === word && measureIconText(line) > maxW)
+          line = ellipsize(word, maxW);
+      }
+      lines.push(line);
+    }
+    return lines;
+  }
+
+  /* Wraps text into a w x h box, shrinking the font until all lines fit */
+  function layoutBlock(text, w, h, px, minPx, weight, lineGap) {
+    return cachedLayout('B' + text + '|' + Math.round(w) + '|' + Math.round(h) + '|' + px + '|' + minPx + '|' + (weight || '') + '|' + lineGap, () => {
+      let size = px, lines;
+      for (;;) {
+        ctx.font = uiFont(size, weight);
+        lines = wrapText(text, w);
+        if (lines.length * size * lineGap <= h || size <= minPx)
+          break;
+        --size;
+      }
+      const maxLines = Math.max(1, Math.floor(h / (size * lineGap)));
+      if (lines.length > maxLines) {
+        lines = lines.slice(0, maxLines);
+        lines[maxLines - 1] = ellipsize(lines[maxLines - 1] + '…', w);
+      }
+      return { size, lines, lineH: size * lineGap };
+    });
+  }
+
+  /* Wrapped text inside a box; align 'left' | 'center', valign 'top' | 'middle' */
+  function drawTextBlock(text, x, y, w, h, px, opts) {
+    opts = opts || {};
+    const b = layoutBlock(text, w, h, px, opts.minPx || Math.max(8, Math.round(px * 0.62)), opts.weight, opts.lineGap || 1.3);
+    ctx.font = uiFont(b.size, opts.weight);
+    if (opts.color)
+      ctx.fillStyle = opts.color;
+    const align = opts.align || 'left';
+    ctx.textAlign = align;
+    ctx.textBaseline = 'middle';
+    const tx = align === 'center' ? x + w / 2 : x;
+    let ty = y + b.lineH / 2;
+    if (opts.valign === 'middle')
+      ty += (h - b.lines.length * b.lineH) / 2;
+    for (const line of b.lines) {
+      fillIconText(line, tx, ty);
+      ty += b.lineH;
+    }
+    return b.lines.length * b.lineH;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     UI PANELS — one frame style for every box on screen
+     ══════════════════════════════════════════════════════════════════ */
+
+  const UI = {
+    panelTop: 'rgba(22,30,52,0.94)',
+    panelBottom: 'rgba(9,12,24,0.94)',
+    edge: '#05070e',
+    rim: 'rgba(150,180,255,0.16)',
+    accent: '#5ab8ff',
+    gold: '#ffd75a',
+    text: '#e4eaf6',
+    textDim: '#93a0bb',
+    textMute: '#5d6884',
+    good: '#6fe08a',
+    bad: '#ff6a6a',
+    warn: '#ffb648',
+    energy: '#4fd8ff',
+    leaf: '#7ee06a'
+  };
+
+  function parseHex(hex) {
+    let h = hex.replace('#', '');
+    if (h.length === 3)
+      h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+
+  function hexToRgba(hex, alpha) {
+    const [r, g, b] = parseHex(hex);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  function roundRectPath(x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+  }
+
+  /* Framed panel: shadow, gradient, dark edge, light rim, accent strip and an
+     optional title header. Returns the y where the content starts. */
+  function drawPanel(x, y, w, h, opts) {
+    opts = opts || {};
+    const r = opts.radius !== undefined ? opts.radius : 10;
+    const accent = opts.accent || UI.accent;
+    ctx.save();
+    if (opts.alpha !== undefined)
+      ctx.globalAlpha *= opts.alpha;
+    if (!opts.flat) {
+      ctx.shadowColor = 'rgba(0,0,0,0.55)';
+      ctx.shadowBlur = opts.shadow !== undefined ? opts.shadow : 16;
+      ctx.shadowOffsetY = 3;
+    }
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, opts.top || UI.panelTop);
+    g.addColorStop(1, opts.bottom || UI.panelBottom);
+    roundRectPath(x, y, w, h, r);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = UI.edge;
+    ctx.stroke();
+    roundRectPath(x + 1.5, y + 1.5, w - 3, h - 3, r - 1.5);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = opts.glow ? hexToRgba(accent, 0.75) : UI.rim;
+    ctx.stroke();
+    const sg = ctx.createLinearGradient(x, 0, x + w, 0);
+    sg.addColorStop(0, hexToRgba(accent, 0));
+    sg.addColorStop(0.5, hexToRgba(accent, 0.9));
+    sg.addColorStop(1, hexToRgba(accent, 0));
+    ctx.fillStyle = sg;
+    ctx.fillRect(x + r, y + 1, w - r * 2, 2);
+    let contentY = y + (opts.pad !== undefined ? opts.pad : 8);
+    if (opts.title) {
+      const hh = opts.headerH || 34;
+      ctx.fillStyle = 'rgba(255,255,255,0.04)';
+      ctx.fillRect(x + 2, y + 3, w - 4, hh - 3);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(x + 8, y + hh, w - 16, 1);
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      ctx.fillRect(x + 8, y + hh + 1, w - 16, 1);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      let titleX = x + 12;
+      if (opts.icon) {
+        drawSprite(opts.icon, titleX + 10, y + hh / 2 + 1, 20);
+        titleX += 26;
+      }
+      const rightW = opts.titleRight ? Math.min(w * 0.42, 170) : 0;
+      const closeW = opts.closeId ? 30 : 0;
+      fitText(opts.title, titleX, y + hh / 2 + 1, x + w - 12 - rightW - closeW - titleX, opts.titlePx || 17, { weight: 'bold', color: accent });
+      if (opts.titleRight) {
+        ctx.textAlign = 'right';
+        fitText(opts.titleRight, x + w - 12 - closeW, y + hh / 2 + 1, rightW - 8, 13, { weight: 'bold', color: opts.titleRightColor || UI.textDim });
+      }
+      contentY = y + hh + 8;
+    }
+    ctx.restore();
+    if (opts.closeId)
+      drawCloseButton(opts.closeId, x + w - 32, y + 6, 24, opts.onClose);
+    return contentY;
+  }
+
+  /* Rounded meter with a glossy fill and an optional centred label */
+  function drawMeter(x, y, w, h, ratio, color, opts) {
+    opts = opts || {};
+    ratio = Math.max(0, Math.min(1, ratio));
+    ctx.save();
+    roundRectPath(x, y, w, h, h / 2);
+    ctx.fillStyle = opts.track || 'rgba(0,0,0,0.55)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.stroke();
+    if (ratio > 0) {
+      ctx.save();
+      roundRectPath(x, y, w, h, h / 2);
+      ctx.clip();
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, w * ratio, h);
+      ctx.fillStyle = 'rgba(255,255,255,0.28)';
+      ctx.fillRect(x, y, w * ratio, h * 0.42);
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.fillRect(x, y + h * 0.75, w * ratio, h * 0.25);
+      if (opts.shine) {
+        const sx = x + ((uiTime * 90) % (w + 60)) - 30;
+        const sg = ctx.createLinearGradient(sx - 20, 0, sx + 20, 0);
+        sg.addColorStop(0, 'rgba(255,255,255,0)');
+        sg.addColorStop(0.5, 'rgba(255,255,255,0.35)');
+        sg.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = sg;
+        ctx.fillRect(x, y, w * ratio, h);
+      }
+      ctx.restore();
+    }
+    if (opts.label) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText(opts.label, x + w / 2, y + h / 2 + 1, w - 8, opts.labelPx || Math.round(h * 0.78), { weight: 'bold', color: '#fff', outline: 'rgba(0,0,0,0.75)' });
+    }
+    ctx.restore();
+  }
+
+  /* Rounded pill with centred text; returns its width */
+  function drawChip(text, x, y, h, opts) {
+    opts = opts || {};
+    const px = opts.px || Math.round(h * 0.62);
+    ctx.font = uiFont(px, opts.weight || 'bold');
+    const w = Math.min(opts.maxW || 1e9, Math.ceil(measureIconText(text)) + h * 0.8);
+    const x0 = opts.align === 'right' ? x - w : (opts.align === 'center' ? x - w / 2 : x);
+    roundRectPath(x0, y, w, h, h / 2);
+    ctx.fillStyle = opts.bg || 'rgba(255,255,255,0.08)';
+    ctx.fill();
+    if (opts.border) {
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = opts.border;
+      ctx.stroke();
+    }
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(text, x0 + w / 2, y + h / 2 + 1, w - h * 0.5, px, { weight: opts.weight || 'bold', color: opts.color || UI.text });
+    return w;
+  }
+
+  /* Keycap hints ("[S] Sell") centred on cx and scaled to stay within maxW */
+  function drawKeyHints(hints, cx, cy, maxW, scale) {
+    const k = scale || 1;
+    const keyPx = 11 * k, labelPx = 12 * k, keyH = 18 * k, gap = 14 * k;
+    const parts = hints.map(h => {
+      ctx.font = uiFont(keyPx, 'bold');
+      const kw = Math.max(keyH, ctx.measureText(h.key).width + 10 * k);
+      ctx.font = uiFont(labelPx);
+      return { key: h.key, label: h.label, kw, lw: ctx.measureText(h.label).width };
+    });
+    let total = -gap;
+    for (const p of parts)
+      total += p.kw + 5 * k + p.lw + gap;
+    const s = Math.min(1, maxW / Math.max(1, total));
+    ctx.save();
+    ctx.translate(cx - total * s / 2, cy);
+    ctx.scale(s, s);
+    let x = 0;
+    for (const p of parts) {
+      roundRectPath(x, -keyH / 2, p.kw, keyH, 4 * k);
+      ctx.fillStyle = 'rgba(20,26,42,0.9)';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(170,190,230,0.35)';
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(x + 3, keyH / 2 - 3, p.kw - 6, 2);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = uiFont(keyPx, 'bold');
+      ctx.fillStyle = '#dfe6f5';
+      ctx.fillText(p.key, x + p.kw / 2, 1);
+      ctx.textAlign = 'left';
+      ctx.font = uiFont(labelPx);
+      ctx.fillStyle = 'rgba(200,210,230,0.78)';
+      ctx.fillText(p.label, x + p.kw + 5 * k, 1);
+      x += p.kw + 5 * k + p.lw + gap;
+    }
+    ctx.restore();
+  }
+
+  /* Large glowing headline (title, pause and celebration banners) */
+  function drawHeadline(text, x, y, maxW, px, color, glow) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const l = layoutLine(text, maxW, px, Math.round(px * 0.5), 'bold');
+    ctx.font = uiFont(l.size, 'bold');
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(3, l.size / 9);
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+    ctx.strokeText(l.text, x, y + 3);
+    ctx.shadowColor = glow || color;
+    ctx.shadowBlur = 20;
+    const g = ctx.createLinearGradient(0, y - l.size / 2, 0, y + l.size / 2);
+    g.addColorStop(0, '#ffffff');
+    g.addColorStop(0.45, color);
+    g.addColorStop(1, glow || color);
+    ctx.fillStyle = g;
+    ctx.fillText(l.text, x, y);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  /* Dims the whole screen and darkens the corners */
+  let vignetteCanvas = null;
+  function drawScrim(alpha) {
+    ctx.fillStyle = `rgba(3,5,12,${alpha})`;
+    ctx.fillRect(0, 0, UW, UH);
+    if (!vignetteCanvas) {
+      vignetteCanvas = document.createElement('canvas');
+      vignetteCanvas.width = 160;
+      vignetteCanvas.height = 100;
+      const v = vignetteCanvas.getContext('2d');
+      const g = v.createRadialGradient(80, 50, 20, 80, 50, 95);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(0,0,0,0.75)');
+      v.fillStyle = g;
+      v.fillRect(0, 0, 160, 100);
+    }
+    ctx.drawImage(vignetteCanvas, 0, 0, UW, UH);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     UI REGIONS — every interactive box registers itself while drawing;
+     pointer input is routed to the topmost region of the last frame
+     ══════════════════════════════════════════════════════════════════ */
+
+  let uiRegions = [];
+  let frameRegions = [];
+  let hoverRegionId = null;
+  let pressRegionId = null;
+  const uiAnim = {};                 // region id -> eased hover value 0..1
+  let uiTime = 0;
+  let frameDt = 1 / 60;
+
+  /* r: { id, x, y, w, h, onClick, onWheel, tip, disabled, modal } in UI units */
+  function addRegion(r) {
+    frameRegions.push(r);
+    return r;
+  }
+
+  function hitRegion(ux, uy) {
+    for (let i = uiRegions.length - 1; i >= 0; --i) {
+      const r = uiRegions[i];
+      if (ux >= r.x && ux <= r.x + r.w && uy >= r.y && uy <= r.y + r.h)
+        return r;
+    }
+    return null;
+  }
+
+  /* Eased hover amount of a region (for lift / glow animations) */
+  function hoverAmount(id) {
+    const target = hoverRegionId === id ? 1 : 0;
+    const a = uiAnim[id] === undefined ? target : uiAnim[id];
+    const next = a + (target - a) * Math.min(1, frameDt * 14);
+    uiAnim[id] = next;
+    return next;
+  }
+
+  function isPressed(id) {
+    return pressRegionId === id;
+  }
+
+  /* Standard button: gradient face, hover lift, press dip */
+  function drawButton(b, opts) {
+    opts = opts || {};
+    const hv = hoverAmount(b.id);
+    const pressed = isPressed(b.id) && hoverRegionId === b.id;
+    const color = opts.color || UI.accent;
+    const lift = pressed ? 1 : -hv * 1.5;
+    const disabled = !!opts.disabled;
+    ctx.save();
+    if (disabled)
+      ctx.globalAlpha *= 0.55;
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 8 + hv * 6;
+    ctx.shadowOffsetY = pressed ? 1 : 3;
+    roundRectPath(b.x, b.y + lift, b.w, b.h, opts.radius || 9);
+    const g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+    if (opts.primary) {
+      g.addColorStop(0, hexToRgba(color, 0.55 + hv * 0.2));
+      g.addColorStop(1, hexToRgba(color, 0.22 + hv * 0.15));
+    } else {
+      g.addColorStop(0, hv ? `rgba(58,69,96,${0.92})` : 'rgba(42,50,72,0.92)');
+      g.addColorStop(1, hv ? 'rgba(35,42,62,0.92)' : 'rgba(24,29,44,0.92)');
+    }
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.lineWidth = opts.active ? 2.5 : 1.5;
+    ctx.strokeStyle = opts.active ? color : (opts.primary ? hexToRgba(color, 0.9) : `rgba(140,160,210,${0.35 + hv * 0.4})`);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    roundRectPath(b.x + 3, b.y + lift + 3, b.w - 6, b.h * 0.42, 6);
+    ctx.fill();
+    const hasIcon = !!opts.icon;
+    const keyW = opts.key ? 20 : 0;
+    if (opts.chevron) {
+      const cx = b.x + b.w / 2, cy = b.y + lift + b.h / 2, s = Math.min(b.w, b.h) * 0.22;
+      ctx.strokeStyle = '#d0d8ea';
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cx - s * 0.5 * opts.chevron, cy - s);
+      ctx.lineTo(cx + s * 0.5 * opts.chevron, cy);
+      ctx.lineTo(cx - s * 0.5 * opts.chevron, cy + s);
+      ctx.stroke();
+    } else if (hasIcon && opts.vertical) {
+      drawSprite(opts.icon, b.x + b.w / 2, b.y + lift + b.h * 0.38, Math.min(b.h * 0.46, 30));
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText(opts.label, b.x + b.w / 2, b.y + lift + b.h * 0.8, b.w - 8, opts.px || 11, { weight: 'bold', color: opts.textColor || (opts.primary ? '#fff' : '#d0d8ea'), minPx: 8 });
+    } else {
+      const iconW = hasIcon ? Math.min(b.h - 10, 22) + 6 : 0;
+      ctx.font = uiFont(opts.px || 14, 'bold');
+      const l = layoutLine(opts.label, b.w - 16 - iconW - keyW, opts.px || 14, 9, 'bold');
+      const total = iconW + l.width;
+      let cx = b.x + (b.w - keyW) / 2 - total / 2;
+      if (hasIcon) {
+        drawSprite(opts.icon, cx + (iconW - 6) / 2, b.y + lift + b.h / 2, iconW - 6);
+        cx += iconW;
+      }
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText(opts.label, cx, b.y + lift + b.h / 2 + 1, b.w - 16 - iconW - keyW, opts.px || 14, { weight: 'bold', color: opts.textColor || (opts.primary ? '#fff' : '#d0d8ea'), minPx: 9 });
+    }
+    if (opts.key)
+      drawChip(opts.key, b.x + b.w - 6, b.y + lift + (b.h - 16) / 2, 16, { align: 'right', px: 10, bg: 'rgba(0,0,0,0.45)', border: 'rgba(255,255,255,0.22)', color: UI.textDim });
+    ctx.restore();
+    addRegion({ id: b.id, x: b.x, y: b.y, w: b.w, h: b.h, onClick: disabled ? null : opts.onClick, tip: opts.tip, disabledClick: disabled ? opts.onDisabled : null });
+  }
+
+  function drawCloseButton(id, x, y, s, onClose) {
+    const hv = hoverAmount(id);
+    ctx.save();
+    roundRectPath(x, y, s, s, 6);
+    ctx.fillStyle = `rgba(255,${110 - hv * 40},${110 - hv * 40},${0.12 + hv * 0.3})`;
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255,140,140,${0.35 + hv * 0.5})`;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.strokeStyle = '#ffd0d0';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x + s * 0.32, y + s * 0.32);
+    ctx.lineTo(x + s * 0.68, y + s * 0.68);
+    ctx.moveTo(x + s * 0.68, y + s * 0.32);
+    ctx.lineTo(x + s * 0.32, y + s * 0.68);
+    ctx.stroke();
+    ctx.restore();
+    addRegion({ id, x, y, w: s, h: s, onClick: onClose || closeDialog, tip: () => ['Close', 'Esc'] });
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -863,6 +1575,10 @@
     canvas.style.width = canvasW + 'px';
     canvas.style.height = canvasH + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // the HUD is laid out on a virtual screen about 690 units tall
+    uiS = Math.max(0.7, Math.min(1.6, canvasW / 1060, canvasH / 690));
+    UW = canvasW / uiS;
+    UH = canvasH / uiS;
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -1090,10 +1806,9 @@
     isPanning = false;
     panButton = -1;
 
-    showUpgradeShop = false;
-    upgradeShopScroll = 0;
-    showLivestockShop = false;
-    livestockShopScroll = 0;
+    closeAllDialogs();
+    lastSeason = -1;
+    screenFade = 1;
     shuffleCacheTimer = 0;
     cachedHarvestOrder = [];
     cachedPlantOrder = [];
@@ -1694,10 +2409,9 @@
 
     // Reset upgrades
     upgradeLevels = {};
-    showUpgradeShop = false;
-    upgradeShopScroll = 0;
-    showLivestockShop = false;
-    livestockShopScroll = 0;
+    closeAllDialogs();
+    lastSeason = -1;
+    screenFade = 1;
     autoHarvestTimer = 0;
     autoCollectorTimer = 0;
 
@@ -1782,9 +2496,7 @@
     priceChangeTimer = PRICE_CHANGE_INTERVAL;
 
     // Zoom & pan reset
-    viewZoom = 1.0;
-    viewPanX = 0;
-    viewPanY = 0;
+    resetView();
     isPanning = false;
     panButton = -1;
 
@@ -2953,7 +3665,7 @@
         const bld = buildings[r]?.[c];
 
         // Skip tiles fully off-screen
-        if (x + ts < 0 || x > canvasW || y + ts < 0 || y > canvasH - 45) continue;
+        if (x + ts < 0 || x > canvasW || y + ts < 0 || y > canvasH) continue;
 
         // Draw tile base by type
         if (tt === TILE_ROCK) {
@@ -3047,16 +3759,6 @@
           ctx.restore();
         }
 
-        // Show fertility label on empty farmable tiles (no crop, no building) when zoomed in enough
-        if (!cell && !bld && viewZoom >= 0.8 && tt !== TILE_ROCK && tt !== TILE_WATER) {
-          const q = getTileSoilQuality(r, c);
-          ctx.fillStyle = '#555';
-          ctx.font = `${Math.round(7 * viewZoom)}px sans-serif`;
-          ctx.textAlign = 'right';
-          ctx.textBaseline = 'bottom';
-          ctx.fillText(`${Math.round(q * 100)}%`, x + ts - 3, y + ts - 2);
-        }
-
         // Draw building on tile
         if (bld) {
           const bdef = BUILDINGS[bld.typeIndex];
@@ -3078,15 +3780,6 @@
           // Building sprite (slightly larger at higher levels)
           const iconScale = 1 + (bLvl - 1) * 0.06;
           drawSprite(bdef.sprite, x + ts / 2, y + ts / 2, 32 * viewZoom * iconScale);
-
-          // Building name label when zoomed in
-          if (viewZoom >= 0.9) {
-            ctx.fillStyle = '#aff';
-            ctx.font = `${Math.round(7 * viewZoom)}px sans-serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'bottom';
-            ctx.fillText(bdef.name, x + ts / 2, y + ts - 2);
-          }
 
           // Level badge in top-right corner
           if (bLvl > 1) {
@@ -3366,402 +4059,6 @@
     ctx.restore();
   }
 
-  /* ── Crop bar layout ── */
-  const CROP_BTN_W = 48;
-  const CROP_BTN_GAP = 4;
-  const CROP_BAR_X = 8;
-
-  function drawUI() {
-    // Crop selection bar at bottom
-    const barY = canvasH - 45;
-    ctx.fillStyle = 'rgba(0,0,0,0.7)';
-    ctx.fillRect(0, barY, canvasW, 45);
-
-    for (let i = 0; i < CROPS.length; ++i) {
-      const bx = CROP_BAR_X + i * (CROP_BTN_W + CROP_BTN_GAP);
-      const selected = i === selectedCropIndex && selectedTool === TOOL_PLANT;
-      ctx.fillStyle = selected ? '#444' : '#222';
-      ctx.fillRect(bx, barY + 4, CROP_BTN_W, 37);
-      if (selected) {
-        ctx.strokeStyle = '#0f0';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(bx, barY + 4, CROP_BTN_W, 37);
-      }
-      drawSprite(CROPS[i].sprite, bx + 14, barY + 15, 16);
-      ctx.textAlign = 'center';
-      ctx.fillStyle = credits >= CROPS[i].seedCost ? '#aaa' : '#f44';
-      ctx.font = '8px sans-serif';
-      ctx.fillText(`${CROPS[i].seedCost}cr`, bx + CROP_BTN_W - 10, barY + 18);
-
-      // Price multiplier indicator arrow
-      const pm = priceMultipliers[i] || 1;
-      if (pm > 1.05) {
-        ctx.fillStyle = '#0c0';
-        ctx.font = '9px sans-serif';
-        ctx.fillText('\u25B2' + pm.toFixed(1), bx + CROP_BTN_W / 2, barY + 38);
-      } else if (pm < 0.95) {
-        ctx.fillStyle = '#f44';
-        ctx.font = '9px sans-serif';
-        ctx.fillText('\u25BC' + pm.toFixed(1), bx + CROP_BTN_W / 2, barY + 38);
-      } else {
-        ctx.fillStyle = '#666';
-        ctx.font = '8px sans-serif';
-        ctx.fillText(pm.toFixed(1), bx + CROP_BTN_W / 2, barY + 38);
-      }
-    }
-
-    // Right-side buttons: HOE | SELL | LIVESTOCK | UPGRADES
-    const upgBtnX = canvasW - 78;
-    const livBtnX = upgBtnX - 77;
-    const sellBtnX = livBtnX - 67;
-    const hoeBtnX = sellBtnX - 65;
-
-    // Hoe tool button
-    const hoeSelected = selectedTool === TOOL_HOE;
-    ctx.fillStyle = hoeSelected ? '#432' : '#221';
-    ctx.fillRect(hoeBtnX, barY + 4, 58, 37);
-    ctx.strokeStyle = hoeSelected ? '#fa0' : '#864';
-    ctx.lineWidth = hoeSelected ? 2 : 1;
-    ctx.strokeRect(hoeBtnX, barY + 4, 58, 37);
-    drawSprite('hoe', hoeBtnX + 29, barY + 17, 16);
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#ca8';
-    ctx.font = 'bold 8px sans-serif';
-    ctx.fillText('HOE', hoeBtnX + 29, barY + 36);
-
-    // Sell button
-    ctx.fillStyle = '#040';
-    ctx.fillRect(sellBtnX, barY + 4, 60, 37);
-    ctx.strokeStyle = '#0a0';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(sellBtnX, barY + 4, 60, 37);
-    ctx.fillStyle = '#0f0';
-    ctx.font = 'bold 10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('SELL ALL', sellBtnX + 30, barY + 26);
-
-    // Upgrades button
-    ctx.fillStyle = showUpgradeShop ? '#333' : '#220';
-    ctx.fillRect(upgBtnX, barY + 4, 70, 37);
-    ctx.strokeStyle = '#cc0';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(upgBtnX, barY + 4, 70, 37);
-    ctx.fillStyle = '#ff0';
-    ctx.font = 'bold 10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('UPGRADES', upgBtnX + 35, barY + 20);
-    ctx.fillStyle = '#aa0';
-    ctx.font = '8px sans-serif';
-    ctx.fillText('(U)', upgBtnX + 35, barY + 34);
-
-    // Zoom indicator
-    if (Math.abs(viewZoom - 1.0) > 0.01) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(canvasW - 70, 4, 66, 18);
-      ctx.fillStyle = '#8cf';
-      ctx.font = '10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`Zoom: ${Math.round(viewZoom * 100)}%`, canvasW - 37, 16);
-    }
-
-    // Building selector row above the crop bar
-    const bldBarY = barY - 30;
-    ctx.fillStyle = 'rgba(0,0,20,0.6)';
-    ctx.fillRect(0, bldBarY, canvasW, 28);
-    ctx.fillStyle = '#8cf';
-    ctx.font = 'bold 9px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('Buildings:', CROP_BAR_X, bldBarY + 11);
-
-    const BLD_BTN_W = 56;
-    const BLD_BTN_GAP = 4;
-    const bldStartX = CROP_BAR_X + 60;
-    for (let i = 0; i < BUILDINGS.length; ++i) {
-      const bx = bldStartX + i * (BLD_BTN_W + BLD_BTN_GAP);
-      const selected = i === selectedBuildingIndex && selectedTool === TOOL_BUILD;
-      ctx.fillStyle = selected ? '#224' : '#112';
-      ctx.fillRect(bx, bldBarY + 2, BLD_BTN_W, 24);
-      if (selected) {
-        ctx.strokeStyle = '#0ff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(bx, bldBarY + 2, BLD_BTN_W, 24);
-      }
-      drawSprite(BUILDINGS[i].sprite, bx + 12, bldBarY + 14, 16);
-      ctx.textAlign = 'center';
-      ctx.fillStyle = credits >= BUILDINGS[i].cost ? '#aaa' : '#f44';
-      ctx.font = '8px sans-serif';
-      ctx.fillText(`${BUILDINGS[i].cost}cr`, bx + BLD_BTN_W - 12, bldBarY + 17);
-    }
-
-    // Cancel building mode button (if in build mode)
-    if (selectedTool === TOOL_BUILD) {
-      const cancelX = bldStartX + BUILDINGS.length * (BLD_BTN_W + BLD_BTN_GAP) + 4;
-      ctx.fillStyle = '#300';
-      ctx.fillRect(cancelX, bldBarY + 2, 40, 24);
-      ctx.strokeStyle = '#f44';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(cancelX, bldBarY + 2, 40, 24);
-      ctx.fillStyle = '#f88';
-      ctx.font = 'bold 9px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Cancel', cancelX + 20, bldBarY + 17);
-    }
-
-    // Livestock button
-    ctx.fillStyle = showLivestockShop ? '#233' : '#122';
-    ctx.fillRect(livBtnX, barY + 4, 70, 37);
-    ctx.strokeStyle = '#0a8';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(livBtnX, barY + 4, 70, 37);
-    ctx.fillStyle = '#0fc';
-    ctx.font = 'bold 10px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('LIVESTOCK', livBtnX + 35, barY + 20);
-    ctx.fillStyle = '#088';
-    ctx.font = '8px sans-serif';
-    ctx.fillText('(L)', livBtnX + 35, barY + 34);
-  }
-
-  function drawUpgradeShop() {
-    if (!showUpgradeShop || state !== STATE_PLAYING) return;
-
-    const panelW = 300;
-    const ROW_H = 48;
-    const headerH = 30;
-    const footerH = 16;
-    const contentH = UPGRADES.length * ROW_H;
-    const maxVisH = canvasH - 60;
-    const panelH = Math.min(headerH + contentH + footerH, maxVisH);
-    const px = Math.round((canvasW - panelW) / 2);
-    const py = Math.round((canvasH - panelH) / 2) - 10;
-    const scrollableH = panelH - headerH - footerH;
-    const maxScroll = Math.max(0, contentH - scrollableH);
-    upgradeShopScroll = Math.max(0, Math.min(maxScroll, upgradeShopScroll));
-
-    // Panel background
-    ctx.fillStyle = 'rgba(5,10,25,0.94)';
-    ctx.fillRect(px, py, panelW, panelH);
-    ctx.strokeStyle = '#cc0';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(px, py, panelW, panelH);
-
-    // Title
-    ctx.fillStyle = '#ff0';
-    ctx.font = 'bold 16px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Upgrade Shop', px + panelW / 2, py + 22);
-
-    // Clip content area
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(px, py + headerH, panelW, scrollableH);
-    ctx.clip();
-
-    // Upgrade rows
-    for (let i = 0; i < UPGRADES.length; ++i) {
-      const def = UPGRADES[i];
-      const curLevel = getUpgradeLevel(def.id);
-      const maxed = curLevel >= def.maxLevel;
-      let cost;
-      if (def.id === 'plotExpansion') {
-        const newTiles = getNextExpansionTileCount();
-        cost = maxed ? 0 : newTiles * 8;
-      } else
-        cost = maxed ? 0 : getUpgradeCost(def, curLevel);
-      const canAfford = credits >= cost;
-      const ry = py + headerH + i * ROW_H - upgradeShopScroll;
-
-      // Skip off-screen rows
-      if (ry + ROW_H < py + headerH || ry > py + headerH + scrollableH) continue;
-
-      // Row background
-      ctx.fillStyle = 'rgba(20,30,40,0.8)';
-      ctx.fillRect(px + 6, ry + 1, panelW - 12, ROW_H - 2);
-
-      // Icon + name
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'left';
-      ctx.fillStyle = '#fff';
-      drawSprite(def.sprite, px + 20, ry + 11, 16);
-      ctx.fillText(def.name, px + 31, ry + 15);
-
-      // Level pips (skip for infinite upgrades like Plot Expansion)
-      ctx.font = '9px sans-serif';
-      ctx.fillStyle = '#888';
-      if (def.maxLevel > 10) {
-        ctx.fillText(`Lv${curLevel}`, px + 12, ry + 27);
-      } else {
-        let pipStr = '';
-        for (let l = 0; l < def.maxLevel; ++l)
-          pipStr += l < curLevel ? '\u25A0 ' : '\u25A1 ';
-        ctx.fillText(pipStr + `Lv${curLevel}/${def.maxLevel}`, px + 12, ry + 27);
-      }
-
-      // Description
-      ctx.fillStyle = '#777';
-      ctx.font = '8px sans-serif';
-      ctx.fillText(def.desc, px + 12, ry + 39);
-
-      // Buy button area
-      const btnX = px + panelW - 66;
-      const btnY = ry + 5;
-      const btnW = 54;
-      const btnH = 20;
-      if (maxed) {
-        ctx.fillStyle = '#060';
-        ctx.fillRect(btnX, btnY, btnW, btnH);
-        ctx.fillStyle = '#0a0';
-        ctx.font = 'bold 10px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('MAX', btnX + btnW / 2, btnY + 14);
-      } else {
-        ctx.fillStyle = canAfford ? '#220' : '#200';
-        ctx.fillRect(btnX, btnY, btnW, btnH);
-        ctx.strokeStyle = canAfford ? '#cc0' : '#a44';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(btnX, btnY, btnW, btnH);
-        ctx.fillStyle = canAfford ? '#ff0' : '#f66';
-        ctx.font = 'bold 9px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(`${cost}cr`, btnX + btnW / 2, btnY + 14);
-      }
-    }
-
-    ctx.restore();
-
-    // Scroll indicators
-    if (maxScroll > 0) {
-      if (upgradeShopScroll > 0) {
-        ctx.fillStyle = '#cc0';
-        ctx.font = '10px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('\u25B2', px + panelW - 14, py + headerH + 10);
-      }
-      if (upgradeShopScroll < maxScroll) {
-        ctx.fillStyle = '#cc0';
-        ctx.font = '10px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('\u25BC', px + panelW - 14, py + panelH - footerH - 4);
-      }
-    }
-
-    // Close hint
-    ctx.fillStyle = '#666';
-    ctx.font = '9px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Press U or Esc to close | Scroll for more', px + panelW / 2, py + panelH - 3);
-  }
-
-  function drawLivestockShop() {
-    if (!showLivestockShop || state !== STATE_PLAYING) return;
-
-    const panelW = 280;
-    const ROW_H = 48;
-    const headerH = 30;
-    const footerH = 16;
-    const contentH = LIVESTOCK.length * ROW_H;
-    const maxVisH = canvasH - 60;
-    const panelH = Math.min(headerH + contentH + footerH, maxVisH);
-    const px = Math.round((canvasW - panelW) / 2);
-    const py = Math.round((canvasH - panelH) / 2) - 10;
-    const scrollableH = panelH - headerH - footerH;
-    const maxScroll = Math.max(0, contentH - scrollableH);
-    livestockShopScroll = Math.max(0, Math.min(maxScroll, livestockShopScroll));
-
-    // Panel background
-    ctx.fillStyle = 'rgba(5,15,10,0.94)';
-    ctx.fillRect(px, py, panelW, panelH);
-    ctx.strokeStyle = '#0a8';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(px, py, panelW, panelH);
-
-    // Title
-    ctx.fillStyle = '#0fc';
-    ctx.font = 'bold 16px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Livestock Shop', px + panelW / 2, py + 22);
-
-    // Clip content area
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(px, py + headerH, panelW, scrollableH);
-    ctx.clip();
-
-    // Livestock rows
-    for (let i = 0; i < LIVESTOCK.length; ++i) {
-      const def = LIVESTOCK[i];
-      const canAfford = credits >= def.cost;
-      const ry = py + headerH + i * ROW_H - livestockShopScroll;
-
-      // Skip off-screen rows
-      if (ry + ROW_H < py + headerH || ry > py + headerH + scrollableH) continue;
-
-      // Row background
-      ctx.fillStyle = 'rgba(20,35,25,0.8)';
-      ctx.fillRect(px + 6, ry + 1, panelW - 12, ROW_H - 2);
-
-      // Icon + name
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'left';
-      ctx.fillStyle = '#fff';
-      drawSprite(def.sprite, px + 20, ry + 11, 16);
-      ctx.fillText(def.name, px + 31, ry + 15);
-
-      // Produce info
-      ctx.font = '9px sans-serif';
-      ctx.fillStyle = '#aaa';
-      drawSprite(def.produceSprite, px + 17, ry + 24, 10);
-      ctx.fillText(`${def.produce} every ${def.feedInterval}s (${getEffectiveProduceValue(def)}cr)`, px + 24, ry + 27);
-
-      // Owned count
-      const owned = livestockPens.filter(p => p.typeIndex === i).length;
-      if (owned > 0) {
-        ctx.fillStyle = '#8cf';
-        ctx.font = '8px sans-serif';
-        ctx.fillText(`Owned: ${owned}`, px + 12, ry + 39);
-      }
-
-      // Buy button area
-      const btnX = px + panelW - 66;
-      const btnY = ry + 5;
-      const btnW = 54;
-      const btnH = 20;
-      ctx.fillStyle = canAfford ? '#132' : '#200';
-      ctx.fillRect(btnX, btnY, btnW, btnH);
-      ctx.strokeStyle = canAfford ? '#0a8' : '#a44';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(btnX, btnY, btnW, btnH);
-      ctx.fillStyle = canAfford ? '#0fc' : '#f66';
-      ctx.font = 'bold 9px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${def.cost}cr`, btnX + btnW / 2, btnY + 14);
-    }
-
-    ctx.restore();
-
-    // Scroll indicators
-    if (maxScroll > 0) {
-      if (livestockShopScroll > 0) {
-        ctx.fillStyle = '#0a8';
-        ctx.font = '10px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('\u25B2', px + panelW - 14, py + headerH + 10);
-      }
-      if (livestockShopScroll < maxScroll) {
-        ctx.fillStyle = '#0a8';
-        ctx.font = '10px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('\u25BC', px + panelW - 14, py + panelH - footerH - 4);
-      }
-    }
-
-    // Close hint
-    ctx.fillStyle = '#666';
-    ctx.font = '9px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Press L or Esc to close', px + panelW / 2, py + panelH - 3);
-  }
-
   function drawDragSelection() {
     if (!isDragging || !dragStartedOnGrid) return;
 
@@ -3826,76 +4123,6 @@
     ctx.setLineDash([]);
   }
 
-  function drawHUD() {
-    if (state === STATE_READY) {
-      ctx.fillStyle = 'rgba(0,0,0,0.8)';
-      ctx.fillRect(0, 0, canvasW, canvasH);
-      ctx.fillStyle = '#4d4';
-      ctx.font = 'bold 28px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('SPACE FARMING', canvasW / 2, canvasH / 2 - 40);
-      ctx.fillStyle = '#888';
-      ctx.font = '14px sans-serif';
-      ctx.fillText('Grow crops, tend livestock, sell produce on your space station.', canvasW / 2, canvasH / 2);
-      startButtons.cont = null;
-      startButtons.fresh = null;
-      if (savedGameAvailable) {
-        const bw = 140, bh = 30, gap = 16, by = canvasH / 2 + 22;
-        startButtons.cont = { x: canvasW / 2 - bw - gap / 2, y: by, w: bw, h: bh };
-        startButtons.fresh = { x: canvasW / 2 + gap / 2, y: by, w: bw, h: bh };
-        const drawStartButton = (r, label, fill, stroke, color) => {
-          ctx.fillStyle = fill;
-          ctx.fillRect(r.x, r.y, r.w, r.h);
-          ctx.strokeStyle = stroke;
-          ctx.lineWidth = 2;
-          ctx.strokeRect(r.x, r.y, r.w, r.h);
-          ctx.fillStyle = color;
-          ctx.font = 'bold 13px sans-serif';
-          ctx.fillText(label, r.x + r.w / 2, r.y + r.h / 2 + 1);
-        };
-        drawStartButton(startButtons.cont, 'Continue', '#132', '#4d4', '#8f8');
-        drawStartButton(startButtons.fresh, 'New Game', '#221', '#aa6', '#ee9');
-        ctx.fillStyle = '#777';
-        ctx.font = '11px sans-serif';
-        ctx.fillText('Enter = Continue  |  F2 = New Game', canvasW / 2, by + bh + 18);
-      } else
-        ctx.fillText('Tap or press F2 to Start', canvasW / 2, canvasH / 2 + 30);
-      if (saveNotice) {
-        ctx.fillStyle = '#f84';
-        ctx.font = '12px sans-serif';
-        ctx.fillText(saveNotice, canvasW / 2, canvasH / 2 + 100);
-      }
-      ctx.textAlign = 'start';
-    }
-
-    if (state === STATE_PAUSED) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(0, 0, canvasW, canvasH);
-      ctx.fillStyle = '#ff0';
-      ctx.font = 'bold 32px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('PAUSED', canvasW / 2, canvasH / 2);
-      ctx.textAlign = 'start';
-    }
-
-    if (state === STATE_GAME_OVER) {
-      ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      ctx.fillRect(0, 0, canvasW, canvasH);
-      ctx.fillStyle = '#f80';
-      ctx.font = 'bold 28px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('SEASON OVER', canvasW / 2, canvasH / 2 - 25);
-      ctx.fillStyle = '#ccc';
-      ctx.font = '16px sans-serif';
-      ctx.fillText(`Credits: ${credits} — Days: ${dayCount}`, canvasW / 2, canvasH / 2 + 10);
-      ctx.fillText('Tap or press F2 to play again', canvasW / 2, canvasH / 2 + 40);
-      ctx.textAlign = 'start';
-    }
-  }
-
   function drawDayNightOverlay() {
     if (state !== STATE_PLAYING) return;
     // Night phase: dayPhase 0.5..1.0 is night
@@ -3938,318 +4165,1253 @@
 
       // Mouse sprite
       drawSprite('mouse', sx, sy, 32 * viewZoom);
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
 
-      // Pest control indicator: show trap icon when cursor is nearby
-      const mdx = tooltipX - sx, mdy = tooltipY - sy;
-      const mDist = Math.sqrt(mdx * mdx + mdy * mdy);
-      if (mDist < 20 * viewZoom) {
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(sx - 22 * viewZoom, sy - 20 * viewZoom, 44 * viewZoom, 14 * viewZoom);
-        ctx.fillStyle = '#fa0';
-        ctx.font = `bold ${Math.round(8 * viewZoom)}px sans-serif`;
-        drawSprite('trap', sx - 13 * viewZoom, sy - 13 * viewZoom, 12 * viewZoom);
-        ctx.fillText('+10cr', sx + 5 * viewZoom, sy - 12 * viewZoom);
-      }
     }
   }
 
-  function drawInventoryPanel() {
-    if (state !== STATE_PLAYING) return;
-    const capacity = getStorageCapacity();
-    const totalItems = getTotalInventoryCount();
+  /* ══════════════════════════════════════════════════════════════════
+     HUD — farm status, storage, clock, tool dock
+     ══════════════════════════════════════════════════════════════════ */
 
-    // Collect items to display
+  const HUD_M = 10;                  // margin around HUD panels (UI units)
+  const DOCK_H = 84;
+  const SLOT_W = 58, SLOT_H = 64, SLOT_GAP = 6;
+  const SEASON_COLORS = ['#8ef08a', '#ffd75a', '#ff9a4a', '#a8dcff'];
+
+  let creditsShown = 100;            // eased counter value
+  let creditsPulse = 0;
+  let creditsDelta = 0, creditsDeltaT = 0;
+  const dockScroll = { plant: 0, build: 0 };
+  let banner = null;                 // { title, sub, color, icon, t }
+  let screenFade = 1;                // fades the screen in after a state change
+
+  function announce(title, sub, color, icon) {
+    banner = { title, sub: sub || '', color: color || UI.gold, icon: icon || null, t: 0 };
+  }
+
+  function dockMode() {
+    if (selectedTool === TOOL_BUILD) return 'build';
+    if (selectedTool === TOOL_HOE) return 'hoe';
+    return 'plant';
+  }
+
+  function hudLayout() {
+    const farm = { x: HUD_M, y: HUD_M, w: 244, h: 112 };
+    const clockW = Math.min(330, UW - 2 * (farm.w + HUD_M * 3));
+    const clock = { x: Math.round(UW / 2 - clockW / 2), y: HUD_M, w: clockW, h: 64 };
+    const dockW = Math.min(UW - HUD_M * 2, 1180);
+    const dock = { x: Math.round((UW - dockW) / 2), y: UH - DOCK_H - HUD_M, w: dockW, h: DOCK_H };
+    const storeTop = farm.y + farm.h + 8;
+    const storage = { x: HUD_M, y: storeTop, w: farm.w, h: 0, maxH: dock.y - 40 - storeTop };
+    return { farm, clock, dock, storage };
+  }
+
+  /* ── HUD fading: panels turn see-through while farm action is behind them ── */
+
+  const HUD_FADED = 0.28;
+  const hudFade = {};
+  let hudFrame = 0;
+  let hudActorCache = null, hudActorFrame = -1;
+
+  /* Screen rectangles (UI units) of everything that should stay visible */
+  function hudActors() {
+    if (hudActorFrame === hudFrame && hudActorCache) return hudActorCache;
+    const out = [];
+    const ts = BASE_TILE_SIZE * viewZoom / uiS;
+    const add = (x, y, w, h) => out.push({ x, y, w, h });
+    for (const a of wildAnimals) {
+      const g = gridToScreen(a.rx !== undefined ? a.rx : a.x, a.ry !== undefined ? a.ry : a.y);
+      add(g.x / uiS, g.y / uiS, ts, ts);
+    }
+    for (const pen of livestockPens)
+      if (pen.produceReady) {
+        const s = livestockPenToScreen(pen);
+        add(s.x / uiS - ts / 2, s.y / uiS - ts / 2, ts, ts);
+      }
+    if (isDragging && dragStartedOnGrid) {
+      const x0 = Math.min(dragStartX, dragCurrentX) / uiS, y0 = Math.min(dragStartY, dragCurrentY) / uiS;
+      add(x0, y0, Math.abs(dragCurrentX - dragStartX) / uiS, Math.abs(dragCurrentY - dragStartY) / uiS);
+    }
+    if (kbCursor.active) {
+      const g = gridToScreen(kbCursor.col, kbCursor.row);
+      add(g.x / uiS, g.y / uiS, ts, ts);
+    }
+    hudActorCache = out;
+    hudActorFrame = hudFrame;
+    return out;
+  }
+
+  function overlapsActor(x, y, w, h) {
+    for (const a of hudActors())
+      if (a.x < x + w && a.x + a.w > x && a.y < y + h && a.y + a.h > y)
+        return true;
+    return false;
+  }
+
+  function hudAlpha(id, x, y, w, h) {
+    const f = hudFade[id] || (hudFade[id] = { a: 1 });
+    const mouseInside = pointerUX >= x && pointerUX <= x + w && pointerUY >= y && pointerUY <= y + h && pointerInside;
+    const live = state === STATE_PLAYING && !dialog;
+    const target = live && !mouseInside && overlapsActor(x, y, w, h) ? HUD_FADED : 1;
+    f.a += (target - f.a) * (1 - Math.exp(-frameDt * 9));
+    f.rect = { x, y, w, h };
+    f.frame = hudFrame;
+    return f.a;
+  }
+
+  function beginHudPanel(id, x, y, w, h) {
+    ctx.save();
+    ctx.globalAlpha *= hudAlpha(id, x, y, w, h);
+  }
+
+  function endHudPanel() {
+    ctx.restore();
+  }
+
+  /* A click on a pest or a ready animal seen through a faded panel goes to the farm */
+  function hudPassThrough(ux, uy) {
+    for (const id in hudFade) {
+      const f = hudFade[id];
+      if (f.frame < hudFrame - 2 || f.a > 0.6 || !f.rect) continue;
+      const r = f.rect;
+      if (ux < r.x || ux > r.x + r.w || uy < r.y || uy > r.y + r.h) continue;
+      for (const a of hudActors())
+        if (ux >= a.x - 6 && ux <= a.x + a.w + 6 && uy >= a.y - 6 && uy <= a.y + a.h + 6)
+          return true;
+    }
+    return false;
+  }
+
+  /* ── Farm panel: credits, storage, energy ── */
+
+  function drawFarmPanel(L) {
+    const r = L.farm;
+    beginHudPanel('farm', r.x, r.y, r.w, r.h);
+    drawPanel(r.x, r.y, r.w, r.h, { accent: UI.gold });
+    // Credits
+    const pulse = 1 + creditsPulse * 0.18;
+    ctx.save();
+    ctx.translate(r.x + 26, r.y + 26);
+    ctx.scale(pulse, pulse);
+    drawSprite('coin', 0, 0, 28);
+    ctx.restore();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const credW = fitText(Math.round(creditsShown).toLocaleString('en-US'), r.x + 46, r.y + 27, r.w - 56 - 60, 26, { weight: 'bold', color: UI.gold, outline: 'rgba(0,0,0,0.6)' });
+    if (creditsDeltaT > 0 && creditsDelta) {
+      ctx.save();
+      ctx.globalAlpha *= Math.min(1, creditsDeltaT);
+      ctx.textAlign = 'left';
+      fitText((creditsDelta > 0 ? '+' : '') + creditsDelta, r.x + 52 + credW, r.y + 27 - (1 - Math.min(1, creditsDeltaT)) * 8, r.x + r.w - 10 - (r.x + 52 + credW), 14, { weight: 'bold', color: creditsDelta > 0 ? UI.good : UI.bad });
+      ctx.restore();
+    }
+    addRegion({ id: 'hud-credits', x: r.x, y: r.y, w: r.w, h: 48, tip: () => [
+      '[[coin]] Credits',
+      'Earned by selling produce, orders and building income.',
+      'Spent on seeds, buildings, animals and upgrades.'
+    ] });
+
+    // Storage
+    const cap = getStorageCapacity();
+    const used = getTotalInventoryCount();
+    const full = used >= cap;
+    drawSprite('basket', r.x + 20, r.y + 63, 18);
+    drawMeter(r.x + 36, r.y + 55, r.w - 48, 16, used / cap, full ? UI.bad : (used / cap > 0.8 ? UI.warn : '#7ed46a'), { label: `${used} / ${cap}`, labelPx: 11 });
+    addRegion({ id: 'hud-storage', x: r.x, y: r.y + 50, w: r.w, h: 26, tip: () => {
+      const lines = ['[[basket]] Storage', `${used} of ${cap} slots used.`];
+      if (full)
+        lines.push('✘ Storage is full: harvesting stops until you sell.');
+      lines.push('Silos add room. Sell with S.');
+      return lines;
+    } });
+
+    // Energy
+    const eMax = getEnergyMax();
+    const eFrac = energy / eMax;
+    const regen = getEnergyRegenRate();
+    drawSprite('bolt', r.x + 20, r.y + 89, 18);
+    drawMeter(r.x + 36, r.y + 81, r.w - 48, 16, eFrac, eFrac > 0.5 ? UI.energy : (eFrac > 0.2 ? UI.warn : UI.bad), { label: `${Math.round(energy)} / ${eMax}  +${regen.toFixed(1)}/s`, labelPx: 11, shine: eFrac >= 1 });
+    addRegion({ id: 'hud-energy', x: r.x, y: r.y + 76, w: r.w, h: 30, tip: () => [
+      '[[bolt]] Energy',
+      `${Math.round(energy)} of ${eMax}, regenerating ${regen.toFixed(1)} per second.`,
+      'Harvesters and harvest drones use 1 energy per crop.',
+      'Solar panels charge by day, wind turbines at night and in storms.',
+      'Below 20% the drones slow down.'
+    ] });
+    endHudPanel();
+  }
+
+  /* ── Storage list ── */
+
+  function storageItems() {
     const items = [];
     for (const crop of CROPS) {
       const count = inventory[crop.name] || 0;
       if (count > 0)
-        items.push({ sprite: crop.sprite, name: crop.name, count });
+        items.push({ sprite: crop.sprite, name: crop.name, count, value: getEffectiveSellPrice(crop) });
     }
     for (const live of LIVESTOCK) {
       const count = inventory[live.produce] || 0;
       if (count > 0)
-        items.push({ sprite: live.produceSprite, name: live.produce, count });
+        items.push({ sprite: live.produceSprite, name: live.produce, count, value: getEffectiveProduceValue(live) });
     }
+    return items;
+  }
 
-    const estValue = getEstimatedStorageValue();
-
-    const panelW = 110;
-    const lineH = 16;
-    const headerH = 18;
-    const estLineH = totalItems > 0 ? lineH : 0;
-    const panelH = headerH + Math.max(1, items.length) * lineH + estLineH + 6;
-    const px = canvasW - panelW - 4;
-    const py = 24;
-
-    ctx.fillStyle = 'rgba(0,0,0,0.65)';
-    ctx.fillRect(px, py, panelW, panelH);
-    ctx.strokeStyle = totalItems >= capacity ? '#f44' : '#4a4';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(px, py, panelW, panelH);
-
-    // Header
-    ctx.fillStyle = totalItems >= capacity ? '#f44' : '#8cf';
-    ctx.font = 'bold 9px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(`Storage: ${totalItems}/${capacity}`, px + 4, py + 13);
-
-    // Items
-    ctx.font = '9px sans-serif';
-    for (let i = 0; i < items.length; ++i) {
-      ctx.fillStyle = '#ccc';
-      const iy = py + headerH + (i + 1) * lineH;
-      drawSprite(items[i].sprite, px + 11, iy - 4, 16);
-      ctx.fillText(`${items[i].name} ${items[i].count}`, px + 22, iy);
-    }
+  function drawStoragePanel(L) {
+    const items = storageItems();
+    const r = L.storage;
+    const rowH = 22;
+    const headerH = 30;
+    const btnH = items.length ? 34 : 0;
+    const maxRows = Math.max(1, Math.floor((r.maxH - headerH - btnH - 24) / rowH));
+    const shown = items.length > maxRows ? maxRows - 1 : items.length;
+    const rows = items.length ? shown + (items.length > shown ? 1 : 0) : 1;
+    const h = headerH + 8 + rows * rowH + (btnH ? btnH + 10 : 4) + 4;
+    if (h > r.maxH + 20) return;
+    r.h = h;
+    beginHudPanel('storage', r.x, r.y, r.w, h);
+    const value = getEstimatedStorageValue();
+    const top = drawPanel(r.x, r.y, r.w, h, { title: 'Storage', icon: 'basket', headerH: headerH, titlePx: 14, titleRight: items.length ? `≈ ${value.toLocaleString('en-US')} [[coin]]` : '', titleRightColor: UI.gold, accent: '#7ed46a' });
+    ctx.textBaseline = 'middle';
     if (!items.length) {
-      ctx.fillStyle = '#666';
-      ctx.fillText('Empty', px + 4, py + headerH + lineH);
+      ctx.textAlign = 'left';
+      fitText('Harvest crops to fill it', r.x + 12, top + rowH / 2, r.w - 24, 12, { color: UI.textMute });
     }
-
-    // Estimated storage value
-    if (totalItems > 0) {
-      ctx.fillStyle = '#da2';
-      ctx.font = 'bold 8px sans-serif';
-      ctx.fillText(`Est. value: ${estValue}cr`, px + 4, py + headerH + Math.max(1, items.length) * lineH + lineH);
+    for (let i = 0; i < shown; ++i) {
+      const it = items[i];
+      const y = top + i * rowH;
+      if (i % 2 === 0) {
+        ctx.fillStyle = 'rgba(255,255,255,0.03)';
+        ctx.fillRect(r.x + 6, y, r.w - 12, rowH);
+      }
+      drawSprite(it.sprite, r.x + 18, y + rowH / 2, 18);
+      ctx.textAlign = 'right';
+      const cw = fitText('×' + it.count, r.x + r.w - 12, y + rowH / 2 + 1, 50, 13, { weight: 'bold', color: UI.text });
+      ctx.textAlign = 'left';
+      fitText(it.name, r.x + 32, y + rowH / 2 + 1, r.w - 32 - 16 - cw - 6, 12, { color: UI.textDim });
     }
+    if (items.length > shown) {
+      ctx.textAlign = 'left';
+      fitText(`+${items.length - shown} more…`, r.x + 32, top + shown * rowH + rowH / 2 + 1, r.w - 44, 12, { color: UI.textMute });
+    }
+    addRegion({ id: 'hud-storage-list', x: r.x, y: r.y, w: r.w, h: h - btnH - 6, tip: () => {
+      if (!items.length) return ['[[basket]] Storage', 'Harvested crops and animal produce wait here until you sell them.'];
+      const lines = ['[[basket]] Storage', '--- Contents ---'];
+      for (const it of items)
+        lines.push(`[[${it.sprite}]] ${it.name}: ${it.count} × ${it.value} cr`);
+      lines.push(`Worth about ${value} credits right now.`);
+      return lines;
+    } });
+    if (btnH)
+      drawButton({ id: 'btn-sell-storage', x: r.x + 10, y: r.y + h - btnH - 8, w: r.w - 20, h: btnH }, { label: 'Sell all', icon: 'coin', key: 'S', primary: true, color: '#59c96a', px: 13, onClick: sellAllProduce, tip: buildSellButtonTooltip });
+    endHudPanel();
   }
 
-  function drawSeasonAndDayNightHUD() {
-    if (state !== STATE_PLAYING) return;
-    // Season display near the day counter area
-    const seasonName = SEASONS[currentSeason];
-    ctx.fillStyle = '#aaa';
-    ctx.font = 'bold 10px sans-serif';
-    ctx.textAlign = 'left';
-    drawSprite(SEASON_SPRITES[currentSeason], 12, 17, 16);
-    ctx.fillText(seasonName, 22, 22);
+  /* ── Clock: season, day, time of day, weather ── */
 
-    // Day/night indicator
+  const WEATHER_INFO = {
+    none: { name: 'Clear skies', icon: 'sun', color: '#ffe48a' },
+    solarFlare: { name: 'Solar flare', icon: 'flare', color: '#ffd23f' },
+    meteorShower: { name: 'Meteor shower', icon: 'meteor', color: '#ff7a4a' },
+    rain: { name: 'Rain', icon: 'rain', color: '#7ab8ff' },
+    thunderstorm: { name: 'Thunderstorm', icon: 'storm', color: '#c8b0ff' }
+  };
+
+  function weatherInfo() {
+    const w = WEATHER_INFO[weatherType] || WEATHER_INFO.none;
+    if (weatherType === WEATHER_NONE && dayPhase >= 0.5)
+      return { name: 'Clear night', icon: 'moon', color: '#c8d8ff' };
+    return w;
+  }
+
+  function drawClockPanel(L) {
+    const r = L.clock;
+    if (r.w < 180) return;
+    beginHudPanel('clock', r.x, r.y, r.w, r.h);
+    const sc = SEASON_COLORS[currentSeason];
+    drawPanel(r.x, r.y, r.w, r.h, { accent: sc });
+    // Season badge
+    roundRectPath(r.x + 8, r.y + 8, 40, 40, 9);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = hexToRgba(sc, 0.5);
+    ctx.stroke();
+    drawSprite(SEASON_SPRITES[currentSeason], r.x + 28, r.y + 28, 28);
+    const wi = weatherInfo();
+    const weatherW = Math.min(118, r.w * 0.38);
+    const tx = r.x + 56, tw = r.w - 56 - weatherW - 8;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const dayInSeason = ((dayCount - 1) % SEASON_DURATION) + 1;
+    fitText(`${SEASONS[currentSeason]} · Day ${dayCount}`, tx, r.y + 18, tw, 16, { weight: 'bold', color: sc });
     const isNight = dayPhase >= 0.5;
-    drawSprite(isNight ? 'moon' : 'sun', 12, 32, 16);
-    ctx.fillText(isNight ? 'Night' : 'Day', 22, 36);
-
-    // Energy bar
-    const eMax = getEnergyMax();
-    const eFrac = energy / eMax;
-    const eBarX = 4;
-    const eBarY = 42;
-    const eBarW = 80;
-    const eBarH = 8;
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(eBarX, eBarY, eBarW, eBarH);
-    const eColor = eFrac > 0.5 ? '#0cf' : eFrac > 0.2 ? '#fa0' : '#f44';
-    ctx.fillStyle = eColor;
-    ctx.fillRect(eBarX, eBarY, eBarW * eFrac, eBarH);
-    ctx.strokeStyle = '#48a';
-    ctx.lineWidth = 0.5;
-    ctx.strokeRect(eBarX, eBarY, eBarW, eBarH);
-    ctx.fillStyle = '#adf';
-    ctx.font = '7px sans-serif';
+    const secsLeft = Math.ceil((isNight ? 1 - dayPhase : 0.5 - dayPhase) * DAY_CYCLE_PERIOD);
+    fitText(`Day ${dayInSeason}/${SEASON_DURATION} of season · ${isNight ? 'dawn' : 'dusk'} in ${secsLeft}s`, tx, r.y + 36, tw, 11, { color: UI.textDim });
+    // Day / night bar
+    const bx = tx, by = r.y + 47, bw = tw, bh = 8;
+    roundRectPath(bx, by, bw, bh, 4);
+    const g = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+    g.addColorStop(0, '#ffcf6a');
+    g.addColorStop(0.45, '#ffe9a0');
+    g.addColorStop(0.5, '#6a7ad0');
+    g.addColorStop(1, '#1c2660');
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.stroke();
+    drawSprite(isNight ? 'moon' : 'sun', bx + bw * dayPhase, by + bh / 2, 14);
+    addRegion({ id: 'hud-clock', x: r.x, y: r.y, w: r.w - weatherW - 4, h: r.h, tip: buildClockTooltip });
+    // Weather
+    const wx = r.x + r.w - weatherW - 6;
+    roundRectPath(wx, r.y + 8, weatherW, r.h - 16, 9);
+    ctx.fillStyle = hexToRgba(wi.color, 0.12);
+    ctx.fill();
+    ctx.strokeStyle = hexToRgba(wi.color, 0.4);
+    ctx.stroke();
+    drawSprite(wi.icon, wx + 20, r.y + r.h / 2, 24);
     ctx.textAlign = 'left';
-    const eRegen = getEnergyRegenRate();
-    ctx.fillText(`Energy: ${Math.round(energy)}/${eMax} (+${eRegen.toFixed(1)}/s)`, eBarX + eBarW + 4, eBarY + 7);
+    fitText(wi.name, wx + 36, r.y + r.h / 2 - (weatherType !== WEATHER_NONE ? 7 : 0), weatherW - 42, 12, { weight: 'bold', color: wi.color });
+    if (weatherType !== WEATHER_NONE)
+      fitText(`${Math.ceil(weatherTimer)}s left`, wx + 36, r.y + r.h / 2 + 9, weatherW - 42, 11, { color: UI.textDim });
+    addRegion({ id: 'hud-weather', x: wx, y: r.y, w: weatherW, h: r.h, tip: buildWeatherTooltip });
+    endHudPanel();
   }
 
-  function drawGame() {
-    ctx.fillStyle = '#0a0a1a';
-    ctx.fillRect(0, 0, canvasW, canvasH);
+  /* ── Tool dock ── */
 
-    if (state === STATE_PLAYING || state === STATE_GAME_OVER) {
-      drawGrid();
-      drawAnimals();
-      drawLivestock();
-      drawDayNightOverlay();
-      drawWeatherOverlay();
-      drawUI();
-      drawDragSelection();
-      drawInventoryPanel();
-      drawSeasonAndDayNightHUD();
-      drawUpgradeShop();
-      drawLivestockShop();
+  function dockItems(mode) {
+    if (mode === 'plant')
+      return CROPS.map((c, i) => ({ kind: 'crop', index: i }));
+    if (mode === 'build')
+      return BUILDINGS.map((b, i) => ({ kind: 'building', index: i }));
+    return [];
+  }
+
+  function selectCrop(i) {
+    selectedCropIndex = i;
+    selectedTool = TOOL_PLANT;
+    selectedBuildingIndex = -1;
+    SZ.GameAudio.play('click');
+  }
+
+  function selectBuilding(i) {
+    selectedBuildingIndex = i;
+    selectedTool = TOOL_BUILD;
+    SZ.GameAudio.play('click');
+  }
+
+  function setTool(mode) {
+    if (mode === 'plant') {
+      selectedTool = TOOL_PLANT;
+      selectedBuildingIndex = -1;
+    } else if (mode === 'build') {
+      selectedTool = TOOL_BUILD;
+      if (selectedBuildingIndex < 0)
+        selectedBuildingIndex = 0;
+    } else {
+      selectedTool = TOOL_HOE;
+      selectedBuildingIndex = -1;
     }
-
-    drawHUD();
-    drawTooltip();
-
-    if (showTutorial)
-      drawTutorialOverlay();
+    SZ.GameAudio.play('click');
   }
 
-  function drawTutorialOverlay() {
-    ctx.fillStyle = 'rgba(0,0,0,0.8)';
-    ctx.fillRect(0, 0, canvasW, canvasH);
-    const page = TUTORIAL_PAGES[tutorialPage] || TUTORIAL_PAGES[0];
-    const cx = canvasW / 2, pw = 380, ph = 220, px = cx - pw / 2, py = (canvasH - ph) / 2;
-    ctx.fillStyle = 'rgba(5,20,10,0.95)';
-    ctx.fillRect(px, py, pw, ph);
-    ctx.strokeStyle = '#5d5';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(px, py, pw, ph);
-    ctx.fillStyle = '#666';
-    ctx.font = '10px sans-serif';
+  function drawDock(L) {
+    const d = L.dock;
+    beginHudPanel('dock', d.x, d.y, d.w, d.h);
+    drawPanel(d.x, d.y, d.w, d.h, { accent: UI.leaf, radius: 14 });
+    const mode = dockMode();
+    const top = d.y + (d.h - SLOT_H) / 2;
+
+    // Tools
+    const tools = [
+      { mode: 'plant', icon: 'seedbag', label: 'Seeds', key: 'P' },
+      { mode: 'build', icon: 'hammer', label: 'Build', key: 'B' },
+      { mode: 'hoe', icon: 'hoe', label: 'Hoe', key: 'T' }
+    ];
+    let x = d.x + 10;
+    for (const t of tools) {
+      drawButton({ id: 'tool-' + t.mode, x, y: top, w: 56, h: SLOT_H }, {
+        label: t.label, icon: t.icon, vertical: true, active: mode === t.mode, color: UI.leaf, px: 11,
+        onClick: () => setTool(t.mode), tip: () => toolTooltip(t.mode)
+      });
+      if (mode === t.mode) {
+        ctx.fillStyle = UI.leaf;
+        ctx.fillRect(x + 14, top + SLOT_H + 3, 28, 3);
+      }
+      x += 62;
+    }
+    x += 6;
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(x - 5, d.y + 12, 1, d.h - 24);
+
+    // Actions (right)
+    const actions = [
+      { id: 'act-sell', icon: 'coin', label: 'Sell', key: 'S', onClick: sellAllProduce, tip: buildSellButtonTooltip, color: '#59c96a' },
+      { id: 'act-animals', icon: 'paw', label: 'Animals', key: 'L', onClick: () => toggleDialog('livestock'), tip: () => ['[[paw]] Livestock', 'Buy animals for the pens around your farm.', `${livestockPens.length} animals on the farm.`, 'Shortcut: L'], color: '#ff9ac0' },
+      { id: 'act-upgrades', icon: 'techtree', label: 'Upgrades', key: 'U', onClick: () => toggleDialog('upgrades'), tip: () => ['[[techtree]] Upgrades', 'Permanent improvements for the whole farm.', 'Shortcut: U'], color: UI.gold }
+    ];
+    const actW = 66;
+    const actX0 = d.x + d.w - 10 - actions.length * (actW + 6) + 6;
+    actions.forEach((a, i) => {
+      drawButton({ id: a.id, x: actX0 + i * (actW + 6), y: top, w: actW, h: SLOT_H }, {
+        label: a.label, icon: a.icon, vertical: true, color: a.color, px: 11, onClick: a.onClick, tip: a.tip,
+        active: (a.id === 'act-animals' && dialog === 'livestock') || (a.id === 'act-upgrades' && dialog === 'upgrades')
+      });
+    });
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(actX0 - 7, d.y + 12, 1, d.h - 24);
+
+    // Slots
+    const sx0 = x, sx1 = actX0 - 12;
+    const items = dockItems(mode);
+    if (mode === 'hoe') {
+      roundRectPath(sx0, top, sx1 - sx0, SLOT_H, 10);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fill();
+      drawSprite('hoe', sx0 + 30, top + SLOT_H / 2, 32);
+      drawTextBlock('Click soil beside water (or water itself) to enrich it: +20% fertility, sand turns into farmland. Right-click a crop to uproot it for half its seed cost.', sx0 + 56, top + 4, sx1 - sx0 - 66, SLOT_H - 8, 12, { color: UI.textDim, valign: 'middle' });
+    } else {
+      const areaW = sx1 - sx0;
+      const total = items.length * (SLOT_W + SLOT_GAP) - SLOT_GAP;
+      const overflow = total > areaW;
+      const arrowW = overflow ? 22 : 0;
+      const viewX0 = sx0 + arrowW, viewW = areaW - arrowW * 2;
+      const maxScroll = Math.max(0, total - viewW);
+      dockScroll[mode] = Math.max(0, Math.min(maxScroll, dockScroll[mode]));
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(viewX0, d.y + 2, viewW, d.h - 4);
+      ctx.clip();
+      items.forEach((it, i) => {
+        const sx = viewX0 + i * (SLOT_W + SLOT_GAP) - dockScroll[mode];
+        if (sx + SLOT_W < viewX0 || sx > viewX0 + viewW) return;
+        drawDockSlot(it, sx, top, i, viewX0, viewX0 + viewW);
+      });
+      ctx.restore();
+      if (overflow) {
+        const step = (SLOT_W + SLOT_GAP) * 3;
+        drawButton({ id: 'dock-left', x: sx0, y: top, w: arrowW - 2, h: SLOT_H }, { label: '', chevron: -1, disabled: dockScroll[mode] <= 0, onClick: () => { dockScroll[mode] -= step; } });
+        drawButton({ id: 'dock-right', x: sx1 - arrowW + 2, y: top, w: arrowW - 2, h: SLOT_H }, { label: '', chevron: 1, disabled: dockScroll[mode] >= maxScroll, onClick: () => { dockScroll[mode] += step; } });
+      }
+      addRegion({ id: 'dock-slots-wheel', x: sx0, y: d.y, w: areaW, h: d.h, passive: true, onWheel: (dy) => { dockScroll[mode] += dy > 0 ? 64 : -64; } });
+      // keep the selected slot visible
+      const sel = mode === 'plant' ? selectedCropIndex : selectedBuildingIndex;
+      if (sel >= 0 && dockFollow) {
+        const sx = sel * (SLOT_W + SLOT_GAP);
+        if (sx < dockScroll[mode]) dockScroll[mode] = sx;
+        else if (sx + SLOT_W > dockScroll[mode] + viewW) dockScroll[mode] = sx + SLOT_W - viewW;
+        dockFollow = false;
+      }
+    }
+    addRegion({ id: 'dock-bg', x: d.x, y: d.y, w: d.w, h: d.h, passive: true });
+    reorderPassiveRegions();
+    endHudPanel();
+
+    // Action hint above the dock
+    drawActionHint(d);
+  }
+  let dockFollow = true;
+
+  /* Wheel-only regions sit below the buttons they surround */
+  function reorderPassiveRegions() {
+    const passive = frameRegions.filter(r => r.passive);
+    const active = frameRegions.filter(r => !r.passive);
+    frameRegions = passive.concat(active);
+  }
+
+  function drawDockSlot(it, x, y, i, clipL, clipR) {
+    const id = 'slot-' + it.kind + '-' + it.index;
+    const hv = hoverAmount(id);
+    const pressed = isPressed(id) && hoverRegionId === id;
+    const isCrop = it.kind === 'crop';
+    const def = isCrop ? CROPS[it.index] : BUILDINGS[it.index];
+    const selected = isCrop ? (selectedTool === TOOL_PLANT && selectedCropIndex === it.index) : (selectedTool === TOOL_BUILD && selectedBuildingIndex === it.index);
+    const cost = isCrop ? def.seedCost : def.cost;
+    const afford = credits >= cost;
+    const lift = pressed ? 1 : -hv * 3;
+    const yy = y + lift;
+    ctx.save();
+    roundRectPath(x, yy, SLOT_W, SLOT_H, 10);
+    const g = ctx.createLinearGradient(0, yy, 0, yy + SLOT_H);
+    g.addColorStop(0, selected ? 'rgba(126,224,106,0.32)' : `rgba(44,54,80,${0.85 + hv * 0.1})`);
+    g.addColorStop(1, selected ? 'rgba(40,90,40,0.45)' : 'rgba(20,24,38,0.9)');
+    ctx.fillStyle = g;
+    ctx.fill();
+    if (selected) {
+      ctx.shadowColor = UI.leaf;
+      ctx.shadowBlur = 10 + Math.sin(uiTime * 4) * 4;
+    }
+    ctx.lineWidth = selected ? 2.5 : 1.2;
+    ctx.strokeStyle = selected ? UI.leaf : `rgba(140,160,210,${0.25 + hv * 0.45})`;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    roundRectPath(x + 2, yy + 2, SLOT_W - 4, SLOT_H * 0.4, 8);
+    ctx.fill();
+    // Icon
+    const bob = selected ? Math.sin(uiTime * 3) * 1.5 : 0;
+    drawSprite(def.sprite, x + SLOT_W / 2, yy + 25 + bob, 32, afford ? 1 : 0.55);
+    // Number key
+    if (i < 10)
+      drawChip(String((i + 1) % 10), x + 3, yy + 3, 14, { px: 9, bg: 'rgba(0,0,0,0.5)', color: UI.textDim });
+    // Market trend
+    if (isCrop) {
+      const pm = priceMultipliers[it.index] || 1;
+      if (pm > 1.05 || pm < 0.95) {
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        fitText(pm > 1 ? '▲' : '▼', x + SLOT_W - 5, yy + 10, 14, 11, { weight: 'bold', color: pm > 1 ? UI.good : UI.bad });
+      }
+    }
+    // Price
     ctx.textAlign = 'center';
-    ctx.fillText('Page ' + (tutorialPage + 1) + ' / ' + TUTORIAL_PAGES.length, cx, py + ph - 12);
-    ctx.fillStyle = '#5d5';
-    ctx.font = 'bold 18px sans-serif';
-    ctx.fillText(page.title, cx, py + 30);
-    ctx.fillStyle = '#ccc';
-    ctx.font = '13px sans-serif';
-    for (let i = 0; i < page.lines.length; ++i)
-      ctx.fillText(page.lines[i], cx, py + 58 + i * 22);
-    ctx.fillStyle = '#888';
-    ctx.font = '11px sans-serif';
-    if (tutorialPage < TUTORIAL_PAGES.length - 1)
-      ctx.fillText('Click / Space / Right = Next  |  Esc = Close', cx, py + ph - 28);
+    ctx.textBaseline = 'middle';
+    fitText(`${cost} [[coin]]`, x + SLOT_W / 2, yy + SLOT_H - 11, SLOT_W - 6, 12, { weight: 'bold', color: afford ? '#e8f0ff' : UI.bad });
+    ctx.restore();
+    const rx0 = Math.max(x, clipL), rx1 = Math.min(x + SLOT_W, clipR);
+    if (rx1 - rx0 > 6)
+      addRegion({
+        id, x: rx0, y, w: rx1 - rx0, h: SLOT_H,
+        onClick: () => isCrop ? selectCrop(it.index) : selectBuilding(it.index),
+        tip: () => isCrop ? buildCropBarTooltip(it.index) : buildBuildingShopTooltip(it.index)
+      });
+  }
+
+  function drawActionHint(d) {
+    let text;
+    const mode = dockMode();
+    if (mode === 'plant')
+      text = `[[${CROPS[selectedCropIndex].sprite}]] Plant ${CROPS[selectedCropIndex].name} · drag to plant or harvest an area · click a building to inspect it`;
+    else if (mode === 'build' && selectedBuildingIndex >= 0)
+      text = `[[${BUILDINGS[selectedBuildingIndex].sprite}]] Place ${BUILDINGS[selectedBuildingIndex].name} (${BUILDINGS[selectedBuildingIndex].cost} cr) · right-click a building to upgrade it`;
     else
-      ctx.fillText('Click / Space = Start!  |  Press H for help anytime', cx, py + ph - 28);
+      text = '[[hoe]] Hoe · click soil beside water to enrich it · right-click a crop to uproot it';
+    ctx.save();
+    ctx.globalAlpha *= hudFade.dock ? Math.max(0.35, hudFade.dock.a) : 1;
+    drawChip(text, d.x + d.w / 2, d.y - 28, 22, { align: 'center', px: 12, weight: '', bg: 'rgba(8,12,24,0.78)', border: 'rgba(126,224,106,0.35)', color: UI.text, maxW: d.w - 40 });
+    ctx.restore();
+  }
+
+  /* ── Zoom chip ── */
+
+  let zoomChipT = 0, zoomChipLast = 1;
+
+  function drawZoomChip(L) {
+    if (Math.abs(viewZoom - zoomChipLast) > 0.001) {
+      zoomChipLast = viewZoom;
+      zoomChipT = 2;
+    }
+    zoomChipT = Math.max(0, zoomChipT - frameDt);
+    if (zoomChipT <= 0) return;
+    const text = `[[zoom]] ${Math.round(viewZoom * 100)}%  ·  Home fits the farm`;
+    ctx.save();
+    ctx.globalAlpha *= Math.min(1, zoomChipT * 2) * 0.9;
+    drawChip(text, UW - HUD_M, L.dock.y - 58, 22, { align: 'right', px: 11, weight: '', bg: 'rgba(8,12,24,0.75)', border: 'rgba(255,255,255,0.15)', color: UI.textDim });
+    ctx.restore();
+  }
+
+  /* ── Banner (season changes, weather, purchases) ── */
+
+  function drawBanner(L) {
+    if (!banner) return;
+    banner.t += frameDt;
+    const dur = 3.2;
+    if (banner.t > dur) {
+      banner = null;
+      return;
+    }
+    const t = banner.t;
+    const inA = Math.min(1, t / 0.35), outA = Math.min(1, (dur - t) / 0.5);
+    const a = Math.min(inA, outA);
+    const ease = 1 - Math.pow(1 - inA, 3);
+    const w = Math.min(480, UW - 40), h = banner.sub ? 66 : 48;
+    const x = UW / 2 - w / 2, y = L.clock.y + L.clock.h + 12 - (1 - ease) * 20;
+    ctx.save();
+    ctx.globalAlpha *= a;
+    drawPanel(x, y, w, h, { accent: banner.color, glow: true, radius: 12 });
+    let tx = x + 16;
+    if (banner.icon) {
+      drawSprite(banner.icon, x + 34, y + h / 2, 34);
+      tx = x + 60;
+    }
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText(banner.title, tx, y + (banner.sub ? 24 : h / 2 + 1), x + w - 16 - tx, 20, { weight: 'bold', color: banner.color });
+    if (banner.sub)
+      fitText(banner.sub, tx, y + 46, x + w - 16 - tx, 13, { color: UI.textDim });
+    ctx.restore();
+  }
+
+  function drawHUD() {
+    const L = hudLayout();
+    drawFarmPanel(L);
+    drawStoragePanel(L);
+    drawClockPanel(L);
+    drawDock(L);
+    drawZoomChip(L);
+    drawBanner(L);
+    if (inspect)
+      drawInspector();
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     DIALOGS — modal panels that pause the farm
+     ══════════════════════════════════════════════════════════════════ */
+
+  let dialog = null;                 // 'upgrades' | 'livestock' | 'help'
+  let dialogT = 0;                   // open animation 0..1
+  let helpPage = 0;
+  let dialogScroll = 0;
+
+  function openDialog(kind) {
+    dialog = kind;
+    dialogT = 0;
+    dialogScroll = 0;
+    inspect = null;
+    clearTooltip();
+    isDragging = false;
+    SZ.GameAudio.play('select', { volume: 0.7 });
+  }
+
+  function closeDialog() {
+    if (!dialog) return;
+    if (dialog === 'help' && !tutorialSeen) {
+      tutorialSeen = true;
+      try { localStorage.setItem(STORAGE_TUTORIAL, '1'); } catch (_) {}
+    }
+    dialog = null;
+    clearTooltip();
+    SZ.GameAudio.play('click');
+  }
+
+  function toggleDialog(kind) {
+    if (state !== STATE_PLAYING && kind !== 'help') return;
+    if (dialog === kind)
+      closeDialog();
+    else
+      openDialog(kind);
+  }
+
+  function closeAllDialogs() {
+    dialog = null;
+    inspect = null;
+    dialogScroll = 0;
+  }
+
+  /* Scrim + centred animated panel; returns the content rect */
+  function beginDialog(title, w, h, opts) {
+    opts = opts || {};
+    dialogT = Math.min(1, dialogT + frameDt * 6);
+    const e = 1 - Math.pow(1 - dialogT, 3);
+    ctx.save();
+    ctx.globalAlpha *= e;
+    drawScrim(0.55);
+    ctx.restore();
+    addRegion({ id: 'dlg-scrim', x: 0, y: 0, w: UW, h: UH, modal: true, onClick: opts.closeOnScrim === false ? null : closeDialog });
+    w = Math.min(w, UW - 24);
+    h = Math.min(h, UH - 24);
+    const x = Math.round(UW / 2 - w / 2), y = Math.round(UH / 2 - h / 2);
+    ctx.save();
+    ctx.globalAlpha *= e;
+    const s = 0.94 + 0.06 * e;
+    ctx.translate(UW / 2, UH / 2);
+    ctx.scale(s, s);
+    ctx.translate(-UW / 2, -UH / 2);
+    addRegion({ id: 'dlg-panel', x, y, w, h, modal: true });
+    const top = drawPanel(x, y, w, h, { title, icon: opts.icon, accent: opts.accent || UI.gold, headerH: 42, titlePx: 20, titleRight: opts.titleRight, titleRightColor: opts.titleRightColor, closeId: 'dlg-close', radius: 14 });
+    return { x: x + 16, y: top, w: w - 32, h: y + h - top - 12, px: x, py: y, pw: w, ph: h };
+  }
+
+  function endDialog() {
+    ctx.restore();
+  }
+
+  /* ── Upgrade shop (permanent farm upgrades) ── */
+
+  function upgradeCostNow(def) {
+    if (def.id === 'plotExpansion')
+      return getNextExpansionTileCount() * 8;
+    return getUpgradeCost(def, getUpgradeLevel(def.id));
+  }
+
+  function drawUpgradesDialog() {
+    const c = beginDialog('Farm Upgrades', 760, 560, { icon: 'techtree', titleRight: `${Math.round(credits)} [[coin]]`, titleRightColor: UI.gold });
+    const cols = c.w >= 600 ? 2 : 1;
+    const gap = 10;
+    const cardW = (c.w - gap * (cols - 1)) / cols;
+    const cardH = 86;
+    const rows = Math.ceil(UPGRADES.length / cols);
+    const contentH = rows * (cardH + gap) - gap;
+    const viewH = c.h - 30;
+    const maxScroll = Math.max(0, contentH - viewH);
+    dialogScroll = Math.max(0, Math.min(maxScroll, dialogScroll));
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(c.x - 4, c.y, c.w + 8, viewH);
+    ctx.clip();
+    UPGRADES.forEach((def, i) => {
+      const cx = c.x + (i % cols) * (cardW + gap);
+      const cy = c.y + Math.floor(i / cols) * (cardH + gap) - dialogScroll;
+      if (cy + cardH < c.y || cy > c.y + viewH) return;
+      drawUpgradeCard(def, i, cx, cy, cardW, cardH, c.y, c.y + viewH);
+    });
+    ctx.restore();
+    addRegion({ id: 'dlg-upg-wheel', x: c.x, y: c.y, w: c.w, h: viewH, modal: true, passive: true, onWheel: (dy) => { dialogScroll += dy > 0 ? 60 : -60; } });
+    reorderPassiveRegions();
+    drawKeyHints([{ key: 'Click', label: 'Buy' }, { key: 'Wheel', label: 'Scroll' }, { key: 'U', label: 'Close' }], c.x + c.w / 2, c.y + c.h - 8, c.w);
+    endDialog();
+  }
+
+  function drawUpgradeCard(def, i, x, y, w, h, clipT, clipB) {
+    const lvl = getUpgradeLevel(def.id);
+    const maxed = lvl >= def.maxLevel;
+    const cost = maxed ? 0 : upgradeCostNow(def);
+    const afford = credits >= cost;
+    const id = 'upg-' + def.id;
+    const hv = hoverAmount(id);
+    const color = maxed ? UI.good : (afford ? UI.gold : UI.warn);
+    ctx.save();
+    roundRectPath(x, y, w, h, 12);
+    ctx.fillStyle = maxed ? 'rgba(111,224,138,0.12)' : (afford ? `rgba(255,215,90,${0.1 + hv * 0.08})` : 'rgba(40,36,30,0.9)');
+    ctx.fill();
+    ctx.lineWidth = afford && !maxed ? 2 : 1.5;
+    ctx.strokeStyle = hexToRgba(color, 0.4 + hv * 0.4);
+    ctx.stroke();
+    roundRectPath(x + 10, y + 10, 46, 46, 9);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fill();
+    drawSprite(def.sprite, x + 33, y + 33, 34);
+    // Pips
+    if (def.maxLevel <= 10) {
+      const n = def.maxLevel, pw = Math.min(8, (44 - (n - 1) * 2) / n);
+      let px = x + 33 - (n * pw + (n - 1) * 2) / 2;
+      for (let k = 0; k < n; ++k) {
+        ctx.fillStyle = k < lvl ? color : 'rgba(255,255,255,0.14)';
+        ctx.fillRect(px, y + 64, pw, 6);
+        px += pw + 2;
+      }
+    } else {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText(`Lv ${lvl}`, x + 33, y + 68, 48, 11, { weight: 'bold', color: UI.textDim });
+    }
+    const tx = x + 66, tw = w - 66 - 12;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText(def.name + (def.maxLevel <= 10 ? `  ${lvl}/${def.maxLevel}` : ''), tx, y + 18, tw - 96, 15, { weight: 'bold', color: UI.text });
+    drawTextBlock(def.desc, tx, y + 30, tw - 96, 40, 12, { color: UI.textDim });
+    ctx.restore();
+    const btn = { id, x: x + w - 100, y: y + h / 2 - 17, w: 90, h: 34 };
+    if (maxed) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      drawChip('MAX', btn.x + btn.w / 2, btn.y + 7, 20, { align: 'center', px: 11, bg: 'rgba(111,224,138,0.18)', border: 'rgba(111,224,138,0.6)', color: UI.good });
+    } else if (btn.y >= clipT && btn.y + btn.h <= clipB)
+      drawButton(btn, { label: `${cost} [[coin]]`, primary: afford, color: UI.gold, px: 13, disabled: !afford, onClick: () => purchaseUpgrade(i), onDisabled: () => SZ.GameAudio.play('error'), tip: () => [`[[${def.sprite}]] ${def.name}`, def.desc, afford ? `✔ Costs ${cost} credits` : `✘ Needs ${cost} credits (${cost - Math.floor(credits)} more)`] });
+  }
+
+  /* ── Livestock shop ── */
+
+  function drawLivestockDialog() {
+    const c = beginDialog('Livestock', 640, 420, { icon: 'paw', accent: '#ff9ac0', titleRight: `${Math.round(credits)} [[coin]]`, titleRightColor: UI.gold });
+    const cols = c.w >= 520 ? 2 : 1;
+    const gap = 10;
+    const cardW = (c.w - gap * (cols - 1)) / cols;
+    const cardH = 104;
+    LIVESTOCK.forEach((def, i) => {
+      const x = c.x + (i % cols) * (cardW + gap);
+      const y = c.y + Math.floor(i / cols) * (cardH + gap);
+      const owned = livestockPens.filter(p => p.typeIndex === i).length;
+      const afford = credits >= def.cost;
+      const id = 'buy-animal-' + i;
+      const hv = hoverAmount(id);
+      roundRectPath(x, y, cardW, cardH, 12);
+      ctx.fillStyle = afford ? `rgba(255,154,192,${0.08 + hv * 0.06})` : 'rgba(40,36,30,0.9)';
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = afford ? 'rgba(255,154,192,0.5)' : 'rgba(255,182,72,0.45)';
+      ctx.stroke();
+      roundRectPath(x + 10, y + 10, 60, 60, 10);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fill();
+      drawSprite(def.sprite, x + 40, y + 40 + Math.sin(uiTime * 3 + i) * 1.5, 48);
+      if (owned)
+        drawChip(`×${owned}`, x + 40, y + 76, 18, { align: 'center', px: 11, bg: 'rgba(0,0,0,0.5)', color: UI.text });
+      const tx = x + 80, tw = cardW - 80 - 12;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText(def.name, tx, y + 20, tw, 16, { weight: 'bold', color: UI.text });
+      fitText(`[[${def.produceSprite}]] ${def.produce} every ${getFeedInterval(def)}s`, tx, y + 42, tw, 12, { color: UI.textDim });
+      fitText(`Worth ${getEffectiveProduceValue(def)} cr each`, tx, y + 60, tw, 12, { color: UI.gold });
+      drawButton({ id, x: tx, y: y + cardH - 34, w: tw, h: 26 }, { label: `Buy · ${def.cost} [[coin]]`, primary: afford, color: '#ff9ac0', px: 12, disabled: !afford, onClick: () => buyLivestock(i), onDisabled: () => SZ.GameAudio.play('error'), tip: () => buildLivestockBuyTooltip(i) });
+    });
+    drawKeyHints([{ key: 'Click', label: 'Buy' }, { key: 'L', label: 'Close' }], c.x + c.w / 2, c.y + c.h - 8, c.w);
+    endDialog();
+  }
+
+  function getFeedInterval(def) {
+    return def.feedInterval;
+  }
+
+  /* ── Help ── */
+
+  const HELP_PAGES = [
+    { icon: 'seedbag', title: 'Welcome, farmer!', text: 'Your little farm sits on an alien planet. Plant seeds, harvest what grows, sell it for credits and turn those credits into a thriving space farm.\n\nPick a crop in the dock at the bottom (or press 1-9, 0), then click empty soil. Drag across the field to plant or harvest a whole area at once.' },
+    { icon: 'coin', title: 'Harvest & sell', text: 'Ripe crops sparkle. Click them to harvest; the produce goes to your storage. Storage is limited, so sell regularly with S or the Sell button.\n\nMarket prices drift every minute: a green ▲ in the dock means a crop sells above its normal price, a red ▼ below.' },
+    { icon: 'flask', title: 'Soil & terrain', text: 'Every plot has its own fertility. Water boosts the crops next to it, sand grows slowly and rock is only good for buildings.\n\nThe Hoe (T) enriches soil beside water and turns sand into farmland. Right-click a crop with the hoe to uproot it for half its seed cost.' },
+    { icon: 'hammer', title: 'Buildings', text: 'Press B for the build dock. Sprinklers and wind turbines speed up crops around them, greenhouses shield them from weather, silos add storage, harvesters and planters work on their own.\n\nClick a building to inspect it, upgrade it up to level 6 or remove it. Right-click upgrades directly, Shift+right-click removes.' },
+    { icon: 'paw', title: 'Livestock', text: 'Animals live in pens around the field. When their produce is ready a bubble pops up: click the pen to collect it. Auto-collectors next to the pens do this for you.' },
+    { icon: 'storm', title: 'Weather', text: 'Rain and solar flares make crops grow faster. Meteor showers and thunderstorms can destroy crops that are not protected by a greenhouse.\n\nVoid mushrooms ignore the weather, plasma peppers hate meteors, astral flowers and solar vines love the sun.' },
+    { icon: 'spring', title: 'Seasons & day', text: 'A day lasts 30 seconds and a season four days. Spring and summer speed up growth, autumn gives bigger harvests, winter slows everything down.\n\nLunar moss only grows at night, solar vines only by day.' },
+    { icon: 'mouse', title: 'Pests & energy', text: 'Space mice sneak in from the edges and eat crops. Click a mouse to chase it away for a reward, and build scarecrows and fences to keep them out.\n\nEnergy powers harvesters and drones. Solar panels charge by day, wind turbines at night and in storms.' },
+    { icon: 'techtree', title: 'Controls', text: 'Mouse wheel or +/- zooms, right-drag or Ctrl+drag pans, Home resets the view. Arrow keys move a tile cursor and Space acts on it. On touch screens pinch to zoom and drag with two fingers to pan.\n\nP seeds · B build · T hoe · S sell · L animals · U upgrades · H help · Esc pause.' }
+  ];
+
+  function drawHelpDialog() {
+    const c = beginDialog('How to play', 640, 440, { icon: 'book', accent: UI.accent, titleRight: `${helpPage + 1} / ${HELP_PAGES.length}` });
+    const page = HELP_PAGES[helpPage];
+    roundRectPath(c.x, c.y, 96, 96, 14);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(90,184,255,0.35)';
+    ctx.stroke();
+    drawSprite(page.icon, c.x + 48, c.y + 48 + Math.sin(uiTime * 2) * 2, 64);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText(page.title, c.x + 112, c.y + 20, c.w - 112, 22, { weight: 'bold', color: UI.gold });
+    drawTextBlock(page.text, c.x + 112, c.y + 42, c.w - 112, c.h - 42 - 52, 14, { color: UI.text, lineGap: 1.4 });
+    // Page dots
+    const dotsW = HELP_PAGES.length * 14;
+    for (let i = 0; i < HELP_PAGES.length; ++i) {
+      ctx.beginPath();
+      ctx.arc(c.x + c.w / 2 - dotsW / 2 + i * 14 + 7, c.y + c.h - 30, i === helpPage ? 4.5 : 3, 0, TWO_PI);
+      ctx.fillStyle = i === helpPage ? UI.gold : 'rgba(255,255,255,0.25)';
+      ctx.fill();
+    }
+    const by = c.y + c.h - 40;
+    drawButton({ id: 'help-prev', x: c.x, y: by, w: 110, h: 32 }, { label: '‹ Back', px: 13, disabled: helpPage === 0, onClick: () => { helpPage = Math.max(0, helpPage - 1); SZ.GameAudio.play('click'); } });
+    const last = helpPage >= HELP_PAGES.length - 1;
+    drawButton({ id: 'help-next', x: c.x + c.w - 110, y: by, w: 110, h: 32 }, { label: last ? 'Done' : 'Next ›', primary: true, px: 13, onClick: () => helpNext() });
+    endDialog();
+  }
+
+  function helpNext() {
+    if (helpPage >= HELP_PAGES.length - 1)
+      closeDialog();
+    else {
+      ++helpPage;
+      SZ.GameAudio.play('click');
+    }
+  }
+
+  function openHelp(page) {
+    helpPage = page || 0;
+    openDialog('help');
+  }
+
+  /* ── Building inspector (non-modal popover) ── */
+
+  let inspect = null;                // { row, col }
+
+  function drawInspector() {
+    const bld = buildings[inspect.row]?.[inspect.col];
+    if (!bld) {
+      inspect = null;
+      return;
+    }
+    const bdef = BUILDINGS[bld.typeIndex];
+    const lvl = bld.level || 1;
+    const stats = buildingStatLines(bld, inspect.row, inspect.col);
+    const w = 270;
+    const h = 52 + 16 + stats.length * 20 + 50;
+    const g = gridToScreen(inspect.col, inspect.row);
+    let x = (g.x + g.size) / uiS + 12, y = g.y / uiS - 10;
+    if (x + w > UW - 10) x = g.x / uiS - w - 12;
+    x = Math.max(10, Math.min(UW - w - 10, x));
+    y = Math.max(84, Math.min(UH - DOCK_H - 30 - h, y));
+    addRegion({ id: 'insp-panel', x, y, w, h });
+    const top = drawPanel(x, y, w, h, { title: bdef.name, icon: bdef.sprite, accent: '#4cc4ff', headerH: 40, titlePx: 16, titleRight: `Lv ${lvl}/${BUILDING_MAX_LEVEL}`, titleRightColor: UI.gold, closeId: 'insp-close', onClose: () => { inspect = null; } });
+    // Level pips
+    const pw = 16;
+    for (let i = 0; i < BUILDING_MAX_LEVEL; ++i) {
+      ctx.fillStyle = i < lvl ? '#4cc4ff' : 'rgba(255,255,255,0.12)';
+      ctx.fillRect(x + 14 + i * (pw + 3), top, pw, 5);
+    }
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    stats.forEach((s, i) => fitText(s, x + 14, top + 22 + i * 20, w - 28, 12, { color: i === 0 ? UI.textDim : UI.text }));
+    const by = y + h - 42;
+    if (canUpgradeBuilding(bld)) {
+      const cost = getBuildingUpgradeCost(bld);
+      drawButton({ id: 'insp-upgrade', x: x + 12, y: by, w: w - 24 - 96, h: 30 }, { label: `Upgrade · ${cost} [[coin]]`, primary: credits >= cost, color: '#4cc4ff', px: 12, disabled: credits < cost, onClick: () => upgradeBuilding(inspect.row, inspect.col), onDisabled: () => SZ.GameAudio.play('error'), tip: () => [`Upgrade to level ${lvl + 1}`, credits >= cost ? `✔ Costs ${cost} credits` : `✘ Needs ${cost} credits`, 'Shortcut: right-click the building'] });
+    } else
+      drawChip('Max level', x + 12, by + 5, 20, { px: 11, bg: 'rgba(111,224,138,0.18)', border: 'rgba(111,224,138,0.6)', color: UI.good });
+    drawButton({ id: 'insp-remove', x: x + w - 12 - 88, y: by, w: 88, h: 30 }, { label: 'Remove', px: 12, color: UI.bad, onClick: () => { removeBuilding(inspect.row, inspect.col); inspect = null; }, tip: () => ['Remove building', '⚠ No refund.', 'Shortcut: Shift+right-click'] });
+  }
+
+  /* ── Pause and title screens ── */
+
+  function drawPauseScreen() {
+    drawScrim(0.55);
+    addRegion({ id: 'pause-scrim', x: 0, y: 0, w: UW, h: UH, modal: true });
+    const w = 340, h = 250;
+    const x = UW / 2 - w / 2, y = UH / 2 - h / 2;
+    drawPanel(x, y, w, h, { accent: UI.gold, radius: 14 });
+    drawHeadline('Paused', UW / 2, y + 44, w - 40, 36, UI.gold, '#ff9a3a');
+    const bw = w - 60;
+    drawButton({ id: 'pause-resume', x: x + 30, y: y + 84, w: bw, h: 40 }, { label: 'Resume', key: 'Esc', primary: true, color: UI.leaf, px: 15, onClick: togglePause });
+    drawButton({ id: 'pause-help', x: x + 30, y: y + 134, w: bw, h: 36 }, { label: 'How to play', icon: 'book', key: 'H', px: 14, onClick: () => openHelp(0) });
+    drawButton({ id: 'pause-new', x: x + 30, y: y + 180, w: bw, h: 36 }, { label: 'New farm', icon: 'seedbag', key: 'F2', px: 14, onClick: requestNewGame });
+  }
+
+  const titleStars = [];
+  for (let i = 0; i < 160; ++i)
+    titleStars.push({ x: Math.random(), y: Math.random(), s: Math.random(), p: Math.random() * TWO_PI });
+
+  function drawTitleBackground() {
+    const g = ctx.createLinearGradient(0, 0, 0, UH);
+    g.addColorStop(0, '#070a1c');
+    g.addColorStop(0.6, '#1a1640');
+    g.addColorStop(1, '#3a2050');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, UW, UH);
+    for (const s of titleStars) {
+      ctx.globalAlpha = 0.3 + 0.7 * Math.abs(Math.sin(uiTime * (0.5 + s.s) + s.p));
+      ctx.fillStyle = s.s > 0.85 ? '#ffe8b0' : '#cfe0ff';
+      const sz = s.s > 0.9 ? 2 : 1;
+      ctx.fillRect(s.x * UW, s.y * UH * 0.8, sz, sz);
+    }
+    ctx.globalAlpha = 1;
+    // Ringed planet
+    const px = UW * 0.84, py = UH * 0.17, pr = Math.min(UW, UH) * 0.11;
+    const pg = ctx.createRadialGradient(px - pr * 0.4, py - pr * 0.4, pr * 0.1, px, py, pr);
+    pg.addColorStop(0, '#ffd7a0');
+    pg.addColorStop(0.6, '#d0705a');
+    pg.addColorStop(1, '#4a2040');
+    ctx.fillStyle = pg;
+    ctx.beginPath();
+    ctx.arc(px, py, pr, 0, TWO_PI);
+    ctx.fill();
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(-0.35);
+    ctx.scale(1, 0.28);
+    ctx.lineWidth = pr * 0.25;
+    ctx.strokeStyle = 'rgba(255,220,170,0.45)';
+    ctx.beginPath();
+    ctx.arc(0, 0, pr * 1.6, 0, TWO_PI);
+    ctx.stroke();
+    ctx.restore();
+    // Rolling hills
+    const hills = [['#1d3a3a', 0.72, 30, 0.004], ['#16302a', 0.8, 22, 0.006], ['#0f2420', 0.88, 16, 0.009]];
+    for (const [col, base, amp, f] of hills) {
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(0, UH);
+      for (let x = 0; x <= UW; x += 8)
+        ctx.lineTo(x, UH * base + Math.sin(x * f + uiTime * 0.1) * amp + Math.sin(x * f * 2.7) * amp * 0.4);
+      ctx.lineTo(UW, UH);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // Crops on the front hill
+    for (let i = 0; i < 18; ++i) {
+      const cx = (i + 0.5) * UW / 18;
+      const cy = UH * 0.9 + Math.sin(cx * 0.009) * 16 - 6;
+      const crop = CROPS[i % CROPS.length];
+      drawSprite(crop.sprite, cx, cy + Math.sin(uiTime * 1.5 + i) * 1.5, 34);
+    }
+  }
+
+  function drawTitleScreen() {
+    drawTitleBackground();
+    addRegion({ id: 'title-bg', x: 0, y: 0, w: UW, h: UH, modal: true, onClick: savedGameAvailable ? null : resetGame });
+    const cx = UW / 2;
+    drawHeadline('SPACE FARMING', cx, UH * 0.24, UW - 60, 64, '#9df08a', '#2a9a5a');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText('Grow alien crops, raise space critters and build the finest farm in the galaxy.', cx, UH * 0.24 + 52, UW - 80, 16, { color: '#c8d6f0' });
+    const bw = 260, bh = 46;
+    let y = UH * 0.42;
+    if (savedGameAvailable) {
+      drawButton({ id: 'title-continue', x: cx - bw / 2, y, w: bw, h: bh }, { label: 'Continue', icon: 'seedbag', key: 'Enter', primary: true, color: UI.leaf, px: 17, onClick: continueSavedGame });
+      y += bh + 12;
+    }
+    drawButton({ id: 'title-new', x: cx - bw / 2, y, w: bw, h: bh }, { label: savedGameAvailable ? 'New farm' : 'Start farming', icon: 'hammer', key: 'F2', primary: !savedGameAvailable, color: UI.leaf, px: 17, onClick: requestNewGame });
+    y += bh + 12;
+    drawButton({ id: 'title-help', x: cx - bw / 2, y, w: bw, h: 40 }, { label: 'How to play', icon: 'book', key: 'H', px: 15, onClick: () => openHelp(0) });
+    y += 52;
+    if (saveNotice)
+      drawChip(saveNotice, cx, y + 4, 24, { align: 'center', px: 12, weight: '', bg: 'rgba(80,20,10,0.75)', border: 'rgba(255,140,90,0.6)', color: '#ffb48a', maxW: UW - 40 });
   }
 
   /* ══════════════════════════════════════════════════════════════════
      TOOLTIP
      ══════════════════════════════════════════════════════════════════ */
 
+  const TOOLTIP_DELAY = 0.3;
+  const tooltip = { lines: [], key: '', timer: 0, visible: false, x: 0, y: 0 };
+
+  function clearTooltip() {
+    tooltip.lines = [];
+    tooltip.key = '';
+    tooltip.timer = 0;
+    tooltip.visible = false;
+  }
+
+  function setTooltip(key, lines) {
+    if (key !== tooltip.key) {
+      tooltip.key = key;
+      tooltip.timer = 0;
+      tooltip.visible = false;
+    }
+    tooltip.lines = lines || [];
+  }
+
+  function updateTooltipTimer(dt) {
+    if (tooltip.lines.length && !tooltip.visible) {
+      tooltip.timer += dt;
+      if (tooltip.timer >= TOOLTIP_DELAY)
+        tooltip.visible = true;
+    }
+  }
+
+  /* Re-evaluates what the pointer is over (regions first, then the farm) */
+  function refreshHover() {
+    if (!pointerInside || isPanning) {
+      hoverRegionId = null;
+      clearTooltip();
+      return;
+    }
+    const r = hitRegion(pointerUX, pointerUY);
+    const through = r && !r.modal && hudPassThrough(pointerUX, pointerUY);
+    if (r && !through) {
+      hoverRegionId = r.onClick || r.disabledClick ? r.id : null;
+      if (r.tip)
+        setTooltip('r:' + r.id, r.tip());
+      else
+        clearTooltip();
+      return;
+    }
+    hoverRegionId = null;
+    if (state !== STATE_PLAYING || dialog || isDragging) {
+      clearTooltip();
+      return;
+    }
+    const w = worldTooltip(pointerX, pointerY);
+    if (w)
+      setTooltip(w.key, w.lines);
+    else
+      clearTooltip();
+  }
+
+  function drawTooltip() {
+    if (!tooltip.visible || !tooltip.lines.length) return;
+    const padding = 10;
+    const maxTextW = Math.min(340, UW * 0.4);
+    let fontSize = 13;
+    let rows, boxW, boxH;
+    for (;;) {
+      rows = [];
+      let maxW = 0;
+      for (let i = 0; i < tooltip.lines.length; ++i) {
+        const raw = tooltip.lines[i];
+        const line = typeof raw === 'object' ? raw.text : String(raw);
+        const header = /^---\s*(.*?)\s*---$/.exec(line);
+        if (header) {
+          rows.push({ kind: 'header', text: header[1].toUpperCase(), h: fontSize + 6 });
+          ctx.font = uiFont(Math.max(9, fontSize - 3), 'bold');
+          maxW = Math.max(maxW, ctx.measureText(header[1].toUpperCase()).width + 30);
+          continue;
+        }
+        const title = i === 0;
+        ctx.font = uiFont(title ? fontSize + 2 : fontSize, title ? 'bold' : '');
+        for (const w of wrapText(line, maxTextW)) {
+          rows.push({ kind: title ? 'title' : 'text', text: w, h: (title ? fontSize + 2 : fontSize) * 1.42, src: line, color: typeof raw === 'object' ? raw.color : null });
+          maxW = Math.max(maxW, measureIconText(w));
+        }
+      }
+      boxW = Math.ceil(maxW) + padding * 2;
+      boxH = padding * 2;
+      for (const r of rows)
+        boxH += r.h;
+      if (boxH <= UH - 16 || fontSize <= 10)
+        break;
+      --fontSize;
+    }
+    boxW = Math.max(boxW, 120);
+    let bx = pointerUX + 18, by = pointerUY + 20;
+    if (bx + boxW > UW - 8) bx = pointerUX - boxW - 12;
+    if (by + boxH > UH - 8) by = pointerUY - boxH - 12;
+    bx = Math.max(8, Math.min(UW - 8 - boxW, bx));
+    by = Math.max(8, Math.min(UH - 8 - boxH, by));
+    const a = Math.min(1, (tooltip.timer - TOOLTIP_DELAY) * 10 + 1);
+    ctx.save();
+    ctx.globalAlpha *= a;
+    drawPanel(bx, by, boxW, boxH, { accent: UI.gold, radius: 9, shadow: 12 });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    let y = by + padding;
+    for (const r of rows) {
+      const cy = y + r.h / 2;
+      if (r.kind === 'header') {
+        ctx.font = uiFont(Math.max(9, fontSize - 3), 'bold');
+        ctx.fillStyle = UI.textMute;
+        ctx.fillText(r.text, bx + padding, cy + 1);
+        const tw = ctx.measureText(r.text).width;
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fillRect(bx + padding + tw + 8, cy, boxW - padding * 2 - tw - 8, 1);
+      } else {
+        const title = r.kind === 'title';
+        ctx.font = uiFont(title ? fontSize + 2 : fontSize, title ? 'bold' : '');
+        let color = r.color || (title ? UI.gold : '#c4cde0');
+        if (!r.color && !title) {
+          if (r.src.startsWith('✔')) color = UI.good;
+          else if (r.src.startsWith('✘')) color = UI.bad;
+          else if (r.src.startsWith('⚠')) color = UI.warn;
+        }
+        ctx.fillStyle = color;
+        fillIconText(r.text, bx + padding, cy + 1);
+      }
+      y += r.h;
+    }
+    ctx.restore();
+  }
+
+  /* ── Tooltip content ── */
+
+  function adjacentWaterCount(row, col) {
+    let n = 0;
+    if (tileTypes[row - 1]?.[col] === TILE_WATER) ++n;
+    if (tileTypes[row + 1]?.[col] === TILE_WATER) ++n;
+    if (tileTypes[row]?.[col - 1] === TILE_WATER) ++n;
+    if (tileTypes[row]?.[col + 1] === TILE_WATER) ++n;
+    return n;
+  }
+
+  function fertilityLine(row, col) {
+    const sq = getTileSoilQuality(row, col);
+    const pct = Math.round(sq * 100);
+    if (sq < 1)
+      return `⚠ Fertility ${pct}%: slower growth`;
+    if (sq > 1)
+      return `✔ Fertility ${pct}%: faster growth`;
+    return `Fertility ${pct}%`;
+  }
+
   function buildCropTileTooltip(cell, row, col) {
     const crop = CROPS[cell.cropIndex];
-    const maxStage = crop.stages - 1;
-    const mature = cell.growthStage >= maxStage;
+    const mature = cell.growthStage >= crop.stages - 1;
     const progress = Math.min(100, Math.round(cell.growthProgress * 100));
     const effPrice = getEffectiveSellPrice(crop);
-    const lines = [
-      { text: crop.name, sprite: crop.sprite, color: crop.color, bold: true }
-    ];
-    if (mature)
-      lines.push({ text: 'Ready to harvest! (click)', color: '#0f0' });
-    else
-      lines.push({ text: 'Stage ' + (cell.growthStage + 1) + '/' + crop.stages + ' -- ' + progress + '% grown', color: '#aaa' });
-    lines.push({ text: 'Sell price: ' + effPrice + ' cr' + (effPrice !== crop.sellPrice ? ' (base ' + crop.sellPrice + ')' : ''), color: '#da2' });
-    const sq = getTileSoilQuality(row, col);
-    if (sq < 1.0)
-      lines.push({ text: 'Fertility: ' + Math.round(sq * 100) + '% (slower growth)', color: '#ca4' });
-    else if (sq > 1.0)
-      lines.push({ text: 'Fertility: ' + Math.round(sq * 100) + '% (faster growth)', color: '#4d4' });
-    const tt = tileTypes[row]?.[col] ?? TILE_FARMLAND;
-    if (tt === TILE_SAND)
-      lines.push({ text: 'Sandy soil: 0.7x growth rate', color: '#c90' });
-    // Water adjacency info
-    let adjWater = 0;
-    if (row > 0 && tileTypes[row - 1]?.[col] === TILE_WATER) ++adjWater;
-    if (row < gridRows - 1 && tileTypes[row + 1]?.[col] === TILE_WATER) ++adjWater;
-    if (col > 0 && tileTypes[row]?.[col - 1] === TILE_WATER) ++adjWater;
-    if (col < gridCols - 1 && tileTypes[row]?.[col + 1] === TILE_WATER) ++adjWater;
-    if (adjWater > 0)
-      lines.push({ text: 'Water bonus: +' + Math.round(adjWater * 15) + '% growth', color: '#4af' });
-    const yieldMul = getYieldMultiplier();
-    if (yieldMul > 1)
-      lines.push({ text: 'Yield bonus: ' + Math.round((yieldMul - 1) * 100) + '% chance double', color: '#ff0' });
+    const lines = [`[[${crop.sprite}]] ${crop.name}`];
+    lines.push(mature ? '✔ Ripe: click to harvest' : `Stage ${cell.growthStage + 1} of ${crop.stages} · ${progress}% grown`);
+    lines.push(`Sells for ${effPrice} cr` + (effPrice !== crop.sellPrice ? ` (normally ${crop.sellPrice})` : ''));
+    lines.push('--- Plot ---');
+    lines.push(fertilityLine(row, col));
+    if (tileTypes[row]?.[col] === TILE_SAND)
+      lines.push('⚠ Sandy soil: 70% growth');
+    const water = adjacentWaterCount(row, col);
+    if (water)
+      lines.push(`✔ Water nearby: +${water * 15}% growth`);
+    if (crop.nightOnly && dayPhase < 0.5)
+      lines.push('⚠ Sleeping until night');
+    if (crop.dayOnly && dayPhase >= 0.5)
+      lines.push('⚠ Sleeping until morning');
+    return lines;
+  }
+
+  function buildingStatLines(bld, row, col) {
+    const bdef = BUILDINGS[bld.typeIndex];
+    const lines = [bdef.desc];
+    switch (bdef.name) {
+      case 'Sprinkler':
+        lines.push(`Growth +${Math.round(getSprinklerBonus(bld) * 100)}% · range ${getBuildingRange(bld)}`);
+        break;
+      case 'Harvester':
+        lines.push(`Harvests every ${getHarvesterInterval(bld).toFixed(1)}s · range ${getBuildingRange(bld)}`);
+        break;
+      case 'Greenhouse':
+        lines.push(`Shields range ${getBuildingRange(bld)} · growth +${Math.round(getGreenhouseGrowthBonus(bld) * 100)}%`);
+        break;
+      case 'Silo':
+        lines.push(`Storage +${getSiloStorageBonus(bld)} · sell prices +${Math.round(getSiloSellBonus(bld) * 100)}%`);
+        break;
+      case 'Solar Panel':
+        lines.push(`+${getSolarPanelIncome(bld)} cr per 30s · energy +${getSolarPanelEnergyBonus(bld)}`);
+        lines.push(`Charges +${getSolarPanelRegenBonus(bld).toFixed(1)}/s by day`);
+        break;
+      case 'Wind Turbine':
+        lines.push(`+${getWindTurbineIncome(bld)} cr per 30s · growth +${Math.round(getWindTurbineGrowthBonus(bld) * 100)}%`);
+        lines.push(`Energy +${getWindTurbineEnergyBonus(bld)} · +${getWindTurbineRegenBonus(bld).toFixed(1)}/s`);
+        break;
+      case 'Compost Bin':
+        lines.push(`Fertility +${Math.round(getCompostBinBonus(bld) * 100)}% · range ${getBuildingRange(bld)}`);
+        break;
+      case 'Scarecrow': {
+        const r = getScarecrowRadius(bld);
+        lines.push(`Scares mice in a ${r * 2 + 1}×${r * 2 + 1} area`);
+        break;
+      }
+      case 'Fence':
+        lines.push((bld.level || 1) >= 5 ? 'Blocks and zaps mice' : ((bld.level || 1) >= 3 ? 'Slows mice down' : 'Blocks mice'));
+        break;
+      case 'Auto-Planter L1':
+      case 'Auto-Planter L2':
+        lines.push(`Plants every ${getAutoPlanterInterval(bld)}s · range ${getBuildingRange(bld)}`);
+        break;
+      case 'Auto-Collector': {
+        const range = getBuildingRange(bld);
+        let pens = 0;
+        for (const pen of livestockPens)
+          if (Math.abs(pen.gridRow - row) <= range && Math.abs(pen.gridCol - col) <= range)
+            ++pens;
+        lines.push(`Collects every ${getAutoCollectorInterval(bld)}s · range ${range}`);
+        lines.push(`${pens} animal${pens === 1 ? '' : 's'} in range`);
+        break;
+      }
+    }
     return lines;
   }
 
   function buildBuildingTileTooltip(bld, row, col) {
     const bdef = BUILDINGS[bld.typeIndex];
-    const bLvl = bld.level || 1;
-    const lines = [
-      { text: bdef.name + (bLvl > 1 ? ' L' + bLvl : ''), sprite: bdef.sprite, color: '#0ff', bold: true },
-      { text: bdef.desc, color: '#aaa' }
-    ];
-
-    // Level-specific info per building type
-    if (bdef.name === 'Sprinkler') {
-      lines.push({ text: `Growth bonus: +${Math.round(getSprinklerBonus(bld) * 100)}% | Range: ${getBuildingRange(bld)}`, color: '#4af' });
-    } else if (bdef.name === 'Harvester') {
-      lines.push({ text: `Interval: ${getHarvesterInterval(bld).toFixed(1)}s | Range: ${getBuildingRange(bld)}`, color: '#4af' });
-    } else if (bdef.name === 'Greenhouse') {
-      lines.push({ text: `Protection range: ${getBuildingRange(bld)} | Growth bonus: +${Math.round(getGreenhouseGrowthBonus(bld) * 100)}%`, color: '#4af' });
-    } else if (bdef.name === 'Silo') {
-      const curCap = getStorageCapacity();
-      lines.push({ text: `Storage: ${getTotalInventoryCount()}/${curCap} (+${getSiloStorageBonus(bld)} this silo)`, color: '#da2' });
-      lines.push({ text: `Sell bonus: +${Math.round(getSiloSellBonus(bld) * 100)}%`, color: '#4af' });
-    } else if (bdef.name === 'Solar Panel') {
-      lines.push({ text: `Income: +${getSolarPanelIncome(bld)}cr/cycle | Energy: +${getSolarPanelEnergyBonus(bld)} max, +${getSolarPanelRegenBonus(bld).toFixed(1)}/s regen`, color: '#ff0' });
-    } else if (bdef.name === 'Wind Turbine') {
-      lines.push({ text: `Income: +${getWindTurbineIncome(bld)}cr/cycle | Growth: +${Math.round(getWindTurbineGrowthBonus(bld) * 100)}%`, color: '#ff0' });
-      lines.push({ text: `Energy: +${getWindTurbineEnergyBonus(bld)} max, +${getWindTurbineRegenBonus(bld).toFixed(1)}/s regen`, color: '#0cf' });
-    } else if (bdef.name === 'Compost Bin') {
-      lines.push({ text: `Fertility: +${Math.round(getCompostBinBonus(bld) * 100)}% | Range: ${getBuildingRange(bld)}`, color: '#4af' });
-    } else if (bdef.name === 'Scarecrow') {
-      const r = getScarecrowRadius(bld);
-      lines.push({ text: `Scare area: ${r * 2 + 1}x${r * 2 + 1}`, color: '#4af' });
-    } else if (bdef.name === 'Fence') {
-      if (bLvl >= 5)
-        lines.push({ text: 'Blocks AND damages animals', color: '#f44' });
-      else if (bLvl >= 3)
-        lines.push({ text: 'Slows animals that try to pass', color: '#fa0' });
-    } else if (bdef.name === 'Auto-Planter L1' || bdef.name === 'Auto-Planter L2') {
-      lines.push({ text: `Interval: ${getAutoPlanterInterval(bld)}s | Range: ${getBuildingRange(bld)}`, color: '#4af' });
-    } else if (bdef.name === 'Auto-Collector') {
-      lines.push({ text: `Interval: ${getAutoCollectorInterval(bld)}s | Range: ${getBuildingRange(bld)}`, color: '#4af' });
-      // Count livestock in range
-      const acRange = getBuildingRange(bld);
-      let pensInRange = 0;
-      for (const pen of livestockPens)
-        if (Math.abs(pen.gridRow - row) <= acRange && Math.abs(pen.gridCol - col) <= acRange)
-          ++pensInRange;
-      lines.push({ text: `Livestock in range: ${pensInRange}`, color: '#0cf' });
-    }
-
-    // Upgrade info
+    const lvl = bld.level || 1;
+    const lines = [`[[${bdef.sprite}]] ${bdef.name} · Lv ${lvl}`].concat(buildingStatLines(bld, row, col));
     if (canUpgradeBuilding(bld)) {
       const cost = getBuildingUpgradeCost(bld);
-      lines.push({ text: `Upgrade to L${bLvl + 1}: ${cost}cr (right-click)`, color: credits >= cost ? '#0f0' : '#f44' });
-    } else {
-      lines.push({ text: 'MAX LEVEL', color: '#0a0' });
-    }
-
-    lines.push({ text: 'Shift+right-click to remove', color: '#666' });
+      lines.push(credits >= cost ? `✔ Upgrade to Lv ${lvl + 1}: ${cost} cr` : `✘ Upgrade to Lv ${lvl + 1}: ${cost} cr`);
+    } else
+      lines.push('✔ Max level');
+    lines.push('Click to inspect · right-click upgrades');
     return lines;
-  }
-
-  function buildRockTileTooltip() {
-    return [
-      { text: 'Rocky terrain', color: '#888', bold: true },
-      { text: 'Can place buildings or grow crops here', color: '#666' }
-    ];
-  }
-
-  function buildWaterTileTooltip() {
-    return [
-      { text: 'Water source', color: '#4af', bold: true },
-      { text: 'Boosts growth of adjacent crops (+15%)', color: '#8cf' },
-      { text: 'Cannot be built on', color: '#666' }
-    ];
   }
 
   function buildEmptyTileTooltip(row, col) {
     const tt = tileTypes[row]?.[col] ?? TILE_FARMLAND;
-    if (tt === TILE_WATER) return buildWaterTileTooltip();
-
-    const crop = CROPS[selectedCropIndex];
-    const sq = getTileSoilQuality(row, col);
-    const lines = [
-      { text: 'Empty plot', color: '#999', bold: true }
-    ];
-    if (selectedTool === TOOL_BUILD && selectedBuildingIndex >= 0)
-      lines.push({ text: 'Click to place ' + BUILDINGS[selectedBuildingIndex].name + ' (' + BUILDINGS[selectedBuildingIndex].cost + ' cr)', color: '#0ff' });
-    else
-      lines.push({ text: 'Click to plant ' + crop.name + ' (' + crop.seedCost + ' cr)', color: '#aaa' });
-    if (sq < 1.0)
-      lines.push({ text: 'Fertility: ' + Math.round(sq * 100) + '% (slower growth)', color: '#ca4' });
-    else if (sq > 1.0)
-      lines.push({ text: 'Fertility: ' + Math.round(sq * 100) + '% (enhanced growth)', color: '#4d4' });
+    if (tt === TILE_WATER)
+      return ['Water', '✔ Crops next to it grow 15% faster', 'Click with the hoe to enrich the soil around it', '✘ Nothing can be built here'];
+    const lines = [tt === TILE_ROCK ? 'Rocky ground' : (tt === TILE_SAND ? 'Sandy plot' : 'Empty plot')];
+    if (selectedTool === TOOL_BUILD && selectedBuildingIndex >= 0) {
+      const b = BUILDINGS[selectedBuildingIndex];
+      lines.push((credits >= b.cost ? '✔ ' : '✘ ') + `Click to build ${b.name} (${b.cost} cr)`);
+    } else if (selectedTool === TOOL_HOE) {
+      lines.push(isAdjacentToWater(row, col) ? '✔ Click to enrich the soil' : '⚠ Too far from water to enrich');
+    } else if (tt === TILE_ROCK)
+      lines.push('⚠ Crops grow here, but rock suits buildings best');
+    else {
+      const crop = CROPS[selectedCropIndex];
+      lines.push((credits >= crop.seedCost ? '✔ ' : '✘ ') + `Click to plant ${crop.name} (${crop.seedCost} cr)`);
+    }
+    if (tt !== TILE_ROCK)
+      lines.push(fertilityLine(row, col));
     if (tt === TILE_SAND)
-      lines.push({ text: 'Sandy soil: 0.7x growth rate', color: '#c90' });
-    if (tt === TILE_ROCK)
-      lines.push({ text: 'Rocky terrain', color: '#888' });
-    // Water adjacency info
-    let adjWater = 0;
-    if (row > 0 && tileTypes[row - 1]?.[col] === TILE_WATER) ++adjWater;
-    if (row < gridRows - 1 && tileTypes[row + 1]?.[col] === TILE_WATER) ++adjWater;
-    if (col > 0 && tileTypes[row]?.[col - 1] === TILE_WATER) ++adjWater;
-    if (col < gridCols - 1 && tileTypes[row]?.[col + 1] === TILE_WATER) ++adjWater;
-    if (adjWater > 0)
-      lines.push({ text: 'Water bonus: +' + Math.round(adjWater * 15) + '% growth', color: '#4af' });
+      lines.push('⚠ Sandy soil: 70% growth');
+    const water = adjacentWaterCount(row, col);
+    if (water)
+      lines.push(`✔ Water nearby: +${water * 15}% growth`);
     return lines;
   }
 
@@ -4257,299 +5419,151 @@
     const crop = CROPS[cropIndex];
     const effPrice = getEffectiveSellPrice(crop);
     const pm = priceMultipliers[cropIndex] || 1;
-    const lines = [
-      { text: crop.name, sprite: crop.sprite, color: crop.color, bold: true },
-      { text: 'Seed cost: ' + crop.seedCost + ' cr', color: '#aaa' },
-      { text: 'Sell price: ' + effPrice + ' cr' + (effPrice !== crop.sellPrice ? ' (base ' + crop.sellPrice + ')' : ''), color: '#da2' }
-    ];
+    const lines = [`[[${crop.sprite}]] ${crop.name}`, `Seed ${crop.seedCost} cr · sells for ${effPrice} cr`, `Grows in ${crop.growTime}s over ${crop.stages} stages`];
     if (pm > 1.05)
-      lines.push({ text: 'Market: ' + pm.toFixed(2) + 'x (high!)', color: '#0c0' });
+      lines.push(`✔ Market ${pm.toFixed(2)}×: good time to sell`);
     else if (pm < 0.95)
-      lines.push({ text: 'Market: ' + pm.toFixed(2) + 'x (low)', color: '#f44' });
-    lines.push({ text: 'Grow time: ' + crop.growTime + 's -- ' + crop.stages + ' stages', color: '#8cf' });
+      lines.push(`⚠ Market ${pm.toFixed(2)}×: prices are low`);
     if (crop.weatherAffinity === 'any')
-      lines.push({ text: 'Grows in any weather, meteor-immune', color: '#a7f' });
+      lines.push('✔ Ignores weather and meteors');
     else if (crop.weatherAffinity === 'solar')
-      lines.push({ text: 'Boosted by solar flares (3x growth)', color: '#8af' });
+      lines.push('✔ Solar flares triple its growth');
     else if (crop.weatherAffinity === 'cold-vulnerable')
-      lines.push({ text: 'Vulnerable to meteor showers!', color: '#f88' });
+      lines.push('⚠ Meteor showers hit it hard');
     if (crop.nightOnly)
-      lines.push({ text: 'Only grows at night', color: '#88a' });
+      lines.push('Grows only at night');
     if (crop.dayOnly)
-      lines.push({ text: 'Only grows during day', color: '#ff8' });
+      lines.push('Grows only by day');
+    return lines;
+  }
+
+  function buildBuildingShopTooltip(i) {
+    const b = BUILDINGS[i];
+    const lines = [`[[${b.sprite}]] ${b.name}`, b.desc, (credits >= b.cost ? '✔ ' : '✘ ') + `Costs ${b.cost} cr`];
+    lines.push(b.range > 0 ? `Works on tiles within ${b.range} (grows with level)` : 'Affects the whole farm');
+    if (b.name === 'Silo')
+      lines.push(`Storage now ${getTotalInventoryCount()}/${getStorageCapacity()}: +50 per silo`);
+    if (b.name === 'Solar Panel')
+      lines.push('Also +30 max energy and +1/s charge by day');
+    if (b.name === 'Wind Turbine')
+      lines.push('Also +20 max energy and +0.5/s charge');
+    if (b.name === 'Auto-Collector')
+      lines.push('Place it beside the animal pens');
+    lines.push('Upgradeable to level 6');
     return lines;
   }
 
   function buildSellButtonTooltip() {
-    let totalItems = 0;
-    let totalValue = 0;
-    for (const crop of CROPS) {
-      const count = inventory[crop.name] || 0;
-      totalItems += count;
-      totalValue += count * getEffectiveSellPrice(crop);
+    const items = storageItems();
+    const lines = ['[[coin]] Sell all produce'];
+    if (!items.length)
+      lines.push('⚠ Storage is empty');
+    else {
+      let total = 0, count = 0;
+      for (const it of items) {
+        total += it.count * it.value;
+        count += it.count;
+      }
+      lines.push(`✔ ${count} items for ${total} cr`);
     }
-    for (const live of LIVESTOCK) {
-      const count = inventory[live.produce] || 0;
-      totalItems += count;
-      totalValue += count * getEffectiveProduceValue(live);
-    }
-    const lines = [
-      { text: 'Sell All Produce', color: '#0f0', bold: true }
-    ];
-    if (totalItems > 0)
-      lines.push({ text: totalItems + ' items worth ' + totalValue + ' cr', color: '#da2' });
-    else
-      lines.push({ text: 'No produce in inventory', color: '#888' });
-    lines.push({ text: 'Shortcut: S', color: '#666' });
+    lines.push('Shortcut: S');
     return lines;
   }
 
   function buildLivestockBuyTooltip(typeIndex) {
     const def = LIVESTOCK[typeIndex];
-    return [
-      { text: def.name, sprite: def.sprite, color: '#fff', bold: true },
-      { text: 'Cost: ' + def.cost + ' cr', color: '#f88' },
-      { text: 'Produces: ' + def.produce + ' (' + getEffectiveProduceValue(def) + ' cr)', color: '#da2' },
-      { text: 'Every ' + def.feedInterval + 's — click pen to collect', color: '#8cf' }
-    ];
+    return [`[[${def.sprite}]] ${def.name}`, (credits >= def.cost ? '✔ ' : '✘ ') + `Costs ${def.cost} cr`, `[[${def.produceSprite}]] ${def.produce} every ${getFeedInterval(def)}s, worth ${getEffectiveProduceValue(def)} cr`, 'Lives in a pen at the edge of the farm'];
   }
 
   function buildLivestockPenTooltip(pen) {
     const def = LIVESTOCK[pen.typeIndex];
-    const lines = [
-      { text: def.name, sprite: def.sprite, color: '#fff', bold: true }
-    ];
+    const lines = [`[[${def.sprite}]] ${def.name}`];
     if (pen.produceReady)
-      lines.push({ text: def.produce + ' ready! (click to collect)', sprite: def.produceSprite, color: '#0f0' });
-    else {
-      const remaining = Math.max(0, Math.ceil(pen.feedTimer));
-      lines.push({ text: 'Next ' + def.produce + ' in ' + remaining + 's', color: '#aaa' });
-    }
-    lines.push({ text: 'Value: ' + getEffectiveProduceValue(def) + ' cr each', color: '#da2' });
+      lines.push(`✔ [[${def.produceSprite}]] ${def.produce} ready: click to collect`);
+    else
+      lines.push(`Next ${def.produce} in ${Math.max(0, Math.ceil(pen.feedTimer))}s`);
+    lines.push(`Worth ${getEffectiveProduceValue(def)} cr each`);
     return lines;
   }
 
-  function buildStatTooltip(id) {
-    switch (id) {
-      case 'credits':
-        return [{ text: 'Credits — your currency', color: '#ff0', bold: true }, { text: 'Earn by selling produce (S)', color: '#aaa' }];
-      case 'day': {
-        const lines = [
-          { text: 'Day ' + dayCount + ' | ' + SEASONS[currentSeason], color: '#8cf', bold: true },
-          { text: 'Days pass every 30 seconds of playtime', color: '#aaa' },
-          { text: 'Season changes every ' + SEASON_DURATION + ' days', color: '#aaa' }
-        ];
-        const isNight = dayPhase >= 0.5;
-        lines.push({ text: isNight ? 'Night phase: some crops sleep' : 'Day phase: solar crops thrive', color: isNight ? '#88a' : '#ff8' });
-        return lines;
-      }
-      case 'weather':
-        if (weatherType === WEATHER_SOLAR_FLARE)
-          return [{ text: 'Solar Flare active', color: '#ff0', bold: true }, { text: 'Crop growth speed doubled!', color: '#0f0' }];
-        if (weatherType === WEATHER_METEOR_SHOWER)
-          return [{ text: 'Meteor Shower active', color: '#f44', bold: true }, { text: 'Random crops may be destroyed!', color: '#f88' }];
-        return [{ text: 'Weather: Clear', color: '#8cf', bold: true }, { text: 'No active weather events', color: '#aaa' }];
-      default:
-        return [];
-    }
+  function buildClockTooltip() {
+    const isNight = dayPhase >= 0.5;
+    const effects = [
+      '✔ Spring: crops grow 10% faster',
+      '✔ Summer: crops grow 25% faster, more solar flares',
+      '✔ Autumn: 15% bigger harvests, 10% slower growth',
+      '⚠ Winter: 40% slower growth, no storms'
+    ];
+    return [
+      `[[${SEASON_SPRITES[currentSeason]}]] ${SEASONS[currentSeason]} · Day ${dayCount}`,
+      effects[currentSeason],
+      'A day lasts 30 seconds, a season four days.',
+      isNight ? 'Night: lunar moss grows, solar vines sleep.' : 'Day: solar vines grow, lunar moss sleeps.'
+    ];
   }
 
-  function updateTooltip(mx, my) {
-    tooltipX = mx;
-    tooltipY = my;
-    tooltipLines = [];
-
-    if (state !== STATE_PLAYING) return;
-
-    // Check UI elements FIRST so grid tooltips don't show through UI overlays
-
-    // Check building bar area
-    const bldBarY = canvasH - 75;
-    if (my >= bldBarY && my < bldBarY + 28) {
-      const BLD_BTN_W = 56;
-      const BLD_BTN_GAP = 4;
-      const bldStartX = CROP_BAR_X + 60;
-      const bldIdx = Math.floor((mx - bldStartX) / (BLD_BTN_W + BLD_BTN_GAP));
-      if (bldIdx >= 0 && bldIdx < BUILDINGS.length && mx >= bldStartX) {
-        const bdef = BUILDINGS[bldIdx];
-        tooltipLines = [
-          { text: bdef.name, sprite: bdef.sprite, color: '#0ff', bold: true },
-          { text: 'Cost: ' + bdef.cost + ' cr', color: '#f88' },
-          { text: bdef.desc, color: '#aaa' },
-          { text: 'Range: ' + (bdef.range > 0 ? 'adjacent tiles' : 'global') + ' | Upgradeable to L6', color: '#8cf' }
-        ];
-        // Silo tooltip enhancement: show storage capacity increase
-        if (bdef.name === 'Silo') {
-          const curCap = getStorageCapacity();
-          tooltipLines.push({ text: `Storage: ${getTotalInventoryCount()}/${curCap} (+50 per silo at L1)`, color: '#da2' });
-        }
-        // Solar Panel electricity info
-        if (bdef.name === 'Solar Panel')
-          tooltipLines.push({ text: 'Also provides +25 max energy, +0.5/s regen at L1', color: '#0cf' });
-        // Wind Turbine electricity info
-        if (bdef.name === 'Wind Turbine')
-          tooltipLines.push({ text: 'Also provides +15 max energy, +0.3/s regen at L1', color: '#0cf' });
-        // Auto-Collector info
-        if (bdef.name === 'Auto-Collector')
-          tooltipLines.push({ text: 'Place near perimeter livestock pens to auto-collect', color: '#0cf' });
-        return;
-      }
+  function buildWeatherTooltip() {
+    const wi = weatherInfo();
+    const lines = [`[[${wi.icon}]] ${wi.name}`];
+    switch (weatherType) {
+      case WEATHER_SOLAR_FLARE: lines.push('✔ Crops grow twice as fast, sun-lovers three times'); break;
+      case WEATHER_METEOR_SHOWER: lines.push('✘ Meteors smash unprotected crops', 'Greenhouses and the weather shield help'); break;
+      case WEATHER_RAIN: lines.push('✔ Crops grow 50% faster'); break;
+      case WEATHER_THUNDERSTORM: lines.push('✔ Crops grow twice as fast', '✘ Lightning may destroy crops or animals', 'Wind turbines charge three times faster'); break;
+      default: lines.push(currentSeason === 3 ? 'Winter brings calm skies.' : 'Weather changes every 25-50 seconds.');
     }
+    return lines;
+  }
 
-    // Check livestock pens (grid-relative positions converted to screen)
-    const penTs = BASE_TILE_SIZE * viewZoom;
-    const penHalf = penTs / 2;
+  function toolTooltip(mode) {
+    if (mode === 'plant')
+      return ['[[seedbag]] Seeds', 'Pick a crop below, then click or drag over empty soil.', 'Clicking ripe crops harvests them.', 'Shortcut: P, number keys pick crops'];
+    if (mode === 'build')
+      return ['[[hammer]] Build', 'Pick a building below, then click a tile.', 'Buildings work on the tiles around them.', 'Shortcut: B'];
+    return ['[[hoe]] Hoe', 'Enrich soil beside water (+20% fertility).', 'Turns sand into farmland.', 'Right-click a crop to uproot it.', 'Shortcut: T'];
+  }
+
+  function nearestAnimalAt(sx, sy) {
+    for (let i = wildAnimals.length - 1; i >= 0; --i) {
+      const a = wildAnimals[i];
+      const g = gridToScreen(a.rx !== undefined ? a.rx : a.x, a.ry !== undefined ? a.ry : a.y);
+      const ax = g.x + g.size / 2, ay = g.y + g.size / 2;
+      if (Math.hypot(sx - ax, sy - ay) < Math.max(18, 22 * viewZoom))
+        return i;
+    }
+    return -1;
+  }
+
+  function penAt(sx, sy) {
+    const half = BASE_TILE_SIZE * viewZoom / 2;
     for (let i = 0; i < livestockPens.length; ++i) {
-      const pen = livestockPens[i];
-      const scr = livestockPenToScreen(pen);
-      if (mx >= scr.x - penHalf && mx <= scr.x + penHalf && my >= scr.y - penHalf && my <= scr.y + penHalf) {
-        tooltipLines = buildLivestockPenTooltip(pen);
-        return;
-      }
+      const s = livestockPenToScreen(livestockPens[i]);
+      if (sx >= s.x - half && sx <= s.x + half && sy >= s.y - half && sy <= s.y + half)
+        return i;
     }
-
-    // Check crop selection bar
-    const barY = canvasH - 45;
-    if (my >= barY && my <= canvasH) {
-      // Right-side buttons: HOE | SELL | LIVESTOCK | UPGRADES (same layout as drawUI)
-      const ttUpgBtnX = canvasW - 78;
-      const ttLivBtnX = ttUpgBtnX - 77;
-      const ttSellBtnX = ttLivBtnX - 67;
-      const ttHoeBtnX = ttSellBtnX - 65;
-
-      // Upgrades button
-      if (mx >= ttUpgBtnX && mx <= ttUpgBtnX + 70) {
-        tooltipLines = [
-          { text: 'Upgrade Shop', color: '#ff0', bold: true },
-          { text: 'Buy permanent farm upgrades', color: '#aaa' },
-          { text: 'Shortcut: U', color: '#666' }
-        ];
-        return;
-      }
-      // Livestock button
-      if (mx >= ttLivBtnX && mx <= ttLivBtnX + 70) {
-        tooltipLines = [
-          { text: 'Livestock Shop', color: '#0fc', bold: true },
-          { text: 'Buy livestock for your farm perimeter', color: '#aaa' },
-          { text: `Pens: ${livestockPens.length} owned`, color: '#8cf' },
-          { text: 'Shortcut: L', color: '#666' }
-        ];
-        return;
-      }
-      // Sell button
-      if (mx >= ttSellBtnX && mx <= ttSellBtnX + 60) {
-        tooltipLines = buildSellButtonTooltip();
-        return;
-      }
-      // Hoe button
-      if (mx >= ttHoeBtnX && mx <= ttHoeBtnX + 58) {
-        tooltipLines = [
-          { text: 'Hoe Tool', sprite: 'hoe', color: '#fa0', bold: true },
-          { text: 'Left-click farmland near water: +0.2 fertility (max 1.5)', color: '#4d4' },
-          { text: 'Right-click on crop: uproot (refund 50% seed cost)', color: '#f88' },
-          { text: 'Shortcut: T', color: '#666' }
-        ];
-        return;
-      }
-      // Crop buttons
-      const cropIdx = Math.floor((mx - CROP_BAR_X) / (CROP_BTN_W + CROP_BTN_GAP));
-      if (cropIdx >= 0 && cropIdx < CROPS.length && mx >= CROP_BAR_X && mx <= CROP_BAR_X + CROPS.length * (CROP_BTN_W + CROP_BTN_GAP)) {
-        tooltipLines = buildCropBarTooltip(cropIdx);
-        return;
-      }
-    }
-
-    // Check HUD header area for weather/day/credits
-    if (my < GRID_OFFSET_Y) {
-      if (mx < canvasW / 3)
-        tooltipLines = buildStatTooltip('weather');
-      else if (mx < canvasW * 2 / 3)
-        tooltipLines = buildStatTooltip('day');
-      else
-        tooltipLines = buildStatTooltip('credits');
-      return;
-    }
-
-    // Check farm grid (AFTER all UI elements so tooltips don't bleed through)
-    const { col, row } = canvasToGrid(mx, my);
-    if (isInsideGrid(col, row)) {
-      const tt = tileTypes[row]?.[col] ?? TILE_FARMLAND;
-      if (tt === TILE_WATER) { tooltipLines = buildWaterTileTooltip(); return; }
-      const bld = buildings[row]?.[col];
-      if (bld) { tooltipLines = buildBuildingTileTooltip(bld, row, col); return; }
-      const cell = farmGrid[row][col];
-      tooltipLines = cell ? buildCropTileTooltip(cell, row, col) : buildEmptyTileTooltip(row, col);
-      return;
-    }
+    return -1;
   }
 
-  function drawTooltip() {
-    if (!tooltipLines.length || state !== STATE_PLAYING) return;
-
-    ctx.save();
-    ctx.font = '11px sans-serif';
-
-    const padding = 8;
-    const lineH = 16;
-    let maxW = 0;
-    for (const line of tooltipLines) {
-      const t = typeof line === 'object' ? String(line.text || '') : String(line);
-      const w = ctx.measureText(t).width + (line && line.sprite ? 18 : 0);
-      if (w > maxW)
-        maxW = w;
-    }
-    const boxW = maxW + padding * 2;
-    const boxH = tooltipLines.length * lineH + padding * 2;
-
-    // Position near cursor; prefer right-below, flip if off-screen
-    let tx = tooltipX + 14;
-    let ty = tooltipY + 18;
-    if (tx + boxW > canvasW - 4)
-      tx = tooltipX - boxW - 8;
-    if (ty + boxH > canvasH - 4)
-      ty = tooltipY - boxH - 8;
-    if (tx < 4)
-      tx = 4;
-    if (ty < 4)
-      ty = 4;
-
-    // Rounded background
-    const r = 4;
-    ctx.fillStyle = 'rgba(10, 15, 10, 0.92)';
-    ctx.strokeStyle = 'rgba(100, 200, 100, 0.5)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(tx + r, ty);
-    ctx.lineTo(tx + boxW - r, ty);
-    ctx.arcTo(tx + boxW, ty, tx + boxW, ty + r, r);
-    ctx.lineTo(tx + boxW, ty + boxH - r);
-    ctx.arcTo(tx + boxW, ty + boxH, tx + boxW - r, ty + boxH, r);
-    ctx.lineTo(tx + r, ty + boxH);
-    ctx.arcTo(tx, ty + boxH, tx, ty + boxH - r, r);
-    ctx.lineTo(tx, ty + r);
-    ctx.arcTo(tx, ty, tx + r, ty, r);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    // Draw text lines
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    for (let i = 0; i < tooltipLines.length; ++i) {
-      const line = tooltipLines[i];
-      const text = typeof line === 'object' ? String(line.text || '') : String(line);
-      const color = (typeof line === 'object' ? line.color : null) || '#ddd';
-      ctx.fillStyle = color;
-      ctx.font = (line && line.bold) ? 'bold 11px sans-serif' : '11px sans-serif';
-      const baseY = ty + padding + (i + 1) * lineH - 4;
-      if (line && line.sprite) {
-        drawSprite(line.sprite, tx + padding + 7, baseY - 4, 16);
-        ctx.fillText(text, tx + padding + 18, baseY);
-      } else
-        ctx.fillText(text, tx + padding, baseY);
-    }
-
-    ctx.restore();
+  /* Tooltip for the farm under the pointer (screen px) */
+  function worldTooltip(sx, sy) {
+    const ai = nearestAnimalAt(sx, sy);
+    if (ai >= 0)
+      return { key: 'mouse:' + ai, lines: ['[[mouse]] Space mouse', '✘ Eats the nearest crop', '✔ Click it to chase it off: +10 cr', 'Scarecrows and fences keep mice out'] };
+    const pi = penAt(sx, sy);
+    if (pi >= 0)
+      return { key: 'pen:' + pi + ':' + (livestockPens[pi].produceReady ? 1 : 0), lines: buildLivestockPenTooltip(livestockPens[pi]) };
+    const { col, row } = canvasToGrid(sx, sy);
+    if (!isInsideGrid(col, row))
+      return null;
+    const key = 'tile:' + row + ':' + col;
+    const tt = tileTypes[row]?.[col] ?? TILE_FARMLAND;
+    if (tt === TILE_WATER)
+      return { key, lines: buildEmptyTileTooltip(row, col) };
+    const bld = buildings[row]?.[col];
+    if (bld)
+      return { key: key + ':b' + (bld.level || 1), lines: buildBuildingTileTooltip(bld, row, col) };
+    const cell = farmGrid[row][col];
+    return { key: key + (cell ? ':c' + cell.growthStage : ':e'), lines: cell ? buildCropTileTooltip(cell, row, col) : buildEmptyTileTooltip(row, col) };
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -4561,11 +5575,123 @@
     if (statusTool) {
       if (selectedTool === TOOL_BUILD && selectedBuildingIndex >= 0)
         statusTool.textContent = `Tool: Build (${BUILDINGS[selectedBuildingIndex].name})`;
+      else if (selectedTool === TOOL_HOE)
+        statusTool.textContent = 'Tool: Hoe';
       else
-        statusTool.textContent = `Tool: ${selectedTool}`;
+        statusTool.textContent = `Tool: Plant (${CROPS[selectedCropIndex].name})`;
     }
-    if (statusWeather) statusWeather.textContent = `Weather: ${weatherType === WEATHER_NONE ? 'Clear' : weatherType}`;
+    if (statusWeather) statusWeather.textContent = `Weather: ${weatherInfo().name}`;
     if (statusDay) statusDay.textContent = `Day: ${dayCount} | ${SEASONS[currentSeason]} | ${dayPhase < 0.5 ? 'Day' : 'Night'}`;
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+     DRAW FRAME
+     ══════════════════════════════════════════════════════════════════ */
+
+  function drawWorld() {
+    ctx.fillStyle = '#0a0a1a';
+    ctx.fillRect(0, 0, canvasW, canvasH);
+    drawGrid();
+    drawAnimals();
+    drawLivestock();
+    drawCursorPreview();
+    drawDragSelection();
+    drawDayNightOverlay();
+    drawWeatherOverlay();
+  }
+
+  function drawFrame() {
+    frameRegions = [];
+    ++hudFrame;
+    const playing = state === STATE_PLAYING || state === STATE_PAUSED;
+    ctx.save();
+    screenShake.apply(ctx);
+    if (playing) {
+      drawWorld();
+      particles.draw(ctx);
+      floatingText.draw(ctx);
+    }
+    screenShake.restore(ctx);
+    ctx.restore();
+
+    ctx.save();
+    ctx.scale(uiS, uiS);
+    if (state === STATE_READY)
+      drawTitleScreen();
+    else if (playing) {
+      drawHUD();
+      if (dialog === 'upgrades')
+        drawUpgradesDialog();
+      else if (dialog === 'livestock')
+        drawLivestockDialog();
+      if (state === STATE_PAUSED && dialog !== 'help')
+        drawPauseScreen();
+    }
+    if (dialog === 'help')
+      drawHelpDialog();
+    drawTooltip();
+    if (screenFade > 0) {
+      ctx.fillStyle = `rgba(3,5,12,${screenFade})`;
+      ctx.fillRect(0, 0, UW, UH);
+    }
+    ctx.restore();
+    uiRegions = frameRegions;
+  }
+
+  /* Ghost of the selected crop or building on the tile under the pointer */
+  function drawCursorPreview() {
+    if (state !== STATE_PLAYING || dialog || isDragging || isPanning) return;
+    let col, row;
+    if (kbCursor.active) {
+      col = kbCursor.col;
+      row = kbCursor.row;
+    } else {
+      if (!pointerInside || hitRegion(pointerUX, pointerUY)) return;
+      ({ col, row } = canvasToGrid(pointerX, pointerY));
+    }
+    if (!isInsideGrid(col, row)) return;
+    const g = gridToScreen(col, row);
+    const tt = tileTypes[row][col];
+    const bld = buildings[row][col];
+    const cell = farmGrid[row][col];
+    let ok = true, ghost = null;
+    if (selectedTool === TOOL_BUILD && selectedBuildingIndex >= 0) {
+      ok = tt !== TILE_WATER && !bld && credits >= BUILDINGS[selectedBuildingIndex].cost;
+      ghost = BUILDINGS[selectedBuildingIndex].sprite;
+      const range = BUILDINGS[selectedBuildingIndex].range;
+      if (range > 0 && tt !== TILE_WATER) {
+        const r0 = gridToScreen(col - range, row - range);
+        ctx.fillStyle = 'rgba(90,184,255,0.10)';
+        ctx.fillRect(r0.x, r0.y, g.size * (range * 2 + 1), g.size * (range * 2 + 1));
+        ctx.strokeStyle = 'rgba(90,184,255,0.55)';
+        ctx.setLineDash([6, 4]);
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(r0.x, r0.y, g.size * (range * 2 + 1), g.size * (range * 2 + 1));
+        ctx.setLineDash([]);
+      }
+    } else if (selectedTool === TOOL_HOE) {
+      ok = tt === TILE_WATER || (tt !== TILE_ROCK && isAdjacentToWater(row, col));
+    } else if (!bld && !cell && tt !== TILE_WATER) {
+      ok = credits >= CROPS[selectedCropIndex].seedCost;
+      ghost = CROPS[selectedCropIndex].sprite;
+    } else if (cell) {
+      ok = cell.growthStage >= CROPS[cell.cropIndex].stages - 1;
+    } else if (bld)
+      ok = true;
+    else
+      ok = false;
+    const color = ok ? (cell ? '#ffd75a' : '#7ee06a') : '#ff6a6a';
+    const pulse = 0.6 + Math.sin(uiTime * 6) * 0.25;
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = hexToRgba(color, pulse);
+    roundRectPath(g.x + 2, g.y + 2, g.size - 4, g.size - 4, Math.max(3, 6 * viewZoom));
+    ctx.stroke();
+    if (ghost && ok) {
+      ctx.globalAlpha = 0.55;
+      drawSprite(ghost, g.x + g.size / 2, g.y + g.size / 2 - 2 * viewZoom, 40 * viewZoom);
+    }
+    ctx.restore();
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -4574,42 +5700,82 @@
 
   let lastTimestamp = 0;
   let animFrameId = null;
+  let lastSeason = -1;
 
   function gameLoop(timestamp) {
     const rawDt = lastTimestamp ? (timestamp - lastTimestamp) / 1000 : 0;
     const dt = Math.min(rawDt, MAX_DT);
     lastTimestamp = timestamp;
+    frameDt = Math.max(0.001, dt);
+    uiTime += dt;
 
-    updateGame(dt);
+    if (!dialog)
+      updateGame(dt);
 
     if (state === STATE_PLAYING) {
       autosaveTimer += dt;
       if (autosaveTimer >= AUTOSAVE_INTERVAL)
         saveGame();
+      if (lastSeason !== currentSeason) {
+        if (lastSeason >= 0)
+          announce(`${SEASONS[currentSeason]} has arrived`, ['Crops grow 10% faster', 'Crops grow 25% faster', 'Harvests are 15% bigger', 'Crops grow 40% slower, no storms'][currentSeason], SEASON_COLORS[currentSeason], SEASON_SPRITES[currentSeason]);
+        lastSeason = currentSeason;
+      }
     }
+
+    // Eased credit counter
+    const diff = credits - creditsShown;
+    if (Math.abs(diff) < 0.5)
+      creditsShown = credits;
+    else
+      creditsShown += diff * Math.min(1, dt * 10);
+    creditsPulse = Math.max(0, creditsPulse - dt * 3);
+    creditsDeltaT = Math.max(0, creditsDeltaT - dt * 0.8);
+    screenFade = Math.max(0, screenFade - dt * 2.5);
 
     particles.update();
     screenShake.update(dt * 1000);
     floatingText.update();
+    refreshHover();
+    updateTooltipTimer(dt);
 
     ctx.clearRect(0, 0, canvasW, canvasH);
-    ctx.save();
-    screenShake.apply(ctx);
-    drawGame();
-    particles.draw(ctx);
-    floatingText.draw(ctx);
-    screenShake.restore(ctx);
-    ctx.restore();
+    drawFrame();
 
     updateStatusBar();
     updateWindowTitle();
+    trackCredits();
 
     animFrameId = requestAnimationFrame(gameLoop);
+  }
+
+  let lastCredits = null;
+  function trackCredits() {
+    if (lastCredits === null || state !== STATE_PLAYING) {
+      lastCredits = credits;
+      return;
+    }
+    const d = Math.round(credits - lastCredits);
+    if (d) {
+      creditsDelta = creditsDeltaT > 0 ? creditsDelta + d : d;
+      creditsDeltaT = 1.6;
+      if (d > 0)
+        creditsPulse = 1;
+    }
+    lastCredits = credits;
   }
 
   /* ══════════════════════════════════════════════════════════════════
      INPUT
      ══════════════════════════════════════════════════════════════════ */
+
+  let pointerX = 0, pointerY = 0;            // canvas px
+  let pointerUX = 0, pointerUY = 0;          // UI units
+  let pointerInside = false;
+  const kbCursor = { col: 0, row: 0, active: false };
+  const touches = new Map();                 // pointerId -> { x, y }
+  let pinch = null;                          // { dist, zoom, cx, cy }
+  let pressStart = null;                     // { x, y, region }
 
   /* Pause when the window is hidden or loses focus */
   SZ.GameAutoPause.attach({
@@ -4627,9 +5793,65 @@
       saveGame();
   });
 
+  function togglePause() {
+    if (state === STATE_PLAYING) {
+      state = STATE_PAUSED;
+      saveGame();
+      SZ.GameAudio.play('click');
+    } else if (state === STATE_PAUSED) {
+      state = STATE_PLAYING;
+      SZ.GameAudio.play('select', { volume: 0.6 });
+    }
+  }
+
+  /* Plants, harvests or hoes the tile under the keyboard cursor */
+  function actOnTile(row, col) {
+    if (selectedTool === TOOL_BUILD && selectedBuildingIndex >= 0) {
+      if (buildings[row][col])
+        inspect = { row, col };
+      else
+        placeBuilding(row, col);
+      return;
+    }
+    if (selectedTool === TOOL_HOE) {
+      hoeFertilize(row, col);
+      return;
+    }
+    if (buildings[row][col]) {
+      inspect = inspect && inspect.row === row && inspect.col === col ? null : { row, col };
+      return;
+    }
+    const cell = farmGrid[row][col];
+    if (!cell)
+      plantCrop(row, col);
+    else if (cell.growthStage >= CROPS[cell.cropIndex].stages - 1)
+      harvestCrop(row, col);
+    else
+      SZ.GameAudio.play('error', { volume: 0.4 });
+  }
+
+  /* Pans the view so a tile stays inside the area between the HUD panels */
+  function revealTile(col, row) {
+    const g = gridToScreen(col, row);
+    const left = 270 * uiS, right = canvasW - 30 * uiS, top = 90 * uiS, bottom = canvasH - (DOCK_H + 50) * uiS;
+    if (g.x < left) viewPanX += left - g.x;
+    else if (g.x + g.size > right) viewPanX -= g.x + g.size - right;
+    if (g.y < top) viewPanY += top - g.y;
+    else if (g.y + g.size > bottom) viewPanY -= g.y + g.size - bottom;
+    clampPan();
+  }
+
+  function zoomAt(sx, sy, factor) {
+    const oldZoom = viewZoom;
+    viewZoom = Math.max(VIEW_ZOOM_MIN, Math.min(VIEW_ZOOM_MAX, viewZoom * factor));
+    const ratio = viewZoom / oldZoom;
+    viewPanX = sx - (sx - viewPanX) * ratio;
+    viewPanY = sy - (sy - viewPanY) * ratio;
+    clampPan();
+  }
+
   window.addEventListener('keydown', (e) => {
     keys[e.code] = true;
-
     if (newGameConfirmOpen)
       return;
 
@@ -4639,113 +5861,127 @@
       return;
     }
 
-    /* Tutorial navigation */
-    if (showTutorial) {
+    if (dialog === 'help') {
       if (e.code === 'Space' || e.code === 'Enter' || e.code === 'ArrowRight') {
         e.preventDefault();
-        ++tutorialPage;
-        if (tutorialPage >= TUTORIAL_PAGES.length)
-          showTutorial = false;
-        return;
-      }
-      if (e.code === 'ArrowLeft' && tutorialPage > 0) {
+        helpNext();
+      } else if (e.code === 'ArrowLeft') {
         e.preventDefault();
-        --tutorialPage;
-        return;
-      }
-      if (e.key === 'Escape') {
+        if (helpPage > 0) {
+          --helpPage;
+          SZ.GameAudio.play('click');
+        }
+      } else if (e.code === 'Escape' || e.code === 'KeyH') {
         e.preventDefault();
-        showTutorial = false;
-        return;
+        closeDialog();
       }
       return;
     }
 
-    if (e.key === 'h' || e.key === 'H') {
-      if (state === STATE_PLAYING || state === STATE_PAUSED || state === STATE_READY) {
-        showTutorial = !showTutorial;
-        tutorialPage = 0;
-        return;
-      }
+    if (e.code === 'KeyH') {
+      openHelp(0);
+      return;
     }
 
-    if (state === STATE_READY && savedGameAvailable && (e.code === 'Enter' || e.code === 'KeyC')) {
-      e.preventDefault();
-      continueSavedGame();
+    if (state === STATE_READY) {
+      if (savedGameAvailable && (e.code === 'Enter' || e.code === 'KeyC')) {
+        e.preventDefault();
+        continueSavedGame();
+      } else if (!savedGameAvailable && (e.code === 'Enter' || e.code === 'Space')) {
+        e.preventDefault();
+        resetGame();
+      }
       return;
     }
 
     if (e.code === 'Escape') {
       e.preventDefault();
-      if (showUpgradeShop) {
-        showUpgradeShop = false;
-        return;
-      }
-      if (showLivestockShop) {
-        showLivestockShop = false;
-        return;
-      }
-      if (state === STATE_PLAYING) {
-        state = STATE_PAUSED;
-        saveGame();
-      } else if (state === STATE_PAUSED)
-        state = STATE_PLAYING;
+      if (dialog)
+        closeDialog();
+      else if (inspect)
+        inspect = null;
+      else if (kbCursor.active)
+        kbCursor.active = false;
+      else
+        togglePause();
       return;
     }
 
-    // Number keys 1-9, 0 to select crop
-    if (state === STATE_PLAYING) {
-      const num = parseInt(e.key);
-      // 0 maps to crop index 9 (10th crop)
-      if (e.key === '0' && CROPS.length >= 10) {
-        selectedCropIndex = 9;
-        selectedTool = TOOL_PLANT;
-        SZ.GameAudio.play('click');
-      } else if (num >= 1 && num <= CROPS.length) {
-        selectedCropIndex = num - 1;
-        selectedTool = TOOL_PLANT;
-        SZ.GameAudio.play('click');
+    if (state === STATE_PAUSED) {
+      if (e.code === 'Enter' || e.code === 'Space') {
+        e.preventDefault();
+        togglePause();
       }
-      if (e.code === 'KeyS')
-        sellAllProduce();
-      if (e.code === 'KeyU') {
-        showUpgradeShop = !showUpgradeShop;
-        showLivestockShop = false;
-        SZ.GameAudio.play('click');
+      return;
+    }
+    if (state !== STATE_PLAYING)
+      return;
+
+    if (dialog) {
+      if ((e.code === 'KeyU' && dialog === 'upgrades') || (e.code === 'KeyL' && dialog === 'livestock'))
+        closeDialog();
+      return;
+    }
+
+    // Number keys pick crops (or buildings in build mode); 0 is the tenth
+    const digit = /^Digit(\d)$/.exec(e.code) || /^Numpad(\d)$/.exec(e.code);
+    if (digit) {
+      const n = parseInt(digit[1], 10);
+      const idx = n === 0 ? 9 : n - 1;
+      if (selectedTool === TOOL_BUILD) {
+        if (idx < BUILDINGS.length)
+          selectBuilding(idx);
+      } else if (idx < CROPS.length)
+        selectCrop(idx);
+      dockFollow = true;
+      return;
+    }
+
+    const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    if (arrows[e.code]) {
+      e.preventDefault();
+      const [dx, dy] = arrows[e.code];
+      if (e.shiftKey) {
+        viewPanX -= dx * 60;
+        viewPanY -= dy * 60;
+        clampPan();
         return;
       }
-      if (e.code === 'KeyL') {
-        showLivestockShop = !showLivestockShop;
-        showUpgradeShop = false;
-        SZ.GameAudio.play('click');
-        return;
+      if (!kbCursor.active) {
+        const c = canvasToGrid(canvasW / 2, canvasH / 2);
+        kbCursor.col = Math.max(0, Math.min(gridCols - 1, c.col));
+        kbCursor.row = Math.max(0, Math.min(gridRows - 1, c.row));
+        kbCursor.active = true;
+      } else {
+        kbCursor.col = Math.max(0, Math.min(gridCols - 1, kbCursor.col + dx));
+        kbCursor.row = Math.max(0, Math.min(gridRows - 1, kbCursor.row + dy));
       }
-      if (e.code === 'KeyB') {
-        // Toggle building mode: cycle through buildings or cancel
-        if (selectedTool === TOOL_BUILD) {
-          ++selectedBuildingIndex;
-          if (selectedBuildingIndex >= BUILDINGS.length) {
-            selectedBuildingIndex = -1;
-            selectedTool = TOOL_PLANT;
-          }
-        } else {
-          selectedBuildingIndex = 0;
-          selectedTool = TOOL_BUILD;
-        }
-        SZ.GameAudio.play('click');
-        return;
-      }
-      if (e.code === 'KeyT') {
-        // Toggle hoe tool
-        selectedTool = selectedTool === TOOL_HOE ? TOOL_PLANT : TOOL_HOE;
-        selectedBuildingIndex = -1;
-        SZ.GameAudio.play('click');
-        return;
-      }
-      if (e.code === 'Home') {
-        resetView();
-        return;
-      }
+      revealTile(kbCursor.col, kbCursor.row);
+      SZ.GameAudio.play('click', { volume: 0.3 });
+      return;
+    }
+    if ((e.code === 'Space' || e.code === 'Enter') && kbCursor.active) {
+      e.preventDefault();
+      actOnTile(kbCursor.row, kbCursor.col);
+      return;
+    }
+
+    switch (e.code) {
+      case 'KeyS': sellAllProduce(); break;
+      case 'KeyU': toggleDialog('upgrades'); break;
+      case 'KeyL': toggleDialog('livestock'); break;
+      case 'KeyP': setTool('plant'); dockFollow = true; break;
+      case 'KeyB':
+        if (selectedTool === TOOL_BUILD)
+          selectBuilding((selectedBuildingIndex + 1) % BUILDINGS.length);
+        else
+          setTool('build');
+        dockFollow = true;
+        break;
+      case 'KeyT': setTool(selectedTool === TOOL_HOE ? 'plant' : 'hoe'); break;
+      case 'Home': resetView(); break;
+      case 'Equal': case 'NumpadAdd': zoomAt(canvasW / 2, canvasH / 2, 1.15); break;
+      case 'Minus': case 'NumpadSubtract': zoomAt(canvasW / 2, canvasH / 2, 1 / 1.15); break;
     }
   });
 
@@ -4764,7 +6000,6 @@
   }
 
   function canvasToGrid(cx, cy) {
-    // Invert zoom/pan transform: screen -> world -> grid
     const wx = (cx - viewPanX) / viewZoom;
     const wy = (cy - viewPanY) / viewZoom;
     return {
@@ -4777,7 +6012,6 @@
     return col >= 0 && col < gridCols && row >= 0 && row < gridRows;
   }
 
-  /** Returns the grid-clamped selection rectangle { r0, c0, r1, c1 } from drag coordinates. */
   function getDragGridRect() {
     const a = canvasToGrid(dragStartX, dragStartY);
     const b = canvasToGrid(dragCurrentX, dragCurrentY);
@@ -4789,9 +6023,9 @@
     };
   }
 
-  /** Apply plant/harvest action to all tiles inside the drag selection. */
+  /* Applies plant / harvest / hoe to every tile inside the drag selection */
   function applyDragAction() {
-    if (selectedTool === TOOL_BUILD) return; // building uses single click
+    if (selectedTool === TOOL_BUILD) return;
     const { r0, c0, r1, c1 } = getDragGridRect();
     for (let r = r0; r <= r1; ++r)
       for (let c = c0; c <= c1; ++c) {
@@ -4800,312 +6034,201 @@
           continue;
         }
         const tt = tileTypes[r]?.[c] ?? TILE_FARMLAND;
-        if (tt === TILE_WATER) continue;
-        if (buildings[r]?.[c]) continue;
+        if (tt === TILE_WATER || buildings[r]?.[c]) continue;
         const cell = farmGrid[r][c];
         if (cell === null)
           plantCrop(r, c);
-        else {
-          const crop = CROPS[cell.cropIndex];
-          if (cell.growthStage >= crop.stages - 1)
-            harvestCrop(r, c);
-        }
+        else if (cell.growthStage >= CROPS[cell.cropIndex].stages - 1)
+          harvestCrop(r, c);
       }
   }
 
-  /* ── Click/Tap/Drag handling ── */
+  function updatePointer(e) {
+    const { x, y } = pointerToCanvas(e);
+    pointerX = x;
+    pointerY = y;
+    pointerUX = x / uiS;
+    pointerUY = y / uiS;
+    pointerInside = true;
+  }
+
+  function chaseMouse(i) {
+    const animal = wildAnimals[i];
+    credits += 10;
+    const { x: tx, y: ty } = gridCenterToScreen(animal.rx !== undefined ? animal.rx : animal.x, animal.ry !== undefined ? animal.ry : animal.y);
+    floatingText.add(tx, ty - 10, '+10 cr', { color: '#6fe08a', font: uiFont(14, 'bold') });
+    floatingText.add(tx, ty + 8, 'Pest chased off!', { color: '#ffb648', font: uiFont(11, 'bold') });
+    particles.burst(tx, ty, 10, { color: '#ffd0a0', speed: 3, life: 0.4 });
+    screenShake.trigger(2, 100);
+    SZ.GameAudio.play('hit');
+    wildAnimals.splice(i, 1);
+  }
 
   canvas.addEventListener('pointerdown', (e) => {
-    if (showTutorial) {
-      ++tutorialPage;
-      if (tutorialPage >= TUTORIAL_PAGES.length)
-        showTutorial = false;
-      return;
+    updatePointer(e);
+    kbCursor.active = false;
+    if (e.pointerType === 'touch') {
+      touches.set(e.pointerId, { x: pointerX, y: pointerY });
+      if (touches.size === 2 && state === STATE_PLAYING && !dialog) {
+        // second finger: switch to pinch zoom / two-finger pan
+        isDragging = false;
+        const [a, b] = [...touches.values()];
+        pinch = { dist: Math.hypot(a.x - b.x, a.y - b.y) || 1, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+        return;
+      }
     }
-    if (state === STATE_READY && savedGameAvailable) {
-      const { x: sx, y: sy } = pointerToCanvas(e);
-      const hit = (r) => r && sx >= r.x && sx <= r.x + r.w && sy >= r.y && sy <= r.y + r.h;
-      if (hit(startButtons.cont))
-        continueSavedGame();
-      else if (hit(startButtons.fresh))
-        requestNewGame();
-      return;
-    }
-    if (state === STATE_READY || state === STATE_GAME_OVER) {
-      resetGame();
+
+    const region = hitRegion(pointerUX, pointerUY);
+    const through = region && !region.modal && hudPassThrough(pointerUX, pointerUY);
+    if (region && !through) {
+      if (e.button !== 0 && e.pointerType === 'mouse') {
+        if (!region.modal && state === STATE_PLAYING && !dialog && (e.button === 1 || e.button === 2))
+          startPan(e);
+        return;
+      }
+      pressRegionId = region.id;
+      pressStart = { region };
+      canvas.setPointerCapture(e.pointerId);
       return;
     }
 
-    if (state !== STATE_PLAYING) return;
+    if (state !== STATE_PLAYING || dialog) return;
 
-    // Middle mouse button, right-click, or ctrl+left for panning (Feature 1)
+    // Middle mouse, right-click or Ctrl+left pans
     if (e.button === 1 || e.button === 2 || (e.button === 0 && e.ctrlKey)) {
       e.preventDefault();
-      isPanning = true;
-      panButton = e.button;
-      const { x, y } = pointerToCanvas(e);
-      panLastX = x;
-      panLastY = y;
-      // Track right-click start for short-click detection
-      if (e.button === 2) {
-        rightClickStartX = x;
-        rightClickStartY = y;
-      }
-      canvas.setPointerCapture(e.pointerId);
+      startPan(e);
       return;
     }
 
-    const { x: mx, y: my } = pointerToCanvas(e);
-
-    // Check upgrade shop clicks first (it overlays everything)
-    if (showUpgradeShop) {
-      const panelW = 300;
-      const ROW_H = 48;
-      const headerH = 30;
-      const footerH = 16;
-      const contentH = UPGRADES.length * ROW_H;
-      const maxVisH = canvasH - 60;
-      const panelH = Math.min(headerH + contentH + footerH, maxVisH);
-      const px = Math.round((canvasW - panelW) / 2);
-      const py = Math.round((canvasH - panelH) / 2) - 10;
-
-      if (mx >= px && mx <= px + panelW && my >= py && my <= py + panelH) {
-        // Check buy button clicks
-        for (let i = 0; i < UPGRADES.length; ++i) {
-          const btnX = px + panelW - 66;
-          const btnY = py + headerH + i * ROW_H - upgradeShopScroll + 5;
-          if (mx >= btnX && mx <= btnX + 54 && my >= btnY && my <= btnY + 20) {
-            purchaseUpgrade(i);
-            return;
-          }
-        }
-        return; // click inside panel but not on a button
-      }
-      // Click outside panel closes it
-      showUpgradeShop = false;
+    const ai = nearestAnimalAt(pointerX, pointerY);
+    if (ai >= 0) {
+      chaseMouse(ai);
       return;
     }
 
-    // Check livestock shop clicks (it overlays everything)
-    if (showLivestockShop) {
-      const panelW = 280;
-      const ROW_H = 48;
-      const headerH = 30;
-      const footerH = 16;
-      const contentH = LIVESTOCK.length * ROW_H;
-      const maxVisH = canvasH - 60;
-      const panelH = Math.min(headerH + contentH + footerH, maxVisH);
-      const px = Math.round((canvasW - panelW) / 2);
-      const py = Math.round((canvasH - panelH) / 2) - 10;
-
-      if (mx >= px && mx <= px + panelW && my >= py && my <= py + panelH) {
-        // Check buy button clicks
-        for (let i = 0; i < LIVESTOCK.length; ++i) {
-          const btnX = px + panelW - 66;
-          const btnY = py + headerH + i * ROW_H - livestockShopScroll + 5;
-          if (mx >= btnX && mx <= btnX + 54 && my >= btnY && my <= btnY + 20) {
-            buyLivestock(i);
-            return;
-          }
-        }
-        return; // click inside panel but not on a button
-      }
-      // Click outside panel closes it
-      showLivestockShop = false;
-      return;
-    }
-
-    // Check UI elements FIRST so clicks don't fall through to the grid below
-
-    // Check building bar area
-    const bldBarY = canvasH - 75;
-    if (my >= bldBarY && my < bldBarY + 28) {
-      const BLD_BTN_W = 56;
-      const BLD_BTN_GAP = 4;
-      const bldStartX = CROP_BAR_X + 60;
-
-      // Cancel button
-      if (selectedTool === TOOL_BUILD) {
-        const cancelX = bldStartX + BUILDINGS.length * (BLD_BTN_W + BLD_BTN_GAP) + 4;
-        if (mx >= cancelX && mx <= cancelX + 40) {
-          selectedTool = TOOL_PLANT;
-          selectedBuildingIndex = -1;
-          SZ.GameAudio.play('click');
-          return;
-        }
-      }
-
-      const bldIdx = Math.floor((mx - bldStartX) / (BLD_BTN_W + BLD_BTN_GAP));
-      if (bldIdx >= 0 && bldIdx < BUILDINGS.length && mx >= bldStartX) {
-        selectedBuildingIndex = bldIdx;
-        selectedTool = TOOL_BUILD;
-        SZ.GameAudio.play('click');
-        return;
-      }
-    }
-
-    // Check bottom bar buttons (same layout as drawUI)
-    const barY = canvasH - 45;
-    const clkUpgBtnX = canvasW - 78;
-    const clkLivBtnX = clkUpgBtnX - 77;
-    const clkSellBtnX = clkLivBtnX - 67;
-    const clkHoeBtnX = clkSellBtnX - 65;
-
-    // Upgrades button
-    if (mx >= clkUpgBtnX && mx <= clkUpgBtnX + 70 && my >= barY + 4 && my <= barY + 41) {
-      showUpgradeShop = !showUpgradeShop;
-      showLivestockShop = false;
-      SZ.GameAudio.play('click');
-      return;
-    }
-
-    // Livestock button
-    if (mx >= clkLivBtnX && mx <= clkLivBtnX + 70 && my >= barY + 4 && my <= barY + 41) {
-      showLivestockShop = !showLivestockShop;
-      showUpgradeShop = false;
-      SZ.GameAudio.play('click');
-      return;
-    }
-
-    // Sell button
-    if (mx >= clkSellBtnX && mx <= clkSellBtnX + 60 && my >= barY + 4 && my <= barY + 41) {
-      sellAllProduce();
-      return;
-    }
-
-    // Hoe button
-    if (mx >= clkHoeBtnX && mx <= clkHoeBtnX + 58 && my >= barY + 4 && my <= barY + 41) {
-      selectedTool = selectedTool === TOOL_HOE ? TOOL_PLANT : TOOL_HOE;
-      selectedBuildingIndex = -1;
-      SZ.GameAudio.play('click');
-      return;
-    }
-
-    // Check crop selection bar (entire bottom bar area absorbs clicks)
-    if (my >= barY && my <= canvasH) {
-      const cropIdx = Math.floor((mx - CROP_BAR_X) / (CROP_BTN_W + CROP_BTN_GAP));
-      if (cropIdx >= 0 && cropIdx < CROPS.length && mx >= CROP_BAR_X && mx <= CROP_BAR_X + CROPS.length * (CROP_BTN_W + CROP_BTN_GAP)) {
-        selectedCropIndex = cropIdx;
-        selectedTool = TOOL_PLANT;
-        selectedBuildingIndex = -1;
-        SZ.GameAudio.play('click');
-      }
-      return;
-    }
-
-    // Check if click is inside farm grid -- start drag or place building
-    const { col, row } = canvasToGrid(mx, my);
+    const { col, row } = canvasToGrid(pointerX, pointerY);
     if (isInsideGrid(col, row)) {
-      // Building placement mode: single click places building
       if (selectedTool === TOOL_BUILD && selectedBuildingIndex >= 0) {
-        placeBuilding(row, col);
+        if (buildings[row][col])
+          inspect = { row, col };
+        else
+          placeBuilding(row, col);
         return;
       }
-      // Hoe tool: enters drag mode like plant/harvest (applied on release)
       isDragging = true;
       dragStartedOnGrid = true;
-      dragStartX = mx;
-      dragStartY = my;
-      dragCurrentX = mx;
-      dragCurrentY = my;
+      dragStartX = dragCurrentX = pointerX;
+      dragStartY = dragCurrentY = pointerY;
       canvas.setPointerCapture(e.pointerId);
       return;
     }
 
-    // Check livestock pen click (feeding/collecting) -- use screen-converted positions
-    const clkPenTs = BASE_TILE_SIZE * viewZoom;
-    const clkPenHalf = clkPenTs / 2;
-    for (let i = 0; i < livestockPens.length; ++i) {
-      const pen = livestockPens[i];
-      const scr = livestockPenToScreen(pen);
-      if (mx >= scr.x - clkPenHalf && mx <= scr.x + clkPenHalf && my >= scr.y - clkPenHalf && my <= scr.y + clkPenHalf) {
-        feedAndCollect(i);
+    const pi = penAt(pointerX, pointerY);
+    if (pi >= 0) {
+      feedAndCollect(pi);
+      return;
+    }
+    inspect = null;
+  });
+
+  function startPan(e) {
+    isPanning = true;
+    panButton = e.button;
+    panLastX = pointerX;
+    panLastY = pointerY;
+    if (e.button === 2) {
+      rightClickStartX = pointerX;
+      rightClickStartY = pointerY;
+    }
+    canvas.setPointerCapture(e.pointerId);
+  }
+
+  canvas.addEventListener('pointermove', (e) => {
+    updatePointer(e);
+    if (e.pointerType === 'touch' && touches.has(e.pointerId)) {
+      touches.set(e.pointerId, { x: pointerX, y: pointerY });
+      if (pinch && touches.size >= 2) {
+        const [a, b] = [...touches.values()];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+        const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+        viewPanX += cx - pinch.cx;
+        viewPanY += cy - pinch.cy;
+        zoomAt(cx, cy, dist / pinch.dist);
+        pinch.dist = dist;
+        pinch.cx = cx;
+        pinch.cy = cy;
         return;
       }
     }
-  });
-
-  canvas.addEventListener('pointermove', (e) => {
-    const { x, y } = pointerToCanvas(e);
-
-    // Panning
+    if (e.pointerType === 'mouse')
+      kbCursor.active = false;
     if (isPanning) {
-      viewPanX += x - panLastX;
-      viewPanY += y - panLastY;
+      viewPanX += pointerX - panLastX;
+      viewPanY += pointerY - panLastY;
       clampPan();
-      panLastX = x;
-      panLastY = y;
+      panLastX = pointerX;
+      panLastY = pointerY;
       return;
     }
-
-    // Tooltip tracking (always active)
-    if (!isDragging)
-      updateTooltip(x, y);
-
-    // Drag tracking
     if (isDragging) {
-      dragCurrentX = x;
-      dragCurrentY = y;
+      dragCurrentX = pointerX;
+      dragCurrentY = pointerY;
     }
   });
 
   canvas.addEventListener('pointerleave', () => {
-    tooltipLines = [];
+    pointerInside = false;
+    hoverRegionId = null;
+    clearTooltip();
   });
 
-  // Prevent context menu on middle-click
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
   canvas.addEventListener('pointerup', (e) => {
+    updatePointer(e);
+    if (e.pointerType === 'touch') {
+      touches.delete(e.pointerId);
+      if (pinch) {
+        if (touches.size < 2)
+          pinch = null;
+        return;
+      }
+    }
+    if (pressStart) {
+      const r = pressStart.region;
+      pressStart = null;
+      pressRegionId = null;
+      try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+      const now = hitRegion(pointerUX, pointerUY);
+      if (now && now.id === r.id) {
+        if (r.onClick)
+          r.onClick();
+        else if (r.disabledClick)
+          r.disabledClick();
+      }
+      return;
+    }
     if (isPanning) {
       isPanning = false;
       const releasedButton = panButton;
       panButton = -1;
-      canvas.releasePointerCapture(e.pointerId);
-
-      // Feature 1: short right-click = upgrade building, shift+right-click = remove building, or click animal
-      if (releasedButton === 2 && state === STATE_PLAYING) {
-        const { x, y } = pointerToCanvas(e);
-        const dx = x - rightClickStartX;
-        const dy = y - rightClickStartY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 5) {
-          // Check for animal click first
-          let clickedAnimal = false;
-          for (let i = wildAnimals.length - 1; i >= 0; --i) {
-            const animal = wildAnimals[i];
-            const g = gridToScreen(animal.x, animal.y);
-            const ax = g.x + g.size / 2;
-            const ay = g.y + g.size / 2;
-            const adist = Math.sqrt((x - ax) * (x - ax) + (y - ay) * (y - ay));
-            if (adist < 15 * viewZoom) {
-              // Kill animal for credits
-              credits += 10;
-              const { x: tx, y: ty } = gridCenterToScreen(Math.round(animal.x), Math.round(animal.y));
-              floatingText.add(tx, ty - 10, '+10cr', { color: '#0f0', font: 'bold 13px sans-serif' });
-              floatingText.add(tx, ty + 5, 'Pest eliminated!', { color: '#fa0', font: 'bold 10px sans-serif' });
-              particles.burst(tx, ty, 8, { color: '#f44', speed: 3, life: 0.4 });
-              screenShake.trigger(2, 100);
-              SZ.GameAudio.play('hit');
-              wildAnimals.splice(i, 1);
-              clickedAnimal = true;
-              break;
-            }
-          }
-          if (!clickedAnimal) {
-            const { col, row } = canvasToGrid(x, y);
-            if (isInsideGrid(col, row)) {
-              // Hoe right-click: uproot crop
-              if (selectedTool === TOOL_HOE && farmGrid[row]?.[col])
-                hoeUproot(row, col);
-              else if (e.shiftKey)
-                removeBuilding(row, col);
-              else if (buildings[row]?.[col])
-                upgradeBuilding(row, col);
-              else
-                removeBuilding(row, col);
-            }
-          }
+      try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+      // a short right-click upgrades a building, Shift removes it, a mouse gets chased off
+      if (releasedButton === 2 && state === STATE_PLAYING && !dialog && Math.hypot(pointerX - rightClickStartX, pointerY - rightClickStartY) < 5) {
+        const ai = nearestAnimalAt(pointerX, pointerY);
+        if (ai >= 0) {
+          chaseMouse(ai);
+          return;
+        }
+        const { col, row } = canvasToGrid(pointerX, pointerY);
+        if (isInsideGrid(col, row)) {
+          if (selectedTool === TOOL_HOE && farmGrid[row]?.[col])
+            hoeUproot(row, col);
+          else if (e.shiftKey)
+            removeBuilding(row, col);
+          else if (buildings[row]?.[col])
+            upgradeBuilding(row, col);
         }
       }
       return;
@@ -5113,74 +6236,78 @@
     if (!isDragging) return;
     isDragging = false;
     dragStartedOnGrid = false;
-    canvas.releasePointerCapture(e.pointerId);
-
+    try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
     if (state !== STATE_PLAYING) return;
+    // A plain click on a building opens its inspector
+    if (Math.hypot(dragCurrentX - dragStartX, dragCurrentY - dragStartY) < 6) {
+      const { col, row } = canvasToGrid(dragStartX, dragStartY);
+      if (isInsideGrid(col, row) && buildings[row][col] && selectedTool !== TOOL_HOE) {
+        inspect = inspect && inspect.row === row && inspect.col === col ? null : { row, col };
+        SZ.GameAudio.play('click');
+        return;
+      }
+    }
+    inspect = null;
     applyDragAction();
   });
 
   canvas.addEventListener('pointercancel', (e) => {
-    if (isPanning) {
-      isPanning = false;
-      panButton = -1;
-      canvas.releasePointerCapture(e.pointerId);
-      return;
-    }
-    if (!isDragging) return;
+    touches.delete(e.pointerId);
+    pinch = null;
+    pressStart = null;
+    pressRegionId = null;
+    isPanning = false;
+    panButton = -1;
     isDragging = false;
     dragStartedOnGrid = false;
-    canvas.releasePointerCapture(e.pointerId);
+    try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
   });
 
-  /* ── Zoom & Pan helpers ── */
+  /* ── Zoom & pan helpers ── */
 
   function clampPan() {
-    // Keep the grid at least partially visible
     const ts = BASE_TILE_SIZE * viewZoom;
     const gridW = gridCols * ts;
     const gridH = gridRows * ts;
     const ox = GRID_OFFSET_X * viewZoom;
     const oy = GRID_OFFSET_Y * viewZoom;
-
-    // Don't let the grid scroll entirely off-screen
-    const margin = 60;
+    const margin = 80;
     viewPanX = Math.max(-gridW - ox + margin, Math.min(canvasW - ox - margin, viewPanX));
-    viewPanY = Math.max(-gridH - oy + margin, Math.min(canvasH - oy - margin - 45, viewPanY));
+    viewPanY = Math.max(-gridH - oy + margin, Math.min(canvasH - oy - margin, viewPanY));
   }
 
+  /* Fits the whole farm between the HUD panels */
   function resetView() {
-    viewZoom = 1.0;
-    viewPanX = 0;
-    viewPanY = 0;
+    const availW = canvasW - 280 * uiS - 30 * uiS;
+    const availH = canvasH - 90 * uiS - (DOCK_H + 60) * uiS;
+    const fieldW = (gridCols + 2) * BASE_TILE_SIZE, fieldH = (gridRows + 2) * BASE_TILE_SIZE;
+    viewZoom = Math.max(VIEW_ZOOM_MIN, Math.min(1.4, availW / fieldW, availH / fieldH));
+    const cx = 270 * uiS + availW / 2, cy = 90 * uiS + availH / 2;
+    viewPanX = cx - (GRID_OFFSET_X + gridCols * BASE_TILE_SIZE / 2) * viewZoom;
+    viewPanY = cy - (GRID_OFFSET_Y + gridRows * BASE_TILE_SIZE / 2) * viewZoom;
   }
 
   canvas.addEventListener('wheel', (e) => {
-    if (state !== STATE_PLAYING) return;
     e.preventDefault();
-
-    // Scroll upgrade shop if open
-    if (showUpgradeShop) {
-      upgradeShopScroll += e.deltaY > 0 ? 40 : -40;
-      return;
+    const { x, y } = pointerToCanvas(e);
+    const region = hitRegion(x / uiS, y / uiS);
+    if (region) {
+      if (region.onWheel)
+        region.onWheel(e.deltaY);
+      else {
+        for (let i = uiRegions.length - 1; i >= 0; --i) {
+          const r = uiRegions[i];
+          if (r.onWheel && x / uiS >= r.x && x / uiS <= r.x + r.w && y / uiS >= r.y && y / uiS <= r.y + r.h) {
+            r.onWheel(e.deltaY);
+            break;
+          }
+        }
+      }
+      if (!hudPassThrough(x / uiS, y / uiS) || region.modal)
+        return;
     }
-    // Scroll livestock shop if open
-    if (showLivestockShop) {
-      livestockShopScroll += e.deltaY > 0 ? 40 : -40;
-      return;
-    }
-
-    const { x: mx, y: my } = pointerToCanvas(e);
-
-    // Zoom toward cursor position
-    const oldZoom = viewZoom;
-    const zoomStep = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-    viewZoom = Math.max(VIEW_ZOOM_MIN, Math.min(VIEW_ZOOM_MAX, viewZoom * zoomStep));
-
-    // Adjust pan so the point under the cursor stays fixed
-    const zoomRatio = viewZoom / oldZoom;
-    viewPanX = mx - (mx - viewPanX) * zoomRatio;
-    viewPanY = my - (my - viewPanY) * zoomRatio;
-    clampPan();
+    if (state !== STATE_PLAYING || dialog) return;
+    zoomAt(x, y, e.deltaY < 0 ? 1.1 : 1 / 1.1);
   }, { passive: false });
 
   /* ══════════════════════════════════════════════════════════════════
@@ -5193,11 +6320,7 @@
         requestNewGame();
         break;
       case 'pause':
-        if (state === STATE_PLAYING) {
-          state = STATE_PAUSED;
-          saveGame();
-        } else if (state === STATE_PAUSED)
-          state = STATE_PLAYING;
+        togglePause();
         break;
       case 'high-scores':
         renderHighScores();
@@ -5213,8 +6336,7 @@
         SZ.Dialog.show('controlsBackdrop');
         break;
       case 'tutorial':
-        showTutorial = true;
-        tutorialPage = 0;
+        openHelp(0);
         break;
       case 'about':
         SZ.Dialog.show('dlg-about');
@@ -5232,6 +6354,9 @@
 
   function handleResize() {
     setupCanvas();
+    textFitCache.clear();
+    if (state === STATE_PLAYING || state === STATE_PAUSED)
+      clampPan();
   }
 
   let shownTitle = '';
@@ -5271,7 +6396,7 @@
   });
 
   setupCanvas();
-  // the bottom-right corner holds the Upgrades button, so the sound switch sits in the menu bar
+  // the bottom-right corner holds the dock, so the sound switch sits in the menu bar
   const muteButton = SZ.GameAudio.attachMuteButton();
   Object.assign(muteButton.style, { top: '2px', bottom: 'auto', width: '20px', height: '20px', font: '11px/18px sans-serif' });
   loadHighScores();
@@ -5279,12 +6404,8 @@
   try { tutorialSeen = localStorage.getItem(STORAGE_TUTORIAL) === '1'; } catch (_) { tutorialSeen = false; }
   updateWindowTitle();
 
-  if (!tutorialSeen) {
-    showTutorial = true;
-    tutorialPage = 0;
-    tutorialSeen = true;
-    try { localStorage.setItem(STORAGE_TUTORIAL, '1'); } catch (_) {}
-  }
+  if (!tutorialSeen)
+    openHelp(0);
 
   lastTimestamp = 0;
   animFrameId = requestAnimationFrame(gameLoop);
