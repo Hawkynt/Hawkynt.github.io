@@ -1890,8 +1890,9 @@
   }
 
   /* -- Run save / resume (plain data only; objects are rebuilt on load) -- */
-  const STORAGE_SAVE = STORAGE_PREFIX + '-save-v1';
-  const SAVE_VERSION = 1;
+  const STORAGE_SAVE = STORAGE_PREFIX + '-save-v2';
+  const STORAGE_SAVE_V1 = STORAGE_PREFIX + '-save-v1'; // older format, migrated on load
+  const SAVE_VERSION = 2;
   const AUTOSAVE_INTERVAL = 5; // seconds of play between autosaves
   let autosaveTimer = 0;
   let saveAvailable = false;   // a resumable run is stored
@@ -1932,7 +1933,10 @@
 
   function clearSave() {
     saveAvailable = false;
-    try { localStorage.removeItem(STORAGE_SAVE); } catch (_) {}
+    try {
+      localStorage.removeItem(STORAGE_SAVE);
+      localStorage.removeItem(STORAGE_SAVE_V1);
+    } catch (_) {}
   }
 
   function isNum(v) {
@@ -1944,13 +1948,40 @@
   }
 
   // Read and validate the stored run; a broken or outdated save is discarded with a notice
+  // A version 1 run keeps its upgrades, gadgets, resources and score; its
+  // smaller mine cannot be carried over, so the site is generated anew
+  function migrateV1Save(d) {
+    if (!isPlainObject(d) || d.version !== 1)
+      throw new Error('not a version 1 save');
+    d.version = SAVE_VERSION;
+    d.migratedFrom = 1;
+    d.mineOutdated = true;
+    d.view = VIEW_SURFACE;
+    d.enemies = [];
+    d.waveActive = false;
+    d.partialHP = [];
+    d.droppedResources = [];
+    d.gadgetChambers = [];
+    if (!isNum(d.drillX)) d.drillX = 0;
+    if (!isNum(d.drillY)) d.drillY = 0;
+    return d;
+  }
+
   function readSavedRun() {
-    let raw = null;
-    try { raw = localStorage.getItem(STORAGE_SAVE); } catch (_) { return null; }
+    let raw = null, legacy = false;
+    try {
+      raw = localStorage.getItem(STORAGE_SAVE);
+      if (!raw) {
+        raw = localStorage.getItem(STORAGE_SAVE_V1);
+        legacy = !!raw;
+      }
+    } catch (_) { return null; }
     if (!raw)
       return null;
     try {
-      const d = JSON.parse(raw);
+      let d = JSON.parse(raw);
+      if (legacy)
+        d = migrateV1Save(d);
       if (!isPlainObject(d) || d.version !== SAVE_VERSION)
         throw new Error('unsupported save version');
       for (const k of ['domeHP', 'maxDomeHP', 'carried', 'carryCapacity', 'weaponDamage', 'fireRate', 'drillSpeed', 'moveStepInterval', 'drillX', 'drillY', 'turretAngle', 'waveNumber', 'waveTimer', 'score'])
@@ -2038,6 +2069,10 @@
     primaryGadgetState = Object.assign({}, d.primaryGadgetState);
     foundGadgets = d.foundGadgets.filter(g => typeof g === 'string');
     unlockedTools = Object.assign({}, d.unlockedTools);
+    // Tools bought on the old tools panel are the same nodes in the tree
+    for (const t of TOOL_DEFS)
+      if (unlockedTools[t.key] && TREE_NODE_BY_ID[t.key])
+        upgradeTreeLevels[t.key] = TREE_NODE_BY_ID[t.key].maxLevel;
     activeToolKey = typeof d.activeToolKey === 'string' ? d.activeToolKey : null;
     Object.assign(toolState, d.toolState);
 
@@ -2058,6 +2093,11 @@
     try {
       restoreRun(d);
       saveNotice = '';
+      if (d.migratedFrom) {
+        saveRun();
+        try { localStorage.removeItem(STORAGE_SAVE_V1); } catch (_) {}
+        floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 110, 'Saved run updated: your dome landed on a fresh, deeper site', { color: '#ffd75a', font: 'bold 24px sans-serif' });
+      }
       SZ.GameAudio.play('select');
       floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, `Run resumed -- Wave ${waveNumber}`, { color: '#4af', font: 'bold 32px sans-serif' });
     } catch (_) {
