@@ -507,6 +507,392 @@
     ctx.textAlign = align;
   }
 
+  /* ======================================================================
+     TEXT LAYOUT -- every label is measured against the box it lives in
+     ====================================================================== */
+
+  const UI_FONT = "'Segoe UI', 'Trebuchet MS', 'Helvetica Neue', Arial, sans-serif";
+
+  function uiFont(px, weight) {
+    return (weight ? weight + ' ' : '') + px + 'px ' + UI_FONT;
+  }
+
+  // Layout results are cached per (text, box, font) because the same labels
+  // are laid out every frame
+  const textFitCache = new Map();
+  function cachedLayout(key, build) {
+    let v = textFitCache.get(key);
+    if (v === undefined) {
+      if (textFitCache.size > 3000)
+        textFitCache.clear();
+      v = build();
+      textFitCache.set(key, v);
+    }
+    return v;
+  }
+
+  // Split icon text into indivisible units (characters and [[sprite]] tokens)
+  function textUnits(text) {
+    const parts = splitIconText(text);
+    const units = [];
+    for (let i = 0; i < parts.length; ++i)
+      if (i % 2)
+        units.push('[[' + parts[i] + ']]');
+      else
+        for (const ch of parts[i])
+          units.push(ch);
+    return units;
+  }
+
+  // Shorten text with an ellipsis until it fits maxW in the current font
+  function ellipsize(text, maxW) {
+    text = String(text);
+    if (measureIconText(text) <= maxW)
+      return text;
+    const units = textUnits(text);
+    let lo = 0, hi = units.length;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (measureIconText(units.slice(0, mid).join('').trimEnd() + '…') <= maxW)
+        lo = mid;
+      else
+        hi = mid - 1;
+    }
+    return lo > 0 ? units.slice(0, lo).join('').trimEnd() + '…' : '';
+  }
+
+  // Largest font size in [minPx, px] that fits; ellipsizes if minPx is still too wide
+  function layoutLine(text, maxW, px, minPx, weight) {
+    text = String(text);
+    return cachedLayout('L' + text + '|' + Math.round(maxW) + '|' + px + '|' + minPx + '|' + (weight || ''), () => {
+      let size = px;
+      ctx.font = uiFont(size, weight);
+      let w = measureIconText(text);
+      if (w > maxW && size > minPx) {
+        size = Math.max(minPx, Math.floor(px * maxW / w));
+        ctx.font = uiFont(size, weight);
+        w = measureIconText(text);
+        while (w > maxW && size > minPx) {
+          --size;
+          ctx.font = uiFont(size, weight);
+          w = measureIconText(text);
+        }
+      }
+      const out = w > maxW ? ellipsize(text, maxW) : text;
+      return { size, text: out, width: Math.min(w, maxW) };
+    });
+  }
+
+  // Draw one line of (icon) text that never exceeds maxW; returns the drawn width.
+  // Honours the current textAlign / textBaseline; sets ctx.font.
+  function fitText(text, x, y, maxW, px, opts) {
+    opts = opts || {};
+    const l = layoutLine(text, maxW, px, opts.minPx || Math.max(9, Math.round(px * 0.6)), opts.weight);
+    ctx.font = uiFont(l.size, opts.weight);
+    if (opts.color)
+      ctx.fillStyle = opts.color;
+    if (opts.outline) {
+      ctx.save();
+      ctx.strokeStyle = opts.outline;
+      ctx.lineWidth = Math.max(2, l.size / 6);
+      ctx.lineJoin = 'round';
+      if (l.text.indexOf('[[') < 0)
+        ctx.strokeText(l.text, x, y);
+      ctx.restore();
+    }
+    fillIconText(l.text, x, y);
+    return l.width;
+  }
+
+  // Greedy word wrap in the current font; overlong words are ellipsized
+  function wrapText(text, maxW) {
+    const lines = [];
+    for (const para of String(text).split('\n')) {
+      const words = para.split(' ');
+      let line = '';
+      for (const word of words) {
+        const trial = line ? line + ' ' + word : word;
+        if (!line || measureIconText(trial) <= maxW)
+          line = trial;
+        else {
+          lines.push(line);
+          line = word;
+        }
+        if (measureIconText(line) > maxW && line === word)
+          line = ellipsize(word, maxW);
+      }
+      lines.push(line);
+    }
+    return lines;
+  }
+
+  // Wrap text into a w x h box, shrinking the font until all lines fit
+  function layoutBlock(text, w, h, px, minPx, weight, lineGap) {
+    return cachedLayout('B' + text + '|' + Math.round(w) + '|' + Math.round(h) + '|' + px + '|' + minPx + '|' + (weight || '') + '|' + lineGap, () => {
+      let size = px, lines;
+      for (;;) {
+        ctx.font = uiFont(size, weight);
+        lines = wrapText(text, w);
+        if (lines.length * size * lineGap <= h || size <= minPx)
+          break;
+        --size;
+      }
+      const maxLines = Math.max(1, Math.floor(h / (size * lineGap)));
+      if (lines.length > maxLines) {
+        lines = lines.slice(0, maxLines);
+        lines[maxLines - 1] = ellipsize(lines[maxLines - 1] + '…', w);
+      }
+      return { size, lines, lineH: size * lineGap };
+    });
+  }
+
+  // Draw wrapped text inside a box. align: 'left' | 'center'; valign: 'top' | 'middle'
+  function drawTextBlock(text, x, y, w, h, px, opts) {
+    opts = opts || {};
+    const b = layoutBlock(text, w, h, px, opts.minPx || Math.max(9, Math.round(px * 0.6)), opts.weight, opts.lineGap || 1.3);
+    ctx.font = uiFont(b.size, opts.weight);
+    if (opts.color)
+      ctx.fillStyle = opts.color;
+    const align = opts.align || 'left';
+    ctx.textAlign = align;
+    ctx.textBaseline = 'middle';
+    const tx = align === 'center' ? x + w / 2 : x;
+    let ty = y + b.lineH / 2;
+    if (opts.valign === 'middle')
+      ty += (h - b.lines.length * b.lineH) / 2;
+    for (const line of b.lines) {
+      fillIconText(line, tx, ty);
+      ty += b.lineH;
+    }
+    return b.lines.length * b.lineH;
+  }
+
+  /* ======================================================================
+     UI PANELS -- one frame style for every box on screen
+     ====================================================================== */
+
+  const UI = {
+    panelTop: 'rgba(22,30,52,0.94)',
+    panelBottom: 'rgba(9,12,24,0.94)',
+    edge: '#05070e',
+    rim: 'rgba(150,180,255,0.16)',
+    accent: '#5ab8ff',
+    gold: '#ffd75a',
+    text: '#e4eaf6',
+    textDim: '#93a0bb',
+    textMute: '#5d6884',
+    good: '#6fe08a',
+    bad: '#ff6a6a',
+    warn: '#ffb648'
+  };
+
+  function roundRectPath(x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+  }
+
+  // Framed panel: drop shadow, vertical gradient, dark edge, light inner rim,
+  // accent strip and an optional title header. Returns the content top y.
+  function drawPanel(x, y, w, h, opts) {
+    opts = opts || {};
+    const r = opts.radius !== undefined ? opts.radius : 10;
+    const accent = opts.accent || UI.accent;
+    ctx.save();
+    if (opts.alpha !== undefined)
+      ctx.globalAlpha *= opts.alpha;
+    if (!opts.flat) {
+      ctx.shadowColor = 'rgba(0,0,0,0.55)';
+      ctx.shadowBlur = opts.shadow !== undefined ? opts.shadow : 18;
+      ctx.shadowOffsetY = 4;
+    }
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, opts.top || UI.panelTop);
+    g.addColorStop(1, opts.bottom || UI.panelBottom);
+    roundRectPath(x, y, w, h, r);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = UI.edge;
+    ctx.stroke();
+    roundRectPath(x + 1.5, y + 1.5, w - 3, h - 3, r - 1.5);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = opts.glow ? hexToRgba(accent, 0.75) : UI.rim;
+    ctx.stroke();
+    if (opts.glow) {
+      ctx.shadowColor = accent;
+      ctx.shadowBlur = 14;
+      roundRectPath(x, y, w, h, r);
+      ctx.strokeStyle = hexToRgba(accent, 0.6);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    // Accent strip along the top edge
+    const sg = ctx.createLinearGradient(x, 0, x + w, 0);
+    sg.addColorStop(0, hexToRgba(accent, 0));
+    sg.addColorStop(0.5, hexToRgba(accent, 0.9));
+    sg.addColorStop(1, hexToRgba(accent, 0));
+    ctx.fillStyle = sg;
+    ctx.fillRect(x + r, y + 1, w - r * 2, 2);
+    let contentY = y + (opts.pad !== undefined ? opts.pad : 10);
+    if (opts.title) {
+      const hh = opts.headerH || 40;
+      ctx.fillStyle = 'rgba(255,255,255,0.04)';
+      ctx.fillRect(x + 2, y + 3, w - 4, hh - 3);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(x + 10, y + hh, w - 20, 1);
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      ctx.fillRect(x + 10, y + hh + 1, w - 20, 1);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const titleX = x + 14;
+      const rightW = opts.titleRight ? Math.min(w * 0.45, 180) : 0;
+      fitText(opts.title, titleX, y + hh / 2 + 1, w - 28 - rightW, opts.titlePx || 20, { weight: 'bold', color: accent });
+      if (opts.titleRight) {
+        ctx.textAlign = 'right';
+        fitText(opts.titleRight, x + w - 14, y + hh / 2 + 1, rightW - 8, 15, { color: opts.titleRightColor || UI.textDim });
+      }
+      contentY = y + hh + 8;
+    }
+    ctx.restore();
+    return contentY;
+  }
+
+  // Horizontal meter with a rounded track and a glossy fill
+  function drawMeter(x, y, w, h, ratio, color, opts) {
+    opts = opts || {};
+    ratio = Math.max(0, Math.min(1, ratio));
+    ctx.save();
+    roundRectPath(x, y, w, h, h / 2);
+    ctx.fillStyle = opts.track || 'rgba(0,0,0,0.55)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.stroke();
+    if (ratio > 0) {
+      ctx.save();
+      roundRectPath(x, y, w, h, h / 2);
+      ctx.clip();
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, w * ratio, h);
+      ctx.fillStyle = 'rgba(255,255,255,0.28)';
+      ctx.fillRect(x, y, w * ratio, h * 0.42);
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.fillRect(x, y + h * 0.75, w * ratio, h * 0.25);
+      ctx.restore();
+    }
+    if (opts.label) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText(opts.label, x + w / 2, y + h / 2 + 1, w - 8, opts.labelPx || Math.round(h * 0.72), { weight: 'bold', color: '#fff', outline: 'rgba(0,0,0,0.75)' });
+    }
+    ctx.restore();
+  }
+
+  // Rounded pill / chip with centred text; returns its width
+  function drawChip(text, x, y, h, opts) {
+    opts = opts || {};
+    const px = opts.px || Math.round(h * 0.62);
+    ctx.font = uiFont(px, opts.weight || 'bold');
+    const w = Math.min(opts.maxW || 1e9, Math.ceil(measureIconText(text)) + h * 0.8);
+    const x0 = opts.align === 'right' ? x - w : x;
+    roundRectPath(x0, y, w, h, h / 2);
+    ctx.fillStyle = opts.bg || 'rgba(255,255,255,0.08)';
+    ctx.fill();
+    if (opts.border) {
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = opts.border;
+      ctx.stroke();
+    }
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(text, x0 + w / 2, y + h / 2 + 1, w - h * 0.5, px, { weight: opts.weight || 'bold', color: opts.color || UI.text });
+    return w;
+  }
+
+  // Button with gradient face, used by the title and dialogs
+  function drawButton(b, primary, hover) {
+    ctx.save();
+    const g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+    if (primary) {
+      g.addColorStop(0, hover ? '#4aa0ff' : '#3a86e0');
+      g.addColorStop(1, hover ? '#2a64c0' : '#1f4c98');
+    } else {
+      g.addColorStop(0, hover ? '#3a4560' : '#2a3248');
+      g.addColorStop(1, hover ? '#232a3e' : '#181d2c');
+    }
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 3;
+    roundRectPath(b.x, b.y, b.w, b.h, 12);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = primary ? (hover ? '#bfe0ff' : '#7ab8ff') : (hover ? '#8a9ac0' : '#4a5676');
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    roundRectPath(b.x + 3, b.y + 3, b.w - 6, b.h * 0.42, 9);
+    ctx.fill();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(b.label, b.x + b.w / 2, b.y + b.h / 2 + 1, b.w - 24, 26, { weight: 'bold', color: primary ? '#fff' : '#d0d8ea' });
+    ctx.restore();
+  }
+
+  // Large glowing headline (title screens and overlays)
+  function drawHeadline(text, x, y, maxW, px, color, glow) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const l = layoutLine(text, maxW, px, Math.round(px * 0.5), 'bold');
+    ctx.font = uiFont(l.size, 'bold');
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(3, l.size / 9);
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+    ctx.strokeText(l.text, x, y + 3);
+    ctx.shadowColor = glow || color;
+    ctx.shadowBlur = 22;
+    const g = ctx.createLinearGradient(0, y - l.size / 2, 0, y + l.size / 2);
+    g.addColorStop(0, '#ffffff');
+    g.addColorStop(0.45, color);
+    g.addColorStop(1, glow || color);
+    ctx.fillStyle = g;
+    ctx.fillText(l.text, x, y);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  // Dim the whole screen and darken the corners
+  let vignetteCanvas = null;
+  function drawScrim(alpha) {
+    ctx.fillStyle = `rgba(3,5,12,${alpha})`;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    if (!vignetteCanvas) {
+      vignetteCanvas = document.createElement('canvas');
+      vignetteCanvas.width = CANVAS_W / 4;
+      vignetteCanvas.height = CANVAS_H / 4;
+      const v = vignetteCanvas.getContext('2d');
+      const g = v.createRadialGradient(CANVAS_W / 8, CANVAS_H / 8, CANVAS_H / 16, CANVAS_W / 8, CANVAS_H / 8, CANVAS_W / 6);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(0,0,0,0.7)');
+      v.fillStyle = g;
+      v.fillRect(0, 0, CANVAS_W / 4, CANVAS_H / 4);
+    }
+    ctx.drawImage(vignetteCanvas, 0, 0, CANVAS_W, CANVAS_H);
+  }
 
 
   const TILE_DISPLAY_NAMES = {
@@ -641,6 +1027,12 @@
     { name: 'Move Speed', key: 'moveSpeed', baseCost: 25, perLevel: 15 },
     { name: 'Mining Tools', key: 'miningTools', baseCost: 35, perLevel: 20 }
   ];
+
+  // Sprite shown next to each quick upgrade
+  const UPGRADE_ICONS = {
+    weaponDamage: 'swords', fireRate: 'fire', domeHP: 'shield', drillSpeed: 'drill',
+    carryCapacity: 'bag', moveSpeed: 'boot', miningTools: 'pickaxe'
+  };
 
   /* -- Unlockable Gadgets/Tools -- */
   const GADGET_DEFS = [
@@ -1178,11 +1570,20 @@
   let tutorialSeen = false;
   let showTutorial = false;
   let tutorialPage = 0;
+  // Each page: intro paragraph plus rows of [key, text] (key null = plain bullet)
   const TUTORIAL_PAGES = [
-    { title: 'How to Play', lines: ['Defend your dome from alien waves on the surface', 'while mining resources underground!', '', 'Click/Tap = Fire weapon (surface) / Mine (underground)', 'Arrow Keys/WASD = Move drill underground', 'Space/Tab = Toggle surface / underground'] },
-    { title: 'Upgrades & Tips', lines: ['Press U to open the upgrade shop.', 'Upgrade weapon, dome armor, drill, fire rate.', '', 'Mine resources (iron, copper, gold, gems...) for upgrades.', 'Return to the surface before waves arrive!', 'Press H anytime to see this help again.'] },
-    { title: 'Gadgets', lines: ['Choose a primary gadget at game start.', 'Find golden gadget chambers underground (2x2 tiles).', '', 'Press R to activate the Repellent Field.', 'Press B to use Blast Mining charges.', 'Gadgets from chambers activate on pickup!'] },
-    { title: 'Tools', lines: ['Unlock tools from the upgrade panel (click "Tools").', 'Press 1-5 to select/activate unlocked tools:', '', '1=Drill (fast column mining), 2=Blast (3x3 clear)', '3=Scanner (reveals nearby ores), 4=Reinforced Dome', '5=Teleporter (instant return to surface)'] }
+    { title: 'How to Play', icon: 'dome',
+      intro: 'Defend your dome from alien waves on the surface while mining resources underground!',
+      items: [['Click', 'Fire the laser (surface) / dig (underground)'], ['WASD / Arrows', 'Move the keeper and mine underground'], ['Space / Tab', 'Switch between surface and mine']] },
+    { title: 'Upgrades & Tips', icon: 'pickaxe',
+      intro: 'Mine iron, copper, gold, gems and more, then spend them on upgrades.',
+      items: [['U', 'Open the upgrade tree (on the surface)'], [null, 'Upgrade weapon, dome armor, drill and fire rate'], [null, 'Return to the surface before a wave arrives!'], ['H', 'Show this help again anytime']] },
+    { title: 'Gadgets', icon: 'gear',
+      intro: 'Choose a primary gadget at the start of each run. Golden 2x2 gadget chambers underground hide more of them.',
+      items: [['R', 'Activate the Repellent Field'], ['B', 'Use Blast Mining charges'], [null, 'Gadgets from chambers activate on pickup!']] },
+    { title: 'Tools', icon: 'drill',
+      intro: 'Unlock tools in the Tools section of the upgrade panel, then use them with the number keys.',
+      items: [['1', 'Drill: fast column mining'], ['2', 'Blast: clears a 3x3 area'], ['3', 'Scanner: reveals nearby ores'], ['4', 'Reinforced Dome: takes less damage'], ['5', 'Teleporter: instant return to the surface']] }
   ];
 
   let state = STATE_READY;
@@ -1274,6 +1675,7 @@
     y: 0,
     visible: false,
     delayTimer: 0,
+    anchor: null,     // optional {x, y, w, h} box to place the tooltip beside
     lastHoverKey: ''  // identity of what we are hovering; resets delay when it changes
   };
   const TOOLTIP_DELAY = 0.2; // seconds before tooltip appears
@@ -4290,48 +4692,6 @@
     ctx.beginPath();
     ctx.arc(tbx, tby, 6, 0, TWO_PI);
     ctx.fill();
-
-    // Dome HP bar with gradient
-    const barW = 240;
-    const barH = 20;
-    const barX = DOME_X - barW / 2;
-    const barY = DOME_Y + 44;
-
-    // Bar background
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(barX - 2, barY - 2, barW + 4, barH + 4);
-    ctx.fillStyle = '#333';
-    ctx.fillRect(barX, barY, barW, barH);
-
-    // Health bar fill with gradient
-    const hpBarGrad = ctx.createLinearGradient(barX, barY, barX, barY + barH);
-    if (hpRatio > 0.3) {
-      hpBarGrad.addColorStop(0, '#6e6');
-      hpBarGrad.addColorStop(0.5, '#4c4');
-      hpBarGrad.addColorStop(1, '#3a3');
-    } else {
-      hpBarGrad.addColorStop(0, '#f66');
-      hpBarGrad.addColorStop(0.5, '#f44');
-      hpBarGrad.addColorStop(1, '#c22');
-    }
-    ctx.fillStyle = hpBarGrad;
-    ctx.fillRect(barX, barY, barW * hpRatio, barH);
-
-    // HP bar highlight
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    ctx.fillRect(barX, barY, barW * hpRatio, barH / 2);
-
-    // Bar border
-    ctx.strokeStyle = '#666';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(barX, barY, barW, barH);
-
-    // HP text
-    ctx.fillStyle = '#ddd';
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText(`${Math.ceil(domeHP)}/${maxDomeHP}`, DOME_X, barY + barH + 6);
   }
 
   function drawHexagon(cx, cy, size) {
@@ -4715,39 +5075,7 @@
     // Projectiles
     drawProjectiles();
 
-    // Wave info with styled text
-    ctx.fillStyle = '#bbb';
-    ctx.font = 'bold 24px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    if (waveActive) {
-      ctx.fillStyle = '#f88';
-      ctx.fillText(`Wave ${waveNumber}`, 20, 28);
-      ctx.fillStyle = '#aaa';
-      ctx.font = '22px sans-serif';
-      ctx.fillText(`${enemies.length} enemies remaining`, 20, 60);
-    } else {
-      ctx.fillText(`Next wave in ${Math.ceil(waveTimer)}s`, 20, 28);
-      // Timer bar
-      const timerRatio = waveTimer / WAVE_INTERVAL;
-      ctx.fillStyle = '#333';
-      ctx.fillRect(20, 64, 200, 8);
-      ctx.fillStyle = '#f80';
-      ctx.fillRect(20, 64, 200 * (1 - timerRatio), 8);
-    }
-
-    // Score with glow
-    ctx.textAlign = 'right';
-    ctx.fillStyle = '#dd8';
-    ctx.font = 'bold 26px sans-serif';
-    ctx.fillText(`Score: ${score}`, CANVAS_W - 20, 28);
-
-    // View toggle hint
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#555';
-    ctx.font = '22px sans-serif';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('SPACE = underground  |  U = upgrade tree', CANVAS_W / 2, CANVAS_H - 20);
+    drawSurfaceHUD();
 
     // Upgrade panel
     drawUpgradePanel();
@@ -4876,11 +5204,9 @@
       ctx.fillRect(dx + 2, dy - 2, 7, 7);
       ctx.fillRect(dx - 4, dy + 4, 6, 6);
       ctx.globalAlpha = 1;
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 16px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
-      ctx.fillText(String(drop.value), dx, dy - 12);
+      fitText(String(drop.value), dx, dy - 10, TILE_SIZE + 8, 15, { weight: 'bold', color: '#fff', outline: 'rgba(0,0,0,0.8)' });
     }
 
     // Draw mining progress bar above the block being mined
@@ -4959,24 +5285,21 @@
     // Resource display (improved styling)
     drawResourceHUD();
 
-    // View toggle hint
-    // Blast charges hint
+    // Blast charges
     if (foundGadgets.includes('blastMining') && (primaryGadgetState.blastCharges || 0) > 0) {
-      ctx.fillStyle = '#f80';
-      ctx.font = 'bold 20px sans-serif';
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'top';
-      ctx.fillText(`Blast [B]: ${primaryGadgetState.blastCharges}`, CANVAS_W - 20, CANVAS_H - 110);
+      drawSprite('bomb', CANVAS_W - 40, CANVAS_H - 66, 24);
+      drawChip(`Blast [B]: ${primaryGadgetState.blastCharges}`, CANVAS_W - 58, CANVAS_H - 79, 26, { align: 'right', px: 15, bg: 'rgba(20,26,42,0.85)', border: 'rgba(255,160,64,0.6)', color: '#ffa040' });
     }
 
     // Tool HUD (underground)
     drawToolHUDUnderground();
 
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#555';
-    ctx.font = '22px sans-serif';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('Press SPACE to return to surface', CANVAS_W / 2, CANVAS_H - 20);
+    drawKeyHints([
+      { key: 'Space', label: 'Surface' },
+      { key: 'WASD', label: 'Move & mine' },
+      { key: 'Click', label: 'Walk / dig' },
+      { key: 'H', label: 'Help' }
+    ], CANVAS_W / 2, CANVAS_H - 24, 600);
   }
 
   // Pre-generate deterministic ore speckle positions per tile
@@ -5288,96 +5611,84 @@
       (e, i) => i < 3 || resources[e.key] > 0
     );
     const lineH = 26;
-    const panelH = 6 + visibleEntries.length * lineH;
-    const panelX = 10;
-    const panelY = 10;
-
-    // Two-column layout if many resources
     const useColumns = visibleEntries.length > 7;
     const colEntries = useColumns ? Math.ceil(visibleEntries.length / 2) : visibleEntries.length;
-    const colPanelH = 6 + colEntries * lineH;
-    const colPanelW = useColumns ? 440 : 260;
+    const colW = 168;
+    const panelX = 16, panelY = 16;
+    const panelW = 16 + (useColumns ? 2 : 1) * colW;
+    const panelH = 14 + colEntries * lineH;
 
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(panelX, panelY, colPanelW, colPanelH);
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(panelX, panelY, colPanelW, colPanelH);
-
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-
+    drawPanel(panelX, panelY, panelW, panelH, { accent: '#c8a060', shadow: 10 });
+    ctx.textBaseline = 'middle';
     for (let i = 0; i < visibleEntries.length; ++i) {
       const e = visibleEntries[i];
       const col = useColumns ? Math.floor(i / colEntries) : 0;
       const row = useColumns ? i % colEntries : i;
-      const x = panelX + 12 + col * 220;
-      const y = panelY + 3 + row * lineH;
-      ctx.fillStyle = e.color;
-      fillIconText(`[[${e.key}]] ${e.label}: ${resources[e.key]}`, x, y);
+      const x = panelX + 10 + col * colW;
+      const y = panelY + 7 + row * lineH + lineH / 2;
+      drawSprite(e.key, x + 10, y, 20);
+      ctx.textAlign = 'left';
+      fitText(e.label, x + 26, y + 1, 44, 15, { color: UI.textDim });
+      ctx.textAlign = 'right';
+      fitText(String(resources[e.key]), x + colW - 12, y + 1, colW - 84, 18, { weight: 'bold', color: e.color });
     }
 
-    // Carried indicator (right side)
-    const carryX = CANVAS_W - 290;
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(carryX, panelY, 280, 60);
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(carryX, panelY, 280, 60);
-
-    ctx.fillStyle = '#cc8';
-    ctx.font = 'bold 22px sans-serif';
-    fillIconText(`[[bag]] Carried: ${carried}/${carryCapacity}`, carryX + 12, panelY + 10);
-
-    // Carry capacity bar
+    // Cargo and depth (top-right)
+    const carryX = CANVAS_W - 296, carryW = 280;
+    drawPanel(carryX, panelY, carryW, 84, { accent: '#e0c060', shadow: 10 });
     const carryRatio = Math.min(carried / carryCapacity, 1);
-    ctx.fillStyle = '#333';
-    ctx.fillRect(carryX + 12, panelY + 40, 256, 10);
-    ctx.fillStyle = carryRatio >= 1 ? '#f44' : '#da2';
-    ctx.fillRect(carryX + 12, panelY + 40, 256 * carryRatio, 10);
+    drawSprite('bag', carryX + 24, panelY + 24, 24);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText('Cargo', carryX + 44, panelY + 25, 90, 18, { weight: 'bold', color: UI.text });
+    ctx.textAlign = 'right';
+    fitText(`${carried} / ${carryCapacity}`, carryX + carryW - 16, panelY + 25, 130, 18, { weight: 'bold', color: carryRatio >= 1 ? UI.bad : '#f0d070' });
+    drawMeter(carryX + 14, panelY + 42, carryW - 28, 10, carryRatio, carryRatio >= 1 ? '#e84040' : '#e0b030');
+    ctx.textAlign = 'left';
+    fitText(`Depth ${drillY} m  ·  ${DEPTH_TIERS[getDepthTier(drillY)].name}`, carryX + 16, panelY + 68, carryW - 32, 15, { color: UI.textDim });
   }
 
   function drawToolHUDUnderground() {
-    // Show active/unlocked tools in the underground view
-    const anyUnlocked = GADGET_DEFS.some(d => unlockedTools[d.key]);
-    if (!anyUnlocked) return;
+    const tools = GADGET_DEFS.filter(d => unlockedTools[d.key]);
+    if (!tools.length) return;
 
-    const hudX = CANVAS_W - 290;
-    let hudY = 84;
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    const toolCount = GADGET_DEFS.filter(d => unlockedTools[d.key]).length;
-    ctx.fillRect(hudX, hudY, 280, 12 + toolCount * 28);
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(hudX, hudY, 280, 12 + toolCount * 28);
+    const hudX = CANVAS_W - 296, hudW = 280;
+    const hudY = 112;
+    const rowH = 30;
+    drawPanel(hudX, hudY, hudW, 12 + tools.length * rowH, { accent: '#9a7aff', shadow: 10 });
 
-    hudY += 2;
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-
-    for (const def of GADGET_DEFS) {
-      if (!unlockedTools[def.key]) continue;
+    for (let i = 0; i < tools.length; ++i) {
+      const def = tools[i];
+      const y = hudY + 6 + i * rowH + rowH / 2;
       const isActive = activeToolKey === def.key;
       const isPassive = def.key === 'scanner' || def.key === 'reinforcedDome';
-
+      let label = def.name, status = '', color = UI.textDim;
       if (def.key === 'blastTool') {
-        ctx.fillStyle = toolState.blastToolCooldown > 0 ? '#555' : (isActive ? '#ffd700' : '#f80');
-        const cd = toolState.blastToolCooldown > 0 ? ` ${Math.ceil(toolState.blastToolCooldown)}s` : ' RDY';
-        fillIconText(`[2] [[${def.icon}]] Blast${cd}`, hudX + 8, hudY);
+        label = 'Blast';
+        const cd = toolState.blastToolCooldown > 0;
+        status = cd ? Math.ceil(toolState.blastToolCooldown) + 's' : 'RDY';
+        color = cd ? UI.textMute : (isActive ? UI.gold : '#ffa040');
       } else if (def.key === 'teleporter') {
-        ctx.fillStyle = toolState.teleporterCooldown > 0 ? '#555' : '#a0f';
-        const cd = toolState.teleporterCooldown > 0 ? ` ${Math.ceil(toolState.teleporterCooldown)}s` : ' RDY';
-        fillIconText(`[5] [[${def.icon}]] Teleport${cd}`, hudX + 8, hudY);
+        label = 'Teleport';
+        const cd = toolState.teleporterCooldown > 0;
+        status = cd ? Math.ceil(toolState.teleporterCooldown) + 's' : 'RDY';
+        color = cd ? UI.textMute : '#c890ff';
       } else if (def.key === 'drill') {
-        ctx.fillStyle = isActive ? '#ffd700' : '#aaa';
-        fillIconText(`[1] [[${def.icon}]] Drill${isActive ? ' SEL' : ''}`, hudX + 8, hudY);
+        label = 'Drill';
+        status = isActive ? 'SEL' : '';
+        color = isActive ? UI.gold : UI.textDim;
       } else if (isPassive) {
-        ctx.fillStyle = '#0f0';
-        fillIconText(`[${def.shortcut}] [[${def.icon}]] ${def.name}`, hudX + 8, hudY);
+        status = 'ON';
+        color = UI.good;
       }
-      hudY += 28;
+      drawChip(def.shortcut, hudX + 10, y - 11, 22, { px: 13, bg: 'rgba(0,0,0,0.45)', border: 'rgba(255,255,255,0.18)', color: UI.textDim });
+      drawSprite(def.icon, hudX + 50, y, 20);
+      let sw = 0;
+      if (status)
+        sw = drawChip(status, hudX + hudW - 12, y - 11, 22, { align: 'right', px: 12, bg: 'rgba(255,255,255,0.08)', color });
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText(label, hudX + 66, y + 1, hudW - 66 - 20 - sw, 16, { weight: 'bold', color });
     }
   }
 
@@ -5571,103 +5882,154 @@
       ctx.stroke();
       ctx.restore();
     }
+  }
 
-    // Gadget HUD info (bottom-left, above hint text)
+  // Row of keycap hints ("[Space] Mine") centred on cx and kept within maxW
+  function drawKeyHints(hints, cx, cy, maxW) {
+    const keyPx = 14, labelPx = 15, keyH = 22, gap = 18;
+    ctx.font = uiFont(keyPx, 'bold');
+    const parts = hints.map(h => {
+      ctx.font = uiFont(keyPx, 'bold');
+      const kw = Math.max(keyH, ctx.measureText(h.key).width + 12);
+      ctx.font = uiFont(labelPx);
+      return { key: h.key, label: h.label, kw, lw: ctx.measureText(h.label).width };
+    });
+    let total = -gap;
+    for (const p of parts)
+      total += p.kw + 6 + p.lw + gap;
+    const s = Math.min(1, maxW / total);
+    ctx.save();
+    ctx.translate(cx - total * s / 2, cy);
+    ctx.scale(s, s);
+    let x = 0;
+    for (const p of parts) {
+      roundRectPath(x, -keyH / 2, p.kw, keyH, 5);
+      ctx.fillStyle = 'rgba(20,26,42,0.85)';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(170,190,230,0.35)';
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(x + 3, keyH / 2 - 3, p.kw - 6, 2);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = uiFont(keyPx, 'bold');
+      ctx.fillStyle = '#dfe6f5';
+      ctx.fillText(p.key, x + p.kw / 2, 1);
+      ctx.textAlign = 'left';
+      ctx.font = uiFont(labelPx);
+      ctx.fillStyle = 'rgba(200,210,230,0.75)';
+      ctx.fillText(p.label, x + p.kw + 6, 1);
+      x += p.kw + 6 + p.lw + gap;
+    }
+    ctx.restore();
+  }
+
+  function drawSurfaceHUD() {
+    // Wave status (top-left)
+    drawPanel(16, 16, 300, 74, { accent: waveActive ? '#ff6a6a' : '#ffb648' });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    if (waveActive) {
+      fitText(`Wave ${waveNumber}`, 32, 40, 268, 24, { weight: 'bold', color: '#ff8a7a' });
+      const left = enemies.length;
+      fitText(`${left} ${left === 1 ? 'enemy' : 'enemies'} remaining`, 32, 68, 268, 17, { color: UI.textDim });
+    } else {
+      fitText(`Wave ${waveNumber + 1} incoming`, 32, 38, 180, 17, { weight: 'bold', color: UI.textDim });
+      ctx.textAlign = 'right';
+      fitText(`${Math.ceil(waveTimer)}s`, 300, 38, 80, 24, { weight: 'bold', color: '#ffc870' });
+      drawMeter(32, 60, 268, 12, 1 - waveTimer / WAVE_INTERVAL, '#ff9a30');
+    }
+
     drawGadgetHUD();
+
+    // Score and stock (top-right)
+    const sx = CANVAS_W - 340;
+    drawPanel(sx, 16, 320, 74, { accent: UI.gold });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText('SCORE', sx + 16, 38, 90, 14, { weight: 'bold', color: UI.textDim });
+    fitText(`[[crate]] ${totalResources()} resources`, sx + 16, 66, 180, 16, { color: UI.textDim });
+    ctx.textAlign = 'right';
+    fitText(String(score), sx + 304, 42, 200, 30, { weight: 'bold', color: UI.gold });
+
+    // Dome integrity under the dome
+    const hpRatio = Math.max(0, domeHP / maxDomeHP);
+    const barW = 280, barH = 24;
+    const barX = DOME_X - barW / 2, barY = DOME_Y + 22;
+    drawMeter(barX, barY, barW, barH, hpRatio, hpRatio > 0.5 ? '#46c862' : (hpRatio > 0.25 ? '#e8b030' : '#e84040'), {
+      label: `Dome ${Math.ceil(domeHP)} / ${maxDomeHP}`, labelPx: 16
+    });
+
+    drawKeyHints([
+      { key: 'Space', label: 'Underground' },
+      { key: 'U', label: 'Upgrade tree' },
+      { key: 'H', label: 'Help' },
+      { key: 'Esc', label: 'Pause' }
+    ], CANVAS_W / 2, CANVAS_H - 24, 560);
   }
 
   function drawGadgetHUD() {
-    const hudX = 20;
-    let hudY = CANVAS_H - 110;
-
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-
-    // Primary gadget status
-    if (primaryGadget === 'shield') {
-      ctx.fillStyle = primaryGadgetState.active ? '#4af' : '#555';
-      ctx.fillText('Shield: ' + (primaryGadgetState.active ? 'ACTIVE' : 'depleted'), hudX, hudY);
-      hudY -= 28;
-    } else if (primaryGadget === 'repellent') {
-      if (primaryGadgetState.active) {
-        ctx.fillStyle = '#a0f';
-        ctx.fillText(`Repellent: ${Math.ceil(primaryGadgetState.duration)}s`, hudX, hudY);
-      } else if (primaryGadgetState.cooldown > 0) {
-        ctx.fillStyle = '#555';
-        ctx.fillText(`Repellent [R]: ${Math.ceil(primaryGadgetState.cooldown)}s CD`, hudX, hudY);
-      } else {
-        ctx.fillStyle = '#a0f';
-        ctx.fillText('Repellent [R]: READY', hudX, hudY);
-      }
-      hudY -= 28;
+    // Collect the status lines first so the panel can be sized to them
+    const rows = [];
+    if (primaryGadget === 'shield')
+      rows.push({ icon: 'shield', text: 'Shield: ' + (primaryGadgetState.active ? 'ACTIVE' : 'depleted'), color: primaryGadgetState.active ? '#6cc8ff' : UI.textMute });
+    else if (primaryGadget === 'repellent') {
+      if (primaryGadgetState.active)
+        rows.push({ icon: 'portal', text: `Repellent: ${Math.ceil(primaryGadgetState.duration)}s`, color: '#c890ff' });
+      else if (primaryGadgetState.cooldown > 0)
+        rows.push({ icon: 'portal', text: `Repellent [R]: ${Math.ceil(primaryGadgetState.cooldown)}s`, color: UI.textMute });
+      else
+        rows.push({ icon: 'portal', text: 'Repellent [R]: READY', color: '#c890ff' });
     } else if (primaryGadget === 'orchard') {
-      if (primaryGadgetState.speedBoostTimer > 0) {
-        ctx.fillStyle = '#0f0';
-        ctx.fillText(`Mining Boost: ${Math.ceil(primaryGadgetState.speedBoostTimer)}s`, hudX, hudY);
-      } else if (primaryGadgetState.fruitReady) {
-        ctx.fillStyle = '#ff0';
-        ctx.fillText('Orchard: Fruit ready! (click dome)', hudX, hudY);
-      } else {
-        ctx.fillStyle = '#2a6';
-        ctx.fillText(`Orchard: ${Math.ceil(primaryGadgetState.fruitTimer)}s`, hudX, hudY);
-      }
-      hudY -= 28;
-    } else if (primaryGadget === 'droneyard') {
-      ctx.fillStyle = '#8ac';
-      ctx.fillText(`Drone: ${Math.ceil(primaryGadgetState.droneTimer)}s`, hudX, hudY);
-      hudY -= 28;
-    }
+      if (primaryGadgetState.speedBoostTimer > 0)
+        rows.push({ icon: 'tree', text: `Mining boost: ${Math.ceil(primaryGadgetState.speedBoostTimer)}s`, color: UI.good });
+      else if (primaryGadgetState.fruitReady)
+        rows.push({ icon: 'tree', text: 'Fruit ready! Click the tree', color: '#ffe060' });
+      else
+        rows.push({ icon: 'tree', text: `Orchard: ${Math.ceil(primaryGadgetState.fruitTimer)}s`, color: '#4ac080' });
+    } else if (primaryGadget === 'droneyard')
+      rows.push({ icon: 'robot', text: `Drone: ${Math.ceil(primaryGadgetState.droneTimer)}s`, color: '#9cc4e8' });
 
-    // Blast charges
-    if (foundGadgets.includes('blastMining') && (primaryGadgetState.blastCharges || 0) > 0) {
-      ctx.fillStyle = '#f80';
-      ctx.fillText(`Blast [B]: ${primaryGadgetState.blastCharges} charges`, hudX, hudY);
-      hudY -= 28;
-    }
+    if (foundGadgets.includes('blastMining') && (primaryGadgetState.blastCharges || 0) > 0)
+      rows.push({ icon: 'bomb', text: `Blast [B]: ${primaryGadgetState.blastCharges} charges`, color: '#ffa040' });
 
-    // Found gadget names
     for (const g of foundGadgets) {
-      if (g === 'blastMining') continue; // shown above
-      ctx.fillStyle = '#aa8';
-      ctx.fillText(MINE_GADGET_NAMES[g] || g, hudX, hudY);
-      hudY -= 28;
+      if (g === 'blastMining') continue;
+      rows.push({ icon: 'gear', text: MINE_GADGET_NAMES[g] || g, color: '#d0c890' });
     }
 
-    // Unlockable tool indicators
     for (const def of GADGET_DEFS) {
       if (!unlockedTools[def.key]) continue;
       const isActive = activeToolKey === def.key;
       const isPassive = def.key === 'scanner' || def.key === 'reinforcedDome';
-
       if (def.key === 'blastTool') {
-        if (toolState.blastToolCooldown > 0) {
-          ctx.fillStyle = '#555';
-          fillIconText(`[[${def.icon}]] Blast [2]: ${Math.ceil(toolState.blastToolCooldown)}s CD`, hudX, hudY);
-        } else {
-          ctx.fillStyle = isActive ? '#ffd700' : '#f80';
-          fillIconText(`[[${def.icon}]] Blast [2]: READY`, hudX, hudY);
-        }
-        hudY -= 28;
+        const cd = toolState.blastToolCooldown > 0;
+        rows.push({ icon: def.icon, text: `Blast [2]: ${cd ? Math.ceil(toolState.blastToolCooldown) + 's' : 'READY'}`, color: cd ? UI.textMute : (isActive ? UI.gold : '#ffa040') });
       } else if (def.key === 'teleporter') {
-        if (toolState.teleporterCooldown > 0) {
-          ctx.fillStyle = '#555';
-          fillIconText(`[[${def.icon}]] Teleport [5]: ${Math.ceil(toolState.teleporterCooldown)}s CD`, hudX, hudY);
-        } else {
-          ctx.fillStyle = isActive ? '#ffd700' : '#a0f';
-          fillIconText(`[[${def.icon}]] Teleport [5]: READY`, hudX, hudY);
-        }
-        hudY -= 28;
+        const cd = toolState.teleporterCooldown > 0;
+        rows.push({ icon: def.icon, text: `Teleport [5]: ${cd ? Math.ceil(toolState.teleporterCooldown) + 's' : 'READY'}`, color: cd ? UI.textMute : (isActive ? UI.gold : '#c890ff') });
       } else if (def.key === 'drill') {
-        ctx.fillStyle = isActive ? '#ffd700' : '#aaa';
         const combo = isActive && toolState.drillConsecutive > 0 ? ` (x${toolState.drillConsecutive} combo)` : '';
-        fillIconText(`[[${def.icon}]] Drill [1]${combo}`, hudX, hudY);
-        hudY -= 28;
-      } else if (isPassive) {
-        ctx.fillStyle = '#0f0';
-        fillIconText(`[[${def.icon}]] ${def.name} [${def.shortcut}]: ON`, hudX, hudY);
-        hudY -= 28;
-      }
+        rows.push({ icon: def.icon, text: `Drill [1]${combo}`, color: isActive ? UI.gold : UI.textDim });
+      } else if (isPassive)
+        rows.push({ icon: def.icon, text: `${def.name} [${def.shortcut}]: ON`, color: UI.good });
+    }
+    if (!rows.length) return;
+
+    const rowH = 28, pw = 300;
+    const maxRows = 10;
+    const shown = rows.slice(0, maxRows);
+    const ph = 14 + shown.length * rowH;
+    const px = 16, py = CANVAS_H - 58 - ph;
+    drawPanel(px, py, pw, ph, { accent: '#9a7aff', shadow: 10 });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i < shown.length; ++i) {
+      const r = shown[i];
+      const y = py + 7 + i * rowH + rowH / 2;
+      drawSprite(r.icon, px + 22, y, 20);
+      fitText(r.text, px + 40, y + 1, pw - 52, 17, { weight: 'bold', color: r.color });
     }
   }
 
@@ -5793,39 +6155,11 @@
   function drawUpgradePanel() {
     const px = CANVAS_W - 340;
     const py = 100;
+    const pw = 320;
     const toolSectionH = showToolPanel ? 44 + GADGET_DEFS.length * 44 : 36;
     const panelH = 60 + UPGRADE_DEFS.length * 48 + toolSectionH;
 
-    // Panel background with gradient
-    const panelGrad = ctx.createLinearGradient(px, py, px, py + panelH);
-    panelGrad.addColorStop(0, 'rgba(10,15,30,0.7)');
-    panelGrad.addColorStop(1, 'rgba(5,8,20,0.8)');
-    ctx.fillStyle = panelGrad;
-    ctx.fillRect(px, py, 320, panelH);
-
-    // Border
-    ctx.strokeStyle = '#3a4a6a';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(px, py, 320, panelH);
-
-    // Header
-    ctx.fillStyle = '#4af';
-    ctx.font = 'bold 22px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('Upgrades', px + 16, py + 32);
-    ctx.fillStyle = '#ffd700';
-    ctx.font = '18px sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText('[U] Full Tree', px + 310, py + 32);
-    ctx.textAlign = 'left';
-
-    // Separator line
-    ctx.strokeStyle = '#334';
-    ctx.beginPath();
-    ctx.moveTo(px + 10, py + 44);
-    ctx.lineTo(px + 310, py + 44);
-    ctx.stroke();
+    drawPanel(px, py, pw, panelH, { title: 'Upgrades', titleRight: '[U] Full Tree', titleRightColor: UI.gold, headerH: 44 });
 
     const total = totalResources();
     for (let i = 0; i < UPGRADE_DEFS.length; ++i) {
@@ -5833,36 +6167,42 @@
       const cost = getUpgradeCost(i);
       const ly = py + 56 + i * 48;
       const canAfford = total >= cost;
+      const hover = mouseAimX >= px && mouseAimX <= px + pw && mouseAimY >= ly && mouseAimY < ly + 48;
 
-      // Hover-like highlight for affordable upgrades
-      if (canAfford) {
-        ctx.fillStyle = 'rgba(60,120,200,0.08)';
-        ctx.fillRect(px + 4, ly - 4, 312, 44);
+      roundRectPath(px + 8, ly - 2, pw - 16, 44, 8);
+      ctx.fillStyle = canAfford ? (hover ? 'rgba(90,184,255,0.22)' : 'rgba(90,184,255,0.10)') : 'rgba(255,255,255,0.03)';
+      ctx.fill();
+      if (hover && canAfford) {
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(140,200,255,0.6)';
+        ctx.stroke();
       }
 
-      ctx.fillStyle = canAfford ? '#ccc' : '#555';
-      ctx.font = '20px sans-serif';
-      ctx.fillText(`${def.name} Lv${getEffectiveLevel(def.key)}`, px + 16, ly + 20);
-      ctx.fillStyle = canAfford ? '#0f0' : '#633';
-      ctx.font = 'bold 20px sans-serif';
-      ctx.fillText(`[${cost}]`, px + 236, ly + 20);
+      drawSprite(UPGRADE_ICONS[def.key] || 'gear', px + 32, ly + 20, 26, canAfford ? 1 : 0.5);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText(def.name, px + 54, ly + 11, 160, 18, { weight: 'bold', color: canAfford ? UI.text : UI.textMute });
+      fitText('Level ' + getEffectiveLevel(def.key), px + 54, ly + 30, 160, 14, { color: canAfford ? UI.textDim : UI.textMute });
+      drawChip(String(cost), px + pw - 18, ly + 8, 26, {
+        align: 'right', maxW: 90, px: 16,
+        bg: canAfford ? 'rgba(80,200,110,0.22)' : 'rgba(255,90,90,0.10)',
+        border: canAfford ? 'rgba(111,224,138,0.7)' : 'rgba(255,106,106,0.35)',
+        color: canAfford ? UI.good : '#b06060'
+      });
     }
 
     // -- Tool/Gadget section --
     const toolY = py + 56 + UPGRADE_DEFS.length * 48 + 8;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(px + 10, toolY - 4, pw - 20, 1);
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.fillRect(px + 10, toolY - 3, pw - 20, 1);
 
-    // Separator
-    ctx.strokeStyle = '#334';
-    ctx.beginPath();
-    ctx.moveTo(px + 10, toolY - 4);
-    ctx.lineTo(px + 310, toolY - 4);
-    ctx.stroke();
-
-    // Section header (toggleable)
-    ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText(showToolPanel ? 'Tools (click to collapse)' : 'Tools (click to expand)', px + 16, toolY + 20);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText((showToolPanel ? '▾ ' : '▸ ') + 'Tools', px + 16, toolY + 13, 120, 19, { weight: 'bold', color: UI.gold });
+    ctx.textAlign = 'right';
+    fitText(showToolPanel ? 'click to collapse' : 'click to expand', px + pw - 16, toolY + 13, 160, 14, { color: UI.textMute });
 
     if (showToolPanel) {
       for (let i = 0; i < GADGET_DEFS.length; ++i) {
@@ -5873,133 +6213,92 @@
         const isActive = activeToolKey === def.key;
         const isPassive = def.key === 'scanner' || def.key === 'reinforcedDome';
 
-        // Background highlight
-        if (isUnlocked) {
-          ctx.fillStyle = isActive ? 'rgba(255,215,0,0.12)' : 'rgba(40,100,40,0.1)';
-          ctx.fillRect(px + 4, ly - 4, 312, 40);
-        } else if (canAfford) {
-          ctx.fillStyle = 'rgba(60,120,200,0.08)';
-          ctx.fillRect(px + 4, ly - 4, 312, 40);
-        }
-
-        // Active border indicator
+        roundRectPath(px + 8, ly - 4, pw - 16, 40, 8);
+        if (isUnlocked)
+          ctx.fillStyle = isActive ? 'rgba(255,215,90,0.16)' : 'rgba(111,224,138,0.10)';
+        else
+          ctx.fillStyle = canAfford ? 'rgba(90,184,255,0.10)' : 'rgba(255,255,255,0.03)';
+        ctx.fill();
         if (isActive) {
-          ctx.strokeStyle = '#ffd700';
           ctx.lineWidth = 1;
-          ctx.strokeRect(px + 4, ly - 4, 312, 40);
+          ctx.strokeStyle = UI.gold;
+          ctx.stroke();
         }
 
-        // Icon + Name
-        ctx.font = '20px sans-serif';
+        drawChip(def.shortcut, px + 16, ly + 4, 24, { px: 14, bg: 'rgba(0,0,0,0.45)', border: 'rgba(255,255,255,0.18)', color: UI.textDim });
+        drawSprite(def.icon, px + 58, ly + 16, 24, isUnlocked || canAfford ? 1 : 0.5);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        let nameColor = canAfford ? UI.text : UI.textMute;
+        if (isUnlocked)
+          nameColor = isActive ? UI.gold : (isPassive ? UI.good : UI.text);
         if (isUnlocked) {
-          ctx.fillStyle = isActive ? '#ffd700' : (isPassive ? '#0f0' : '#aaa');
-          const status = isPassive ? ' [ON]' : (isActive ? ' [SEL]' : '');
-          fillIconText(`[${def.shortcut}] [[${def.icon}]] ${def.name}${status}`, px + 12, ly + 20);
+          const status = isPassive ? 'ON' : (isActive ? 'SEL' : 'OWNED');
+          const sw = drawChip(status, px + pw - 18, ly + 4, 24, { align: 'right', px: 13, bg: 'rgba(111,224,138,0.16)', color: isActive ? UI.gold : UI.good });
+          fitText(def.name, px + 76, ly + 17, pw - 76 - 26 - sw, 17, { weight: 'bold', color: nameColor });
         } else {
-          ctx.fillStyle = canAfford ? '#ccc' : '#555';
-          fillIconText(`[${def.shortcut}] [[${def.icon}]] ${def.name}`, px + 12, ly + 20);
-          // Cost display
-          let costText = `${def.costIron}Fe`;
+          let costText = `${def.costIron}[[iron]]`;
           if (def.costCobalt > 0)
-            costText += `+${def.costCobalt}Co`;
-          ctx.fillStyle = canAfford ? '#0f0' : '#633';
-          ctx.font = 'bold 18px sans-serif';
-          ctx.textAlign = 'right';
-          ctx.fillText(costText, px + 310, ly + 20);
-          ctx.textAlign = 'left';
+            costText += ` ${def.costCobalt}[[cobalt]]`;
+          const cw = drawChip(costText, px + pw - 18, ly + 4, 24, {
+            align: 'right', px: 13, maxW: 120,
+            bg: canAfford ? 'rgba(80,200,110,0.22)' : 'rgba(255,90,90,0.10)',
+            color: canAfford ? UI.good : '#b06060'
+          });
+          fitText(def.name, px + 76, ly + 17, pw - 76 - 26 - cw, 17, { weight: 'bold', color: nameColor });
         }
       }
     }
   }
+
 
   /* ======================================================================
      DRAWING -- HUD
      ====================================================================== */
 
   function drawHUD() {
+    const pulse = Math.sin(animTime * 3) * 0.5 + 0.5;
+    const hoverIn = (b) => mouseAimX >= b.x && mouseAimX <= b.x + b.w && mouseAimY >= b.y && mouseAimY <= b.y + b.h;
+
     if (state === STATE_READY) {
-      ctx.fillStyle = 'rgba(0,0,0,0.85)';
-      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-
-      // Title with glow
-      ctx.save();
-      ctx.shadowBlur = 20;
-      ctx.shadowColor = '#4af';
-      ctx.fillStyle = '#4af';
-      ctx.font = 'bold 64px sans-serif';
+      drawScrim(0.5);
+      drawPanel(CANVAS_W / 2 - 380, 190, 760, 600, { accent: UI.accent, radius: 16 });
+      drawHeadline('DOME KEEPER', CANVAS_W / 2, 290, 680, 88, '#7cc8ff', '#2a7ae0');
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('DOME KEEPER', CANVAS_W / 2, CANVAS_H / 2 - 120);
-      ctx.shadowBlur = 0;
-      ctx.restore();
+      fitText('Defend your dome. Mine resources. Upgrade.', CANVAS_W / 2, 370, 660, 26, { color: UI.textDim });
+      const best = highScores[0];
+      if (best)
+        fitText(`Best run: ${best.score} points  ·  wave ${best.waves}`, CANVAS_W / 2, 420, 660, 18, { color: UI.gold });
+      ctx.fillStyle = 'rgba(120,180,255,0.25)';
+      ctx.fillRect(CANVAS_W / 2 - 220, 450, 440, 1);
 
-      // Subtitle
-      ctx.fillStyle = '#aaa';
-      ctx.font = '28px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('Defend your dome. Mine resources. Upgrade.', CANVAS_W / 2, CANVAS_H / 2 - 30);
-
-      const startPulse = Math.sin(animTime * 3) * 0.3 + 0.7;
       if (saveAvailable) {
-        // Continue / New Game buttons
-        for (const b of getTitleButtons()) {
-          const primary = b.id === 'continue';
-          ctx.fillStyle = primary ? 'rgba(40,90,160,0.9)' : 'rgba(30,35,50,0.9)';
-          ctx.fillRect(b.x, b.y, b.w, b.h);
-          ctx.strokeStyle = primary ? `rgba(120,200,255,${startPulse})` : '#4a5a7a';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(b.x, b.y, b.w, b.h);
-          ctx.fillStyle = primary ? '#fff' : '#bbb';
-          ctx.font = 'bold 28px sans-serif';
-          ctx.fillText(b.label, CANVAS_W / 2, b.y + b.h / 2);
-        }
-        ctx.fillStyle = '#777';
-        ctx.font = '20px sans-serif';
-        ctx.fillText('Enter = Continue  |  F2 = New Game', CANVAS_W / 2, CANVAS_H / 2 + 180);
+        for (const b of getTitleButtons())
+          drawButton(b, b.id === 'continue', hoverIn(b));
+        drawKeyHints([{ key: 'Enter', label: 'Continue' }, { key: 'F2', label: 'New game' }, { key: 'H', label: 'How to play' }], CANVAS_W / 2, 700, 640);
       } else {
-        // Pulsing start prompt
-        ctx.fillStyle = `rgba(170,170,170,${startPulse})`;
-        ctx.font = '28px sans-serif';
-        ctx.fillText('Tap or press F2 to Start', CANVAS_W / 2, CANVAS_H / 2 + 40);
+        const b = getTitleButtons()[0];
+        ctx.save();
+        ctx.globalAlpha = 0.75 + pulse * 0.25;
+        drawButton({ x: b.x, y: b.y, w: b.w, h: b.h, label: 'Start' }, true, hoverIn(b));
+        ctx.restore();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        fitText('Click anywhere or press F2 to start', CANVAS_W / 2, 620, 600, 20, { color: UI.textDim });
+        drawKeyHints([{ key: 'F2', label: 'Start' }, { key: 'H', label: 'How to play' }], CANVAS_W / 2, 700, 640);
       }
-      if (saveNotice) {
-        ctx.fillStyle = '#fa0';
-        ctx.font = '22px sans-serif';
-        ctx.fillText(saveNotice, CANVAS_W / 2, CANVAS_H / 2 + (saveAvailable ? 220 : 90));
-      }
-
-      // Decorative dome outline
-      ctx.beginPath();
-      ctx.arc(CANVAS_W / 2, CANVAS_H / 2 + 200, 100, Math.PI, 0);
-      ctx.closePath();
-      ctx.strokeStyle = `rgba(80,160,255,${0.2 + Math.sin(animTime * 2) * 0.1})`;
-      ctx.lineWidth = 4;
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = '#4af';
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      ctx.textAlign = 'start';
+      if (saveNotice)
+        drawTextBlock(saveNotice, CANVAS_W / 2 - 340, 730, 680, 48, 18, { align: 'center', color: UI.warn });
     }
 
     if (state === STATE_GADGET_SELECT) {
-      ctx.fillStyle = 'rgba(0,0,0,0.9)';
-      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-
-      // Title
-      ctx.save();
-      ctx.shadowBlur = 15;
-      ctx.shadowColor = '#ffd700';
-      ctx.fillStyle = '#ffd700';
-      ctx.font = 'bold 48px sans-serif';
+      drawScrim(0.72);
+      drawHeadline('Choose Your Gadget', CANVAS_W / 2, 200, 1000, 56, '#ffe080', '#e0a020');
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Choose Your Gadget', CANVAS_W / 2, 100);
-      ctx.shadowBlur = 0;
-      ctx.restore();
+      fitText('Your dome keeps this ability for the whole run', CANVAS_W / 2, 262, 900, 22, { color: UI.textDim });
 
-      // 4 cards
       const cardW = 280;
       const cardH = 320;
       const gap = 30;
@@ -6011,108 +6310,84 @@
         const g = PRIMARY_GADGETS[i];
         const cx = startX + i * (cardW + gap);
         const isHover = gadgetSelectHover === i;
+        const lift = isHover ? -6 : 0;
 
-        // Card background
-        const cardGrad = ctx.createLinearGradient(cx, cardY, cx, cardY + cardH);
-        if (isHover) {
-          cardGrad.addColorStop(0, 'rgba(60,80,120,0.9)');
-          cardGrad.addColorStop(1, 'rgba(30,50,80,0.9)');
-        } else {
-          cardGrad.addColorStop(0, 'rgba(25,30,45,0.85)');
-          cardGrad.addColorStop(1, 'rgba(15,18,30,0.85)');
-        }
-        ctx.fillStyle = cardGrad;
-        ctx.fillRect(cx, cardY, cardW, cardH);
+        drawPanel(cx, cardY + lift, cardW, cardH, {
+          accent: isHover ? UI.gold : '#6a8ac8', glow: isHover, radius: 14,
+          top: isHover ? 'rgba(40,56,92,0.96)' : UI.panelTop
+        });
 
-        // Card border
-        ctx.strokeStyle = isHover ? '#ffd700' : '#3a4a6a';
-        ctx.lineWidth = isHover ? 2 : 1;
-        ctx.strokeRect(cx, cardY, cardW, cardH);
+        // Icon well
+        const wx = cx + cardW / 2, wy = cardY + lift + 82;
+        ctx.save();
+        const wg = ctx.createRadialGradient(wx, wy - 10, 4, wx, wy, 58);
+        wg.addColorStop(0, isHover ? 'rgba(255,220,120,0.35)' : 'rgba(120,170,255,0.22)');
+        wg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = wg;
+        ctx.beginPath();
+        ctx.arc(wx, wy, 58, 0, TWO_PI);
+        ctx.fill();
+        ctx.restore();
+        drawSprite(g.icon, wx, wy, 76);
 
-        // Hover glow
-        if (isHover) {
-          ctx.save();
-          ctx.shadowBlur = 12;
-          ctx.shadowColor = '#ffd700';
-          ctx.strokeStyle = 'rgba(255,215,0,0.3)';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(cx - 1, cardY - 1, cardW + 2, cardH + 2);
-          ctx.shadowBlur = 0;
-          ctx.restore();
-        }
-
-        // Icon
-        drawSprite(g.icon, cx + cardW / 2, cardY + 70, 70);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        fitText(g.name, cx + cardW / 2, cardY + lift + 160, cardW - 30, 24, { weight: 'bold', color: isHover ? UI.gold : UI.text });
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        ctx.fillRect(cx + 30, cardY + lift + 184, cardW - 60, 1);
+        drawTextBlock(g.desc.join(' '), cx + 20, cardY + lift + 196, cardW - 40, 84, 18, { align: 'center', valign: 'middle', color: UI.textDim });
 
-        // Name
-        ctx.fillStyle = isHover ? '#ffd700' : '#ccc';
-        ctx.font = 'bold 24px sans-serif';
-        ctx.fillText(g.name, cx + cardW / 2, cardY + 140);
-
-        // Description lines
-        ctx.fillStyle = '#999';
-        ctx.font = '20px sans-serif';
-        for (let l = 0; l < g.desc.length; ++l)
-          ctx.fillText(g.desc[l], cx + cardW / 2, cardY + 184 + l * 28);
-
-        // Click hint
-        if (isHover) {
-          ctx.fillStyle = '#ffd700';
-          ctx.font = 'bold 20px sans-serif';
-          ctx.fillText('Click to select', cx + cardW / 2, cardY + cardH - 24);
-        }
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        fitText(isHover ? 'Click to select' : 'Gadget ' + (i + 1), cx + cardW / 2, cardY + lift + cardH - 24, cardW - 40, 17, { weight: 'bold', color: isHover ? UI.gold : UI.textMute });
       }
-
-      ctx.textAlign = 'start';
     }
 
     if (state === STATE_PAUSED) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-      ctx.save();
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = '#ff0';
-      ctx.fillStyle = '#ff0';
-      ctx.font = 'bold 64px sans-serif';
+      drawScrim(0.45);
+      const pw = 520, ph = 250, px = CANVAS_W / 2 - pw / 2, py = CANVAS_H / 2 - ph / 2;
+      drawPanel(px, py, pw, ph, { accent: UI.gold, radius: 16 });
+      drawHeadline('PAUSED', CANVAS_W / 2, py + 78, pw - 60, 64, '#ffe070', '#e0a010');
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('PAUSED', CANVAS_W / 2, CANVAS_H / 2);
-      ctx.shadowBlur = 0;
-      ctx.restore();
-      ctx.fillStyle = '#aaa';
-      ctx.font = '26px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Press Escape to resume', CANVAS_W / 2, CANVAS_H / 2 + 60);
-      ctx.textAlign = 'start';
+      fitText('Your run is saved', CANVAS_W / 2, py + 140, pw - 60, 20, { color: UI.textDim });
+      drawKeyHints([{ key: 'Esc', label: 'Resume' }, { key: 'H', label: 'Help' }, { key: 'F2', label: 'New game' }], CANVAS_W / 2, py + 200, pw - 60);
     }
 
     if (state === STATE_GAME_OVER) {
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      drawScrim(0.6);
+      ctx.fillStyle = 'rgba(120,0,0,0.12)';
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      const pw = 640, ph = 400, px = CANVAS_W / 2 - pw / 2, py = CANVAS_H / 2 - ph / 2;
+      drawPanel(px, py, pw, ph, { accent: '#ff5050', radius: 16 });
+      drawHeadline('DOME DESTROYED', CANVAS_W / 2, py + 78, pw - 60, 60, '#ff7a6a', '#c01818');
 
-      // Red glow title
+      const best = highScores[0];
+      const stats = [
+        ['Waves survived', String(waveNumber)],
+        ['Score', String(score)],
+        ['Best score', best ? String(best.score) : String(score)]
+      ];
+      for (let i = 0; i < stats.length; ++i) {
+        const ry = py + 146 + i * 46;
+        roundRectPath(px + 60, ry, pw - 120, 38, 8);
+        ctx.fillStyle = 'rgba(255,255,255,0.04)';
+        ctx.fill();
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'left';
+        fitText(stats[i][0], px + 80, ry + 20, 260, 20, { color: UI.textDim });
+        ctx.textAlign = 'right';
+        fitText(stats[i][1], px + pw - 80, ry + 20, 220, 24, { weight: 'bold', color: i === 1 ? UI.gold : UI.text });
+      }
+      if (best && score > 0 && best.score === score && best.waves === waveNumber)
+        drawChip('New high score!', CANVAS_W / 2 - 90, py + 290, 30, { px: 17, maxW: 180, bg: 'rgba(255,215,90,0.18)', border: UI.gold, color: UI.gold });
+
       ctx.save();
-      ctx.shadowBlur = 20;
-      ctx.shadowColor = '#f44';
-      ctx.fillStyle = '#f44';
-      ctx.font = 'bold 56px sans-serif';
+      ctx.globalAlpha = 0.6 + pulse * 0.4;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('DOME DESTROYED', CANVAS_W / 2, CANVAS_H / 2 - 60);
-      ctx.shadowBlur = 0;
+      fitText('Click or press F2 to play again', CANVAS_W / 2, py + ph - 40, pw - 60, 22, { weight: 'bold', color: UI.text });
       ctx.restore();
-
-      ctx.fillStyle = '#ccc';
-      ctx.font = '32px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`Wave: ${waveNumber} -- Score: ${score}`, CANVAS_W / 2, CANVAS_H / 2 + 20);
-
-      const restartPulse = Math.sin(animTime * 3) * 0.3 + 0.7;
-      ctx.fillStyle = `rgba(204,204,204,${restartPulse})`;
-      ctx.fillText('Tap or press F2 to play again', CANVAS_W / 2, CANVAS_H / 2 + 80);
-      ctx.textAlign = 'start';
     }
   }
 
@@ -6147,32 +6422,71 @@
   }
 
   function drawTutorialOverlay() {
-    ctx.fillStyle = 'rgba(0,0,0,0.8)';
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    drawScrim(0.68);
     const page = TUTORIAL_PAGES[tutorialPage] || TUTORIAL_PAGES[0];
-    const cx = CANVAS_W / 2, pw = 800, ph = 440, px = cx - pw / 2, py = (CANVAS_H - ph) / 2;
-    ctx.fillStyle = 'rgba(15,10,5,0.95)';
-    ctx.fillRect(px, py, pw, ph);
-    ctx.strokeStyle = '#c80';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(px, py, pw, ph);
-    ctx.fillStyle = '#666';
-    ctx.font = '20px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Page ' + (tutorialPage + 1) + ' / ' + TUTORIAL_PAGES.length, cx, py + ph - 24);
-    ctx.fillStyle = '#c80';
-    ctx.font = 'bold 36px sans-serif';
-    ctx.fillText(page.title, cx, py + 60);
-    ctx.fillStyle = '#ccc';
-    ctx.font = '26px sans-serif';
-    for (let i = 0; i < page.lines.length; ++i)
-      ctx.fillText(page.lines[i], cx, py + 116 + i * 44);
-    ctx.fillStyle = '#888';
-    ctx.font = '22px sans-serif';
-    if (tutorialPage < TUTORIAL_PAGES.length - 1)
-      ctx.fillText('Click / Space / Right = Next  |  Esc = Close', cx, py + ph - 56);
-    else
-      ctx.fillText('Click / Space = Start!  |  Press H for help anytime', cx, py + ph - 56);
+    const pw = 880, ph = 540, px = CANVAS_W / 2 - pw / 2, py = (CANVAS_H - ph) / 2;
+    drawPanel(px, py, pw, ph, {
+      accent: '#ffb030', radius: 16, title: page.title, titlePx: 28, headerH: 64,
+      titleRight: 'Page ' + (tutorialPage + 1) + ' of ' + TUTORIAL_PAGES.length,
+      top: 'rgba(24,30,50,0.99)', bottom: 'rgba(10,13,24,0.99)'
+    });
+
+    // Page icon and intro paragraph
+    const bodyX = px + 44, bodyW = pw - 88;
+    ctx.save();
+    const ig = ctx.createRadialGradient(bodyX + 40, py + 132, 4, bodyX + 40, py + 132, 52);
+    ig.addColorStop(0, 'rgba(255,176,48,0.3)');
+    ig.addColorStop(1, 'rgba(255,176,48,0)');
+    ctx.fillStyle = ig;
+    ctx.fillRect(bodyX - 12, py + 80, 104, 104);
+    ctx.restore();
+    drawSprite(page.icon, bodyX + 40, py + 132, 64);
+    drawTextBlock(page.intro, bodyX + 104, py + 88, bodyW - 104, 88, 23, { valign: 'middle', color: UI.text, minPx: 15 });
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.fillRect(bodyX, py + 190, bodyW, 1);
+
+    // Key / action rows
+    const rowsTop = py + 202, rowsBottom = py + ph - 100;
+    const rowH = Math.min(48, (rowsBottom - rowsTop) / Math.max(1, page.items.length));
+    ctx.font = uiFont(15, 'bold');
+    let keyColW = 0;
+    for (const it of page.items)
+      if (it[0])
+        keyColW = Math.max(keyColW, ctx.measureText(it[0]).width + 22);
+    keyColW = Math.min(180, keyColW + 32);
+    for (let i = 0; i < page.items.length; ++i) {
+      const [key, text] = page.items[i];
+      const ry = rowsTop + i * rowH;
+      if (i % 2 === 0) {
+        roundRectPath(bodyX, ry + 2, bodyW, rowH - 4, 8);
+        ctx.fillStyle = 'rgba(255,255,255,0.03)';
+        ctx.fill();
+      }
+      if (key)
+        drawChip(key, bodyX + 12, ry + (rowH - 28) / 2, 28, { px: 15, maxW: keyColW - 24, bg: 'rgba(20,26,42,0.95)', border: 'rgba(170,190,230,0.4)', color: '#e8eefa' });
+      else {
+        ctx.fillStyle = '#ffb030';
+        ctx.beginPath();
+        ctx.arc(bodyX + 24, ry + rowH / 2, 5, 0, TWO_PI);
+        ctx.fill();
+      }
+      const tx = key ? bodyX + keyColW : bodyX + 44;
+      drawTextBlock(text, tx, ry + 2, bodyX + bodyW - 12 - tx, rowH - 4, 21, { valign: 'middle', color: '#cdd6e8', minPx: 13 });
+    }
+
+    // Page dots
+    const dotsY = py + ph - 78;
+    for (let i = 0; i < TUTORIAL_PAGES.length; ++i) {
+      ctx.beginPath();
+      ctx.arc(CANVAS_W / 2 + (i - (TUTORIAL_PAGES.length - 1) / 2) * 22, dotsY, i === tutorialPage ? 6 : 4, 0, TWO_PI);
+      ctx.fillStyle = i === tutorialPage ? '#ffb030' : 'rgba(255,255,255,0.25)';
+      ctx.fill();
+    }
+    const last = tutorialPage >= TUTORIAL_PAGES.length - 1;
+    drawKeyHints(last
+      ? [{ key: 'Click', label: 'Start playing' }, { key: 'H', label: 'Help anytime' }]
+      : [{ key: 'Click', label: 'Next' }, { key: '→', label: 'Next' }, { key: '←', label: 'Back' }, { key: 'Esc', label: 'Close' }],
+    CANVAS_W / 2, py + ph - 36, pw - 80);
   }
 
   /* ======================================================================
@@ -6191,10 +6505,11 @@
     tooltip.lines = [];
     tooltip.visible = false;
     tooltip.delayTimer = 0;
+    tooltip.anchor = null;
     tooltip.lastHoverKey = '';
   }
 
-  function setTooltip(x, y, lines, hoverKey) {
+  function setTooltip(x, y, lines, hoverKey, anchor) {
     if (hoverKey !== tooltip.lastHoverKey) {
       tooltip.delayTimer = 0;
       tooltip.visible = false;
@@ -6203,76 +6518,89 @@
     tooltip.lines = lines;
     tooltip.x = x;
     tooltip.y = y;
+    tooltip.anchor = anchor || null;
   }
 
   function drawTooltip() {
     if (!tooltip.visible || tooltip.lines.length === 0) return;
+    if (state !== STATE_PLAYING && state !== STATE_UPGRADE_DIALOG) return;
 
-    const padding = 16;
-    const lineH = 32;
-    const fontSize = 22;
-    ctx.font = `${fontSize}px sans-serif`;
-
-    // Measure max line width
-    let maxW = 0;
-    for (const line of tooltip.lines) {
-      const w = measureIconText(line);
-      if (w > maxW) maxW = w;
-    }
-
-    const boxW = maxW + padding * 2;
-    const boxH = tooltip.lines.length * lineH + padding * 2 - 4;
-
-    // Position near cursor, clamped to canvas
-    let bx = tooltip.x + 28;
-    let by = tooltip.y + 28;
-    if (bx + boxW > CANVAS_W - 8) bx = tooltip.x - boxW - 12;
-    if (by + boxH > CANVAS_H - 8) by = tooltip.y - boxH - 12;
-    if (bx < 8) bx = 8;
-    if (by < 8) by = 8;
-
-    // Background: semi-transparent dark rounded rectangle
-    ctx.save();
-    ctx.fillStyle = 'rgba(10, 12, 20, 0.92)';
-    ctx.strokeStyle = 'rgba(120, 140, 180, 0.5)';
-    ctx.lineWidth = 1;
-    const r = 10;
-    ctx.beginPath();
-    ctx.moveTo(bx + r, by);
-    ctx.lineTo(bx + boxW - r, by);
-    ctx.arcTo(bx + boxW, by, bx + boxW, by + r, r);
-    ctx.lineTo(bx + boxW, by + boxH - r);
-    ctx.arcTo(bx + boxW, by + boxH, bx + boxW - r, by + boxH, r);
-    ctx.lineTo(bx + r, by + boxH);
-    ctx.arcTo(bx, by + boxH, bx, by + boxH - r, r);
-    ctx.lineTo(bx, by + r);
-    ctx.arcTo(bx, by, bx + r, by, r);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    // Text
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    for (let i = 0; i < tooltip.lines.length; ++i) {
-      const line = tooltip.lines[i];
-      // First line is bold (title)
-      if (i === 0) {
-        ctx.font = `bold ${fontSize}px sans-serif`;
-        ctx.fillStyle = '#fff';
-      } else {
-        ctx.font = `${fontSize}px sans-serif`;
-        // Color-code lines starting with special markers
-        if (line.startsWith('\u2714'))       // checkmark
-          ctx.fillStyle = '#8f8';
-        else if (line.startsWith('\u2718'))   // X mark
-          ctx.fillStyle = '#f88';
-        else if (line.startsWith('\u26A0'))   // warning
-          ctx.fillStyle = '#fa0';
-        else
-          ctx.fillStyle = '#ccc';
+    const padding = 14;
+    const maxTextW = 440;
+    let fontSize = 18;
+    let rows, boxW, boxH;
+    // Lay out (wrapping long lines); shrink if the box would not fit the screen
+    for (;;) {
+      rows = [];
+      let maxW = 0;
+      for (let i = 0; i < tooltip.lines.length; ++i) {
+        const line = tooltip.lines[i];
+        const header = /^---\s*(.*?)\s*---$/.exec(line);
+        if (header) {
+          rows.push({ kind: 'header', text: header[1].toUpperCase(), h: fontSize + 8 });
+          continue;
+        }
+        ctx.font = uiFont(i === 0 ? fontSize + 2 : fontSize, i === 0 ? 'bold' : '');
+        for (const w of wrapText(line, maxTextW)) {
+          rows.push({ kind: i === 0 ? 'title' : 'text', text: w, h: (i === 0 ? fontSize + 2 : fontSize) * 1.4, src: line });
+          maxW = Math.max(maxW, measureIconText(w));
+        }
       }
-      fillIconText(line, bx + padding, by + padding + i * lineH);
+      boxW = Math.ceil(maxW) + padding * 2;
+      boxH = padding * 2;
+      for (const r of rows)
+        boxH += r.h;
+      if (boxH <= CANVAS_H - 16 || fontSize <= 12)
+        break;
+      --fontSize;
+    }
+    boxW = Math.max(boxW, 160);
+
+    // Place next to the anchor (keyboard focus) or the cursor, always inside the canvas
+    let bx, by;
+    const a = tooltip.anchor;
+    if (a) {
+      bx = a.x + a.w + 12;
+      if (bx + boxW > CANVAS_W - 8) bx = a.x - boxW - 12;
+      by = a.y;
+    } else {
+      bx = tooltip.x + 24;
+      by = tooltip.y + 24;
+      if (bx + boxW > CANVAS_W - 8) bx = tooltip.x - boxW - 12;
+      if (by + boxH > CANVAS_H - 8) by = tooltip.y - boxH - 12;
+    }
+    bx = Math.max(8, Math.min(CANVAS_W - 8 - boxW, bx));
+    by = Math.max(8, Math.min(CANVAS_H - 8 - boxH, by));
+
+    ctx.save();
+    drawPanel(bx, by, boxW, boxH, { accent: UI.gold, radius: 10, shadow: 14 });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    let y = by + padding;
+    for (const r of rows) {
+      const cy = y + r.h / 2;
+      if (r.kind === 'header') {
+        ctx.font = uiFont(Math.max(11, fontSize - 5), 'bold');
+        ctx.fillStyle = UI.textMute;
+        ctx.fillText(r.text, bx + padding, cy + 1);
+        const tw = ctx.measureText(r.text).width;
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fillRect(bx + padding + tw + 8, cy, boxW - padding * 2 - tw - 8, 1);
+      } else {
+        const title = r.kind === 'title';
+        ctx.font = uiFont(title ? fontSize + 2 : fontSize, title ? 'bold' : '');
+        let color = UI.text;
+        if (!title) {
+          if (r.src.startsWith('✔')) color = UI.good;
+          else if (r.src.startsWith('✘')) color = UI.bad;
+          else if (r.src.startsWith('⚠')) color = UI.warn;
+          else color = '#c4cde0';
+        } else
+          color = '#ffffff';
+        ctx.fillStyle = color;
+        fillIconText(r.text, bx + padding, cy + 1);
+      }
+      y += r.h;
     }
     ctx.restore();
   }
