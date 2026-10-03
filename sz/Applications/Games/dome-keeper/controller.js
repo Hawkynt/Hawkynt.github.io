@@ -1538,7 +1538,8 @@
   const particles = new SZ.GameEffects.ParticleSystem();
   const screenShake = new SZ.GameEffects.ScreenShake();
   const floatingText = new SZ.GameEffects.FloatingText();
-  const starfield = new SZ.GameEffects.Starfield(CANVAS_W, CANVAS_H * 0.85, 160);
+  let surfaceArt = null;                 // cached sky, mountains, ground, dome glass
+  const enemyHitFlash = new WeakMap();   // enemy -> white flash strength after a hit
 
   /* ======================================================================
      ANIMATION STATE
@@ -2566,9 +2567,6 @@
       }
     }
 
-    // Update starfield
-    starfield.update(dt);
-
     // Update enemy animation phases
     for (const e of enemies) {
       if (e.wobblePhase === undefined) {
@@ -2577,6 +2575,9 @@
         e.eyeBlinkTimer = 2 + Math.random() * 3;
         e.eyeBlinking = false;
       }
+      const hf = enemyHitFlash.get(e);
+      if (hf > 0)
+        enemyHitFlash.set(e, Math.max(0, hf - dt * 6));
       e.wobblePhase += dt * 4;
       e.legPhase += dt * 8;
       if (e.type === 'flyer')
@@ -2634,6 +2635,7 @@
      ====================================================================== */
 
   function applyDamageToEnemy(e, amount) {
+    enemyHitFlash.set(e, 0.8);
     if (e.shield > 0) {
       const absorbed = Math.min(e.shield, amount);
       e.shield -= absorbed;
@@ -4918,129 +4920,624 @@
      DRAWING HELPERS
      ====================================================================== */
 
-  function drawGroundLayer() {
-    const groundY = DOME_Y;
+  // Seeded pseudo-random generator so cached art looks the same every run
+  function makeRng(seed) {
+    let s = seed >>> 0;
+    return () => {
+      s = (s + 0x6D2B79F5) >>> 0;
+      let t = s;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
 
-    // Multi-layer ground gradient
-    const groundGrad = ctx.createLinearGradient(0, groundY, 0, CANVAS_H);
-    groundGrad.addColorStop(0, '#3a2510');
-    groundGrad.addColorStop(0.3, '#2a1a0a');
-    groundGrad.addColorStop(1, '#1a0f05');
-    ctx.fillStyle = groundGrad;
-    ctx.fillRect(0, groundY, CANVAS_W, CANVAS_H - groundY);
+  function makeCanvas(w, h) {
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.ceil(w));
+    c.height = Math.max(1, Math.ceil(h));
+    return c;
+  }
 
-    // Ground highlight edge
-    ctx.strokeStyle = '#5a4a2a';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, groundY);
-    ctx.lineTo(CANVAS_W, groundY);
-    ctx.stroke();
-
-    // Grass tufts along the ground line
-    ctx.strokeStyle = '#2a5a1a';
-    ctx.lineWidth = 3;
-    for (let gx = 10; gx < CANVAS_W; gx += 24 + Math.sin(gx * 0.3) * 10) {
-      const tiltSeed = Math.sin(gx * 0.7 + animTime * 0.8);
-      const h = 8 + Math.abs(Math.sin(gx * 0.5)) * 12;
-      ctx.beginPath();
-      ctx.moveTo(gx, groundY);
-      ctx.quadraticCurveTo(gx + tiltSeed * 6, groundY - h * 0.6, gx + tiltSeed * 4, groundY - h);
-      ctx.stroke();
+  // Sky, planets, nebula and faint stars -- rendered once
+  function buildSurfaceArt() {
+    if (surfaceArt) return surfaceArt;
+    const rng = makeRng(1337);
+    const sky = makeCanvas(CANVAS_W, DOME_Y);
+    const g = sky.getContext('2d');
+    const grad = g.createLinearGradient(0, 0, 0, DOME_Y);
+    grad.addColorStop(0, '#02030c');
+    grad.addColorStop(0.45, '#0a0f2e');
+    grad.addColorStop(0.72, '#1a1846');
+    grad.addColorStop(0.9, '#3a2458');
+    grad.addColorStop(1, '#6b3a5e');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, CANVAS_W, DOME_Y);
+    // Nebula clouds
+    const neb = [[300, 260, 340, '70,60,180', 0.18], [980, 180, 300, '40,140,170', 0.14], [700, 420, 420, '150,50,150', 0.12], [1250, 520, 260, '200,90,90', 0.08]];
+    for (const [x, y, r, col, a] of neb) {
+      const rg = g.createRadialGradient(x, y, 0, x, y, r);
+      rg.addColorStop(0, `rgba(${col},${a})`);
+      rg.addColorStop(0.6, `rgba(${col},${a * 0.4})`);
+      rg.addColorStop(1, `rgba(${col},0)`);
+      g.fillStyle = rg;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    // Faint star dust
+    for (let i = 0; i < 420; ++i) {
+      const x = rng() * CANVAS_W, y = rng() * DOME_Y * 0.92;
+      g.fillStyle = `rgba(${200 + rng() * 55 | 0},${200 + rng() * 55 | 0},255,${0.08 + rng() * 0.35 * (1 - y / DOME_Y)})`;
+      g.fillRect(x, y, rng() < 0.15 ? 1.6 : 1, rng() < 0.15 ? 1.6 : 1);
+    }
+    // Ringed gas giant
+    const px = 470, py = 240, pr = 70;
+    g.save();
+    g.translate(px, py);
+    g.rotate(-0.35);
+    g.strokeStyle = 'rgba(220,190,255,0.25)';
+    g.lineWidth = 6;
+    g.beginPath();
+    g.ellipse(0, 0, pr * 1.9, pr * 0.42, 0, Math.PI, TWO_PI);
+    g.stroke();
+    g.restore();
+    const pg = g.createRadialGradient(px - pr * 0.45, py - pr * 0.45, pr * 0.1, px, py, pr);
+    pg.addColorStop(0, '#f0c8ff');
+    pg.addColorStop(0.35, '#a070d0');
+    pg.addColorStop(0.8, '#3a2470');
+    pg.addColorStop(1, '#1a1038');
+    g.fillStyle = pg;
+    g.beginPath();
+    g.arc(px, py, pr, 0, TWO_PI);
+    g.fill();
+    g.save();
+    g.beginPath();
+    g.arc(px, py, pr, 0, TWO_PI);
+    g.clip();
+    g.globalAlpha = 0.18;
+    for (let i = -3; i <= 3; ++i) {
+      g.fillStyle = i % 2 ? '#ffffff' : '#2a1050';
+      g.fillRect(px - pr, py + i * 18 - 4, pr * 2, 8);
+    }
+    g.restore();
+    g.save();
+    g.translate(px, py);
+    g.rotate(-0.35);
+    g.strokeStyle = 'rgba(230,200,255,0.45)';
+    g.lineWidth = 5;
+    g.beginPath();
+    g.ellipse(0, 0, pr * 1.9, pr * 0.42, 0, 0, Math.PI);
+    g.stroke();
+    g.restore();
+    // Small moon
+    const mg = g.createRadialGradient(830, 120, 2, 840, 130, 26);
+    mg.addColorStop(0, '#e8f0ff');
+    mg.addColorStop(0.7, '#8090b8');
+    mg.addColorStop(1, '#303a58');
+    g.fillStyle = mg;
+    g.beginPath();
+    g.arc(840, 130, 24, 0, TWO_PI);
+    g.fill();
+    g.fillStyle = 'rgba(40,50,80,0.35)';
+    for (const [cx, cy, cr] of [[834, 124, 5], [848, 138, 4], [844, 120, 2.5]]) {
+      g.beginPath();
+      g.arc(cx, cy, cr, 0, TWO_PI);
+      g.fill();
     }
 
-    // Pebble/rock details on the ground surface
-    ctx.fillStyle = '#4a3a20';
-    const pebbleSeed = 42;
-    for (let px = 40; px < CANVAS_W; px += 70 + ((px * pebbleSeed) % 40)) {
-      const py = groundY + 10 + ((px * 7) % 30);
-      const pr = 2 + ((px * 3) % 6);
+    // Twinkling stars drawn live
+    const stars = [];
+    for (let i = 0; i < 90; ++i)
+      stars.push({ x: rng() * CANVAS_W, y: rng() * DOME_Y * 0.8, s: 0.8 + rng() * 1.6, p: rng() * TWO_PI, f: 0.6 + rng() * 2.2, big: rng() < 0.12 });
+
+    // Mountain ranges: far, mid, near (wider than the screen for parallax)
+    const ranges = [];
+    const specs = [
+      { base: 210, amp: 150, col1: '#2a2456', col2: '#3c2c62', rim: 'rgba(170,140,255,0.35)', seed: 11, depth: 6 },
+      { base: 130, amp: 100, col1: '#17163a', col2: '#251d48', rim: 'rgba(140,120,230,0.4)', seed: 23, depth: 14 },
+      { base: 60, amp: 50, col1: '#0c0b20', col2: '#14122c', rim: 'rgba(120,110,200,0.45)', seed: 37, depth: 26 }
+    ];
+    for (const sp of specs) {
+      const w = CANVAS_W + 120, h = sp.base + sp.amp + 20;
+      const c = makeCanvas(w, h);
+      const m = c.getContext('2d');
+      // Jagged ridge line by midpoint displacement
+      const r2 = makeRng(sp.seed);
+      const n = 256;
+      const hs = new Array(n + 1);
+      hs[0] = r2();
+      hs[n] = r2();
+      for (let span = n, disp = 1; span > 1; span >>= 1, disp *= 0.56)
+        for (let i = span >> 1; i < n; i += span)
+          hs[i] = (hs[i - (span >> 1)] + hs[i + (span >> 1)]) / 2 + (r2() - 0.5) * disp;
+      let lo = Infinity, hi = -Infinity;
+      for (const v of hs) {
+        lo = Math.min(lo, v);
+        hi = Math.max(hi, v);
+      }
+      const ridge = [];
+      for (let i = 0; i <= n; ++i) {
+        const y = sp.base - sp.amp * 0.5 + ((hs[i] - lo) / (hi - lo)) * sp.amp;
+        ridge.push([i * w / n, h - Math.max(10, y)]);
+      }
+      const mgrad = m.createLinearGradient(0, 0, 0, h);
+      mgrad.addColorStop(0, sp.col2);
+      mgrad.addColorStop(1, sp.col1);
+      m.fillStyle = mgrad;
+      m.beginPath();
+      m.moveTo(0, h);
+      for (const [x, y] of ridge)
+        m.lineTo(x, y);
+      m.lineTo(w, h);
+      m.closePath();
+      m.fill();
+      m.strokeStyle = sp.rim;
+      m.lineWidth = 2;
+      m.beginPath();
+      ridge.forEach(([x, y], i) => i ? m.lineTo(x, y + 1) : m.moveTo(x, y + 1));
+      m.stroke();
+      // Haze at the foot
+      const hz = m.createLinearGradient(0, h * 0.4, 0, h);
+      hz.addColorStop(0, 'rgba(120,70,140,0)');
+      hz.addColorStop(1, 'rgba(120,70,140,0.25)');
+      m.globalCompositeOperation = 'source-atop';
+      m.fillStyle = hz;
+      m.fillRect(0, 0, w, h);
+      m.globalCompositeOperation = 'source-over';
+      ranges.push({ canvas: c, depth: sp.depth, h });
+    }
+
+    // Ground strip with strata, rocks and crystals
+    const gh = CANVAS_H - DOME_Y;
+    const ground = makeCanvas(CANVAS_W, gh);
+    const gg = ground.getContext('2d');
+    const sg = gg.createLinearGradient(0, 0, 0, gh);
+    sg.addColorStop(0, '#4a3048');
+    sg.addColorStop(0.08, '#38243a');
+    sg.addColorStop(0.5, '#24172a');
+    sg.addColorStop(1, '#140c18');
+    gg.fillStyle = sg;
+    gg.fillRect(0, 0, CANVAS_W, gh);
+    const r3 = makeRng(99);
+    for (let band = 0; band < 4; ++band) {
+      const by = 18 + band * 22;
+      gg.strokeStyle = `rgba(0,0,0,${0.18 + band * 0.04})`;
+      gg.lineWidth = 2;
+      gg.beginPath();
+      for (let x = 0; x <= CANVAS_W; x += 10)
+        gg.lineTo(x, by + Math.sin(x * 0.01 + band) * 4 + Math.sin(x * 0.043 + band * 2) * 2);
+      gg.stroke();
+    }
+    for (let i = 0; i < 140; ++i) {
+      const x = r3() * CANVAS_W, y = 8 + r3() * (gh - 12), rr = 1.5 + r3() * 5;
+      gg.fillStyle = `rgba(${90 + r3() * 40 | 0},${60 + r3() * 30 | 0},${90 + r3() * 40 | 0},0.6)`;
+      gg.beginPath();
+      gg.ellipse(x, y, rr * 1.4, rr, 0, 0, TWO_PI);
+      gg.fill();
+      gg.fillStyle = 'rgba(255,220,255,0.12)';
+      gg.beginPath();
+      gg.ellipse(x - rr * 0.3, y - rr * 0.4, rr * 0.6, rr * 0.35, 0, 0, TWO_PI);
+      gg.fill();
+    }
+    for (let i = 0; i < 18; ++i) {
+      const x = r3() * CANVAS_W, y = 30 + r3() * (gh - 40);
+      const col = ['#5ad0ff', '#c070ff', '#60f0b0'][i % 3];
+      gg.fillStyle = col;
+      gg.globalAlpha = 0.55;
+      gg.beginPath();
+      gg.moveTo(x, y - 6);
+      gg.lineTo(x + 3, y);
+      gg.lineTo(x, y + 5);
+      gg.lineTo(x - 3, y);
+      gg.closePath();
+      gg.fill();
+      gg.globalAlpha = 1;
+    }
+    // Lit top edge
+    gg.fillStyle = 'rgba(255,190,220,0.35)';
+    gg.fillRect(0, 0, CANVAS_W, 2);
+    gg.fillStyle = 'rgba(0,0,0,0.3)';
+    gg.fillRect(0, 2, CANVAS_W, 2);
+
+    // Dome glass (interior tint, hex lattice, highlights) at 2x for crisp scaling
+    const R = DOME_RADIUS, S = 2;
+    const glass = makeCanvas((R * 2 + 8) * S, (R + 8) * S);
+    const dg = glass.getContext('2d');
+    dg.scale(S, S);
+    dg.translate(R + 4, R + 4);
+    dg.save();
+    dg.beginPath();
+    dg.arc(0, 0, R - 1, Math.PI, 0);
+    dg.closePath();
+    dg.clip();
+    const ig = dg.createRadialGradient(-R * 0.3, -R * 0.5, 4, 0, 0, R);
+    ig.addColorStop(0, 'rgba(120,200,255,0.22)');
+    ig.addColorStop(0.6, 'rgba(50,110,200,0.12)');
+    ig.addColorStop(1, 'rgba(20,60,140,0.28)');
+    dg.fillStyle = ig;
+    dg.fillRect(-R, -R, R * 2, R);
+    dg.strokeStyle = 'rgba(140,210,255,0.35)';
+    dg.lineWidth = 1.2;
+    const hs = 16, hh = hs * Math.sqrt(3);
+    for (let row = 0, hy = -R - hh; hy < 10; hy += hh / 2, ++row)
+      for (let hx = -R - hs * 3 + (row % 2) * hs * 1.5; hx < R + hs * 3; hx += hs * 3) {
+        dg.beginPath();
+        for (let i = 0; i < 6; ++i) {
+          const a = (TWO_PI / 6) * i;
+          const x = hx + Math.cos(a) * hs, y = hy + Math.sin(a) * hs;
+          if (i === 0) dg.moveTo(x, y);
+          else dg.lineTo(x, y);
+        }
+        dg.closePath();
+        dg.stroke();
+      }
+    // Bottom shading where the glass meets the base
+    const bg2 = dg.createLinearGradient(0, -R * 0.35, 0, 0);
+    bg2.addColorStop(0, 'rgba(10,20,50,0)');
+    bg2.addColorStop(1, 'rgba(10,20,50,0.45)');
+    dg.fillStyle = bg2;
+    dg.fillRect(-R, -R * 0.35, R * 2, R * 0.35);
+    dg.restore();
+    // Specular crescent and rim light
+    dg.save();
+    dg.beginPath();
+    dg.arc(0, 0, R - 8, Math.PI * 1.08, Math.PI * 1.5);
+    dg.lineWidth = 7;
+    dg.lineCap = 'round';
+    dg.strokeStyle = 'rgba(255,255,255,0.35)';
+    dg.stroke();
+    dg.beginPath();
+    dg.arc(0, 0, R - 18, Math.PI * 1.15, Math.PI * 1.32);
+    dg.lineWidth = 3;
+    dg.strokeStyle = 'rgba(255,255,255,0.25)';
+    dg.stroke();
+    dg.beginPath();
+    dg.ellipse(R * 0.42, -R * 0.62, 7, 4, -0.6, 0, TWO_PI);
+    dg.fillStyle = 'rgba(255,255,255,0.3)';
+    dg.fill();
+    dg.restore();
+
+    // Crack paths from impact points on the shell
+    const cracks = [];
+    const r4 = makeRng(4242);
+    for (let i = 0; i < 14; ++i) {
+      const a = Math.PI + 0.25 + r4() * (Math.PI - 0.5);
+      let x = Math.cos(a) * (R - 2), y = Math.sin(a) * (R - 2);
+      const pts = [[x, y]];
+      let dir = a + Math.PI + (r4() - 0.5) * 0.9;
+      const len = 3 + (r4() * 4 | 0);
+      for (let k = 0; k < len; ++k) {
+        const step = 8 + r4() * 10;
+        dir += (r4() - 0.5) * 1.1;
+        x += Math.cos(dir) * step;
+        y += Math.sin(dir) * step;
+        if (y > -4 || x * x + y * y > (R - 2) * (R - 2)) break;
+        pts.push([x, y]);
+      }
+      cracks.push(pts);
+    }
+
+    // Soft additive glow sprite for beams, impacts and lights
+    const glow = makeCanvas(64, 64);
+    const gl = glow.getContext('2d');
+    const glg = gl.createRadialGradient(32, 32, 0, 32, 32, 32);
+    glg.addColorStop(0, 'rgba(255,255,255,1)');
+    glg.addColorStop(0.25, 'rgba(255,255,255,0.55)');
+    glg.addColorStop(1, 'rgba(255,255,255,0)');
+    gl.fillStyle = glg;
+    gl.fillRect(0, 0, 64, 64);
+
+    surfaceArt = { sky, stars, ranges, ground, glass, glassScale: S, cracks, glow, tinted: {} };
+    return surfaceArt;
+  }
+
+  // Coloured copy of the glow sprite (cached per colour)
+  function getGlow(color) {
+    const art = buildSurfaceArt();
+    let c = art.tinted[color];
+    if (!c) {
+      c = makeCanvas(64, 64);
+      const g = c.getContext('2d');
+      g.drawImage(art.glow, 0, 0);
+      g.globalCompositeOperation = 'source-in';
+      g.fillStyle = color;
+      g.fillRect(0, 0, 64, 64);
+      art.tinted[color] = c;
+    }
+    return c;
+  }
+
+  function drawGlow(color, x, y, r, alpha) {
+    const prev = ctx.globalCompositeOperation;
+    const prevA = ctx.globalAlpha;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = prevA * alpha;
+    ctx.drawImage(getGlow(color), x - r, y - r, r * 2, r * 2);
+    ctx.globalAlpha = prevA;
+    ctx.globalCompositeOperation = prev;
+  }
+
+  function drawSky() {
+    const art = buildSurfaceArt();
+    ctx.drawImage(art.sky, 0, 0);
+    // Twinkling stars
+    for (const s of art.stars) {
+      const tw = 0.45 + 0.55 * Math.sin(animTime * s.f + s.p);
+      if (tw <= 0.05) continue;
+      ctx.globalAlpha = tw * 0.9;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(s.x - s.s / 2, s.y - s.s / 2, s.s, s.s);
+      if (s.big) {
+        ctx.globalAlpha = tw * 0.35;
+        ctx.fillRect(s.x - s.s * 2.5, s.y - 0.5, s.s * 5, 1);
+        ctx.fillRect(s.x - 0.5, s.y - s.s * 2.5, 1, s.s * 5);
+      }
+    }
+    ctx.globalAlpha = 1;
+    // Occasional shooting star
+    const cycle = 11;
+    const t = (animTime % cycle) / 0.9;
+    if (t < 1) {
+      const k = Math.floor(animTime / cycle);
+      const sx = 200 + ((k * 7919) % 900), sy = 60 + ((k * 3571) % 220);
+      const hx = sx + t * 260, hy = sy + t * 90;
+      const g = ctx.createLinearGradient(hx - 120, hy - 42, hx, hy);
+      g.addColorStop(0, 'rgba(255,255,255,0)');
+      g.addColorStop(1, `rgba(255,255,255,${0.8 * (1 - t)})`);
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.ellipse(px, py, pr * 1.5, pr * 1, 0, 0, TWO_PI);
+      ctx.moveTo(hx - 120, hy - 42);
+      ctx.lineTo(hx, hy);
+      ctx.stroke();
+    }
+    // Mountain ranges with mouse parallax
+    const sway = mouseAimX >= 0 ? (mouseAimX / CANVAS_W - 0.5) : 0;
+    for (const r of art.ranges)
+      ctx.drawImage(r.canvas, -60 - sway * r.depth * 2, DOME_Y - r.h + 4);
+    // Low drifting mist
+    const mx = (animTime * 12) % CANVAS_W;
+    ctx.globalAlpha = 0.5;
+    for (const off of [-CANVAS_W, 0]) {
+      const x = mx + off;
+      const mg = ctx.createRadialGradient(x + 500, DOME_Y - 10, 10, x + 500, DOME_Y - 10, 420);
+      mg.addColorStop(0, 'rgba(180,120,200,0.18)');
+      mg.addColorStop(1, 'rgba(180,120,200,0)');
+      ctx.fillStyle = mg;
+      ctx.fillRect(x + 80, DOME_Y - 120, 840, 140);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Pre-rendered enemy body (outline, shading, rim light) per variant
+  function getEnemyBody(kind) {
+    const art = buildSurfaceArt();
+    const key = 'body:' + kind;
+    if (art.tinted[key]) return art.tinted[key];
+    const S = 96, c = makeCanvas(S, S), g = c.getContext('2d');
+    g.translate(S / 2, S / 2);
+    const r = 36;
+    const pal = {
+      walker: ['#ff9a8a', '#e0403a', '#8a1420', '#3a0610'],
+      armored: ['#e8d8a8', '#a08a5a', '#5a4828', '#241a0c'],
+      boss: ['#ff7aa0', '#b81848', '#5a0420', '#20020a'],
+      flyer: ['#f0a8ff', '#a050c8', '#4a1868', '#1a0628']
+    }[kind];
+    g.fillStyle = SPRITE_OUTLINE;
+    g.beginPath();
+    if (kind === 'flyer') {
+      g.moveTo(0, -r - 4);
+      g.quadraticCurveTo(r * 0.9, -r * 0.1, r * 0.7 + 4, r * 0.6 + 4);
+      g.quadraticCurveTo(0, r * 0.35 + 4, -r * 0.7 - 4, r * 0.6 + 4);
+      g.quadraticCurveTo(-r * 0.9, -r * 0.1, 0, -r - 4);
+    } else
+      g.arc(0, 0, r + 3, 0, TWO_PI);
+    g.fill();
+    const bodyPath = () => {
+      g.beginPath();
+      if (kind === 'flyer') {
+        g.moveTo(0, -r);
+        g.quadraticCurveTo(r * 0.85, -r * 0.1, r * 0.7, r * 0.6);
+        g.quadraticCurveTo(0, r * 0.35, -r * 0.7, r * 0.6);
+        g.quadraticCurveTo(-r * 0.85, -r * 0.1, 0, -r);
+      } else
+        g.arc(0, 0, r, 0, TWO_PI);
+    };
+    const bgd = g.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.1, 0, 0, r * 1.05);
+    bgd.addColorStop(0, pal[0]);
+    bgd.addColorStop(0.45, pal[1]);
+    bgd.addColorStop(0.85, pal[2]);
+    bgd.addColorStop(1, pal[3]);
+    bodyPath();
+    g.fillStyle = bgd;
+    g.fill();
+    g.save();
+    bodyPath();
+    g.clip();
+    // Spots / plates
+    if (kind === 'armored') {
+      g.strokeStyle = 'rgba(30,20,8,0.7)';
+      g.lineWidth = 3;
+      for (const y of [-12, 6, 22]) {
+        g.beginPath();
+        g.arc(0, y - 30, 40, 0.25 * Math.PI, 0.75 * Math.PI);
+        g.stroke();
+      }
+      g.fillStyle = 'rgba(255,240,200,0.6)';
+      for (const [x, y] of [[-20, -4], [20, -4], [-12, 14], [12, 14]]) {
+        g.beginPath();
+        g.arc(x, y, 2.5, 0, TWO_PI);
+        g.fill();
+      }
+    } else {
+      g.fillStyle = 'rgba(0,0,0,0.18)';
+      for (const [x, y, s] of [[-18, 14, 7], [16, 18, 5], [22, -6, 4], [-6, 24, 4]]) {
+        g.beginPath();
+        g.arc(x, y, s, 0, TWO_PI);
+        g.fill();
+      }
+    }
+    // Rim light from below (ground bounce) and top specular
+    g.strokeStyle = 'rgba(255,200,180,0.35)';
+    g.lineWidth = 4;
+    g.beginPath();
+    g.arc(0, 4, r - 2, 0.15 * Math.PI, 0.85 * Math.PI);
+    g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.45)';
+    g.beginPath();
+    g.ellipse(-r * 0.32, -r * 0.48, r * 0.26, r * 0.13, -0.5, 0, TWO_PI);
+    g.fill();
+    g.restore();
+    art.tinted[key] = c;
+    return c;
+  }
+
+  function drawEnemyEyes(sz, blinking, color, pupil) {
+    const eyeH = blinking ? 1 : sz * 0.2;
+    for (const sx of [-1, 1]) {
+      ctx.fillStyle = SPRITE_OUTLINE;
+      ctx.beginPath();
+      ctx.ellipse(sx * sz * 0.3, -sz * 0.12, sz * 0.2 + 2, eyeH + 2, 0, 0, TWO_PI);
       ctx.fill();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.ellipse(sx * sz * 0.3, -sz * 0.12, sz * 0.2, eyeH, 0, 0, TWO_PI);
+      ctx.fill();
+      if (!blinking) {
+        ctx.fillStyle = pupil;
+        ctx.beginPath();
+        ctx.arc(sx * sz * 0.27, -sz * 0.08, sz * 0.08, 0, TWO_PI);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.fillRect(sx * sz * 0.3 - sz * 0.08, -sz * 0.2, 2, 2);
+      }
     }
   }
 
+  function drawGroundLayer() {
+    const art = buildSurfaceArt();
+    ctx.drawImage(art.ground, 0, DOME_Y);
+    // Alien grass swaying along the ground line
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    for (let gx = 10; gx < CANVAS_W; gx += 22 + Math.sin(gx * 0.3) * 8) {
+      if (Math.abs(gx - DOME_X) < DOME_RADIUS + 26) continue;
+      const tilt = Math.sin(gx * 0.7 + animTime * 0.9);
+      const h = 8 + Math.abs(Math.sin(gx * 0.5)) * 14;
+      ctx.strokeStyle = (gx | 0) % 3 ? '#3f8a70' : '#5ab08e';
+      ctx.beginPath();
+      ctx.moveTo(gx, DOME_Y + 2);
+      ctx.quadraticCurveTo(gx + tilt * 6, DOME_Y - h * 0.6, gx + tilt * 4, DOME_Y - h);
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+  }
+
   function drawDome() {
-    const pulse = Math.sin(domePulsePhase) * 0.15;
+    const art = buildSurfaceArt();
+    const pulse = Math.sin(domePulsePhase) * 0.5 + 0.5;
     const flashAlpha = domeHitFlash * 0.6;
-    const hpRatio = domeHP / maxDomeHP;
+    const hpRatio = Math.max(0, domeHP / maxDomeHP);
+    const R = DOME_RADIUS;
+    const shieldLevel = getEffectiveLevel('domeHP');
 
-    // Dome interior gradient fill (semi-transparent)
+    // Light pool on the ground
+    drawGlow('#4aa8ff', DOME_X, DOME_Y + 6, R * 1.7, 0.18 + pulse * 0.05);
+
+    // Refraction: the sky behind the glass, slightly magnified and tinted
     ctx.save();
     ctx.beginPath();
-    ctx.arc(DOME_X, DOME_Y, DOME_RADIUS - 2, Math.PI, 0);
-    ctx.closePath();
-    const interiorGrad = ctx.createRadialGradient(DOME_X, DOME_Y - 20, 10, DOME_X, DOME_Y, DOME_RADIUS);
-    interiorGrad.addColorStop(0, 'rgba(80,140,220,0.08)');
-    interiorGrad.addColorStop(0.6, 'rgba(60,120,200,0.04)');
-    interiorGrad.addColorStop(1, 'rgba(40,100,180,0.02)');
-    ctx.fillStyle = interiorGrad;
-    ctx.fill();
-    ctx.restore();
-
-    // Hex pattern on dome
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(DOME_X, DOME_Y, DOME_RADIUS - 1, Math.PI, 0);
+    ctx.arc(DOME_X, DOME_Y, R - 1, Math.PI, 0);
     ctx.closePath();
     ctx.clip();
-    ctx.strokeStyle = `rgba(100,180,255,${0.25 + pulse * 0.12})`;
-    ctx.lineWidth = 2;
-    const hexSize = 24;
-    const hexH = hexSize * Math.sqrt(3);
-    for (let hy = DOME_Y - DOME_RADIUS; hy < DOME_Y + 10; hy += hexH) {
-      for (let hx = DOME_X - DOME_RADIUS; hx < DOME_X + DOME_RADIUS; hx += hexSize * 3) {
-        const ox = ((Math.floor((hy - DOME_Y + DOME_RADIUS) / hexH)) % 2) * hexSize * 1.5;
-        drawHexagon(hx + ox, hy, hexSize);
+    const mag = 1.12;
+    ctx.globalAlpha = 0.55;
+    ctx.drawImage(art.sky, DOME_X - R, DOME_Y - R, R * 2, R, DOME_X - R * mag, DOME_Y - R * mag - 6, R * 2 * mag, R * mag);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(20,60,120,0.25)';
+    ctx.fillRect(DOME_X - R, DOME_Y - R, R * 2, R);
+
+    // Console and keeper silhouette inside
+    ctx.fillStyle = '#1c2a44';
+    ctx.fillRect(DOME_X - 26, DOME_Y - 22, 52, 22);
+    ctx.fillStyle = '#4af';
+    ctx.globalAlpha = 0.5 + pulse * 0.3;
+    ctx.fillRect(DOME_X - 20, DOME_Y - 18, 14, 4);
+    ctx.fillStyle = '#6f6';
+    ctx.fillRect(DOME_X + 4, DOME_Y - 18, 6, 4);
+    ctx.globalAlpha = 1;
+
+    // Glass lattice and highlights
+    ctx.globalAlpha = 0.75 + pulse * 0.25;
+    ctx.drawImage(art.glass, DOME_X - R - 4, DOME_Y - R - 4, R * 2 + 8, R + 8);
+    ctx.globalAlpha = 1;
+
+    // Shield shimmer: a bright band sweeping across the lattice
+    const sweep = ((animTime * 0.35) % 1.6) - 0.3;
+    const bx = DOME_X - R + sweep * R * 2;
+    const sg = ctx.createLinearGradient(bx - 40, DOME_Y - R, bx + 40, DOME_Y);
+    sg.addColorStop(0, 'rgba(160,230,255,0)');
+    sg.addColorStop(0.5, `rgba(160,230,255,${0.12 + shieldLevel * 0.02})`);
+    sg.addColorStop(1, 'rgba(160,230,255,0)');
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = sg;
+    ctx.fillRect(DOME_X - R, DOME_Y - R, R * 2, R);
+    ctx.globalCompositeOperation = 'source-over';
+
+    // Damage cracks grow as HP drops
+    const crackCount = Math.round((1 - hpRatio) * art.cracks.length);
+    if (crackCount > 0) {
+      ctx.lineJoin = 'round';
+      for (let i = 0; i < crackCount; ++i) {
+        const pts = art.cracks[i];
+        ctx.beginPath();
+        pts.forEach(([x, y], k) => k ? ctx.lineTo(DOME_X + x, DOME_Y + y + 1) : ctx.moveTo(DOME_X + x, DOME_Y + y + 1));
+        ctx.strokeStyle = 'rgba(0,10,30,0.6)';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        ctx.beginPath();
+        pts.forEach(([x, y], k) => k ? ctx.lineTo(DOME_X + x, DOME_Y + y) : ctx.moveTo(DOME_X + x, DOME_Y + y));
+        ctx.strokeStyle = 'rgba(220,240,255,0.75)';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
       }
+    }
+
+    // Hit flash overlay
+    if (flashAlpha > 0) {
+      ctx.fillStyle = `rgba(255,80,80,${flashAlpha})`;
+      ctx.fillRect(DOME_X - R, DOME_Y - R, R * 2, R);
     }
     ctx.restore();
 
-    // Dome shield arc (main) -- thicker with more shield upgrades
-    const shieldLevel = getEffectiveLevel('domeHP');
-    const domeLineWidth = 3 + shieldLevel * 2;
+    // Frame: meridian ribs and the outer rim (thicker with shield upgrades)
+    ctx.save();
+    ctx.strokeStyle = 'rgba(150,200,255,0.35)';
+    ctx.lineWidth = 2;
+    for (const k of [0.38, 0.72]) {
+      ctx.beginPath();
+      ctx.ellipse(DOME_X, DOME_Y, R * k, R, 0, Math.PI, 0);
+      ctx.stroke();
+    }
     ctx.beginPath();
-    ctx.arc(DOME_X, DOME_Y, DOME_RADIUS, Math.PI, 0);
-    ctx.closePath();
-    const domeGrad = ctx.createLinearGradient(DOME_X - DOME_RADIUS, DOME_Y, DOME_X + DOME_RADIUS, DOME_Y);
-    domeGrad.addColorStop(0, `rgba(40,120,255,${0.5 + pulse})`);
-    domeGrad.addColorStop(0.5, `rgba(80,170,255,${0.8 + pulse})`);
-    domeGrad.addColorStop(1, `rgba(40,120,255,${0.5 + pulse})`);
-    ctx.strokeStyle = domeGrad;
-    ctx.lineWidth = domeLineWidth;
-    ctx.shadowBlur = 20 + pulse * 10 + shieldLevel * 3;
-    ctx.shadowColor = '#4af';
+    ctx.ellipse(DOME_X, DOME_Y, R, R * 0.36, 0, Math.PI, 0);
     ctx.stroke();
-
-    // Second pass -- brighter inner line
+    const rimW = 4 + shieldLevel * 1.5;
     ctx.beginPath();
-    ctx.arc(DOME_X, DOME_Y, DOME_RADIUS - domeLineWidth / 2, Math.PI, 0);
-    ctx.strokeStyle = `rgba(140,200,255,${0.3 + pulse * 0.2})`;
-    ctx.lineWidth = 1 + shieldLevel * 0.5;
-    ctx.shadowBlur = 8 + shieldLevel * 2;
-    ctx.shadowColor = '#8cf';
+    ctx.arc(DOME_X, DOME_Y, R, Math.PI, 0);
+    ctx.lineWidth = rimW + 3;
+    ctx.strokeStyle = '#0a1830';
+    ctx.stroke();
+    const rg = ctx.createLinearGradient(DOME_X - R, DOME_Y - R, DOME_X + R, DOME_Y);
+    rg.addColorStop(0, '#9adcff');
+    rg.addColorStop(0.5, '#3a8ae8');
+    rg.addColorStop(1, '#1a4aa0');
+    ctx.strokeStyle = rg;
+    ctx.lineWidth = rimW;
+    ctx.shadowColor = '#4af';
+    ctx.shadowBlur = 14 + pulse * 8 + shieldLevel * 2;
     ctx.stroke();
     ctx.shadowBlur = 0;
-
-    // Dome base (ground contact)
-    ctx.beginPath();
-    ctx.moveTo(DOME_X - DOME_RADIUS, DOME_Y);
-    ctx.lineTo(DOME_X + DOME_RADIUS, DOME_Y);
-    ctx.strokeStyle = '#4af';
-    ctx.lineWidth = 4;
-    ctx.stroke();
-
-    // Dome hit flash overlay
-    if (flashAlpha > 0) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS, Math.PI, 0);
-      ctx.closePath();
-      ctx.fillStyle = `rgba(255,80,80,${flashAlpha})`;
-      ctx.fill();
-      ctx.restore();
-    }
+    ctx.restore();
 
     // Shield impact flashes
     for (const impact of shieldImpacts) {
@@ -5049,69 +5546,85 @@
       ctx.save();
       ctx.beginPath();
       const arcSpan = 0.3 * il;
-      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 4, ia - arcSpan, ia + arcSpan);
-      ctx.strokeStyle = `rgba(100,200,255,${il * 0.8})`;
+      ctx.arc(DOME_X, DOME_Y, R + 4, ia - arcSpan, ia + arcSpan);
+      ctx.strokeStyle = `rgba(140,220,255,${il * 0.9})`;
       ctx.lineWidth = 8 * il;
       ctx.shadowBlur = 15 * il;
       ctx.shadowColor = '#4af';
       ctx.stroke();
-      ctx.shadowBlur = 0;
       ctx.restore();
+      drawGlow('#6cf', DOME_X + Math.cos(ia) * (R + 4), DOME_Y + Math.sin(ia) * (R + 4), 40 * il, il * 0.8);
     }
 
-    // Turret nozzle position on dome arc
-    const nozzleDrawR = DOME_RADIUS + 16;
+    // Base ring the dome sits on
+    const baseG = ctx.createLinearGradient(0, DOME_Y - 8, 0, DOME_Y + 14);
+    baseG.addColorStop(0, '#8a9ab8');
+    baseG.addColorStop(0.4, '#4a5878');
+    baseG.addColorStop(1, '#1a2238');
+    ctx.fillStyle = baseG;
+    ctx.beginPath();
+    ctx.moveTo(DOME_X - R - 14, DOME_Y - 6);
+    ctx.lineTo(DOME_X + R + 14, DOME_Y - 6);
+    ctx.lineTo(DOME_X + R + 24, DOME_Y + 14);
+    ctx.lineTo(DOME_X - R - 24, DOME_Y + 14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#0a1020';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(DOME_X - R - 12, DOME_Y - 5, (R + 12) * 2, 1.5);
+    for (let i = 0; i < 9; ++i) {
+      const lx = DOME_X - R + 4 + i * (R * 2 - 8) / 8;
+      const on = Math.sin(animTime * 3 - i * 0.7) > 0.3;
+      ctx.fillStyle = on ? '#7fe0ff' : '#24405a';
+      ctx.fillRect(lx - 3, DOME_Y + 3, 6, 4);
+      if (on)
+        drawGlow('#4cf', lx, DOME_Y + 5, 9, 0.6);
+    }
+
+    // Turret on the dome arc
+    const nozzleDrawR = R + 16;
     const tbx = DOME_X + Math.cos(turretAngle) * nozzleDrawR;
     const tby = DOME_Y + Math.sin(turretAngle) * nozzleDrawR;
-
-    // Dome turret base (small weapon mount at nozzle position)
-    ctx.save();
-    ctx.translate(tbx, tby);
-    ctx.rotate(turretAngle + Math.PI / 2);
-    ctx.fillStyle = '#6a8ab0';
-    ctx.fillRect(-8, -12, 16, 24);
-    const turretGrad = ctx.createLinearGradient(-8, 0, 8, 0);
-    turretGrad.addColorStop(0, '#8ab0d0');
-    turretGrad.addColorStop(1, '#4a6a8a');
-    ctx.fillStyle = turretGrad;
-    ctx.fillRect(-6, -8, 12, 16);
-    ctx.restore();
-
-    // Turret barrel (rotates with turretAngle)
     ctx.save();
     ctx.translate(tbx, tby);
     ctx.rotate(turretAngle);
-    // Barrel body
-    ctx.fillStyle = '#556';
-    ctx.fillRect(0, -3, TURRET_BARREL_LENGTH, 6);
-    // Barrel highlight
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    ctx.fillRect(0, -3, TURRET_BARREL_LENGTH, 2);
-    // Muzzle tip
-    ctx.fillStyle = '#778';
-    ctx.fillRect(TURRET_BARREL_LENGTH - 6, -5, 6, 10);
-    ctx.restore();
-
-    // Turret pivot dot
-    ctx.fillStyle = '#aac';
-    ctx.beginPath();
-    ctx.arc(tbx, tby, 6, 0, TWO_PI);
+    // Mount
+    ctx.fillStyle = '#1a2236';
+    roundRectPath(-14, -11, 22, 22, 5);
     ctx.fill();
-  }
-
-  function drawHexagon(cx, cy, size) {
+    const mg = ctx.createLinearGradient(0, -10, 0, 10);
+    mg.addColorStop(0, '#b8cce8');
+    mg.addColorStop(0.5, '#6a82a8');
+    mg.addColorStop(1, '#2a3858');
+    ctx.fillStyle = mg;
+    roundRectPath(-12, -9, 18, 18, 4);
+    ctx.fill();
+    // Barrel
+    const bg = ctx.createLinearGradient(0, -5, 0, 5);
+    bg.addColorStop(0, '#d0dcf0');
+    bg.addColorStop(0.45, '#7a8aa8');
+    bg.addColorStop(1, '#2a3248');
+    ctx.fillStyle = '#0c1220';
+    ctx.fillRect(2, -6, TURRET_BARREL_LENGTH, 12);
+    ctx.fillStyle = bg;
+    ctx.fillRect(3, -5, TURRET_BARREL_LENGTH - 2, 10);
+    ctx.fillStyle = '#2a3450';
+    for (let i = 0; i < 3; ++i)
+      ctx.fillRect(12 + i * 7, -5, 2, 10);
+    ctx.fillStyle = '#ff6a4a';
+    ctx.fillRect(TURRET_BARREL_LENGTH - 5, -6, 5, 12);
+    ctx.restore();
+    // Charge light: bright when ready to fire
+    const ready = fireCooldown <= 0;
+    const mx = tbx + Math.cos(turretAngle) * TURRET_BARREL_LENGTH;
+    const my = tby + Math.sin(turretAngle) * TURRET_BARREL_LENGTH;
+    drawGlow('#ff6040', mx, my, ready ? 16 + pulse * 4 : 8, ready ? 0.8 : 0.35);
+    ctx.fillStyle = '#d8e4ff';
     ctx.beginPath();
-    for (let i = 0; i < 6; ++i) {
-      const a = (TWO_PI / 6) * i - Math.PI / 6;
-      const hx = cx + Math.cos(a) * size;
-      const hy = cy + Math.sin(a) * size;
-      if (i === 0)
-        ctx.moveTo(hx, hy);
-      else
-        ctx.lineTo(hx, hy);
-    }
-    ctx.closePath();
-    ctx.stroke();
+    ctx.arc(tbx, tby, 4, 0, TWO_PI);
+    ctx.fill();
   }
 
   function drawEnemy(e) {
@@ -5121,128 +5634,97 @@
   }
 
   function drawGroundEnemy(e) {
-    const hpR = e.hp / e.maxHP;
     const sz = e.size || 10;
     const wobble = Math.sin(e.wobblePhase) * 3;
     const legOffset = Math.sin(e.legPhase) * 6;
+    const kind = e.boss ? 'boss' : (e.armored ? 'armored' : 'walker');
+    const flash = enemyHitFlash.get(e) || 0;
 
     ctx.save();
     ctx.translate(e.x, e.y + wobble);
 
-    // Shadow on ground
-    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    // Ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
-    ctx.ellipse(0, sz + 4, sz * 0.8, 6, 0, 0, TWO_PI);
+    ctx.ellipse(0, sz + 4 - wobble, sz * 0.9, 6, 0, 0, TWO_PI);
     ctx.fill();
 
-    // Legs (4 little appendages)
-    ctx.strokeStyle = e.armored ? '#664' : '#a33';
-    ctx.lineWidth = e.boss ? 6 : 4;
-    // Left legs
-    ctx.beginPath();
-    ctx.moveTo(-sz * 0.4, sz * 0.3);
-    ctx.lineTo(-sz * 0.8, sz * 0.6 + legOffset);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-sz * 0.3, sz * 0.1);
-    ctx.lineTo(-sz * 0.7, sz * 0.3 - legOffset);
-    ctx.stroke();
-    // Right legs
-    ctx.beginPath();
-    ctx.moveTo(sz * 0.4, sz * 0.3);
-    ctx.lineTo(sz * 0.8, sz * 0.6 - legOffset);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(sz * 0.3, sz * 0.1);
-    ctx.lineTo(sz * 0.7, sz * 0.3 + legOffset);
-    ctx.stroke();
-
-    // Body -- gradient sphere (armored = darker metallic, boss = thicker border)
-    const bodyGrad = ctx.createRadialGradient(-sz * 0.15, -sz * 0.2, 1, 0, 0, sz);
-    if (e.armored) {
-      bodyGrad.addColorStop(0, `rgba(160,140,100,${0.6 + hpR * 0.4})`);
-      bodyGrad.addColorStop(0.6, `rgba(100,90,60,${0.5 + hpR * 0.5})`);
-      bodyGrad.addColorStop(1, `rgba(60,50,30,${0.4 + hpR * 0.4})`);
-    } else {
-      bodyGrad.addColorStop(0, `rgba(240,80,80,${0.6 + hpR * 0.4})`);
-      bodyGrad.addColorStop(0.6, `rgba(180,40,40,${0.5 + hpR * 0.5})`);
-      bodyGrad.addColorStop(1, `rgba(100,20,20,${0.4 + hpR * 0.4})`);
+    // Legs with outlines and feet
+    const legCol = e.armored ? '#6a5a38' : (e.boss ? '#6a1028' : '#8a2028');
+    const legs = [[-0.4, 0.3, -0.85, 0.75, legOffset], [-0.25, 0.15, -0.75, 0.45, -legOffset], [0.4, 0.3, 0.85, 0.75, -legOffset], [0.25, 0.15, 0.75, 0.45, legOffset]];
+    for (const pass of [0, 1]) {
+      ctx.strokeStyle = pass ? legCol : SPRITE_OUTLINE;
+      ctx.lineWidth = (e.boss ? 7 : 5) + (pass ? 0 : 3);
+      ctx.lineCap = 'round';
+      for (const [x0, y0, x1, y1, o] of legs) {
+        ctx.beginPath();
+        ctx.moveTo(sz * x0, sz * y0);
+        ctx.quadraticCurveTo(sz * x1, sz * (y0 - 0.1), sz * x1, sz * y1 + o);
+        ctx.stroke();
+      }
     }
-    ctx.beginPath();
-    ctx.arc(0, 0, sz, 0, TWO_PI);
-    ctx.fillStyle = bodyGrad;
-    ctx.shadowBlur = 8;
-    ctx.shadowColor = e.armored
-      ? `rgba(180,160,80,${0.3 + hpR * 0.4})`
-      : `rgba(255,50,50,${0.3 + hpR * 0.4})`;
-    ctx.fill();
-    ctx.shadowBlur = 0;
+    ctx.lineCap = 'butt';
 
-    // Boss: thicker border ring
+    // Body with squash and stretch
+    const squash = 1 + Math.sin(e.wobblePhase * 2) * 0.05;
+    const body = getEnemyBody(kind);
+    const bw = sz * 2 * (96 / 72) / squash, bh = sz * 2 * (96 / 72) * squash;
+    ctx.drawImage(body, -bw / 2, -bh / 2, bw, bh);
+    if (flash > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = flash;
+      ctx.drawImage(body, -bw / 2, -bh / 2, bw, bh);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // Boss crown
     if (e.boss) {
-      ctx.strokeStyle = '#ff0';
-      ctx.lineWidth = 5;
+      ctx.fillStyle = SPRITE_OUTLINE;
       ctx.beginPath();
-      ctx.arc(0, 0, sz + 4, 0, TWO_PI);
-      ctx.stroke();
+      ctx.moveTo(-sz * 0.6, -sz * 0.8);
+      ctx.lineTo(-sz * 0.45, -sz * 1.42);
+      ctx.lineTo(-sz * 0.2, -sz * 1.05);
+      ctx.lineTo(0, -sz * 1.6);
+      ctx.lineTo(sz * 0.2, -sz * 1.05);
+      ctx.lineTo(sz * 0.45, -sz * 1.42);
+      ctx.lineTo(sz * 0.6, -sz * 0.8);
+      ctx.closePath();
+      ctx.fill();
+      const cg = ctx.createLinearGradient(0, -sz * 1.5, 0, -sz * 0.8);
+      cg.addColorStop(0, '#fff6b0');
+      cg.addColorStop(1, '#d08a10');
+      ctx.fillStyle = cg;
+      ctx.beginPath();
+      ctx.moveTo(-sz * 0.52, -sz * 0.84);
+      ctx.lineTo(-sz * 0.43, -sz * 1.3);
+      ctx.lineTo(-sz * 0.2, -sz * 0.98);
+      ctx.lineTo(0, -sz * 1.48);
+      ctx.lineTo(sz * 0.2, -sz * 0.98);
+      ctx.lineTo(sz * 0.43, -sz * 1.3);
+      ctx.lineTo(sz * 0.52, -sz * 0.84);
+      ctx.closePath();
+      ctx.fill();
     }
 
-    // Body highlight (specular)
-    ctx.fillStyle = e.armored ? 'rgba(220,210,170,0.3)' : 'rgba(255,180,180,0.3)';
+    drawEnemyEyes(sz, e.eyeBlinking, e.boss ? '#ff4040' : '#fff27a', '#200');
+
+    // Mouth with fangs
+    ctx.fillStyle = '#2a0008';
     ctx.beginPath();
-    ctx.ellipse(-sz * 0.25, -sz * 0.3, sz * 0.35, sz * 0.2, -0.3, 0, TWO_PI);
+    ctx.moveTo(-sz * 0.28, sz * 0.22);
+    ctx.quadraticCurveTo(0, sz * 0.5, sz * 0.28, sz * 0.22);
+    ctx.quadraticCurveTo(0, sz * 0.32, -sz * 0.28, sz * 0.22);
     ctx.fill();
-
-    // Boss: crown/horns
-    if (e.boss) {
-      ctx.fillStyle = '#ff0';
-      ctx.beginPath();
-      ctx.moveTo(-sz * 0.5, -sz * 0.85);
-      ctx.lineTo(-sz * 0.3, -sz * 1.3);
-      ctx.lineTo(-sz * 0.1, -sz * 0.85);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(sz * 0.1, -sz * 0.85);
-      ctx.lineTo(sz * 0.3, -sz * 1.3);
-      ctx.lineTo(sz * 0.5, -sz * 0.85);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(-sz * 0.2, -sz * 0.9);
-      ctx.lineTo(0, -sz * 1.45);
-      ctx.lineTo(sz * 0.2, -sz * 0.9);
-      ctx.fill();
-    }
-
-    // Eyes
-    const eyeH = e.eyeBlinking ? 1 : 6;
-    ctx.fillStyle = e.boss ? '#f00' : '#ff0';
+    ctx.fillStyle = '#fff';
     ctx.beginPath();
-    ctx.ellipse(-sz * 0.3, -sz * 0.15, 6, eyeH, 0, 0, TWO_PI);
+    ctx.moveTo(-sz * 0.14, sz * 0.27);
+    ctx.lineTo(-sz * 0.09, sz * 0.38);
+    ctx.lineTo(-sz * 0.04, sz * 0.29);
+    ctx.moveTo(sz * 0.04, sz * 0.29);
+    ctx.lineTo(sz * 0.09, sz * 0.38);
+    ctx.lineTo(sz * 0.14, sz * 0.27);
     ctx.fill();
-    if (!e.eyeBlinking) {
-      ctx.fillStyle = '#200';
-      ctx.beginPath();
-      ctx.arc(-sz * 0.3, -sz * 0.15, 2.4, 0, TWO_PI);
-      ctx.fill();
-    }
-    ctx.fillStyle = e.boss ? '#f00' : '#ff0';
-    ctx.beginPath();
-    ctx.ellipse(sz * 0.3, -sz * 0.15, 6, eyeH, 0, 0, TWO_PI);
-    ctx.fill();
-    if (!e.eyeBlinking) {
-      ctx.fillStyle = '#200';
-      ctx.beginPath();
-      ctx.arc(sz * 0.3, -sz * 0.15, 2.4, 0, TWO_PI);
-      ctx.fill();
-    }
-
-    // Mouth (angry slit)
-    ctx.strokeStyle = '#300';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(-sz * 0.25, sz * 0.25);
-    ctx.quadraticCurveTo(0, sz * 0.4, sz * 0.25, sz * 0.25);
-    ctx.stroke();
 
     // Stun overlay
     if (e.stunTimer > 0) {
@@ -5250,99 +5732,89 @@
       ctx.beginPath();
       ctx.arc(0, 0, sz + 6, 0, TWO_PI);
       ctx.fill();
+      for (let i = 0; i < 3; ++i) {
+        const a = animTime * 4 + i * TWO_PI / 3;
+        drawSprite('snowflake', Math.cos(a) * sz * 0.9, -sz * 1.1 + Math.sin(a) * 4, 14);
+      }
     }
 
     ctx.restore();
 
-    // Shield arc
     if (e.shield > 0)
       drawEnemyShield(e, wobble);
-
-    // Enemy HP bar (improved)
     drawEnemyHPBar(e, sz, wobble);
   }
 
   function drawFlyer(e) {
-    const hpR = e.hp / e.maxHP;
     const sz = e.size || 7;
-    const bob = Math.sin(e.wobblePhase) * 8; // sinusoidal vertical bobbing
+    const bob = Math.sin(e.wobblePhase) * 8;
+    const flap = Math.sin(e.wingPhase || 0);
+    const flash = enemyHitFlash.get(e) || 0;
 
     ctx.save();
+    // Shadow on the ground
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.beginPath();
+    ctx.ellipse(e.x, DOME_Y + 6, sz * 0.8, 4, 0, 0, TWO_PI);
+    ctx.fill();
     ctx.translate(e.x, e.y + bob);
 
-    // Faint shadow far below (on ground)
-    ctx.fillStyle = 'rgba(0,0,0,0.1)';
-    ctx.beginPath();
-    ctx.ellipse(0, 80 - bob, sz * 0.5, 4, 0, 0, TWO_PI);
-    ctx.fill();
+    // Membrane wings
+    for (const side of [-1, 1]) {
+      const tipY = -sz * 0.6 + flap * sz * 0.8;
+      ctx.beginPath();
+      ctx.moveTo(side * sz * 0.3, -sz * 0.2);
+      ctx.quadraticCurveTo(side * sz * 1.2, tipY - sz * 0.5, side * sz * 1.9, tipY);
+      ctx.quadraticCurveTo(side * sz * 1.5, tipY + sz * 0.4, side * sz * 1.3, tipY + sz * 0.7);
+      ctx.quadraticCurveTo(side * sz * 1.0, tipY + sz * 0.5, side * sz * 0.85, tipY + sz * 0.95);
+      ctx.quadraticCurveTo(side * sz * 0.6, sz * 0.2, side * sz * 0.3, sz * 0.3);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(110,40,150,0.9)';
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = SPRITE_OUTLINE;
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(230,170,255,0.5)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(side * sz * 0.3, -sz * 0.2);
+      ctx.lineTo(side * sz * 1.3, tipY + sz * 0.7);
+      ctx.moveTo(side * sz * 0.3, -sz * 0.2);
+      ctx.lineTo(side * sz * 0.85, tipY + sz * 0.95);
+      ctx.stroke();
+    }
 
-    // Wings (flapping lines)
-    ctx.strokeStyle = '#806';
-    ctx.lineWidth = 4;
-    // Left wing
-    ctx.beginPath();
-    ctx.moveTo(-sz * 0.3, 0);
-    ctx.lineTo(-sz * 1.4, -sz * 0.3 + Math.sin(e.wingPhase || 0) * sz * 0.5);
-    ctx.lineTo(-sz * 0.9, sz * 0.2 + Math.sin(e.wingPhase || 0) * sz * 0.3);
-    ctx.stroke();
-    // Right wing
-    ctx.beginPath();
-    ctx.moveTo(sz * 0.3, 0);
-    ctx.lineTo(sz * 1.4, -sz * 0.3 + Math.sin((e.wingPhase || 0) + Math.PI) * sz * 0.5);
-    ctx.lineTo(sz * 0.9, sz * 0.2 + Math.sin((e.wingPhase || 0) + Math.PI) * sz * 0.3);
-    ctx.stroke();
+    const body = getEnemyBody('flyer');
+    const bs = sz * 2 * (96 / 72);
+    ctx.drawImage(body, -bs / 2, -bs / 2, bs, bs);
+    if (flash > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = flash;
+      ctx.drawImage(body, -bs / 2, -bs / 2, bs, bs);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    }
 
-    // Body -- triangular/bat-like, purple/dark
-    const bodyGrad = ctx.createRadialGradient(0, -sz * 0.1, 1, 0, 0, sz);
-    bodyGrad.addColorStop(0, `rgba(160,60,180,${0.6 + hpR * 0.4})`);
-    bodyGrad.addColorStop(0.6, `rgba(100,30,120,${0.5 + hpR * 0.5})`);
-    bodyGrad.addColorStop(1, `rgba(50,15,60,${0.4 + hpR * 0.4})`);
-    ctx.beginPath();
-    ctx.moveTo(0, -sz * 0.9);
-    ctx.lineTo(-sz * 0.7, sz * 0.5);
-    ctx.lineTo(0, sz * 0.3);
-    ctx.lineTo(sz * 0.7, sz * 0.5);
-    ctx.closePath();
-    ctx.fillStyle = bodyGrad;
-    ctx.shadowBlur = 6;
-    ctx.shadowColor = `rgba(180,60,220,${0.3 + hpR * 0.4})`;
-    ctx.fill();
-    ctx.shadowBlur = 0;
+    // Glowing eyes
+    ctx.fillStyle = '#ff4cf0';
+    const eyeH = e.eyeBlinking ? 0.8 : sz * 0.16;
+    for (const sx of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(sx * sz * 0.2, -sz * 0.2, sz * 0.13, eyeH, sx * 0.3, 0, TWO_PI);
+      ctx.fill();
+      drawGlow('#ff40f0', sx * sz * 0.2, -sz * 0.2, sz * 0.5, 0.6);
+    }
 
-    // Body highlight
-    ctx.fillStyle = 'rgba(220,180,240,0.25)';
-    ctx.beginPath();
-    ctx.ellipse(0, -sz * 0.3, sz * 0.25, sz * 0.15, 0, 0, TWO_PI);
-    ctx.fill();
-
-    // Glowing eyes (larger, more menacing)
-    const eyeH = e.eyeBlinking ? 0.6 : 5;
-    ctx.fillStyle = '#f0f';
-    ctx.shadowBlur = 4;
-    ctx.shadowColor = '#f0f';
-    ctx.beginPath();
-    ctx.ellipse(-sz * 0.2, -sz * 0.2, 4, eyeH, 0, 0, TWO_PI);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(sz * 0.2, -sz * 0.2, 4, eyeH, 0, 0, TWO_PI);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-
-    // Stun overlay
     if (e.stunTimer > 0) {
       ctx.fillStyle = `rgba(80,160,255,${0.25 + Math.sin(animTime * 10) * 0.1})`;
       ctx.beginPath();
       ctx.arc(0, 0, sz + 6, 0, TWO_PI);
       ctx.fill();
     }
-
     ctx.restore();
 
-    // Shield arc
     if (e.shield > 0)
       drawEnemyShield(e, bob);
-
-    // HP bar
     drawEnemyHPBar(e, sz, bob);
   }
 
@@ -5351,67 +5823,82 @@
     const shieldR = e.shield / (e.maxShield || 1);
     ctx.save();
     ctx.translate(e.x, e.y + vertOffset);
-    ctx.strokeStyle = `rgba(80,160,255,${0.4 + shieldR * 0.4})`;
-    ctx.lineWidth = 4;
-    ctx.shadowBlur = 6;
-    ctx.shadowColor = '#4af';
+    const r = sz + 12;
+    const g = ctx.createRadialGradient(0, 0, r * 0.6, 0, 0, r);
+    g.addColorStop(0, 'rgba(80,170,255,0)');
+    g.addColorStop(1, `rgba(120,200,255,${0.15 + shieldR * 0.2})`);
+    ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(0, 0, sz + 10, -Math.PI * 0.8, Math.PI * 0.8);
+    ctx.arc(0, 0, r, 0, TWO_PI);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(140,210,255,${0.45 + shieldR * 0.45})`;
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([10, 5]);
+    ctx.lineDashOffset = -animTime * 20;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, TWO_PI);
     ctx.stroke();
-    ctx.shadowBlur = 0;
+    ctx.setLineDash([]);
     ctx.restore();
   }
 
   function drawEnemyHPBar(e, sz, vertOffset) {
-    const hpR = e.hp / e.maxHP;
-    const barW = sz * 2 + 8;
+    const hpR = Math.max(0, e.hp / e.maxHP);
+    const barW = Math.max(36, sz * 2 + 8);
     const barX = e.x - barW / 2;
-    const barY = e.y - sz - 20 + vertOffset;
-    ctx.fillStyle = '#200';
-    ctx.fillRect(barX, barY, barW, 8);
-    const ehpGrad = ctx.createLinearGradient(barX, barY, barX + barW * hpR, barY);
-    ehpGrad.addColorStop(0, '#f66');
-    ehpGrad.addColorStop(1, '#f44');
-    ctx.fillStyle = ehpGrad;
-    ctx.fillRect(barX, barY, barW * hpR, 8);
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    ctx.fillRect(barX, barY, barW * hpR, 4);
-
-    // Shield bar (drawn above HP bar if shield exists)
-    if (e.shield > 0 && e.maxShield > 0) {
-      const shieldR = e.shield / e.maxShield;
-      ctx.fillStyle = '#024';
-      ctx.fillRect(barX, barY - 10, barW, 6);
-      ctx.fillStyle = '#4af';
-      ctx.fillRect(barX, barY - 10, barW * shieldR, 6);
-      ctx.fillStyle = 'rgba(255,255,255,0.2)';
-      ctx.fillRect(barX, barY - 10, barW * shieldR, 2);
-    }
+    const barY = e.y - sz * (e.boss ? 1.75 : 1.2) - 16 + vertOffset;
+    drawMeter(barX, barY, barW, 7, hpR, hpR > 0.5 ? '#ff6a5a' : '#ff3a3a', { track: 'rgba(20,0,0,0.75)' });
+    if (e.shield > 0 && e.maxShield > 0)
+      drawMeter(barX, barY - 8, barW, 5, e.shield / e.maxShield, '#5ab8ff', { track: 'rgba(0,10,30,0.75)' });
   }
 
   function drawProjectiles() {
+    const prevOp = ctx.globalCompositeOperation;
     for (const p of projectiles) {
-      const alpha = p.life / p.maxLife;
+      const alpha = Math.max(0, p.life / p.maxLife);
 
-      // Electric arc effect using shared helper
+      // Beam: wide soft glow, colored body, white-hot core
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = `rgba(255,70,50,${alpha * 0.25})`;
+      ctx.lineWidth = 16 * alpha + 2;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.tx, p.ty);
+      ctx.stroke();
       SZ.GameEffects.drawElectricArc(ctx, p.x, p.y, p.tx, p.ty, {
         segments: 8,
-        jitter: 12 * alpha,
-        color: `rgba(255,120,120,${alpha})`,
-        glowColor: `rgba(255,60,60,${alpha * 0.5})`,
-        width: 3 * alpha,
+        jitter: 10 * alpha,
+        color: `rgba(255,150,120,${alpha})`,
+        glowColor: `rgba(255,60,40,${alpha * 0.6})`,
+        width: 3 * alpha + 0.5,
         glowWidth: 8 * alpha
       });
-
-      // Impact flash
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(255,255,240,${alpha * 0.9})`;
+      ctx.lineWidth = 1.5 * alpha + 0.5;
       ctx.beginPath();
-      ctx.arc(p.tx, p.ty, 12 * alpha, 0, TWO_PI);
-      const impactGrad = ctx.createRadialGradient(p.tx, p.ty, 0, p.tx, p.ty, 12 * alpha);
-      impactGrad.addColorStop(0, `rgba(255,220,150,${alpha})`);
-      impactGrad.addColorStop(0.5, `rgba(255,100,50,${alpha * 0.6})`);
-      impactGrad.addColorStop(1, `rgba(255,50,50,0)`);
-      ctx.fillStyle = impactGrad;
-      ctx.fill();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.tx, p.ty);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+
+      // Muzzle and impact flares with spark rays
+      drawGlow('#ff7040', p.x, p.y, 22 * alpha + 6, alpha);
+      drawGlow('#ffb070', p.tx, p.ty, 40 * alpha + 8, alpha);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(255,220,170,${alpha})`;
+      ctx.lineWidth = 2;
+      const rays = 6;
+      for (let i = 0; i < rays; ++i) {
+        const a = i * TWO_PI / rays + p.tx * 0.1;
+        const r0 = 6, r1 = 6 + 22 * (1 - alpha) + 8;
+        ctx.beginPath();
+        ctx.moveTo(p.tx + Math.cos(a) * r0, p.ty + Math.sin(a) * r0);
+        ctx.lineTo(p.tx + Math.cos(a) * r1, p.ty + Math.sin(a) * r1);
+        ctx.stroke();
+      }
+      ctx.globalCompositeOperation = prevOp;
 
       // Emit trail particles along beam
       if (Math.random() < 0.3) {
@@ -5421,6 +5908,7 @@
         particles.trail(px, py, { color: '#f88', life: 0.15, size: 1 });
       }
     }
+    ctx.globalCompositeOperation = prevOp;
   }
 
   /* ======================================================================
@@ -5428,41 +5916,7 @@
      ====================================================================== */
 
   function drawSurface() {
-    // Sky gradient (deeper, richer)
-    const skyGrad = ctx.createLinearGradient(0, 0, 0, DOME_Y);
-    skyGrad.addColorStop(0, '#050520');
-    skyGrad.addColorStop(0.4, '#0a0a30');
-    skyGrad.addColorStop(0.7, '#101040');
-    skyGrad.addColorStop(1, '#1a1a50');
-    ctx.fillStyle = skyGrad;
-    ctx.fillRect(0, 0, CANVAS_W, DOME_Y);
-
-    // Starfield
-    starfield.draw(ctx);
-
-    // Distant mountains silhouette
-    ctx.fillStyle = '#0f0f2a';
-    ctx.beginPath();
-    ctx.moveTo(0, DOME_Y);
-    for (let mx = 0; mx <= CANVAS_W; mx += 2) {
-      const h = 40 + Math.sin(mx * 0.008) * 50 + Math.sin(mx * 0.02 + 1) * 24 + Math.sin(mx * 0.05 + 2) * 10;
-      ctx.lineTo(mx, DOME_Y - h);
-    }
-    ctx.lineTo(CANVAS_W, DOME_Y);
-    ctx.closePath();
-    ctx.fill();
-
-    // Near hills
-    ctx.fillStyle = '#151530';
-    ctx.beginPath();
-    ctx.moveTo(0, DOME_Y);
-    for (let mx = 0; mx <= CANVAS_W; mx += 2) {
-      const h = 16 + Math.sin(mx * 0.015 + 3) * 24 + Math.sin(mx * 0.04) * 12;
-      ctx.lineTo(mx, DOME_Y - h);
-    }
-    ctx.lineTo(CANVAS_W, DOME_Y);
-    ctx.closePath();
-    ctx.fill();
+    drawSky();
 
     // Ground layer with details
     drawGroundLayer();
@@ -5706,6 +6160,7 @@
       { key: 'H', label: 'Help' }
     ], CANVAS_W / 2, CANVAS_H - 24, 600);
   }
+
 
   // Pre-generate deterministic ore speckle positions per tile
   let oreSpeckles = [];
