@@ -2,6 +2,10 @@
   'use strict';
   const SZ = window.SZ || (window.SZ = {});
 
+  const WM_CLOSE = 0x0010;
+  // how long an app gets to say it handles the close itself
+  const CLOSE_REPLY_TIMEOUT_MS = 2000;
+
   class WindowManager {
     #container;
     #windows = new Map();
@@ -9,6 +13,8 @@
     #nextId = 0;
     #skin = null;
     #cascadeOffset = { x: 40, y: 40 };
+    #closeRequests = new Map();
+    #closeCounter = 0;
 
     onWindowCreated = null;
     onWindowClosed = null;
@@ -65,10 +71,54 @@
       return win;
     }
 
+    // Asks the app first, like WM_CLOSE: an app with unsaved changes keeps
+    // its window open and closes it itself once the user decided. An app
+    // that does not answer in time is closed anyway.
+    requestClose(id) {
+      const win = this.#windows.get(id);
+      if (!win)
+        return;
+      const frame = win.iframe && win.iframe.contentWindow;
+      if (!frame)
+        return this.closeWindow(id);
+      if (this.#closeRequests.has(id))
+        return;
+      const token = 'close-' + (++this.#closeCounter);
+      const timer = setTimeout(() => {
+        if (this.#closeRequests.get(id)?.token !== token)
+          return;
+        this.#closeRequests.delete(id);
+        this.closeWindow(id);
+      }, CLOSE_REPLY_TIMEOUT_MS);
+      this.#closeRequests.set(id, { token, timer });
+      try {
+        frame.postMessage({ type: 'sz:wm', msg: WM_CLOSE, wParam: 0, lParam: 0, closeRequest: token }, '*');
+      } catch (_) {
+        clearTimeout(timer);
+        this.#closeRequests.delete(id);
+        this.closeWindow(id);
+      }
+    }
+
+    handleCloseReply(id, token, handled) {
+      const pending = this.#closeRequests.get(id);
+      if (!pending || pending.token !== token)
+        return;
+      clearTimeout(pending.timer);
+      this.#closeRequests.delete(id);
+      if (!handled)
+        this.closeWindow(id);
+    }
+
     closeWindow(id) {
       const win = this.#windows.get(id);
       if (!win)
         return;
+      const pending = this.#closeRequests.get(id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        this.#closeRequests.delete(id);
+      }
 
       // Close is always instant (Windows XP style) -- no animation
       win.close();
@@ -270,7 +320,7 @@
 
     handleButtonAction(windowId, action) {
       switch (action) {
-        case 'close': this.closeWindow(windowId); break;
+        case 'close': this.requestClose(windowId); break;
         case 'minimize': this.minimizeWindow(windowId); break;
         case 'maximize': this.maximizeWindow(windowId); break;
       }
