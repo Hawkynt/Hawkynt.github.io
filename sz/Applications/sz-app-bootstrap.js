@@ -34,13 +34,20 @@
   const _isInsideOS = (window.parent !== window);
 
   // ── Standalone redirect ──────────────────────────────────────────
-  if (!_isInsideOS) {
+  // only where the desktop can run; elsewhere the app stays on its own page
+  let _desktopCapable = false;
+  try {
+    _desktopCapable = !!new Function('class A { #a = 1; } return A;')();
+  } catch (_) {}
+
+  if (!_isInsideOS && _desktopCapable) {
     const pathParts = location.pathname.replace(/\\/g, '/').split('/');
     const htmlIndex = pathParts.findIndex(p => p === 'Applications');
     let appId = null;
 
-    if (htmlIndex >= 0 && htmlIndex + 1 < pathParts.length)
-      appId = pathParts[htmlIndex + 1];
+    // apps live in Applications/<category>/<app-id>/
+    if (htmlIndex >= 0 && htmlIndex + 2 < pathParts.length - 1)
+      appId = decodeURIComponent(pathParts[htmlIndex + 2]);
 
     if (appId) {
       const baseParts = pathParts.slice(0, htmlIndex);
@@ -100,6 +107,9 @@
   // ── Message listener ────────────────────────────────────────────
   if (_isInsideOS) {
     window.addEventListener('message', (e) => {
+      // only the desktop hosting this app may talk to it
+      if (e.source !== window.parent || e.origin !== location.origin)
+        return;
       const data = e.data;
       if (!data || typeof data !== 'object')
         return;
