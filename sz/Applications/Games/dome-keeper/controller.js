@@ -7718,7 +7718,8 @@
     const art = buildSurfaceArt();
     const B = currentBiome();
     const night = 1 - daylight;
-    ctx.drawImage(art.skyNight, 0, 0);
+    if (daylight < 0.995)
+      ctx.drawImage(art.skyNight, 0, 0);
     if (daylight > 0.01) {
       ctx.globalAlpha = daylight;
       ctx.drawImage(art.skyDay, 0, 0);
@@ -7792,7 +7793,8 @@
     const sway = mouseAimX >= 0 ? (mouseAimX / CANVAS_W - 0.5) : 0;
     for (const r of art.ranges) {
       const x = -60 - sway * r.depth * 2, y = DOME_Y - r.h + 4;
-      ctx.drawImage(r.night, x, y);
+      if (daylight < 0.995)
+        ctx.drawImage(r.night, x, y);
       if (daylight > 0.01) {
         ctx.globalAlpha = daylight;
         ctx.drawImage(r.day, x, y);
@@ -7831,7 +7833,8 @@
   function drawGroundLayer() {
     const art = buildSurfaceArt();
     const B = currentBiome();
-    ctx.drawImage(art.groundNight, 0, DOME_Y);
+    if (daylight < 0.995)
+      ctx.drawImage(art.groundNight, 0, DOME_Y);
     if (daylight > 0.01) {
       ctx.globalAlpha = daylight;
       ctx.drawImage(art.groundDay, 0, DOME_Y);
@@ -10749,8 +10752,11 @@
       ctx.translate(0, slide);
     }
 
+    const treeOpen = state === STATE_UPGRADE_DIALOG;
     if (state === STATE_CINEMATIC && cinematic)
       drawCinematic();
+    else if (treeOpen)
+      ; // the tree is opaque and drawn below
     else if (currentView === VIEW_SURFACE)
       drawSurface();
     else
@@ -10773,8 +10779,10 @@
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     }
 
-    drawBanner();
-    drawHUD();
+    if (!treeOpen) {
+      drawBanner();
+      drawHUD();
+    }
 
     if (state === STATE_UPGRADE_DIALOG)
       drawUpgradeDialog();
