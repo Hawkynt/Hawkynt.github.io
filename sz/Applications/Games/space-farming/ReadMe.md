@@ -18,6 +18,8 @@ Casual pixel-art farm simulation on an alien planet for the SynthelicZ Desktop. 
 - [x] As a player, I can grow each crop in its favourite season for +30% growth so that the seasons shape what I plant
 - [x] As a player, I can see a day/night cycle where some crops only grow during the day (Solar Vine) or only at night (Lunar Moss) so that crop timing adds depth
 - [x] As a player, I can see watered soil darken next to water, sprinklers and in the rain so that I can read the field at a glance
+- [x] As a player, I can read every plot's nutrients at a glance (pale poor soil, dark rich soil, nutrient pips under empty plots) and press N for a colour overlay with a legend so that I know where crops grow best
+- [x] As a player, I can see rocks as boulders that block crops, with a red cross and a hint when I try to plant on them, so that obstacles are obvious
 - [x] As a player, I can see storage usage and capacity (50 + Silos + Warehousing) so that I know when to sell produce before storage fills up (harvesting stops when full)
 
 ### Livestock
@@ -84,6 +86,7 @@ Casual pixel-art farm simulation on an alien planet for the SynthelicZ Desktop. 
 ### Hoe Tool
 - [x] As a player, I can enrich soil beside water (+20% fertility) and turn sand into farmland with the hoe
 - [x] As a player, I can right-click a crop with the hoe to uproot it for half its seed cost
+- [x] As a player, I can break up a rock with the hoe for 25 credits so that rocky plots can be farmed
 
 ### Weather
 - [x] As a player, I can experience weather that follows the seasons: rain, solar flares, thunderstorms, dust storms, snowfall and meteor showers
@@ -128,6 +131,7 @@ Casual pixel-art farm simulation on an alien planet for the SynthelicZ Desktop. 
 | Arrow keys, Space / Enter | Move the tile cursor and act on the tile |
 | 1-9, 0 | Pick a crop (or a building in build mode) |
 | P / B / T | Seeds / Build / Hoe |
+| N | Nutrient overlay |
 | S | Sell all produce |
 | M | Market and orders |
 | L | Livestock |
