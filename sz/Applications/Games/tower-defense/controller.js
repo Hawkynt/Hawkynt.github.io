@@ -361,6 +361,22 @@
   };
   const lastShotSoundAt = {};
 
+  // Any effect, at most once per `ms` for the given key
+  const lastSoundAt = {};
+  function playThrottled(key, name, opts, ms) {
+    const now = performance.now();
+    if (now - (lastSoundAt[key] || 0) < ms) return;
+    lastSoundAt[key] = now;
+    audio.play(name, opts);
+  }
+
+  // A low two-voice horn when a boss arrives
+  function bossHorn() {
+    audio.sweep(110, 72, 0.9, 'sawtooth', 0.1);
+    audio.sweep(165, 108, 0.9, 'square', 0.05, 0.06);
+    audio.play('thud', { pitch: 0.5 });
+  }
+
   function playShotSound(def) {
     const now = performance.now();
     const snd = SHOT_SOUNDS[def.id];
@@ -1346,6 +1362,7 @@
     warningTimer = 0;
     announceWave();
     audio.play('select', { pitch: 0.75 });
+    audio.play('thud', { pitch: 0.6, volume: 0.7 });
     updateWindowTitle();
     saveGame();
   }
@@ -1450,7 +1467,7 @@
   function onBossSpawn(e) {
     bossIntro = { e, t: 0 };
     screenShake.trigger(5, 500);
-    audio.play('explode', { pitch: 0.5, volume: 0.6 });
+    bossHorn();
   }
   let bossIntro = null;
   function enemyFlags(e) {
@@ -1476,6 +1493,7 @@
       e.shieldHp -= absorb;
       dmg -= absorb / mul;
       if (e.shieldHp <= 0) {
+        playThrottled('shield', 'hit', { pitch: 1.7, volume: 0.45 }, 120);
         particles.burst(e.x, e.y - 6, 14, { color: '#7ae8ff', speed: 3, life: 0.4 });
         particles.glow(e.x, e.y - 6, e.radius * 2.5, '#5ad8ff', 0.25);
       }
@@ -1740,11 +1758,14 @@
           if (s.execute && e.hp - s.damage * crit <= e.maxHp * s.execute && !enemyFlags(e).boss) {
             hurt(e, e.hp + e.shieldHp + 999, t, 'phys', { pierce: 1 });
             floatingText.add(e.x, e.y - 14, 'EXECUTE', { color: '#ff5a5a', font: 'bold 11px sans-serif' });
+            playThrottled('crit', 'hit', { pitch: 0.8, volume: 0.5 }, 120);
           } else
             hurt(e, s.damage * crit, t, 'phys', { pierce: s.pierce });
           fxLines.push({ kind: 'tracer', pts: [muzzleOf(t), { x: e.x, y: e.y - e.radius * 0.5 }], color: '#ffffff', t: 0, life: 0.18, w: 2 });
-          if (crit > 1)
+          if (crit > 1) {
             floatingText.add(e.x, e.y - 14, 'CRIT', { color: '#ffd75a', font: 'bold 11px sans-serif' });
+            playThrottled('crit', 'hit', { pitch: 1.3, volume: 0.4 }, 120);
+          }
         }
         break;
       }
@@ -1814,6 +1835,10 @@
       if (s.shred) e.shred = Math.max(e.shred, s.shred);
     }
     explosionFx(x, y, radius, s.bomblets && radius < CELL ? '#ffcf6a' : '#ff8a3a');
+    if (radius >= CELL)
+      playThrottled('boom', 'smallExplode', { pitch: 0.7 + Math.random() * 0.2, volume: radius > CELL * 1.5 ? 0.6 : 0.4 }, 90);
+    else
+      playThrottled('pop', 'hit', { pitch: 1.4 + Math.random() * 0.3, volume: 0.25 }, 60);
   }
 
   function updateProjectiles(dt) {
@@ -1867,8 +1892,10 @@
           particles.sparks(t.x, t.y - 6, 2, '#fff0c0', 90);
           const crit = rollCrit(s);
           hurt(t, p.damage * crit, p.tower, 'phys', { pierce: s.pierce || 0 });
-          if (crit > 1)
+          if (crit > 1) {
             floatingText.add(t.x, t.y - 14, 'CRIT', { color: '#ffd75a', font: 'bold 10px sans-serif' });
+            playThrottled('crit', 'hit', { pitch: 1.3, volume: 0.4 }, 120);
+          }
         } else if (p.kind === 'bolt') {
           particles.flakes(t.x, t.y - 6, 4);
           hurt(t, p.damage, p.tower, 'cold');
@@ -1876,6 +1903,7 @@
           if (s.freeze && Math.random() < s.freeze && !enemyFlags(t).boss) {
             t.freezeTimer = s.freezeTime;
             particles.flakes(t.x, t.y - 6, 10);
+            playThrottled('freeze', 'blip', { pitch: 2.2, volume: 0.3 }, 150);
             particles.glow(t.x, t.y - 6, 18, '#bfeaff', 0.3);
             if (Math.random() < 0.5)
               addFloorEffect(Math.floor(t.x / CELL), Math.floor(t.y / CELL), 'ice', 4, 0);
@@ -2045,8 +2073,10 @@
             particles.sparkle(o.x, o.y, 3, { color: '#6aff8a', speed: 1 });
             any = true;
           }
-          if (any)
+          if (any) {
             fxLines.push({ kind: 'ring', x: e.x, y: e.y, r: CELL * 2, color: '#6aff8a', t: 0, life: 0.5 });
+            playThrottled('heal', 'pickup', { pitch: 0.6, volume: 0.2 }, 400);
+          }
         }
       }
       if (f.shielder) {
@@ -2062,6 +2092,7 @@
             }
           }
           fxLines.push({ kind: 'ring', x: e.x, y: e.y, r: CELL * 1.8, color: '#5ad8ff', t: 0, life: 0.5 });
+          playThrottled('ward', 'blip', { pitch: 0.7, volume: 0.2 }, 400);
         }
       }
       if (f.summons) {
@@ -2078,6 +2109,7 @@
         if (!e.enraged && e.hp < e.maxHp * 0.5) {
           e.enraged = true;
           floatingText.add(e.x, e.y - 30, 'ENRAGED!', { color: '#ff5a5a', font: 'bold 14px sans-serif' });
+          audio.play('hurt', { pitch: 0.45, volume: 0.8 });
           screenShake.trigger(4, 300);
         }
       }
@@ -2090,6 +2122,7 @@
           const s = towerStats(trap);
           if (s.trap) {
             hurt(e, s.damage * dt, trap, 'phys', { pierce: s.pierce || 0, dot: !s.pierce, area: true });
+            playThrottled('trap', 'click', { pitch: 0.6 + Math.random() * 0.3, volume: 0.25 }, 260);
             if (s.slow) applySlow(e, 1 - s.slow, s.slowTime);
           }
         }
