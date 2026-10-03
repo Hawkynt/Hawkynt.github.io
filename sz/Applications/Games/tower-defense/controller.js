@@ -27,12 +27,14 @@
   const STATE_BUILD = 'BUILD';
   const STATE_GAME_OVER = 'GAME_OVER';
   const STATE_VICTORY = 'VICTORY';
+  const STATE_MAP_SELECT = 'MAP_SELECT';
 
   /* ── Storage ── */
   const STORAGE_PREFIX = 'sz-tower-defense';
   const STORAGE_HIGHSCORES = STORAGE_PREFIX + '-highscores';
   const STORAGE_SAVE_V1 = STORAGE_PREFIX + '-save-v1';
   const STORAGE_SAVE = STORAGE_PREFIX + '-save-v2';
+  const STORAGE_META = STORAGE_PREFIX + '-meta-v1';
   const MAX_HIGH_SCORES = 10;
 
   /* ── Wave timing ── */
@@ -268,23 +270,72 @@
   const ELITE_HP = 2.2;
 
   /* ══════════════════════════════════════════════════════════════════
-     MAPS -- paths are waypoint sequences on a 25 x 17 grid
+     BIOMES AND MAPS -- paths are waypoint sequences on a 25 x 17 grid;
+     features are blocked rectangles [col0, row0, col1, row1]. Map order
+     and names are kept from format 1 so old saves land on the same map.
      ══════════════════════════════════════════════════════════════════ */
 
+  const BIOMES = {
+    meadow:  { name: 'Greenvale', color: '#6fd06a', ground: '#4f8a3a', path: '#a8834e', feature: 'water', desc: 'Rolling meadows, ponds and old forests.' },
+    desert:  { name: 'Sunscar Desert', color: '#ffc25a', ground: '#c9a25e', path: '#8e7350', feature: 'water', desc: 'Dunes, mesas and the odd oasis.' },
+    tundra:  { name: 'Frostreach', color: '#9fe0ff', ground: '#dfe9f2', path: '#8a9bb0', feature: 'ice', desc: 'Snowfields and frozen lakes.' },
+    volcano: { name: 'Ashen Wastes', color: '#ff7a3a', ground: '#4a3a3a', path: '#2a2026', feature: 'lava', desc: 'Basalt, ash and rivers of lava.' }
+  };
+  const BIOME_ORDER = ['meadow', 'desert', 'tundra', 'volcano'];
+
   const MAPS = [
-    { name: 'Serpentine',     startGold: 200, startLives: 20, waves: 15, path: [[0,8],[4,8],[4,4],[10,4],[10,12],[16,12],[16,6],[24,6]] },
-    { name: 'Crossroads',     startGold: 220, startLives: 18, waves: 18, path: [[0,4],[6,4],[6,12],[12,12],[12,4],[18,4],[18,12],[24,12]] },
-    { name: 'Spiral',         startGold: 200, startLives: 20, waves: 15, path: [[0,0],[0,16],[24,16],[24,0],[4,0],[4,12],[20,12],[20,4],[8,4],[8,8]] },
-    { name: 'Zigzag',         startGold: 180, startLives: 15, waves: 20, path: [[0,2],[8,2],[8,14],[16,14],[16,2],[24,2]] },
-    { name: 'Diamond',        startGold: 250, startLives: 20, waves: 15, path: [[0,8],[6,2],[12,8],[18,14],[24,8]] },
-    { name: 'Fortress',       startGold: 300, startLives: 25, waves: 12, path: [[0,8],[5,8],[5,3],[10,3],[10,13],[15,13],[15,8],[24,8]] },
-    { name: 'Canyon',         startGold: 200, startLives: 18, waves: 18, path: [[0,14],[4,14],[4,2],[8,2],[8,14],[12,14],[12,2],[16,2],[16,14],[20,14],[20,2],[24,2]] },
-    { name: 'Labyrinth',      startGold: 250, startLives: 15, waves: 20, path: [[0,0],[0,8],[6,8],[6,0],[12,0],[12,16],[18,16],[18,8],[24,8]] },
-    { name: 'Twin Paths',     startGold: 220, startLives: 20, waves: 16, path: [[0,4],[10,4],[10,12],[20,12],[20,4],[24,4]] },
-    { name: 'Gauntlet',       startGold: 180, startLives: 12, waves: 25, path: [[0,8],[3,4],[6,12],[9,4],[12,12],[15,4],[18,12],[21,4],[24,8]] },
-    { name: 'Wasteland',      startGold: 200, startLives: 20, waves: 15, path: [[0,2],[12,2],[12,14],[24,14]] },
-    { name: 'Final Stand',    startGold: 350, startLives: 10, waves: 30, path: [[0,8],[4,4],[8,8],[12,4],[16,8],[20,4],[24,8]] }
+    { name: 'Serpentine', biome: 'meadow', waves: 15, startGold: 220, startLives: 20, hpMul: 0.85,
+      desc: 'A gentle road winding through the meadow. A fine place to learn the ropes.',
+      paths: [[[0,8],[4,8],[4,3],[10,3],[10,13],[16,13],[16,5],[21,5],[21,11],[24,11]]],
+      features: [['water', 12, 6, 14, 9], ['water', 0, 15, 6, 16], ['rock', 19, 14, 20, 15]] },
+    { name: 'Crossroads', biome: 'meadow', waves: 15, startGold: 240, startLives: 20, hpMul: 0.9,
+      desc: 'Two roads cross twice. Enemies come from the west and the north.',
+      paths: [[[0,4],[17,4],[17,16]], [[7,0],[7,12],[24,12]]],
+      features: [['water', 19, 0, 23, 2], ['water', 1, 13, 4, 15], ['rock', 11, 7, 13, 9]] },
+    { name: 'Spiral', biome: 'meadow', waves: 18, startGold: 230, startLives: 20, hpMul: 0.95,
+      desc: 'The road coils inward to the old keep. Long, but every turn is a chance.',
+      paths: [[[0,1],[22,1],[22,15],[2,15],[2,5],[18,5],[18,11],[7,11],[7,8],[13,8]]],
+      features: [['water', 10, 12, 14, 13], ['rock', 15, 7, 16, 9]] },
+    { name: 'Zigzag', biome: 'desert', waves: 18, startGold: 240, startLives: 20, hpMul: 1.0,
+      desc: 'Long switchbacks through the dunes, past a shaded oasis.',
+      paths: [[[0,2],[6,2],[6,14],[12,14],[12,2],[18,2],[18,14],[24,14]]],
+      features: [['water', 20, 5, 23, 9], ['rock', 8, 6, 10, 9], ['rock', 14, 9, 16, 11]] },
+    { name: 'Diamond', biome: 'desert', waves: 20, startGold: 250, startLives: 20, hpMul: 1.05,
+      desc: 'The road circles a great mesa and doubles back across itself.',
+      paths: [[[0,8],[3,8],[3,2],[21,2],[21,14],[6,14],[6,6],[17,6],[17,10],[24,10]]],
+      features: [['rock', 9, 9, 14, 12], ['water', 23, 13, 24, 16]] },
+    { name: 'Fortress', biome: 'desert', waves: 20, startGold: 260, startLives: 20, hpMul: 1.05,
+      desc: 'Two caravan routes join before the fortress gate.',
+      paths: [[[0,3],[8,3],[8,8],[16,8],[16,4],[24,4]], [[0,13],[8,13],[8,8],[16,8],[16,4],[24,4]]],
+      features: [['rock', 11, 11, 14, 14], ['water', 19, 9, 23, 12], ['rock', 11, 1, 13, 2]] },
+    { name: 'Canyon', biome: 'tundra', waves: 22, startGold: 250, startLives: 18, hpMul: 1.1,
+      desc: 'A frozen canyon cut into deep switchbacks.',
+      paths: [[[0,14],[4,14],[4,2],[9,2],[9,14],[14,14],[14,2],[19,2],[19,14],[24,14]]],
+      features: [['ice', 21, 4, 23, 9], ['rock', 6, 6, 7, 9], ['rock', 16, 6, 17, 9]] },
+    { name: 'Labyrinth', biome: 'tundra', waves: 22, startGold: 260, startLives: 18, hpMul: 1.15,
+      desc: 'An icy maze of twists and blind turns.',
+      paths: [[[0,2],[5,2],[5,8],[1,8],[1,14],[10,14],[10,5],[15,5],[15,12],[20,12],[20,2],[24,2]]],
+      features: [['ice', 12, 7, 13, 11], ['rock', 4, 10, 7, 11], ['ice', 22, 6, 24, 10]] },
+    { name: 'Twin Paths', biome: 'tundra', waves: 24, startGold: 280, startLives: 18, hpMul: 1.15,
+      desc: 'Two mirrored roads run side by side through the snow.',
+      paths: [[[0,2],[8,2],[8,7],[16,7],[16,2],[24,2]], [[0,14],[8,14],[8,9],[16,9],[16,14],[24,14]]],
+      features: [['ice', 10, 11, 14, 12], ['ice', 10, 4, 14, 5], ['rock', 2, 6, 4, 10], ['rock', 20, 6, 22, 10]] },
+    { name: 'Gauntlet', biome: 'volcano', waves: 25, startGold: 270, startLives: 15, hpMul: 1.2,
+      desc: 'Narrow ridges between rivers of lava. Space is precious.',
+      paths: [[[0,8],[3,8],[3,2],[7,2],[7,14],[11,14],[11,2],[15,2],[15,14],[19,14],[19,2],[22,2],[22,8],[24,8]]],
+      features: [['lava', 5, 4, 5, 12], ['lava', 13, 4, 13, 12], ['lava', 17, 4, 17, 12], ['lava', 21, 11, 24, 16]] },
+    { name: 'Wasteland', biome: 'volcano', waves: 25, startGold: 290, startLives: 15, hpMul: 1.25,
+      desc: 'Ash plains where two war parties cut across each other.',
+      paths: [[[0,2],[12,2],[12,14],[24,14]], [[24,2],[18,2],[18,8],[6,8],[6,16]]],
+      features: [['lava', 1, 10, 4, 14], ['lava', 14, 3, 16, 6], ['rock', 19, 10, 22, 12]] },
+    { name: 'Final Stand', biome: 'volcano', waves: 30, startGold: 320, startLives: 10, hpMul: 1.3,
+      desc: 'The last citadel. Both armies march on the heart of the fortress.',
+      paths: [[[0,2],[9,2],[9,5],[3,5],[3,12],[8,12],[8,8],[12,8]], [[24,14],[15,14],[15,11],[21,11],[21,4],[16,4],[16,8],[12,8]]],
+      features: [['lava', 10, 11, 13, 13], ['lava', 11, 3, 13, 5], ['rock', 0, 14, 2, 16], ['rock', 23, 0, 24, 2]] }
   ];
+
+  // Format 1 wave counts, used once to honour maps already won back then
+  const V1_WAVES = [15, 18, 15, 20, 15, 12, 18, 20, 16, 25, 15, 30];
 
   /* ══════════════════════════════════════════════════════════════════
      DOM
@@ -412,6 +463,81 @@
     }
   }
 
+  /* ── Campaign progress: stars per map, kept apart from the saved game ── */
+  let meta = null;
+  let lastResult = null;     // outcome of the map just finished, for the end screen
+
+  function defaultMeta() {
+    return { version: 1, maps: MAPS.map(() => ({ stars: 0, best: 0, wins: 0 })), rp: 0, rpEarned: 0, tree: {} };
+  }
+
+  function loadMeta() {
+    let d = null;
+    try {
+      const raw = localStorage.getItem(STORAGE_META);
+      if (raw) d = JSON.parse(raw);
+    } catch (_) {
+      d = null;
+    }
+    meta = defaultMeta();
+    if (d && typeof d === 'object') {
+      if (Array.isArray(d.maps))
+        d.maps.forEach((m, i) => {
+          if (i < MAPS.length && m && typeof m === 'object')
+            meta.maps[i] = {
+              stars: clamp(Math.floor(num(m.stars, 0)), 0, 3),
+              best: clamp(Math.floor(num(m.best, 0)), 0, MAPS[i].waves),
+              wins: Math.max(0, Math.floor(num(m.wins, 0)))
+            };
+        });
+      meta.rp = Math.max(0, Math.floor(num(d.rp, 0)));
+      meta.rpEarned = Math.max(meta.rp, Math.floor(num(d.rpEarned, 0)));
+      if (d.tree && typeof d.tree === 'object')
+        meta.tree = d.tree;
+    } else {
+      // First start with campaign progress: honour maps already won before
+      for (const h of highScores) {
+        const i = MAPS.findIndex(m => m.name === h.map);
+        if (i >= 0 && h.waves >= V1_WAVES[i])
+          meta.maps[i].stars = Math.max(meta.maps[i].stars, 1);
+      }
+      saveMeta();
+    }
+  }
+
+  function saveMeta() {
+    try {
+      localStorage.setItem(STORAGE_META, JSON.stringify(meta));
+    } catch (_) {}
+  }
+
+  function starsForRun() {
+    const ratio = lives / MAPS[currentMap].startLives;
+    return ratio >= 0.9 ? 3 : ratio >= 0.5 ? 2 : 1;
+  }
+
+  function totalStars() {
+    return meta.maps.reduce((a, m) => a + m.stars, 0);
+  }
+
+  function mapUnlocked(i) {
+    return i === 0 || meta.maps[i].stars > 0 || meta.maps[i - 1].stars > 0 || (!!savedGameInfo && savedGameInfo.map === i);
+  }
+
+  function recordResult(victory) {
+    const m = meta.maps[currentMap];
+    const waves = victory ? currentWave : Math.max(0, currentWave - 1);
+    const prevStars = m.stars;
+    const stars = victory ? starsForRun() : 0;
+    const prevBest = m.best;
+    m.best = Math.max(m.best, waves);
+    if (victory) {
+      m.stars = Math.max(m.stars, stars);
+      ++m.wins;
+    }
+    lastResult = { victory, stars, prevStars, newBest: waves > prevBest, waves, t: 0, unlocked: victory && prevStars === 0 && currentMap + 1 < MAPS.length };
+    saveMeta();
+  }
   const SAVE_VERSION = 2;
   const AUTOSAVE_INTERVAL = 5; // seconds of play between autosaves
   const ENEMY_SAVE_FIELDS = ['hp', 'maxHp', 'speed', 'bounty', 'radius', 'armor', 'dist', 'slowMul', 'slowTimer', 'freezeTimer', 'stunTimer',
@@ -704,13 +830,45 @@
   }
 
   function mapPaths(mapDef) {
-    return mapDef.paths || [mapDef.path];
+    return mapDef.paths;
   }
+
+  let blockedCells = new Map();    // 'col,row' -> 'water' | 'ice' | 'lava' | 'rock' | 'tree'
 
   function buildPathCells(mapDef) {
     pathCells = new Set();
-    for (const wp of mapDef.paths || [mapDef.path])
+    for (const wp of mapPaths(mapDef))
       walkPath(wp, (x, y) => pathCells.add(`${x},${y}`));
+    buildBlockedCells(mapDef);
+  }
+
+  // Map features plus a sprinkling of trees and boulders well away from the road
+  function buildBlockedCells(mapDef) {
+    blockedCells = new Map();
+    for (const [type, c0, r0, c1, r1] of mapDef.features || [])
+      for (let r = r0; r <= r1; ++r)
+        for (let c = c0; c <= c1; ++c)
+          if (c >= 0 && c < COLS && r >= 0 && r < ROWS && !pathCells.has(`${c},${r}`))
+            blockedCells.set(`${c},${r}`, type);
+    const rng = makeRng(MAPS.indexOf(mapDef) * 31337 + 7);
+    const near = (c, r, d) => {
+      for (let y = r - d; y <= r + d; ++y)
+        for (let x = c - d; x <= c + d; ++x)
+          if (pathCells.has(`${x},${y}`)) return true;
+      return false;
+    };
+    let placed = 0;
+    for (let i = 0; i < 400 && placed < 16; ++i) {
+      const c = Math.floor(rng() * COLS), r = Math.floor(rng() * ROWS);
+      const key = `${c},${r}`;
+      if (blockedCells.has(key) || near(c, r, 2)) continue;
+      blockedCells.set(key, rng() < 0.65 ? 'tree' : 'rock');
+      ++placed;
+    }
+  }
+
+  function isEdge(p) {
+    return p[0] === 0 || p[1] === 0 || p[0] === COLS - 1 || p[1] === ROWS - 1;
   }
 
   function makePath(points) {
@@ -723,11 +881,13 @@
   function getPathPoints(waypoints) {
     const points = [];
     walkPath(waypoints, (x, y) => points.push({ x: x * CELL + CELL / 2, y: y * CELL + CELL / 2 }));
-    // Enemies enter from just outside the field and leave past the exit
+    // Enemies enter from just outside the field and leave past an exit on the edge
     const extend = (a, b) => ({ x: a.x + (a.x - b.x) * 1.2, y: a.y + (a.y - b.y) * 1.2 });
     if (points.length > 1) {
-      points.unshift(extend(points[0], points[1]));
-      points.push(extend(points[points.length - 1], points[points.length - 2]));
+      if (isEdge(waypoints[0]))
+        points.unshift(extend(points[0], points[1]));
+      if (isEdge(waypoints[waypoints.length - 1]))
+        points.push(extend(points[points.length - 1], points[points.length - 2]));
     }
     return points;
   }
@@ -872,7 +1032,8 @@
 
   function canPlace(col, row) {
     if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return false;
-    if (pathCells.has(`${col},${row}`)) return false;
+    const key = `${col},${row}`;
+    if (pathCells.has(key) || blockedCells.has(key)) return false;
     return !towerAt(col, row);
   }
 
@@ -1110,6 +1271,7 @@
     state = STATE_VICTORY;
     clearSavedGame();
     addHighScore(MAPS[currentMap].name, currentWave);
+    recordResult(true);
     particles.confetti(WORLD_W / 2, WORLD_H / 2, 40, { speed: 6, gravity: 0.08 });
     screenShake.trigger(6, 300);
     audio.play('win');
@@ -1737,7 +1899,8 @@
       audio.play('lose');
       state = STATE_GAME_OVER;
       clearSavedGame();
-      addHighScore(MAPS[currentMap].name, currentWave);
+      addHighScore(MAPS[currentMap].name, Math.max(0, currentWave - 1));
+      recordResult(false);
       screenShake.trigger(8, 500);
       updateWindowTitle();
     }
@@ -1975,128 +2138,62 @@
      ══════════════════════════════════════════════════════════════════ */
 
   function drawGrid() {
-    // Background grass texture
-    const bgGrad = ctx.createLinearGradient(0, 0, 0, WORLD_H);
-    bgGrad.addColorStop(0, '#1a3a1a');
-    bgGrad.addColorStop(1, '#153015');
-    ctx.fillStyle = bgGrad;
+    const b = BIOMES[MAPS[currentMap].biome];
+    ctx.fillStyle = b.ground;
     ctx.fillRect(0, 0, WORLD_W, WORLD_H);
-
-    // Path tiles with gradient
+    for (const [key, type] of blockedCells) {
+      const [c, r] = key.split(',').map(Number);
+      ctx.fillStyle = type === 'water' ? '#3a7ad8' : type === 'ice' ? '#a8e0ff' : type === 'lava' ? '#ff6a1a' : type === 'tree' ? '#2a5a2a' : shade(b.ground, -0.3);
+      ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+    }
+    ctx.fillStyle = b.path;
     for (const key of pathCells) {
       const [c, r] = key.split(',').map(Number);
-      const px = c * CELL;
-      const py = r * CELL;
-      const pathGrad = ctx.createLinearGradient(px, py, px + CELL, py + CELL);
-      pathGrad.addColorStop(0, '#5c3d1f');
-      pathGrad.addColorStop(1, '#4a3018');
-      ctx.fillStyle = pathGrad;
-      ctx.fillRect(px, py, CELL, CELL);
-
-      // Subtle path border
-      ctx.strokeStyle = 'rgba(120, 80, 40, 0.5)';
-      ctx.lineWidth = 0.5;
-      ctx.strokeRect(px + 0.5, py + 0.5, CELL - 1, CELL - 1);
+      ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
     }
-
-    // Grid lines
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.strokeStyle = 'rgba(0,0,0,0.08)';
     ctx.lineWidth = 0.5;
+    ctx.beginPath();
     for (let c = 0; c <= COLS; ++c) {
-      ctx.beginPath();
       ctx.moveTo(c * CELL, 0);
       ctx.lineTo(c * CELL, ROWS * CELL);
-      ctx.stroke();
     }
     for (let r = 0; r <= ROWS; ++r) {
-      ctx.beginPath();
       ctx.moveTo(0, r * CELL);
       ctx.lineTo(COLS * CELL, r * CELL);
-      ctx.stroke();
     }
-
+    ctx.stroke();
   }
 
   /* ── Path visualization: direction arrows and spawn/exit markers ── */
   function drawPathVisualization() {
-    if (state !== STATE_BUILD && state !== STATE_PLAYING) return;
-
-    const mapDef = MAPS[currentMap];
-    const wp = mapDef.path;
-
-    // Draw direction arrows along path
-    const arrowSpacing = 3;
-    let stepCount = 0;
     const pulse = 0.4 + 0.3 * Math.sin(animTime * 2);
-
-    walkPath(wp, (x, y) => {
-      ++stepCount;
-      if (stepCount % arrowSpacing !== 0) return;
-      if (stepCount >= pathPoints.length - 1) return;
-
-      const idx = stepCount;
-      if (idx >= pathPoints.length - 1) return;
-
-      const from = pathPoints[idx];
-      const to = pathPoints[Math.min(idx + 1, pathPoints.length - 1)];
-      const dx = to.x - from.x;
-      const dy = to.y - from.y;
-      const len = Math.sqrt(dx * dx + dy * dy);
-      if (len < 1) return;
-
-      const angle = Math.atan2(dy, dx);
-      const cx = from.x;
-      const cy = from.y;
-
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(angle);
-      ctx.fillStyle = `rgba(255, 200, 80, ${pulse * 0.25})`;
-      ctx.beginPath();
-      ctx.moveTo(6, 0);
-      ctx.lineTo(-3, -4);
-      ctx.lineTo(-3, 4);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-    });
-
-    // Spawn point marker (pulsing)
-    if (pathPoints.length > 0) {
-      const spawn = pathPoints[0];
-      const spawnPulse = 0.5 + 0.5 * Math.sin(animTime * 3);
-
-      ctx.save();
-      ctx.strokeStyle = `rgba(0, 255, 100, ${spawnPulse * 0.7})`;
+    const tmp = { x: 0, y: 0, angle: 0 };
+    for (const p of paths) {
+      for (let d = CELL * 1.5; d < p.total - CELL; d += CELL * 3) {
+        pathPos(p, d, tmp);
+        ctx.save();
+        ctx.translate(tmp.x, tmp.y);
+        ctx.rotate(tmp.angle);
+        ctx.fillStyle = `rgba(255, 220, 120, ${pulse * 0.3})`;
+        ctx.beginPath();
+        ctx.moveTo(6, 0);
+        ctx.lineTo(-3, -4);
+        ctx.lineTo(-3, 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+      const s = p.pts[1] || p.pts[0], e = p.pts[p.pts.length - 2] || p.pts[p.pts.length - 1];
       ctx.lineWidth = 2;
+      ctx.strokeStyle = `rgba(80,255,120,${0.4 + pulse})`;
       ctx.beginPath();
-      ctx.arc(spawn.x, spawn.y, 14 + spawnPulse * 4, 0, Math.PI * 2);
+      ctx.arc(s.x, s.y, 13, 0, TWO_PI);
       ctx.stroke();
-
-      ctx.fillStyle = `rgba(0, 255, 100, ${spawnPulse * 0.4})`;
-      ctx.font = 'bold 9px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText('SPAWN', spawn.x, spawn.y - 18);
-      ctx.restore();
-
-      // Exit point marker
-      const exit = pathPoints[pathPoints.length - 1];
-      const exitPulse = 0.5 + 0.5 * Math.sin(animTime * 3 + 1);
-
-      ctx.save();
-      ctx.strokeStyle = `rgba(255, 60, 60, ${exitPulse * 0.7})`;
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = `rgba(255,80,80,${0.4 + pulse})`;
       ctx.beginPath();
-      ctx.arc(exit.x, exit.y, 14 + exitPulse * 4, 0, Math.PI * 2);
+      ctx.arc(e.x, e.y, 13, 0, TWO_PI);
       ctx.stroke();
-
-      ctx.fillStyle = `rgba(255, 60, 60, ${exitPulse * 0.4})`;
-      ctx.font = 'bold 9px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText('EXIT', exit.x, exit.y - 18);
-      ctx.restore();
     }
   }
 
@@ -4699,51 +4796,260 @@
      ══════════════════════════════════════════════════════════════════ */
 
   function drawTitleScreen() {
-    drawScrim(0.55);
+    drawScrim(0.5);
     const cx = UW / 2;
-    const top = Math.max(40, UH * 0.16);
-    drawHeadline('TOWER DEFENSE', cx, top, UW - 60, 64, UI.gold, '#ff9a2a');
+    const top = Math.max(46, UH * 0.17);
+    drawHeadline('TOWER DEFENSE', cx, top, UW - 60, 66, UI.gold, '#ff9a2a');
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    fitText('Hold the line. Build, upgrade, survive every wave.', cx, top + 44, UW - 80, 15, { color: UI.textDim });
+    fitText('Hold the line. Build, upgrade, survive every wave.', cx, top + 46, UW - 80, 15, { color: '#c4cde0' });
 
-    const pw = Math.min(380, UW - 40), ph = savedGameInfo ? 222 : 172;
-    const px = cx - pw / 2, py = Math.min(top + 74, UH - ph - 50);
+    const pw = Math.min(380, UW - 40), ph = savedGameInfo ? 218 : 166;
+    const px = cx - pw / 2, py = Math.min(top + 78, UH - ph - 60);
     drawPanel(px, py, pw, ph, { accent: UI.gold, radius: 12 });
     let y = py + 16;
-    // Map chooser
-    const m = MAPS[currentMap];
-    uiButton('map-prev', px + 14, y, 34, 34, '◀', { px: 14, onClick: () => cycleTitleMap(-1), tip: () => ['Previous map', '←'] });
-    uiButton('map-next', px + pw - 48, y, 34, 34, '▶', { px: 14, onClick: () => cycleTitleMap(1), tip: () => ['Next map', '→'] });
-    ctx.textAlign = 'center';
-    fitText(m.name, cx, y + 10, pw - 120, 17, { weight: 'bold', color: '#ffffff' });
-    fitText(`${m.waves} waves · ${m.startGold} gold · ${m.startLives} lives`, cx, y + 27, pw - 120, 11, { color: UI.textDim });
-    y += 48;
     const bw = pw - 40;
     if (savedGameInfo) {
       const sm = MAPS[savedGameInfo.map];
-      uiButton('title-continue', px + 20, y, bw, 50, 'Continue', { style: 'gold', icon: 'play', px: 17, key: 'Enter', sub: `${sm.name} · wave ${savedGameInfo.wave} of ${savedGameInfo.waves}`, onClick: () => continueSavedGame() });
-      y += 58;
-      uiButton('title-new', px + 20, y, bw, 40, 'New Game', { style: 'dark', px: 14, key: 'N', onClick: () => requestNewGame(), tip: () => ['New game', `Starts ${m.name} from wave 1.`, '⚠ Replaces the saved game'] });
-      y += 48;
-    } else {
-      uiButton('title-start', px + 20, y, bw, 50, 'Start', { style: 'gold', icon: 'play', px: 17, key: 'Enter', sub: m.name, onClick: () => requestNewGame() });
-      y += 58;
+      uiButton('title-continue', px + 20, y, bw, 52, 'Continue', { style: 'gold', icon: 'play', px: 17, key: 'Enter', sub: `${sm.name} · wave ${savedGameInfo.wave} of ${savedGameInfo.waves}`, onClick: () => continueSavedGame() });
+      y += 60;
     }
+    uiButton('title-campaign', px + 20, y, bw, savedGameInfo ? 42 : 52, 'Campaign', { style: savedGameInfo ? 'dark' : 'gold', icon: 'flag', px: savedGameInfo ? 15 : 17, key: savedGameInfo ? 'C' : 'Enter',
+      sub: `${totalStars()} of ${MAPS.length * 3} stars`, onClick: () => openMapSelect() });
+    y += savedGameInfo ? 50 : 60;
     uiButton('title-help', px + 20, y, bw, 36, 'How to play', { style: 'blue', icon: 'help', px: 13, key: 'H', onClick: () => openHelp() });
     if (saveNotice) {
       ctx.textAlign = 'center';
       fitText(saveNotice, cx, py + ph + 18, UW - 40, 12, { color: UI.warn });
     }
-    drawKeyHints([{ key: '←→', label: 'Map' }, { key: 'Enter', label: savedGameInfo ? 'Continue' : 'Start' }, { key: 'H', label: 'Help' }], cx, UH - 22, UW - 40);
+    drawKeyHints(savedGameInfo
+      ? [{ key: 'Enter', label: 'Continue' }, { key: 'C', label: 'Campaign' }, { key: 'H', label: 'Help' }]
+      : [{ key: 'Enter', label: 'Campaign' }, { key: 'H', label: 'Help' }], cx, UH - 22, UW - 40);
   }
 
-  function cycleTitleMap(dir) {
-    currentMap = (currentMap + dir + MAPS.length) % MAPS.length;
+  /* ── Campaign map select ── */
+  let mapSelectIndex = 0;
+
+  function openMapSelect() {
+    state = STATE_MAP_SELECT;
+    mapSelectIndex = savedGameInfo ? savedGameInfo.map : Math.min(currentMap, MAPS.length - 1);
+    if (!mapUnlocked(mapSelectIndex)) mapSelectIndex = 0;
+    previewMap(mapSelectIndex);
+    audio.play('select');
+    updateWindowTitle();
+  }
+
+  function previewMap(i) {
+    mapSelectIndex = i;
+    currentMap = i;
     loadMapPreview();
-    audio.play('click');
   }
 
+  function playSelectedMap() {
+    if (!mapUnlocked(mapSelectIndex)) {
+      audio.play('error');
+      return;
+    }
+    currentMap = mapSelectIndex;
+    requestNewGame();
+  }
+
+  function difficultyOf(i) {
+    return clamp(Math.round((MAPS[i].hpMul - 0.8) / 0.11) + 1, 1, 5);
+  }
+
+  const thumbCache = {};
+  // Small overview of a map: ground, features, roads
+  function mapThumb(i) {
+    if (thumbCache[i]) return thumbCache[i];
+    const k = 4;
+    const c = makeCanvas(COLS * k, ROWS * k);
+    const g = c.getContext('2d');
+    const m = MAPS[i], b = BIOMES[m.biome];
+    g.fillStyle = b.ground;
+    g.fillRect(0, 0, c.width, c.height);
+    const cells = new Set();
+    for (const wp of m.paths) walkPath(wp, (x, y) => cells.add(x + ',' + y));
+    for (const [type, c0, r0, c1, r1] of m.features) {
+      g.fillStyle = type === 'water' ? '#3a7ad8' : type === 'ice' ? '#a8e0ff' : type === 'lava' ? '#ff6a1a' : shade(b.ground, -0.3);
+      for (let r = r0; r <= r1; ++r) for (let cc = c0; cc <= c1; ++cc)
+        if (!cells.has(cc + ',' + r)) g.fillRect(cc * k, r * k, k, k);
+    }
+    g.fillStyle = b.path;
+    for (const key of cells) {
+      const [x, y] = key.split(',').map(Number);
+      g.fillRect(x * k, y * k, k, k);
+    }
+    for (const wp of m.paths) {
+      g.fillStyle = '#5aff7a';
+      g.fillRect(wp[0][0] * k, wp[0][1] * k, k, k);
+      const e = wp[wp.length - 1];
+      g.fillStyle = '#ff4a4a';
+      g.fillRect(e[0] * k, e[1] * k, k, k);
+    }
+    thumbCache[i] = c;
+    return c;
+  }
+
+  function drawThumb(i, x, y, w, h) {
+    const img = mapThumb(i);
+    ctx.save();
+    roundRectPath(x, y, w, h, 6);
+    ctx.clip();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, x, y, w, h);
+    ctx.imageSmoothingEnabled = true;
+    ctx.restore();
+    roundRectPath(x, y, w, h, 6);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.stroke();
+  }
+
+  function drawStars(n, cx, cy, size, total) {
+    total = total || 3;
+    const gap = size * 1.05;
+    for (let i = 0; i < total; ++i)
+      drawIcon(i < n ? 'star' : 'starEmpty', cx + (i - (total - 1) / 2) * gap, cy, size);
+  }
+
+  function drawMapSelect() {
+    drawScrim(0.72);
+    const pad = 12;
+    // Header
+    const hh = 46;
+    drawPanel(pad, 8, UW - pad * 2, hh, { accent: UI.gold, radius: 10 });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText('Campaign', pad + 16, 8 + hh / 2 + 1, 220, 22, { weight: 'bold', color: UI.gold });
+    ctx.textAlign = 'right';
+    fitText(`[[star]] ${totalStars()} / ${MAPS.length * 3}`, UW - pad - 120, 8 + hh / 2 + 1, 160, 16, { weight: 'bold', color: '#ffffff' });
+    uiButton('ms-back', UW - pad - 108, 16, 96, hh - 16, 'Back', { px: 13, key: 'Esc', onClick: () => quitToTitle() });
+
+    // Layout: grid of biomes (columns) x maps (rows), details on the right
+    const top = 8 + hh + 10, bottom = UH - 34;
+    const detailW = UW >= 900 ? Math.min(300, UW * 0.3) : 0;
+    const gx = pad, gw = UW - pad * 2 - (detailW ? detailW + 10 : 0);
+    const colGap = 8, rowGap = 8, headH = 24;
+    const cw = (gw - colGap * 3) / 4;
+    const ch = (bottom - top - headH - rowGap * 2 - (detailW ? 0 : 150)) / 3;
+    BIOME_ORDER.forEach((bk, bi) => {
+      const b = BIOMES[bk];
+      const x = gx + bi * (cw + colGap);
+      roundRectPath(x, top, cw, headH, 6);
+      ctx.fillStyle = hexToRgba(b.color, 0.2);
+      ctx.fill();
+      ctx.strokeStyle = hexToRgba(b.color, 0.6);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.textAlign = 'center';
+      fitText(b.name, x + cw / 2, top + headH / 2 + 1, cw - 10, 12, { weight: 'bold', color: b.color });
+      for (let j = 0; j < 3; ++j) {
+        const i = bi * 3 + j;
+        drawMapCard(i, x, top + headH + 6 + j * (ch + rowGap), cw, ch);
+      }
+    });
+    if (detailW)
+      drawMapDetails(UW - pad - detailW, top, detailW, bottom - top);
+    else
+      drawMapDetails(gx, bottom - 144, gw, 140);
+    drawKeyHints([{ key: '←↑→↓', label: 'Choose' }, { key: 'Enter', label: 'Play' }, { key: 'Esc', label: 'Back' }], UW / 2, UH - 16, UW - 40);
+  }
+
+  function drawMapCard(i, x, y, w, h) {
+    const m = MAPS[i];
+    const id = 'mapcard' + i;
+    const sel = mapSelectIndex === i;
+    const hover = hoverId === id;
+    const locked = !mapUnlocked(i);
+    const rec = meta.maps[i];
+    ctx.save();
+    roundRectPath(x, y, w, h, 8);
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, sel ? 'rgba(86,68,24,0.96)' : hover ? 'rgba(44,54,84,0.96)' : 'rgba(26,32,54,0.96)');
+    g.addColorStop(1, sel ? 'rgba(40,28,8,0.96)' : 'rgba(12,15,28,0.96)');
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.lineWidth = sel ? 2.5 : 1;
+    ctx.strokeStyle = sel ? UI.gold : hover ? 'rgba(255,215,90,0.5)' : 'rgba(150,180,255,0.18)';
+    ctx.stroke();
+    const tw = w - 12, th = Math.min(h - 40, tw * ROWS / COLS);
+    const tx = x + 6, ty = y + 6;
+    if (locked) ctx.globalAlpha *= 0.35;
+    drawThumb(i, tx + (tw - th * COLS / ROWS) / 2, ty, th * COLS / ROWS, th);
+    ctx.globalAlpha = 1;
+    if (locked) drawIcon('lock', x + w / 2, ty + th / 2, Math.min(28, th * 0.5));
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const ny = ty + th + (h - th - 6) / 2 - 1;
+    fitText(`${i + 1}. ${m.name}`, x + 8, ny - 7, w * 0.62, 12, { weight: 'bold', color: locked ? UI.textMute : '#ffffff' });
+    fitText(rec.best ? `Best ${rec.best}/${m.waves}` : `${m.waves} waves`, x + 8, ny + 8, w * 0.6, 10, { color: UI.textDim });
+    drawStars(rec.stars, x + w - 8 - Math.min(13, w * 0.09) * 1.6, ny, Math.min(13, w * 0.09));
+    ctx.restore();
+    addRegion({ id, x, y, w, h, onClick: () => {
+      if (mapSelectIndex === i && !locked) playSelectedMap();
+      else { previewMap(i); audio.play('click'); }
+    }, tip: () => locked ? [m.name, '✘ Win the previous map to unlock it.'] : null, sound: false });
+  }
+
+  function drawMapDetails(x, y, w, h) {
+    const i = mapSelectIndex;
+    const m = MAPS[i], b = BIOMES[m.biome], rec = meta.maps[i];
+    const locked = !mapUnlocked(i);
+    drawPanel(x, y, w, h, { title: m.name, titleRight: b.name, titleRightColor: b.color, accent: b.color, radius: 10 });
+    const wide = h < 200;
+    let cy = y + 38;
+    if (!wide) {
+      const tw = w - 24, th = tw * ROWS / COLS;
+      drawThumb(i, x + 12, cy, tw, th);
+      cy += th + 10;
+      ctx.textAlign = 'left';
+      drawTextBlock(m.desc, x + 12, cy, w - 24, 46, 12, { color: '#c4cde0' });
+      cy += 52;
+    }
+    const rows = [
+      ['flag', 'Waves', String(m.waves)],
+      ['coin', 'Starting gold', String(m.startGold)],
+      ['heart', 'Lives', String(m.startLives)],
+      ['skull', 'Difficulty', '●'.repeat(difficultyOf(i)) + '○'.repeat(5 - difficultyOf(i))],
+      ['range', 'Roads', m.paths.length > 1 ? `${m.paths.length} (enemies split)` : '1'],
+      ['crown', 'Best', rec.best ? `wave ${rec.best}` : '—']
+    ];
+    const colW = wide ? (w - 24 - 170) / 2 : w - 24;
+    rows.forEach((r, k) => {
+      const col = wide ? Math.floor(k / 3) : 0, row = wide ? k % 3 : k;
+      const rx = x + 12 + col * colW, ry = cy + row * 19;
+      drawIcon(r[0], rx + 7, ry + 8, 13);
+      ctx.textAlign = 'left';
+      fitText(r[1], rx + 18, ry + 9, colW * 0.5 - 18, 11, { color: UI.textDim });
+      ctx.textAlign = 'right';
+      fitText(r[2], rx + colW - 6, ry + 9, colW * 0.5, 12, { weight: 'bold', color: '#ffffff' });
+    });
+    const by = wide ? y + h - 52 : y + h - 98;
+    const bx = wide ? x + w - 170 : x + 12, bw = wide ? 158 : w - 24;
+    if (!wide) {
+      drawStars(rec.stars, x + w / 2, by - 6, 20);
+    }
+    uiButton('ms-play', bx, wide ? y + 40 : by + 14, bw, 48, locked ? 'Locked' : (savedGameInfo && savedGameInfo.map === i ? 'Restart' : 'Play'), {
+      style: locked ? 'dark' : 'gold', icon: locked ? 'lock' : 'play', px: 16, key: 'Enter', disabled: locked,
+      sub: locked ? 'Win the previous map first' : `${['', '★', '★★', '★★★'][rec.stars] || 'Not yet won'}`,
+      onClick: playSelectedMap, onDisabled: () => audio.play('error')
+    });
+    if (!wide && savedGameInfo && savedGameInfo.map !== i) {
+      ctx.textAlign = 'center';
+      fitText('⚠ Starting replaces your saved game', x + w / 2, by + 74, w - 20, 10, { color: UI.warn });
+    }
+  }
+
+  function moveMapSelect(dx, dy) {
+    const bi = Math.floor(mapSelectIndex / 3), j = mapSelectIndex % 3;
+    const nb = clamp(bi + dx, 0, 3), nj = clamp(j + dy, 0, 2);
+    const ni = nb * 3 + nj;
+    if (ni !== mapSelectIndex) {
+      previewMap(ni);
+      audio.play('click', { pitch: 1.3 });
+    }
+  }
   function drawPauseScreen() {
     drawScrim(0.6);
     const pw = Math.min(320, UW - 40), ph = 262;
@@ -4763,17 +5069,37 @@
   function drawEndScreen(victory) {
     drawScrim(0.62);
     const cx = UW / 2;
-    const pw = Math.min(420, UW - 40), ph = victory ? 270 : 220;
-    const px = cx - pw / 2, py = Math.max(80, UH / 2 - ph / 2 + 20);
-    drawHeadline(victory ? 'VICTORY' : 'DEFEAT', cx, py - 40, UW - 40, 56, victory ? UI.gold : '#ff5a5a', victory ? '#ff9a2a' : '#9a1a1a');
+    const res = lastResult || { stars: 0, prevStars: 0 };
+    res.t = (res.t || 0) + frameDt;
+    const pw = Math.min(440, UW - 40), ph = victory ? 312 : 236;
+    const px = cx - pw / 2, py = clamp(UH / 2 - ph / 2 + 30, 80, UH - ph - 10);
+    drawHeadline(victory ? 'VICTORY' : 'DEFEAT', cx, py - 40, UW - 40, 58, victory ? UI.gold : '#ff5a5a', victory ? '#ff9a2a' : '#9a1a1a');
     drawPanel(px, py, pw, ph, { title: MAPS[currentMap].name, titleRight: victory ? 'Map cleared' : `Fell at wave ${currentWave}`, accent: victory ? UI.gold : UI.bad, radius: 12 });
+    let y = py + 44;
+    if (victory) {
+      // Stars pop in one after another
+      for (let i = 0; i < 3; ++i) {
+        const t = clamp((res.t - 0.3 - i * 0.35) / 0.3, 0, 1);
+        const earned = i < res.stars;
+        const s = earned ? 34 * (t < 1 ? 0.4 + 0.9 * Math.sin(t * Math.PI * 0.75) : 1) : 30;
+        drawIcon(earned && t > 0 ? 'star' : 'starEmpty', cx + (i - 1) * 46, y + 22, s);
+        if (earned && t > 0 && t < 1 && !res['snd' + i]) {
+          res['snd' + i] = true;
+          audio.play('coin', { pitch: 1 + i * 0.2 });
+        }
+      }
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const msg = res.stars > res.prevStars ? (res.prevStars ? 'New best rating!' : res.unlocked ? 'Next map unlocked!' : 'Map won!') : 'Map won again';
+      fitText(msg, cx, y + 52, pw - 40, 12, { weight: 'bold', color: UI.good });
+      y += 66;
+    }
     const stats = [
       ['flag', 'Waves survived', `${victory ? currentWave : Math.max(0, currentWave - 1)} / ${totalWaves}`],
       ['skull', 'Enemies defeated', String(runStats.kills)],
       ['coin', 'Gold earned', String(runStats.gold)],
       ['heart', 'Lives left', `${lives} / ${MAPS[currentMap].startLives}`]
     ];
-    let y = py + 48;
     for (const [icon, label, value] of stats) {
       drawIcon(icon, px + 30, y + 9, 16);
       ctx.textAlign = 'left';
@@ -4781,19 +5107,20 @@
       fitText(label, px + 46, y + 10, pw * 0.5, 13, { color: UI.textDim });
       ctx.textAlign = 'right';
       fitText(value, px + pw - 24, y + 10, pw * 0.35, 15, { weight: 'bold', color: '#ffffff' });
-      y += 26;
+      y += 24;
     }
-    y += 12;
+    y += 10;
     const bw = (pw - 52) / 2;
     if (victory) {
-      uiButton('end-next', px + 20, y, bw, 44, 'Next map', { style: 'gold', icon: 'play', key: 'Enter', px: 14, onClick: () => { currentMap = (currentMap + 1) % MAPS.length; resetAndStart(); } });
+      const hasNext = currentMap + 1 < MAPS.length;
+      uiButton('end-next', px + 20, y, bw, 44, hasNext ? 'Next map' : 'Campaign', { style: 'gold', icon: 'play', key: 'Enter', px: 14,
+        onClick: () => { if (hasNext) { currentMap += 1; resetAndStart(); } else openMapSelect(); } });
       uiButton('end-retry', px + 32 + bw, y, bw, 44, 'Play again', { style: 'dark', key: 'R', px: 14, onClick: resetAndStart });
+      uiButton('end-maps', px + 20, y + 52, pw - 40, 30, 'Campaign map', { style: 'dark', key: 'M', px: 12, onClick: openMapSelect });
     } else {
       uiButton('end-retry', px + 20, y, bw, 44, 'Try again', { style: 'gold', icon: 'play', key: 'Enter', px: 14, onClick: resetAndStart });
-      uiButton('end-title', px + 32 + bw, y, bw, 44, 'Main menu', { style: 'dark', key: 'M', px: 14, onClick: quitToTitle });
+      uiButton('end-maps', px + 32 + bw, y, bw, 44, 'Campaign map', { style: 'dark', key: 'M', px: 13, onClick: openMapSelect });
     }
-    if (victory)
-      uiButton('end-title2', px + 20, y + 52, pw - 40, 30, 'Main menu', { style: 'dark', key: 'M', px: 12, onClick: quitToTitle });
   }
 
   /* ── Help pages ── */
@@ -4943,7 +5270,7 @@
     ctx.rect(0, 0, WORLD_W, WORLD_H);
     ctx.clip();
     drawGrid();
-    if (state !== STATE_READY) {
+    if (state !== STATE_READY && state !== STATE_MAP_SELECT) {
       drawPathVisualization();
       drawFloorEffects();
       drawClouds();
@@ -4972,6 +5299,8 @@
     regions = [];
     if (state === STATE_READY) {
       drawTitleScreen();
+    } else if (state === STATE_MAP_SELECT) {
+      drawMapSelect();
     } else {
       drawTopBar();
       drawBossBar();
@@ -5070,6 +5399,7 @@
 
   function resetAndStart() {
     overlay = null;
+    lastResult = null;
     loadMap(currentMap);
     audio.play('select');
   }
@@ -5081,6 +5411,8 @@
     selectedTower = null;
     state = STATE_READY;
     refreshSavedGameInfo();
+    if (savedGameInfo)
+      currentMap = savedGameInfo.map;
     loadMapPreview();
     updateWindowTitle();
   }
@@ -5275,16 +5607,29 @@
     }
 
     if (state === STATE_READY) {
-      if (code === 'Enter' || code === 'Space' || code === 'KeyC') {
+      if (code === 'Enter' || code === 'Space') {
         e.preventDefault();
         if (savedGameInfo) continueSavedGame();
-        else requestNewGame();
-      } else if (code === 'KeyN') {
+        else openMapSelect();
+      } else if (code === 'KeyC') {
         e.preventDefault();
-        requestNewGame();
-      } else if (code === 'ArrowLeft' || code === 'ArrowRight') {
+        openMapSelect();
+      }
+      return;
+    }
+
+    if (state === STATE_MAP_SELECT) {
+      const dirs = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+      if (dirs[code]) {
         e.preventDefault();
-        cycleTitleMap(code === 'ArrowLeft' ? -1 : 1);
+        moveMapSelect(dirs[code][0], dirs[code][1]);
+      } else if (code === 'Enter' || code === 'Space') {
+        e.preventDefault();
+        pressFx['ms-play'] = performance.now();
+        playSelectedMap();
+      } else if (code === 'Escape') {
+        e.preventDefault();
+        quitToTitle();
       }
       return;
     }
@@ -5292,13 +5637,17 @@
     if (state === STATE_GAME_OVER || state === STATE_VICTORY) {
       if (code === 'Enter' || code === 'Space') {
         e.preventDefault();
-        if (state === STATE_VICTORY)
-          currentMap = (currentMap + 1) % MAPS.length;
-        resetAndStart();
+        if (state === STATE_VICTORY && currentMap + 1 < MAPS.length) {
+          currentMap += 1;
+          resetAndStart();
+        } else if (state === STATE_VICTORY)
+          openMapSelect();
+        else
+          resetAndStart();
       } else if (code === 'KeyR') {
         resetAndStart();
       } else if (code === 'KeyM' || code === 'Escape') {
-        quitToTitle();
+        openMapSelect();
       }
       return;
     }
@@ -5451,6 +5800,8 @@
     const mapName = MAPS[currentMap]?.name || '';
     const title = state === STATE_READY
       ? 'Tower Defense'
+      : state === STATE_MAP_SELECT
+        ? 'Tower Defense -- Campaign'
       : state === STATE_VICTORY
         ? `Tower Defense -- ${mapName} Victory!`
         : state === STATE_GAME_OVER
@@ -5484,6 +5835,7 @@
 
   setupCanvas();
   loadHighScores();
+  loadMeta();
   refreshSavedGameInfo();
   if (savedGameInfo)
     currentMap = savedGameInfo.map;
