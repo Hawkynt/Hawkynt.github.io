@@ -91,24 +91,6 @@
     [TILE_RUBY]: '#ff4488'
   };
 
-  const TILE_SHADOW_COLORS = {
-    [TILE_DIRT]: '#2a1a0a',
-    [TILE_IRON]: '#555555',
-    [TILE_WATER]: '#2266aa',
-    [TILE_COBALT]: '#222288',
-    [TILE_COPPER]: '#7a4a1a',
-    [TILE_GOLD]: '#aa8800',
-    [TILE_TIN]: '#999999',
-    [TILE_SILVER]: '#888888',
-    [TILE_LEAD]: '#333333',
-    [TILE_COAL]: '#111111',
-    [TILE_QUARTZ]: '#b0a890',
-    [TILE_REDSTONE]: '#880000',
-    [TILE_DIAMOND]: '#6ab0c0',
-    [TILE_EMERALD]: '#2a7844',
-    [TILE_RUBY]: '#900030'
-  };
-
   const TILE_VALUES = {
     [TILE_IRON]: 10,
     [TILE_WATER]: 20,
@@ -507,6 +489,392 @@
     ctx.textAlign = align;
   }
 
+  /* ======================================================================
+     TEXT LAYOUT -- every label is measured against the box it lives in
+     ====================================================================== */
+
+  const UI_FONT = "'Segoe UI', 'Trebuchet MS', 'Helvetica Neue', Arial, sans-serif";
+
+  function uiFont(px, weight) {
+    return (weight ? weight + ' ' : '') + px + 'px ' + UI_FONT;
+  }
+
+  // Layout results are cached per (text, box, font) because the same labels
+  // are laid out every frame
+  const textFitCache = new Map();
+  function cachedLayout(key, build) {
+    let v = textFitCache.get(key);
+    if (v === undefined) {
+      if (textFitCache.size > 3000)
+        textFitCache.clear();
+      v = build();
+      textFitCache.set(key, v);
+    }
+    return v;
+  }
+
+  // Split icon text into indivisible units (characters and [[sprite]] tokens)
+  function textUnits(text) {
+    const parts = splitIconText(text);
+    const units = [];
+    for (let i = 0; i < parts.length; ++i)
+      if (i % 2)
+        units.push('[[' + parts[i] + ']]');
+      else
+        for (const ch of parts[i])
+          units.push(ch);
+    return units;
+  }
+
+  // Shorten text with an ellipsis until it fits maxW in the current font
+  function ellipsize(text, maxW) {
+    text = String(text);
+    if (measureIconText(text) <= maxW)
+      return text;
+    const units = textUnits(text);
+    let lo = 0, hi = units.length;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (measureIconText(units.slice(0, mid).join('').trimEnd() + '…') <= maxW)
+        lo = mid;
+      else
+        hi = mid - 1;
+    }
+    return lo > 0 ? units.slice(0, lo).join('').trimEnd() + '…' : '';
+  }
+
+  // Largest font size in [minPx, px] that fits; ellipsizes if minPx is still too wide
+  function layoutLine(text, maxW, px, minPx, weight) {
+    text = String(text);
+    return cachedLayout('L' + text + '|' + Math.round(maxW) + '|' + px + '|' + minPx + '|' + (weight || ''), () => {
+      let size = px;
+      ctx.font = uiFont(size, weight);
+      let w = measureIconText(text);
+      if (w > maxW && size > minPx) {
+        size = Math.max(minPx, Math.floor(px * maxW / w));
+        ctx.font = uiFont(size, weight);
+        w = measureIconText(text);
+        while (w > maxW && size > minPx) {
+          --size;
+          ctx.font = uiFont(size, weight);
+          w = measureIconText(text);
+        }
+      }
+      const out = w > maxW ? ellipsize(text, maxW) : text;
+      return { size, text: out, width: Math.min(w, maxW) };
+    });
+  }
+
+  // Draw one line of (icon) text that never exceeds maxW; returns the drawn width.
+  // Honours the current textAlign / textBaseline; sets ctx.font.
+  function fitText(text, x, y, maxW, px, opts) {
+    opts = opts || {};
+    const l = layoutLine(text, maxW, px, opts.minPx || Math.max(9, Math.round(px * 0.6)), opts.weight);
+    ctx.font = uiFont(l.size, opts.weight);
+    if (opts.color)
+      ctx.fillStyle = opts.color;
+    if (opts.outline) {
+      ctx.save();
+      ctx.strokeStyle = opts.outline;
+      ctx.lineWidth = Math.max(2, l.size / 6);
+      ctx.lineJoin = 'round';
+      if (l.text.indexOf('[[') < 0)
+        ctx.strokeText(l.text, x, y);
+      ctx.restore();
+    }
+    fillIconText(l.text, x, y);
+    return l.width;
+  }
+
+  // Greedy word wrap in the current font; overlong words are ellipsized
+  function wrapText(text, maxW) {
+    const lines = [];
+    for (const para of String(text).split('\n')) {
+      const words = para.split(' ');
+      let line = '';
+      for (const word of words) {
+        const trial = line ? line + ' ' + word : word;
+        if (!line || measureIconText(trial) <= maxW)
+          line = trial;
+        else {
+          lines.push(line);
+          line = word;
+        }
+        if (measureIconText(line) > maxW && line === word)
+          line = ellipsize(word, maxW);
+      }
+      lines.push(line);
+    }
+    return lines;
+  }
+
+  // Wrap text into a w x h box, shrinking the font until all lines fit
+  function layoutBlock(text, w, h, px, minPx, weight, lineGap) {
+    return cachedLayout('B' + text + '|' + Math.round(w) + '|' + Math.round(h) + '|' + px + '|' + minPx + '|' + (weight || '') + '|' + lineGap, () => {
+      let size = px, lines;
+      for (;;) {
+        ctx.font = uiFont(size, weight);
+        lines = wrapText(text, w);
+        if (lines.length * size * lineGap <= h || size <= minPx)
+          break;
+        --size;
+      }
+      const maxLines = Math.max(1, Math.floor(h / (size * lineGap)));
+      if (lines.length > maxLines) {
+        lines = lines.slice(0, maxLines);
+        lines[maxLines - 1] = ellipsize(lines[maxLines - 1] + '…', w);
+      }
+      return { size, lines, lineH: size * lineGap };
+    });
+  }
+
+  // Draw wrapped text inside a box. align: 'left' | 'center'; valign: 'top' | 'middle'
+  function drawTextBlock(text, x, y, w, h, px, opts) {
+    opts = opts || {};
+    const b = layoutBlock(text, w, h, px, opts.minPx || Math.max(9, Math.round(px * 0.6)), opts.weight, opts.lineGap || 1.3);
+    ctx.font = uiFont(b.size, opts.weight);
+    if (opts.color)
+      ctx.fillStyle = opts.color;
+    const align = opts.align || 'left';
+    ctx.textAlign = align;
+    ctx.textBaseline = 'middle';
+    const tx = align === 'center' ? x + w / 2 : x;
+    let ty = y + b.lineH / 2;
+    if (opts.valign === 'middle')
+      ty += (h - b.lines.length * b.lineH) / 2;
+    for (const line of b.lines) {
+      fillIconText(line, tx, ty);
+      ty += b.lineH;
+    }
+    return b.lines.length * b.lineH;
+  }
+
+  /* ======================================================================
+     UI PANELS -- one frame style for every box on screen
+     ====================================================================== */
+
+  const UI = {
+    panelTop: 'rgba(22,30,52,0.94)',
+    panelBottom: 'rgba(9,12,24,0.94)',
+    edge: '#05070e',
+    rim: 'rgba(150,180,255,0.16)',
+    accent: '#5ab8ff',
+    gold: '#ffd75a',
+    text: '#e4eaf6',
+    textDim: '#93a0bb',
+    textMute: '#5d6884',
+    good: '#6fe08a',
+    bad: '#ff6a6a',
+    warn: '#ffb648'
+  };
+
+  function roundRectPath(x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+  }
+
+  // Framed panel: drop shadow, vertical gradient, dark edge, light inner rim,
+  // accent strip and an optional title header. Returns the content top y.
+  function drawPanel(x, y, w, h, opts) {
+    opts = opts || {};
+    const r = opts.radius !== undefined ? opts.radius : 10;
+    const accent = opts.accent || UI.accent;
+    ctx.save();
+    if (opts.alpha !== undefined)
+      ctx.globalAlpha *= opts.alpha;
+    if (!opts.flat) {
+      ctx.shadowColor = 'rgba(0,0,0,0.55)';
+      ctx.shadowBlur = opts.shadow !== undefined ? opts.shadow : 18;
+      ctx.shadowOffsetY = 4;
+    }
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, opts.top || UI.panelTop);
+    g.addColorStop(1, opts.bottom || UI.panelBottom);
+    roundRectPath(x, y, w, h, r);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = UI.edge;
+    ctx.stroke();
+    roundRectPath(x + 1.5, y + 1.5, w - 3, h - 3, r - 1.5);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = opts.glow ? hexToRgba(accent, 0.75) : UI.rim;
+    ctx.stroke();
+    if (opts.glow) {
+      ctx.shadowColor = accent;
+      ctx.shadowBlur = 14;
+      roundRectPath(x, y, w, h, r);
+      ctx.strokeStyle = hexToRgba(accent, 0.6);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    // Accent strip along the top edge
+    const sg = ctx.createLinearGradient(x, 0, x + w, 0);
+    sg.addColorStop(0, hexToRgba(accent, 0));
+    sg.addColorStop(0.5, hexToRgba(accent, 0.9));
+    sg.addColorStop(1, hexToRgba(accent, 0));
+    ctx.fillStyle = sg;
+    ctx.fillRect(x + r, y + 1, w - r * 2, 2);
+    let contentY = y + (opts.pad !== undefined ? opts.pad : 10);
+    if (opts.title) {
+      const hh = opts.headerH || 40;
+      ctx.fillStyle = 'rgba(255,255,255,0.04)';
+      ctx.fillRect(x + 2, y + 3, w - 4, hh - 3);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(x + 10, y + hh, w - 20, 1);
+      ctx.fillStyle = 'rgba(255,255,255,0.06)';
+      ctx.fillRect(x + 10, y + hh + 1, w - 20, 1);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const titleX = x + 14;
+      const rightW = opts.titleRight ? Math.min(w * 0.45, 180) : 0;
+      fitText(opts.title, titleX, y + hh / 2 + 1, w - 28 - rightW, opts.titlePx || 20, { weight: 'bold', color: accent });
+      if (opts.titleRight) {
+        ctx.textAlign = 'right';
+        fitText(opts.titleRight, x + w - 14, y + hh / 2 + 1, rightW - 8, 15, { color: opts.titleRightColor || UI.textDim });
+      }
+      contentY = y + hh + 8;
+    }
+    ctx.restore();
+    return contentY;
+  }
+
+  // Horizontal meter with a rounded track and a glossy fill
+  function drawMeter(x, y, w, h, ratio, color, opts) {
+    opts = opts || {};
+    ratio = Math.max(0, Math.min(1, ratio));
+    ctx.save();
+    roundRectPath(x, y, w, h, h / 2);
+    ctx.fillStyle = opts.track || 'rgba(0,0,0,0.55)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.stroke();
+    if (ratio > 0) {
+      ctx.save();
+      roundRectPath(x, y, w, h, h / 2);
+      ctx.clip();
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, w * ratio, h);
+      ctx.fillStyle = 'rgba(255,255,255,0.28)';
+      ctx.fillRect(x, y, w * ratio, h * 0.42);
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.fillRect(x, y + h * 0.75, w * ratio, h * 0.25);
+      ctx.restore();
+    }
+    if (opts.label) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText(opts.label, x + w / 2, y + h / 2 + 1, w - 8, opts.labelPx || Math.round(h * 0.72), { weight: 'bold', color: '#fff', outline: 'rgba(0,0,0,0.75)' });
+    }
+    ctx.restore();
+  }
+
+  // Rounded pill / chip with centred text; returns its width
+  function drawChip(text, x, y, h, opts) {
+    opts = opts || {};
+    const px = opts.px || Math.round(h * 0.62);
+    ctx.font = uiFont(px, opts.weight || 'bold');
+    const w = Math.min(opts.maxW || 1e9, Math.ceil(measureIconText(text)) + h * 0.8);
+    const x0 = opts.align === 'right' ? x - w : x;
+    roundRectPath(x0, y, w, h, h / 2);
+    ctx.fillStyle = opts.bg || 'rgba(255,255,255,0.08)';
+    ctx.fill();
+    if (opts.border) {
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = opts.border;
+      ctx.stroke();
+    }
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(text, x0 + w / 2, y + h / 2 + 1, w - h * 0.5, px, { weight: opts.weight || 'bold', color: opts.color || UI.text });
+    return w;
+  }
+
+  // Button with gradient face, used by the title and dialogs
+  function drawButton(b, primary, hover) {
+    ctx.save();
+    const g = ctx.createLinearGradient(0, b.y, 0, b.y + b.h);
+    if (primary) {
+      g.addColorStop(0, hover ? '#4aa0ff' : '#3a86e0');
+      g.addColorStop(1, hover ? '#2a64c0' : '#1f4c98');
+    } else {
+      g.addColorStop(0, hover ? '#3a4560' : '#2a3248');
+      g.addColorStop(1, hover ? '#232a3e' : '#181d2c');
+    }
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 3;
+    roundRectPath(b.x, b.y, b.w, b.h, 12);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = primary ? (hover ? '#bfe0ff' : '#7ab8ff') : (hover ? '#8a9ac0' : '#4a5676');
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    roundRectPath(b.x + 3, b.y + 3, b.w - 6, b.h * 0.42, 9);
+    ctx.fill();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    fitText(b.label, b.x + b.w / 2, b.y + b.h / 2 + 1, b.w - 24, 26, { weight: 'bold', color: primary ? '#fff' : '#d0d8ea' });
+    ctx.restore();
+  }
+
+  // Large glowing headline (title screens and overlays)
+  function drawHeadline(text, x, y, maxW, px, color, glow) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const l = layoutLine(text, maxW, px, Math.round(px * 0.5), 'bold');
+    ctx.font = uiFont(l.size, 'bold');
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(3, l.size / 9);
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+    ctx.strokeText(l.text, x, y + 3);
+    ctx.shadowColor = glow || color;
+    ctx.shadowBlur = 22;
+    const g = ctx.createLinearGradient(0, y - l.size / 2, 0, y + l.size / 2);
+    g.addColorStop(0, '#ffffff');
+    g.addColorStop(0.45, color);
+    g.addColorStop(1, glow || color);
+    ctx.fillStyle = g;
+    ctx.fillText(l.text, x, y);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  // Dim the whole screen and darken the corners
+  let vignetteCanvas = null;
+  function drawScrim(alpha) {
+    ctx.fillStyle = `rgba(3,5,12,${alpha})`;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    if (!vignetteCanvas) {
+      vignetteCanvas = document.createElement('canvas');
+      vignetteCanvas.width = CANVAS_W / 4;
+      vignetteCanvas.height = CANVAS_H / 4;
+      const v = vignetteCanvas.getContext('2d');
+      const g = v.createRadialGradient(CANVAS_W / 8, CANVAS_H / 8, CANVAS_H / 16, CANVAS_W / 8, CANVAS_H / 8, CANVAS_W / 6);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(0,0,0,0.7)');
+      v.fillStyle = g;
+      v.fillRect(0, 0, CANVAS_W / 4, CANVAS_H / 4);
+    }
+    ctx.drawImage(vignetteCanvas, 0, 0, CANVAS_W, CANVAS_H);
+  }
 
 
   const TILE_DISPLAY_NAMES = {
@@ -641,6 +1009,12 @@
     { name: 'Move Speed', key: 'moveSpeed', baseCost: 25, perLevel: 15 },
     { name: 'Mining Tools', key: 'miningTools', baseCost: 35, perLevel: 20 }
   ];
+
+  // Sprite shown next to each quick upgrade
+  const UPGRADE_ICONS = {
+    weaponDamage: 'swords', fireRate: 'fire', domeHP: 'shield', drillSpeed: 'drill',
+    carryCapacity: 'bag', moveSpeed: 'boot', miningTools: 'pickaxe'
+  };
 
   /* -- Unlockable Gadgets/Tools -- */
   const GADGET_DEFS = [
@@ -1109,9 +1483,23 @@
   // Layout: root at top center, 4 branches below
   const TREE_BRANCH_ORDER = ['dome', 'mining', 'movement', 'weapon'];
   const TREE_BRANCH_LABELS = { dome: 'DOME', mining: 'MINING', movement: 'MOVEMENT', weapon: 'WEAPON' };
-  const TREE_BRANCH_COLORS = { dome: '#4af', mining: '#fa0', movement: '#0f0', weapon: '#f44' };
-  const TREE_NODE_W = 240;
-  const TREE_NODE_H = 120;
+  const TREE_BRANCH_COLORS = { dome: '#4cb4ff', mining: '#ffae3a', movement: '#5ee07a', weapon: '#ff5e5e' };
+  const TREE_CARD_W = 200;
+  const TREE_CARD_H = 88;
+  const TREE_GAP_X = 40;       // vertical channel between depth columns (connectors run here)
+  const TREE_GAP_Y = 24;       // horizontal channel between lanes
+  const TREE_REGION_PAD = 30;
+  const TREE_REGION_HEADER = 74;
+  const TREE_REGION_GAP = 90;
+  const TREE_MIN_ZOOM = 0.2;
+  const TREE_MAX_ZOOM = 1.6;
+  // Full names for the abbreviated chain names used in the tree data
+  const TREE_NAME_EXPANSIONS = {
+    'Shield Cap.': 'Shield Capacity', 'Shield Rech.': 'Shield Recharge', 'Carry Cap.': 'Carry Capacity',
+    'Echo Loc.': 'Echo Location', 'Ore Detect': 'Ore Detector', 'Chain Light.': 'Chain Lightning',
+    'Teleport CDR': 'Teleport Cooldown', 'Critical': 'Critical Hit', 'Reflect': 'Damage Reflect',
+    'Radar': 'Ground Radar'
+  };
 
   /* ======================================================================
      DOM
@@ -1132,7 +1520,32 @@
   const particles = new SZ.GameEffects.ParticleSystem();
   const screenShake = new SZ.GameEffects.ScreenShake();
   const floatingText = new SZ.GameEffects.FloatingText();
-  const starfield = new SZ.GameEffects.Starfield(CANVAS_W, CANVAS_H * 0.85, 160);
+  {
+    // Floating messages use the UI font and are kept fully on screen
+    const addFloating = floatingText.add.bind(floatingText);
+    const recentFloats = [];
+    floatingText.add = (x, y, text, opts) => {
+      opts = Object.assign({}, opts);
+      opts.font = (opts.font || 'bold 14px sans-serif').replace(/sans-serif$/, UI_FONT);
+      ctx.save();
+      ctx.font = opts.font;
+      const half = ctx.measureText(String(text)).width / 2 + 8;
+      ctx.restore();
+      x = half * 2 >= CANVAS_W ? CANVAS_W / 2 : Math.max(half, Math.min(CANVAS_W - half, x));
+      y = Math.max(96, Math.min(CANVAS_H - 24, y));
+      // Stack messages that pop up at the same spot instead of overlapping them
+      const now = performance.now();
+      while (recentFloats.length && now - recentFloats[0].t > 700)
+        recentFloats.shift();
+      const lineH = (parseFloat((/(\d+(?:\.\d+)?)px/.exec(opts.font) || [0, 14])[1]) || 14) * 1.2;
+      for (let tries = 0; tries < 5 && recentFloats.some(r => Math.abs(r.x - x) < r.half + half && Math.abs(r.y - (now - r.t) * 0.09 - y) < lineH); ++tries)
+        y -= lineH;
+      recentFloats.push({ x, y, half, t: now }); // y drifts up ~0.09 px/ms
+      addFloating(x, y, text, opts);
+    };
+  }
+  let surfaceArt = null;                 // cached sky, mountains, ground, dome glass
+  const enemyHitFlash = new WeakMap();   // enemy -> white flash strength after a hit
 
   /* ======================================================================
      ANIMATION STATE
@@ -1178,11 +1591,20 @@
   let tutorialSeen = false;
   let showTutorial = false;
   let tutorialPage = 0;
+  // Each page: intro paragraph plus rows of [key, text] (key null = plain bullet)
   const TUTORIAL_PAGES = [
-    { title: 'How to Play', lines: ['Defend your dome from alien waves on the surface', 'while mining resources underground!', '', 'Click/Tap = Fire weapon (surface) / Mine (underground)', 'Arrow Keys/WASD = Move drill underground', 'Space/Tab = Toggle surface / underground'] },
-    { title: 'Upgrades & Tips', lines: ['Press U to open the upgrade shop.', 'Upgrade weapon, dome armor, drill, fire rate.', '', 'Mine resources (iron, copper, gold, gems...) for upgrades.', 'Return to the surface before waves arrive!', 'Press H anytime to see this help again.'] },
-    { title: 'Gadgets', lines: ['Choose a primary gadget at game start.', 'Find golden gadget chambers underground (2x2 tiles).', '', 'Press R to activate the Repellent Field.', 'Press B to use Blast Mining charges.', 'Gadgets from chambers activate on pickup!'] },
-    { title: 'Tools', lines: ['Unlock tools from the upgrade panel (click "Tools").', 'Press 1-5 to select/activate unlocked tools:', '', '1=Drill (fast column mining), 2=Blast (3x3 clear)', '3=Scanner (reveals nearby ores), 4=Reinforced Dome', '5=Teleporter (instant return to surface)'] }
+    { title: 'How to Play', icon: 'dome',
+      intro: 'Defend your dome from alien waves on the surface while mining resources underground!',
+      items: [['Click', 'Fire the laser (surface) / dig (underground)'], ['WASD / Arrows', 'Move the keeper and mine underground'], ['Space / Tab', 'Switch between surface and mine']] },
+    { title: 'Upgrades & Tips', icon: 'pickaxe',
+      intro: 'Mine iron, copper, gold, gems and more, then spend them on upgrades.',
+      items: [['U', 'Open the upgrade tree (on the surface)'], [null, 'Upgrade weapon, dome armor, drill and fire rate'], [null, 'Return to the surface before a wave arrives!'], ['H', 'Show this help again anytime']] },
+    { title: 'Gadgets', icon: 'gear',
+      intro: 'Choose a primary gadget at the start of each run. Golden 2x2 gadget chambers underground hide more of them.',
+      items: [['R', 'Activate the Repellent Field'], ['B', 'Use Blast Mining charges'], [null, 'Gadgets from chambers activate on pickup!']] },
+    { title: 'Tools', icon: 'drill',
+      intro: 'Unlock tools in the Tools section of the upgrade panel, then use them with the number keys.',
+      items: [['1', 'Drill: fast column mining'], ['2', 'Blast: clears a 3x3 area'], ['3', 'Scanner: reveals nearby ores'], ['4', 'Reinforced Dome: takes less damage'], ['5', 'Teleporter: instant return to the surface']] }
   ];
 
   let state = STATE_READY;
@@ -1264,7 +1686,6 @@
   /* ── Upgrade Dialog (full-screen tree) ── */
   let upgradeTreeLevels = {};   // { nodeId: currentLevel }
   let upgradeDialogHover = null; // hovered node id
-  let upgradeDialogScroll = 0;  // vertical scroll offset
   let stateBeforeUpgradeDialog = null; // state to restore when closing dialog
 
   /* ── Tooltip ── */
@@ -1274,6 +1695,7 @@
     y: 0,
     visible: false,
     delayTimer: 0,
+    anchor: null,     // optional {x, y, w, h} box to place the tooltip beside
     lastHoverKey: ''  // identity of what we are hovering; resets delay when it changes
   };
   const TOOLTIP_DELAY = 0.2; // seconds before tooltip appears
@@ -1288,6 +1710,12 @@
   let upgradePanStartY = 0;     // drag start mouse Y
   let upgradePanBaseX = 0;      // pan offset at drag start
   let upgradePanBaseY = 0;      // pan offset at drag start
+  const treeCam = { tz: 1, tx: 0, ty: 0, last: 0 }; // camera target the view eases towards
+  let treeTab = 'dome';         // 'all' or a branch id
+  let treeFocusId = null;       // keyboard-selected node
+  let treeLayout = null;        // cached node positions and branch regions
+  let treeNodeInfo = null;      // cached display names / chain positions
+  const treePurchaseFlash = {}; // nodeId -> purchase time (ms) for the flash effect
 
   const PRIMARY_GADGETS = [
     { key: 'shield', name: 'Shield Generator', icon: 'shield', desc: ['Absorbs the first hit of each wave.', 'Recharges when a new wave starts.'] },
@@ -1305,41 +1733,39 @@
   const keys = {};
 
   /* ======================================================================
-     DETERMINISTIC SEED FOR TERRAIN TEXTURE
+     CACHED ART
      ====================================================================== */
 
-  // Pre-generate dirt texture noise offsets for each tile
-  let dirtNoise = [];
-  function generateDirtNoise() {
-    dirtNoise = [];
-    for (let r = 0; r < GRID_ROWS; ++r) {
-      const row = [];
-      for (let c = 0; c < GRID_COLS; ++c) {
-        const dots = [];
-        for (let d = 0; d < 6; ++d)
-          dots.push({
-            ox: Math.random() * (TILE_SIZE - 6) + 3,
-            oy: Math.random() * (TILE_SIZE - 6) + 3,
-            size: 1 + Math.random() * 2.5,
-            shade: Math.random() * 0.3
-          });
-        row.push(dots);
-      }
-      dirtNoise.push(row);
-    }
-  }
+  let tileArt = null; // cached underground textures (see buildTileArt)
 
   /* ======================================================================
      CANVAS SETUP
      ====================================================================== */
 
+  // Backing-store pixels per logical (CANVAS_W x CANVAS_H) unit
+  let renderScale = 1;
+
   function setupCanvas() {
-    // Fixed internal resolution -- CSS (width:100%; height:100%) scales the
-    // canvas to fill the client area. This avoids per-element scaling, keeps
-    // tile count constant, and all mouse handlers already translate coordinates
-    // via CANVAS_W/rect.width.
-    canvas.width = CANVAS_W;
-    canvas.height = CANVAS_H;
+    // Fixed logical resolution, letterboxed into the client area so the
+    // aspect ratio never distorts. The backing store matches the on-screen
+    // size (times devicePixelRatio) so text and sprites stay sharp; every
+    // frame starts with a scale transform. Mouse handlers translate
+    // coordinates via CANVAS_W / rect.width, which still holds.
+    const frame = canvas.parentElement;
+    const fw = (frame && frame.clientWidth) || CANVAS_W;
+    const fh = (frame && frame.clientHeight) || CANVAS_H;
+    const fit = Math.min(fw / CANVAS_W, fh / CANVAS_H);
+    const cssW = Math.max(1, Math.floor(CANVAS_W * fit));
+    const cssH = Math.max(1, Math.floor(CANVAS_H * fit));
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    renderScale = Math.max(0.25, Math.min(2, (cssW / CANVAS_W) * (window.devicePixelRatio || 1)));
+    const bw = Math.round(CANVAS_W * renderScale);
+    const bh = Math.round(CANVAS_H * renderScale);
+    if (canvas.width !== bw || canvas.height !== bh) {
+      canvas.width = bw;
+      canvas.height = bh;
+    }
   }
 
   /* ======================================================================
@@ -1777,8 +2203,6 @@
     // Initialize persistent tile mining HP arrays
     initTileHP();
 
-    generateDirtNoise();
-    generateOreSpeckles();
   }
 
   // Get intrinsic tile hardness (independent of player upgrades)
@@ -1913,13 +2337,13 @@
     for (const node of UPGRADE_TREE)
       upgradeTreeLevels[node.id] = 0;
     upgradeDialogHover = null;
-    upgradeDialogScroll = 0;
     stateBeforeUpgradeDialog = null;
     upgradeZoom = 1.0;
     upgradePanX = 0;
     upgradePanY = 0;
     upgradePanning = false;
     upgradeViewCustomized = false;
+    treeFocusId = null;
 
     // Reset tooltip
     clearTooltip();
@@ -2128,9 +2552,6 @@
       }
     }
 
-    // Update starfield
-    starfield.update(dt);
-
     // Update enemy animation phases
     for (const e of enemies) {
       if (e.wobblePhase === undefined) {
@@ -2139,6 +2560,9 @@
         e.eyeBlinkTimer = 2 + Math.random() * 3;
         e.eyeBlinking = false;
       }
+      const hf = enemyHitFlash.get(e);
+      if (hf > 0)
+        enemyHitFlash.set(e, Math.max(0, hf - dt * 6));
       e.wobblePhase += dt * 4;
       e.legPhase += dt * 8;
       if (e.type === 'flyer')
@@ -2196,6 +2620,7 @@
      ====================================================================== */
 
   function applyDamageToEnemy(e, amount) {
+    enemyHitFlash.set(e, 0.8);
     if (e.shield > 0) {
       const absorbed = Math.min(e.shield, amount);
       e.shield -= absorbed;
@@ -3408,107 +3833,553 @@
   // and columns are assigned left-to-right per row. A fixed cell size
   // guarantees no two nodes can ever overlap.
   function computeTreeLayout() {
+    if (treeLayout)
+      return treeLayout.nodes;
     const nodes = [];
-    const margin = 40;
-    const branchGap = 32;
-    const startY = 200;
-    const cellW = 280;   // horizontal cell pitch
-    const cellH = 160;    // vertical cell pitch
+    const regions = {};
+    const pitchX = TREE_CARD_W + TREE_GAP_X;
+    const pitchY = TREE_CARD_H + TREE_GAP_Y;
 
-    // First pass: determine how many columns each branch needs so we can
-    // allocate horizontal space proportionally.
-    const branchGrids = []; // per-branch: { branch, gridNodes: [{node, row, col}], maxCol, maxRow }
-
+    // Per branch: depth = longest prerequisite chain (left to right);
+    // lanes = chains of nodes continuing a parent, packed into rows.
+    const branchGrids = [];
     for (const branch of TREE_BRANCH_ORDER) {
       const branchNodes = UPGRADE_TREE.filter(n => n.branch === branch);
       const nodeMap = {};
-      for (const n of branchNodes)
-        nodeMap[n.id] = n;
-
-      // --- Row assignment via topological depth ---
-      const rowOf = {};
-      const assignRow = (n) => {
-        if (rowOf[n.id] !== undefined) return rowOf[n.id];
+      branchNodes.forEach((n, i) => { nodeMap[n.id] = { n, i }; });
+      const depthOf = {};
+      const assignDepth = (n) => {
+        if (depthOf[n.id] !== undefined) return depthOf[n.id];
         let maxParent = -1;
         for (const pid of n.prereqs)
           if (nodeMap[pid])
-            maxParent = Math.max(maxParent, assignRow(nodeMap[pid]));
-        rowOf[n.id] = maxParent + 1;
-        return rowOf[n.id];
+            maxParent = Math.max(maxParent, assignDepth(nodeMap[pid].n));
+        depthOf[n.id] = maxParent + 1;
+        return depthOf[n.id];
       };
-      for (const n of branchNodes) assignRow(n);
+      branchNodes.forEach(assignDepth);
 
-      // --- Column assignment ---
-      // Group nodes by row, then assign columns left-to-right.
-      // To produce a visually pleasing tree we sort each row's nodes so that
-      // nodes sharing a common parent stay adjacent, ordered by their parent's
-      // column (assigned in the previous row).
-      const byRow = {};
-      let maxRow = 0;
-      for (const n of branchNodes) {
-        const r = rowOf[n.id];
-        if (!byRow[r]) byRow[r] = [];
-        byRow[r].push(n);
-        if (r > maxRow) maxRow = r;
+      const order = branchNodes.slice().sort((a, b) => depthOf[a.id] - depthOf[b.id] || nodeMap[a.id].i - nodeMap[b.id].i);
+      const lanes = [];
+      const laneOf = {};
+      const continued = {};
+      for (const n of order) {
+        const parents = n.prereqs.filter(p => nodeMap[p]).sort((a, b) => depthOf[b] - depthOf[a]);
+        const cont = parents.find(p => !continued[p]);
+        let lane;
+        if (cont) {
+          lane = laneOf[cont];
+          continued[cont] = true;
+          lane.ids.push(n.id);
+        } else {
+          lane = { ids: [n.id], parent: parents.length ? laneOf[parents[0]] : null, kids: [] };
+          lanes.push(lane);
+          if (lane.parent)
+            lane.parent.kids.push(lane);
+        }
+        laneOf[n.id] = lane;
       }
+      // Depth-first lane order keeps every sub-chain right below its parent;
+      // lanes share a row when their depth ranges leave a free cell between them
+      const ordered = [];
+      const visit = (l) => {
+        ordered.push(l);
+        l.kids.forEach(visit);
+      };
+      lanes.filter(l => !l.parent).forEach(visit);
+      const rowSpans = [];
+      for (const l of ordered) {
+        const ds = l.ids.map(id => depthOf[id]);
+        const lo = Math.min(...ds), hi = Math.max(...ds);
+        let r = l.parent ? l.parent.row + 1 : rowSpans.length;
+        for (;; ++r) {
+          rowSpans[r] = rowSpans[r] || [];
+          if (rowSpans[r].every(([a, b]) => hi < a - 1 || lo > b + 1))
+            break;
+        }
+        rowSpans[r].push([lo, hi]);
+        l.row = r;
+      }
+      let maxDepth = 0;
+      for (const n of branchNodes)
+        maxDepth = Math.max(maxDepth, depthOf[n.id]);
+      branchGrids.push({ branch, branchNodes, depthOf, laneOf, rows: rowSpans.length, cols: maxDepth + 1 });
+    }
 
-      const colOf = {};
-      let globalMaxCol = 0;
-      for (let r = 0; r <= maxRow; ++r) {
-        const rowNodes = byRow[r];
-        if (!rowNodes) continue;
-
-        // Sort: by minimum parent column (so children cluster under parents),
-        // then by definition order for stability.
-        rowNodes.sort((a, b) => {
-          const aParentCol = Math.min(...a.prereqs.filter(p => nodeMap[p]).map(p => colOf[p] ?? 0), Infinity);
-          const bParentCol = Math.min(...b.prereqs.filter(p => nodeMap[p]).map(p => colOf[p] ?? 0), Infinity);
-          const apc = aParentCol === Infinity ? 0 : aParentCol;
-          const bpc = bParentCol === Infinity ? 0 : bParentCol;
-          if (apc !== bpc) return apc - bpc;
-          return branchNodes.indexOf(a) - branchNodes.indexOf(b);
+    // Regions in a 2x2 arrangement: dome | mining over movement | weapon
+    const regionW = (g) => g.cols * pitchX - TREE_GAP_X + TREE_REGION_PAD * 2;
+    const regionH = (g) => TREE_REGION_HEADER + g.rows * pitchY - TREE_GAP_Y + TREE_REGION_PAD;
+    const colW = [Math.max(regionW(branchGrids[0]), regionW(branchGrids[2])), Math.max(regionW(branchGrids[1]), regionW(branchGrids[3]))];
+    const rowH = [Math.max(regionH(branchGrids[0]), regionH(branchGrids[1])), Math.max(regionH(branchGrids[2]), regionH(branchGrids[3]))];
+    for (let i = 0; i < branchGrids.length; ++i) {
+      const g = branchGrids[i];
+      const gx = i % 2 ? colW[0] + TREE_REGION_GAP : 0;
+      const gy = i >= 2 ? rowH[0] + TREE_REGION_GAP : 0;
+      const cx = gx + (colW[i % 2] - regionW(g)) / 2;
+      regions[g.branch] = { x: cx, y: gy, w: regionW(g), h: regionH(g), branch: g.branch };
+      for (const n of g.branchNodes)
+        nodes.push({
+          node: n,
+          x: cx + TREE_REGION_PAD + g.depthOf[n.id] * pitchX,
+          y: gy + TREE_REGION_HEADER + g.laneOf[n.id].row * pitchY,
+          w: TREE_CARD_W,
+          h: TREE_CARD_H,
+          branch: g.branch
         });
+    }
+    const byId = {};
+    for (const ln of nodes)
+      byId[ln.node.id] = ln;
+    regions.all = { x: 0, y: 0, w: colW[0] + colW[1] + TREE_REGION_GAP, h: rowH[0] + rowH[1] + TREE_REGION_GAP };
+    treeLayout = { nodes, byId, regions };
+    return nodes;
+  }
 
-        for (let c = 0; c < rowNodes.length; ++c) {
-          colOf[rowNodes[c].id] = c;
-          if (c > globalMaxCol) globalMaxCol = c;
+  // Screen area the tree is drawn into (below the header, above the footer)
+  const TREE_VIEW = { x: 0, y: 156, w: CANVAS_W, h: CANVAS_H - 156 - 58 };
+
+  // Display name and chain info for a tree node: "Shield Cap. L3" becomes
+  // "Shield Capacity" shown with level pip 3 of the 7-node chain.
+  function getTreeNodeInfo(node) {
+    if (treeNodeInfo)
+      return treeNodeInfo[node.id];
+    treeNodeInfo = {};
+    const chains = {};
+    for (const n of UPGRADE_TREE) {
+      const m = /^(.*?)\s+L(\d+)$/.exec(n.name);
+      let base = m ? m[1] : n.name;
+      base = TREE_NAME_EXPANSIONS[base] || base;
+      const step = m ? parseInt(m[2], 10) : 1;
+      const key = n.branch + '|' + base;
+      (chains[key] = chains[key] || []).push({ id: n.id, step });
+      treeNodeInfo[n.id] = { title: base, chain: chains[key] };
+    }
+    for (const key in chains)
+      chains[key].sort((a, b) => a.step - b.step);
+    for (const id in treeNodeInfo) {
+      const info = treeNodeInfo[id];
+      info.index = info.chain.findIndex(c => c.id === id);
+    }
+    return treeNodeInfo[node.id];
+  }
+
+  function fitTreeView(tab, instant) {
+    computeTreeLayout();
+    const r = treeLayout.regions[tab] || treeLayout.regions.all;
+    const pad = 24;
+    const z = Math.max(TREE_MIN_ZOOM, Math.min(1, (TREE_VIEW.w - pad * 2) / r.w, (TREE_VIEW.h - pad * 2) / r.h));
+    treeCam.tz = z;
+    treeCam.tx = TREE_VIEW.x + TREE_VIEW.w / 2 - (r.x + r.w / 2) * z;
+    treeCam.ty = TREE_VIEW.y + TREE_VIEW.h / 2 - (r.y + r.h / 2) * z;
+    if (instant) {
+      upgradeZoom = treeCam.tz;
+      upgradePanX = treeCam.tx;
+      upgradePanY = treeCam.ty;
+    }
+  }
+
+  function setTreeTab(tab) {
+    if (treeTab === tab) {
+      fitTreeView(tab);
+      return;
+    }
+    treeTab = tab;
+    fitTreeView(tab);
+    SZ.GameAudio.play('select');
+    if (tab !== 'all' && treeFocusId && computeTreeLayout() && treeLayout.byId[treeFocusId].branch !== tab)
+      treeFocusId = null;
+  }
+
+  // Header tabs: all branches plus one per branch
+  function getTreeTabs() {
+    const ids = ['all'].concat(TREE_BRANCH_ORDER);
+    const tabW = 196, gap = 10;
+    const x0 = CANVAS_W / 2 - (ids.length * tabW + (ids.length - 1) * gap) / 2;
+    return ids.map((id, i) => ({ id, x: x0 + i * (tabW + gap), y: 66, w: tabW, h: 36 }));
+  }
+
+  function treeNodeState(node) {
+    const lvl = getTreeNodeLevel(node.id);
+    if (lvl >= node.maxLevel) return 'owned';
+    if (!arePrereqsMet(node)) return 'locked';
+    return canAffordTreeNode(node) ? 'ready' : 'poor';
+  }
+
+  // Cost as "20 [iron] 10 [cobalt]" with per-resource colouring, shrunk to maxW
+  function drawCostRow(cost, x, y, maxW, px) {
+    const parts = [];
+    for (const key in cost)
+      if ((cost[key] || 0) > 0)
+        parts.push({ key, n: cost[key], ok: (resources[key] || 0) >= cost[key] });
+    if (!parts.length) return;
+    let size = px;
+    let total;
+    for (;;) {
+      ctx.font = uiFont(size, 'bold');
+      total = 0;
+      for (const p of parts)
+        total += ctx.measureText(String(p.n)).width + size * 1.15 + size * 0.5;
+      total -= size * 0.5;
+      if (total <= maxW || size <= 9) break;
+      --size;
+    }
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    let cx = x;
+    for (const p of parts) {
+      if (cx > x + maxW) break;
+      ctx.fillStyle = p.ok ? '#d8f5dc' : '#ff8a8a';
+      const label = String(p.n);
+      ctx.fillText(label, cx, y + 1);
+      cx += ctx.measureText(label).width + 2;
+      drawSprite(p.key, cx + size * 0.55, y, size * 1.1, p.ok ? 1 : 0.7);
+      cx += size * 1.15 + size * 0.5;
+    }
+  }
+
+  // Orthogonal connector with rounded corners routed through the empty
+  // channels between cards (never across a card)
+  function strokeTreeConnector(parent, child) {
+    const px = parent.x + parent.w, py = parent.y + parent.h / 2;
+    const cx = child.x, cy = child.y + child.h / 2;
+    const x1 = px + TREE_GAP_X / 2;
+    const x2 = cx - TREE_GAP_X / 2;
+    const pts = [[px, py]];
+    if (Math.abs(py - cy) < 0.5)
+      pts.push([cx, cy]);
+    else if (Math.abs(x1 - x2) < 0.5) {
+      pts.push([x1, py], [x1, cy], [cx, cy]);
+    } else {
+      // Run along the gap row next to the child's lane
+      const chY = cy > py ? child.y - TREE_GAP_Y / 2 : child.y + child.h + TREE_GAP_Y / 2;
+      pts.push([x1, py], [x1, chY], [x2, chY], [x2, cy], [cx, cy]);
+    }
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length - 1; ++i)
+      ctx.arcTo(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], 10);
+    ctx.lineTo(pts[pts.length - 1][0], pts[pts.length - 1][1]);
+    ctx.stroke();
+  }
+
+  let treeNebulaCanvas = null;
+
+  function drawTreeBackground() {
+    const g = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+    g.addColorStop(0, '#0b0f1e');
+    g.addColorStop(1, '#05060c');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    if (!treeNebulaCanvas) {
+      treeNebulaCanvas = document.createElement('canvas');
+      treeNebulaCanvas.width = 700;
+      treeNebulaCanvas.height = 500;
+      const n = treeNebulaCanvas.getContext('2d');
+      const blobs = [[160, 140, 220, '60,90,200'], [520, 120, 180, '150,60,190'], [420, 380, 240, '30,130,170'], [120, 420, 160, '190,90,60']];
+      for (const [bx, by, br, col] of blobs) {
+        const rg = n.createRadialGradient(bx, by, 0, bx, by, br);
+        rg.addColorStop(0, `rgba(${col},0.22)`);
+        rg.addColorStop(1, `rgba(${col},0)`);
+        n.fillStyle = rg;
+        n.fillRect(0, 0, 700, 500);
+      }
+      n.fillStyle = 'rgba(255,255,255,0.5)';
+      for (let i = 0; i < 140; ++i) {
+        const s = ((i * 7919) % 97) / 97;
+        n.globalAlpha = 0.15 + s * 0.5;
+        n.fillRect((i * 7307) % 700, (i * 5279) % 500, s > 0.8 ? 1.5 : 1, s > 0.8 ? 1.5 : 1);
+      }
+      n.globalAlpha = 1;
+    }
+    // Nebula drifts slightly with the pan for depth
+    const ox = ((upgradePanX * 0.05) % 140) - 70;
+    const oy = ((upgradePanY * 0.05) % 100) - 50;
+    ctx.drawImage(treeNebulaCanvas, ox - 70, oy - 50, CANVAS_W + 140, CANVAS_H + 100);
+
+    // Blueprint grid in tree space
+    const step = 64 * upgradeZoom;
+    if (step >= 10) {
+      ctx.save();
+      ctx.beginPath();
+      const sx = ((upgradePanX % step) + step) % step;
+      const sy = ((upgradePanY % step) + step) % step;
+      for (let x = sx; x < CANVAS_W; x += step) {
+        ctx.moveTo(Math.round(x) + 0.5, TREE_VIEW.y);
+        ctx.lineTo(Math.round(x) + 0.5, TREE_VIEW.y + TREE_VIEW.h);
+      }
+      for (let y = sy; y < CANVAS_H; y += step) {
+        if (y < TREE_VIEW.y || y > TREE_VIEW.y + TREE_VIEW.h) continue;
+        ctx.moveTo(0, Math.round(y) + 0.5);
+        ctx.lineTo(CANVAS_W, Math.round(y) + 0.5);
+      }
+      ctx.strokeStyle = 'rgba(110,150,255,0.05)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawTreeCard(ln, st, compact) {
+    const node = ln.node;
+    const x = ln.x, y = ln.y, w = ln.w, h = ln.h;
+    const color = TREE_BRANCH_COLORS[ln.branch];
+    const isHover = upgradeDialogHover === node.id;
+    const isFocus = treeFocusId === node.id;
+    const info = getTreeNodeInfo(node);
+    const dim = st === 'locked';
+
+    ctx.save();
+    // Drop shadow (cheap offset rect instead of blur)
+    roundRectPath(x + 3, y + 5, w, h, 12);
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fill();
+
+    roundRectPath(x, y, w, h, 12);
+    if (st === 'owned')
+      ctx.fillStyle = hexToRgba(color, 0.26);
+    else if (st === 'ready')
+      ctx.fillStyle = isHover || isFocus ? hexToRgba(color, 0.3) : hexToRgba(color, 0.16);
+    else if (st === 'poor')
+      ctx.fillStyle = 'rgba(40,36,30,0.95)';
+    else
+      ctx.fillStyle = 'rgba(16,18,26,0.95)';
+    ctx.fill();
+    // Inner sheen
+    ctx.save();
+    ctx.clip();
+    ctx.fillStyle = st === 'locked' ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.06)';
+    ctx.fillRect(x, y, w, h * 0.45);
+    ctx.restore();
+
+    // Border by state
+    roundRectPath(x, y, w, h, 12);
+    if (st === 'owned') {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = color;
+    } else if (st === 'ready') {
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 8 + Math.sin(animTime * 4) * 4;
+    } else if (st === 'poor') {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,182,72,0.65)';
+    } else {
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(120,130,160,0.3)';
+      ctx.setLineDash([6, 5]);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+
+    if (isHover || isFocus) {
+      roundRectPath(x - 4, y - 4, w + 8, h + 8, 15);
+      ctx.lineWidth = isFocus ? 3 : 2;
+      ctx.strokeStyle = isFocus ? UI.gold : 'rgba(255,255,255,0.85)';
+      if (isFocus) {
+        ctx.shadowColor = UI.gold;
+        ctx.shadowBlur = 12;
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    // Icon well
+    roundRectPath(x + 10, y + 10, 44, 44, 9);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = st === 'locked' ? 'rgba(255,255,255,0.06)' : hexToRgba(color, 0.45);
+    ctx.stroke();
+    drawSprite(node.icon, x + 32, y + 32, 32, dim ? 0.4 : 1);
+
+    // Chain pips under the icon
+    if (info.chain.length > 1) {
+      const n = info.chain.length;
+      const pw = Math.min(8, (40 - (n - 1) * 2) / n);
+      const total = n * pw + (n - 1) * 2;
+      let px = x + 32 - total / 2;
+      for (let i = 0; i < n; ++i) {
+        const owned = isTreeNodeMaxed(info.chain[i].id);
+        ctx.fillStyle = owned ? color : (i === info.index ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.14)');
+        ctx.fillRect(px, y + 62, pw, 6);
+        if (i === info.index) {
+          ctx.fillStyle = 'rgba(255,255,255,0.9)';
+          ctx.fillRect(px, y + 70, pw, 2);
+        }
+        px += pw + 2;
+      }
+    } else if (node.type === 'gadget') {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      fitText('GADGET', x + 32, y + 68, 48, 10, { weight: 'bold', color: dim ? UI.textMute : hexToRgba(color, 0.95), minPx: 8 });
+    }
+
+    // State badge (top-right)
+    if (st === 'owned')
+      drawSprite('check', x + w - 18, y + 18, 22);
+    else if (st === 'locked')
+      drawSprite('lock', x + w - 18, y + 18, 20, 0.7);
+
+    // Name, then cost
+    const textX = x + 64;
+    const textW = w - 64 - (st === 'owned' || st === 'locked' ? 32 : 10);
+    const nameColor = st === 'locked' ? '#6a7288' : (st === 'owned' ? '#ffffff' : UI.text);
+    if (compact) {
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      drawTextBlock(info.title + (info.chain.length > 1 ? ' ' + toRoman(info.index + 1) : ''), textX, y + 8, textW, h - 16, 24, { weight: 'bold', color: nameColor, valign: 'middle', minPx: 14, lineGap: 1.1 });
+    } else {
+      const titleText = info.title + (info.chain.length > 1 ? ' ' + toRoman(info.index + 1) : '');
+      drawTextBlock(titleText, textX, y + 7, textW, 44, 17, { weight: 'bold', color: nameColor, valign: 'middle', minPx: 11, lineGap: 1.15 });
+      if (st === 'owned') {
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        fitText('Owned', textX, y + h - 18, w - 64 - 12, 14, { weight: 'bold', color: color });
+      } else {
+        const cost = node.costs[Math.min(getTreeNodeLevel(node.id), node.costs.length - 1)];
+        ctx.save();
+        if (dim)
+          ctx.globalAlpha *= 0.55;
+        drawCostRow(cost, textX, y + h - 18, w - 64 - 12, 15);
+        ctx.restore();
+      }
+    }
+
+    // Purchase flash
+    const flash = treePurchaseFlash[node.id];
+    if (flash !== undefined) {
+      const t = (performance.now() - flash) / 600;
+      if (t >= 1)
+        delete treePurchaseFlash[node.id];
+      else {
+        roundRectPath(x - t * 16, y - t * 16, w + t * 32, h + t * 32, 12 + t * 10);
+        ctx.lineWidth = 4 * (1 - t);
+        ctx.strokeStyle = hexToRgba(color, 1 - t);
+        ctx.stroke();
+        roundRectPath(x, y, w, h, 12);
+        ctx.fillStyle = `rgba(255,255,255,${0.35 * (1 - t)})`;
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  function toRoman(n) {
+    return ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'][n - 1] || String(n);
+  }
+
+  function hitTreeNode(mx, my) {
+    if (my < TREE_VIEW.y || my > TREE_VIEW.y + TREE_VIEW.h) return null;
+    const { x: tx, y: ty } = screenToTreeCoords(mx, my);
+    for (const ln of computeTreeLayout())
+      if (tx >= ln.x && tx <= ln.x + ln.w && ty >= ln.y && ty <= ln.y + ln.h)
+        return ln;
+    return null;
+  }
+
+  function tryPurchaseTreeNode(node) {
+    const before = getTreeNodeLevel(node.id);
+    if (isTreeNodeAvailable(node) && canAffordTreeNode(node))
+      purchaseTreeNode(node);
+    else
+      SZ.GameAudio.play('error');
+    if (getTreeNodeLevel(node.id) > before)
+      treePurchaseFlash[node.id] = performance.now();
+  }
+
+  // Zoom the tree around a screen point (smoothly animated)
+  function zoomTreeAt(mx, my, factor) {
+    const z = Math.max(TREE_MIN_ZOOM, Math.min(TREE_MAX_ZOOM, treeCam.tz * factor));
+    const ratio = z / treeCam.tz;
+    treeCam.tx = mx - (mx - treeCam.tx) * ratio;
+    treeCam.ty = my - (my - treeCam.ty) * ratio;
+    treeCam.tz = z;
+  }
+
+  // Pan the camera target so a card is fully visible
+  function revealTreeNode(ln) {
+    const z = treeCam.tz;
+    const m = 40;
+    const sx = treeCam.tx + ln.x * z, sy = treeCam.ty + ln.y * z;
+    const sw = ln.w * z, sh = ln.h * z;
+    if (sx < TREE_VIEW.x + m) treeCam.tx += TREE_VIEW.x + m - sx;
+    else if (sx + sw > TREE_VIEW.x + TREE_VIEW.w - m) treeCam.tx -= sx + sw - (TREE_VIEW.x + TREE_VIEW.w - m);
+    if (sy < TREE_VIEW.y + m) treeCam.ty += TREE_VIEW.y + m - sy;
+    else if (sy + sh > TREE_VIEW.y + TREE_VIEW.h - m) treeCam.ty -= sy + sh - (TREE_VIEW.y + TREE_VIEW.h - m);
+  }
+
+  function focusTreeNode(ln) {
+    treeFocusId = ln.node.id;
+    upgradeDialogHover = null;
+    revealTreeNode(ln);
+    const z = treeCam.tz;
+    setTooltip(0, 0, buildUpgradeNodeTooltip(ln.node), 'focus:' + ln.node.id, { x: treeCam.tx + ln.x * z, y: treeCam.ty + ln.y * z, w: ln.w * z, h: ln.h * z });
+    tooltip.delayTimer = TOOLTIP_DELAY;
+  }
+
+  // Keyboard control of the upgrade tree; returns true when the key was used
+  function handleUpgradeDialogKey(e) {
+    const nodes = computeTreeLayout();
+    const tabs = ['all'].concat(TREE_BRANCH_ORDER);
+    if (e.code === 'Tab') {
+      const i = tabs.indexOf(treeTab);
+      setTreeTab(tabs[(i + (e.shiftKey ? tabs.length - 1 : 1)) % tabs.length]);
+      return true;
+    }
+    if (/^Digit[1-5]$/.test(e.code)) {
+      setTreeTab(tabs[parseInt(e.code.slice(5), 10) - 1]);
+      return true;
+    }
+    if (e.code === 'Equal' || e.code === 'NumpadAdd' || e.key === '+') {
+      zoomTreeAt(CANVAS_W / 2, TREE_VIEW.y + TREE_VIEW.h / 2, 1.2);
+      return true;
+    }
+    if (e.code === 'Minus' || e.code === 'NumpadSubtract' || e.key === '-') {
+      zoomTreeAt(CANVAS_W / 2, TREE_VIEW.y + TREE_VIEW.h / 2, 1 / 1.2);
+      return true;
+    }
+    if (e.code === 'Digit0' || e.code === 'Numpad0' || e.code === 'Home') {
+      fitTreeView(treeTab);
+      return true;
+    }
+    const dirs = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1], KeyA: [-1, 0], KeyD: [1, 0], KeyW: [0, -1], KeyS: [0, 1] };
+    const dir = dirs[e.code];
+    const inTab = (ln) => treeTab === 'all' || ln.branch === treeTab;
+    if (dir) {
+      const cur = treeFocusId && treeLayout.byId[treeFocusId];
+      if (!cur || !inTab(cur)) {
+        const first = nodes.find(ln => inTab(ln) && treeNodeState(ln.node) === 'ready') || nodes.find(inTab);
+        if (first)
+          focusTreeNode(first);
+        return true;
+      }
+      const cx = cur.x + cur.w / 2, cy = cur.y + cur.h / 2;
+      let best = null, bestScore = Infinity;
+      for (const ln of nodes) {
+        if (ln === cur || !inTab(ln)) continue;
+        const dx = ln.x + ln.w / 2 - cx, dy = ln.y + ln.h / 2 - cy;
+        const along = dx * dir[0] + dy * dir[1];
+        if (along <= 1) continue;
+        const across = Math.abs(dx * dir[1]) + Math.abs(dy * dir[0]);
+        const score = along + across * 2.5;
+        if (score < bestScore) {
+          bestScore = score;
+          best = ln;
         }
       }
-
-      const gridNodes = branchNodes.map(n => ({ node: n, row: rowOf[n.id], col: colOf[n.id] }));
-      branchGrids.push({ branch, gridNodes, maxCol: globalMaxCol, maxRow });
+      if (best)
+        focusTreeNode(best);
+      return true;
     }
-
-    // Second pass: compute pixel positions.
-    // Distribute branches across the available width, each getting space
-    // proportional to its column count (minimum 1 column).
-    const totalCols = branchGrids.reduce((s, bg) => s + bg.maxCol + 1, 0);
-    const totalBranchGaps = (TREE_BRANCH_ORDER.length - 1) * branchGap;
-    const availW = CANVAS_W - margin * 2 - totalBranchGaps;
-    const colUnit = availW / Math.max(1, totalCols);
-
-    let curX = margin;
-    for (const bg of branchGrids) {
-      const branchCols = bg.maxCol + 1;
-      const branchPixelW = branchCols * Math.max(colUnit, cellW);
-      const branchCenterX = curX + branchPixelW / 2;
-
-      for (const gn of bg.gridNodes) {
-        const nx = branchCenterX + (gn.col - (branchCols - 1) / 2) * cellW - TREE_NODE_W / 2;
-        const ny = startY + gn.row * cellH - upgradeDialogScroll;
-        nodes.push({
-          node: gn.node,
-          x: nx,
-          y: ny,
-          w: TREE_NODE_W,
-          h: TREE_NODE_H,
-          branch: bg.branch
-        });
-      }
-
-      curX += branchPixelW + branchGap;
+    if ((e.code === 'Enter' || e.code === 'Space' || e.code === 'NumpadEnter') && treeFocusId) {
+      const ln = treeLayout.byId[treeFocusId];
+      tryPurchaseTreeNode(ln.node);
+      focusTreeNode(ln);
+      return true;
     }
-    return nodes;
+    return false;
   }
 
   function openUpgradeDialog() {
@@ -3516,38 +4387,14 @@
     stateBeforeUpgradeDialog = state;
     state = STATE_UPGRADE_DIALOG;
     upgradeDialogHover = null;
-    upgradeDialogScroll = 0;
     upgradePanning = false;
-
-    // Only auto-fit on first open; preserve user's zoom/pan after manual interaction
+    clearTooltip();
+    // First open of a run fits the selected branch; afterwards the view is kept
     if (!upgradeViewCustomized) {
-      const layout = computeTreeLayout();
-      if (layout.length) {
-        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-        for (const ln of layout) {
-          if (ln.x < minX) minX = ln.x;
-          if (ln.x + ln.w > maxX) maxX = ln.x + ln.w;
-          if (ln.y < minY) minY = ln.y;
-          if (ln.y + ln.h > maxY) maxY = ln.y + ln.h;
-        }
-        const treeW = maxX - minX + 80; // padding
-        const treeH = maxY - minY + 80;
-        const headerH = 170; // space reserved for title + resource bar
-        const footerH = 50; // space for close hint
-        const fitZoomX = CANVAS_W / treeW;
-        const fitZoomY = (CANVAS_H - headerH - footerH) / treeH;
-        upgradeZoom = Math.min(fitZoomX, fitZoomY, 1.0);
-        upgradeZoom = Math.max(upgradeZoom, 0.3);
-        const centerX = (minX + maxX) / 2;
-        const centerY = (minY + maxY) / 2;
-        upgradePanX = CANVAS_W / 2 - centerX * upgradeZoom;
-        upgradePanY = (headerH + (CANVAS_H - headerH - footerH) / 2) - centerY * upgradeZoom;
-      } else {
-        upgradeZoom = 1.0;
-        upgradePanX = 0;
-        upgradePanY = 0;
-      }
+      fitTreeView(treeTab, true);
+      upgradeViewCustomized = true;
     }
+    treeCam.last = 0;
   }
 
   function closeUpgradeDialog() {
@@ -3558,231 +4405,200 @@
   }
 
   function drawUpgradeDialog() {
-    // Full-screen dark overlay
-    ctx.fillStyle = 'rgba(0,0,0,0.92)';
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    computeTreeLayout();
 
-    // Title (fixed, not affected by zoom/pan)
-    ctx.save();
-    ctx.shadowBlur = 15;
-    ctx.shadowColor = '#ffd700';
-    ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 44px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('UPGRADE TREE', CANVAS_W / 2, 60);
-    ctx.shadowBlur = 0;
-    ctx.restore();
-
-    // Resource bar at top (fixed)
-    const resY = 100;
-    ctx.fillStyle = 'rgba(20,25,40,0.9)';
-    ctx.fillRect(20, resY, CANVAS_W - 40, 56);
-    ctx.strokeStyle = '#3a4a6a';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(20, resY, CANVAS_W - 40, 56);
-
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    const resBarY = resY + 28;
-    let resBarX = 40;
-    for (const entry of RESOURCE_HUD_ENTRIES) {
-      if (resources[entry.key] <= 0 && entry.key !== 'iron' && entry.key !== 'water' && entry.key !== 'cobalt') continue;
-      ctx.fillStyle = entry.color;
-      const resText = `[[${entry.key}]] ${entry.label}:${resources[entry.key]}`;
-      fillIconText(resText, resBarX, resBarY);
-      resBarX += measureIconText(resText) + 20;
-      if (resBarX > CANVAS_W - 280) break;
+    // Smooth camera towards its target (frame-rate independent)
+    const now = performance.now();
+    const dt = treeCam.last ? Math.min(0.1, (now - treeCam.last) / 1000) : 1;
+    treeCam.last = now;
+    if (!upgradePanning) {
+      // Keep at least part of the tree on screen
+      const all = treeLayout.regions.all;
+      const keep = 160;
+      treeCam.tx = Math.min(TREE_VIEW.x + TREE_VIEW.w - keep - all.x * treeCam.tz, Math.max(TREE_VIEW.x + keep - (all.x + all.w) * treeCam.tz, treeCam.tx));
+      treeCam.ty = Math.min(TREE_VIEW.y + TREE_VIEW.h - keep - all.y * treeCam.tz, Math.max(TREE_VIEW.y + keep - (all.y + all.h) * treeCam.tz, treeCam.ty));
+      const k = 1 - Math.exp(-dt * 14);
+      upgradeZoom += (treeCam.tz - upgradeZoom) * k;
+      upgradePanX += (treeCam.tx - upgradePanX) * k;
+      upgradePanY += (treeCam.ty - upgradePanY) * k;
     }
 
-    // Total upgrades stat
-    let totalPurchased = 0, totalAvailable = 0;
-    for (const n of UPGRADE_TREE) {
-      totalPurchased += getTreeNodeLevel(n.id);
-      totalAvailable += n.maxLevel;
-    }
-    ctx.fillStyle = '#aaa';
-    ctx.textAlign = 'right';
-    ctx.fillText(`Upgrades: ${totalPurchased}/${totalAvailable}`, CANVAS_W - 40, resBarY);
+    drawTreeBackground();
 
-    // Apply zoom & pan transform for tree content
+    // ---- Tree content (zoom & pan) ----
     ctx.save();
+    ctx.beginPath();
+    ctx.rect(TREE_VIEW.x, TREE_VIEW.y, TREE_VIEW.w, TREE_VIEW.h);
+    ctx.clip();
     ctx.translate(upgradePanX, upgradePanY);
     ctx.scale(upgradeZoom, upgradeZoom);
 
-    // Compute node layout
-    const layoutNodes = computeTreeLayout();
+    const viewL = (TREE_VIEW.x - upgradePanX) / upgradeZoom;
+    const viewT = (TREE_VIEW.y - upgradePanY) / upgradeZoom;
+    const viewR = viewL + TREE_VIEW.w / upgradeZoom;
+    const viewB = viewT + TREE_VIEW.h / upgradeZoom;
+    const compact = upgradeZoom < 0.6;
 
-    // Branch headers -- derive center X from actual laid-out nodes
+    // Branch regions with headers and progress
     for (const branch of TREE_BRANCH_ORDER) {
-      const bNodes = layoutNodes.filter(ln => ln.branch === branch);
-      if (!bNodes.length) continue;
-      let minX = Infinity, maxX = -Infinity;
-      for (const ln of bNodes) {
-        if (ln.x < minX) minX = ln.x;
-        if (ln.x + ln.w > maxX) maxX = ln.x + ln.w;
-      }
-      const bcx = (minX + maxX) / 2;
-      ctx.fillStyle = TREE_BRANCH_COLORS[branch];
-      ctx.font = 'bold 24px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(TREE_BRANCH_LABELS[branch], bcx, 92 - upgradeDialogScroll);
-    }
-
-    // Draw connection lines first
-    ctx.lineWidth = 4;
-    for (const ln of layoutNodes) {
-      const node = ln.node;
-      for (const pid of node.prereqs) {
-        const parent = layoutNodes.find(l => l.node.id === pid);
-        if (!parent) continue;
-        const fromX = parent.x + parent.w / 2;
-        const fromY = parent.y + parent.h;
-        const toX = ln.x + ln.w / 2;
-        const toY = ln.y;
-
-        const purchased = isTreeNodeMaxed(pid);
-        const childAvail = isTreeNodeAvailable(node);
-
-        if (purchased && childAvail)
-          ctx.strokeStyle = canAffordTreeNode(node) ? TREE_BRANCH_COLORS[ln.branch] : 'rgba(255,165,0,0.5)';
-        else if (purchased)
-          ctx.strokeStyle = 'rgba(100,200,100,0.3)';
-        else
-          ctx.strokeStyle = 'rgba(100,100,100,0.2)';
-
-        ctx.setLineDash(purchased ? [] : [8, 8]);
-        ctx.beginPath();
-        ctx.moveTo(fromX, fromY);
-        // Curved connector
-        const midY = (fromY + toY) / 2;
-        ctx.bezierCurveTo(fromX, midY, toX, midY, toX, toY);
-        ctx.stroke();
-      }
-    }
-    ctx.setLineDash([]);
-
-    // Draw nodes
-    for (const ln of layoutNodes) {
-      const node = ln.node;
-      const x = ln.x, y = ln.y, w = ln.w, h = ln.h;
-      const lvl = getTreeNodeLevel(node.id);
-      const maxed = lvl >= node.maxLevel;
-      const prereqsMet = arePrereqsMet(node);
-      const affordable = canAffordTreeNode(node);
-      const available = prereqsMet && !maxed;
-      const isHover = upgradeDialogHover === node.id;
-
-      // Skip nodes that are fully off-screen
-      if (y + h < 50 || y > CANVAS_H) continue;
-
-      // Node background
-      let bgColor, borderColor, borderWidth;
-      if (maxed) {
-        bgColor = 'rgba(30,80,30,0.7)';
-        borderColor = '#0c0';
-        borderWidth = 2;
-      } else if (available && affordable) {
-        bgColor = isHover ? 'rgba(60,80,120,0.9)' : 'rgba(40,60,100,0.7)';
-        borderColor = isHover ? '#fff' : TREE_BRANCH_COLORS[ln.branch];
-        borderWidth = isHover ? 2.5 : 2;
-      } else if (available && !affordable) {
-        bgColor = 'rgba(40,40,40,0.7)';
-        borderColor = 'rgba(255,165,0,0.6)';
-        borderWidth = 1.5;
-      } else {
-        bgColor = 'rgba(25,25,25,0.6)';
-        borderColor = 'rgba(80,80,80,0.4)';
-        borderWidth = 1;
-      }
-
-      ctx.fillStyle = bgColor;
-      ctx.fillRect(x, y, w, h);
-      ctx.strokeStyle = borderColor;
-      ctx.lineWidth = borderWidth;
-      if (!prereqsMet)
-        ctx.setLineDash([6, 6]);
-      ctx.strokeRect(x, y, w, h);
-      ctx.setLineDash([]);
-
-      // Icon
-      drawSprite(node.icon, x + 22, y + h / 2 - 12, 28, maxed || available ? 1 : 0.55);
-      ctx.textBaseline = 'middle';
-
-      // Name
-      ctx.font = 'bold 18px sans-serif';
-      ctx.textAlign = 'left';
-      ctx.fillStyle = maxed ? '#8f8' : (available ? '#ddd' : '#666');
-      ctx.fillText(node.name, x + 44, y + 28);
-
-      // Cost display
-      if (!maxed) {
-        const cost = node.costs[Math.min(lvl, node.costs.length - 1)];
-        const COST_ABBREV = { iron: 'Fe', water: 'H2O', cobalt: 'Co', copper: 'Cu', tin: 'Sn', coal: 'C', lead: 'Pb', silver: 'Ag', gold: 'Au', quartz: 'Qz', redstone: 'Rs', emerald: 'Em', diamond: 'Di', ruby: 'Rb' };
-        let costParts = [];
-        for (const key in cost)
-          if ((cost[key] || 0) > 0)
-            costParts.push(`${cost[key]}${SPRITES[key] ? `[[${key}]]` : ''}${COST_ABBREV[key] || key}`);
-        const costStr = costParts.join(' ');
-
-        ctx.font = '16px sans-serif';
-        ctx.fillStyle = affordable ? '#0f0' : '#a44';
-        fillIconText(costStr, x + 44, y + 54);
-      }
-
-      // Level indicator / checkmark
-      if (maxed)
-        drawSprite('check', x + w - 22, y + h / 2, 28);
-      else if (!prereqsMet)
-        drawSprite('lock', x + w - 22, y + h / 2, 28, 0.8);
-
-      // Level bar at bottom
-      if (node.maxLevel > 1) {
-        const barX = x + 8;
-        const barY = y + h - 16;
-        const barW = w - 16;
-        const segW = barW / node.maxLevel;
-        for (let s = 0; s < node.maxLevel; ++s) {
-          ctx.fillStyle = s < lvl ? '#0c0' : '#222';
-          ctx.fillRect(barX + s * segW + 2, barY, segW - 4, 8);
+      const r = treeLayout.regions[branch];
+      if (r.x > viewR || r.x + r.w < viewL || r.y > viewB || r.y + r.h < viewT) continue;
+      const color = TREE_BRANCH_COLORS[branch];
+      roundRectPath(r.x, r.y, r.w, r.h, 22);
+      ctx.fillStyle = hexToRgba(color, 0.045);
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = hexToRgba(color, 0.22);
+      ctx.stroke();
+      let owned = 0, total = 0;
+      for (const n of UPGRADE_TREE)
+        if (n.branch === branch) {
+          ++total;
+          if (isTreeNodeMaxed(n.id)) ++owned;
         }
-      } else {
-        // Single-level: thin indicator line
-        const barX = x + 8;
-        const barY = y + h - 12;
-        const barW = w - 16;
-        ctx.fillStyle = maxed ? '#0c0' : '#222';
-        ctx.fillRect(barX, barY, barW, 6);
-      }
-
-      // Type indicator
-      if (node.type === 'gadget') {
-        ctx.font = '14px sans-serif';
-        ctx.textAlign = 'right';
-        ctx.fillStyle = maxed ? '#8f8' : '#888';
-        ctx.fillText('GADGET', x + w - 8, y + h - 20);
-      }
-
-      // Hover tooltip
-      if (isHover && !maxed && available) {
-        ctx.fillStyle = '#ffd700';
-        ctx.font = 'bold 16px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('Click to purchase', x + w / 2, y + h + 20);
+      const headPx = compact ? Math.min(48, 20 / upgradeZoom) : 30;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const labelW = fitText(TREE_BRANCH_LABELS[branch], r.x + TREE_REGION_PAD, r.y + TREE_REGION_HEADER / 2, r.w * 0.5, headPx, { weight: 'bold', color });
+      const mx = r.x + TREE_REGION_PAD + labelW + 24;
+      const mw = Math.min(260, r.x + r.w - TREE_REGION_PAD - mx - 90);
+      if (mw > 40) {
+        drawMeter(mx, r.y + TREE_REGION_HEADER / 2 - 6, mw, 12, owned / total, color);
+        fitText(`${owned} / ${total}`, mx + mw + 12, r.y + TREE_REGION_HEADER / 2, 80, compact ? headPx * 0.6 : 18, { weight: 'bold', color: UI.textDim });
       }
     }
 
-    // End zoom/pan transform
+    // Connectors: locked first, owned last so the brightest lines sit on top
+    const edges = [[], [], []];
+    for (const ln of treeLayout.nodes)
+      for (const pid of ln.node.prereqs) {
+        const parent = treeLayout.byId[pid];
+        if (!parent) continue;
+        const minX = Math.min(parent.x, ln.x) - TREE_GAP_X, maxX = Math.max(parent.x + parent.w, ln.x + ln.w) + TREE_GAP_X;
+        const minY = Math.min(parent.y, ln.y) - TREE_GAP_Y, maxY = Math.max(parent.y + parent.h, ln.y + ln.h) + TREE_GAP_Y;
+        if (minX > viewR || maxX < viewL || minY > viewB || maxY < viewT) continue;
+        const pOwned = isTreeNodeMaxed(pid);
+        edges[pOwned ? (isTreeNodeMaxed(ln.node.id) ? 2 : 1) : 0].push([parent, ln]);
+      }
+    ctx.lineCap = 'round';
+    for (let pass = 0; pass < 3; ++pass)
+      for (const [parent, ln] of edges[pass]) {
+        const color = TREE_BRANCH_COLORS[ln.branch];
+        if (pass === 0) {
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = 'rgba(130,140,170,0.28)';
+          ctx.setLineDash([7, 7]);
+        } else if (pass === 1) {
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = hexToRgba(color, 0.7);
+          ctx.setLineDash([]);
+        } else {
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = color;
+          ctx.setLineDash([]);
+        }
+        strokeTreeConnector(parent, ln);
+      }
+    ctx.setLineDash([]);
+    ctx.lineCap = 'butt';
+
+    // Cards
+    for (const ln of treeLayout.nodes) {
+      if (ln.x > viewR || ln.x + ln.w < viewL || ln.y > viewB || ln.y + ln.h < viewT) continue;
+      drawTreeCard(ln, treeNodeState(ln.node), compact);
+    }
     ctx.restore();
 
-    // Close hint (fixed, not affected by zoom/pan)
-    ctx.fillStyle = '#666';
-    ctx.font = '22px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText(`Press U or Escape to close  |  Scroll=Zoom (${Math.round(upgradeZoom * 100)}%)  |  Right-drag=Pan`, CANVAS_W / 2, CANVAS_H - 20);
+    // Keep the keyboard tooltip glued to the focused card while the camera moves
+    if (treeFocusId && tooltip.lastHoverKey === 'focus:' + treeFocusId) {
+      const ln = treeLayout.byId[treeFocusId];
+      tooltip.anchor = { x: upgradePanX + ln.x * upgradeZoom, y: upgradePanY + ln.y * upgradeZoom, w: ln.w * upgradeZoom, h: ln.h * upgradeZoom };
+    }
+
+    // ---- Header ----
+    drawPanel(12, 8, CANVAS_W - 24, 142, { accent: UI.gold, radius: 14 });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText('Upgrade Tree', 34, 38, 360, 30, { weight: 'bold', color: UI.gold });
+    let totalPurchased = 0;
+    for (const n of UPGRADE_TREE)
+      totalPurchased += getTreeNodeLevel(n.id);
+    ctx.textAlign = 'right';
+    fitText(`${totalPurchased} / ${UPGRADE_TREE.length} upgrades`, CANVAS_W - 300, 38, 220, 18, { weight: 'bold', color: UI.textDim });
+    drawMeter(CANVAS_W - 286, 32, 250, 12, totalPurchased / UPGRADE_TREE.length, UI.gold);
+
+    // Tabs
+    for (const t of getTreeTabs()) {
+      const active = treeTab === t.id;
+      const hover = mouseAimX >= t.x && mouseAimX <= t.x + t.w && mouseAimY >= t.y && mouseAimY <= t.y + t.h;
+      const color = t.id === 'all' ? UI.gold : TREE_BRANCH_COLORS[t.id];
+      roundRectPath(t.x, t.y, t.w, t.h, 9);
+      ctx.fillStyle = active ? hexToRgba(color, 0.24) : (hover ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)');
+      ctx.fill();
+      ctx.lineWidth = active ? 2 : 1;
+      ctx.strokeStyle = active ? color : 'rgba(255,255,255,0.1)';
+      ctx.stroke();
+      let label = t.id === 'all' ? 'All' : TREE_BRANCH_LABELS[t.id].charAt(0) + TREE_BRANCH_LABELS[t.id].slice(1).toLowerCase();
+      if (t.id !== 'all') {
+        let o = 0, c = 0;
+        for (const n of UPGRADE_TREE)
+          if (n.branch === t.id) {
+            ++c;
+            if (isTreeNodeMaxed(n.id)) ++o;
+          }
+        label += `  ${o}/${c}`;
+      }
+      ctx.beginPath();
+      ctx.arc(t.x + 18, t.y + t.h / 2, 5, 0, TWO_PI);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText(label, t.x + 32, t.y + t.h / 2 + 1, t.w - 42, 17, { weight: 'bold', color: active ? '#fff' : UI.textDim });
+    }
+
+    // Resource strip
+    const entries = RESOURCE_HUD_ENTRIES;
+    const slotW = (CANVAS_W - 72) / entries.length;
+    for (let i = 0; i < entries.length; ++i) {
+      const e = entries[i];
+      const sx = 36 + i * slotW;
+      const have = resources[e.key] || 0;
+      drawSprite(e.key, sx + 11, 126, 20, have > 0 ? 1 : 0.35);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText(String(have), sx + 25, 127, slotW - 30, 16, { weight: 'bold', color: have > 0 ? e.color : UI.textMute });
+    }
+
+    // ---- Footer: legend and controls ----
+    const fy = CANVAS_H - 50;
+    drawPanel(12, fy, CANVAS_W - 24, 42, { radius: 12, shadow: 8, accent: '#6a8ac8' });
+    const legend = [
+      ['Owned', 'owned'], ['Can buy', 'ready'], ['Need resources', 'poor'], ['Locked', 'locked']
+    ];
+    let lx = 30;
+    for (const [label, st] of legend) {
+      roundRectPath(lx, fy + 13, 26, 16, 5);
+      if (st === 'owned') ctx.fillStyle = hexToRgba(UI.accent, 0.35);
+      else if (st === 'ready') ctx.fillStyle = hexToRgba(UI.accent, 0.18);
+      else if (st === 'poor') ctx.fillStyle = 'rgba(40,36,30,0.95)';
+      else ctx.fillStyle = 'rgba(16,18,26,0.95)';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = st === 'poor' ? 'rgba(255,182,72,0.8)' : (st === 'locked' ? 'rgba(120,130,160,0.5)' : UI.accent);
+      ctx.stroke();
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      lx += 34 + fitText(label, lx + 34, fy + 22, 130, 15, { color: UI.textDim }) + 22;
+    }
+    drawKeyHints([
+      { key: 'Wheel', label: 'Zoom' },
+      { key: 'Drag', label: 'Pan' },
+      { key: '←↑→↓', label: 'Select' },
+      { key: 'Enter', label: 'Buy' },
+      { key: 'Tab', label: 'Branch' },
+      { key: 'Esc', label: 'Close' }
+    ], (lx + CANVAS_W - 24) / 2, fy + 21, CANVAS_W - 24 - lx - 16);
   }
 
   // Convert screen coords to tree-local coords (inverse zoom/pan)
@@ -3794,28 +4610,23 @@
   }
 
   function handleUpgradeDialogClick(mx, my) {
-    const { x: tx, y: ty } = screenToTreeCoords(mx, my);
-    const layoutNodes = computeTreeLayout();
-    for (const ln of layoutNodes) {
-      if (tx >= ln.x && tx <= ln.x + ln.w && ty >= ln.y && ty <= ln.y + ln.h) {
-        const node = ln.node;
-        if (isTreeNodeAvailable(node) && canAffordTreeNode(node))
-          purchaseTreeNode(node);
-        return;
+    for (const t of getTreeTabs())
+      if (mx >= t.x && mx <= t.x + t.w && my >= t.y && my <= t.y + t.h) {
+        setTreeTab(t.id);
+        return true;
       }
+    const ln = hitTreeNode(mx, my);
+    if (ln) {
+      treeFocusId = ln.node.id;
+      tryPurchaseTreeNode(ln.node);
+      return true;
     }
+    return my < TREE_VIEW.y || my > TREE_VIEW.y + TREE_VIEW.h;
   }
 
   function handleUpgradeDialogHover(mx, my) {
-    const { x: tx, y: ty } = screenToTreeCoords(mx, my);
-    const layoutNodes = computeTreeLayout();
-    upgradeDialogHover = null;
-    for (const ln of layoutNodes) {
-      if (tx >= ln.x && tx <= ln.x + ln.w && ty >= ln.y && ty <= ln.y + ln.h) {
-        upgradeDialogHover = ln.node.id;
-        return;
-      }
-    }
+    const ln = hitTreeNode(mx, my);
+    upgradeDialogHover = ln ? ln.node.id : null;
   }
 
   /* ======================================================================
@@ -4094,129 +4905,624 @@
      DRAWING HELPERS
      ====================================================================== */
 
-  function drawGroundLayer() {
-    const groundY = DOME_Y;
+  // Seeded pseudo-random generator so cached art looks the same every run
+  function makeRng(seed) {
+    let s = seed >>> 0;
+    return () => {
+      s = (s + 0x6D2B79F5) >>> 0;
+      let t = s;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
 
-    // Multi-layer ground gradient
-    const groundGrad = ctx.createLinearGradient(0, groundY, 0, CANVAS_H);
-    groundGrad.addColorStop(0, '#3a2510');
-    groundGrad.addColorStop(0.3, '#2a1a0a');
-    groundGrad.addColorStop(1, '#1a0f05');
-    ctx.fillStyle = groundGrad;
-    ctx.fillRect(0, groundY, CANVAS_W, CANVAS_H - groundY);
+  function makeCanvas(w, h) {
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.ceil(w));
+    c.height = Math.max(1, Math.ceil(h));
+    return c;
+  }
 
-    // Ground highlight edge
-    ctx.strokeStyle = '#5a4a2a';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, groundY);
-    ctx.lineTo(CANVAS_W, groundY);
-    ctx.stroke();
-
-    // Grass tufts along the ground line
-    ctx.strokeStyle = '#2a5a1a';
-    ctx.lineWidth = 3;
-    for (let gx = 10; gx < CANVAS_W; gx += 24 + Math.sin(gx * 0.3) * 10) {
-      const tiltSeed = Math.sin(gx * 0.7 + animTime * 0.8);
-      const h = 8 + Math.abs(Math.sin(gx * 0.5)) * 12;
-      ctx.beginPath();
-      ctx.moveTo(gx, groundY);
-      ctx.quadraticCurveTo(gx + tiltSeed * 6, groundY - h * 0.6, gx + tiltSeed * 4, groundY - h);
-      ctx.stroke();
+  // Sky, planets, nebula and faint stars -- rendered once
+  function buildSurfaceArt() {
+    if (surfaceArt) return surfaceArt;
+    const rng = makeRng(1337);
+    const sky = makeCanvas(CANVAS_W, DOME_Y);
+    const g = sky.getContext('2d');
+    const grad = g.createLinearGradient(0, 0, 0, DOME_Y);
+    grad.addColorStop(0, '#02030c');
+    grad.addColorStop(0.45, '#0a0f2e');
+    grad.addColorStop(0.72, '#1a1846');
+    grad.addColorStop(0.9, '#3a2458');
+    grad.addColorStop(1, '#6b3a5e');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, CANVAS_W, DOME_Y);
+    // Nebula clouds
+    const neb = [[300, 260, 340, '70,60,180', 0.18], [980, 180, 300, '40,140,170', 0.14], [700, 420, 420, '150,50,150', 0.12], [1250, 520, 260, '200,90,90', 0.08]];
+    for (const [x, y, r, col, a] of neb) {
+      const rg = g.createRadialGradient(x, y, 0, x, y, r);
+      rg.addColorStop(0, `rgba(${col},${a})`);
+      rg.addColorStop(0.6, `rgba(${col},${a * 0.4})`);
+      rg.addColorStop(1, `rgba(${col},0)`);
+      g.fillStyle = rg;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    // Faint star dust
+    for (let i = 0; i < 420; ++i) {
+      const x = rng() * CANVAS_W, y = rng() * DOME_Y * 0.92;
+      g.fillStyle = `rgba(${200 + rng() * 55 | 0},${200 + rng() * 55 | 0},255,${0.08 + rng() * 0.35 * (1 - y / DOME_Y)})`;
+      g.fillRect(x, y, rng() < 0.15 ? 1.6 : 1, rng() < 0.15 ? 1.6 : 1);
+    }
+    // Ringed gas giant
+    const px = 470, py = 240, pr = 70;
+    g.save();
+    g.translate(px, py);
+    g.rotate(-0.35);
+    g.strokeStyle = 'rgba(220,190,255,0.25)';
+    g.lineWidth = 6;
+    g.beginPath();
+    g.ellipse(0, 0, pr * 1.9, pr * 0.42, 0, Math.PI, TWO_PI);
+    g.stroke();
+    g.restore();
+    const pg = g.createRadialGradient(px - pr * 0.45, py - pr * 0.45, pr * 0.1, px, py, pr);
+    pg.addColorStop(0, '#f0c8ff');
+    pg.addColorStop(0.35, '#a070d0');
+    pg.addColorStop(0.8, '#3a2470');
+    pg.addColorStop(1, '#1a1038');
+    g.fillStyle = pg;
+    g.beginPath();
+    g.arc(px, py, pr, 0, TWO_PI);
+    g.fill();
+    g.save();
+    g.beginPath();
+    g.arc(px, py, pr, 0, TWO_PI);
+    g.clip();
+    g.globalAlpha = 0.18;
+    for (let i = -3; i <= 3; ++i) {
+      g.fillStyle = i % 2 ? '#ffffff' : '#2a1050';
+      g.fillRect(px - pr, py + i * 18 - 4, pr * 2, 8);
+    }
+    g.restore();
+    g.save();
+    g.translate(px, py);
+    g.rotate(-0.35);
+    g.strokeStyle = 'rgba(230,200,255,0.45)';
+    g.lineWidth = 5;
+    g.beginPath();
+    g.ellipse(0, 0, pr * 1.9, pr * 0.42, 0, 0, Math.PI);
+    g.stroke();
+    g.restore();
+    // Small moon
+    const mg = g.createRadialGradient(830, 120, 2, 840, 130, 26);
+    mg.addColorStop(0, '#e8f0ff');
+    mg.addColorStop(0.7, '#8090b8');
+    mg.addColorStop(1, '#303a58');
+    g.fillStyle = mg;
+    g.beginPath();
+    g.arc(840, 130, 24, 0, TWO_PI);
+    g.fill();
+    g.fillStyle = 'rgba(40,50,80,0.35)';
+    for (const [cx, cy, cr] of [[834, 124, 5], [848, 138, 4], [844, 120, 2.5]]) {
+      g.beginPath();
+      g.arc(cx, cy, cr, 0, TWO_PI);
+      g.fill();
     }
 
-    // Pebble/rock details on the ground surface
-    ctx.fillStyle = '#4a3a20';
-    const pebbleSeed = 42;
-    for (let px = 40; px < CANVAS_W; px += 70 + ((px * pebbleSeed) % 40)) {
-      const py = groundY + 10 + ((px * 7) % 30);
-      const pr = 2 + ((px * 3) % 6);
+    // Twinkling stars drawn live
+    const stars = [];
+    for (let i = 0; i < 90; ++i)
+      stars.push({ x: rng() * CANVAS_W, y: rng() * DOME_Y * 0.8, s: 0.8 + rng() * 1.6, p: rng() * TWO_PI, f: 0.6 + rng() * 2.2, big: rng() < 0.12 });
+
+    // Mountain ranges: far, mid, near (wider than the screen for parallax)
+    const ranges = [];
+    const specs = [
+      { base: 210, amp: 150, col1: '#2a2456', col2: '#3c2c62', rim: 'rgba(170,140,255,0.35)', seed: 11, depth: 6 },
+      { base: 130, amp: 100, col1: '#17163a', col2: '#251d48', rim: 'rgba(140,120,230,0.4)', seed: 23, depth: 14 },
+      { base: 60, amp: 50, col1: '#0c0b20', col2: '#14122c', rim: 'rgba(120,110,200,0.45)', seed: 37, depth: 26 }
+    ];
+    for (const sp of specs) {
+      const w = CANVAS_W + 120, h = sp.base + sp.amp + 20;
+      const c = makeCanvas(w, h);
+      const m = c.getContext('2d');
+      // Jagged ridge line by midpoint displacement
+      const r2 = makeRng(sp.seed);
+      const n = 256;
+      const hs = new Array(n + 1);
+      hs[0] = r2();
+      hs[n] = r2();
+      for (let span = n, disp = 1; span > 1; span >>= 1, disp *= 0.56)
+        for (let i = span >> 1; i < n; i += span)
+          hs[i] = (hs[i - (span >> 1)] + hs[i + (span >> 1)]) / 2 + (r2() - 0.5) * disp;
+      let lo = Infinity, hi = -Infinity;
+      for (const v of hs) {
+        lo = Math.min(lo, v);
+        hi = Math.max(hi, v);
+      }
+      const ridge = [];
+      for (let i = 0; i <= n; ++i) {
+        const y = sp.base - sp.amp * 0.5 + ((hs[i] - lo) / (hi - lo)) * sp.amp;
+        ridge.push([i * w / n, h - Math.max(10, y)]);
+      }
+      const mgrad = m.createLinearGradient(0, 0, 0, h);
+      mgrad.addColorStop(0, sp.col2);
+      mgrad.addColorStop(1, sp.col1);
+      m.fillStyle = mgrad;
+      m.beginPath();
+      m.moveTo(0, h);
+      for (const [x, y] of ridge)
+        m.lineTo(x, y);
+      m.lineTo(w, h);
+      m.closePath();
+      m.fill();
+      m.strokeStyle = sp.rim;
+      m.lineWidth = 2;
+      m.beginPath();
+      ridge.forEach(([x, y], i) => i ? m.lineTo(x, y + 1) : m.moveTo(x, y + 1));
+      m.stroke();
+      // Haze at the foot
+      const hz = m.createLinearGradient(0, h * 0.4, 0, h);
+      hz.addColorStop(0, 'rgba(120,70,140,0)');
+      hz.addColorStop(1, 'rgba(120,70,140,0.25)');
+      m.globalCompositeOperation = 'source-atop';
+      m.fillStyle = hz;
+      m.fillRect(0, 0, w, h);
+      m.globalCompositeOperation = 'source-over';
+      ranges.push({ canvas: c, depth: sp.depth, h });
+    }
+
+    // Ground strip with strata, rocks and crystals
+    const gh = CANVAS_H - DOME_Y;
+    const ground = makeCanvas(CANVAS_W, gh);
+    const gg = ground.getContext('2d');
+    const sg = gg.createLinearGradient(0, 0, 0, gh);
+    sg.addColorStop(0, '#4a3048');
+    sg.addColorStop(0.08, '#38243a');
+    sg.addColorStop(0.5, '#24172a');
+    sg.addColorStop(1, '#140c18');
+    gg.fillStyle = sg;
+    gg.fillRect(0, 0, CANVAS_W, gh);
+    const r3 = makeRng(99);
+    for (let band = 0; band < 4; ++band) {
+      const by = 18 + band * 22;
+      gg.strokeStyle = `rgba(0,0,0,${0.18 + band * 0.04})`;
+      gg.lineWidth = 2;
+      gg.beginPath();
+      for (let x = 0; x <= CANVAS_W; x += 10)
+        gg.lineTo(x, by + Math.sin(x * 0.01 + band) * 4 + Math.sin(x * 0.043 + band * 2) * 2);
+      gg.stroke();
+    }
+    for (let i = 0; i < 140; ++i) {
+      const x = r3() * CANVAS_W, y = 8 + r3() * (gh - 12), rr = 1.5 + r3() * 5;
+      gg.fillStyle = `rgba(${90 + r3() * 40 | 0},${60 + r3() * 30 | 0},${90 + r3() * 40 | 0},0.6)`;
+      gg.beginPath();
+      gg.ellipse(x, y, rr * 1.4, rr, 0, 0, TWO_PI);
+      gg.fill();
+      gg.fillStyle = 'rgba(255,220,255,0.12)';
+      gg.beginPath();
+      gg.ellipse(x - rr * 0.3, y - rr * 0.4, rr * 0.6, rr * 0.35, 0, 0, TWO_PI);
+      gg.fill();
+    }
+    for (let i = 0; i < 18; ++i) {
+      const x = r3() * CANVAS_W, y = 30 + r3() * (gh - 40);
+      const col = ['#5ad0ff', '#c070ff', '#60f0b0'][i % 3];
+      gg.fillStyle = col;
+      gg.globalAlpha = 0.55;
+      gg.beginPath();
+      gg.moveTo(x, y - 6);
+      gg.lineTo(x + 3, y);
+      gg.lineTo(x, y + 5);
+      gg.lineTo(x - 3, y);
+      gg.closePath();
+      gg.fill();
+      gg.globalAlpha = 1;
+    }
+    // Lit top edge
+    gg.fillStyle = 'rgba(255,190,220,0.35)';
+    gg.fillRect(0, 0, CANVAS_W, 2);
+    gg.fillStyle = 'rgba(0,0,0,0.3)';
+    gg.fillRect(0, 2, CANVAS_W, 2);
+
+    // Dome glass (interior tint, hex lattice, highlights) at 2x for crisp scaling
+    const R = DOME_RADIUS, S = 2;
+    const glass = makeCanvas((R * 2 + 8) * S, (R + 8) * S);
+    const dg = glass.getContext('2d');
+    dg.scale(S, S);
+    dg.translate(R + 4, R + 4);
+    dg.save();
+    dg.beginPath();
+    dg.arc(0, 0, R - 1, Math.PI, 0);
+    dg.closePath();
+    dg.clip();
+    const ig = dg.createRadialGradient(-R * 0.3, -R * 0.5, 4, 0, 0, R);
+    ig.addColorStop(0, 'rgba(120,200,255,0.22)');
+    ig.addColorStop(0.6, 'rgba(50,110,200,0.12)');
+    ig.addColorStop(1, 'rgba(20,60,140,0.28)');
+    dg.fillStyle = ig;
+    dg.fillRect(-R, -R, R * 2, R);
+    dg.strokeStyle = 'rgba(140,210,255,0.35)';
+    dg.lineWidth = 1.2;
+    const hs = 16, hh = hs * Math.sqrt(3);
+    for (let row = 0, hy = -R - hh; hy < 10; hy += hh / 2, ++row)
+      for (let hx = -R - hs * 3 + (row % 2) * hs * 1.5; hx < R + hs * 3; hx += hs * 3) {
+        dg.beginPath();
+        for (let i = 0; i < 6; ++i) {
+          const a = (TWO_PI / 6) * i;
+          const x = hx + Math.cos(a) * hs, y = hy + Math.sin(a) * hs;
+          if (i === 0) dg.moveTo(x, y);
+          else dg.lineTo(x, y);
+        }
+        dg.closePath();
+        dg.stroke();
+      }
+    // Bottom shading where the glass meets the base
+    const bg2 = dg.createLinearGradient(0, -R * 0.35, 0, 0);
+    bg2.addColorStop(0, 'rgba(10,20,50,0)');
+    bg2.addColorStop(1, 'rgba(10,20,50,0.45)');
+    dg.fillStyle = bg2;
+    dg.fillRect(-R, -R * 0.35, R * 2, R * 0.35);
+    dg.restore();
+    // Specular crescent and rim light
+    dg.save();
+    dg.beginPath();
+    dg.arc(0, 0, R - 8, Math.PI * 1.08, Math.PI * 1.5);
+    dg.lineWidth = 7;
+    dg.lineCap = 'round';
+    dg.strokeStyle = 'rgba(255,255,255,0.35)';
+    dg.stroke();
+    dg.beginPath();
+    dg.arc(0, 0, R - 18, Math.PI * 1.15, Math.PI * 1.32);
+    dg.lineWidth = 3;
+    dg.strokeStyle = 'rgba(255,255,255,0.25)';
+    dg.stroke();
+    dg.beginPath();
+    dg.ellipse(R * 0.42, -R * 0.62, 7, 4, -0.6, 0, TWO_PI);
+    dg.fillStyle = 'rgba(255,255,255,0.3)';
+    dg.fill();
+    dg.restore();
+
+    // Crack paths from impact points on the shell
+    const cracks = [];
+    const r4 = makeRng(4242);
+    for (let i = 0; i < 14; ++i) {
+      const a = Math.PI + 0.25 + r4() * (Math.PI - 0.5);
+      let x = Math.cos(a) * (R - 2), y = Math.sin(a) * (R - 2);
+      const pts = [[x, y]];
+      let dir = a + Math.PI + (r4() - 0.5) * 0.9;
+      const len = 3 + (r4() * 4 | 0);
+      for (let k = 0; k < len; ++k) {
+        const step = 8 + r4() * 10;
+        dir += (r4() - 0.5) * 1.1;
+        x += Math.cos(dir) * step;
+        y += Math.sin(dir) * step;
+        if (y > -4 || x * x + y * y > (R - 2) * (R - 2)) break;
+        pts.push([x, y]);
+      }
+      cracks.push(pts);
+    }
+
+    // Soft additive glow sprite for beams, impacts and lights
+    const glow = makeCanvas(64, 64);
+    const gl = glow.getContext('2d');
+    const glg = gl.createRadialGradient(32, 32, 0, 32, 32, 32);
+    glg.addColorStop(0, 'rgba(255,255,255,1)');
+    glg.addColorStop(0.25, 'rgba(255,255,255,0.55)');
+    glg.addColorStop(1, 'rgba(255,255,255,0)');
+    gl.fillStyle = glg;
+    gl.fillRect(0, 0, 64, 64);
+
+    surfaceArt = { sky, stars, ranges, ground, glass, glassScale: S, cracks, glow, tinted: {} };
+    return surfaceArt;
+  }
+
+  // Coloured copy of the glow sprite (cached per colour)
+  function getGlow(color) {
+    const art = buildSurfaceArt();
+    let c = art.tinted[color];
+    if (!c) {
+      c = makeCanvas(64, 64);
+      const g = c.getContext('2d');
+      g.drawImage(art.glow, 0, 0);
+      g.globalCompositeOperation = 'source-in';
+      g.fillStyle = color;
+      g.fillRect(0, 0, 64, 64);
+      art.tinted[color] = c;
+    }
+    return c;
+  }
+
+  function drawGlow(color, x, y, r, alpha) {
+    const prev = ctx.globalCompositeOperation;
+    const prevA = ctx.globalAlpha;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = prevA * alpha;
+    ctx.drawImage(getGlow(color), x - r, y - r, r * 2, r * 2);
+    ctx.globalAlpha = prevA;
+    ctx.globalCompositeOperation = prev;
+  }
+
+  function drawSky() {
+    const art = buildSurfaceArt();
+    ctx.drawImage(art.sky, 0, 0);
+    // Twinkling stars
+    for (const s of art.stars) {
+      const tw = 0.45 + 0.55 * Math.sin(animTime * s.f + s.p);
+      if (tw <= 0.05) continue;
+      ctx.globalAlpha = tw * 0.9;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(s.x - s.s / 2, s.y - s.s / 2, s.s, s.s);
+      if (s.big) {
+        ctx.globalAlpha = tw * 0.35;
+        ctx.fillRect(s.x - s.s * 2.5, s.y - 0.5, s.s * 5, 1);
+        ctx.fillRect(s.x - 0.5, s.y - s.s * 2.5, 1, s.s * 5);
+      }
+    }
+    ctx.globalAlpha = 1;
+    // Occasional shooting star
+    const cycle = 11;
+    const t = (animTime % cycle) / 0.9;
+    if (t < 1) {
+      const k = Math.floor(animTime / cycle);
+      const sx = 200 + ((k * 7919) % 900), sy = 60 + ((k * 3571) % 220);
+      const hx = sx + t * 260, hy = sy + t * 90;
+      const g = ctx.createLinearGradient(hx - 120, hy - 42, hx, hy);
+      g.addColorStop(0, 'rgba(255,255,255,0)');
+      g.addColorStop(1, `rgba(255,255,255,${0.8 * (1 - t)})`);
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.ellipse(px, py, pr * 1.5, pr * 1, 0, 0, TWO_PI);
+      ctx.moveTo(hx - 120, hy - 42);
+      ctx.lineTo(hx, hy);
+      ctx.stroke();
+    }
+    // Mountain ranges with mouse parallax
+    const sway = mouseAimX >= 0 ? (mouseAimX / CANVAS_W - 0.5) : 0;
+    for (const r of art.ranges)
+      ctx.drawImage(r.canvas, -60 - sway * r.depth * 2, DOME_Y - r.h + 4);
+    // Low drifting mist
+    const mx = (animTime * 12) % CANVAS_W;
+    ctx.globalAlpha = 0.5;
+    for (const off of [-CANVAS_W, 0]) {
+      const x = mx + off;
+      const mg = ctx.createRadialGradient(x + 500, DOME_Y - 10, 10, x + 500, DOME_Y - 10, 420);
+      mg.addColorStop(0, 'rgba(180,120,200,0.18)');
+      mg.addColorStop(1, 'rgba(180,120,200,0)');
+      ctx.fillStyle = mg;
+      ctx.fillRect(x + 80, DOME_Y - 120, 840, 140);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Pre-rendered enemy body (outline, shading, rim light) per variant
+  function getEnemyBody(kind) {
+    const art = buildSurfaceArt();
+    const key = 'body:' + kind;
+    if (art.tinted[key]) return art.tinted[key];
+    const S = 96, c = makeCanvas(S, S), g = c.getContext('2d');
+    g.translate(S / 2, S / 2);
+    const r = 36;
+    const pal = {
+      walker: ['#ff9a8a', '#e0403a', '#8a1420', '#3a0610'],
+      armored: ['#e8d8a8', '#a08a5a', '#5a4828', '#241a0c'],
+      boss: ['#ff7aa0', '#b81848', '#5a0420', '#20020a'],
+      flyer: ['#f0a8ff', '#a050c8', '#4a1868', '#1a0628']
+    }[kind];
+    g.fillStyle = SPRITE_OUTLINE;
+    g.beginPath();
+    if (kind === 'flyer') {
+      g.moveTo(0, -r - 4);
+      g.quadraticCurveTo(r * 0.9, -r * 0.1, r * 0.7 + 4, r * 0.6 + 4);
+      g.quadraticCurveTo(0, r * 0.35 + 4, -r * 0.7 - 4, r * 0.6 + 4);
+      g.quadraticCurveTo(-r * 0.9, -r * 0.1, 0, -r - 4);
+    } else
+      g.arc(0, 0, r + 3, 0, TWO_PI);
+    g.fill();
+    const bodyPath = () => {
+      g.beginPath();
+      if (kind === 'flyer') {
+        g.moveTo(0, -r);
+        g.quadraticCurveTo(r * 0.85, -r * 0.1, r * 0.7, r * 0.6);
+        g.quadraticCurveTo(0, r * 0.35, -r * 0.7, r * 0.6);
+        g.quadraticCurveTo(-r * 0.85, -r * 0.1, 0, -r);
+      } else
+        g.arc(0, 0, r, 0, TWO_PI);
+    };
+    const bgd = g.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.1, 0, 0, r * 1.05);
+    bgd.addColorStop(0, pal[0]);
+    bgd.addColorStop(0.45, pal[1]);
+    bgd.addColorStop(0.85, pal[2]);
+    bgd.addColorStop(1, pal[3]);
+    bodyPath();
+    g.fillStyle = bgd;
+    g.fill();
+    g.save();
+    bodyPath();
+    g.clip();
+    // Spots / plates
+    if (kind === 'armored') {
+      g.strokeStyle = 'rgba(30,20,8,0.7)';
+      g.lineWidth = 3;
+      for (const y of [-12, 6, 22]) {
+        g.beginPath();
+        g.arc(0, y - 30, 40, 0.25 * Math.PI, 0.75 * Math.PI);
+        g.stroke();
+      }
+      g.fillStyle = 'rgba(255,240,200,0.6)';
+      for (const [x, y] of [[-20, -4], [20, -4], [-12, 14], [12, 14]]) {
+        g.beginPath();
+        g.arc(x, y, 2.5, 0, TWO_PI);
+        g.fill();
+      }
+    } else {
+      g.fillStyle = 'rgba(0,0,0,0.18)';
+      for (const [x, y, s] of [[-18, 14, 7], [16, 18, 5], [22, -6, 4], [-6, 24, 4]]) {
+        g.beginPath();
+        g.arc(x, y, s, 0, TWO_PI);
+        g.fill();
+      }
+    }
+    // Rim light from below (ground bounce) and top specular
+    g.strokeStyle = 'rgba(255,200,180,0.35)';
+    g.lineWidth = 4;
+    g.beginPath();
+    g.arc(0, 4, r - 2, 0.15 * Math.PI, 0.85 * Math.PI);
+    g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.45)';
+    g.beginPath();
+    g.ellipse(-r * 0.32, -r * 0.48, r * 0.26, r * 0.13, -0.5, 0, TWO_PI);
+    g.fill();
+    g.restore();
+    art.tinted[key] = c;
+    return c;
+  }
+
+  function drawEnemyEyes(sz, blinking, color, pupil) {
+    const eyeH = blinking ? 1 : sz * 0.2;
+    for (const sx of [-1, 1]) {
+      ctx.fillStyle = SPRITE_OUTLINE;
+      ctx.beginPath();
+      ctx.ellipse(sx * sz * 0.3, -sz * 0.12, sz * 0.2 + 2, eyeH + 2, 0, 0, TWO_PI);
       ctx.fill();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.ellipse(sx * sz * 0.3, -sz * 0.12, sz * 0.2, eyeH, 0, 0, TWO_PI);
+      ctx.fill();
+      if (!blinking) {
+        ctx.fillStyle = pupil;
+        ctx.beginPath();
+        ctx.arc(sx * sz * 0.27, -sz * 0.08, sz * 0.08, 0, TWO_PI);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.fillRect(sx * sz * 0.3 - sz * 0.08, -sz * 0.2, 2, 2);
+      }
     }
   }
 
+  function drawGroundLayer() {
+    const art = buildSurfaceArt();
+    ctx.drawImage(art.ground, 0, DOME_Y);
+    // Alien grass swaying along the ground line
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    for (let gx = 10; gx < CANVAS_W; gx += 22 + Math.sin(gx * 0.3) * 8) {
+      if (Math.abs(gx - DOME_X) < DOME_RADIUS + 26) continue;
+      const tilt = Math.sin(gx * 0.7 + animTime * 0.9);
+      const h = 8 + Math.abs(Math.sin(gx * 0.5)) * 14;
+      ctx.strokeStyle = (gx | 0) % 3 ? '#3f8a70' : '#5ab08e';
+      ctx.beginPath();
+      ctx.moveTo(gx, DOME_Y + 2);
+      ctx.quadraticCurveTo(gx + tilt * 6, DOME_Y - h * 0.6, gx + tilt * 4, DOME_Y - h);
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+  }
+
   function drawDome() {
-    const pulse = Math.sin(domePulsePhase) * 0.15;
+    const art = buildSurfaceArt();
+    const pulse = Math.sin(domePulsePhase) * 0.5 + 0.5;
     const flashAlpha = domeHitFlash * 0.6;
-    const hpRatio = domeHP / maxDomeHP;
+    const hpRatio = Math.max(0, domeHP / maxDomeHP);
+    const R = DOME_RADIUS;
+    const shieldLevel = getEffectiveLevel('domeHP');
 
-    // Dome interior gradient fill (semi-transparent)
+    // Light pool on the ground
+    drawGlow('#4aa8ff', DOME_X, DOME_Y + 6, R * 1.7, 0.18 + pulse * 0.05);
+
+    // Refraction: the sky behind the glass, slightly magnified and tinted
     ctx.save();
     ctx.beginPath();
-    ctx.arc(DOME_X, DOME_Y, DOME_RADIUS - 2, Math.PI, 0);
-    ctx.closePath();
-    const interiorGrad = ctx.createRadialGradient(DOME_X, DOME_Y - 20, 10, DOME_X, DOME_Y, DOME_RADIUS);
-    interiorGrad.addColorStop(0, 'rgba(80,140,220,0.08)');
-    interiorGrad.addColorStop(0.6, 'rgba(60,120,200,0.04)');
-    interiorGrad.addColorStop(1, 'rgba(40,100,180,0.02)');
-    ctx.fillStyle = interiorGrad;
-    ctx.fill();
-    ctx.restore();
-
-    // Hex pattern on dome
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(DOME_X, DOME_Y, DOME_RADIUS - 1, Math.PI, 0);
+    ctx.arc(DOME_X, DOME_Y, R - 1, Math.PI, 0);
     ctx.closePath();
     ctx.clip();
-    ctx.strokeStyle = `rgba(100,180,255,${0.25 + pulse * 0.12})`;
-    ctx.lineWidth = 2;
-    const hexSize = 24;
-    const hexH = hexSize * Math.sqrt(3);
-    for (let hy = DOME_Y - DOME_RADIUS; hy < DOME_Y + 10; hy += hexH) {
-      for (let hx = DOME_X - DOME_RADIUS; hx < DOME_X + DOME_RADIUS; hx += hexSize * 3) {
-        const ox = ((Math.floor((hy - DOME_Y + DOME_RADIUS) / hexH)) % 2) * hexSize * 1.5;
-        drawHexagon(hx + ox, hy, hexSize);
+    const mag = 1.12;
+    ctx.globalAlpha = 0.55;
+    ctx.drawImage(art.sky, DOME_X - R, DOME_Y - R, R * 2, R, DOME_X - R * mag, DOME_Y - R * mag - 6, R * 2 * mag, R * mag);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(20,60,120,0.25)';
+    ctx.fillRect(DOME_X - R, DOME_Y - R, R * 2, R);
+
+    // Console and keeper silhouette inside
+    ctx.fillStyle = '#1c2a44';
+    ctx.fillRect(DOME_X - 26, DOME_Y - 22, 52, 22);
+    ctx.fillStyle = '#4af';
+    ctx.globalAlpha = 0.5 + pulse * 0.3;
+    ctx.fillRect(DOME_X - 20, DOME_Y - 18, 14, 4);
+    ctx.fillStyle = '#6f6';
+    ctx.fillRect(DOME_X + 4, DOME_Y - 18, 6, 4);
+    ctx.globalAlpha = 1;
+
+    // Glass lattice and highlights
+    ctx.globalAlpha = 0.75 + pulse * 0.25;
+    ctx.drawImage(art.glass, DOME_X - R - 4, DOME_Y - R - 4, R * 2 + 8, R + 8);
+    ctx.globalAlpha = 1;
+
+    // Shield shimmer: a bright band sweeping across the lattice
+    const sweep = ((animTime * 0.35) % 1.6) - 0.3;
+    const bx = DOME_X - R + sweep * R * 2;
+    const sg = ctx.createLinearGradient(bx - 40, DOME_Y - R, bx + 40, DOME_Y);
+    sg.addColorStop(0, 'rgba(160,230,255,0)');
+    sg.addColorStop(0.5, `rgba(160,230,255,${0.12 + shieldLevel * 0.02})`);
+    sg.addColorStop(1, 'rgba(160,230,255,0)');
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = sg;
+    ctx.fillRect(DOME_X - R, DOME_Y - R, R * 2, R);
+    ctx.globalCompositeOperation = 'source-over';
+
+    // Damage cracks grow as HP drops
+    const crackCount = Math.round((1 - hpRatio) * art.cracks.length);
+    if (crackCount > 0) {
+      ctx.lineJoin = 'round';
+      for (let i = 0; i < crackCount; ++i) {
+        const pts = art.cracks[i];
+        ctx.beginPath();
+        pts.forEach(([x, y], k) => k ? ctx.lineTo(DOME_X + x, DOME_Y + y + 1) : ctx.moveTo(DOME_X + x, DOME_Y + y + 1));
+        ctx.strokeStyle = 'rgba(0,10,30,0.6)';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        ctx.beginPath();
+        pts.forEach(([x, y], k) => k ? ctx.lineTo(DOME_X + x, DOME_Y + y) : ctx.moveTo(DOME_X + x, DOME_Y + y));
+        ctx.strokeStyle = 'rgba(220,240,255,0.75)';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
       }
+    }
+
+    // Hit flash overlay
+    if (flashAlpha > 0) {
+      ctx.fillStyle = `rgba(255,80,80,${flashAlpha})`;
+      ctx.fillRect(DOME_X - R, DOME_Y - R, R * 2, R);
     }
     ctx.restore();
 
-    // Dome shield arc (main) -- thicker with more shield upgrades
-    const shieldLevel = getEffectiveLevel('domeHP');
-    const domeLineWidth = 3 + shieldLevel * 2;
+    // Frame: meridian ribs and the outer rim (thicker with shield upgrades)
+    ctx.save();
+    ctx.strokeStyle = 'rgba(150,200,255,0.35)';
+    ctx.lineWidth = 2;
+    for (const k of [0.38, 0.72]) {
+      ctx.beginPath();
+      ctx.ellipse(DOME_X, DOME_Y, R * k, R, 0, Math.PI, 0);
+      ctx.stroke();
+    }
     ctx.beginPath();
-    ctx.arc(DOME_X, DOME_Y, DOME_RADIUS, Math.PI, 0);
-    ctx.closePath();
-    const domeGrad = ctx.createLinearGradient(DOME_X - DOME_RADIUS, DOME_Y, DOME_X + DOME_RADIUS, DOME_Y);
-    domeGrad.addColorStop(0, `rgba(40,120,255,${0.5 + pulse})`);
-    domeGrad.addColorStop(0.5, `rgba(80,170,255,${0.8 + pulse})`);
-    domeGrad.addColorStop(1, `rgba(40,120,255,${0.5 + pulse})`);
-    ctx.strokeStyle = domeGrad;
-    ctx.lineWidth = domeLineWidth;
-    ctx.shadowBlur = 20 + pulse * 10 + shieldLevel * 3;
-    ctx.shadowColor = '#4af';
+    ctx.ellipse(DOME_X, DOME_Y, R, R * 0.36, 0, Math.PI, 0);
     ctx.stroke();
-
-    // Second pass -- brighter inner line
+    const rimW = 4 + shieldLevel * 1.5;
     ctx.beginPath();
-    ctx.arc(DOME_X, DOME_Y, DOME_RADIUS - domeLineWidth / 2, Math.PI, 0);
-    ctx.strokeStyle = `rgba(140,200,255,${0.3 + pulse * 0.2})`;
-    ctx.lineWidth = 1 + shieldLevel * 0.5;
-    ctx.shadowBlur = 8 + shieldLevel * 2;
-    ctx.shadowColor = '#8cf';
+    ctx.arc(DOME_X, DOME_Y, R, Math.PI, 0);
+    ctx.lineWidth = rimW + 3;
+    ctx.strokeStyle = '#0a1830';
+    ctx.stroke();
+    const rg = ctx.createLinearGradient(DOME_X - R, DOME_Y - R, DOME_X + R, DOME_Y);
+    rg.addColorStop(0, '#9adcff');
+    rg.addColorStop(0.5, '#3a8ae8');
+    rg.addColorStop(1, '#1a4aa0');
+    ctx.strokeStyle = rg;
+    ctx.lineWidth = rimW;
+    ctx.shadowColor = '#4af';
+    ctx.shadowBlur = 14 + pulse * 8 + shieldLevel * 2;
     ctx.stroke();
     ctx.shadowBlur = 0;
-
-    // Dome base (ground contact)
-    ctx.beginPath();
-    ctx.moveTo(DOME_X - DOME_RADIUS, DOME_Y);
-    ctx.lineTo(DOME_X + DOME_RADIUS, DOME_Y);
-    ctx.strokeStyle = '#4af';
-    ctx.lineWidth = 4;
-    ctx.stroke();
-
-    // Dome hit flash overlay
-    if (flashAlpha > 0) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS, Math.PI, 0);
-      ctx.closePath();
-      ctx.fillStyle = `rgba(255,80,80,${flashAlpha})`;
-      ctx.fill();
-      ctx.restore();
-    }
+    ctx.restore();
 
     // Shield impact flashes
     for (const impact of shieldImpacts) {
@@ -4225,111 +5531,85 @@
       ctx.save();
       ctx.beginPath();
       const arcSpan = 0.3 * il;
-      ctx.arc(DOME_X, DOME_Y, DOME_RADIUS + 4, ia - arcSpan, ia + arcSpan);
-      ctx.strokeStyle = `rgba(100,200,255,${il * 0.8})`;
+      ctx.arc(DOME_X, DOME_Y, R + 4, ia - arcSpan, ia + arcSpan);
+      ctx.strokeStyle = `rgba(140,220,255,${il * 0.9})`;
       ctx.lineWidth = 8 * il;
       ctx.shadowBlur = 15 * il;
       ctx.shadowColor = '#4af';
       ctx.stroke();
-      ctx.shadowBlur = 0;
       ctx.restore();
+      drawGlow('#6cf', DOME_X + Math.cos(ia) * (R + 4), DOME_Y + Math.sin(ia) * (R + 4), 40 * il, il * 0.8);
     }
 
-    // Turret nozzle position on dome arc
-    const nozzleDrawR = DOME_RADIUS + 16;
+    // Base ring the dome sits on
+    const baseG = ctx.createLinearGradient(0, DOME_Y - 8, 0, DOME_Y + 14);
+    baseG.addColorStop(0, '#8a9ab8');
+    baseG.addColorStop(0.4, '#4a5878');
+    baseG.addColorStop(1, '#1a2238');
+    ctx.fillStyle = baseG;
+    ctx.beginPath();
+    ctx.moveTo(DOME_X - R - 14, DOME_Y - 6);
+    ctx.lineTo(DOME_X + R + 14, DOME_Y - 6);
+    ctx.lineTo(DOME_X + R + 24, DOME_Y + 14);
+    ctx.lineTo(DOME_X - R - 24, DOME_Y + 14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#0a1020';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(DOME_X - R - 12, DOME_Y - 5, (R + 12) * 2, 1.5);
+    for (let i = 0; i < 9; ++i) {
+      const lx = DOME_X - R + 4 + i * (R * 2 - 8) / 8;
+      const on = Math.sin(animTime * 3 - i * 0.7) > 0.3;
+      ctx.fillStyle = on ? '#7fe0ff' : '#24405a';
+      ctx.fillRect(lx - 3, DOME_Y + 3, 6, 4);
+      if (on)
+        drawGlow('#4cf', lx, DOME_Y + 5, 9, 0.6);
+    }
+
+    // Turret on the dome arc
+    const nozzleDrawR = R + 16;
     const tbx = DOME_X + Math.cos(turretAngle) * nozzleDrawR;
     const tby = DOME_Y + Math.sin(turretAngle) * nozzleDrawR;
-
-    // Dome turret base (small weapon mount at nozzle position)
-    ctx.save();
-    ctx.translate(tbx, tby);
-    ctx.rotate(turretAngle + Math.PI / 2);
-    ctx.fillStyle = '#6a8ab0';
-    ctx.fillRect(-8, -12, 16, 24);
-    const turretGrad = ctx.createLinearGradient(-8, 0, 8, 0);
-    turretGrad.addColorStop(0, '#8ab0d0');
-    turretGrad.addColorStop(1, '#4a6a8a');
-    ctx.fillStyle = turretGrad;
-    ctx.fillRect(-6, -8, 12, 16);
-    ctx.restore();
-
-    // Turret barrel (rotates with turretAngle)
     ctx.save();
     ctx.translate(tbx, tby);
     ctx.rotate(turretAngle);
-    // Barrel body
-    ctx.fillStyle = '#556';
-    ctx.fillRect(0, -3, TURRET_BARREL_LENGTH, 6);
-    // Barrel highlight
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    ctx.fillRect(0, -3, TURRET_BARREL_LENGTH, 2);
-    // Muzzle tip
-    ctx.fillStyle = '#778';
-    ctx.fillRect(TURRET_BARREL_LENGTH - 6, -5, 6, 10);
-    ctx.restore();
-
-    // Turret pivot dot
-    ctx.fillStyle = '#aac';
-    ctx.beginPath();
-    ctx.arc(tbx, tby, 6, 0, TWO_PI);
+    // Mount
+    ctx.fillStyle = '#1a2236';
+    roundRectPath(-14, -11, 22, 22, 5);
     ctx.fill();
-
-    // Dome HP bar with gradient
-    const barW = 240;
-    const barH = 20;
-    const barX = DOME_X - barW / 2;
-    const barY = DOME_Y + 44;
-
-    // Bar background
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(barX - 2, barY - 2, barW + 4, barH + 4);
-    ctx.fillStyle = '#333';
-    ctx.fillRect(barX, barY, barW, barH);
-
-    // Health bar fill with gradient
-    const hpBarGrad = ctx.createLinearGradient(barX, barY, barX, barY + barH);
-    if (hpRatio > 0.3) {
-      hpBarGrad.addColorStop(0, '#6e6');
-      hpBarGrad.addColorStop(0.5, '#4c4');
-      hpBarGrad.addColorStop(1, '#3a3');
-    } else {
-      hpBarGrad.addColorStop(0, '#f66');
-      hpBarGrad.addColorStop(0.5, '#f44');
-      hpBarGrad.addColorStop(1, '#c22');
-    }
-    ctx.fillStyle = hpBarGrad;
-    ctx.fillRect(barX, barY, barW * hpRatio, barH);
-
-    // HP bar highlight
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    ctx.fillRect(barX, barY, barW * hpRatio, barH / 2);
-
-    // Bar border
-    ctx.strokeStyle = '#666';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(barX, barY, barW, barH);
-
-    // HP text
-    ctx.fillStyle = '#ddd';
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText(`${Math.ceil(domeHP)}/${maxDomeHP}`, DOME_X, barY + barH + 6);
-  }
-
-  function drawHexagon(cx, cy, size) {
+    const mg = ctx.createLinearGradient(0, -10, 0, 10);
+    mg.addColorStop(0, '#b8cce8');
+    mg.addColorStop(0.5, '#6a82a8');
+    mg.addColorStop(1, '#2a3858');
+    ctx.fillStyle = mg;
+    roundRectPath(-12, -9, 18, 18, 4);
+    ctx.fill();
+    // Barrel
+    const bg = ctx.createLinearGradient(0, -5, 0, 5);
+    bg.addColorStop(0, '#d0dcf0');
+    bg.addColorStop(0.45, '#7a8aa8');
+    bg.addColorStop(1, '#2a3248');
+    ctx.fillStyle = '#0c1220';
+    ctx.fillRect(2, -6, TURRET_BARREL_LENGTH, 12);
+    ctx.fillStyle = bg;
+    ctx.fillRect(3, -5, TURRET_BARREL_LENGTH - 2, 10);
+    ctx.fillStyle = '#2a3450';
+    for (let i = 0; i < 3; ++i)
+      ctx.fillRect(12 + i * 7, -5, 2, 10);
+    ctx.fillStyle = '#ff6a4a';
+    ctx.fillRect(TURRET_BARREL_LENGTH - 5, -6, 5, 12);
+    ctx.restore();
+    // Charge light: bright when ready to fire
+    const ready = fireCooldown <= 0;
+    const mx = tbx + Math.cos(turretAngle) * TURRET_BARREL_LENGTH;
+    const my = tby + Math.sin(turretAngle) * TURRET_BARREL_LENGTH;
+    drawGlow('#ff6040', mx, my, ready ? 16 + pulse * 4 : 8, ready ? 0.8 : 0.35);
+    ctx.fillStyle = '#d8e4ff';
     ctx.beginPath();
-    for (let i = 0; i < 6; ++i) {
-      const a = (TWO_PI / 6) * i - Math.PI / 6;
-      const hx = cx + Math.cos(a) * size;
-      const hy = cy + Math.sin(a) * size;
-      if (i === 0)
-        ctx.moveTo(hx, hy);
-      else
-        ctx.lineTo(hx, hy);
-    }
-    ctx.closePath();
-    ctx.stroke();
+    ctx.arc(tbx, tby, 4, 0, TWO_PI);
+    ctx.fill();
   }
 
   function drawEnemy(e) {
@@ -4339,128 +5619,97 @@
   }
 
   function drawGroundEnemy(e) {
-    const hpR = e.hp / e.maxHP;
     const sz = e.size || 10;
     const wobble = Math.sin(e.wobblePhase) * 3;
     const legOffset = Math.sin(e.legPhase) * 6;
+    const kind = e.boss ? 'boss' : (e.armored ? 'armored' : 'walker');
+    const flash = enemyHitFlash.get(e) || 0;
 
     ctx.save();
     ctx.translate(e.x, e.y + wobble);
 
-    // Shadow on ground
-    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    // Ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
-    ctx.ellipse(0, sz + 4, sz * 0.8, 6, 0, 0, TWO_PI);
+    ctx.ellipse(0, sz + 4 - wobble, sz * 0.9, 6, 0, 0, TWO_PI);
     ctx.fill();
 
-    // Legs (4 little appendages)
-    ctx.strokeStyle = e.armored ? '#664' : '#a33';
-    ctx.lineWidth = e.boss ? 6 : 4;
-    // Left legs
-    ctx.beginPath();
-    ctx.moveTo(-sz * 0.4, sz * 0.3);
-    ctx.lineTo(-sz * 0.8, sz * 0.6 + legOffset);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-sz * 0.3, sz * 0.1);
-    ctx.lineTo(-sz * 0.7, sz * 0.3 - legOffset);
-    ctx.stroke();
-    // Right legs
-    ctx.beginPath();
-    ctx.moveTo(sz * 0.4, sz * 0.3);
-    ctx.lineTo(sz * 0.8, sz * 0.6 - legOffset);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(sz * 0.3, sz * 0.1);
-    ctx.lineTo(sz * 0.7, sz * 0.3 + legOffset);
-    ctx.stroke();
-
-    // Body -- gradient sphere (armored = darker metallic, boss = thicker border)
-    const bodyGrad = ctx.createRadialGradient(-sz * 0.15, -sz * 0.2, 1, 0, 0, sz);
-    if (e.armored) {
-      bodyGrad.addColorStop(0, `rgba(160,140,100,${0.6 + hpR * 0.4})`);
-      bodyGrad.addColorStop(0.6, `rgba(100,90,60,${0.5 + hpR * 0.5})`);
-      bodyGrad.addColorStop(1, `rgba(60,50,30,${0.4 + hpR * 0.4})`);
-    } else {
-      bodyGrad.addColorStop(0, `rgba(240,80,80,${0.6 + hpR * 0.4})`);
-      bodyGrad.addColorStop(0.6, `rgba(180,40,40,${0.5 + hpR * 0.5})`);
-      bodyGrad.addColorStop(1, `rgba(100,20,20,${0.4 + hpR * 0.4})`);
+    // Legs with outlines and feet
+    const legCol = e.armored ? '#6a5a38' : (e.boss ? '#6a1028' : '#8a2028');
+    const legs = [[-0.4, 0.3, -0.85, 0.75, legOffset], [-0.25, 0.15, -0.75, 0.45, -legOffset], [0.4, 0.3, 0.85, 0.75, -legOffset], [0.25, 0.15, 0.75, 0.45, legOffset]];
+    for (const pass of [0, 1]) {
+      ctx.strokeStyle = pass ? legCol : SPRITE_OUTLINE;
+      ctx.lineWidth = (e.boss ? 7 : 5) + (pass ? 0 : 3);
+      ctx.lineCap = 'round';
+      for (const [x0, y0, x1, y1, o] of legs) {
+        ctx.beginPath();
+        ctx.moveTo(sz * x0, sz * y0);
+        ctx.quadraticCurveTo(sz * x1, sz * (y0 - 0.1), sz * x1, sz * y1 + o);
+        ctx.stroke();
+      }
     }
-    ctx.beginPath();
-    ctx.arc(0, 0, sz, 0, TWO_PI);
-    ctx.fillStyle = bodyGrad;
-    ctx.shadowBlur = 8;
-    ctx.shadowColor = e.armored
-      ? `rgba(180,160,80,${0.3 + hpR * 0.4})`
-      : `rgba(255,50,50,${0.3 + hpR * 0.4})`;
-    ctx.fill();
-    ctx.shadowBlur = 0;
+    ctx.lineCap = 'butt';
 
-    // Boss: thicker border ring
+    // Body with squash and stretch
+    const squash = 1 + Math.sin(e.wobblePhase * 2) * 0.05;
+    const body = getEnemyBody(kind);
+    const bw = sz * 2 * (96 / 72) / squash, bh = sz * 2 * (96 / 72) * squash;
+    ctx.drawImage(body, -bw / 2, -bh / 2, bw, bh);
+    if (flash > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = flash;
+      ctx.drawImage(body, -bw / 2, -bh / 2, bw, bh);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // Boss crown
     if (e.boss) {
-      ctx.strokeStyle = '#ff0';
-      ctx.lineWidth = 5;
+      ctx.fillStyle = SPRITE_OUTLINE;
       ctx.beginPath();
-      ctx.arc(0, 0, sz + 4, 0, TWO_PI);
-      ctx.stroke();
+      ctx.moveTo(-sz * 0.6, -sz * 0.8);
+      ctx.lineTo(-sz * 0.45, -sz * 1.42);
+      ctx.lineTo(-sz * 0.2, -sz * 1.05);
+      ctx.lineTo(0, -sz * 1.6);
+      ctx.lineTo(sz * 0.2, -sz * 1.05);
+      ctx.lineTo(sz * 0.45, -sz * 1.42);
+      ctx.lineTo(sz * 0.6, -sz * 0.8);
+      ctx.closePath();
+      ctx.fill();
+      const cg = ctx.createLinearGradient(0, -sz * 1.5, 0, -sz * 0.8);
+      cg.addColorStop(0, '#fff6b0');
+      cg.addColorStop(1, '#d08a10');
+      ctx.fillStyle = cg;
+      ctx.beginPath();
+      ctx.moveTo(-sz * 0.52, -sz * 0.84);
+      ctx.lineTo(-sz * 0.43, -sz * 1.3);
+      ctx.lineTo(-sz * 0.2, -sz * 0.98);
+      ctx.lineTo(0, -sz * 1.48);
+      ctx.lineTo(sz * 0.2, -sz * 0.98);
+      ctx.lineTo(sz * 0.43, -sz * 1.3);
+      ctx.lineTo(sz * 0.52, -sz * 0.84);
+      ctx.closePath();
+      ctx.fill();
     }
 
-    // Body highlight (specular)
-    ctx.fillStyle = e.armored ? 'rgba(220,210,170,0.3)' : 'rgba(255,180,180,0.3)';
+    drawEnemyEyes(sz, e.eyeBlinking, e.boss ? '#ff4040' : '#fff27a', '#200');
+
+    // Mouth with fangs
+    ctx.fillStyle = '#2a0008';
     ctx.beginPath();
-    ctx.ellipse(-sz * 0.25, -sz * 0.3, sz * 0.35, sz * 0.2, -0.3, 0, TWO_PI);
+    ctx.moveTo(-sz * 0.28, sz * 0.22);
+    ctx.quadraticCurveTo(0, sz * 0.5, sz * 0.28, sz * 0.22);
+    ctx.quadraticCurveTo(0, sz * 0.32, -sz * 0.28, sz * 0.22);
     ctx.fill();
-
-    // Boss: crown/horns
-    if (e.boss) {
-      ctx.fillStyle = '#ff0';
-      ctx.beginPath();
-      ctx.moveTo(-sz * 0.5, -sz * 0.85);
-      ctx.lineTo(-sz * 0.3, -sz * 1.3);
-      ctx.lineTo(-sz * 0.1, -sz * 0.85);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(sz * 0.1, -sz * 0.85);
-      ctx.lineTo(sz * 0.3, -sz * 1.3);
-      ctx.lineTo(sz * 0.5, -sz * 0.85);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(-sz * 0.2, -sz * 0.9);
-      ctx.lineTo(0, -sz * 1.45);
-      ctx.lineTo(sz * 0.2, -sz * 0.9);
-      ctx.fill();
-    }
-
-    // Eyes
-    const eyeH = e.eyeBlinking ? 1 : 6;
-    ctx.fillStyle = e.boss ? '#f00' : '#ff0';
+    ctx.fillStyle = '#fff';
     ctx.beginPath();
-    ctx.ellipse(-sz * 0.3, -sz * 0.15, 6, eyeH, 0, 0, TWO_PI);
+    ctx.moveTo(-sz * 0.14, sz * 0.27);
+    ctx.lineTo(-sz * 0.09, sz * 0.38);
+    ctx.lineTo(-sz * 0.04, sz * 0.29);
+    ctx.moveTo(sz * 0.04, sz * 0.29);
+    ctx.lineTo(sz * 0.09, sz * 0.38);
+    ctx.lineTo(sz * 0.14, sz * 0.27);
     ctx.fill();
-    if (!e.eyeBlinking) {
-      ctx.fillStyle = '#200';
-      ctx.beginPath();
-      ctx.arc(-sz * 0.3, -sz * 0.15, 2.4, 0, TWO_PI);
-      ctx.fill();
-    }
-    ctx.fillStyle = e.boss ? '#f00' : '#ff0';
-    ctx.beginPath();
-    ctx.ellipse(sz * 0.3, -sz * 0.15, 6, eyeH, 0, 0, TWO_PI);
-    ctx.fill();
-    if (!e.eyeBlinking) {
-      ctx.fillStyle = '#200';
-      ctx.beginPath();
-      ctx.arc(sz * 0.3, -sz * 0.15, 2.4, 0, TWO_PI);
-      ctx.fill();
-    }
-
-    // Mouth (angry slit)
-    ctx.strokeStyle = '#300';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(-sz * 0.25, sz * 0.25);
-    ctx.quadraticCurveTo(0, sz * 0.4, sz * 0.25, sz * 0.25);
-    ctx.stroke();
 
     // Stun overlay
     if (e.stunTimer > 0) {
@@ -4468,99 +5717,89 @@
       ctx.beginPath();
       ctx.arc(0, 0, sz + 6, 0, TWO_PI);
       ctx.fill();
+      for (let i = 0; i < 3; ++i) {
+        const a = animTime * 4 + i * TWO_PI / 3;
+        drawSprite('snowflake', Math.cos(a) * sz * 0.9, -sz * 1.1 + Math.sin(a) * 4, 14);
+      }
     }
 
     ctx.restore();
 
-    // Shield arc
     if (e.shield > 0)
       drawEnemyShield(e, wobble);
-
-    // Enemy HP bar (improved)
     drawEnemyHPBar(e, sz, wobble);
   }
 
   function drawFlyer(e) {
-    const hpR = e.hp / e.maxHP;
     const sz = e.size || 7;
-    const bob = Math.sin(e.wobblePhase) * 8; // sinusoidal vertical bobbing
+    const bob = Math.sin(e.wobblePhase) * 8;
+    const flap = Math.sin(e.wingPhase || 0);
+    const flash = enemyHitFlash.get(e) || 0;
 
     ctx.save();
+    // Shadow on the ground
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.beginPath();
+    ctx.ellipse(e.x, DOME_Y + 6, sz * 0.8, 4, 0, 0, TWO_PI);
+    ctx.fill();
     ctx.translate(e.x, e.y + bob);
 
-    // Faint shadow far below (on ground)
-    ctx.fillStyle = 'rgba(0,0,0,0.1)';
-    ctx.beginPath();
-    ctx.ellipse(0, 80 - bob, sz * 0.5, 4, 0, 0, TWO_PI);
-    ctx.fill();
+    // Membrane wings
+    for (const side of [-1, 1]) {
+      const tipY = -sz * 0.6 + flap * sz * 0.8;
+      ctx.beginPath();
+      ctx.moveTo(side * sz * 0.3, -sz * 0.2);
+      ctx.quadraticCurveTo(side * sz * 1.2, tipY - sz * 0.5, side * sz * 1.9, tipY);
+      ctx.quadraticCurveTo(side * sz * 1.5, tipY + sz * 0.4, side * sz * 1.3, tipY + sz * 0.7);
+      ctx.quadraticCurveTo(side * sz * 1.0, tipY + sz * 0.5, side * sz * 0.85, tipY + sz * 0.95);
+      ctx.quadraticCurveTo(side * sz * 0.6, sz * 0.2, side * sz * 0.3, sz * 0.3);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(110,40,150,0.9)';
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = SPRITE_OUTLINE;
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(230,170,255,0.5)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(side * sz * 0.3, -sz * 0.2);
+      ctx.lineTo(side * sz * 1.3, tipY + sz * 0.7);
+      ctx.moveTo(side * sz * 0.3, -sz * 0.2);
+      ctx.lineTo(side * sz * 0.85, tipY + sz * 0.95);
+      ctx.stroke();
+    }
 
-    // Wings (flapping lines)
-    ctx.strokeStyle = '#806';
-    ctx.lineWidth = 4;
-    // Left wing
-    ctx.beginPath();
-    ctx.moveTo(-sz * 0.3, 0);
-    ctx.lineTo(-sz * 1.4, -sz * 0.3 + Math.sin(e.wingPhase || 0) * sz * 0.5);
-    ctx.lineTo(-sz * 0.9, sz * 0.2 + Math.sin(e.wingPhase || 0) * sz * 0.3);
-    ctx.stroke();
-    // Right wing
-    ctx.beginPath();
-    ctx.moveTo(sz * 0.3, 0);
-    ctx.lineTo(sz * 1.4, -sz * 0.3 + Math.sin((e.wingPhase || 0) + Math.PI) * sz * 0.5);
-    ctx.lineTo(sz * 0.9, sz * 0.2 + Math.sin((e.wingPhase || 0) + Math.PI) * sz * 0.3);
-    ctx.stroke();
+    const body = getEnemyBody('flyer');
+    const bs = sz * 2 * (96 / 72);
+    ctx.drawImage(body, -bs / 2, -bs / 2, bs, bs);
+    if (flash > 0) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = flash;
+      ctx.drawImage(body, -bs / 2, -bs / 2, bs, bs);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    }
 
-    // Body -- triangular/bat-like, purple/dark
-    const bodyGrad = ctx.createRadialGradient(0, -sz * 0.1, 1, 0, 0, sz);
-    bodyGrad.addColorStop(0, `rgba(160,60,180,${0.6 + hpR * 0.4})`);
-    bodyGrad.addColorStop(0.6, `rgba(100,30,120,${0.5 + hpR * 0.5})`);
-    bodyGrad.addColorStop(1, `rgba(50,15,60,${0.4 + hpR * 0.4})`);
-    ctx.beginPath();
-    ctx.moveTo(0, -sz * 0.9);
-    ctx.lineTo(-sz * 0.7, sz * 0.5);
-    ctx.lineTo(0, sz * 0.3);
-    ctx.lineTo(sz * 0.7, sz * 0.5);
-    ctx.closePath();
-    ctx.fillStyle = bodyGrad;
-    ctx.shadowBlur = 6;
-    ctx.shadowColor = `rgba(180,60,220,${0.3 + hpR * 0.4})`;
-    ctx.fill();
-    ctx.shadowBlur = 0;
+    // Glowing eyes
+    ctx.fillStyle = '#ff4cf0';
+    const eyeH = e.eyeBlinking ? 0.8 : sz * 0.16;
+    for (const sx of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(sx * sz * 0.2, -sz * 0.2, sz * 0.13, eyeH, sx * 0.3, 0, TWO_PI);
+      ctx.fill();
+      drawGlow('#ff40f0', sx * sz * 0.2, -sz * 0.2, sz * 0.5, 0.6);
+    }
 
-    // Body highlight
-    ctx.fillStyle = 'rgba(220,180,240,0.25)';
-    ctx.beginPath();
-    ctx.ellipse(0, -sz * 0.3, sz * 0.25, sz * 0.15, 0, 0, TWO_PI);
-    ctx.fill();
-
-    // Glowing eyes (larger, more menacing)
-    const eyeH = e.eyeBlinking ? 0.6 : 5;
-    ctx.fillStyle = '#f0f';
-    ctx.shadowBlur = 4;
-    ctx.shadowColor = '#f0f';
-    ctx.beginPath();
-    ctx.ellipse(-sz * 0.2, -sz * 0.2, 4, eyeH, 0, 0, TWO_PI);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(sz * 0.2, -sz * 0.2, 4, eyeH, 0, 0, TWO_PI);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-
-    // Stun overlay
     if (e.stunTimer > 0) {
       ctx.fillStyle = `rgba(80,160,255,${0.25 + Math.sin(animTime * 10) * 0.1})`;
       ctx.beginPath();
       ctx.arc(0, 0, sz + 6, 0, TWO_PI);
       ctx.fill();
     }
-
     ctx.restore();
 
-    // Shield arc
     if (e.shield > 0)
       drawEnemyShield(e, bob);
-
-    // HP bar
     drawEnemyHPBar(e, sz, bob);
   }
 
@@ -4569,67 +5808,82 @@
     const shieldR = e.shield / (e.maxShield || 1);
     ctx.save();
     ctx.translate(e.x, e.y + vertOffset);
-    ctx.strokeStyle = `rgba(80,160,255,${0.4 + shieldR * 0.4})`;
-    ctx.lineWidth = 4;
-    ctx.shadowBlur = 6;
-    ctx.shadowColor = '#4af';
+    const r = sz + 12;
+    const g = ctx.createRadialGradient(0, 0, r * 0.6, 0, 0, r);
+    g.addColorStop(0, 'rgba(80,170,255,0)');
+    g.addColorStop(1, `rgba(120,200,255,${0.15 + shieldR * 0.2})`);
+    ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(0, 0, sz + 10, -Math.PI * 0.8, Math.PI * 0.8);
+    ctx.arc(0, 0, r, 0, TWO_PI);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(140,210,255,${0.45 + shieldR * 0.45})`;
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([10, 5]);
+    ctx.lineDashOffset = -animTime * 20;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, TWO_PI);
     ctx.stroke();
-    ctx.shadowBlur = 0;
+    ctx.setLineDash([]);
     ctx.restore();
   }
 
   function drawEnemyHPBar(e, sz, vertOffset) {
-    const hpR = e.hp / e.maxHP;
-    const barW = sz * 2 + 8;
+    const hpR = Math.max(0, e.hp / e.maxHP);
+    const barW = Math.max(36, sz * 2 + 8);
     const barX = e.x - barW / 2;
-    const barY = e.y - sz - 20 + vertOffset;
-    ctx.fillStyle = '#200';
-    ctx.fillRect(barX, barY, barW, 8);
-    const ehpGrad = ctx.createLinearGradient(barX, barY, barX + barW * hpR, barY);
-    ehpGrad.addColorStop(0, '#f66');
-    ehpGrad.addColorStop(1, '#f44');
-    ctx.fillStyle = ehpGrad;
-    ctx.fillRect(barX, barY, barW * hpR, 8);
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    ctx.fillRect(barX, barY, barW * hpR, 4);
-
-    // Shield bar (drawn above HP bar if shield exists)
-    if (e.shield > 0 && e.maxShield > 0) {
-      const shieldR = e.shield / e.maxShield;
-      ctx.fillStyle = '#024';
-      ctx.fillRect(barX, barY - 10, barW, 6);
-      ctx.fillStyle = '#4af';
-      ctx.fillRect(barX, barY - 10, barW * shieldR, 6);
-      ctx.fillStyle = 'rgba(255,255,255,0.2)';
-      ctx.fillRect(barX, barY - 10, barW * shieldR, 2);
-    }
+    const barY = e.y - sz * (e.boss ? 1.75 : 1.2) - 16 + vertOffset;
+    drawMeter(barX, barY, barW, 7, hpR, hpR > 0.5 ? '#ff6a5a' : '#ff3a3a', { track: 'rgba(20,0,0,0.75)' });
+    if (e.shield > 0 && e.maxShield > 0)
+      drawMeter(barX, barY - 8, barW, 5, e.shield / e.maxShield, '#5ab8ff', { track: 'rgba(0,10,30,0.75)' });
   }
 
   function drawProjectiles() {
+    const prevOp = ctx.globalCompositeOperation;
     for (const p of projectiles) {
-      const alpha = p.life / p.maxLife;
+      const alpha = Math.max(0, p.life / p.maxLife);
 
-      // Electric arc effect using shared helper
+      // Beam: wide soft glow, colored body, white-hot core
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = `rgba(255,70,50,${alpha * 0.25})`;
+      ctx.lineWidth = 16 * alpha + 2;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.tx, p.ty);
+      ctx.stroke();
       SZ.GameEffects.drawElectricArc(ctx, p.x, p.y, p.tx, p.ty, {
         segments: 8,
-        jitter: 12 * alpha,
-        color: `rgba(255,120,120,${alpha})`,
-        glowColor: `rgba(255,60,60,${alpha * 0.5})`,
-        width: 3 * alpha,
+        jitter: 10 * alpha,
+        color: `rgba(255,150,120,${alpha})`,
+        glowColor: `rgba(255,60,40,${alpha * 0.6})`,
+        width: 3 * alpha + 0.5,
         glowWidth: 8 * alpha
       });
-
-      // Impact flash
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(255,255,240,${alpha * 0.9})`;
+      ctx.lineWidth = 1.5 * alpha + 0.5;
       ctx.beginPath();
-      ctx.arc(p.tx, p.ty, 12 * alpha, 0, TWO_PI);
-      const impactGrad = ctx.createRadialGradient(p.tx, p.ty, 0, p.tx, p.ty, 12 * alpha);
-      impactGrad.addColorStop(0, `rgba(255,220,150,${alpha})`);
-      impactGrad.addColorStop(0.5, `rgba(255,100,50,${alpha * 0.6})`);
-      impactGrad.addColorStop(1, `rgba(255,50,50,0)`);
-      ctx.fillStyle = impactGrad;
-      ctx.fill();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.tx, p.ty);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+
+      // Muzzle and impact flares with spark rays
+      drawGlow('#ff7040', p.x, p.y, 22 * alpha + 6, alpha);
+      drawGlow('#ffb070', p.tx, p.ty, 40 * alpha + 8, alpha);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(255,220,170,${alpha})`;
+      ctx.lineWidth = 2;
+      const rays = 6;
+      for (let i = 0; i < rays; ++i) {
+        const a = i * TWO_PI / rays + p.tx * 0.1;
+        const r0 = 6, r1 = 6 + 22 * (1 - alpha) + 8;
+        ctx.beginPath();
+        ctx.moveTo(p.tx + Math.cos(a) * r0, p.ty + Math.sin(a) * r0);
+        ctx.lineTo(p.tx + Math.cos(a) * r1, p.ty + Math.sin(a) * r1);
+        ctx.stroke();
+      }
+      ctx.globalCompositeOperation = prevOp;
 
       // Emit trail particles along beam
       if (Math.random() < 0.3) {
@@ -4639,6 +5893,7 @@
         particles.trail(px, py, { color: '#f88', life: 0.15, size: 1 });
       }
     }
+    ctx.globalCompositeOperation = prevOp;
   }
 
   /* ======================================================================
@@ -4646,41 +5901,7 @@
      ====================================================================== */
 
   function drawSurface() {
-    // Sky gradient (deeper, richer)
-    const skyGrad = ctx.createLinearGradient(0, 0, 0, DOME_Y);
-    skyGrad.addColorStop(0, '#050520');
-    skyGrad.addColorStop(0.4, '#0a0a30');
-    skyGrad.addColorStop(0.7, '#101040');
-    skyGrad.addColorStop(1, '#1a1a50');
-    ctx.fillStyle = skyGrad;
-    ctx.fillRect(0, 0, CANVAS_W, DOME_Y);
-
-    // Starfield
-    starfield.draw(ctx);
-
-    // Distant mountains silhouette
-    ctx.fillStyle = '#0f0f2a';
-    ctx.beginPath();
-    ctx.moveTo(0, DOME_Y);
-    for (let mx = 0; mx <= CANVAS_W; mx += 2) {
-      const h = 40 + Math.sin(mx * 0.008) * 50 + Math.sin(mx * 0.02 + 1) * 24 + Math.sin(mx * 0.05 + 2) * 10;
-      ctx.lineTo(mx, DOME_Y - h);
-    }
-    ctx.lineTo(CANVAS_W, DOME_Y);
-    ctx.closePath();
-    ctx.fill();
-
-    // Near hills
-    ctx.fillStyle = '#151530';
-    ctx.beginPath();
-    ctx.moveTo(0, DOME_Y);
-    for (let mx = 0; mx <= CANVAS_W; mx += 2) {
-      const h = 16 + Math.sin(mx * 0.015 + 3) * 24 + Math.sin(mx * 0.04) * 12;
-      ctx.lineTo(mx, DOME_Y - h);
-    }
-    ctx.lineTo(CANVAS_W, DOME_Y);
-    ctx.closePath();
-    ctx.fill();
+    drawSky();
 
     // Ground layer with details
     drawGroundLayer();
@@ -4698,39 +5919,7 @@
     // Projectiles
     drawProjectiles();
 
-    // Wave info with styled text
-    ctx.fillStyle = '#bbb';
-    ctx.font = 'bold 24px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    if (waveActive) {
-      ctx.fillStyle = '#f88';
-      ctx.fillText(`Wave ${waveNumber}`, 20, 28);
-      ctx.fillStyle = '#aaa';
-      ctx.font = '22px sans-serif';
-      ctx.fillText(`${enemies.length} enemies remaining`, 20, 60);
-    } else {
-      ctx.fillText(`Next wave in ${Math.ceil(waveTimer)}s`, 20, 28);
-      // Timer bar
-      const timerRatio = waveTimer / WAVE_INTERVAL;
-      ctx.fillStyle = '#333';
-      ctx.fillRect(20, 64, 200, 8);
-      ctx.fillStyle = '#f80';
-      ctx.fillRect(20, 64, 200 * (1 - timerRatio), 8);
-    }
-
-    // Score with glow
-    ctx.textAlign = 'right';
-    ctx.fillStyle = '#dd8';
-    ctx.font = 'bold 26px sans-serif';
-    ctx.fillText(`Score: ${score}`, CANVAS_W - 20, 28);
-
-    // View toggle hint
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#555';
-    ctx.font = '22px sans-serif';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('SPACE = underground  |  U = upgrade tree', CANVAS_W / 2, CANVAS_H - 20);
+    drawSurfaceHUD();
 
     // Upgrade panel
     drawUpgradePanel();
@@ -4741,8 +5930,8 @@
      ====================================================================== */
 
   function drawUnderground() {
-    // Dark cavern background (flat fill for performance)
-    ctx.fillStyle = '#0a0604';
+    const art = buildTileArt();
+    ctx.fillStyle = '#070403';
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
     // Grid tiles (viewport culled)
@@ -4750,75 +5939,64 @@
     const endCol = Math.min(GRID_COLS, Math.ceil((cameraX + CANVAS_W) / TILE_SIZE));
     const startRow = Math.max(0, Math.floor(cameraY / TILE_SIZE));
     const endRow = Math.min(GRID_ROWS, Math.ceil((cameraY + CANVAS_H) / TILE_SIZE));
+    const ox = Math.round(cameraX), oy = Math.round(cameraY);
+    const oreTiles = [];
 
     for (let r = startRow; r < endRow; ++r) {
+      const row = undergroundGrid[r];
       for (let c = startCol; c < endCol; ++c) {
-        const x = c * TILE_SIZE - cameraX;
-        const y = r * TILE_SIZE - cameraY;
-        const tile = undergroundGrid[r][c];
+        const x = c * TILE_SIZE - ox;
+        const y = r * TILE_SIZE - oy;
+        const tile = row[c];
 
         if (tile === TILE_EMPTY) {
-          // Empty cave space (flat fill for performance)
-          ctx.fillStyle = '#140f0a';
-          ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
-        } else if (tile === TILE_GADGET) {
-          // Gadget tiles rendered by drawUndergroundGadgets() -- draw dirt base here
-          drawTile(x, y, TILE_DIRT, r, c);
-        } else {
-          drawTile(x, y, tile, r, c);
+          ctx.drawImage(art.cave[getDepthTier(r)][tileVariant(r, c) % art.VARIANTS], x, y);
+          continue;
         }
+        drawTile(x, y, tile === TILE_GADGET ? TILE_DIRT : tile, r, c);
+        if (tile !== TILE_DIRT && tile !== TILE_GADGET)
+          oreTiles.push(r, c);
 
-        // Draw crack overlay for partially-mined tiles
-        if (tile !== TILE_EMPTY && tileHP[r] && tileMaxHP[r] && tileMaxHP[r][c] > 0) {
+        // Cracks on partially-mined tiles
+        if (tileHP[r] && tileMaxHP[r] && tileMaxHP[r][c] > 0) {
           const hpRatio = tileHP[r][c] / tileMaxHP[r][c];
           if (hpRatio < 0.99) {
-            const damage = 1 - hpRatio; // 0 = pristine, 1 = about to break
-            // Darken overlay proportional to damage
-            ctx.fillStyle = `rgba(0,0,0,${damage * 0.4})`;
-            ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
-            // Draw crack lines that grow with damage
-            ctx.strokeStyle = `rgba(0,0,0,${0.2 + damage * 0.5})`;
-            ctx.lineWidth = 0.8 + damage * 1.2;
-            const seed = r * GRID_COLS + c;
-            const cx = x + TILE_SIZE / 2;
-            const cy = y + TILE_SIZE / 2;
-            ctx.beginPath();
-            ctx.moveTo(cx, cy);
-            ctx.lineTo(cx + (seed % 13 - 6) * damage, cy + (seed % 11 - 5) * damage);
-            ctx.lineTo(cx + (seed % 17 - 8) * damage, cy + (seed % 9 - 4) * damage * 1.5);
-            ctx.stroke();
-            if (damage > 0.4) {
-              ctx.beginPath();
-              ctx.moveTo(cx - 3, cy + 2);
-              ctx.lineTo(cx + (seed % 7 - 3) * damage * 1.3, cy - (seed % 5 + 2) * damage);
-              ctx.stroke();
-            }
+            const damage = 1 - hpRatio;
+            ctx.fillStyle = `rgba(0,0,0,${damage * 0.3})`;
+            ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+            ctx.drawImage(art.cracks[Math.min(3, Math.floor(damage * 4))], x, y);
           }
         }
-
-        // Grid lines
-        ctx.strokeStyle = '#2a2010';
-        ctx.lineWidth = 0.5;
-        ctx.strokeRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
       }
     }
 
     // Gadget chamber overlays and probe highlights
     drawUndergroundGadgets();
 
+    // Edges between rock and tunnel: rim light on rock, occlusion in the tunnel
+    const solidAt = (r, c) => r < 0 || r >= GRID_ROWS || c < 0 || c >= GRID_COLS || undergroundGrid[r][c] !== TILE_EMPTY;
+    for (let r = startRow; r < endRow; ++r)
+      for (let c = startCol; c < endCol; ++c) {
+        const x = c * TILE_SIZE - ox;
+        const y = r * TILE_SIZE - oy;
+        const solid = undergroundGrid[r][c] !== TILE_EMPTY;
+        const up = solidAt(r - 1, c), down = solidAt(r + 1, c), left = solidAt(r, c - 1), right = solidAt(r, c + 1);
+        if (solid) {
+          if (!up) ctx.drawImage(art.rimTop, x, y);
+          if (!down) ctx.drawImage(art.rimBottom, x, y);
+          if (!left) ctx.drawImage(art.rimLeft, x, y);
+          if (!right) ctx.drawImage(art.rimRight, x, y);
+        } else {
+          if (up) ctx.drawImage(art.aoTop, x, y);
+          if (down) ctx.drawImage(art.aoBottom, x, y);
+          if (left) ctx.drawImage(art.aoLeft, x, y);
+          if (right) ctx.drawImage(art.aoRight, x, y);
+        }
+      }
+
     // Resource reveal glows (drawn over tiles)
-    for (const g of resourceGlows) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(g.x, g.y, g.radius, 0, TWO_PI);
-      const glowGrad = ctx.createRadialGradient(g.x, g.y, 0, g.x, g.y, g.radius);
-      glowGrad.addColorStop(0, `rgba(255,255,255,${g.life * 0.4})`);
-      glowGrad.addColorStop(0.5, hexToRgba(g.color, g.life * 0.2));
-      glowGrad.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = glowGrad;
-      ctx.fill();
-      ctx.restore();
-    }
+    for (const g of resourceGlows)
+      drawGlow(g.color, g.x, g.y, g.radius, Math.max(0, g.life) * 0.6);
 
     // Rock crumble debris
     for (const crumble of crumbleEffects) {
@@ -4828,6 +6006,8 @@
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(p.rot);
+        ctx.fillStyle = SPRITE_OUTLINE;
+        ctx.fillRect(-p.size / 2 - 1, -p.size / 2 - 1, p.size + 2, p.size + 2);
         ctx.fillStyle = p.color;
         ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
         ctx.restore();
@@ -4838,413 +6018,487 @@
     // Dust clouds
     for (const d of dustClouds) {
       ctx.save();
-      ctx.globalAlpha = d.alpha;
+      ctx.globalAlpha = d.alpha * 0.8;
       ctx.beginPath();
       ctx.arc(d.x, d.y, d.radius, 0, TWO_PI);
-      ctx.fillStyle = '#8a7a5a';
+      ctx.fillStyle = '#9a8a6a';
       ctx.fill();
       ctx.restore();
     }
 
-    // Draw dropped resources as small colored dots (viewport-culled)
+    // Dropped resources: bobbing ore icons with their value
     for (const drop of droppedResources) {
-      const dx = drop.col * TILE_SIZE + TILE_SIZE / 2 - cameraX;
-      const dy = drop.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
+      const dx = drop.col * TILE_SIZE + TILE_SIZE / 2 - ox;
+      const dy = drop.row * TILE_SIZE + TILE_SIZE / 2 - oy;
       if (dx < -TILE_SIZE || dx > CANVAS_W + TILE_SIZE || dy < -TILE_SIZE || dy > CANVAS_H + TILE_SIZE) continue;
-      const dropColor = TILE_HIGHLIGHT_COLORS[drop.type] || '#fff';
-      const pulse = Math.sin(animTime * 4 + drop.col + drop.row) * 0.3 + 0.7;
-      ctx.fillStyle = dropColor;
-      ctx.globalAlpha = pulse;
-      ctx.fillRect(dx - 10, dy - 8, 8, 8);
-      ctx.fillRect(dx + 2, dy - 2, 7, 7);
-      ctx.fillRect(dx - 4, dy + 4, 6, 6);
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 16px sans-serif';
+      const bob = Math.sin(animTime * 4 + drop.col + drop.row) * 3;
+      drawGlow(TILE_HIGHLIGHT_COLORS[drop.type] || '#fff', dx, dy + bob, 22, 0.35);
+      drawSprite(TILE_ICONS[drop.type] || 'crate', dx, dy + bob, 22);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
-      ctx.fillText(String(drop.value), dx, dy - 12);
+      fitText(String(drop.value), dx, dy - 10 + bob, TILE_SIZE + 8, 15, { weight: 'bold', color: '#fff', outline: 'rgba(0,0,0,0.8)' });
     }
 
-    // Draw mining progress bar above the block being mined
-    if (miningTarget && miningDuration > 0) {
-      const mx = miningTarget.col * TILE_SIZE - cameraX;
-      const my = miningTarget.row * TILE_SIZE - cameraY;
-      const barW = TILE_SIZE - 8;
-      const barH = 5;
-      const barX = mx + 4;
-      const barY = my - barH - 3;
-      const progress = Math.min(miningProgress / miningDuration, 1);
-
-      // Bar background
-      ctx.fillStyle = 'rgba(0,0,0,0.7)';
-      ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
-      ctx.fillStyle = '#222';
-      ctx.fillRect(barX, barY, barW, barH);
-
-      // Bar fill (gradient from yellow to green as it completes)
-      const barGrad = ctx.createLinearGradient(barX, barY, barX + barW * progress, barY);
-      barGrad.addColorStop(0, '#da2');
-      barGrad.addColorStop(1, progress > 0.8 ? '#0c0' : '#fa0');
-      ctx.fillStyle = barGrad;
-      ctx.fillRect(barX, barY, barW * progress, barH);
-
-      // Bar highlight
-      ctx.fillStyle = 'rgba(255,255,255,0.2)';
-      ctx.fillRect(barX, barY, barW * progress, barH / 2);
-
-      // Bar border
-      ctx.strokeStyle = '#555';
-      ctx.lineWidth = 0.5;
-      ctx.strokeRect(barX, barY, barW, barH);
-    }
-
-    // Draw planned path dots
+    // Planned path
     if (movePath && movePathIndex < movePath.length) {
-      ctx.fillStyle = 'rgba(100,200,255,0.3)';
-      for (let pi = movePathIndex; pi < movePath.length; ++pi) {
-        const step = movePath[pi];
-        const px = step.col * TILE_SIZE + TILE_SIZE / 2 - cameraX;
-        const py = step.row * TILE_SIZE + TILE_SIZE / 2 - cameraY;
-        ctx.beginPath();
-        ctx.arc(px, py, 3, 0, TWO_PI);
-        ctx.fill();
-      }
-      // Draw dots connecting them
-      ctx.strokeStyle = 'rgba(100,200,255,0.15)';
+      ctx.strokeStyle = 'rgba(120,210,255,0.35)';
       ctx.lineWidth = 2;
-      ctx.setLineDash([3, 5]);
+      ctx.setLineDash([4, 6]);
+      ctx.lineDashOffset = -animTime * 20;
       ctx.beginPath();
-      const pathStartX = drillX * TILE_SIZE + TILE_SIZE / 2 - cameraX;
-      const pathStartY = drillY * TILE_SIZE + TILE_SIZE / 2 - cameraY;
-      ctx.moveTo(pathStartX, pathStartY);
+      ctx.moveTo(drillX * TILE_SIZE + TILE_SIZE / 2 - ox, drillY * TILE_SIZE + TILE_SIZE / 2 - oy);
       for (let pi = movePathIndex; pi < movePath.length; ++pi) {
         const step = movePath[pi];
-        ctx.lineTo(step.col * TILE_SIZE + TILE_SIZE / 2 - cameraX,
-                   step.row * TILE_SIZE + TILE_SIZE / 2 - cameraY);
+        ctx.lineTo(step.col * TILE_SIZE + TILE_SIZE / 2 - ox, step.row * TILE_SIZE + TILE_SIZE / 2 - oy);
       }
       ctx.stroke();
       ctx.setLineDash([]);
-
-      // Show mine target marker
+      ctx.lineDashOffset = 0;
+      ctx.fillStyle = 'rgba(140,220,255,0.6)';
+      for (let pi = movePathIndex; pi < movePath.length; ++pi) {
+        const step = movePath[pi];
+        ctx.beginPath();
+        ctx.arc(step.col * TILE_SIZE + TILE_SIZE / 2 - ox, step.row * TILE_SIZE + TILE_SIZE / 2 - oy, pi === movePath.length - 1 ? 5 : 2.5, 0, TWO_PI);
+        ctx.fill();
+      }
       if (mineTarget) {
-        ctx.strokeStyle = 'rgba(255,100,50,0.4)';
-        ctx.lineWidth = 4;
-        ctx.strokeRect(mineTarget.col * TILE_SIZE + 2 - cameraX,
-                       mineTarget.row * TILE_SIZE + 2 - cameraY,
-                       TILE_SIZE - 4, TILE_SIZE - 4);
+        ctx.strokeStyle = `rgba(255,140,60,${0.5 + Math.sin(animTime * 6) * 0.2})`;
+        ctx.lineWidth = 3;
+        roundRectPath(mineTarget.col * TILE_SIZE + 3 - ox, mineTarget.row * TILE_SIZE + 3 - oy, TILE_SIZE - 6, TILE_SIZE - 6, 5);
+        ctx.stroke();
       }
     }
 
     // Draw drill/player character
     drawPlayer();
 
+    // Lamp light: darkness deepens with depth, warm glow around the keeper
+    const pcx = drillX * TILE_SIZE + TILE_SIZE / 2 - ox;
+    const pcy = drillY * TILE_SIZE + TILE_SIZE / 2 - oy;
+    const depth = drillY / GRID_ROWS;
+    const lw = CANVAS_W * 1.9, lh = CANVAS_H * 1.9 * 0.75;
+    ctx.globalAlpha = 0.6 + depth * 0.35;
+    ctx.drawImage(art.light, pcx - lw / 2, pcy - lh / 2, lw, lh);
+    ctx.fillStyle = '#000';
+    if (pcx - lw / 2 > 0) ctx.fillRect(0, 0, pcx - lw / 2, CANVAS_H);
+    if (pcx + lw / 2 < CANVAS_W) ctx.fillRect(pcx + lw / 2, 0, CANVAS_W - pcx - lw / 2, CANVAS_H);
+    if (pcy - lh / 2 > 0) ctx.fillRect(0, 0, CANVAS_W, pcy - lh / 2);
+    if (pcy + lh / 2 < CANVAS_H) ctx.fillRect(0, pcy + lh / 2, CANVAS_W, CANVAS_H - pcy - lh / 2);
+    ctx.globalAlpha = 1;
+    drawGlow('#ffcf80', pcx, pcy, 150, 0.16);
+
+    // Ore glints twinkle through the dark
+    for (let i = 0; i < oreTiles.length; i += 2) {
+      const r = oreTiles[i], c = oreTiles[i + 1];
+      const h = tileVariant(r, c);
+      const tw = Math.sin(animTime * 1.7 + (h % 628) / 100);
+      if (tw < 0.9) continue;
+      const k = (tw - 0.9) * 10;
+      const gx = c * TILE_SIZE - ox + 8 + (h % 24), gy = r * TILE_SIZE - oy + 8 + ((h >>> 5) % 24);
+      drawGlow(TILE_HIGHLIGHT_COLORS[undergroundGrid[r][c]] || '#fff', gx, gy, 10 + k * 6, k);
+      ctx.fillStyle = `rgba(255,255,255,${k})`;
+      ctx.fillRect(gx - 4 * k, gy - 0.5, 8 * k, 1);
+      ctx.fillRect(gx - 0.5, gy - 4 * k, 1, 8 * k);
+    }
+
+    // Mining progress bar above the block being mined
+    if (miningTarget && miningDuration > 0) {
+      const progress = Math.min(miningProgress / miningDuration, 1);
+      drawMeter(miningTarget.col * TILE_SIZE - ox + 2, miningTarget.row * TILE_SIZE - oy - 10, TILE_SIZE - 4, 7, progress, progress > 0.8 ? '#5ae070' : '#ffb030');
+    }
+
     // Resource display (improved styling)
     drawResourceHUD();
 
-    // View toggle hint
-    // Blast charges hint
+    // Blast charges
     if (foundGadgets.includes('blastMining') && (primaryGadgetState.blastCharges || 0) > 0) {
-      ctx.fillStyle = '#f80';
-      ctx.font = 'bold 20px sans-serif';
-      ctx.textAlign = 'right';
-      ctx.textBaseline = 'top';
-      ctx.fillText(`Blast [B]: ${primaryGadgetState.blastCharges}`, CANVAS_W - 20, CANVAS_H - 110);
+      drawSprite('bomb', CANVAS_W - 40, CANVAS_H - 66, 24);
+      drawChip(`Blast [B]: ${primaryGadgetState.blastCharges}`, CANVAS_W - 58, CANVAS_H - 79, 26, { align: 'right', px: 15, bg: 'rgba(20,26,42,0.85)', border: 'rgba(255,160,64,0.6)', color: '#ffa040' });
     }
 
     // Tool HUD (underground)
     drawToolHUDUnderground();
 
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#555';
-    ctx.font = '22px sans-serif';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('Press SPACE to return to surface', CANVAS_W / 2, CANVAS_H - 20);
+    drawKeyHints([
+      { key: 'Space', label: 'Surface' },
+      { key: 'WASD', label: 'Move & mine' },
+      { key: 'Click', label: 'Walk / dig' },
+      { key: 'H', label: 'Help' }
+    ], CANVAS_W / 2, CANVAS_H - 24, 600);
   }
 
-  // Pre-generate deterministic ore speckle positions per tile
-  let oreSpeckles = [];
-  function generateOreSpeckles() {
-    oreSpeckles = [];
-    for (let r = 0; r < GRID_ROWS; ++r) {
-      const row = [];
-      for (let c = 0; c < GRID_COLS; ++c) {
-        const dots = [];
-        for (let d = 0; d < 10; ++d)
-          dots.push({
-            ox: 4 + Math.random() * (TILE_SIZE - 8),
-            oy: 4 + Math.random() * (TILE_SIZE - 8),
-            size: 1.5 + Math.random() * 2.5,
-            brightness: 0.4 + Math.random() * 0.6
-          });
-        row.push(dots);
+
+  // Tile textures, edge overlays, cracks and light maps -- built once
+  function buildTileArt() {
+    if (tileArt) return tileArt;
+    const T = TILE_SIZE;
+    const VARIANTS = 4;
+    const rgb = (hex) => parseHex(hex);
+    const shade = ([r, g, b], k) => `rgb(${Math.max(0, Math.min(255, r * k)) | 0},${Math.max(0, Math.min(255, g * k)) | 0},${Math.max(0, Math.min(255, b * k)) | 0})`;
+
+    const paintGround = (g, base, rng, stony, density) => {
+      const c = rgb(base);
+      g.fillStyle = shade(c, 1);
+      g.fillRect(0, 0, T, T);
+      // 2px pixel noise for a hand-made texture
+      for (let y = 0; y < T; y += 2)
+        for (let x = 0; x < T; x += 2) {
+          const v = rng();
+          if (v < density) {
+            g.fillStyle = shade(c, 0.78 + rng() * 0.1);
+            g.fillRect(x, y, 2, 2);
+          } else if (v > 1 - density * 0.6) {
+            g.fillStyle = shade(c, 1.12 + rng() * 0.1);
+            g.fillRect(x, y, 2, 2);
+          }
+        }
+      // Pebbles / stones with a lit top
+      const n = stony ? 3 : 2;
+      for (let i = 0; i < n; ++i) {
+        const px = 4 + rng() * (T - 8), py = 4 + rng() * (T - 8);
+        const w = (stony ? 5 : 3) + rng() * 4, h = 2 + rng() * 3;
+        g.fillStyle = shade(c, 0.62);
+        g.fillRect(px - w / 2, py - h / 2 + 1, w, h);
+        g.fillStyle = shade(c, stony ? 1.3 : 1.22);
+        g.fillRect(px - w / 2, py - h / 2, w, h - 1);
+        g.fillStyle = shade(c, 1.5);
+        g.fillRect(px - w / 2, py - h / 2, w * 0.6, 1);
       }
-      oreSpeckles.push(row);
+      if (stony) {
+        g.strokeStyle = shade(c, 0.6);
+        g.lineWidth = 1;
+        g.beginPath();
+        let x = rng() * T, y = 0;
+        g.moveTo(x, y);
+        for (let k = 0; k < 4; ++k) {
+          x += (rng() - 0.5) * 14;
+          y += T / 4;
+          g.lineTo(x, y);
+        }
+        g.stroke();
+      }
+    };
+
+    const rng = makeRng(777);
+    const dirt = [], cave = [];
+    for (let t = 0; t < DEPTH_TIERS.length; ++t) {
+      dirt.push([]);
+      cave.push([]);
+      for (let v = 0; v < VARIANTS; ++v) {
+        const d = makeCanvas(T, T);
+        paintGround(d.getContext('2d'), DEPTH_TIERS[t].base, rng, t >= 5, 0.22);
+        dirt[t].push(d);
+        const cv = makeCanvas(T, T);
+        const cg = cv.getContext('2d');
+        const base = rgb(DEPTH_TIERS[t].base);
+        paintGround(cg, shade(base, 0.32).replace(/rgb\((\d+),(\d+),(\d+)\)/, (m, r, g2, b) => '#' + [r, g2, b].map(n => (+n).toString(16).padStart(2, '0')).join('')), rng, false, 0.3);
+        cave[t].push(cv);
+      }
     }
+
+    // First row of each tier: the tier above reaches down with a jagged edge
+    const seam = [null];
+    for (let t = 1; t < DEPTH_TIERS.length; ++t) {
+      seam.push([]);
+      for (let v = 0; v < VARIANTS; ++v) {
+        const sc = makeCanvas(T, T);
+        const g = sc.getContext('2d');
+        const pts = [];
+        for (let x = 0; x <= T; x += 5)
+          pts.push([x, 3 + rng() * 11]);
+        g.beginPath();
+        g.moveTo(0, 0);
+        for (const [x, y] of pts)
+          g.lineTo(x, y);
+        g.lineTo(T, 0);
+        g.closePath();
+        g.save();
+        g.clip();
+        g.drawImage(dirt[t - 1][v], 0, 0);
+        g.restore();
+        g.strokeStyle = 'rgba(0,0,0,0.35)';
+        g.lineWidth = 2;
+        g.beginPath();
+        pts.forEach(([x, y], i) => i ? g.lineTo(x, y + 1) : g.moveTo(x, y + 1));
+        g.stroke();
+        seam[t].push(sc);
+      }
+    }
+
+    // Embedded ore chunks per resource type
+    const ore = {};
+    for (const tile of RESOURCE_TILES) {
+      ore[tile] = [];
+      const cols = ORE_SPECKLE_COLORS[tile] || ['#fff'];
+      for (let v = 0; v < VARIANTS; ++v) {
+        const oc = makeCanvas(T, T);
+        const g = oc.getContext('2d');
+        for (let i = 0; i < 9; ++i) {
+          const x = 4 + rng() * (T - 8), y = 4 + rng() * (T - 8);
+          // keep the centre free for the sprite
+          if (Math.abs(x - T / 2) < 12 && Math.abs(y - T / 2) < 12) continue;
+          const s = 2 + rng() * 2.5;
+          g.fillStyle = SPRITE_OUTLINE;
+          g.fillRect(x - s / 2 - 1, y - s / 2 - 1, s + 2, s + 2);
+          g.fillStyle = cols[i % cols.length];
+          g.fillRect(x - s / 2, y - s / 2, s, s);
+          g.fillStyle = 'rgba(255,255,255,0.55)';
+          g.fillRect(x - s / 2, y - s / 2, Math.max(1, s / 2), 1);
+        }
+        ore[tile].push(oc);
+      }
+    }
+
+    // Edge overlays on solid tiles that border a tunnel (rim light / lip)
+    const edge = (draw) => {
+      const c = makeCanvas(T, T);
+      draw(c.getContext('2d'));
+      return c;
+    };
+    const rimTop = edge(g => {
+      g.fillStyle = 'rgba(255,240,210,0.28)';
+      g.fillRect(0, 0, T, 3);
+      g.fillStyle = 'rgba(255,255,255,0.35)';
+      g.fillRect(0, 0, T, 1);
+      g.fillStyle = 'rgba(0,0,0,0.25)';
+      g.fillRect(0, 3, T, 1);
+    });
+    const rimBottom = edge(g => {
+      g.fillStyle = 'rgba(0,0,0,0.5)';
+      g.fillRect(0, T - 4, T, 4);
+      g.fillStyle = 'rgba(255,255,255,0.08)';
+      g.fillRect(0, T - 5, T, 1);
+    });
+    const rimLeft = edge(g => {
+      g.fillStyle = 'rgba(255,240,210,0.14)';
+      g.fillRect(0, 0, 2, T);
+      g.fillStyle = 'rgba(0,0,0,0.25)';
+      g.fillRect(2, 0, 1, T);
+    });
+    const rimRight = edge(g => {
+      g.fillStyle = 'rgba(0,0,0,0.38)';
+      g.fillRect(T - 3, 0, 3, T);
+    });
+    // Ambient occlusion inside tunnels next to solid rock
+    const ao = (x0, y0, x1, y1) => edge(g => {
+      const gr = g.createLinearGradient(x0, y0, x1, y1);
+      gr.addColorStop(0, 'rgba(0,0,0,0.55)');
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr;
+      g.fillRect(0, 0, T, T);
+    });
+    const aoTop = ao(0, 0, 0, T * 0.45), aoBottom = ao(0, T, 0, T * 0.6), aoLeft = ao(0, 0, T * 0.4, 0), aoRight = ao(T, 0, T * 0.6, 0);
+
+    // Crack stages for partly mined tiles
+    const cracks = [];
+    for (let stage = 1; stage <= 4; ++stage) {
+      const c = makeCanvas(T, T);
+      const g = c.getContext('2d');
+      const r2 = makeRng(stage * 31);
+      g.lineCap = 'round';
+      for (let k = 0; k < stage + 1; ++k) {
+        let x = T / 2 + (r2() - 0.5) * 8, y = T / 2 + (r2() - 0.5) * 8;
+        let a = r2() * TWO_PI;
+        const pts = [[x, y]];
+        for (let i = 0; i < 2 + stage; ++i) {
+          a += (r2() - 0.5) * 1.2;
+          x += Math.cos(a) * (4 + stage * 1.5);
+          y += Math.sin(a) * (4 + stage * 1.5);
+          pts.push([x, y]);
+        }
+        for (const [col, w, oy] of [['rgba(255,255,255,0.25)', 1.5, 1], ['rgba(0,0,0,0.75)', 1.5 + stage * 0.4, 0]]) {
+          g.strokeStyle = col;
+          g.lineWidth = w;
+          g.beginPath();
+          pts.forEach(([px, py], i) => i ? g.lineTo(px, py + oy) : g.moveTo(px, py + oy));
+          g.stroke();
+        }
+      }
+      cracks.push(c);
+    }
+
+    // Darkness map around the miner's lamp (scaled up when drawn)
+    const LW = 400, LH = 300;
+    const light = makeCanvas(LW, LH);
+    const lg = light.getContext('2d');
+    const lgr = lg.createRadialGradient(LW / 2, LH / 2, 18, LW / 2, LH / 2, LW * 0.42);
+    lgr.addColorStop(0, 'rgba(0,0,0,0)');
+    lgr.addColorStop(0.35, 'rgba(0,0,0,0.25)');
+    lgr.addColorStop(1, 'rgba(0,0,0,1)');
+    lg.fillStyle = lgr;
+    lg.fillRect(0, 0, LW, LH);
+
+    tileArt = { dirt, cave, seam, ore, VARIANTS, rimTop, rimBottom, rimLeft, rimRight, aoTop, aoBottom, aoLeft, aoRight, cracks, light };
+    return tileArt;
+  }
+
+  function tileVariant(r, c) {
+    return ((r * 73856093) ^ (c * 19349663)) >>> 0;
   }
 
   function drawTile(x, y, tile, r, c) {
-    // Depth-based colors for dirt tiles
-    let baseColor, shadowColor, highlightColor;
-    if (tile === TILE_DIRT) {
-      const tier = getDepthDirtColors(r);
-      baseColor = tier.base;
-      shadowColor = tier.shadow;
-      highlightColor = tier.highlight;
-    } else {
-      baseColor = TILE_COLORS[tile] || '#3a2a1a';
-      shadowColor = TILE_SHADOW_COLORS[tile] || '#1a0f05';
-      highlightColor = TILE_HIGHLIGHT_COLORS[tile];
-    }
-    const bevel = 3; // bevel thickness in pixels
-
-    // Main tile fill (flat base)
-    ctx.fillStyle = baseColor;
-    ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
-
-    // === Minecraft-style 3D bevel ===
-    // Top bevel (bright highlight)
-    ctx.fillStyle = highlightColor || lightenColor(baseColor, 40);
-    ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, bevel);
-
-    // Left bevel (slightly less bright)
-    ctx.fillStyle = lightenColor(baseColor, 25);
-    ctx.fillRect(x + 1, y + 1 + bevel, bevel, TILE_SIZE - 2 - bevel * 2);
-
-    // Bottom bevel (dark shadow)
-    ctx.fillStyle = shadowColor;
-    ctx.fillRect(x + 1, y + TILE_SIZE - 1 - bevel, TILE_SIZE - 2, bevel);
-
-    // Right bevel (medium shadow)
-    ctx.fillStyle = lightenColor(shadowColor.startsWith('#') ? shadowColor : '#1a0f05', 15);
-    ctx.fillRect(x + TILE_SIZE - 1 - bevel, y + 1 + bevel, bevel, TILE_SIZE - 2 - bevel * 2);
-
-    // Inner face (flat fill for performance -- avoids per-tile gradient creation)
-    ctx.fillStyle = baseColor;
-    ctx.fillRect(x + 1 + bevel, y + 1 + bevel, TILE_SIZE - 2 - bevel * 2, TILE_SIZE - 2 - bevel * 2);
-
-    // Dirt texture noise dots
-    if (tile === TILE_DIRT && dirtNoise[r] && dirtNoise[r][c]) {
-      for (const dot of dirtNoise[r][c]) {
-        ctx.fillStyle = `rgba(0,0,0,${dot.shade})`;
-        ctx.beginPath();
-        ctx.arc(x + dot.ox, y + dot.oy, dot.size * 0.6, 0, TWO_PI);
-        ctx.fill();
-      }
-      // Small cracks on dirt
-      ctx.strokeStyle = 'rgba(0,0,0,0.12)';
-      ctx.lineWidth = 0.5;
-      const seed = r * GRID_COLS + c;
-      ctx.beginPath();
-      ctx.moveTo(x + 8 + (seed % 10), y + 5 + (seed % 7));
-      ctx.lineTo(x + 15 + (seed % 12), y + 18 + (seed % 5));
-      ctx.lineTo(x + 20 + (seed % 8), y + 28 + (seed % 9));
-      ctx.stroke();
-    }
-
-    // === Ore-specific decorations ===
-    if (tile !== TILE_DIRT) {
-      const colors = ORE_SPECKLE_COLORS[tile] || ['#fff'];
-      if (oreSpeckles[r] && oreSpeckles[r][c]) {
-        for (const dot of oreSpeckles[r][c]) {
-          const ci = Math.floor(dot.brightness * colors.length) % colors.length;
-          ctx.fillStyle = colors[ci];
-          const sz = dot.size;
-          ctx.fillRect(x + dot.ox - sz / 2, y + dot.oy - sz / 2, sz, sz);
-        }
-      }
-
-      // Glowing edge around resource tiles (no shadowBlur for performance)
-      const glowPulse = Math.sin(animTime * 3 + r * 0.5 + c * 0.7) * 0.3 + 0.3;
-      ctx.strokeStyle = highlightColor || baseColor;
-      ctx.lineWidth = 2;
-      ctx.globalAlpha = 0.5 + glowPulse;
-      ctx.strokeRect(x + 3, y + 3, TILE_SIZE - 6, TILE_SIZE - 6);
-      ctx.globalAlpha = 1;
-
-      // Resource-specific animated details (only near player to save draw calls)
-      const nearPlayer = Math.abs(r - drillY) + Math.abs(c - drillX) <= 6;
-      if (nearPlayer) {
-        if (tile === TILE_IRON) {
-          ctx.fillStyle = 'rgba(200,200,200,0.15)';
-          ctx.fillRect(x + 8, y + 10, 3, 20);
-          ctx.fillRect(x + 18, y + 6, 3, 15);
-          ctx.fillRect(x + 28, y + 12, 3, 18);
-        } else if (tile === TILE_WATER) {
-          ctx.strokeStyle = 'rgba(100,180,255,0.3)';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          for (let wx = x + 5; wx < x + TILE_SIZE - 5; wx += 4) {
-            const wy = y + TILE_SIZE / 2 + Math.sin((wx - x) * 0.3 + animTime * 4) * 3;
-            if (wx === x + 5)
-              ctx.moveTo(wx, wy);
-            else
-              ctx.lineTo(wx, wy);
-          }
-          ctx.stroke();
-        } else if (tile === TILE_COBALT) {
-          ctx.fillStyle = 'rgba(100,100,200,0.2)';
-          ctx.beginPath();
-          ctx.moveTo(x + 12, y + 8);
-          ctx.lineTo(x + 20, y + 5);
-          ctx.lineTo(x + 28, y + 14);
-          ctx.lineTo(x + 22, y + 20);
-          ctx.closePath();
-          ctx.fill();
-        }
-      }
-
-      // Resource sprite
-      const tIcon = TILE_ICONS[tile];
-      if (tIcon)
-        drawSprite(tIcon, x + TILE_SIZE / 2, y + TILE_SIZE / 2, 28);
-    }
+    const art = buildTileArt();
+    const h = tileVariant(r, c);
+    const tier = getDepthTier(r);
+    ctx.drawImage(art.dirt[tier][h % art.VARIANTS], x, y);
+    if (tier > 0 && getDepthTier(r - 1) !== tier)
+      ctx.drawImage(art.seam[tier][(h >>> 5) % art.VARIANTS], x, y);
+    if (tile === TILE_DIRT || tile === TILE_GADGET)
+      return;
+    const ores = art.ore[tile];
+    if (ores)
+      ctx.drawImage(ores[(h >>> 3) % art.VARIANTS], x, y);
+    // Soft colour bloom so ore tiles read at a glance
+    const hl = TILE_HIGHLIGHT_COLORS[tile];
+    if (hl)
+      drawGlow(hl, x + TILE_SIZE / 2, y + TILE_SIZE / 2, TILE_SIZE * 0.62, 0.3);
+    const tIcon = TILE_ICONS[tile];
+    if (tIcon)
+      drawSprite(tIcon, x + TILE_SIZE / 2, y + TILE_SIZE / 2, 26);
   }
 
   function drawPlayer() {
-    const px = drillX * TILE_SIZE - cameraX;
-    const py = drillY * TILE_SIZE - cameraY;
-    const cx = px + TILE_SIZE / 2;
-    const cy = px + TILE_SIZE / 2; // intentionally kept but we use py below
+    const px = drillX * TILE_SIZE - Math.round(cameraX);
+    const py = drillY * TILE_SIZE - Math.round(cameraY);
     const bob = playerBob;
+    const face = lastMineDir.dx < 0 ? -1 : 1;
 
-    // Selection highlight (animated border)
-    const selPulse = Math.sin(animTime * 5) * 0.3 + 0.7;
-    ctx.strokeStyle = `rgba(255,255,0,${selPulse})`;
-    ctx.lineWidth = 4;
-    ctx.setLineDash([8, 6]);
-    ctx.strokeRect(px, py, TILE_SIZE, TILE_SIZE);
-    ctx.setLineDash([]);
+    // Selection brackets
+    const sel = 0.55 + Math.sin(animTime * 5) * 0.25;
+    ctx.strokeStyle = `rgba(255,220,90,${sel})`;
+    ctx.lineWidth = 3;
+    const L = 10, t = TILE_SIZE;
+    ctx.beginPath();
+    ctx.moveTo(px, py + L); ctx.lineTo(px, py); ctx.lineTo(px + L, py);
+    ctx.moveTo(px + t - L, py); ctx.lineTo(px + t, py); ctx.lineTo(px + t, py + L);
+    ctx.moveTo(px + t, py + t - L); ctx.lineTo(px + t, py + t); ctx.lineTo(px + t - L, py + t);
+    ctx.moveTo(px + L, py + t); ctx.lineTo(px, py + t); ctx.lineTo(px, py + t - L);
+    ctx.stroke();
 
-    // Player body
-    const bodyX = px + TILE_SIZE / 2;
-    const bodyY = py + TILE_SIZE / 2 + bob;
-
+    // Headlamp beam in the facing / mining direction
+    const lampX = px + TILE_SIZE / 2 + face * 2, lampY = py + 10 + bob;
+    const dirX = lastMineDir.dx || (lastMineDir.dy ? 0 : face), dirY = lastMineDir.dy || 0;
+    const ang = Math.atan2(dirY, dirX);
     ctx.save();
-    ctx.translate(bodyX, bodyY);
-    ctx.scale(0.5, 0.5);
-
-    // Mining helmet (top arc)
-    ctx.fillStyle = '#da2';
+    ctx.globalCompositeOperation = 'lighter';
+    const cone = ctx.createRadialGradient(lampX, lampY, 4, lampX, lampY, 150);
+    cone.addColorStop(0, 'rgba(255,230,160,0.28)');
+    cone.addColorStop(1, 'rgba(255,230,160,0)');
+    ctx.fillStyle = cone;
     ctx.beginPath();
-    ctx.arc(0, -8, 16, Math.PI, 0);
-    ctx.fill();
-    // Helmet highlight
-    ctx.fillStyle = '#fc4';
-    ctx.beginPath();
-    ctx.arc(-4, -12, 6, Math.PI, 0);
-    ctx.fill();
-    // Headlamp
-    ctx.fillStyle = '#ff8';
-    ctx.beginPath();
-    ctx.arc(0, -16, 5, 0, TWO_PI);
-    ctx.fill();
-    // Headlamp glow
-    ctx.save();
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = '#ff8';
-    ctx.beginPath();
-    ctx.arc(0, -16, 4, 0, TWO_PI);
-    ctx.fillStyle = 'rgba(255,255,128,0.3)';
-    ctx.fill();
-    ctx.restore();
-
-    // Face
-    ctx.fillStyle = '#d8a060';
-    ctx.beginPath();
-    ctx.arc(0, 0, 12, 0, TWO_PI);
-    ctx.fill();
-
-    // Eyes
-    ctx.fillStyle = '#333';
-    ctx.beginPath();
-    ctx.arc(-5, -2, 2.4, 0, TWO_PI);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(5, -2, 2.4, 0, TWO_PI);
-    ctx.fill();
-
-    // Mouth
-    ctx.strokeStyle = '#733';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(0, 4, 5, 0.2, Math.PI - 0.2);
-    ctx.stroke();
-
-    // Body/suit
-    ctx.fillStyle = '#36a';
-    ctx.fillRect(-10, 12, 20, 16);
-
-    // Arms (one holds pickaxe)
-    ctx.strokeStyle = '#d8a060';
-    ctx.lineWidth = 5;
-    // Left arm
-    ctx.beginPath();
-    ctx.moveTo(-10, 16);
-    ctx.lineTo(-18, 28);
-    ctx.stroke();
-    // Right arm (holding pickaxe, animated)
-    ctx.beginPath();
-    ctx.moveTo(10, 16);
-    if (pickaxeSwinging) {
-      const swingDir = lastMineDir.dx !== 0 ? lastMineDir.dx : lastMineDir.dy;
-      ctx.lineTo(10 + Math.cos(-pickaxeAngle * swingDir) * 16, 16 + Math.sin(pickaxeAngle) * 8);
-    } else
-      ctx.lineTo(18, 28);
-    ctx.stroke();
-
-    // Pickaxe in right hand
-    ctx.save();
-    if (pickaxeSwinging) {
-      const swingAngle = pickaxeAngle * (lastMineDir.dx >= 0 ? 1 : -1);
-      ctx.translate(14, 20);
-      ctx.rotate(-0.5 + swingAngle * 1.5);
-    } else {
-      ctx.translate(18, 26);
-      ctx.rotate(-0.3);
-    }
-    // Handle
-    ctx.strokeStyle = '#854';
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(16, -12);
-    ctx.stroke();
-    // Pick head
-    ctx.fillStyle = '#999';
-    ctx.beginPath();
-    ctx.moveTo(16, -12);
-    ctx.lineTo(26, -16);
-    ctx.lineTo(20, -8);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(16, -12);
-    ctx.lineTo(10, -20);
-    ctx.lineTo(12, -10);
+    ctx.moveTo(lampX, lampY);
+    ctx.arc(lampX, lampY, 150, ang - 0.42, ang + 0.42);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
 
-    // Legs
-    ctx.strokeStyle = '#248';
-    ctx.lineWidth = 5;
-    const legAnim = pickaxeSwinging ? Math.sin(animTime * 15) * 1 : 0;
-    ctx.beginPath();
-    ctx.moveTo(-6, 28);
-    ctx.lineTo(-8 + legAnim * 2, 40);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(6, 28);
-    ctx.lineTo(8 - legAnim * 2, 40);
-    ctx.stroke();
+    ctx.save();
+    ctx.translate(px + TILE_SIZE / 2, py + TILE_SIZE / 2 + bob);
+    ctx.scale(face, 1);
+    const O = SPRITE_OUTLINE;
+    const legAnim = pickaxeSwinging ? Math.sin(animTime * 15) * 1.5 : 0;
 
-    // Boots
-    ctx.fillStyle = '#543';
-    ctx.fillRect(-12 + legAnim * 2, 36, 10, 6);
-    ctx.fillRect(4 - legAnim * 2, 36, 10, 6);
+    // Backpack
+    ctx.fillStyle = O;
+    roundRectPath(-13, -4, 9, 14, 2);
+    ctx.fill();
+    ctx.fillStyle = '#c87a2a';
+    roundRectPath(-12, -3, 7, 12, 2);
+    ctx.fill();
 
+    // Legs and boots
+    ctx.fillStyle = O;
+    ctx.fillRect(-7 + legAnim, 9, 6, 9);
+    ctx.fillRect(1 - legAnim, 9, 6, 9);
+    ctx.fillStyle = '#2a4a8a';
+    ctx.fillRect(-6 + legAnim, 9, 4, 7);
+    ctx.fillRect(2 - legAnim, 9, 4, 7);
+    ctx.fillStyle = '#4a3020';
+    ctx.fillRect(-7 + legAnim, 15, 6, 3);
+    ctx.fillRect(1 - legAnim, 15, 6, 3);
+
+    // Suit
+    ctx.fillStyle = O;
+    roundRectPath(-9, -3, 18, 15, 4);
+    ctx.fill();
+    const sg = ctx.createLinearGradient(-8, 0, 8, 0);
+    sg.addColorStop(0, '#5a8ae8');
+    sg.addColorStop(1, '#2a4aa0');
+    ctx.fillStyle = sg;
+    roundRectPath(-8, -2, 16, 13, 3);
+    ctx.fill();
+    ctx.fillStyle = '#ffd040';
+    ctx.fillRect(-8, 6, 16, 2);
+
+    // Head and helmet
+    ctx.fillStyle = O;
+    ctx.beginPath();
+    ctx.arc(0, -8, 8.5, 0, TWO_PI);
+    ctx.fill();
+    ctx.fillStyle = '#f0c090';
+    ctx.beginPath();
+    ctx.arc(0, -7, 7, 0, TWO_PI);
+    ctx.fill();
+    ctx.fillStyle = '#2a1a10';
+    ctx.fillRect(2, -8, 2, 2);
+    ctx.fillRect(-3, -8, 2, 2);
+    ctx.fillStyle = O;
+    ctx.beginPath();
+    ctx.arc(0, -10, 9, Math.PI, 0);
+    ctx.lineTo(10, -9);
+    ctx.lineTo(-10, -9);
+    ctx.closePath();
+    ctx.fill();
+    const hg = ctx.createLinearGradient(0, -18, 0, -9);
+    hg.addColorStop(0, '#ffe070');
+    hg.addColorStop(1, '#d09010');
+    ctx.fillStyle = hg;
+    ctx.beginPath();
+    ctx.arc(0, -10, 7.5, Math.PI, 0);
+    ctx.lineTo(9, -10);
+    ctx.lineTo(-9, -10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#fff8d0';
+    ctx.beginPath();
+    ctx.arc(5, -13, 2.5, 0, TWO_PI);
+    ctx.fill();
+
+    // Arm and pickaxe
+    ctx.save();
+    ctx.translate(6, 1);
+    const swing = pickaxeSwinging ? -1.2 + pickaxeAngle * 1.8 : -0.5;
+    ctx.rotate(swing);
+    ctx.fillStyle = O;
+    ctx.fillRect(-1, -2, 15, 4);
+    ctx.fillStyle = '#8a5a2a';
+    ctx.fillRect(0, -1, 14, 2);
+    ctx.fillStyle = O;
+    ctx.beginPath();
+    ctx.moveTo(10, -9);
+    ctx.quadraticCurveTo(17, -2, 12, 9);
+    ctx.lineTo(14, 9);
+    ctx.quadraticCurveTo(20, -2, 12, -10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#c8d0e0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(11, -8);
+    ctx.quadraticCurveTo(17, -2, 13, 8);
+    ctx.stroke();
     ctx.restore();
+    ctx.fillStyle = O;
+    ctx.beginPath();
+    ctx.arc(6, 2, 3.2, 0, TWO_PI);
+    ctx.fill();
+    ctx.fillStyle = '#f0c090';
+    ctx.beginPath();
+    ctx.arc(6, 2, 2, 0, TWO_PI);
+    ctx.fill();
+    ctx.restore();
+
+    drawGlow('#fff0b0', lampX + face * 3, py + 6 + bob, 14, 0.7);
   }
 
   // Resource HUD display configuration
@@ -5271,96 +6525,84 @@
       (e, i) => i < 3 || resources[e.key] > 0
     );
     const lineH = 26;
-    const panelH = 6 + visibleEntries.length * lineH;
-    const panelX = 10;
-    const panelY = 10;
-
-    // Two-column layout if many resources
     const useColumns = visibleEntries.length > 7;
     const colEntries = useColumns ? Math.ceil(visibleEntries.length / 2) : visibleEntries.length;
-    const colPanelH = 6 + colEntries * lineH;
-    const colPanelW = useColumns ? 440 : 260;
+    const colW = 168;
+    const panelX = 16, panelY = 16;
+    const panelW = 16 + (useColumns ? 2 : 1) * colW;
+    const panelH = 14 + colEntries * lineH;
 
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(panelX, panelY, colPanelW, colPanelH);
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(panelX, panelY, colPanelW, colPanelH);
-
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-
+    drawPanel(panelX, panelY, panelW, panelH, { accent: '#c8a060', shadow: 10 });
+    ctx.textBaseline = 'middle';
     for (let i = 0; i < visibleEntries.length; ++i) {
       const e = visibleEntries[i];
       const col = useColumns ? Math.floor(i / colEntries) : 0;
       const row = useColumns ? i % colEntries : i;
-      const x = panelX + 12 + col * 220;
-      const y = panelY + 3 + row * lineH;
-      ctx.fillStyle = e.color;
-      fillIconText(`[[${e.key}]] ${e.label}: ${resources[e.key]}`, x, y);
+      const x = panelX + 10 + col * colW;
+      const y = panelY + 7 + row * lineH + lineH / 2;
+      drawSprite(e.key, x + 10, y, 20);
+      ctx.textAlign = 'left';
+      fitText(e.label, x + 26, y + 1, 44, 15, { color: UI.textDim });
+      ctx.textAlign = 'right';
+      fitText(String(resources[e.key]), x + colW - 12, y + 1, colW - 84, 18, { weight: 'bold', color: e.color });
     }
 
-    // Carried indicator (right side)
-    const carryX = CANVAS_W - 290;
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(carryX, panelY, 280, 60);
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(carryX, panelY, 280, 60);
-
-    ctx.fillStyle = '#cc8';
-    ctx.font = 'bold 22px sans-serif';
-    fillIconText(`[[bag]] Carried: ${carried}/${carryCapacity}`, carryX + 12, panelY + 10);
-
-    // Carry capacity bar
+    // Cargo and depth (top-right)
+    const carryX = CANVAS_W - 296, carryW = 280;
+    drawPanel(carryX, panelY, carryW, 84, { accent: '#e0c060', shadow: 10 });
     const carryRatio = Math.min(carried / carryCapacity, 1);
-    ctx.fillStyle = '#333';
-    ctx.fillRect(carryX + 12, panelY + 40, 256, 10);
-    ctx.fillStyle = carryRatio >= 1 ? '#f44' : '#da2';
-    ctx.fillRect(carryX + 12, panelY + 40, 256 * carryRatio, 10);
+    drawSprite('bag', carryX + 24, panelY + 24, 24);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText('Cargo', carryX + 44, panelY + 25, 90, 18, { weight: 'bold', color: UI.text });
+    ctx.textAlign = 'right';
+    fitText(`${carried} / ${carryCapacity}`, carryX + carryW - 16, panelY + 25, 130, 18, { weight: 'bold', color: carryRatio >= 1 ? UI.bad : '#f0d070' });
+    drawMeter(carryX + 14, panelY + 42, carryW - 28, 10, carryRatio, carryRatio >= 1 ? '#e84040' : '#e0b030');
+    ctx.textAlign = 'left';
+    fitText(`Depth ${drillY} m  ·  ${DEPTH_TIERS[getDepthTier(drillY)].name}`, carryX + 16, panelY + 68, carryW - 32, 15, { color: UI.textDim });
   }
 
   function drawToolHUDUnderground() {
-    // Show active/unlocked tools in the underground view
-    const anyUnlocked = GADGET_DEFS.some(d => unlockedTools[d.key]);
-    if (!anyUnlocked) return;
+    const tools = GADGET_DEFS.filter(d => unlockedTools[d.key]);
+    if (!tools.length) return;
 
-    const hudX = CANVAS_W - 290;
-    let hudY = 84;
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    const toolCount = GADGET_DEFS.filter(d => unlockedTools[d.key]).length;
-    ctx.fillRect(hudX, hudY, 280, 12 + toolCount * 28);
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(hudX, hudY, 280, 12 + toolCount * 28);
+    const hudX = CANVAS_W - 296, hudW = 280;
+    const hudY = 112;
+    const rowH = 30;
+    drawPanel(hudX, hudY, hudW, 12 + tools.length * rowH, { accent: '#9a7aff', shadow: 10 });
 
-    hudY += 2;
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-
-    for (const def of GADGET_DEFS) {
-      if (!unlockedTools[def.key]) continue;
+    for (let i = 0; i < tools.length; ++i) {
+      const def = tools[i];
+      const y = hudY + 6 + i * rowH + rowH / 2;
       const isActive = activeToolKey === def.key;
       const isPassive = def.key === 'scanner' || def.key === 'reinforcedDome';
-
+      let label = def.name, status = '', color = UI.textDim;
       if (def.key === 'blastTool') {
-        ctx.fillStyle = toolState.blastToolCooldown > 0 ? '#555' : (isActive ? '#ffd700' : '#f80');
-        const cd = toolState.blastToolCooldown > 0 ? ` ${Math.ceil(toolState.blastToolCooldown)}s` : ' RDY';
-        fillIconText(`[2] [[${def.icon}]] Blast${cd}`, hudX + 8, hudY);
+        label = 'Blast';
+        const cd = toolState.blastToolCooldown > 0;
+        status = cd ? Math.ceil(toolState.blastToolCooldown) + 's' : 'RDY';
+        color = cd ? UI.textMute : (isActive ? UI.gold : '#ffa040');
       } else if (def.key === 'teleporter') {
-        ctx.fillStyle = toolState.teleporterCooldown > 0 ? '#555' : '#a0f';
-        const cd = toolState.teleporterCooldown > 0 ? ` ${Math.ceil(toolState.teleporterCooldown)}s` : ' RDY';
-        fillIconText(`[5] [[${def.icon}]] Teleport${cd}`, hudX + 8, hudY);
+        label = 'Teleport';
+        const cd = toolState.teleporterCooldown > 0;
+        status = cd ? Math.ceil(toolState.teleporterCooldown) + 's' : 'RDY';
+        color = cd ? UI.textMute : '#c890ff';
       } else if (def.key === 'drill') {
-        ctx.fillStyle = isActive ? '#ffd700' : '#aaa';
-        fillIconText(`[1] [[${def.icon}]] Drill${isActive ? ' SEL' : ''}`, hudX + 8, hudY);
+        label = 'Drill';
+        status = isActive ? 'SEL' : '';
+        color = isActive ? UI.gold : UI.textDim;
       } else if (isPassive) {
-        ctx.fillStyle = '#0f0';
-        fillIconText(`[${def.shortcut}] [[${def.icon}]] ${def.name}`, hudX + 8, hudY);
+        status = 'ON';
+        color = UI.good;
       }
-      hudY += 28;
+      drawChip(def.shortcut, hudX + 10, y - 11, 22, { px: 13, bg: 'rgba(0,0,0,0.45)', border: 'rgba(255,255,255,0.18)', color: UI.textDim });
+      drawSprite(def.icon, hudX + 50, y, 20);
+      let sw = 0;
+      if (status)
+        sw = drawChip(status, hudX + hudW - 12, y - 11, 22, { align: 'right', px: 12, bg: 'rgba(255,255,255,0.08)', color });
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText(label, hudX + 66, y + 1, hudW - 66 - 20 - sw, 16, { weight: 'bold', color });
     }
   }
 
@@ -5368,16 +6610,6 @@
     if (hex.length === 4)
       return [parseInt(hex[1] + hex[1], 16), parseInt(hex[2] + hex[2], 16), parseInt(hex[3] + hex[3], 16)];
     return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
-  }
-
-  const _lightenCache = {};
-  function lightenColor(hex, amount) {
-    const key = hex + '|' + amount;
-    if (_lightenCache[key]) return _lightenCache[key];
-    const [r, g, b] = parseHex(hex);
-    const result = `rgb(${Math.min(255, r + amount)},${Math.min(255, g + amount)},${Math.min(255, b + amount)})`;
-    _lightenCache[key] = result;
-    return result;
   }
 
   function hexToRgba(hex, alpha) {
@@ -5435,53 +6667,36 @@
     if (primaryGadget === 'orchard') {
       const treeX = DOME_X - 60;
       const treeY = DOME_Y - 16;
-      // Trunk
-      ctx.fillStyle = '#654';
-      ctx.fillRect(treeX - 4, treeY - 30, 8, 30);
-      // Canopy
-      ctx.fillStyle = '#2a6';
-      ctx.beginPath();
-      ctx.arc(treeX, treeY - 36, 16, 0, TWO_PI);
-      ctx.fill();
-      ctx.fillStyle = '#3a8';
-      ctx.beginPath();
-      ctx.arc(treeX - 6, treeY - 32, 10, 0, TWO_PI);
-      ctx.fill();
+      drawSprite('tree', treeX, treeY - 26, 52);
       // Fruit (glowing when ready)
       if (primaryGadgetState.fruitReady) {
-        ctx.save();
         const fruitGlow = Math.sin(animTime * 5) * 0.3 + 0.7;
-        ctx.shadowBlur = 8;
-        ctx.shadowColor = '#ff0';
+        drawGlow('#ffd040', treeX + 10, treeY - 30, 18, fruitGlow);
+        ctx.fillStyle = SPRITE_OUTLINE;
+        ctx.beginPath();
+        ctx.arc(treeX + 10, treeY - 30, 7, 0, TWO_PI);
+        ctx.fill();
         ctx.fillStyle = `rgba(255,200,50,${fruitGlow})`;
         ctx.beginPath();
-        ctx.arc(treeX + 10, treeY - 30, 6, 0, TWO_PI);
+        ctx.arc(treeX + 10, treeY - 30, 5.5, 0, TWO_PI);
         ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.restore();
       }
     }
 
-    // Droneyard: small diamond drone flying
+    // Droneyard: hovering drone
     if (primaryGadget === 'droneyard') {
       const dronePhase = primaryGadgetState.dronePhase || 0;
       const droneY = DOME_Y - 100 + Math.sin(dronePhase) * 40;
       const droneX = DOME_X + 70;
-      ctx.save();
-      ctx.translate(droneX, droneY);
-      ctx.rotate(Math.PI / 4);
-      ctx.fillStyle = '#8ac';
-      ctx.fillRect(-8, -8, 16, 16);
-      ctx.fillStyle = '#adf';
-      ctx.fillRect(-4, -4, 8, 8);
-      ctx.restore();
-      // Propeller lines
-      ctx.strokeStyle = 'rgba(150,200,255,0.4)';
+      drawGlow('#7ac8ff', droneX, droneY + 14, 18, 0.5);
+      drawSprite('robot', droneX, droneY, 30);
+      // Propeller blur
+      ctx.strokeStyle = 'rgba(190,225,255,0.55)';
       ctx.lineWidth = 2;
-      const propLen = 10 + Math.sin(animTime * 20) * 4;
+      const propLen = 12 + Math.sin(animTime * 20) * 5;
       ctx.beginPath();
-      ctx.moveTo(droneX - propLen, droneY - 4);
-      ctx.lineTo(droneX + propLen, droneY - 4);
+      ctx.moveTo(droneX - propLen, droneY - 17);
+      ctx.lineTo(droneX + propLen, droneY - 17);
       ctx.stroke();
     }
 
@@ -5554,103 +6769,154 @@
       ctx.stroke();
       ctx.restore();
     }
+  }
 
-    // Gadget HUD info (bottom-left, above hint text)
+  // Row of keycap hints ("[Space] Mine") centred on cx and kept within maxW
+  function drawKeyHints(hints, cx, cy, maxW) {
+    const keyPx = 14, labelPx = 15, keyH = 22, gap = 18;
+    ctx.font = uiFont(keyPx, 'bold');
+    const parts = hints.map(h => {
+      ctx.font = uiFont(keyPx, 'bold');
+      const kw = Math.max(keyH, ctx.measureText(h.key).width + 12);
+      ctx.font = uiFont(labelPx);
+      return { key: h.key, label: h.label, kw, lw: ctx.measureText(h.label).width };
+    });
+    let total = -gap;
+    for (const p of parts)
+      total += p.kw + 6 + p.lw + gap;
+    const s = Math.min(1, maxW / total);
+    ctx.save();
+    ctx.translate(cx - total * s / 2, cy);
+    ctx.scale(s, s);
+    let x = 0;
+    for (const p of parts) {
+      roundRectPath(x, -keyH / 2, p.kw, keyH, 5);
+      ctx.fillStyle = 'rgba(20,26,42,0.85)';
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(170,190,230,0.35)';
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(x + 3, keyH / 2 - 3, p.kw - 6, 2);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = uiFont(keyPx, 'bold');
+      ctx.fillStyle = '#dfe6f5';
+      ctx.fillText(p.key, x + p.kw / 2, 1);
+      ctx.textAlign = 'left';
+      ctx.font = uiFont(labelPx);
+      ctx.fillStyle = 'rgba(200,210,230,0.75)';
+      ctx.fillText(p.label, x + p.kw + 6, 1);
+      x += p.kw + 6 + p.lw + gap;
+    }
+    ctx.restore();
+  }
+
+  function drawSurfaceHUD() {
+    // Wave status (top-left)
+    drawPanel(16, 16, 300, 74, { accent: waveActive ? '#ff6a6a' : '#ffb648' });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    if (waveActive) {
+      fitText(`Wave ${waveNumber}`, 32, 40, 268, 24, { weight: 'bold', color: '#ff8a7a' });
+      const left = enemies.length;
+      fitText(`${left} ${left === 1 ? 'enemy' : 'enemies'} remaining`, 32, 68, 268, 17, { color: UI.textDim });
+    } else {
+      fitText(`Wave ${waveNumber + 1} incoming`, 32, 38, 180, 17, { weight: 'bold', color: UI.textDim });
+      ctx.textAlign = 'right';
+      fitText(`${Math.ceil(waveTimer)}s`, 300, 38, 80, 24, { weight: 'bold', color: '#ffc870' });
+      drawMeter(32, 60, 268, 12, 1 - waveTimer / WAVE_INTERVAL, '#ff9a30');
+    }
+
     drawGadgetHUD();
+
+    // Score and stock (top-right)
+    const sx = CANVAS_W - 340;
+    drawPanel(sx, 16, 320, 74, { accent: UI.gold });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText('SCORE', sx + 16, 38, 90, 14, { weight: 'bold', color: UI.textDim });
+    fitText(`[[crate]] ${totalResources()} resources`, sx + 16, 66, 180, 16, { color: UI.textDim });
+    ctx.textAlign = 'right';
+    fitText(String(score), sx + 304, 42, 200, 30, { weight: 'bold', color: UI.gold });
+
+    // Dome integrity under the dome
+    const hpRatio = Math.max(0, domeHP / maxDomeHP);
+    const barW = 280, barH = 24;
+    const barX = DOME_X - barW / 2, barY = DOME_Y + 22;
+    drawMeter(barX, barY, barW, barH, hpRatio, hpRatio > 0.5 ? '#46c862' : (hpRatio > 0.25 ? '#e8b030' : '#e84040'), {
+      label: `Dome ${Math.ceil(domeHP)} / ${maxDomeHP}`, labelPx: 16
+    });
+
+    drawKeyHints([
+      { key: 'Space', label: 'Underground' },
+      { key: 'U', label: 'Upgrade tree' },
+      { key: 'H', label: 'Help' },
+      { key: 'Esc', label: 'Pause' }
+    ], CANVAS_W / 2, CANVAS_H - 24, 560);
   }
 
   function drawGadgetHUD() {
-    const hudX = 20;
-    let hudY = CANVAS_H - 110;
-
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-
-    // Primary gadget status
-    if (primaryGadget === 'shield') {
-      ctx.fillStyle = primaryGadgetState.active ? '#4af' : '#555';
-      ctx.fillText('Shield: ' + (primaryGadgetState.active ? 'ACTIVE' : 'depleted'), hudX, hudY);
-      hudY -= 28;
-    } else if (primaryGadget === 'repellent') {
-      if (primaryGadgetState.active) {
-        ctx.fillStyle = '#a0f';
-        ctx.fillText(`Repellent: ${Math.ceil(primaryGadgetState.duration)}s`, hudX, hudY);
-      } else if (primaryGadgetState.cooldown > 0) {
-        ctx.fillStyle = '#555';
-        ctx.fillText(`Repellent [R]: ${Math.ceil(primaryGadgetState.cooldown)}s CD`, hudX, hudY);
-      } else {
-        ctx.fillStyle = '#a0f';
-        ctx.fillText('Repellent [R]: READY', hudX, hudY);
-      }
-      hudY -= 28;
+    // Collect the status lines first so the panel can be sized to them
+    const rows = [];
+    if (primaryGadget === 'shield')
+      rows.push({ icon: 'shield', text: 'Shield: ' + (primaryGadgetState.active ? 'ACTIVE' : 'depleted'), color: primaryGadgetState.active ? '#6cc8ff' : UI.textMute });
+    else if (primaryGadget === 'repellent') {
+      if (primaryGadgetState.active)
+        rows.push({ icon: 'portal', text: `Repellent: ${Math.ceil(primaryGadgetState.duration)}s`, color: '#c890ff' });
+      else if (primaryGadgetState.cooldown > 0)
+        rows.push({ icon: 'portal', text: `Repellent [R]: ${Math.ceil(primaryGadgetState.cooldown)}s`, color: UI.textMute });
+      else
+        rows.push({ icon: 'portal', text: 'Repellent [R]: READY', color: '#c890ff' });
     } else if (primaryGadget === 'orchard') {
-      if (primaryGadgetState.speedBoostTimer > 0) {
-        ctx.fillStyle = '#0f0';
-        ctx.fillText(`Mining Boost: ${Math.ceil(primaryGadgetState.speedBoostTimer)}s`, hudX, hudY);
-      } else if (primaryGadgetState.fruitReady) {
-        ctx.fillStyle = '#ff0';
-        ctx.fillText('Orchard: Fruit ready! (click dome)', hudX, hudY);
-      } else {
-        ctx.fillStyle = '#2a6';
-        ctx.fillText(`Orchard: ${Math.ceil(primaryGadgetState.fruitTimer)}s`, hudX, hudY);
-      }
-      hudY -= 28;
-    } else if (primaryGadget === 'droneyard') {
-      ctx.fillStyle = '#8ac';
-      ctx.fillText(`Drone: ${Math.ceil(primaryGadgetState.droneTimer)}s`, hudX, hudY);
-      hudY -= 28;
-    }
+      if (primaryGadgetState.speedBoostTimer > 0)
+        rows.push({ icon: 'tree', text: `Mining boost: ${Math.ceil(primaryGadgetState.speedBoostTimer)}s`, color: UI.good });
+      else if (primaryGadgetState.fruitReady)
+        rows.push({ icon: 'tree', text: 'Fruit ready! Click the tree', color: '#ffe060' });
+      else
+        rows.push({ icon: 'tree', text: `Orchard: ${Math.ceil(primaryGadgetState.fruitTimer)}s`, color: '#4ac080' });
+    } else if (primaryGadget === 'droneyard')
+      rows.push({ icon: 'robot', text: `Drone: ${Math.ceil(primaryGadgetState.droneTimer)}s`, color: '#9cc4e8' });
 
-    // Blast charges
-    if (foundGadgets.includes('blastMining') && (primaryGadgetState.blastCharges || 0) > 0) {
-      ctx.fillStyle = '#f80';
-      ctx.fillText(`Blast [B]: ${primaryGadgetState.blastCharges} charges`, hudX, hudY);
-      hudY -= 28;
-    }
+    if (foundGadgets.includes('blastMining') && (primaryGadgetState.blastCharges || 0) > 0)
+      rows.push({ icon: 'bomb', text: `Blast [B]: ${primaryGadgetState.blastCharges} charges`, color: '#ffa040' });
 
-    // Found gadget names
     for (const g of foundGadgets) {
-      if (g === 'blastMining') continue; // shown above
-      ctx.fillStyle = '#aa8';
-      ctx.fillText(MINE_GADGET_NAMES[g] || g, hudX, hudY);
-      hudY -= 28;
+      if (g === 'blastMining') continue;
+      rows.push({ icon: 'gear', text: MINE_GADGET_NAMES[g] || g, color: '#d0c890' });
     }
 
-    // Unlockable tool indicators
     for (const def of GADGET_DEFS) {
       if (!unlockedTools[def.key]) continue;
       const isActive = activeToolKey === def.key;
       const isPassive = def.key === 'scanner' || def.key === 'reinforcedDome';
-
       if (def.key === 'blastTool') {
-        if (toolState.blastToolCooldown > 0) {
-          ctx.fillStyle = '#555';
-          fillIconText(`[[${def.icon}]] Blast [2]: ${Math.ceil(toolState.blastToolCooldown)}s CD`, hudX, hudY);
-        } else {
-          ctx.fillStyle = isActive ? '#ffd700' : '#f80';
-          fillIconText(`[[${def.icon}]] Blast [2]: READY`, hudX, hudY);
-        }
-        hudY -= 28;
+        const cd = toolState.blastToolCooldown > 0;
+        rows.push({ icon: def.icon, text: `Blast [2]: ${cd ? Math.ceil(toolState.blastToolCooldown) + 's' : 'READY'}`, color: cd ? UI.textMute : (isActive ? UI.gold : '#ffa040') });
       } else if (def.key === 'teleporter') {
-        if (toolState.teleporterCooldown > 0) {
-          ctx.fillStyle = '#555';
-          fillIconText(`[[${def.icon}]] Teleport [5]: ${Math.ceil(toolState.teleporterCooldown)}s CD`, hudX, hudY);
-        } else {
-          ctx.fillStyle = isActive ? '#ffd700' : '#a0f';
-          fillIconText(`[[${def.icon}]] Teleport [5]: READY`, hudX, hudY);
-        }
-        hudY -= 28;
+        const cd = toolState.teleporterCooldown > 0;
+        rows.push({ icon: def.icon, text: `Teleport [5]: ${cd ? Math.ceil(toolState.teleporterCooldown) + 's' : 'READY'}`, color: cd ? UI.textMute : (isActive ? UI.gold : '#c890ff') });
       } else if (def.key === 'drill') {
-        ctx.fillStyle = isActive ? '#ffd700' : '#aaa';
         const combo = isActive && toolState.drillConsecutive > 0 ? ` (x${toolState.drillConsecutive} combo)` : '';
-        fillIconText(`[[${def.icon}]] Drill [1]${combo}`, hudX, hudY);
-        hudY -= 28;
-      } else if (isPassive) {
-        ctx.fillStyle = '#0f0';
-        fillIconText(`[[${def.icon}]] ${def.name} [${def.shortcut}]: ON`, hudX, hudY);
-        hudY -= 28;
-      }
+        rows.push({ icon: def.icon, text: `Drill [1]${combo}`, color: isActive ? UI.gold : UI.textDim });
+      } else if (isPassive)
+        rows.push({ icon: def.icon, text: `${def.name} [${def.shortcut}]: ON`, color: UI.good });
+    }
+    if (!rows.length) return;
+
+    const rowH = 28, pw = 300;
+    const maxRows = 10;
+    const shown = rows.slice(0, maxRows);
+    const ph = 14 + shown.length * rowH;
+    const px = 16, py = CANVAS_H - 58 - ph;
+    drawPanel(px, py, pw, ph, { accent: '#9a7aff', shadow: 10 });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i < shown.length; ++i) {
+      const r = shown[i];
+      const y = py + 7 + i * rowH + rowH / 2;
+      drawSprite(r.icon, px + 22, y, 20);
+      fitText(r.text, px + 40, y + 1, pw - 52, 17, { weight: 'bold', color: r.color });
     }
   }
 
@@ -5670,31 +6936,33 @@
           if (undergroundGrid[ch.r + dr][ch.c + dc] !== TILE_GADGET) continue;
           const x = (ch.c + dc) * TILE_SIZE - cameraX;
           const y = (ch.r + dr) * TILE_SIZE - cameraY;
+          if (x < -TILE_SIZE || x > CANVAS_W || y < -TILE_SIZE || y > CANVAS_H) continue;
 
           if (!ch.revealed) {
             // Hidden: looks like dirt but with faint shimmer
             drawTile(x, y, TILE_DIRT, ch.r + dr, ch.c + dc);
-            const shimmer = Math.sin(animTime * 3 + dr + dc) * 0.1 + 0.1;
-            ctx.fillStyle = `rgba(255,215,0,${shimmer})`;
-            ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+            const shimmer = Math.sin(animTime * 3 + dr + dc) * 0.5 + 0.5;
+            drawGlow('#ffd040', x + TILE_SIZE / 2, y + TILE_SIZE / 2, TILE_SIZE * 0.55, 0.12 + shimmer * 0.18);
           } else {
-            // Revealed: golden glowing tile with "?" symbol
+            // Revealed: golden plate with a pulsing "?"
             const pulse = Math.sin(animTime * 4) * 0.15 + 0.85;
-            ctx.fillStyle = `rgba(200,160,0,${0.7 * pulse})`;
-            ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, TILE_SIZE - 2);
-
-            // Bevel
-            ctx.fillStyle = `rgba(255,240,150,${0.4 * pulse})`;
-            ctx.fillRect(x + 1, y + 1, TILE_SIZE - 2, 3);
-            ctx.fillStyle = `rgba(100,80,0,${0.5 * pulse})`;
-            ctx.fillRect(x + 1, y + TILE_SIZE - 4, TILE_SIZE - 2, 3);
-
-            // "?" symbol
-            ctx.fillStyle = `rgba(255,255,200,${pulse})`;
-            ctx.font = 'bold 36px sans-serif';
+            drawTile(x, y, TILE_DIRT, ch.r + dr, ch.c + dc);
+            const pg = ctx.createLinearGradient(0, y + 3, 0, y + TILE_SIZE - 3);
+            pg.addColorStop(0, '#ffe680');
+            pg.addColorStop(0.5, '#d8a020');
+            pg.addColorStop(1, '#8a5a08');
+            roundRectPath(x + 3, y + 3, TILE_SIZE - 6, TILE_SIZE - 6, 6);
+            ctx.fillStyle = pg;
+            ctx.globalAlpha = 0.75 + pulse * 0.25;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = SPRITE_OUTLINE;
+            ctx.stroke();
+            drawGlow('#ffd040', x + TILE_SIZE / 2, y + TILE_SIZE / 2, TILE_SIZE * 0.8, 0.25 * pulse);
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('?', x + TILE_SIZE / 2, y + TILE_SIZE / 2);
+            fitText('?', x + TILE_SIZE / 2, y + TILE_SIZE / 2 + 1, TILE_SIZE - 10, 26, { weight: 'bold', color: '#fffbe0', outline: 'rgba(80,40,0,0.9)' });
 
             // Sparkle particles on border
             if (Math.random() < 0.03)
@@ -5776,39 +7044,11 @@
   function drawUpgradePanel() {
     const px = CANVAS_W - 340;
     const py = 100;
+    const pw = 320;
     const toolSectionH = showToolPanel ? 44 + GADGET_DEFS.length * 44 : 36;
     const panelH = 60 + UPGRADE_DEFS.length * 48 + toolSectionH;
 
-    // Panel background with gradient
-    const panelGrad = ctx.createLinearGradient(px, py, px, py + panelH);
-    panelGrad.addColorStop(0, 'rgba(10,15,30,0.7)');
-    panelGrad.addColorStop(1, 'rgba(5,8,20,0.8)');
-    ctx.fillStyle = panelGrad;
-    ctx.fillRect(px, py, 320, panelH);
-
-    // Border
-    ctx.strokeStyle = '#3a4a6a';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(px, py, 320, panelH);
-
-    // Header
-    ctx.fillStyle = '#4af';
-    ctx.font = 'bold 22px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('Upgrades', px + 16, py + 32);
-    ctx.fillStyle = '#ffd700';
-    ctx.font = '18px sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText('[U] Full Tree', px + 310, py + 32);
-    ctx.textAlign = 'left';
-
-    // Separator line
-    ctx.strokeStyle = '#334';
-    ctx.beginPath();
-    ctx.moveTo(px + 10, py + 44);
-    ctx.lineTo(px + 310, py + 44);
-    ctx.stroke();
+    drawPanel(px, py, pw, panelH, { title: 'Upgrades', titleRight: '[U] Full Tree', titleRightColor: UI.gold, headerH: 44 });
 
     const total = totalResources();
     for (let i = 0; i < UPGRADE_DEFS.length; ++i) {
@@ -5816,36 +7056,42 @@
       const cost = getUpgradeCost(i);
       const ly = py + 56 + i * 48;
       const canAfford = total >= cost;
+      const hover = mouseAimX >= px && mouseAimX <= px + pw && mouseAimY >= ly && mouseAimY < ly + 48;
 
-      // Hover-like highlight for affordable upgrades
-      if (canAfford) {
-        ctx.fillStyle = 'rgba(60,120,200,0.08)';
-        ctx.fillRect(px + 4, ly - 4, 312, 44);
+      roundRectPath(px + 8, ly - 2, pw - 16, 44, 8);
+      ctx.fillStyle = canAfford ? (hover ? 'rgba(90,184,255,0.22)' : 'rgba(90,184,255,0.10)') : 'rgba(255,255,255,0.03)';
+      ctx.fill();
+      if (hover && canAfford) {
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(140,200,255,0.6)';
+        ctx.stroke();
       }
 
-      ctx.fillStyle = canAfford ? '#ccc' : '#555';
-      ctx.font = '20px sans-serif';
-      ctx.fillText(`${def.name} Lv${getEffectiveLevel(def.key)}`, px + 16, ly + 20);
-      ctx.fillStyle = canAfford ? '#0f0' : '#633';
-      ctx.font = 'bold 20px sans-serif';
-      ctx.fillText(`[${cost}]`, px + 236, ly + 20);
+      drawSprite(UPGRADE_ICONS[def.key] || 'gear', px + 32, ly + 20, 26, canAfford ? 1 : 0.5);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      fitText(def.name, px + 54, ly + 11, 160, 18, { weight: 'bold', color: canAfford ? UI.text : UI.textMute });
+      fitText('Level ' + getEffectiveLevel(def.key), px + 54, ly + 30, 160, 14, { color: canAfford ? UI.textDim : UI.textMute });
+      drawChip(String(cost), px + pw - 18, ly + 8, 26, {
+        align: 'right', maxW: 90, px: 16,
+        bg: canAfford ? 'rgba(80,200,110,0.22)' : 'rgba(255,90,90,0.10)',
+        border: canAfford ? 'rgba(111,224,138,0.7)' : 'rgba(255,106,106,0.35)',
+        color: canAfford ? UI.good : '#b06060'
+      });
     }
 
     // -- Tool/Gadget section --
     const toolY = py + 56 + UPGRADE_DEFS.length * 48 + 8;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(px + 10, toolY - 4, pw - 20, 1);
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.fillRect(px + 10, toolY - 3, pw - 20, 1);
 
-    // Separator
-    ctx.strokeStyle = '#334';
-    ctx.beginPath();
-    ctx.moveTo(px + 10, toolY - 4);
-    ctx.lineTo(px + 310, toolY - 4);
-    ctx.stroke();
-
-    // Section header (toggleable)
-    ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText(showToolPanel ? 'Tools (click to collapse)' : 'Tools (click to expand)', px + 16, toolY + 20);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    fitText((showToolPanel ? '▾ ' : '▸ ') + 'Tools', px + 16, toolY + 13, 120, 19, { weight: 'bold', color: UI.gold });
+    ctx.textAlign = 'right';
+    fitText(showToolPanel ? 'click to collapse' : 'click to expand', px + pw - 16, toolY + 13, 160, 14, { color: UI.textMute });
 
     if (showToolPanel) {
       for (let i = 0; i < GADGET_DEFS.length; ++i) {
@@ -5856,133 +7102,94 @@
         const isActive = activeToolKey === def.key;
         const isPassive = def.key === 'scanner' || def.key === 'reinforcedDome';
 
-        // Background highlight
-        if (isUnlocked) {
-          ctx.fillStyle = isActive ? 'rgba(255,215,0,0.12)' : 'rgba(40,100,40,0.1)';
-          ctx.fillRect(px + 4, ly - 4, 312, 40);
-        } else if (canAfford) {
-          ctx.fillStyle = 'rgba(60,120,200,0.08)';
-          ctx.fillRect(px + 4, ly - 4, 312, 40);
-        }
-
-        // Active border indicator
+        roundRectPath(px + 8, ly - 4, pw - 16, 40, 8);
+        if (isUnlocked)
+          ctx.fillStyle = isActive ? 'rgba(255,215,90,0.16)' : 'rgba(111,224,138,0.10)';
+        else
+          ctx.fillStyle = canAfford ? 'rgba(90,184,255,0.10)' : 'rgba(255,255,255,0.03)';
+        ctx.fill();
         if (isActive) {
-          ctx.strokeStyle = '#ffd700';
           ctx.lineWidth = 1;
-          ctx.strokeRect(px + 4, ly - 4, 312, 40);
+          ctx.strokeStyle = UI.gold;
+          ctx.stroke();
         }
 
-        // Icon + Name
-        ctx.font = '20px sans-serif';
+        drawChip(def.shortcut, px + 16, ly + 4, 24, { px: 14, bg: 'rgba(0,0,0,0.45)', border: 'rgba(255,255,255,0.18)', color: UI.textDim });
+        drawSprite(def.icon, px + 58, ly + 16, 24, isUnlocked || canAfford ? 1 : 0.5);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        let nameColor = canAfford ? UI.text : UI.textMute;
+        if (isUnlocked)
+          nameColor = isActive ? UI.gold : (isPassive ? UI.good : UI.text);
         if (isUnlocked) {
-          ctx.fillStyle = isActive ? '#ffd700' : (isPassive ? '#0f0' : '#aaa');
-          const status = isPassive ? ' [ON]' : (isActive ? ' [SEL]' : '');
-          fillIconText(`[${def.shortcut}] [[${def.icon}]] ${def.name}${status}`, px + 12, ly + 20);
-        } else {
-          ctx.fillStyle = canAfford ? '#ccc' : '#555';
-          fillIconText(`[${def.shortcut}] [[${def.icon}]] ${def.name}`, px + 12, ly + 20);
-          // Cost display
-          let costText = `${def.costIron}Fe`;
-          if (def.costCobalt > 0)
-            costText += `+${def.costCobalt}Co`;
-          ctx.fillStyle = canAfford ? '#0f0' : '#633';
-          ctx.font = 'bold 18px sans-serif';
-          ctx.textAlign = 'right';
-          ctx.fillText(costText, px + 310, ly + 20);
+          const status = isPassive ? 'ON' : (isActive ? 'SEL' : 'OWNED');
+          const sw = drawChip(status, px + pw - 18, ly + 4, 24, { align: 'right', px: 13, bg: 'rgba(111,224,138,0.16)', color: isActive ? UI.gold : UI.good });
           ctx.textAlign = 'left';
+          fitText(def.name, px + 76, ly + 17, pw - 76 - 26 - sw, 17, { weight: 'bold', color: nameColor });
+        } else {
+          let costText = `${def.costIron}[[iron]]`;
+          if (def.costCobalt > 0)
+            costText += ` ${def.costCobalt}[[cobalt]]`;
+          const cw = drawChip(costText, px + pw - 18, ly + 4, 24, {
+            align: 'right', px: 13, maxW: 120,
+            bg: canAfford ? 'rgba(80,200,110,0.22)' : 'rgba(255,90,90,0.10)',
+            color: canAfford ? UI.good : '#b06060'
+          });
+          ctx.textAlign = 'left';
+          fitText(def.name, px + 76, ly + 17, pw - 76 - 26 - cw, 17, { weight: 'bold', color: nameColor });
         }
       }
     }
   }
+
 
   /* ======================================================================
      DRAWING -- HUD
      ====================================================================== */
 
   function drawHUD() {
+    const pulse = Math.sin(animTime * 3) * 0.5 + 0.5;
+    const hoverIn = (b) => mouseAimX >= b.x && mouseAimX <= b.x + b.w && mouseAimY >= b.y && mouseAimY <= b.y + b.h;
+
     if (state === STATE_READY) {
-      ctx.fillStyle = 'rgba(0,0,0,0.85)';
-      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-
-      // Title with glow
-      ctx.save();
-      ctx.shadowBlur = 20;
-      ctx.shadowColor = '#4af';
-      ctx.fillStyle = '#4af';
-      ctx.font = 'bold 64px sans-serif';
+      drawScrim(0.5);
+      drawPanel(CANVAS_W / 2 - 380, 190, 760, 600, { accent: UI.accent, radius: 16 });
+      drawHeadline('DOME KEEPER', CANVAS_W / 2, 290, 680, 88, '#7cc8ff', '#2a7ae0');
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('DOME KEEPER', CANVAS_W / 2, CANVAS_H / 2 - 120);
-      ctx.shadowBlur = 0;
-      ctx.restore();
+      fitText('Defend your dome. Mine resources. Upgrade.', CANVAS_W / 2, 370, 660, 26, { color: UI.textDim });
+      const best = highScores[0];
+      if (best)
+        fitText(`Best run: ${best.score} points  ·  wave ${best.waves}`, CANVAS_W / 2, 420, 660, 18, { color: UI.gold });
+      ctx.fillStyle = 'rgba(120,180,255,0.25)';
+      ctx.fillRect(CANVAS_W / 2 - 220, 450, 440, 1);
 
-      // Subtitle
-      ctx.fillStyle = '#aaa';
-      ctx.font = '28px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('Defend your dome. Mine resources. Upgrade.', CANVAS_W / 2, CANVAS_H / 2 - 30);
-
-      const startPulse = Math.sin(animTime * 3) * 0.3 + 0.7;
       if (saveAvailable) {
-        // Continue / New Game buttons
-        for (const b of getTitleButtons()) {
-          const primary = b.id === 'continue';
-          ctx.fillStyle = primary ? 'rgba(40,90,160,0.9)' : 'rgba(30,35,50,0.9)';
-          ctx.fillRect(b.x, b.y, b.w, b.h);
-          ctx.strokeStyle = primary ? `rgba(120,200,255,${startPulse})` : '#4a5a7a';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(b.x, b.y, b.w, b.h);
-          ctx.fillStyle = primary ? '#fff' : '#bbb';
-          ctx.font = 'bold 28px sans-serif';
-          ctx.fillText(b.label, CANVAS_W / 2, b.y + b.h / 2);
-        }
-        ctx.fillStyle = '#777';
-        ctx.font = '20px sans-serif';
-        ctx.fillText('Enter = Continue  |  F2 = New Game', CANVAS_W / 2, CANVAS_H / 2 + 180);
+        for (const b of getTitleButtons())
+          drawButton(b, b.id === 'continue', hoverIn(b));
+        drawKeyHints([{ key: 'Enter', label: 'Continue' }, { key: 'F2', label: 'New game' }, { key: 'H', label: 'How to play' }], CANVAS_W / 2, 700, 640);
       } else {
-        // Pulsing start prompt
-        ctx.fillStyle = `rgba(170,170,170,${startPulse})`;
-        ctx.font = '28px sans-serif';
-        ctx.fillText('Tap or press F2 to Start', CANVAS_W / 2, CANVAS_H / 2 + 40);
+        const b = getTitleButtons()[0];
+        ctx.save();
+        ctx.globalAlpha = 0.75 + pulse * 0.25;
+        drawButton({ x: b.x, y: b.y, w: b.w, h: b.h, label: 'Start' }, true, hoverIn(b));
+        ctx.restore();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        fitText('Click anywhere or press F2 to start', CANVAS_W / 2, 620, 600, 20, { color: UI.textDim });
+        drawKeyHints([{ key: 'F2', label: 'Start' }, { key: 'H', label: 'How to play' }], CANVAS_W / 2, 700, 640);
       }
-      if (saveNotice) {
-        ctx.fillStyle = '#fa0';
-        ctx.font = '22px sans-serif';
-        ctx.fillText(saveNotice, CANVAS_W / 2, CANVAS_H / 2 + (saveAvailable ? 220 : 90));
-      }
-
-      // Decorative dome outline
-      ctx.beginPath();
-      ctx.arc(CANVAS_W / 2, CANVAS_H / 2 + 200, 100, Math.PI, 0);
-      ctx.closePath();
-      ctx.strokeStyle = `rgba(80,160,255,${0.2 + Math.sin(animTime * 2) * 0.1})`;
-      ctx.lineWidth = 4;
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = '#4af';
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      ctx.textAlign = 'start';
+      if (saveNotice)
+        drawTextBlock(saveNotice, CANVAS_W / 2 - 340, 730, 680, 48, 18, { align: 'center', color: UI.warn });
     }
 
     if (state === STATE_GADGET_SELECT) {
-      ctx.fillStyle = 'rgba(0,0,0,0.9)';
-      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-
-      // Title
-      ctx.save();
-      ctx.shadowBlur = 15;
-      ctx.shadowColor = '#ffd700';
-      ctx.fillStyle = '#ffd700';
-      ctx.font = 'bold 48px sans-serif';
+      drawScrim(0.72);
+      drawHeadline('Choose Your Gadget', CANVAS_W / 2, 200, 1000, 56, '#ffe080', '#e0a020');
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Choose Your Gadget', CANVAS_W / 2, 100);
-      ctx.shadowBlur = 0;
-      ctx.restore();
+      fitText('Your dome keeps this ability for the whole run', CANVAS_W / 2, 262, 900, 22, { color: UI.textDim });
 
-      // 4 cards
       const cardW = 280;
       const cardH = 320;
       const gap = 30;
@@ -5994,108 +7201,84 @@
         const g = PRIMARY_GADGETS[i];
         const cx = startX + i * (cardW + gap);
         const isHover = gadgetSelectHover === i;
+        const lift = isHover ? -6 : 0;
 
-        // Card background
-        const cardGrad = ctx.createLinearGradient(cx, cardY, cx, cardY + cardH);
-        if (isHover) {
-          cardGrad.addColorStop(0, 'rgba(60,80,120,0.9)');
-          cardGrad.addColorStop(1, 'rgba(30,50,80,0.9)');
-        } else {
-          cardGrad.addColorStop(0, 'rgba(25,30,45,0.85)');
-          cardGrad.addColorStop(1, 'rgba(15,18,30,0.85)');
-        }
-        ctx.fillStyle = cardGrad;
-        ctx.fillRect(cx, cardY, cardW, cardH);
+        drawPanel(cx, cardY + lift, cardW, cardH, {
+          accent: isHover ? UI.gold : '#6a8ac8', glow: isHover, radius: 14,
+          top: isHover ? 'rgba(40,56,92,0.96)' : UI.panelTop
+        });
 
-        // Card border
-        ctx.strokeStyle = isHover ? '#ffd700' : '#3a4a6a';
-        ctx.lineWidth = isHover ? 2 : 1;
-        ctx.strokeRect(cx, cardY, cardW, cardH);
+        // Icon well
+        const wx = cx + cardW / 2, wy = cardY + lift + 82;
+        ctx.save();
+        const wg = ctx.createRadialGradient(wx, wy - 10, 4, wx, wy, 58);
+        wg.addColorStop(0, isHover ? 'rgba(255,220,120,0.35)' : 'rgba(120,170,255,0.22)');
+        wg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = wg;
+        ctx.beginPath();
+        ctx.arc(wx, wy, 58, 0, TWO_PI);
+        ctx.fill();
+        ctx.restore();
+        drawSprite(g.icon, wx, wy, 76);
 
-        // Hover glow
-        if (isHover) {
-          ctx.save();
-          ctx.shadowBlur = 12;
-          ctx.shadowColor = '#ffd700';
-          ctx.strokeStyle = 'rgba(255,215,0,0.3)';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(cx - 1, cardY - 1, cardW + 2, cardH + 2);
-          ctx.shadowBlur = 0;
-          ctx.restore();
-        }
-
-        // Icon
-        drawSprite(g.icon, cx + cardW / 2, cardY + 70, 70);
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        fitText(g.name, cx + cardW / 2, cardY + lift + 160, cardW - 30, 24, { weight: 'bold', color: isHover ? UI.gold : UI.text });
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        ctx.fillRect(cx + 30, cardY + lift + 184, cardW - 60, 1);
+        drawTextBlock(g.desc.join(' '), cx + 20, cardY + lift + 196, cardW - 40, 84, 18, { align: 'center', valign: 'middle', color: UI.textDim });
 
-        // Name
-        ctx.fillStyle = isHover ? '#ffd700' : '#ccc';
-        ctx.font = 'bold 24px sans-serif';
-        ctx.fillText(g.name, cx + cardW / 2, cardY + 140);
-
-        // Description lines
-        ctx.fillStyle = '#999';
-        ctx.font = '20px sans-serif';
-        for (let l = 0; l < g.desc.length; ++l)
-          ctx.fillText(g.desc[l], cx + cardW / 2, cardY + 184 + l * 28);
-
-        // Click hint
-        if (isHover) {
-          ctx.fillStyle = '#ffd700';
-          ctx.font = 'bold 20px sans-serif';
-          ctx.fillText('Click to select', cx + cardW / 2, cardY + cardH - 24);
-        }
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        fitText(isHover ? 'Click to select' : 'Gadget ' + (i + 1), cx + cardW / 2, cardY + lift + cardH - 24, cardW - 40, 17, { weight: 'bold', color: isHover ? UI.gold : UI.textMute });
       }
-
-      ctx.textAlign = 'start';
     }
 
     if (state === STATE_PAUSED) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-      ctx.save();
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = '#ff0';
-      ctx.fillStyle = '#ff0';
-      ctx.font = 'bold 64px sans-serif';
+      drawScrim(0.45);
+      const pw = 520, ph = 250, px = CANVAS_W / 2 - pw / 2, py = CANVAS_H / 2 - ph / 2;
+      drawPanel(px, py, pw, ph, { accent: UI.gold, radius: 16 });
+      drawHeadline('PAUSED', CANVAS_W / 2, py + 78, pw - 60, 64, '#ffe070', '#e0a010');
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('PAUSED', CANVAS_W / 2, CANVAS_H / 2);
-      ctx.shadowBlur = 0;
-      ctx.restore();
-      ctx.fillStyle = '#aaa';
-      ctx.font = '26px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('Press Escape to resume', CANVAS_W / 2, CANVAS_H / 2 + 60);
-      ctx.textAlign = 'start';
+      fitText('Your run is saved', CANVAS_W / 2, py + 140, pw - 60, 20, { color: UI.textDim });
+      drawKeyHints([{ key: 'Esc', label: 'Resume' }, { key: 'H', label: 'Help' }, { key: 'F2', label: 'New game' }], CANVAS_W / 2, py + 200, pw - 60);
     }
 
     if (state === STATE_GAME_OVER) {
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      drawScrim(0.6);
+      ctx.fillStyle = 'rgba(120,0,0,0.12)';
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      const pw = 640, ph = 400, px = CANVAS_W / 2 - pw / 2, py = CANVAS_H / 2 - ph / 2;
+      drawPanel(px, py, pw, ph, { accent: '#ff5050', radius: 16 });
+      drawHeadline('DOME DESTROYED', CANVAS_W / 2, py + 78, pw - 60, 60, '#ff7a6a', '#c01818');
 
-      // Red glow title
+      const best = highScores[0];
+      const stats = [
+        ['Waves survived', String(waveNumber)],
+        ['Score', String(score)],
+        ['Best score', best ? String(best.score) : String(score)]
+      ];
+      for (let i = 0; i < stats.length; ++i) {
+        const ry = py + 146 + i * 46;
+        roundRectPath(px + 60, ry, pw - 120, 38, 8);
+        ctx.fillStyle = 'rgba(255,255,255,0.04)';
+        ctx.fill();
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'left';
+        fitText(stats[i][0], px + 80, ry + 20, 260, 20, { color: UI.textDim });
+        ctx.textAlign = 'right';
+        fitText(stats[i][1], px + pw - 80, ry + 20, 220, 24, { weight: 'bold', color: i === 1 ? UI.gold : UI.text });
+      }
+      if (best && score > 0 && best.score === score && best.waves === waveNumber)
+        drawChip('New high score!', CANVAS_W / 2 - 90, py + 290, 30, { px: 17, maxW: 180, bg: 'rgba(255,215,90,0.18)', border: UI.gold, color: UI.gold });
+
       ctx.save();
-      ctx.shadowBlur = 20;
-      ctx.shadowColor = '#f44';
-      ctx.fillStyle = '#f44';
-      ctx.font = 'bold 56px sans-serif';
+      ctx.globalAlpha = 0.6 + pulse * 0.4;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('DOME DESTROYED', CANVAS_W / 2, CANVAS_H / 2 - 60);
-      ctx.shadowBlur = 0;
+      fitText('Click or press F2 to play again', CANVAS_W / 2, py + ph - 40, pw - 60, 22, { weight: 'bold', color: UI.text });
       ctx.restore();
-
-      ctx.fillStyle = '#ccc';
-      ctx.font = '32px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`Wave: ${waveNumber} -- Score: ${score}`, CANVAS_W / 2, CANVAS_H / 2 + 20);
-
-      const restartPulse = Math.sin(animTime * 3) * 0.3 + 0.7;
-      ctx.fillStyle = `rgba(204,204,204,${restartPulse})`;
-      ctx.fillText('Tap or press F2 to play again', CANVAS_W / 2, CANVAS_H / 2 + 80);
-      ctx.textAlign = 'start';
     }
   }
 
@@ -6107,6 +7290,17 @@
     const alpha = getTransitionAlpha();
     ctx.globalAlpha = alpha;
 
+    // View switches slide the scene the way the keeper travels (down into the mine, up to the dome)
+    let slide = 0;
+    if (alpha < 1) {
+      const goingDown = (transitionTarget || currentView) === VIEW_UNDERGROUND;
+      const k = 1 - alpha;
+      const eased = k * k * (3 - 2 * k);
+      slide = (transitionPhase === 'fade-out' ? -eased : eased) * 90 * (goingDown ? 1 : -1);
+      ctx.save();
+      ctx.translate(0, slide);
+    }
+
     if (currentView === VIEW_SURFACE)
       drawSurface();
     else
@@ -6114,9 +7308,18 @@
 
     ctx.globalAlpha = 1;
 
-    // Transition overlay (black fade)
+    // Transition overlay: fade through black with a soft wipe band
     if (alpha < 1) {
+      ctx.restore();
+      ctx.globalAlpha = 1;
       ctx.fillStyle = `rgba(0,0,0,${1 - alpha})`;
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      const k = 1 - alpha;
+      const g = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+      g.addColorStop(0, `rgba(90,180,255,${0.12 * k})`);
+      g.addColorStop(0.5, 'rgba(90,180,255,0)');
+      g.addColorStop(1, `rgba(255,170,60,${0.12 * k})`);
+      ctx.fillStyle = g;
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     }
 
@@ -6130,32 +7333,71 @@
   }
 
   function drawTutorialOverlay() {
-    ctx.fillStyle = 'rgba(0,0,0,0.8)';
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    drawScrim(0.68);
     const page = TUTORIAL_PAGES[tutorialPage] || TUTORIAL_PAGES[0];
-    const cx = CANVAS_W / 2, pw = 800, ph = 440, px = cx - pw / 2, py = (CANVAS_H - ph) / 2;
-    ctx.fillStyle = 'rgba(15,10,5,0.95)';
-    ctx.fillRect(px, py, pw, ph);
-    ctx.strokeStyle = '#c80';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(px, py, pw, ph);
-    ctx.fillStyle = '#666';
-    ctx.font = '20px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Page ' + (tutorialPage + 1) + ' / ' + TUTORIAL_PAGES.length, cx, py + ph - 24);
-    ctx.fillStyle = '#c80';
-    ctx.font = 'bold 36px sans-serif';
-    ctx.fillText(page.title, cx, py + 60);
-    ctx.fillStyle = '#ccc';
-    ctx.font = '26px sans-serif';
-    for (let i = 0; i < page.lines.length; ++i)
-      ctx.fillText(page.lines[i], cx, py + 116 + i * 44);
-    ctx.fillStyle = '#888';
-    ctx.font = '22px sans-serif';
-    if (tutorialPage < TUTORIAL_PAGES.length - 1)
-      ctx.fillText('Click / Space / Right = Next  |  Esc = Close', cx, py + ph - 56);
-    else
-      ctx.fillText('Click / Space = Start!  |  Press H for help anytime', cx, py + ph - 56);
+    const pw = 880, ph = 540, px = CANVAS_W / 2 - pw / 2, py = (CANVAS_H - ph) / 2;
+    drawPanel(px, py, pw, ph, {
+      accent: '#ffb030', radius: 16, title: page.title, titlePx: 28, headerH: 64,
+      titleRight: 'Page ' + (tutorialPage + 1) + ' of ' + TUTORIAL_PAGES.length,
+      top: 'rgba(24,30,50,0.99)', bottom: 'rgba(10,13,24,0.99)'
+    });
+
+    // Page icon and intro paragraph
+    const bodyX = px + 44, bodyW = pw - 88;
+    ctx.save();
+    const ig = ctx.createRadialGradient(bodyX + 40, py + 132, 4, bodyX + 40, py + 132, 52);
+    ig.addColorStop(0, 'rgba(255,176,48,0.3)');
+    ig.addColorStop(1, 'rgba(255,176,48,0)');
+    ctx.fillStyle = ig;
+    ctx.fillRect(bodyX - 12, py + 80, 104, 104);
+    ctx.restore();
+    drawSprite(page.icon, bodyX + 40, py + 132, 64);
+    drawTextBlock(page.intro, bodyX + 104, py + 88, bodyW - 104, 88, 23, { valign: 'middle', color: UI.text, minPx: 15 });
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.fillRect(bodyX, py + 190, bodyW, 1);
+
+    // Key / action rows
+    const rowsTop = py + 202, rowsBottom = py + ph - 100;
+    const rowH = Math.min(48, (rowsBottom - rowsTop) / Math.max(1, page.items.length));
+    ctx.font = uiFont(15, 'bold');
+    let keyColW = 0;
+    for (const it of page.items)
+      if (it[0])
+        keyColW = Math.max(keyColW, ctx.measureText(it[0]).width + 22);
+    keyColW = Math.min(180, keyColW + 32);
+    for (let i = 0; i < page.items.length; ++i) {
+      const [key, text] = page.items[i];
+      const ry = rowsTop + i * rowH;
+      if (i % 2 === 0) {
+        roundRectPath(bodyX, ry + 2, bodyW, rowH - 4, 8);
+        ctx.fillStyle = 'rgba(255,255,255,0.03)';
+        ctx.fill();
+      }
+      if (key)
+        drawChip(key, bodyX + 12, ry + (rowH - 28) / 2, 28, { px: 15, maxW: keyColW - 24, bg: 'rgba(20,26,42,0.95)', border: 'rgba(170,190,230,0.4)', color: '#e8eefa' });
+      else {
+        ctx.fillStyle = '#ffb030';
+        ctx.beginPath();
+        ctx.arc(bodyX + 24, ry + rowH / 2, 5, 0, TWO_PI);
+        ctx.fill();
+      }
+      const tx = key ? bodyX + keyColW : bodyX + 44;
+      drawTextBlock(text, tx, ry + 2, bodyX + bodyW - 12 - tx, rowH - 4, 21, { valign: 'middle', color: '#cdd6e8', minPx: 13 });
+    }
+
+    // Page dots
+    const dotsY = py + ph - 78;
+    for (let i = 0; i < TUTORIAL_PAGES.length; ++i) {
+      ctx.beginPath();
+      ctx.arc(CANVAS_W / 2 + (i - (TUTORIAL_PAGES.length - 1) / 2) * 22, dotsY, i === tutorialPage ? 6 : 4, 0, TWO_PI);
+      ctx.fillStyle = i === tutorialPage ? '#ffb030' : 'rgba(255,255,255,0.25)';
+      ctx.fill();
+    }
+    const last = tutorialPage >= TUTORIAL_PAGES.length - 1;
+    drawKeyHints(last
+      ? [{ key: 'Click', label: 'Start playing' }, { key: 'H', label: 'Help anytime' }]
+      : [{ key: 'Click', label: 'Next' }, { key: '→', label: 'Next' }, { key: '←', label: 'Back' }, { key: 'Esc', label: 'Close' }],
+    CANVAS_W / 2, py + ph - 36, pw - 80);
   }
 
   /* ======================================================================
@@ -6174,10 +7416,11 @@
     tooltip.lines = [];
     tooltip.visible = false;
     tooltip.delayTimer = 0;
+    tooltip.anchor = null;
     tooltip.lastHoverKey = '';
   }
 
-  function setTooltip(x, y, lines, hoverKey) {
+  function setTooltip(x, y, lines, hoverKey, anchor) {
     if (hoverKey !== tooltip.lastHoverKey) {
       tooltip.delayTimer = 0;
       tooltip.visible = false;
@@ -6186,76 +7429,89 @@
     tooltip.lines = lines;
     tooltip.x = x;
     tooltip.y = y;
+    tooltip.anchor = anchor || null;
   }
 
   function drawTooltip() {
     if (!tooltip.visible || tooltip.lines.length === 0) return;
+    if (state !== STATE_PLAYING && state !== STATE_UPGRADE_DIALOG) return;
 
-    const padding = 16;
-    const lineH = 32;
-    const fontSize = 22;
-    ctx.font = `${fontSize}px sans-serif`;
-
-    // Measure max line width
-    let maxW = 0;
-    for (const line of tooltip.lines) {
-      const w = measureIconText(line);
-      if (w > maxW) maxW = w;
-    }
-
-    const boxW = maxW + padding * 2;
-    const boxH = tooltip.lines.length * lineH + padding * 2 - 4;
-
-    // Position near cursor, clamped to canvas
-    let bx = tooltip.x + 28;
-    let by = tooltip.y + 28;
-    if (bx + boxW > CANVAS_W - 8) bx = tooltip.x - boxW - 12;
-    if (by + boxH > CANVAS_H - 8) by = tooltip.y - boxH - 12;
-    if (bx < 8) bx = 8;
-    if (by < 8) by = 8;
-
-    // Background: semi-transparent dark rounded rectangle
-    ctx.save();
-    ctx.fillStyle = 'rgba(10, 12, 20, 0.92)';
-    ctx.strokeStyle = 'rgba(120, 140, 180, 0.5)';
-    ctx.lineWidth = 1;
-    const r = 10;
-    ctx.beginPath();
-    ctx.moveTo(bx + r, by);
-    ctx.lineTo(bx + boxW - r, by);
-    ctx.arcTo(bx + boxW, by, bx + boxW, by + r, r);
-    ctx.lineTo(bx + boxW, by + boxH - r);
-    ctx.arcTo(bx + boxW, by + boxH, bx + boxW - r, by + boxH, r);
-    ctx.lineTo(bx + r, by + boxH);
-    ctx.arcTo(bx, by + boxH, bx, by + boxH - r, r);
-    ctx.lineTo(bx, by + r);
-    ctx.arcTo(bx, by, bx + r, by, r);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    // Text
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    for (let i = 0; i < tooltip.lines.length; ++i) {
-      const line = tooltip.lines[i];
-      // First line is bold (title)
-      if (i === 0) {
-        ctx.font = `bold ${fontSize}px sans-serif`;
-        ctx.fillStyle = '#fff';
-      } else {
-        ctx.font = `${fontSize}px sans-serif`;
-        // Color-code lines starting with special markers
-        if (line.startsWith('\u2714'))       // checkmark
-          ctx.fillStyle = '#8f8';
-        else if (line.startsWith('\u2718'))   // X mark
-          ctx.fillStyle = '#f88';
-        else if (line.startsWith('\u26A0'))   // warning
-          ctx.fillStyle = '#fa0';
-        else
-          ctx.fillStyle = '#ccc';
+    const padding = 14;
+    const maxTextW = 440;
+    let fontSize = 18;
+    let rows, boxW, boxH;
+    // Lay out (wrapping long lines); shrink if the box would not fit the screen
+    for (;;) {
+      rows = [];
+      let maxW = 0;
+      for (let i = 0; i < tooltip.lines.length; ++i) {
+        const line = tooltip.lines[i];
+        const header = /^---\s*(.*?)\s*---$/.exec(line);
+        if (header) {
+          rows.push({ kind: 'header', text: header[1].toUpperCase(), h: fontSize + 8 });
+          continue;
+        }
+        ctx.font = uiFont(i === 0 ? fontSize + 2 : fontSize, i === 0 ? 'bold' : '');
+        for (const w of wrapText(line, maxTextW)) {
+          rows.push({ kind: i === 0 ? 'title' : 'text', text: w, h: (i === 0 ? fontSize + 2 : fontSize) * 1.4, src: line });
+          maxW = Math.max(maxW, measureIconText(w));
+        }
       }
-      fillIconText(line, bx + padding, by + padding + i * lineH);
+      boxW = Math.ceil(maxW) + padding * 2;
+      boxH = padding * 2;
+      for (const r of rows)
+        boxH += r.h;
+      if (boxH <= CANVAS_H - 16 || fontSize <= 12)
+        break;
+      --fontSize;
+    }
+    boxW = Math.max(boxW, 160);
+
+    // Place next to the anchor (keyboard focus) or the cursor, always inside the canvas
+    let bx, by;
+    const a = tooltip.anchor;
+    if (a) {
+      bx = a.x + a.w + 12;
+      if (bx + boxW > CANVAS_W - 8) bx = a.x - boxW - 12;
+      by = a.y;
+    } else {
+      bx = tooltip.x + 24;
+      by = tooltip.y + 24;
+      if (bx + boxW > CANVAS_W - 8) bx = tooltip.x - boxW - 12;
+      if (by + boxH > CANVAS_H - 8) by = tooltip.y - boxH - 12;
+    }
+    bx = Math.max(8, Math.min(CANVAS_W - 8 - boxW, bx));
+    by = Math.max(8, Math.min(CANVAS_H - 8 - boxH, by));
+
+    ctx.save();
+    drawPanel(bx, by, boxW, boxH, { accent: UI.gold, radius: 10, shadow: 14 });
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    let y = by + padding;
+    for (const r of rows) {
+      const cy = y + r.h / 2;
+      if (r.kind === 'header') {
+        ctx.font = uiFont(Math.max(11, fontSize - 5), 'bold');
+        ctx.fillStyle = UI.textMute;
+        ctx.fillText(r.text, bx + padding, cy + 1);
+        const tw = ctx.measureText(r.text).width;
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fillRect(bx + padding + tw + 8, cy, boxW - padding * 2 - tw - 8, 1);
+      } else {
+        const title = r.kind === 'title';
+        ctx.font = uiFont(title ? fontSize + 2 : fontSize, title ? 'bold' : '');
+        let color = UI.text;
+        if (!title) {
+          if (r.src.startsWith('✔')) color = UI.good;
+          else if (r.src.startsWith('✘')) color = UI.bad;
+          else if (r.src.startsWith('⚠')) color = UI.warn;
+          else color = '#c4cde0';
+        } else
+          color = '#ffffff';
+        ctx.fillStyle = color;
+        fillIconText(r.text, bx + padding, cy + 1);
+      }
+      y += r.h;
     }
     ctx.restore();
   }
@@ -6340,7 +7596,8 @@
     const lvl = getTreeNodeLevel(node.id);
     const maxed = lvl >= node.maxLevel;
 
-    lines.push('[[' + node.icon + ']] ' + node.name);
+    const info = getTreeNodeInfo(node);
+    lines.push('[[' + node.icon + ']] ' + info.title + (info.chain.length > 1 ? ' ' + toRoman(info.index + 1) : ''));
 
     // Effect description
     const effectDesc = UPGRADE_EFFECT_DESC[node.upgradeKey];
@@ -6351,10 +7608,10 @@
     lines.push('Type: ' + (node.type === 'gadget' ? 'Gadget (unlock)' : 'Stat upgrade'));
 
     // Level
+    if (info.chain.length > 1)
+      lines.push('Tier ' + (info.index + 1) + ' of ' + info.chain.length);
     if (maxed)
       lines.push('\u2714 Purchased');
-    else
-      lines.push('Level: ' + lvl + ' / ' + node.maxLevel);
 
     // Cost
     if (!maxed) {
@@ -6398,6 +7655,9 @@
       }
     }
 
+    if (!maxed && arePrereqsMet(node))
+      lines.push(canAffordTreeNode(node) ? '\u2714 Click or press Enter to buy' : '\u26A0 Not enough resources');
+
     return lines;
   }
 
@@ -6439,6 +7699,7 @@
     screenShake.update(dt * 1000);
     floatingText.update();
 
+    ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
     ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
     ctx.save();
     screenShake.apply(ctx);
@@ -6562,7 +7823,12 @@
       }
     }
 
-    if (state === STATE_UPGRADE_DIALOG) return; // block other keys while dialog is open
+    if (state === STATE_UPGRADE_DIALOG) {
+      // Tree navigation; other keys are blocked while the dialog is open
+      if (handleUpgradeDialogKey(e))
+        e.preventDefault();
+      return;
+    }
     if (state !== STATE_PLAYING) return;
 
     if (e.code === 'Space' || e.code === 'Tab') {
@@ -6660,7 +7926,8 @@
       const scaleY = CANVAS_H / rect.height;
       const mx = (e.clientX - rect.left) * scaleX;
       const my = (e.clientY - rect.top) * scaleY;
-      handleUpgradeDialogClick(mx, my);
+      if (!handleUpgradeDialogClick(mx, my))
+        startTreePan(e, mx, my); // drag on empty space pans the tree
       return;
     }
 
@@ -6797,19 +8064,10 @@
   canvas.addEventListener('wheel', (e) => {
     if (state === STATE_UPGRADE_DIALOG) {
       e.preventDefault();
-      // Zoom with mouse wheel
-      const zoomDelta = e.deltaY > 0 ? -0.1 : 0.1;
-      const oldZoom = upgradeZoom;
-      upgradeZoom = Math.max(0.3, Math.min(2.0, upgradeZoom + zoomDelta));
-      // Adjust pan to zoom toward mouse position
       const rect = canvas.getBoundingClientRect();
-      const scaleX = CANVAS_W / rect.width;
-      const scaleY = CANVAS_H / rect.height;
-      const mx = (e.clientX - rect.left) * scaleX;
-      const my = (e.clientY - rect.top) * scaleY;
-      const zoomRatio = upgradeZoom / oldZoom;
-      upgradePanX = mx - (mx - upgradePanX) * zoomRatio;
-      upgradePanY = my - (my - upgradePanY) * zoomRatio;
+      const mx = (e.clientX - rect.left) * CANVAS_W / rect.width;
+      const my = (e.clientY - rect.top) * CANVAS_H / rect.height;
+      zoomTreeAt(mx, my, e.deltaY > 0 ? 1 / 1.15 : 1.15);
       upgradeViewCustomized = true;
     }
   }, { passive: false });
@@ -6820,26 +8078,32 @@
       e.preventDefault();
   });
 
+  function startTreePan(e, mx, my) {
+    upgradePanning = true;
+    upgradePanStartX = mx;
+    upgradePanStartY = my;
+    upgradePanBaseX = upgradePanX;
+    upgradePanBaseY = upgradePanY;
+    treeCam.tz = upgradeZoom;
+    upgradeViewCustomized = true;
+    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+  }
+
   canvas.addEventListener('pointerdown', (e) => {
     if (state === STATE_UPGRADE_DIALOG && e.button === 2) {
       e.preventDefault();
-      upgradePanning = true;
       const rect = canvas.getBoundingClientRect();
-      const scaleX = CANVAS_W / rect.width;
-      const scaleY = CANVAS_H / rect.height;
-      upgradePanStartX = (e.clientX - rect.left) * scaleX;
-      upgradePanStartY = (e.clientY - rect.top) * scaleY;
-      upgradePanBaseX = upgradePanX;
-      upgradePanBaseY = upgradePanY;
-      upgradeViewCustomized = true;
-      canvas.setPointerCapture(e.pointerId);
+      startTreePan(e, (e.clientX - rect.left) * CANVAS_W / rect.width, (e.clientY - rect.top) * CANVAS_H / rect.height);
     }
   });
 
   canvas.addEventListener('pointerup', (e) => {
-    if (upgradePanning && e.button === 2) {
+    if (upgradePanning && (e.button === 0 || e.button === 2)) {
       upgradePanning = false;
-      canvas.releasePointerCapture(e.pointerId);
+      treeCam.tx = upgradePanX;
+      treeCam.ty = upgradePanY;
+      treeCam.tz = upgradeZoom;
+      try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
     }
   });
 
@@ -6853,8 +8117,9 @@
 
     // Right-click drag panning in upgrade dialog
     if (upgradePanning && state === STATE_UPGRADE_DIALOG) {
-      upgradePanX = upgradePanBaseX + (mouseAimX - upgradePanStartX);
-      upgradePanY = upgradePanBaseY + (mouseAimY - upgradePanStartY);
+      upgradePanX = treeCam.tx = upgradePanBaseX + (mouseAimX - upgradePanStartX);
+      upgradePanY = treeCam.ty = upgradePanBaseY + (mouseAimY - upgradePanStartY);
+      upgradeZoom = treeCam.tz;
       clearTooltip();
       return;
     }
@@ -7000,6 +8265,8 @@
   }
 
   window.addEventListener('resize', handleResize);
+  if (typeof ResizeObserver === 'function' && canvas.parentElement)
+    new ResizeObserver(handleResize).observe(canvas.parentElement);
 
   /* ======================================================================
      INIT
