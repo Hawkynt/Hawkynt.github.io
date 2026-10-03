@@ -497,7 +497,7 @@
     if (!snd || now - (lastShotSoundAt[def.id] || 0) < 110)
       return;
     lastShotSoundAt[def.id] = now;
-    audio.play(snd[0], { pitch: snd[1] * (0.95 + Math.random() * 0.1), volume: 0.3 });
+    audio.play(snd[0], { pitch: snd[1] * (0.95 + fxRandom() * 0.1), volume: 0.3 });
   }
 
   /* ══════════════════════════════════════════════════════════════════
@@ -889,6 +889,7 @@
       t.spent = spent;
       t.builtWave = num(o.builtWave, -1);
       towers.push(t);
+      ++towerVersion;
     }
 
     floorEffects = [];
@@ -1093,6 +1094,7 @@
 
   function resetBattlefield() {
     towers = [];
+    ++towerVersion;
     enemies = [];
     projectiles = [];
     clouds = [];
@@ -1199,11 +1201,25 @@
      TOWER PLACEMENT & UPGRADE & SELL
      ══════════════════════════════════════════════════════════════════ */
 
+  // Towers by tile, rebuilt whenever the set of towers changes (towerVersion)
+  let towerVersion = 0;
+  let towerGridVersion = -1;
+  const towerGrid = new Array(COLS * ROWS).fill(null);
+
   function towerAt(col, row) {
-    for (const t of towers)
-      if (t.col === col && t.row === row)
-        return t;
-    return null;
+    if (col < 0 || row < 0 || col >= COLS || row >= ROWS) {
+      for (const t of towers)
+        if (t.col === col && t.row === row) return t;
+      return null;
+    }
+    if (towerGridVersion !== towerVersion) {
+      towerGrid.fill(null);
+      for (const t of towers)
+        if (t.col >= 0 && t.row >= 0 && t.col < COLS && t.row < ROWS && !towerGrid[t.row * COLS + t.col])
+          towerGrid[t.row * COLS + t.col] = t;
+      towerGridVersion = towerVersion;
+    }
+    return towerGrid[row * COLS + col];
   }
 
   function canPlace(col, row) {
@@ -1265,6 +1281,7 @@
     tower.builtWave = state === STATE_BUILD ? currentWave : -1;
     tower.bornAt = animTime;
     towers.push(tower);
+    ++towerVersion;
     particles.smoke(tower.x, tower.y + 10, 5, '#b8a080', 7);
     particles.debris(tower.x, tower.y + 8, 6, ['#8a7050', '#6a5038', '#a89070'], 0.7);
     particles.sparkle(tower.x, tower.y, 8, { color: def.color, speed: 2 });
@@ -1297,6 +1314,7 @@
     if (tower.tier === BRANCH_TIER)
       tower.branch = branch;
     tower.stats = null;
+    ++towerVersion;
     const hpBefore = tower.hp / tower.maxHp;
     tower.maxHp = towerMaxHp(tower.tier);
     tower.hp = tower.maxHp * hpBefore;
@@ -1323,6 +1341,7 @@
     gold += refund;
     const idx = towers.indexOf(tower);
     if (idx !== -1) towers.splice(idx, 1);
+    ++towerVersion;
     floatingText.add(tower.x, tower.y - 22, `+${refund}`, { color: '#ffd75a', font: 'bold 12px sans-serif' });
     particles.debris(tower.x, tower.y, 10, ['#7a7a8a', '#5a4a3a', '#9a9aa8'], 1);
     particles.smoke(tower.x, tower.y + 6, 5, '#8a8078', 8);
@@ -1351,6 +1370,7 @@
     const idx = towers.indexOf(tower);
     if (idx === -1) return;
     towers.splice(idx, 1);
+    ++towerVersion;
     if (selectedTower === tower)
       selectedTower = null;
     explosionFx(tower.x, tower.y, CELL, '#ff6a3a');
@@ -1613,11 +1633,13 @@
       shieldHp: shield, shieldMax: shield,
       healCooldown: 1.5 + Math.random(), abilityTimer: 3 + Math.random() * 2,
       revealTimer: 0, revealed: false, haste: 1, enraged: false,
-      hitFlash: 0, walk: Math.random() * 10, spawnT: 0,
+      hitFlash: 0, walk: fxRandom() * 10, spawnT: 0,
       lastHitBy: null, plague: false
     };
     pathPos(enemyPath(e), e.dist, e);
+    e._seq = ++enemySeq;
     enemies.push(e);
+    gridInsert(e);
     if (def.boss && !atDist)
       onBossSpawn(e);
     return e;
@@ -1692,18 +1714,84 @@
     e.slowTimer = Math.max(e.slowTimer, time);
   }
 
-  function enemiesNear(x, y, r, filter) {
-    const out = [];
-    const r2 = r * r;
-    for (const e of enemies) {
-      if (e.hp <= 0) continue;
-      const dx = e.x - x, dy = e.y - y;
-      if (dx * dx + dy * dy <= (r + e.radius) * (r + e.radius) && (!filter || filter(e)))
-        out.push(e);
+  /* ── Spatial index: enemies bucketed by tile, rebuilt once a step after
+     they move; enemies spawned in between are added straight away. Queries
+     widen their search by the farthest an enemy can move in one step and
+     then test live positions, so results match a scan of every enemy. Ties
+     are broken by spawn order, which is also the order of `enemies`. ── */
+  const GRID_MARGIN = 12;
+  const enemyGrid = [];
+  for (let i = 0; i < COLS * ROWS; ++i) enemyGrid.push([]);
+  const gridOverflow = [];    // enemies outside the field (just spawned, flyers)
+  let enemySeq = 0;
+  let maxEnemyRadius = 8;
+
+  function gridInsert(e) {
+    const c = Math.floor(e.x / CELL), r = Math.floor(e.y / CELL);
+    const cell = c < 0 || r < 0 || c >= COLS || r >= ROWS ? -1 : r * COLS + c;
+    e._cell = cell;
+    if (cell < 0) gridOverflow.push(e);
+    else enemyGrid[cell].push(e);
+    if (e.radius > maxEnemyRadius) maxEnemyRadius = e.radius;
+  }
+
+  function rebuildEnemyGrid() {
+    for (let i = 0; i < enemyGrid.length; ++i) enemyGrid[i].length = 0;
+    gridOverflow.length = 0;
+    maxEnemyRadius = 8;
+    for (const e of enemies)
+      if (e.hp > 0) gridInsert(e);
+  }
+
+  // An enemy that changed tile since the rebuild is filed again under its new
+  // tile; the stamp keeps a query from visiting it twice
+  function gridMoved(e) {
+    const c = Math.floor(e.x / CELL), r = Math.floor(e.y / CELL);
+    const cell = c < 0 || r < 0 || c >= COLS || r >= ROWS ? -1 : r * COLS + c;
+    if (cell !== e._cell) gridInsert(e);
+  }
+
+  let queryStamp = 0;
+  // Calls visit(e) for every live enemy that may lie within r of (x, y)
+  function forEnemiesAround(x, y, r, visit) {
+    const stamp = ++queryStamp;
+    const reach = r + maxEnemyRadius + GRID_MARGIN;
+    const c0 = Math.max(0, Math.floor((x - reach) / CELL)), c1 = Math.min(COLS - 1, Math.floor((x + reach) / CELL));
+    const r0 = Math.max(0, Math.floor((y - reach) / CELL)), r1 = Math.min(ROWS - 1, Math.floor((y + reach) / CELL));
+    for (let row = r0; row <= r1; ++row)
+      for (let col = c0; col <= c1; ++col) {
+        const b = enemyGrid[row * COLS + col];
+        for (let i = 0; i < b.length; ++i) {
+          const e = b[i];
+          if (e.hp > 0 && e._q !== stamp) { e._q = stamp; visit(e); }
+        }
+      }
+    for (let i = 0; i < gridOverflow.length; ++i) {
+      const e = gridOverflow[i];
+      if (e.hp > 0 && e._q !== stamp) { e._q = stamp; visit(e); }
     }
+  }
+
+  const bySeq = (a, b) => a._seq - b._seq;
+
+  // Live enemies that may be within r of (x, y), in spawn order; callers test the exact distance
+  function nearbyEnemies(x, y, r) {
+    const out = [];
+    forEnemiesAround(x, y, r, (e) => out.push(e));
+    if (out.length > 1) out.sort(bySeq);
     return out;
   }
 
+  function enemiesNear(x, y, r, filter) {
+    const out = [];
+    forEnemiesAround(x, y, r, (e) => {
+      const dx = e.x - x, dy = e.y - y;
+      if (dx * dx + dy * dy <= (r + e.radius) * (r + e.radius) && (!filter || filter(e)))
+        out.push(e);
+    });
+    if (out.length > 1) out.sort(bySeq);
+    return out;
+  }
   /* ══════════════════════════════════════════════════════════════════
      TARGETING
      ══════════════════════════════════════════════════════════════════ */
@@ -1745,25 +1833,35 @@
     }
   }
 
+  const targetScratch = [];
   function findTargets(t, s, count, exclude) {
     const r = s.rangePx;
-    const list = [];
     const minR = (s.minRange || 0) * CELL;
-    for (const e of enemies) {
-      if (e.hp <= 0 || !canHit(s, e) || (exclude && exclude.indexOf(e) >= 0)) continue;
+    const list = targetScratch;
+    list.length = 0;
+    forEnemiesAround(t.x, t.y, r, (e) => {
+      if (!canHit(s, e) || (exclude && exclude.indexOf(e) >= 0)) return;
       const dx = e.x - t.x, dy = e.y - t.y;
       const d2 = dx * dx + dy * dy;
-      if (d2 > (r + e.radius * 0.5) * (r + e.radius * 0.5) || (minR && d2 < minR * minR)) continue;
+      if (d2 > (r + e.radius * 0.5) * (r + e.radius * 0.5) || (minR && d2 < minR * minR)) return;
       list.push(e);
-    }
+    });
     if (list.length <= 1)
-      return list;
-    // Missiles go for flyers first
-    const scored = list.map(e => [targetScore(t.target, t, e) + (s.airBonus && enemyFlags(e).flying ? 1e7 : 0), e]);
-    scored.sort((a, b) => b[0] - a[0]);
+      return list.slice();
+    // Best score first; equal scores keep spawn order. Missiles go for flyers first.
+    const score = (e) => targetScore(t.target, t, e) + (s.airBonus && enemyFlags(e).flying ? 1e7 : 0);
+    if (count === 1) {
+      let best = null, bs = -Infinity;
+      for (const e of list) {
+        const v = score(e);
+        if (v > bs || (v === bs && e._seq < best._seq)) { bs = v; best = e; }
+      }
+      return [best];
+    }
+    const scored = list.map(e => [score(e), e]);
+    scored.sort((a, b) => b[0] - a[0] || a[1]._seq - b[1]._seq);
     return scored.slice(0, count).map(p => p[1]);
   }
-
   /* ══════════════════════════════════════════════════════════════════
      TOWER ATTACKS
      ══════════════════════════════════════════════════════════════════ */
@@ -1831,7 +1929,7 @@
             hurt(o, s.damage * (o === e ? 1 : 0.5), t, 'energy', { area: o !== e });
             if (s.stun && !enemyFlags(o).boss) o.stunTimer = Math.max(o.stunTimer, s.stun);
           }
-          fxLines.push({ kind: 'sky', pts: [{ x: e.x + (Math.random() - 0.5) * 30, y: e.y - 240 }, { x: e.x, y: e.y - e.radius * 0.5 }], color: '#d8c8ff', t: 0, life: 0.28, seed: Math.random() * 1000 });
+          fxLines.push({ kind: 'sky', pts: [{ x: e.x + (fxRandom() - 0.5) * 30, y: e.y - 240 }, { x: e.x, y: e.y - e.radius * 0.5 }], color: '#d8c8ff', t: 0, life: 0.28, seed: fxRandom() * 1000 });
           particles.glow(e.x, e.y - 4, 30, '#c8b8ff', 0.25);
           particles.sparks(e.x, e.y - 4, 6, '#e8e0ff', 160);
           addDecal(e.x, e.y + 3, 7, 'scorch');
@@ -1846,7 +1944,7 @@
         aimAt(t, e);
         const cosCone = Math.cos(s.cone);
         const ax = Math.cos(t.angle), ay = Math.sin(t.angle);
-        for (const o of enemies) {
+        for (const o of nearbyEnemies(t.x, t.y, s.rangePx)) {
           if (o.hp <= 0 || !canHit(s, o)) continue;
           const dx = o.x - t.x, dy = o.y - t.y;
           const d = Math.hypot(dx, dy);
@@ -1902,7 +2000,7 @@
         let cur = first;
         for (let i = 1; i < s.chains; ++i) {
           let best = null, bd = s.chainPx;
-          for (const e of enemies) {
+          for (const e of nearbyEnemies(cur.x, cur.y, s.chainPx)) {
             if (e.hp <= 0 || hit.indexOf(e) >= 0 || !canHit(s, e)) continue;
             const d = Math.hypot(e.x - cur.x, e.y - cur.y);
             if (d < bd) { bd = d; best = e; }
@@ -1919,7 +2017,7 @@
         });
         const m0 = muzzleOf(t);
         pts[0] = { x: m0.x, y: m0.y };
-        fxLines.push({ kind: 'zap', pts, color: '#bff4ff', t: 0, life: 0.18, seed: Math.random() * 1000 });
+        fxLines.push({ kind: 'zap', pts, color: '#bff4ff', t: 0, life: 0.18, seed: fxRandom() * 1000 });
         aimAt(t, first);
         break;
       }
@@ -1929,7 +2027,7 @@
         aimAt(t, e);
         const cosCone = Math.cos(s.cone);
         const ax = Math.cos(t.angle), ay = Math.sin(t.angle);
-        for (const o of enemies) {
+        for (const o of nearbyEnemies(t.x, t.y, s.rangePx)) {
           if (o.hp <= 0 || !canHit(s, o)) continue;
           const dx = o.x - t.x, dy = o.y - t.y;
           const d = Math.hypot(dx, dy);
@@ -1946,10 +2044,10 @@
             addFloorEffect(Math.floor(o.x / CELL), Math.floor(o.y / CELL), 'lava', 5, s.lava);
         }
         t.flameT = 0.25;
-        if (Math.random() < 0.5) {
+        if (fxRandom() < 0.5) {
           const m = muzzleOf(t);
           const a = t.angle + rnd(-s.cone, s.cone) * 0.7, v = rnd(80, 150);
-          emit(m.x, m.y, Math.cos(a) * v, Math.sin(a) * v, rnd(0.25, 0.45), 2, Math.random() < 0.5 ? '#ffd06a' : '#ff6a1a', PK_PIXEL, -40, 2);
+          emit(m.x, m.y, Math.cos(a) * v, Math.sin(a) * v, rnd(0.25, 0.45), 2, fxRandom() < 0.5 ? '#ffd06a' : '#ff6a1a', PK_PIXEL, -40, 2);
         }
         break;
       }
@@ -1978,7 +2076,7 @@
           // The slug loses a fifth of its force with every enemy it passes through
           const ax = Math.cos(t.angle), ay = Math.sin(t.angle);
           const line = [];
-          for (const o of enemies) {
+          for (const o of nearbyEnemies(t.x, t.y, s.rangePx * 1.4)) {
             if (o.hp <= 0 || !canHit(s, o)) continue;
             const dx = o.x - t.x, dy = o.y - t.y;
             const along = dx * ax + dy * ay;
@@ -2020,7 +2118,10 @@
   }
 
   // Beacons inspire the towers around them (the best beacon counts, they do not stack)
+  let buffVersion = -1;
   function updateBuffs() {
+    if (buffVersion === towerVersion) return;
+    buffVersion = towerVersion;
     for (const t of towers) {
       t.buffDmg = 1;
       t.buffRate = 1;
@@ -2062,7 +2163,7 @@
             const e = t.beamTargets[i];
             if (e.hp <= 0) continue;
             hurt(e, s.damage * (i === 0 ? ramp : 1) * dt, t, 'energy', { pierce: s.pierce, dot: true });
-            if (Math.random() < dt * 14)
+            if (fxBudget > 0 && fxRandom() < dt * 14)
               particles.sparks(e.x, e.y - e.radius * 0.6, 1, i === 0 && ramp > 2 ? '#ffffff' : TOWER_TYPES[t.type].color, 110);
           }
           t.beamSound = (t.beamSound || 0) - dt;
@@ -2110,8 +2211,8 @@
     const step = Math.hypot(p.vx, p.vy) * dt;
     p.trail.push(p.x, p.y);
     if (p.trail.length > 12) p.trail.splice(0, 2);
-    if (Math.random() < dt * 20)
-      emit(p.x, p.y, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, 0.5, 4, '#8a8580', PK_SMOKE, -6, 1);
+    if (fxBudget > 0 && fxRandom() < dt * 20)
+      emit(p.x, p.y, (fxRandom() - 0.5) * 10, (fxRandom() - 0.5) * 10, 0.5, 4, '#8a8580', PK_SMOKE, -6, 1);
     if (dist <= step + t.radius + 2 || p.t > 4) {
       projectiles.splice(i, 1);
       const s = p.s;
@@ -2145,9 +2246,9 @@
     }
     explosionFx(x, y, radius, s.bomblets && radius < CELL ? '#ffcf6a' : '#ff8a3a');
     if (radius >= CELL)
-      playThrottled('boom', 'smallExplode', { pitch: 0.7 + Math.random() * 0.2, volume: radius > CELL * 1.5 ? 0.6 : 0.4 }, 90);
+      playThrottled('boom', 'smallExplode', { pitch: 0.7 + fxRandom() * 0.2, volume: radius > CELL * 1.5 ? 0.6 : 0.4 }, 90);
     else
-      playThrottled('pop', 'hit', { pitch: 1.4 + Math.random() * 0.3, volume: 0.25 }, 60);
+      playThrottled('pop', 'hit', { pitch: 1.4 + fxRandom() * 0.3, volume: 0.25 }, 60);
   }
 
   function updateProjectiles(dt) {
@@ -2170,7 +2271,7 @@
             addDecal(p.tx, p.ty, p.s.cloudPx * 0.5, 'slime');
           }
           if (p.kind === 'glob')
-            clouds.push({ x: p.tx, y: p.ty, r: p.s.cloudPx, t: 0, life: p.s.cloudTime, dps: p.s.cloudDps, acid: !!p.s.acid, plague: !!p.s.plague, tower: p.tower, seed: Math.random() * 100 });
+            clouds.push({ x: p.tx, y: p.ty, r: p.s.cloudPx, t: 0, life: p.s.cloudTime, dps: p.s.cloudDps, acid: !!p.s.acid, plague: !!p.s.plague, tower: p.tower, seed: fxRandom() * 100 });
           else {
             explode(p.tx, p.ty, p.kind === 'bomblet' ? CELL * 0.6 : p.s.splashPx, p.damage, p.tower, p.s);
             if (p.kind === 'shell' && p.s.bomblets) {
@@ -2218,7 +2319,7 @@
           p.hit.push(t);
           if (p.bounces > 0) {
             let next = null, bd = CELL * 2.6;
-            for (const o of enemies) {
+            for (const o of nearbyEnemies(t.x, t.y, CELL * 2.6)) {
               if (o.hp <= 0 || p.hit.indexOf(o) >= 0 || !canHit(s, o)) continue;
               const d = Math.hypot(o.x - t.x, o.y - t.y);
               if (d < bd) { bd = d; next = o; }
@@ -2306,7 +2407,7 @@
       e.burrowCd = (e.burrowCd === undefined ? 3 + Math.random() * 2 : e.burrowCd) - dt;
       if (e.burrowT > 0) {
         e.burrowT -= dt;
-        if (Math.random() < dt * 12) particles.debris(e.x, e.y + 4, 1, ['#8a6a40', '#6a5030'], 0.5);
+        if (fxBudget > 0 && fxRandom() < dt * 12) particles.debris(e.x, e.y + 4, 1, ['#8a6a40', '#6a5030'], 0.5);
         if (e.burrowT <= 0) {
           particles.debris(e.x, e.y, 8, ['#8a6a40', '#6a5030', '#a8885a'], 1);
           playThrottled('unburrow', 'drop', { pitch: 0.5, volume: 0.4 }, 200);
@@ -2326,11 +2427,11 @@
         e.chargeT = 1;
         playThrottled('charge', 'whoosh', { pitch: 0.7, volume: 0.35 }, 250);
       }
-      if (e.chargeT > 0 && Math.random() < dt * 25) particles.smoke(e.x, e.y + 4, 1, '#b8a890', 4);
+      if (e.chargeT > 0 && fxBudget > 0 && fxRandom() < dt * 25) particles.smoke(e.x, e.y + 4, 1, '#b8a890', 4);
     }
     if (f.regen && e.burnTimer <= 0 && e.poisonTimer <= 0 && e.hp < e.maxHp) {
       e.hp = Math.min(e.maxHp, e.hp + e.maxHp * f.regen * dt);
-      if (Math.random() < dt * 3) particles.sparkle(e.x, e.y - 8, 1, { color: '#8aff8a', speed: 1 });
+      if (fxBudget > 0 && fxRandom() < dt * 3) particles.sparkle(e.x, e.y - 8, 1, { color: '#8aff8a', speed: 1 });
     }
     if (f.sabotage) {
       e.abilityTimer -= dt;
@@ -2339,7 +2440,7 @@
           if (towerStats(t).trap || Math.hypot(t.x - e.x, t.y - e.y) > CELL * 1.3) continue;
           jamTower(t, 3);
           e.abilityTimer = 6;
-          fxLines.push({ kind: 'zap', pts: [{ x: e.x, y: e.y - 6 }, { x: t.x, y: t.y - 10 }], color: '#7affc8', t: 0, life: 0.3, seed: Math.random() * 100 });
+          fxLines.push({ kind: 'zap', pts: [{ x: e.x, y: e.y - 6 }, { x: t.x, y: t.y - 10 }], color: '#7affc8', t: 0, life: 0.3, seed: fxRandom() * 100 });
           playThrottled('jam', 'zap', { pitch: 0.5, volume: 0.45 }, 200);
           break;
         }
@@ -2419,7 +2520,7 @@
 
     }
     if (e.plague)
-      clouds.push({ x: e.x, y: e.y, r: CELL * 0.8, t: 0, life: 2.2, dps: towerStats(e.plague).cloudDps * 0.6, acid: false, plague: true, tower: e.plague, seed: Math.random() * 100 });
+      clouds.push({ x: e.x, y: e.y, r: CELL * 0.8, t: 0, life: 2.2, dps: towerStats(e.plague).cloudDps * 0.6, acid: false, plague: true, tower: e.plague, seed: fxRandom() * 100 });
     if (f.boss) {
       particles.confetti(e.x, e.y, 30, {});
       showBanner(`${f.name.toUpperCase()} DEFEATED`, `+${bounty} gold`, UI.gold, 2.4);
@@ -2432,7 +2533,7 @@
       audio.play('explode');
     } else {
       screenShake.trigger(1.5, 60);
-      audio.play('smallExplode', { pitch: (f.flying ? 1.3 : e.radius > 8 ? 0.7 : 1) + Math.random() * 0.2, volume: 0.5 });
+      audio.play('smallExplode', { pitch: (f.flying ? 1.3 : e.radius > 8 ? 0.7 : 1) + fxRandom() * 0.2, volume: 0.5 });
     }
   }
 
@@ -2546,7 +2647,7 @@
           const s = towerStats(trap);
           if (s.trap) {
             hurt(e, s.damage * dt, trap, 'phys', { pierce: s.pierce || 0, dot: !s.pierce, area: true });
-            playThrottled('trap', 'click', { pitch: 0.6 + Math.random() * 0.3, volume: 0.25 }, 260);
+            playThrottled('trap', 'click', { pitch: 0.6 + fxRandom() * 0.3, volume: 0.25 }, 260);
             if (s.slow) applySlow(e, 1 - s.slow, s.slowTime);
           }
         }
@@ -2568,6 +2669,7 @@
       e.dist += sp * dt;
       const path = enemyPath(e);
       pathPos(path, e.dist, e);
+      gridMoved(e);
       if (e.dist >= path.total) {
         e.hp = 0;
         e.leaked = true;
@@ -2703,9 +2805,11 @@
   }
 
   function stepBattle(h) {
+    fxBudget = FX_BUDGET;
     updateSpawner(h);
     updateAbilities(h);
     updateEnemies(h);
+    rebuildEnemyGrid();
     updateReveal(h);
     updateTowers(h);
     updateProjectiles(h);
@@ -4011,11 +4115,18 @@
   }
 
   // Muzzle position of a tower (world units)
+  // Platform height of a tower sprite (art px), worked out without building the art
+  function towerLift(type, tier, branch) {
+    const def = TOWER_TYPES[type];
+    if (def.trap || def.kind === 'mine') return 0;
+    const ht = 16 + BASE_HEIGHT[tier] + 4 + (tier >= 4 && branch === 0 ? 3 : 0);
+    return ht + 2 - 10;
+  }
+
   function muzzleOf(t) {
-    const a = towerArt(t.type, t.tier, t.branch);
-    const hy = t.y + CELL / 2 + 2 - a.lift * AP - 2;
+    const hy = t.y + CELL / 2 + 2 - towerLift(t.type, t.tier, t.branch) * AP - 2;
     const def = TOWER_TYPES[t.type];
-    if (!a.heads)
+    if (!ROTATING[def.id])
       return { x: t.x, y: hy - ({ tesla: 12 + t.tier * 2, frost: 6, storm: 20, arcane: 10, wind: 14, beacon: 8 }[def.id] || 2) };
     const len = def.id === 'sniper' ? 26 : def.id === 'cannon' ? 20 : def.id === 'arrow' ? 18 : 18;
     return { x: t.x + Math.cos(t.angle) * len, y: hy + Math.sin(t.angle) * len };
@@ -4745,7 +4856,7 @@
   /* ── Dying enemies: flash, squash and fade ── */
   function addCorpse(e) {
     const def = ENEMY_TYPES[e.type];
-    corpses.push({ img: enemyFrame(e), x: e.x, y: e.y + e.radius * 0.7 - (def.flying ? 12 : 0), flip: e.face === -1, sc: enemyScale(e), t: 0, life: def.boss ? 1.2 : 0.45, flying: !!def.flying });
+    corpses.push({ img: null, type: e.type, walk: e.walk, x: e.x, y: e.y + e.radius * 0.7 - (def.flying ? 12 : 0), flip: e.face === -1, sc: enemyScale(e), t: 0, life: def.boss ? 1.2 : 0.45, flying: !!def.flying });
     if (corpses.length > 60) corpses.shift();
   }
 
@@ -4758,6 +4869,7 @@
         corpses.splice(i, 1);
         continue;
       }
+      if (!c.img) c.img = enemyFrame(c);
       ctx.save();
       ctx.translate(c.x, c.y + (c.flying ? k * 12 : 0));
       ctx.scale(1 + k * 0.3, 1 - k * 0.8);
@@ -5080,6 +5192,16 @@
      the boss intro card, hitstop and screen transitions
      ══════════════════════════════════════════════════════════════════ */
 
+  // Effects draw from their own random stream so the battle itself plays out
+  // the same whatever the effects do
+  let fxSeed = (Date.now() ^ 0x5bd1e995) >>> 0;
+  function fxRandom() {
+    fxSeed ^= fxSeed << 13; fxSeed >>>= 0;
+    fxSeed ^= fxSeed >>> 17;
+    fxSeed ^= fxSeed << 5; fxSeed >>>= 0;
+    return fxSeed / 4294967296;
+  }
+
   const MAX_PARTICLES = 1400;
   const PK_PIXEL = 0, PK_GLOW = 1, PK_SMOKE = 2, PK_DEBRIS = 3, PK_SPARK = 4, PK_FLAKE = 5;
 
@@ -5098,7 +5220,7 @@
     let i = P.n;
     if (i >= MAX_PARTICLES) {
       // Pool full: recycle a random old particle rather than dropping the new one
-      i = Math.floor(Math.random() * MAX_PARTICLES);
+      i = Math.floor(fxRandom() * MAX_PARTICLES);
     } else
       ++P.n;
     P.x[i] = x; P.y[i] = y; P.vx[i] = vx; P.vy[i] = vy;
@@ -5207,7 +5329,7 @@
   }
 
   function rnd(a, b) {
-    return a + Math.random() * (b - a);
+    return a + fxRandom() * (b - a);
   }
 
   // Compatible helpers used all over the simulation
@@ -5216,7 +5338,7 @@
       o = o || {};
       const sp = (o.speed || 3) * 30;
       for (let i = 0; i < n; ++i) {
-        const a = Math.random() * TWO_PI, v = sp * rnd(0.4, 1.1);
+        const a = fxRandom() * TWO_PI, v = sp * rnd(0.4, 1.1);
         emit(x, y, Math.cos(a) * v, Math.sin(a) * v, (o.life || 0.5) * rnd(0.6, 1.2), rnd(1.5, 3), o.color || '#ffffff', PK_PIXEL, 0, 4);
       }
     },
@@ -5224,7 +5346,7 @@
       o = o || {};
       const sp = (o.speed || 2) * 14;
       for (let i = 0; i < n; ++i) {
-        const a = Math.random() * TWO_PI, v = sp * rnd(0.3, 1);
+        const a = fxRandom() * TWO_PI, v = sp * rnd(0.3, 1);
         emit(x + rnd(-4, 4), y + rnd(-4, 4), Math.cos(a) * v, Math.sin(a) * v - 18, rnd(0.4, 0.8), rnd(1.5, 2.5), o.color || '#ffffff', PK_PIXEL, -10, 2);
       }
     },
@@ -5244,13 +5366,13 @@
     },
     debris(x, y, n, colors, power) {
       for (let i = 0; i < n; ++i) {
-        const a = Math.random() * TWO_PI, v = rnd(30, 90) * (power || 1);
+        const a = fxRandom() * TWO_PI, v = rnd(30, 90) * (power || 1);
         emit(x, y, Math.cos(a) * v, Math.sin(a) * v * 0.6, rnd(0.6, 1.2), rnd(2, 4), colors[i % colors.length], PK_DEBRIS, 0, 1.5, rnd(80, 190) * (power || 1));
       }
     },
     sparks(x, y, n, color, speed) {
       for (let i = 0; i < n; ++i) {
-        const a = Math.random() * TWO_PI, v = (speed || 160) * rnd(0.5, 1.2);
+        const a = fxRandom() * TWO_PI, v = (speed || 160) * rnd(0.5, 1.2);
         emit(x, y, Math.cos(a) * v, Math.sin(a) * v, rnd(0.12, 0.3), 1, color || '#ffe8a0', PK_SPARK, 120, 3);
       }
     },
@@ -5267,6 +5389,7 @@
   const floatingText = {
     add(x, y, text, o) {
       o = o || {};
+      if (fxBudget < 0 && !o.big && !(o.life > 1.2)) return;
       const m = /(\d+)px/.exec(o.font || '');
       if (texts.length > 48) texts.shift();
       texts.push({ x, y, text: String(text), color: o.color || '#ffffff', px: m ? +m[1] : 11, t: 0, life: o.life || 1.1, big: !!o.big });
@@ -5305,7 +5428,7 @@
   const decals = [];
   function addDecal(x, y, r, kind) {
     if (decals.length > 40) decals.shift();
-    decals.push({ x, y, r, kind, t: 0, life: kind === 'scorch' ? 9 : 6, rot: Math.random() * TWO_PI });
+    decals.push({ x, y, r, kind, t: 0, life: kind === 'scorch' ? 9 : 6, rot: fxRandom() * TWO_PI });
   }
 
   function updateDecals(dt) {
@@ -5342,14 +5465,19 @@
   /* ── Big moments ── */
   let hitstop = 0;
 
+  // Effects spawned per battle step are capped so a mass of deaths stays cheap
+  const FX_BUDGET = 1e9;
+  let fxBudget = FX_BUDGET;
+
   function explosionFx(x, y, radius, color) {
+    if (--fxBudget < 0) return;
     const big = radius > CELL * 1.4;
     particles.glow(x, y, radius * 1.8, '#fff2c0', 0.14);
     // Fireball: hot blobs drifting outwards and shrinking
     const fire = ['#fff2b0', '#ffd28a', color || '#ff8a3a', '#ff5a1a'];
     const nf = big ? 9 : 5;
     for (let i = 0; i < nf; ++i) {
-      const a = Math.random() * TWO_PI, v = rnd(20, 70) * (big ? 1.4 : 1);
+      const a = fxRandom() * TWO_PI, v = rnd(20, 70) * (big ? 1.4 : 1);
       emit(x + Math.cos(a) * 4, y + Math.sin(a) * 3, Math.cos(a) * v, Math.sin(a) * v * 0.7 - 20, rnd(0.28, 0.5), radius * rnd(0.45, 0.75), fire[i % fire.length], PK_GLOW, -30, 3);
     }
     fxLines.push({ kind: 'ring', x, y, r: radius * 1.2, color: '#ffe2a0', t: 0, life: 0.32 });
@@ -5362,6 +5490,7 @@
 
   // Enemy death: pixel chunks in the enemy's colours, a puff and a splat
   function deathFx(e) {
+    if (--fxBudget < 0 && !ENEMY_TYPES[e.type].boss) return;
     const def = ENEMY_TYPES[e.type];
     const ramp = rampOf(def.color);
     const y = e.y - (def.flying ? 12 : 4);
@@ -5380,6 +5509,7 @@
   /* ── Coins flying to the gold counter (UI space) ── */
   const uiCoins = [];
   function coinFly(wx, wy, n) {
+    if (fxBudget < 0) return;
     const p = worldToUi(wx, wy);
     for (let i = 0; i < n && uiCoins.length < 40; ++i)
       uiCoins.push({ x: p.x, y: p.y, sx: p.x + rnd(-18, 18), sy: p.y - rnd(10, 34), t: -i * 0.06, dur: rnd(0.55, 0.75) });
@@ -5403,7 +5533,7 @@
         goldPulse = 1;
         if (performance.now() - coinTick > 70) {
           coinTick = performance.now();
-          audio.play('coin', { pitch: 1.4 + Math.random() * 0.3, volume: 0.25 });
+          audio.play('coin', { pitch: 1.4 + fxRandom() * 0.3, volume: 0.25 });
         }
       }
     }
@@ -7273,7 +7403,7 @@
       hurt(e, p.damage, null, 'phys', { pierce: 0.5, area: true });
     explosionFx(p.tx, p.ty, r, '#ff7a2a');
     addShake(5, 220);
-    audio.play('explode', { pitch: 0.9 + Math.random() * 0.2, volume: 0.7 });
+    audio.play('explode', { pitch: 0.9 + fxRandom() * 0.2, volume: 0.7 });
   }
 
   /* ── Drawing ── */
@@ -7457,6 +7587,7 @@
         const r = left[Math.floor(Math.random() * left.length)];
         meta.relics.push(r.id);
         for (const t of towers) t.stats = null;
+        ++towerVersion;
         if (r.id === 'scale') { lives += 5; livesPulse = 1; }
         saveMeta();
         queueReward({ kind: 'relic', id: r.id, boss: type });
@@ -8066,8 +8197,8 @@
     if (shakeTime > 0) {
       shakeTime = Math.max(0, shakeTime - dt);
       const k = shakeMag * (shakeTime / shakeDur) * view.s * 0.8;
-      shakeX = (Math.random() * 2 - 1) * k;
-      shakeY = (Math.random() * 2 - 1) * k;
+      shakeX = (fxRandom() * 2 - 1) * k;
+      shakeY = (fxRandom() * 2 - 1) * k;
     } else
       shakeX = shakeY = 0;
   }
