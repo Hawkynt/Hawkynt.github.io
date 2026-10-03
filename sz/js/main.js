@@ -213,6 +213,7 @@
         case 'sz:getTheme': return respond('sz:themeCSS', { css: themeEngine.styleText });
         case 'sz:setTitle': if (win) { win.setTitle(data.title); taskbar.updateTitle(win.id, data.title); } return;
         case 'sz:close': if (win) windowManager.closeWindow(win.id); return;
+        case 'sz:closeReply': if (win) windowManager.handleCloseReply(win.id, data.closeRequest, !!data.handled); return;
         case 'sz:resize': if (win) win.resizeContentTo(data.width, data.height); return;
         case 'sz:setFrameless': if (win) win.setFrameless(data.value); return;
         case 'sz:closeWindow': if (data.windowId) windowManager.closeWindow(data.windowId); return;
@@ -426,20 +427,8 @@
           return respond('sz:vfs:ListMountsResult', { mounts: kernel.listMounts() });
 
         // MessageBox
-        case 'sz:messageBox': {
-            const mbType = (data.flags || 0) & 0x0F;
-            const prompt = (data.caption ? data.caption + '\n\n' : '') + (data.text || '');
-            let result;
-            if (mbType === 4 || mbType === 3) // MB_YESNO, MB_YESNOCANCEL
-              result = confirm(prompt) ? 6 : 7; // IDYES : IDNO
-            else if (mbType === 1) // MB_OKCANCEL
-              result = confirm(prompt) ? 1 : 2; // IDOK : IDCANCEL
-            else {
-              alert(prompt);
-              result = 1; // IDOK
-            }
-            return respond('sz:messageBoxResult', { result });
-        }
+        case 'sz:messageBox':
+            return handle(SZ.MessageBox.show(data.text, data.caption, data.flags).then(result => ({ result })), 'sz:messageBoxResult');
 
         // System metrics
         case 'sz:getSystemMetrics': {

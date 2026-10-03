@@ -711,7 +711,7 @@
       case 'save-as': doSaveAs(); break;
       case 'export-png': doExport('image/png'); break;
       case 'export-jpg': doExport('image/jpeg'); break;
-      case 'exit': User32.DestroyWindow(); break;
+      case 'exit': User32.RequestClose(); break;
       case 'about': SZ.Dialog.show('dlg-about'); break;
 
       // Edit
@@ -1622,4 +1622,7 @@
   const cmd = Kernel32.GetCommandLine();
   if (cmd.path)
     loadFile(cmd.path);
+
+  // closing with unsaved changes asks to save them first
+  User32.SetCloseGuard(() => dirty, (done) => doSave(done), () => currentFileName);
 })();
