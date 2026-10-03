@@ -418,7 +418,7 @@
         closeBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           this.detach(windowId);
-          this.#windowManager.closeWindow(windowId);
+          this.#windowManager.requestClose(windowId);
         });
         tab.appendChild(closeBtn);
 

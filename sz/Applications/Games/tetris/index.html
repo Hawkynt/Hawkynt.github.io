@@ -55,6 +55,13 @@
 <!-- Game Area -->
 <div class="game-frame">
   <div class="game-layout">
+    <!-- Hold Panel -->
+    <div class="side-panel hold-panel">
+      <div class="panel-box hold-box" id="holdBox" title="Hold (C / Shift)">
+        <div class="panel-label">HOLD</div>
+        <div class="preview-stack" id="holdGrid"></div>
+      </div>
+    </div>
     <!-- Board -->
     <div class="board-border">
       <div class="board-wrapper">
@@ -76,7 +83,7 @@
     <div class="side-panel">
       <div class="panel-box">
         <div class="panel-label">NEXT</div>
-        <div class="preview-grid" id="previewGrid"></div>
+        <div class="preview-stack" id="previewGrid"></div>
       </div>
       <div class="panel-box">
         <div class="panel-label">SCORE</div>
@@ -124,6 +131,9 @@
         <tr><td>Space</td><td>Hard drop</td></tr>
         <tr><td>Up / Z</td><td>Rotate clockwise</td></tr>
         <tr><td>X</td><td>Rotate counter-CW</td></tr>
+        <tr><td>C / Shift</td><td>Hold piece (once per drop)</td></tr>
+        <tr><td>Tap / swipe</td><td>Rotate / move, swipe down soft drop, up hard drop</td></tr>
+        <tr><td>Tap HOLD</td><td>Hold piece on touch screens</td></tr>
         <tr><td>P</td><td>Pause / Resume</td></tr>
         <tr><td>F2</td><td>New Game</td></tr>
       </table>
@@ -142,6 +152,7 @@
       <strong>Tetris</strong><br><br>
       Classic block-stacking puzzle game.<br><br>
       Stack falling tetrominoes to complete horizontal lines. Completed lines are cleared for points. The game speeds up as you level up.<br><br>
+      Keep a piece in reserve with Hold (C or Shift, once per drop), plan ahead with the five-piece preview and the ghost piece, and slide or spin a landed piece for half a second before it locks (up to 15 moves). Pieces come from a shuffled bag of all seven shapes and rotate with SRS wall kicks. Soft drop scores 1 point per row, hard drop 2.<br><br>
       Part of the »SynthelicZ« Desktop.
     </div>
     <div class="dialog-buttons">
@@ -158,7 +169,8 @@
 <li>Standard 10x20 playfield with all 7 tetromino shapes (I, O, T, S, Z, J, L)</li>
 <li>Super Rotation System (SRS) with wall kicks for authentic rotation</li>
 <li>Ghost piece projection showing where the current piece will land</li>
-<li>Next-piece preview panel</li>
+<li>Five-piece next preview and a hold slot</li>
+<li>Lock delay: move or rotate a landed piece for 0.5 seconds, up to 15 times</li>
 <li>7-bag randomizer for fair piece distribution</li>
 <li>NES-style scoring with bonus points for multi-line clears</li>
 <li>Soft drop and hard drop with screen shake feedback</li>

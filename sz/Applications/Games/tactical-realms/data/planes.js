@@ -25,6 +25,10 @@
         { targetPlane: 'astral', portalType: 'natural', frequency: 'rare' },
         { targetPlane: 'ethereal', portalType: 'coterminous', frequency: 'common' },
         { targetPlane: 'shadow', portalType: 'natural', frequency: 'uncommon' },
+        { targetPlane: 'elemental_fire', portalType: 'vortex', frequency: 'rare' },
+        { targetPlane: 'elemental_water', portalType: 'vortex', frequency: 'rare' },
+        { targetPlane: 'elemental_earth', portalType: 'vortex', frequency: 'rare' },
+        { targetPlane: 'elemental_air', portalType: 'vortex', frequency: 'rare' },
       ],
       inhabitants: ['human', 'elf', 'dwarf', 'halfling', 'gnome', 'half_elf', 'half_orc'],
       source: 'core/Dungeon-Masters-Guide',
@@ -67,7 +71,7 @@
         { targetPlane: 'arcadia', portalType: 'color_pool', frequency: 'uncommon' },
         { targetPlane: 'outlands', portalType: 'color_pool', frequency: 'uncommon' },
       ],
-      inhabitants: ['githyanki', 'astral_dreadnought', 'deva'],
+      inhabitants: ['githyanki_warrior', 'githzerai_monk', 'astral_deva', 'intellect_devourer', 'mind_flayer'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -92,7 +96,7 @@
         { targetPlane: 'positive_energy', portalType: 'curtain', frequency: 'rare' },
         { targetPlane: 'negative_energy', portalType: 'curtain', frequency: 'rare' },
       ],
-      inhabitants: ['ghost', 'phase_spider', 'ethereal_filcher', 'night_hag', 'xill'],
+      inhabitants: ['phase_spider', 'ethereal_filcher', 'night_hag', 'xill', 'phasm', 'allip'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -113,7 +117,7 @@
         { targetPlane: 'negative_energy', portalType: 'natural', frequency: 'rare' },
         { targetPlane: 'ethereal', portalType: 'natural', frequency: 'rare' },
       ],
-      inhabitants: ['shadow', 'shadow_mastiff', 'nightwalker', 'dark_stalker', 'shadow_dragon'],
+      inhabitants: ['shadow', 'shadow_mastiff', 'nightwalker', 'wraith', 'spectre'],
       source: 'core/Dungeon-Masters-Guide',
     },
 
@@ -143,7 +147,7 @@
         { targetPlane: 'positive_energy', portalType: 'border', frequency: 'rare' },
         { targetPlane: 'negative_energy', portalType: 'border', frequency: 'rare' },
       ],
-      inhabitants: ['fire_elemental', 'efreeti', 'salamander', 'magmin', 'fire_mephit', 'azer'],
+      inhabitants: ['fire_elemental_medium', 'fire_elemental_large', 'efreeti', 'salamander_average', 'magmin', 'mephit_fire', 'azer', 'rast', 'thoqqua'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -168,7 +172,7 @@
         { targetPlane: 'positive_energy', portalType: 'border', frequency: 'rare' },
         { targetPlane: 'negative_energy', portalType: 'border', frequency: 'rare' },
       ],
-      inhabitants: ['water_elemental', 'marid', 'water_mephit', 'tojanida', 'triton'],
+      inhabitants: ['water_elemental_medium', 'water_elemental_large', 'marid', 'mephit_water', 'tojanida_adult', 'triton'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -193,7 +197,7 @@
         { targetPlane: 'positive_energy', portalType: 'border', frequency: 'rare' },
         { targetPlane: 'negative_energy', portalType: 'border', frequency: 'rare' },
       ],
-      inhabitants: ['earth_elemental', 'dao', 'xorn', 'earth_mephit', 'galeb_duhr'],
+      inhabitants: ['earth_elemental_medium', 'earth_elemental_large', 'dao', 'xorn_average', 'mephit_earth', 'thoqqua'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -218,7 +222,7 @@
         { targetPlane: 'positive_energy', portalType: 'border', frequency: 'rare' },
         { targetPlane: 'negative_energy', portalType: 'border', frequency: 'rare' },
       ],
-      inhabitants: ['air_elemental', 'djinni', 'air_mephit', 'arrowhawk', 'invisible_stalker'],
+      inhabitants: ['air_elemental_medium', 'air_elemental_large', 'djinni', 'mephit_air', 'arrowhawk_adult', 'invisible_stalker', 'belker'],
       source: 'core/Dungeon-Masters-Guide',
     },
 
@@ -241,7 +245,7 @@
         { targetPlane: 'elemental_air', portalType: 'border', frequency: 'common' },
         { targetPlane: 'elemental_water', portalType: 'border', frequency: 'common' },
       ],
-      inhabitants: ['ice_mephit', 'ice_paraelemental', 'frost_worm', 'winter_wolf'],
+      inhabitants: ['mephit_ice', 'frost_worm', 'winter_wolf', 'ice_devil'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -261,7 +265,7 @@
         { targetPlane: 'elemental_fire', portalType: 'border', frequency: 'common' },
         { targetPlane: 'elemental_earth', portalType: 'border', frequency: 'common' },
       ],
-      inhabitants: ['magma_mephit', 'magma_paraelemental', 'salamander', 'magmin'],
+      inhabitants: ['mephit_magma', 'magmin', 'salamander_average', 'thoqqua'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -281,7 +285,7 @@
         { targetPlane: 'elemental_water', portalType: 'border', frequency: 'common' },
         { targetPlane: 'elemental_earth', portalType: 'border', frequency: 'common' },
       ],
-      inhabitants: ['ooze_mephit', 'ooze_paraelemental', 'gray_ooze', 'black_pudding'],
+      inhabitants: ['mephit_ooze', 'gray_ooze', 'black_pudding', 'ochre_jelly'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -301,7 +305,7 @@
         { targetPlane: 'elemental_fire', portalType: 'border', frequency: 'common' },
         { targetPlane: 'elemental_air', portalType: 'border', frequency: 'common' },
       ],
-      inhabitants: ['smoke_mephit', 'smoke_paraelemental', 'belker', 'magmin'],
+      inhabitants: ['mephit_dust', 'mephit_steam', 'belker', 'magmin'],
       source: 'core/Dungeon-Masters-Guide',
     },
 
@@ -327,7 +331,7 @@
         { targetPlane: 'elemental_earth', portalType: 'border', frequency: 'rare' },
         { targetPlane: 'elemental_air', portalType: 'border', frequency: 'rare' },
       ],
-      inhabitants: ['ravid', 'xag_ya', 'energon'],
+      inhabitants: ['ravid', 'lantern_archon', 'astral_deva'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -351,7 +355,7 @@
         { targetPlane: 'elemental_earth', portalType: 'border', frequency: 'rare' },
         { targetPlane: 'elemental_air', portalType: 'border', frequency: 'rare' },
       ],
-      inhabitants: ['xeg_yi', 'energon', 'nightwalker', 'bodak'],
+      inhabitants: ['nightwalker', 'bodak', 'wraith', 'spectre', 'shadow'],
       source: 'core/Dungeon-Masters-Guide',
     },
 
@@ -378,7 +382,7 @@
         { targetPlane: 'arcadia', portalType: 'gate', frequency: 'uncommon' },
         { targetPlane: 'outlands', portalType: 'gate', frequency: 'rare' },
       ],
-      inhabitants: ['archon_lantern', 'archon_hound', 'archon_trumpet', 'deva', 'planetar', 'solar', 'zelekhut'],
+      inhabitants: ['lantern_archon', 'hound_archon', 'trumpet_archon', 'astral_deva', 'planetar', 'solar'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -400,7 +404,7 @@
         { targetPlane: 'elysium', portalType: 'gate', frequency: 'uncommon' },
         { targetPlane: 'outlands', portalType: 'gate', frequency: 'rare' },
       ],
-      inhabitants: ['gnome_petitioner', 'archon_hound', 'deva'],
+      inhabitants: ['hound_archon', 'blink_dog', 'astral_deva'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -422,7 +426,7 @@
         { targetPlane: 'beastlands', portalType: 'gate', frequency: 'uncommon' },
         { targetPlane: 'outlands', portalType: 'gate', frequency: 'rare' },
       ],
-      inhabitants: ['guardinal_avoral', 'guardinal_leonal', 'deva', 'planetar', 'solar'],
+      inhabitants: ['avoral_guardinal', 'leonal_guardinal', 'astral_deva', 'planetar', 'unicorn'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -444,7 +448,7 @@
         { targetPlane: 'arborea', portalType: 'gate', frequency: 'uncommon' },
         { targetPlane: 'outlands', portalType: 'gate', frequency: 'rare' },
       ],
-      inhabitants: ['celestial_animal', 'guardinal_leonal', 'guardinal_avoral', 'unicorn'],
+      inhabitants: ['leonal_guardinal', 'avoral_guardinal', 'unicorn', 'pegasus', 'dire_bear', 'dire_lion', 'dire_tiger'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -466,7 +470,7 @@
         { targetPlane: 'ysgard', portalType: 'gate', frequency: 'uncommon' },
         { targetPlane: 'outlands', portalType: 'gate', frequency: 'rare' },
       ],
-      inhabitants: ['eladrin_ghaele', 'eladrin_bralani', 'titan', 'lillend', 'firre'],
+      inhabitants: ['ghaele_eladrin', 'bralani_eladrin', 'lillend', 'satyr', 'nymph', 'dryad'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -488,7 +492,7 @@
         { targetPlane: 'limbo', portalType: 'gate', frequency: 'uncommon' },
         { targetPlane: 'outlands', portalType: 'gate', frequency: 'rare' },
       ],
-      inhabitants: ['einherjar', 'valkyrie', 'bariaur', 'lillend'],
+      inhabitants: ['lillend', 'bralani_eladrin', 'frost_giant', 'fire_giant'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -510,7 +514,7 @@
         { targetPlane: 'pandemonium', portalType: 'gate', frequency: 'uncommon' },
         { targetPlane: 'outlands', portalType: 'gate', frequency: 'rare' },
       ],
-      inhabitants: ['githzerai', 'slaad_red', 'slaad_blue', 'slaad_green', 'slaad_gray', 'slaad_death', 'chaos_beast'],
+      inhabitants: ['red_slaad', 'blue_slaad', 'green_slaad', 'gray_slaad', 'death_slaad', 'chaos_beast', 'githzerai_monk'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -532,7 +536,7 @@
         { targetPlane: 'abyss', portalType: 'gate', frequency: 'uncommon' },
         { targetPlane: 'outlands', portalType: 'gate', frequency: 'rare' },
       ],
-      inhabitants: ['howler', 'demon_retriever', 'bodak', 'chaos_beast'],
+      inhabitants: ['howler', 'retriever_fiend', 'bodak', 'chaos_beast'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -554,7 +558,7 @@
         { targetPlane: 'carceri', portalType: 'gate', frequency: 'uncommon' },
         { targetPlane: 'outlands', portalType: 'gate', frequency: 'rare' },
       ],
-      inhabitants: ['demon_dretch', 'demon_vrock', 'demon_hezrou', 'demon_glabrezu', 'demon_nalfeshnee', 'demon_marilith', 'demon_balor'],
+      inhabitants: ['dretch', 'quasit', 'babau', 'vrock', 'hezrou', 'succubus', 'glabrezu', 'nalfeshnee', 'marilith', 'balor', 'bebilith'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -576,7 +580,7 @@
         { targetPlane: 'gray_waste', portalType: 'gate', frequency: 'uncommon' },
         { targetPlane: 'outlands', portalType: 'gate', frequency: 'rare' },
       ],
-      inhabitants: ['demodand_farastu', 'demodand_kelubar', 'demodand_shator', 'titan_exiled', 'gehreleth'],
+      inhabitants: ['bodak', 'nightmare', 'night_hag', 'vargouille'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -598,7 +602,7 @@
         { targetPlane: 'gehenna', portalType: 'gate', frequency: 'uncommon' },
         { targetPlane: 'outlands', portalType: 'gate', frequency: 'rare' },
       ],
-      inhabitants: ['night_hag', 'yugoloth_mezzoloth', 'yugoloth_nycaloth', 'yugoloth_ultroloth', 'larva'],
+      inhabitants: ['night_hag', 'mezzoloth', 'nycaloth', 'ultroloth', 'yeth_hound', 'vargouille'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -620,7 +624,7 @@
         { targetPlane: 'nine_hells', portalType: 'gate', frequency: 'uncommon' },
         { targetPlane: 'outlands', portalType: 'gate', frequency: 'rare' },
       ],
-      inhabitants: ['yugoloth_mezzoloth', 'yugoloth_nycaloth', 'yugoloth_ultroloth', 'barghest'],
+      inhabitants: ['mezzoloth', 'nycaloth', 'ultroloth', 'arcanaloth', 'barghest', 'hell_hound'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -642,7 +646,7 @@
         { targetPlane: 'acheron', portalType: 'gate', frequency: 'uncommon' },
         { targetPlane: 'outlands', portalType: 'gate', frequency: 'rare' },
       ],
-      inhabitants: ['devil_lemure', 'devil_imp', 'devil_bearded', 'devil_chain', 'devil_bone', 'devil_horned', 'devil_ice', 'devil_pit_fiend', 'erinyes'],
+      inhabitants: ['lemure', 'imp', 'bearded_devil', 'chain_devil', 'bone_devil', 'barbed_devil', 'erinyes', 'horned_devil', 'ice_devil', 'pit_fiend', 'hell_hound', 'hellcat', 'achaierai'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -664,7 +668,7 @@
         { targetPlane: 'mechanus', portalType: 'gate', frequency: 'uncommon' },
         { targetPlane: 'outlands', portalType: 'gate', frequency: 'rare' },
       ],
-      inhabitants: ['goblinoid_petitioner', 'rust_monster', 'blade_spirit', 'formian'],
+      inhabitants: ['formian_warrior', 'rust_monster', 'hobgoblin', 'bugbear', 'iron_golem'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -686,7 +690,7 @@
         { targetPlane: 'arcadia', portalType: 'gate', frequency: 'uncommon' },
         { targetPlane: 'outlands', portalType: 'gate', frequency: 'rare' },
       ],
-      inhabitants: ['modron', 'inevitable_marut', 'inevitable_kolyarut', 'inevitable_zelekhut', 'formian', 'gear_spirit'],
+      inhabitants: ['formian_worker', 'formian_warrior', 'formian_taskmaster', 'formian_myrmarch', 'inevitable_zelekhut', 'inevitable_kolyarut', 'inevitable_marut'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -708,7 +712,7 @@
         { targetPlane: 'mount_celestia', portalType: 'gate', frequency: 'uncommon' },
         { targetPlane: 'outlands', portalType: 'gate', frequency: 'rare' },
       ],
-      inhabitants: ['formian', 'archon_hound', 'deva', 'einherjar'],
+      inhabitants: ['formian_warrior', 'hound_archon', 'lantern_archon', 'astral_deva', 'blink_dog'],
       source: 'core/Dungeon-Masters-Guide',
     },
     {
@@ -743,7 +747,7 @@
         { targetPlane: 'mechanus', portalType: 'gate_town', frequency: 'common' },
         { targetPlane: 'arcadia', portalType: 'gate_town', frequency: 'common' },
       ],
-      inhabitants: ['rilmani', 'modron', 'githzerai', 'bariaur', 'planar_trader'],
+      inhabitants: ['githzerai_monk', 'lillend', 'blink_dog', 'hill_giant'],
       source: 'core/Dungeon-Masters-Guide',
     },
 

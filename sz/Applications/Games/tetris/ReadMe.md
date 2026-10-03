@@ -10,7 +10,8 @@ Tetris delivers the timeless block-stacking puzzle experience as a built-in game
 ### Key Capabilities
 - Standard Tetris gameplay with all 7 tetromino shapes on a 10x20 board
 - Piece rotation using the Super Rotation System (SRS) with wall kicks
-- Ghost piece projection and next-piece preview
+- Ghost piece projection, five-piece preview and a hold slot
+- Lock delay of 0.5 seconds with up to 15 move/rotate resets
 - NES-style scoring with level progression and increasing speed
 - Persistent high score tracking with local storage
 - Game flow control with pause, restart, and game-over handling
@@ -36,7 +37,7 @@ Modeled after the classic NES Tetris and modern Tetris Guideline implementations
 - [x] As a player, I can see a ghost piece showing where the current piece will land so that I can plan placement
 - [x] As a player, I can see completed lines cleared from the board so that I make room for more pieces
 - [x] As a player, I can see a line-clear animation when rows are completed so that clears feel rewarding
-- [ ] As a player, I can hold a piece in reserve and swap it with the current piece so that I have more strategic options
+- [x] As a player, I can hold a piece in reserve and swap it with the current piece so that I have more strategic options
 - [ ] As a player, I can see a T-spin bonus when performing T-spin moves so that advanced techniques are rewarded
 
 ### Piece System
@@ -44,7 +45,8 @@ Modeled after the classic NES Tetris and modern Tetris Guideline implementations
 - [x] As a player, I can see the next piece in a preview panel so that I can plan ahead
 - [x] As a player, I can experience fair piece distribution through the 7-bag randomizer so that piece order is balanced
 - [x] As a player, I can rely on the Super Rotation System (SRS) for wall kicks so that rotation near walls works correctly
-- [ ] As a player, I can see a preview of the next 3-5 pieces instead of just one so that I can plan further ahead
+- [x] As a player, I can slide or rotate a landed piece briefly before it locks so that last-moment adjustments are possible
+- [x] As a player, I can see a preview of the next 3-5 pieces instead of just one so that I can plan further ahead
 - [ ] As a player, I can choose from different randomizer modes (pure random, 7-bag, 14-bag) so that I can vary the challenge
 
 ### Scoring and Progression

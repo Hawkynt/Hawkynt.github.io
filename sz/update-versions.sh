@@ -40,22 +40,27 @@ else
 fi
 
 # ── Per-app version counts ────────────────────────────────────────
+# Apps live in Applications/<category>/<app-id>/; the folder name is the app id.
 APP_ENTRIES=""
-for APP_PATH in "$APPS_DIR"/*/; do
+COUNT_APPS=0
+for APP_PATH in "$APPS_DIR"/*/*/; do
   [[ -d "$APP_PATH" ]] || continue
-  APP_NAME=$(basename "$APP_PATH")
-  # Skip non-app directories
-  [[ "$APP_NAME" == "libs" ]] && continue
+  CATEGORY=$(basename "$(dirname "$APP_PATH")")
+  [[ "$CATEGORY" == "libs" || "$CATEGORY" == "shared" ]] && continue
+  APP_ID=$(basename "$APP_PATH")
 
-  # Count commits touching this app's folder
-  REL_PATH="sz/Applications/$APP_NAME"
-  COUNT=$(git -C "$SZ_DIR/.." log --oneline -- "$REL_PATH" 2>/dev/null | wc -l | tr -d '[:space:]')
+  # Count commits touching this app's folder, including the time before the
+  # apps were sorted into category folders
+  REL_PATH="sz/Applications/$CATEGORY/$APP_ID"
+  OLD_PATH="sz/Applications/$APP_ID"
+  COUNT=$(git -C "$SZ_DIR/.." log --oneline -- "$REL_PATH" "$OLD_PATH" 2>/dev/null | wc -l | tr -d '[:space:]')
   COUNT=${COUNT:-0}
 
   if [[ -n "$APP_ENTRIES" ]]; then
     APP_ENTRIES="${APP_ENTRIES},"$'\n'
   fi
-  APP_ENTRIES="${APP_ENTRIES}    '${APP_NAME}': '1.${COUNT}'"
+  APP_ENTRIES="${APP_ENTRIES}    '${APP_ID}': '1.${COUNT}'"
+  COUNT_APPS=$((COUNT_APPS + 1))
 done
 
 # ── Write output ──────────────────────────────────────────────────
@@ -78,4 +83,4 @@ JSEOF
 echo "[update-versions] Generated $OUTPUT"
 echo "  OS version: $OS_VERSION"
 echo "  Git hash:   $GIT_HASH_SHORT"
-echo "  Apps:       $(echo "$APP_ENTRIES" | wc -l | tr -d '[:space:]') entries"
+echo "  Apps:       $COUNT_APPS entries"

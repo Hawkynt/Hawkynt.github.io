@@ -172,3 +172,13 @@ html, body {
   pointer-events: none;
   z-index: 5;
 }
+
+/* keyboard focus on desktop icons */
+.sz-icon:focus {
+  outline: none;
+}
+
+.sz-icon:focus-visible .sz-icon-label {
+  outline: 1px dotted #fff;
+  outline-offset: 1px;
+}

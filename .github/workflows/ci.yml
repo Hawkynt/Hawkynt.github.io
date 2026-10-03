@@ -45,6 +45,12 @@ jobs:
           echo "$count file(s) syntax-checked."
           exit $status
 
+      # The desktop's app versions (sz/Applications/versions.js) are generated
+      # from the history; main regenerates them after every push (see
+      # publish-versions), so here it only has to run cleanly.
+      - name: Generate the desktop app versions
+        run: bash sz/update-versions.sh
+
       # Advisory: the site deliberately serves legacy markup (IE5/Lynx-era
       # fallbacks), which modern validators flag — never block on it.
       - name: Validate HTML
@@ -207,6 +213,53 @@ jobs:
           fi
           echo "::error::pushing the regenerated reference failed although main is still at $GITHUB_SHA"
           exit 1
+
+  # Regenerates the desktop's app versions (sz/Applications/versions.js) and
+  # commits them back to main. The desktop appends an app's version to the
+  # address it loads the app from, so a changed app is fetched anew instead of
+  # coming from the browser cache. Kept safe the same way as publish-docs:
+  # pushes to main of this repository only, after the checks passed, no loop
+  # (GITHUB_TOKEN pushes start no runs), nothing committed when nothing changed.
+  # It has a queue of its own (a shared one would let it cancel a pending
+  # publish-docs); when another push landed first, it rebases its single
+  # generated file on top and pushes again.
+  publish-versions:
+    name: publish desktop app versions
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'Hawkynt/Hawkynt.github.io'
+    needs: [check]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: publish-desktop-versions
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Regenerate the app versions
+        run: bash sz/update-versions.sh
+
+      - name: Commit and push the versions if they changed
+        run: |
+          if [ -z "$(git status --porcelain -- sz/Applications/versions.js)" ]; then
+            echo "The committed app versions already match the history."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- sz/Applications/versions.js
+          git commit -q -m '* the desktop app versions follow the history'
+          for attempt in 1 2 3; do
+            if git push origin HEAD:refs/heads/main; then
+              echo "Pushed the app versions on top of $GITHUB_SHA."
+              exit 0
+            fi
+            git fetch -q origin main
+            git rebase -q FETCH_HEAD || { git rebase --abort; break; }
+          done
+          echo "::notice::main kept moving; the run for the newer push publishes the versions."
 
   # A text lint over README.md against the house convention — no build, no toolchain — so it
   # runs beside the rest rather than inside it and cannot mask them.

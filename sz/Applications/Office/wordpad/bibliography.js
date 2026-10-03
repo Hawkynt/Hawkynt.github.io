@@ -137,7 +137,7 @@
   function insertCitation(sourceId) {
     const source = getSourceById(sourceId);
     if (!source) {
-      alert('Source not found.');
+      SZ.Dialog.alert('Source not found.', 'WordPad');
       return;
     }
 
@@ -170,9 +170,9 @@
     _editor.focus();
   }
 
-  function showInsertCitationPrompt() {
+  async function showInsertCitationPrompt() {
     if (!sources.length) {
-      alert('No sources defined. Use "Sources" to add sources first.');
+      SZ.Dialog.alert('No sources defined. Use "Sources" to add sources first.', 'WordPad');
       return;
     }
 
@@ -181,7 +181,13 @@
     for (let i = 0; i < sources.length; ++i)
       msg += (i + 1) + '. ' + sources[i].author + ' - ' + sources[i].title + ' (' + sources[i].year + ')\n';
     msg += '\nEnter number:';
-    const input = prompt(msg);
+    const sel = window.getSelection();
+    const savedRange = sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+    const input = await SZ.Dialog.prompt(msg, '', 'WordPad');
+    if (savedRange) {
+      sel.removeAllRanges();
+      sel.addRange(savedRange);
+    }
     if (!input)
       return;
     const idx = parseInt(input, 10) - 1;
@@ -209,7 +215,7 @@
       : sources.slice();
 
     if (!usedSources.length) {
-      alert('No sources to include in bibliography.');
+      SZ.Dialog.alert('No sources to include in bibliography.', 'WordPad');
       return;
     }
 

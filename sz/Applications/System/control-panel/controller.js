@@ -2376,7 +2376,7 @@
   // Clear MRU button
   document.getElementById('btn-clear-mru').addEventListener('click', () => {
     SZ.Dlls.User32.PostMessage('sz:clearMRU');
-    alert('Recently used programs list has been cleared.');
+    SZ.Dialog.alert('Recently used programs list has been cleared.', 'Display Properties');
   });
 
   // Show/hide clock checkbox

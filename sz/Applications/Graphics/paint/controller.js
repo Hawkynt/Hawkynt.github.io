@@ -711,7 +711,7 @@
       case 'save-as': doSaveAs(); break;
       case 'export-png': doExport('image/png'); break;
       case 'export-jpg': doExport('image/jpeg'); break;
-      case 'exit': User32.DestroyWindow(); break;
+      case 'exit': User32.RequestClose(); break;
       case 'about': SZ.Dialog.show('dlg-about'); break;
 
       // Edit
@@ -1440,7 +1440,7 @@
       try {
         content = await Kernel32.ReadFile(path);
       } catch (err) {
-        alert('Could not open file: ' + err.message);
+        SZ.Dialog.alert('Could not open file: ' + err.message, 'Paint');
         return;
       }
       content = content != null ? String(content) : '';
@@ -1464,13 +1464,13 @@
           });
         }
       } catch (err) {
-        alert('Could not open file: ' + err.message);
+        SZ.Dialog.alert('Could not open file: ' + err.message, 'Paint');
         return;
       }
     }
 
     if (!content.startsWith('data:image')) {
-      alert('Not a valid image file.');
+      SZ.Dialog.alert('Not a valid image file.', 'Paint');
       return;
     }
     const img = new Image();
@@ -1488,7 +1488,7 @@
       updateTitle();
       updateStatusSize();
     };
-    img.onerror = () => alert('Could not decode image.');
+    img.onerror = () => SZ.Dialog.alert('Could not decode image.', 'Paint');
     img.src = content;
   }
 
@@ -1528,7 +1528,7 @@
     try {
       await Kernel32.WriteFile(path, dataUrl);
     } catch (err) {
-      alert('Could not save file: ' + err.message);
+      SZ.Dialog.alert('Could not save file: ' + err.message, 'Paint');
       return;
     }
     currentFilePath = path;
@@ -1622,4 +1622,7 @@
   const cmd = Kernel32.GetCommandLine();
   if (cmd.path)
     loadFile(cmd.path);
+
+  // closing with unsaved changes asks to save them first
+  User32.SetCloseGuard(() => dirty, (done) => doSave(done), () => currentFileName);
 })();

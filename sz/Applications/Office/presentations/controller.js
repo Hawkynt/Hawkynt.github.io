@@ -1815,14 +1815,14 @@
     markDirty();
   }
 
-  function showInsertTableDialog() {
+  async function showInsertTableDialog() {
     const overlay = document.getElementById('dlg-insert-table');
     if (!overlay) {
       // Fallback: prompt for rows/cols
-      const rowsStr = prompt('Number of rows:', '3');
+      const rowsStr = await SZ.Dialog.prompt('Number of rows:', '3', 'Presentations');
       if (!rowsStr)
         return;
-      const colsStr = prompt('Number of columns:', '3');
+      const colsStr = await SZ.Dialog.prompt('Number of columns:', '3', 'Presentations');
       if (!colsStr)
         return;
       const rows = parseInt(rowsStr, 10) || 3;
@@ -2583,10 +2583,10 @@
   // Feature 14: Comments
   // ===============================================================
 
-  function doAddComment() {
+  async function doAddComment() {
     if (!Comments)
       return;
-    const text = prompt('Comment text:', '');
+    const text = await SZ.Dialog.prompt('Comment text:', '', 'Presentations');
     if (!text)
       return;
 
@@ -2759,12 +2759,12 @@
   // Feature 16: Sections
   // ===============================================================
 
-  function addSection() {
+  async function addSection() {
     pushUndo();
     if (!presentation.sections)
       presentation.sections = [];
 
-    const name = prompt('Section name:', 'Untitled Section');
+    const name = await SZ.Dialog.prompt('Section name:', 'Untitled Section', 'Presentations');
     if (!name)
       return;
 
@@ -2781,7 +2781,7 @@
     refreshSlidePanel();
   }
 
-  function renameSection() {
+  async function renameSection() {
     if (!presentation.sections || !presentation.sections.length)
       return;
 
@@ -2792,7 +2792,7 @@
       return;
     }
 
-    const name = prompt('Section name:', section.name);
+    const name = await SZ.Dialog.prompt('Section name:', section.name, 'Presentations');
     if (!name)
       return;
 
@@ -2876,11 +2876,11 @@
       newBtn.addEventListener('click', handler);
     };
 
-    wireBtn('cs-new', () => {
-      const name = prompt('Custom show name:', 'Custom Show ' + (presentation.customShows.length + 1));
+    wireBtn('cs-new', async () => {
+      const name = await SZ.Dialog.prompt('Custom show name:', 'Custom Show ' + (presentation.customShows.length + 1), 'Presentations');
       if (!name)
         return;
-      const indicesStr = prompt('Slide numbers (comma-separated):', '1,2,3');
+      const indicesStr = await SZ.Dialog.prompt('Slide numbers (comma-separated):', '1,2,3', 'Presentations');
       if (!indicesStr)
         return;
       const indices = indicesStr.split(',').map(s => parseInt(s.trim(), 10) - 1).filter(n => !isNaN(n) && n >= 0 && n < presentation.slides.length);
@@ -2890,17 +2890,17 @@
       refreshList();
     });
 
-    wireBtn('cs-edit', () => {
+    wireBtn('cs-edit', async () => {
       if (!listEl || listEl.selectedIndex < 0)
         return;
       const idx = parseInt(listEl.value, 10);
       const show = presentation.customShows[idx];
       if (!show)
         return;
-      const name = prompt('Show name:', show.name);
+      const name = await SZ.Dialog.prompt('Show name:', show.name, 'Presentations');
       if (name)
         show.name = name;
-      const indicesStr = prompt('Slide numbers (comma-separated):', show.slideIndices.map(i => i + 1).join(','));
+      const indicesStr = await SZ.Dialog.prompt('Slide numbers (comma-separated):', show.slideIndices.map(i => i + 1).join(','), 'Presentations');
       if (indicesStr) {
         show.slideIndices = indicesStr.split(',').map(s => parseInt(s.trim(), 10) - 1).filter(n => !isNaN(n) && n >= 0 && n < presentation.slides.length);
       }
@@ -2954,11 +2954,11 @@
   // Feature 20: Action Buttons
   // ===============================================================
 
-  function showInsertActionButtonDialog(existingElement) {
+  async function showInsertActionButtonDialog(existingElement) {
     const overlay = document.getElementById('dlg-action-button');
     if (!overlay) {
       // Fallback: prompt-based insertion
-      const actionType = prompt('Action type (next, prev, first, last, end, url):', 'next');
+      const actionType = await SZ.Dialog.prompt('Action type (next, prev, first, last, end, url):', 'next', 'Presentations');
       if (!actionType)
         return;
       const validActions = ['next', 'prev', 'first', 'last', 'end', 'url'];
@@ -2970,7 +2970,7 @@
       pushUndo();
       const btn = SlideRenderer.createActionButton(400, 450, 120, 40, actionType);
       if (actionType === 'url') {
-        const url = prompt('URL:', 'https://');
+        const url = await SZ.Dialog.prompt('URL:', 'https://', 'Presentations');
         if (url)
           btn.actionUrl = url;
       }
@@ -3339,11 +3339,11 @@
   // Feature 23: Charts
   // ===============================================================
 
-  function showInsertChartDialog() {
+  async function showInsertChartDialog() {
     if (!ChartElement)
       return;
 
-    const chartType = prompt('Chart type (bar, line, pie, scatter):', 'bar');
+    const chartType = await SZ.Dialog.prompt('Chart type (bar, line, pie, scatter):', 'bar', 'Presentations');
     if (!chartType)
       return;
 
@@ -3386,20 +3386,20 @@
     markDirty();
   }
 
-  function showElement3dDialog() {
+  async function showElement3dDialog() {
     const elems = getSelectedElements();
     if (!elems.length)
       return;
 
     const el = elems[0];
     const current = el.effects3d || {};
-    const rotateX = prompt('Rotate X (degrees):', String(current.rotateX || 0));
+    const rotateX = await SZ.Dialog.prompt('Rotate X (degrees):', String(current.rotateX || 0), 'Presentations');
     if (rotateX === null)
       return;
-    const rotateY = prompt('Rotate Y (degrees):', String(current.rotateY || 0));
+    const rotateY = await SZ.Dialog.prompt('Rotate Y (degrees):', String(current.rotateY || 0), 'Presentations');
     if (rotateY === null)
       return;
-    const perspective = prompt('Perspective (px, 0 to remove):', String(current.perspective || 600));
+    const perspective = await SZ.Dialog.prompt('Perspective (px, 0 to remove):', String(current.perspective || 600), 'Presentations');
     if (perspective === null)
       return;
 
@@ -4389,11 +4389,11 @@
     showBackgroundImagePreview();
   }
 
-  function showFormatBackgroundDialog() {
+  async function showFormatBackgroundDialog() {
     const overlay = document.getElementById('dlg-format-bg');
     if (!overlay) {
       // Fallback: prompt for color
-      const color = prompt('Background color (hex):', '#ffffff');
+      const color = await SZ.Dialog.prompt('Background color (hex):', '#ffffff', 'Presentations');
       if (color) {
         const slide = getCurrentSlide();
         if (slide) {
@@ -6053,7 +6053,9 @@
         } else {
           User32.DestroyWindow();
         }
+        return true;
       }
+      return false;
     });
   }
 
