@@ -79,6 +79,10 @@
   const particles = new SZ.GameEffects.ParticleSystem();
   const screenShake = new SZ.GameEffects.ScreenShake();
   const floatingText = new SZ.GameEffects.FloatingText();
+  const sfx = SZ.GameAudio;
+  let coinStreak = 0;
+  let lastCoinTime = 0;
+  let lastTierName = '';
 
   /* ── Tutorial ── */
   let tutorialSeen = false;
@@ -276,6 +280,8 @@
       if (obs.y < py && obs.y + obsH > py - ph) {
         if (shieldTimer > 0) {
           shieldTimer = 0;
+          sfx.play('bounce');
+          sfx.play('smallExplode', { volume: 0.6 });
           particles.burst(px, py, 12, { color: '#00bfff', speed: 4, life: 0.6, size: 3, decay: 0.02 });
           screenShake.trigger(3, 150);
           obs.y = CANVAS_H + 200;
@@ -308,6 +314,10 @@
         const mult = multiplierTimer > 0 ? 2 : 1;
         const points = COIN_VALUE * mult;
         score += points;
+        const now = performance.now();
+        coinStreak = now - lastCoinTime < 1000 ? coinStreak + 1 : 0;
+        lastCoinTime = now;
+        sfx.play('coin', { pitch: 1 + Math.min(coinStreak, 8) * 0.06, volume: 0.7 });
         particles.sparkle(cx, coin.y, 8, { color: '#ffd700' });
         floatingText.add(cx, coin.y - 10, '+' + points, { color: '#ffd700', decay: 0.03 });
       }
@@ -336,6 +346,7 @@
           floatingText.add(pux, pu.y - 10, '2x SCORE', { color: '#ff4500', decay: 0.02 });
         }
         particles.burst(pux, pu.y, 10, { color: '#fff', speed: 3, life: 0.5, size: 3, decay: 0.02 });
+        sfx.play('powerup');
       }
     }
   }
@@ -364,6 +375,8 @@
     magnetTimer = 0;
     shieldTimer = 0;
     multiplierTimer = 0;
+    coinStreak = 0;
+    lastTierName = '';
     roadOffset = 0;
     skylineOffset = 0;
     dustPuffs = [];
@@ -378,6 +391,8 @@
     state = STATE_DEAD;
     // death shake
     screenShake.trigger(8, 400);
+    sfx.play('hurt');
+    sfx.play('lose', { volume: 0.8 });
     particles.burst(getPlayerX(), getPlayerY(), 20, { color: '#f44', speed: 5, life: 0.8, size: 3, decay: 0.02 });
     addHighScore(Math.floor(distance), coinCount);
     updateStatus();
@@ -419,6 +434,13 @@
     distance += currentSpeed * dt;
     score += currentSpeed * dt * mult;
 
+    const tierName = getCurrentTier().name;
+    if (tierName !== lastTierName) {
+      if (lastTierName)
+        sfx.play('levelup');
+      lastTierName = tierName;
+    }
+
     // Lane transition
     if (laneTransitionTimer > 0) {
       laneTransitionTimer -= dt;
@@ -434,6 +456,7 @@
       if (jumpTimer >= JUMP_DURATION) {
         isJumping = false;
         jumpTimer = 0;
+        sfx.play('thud', { volume: 0.4 });
       }
     }
 
@@ -1241,6 +1264,7 @@
     previousLane = targetLane;
     targetLane = next;
     laneTransitionTimer = LANE_SWITCH_DURATION;
+    sfx.play('whoosh', { pitch: 2, volume: 0.35 });
   }
 
   function startJump() {
@@ -1248,6 +1272,7 @@
       return;
     isJumping = true;
     jumpTimer = 0;
+    sfx.play('jump');
     particles.burst(getPlayerX(), LANE_Y_BOTTOM, 6, { color: '#ddd', speed: 2, life: 0.3, size: 2, decay: 0.03 });
   }
 
@@ -1256,11 +1281,13 @@
       return;
     isSliding = true;
     slideTimer = 0;
+    sfx.play('whoosh', { pitch: 0.6, volume: 0.6 });
   }
 
   function handleAction() {
     if (state === STATE_READY) {
       state = STATE_RUNNING;
+      sfx.play('select');
       updateStatus();
     } else if (state === STATE_DEAD) {
       resetGame();
@@ -1433,6 +1460,7 @@
   SZ.Dlls.User32.SetWindowText('Endless Runner');
 
   /* ── Init ── */
+  sfx.attachMuteButton();
   loadData();
   setupCanvas();
   updateStatus();

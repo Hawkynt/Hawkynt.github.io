@@ -146,7 +146,7 @@
     if (audioCtx) return;
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     masterGain = audioCtx.createGain();
-    masterGain.gain.value = 0.5;
+    masterGain.gain.value = SZ.GameAudio.muted ? 0 : 0.5;
     masterGain.connect(audioCtx.destination);
 
     musicGain = audioCtx.createGain();
@@ -1419,6 +1419,11 @@
   });
 
   setupCanvas();
+  SZ.GameAudio.attachMuteButton();
+  SZ.GameAudio.onMuteChange((muted) => {
+    if (masterGain)
+      masterGain.gain.setTargetAtTime(muted ? 0 : 0.5, audioCtx.currentTime, 0.02);
+  });
   initGame();
 
   lastTimestamp = 0;

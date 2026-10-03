@@ -224,6 +224,7 @@
   /* ── Flap ── */
   function flap() {
     bird.vy = FLAP_IMPULSE;
+    SZ.GameAudio.play('jump', { pitch: 1.2, volume: 0.6 });
     // Flap particle puff effect
     particles.burst(bird.x, bird.y + BIRD_H / 2, 6, {
       color: '#ddd',
@@ -241,6 +242,7 @@
     dyingTimer = 0;
     // Screen shake on death
     screenShake.trigger(6, 300);
+    SZ.GameAudio.play('hit');
     addHighScore(score);
   }
 
@@ -263,8 +265,10 @@
       bird.angle = Math.min(Math.PI / 2, bird.angle + 0.1 * step);
       particles.update();
       floatingText.update();
-      if (dyingTimer > 0.5)
+      if (dyingTimer > 0.5) {
         state = STATE_DEAD;
+        SZ.GameAudio.play('lose', { volume: 0.7 });
+      }
       return;
     }
 
@@ -299,6 +303,10 @@
         pipes[i].scored = true;
         ++score;
         scorePopTimer = 0.2;
+        if (score % DIFFICULTY_INTERVAL === 0)
+          SZ.GameAudio.play('levelup');
+        else
+          SZ.GameAudio.play('coin');
 
         // Pipe-pass sparkle effect
         const gap = pipes[i];
@@ -890,6 +898,7 @@
   setupCanvas();
   updateStatus();
   resetGame();
+  SZ.GameAudio.attachMuteButton();
   animFrameId = requestAnimationFrame(gameLoop);
 
 })();

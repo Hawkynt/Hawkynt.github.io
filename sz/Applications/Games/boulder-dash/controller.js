@@ -97,6 +97,7 @@
 
   /* Boulder physics */
   let fallingBoulders = new Map();
+  let lastBoulderThud = 0;
   let slidingBoulders = new Map();
   let fadingCells = [];
   const FALL_ANIM_SPEED = 10;
@@ -239,6 +240,7 @@
       grid[nr][nc] = EMPTY;
       slidingBoulders.set(nr * COLS + behindCol, { slideProgress: 0, fromCol: nc });
       particles.burst(tileX(behindCol), tileY(nr), 4, { color: '#a0a0a0', life: 0.3, speed: 30 });
+      SZ.GameAudio.play('thud', { pitch: 1.4, volume: 0.5 });
     }
 
     // Dig through dirt (with fade-out animation)
@@ -246,6 +248,7 @@
       grid[nr][nc] = EMPTY;
       fadingCells.push({ col: nc, row: nr, type: DIRT, alpha: 1 });
       particles.burst(tileX(nc), tileY(nr), 6, { color: '#8B4513', life: 0.4, speed: 40 }); // dig dirt particle
+      SZ.GameAudio.play('click', { pitch: 0.35, volume: 0.5 });
     }
 
     // Gem collection (with pop animation)
@@ -257,11 +260,13 @@
       // Gem sparkle particles
       particles.sparkle(tileX(nc), tileY(nr), 10, { color: '#00ffff', life: 0.6 });
       floatingText.add(tileX(nc), nr * TILE_SIZE, '+' + GEM_SCORE, { color: '#00ffff' });
+      SZ.GameAudio.play('pickup', { pitch: 1 + Math.min(1, gemsCollected / gemsRequired) * 0.5 });
       // Check exit unlock
       if (gemsCollected >= gemsRequired && !exitOpen) {
         exitOpen = true;
         grid[exitRow][exitCol] = EXIT;
         particles.sparkle(tileX(exitCol), tileY(exitRow), 15, { color: '#ffd700', life: 1.0 });
+        SZ.GameAudio.play('powerup');
       }
     }
 
@@ -306,6 +311,7 @@
               particles.burst(tileX(c), tileY(r + 1), 12, { color: '#ff4444', life: 0.5, speed: 60 });
               floatingText.add(tileX(c), (r + 1) * TILE_SIZE, '+' + ENEMY_KILL_SCORE, { color: '#ff4444' });
               screenShake.trigger(3, 0.15);
+              SZ.GameAudio.play('smallExplode');
             }
           }
           continue;
@@ -335,6 +341,11 @@
             fallingBoulders.delete(key);
             particles.burst(tileX(c), (r + 1) * TILE_SIZE, 5, { color: '#aa8866', life: 0.3, speed: 25 }); // boulder dust landing
             screenShake.trigger(2, 0.1);
+            const now = performance.now();
+            if (now - lastBoulderThud > 150) {
+              lastBoulderThud = now;
+              SZ.GameAudio.play('thud', { volume: 0.6 });
+            }
           }
         }
       }
@@ -411,11 +422,13 @@
     // Death explosion particles
     particles.burst(tileX(player.col), tileY(player.row), 20, { color: '#ff2200', life: 0.8, speed: 80 });
     screenShake.trigger(6, 0.3);
+    SZ.GameAudio.play('explode', { volume: 0.7 });
 
     if (lives <= 0) {
       state = STATE_DEAD;
       addHighScore(score, currentLevel);
       updateTitle();
+      SZ.GameAudio.play('lose');
     } else {
       // Respawn after short delay
       setTimeout(() => {
@@ -442,6 +455,7 @@
     // Time bonus
     const timeBonus = Math.floor(timeLeft) * TIME_BONUS_FACTOR;
     score += timeBonus;
+    SZ.GameAudio.play('levelup');
     floatingText.add(canvas.width / 2, canvas.height / 2 - 20, 'Time Bonus +' + timeBonus, { color: '#ffd700', size: 20 });
 
     // Level-complete confetti burst
@@ -465,6 +479,7 @@
   /* ── Game reset ── */
   function resetGame() {
     state = STATE_PLAYING;
+    SZ.GameAudio.play('select');
     score = 0;
     lives = MAX_LIVES;
     currentLevel = 1;
@@ -1275,6 +1290,7 @@
     tutorialSeen = true;
     try { localStorage.setItem(STORAGE_TUTORIAL, '1'); } catch (_) {}
   }
+  SZ.GameAudio.attachMuteButton();
   requestAnimationFrame(gameLoop);
 
 })();

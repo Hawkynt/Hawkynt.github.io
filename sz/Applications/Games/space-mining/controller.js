@@ -406,12 +406,16 @@
   }
 
   function buyUpgrade(type) {
-    if (!canAffordUpgrade(type)) return false;
+    if (!canAffordUpgrade(type)) {
+      SZ.GameAudio.play('error');
+      return false;
+    }
     const cost = getUpgradeCost(type);
     credits -= cost;
     ++upgradeLevels[type];
     applyUpgrades();
     floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 60, UPGRADE_DEFS[type].label + ' upgraded!', { color: '#4af', font: 'bold 14px sans-serif' });
+    SZ.GameAudio.play('levelup');
     return true;
   }
 
@@ -448,6 +452,7 @@
     const sy = pu.y - camera.y;
     particles.burst(sx, sy, 15, { color: def.color, speed: 3, life: 0.8 });
     floatingText.add(sx, sy - 20, def.label + '!', { color: def.glowColor, font: 'bold 13px sans-serif' });
+    SZ.GameAudio.play('powerup');
 
     switch (pu.type) {
       case 'shield':
@@ -534,8 +539,10 @@
       }
     }
     credits += profit;
-    if (profit > 0)
+    if (profit > 0) {
       floatingText.add(CANVAS_W / 2, CANVAS_H / 2 - 30, '+' + profit + ' credits', { color: '#0f0', font: 'bold 18px sans-serif' });
+      SZ.GameAudio.play('coin');
+    }
     randomizePrices();
   }
 
@@ -582,6 +589,7 @@
     floatingText.clear();
     state = STATE_PLAYING;
     updateWindowTitle();
+    SZ.GameAudio.play('select');
 
     if (!tutorialSeen) {
       showTutorial = true;
@@ -665,8 +673,11 @@
           sellCargo();
           shopOpen = true;
           shopSelection = 0;
-        } else
+          SZ.GameAudio.play('select');
+        } else {
           shopOpen = false;
+          SZ.GameAudio.play('click');
+        }
       }
       return;
     }
@@ -676,11 +687,13 @@
       if (e.code === 'ArrowUp' || e.code === 'KeyW') {
         e.preventDefault();
         shopSelection = (shopSelection - 1 + UPGRADE_KEYS.length) % UPGRADE_KEYS.length;
+        SZ.GameAudio.play('click');
         return;
       }
       if (e.code === 'ArrowDown' || e.code === 'KeyS') {
         e.preventDefault();
         shopSelection = (shopSelection + 1) % UPGRADE_KEYS.length;
+        SZ.GameAudio.play('click');
         return;
       }
       if (e.code === 'Enter' || e.code === 'Space') {
@@ -767,6 +780,7 @@
           sellCargo();
           shopOpen = true;
           shopSelection = 0;
+          SZ.GameAudio.play('select');
           mouseDown = false;
           mouseActive = false;
           return;
@@ -978,6 +992,8 @@
     }
   }
 
+  let drillSoundTick = 0;
+
   function updateDrilling(dt) {
     isDrilling = false;
     drillTarget = null;
@@ -1014,9 +1030,14 @@
       cargo[nearest.oreType] += actual;
       totalOreMined += actual;
 
+      if (cargoIsFull())
+        SZ.GameAudio.play('error', { volume: 0.7 });
+
       /* Drill particle spray */
       if (drillTimer > 0.08) {
         drillTimer = 0;
+        if (++drillSoundTick % 3 === 0)
+          SZ.GameAudio.play('click', { pitch: 0.35 + Math.random() * 0.1, volume: 0.8 });
         const drillX = nearest.x - camera.x;
         const drillY = nearest.y - camera.y;
         particles.burst(drillX, drillY, 3, { color: ORE_TYPES[nearest.oreType].color, speed: 2, life: 0.5 });
@@ -1035,6 +1056,7 @@
     particles.burst(sx, sy, 25, { color: ORE_TYPES[asteroid.oreType].color, speed: 4, life: 1.2 });
     particles.burst(sx, sy, 15, { color: '#888', speed: 3, life: 1.0 });
     screenShake.trigger(6, 400);
+    SZ.GameAudio.play('explode', { volume: 0.6 });
     floatingText.add(sx, sy - 20, 'DEPLETED', { color: '#f88', font: 'bold 14px sans-serif' });
   }
 
@@ -2034,6 +2056,7 @@
   });
 
   /* ── Init ── */
+  SZ.GameAudio.attachMuteButton();
   setupCanvas();
   loadHighScores();
   loadTutorialSeen();

@@ -56,6 +56,8 @@
   let state = STATE_READY;
   let score = 0;
   let lives = MAX_LIVES;
+  let popCombo = 0;
+  let lastPopTime = 0;
   let currentLevel = 1;
   let highScores = [];
 
@@ -223,6 +225,7 @@
       phaseTimer: 0.3,
       trappedEnemy: null
     });
+    SZ.GameAudio.play('shoot', { pitch: 1.6, volume: 0.6 });
   }
 
   /* ── Update ── */
@@ -284,6 +287,7 @@
       player.vy = JUMP_FORCE;
       player.isJumping = true;
       player.grounded = false;
+      SZ.GameAudio.play('jump');
     }
 
     // Gravity
@@ -332,6 +336,7 @@
         if (pu.type === 'range') powerUpRange = true;
         powerUpTimer = 10;
         floatingText.add(pu.x, pu.y - 10, 'POWER UP!', { color: '#ffd700' });
+        SZ.GameAudio.play('powerup');
       }
     }
 
@@ -342,6 +347,7 @@
         score += item.score;
         floatingText.add(item.x, item.y - 10, '+' + item.score, { color: '#ff9900' });
         particles.sparkle(item.x + 8, item.y + 8, 6, { color: '#ff9900', life: 0.4 });
+        SZ.GameAudio.play('coin');
         items.splice(i, 1);
       }
     }
@@ -373,6 +379,7 @@
             b.phase = 'float';
             b.vx = 0;
             particles.burst(enemy.x + 10, enemy.y + 10, 6, { color: '#44aaff', life: 0.3, speed: 30 });
+            SZ.GameAudio.play('blip', { pitch: 0.75 });
           }
         }
       } else if (b.phase === 'float') {
@@ -419,6 +426,7 @@
             // Wobble the bubble downward briefly
             b.y += 4;
             particles.burst(b.x + 8, b.y, 4, { color: '#aaddff', life: 0.2, speed: 15 });
+            SZ.GameAudio.play('bounce', { pitch: 1.3 });
             continue;
           }
 
@@ -432,6 +440,10 @@
             // Pop particle burst
             particles.burst(b.x + 8, b.y + 8, 12, { color: '#66ddff', life: 0.5, speed: 50 });
             floatingText.add(b.x + 8, b.y - 10, '+' + POP_SCORE, { color: '#66ddff' });
+            const now = performance.now();
+            popCombo = now - lastPopTime < 1500 ? popCombo + 1 : 0;
+            lastPopTime = now;
+            SZ.GameAudio.play('pickup', { pitch: 1 + Math.min(popCombo, 6) * 0.12 });
 
             // Drop fruit item
             items.push({
@@ -457,6 +469,7 @@
           b.trappedEnemy.trapTimer = 0;
         }
         particles.burst(b.x + 8, b.y + 8, 4, { color: '#aaddff', life: 0.2, speed: 20 });
+        SZ.GameAudio.play('click', { pitch: 0.6, volume: 0.5 });
         bubbles.splice(i, 1);
         continue;
       }
@@ -484,6 +497,7 @@
           enemy.trapped = false;
           enemy.vx = (Math.random() < 0.5 ? 1 : -1) * 60;
           particles.burst(enemy.x + 10, enemy.y + 10, 5, { color: '#ff4444', life: 0.3, speed: 25 });
+          SZ.GameAudio.play('whoosh', { pitch: 0.8 });
         }
         continue;
       }
@@ -554,6 +568,7 @@
       });
     }
 
+    SZ.GameAudio.play('levelup');
     ++currentLevel;
     generateLevel(currentLevel);
     resetPlayerPosition();
@@ -573,8 +588,10 @@
       state = STATE_DEAD;
       addHighScore(score, currentLevel);
       updateTitle();
+      SZ.GameAudio.play('lose');
     } else {
       player.invincible = 1.5;
+      SZ.GameAudio.play('hurt');
     }
   }
 
@@ -600,6 +617,7 @@
   /* ── Game reset ── */
   function resetGame() {
     state = STATE_PLAYING;
+    SZ.GameAudio.play('select');
     score = 0;
     lives = MAX_LIVES;
     currentLevel = 1;
@@ -1261,6 +1279,7 @@
     tutorialSeen = true;
     try { localStorage.setItem(STORAGE_TUTORIAL, '1'); } catch (_) {}
   }
+  SZ.GameAudio.attachMuteButton();
   requestAnimationFrame(gameLoop);
 
 })();

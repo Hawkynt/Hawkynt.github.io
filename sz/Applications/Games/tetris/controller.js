@@ -322,6 +322,7 @@
       return;
     if (isValidPosition(currentPiece.type, currentPiece.rotation, currentPiece.row, currentPiece.col - 1)) {
       --currentPiece.col;
+      SZ.GameAudio.play('click', { volume: 0.5 });
       render();
     }
   }
@@ -331,6 +332,7 @@
       return;
     if (isValidPosition(currentPiece.type, currentPiece.rotation, currentPiece.row, currentPiece.col + 1)) {
       ++currentPiece.col;
+      SZ.GameAudio.play('click', { volume: 0.5 });
       render();
     }
   }
@@ -366,7 +368,8 @@
     updateDisplays();
     if (dropped > 0)
       shakeBoard(1);
-    lockAndAdvance();
+    SZ.GameAudio.play('thud');
+    lockAndAdvance(true);
   }
 
   function rotateCW() {
@@ -379,6 +382,7 @@
         currentPiece.rotation = newRot;
         currentPiece.col += dx;
         currentPiece.row -= dy;
+        SZ.GameAudio.play('blip', { pitch: 1.3, volume: 0.5 });
         render();
         return;
       }
@@ -395,6 +399,7 @@
         currentPiece.rotation = newRot;
         currentPiece.col += dx;
         currentPiece.row -= dy;
+        SZ.GameAudio.play('blip', { pitch: 1.3, volume: 0.5 });
         render();
         return;
       }
@@ -402,13 +407,15 @@
   }
 
   /* ---- Lock and Advance ---- */
-  function lockAndAdvance() {
+  function lockAndAdvance(hardDropped) {
     const lockedRow = currentPiece.row;
     const lockedShape = getShape(currentPiece.type, currentPiece.rotation);
 
     flashLockedCells();
     lockPieceToBoard();
     currentPiece = null;
+    if (!hardDropped)
+      SZ.GameAudio.play('drop', { volume: 0.7 });
 
     /* Lock out: any filled cell above the visible playfield = game over */
     const lockedSize = lockedShape.length;
@@ -438,8 +445,10 @@
       addScore(linesCleared);
       updateLevel();
       showScorePopup(pts, linesCleared, Math.min(...clearingRowsSnapshot));
-      if (level > prevLevel)
+      if (level > prevLevel) {
         showLevelUp();
+        SZ.GameAudio.play('levelup');
+      }
     }
     updateDisplays();
 
@@ -661,6 +670,9 @@
       }
     spawnClearParticles(rows);
     shakeBoard(rows.length);
+    SZ.GameAudio.play('lineClear', { pitch: 1 + (rows.length - 1) * 0.12, volume: 0.8 + rows.length * 0.1 });
+    if (rows.length >= 4)
+      SZ.GameAudio.play('powerup');
   }
 
   function updateDisplays() {
@@ -676,6 +688,7 @@
     render();
     finalScoreEl.textContent = 'Score: ' + score;
     gameOverOverlay.classList.add('visible');
+    SZ.GameAudio.play('lose');
     checkHighScore();
   }
 
@@ -684,6 +697,7 @@
     if (!gameActive || gameOverFlag)
       return;
     gamePaused = !gamePaused;
+    SZ.GameAudio.play('click');
     if (gamePaused) {
       pauseOverlay.classList.add('visible');
     } else {
@@ -985,6 +999,7 @@
 
     buildBoard();
     buildPreview();
+    SZ.GameAudio.attachMuteButton();
     loadHighScores();
     newGame();
     requestWindowResize();
