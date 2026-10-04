@@ -448,6 +448,25 @@
       features: [['lava', 10, 11, 13, 13], ['lava', 11, 3, 13, 5], ['rock', 0, 14, 2, 16], ['rock', 23, 0, 24, 2]] }
   ];
 
+  // Order of play: region by region (BIOME_ORDER), maps within a region in
+  // this order. Maps added later are appended to MAPS so saves, stars and
+  // records stay with their map; only their place in the campaign is set here.
+  const CAMPAIGN = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+  const MAP_RANK = [];
+  CAMPAIGN.forEach((m, r) => { MAP_RANK[m] = r; });
+  const REGIONS = BIOME_ORDER.map(biome => ({ biome, maps: CAMPAIGN.filter(i => MAPS[i].biome === biome) }));
+  const ORIGINAL_MAPS = 12;    // maps that opened strictly one after another by index
+
+  // Map that follows in the campaign, -1 after the last one
+  function nextMapOf(i) {
+    const r = MAP_RANK[i] + 1;
+    return r < CAMPAIGN.length ? CAMPAIGN[r] : -1;
+  }
+
+  function regionOf(i) {
+    return REGIONS.findIndex(R => R.maps.indexOf(i) >= 0);
+  }
+
   // Format 1 wave counts, used once to honour maps already won back then
   const V1_WAVES = [15, 18, 15, 20, 15, 12, 18, 20, 16, 25, 15, 30];
 
@@ -664,7 +683,11 @@
   }
 
   function mapUnlocked(i) {
-    return i === 0 || meta.maps[i].stars > 0 || meta.maps[i - 1].stars > 0 || (!!savedGameInfo && savedGameInfo.map === i);
+    const r = MAP_RANK[i];
+    return r === 0 || meta.maps[i].stars > 0 || meta.maps[CAMPAIGN[r - 1]].stars > 0
+      // The original maps opened one after another by index; those keys stay valid
+      || (i > 0 && i < ORIGINAL_MAPS && meta.maps[i - 1].stars > 0)
+      || (!!savedGameInfo && savedGameInfo.map === i);
   }
 
   // clearedNow: the required waves were just held; reached: furthest wave of the run
@@ -679,7 +702,7 @@
       ++m.wins;
     }
     lastResult = { cleared: clearedNow || cleared, stars: clearedNow ? stars : (lastResult && lastResult.stars) || m.stars, prevStars, newBest: reached > prevBest, prevBest, waves: reached, t: 0,
-      unlocked: clearedNow && prevStars === 0 && currentMap + 1 < MAPS.length };
+      unlocked: clearedNow && prevStars === 0 && nextMapOf(currentMap) >= 0 };
     saveMeta();
   }
   const SAVE_VERSION = 2;
@@ -1426,10 +1449,11 @@
     const waves = mapDef.waves;
     const rng = makeRng(mi * 7919 + waveNo * 104729 + 17);
     const progress = (waveNo - 1) / Math.max(1, waves - 1);
-    // Early maps only show part of the bestiary; it opens up along the campaign
-    const reach = waveNo > waves ? 1 : Math.min(1, 0.4 + mi * 0.06);
+    // Early maps only show part of the bestiary and the bosses; both open up along the campaign
+    const rank = MAP_RANK[mi];
+    const reach = waveNo > waves ? 1 : Math.min(1, 0.4 + rank * 0.06);
     const pool = Object.keys(ENEMY_TYPES).filter(k => ENEMY_TYPES[k].cost > 0 && !ENEMY_TYPES[k].boss && ENEMY_TYPES[k].unlock <= Math.min(1, progress) * reach + 1e-6);
-    const bossPool = waveNo > waves ? BOSS_ORDER : BOSS_ORDER.slice(0, Math.min(BOSS_ORDER.length, 2 + mi));
+    const bossPool = waveNo > waves ? BOSS_ORDER : BOSS_ORDER.slice(0, Math.min(BOSS_ORDER.length, 2 + rank));
     let budget = (7 + waveNo * 3.2 + waveNo * waveNo * 0.12) * (mapDef.budgetMul || 1);
     const queue = [];
     // The newest type gets the spotlight in the wave it first appears
@@ -1459,7 +1483,7 @@
       // Long after the required waves several bosses march together
       const count = waveNo > waves ? 1 + Math.floor((waveNo - waves) / 20) : 1;
       for (let b = 0; b < count; ++b) {
-        const bossType = waveNo === waves ? bossPool[mi % bossPool.length] : bossPool[(Math.floor(waveNo / 5) - 1 + b * 3) % bossPool.length];
+        const bossType = waveNo === waves ? bossPool[rank % bossPool.length] : bossPool[(Math.floor(waveNo / 5) - 1 + b * 3) % bossPool.length];
         queue.push('|');
         queue.push(bossType + (waveNo === waves || waveNo > waves + 10 ? '!' : ''));
       }
@@ -1505,11 +1529,11 @@
 
   // Further maps pay better: more gold per kill and more research per wave
   function mapBountyMul(mi) {
-    return 1 + mi * 0.04;
+    return 1 + MAP_RANK[mi] * 0.04;
   }
 
   function mapResearchMul(mi) {
-    return 1 + mi * 0.08;
+    return 1 + MAP_RANK[mi] * 0.08;
   }
 
   function startNextWave() {
@@ -7846,19 +7870,23 @@
     view.x = sx; view.y = sy; view.s = ss;
   }
 
-  /* ── World map ── */
-  const WORLD_ART_W = 400, WORLD_ART_H = 240;
-  const MAP_SPOTS = [[0.08, 0.7], [0.16, 0.38], [0.23, 0.66], [0.33, 0.32], [0.4, 0.62], [0.47, 0.3], [0.58, 0.56], [0.64, 0.28], [0.71, 0.62], [0.82, 0.38], [0.88, 0.7], [0.94, 0.36]];
+  /* ── World map: one band per region from west to east, a keep per map ── */
+  const WORLD_ART_W = 100 * REGIONS.length, WORLD_ART_H = 240;
+  // Heights of the keeps along the route, repeated as the campaign goes on
+  const SPOT_Y = [0.7, 0.38, 0.66, 0.32, 0.62, 0.3, 0.56, 0.28, 0.62, 0.38, 0.7, 0.36];
   let worldArt = null;
 
+  // Spot of a map (by index): inside its region's band, in campaign order
   function spotPx(i) {
-    return { x: MAP_SPOTS[i][0] * WORLD_ART_W, y: MAP_SPOTS[i][1] * WORLD_ART_H };
+    const reg = regionOf(i), maps = REGIONS[reg].maps, k = maps.indexOf(i);
+    const fx = (reg + 0.22 + 0.56 * (maps.length > 1 ? k / (maps.length - 1) : 0.5)) / REGIONS.length;
+    return { x: fx * WORLD_ART_W, y: SPOT_Y[MAP_RANK[i] % SPOT_Y.length] * WORLD_ART_H };
   }
 
   // Route between two spots: a gentle curve through an offset midpoint
   function routePoint(a, b, k) {
     const pa = spotPx(a), pb = spotPx(b);
-    const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2 - 18 + (a % 2) * 36;
+    const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2 - 18 + (MAP_RANK[a] % 2) * 36;
     const u = 1 - k;
     return { x: u * u * pa.x + 2 * u * k * mx + k * k * pb.x, y: u * u * pa.y + 2 * u * k * my + k * k * pb.y };
   }
@@ -7872,7 +7900,8 @@
     for (let y = 0; y < H; ++y)
       for (let x = 0; x < W; ++x) {
         const n = fbm(x / 22, y / 22, seed);
-        const bi = clamp(Math.floor(x / W * 4 + (n - 0.5) * 0.7), 0, 3);
+        const bf = x / W * REGIONS.length + (n - 0.5) * 0.6;
+        const bi = clamp(Math.floor(bf), 0, REGIONS.length - 1);
         const T = TERRAIN[BIOME_ORDER[bi]];
         // Sea around the edges of the continent
         const edge = Math.min(x, W - 1 - x, y * 1.4, (H - 1 - y) * 1.4) + (fbm(x / 9, y / 9, seed + 3) - 0.5) * 26;
@@ -7882,8 +7911,7 @@
         else {
           col = rampPick(T.ground, 0.2 + n * 0.7, x, y, 1, 4);
           // Mountain ridges between the biomes
-          const bf = x / W * 4 + (n - 0.5) * 0.7;
-          if (Math.abs(bf - Math.round(bf)) < 0.03 && bf > 0.5 && bf < 3.5) col = shade(T.ground[2], -0.35);
+          if (Math.abs(bf - Math.round(bf)) < 0.03 && bf > 0.5 && bf < REGIONS.length - 0.5) col = shade(T.ground[2], -0.35);
         }
         const rgb = parseHex(col);
         const i = (y * W + x) * 4;
@@ -7892,18 +7920,18 @@
     g.putImageData(img, 0, 0);
     // Scattered biome props
     const rng = makeRng(seed);
-    for (let i = 0; i < 140; ++i) {
+    for (let i = 0; i < 35 * REGIONS.length; ++i) {
       const x = 12 + rng() * (W - 24), y = 12 + rng() * (H - 24);
-      const bi = clamp(Math.floor(x / W * 4), 0, 3);
+      const bi = clamp(Math.floor(x / W * REGIONS.length), 0, REGIONS.length - 1);
       const T = TERRAIN[BIOME_ORDER[bi]];
       const art = propArt(rng() < 0.6 ? T.tree : T.boulder);
       g.drawImage(art, Math.round(x - art.width / 4), Math.round(y - art.height / 2), Math.round(art.width / 2), Math.round(art.height / 2));
     }
     // Dotted route
     g.fillStyle = 'rgba(60,40,20,0.75)';
-    for (let i = 0; i < MAPS.length - 1; ++i)
+    for (let r = 0; r < CAMPAIGN.length - 1; ++r)
       for (let k = 0; k <= 1; k += 0.05) {
-        const p = routePoint(i, i + 1, k);
+        const p = routePoint(CAMPAIGN[r], CAMPAIGN[r + 1], k);
         g.fillRect(Math.round(p.x), Math.round(p.y), 2, 2);
       }
     return c;
@@ -8098,7 +8126,7 @@
     }
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const next = currentMap + 1 < MAPS.length ? `Next level open (L) · or stay and keep holding` : 'The last map is held · stay as long as you can';
+    const next = nextMapOf(currentMap) >= 0 ? `Next level open (L) · or stay and keep holding` : 'The last map is held · stay as long as you can';
     fitText(`+${lastRp} research · ${next}`, UW / 2, cy + 100, UW - 60, 15, { weight: 'bold', color: '#ffffff', outline: 'rgba(0,0,0,0.8)' });
     ctx.restore();
     drawSkipHint();
@@ -8357,18 +8385,18 @@
   }
 
   function nextLevelAvailable() {
-    return cleared && currentMap + 1 < MAPS.length && (state === STATE_BUILD || state === STATE_PLAYING || state === STATE_GAME_OVER);
+    return cleared && nextMapOf(currentMap) >= 0 && (state === STATE_BUILD || state === STATE_PLAYING || state === STATE_GAME_OVER);
   }
 
   function nextLevelGains() {
-    const n = currentMap + 1;
+    const n = nextMapOf(currentMap);
     const b = Math.round((mapBountyMul(n) / mapBountyMul(currentMap) - 1) * 100);
     const r = Math.round((mapResearchMul(n) / mapResearchMul(currentMap) - 1) * 100);
     return { bounty: b, research: r, carry: carryGold() };
   }
 
   function nextLevelTooltip() {
-    const n = MAPS[currentMap + 1], g = nextLevelGains();
+    const n = MAPS[nextMapOf(currentMap)], g = nextLevelGains();
     return [`Next level: ${n.name}`, BIOMES[n.biome].name + ' · ' + n.waves + ' waves to clear',
       '--- Moving on ---',
       `✔ +${g.bounty}% gold per kill, +${g.research}% research per wave`,
@@ -8380,7 +8408,7 @@
 
   function drawNextLevelButton() {
     if (!nextLevelAvailable() || state === STATE_GAME_OVER) return;
-    const n = MAPS[currentMap + 1], g = nextLevelGains();
+    const n = MAPS[nextMapOf(currentMap)], g = nextLevelGains();
     const w = Math.min(340, UW - 40), h = 44;
     const x = UW / 2 - w / 2, y = UH - BOT_H - h - 8;
     beginHudPanel('nextlevel', x, y, w, h);
@@ -9161,6 +9189,40 @@
       drawIcon(i < n ? 'star' : 'starEmpty', cx + (i - (total - 1) / 2) * gap, cy, size);
   }
 
+  // Regions side by side on a page: as many as fit, every page holding the same number
+  let msPerPage = REGIONS.length;
+  const MS_CARD_MIN_W = 140;
+
+  function regionsPerPage(gw) {
+    let per = clamp(Math.floor((gw + 8) / (MS_CARD_MIN_W + 8)), 1, REGIONS.length);
+    while (REGIONS.length % per) --per;
+    return per;
+  }
+
+  function mapSelectPages() {
+    return Math.ceil(REGIONS.length / msPerPage);
+  }
+
+  function mapSelectPage() {
+    return Math.floor(regionOf(mapSelectIndex) / msPerPage);
+  }
+
+  function regionStars(reg) {
+    return REGIONS[reg].maps.reduce((a, i) => a + meta.maps[i].stars, 0);
+  }
+
+  // Shows another page of regions; the selection keeps its row in the page's first region
+  function showMapSelectPage(page) {
+    const pages = mapSelectPages();
+    page = (page + pages) % pages;
+    if (page === mapSelectPage()) return;
+    const reg = regionOf(mapSelectIndex);
+    const row = REGIONS[reg].maps.indexOf(mapSelectIndex);
+    const maps = REGIONS[page * msPerPage].maps;
+    previewMap(maps[Math.min(row, maps.length - 1)]);
+    audio.play('click', { pitch: 1.1 });
+  }
+
   function drawMapSelect() {
     drawScrim(0.72);
     const pad = 12;
@@ -9176,34 +9238,62 @@
     uiButton('ms-research', UW - pad - 274, 16, 156, hh - 16, `Research · ${meta.rp}`, { px: 12, icon: 'flask', key: 'R', onClick: () => openResearch() });
     uiButton('ms-back', UW - pad - 108, 16, 96, hh - 16, 'Back', { px: 13, key: 'Esc', onClick: () => quitToTitle() });
 
-    // Layout: grid of biomes (columns) x maps (rows), details on the right
-    const top = 8 + hh + 10, bottom = UH - 34;
+    // Layout: regions as columns, their maps as rows, details on the right
+    let top = 8 + hh + 10;
+    const bottom = UH - 34;
     const detailW = UW >= 900 ? Math.min(300, UW * 0.3) : 0;
     const gx = pad, gw = UW - pad * 2 - (detailW ? detailW + 10 : 0);
+    msPerPage = regionsPerPage(gw);
+    const pages = mapSelectPages(), page = mapSelectPage();
+    if (pages > 1) {
+      // Page tabs, each naming its regions, with arrows to either side
+      const th = 30, aw = 34, gap = 6;
+      uiButton('ms-prev', gx, top, aw, th, '<', { px: 15, onClick: () => showMapSelectPage(page - 1), tip: () => ['Previous regions', 'PgUp · Shift+Tab · mouse wheel'] });
+      uiButton('ms-next', gx + gw - aw, top, aw, th, '>', { px: 15, onClick: () => showMapSelectPage(page + 1), tip: () => ['Next regions', 'PgDn · Tab · mouse wheel'] });
+      const tw = (gw - 2 * (aw + gap) - (pages - 1) * gap) / pages;
+      for (let p = 0; p < pages; ++p) {
+        const regs = REGIONS.slice(p * msPerPage, (p + 1) * msPerPage);
+        const stars = regs.reduce((a, R, k) => a + regionStars(p * msPerPage + k), 0);
+        const max = regs.reduce((a, R) => a + R.maps.length * 3, 0);
+        uiButton('ms-page' + p, gx + aw + gap + p * (tw + gap), top, tw, th, regs.map(R => BIOMES[R.biome].name).join(' · '), {
+          style: p === page ? 'gold' : 'dark', px: 12, onClick: () => showMapSelectPage(p),
+          tip: () => [regs.map(R => BIOMES[R.biome].name).join(', '), ...regs.map(R => `• ${BIOMES[R.biome].name}: ${R.maps.length} maps`), `★ ${stars} / ${max} stars`]
+        });
+      }
+      top += th + 8;
+    }
     const colGap = 8, rowGap = 8, headH = 24;
-    const cw = (gw - colGap * 3) / 4;
-    const ch = (bottom - top - headH - rowGap * 2 - (detailW ? 0 : 150)) / 3;
-    BIOME_ORDER.forEach((bk, bi) => {
-      const b = BIOMES[bk];
-      const x = gx + bi * (cw + colGap);
+    const rows = Math.max(...REGIONS.map(R => R.maps.length));
+    const cw = (gw - colGap * (msPerPage - 1)) / msPerPage;
+    const ch = (bottom - top - headH - 6 - rowGap * (rows - 1) - (detailW ? 0 : 150)) / rows;
+    for (let k = 0; k < msPerPage; ++k) {
+      const reg = page * msPerPage + k;
+      if (reg >= REGIONS.length) break;
+      const R = REGIONS[reg], b = BIOMES[R.biome];
+      const x = gx + k * (cw + colGap);
       roundRectPath(x, top, cw, headH, 6);
       ctx.fillStyle = hexToRgba(b.color, 0.2);
       ctx.fill();
       ctx.strokeStyle = hexToRgba(b.color, 0.6);
       ctx.lineWidth = 1;
       ctx.stroke();
+      const starsW = cw >= 170 ? 58 : 0;
       ctx.textAlign = 'center';
-      fitText(b.name, x + cw / 2, top + headH / 2 + 1, cw - 10, 12, { weight: 'bold', color: b.color });
-      for (let j = 0; j < 3; ++j) {
-        const i = bi * 3 + j;
-        drawMapCard(i, x, top + headH + 6 + j * (ch + rowGap), cw, ch);
+      fitText(b.name, x + (cw - starsW) / 2, top + headH / 2 + 1, cw - 10 - starsW, 12, { weight: 'bold', color: b.color });
+      if (starsW) {
+        ctx.textAlign = 'right';
+        fitText(`[[star]] ${regionStars(reg)}/${R.maps.length * 3}`, x + cw - 7, top + headH / 2 + 1, starsW - 4, 11, { weight: 'bold', color: '#ffffff' });
       }
-    });
+      R.maps.forEach((i, j) => drawMapCard(i, x, top + headH + 6 + j * (ch + rowGap), cw, ch));
+    }
     if (detailW)
-      drawMapDetails(UW - pad - detailW, top, detailW, bottom - top);
+      drawMapDetails(UW - pad - detailW, 8 + hh + 10, detailW, bottom - 8 - hh - 10);
     else
       drawMapDetails(gx, bottom - 144, gw, 140);
-    drawKeyHints([{ key: '←↑→↓', label: 'Choose' }, { key: 'Enter', label: 'Play' }, { key: 'Esc', label: 'Back' }], UW / 2, UH - 16, UW - 40);
+    const hints = [{ key: '←↑→↓', label: 'Choose' }, { key: 'Enter', label: 'Play' }];
+    if (pages > 1) hints.push({ key: 'PgUp/PgDn', label: 'Regions' });
+    hints.push({ key: 'Esc', label: 'Back' });
+    drawKeyHints(hints, UW / 2, UH - 16, UW - 40);
   }
 
   function drawMapCard(i, x, y, w, h) {
@@ -9232,7 +9322,7 @@
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     const ny = ty + th + (h - th - 6) / 2 - 1;
-    fitText(`${i + 1}. ${m.name}`, x + 8, ny - 7, w * 0.62, 12, { weight: 'bold', color: locked ? UI.textMute : '#ffffff' });
+    fitText(`${MAP_RANK[i] + 1}. ${m.name}`, x + 8, ny - 7, w * 0.62, 12, { weight: 'bold', color: locked ? UI.textMute : '#ffffff' });
     fitText(rec.best ? `Best wave ${rec.best} · goal ${m.waves}` : `Goal ${m.waves} waves`, x + 8, ny + 8, w * 0.6, 10, { color: UI.textDim });
     drawStars(rec.stars, x + w - 8 - Math.min(13, w * 0.09) * 1.6, ny, Math.min(13, w * 0.09));
     ctx.restore();
@@ -9293,15 +9383,19 @@
     }
   }
 
+  // Left / right walk through the regions (turning the page at its edge), up / down through a region
   function moveMapSelect(dx, dy) {
-    const bi = Math.floor(mapSelectIndex / 3), j = mapSelectIndex % 3;
-    const nb = clamp(bi + dx, 0, 3), nj = clamp(j + dy, 0, 2);
-    const ni = nb * 3 + nj;
+    const reg0 = regionOf(mapSelectIndex);
+    const reg = clamp(reg0 + dx, 0, REGIONS.length - 1);
+    const maps = REGIONS[reg].maps;
+    const row = clamp(REGIONS[reg0].maps.indexOf(mapSelectIndex) + dy, 0, maps.length - 1);
+    const ni = maps[row];
     if (ni !== mapSelectIndex) {
       previewMap(ni);
       audio.play('click', { pitch: 1.3 });
     }
   }
+
   function drawPauseScreen() {
     drawScrim(0.6);
     const pw = Math.min(320, UW - 40), ph = 306;
@@ -9326,7 +9420,7 @@
     const cx = UW / 2;
     const res = lastResult || { stars: 0, prevStars: 0, waves: 0, prevBest: 0 };
     const held = !!res.cleared;
-    const hasNext = held && currentMap + 1 < MAPS.length;
+    const hasNext = held && nextMapOf(currentMap) >= 0;
     const pw = Math.min(440, UW - 40), ph = held ? 330 : 296;
     const px = cx - pw / 2, py = clamp(UH / 2 - ph / 2 + 30, 80, UH - ph - 10);
     drawHeadline(held ? 'STAND ENDED' : 'DEFEAT', cx, py - 40, UW - 40, 58, held ? UI.gold : '#ff5a5a', held ? '#ff9a2a' : '#9a1a1a');
@@ -9647,8 +9741,9 @@
     const from = currentMap;
     saveGame();
     // March across the world map, then fly over the new map
-    startCine('travel', { from, to: from + 1 }, (skipped) => {
-      currentMap = from + 1;
+    const to = nextMapOf(from);
+    startCine('travel', { from, to }, (skipped) => {
+      currentMap = to;
       introNext = !skipped;
       resetAndStart(carry);
       showBanner(MAPS[currentMap].name.toUpperCase(), `${BIOMES[MAPS[currentMap].biome].name} · ${carry} gold carried over`, BIOMES[MAPS[currentMap].biome].color, 2.6);
@@ -9806,7 +9901,18 @@
     treeDrag = null;
   });
 
+  let wheelFlipAt = 0;
   canvas.addEventListener('wheel', (e) => {
+    if (state === STATE_MAP_SELECT && !overlay && !cine) {
+      // One page per wheel gesture
+      e.preventDefault();
+      const now = performance.now();
+      if (Math.abs(e.deltaY) + Math.abs(e.deltaX) > 0 && now - wheelFlipAt > 350 && mapSelectPages() > 1) {
+        wheelFlipAt = now;
+        showMapSelectPage(mapSelectPage() + ((e.deltaY || e.deltaX) > 0 ? 1 : -1));
+      }
+      return;
+    }
     if (state !== STATE_RESEARCH) return;
     e.preventDefault();
     readPointer(e);
@@ -9962,6 +10068,17 @@
       if (dirs[code]) {
         e.preventDefault();
         moveMapSelect(dirs[code][0], dirs[code][1]);
+      } else if (code === 'PageUp' || code === 'PageDown' || code === 'Tab') {
+        e.preventDefault();
+        showMapSelectPage(mapSelectPage() + (code === 'PageUp' || (code === 'Tab' && e.shiftKey) ? -1 : 1));
+      } else if (code === 'Home' || code === 'End') {
+        e.preventDefault();
+        const reg = REGIONS[regionOf(mapSelectIndex)].maps;
+        const ni = reg[code === 'Home' ? 0 : reg.length - 1];
+        if (ni !== mapSelectIndex) {
+          previewMap(ni);
+          audio.play('click', { pitch: 1.3 });
+        }
       } else if (code === 'Enter' || code === 'Space') {
         e.preventDefault();
         pressFx['ms-play'] = performance.now();
