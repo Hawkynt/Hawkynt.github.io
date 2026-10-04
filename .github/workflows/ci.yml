@@ -166,10 +166,12 @@ jobs:
   #   starts no CI run. Even if it did, that run would regenerate an identical
   #   tree and stop at "nothing changed".
   # - Commits nothing when the regenerated tree equals the committed one.
-  # - Races: `concurrency` queues the publish jobs one at a time. If main moved
-  #   on after this run's commit was tested, the push is rejected as a non
-  #   fast-forward and the job stops cleanly: the newer push has its own run,
-  #   which regenerates from the newer, tested sources.
+  # - Races: `concurrency` queues the publish jobs one at a time. The commit is
+  #   made through GitHub's API only while main still points at the tested
+  #   commit; if main moved on, the job stops cleanly: the newer push has its
+  #   own run, which regenerates from the newer, tested sources.
+  # - Signed: commits made through the API are signed by GitHub, so the
+  #   generated commits show as verified like every other commit on main.
   # - contents: write is granted to this job only; every other job keeps the
   #   repository's read-only default.
   publish-docs:
@@ -198,21 +200,14 @@ jobs:
             echo "The committed algorithm reference already matches the sources."
             exit 0
           fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A -- Cipher/docs/algorithms
-          git commit -q -m '* the algorithm reference follows the sources'
-          if git push origin HEAD:refs/heads/main; then
-            echo "Pushed the regenerated reference on top of $GITHUB_SHA."
-            exit 0
-          fi
-          git fetch -q origin main
-          if [ "$(git rev-parse FETCH_HEAD)" != "$GITHUB_SHA" ]; then
+          # committed through GitHub's API, which signs the commit (verified)
+          rc=0
+          node .github/scripts/commit-changes.js '* the algorithm reference follows the sources' Cipher/docs/algorithms || rc=$?
+          if [ "$rc" -eq 2 ]; then
             echo "::notice::main moved past $GITHUB_SHA; the run for the newer push regenerates the reference."
             exit 0
           fi
-          echo "::error::pushing the regenerated reference failed although main is still at $GITHUB_SHA"
-          exit 1
+          exit $rc
 
   # Regenerates the desktop's app versions (sz/Applications/versions.js) and
   # commits them back to main. The desktop appends an app's version to the
@@ -221,8 +216,8 @@ jobs:
   # pushes to main of this repository only, after the checks passed, no loop
   # (GITHUB_TOKEN pushes start no runs), nothing committed when nothing changed.
   # It has a queue of its own (a shared one would let it cancel a pending
-  # publish-docs); when another push landed first, it rebases its single
-  # generated file on top and pushes again.
+  # publish-docs); when another push landed first, the newer push's run
+  # publishes the versions instead.
   publish-versions:
     name: publish desktop app versions
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'Hawkynt/Hawkynt.github.io'
@@ -247,19 +242,14 @@ jobs:
             echo "The committed app versions already match the history."
             exit 0
           fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- sz/Applications/versions.js
-          git commit -q -m '* the desktop app versions follow the history'
-          for attempt in 1 2 3; do
-            if git push origin HEAD:refs/heads/main; then
-              echo "Pushed the app versions on top of $GITHUB_SHA."
-              exit 0
-            fi
-            git fetch -q origin main
-            git rebase -q FETCH_HEAD || { git rebase --abort; break; }
-          done
-          echo "::notice::main kept moving; the run for the newer push publishes the versions."
+          # committed through GitHub's API, which signs the commit (verified)
+          rc=0
+          node .github/scripts/commit-changes.js '* the desktop app versions follow the history' sz/Applications/versions.js || rc=$?
+          if [ "$rc" -eq 2 ]; then
+            echo "::notice::main moved past $GITHUB_SHA; the run for the newer push publishes the versions."
+            exit 0
+          fi
+          exit $rc
 
   # A text lint over README.md against the house convention — no build, no toolchain — so it
   # runs beside the rest rather than inside it and cannot mask them.
