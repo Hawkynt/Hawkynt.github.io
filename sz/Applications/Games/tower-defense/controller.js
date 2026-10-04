@@ -393,7 +393,9 @@
     meadow:  { name: 'Greenvale', color: '#6fd06a', ground: '#4f8a3a', path: '#a8834e', feature: 'water', desc: 'Rolling meadows, ponds and old forests.' },
     desert:  { name: 'Sunscar Desert', color: '#ffc25a', ground: '#c9a25e', path: '#8e7350', feature: 'water', desc: 'Dunes, mesas and the odd oasis.' },
     tundra:  { name: 'Frostreach', color: '#9fe0ff', ground: '#dfe9f2', path: '#8a9bb0', feature: 'ice', desc: 'Snowfields and frozen lakes.' },
-    volcano: { name: 'Ashen Wastes', color: '#ff7a3a', ground: '#4a3a3a', path: '#2a2026', feature: 'lava', desc: 'Basalt, ash and rivers of lava.' }
+    volcano: { name: 'Ashen Wastes', color: '#ff7a3a', ground: '#4a3a3a', path: '#2a2026', feature: 'lava', desc: 'Basalt, ash and rivers of lava.' },
+    swamp:   { name: 'Mirewood', color: '#b6d65a', ground: '#3b522c', path: '#9a7448', feature: 'bog', desc: 'Drowned woods, plank walks and sucking bogs.' },
+    cavern:  { name: 'Crystal Caverns', color: '#b48aff', ground: '#302c46', path: '#7a7498', feature: 'chasm', desc: 'Glittering halls above bottomless chasms.' }
   };
   const BIOME_ORDER = ['meadow', 'desert', 'tundra', 'volcano'];
 
@@ -1009,7 +1011,7 @@
     return mapDef.paths;
   }
 
-  let blockedCells = new Map();    // 'col,row' -> 'water' | 'ice' | 'lava' | 'rock' | 'tree'
+  let blockedCells = new Map();    // 'col,row' -> 'water' | 'ice' | 'lava' | 'bog' | 'chasm' | 'rock' | 'tree'
 
   function buildPathCells(mapDef) {
     pathCells = new Set();
@@ -2865,6 +2867,8 @@
     ice:    ['#2a5f8c', '#3f7eb0', '#5a9cd0', '#80bce6', '#b0dcf6', '#e6f8ff'],
     lava:   ['#4a0e06', '#8a1e08', '#d03c0a', '#ff6a14', '#ffa63a', '#ffe48a'],
     water:  ['#173468', '#1f4888', '#2a5fae', '#3a7ad0', '#62a0e6', '#a8d4f6'],
+    bog:    ['#0a1511', '#0f2019', '#163024', '#1f402f', '#3c6650', '#5e8a5e'],
+    chasm:  ['#020106', '#07040f', '#0e0919', '#181028', '#241a3c', '#332552'],
     venom:  ['#163a10', '#22581a', '#348a26', '#4cb43a', '#7ce35a', '#c4ff9a'],
     flesh:  ['#5a3020', '#7a4430', '#9a5c40', '#ba7854', '#d4986c', '#ecbc94'],
     cloth:  ['#2a1838', '#3e2450', '#56346c', '#704a8a', '#8e64a8', '#b08cc8'],
@@ -3075,6 +3079,18 @@
       path: ['#0e090e', '#171018', '#211722', '#2c1f2c', '#3a2938', '#4a3646'], cobble: true, seam: '#ff6a1a',
       shore: '#140c0c', feature: 'lava', cliff: ['#120c10', '#1e1418', '#2c1e22', '#3c2a2c', '#4e3838', '#644a46'], blade: '#6a4a40',
       decor: ['ember', 'pebble', 'crack', 'skull'], tree: 'deadtree', boulder: 'obsidian'
+    },
+    swamp: {
+      ground: ['#1a2616', '#22321c', '#2c3f22', '#384e2a', '#476034', '#5b7640'],
+      path: ['#2a1c10', '#3e2a18', '#553b22', '#6c4d2e', '#84603a', '#a07a4c'], planks: true,
+      shore: '#2e2a18', feature: 'bog', cliff: ['#161b14', '#22291e', '#30392a', '#404b38', '#56644a', '#6f805e'], blade: '#8aae4e', bladeH: 2,
+      decor: ['reed', 'reed', 'toadstool', 'fern', 'pebble', 'fern'], tree: 'willow', boulder: 'stump'
+    },
+    cavern: {
+      ground: ['#121020', '#19162a', '#211d36', '#2a2544', '#353054', '#443d68'],
+      path: ['#0c0b14', '#16141f', '#201d2c', '#2b283a', '#38344a', '#4a455e'], cobble: true, seam: '#6ae8ff',
+      shore: '#6a5e9a', feature: 'chasm', cliff: ['#0c0a14', '#171424', '#231e36', '#302a4a', '#403860', '#544a7a'], blade: '#4e4678',
+      decor: ['shard', 'shard2', 'glowcap', 'pebble', 'shard'], tree: 'crystal', boulder: 'stalagmite', glow: '#7ae8ff', deepGlow: '#8a5aff'
     }
   };
 
@@ -3167,6 +3183,62 @@
     }],
     skull: [5, 5, (g) => {
       px(g, 0, 0, 5, 3, '#dcd6c0'); px(g, 1, 3, 3, 2, '#bcb6a0'); px(g, 1, 1, 1, 1, '#1a1214'); px(g, 3, 1, 1, 1, '#1a1214');
+    }],
+    // Mirewood: weeping willows, mossy stumps, reeds, ferns and sickly toadstools
+    willow: [18, 22, (g) => {
+      const L = ['#15240e', '#1d3314', '#28451b', '#365a24', '#4a7430', '#66903e'];
+      px(g, 8, 11, 3, 11, RAMPS.wood[1]); px(g, 8, 11, 1, 11, RAMPS.wood[2]); px(g, 7, 20, 5, 2, RAMPS.wood[1]);
+      disc(g, 9, 7, 7, L, 3);
+      disc(g, 4.5, 9, 4, L, 2); disc(g, 13.5, 9, 4, L, 2);
+      // Hanging fronds
+      for (let i = 0; i < 8; ++i) {
+        const x = 1 + i * 2, len = 5 + ((i * 7) % 5);
+        px(g, x, 9, 1, len, L[i % 2 ? 2 : 3]);
+        px(g, x, 9 + len - 1, 1, 1, L[4]);
+      }
+      px(g, 6, 2, 4, 1, L[5]); px(g, 11, 4, 2, 1, L[5]); px(g, 4, 6, 2, 1, L[4]);
+    }],
+    stump: [14, 11, (g) => {
+      const w = RAMPS.wood;
+      px(g, 2, 4, 10, 7, w[2]); px(g, 2, 4, 2, 7, w[3]); px(g, 10, 4, 2, 7, w[1]);
+      px(g, 0, 9, 3, 2, w[1]); px(g, 11, 9, 3, 2, w[1]);
+      ellipseFill(g, 7, 4, 5, 2, w[4]); ellipseFill(g, 7, 4, 3, 1.2, w[3]); px(g, 6, 4, 2, 1, w[2]);
+      px(g, 2, 6, 4, 2, '#4a7430'); px(g, 3, 5, 2, 1, '#66903e'); px(g, 9, 8, 3, 2, '#365a24');
+    }],
+    reed: [5, 8, (g) => {
+      px(g, 1, 2, 1, 6, '#5a7a30'); px(g, 3, 1, 1, 7, '#6e8e3a'); px(g, 2, 4, 1, 4, '#4a6428');
+      px(g, 1, 1, 1, 2, '#6a4422'); px(g, 3, 0, 1, 2, '#7a5028');
+    }],
+    fern: [7, 5, (g) => {
+      line(g, 3.5, 5, 0.5, 1, '#4a7430', 1); line(g, 3.5, 5, 6.5, 1, '#4a7430', 1); px(g, 3, 0, 1, 5, '#66903e');
+      px(g, 1, 2, 1, 1, '#66903e'); px(g, 5, 2, 1, 1, '#66903e');
+    }],
+    toadstool: [5, 5, (g) => {
+      px(g, 2, 3, 1, 2, '#d8d0b8'); px(g, 0, 1, 5, 2, '#8a5aa8'); px(g, 1, 0, 3, 1, '#a874c8'); px(g, 1, 1, 1, 1, '#e0c8f0'); px(g, 3, 2, 1, 1, '#e0c8f0');
+    }],
+    // Crystal Caverns: crystal clusters, stalagmites, shards and glowing caps
+    crystal: [14, 20, (g) => {
+      const c = ['#123a4a', '#1c5a70', '#2a86a0', '#4ab8d0', '#8ae4f4', '#e0fcff'];
+      const v = ['#2a1648', '#3e2068', '#5a3092', '#7a48ba', '#a272e0', '#d6b8ff'];
+      poly(g, [2, 9, 4, 6, 6, 9, 6, 20, 2, 20], v[2]); poly(g, [2, 9, 4, 6, 4, 20, 2, 20], v[4]);
+      poly(g, [10, 7, 12, 4, 14, 8, 13, 20, 9, 20], c[2]); poly(g, [10, 7, 12, 4, 12, 20, 9, 20], c[3]);
+      poly(g, [5, 4, 7.5, 0, 10, 4, 10, 20, 5, 20], c[3]); poly(g, [5, 4, 7.5, 0, 7.5, 20, 5, 20], c[4]);
+      px(g, 6, 3, 1, 9, c[5]); px(g, 11, 7, 1, 5, c[4]); px(g, 3, 9, 1, 4, v[5]);
+      px(g, 1, 18, 13, 2, '#1a1626');
+    }],
+    stalagmite: [10, 16, (g) => {
+      const c = TERRAIN.cavern.cliff;
+      poly(g, [5, 0, 9, 16, 1, 16], c[3]); poly(g, [5, 0, 5, 16, 1, 16], c[4]); poly(g, [7, 9, 9, 16, 6, 16], c[2]);
+      px(g, 4, 5, 1, 2, c[5]); px(g, 3, 11, 2, 1, c[5]); px(g, 6, 13, 1, 2, '#6ae8ff');
+    }],
+    shard: [4, 6, (g) => {
+      poly(g, [2, 0, 4, 3, 3, 6, 1, 6, 0, 3], '#4ab8d0'); px(g, 1, 1, 1, 4, '#cdf6ff');
+    }],
+    shard2: [4, 6, (g) => {
+      poly(g, [2, 0, 4, 3, 3, 6, 1, 6, 0, 3], '#7a48ba'); px(g, 1, 1, 1, 4, '#d6b8ff');
+    }],
+    glowcap: [5, 5, (g) => {
+      px(g, 2, 3, 1, 2, '#8a86a8'); px(g, 0, 1, 5, 2, '#3ab8e0'); px(g, 1, 0, 3, 1, '#7ae8ff'); px(g, 1, 1, 1, 1, '#e0fcff');
     }]
   };
 
@@ -3175,7 +3247,7 @@
     let c = propCache[key];
     if (!c) {
       const [w, h, fn] = PROP_ART[key];
-      const outline = ['flower', 'flower2', 'tuft', 'drygrass', 'snowtuft', 'pebble', 'ember', 'crack'].indexOf(key) >= 0 ? null : OUTLINE;
+      const outline = ['flower', 'flower2', 'tuft', 'drygrass', 'snowtuft', 'pebble', 'ember', 'crack', 'reed', 'fern'].indexOf(key) >= 0 ? null : OUTLINE;
       c = propCache[key] = pixelArt(w, h, fn, outline);
     }
     return c;
@@ -3293,7 +3365,7 @@
     };
     const animated = [];   // [x, y, depth] for water / lava / ice pixels
     const foam = [];       // [x, y] shallow water along the shore
-    const fr = RAMPS[T.feature === 'lava' ? 'lava' : T.feature === 'ice' ? 'ice' : 'water'];
+    const fr = RAMPS[T.feature] || RAMPS.water;
     for (let y = 0; y < H; ++y) {
       for (let x = 0; x < W; ++x) {
         const c = Math.floor(x / TILE), r = Math.floor(y / TILE);
@@ -3305,7 +3377,20 @@
           if (ed < 1.3) kind = 'groundEdge';
           else if (ed < 2.6) { put(x, y, T.path[0]); continue; }
           else {
-            if (T.cobble) {
+            if (T.planks) {
+              // Boardwalk: boards laid across the direction of travel, nailed down at the ends
+              const horiz = kindAt(c - 1, r) === 'path' || kindAt(c + 1, r) === 'path';
+              const vert = kindAt(c, r - 1) === 'path' || kindAt(c, r + 1) === 'path';
+              const across = vert && !horiz ? y : x, along = vert && !horiz ? x : y;
+              const board = Math.floor(across / 4);
+              const sv = hash2(board, Math.floor(along / 16), seed + 1);
+              if (across % 4 === 0) put(x, y, T.path[0]);
+              else if (along % 16 === 3 && across % 4 === 2) put(x, y, T.path[5]);
+              else {
+                const grain = valueNoise(along / 5, board * 3.7, seed + 11);
+                put(x, y, across % 4 === 1 ? T.path[4] : rampPick(T.path, 0.3 + sv * 0.45 + (grain - 0.5) * 0.35, x, y, 2, 4));
+              }
+            } else if (T.cobble) {
               const row = Math.floor(y / 5);
               const off = (row % 2) * 3;
               const sx = Math.floor((x + off) / 6);
@@ -3325,10 +3410,26 @@
             continue;
           }
         }
-        const featEd = (kind === 'water' || kind === 'ice' || kind === 'lava' || kind === 'rock')
+        const featEd = (kind === 'water' || kind === 'ice' || kind === 'lava' || kind === 'bog' || kind === 'chasm' || kind === 'rock')
           ? edgeDist(x, y, kind, 10) + (valueNoise(x / 6, y / 6, seed + 5) - 0.5) * 6 + (valueNoise(x / 2, y / 2, seed + 4) - 0.5) * 1.5 - 1.2 : 99;
         if (featEd < 0.3) kind = 'groundEdge';
-        if (kind === 'water' || kind === 'ice' || kind === 'lava') {
+        if (kind === 'chasm') {
+          // A lit rim, sheer layered walls, then darkness with a faint glow far below
+          const ed = featEd;
+          if (ed < 1.4) { put(x, y, T.shore); continue; }
+          if (ed < 7.5) {
+            // Layered rock, lit at the top and falling away into shadow
+            const k = (ed - 1.4) / 6.1;
+            const strata = valueNoise(x / 9, y / 1.6, seed + 8) - 0.5;
+            put(x, y, rampPick(T.cliff, 0.9 - k * 0.85 + strata * 0.35, x, y, 0, 5));
+            continue;
+          }
+          const depth = clamp((ed - 7) / 8, 0, 1);
+          put(x, y, rampPick(fr, 0.55 - depth * 0.5 + (n - 0.5) * 0.25, x, y, 0, 5));
+          animated.push(x, y, depth);
+          continue;
+        }
+        if (kind === 'water' || kind === 'ice' || kind === 'lava' || kind === 'bog') {
           const ed = featEd;
           if (ed < 1.4) { put(x, y, kind === 'lava' ? '#0a0608' : T.shore); continue; }
           if (ed < 2.4) {
@@ -3338,6 +3439,20 @@
           }
           if (kind === 'water' && ed < 3.6) foam.push(x, y);
           const depth = clamp((ed - 2) / 7, 0, 1);
+          if (kind === 'bog' && depth > 0.25) {
+            // Lily pads floating on the bog
+            const lc = Math.floor(x / 9), lr = Math.floor(y / 8);
+            const lh = hash2(lc, lr, seed + 31);
+            if (lh > 0.72) {
+              const ox = lc * 9 + 2 + hash2(lc, lr, seed + 32) * 5, oy = lr * 8 + 2 + hash2(lc, lr, seed + 33) * 4;
+              const dx = x - ox, dy = (y - oy) * 1.3;
+              const d2 = dx * dx + dy * dy;
+              if (d2 < 7 && !(dx > 0 && Math.abs(dy) < dx * 0.5)) {
+                put(x, y, d2 < 2 && dy < 0 ? '#7cb050' : lh > 0.95 && d2 < 1 ? '#f0c8e0' : '#4a8434');
+                continue;
+              }
+            }
+          }
           put(x, y, kind === 'ice'
             ? (hash2(Math.floor(x / 5), Math.floor(y / 4), seed) > 0.93 ? fr[4] : rampPick(fr, 0.75 - depth * 0.3 + (n - 0.5) * 0.25, x, y, 2, 4))
             : rampPick(fr, 0.6 - depth * 0.45 + (n - 0.5) * 0.2, x, y, 0, 3));
@@ -3389,7 +3504,7 @@
     for (let i = 0; i < W * H / 70; ++i) {
       const x = Math.floor(hash2(i, 1, seed + 21) * W), y = Math.floor(hash2(i, 2, seed + 21) * H);
       if (kindAt(Math.floor(x / TILE), Math.floor(y / TILE)) !== 'ground') continue;
-      px(g, x, y, 1, m.biome === 'meadow' ? 2 : 1, T.blade);
+      px(g, x, y, 1, T.bladeH || (m.biome === 'meadow' ? 2 : 1), T.blade);
     }
 
     // Decorations and props, back to front
@@ -3451,13 +3566,19 @@
         }
       liquid = { mask, x: minX, y: minY, w: fw, h: fh, foams, kind: T.feature };
     }
-    // Lava glow points for night-light style flicker
+    // Glow points that flicker: lava, the deep of the chasms and crystal clusters
     const lights = [];
-    if (T.feature === 'lava')
+    if (T.feature === 'lava' || T.deepGlow)
       for (const [key, type] of feat)
-        if (type === 'lava' && hash2(key.length, key.charCodeAt(0) + key.charCodeAt(key.length - 1), seed) > 0.2) {
+        if (type === T.feature && hash2(key.length, key.charCodeAt(0) + key.charCodeAt(key.length - 1), seed) > (T.deepGlow ? 0.7 : 0.2)) {
           const [c, r] = key.split(',').map(Number);
-          lights.push({ x: (c + 0.5) * CELL, y: (r + 0.5) * CELL, ph: hash2(c, r, seed) * TWO_PI });
+          lights.push({ x: (c + 0.5) * CELL, y: (r + 0.5) * CELL, ph: hash2(c, r, seed) * TWO_PI, color: T.deepGlow || '#ff6a1a', r: 1.1 });
+        }
+    if (T.glow)
+      for (const [key, type] of props)
+        if (type === 'tree' && !feat.has(key)) {
+          const [c, r] = key.split(',').map(Number);
+          lights.push({ x: (c + 0.5) * CELL, y: (r + 0.2) * CELL, ph: hash2(c, r, seed) * TWO_PI, color: T.glow, r: 0.9 });
         }
 
     // Gates
@@ -3480,7 +3601,7 @@
     ctx.drawImage(t.base, 0, 0, WORLD_W, WORLD_H);
     if (t.liquid) drawLiquid(t.liquid);
     for (const l of t.lights)
-      drawGlow('#ff6a1a', l.x, l.y, CELL * 1.1, 0.16 + 0.08 * Math.sin(animTime * 2 + l.ph));
+      drawGlow(l.color, l.x, l.y, CELL * l.r, 0.16 + 0.08 * Math.sin(animTime * 2 + l.ph));
   }
 
   /* ── Liquids: tileable textures scrolled with sub-pixel offsets and
@@ -3517,6 +3638,13 @@
           const ridge = 1 - Math.abs(v - 0.5) * 2;
           a = ridge > 0.7 ? 255 : ridge > 0.5 ? 140 : 0;
           r = 255; gg = ridge > 0.8 ? 236 : 168; b = ridge > 0.8 ? 138 : 40;
+        } else if (key === 'scum') {
+          // Drifting duckweed and algae on the bog
+          a = v > 0.63 ? 200 : v > 0.57 ? 100 : 0;
+          r = 132; gg = 168; b = 60;
+        } else if (key === 'motes') {
+          a = hash2(x, y, 77) > 0.996 ? 200 : hash2(x, y, 78) > 0.994 ? 90 : 0;
+          r = 176; gg = 140; b = 255;
         } else if (key === 'crust') {
           a = v > 0.62 ? 235 : v > 0.56 ? 120 : 0;
           r = 42; gg = 14; b = 8;
@@ -3563,6 +3691,13 @@
     } else if (L.kind === 'water') {
       layer('caustic', t * 7, t * 3, 0.65);
       layer('caustic', -t * 5.5, t * 4.5, 0.5, 'lighter');
+    } else if (L.kind === 'bog') {
+      layer('scum', t * 1.6, t * 0.7, 0.75);
+      layer('glint', t * 0.4, -t * 2.2, 0.35, 'lighter');
+    } else if (L.kind === 'chasm') {
+      // Motes rising out of the deep
+      layer('motes', t * 1.2, -t * 6, 1);
+      layer('motes', -t * 0.8, -t * 3.5 + 17, 0.6, 'lighter');
     } else {
       layer('glint', t * 2, t * 1, 0.8);
     }
@@ -3570,8 +3705,8 @@
     g.globalAlpha = 1;
     g.drawImage(L.mask, 0, 0, w, h);
     const prev = ctx.globalCompositeOperation;
-    ctx.globalCompositeOperation = L.kind === 'lava' ? 'source-over' : 'lighter';
-    ctx.globalAlpha = L.kind === 'water' ? 0.42 : L.kind === 'lava' ? 0.85 : 1;
+    ctx.globalCompositeOperation = L.kind === 'lava' || L.kind === 'bog' ? 'source-over' : 'lighter';
+    ctx.globalAlpha = L.kind === 'water' ? 0.42 : L.kind === 'lava' ? 0.85 : L.kind === 'bog' ? 0.6 : 1;
     ctx.drawImage(liquidScratch, 0, 0, w, h, L.x * AP, L.y * AP, w, h);
     ctx.globalCompositeOperation = prev;
     ctx.globalAlpha = 1;
@@ -5098,15 +5233,15 @@
   let ambient = null;
   function initAmbient(biome) {
     const rng = makeRng(biome.length * 77);
-    const n = biome === 'tundra' ? 90 : biome === 'volcano' ? 60 : 36;
+    const n = biome === 'tundra' ? 90 : biome === 'volcano' || biome === 'cavern' ? 60 : biome === 'swamp' ? 46 : 36;
     ambient = { biome, parts: [], clouds: [] };
     for (let i = 0; i < n; ++i)
-      ambient.parts.push({ x: rng() * WORLD_W, y: rng() * WORLD_H, z: 0.4 + rng() * 0.6, ph: rng() * TWO_PI, kind: rng() < 0.15 ? 1 : 0 });
+      ambient.parts.push({ x: rng() * WORLD_W, y: rng() * WORLD_H, z: 0.4 + rng() * 0.6, ph: rng() * TWO_PI, kind: rng() < (biome === 'swamp' ? 0.45 : 0.15) ? 1 : 0 });
     for (let i = 0; i < 3; ++i)
       ambient.clouds.push({ x: rng() * WORLD_W, y: rng() * WORLD_H, s: 0.7 + rng() * 0.6 });
   }
 
-  let cloudShadow = null;
+  let cloudShadow = null, mistBank = null;
   function drawAmbient() {
     const biome = MAPS[currentMap].biome;
     if (!ambient || ambient.biome !== biome) initAmbient(biome);
@@ -5133,6 +5268,26 @@
         ctx.drawImage(cloudShadow, c.x, c.y, 260 * c.s, 130 * c.s);
       }
       ctx.imageSmoothingEnabled = false;
+    } else if (biome === 'swamp') {
+      // Low banks of mist creeping over the fens
+      if (!mistBank) {
+        mistBank = makeCanvas(96, 48);
+        const g = mistBank.getContext('2d');
+        for (const [x, y, r] of [[26, 26, 20], [48, 22, 22], [70, 27, 18], [40, 32, 16], [60, 32, 15]]) {
+          const grad = g.createRadialGradient(x, y, 0, x, y, r);
+          grad.addColorStop(0, 'rgba(210,230,200,0.13)');
+          grad.addColorStop(1, 'rgba(210,230,200,0)');
+          g.fillStyle = grad;
+          g.fillRect(0, 0, 96, 48);
+        }
+      }
+      ctx.imageSmoothingEnabled = true;
+      for (const c of ambient.clouds) {
+        c.x += dt * 5 * c.s;
+        if (c.x > WORLD_W + 150) { c.x = -320; c.y = Math.random() * WORLD_H; }
+        ctx.drawImage(mistBank, c.x, c.y, 320 * c.s, 120 * c.s);
+      }
+      ctx.imageSmoothingEnabled = false;
     }
     for (const p of ambient.parts) {
       p.ph += dt;
@@ -5154,6 +5309,39 @@
           const fl = 0.5 + 0.5 * Math.sin(p.ph * 6);
           ctx.fillStyle = fl > 0.5 ? '#ffd06a' : '#ff6a1a';
           ctx.fillRect(Math.round(p.x), Math.round(p.y), 2, 2);
+        }
+      } else if (biome === 'swamp') {
+        p.x += Math.sin(p.ph * 0.6) * dt * 10;
+        p.y += Math.cos(p.ph * 0.45) * dt * 7;
+        if (p.kind) {
+          // Fireflies blinking on and off
+          const on = Math.max(0, Math.sin(p.ph * 1.7 + p.z * 9));
+          if (on > 0.2) {
+            drawGlow('#d8ff6a', p.x, p.y, 7 * p.z + 3, 0.35 * on);
+            ctx.fillStyle = '#f0ffb0';
+            ctx.fillRect(Math.round(p.x), Math.round(p.y), 2, 2);
+          }
+        } else {
+          ctx.fillStyle = `rgba(200,220,160,${0.12 + 0.18 * (0.5 + 0.5 * Math.sin(p.ph * 2))})`;
+          ctx.fillRect(Math.round(p.x), Math.round(p.y), 1.5, 1.5);
+        }
+      } else if (biome === 'cavern') {
+        if (p.kind) {
+          // Crystal glitter twinkling in place
+          const tw = Math.pow(Math.max(0, Math.sin(p.ph * 2.3 + p.z * 11)), 8);
+          if (tw > 0.05) {
+            const col = p.z > 0.7 ? '#a8f4ff' : '#d2b8ff';
+            drawGlow(col, p.x, p.y, 6, 0.5 * tw);
+            ctx.fillStyle = col;
+            ctx.fillRect(Math.round(p.x) - 1, Math.round(p.y), 3, 1);
+            ctx.fillRect(Math.round(p.x), Math.round(p.y) - 1, 1, 3);
+          }
+        } else {
+          // Dust sifting down from the ceiling
+          p.y += dt * 9 * p.z;
+          p.x += Math.sin(p.ph * 0.8) * dt * 3;
+          ctx.fillStyle = `rgba(190,180,230,${0.2 + p.z * 0.25})`;
+          ctx.fillRect(Math.round(p.x), Math.round(p.y), 1.5, 1.5);
         }
       } else if (biome === 'desert') {
         p.x += dt * 26 * p.z;
@@ -9135,6 +9323,7 @@
   }
 
   const thumbCache = {};
+  const THUMB_FEATURE = { water: '#3a7ad8', ice: '#a8e0ff', lava: '#ff6a1a', bog: '#6e8a2e', chasm: '#06040c' };
   // Small overview of a map: ground, features, roads
   function mapThumb(i) {
     if (thumbCache[i]) return thumbCache[i];
@@ -9147,7 +9336,7 @@
     const cells = new Set();
     for (const wp of m.paths) walkPath(wp, (x, y) => cells.add(x + ',' + y));
     for (const [type, c0, r0, c1, r1] of m.features) {
-      g.fillStyle = type === 'water' ? '#3a7ad8' : type === 'ice' ? '#a8e0ff' : type === 'lava' ? '#ff6a1a' : shade(b.ground, -0.3);
+      g.fillStyle = THUMB_FEATURE[type] || shade(b.ground, -0.3);
       for (let r = r0; r <= r1; ++r) for (let cc = c0; cc <= c1; ++cc)
         if (!cells.has(cc + ',' + r)) g.fillRect(cc * k, r * k, k, k);
     }
