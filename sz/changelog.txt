@@ -1,3 +1,14 @@
+Main: 6.31
+by Hawkynt 04.10.2026
+* Tower Defense: fills the window sharply with one panel style for HUD, build bar, tower inspector, tooltips and all screens; works with keyboard, mouse and touch
++ Tower Defense: 16 tower families with tiers I-III, two specializations at tier IV and a mastery tier; targeting First, Last, Strong or Close
++ Tower Defense: 23 monster types with clear counters, elites and 7 bosses (Warlord, Dragon, Lich King, Aegis Colossus, Sandworm, Slime King, Troll Chieftain)
++ Tower Defense: campaign of 12 maps in 4 biomes; waves never end, and once a map's waves are held a Next level button moves on with research, relics and part of the gold
++ Tower Defense: research tree, abilities (Airstrike, Deep Freeze, Gold Rush), relics and towers unlocked by beating bosses
++ Tower Defense: cutscenes between maps, map intros and victory scenes, all skippable with any key, click or tap
++ Tower Defense: speeds 1x to 20x, auto-wave with one second between waves, smooth water and lava, pixel-art towers, enemies and effects
+# Tower Defense: no longer freezes when upgrading a tower while the mouse rests on the upgrade button; long stays with hundreds of enemies stay smooth
+
 Main: 6.30
 by Hawkynt 03.10.2026
 * Space Farming: one panel style for HUD, dock, shops, tooltips, title, pause and help, with text that always fits
