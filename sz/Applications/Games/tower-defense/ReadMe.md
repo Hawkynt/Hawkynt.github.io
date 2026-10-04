@@ -1,14 +1,14 @@
 # Tower Defense
 
-Pixel-art tower defense for the SynthelicZ Desktop. Hold twelve campaign maps across four biomes, where the waves never stop, with sixteen tower families that branch into two specializations, research permanent upgrades between battles and call in airstrikes when the line is about to break.
+Pixel-art tower defense for the SynthelicZ Desktop. Hold twenty-four campaign maps across six regions, where the waves never stop, with sixteen tower families that branch into two specializations, research permanent upgrades between battles and call in airstrikes when the line is about to break.
 
 ## User Stories
 
 ### Campaign & Maps
-- [x] As a player, I can play a campaign of 12 maps in four biomes (Greenvale meadows, Sunscar Desert, Frostreach tundra, Ashen Wastes volcano) so that every map looks and plays differently
-- [x] As a player, I can pick a map on a campaign screen that shows a preview, waves, starting gold, lives, difficulty, roads and my best result
+- [x] As a player, I can play a campaign of 24 maps in six regions of four maps each (Greenvale meadows, Mirewood swamp, Sunscar Desert, Crystal Caverns, Frostreach tundra, Ashen Wastes volcano) so that every map looks and plays differently
+- [x] As a player, I can pick a map on a campaign screen that shows a preview, waves, starting gold, lives, difficulty, roads and my best result, with the regions on pages when they do not fit side by side
 - [x] As a player, I can earn up to three stars per map (based on the lives I keep) and unlock the next map by winning the previous one
-- [x] As a player, I can defend maps with two roads, crossing roads, a road that coils into a central keep, lakes, mesas, frozen lakes and lava rivers that block building
+- [x] As a player, I can defend maps with long switchbacks, roads that fork and meet again, two or three entrances that merge, crossing roads, a road that forks to two exits, keeps in the middle of the map, and lakes, bogs, mesas, chasms, frozen lakes and lava rivers that block building
 - [x] As a player, I clear a map by holding its required waves; the waves never stop, so I can stay to grind gold and research while they grow, or press Next level (L) to move on — further maps pay more gold and research, and my best wave per map is recorded
 - [x] As a player, I take research, relics, unlocked towers and a quarter of my gold (up to 500) along to the next map; towers stay behind
 - [x] As a player, I watch my banner march across a world map to the next level, get a fly-over of each new map with its first wave and bosses, and a celebration when a map is cleared; every cutscene is skipped by any key, click or tap
@@ -40,11 +40,11 @@ Pixel-art tower defense for the SynthelicZ Desktop. Hold twelve campaign maps ac
 - [x] As a player, I can call an Airstrike on a spot I choose, freeze every enemy with Deep Freeze and earn double gold with Gold Rush, each with its own cooldown
 
 ### Presentation
-- [x] As a player, I can see code-drawn pixel art: textured ground, ragged roads, animated water and lava, trees, cacti, pines and dead trees, cave gates and a gatehouse to defend
+- [x] As a player, I can see code-drawn pixel art: textured ground, ragged roads, plank boardwalks, crystal-veined flagstones, animated water, bogs with lily pads, chasms and lava, trees, willows, cacti, pines, crystal clusters and dead trees, cave gates and a gatehouse to defend
 - [x] As a player, I can see walk cycles, wing beats, hit flashes, health, armor and shield bars, frozen, burning and poisoned enemies, and enemies that burst into pixels when they fall
 - [x] As a player, I can see fireball explosions with debris, smoke and scorch marks, jagged chain lightning, heating laser beams, flame jets, poison clouds, muzzle flashes and screen shake on big hits
 - [x] As a player, I can watch gold coins fly to the gold counter and read banners when a wave starts or is cleared
-- [x] As a player, I can see ambient weather: pollen and butterflies, drifting dust, snowfall, embers and ash, and cloud shadows passing over the map
+- [x] As a player, I can see ambient weather: pollen and butterflies, fireflies and swamp mist, drifting dust, glittering crystals, snowfall, embers and ash, and cloud shadows passing over the map
 - [x] As a player, I can play in any window size; the HUD scales and panels fade when enemies or towers are behind them
 
 ### Sound
@@ -79,11 +79,13 @@ Pixel-art tower defense for the SynthelicZ Desktop. Hold twelve campaign maps ac
 | Esc | Pause menu |
 | F2 | New game |
 
+Campaign map: arrow keys choose a map, Enter plays it, PgUp/PgDn, Tab or the mouse wheel switch region pages.
+
 Research screen: mouse wheel or +/- zooms, drag pans, arrow keys select, Enter buys, Tab or 1-5 switch branches, 0 fits the view.
 
 ## Saves
 
-The game in progress is stored under `sz-tower-defense-save-v2` (older `-save-v1` games are converted on first load; towers that no longer fit a redesigned map are refunded). Stars, best waves, research, relics and boss trophies live separately under `sz-tower-defense-meta-v1`, so starting a new game never touches them.
+The game in progress is stored under `sz-tower-defense-save-v2` (older `-save-v1` games are converted on first load; towers that no longer fit a redesigned map are refunded). Stars, best waves, research, relics and boss trophies live separately under `sz-tower-defense-meta-v1`, so starting a new game never touches them. Maps are stored by their index; maps added later are appended and placed into the campaign by its play order, so older progress and saved games keep pointing at the same maps.
 
 ## SEO Keywords
 

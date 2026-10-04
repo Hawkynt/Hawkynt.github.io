@@ -379,8 +379,10 @@
   for (const k in ENEMY_TYPES)
     ENEMY_TYPES[k].key = k;
 
-  // Bosses in the order the campaign introduces them
+  // Bosses in the order the campaign introduces them, and the campaign place
+  // (0-based) of the map where each one first appears
   const BOSS_ORDER = ['boss', 'slimeking', 'lich', 'troll', 'dragon', 'sandworm', 'colossus'];
+  const BOSS_FROM_RANK = [0, 1, 3, 6, 9, 12, 15];
   const ELITE_HP = 2.2;
 
   /* ══════════════════════════════════════════════════════════════════
@@ -393,60 +395,130 @@
     meadow:  { name: 'Greenvale', color: '#6fd06a', ground: '#4f8a3a', path: '#a8834e', feature: 'water', desc: 'Rolling meadows, ponds and old forests.' },
     desert:  { name: 'Sunscar Desert', color: '#ffc25a', ground: '#c9a25e', path: '#8e7350', feature: 'water', desc: 'Dunes, mesas and the odd oasis.' },
     tundra:  { name: 'Frostreach', color: '#9fe0ff', ground: '#dfe9f2', path: '#8a9bb0', feature: 'ice', desc: 'Snowfields and frozen lakes.' },
-    volcano: { name: 'Ashen Wastes', color: '#ff7a3a', ground: '#4a3a3a', path: '#2a2026', feature: 'lava', desc: 'Basalt, ash and rivers of lava.' }
+    volcano: { name: 'Ashen Wastes', color: '#ff7a3a', ground: '#4a3a3a', path: '#2a2026', feature: 'lava', desc: 'Basalt, ash and rivers of lava.' },
+    swamp:   { name: 'Mirewood', color: '#b6d65a', ground: '#3b522c', path: '#9a7448', feature: 'bog', desc: 'Drowned woods, plank walks and sucking bogs.' },
+    cavern:  { name: 'Crystal Caverns', color: '#b48aff', ground: '#302c46', path: '#7a7498', feature: 'chasm', desc: 'Glittering halls above bottomless chasms.' }
   };
-  const BIOME_ORDER = ['meadow', 'desert', 'tundra', 'volcano'];
+  const BIOME_ORDER = ['meadow', 'swamp', 'desert', 'cavern', 'tundra', 'volcano'];
 
   const MAPS = [
     { name: 'Serpentine', biome: 'meadow', waves: 15, startGold: 220, startLives: 20, hpMul: 0.85,
       desc: 'A gentle road winding through the meadow. A fine place to learn the ropes.',
       paths: [[[0,8],[4,8],[4,3],[10,3],[10,13],[16,13],[16,5],[21,5],[21,11],[24,11]]],
       features: [['water', 12, 6, 14, 9], ['water', 0, 15, 6, 16], ['rock', 19, 14, 20, 15]] },
-    { name: 'Crossroads', biome: 'meadow', waves: 15, startGold: 300, startLives: 20, hpMul: 0.63,
+    { name: 'Crossroads', biome: 'meadow', waves: 15, startGold: 300, startLives: 20, hpMul: 0.66,
       desc: 'Two roads cross twice. Enemies come from the west and the north.',
       paths: [[[0,4],[17,4],[17,16]], [[7,0],[7,12],[24,12]]],
       features: [['water', 19, 0, 23, 2], ['water', 1, 13, 4, 15], ['rock', 11, 7, 13, 9]] },
-    { name: 'Spiral', biome: 'meadow', waves: 18, startGold: 230, startLives: 20, hpMul: 0.78,
+    { name: 'Spiral', biome: 'meadow', waves: 18, startGold: 230, startLives: 20, hpMul: 0.86,
       desc: 'The road coils inward to the old keep. Long, but every turn is a chance.',
       paths: [[[0,1],[22,1],[22,15],[2,15],[2,5],[18,5],[18,11],[7,11],[7,8],[13,8]]],
       features: [['water', 10, 12, 14, 13], ['rock', 15, 7, 16, 9]] },
-    { name: 'Zigzag', biome: 'desert', waves: 18, startGold: 240, startLives: 20, hpMul: 0.83,
+    { name: 'Zigzag', biome: 'desert', waves: 18, startGold: 240, startLives: 20, hpMul: 0.91,
       desc: 'Long switchbacks through the dunes, past a shaded oasis.',
       paths: [[[0,2],[6,2],[6,14],[12,14],[12,2],[18,2],[18,14],[24,14]]],
       features: [['water', 20, 5, 23, 9], ['rock', 8, 6, 10, 9], ['rock', 14, 9, 16, 11]] },
-    { name: 'Diamond', biome: 'desert', waves: 20, startGold: 250, startLives: 20, hpMul: 0.86,
+    { name: 'Diamond', biome: 'desert', waves: 20, startGold: 250, startLives: 20, hpMul: 1.03,
       desc: 'The road circles a great mesa and doubles back across itself.',
       paths: [[[0,8],[3,8],[3,2],[21,2],[21,14],[6,14],[6,6],[17,6],[17,10],[24,10]]],
       features: [['rock', 9, 9, 14, 12], ['water', 23, 13, 24, 16]] },
-    { name: 'Fortress', biome: 'desert', waves: 20, startGold: 260, startLives: 20, hpMul: 0.89,
+    { name: 'Fortress', biome: 'desert', waves: 20, startGold: 260, startLives: 20, hpMul: 1.18,
       desc: 'Two caravan routes join before the fortress gate.',
       paths: [[[0,3],[8,3],[8,8],[16,8],[16,4],[24,4]], [[0,13],[8,13],[8,8],[16,8],[16,4],[24,4]]],
       features: [['rock', 11, 11, 14, 14], ['water', 19, 9, 23, 12], ['rock', 11, 1, 13, 2]] },
-    { name: 'Canyon', biome: 'tundra', waves: 22, startGold: 250, startLives: 18, hpMul: 0.96, budgetMul: 1.15,
+    { name: 'Canyon', biome: 'tundra', waves: 22, startGold: 250, startLives: 18, hpMul: 1.61, budgetMul: 1.15,
       desc: 'A frozen canyon cut into deep switchbacks.',
       paths: [[[0,14],[4,14],[4,2],[9,2],[9,14],[14,14],[14,2],[19,2],[19,14],[24,14]]],
       features: [['ice', 21, 4, 23, 9], ['rock', 6, 6, 7, 9], ['rock', 16, 6, 17, 9]] },
-    { name: 'Labyrinth', biome: 'tundra', waves: 22, startGold: 260, startLives: 18, hpMul: 1.0, budgetMul: 1.2,
+    { name: 'Labyrinth', biome: 'tundra', waves: 22, startGold: 260, startLives: 18, hpMul: 1.87, budgetMul: 1.2,
       desc: 'An icy maze of twists and blind turns.',
       paths: [[[0,2],[5,2],[5,8],[1,8],[1,14],[10,14],[10,5],[15,5],[15,12],[20,12],[20,2],[24,2]]],
       features: [['ice', 12, 7, 13, 11], ['rock', 4, 10, 7, 11], ['ice', 22, 6, 24, 10]] },
-    { name: 'Twin Paths', biome: 'tundra', waves: 24, startGold: 280, startLives: 18, hpMul: 1.0, budgetMul: 1.25,
+    { name: 'Twin Paths', biome: 'tundra', waves: 24, startGold: 280, startLives: 18, hpMul: 2.09, budgetMul: 1.25,
       desc: 'Two mirrored roads run side by side through the snow.',
       paths: [[[0,2],[8,2],[8,7],[16,7],[16,2],[24,2]], [[0,14],[8,14],[8,9],[16,9],[16,14],[24,14]]],
       features: [['ice', 10, 11, 14, 12], ['ice', 10, 4, 14, 5], ['rock', 2, 6, 4, 10], ['rock', 20, 6, 22, 10]] },
-    { name: 'Gauntlet', biome: 'volcano', waves: 25, startGold: 270, startLives: 15, hpMul: 1.09, budgetMul: 1.4,
+    { name: 'Gauntlet', biome: 'volcano', waves: 25, startGold: 270, startLives: 15, hpMul: 2.9, budgetMul: 1.4,
       desc: 'Narrow ridges between rivers of lava. Space is precious.',
       paths: [[[0,8],[3,8],[3,2],[7,2],[7,14],[11,14],[11,2],[15,2],[15,14],[19,14],[19,2],[22,2],[22,8],[24,8]]],
       features: [['lava', 5, 4, 5, 12], ['lava', 13, 4, 13, 12], ['lava', 17, 4, 17, 12], ['lava', 21, 11, 24, 16]] },
-    { name: 'Wasteland', biome: 'volcano', waves: 25, startGold: 290, startLives: 15, hpMul: 1.06, budgetMul: 1.45,
+    { name: 'Wasteland', biome: 'volcano', waves: 25, startGold: 290, startLives: 15, hpMul: 3.05, budgetMul: 1.45,
       desc: 'Ash plains where two war parties join at the ridge and march east together.',
       paths: [[[0,2],[8,2],[8,9],[13,9],[13,4],[20,4],[20,12],[24,12]], [[0,15],[8,15],[8,9],[13,9],[13,4],[20,4],[20,12],[24,12]]],
       features: [['lava', 1, 5, 4, 9], ['lava', 15, 6, 18, 10], ['rock', 10, 12, 13, 14], ['rock', 22, 0, 24, 2]] },
-    { name: 'Final Stand', biome: 'volcano', waves: 30, startGold: 320, startLives: 10, hpMul: 1.04, budgetMul: 1.5,
+    { name: 'Final Stand', biome: 'volcano', waves: 30, startGold: 320, startLives: 10, hpMul: 3.5, budgetMul: 1.5,
       desc: 'The last citadel. Both armies march on the heart of the fortress.',
       paths: [[[0,2],[9,2],[9,5],[3,5],[3,12],[8,12],[8,8],[12,8]], [[24,14],[15,14],[15,11],[21,11],[21,4],[16,4],[16,8],[12,8]]],
-      features: [['lava', 10, 11, 13, 13], ['lava', 11, 3, 13, 5], ['rock', 0, 14, 2, 16], ['rock', 23, 0, 24, 2]] }
+      features: [['lava', 10, 11, 13, 13], ['lava', 11, 3, 13, 5], ['rock', 0, 14, 2, 16], ['rock', 23, 0, 24, 2]] },
+    // Added after the original twelve; CAMPAIGN sets where each one is played
+    { name: 'Mill Pond', biome: 'meadow', waves: 18, startGold: 240, startLives: 20, hpMul: 0.86,
+      desc: 'The road parts around the mill pond and meets again below the mill. Guard both banks.',
+      paths: [[[0,6],[5,6],[5,3],[16,3],[16,7],[20,7],[20,13],[24,13]], [[0,6],[5,6],[5,10],[16,10],[16,7],[20,7],[20,13],[24,13]]],
+      features: [['water', 9, 5, 12, 8], ['water', 1, 12, 5, 15], ['rock', 21, 1, 23, 3], ['water', 14, 13, 16, 15]] },
+    { name: 'Boardwalk', biome: 'swamp', waves: 18, startGold: 240, startLives: 20, hpMul: 0.86,
+      desc: 'A long plank walk winds through the drowned wood. Bogs leave only islands to build on.',
+      paths: [[[0,13],[3,13],[3,3],[8,3],[8,10],[12,10],[12,5],[16,5],[16,14],[21,14],[21,6],[24,6]]],
+      features: [['bog', 5, 12, 7, 15], ['bog', 9, 0, 14, 2], ['bog', 18, 8, 19, 11], ['rock', 22, 10, 24, 12], ['bog', 13, 12, 14, 15]] },
+    { name: 'Twin Fens', biome: 'swamp', waves: 20, startGold: 260, startLives: 20, hpMul: 0.86,
+      desc: 'Raiders wade in from the west and the south fen; their trails join at the old sluice.',
+      paths: [[[0,2],[6,2],[6,9],[17,9],[17,3],[22,3],[22,13],[24,13]], [[3,16],[3,13],[12,13],[12,9],[17,9],[17,3],[22,3],[22,13],[24,13]]],
+      features: [['bog', 8, 4, 13, 6], ['bog', 18, 11, 20, 15], ['rock', 0, 5, 2, 8], ['bog', 14, 12, 16, 15]] },
+    { name: 'Witch\'s Hollow', biome: 'swamp', waves: 20, startGold: 260, startLives: 20, hpMul: 0.87,
+      desc: 'One trail from the north forks around the hollow and closes on the witch\'s hut from both sides.',
+      paths: [[[14,0],[14,3],[5,3],[5,12],[12,12]], [[14,0],[14,3],[20,3],[20,9],[15,9],[15,12],[12,12]]],
+      features: [['bog', 8, 6, 11, 9], ['bog', 21, 12, 24, 16], ['rock', 0, 0, 2, 2], ['bog', 16, 5, 18, 7]] },
+    { name: 'Mire Crossing', biome: 'swamp', waves: 20, startGold: 270, startLives: 20, hpMul: 0.89,
+      desc: 'Two war bands cross the mire on their own paths, and the paths cross once. Firm ground is scarce.',
+      paths: [[[0,2],[7,2],[7,8],[3,8],[3,14],[12,14],[12,10],[24,10]], [[17,0],[17,5],[21,5],[21,16]]],
+      features: [['bog', 9, 4, 15, 8], ['bog', 5, 10, 9, 12], ['rock', 14, 12, 18, 15], ['bog', 22, 0, 24, 3]] },
+    { name: 'Dune Sea', biome: 'desert', waves: 22, startGold: 260, startLives: 18, hpMul: 1.23, budgetMul: 1.1,
+      desc: 'Open sand as far as the eye can see, but the road squeezes between mesas twice.',
+      paths: [[[0,8],[4,8],[4,2],[11,2],[11,14],[16,14],[16,5],[21,5],[21,16]]],
+      features: [['rock', 8, 9, 10, 11], ['rock', 12, 9, 13, 11], ['rock', 17, 8, 18, 11], ['water', 1, 11, 3, 14], ['rock', 6, 4, 8, 6]] },
+    { name: 'Glimmerdeep', biome: 'cavern', waves: 22, startGold: 260, startLives: 18, hpMul: 1.29, budgetMul: 1.1,
+      desc: 'Steps of glittering stone lead down into the deep, then a climb back to the light. Bats take the short way across.',
+      paths: [[[0,2],[5,2],[5,5],[10,5],[10,9],[15,9],[15,13],[20,13],[20,6],[24,6]]],
+      features: [['chasm', 1, 7, 6, 14], ['chasm', 12, 6, 14, 7], ['rock', 22, 8, 24, 11], ['chasm', 16, 15, 23, 16]] },
+    { name: 'Chasm Bridges', biome: 'cavern', waves: 22, startGold: 270, startLives: 18, hpMul: 1.36, budgetMul: 1.1,
+      desc: 'Two columns cross the chasm on narrow bridges and meet under the great geode.',
+      paths: [[[0,12],[6,12],[6,6],[19,6],[19,13],[24,13]], [[10,16],[10,10],[13,10],[13,6],[19,6],[19,13],[24,13]]],
+      features: [['chasm', 15, 8, 17, 11], ['chasm', 0, 0, 4, 3], ['chasm', 21, 1, 24, 4], ['rock', 1, 14, 4, 16], ['chasm', 7, 8, 8, 10]] },
+    { name: 'Geode Keep', biome: 'cavern', waves: 24, startGold: 280, startLives: 18, hpMul: 1.44, budgetMul: 1.15,
+      desc: 'The keep sits in a hollow geode. One road climbs in from the west, the other winds down from the east.',
+      paths: [[[0,13],[4,13],[4,2],[9,2],[9,8],[12,8]], [[24,12],[20,12],[20,2],[15,2],[15,5],[12,5],[12,8]]],
+      features: [['chasm', 13, 9, 17, 13], ['chasm', 6, 10, 9, 15], ['rock', 21, 0, 24, 0], ['chasm', 6, 4, 7, 6]] },
+    { name: 'Prism Falls', biome: 'cavern', waves: 24, startGold: 280, startLives: 18, hpMul: 1.52, budgetMul: 1.15,
+      desc: 'The road splits around two crystal falls in a row. Every fork has to be held twice.',
+      paths: [[[0,8],[3,8],[3,3],[9,3],[9,8],[13,8],[13,2],[21,2],[21,8],[24,8]], [[0,8],[3,8],[3,12],[9,12],[9,8],[13,8],[13,14],[21,14],[21,8],[24,8]]],
+      features: [['chasm', 5, 5, 7, 10], ['rock', 15, 6, 18, 10], ['chasm', 0, 0, 1, 5], ['chasm', 23, 11, 24, 16]] },
+    { name: 'Glacier Pass', biome: 'tundra', waves: 25, startGold: 290, startLives: 16, hpMul: 2.35, budgetMul: 1.3,
+      desc: 'Three columns come down from the ice fields and join one by one on the way to the pass.',
+      paths: [[[0,3],[8,3],[8,8],[14,8],[14,12],[20,12],[20,4],[24,4]], [[0,13],[8,13],[8,8],[14,8],[14,12],[20,12],[20,4],[24,4]], [[24,15],[17,15],[17,12],[20,12],[20,4],[24,4]]],
+      features: [['ice', 10, 1, 16, 5], ['ice', 10, 10, 12, 15], ['rock', 2, 6, 4, 10], ['ice', 21, 7, 24, 11], ['ice', 18, 0, 22, 2]] },
+    { name: 'Cinder Fork', biome: 'volcano', waves: 28, startGold: 300, startLives: 15, hpMul: 3.15, budgetMul: 1.45,
+      desc: 'The road forks below the ash cone and leaves by two gates. Hold both or lose the valley.',
+      paths: [[[0,13],[4,13],[4,3],[8,3],[8,9],[11,9],[11,5],[16,5],[16,1],[24,1]], [[0,13],[4,13],[4,3],[8,3],[8,9],[11,9],[11,13],[19,13],[19,9],[24,9]]],
+      features: [['lava', 13, 7, 17, 10], ['lava', 0, 0, 2, 9], ['rock', 21, 11, 24, 14], ['lava', 5, 12, 9, 16]] }
   ];
+
+  // Order of play: region by region (BIOME_ORDER), maps within a region in
+  // this order. Maps added later are appended to MAPS so saves, stars and
+  // records stay with their map; only their place in the campaign is set here.
+  const CAMPAIGN = [0, 1, 2, 12, 13, 14, 15, 16, 3, 4, 5, 17, 18, 19, 20, 21, 6, 7, 8, 22, 9, 10, 23, 11];
+  const MAP_RANK = [];
+  CAMPAIGN.forEach((m, r) => { MAP_RANK[m] = r; });
+  const REGIONS = BIOME_ORDER.map(biome => ({ biome, maps: CAMPAIGN.filter(i => MAPS[i].biome === biome) }));
+  const ORIGINAL_MAPS = 12;    // maps that opened strictly one after another by index
+
+  // Map that follows in the campaign, -1 after the last one
+  function nextMapOf(i) {
+    const r = MAP_RANK[i] + 1;
+    return r < CAMPAIGN.length ? CAMPAIGN[r] : -1;
+  }
+
+  function regionOf(i) {
+    return REGIONS.findIndex(R => R.maps.indexOf(i) >= 0);
+  }
 
   // Format 1 wave counts, used once to honour maps already won back then
   const V1_WAVES = [15, 18, 15, 20, 15, 12, 18, 20, 16, 25, 15, 30];
@@ -664,7 +736,11 @@
   }
 
   function mapUnlocked(i) {
-    return i === 0 || meta.maps[i].stars > 0 || meta.maps[i - 1].stars > 0 || (!!savedGameInfo && savedGameInfo.map === i);
+    const r = MAP_RANK[i];
+    return r === 0 || meta.maps[i].stars > 0 || meta.maps[CAMPAIGN[r - 1]].stars > 0
+      // The original maps opened one after another by index; those keys stay valid
+      || (i > 0 && i < ORIGINAL_MAPS && meta.maps[i - 1].stars > 0)
+      || (!!savedGameInfo && savedGameInfo.map === i);
   }
 
   // clearedNow: the required waves were just held; reached: furthest wave of the run
@@ -679,7 +755,7 @@
       ++m.wins;
     }
     lastResult = { cleared: clearedNow || cleared, stars: clearedNow ? stars : (lastResult && lastResult.stars) || m.stars, prevStars, newBest: reached > prevBest, prevBest, waves: reached, t: 0,
-      unlocked: clearedNow && prevStars === 0 && currentMap + 1 < MAPS.length };
+      unlocked: clearedNow && prevStars === 0 && nextMapOf(currentMap) >= 0 };
     saveMeta();
   }
   const SAVE_VERSION = 2;
@@ -986,7 +1062,7 @@
     return mapDef.paths;
   }
 
-  let blockedCells = new Map();    // 'col,row' -> 'water' | 'ice' | 'lava' | 'rock' | 'tree'
+  let blockedCells = new Map();    // 'col,row' -> 'water' | 'ice' | 'lava' | 'bog' | 'chasm' | 'rock' | 'tree'
 
   function buildPathCells(mapDef) {
     pathCells = new Set();
@@ -1426,10 +1502,13 @@
     const waves = mapDef.waves;
     const rng = makeRng(mi * 7919 + waveNo * 104729 + 17);
     const progress = (waveNo - 1) / Math.max(1, waves - 1);
-    // Early maps only show part of the bestiary; it opens up along the campaign
-    const reach = waveNo > waves ? 1 : Math.min(1, 0.4 + mi * 0.06);
+    // Early maps only show part of the bestiary and the bosses; both open up along the campaign
+    const rank = MAP_RANK[mi];
+    const reach = waveNo > waves ? 1 : Math.min(1, 0.4 + rank * 0.03);
     const pool = Object.keys(ENEMY_TYPES).filter(k => ENEMY_TYPES[k].cost > 0 && !ENEMY_TYPES[k].boss && ENEMY_TYPES[k].unlock <= Math.min(1, progress) * reach + 1e-6);
-    const bossPool = waveNo > waves ? BOSS_ORDER : BOSS_ORDER.slice(0, Math.min(BOSS_ORDER.length, 2 + mi));
+    const bossPool = waveNo > waves ? BOSS_ORDER : BOSS_ORDER.filter((b, k) => BOSS_FROM_RANK[k] <= rank);
+    // A boss that is new on this map leads its last wave
+    const debut = BOSS_FROM_RANK.indexOf(rank);
     let budget = (7 + waveNo * 3.2 + waveNo * waveNo * 0.12) * (mapDef.budgetMul || 1);
     const queue = [];
     // The newest type gets the spotlight in the wave it first appears
@@ -1459,7 +1538,7 @@
       // Long after the required waves several bosses march together
       const count = waveNo > waves ? 1 + Math.floor((waveNo - waves) / 20) : 1;
       for (let b = 0; b < count; ++b) {
-        const bossType = waveNo === waves ? bossPool[mi % bossPool.length] : bossPool[(Math.floor(waveNo / 5) - 1 + b * 3) % bossPool.length];
+        const bossType = waveNo === waves ? (debut >= 0 ? BOSS_ORDER[debut] : bossPool[rank % bossPool.length]) : bossPool[(Math.floor(waveNo / 5) - 1 + b * 3) % bossPool.length];
         queue.push('|');
         queue.push(bossType + (waveNo === waves || waveNo > waves + 10 ? '!' : ''));
       }
@@ -1505,11 +1584,11 @@
 
   // Further maps pay better: more gold per kill and more research per wave
   function mapBountyMul(mi) {
-    return 1 + mi * 0.04;
+    return 1 + MAP_RANK[mi] * 0.02;
   }
 
   function mapResearchMul(mi) {
-    return 1 + mi * 0.08;
+    return 1 + MAP_RANK[mi] * 0.04;
   }
 
   function startNextWave() {
@@ -2841,6 +2920,8 @@
     ice:    ['#2a5f8c', '#3f7eb0', '#5a9cd0', '#80bce6', '#b0dcf6', '#e6f8ff'],
     lava:   ['#4a0e06', '#8a1e08', '#d03c0a', '#ff6a14', '#ffa63a', '#ffe48a'],
     water:  ['#173468', '#1f4888', '#2a5fae', '#3a7ad0', '#62a0e6', '#a8d4f6'],
+    bog:    ['#0a1511', '#0f2019', '#163024', '#1f402f', '#3c6650', '#5e8a5e'],
+    chasm:  ['#020106', '#07040f', '#0e0919', '#181028', '#241a3c', '#332552'],
     venom:  ['#163a10', '#22581a', '#348a26', '#4cb43a', '#7ce35a', '#c4ff9a'],
     flesh:  ['#5a3020', '#7a4430', '#9a5c40', '#ba7854', '#d4986c', '#ecbc94'],
     cloth:  ['#2a1838', '#3e2450', '#56346c', '#704a8a', '#8e64a8', '#b08cc8'],
@@ -3051,6 +3132,18 @@
       path: ['#0e090e', '#171018', '#211722', '#2c1f2c', '#3a2938', '#4a3646'], cobble: true, seam: '#ff6a1a',
       shore: '#140c0c', feature: 'lava', cliff: ['#120c10', '#1e1418', '#2c1e22', '#3c2a2c', '#4e3838', '#644a46'], blade: '#6a4a40',
       decor: ['ember', 'pebble', 'crack', 'skull'], tree: 'deadtree', boulder: 'obsidian'
+    },
+    swamp: {
+      ground: ['#1a2616', '#22321c', '#2c3f22', '#384e2a', '#476034', '#5b7640'],
+      path: ['#2a1c10', '#3e2a18', '#553b22', '#6c4d2e', '#84603a', '#a07a4c'], planks: true,
+      shore: '#2e2a18', feature: 'bog', cliff: ['#161b14', '#22291e', '#30392a', '#404b38', '#56644a', '#6f805e'], blade: '#8aae4e', bladeH: 2,
+      decor: ['reed', 'reed', 'toadstool', 'fern', 'pebble', 'fern'], tree: 'willow', boulder: 'stump'
+    },
+    cavern: {
+      ground: ['#121020', '#19162a', '#211d36', '#2a2544', '#353054', '#443d68'],
+      path: ['#0c0b14', '#16141f', '#201d2c', '#2b283a', '#38344a', '#4a455e'], cobble: true, seam: '#6ae8ff',
+      shore: '#6a5e9a', feature: 'chasm', cliff: ['#0c0a14', '#171424', '#231e36', '#302a4a', '#403860', '#544a7a'], blade: '#4e4678',
+      decor: ['shard', 'shard2', 'glowcap', 'pebble', 'shard'], tree: 'crystal', boulder: 'stalagmite', glow: '#7ae8ff', deepGlow: '#8a5aff'
     }
   };
 
@@ -3143,6 +3236,62 @@
     }],
     skull: [5, 5, (g) => {
       px(g, 0, 0, 5, 3, '#dcd6c0'); px(g, 1, 3, 3, 2, '#bcb6a0'); px(g, 1, 1, 1, 1, '#1a1214'); px(g, 3, 1, 1, 1, '#1a1214');
+    }],
+    // Mirewood: weeping willows, mossy stumps, reeds, ferns and sickly toadstools
+    willow: [18, 22, (g) => {
+      const L = ['#15240e', '#1d3314', '#28451b', '#365a24', '#4a7430', '#66903e'];
+      px(g, 8, 11, 3, 11, RAMPS.wood[1]); px(g, 8, 11, 1, 11, RAMPS.wood[2]); px(g, 7, 20, 5, 2, RAMPS.wood[1]);
+      disc(g, 9, 7, 7, L, 3);
+      disc(g, 4.5, 9, 4, L, 2); disc(g, 13.5, 9, 4, L, 2);
+      // Hanging fronds
+      for (let i = 0; i < 8; ++i) {
+        const x = 1 + i * 2, len = 5 + ((i * 7) % 5);
+        px(g, x, 9, 1, len, L[i % 2 ? 2 : 3]);
+        px(g, x, 9 + len - 1, 1, 1, L[4]);
+      }
+      px(g, 6, 2, 4, 1, L[5]); px(g, 11, 4, 2, 1, L[5]); px(g, 4, 6, 2, 1, L[4]);
+    }],
+    stump: [14, 11, (g) => {
+      const w = RAMPS.wood;
+      px(g, 2, 4, 10, 7, w[2]); px(g, 2, 4, 2, 7, w[3]); px(g, 10, 4, 2, 7, w[1]);
+      px(g, 0, 9, 3, 2, w[1]); px(g, 11, 9, 3, 2, w[1]);
+      ellipseFill(g, 7, 4, 5, 2, w[4]); ellipseFill(g, 7, 4, 3, 1.2, w[3]); px(g, 6, 4, 2, 1, w[2]);
+      px(g, 2, 6, 4, 2, '#4a7430'); px(g, 3, 5, 2, 1, '#66903e'); px(g, 9, 8, 3, 2, '#365a24');
+    }],
+    reed: [5, 8, (g) => {
+      px(g, 1, 2, 1, 6, '#5a7a30'); px(g, 3, 1, 1, 7, '#6e8e3a'); px(g, 2, 4, 1, 4, '#4a6428');
+      px(g, 1, 1, 1, 2, '#6a4422'); px(g, 3, 0, 1, 2, '#7a5028');
+    }],
+    fern: [7, 5, (g) => {
+      line(g, 3.5, 5, 0.5, 1, '#4a7430', 1); line(g, 3.5, 5, 6.5, 1, '#4a7430', 1); px(g, 3, 0, 1, 5, '#66903e');
+      px(g, 1, 2, 1, 1, '#66903e'); px(g, 5, 2, 1, 1, '#66903e');
+    }],
+    toadstool: [5, 5, (g) => {
+      px(g, 2, 3, 1, 2, '#d8d0b8'); px(g, 0, 1, 5, 2, '#8a5aa8'); px(g, 1, 0, 3, 1, '#a874c8'); px(g, 1, 1, 1, 1, '#e0c8f0'); px(g, 3, 2, 1, 1, '#e0c8f0');
+    }],
+    // Crystal Caverns: crystal clusters, stalagmites, shards and glowing caps
+    crystal: [14, 20, (g) => {
+      const c = ['#123a4a', '#1c5a70', '#2a86a0', '#4ab8d0', '#8ae4f4', '#e0fcff'];
+      const v = ['#2a1648', '#3e2068', '#5a3092', '#7a48ba', '#a272e0', '#d6b8ff'];
+      poly(g, [2, 9, 4, 6, 6, 9, 6, 20, 2, 20], v[2]); poly(g, [2, 9, 4, 6, 4, 20, 2, 20], v[4]);
+      poly(g, [10, 7, 12, 4, 14, 8, 13, 20, 9, 20], c[2]); poly(g, [10, 7, 12, 4, 12, 20, 9, 20], c[3]);
+      poly(g, [5, 4, 7.5, 0, 10, 4, 10, 20, 5, 20], c[3]); poly(g, [5, 4, 7.5, 0, 7.5, 20, 5, 20], c[4]);
+      px(g, 6, 3, 1, 9, c[5]); px(g, 11, 7, 1, 5, c[4]); px(g, 3, 9, 1, 4, v[5]);
+      px(g, 1, 18, 13, 2, '#1a1626');
+    }],
+    stalagmite: [10, 16, (g) => {
+      const c = TERRAIN.cavern.cliff;
+      poly(g, [5, 0, 9, 16, 1, 16], c[3]); poly(g, [5, 0, 5, 16, 1, 16], c[4]); poly(g, [7, 9, 9, 16, 6, 16], c[2]);
+      px(g, 4, 5, 1, 2, c[5]); px(g, 3, 11, 2, 1, c[5]); px(g, 6, 13, 1, 2, '#6ae8ff');
+    }],
+    shard: [4, 6, (g) => {
+      poly(g, [2, 0, 4, 3, 3, 6, 1, 6, 0, 3], '#4ab8d0'); px(g, 1, 1, 1, 4, '#cdf6ff');
+    }],
+    shard2: [4, 6, (g) => {
+      poly(g, [2, 0, 4, 3, 3, 6, 1, 6, 0, 3], '#7a48ba'); px(g, 1, 1, 1, 4, '#d6b8ff');
+    }],
+    glowcap: [5, 5, (g) => {
+      px(g, 2, 3, 1, 2, '#8a86a8'); px(g, 0, 1, 5, 2, '#3ab8e0'); px(g, 1, 0, 3, 1, '#7ae8ff'); px(g, 1, 1, 1, 1, '#e0fcff');
     }]
   };
 
@@ -3151,7 +3300,7 @@
     let c = propCache[key];
     if (!c) {
       const [w, h, fn] = PROP_ART[key];
-      const outline = ['flower', 'flower2', 'tuft', 'drygrass', 'snowtuft', 'pebble', 'ember', 'crack'].indexOf(key) >= 0 ? null : OUTLINE;
+      const outline = ['flower', 'flower2', 'tuft', 'drygrass', 'snowtuft', 'pebble', 'ember', 'crack', 'reed', 'fern'].indexOf(key) >= 0 ? null : OUTLINE;
       c = propCache[key] = pixelArt(w, h, fn, outline);
     }
     return c;
@@ -3269,7 +3418,7 @@
     };
     const animated = [];   // [x, y, depth] for water / lava / ice pixels
     const foam = [];       // [x, y] shallow water along the shore
-    const fr = RAMPS[T.feature === 'lava' ? 'lava' : T.feature === 'ice' ? 'ice' : 'water'];
+    const fr = RAMPS[T.feature] || RAMPS.water;
     for (let y = 0; y < H; ++y) {
       for (let x = 0; x < W; ++x) {
         const c = Math.floor(x / TILE), r = Math.floor(y / TILE);
@@ -3281,7 +3430,20 @@
           if (ed < 1.3) kind = 'groundEdge';
           else if (ed < 2.6) { put(x, y, T.path[0]); continue; }
           else {
-            if (T.cobble) {
+            if (T.planks) {
+              // Boardwalk: boards laid across the direction of travel, nailed down at the ends
+              const horiz = kindAt(c - 1, r) === 'path' || kindAt(c + 1, r) === 'path';
+              const vert = kindAt(c, r - 1) === 'path' || kindAt(c, r + 1) === 'path';
+              const across = vert && !horiz ? y : x, along = vert && !horiz ? x : y;
+              const board = Math.floor(across / 4);
+              const sv = hash2(board, Math.floor(along / 16), seed + 1);
+              if (across % 4 === 0) put(x, y, T.path[0]);
+              else if (along % 16 === 3 && across % 4 === 2) put(x, y, T.path[5]);
+              else {
+                const grain = valueNoise(along / 5, board * 3.7, seed + 11);
+                put(x, y, across % 4 === 1 ? T.path[4] : rampPick(T.path, 0.3 + sv * 0.45 + (grain - 0.5) * 0.35, x, y, 2, 4));
+              }
+            } else if (T.cobble) {
               const row = Math.floor(y / 5);
               const off = (row % 2) * 3;
               const sx = Math.floor((x + off) / 6);
@@ -3301,10 +3463,26 @@
             continue;
           }
         }
-        const featEd = (kind === 'water' || kind === 'ice' || kind === 'lava' || kind === 'rock')
+        const featEd = (kind === 'water' || kind === 'ice' || kind === 'lava' || kind === 'bog' || kind === 'chasm' || kind === 'rock')
           ? edgeDist(x, y, kind, 10) + (valueNoise(x / 6, y / 6, seed + 5) - 0.5) * 6 + (valueNoise(x / 2, y / 2, seed + 4) - 0.5) * 1.5 - 1.2 : 99;
         if (featEd < 0.3) kind = 'groundEdge';
-        if (kind === 'water' || kind === 'ice' || kind === 'lava') {
+        if (kind === 'chasm') {
+          // A lit rim, sheer layered walls, then darkness with a faint glow far below
+          const ed = featEd;
+          if (ed < 1.4) { put(x, y, T.shore); continue; }
+          if (ed < 7.5) {
+            // Layered rock, lit at the top and falling away into shadow
+            const k = (ed - 1.4) / 6.1;
+            const strata = valueNoise(x / 9, y / 1.6, seed + 8) - 0.5;
+            put(x, y, rampPick(T.cliff, 0.9 - k * 0.85 + strata * 0.35, x, y, 0, 5));
+            continue;
+          }
+          const depth = clamp((ed - 7) / 8, 0, 1);
+          put(x, y, rampPick(fr, 0.55 - depth * 0.5 + (n - 0.5) * 0.25, x, y, 0, 5));
+          animated.push(x, y, depth);
+          continue;
+        }
+        if (kind === 'water' || kind === 'ice' || kind === 'lava' || kind === 'bog') {
           const ed = featEd;
           if (ed < 1.4) { put(x, y, kind === 'lava' ? '#0a0608' : T.shore); continue; }
           if (ed < 2.4) {
@@ -3314,6 +3492,20 @@
           }
           if (kind === 'water' && ed < 3.6) foam.push(x, y);
           const depth = clamp((ed - 2) / 7, 0, 1);
+          if (kind === 'bog' && depth > 0.25) {
+            // Lily pads floating on the bog
+            const lc = Math.floor(x / 9), lr = Math.floor(y / 8);
+            const lh = hash2(lc, lr, seed + 31);
+            if (lh > 0.72) {
+              const ox = lc * 9 + 2 + hash2(lc, lr, seed + 32) * 5, oy = lr * 8 + 2 + hash2(lc, lr, seed + 33) * 4;
+              const dx = x - ox, dy = (y - oy) * 1.3;
+              const d2 = dx * dx + dy * dy;
+              if (d2 < 7 && !(dx > 0 && Math.abs(dy) < dx * 0.5)) {
+                put(x, y, d2 < 2 && dy < 0 ? '#7cb050' : lh > 0.95 && d2 < 1 ? '#f0c8e0' : '#4a8434');
+                continue;
+              }
+            }
+          }
           put(x, y, kind === 'ice'
             ? (hash2(Math.floor(x / 5), Math.floor(y / 4), seed) > 0.93 ? fr[4] : rampPick(fr, 0.75 - depth * 0.3 + (n - 0.5) * 0.25, x, y, 2, 4))
             : rampPick(fr, 0.6 - depth * 0.45 + (n - 0.5) * 0.2, x, y, 0, 3));
@@ -3365,7 +3557,7 @@
     for (let i = 0; i < W * H / 70; ++i) {
       const x = Math.floor(hash2(i, 1, seed + 21) * W), y = Math.floor(hash2(i, 2, seed + 21) * H);
       if (kindAt(Math.floor(x / TILE), Math.floor(y / TILE)) !== 'ground') continue;
-      px(g, x, y, 1, m.biome === 'meadow' ? 2 : 1, T.blade);
+      px(g, x, y, 1, T.bladeH || (m.biome === 'meadow' ? 2 : 1), T.blade);
     }
 
     // Decorations and props, back to front
@@ -3427,13 +3619,19 @@
         }
       liquid = { mask, x: minX, y: minY, w: fw, h: fh, foams, kind: T.feature };
     }
-    // Lava glow points for night-light style flicker
+    // Glow points that flicker: lava, the deep of the chasms and crystal clusters
     const lights = [];
-    if (T.feature === 'lava')
+    if (T.feature === 'lava' || T.deepGlow)
       for (const [key, type] of feat)
-        if (type === 'lava' && hash2(key.length, key.charCodeAt(0) + key.charCodeAt(key.length - 1), seed) > 0.2) {
+        if (type === T.feature && hash2(key.length, key.charCodeAt(0) + key.charCodeAt(key.length - 1), seed) > (T.deepGlow ? 0.7 : 0.2)) {
           const [c, r] = key.split(',').map(Number);
-          lights.push({ x: (c + 0.5) * CELL, y: (r + 0.5) * CELL, ph: hash2(c, r, seed) * TWO_PI });
+          lights.push({ x: (c + 0.5) * CELL, y: (r + 0.5) * CELL, ph: hash2(c, r, seed) * TWO_PI, color: T.deepGlow || '#ff6a1a', r: 1.1 });
+        }
+    if (T.glow)
+      for (const [key, type] of props)
+        if (type === 'tree' && !feat.has(key)) {
+          const [c, r] = key.split(',').map(Number);
+          lights.push({ x: (c + 0.5) * CELL, y: (r + 0.2) * CELL, ph: hash2(c, r, seed) * TWO_PI, color: T.glow, r: 0.9 });
         }
 
     // Gates
@@ -3456,7 +3654,7 @@
     ctx.drawImage(t.base, 0, 0, WORLD_W, WORLD_H);
     if (t.liquid) drawLiquid(t.liquid);
     for (const l of t.lights)
-      drawGlow('#ff6a1a', l.x, l.y, CELL * 1.1, 0.16 + 0.08 * Math.sin(animTime * 2 + l.ph));
+      drawGlow(l.color, l.x, l.y, CELL * l.r, 0.16 + 0.08 * Math.sin(animTime * 2 + l.ph));
   }
 
   /* ── Liquids: tileable textures scrolled with sub-pixel offsets and
@@ -3493,6 +3691,13 @@
           const ridge = 1 - Math.abs(v - 0.5) * 2;
           a = ridge > 0.7 ? 255 : ridge > 0.5 ? 140 : 0;
           r = 255; gg = ridge > 0.8 ? 236 : 168; b = ridge > 0.8 ? 138 : 40;
+        } else if (key === 'scum') {
+          // Drifting duckweed and algae on the bog
+          a = v > 0.63 ? 200 : v > 0.57 ? 100 : 0;
+          r = 132; gg = 168; b = 60;
+        } else if (key === 'motes') {
+          a = hash2(x, y, 77) > 0.996 ? 200 : hash2(x, y, 78) > 0.994 ? 90 : 0;
+          r = 176; gg = 140; b = 255;
         } else if (key === 'crust') {
           a = v > 0.62 ? 235 : v > 0.56 ? 120 : 0;
           r = 42; gg = 14; b = 8;
@@ -3539,6 +3744,13 @@
     } else if (L.kind === 'water') {
       layer('caustic', t * 7, t * 3, 0.65);
       layer('caustic', -t * 5.5, t * 4.5, 0.5, 'lighter');
+    } else if (L.kind === 'bog') {
+      layer('scum', t * 1.6, t * 0.7, 0.75);
+      layer('glint', t * 0.4, -t * 2.2, 0.35, 'lighter');
+    } else if (L.kind === 'chasm') {
+      // Motes rising out of the deep
+      layer('motes', t * 1.2, -t * 6, 1);
+      layer('motes', -t * 0.8, -t * 3.5 + 17, 0.6, 'lighter');
     } else {
       layer('glint', t * 2, t * 1, 0.8);
     }
@@ -3546,8 +3758,8 @@
     g.globalAlpha = 1;
     g.drawImage(L.mask, 0, 0, w, h);
     const prev = ctx.globalCompositeOperation;
-    ctx.globalCompositeOperation = L.kind === 'lava' ? 'source-over' : 'lighter';
-    ctx.globalAlpha = L.kind === 'water' ? 0.42 : L.kind === 'lava' ? 0.85 : 1;
+    ctx.globalCompositeOperation = L.kind === 'lava' || L.kind === 'bog' ? 'source-over' : 'lighter';
+    ctx.globalAlpha = L.kind === 'water' ? 0.42 : L.kind === 'lava' ? 0.85 : L.kind === 'bog' ? 0.6 : 1;
     ctx.drawImage(liquidScratch, 0, 0, w, h, L.x * AP, L.y * AP, w, h);
     ctx.globalCompositeOperation = prev;
     ctx.globalAlpha = 1;
@@ -5074,15 +5286,15 @@
   let ambient = null;
   function initAmbient(biome) {
     const rng = makeRng(biome.length * 77);
-    const n = biome === 'tundra' ? 90 : biome === 'volcano' ? 60 : 36;
+    const n = biome === 'tundra' ? 90 : biome === 'volcano' || biome === 'cavern' ? 60 : biome === 'swamp' ? 46 : 36;
     ambient = { biome, parts: [], clouds: [] };
     for (let i = 0; i < n; ++i)
-      ambient.parts.push({ x: rng() * WORLD_W, y: rng() * WORLD_H, z: 0.4 + rng() * 0.6, ph: rng() * TWO_PI, kind: rng() < 0.15 ? 1 : 0 });
+      ambient.parts.push({ x: rng() * WORLD_W, y: rng() * WORLD_H, z: 0.4 + rng() * 0.6, ph: rng() * TWO_PI, kind: rng() < (biome === 'swamp' ? 0.45 : 0.15) ? 1 : 0 });
     for (let i = 0; i < 3; ++i)
       ambient.clouds.push({ x: rng() * WORLD_W, y: rng() * WORLD_H, s: 0.7 + rng() * 0.6 });
   }
 
-  let cloudShadow = null;
+  let cloudShadow = null, mistBank = null;
   function drawAmbient() {
     const biome = MAPS[currentMap].biome;
     if (!ambient || ambient.biome !== biome) initAmbient(biome);
@@ -5109,6 +5321,26 @@
         ctx.drawImage(cloudShadow, c.x, c.y, 260 * c.s, 130 * c.s);
       }
       ctx.imageSmoothingEnabled = false;
+    } else if (biome === 'swamp') {
+      // Low banks of mist creeping over the fens
+      if (!mistBank) {
+        mistBank = makeCanvas(96, 48);
+        const g = mistBank.getContext('2d');
+        for (const [x, y, r] of [[26, 26, 20], [48, 22, 22], [70, 27, 18], [40, 32, 16], [60, 32, 15]]) {
+          const grad = g.createRadialGradient(x, y, 0, x, y, r);
+          grad.addColorStop(0, 'rgba(210,230,200,0.13)');
+          grad.addColorStop(1, 'rgba(210,230,200,0)');
+          g.fillStyle = grad;
+          g.fillRect(0, 0, 96, 48);
+        }
+      }
+      ctx.imageSmoothingEnabled = true;
+      for (const c of ambient.clouds) {
+        c.x += dt * 5 * c.s;
+        if (c.x > WORLD_W + 150) { c.x = -320; c.y = Math.random() * WORLD_H; }
+        ctx.drawImage(mistBank, c.x, c.y, 320 * c.s, 120 * c.s);
+      }
+      ctx.imageSmoothingEnabled = false;
     }
     for (const p of ambient.parts) {
       p.ph += dt;
@@ -5130,6 +5362,39 @@
           const fl = 0.5 + 0.5 * Math.sin(p.ph * 6);
           ctx.fillStyle = fl > 0.5 ? '#ffd06a' : '#ff6a1a';
           ctx.fillRect(Math.round(p.x), Math.round(p.y), 2, 2);
+        }
+      } else if (biome === 'swamp') {
+        p.x += Math.sin(p.ph * 0.6) * dt * 10;
+        p.y += Math.cos(p.ph * 0.45) * dt * 7;
+        if (p.kind) {
+          // Fireflies blinking on and off
+          const on = Math.max(0, Math.sin(p.ph * 1.7 + p.z * 9));
+          if (on > 0.2) {
+            drawGlow('#d8ff6a', p.x, p.y, 7 * p.z + 3, 0.35 * on);
+            ctx.fillStyle = '#f0ffb0';
+            ctx.fillRect(Math.round(p.x), Math.round(p.y), 2, 2);
+          }
+        } else {
+          ctx.fillStyle = `rgba(200,220,160,${0.12 + 0.18 * (0.5 + 0.5 * Math.sin(p.ph * 2))})`;
+          ctx.fillRect(Math.round(p.x), Math.round(p.y), 1.5, 1.5);
+        }
+      } else if (biome === 'cavern') {
+        if (p.kind) {
+          // Crystal glitter twinkling in place
+          const tw = Math.pow(Math.max(0, Math.sin(p.ph * 2.3 + p.z * 11)), 8);
+          if (tw > 0.05) {
+            const col = p.z > 0.7 ? '#a8f4ff' : '#d2b8ff';
+            drawGlow(col, p.x, p.y, 6, 0.5 * tw);
+            ctx.fillStyle = col;
+            ctx.fillRect(Math.round(p.x) - 1, Math.round(p.y), 3, 1);
+            ctx.fillRect(Math.round(p.x), Math.round(p.y) - 1, 1, 3);
+          }
+        } else {
+          // Dust sifting down from the ceiling
+          p.y += dt * 9 * p.z;
+          p.x += Math.sin(p.ph * 0.8) * dt * 3;
+          ctx.fillStyle = `rgba(190,180,230,${0.2 + p.z * 0.25})`;
+          ctx.fillRect(Math.round(p.x), Math.round(p.y), 1.5, 1.5);
         }
       } else if (biome === 'desert') {
         p.x += dt * 26 * p.z;
@@ -7846,19 +8111,23 @@
     view.x = sx; view.y = sy; view.s = ss;
   }
 
-  /* ── World map ── */
-  const WORLD_ART_W = 400, WORLD_ART_H = 240;
-  const MAP_SPOTS = [[0.08, 0.7], [0.16, 0.38], [0.23, 0.66], [0.33, 0.32], [0.4, 0.62], [0.47, 0.3], [0.58, 0.56], [0.64, 0.28], [0.71, 0.62], [0.82, 0.38], [0.88, 0.7], [0.94, 0.36]];
+  /* ── World map: one band per region from west to east, a keep per map ── */
+  const WORLD_ART_W = 100 * REGIONS.length, WORLD_ART_H = 240;
+  // Heights of the keeps along the route, repeated as the campaign goes on
+  const SPOT_Y = [0.7, 0.38, 0.66, 0.32, 0.62, 0.3, 0.56, 0.28, 0.62, 0.38, 0.7, 0.36];
   let worldArt = null;
 
+  // Spot of a map (by index): inside its region's band, in campaign order
   function spotPx(i) {
-    return { x: MAP_SPOTS[i][0] * WORLD_ART_W, y: MAP_SPOTS[i][1] * WORLD_ART_H };
+    const reg = regionOf(i), maps = REGIONS[reg].maps, k = maps.indexOf(i);
+    const fx = (reg + 0.22 + 0.56 * (maps.length > 1 ? k / (maps.length - 1) : 0.5)) / REGIONS.length;
+    return { x: fx * WORLD_ART_W, y: SPOT_Y[MAP_RANK[i] % SPOT_Y.length] * WORLD_ART_H };
   }
 
   // Route between two spots: a gentle curve through an offset midpoint
   function routePoint(a, b, k) {
     const pa = spotPx(a), pb = spotPx(b);
-    const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2 - 18 + (a % 2) * 36;
+    const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2 - 18 + (MAP_RANK[a] % 2) * 36;
     const u = 1 - k;
     return { x: u * u * pa.x + 2 * u * k * mx + k * k * pb.x, y: u * u * pa.y + 2 * u * k * my + k * k * pb.y };
   }
@@ -7872,7 +8141,8 @@
     for (let y = 0; y < H; ++y)
       for (let x = 0; x < W; ++x) {
         const n = fbm(x / 22, y / 22, seed);
-        const bi = clamp(Math.floor(x / W * 4 + (n - 0.5) * 0.7), 0, 3);
+        const bf = x / W * REGIONS.length + (n - 0.5) * 0.6;
+        const bi = clamp(Math.floor(bf), 0, REGIONS.length - 1);
         const T = TERRAIN[BIOME_ORDER[bi]];
         // Sea around the edges of the continent
         const edge = Math.min(x, W - 1 - x, y * 1.4, (H - 1 - y) * 1.4) + (fbm(x / 9, y / 9, seed + 3) - 0.5) * 26;
@@ -7882,8 +8152,7 @@
         else {
           col = rampPick(T.ground, 0.2 + n * 0.7, x, y, 1, 4);
           // Mountain ridges between the biomes
-          const bf = x / W * 4 + (n - 0.5) * 0.7;
-          if (Math.abs(bf - Math.round(bf)) < 0.03 && bf > 0.5 && bf < 3.5) col = shade(T.ground[2], -0.35);
+          if (Math.abs(bf - Math.round(bf)) < 0.03 && bf > 0.5 && bf < REGIONS.length - 0.5) col = shade(T.ground[2], -0.35);
         }
         const rgb = parseHex(col);
         const i = (y * W + x) * 4;
@@ -7892,18 +8161,18 @@
     g.putImageData(img, 0, 0);
     // Scattered biome props
     const rng = makeRng(seed);
-    for (let i = 0; i < 140; ++i) {
+    for (let i = 0; i < 35 * REGIONS.length; ++i) {
       const x = 12 + rng() * (W - 24), y = 12 + rng() * (H - 24);
-      const bi = clamp(Math.floor(x / W * 4), 0, 3);
+      const bi = clamp(Math.floor(x / W * REGIONS.length), 0, REGIONS.length - 1);
       const T = TERRAIN[BIOME_ORDER[bi]];
       const art = propArt(rng() < 0.6 ? T.tree : T.boulder);
       g.drawImage(art, Math.round(x - art.width / 4), Math.round(y - art.height / 2), Math.round(art.width / 2), Math.round(art.height / 2));
     }
     // Dotted route
     g.fillStyle = 'rgba(60,40,20,0.75)';
-    for (let i = 0; i < MAPS.length - 1; ++i)
+    for (let r = 0; r < CAMPAIGN.length - 1; ++r)
       for (let k = 0; k <= 1; k += 0.05) {
-        const p = routePoint(i, i + 1, k);
+        const p = routePoint(CAMPAIGN[r], CAMPAIGN[r + 1], k);
         g.fillRect(Math.round(p.x), Math.round(p.y), 2, 2);
       }
     return c;
@@ -8098,7 +8367,7 @@
     }
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    const next = currentMap + 1 < MAPS.length ? `Next level open (L) · or stay and keep holding` : 'The last map is held · stay as long as you can';
+    const next = nextMapOf(currentMap) >= 0 ? `Next level open (L) · or stay and keep holding` : 'The last map is held · stay as long as you can';
     fitText(`+${lastRp} research · ${next}`, UW / 2, cy + 100, UW - 60, 15, { weight: 'bold', color: '#ffffff', outline: 'rgba(0,0,0,0.8)' });
     ctx.restore();
     drawSkipHint();
@@ -8357,18 +8626,18 @@
   }
 
   function nextLevelAvailable() {
-    return cleared && currentMap + 1 < MAPS.length && (state === STATE_BUILD || state === STATE_PLAYING || state === STATE_GAME_OVER);
+    return cleared && nextMapOf(currentMap) >= 0 && (state === STATE_BUILD || state === STATE_PLAYING || state === STATE_GAME_OVER);
   }
 
   function nextLevelGains() {
-    const n = currentMap + 1;
+    const n = nextMapOf(currentMap);
     const b = Math.round((mapBountyMul(n) / mapBountyMul(currentMap) - 1) * 100);
     const r = Math.round((mapResearchMul(n) / mapResearchMul(currentMap) - 1) * 100);
     return { bounty: b, research: r, carry: carryGold() };
   }
 
   function nextLevelTooltip() {
-    const n = MAPS[currentMap + 1], g = nextLevelGains();
+    const n = MAPS[nextMapOf(currentMap)], g = nextLevelGains();
     return [`Next level: ${n.name}`, BIOMES[n.biome].name + ' · ' + n.waves + ' waves to clear',
       '--- Moving on ---',
       `✔ +${g.bounty}% gold per kill, +${g.research}% research per wave`,
@@ -8380,7 +8649,7 @@
 
   function drawNextLevelButton() {
     if (!nextLevelAvailable() || state === STATE_GAME_OVER) return;
-    const n = MAPS[currentMap + 1], g = nextLevelGains();
+    const n = MAPS[nextMapOf(currentMap)], g = nextLevelGains();
     const w = Math.min(340, UW - 40), h = 44;
     const x = UW / 2 - w / 2, y = UH - BOT_H - h - 8;
     beginHudPanel('nextlevel', x, y, w, h);
@@ -9102,11 +9371,13 @@
     requestNewGame();
   }
 
+  // One to five skulls along the campaign
   function difficultyOf(i) {
-    return clamp(Math.round((MAPS[i].hpMul - 0.8) / 0.11) + 1, 1, 5);
+    return 1 + Math.floor(MAP_RANK[i] * 5 / CAMPAIGN.length);
   }
 
   const thumbCache = {};
+  const THUMB_FEATURE = { water: '#3a7ad8', ice: '#a8e0ff', lava: '#ff6a1a', bog: '#6e8a2e', chasm: '#06040c' };
   // Small overview of a map: ground, features, roads
   function mapThumb(i) {
     if (thumbCache[i]) return thumbCache[i];
@@ -9119,7 +9390,7 @@
     const cells = new Set();
     for (const wp of m.paths) walkPath(wp, (x, y) => cells.add(x + ',' + y));
     for (const [type, c0, r0, c1, r1] of m.features) {
-      g.fillStyle = type === 'water' ? '#3a7ad8' : type === 'ice' ? '#a8e0ff' : type === 'lava' ? '#ff6a1a' : shade(b.ground, -0.3);
+      g.fillStyle = THUMB_FEATURE[type] || shade(b.ground, -0.3);
       for (let r = r0; r <= r1; ++r) for (let cc = c0; cc <= c1; ++cc)
         if (!cells.has(cc + ',' + r)) g.fillRect(cc * k, r * k, k, k);
     }
@@ -9161,6 +9432,40 @@
       drawIcon(i < n ? 'star' : 'starEmpty', cx + (i - (total - 1) / 2) * gap, cy, size);
   }
 
+  // Regions side by side on a page: as many as fit, every page holding the same number
+  let msPerPage = REGIONS.length;
+  const MS_CARD_MIN_W = 140;
+
+  function regionsPerPage(gw) {
+    let per = clamp(Math.floor((gw + 8) / (MS_CARD_MIN_W + 8)), 1, REGIONS.length);
+    while (REGIONS.length % per) --per;
+    return per;
+  }
+
+  function mapSelectPages() {
+    return Math.ceil(REGIONS.length / msPerPage);
+  }
+
+  function mapSelectPage() {
+    return Math.floor(regionOf(mapSelectIndex) / msPerPage);
+  }
+
+  function regionStars(reg) {
+    return REGIONS[reg].maps.reduce((a, i) => a + meta.maps[i].stars, 0);
+  }
+
+  // Shows another page of regions; the selection keeps its row in the page's first region
+  function showMapSelectPage(page) {
+    const pages = mapSelectPages();
+    page = (page + pages) % pages;
+    if (page === mapSelectPage()) return;
+    const reg = regionOf(mapSelectIndex);
+    const row = REGIONS[reg].maps.indexOf(mapSelectIndex);
+    const maps = REGIONS[page * msPerPage].maps;
+    previewMap(maps[Math.min(row, maps.length - 1)]);
+    audio.play('click', { pitch: 1.1 });
+  }
+
   function drawMapSelect() {
     drawScrim(0.72);
     const pad = 12;
@@ -9176,34 +9481,62 @@
     uiButton('ms-research', UW - pad - 274, 16, 156, hh - 16, `Research · ${meta.rp}`, { px: 12, icon: 'flask', key: 'R', onClick: () => openResearch() });
     uiButton('ms-back', UW - pad - 108, 16, 96, hh - 16, 'Back', { px: 13, key: 'Esc', onClick: () => quitToTitle() });
 
-    // Layout: grid of biomes (columns) x maps (rows), details on the right
-    const top = 8 + hh + 10, bottom = UH - 34;
+    // Layout: regions as columns, their maps as rows, details on the right
+    let top = 8 + hh + 10;
+    const bottom = UH - 34;
     const detailW = UW >= 900 ? Math.min(300, UW * 0.3) : 0;
     const gx = pad, gw = UW - pad * 2 - (detailW ? detailW + 10 : 0);
+    msPerPage = regionsPerPage(gw);
+    const pages = mapSelectPages(), page = mapSelectPage();
+    if (pages > 1) {
+      // Page tabs, each naming its regions, with arrows to either side
+      const th = 30, aw = 34, gap = 6;
+      uiButton('ms-prev', gx, top, aw, th, '<', { px: 15, onClick: () => showMapSelectPage(page - 1), tip: () => ['Previous regions', 'PgUp · Shift+Tab · mouse wheel'] });
+      uiButton('ms-next', gx + gw - aw, top, aw, th, '>', { px: 15, onClick: () => showMapSelectPage(page + 1), tip: () => ['Next regions', 'PgDn · Tab · mouse wheel'] });
+      const tw = (gw - 2 * (aw + gap) - (pages - 1) * gap) / pages;
+      for (let p = 0; p < pages; ++p) {
+        const regs = REGIONS.slice(p * msPerPage, (p + 1) * msPerPage);
+        const stars = regs.reduce((a, R, k) => a + regionStars(p * msPerPage + k), 0);
+        const max = regs.reduce((a, R) => a + R.maps.length * 3, 0);
+        uiButton('ms-page' + p, gx + aw + gap + p * (tw + gap), top, tw, th, regs.map(R => BIOMES[R.biome].name).join(' · '), {
+          style: p === page ? 'gold' : 'dark', px: 12, onClick: () => showMapSelectPage(p),
+          tip: () => [regs.map(R => BIOMES[R.biome].name).join(', '), ...regs.map(R => `• ${BIOMES[R.biome].name}: ${R.maps.length} maps`), `★ ${stars} / ${max} stars`]
+        });
+      }
+      top += th + 8;
+    }
     const colGap = 8, rowGap = 8, headH = 24;
-    const cw = (gw - colGap * 3) / 4;
-    const ch = (bottom - top - headH - rowGap * 2 - (detailW ? 0 : 150)) / 3;
-    BIOME_ORDER.forEach((bk, bi) => {
-      const b = BIOMES[bk];
-      const x = gx + bi * (cw + colGap);
+    const rows = Math.max(...REGIONS.map(R => R.maps.length));
+    const cw = (gw - colGap * (msPerPage - 1)) / msPerPage;
+    const ch = (bottom - top - headH - 6 - rowGap * (rows - 1) - (detailW ? 0 : 150)) / rows;
+    for (let k = 0; k < msPerPage; ++k) {
+      const reg = page * msPerPage + k;
+      if (reg >= REGIONS.length) break;
+      const R = REGIONS[reg], b = BIOMES[R.biome];
+      const x = gx + k * (cw + colGap);
       roundRectPath(x, top, cw, headH, 6);
       ctx.fillStyle = hexToRgba(b.color, 0.2);
       ctx.fill();
       ctx.strokeStyle = hexToRgba(b.color, 0.6);
       ctx.lineWidth = 1;
       ctx.stroke();
+      const starsW = cw >= 170 ? 58 : 0;
       ctx.textAlign = 'center';
-      fitText(b.name, x + cw / 2, top + headH / 2 + 1, cw - 10, 12, { weight: 'bold', color: b.color });
-      for (let j = 0; j < 3; ++j) {
-        const i = bi * 3 + j;
-        drawMapCard(i, x, top + headH + 6 + j * (ch + rowGap), cw, ch);
+      fitText(b.name, x + (cw - starsW) / 2, top + headH / 2 + 1, cw - 10 - starsW, 12, { weight: 'bold', color: b.color });
+      if (starsW) {
+        ctx.textAlign = 'right';
+        fitText(`[[star]] ${regionStars(reg)}/${R.maps.length * 3}`, x + cw - 7, top + headH / 2 + 1, starsW - 4, 11, { weight: 'bold', color: '#ffffff' });
       }
-    });
+      R.maps.forEach((i, j) => drawMapCard(i, x, top + headH + 6 + j * (ch + rowGap), cw, ch));
+    }
     if (detailW)
-      drawMapDetails(UW - pad - detailW, top, detailW, bottom - top);
+      drawMapDetails(UW - pad - detailW, 8 + hh + 10, detailW, bottom - 8 - hh - 10);
     else
       drawMapDetails(gx, bottom - 144, gw, 140);
-    drawKeyHints([{ key: '←↑→↓', label: 'Choose' }, { key: 'Enter', label: 'Play' }, { key: 'Esc', label: 'Back' }], UW / 2, UH - 16, UW - 40);
+    const hints = [{ key: '←↑→↓', label: 'Choose' }, { key: 'Enter', label: 'Play' }];
+    if (pages > 1) hints.push({ key: 'PgUp/PgDn', label: 'Regions' });
+    hints.push({ key: 'Esc', label: 'Back' });
+    drawKeyHints(hints, UW / 2, UH - 16, UW - 40);
   }
 
   function drawMapCard(i, x, y, w, h) {
@@ -9232,7 +9565,7 @@
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     const ny = ty + th + (h - th - 6) / 2 - 1;
-    fitText(`${i + 1}. ${m.name}`, x + 8, ny - 7, w * 0.62, 12, { weight: 'bold', color: locked ? UI.textMute : '#ffffff' });
+    fitText(`${MAP_RANK[i] + 1}. ${m.name}`, x + 8, ny - 7, w * 0.62, 12, { weight: 'bold', color: locked ? UI.textMute : '#ffffff' });
     fitText(rec.best ? `Best wave ${rec.best} · goal ${m.waves}` : `Goal ${m.waves} waves`, x + 8, ny + 8, w * 0.6, 10, { color: UI.textDim });
     drawStars(rec.stars, x + w - 8 - Math.min(13, w * 0.09) * 1.6, ny, Math.min(13, w * 0.09));
     ctx.restore();
@@ -9293,15 +9626,19 @@
     }
   }
 
+  // Left / right walk through the regions (turning the page at its edge), up / down through a region
   function moveMapSelect(dx, dy) {
-    const bi = Math.floor(mapSelectIndex / 3), j = mapSelectIndex % 3;
-    const nb = clamp(bi + dx, 0, 3), nj = clamp(j + dy, 0, 2);
-    const ni = nb * 3 + nj;
+    const reg0 = regionOf(mapSelectIndex);
+    const reg = clamp(reg0 + dx, 0, REGIONS.length - 1);
+    const maps = REGIONS[reg].maps;
+    const row = clamp(REGIONS[reg0].maps.indexOf(mapSelectIndex) + dy, 0, maps.length - 1);
+    const ni = maps[row];
     if (ni !== mapSelectIndex) {
       previewMap(ni);
       audio.play('click', { pitch: 1.3 });
     }
   }
+
   function drawPauseScreen() {
     drawScrim(0.6);
     const pw = Math.min(320, UW - 40), ph = 306;
@@ -9326,7 +9663,7 @@
     const cx = UW / 2;
     const res = lastResult || { stars: 0, prevStars: 0, waves: 0, prevBest: 0 };
     const held = !!res.cleared;
-    const hasNext = held && currentMap + 1 < MAPS.length;
+    const hasNext = held && nextMapOf(currentMap) >= 0;
     const pw = Math.min(440, UW - 40), ph = held ? 330 : 296;
     const px = cx - pw / 2, py = clamp(UH / 2 - ph / 2 + 30, 80, UH - ph - 10);
     drawHeadline(held ? 'STAND ENDED' : 'DEFEAT', cx, py - 40, UW - 40, 58, held ? UI.gold : '#ff5a5a', held ? '#ff9a2a' : '#9a1a1a');
@@ -9382,7 +9719,7 @@
       ['eye', 'The NEXT panel shows the enemies of the coming wave. Hover them to learn what counters them. Press Start (Space) when you are ready, or call a wave early (N) for bonus gold.'],
       ['coin', 'Defeated enemies drop gold and every cleared wave pays a bonus. Gold Mines dig up more.'],
       ['star', 'Hold a map\'s required waves to clear it: keep 50% of your lives for two stars, 90% for three. The waves never stop, though: stay to grind gold and research, or press Next level (L).'],
-      ['loop', 'Further maps pay more gold and research. Moving on brings research, relics, unlocked towers and a quarter of your gold (up to 500); towers stay behind. Your best wave per map is recorded.']
+      ['loop', 'The campaign crosses six regions of four maps each, and further maps pay more gold and research. Moving on brings research, relics, unlocked towers and a quarter of your gold (up to 500); towers stay behind; your best wave per map is recorded.']
     ] },
     { title: 'Towers', towers: true },
     { title: 'Enemies', enemies: true },
@@ -9399,7 +9736,7 @@
       ['Arrow keys', 'Move the build cursor'], ['U / I', 'Upgrade / pick a specialization'], ['T', 'Cycle targeting'],
       ['S / R', 'Sell / repair'], ['Space', 'Start the next wave'], ['N', 'Call the next wave early'],
       ['F, ⇧F, + / -', 'Faster / slower (1× to 20×)'], ['A', 'Auto-wave on/off'], ['Q / W / E', 'Abilities'],
-      ['H', 'Help'], ['Esc', 'Pause menu'], ['F2', 'New game'], ['Touch', 'Tap to preview, tap again to build'], ['L', 'Next level (once cleared)'], ['K', 'Relics'], ['Any key / tap', 'Skip a cutscene']
+      ['H', 'Help'], ['Esc', 'Pause menu'], ['F2', 'New game'], ['Touch', 'Tap to preview, tap again to build'], ['L', 'Next level (once cleared)'], ['K', 'Relics'], ['Any key / tap', 'Skip a cutscene'], ['PgUp / PgDn', 'Campaign: switch region pages']
     ] }
   ];
   function openHelp(page) {
@@ -9647,8 +9984,9 @@
     const from = currentMap;
     saveGame();
     // March across the world map, then fly over the new map
-    startCine('travel', { from, to: from + 1 }, (skipped) => {
-      currentMap = from + 1;
+    const to = nextMapOf(from);
+    startCine('travel', { from, to }, (skipped) => {
+      currentMap = to;
       introNext = !skipped;
       resetAndStart(carry);
       showBanner(MAPS[currentMap].name.toUpperCase(), `${BIOMES[MAPS[currentMap].biome].name} · ${carry} gold carried over`, BIOMES[MAPS[currentMap].biome].color, 2.6);
@@ -9806,7 +10144,18 @@
     treeDrag = null;
   });
 
+  let wheelFlipAt = 0;
   canvas.addEventListener('wheel', (e) => {
+    if (state === STATE_MAP_SELECT && !overlay && !cine) {
+      // One page per wheel gesture
+      e.preventDefault();
+      const now = performance.now();
+      if (Math.abs(e.deltaY) + Math.abs(e.deltaX) > 0 && now - wheelFlipAt > 350 && mapSelectPages() > 1) {
+        wheelFlipAt = now;
+        showMapSelectPage(mapSelectPage() + ((e.deltaY || e.deltaX) > 0 ? 1 : -1));
+      }
+      return;
+    }
     if (state !== STATE_RESEARCH) return;
     e.preventDefault();
     readPointer(e);
@@ -9962,6 +10311,17 @@
       if (dirs[code]) {
         e.preventDefault();
         moveMapSelect(dirs[code][0], dirs[code][1]);
+      } else if (code === 'PageUp' || code === 'PageDown' || code === 'Tab') {
+        e.preventDefault();
+        showMapSelectPage(mapSelectPage() + (code === 'PageUp' || (code === 'Tab' && e.shiftKey) ? -1 : 1));
+      } else if (code === 'Home' || code === 'End') {
+        e.preventDefault();
+        const reg = REGIONS[regionOf(mapSelectIndex)].maps;
+        const ni = reg[code === 'Home' ? 0 : reg.length - 1];
+        if (ni !== mapSelectIndex) {
+          previewMap(ni);
+          audio.play('click', { pitch: 1.3 });
+        }
       } else if (code === 'Enter' || code === 'Space') {
         e.preventDefault();
         pressFx['ms-play'] = performance.now();
