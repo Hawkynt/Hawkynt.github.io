@@ -9719,7 +9719,7 @@
       ['eye', 'The NEXT panel shows the enemies of the coming wave. Hover them to learn what counters them. Press Start (Space) when you are ready, or call a wave early (N) for bonus gold.'],
       ['coin', 'Defeated enemies drop gold and every cleared wave pays a bonus. Gold Mines dig up more.'],
       ['star', 'Hold a map\'s required waves to clear it: keep 50% of your lives for two stars, 90% for three. The waves never stop, though: stay to grind gold and research, or press Next level (L).'],
-      ['loop', 'Further maps pay more gold and research. Moving on brings research, relics, unlocked towers and a quarter of your gold (up to 500); towers stay behind. Your best wave per map is recorded.']
+      ['loop', 'The campaign crosses six regions of four maps each, and further maps pay more gold and research. Moving on brings research, relics, unlocked towers and a quarter of your gold (up to 500); towers stay behind; your best wave per map is recorded.']
     ] },
     { title: 'Towers', towers: true },
     { title: 'Enemies', enemies: true },
@@ -9736,7 +9736,7 @@
       ['Arrow keys', 'Move the build cursor'], ['U / I', 'Upgrade / pick a specialization'], ['T', 'Cycle targeting'],
       ['S / R', 'Sell / repair'], ['Space', 'Start the next wave'], ['N', 'Call the next wave early'],
       ['F, ⇧F, + / -', 'Faster / slower (1× to 20×)'], ['A', 'Auto-wave on/off'], ['Q / W / E', 'Abilities'],
-      ['H', 'Help'], ['Esc', 'Pause menu'], ['F2', 'New game'], ['Touch', 'Tap to preview, tap again to build'], ['L', 'Next level (once cleared)'], ['K', 'Relics'], ['Any key / tap', 'Skip a cutscene']
+      ['H', 'Help'], ['Esc', 'Pause menu'], ['F2', 'New game'], ['Touch', 'Tap to preview, tap again to build'], ['L', 'Next level (once cleared)'], ['K', 'Relics'], ['Any key / tap', 'Skip a cutscene'], ['PgUp / PgDn', 'Campaign: switch region pages']
     ] }
   ];
   function openHelp(page) {
