@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Space Racing — high-speed top-down spaceship racing with boost pads, hazards, AI opponents, and multiple tracks in the SynthelicZ Desktop.">
+<meta name="description" content="Space Racing — top-down spaceship racing with drifting, boost, item combat and a four-cup career across 8 themed tracks in the SynthelicZ Desktop.">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Space Racing -- &raquo;SynthelicZ&laquo; Desktop">
-<meta property="og:description" content="Race spaceships through obstacle courses with boost pads, hazards, and AI opponents across 5+ tracks.">
+<meta property="og:description" content="Drift, boost and battle through 8 themed space tracks in a four-cup career with a workshop tech tree and item combat.">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/space-racing/index.html">
 <link rel="canonical" href="index.html">
 <script type="application/ld+json">
@@ -16,7 +16,7 @@
   "@type": "WebApplication",
   "name": "Space Racing",
   "url": "https://hawkynt.github.io/sz/Applications/space-racing/index.html",
-  "description": "High-speed top-down spaceship racing with boost pads, hazards, AI opponents, and multiple tracks.",
+  "description": "Top-down spaceship racing with drifting, boost, item combat, a four-cup career and a workshop tech tree across 8 tracks.",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -29,7 +29,7 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<noscript><p>Space Racing — high-speed spaceship racing with boost pads, hazards, and AI opponents. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
+<noscript><p>Space Racing — top-down spaceship racing with drifting, boost, item combat and a four-cup career. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a></p></noscript>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
@@ -38,8 +38,8 @@
       <div class="menu-entry" data-action="new">New Race<span class="shortcut">F2</span></div>
       <div class="menu-entry" data-action="pause">Pause<span class="shortcut">Esc</span></div>
       <div class="menu-separator"></div>
-      <div class="menu-entry" data-action="ship-select">Ship Select<span class="shortcut">Tab</span></div>
-      <div class="menu-entry" data-action="upgrades">Upgrades<span class="shortcut">F3</span></div>
+      <div class="menu-entry" data-action="ship-select">Ship Select</div>
+      <div class="menu-entry" data-action="upgrades">Workshop</div>
       <div class="menu-separator"></div>
       <div class="menu-entry" data-action="high-scores">High Scores...</div>
       <div class="menu-separator"></div>
@@ -98,9 +98,11 @@
         <tr><td>Down / S</td><td>Brake / Reverse</td></tr>
         <tr><td>Left / A</td><td>Steer left</td></tr>
         <tr><td>Right / D</td><td>Steer right</td></tr>
+        <tr><td>Mouse (hold button)</td><td>Steer toward the cursor, throttle stays on</td></tr>
+        <tr><td>Space</td><td>Drift (hold while steering)</td></tr>
+        <tr><td>Shift</td><td>Boost (spends the boost meter)</td></tr>
+        <tr><td>E / Right mouse</td><td>Use held item</td></tr>
         <tr><td>F2</td><td>New race</td></tr>
-        <tr><td>Tab</td><td>Ship select</td></tr>
-        <tr><td>F3</td><td>Upgrades</td></tr>
         <tr><td>Escape</td><td>Pause / Resume / Back</td></tr>
         <tr><td>H</td><td>How to Play</td></tr>
       </table>
@@ -117,9 +119,10 @@
     <div class="dialog-title">About Space Racing</div>
     <div class="dialog-body">
       <strong>Space Racing</strong><br><br>
-      High-speed top-down spaceship racing with boost pads, hazards, AI opponents, and multiple tracks.
-      Choose from 5 unique ships with different stats, earn credits from races, and upgrade your ship's engine, thrusters, gyroscope, and nitro tank.
-      Features speed-line effects, boost flame trails, collision sparks, smooth camera following, and confetti celebrations.<br><br>
+      Top-down spaceship racing with drifting, boost and item combat.
+      Race 8 themed tracks -- each also drivable in reverse -- through a four-cup career with championship points and trophies.
+      Earn credits, work your way through the five-branch Workshop tech tree and pick one of five ships.
+      Drift through corners for mini-turbos, tow behind opponents to fill the boost meter, and grab missiles, mines, shields, EMPs and turbos from item boxes.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
@@ -130,21 +133,20 @@
 
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
 <h1>Space Racing - Free Online Top-Down Spaceship Racing Browser Game</h1>
-<p>Race spaceships at high speed through obstacle courses with boost pads, gravity wells, wormhole portals, hazards, and AI opponents across multiple tracks in this free HTML5 racing game.</p>
+<p>Drift, boost and battle through 8 themed space tracks in a four-cup career: item combat, a workshop tech tree, boost pads, gravity wells, wormhole portals and AI opponents in this free HTML5 racing game.</p>
 <h2>Features</h2>
 <ul>
-<li>5 selectable ships with different speed, acceleration, handling, boost, and armor stats</li>
-<li>4-category upgrade system: Engine, Thrusters, Hull, and Boost with 5 levels each</li>
-<li>5 unique AI personalities with distinct racing behavior</li>
-<li>5+ distinct tracks with checkpoints and finish lines</li>
-<li>Boost pads with flame trail effects for temporary speed increase</li>
-<li>Gravity wells that pull ships off course for strategic racing lines</li>
-<li>Wormhole portals for shortcut teleportation</li>
-<li>Multi-layer parallax starfield with enhanced speed perception</li>
-<li>Thrust particles, speed-line effects, and collision sparks</li>
-<li>Lap system with position tracking and race results</li>
-<li>Confetti celebrations for podium finishes</li>
-<li>Tutorial overlay and high score persistence</li>
+<li>Four-cup career: Bronze, Silver, Gold and Platinum, four races each with championship points and trophies</li>
+<li>8 themed tracks, each also drivable as a mirrored reverse variant</li>
+<li>Drifting with blue and orange mini-turbos, a boost meter, slipstream towing and perfect starts</li>
+<li>Item boxes with missiles, mines, shields, EMP and turbo, position-weighted drops</li>
+<li>Workshop tech tree with five branches bought with race credits</li>
+<li>5 selectable ships unlocked by cup trophies or credits</li>
+<li>5 AI personalities with distinct racing behavior</li>
+<li>Boost pads, hazards, gravity wells and wormhole shortcuts</li>
+<li>HUD with position, laps, speedometer, boost meter, minimap and live standings</li>
+<li>Procedural engine hum, drift hiss and barrier scrape sounds</li>
+<li>High scores, best laps and a persistent career save</li>
 </ul>
 </div>
 <script>document.getElementById('seo-content')?.remove();</script>
@@ -154,6 +156,11 @@
 <script src="../../shared/game-effects.js"></script>
 <script src="../../shared/game-autopause.js"></script>
 <script src="../../shared/game-audio.js"></script>
+<script src="track-geometry.js"></script>
+<script src="tracks-data.js"></script>
+<script src="track-art.js"></script>
+<script src="ship-art.js"></script>
+<script src="racing-ui.js"></script>
 <script src="controller.js"></script>
 </body>
 </html>
