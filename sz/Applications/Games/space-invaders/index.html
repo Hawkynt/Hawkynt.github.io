@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Free online Space Invaders game with power-ups, boss fights, and multiple game modes -- play directly in your browser">
+<meta name="description" content="Free online Space Invaders game -- defend Earth across six sectors with 30 campaign stages, six bosses, five ships with special abilities and an armory of upgrades">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Space Invaders -- &raquo;SynthelicZ&laquo; Desktop">
-<meta property="og:description" content="Free online Space Invaders game with power-ups, boss fights, and multiple game modes -- play directly in your browser">
+<meta property="og:description" content="Free online Space Invaders game -- defend Earth across six sectors with 30 campaign stages, six bosses, five ships with special abilities and an armory of upgrades">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/space-invaders/index.html">
 <link rel="canonical" href="https://hawkynt.github.io/sz/Applications/space-invaders/index.html">
 <script type="application/ld+json">
@@ -16,7 +16,7 @@
   "@type": "WebApplication",
   "name": "Space Invaders",
   "url": "https://hawkynt.github.io/sz/Applications/space-invaders/index.html",
-  "description": "Free online Space Invaders game with power-ups, boss fights, and multiple game modes -- play directly in your browser",
+  "description": "Free online Space Invaders game -- defend Earth across six sectors with 30 campaign stages, six bosses, five ships with special abilities and an armory of upgrades",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -30,7 +30,7 @@
 <script defer src="../../vision-renderer.js"></script>
 </head>
 <body>
-<noscript><p>Free online Space Invaders game with power-ups, boss fights, and multiple game modes -- play directly in your browser. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to use this app.</p></noscript>
+<noscript><p>Free online Space Invaders game -- defend Earth across six sectors with 30 campaign stages, six bosses, five ships with special abilities and an armory of upgrades. <a href="../../../index.html">Open &raquo;SynthelicZ&laquo; Desktop</a> to use this app.</p></noscript>
 
 <!-- Menu Bar -->
 <div class="menu-bar" id="menuBar">
@@ -89,29 +89,32 @@
     <div class="dialog-title">Controls &amp; Power-Ups</div>
     <div class="dialog-body">
       <table class="controls-table">
-        <tr><td>Left / A</td><td>Move left</td></tr>
-        <tr><td>Right / D</td><td>Move right</td></tr>
-        <tr><td>Space / Up</td><td>Shoot</td></tr>
-        <tr><td>P</td><td>Pause / Resume</td></tr>
+        <tr><td>&larr; / &rarr; or A / D</td><td>Move</td></tr>
+        <tr><td>Mouse</td><td>Move ship to cursor</td></tr>
+        <tr><td>Space / Up / Click</td><td>Shoot</td></tr>
+        <tr><td>E / Shift / Right click</td><td>Ship special ability</td></tr>
+        <tr><td>Double-tap &larr; / &rarr;</td><td>Dash (Armory upgrade)</td></tr>
+        <tr><td>P / Esc</td><td>Pause / Resume</td></tr>
         <tr><td>F2</td><td>Mode Selection</td></tr>
-        <tr><td>1 / 2 / 3</td><td>Select game mode</td></tr>
       </table>
       <div style="margin-top: 8px; font-weight: bold; font-size: 11px;">Power-Ups</div>
       <table class="controls-table">
-        <tr><td style="color:#0ff;">Triple Shot</td><td>Fire 3 bullets at once</td></tr>
-        <tr><td style="color:#ff0;">Rapid Fire</td><td>Faster shooting</td></tr>
-        <tr><td style="color:#88f;">Shield</td><td>Block one hit</td></tr>
-        <tr><td style="color:#f0f;">Laser</td><td>Piercing shots</td></tr>
-        <tr><td style="color:#aaf;">Slow-Mo</td><td>Slows alien movement</td></tr>
+        <tr><td style="color:#0ff;">Triple Shot</td><td>Fire a 3-bullet fan (8 s)</td></tr>
+        <tr><td style="color:#ff0;">Rapid Fire</td><td>Faster shooting (6 s)</td></tr>
+        <tr><td style="color:#88f;">Shield</td><td>Block one hit (5 s)</td></tr>
+        <tr><td style="color:#f0f;">Laser</td><td>Piercing shots (4 s)</td></tr>
+        <tr><td style="color:#aaf;">Slow-Mo</td><td>Slows enemies to 40% (5 s)</td></tr>
         <tr><td style="color:#f88;">Extra Life</td><td>+1 life</td></tr>
         <tr><td style="color:#fa0;">Bomb</td><td>Destroys all aliens</td></tr>
-        <tr><td style="color:#8f8;">Drone</td><td>Helper ship</td></tr>
+        <tr><td style="color:#8f8;">Drone</td><td>Helper ship (10 s)</td></tr>
       </table>
       <div style="margin-top: 8px; font-weight: bold; font-size: 11px;">Game Modes</div>
       <table class="controls-table">
+        <tr><td style="color:#4f4;">Campaign</td><td>30 stages, six sectors, stars &amp; unlocks</td></tr>
         <tr><td style="color:#4f4;">Classic</td><td>Progressive levels, boss every 5</td></tr>
-        <tr><td style="color:#ff4;">Survival</td><td>Endless waves, no mercy</td></tr>
+        <tr><td style="color:#ff4;">Survival</td><td>Endless waves, more power-ups</td></tr>
         <tr><td style="color:#f44;">Boss Rush</td><td>Boss fight every level</td></tr>
+        <tr><td style="color:#f4f;">Daily</td><td>One shared seeded run per day</td></tr>
       </table>
     </div>
     <div class="dialog-buttons">
@@ -126,8 +129,8 @@
     <div class="dialog-title">About Space Invaders</div>
     <div class="dialog-body">
       <strong>Space Invaders &mdash; Enhanced Edition</strong><br><br>
-      Defend Earth from waves of alien invaders across three game modes. Features 12 unique wave formations, 8 power-up types, boss fights, combo scoring, special enemy types, and a drone helper.<br><br>
-      Destroy all aliens before they reach the bottom. Shoot the UFO for bonus points and guaranteed power-ups. Build combos for score multipliers.<br><br>
+      Defend Earth across six sectors: a 30-stage campaign with six named bosses, plus Classic, Survival, Boss Rush and Daily modes. Choose one of five ships with its own special ability, spend run credits on 16 armory upgrades, collect 8 power-up types and chain combos for score multipliers up to x5.<br><br>
+      Clear each stage before the fleet reaches your row. Shoot the bonus saucer for points and a guaranteed power-up. Rack up kills to charge your ship's special.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
@@ -137,21 +140,23 @@
 </div>
 
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
-<h1>Space Invaders - Free Online Arcade Shooter with Power-Ups and Boss Fights</h1>
-<p>Defend Earth from waves of alien invaders across three game modes with 12 unique formations, 8 power-up types, boss fights with multi-phase attacks, and combo scoring in this free HTML5 browser game.</p>
+<h1>Space Invaders - Free Online Arcade Shooter with Campaign, Bosses and Upgrades</h1>
+<p>Defend Earth across six sectors in a 30-stage campaign or four arcade modes, with six named bosses, five ships with special abilities, eight power-up types, sixteen armory upgrades and combo scoring up to x5 in this free HTML5 browser game.</p>
 <h2>Features</h2>
 <ul>
-<li>3 game modes: Classic, Survival, and Boss Rush</li>
-<li>12 unique wave formations including V-Formation, Diamond Strike, and Shield Wall</li>
+<li>5 game modes: Campaign, Classic, Survival, Boss Rush and Daily</li>
+<li>30-stage campaign across six sectors with up to 90 stars and stage unlocks</li>
+<li>Six named bosses with cycling attack patterns and an enrage phase below half health</li>
+<li>Five ships with unique stats and special abilities: Overdrive, Railgun, Barrier, Phase and Nova</li>
+<li>16 permanent armory upgrades across five tech-tree branches</li>
 <li>8 power-up types: Triple Shot, Rapid Fire, Shield, Laser, Slow-Mo, Extra Life, Bomb, Drone</li>
-<li>Boss fights with multi-phase attack patterns and escalating difficulty</li>
-<li>Combo scoring system with multipliers up to 5x for rapid kills</li>
-<li>Special enemy types: diver aliens and shielded aliens</li>
-<li>Drone helper ship that follows and auto-fires</li>
-<li>4 destructible shield bunkers with pixel-accurate damage</li>
-<li>Scrolling starfield background with twinkling stars</li>
-<li>Particle explosions, screen shake, and glow effects</li>
-<li>Power-up stacking for combined abilities</li>
+<li>Combo scoring system with multipliers up to x5 for rapid kills</li>
+<li>Six alien species including divers, shielded wardens and armored aliens, plus the bonus saucer</li>
+<li>12 wave formations in the arcade modes</li>
+<li>Hand-painted sprites and six painterly sector backdrops</li>
+<li>Five destructible energy-crystal bunkers with block-accurate damage</li>
+<li>Particle explosions, screen shake, hit-stop and glow effects</li>
+<li>Credits, stars, ships and upgrades persisted between sessions</li>
 <li>High score persistence with mode tracking</li>
 </ul>
 </div>
@@ -162,6 +167,10 @@
 <script src="../../shared/game-effects.js"></script>
 <script src="../../shared/game-autopause.js"></script>
 <script src="../../shared/game-audio.js"></script>
+<script src="invaders-ui.js"></script>
+<script src="campaign.js"></script>
+<script src="sprite-art.js"></script>
+<script src="backdrop-art.js"></script>
 <script src="controller.js"></script>
 </body>
 </html>
