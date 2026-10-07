@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Free online Flappy Bird game -- tap to fly through pipes in your browser">
+<meta name="description" content="Free online Flappy Bird game -- flap through six biomes in Adventure, Classic, Time Attack and Daily Run, collect coins, upgrade your nest and unlock birds">
 <meta name="robots" content="index,follow">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Flappy Bird -- &raquo;SynthelicZ&laquo; Desktop">
-<meta property="og:description" content="Free online Flappy Bird game -- tap to fly through pipes in your browser">
+<meta property="og:description" content="Free online Flappy Bird game -- flap through six biomes in Adventure, Classic, Time Attack and Daily Run, collect coins, upgrade your nest and unlock birds">
 <meta property="og:url" content="https://hawkynt.github.io/sz/Applications/flappy-bird/index.html">
 <link rel="canonical" href="index.html">
 <script type="application/ld+json">
@@ -16,7 +16,7 @@
   "@type": "WebApplication",
   "name": "Flappy Bird",
   "url": "https://hawkynt.github.io/sz/Applications/flappy-bird/index.html",
-  "description": "Free online Flappy Bird game -- tap to fly through pipes in your browser",
+  "description": "Free online Flappy Bird game -- flap through six biomes in Adventure, Classic, Time Attack and Daily Run, collect coins, upgrade your nest and unlock birds",
   "applicationCategory": "GameApplication",
   "operatingSystem": "Web Browser",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -88,9 +88,11 @@
     <div class="dialog-title">Controls</div>
     <div class="dialog-body">
       <table class="controls-table">
-        <tr><td>Space / Click</td><td>Flap</td></tr>
-        <tr><td>Escape</td><td>Pause / Resume</td></tr>
-        <tr><td>F2</td><td>New Game</td></tr>
+        <tr><td>Space / W / Up / Click</td><td>Flap (hold to glide with the Glide upgrade)</td></tr>
+        <tr><td>Escape</td><td>Pause / Back</td></tr>
+        <tr><td>Arrow keys + Enter</td><td>Menus</td></tr>
+        <tr><td>H</td><td>Help</td></tr>
+        <tr><td>F2</td><td>Restart run</td></tr>
       </table>
     </div>
     <div class="dialog-buttons">
@@ -105,8 +107,8 @@
     <div class="dialog-title">About Flappy Bird</div>
     <div class="dialog-body">
       <strong>Flappy Bird</strong><br><br>
-      Tap to flap and navigate through an endless series of pipes. Simple controls, addictive gameplay -- how far can you fly?<br><br>
-      Features parallax scrolling, particle effects, progressive difficulty, and medal tiers.<br><br>
+      Tap to flap and guide a bird through gates that move, close and hide hazards. Four modes -- Adventure with 24 stages across six worlds, an endless Classic run, a 60-second Time Attack and a Daily Run seeded from the date.<br><br>
+      Six biomes bring their own scenery and dangers: wind gusts, falling icicles, bats, laser beams and fireballs. Coins pay for fifteen Nest upgrades, and six birds with real perks wait in the Aviary.<br><br>
       Part of the &raquo;SynthelicZ&laquo; Desktop.
     </div>
     <div class="dialog-buttons">
@@ -116,18 +118,22 @@
 </div>
 
 <div id="seo-content" style="position:absolute;left:-9999px;overflow:hidden;width:1px;height:1px">
-<h1>Flappy Bird - Free Online Browser Game with Medals and Progressive Difficulty</h1>
-<p>Tap to flap and guide a bird through an endless series of pipes. Simple one-button controls with progressive difficulty, medal tiers, parallax scrolling backgrounds, and particle effects.</p>
+<h1>Flappy Bird - Free Online Browser Game with Four Modes, Six Biomes and a Nest Tech Tree</h1>
+<p>Tap to flap and guide a bird through gates that move, close and hide hazards. Play Adventure across 24 stages in six worlds, an endless Classic run, a 60-second Time Attack or a Daily Run whose course is seeded from the date. Collect coins, keep a perfect-pass combo alive, and spend your earnings on upgrades and new birds.</p>
 <h2>Features</h2>
 <ul>
-<li>One-button gameplay: tap Space or click to flap with gravity physics</li>
-<li>Progressive difficulty every 12 points: shrinking pipe gaps, faster scrolling, tighter spacing</li>
-<li>Medal system: Bronze (10+), Silver (25+), Gold (50+), Platinum (100+)</li>
-<li>Parallax scrolling scenery with clouds, hills, and sky gradient</li>
-<li>Flap particles, golden score sparkles, floating +1 text, and screen shake on death</li>
-<li>Death tumble animation before game-over screen</li>
-<li>Persistent top-5 high scores via localStorage</li>
-<li>Instant restart from death screen</li>
+<li>One-button gameplay: tap Space or click to flap, hold while falling to glide once the Glide upgrade is learned</li>
+<li>Four modes: Adventure (24 stages, six worlds, 72 stars), Classic with medals, 60-second Time Attack, and a seeded Daily Run</li>
+<li>Six biomes with their own sky, parallax scenery, gate style and weather: Sunny Meadow, Dune Canyon, Frost Peaks, Twilight Woods, Neon City and Ember Volcano</li>
+<li>Biome hazards: wind gusts, falling icicles, bats, pulsing laser beams and ground fireballs, plus gates that slide or close</li>
+<li>Coins in every gap, PERFECT passes that build a combo paying x2, x3 and x4, and CLOSE bonus coins for a near miss</li>
+<li>Six power-ups: shield, coin magnet, slow motion, ghost, double coins and a tiny bird with a smaller hitbox</li>
+<li>Hearts, invulnerability after a hit and a Phoenix Feather revive instead of one-hit death</li>
+<li>Nest tech tree with 15 upgrades in five branches, bought with banked coins</li>
+<li>Aviary with six birds, each with a perk, unlocked by coins or by clearing stages</li>
+<li>Feathers, sparkles, coin rings, afterimage trails, screen shake, hit-stop and confetti on a new best</li>
+<li>Synthesized sound effects with a remembered mute switch</li>
+<li>Persistent save of coins, stars, bests, upgrades and birds, plus a Classic top-5 high-score table</li>
 </ul>
 </div>
 <script>document.getElementById('seo-content')?.remove();</script>
@@ -137,6 +143,10 @@
 <script src="../../shared/game-effects.js"></script>
 <script src="../../shared/game-autopause.js"></script>
 <script src="../../shared/game-audio.js"></script>
+<script src="course.js"></script>
+<script src="bird-art.js"></script>
+<script src="scene-art.js"></script>
+<script src="flappy-ui.js"></script>
 <script src="controller.js"></script>
 </body>
 </html>
