@@ -1680,7 +1680,7 @@
       if (node.regex) return { c: `js::Any(js::newRegExp(${u16Literal(node.regex.pattern)}, ${u16Literal(node.regex.flags || '')}))`, t: T.any };
       if (v === null && node.bigint === undefined) return { c: 'nullptr', t: T.null };
       if (typeof v === 'boolean') return { c: v ? 'true' : 'false', t: T.bool };
-      if (typeof v === 'string') return { c: lit(v), t: T.str };
+      if (typeof v === 'string') return { c: lit(v), t: T.str, sv: v };
       if (typeof v === 'bigint' || node.bigint !== undefined) {
         const text = typeof v === 'bigint' ? v.toString() : String(node.bigint).replace(/n$/, '');
         const big = BigInt(text.startsWith('0x') || text.startsWith('0b') || text.startsWith('0o') ? text : text);
@@ -1989,6 +1989,8 @@
       if (['==', '!=', '===', '!=='].includes(op)) return { c: this.equality(op, L, R), t: T.bool };
       if (['<', '>', '<=', '>='].includes(op)) return this.compare(op, L, R);
       if (L.t.k === 'sfn' || R.t.k === 'sfn') { L = { c: this.cv(L, T.any), t: T.any }; R = { c: this.cv(R, T.any), t: T.any }; }
+      // two string literals: one literal (thousands of nested concatenations compile for minutes)
+      if (op === '+' && typeof L.sv === 'string' && typeof R.sv === 'string') return { c: lit(L.sv + R.sv), t: T.str, sv: L.sv + R.sv };
       if (op === '+' && (L.t.k === 'str' || R.t.k === 'str' || (rt && rt.k === 'str' && !(isNumOrBool(L.t) && isNumOrBool(R.t))))) {
         return { c: `js::concat(${L.c}, ${R.c})`, t: T.str };
       }
