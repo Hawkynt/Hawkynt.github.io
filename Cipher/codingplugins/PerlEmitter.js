@@ -357,6 +357,16 @@ sub _JsTypeof {
     return 'object' if $kind;
     return Scalar::Util::looks_like_number($value) ? 'number' : 'string';
 }
+# An int32 with its sign, from either representation of its bit pattern;
+# anything else (a fraction, a wider number) is returned as it is
+sub _Int32 {
+    my $v = $_[0] // 0;
+    return $v if $v != int($v) || $v < -2147483648 || $v > 4294967295;
+    return $v > 2147483647 ? $v - 4294967296 : $v;
+}
+# A double's value: Perl computes integral operands exactly, JavaScript
+# rounds every result beyond 2^53 to the nearest double
+sub _F64 { my $v = $_[0]; return ($v > 9007199254740992 || $v < -9007199254740992) ? unpack('d', pack('d', $v)) : $v; }
 sub _JsByteLength { my ($view) = @_; return ref($view) eq 'ARRAY' ? scalar(@$view) : length($view // ''); }
 sub _JsFromEntries { my ($entries) = @_; return { map { ($_->[0] => $_->[1]) } @{$entries || []} }; }
 sub SpongePadBlocks {

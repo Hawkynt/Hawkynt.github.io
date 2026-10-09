@@ -8993,10 +8993,23 @@
     transformBinaryExpression(node) {
       // Floating-point arithmetic is Perl's own (an NV), whatever integer
       // emulation the operands' file may otherwise need
+      // emulation the operands' file may otherwise need. An int32 operand
+      // takes part with its sign: the 32-bit arithmetic may hold it as the
+      // unsigned bit pattern (see the 'int32' Cast).
       if (/^(float64|float32|double)$/.test(node.resultType || '') && ['+', '-', '*', '/'].includes(node.operator) &&
-          !this.isStringType(node.left) && !this.isStringType(node.right))
-        return new PerlGrouped(new PerlBinaryExpression(
-          this.transformExpression(node.left), node.operator, this.transformExpression(node.right)));
+          !this.isStringType(node.left) && !this.isStringType(node.right)) {
+        const operand = (n) => {
+          const value = this.transformExpression(n);
+          // only a stored value: an int32-typed expression may exceed 32 bits
+          return /^(int32|int)$/.test(n?.resultType || '') && /^(Identifier|MemberExpression|ThisPropertyAccess)$/.test(n.type)
+            ? new PerlCall(new PerlIdentifier('main::_Int32', ''), [value]) : value;
+        };
+        const arithmetic = new PerlGrouped(new PerlBinaryExpression(operand(node.left), node.operator, operand(node.right)));
+        // Perl keeps integral operands in exact integer arithmetic; a
+        // double's result beyond 2^53 is rounded (see _F64)
+        if (node.operator === '/') return arithmetic;
+        return new PerlCall(new PerlIdentifier('main::_F64', ''), [arithmetic]);
+      }
       // A BigInt masked to at most 64 bits: native 64-bit arithmetic
       if (this._isBigIntType(node.resultType) && node.operator === '&') {
         const rightMask = this._constantIntegerValue(node.right);

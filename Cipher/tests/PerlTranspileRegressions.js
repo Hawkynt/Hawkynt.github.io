@@ -339,6 +339,15 @@ check('typeof gives JavaScript\'s names; a field named like another class\'s met
   expectOutput(runPerl(TYPEOF_SNIPPET, 'print main::f([1], "x"), "\\n";'), 'object,string,number,undefined,bigint,1.5,8');
 });
 
+const DOUBLE_SNIPPET = '/** @param {uint32} mix @returns {string} */\n' +
+  'function lcg(mix) { /** @type {int32} */ let seed = OpCodes.ToInt(mix); /** @type {float64} */ const M = 1103515245;\n' +
+  '  /** @type {float64} */ const product = M * seed + 12345; return [product < 0 ? 1 : 0, OpCodes.ToInt(OpCodes.And32(product, 0x7fffffff))].join(","); }';
+check('numbers: float64 arithmetic rounds as doubles do and reads an int32 with its sign', () => {
+  if (!hasPerl()) return 'skip';
+  // JavaScript: lcg(0x89ABCDEF) is "1,1824502016"
+  expectOutput(runPerl(DOUBLE_SNIPPET, 'print main::lcg(0x89ABCDEF), "\\n";'), '1,1824502016');
+});
+
 /**
  * PERL: run every regression case.
  * @param {object} options - { verbose }
