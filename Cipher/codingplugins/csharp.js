@@ -1296,18 +1296,19 @@ namespace ${namespace}
             }
             return result;
         }
-        public static byte[] SliceArray(byte[] arr, int start, int end) {
-            var result = new byte[end - start];
-            System.Array.Copy(arr, start, result, 0, result.Length);
-            return result;
-        }
+        // Array.prototype.slice: a negative bound counts from the end, both are
+        // clamped to the array, and an end before the start gives nothing.
+        public static byte[] SliceArray(byte[] arr, int start, int end) => SliceArray<byte>(arr, start, end);
         // Generic fallback for non-byte element arrays (e.g. uint[] bit/word arrays -
         // common in permutation-heavy ciphers like DES). The non-generic byte[]
         // overload above is still preferred by C# overload resolution for byte[]
         // arguments, so this only ever applies where no byte[] overload matches.
         public static T[] SliceArray<T>(T[] arr, int start, int end) {
-            var result = new T[end - start];
-            System.Array.Copy(arr, start, result, 0, result.Length);
+            int length = arr.Length;
+            int from = start < 0 ? Math.Max(length + start, 0) : Math.Min(start, length);
+            int to = end < 0 ? Math.Max(length + end, 0) : Math.Min(end, length);
+            var result = new T[Math.Max(to - from, 0)];
+            System.Array.Copy(arr, from, result, 0, result.Length);
             return result;
         }
         public static uint ToDWord(long v) => (uint)(v & 0xFFFFFFFF);

@@ -520,6 +520,17 @@ check('harness: a dependency that fails to transpile names the dependency', () =
 });
 
 // ---------------------------------------------------------------------------
+// Array.prototype.slice
+// ---------------------------------------------------------------------------
+check('slice: a negative bound is passed on negative, for SliceArray to count from the end', () => {
+  const code = transpile('/**\n * @param {uint8[]} a - a\n * @param {int32} n - n\n * @returns {uint8[]} r\n */\n' +
+    'function f(a, n) { return a.slice(-n).concat(a.slice(0, -4)); }');
+  expectMatch(code, /SliceArray\(a, -n, a\.Length\)/, 'SliceArray(a, -n, a.Length)');
+  expectMatch(code, /SliceArray\(a, 0, -4\)/, 'SliceArray(a, 0, -4)');
+  expectNoMatch(code, /a\.Length - /, 'a bound computed as Length - n');
+});
+
+// ---------------------------------------------------------------------------
 // Switch statements: JavaScript fall-through as an explicit jump
 // ---------------------------------------------------------------------------
 check('switch: a case falling through into default jumps with `goto default;`', () => {
@@ -676,6 +687,13 @@ namespace RegressionTest {
       Eq("rotl64-hl", OpCodes.RotL64_HL(0x80000000u, 1u, 1), (0u, 3u));
       Eq("rotl64-hl-32", OpCodes.RotL64_HL(1u, 2u, 32), (2u, 1u));
       Eq("rotl64-hl-0", OpCodes.RotL64_HL(1u, 2u, 64), (1u, 2u));
+      // SliceArray is Array.prototype.slice: bounds clamp, negatives count from the end
+      Eq("slice-past-end", Convert.ToHexString(OpCodes.SliceArray(new byte[] { 1, 2, 3 }, 1, 9)), "0203");
+      Eq("slice-neg-start", Convert.ToHexString(OpCodes.SliceArray(new byte[] { 1, 2, 3 }, -2, 3)), "0203");
+      Eq("slice-neg-past", Convert.ToHexString(OpCodes.SliceArray(new byte[] { 1, 2, 3 }, -5, 3)), "010203");
+      Eq("slice-neg-end", Convert.ToHexString(OpCodes.SliceArray(new byte[] { 1, 2, 3 }, 0, -1)), "0102");
+      Eq("slice-crossed", OpCodes.SliceArray(new byte[] { 1, 2, 3 }, 2, 1).Length, 0);
+      Eq("slice-generic", string.Join(",", OpCodes.SliceArray(new uint[] { 7, 8 }, 1, 5)), "8");
       Console.WriteLine(failures == 0 ? "STUBS_OK" : "STUBS_FAILED");
       return failures == 0 ? 0 : 1;
     }

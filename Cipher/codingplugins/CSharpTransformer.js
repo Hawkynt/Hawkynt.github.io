@@ -23737,14 +23737,11 @@
 
       // Determine start index
       let startExpr;
+      // A negative bound stays negative (as an int): SliceArray counts it from the
+      // end and clamps it, as slice does (Length - n would go wrong for n > Length)
       if (node.start && isNegativeExpression(node.start)) {
-        // Negative start: arr.slice(-n) -> start = arr.Length - n
         const positiveStart = getPositiveExpression(node.start);
-        startExpr = new CSharpBinaryExpression(
-          new CSharpMemberAccess(array, 'Length'),
-          '-',
-          this.ensureIntIndex(positiveStart, getPositiveJsNode(node.start))
-        );
+        startExpr = new CSharpUnaryExpression('-', this.ensureIntIndex(positiveStart, getPositiveJsNode(node.start)));
       } else {
         startExpr = node.start ? this.ensureIntIndex(this.transformExpression(node.start), node.start) : CSharpLiteral.Int(0);
       }
@@ -23752,13 +23749,8 @@
       // Determine end index
       let endExpr;
       if (node.end && isNegativeExpression(node.end)) {
-        // Negative end: arr.slice(0, -n) -> end = arr.Length - n
         const positiveEnd = getPositiveExpression(node.end);
-        endExpr = new CSharpBinaryExpression(
-          new CSharpMemberAccess(array, 'Length'),
-          '-',
-          this.ensureIntIndex(positiveEnd, getPositiveJsNode(node.end))
-        );
+        endExpr = new CSharpUnaryExpression('-', this.ensureIntIndex(positiveEnd, getPositiveJsNode(node.end)));
       } else if (node.end) {
         endExpr = this.ensureIntIndex(this.transformExpression(node.end), node.end);
       } else {
