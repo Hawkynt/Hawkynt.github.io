@@ -609,6 +609,11 @@ check('arrays: a growable field stored at an index read from another table grows
     '    for (let i = 0; i < 3; i++) this.rev[this.fwd[i]] = i; }\n}');
   expectMatch(code, /OpCodes\.Grown<int>\(this\.Rev, this\.Fwd\[i\]\)/, 'OpCodes.Grown(this.Rev, this.Fwd[i])');
 });
+check('arrays: a row stored as an empty array and filled past its end grows in place', () => {
+  const code = transpile('/**\n * @param {uint8[]} d - data\n * @returns {uint8[][]} m\n */\nfunction f(d) {\n  /** @type {uint8[][]} */\n  const m = [];\n' +
+    '  for (let r = 0; r < 2; r++) { m[r] = OpCodes.CreateArray(0, 0); for (let c = 0; c < 2; c++) m[r][c] = d[r * 2 + c]; }\n  return m;\n}');
+  expectMatch(code, /OpCodes\.SetGrow<byte>\(ref m\[r\], c, /, 'SetGrow(ref m[r], c, ...)');
+});
 check('arrays: a store past the end of a pushed row grows that row in place', () => {
   const code = transpile('/**\n * @param {uint16[]} w - words\n * @returns {uint16[][]} tables\n */\nfunction build(w) {\n' +
     '  /** @type {uint16[][]} */\n  const tables = [];\n  for (let t = 0; t < 2; t++) { /** @type {uint16[]} */ const row = [0]; tables.push(row); }\n' +

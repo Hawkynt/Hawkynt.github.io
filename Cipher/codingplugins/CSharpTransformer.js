@@ -11537,6 +11537,13 @@
           const values = Array.isArray(node.values) && node.values.length ? node.values : [node.value];
           if (values.some(v => isLiteral(v) || (v?.type === 'Identifier' && literalLocals.has(v.name)))) withRows.add(node.array.name);
         }
+        // A row stored as an empty array (matrix[r] = OpCodes.CreateArray(0, 0))
+        const emptyCreation = n => isLiteral(n) ? (n.elements || []).length === 0
+          : (n?.type === 'OpCodesCall' || n?.type === 'CallExpression') && (n.method === 'CreateArray' || n.callee?.property?.name === 'CreateArray') &&
+            n.arguments?.[0]?.type === 'Literal' && n.arguments[0].value === 0;
+        if (node.type === 'AssignmentExpression' && node.operator === '=' && node.left?.type === 'MemberExpression' && node.left.computed &&
+            node.left.object?.type === 'Identifier' && emptyCreation(node.right))
+          withRows.add(node.left.object.name);
         if (node.type === 'AssignmentExpression' && node.operator === '=' && node.left?.type === 'MemberExpression' && node.left.computed &&
             node.left.object?.type === 'MemberExpression' && node.left.object.computed && node.left.object.object?.type === 'Identifier')
           rowStored.add(node.left.object.object.name);
