@@ -64,6 +64,7 @@
           packageName,
           library: !!merged.library,
           symbolPrefix: merged.symbolPrefix || '',
+          libraries: merged.libraries,
           lenient: !!merged.lenient
         });
         const file = transformer.transform(ast);

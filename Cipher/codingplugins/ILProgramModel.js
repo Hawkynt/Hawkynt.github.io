@@ -38,6 +38,7 @@
     Uint8Array: 'uint8[]', Uint8ClampedArray: 'uint8[]', Int8Array: 'int8[]', Uint16Array: 'uint16[]',
     Int16Array: 'int16[]', Uint32Array: 'uint32[]', Int32Array: 'int32[]', Float32Array: 'float64[]',
     Float64Array: 'float64[]', BigUint64Array: 'bigint[]', BigInt64Array: 'bigint[]', '*': 'any', mixed: 'any',
+    ArrayBuffer: 'uint8[]',
     undefined: 'void'
   };
 
@@ -369,6 +370,29 @@
   }
 
   /**
+   * The IL types a function body gives its local names where they are
+   * assigned or read: for a declarator the IL left untyped (let a, b; with
+   * the values assigned later). First typed assignment wins, else first typed read.
+   * @param {Object} body - function body
+   * @returns {Map<string, string>} name -> IL type
+   */
+  function localUseTypes(body) {
+    const assigned = new Map();
+    const read = new Map();
+    walk(body, n => {
+      if (n.type === 'AssignmentExpression' && n.left && n.left.type === 'Identifier') {
+        const t = canonicalType(n.left.resultType || n.right.resultType);
+        if (t && t !== 'null' && t !== 'any' && !assigned.has(n.left.name)) assigned.set(n.left.name, t);
+      } else if (n.type === 'Identifier' && n.name) {
+        const t = canonicalType(n.resultType);
+        if (t && t !== 'null' && t !== 'any' && t !== 'function' && !read.has(n.name)) read.set(n.name, t);
+      }
+    });
+    for (const [k, v] of read) if (!assigned.has(k)) assigned.set(k, v);
+    return assigned;
+  }
+
+  /**
    * The parameters of a function: name, IL type, nullable, default value node.
    * @param {Object} fn - FunctionExpression / FunctionDeclaration / ArrowFunction
    * @param {Object} [jsDoc] - the method's JSDoc
@@ -404,10 +428,108 @@
     const useFramework = options.framework !== false;
     const frameworkBody = useFramework ? frameworkIL() : [];
     for (const stmt of frameworkBody) model.addTopLevel(stmt, 'framework');
-    for (const stmt of (program && program.body) || []) model.addTopLevel(stmt, 'main');
+    let body = (program && program.body) || [];
+    for (const lib of options.libraries || []) body = mergeLibrary(body, lib);
+    for (const stmt of body) model.addTopLevel(stmt, 'main');
     model.link();
     model.computeReachable();
     return model;
+  }
+
+  /**
+   * Bundle a library an algorithm takes through a factory parameter (a .data.js
+   * file: function (AlgorithmFramework, OpCodes, Library)). The library's
+   * top-level names get the prefix "<param>__" and its statements go ahead of
+   * the program's; in the program, Param.X becomes that prefixed X, a name
+   * destructured from the parameter its prefixed name, and the parameter itself
+   * (as a value) a module object of the exports - or, for a library exporting
+   * one value, that value.
+   * @param {Object[]} body - program statements
+   * @param {{param: string, ast: Object, names: string[], single: string|null}} lib
+   * @returns {Object[]} the merged statements
+   */
+  function mergeLibrary(body, lib) {
+    const prefix = lib.param + '__';
+    const declared = new Set();
+    for (const s of (lib.ast && lib.ast.body) || []) {
+      if ((s.type === 'FunctionDeclaration' || s.type === 'ClassDeclaration') && s.id) declared.add(s.id.name);
+      if (s.type === 'VariableDeclaration') for (const d of s.declarations) if (d.id && d.id.type === 'Identifier') declared.add(d.id.name);
+    }
+    const renameIn = (root, names, to) => walk(root, n => {
+      if (n.type === 'Identifier' && names.has(n.name)) n.name = to(n.name);
+      if (n.type === 'ClassDeclaration' && n.superClass && n.superClass.type === 'Identifier' && names.has(n.superClass.name)) n.superClass.name = to(n.superClass.name);
+      if (n.type === 'NewExpression' && n.callee && n.callee.type === 'Identifier' && names.has(n.callee.name)) n.callee.name = to(n.callee.name);
+      for (const key of ['resultType', 'contextType', 'declaredType']) {
+        if (typeof n[key] === 'string') {
+          let base = n[key];
+          let dims = '';
+          while (base.endsWith('[]')) { base = base.slice(0, -2); dims += '[]'; }
+          if (names.has(base)) n[key] = to(base) + dims;
+        }
+      }
+      if (n.type === 'ParentConstructorCall' && names.has(n.parentClass)) n.parentClass = to(n.parentClass);
+    });
+    // Only the library's declarations: its other top-level statements are module plumbing (exports)
+    const libBody = ((lib.ast && lib.ast.body) || []).filter(s => ['FunctionDeclaration', 'ClassDeclaration', 'VariableDeclaration'].includes(s.type));
+    renameIn(libBody, declared, n => prefix + n);
+    const exported = new Set(lib.names || []);
+    // In the program: Param.X -> prefixed X; { X } = Param -> prefixed X; Param -> module object
+    const destructured = new Map(); // local name -> exported name
+    const kept = [];
+    const propName = p => typeof p === 'string' ? p : (p && (p.name || p.value));
+    for (const s of body) {
+      if (s.type === 'VariableDeclaration' && s.declarations.length && s.declarations.every(d => d.id && d.id.type === 'ObjectPattern' && d.init && d.init.type === 'Identifier' && d.init.name === lib.param)) {
+        for (const d of s.declarations) for (const p of d.id.properties || []) {
+          const key = propName(p.key);
+          const local = p.value && p.value.type === 'Identifier' ? p.value.name : key;
+          if (key) destructured.set(local, key);
+        }
+        continue;
+      }
+      // The IL's form of const { X, Y } = Param: const _destructure_0 = Param, X = _destructure_0.X, ...
+      const first = s.type === 'VariableDeclaration' && s.declarations[0];
+      if (first && first.ilNodeType === 'DestructureTemp' && first.init && first.init.type === 'Identifier' && first.init.name === lib.param) {
+        const temp = first.id.name;
+        for (const d of s.declarations.slice(1)) {
+          if (d.init && d.init.type === 'MemberExpression' && d.init.object && d.init.object.name === temp && d.id && d.id.type === 'Identifier')
+            destructured.set(d.id.name, propName(d.init.property));
+        }
+        continue;
+      }
+      kept.push(s);
+    }
+    const target = name => lib.single ? prefix + lib.single : prefix + (destructured.get(name) || name);
+    const member = v => {
+      if (!v || typeof v !== 'object' || v.type !== 'MemberExpression' || v.computed || !v.object || v.object.type !== 'Identifier' || v.object.name !== lib.param || lib.single) return null;
+      const prop = typeof v.property === 'string' ? v.property : (v.property && (v.property.name || v.property.value));
+      return exported.has(prop) ? Object.assign({}, v, { type: 'Identifier', name: prefix + prop, object: undefined, property: undefined }) : null;
+    };
+    walk(kept, n => {
+      for (const key of Object.keys(n)) {
+        if (key === 'parent') continue;
+        const v = n[key];
+        if (Array.isArray(v)) v.forEach((x, i) => { const r = member(x); if (r) v[i] = r; });
+        else { const r = member(v); if (r) n[key] = r; }
+      }
+    });
+    if (destructured.size) renameIn(kept, new Set(destructured.keys()), target);
+    if (lib.single) renameIn(kept, new Set([lib.param]), () => prefix + lib.single);
+    // The parameter as a value (if (!Param), const C = Param): the module object
+    const moduleObject = lib.single ? null : {
+      type: 'VariableDeclaration', kind: 'const',
+      declarations: [{
+        type: 'VariableDeclarator', resultType: 'object',
+        id: { type: 'Identifier', name: lib.param, resultType: 'object' },
+        init: {
+          type: 'ObjectLiteral', resultType: 'object',
+          properties: [...exported].filter(name => declared.has(name)).map(name => ({
+            type: 'ObjectProperty', key: name, computed: false,
+            value: { type: 'Identifier', name: prefix + name, resultType: 'any' }
+          }))
+        }
+      }]
+    };
+    return [...libBody, ...(moduleObject ? [moduleObject] : []), ...kept];
   }
 
   class ClassInfo {
@@ -562,12 +684,16 @@
         for (let c = info; c; c = c.base) if (c.getters.has(name) || c.setters.has(name) || c.methods.has(name)) return true;
         return false;
       };
-      const record = (name, type, nullable, fromRead) => {
+      const record = (name, type, nullable, fromRead, mixed) => {
         if (!name || isAccessor(name)) return;
-        const t = canonicalType(type) || null;
+        const t = mixed ? 'any' : (canonicalType(type) || null);
         const existing = info.fields.get(name);
-        if (!existing) info.fields.set(name, { type: t || 'any', nullable: !!nullable, owner: info, fromRead });
-        else {
+        if (!existing) info.fields.set(name, { type: t || 'any', nullable: !!nullable, owner: info, fromRead, mixed: !!mixed });
+        else if (mixed || existing.mixed) {
+          existing.type = 'any';
+          existing.mixed = true;
+          if (!fromRead) existing.fromRead = false;
+        } else {
           if ((existing.type === 'any' || existing.type === 'null' || (existing.fromRead && !fromRead)) && t && t !== 'null') existing.type = t;
           if (!fromRead) existing.fromRead = false;
           if (nullable) existing.nullable = true;
@@ -578,7 +704,13 @@
           if (node.type === 'ClassDeclaration') return false;
           if (node.type === 'AssignmentExpression' && node.left && node.left.type === 'ThisPropertyAccess' && !node.left.computed) {
             const t = node.left.resultType && node.left.resultType !== 'null' ? node.left.resultType : (node.declaredType || node.right.resultType);
-            record(node.left.property, t, node.left.nullable || node.nullable || node.declaredNullable, false);
+            // A field declared an object (a framework enum) that is assigned a string or a number holds either: no one type
+            const declared = canonicalType(t);
+            const assigned = canonicalType(node.right.resultType);
+            const primitive = x => x === 'string' || x === 'boolean' || isNumericType(x);
+            const objectLike = x => !!x && !primitive(x) && !isArrayType(x) && !isBigType(x) && !['any', 'null', 'void', 'function'].includes(x);
+            const mixed = objectLike(declared) && primitive(assigned);
+            record(node.left.property, t, node.left.nullable || node.nullable || node.declaredNullable, false, mixed);
           } else if (node.type === 'ThisPropertyAccess' && !node.computed) {
             record(node.property, node.resultType, node.nullable, true);
           }
@@ -600,7 +732,8 @@
         }
         for (const [k, v] of c.fields) {
           const prev = eff.fields.get(k);
-          if (!prev || (prev.type === 'any' && v.type !== 'any') || (!v.fromRead && prev.fromRead)) eff.fields.set(k, v);
+          // The most derived class that assigns the field decides its type: that is what it holds
+          if (!prev || v.mixed || (prev.type === 'any' && v.type !== 'any' && !prev.mixed) || (!v.fromRead && v.type !== 'any' && !prev.mixed)) eff.fields.set(k, v);
         }
         for (const [k, v] of c.staticMethods) eff.staticMethods.set(k, v);
         for (const [k, v] of c.staticFields) eff.staticFields.set(k, v);
@@ -666,7 +799,7 @@
 
   const ILProgramModel = {
     buildModel, ProgramModel, ClassInfo, frameworkIL, insertSemicolons, walk, constructedName,
-    canonicalType, jsDocToIL, jsDocNullable, functionReturnType, functionReturnNullable, functionParams,
+    canonicalType, jsDocToIL, jsDocNullable, functionReturnType, localUseTypes, functionReturnNullable, functionParams,
     isArrayType, elementType, isIntType, isFloatType, isNumericType, isBigType, intBits, isSignedInt, isTupleType,
     RUNTIME_PROVIDED
   };
