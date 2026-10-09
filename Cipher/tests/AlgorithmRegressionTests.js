@@ -111,9 +111,14 @@ test('TupleHash256: given the customization is set after the elements, when hash
 // scripts: what an algorithm meets when the hash or cipher it builds on is not
 // on the page.
 function pageWith(...files) {
+  return pageOf(undefined, files);
+}
+/** pageWith, with the page's Web Crypto object (undefined: none, as pageWith) */
+function pageOf(webCrypto, files) {
   const fs = require('fs');
   const vm = require('vm');
   const sandbox = require('./BrowserLoad').browserContext();
+  if (webCrypto) sandbox.crypto = webCrypto;
   for (const file of ['AlgorithmFramework.js', 'OpCodes.js', ...files]) {
     vm.runInContext(fs.readFileSync(path.join(CIPHER_ROOT, file), 'utf8'), sandbox, { filename: file });
   }
@@ -541,6 +546,72 @@ test('ZUC-128-MAC: given a page that loads ZUC after it, when 400 zero bits are 
 test('ZUC-128-MAC: given a page without ZUC, when a tag is computed, then it is refused naming ZUC', () => {
   const framework = pageWith('algorithms/mac/zuc128mac.js');
   expectThrow(() => zucMac(framework), 'ZUC');
+});
+
+/** Runs every committed vector of a registered algorithm forward and returns the outputs in hex */
+function committedVectors(framework, name) {
+  const algorithm = framework.Find(name);
+  return algorithm.tests.map(vector => {
+    const instance = algorithm.CreateInstance();
+    for (const field of Object.keys(vector)) {
+      if (field !== 'text' && field !== 'uri' && field !== 'input' && field !== 'expected') instance[field] = vector[field];
+    }
+    instance.Feed(vector.input);
+    return { actual: hex(instance.Result()), expected: hex(vector.expected), text: vector.text };
+  });
+}
+function expectCommittedVectors(framework, name) {
+  for (const { actual, expected, text } of committedVectors(framework, name)) {
+    if (actual !== expected) throw new Error(`${text}: expected ${expected}, got ${actual}`);
+  }
+}
+
+test('KDF2: given a page that loads the SHA family after it, when every committed vector is derived, then each matches', () => {
+  const framework = pageWith('algorithms/kdf/kdf2.js', 'algorithms/hash/sha1.js', 'algorithms/hash/sha256.js', 'algorithms/hash/sha512.js');
+  expectCommittedVectors(framework, 'KDF2');
+});
+test('KDF2: given a page without SHA-1, when a key is derived, then it is refused naming SHA-1', () => {
+  const framework = pageWith('algorithms/kdf/kdf2.js');
+  expectThrow(() => committedVectors(framework, 'KDF2'), 'SHA-1');
+});
+
+for (const mode of ['Feedback', 'Pipeline']) {
+  const file = `algorithms/kdf/sp800-108-${mode.toLowerCase()}.js`;
+  test(`SP800-108-${mode}: given a page that loads HMAC and the SHA family after it, when every committed vector is derived, then each matches`, () => {
+    const framework = pageWith(file, 'algorithms/hash/sha1.js', 'algorithms/hash/sha256.js', 'algorithms/hash/sha512.js', 'algorithms/mac/hmac.js');
+    expectCommittedVectors(framework, `SP800-108-${mode}`);
+  });
+  test(`SP800-108-${mode}: given a page without HMAC, when a key is derived, then it is refused as HMAC not registered`, () => {
+    const framework = pageWith('algorithms/hash/sha1.js', file);
+    expectThrow(() => committedVectors(framework, `SP800-108-${mode}`), 'HMAC is not registered');
+  });
+}
+
+function rfc3211(framework, isInverse, data) {
+  const instance = framework.Find('RFC 3211 Key Wrap').CreateInstance(isInverse);
+  instance.cipherName = 'DES';
+  instance.key = Array.from(Buffer.from('D1DAA78615F287E6', 'hex'));
+  instance.iv = Array.from(Buffer.from('EFE598EF21B33D6D', 'hex'));
+  instance.Feed(data);
+  return instance.Result();
+}
+/** A page as pageWith builds it, plus the Web Crypto random source a browser has */
+function pageWithWebCrypto(...files) {
+  return pageOf({ getRandomValues: array => globalThis.crypto.getRandomValues(array) }, files);
+}
+const RFC3211_CEK = Array.from(Buffer.from('8C627C897323A2F8', 'hex'));
+test('RFC 3211 Key Wrap: given a page with DES and Web Crypto but no fixed padding, when a key is wrapped twice, then the padding differs and both unwrap to the key', () => {
+  const framework = pageWithWebCrypto('algorithms/block/des.js', 'algorithms/crypto/rfc3211wrap.js');
+  const cek = RFC3211_CEK;
+  const first = rfc3211(framework, false, cek);
+  const second = rfc3211(framework, false, cek);
+  if (hex(first) === hex(second)) throw new Error('two wraps share their random padding');
+  equalHex(rfc3211(framework, true, first), hex(cek));
+  equalHex(rfc3211(framework, true, second), hex(cek));
+});
+test('RFC 3211 Key Wrap: given a page without a secure random source and no fixed padding, when a key is wrapped, then it is refused - never padded predictably', () => {
+  const framework = pageWith('algorithms/block/des.js', 'algorithms/crypto/rfc3211wrap.js');
+  expectThrow(() => rfc3211(framework, false, RFC3211_CEK), 'no secure random source');
 });
 
 /**
