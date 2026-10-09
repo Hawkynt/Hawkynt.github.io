@@ -4674,6 +4674,8 @@
             // to "8 - i" characters instead of 8).
             end: methodName === 'substr' ? null : (args[1] || null),
             length: methodName === 'substr' ? (args[1] || null) : null,
+            // slice counts a negative index from the end, substring clamps it to 0
+            method: methodName,
             resultType: 'string',
             ilNodeType: 'StringSubstring'
           };

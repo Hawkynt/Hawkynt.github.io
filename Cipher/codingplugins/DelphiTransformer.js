@@ -3088,7 +3088,7 @@
           case 'split': return this.xStringSplit({ string: S, separator: args[0] });
           case 'indexOf': case 'lastIndexOf': return this.xStringIndexOf({ string: S, searchValue: args[0], fromIndex: args[1], method: name });
           case 'includes': case 'startsWith': case 'endsWith': return this.xStringIncludes({ string: S, searchValue: args[0], method: name });
-          case 'substring': case 'slice': return this.xStringSubstring({ string: S, start: args[0], end: args[1] });
+          case 'substring': case 'slice': return this.xStringSubstring({ string: S, start: args[0], end: args[1], method: name });
           case 'substr': return this.xStringSubstring({ string: S, start: args[0], length: args[1] });
           case 'repeat': return this.xStringRepeat({ string: S, count: args[0] });
           case 'padStart': case 'padEnd': return this.xStringPad({ string: S, targetLength: args[0], padString: args[1], method: name });
@@ -4066,8 +4066,9 @@
       const s = this.strOf(node.string);
       const a = node.start ? this.conv(this.ex(node.start), T.int32) : A.lit(0);
       if (node.length) return { e: A.call('JsSubstr', [s.e, a, this.conv(this.ex(node.length), T.int32)]), t: T.str };
-      if (node.end) return { e: A.call('JsSubstring', [s.e, a, this.conv(this.ex(node.end), T.int32)]), t: T.str };
-      return { e: A.call('JsSubstring', [s.e, a]), t: T.str };
+      const fn = node.method === 'slice' ? 'JsStrSlice' : 'JsSubstring';
+      if (node.end) return { e: A.call(fn, [s.e, a, this.conv(this.ex(node.end), T.int32)]), t: T.str };
+      return { e: A.call(fn, [s.e, a]), t: T.str };
     }
 
     xStringSplit(node) {
