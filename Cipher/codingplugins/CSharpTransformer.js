@@ -11459,7 +11459,36 @@
             node.left.computed && node.left.object?.type === 'Identifier')
           stored.add(node.left.object.name);
       });
-      return new Set([...emptyLocals].filter(name => stored.has(name)));
+      const growable = new Set([...emptyLocals].filter(name => stored.has(name)));
+      growable.rows = this.preScanGrowableRowLocals(bodyNode);
+      return growable;
+    }
+
+    /**
+     * Names of the locals whose rows are array literals pushed into them
+     * (`const row = [0]; table.push(row);`) and stored into past their end
+     * (`table[i][j] = v`), which grows a JavaScript row.
+     * @param {Object} bodyNode - IL function body
+     * @returns {Set<string>} JS local names
+     */
+    preScanGrowableRowLocals(bodyNode) {
+      const isLiteral = n => n && (n.type === 'ArrayExpression' || n.type === 'ArrayLiteral');
+      const literalLocals = new Set();
+      const withRows = new Set();
+      const rowStored = new Set();
+      this._walkAstNodes(bodyNode, node => {
+        if (node.type === 'VariableDeclarator' && node.id?.type === 'Identifier' && isLiteral(node.init)) literalLocals.add(node.id.name);
+      });
+      this._walkAstNodes(bodyNode, node => {
+        if (node.type === 'ArrayAppend' && node.array?.type === 'Identifier') {
+          const values = Array.isArray(node.values) && node.values.length ? node.values : [node.value];
+          if (values.some(v => isLiteral(v) || (v?.type === 'Identifier' && literalLocals.has(v.name)))) withRows.add(node.array.name);
+        }
+        if (node.type === 'AssignmentExpression' && node.operator === '=' && node.left?.type === 'MemberExpression' && node.left.computed &&
+            node.left.object?.type === 'MemberExpression' && node.left.object.computed && node.left.object.object?.type === 'Identifier')
+          rowStored.add(node.left.object.object.name);
+      });
+      return new Set([...withRows].filter(name => rowStored.has(name)));
     }
 
     /**
@@ -15020,6 +15049,25 @@
             const call = new CSharpMethodCall(new CSharpIdentifier('OpCodes'), 'SetGrow',
               [new CSharpIdentifier('ref ' + arrayExpr.name), index, value]);
             call.typeArguments = [arrayType.elementType];
+            return call;
+          }
+        }
+      }
+      // A store into a growable row of a local table (see preScanGrowableRowLocals):
+      // OpCodes.SetGrow(ref t[i], j, v) grows the row in place
+      if (node.operator === '=' && node.left?.type === 'MemberExpression' && node.left.computed &&
+          node.left.object?.type === 'MemberExpression' && node.left.object.computed &&
+          node.left.object.object?.type === 'Identifier' && this.growableArrayLocals?.rows?.has(node.left.object.object.name)) {
+        const rowType = this.inferFullExpressionType(node.left.object);
+        if (rowType?.isArray && rowType.elementType) {
+          const rowExpr = this.transformExpression(node.left.object);
+          let value = this.transformExpression(node.right);
+          value = this.castIfNeeded(value, this.inferFullExpressionType(node.right), rowType.elementType);
+          const index = this.ensureIntIndex(this.transformExpression(node.left.property), node.left.property);
+          if (rowExpr.nodeType === 'ElementAccess') {
+            const call = new CSharpMethodCall(new CSharpIdentifier('OpCodes'), 'SetGrow',
+              [new CSharpUnaryExpression('ref ', rowExpr), index, value]);
+            call.typeArguments = [rowType.elementType];
             return call;
           }
         }

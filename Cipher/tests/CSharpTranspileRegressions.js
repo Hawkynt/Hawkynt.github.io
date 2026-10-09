@@ -573,6 +573,12 @@ check('arrays: a field aliasing a local the method pushes to is assigned it agai
   expectMatch(code, /this\.Keys = keys;\s*return;/, 'the field assigned again before the early return');
   expectMatch(code, /keys = keys\.Append\([\s\S]*\}\s*this\.Keys = keys;\s*\}/, 'the field assigned again at the end');
 });
+check('arrays: a store past the end of a pushed row grows that row in place', () => {
+  const code = transpile('/**\n * @param {uint16[]} w - words\n * @returns {uint16[][]} tables\n */\nfunction build(w) {\n' +
+    '  /** @type {uint16[][]} */\n  const tables = [];\n  for (let t = 0; t < 2; t++) { /** @type {uint16[]} */ const row = [0]; tables.push(row); }\n' +
+    '  for (let r = 1; r <= 3; r++) tables[1][r] = w[r];\n  return tables;\n}');
+  expectMatch(code, /OpCodes\.SetGrow<ushort>\(ref tables\[1\], r, /, 'SetGrow(ref tables[1], r, ...)');
+});
 
 // ---------------------------------------------------------------------------
 // Numbers: JavaScript divides integers to a fraction
