@@ -80,6 +80,8 @@ const resolvedTools = new Map();
  */
 function resolveTool(name) {
   if (resolvedTools.has(name)) return resolvedTools.get(name);
+  // A program built by the run itself is started by its path
+  if (path.isAbsolute(name)) return fs.existsSync(name) ? { command: name, shell: false } : null;
   let found = null;
   for (const candidate of TOOL_ALTERNATIVES[name] || [name]) {
     if (process.platform !== 'win32') {
@@ -662,7 +664,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
 
 // Languages whose harness runs every vector; the others only prove the
 // generated code compiles and a run of theirs checks nothing.
-const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp']);
+const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp', 'delphi']);
 
 /**
  * The harness spec handed to a vector harness: per algorithm the name, the
@@ -730,7 +732,7 @@ function generateTestHarness(language, algorithmCode, spec, algorithmName, sampl
     case 'basic':
       return generateBasicTestHarness(algorithmCode, vector, algorithmName);
     case 'delphi':
-      return generateDelphiTestHarness(algorithmCode, vector, algorithmName);
+      return generateDelphiTestHarness(algorithmCode, spec, algorithmName);
     case 'kotlin':
       return generateKotlinTestHarness(algorithmCode, vector, algorithmName);
     default:
@@ -1132,36 +1134,16 @@ End 0
   };
 }
 
-// Delphi/Pascal (FreePascal) Test Harness
-function generateDelphiTestHarness(algorithmCode, vector, algorithmName) {
-  const inputLen = vector.input?.length || 0;
-  const expectedLen = vector.expected?.length || 0;
-  const inputBytes = vector.input?.map(b => b.toString()).join(', ') || '0';
-  const expectedBytes = vector.expected?.map(b => b.toString()).join(', ') || '0';
-
-  // The plugin emits a unit: it is compiled from a file of its name, used by the program
+// Delphi/Free Pascal vector harness (tests/validation-harness/harness.pas). The
+// plugin emits a unit, compiled from a file of its name and used by the
+// program; the spec is read from spec.json beside the program.
+function generateDelphiTestHarness(algorithmCode, spec, algorithmName) {
   const unit = algorithmCode.match(/^\s*unit\s+(\w+)\s*;/m);
+  if (!unit) return { success: false, error: 'the Delphi plugin emitted no unit' };
   return {
     success: true,
-    extraFiles: unit ? { [unit[1] + '.pas']: algorithmCode } : undefined,
-    code: `program TestHarness;
-{$MODE DELPHI}
-
-uses SysUtils${unit ? ', ' + unit[1] : ''};
-
-${unit ? '' : algorithmCode}
-
-const
-  InputData: array[0..${inputLen > 0 ? inputLen - 1 : 0}] of Byte = (${inputBytes || '0'});
-  ExpectedData: array[0..${expectedLen > 0 ? expectedLen - 1 : 0}] of Byte = (${expectedBytes || '0'});
-
-begin
-  WriteLn('Testing ${algorithmName}...');
-  WriteLn('Input length: ', ${inputLen});
-  WriteLn('Expected length: ', ${expectedLen});
-  WriteLn('COMPILE_OK');
-end.
-`
+    extraFiles: { [unit[1] + '.pas']: algorithmCode, 'spec.json': asciiJson(spec) },
+    code: `{ Validation of ${algorithmName} }\n` + readHarness('harness.pas').replace('__UNIT__', () => unit[1])
   };
 }
 
@@ -1456,9 +1438,9 @@ function testDelphiCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'test.pas');
   fs.writeFileSync(srcFile, code);
 
-  // FreePascal: -Cn = syntax check only (no code generation)
-  // -Mdelphi = Delphi compatibility mode
-  const result = spawnTool('fpc', ['-Cn', '-Mdelphi', srcFile], {
+  // Free Pascal, Delphi mode, optimized and linked: the vector harness runs it.
+  // -ve reports errors only; the units' own directives set the dialect.
+  const result = spawnTool('fpc', ['-Mdelphi', '-O2', '-ve', srcFile], {
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000,
     cwd: outputDir
@@ -1535,6 +1517,7 @@ function executeCode(language, outputDir) {
     case 'python': return runProcess('python', ['-X', 'utf8', path.join(outputDir, 'test.py')], { cwd: outputDir });
     case 'perl': return runProcess('perl', [path.join(outputDir, 'test.pl')], { cwd: outputDir });
     case 'csharp': return runProcess('dotnet', [path.join(outputDir, 'bin', 'Release', 'net10.0', 'Test.dll')], { cwd: outputDir });
+    case 'delphi': return runProcess(path.join(outputDir, 'test' + (process.platform === 'win32' ? '.exe' : '')), [], { cwd: outputDir });
     default: throw new Error(`${language} has no vector harness to run`);
   }
 }
