@@ -744,8 +744,31 @@
         if (p && (p.type === 'RestElement' || p.type === 'RestParameter')) { rest = true; node = p.argument || p; }
         const name = (node && (node.name || (typeof node === 'string' ? node : null))) || `p${i}`;
         let type = rest ? T.arr(this.type(node && node.resultType && String(node.resultType).replace(/\[\]$/, ''))) : this.paramType(node);
+        // a number or boolean parameter without default the body tests for undefined
+        // (an optional argument): it holds undefined when left out
+        if (!rest && !def && isNumOrBool(type) && this.testsUndefined(fnNode.body, name)) type = T.any;
         return { name, cpp: cppIdent(name), type, def, rest };
       });
+    }
+
+    /** Whether code compares the name with undefined (or loosely with null), or takes its typeof */
+    testsUndefined(body, name) {
+      const isName = n => n && n.type === 'Identifier' && n.name === name;
+      const isUndef = (n, loose) => n && ((n.type === 'Literal' && (n.value === undefined || (loose && n.value === null)) && !n.regex && n.bigint === undefined) ||
+        (n.type === 'Identifier' && n.name === 'undefined'));
+      let found = false;
+      const visit = n => {
+        if (found || !n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(visit); return; }
+        if (n.type === 'BinaryExpression' && ['===', '!==', '==', '!='].includes(n.operator)) {
+          const loose = n.operator.length === 2;
+          if ((isName(n.left) && isUndef(n.right, loose)) || (isName(n.right) && isUndef(n.left, loose))) { found = true; return; }
+        }
+        if (n.type === 'UnaryExpression' && n.operator === 'typeof' && isName(n.argument)) { found = true; return; }
+        for (const k in n) if (k !== 'loc' && k !== 'jsDoc' && k !== 'typeInfo' && k !== 'range') visit(n[k]);
+      };
+      visit(body);
+      return found;
     }
 
     methodSignature(c, m) {

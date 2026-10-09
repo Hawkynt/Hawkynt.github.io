@@ -225,6 +225,15 @@ check('C++ classes: a number field set to undefined can be undefined', () => {
   return expectOutput(runCpp(js, 'Cfg* c = (new Cfg())->__ctor(); print(given(c)); c->count = js::Any(0); print(given(c));'), ['false', 'true']);
 });
 
+check('C++ functions: an optional number parameter left out is undefined', () => {
+  const js = '/**\n * @param {int32} start - first\n * @param {int32} [length] - count, the rest when absent\n * @returns {int32} end\n */\n' +
+    'function end(start, length) { return start + (length === undefined ? 10 - start : length); }';
+  // Given a number parameter the body compares with undefined
+  // When it is passed and when it is left out
+  // Then the passed value is used, else the undefined branch is taken
+  return expectOutput(runCpp(js, 'print(end(2, 3)); print(end(2, js::Any()));'), ['5', '10']);
+});
+
 /**
  * C: run every regression case.
  * @param {object} options - { verbose }
