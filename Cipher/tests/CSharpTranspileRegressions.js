@@ -937,6 +937,13 @@ check('stub classes: a stub method result into a narrower JSDoc local is cast (C
     '  /** @returns {int32} r */\n  f() {\n    /** @type {uint8} */\n    const cell = this.m.get(1, 2);\n    return cell;\n  }\n}');
   expectMatch(code, /byte cell = (unchecked\()?\(byte\)\(?this\.M\.Get\(1, 2\)/, 'byte cell = (byte)this.M.Get(1, 2)');
 });
+check('maps: a module Map takes its value type from the .set calls of the file (CS0029)', () => {
+  const code = transpile('class Pair {\n  /** @param {int32} a - a */\n  constructor(a) {\n    /** @type {int32} */\n    this.a = a;\n  }\n}\n' +
+    'const CACHE = new Map();\n/**\n * @param {string} key - key\n * @returns {Pair} r\n */\n' +
+    'function lookup(key) {\n  /** @type {Pair} */\n  const cached = CACHE.get(key);\n  if (cached) return cached;\n' +
+    '  const pair = new Pair(1);\n  CACHE.set(key, pair);\n  return pair;\n}');
+  expectMatch(code, /Dictionary<string, Pair> CACHE = new Dictionary<string, Pair>\(\)/, 'Dictionary<string, Pair> CACHE');
+});
 check('static calls: the result of a static method of a file class is typed by its signature (CS0266)', () => {
   const code = transpile('class Coder {\n  /**\n   * @param {uint8[]} data - Input\n   * @returns {int32} r\n   */\n' +
     '  run(data) {\n    /** @type {int32} */\n    const h = Coder._hash3(data, 0);\n    return h;\n  }\n' +

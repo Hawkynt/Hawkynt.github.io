@@ -7455,6 +7455,7 @@
         if (n.type === 'MethodDefinition' && n.key?.name && n.kind !== 'constructor') this.fileClassMemberNames.add(this.toPascalCase(n.key.name));
       });
       this.renameCaseCollidingFields(jsAst);
+      this.programBody = jsAst.body || null;
       const unit = new CSharpCompilationUnit();
 
       // Standard usings for crypto code. System.Buffers.Binary is required
@@ -8445,6 +8446,14 @@
           decl.init = decl.init.object;
         }
         if (!decl.init) continue;
+
+        // A module Map (lwe-signature.js's `const KEY_CACHE = new Map();`, filled with
+        // LWEKeyPair values) takes its key/value types from the .set/.get calls across
+        // the file, as a local Map does from its function body (CS0029 otherwise)
+        if (decl.init.type === 'MapCreation' && decl.id.type === 'Identifier' && this.programBody) {
+          const usage = this.preScanLocalMapUsageTypes(this.programBody).get(decl.id.name);
+          if (usage) this._mergeMapCreationTypeTag(decl.init, usage);
+        }
 
         // Handle ObjectPattern destructuring - skip (imports framework types)
         if (decl.id.type === 'ObjectPattern') {
