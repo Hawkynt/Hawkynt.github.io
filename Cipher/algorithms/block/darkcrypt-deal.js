@@ -38,17 +38,14 @@
 
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
-    define(['../../AlgorithmFramework', '../../OpCodes', './des'], function (AlgorithmFramework, OpCodes, DES) {
-      return factory(AlgorithmFramework, OpCodes, function () { return DES; });
-    });
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
   } else if (typeof module === 'object' && module.exports) {
     module.exports = factory(
       require('../../AlgorithmFramework'),
-      require('../../OpCodes'),
-      function () { return require('./des'); }
+      require('../../OpCodes')
     );
   } else {
-    factory(root.AlgorithmFramework, root.OpCodes, function () { return root.DES; });
+    factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function () {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -56,7 +53,7 @@
   if (typeof global !== 'undefined') return global;
   if (typeof self !== 'undefined') return self;
   throw new Error('Unable to locate global object');
-})(), function (AlgorithmFramework, OpCodes, loadDES) {
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
   if (!AlgorithmFramework) throw new Error('AlgorithmFramework dependency is required');
@@ -66,25 +63,22 @@
           BlockCipherAlgorithm, IBlockCipherInstance,
           TestCase, LinkItem, Vulnerability, KeySize } = AlgorithmFramework;
 
-  /**
-   * @typedef {Object} DESModule
-   * @property {function(): BlockCipherAlgorithm} DESAlgorithm - DES algorithm class
-   * @property {function(BlockCipherAlgorithm, boolean): IBlockCipherInstance} DESInstance - DES instance class
-   */
-
   // DES is resolved at first use rather than at load: the page loads this
-  // file before des.js, so root.DES does not exist yet when this runs.
-  /** @type {DESModule|null} */
-  let desModule = null;
+  // file before des.js, so DES is not registered yet when this runs.
   /**
-   * @returns {DESModule} The DES module
+   * The registered DES (registry first, CommonJS fallback)
+   * @returns {BlockCipherAlgorithm} The DES algorithm
+   * @throws {Error} If DES is not registered
    */
-  function getDES() {
-    if (!desModule) {
-      desModule = loadDES();
-      if (!desModule) throw new Error('DES dependency is required');
+  function findDES() {
+    /** @type {BlockCipherAlgorithm} */
+    let des = AlgorithmFramework.Find('DES');
+    if (!des && typeof require !== 'undefined') {
+      try { require('./des.js'); } catch (e) { /* reported below */ }
+      des = AlgorithmFramework.Find('DES');
     }
-    return desModule;
+    if (!des) throw new Error('DES dependency is required');
+    return des;
   }
 
   const ROUNDS = 8;
@@ -179,7 +173,7 @@
       // and for key-schedule expansion. Only ever used in "encrypt" mode: DEAL
       // decryption is achieved purely by reversing the round-key order.
       /** @type {BlockCipherAlgorithm} */
-      this._desAlgorithm = new (getDES().DESAlgorithm)();
+      this._desAlgorithm = findDES();
     }
 
     /**
@@ -230,7 +224,7 @@
      */
     _desEncrypt(keyBytes, blockBytes) {
       /** @type {IBlockCipherInstance} */
-      const inst = new (getDES().DESInstance)(this._desAlgorithm, false);
+      const inst = this._desAlgorithm.CreateInstance(false);
       inst.key = keyBytes;
       inst.Feed(blockBytes);
       /** @type {uint8[]} */
