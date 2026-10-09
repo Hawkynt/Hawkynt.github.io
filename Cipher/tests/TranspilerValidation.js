@@ -1229,7 +1229,7 @@ function testCCompilation(code, outputDir) {
 
   const result = spawnTool('gcc', ['-c', srcFile, '-std=c99', '-Wall', '-fsyntax-only'], {
     encoding: 'utf-8',
-    timeout: 30000
+    timeout: timeoutSeconds() * 1000
   });
 
   return {
@@ -1246,7 +1246,7 @@ function testCppCompilation(code, outputDir) {
 
   const result = spawnTool('g++', ['-c', srcFile, '-std=c++20', '-Wall', '-fsyntax-only'], {
     encoding: 'utf-8',
-    timeout: 30000
+    timeout: timeoutSeconds() * 1000
   });
 
   return {
@@ -1294,7 +1294,7 @@ function testJavaCompilation(code, outputDir) {
 
   const result = spawnTool('javac', ['-J-Duser.language=en', srcFile], {
     encoding: 'utf-8',
-    timeout: 30000,
+    timeout: timeoutSeconds() * 1000,
     cwd: outputDir
   });
 
@@ -1329,7 +1329,7 @@ function testPHPSyntax(code, outputDir) {
 
   const result = spawnTool('php', ['-l', srcFile], {
     encoding: 'utf-8',
-    timeout: 30000
+    timeout: timeoutSeconds() * 1000
   });
 
   return {
@@ -1350,7 +1350,7 @@ function testRubySyntax(code, outputDir) {
 
   const result = spawnTool('ruby', ['-c', srcFile], {
     encoding: 'utf-8',
-    timeout: 30000
+    timeout: timeoutSeconds() * 1000
   });
 
   return {
@@ -1376,7 +1376,7 @@ function testGoCompilation(code, outputDir) {
   const result = spawnTool('go', ['build', '-o', nullDevice, '.'], {
     cwd: outputDir,
     encoding: 'utf-8',
-    timeout: 30000
+    timeout: timeoutSeconds() * 1000
   });
 
   return {
@@ -1395,7 +1395,7 @@ function testRustCompilation(code, outputDir) {
   // Compile to actual executable (works on all platforms)
   const result = spawnTool('rustc', [srcFile, '-o', exeFile], {
     encoding: 'utf-8',
-    timeout: 60000
+    timeout: timeoutSeconds() * 1000
   });
 
   return {
@@ -1417,7 +1417,7 @@ function testTypeScriptSyntax(code, outputDir) {
   // TypeScript: --noEmit for type checking without output
   const result = spawnTool('tsc', ['--noEmit', '--skipLibCheck', srcFile], {
     encoding: 'utf-8',
-    timeout: 30000
+    timeout: timeoutSeconds() * 1000
   });
 
   return {
@@ -1435,7 +1435,7 @@ function testBasicCompilation(code, outputDir) {
   // FreeBASIC: -c for compile only (no linking)
   const result = spawnTool('fbc64', ['-c', srcFile], {
     encoding: 'utf-8',
-    timeout: 30000,
+    timeout: timeoutSeconds() * 1000,
     cwd: outputDir
   });
 
@@ -1460,7 +1460,7 @@ function testDelphiCompilation(code, outputDir) {
   // -Mdelphi = Delphi compatibility mode
   const result = spawnTool('fpc', ['-Cn', '-Mdelphi', srcFile], {
     encoding: 'utf-8',
-    timeout: 30000,
+    timeout: timeoutSeconds() * 1000,
     cwd: outputDir
   });
 
@@ -1480,7 +1480,7 @@ function testKotlinCompilation(code, outputDir) {
   const jarFile = path.join(outputDir, 'test.jar');
   const result = spawnTool('kotlinc', [srcFile, '-include-runtime', '-d', jarFile], {
     encoding: 'utf-8',
-    timeout: 120000, // Kotlin compilation is slow
+    timeout: timeoutSeconds() * 2000, // Kotlin compilation is slow
     cwd: outputDir
   });
 
