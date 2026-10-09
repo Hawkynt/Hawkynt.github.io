@@ -261,6 +261,20 @@ check('grouping: a parenthesized || inside && keeps its parentheses', () => {
 });
 
 // ---------------------------------------------------------------------------
+// BigInteger narrowing
+// ---------------------------------------------------------------------------
+check('BigInteger: ToQWord keeps the low 64 bits before converting', () => {
+  const code = transpile('/**\n * @param {BigInt} x - value\n * @returns {BigInt} low 64 bits\n */\n' +
+    'function wrap64(x) { return OpCodes.ToQWord(x * 3n); }');
+  expectMatch(code, /& ulong\.MaxValue/, 'a mask with ulong.MaxValue');
+});
+check('BigInteger: a 64-bit shift of a BigInteger is not cast down to ulong', () => {
+  const code = transpile('/**\n * @param {BigInt} x - value\n * @returns {BigInt} shifted\n */\n' +
+    'function hi(x) { return OpCodes.XorN(x, OpCodes.ShiftRn(x, 40)); }');
+  expectNoMatch(code, /\(ulong\)\(x\)/, 'x cast to ulong');
+});
+
+// ---------------------------------------------------------------------------
 // Runtime stubs (needs the .NET SDK)
 // ---------------------------------------------------------------------------
 check('runtime stubs: BlockAbsorber, pad helpers, ToRadixString, IsTruthy, GFMul behave like the JS framework', () => {

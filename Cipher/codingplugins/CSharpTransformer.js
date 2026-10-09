@@ -13900,9 +13900,10 @@
         const needsUlongCast = !isOversizedShift && (isBigIntShift || (shiftAmount !== null && shiftAmount >= 32));
 
         if (needsUlongCast) {
-          // Cast left operand to ulong for 64-bit shift operations
-          // This ensures proper 64-bit arithmetic in C#
-          left = new CSharpCast(CSharpType.ULong(), left);
+          // Cast left operand to ulong for 64-bit shift operations - unless it is a
+          // BigInteger, which shifts at full precision like the JS BigInt it is
+          if (this.inferFullExpressionType(node.left)?.name !== 'BigInteger')
+            left = new CSharpCast(CSharpType.ULong(), left);
         } else if (isOversizedShift) {
           // The oversized-shift branch above deliberately does NOT ulong-cast
           // `left` (that would truncate/wrap the shift, producing a garbage
@@ -13989,12 +13990,14 @@
         const leftHasUlong = this.expressionHasUlongType(left);
         const rightHasUlong = this.expressionHasUlongType(right);
 
+        // A BigInteger operand is never cast down: the ulong side promotes to it
+        const isBigIntegerNode = n => this.inferFullExpressionType(n)?.name === 'BigInteger';
         if (leftHasUlong && !rightHasUlong) {
           // Cast right to ulong to match left
-          right = new CSharpCast(CSharpType.ULong(), right);
+          if (!isBigIntegerNode(node.right)) right = new CSharpCast(CSharpType.ULong(), right);
         } else if (rightHasUlong && !leftHasUlong) {
           // Cast left to ulong to match right
-          left = new CSharpCast(CSharpType.ULong(), left);
+          if (!isBigIntegerNode(node.left)) left = new CSharpCast(CSharpType.ULong(), left);
         }
 
         // `&` specifically: mirror inferBinaryExpressionType's identical BigInteger-
@@ -14017,9 +14020,9 @@
           const opLeftType = this.inferFullExpressionType(node.left);
           const opRightType = this.inferFullExpressionType(node.right);
           if (opLeftType?.name === 'BigInteger' && boundedUnsignedTypes.has(opRightType?.name)) {
-            left = new CSharpCast(opRightType, left);
+            left = this.narrowBigInteger(left, opRightType);
           } else if (opRightType?.name === 'BigInteger' && boundedUnsignedTypes.has(opLeftType?.name)) {
-            right = new CSharpCast(opLeftType, right);
+            right = this.narrowBigInteger(right, opLeftType);
           }
         }
       }
@@ -14820,10 +14823,27 @@
 
       const needsCast = narrowingConversions[sourceType.name]?.includes(targetType.name);
       if (needsCast) {
-        return new CSharpCast(targetType, expr);
+        return sourceType.name === 'BigInteger' ? this.narrowBigInteger(expr, targetType) : new CSharpCast(targetType, expr);
       }
 
       return expr;
+    }
+
+    /**
+     * A BigInteger value narrowed to a fixed-width integral type the way JavaScript's
+     * BigInt.asUintN does: its low bits. A plain C# cast throws when the value does
+     * not fit, unchecked or not.
+     * @param {Object} expr - the BigInteger C# expression
+     * @param {CSharpType} targetType - the integral target type
+     * @returns {Object} the narrowed expression
+     */
+    narrowBigInteger(expr, targetType) {
+      const widths = { byte: 'byte', sbyte: 'byte', ushort: 'ushort', short: 'ushort', uint: 'uint', int: 'uint', ulong: 'ulong', long: 'ulong', char: 'ushort' };
+      const unsigned = widths[targetType.name];
+      if (!unsigned) return new CSharpCast(targetType, expr);
+      const masked = new CSharpCast(new CSharpType(unsigned),
+        new CSharpBinaryExpression(expr, '&', new CSharpIdentifier(unsigned + '.MaxValue')));
+      return unsigned === targetType.name ? masked : new CSharpCast(targetType, masked);
     }
 
     /**
@@ -24700,6 +24720,12 @@
       };
 
       const csharpType = typeMap[targetType] || CSharpType.UInt();
+      // A BigInteger converts to a fixed width only when it fits (OverflowException
+      // otherwise, unchecked or not): keep the low bits first, as ToQWord/ToDWord
+      // do on a BigInt
+      const argNode = node.arguments?.[0] || node.expression;
+      const argType = this.inferFullExpressionType(argNode);
+      if (argType?.name === 'BigInteger' && !argType.isArray) return this.narrowBigInteger(expr, csharpType);
       return new CSharpCast(csharpType, expr);
     }
 
