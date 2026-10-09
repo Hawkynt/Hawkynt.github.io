@@ -2,25 +2,22 @@
  * Multiply-with-Carry (MWC) Pseudo-Random Number Generator
  * Invented by George Marsaglia (1991)
  *
- * The multiply-with-carry method is a type of PRNG that generates high-quality
- * random numbers using multiply and carry operations. The basic form is:
+ * Lag-1 multiply-with-carry with base b = 2^32, as given by javamex and by
+ * Numerical Recipes (3rd ed., p. 348). The 64-bit state x holds the current
+ * value in its low 32 bits and the carry in its high 32 bits; each step is
  *
- *   t = a * x + c
- *   x = t mod b
- *   c = floor(t / b)
+ *   x = a * (x AND 0xFFFFFFFF) + (x >> 32)
  *
- * Where:
- *   x = current state
- *   c = carry value
- *   a = multiplier (carefully chosen for good period)
- *   b = base (typically 2^32 for 32-bit implementations)
+ * and returns the low 32 bits of the new x. The default multiplier
+ * a = 0xFFFFDA61 (4294957665) is the first one Numerical Recipes lists. Since
+ * a < 2^32, a * (2^32 - 1) + (2^32 - 1) < 2^64, so x never overflows.
  *
- * This implementation supports two modes:
- * 1. Implicit modulo (b = 2^64): Uses 64-bit arithmetic, carry is top 64 bits
- * 2. Explicit modulo: Allows custom modulus for specialized applications
+ * Seed: 1-8 bytes, little-endian, giving x (bytes 0-3 the value, bytes 4-7
+ * the carry; javamex seeds only the value and starts with a zero carry).
+ * Output: each 32-bit result as 4 little-endian bytes.
  *
- * Reference: Marsaglia&Zaman (1991). "A new class of random number generators"
- * Annals of Applied Probability, 1(3), 462-480.
+ * Reference: Marsaglia and Zaman (1991), "A new class of random number
+ * generators", Annals of Applied Probability, 1(3), 462-480.
  *
  * AlgorithmFramework Format
  * (c)2006-2025 Hawkynt
@@ -55,7 +52,7 @@
   }
 
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
-          RandomGenerationAlgorithm, IRandomGeneratorInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
+          RandomGenerationAlgorithm, IRandomGeneratorInstance, LinkItem, KeySize } = AlgorithmFramework;
 
   class MWCAlgorithm extends RandomGenerationAlgorithm {
     constructor() {
@@ -63,7 +60,7 @@
 
       // Required metadata
       this.name = "Multiply-with-Carry (MWC)";
-      this.description = "Multiply-with-Carry is a fast, simple PRNG invented by George Marsaglia. It uses multiply and carry operations to generate high-quality pseudo-random numbers with very long periods. The algorithm maintains a state value and carry, updating them through multiplication and modular arithmetic.";
+      this.description = "George Marsaglia's lag-1 multiply-with-carry generator with base 2^32: a 64-bit state holds the current value and the carry, and each step computes x = a * (x mod 2^32) + floor(x / 2^32), returning the low 32 bits. The default multiplier 0xFFFFDA61 is the one used by javamex and Numerical Recipes.";
       this.inventor = "George Marsaglia";
       this.year = 1991;
       this.category = CategoryType.RANDOM;
@@ -75,7 +72,7 @@
       // PRNG-specific metadata
       this.IsDeterministic = true;
       this.IsCryptographicallySecure = false;
-      this.SupportedSeedSizes = [new KeySize(1, 16, 1)]; // 1-16 bytes seed
+      this.SupportedSeedSizes = [new KeySize(1, 8, 1)]; // 1-8 bytes: value, then carry
 
       // Documentation
       this.documentation = [
@@ -84,16 +81,12 @@
           "https://projecteuclid.org/journals/annals-of-applied-probability/volume-1/issue-3/A-New-Class-of-Random-Number-Generators/10.1214/aoap/1177005878.full"
         ),
         new LinkItem(
-          "Efficient MWC Random Number Generators with Maximal Period",
-          "https://www.math.ias.edu/~goresky/MWC.pdf"
+          "javamex: Multiply-with-carry generator in Java",
+          "https://www.javamex.com/tutorials/random_numbers/multiply_with_carry.shtml"
         ),
         new LinkItem(
           "Wikipedia: Multiply-with-carry pseudorandom number generator",
           "https://en.wikipedia.org/wiki/Multiply-with-carry_pseudorandom_number_generator"
-        ),
-        new LinkItem(
-          "Java Implementation Example",
-          "https://www.javamex.com/tutorials/random_numbers/multiply_with_carry.shtml"
         )
       ];
 
@@ -103,88 +96,89 @@
           "http://numerical.recipes/"
         ),
         new LinkItem(
-          "Distribution Properties of MWC Generators",
-          "https://www.researchgate.net/publication/220576338_Distribution_properties_of_multiply-with-carry_random_number_generators"
+          "Efficient MWC Random Number Generators with Maximal Period",
+          "https://www.math.ias.edu/~goresky/MWC.pdf"
         )
       ];
 
-      // Test vectors verified against reference implementation
-      // Using multiplier a = 0xffffda61 (from Numerical Recipes)
-      // Seed format: 8 bytes for state (little-endian uint64)
-      // Output: 8-byte values (little-endian uint64)
+      // Expected outputs come from the javamex step
+      //   x = a * (x & 0xffffffffL) + (x >>> 32); return (int) x;
+      // run with native 64-bit arithmetic in an independent C program.
       this.tests = [
         {
-          text: "Seed 1: First 5 outputs (40 bytes) - multiplier 0xffffda61",
+          text: "Seed 1, multiplier 0xFFFFDA61: first 10 outputs",
           uri: "https://www.javamex.com/tutorials/random_numbers/multiply_with_carry.shtml",
           input: null,
-          seed: OpCodes.Hex8ToBytes("0100000000000000"), // seed = 1
-          outputSize: 40, // 5 outputs × 8 bytes each
-          multiplier: 0xffffda61,
-          expected: OpCodes.Hex8ToBytes(
-            "5FDAFFFF00000000" +  // Output 1
-            "00A48705C0B4FFFF" +  // Output 2
-            "00240DF6EF9F9610" +  // Output 3
-            "2133A247671F62E3" +  // Output 4
-            "FF167521A1C426DF"    // Output 5
-          )
-        },
-        {
-          text: "Seed 12345: First 5 outputs - standard test seed",
-          uri: "https://www.javamex.com/tutorials/random_numbers/multiply_with_carry.shtml",
-          input: null,
-          seed: OpCodes.Hex8ToBytes("3930000000000000"), // seed = 12345
+          seed: OpCodes.Hex8ToBytes("01000000"),
           outputSize: 40,
           multiplier: 0xffffda61,
           expected: OpCodes.Hex8ToBytes(
-            "5F9FE9F838300000" +  // Output 1
-            "0049DDA20270D3F1" +  // Output 2
-            "37D902DDD2555AE1" +  // Output 3
-            "4F70A9434F1180D7" +  // Output 4
-            "A208E25D4D3B9EE8"    // Output 5
+            "61DAFFFFC1588705E3AF1B01F54AE9548EB8608C" +
+            "48182A2A3527B9462B0F807A1B7AFEAE653FCC02"
           )
         },
         {
-          text: "Seed 0xDEADBEEF: First 5 outputs - hex seed value",
-          uri: "Self-generated test vector for verification",
+          text: "Seed 12345: first 10 outputs",
+          uri: "https://www.javamex.com/tutorials/random_numbers/multiply_with_carry.shtml",
           input: null,
-          seed: OpCodes.Hex8ToBytes("EFBEADDE00000000"), // seed = 0xDEADBEEF
+          seed: OpCodes.Hex8ToBytes("39300000"),
           outputSize: 40,
-          multiplier: 0xffffda61,
           expected: OpCodes.Hex8ToBytes(
-            "9F1FD0B6349EADDE" +  // Output 1
-            "40612A60753E1D51" +  // Output 2
-            "BAD64C04749FF9C4" +  // Output 3
-            "03F35A8A0C093799" +  // Output 4
-            "A3245DB13A84DD6C"    // Output 5
+            "99CFE9F83123C79B95BA2470C2A0FFA59CC72364" +
+            "7902ED47BEB29376E57D5B4916578EAD732E5DEB"
           )
         },
         {
-          text: "Seed 999999999: First 8 outputs - large seed",
-          uri: "Self-generated test vector for verification",
+          text: "Seed 0xDEADBEEF: first 10 outputs",
+          uri: "https://www.javamex.com/tutorials/random_numbers/multiply_with_carry.shtml",
           input: null,
-          seed: OpCodes.Hex8ToBytes("FFC99A3B00000000"), // seed = 999999999
+          seed: OpCodes.Hex8ToBytes("EFBEADDE"),
+          outputSize: 40,
+          expected: OpCodes.Hex8ToBytes(
+            "8FDE7D9564B855D47BCE9950CB93F6898EA017FD" +
+            "524115EE6E0F730B04A36330443A0197AB973439"
+          )
+        },
+        {
+          text: "Seed 999999999: first 16 outputs",
+          uri: "https://www.javamex.com/tutorials/random_numbers/multiply_with_carry.shtml",
+          input: null,
+          seed: OpCodes.Hex8ToBytes("FFC99A3B"),
           outputSize: 64,
-          multiplier: 0xffffda61,
           expected: OpCodes.Hex8ToBytes(
-            "9FE50F603CC19A3B" +  // Output 1
-            "4067F0093D2704FD" +  // Output 2
-            "B8575E50E735B04A" +  // Output 3
-            "C6EEBD6F706E2275" +  // Output 4
-            "F33F3670CA1665B5" +  // Output 5
-            "4C8632ECFFD5212A" +  // Output 6
-            "ED969AB4359F40DD" +  // Output 7
-            "9AD14DA677F174F2"    // Output 8
+            "9FAFAA9B7BB235E159F784F81B14E04E0F6F7098" +
+            "33E3FD60FBDCE9A80D4ECDAA15691EE7E8E7B9B9" +
+            "06B622AEE3E0DB8D722011CB3C2B88F4567C3E3C" +
+            "E35FC081"
           )
+        },
+        {
+          text: "Value 0xDEADBEEF with carry 0x12345678: first 8 outputs",
+          uri: "https://www.javamex.com/tutorials/random_numbers/multiply_with_carry.shtml",
+          input: null,
+          seed: OpCodes.Hex8ToBytes("EFBEADDE78563412"),
+          outputSize: 32,
+          expected: OpCodes.Hex8ToBytes(
+            "0735B2A7DCAB54F5BE92440BCDED870CC43D799D" +
+            "393B4DB83821F2FB5B661D3E"
+          )
+        },
+        {
+          text: "Fixed point: value 2^32 - 1 with carry a - 1 (largest carry) repeats",
+          uri: "https://en.wikipedia.org/wiki/Multiply-with-carry_pseudorandom_number_generator",
+          input: null,
+          seed: OpCodes.Hex8ToBytes("FFFFFFFF60DAFFFF"),
+          outputSize: 16,
+          expected: OpCodes.Hex8ToBytes("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF")
         }
       ];
     }
 
     /**
-   * Create new cipher instance
-   * @param {boolean} [isInverse=false] - True for decryption, false for encryption
-   * @returns {MWCInstance|null} New cipher instance
-   */
-
+     * Create new generator instance
+     * @param {boolean} [isInverse=false] - Must be false; a PRNG has no inverse
+     * @returns {MWCInstance|null} New generator instance
+     */
     CreateInstance(isInverse = false) {
       if (isInverse) {
         return null; // PRNGs have no inverse operation
@@ -194,28 +188,10 @@
   }
 
   /**
- * MWC cipher instance implementing Feed/Result pattern
- * @class
- * @extends {IBlockCipherInstance}
- */
-
-  /**
-   * A 64-bit output as two 32-bit halves
+   * MWC generator instance
    * @class
+   * @extends {IRandomGeneratorInstance}
    */
-  class MwcWord {
-    /**
-     * @param {uint32} low - Low 32 bits
-     * @param {uint32} high - High 32 bits
-     */
-    constructor(low, high) {
-      /** @type {uint32} */
-      this.low = low;
-      /** @type {uint32} */
-      this.high = high;
-    }
-  }
-
   class MWCInstance extends IRandomGeneratorInstance {
     /**
      * @param {MWCAlgorithm} algorithm - Parent algorithm
@@ -223,74 +199,37 @@
     constructor(algorithm) {
       super(algorithm);
       /** @type {int32} */
-      this._outputSize = 0; // 0 selects the default of 32 bytes
-
-      // MWC state: current value and carry
-      this._state = 0;
-      this._carry = 0;
-      this._multiplier = 0xffffda61; // Default from Numerical Recipes
-      this._modulo = 0; // 0 means use implicit modulo (2^64)
+      this._outputSize = 0; // 0 selects the default of 64 bytes
+      /** @type {uint32} */
+      this._multiplier = 0xffffda61; // Numerical Recipes / javamex
+      /** @type {boolean} */
       this._ready = false;
-
-      // For 64-bit arithmetic simulation
-      // JavaScript numbers are 64-bit floats, so we need to be careful with integer operations
-      // We'll use two 32-bit values to represent 64-bit state
-      this._stateLow = 0;
-      this._stateHigh = 0;
-      this._carryLow = 0;
-      this._carryHigh = 0;
+      /** @type {uint32} */
+      this._value = 0; // low 32 bits of x
+      /** @type {uint32} */
+      this._carry = 0; // high 32 bits of x
     }
 
     /**
-     * Set seed value (1-16 bytes)
-     * First 8 bytes become initial state, next 8 bytes (if present) become initial carry
+     * Set the seed: 1-8 little-endian bytes of x (value, then carry)
      * @param {uint8[]|null} seedBytes - Seed bytes
+     * @throws {Error} If the seed is longer than 8 bytes
      */
     set seed(seedBytes) {
       if (!seedBytes || seedBytes.length === 0) {
         this._ready = false;
         return;
       }
-
-      // Pack seed into 64-bit state (little-endian)
-      this._stateLow = 0;
-      this._stateHigh = 0;
-
-      if (seedBytes.length >= 1) this._stateLow |= seedBytes[0];
-      if (seedBytes.length >= 2) this._stateLow |= OpCodes.Shl32(seedBytes[1], 8);
-      if (seedBytes.length >= 3) this._stateLow |= OpCodes.Shl32(seedBytes[2], 16);
-      if (seedBytes.length >= 4) this._stateLow |= OpCodes.Shl32(seedBytes[3], 24);
-      if (seedBytes.length >= 5) this._stateHigh |= seedBytes[4];
-      if (seedBytes.length >= 6) this._stateHigh |= OpCodes.Shl32(seedBytes[5], 8);
-      if (seedBytes.length >= 7) this._stateHigh |= OpCodes.Shl32(seedBytes[6], 16);
-      if (seedBytes.length >= 8) this._stateHigh |= OpCodes.Shl32(seedBytes[7], 24);
-
-      // Ensure unsigned 32-bit
-      this._stateLow = OpCodes.ToUint32(this._stateLow);
-      this._stateHigh = OpCodes.ToUint32(this._stateHigh);
-
-      // Initialize carry to ~state (bitwise NOT of seed)
-      this._carryLow = OpCodes.ToUint32((~this._stateLow));
-      this._carryHigh = OpCodes.ToUint32((~this._stateHigh));
-
-      // If seed provides carry value (bytes 9-16), use it
-      if (seedBytes.length >= 9) {
-        this._carryLow = 0;
-        this._carryHigh = 0;
-
-        if (seedBytes.length >= 9) this._carryLow |= seedBytes[8];
-        if (seedBytes.length >= 10) this._carryLow |= OpCodes.Shl32(seedBytes[9], 8);
-        if (seedBytes.length >= 11) this._carryLow |= OpCodes.Shl32(seedBytes[10], 16);
-        if (seedBytes.length >= 12) this._carryLow |= OpCodes.Shl32(seedBytes[11], 24);
-        if (seedBytes.length >= 13) this._carryHigh |= seedBytes[12];
-        if (seedBytes.length >= 14) this._carryHigh |= OpCodes.Shl32(seedBytes[13], 8);
-        if (seedBytes.length >= 15) this._carryHigh |= OpCodes.Shl32(seedBytes[14], 16);
-        if (seedBytes.length >= 16) this._carryHigh |= OpCodes.Shl32(seedBytes[15], 24);
-
-        this._carryLow = OpCodes.ToUint32(this._carryLow);
-        this._carryHigh = OpCodes.ToUint32(this._carryHigh);
+      if (seedBytes.length > 8) {
+        throw new Error("Invalid seed size: " + seedBytes.length + " bytes. MWC takes 1-8 bytes");
       }
 
+      /** @type {uint8[]} */
+      const padded = [0, 0, 0, 0, 0, 0, 0, 0];
+      for (let i = 0; i < seedBytes.length; i++) padded[i] = seedBytes[i];
+
+      this._value = OpCodes.Pack32LE(padded[0], padded[1], padded[2], padded[3]);
+      this._carry = OpCodes.Pack32LE(padded[4], padded[5], padded[6], padded[7]);
       this._ready = true;
     }
 
@@ -298,109 +237,40 @@
      * @returns {uint8[]|null} The seed cannot be read back: null
      */
     get seed() {
-      return null; // Cannot retrieve seed from PRNG state
+      return null;
     }
 
     /**
-     * Set custom multiplier (optional)
+     * Set the multiplier a (default 0xFFFFDA61)
+     * @param {uint32} value - Multiplier
      */
     set multiplier(value) {
-      this._multiplier = OpCodes.ToUint32(value); // Ensure unsigned 32-bit
+      this._multiplier = OpCodes.ToUint32(value);
     }
 
+    /**
+     * @returns {uint32} Multiplier
+     */
     get multiplier() {
       return this._multiplier;
     }
 
     /**
-     * Set custom modulo (optional, 0 = implicit modulo 2^64)
+     * One MWC step: x = a * value + carry, split into the new value (low 32
+     * bits, returned) and the new carry (high 32 bits).
+     * @returns {uint32} Next 32-bit output
      */
-    set modulo(value) {
-      this._modulo = OpCodes.ToUint32(value);
-    }
-
-    get modulo() {
-      return this._modulo;
-    }
-
-    /**
-     * Generate next 64-bit value using MWC algorithm
-     *
-     * Algorithm:
-     *   temp = state * multiplier + carry
-     *   state = temp mod 2^64 (low 64 bits)
-     *   carry = OpCodes.Shr32(temp, 64) (high 64 bits)
-     *
-     * We simulate 128-bit arithmetic using 32-bit operations
-     *
-     * NOTE: This function uses native bit operations (>>>, <<, &, |) for 64-bit
-     * arithmetic simulation. OpCodes does not provide 64-bit or 128-bit operations,
-     * and these are essential for correct MWC implementation.
-     * @returns {MwcWord} Next 64-bit output
-     */
-    _next64() {
+    _next32() {
       if (!this._ready) {
         throw new Error('MWC not initialized: set seed first');
       }
 
-      // Multiply state (64-bit) by multiplier (32-bit)
-      // Break into 32-bit chunks for multiplication
-      const a = this._multiplier;
-      const xLow = this._stateLow;
-      const xHigh = this._stateHigh;
-
-      // Perform multiplication: (xHigh * 2^32 + xLow) * a
-      // Result is 96 bits max (64-bit * 32-bit)
-
-      // Low part: xLow * a (produces up to 64 bits)
-      /** @type {int32} */
-      const lowMul = Math.imul(xLow, a);  // Low 32 bits of xLow * a
-      /** @type {uint32} */
-      const lowCarry = OpCodes.MulHi32(xLow, a); // High 32 bits of xLow * a
-
-      // High part: xHigh * a (produces up to 64 bits, but we only need 32+32)
-      /** @type {int32} */
-      const highMul = Math.imul(xHigh, a);  // Low 32 bits of xHigh * a
-      /** @type {uint32} */
-      const highCarry = OpCodes.MulHi32(xHigh, a); // High 32 bits of xHigh * a
-
-      // Combine: result = lowMul + (lowCarry + highMul) * 2^32 + highCarry * 2^64
-      // We track as [result0, result1, result2, result3] each 32-bit
-      /** @type {float64} */
-      const middle = lowCarry + highMul;
-      /** @type {uint32} */
-      let r0 = (OpCodes.ToUint32(lowMul));
-      /** @type {uint32} */
-      let r1 = OpCodes.ToUint32(middle);
-      /** @type {float64} */
-      const r2Wide = OpCodes.ToUint32(highCarry) + Math.floor(middle / 0x100000000);
-      /** @type {float64} */
-      const r3Wide = Math.floor(r2Wide / 0x100000000);
-      /** @type {uint32} */
-      let r2 = OpCodes.ToUint32(r2Wide);
-
-      // Add carry (64-bit)
-      r0 = OpCodes.Add32(r0, this._carryLow);
-      /** @type {uint32} */
-      const carryAdd = (r0< this._carryLow) ? 1 : 0;
-      r1 = OpCodes.Add32(OpCodes.Add32(r1, this._carryHigh), carryAdd);
-      /** @type {uint32} */
-      const carry1 = ((r1< this._carryHigh)|| (r1 === this._carryHigh && carryAdd> 0)) ? 1 : 0;
-      r2 = OpCodes.Add32(r2, carry1);
-      /** @type {uint32} */
-      const carry2 = (r2< carry1) ? 1 : 0;
-      /** @type {uint32} */
-      const r3 = OpCodes.ToUint32(r3Wide + carry2);
-
-      // New state is low 64 bits (r0, r1)
-      this._stateLow = r0;
-      this._stateHigh = r1;
-
-      // New carry is high 64 bits (r2, r3)
-      this._carryLow = r2;
-      this._carryHigh = r3;
-
-      return new MwcWord(this._stateLow, this._stateHigh);
+      const low = OpCodes.Add32(OpCodes.Mul32(this._multiplier, this._value), this._carry);
+      // Adding the old carry overflows the low word exactly when the sum wraps below it
+      const overflow = low < this._carry ? 1 : 0;
+      this._carry = OpCodes.Add32(OpCodes.MulHi32(this._multiplier, this._value), overflow);
+      this._value = low;
+      return low;
     }
 
     /**
@@ -413,61 +283,28 @@
         throw new Error('MWC not initialized: set seed first');
       }
 
-      if (length === 0) {
-        /** @type {uint8[]} */
-        const none = [];
-        return none;
-      }
-
       /** @type {uint8[]} */
       const output = [];
-      let bytesRemaining = length;
-
-      while (bytesRemaining > 0) {
-        // Generate next 64-bit value
-        /** @type {MwcWord} */
-        const value = this._next64();
-
-        // Extract bytes (little-endian order)
-        const bytesToExtract = Math.min(bytesRemaining, 8);
-
-        if (bytesToExtract >= 1) output.push(OpCodes.And32(value.low, 0xFF));
-        if (bytesToExtract >= 2) output.push(OpCodes.And32(OpCodes.Shr32(value.low, 8), 0xFF));
-        if (bytesToExtract >= 3) output.push(OpCodes.And32(OpCodes.Shr32(value.low, 16), 0xFF));
-        if (bytesToExtract >= 4) output.push(OpCodes.And32(OpCodes.Shr32(value.low, 24), 0xFF));
-        if (bytesToExtract >= 5) output.push(OpCodes.And32(value.high, 0xFF));
-        if (bytesToExtract >= 6) output.push(OpCodes.And32(OpCodes.Shr32(value.high, 8), 0xFF));
-        if (bytesToExtract >= 7) output.push(OpCodes.And32(OpCodes.Shr32(value.high, 16), 0xFF));
-        if (bytesToExtract >= 8) output.push(OpCodes.And32(OpCodes.Shr32(value.high, 24), 0xFF));
-
-        bytesRemaining -= bytesToExtract;
+      while (output.length < length) {
+        const bytes = OpCodes.Unpack32LE(this._next32());
+        for (let i = 0; i < 4 && output.length < length; i++) output.push(bytes[i]);
       }
-
       return output;
     }
 
-    // AlgorithmFramework interface implementation
     /**
-   * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
-   */
-
+     * Not used: the generator takes no input
+     * @param {uint8[]} data - Ignored
+     */
     Feed(data) {
-      // For PRNG, Feed is not used for standard operation
-      // Could be used to re-seed or skip outputs in future
     }
 
     /**
-   * Get cipher result (encrypted or decrypted data)
-   * @returns {uint8[]} Processed output bytes
-   * @throws {Error} If key not set, no data fed, or invalid input length
-   */
-
+     * Produce the configured number of output bytes
+     * @returns {uint8[]} Generated bytes
+     */
     Result() {
-      // Use specified output size or default to 64 bytes
-      const size = (this._outputSize ? this._outputSize : 64);
-      return this.NextBytes(size);
+      return this.NextBytes(this.outputSize);
     }
 
     /**
