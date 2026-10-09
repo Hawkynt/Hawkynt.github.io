@@ -21533,6 +21533,12 @@
         if (defaultParams.length > 0) {
           this.constructorDefaultParams.set(csClass.name, defaultParams);
         }
+        // A JavaScript caller may pass fewer arguments than the constructor names
+        // (the rest are undefined): every parameter without a default gets `default`,
+        // so `new SlhDsaEngine(params)` binds (CS7036 otherwise)
+        for (const p of ctor.parameters) {
+          if (!p.defaultValue && !p.isParams && !p.isRef && !p.isOut) p.defaultValue = new CSharpIdentifier('default');
+        }
 
         // Overwrite preRegisterConstructorSignatures' approximate guess with the
         // AUTHORITATIVE, fully-resolved parameter types now that they're known - see

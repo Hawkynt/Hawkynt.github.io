@@ -146,6 +146,11 @@ check('locals: a local declared without a value takes its JSDoc @type', () => {
     'function f(S, k) { /** @type {int32[]} */\n  let idx;\n  if (k === 2) idx = [1, 2]; else idx = [3, 4];\n  return S[idx[0]]; }');
   expectMatch(code, /int\[\] idx = Array\.Empty<int>\(\);/, 'int[] idx');
 });
+check('constructors: a parameter a caller may leave out defaults (JavaScript passes undefined)', () => {
+  const code = transpile('class Engine {\n  /**\n   * @param {int32} size - size\n   * @param {string} profile - profile\n   */\n' +
+    '  constructor(size, profile) { this.size = size; this.profile = profile; }\n}\n/** @returns {Engine} e */\nfunction make() { return new Engine(4); }');
+  expectMatch(code, /public Engine\(int size = default, string profile = default\)/, 'Engine(int size = default, string profile = default)');
+});
 check('fields: two fields differing only in case keep their own values', () => {
   const code = transpile('class P {\n  constructor() { /** @type {int32} */ this.N = 8; /** @type {int32} */ this.n = 2 * this.N; }\n' +
     '  /** @returns {int32} sum */\n  sum() { return this.n + this.N; }\n}');
@@ -339,7 +344,7 @@ check('module bindings: a const the module grows is not readonly (CS0198)', () =
 check('IL types: a constructor parameter takes its JSDoc class type, not one guessed from its name', () => {
   const code = transpile('class Fancy extends BlockCipherAlgorithm { constructor() { super(); this.rounds = 8; } CreateInstance(inv) { return new I(this); } }\n' +
     'class I extends IBlockCipherInstance {\n  /** @param {Fancy} algorithm - parent */\n  constructor(algorithm) { super(algorithm); this.r = algorithm.rounds; }\n}');
-  expectMatch(code, /public I\(Fancy algorithm\)/, 'I(Fancy algorithm)');
+  expectMatch(code, /public I\(Fancy algorithm( = default)?\)/, 'I(Fancy algorithm)');
 });
 
 // ---------------------------------------------------------------------------
