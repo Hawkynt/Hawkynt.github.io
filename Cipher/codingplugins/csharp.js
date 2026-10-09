@@ -1597,6 +1597,20 @@ namespace ${namespace}
         public static int ToInt(dynamic value) => (int)value;
         public static ushort ToUint16(dynamic value) => (ushort)(long)value;
         public static ushort ToWord(dynamic value) => (ushort)(long)value;
+        public static short ToShort(long value) => (short)(value & 0xFFFF);
+        public static System.Numerics.BigInteger ToLong(System.Numerics.BigInteger value) => (long)(ulong)(value & ulong.MaxValue);
+        // [high32, low32] pairs from 64-bit hex strings (an optional 0x prefix is stripped)
+        public static uint[][] CreateUint64ArrayFromHex(string[] hexValues) {
+            var result = new uint[hexValues.Length][];
+            for (var i = 0; i < hexValues.Length; ++i) {
+                var hex = hexValues[i];
+                if (hex.StartsWith("0x") || hex.StartsWith("0X")) hex = hex.Substring(2);
+                hex = hex.PadLeft(16, '0');
+                if (hex.Length != 16) throw new System.ArgumentException("CreateUint64ArrayFromHex: Hex string must represent 64-bit value: " + hexValues[i]);
+                result[i] = new uint[] { System.Convert.ToUInt32(hex.Substring(0, 8), 16), System.Convert.ToUInt32(hex.Substring(8, 8), 16) };
+            }
+            return result;
+        }
         public static ulong UInt64(dynamic value) => System.Convert.ToUInt64(value);
         // Generic array copy (mirrors OpCodes.js's CopyArray) - works for any element
         // type (byte[], uint[], ...), unlike the byte[]-specific helpers above.

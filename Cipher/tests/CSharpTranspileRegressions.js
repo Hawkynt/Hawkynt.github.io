@@ -1101,6 +1101,13 @@ namespace RegressionTest {
       Eq("ctc-equal", OpCodes.ConstantTimeCompare(new byte[] { 1, 2 }, new byte[] { 1, 2 }, 2), true);
       Eq("ctc-differ", OpCodes.ConstantTimeCompare(new byte[] { 1, 2 }, new byte[] { 1, 3 }), false);
       Eq("ctc-lengths", OpCodes.ConstantTimeCompare(new byte[] { 1, 2 }, new byte[] { 1, 2, 3 }, 2), false);
+      // ToShort/ToLong sign-wrap to 16/64 bits; CreateUint64ArrayFromHex yields [high, low] pairs
+      Eq("toshort-wrap", OpCodes.ToShort(0x18000), (short)-32768);
+      Eq("toshort-max", OpCodes.ToShort(32767), (short)32767);
+      Eq("tolong-wrap", OpCodes.ToLong(BigInteger.Pow(2, 63)), -BigInteger.Pow(2, 63));
+      Eq("tolong-neg", OpCodes.ToLong(new BigInteger(-1)), new BigInteger(-1));
+      Eq("tolong-mask", OpCodes.ToLong(BigInteger.Pow(2, 64) + 5), new BigInteger(5));
+      Eq("u64hex", string.Join(",", OpCodes.CreateUint64ArrayFromHex(new[] { "0x0123456789ABCDEF", "ff" }).Select(p => p[0] + ":" + p[1])), "19088743:2309737967,0:255");
       // JsSlice/JsSubstr are string.prototype.slice/substr
       Eq("sslice-neg", FrameworkFunctions.JsSlice("abcdef", 0, -2), "abcd");
       Eq("sslice-past", FrameworkFunctions.JsSlice("abc", 1, 9), "bc");
