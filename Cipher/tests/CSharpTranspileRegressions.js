@@ -382,6 +382,12 @@ check('IL types: a key backing field keeps its JSDoc class type, not byte[] from
   expectMatch(code, /Key\?? _publicKey\b/, 'a Key-typed _publicKey');
   expectMatch(code, /public Key PublicKey\b/, 'a Key-typed PublicKey');
 });
+check('IL types: a jagged field filled outside the constructor keeps its JSDoc type', () => {
+  const code = transpile('class D {\n  init() {\n    /** @type {uint8[][][]} */\n    this.SBOX = [];\n    /** @type {uint8[][]} */\n' +
+    '    const box = [[1, 2], [3, 4]];\n    this.SBOX.push(box);\n    return this.SBOX[0][1][0];\n  }\n}');
+  expectMatch(code, /byte\[\]\[\]\[\] SBOX\b/, 'byte[][][] SBOX');
+  expectMatch(code, /this\.SBOX\.Append\(box\)/, 'this.SBOX.Append(box) without conversion');
+});
 check('IL types: a counter field keeps its JSDoc type, not a guess from its name or literal', () => {
   const code = transpile('class C {\n  constructor() { /** @type {int32} */ this.chunk_counter = 0; }\n' +
     '  reset() { /** @type {uint32[]} */ this.state_words = []; this.chunk_counter = 0; }\n}');

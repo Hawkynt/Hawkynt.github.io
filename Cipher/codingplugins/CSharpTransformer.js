@@ -20273,6 +20273,12 @@
       // wherever it's later indexed 2-3 levels deep or Append()ed into).
       for (const [fieldName, elemType] of this.jaggedInstanceFields) {
         const csFieldName = this.toPascalCase(fieldName);
+        // The field's IL type, where the IL has one, instead of the jagged derivation
+        const ilJaggedType = this.ilMemberType(fieldName);
+        if (ilJaggedType && !this.classFieldTypeOwnHas(csClass.name, csFieldName)) {
+          this.setClassFieldType(csClass.name, csFieldName, ilJaggedType);
+          continue;
+        }
         if (!this.classFieldTypeOwnHas(csClass.name, csFieldName)) {
           // preScanJaggedInstanceFields's Pattern 2 (the only evidence source that
           // ever leaves `elemType` null here) fires at EVERY nesting level of a
