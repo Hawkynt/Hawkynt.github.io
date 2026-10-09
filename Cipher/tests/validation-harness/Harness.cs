@@ -384,6 +384,20 @@ __DUMMY_CLASSES__
             }
             if (value is System.Numerics.BigInteger big && typeof(IConvertible).IsAssignableFrom(under))
                 return Convert.ChangeType((decimal)big, under, CultureInfo.InvariantCulture);
+            // A record (an anonymous object of the vectors) for a class with a parameterless
+            // constructor: a new instance taking the record's members of the same names
+            if (under.IsClass && !(value is IConvertible) && !(value is IEnumerable) && under.GetConstructor(Type.EmptyTypes) != null)
+            {
+                object instance = Activator.CreateInstance(under);
+                IEnumerable<KeyValuePair<string, object>> members = value is IDictionary<string, object> dictionary ? dictionary
+                    : value.GetType().GetProperties().Where(p => p.GetIndexParameters().Length == 0).Select(p => new KeyValuePair<string, object>(p.Name, p.GetValue(value)));
+                foreach (var member in members)
+                {
+                    MemberInfo destination = FindMember(instance, member.Key);
+                    if (destination != null) Assign(destination, instance, member.Value);
+                }
+                return instance;
+            }
             if (value is IConvertible && typeof(IConvertible).IsAssignableFrom(under))
                 return Convert.ChangeType(value, under, CultureInfo.InvariantCulture);
             throw new InvalidCastException(value.GetType().Name + " cannot be converted to " + target.Name);
