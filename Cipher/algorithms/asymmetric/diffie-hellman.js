@@ -810,6 +810,8 @@
       this._privateKey = NO_VALUE;
       /** @type {BigInt} */
       this._otherPublicKey = NO_VALUE;
+      /** @type {uint8[]|null} */
+      this._otherPublicKeyData = null;
       /** @type {uint8[]} */
       this.inputBuffer = [];
       /** @type {uint8[]|null} */
@@ -826,10 +828,10 @@
     }
 
     /**
-     * @returns {DHGroup} Current group
+     * @returns {string} Key of the current group, such as 'modp2048'
      */
     get group() {
-      return this._group;
+      return DH_GROUP_NAMES[DH_GROUP_LIST.indexOf(this._group)];
     }
 
     // RFC 3526 is normally cited by modulus size, so that spelling works too.
@@ -862,10 +864,11 @@
     }
 
     /**
-     * @returns {BigInt} Private exponent, NO_VALUE (-1n) when not set
+     * @returns {uint8[]|null} Private exponent, big-endian: the bytes as set, a generated one padded to the modulus width, or null when not set
      */
     get privateKey() {
-      return this._privateKey;
+      if (this._privateKey === NO_VALUE) return null;
+      return this._keyData ? this._keyData.slice() : this._bigIntToBytes(this._privateKey, this._modulusBytes());
     }
 
     // The framework and the UI both drive a 'key' property, which for a key
@@ -891,16 +894,18 @@
     set otherPublicKey(value) {
       if (value === null || value === undefined) {
         this._otherPublicKey = NO_VALUE;
+        this._otherPublicKeyData = null;
         return;
       }
       this._otherPublicKey = this._bytesToBigInt(value);
+      this._otherPublicKeyData = value.slice();
     }
 
     /**
-     * @returns {BigInt} Peer public value, NO_VALUE (-1n) when not set
+     * @returns {uint8[]|null} Peer public value bytes as set, or null when not set
      */
     get otherPublicKey() {
-      return this._otherPublicKey;
+      return this._otherPublicKeyData ? this._otherPublicKeyData.slice() : null;
     }
 
     /**
@@ -1138,6 +1143,7 @@
     ClearData() {
       this._privateKey = NO_VALUE;
       this._otherPublicKey = NO_VALUE;
+      this._otherPublicKeyData = null;
       if (this._keyData) OpCodes.ClearArray(this._keyData);
       this._keyData = null;
       OpCodes.ClearArray(this.inputBuffer);
