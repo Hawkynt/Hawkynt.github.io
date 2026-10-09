@@ -598,6 +598,12 @@ check('test vectors: an object vector\'s non-byte input is converted to bytes', 
     'input: (() => { /** @type {uint32[]} */ const out = []; for (let i = 0; i < 3; i++) out.push(i); return out; })(), expected: [1] }]; }\n}');
   expectMatch(code, /Input = \(\(Func<uint\[\]>\)[\s\S]*\.Invoke\(\)\.Select\(_v => unchecked\(\(byte\)\(_v\)\)\)\.ToArray\(\)/, 'Input converted to byte[]');
 });
+check('IL types: x != null ? x : y on a nullable int is x ?? y, an int', () => {
+  const code = transpile('class F {\n  constructor() { /** @type {int32} */ this.poolIdx = 0; }\n' +
+    '  /**\n   * @param {uint8[]} data - data\n   * @param {int32} source - source\n   * @param {int32|null} pool - pool\n   * @returns {int32} r\n   */\n' +
+    '  add(data, source = 0, pool = null) { /** @type {int32} */ const target = pool !== null ? pool : this.poolIdx; return target + source; }\n}');
+  expectMatch(code, /int target = pool \?\? this\.PoolIdx;/, 'int target = pool ?? this.PoolIdx');
+});
 check('IL types: a nullable value-type field is T?, an undefined value-type field becomes default', () => {
   const code = transpile('class C {\n  constructor() { /** @type {int32|null} */ this.size = null; /** @type {int32} */ this.count = undefined; }\n' +
     '  /** @returns {int32} size */\n  get() { return this.size === null ? 0 : this.size; }\n}');

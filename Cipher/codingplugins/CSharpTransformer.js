@@ -18246,6 +18246,16 @@
     }
 
     transformConditionalExpression(node) {
+      // x != null ? x : y on a nullable value x is x ?? y, which is no longer nullable
+      // (int? pool: pool != null ? pool : this.poolIdx gave int? for an int, CS0266)
+      const t = node.test;
+      const isNull = n => (n?.type === 'Literal' && n.value === null) || (n?.type === 'Identifier' && n.name === 'undefined');
+      if (t?.type === 'BinaryExpression' && ['!=', '!=='].includes(t.operator) && t.left?.type === 'Identifier' && isNull(t.right) &&
+          node.consequent?.type === 'Identifier' && node.consequent.name === t.left.name) {
+        const xType = this.getVariableType(t.left.name) || this.inferFullExpressionType(t.left);
+        if (xType && !xType.isArray && xType.isNullable && CSHARP_VALUE_TYPES.has(xType.name))
+          return new CSharpBinaryExpression(this.transformExpression(node.consequent), '??', this.transformExpression(node.alternate));
+      }
       // `global.AlgorithmFramework ? AlgorithmFramework.CategoryType.BLOCK : 'block'` (or
       // the `!= null`/`!== undefined` spelling of the same guard) - a defensive-require
       // idiom a handful of files (~33, see isAlgorithmFrameworkRoot) use around every
