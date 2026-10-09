@@ -1839,10 +1839,10 @@
       // Bytes to string returns string
       'BytesToString': () => 'string',
       // Math operations
-      'Floor': () => 'int32',
-      'Ceil': () => 'int32',
-      'Round': () => 'int32',
-      'Truncate': () => 'int32',
+      'Floor': () => 'float64',
+      'Ceil': () => 'float64',
+      'Round': () => 'float64',
+      'Truncate': () => 'float64',
       'Abs': (_bits, operandType) => operandType || 'float64',
       'Min': (_bits, operandType) => operandType || 'float64',
       'Max': (_bits, operandType) => operandType || 'float64',
@@ -3297,6 +3297,41 @@
     }
 
     /**
+     * Signed arithmetic of counts that int64 holds exactly: `+ - *` on int32
+     * and int64 Numbers (an int64 that a rounding of a double produced, `i +
+     * Math.round(x)`), where no result leaves the int64 range. A Number is
+     * an exact integer only up to 2^53 in magnitude, so an int64 operand
+     * counts as such; int32 operands count by their type, literals by value.
+     * Such arithmetic states no fixed width and is no guess; unsigned words
+     * (uint8..uint64) are not counts and stay reported.
+     * @param {string} op - '+', '-' or '*'
+     * @param {Object} left - left IL operand
+     * @param {Object} right - right IL operand
+     * @returns {boolean} true when int64 holds every result
+     */
+    static _isExactSignedArithmetic(op, left, right) {
+      const SAFE = 2 ** 53;
+      const range = n => {
+        if (!n || TypeAwareJSASTParser._isBigIntValue(n)) return null;
+        if (n.type === 'Literal') return typeof n.value === 'number' && Number.isInteger(n.value) ? [n.value, n.value] : null;
+        if (n.resultType === 'int32') return TypeAwareJSASTParser.INTEGER_RANGES.int32;
+        if (n.resultType === 'int64') return [-SAFE, SAFE];
+        return null;
+      };
+      const a = range(left), b = range(right);
+      if (!a || !b) return false;
+      let lo, hi;
+      if (op === '+') { lo = a[0] + b[0]; hi = a[1] + b[1]; }
+      else if (op === '-') { lo = a[0] - b[1]; hi = a[1] - b[0]; }
+      else {
+        const c = [a[0] * b[0], a[0] * b[1], a[1] * b[0], a[1] * b[1]];
+        lo = Math.min(...c); hi = Math.max(...c);
+      }
+      const int64 = TypeAwareJSASTParser.INTEGER_RANGES.int64;
+      return lo >= int64[0] && hi <= int64[1];
+    }
+
+    /**
      * Result type of `+`, `-`, `*` or `%` on numbers where one side is a
      * 64-bit integer (a Number typed uint64/int64, not a BigInt): uint64 when
      * no result can be negative - both sides unsigned for `+` and `*`, an
@@ -3325,28 +3360,152 @@
 
     /**
      * Result type of Math.floor/ceil/round/trunc: the argument's own integer
-     * type, or for `a / b` with an integer dividend and a divisor of at least 1
-     * the dividend's type (the quotient is no larger). Null when the argument
-     * says nothing (the caller then keeps its default).
+     * type; otherwise the narrowest integer type that holds the rounded range
+     * of the argument (see _valueRange: `Math.round(scale * Math.cos(t))`
+     * with an int64 scale is int64, `Math.floor(u / 8)` of a uint32 int32);
+     * for `a / b` with an unsigned divisor the dividend's type. An argument
+     * whose range is unknown (a float64 of any magnitude) rounds to an
+     * integral double, float64 - never to int32 or int64, which it may
+     * exceed - as does one whose range exceeds 64 bits.
      * @param {Object} arg - IL argument
-     * @returns {string|null} integer type or null
+     * @param {Function} [round] - the rounding (Math.floor, ...) applied to the range's ends
+     * @returns {string} integer type, or float64
      */
-    static _roundedType(arg) {
+    static _roundedType(arg, round = Math.round) {
       const integer = t => typeof t === 'string' && /^u?int(8|16|32|64)$/.test(t);
-      if (!arg) return null;
+      if (!arg) return 'float64';
       if (integer(arg.resultType) && !(arg.type === 'Literal' && typeof arg.value !== 'number')) return arg.resultType;
-      if (arg.type === 'BinaryExpression' && arg.operator === '/' && arg.left && arg.right && integer(arg.left.resultType)) {
-        const r = arg.right;
-        const dividend = arg.left.resultType;
-        const range = TypeAwareJSASTParser.INTEGER_RANGES[dividend];
-        // A literal divisor narrows the quotient: uint32 / 8 fits int32.
-        if (r.type === 'Literal' && typeof r.value === 'number' && r.value >= 1) {
-          const lo = Math.floor(range[0] / r.value), hi = Math.ceil(range[1] / r.value);
-          return lo >= -0x80000000 && hi <= 0x7FFFFFFF ? 'int32' : dividend;
+      // Rounding is monotonic: the rounded ends bound the result (uint32 / 8 fits int32).
+      const range = TypeAwareJSASTParser._valueRange(arg);
+      if (range) return TypeAwareJSASTParser._integerTypeOfRange(round(range[0]), round(range[1]));
+      // An unsigned divisor of at least 1 (0 gives Infinity) keeps the quotient within the dividend.
+      if (arg.type === 'BinaryExpression' && arg.operator === '/' && arg.left && arg.right && integer(arg.left.resultType) &&
+          integer(arg.right.resultType) && arg.right.resultType.startsWith('u') && arg.right.type !== 'Literal')
+        return arg.left.resultType;
+      return 'float64';
+    }
+
+    /**
+     * The narrowest integer type of a range: int32, uint32, then uint64 for a
+     * range that is never negative and int64 for any other; float64 when no
+     * 64-bit integer holds it.
+     * @param {number} lo - smallest value
+     * @param {number} hi - largest value
+     * @returns {string} IL type
+     */
+    static _integerTypeOfRange(lo, hi) {
+      const ranges = TypeAwareJSASTParser.INTEGER_RANGES;
+      if (lo >= ranges.int32[0] && hi <= ranges.int32[1]) return 'int32';
+      if (lo >= 0 && hi <= ranges.uint32[1]) return 'uint32';
+      if (lo >= 0 && hi <= ranges.uint64[1]) return 'uint64';
+      if (lo >= ranges.int64[0] && hi <= ranges.int64[1]) return 'int64';
+      return 'float64';
+    }
+
+    /**
+     * The range of values a numeric IL expression can take, from its integer
+     * type, its literal value or the operation that forms it (interval
+     * arithmetic over + - * / %, Math.random, sin/cos, abs, min/max, ...).
+     * Null when nothing bounds it: a float64 or `number` value, a BigInt, a
+     * division by a range that holds 0.
+     * @param {Object} node - IL expression
+     * @param {number} [depth] - recursion limit
+     * @returns {number[]|null} [lo, hi]
+     */
+    static _valueRange(node, depth = 12) {
+      if (!node || typeof node !== 'object' || depth < 0) return null;
+      const sub = n => TypeAwareJSASTParser._valueRange(n, depth - 1);
+      const corners = (a, b, f) => {
+        const v = [f(a[0], b[0]), f(a[0], b[1]), f(a[1], b[0]), f(a[1], b[1])];
+        return v.some(Number.isNaN) ? null : [Math.min(...v), Math.max(...v)];
+      };
+      const t = node.resultType;
+      if (node.type === 'Literal') return typeof node.value === 'number' && Number.isFinite(node.value) ? [node.value, node.value] : null;
+      if (node.type === 'MathConstant' && typeof node.value === 'number') return [node.value, node.value];
+      if (TypeAwareJSASTParser._isBigIntValue(node)) return null;
+      // The operation bounds the value more tightly than its type may
+      // (uint32 * uint32 is a uint64 below 2^64 - 2^33 + 2); both hold.
+      const typed = typeof t === 'string' && TypeAwareJSASTParser.INTEGER_RANGES[t] ? TypeAwareJSASTParser.INTEGER_RANGES[t] : null;
+      const shaped = TypeAwareJSASTParser._operationRange(node, sub, corners);
+      if (shaped && typed && shaped[0] <= typed[1] && shaped[1] >= typed[0])
+        return [Math.max(shaped[0], typed[0]), Math.min(shaped[1], typed[1])];
+      return shaped || typed;
+    }
+
+    /**
+     * The range an operation forms from the ranges of its operands (see _valueRange).
+     * @param {Object} node - IL expression
+     * @param {Function} sub - range of an operand
+     * @param {Function} corners - range of f over two ranges, from their corners
+     * @returns {number[]|null} [lo, hi]
+     */
+    static _operationRange(node, sub, corners) {
+      switch (node.type) {
+        case 'UnaryExpression': {
+          const a = sub(node.argument);
+          if (!a) return null;
+          return node.operator === '-' ? [-a[1], -a[0]] : node.operator === '+' ? a : null;
         }
-        if (integer(r.resultType) && r.resultType.startsWith('u') && r.type !== 'Literal') return dividend;
+        case 'BinaryExpression': {
+          const a = sub(node.left), b = sub(node.right);
+          if (!a || !b) return null;
+          switch (node.operator) {
+            case '+': return [a[0] + b[0], a[1] + b[1]];
+            case '-': return [a[0] - b[1], a[1] - b[0]];
+            case '*': return corners(a, b, (x, y) => x * y);
+            case '/': {
+              if (b[0] > 0 || b[1] < 0) return corners(a, b, (x, y) => x / y);
+              // An integer divisor other than 0 (which gives no finite value)
+              // is at least 1 in magnitude: the quotient is no larger than the
+              // dividend, and a counted int32 stays int32 (see _widenedArithmeticType).
+              const integer = n => n && n.type !== 'Literal' && typeof n.resultType === 'string' && /^u?int(8|16|32|64)$/.test(n.resultType);
+              if (!integer(node.right)) return null;
+              const m = Math.max(Math.abs(a[0]), Math.abs(a[1]));
+              const q = a[0] >= 0 && b[0] >= 0 ? [0, a[1]] : [-m, m];
+              if (integer(node.left) && node.left.resultType === 'int32')
+                return [Math.max(q[0], -0x80000000), Math.min(q[1], 0x7FFFFFFF)];
+              return q;
+            }
+            case '%': {
+              // |a % b| < |b| and |a % b| <= |a|, with the sign of a
+              const m = Math.min(Math.max(Math.abs(b[0]), Math.abs(b[1])), Math.max(Math.abs(a[0]), Math.abs(a[1])));
+              return [a[0] < 0 ? -m : 0, a[1] > 0 ? m : 0];
+            }
+            default: return null;
+          }
+        }
+        case 'ConditionalExpression': {
+          const a = sub(node.consequent), b = sub(node.alternate);
+          return a && b ? [Math.min(a[0], b[0]), Math.max(a[1], b[1])] : null;
+        }
+        case 'Random': return [0, 1];
+        case 'Sin': case 'Cos': case 'Tanh': return [-1, 1];
+        case 'Atan': return [-Math.PI / 2, Math.PI / 2];
+        case 'Atan2': case 'Acos': case 'Asin': return [-Math.PI, Math.PI];
+        // log of any finite positive double lies within these bounds
+        case 'Log2': return [-1075, 1024];
+        case 'Log': return [-745.2, 709.8];
+        case 'Log10': return [-323.4, 308.3];
+        case 'Floor': case 'Ceil': case 'Round': case 'Truncate': {
+          const a = sub(node.argument);
+          return a ? [Math.floor(a[0]), Math.ceil(a[1])] : null;
+        }
+        case 'Abs': {
+          const a = sub(node.argument);
+          return a ? [a[0] <= 0 && a[1] >= 0 ? 0 : Math.min(Math.abs(a[0]), Math.abs(a[1])), Math.max(Math.abs(a[0]), Math.abs(a[1]))] : null;
+        }
+        case 'Sqrt': {
+          const a = sub(node.argument);
+          return a ? [0, Math.sqrt(Math.max(0, a[1]))] : null;
+        }
+        case 'Min': case 'Max': {
+          const all = (node.arguments || []).map(sub);
+          if (all.length === 0 || all.some(r => !r)) return null;
+          const pick = node.type === 'Min' ? Math.min : Math.max;
+          return [pick(...all.map(r => r[0])), pick(...all.map(r => r[1]))];
+        }
+        default: return null;
       }
-      return null;
     }
 
     /**
@@ -3549,11 +3708,11 @@
 
       switch (methodName) {
         case 'floor':
-          return { type: 'Floor', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0]) || getResultType('Floor'), ilNodeType: 'Floor' };
+          return { type: 'Floor', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0], Math.floor), ilNodeType: 'Floor' };
         case 'ceil':
-          return { type: 'Ceil', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0]) || getResultType('Ceil'), ilNodeType: 'Ceil' };
+          return { type: 'Ceil', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0], Math.ceil), ilNodeType: 'Ceil' };
         case 'round':
-          return { type: 'Round', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0]) || getResultType('Round'), ilNodeType: 'Round' };
+          return { type: 'Round', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0], Math.round), ilNodeType: 'Round' };
         case 'abs':
           return { type: 'Abs', argument: args[0], resultType: getResultType('Abs', args[0]?.resultType), ilNodeType: 'Abs' };
         case 'min':
@@ -3567,7 +3726,7 @@
         case 'random':
           return { type: 'Random', resultType: getResultType('Random'), ilNodeType: 'Random' };
         case 'trunc':
-          return { type: 'Truncate', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0]) || getResultType('Truncate'), ilNodeType: 'Truncate' };
+          return { type: 'Truncate', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0], Math.trunc), ilNodeType: 'Truncate' };
         case 'log':
           return { type: 'Log', argument: args[0], resultType: getResultType('Log'), ilNodeType: 'Log' };
         case 'log2':
@@ -5225,7 +5384,8 @@
       } else if (bigintType) {
         // BigInt operands: the type above holds every result (see _bigIntResultType)
       } else if (isInteger(lt) && isInteger(rt)) {
-        if (['+', '-', '*'].includes(op) && !(lt === 'int32' && rt === 'int32')) {
+        if (['+', '-', '*'].includes(op) && !(lt === 'int32' && rt === 'int32') &&
+            !TypeAwareJSASTParser._isExactSignedArithmetic(op, left, right)) {
           result.typeGuess = `'${lt} ${op} ${rt}' has no fixed width in JavaScript but is typed ${resultType}; ` +
             `use OpCodes.${op === '+' ? 'Add32' : op === '-' ? 'Sub32' : 'Mul32'} (or the matching helper) for fixed-width arithmetic`;
           result.typeGuessKind = 'raw-arithmetic';

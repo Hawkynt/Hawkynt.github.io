@@ -307,6 +307,17 @@ test('context: given return { ... } without @returns, when counted, then the obj
 test('context: given an inner function without @returns, when counted, then the outer @returns does not reach its return', () => {
   equal(sites('/** @returns {Settings} */\nfunction f() { const g = function () { return { a: 1 }; }; return { b: g }; }').length, 1);
 });
+// ------------------------------------------------------------ precision gaps
+test('guess: given int32 + a rounded double of a 64-bit range, when typed, then the int64 count is no width guess', () => {
+  const s = sites('/** @param {int32} i\n * @param {int32} p\n * @param {float64} t */\nfunction f(i, p, t) { const k = Math.round(p * Math.cos(t)); const j = i + k; return j; }');
+  equal(s.length, 0);
+});
+test('guess: given int64 * int32, when typed, then the guess stays reported (the product may leave int64)', () => {
+  ok(reasons('/** @param {int64} q\n * @param {int32} i */\nfunction f(q, i) { const j = q * i; return j; }').some(r => /no fixed width/.test(r)), 'int64 * int32 reported');
+});
+test('guess: given uint64 + int32, when typed, then the guess stays reported (an unsigned word is no count)', () => {
+  ok(reasons('/** @param {uint64} w\n * @param {int32} i */\nfunction f(w, i) { const j = w + i; return j; }').some(r => /no fixed width/.test(r)), 'uint64 + int32 reported');
+});
 test('walk: given sites, when tallied, then every site lands in exactly one tier', () => {
   const s = sites('function f(a) { return OpCodes.XorN(a, 1) + a; }');
   const t = TypeCoverage.byTier(s);

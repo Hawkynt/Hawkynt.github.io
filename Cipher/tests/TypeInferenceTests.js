@@ -1334,7 +1334,7 @@ class TypeInferenceTestSuite {
       if (types?.Floor) {
         this.assertEqual(
           types.Floor(),
-          'int32', 'Floor() → int32', 'Floor result type'
+          'float64', 'Floor() → float64 (a double of unknown range)', 'Floor result type'
         );
       }
 
@@ -1823,6 +1823,22 @@ class TypeInferenceTestSuite {
       check(big + 'const x = c ? P - a : 0n; return x; }', 'x', 'bigint', 'given c ? BigInt : 0n, then bigint (branch order does not matter)');
       check(big + 'const x = c ? 0n : q; return x; }', 'x', 'int64', 'given c ? 0n : int64, then int64 (the BigInt literal fits)');
       check(big + 'const x = c ? w : a; return x; }', 'x', 'bigint', 'given c ? uint64 : BigInt, then bigint');
+
+      // Rounding a float takes the range of its operand; an unknown range stays a double
+      const fl = '/** @param {int64} scale\n * @param {float64} t\n * @param {uint32} a\n * @param {int32} s */\nfunction f(scale, t, a, s) {\n';
+      check(fl + 'const x = Math.round(scale * Math.cos(t)); return x; }', 'x', 'int64', 'given Math.round(int64 * Math.cos(t)), then int64 (HAWK; was int32)');
+      check(fl + 'const x = Math.floor(t / 0x100000000); return x; }', 'x', 'float64', 'given Math.floor(float64 / 2^32), then float64 (unknown range: an integral double; was int32)');
+      check(fl + 'const x = Math.round(t); return x; }', 'x', 'float64', 'given Math.round(float64), then float64 (unknown range)');
+      check(fl + 'const x = Math.floor(a * a / 0x100000000); return x; }', 'x', 'uint32', 'given Math.floor(uint32 * uint32 / 2^32), then uint32 (boundary: below 2^32)');
+      check(fl + 'const x = Math.floor(a * a / 0x80000000); return x; }', 'x', 'uint64', 'given Math.floor(uint32 * uint32 / 2^31), then uint64 (just above 2^32)');
+      check(fl + 'const x = Math.round(Math.random() * 255); return x; }', 'x', 'int32', 'given Math.round(random * 255), then int32');
+      check(fl + 'const x = Math.ceil(s * 0.5); return x; }', 'x', 'int32', 'given Math.ceil(int32 * 0.5), then int32 (range halves)');
+      check(fl + 'const x = Math.ceil(a * 1.5); return x; }', 'x', 'uint64', 'given Math.ceil(uint32 * 1.5), then uint64 (beyond uint32, never negative)');
+      check(fl + 'const x = Math.floor(s * -1.5); return x; }', 'x', 'int64', 'given Math.floor(int32 * -1.5), then int64 (beyond int32, signed)');
+      check(fl + 'const x = Math.round(1e30 * Math.random()); return x; }', 'x', 'float64', 'given Math.round of a range beyond 64 bits, then float64');
+      check(fl + 'const x = Math.trunc(Math.sin(t) * 1000); return x; }', 'x', 'int32', 'given Math.trunc(sin * 1000), then int32');
+      check(fl + 'const x = Math.floor(Math.log2(a)); return x; }', 'x', 'int32', 'given Math.floor(Math.log2(uint32)), then int32 (a logarithm is small)');
+      check(fl + 'const x = Math.floor(t / a); return x; }', 'x', 'float64', 'given Math.floor(float / uint32), then float64 (divisor range holds 0)');
 
     });
   }
