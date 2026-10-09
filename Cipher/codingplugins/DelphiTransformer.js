@@ -219,7 +219,8 @@
     'initinstance cleanupinstance safecallexception defaulthandler getinterface unitname qualifiedclassname ' +
     'random randomize odd succ pred halt assert include exclude str val power floor ceil min max sign isnan isinfinite ' +
     'nan infinity sarlongint sarint64 inttostr uinttostr format trim uppercase lowercase pos delete insert frexp ' +
-    'tformatsettings defaultformatsettings strtofloat floattostrf comparemem gettypekind').split(' ');
+    'tformatsettings defaultformatsettings strtofloat floattostrf comparemem gettypekind log2 log10 tan arctan arctan2 tanh ' +
+    'hypot comparestr booltostr inttohex').split(' ');
 
   /** A JavaScript identifier as a Pascal one ($ is not allowed). */
   function sanitize(name) {
@@ -322,6 +323,11 @@
     IRandomGeneratorInstance: { pas: 'TIRandomGeneratorInstance', base: 'IAlgorithmInstance',
       methods: { NextBytes: { params: [P('count', 'int32')], ret: 'uint8[]', virtual: true } }, ctor: [P('algorithm', 'Algorithm')] }
   };
+
+  /** Algorithm metadata fields: descriptive, never read back by the Feed/Result contract. */
+  const METADATA_FIELDS = new Set(['documentation', 'references', 'knownVulnerabilities', 'SupportedKeySizes', 'SupportedBlockSizes',
+    'SupportedOutputSizes', 'SupportedMacSizes', 'SupportedIVSizes', 'SupportedTagSizes', 'SupportedSeedSizes', 'category', 'subCategory',
+    'securityStatus', 'complexity', 'country', 'inventor', 'year', 'description']);
 
   /** Array aliases the runtime already declares (element type key -> alias). */
   const RUNTIME_ALIASES = {
@@ -557,7 +563,11 @@
 
     addUserClass(node) {
       const name = node.id.name;
-      const info = { jsName: name, pas: null, isFramework: false, node, baseName: node.superClass && node.superClass.name || null,
+      // extends Foo, or extends AlgorithmFramework.Foo
+      const sc = node.superClass;
+      const baseName = !sc ? null : sc.type === 'Identifier' ? sc.name
+        : sc.type === 'MemberExpression' && !sc.computed ? (sc.property.name || sc.property.value) : null;
+      const info = { jsName: name, pas: null, isFramework: false, node, baseName,
         base: null, members: new Map(), subclasses: [], ctorNode: null, ctorParams: [], staticInits: [], fieldVotes: new Map(),
         lambdas: [] };
       this.classes.set(name, info);
@@ -875,7 +885,9 @@
           } else if (m.kind === 'prop') {
             const getT = m.getNode ? this.returnTypeOf(m.getNode) : null;
             const setP = m.setNode ? this.paramsOf(m.setNode)[0] : null;
-            m.type = m.overrides ? m.overrides.type : (getT && !isAnyT(getT) && !isNullT(getT) ? getT : (setP ? setP.type : getT || T.any));
+            if (m.overrides) m.type = m.overrides.type;
+            else if (getT && setP && !isAnyT(getT) && !isNullT(getT) && getT.key !== setP.type.key) m.type = T.any;  // accepts one type, returns another
+            else m.type = getT && !isAnyT(getT) && !isNullT(getT) ? getT : (setP ? setP.type : getT || T.any);
           }
         }
         // constructor
@@ -1123,7 +1135,12 @@
           if (p.ownType && p.ownType.key !== p.type.key) {
             // the override's own parameter type differs from the inherited signature
             const local = this.declareLocal(p.jsName, p.ownType);
-            prologue.push(A.assign(A.id(local.pas), this.conv({ e: A.id(entry.pas), t: p.type }, p.ownType)));
+            try {
+              prologue.push(A.assign(A.id(local.pas), this.conv({ e: A.id(entry.pas), t: p.type }, p.ownType)));
+            } catch (e) {
+              if (!(e instanceof TranspileError)) throw e;
+              prologue.push(...this.unsupported(e));
+            }
           }
         }
         for (const p of o.extraParams || []) {
@@ -1133,7 +1150,7 @@
         const ownRet = o.ownRet || o.retType;
         this.fn.retType = o.retType;
         this.fn.ownRet = ownRet;
-        const body = prologue.concat(this.compileBody(o.node));
+        const body = prologue.concat(this.hoistVars(o.node), this.compileBody(o.node));
         const r = A.routine({
           name: o.name, owner: o.cls ? o.cls.pas : null,
           routineKind: o.isCtor ? 'constructor' : (isNullT(o.retType) || o.retType.k === 'void' ? 'procedure' : 'function'),
@@ -1168,6 +1185,41 @@
 
     paramMode(t) {
       return '';
+    }
+
+    /**
+     * JavaScript `var` is scoped to the function: every var the body declares
+     * (outside nested functions) is a local from the start, undefined until set.
+     * @returns {object[]} statements giving each its initial value
+     */
+    hoistVars(fnNode) {
+      const out = [];
+      const body = fnNode && fnNode.body;
+      if (!body || body.type !== 'BlockStatement') return out;
+      const visit = node => {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(visit); return; }
+        if (['FunctionExpression', 'FunctionDeclaration', 'ArrowFunction', 'ArrowFunctionExpression', 'ClassDeclaration'].includes(node.type)) return;
+        if (node.type === 'VariableDeclaration' && node.kind === 'var') {
+          for (const d of node.declarations) {
+            if (!d.id || d.id.type !== 'Identifier' || this.fn.scopes[0].has(d.id.name)) continue;
+            if (d.init && (d.init.type === 'FunctionExpression' || d.init.type === 'ArrowFunction' || d.init.type === 'ArrowFunctionExpression')) continue;
+            let type = parseType(d.declaredType) || parseType(d.id.resultType) || (d.init && parseType(d.init.resultType)) || null;
+            if (!type || isNullT(type)) type = (d.init && parseType(d.init.contextType)) || T.any;
+            const pas = this.fn.pool.take(d.id.name);
+            this.fn.scopes[0].set(d.id.name, { pas, type, kind: 'local', isVar: true });
+            this.fn.vars.push({ name: pas, type: this.pasType(type) });
+            out.push(A.assign(A.id(pas), this.defaultValue(type)));
+          }
+        }
+        for (const k in node) {
+          if (k === 'typeInfo' || k === 'range' || k === 'loc') continue;
+          const v = node[k];
+          if (v && typeof v === 'object') visit(v);
+        }
+      };
+      visit(body.body);
+      return out;
     }
 
     /** Statements of a function body (a block or an arrow's expression). */
@@ -1227,7 +1279,7 @@
      */
     unsupported(e) {
       if (this.options.strict) throw e;
-      this.diagnostics.push(e.message);
+      this.diagnostics.push(e.message + (e.node && e.node.range ? " @" + e.node.range[0] : ""));
       const text = 'unsupported: ' + e.message;
       return [A.comment(text), A.raise(A.call(A.mem(A.id('EJsError'), 'Create'), [A.lit(pasString(text))]))];
     }
@@ -1269,7 +1321,9 @@
           return out;
         }
         case 'ConditionalExpression': {
-          const cond = this.truthy(this.ex(e.test));
+          const test = this.ex(e.test);
+          if (test.constBool !== undefined) return this.expressionStatement(test.constBool ? e.consequent : e.alternate);
+          const cond = this.truthy(test);
           const [, a] = this.capture(() => { const r = this.expressionStatement(e.consequent); if (r) this.pre.push(...(Array.isArray(r) ? r : [r])); });
           const [, b] = this.capture(() => { const r = this.expressionStatement(e.alternate); if (r) this.pre.push(...(Array.isArray(r) ? r : [r])); });
           return A.ifStmt(cond, a, b.length ? b : null);
@@ -1319,8 +1373,24 @@
           this.declareNestedFunction(name, d.init);
           continue;
         }
+        if (node.kind === 'var') {
+          // hoisted: the declaration only assigns
+          const hoisted = this.fn.scopes[0].get(name);
+          if (hoisted && hoisted.isVar) {
+            if (d.init) out.push(...this.assignTo({ e: A.id(hoisted.pas), t: hoisted.type, lvalue: true }, d.init));
+            continue;
+          }
+        }
         let type = parseType(d.declaredType) || parseType(d.id.resultType) || (d.init && parseType(d.init.resultType)) || null;
         if (!type || isNullT(type)) type = (d.init && parseType(d.init.contextType)) || T.any;
+        if (isAnyT(type) && d.init) {
+          // untyped by the IL (test vector helpers): the variable holds what its initializer compiles to
+          const [res, pre] = this.capture(() => this.ex(d.init));
+          const t = res.t && !isNullT(res.t) && res.t.k !== 'void' && res.t.k !== 'function' ? res.t : T.any;
+          const local = this.declareLocal(name, t);
+          out.push(...pre, A.assign(A.id(local.pas), this.conv(res, t)));
+          continue;
+        }
         const entry = this.declareLocal(name, type);
         if (d.init) out.push(...this.assignTo({ e: A.id(entry.pas), t: type, lvalue: true }, d.init));
         else out.push(A.assign(A.id(entry.pas), this.defaultValue(type)));
@@ -1375,7 +1445,11 @@
     }
 
     ifStatement(node) {
-      const cond = this.truthy(this.ex(node.test));
+      const test = this.ex(node.test);
+      // a branch the IL types rule out is not compiled
+      if (test.constBool === true) return this.subBlock(node.consequent);
+      if (test.constBool === false) return node.alternate ? this.subBlock(node.alternate) : [];
+      const cond = this.truthy(test);
       const thenBody = this.subBlock(node.consequent);
       const elseBody = node.alternate ? this.subBlock(node.alternate) : null;
       return A.ifStmt(cond, thenBody, elseBody && elseBody.length ? elseBody : null);
@@ -1676,7 +1750,7 @@
           return A.param(e.pas, this.pasType(p.type), entry.constParams ? 'const' : '');
         });
         this.fn.ownRet = entry.ret;
-        const body = this.compileBody(entry.node);
+        const body = this.hoistVars(entry.node).concat(this.compileBody(entry.node));
         const r = A.routine({
           name: entry.pas, routineKind: entry.ret.k === 'void' ? 'procedure' : 'function', params,
           returns: entry.ret.k === 'void' ? null : this.pasType(entry.ret), labels: this.fn.labels,
@@ -1736,7 +1810,7 @@
       try {
         const ps = params.map(p => { const e = this.declareLocal(p.jsName, p.type, 'param'); return A.param(e.pas, this.pasType(p.type), 'const'); });
         this.fn.ownRet = T.void;
-        const body = this.compileBody(node);
+        const body = this.hoistVars(node).concat(this.compileBody(node));
         this.routines.push(A.routine({ name, owner: c.pas, routineKind: 'procedure', params: ps, labels: this.fn.labels,
           vars: this.dedupeVars(this.fn.vars), nested: this.fn.nested, body }));
         c.decl.methods.push(A.methodDecl({ name, routineKind: 'procedure', params: ps }));
@@ -1889,7 +1963,8 @@
       if (t.k === 'array' && name === 'length') return { e: A.mem(obj.e, 'length'), t: T.int32, lvalue: true };
       if (t.k === 'string' && name === 'length') return { e: A.call(A.id('System.Length'), [obj.e]), t: T.int32 };
       if (t.k === 'any') {
-        fail(`member ${name} of an untyped value`, node);
+        // a value the IL leaves untyped: its members are dynamic too
+        return { e: A.call('JsValGet', [obj.e, A.lit(pasString(name))]), t: T.any, dynamicMember: { obj: obj.e, name } };
       }
       fail(`member ${name} of ${t.key}`, node);
     }
@@ -1897,7 +1972,7 @@
     /** A member only a subclass declares, reached through a base-typed value: cast to that subclass. */
     memberFromSubclass(c, name, node) {
       const found = [];
-      for (const k of this.userClasses) {
+      for (const k of this.classes.values()) {
         let isSub = false;
         for (let b = k.base; b; b = b.base) if (b === c) isSub = true;
         if (isSub && k.members.has(name)) found.push(k);
@@ -2163,7 +2238,9 @@
         case 'bool': return A.call('JsValToBool', [e]);
         case 'string': case 'enum': return A.call('JsValToStr', [e]);
         case 'bigint': return A.call('JsValToBig', [e]);
-        case 'class': return A.cast(this.classPas(to.name), A.call('JsValToObj', [e]));
+        case 'class':
+          if (to.name === 'TestCase') return A.call('JsValToTestCase', [e]);
+          return A.cast(this.classPas(to.name), A.call('JsValToObj', [e]));
         case 'error': return A.cast('Exception', A.call('JsValToObj', [e]));
         case 'array': return A.call(this.jsValueToArray(to), [e]);
         case 'null': case 'void': return e;
@@ -2249,6 +2326,8 @@
       if (['==', '!=', '===', '!==', '<', '>', '<=', '>='].includes(op)) {
         const l = this.ex(node.left);
         const r = this.ex(node.right, l.t);
+        const folded = this.foldTypeofCompare(op, l, r);
+        if (folded) return folded;
         return { e: this.compare(op, l, r), t: T.bool };
       }
       if (op === 'instanceof') {
@@ -2459,8 +2538,20 @@
     xLogicalExpression(node, expected) {
       const op = node.operator;
       let resT = this.typeOf(node, null);
-      const [l, ] = [this.ex(node.left, expected)];
+      const l = this.ex(node.left, expected);
+      // a left side the IL types decide: the right side is dead or is the result
+      if (l.constBool !== undefined && (op === '&&' || op === '||')) {
+        if ((op === '&&') !== l.constBool) return l;
+        const r = this.ex(node.right, expected);
+        if (r.constBool !== undefined || isBool(r.t)) return r;
+        return { e: this.truthy(r), t: T.bool };
+      }
       const [r, rPre] = this.capture(() => this.ex(node.right, expected || l.t));
+      if (r.constBool !== undefined && rPre.length === 0 && (op === '&&' || op === '||') && (isBool(l.t) || (resT && isBool(resT)))) {
+        if (op === '&&' && r.constBool === false) { this.discard(l); return r; }
+        if (op === '||' && r.constBool === true) { this.discard(l); return r; }
+        return { e: this.truthy(l), t: T.bool };
+      }
       if (op === '??') {
         resT = resT && !isAnyT(resT) ? resT : l.t;
         const tmp = this.temp(resT, 'coalesce');
@@ -2485,7 +2576,12 @@
     xConditionalExpression(node, expected) {
       let resT = this.typeOf(node, null);
       if (!resT || isAnyT(resT) || isNullT(resT)) resT = expected && !isAnyT(expected) ? expected : null;
-      const cond = this.truthy(this.ex(node.test));
+      const test = this.ex(node.test);
+      if (test.constBool !== undefined) {
+        const live = this.ex(test.constBool ? node.consequent : node.alternate, resT || expected);
+        return resT && live.t.key !== resT.key ? { e: this.conv(live, resT), t: resT } : live;
+      }
+      const cond = this.truthy(test);
       const [a, aPre] = this.capture(() => this.ex(node.consequent, resT || expected));
       const [b, bPre] = this.capture(() => this.ex(node.alternate, resT || expected || a.t));
       if (!resT) resT = isNullT(a.t) ? b.t : a.t;
@@ -2499,7 +2595,11 @@
       if (op === '++' || op === '--')
         return this.xUpdateExpression({ type: 'UpdateExpression', operator: op, argument: node.argument, prefix: node.prefix !== false }, expected, forEffect);
       const resT = this.typeOf(node, null);
-      if (op === '!') return { e: A.un('not', this.truthy(this.ex(node.argument))), t: T.bool };
+      if (op === '!') {
+        const a = this.ex(node.argument);
+        if (a.constBool !== undefined) return { e: A.lit(a.constBool ? 'False' : 'True'), t: T.bool, constBool: !a.constBool };
+        return { e: A.un('not', this.truthy(a)), t: T.bool };
+      }
       if (op === 'typeof') return this.typeofOf(this.ex(node.argument));
       if (op === 'void') { const r = this.ex(node.argument); this.discard(r); return { e: A.lit('nil'), t: T.null, isNull: true }; }
       if (op === 'delete') fail('delete is not supported', node);
@@ -2528,9 +2628,36 @@
     }
 
     typeofOf(a) {
+      if (a.t.k === 'any') return { e: A.call('JsTypeOf', [a.e]), t: T.str, typeofOf: a };
       const name = { int: 'number', float: 'number', bool: 'boolean', string: 'string', bigint: 'bigint', function: 'function', enum: 'object' }[a.t.k] || 'object';
-      if (a.t.k === 'any') fail('typeof an untyped value');
-      return { e: A.lit(pasString(name)), t: T.str, constStr: name };
+      return { e: A.lit(pasString(name)), t: T.str, constStr: name, typeofOf: a };
+    }
+
+    /**
+     * typeof x === 'name' decided by the IL type of x: a constant, except
+     * 'undefined' of a reference (its null) and anything of an untyped value.
+     * @returns {object|null} { e, t, constBool } or null when not a typeof test
+     */
+    foldTypeofCompare(op, l, r) {
+      const eq = op === '==' || op === '===';
+      if (!eq && op !== '!=' && op !== '!==') return null;
+      const tf = l.typeofOf ? l : r.typeofOf ? r : null;
+      const other = tf === l ? r : l;
+      if (!tf || other.constStr === undefined) return null;
+      const v = tf.typeofOf;
+      if (v.t.k === 'any') return null;
+      let res;
+      if (other.constStr === 'undefined') {
+        if (isRef(v.t) || isStr(v.t)) {
+          const test = this.compare('===', v, { e: A.lit('nil'), t: T.null, isNull: true });
+          return { e: eq ? test : A.un('not', test), t: T.bool };
+        }
+        res = false;
+      } else {
+        res = tf.constStr === other.constStr;
+      }
+      const value = eq ? res : !res;
+      return { e: A.lit(value ? 'True' : 'False'), t: T.bool, constBool: value };
     }
 
     xTypeOfExpression(node) {
@@ -2556,10 +2683,21 @@
      */
     assignment(node, wantValue) {
       const op = node.operator;
+      if (op === '=' && (node.left.type === 'ArrayExpression' || node.left.type === 'ArrayPattern' || node.left.type === 'ArrayLiteral')) {
+        const stmts = this.destructuringAssignment(node.left.elements, node.right);
+        return wantValue ? { stmts, value: { e: null, t: T.void } } : stmts;
+      }
       const target = this.lvalue(node.left);
       let stmts = [];
       if (op === '=') {
-        stmts = this.assignTo(target, node.right);
+        try {
+          stmts = this.assignTo(target, node.right);
+        } catch (e) {
+          // algorithm metadata JavaScript never reads back, assigned a shape the framework does not declare
+          if (!(e instanceof TranspileError) || !target.member || !METADATA_FIELDS.has(target.member.jsName) || !target.member.owner.isFramework) throw e;
+          this.diagnostics.push(`metadata ${target.member.jsName} not representable: ${e.message}`);
+          stmts = [A.comment(`${target.member.jsName}: ${e.message}`)];
+        }
       } else {
         const binop = op.slice(0, -1);
         const cur = target.read();
@@ -2579,6 +2717,34 @@
 
     x__Compiled(node) {
       return node.res;
+    }
+
+    /** [a, b] = [x, y] (every value is read before any target is written) or [a, b] = array. */
+    destructuringAssignment(targets, rightNode) {
+      const out = [];
+      const values = [];
+      if (rightNode.type === 'ArrayExpression' || rightNode.type === 'ArrayLiteral') {
+        rightNode.elements.forEach((el, i) => {
+          const r = this.ex(el);
+          const tmp = this.temp(r.t, 'd');
+          out.push(A.assign(A.id(tmp), r.e));
+          values.push({ e: A.id(tmp), t: r.t });
+        });
+      } else {
+        const src = this.ex(rightNode);
+        const tmp = this.temp(src.t, 'd');
+        out.push(A.assign(A.id(tmp), src.e));
+        targets.forEach((el, i) => values.push(this.indexValue({ e: A.id(tmp), t: src.t }, { e: A.lit(i), t: T.int32, constNum: i }, i)));
+      }
+      targets.forEach((el, i) => {
+        if (!el || !values[i]) return;
+        const [stmt, pre] = this.capture(() => {
+          const target = this.lvalue(el);
+          return target.write(this.conv(values[i], target.t));
+        });
+        out.push(...pre, stmt);
+      });
+      return out;
     }
 
     /** Statements assigning an IL value node to a target. */
@@ -2617,13 +2783,16 @@
           const v = node.type === 'ThisPropertyAccess' ? this.xThisPropertyAccess(node) : this.xMemberExpression(node);
           if (v.dynamicField) {
             const objE = v.dynamicField.obj;
-            const t = parseType(node.resultType) || T.any;
             return { t: T.any, read: () => v, write: val => A.expr(A.call(A.mem(objE, 'SetField'), [A.lit(pasString(v.dynamicField.name)), val])) };
+          }
+          if (v.dynamicMember) {
+            const objE = v.dynamicMember.obj;
+            return { t: T.any, read: () => v, write: val => A.expr(A.call('JsValSet', [objE, A.lit(pasString(v.dynamicMember.name)), val])) };
           }
           if (v.member && v.member.kind === 'prop' && !v.member.setter && !v.member.setterPas && !(v.member.overrides && (v.member.overrides.setter || v.member.overrides.setterPas)))
             fail(`assignment to getter-only property ${v.member.jsName}`, node);
           if (!v.lvalue) fail('assignment to a read-only member', node);
-          return { t: v.t, read: () => ({ e: v.e, t: v.t }), write: val => A.assign(v.e, val) };
+          return { t: v.t, read: () => ({ e: v.e, t: v.t }), write: val => A.assign(v.e, val), member: v.member };
         }
         case 'ArrayLength': {
           const o = this.ex(node.array);
@@ -2773,10 +2942,27 @@
             return this.arrayCallback(name, obj, args, node);
         }
       }
-      if (isStr(t)) {
+      if (isStr(t) || t.k === 'enum') {
+        const S = { type: '__Compiled', res: obj };
         switch (name) {
           case 'charCodeAt': return { e: A.call('JsCharCodeAt', [obj.e, args[0] ? this.conv(this.ex(args[0]), T.int32) : A.lit(0)]), t: T.int32 };
           case 'codePointAt': return { e: A.call('JsCodePointAt', [obj.e, args[0] ? this.conv(this.ex(args[0]), T.int32) : A.lit(0)]), t: T.int32 };
+          case 'toLowerCase': case 'toUpperCase': case 'trim': case 'trimStart': case 'trimEnd':
+            return this.xStringTransform({ string: S, method: name });
+          case 'charAt': return this.xStringCharAt({ string: S, index: args[0] });
+          case 'split': return this.xStringSplit({ string: S, separator: args[0] });
+          case 'indexOf': case 'lastIndexOf': return this.xStringIndexOf({ string: S, searchValue: args[0], fromIndex: args[1], method: name });
+          case 'includes': case 'startsWith': case 'endsWith': return this.xStringIncludes({ string: S, searchValue: args[0], method: name });
+          case 'substring': case 'slice': return this.xStringSubstring({ string: S, start: args[0], end: args[1] });
+          case 'substr': return this.xStringSubstring({ string: S, start: args[0], length: args[1] });
+          case 'repeat': return this.xStringRepeat({ string: S, count: args[0] });
+          case 'padStart': case 'padEnd': return this.xStringPad({ string: S, targetLength: args[0], padString: args[1], method: name });
+          case 'replace': case 'replaceAll': return this.xStringReplace({ string: S, searchValue: args[0], replaceValue: args[1], method: name });
+          case 'concat': return this.xStringConcat({ string: S, values: args });
+          case 'localeCompare': {
+            const other = this.conv(this.ex(args[0]), T.str);
+            return { e: A.call('CompareStr', [obj.e, other]), t: T.int32 };
+          }
         }
       }
       if (isFloat(t) || isInt(t)) {
@@ -2803,6 +2989,12 @@
           if (r) return r;
         }
         if (obj.type === 'Super') fail('super.method() is not supported', node);
+        if (name === 'apply' && obj.type === 'MemberExpression' && isIdentifier(obj.object, 'String') && (obj.property.name === 'fromCharCode'))
+          return this.xStringFromCharCodes({ charCodes: [{ type: 'SpreadElement', argument: node.arguments[1] }] });
+        if (obj.type === 'Literal' && obj.regex) {
+          if (name !== 'test') fail('regular expression method ' + name, node);
+          return { e: A.call('JsRegexTest', [A.lit(pasString(obj.regex.pattern)), A.lit(pasString(obj.regex.flags || '')), this.conv(this.ex(node.arguments[0]), T.str)]), t: T.bool };
+        }
         const o = this.ex(obj);
         return this.methodCall(o, name, node.arguments, node);
       }
@@ -2880,6 +3072,7 @@
           return { e: A.call(A.mem(A.id('TBigInt'), name === 'asUintN' ? 'AsUintN' : 'AsIntN'), [this.conv(this.ex(args[0]), T.int32), this.conv(this.ex(args[1]), T.big)]), t: T.big };
       }
       if (objName === 'console') return { e: null, t: T.void };
+      if (objName === 'ArrayBuffer' && name === 'isView') return this.xIsArrayCheck({ value: args[0] });
       if (objName === 'String' && name === 'fromCharCode') return this.xStringFromCharCodes({ charCodes: args });
       if (objName === 'Array' && name === 'isArray') return this.xIsArrayCheck({ value: args[0] });
       if (objName === 'Object' && name === 'freeze') return this.ex(args[0], expected);
@@ -3066,6 +3259,7 @@
       if (isStr(o.t)) return { e: A.call(A.id('System.Length'), [o.e]), t: T.int32 };
       if (isArr(o.t)) return { e: A.mem(o.e, 'length'), t: T.int32 };
       if (o.t.k === 'any') return { e: A.call('JsValLength', [o.e]), t: T.int32 };
+      if (o.t.k === 'class') return this.memberValue(o, 'length', node);
       fail('length of ' + o.t.key, node);
     }
 
@@ -3147,7 +3341,8 @@
     xArrayCreation(node, expected) {
       let t = this.typeOf(node, null);
       if ((!t || !isArr(t) || isAnyT(t.elem)) && expected && isArr(expected)) t = expected;
-      if (!t || !isArr(t)) fail('new Array(n) without an element type', node);
+      // nothing types the elements (code the IL leaves untyped, as in test vectors): dynamic values
+      if (!t || !isArr(t)) t = tArr(T.any);
       const size = node.size ? this.conv(this.ex(node.size), T.int32) : A.lit(0);
       return { e: A.call(A.mem(A.id(this.aliasOf(t)), 'New'), [size]), t };
     }
@@ -3697,12 +3892,7 @@
       const s = this.strOf(node.string);
       if (node.searchValue && node.searchValue.regex) {
         const re = node.searchValue.regex;
-        // a literal pattern without metacharacters is a plain search
-        if (!/[\\^$.*+?()[\]{}|]/.test(re.pattern)) {
-          const fn = re.flags && re.flags.includes('g') ? 'JsReplaceAll' : 'JsReplaceFirst';
-          return { e: A.call(fn, [s.e, A.lit(pasString(re.pattern)), this.conv(this.ex(node.replaceValue), T.str)]), t: T.str };
-        }
-        fail('regular expression replace is not supported', node);
+        return { e: A.call('JsRegexReplace', [s.e, A.lit(pasString(re.pattern)), A.lit(pasString(re.flags || '')), this.conv(this.ex(node.replaceValue), T.str)]), t: T.str };
       }
       const fn = node.method === 'replaceAll' ? 'JsReplaceAll' : 'JsReplaceFirst';
       return { e: A.call(fn, [s.e, this.conv(this.ex(node.searchValue), T.str), this.conv(this.ex(node.replaceValue), T.str)]), t: T.str };
@@ -3734,7 +3924,8 @@
 
     xStringSplit(node) {
       const s = this.strOf(node.string);
-      if (node.separator && node.separator.regex) fail('split by a regular expression is not supported', node);
+      if (node.separator && node.separator.regex)
+        return { e: A.call('JsRegexSplit', [s.e, A.lit(pasString(node.separator.regex.pattern)), A.lit(pasString(node.separator.regex.flags || ''))]), t: tArr(T.str) };
       const sep = node.separator ? this.conv(this.ex(node.separator), T.str) : null;
       if (!sep) return { e: A.call(A.mem(A.id('TA_Str'), 'From'), [A.arr([s.e])]), t: tArr(T.str) };
       return { e: A.call('JsSplit', [s.e, sep]), t: tArr(T.str) };
@@ -3802,6 +3993,16 @@
           this.emitPre(A.assign(A.mem(A.id(rec), sanitize(f.name)), this.conv(this.ex(p.value, f.type), f.type)));
         }
         return { e: A.id(rec), t: expected };
+      }
+      if (!expected || isAnyT(expected) || isNullT(expected)) {
+        // an object the IL leaves untyped (test vector helpers): a bag of dynamic values
+        const fields = [];
+        for (const p of node.properties) {
+          if (p.type === 'SpreadElement' || p.type === 'ObjectSpread') fail('spread in an object literal', node);
+          const key = p.key && (p.key.name || p.key.value || p.key);
+          fields.push(A.call('JsF', [A.lit(pasString(key)), this.toJsValue(this.ex(p.value))]));
+        }
+        return { e: A.call('JsDynObject', [A.arr(fields)]), t: T.any };
       }
       fail('object literal of ' + (expected ? expected.key : 'unknown type'), node);
     }
@@ -3953,7 +4154,7 @@
           const read = m.getterPas || (m.overrides && (m.overrides.getter || m.overrides.getterPas)) || null;
           const write = m.setterPas || (m.overrides && (m.overrides.setter || m.overrides.setterPas)) || null;
           if (m.overrides && !m.getNode && !m.setNode) continue;
-          members.push(A.property(m.pas, this.pasType(m.type || T.any), read, write));
+          members.push(A.property(m.pas, this.pasType(m.type || T.any), read, write, !!m.static));
         }
         return A.classDecl(c.pas, c.base ? c.base.pas : 'TJsObject', members);
       });

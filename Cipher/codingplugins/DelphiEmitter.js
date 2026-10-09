@@ -208,6 +208,17 @@
     procedure SetField(const AName: string; const AValue: TJsValue);
   end;
 
+  { An object literal the IL leaves untyped: its fields as dynamic values }
+  TJsDynObject = class(TJsObject)
+  public
+    Fields: array of TJsField;
+    function HasField(const AName: string): Boolean;
+    function GetField(const AName: string): TJsValue;
+    procedure SetField(const AName: string; const AValue: TJsValue);
+    function JsSetMember(const AName: string; const AValue: TJsValue): Boolean; override;
+    function JsHasMember(const AName: string): Boolean; override;
+  end;
+
   TVulnerability = class(TLinkItem)
   public
     description: string;
@@ -486,6 +497,7 @@ function JsMinU(A, B: UInt64): UInt64;
 function JsMaxU(A, B: UInt64): UInt64;
 function JsRandom: Double;
 function JsBigToStr(const B: TBigInt): string;
+function JsTypeOf(const V: TJsValue): string;
 function JsNumTruthy(D: Double): Boolean;
 function JsShl64(V: UInt64; N: Int32): UInt64;
 function JsShr64(V: UInt64; N: Int32): UInt64;
@@ -530,6 +542,9 @@ function JsPadEnd(const S: string; N: Int32; const Pad: string = ' '): string;
 function JsRepeat(const S: string; N: Int32): string;
 function JsReplaceAll(const S, A, B: string): string;
 function JsReplaceFirst(const S, A, B: string): string;
+function JsRegexReplace(const S, Pattern, Flags, Repl: string): string;
+function JsRegexTest(const Pattern, Flags, S: string): Boolean;
+function JsRegexSplit(const S, Pattern, Flags: string): TA_Str;
 
 { ---- dynamic values ---- }
 function JsVUndef: TJsValue;
@@ -577,6 +592,10 @@ function JsValTo_TA_Big(const V: TJsValue): TA_Big;
 function JsValTo_TA_Bool(const V: TJsValue): TA_Bool;
 function JsF(const AName: string; const AValue: TJsValue): TJsField;
 function JsTestCase(const AFields: array of TJsField): TTestCase;
+function JsDynObject(const AFields: array of TJsField): TJsValue;
+function JsValGet(const V: TJsValue; const AName: string): TJsValue;
+procedure JsValSet(const V: TJsValue; const AName: string; const AValue: TJsValue);
+function JsValToTestCase(const V: TJsValue): TTestCase;
 function JsDescribeException(E: TObject): string;
 
 { ---- OpCodes ---- }
@@ -1959,6 +1978,19 @@ begin
   Result := System.Random;
 end;
 
+function JsTypeOf(const V: TJsValue): string;
+begin
+  case V.Kind of
+    jvUndefined: Result := 'undefined';
+    jvBool: Result := 'boolean';
+    jvInt, jvUInt, jvNum: Result := 'number';
+    jvStr: Result := 'string';
+    jvBig: Result := 'bigint';
+  else
+    Result := 'object';
+  end;
+end;
+
 function JsNumTruthy(D: Double): Boolean;
 begin
   Result := (D <> 0) and not IsNan(D);
@@ -2287,6 +2319,61 @@ end;
 function JsReplaceFirst(const S, A, B: string): string;
 begin
   Result := StringReplace(S, A, B, []);
+end;
+
+{ ======================== regular expressions ======================== }
+
+function JsRegexNew(const Pattern, Flags: string): TRegExpr;
+begin
+  Result := TRegExpr.Create(Pattern);
+  Result.ModifierI := Pos('i', Flags) > 0;
+  Result.ModifierM := Pos('m', Flags) > 0;
+end;
+
+function JsRegexReplace(const S, Pattern, Flags, Repl: string): string;
+var R: TRegExpr;
+begin
+  R := JsRegexNew(Pattern, Flags);
+  try
+    if Pos('g', Flags) > 0 then
+      Result := R.Replace(S, Repl, True)
+    else if R.Exec(S) then
+      Result := System.Copy(S, 1, R.MatchPos[0] - 1) + R.Substitute(Repl) + System.Copy(S, R.MatchPos[0] + R.MatchLen[0], MaxInt)
+    else
+      Result := S;
+  finally
+    R.Free;
+  end;
+end;
+
+function JsRegexTest(const Pattern, Flags, S: string): Boolean;
+var R: TRegExpr;
+begin
+  R := JsRegexNew(Pattern, Flags);
+  try
+    Result := R.Exec(S);
+  finally
+    R.Free;
+  end;
+end;
+
+function JsRegexSplit(const S, Pattern, Flags: string): TA_Str;
+var R: TRegExpr; Start: Int32;
+begin
+  Result := TA_Str.Empty;
+  R := JsRegexNew(Pattern, Flags);
+  try
+    Start := 1;
+    if R.Exec(S) then
+      repeat
+        if R.MatchLen[0] = 0 then Break;
+        Result.Push(System.Copy(S, Start, R.MatchPos[0] - Start));
+        Start := R.MatchPos[0] + R.MatchLen[0];
+      until not R.ExecNext;
+    Result.Push(System.Copy(S, Start, MaxInt));
+  finally
+    R.Free;
+  end;
 end;
 
 { ======================== dynamic values ======================== }
@@ -2732,6 +2819,86 @@ begin
   Result := TTestCase.Create;
   for I := 0 to System.Length(AFields) - 1 do
     Result.SetField(AFields[I].Name, AFields[I].Value);
+end;
+
+function TJsDynObject.HasField(const AName: string): Boolean;
+var I: Int32;
+begin
+  for I := 0 to System.Length(Fields) - 1 do
+    if Fields[I].Name = AName then Exit(True);
+  Result := False;
+end;
+
+function TJsDynObject.GetField(const AName: string): TJsValue;
+var I: Int32;
+begin
+  for I := 0 to System.Length(Fields) - 1 do
+    if Fields[I].Name = AName then Exit(Fields[I].Value);
+  Result := JsVUndef;
+end;
+
+procedure TJsDynObject.SetField(const AName: string; const AValue: TJsValue);
+var I: Int32;
+begin
+  for I := 0 to System.Length(Fields) - 1 do
+    if Fields[I].Name = AName then begin Fields[I].Value := AValue; Exit; end;
+  I := System.Length(Fields);
+  System.SetLength(Fields, I + 1);
+  Fields[I].Name := AName;
+  Fields[I].Value := AValue;
+end;
+
+function TJsDynObject.JsSetMember(const AName: string; const AValue: TJsValue): Boolean;
+begin
+  SetField(AName, AValue);
+  Result := True;
+end;
+
+function TJsDynObject.JsHasMember(const AName: string): Boolean;
+begin
+  Result := HasField(AName);
+end;
+
+function JsDynObject(const AFields: array of TJsField): TJsValue;
+var O: TJsDynObject; I: Int32;
+begin
+  O := TJsDynObject.Create;
+  for I := 0 to System.Length(AFields) - 1 do O.SetField(AFields[I].Name, AFields[I].Value);
+  Result := JsVObj(O);
+end;
+
+function JsValGet(const V: TJsValue; const AName: string): TJsValue;
+begin
+  if (V.Kind = jvObj) and (V.Ref is TJsDynObject) then Exit(TJsDynObject(V.Ref).GetField(AName));
+  if (V.Kind = jvObj) and (V.Ref is TTestCase) then Exit(TTestCase(V.Ref).GetField(AName));
+  if AName = 'length' then
+    if V.Kind = jvArr then Exit(JsVInt(System.Length(V.A)))
+    else if V.Kind = jvStr then Exit(JsVInt(System.Length(V.S)));
+  if V.IsNullish then raise EJsTypeError.Create('Cannot read properties of ' + V.Describe + ' (reading ''' + AName + ''')');
+  Result := JsVUndef;
+end;
+
+procedure JsValSet(const V: TJsValue; const AName: string; const AValue: TJsValue);
+begin
+  if (V.Kind = jvObj) and (V.Ref is TJsDynObject) then begin TJsDynObject(V.Ref).SetField(AName, AValue); Exit; end;
+  if (V.Kind = jvObj) and (V.Ref is TTestCase) then begin TTestCase(V.Ref).SetField(AName, AValue); Exit; end;
+  if (V.Kind = jvObj) and (V.Ref is TJsObject) and TJsObject(V.Ref).JsSetMember(AName, AValue) then Exit;
+  raise EJsTypeError.Create('Cannot set property ' + AName + ' of ' + V.Describe);
+end;
+
+function JsValToTestCase(const V: TJsValue): TTestCase;
+var D: TJsDynObject; I: Int32;
+begin
+  if V.IsNullish then Exit(nil);
+  if (V.Kind = jvObj) and (V.Ref is TTestCase) then Exit(TTestCase(V.Ref));
+  if (V.Kind = jvObj) and (V.Ref is TJsDynObject) then
+  begin
+    D := TJsDynObject(V.Ref);
+    Result := TTestCase.Create;
+    for I := 0 to System.Length(D.Fields) - 1 do Result.SetField(D.Fields[I].Name, D.Fields[I].Value);
+    Exit;
+  end;
+  raise EJsTypeError.Create('Cannot use ' + V.Describe + ' as a test vector');
 end;
 
 function JsDescribeException(E: TObject): string;
@@ -3901,10 +4068,8 @@ end;`;
       L.push('');
       L.push('implementation');
       L.push('');
-      if (u.implementationUses.length) {
-        L.push(`uses ${u.implementationUses.join(', ')};`);
-        L.push('');
-      }
+      L.push(`uses ${['uregexpr', ...u.implementationUses].join(', ')};`);
+      L.push('');
       L.push(u.runtimeImplementation || RUNTIME_IMPLEMENTATION);
       L.push('');
       L.push('{ ======================== generated code ======================== }');
@@ -3978,7 +4143,7 @@ end;`;
             L.push(`${J}public`);
             for (const m of methods) L.push(`${K}${this.methodHeader(m)}`);
             for (const p of props)
-              L.push(`${K}property ${p.name}: ${p.type}${p.read ? ' read ' + p.read : ''}${p.write ? ' write ' + p.write : ''};`);
+              L.push(`${K}${p.isClassProp ? 'class ' : ''}property ${p.name}: ${p.type}${p.read ? ' read ' + p.read : ''}${p.write ? ' write ' + p.write : ''};`);
           }
           L.push(`${I}end;`);
           return L;

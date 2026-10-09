@@ -83,7 +83,7 @@
     isClassMethod: false, directives: [], visibility: 'public'
   }, o);
   const field = (name, type, isClassVar = false) => ({ kind: 'field', name, type, isClassVar });
-  const property = (name, type, read, write) => ({ kind: 'property', name, type, read, write });
+  const property = (name, type, read, write, isClassProp = false) => ({ kind: 'property', name, type, read, write, isClassProp });
   const classDecl = (name, base, members, comment = null) => ({ kind: 'classDecl', name, base, members, comment });
   const forwardClass = name => ({ kind: 'forwardClass', name });
   const recordDecl = (name, fields) => ({ kind: 'recordDecl', name, fields });
