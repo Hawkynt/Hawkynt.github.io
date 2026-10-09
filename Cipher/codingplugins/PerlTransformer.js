@@ -7406,10 +7406,12 @@
           const findArr = this.transformExpression(node.array);
           const callbackBlock = this.transformListUtilCallback(node.callback);
           this.addRequiredModule('List::Util', 'first');
-          return new PerlCall(new PerlMemberAccess(new PerlIdentifier("List::Util"), new PerlIdentifier("first"), "::"), [
+          // Grouped: "first BLOCK LIST" swallows whatever follows it, so a
+          // ".find(fn).prop" would subscript the list instead of the result
+          return new PerlGrouped(new PerlCall(new PerlMemberAccess(new PerlIdentifier("List::Util"), new PerlIdentifier("first"), "::"), [
             callbackBlock,
             this.wrapArrayDeref(findArr)
-          ]);
+          ]));
         }
 
         case 'ArrayFindIndex': {
@@ -11782,7 +11784,8 @@
         if (method === 'find' && firstArgIsCallback) {
           const callback = args[0];
           this.addRequiredModule('List::Util', 'first');
-          return new PerlCall(new PerlMemberAccess(new PerlIdentifier("List::Util"), new PerlIdentifier("first"), "::"), [wrapAsPredicateBlock(callback), this.wrapArrayDeref(object)]);
+          // Grouped, as in 'ArrayFind'
+          return new PerlGrouped(new PerlCall(new PerlMemberAccess(new PerlIdentifier("List::Util"), new PerlIdentifier("first"), "::"), [wrapAsPredicateBlock(callback), this.wrapArrayDeref(object)]));
         }
 
         // findIndex(fn) -> index of the first matching element, or -1 - no
