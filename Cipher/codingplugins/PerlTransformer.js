@@ -10104,6 +10104,25 @@
      * Transform an assignment expression
      */
     transformAssignmentExpression(node) {
+      // A store into an element of a fixed-width integer array (a typed
+      // array in JavaScript) wraps to the element type as the typed array
+      // does; a value of that very type needs nothing.
+      const elementType = node.left?.type === 'MemberExpression' && node.left.computed &&
+        /^(u?int(8|16|32))\[\]$/.exec(node.left.object?.resultType || '');
+      if (elementType && ['=', '+=', '-=', '*=', '<<=', '|=', '^='].includes(node.operator) &&
+          !(node.operator === '=' && node.right?.resultType === elementType[1]) && !node._perlElementWrapped) {
+        const value = node.operator === '=' ? node.right
+          : { type: 'BinaryExpression', operator: node.operator.slice(0, -1), left: Object.assign({}, node.left),
+              right: node.right, resultType: 'number' };
+        const wrapped = this.transformExpression(value);
+        const width = { int8: 8, uint8: 8, int16: 16, uint16: 16, int32: 32, uint32: 32 }[elementType[1]];
+        const masked = new PerlBinaryExpression(new PerlGrouped(wrapped), '&', PerlLiteral.Number(2 ** width - 1));
+        const stored = elementType[1].startsWith('u') ? masked
+          : new PerlCall('unpack', [PerlLiteral.String({ 8: 'c', 16: 's', 32: 'l' }[width], "'"),
+            new PerlCall('pack', [PerlLiteral.String({ 8: 'C', 16: 'S', 32: 'L' }[width], "'"), masked])]);
+        node.left._perlAssignTarget = true;
+        return new PerlAssignment(this.transformExpression(node.left), '=', stored);
+      }
       // Its target is written, not read (see transformMemberExpression)
       if (node.left && node.left.type === 'MemberExpression') node.left._perlAssignTarget = true;
       // "x op= y" on a BigInt: x = x op y in Math::BigInt arithmetic
