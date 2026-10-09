@@ -1967,8 +1967,12 @@
       // node marked BigInt, or a bitwise operator the IL types 64-bit (on Numbers it
       // would be a 32-bit result) - OpCodes.XorN and friends inline unmarked
       const intLike = t => isInt(t) || t.k === 'bool';
-      const wide64 = isInt(rt) && rt.bits === 64 && intLike(L.t) && intLike(R.t) &&
-        (['&', '|', '^', '<<', '>>', '>>>'].includes(op) || (['/', '%'].includes(op) && (L.t.bits === 64 || R.t.bits === 64)));
+      const is64 = t => isInt(t) && t.bits === 64;
+      const bitwise = ['&', '|', '^', '<<', '>>', '>>>'].includes(op);
+      const wide64 = intLike(L.t) && intLike(R.t) && (
+        (is64(rt) && (bitwise || (['/', '%'].includes(op) && (is64(L.t) || is64(R.t))))) ||
+        // two 64-bit operands, or an OpCodes ...N (BigInt) operation on one
+        (['&', '|', '^'].includes(op) && ((is64(L.t) && is64(R.t)) || ((is64(L.t) || is64(R.t)) && node && /N$/.test(node.opCodesMethod || '')))));
       if (wide64 || (node && node.bigint === true && ((isInt(L.t) && L.t.bits === 64) || (isInt(R.t) && R.t.bits === 64) || (isInt(rt) && rt.bits === 64)))) {
         const ct = isInt(rt) && rt.bits === 64 ? rt : ((L.t.bits === 64 && !L.t.signed) || (R.t.bits === 64 && !R.t.signed) ? T.u64 : T.i64);
         const c = this.cpp(ct);
