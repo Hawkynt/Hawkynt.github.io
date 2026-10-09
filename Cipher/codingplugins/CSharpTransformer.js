@@ -19668,6 +19668,9 @@
             return new CSharpUnaryExpression('!', new CSharpMethodCall(null, 'IsTruthy', [this.transformExpression(node.argument)]), true);
           if (callType && (callType.isArray || callType.name === 'string' || this._isClassReferenceType(callType)))
             return new CSharpBinaryExpression(this.transformExpression(node.argument), '==', CSharpLiteral.Null());
+          // A number (perk.js's `!roundConstantBit(i)`, a 0/1 bit) is falsy at 0
+          if (callType && !callType.isArray && ['byte', 'sbyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong'].includes(callType.name))
+            return new CSharpBinaryExpression(new CSharpParenthesized(this.transformExpression(node.argument)), '==', CSharpLiteral.Int(0));
           return this.transformExpression(node);
         }
 

@@ -980,6 +980,11 @@ check('bigint rows: a frozen BigInt row stored into a uint64 table converts elem
   expectMatch(code, /table\[j\] = row\.Select\(_v => (unchecked\()?\(ulong\)\(?_v\)?\)?\)\.ToArray\(\);/, 'row.Select(_v => (ulong)_v).ToArray()');
   expectNoMatch(code, /\(row & ulong\.MaxValue\)/, 'the row masked as a number');
 });
+check('conditions: a negated numeric call result tests it against 0 (CS0023)', () => {
+  const code = transpile('/**\n * @param {int32} i - index\n * @returns {uint32} bit\n */\nfunction bitAt(i) { return OpCodes.And32(i, 1); }\n' +
+    '/**\n * @param {int32} n - count\n * @returns {int32} r\n */\nfunction count(n) {\n  let c = 0;\n  for (let i = 0; i < n; ++i) if (!bitAt(i)) ++c;\n  return c;\n}');
+  expectMatch(code, /if \(\(BitAt\(i\)\) == 0\)/, '(BitAt(i)) == 0');
+});
 check('maps: a module Map filled with dynamic values takes the type its typed .get declares (CS0029)', () => {
   const code = transpile('const HASH_CACHE = new Map();\n/**\n * @param {string} name - name\n * @returns {Algorithm} r\n */\n' +
     'function findHash(name) {\n  /** @type {Algorithm} */\n  const cached = HASH_CACHE.get(name);\n  if (cached) return cached;\n' +
