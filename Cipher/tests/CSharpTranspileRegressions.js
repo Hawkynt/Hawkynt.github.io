@@ -943,6 +943,15 @@ check('members: a file class member named by a string is read by name (CS0021)',
     'function sizeOf(set, field) {\n  /** @type {int32} */\n  const size = set[field];\n  return size;\n}');
   expectMatch(code, /JsMember\(set, field\)/, 'JsMember(set, field)');
 });
+check('ref: a member grown by a call statement goes through a temporary stored back (CS0206-free)', () => {
+  const code = transpile('/**\n * @param {uint8[]} target - grown in place\n * @param {uint8[]} source - read\n * @returns {uint8[]} target\n */\n' +
+    'function appendAll(target, source) {\n  for (let i = 0; i < source.length; i++) target.push(source[i]);\n  return target;\n}\n' +
+    'class Holder {\n  constructor() {\n    /** @type {uint8[]} */\n    this.buffer = [];\n  }\n' +
+    '  /** @param {uint8[]} data - data */\n  feed(data) {\n    appendAll(this.buffer, data);\n    const out = [1];\n    appendAll(out, data);\n  }\n}');
+  expectMatch(code, /var __ref1 = this\.Buffer;\s*AppendAll\(ref __ref1, data\);\s*this\.Buffer = __ref1;/, 'temporary passed by ref and stored back');
+  expectMatch(code, /AppendAll\(ref @?out, data\);/, 'a local passed by ref directly');
+  expectMatch(code, /AppendAll\(ref byte\[\] target/, 'ref parameter');
+});
 check('accessors: a setter taking a string for a getter returning a class makes the property dynamic (CS0029)', () => {
   const code = transpile('class Group {\n  constructor() {\n    /** @type {int32} */\n    this.bits = 0;\n  }\n}\n' +
     'class Holder {\n  constructor() {\n    /** @type {Group} */\n    this._group = new Group();\n  }\n' +

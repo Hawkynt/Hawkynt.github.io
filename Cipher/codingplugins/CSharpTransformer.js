@@ -24106,7 +24106,15 @@
         else if (node.type === 'MethodDefinition' && node.kind === 'method' && node.key?.name) consider(node.key.name, node.value);
       });
       if (candidates.size === 0) return refParams;
-      // Every call must pass a local variable at that position
+      // Every call must pass a local variable at that position, or - for a call made
+      // as a statement - a member (`appendAll(this.inputBuffer, data)`), passed
+      // through a temporary and stored back (see applyRefArgumentsEverywhere)
+      const statementCalls = new Set();
+      this._walkAstNodes(jsAst.body, node => {
+        if (node.type === 'ExpressionStatement' && node.expression) statementCalls.add(node.expression);
+      });
+      const storableMember = arg => !arg.computed && (arg.type === 'ThisPropertyAccess' ||
+        (arg.type === 'MemberExpression' && ['ThisExpression', 'Identifier', 'ThisPropertyAccess'].includes(arg.object?.type)));
       const valid = new Set(candidates.keys());
       this._walkAstNodes(jsAst.body, node => {
         let name = null;
@@ -24119,6 +24127,7 @@
         (node.arguments || []).forEach((arg, index) => {
           const key = `${pascal}#${index}`;
           if (!valid.has(key)) return;
+          if (arg && statementCalls.has(node) && storableMember(arg)) return;
           if (arg?.type !== 'Identifier' || moduleNames.has(arg.name)) valid.delete(key);
         });
       });
@@ -24135,6 +24144,25 @@
     applyRefArgumentsEverywhere(root) {
       if (!this.refArrayParams?.size) return;
       const seen = new Set();
+      let temporaries = 0;
+      // A call statement giving a member for a ref parameter passes a temporary and
+      // stores it back: { var __refN = this.f; F(ref __refN); this.f = __refN; }
+      const throughTemporaries = statement => {
+        const call = statement?.nodeType === 'ExpressionStatement' ? statement.expression : null;
+        if (call?.nodeType !== 'MethodCall' || !Array.isArray(call.arguments)) return statement;
+        const before = [], after = [];
+        call.arguments = call.arguments.map((arg, index) => {
+          if (!this.refArrayParams.has(`${call.methodName}#${index}`) || arg?.nodeType !== 'MemberAccess') return arg;
+          const name = `__ref${++temporaries}`;
+          before.push(new CSharpVariableDeclaration(name, new CSharpType('var'), arg));
+          after.push(new CSharpExpressionStatement(new CSharpAssignment(arg, '=', new CSharpIdentifier(name))));
+          return new CSharpIdentifier('ref ' + name);
+        });
+        if (before.length === 0) return statement;
+        const block = new CSharpBlock();
+        block.statements.push(...before, statement, ...after);
+        return block;
+      };
       const visit = node => {
         if (!node || typeof node !== 'object' || seen.has(node)) return;
         seen.add(node);
@@ -24143,6 +24171,9 @@
             this.refArrayParams.has(`${node.methodName}#${index}`) && arg?.nodeType === 'Identifier' && !String(arg.name).startsWith('ref ')
               ? new CSharpIdentifier('ref ' + arg.name) : arg);
         }
+        if (Array.isArray(node.statements)) node.statements = node.statements.map(throughTemporaries);
+        for (const key of ['body', 'thenBranch', 'elseBranch'])
+          if (node[key]?.nodeType === 'ExpressionStatement') node[key] = throughTemporaries(node[key]);
         for (const key of Object.keys(node)) {
           const value = node[key];
           if (Array.isArray(value)) value.forEach(visit);
