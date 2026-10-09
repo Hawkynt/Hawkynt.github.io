@@ -814,6 +814,8 @@
       // Signature for verification
       /** @type {DSASignatureValue|null} */
       this._signature = null;
+      /** @type {uint8[]|null} */
+      this._signatureBytes = null;
 
       // Digest the signature is taken over. SHA-256 rather than the SHA-1 of
       // the original standard: against the 2048/256 parameter set a 160-bit
@@ -951,13 +953,14 @@
         var sBytes = bytes.slice(halfLen);
 
         this._signature = new DSASignatureValue(bytesToBigInt(rBytes), bytesToBigInt(sBytes));
+        this._signatureBytes = bytes.slice();
       }
     }
 
     /**
-     * @returns {DSASignatureValue|null} Signature to verify
+     * @returns {uint8[]|null} Signature to verify, r || s as set, or null when none was set
      */
-    get signature() { return this._signature; }
+    get signature() { return this._signatureBytes ? this._signatureBytes.slice() : null; }
 
     /**
      * @param {uint8[]} value - Expected result of a test vector
@@ -1152,6 +1155,7 @@
       this._q = 0n;
       this._g = 0n;
       this._signature = null;
+      this._signatureBytes = null;
       OpCodes.ClearArray(this.inputBuffer);
       this.inputBuffer = [];
     }
