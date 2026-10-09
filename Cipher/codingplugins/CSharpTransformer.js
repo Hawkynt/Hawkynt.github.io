@@ -7414,6 +7414,19 @@
         // consulted by transformVariableDeclaration's module-level-const field-type
         // resolution below.
         this.constsWrappedInTypedArray = this.preScanConstsWrappedInTypedArray(jsAst.body);
+        // A module function named like a class once PascalCased (schwaemmConfig and
+        // class SchwaemmConfig) would be a second member of that name (CS0102): it
+        // and its calls are renamed
+        for (const node of jsAst.body) {
+          if (node.type !== 'FunctionDeclaration' || !node.id?.name) continue;
+          const name = node.id.name;
+          if (![...this.localClassNames].some(c => c !== name && this.toPascalCase(c) === this.toPascalCase(name))) continue;
+          const renamed = name + 'Function';
+          this._walkAstNodes(jsAst.body, n => {
+            if (n.type === 'CallExpression' && n.callee?.type === 'Identifier' && n.callee.name === name) n.callee.name = renamed;
+          });
+          node.id.name = renamed;
+        }
         const topLevelMethodNodes = [];
         for (const node of jsAst.body) {
           if (node.type === 'FunctionDeclaration' && node.id?.name) {
