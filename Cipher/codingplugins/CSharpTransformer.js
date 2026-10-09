@@ -25258,6 +25258,15 @@
       if (receiverField && /^_?inputBuffer$/i.test(receiverField) && elementType.name === 'byte' && !elementType.isArray &&
           argType.isArray && argType.elementType && !argType.elementType.isArray && argRank && argRank > 1)
         return this.buildParameterConversion(argType, CSharpType.Array(elementType), transformedArg);
+      // A byte array built from registered byte arrays (hqc.js's `uBytes.concat(vBytes)
+      // .concat(d).concat(salt)`) takes a registered wider array's values as bytes
+      let root = receiverNode;
+      while (root?.type === 'ArrayConcat') root = root.array;
+      const registered = node => node?.type === 'Identifier' && !!this.getVariableType(node.name)?.isArray;
+      if (registered(root) && registered(argNode) && elementType.name === 'byte' && !elementType.isArray &&
+          this.getVariableType(root.name).elementType?.name === 'byte' &&
+          argType.isArray && argType.elementType && !argType.elementType.isArray && argRank && argRank > 1)
+        return this.buildParameterConversion(argType, CSharpType.Array(elementType), transformedArg);
       return transformedArg;
     }
 

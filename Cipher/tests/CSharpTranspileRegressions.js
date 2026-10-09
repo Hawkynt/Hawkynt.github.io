@@ -999,6 +999,16 @@ check('jagged literals: an int array listed among byte arrays converts element-w
   expectMatch(code, /new byte\[\]\[\] \{ m\.Select\(_v => (unchecked\()?\(byte\)\(?_v\)?\)?\)\.ToArray\(\), domain \}/, 'm converted element-wise');
   expectNoMatch(code, /\(byte\[\]\)\(?m\)?/, 'an array cast (byte[])m');
 });
+check('concat: a registered int array concatenated to a byte array chain is taken as bytes (CS1929)', () => {
+  const code = transpile('/**\n * @param {uint8[]} a - bytes\n * @param {uint8[]} b - bytes\n * @param {int32[]} c - octets\n * @returns {uint8[]} r\n */\n' +
+    'function join(a, b, c) { return a.concat(b).concat(c); }');
+  expectMatch(code, /\.Concat\(c\.Select\(_v => (unchecked\()?\(byte\)\(?_v\)?\)?\)\.ToArray\(\)\)/, 'c converted to bytes');
+});
+const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
+  'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
+  'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +
+  'for (let i = 0; i < SETS.length; ++i) {\n  const instance = new AAlgorithm(SETS[i].name);\n' +
+  '  if (!AlgorithmFramework.Find(instance.name)) {\n    RegisterAlgorithm(instance);\n  }\n}';
 check('registry: a module loop over computed data registers into the Algorithms registry when it runs', () => {
   const code = transpile(REGISTRATION_LOOP);
   expectMatch(code, /registered\.Add\(\(Algorithm\)\(?instance\)?\);/, 'registered.Add((Algorithm)instance)');
