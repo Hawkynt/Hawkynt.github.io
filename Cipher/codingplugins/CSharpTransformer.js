@@ -19203,6 +19203,14 @@
 
       // `a[i] && ...` guards a read past the end in JavaScript (undefined is
       // falsy); the C# condition checks the index first: i >= 0 && i < a.Length && a[i] != 0
+      // A feature test of an array method (src.subarray ? ... : ...) is true: a
+      // C# array stands for every JavaScript array and typed array
+      const arrayMethods = ['subarray', 'slice', 'set', 'fill', 'map', 'forEach', 'indexOf', 'includes', 'push', 'concat'];
+      if (node.type === 'MemberExpression' && !node.computed && arrayMethods.includes(node.property?.name)) {
+        const targetType = this.inferFullExpressionType(node.object);
+        if (targetType?.isArray) return CSharpLiteral.Bool(true);
+      }
+
       const plainTarget = n => n?.type === 'Identifier' || n?.type === 'ThisPropertyAccess' ||
         (n?.type === 'MemberExpression' && n.computed && plainTarget(n.object) && ['Identifier', 'Literal'].includes(n.property?.type));
       if (!this.indexGuarded && node.type === 'MemberExpression' && node.computed && ['Identifier', 'Literal'].includes(node.property?.type) &&

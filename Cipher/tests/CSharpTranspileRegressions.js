@@ -206,6 +206,10 @@ check('conditions: a number as a for test is its truthiness', () => {
   const code = transpile('/**\n * @param {int32} k - k\n * @returns {int32} r\n */\nfunction g(k) { let n = 0; for (; k; k--) n++; return n; }');
   expectMatch(code, /for \(; k != 0; k--\)/, 'for (; k != 0; k--)');
 });
+check('conditions: a feature test of an array method is true for a C# array', () => {
+  const code = transpile('/**\n * @param {uint8[]} src - s\n * @returns {uint8[]} r\n */\nfunction g(src) { const buf = src.subarray ? src.subarray(0, 2) : src.slice(0, 2); return buf; }');
+  expectNoMatch(code, /\.Subarray/, 'src.Subarray (CS1061)');
+});
 check('regex: /re/.test(s) as a condition is the bool of Regex.IsMatch, not compared to null', () => {
   const code = transpile('/**\n * @param {string} c - c\n * @returns {int32} r\n */\nfunction f(c) { if (/[A-Z]/.test(c)) return 1; return 0; }');
   expectMatch(code, /if \(System\.Text\.RegularExpressions\.Regex\.IsMatch\(c, "\[A-Z\]"\)\)/, 'if (Regex.IsMatch(c, "[A-Z]"))');
