@@ -3307,6 +3307,11 @@
           return isInt(t) ? { e: this.conv(res, t), t } : res;
         }
         case 'parseFloat': return { e: A.call('JsParseFloat', [this.conv(this.ex(args[0]), T.str)]), t: T.f64 };
+        case 'Array':
+          // Array(n) without new: n empty slots, like new Array(n)
+          if (args.length === 1 && isNum(this.typeOf(args[0], T.any))) return this.xArrayCreation(Object.assign({}, node, { size: args[0] }), expected);
+          fail('Array() with elements is not supported', node);
+          break;
         case 'isNaN': return { e: A.call('IsNan', [this.conv(this.ex(args[0]), T.f64)]), t: T.bool };
         case 'isFinite': { const a = this.conv(this.ex(args[0]), T.f64); return { e: A.un('not', A.bin('or', A.call('IsNan', [a]), A.call('IsInfinite', [a]))), t: T.bool }; }
       }

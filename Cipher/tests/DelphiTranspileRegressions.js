@@ -156,6 +156,12 @@ sameAsJs('string: /\\p{L}/u matches a letter beyond ASCII, not a digit',
   '/** @returns {string} */ function probe() { return isLetter(0x61) + " " + isLetter(0xE9) + " " + isLetter(0x31) + " " + isLetter(0x416); }');
 
 // ---------------------------------------------------------------------------
+// Arrays
+// ---------------------------------------------------------------------------
+sameAsJs('array: Array(n) without new makes n slots',
+  '/** @returns {string} */ function probe() { const a = Array(3).fill(7); return a.length + ":" + a.join(","); }');
+
+// ---------------------------------------------------------------------------
 // Map
 // ---------------------------------------------------------------------------
 sameAsJs('map: set, get, has, delete and size follow JavaScript, a missing key reads undefined',
