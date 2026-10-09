@@ -115,6 +115,7 @@ category of `TranspilerSuite.js`.
 | `csharp` | regressions of systematic C# transpilation faults; compiles and runs the C# runtime stubs when the .NET SDK is installed | `CSharpTranspileRegressions.js` |
 | `harness` | the validation itself: vector plans, reading a harness run back, judging languages, error classes, and each vector harness end to end against hand-written stand-ins | `TranspilerValidationTests.js` |
 | `python` | regressions of systematic Python transpilation faults; runs the Python runtime cases when a Python 3 interpreter is installed | `PythonTranspileRegressions.js` |
+| `jvm` | regressions of systematic Java and Kotlin transpilation faults; compiles and runs every case in each language whose compiler (`javac`, `kotlinc`) is installed | `JvmTranspileRegressions.js` |
 | `validation` | transpiles every algorithm to every installed language, compiles it, and runs every vector where the language has a vector harness | `TranspilerValidation.js` |
 
 `validation` runs one worker process per algorithm file, `--jobs=N` at a time
@@ -122,14 +123,14 @@ category of `TranspilerSuite.js`.
 `TestEngine` first - the reference: an algorithm whose reference fails is listed
 and held against no language, and the algorithm files it loads while running
 are its dependencies, bundled into its transpiled code where the language
-supports that (JavaScript, Python, Perl). It then transpiles the file to every
+supports that (JavaScript, Python, Perl, Java, Kotlin). It then transpiles the file to every
 installed language, appends the language's vector harness from
 `validation-harness/`, compiles it and runs it. The harness applies every
 vector field with the semantics of `TestEngine.ConfigureInstance` - a field that
 reaches no setter or property, or whose setter throws, fails the vector - and
 checks the expected output and, where the reference made one, the round trip.
-JavaScript, Python, Perl and C# have vector harnesses; the other languages are
-only compiled. A toolchain counts as installed when it is on `PATH` (Windows
+JavaScript, Python, Perl, C#, Java and Kotlin have vector harnesses; the other
+languages are only compiled. A toolchain counts as installed when it is on `PATH` (Windows
 `.cmd` shims included), exits 0 and prints its version on stdout or stderr; a
 broken one (a `java` that cannot create its virtual machine) is reported and
 left out rather than failing the run.
@@ -138,7 +139,7 @@ The limit of one compile or run is `--timeout` (default 120 s), raised to 100
 times the time the file's JavaScript reference took (at most 30 minutes). A run
 cut off by it is counted as `timeout`, on its own, and fails no language.
 `.data` libraries an algorithm takes through its UMD factory are bundled for
-JavaScript, Python and Perl.
+JavaScript, Python and Perl; Java and Kotlin merge them into the generated unit.
 
 A language passes when every algorithm it transpiled also compiled and passed
 every vector. Transpile, compile and execute counts are kept apart, per language

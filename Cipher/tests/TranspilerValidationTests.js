@@ -489,6 +489,84 @@ test('C# harness: given a vector field only a framework stub declares, when run,
   contains(r.error, 'only the framework stub IAlgorithmInstance.Nonce declares one');
 });
 
+// The Java and Kotlin stand-ins run on the runtime their plugins emit: the
+// probe unit registers its algorithms from its initialiser (the harness loads
+// the units the generated code marks), and the instance has key and iv
+// accessors as get_/set_ methods, the shape the code generators give them.
+const jvmBytes = list => `U8Array.of(${list.join(', ')})`;
+const jvmVector = v => `JsObject.of("text", "${v.text}", "input", ${jvmBytes(v.input)}, "key", ${jvmBytes(v.key)}, "iv", ${jvmBytes(v.iv)}, "expected", ${jvmBytes(v.expected)})`;
+const JAVA_PROBE = () => `${require('../codingplugins/java.js').GetRuntime()}
+// @generated-unit ProbeUnit
+final class ProbeUnit {
+    static { for (String name : new String[] { ${PROBES.map(n => `"${n}"`).join(', ')} }) AlgorithmFramework.RegisterAlgorithm(new ProbeAlgorithm(name)); }
+}
+class ProbeAlgorithm extends Algorithm {
+    ProbeAlgorithm(String n) {
+        name = n;
+        for (JsObject o : new JsObject[] { ${PROBE_VECTORS.map(v => jvmVector(v)).join(', ')} }) {
+            if (n.equals("Lacking")) o.put("counter", 7);
+            tests.push(TestCase.fromObject(o));
+        }
+    }
+    @Override public IAlgorithmInstance CreateInstance(boolean inverse) { return new ProbeInstance(this); }
+}
+class ProbeInstance extends IAlgorithmInstance {
+    U8Array _key, _iv;
+    ProbeInstance(Algorithm a) { super(a); }
+    public void set_key(U8Array k) { _key = k; }
+    public U8Array get_key() { return _key; }
+    public void set_iv(U8Array v) { if (algorithm.name.equals("Throwing")) throw new JsError("iv rejected"); _iv = v; }
+    public U8Array get_iv() { return _iv; }
+    @Override public U8Array Result() {
+        U8Array out = new U8Array();
+        for (int i = 0; i < inputBuffer.length(); ++i) out.push(inputBuffer.get(i) ^ _key.get(i % _key.length()) ^ _iv.get(0));
+        if (algorithm.name.equals("Wrong") && out.length() == 2) out.set(0, out.get(0) ^ 1);
+        return out;
+    }
+}
+`;
+const KOTLIN_PROBE = () => `@file:Suppress("UNCHECKED_CAST", "NAME_SHADOWING")
+${require('../codingplugins/kotlin.js').GetRuntime()}
+// @generated-unit ProbeUnit
+object ProbeUnit {
+    init { for (name in arrayOf(${PROBES.map(n => `"${n}"`).join(', ')})) AlgorithmFramework.RegisterAlgorithm(ProbeAlgorithm(name)) }
+}
+class ProbeAlgorithm(n: String) : Algorithm() {
+    init {
+        name = n
+        for (o in arrayOf(${PROBE_VECTORS.map(v => jvmVector(v)).join(', ')})) {
+            if (n == "Lacking") o.put("counter", 7)
+            tests!!.push(TestCase.fromObject(o))
+        }
+    }
+    override fun CreateInstance(isInverse: Boolean): IAlgorithmInstance? = ProbeInstance(this)
+}
+class ProbeInstance(a: Algorithm?) : IAlgorithmInstance(a) {
+    @JvmField var _key: U8Array? = null
+    @JvmField var _iv: U8Array? = null
+    fun set_key(k: U8Array?) { _key = k }
+    fun get_key(): U8Array? = _key
+    fun set_iv(v: U8Array?) { if (algorithm!!.name == "Throwing") throw JsError("iv rejected"); _iv = v }
+    fun get_iv(): U8Array? = _iv
+    override fun Result(): U8Array? {
+        val out = U8Array()
+        for (i in 0 until inputBuffer!!.length()) out.push(inputBuffer!!.get(i) xor _key!!.get(i % _key!!.length()) xor _iv!!.get(0))
+        if (algorithm!!.name == "Wrong" && out.length() == 2) out.set(0, out.get(0) xor 1)
+        return out
+    }
+}
+`;
+
+test('Java harness: given a wrong vector, a throwing setter and an unapplied field, when run, then each is reported, none swallowed', () => {
+  if (!hasTool('java')) return 'skip';
+  checkProbe(runProbe('java', JAVA_PROBE()));
+});
+
+test('Kotlin harness: given a wrong vector, a throwing setter and an unapplied field, when run, then each is reported, none swallowed', () => {
+  if (!hasTool('kotlin')) return 'skip';
+  checkProbe(runProbe('kotlin', KOTLIN_PROBE()));
+});
+
 /**
  * HARNESS: run every validation harness case.
  * @param {object} options - { verbose, dotnet }
