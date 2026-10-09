@@ -412,6 +412,7 @@
       this.resolve(this.body);
       markMutatedParams(this.body);
       this.collectDeclarations(this.body);
+      this.markNullTestedFields(this.body);
       this.inferKinds();
       this.lowerProgram(this.body);
       return this.unit;
@@ -449,6 +450,33 @@
     }
 
     /** The member of a class or its ancestors: { kind: 'field'|'accessor'|'method', info, owner }. */
+    /**
+     * Fields given undefined or null and compared with it: a number or boolean field must be able to
+     * hold the absent value (it is boxed), or the comparison could never succeed.
+     */
+    markNullTestedFields(body) {
+      const absent = n => n && ((n.type === 'Literal' && (n.value === null || n.value === undefined) && !n.regex) || (n.type === 'Identifier' && n.name === 'undefined'));
+      const seen = new Set();
+      const walk = (n, cls) => {
+        if (!n || typeof n !== 'object' || seen.has(n)) return;
+        seen.add(n);
+        if (Array.isArray(n)) { n.forEach(c => walk(c, cls)); return; }
+        if (n.type === 'ClassDeclaration' && n.id) cls = n.id.name;
+        if (n.type === 'BinaryExpression' && ['==', '!=', '===', '!=='].includes(n.operator)) {
+          const side = absent(n.right) ? n.left : absent(n.left) ? n.right : null;
+          let owner = null, prop = null;
+          if (side && side.type === 'ThisPropertyAccess' && !side.computed) { owner = cls; prop = side.property; }
+          else if (side && side.type === 'MemberExpression' && !side.computed && side.property) { owner = ilName(side.object && side.object.resultType); prop = side.property.name; }
+          if (owner && typeof prop === 'string' && this.classInfo(owner) && this.classInfo(owner).local) {
+            const m = this.findMember(owner, prop);
+            if (m && m.kind === 'field' && (m.info.values || []).some(absent)) m.info.nullTested = true;
+          }
+        }
+        eachChild(n, c => walk(c, cls));
+      };
+      walk(body, null);
+    }
+
     findMember(className, name) {
       for (let c = this.classInfo(className); c; c = this.classInfo(c.ext)) {
         if (c.accessors.has(name)) return { kind: 'accessor', info: c.accessors.get(name), owner: c };
@@ -1300,6 +1328,7 @@
       if (!this.holdsTypedArray(f.values)) t = this.joinSites(t, (f.ils || []).map(x => this.jt(x, o)));
       if (f.holdsObjects && T.isPrimArray(t)) t = 'JsArray<Object>';
       if (t === 'void') t = 'Object';
+      if (f.nullTested && T.isPrim(t)) t = T.box(t);
       f.jtCached = t;
       return t;
     }
