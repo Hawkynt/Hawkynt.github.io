@@ -1464,9 +1464,14 @@ class TestCase extends LinkItem implements JsDynamic {
     /** A vector field by its JavaScript name, or null when the vector has none. */
     public Object field(String name) {
         switch (name) { case "input": return input; case "expected": return expected; case "text": return text; case "uri": return uri; }
-        return extra.get(name);
+        if (extra.has(name)) return extra.get(name);
+        // a subclass declares its own vector fields
+        return getClass() != TestCase.class && Js.hasMember(this, name) ? Js.getProp(this, name) : null;
     }
-    public boolean hasField(String name) { return name.equals("input") || name.equals("expected") || name.equals("text") || name.equals("uri") || extra.has(name); }
+    public boolean hasField(String name) {
+        return name.equals("input") || name.equals("expected") || name.equals("text") || name.equals("uri") || extra.has(name) ||
+            (getClass() != TestCase.class && Js.hasMember(this, name));
+    }
 }
 
 class Vulnerability extends LinkItem {
