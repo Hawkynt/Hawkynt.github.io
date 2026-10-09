@@ -57,6 +57,7 @@
         type: null,
         throws: [],
         examples: [],
+        templates: [],        // @template T, U - type parameters of a generic function
         csharpOverride: null  // Native C# code to use instead of transpiling
       };
 
@@ -163,6 +164,13 @@
       if (typeMatch) {
         result.type = this.parseType(typeMatch[1]);
       }
+
+      // Parse @template tags: `@template T` or `@template K, V` name type
+      // parameters, bound per call from the argument types (see _instantiateTemplates)
+      const templateRegex = /@template\s+(?:\{[^}]*\}\s+)?([A-Za-z_$][\w$]*(?:\s*,\s*[A-Za-z_$][\w$]*)*)/g;
+      let templateMatch;
+      while ((templateMatch = templateRegex.exec(cleaned)) !== null)
+        for (const name of templateMatch[1].split(',')) result.templates.push(name.trim());
 
       // Parse @throws tags
       const throwsRegex = /@throws?\s+\{([^}]+)\}(?:\s+-?\s+(.*))?/g;
@@ -3191,10 +3199,16 @@
 
       // A local function with JSDoc types its arguments and its result (tier 3).
       if (callee && callee.type === 'Identifier' && this.declaredFunctions.has(callee.name)) {
-        const signature = this.declaredFunctions.get(callee.name);
+        const declared = this.declaredFunctions.get(callee.name);
+        // A generic function (`@template T`) is typed per call by its arguments.
+        const signature = declared.templates && declared.templates.length ?
+          TypeAwareJSASTParser._instantiateTemplates(declared, node.arguments || []) : declared;
         (node.arguments || []).forEach((arg, i) => {
           this._applyContextualType(arg, signature.params[i]);
         });
+        // A type parameter names no IL type: the call is typed only by its binding.
+        if (signature !== declared)
+          return { ...node, resultType: signature.returns && signature.returns !== 'void' ? signature.returns : null };
         if (signature.returns && signature.returns !== 'void' && !node.resultType)
           return { ...node, resultType: signature.returns, ...(signature.returnsNullable ? { nullable: true } : {}) };
       }
@@ -3239,6 +3253,38 @@
       }
 
       return node;
+    }
+
+    /**
+     * A generic local function (`@template T`) at one call: each type
+     * parameter is bound to the type of the argument its parameter declares
+     * (`{T}` binds T to the argument's type, `{T[]}` to its element type) and
+     * substituted into the parameter and return types. `filledArray(n, v)`
+     * declared `@template T @param {T} value @returns {T[]}` returns an array
+     * of v's type. A parameter left unbound types nothing (null).
+     * @param {Object} signature - { params: [IL type], returns, templates: [name] }
+     * @param {Object[]} args - IL arguments
+     * @returns {Object} signature with the bound types
+     */
+    static _instantiateTemplates(signature, args) {
+      const names = new Set(signature.templates);
+      const bound = new Map();
+      const arrayDepth = t => { let d = 0; while (typeof t === 'string' && t.endsWith('[]')) { t = t.slice(0, -2); ++d; } return [t, d]; };
+      (signature.params || []).forEach((param, i) => {
+        const [name, depth] = arrayDepth(param);
+        const arg = args[i];
+        if (!names.has(name) || bound.has(name) || !arg || typeof arg.resultType !== 'string') return;
+        let t = arg.resultType;
+        for (let d = 0; d < depth && t; ++d) t = t.endsWith('[]') ? t.slice(0, -2) : null;
+        if (t) bound.set(name, t);
+      });
+      const substitute = t => {
+        if (typeof t !== 'string') return t;
+        const [name, depth] = arrayDepth(t);
+        if (!names.has(name)) return t;
+        return bound.has(name) ? bound.get(name) + '[]'.repeat(depth) : null;
+      };
+      return { ...signature, params: (signature.params || []).map(substitute), returns: substitute(signature.returns) };
     }
 
     /**
@@ -3291,12 +3337,18 @@
       if (!result || typeof result !== 'object') return result;
       result.opCodesMethod = methodName;
 
-      // CopyArray copies any array: the copy has the source's type, whatever
-      // its JSDoc (written for the common byte case) says.
+      // CopyArray and ArraySlice copy any array: the copy has the source's
+      // type, whatever their JSDoc (written for the common byte case) says.
       const source = rawArgs && rawArgs[0];
       if (TypeAwareJSASTParser.TYPE_PRESERVING_OPCODES.has(methodName) && source &&
           typeof source.resultType === 'string' && source.resultType.endsWith('[]')) {
         result.resultType = source.resultType;
+        source.contextType = source.resultType;
+      }
+      // ConcatArrays([a, b, ...]) joins arrays of any one element type.
+      if (methodName === 'ConcatArrays' && source && typeof source.resultType === 'string' &&
+          source.resultType.endsWith('[][]')) {
+        result.resultType = source.resultType.slice(0, -2);
         source.contextType = source.resultType;
       }
       // CreateArray(n, v) is filled with v: a BigInt or out-of-byte-range v
@@ -3362,7 +3414,7 @@
     /**
      * OpCodes helpers whose result is a copy of their first (array) argument.
      */
-    static TYPE_PRESERVING_OPCODES = new Set(['CopyArray']);
+    static TYPE_PRESERVING_OPCODES = new Set(['CopyArray', 'ArraySlice']);
 
     /**
      * Key and value type of a keyed collection type: 'Map<K,V>' or 'Object<K,V>'
@@ -4415,6 +4467,11 @@
           let fillResultType = arrayResultType;
           if (!arrayNode.elementType && args[0] && args[0].type === 'Literal' && typeof args[0].value === 'bigint') {
             fillElementType = args[0].value >= 0n ? 'uint64' : 'int64';
+            fillResultType = `${fillElementType}[]`;
+          } else if (arrayNode && arrayNode.type === 'ArrayCreation' && !arrayNode.elementType && args[0] && args[0].type !== 'Literal' &&
+                     typeof args[0].resultType === 'string' && !['', 'any', 'number', 'object', 'null', 'void'].includes(args[0].resultType)) {
+            // A fresh `new Array(n).fill(v)` holds v: an array of v's type
+            fillElementType = args[0].resultType;
             fillResultType = `${fillElementType}[]`;
           }
           const filled = {
@@ -7737,6 +7794,10 @@
       if (entry.node.typeInfo && entry.node.typeInfo.returns) {
         // JSDoc @returns is a parsed type object; a baked return is a string.
         const declared = this._cleanTypeName(ilTypeFromJSDoc(entry.node.typeInfo.returns));
+        // A generic return (`@template T @returns {T[]}`) is typed per call
+        // (see _instantiateTemplates), never as the type parameter itself.
+        const templates = entry.node.typeInfo.templates || [];
+        if (declared && templates.includes(declared.replace(/(\[\])+$/, ''))) return null;
         if (declared) return declared;
       }
       const returnType = this._analyzeReturnType(entry.node);
@@ -8759,7 +8820,8 @@
         method.value.typeInfo = {
           params: new Map(jsDoc.params.map(p => [p.name, p.type])),
           returns: jsDoc.returns ? jsDoc.returns.type : null,
-          csharpOverride: jsDoc.csharpOverride || null
+          csharpOverride: jsDoc.csharpOverride || null,
+          templates: jsDoc.templates || []
         };
 
         // Attach type info to method parameters
@@ -9043,7 +9105,8 @@
             init.typeInfo = {
               params: new Map(jsDoc.params.map(p => [p.name, p.type])),
               returns: jsDoc.returns ? jsDoc.returns.type : null,
-              csharpOverride: jsDoc.csharpOverride || null
+              csharpOverride: jsDoc.csharpOverride || null,
+              templates: jsDoc.templates || []
             };
             (init.params || []).forEach((param, index) => {
               if (jsDoc.params[index] && param && param.type === 'Identifier')
@@ -9089,7 +9152,8 @@
         node.typeInfo = {
           params: new Map(jsDoc.params.map(p => [p.name, p.type])),
           returns: jsDoc.returns ? jsDoc.returns.type : null,
-          csharpOverride: jsDoc.csharpOverride || null
+          csharpOverride: jsDoc.csharpOverride || null,
+          templates: jsDoc.templates || []
         };
 
         // Attach type info to function parameters
@@ -9146,7 +9210,8 @@
         node.typeInfo = {
           params: new Map(jsDoc.params.map(p => [p.name, p.type])),
           returns: jsDoc.returns ? jsDoc.returns.type : null,
-          csharpOverride: jsDoc.csharpOverride || null
+          csharpOverride: jsDoc.csharpOverride || null,
+          templates: jsDoc.templates || []
         };
 
         // Attach type info to function parameters
@@ -10334,7 +10399,8 @@
             property.value.typeInfo = {
               params: new Map(jsDoc.params.map(p => [p.name, p.type])),
               returns: jsDoc.returns ? jsDoc.returns.type : null,
-              csharpOverride: jsDoc.csharpOverride || null  // Native C# code override
+              csharpOverride: jsDoc.csharpOverride || null,  // Native C# code override
+              templates: jsDoc.templates || []
             };
 
             // Attach type info to function parameters

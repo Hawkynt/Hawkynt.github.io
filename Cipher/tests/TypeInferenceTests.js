@@ -1894,6 +1894,19 @@ class TypeInferenceTestSuite {
       nl('/** @param {boolean} c\n * @param {int32|null} a */\nfunction f(c, a) { const x = c ? a : 7; return x; }', 'x', 'int32?', 'given a nullable branch, then the conditional is nullable');
       nl('/** @param {boolean} c\n * @param {uint8[]} b */\nfunction f(c, b) { const x = c ? null : b; return x; }', 'x', 'uint8[]', 'given c ? null : bytes, then a reference, not marked');
 
+      // Array helpers hold what they are filled with or copy
+      const filled = '/**\n * @template T\n * @param {int32} size\n * @param {T} value\n * @returns {T[]}\n */\nfunction filledArray(size, value) { const a = new Array(size); a.fill(value); return a; }\n';
+      check(filled + '/** @param {uint32} u */\nfunction f(u) { const x = filledArray(4, u); return x; }', 'x', 'uint32[]', 'given @template T filledArray(n, uint32), then uint32[] (was int32[] whatever the fill)');
+      check(filled + '/** @param {BigInt} b */\nfunction f(b) { const x = filledArray(4, b); return x; }', 'x', 'BigInt[]', 'given filledArray(n, BigInt), then BigInt[]');
+      check(filled + 'function f() { const x = filledArray(4, 0); return x; }', 'x', 'int32[]', 'given filledArray(n, 0), then int32[] (the literal type)');
+      check(filled + 'function f(v) { const x = filledArray(4, v); return x; }', 'x', null, 'given an untyped fill value, then T is unbound and nothing is assumed (exceptional)');
+      check('/**\n * @template T\n * @param {T[]} a\n * @returns {T}\n */\nfunction first(a) { return a[0]; }\n/** @param {uint16[]} w */\nfunction f(w) { const x = first(w); return x; }', 'x', 'uint16', 'given @template T with {T[]} a, then T binds to the element type');
+      check('/**\n * @param {int32} size\n * @param {int32} value\n * @returns {int32[]}\n */\nfunction filledArray(size, value) { return []; }\n/** @param {uint32} u */\nfunction f(u) { const x = filledArray(4, u); return x; }', 'x', 'int32[]', 'given a non-generic @returns {int32[]}, then the declared type stays (tier 3)');
+      check('/** @param {uint32} u */\nfunction f(u) { const x = new Array(4).fill(u); return x; }', 'x', 'uint32[]', 'given new Array(n).fill(uint32), then uint32[] (was uint8[])');
+      check('/** @param {uint32[]} w */\nfunction f(w) { const x = OpCodes.ArraySlice(w, 1, 3); return x; }', 'x', 'uint32[]', 'given OpCodes.ArraySlice(uint32[]), then uint32[] (was uint8[])');
+      check('/** @param {uint32[]} a\n * @param {uint32[]} b */\nfunction f(a, b) { const x = OpCodes.ConcatArrays([a, b]); return x; }', 'x', 'uint32[]', 'given OpCodes.ConcatArrays([uint32[], uint32[]]), then uint32[] (was uint8[])');
+      check('/** @param {uint8[]} a */\nfunction f(a) { const x = OpCodes.ConcatArrays([a, a]); return x; }', 'x', 'uint8[]', 'given ConcatArrays of bytes, then uint8[]');
+
       // A row of values of different kinds is a tuple
       check('function f() { const r = ["", 0, " "]; return r; }', 'r', '[string,int32,string]', 'given ["", 0, " "], then the tuple [string,int32,string] (was string[])');
       check('function f() { const t = [["", 0, ""], [" ", 3, " "]]; return t; }', 't', '[string,int32,string][]', 'given rows of tuples, then an array of the tuple');

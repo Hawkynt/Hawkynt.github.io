@@ -1333,6 +1333,7 @@ The type-aware transpiler's IL also understands these forms; the language emitte
 |--------------------------------|------------------------------------------|-----------------------------------------------------------|
 | `type\|null`, `?type`, `type=` | A number, BigInt or boolean that may be null | `resultType: 'type'` plus `nullable: true` on the node |
 | `[type, type, ...]`            | Positional tuple (a row of mixed kinds)  | `'[string,int32,string]'`; `row[1]` is the type at 1      |
+| `@template T` with `{T}`/`{T[]}` | Generic helper, typed per call         | `filledArray(n, v)` returns an array of `v`'s type        |
 
 ### Primitive Types
 
