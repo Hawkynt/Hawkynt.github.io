@@ -547,7 +547,7 @@ function bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptio
  * own, so their names cannot collide. Any using directive goes to the top.
  * @returns {{success: boolean, code?: string, error?: string}}
  */
-function bundleCSharpDependencies(code, dependencies, plugin, parserOptions) {
+function bundleCSharpDependencies(code, dependencies, plugin, parserOptions, algorithmFile = null) {
   const usings = new Set();
   const hoist = text => text.replace(/^using\s+[^;=]+;[ \t]*\r?\n/gm, line => { usings.add(line.trim()); return ''; });
   let suffix = '';
@@ -560,9 +560,90 @@ function bundleCSharpDependencies(code, dependencies, plugin, parserOptions) {
       return { success: false, error: `dependency ${path.relative(ALGORITHMS_DIR, depPath).replace(/\\/g, '/')}: ${e.message}` };
     }
   }
+  // A .data library taken through a third factory parameter, which the C# code
+  // declares as `static dynamic <Param> = null;`: the library's code is bundled
+  // too, and the parameter holds its exports (see CSHARP_LIBRARY_EXPORTS)
+  const source = algorithmFile ? fs.readFileSync(algorithmFile, 'utf-8') : '';
+  const paramMatches = [...source.matchAll(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/g)];
+  const paramName = paramMatches.length ? paramMatches[paramMatches.length - 1][1] : null;
+  const binding = paramName && new RegExp(`(static\\s+dynamic\\s+${paramName}\\s*=\\s*)null;`);
+  if (binding && binding.test(code)) {
+    for (const lm of source.matchAll(/require\(\s*['"]\.\/([^'"]+)['"]\s*\)/g)) {
+      const libPath = [lm[1], lm[1] + '.js', lm[1] + '.data.js']
+        .map(c => path.join(path.dirname(algorithmFile), c)).find(f => f.endsWith('.data.js') && fs.existsSync(f));
+      if (!libPath) continue;
+      const libName = path.basename(libPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_lib';
+      try {
+        suffix += '\n' + hoist(transpileOne(fs.readFileSync(libPath, 'utf-8'), plugin, libName, { asDependency: true }, parserOptions)) + '\n';
+      } catch (e) {
+        return { success: false, error: `library ${path.basename(libPath)}: ${e.message}` };
+      }
+      code = code.replace(binding, `$1ValidationLibraries.Exports(typeof(${libName}Generated));`);
+      suffix += CSHARP_LIBRARY_EXPORTS;
+      break;
+    }
+  }
   const missing = [...usings].filter(line => !code.includes(line));
   return { success: true, code: (missing.length ? missing.join('\n') + '\n' : '') + code + suffix };
 }
+
+// The exports of a bundled .data library as the object its factory returned:
+// the public static fields and properties of the library's class, and its
+// methods, called with each argument converted to the parameter's type (a
+// number array to the element type the library declares), as JavaScript
+// passes any number
+const CSHARP_LIBRARY_EXPORTS = `
+namespace CipherValidation
+{
+    public static class ValidationLibraries
+    {
+        public static dynamic Exports(System.Type type) => new ValidationLibraryExports(type);
+    }
+
+    public sealed class ValidationLibraryExports : System.Dynamic.DynamicObject
+    {
+        private const System.Reflection.BindingFlags Flags = System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.DeclaredOnly;
+        private readonly System.Type type;
+        public ValidationLibraryExports(System.Type type) { this.type = type; }
+
+        public override bool TryGetMember(System.Dynamic.GetMemberBinder binder, out object result)
+        {
+            var field = type.GetField(binder.Name, Flags);
+            if (field != null) { result = field.GetValue(null); return true; }
+            var property = type.GetProperty(binder.Name, Flags);
+            if (property != null && property.GetIndexParameters().Length == 0) { result = property.GetValue(null); return true; }
+            result = null;
+            return false;
+        }
+
+        public override bool TryInvokeMember(System.Dynamic.InvokeMemberBinder binder, object[] args, out object result)
+        {
+            var method = type.GetMethods(Flags).FirstOrDefault(m => m.Name == binder.Name && !m.IsGenericMethodDefinition
+                && m.GetParameters().Length >= args.Length && m.GetParameters().Skip(args.Length).All(p => p.IsOptional));
+            if (method == null) { result = null; return false; }
+            var parameters = method.GetParameters();
+            var values = new object[parameters.Length];
+            for (int i = 0; i < parameters.Length; ++i)
+                values[i] = i < args.Length ? Convert(args[i], parameters[i].ParameterType) : System.Type.Missing;
+            result = method.Invoke(null, System.Reflection.BindingFlags.OptionalParamBinding, null, values, System.Globalization.CultureInfo.InvariantCulture);
+            return true;
+        }
+
+        private static object Convert(object value, System.Type target)
+        {
+            if (value == null || target.IsInstanceOfType(value)) return value;
+            if (target.IsArray && value is System.Array source)
+            {
+                var element = target.GetElementType();
+                var array = System.Array.CreateInstance(element, source.Length);
+                for (int i = 0; i < source.Length; ++i) array.SetValue(Convert(source.GetValue(i), element), i);
+                return array;
+            }
+            return System.Convert.ChangeType(value, target, System.Globalization.CultureInfo.InvariantCulture);
+        }
+    }
+}
+`;
 
 /**
  * Transpile an algorithm file and, where the language bundles them, the
@@ -592,7 +673,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
   } catch (e) {
     return { success: false, error: e.message };
   }
-  if (language === 'csharp') return bundleCSharpDependencies(code, dependencies, plugin, parserOptions);
+  if (language === 'csharp') return bundleCSharpDependencies(code, dependencies, plugin, parserOptions, algorithmFile);
   if (!BUNDLE_LANGUAGES.has(language)) return { success: true, code };
 
   // JavaScript embeds the real AlgorithmFramework.js/OpCodes.js as a single
