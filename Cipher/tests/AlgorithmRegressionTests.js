@@ -614,6 +614,52 @@ test('RFC 3211 Key Wrap: given a page without a secure random source and no fixe
   expectThrow(() => rfc3211(framework, false, RFC3211_CEK), 'no secure random source');
 });
 
+function lweRoundTrip(framework) {
+  const algorithm = framework.Find('LWE-Signature');
+  const vector = algorithm.tests[0];
+  const signer = algorithm.CreateInstance(false);
+  signer.key = vector.key;
+  signer.Feed(vector.input);
+  const signed = signer.Result();
+  const verifier = algorithm.CreateInstance(true);
+  verifier.key = vector.key;
+  verifier.Feed(signed);
+  return { opened: verifier.Result(), expected: vector.expected };
+}
+test('LWE-Signature: given a page that loads SHAKE after it, when the first committed message is signed and opened, then the message returns', () => {
+  const framework = pageWith('algorithms/asymmetric/lwe-signature.js', 'algorithms/hash/shake.js');
+  const { opened, expected } = lweRoundTrip(framework);
+  equalHex(opened, hex(expected));
+});
+test('LWE-Signature: given a page without SHAKE, when a message is signed, then it is refused naming SHAKE', () => {
+  const framework = pageWith('algorithms/asymmetric/lwe-signature.js');
+  expectThrow(() => lweRoundTrip(framework), 'SHAKE');
+});
+
+/** The first committed KAT signature of one MAYO set, in hex */
+function mayoFirstKat(framework, setName) {
+  const algorithm = framework.Find(setName);
+  const vector = algorithm.tests[0];
+  const instance = algorithm.CreateInstance(false);
+  instance.key = vector.key;
+  instance.randomizer = vector.randomizer;
+  instance.Feed(vector.input);
+  return { actual: hex(instance.Result()), expected: hex(vector.expected) };
+}
+test('MAYO-1: given a page that loads SHAKE and AES after it, when the first KAT message is signed, then it is the KAT signature', () => {
+  const framework = pageWith('algorithms/asymmetric/mayo.js', 'algorithms/hash/shake.js', 'algorithms/block/rijndael.js');
+  const { actual, expected } = mayoFirstKat(framework, 'MAYO-1');
+  if (actual !== expected) throw new Error(`expected ${expected}, got ${actual}`);
+});
+test('MAYO-1: given a page without AES, when a message is signed, then it is refused naming Rijndael (AES)', () => {
+  const framework = pageWith('algorithms/asymmetric/mayo.js', 'algorithms/hash/shake.js');
+  expectThrow(() => mayoFirstKat(framework, 'MAYO-1'), 'Rijndael (AES)');
+});
+test('MAYO-1: given a page without SHAKE, when a message is signed, then it is refused naming SHAKE256', () => {
+  const framework = pageWith('algorithms/asymmetric/mayo.js', 'algorithms/block/rijndael.js');
+  expectThrow(() => mayoFirstKat(framework, 'MAYO-1'), 'SHAKE256');
+});
+
 /**
  * Run every algorithm regression case.
  * @param {object} options - { verbose }
