@@ -19,11 +19,13 @@
 (function(global) {
   'use strict';
 
-  let JavaScriptTransformer;
+  let JavaScriptTransformer, JavaScriptAST;
   if (typeof require !== 'undefined') {
     JavaScriptTransformer = require('./JavaScriptTransformer.js').JavaScriptTransformer;
+    JavaScriptAST = require('./JavaScriptAST.js');
   } else {
     JavaScriptTransformer = global.JavaScriptTransformer;
+    JavaScriptAST = global.JavaScriptAST;
   }
 
   /** The IL type of a node: the declared type wins over the inferred one unless it is open */
@@ -85,6 +87,26 @@
         if (il) decl.il = { type: ilTypeOf(il.id) || ilTypeOf(il.init), kind: 'Variable' };
       }
       return result;
+    }
+
+    /**
+     * An inlined OpCodes 32-bit operation (Xor32, Not32, Add32, ...) is the
+     * IL's `op & 0xFFFFFFFF`, marked InlinedOpCode: OpCodes returns it
+     * unsigned (`>>> 0`), which a JavaScript `& 0xFFFFFFFF` is not. The
+     * JavaScript transformer reads the binary operations so; a unary one
+     * (Not32) is read so here as well.
+     */
+    transformBinaryExpression(node) {
+      if (node && node.operator === '&' && (node.ilNodeType === 'InlinedOpCode' || node.opCodesMethod) && node.left
+          && node.right && node.right.type === 'Literal' && node.right.value === 0xFFFFFFFF) {
+        const { JavaScriptBinaryExpression, JavaScriptLiteral, JavaScriptCall, JavaScriptIdentifier } = JavaScriptAST;
+        // Mul32: the 32-bit product, as JavaScript's Math.imul gives it
+        const left = node.left.type === 'BinaryExpression' && node.left.operator === '*'
+          ? new JavaScriptCall(new JavaScriptIdentifier('Math'), 'imul', [this.transformExpression(node.left.left), this.transformExpression(node.left.right)])
+          : this.transformExpression(node.left);
+        return this.annotate(new JavaScriptBinaryExpression(left, '>>>', JavaScriptLiteral.Number(0)), node);
+      }
+      return super.transformBinaryExpression(node);
     }
 
     transformMethodDefinition(node) {
