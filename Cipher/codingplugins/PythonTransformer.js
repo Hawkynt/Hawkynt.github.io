@@ -7897,7 +7897,7 @@ class OpCodes(metaclass=_OpCodesMeta):
         if (flags.includes('m')) pyFlags.push('re.MULTILINE');
         if (flags.includes('s')) pyFlags.push('re.DOTALL');
 
-        const args = [PythonLiteral.Str(pattern, true)]; // true for raw string
+        const args = [PythonLiteral.Str(PythonTransformer._translateRegexSource(pattern, flags), true)]; // true for raw string
         if (pyFlags.length > 0) {
           args.push(new PythonIdentifier(pyFlags.join(' | ')));
         }
@@ -8570,6 +8570,64 @@ class OpCodes(metaclass=_OpCodesMeta):
       if (!n || n.type !== 'Literal' || typeof n.value !== 'string') return null;
       parts.push(n.value);
       return parts.reverse().join('');
+    }
+
+    /**
+     * A JavaScript regex source as Python `re` reads it. Python has no
+     * Unicode property escapes: `\p{L}` (with the u or v flag) becomes the
+     * character class of every code point JavaScript itself puts in it.
+     * @param {string} pattern - JavaScript regex source
+     * @param {string} flags - JavaScript regex flags
+     * @returns {string} Python regex source
+     */
+    static _translateRegexSource(pattern, flags) {
+      if (!/[uv]/.test(flags) || !/\\[pP]\{/.test(pattern)) return pattern;
+      let out = '';
+      let inClass = false;
+      for (let i = 0; i < pattern.length; ++i) {
+        const c = pattern[i];
+        if (c === '\\') {
+          const m = /^\\([pP])\{([^}]+)\}/.exec(pattern.slice(i));
+          if (m && (m[1] === 'p' || !inClass)) {
+            const ranges = PythonTransformer._unicodePropertyRanges(m[2]);
+            out += inClass ? ranges : (m[1] === 'p' ? '[' + ranges + ']' : '[^' + ranges + ']');
+            i += m[0].length - 1;
+            continue;
+          }
+          out += c + (pattern[i + 1] || '');
+          ++i;
+          continue;
+        }
+        if (c === '[' && !inClass) inClass = true;
+        else if (c === ']' && inClass) inClass = false;
+        out += c;
+      }
+      return out;
+    }
+
+    /**
+     * The code points of a Unicode property as Python regex class ranges,
+     * taken from this JavaScript engine's own `\p{...}`.
+     * @param {string} property - Property name, e.g. L or Script=Greek
+     * @returns {string} class body such as \u0041-\u005a...
+     */
+    static _unicodePropertyRanges(property) {
+      const cache = PythonTransformer._unicodePropertyCache || (PythonTransformer._unicodePropertyCache = new Map());
+      if (cache.has(property)) return cache.get(property);
+      const re = new RegExp('^\\p{' + property + '}$', 'u');
+      const esc = cp => cp <= 0xFFFF ? '\\u' + cp.toString(16).padStart(4, '0') : '\\U' + cp.toString(16).padStart(8, '0');
+      let body = '';
+      let start = -1;
+      for (let cp = 0; cp <= 0x110000; ++cp) {
+        const inside = cp < 0x110000 && !(cp >= 0xD800 && cp <= 0xDFFF) && re.test(String.fromCodePoint(cp));
+        if (inside && start < 0) start = cp;
+        else if (!inside && start >= 0) {
+          body += cp - 1 === start ? esc(start) : esc(start) + '-' + esc(cp - 1);
+          start = -1;
+        }
+      }
+      cache.set(property, body);
+      return body;
     }
 
     // Does `node` (an untransformed IL/JS AST node) contain a raw `*`

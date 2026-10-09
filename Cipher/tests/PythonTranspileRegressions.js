@@ -520,6 +520,13 @@ check('runtime: Shr32Signed returns a signed value and the Mod helpers keep Java
   return expectOutput(runPython(js, 'print(f())'), ['[-39, -1, -2, -2, 4294967196, 3]']);
 });
 
+check('regex: a Unicode property escape \\p{L} matches what JavaScript matches', () => {
+  const js = 'function f(c) { return [/\\p{L}/u.test(c), /^[\\p{Lu}0-9]+$/u.test(c), /\\P{L}/u.test(c)]; }';
+  // Given an ASCII letter, a Latin-1 letter, a superscript digit (not a letter), a Greek capital and a digit
+  return expectOutput(runPython(js, 'print([f(c) for c in ("a", "\\u00e9", "\\u00b2", "\\u03a9", "7")])'),
+    ['[[True, False, False], [True, False, False], [False, False, True], [True, True, False], [False, True, True]]']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }
