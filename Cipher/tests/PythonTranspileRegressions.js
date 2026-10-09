@@ -429,6 +429,12 @@ check('not: !(a && b) and !a === b keep the JavaScript grouping', () => {
     ['[False, False, True, False] [True, False, True, False] [True, False, False, True]']);
 });
 
+check('division: a quotient assigned to a float64 keeps its fraction, an int32 one truncates', () => {
+  const js = '/** @param {int32} a @param {int32} b */\nfunction f(a, b) {\n  /** @type {float64} */\n  const mean = a / b;\n  /** @type {int32} */\n  const q = a / b;\n  return [mean, q]; }';
+  // Given 7 / 2 into a float64 and into an int32
+  return expectOutput(runPython(js, 'print(f(7, 2))'), ['[3.5, 3]']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

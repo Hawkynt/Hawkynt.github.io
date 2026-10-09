@@ -8273,6 +8273,11 @@ class OpCodes(metaclass=_OpCodesMeta):
         if (isFloatOperand(node.left) || isFloatOperand(node.right)) {
           return new PythonBinaryExpression(left, '/', right);
         }
+        // A quotient stored into a float-typed variable or field keeps its
+        // fraction (`/** @type {float64} */ const mean = sum / n`)
+        if (['float32', 'float64', 'float', 'double'].includes(node.contextType)) {
+          return new PythonBinaryExpression(left, '/', right);
+        }
         // A BigInt literal divisor (`d = d / 2n`) is just as much an exact
         // integer division as a plain-number literal divisor - but
         // `Number.isInteger(node.right.value)` is FALSE for a JS BigInt
