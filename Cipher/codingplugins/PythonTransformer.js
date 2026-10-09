@@ -5332,6 +5332,20 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     /**
+     * True if `node` is a variable or property read whose IL type is an
+     * array: JS tests an array for truthiness as "not null/undefined" - an
+     * empty one is truthy - where Python's empty list is falsy.
+     */
+    _isArrayTypedLeaf(node) {
+      if (!node) return false;
+      const plainRead = node.type === 'Identifier' ||
+        ((node.type === 'MemberExpression' || node.type === 'ThisPropertyAccess') && !node.computed);
+      if (!plainRead) return false;
+      const t = node.resultType;
+      return typeof t === 'string' && (/\[\]$/.test(t) || /^(Uint8|Int8|Uint8Clamped|Uint16|Int16|Uint32|Int32|Float32|Float64|BigInt64|BigUint64)Array$/.test(t));
+    }
+
+    /**
      * True if `node` is a bare Identifier naming an `_isArrayLikeParam`
      * parameter, a `!`-negation of one, or a '&&'/'||' combination
      * involving one - exactly the shapes `_buildArrayAwareCondition` below
@@ -5342,6 +5356,7 @@ class OpCodes(metaclass=_OpCodesMeta):
      */
     _containsArrayLikeCondition(node) {
       if (!node) return false;
+      if (this._isArrayTypedLeaf(node)) return true;
       if (node.type === 'Identifier') return this._isArrayLikeParam(node.name);
       if (node.type === 'UnaryExpression' && node.operator === '!') return this._containsArrayLikeCondition(node.argument);
       if (node.type === 'LogicalExpression' && (node.operator === '&&' || node.operator === '||'))
@@ -5365,6 +5380,10 @@ class OpCodes(metaclass=_OpCodesMeta):
      * normal path.
      */
     _buildArrayAwareCondition(node) {
+      if (this._isArrayTypedLeaf(node))
+        return new PythonBinaryExpression(this._safeLogicalMemberOperand(node, this.transformExpression(node)), 'is not', PythonLiteral.None());
+      if (node.type === 'UnaryExpression' && node.operator === '!' && this._isArrayTypedLeaf(node.argument))
+        return new PythonBinaryExpression(this._safeLogicalMemberOperand(node.argument, this.transformExpression(node.argument)), 'is', PythonLiteral.None());
       if (node.type === 'Identifier' && this._isArrayLikeParam(node.name))
         return new PythonBinaryExpression(this.transformExpression(node), 'is not', PythonLiteral.None());
       if (node.type === 'UnaryExpression' && node.operator === '!' &&
@@ -5826,7 +5845,9 @@ class OpCodes(metaclass=_OpCodesMeta):
       const preStatements = [];
       const testNode = this.extractUpdateExpressionsFromCondition(node.test, preStatements);
 
-      const condition = this.transformExpression(testNode);
+      const condition = this._containsArrayLikeCondition(testNode)
+        ? this._buildArrayAwareCondition(testNode)
+        : this.transformExpression(testNode);
       const body = this.transformBlockOrStatement(node.body);
       const whileStmt = new PythonWhile(condition, body);
 
@@ -11095,7 +11116,9 @@ class OpCodes(metaclass=_OpCodesMeta):
       // branch, typically surfacing as a much-later, harder-to-diagnose
       // failure once the exception unwinds through an unrelated caller's
       // broad `except Exception: pass`.
-      const condition = this._safeLogicalMemberOperand(node.test, this.transformExpression(node.test));
+      const condition = this._containsArrayLikeCondition(node.test)
+        ? this._buildArrayAwareCondition(node.test)
+        : this._safeLogicalMemberOperand(node.test, this.transformExpression(node.test));
       const trueExpr = this.transformExpression(node.consequent);
       const falseExpr = this.transformExpression(node.alternate);
 

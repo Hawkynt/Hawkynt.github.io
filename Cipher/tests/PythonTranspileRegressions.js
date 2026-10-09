@@ -387,6 +387,13 @@ check('literal: an integer past 2^53 and the 64-bit Unpack mask keep their exact
   return expectOutput(runPython(js, 'r = f(4)\nprint(list(r[0]), r[1] == 2 ** 64)'), ['[0, 0, 0, 0, 0, 0, 0, 32] True']);
 });
 
+check('truthiness: an array-typed value is true even when empty, false only when null', () => {
+  const js = '/** @param {uint8[]|null} a */\nfunction f(a) { let r = a ? 1 : 0; if (a) r += 10; if (!a) r += 100; while (a) { r += 1000; break; } return r; }';
+  // Given an empty array, a filled one and None
+  // Then the empty array tests true like in JavaScript
+  return expectOutput(runPython(js, 'print(f([]), f([1]), f(None))'), ['1011 1011 100']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }
