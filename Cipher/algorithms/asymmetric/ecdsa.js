@@ -532,24 +532,14 @@
   // ECDSA signs a digest, so the hash is not optional and there is no useful
   // behaviour when it is missing: a substitute hash produces a signature that
   // no other implementation will ever verify, which is worse than refusing to
-  // sign. The digests are pulled in on first use and every path below fails
+  // sign. The digests come from the registry and every path below fails
   // loudly if the requested one is absent.
   //
-  // On first use rather than at load: requiring them here would register four
-  // SHA-2 variants while this file is being loaded, and every tool that
-  // attributes an algorithm to whichever file was loading when it registered
-  // would then file SHA-512 under asymmetric ciphers.
-  let hashesLoaded = false;
-  function loadHashes() {
-    if (hashesLoaded) return;
-    hashesLoaded = true;
-    if (typeof require === 'undefined') return;
-
-    // In the browser these arrive as script tags instead; Find() reports it.
-    try { require('../hash/sha1.js'); } catch (error) { /* reported by Find() */ }
-    try { require('../hash/sha256.js'); } catch (error) { /* reported by Find() */ }
-    try { require('../hash/sha512.js'); } catch (error) { /* reported by Find() */ }
-  }
+  // Registry first, CommonJS fallback on a miss rather than a require at load:
+  // requiring them here would register four SHA-2 variants while this file is
+  // being loaded, and every tool that attributes an algorithm to whichever file
+  // was loading when it registered would then file SHA-512 under asymmetric
+  // ciphers. In the browser the page has loaded them as script tags.
 
   // Digest and HMAC block sizes, in octets, for the hashes FIPS 186-4 approves
   // for ECDSA. Both are properties of the hash rather than of this file, so
@@ -588,10 +578,14 @@
    * @returns {uint8[]} Digest octets
    */
   function digest(hashName, bytes) {
-    loadHashes();
-
     /** @type {Algorithm} */
-    const algorithm = AlgorithmFramework.Find(hashName);
+    let algorithm = AlgorithmFramework.Find(hashName);
+    if (!algorithm && typeof require !== 'undefined') {
+      try { require('../hash/sha1.js'); } catch (error) { /* reported below */ }
+      try { require('../hash/sha256.js'); } catch (error) { /* reported below */ }
+      try { require('../hash/sha512.js'); } catch (error) { /* reported below */ }
+      algorithm = AlgorithmFramework.Find(hashName);
+    }
     if (!algorithm) {
       throw new Error('ECDSA requires the hash ' + hashName + ', which is not registered');
     }
