@@ -975,7 +975,7 @@
           map.set(n.array.name, list);
         }
         // values assigned to a local (also through [a, b] = [x, y]), as '=name' entries
-        if (n.type === 'AssignmentExpression' && n.operator === '=' && n.left) {
+        if (n.type === 'AssignmentExpression' && ['=', '+=', '-=', '*=', '/='].includes(n.operator) && n.left) {
           const note = (target, value) => {
             if (!target || target.type !== 'Identifier' || !value) return;
             const key = '=' + target.name;
@@ -1009,6 +1009,11 @@
           return r;
         };
         if (isBig(name)) return T.big;
+      }
+      // an integer local the code accumulates fractional Numbers in is a double
+      if (t && isInt(t) && t.bits <= 32 && this.fn && this.fn.pushTypes) {
+        const assigned = this.fn.pushTypes.get('=' + name) || [];
+        if (assigned.some(p => p === 'float64' || p === 'number' || p === 'float32')) return T.f64;
       }
       if (!t || t.k !== 'arr' || !isNumOrBool(t.e) || !this.fn || !this.fn.pushTypes) return t;
       const pushed = this.fn.pushTypes.get(name) || [];
