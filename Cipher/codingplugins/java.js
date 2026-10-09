@@ -1067,6 +1067,28 @@ final class Js {
     public static double nowMs() { return System.nanoTime() / 1e6; }
 
     // ---------------------------------------------------------------- expression helpers
+    // ---- arrays converted for a parameter the callee changes: the changes are copied back after the call
+    static final java.util.ArrayList<JsArrayLike> BACK = new java.util.ArrayList<>();
+    public static int mark() { return BACK.size(); }
+    public static <A> A aliasArg(Object orig, A conv) {
+        if (conv != orig && orig instanceof JsArrayLike && conv instanceof JsArrayLike) { BACK.add((JsArrayLike) orig); BACK.add((JsArrayLike) conv); }
+        return conv;
+    }
+    public static void writeBack(int m) {
+        for (int i = BACK.size() - 2; i >= m; i -= 2) {
+            JsArrayLike o = BACK.get(i), c = BACK.get(i + 1);
+            int n = c.length();
+            if (!o.isFixed()) o.setLength(n);
+            for (int k = 0; k < n && k < o.length(); ++k) o.setBoxed(k, c.getBoxed(k));
+        }
+        while (BACK.size() > m) BACK.remove(BACK.size() - 1);
+    }
+    public static <T> T back(int m, T r) { writeBack(m); return r; }
+    public static int back(int m, int r) { writeBack(m); return r; }
+    public static long back(int m, long r) { writeBack(m); return r; }
+    public static double back(int m, double r) { writeBack(m); return r; }
+    public static boolean back(int m, boolean r) { writeBack(m); return r; }
+
     public static <T> T seq(Object a, T b) { return b; }
     public static <T> T seq(Object a, Object b, T c) { return c; }
     public static <T> T seq(Object a, Object b, Object c, T d) { return d; }

@@ -341,6 +341,40 @@
     }
   }
 
+  /**
+   * Mark the parameters a function may change in place (an element or the length written, a
+   * mutating array method, or the array handed on to another call): an argument converted to
+   * such a parameter's array class gets the changes copied back.
+   */
+  const MUTATING_IL = new Set(['ArrayAppend', 'ArrayPop', 'ArrayShift', 'ArrayUnshift', 'ArraySplice', 'ArrayFill',
+    'ArrayReverse', 'ArraySort', 'ArrayClear', 'TypedArraySet']);
+  const MUTATING_METHODS = new Set(['push', 'pop', 'shift', 'unshift', 'splice', 'fill', 'reverse', 'sort', 'copyWithin', 'set']);
+  function markMutatedParams(body) {
+    const base = n => {
+      while (n && n.type !== 'Identifier') n = n.object || n.array || n.target || null;
+      return n && n.__sym && n.__sym.kind === 'param' ? n.__sym : null;
+    };
+    const mark = n => { const s = base(n); if (s) s.mutated = true; };
+    const seen = new Set();
+    const walk = n => {
+      if (!n || typeof n !== 'object' || seen.has(n)) return;
+      seen.add(n);
+      if (Array.isArray(n)) { n.forEach(walk); return; }
+      if (n.type === 'AssignmentExpression' && n.left && n.left.type !== 'Identifier') mark(n.left);
+      else if (n.type === 'UpdateExpression' && n.argument && n.argument.type !== 'Identifier') mark(n.argument);
+      else if (MUTATING_IL.has(n.type)) mark(n.array || n.target || n.object);
+      else if (n.type === 'CallExpression' || n.type === 'NewExpression') {
+        const c = n.callee;
+        if (c && c.type === 'MemberExpression' && !c.computed && c.property && MUTATING_METHODS.has(c.property.name)) mark(c.object);
+        for (const a of n.arguments || []) if (a && a.type === 'Identifier') mark(a);
+      } else if (n.type === 'OpCodesCall' && /Clear|Fill|Set|InPlace|Copy|Reverse|Secure/.test(n.method || '')) {
+        for (const a of n.arguments || []) mark(a);
+      }
+      eachChild(n, walk);
+    };
+    walk(body);
+  }
+
   /** Thrown for IL the lowering cannot express; the plugin reports it as a transpile failure. */
   class LoweringError extends Error {}
 
@@ -376,6 +410,7 @@
       this.body = [...libBodies, ...(body || [])].filter(Boolean);
       foldStringChains(this.body);
       this.resolve(this.body);
+      markMutatedParams(this.body);
       this.collectDeclarations(this.body);
       this.inferKinds();
       this.lowerProgram(this.body);
@@ -2089,6 +2124,10 @@
       }
       const e = this.lowerExpr(expr, null, true);
       if (!e) return [];
+      if (e.k === 'backvoid') {
+        const m = this.fresh('mark');
+        return [S.block([S.local(m, 'int', E.scall('Js', 'mark', [], 'int')), S.expr(e.call), S.expr(E.scall('Js', 'writeBack', [E.name(m, 'int')], 'void'))])];
+      }
       return [S.expr(e)];
     }
 
@@ -2303,6 +2342,18 @@
       if (!node) return E.nul();
       if (node.__lowered) return node.__lowered;
       const h = this['x_' + node.type];
+      if (h && (node.type === 'CallExpression' || node.type === 'NewExpression')) {
+        const saved = this.backArgs;
+        this.backArgs = false;
+        let r = h.call(this, node, expect, stmt);
+        if (this.backArgs) {
+          // copy the callee's changes back into the converted arrays
+          if (r.t !== 'void') r = E.scall('Js', 'back', [E.scall('Js', 'mark', [], 'int'), r], r.t);
+          else if (stmt) r = { k: 'backvoid', call: r, t: 'void' };
+        }
+        this.backArgs = saved;
+        return r;
+      }
       if (h) return h.call(this, node, expect, stmt);
       throw new LoweringError(`no lowering for IL node type '${node.type}'`);
     }
@@ -3284,7 +3335,18 @@
           out.push({ k: 'jsarrayOf', items: args.slice(i).map(a => this.conv(this.lowerExpr(a), 'Object')), t: 'JsArray<Object>' });
           return out;
         }
-        if (i < args.length) out.push(this.valueOf(args[i], sig.params[i]));
+        const p = fi.params[i];
+        const a = args[i];
+        if (i < args.length && p && p.sym && p.sym.mutated && a && (a.type === 'Identifier' || a.type === 'ThisPropertyAccess' ||
+            (a.type === 'MemberExpression' && !a.computed && a.object && (a.object.type === 'Identifier' || a.object.type === 'ThisExpression')))) {
+          // A copy converted to the parameter's array class: the callee's changes are copied back after the call
+          const v = this.lowerExpr(a, sig.params[i]);
+          const conv = this.conv(v, sig.params[i]);
+          if (T.isArray(v.t) && T.isArray(sig.params[i]) && v.t !== sig.params[i] && conv !== v) {
+            out.push(E.scall('Js', 'aliasArg', [v, conv], sig.params[i]));
+            this.backArgs = true;
+          } else out.push(conv);
+        } else if (i < args.length) out.push(this.valueOf(args[i], sig.params[i]));
         else if (i < fi.min) out.push(this.undefinedOf(sig.params[i]));
         else break; // an overload covers the defaults
       }
