@@ -10169,7 +10169,13 @@
       // does; a value of that very type needs nothing.
       const elementType = node.left?.type === 'MemberExpression' && node.left.computed &&
         /^(u?int(8|16|32))\[\]$/.exec(node.left.object?.resultType || '');
-      if (elementType && ['=', '+=', '-=', '*=', '<<=', '|=', '^='].includes(node.operator) &&
+      // A compound assignment reads its target again, so only a target
+      // without side effects (no a[i++] ^= x) is rewritten
+      const hasSideEffect = (n) => !!n && typeof n === 'object' && (
+        ['UpdateExpression', 'CallExpression', 'AssignmentExpression', 'NewExpression'].includes(n.type) ||
+        Object.keys(n).some(k => k !== 'parent' && n[k] && typeof n[k] === 'object' &&
+          (Array.isArray(n[k]) ? n[k].some(hasSideEffect) : hasSideEffect(n[k]))));
+      if (elementType && (node.operator === '=' || (['+=', '-=', '*=', '<<='].includes(node.operator) && !hasSideEffect(node.left))) &&
           !(node.operator === '=' && node.right?.resultType === elementType[1]) && !node._perlElementWrapped) {
         const value = node.operator === '=' ? node.right
           : { type: 'BinaryExpression', operator: node.operator.slice(0, -1), left: Object.assign({}, node.left),
