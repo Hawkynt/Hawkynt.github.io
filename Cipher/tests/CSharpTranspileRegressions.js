@@ -959,6 +959,12 @@ check('accessors: a setter taking a string for a getter returning a class makes 
     '  /** @returns {Group} the group */\n  get group() { return this._group; }\n}');
   expectMatch(code, /public dynamic Group\b/, 'public dynamic Group');
 });
+check('accessors: the setter of a dynamic property reads its value as the declared parameter type (CS1977)', () => {
+  const code = transpile('class Holder {\n  constructor() {\n    /** @type {string} */\n    this._key = "";\n  }\n' +
+    '  /** @param {uint8[]} keyData - key bytes */\n  set key(keyData) { this._key = keyData ? String.fromCharCode(...keyData) : ""; }\n' +
+    '  /** @returns {string} the key text */\n  get key() { return this._key; }\n}');
+  expectMatch(code, /byte\[\] keyData = value;/, 'byte[] keyData = value;');
+});
 check('length: storing the length member of an object assigns its Length, not a new array (CS0029)', () => {
   const code = transpile('class Register {\n  constructor() {\n    /** @type {int32} */\n    this.length = 0;\n  }\n}\n' +
     '/**\n * @param {int32} n - length\n * @returns {Register} r\n */\nfunction make(n) {\n  const reg = new Register();\n  reg.length = n;\n  return reg;\n}\n' +

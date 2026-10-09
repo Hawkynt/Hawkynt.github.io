@@ -22245,6 +22245,16 @@
           setterParamRawName = methodNode.value.params[0].name;
           prevSetterParamType = this.getVariableType(setterParamRawName);
           this.registerVariableType(setterParamRawName, prop.type);
+          // A dynamic property (getter and setter of different kinds) gives its setter
+          // body the parameter as declared: `byte[] keyData = value;` - a dynamic
+          // `value` would make every lambda over it a compile error (CS1977)
+          const declaredParamType = this.mapILType(methodNode.value.params[0].resultType);
+          if (prop.type?.name === 'dynamic' && !prop.type.isArray && declaredParamType &&
+              !['dynamic', 'object'].includes(declaredParamType.name) && setterParamRawName !== 'value') {
+            this.currentSetterParam = null;
+            this.registerVariableType(setterParamRawName, declaredParamType);
+            bodyBlock.statements.push(new CSharpVariableDeclaration(setterParamRawName, declaredParamType, new CSharpIdentifier('value')));
+          }
         }
 
         // Set currentMethod (duck-typed: transformReturnStatement only reads
