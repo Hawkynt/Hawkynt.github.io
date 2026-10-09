@@ -3315,6 +3315,9 @@
       }
       const args = node.arguments || [];
       switch (name) {
+        case 'Find':
+          // destructured from AlgorithmFramework
+          return { e: A.call('JsFindAlgorithm', [this.conv(this.ex(args[0]), T.str)]), t: tClass('Algorithm') };
         case 'RegisterAlgorithm':
           return { e: A.call('RegisterAlgorithm', [this.conv(this.ex(args[0]), tClass('Algorithm'))]), t: T.void, stmtOk: true };
         case 'MerkleDamgardBlocks':
