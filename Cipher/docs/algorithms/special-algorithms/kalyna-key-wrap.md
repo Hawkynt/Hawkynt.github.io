@@ -20,7 +20,7 @@
 | Parameter | Supported values |
 | --- | --- |
 | Key sizes | 16 bytes (128 bits) to 32 bytes (256 bits) in steps of 8 bytes; 16 bytes (128 bits) to 64 bytes (512 bits) in steps of 16 bytes |
-| Block sizes | 128 bytes (1024 bits); 256 bytes (2048 bits); 512 bytes (4096 bits) |
+| Block sizes | 16 bytes (128 bits); 32 bytes (256 bits); 64 bytes (512 bits) |
 
 ## Security
 
