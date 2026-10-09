@@ -98,6 +98,18 @@
     const n = ilName(t).trim();
     return IL_ALIAS[n] || n;
   }
+  /**
+   * The IL type of a node, where the IL left a plain copy untyped: Array.from(array)
+   * without a mapping function holds the source's elements, so it has the source's type.
+   */
+  function ilTypeOf(node) {
+    if (!node) return null;
+    if (node.type === 'ArrayFrom' && !node.mapFunction && !node.length && !node.arrayType && ilNorm(node.resultType) === 'any[]' && node.iterable) {
+      const src = ilNorm(node.iterable.resultType);
+      if (src.endsWith('[]') && src !== 'any[]') return node.iterable.resultType;
+    }
+    return node.resultType;
+  }
   function tupleParts(type) {
     if (typeof type !== 'string' || type.length < 3 || type[0] !== '[' || !type.endsWith(']') || type.endsWith('[]')) return null;
     const parts = [];
@@ -491,7 +503,11 @@
           if (sym.fn !== curFn()) sym.writtenInner = true;
         }
       };
-      const declType = (decl) => decl.resultType || (decl.id && decl.id.resultType) || null;
+      const declType = (decl) => {
+        const t = decl.resultType || (decl.id && decl.id.resultType) || null;
+        // A copy of an array (the IL says any[]) holds the source's elements
+        return decl.init && ilNorm(t) === 'any[]' && ilTypeOf(decl.init) !== decl.init.resultType ? ilTypeOf(decl.init) : t;
+      };
       // Hoist function declarations and var declarations of a block
       const hoist = (stmts, isFnBody) => {
         for (const s of stmts || []) {
@@ -1194,7 +1210,7 @@
     /** The JVM type of an IL expression node. */
     nodeJt(node) {
       if (!node) return 'Object';
-      let il = node.resultType;
+      let il = ilTypeOf(node);
       if ((!il || ilNorm(il) === 'null') && node.contextType && node.type !== 'Literal') il = node.contextType;
       const big = this.isBig(node);
       const arr = this.arraySymbolOf(node);
