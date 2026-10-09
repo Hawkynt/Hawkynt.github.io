@@ -441,6 +441,12 @@ check('division: a quotient pushed onto a float64[] keeps its fraction, onto an 
   return expectOutput(runPython(js, 'r = g(2)\nprint(list(r[0]), list(r[1]))'), ['[0.25, 0.75] [0, 1]']);
 });
 
+check('division: a quotient assigned to a float64[] element keeps its fraction', () => {
+  const js = '/** @param {int32[]} freq @param {int32} n */\nfunction g(freq, n) {\n  /** @type {float64[]} */\n  const prob = new Array(2);\n  for (let i = 0; i < 2; i++) prob[i] = freq[i] / n;\n  return prob; }';
+  // Given Tunstall-style probabilities freq[i] / n
+  return expectOutput(runPython(js, 'print(list(g([1, 3], 4)))'), ['[0.25, 0.75]']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

@@ -9059,6 +9059,13 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformAssignmentExpressionCore(node) {
+      // A quotient stored into an element of a float array keeps its
+      // fraction (`prob[i] = freq[i] / n` on a float64[])
+      if (node.operator === '=' && node.left && node.left.type === 'MemberExpression' && node.left.computed &&
+          node.right && node.right.type === 'BinaryExpression' && node.right.operator === '/' && !node.right.contextType) {
+        const floatElement = /^(float32|float64)\[\]$/.exec(node.left.object && node.left.object.resultType || '');
+        if (floatElement) node.right.contextType = floatElement[1];
+      }
       // `X.method = function(...) { ...this.foo...; return bar; }` -
       // dynamically attaching a method after construction (e.g. siphash.js's
       // `instance.Feed = function(data) { this._inputBuffer = ...; }` /
