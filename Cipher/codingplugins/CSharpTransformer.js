@@ -23533,6 +23533,11 @@
       // an explicit `...spread` argument means "flatten these into me instead".
       const useConcat = isSpread || this._isFlatFeedBufferAppendOfArray(arrayNode, valueType);
 
+      // null pushed onto an array of a value type holds the type's default (CS0037)
+      if (!useConcat && actualValue?.type === 'Literal' && (actualValue.value === null || actualValue.value === undefined) &&
+          elementType && !elementType.isArray && CSHARP_VALUE_TYPES.has(elementType.name))
+        return { methodName: 'Append', value: new CSharpIdentifier(`default(${elementType.name})`) };
+
       if (!useConcat) {
         // Cast value to element type if needed (e.g., int to byte for byte[])
         // In C#, byte operations (^, +, -, &, |) produce int, so always cast expressions to byte when appending to byte[]

@@ -303,6 +303,10 @@ check('arrays: a field assigned an empty local array grows on each store too', (
     '  /** @param {int32} n - count */\n  fill(n) { /** @type {uint32[]} */ const keys = []; this.rk = keys; for (let i = 0; i < n; ++i) this.rk[i] = i; }\n}');
   expectMatch(code, /OpCodes\.Grown<uint>\(this\.Rk, i\)/, 'OpCodes.Grown<uint>(this.Rk, i)');
 });
+check('push: null pushed onto a value-type array is its default (CS0037)', () => {
+  const code = transpile('/** @returns {uint8[]} bytes */\nfunction f() { /** @type {uint8[]} */ const d = []; d.push(null); return d; }');
+  expectMatch(code, /\.Append\(default\(byte\)\)/, '.Append(default(byte))');
+});
 check('push: an array parameter the callee grows is passed by ref', () => {
   const code = transpile('/**\n * @param {uint8[]} dest - grown\n * @param {uint8} v - value\n */\nfunction emit(dest, v) { dest.push(v); }\n' +
     '/** @returns {uint8[]} bytes */\nfunction build() { /** @type {uint8[]} */ const res = []; emit(res, 1); emit(res, 2); return res; }');
@@ -579,6 +583,9 @@ namespace RegressionTest {
       OpCodes.SetGrow(ref grown, 0, 1u);
       Eq("setgrow-inside", string.Join(",", grown), "1,0,7");
       Eq("grown", OpCodes.Grown(new byte[1], 3).Length, 4);
+      // Foundation classes take a computed (double) size as JavaScript does
+      Eq("graph-double", new BipartiteGraph(3.0, 2.0) != null, true);
+      Eq("matrix-double", new SparseMatrix(2.0, 2.0) != null, true);
       var kept = new byte[5];
       Eq("grown-same", ReferenceEquals(OpCodes.Grown(kept, 2), kept), true);
       // BytesToChars maps each byte to one char; RotL64_HL rotates the high:low pair

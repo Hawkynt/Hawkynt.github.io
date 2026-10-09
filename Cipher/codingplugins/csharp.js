@@ -1934,6 +1934,8 @@ namespace ${namespace}
         private readonly HashSet<int>[] rowNonZeros;
         private readonly HashSet<int>[] colNonZeros;
 
+        // A JavaScript number argument may be a double (a computed size): truncated
+        public SparseMatrix(double rows, double cols) : this((long)rows, (long)cols) { }
         public SparseMatrix(long rows, long cols)
         {
             Rows = (int)rows; Cols = (int)cols;
@@ -2001,6 +2003,7 @@ namespace ${namespace}
         public Dictionary<int, HashSet<int>> Edges { get; set; } = new Dictionary<int, HashSet<int>>();
         public Dictionary<int, HashSet<int>> ReverseEdges { get; set; } = new Dictionary<int, HashSet<int>>();
 
+        public BipartiteGraph(double leftNodes, double rightNodes) : this((long)leftNodes, (long)rightNodes) { }
         public BipartiteGraph(long leftNodes, long rightNodes)
         {
             LeftNodes = (int)leftNodes; RightNodes = (int)rightNodes;
@@ -2049,6 +2052,7 @@ namespace ${namespace}
     public class DegreeDistribution
     {
         public int K { get; set; }
+        public DegreeDistribution(double k) : this((long)k) { }
         public DegreeDistribution(long k) { K = (int)k; }
 
         public double IdealSoliton(long degree)
