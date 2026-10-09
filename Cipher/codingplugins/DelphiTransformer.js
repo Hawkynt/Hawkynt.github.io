@@ -866,7 +866,53 @@
     // ------------------------------------------------------------ signatures
 
     /** Parameters of an IL function node: [{ jsName, type, defaultNode, rest }]. */
+    /**
+     * Names of the parameters a function writes into (element stores, push,
+     * splice, ...): an argument converted for such a parameter is written back.
+     */
+    mutatedParams(fnNode) {
+      const names = new Set();
+      const MUTATORS = new Set(['push', 'pop', 'shift', 'unshift', 'splice', 'fill', 'set', 'sort', 'reverse', 'copyWithin']);
+      const isName = n => n && n.type === 'Identifier' ? n.name : null;
+      const visit = node => {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(visit); return; }
+        if (node.type === 'AssignmentExpression' && node.left) {
+          const l = node.left;
+          const target = l.type === 'MemberExpression' && l.computed ? isName(l.object)
+            : l.type === 'ArrayLength' ? isName(l.array) : null;
+          if (target) names.add(target);
+        }
+        if (node.type === 'UpdateExpression' && node.argument && node.argument.type === 'MemberExpression' && node.argument.computed) {
+          const target = isName(node.argument.object);
+          if (target) names.add(target);
+        }
+        if (node.type === 'CallExpression' && node.callee && node.callee.type === 'MemberExpression' && !node.callee.computed &&
+            node.callee.property && MUTATORS.has(node.callee.property.name)) {
+          const target = isName(node.callee.object);
+          if (target) names.add(target);
+        }
+        // IL array operations that write (ArrayAppend, ArraySplice, ArrayFill, ...)
+        if (typeof node.type === 'string' && /^Array(Append|Splice|Fill|Pop|Shift|Unshift|Reverse|Sort|Set|Clear)/.test(node.type)) {
+          const target = isName(node.array);
+          if (target) names.add(target);
+        }
+        for (const k in node) {
+          if (k === 'typeInfo' || k === 'range' || k === 'loc') continue;
+          const v = node[k];
+          if (v && typeof v === 'object') visit(v);
+        }
+      };
+      visit(fnNode.body);
+      return names;
+    }
+
     paramsOf(fnNode) {
+      const mutated = this.mutatedParams(fnNode);
+      return this.paramsOfNode(fnNode).map(p => Object.assign(p, { mutated: mutated.has(p.jsName) }));
+    }
+
+    paramsOfNode(fnNode) {
       return (fnNode.params || []).map((p, i) => {
         if (typeof p === 'string') return { jsName: p, type: T.any };
         if (p.type === 'DefaultParameter' || p.type === 'AssignmentPattern' || (p.type === 'AssignmentExpression' && p.left)) {
@@ -1007,7 +1053,7 @@
               m.ret = m.overrides.ret;
               m.virtual = false;
             } else {
-              m.params = own.map(p => ({ jsName: p.jsName, pas: null, type: p.type, defaultNode: p.defaultNode, rest: p.rest }));
+              m.params = own.map(p => ({ jsName: p.jsName, pas: null, type: p.type, defaultNode: p.defaultNode, rest: p.rest, mutated: p.mutated }));
               m.ret = m.ownRet;
             }
           } else if (m.kind === 'prop') {
@@ -1503,8 +1549,17 @@
           if (e.operator === 'void') return this.expressionStatement(e.argument);
           break;
       }
-      const res = this.ex(e, null, true);
-      return this.exprStatement(res);
+      // a converted array argument the callee writes into is written back after the call
+      const fn = this.fn;
+      if (!fn) return this.exprStatement(this.ex(e, null, true));
+      const savedWriteBacks = fn.writeBacks;
+      const writeBacks = fn.writeBacks = [];
+      try {
+        const s = this.exprStatement(this.ex(e, null, true));
+        return writeBacks.length ? [].concat(s || [], writeBacks) : s;
+      } finally {
+        fn.writeBacks = savedWriteBacks;
+      }
     }
 
     /** A value computed for its side effect only. */
@@ -3151,7 +3206,17 @@
           return;
         }
         if (i < nodes.length && nodes[i]) {
-          out.push(this.conv(this.ex(nodes[i], p.type), p.type));
+          const a = this.ex(nodes[i], p.type);
+          const argNode = nodes[i];
+          if (p.mutated && this.fn.writeBacks && isArr(a.t) && isArr(p.type) && this.pasType(a.t) !== this.pasType(p.type) &&
+              (argNode.type === 'Identifier' || a.lvalue)) {
+            const tmp = this.temp(p.type, 'arg');
+            this.emitPre(A.assign(A.id(tmp), this.conv(a, p.type)));
+            this.fn.writeBacks.push(A.assign(a.e, this.conv({ e: A.id(tmp), t: p.type }, a.t)));
+            out.push(A.id(tmp));
+            return;
+          }
+          out.push(this.conv(a, p.type));
         } else if (p.defaultNode) {
           out.push(this.conv(this.defaultArgument(p.defaultNode, p.type, params.slice(0, i), out), p.type));
         } else if (p.defText) {

@@ -186,6 +186,10 @@ sameAsJs('array: a DataView reads and writes floats and integers in both byte or
   '  const bytes = []; for (let i = 0; i < 12; i++) bytes.push(view.getUint8(i));\n' +
   '  return bytes.join(",") + "|" + view.getFloat64(0, true) + "|" + view.getUint16(8, true) + "|" + view.getInt16(10, true) + "|" + view.getFloat32(8); }\n' +
   '/** @returns {string} */ function probe() { let r = f(-1.5); try { r += new DataView(new ArrayBuffer(2)).getUint32(0); } catch (e) { r += "|range"; } return r; }');
+sameAsJs('array: a callee appending to an array of another element type appends to the caller\'s array',
+  '/** @param {int32[]} target @param {int32[]} source */ function appendAll(target, source) { for (let i = 0; i < source.length; i++) target.push(source[i]); }\n' +
+  'class Holder { constructor() { /** @type {uint8[]} */ this.buf = [1]; } /** @param {uint8[]} d */ feed(d) { appendAll(this.buf, d); } }\n' +
+  '/** @returns {string} */ function probe() { const h = new Holder(); h.feed([2, 3]); /** @type {uint8[]} */ const local = [9]; appendAll(local, [8]); return h.buf.join(",") + "|" + local.join(","); }');
 sameAsJs('array: Array(n) without new makes n slots',
   '/** @returns {string} */ function probe() { const a = Array(3).fill(7); return a.length + ":" + a.join(","); }');
 
