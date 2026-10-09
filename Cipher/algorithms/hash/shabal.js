@@ -456,7 +456,7 @@
       /** @type {int32} */
       this.blockSize = BLOCK_SIZE;
       this.BlockSize = BLOCK_SIZE;
-      this.SupportedOutputSizes = [outputSize];
+      this.SupportedOutputSizes = [new KeySize(outputSize, outputSize, 1)];
       this.SupportedHashSizes = [new KeySize(outputSize, outputSize, 1)];
 
       this.documentation = [
