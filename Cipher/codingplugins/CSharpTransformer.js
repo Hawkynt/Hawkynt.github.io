@@ -5539,6 +5539,34 @@
     /**
      * Infer type from a method call
      */
+    /**
+     * The return type a framework stub class declares for a method called on a
+     * value of that class (csharp.js _getStubMembers), when it is a primitive or a
+     * primitive array; null otherwise, and for a class this file declares itself.
+     * @param {Object} receiver - the IL receiver node
+     * @param {string} method - the JS method name
+     * @returns {CSharpType|null}
+     */
+    stubMethodReturnType(receiver, method) {
+      if (!method || !receiver || receiver.type === 'Identifier' && ['OpCodes', 'Math', 'Object', 'Array', 'String', 'Number'].includes(receiver.name)) return null;
+      const receiverType = this.inferFullExpressionType(receiver);
+      if (!receiverType || receiverType.isArray || this.localClassNames.has(receiverType.name)) return null;
+      const csName = this.toPascalCase(method);
+      let name = receiverType.name;
+      for (let hops = 0; name && hops < 32; ++hops) {
+        const stub = this.stubMembers.get(name);
+        if (!stub) return null;
+        if (stub.returns?.has(csName)) {
+          const m = /^(byte|sbyte|short|ushort|int|uint|long|ulong|bool|double|string)(\[\])?$/.exec(stub.returns.get(csName) || '');
+          if (!m) return null;
+          const scalar = new CSharpType(m[1]);
+          return m[2] ? CSharpType.Array(scalar) : scalar;
+        }
+        name = stub.base;
+      }
+      return null;
+    }
+
     inferCallExpressionType(node) {
       if (node.callee.type === 'MemberExpression') {
         const obj = node.callee.object;
@@ -5577,6 +5605,10 @@
           const returnType = this.getOpCodesReturnType(fullMethod);
           if (returnType) return returnType;
         }
+
+        // A method of a framework stub class (the fountain library's SparseMatrix.Get)
+        const stubReturn = this.stubMethodReturnType(obj, method);
+        if (stubReturn) return stubReturn;
 
         // String.fromCharCode returns string
         if (obj.type === 'Identifier' && obj.name === 'String' && method === 'fromCharCode') {

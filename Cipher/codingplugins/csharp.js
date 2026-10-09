@@ -414,14 +414,20 @@ class CSharpPlugin extends LanguagePlugin {
       const members = new Set();
       const methods = new Set();
       const virtuals = new Set();
-      const memberPattern = /public\s+((?:virtual\s+|override\s+|static\s+)*)[\w<>\[\],?. ]+?\s+(\w+)\s*(\{|=>|=|;|\()/g;
+      // The return type of each method, null where overloads disagree
+      const returns = new Map();
+      const memberPattern = /public\s+((?:virtual\s+|override\s+|static\s+)*)([\w<>\[\],?. ]+?)\s+(\w+)\s*(\{|=>|=|;|\()/g;
       let member;
       while ((member = memberPattern.exec(body)) !== null) {
-        members.add(member[2]);
-        if (member[3] === '(') methods.add(member[2]);
-        if (/virtual|override/.test(member[1])) virtuals.add(member[2]);
+        members.add(member[3]);
+        if (member[4] === '(') {
+          methods.add(member[3]);
+          const type = member[2].trim();
+          returns.set(member[3], returns.has(member[3]) && returns.get(member[3]) !== type ? null : type);
+        }
+        if (/virtual|override/.test(member[1])) virtuals.add(member[3]);
       }
-      this._stubMembers.set(match[1], { base: match[2] || null, members, methods, virtuals });
+      this._stubMembers.set(match[1], { base: match[2] || null, members, methods, virtuals, returns });
     }
     // Enums are types too, without members to inherit
     for (const enumMatch of stubs.matchAll(/public\s+enum\s+(\w+)/g))

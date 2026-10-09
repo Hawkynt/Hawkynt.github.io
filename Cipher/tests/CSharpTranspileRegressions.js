@@ -932,6 +932,11 @@ check('return: a null module sentinel returned from an array-typed function is c
     'function f(n) { if (n < 0) return FAIL; return [[1, 2]]; }');
   expectMatch(code, /return \(uint\[\]\[\]\)\(?FAIL\)?;/, 'return (uint[][])FAIL;');
 });
+check('stub classes: a stub method result into a narrower JSDoc local is cast (CS0266)', () => {
+  const code = transpile('class Holder {\n  constructor() {\n    /** @type {SparseMatrix} */\n    this.m = null;\n  }\n' +
+    '  /** @returns {int32} r */\n  f() {\n    /** @type {uint8} */\n    const cell = this.m.get(1, 2);\n    return cell;\n  }\n}');
+  expectMatch(code, /byte cell = (unchecked\()?\(byte\)\(?this\.M\.Get\(1, 2\)/, 'byte cell = (byte)this.M.Get(1, 2)');
+});
 check('for: a loop variable walking linked nodes keeps the node class type (CS0029)', () => {
   const code = transpile('class Node {\n  constructor() {\n    /** @type {Node} */\n    this.parent = null;\n  }\n}\n' +
     '/**\n * @param {Node} node - node\n * @returns {int32} r\n */\nfunction depth(node) { let d = 0; for (let n = node.parent; n !== null; n = n.parent) ++d; return d; }');
