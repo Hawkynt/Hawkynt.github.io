@@ -596,6 +596,7 @@
     }
 
     // Non-Linear Function (NLF) - produces keystream word
+    /** @returns {uint32} Keystream word */
     _nltap() {
       // Combine multiple register elements with S-box lookups
       let t = OpCodes.ToUint32(this.R[0] + this.R[16]);
@@ -636,6 +637,7 @@
 
     // Generate key-dependent constant
     _genkonst() {
+      /** @type {uint32} */
       let newkonst;
 
       do {
