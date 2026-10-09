@@ -895,37 +895,20 @@ function generateGoTestHarness(algorithmCode, vector, algorithmName) {
     .replace(/^import\s+"[^"]+"\s*\n?/gm, '')  // Remove single-line imports
     .replace(/^import\s+\([^)]*\)\s*\n?/gms, '');  // Remove multi-line import blocks (use 's' flag for dotAll)
 
-  // Build imports based on what's actually used in the code
-  const imports = ['"fmt"']; // fmt is always needed for test harness
-  if (codeWithoutPkg.includes('errors.')) {
-    imports.push('"errors"');
-  }
-  // Only include encoding/hex if hex package functions are used (not mustHexDecode which is inline)
-  if (codeWithoutPkg.includes('hex.DecodeString') || codeWithoutPkg.includes('hex.EncodeToString')) {
-    imports.push('"encoding/hex"');
-  }
-  if (codeWithoutPkg.includes('binary.')) {
-    imports.push('"encoding/binary"');
-  }
-  // math package for Floor, Ceil, Round, etc.
-  if (codeWithoutPkg.includes('math.')) {
-    imports.push('"math"');
-  }
-  // math/rand for random number generation
-  if (codeWithoutPkg.includes('rand.')) {
-    imports.push('"math/rand"');
-  }
-  // math/bits for bit rotation operations
-  if (codeWithoutPkg.includes('bits.')) {
-    imports.push('"math/bits"');
-  }
+  // The code's own imports, and fmt for the harness. Guessing imports from
+  // the code would hide an import the emitter forgot.
+  const imports = new Set(['"fmt"']);
+  for (const m of cleanedCode.matchAll(/^import\s+("[^"]+")/gm)) imports.add(m[1]);
+  for (const m of cleanedCode.matchAll(/^import\s+\(([^)]*)\)/gm))
+    for (const spec of m[1].split('\n').map(l => l.trim()).filter(Boolean)) imports.add(spec);
+  imports.delete('');
 
   return {
     success: true,
     code: `package main
 
 import (
-\t${imports.join('\n\t')}
+\t${[...imports].join('\n\t')}
 )
 
 ${codeWithoutPkg}
@@ -1053,14 +1036,17 @@ function generateDelphiTestHarness(algorithmCode, vector, algorithmName) {
   const inputBytes = vector.input?.map(b => b.toString()).join(', ') || '0';
   const expectedBytes = vector.expected?.map(b => b.toString()).join(', ') || '0';
 
+  // The plugin emits a unit: it is compiled from a file of its name, used by the program
+  const unit = algorithmCode.match(/^\s*unit\s+(\w+)\s*;/m);
   return {
     success: true,
+    extraFiles: unit ? { [unit[1] + '.pas']: algorithmCode } : undefined,
     code: `program TestHarness;
 {$MODE DELPHI}
 
-uses SysUtils;
+uses SysUtils${unit ? ', ' + unit[1] : ''};
 
-${algorithmCode}
+${unit ? '' : algorithmCode}
 
 const
   InputData: array[0..${inputLen > 0 ? inputLen - 1 : 0}] of Byte = (${inputBytes || '0'});
@@ -1107,7 +1093,12 @@ fun main() {
 // COMPILATION AND EXECUTION
 // ============================================================================
 
-function testCompilation(language, code, outputDir) {
+function testCompilation(language, code, outputDir, extraFiles) {
+  // Files the harness compiles alongside the program (a Pascal unit)
+  if (extraFiles) {
+    fs.mkdirSync(outputDir, { recursive: true });
+    for (const [name, text] of Object.entries(extraFiles)) fs.writeFileSync(path.join(outputDir, name), text);
+  }
   switch (language) {
     case 'c': return testCCompilation(code, outputDir);
     case 'cpp': return testCppCompilation(code, outputDir);
@@ -1140,7 +1131,7 @@ function testCCompilation(code, outputDir) {
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
@@ -1157,7 +1148,7 @@ function testCppCompilation(code, outputDir) {
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
@@ -1198,7 +1189,7 @@ function testJavaCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'TestHarness.java');
   fs.writeFileSync(srcFile, code);
 
-  const result = spawnTool('javac', [srcFile], {
+  const result = spawnTool('javac', ['-J-Duser.language=en', srcFile], {
     encoding: 'utf-8',
     timeout: 30000,
     cwd: outputDir
@@ -1206,7 +1197,7 @@ function testJavaCompilation(code, outputDir) {
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
@@ -1240,7 +1231,7 @@ function testPHPSyntax(code, outputDir) {
 
   return {
     success: result.status === 0,
-    errors: result.stderr || result.stdout || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
@@ -1261,7 +1252,7 @@ function testRubySyntax(code, outputDir) {
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
@@ -1287,7 +1278,7 @@ function testGoCompilation(code, outputDir) {
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
@@ -1306,7 +1297,7 @@ function testRustCompilation(code, outputDir) {
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
@@ -1328,7 +1319,7 @@ function testTypeScriptSyntax(code, outputDir) {
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
@@ -1352,7 +1343,7 @@ function testBasicCompilation(code, outputDir) {
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
@@ -1372,7 +1363,7 @@ function testDelphiCompilation(code, outputDir) {
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
@@ -1392,7 +1383,7 @@ function testKotlinCompilation(code, outputDir) {
 
   return {
     success: result.status === 0,
-    errors: result.stderr || '',
+    errors: compilerOutput(result),
     output: result.stdout || ''
   };
 }
@@ -1446,7 +1437,7 @@ function executeCode(language, outputDir) {
 }
 
 // Lines of tool output that are warnings or noise, never the error
-const NOISE_LINE = /^\s*$|redefined at|masks earlier declaration|used only once|Useless use|syntax OK|^\s*at |^\s*\^+\s*$|^Node\.js v|^\s*File "|^Traceback|^\s*~+\s*$|^warning|: warning |Build FAILED|^\s*\d+ Warning|^\s*\d+ Error|Time Elapsed/i;
+const NOISE_LINE = /^\s*$|^# \w+$|^Free Pascal Compiler|^Copyright \(c\)|^Target OS:|^Compiling |^Linking |^\d+ lines compiled|^Note:|^Hint:|redefined at|masks earlier declaration|used only once|Useless use|syntax OK|^\s*at |^\s*\^+\s*$|^Node\.js v|^\s*File "|^Traceback|^\s*~+\s*$|^warning|: warning |Build FAILED|^\s*\d+ Warning|^\s*\d+ Error|Time Elapsed/i;
 
 /**
  * The first line of tool output that states an error, cut to a readable length.
@@ -1462,9 +1453,26 @@ function firstError(text, language) {
   if (language === 'csharp') line = pick(/error CS\d+/) || pick(/Unhandled exception|Exception:/);
   else if (language === 'python') line = [...lines].reverse().find(l => /^\w+(Error|Exception|Exit)\b/.test(l));
   else if (language === 'javascript') line = pick(/^\w*Error\b/) || pick(/Error:/);
-  if (!line) line = lines[0];
-  if (language === 'csharp') line = line.replace(/^.*?\.cs\(\d+,\d+\):\s*/, '').replace(/\s*\[[^\]]*\.csproj\]$/, '');
+  else if (language === 'ruby') {
+    // Prism reports "syntax errors found", then each error under a caret
+    const caret = pick(/^\|\s*\^~*\s+\S/);
+    if (caret) line = 'syntax error: ' + caret.replace(/^\|\s*\^~*\s+/, '');
+  }
+  // Compilers: the first line that says error (gcc, javac, rustc, tsc, fpc, fbc, kotlinc, ...)
+  if (!line) line = pick(/\b(error|fatal)\b/i) || lines[0];
+  // Drop the location prefix: "...\test.c:12:5: ", "Program.cs(1,2): ", "test.pas(3,4) ", "ruby.exe: "
+  line = line.replace(/^.*?\.cs\(\d+,\d+\):\s*/, '').replace(/\s*\[[^\]]*\.csproj\]$/, '')
+    .replace(/^\S*ruby(\.exe)?:\s*/i, '')
+    .replace(/^(?:[A-Za-z]:)?[^:]*?[\\/.]?test\.\w+(?::\d+)*(?:\(\d+(?:,\d+)?\))?:?\s*/, '');
   return line.length > 400 ? line.slice(0, 400) + '…' : line;
+}
+
+/** What a compiler printed, both streams (tsc, fpc and fbc report on stdout), or why it did not run. */
+function compilerOutput(result) {
+  const text = (result.stderr || '') + (result.stdout || '');
+  if (text.trim()) return text;
+  if (result.error) return result.error.code === 'ETIMEDOUT' ? 'the compiler timed out' : result.error.message;
+  return result.status === null ? 'the compiler was killed' : '';
 }
 
 /**
@@ -1520,7 +1528,7 @@ function parseHarnessOutput(spec, run, language) {
 function normalizeMessage(text) {
   return String(text)
     .replace(/\s+at\s+.+?\sline\s\d+(, <[^>]*> line \d+)?\.?/g, '')
-    .replace(/\(?(?:[A-Za-z]:)?[\\/][^\s:()]+\.(?:py|pl|pm|cs|js)\)?(?::\d+)*/g, '<file>')
+    .replace(/\(?(?:[A-Za-z]:)?[\\/][^:()\n]*?\.(?:py|pl|pm|cs|js|ts|c|cpp|java|go|rs|kt|bas|pas|php|rb)\b\)?(?::\d+)*/g, '<file>')
     .replace(/'[^']*'|"[^"]*"|`[^`]*`|‘[^’]*’/g, "'…'")
     .replace(/\b0x[0-9a-f]+\b/gi, 'N')
     .replace(/\b[0-9a-f]{8,}\b/gi, '<hex>')
@@ -1615,7 +1623,7 @@ async function validateFile(file, languages, progress = () => {}) {
     } else {
       const harness = generateTestHarness(language, transpiled.code, spec, algoName, reference.sample);
       const outputDir = path.join(OUTPUT_DIR, language, file.category, algoName);
-      const compiled = harness.success ? testCompilation(language, harness.code, outputDir) : null;
+      const compiled = harness.success ? testCompilation(language, harness.code, outputDir, harness.extraFiles) : null;
       if (!harness.success) {
         fail('transpile', `harness: ${harness.error}`);
       } else if (!compiled.success) {
