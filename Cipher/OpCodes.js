@@ -2482,8 +2482,9 @@
     },
     
     /**
-     * Clear array (fill with zeros)
-     * @param {uint8[]} arr - Array to clear (modified in place)
+     * Clear array (fill with zeros): bytes, words or any other numbers
+     * @template T
+     * @param {T[]} arr - Array to clear (modified in place)
      */
     ClearArray: function(arr) {
       for (let i = 0; i < arr.length; ++i)
@@ -2951,9 +2952,9 @@
     },
 
     /**
-     * Create array filled with specific value
+     * Create a byte array filled with one byte value
      * @param {uint32} length - Array length
-     * @param {uint8} value - Fill value (defaults to 0)
+     * @param {uint8} value - Fill byte (defaults to 0)
      * @returns {uint8[]} New array filled with value
      */
     CreateArray: function(length, value) {

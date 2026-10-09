@@ -205,8 +205,27 @@ test('guess: given the same table with @type, when typed, then nothing is report
 test('guess: given an empty array literal, when typed, then the int32[] default is reported', () => {
   ok(reasons('function f() { const a = []; return a; }').some(r => /empty array literal/.test(r)), 'empty array reported');
 });
-test('guess: given `data || []`, when used as a value, then it is reported', () => {
-  ok(reasons('/** @param {uint8[]} d */\nfunction f(d) { return d || []; }').some(r => /on non-boolean operands/.test(r)), 'logical value reported');
+test('logical: given `data || []` on a uint8[], when typed, then [] takes uint8[] and nothing is reported', () => {
+  equal(sites('/**\n * @param {uint8[]} d\n * @returns {uint8[]}\n */\nfunction f(d) { return d || []; }').length, 0);
+});
+test('logical: given `s || 5` on a string, when used as a value, then the value of no shared type is reported', () => {
+  ok(reasons('/**\n * @param {string} s\n * @returns {string}\n */\nfunction f(s) { const v = s || 5; return v; }').some(r => /no common type/.test(r)), 'logical value reported');
+});
+test('logical: given `a || b` on two uint32, when inferred, then it is uint32 (was boolean)', () => {
+  const ast = il('/**\n * @param {uint32} a\n * @param {uint32} b\n */\nfunction f(a, b) { const v = a || b; return v; }');
+  equal(declOf(ast, 'v').resultType, 'uint32');
+});
+test('logical: given `flag || 0`, when inferred, then a boolean and a number share no type', () => {
+  equal(declOf(il('/** @param {boolean} c */\nfunction f(c) { const v = c || 0; return v; }'), 'v').resultType, null);
+});
+test('logical: given `a || b` on booleans, when inferred, then boolean', () => {
+  equal(declOf(il('/**\n * @param {boolean} a\n * @param {boolean} b\n */\nfunction f(a, b) { const v = a || b; return v; }'), 'v').resultType, 'boolean');
+});
+test('logical: given `opts || {}` on a typedef, when inferred, then the typedef type', () => {
+  equal(declOf(il('/** @param {Settings} o */\nfunction f(o) { const v = o || {}; return v; }'), 'v').resultType, 'Settings');
+});
+test('logical: given `a || b` in an if condition on numbers, when counted, then the truth test is no site', () => {
+  equal(sites('/**\n * @param {uint8} a\n * @param {string} b\n * @returns {int32}\n */\nfunction f(a, b) { if (a || b) return 1; return 0; }').length, 0);
 });
 test('guess: given `a || b` as an if condition, when walked, then the boolean reading is not reported', () => {
   const r = reasons('/**\n * @param {uint8[]} d\n * @param {uint8[]} e\n */\nfunction f(d, e) { if (d || e) return 1; return 0; }');
@@ -267,6 +286,7 @@ test('walk: given a local JSDoc {number}, when read, then it is counted as untyp
   equal(s.length, 1);
   ok(/states no width/.test(s[0].reason), s[0].reason);
 });
+
 test('walk: given a genuine float, when read, then it is typed (float64 is not number)', () => {
   equal(sites('function f() { const x = 1.5; return x / 2; }').length, 0);
 });
@@ -350,6 +370,84 @@ test('tuple: given a tuple type, when checked, then each position is checked', (
   equal(check(['', 'x', ' ']), 'element-string');
   equal(check('abc'), 'string');
   equal(TypeSoundness.checkerFor('[string,int32][]')([['a', 1], ['b', 2.5]]), 'element-fraction');
+});
+
+// ------------------------------------------------------------ inference fixes
+test('inference: given Array.from(uint8[]), when inferred, then uint8[] (was any[])', () => {
+  equal(declOf(il('/** @param {uint8[]} b */\nfunction f(b) { const c = Array.from(b); return c; }'), 'c').resultType, 'uint8[]');
+});
+test('inference: given Array.from(b, v => v * 2) on uint8[], when inferred, then the map result type', () => {
+  equal(declOf(il('/** @param {uint8[]} b */\nfunction f(b) { const c = Array.from(b, v => v * 2); return c; }'), 'c').resultType, 'int32[]');
+});
+test('inference: given Array.from of an untyped value, when inferred, then untyped (not any[])', () => {
+  equal(declOf(il('function f(b) { const c = Array.from(b); return c; }'), 'c').resultType, null);
+});
+test('inference: given an array of instances of two sibling classes, when inferred, then their common base class', () => {
+  equal(declOf(il('class A extends HashFunctionAlgorithm {}\nclass B extends HashFunctionAlgorithm {}\nconst x = [new A(), new B()];'), 'x').resultType, 'HashFunctionAlgorithm[]');
+});
+test('inference: given instances of unrelated classes, when inferred, then no common type (exceptional)', () => {
+  equal(declOf(il('class A {}\nclass B {}\nconst x = [new A(), new B()];'), 'x').resultType, null);
+});
+test('inference: given strings stored into a Vulnerability[] field, when typed, then the literal is not retyped', () => {
+  const ast = il('class A extends HashFunctionAlgorithm { constructor() { super(); this.knownVulnerabilities = ["weak"]; } }');
+  equal(find(ast, n => n.ilNodeType === 'ArrayLiteral').resultType, 'string[]');
+});
+test('inference: given a framework property setter without JSDoc, when its parameter is read, then it has the property type', () => {
+  const ast = il('class B extends IBlockCipherInstance { set key(keyData) { const k = keyData; this._k = k; } }');
+  equal(declOf(ast, 'k').resultType, 'uint8[]');
+});
+test('inference: given const f = function (x) with @param, when typed, then the parameter node itself is typed', () => {
+  const ast = il('function o() {\n  /**\n   * @param {int32} x\n   * @returns {int32}\n   */\n  const f = function (x) { return x; };\n  return f(1);\n}');
+  equal(find(ast, n => n.type === 'FunctionExpression').params[0].resultType, 'int32');
+});
+test('inference: given a field reset to null after a typed assignment, when looked up, then the typed assignment wins', () => {
+  const ast = il('class A {\n constructor() { this.k = null; }\n /** @param {uint8[]} b */\n set(b) { this.k = b.slice(); }\n clear() { this.k = null; }\n m() { const v = this.k; return v; } }');
+  equal(declOf(ast, 'v').resultType, 'uint8[]');
+});
+test('inference: given [t, u] = [u, t - q * u] on a BigInt-literal variable, when typed, then the literal initializer is a guess', () => {
+  ok(reasons('/**\n * @param {BigInt} q\n * @returns {BigInt}\n */\nfunction f(q) { let t = 0n, u = 1n; [t, u] = [u, t - q * u]; return t; }').some(x => /later assigned bigint/.test(x)), 'reported');
+});
+test('inference: given the same variables declared @type {BigInt}, when typed, then nothing is reported', () => {
+  equal(sites('/**\n * @param {BigInt} q\n * @returns {BigInt}\n */\nfunction f(q) { /** @type {BigInt} */ let t = 0n, u = 1n; [t, u] = [u, t - q * u]; return t; }').length, 0);
+});
+test('inference: given an array callback on a field of a class-typed field, when typed, then its parameter takes the element type', () => {
+  const ast = il('class K {\n constructor() { /** @type {int32[][]} */ this.rows = []; } }\nclass A {\n constructor() { /** @type {K} */ this.k = new K(); }\n m() { this.k.rows.forEach(row => OpCodes.ClearArray(row)); } }');
+  equal(find(ast, n => n.type === 'ArrowFunction').params[0].resultType, 'int32[]');
+});
+test('inference: given new Float64Array(n).sort(), when typed, then the sort is marked numeric with the typed-array kind', () => {
+  const ast = il('/** @param {int32} n */\nfunction f(n) { const k = new Float64Array(n); k.sort(); return k; }');
+  const sort = find(ast, n => n.type === 'ArraySort');
+  equal(sort.typedArrayKind, 'Float64Array');
+  equal(sort.numericSort, true);
+});
+test('inference: given a plain array sort without a comparator, when typed, then it is not marked numeric (boundary)', () => {
+  const sort = find(il('/** @param {uint32[]} k */\nfunction f(k) { k.sort(); return k; }'), n => n.type === 'ArraySort');
+  equal(sort.numericSort, undefined);
+});
+test('inference: given a field holding a typed array, when sorted, then the kind is known', () => {
+  const sort = find(il('class A {\n constructor() { this.k = new Uint32Array(4); }\n m() { this.k.sort(); } }'), n => n.type === 'ArraySort');
+  equal(sort.typedArrayKind, 'Uint32Array');
+});
+test('record: given @typedef {Object} with @property lines, when typed, then it is an IL record type', () => {
+  const code = '/**\n * @typedef {Object} Keys\n * @property {uint8[]} k1 - first\n * @property {uint32} n - count\n */\n/** @type {Keys} */\nconst K = { k1: [1, 2], n: 3 };\nfunction f() { const a = K.k1; const b = K.n; return a; }';
+  const ast = il(code);
+  equal(JSON.stringify(ast.recordTypes.Keys.map(f => f.name + ':' + f.resultType)), '["k1:uint8[]","n:uint32"]');
+  equal(declOf(ast, 'a').resultType, 'uint8[]');
+  equal(declOf(ast, 'b').resultType, 'uint32');
+  const literal = find(ast, n => n.type === 'ObjectLiteral');
+  equal(literal.resultType, 'Keys');
+  equal(literal.recordType, 'Keys');
+  equal(literal.properties[1].value.resultType, 'uint32');
+});
+test('record: given a typedef without @property lines, when typed, then no record type is made (boundary)', () => {
+  equal(Object.keys(il('/** @typedef {Object} Empty */\nconst x = 1;').recordTypes).length, 0);
+});
+test('template: given an OpCodes helper declared {T[]} (ClearArray), when a uint32[] is passed, then no uint8[] context is imposed', () => {
+  const ast = il('/** @param {uint32[]} w */\nfunction f(w) { OpCodes.ClearArray(w); }');
+  const call = find(ast, n => n.opCodesMethod === 'ClearArray');
+  const arg = call && (call.arguments || call.args || [call.array || call.argument]).find(Boolean);
+  ok(arg && arg.name === 'w', `ClearArray argument found (${call && Object.keys(call)})`);
+  equal(arg.contextType, undefined);
 });
 
 test('walk: given sites, when tallied, then every site lands in exactly one tier', () => {

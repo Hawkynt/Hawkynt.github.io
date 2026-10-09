@@ -255,6 +255,9 @@
     }
   }
 
+  /** Scope key under which a variable records the typed-array kind it holds. */
+  const TYPED_ARRAY_KEY = '\u0000typed-array:';
+
   /** JSDoc spellings that name an IL type under another word. */
   const JSDOC_TYPE_ALIASES = {
     'byte': 'uint8', 'word': 'uint16', 'dword': 'uint32', 'qword': 'uint64',
@@ -541,6 +544,7 @@
             this.opCodesTypes[indent === 6 ? `${owner}.${name}` : name] = {
               params,
               returns: returns || 'void',
+              templates: parsed.templates || [],          // @template T: a helper for any element type
               description: parsed.description || ''
             };
           }
@@ -986,6 +990,53 @@
      * @param {string} name - Variable name
      * @param {string} type - Type string (e.g., 'uint32', 'uint8[]', 'string')
      */
+    /**
+     * Object shapes declared with `@typedef {Object} Name` and its
+     * `@property {T} field` lines: record types. Each field is a declared
+     * field of Name (a read of `x.field` on a Name is typed by it), an object
+     * literal stored where Name is declared is a Name, and the IL AST lists
+     * them (`recordTypes`) for the emitters to declare.
+     * @private
+     */
+    _collectRecordTypes() {
+      this.recordTypes = new Map();
+      const text = this.normalizedCode || this.code || '';
+      for (const block of text.match(/\/\*\*[\s\S]*?\*\//g) || []) {
+        const head = block.match(/@typedef\s+\{\s*(?:Object|object)\s*\}\s+([A-Za-z_$][\w$]*)/);
+        if (!head) continue;
+        const fields = [];
+        for (const m of block.matchAll(/@property\s+\{([^}]+)\}\s+\[?([A-Za-z_$][\w$]*)/g)) {
+          const type = ilTypeFromJSDoc(m[1].trim());
+          fields.push({ name: m[2], resultType: type || null, jsDocType: m[1].trim(), nullable: nullableJSDoc(m[1].trim()) });
+        }
+        if (!fields.length) continue;
+        this.recordTypes.set(head[1], fields);
+        for (const f of fields)
+          if (f.resultType) {
+            this.declaredFieldTypes.set(`${head[1]}.${f.name}`, f.resultType);
+            if (f.nullable) this.declaredFieldNullable.add(`${head[1]}.${f.name}`);
+          }
+      }
+    }
+
+    /**
+     * The typed-array kind ('Float64Array', ...) an IL value holds, when it
+     * is known to be one: a typed array created in place, or a variable or
+     * field a typed array initialised.
+     * @param {Object} node - IL node
+     * @param {Object} [context] - transformation context (the class of `this`)
+     * @returns {string|null} kind
+     */
+    _typedArrayKindOf(node, context) {
+      if (!node || typeof node !== 'object') return null;
+      if (node.type === 'TypedArrayCreation' && node.arrayType) return node.arrayType;
+      if (node.typedArrayKind) return node.typedArrayKind;
+      if (node.type === 'Identifier' && node.name) return this.lookupVariableType(TYPED_ARRAY_KEY + node.name) || null;
+      if (node.type === 'ThisPropertyAccess' && typeof node.property === 'string' && context && context.className)
+        return (this.classFieldTypedArrays && this.classFieldTypedArrays.get(`${context.className}.${node.property}`)) || null;
+      return null;
+    }
+
     registerVariableType(name, type, declared = false, nullable = false) {
       if (!name || !type) return;
       const currentScope = this.scopeStack[this.scopeStack.length - 1];
@@ -1068,6 +1119,11 @@
       // is the common type of the assignments (`this.a = 0` in the constructor
       // and `this.a = seed` with a uint32 seed is uint32, not int32).
       const prior = this.classFieldTypes.get(key);
+      // `this.k = null` (a reset) says nothing about what the field holds: it
+      // neither replaces a type an earlier assignment gave, nor is kept once a
+      // later one gives a type.
+      const nothing = t => t === 'null' || t === 'void' || t === 'undefined';
+      if (nothing(type) && prior && !nothing(prior)) return;
       const numeric = t => typeof t === 'string' && /^(u?int(8|16|32|64)|float(32|64))$/.test(t);
       if (!this.classFieldLiterals) this.classFieldLiterals = new Map();
       if (prior && prior !== type && numeric(prior) && numeric(type))
@@ -1751,6 +1807,10 @@
       // Step 4: Multi-pass type narrowing until convergence
       this.performTypeNarrowing(ilAst);
 
+      // Record types (`@typedef {Object}` shapes) for the emitters to declare:
+      // name -> [{ name, resultType, jsDocType, nullable }]
+      ilAst.recordTypes = Object.fromEntries(this.recordTypes || []);
+
       // Mark as IL AST for downstream consumers
       ilAst.isILAST = true;
 
@@ -2131,6 +2191,8 @@
       this.declaredFunctions = new Map();
       this.declaredMethodParams = new Map();
       this.localFunctionNames = new Set();
+      this.accessorTypes = new Map();          // 'Class.prop' -> { get, set } declared types
+      this._collectRecordTypes();
 
       const scanThisAssignments = (node, className) => {
         if (!node || typeof node !== 'object') return;
@@ -2179,6 +2241,18 @@
                   return param && param.name ? ilTypeFromJSDoc(typeInfo.params.get(param.name)) : null;
                 }));
               if (!member.static) scanThisAssignments(member.value.body, className);
+              // An accessor is a property: its getter's @returns and its
+              // setter's @param declare the property's type.
+              if ((member.kind === 'get' || member.kind === 'set') && !member.static && member.key && member.key.name) {
+                const key = `${className}.${member.key.name}`;
+                const entry = this.accessorTypes.get(key) || {};
+                const param = member.value.params && member.value.params[0];
+                const declared = member.kind === 'get' ? typeInfo && typeInfo.returns
+                  : typeInfo && typeInfo.params && param && param.name ? typeInfo.params.get(param.name) : null;
+                entry[member.kind] = ilTypeFromJSDoc(declared) || null;
+                if (entry[member.kind] && nullableJSDoc(declared)) entry[member.kind + 'Nullable'] = true;
+                this.accessorTypes.set(key, entry);
+              }
             }
           }
         }
@@ -2194,6 +2268,12 @@
               const param = p && p.type === 'AssignmentPattern' ? p.left : p;
               return param && param.name && fn.typeInfo.params ? ilTypeFromJSDoc(fn.typeInfo.params.get(param.name)) : null;
             }),
+            // the declared text: a function type ('function(uint8[]):void') has no IL name
+            rawParams: (fn.params || []).map(p => {
+              const param = p && p.type === 'AssignmentPattern' ? p.left : p;
+              const t = param && param.name && fn.typeInfo.params ? fn.typeInfo.params.get(param.name) : null;
+              return t ? (typeof t === 'string' ? t : t.raw || t.name || null) : null;
+            }),
             returns: ilTypeFromJSDoc(fn.typeInfo.returns),
             returnsNullable: nullableJSDoc(fn.typeInfo.returns),
             templates: fn.typeInfo.templates || []
@@ -2206,6 +2286,27 @@
         }
       };
       visit(ast);
+      // An accessor declares the property it stands for (its getter's type,
+      // else its setter's), unless a JSDoc @type on the field already does.
+      for (const [key, entry] of this.accessorTypes) {
+        const type = entry.get || entry.set;
+        if (!type || this.declaredFieldTypes.has(key)) continue;
+        this.declaredFieldTypes.set(key, type);
+        if (entry.get ? entry.getNullable : entry.setNullable) this.declaredFieldNullable.add(key);
+      }
+    }
+
+    /**
+     * A local accessor pair whose getter and setter declare different types
+     * (`set group(name: string)`, `get group(): DHGroup`): a property no
+     * statically typed language can declare with one type.
+     * @param {string} className - Class name
+     * @param {string} property - Property name
+     * @returns {Object|null} { get, set } when the two differ, else null
+     */
+    accessorTypeConflict(className, property) {
+      const entry = this.accessorTypes && this.accessorTypes.get(`${className}.${property}`);
+      return entry && entry.get && entry.set && entry.get !== entry.set ? { get: entry.get, set: entry.set } : null;
     }
 
     normalizeJSPatterns(ast) {
@@ -2234,7 +2335,7 @@
 
       // `arr.map(v => ...)`: the callback's parameters are typed from arr's
       // elements before its body is (the callback is normalized first).
-      if (node.type === 'CallExpression')
+      if (node.type === 'CallExpression' || node.type === 'NewExpression')
         this._callbackParamHints(node, context);
 
       // Update context for class declarations
@@ -2282,6 +2383,11 @@
         if (framework && node.value)
           newContext = { ...newContext, frameworkSignature: { fn: node.value, params: framework.params || [] },
             frameworkReturns: ilTypeFromJSDoc(framework.returns) !== 'void' ? ilTypeFromJSDoc(framework.returns) : null };
+        // `set key(keyData)` of a framework property: the value has the property's type (tier 2)
+        if (node.kind === 'set' && !node.static && node.value) {
+          const property = this._frameworkMemberType(context.className, node.key.name, 'property');
+          if (property) newContext = { ...newContext, frameworkSignature: { fn: node.value, params: [property] } };
+        }
 
         const declaredReturns = node.value?.typeInfo?.returns || node.value?.jsDoc?.returns?.type;
         const returnType = ilTypeFromJSDoc(declaredReturns);
@@ -2428,21 +2534,126 @@
      * @private
      */
     _callbackParamHints(node, context) {
+      const isFunction = fn => fn && (fn.type === 'ArrowFunctionExpression' || fn.type === 'FunctionExpression');
       const callee = node.callee;
-      if (!callee || callee.type !== 'MemberExpression' || callee.computed) return;
+      // A callback passed where the callee declares a function type
+      // (`@param {function(byte[], int):void} onBlock`) takes its parameter types.
+      const declared = this._declaredParameterTypes(node, context);
+      if (declared) {
+        (node.arguments || []).forEach((arg, index) => {
+          const signature = isFunction(arg) ? TypeAwareJSASTParser._functionTypeParameters(declared[index]) : null;
+          // (a template parameter, `T`, is no type)
+          if (signature && !arg.paramHints) arg.paramHints = signature.map(t => /^[A-Z]$/.test(t) ? null : ilTypeFromJSDoc(t));
+        });
+      }
+      if (node.type !== 'CallExpression' || !callee || callee.type !== 'MemberExpression' || callee.computed) return;
       const method = callee.property && (callee.property.name || callee.property.value);
+      // Array.from(source, (v, i) => ...): v is an element of source, i its index
+      if (method === 'from' && callee.object && callee.object.type === 'Identifier' && callee.object.name === 'Array') {
+        const mapFn = node.arguments && node.arguments[1];
+        if (!isFunction(mapFn) || mapFn.paramHints) return;
+        const source = this._sourceTypeOf(node.arguments[0], context);
+        mapFn.paramHints = [typeof source === 'string' && source.endsWith('[]') ? source.slice(0, -2) : null, 'int32'];
+        return;
+      }
       const hints = Object.prototype.hasOwnProperty.call(TypeAwareJSASTParser.CALLBACK_PARAMETERS, method) ?
         TypeAwareJSASTParser.CALLBACK_PARAMETERS[method] : null;
       const fn = node.arguments && node.arguments[0];
-      if (!hints || !fn || (fn.type !== 'ArrowFunctionExpression' && fn.type !== 'FunctionExpression')) return;
-      const object = callee.object;
-      let type = null;
-      if (object && object.type === 'Identifier') type = this.lookupVariableType(object.name);
-      else if (object && object.type === 'MemberExpression' && !object.computed && object.object &&
-               object.object.type === 'ThisExpression' && context && context.className)
-        type = this.lookupClassFieldType(context.className, object.property && (object.property.name || object.property.value));
+      if (!hints || !isFunction(fn)) return;
+      const type = this._sourceTypeOf(callee.object, context);
       if (typeof type !== 'string' || !type.endsWith('[]')) return;
       fn.paramHints = hints(type.slice(0, -2));
+    }
+
+    /**
+     * The type of a source expression before it is normalized, where a
+     * declaration states it: a variable, a field, a call of a function or
+     * method with a declared return, an OpCodes call, `new C()`, and a copy
+     * of an array (`a.slice()`). Null otherwise.
+     * @param {Object} node - JS AST node
+     * @param {Object} context - normalization context
+     * @returns {string|null} IL type
+     * @private
+     */
+    _sourceTypeOf(node, context) {
+      if (!node) return null;
+      const name = n => n && (n.name || n.value);
+      const thisMember = n => n && n.type === 'MemberExpression' && !n.computed && n.object && n.object.type === 'ThisExpression';
+      if (node.type === 'Identifier') return this.lookupVariableType(node.name);
+      if (thisMember(node)) return context && context.className ? this.lookupClassFieldType(context.className, name(node.property)) : null;
+      // a field of an object whose class or record type is known (`this._key.rows`)
+      if (node.type === 'MemberExpression' && !node.computed && node.object) {
+        const owner = this._sourceTypeOf(node.object, context);
+        return typeof owner === 'string' && (this._isClassName(owner) || (this.recordTypes && this.recordTypes.has(owner)))
+          ? this.lookupClassFieldType(owner, name(node.property)) : null;
+      }
+      if (node.type === 'NewExpression' && node.callee && node.callee.type === 'Identifier') {
+        const typed = JSDOC_TYPED_ARRAYS[node.callee.name];
+        return typed ? typed + '[]' : this._isClassName(node.callee.name) ? node.callee.name : null;
+      }
+      if (node.type !== 'CallExpression' || !node.callee) return null;
+      const callee = node.callee;
+      if (callee.type === 'Identifier') {
+        const signature = this.declaredFunctions && this.declaredFunctions.get(callee.name);
+        return signature && signature.returns && !(signature.templates || []).length ? signature.returns : null;
+      }
+      if (thisMember(callee)) return context && context.className ? this.lookupClassMethodReturnType(context.className, name(callee.property)) : null;
+      if (callee.type === 'MemberExpression' && !callee.computed) {
+        const method = name(callee.property);
+        if (callee.object && callee.object.type === 'Identifier' && callee.object.name === 'OpCodes') {
+          const signature = (this.typeKnowledge.opCodesTypes || {})[method];
+          return signature ? ilTypeFromJSDoc(signature.returns) : null;
+        }
+        // a copy keeps the array's type
+        if (['slice', 'concat', 'filter', 'reverse', 'sort', 'fill'].includes(method)) return this._sourceTypeOf(callee.object, context);
+      }
+      return null;
+    }
+
+    /**
+     * The declared parameter types (JSDoc type strings or IL types) of what a
+     * call or `new` invokes: a framework class constructor or method (on a
+     * field, variable or `this` of that class), or a local function with JSDoc.
+     * @param {Object} node - CallExpression or NewExpression, before normalization
+     * @param {Object} context - normalization context
+     * @returns {Array|null} parameter types by position
+     * @private
+     */
+    _declaredParameterTypes(node, context) {
+      const framework = (this.typeKnowledge && this.typeKnowledge.frameworkTypes) || {};
+      const callee = node.callee;
+      if (!callee) return null;
+      const frameworkMethod = (className, method) => {
+        for (let n = className, hops = 0; n && hops < 32; ++hops) {
+          const entry = framework[n];
+          if (entry && entry.methods && Object.prototype.hasOwnProperty.call(entry.methods, method)) return entry.methods[method].params || null;
+          n = this.localSuperClasses.get(n) || (entry && entry.extends) || null;
+        }
+        return null;
+      };
+      if (node.type === 'NewExpression')
+        return callee.type === 'Identifier' ? frameworkMethod(callee.name, 'constructor') : null;
+      if (callee.type === 'Identifier') {
+        const signature = this.declaredFunctions && this.declaredFunctions.get(callee.name);
+        return signature ? signature.rawParams || signature.params : null;
+      }
+      if (callee.type !== 'MemberExpression' || callee.computed) return null;
+      const method = callee.property && (callee.property.name || callee.property.value);
+      const owner = callee.object && callee.object.type === 'ThisExpression' ? context && context.className : this._sourceTypeOf(callee.object, context);
+      return typeof owner === 'string' ? frameworkMethod(owner, method) : null;
+    }
+
+    /**
+     * The parameter types of a JSDoc function type: 'function(byte[], int):void'
+     * -> ['byte[]', 'int']. Null for any other type.
+     * @param {*} type - JSDoc type string
+     * @returns {string[]|null} parameter types
+     */
+    static _functionTypeParameters(type) {
+      if (typeof type !== 'string') return null;
+      const m = type.trim().match(/^function\s*\((.*)\)\s*(:.*)?$/);
+      if (!m) return null;
+      return m[1].trim() === '' ? [] : splitTypeArguments(m[1]).map(s => s.trim());
     }
 
     /**
@@ -2575,6 +2786,11 @@
         // A function of this file used as a value (`s.sort(CompareNumbers)`).
         if (!resultType && this.localFunctionNames && this.localFunctionNames.has(name))
           resultType = 'function';
+        // A node typed in its own scope and transformed again outside it (the
+        // parameters of `const f = function (x) {...}`, re-transformed as the
+        // declarator's initializer) keeps the type it had there.
+        if (!resultType && typeof node.resultType === 'string' && node.resultType)
+          resultType = node.resultType;
       }
 
       const result = {
@@ -2677,6 +2893,27 @@
           this.registerClassFieldType(context.className, fieldName, resultType, right);
       }
 
+      // `this.k = new Float64Array(n)`: the field holds a typed array
+      if (op === '=' && fieldName) {
+        const kind = this._typedArrayKindOf(right, context);
+        if (kind) (this.classFieldTypedArrays || (this.classFieldTypedArrays = new Map())).set(`${context.className}.${fieldName}`, kind);
+      }
+
+      // `[a, b] = [b, a - q * b]`: each name is assigned the value at its
+      // position, as `a = ...` would assign it.
+      const pattern = node.left && (node.left.type === 'ArrayPattern' || node.left.type === 'ArrayExpression') ? node.left.elements || [] : null;
+      if (op === '=' && pattern && right && right.ilNodeType === 'ArrayLiteral' && Array.isArray(right.elements)) {
+        pattern.forEach((target, i) => {
+          const value = right.elements[i];
+          const name = target && target.type === 'Identifier' ? target.name : null;
+          const t = value && typeof value.resultType === 'string' ? value.resultType : null;
+          if (!name || !t) return;
+          if (this.isDeclaredVariable(name)) { this._applyContextualType(value, this.lookupVariableType(name)); return; }
+          this._checkLiteralTypedVariable(name, t);
+          this._widenDeclaredVariable(name, t, value);
+        });
+      }
+
       return {
         ...node,
         left,
@@ -2700,8 +2937,15 @@
       const isNumericType = t => /^(u?int(8|16|32|64)|float(32|64)|bigint|BigInt)$/.test(t);
       // Numbers stored where, say, KeySize[] is declared do not match: no
       // context is recorded, so the guess stays visible.
-      if (ilNode.ilNodeType === 'ArrayLiteral' && type.endsWith('[]') && !isNumericType(type.slice(0, -2)) &&
-          (ilNode.elements || []).some(e => e && e.type === 'Literal' && typeof e.value === 'number')) return;
+      // Likewise strings or booleans where another element type is declared.
+      if (ilNode.ilNodeType === 'ArrayLiteral' && type.endsWith('[]')) {
+        const element = type.slice(0, -2);
+        const misfit = e => e && e.type === 'Literal' && (
+          (typeof e.value === 'number' && !isNumericType(element) && element !== 'number') ||
+          (typeof e.value === 'string' && element !== 'string') ||
+          (typeof e.value === 'boolean' && element !== 'boolean'));
+        if ((ilNode.elements || []).some(misfit)) return;
+      }
       ilNode.contextType = type;
       // `c ? a : b` stores whichever branch runs: both flow into the target.
       if (ilNode.type === 'ConditionalExpression') {
@@ -2712,6 +2956,21 @@
         return;
       }
       if (type === 'float64' && this._retypeAsDouble(ilNode)) return;
+      // `{ k1, k2, k3 }` stored where a record type (@typedef {Object}) is
+      // declared is that record; each property value takes its field's type.
+      if (ilNode.type === 'ObjectLiteral' && this.recordTypes && this.recordTypes.has(type)) {
+        const fields = this.recordTypes.get(type);
+        ilNode.resultType = type;
+        ilNode.recordType = type;
+        for (const prop of ilNode.properties || []) {
+          const field = prop && prop.type === 'ObjectProperty' ? fields.find(f => f.name === prop.key) : null;
+          if (field && field.resultType && prop.value) {
+            this._applyContextualType(prop.value, field.resultType);
+            prop.fieldType = field.resultType;
+          }
+        }
+        return;
+      }
       if (ilNode.type === 'Literal' && typeof ilNode.value === 'number' && isNumericType(type)) {
         ilNode.resultType = type;
         delete ilNode.typeGuess;
@@ -2928,10 +3187,24 @@
       // For null-coalescing patterns like `configs[x] || configs["default"]`, the result
       // is the same type as the operands, not boolean.
 
-      // Logical expressions (&&, ||) always return boolean in strongly-typed languages
-      // Even though JavaScript uses short-circuit evaluation that returns operand values,
-      // for type-safe transpilation targets, these are boolean expressions
-      const resultType = 'boolean';
+      // On booleans (and `&&`, a test) the result is a boolean. `a || b` and
+      // `a ?? b` on other values yield one of the operands: the type both
+      // share. An untyped literal shape on one side (`x || []`, `n ?? {}`)
+      // takes the other side's type.
+      let resultType = 'boolean';
+      const valueChoice = (node.operator === '||' || node.operator === '??') &&
+        [left, right].some(o => o && o.resultType !== 'boolean');
+      if (valueChoice) {
+        const objectShape = o => o.type === 'ObjectLiteral' || o.type === 'ObjectExpression';
+        const shaped = (o, other) => o && other && typeof other.resultType === 'string' && other.resultType !== 'object' &&
+          ((o.ilNodeType === 'ArrayLiteral' && !o.resultType) || (objectShape(o) && (!o.resultType || o.resultType === 'object')));
+        let typedBy = null;
+        if (shaped(right, left)) { this._applyContextualType(right, left.resultType); typedBy = left; }
+        else if (shaped(left, right)) { this._applyContextualType(left, right.resultType); typedBy = right; }
+        const other = typedBy === left ? right : left;
+        if (typedBy && objectShape(other)) resultType = typedBy.resultType;
+        else resultType = this._sharedValueType(left, right);
+      }
 
       const result = {
         ...node,
@@ -2940,13 +3213,12 @@
         resultType,
         ilNodeType: 'LogicalExpression'
       };
-      // `a || b` / `a ?? b` whose operand is not a boolean is a value, not a
-      // test: typing it boolean is a guess. (In a condition the boolean reading
-      // is right; the type coverage walk ignores this guess there.)
-      if ((node.operator === '||' || node.operator === '??') &&
-          [left, right].some(o => o && o.resultType !== 'boolean')) {
-        result.typeGuess = `'${node.operator}' on non-boolean operands yields a value the IL types as boolean; ` +
-          'give the operand a declared type and test it explicitly';
+      // `a || b` / `a ?? b` whose operands share no type is a value no tier
+      // types. (In a condition the truthiness reading is right; the type
+      // coverage walk ignores this guess there.)
+      if (valueChoice && !resultType) {
+        result.typeGuess = `'${node.operator}' on operands of no common type (${(left && left.resultType) || 'untyped'}, ` +
+          `${(right && right.resultType) || 'untyped'}) yields an untyped value; give both operands a declared type`;
         result.typeGuessKind = 'logical-value';
       }
       return result;
@@ -3330,8 +3602,11 @@
       // Tier 1: OpCodes' own JSDoc types every argument it receives...
       const signature = this.typeKnowledge.opCodesTypes[methodName];
       if (signature) {
+        // A parameter of a type parameter (`@template T`, `{T[]}`) takes any
+        // element type: the value keeps its own, no context is imposed.
+        const generic = t => (signature.templates || []).some(name => typeof t === 'string' && new RegExp(`\\b${name}\\b`).test(t));
         (rawArgs || []).forEach((arg, i) => {
-          const declared = ilTypeFromJSDoc(signature.params[i]);
+          const declared = generic(signature.params[i]) ? null : ilTypeFromJSDoc(signature.params[i]);
           if (arg && typeof arg === 'object' && declared) arg.contextType = declared;
         });
       }
@@ -3820,12 +4095,18 @@
             // arbitrary expressions get wrapped in a BigIntCast IL node
             // (-> `BigInt(...)` in JS, and every other language's transformer
             // already implements 'BigIntCast' for the BigInt(...) call form).
+            // The operand of the inlined operator is a BigInt whatever the
+            // helper's JSDoc declares for its parameter (ShiftLn's `positions`
+            // is an int32 the helper converts): that is its context now.
             const toBigIntOperand = (node) => {
               if (!node) return node;
-              if (node.type === 'Literal' && typeof node.value === 'bigint') return node;
-              if (node.type === 'Literal' && typeof node.value === 'number') return { ...node, value: BigInt(node.value), resultType: 'bigint' };
-              if (node.resultType === 'bigint') return node;
-              return { type: 'BigIntCast', argument: node, resultType: 'bigint', ilNodeType: 'BigIntCast' };
+              if (node.type === 'Literal' && typeof node.value === 'number') return { ...node, value: BigInt(node.value), resultType: 'bigint', contextType: 'bigint' };
+              if ((node.type === 'Literal' && typeof node.value === 'bigint') || node.resultType === 'bigint' || node.resultType === 'BigInt' ||
+                  TypeAwareJSASTParser._isBigIntValue(node)) {
+                node.contextType = 'bigint';
+                return node;
+              }
+              return { type: 'BigIntCast', argument: node, resultType: 'bigint', contextType: 'bigint', ilNodeType: 'BigIntCast' };
             };
             left = toBigIntOperand(left);
             right = toBigIntOperand(right);
@@ -4039,13 +4320,24 @@
               iterableArg.properties.length === 1 && iterableArg.properties[0].key === 'length') {
             lengthExpr = iterableArg.properties[0].value;
           }
+          // An array of what the map function returns, or of the iterable's
+          // elements (a typed array's, a string's characters); untyped otherwise.
+          let fromType = null;
+          if (args[1]) {
+            const mapped = this._callbackReturnType(args[1]);
+            fromType = mapped ? mapped + '[]' : null;
+          } else if (iterableArg && !lengthExpr) {
+            const t = iterableArg.resultType;
+            fromType = typeof t === 'string' && t.endsWith('[]') ? t : t === 'string' ? 'string[]' : null;
+          }
           return {
             type: 'ArrayFrom',
             iterable: args[0],
             length: lengthExpr,
             mapFunction: args[1] || null,
             thisArg: args[2] || null,
-            resultType: 'any[]',
+            elementType: fromType ? fromType.slice(0, -2) : null,
+            resultType: fromType,
             ilNodeType: 'ArrayFrom'
           };
         }
@@ -4528,14 +4820,19 @@
           return { type: 'ArrayJoin', array: arrayNode, separator: args[0] || null, resultType: 'string', ilNodeType: 'ArrayJoin' };
         case 'reverse':
           return { type: 'ArrayReverse', array: arrayNode, elementType: arrayElementType, resultType: arrayResultType, ilNodeType: 'ArrayReverse' };
-        case 'sort':
-          return { type: 'ArraySort', array: arrayNode, compareFn: args[0] || null, elementType: arrayElementType, resultType: arrayResultType, ilNodeType: 'ArraySort' };
+        case 'sort': {
+          // A typed array sorts its numbers by value; a plain array without a
+          // comparator sorts them as strings: the IL says which it is.
+          const typedArrayKind = this._typedArrayKindOf(arrayNode, context) || this._typedArrayKindOf(transformedArray, context);
+          return { type: 'ArraySort', array: arrayNode, compareFn: args[0] || null, elementType: arrayElementType, resultType: arrayResultType,
+            ...(typedArrayKind ? { typedArrayKind, numericSort: true } : {}), ilNodeType: 'ArraySort' };
+        }
         case 'map': {
-          // An array of what the callback returns; the source's own type only
-          // where nothing types the callback's result.
+          // An array of what the callback returns; untyped where nothing types
+          // the callback's result (the source's element type would be a guess:
+          // `rows.map(r => ({ ... }))` holds objects, not rows).
           const mapped = this._callbackReturnType(args[0]);
-          const mappedElement = mapped || arrayElementType;
-          return { type: 'ArrayMap', array: arrayNode, callback: args[0], elementType: mappedElement, resultType: mapped ? `${mapped}[]` : arrayResultType, ilNodeType: 'ArrayMap' };
+          return { type: 'ArrayMap', array: arrayNode, callback: args[0], elementType: mapped || null, resultType: mapped ? `${mapped}[]` : null, ilNodeType: 'ArrayMap' };
         }
         case 'filter':
           return { type: 'ArrayFilter', array: arrayNode, callback: args[0], elementType: arrayElementType, resultType: arrayResultType, ilNodeType: 'ArrayFilter' };
@@ -4908,16 +5205,21 @@
       if (!resultType && typeof objectType === 'string' && /^[A-Za-z_$][\w$]*$/.test(objectType) && propertyName) {
         if (this.typeKnowledge.frameworkEnums && this.typeKnowledge.frameworkEnums.has(objectType))
           resultType = objectType;
-        else if (this.localClassNames.has(objectType) || (this.typeKnowledge.frameworkTypes || {})[objectType])
+        else if (this.localClassNames.has(objectType) || (this.typeKnowledge.frameworkTypes || {})[objectType] ||
+                 (this.recordTypes && this.recordTypes.has(objectType)))
           resultType = this.lookupClassFieldType(objectType, propertyName);
       }
 
-      return {
+      const member = {
         ...node,
         object: transformedObject,
         resultType,
         ilNodeType: 'MemberExpression'
       };
+      if (resultType && typeof objectType === 'string' && propertyName && !node.computed &&
+          this.recordTypes && this.recordTypes.has(objectType) && this.lookupDeclaredFieldNullable(objectType, propertyName))
+        member.nullable = true;
+      return member;
     }
 
     /**
@@ -5249,6 +5551,12 @@
             resultType: varType
           };
           if (nullable) transformedDecl.nullable = true;
+          // `const k = new Float64Array(n)`: k holds a typed array (it sorts by value)
+          const typedArrayKind = this._typedArrayKindOf(transformedInit, context);
+          if (varName && typedArrayKind) {
+            this.scopeStack[this.scopeStack.length - 1].set(TYPED_ARRAY_KEY + varName, typedArrayKind);
+            transformedDecl.typedArrayKind = typedArrayKind;
+          }
           if (decl.id) {
             transformedDecl.id = { ...decl.id, resultType: varType };
             if (nullable) transformedDecl.id.nullable = true;
@@ -5447,11 +5755,13 @@
           el && el.type === 'SpreadElement' ? { type: 'SpreadElement', resultType: el.elementType } : el));
       }
 
-      // If no element types found, use int32 as default (consistent with literal default)
+      // No element type (an empty literal, or untyped elements): the array is
+      // untyped until a declared context types it - never guessed.
       let typeGuess = null;
       if (!elementType) {
-        elementType = 'int32';
-        typeGuess = 'empty array literal defaults to int32[]; declare its element type with a JSDoc @type';
+        typeGuess = elements.length === 0
+          ? 'empty array literal has no element type; declare it with a JSDoc @type'
+          : 'array literal of untyped elements has no element type; declare it with a JSDoc @type';
       } else if (allNonNegativeIntLiterals) {
         typeGuess = `element type ${elementType} guessed from the literal values; declare it with a JSDoc @type or build it with an OpCodes helper`;
       }
@@ -5460,7 +5770,7 @@
         ...node,
         elements,
         elementType,
-        resultType: `${elementType}[]`,
+        resultType: elementType ? `${elementType}[]` : null,
         ilNodeType: 'ArrayLiteral'
       };
       if (typeGuess) {
@@ -5489,6 +5799,7 @@
         if (!t) continue;
         if (common === null) { common = t; only = n; continue; }
         if (common !== t) common = this._getCommonType(common, t, only, n);
+        if (common === null) return null;           // values no single type holds
         only = null;
       }
       return common;
@@ -5558,8 +5869,72 @@
       // String and anything else -> string
       if (type1 === 'string' || type2 === 'string') return 'string';
 
+      // Two classes: the nearest class both derive from (`[new A(), new B()]`
+      // of two siblings is their base class), and no type when they share none.
+      if (this._isClassName(type1) && this._isClassName(type2)) return this._commonBaseClass(type1, type2);
+
       // Fallback to the first type
       return type1;
+    }
+
+    /**
+     * The type two values share, where one of them is the result (`a || b`,
+     * `a ?? b`): their common type when both are of one kind - numbers (a
+     * BigInt included), strings, booleans, arrays, references - or the other's
+     * type beside null. Null when the kinds differ (`"s" || 5`, `flag || 0`)
+     * or a value is untyped.
+     * @param {Object} left - IL node
+     * @param {Object} right - IL node
+     * @returns {string|null} shared type
+     * @private
+     */
+    _sharedValueType(left, right) {
+      const lt = left && left.resultType, rt = right && right.resultType;
+      if (typeof lt !== 'string' || typeof rt !== 'string' || !lt || !rt) return null;
+      const kind = t => /^(u?int(8|16|32|64)|float(32|64)|number|bigint|BigInt)$/.test(t) ? 'number' :
+        t === 'string' || t === 'boolean' ? t : t === 'null' || t === 'void' || t === 'undefined' ? 'nothing' :
+        t.endsWith('[]') ? 'array' : 'reference';
+      const lk = kind(lt), rk = kind(rt);
+      if (lk === 'nothing' && rk === 'nothing') return null;
+      if (lk === 'nothing') return rk === 'number' || rk === 'boolean' ? null : rt;
+      if (rk === 'nothing') return lk === 'number' || lk === 'boolean' ? null : lt;
+      if (lk !== rk) return null;
+      if (lk === 'array' && lt !== rt) return null;          // uint8[] || uint32[]: no one type
+      return this._commonTypeOf([left, right]);
+    }
+
+    /**
+     * Is a type the name of a local or framework class?
+     * @param {*} type - IL type
+     * @returns {boolean} true for a class name
+     * @private
+     */
+    _isClassName(type) {
+      if (typeof type !== 'string') return false;
+      const framework = (this.typeKnowledge && this.typeKnowledge.frameworkTypes) || {};
+      return this.localClassNames.has(type) || Object.prototype.hasOwnProperty.call(framework, type);
+    }
+
+    /**
+     * The nearest class two classes both derive from (themselves included),
+     * along local base classes and then the framework hierarchy.
+     * @param {string} a - class name
+     * @param {string} b - class name
+     * @returns {string|null} the common base, or null when there is none
+     * @private
+     */
+    _commonBaseClass(a, b) {
+      const framework = (this.typeKnowledge && this.typeKnowledge.frameworkTypes) || {};
+      const chain = name => {
+        const names = [];
+        for (let n = name, hops = 0; n && hops < 64 && !names.includes(n); ++hops) {
+          names.push(n);
+          n = this.localSuperClasses.get(n) || (framework[n] && framework[n].extends) || null;
+        }
+        return names;
+      };
+      const ofA = chain(a);
+      return chain(b).find(n => ofA.includes(n)) || null;
     }
 
     /**

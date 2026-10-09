@@ -1,1 +1,9 @@
-{}
+{
+  "algorithms/classical/autokey.js": 1,
+  "algorithms/classical/bazeries.js": 1,
+  "algorithms/classical/cadaenus.js": 1,
+  "algorithms/classical/gronsfeld.js": 1,
+  "algorithms/classical/vigenere.js": 1,
+  "algorithms/random/lehmer.js": 1,
+  "algorithms/random/ran0.js": 1
+}

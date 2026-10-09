@@ -166,7 +166,9 @@ function analyzeSource(code, filePath) {
     // A declared context (OpCodes/framework/JSDoc parameter, declared target)
     // fixes the type of a literal shape or of raw arithmetic flowing into it.
     const settledByContext = node.contextType && CONTEXT_SETTLES.has(node.typeGuessKind);
-    if (node.typeGuess && !settledByContext && !(where.inCondition && node.typeGuessKind === 'logical-value')) {
+    // In a condition `a || b` is a truth test (its operands are judged on their own).
+    if (where.inCondition && node.type === 'LogicalExpression') return;
+    if (node.typeGuess && !settledByContext) {
       record(node, where, node.typeGuess, node.typeGuessTier || 'local');
       return;
     }

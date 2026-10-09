@@ -747,7 +747,7 @@
   "algorithms/random/fcsr.js": 0,
   "algorithms/random/fortuna.js": 0,
   "algorithms/random/gfsr.js": 0,
-  "algorithms/random/icg.js": 0,
+  "algorithms/random/icg.js": 1,
   "algorithms/random/isaac.js": 0,
   "algorithms/random/jsf.js": 0,
   "algorithms/random/kiss.js": 0,
