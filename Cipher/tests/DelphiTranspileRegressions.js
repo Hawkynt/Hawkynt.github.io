@@ -140,6 +140,9 @@ sameAsJs('number: integer arithmetic past 32 bits is not narrowed, past 2^53 rou
   '/** @param {uint32} a @returns {float64} */ function wide(a) { return (a + a) % 7; }\n' +
   '/** @param {int32} a @param {int32} b @returns {float64} */ function div(a, b) { return a / b; }\n' +
   '/** @returns {string} */ function probe() { return big(0xFFFFFFFF) + " " + wide(0xFFFFFFFF) + " " + div(7, 2) + " " + div(-1, 4); }');
+sameAsJs('number: a local initialized with 0 and accumulating fractions stays fractional',
+  '/** @param {int32} k @param {float64} r @returns {float64} */ function f(k, r) { let tau = 0; for (let i = 1; i <= k; i++) tau += r / (i * k); return tau; }\n' +
+  '/** @returns {string} */ function probe() { return String(f(3, 1.5)); }');
 sameAsJs('bigint: arbitrary precision past 64 bits, masked 64-bit shifts',
   '/** @param {BigInt} x @returns {BigInt} */ function shl(x) { return (x << 3n) & 0xFFFFFFFFFFFFFFFFn; }\n' +
   '/** @returns {string} */ function probe() { return ((1n << 70n) % 1000003n).toString() + " " + shl(0xF000000000000001n).toString(16); }');

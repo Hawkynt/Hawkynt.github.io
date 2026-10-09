@@ -1315,10 +1315,36 @@
      * (outside nested functions) is a local from the start, undefined until set.
      * @returns {object[]} statements giving each its initial value
      */
+    /**
+     * An integer local the IL typed from its initializer alone, though an
+     * assignment in the same function gives it a float64 value: a Double.
+     * A type declared in JSDoc stands.
+     */
+    widenForFloats(d, type) {
+      if (d.declaredType || !isInt(type) || !this.fn.floatAssigned || !this.fn.floatAssigned.has(d.id.name)) return type;
+      return T.f64;
+    }
+
     hoistVars(fnNode) {
       const out = [];
       const body = fnNode && fnNode.body;
       if (!body || body.type !== 'BlockStatement') return out;
+      // locals some assignment gives a fractional value (let tau = 0; tau += R / k)
+      const floatAssigned = this.fn.floatAssigned = new Set();
+      const scan = node => {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(scan); return; }
+        if (['FunctionExpression', 'FunctionDeclaration', 'ArrowFunction', 'ArrowFunctionExpression', 'ClassDeclaration'].includes(node.type)) return;
+        if (node.type === 'AssignmentExpression' && node.left && node.left.type === 'Identifier' &&
+            (node.operator === '/=' || isFloat(parseType(node.right && node.right.resultType) || T.any)))
+          floatAssigned.add(node.left.name);
+        for (const k in node) {
+          if (k === 'typeInfo' || k === 'range' || k === 'loc') continue;
+          const v = node[k];
+          if (v && typeof v === 'object') scan(v);
+        }
+      };
+      scan(body.body);
       const visit = node => {
         if (!node || typeof node !== 'object') return;
         if (Array.isArray(node)) { node.forEach(visit); return; }
@@ -1329,6 +1355,7 @@
             if (d.init && (d.init.type === 'FunctionExpression' || d.init.type === 'ArrowFunction' || d.init.type === 'ArrowFunctionExpression')) continue;
             let type = parseType(d.declaredType) || parseType(d.id.resultType) || (d.init && parseType(d.init.resultType)) || null;
             if (!type || isNullT(type)) type = (d.init && parseType(d.init.contextType)) || T.any;
+            type = this.widenForFloats(d, type);
             const pas = this.fn.pool.take(d.id.name);
             this.fn.scopes[0].set(d.id.name, { pas, type, kind: 'local', isVar: true });
             this.fn.vars.push({ name: pas, type: this.pasType(type) });
@@ -1510,6 +1537,7 @@
         }
         let type = parseType(d.declaredType) || parseType(d.id.resultType) || (d.init && parseType(d.init.resultType)) || null;
         if (!type || isNullT(type)) type = (d.init && parseType(d.init.contextType)) || T.any;
+        type = this.widenForFloats(d, type);
         if (isAnyT(type) && d.init) {
           // untyped by the IL (test vector helpers): the variable holds what its initializer compiles to
           const [res, pre] = this.capture(() => this.ex(d.init));
