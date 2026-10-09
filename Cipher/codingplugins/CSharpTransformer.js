@@ -7435,6 +7435,8 @@
         for (const node of jsAst.body) {
           this.transformTopLevel(node, mainClass);
         }
+        this.currentClass = mainClass;
+        this.emitAlgorithmRegistry(jsAst.body, mainClass);
       }
 
       // Add nested classes generated during transformation
@@ -7484,6 +7486,45 @@
       }
 
       return unit;
+    }
+
+    /**
+     * The algorithms the module registers, as the main class's static registry:
+     * `Algorithms` holds every top-level `RegisterAlgorithm(x)` argument in source
+     * order, and `AlgorithmInstance` names the first unless the module declares
+     * an `algorithmInstance` itself. A module may register several variants; each
+     * is reachable through `Algorithms`.
+     * @param {Array} body - Program body (top-level statements)
+     * @param {CSharpClass} mainClass - the generated main class
+     */
+    emitAlgorithmRegistry(body, mainClass) {
+      const isRegisterCall = expr => expr?.type === 'CallExpression' && expr.arguments?.length === 1 && (
+        (expr.callee?.type === 'Identifier' && expr.callee.name === 'RegisterAlgorithm') ||
+        (expr.callee?.type === 'MemberExpression' && (expr.callee.property?.name || expr.callee.property?.value) === 'RegisterAlgorithm'));
+      const registered = [];
+      const visit = node => {
+        if (!node) return;
+        if (Array.isArray(node)) { node.forEach(visit); return; }
+        if (node.type === 'ExpressionStatement' && isRegisterCall(node.expression)) registered.push(node.expression.arguments[0]);
+        else if (node.type === 'BlockStatement') visit(node.body);
+        else if (node.type === 'IfStatement') { visit(node.consequent); visit(node.alternate); }
+      };
+      visit(body);
+      if (registered.length === 0) return;
+
+      const algorithmType = new CSharpType('Algorithm');
+      const registry = new CSharpField('Algorithms', CSharpType.Array(algorithmType));
+      registry.isStatic = true;
+      registry.isReadOnly = true;
+      registry.initializer = new CSharpArrayCreation(algorithmType, null, registered.map(arg => this.transformExpression(arg)));
+      mainClass.members.push(registry);
+
+      if (mainClass.members.some(m => m.name === 'AlgorithmInstance')) return;
+      const first = new CSharpField('AlgorithmInstance', algorithmType);
+      first.isStatic = true;
+      first.isReadOnly = true;
+      first.initializer = new CSharpElementAccess(new CSharpIdentifier('Algorithms'), CSharpLiteral.Int(0));
+      mainClass.members.push(first);
     }
 
     /**

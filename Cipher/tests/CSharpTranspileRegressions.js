@@ -217,6 +217,22 @@ check('framework: a module function named like an inherited member is called qua
 });
 
 // ---------------------------------------------------------------------------
+// The algorithm registry
+// ---------------------------------------------------------------------------
+check('registry: every registered algorithm is listed, the first is AlgorithmInstance', () => {
+  const code = transpile('class A extends HashFunctionAlgorithm { constructor() { super(); this.name = "A"; } }\n' +
+    'class B extends A { constructor() { super(); this.name = "B"; } }\nRegisterAlgorithm(new A());\nRegisterAlgorithm(new B());');
+  expectMatch(code, /static readonly Algorithm\[\] Algorithms = new Algorithm\[\] \{ new A\(\), new B\(\) \}/, 'Algorithms = { new A(), new B() }');
+  expectMatch(code, /static readonly Algorithm AlgorithmInstance = Algorithms\[0\]/, 'AlgorithmInstance = Algorithms[0]');
+});
+check('registry: a module-declared algorithmInstance is kept and listed', () => {
+  const code = transpile('class A extends HashFunctionAlgorithm { constructor() { super(); this.name = "A"; } }\n' +
+    'const algorithmInstance = new A();\nif (!AlgorithmFramework.Find(algorithmInstance.name)) { RegisterAlgorithm(algorithmInstance); }');
+  expectMatch(code, /Algorithms = new Algorithm\[\] \{ AlgorithmInstance \}/, 'Algorithms = { AlgorithmInstance }');
+  expectNoMatch(code, /AlgorithmInstance = Algorithms\[0\]/, 'a second AlgorithmInstance');
+});
+
+// ---------------------------------------------------------------------------
 // Runtime stubs (needs the .NET SDK)
 // ---------------------------------------------------------------------------
 check('runtime stubs: BlockAbsorber, pad helpers, ToRadixString, IsTruthy, GFMul behave like the JS framework', () => {
