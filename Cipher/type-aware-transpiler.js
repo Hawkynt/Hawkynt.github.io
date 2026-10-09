@@ -3925,6 +3925,44 @@
     }
 
     /**
+     * The type a callback returns: its declared @returns, the declared return
+     * type of a local function passed by name, or the common type of the
+     * values its body returns (an arrow's expression, or every `return E;` of
+     * a block outside nested functions).
+     * @param {Object} fn - IL callback (arrow, function expression or identifier)
+     * @returns {string|null} IL type, or null when any returned value is untyped
+     * @private
+     */
+    _callbackReturnType(fn) {
+      if (!fn || typeof fn !== 'object') return null;
+      const known = t => typeof t === 'string' && t !== '' && t !== 'void' && t !== 'any' && t !== 'number' && t !== 'object' ? t : null;
+      if (fn.type === 'Identifier') {
+        const signature = this.declaredFunctions && this.declaredFunctions.get(fn.name);
+        return signature ? known(signature.returns) : null;
+      }
+      if (fn.type !== 'ArrowFunction' && fn.type !== 'FunctionExpression') return null;
+      const declared = known(fn.declaredReturnType) || known(ilTypeFromJSDoc(fn.typeInfo && fn.typeInfo.returns));
+      if (declared) return declared;
+      const body = fn.body;
+      if (!body) return null;
+      if (body.type !== 'BlockStatement') return known(body.resultType);
+      const returned = [];
+      const collect = node => {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(collect); return; }
+        if (['ArrowFunction', 'FunctionExpression', 'FunctionDeclaration', 'ArrowFunctionExpression', 'ClassDeclaration'].includes(node.type)) return;
+        if (node.type === 'ReturnStatement') { returned.push(node.argument || null); return; }
+        for (const key in node) {
+          if (key === 'loc' || key === 'range' || key === 'typeInfo' || key === 'jsDoc') continue;
+          if (node[key] && typeof node[key] === 'object') collect(node[key]);
+        }
+      };
+      collect(body.body);
+      if (returned.length === 0 || returned.some(r => !r || !known(r.resultType))) return null;
+      return known(this._commonTypeOf(returned));
+    }
+
+    /**
      * Transform array method calls
      * @private
      */
@@ -4051,9 +4089,13 @@
           return { type: 'ArrayReverse', array: arrayNode, elementType: arrayElementType, resultType: arrayResultType, ilNodeType: 'ArrayReverse' };
         case 'sort':
           return { type: 'ArraySort', array: arrayNode, compareFn: args[0] || null, elementType: arrayElementType, resultType: arrayResultType, ilNodeType: 'ArraySort' };
-        case 'map':
-          // Map result depends on callback, default to same element type
-          return { type: 'ArrayMap', array: arrayNode, callback: args[0], elementType: arrayElementType, resultType: arrayResultType, ilNodeType: 'ArrayMap' };
+        case 'map': {
+          // An array of what the callback returns; the source's own type only
+          // where nothing types the callback's result.
+          const mapped = this._callbackReturnType(args[0]);
+          const mappedElement = mapped || arrayElementType;
+          return { type: 'ArrayMap', array: arrayNode, callback: args[0], elementType: mappedElement, resultType: mapped ? `${mapped}[]` : arrayResultType, ilNodeType: 'ArrayMap' };
+        }
         case 'filter':
           return { type: 'ArrayFilter', array: arrayNode, callback: args[0], elementType: arrayElementType, resultType: arrayResultType, ilNodeType: 'ArrayFilter' };
         case 'forEach':

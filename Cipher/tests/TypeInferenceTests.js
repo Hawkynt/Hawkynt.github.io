@@ -1775,6 +1775,31 @@ class TypeInferenceTestSuite {
   }
 
   /**
+   * Each case is a place where inference used to state a type less precise
+   * than the truth (or narrower than the values), which algorithm files had
+   * to work around: the expected type is the most precise type that still
+   * holds every value.
+   */
+  testPrecisionGaps() {
+    this.runCategory('Type Precision Gaps', () => {
+      const check = (code, name, expected, title) => this.assertEqual(this.declType(code, name), expected, title, code.replace(/\s+/g, ' '));
+      const nums = '/** @param {uint32} u\n * @param {int32} s\n * @param {uint8} b\n * @param {uint64} w\n * @param {int64} q */\nfunction f(u, s, b, w, q) {\n';
+
+      // arr.map(cb) is an array of what cb returns
+      const bytes = '/** @returns {Uint32Array} */\nfunction Combine(v) { return new Uint32Array(4); }\n/** @param {uint8[]} b */\nfunction f(b) {\n';
+      check(bytes + 'const x = b.map(v => Combine(v)); return x; }', 'x', 'uint32[][]', 'given uint8[].map(v => Uint32Array), then uint32[][] (FAEST; was uint8[])');
+      check(bytes + 'const x = b.map(Combine); return x; }', 'x', 'uint32[][]', 'given uint8[].map(namedFunction), then its @returns types the elements');
+      check(bytes + 'const x = b.map(v => v * 1000); return x; }', 'x', 'int32[]', 'given uint8[].map(v => v * 1000), then int32[] (exceeds uint8)');
+      check(bytes + 'const x = b.map(v => { if (v) return "a"; return "b"; }); return x; }', 'x', 'string[]', 'given a block callback returning strings, then string[]');
+      check(bytes + 'const x = b.map(v => v); return x; }', 'x', 'uint8[]', 'given an identity callback, then the source type (boundary)');
+      check(bytes + 'const x = b.map(v => { const g = () => "s"; return v; }); return x; }', 'x', 'uint8[]', 'given a nested function, then its returns do not count');
+      check(bytes + 'const x = b.map(v => { if (v) return; return v; }); return x; }', 'x', 'uint8[]', 'given a bare return, then the result is not inferred and the source type is kept (exceptional)');
+      check(bytes + 'const x = b.map(v => String(v)); return x; }', 'x', 'uint8[]', 'given an untyped callback result, then the source type is kept (exceptional)');
+
+    });
+  }
+
+  /**
    * First node of an IL node type.
    * @param {Object} ast - IL AST
    * @param {string} type - node type
@@ -1815,6 +1840,7 @@ class TypeInferenceTestSuite {
     this.testOperationResultTypes();
     this.testEdgeCases();
     this.testSoundnessRegressions();
+    this.testPrecisionGaps();
 
     const elapsed = Date.now() - startTime;
 
