@@ -16203,6 +16203,8 @@
               [target, CSharpLiteral.String(firstArgNode.regex.pattern)]
             );
           }
+          // JsSplit: split('') gives the characters, split() the whole string
+          if (args.length <= 1) return new CSharpMethodCall(null, 'JsSplit', [target, args[0] || CSharpLiteral.Null()]);
           return new CSharpMethodCall(target, 'Split', args);
         }
 
@@ -25955,8 +25957,9 @@
           [str, CSharpLiteral.String(pattern)]
         );
       }
-      const separator = this.transformExpression(node.separator);
-      return new CSharpMethodCall(str, 'Split', [separator]);
+      // JsSplit: split('') gives the characters, split() the whole string
+      const separator = node.separator ? this.transformExpression(node.separator) : CSharpLiteral.Null();
+      return new CSharpMethodCall(null, 'JsSplit', [str, separator]);
     }
 
     /**

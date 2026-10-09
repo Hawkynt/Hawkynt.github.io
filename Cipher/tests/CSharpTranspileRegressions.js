@@ -162,6 +162,11 @@ check('bigint.toString(radix) uses the ToRadixString helper', () => {
   const code = transpile('function f(q) { const x = BigInt(q) * 3n; return x.toString(2).length; }');
   expectMatch(code, /ToRadixString\(x, 2\)/, 'ToRadixString(x, 2)');
 });
+check('string.split: split("") gives the characters through JsSplit, not string.Split', () => {
+  const code = transpile('/**\n * @param {string} line - line\n * @returns {string[]} cells\n */\nfunction cells(line) { return line.split(""); }');
+  expectMatch(code, /JsSplit\(line, ""\)/, 'JsSplit(line, "")');
+  expectNoMatch(code, /line\.Split\(/, 'line.Split (Split("") returns the whole string)');
+});
 check('number.toString(2) still uses Convert.ToString', () => {
   const code = transpile('function f(q) { const n = q | 0; return n.toString(2); }');
   expectMatch(code, /Convert\.ToString\(/, 'Convert.ToString(...)');
@@ -777,6 +782,11 @@ namespace RegressionTest {
       Eq("slice-neg-end", Convert.ToHexString(OpCodes.SliceArray(new byte[] { 1, 2, 3 }, 0, -1)), "0102");
       Eq("slice-crossed", OpCodes.SliceArray(new byte[] { 1, 2, 3 }, 2, 1).Length, 0);
       Eq("slice-generic", string.Join(",", OpCodes.SliceArray(new uint[] { 7, 8 }, 1, 5)), "8");
+      // JsSplit is string.prototype.split
+      Eq("split-chars", string.Join("|", FrameworkFunctions.JsSplit("abc", "")), "a|b|c");
+      Eq("split-sep", string.Join("|", FrameworkFunctions.JsSplit("a,,b", ",")), "a||b");
+      Eq("split-none", string.Join("|", FrameworkFunctions.JsSplit("a b", null)), "a b");
+      Eq("split-empty", FrameworkFunctions.JsSplit("", "").Length, 0);
       Console.WriteLine(failures == 0 ? "STUBS_OK" : "STUBS_FAILED");
       return failures == 0 ? 0 : 1;
     }

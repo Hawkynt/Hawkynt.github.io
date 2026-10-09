@@ -970,6 +970,15 @@ namespace ${namespace}
             return atStart ? padding + s : s + padding;
         }
 
+        // JavaScript's string.split: an empty separator gives the characters
+        public static string[] JsSplit(string s, object separator)
+        {
+            if (separator == null) return new[] { s };
+            string text = separator.ToString();
+            if (text.Length == 0) return s.Select(c => c.ToString()).ToArray();
+            return s.Split(text);
+        }
+
         // JavaScript's bigint.toString(radix): lowercase digits, leading '-' for negatives.
         public static string ToRadixString(BigInteger value, long radix)
         {
