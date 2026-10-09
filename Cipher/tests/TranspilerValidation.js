@@ -429,6 +429,21 @@ function transpileOne(source, plugin, algoName, extraOptions, parserOptions) {
 }
 
 /**
+ * The expression a .data library exports, in the shapes the libraries use:
+ * a UMD factory ending in "return { a, b };" or "return Name;", or an IIFE
+ * assigning "module.exports = ...;".
+ * @param {string} source - library source
+ * @returns {string|null} JavaScript expression, or null for an unknown shape
+ */
+function libraryExports(source) {
+  let m = source.match(/return\s*(\{[^}]*\}|[A-Za-z_$][\w$]*)\s*;?\s*\}\s*\)\s*\)\s*;?\s*$/);
+  if (m) return m[1];
+  // Its own IIFE keeps the names local, so the bundle hands it a module
+  // object of its own to assign, and returns that
+  return /module\.exports\s*=/.test(source) ? 'module.exports' : null;
+}
+
+/**
  * Transpile an algorithm file and, where the language bundles them, the
  * algorithm files it loaded while its reference ran.
  * @param {string} algorithmFile - absolute path
@@ -464,45 +479,66 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
   // scope so its top-level declarations cannot collide with the main file's.
   // Python and Perl preludes keep their registry across repeated copies.
   const noPreludeOptions = language === 'javascript' ? { generateTestHarness: false } : undefined;
-  const wrap = depCode => language === 'javascript' ? '(function () {\n' + depCode + '\n})();\n\n' : depCode + '\n\n';
+  // A JavaScript dependency also keeps what its factory returned, for a file
+  // that loads it through a loader parameter (see below).
+  const depExports = new Map();
   let prefix = '';
   for (const depPath of dependencies) {
     const depName = path.basename(depPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_dep';
     try {
-      prefix += wrap(transpileOne(fs.readFileSync(depPath, 'utf-8'), plugin, depName, noPreludeOptions, parserOptions));
+      const depSource = fs.readFileSync(depPath, 'utf-8');
+      const depCode = transpileOne(depSource, plugin, depName, noPreludeOptions, parserOptions);
+      if (language === 'javascript') {
+        const variable = '__validation_' + depName;
+        depExports.set(path.resolve(depPath).toLowerCase(), variable);
+        prefix += `const ${variable} = (function () {\nconst module = { exports: {} };\n${depCode}\nreturn ${libraryExports(depSource) || 'undefined'};\n})();\n\n`;
+      } else {
+        prefix += depCode + '\n\n';
+      }
     } catch (e) {
       return { success: false, error: `dependency ${path.relative(ALGORITHMS_DIR, depPath).replace(/\\/g, '/')}: ${e.message}` };
     }
   }
 
-  // A handful of files (fountain-code ECC variants: lt-codes.js,
-  // raptor-codes.js, ...) pull in a sibling utility library through a third
-  // UMD factory parameter, fed by `require('./fountain-foundation.data')`. The
-  // UMD unwrap discards that branch, leaving the parameter name unbound, so
-  // the library is bundled as `const <Name> = (function(){ ...; return {...}; })();`.
+  // A handful of files (SHARK, Brotli, Deflate, the fountain codes) pull in a
+  // sibling .data library through a third UMD factory parameter, fed by
+  // require('./x.data'). The UMD unwrap discards that branch, leaving the
+  // parameter unbound, so the library is bundled as
+  // const <Name> = (function () { ...; return <its exports>; })();
   if (language === 'javascript') {
     const localRequireRe = /require\(\s*['"]\.\/([^'"]+)['"]\s*\)/g;
     const localNames = new Set();
     let lm;
     while ((lm = localRequireRe.exec(source)) !== null) localNames.add(lm[1]);
-    const paramMatch = source.match(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/);
-    const paramName = paramMatch ? paramMatch[1] : null;
+    // The factory is the last such function: an AMD branch may wrap it in one of its own
+    const paramMatches = [...source.matchAll(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/g)];
+    const paramName = paramMatches.length ? paramMatches[paramMatches.length - 1][1] : null;
     for (const localName of localNames) {
-      const candidates = [localName + '.js', localName + '.data.js'];
-      const libPath = candidates.map(c => path.join(path.dirname(algorithmFile), c)).find(p => fs.existsSync(p));
+      const libPath = [localName, localName + '.js', localName + '.data.js']
+        .map(c => path.join(path.dirname(algorithmFile), c)).find(f => f.endsWith('.data.js') && fs.existsSync(f));
       if (!libPath || !paramName) continue;
       const libSrc = fs.readFileSync(libPath, 'utf-8');
-      const exportsMatch = libSrc.match(/return\s*\{([^}]*)\}\s*;?\s*\}\s*\)\s*\)\s*;?\s*$/);
-      if (!exportsMatch) continue;
-      const exportNames = exportsMatch[1].split(',').map(s => s.trim()).filter(Boolean);
-      if (!exportNames.length) continue;
+      const exported = libraryExports(libSrc);
+      if (!exported) return { success: false, error: 'library ' + path.basename(libPath) + ': its exports are in no shape the bundling knows' };
       const libName = path.basename(libPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_lib';
       try {
         const libCode = transpileOne(libSrc, plugin, libName, { generateTestHarness: false }, parserOptions);
-        prefix += `const ${paramName} = (function () {\n${libCode}\nreturn { ${exportNames.join(', ')} };\n})();\n\n`;
+        prefix += 'const ' + paramName + ' = (function () {\nconst module = { exports: {} };\n'
+          + libCode + '\nreturn ' + exported + ';\n})();\n\n';
       } catch (e) {
-        return { success: false, error: `library ${path.basename(libPath)}: ${e.message}` };
+        return { success: false, error: 'library ' + path.basename(libPath) + ': ' + e.message };
       }
+    }
+    // A third parameter fed `function () { return require('../x/y'); }` is a
+    // loader for another algorithm file (mac/zuc128mac.js loads stream/zuc.js,
+    // darkcrypt-deal.js block/des.js, at first use). That file is bundled as a
+    // dependency, so the loader hands back what its factory returned.
+    const loader = source.match(/function\s*\(\s*\)\s*\{\s*return\s+require\(\s*['"]([^'"]+)['"]\s*\)/);
+    if (paramName && loader && !prefix.includes('const ' + paramName + ' = ')) {
+      const target = path.resolve(path.dirname(algorithmFile), loader[1].endsWith('.js') ? loader[1] : loader[1] + '.js').toLowerCase();
+      const variable = depExports.get(target);
+      if (!variable) return { success: false, error: `loader ${paramName}: ${loader[1]} was not loaded by the reference, so it is not bundled` };
+      prefix += 'const ' + paramName + ' = function () { return ' + variable + '; };\n\n';
     }
   }
 
