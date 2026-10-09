@@ -6987,6 +6987,10 @@
           // the rest for multi-arg push() calls).
           const appendArr = this.transformExpression(node.array);
           const pushArgs = (node.values && node.values.length) ? node.values : [node.value];
+          // obj.push(...) on a class instance (by its IL type) is its method
+          if (this._isObjectType(node.array?.resultType))
+            return new PerlMemberAccess(appendArr, new PerlCall(new PerlIdentifier('push'),
+              pushArgs.map(v => this.transformExpression(v))), '->');
           const valueExprs = pushArgs.map(v => {
             if (v && v.type === 'SpreadElement') {
               // Spread element: push(@arr, @$data) - dereference the spread source
@@ -11650,6 +11654,17 @@
       // Handle method calls
       if (node.callee.type === 'MemberExpression') {
         const method = node.callee.property.name || node.callee.property.value;
+
+        // A method of a class of this file (by the receiver's IL type) is
+        // that class's own, even when it shares a name with an Array or
+        // String method (a SlotValues.push)
+        const receiverType = node.callee.object?.resultType;
+        if (!node.callee.computed && node.callee.object?.type !== 'ThisExpression' &&
+            this.fileClassNames && this.fileClassNames.has(receiverType)) {
+          const methodCall = new PerlCall(new PerlIdentifier(method), node.arguments.map(a => this.transformExpression(a)));
+          methodCall.isMethodCall = true;
+          return new PerlMemberAccess(this.transformExpression(node.callee.object), methodCall, '->');
+        }
 
         // Handle array reduce specially
         if (method === 'reduce') {
