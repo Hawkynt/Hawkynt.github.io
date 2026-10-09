@@ -1083,7 +1083,8 @@
         case 'string': case 'enum': return 'Str';
         case 'bigint': return 'Big';
         case 'array': return 'A_' + this.elemCode(t.elem);
-        case 'class': return this.classPas(t.name).replace(/^T/, '');
+        // a library's class is unit-qualified; the alias name takes its bare name
+        case 'class': return this.classPas(t.name).replace(/^.*\./, '').replace(/^T/, '');
         case 'error': return 'Exception';
         case 'tuple': case 'record': return this.recordOf(t).replace(/^T/, '');
         default: return 'Val';
