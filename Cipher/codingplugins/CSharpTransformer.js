@@ -25755,6 +25755,8 @@
      */
     asBigIntShift(node, result) {
       if (!node.bigint || !['<<', '>>'].includes(node.operator) || result?.nodeType !== 'BinaryExpression' || result.operator !== node.operator) return result;
+      // Only a literal: a variable declared uint64 is meant to stay 64-bit
+      if (node.left?.type !== 'Literal') return result;
       const leftType = this.inferFullExpressionType(node.left);
       if (leftType?.name === 'BigInteger' && !leftType.isArray) return result;
       return new CSharpBinaryExpression(new CSharpCast(new CSharpType('BigInteger'), result.left), result.operator, result.right);

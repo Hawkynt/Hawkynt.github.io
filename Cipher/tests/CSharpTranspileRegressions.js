@@ -832,6 +832,10 @@ check('BigInt shifts: OpCodes.ShiftLn(BigInt(1), n) shifts a BigInteger, not a u
   const code = transpile('/**\n * @param {int32} b - b\n * @returns {bigint} r\n */\nfunction f(b) { /** @type {bigint} */ let n = BigInt(7); n += OpCodes.ShiftLn(BigInt(1), b * 8); return n; }');
   expectMatch(code, /\(BigInteger\)\(1ul\) << /, '(BigInteger)1 << ...');
 });
+check('BigInt shifts: a shift of a uint64 variable stays a ulong shift', () => {
+  const code = transpile('/**\n * @param {uint64} c - c\n * @returns {uint64} r\n */\nfunction f(c) { /** @type {uint64} */ let k = c; k = OpCodes.ShiftLn(k, 1n); return k; }');
+  expectNoMatch(code, /\(BigInteger\)\(.*k/, 'k widened to BigInteger');
+});
 check('BigInt literal: a hex literal with a leading digit 8-F stays positive', () => {
   const code = transpile('/**\n * @param {bigint} k - key state\n * @returns {bigint} masked\n */\nfunction f(k) { return OpCodes.AndN(k, ~OpCodes.ShiftLn(0xFn, 120n)); }');
   expectMatch(code, /BigInteger\.Parse\("0F", System\.Globalization\.NumberStyles\.HexNumber\)/, 'Parse("0F") (Parse("F") is -1)');
