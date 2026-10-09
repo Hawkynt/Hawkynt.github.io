@@ -10415,12 +10415,20 @@
 
       // FIRST: Register parameter types so they're available for local variable type inference
       const paramInfos = [];
+      // Two JS parameters camelCasing to one C# name (`P` and `p`) are kept apart
+      const usedParamNames = new Set();
       if (funcNode.params) {
         for (let i = 0; i < funcNode.params.length; i++) {
           const param = funcNode.params[i];
           // Handle AssignmentPattern (default value params like: data = null)
           const rawParamName = param.name || param.left?.name || 'param';
-          const paramName = this.toCamelCase(rawParamName);
+          let paramName = this.toCamelCase(rawParamName);
+          if (usedParamNames.has(paramName)) {
+            let suffix = 2;
+            while (usedParamNames.has(`${paramName}${suffix}`)) ++suffix;
+            paramName = `${paramName}${suffix}`;
+          }
+          usedParamNames.add(paramName);
           const originalParamName = rawParamName;
           let paramType;
 

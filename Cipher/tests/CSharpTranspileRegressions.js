@@ -262,6 +262,16 @@ check('push: an array parameter the callee grows is passed by ref', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Parameter names
+// ---------------------------------------------------------------------------
+check('scope: parameters P and p get distinct C# names (CS0100)', () => {
+  const code = transpile('/**\n * @param {int32} P - modulus\n * @param {int32} p - value\n * @returns {int32} r\n */\n' +
+    'function red(P, p) { return p % P; }');
+  expectMatch(code, /Red\(int p, int p2\)/, 'Red(int p, int p2)');
+  expectMatch(code, /return p2 % p;/, 'the body reading p2 % p');
+});
+
+// ---------------------------------------------------------------------------
 // Immediately invoked functions as values
 // ---------------------------------------------------------------------------
 check('IIFE: a function invoked where a value is expected becomes an invoked typed lambda', () => {
