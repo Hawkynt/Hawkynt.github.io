@@ -209,7 +209,7 @@
       const unit = (source, namespace) => quiet(() => {
         const il = new TypeAwareJSASTParser(source, { keepModuleLoaderFunctions: true }).parse();
         const ast = new PhpTransformer({}).transform(il);
-        return new PhpEmitter({ namespace, framework: this._frameworkSurface() }).emit(ast);
+        return new PhpEmitter({ namespace, framework: this._frameworkSurface(), distrustParameters: true }).emit(ast);
       });
 
       const opcodes = unit(this._opCodesAsClass(fs.readFileSync(path.join(rootDir, 'OpCodes.js'), 'utf8')), '');
@@ -364,6 +364,10 @@
         const value = /^    ([A-Za-z_$][\w$]*)\s*:\s*([\s\S]*)$/.exec(chunk);
         if (value) members.push(`${doc}\n    static ${value[1]} = ${value[2]};`);
       }
+      // bytes -> hex, which the IL's HexEncode calls and OpCodes.js has no method for
+      // (the JavaScript target adds the same one to its OpCodes)
+      if (!members.some(m => /static BytesToHex\(/.test(m)))
+        members.push("    /**\n     * @param {uint8[]} bytes\n     * @returns {string}\n     */\n    static BytesToHex(bytes) {\n      let s = '';\n      for (let i = 0; i < bytes.length; i++) s += (bytes[i] & 0xFF).toString(16).padStart(2, '0');\n      return s;\n    }");
       return `class OpCodes {\n${members.join('\n\n')}\n}\n\n${extraClasses.join('\n\n')}\n`;
     }
 

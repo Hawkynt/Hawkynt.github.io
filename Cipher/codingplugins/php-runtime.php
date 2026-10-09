@@ -1456,6 +1456,68 @@ final class Crypto {
   public static function randomBytes($n) { return new JsArray(\array_values(\unpack('C*', \random_bytes((int)$n))), 'uint8'); }
 }
 
+/**
+ * require(name) of Node.js: its crypto module (hashes, HMACs and random
+ * bytes, which PHP's hash extension provides); any other module is bundled
+ * by whoever runs the file, so require gives nothing for it.
+ */
+function requireModule($name) {
+  if ($name === 'crypto' || $name === 'node:crypto') return NodeCrypto::instance();
+  return null;
+}
+/** require as a value (typeof require === 'function') */
+function requireFunction() { return function ($name = null) { return requireModule($name); }; }
+
+#[\AllowDynamicProperties]
+final class NodeCrypto {
+  public static function instance() { static $i = null; return $i ?? ($i = new NodeCrypto()); }
+  public function createHash($algorithm) { return new NodeHash(nodeHashName($algorithm), null); }
+  public function createHmac($algorithm, $key) { return new NodeHash(nodeHashName($algorithm), bytesToString($key)); }
+  public function randomBytes($n) { return Crypto::randomBytes($n); }
+  public function getRandomValues($array) { return Crypto::getRandomValues($array); }
+}
+#[\AllowDynamicProperties]
+final class NodeHash {
+  private $ctx;
+  public function __construct(string $algorithm, $key) {
+    $this->ctx = $key === null ? \hash_init($algorithm) : \hash_init($algorithm, \HASH_HMAC, $key);
+  }
+  public function update($data) { \hash_update($this->ctx, bytesToString($data)); return $this; }
+  public function digest($encoding = null) {
+    $raw = \hash_final($this->ctx, true);
+    if ($encoding === 'hex') return \bin2hex($raw);
+    return new JsArray(\array_values(\unpack('C*', $raw) ?: []), 'uint8');
+  }
+}
+function nodeHashName($algorithm): string {
+  $a = \strtolower(\str_replace('_', '-', toStr($algorithm)));
+  $map = ['sha-1' => 'sha1', 'sha-224' => 'sha224', 'sha-256' => 'sha256', 'sha-384' => 'sha384', 'sha-512' => 'sha512', 'sha512-256' => 'sha512/256', 'sha512-224' => 'sha512/224'];
+  return $map[$a] ?? $a;
+}
+/** The bytes of a JsArray, a string or a buffer, as a PHP string */
+function bytesToString($v): string {
+  if ($v === null) return '';
+  if (\is_string($v)) return $v;
+  if ($v instanceof JsBuffer) $v = newTyped('uint8', $v);
+  $list = $v instanceof JsArray ? $v->toList() : (array)$v;
+  return $list ? \pack('C*', ...\array_map(function ($b) { return toInt32($b) & 0xFF; }, $list)) : '';
+}
+
+/** Node.js Buffer.from / Buffer.alloc: a byte array */
+final class Buffer {
+  public static function from($v, $encoding = null) {
+    if (\is_string($v)) {
+      if ($encoding === 'hex') return new JsArray(\array_values(\unpack('C*', \hex2bin($v)) ?: []), 'uint8');
+      if ($encoding === 'base64') return new JsArray(\array_values(\unpack('C*', \base64_decode($v)) ?: []), 'uint8');
+      return new JsArray(\array_values(\unpack('C*', $v) ?: []), 'uint8');
+    }
+    return newTyped('uint8', $v);
+  }
+  public static function alloc($n, $fill = 0) { $a = newTyped('uint8', (int)toNumber($n)); if ($fill) $a->fill($fill); return $a; }
+  public static function concat($list) { $out = []; foreach (iterate($list) as $b) foreach ($b->toList() as $x) $out[] = $x; return new JsArray($out, 'uint8'); }
+  public static function isBuffer($v) { return $v instanceof JsArray && $v->kind === 'uint8'; }
+}
+
 /** globalThis: what code feature-tests for on it (crypto.getRandomValues) */
 function globalThis() {
   static $global = null;
@@ -1486,6 +1548,16 @@ final class Module {
   public static $exports = [];
   public static $externals = [];
 }
+
+/** A file's `module` object: module.exports is what it exports */
+#[\AllowDynamicProperties]
+final class ModuleObject {
+  private $ns;
+  public function __construct(string $ns) { $this->ns = $ns; if (!isset(Module::$exports[$ns])) Module::$exports[$ns] = new Obj(); }
+  public function __get($name) { return $name === 'exports' ? Module::$exports[$this->ns] : null; }
+  public function __set($name, $value) { if ($name === 'exports') Module::$exports[$this->ns] = $value; }
+}
+function module(string $ns) { return new ModuleObject($ns); }
 
 /** A name the file does not declare: bound by the bundle, else JavaScript's ReferenceError */
 function ext(string $name) {

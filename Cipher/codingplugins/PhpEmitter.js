@@ -176,6 +176,10 @@
       this.level = 0;
       // Classes being emitted around the current code (`this` is an object only inside one)
       this.classDepth = 0;
+      // OpCodes takes what it is passed whatever its JSDoc says (a signed word
+      // for a uint32, normalized with >>> 0): its parameters' IL types are not
+      // ranges, only what the function makes of them
+      this.distrustParameters = !!options.distrustParameters;
     }
 
     // ========================[ OUTPUT HELPERS ]========================
@@ -456,6 +460,7 @@
       const saved = this.scope;
       this.scope = new Scope(saved, 'function');
       this.scope.isStatic = isStatic;
+      this.scope.body = node.body;
       const params = this.emitParameters(node.parameters || []);
       this.hoistNames(node.body, this.scope);
       ++this.level;
@@ -502,6 +507,8 @@
       ++this.level;
       for (const p of parameters) {
         const v = this.declare(p.name, true);
+        if (!this.scope.params) { this.scope.params = new Set(); this.scope.paramRanges = new Map(); }
+        this.scope.params.add(p.name);
         if (p.isRest) {
           list.push(`...${v}`);
           prologue += this.line(`${v} = new \\JS\\JsArray(${v});`);
@@ -539,6 +546,7 @@
     emitFunctionDeclarationBody(fn, name) {
       const saved = this.scope;
       this.scope = new Scope(saved, 'function');
+      this.scope.body = fn.body;
       const params = this.emitParameters(fn.parameters || []);
       this.hoistNames(fn.body, this.scope);
       ++this.level;
@@ -554,6 +562,7 @@
     closure(parameters, body, isExpressionBody) {
       const saved = this.scope;
       this.scope = new Scope(saved, 'closure');
+      this.scope.body = body;
       const params = this.emitParameters(parameters || []);
       this.hoistNames(body, this.scope);
       const savedLevel = this.level;
@@ -780,7 +789,7 @@
         case 'Literal': return this.literal(node);
         case 'Identifier': return this.identifier(node);
         // `this` outside a class is undefined (strict mode)
-        case 'This': return this.scope.isStatic ? 'static::class' : (this.classDepth > 0 ? '$this' : 'null');
+        case 'This': return this.scope.isStatic ? 'static::class' : (this.classDepth > 0 ? '$this' : '\\JS\\globalThis()');
         case 'Super': return 'parent';
         case 'BinaryExpression': return this.binary(node);
         case 'UnaryExpression': return this.unary(node, statement);
@@ -834,8 +843,12 @@
         case 'arguments': this.scope.usesArguments = true; return '$arguments';
         default: break;
       }
-      // A module loader's names are undefined: the files it would load are bundled
-      if ((name === 'require' || name === 'module' || name === 'exports' || name === 'define') && !this.resolveVariable(name) && !this.module.vars.has(name)) return 'null';
+      // A module loader's names are undefined, the files it would load are
+      // bundled; `module` is the file's own: what it assigns to module.exports
+      // is what the file exports
+      if ((name === 'exports' || name === 'define') && !this.resolveVariable(name) && !this.module.vars.has(name)) return 'null';
+      if (name === 'require' && !this.resolveVariable(name) && !this.module.vars.has(name)) return '\\JS\\requireFunction()';
+      if (name === 'module' && !this.resolveVariable(name) && !this.module.vars.has(name)) return '\\JS\\module(__NAMESPACE__)';
       const v = this.resolveVariable(name);
       if (v) return v;
       if (this.module.vars.has(name)) return 'M::$' + this.module.vars.get(name);
@@ -891,11 +904,56 @@
         }
       }
       if (node.nodeType === 'UnaryExpression' && node.operator === '~') return [INT32_MIN, INT32_MAX];
+      if (node.nodeType === 'Identifier' && this.distrustParameters) {
+        const owner = this.parameterScope(node.name);
+        if (owner) return owner.paramRanges.get(node.name) || null;
+      }
       const t = typeOfNode(node);
       if (t && INT_RANGES[t]) return INT_RANGES[t];
       // a length is a whole number
       if (node.nodeType === 'MemberAccess' && node.member === 'length') return [0, 2 ** 32];
       return null;
+    }
+
+    /** The scope whose parameter a name is (the nearest declaring scope), or null */
+    parameterScope(name) {
+      for (let s = this.scope; s; s = s.parent) {
+        if (s.lookup && s.blocks.slice(1).some(b => b.has(name))) return null;
+        if (s.params && s.params.has(name)) return s;
+        if (s.kind === 'function' || s.kind === 'module') return null;
+      }
+      return null;
+    }
+
+    /** After `param = value` (or param op= value), what the parameter holds is the value's range */
+    noteParameterAssignment(target, valueNode) {
+      if (!this.distrustParameters || !target || target.nodeType !== 'Identifier') return;
+      const owner = this.parameterScope(target.name);
+      if (!owner) return;
+      // Only an assignment the function's own top level makes, of a parameter
+      // no loop assigns, holds for everything after it
+      const topLevel = owner === this.scope && this.scope.blocks.length === 1 && this.scope.breakable.length === 0;
+      const r = topLevel && !this.assignedInLoop(owner, target.name) ? this.range(valueNode) : null;
+      if (r) owner.paramRanges.set(target.name, r);
+      else owner.paramRanges.delete(target.name);
+    }
+
+    /** Whether a loop of the function assigns the name */
+    assignedInLoop(scope, name) {
+      if (!scope.loopAssigned) {
+        scope.loopAssigned = new Set();
+        const visit = (node, inLoop) => {
+          if (!node || typeof node !== 'object') return;
+          if (Array.isArray(node)) { node.forEach(n => visit(n, inLoop)); return; }
+          if (node.nodeType === 'ArrowFunction' || node.nodeType === 'Function' || node.nodeType === 'Class') return;
+          const loop = inLoop || ['For', 'ForOf', 'While', 'DoWhile'].includes(node.nodeType);
+          if (loop && node.nodeType === 'Assignment' && node.target && node.target.nodeType === 'Identifier') scope.loopAssigned.add(node.target.name);
+          if (loop && node.nodeType === 'UnaryExpression' && (node.operator === '++' || node.operator === '--') && node.operand && node.operand.nodeType === 'Identifier') scope.loopAssigned.add(node.operand.name);
+          for (const key of Object.keys(node)) if (key !== 'il') visit(node[key], loop);
+        };
+        visit(scope.body, false);
+      }
+      return scope.loopAssigned.has(name);
     }
 
     isInt(node) { return this.range(node) !== null; }
@@ -1216,6 +1274,7 @@
             return `\\JS\\seq(${prefix}${t} = ${read}, ${place} = ${t} ${sign} 1, ${t})`;
           }
           const target = this.lvalue(X);
+          this.noteParameterAssignment(X, null);
           if (!this.isNumeric(X) && !this.isBig(X) && !statement && this.pure(X)) {
             // JavaScript's ++ makes a number of what it increments
             const sign = op === '++' ? '+' : '-';
@@ -1280,6 +1339,7 @@
         if (T.nodeType === 'MemberAccess' && T.member === 'exports' && T.target.nodeType === 'Identifier' && T.target.name === 'module' && !this.resolveVariable('module'))
           return `(\\JS\\Module::$exports[__NAMESPACE__] = ${this.expr(node.value)})`;
         const code = `${this.lvalue(T)} = ${this.expr(node.value)}`;
+        this.noteParameterAssignment(T, node.value);
         return statement ? code : `(${code})`;
       }
       const binop = op.slice(0, -1);
@@ -1303,8 +1363,10 @@
           targetNode = { nodeType: 'MemberAccess', target: { nodeType: 'Raw', code: o, il: T.target.il }, member: T.member, il: T.il };
         }
       }
-      const value = this.binary({ nodeType: 'BinaryExpression', operator: binop, left: targetNode, right: node.value, il: node.il || T.il });
+      const combined = { nodeType: 'BinaryExpression', operator: binop, left: targetNode, right: node.value, il: node.il || T.il };
+      const value = this.binary(combined);
       const code = `${this.lvalue(targetNode)} = ${value}`;
+      this.noteParameterAssignment(T, combined);
       if (prefix) return `\\JS\\seq(${prefix}${code})`;
       return statement ? code : `(${code})`;
     }
@@ -1352,11 +1414,14 @@
       if (!isTarget && typeOfNode(node) === 'function' && this.module.methodNames.has(name) && T.nodeType !== 'ObjectLiteral')
         return `\\Closure::fromCallable([${this.objectCode(T)}, ${phpString(this.methodName(name))}])`;
       const op = node.isOptional ? '?->' : '->';
-      return `${this.objectCode(T)}${op}${this.propName(name)}`;
+      return `${this.objectCode(T, isTarget)}${op}${this.propName(name)}`;
     }
 
     /** The PHP of an expression used as an object (parenthesized where PHP needs it) */
-    objectCode(T) {
+    objectCode(T, forWrite = false) {
+      // The object of a write is a place: an element is read through ArrayAccess, not a conditional
+      if (forWrite && T.nodeType === 'ElementAccess') return this.element(T, true);
+      if (forWrite && T.nodeType === 'MemberAccess') return this.member(T, true);
       const code = this.expr(T);
       if (/^\$[\w]+$/.test(code) || /^\$this$/.test(code) || /^[\w\\]+::\$\w+$/.test(code)) return code;
       if (T.nodeType === 'Call' || T.nodeType === 'MemberAccess' || T.nodeType === 'ElementAccess') return code;
@@ -1386,7 +1451,12 @@
     element(node, isTarget = false) {
       const T = node.target;
       if (!isTarget && this.isString(T)) return `\\JS\\getProp(${this.expr(T)}, ${this.expr(node.index)})`;
-      return `${this.objectCode(T)}[${this.expr(node.index)}]`;
+      // Reading an array that owns its storage needs no method call (a view's elements are elsewhere)
+      if (!isTarget && isArrayType(typeOfNode(T)) && this.pure(T) && this.pure(node.index)) {
+        const t = this.objectCode(T), i = this.expr(node.index);
+        if (/^[\w$\\:>-]+$/.test(t.replace(/->/g, '>')) && t.length < 80 && i.length < 80) return `(${t}->view ? ${t}[${i}] : (${t}->a[${i}] ?? null))`;
+      }
+      return `${this.objectCode(T, isTarget)}[${this.expr(node.index)}]`;
     }
 
     // ========================[ CALLS ]========================
@@ -1435,7 +1505,7 @@
         case 'Boolean': return `\\JS\\truthy(${a})`;
         case 'Array': return `\\JS\\newArray(${a})`;
         case 'Object': return args.length ? a : '\\JS\\obj()';
-        case 'require': return 'null';
+        case 'require': return `\\JS\\requireModule(${a})`;
         case 'Symbol': return `\\JS\\toStr(${a})`;
         default: return `(\\JS\\ext(${phpString(name)}))(${a})`;
       }
@@ -1476,6 +1546,7 @@
         case 'Date': if (name === 'now') return '\\JS\\nowMs()'; break;
         case 'performance': if (name === 'now') return '\\JS\\perfNow()'; break;
         case 'crypto': return `\\JS\\Crypto::${name}(${a})`;
+        case 'Buffer': return `\\JS\\Buffer::${name}(${a})`;
         default: break;
       }
       if (TYPED_KINDS[object]) {
