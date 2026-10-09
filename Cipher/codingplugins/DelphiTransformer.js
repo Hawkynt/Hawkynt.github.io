@@ -2058,7 +2058,11 @@
           const want = this.typeOf(node, T.any);
           return { e: A.call(A.mem(obj.e, 'GetField'), [A.lit(pasString(name))]), t: T.any, wantType: want, dynamicField: { obj: obj.e, name } };
         }
-        const m = this.findMember(c, name) || this.memberFromSubclass(c, name, node);
+        const m = this.findMember(c, name) || this.memberFromSubclass(c, name, node, true);
+        if (!m) {
+          // declared by no class the value can be: looked up by name at run time
+          return { e: A.call('JsObjGet', [obj.e, A.lit(pasString(name))]), t: T.any, dynamicMember: { obj: obj.e, name, set: 'JsObjSet' } };
+        }
         if (m.kind === 'method') fail(`method ${name} used as a value`, node);
         const owner = m.owner;
         const base = m.static ? A.id(owner.pas) : (m.castTo ? A.cast(m.castTo, obj.e) : obj.e);
@@ -2086,7 +2090,7 @@
     }
 
     /** A member only a subclass declares, reached through a base-typed value: cast to that subclass. */
-    memberFromSubclass(c, name, node) {
+    memberFromSubclass(c, name, node, optional = false) {
       const found = [];
       for (const k of this.classes.values()) {
         let isSub = false;
@@ -2099,6 +2103,7 @@
         const m = top[0].members.get(name);
         return Object.assign({}, m, { castTo: top[0].pas });
       }
+      if (optional && !top.length) return null;
       fail(`${c.jsName} has no member ${name}`, node);
     }
 
@@ -2963,7 +2968,7 @@
           }
           if (v.dynamicMember) {
             const objE = v.dynamicMember.obj;
-            return { t: T.any, read: () => v, write: val => A.expr(A.call('JsValSet', [objE, A.lit(pasString(v.dynamicMember.name)), val])) };
+            return { t: T.any, read: () => v, write: val => A.expr(A.call(v.dynamicMember.set || 'JsValSet', [objE, A.lit(pasString(v.dynamicMember.name)), val])) };
           }
           if (v.member && v.member.kind === 'prop' && !v.member.setter && !v.member.setterPas && !(v.member.overrides && (v.member.overrides.setter || v.member.overrides.setterPas)))
             fail(`assignment to getter-only property ${v.member.jsName}`, node);
@@ -3084,7 +3089,12 @@
         if (!c) fail(`method ${name} of unknown class ${t.name}`, node);
         if (c.jsName === 'BlockAbsorber' && name === 'Finish') return this.absorberFinish(obj, argNodes, node);
         let m = this.findMember(c, name);
-        if (!m) m = this.memberFromSubclass(c, name, node);
+        if (!m) m = this.memberFromSubclass(c, name, node, true);
+        if (!m) {
+          // declared by no class the value can be: invoked by name at run time
+          const dynArgs = (argNodes || []).map(a => this.toJsValue(this.ex(a)));
+          return { e: A.call('JsObjCall', [obj.e, A.lit(pasString(name)), A.arr(dynArgs)]), t: T.any, stmtOk: true };
+        }
         if (m.kind === 'prop' || m.kind === 'field') {
           if (m.type && m.type.k === 'function') fail(`call through function-valued member ${name}`, node);
           fail(`${name} is not a method`, node);
@@ -4281,52 +4291,67 @@
 
     /** Name-based member access for the vector harness (JavaScript's `field in instance` and `instance[field] = v`). */
     generateDispatchers(c) {
-      const setters = [];
-      const hasNames = [];
-      const calls = [];
-      const methodNames = [];
+      const d = { setters: [], hasNames: [], calls: [], methodNames: [], getters: [], invokes: [] };
       for (const m of c.members.values()) {
         if (m.static) continue;
         try {
-          this.dispatchEntry(c, m, setters, hasNames, calls, methodNames);
+          this.dispatchEntry(c, m, d);
         } catch (e) {
           if (!(e instanceof TranspileError)) throw e;
           this.diagnostics.push(`${c.jsName}.${m.jsName} is not reachable by name: ${e.message}`);
         }
       }
-      this.emitDispatchers(c, setters, hasNames, calls, methodNames);
+      this.emitDispatchers(c, d);
     }
 
-    dispatchEntry(c, m, setters, hasNames, calls, methodNames) {
+    /** One member's entries in the name dispatchers (set, get, has, call with one value, invoke). */
+    dispatchEntry(c, m, d) {
+      const self = name => A.mem(A.id('Self'), name);
       if (m.kind === 'field' && m.owner === c) {
         if (m.type && m.type.k === 'function') return;
-        setters.push([m.jsName, A.assign(A.mem(A.id('Self'), m.pas), this.fromJsValue(A.id('AValue'), m.type || T.any))]);
-        hasNames.push(m.jsName);
+        const t = m.type || T.any;
+        d.setters.push([m.jsName, A.assign(self(m.pas), this.fromJsValue(A.id('AValue'), t))]);
+        d.getters.push([m.jsName, A.assign(A.id('AValue'), this.toJsValue({ e: self(m.pas), t }))]);
+        d.hasNames.push(m.jsName);
       } else if (m.kind === 'prop') {
+        const t = m.type || T.any;
         const setter = m.setterPas || (m.overrides && (m.overrides.setter || m.overrides.setterPas));
-        if (setter) setters.push([m.jsName, A.assign(A.mem(A.id('Self'), m.pas), this.fromJsValue(A.id('AValue'), m.type || T.any))]);
-        else setters.push([m.jsName, A.raise(A.call(A.mem(A.id('EJsTypeError'), 'Create'), [A.lit(pasString(`Cannot set property ${m.jsName} of #<${c.jsName}> which has only a getter`))]))]);
-        hasNames.push(m.jsName);
+        const getter = m.getterPas || (m.overrides && (m.overrides.getter || m.overrides.getterPas));
+        if (setter) d.setters.push([m.jsName, A.assign(self(m.pas), this.fromJsValue(A.id('AValue'), t))]);
+        else d.setters.push([m.jsName, A.raise(A.call(A.mem(A.id('EJsTypeError'), 'Create'), [A.lit(pasString(`Cannot set property ${m.jsName} of #<${c.jsName}> which has only a getter`))]))]);
+        if (getter) d.getters.push([m.jsName, A.assign(A.id('AValue'), this.toJsValue({ e: self(m.pas), t }))]);
+        d.hasNames.push(m.jsName);
       } else if (m.kind === 'method') {
         const params = m.params || [];
         if (params.some(p => p.rest)) return;
         const args = params.map((p, i) => i === 0 ? this.fromJsValue(A.id('AValue'), p.type) : (p.defaultNode ? this.safeDefault(p) : this.defaultValue(p.type)));
-        calls.push([m.jsName, A.expr(A.call(A.mem(A.id('Self'), m.pas), args))]);
-        methodNames.push(m.jsName);
+        d.calls.push([m.jsName, A.expr(A.call(self(m.pas), args))]);
+        const all = params.map((p, i) => this.fromJsValue(A.call('JsArg', [A.id('AArgs'), A.lit(i)]), p.type));
+        const call = A.call(self(m.pas), all);
+        const ret = m.ret || T.void;
+        d.invokes.push([m.jsName, ret.k === 'void' ? A.block([A.expr(call), A.assign(A.id('AResult'), A.call('JsVUndef'))])
+          : A.assign(A.id('AResult'), this.toJsValue({ e: call, t: ret }))]);
+        d.methodNames.push(m.jsName);
       }
     }
 
-    emitDispatchers(c, setters, hasNames, calls, methodNames) {
-      const mk = (name, entries, tail, ret) => {
+    emitDispatchers(c, d) {
+      const { setters, hasNames, calls, methodNames, getters, invokes } = d;
+      const dispatch = (name, entries, params, tail) => {
         const body = [];
         for (const [js, stmt] of entries)
           body.push(A.ifStmt(A.bin('=', A.id('AName'), A.lit(pasString(js))), [stmt, A.exit(A.lit('True'))]));
         body.push(A.assign(A.id('Result'), tail));
-        this.routines.push(A.routine({ name, owner: c.pas, routineKind: 'function', params: [A.param('AName', 'string', 'const'), A.param('AValue', 'TJsValue', 'const')], returns: 'Boolean', body }));
-        c.decl.methods.push(A.methodDecl({ name, routineKind: 'function', params: [A.param('AName', 'string', 'const'), A.param('AValue', 'TJsValue', 'const')], returns: 'Boolean', directives: ['override'] }));
+        this.routines.push(A.routine({ name, owner: c.pas, routineKind: 'function', params, returns: 'Boolean', body }));
+        c.decl.methods.push(A.methodDecl({ name, routineKind: 'function', params, returns: 'Boolean', directives: ['override'] }));
       };
-      mk('JsSetMember', setters, A.call(A.raw('inherited JsSetMember'), [A.id('AName'), A.id('AValue')]));
-      mk('JsCallMethod', calls, A.call(A.raw('inherited JsCallMethod'), [A.id('AName'), A.id('AValue')]));
+      dispatch('JsGetMember', getters, [A.param('AName', 'string', 'const'), A.param('AValue', 'TJsValue', 'out')],
+        A.call(A.raw('inherited JsGetMember'), [A.id('AName'), A.id('AValue')]));
+      dispatch('JsInvoke', invokes, [A.param('AName', 'string', 'const'), A.param('AArgs', 'array of TJsValue', 'const'), A.param('AResult', 'TJsValue', 'out')],
+        A.call(A.raw('inherited JsInvoke'), [A.id('AName'), A.id('AArgs'), A.id('AResult')]));
+      const nameValue = () => [A.param('AName', 'string', 'const'), A.param('AValue', 'TJsValue', 'const')];
+      dispatch('JsSetMember', setters, nameValue(), A.call(A.raw('inherited JsSetMember'), [A.id('AName'), A.id('AValue')]));
+      dispatch('JsCallMethod', calls, nameValue(), A.call(A.raw('inherited JsCallMethod'), [A.id('AName'), A.id('AValue')]));
       const has = (name, names) => {
         const cond = names.length ? names.map(n => A.bin('=', A.id('AName'), A.lit(pasString(n)))).reduce((a, b) => A.bin('or', a, b)) : null;
         const tail = A.call(A.raw('inherited ' + name), [A.id('AName')]);

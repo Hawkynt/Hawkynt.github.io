@@ -181,12 +181,18 @@
   TAlgorithm = class;
   TIAlgorithmInstance = class;
 
+  { Every object: its members by JavaScript name, for the vector harness and
+    for members reached through a base type the IL gives (an HMAC instance a
+    registry lookup returned as IMacInstance) }
   TJsObject = class
   public
+    JsExtra: array of TJsField;
     function JsSetMember(const AName: string; const AValue: TJsValue): Boolean; virtual;
     function JsHasMember(const AName: string): Boolean; virtual;
+    function JsGetMember(const AName: string; out AValue: TJsValue): Boolean; virtual;
     function JsCallMethod(const AName: string; const AValue: TJsValue): Boolean; virtual;
     function JsHasMethod(const AName: string): Boolean; virtual;
+    function JsInvoke(const AName: string; const AArgs: array of TJsValue; out AResult: TJsValue): Boolean; virtual;
   end;
 
   TLinkItem = class(TJsObject)
@@ -350,6 +356,8 @@
     tests: TA_TestCase;
     constructor Create;
     function CreateInstance(isInverse: Boolean = False): TIAlgorithmInstance; virtual;
+    function JsGetMember(const AName: string; out AValue: TJsValue): Boolean; override;
+    function JsInvoke(const AName: string; const AArgs: array of TJsValue; out AResult: TJsValue): Boolean; override;
   end;
   TAlgorithmClass = class of TAlgorithm;
   TA_Algorithm = TJsArray<TAlgorithm>;
@@ -420,6 +428,8 @@
     procedure Dispose; virtual;
     function JsSetMember(const AName: string; const AValue: TJsValue): Boolean; override;
     function JsHasMember(const AName: string): Boolean; override;
+    function JsGetMember(const AName: string; out AValue: TJsValue): Boolean; override;
+    function JsInvoke(const AName: string; const AArgs: array of TJsValue; out AResult: TJsValue): Boolean; override;
   end;
 
   TIBlockCipherInstance = class(TIAlgorithmInstance)
@@ -437,6 +447,8 @@
     function Result_: TA_U8; override;
     function JsSetMember(const AName: string; const AValue: TJsValue): Boolean; override;
     function JsHasMember(const AName: string): Boolean; override;
+    function JsGetMember(const AName: string; out AValue: TJsValue): Boolean; override;
+    function JsInvoke(const AName: string; const AArgs: array of TJsValue; out AResult: TJsValue): Boolean; override;
   end;
 
   TIHashFunctionInstance = class(TIAlgorithmInstance)
@@ -444,6 +456,7 @@
     OutputSize: Int32;
     function JsSetMember(const AName: string; const AValue: TJsValue): Boolean; override;
     function JsHasMember(const AName: string): Boolean; override;
+    function JsGetMember(const AName: string; out AValue: TJsValue): Boolean; override;
   end;
 
   TIMacInstance = class(TIAlgorithmInstance)
@@ -647,6 +660,10 @@ function JsValTo_TA_Str(const V: TJsValue): TA_Str;
 function JsValTo_TA_Big(const V: TJsValue): TA_Big;
 function JsValTo_TA_Bool(const V: TJsValue): TA_Bool;
 function JsF(const AName: string; const AValue: TJsValue): TJsField;
+function JsArg(const AArgs: array of TJsValue; I: Int32): TJsValue;
+function JsObjGet(O: TObject; const AName: string): TJsValue;
+procedure JsObjSet(O: TObject; const AName: string; const AValue: TJsValue);
+function JsObjCall(O: TObject; const AName: string; const AArgs: array of TJsValue): TJsValue;
 function JsSameValue(const A, B: TJsValue): Boolean;
 function JsNowMs: Double;
 function JsTestCase(const AFields: array of TJsField): TTestCase;
@@ -3906,7 +3923,19 @@ begin
 end;
 
 function TJsObject.JsHasMember(const AName: string): Boolean;
+var I: Int32;
 begin
+  for I := 0 to System.Length(JsExtra) - 1 do
+    if JsExtra[I].Name = AName then Exit(True);
+  Result := False;
+end;
+
+function TJsObject.JsGetMember(const AName: string; out AValue: TJsValue): Boolean;
+var I: Int32;
+begin
+  for I := 0 to System.Length(JsExtra) - 1 do
+    if JsExtra[I].Name = AName then begin AValue := JsExtra[I].Value; Exit(True); end;
+  AValue := JsVUndef;
   Result := False;
 end;
 
@@ -3918,6 +3947,45 @@ end;
 function TJsObject.JsHasMethod(const AName: string): Boolean;
 begin
   Result := False;
+end;
+
+function TJsObject.JsInvoke(const AName: string; const AArgs: array of TJsValue; out AResult: TJsValue): Boolean;
+begin
+  AResult := JsVUndef;
+  Result := False;
+end;
+
+function JsArg(const AArgs: array of TJsValue; I: Int32): TJsValue;
+begin
+  if (I >= 0) and (I < System.Length(AArgs)) then Result := AArgs[I] else Result := JsVUndef;
+end;
+
+function JsObjGet(O: TObject; const AName: string): TJsValue;
+begin
+  if O = nil then raise EJsTypeError.Create('Cannot read properties of null (reading ''' + AName + ''')');
+  if not (O is TJsObject) or not TJsObject(O).JsGetMember(AName, Result) then Result := JsVUndef;
+end;
+
+procedure JsObjSet(O: TObject; const AName: string; const AValue: TJsValue);
+var X: TJsObject; I: Int32;
+begin
+  if O = nil then raise EJsTypeError.Create('Cannot set properties of null (setting ''' + AName + ''')');
+  if not (O is TJsObject) then raise EJsTypeError.Create('Cannot set property ' + AName + ' of ' + O.ClassName);
+  X := TJsObject(O);
+  if X.JsSetMember(AName, AValue) then Exit;
+  for I := 0 to System.Length(X.JsExtra) - 1 do
+    if X.JsExtra[I].Name = AName then begin X.JsExtra[I].Value := AValue; Exit; end;
+  I := System.Length(X.JsExtra);
+  System.SetLength(X.JsExtra, I + 1);
+  X.JsExtra[I].Name := AName;
+  X.JsExtra[I].Value := AValue;
+end;
+
+function JsObjCall(O: TObject; const AName: string; const AArgs: array of TJsValue): TJsValue;
+begin
+  if O = nil then raise EJsTypeError.Create('Cannot read properties of null (reading ''' + AName + ''')');
+  if not (O is TJsObject) or not TJsObject(O).JsInvoke(AName, AArgs, Result) then
+    raise EJsTypeError.Create(O.ClassName + '.' + AName + ' is not a function');
 end;
 
 constructor TLinkItem.Create(const AText: string; const AUri: string);
@@ -4153,6 +4221,25 @@ begin
   raise EJsError.Create('CreateInstance() not implemented');
 end;
 
+function TAlgorithm.JsGetMember(const AName: string; out AValue: TJsValue): Boolean;
+begin
+  Result := True;
+  if AName = 'name' then AValue := JsVStr(name)
+  else if AName = 'description' then AValue := JsVStr(description)
+  else if AName = 'category' then AValue := JsVStr(category)
+  else Result := inherited JsGetMember(AName, AValue);
+end;
+
+function TAlgorithm.JsInvoke(const AName: string; const AArgs: array of TJsValue; out AResult: TJsValue): Boolean;
+begin
+  if AName = 'CreateInstance' then
+  begin
+    AResult := JsVObj(CreateInstance(JsValToBool(JsArg(AArgs, 0))));
+    Exit(True);
+  end;
+  Result := inherited JsInvoke(AName, AArgs, AResult);
+end;
+
 constructor TBlockCipherAlgorithm.Create;
 begin
   inherited Create;
@@ -4247,6 +4334,25 @@ begin
   Result := (AName = 'algorithm') or (AName = 'isInverse') or (AName = 'inputBuffer') or inherited JsHasMember(AName);
 end;
 
+function TIAlgorithmInstance.JsGetMember(const AName: string; out AValue: TJsValue): Boolean;
+begin
+  Result := True;
+  if AName = 'algorithm' then AValue := JsVObj(algorithm)
+  else if AName = 'isInverse' then AValue := JsVBool(isInverse)
+  else if AName = 'inputBuffer' then AValue := JsVArr_U8(inputBuffer)
+  else Result := inherited JsGetMember(AName, AValue);
+end;
+
+function TIAlgorithmInstance.JsInvoke(const AName: string; const AArgs: array of TJsValue; out AResult: TJsValue): Boolean;
+begin
+  Result := True;
+  AResult := JsVUndef;
+  if AName = 'Feed' then Feed(JsValTo_TA_U8(JsArg(AArgs, 0)))
+  else if AName = 'Result' then AResult := JsVArr_U8(Result_)
+  else if AName = 'Dispose' then Dispose
+  else Result := inherited JsInvoke(AName, AArgs, AResult);
+end;
+
 constructor TIBlockCipherInstance.Create(AAlgorithm: TAlgorithm);
 begin
   inherited Create(AAlgorithm);
@@ -4320,6 +4426,24 @@ begin
   Result := (AName = 'BlockSize') or (AName = 'KeySize') or (AName = '_key') or (AName = 'key') or inherited JsHasMember(AName);
 end;
 
+function TIBlockCipherInstance.JsGetMember(const AName: string; out AValue: TJsValue): Boolean;
+begin
+  Result := True;
+  if AName = 'BlockSize' then AValue := JsVInt(BlockSize)
+  else if AName = 'KeySize' then AValue := JsVInt(KeySize)
+  else if AName = '_key' then AValue := JsVArr_U8(_key)
+  else if AName = 'key' then AValue := JsVArr_U8(key)
+  else Result := inherited JsGetMember(AName, AValue);
+end;
+
+function TIBlockCipherInstance.JsInvoke(const AName: string; const AArgs: array of TJsValue; out AResult: TJsValue): Boolean;
+begin
+  Result := True;
+  if AName = 'EncryptBlock' then AResult := JsVArr_U8(EncryptBlock(JsValTo_TA_U8(JsArg(AArgs, 0))))
+  else if AName = 'DecryptBlock' then AResult := JsVArr_U8(DecryptBlock(JsValTo_TA_U8(JsArg(AArgs, 0))))
+  else Result := inherited JsInvoke(AName, AArgs, AResult);
+end;
+
 function TIHashFunctionInstance.JsSetMember(const AName: string; const AValue: TJsValue): Boolean;
 begin
   if AName = 'OutputSize' then begin OutputSize := Int32(JsValToInt64(AValue)); Exit(True); end;
@@ -4329,6 +4453,12 @@ end;
 function TIHashFunctionInstance.JsHasMember(const AName: string): Boolean;
 begin
   Result := (AName = 'OutputSize') or inherited JsHasMember(AName);
+end;
+
+function TIHashFunctionInstance.JsGetMember(const AName: string; out AValue: TJsValue): Boolean;
+begin
+  if AName = 'OutputSize' then begin AValue := JsVInt(OutputSize); Exit(True); end;
+  Result := inherited JsGetMember(AName, AValue);
 end;
 
 function TIMacInstance.ComputeMac(data: TA_U8): TA_U8;
