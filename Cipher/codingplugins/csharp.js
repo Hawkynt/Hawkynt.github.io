@@ -1767,6 +1767,13 @@ namespace ${namespace}
             if (index >= arr.Length) Array.Resize(ref arr, index + 1);
             return arr;
         }
+        // Stored - the array, grown to hold the index, with the value stored there
+        // (for a field store whose index has a side effect, evaluated once)
+        public static T[] Stored<T>(T[] arr, int index, T value) {
+            arr = Grown(arr, index);
+            arr[index] = value;
+            return arr;
+        }
         public static T[] CreateArray<T>(int length, T value) {
             var arr = new T[length];
             Array.Fill(arr, value);

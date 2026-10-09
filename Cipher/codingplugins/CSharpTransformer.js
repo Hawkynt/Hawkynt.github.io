@@ -15135,9 +15135,10 @@
       // where the index has no side effect to repeat
       const sideEffectFree = n => !!n && (n.type === 'Identifier' || n.type === 'Literal' ||
         (n.type === 'BinaryExpression' && sideEffectFree(n.left) && sideEffectFree(n.right)) ||
+        (n.type === 'MemberExpression' && n.computed && sideEffectFree(n.object) && sideEffectFree(n.property)) ||
         (n.type === 'ThisPropertyAccess'));
       if (node.operator === '=' && node.left?.type === 'MemberExpression' && node.left.computed &&
-          node.left.object?.type === 'ThisPropertyAccess' && sideEffectFree(node.left.property) &&
+          node.left.object?.type === 'ThisPropertyAccess' &&
           this.growableArrayFields?.has(typeof node.left.object.property === 'string' ? node.left.object.property : node.left.object.property?.name)) {
         const arrayType = this.inferFullExpressionType(node.left.object);
         if (arrayType?.isArray && arrayType.elementType) {
@@ -15148,6 +15149,13 @@
           let value = this.transformExpression(node.right);
           this.currentArrayElementType = prevElement;
           value = this.castIfNeeded(value, this.inferFullExpressionType(node.right), arrayType.elementType);
+          // An index with a side effect (this.buf[this.bufOff++] = v) is evaluated once:
+          // this.F = OpCodes.Stored(this.F, i, v)
+          if (!sideEffectFree(node.left.property)) {
+            const stored = new CSharpMethodCall(new CSharpIdentifier('OpCodes'), 'Stored', [fieldExpr, index, value]);
+            stored.typeArguments = [arrayType.elementType];
+            return new CSharpAssignment(fieldExpr, '=', stored);
+          }
           const grown = new CSharpMethodCall(new CSharpIdentifier('OpCodes'), 'Grown', [fieldExpr, index]);
           grown.typeArguments = [arrayType.elementType];
           const target = new CSharpElementAccess(new CSharpAssignment(fieldExpr, '=', grown), index);

@@ -599,6 +599,16 @@ check('arrays: a local pushed into a container before it is filled is pushed aft
     '  for (let r = 0; r < 3; r++) {\n    /** @type {string[]} */\n    const cells = [];\n    rows.push(cells);\n    for (let c = 0; c < 3; c++) cells.push(a[r * 3 + c]);\n  }\n  return rows;\n}');
   expectMatch(code, /cells = cells\.Append\([\s\S]*?\}\s*rows = rows\.Append\(cells\)/, 'rows.Append(cells) after the loop filling cells');
 });
+check('arrays: a growable field stored at an index with a side effect evaluates the index once (OpCodes.Stored)', () => {
+  const code = transpile('class H {\n  constructor() { /** @type {uint8[]} */ this.buf = []; /** @type {int32} */ this.off = 0; }\n' +
+    '  /** @param {uint8} b - byte */\n  put(b) { this.buf[this.off++] = b; }\n}');
+  expectMatch(code, /this\.Buf = OpCodes\.Stored<byte>\(this\.Buf, this\.Off\+\+, b\)/, 'this.Buf = OpCodes.Stored(this.Buf, this.Off++, b)');
+});
+check('arrays: a growable field stored at an index read from another table grows', () => {
+  const code = transpile('class S {\n  constructor() { /** @type {int32[]} */ this.fwd = [2, 0, 1]; /** @type {int32[]} */ this.rev = [];\n' +
+    '    for (let i = 0; i < 3; i++) this.rev[this.fwd[i]] = i; }\n}');
+  expectMatch(code, /OpCodes\.Grown<int>\(this\.Rev, this\.Fwd\[i\]\)/, 'OpCodes.Grown(this.Rev, this.Fwd[i])');
+});
 check('arrays: a store past the end of a pushed row grows that row in place', () => {
   const code = transpile('/**\n * @param {uint16[]} w - words\n * @returns {uint16[][]} tables\n */\nfunction build(w) {\n' +
     '  /** @type {uint16[][]} */\n  const tables = [];\n  for (let t = 0; t < 2; t++) { /** @type {uint16[]} */ const row = [0]; tables.push(row); }\n' +
