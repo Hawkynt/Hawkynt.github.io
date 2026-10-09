@@ -115,6 +115,7 @@ category of `TranspilerSuite.js`.
 | `csharp` | regressions of systematic C# transpilation faults; compiles and runs the C# runtime stubs when the .NET SDK is installed | `CSharpTranspileRegressions.js` |
 | `harness` | the validation itself: vector plans, reading a harness run back, judging languages, error classes, and each vector harness end to end against hand-written stand-ins | `TranspilerValidationTests.js` |
 | `python` | regressions of systematic Python transpilation faults; runs the Python runtime cases when a Python 3 interpreter is installed | `PythonTranspileRegressions.js` |
+| `rustgo` | regressions of systematic Go and Rust transpilation faults: every case compiled into one program per language and run, when Go / rustc are installed | `RustGoTranspileRegressions.js` |
 | `validation` | transpiles every algorithm to every installed language, compiles it, and runs every vector where the language has a vector harness | `TranspilerValidation.js` |
 
 `validation` runs one worker process per algorithm file, `--jobs=N` at a time
@@ -122,14 +123,17 @@ category of `TranspilerSuite.js`.
 `TestEngine` first - the reference: an algorithm whose reference fails is listed
 and held against no language, and the algorithm files it loads while running
 are its dependencies, bundled into its transpiled code where the language
-supports that (JavaScript, Python, Perl). It then transpiles the file to every
+supports that (JavaScript, Python, Perl, Go, Rust). It then transpiles the file to every
 installed language, appends the language's vector harness from
 `validation-harness/`, compiles it and runs it. The harness applies every
 vector field with the semantics of `TestEngine.ConfigureInstance` - a field that
 reaches no setter or property, or whose setter throws, fails the vector - and
 checks the expected output and, where the reference made one, the round trip.
-JavaScript, Python, Perl and C# have vector harnesses; the other languages are
-only compiled. A toolchain counts as installed when it is on `PATH` (Windows
+JavaScript, Python, Perl, C#, Go and Rust have vector harnesses; the other languages are
+only compiled. Go and Rust bundle a dependency as a library (its own
+declarations under a prefix of their own, no second runtime); Rust builds
+with `-C opt-level=1 -C overflow-checks=on`, so arithmetic the transpiler failed
+to make wrapping panics instead of passing silently. A toolchain counts as installed when it is on `PATH` (Windows
 `.cmd` shims included), exits 0 and prints its version on stdout or stderr; a
 broken one (a `java` that cannot create its virtual machine) is reported and
 left out rather than failing the run.
