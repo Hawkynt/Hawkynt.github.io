@@ -288,6 +288,16 @@ check('arithmetic: ulong += int takes the int as ulong (CS0034)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Fields take their IL type in every declaring pass
+// ---------------------------------------------------------------------------
+check('IL types: a counter field keeps its JSDoc type, not a guess from its name or literal', () => {
+  const code = transpile('class C {\n  constructor() { /** @type {int32} */ this.chunk_counter = 0; }\n' +
+    '  reset() { /** @type {uint32[]} */ this.state_words = []; this.chunk_counter = 0; }\n}');
+  expectMatch(code, /\bint Chunk_counter\b/, 'int Chunk_counter');
+  expectMatch(code, /\buint\[\] State_words\b/, 'uint[] State_words');
+});
+
+// ---------------------------------------------------------------------------
 // OpCodes helpers
 // ---------------------------------------------------------------------------
 check('OpCodes.CreateArray: the array has the element type its target is declared with', () => {

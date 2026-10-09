@@ -322,6 +322,8 @@
       this.localClassMembers = new Map();
       // PascalCase names of the module's top-level functions, filled by transform()
       this.moduleFunctionNames = new Set();
+      // "Class.Method#index" of every method parameter declared with its IL type
+      this.ilTypedParams = new Set();
       this.parser = options.parser || null;
       this.jsDocParser = options.jsDocParser || null;
       this.currentClass = null;
@@ -752,10 +754,12 @@
           // Priority: 1) JSDoc, 2) object member-access usage, 3) array usage detection,
           // 3.5) array-index usage, 4) BigInteger usage, 5) scalar usage, 6) name inference
           const jsDocParamType = this.getParamType(funcTypeInfo, rawParamName);
-          // The parameter's IL type, as transformFunctionToMethod takes it
+          // The parameter's IL type, as transformFunctionToMethod takes it; the
+          // refinement passes leave it alone
           const ilParamType = this.mapILType(param.resultType ?? param.left?.resultType);
           if (ilParamType) {
             paramType = ilParamType;
+            this.ilTypedParams.add(`${this.currentClass.name}.${pascalName}#${i}`);
           } else if (jsDocParamType) {
             paramType = this.mapType(jsDocParamType);
             // type-aware-transpiler.js's _bakeTypeInfoOntoFunctionNodes bakes
@@ -1613,6 +1617,7 @@
 
             const currentType = sig.params[i];
             if (!currentType) continue;
+            if (this.ilTypedParams.has(`${this.currentClass.name}.${pascalName}#${i}`)) continue;
             if (this.getParamType(funcTypeInfo, rawParamName)) continue;
             if (arrayUsageParams.has(rawParamName) || objectUsageParams.has(rawParamName)) continue;
             if (param.right && param.right.type === 'Literal') continue;
@@ -1748,6 +1753,7 @@
                 for (let i = 0; i < resolved.args.length && i < sig.params.length; i++) {
                   const paramType = sig.params[i];
                   if (paramType && !paramType.isArray && paramType.name !== 'BigInteger' &&
+                      !this.ilTypedParams.has(`${this.currentClass.name}.${resolved.pascalMethod}#${i}`) &&
                       upgradableScalar.has(paramType.name) && resolveArgIsBigInteger(resolved.args[i])) {
                     sig.params[i] = new CSharpType('BigInteger');
                     changed = true;
@@ -2220,8 +2226,12 @@
         // multiple classes declare a same-named static method with different
         // parameter shapes (e.g. two ciphers each with their own FO(a, b, c)).
         className = calleeObject.name;
+      } else if (calleeObject.type !== 'Unresolved') {
+        // A method of the receiver's own class
+        const receiverType = this.inferFullExpressionType(calleeObject);
+        if (receiverType && !receiverType.isArray && this.methodSignatures.has(receiverType.name + '.' + methodName))
+          className = receiverType.name;
       }
-      // Could also handle OpCodes.MethodName, etc. in the future
 
       if (!className) {
         // FALLBACK: Try to find method in any registered class
@@ -8300,6 +8310,8 @@
           const prevArrayElementType = this.currentArrayElementType;
           if (fieldType?.isArray) this.currentArrayElementType = fieldType.elementType;
           field.initializer = this.transformExpression(decl.init);
+          // The initializer converted to the IL-declared field type
+          if (ilFieldType) field.initializer = this.castIfNeeded(field.initializer, this.inferFullExpressionType(decl.init), fieldType);
           this.currentArrayElementType = prevArrayElementType;
           targetClass.members.push(field);
 
@@ -19856,7 +19868,7 @@
           // evidence next to a concrete numeric type from another assignment
           // elsewhere in the class (see findStrongerNumericFieldType's own doc
           // comment) - defer to that stronger evidence when present.
-          if (propType?.name === 'int' && propInfo.initialValue?.type === 'Literal' &&
+          if (propType?.name === 'int' && !this.classILMemberTypes?.has(propName) && propInfo.initialValue?.type === 'Literal' &&
               (typeof propInfo.initialValue.value === 'number' || typeof propInfo.initialValue.value === 'bigint')) {
             const stronger = this.findStrongerNumericFieldType(classBody, propName);
             if (stronger) propType = stronger;
@@ -19960,6 +19972,12 @@
         // since the Third pass below only fills in a field's type when nothing claimed
         // it first (CS1061 wherever the field is later read via its real instance-
         // object shape, e.g. `this.blockCipher.algorithm`).
+        // The field's IL type, where the IL has one
+        const ilFieldType = this.mapILType(this.classILMemberTypes?.get(fieldName));
+        if (ilFieldType) {
+          this.setClassFieldType(csClass.name, csFieldName, ilFieldType);
+          continue;
+        }
         if (fieldName && this.dynamicInstanceFields?.has(fieldName)) {
           this.setClassFieldType(csClass.name, csFieldName, CSharpType.Dynamic());
           continue;
@@ -20135,6 +20153,9 @@
                          this.inferTypeFromName(propName.substring(1)) ||
                          CSharpType.Dynamic();
             }
+            // The IL types of the accessor and of its backing field, where the IL has them
+            propType = this.mapILType(this.classILMemberTypes?.get(propName.substring(1))) || propType;
+            fieldTypeOverride = this.mapILType(this.classILMemberTypes?.get(propName)) || fieldTypeOverride;
 
             // Make nullable if it can be null (for reference types only - see comment
             // on CSHARP_VALUE_TYPES above for why value types are excluded)
@@ -20206,7 +20227,8 @@
         // default instead (CS1061 wherever the field is later read via its real
         // `.Algorithm`/etc. instance-object shape).
         const dynamicFieldType = propName && this.dynamicInstanceFields?.has(propName) ? CSharpType.Dynamic() : null;
-        let propType = alreadyRegisteredType || dynamicFieldType || (propInfo.initialValue ?
+        const ilMemberType = this.mapILType(this.classILMemberTypes?.get(propName));
+        let propType = ilMemberType || alreadyRegisteredType || dynamicFieldType || (propInfo.initialValue ?
           this.inferExpressionType(propInfo.initialValue) || CSharpType.Dynamic() :
           CSharpType.Dynamic());
 
@@ -20217,7 +20239,7 @@
         // this loop (collectAllMethodPropertyAssignments) is what actually declares
         // that kind of field, so it needs the same upgrade inferPropertyType applies
         // for constructor-declared ones.
-        if (propName && this.jaggedInstanceFields?.has(propName) &&
+        if (!ilMemberType && propName && this.jaggedInstanceFields?.has(propName) &&
             propType?.isArray && !propType.elementType?.isArray) {
           const knownElemType = this.jaggedInstanceFields.get(propName);
           propType = CSharpType.Array(knownElemType || propType);
