@@ -678,8 +678,10 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
     const preludeText = plugin.GetStandalonePrelude();
     code = code.startsWith(preludeText) ? preludeText + prefix + code.slice(preludeText.length) : prefix + code;
   } else if (prefix && language === 'kotlin') {
-    // a Kotlin file begins with its file annotations: dependencies go after the main unit
-    code = code + '\n' + prefix;
+    // a Kotlin file begins with its file annotations and the runtime: dependencies go
+    // between them and the main unit, whose initialiser may look them up
+    const at = code.indexOf('// @generated-unit ');
+    code = at < 0 ? code + '\n' + prefix : code.slice(0, at) + prefix + code.slice(at);
   } else if (prefix) {
     code = prefix + code;
   }
