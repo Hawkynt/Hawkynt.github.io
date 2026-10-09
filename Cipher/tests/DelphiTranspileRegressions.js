@@ -232,6 +232,9 @@ sameAsJs('members: a framework subclass field read through a framework base is t
 sameAsJs('members: if (obj.method) holds for a method the class declares',
   'class Box { Dispose() { this.gone = 1; } constructor() { this.gone = 0; } }\n' +
   '/** @returns {string} */ function probe() { const b = new Box(); if (b.Dispose) { b.Dispose(); } return String(b.gone); }', '1');
+sameAsJs('names: a field or parameter named like a Free Pascal constructor keyword (fail) is renamed',
+  'class Decryption { /** @param {int32} fail */ constructor(fail) { this.fail = fail; } }\n' +
+  '/** @returns {string} */ function probe() { return String(new Decryption(3).fail); }');
 sameAsJs('members: Find destructured from AlgorithmFramework looks up the registry',
   'const { Find } = AlgorithmFramework;\n' +
   '/** @returns {string} */ function probe() { const a = Find("no such algorithm"); return a ? "found" : "missing"; }', 'missing');

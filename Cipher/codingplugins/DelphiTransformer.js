@@ -213,7 +213,7 @@
     'self result true false exit break continue default specialize generic helper strict private protected public published ' +
     'override virtual overload reintroduce static message cdecl stdcall register pascal far near forward external export ' +
     'index name read write stored nodefault implements dynamic deprecated platform experimental unimplemented assembler ' +
-    'otherwise bitpacked weakexternal cppdecl iochecks local noreturn nostackframe oldfpccall safecall softfloat varargs').split(' ');
+    'fail otherwise bitpacked weakexternal cppdecl iochecks local noreturn nostackframe oldfpccall safecall softfloat varargs').split(' ');
   const PASCAL_BUILTINS = ('system sysutils math typinfo integer cardinal byte word shortint smallint longint longword int8 uint8 ' +
     'int16 uint16 int32 uint32 int64 uint64 qword double single extended real boolean char widechar ansichar unicodestring ' +
     'ansistring widestring shortstring pointer tobject tclass exception tarray length setlength high low ord chr inc dec ' +
