@@ -970,6 +970,21 @@ namespace ${namespace}
             return atStart ? padding + s : s + padding;
         }
 
+        // JavaScript multiplies numbers as doubles: a product past 2^53 is rounded,
+        // then wrapped to the C# result type as ToInt32/ToUint32 would
+        public static int JsMul(int a, int b) => unchecked((int)JsProductBits((double)a * b));
+        public static uint JsMul(uint a, uint b) => unchecked((uint)JsProductBits((double)a * b));
+        public static long JsMul(long a, long b) => JsProductBits((double)a * b);
+        private static long JsProductBits(double product)
+        {
+            const double two63 = 9223372036854775808.0, two64 = 18446744073709551616.0;
+            if (product >= -two63 && product < two63) return (long)product;
+            double rest = product % two64;
+            if (rest >= two63) rest -= two64;
+            else if (rest < -two63) rest += two64;
+            return (long)rest;
+        }
+
         // JavaScript's string.split: an empty separator gives the characters
         public static string[] JsSplit(string s, object separator)
         {

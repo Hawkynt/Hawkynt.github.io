@@ -12319,7 +12319,7 @@
 
         case 'BinaryExpression':
         case 'LogicalExpression':
-          return this.transformBinaryExpression(node);
+          return this.asJsProduct(node, this.transformBinaryExpression(node));
 
         case 'UnaryExpression':
           return this.transformUnaryExpression(node);
@@ -25283,6 +25283,29 @@
             new CSharpCast(CSharpType.Double(), this.transformExpression(argNode.left)), '/', this.transformExpression(argNode.right));
       }
       return new CSharpCast(CSharpType.Double(), arg);
+    }
+
+    /**
+     * A product of two 32-bit numbers as JavaScript computes it: in doubles, so
+     * one past 2^53 is rounded (an LCG's `ToUint32(1099087573 * s)`), where C#
+     * multiplies the integers exactly. Such a product goes through JsMul, which
+     * keeps C#'s result type. A product with a small constant or a 16-bit operand
+     * stays below 2^53 and is left alone.
+     * @param {Object} node - the JS/IL binary expression
+     * @param {Object} result - its transformed C# expression
+     * @returns {Object} the C# expression to use
+     */
+    asJsProduct(node, result) {
+      if (node.operator !== '*' || result?.nodeType !== 'BinaryExpression' || result.operator !== '*') return result;
+      // An inlined OpCodes.Mul32 and the like are exact (Math.imul)
+      if (node.opCodesMethod) return result;
+      const small = n => n?.type === 'Literal' && typeof n.value === 'number' && Math.abs(n.value) < 2 ** 21;
+      if (small(node.left) || small(node.right)) return result;
+      const wide = ['int', 'uint', 'long'];
+      const leftType = this.inferFullExpressionType(node.left);
+      const rightType = this.inferFullExpressionType(node.right);
+      if (!wide.includes(leftType?.name) || leftType.isArray || !wide.includes(rightType?.name) || rightType.isArray) return result;
+      return new CSharpMethodCall(null, 'JsMul', [result.left, result.right]);
     }
 
     /**

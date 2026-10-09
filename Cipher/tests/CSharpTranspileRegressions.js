@@ -130,7 +130,7 @@ check('IIFE hoisting: two IIFEs with the same local get distinct module names; a
 check('scope: `const A = a` next to parameter `a` gets a distinct C# name', () => {
   const code = transpile('function mul(a, b) { const A = a === 0 ? 65536 : a; return A * b; }');
   expectMatch(code, /\ba2\s*=.*\ba\b/, 'a renamed local a2 initialised from a');
-  expectMatch(code, /return a2 \*/, 'the renamed local used afterwards');
+  expectMatch(code, /return (a2 \*|JsMul\(a2,)/, 'the renamed local used afterwards');
 });
 check('scope: loop variable `r` next to parameter `R` does not redeclare it', () => {
   const code = transpile('function f(L, R) { let s = 0; for (let r = 0; r < 8; r++) s += r + R; return s + L; }');
@@ -601,6 +601,13 @@ check('Math.ceil/round of an integer quotient divide as doubles, not as integers
   const round = transpile(header + 'function f(n, h) { return Math.round(n / h); }');
   expectNoMatch(round, /\(double\)\(n \/ h\)/, 'the integer quotient converted afterwards');
 });
+check('numbers: a product of two 32-bit numbers is the double JavaScript computes (JsMul); Mul32 and small constants stay exact', () => {
+  const code = transpile('/**\n * @param {uint32} s - state\n * @param {uint32} a - multiplier\n * @returns {uint32} next\n */\n' +
+    'function next(s, a) { return OpCodes.ToUint32(1099087573 * s) ^ OpCodes.Mul32(a, s) ^ OpCodes.ToUint32(s * 5); }');
+  expectMatch(code, /JsMul\(1099087573, s\)/, 'JsMul(1099087573, s)');
+  expectNoMatch(code, /JsMul\(a, s\)/, 'JsMul for OpCodes.Mul32');
+  expectNoMatch(code, /JsMul\(s, 5\)/, 'JsMul for a small constant');
+});
 check('Math.round rounds a half up as JavaScript does, not to even', () => {
   const code = transpile('/**\n * @param {float64} x - x\n * @returns {int32} r\n */\nfunction f(x) { return Math.round(x * 3); }');
   expectMatch(code, /Math\.Floor\(\(double\)\(x \* 3\) \+ 0\.5\)/, 'Math.Floor(x * 3 + 0.5)');
@@ -787,6 +794,11 @@ namespace RegressionTest {
       Eq("slice-neg-end", Convert.ToHexString(OpCodes.SliceArray(new byte[] { 1, 2, 3 }, 0, -1)), "0102");
       Eq("slice-crossed", OpCodes.SliceArray(new byte[] { 1, 2, 3 }, 2, 1).Length, 0);
       Eq("slice-generic", string.Join(",", OpCodes.SliceArray(new uint[] { 7, 8 }, 1, 5)), "8");
+      // JsMul rounds a product past 2^53 as a JavaScript number does
+      Eq("jsmul-exact", FrameworkFunctions.JsMul(65535u, 65537u), 4294967295u);
+      Eq("jsmul-rounded", FrameworkFunctions.JsMul(1099087573u, 2865916745u), unchecked((uint)(ulong)(1099087573.0 * 2865916745.0)));
+      Eq("jsmul-neg", FrameworkFunctions.JsMul(-3, 5), -15);
+      Eq("jsmul-long", FrameworkFunctions.JsMul(4294967295L, 4294967295L), unchecked((long)(ulong)(4294967295.0 * 4294967295.0)));
       // JsSplit is string.prototype.split
       Eq("split-chars", string.Join("|", FrameworkFunctions.JsSplit("abc", "")), "a|b|c");
       Eq("split-sep", string.Join("|", FrameworkFunctions.JsSplit("a,,b", ",")), "a||b");
