@@ -24,8 +24,10 @@ const quiet = fn => { console.log = () => {}; try { return fn(); } finally { con
 const { TypeAwareJSASTParser } = quiet(() => require(path.join(CIPHER_DIR, 'type-aware-transpiler.js')));
 const { LanguagePlugins } = require(path.join(CIPHER_DIR, 'codingplugins', 'LanguagePlugin.js'));
 
-/** A language plugin loaded afresh (an earlier category may have cleared the registry) */
+/** A language plugin: the registered one, else loaded afresh (an earlier category may have cleared the registry) */
 function loadPlugin(file, extension) {
+  const registered = LanguagePlugins.GetAll().find(p => p.extension === extension);
+  if (registered) return registered;
   const resolved = require.resolve(path.join(CIPHER_DIR, 'codingplugins', file));
   delete require.cache[resolved];
   quiet(() => require(resolved));
@@ -274,6 +276,117 @@ check('ruby: RegisterAlgorithm turns plain test objects into TestCases keeping e
   return expectOutput(runRuby(js, 't = AlgorithmFramework.Find("A").tests[0]\np [t.class.name, t["outputSize"], t.text]'),
     ['["TestCase", 4, "Test vector #1"]']);
 });
+
+// ===========================================================================
+// FREEBASIC
+// ===========================================================================
+//
+// One compile serves every case (the runtime makes a build take seconds):
+// each case is a module function, the driver prints its value on a line of
+// its own, and a case checks its line.
+
+const FB_CASES = {
+  typedcopy: {
+    // a typed array constructed from a typed array is a copy, not a view
+    js: 'function typedcopy() { const a = new Uint8Array([1, 2, 3]); const b = new Uint8Array(a); b[0] = 9; return [a[0], b[0], b.length]; }',
+    expect: '1,9,3'
+  },
+  bigdouble: {
+    // integral doubles past 2^63 convert exactly (FreeBASIC's Int and Fix saturate there)
+    js: 'function bigdouble() { const x = 15817227400572908000; return [x >>> 0, x | 0, String(BigInt(x))]; }',
+    expect: '2126065664,2126065664,15817227400572907520'
+  },
+  andn: {
+    // an inlined OpCodes BigInt helper is a BigInt operation even on uint64-typed operands
+    js: '/**\n * @param {uint64} a - a\n * @param {uint64} b - b\n * @returns {uint64} a - b mod 2^64\n */\nfunction andn(a, b) { return OpCodes.AndN(a - b, 0xFFFFFFFFFFFFFFFFn); }',
+    call: 'js_fcall2(@fmainx_andn, js_tobig(js_num(1)), js_tobig(js_num(2)))',
+    expect: '18446744073709551615'
+  },
+  fprecision: {
+    // arithmetic rounds to double precision (x87 rounds intermediates to 64-bit mantissas)
+    js: 'function fprecision() { let s = 42; const out = []; for (let i = 0; i < 4; ++i) { s = OpCodes.And32(s * 1103515245 + 12345, 0x7FFFFFFF); out.push(s); } return out.join(" "); }',
+    expect: '1250496027 1116302080 1964818176 1500480256'
+  },
+  xornum: {
+    // ... and on Numbers it stays a Number operation
+    js: 'function xornum() { const v = OpCodes.XorN(OpCodes.XorN(0x47, 0x50), 0x52); return [v, typeof v]; }',
+    expect: '69,number'
+  },
+  bigstep: {
+    // ++ and -- step a BigInt by 1n
+    js: 'function bigstep() { let i = 0n; i++; ++i; let j = 5n; j--; return [String(i), String(j)]; }',
+    expect: '2,4'
+  },
+  varscope: {
+    // var is function-scoped: the loop variable is read after the loop
+    js: 'function varscope() { for (var i = 0; i < 3; ++i) { } return i; }',
+    expect: '3'
+  },
+  hoisted: {
+    // a hoisted nested function captures a variable declared after it
+    js: 'function hoisted() { const buf = [1, 2]; function step(x) { buf.push(x); } step(3); step(4); return buf.join("-"); }',
+    expect: '1-2-3-4'
+  },
+  regex: {
+    // regular expressions: replace (global), split, test, negated classes
+    js: 'function regex() { return ["a1b22c".replace(/[0-9]+/g, "_"), "x  y,z".split(/[\\s,]+/).join("|"), /^ab/.test("abc"), "AbC".replace(/[^A-Z]/g, "")]; }',
+    expect: 'a_b_c,x|y|z,true,AC'
+  },
+  charcodes: {
+    // String.fromCharCode.apply spreads its array
+    js: 'function charcodes() { return String.fromCharCode.apply(null, [72, 105]); }',
+    expect: 'Hi'
+  },
+  bitstream: {
+    // OpCodes.CreateBitStream writes and reads back MSB-first bit fields
+    js: 'function bitstream() { const w = OpCodes.CreateBitStream(); w.writeBits(5, 3); w.writeBits(1, 1); w.writeBits(300, 9); const bytes = w.toArray(); const r = OpCodes.CreateBitStream(bytes); return [bytes.join(","), r.readBits(3), r.readBits(1), r.readBits(9)]; }',
+    expect: '185,96,5,1,300'
+  },
+  globals: {
+    // typeof an undeclared name is "undefined"; builtins the runtime provides are not
+    js: 'function globals() { return [typeof notDeclaredAnywhere, typeof Math, typeof performance.now]; }',
+    expect: 'undefined,object,function'
+  },
+  argorder: {
+    // call arguments, array elements and operands are evaluated left to right
+    // (FreeBASIC evaluates a call's arguments right to left)
+    js: 'function argorder() { const log = []; function f(x) { log.push(x); return x; } function g(a, b, c) { return a + b + c; } ' +
+      'g(f(1), f(2), f(3)); const arr = [f(4), f(5)]; const s = String(f(6)) + String(f(7)); return log.join("") + "/" + arr.join("") + "/" + s; }',
+    expect: '1234567/45/67'
+  }
+};
+
+let fbRun = null;
+/** @returns {Map<string,string>|'skip'} every case's printed value, from one build */
+function runBasicCases() {
+  if (fbRun) return fbRun;
+  if (!hasTool('fbc', ['-version'])) return (fbRun = 'skip');
+  const names = Object.keys(FB_CASES);
+  const driver = names.map(n => `Print "${n}|"; js_tostring(${FB_CASES[n].call || `js_fcall0(@fmainx_${n})`})`);
+  const code = transpile('basic', names.map(n => FB_CASES[n].js).join('\n')) + '\n' + driver.join('\n') + '\n';
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fb-regression-'));
+  try {
+    const file = path.join(dir, 'probe.bas');
+    fs.writeFileSync(file, code);
+    const build = spawnSync('fbc', [file, '-x', path.join(dir, 'probe.exe')], { encoding: 'utf-8', timeout: 300000, windowsHide: true });
+    if (build.status !== 0) throw new Error(`fbc exited ${build.status}: ${(build.stdout + build.stderr).trim().split('\n').slice(0, 4).join(' | ')}`);
+    const run = spawnSync(path.join(dir, 'probe.exe'), [], { encoding: 'utf-8', timeout: 60000, windowsHide: true });
+    if (run.status !== 0) throw new Error(`the FreeBASIC probe exited ${run.status}: ${(run.stdout || '').trim().split('\n').slice(-3).join(' | ')}`);
+    fbRun = new Map(run.stdout.replace(/\r/g, '').trim().split('\n').map(l => [l.slice(0, l.indexOf('|')), l.slice(l.indexOf('|') + 1)]));
+    return fbRun;
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { /* temp dir cleanup is best effort */ }
+  }
+}
+
+for (const [name, c] of Object.entries(FB_CASES)) {
+  check(`basic: ${name} returns what JavaScript returns`, () => {
+    // Given the JavaScript function / When transpiled to FreeBASIC, built and called / Then it returns what JavaScript returns
+    const out = runBasicCases();
+    if (out === 'skip') return 'skip';
+    if (out.get(name) !== c.expect) throw new Error(`expected ${c.expect}, got ${out.get(name)}`);
+  });
+}
 
 /**
  * RUBYBASIC: run every regression case.
