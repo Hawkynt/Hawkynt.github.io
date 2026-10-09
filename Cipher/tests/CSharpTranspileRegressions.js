@@ -479,6 +479,12 @@ check('OpCodes.CreateArray: the array has the element type its target is declare
   const code = transpile('class C { constructor() { /** @type {BigInt[]} */ this.s = OpCodes.CreateArray(4, 0n); } }');
   expectMatch(code, /CreateArray<BigInteger>\(/, 'CreateArray<BigInteger>(...)');
 });
+check('OpCodes.Unpack32LE: a float64 word is unpacked from its low 32 bits as an unsigned integer', () => {
+  const code = transpile('/**\n * @param {float64} len - length\n * @returns {uint8[]} bytes\n */\n' +
+    'function f(len) { /** @type {float64} */ const high = Math.floor(len / 4294967296); /** @type {float64} */ const low = len - high * 4294967296; return OpCodes.Unpack32LE(low); }');
+  expectMatch(code, /\(uint\)\(unchecked\(\(long\)\(low\)\)\)\) >> 8/, 'the double cast to long, then uint, before the shift');
+  expectNoMatch(code, /\blow >> 8/, 'a shift of the double itself');
+});
 
 // ---------------------------------------------------------------------------
 // Validation harness (tests/TranspilerValidation.js, C# paths)

@@ -23407,8 +23407,14 @@
      */
     transformUnpackBytes(node) {
       // Handle both IL AST (arguments array) and legacy (value property)
-      const value = this.transformExpression(node.arguments?.[0] || node.value);
+      const valueNode = node.arguments?.[0] || node.value;
+      let value = this.transformExpression(valueNode);
       const bits = node.bits || 32;
+      // A float64 word (a length past 2^32 split into halves) unpacks as the
+      // JavaScript helper's `>>> 0` sees it: its low 32 bits as an unsigned integer
+      const valueType = bits <= 32 ? this.inferFullExpressionType(valueNode) : null;
+      if (valueType && !valueType.isArray && (valueType.name === 'double' || valueType.name === 'float'))
+        value = new CSharpCast(CSharpType.UInt(), new CSharpCast(CSharpType.Long(), value));
       const isBigEndian = node.endian === 'big';
       const byteCount = bits / 8;
 
