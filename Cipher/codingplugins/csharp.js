@@ -1617,7 +1617,34 @@ namespace ${namespace}
             }
             return result;
         }
-        public static ulong UInt64(dynamic value) => System.Convert.ToUInt64(value);
+        // OpCodes.UInt64: 64-bit values as [high32, low32] pairs
+        public static class UInt64 {
+            static ulong Of(uint[] a) => ((ulong)a[0] << 32) | a[1];
+            static uint[] To(ulong v) => new uint[] { (uint)(v >> 32), (uint)v };
+            public static uint[] Create(long high, long low) => new uint[] { (uint)high, (uint)low };
+            public static uint[] FromBytes(byte[] bytes) {
+                var padded = new byte[8];
+                System.Array.Copy(bytes, 0, padded, 8 - System.Math.Min(8, bytes.Length), System.Math.Min(8, bytes.Length));
+                return To(System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(padded));
+            }
+            public static byte[] ToBytes(uint[] a) {
+                var bytes = new byte[8];
+                System.Buffers.Binary.BinaryPrimitives.WriteUInt64BigEndian(bytes, Of(a));
+                return bytes;
+            }
+            public static uint[] Add(uint[] a, uint[] b) => To(Of(a) + Of(b));
+            public static uint[] Sub(uint[] a, uint[] b) => To(Of(a) - Of(b));
+            public static uint[] Mul(uint[] a, uint[] b) => To(Of(a) * Of(b));
+            public static uint[] Rotr(uint[] a, int n) => n == 0 ? a : To(System.Numerics.BitOperations.RotateRight(Of(a), n % 64));
+            public static uint[] Rotl(uint[] a, int n) => n == 0 ? a : To(System.Numerics.BitOperations.RotateLeft(Of(a), n % 64));
+            public static uint[] Shr(uint[] a, int n) => n == 0 ? a : To(Of(a) >> n);
+            public static uint[] Shl(uint[] a, int n) => n == 0 ? a : To(Of(a) << n);
+            public static uint[] Xor(uint[] a, uint[] b) => new uint[] { a[0] ^ b[0], a[1] ^ b[1] };
+            public static uint[] And(uint[] a, uint[] b) => new uint[] { a[0] & b[0], a[1] & b[1] };
+            public static uint[] Or(uint[] a, uint[] b) => new uint[] { a[0] | b[0], a[1] | b[1] };
+            public static uint[] Not(uint[] a) => new uint[] { ~a[0], ~a[1] };
+            public static uint[] Clone(uint[] a) => new uint[] { a[0], a[1] };
+        }
         // Generic array copy (mirrors OpCodes.js's CopyArray) - works for any element
         // type (byte[], uint[], ...), unlike the byte[]-specific helpers above.
         public static T[] CopyArray<T>(T[] arr) => arr == null ? null : (T[])arr.Clone();

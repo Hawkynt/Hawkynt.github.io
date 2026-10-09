@@ -1140,6 +1140,13 @@ namespace RegressionTest {
       sm.Set(1, 1, 0);
       Eq("sparse-count", sm.NonZeroCount(), 1);
       Eq("sparse-double-set", sm.Get(0, 2), 1);
+      // OpCodes.UInt64 works on [high32, low32] pairs
+      Eq("u64-shr", string.Join(",", OpCodes.UInt64.Shr(OpCodes.UInt64.Create(0x12345678, 0x9ABCDEF0), 8)), "1193046,2023406814");
+      Eq("u64-shl-wide", string.Join(",", OpCodes.UInt64.Shl(OpCodes.UInt64.Create(0, 1), 40)), "256,0");
+      Eq("u64-xor", string.Join(",", OpCodes.UInt64.Xor(OpCodes.UInt64.Create(0xFFFFFFFF, 0), OpCodes.UInt64.Create(0xF, 0xF))), "4294967280,15");
+      Eq("u64-add-carry", string.Join(",", OpCodes.UInt64.Add(OpCodes.UInt64.Create(0, 0xFFFFFFFF), OpCodes.UInt64.Create(0, 1))), "1,0");
+      Eq("u64-rotr", string.Join(",", OpCodes.UInt64.Rotr(OpCodes.UInt64.Create(0, 1), 1)), "2147483648,0");
+      Eq("u64-bytes", Convert.ToHexString(OpCodes.UInt64.ToBytes(OpCodes.UInt64.FromBytes(new byte[] { 1, 2 }))), "0000000000000102");
       // ToShort/ToLong sign-wrap to 16/64 bits; CreateUint64ArrayFromHex yields [high, low] pairs
       Eq("toshort-wrap", OpCodes.ToShort(0x18000), (short)-32768);
       Eq("toshort-max", OpCodes.ToShort(32767), (short)32767);
