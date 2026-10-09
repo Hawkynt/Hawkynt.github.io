@@ -524,6 +524,12 @@ namespace RegressionTest {
       Eq("setbit-clear", OpCodes.SetBit(0x80000001u, 31, false), 1u);
       Eq("createarray", string.Join(",", OpCodes.CreateArray(3, new BigInteger(7))), "7,7,7");
       Eq("createarray-empty", OpCodes.CreateArray(0, 1u).Length, 0);
+      // BitStream writers take a signed or dynamic number as its low 32 bits
+      var bits = new BitStream();
+      dynamic signedLength = 0x01020304;
+      bits.WriteUint32LE(signedLength);
+      bits.WriteByte(-1);
+      Eq("bitstream-signed", Convert.ToHexString(bits.ToArray()), "04030201FF");
       // SetGrow stores by index, growing the array as a JavaScript store does
       var grown = new uint[0];
       OpCodes.SetGrow(ref grown, 2, 7u);

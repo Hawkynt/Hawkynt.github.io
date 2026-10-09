@@ -1004,6 +1004,16 @@ namespace ${namespace}
         public void WriteUint32BE(uint value) { WriteBits((value >> 24) & 0xFF, 8); WriteBits((value >> 16) & 0xFF, 8); WriteBits((value >> 8) & 0xFF, 8); WriteBits(value & 0xFF, 8); }
         public void WriteUint32LE(uint value) { WriteBits(value & 0xFF, 8); WriteBits((value >> 8) & 0xFF, 8); WriteBits((value >> 16) & 0xFF, 8); WriteBits((value >> 24) & 0xFF, 8); }
         public void WriteVarInt(uint value) { while (value >= 0x80) { WriteByte((value & 0x7F) | 0x80); value >>= 7; } WriteByte(value & 0x7F); }
+        // A JavaScript number argument may arrive signed (an int, a dynamic int): the
+        // writers take its low 32 bits, as the JavaScript ones do
+        public void WriteBits(long value, int numBits) => WriteBits(unchecked((uint)value), numBits);
+        public void WriteBit(long bit) => WriteBit(unchecked((uint)bit));
+        public void WriteByte(long value) => WriteByte(unchecked((uint)value));
+        public void WriteUint16BE(long value) => WriteUint16BE(unchecked((uint)value));
+        public void WriteUint16LE(long value) => WriteUint16LE(unchecked((uint)value));
+        public void WriteUint32BE(long value) => WriteUint32BE(unchecked((uint)value));
+        public void WriteUint32LE(long value) => WriteUint32LE(unchecked((uint)value));
+        public void WriteVarInt(long value) => WriteVarInt(unchecked((uint)value));
         public void WriteUnary(int value) { for (int i = 0; i < value; ++i) WriteBit(1); WriteBit(0); }
         public void AlignToByte() { while (bufferBits % 8 != 0) WriteBit(0); }
 
