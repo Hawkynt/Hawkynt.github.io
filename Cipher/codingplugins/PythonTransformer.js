@@ -572,19 +572,6 @@
     transform(ast) {
       const module = new PythonModule();
 
-      // Whole-file heuristic used by transformUnaryExpression() for `~`:
-      // uninitialized-then-reassigned locals (e.g. SHA-512/Skein's
-      // `let a, b, c, d, e, f, g, h;` compression-loop registers) get no
-      // useful resultType from the shared type-aware parser and fall back to
-      // a default ('uint8') that is nonsense for these - they hold full
-      // 64-bit round state. That default is indistinguishable, node-locally,
-      // from a genuine byte value. A file that uses any BigInt literal
-      // anywhere is, in this codebase, always a 64-bit/BigInt-state hash or
-      // PRNG (never a mix of real byte-level `~` and BigInt state sharing
-      // the same untyped-fallback bucket), so treat the ambiguous default as
-      // 64-bit within such files - see isWideIntResultType() callers.
-      this._fileHasBigIntLiterals = this._scanForBigIntLiterals(ast);
-
       // Every declared function name, by its snake_case spelling
       // (see _collectLocalNameCollisions)
       this._declaredRawNamesByFolded = new Map();
@@ -593,7 +580,7 @@
         if (Array.isArray(n)) { n.forEach(collectDeclared); return; }
         if (n.type === 'FunctionDeclaration' && n.id && n.id.name)
           this._declaredRawNamesByFolded.set(toSnakeCase(n.id.name), n.id.name);
-        for (const key of Object.keys(n)) if (key !== 'loc' && key !== 'range' && key !== 'resultType') collectDeclared(n[key]);
+        for (const key of Object.keys(n)) if (key !== 'loc' && key !== 'range' && key !== 'parent' && key !== 'resultType') collectDeclared(n[key]);
       };
       collectDeclared(ast);
 
@@ -614,31 +601,6 @@
       }
 
       return module;
-    }
-
-    /**
-     * Shallow, allocation-light scan for any BigInt literal (`5n`,
-     * resultType 'bigint', etc.) anywhere in the AST. See the comment in
-     * transform() for why this drives the `~` operator's mask heuristic.
-     */
-    _scanForBigIntLiterals(node, depth) {
-      if (!node || typeof node !== 'object') return false;
-      if (depth === undefined) depth = 0;
-      if (depth > 200) return false; // guard against pathological/cyclic trees
-      if (Array.isArray(node)) {
-        for (const n of node) {
-          if (this._scanForBigIntLiterals(n, depth + 1)) return true;
-        }
-        return false;
-      }
-      if (node.type === 'Literal' && typeof node.value === 'bigint') return true;
-      if (node.resultType === 'bigint') return true;
-      for (const k in node) {
-        if (k === 'parent' || k === 'loc' || k === 'range') continue;
-        const v = node[k];
-        if (v && typeof v === 'object' && this._scanForBigIntLiterals(v, depth + 1)) return true;
-      }
-      return false;
     }
 
     /**
@@ -6102,7 +6064,7 @@ class OpCodes(metaclass=_OpCodesMeta):
             if (['ForStatement', 'WhileStatement', 'DoWhileStatement', 'ForOfStatement', 'ForInStatement',
               'FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression', 'ArrowFunction',
               'ClassDeclaration', 'ClassExpression'].includes(n.type)) return;
-            for (const key of Object.keys(n)) if (key !== 'loc' && key !== 'range') mark(n[key]);
+            for (const key of Object.keys(n)) if (key !== 'loc' && key !== 'range' && key !== 'parent') mark(n[key]);
           };
           node.cases.forEach(c => mark(c.consequent));
         }
@@ -6221,7 +6183,7 @@ class OpCodes(metaclass=_OpCodesMeta):
       if (LOOPS.includes(node.type) || FUNCTIONS.includes(node.type)) return false;
       if (node.type === 'SwitchStatement' && type === 'BreakStatement') return false;
       for (const key of Object.keys(node)) {
-        if (key === 'loc' || key === 'range' || key === 'resultType') continue;
+        if (key === 'loc' || key === 'range' || key === 'parent' || key === 'resultType') continue;
         const v = node[key];
         if (v && typeof v === 'object' && this._findJumpOutside(v, type)) return true;
       }
@@ -8552,18 +8514,11 @@ class OpCodes(metaclass=_OpCodesMeta):
       // wide operands here so it can skip that mask instead of silently
       // truncating 64-bit state to 32 bits.
       if (operator === '~') {
-        const argResultType = node.argument && node.argument.resultType;
-        // Confidently-wide type, OR an untyped/ambiguous fallback (no
-        // resultType at all - e.g. a computed array-element read like
-        // mac/blake2bmac.js's `v[14] = ~v[14]` on its 64-bit BLAKE2b working
-        // vector, which the shared parser never tracks per-element - or the
-        // 'uint8' fallback default) inside a file that uses BigInt anywhere
-        // else - see _scanForBigIntLiterals()'s doc comment for why treating
-        // either ambiguous case as wide is safe there.
-        if (PythonTransformer.isWideIntResultType(argResultType) ||
-            (this._fileHasBigIntLiterals && (argResultType === 'uint8' || !argResultType))) {
+        // The IL type of the `~` decides: a BigInt result is unbounded
+        // (BLAKE2b-MAC's `v[14] = ~v[14]` on a BigInt[] vector); a Number
+        // result is the 32-bit one the emitter masks.
+        if (PythonTransformer.isWideIntResultType(String(node.resultType || '').toLowerCase()))
           result.isBigInt = true;
-        }
       }
       return result;
     }

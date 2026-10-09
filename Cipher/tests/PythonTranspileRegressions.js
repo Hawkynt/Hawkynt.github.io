@@ -326,6 +326,15 @@ check('globals: ArrayBuffer.isView, Array(n) without new, and TestCase as a base
 });
 
 // ---------------------------------------------------------------------------
+// Bitwise NOT follows the IL type
+// ---------------------------------------------------------------------------
+check('not: ~ on a BigInt array element keeps 64 bits, on a Number masks to 32', () => {
+  const js = '/** @param {BigInt[]} v @param {uint32} x */\nfunction f(v, x) { v[0] = ~v[0]; return [v[0] & 0xffffffffffffffffn, (~x) & 0xFF]; }';
+  // Given a BigInt[] element (no BigInt literal next to the ~) and a uint32
+  return expectOutput(runPython(js, 'r = f([5], 5)\nprint(hex(r[0]), r[1])'), ['0xfffffffffffffffa 250']);
+});
+
+// ---------------------------------------------------------------------------
 // Byte arrays are mutable
 // ---------------------------------------------------------------------------
 check('bytes: hex, ANSI and typed-array constructors give mutable arrays', () => {
