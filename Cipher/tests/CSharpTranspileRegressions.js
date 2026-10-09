@@ -787,6 +787,8 @@ namespace RegressionTest {
       Eq("release", string.Join(",", seen), "01020304");
       ulong absorbed = absorber.Length; // uint64, as the framework documents it
       Eq("absorbed", absorbed, 5ul);
+      // Finish hands the total as a uint64, which MerkleDamgardBlocks takes
+      Eq("finish-ulong", absorber.Finish((held, pending, total) => FrameworkFunctions.MerkleDamgardBlocks(held, pending, total, new { BlockSize = 64, LengthBytes = 8 }).Length), 1);
       Eq("tail", absorber.Finish((held, pending, total) => Convert.ToHexString(held) + "/" + pending + "/" + total), "05/1/5");
       // GFMul: AES field, 0x57 * 0x83 = 0xC1 (FIPS-197 example)
       Eq("gfmul", OpCodes.GFMul(0x57, 0x83, 0x11B, 8), 0xC1);

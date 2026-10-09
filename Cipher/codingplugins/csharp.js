@@ -836,9 +836,9 @@ namespace ${namespace}
 
         private byte[] Tail() => _held.Take(_pending).ToArray();
         public T Finish<T>(Func<byte[], int, T> finalize) => finalize(Tail(), _pending);
-        public T Finish<T>(Func<byte[], int, long, T> finalize) => finalize(Tail(), _pending, _length);
+        public T Finish<T>(Func<byte[], int, ulong, T> finalize) => finalize(Tail(), _pending, (ulong)_length);
         public void Finish(Action<byte[], int> finalize) => finalize(Tail(), _pending);
-        public void Finish(Action<byte[], int, long> finalize) => finalize(Tail(), _pending, _length);
+        public void Finish(Action<byte[], int, ulong> finalize) => finalize(Tail(), _pending, (ulong)_length);
 
         public void Reset()
         {
@@ -1035,6 +1035,10 @@ namespace ${namespace}
             var value = property?.GetValue(options);
             return value == null ? fallback : (T)Convert.ChangeType(value, typeof(T));
         }
+
+        // totalLength is a uint64 in AlgorithmFramework.js (BlockAbsorber.Finish hands one over)
+        public static byte[][] MerkleDamgardBlocks(byte[] held, long pending, ulong totalLength, object options)
+            => MerkleDamgardBlocks(held, pending, (long)Math.Min(totalLength, (ulong)long.MaxValue), options);
 
         public static byte[][] MerkleDamgardBlocks(byte[] held, long pending, long totalLength, object options)
         {
