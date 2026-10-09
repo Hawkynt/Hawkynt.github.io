@@ -991,11 +991,14 @@ check('maps: a module Map filled with dynamic values takes the type its typed .g
     '  const found = AlgorithmFramework.Find(name);\n  HASH_CACHE.set(name, found);\n  return found;\n}');
   expectMatch(code, /Dictionary<string, Algorithm> HASH_CACHE/, 'Dictionary<string, Algorithm>');
 });
-const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
-  'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
-  'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +
-  'for (let i = 0; i < SETS.length; ++i) {\n  const instance = new AAlgorithm(SETS[i].name);\n' +
-  '  if (!AlgorithmFramework.Find(instance.name)) {\n    RegisterAlgorithm(instance);\n  }\n}';
+check('jagged literals: an int array listed among byte arrays converts element-wise (CS0030)', () => {
+  const code = transpile('/**\n * @param {uint8[][]} parts - parts\n * @param {int32} n - length\n * @returns {uint8[]} r\n */\n' +
+    'function hash(parts, n) { return parts[0].slice(0, n); }\n' +
+    '/**\n * @param {int32[]} randomness - octets\n * @returns {uint8[]} r\n */\n' +
+    'function enc(randomness) {\n  const m = randomness.slice(0, 4);\n  /** @type {uint8[]} */\n  const domain = [1];\n  return hash([m, domain], 4);\n}');
+  expectMatch(code, /new byte\[\]\[\] \{ m\.Select\(_v => (unchecked\()?\(byte\)\(?_v\)?\)?\)\.ToArray\(\), domain \}/, 'm converted element-wise');
+  expectNoMatch(code, /\(byte\[\]\)\(?m\)?/, 'an array cast (byte[])m');
+});
 check('registry: a module loop over computed data registers into the Algorithms registry when it runs', () => {
   const code = transpile(REGISTRATION_LOOP);
   expectMatch(code, /registered\.Add\(\(Algorithm\)\(?instance\)?\);/, 'registered.Add((Algorithm)instance)');

@@ -17773,6 +17773,22 @@
       return new CSharpObjectCreation(new CSharpType(typeName), args);
     }
 
+    /**
+     * An array value as an element of a jagged array literal: as is when the element
+     * types agree, converted element by element (buildParameterConversion) when two
+     * flat arrays differ in element type, and as is otherwise.
+     * @param {CSharpType} valueType - the array value's type
+     * @param {CSharpType} elementType - the literal's element (array) type
+     * @param {Object} expr - the C# value
+     * @returns {Object} the element expression
+     */
+    arrayElementConversion(valueType, elementType, expr) {
+      const from = valueType.elementType, to = elementType.elementType;
+      if (!from || !to || from.isArray || to.isArray || from.name === to.name) return expr;
+      if (['object', 'dynamic'].includes(from.name) || ['object', 'dynamic'].includes(to.name)) return expr;
+      return this.buildParameterConversion(valueType, elementType, expr);
+    }
+
     transformArrayExpression(node) {
       // Infer element type from context or actual elements
       let elementType = null;
@@ -17978,6 +17994,10 @@
           return CSharpLiteral.Hex(unsignedValue, 'UL');
         }
 
+        // An array element of another element type (hqc.js's int32[] message in a
+        // list of byte arrays) converts element-wise; C# casts no array to another
+        if (elementType.isArray && elemExprType?.isArray)
+          return this.arrayElementConversion(elemExprType, elementType, elem);
         if (this.needsNarrowingCast(elemExprType, elementType)) {
           return new CSharpCast(elementType, elem);
         }
@@ -18066,7 +18086,9 @@
         } else if (elem) {
           let transformed = this.transformExpression(elem);
           const elemExprType = this.inferFullExpressionType(elem);
-          if (this.needsNarrowingCast(elemExprType, elementType)) {
+          if (elementType.isArray && elemExprType?.isArray) {
+            transformed = this.arrayElementConversion(elemExprType, elementType, transformed);
+          } else if (this.needsNarrowingCast(elemExprType, elementType)) {
             transformed = new CSharpCast(elementType, transformed);
           }
           pendingElements.push(transformed);
