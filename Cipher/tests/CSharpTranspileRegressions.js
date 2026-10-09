@@ -608,6 +608,12 @@ check('numbers: a product of two 32-bit numbers is the double JavaScript compute
   expectNoMatch(code, /JsMul\(a, s\)/, 'JsMul for OpCodes.Mul32');
   expectNoMatch(code, /JsMul\(s, 5\)/, 'JsMul for a small constant');
 });
+check('OpCodes.Unpack32LE of a call evaluates the call once', () => {
+  const code = transpile('class G {\n  constructor() { /** @type {uint32} */ this.s = 1; }\n  /** @returns {uint32} next */\n  next() { this.s = OpCodes.Add32(this.s, 1); return this.s; }\n' +
+    '  /** @returns {uint8[]} bytes */\n  bytes() { return OpCodes.Unpack32LE(this.next()); }\n}');
+  expectMatch(code, /OpCodes\.Unpack32LE\(unchecked\(\(uint\)\(this\.Next\(\)\)\)\)|OpCodes\.Unpack32LE\(\(uint\)\(?this\.Next\(\)\)?\)/, 'OpCodes.Unpack32LE((uint)this.Next())');
+  if ((code.match(/this\.Next\(\)/g) || []).length !== 1) throw new Error('expected one call of Next()');
+});
 check('Math.round rounds a half up as JavaScript does, not to even', () => {
   const code = transpile('/**\n * @param {float64} x - x\n * @returns {int32} r\n */\nfunction f(x) { return Math.round(x * 3); }');
   expectMatch(code, /Math\.Floor\(\(double\)\(x \* 3\) \+ 0\.5\)/, 'Math.Floor(x * 3 + 0.5)');

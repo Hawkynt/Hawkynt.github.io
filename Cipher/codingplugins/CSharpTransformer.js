@@ -23661,6 +23661,18 @@
         return new CSharpCast(CSharpType.Byte(), masked);
       }
 
+      // A value with a side effect (`Unpack32LE(this._next32())`) is evaluated once:
+      // the OpCodes helper takes it, instead of one copy per byte
+      let sideEffect = false;
+      this._walkAstNodes(valueNode, n => {
+        if (['CallExpression', 'NewExpression', 'AssignmentExpression', 'UpdateExpression', 'ThisMethodCall'].includes(n.type)) sideEffect = true;
+      });
+      if (sideEffect && [16, 32, 64].includes(bits)) {
+        const parameterType = bits === 16 ? new CSharpType('ushort') : bits === 32 ? CSharpType.UInt() : new CSharpType('ulong');
+        return new CSharpMethodCall(new CSharpIdentifier('OpCodes'), `Unpack${bits}${isBigEndian ? 'BE' : 'LE'}`,
+          [new CSharpCast(parameterType, value)]);
+      }
+
       // Generate full byte array: new byte[] { (byte)(v >> X), (byte)(v >> Y), ... }
       const elements = [];
       for (let i = 0; i < byteCount; ++i) {
@@ -25265,27 +25277,6 @@
     }
 
     /**
-     * A Math.ceil/round operand as the double JavaScript computes. A quotient of
-     * two integers is a fraction in JavaScript, but C# divides integers to an
-     * integer, so `(double)(a / b)` already lost what ceil/round look at: the
-     * dividend is converted instead, `(double)a / b`.
-     * @param {Object} argNode - the JS/IL operand
-     * @param {Object} arg - its transformed C# expression
-     * @returns {Object} a double-typed C# expression
-     */
-    asDoubleOperand(argNode, arg) {
-      if (argNode && argNode.type === 'BinaryExpression' && argNode.operator === '/') {
-        const integral = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong'];
-        const leftType = this.inferFullExpressionType(argNode.left);
-        const rightType = this.inferFullExpressionType(argNode.right);
-        if (integral.includes(leftType?.name) && !leftType.isArray && integral.includes(rightType?.name) && !rightType.isArray)
-          return new CSharpBinaryExpression(
-            new CSharpCast(CSharpType.Double(), this.transformExpression(argNode.left)), '/', this.transformExpression(argNode.right));
-      }
-      return new CSharpCast(CSharpType.Double(), arg);
-    }
-
-    /**
      * A product of two 32-bit numbers as JavaScript computes it: in doubles, so
      * one past 2^53 is rounded (an LCG's `ToUint32(1099087573 * s)`), where C#
      * multiplies the integers exactly. Such a product goes through JsMul, which
@@ -25306,6 +25297,27 @@
       const rightType = this.inferFullExpressionType(node.right);
       if (!wide.includes(leftType?.name) || leftType.isArray || !wide.includes(rightType?.name) || rightType.isArray) return result;
       return new CSharpMethodCall(null, 'JsMul', [result.left, result.right]);
+    }
+
+    /**
+     * A Math.ceil/round operand as the double JavaScript computes. A quotient of
+     * two integers is a fraction in JavaScript, but C# divides integers to an
+     * integer, so `(double)(a / b)` already lost what ceil/round look at: the
+     * dividend is converted instead, `(double)a / b`.
+     * @param {Object} argNode - the JS/IL operand
+     * @param {Object} arg - its transformed C# expression
+     * @returns {Object} a double-typed C# expression
+     */
+    asDoubleOperand(argNode, arg) {
+      if (argNode && argNode.type === 'BinaryExpression' && argNode.operator === '/') {
+        const integral = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong'];
+        const leftType = this.inferFullExpressionType(argNode.left);
+        const rightType = this.inferFullExpressionType(argNode.right);
+        if (integral.includes(leftType?.name) && !leftType.isArray && integral.includes(rightType?.name) && !rightType.isArray)
+          return new CSharpBinaryExpression(
+            new CSharpCast(CSharpType.Double(), this.transformExpression(argNode.left)), '/', this.transformExpression(argNode.right));
+      }
+      return new CSharpCast(CSharpType.Double(), arg);
     }
 
     /**
