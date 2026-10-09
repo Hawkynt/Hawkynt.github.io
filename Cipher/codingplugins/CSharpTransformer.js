@@ -5886,6 +5886,12 @@
             return sig.returnType;
           }
         }
+        // A static method of a class this file declares (ms-lzh.js's
+        // `MSLZHInstance._hash3(data, pos)`, a uint32 into an int32 local - CS0266)
+        if (obj.type === 'Identifier' && this.localClassNames.has(obj.name) && !this.getVariableType(obj.name)) {
+          const sig = this.getMethodSignature(obj.name, this.toPascalCase(method)) || this.getMethodSignature(obj.name, method);
+          if (sig?.returnType) return sig.returnType;
+        }
 
         // A call on some OTHER receiver whose own static type is already known - e.g.
         // `this._cipher.generateByte()` (`_cipher` a field declared as a real nested

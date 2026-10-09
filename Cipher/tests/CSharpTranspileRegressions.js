@@ -937,6 +937,13 @@ check('stub classes: a stub method result into a narrower JSDoc local is cast (C
     '  /** @returns {int32} r */\n  f() {\n    /** @type {uint8} */\n    const cell = this.m.get(1, 2);\n    return cell;\n  }\n}');
   expectMatch(code, /byte cell = (unchecked\()?\(byte\)\(?this\.M\.Get\(1, 2\)/, 'byte cell = (byte)this.M.Get(1, 2)');
 });
+check('static calls: the result of a static method of a file class is typed by its signature (CS0266)', () => {
+  const code = transpile('class Coder {\n  /**\n   * @param {uint8[]} data - Input\n   * @returns {int32} r\n   */\n' +
+    '  run(data) {\n    /** @type {int32} */\n    const h = Coder._hash3(data, 0);\n    return h;\n  }\n' +
+    '  /**\n   * @param {uint8[]} data - Input\n   * @param {int32} pos - Position\n   * @returns {uint32} Hash bucket\n   */\n' +
+    '  static _hash3(data, pos) { return OpCodes.And32(data[pos] * 33, 0xFFF); }\n}');
+  expectMatch(code, /int h = (unchecked\()?\(int\)\(?Coder\._hash3\(data, 0\)/, 'int h = (int)Coder._hash3(data, 0)');
+});
 check('fields: a JSDoc field type is known to a function declared ahead of the class (CS0266)', () => {
   const code = transpile('/**\n * @param {State} state - state\n * @param {int32} pos - pos\n * @returns {int32} r\n */\n' +
     'function local(state, pos) {\n  /** @type {int32} */\n  const at = pos - state.resetPos;\n  return at;\n}\n' +
