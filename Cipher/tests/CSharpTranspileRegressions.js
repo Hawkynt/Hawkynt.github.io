@@ -239,6 +239,12 @@ check('registry: a module-declared algorithmInstance is kept and listed', () => 
   expectNoMatch(code, /AlgorithmInstance = Algorithms\[0\]/, 'a second AlgorithmInstance');
 });
 
+check('registry: a loop registering one variant per name lists each variant', () => {
+  const code = transpile('class A extends HashFunctionAlgorithm { /** @param {string} v - variant */ constructor(v) { super(); this.name = "A-" + v; } }\n' +
+    '/** @type {string[]} */\nconst VARIANTS = ["256", "512"];\n' +
+    'for (let i = 0; i < VARIANTS.length; ++i) { const algo = new A(VARIANTS[i]); if (!AlgorithmFramework.Find(algo.name)) RegisterAlgorithm(algo); }');
+  expectMatch(code, /RegisteredAlgorithm0 = new A\("256"\);[\s\S]*RegisteredAlgorithm1 = new A\("512"\);/, 'one field per variant');
+});
 check('registry: an algorithm registered through a module helper is listed', () => {
   const code = transpile('class A extends HashFunctionAlgorithm { constructor() { super(); this.name = "A"; } }\n' +
     '/** @param {A} algo - algorithm */\nfunction registerOnce(algo) { if (!AlgorithmFramework.Find(algo.name)) RegisterAlgorithm(algo); }\n' +

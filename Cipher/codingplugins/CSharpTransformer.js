@@ -7561,19 +7561,62 @@
             registeringFunctions.set(node.id.name, params.indexOf(n.arguments[0].name));
         });
       }
+      // Module constants that are arrays of literals, for registration loops over them
+      const literalArrays = new Map();
+      for (const node of body) {
+        if (node.type !== 'VariableDeclaration') continue;
+        for (const decl of node.declarations || []) {
+          const init = decl.init;
+          if (decl.id?.name && (init?.type === 'ArrayExpression' || init?.type === 'ArrayLiteral') &&
+              (init.elements || []).every(e => e?.type === 'Literal'))
+            literalArrays.set(decl.id.name, init.elements);
+        }
+      }
+      const cloneNode = n => Array.isArray(n) ? n.map(cloneNode)
+        : n && typeof n === 'object' ? Object.fromEntries(Object.entries(n).map(([k, v]) => [k, k === 'loc' || k === 'range' ? v : cloneNode(v)]))
+        : n;
+      // The loop body for one element: `arr[i]` is that element, `i` its index
+      const unrolled = (n, arrayName, indexName, element, index) => {
+        if (Array.isArray(n)) return n.map(c => unrolled(c, arrayName, indexName, element, index));
+        if (!n || typeof n !== 'object') return n;
+        if (n.type === 'MemberExpression' && n.computed && n.object?.type === 'Identifier' && n.object.name === arrayName &&
+            n.property?.type === 'Identifier' && n.property.name === indexName) return cloneNode(element);
+        if (n.type === 'Identifier' && n.name === indexName) return { type: 'Literal', value: index, resultType: 'int32' };
+        return Object.fromEntries(Object.entries(n).map(([k, v]) => [k, k === 'loc' || k === 'range' ? v : unrolled(v, arrayName, indexName, element, index)]));
+      };
       const registered = [];
-      const visit = node => {
+      const visit = (node, locals) => {
         if (!node) return;
-        if (Array.isArray(node)) { node.forEach(visit); return; }
+        if (Array.isArray(node)) { node.forEach(n => visit(n, locals)); return; }
         const expr = node.type === 'ExpressionStatement' ? node.expression : null;
-        if (isRegisterCall(expr)) registered.push(expr.arguments[0]);
-        else if (expr?.type === 'CallExpression' && expr.callee?.type === 'Identifier' && registeringFunctions.has(expr.callee.name) &&
+        if (isRegisterCall(expr)) {
+          const arg = expr.arguments[0];
+          registered.push(arg.type === 'Identifier' && locals.has(arg.name) ? locals.get(arg.name) : arg);
+        } else if (expr?.type === 'CallExpression' && expr.callee?.type === 'Identifier' && registeringFunctions.has(expr.callee.name) &&
                  expr.arguments?.[registeringFunctions.get(expr.callee.name)])
           registered.push(expr.arguments[registeringFunctions.get(expr.callee.name)]);
-        else if (node.type === 'BlockStatement') visit(node.body);
-        else if (node.type === 'IfStatement') { visit(node.consequent); visit(node.alternate); }
+        else if (node.type === 'BlockStatement') visit(node.body, locals);
+        else if (node.type === 'IfStatement') { visit(node.consequent, locals); visit(node.alternate, locals); }
+        else if (node.type === 'VariableDeclaration' && locals.isLoop) {
+          for (const decl of node.declarations || []) if (decl.id?.name && decl.init) locals.set(decl.id.name, decl.init);
+        } else if (node.type === 'ForStatement') {
+          // for (let i = 0; i < ARRAY.length; ++i) { ...register(new X(ARRAY[i])) }
+          const declarator = node.init?.declarations?.[0];
+          const indexName = declarator?.id?.name;
+          const bound = node.test?.type === 'BinaryExpression' && node.test.operator === '<' &&
+            node.test.left?.type === 'Identifier' && node.test.left.name === indexName ? node.test.right : null;
+          const arrayName = bound?.type === 'ArrayLength' ? bound.array?.name
+            : bound?.type === 'MemberExpression' && (bound.property?.name === 'length') ? bound.object?.name : null;
+          if (indexName && declarator.init?.type === 'Literal' && declarator.init.value === 0 && literalArrays.has(arrayName)) {
+            literalArrays.get(arrayName).forEach((element, index) => {
+              const loopLocals = new Map(locals);
+              loopLocals.isLoop = true;
+              visit(unrolled(cloneNode(node.body), arrayName, indexName, element, index), loopLocals);
+            });
+          }
+        }
       };
-      visit(body);
+      visit(body, new Map());
       if (registeringFunctions.size > 0 && !mainClass.members.some(m => m.name === 'RegisterAlgorithm')) {
         // The registry is the Algorithms array; registering at runtime does nothing more
         const registerMethod = new CSharpMethod('RegisterAlgorithm', CSharpType.Void());
