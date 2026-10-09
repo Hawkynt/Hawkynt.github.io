@@ -1843,6 +1843,8 @@
       if (node.type === 'ArrayLength' || (node.type === 'MemberExpression' && !node.computed && node.property && node.property.name === 'length')) {
         const a = this.expr(node.type === 'ArrayLength' ? node.array : node.object);
         if (a.t.k === 'arr') return { get: { c: `${a.c}.length()`, t: T.i32 }, set: v => `${a.c}.setLength(${v})`, t: T.i32, simple: false };
+        // the IL reads any x.length as ArrayLength: on an object it is its length member
+        if (node.type === 'ArrayLength') node = { type: 'MemberExpression', computed: false, object: node.array, property: { type: 'Identifier', name: 'length' }, resultType: node.resultType };
       }
       if (node.type === 'Identifier') {
         const e = this.identifier(node);
