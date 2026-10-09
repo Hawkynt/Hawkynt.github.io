@@ -275,6 +275,40 @@
       props: { BlockSize: { type: 'int32', get: 'Get_BlockSize' }, Pending: { type: 'int32', get: 'Get_Pending' }, Length: { type: 'uint64', get: 'Get_Length' } },
       methods: { Absorb: { params: [P('data', 'uint8[]')], ret: 'void' }, Reset: { params: [], ret: 'void' } },
       ctor: [P('blockSize', 'int32'), P('processBlock', 'function')] },
+    _BitStream: { pas: 'TJsBitStream', base: null,
+      fields: { buffer: 'int32', bufferBits: 'int32', byteArray: 'uint8[]', readPosition: 'int32', totalBitsWritten: 'int32' },
+      methods: {
+        writeBits: { params: [P('value', 'uint32'), P('numBits', 'uint32')], ret: 'void' },
+        writeBit: { params: [P('bit', 'uint32')], ret: 'void' },
+        writeByte: { params: [P('byte', 'uint32')], ret: 'void' },
+        writeBytes: { params: [P('bytes', 'uint8[]')], ret: 'void' },
+        writeUint16BE: { params: [P('value', 'uint32')], ret: 'void' },
+        writeUint16LE: { params: [P('value', 'uint32')], ret: 'void' },
+        writeUint32BE: { params: [P('value', 'uint32')], ret: 'void' },
+        writeUint32LE: { params: [P('value', 'uint32')], ret: 'void' },
+        readBits: { params: [P('numBits', 'int32')], ret: 'uint32' },
+        readBit: { params: [], ret: 'uint32' },
+        readByte: { params: [], ret: 'uint8' },
+        readBytes: { params: [P('count', 'int32')], ret: 'uint8[]' },
+        peekBits: { params: [P('numBits', 'int32')], ret: 'uint32' },
+        skipBits: { params: [P('numBits', 'int32')], ret: 'void' },
+        hasMoreBits: { params: [], ret: 'boolean' },
+        getRemainingBits: { params: [], ret: 'int32' },
+        resetReadPosition: { params: [], ret: 'void' },
+        seekBits: { params: [P('bitOffset', 'uint32')], ret: 'void' },
+        toArray: { params: [P('padLastByte', 'boolean', 'True')], ret: 'uint8[]' },
+        getBitLength: { params: [], ret: 'int32' },
+        getByteLength: { params: [], ret: 'int32' },
+        clear: { params: [], ret: 'void' },
+        clone: { params: [], ret: '_BitStream' },
+        writeVarInt: { params: [P('value', 'uint32')], ret: 'void' },
+        readVarInt: { params: [], ret: 'uint32' },
+        writeUnary: { params: [P('value', 'int32')], ret: 'void' },
+        readUnary: { params: [], ret: 'int32' },
+        alignToByte: { params: [], ret: 'void' },
+        isAligned: { params: [], ret: 'boolean' }
+      },
+      ctor: [P('initialBytes', 'uint8[]', 'null')] },
     MerkleDamgardOptions: { pas: 'TMerkleDamgardOptions', base: null,
       fields: { blockSize: 'int32', padByte: 'int32', lengthBytes: 'int32', lengthLittleEndian: 'boolean', lengthInBits: 'boolean' }, ctor: [] },
     Algorithm: { pas: 'TAlgorithm', base: null,
@@ -3856,8 +3890,10 @@
           this.emitPre(A.assign(A.mem(A.id(rec), 'l'), A.cast('UInt32', A.id(v))));
           return { e: A.id(rec), t };
         }
-        case 'CreateBitStream':
-          fail('OpCodes.CreateBitStream is not supported', node);
+        case 'CreateBitStream': {
+          const init = args[0] ? this.conv(this.ex(args[0], tArr(T.uint8)), tArr(T.uint8)) : A.call(A.mem(A.id('TA_U8'), 'Null'));
+          return { e: A.call(A.mem(A.id('TJsBitStream'), 'Create'), [init]), t: tClass('_BitStream') };
+        }
       }
       const spec = OPCODES[m];
       if (!spec) fail(`OpCodes.${m} is not supported`, node);

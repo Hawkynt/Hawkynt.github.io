@@ -268,6 +268,46 @@
     procedure Reset;
   end;
 
+  { OpCodes._BitStream (OpCodes.CreateBitStream), with its JavaScript int32 arithmetic }
+  TJsBitStream = class(TJsObject)
+  public
+    buffer: Int32;
+    bufferBits: Int32;
+    byteArray: TA_U8;
+    readPosition: Int32;
+    totalBitsWritten: Int32;
+    constructor Create(const initialBytes: TA_U8);
+    procedure writeBits(value, numBits: UInt32);
+    procedure writeBit(bit: UInt32);
+    procedure writeByte(b: UInt32);
+    procedure writeBytes(const bytes: TA_U8);
+    procedure writeUint16BE(value: UInt32);
+    procedure writeUint16LE(value: UInt32);
+    procedure writeUint32BE(value: UInt32);
+    procedure writeUint32LE(value: UInt32);
+    function readBits(numBits: Int32): UInt32;
+    function readBit: UInt32;
+    function readByte: Byte;
+    function readBytes(count: Int32): TA_U8;
+    function peekBits(numBits: Int32): UInt32;
+    procedure skipBits(numBits: Int32);
+    function hasMoreBits: Boolean;
+    function getRemainingBits: Int32;
+    procedure resetReadPosition;
+    procedure seekBits(bitOffset: UInt32);
+    function toArray(padLastByte: Boolean = True): TA_U8;
+    function getBitLength: Int32;
+    function getByteLength: Int32;
+    procedure clear;
+    function clone: TJsBitStream;
+    procedure writeVarInt(value: UInt32);
+    function readVarInt: UInt32;
+    procedure writeUnary(value: Int32);
+    function readUnary: Int32;
+    procedure alignToByte;
+    function isAligned: Boolean;
+  end;
+
   TMerkleDamgardOptions = class(TJsObject)
   public
     blockSize: Int32;
@@ -2825,6 +2865,258 @@ begin
   Result := TTestCase.Create;
   for I := 0 to System.Length(AFields) - 1 do
     Result.SetField(AFields[I].Name, AFields[I].Value);
+end;
+
+constructor TJsBitStream.Create(const initialBytes: TA_U8);
+begin
+  inherited Create;
+  buffer := 0;
+  bufferBits := 0;
+  byteArray := TA_U8.Empty;
+  readPosition := 0;
+  totalBitsWritten := 0;
+  if not initialBytes.IsNull and (initialBytes.length > 0) then
+  begin
+    byteArray := initialBytes.Copy;
+    totalBitsWritten := initialBytes.length * 8;
+  end;
+end;
+
+procedure TJsBitStream.writeBits(value, numBits: UInt32);
+var Mask: UInt32;
+begin
+  if (Int32(numBits) <= 0) or (numBits > 32) then raise EJsError.Create('BitStream.writeBits: numBits must be 1-32');
+  if numBits = 32 then Mask := $FFFFFFFF else Mask := UInt32(Int32(UInt32(1) shl numBits) - 1);
+  value := value and Mask;
+  { JavaScript shifts by numBits mod 32 }
+  buffer := Int32((UInt32(buffer) shl (numBits and 31)) or value);
+  bufferBits := bufferBits + Int32(numBits);
+  totalBitsWritten := totalBitsWritten + Int32(numBits);
+  while bufferBits >= 8 do
+  begin
+    bufferBits := bufferBits - 8;
+    byteArray.Push(Byte(UInt32(buffer) shr (bufferBits and 31)));
+    if bufferBits > 0 then
+      buffer := buffer and Int32((UInt32(1) shl (bufferBits and 31)) - 1)
+    else
+      buffer := 0;
+  end;
+end;
+
+procedure TJsBitStream.writeBit(bit: UInt32);
+begin
+  writeBits(bit and 1, 1);
+end;
+
+procedure TJsBitStream.writeByte(b: UInt32);
+begin
+  writeBits(b and $FF, 8);
+end;
+
+procedure TJsBitStream.writeBytes(const bytes: TA_U8);
+var I: Int32;
+begin
+  for I := 0 to bytes.length - 1 do writeByte(bytes[I]);
+end;
+
+procedure TJsBitStream.writeUint16BE(value: UInt32);
+begin
+  writeBits((value shr 8) and $FF, 8);
+  writeBits(value and $FF, 8);
+end;
+
+procedure TJsBitStream.writeUint16LE(value: UInt32);
+begin
+  writeBits(value and $FF, 8);
+  writeBits((value shr 8) and $FF, 8);
+end;
+
+procedure TJsBitStream.writeUint32BE(value: UInt32);
+begin
+  writeBits((value shr 24) and $FF, 8);
+  writeBits((value shr 16) and $FF, 8);
+  writeBits((value shr 8) and $FF, 8);
+  writeBits(value and $FF, 8);
+end;
+
+procedure TJsBitStream.writeUint32LE(value: UInt32);
+begin
+  writeBits(value and $FF, 8);
+  writeBits((value shr 8) and $FF, 8);
+  writeBits((value shr 16) and $FF, 8);
+  writeBits((value shr 24) and $FF, 8);
+end;
+
+function TJsBitStream.readBits(numBits: Int32): UInt32;
+var R: Int32; BitsRead, ByteIndex, BitOffset, Available, Take: Int32; Cur, Mask, Extracted: UInt32;
+begin
+  if (numBits <= 0) or (numBits > 32) then raise EJsError.Create('BitStream.readBits: numBits must be 1-32');
+  R := 0;
+  BitsRead := 0;
+  while BitsRead < numBits do
+  begin
+    ByteIndex := readPosition div 8;
+    BitOffset := readPosition mod 8;
+    if ByteIndex >= byteArray.length then
+    begin
+      if BitsRead = 0 then raise EJsError.Create('BitStream.readBits: No more data available');
+      Break;
+    end;
+    Cur := byteArray[ByteIndex];
+    Available := 8 - BitOffset;
+    Take := numBits - BitsRead;
+    if Available < Take then Take := Available;
+    Mask := (UInt32(1) shl Take) - 1;
+    Extracted := (Cur shr (Available - Take)) and Mask;
+    R := Int32((UInt32(R) shl (Take and 31)) or Extracted);
+    BitsRead := BitsRead + Take;
+    readPosition := readPosition + Take;
+  end;
+  Result := UInt32(R);
+end;
+
+function TJsBitStream.readBit: UInt32;
+begin
+  Result := readBits(1);
+end;
+
+function TJsBitStream.readByte: Byte;
+begin
+  Result := Byte(readBits(8));
+end;
+
+function TJsBitStream.readBytes(count: Int32): TA_U8;
+var I: Int32;
+begin
+  Result := TA_U8.Empty;
+  for I := 0 to count - 1 do Result.Push(readByte);
+end;
+
+function TJsBitStream.peekBits(numBits: Int32): UInt32;
+var Saved: Int32;
+begin
+  Saved := readPosition;
+  Result := readBits(numBits);
+  readPosition := Saved;
+end;
+
+procedure TJsBitStream.skipBits(numBits: Int32);
+begin
+  readPosition := readPosition + numBits;
+  if readPosition > byteArray.length * 8 then readPosition := byteArray.length * 8;
+end;
+
+function TJsBitStream.hasMoreBits: Boolean;
+begin
+  Result := readPosition < byteArray.length * 8;
+end;
+
+function TJsBitStream.getRemainingBits: Int32;
+begin
+  Result := byteArray.length * 8 - readPosition;
+  if Result < 0 then Result := 0;
+end;
+
+procedure TJsBitStream.resetReadPosition;
+begin
+  readPosition := 0;
+end;
+
+procedure TJsBitStream.seekBits(bitOffset: UInt32);
+var MaxBits, Offset: Int32;
+begin
+  MaxBits := byteArray.length * 8;
+  Offset := Int32(bitOffset and $7FFFFFFF);
+  if Offset > MaxBits then Offset := MaxBits;
+  if Offset > 0 then readPosition := Offset else readPosition := 0;
+end;
+
+function TJsBitStream.toArray(padLastByte: Boolean): TA_U8;
+begin
+  if (bufferBits > 0) and padLastByte then
+  begin
+    buffer := Int32(UInt32(buffer) shl ((8 - bufferBits) and 31));
+    byteArray.Push(Byte(buffer));
+    buffer := 0;
+    bufferBits := 0;
+  end;
+  Result := byteArray.Copy;
+end;
+
+function TJsBitStream.getBitLength: Int32;
+begin
+  Result := totalBitsWritten;
+end;
+
+function TJsBitStream.getByteLength: Int32;
+begin
+  Result := byteArray.length + bufferBits div 8 + Ord((bufferBits mod 8) > 0);
+end;
+
+procedure TJsBitStream.clear;
+begin
+  buffer := 0;
+  bufferBits := 0;
+  byteArray := TA_U8.Empty;
+  readPosition := 0;
+  totalBitsWritten := 0;
+end;
+
+function TJsBitStream.clone: TJsBitStream;
+begin
+  Result := TJsBitStream.Create(TA_U8.Null);
+  Result.buffer := buffer;
+  Result.bufferBits := bufferBits;
+  Result.byteArray := byteArray.Copy;
+  Result.readPosition := readPosition;
+  Result.totalBitsWritten := totalBitsWritten;
+end;
+
+procedure TJsBitStream.writeVarInt(value: UInt32);
+begin
+  while value >= $80 do
+  begin
+    writeByte((value and $7F) or $80);
+    value := value shr 7;
+  end;
+  writeByte(value and $7F);
+end;
+
+function TJsBitStream.readVarInt: UInt32;
+var R: Int32; Shift: Int32; B: Byte;
+begin
+  R := 0;
+  Shift := 0;
+  repeat
+    if Shift >= 32 then raise EJsError.Create('BitStream.readVarInt: Integer overflow');
+    B := readByte;
+    R := R or Int32((UInt32(B) and $7F) shl (Shift and 31));
+    Shift := Shift + 7;
+  until (B and $80) = 0;
+  Result := UInt32(R);
+end;
+
+procedure TJsBitStream.writeUnary(value: Int32);
+var I: Int32;
+begin
+  for I := 0 to value - 1 do writeBit(1);
+  writeBit(0);
+end;
+
+function TJsBitStream.readUnary: Int32;
+begin
+  Result := 0;
+  while hasMoreBits and (readBit = 1) do Inc(Result);
+end;
+
+procedure TJsBitStream.alignToByte;
+begin
+  while bufferBits mod 8 <> 0 do writeBit(0);
+end;
+
+function TJsBitStream.isAligned: Boolean;
+begin
+  Result := bufferBits mod 8 = 0;
 end;
 
 function TJsDynObject.HasField(const AName: string): Boolean;
