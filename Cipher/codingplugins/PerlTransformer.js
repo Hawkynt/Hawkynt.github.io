@@ -8939,8 +8939,19 @@
     _bigIntOperation(operator, left, right, leftType, rightType) {
       const operand = (value, type) => SIGNED_INTEGER_TYPES.has(type)
         ? new PerlCall(new PerlIdentifier('main::_BigSigned', ''), [value]) : value;
-      return new PerlCall(new PerlIdentifier('main::' + BIGINT_OPERATION_HELPERS[operator], ''),
-        [operand(left, leftType), operand(right, rightType)]);
+      const l = operand(left, leftType), r = operand(right, rightType);
+      const call = new PerlCall(new PerlIdentifier('main::' + BIGINT_OPERATION_HELPERS[operator], ''), [l, r]);
+      // A bitwise operation on two native operands is the native operator
+      // (see _BigAnd/_BigOr/_BigXor), tested inline where reading an operand
+      // twice is free
+      const simple = (n) => n && (n.nodeType === 'Identifier' || n.nodeType === 'Literal' ||
+        (n.nodeType === 'Subscript' && simple(n.object) && simple(n.index)) ||
+        (n.nodeType === 'BinaryExpression' && ['+', '-'].includes(n.operator) && simple(n.left) && simple(n.right)));
+      if ((operator === '^' || operator === '|' || operator === '&') && simple(l) && simple(r))
+        return new PerlGrouped(new PerlConditional(
+          new PerlBinaryExpression(new PerlCall('ref', [l]), '||', new PerlCall('ref', [r])),
+          call, new PerlGrouped(new PerlBinaryExpression(l, operator, r))));
+      return call;
     }
 
     /**
@@ -9552,7 +9563,11 @@
       // is avoided. Skipped for genuine float literal operands (harmless in
       // practice - this file family never mixes floats with 64-bit hash
       // state - but cheap to guard).
+      // Two operands of at most 32 bits (by their IL types) cannot leave 64
+      // bits, so they need no helper - loop counters and indices above all.
+      const narrow = (n) => /^(u?int(8|16|32)|int|byte)$/.test(n?.resultType || '');
       if ((operator === '+' || operator === '-' || operator === '*') && this._fileHasBigIntLiterals &&
+          !(narrow(node.left) && narrow(node.right)) &&
           !this._isFloatLiteralNode(node.left) && !this._isFloatLiteralNode(node.right)) {
         return this._u64SafeArithCall(operator, left, right);
       }
@@ -10537,6 +10552,7 @@
       // precision; Perl's native "+=" would silently float-promote and
       // permanently corrupt the low bits first).
       if ((operator === '+=' || operator === '-=' || operator === '*=') && this._fileHasBigIntLiterals &&
+          !(/^(u?int(8|16|32)|int|byte)$/.test(node.left?.resultType || '') && /^(u?int(8|16|32)|int|byte)$/.test(node.right?.resultType || '')) &&
           !this._isFloatLiteralNode(node.right)) {
         const baseOp = operator === '+=' ? '+' : (operator === '-=' ? '-' : '*');
         const call = this._u64SafeArithCall(baseOp, left, right);
