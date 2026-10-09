@@ -347,6 +347,12 @@ check('numeric: a float operand of a bitwise operator is truncated as JavaScript
   const code = transpile('/**\n * @param {float64} x - value\n * @returns {int32} low byte\n */\nfunction lowByte(x) { return x & 255; }');
   expectMatch(code, /\(long\)\(x\)\) & 255|\(long\)x & 255/, '(long)x & 255');
 });
+check('numeric: toFixed formats with a fixed digit count, ArrayBuffer.isView tests for an array', () => {
+  const code = transpile('/**\n * @param {float64} x - value\n * @param {uint8[]} d - data\n * @returns {string} text\n */\n' +
+    'function show(x, d) { return ArrayBuffer.isView(d) ? x.toFixed(2) : ""; }');
+  expectMatch(code, /ToString\("F" \+ 2, System\.Globalization\.CultureInfo\.InvariantCulture\)/, 'ToString("F" + 2, InvariantCulture)');
+  expectMatch(code, /d is System\.Array/, 'd is System.Array');
+});
 check('numeric: the global isNaN tests a double', () => {
   const code = transpile('/**\n * @param {float64} x - value\n * @returns {boolean} not a number\n */\nfunction nan(x) { return isNaN(x); }');
   expectMatch(code, /double\.IsNaN\(/, 'double.IsNaN(...)');

@@ -15382,6 +15382,13 @@
         return null;
       }
 
+      // ArrayBuffer.isView(x): whether x is a typed array - in C#, an array
+      if (node.callee?.type === 'MemberExpression' && node.callee.object?.type === 'Identifier' &&
+          node.callee.object.name === 'ArrayBuffer' && (node.callee.property?.name || node.callee.property?.value) === 'isView' &&
+          (node.arguments || []).length === 1) {
+        return new CSharpParenthesized(new CSharpIsExpression(this.transformExpression(node.arguments[0]), new CSharpType('System.Array')));
+      }
+
       // An immediately invoked function used as a value: a typed lambda, invoked.
       // Its locals must not reuse a name the enclosing method already declares.
       const iifeCallee = node.callee;
@@ -16090,6 +16097,13 @@
           // array.forEach(fn) -> use a for loop instead, but for expression context:
           // Array.ForEach(array, fn) - note: only works with Action<T>
           return new CSharpMethodCall(new CSharpIdentifier('Array'), 'ForEach', [target, ...args]);
+        }
+        if (methodName === 'toFixed') {
+          // number.toFixed(digits): fixed-point text with a '.' separator
+          const digits = args.length > 0 ? args[0] : CSharpLiteral.Int(0);
+          return new CSharpMethodCall(new CSharpCast(CSharpType.Double(), target), 'ToString', [
+            new CSharpBinaryExpression(CSharpLiteral.String('F'), '+', digits),
+            new CSharpIdentifier('System.Globalization.CultureInfo.InvariantCulture')]);
         }
         if (methodName === 'toString' && args.length === 1) {
           // bigint.toString(radix): BigInteger has neither a radix ToString nor a
