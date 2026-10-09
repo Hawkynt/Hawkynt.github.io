@@ -80,6 +80,8 @@ const resolvedTools = new Map();
  */
 function resolveTool(name) {
   if (resolvedTools.has(name)) return resolvedTools.get(name);
+  // A program the validation built (a FreeBASIC harness) runs from its own path
+  if (path.isAbsolute(name)) return fs.existsSync(name) ? { command: name, shell: false } : null;
   let found = null;
   for (const candidate of TOOL_ALTERNATIVES[name] || [name]) {
     if (process.platform !== 'win32') {
@@ -414,7 +416,7 @@ function loadLanguagePlugin(language) {
 
 // Bundling is implemented for languages whose prelude accumulates a
 // name->algorithm registry the harness can look up.
-const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript', 'ruby']);
+const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript', 'ruby', 'basic']);
 
 function transpileOne(source, plugin, algoName, extraOptions, parserOptions) {
   const Parser = loadTranspiler();
@@ -499,6 +501,10 @@ function bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptio
     }
     if (language === 'ruby') {
       code += rubyLibraryBinding(libSrc, libCode, exported, paramName, algorithmFile, libPath);
+      continue;
+    }
+    if (language === 'basic') {
+      code += basicLibraryBinding(libSrc, libCode, exported, paramName, libPath);
       continue;
     }
     // A library assigning module.exports from its own IIFE keeps its names
@@ -590,6 +596,59 @@ function rubyLoaderBinding(source, algorithmFile, deps) {
 }
 
 /**
+ * The FreeBASIC value of a bundled program's exports: the one name it returns,
+ * or an object of every name it exports (see FreeBasicTransformer.libraryBinding).
+ * @returns {{setup: string, value: string}} statements building it, and its expression
+ */
+function basicExportsValue(className, exported, code, variable) {
+  const { FreeBasicTransformer } = require(path.join(CODINGPLUGINS_DIR, 'BasicTransformer.js'));
+  if (exported.single) return { setup: '', value: FreeBasicTransformer.libraryBinding(className, exported.single, code) };
+  const lines = [`Dim Shared ${variable} As JsV`, `${variable} = js_obj_new()`];
+  for (const n of exported.names) lines.push(`js_setp(${variable}, js_sym("${n}"), ${FreeBasicTransformer.libraryBinding(className, n, code)})`);
+  return { setup: lines.join('\n') + '\n', value: variable };
+}
+
+/**
+ * A .data library bundled for FreeBASIC: its code, then the factory
+ * parameter bound as a global to its exports (an undeclared name reads the
+ * runtime's globals, see js_global_get). A library assigning module.exports
+ * gets a module object to assign first.
+ * @returns {string} FreeBASIC code
+ */
+function basicLibraryBinding(libSrc, libCode, exported, paramName, libPath) {
+  const { FreeBasicTransformer } = require(path.join(CODINGPLUGINS_DIR, 'BasicTransformer.js'));
+  const libClass = path.basename(libPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_libGenerated';
+  if (libraryExports(libSrc) === 'module.exports') {
+    return `${FreeBasicTransformer.runtimePrelude()}\nDim Shared vh_module_${paramName} As JsV\nvh_module_${paramName} = js_obj_new()\n`
+      + `js_setp(vh_module_${paramName}, js_sym("exports"), js_obj_new())\njs_global_set("module", vh_module_${paramName})\n`
+      + `${libCode}\njs_global_set("${paramName}", js_getp(vh_module_${paramName}, js_sym("exports")))\n\n`;
+  }
+  const { setup, value } = basicExportsValue(libClass, exported, libCode, `vh_library_${paramName}`);
+  return `${libCode}\n${setup}js_global_set("${paramName}", ${value})\n\n`;
+}
+
+/**
+ * A loader parameter for FreeBASIC (`function () { return require('../x/y'); }`):
+ * a function handing back the bundled dependency's exports.
+ * @param {Map} deps - resolved lower-case path -> { depName, depCode, depSource }
+ * @returns {string} FreeBASIC code
+ */
+function basicLoaderBinding(source, algorithmFile, deps) {
+  const paramMatches = [...source.matchAll(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/g)];
+  const paramName = paramMatches.length ? paramMatches[paramMatches.length - 1][1] : null;
+  const loader = source.match(/function\s*\(\s*\)\s*\{\s*return\s+require\(\s*['"]([^'"]+)['"]\s*\)/);
+  if (!paramName || !loader) return '';
+  const dep = deps.get(path.resolve(path.dirname(algorithmFile), loader[1].endsWith('.js') ? loader[1] : loader[1] + '.js').toLowerCase());
+  if (!dep) return '';
+  const exported = libraryExportNames(dep.depSource);
+  const { setup, value } = exported
+    ? basicExportsValue(dep.depName + 'Generated', exported, dep.depCode, `vh_exports_${paramName}`)
+    : { setup: '', value: 'js_undefined()' };
+  return `${setup}Function vh_loader_${paramName}(ByRef self As JsV, ByVal argv As JsV Ptr, ByVal argc As Long, ByVal envp As Any Ptr) As JsV\n`
+    + `  Return ${value}\nEnd Function\njs_global_set("${paramName}", js_fn_new(@vh_loader_${paramName}, 0))\n\n`;
+}
+
+/**
  * Transpile an algorithm file and, where the language bundles them, the
  * algorithm files it loaded while its reference ran.
  * @param {string} algorithmFile - absolute path
@@ -607,10 +666,10 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
 
   // The IL AST is shared by every target language, so by default it stubs out
   // require()-using methods (no equivalent in C#/Python/etc). When the target
-  // *is* JavaScript, require() is valid runnable code - keep it. Ruby keeps
-  // them too: its runtime is a browser without require(), so a loader guarded
+  // *is* JavaScript, require() is valid runnable code - keep it. Ruby and
+  // FreeBASIC keep them too: their runtime is a browser without require(), so a loader guarded
   // by `typeof require` returns and the bundled dependencies serve instead.
-  const parserOptions = language === 'javascript' || language === 'ruby' ? { keepModuleLoaderFunctions: true } : undefined;
+  const parserOptions = ['javascript', 'ruby', 'basic'].includes(language) ? { keepModuleLoaderFunctions: true } : undefined;
   const source = fs.readFileSync(algorithmFile, 'utf-8');
   const algoName = path.basename(algorithmFile, '.js').replace(/[^a-zA-Z0-9]/g, '_');
   let code;
@@ -642,7 +701,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
         prefix += `const ${variable} = (function () {\nconst module = { exports: {} };\n${depCode}\nreturn ${libraryExports(depSource) || 'undefined'};\n})();\n\n`;
       } else {
         prefix += depCode + '\n\n';
-        if (language === 'ruby') depExports.set(path.resolve(depPath).toLowerCase(), { depName, depCode, depSource });
+        if (language === 'ruby' || language === 'basic') depExports.set(path.resolve(depPath).toLowerCase(), { depName, depCode, depSource });
       }
     } catch (e) {
       return { success: false, error: `dependency ${path.relative(ALGORITHMS_DIR, depPath).replace(/\\/g, '/')}: ${e.message}` };
@@ -696,6 +755,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
     if (bundled.error) return { success: false, error: bundled.error };
     prefix += bundled.code;
     if (language === 'ruby') prefix += rubyLoaderBinding(source, algorithmFile, depExports);
+    if (language === 'basic') prefix += basicLoaderBinding(source, algorithmFile, depExports);
   }
 
   if (prefix && language === 'javascript' && typeof plugin.GetStandalonePrelude === 'function') {
@@ -715,7 +775,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
 
 // Languages whose harness runs every vector; the others only prove the
 // generated code compiles and a run of theirs checks nothing.
-const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp', 'ruby']);
+const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp', 'ruby', 'basic']);
 
 /**
  * The harness spec handed to a vector harness: per algorithm the name, the
@@ -781,7 +841,7 @@ function generateTestHarness(language, algorithmCode, spec, algorithmName, sampl
     case 'typescript':
       return generateTypeScriptTestHarness(algorithmCode, vector, algorithmName);
     case 'basic':
-      return generateBasicTestHarness(algorithmCode, vector, algorithmName);
+      return generateBasicTestHarness(algorithmCode, spec, algorithmName);
     case 'delphi':
       return generateDelphiTestHarness(algorithmCode, vector, algorithmName);
     case 'kotlin':
@@ -1142,30 +1202,20 @@ function generateTypeScriptTestHarness(algorithmCode, vector, algorithmName) {
 }
 
 // Basic (FreeBASIC) Test Harness
-function generateBasicTestHarness(algorithmCode, vector, algorithmName) {
-  const inputLen = vector.input?.length || 0;
-  const expectedLen = vector.expected?.length || 0;
-  const inputBytes = vector.input?.map(b => b.toString()).join(', ') || '0';
-  const expectedBytes = vector.expected?.map(b => b.toString()).join(', ') || '0';
-
-  return {
-    success: true,
-    code: `' FreeBASIC Test Harness for ${algorithmName}
-' Compile with: fbc64 test.bas
-
-${algorithmCode}
-
-' Test data
-Dim As UByte inputData(0 To ${inputLen > 0 ? inputLen - 1 : 0}) = { ${inputBytes} }
-Dim As UByte expectedData(0 To ${expectedLen > 0 ? expectedLen - 1 : 0}) = { ${expectedBytes} }
-
-Print "Testing ${algorithmName}..."
-Print "Input length: "; ${inputLen}
-Print "Expected length: "; ${expectedLen}
-Print "COMPILE_OK"
-End 0
-`
-  };
+// FreeBASIC vector harness (tests/validation-harness/harness.bas). It runs on
+// the transpiled code's JavaScript-semantics runtime and reads the spec as
+// JSON, appended to a string in lines FreeBASIC accepts.
+function generateBasicTestHarness(algorithmCode, spec, algorithmName) {
+  const json = asciiJson(spec).replace(/"/g, '""');
+  const lines = [];
+  for (let i = 0; i < json.length; i += 200) {
+    let piece = json.slice(i, i + 200);
+    // a doubled quote stays whole
+    while (piece.endsWith('"') && (piece.match(/"+$/)[0].length % 2)) { piece = piece.slice(0, -1); i -= 1; }
+    lines.push(`vh_spec_text &= "${piece}"`);
+  }
+  const harness = readHarness('harness.bas').replace('__SPEC_TEXT__', () => lines.join('\n'));
+  return { success: true, code: `' Validation of ${algorithmName}\n${algorithmCode}\n${harness}` };
 }
 
 // Delphi/Pascal (FreePascal) Test Harness
@@ -1468,17 +1518,14 @@ function testBasicCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'test.bas');
   fs.writeFileSync(srcFile, code);
 
-  // FreeBASIC: -c for compile only (no linking)
-  const result = spawnTool('fbc64', ['-c', srcFile], {
+  // FreeBASIC: built to an executable, which runs the vector harness
+  const exeFile = path.join(outputDir, 'test' + (process.platform === 'win32' ? '.exe' : ''));
+  if (fs.existsSync(exeFile)) try { fs.unlinkSync(exeFile); } catch (e) {}
+  const result = spawnTool('fbc64', [srcFile, '-x', exeFile], {
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000,
     cwd: outputDir
   });
-
-  // Clean up object file if created
-  const objFile = path.join(outputDir, 'test.o');
-  if (fs.existsSync(objFile))
-    try { fs.unlinkSync(objFile); } catch (e) {}
 
   return {
     success: result.status === 0,
@@ -1571,6 +1618,7 @@ function executeCode(language, outputDir) {
     case 'python': return runProcess('python', ['-X', 'utf8', path.join(outputDir, 'test.py')], { cwd: outputDir });
     case 'perl': return runProcess('perl', [path.join(outputDir, 'test.pl')], { cwd: outputDir });
     case 'ruby': return runProcess('ruby', [path.join(outputDir, 'test.rb')], { cwd: outputDir });
+    case 'basic': return runProcess(path.join(outputDir, 'test' + (process.platform === 'win32' ? '.exe' : '')), [], { cwd: outputDir });
     case 'csharp': return runProcess('dotnet', [path.join(outputDir, 'bin', 'Release', 'net10.0', 'Test.dll')], { cwd: outputDir });
     default: throw new Error(`${language} has no vector harness to run`);
   }
