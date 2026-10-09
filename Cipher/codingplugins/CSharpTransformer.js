@@ -22918,6 +22918,8 @@
      * Also handles spread: arr.push(...other) -> arr = arr.Concat(other).ToArray()
      */
     transformPushStatementToAssignment(node) {
+      const pushCall = this.classPushCall({ array: node.callee.object, values: node.arguments });
+      if (pushCall) return new CSharpExpressionStatement(pushCall);
       const target = this.transformExpression(node.callee.object);
 
       // Infer the array element type to properly cast arguments
@@ -24244,7 +24246,22 @@
      * Transform ArrayAppend statement to arr = arr.Append(value).ToArray()
      * or arr = arr.Concat(value).ToArray() when appending arrays
      */
+    /**
+     * A push(...) call on an object of a class the file declares (a ring buffer
+     * with its own push method): the IL builds the array append for every
+     * .push(), but it is that method.
+     * @returns {Object|null} the C# call, or null when the receiver is no such object
+     */
+    classPushCall(node) {
+      const receiverType = this.inferFullExpressionType(node.array);
+      if (!receiverType || receiverType.isArray || !this.localClassNames?.has(receiverType.name)) return null;
+      const values = Array.isArray(node.values) && node.values.length ? node.values : [node.value];
+      return new CSharpMethodCall(this.transformExpression(node.array), 'Push', values.map(v => this.transformExpression(v)));
+    }
+
     transformArrayAppendToAssignment(node) {
+      const pushCall = this.classPushCall(node);
+      if (pushCall) return new CSharpExpressionStatement(pushCall);
       const target = this.transformExpression(node.array);
       const toArrayExpr = new CSharpMethodCall(this._buildArrayAppendChain(node), 'ToArray', []);
       return new CSharpExpressionStatement(new CSharpAssignment(target, '=', toArrayExpr));

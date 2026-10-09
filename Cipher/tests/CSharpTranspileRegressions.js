@@ -771,6 +771,12 @@ check('destructuring: [a, b] = [b, a] keeps each value in its target type (no by
   expectMatch(code, /uint swap0 = r1;\s*uint swap1 = r0;\s*r0 = swap0;\s*r1 = swap1;/, 'typed temporaries, then the targets');
   expectNoMatch(code, /new byte\[\] \{ unchecked\(\(byte\)\(r1\)\)/, 'the words cut to bytes');
 });
+check('classes: push(a, b) on an object of a class with its own push method calls that method', () => {
+  const code = transpile('class Ring {\n  constructor() { /** @type {uint32[]} */ this.v = []; }\n  /**\n   * @param {uint32} a - a\n   * @param {uint32} b - b\n   */\n  push(a, b) { this.v[0] = a; this.v[1] = b; }\n}\n' +
+    '/** @returns {Ring} r */\nfunction f() { const r = new Ring(); r.push(1, 2); return r; }');
+  expectMatch(code, /r\.Push\(/, 'r.Push(...)');
+  expectNoMatch(code, /r = r\.Append/, 'an array append on the object (CS1929)');
+});
 check('arrays: numbers concatenated to the input buffer become bytes', () => {
   const code = transpile('class M extends IMacInstance {\n  /** @returns {uint8[]} r */\n  Result() { /** @type {int32} */ const n = 3; const padding = OpCodes.CreateArray(n, n);\n' +
     '    /** @type {uint8[]} */ const padded = this.inputBuffer.concat(padding); return padded; }\n}');
