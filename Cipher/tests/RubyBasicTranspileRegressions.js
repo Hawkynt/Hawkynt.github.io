@@ -352,6 +352,13 @@ const FB_CASES = {
     js: 'function dp(a, b = 5) { return a + b; }\nfunction defparam() { return [dp(1), dp(1, 2)].join(","); }',
     expect: '6,3'
   },
+  lengthfield: {
+    // x.length of an object with a length field is that field (the IL calls it an ArrayLength)
+    js: 'class Matches { constructor(length) { this.length = length; } }\n' +
+      'function joined(a) { return a.join("-"); }\n' +
+      'function lengthfield() { const m = new Matches([4, 5, 6]); return [joined(m.length), m.length.length].join(","); }',
+    expect: '4-5-6,3'
+  },
   undef: {
     // undefined is not null: x === undefined holds for a missing argument
     js: 'function resolve(m, tr) { if (m === null || m === undefined) return tr.slice(); return m.slice(); }\n' +

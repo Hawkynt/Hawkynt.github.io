@@ -8945,7 +8945,7 @@ End Function`;
         }
         return this.dx(`(${this.D(this.expr(L))} + ${this.D(this.expr(R))})`);
       }
-      if (['-', '*', '/', '%', '&', '|', '^', '<<', '>>', '>>>'].includes(op) && !(op === '*' && node.opCodesMethod) && !(this.isNumNode(L) && this.isNumNode(R))) {
+      if (['-', '*', '/', '%', '&', '|', '^', '<<', '>>', '>>>'].includes(op) && !node.opCodesMethod && !(this.isNumNode(L) && this.isNumNode(R))) {
         // an operand not typed as a Number (uint64, int64, untyped) may hold a BigInt: dispatch on the value
         const fn = { '-': 'js_sub', '*': 'js_mul', '/': 'js_div', '%': 'js_mod', '&': 'js_band', '|': 'js_bor', '^': 'js_bxor', '<<': 'js_shl', '>>': 'js_sar', '>>>': 'js_shr' }[op];
         return this.vx(`${fn}(${this.V(this.expr(L))}, ${this.V(this.expr(R))})`);
@@ -9242,7 +9242,12 @@ End Function`;
         const special = this.globalMember(obj.name, name);
         if (special) return special;
       }
-      if (name === 'length') return this.dx(`js_length(${this.V(this.expr(obj))})`);
+      // .length of an array or string; of anything else (an object with a length field) the property
+      if (name === 'length') {
+        const ot = this.type(obj);
+        if (fbIsArr(ot) || fbIsStr(ot)) return this.dx(`js_length(${this.V(this.expr(obj))})`);
+        return this.vx(`js_getp(${this.V(this.expr(obj))}, ${this.sym('length')})`);
+      }
       return this.vx(`js_getp(${this.V(this.expr(obj))}, ${this.sym(name)})`);
     }
 
@@ -9554,7 +9559,12 @@ End Function`;
 
     // --- IL nodes ---
 
-    eArrayLength(node) { return this.dx(`js_length(${this.V(this.expr(node.array))})`); }
+    eArrayLength(node) {
+      // the IL also makes x.length an ArrayLength when x is an object with a length field
+      const t = this.type(node.array);
+      if (fbIsArr(t) || fbIsStr(t)) return this.dx(`js_length(${this.V(this.expr(node.array))})`);
+      return this.vx(`js_getp(${this.V(this.expr(node.array))}, ${this.sym('length')})`);
+    }
 
     eArrayAppend(node) {
       const values = node.values || (node.value ? [node.value] : []);
