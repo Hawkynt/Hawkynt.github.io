@@ -13,6 +13,7 @@ const path = require('path');
 const quiet = fn => { const l = console.log, e = console.error; console.log = console.error = () => {}; try { return fn(); } finally { console.log = l; console.error = e; } };
 const { TypeAwareJSASTParser, PreciseTypeKnowledge, JSDocParser } = quiet(() => require(path.join(__dirname, '..', 'type-aware-transpiler.js')));
 const TypeCoverage = require('./TypeCoverage.js');
+const TypeSoundness = require('./TypeSoundness.js');
 const { isPreciseType } = require('./JSDocTierAudit.js');
 
 const cases = require('./UnitCases.js').createCases();
@@ -317,6 +318,28 @@ test('guess: given int64 * int32, when typed, then the guess stays reported (the
 });
 test('guess: given uint64 + int32, when typed, then the guess stays reported (an unsigned word is no count)', () => {
   ok(reasons('/** @param {uint64} w\n * @param {int32} i */\nfunction f(w, i) { const j = w + i; return j; }').some(r => /no fixed width/.test(r)), 'uint64 + int32 reported');
+});
+test('nullable: given @param {int32|null}, when counted, then its reads are typed (no site)', () => {
+  equal(sites('/** @param {int32|null} a\n * @returns {int32} */\nfunction f(a) { const x = a === null ? 0 : a; return x; }').length, 0);
+});
+test('nullable: given @type {?uint32} on a field, when counted, then the field reads are typed', () => {
+  equal(sites('class A { constructor() { /** @type {?uint32} */ this.c = null; } /** @returns {uint32} */ g() { return this.c === null ? 0 : this.c; } }').length, 0);
+});
+test('nullable: given a nullable int32, when checked, then null passes and other kinds still fail', () => {
+  const check = TypeSoundness.checkerFor('int32?');
+  equal(check(null), null); equal(check(undefined), null); equal(check(7), null);
+  equal(check(1.5), 'fraction'); equal(check('7'), 'string');
+  equal(TypeSoundness.checkerFor('int32')(null), 'nullish');
+});
+test('nullable: given an assignment of null to a @param {uint32|null}, when sites are collected, then the variable check is uint32?', () => {
+  const parsed = TypeSoundness.parseSource('/** @param {uint32|null} a */\nfunction f(a) { a = null; return a; }');
+  const checks = TypeSoundness.collectSites(parsed.parser, parsed.ast).flatMap(s => s.checks);
+  ok(checks.some(c => c.role === 'variable' && c.type === 'uint32?'), JSON.stringify(checks));
+});
+test('nullable: given @returns {?int32}, when sites are collected, then the return check is int32?', () => {
+  const parsed = TypeSoundness.parseSource('/** @returns {?int32} */\nfunction f() { return null; }');
+  const checks = TypeSoundness.collectSites(parsed.parser, parsed.ast).flatMap(s => s.checks);
+  ok(checks.some(c => c.role === 'return' && c.type === 'int32?'), JSON.stringify(checks));
 });
 test('walk: given sites, when tallied, then every site lands in exactly one tier', () => {
   const s = sites('function f(a) { return OpCodes.XorN(a, 1) + a; }');

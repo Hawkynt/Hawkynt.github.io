@@ -1327,6 +1327,12 @@ Only the following type syntaxes are allowed in JSDoc comments:
 
 > **Note**: The record syntax `{...}` currently maps to tuples for compatibility. Use tuple syntax `(...)` for new code.
 
+The type-aware transpiler's IL also understands these forms; the language emitters map them as their support lands:
+
+| Syntax                         | Meaning                                  | IL                                                        |
+|--------------------------------|------------------------------------------|-----------------------------------------------------------|
+| `type\|null`, `?type`, `type=` | A number, BigInt or boolean that may be null | `resultType: 'type'` plus `nullable: true` on the node |
+
 ### Primitive Types
 
 Only the following primitive types are supported:

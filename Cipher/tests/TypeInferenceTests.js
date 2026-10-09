@@ -1867,6 +1867,33 @@ class TypeInferenceTestSuite {
       this.assertEqual(initOf(lcg + 'const p = u * u;\nreturn p; }', 'p'), 'uint64',
         'given no declared target, then the product stays integer', 'p');
 
+      // Nullable value types keep their type and are marked nullable
+      const nullableOf = (code, name) => this.inferType(code, ast => {
+        const find = n => {
+          if (!n || typeof n !== 'object') return null;
+          if (n.type === 'VariableDeclarator' && n.id && n.id.name === name) return n;
+          for (const k in n) { if (k === 'loc' || k === 'range') continue; const r = find(n[k]); if (r) return r; }
+          return null;
+        };
+        const d = find(ast);
+        return d ? { resultType: `${d.resultType}${d.nullable ? '?' : ''}` } : null;
+      });
+      const nl = (code, name, expected, title) => this.assertEqual(nullableOf(code, name), expected, title, code.replace(/\s+/g, ' '));
+      nl('/** @param {int32|null} a */\nfunction f(a) { const x = a; return x; }', 'x', 'int32?', 'given @param {int32|null}, then int32 marked nullable (was int32, null lost)');
+      nl('/** @param {?uint32} a */\nfunction f(a) { const x = a; return x; }', 'x', 'uint32?', 'given @param {?uint32}, then uint32 nullable');
+      nl('/** @param {BigInt|null} a */\nfunction f(a) { const x = a; return x; }', 'x', 'BigInt?', 'given @param {BigInt|null}, then BigInt nullable');
+      nl('/** @param {uint8=} a */\nfunction f(a) { const x = a; return x; }', 'x', 'uint8?', 'given an optional {uint8=}, then nullable (may be undefined)');
+      nl('/** @param {uint32|undefined} a */\nfunction f(a) { const x = a; return x; }', 'x', 'uint32?', 'given {uint32|undefined}, then nullable');
+      nl('/** @param {uint8[]|null} a */\nfunction f(a) { const x = a; return x; }', 'x', 'uint8[]', 'given a nullable array, then not marked (a reference always admits null)');
+      nl('/** @param {int32} a */\nfunction f(a) { const x = a; return x; }', 'x', 'int32', 'given a plain int32, then not nullable (boundary)');
+      nl('function f() {\n/** @type {int32|null} */\nlet x = null;\nx = 4;\nreturn x; }', 'x', 'int32?', 'given @type {int32|null} let x = null, then the variable is int32 nullable (no -1 sentinel)');
+      nl('/** @returns {uint32|null} */\nfunction g() { return null; }\nfunction f() { const x = g(); return x; }', 'x', 'uint32?', 'given @returns {uint32|null}, then the call is uint32 nullable');
+      nl('class A { /** @returns {?int32} */ m() { return null; } n() { const x = this.m(); return x; } }', 'x', 'int32?', 'given a method @returns {?int32}, then this.m() is nullable');
+      nl('class A { constructor() { /** @type {uint32|null} */ this.c = null; } n() { const x = this.c; return x; } }', 'x', 'uint32?', 'given a field @type {uint32|null}, then reads are nullable');
+      nl('/** @param {boolean} c */\nfunction f(c) { const x = c ? null : 5; return x; }', 'x', 'int32?', 'given c ? null : 5, then int32 nullable (was null)');
+      nl('/** @param {boolean} c\n * @param {int32|null} a */\nfunction f(c, a) { const x = c ? a : 7; return x; }', 'x', 'int32?', 'given a nullable branch, then the conditional is nullable');
+      nl('/** @param {boolean} c\n * @param {uint8[]} b */\nfunction f(c, b) { const x = c ? null : b; return x; }', 'x', 'uint8[]', 'given c ? null : bytes, then a reference, not marked');
+
     });
   }
 

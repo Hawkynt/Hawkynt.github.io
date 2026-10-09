@@ -309,6 +309,38 @@
     return JSDOC_TYPE_ALIASES[t] || t;
   }
 
+  /** IL value types: a number, BigInt or boolean has no null of its own. */
+  const NULLABLE_VALUE_TYPES = /^(u?int(8|16|32|64)|float(32|64)|bigint|BigInt|boolean|number)$/;
+
+  /**
+   * Does a JSDoc type admit null for a value type? `{int32|null}`,
+   * `{uint32|undefined}`, `{?BigInt}`, `{boolean?}` and `{int32=}` do. The IL
+   * keeps the non-null type as resultType (see ilTypeFromJSDoc) and marks the
+   * value `nullable: true`. Reference types (arrays, strings, objects) always
+   * admit null in the IL, so they are never marked.
+   * @param {Object|string} t - JSDoc type
+   * @returns {boolean} true for a nullable value type
+   */
+  function nullableJSDoc(t) {
+    if (!t) return false;
+    let text;
+    let flagged = false;
+    if (typeof t === 'object') {
+      if (t.isTuple || t.isArray || t.isGeneric) return false;
+      flagged = !!t.isNullable;
+      text = t.isUnion ? t.unionTypes.map(u => u && u.name).filter(Boolean).join('|') : t.name;
+    } else {
+      text = t;
+    }
+    if (typeof text !== 'string') return false;
+    text = text.trim();
+    const marked = flagged || /^\?|[?=]$/.test(text) ||
+      text.split('|').some(s => s.trim() === 'null' || s.trim() === 'undefined');
+    if (!marked) return false;
+    const base = ilTypeFromJSDoc(text);
+    return typeof base === 'string' && NULLABLE_VALUE_TYPES.test(base);
+  }
+
   /** JSDoc keyed collections and the IL name of each: a Map stays a Map, the rest are objects. */
   const KEYED_COLLECTIONS = { 'Map': 'Map', 'Object': 'Object', 'Record': 'Object' };
 
@@ -904,6 +936,7 @@
       // _collectDeclaredTypes): "ClassName.field" -> JSDoc @type, local class
       // name -> base class name, and the set of classes this file declares.
       this.declaredFieldTypes = new Map();
+      this.declaredFieldNullable = new Set();
       this.localSuperClasses = new Map();
       this.localClassNames = new Set();
       this.declaredFunctions = new Map(); // local function name -> { params: [IL type], returns: IL type }
@@ -940,12 +973,28 @@
      * @param {string} name - Variable name
      * @param {string} type - Type string (e.g., 'uint32', 'uint8[]', 'string')
      */
-    registerVariableType(name, type, declared = false) {
+    registerVariableType(name, type, declared = false, nullable = false) {
       if (!name || !type) return;
       const currentScope = this.scopeStack[this.scopeStack.length - 1];
       currentScope.set(name, type);
       if (declared) (currentScope.declared || (currentScope.declared = new Set())).add(name);
       else if (currentScope.declared) currentScope.declared.delete(name);
+      if (nullable) (currentScope.nullable || (currentScope.nullable = new Set())).add(name);
+      else if (currentScope.nullable) currentScope.nullable.delete(name);
+    }
+
+    /**
+     * Whether the binding a name resolves to is declared nullable
+     * (`@param {int32|null} x`, `@type {?uint32}`): its value may be null.
+     * @param {string} name - Variable name
+     * @returns {boolean} true when nullable
+     */
+    isNullableVariable(name) {
+      for (let i = this.scopeStack.length - 1; i >= 0; --i) {
+        const scope = this.scopeStack[i];
+        if (scope.has(name)) return !!(scope.nullable && scope.nullable.has(name));
+      }
+      return false;
     }
 
     /**
@@ -1052,6 +1101,41 @@
     }
 
     /**
+     * Whether a class field is declared nullable (`@type {int32|null}`), by the
+     * same declaration lookupDeclaredFieldType finds.
+     * @param {string} className - Class name
+     * @param {string} fieldName - Field name
+     * @returns {boolean} true when nullable
+     */
+    lookupDeclaredFieldNullable(className, fieldName) {
+      const framework = this._frameworkMember(className, fieldName, 'property');
+      if (framework) return nullableJSDoc(framework);
+      for (let name = className, hops = 0; name && hops < 32; name = this.localSuperClasses.get(name), ++hops) {
+        const key = `${name}.${fieldName}`;
+        if (this.declaredFieldTypes.get(key)) return !!(this.declaredFieldNullable && this.declaredFieldNullable.has(key));
+      }
+      return false;
+    }
+
+    /**
+     * Whether a method's declared return admits null (`@returns {int32|null}`):
+     * the framework interface's declaration, else the method's own JSDoc.
+     * @param {string} className - Class name
+     * @param {string} methodName - Method name
+     * @returns {boolean} true when nullable
+     */
+    lookupClassMethodReturnNullable(className, methodName) {
+      const framework = this._frameworkMemberType(className, methodName, 'method');
+      const frameworkReturn = framework ? ilTypeFromJSDoc(framework.returns) : null;
+      if (frameworkReturn && frameworkReturn !== 'void') return nullableJSDoc(framework.returns);
+      for (let name = className, hops = 0; name && hops < 32; name = this.localSuperClasses.get(name), ++hops) {
+        const key = `${name}.${methodName}`;
+        if (this.classMethodReturnTypes.get(key)) return !!(this.classMethodReturnNullable && this.classMethodReturnNullable.has(key));
+      }
+      return false;
+    }
+
+    /**
      * The AlgorithmFramework class a (local) class derives from, if any.
      * @param {string} className - Class name
      * @returns {string|null} Framework class name
@@ -1104,9 +1188,11 @@
      * @param {string} methodName - Method name
      * @param {string} returnType - Return type string
      */
-    registerClassMethodReturnType(className, methodName, returnType) {
+    registerClassMethodReturnType(className, methodName, returnType, nullable = false) {
       if (!className || !methodName || !returnType) return;
       this.classMethodReturnTypes.set(`${className}.${methodName}`, returnType);
+      if (!this.classMethodReturnNullable) this.classMethodReturnNullable = new Set();
+      if (nullable) this.classMethodReturnNullable.add(`${className}.${methodName}`);
     }
 
     /**
@@ -1916,13 +2002,31 @@
      * @returns {string|null} Declared IL type or null
      */
     _statementJSDocType(stmt) {
+      const raw = this._statementJSDocRawType(stmt);
+      return raw ? ilTypeFromJSDoc(raw) : null;
+    }
+
+    /**
+     * Whether a statement's own JSDoc `@type` is a nullable value type (see nullableJSDoc).
+     * @param {Object} stmt - Statement node
+     * @returns {boolean} true when nullable
+     */
+    _statementJSDocNullable(stmt) {
+      return nullableJSDoc(this._statementJSDocRawType(stmt));
+    }
+
+    /**
+     * The JSDoc type object of a statement's own `@type` (see _statementJSDocType).
+     * @param {Object} stmt - Statement node
+     * @returns {Object|null} JSDoc type or null
+     */
+    _statementJSDocRawType(stmt) {
       const comments = stmt && stmt.leadingComments;
       if (!comments || comments.length === 0) return null;
       const last = comments[comments.length - 1];
       if (!last || last.type !== 'Block' || typeof last.value !== 'string' || !last.value.startsWith('/**')) return null;
       if (!/@type\s*\{/.test(last.value)) return null;
-      const parsed = this.jsDocParser.parseJSDoc(last.value);
-      return parsed.type ? ilTypeFromJSDoc(parsed.type) : null;
+      return this.jsDocParser.parseJSDoc(last.value).type || null;
     }
 
     /**
@@ -1994,6 +2098,11 @@
         merge(this.classMethodReturnTypes, sibling.classMethodReturnTypes);
         merge(this.declaredMethodParams, sibling.declaredMethodParams);
         merge(this.declaredFieldTypes, sibling.declaredFieldTypes);
+        for (const key of sibling.declaredFieldNullable || []) this.declaredFieldNullable.add(key);
+        for (const key of sibling.classMethodReturnNullable || []) {
+          if (!this.classMethodReturnNullable) this.classMethodReturnNullable = new Set();
+          this.classMethodReturnNullable.add(key);
+        }
         merge(this.localSuperClasses, sibling.localSuperClasses);
         for (const name of sibling.declaredFunctions.keys()) if (!this.siblingExports.has(name)) this.siblingExports.set(name, 'function');
         for (const name of sibling.localFunctionNames || []) if (!this.siblingExports.has(name)) this.siblingExports.set(name, 'function');
@@ -2003,6 +2112,7 @@
 
     _collectDeclaredTypes(ast) {
       this.declaredFieldTypes = new Map();
+      this.declaredFieldNullable = new Set();
       this.localSuperClasses = new Map();
       this.localClassNames = new Set();
       this.declaredFunctions = new Map();
@@ -2020,7 +2130,10 @@
           const field = node.expression.left.property && (node.expression.left.property.name || node.expression.left.property.value);
           const declared = this._statementJSDocType(node);
           const key = `${className}.${field}`;
-          if (field && declared && !this.declaredFieldTypes.has(key)) this.declaredFieldTypes.set(key, declared);
+          if (field && declared && !this.declaredFieldTypes.has(key)) {
+            this.declaredFieldTypes.set(key, declared);
+            if (this._statementJSDocNullable(node)) this.declaredFieldNullable.add(key);
+          }
         }
         for (const key in node) {
           if (key === 'loc' || key === 'range' || key === 'leadingComments') continue;
@@ -2041,11 +2154,12 @@
             if (member.type === 'FieldDefinition' && member.key && member.key.name && member.jsDoc && member.jsDoc.type) {
               const declared = ilTypeFromJSDoc(member.jsDoc.type);
               if (declared) this.declaredFieldTypes.set(`${className}.${member.key.name}`, declared);
+              if (declared && nullableJSDoc(member.jsDoc.type)) this.declaredFieldNullable.add(`${className}.${member.key.name}`);
             } else if (member.type === 'MethodDefinition' && member.value) {
               const typeInfo = member.value.typeInfo;
               const returns = ilTypeFromJSDoc(typeInfo && typeInfo.returns);
               if (returns && member.key && member.key.name)
-                this.registerClassMethodReturnType(className, member.key.name, returns);
+                this.registerClassMethodReturnType(className, member.key.name, returns, nullableJSDoc(typeInfo.returns));
               if (typeInfo && typeInfo.params && member.key && member.key.name)
                 this.declaredMethodParams.set(`${className}.${member.key.name}`, (member.value.params || []).map(p => {
                   const param = p && p.type === 'AssignmentPattern' ? p.left : p;
@@ -2067,7 +2181,9 @@
               const param = p && p.type === 'AssignmentPattern' ? p.left : p;
               return param && param.name && fn.typeInfo.params ? ilTypeFromJSDoc(fn.typeInfo.params.get(param.name)) : null;
             }),
-            returns: ilTypeFromJSDoc(fn.typeInfo.returns)
+            returns: ilTypeFromJSDoc(fn.typeInfo.returns),
+            returnsNullable: nullableJSDoc(fn.typeInfo.returns),
+            templates: fn.typeInfo.templates || []
           });
         }
         for (const key in node) {
@@ -2154,9 +2270,10 @@
           newContext = { ...newContext, frameworkSignature: { fn: node.value, params: framework.params || [] },
             frameworkReturns: ilTypeFromJSDoc(framework.returns) !== 'void' ? ilTypeFromJSDoc(framework.returns) : null };
 
-        const returnType = ilTypeFromJSDoc(node.value?.typeInfo?.returns || node.value?.jsDoc?.returns?.type);
+        const declaredReturns = node.value?.typeInfo?.returns || node.value?.jsDoc?.returns?.type;
+        const returnType = ilTypeFromJSDoc(declaredReturns);
         if (returnType)
-          this.registerClassMethodReturnType(context.className, node.key.name, returnType);
+          this.registerClassMethodReturnType(context.className, node.key.name, returnType, nullableJSDoc(declaredReturns));
 
         // Also register parameters for methods
         if (node.value)
@@ -2168,8 +2285,9 @@
       if (node.type === 'VariableDeclaration' || node.type === 'ExpressionStatement') {
         const declaredType = this._statementJSDocType(node);
         if (declaredType) {
+          const nullable = this._statementJSDocNullable(node);
           if (node.type === 'VariableDeclaration')
-            for (const decl of node.declarations || []) decl.declaredType = declaredType;
+            for (const decl of node.declarations || []) { decl.declaredType = declaredType; if (nullable) decl.declaredNullable = true; }
           else if (node.expression && node.expression.type === 'AssignmentExpression')
             node.expression.declaredType = declaredType;
         }
@@ -2219,24 +2337,25 @@
       (node.params || []).forEach((rawParam, index) => {
         const param = rawParam && rawParam.type === 'AssignmentPattern' ? rawParam.left : rawParam;
         if (param && param.type === 'Identifier' && param.name) {
-          let paramType = frameworkParams ? ilTypeFromJSDoc(frameworkParams[index]) : null;
+          let declared = frameworkParams ? frameworkParams[index] : null;
+          let paramType = declared ? ilTypeFromJSDoc(declared) : null;
 
           // Then the function's own JSDoc (tier 3) - no name-based fallback
           if (!paramType && node.typeInfo?.params?.has(param.name))
-            paramType = ilTypeFromJSDoc(node.typeInfo.params.get(param.name));
+            paramType = ilTypeFromJSDoc(declared = node.typeInfo.params.get(param.name));
 
           // Also check the value's typeInfo (for MethodDefinition where typeInfo is on node.value)
           if (!paramType && node.value?.typeInfo?.params?.has(param.name))
-            paramType = ilTypeFromJSDoc(node.value.typeInfo.params.get(param.name));
+            paramType = ilTypeFromJSDoc(declared = node.value.typeInfo.params.get(param.name));
 
           // Check typeAnnotations map as fallback
           if (!paramType && this.typeAnnotations.has(param)) {
             const annotation = this.typeAnnotations.get(param);
-            paramType = ilTypeFromJSDoc(annotation?.type);
+            paramType = ilTypeFromJSDoc(declared = annotation?.type);
           }
 
           if (paramType)
-            this.registerVariableType(param.name, paramType, true);
+            this.registerVariableType(param.name, paramType, true, nullableJSDoc(declared));
           // An inline callback of an array method takes the element type of
           // the array it iterates (see _callbackParamHints).
           else if (node.paramHints && node.paramHints[index])
@@ -2445,11 +2564,13 @@
           resultType = 'function';
       }
 
-      return {
+      const result = {
         ...node,
         resultType,
         ilNodeType: 'Identifier'
       };
+      if (resultType && this.isNullableVariable(name)) result.nullable = true;
+      return result;
     }
 
     /**
@@ -2535,7 +2656,7 @@
         if (targetName && resultType && !this.isDeclaredVariable(targetName)) {
           this._checkLiteralTypedVariable(targetName, resultType);
           this._widenDeclaredVariable(targetName, resultType, right);
-          this.registerVariableType(targetName, resultType);
+          this.registerVariableType(targetName, resultType, false, !!(right && right.nullable));
         }
 
         // Register class field type if assigning to this.field.
@@ -2574,6 +2695,7 @@
         this._applyContextualType(ilNode.consequent, type);
         this._applyContextualType(ilNode.alternate, type);
         ilNode.resultType = this._commonTypeOf([ilNode.consequent, ilNode.alternate]) || ilNode.resultType;
+        TypeAwareJSASTParser._typeNullableBranches(ilNode);
         return;
       }
       if (type === 'float64' && this._retypeAsDouble(ilNode)) return;
@@ -2682,6 +2804,11 @@
           decl.resultType = widened;
           if (decl.id) decl.id = { ...decl.id, resultType: widened };
         }
+        // A nullable value stored into it makes the variable nullable.
+        if (decl && value && value.nullable && numeric(decl.resultType) && !decl.nullable) {
+          decl.nullable = true;
+          if (decl.id) decl.id = { ...decl.id, nullable: true };
+        }
         return;
       }
     }
@@ -2743,7 +2870,7 @@
         resultType = this._commonTypeOf([consequent, alternate]);
       }
 
-      return {
+      const result = {
         ...node,
         test,
         consequent,
@@ -2751,6 +2878,27 @@
         resultType,
         ilNodeType: 'ConditionalExpression'
       };
+      TypeAwareJSASTParser._typeNullableBranches(result);
+      return result;
+    }
+
+    /**
+     * `c ? null : n` with a number n: the conditional is n's type, nullable
+     * (a value type has no null of its own; see nullableJSDoc). A branch that
+     * is itself nullable makes the conditional nullable too.
+     * @param {Object} node - ConditionalExpression IL node (updated in place)
+     */
+    static _typeNullableBranches(node) {
+      const nothing = n => n && ((n.type === 'Literal' && n.value === null) || n.resultType === 'null' || n.resultType === 'void' ||
+        (n.type === 'Identifier' && n.name === 'undefined'));
+      const value = n => n && !nothing(n) && typeof n.resultType === 'string' && NULLABLE_VALUE_TYPES.test(n.resultType);
+      const [a, b] = [node.consequent, node.alternate];
+      if ((nothing(a) && value(b)) || (nothing(b) && value(a))) {
+        node.resultType = value(a) ? a.resultType : b.resultType;
+        node.nullable = true;
+      } else if (value(a) && value(b) && (a.nullable || b.nullable) && NULLABLE_VALUE_TYPES.test(node.resultType || '')) {
+        node.nullable = true;
+      }
     }
 
     /**
@@ -2855,6 +3003,7 @@
           method: methodName,
           arguments: node.arguments || [],
           resultType,
+          ...(resultType && this.lookupClassMethodReturnNullable(context.className, methodName) ? { nullable: true } : {}),
           ilNodeType: 'ThisMethodCall'
         };
       }
@@ -2871,6 +3020,7 @@
           method: methodName,
           arguments: node.arguments || [],
           resultType,
+          ...(resultType && this.lookupClassMethodReturnNullable(context.className, methodName) ? { nullable: true } : {}),
           ilNodeType: 'ThisMethodCall'
         };
       }
@@ -3041,7 +3191,7 @@
           this._applyContextualType(arg, signature.params[i]);
         });
         if (signature.returns && signature.returns !== 'void' && !node.resultType)
-          return { ...node, resultType: signature.returns };
+          return { ...node, resultType: signature.returns, ...(signature.returnsNullable ? { nullable: true } : {}) };
       }
 
       // OpCodes.UInt64.xor(...) and friends: members of OpCodes' nested objects
@@ -3078,7 +3228,8 @@
           const params = this._localMethodParams(className, methodName);
           if (params) (node.arguments || []).forEach((arg, i) => this._applyContextualType(arg, params[i]));
           const returns = this.lookupClassMethodReturnType(className, methodName);
-          if (returns && returns !== 'void') return { ...node, resultType: returns };
+          if (returns && returns !== 'void')
+            return { ...node, resultType: returns, ...(this.lookupClassMethodReturnNullable(className, methodName) ? { nullable: true } : {}) };
         }
       }
 
@@ -4572,13 +4723,16 @@
         if (className && propertyName)
           resultType = this.lookupClassFieldType(className, propertyName);
 
-        return {
+        const access = {
           type: 'ThisPropertyAccess',
           property: propertyName,
           computed: node.computed || false,
           resultType,
           ilNodeType: 'ThisPropertyAccess'
         };
+        if (resultType && className && propertyName && !node.computed && this.lookupDeclaredFieldNullable(className, propertyName))
+          access.nullable = true;
+        return access;
       }
 
       // arr.length → ArrayLength
@@ -5001,12 +5155,16 @@
             this._literalTypedVariables().set(varName, transformedInit);
           }
 
+          // A declared nullable value type (`@type {int32|null}`) may hold null, and so
+          // may a variable that a nullable value initialises.
+          const nullable = declaredType ? !!decl.declaredNullable : !!(transformedInit && transformedInit.nullable && varType === transformedInit.resultType);
+
           // Register the variable type
           if (varName && varType) {
             if (isModuleLevel && isConst)
               this.registerConstantType(varName, varType);
             else
-              this.registerVariableType(varName, varType, !!declaredType);
+              this.registerVariableType(varName, varType, !!declaredType, nullable);
           }
 
           // Create transformed declarator with type info
@@ -5015,8 +5173,10 @@
             init: transformedInit,
             resultType: varType
           };
+          if (nullable) transformedDecl.nullable = true;
           if (decl.id) {
             transformedDecl.id = { ...decl.id, resultType: varType };
+            if (nullable) transformedDecl.id.nullable = true;
           }
           transformedDeclarations.push(transformedDecl);
           // A variable typed by a non-literal initializer is declared with a

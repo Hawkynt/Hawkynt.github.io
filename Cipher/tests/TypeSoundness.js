@@ -37,9 +37,10 @@
  *
  * Class, interface and enum types are not checked; null and undefined are
  * accepted for arrays and strings (references) and rejected for numbers and
- * booleans. A store into a typed array converts the value (JS truncates
- * silently), so for those only the array's kind is checked against the
- * declared element type.
+ * booleans - unless the IL marks the value type nullable (`nullable: true`,
+ * from `{int32|null}`, `{?uint32}`, ...), checked here as 'T?'. A store
+ * into a typed array converts the value (JS truncates silently), so for
+ * those only the array's kind is checked against the declared element type.
  *
  * Each site checks its first SAMPLE_FIRST values, and SAMPLE_PER_VECTOR more
  * in each later test vector, so a site in a hot loop costs almost nothing once
@@ -90,6 +91,8 @@ const ALIASES = {
   int: 'int32', long: 'int64', bool: 'boolean', Boolean: 'boolean', String: 'string',
   float: 'float32', double: 'float64', BigInt: 'bigint', Number: 'number'
 };
+/** Value types that hold no null of their own (a nullable one is checked as 'T?'). */
+const NULLABLE_VALUE_TYPES = /^(u?int(8|16|32|64)|float(32|64)|bigint|boolean|number)$/;
 /** Element type of each typed-array kind, in the IL vocabulary. */
 const TYPED_ARRAY_ELEMENTS = {
   Uint8Array: 'uint8', Uint8ClampedArray: 'uint8', Int8Array: 'int8', Uint16Array: 'uint16', Int16Array: 'int16',
@@ -143,6 +146,11 @@ function checkerFor(type) {
 
 function buildChecker(raw) {
   if (typeof raw !== 'string' || raw === '') return null;
+  // 'T?': a nullable value type (the IL marks it `nullable: true`) also holds null.
+  if (raw.endsWith('?')) {
+    const base = checkerFor(raw.slice(0, -1));
+    return base ? v => (v === null || v === undefined ? null : base(v)) : null;
+  }
   const type = ALIASES[raw] || raw;
   if (INT_RANGES[type]) {
     const [lo, hi] = INT_RANGES[type];
@@ -273,6 +281,11 @@ function collectSites(parser, ast) {
     const name = typeName(t);
     return name && checkerFor(name) ? name : null;
   };
+  // The type of an IL node's value: its resultType, 'T?' when the IL marks it nullable.
+  const nodeType = n => {
+    const t = n ? ilType(n.resultType) : null;
+    return t && n.nullable && !t.endsWith('?') ? ilType(t + '?') : t;
+  };
 
   // Where the type of a storage location came from.
   const declaredFieldOrigin = (className, field) => {
@@ -326,11 +339,13 @@ function collectSites(parser, ast) {
     if (!left) return { role: 'target', origin: 'inference', type: null };
     if (left.type === 'Identifier') {
       const stored = storageType(left.name, where.scope);
-      return { role: 'variable', origin: variableOrigin(left.name, where.scope), type: stored !== undefined ? stored : ilType(left.resultType) };
+      return { role: 'variable', origin: variableOrigin(left.name, where.scope), type: stored !== undefined ? stored : nodeType(left) };
     }
     if (left.type === 'ThisPropertyAccess' && !left.computed) {
       const field = where.className && parser.lookupClassFieldType ? parser.lookupClassFieldType(where.className, left.property) : null;
-      return { role: 'field', origin: declaredFieldOrigin(where.className, left.property), type: ilType(field || left.resultType) };
+      const nullable = left.nullable || (where.className && parser.lookupDeclaredFieldNullable && parser.lookupDeclaredFieldNullable(where.className, left.property));
+      const type = ilType(field || left.resultType);
+      return { role: 'field', origin: declaredFieldOrigin(where.className, left.property), type: type && nullable ? ilType(type + '?') : type };
     }
     if (left.computed) return { role: 'element', origin: valueOrigin(left.object, where), type: ilType(left.resultType) };
     return { role: 'property', origin: 'inference', type: ilType(left.resultType) };
@@ -392,7 +407,7 @@ function collectSites(parser, ast) {
         const ret = functionReturn(fn, here);
         add(node.body, 'value', [
           { type: ret.type, role: 'return', origin: ret.origin },
-          { type: ilType(node.body.resultType), role: 'value', origin: valueOrigin(node.body, here) }
+          { type: nodeType(node.body), role: 'value', origin: valueOrigin(node.body, here) }
         ]);
       }
     }
@@ -406,11 +421,11 @@ function collectSites(parser, ast) {
         else if (node.id && node.id.type === 'Identifier' && here.scope && node.init && node.init.type === 'Literal' &&
                  (typeof node.init.value === 'number' || typeof node.init.value === 'bigint'))
           here.scope.declared.set(node.id.name, 'literal-init');
-        if (node.id && node.id.type === 'Identifier' && here.scope) here.scope.types.set(node.id.name, ilType(node.resultType));
+        if (node.id && node.id.type === 'Identifier' && here.scope) here.scope.types.set(node.id.name, nodeType(node));
         if (node.init && !isFunction(node.init) && node.ilNodeType !== 'DestructuredElement' && node.ilNodeType !== 'DestructuredProperty') {
           add(node.init, 'value', [
-            { type: ilType(node.resultType), role: 'variable', origin: node.declaredType ? 'local-jsdoc' : 'inference' },
-            { type: ilType(node.init.resultType), role: 'value', origin: valueOrigin(node.init, here) }
+            { type: nodeType(node), role: 'variable', origin: node.declaredType ? 'local-jsdoc' : 'inference' },
+            { type: nodeType(node.init), role: 'value', origin: valueOrigin(node.init, here) }
           ]);
         }
         break;
@@ -420,7 +435,7 @@ function collectSites(parser, ast) {
         const checks = [{ type: target.type, role: target.role, origin: target.origin }];
         // '=' yields its right side (whose type the assignment repeats, or the
         // target's); a compound assignment yields the result of its operator.
-        if (node.operator === '=') checks.push({ type: ilType(node.right && node.right.resultType), role: 'value', origin: valueOrigin(node.right, here) });
+        if (node.operator === '=') checks.push({ type: nodeType(node.right), role: 'value', origin: valueOrigin(node.right, here) });
         else checks.push({ type: ilType(node.resultType), role: 'value', origin: 'inference' });
         const extra = target.role === 'element' && hasRange(node.left.object) ? { objectRange: node.left.object.range } : {};
         add(node, 'assign', checks, extra);
@@ -437,7 +452,7 @@ function collectSites(parser, ast) {
           const ret = functionReturn(here.fn, here);
           add(node.argument, 'value', [
             { type: ret.type, role: 'return', origin: ret.origin },
-            { type: ilType(node.argument.resultType), role: 'value', origin: valueOrigin(node.argument, here) }
+            { type: nodeType(node.argument), role: 'value', origin: valueOrigin(node.argument, here) }
           ]);
         }
         break;
@@ -470,6 +485,17 @@ function collectSites(parser, ast) {
  */
 function ilTypeFromJSDocLike(t) {
   if (!t) return null;
+  // A nullable value type (`{int32|null}`, `{?uint32}`, `{uint8=}`) is 'T?'.
+  const text = typeof t === 'object' ? (t.isUnion ? (t.unionTypes || []).map(u => u && u.name).filter(Boolean).join('|') : t.name) : t;
+  if (typeof text === 'string' && !(typeof t === 'object' && (t.isArray || t.isTuple || t.isGeneric))) {
+    const marked = (typeof t === 'object' && t.isNullable) || /^\s*\?|[?=]\s*$/.test(text) ||
+      text.split('|').some(s => s.trim() === 'null' || s.trim() === 'undefined');
+    const members = text.split('|').map(s => s.trim()).filter(s => s && s !== 'null' && s !== 'undefined');
+    if (marked && members.length === 1) {
+      const base = ilTypeFromJSDocLike(members[0].replace(/^\?|[?=]$/g, ''));
+      if (base && NULLABLE_VALUE_TYPES.test(base)) return base + '?';
+    }
+  }
   if (typeof t === 'object') {
     if (t.isUnion || t.isTuple || t.isGeneric) return null;
     if (t.isArray) {
