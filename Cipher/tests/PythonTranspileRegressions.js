@@ -221,6 +221,12 @@ check('names: two functions folding to one snake_case name stay two functions', 
   // Given fFunc and FFunc (both fold to f_func)
   return expectOutput(runPython(js, 'print(list(use()))'), ['[3, 10]']);
 });
+check('names: a length field of a class is a field, not an array truncation', () => {
+  const js = 'class Reg { constructor() { this.length = 0; this.buf = null; } }\n' +
+    'function make(n, words) { const reg = new Reg(); reg.length = n; reg.buf = words; return reg; }';
+  // Given `reg.length = n` on a class instance (IL type Reg)
+  return expectOutput(runPython(js, 'r = make(3, [1, 2])\nprint(r.length, list(r.buf))'), ['3 [1, 2]']);
+});
 check('names: an enum member the runtime does not list reads as undefined', () => {
   const js = 'function c() { return [CountryCode.BG, CountryCode.US]; }';
   // Given a country code missing from the runtime's CountryCode (BG)

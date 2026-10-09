@@ -9046,6 +9046,15 @@ class OpCodes(metaclass=_OpCodesMeta):
 
       // Handle array length assignment: arr.length = 0 -> arr.clear()
       // In JavaScript, setting length to 0 clears the array
+      // `obj.length = n` on an object whose IL type is not an array or
+      // string (a class with a `length` field, darkcrypt-pike.js's
+      // PikeRegister) writes the field; only an array is truncated.
+      if (node.left && node.left.type === 'ArrayLength' && node.operator === '=') {
+        const objType = String((node.left.array && node.left.array.resultType) || '');
+        if (objType && !/\[\]$|Array$|^array$|^string$/.test(objType))
+          return new PythonAssignment(new PythonMemberAccess(this._transformAsTarget(node.left.array), 'length'),
+            this._transformExpressionAsRead(node.right));
+      }
       if (node.left && node.left.type === 'ArrayLength' && node.operator === '=') {
         const rightVal = node.right;
         const isZero = (rightVal.type === 'Literal' && rightVal.value === 0) ||
