@@ -603,6 +603,14 @@ check('do-while: an increment or decrement in the condition runs before every te
   return expectOutput(runPython(js, 'r = f(3)\nprint(list(r[0]), r[1], r[2])'), ['[3, 2, 1, 100, 101, 102] 0 3']);
 });
 
+check('for: a continue beside a break in a counting-down loop still runs the update', () => {
+  const js = '/** @param {int32[]} skip */\nfunction f(skip) { const seen = []; let found = -1;\n' +
+    '  for (let order = 4; order >= 0; --order) { if (skip.includes(order)) continue; seen.push(order); if (order === 1) { found = order; break; } }\n' +
+    '  return [seen, found]; }';
+  // Given PPM's escape loop shape: --order, a continue and a break at the same level
+  return expectOutput(runPython(js, 'r = f([3, 2])\nprint(list(r[0]), r[1])'), ['[4, 1] 1']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

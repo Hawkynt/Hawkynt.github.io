@@ -3880,6 +3880,9 @@ class OpCodes(metaclass=_OpCodesMeta):
           // Inside a switch lowered to a one-pass loop (transformSwitchStatement)
           const flag = this._switchContinueTargets && this._switchContinueTargets.get(node);
           if (flag) return [new PythonAssignment(new PythonIdentifier(flag), PythonLiteral.Bool(true)), new PythonBreak()];
+          // `continue` in a for loop lowered to while still runs its update
+          const advance = this._continueAdvance && this._continueAdvance.get(node);
+          if (advance) return [...advance, new PythonContinue()];
           return new PythonContinue();
         }
         case 'ThrowStatement':
@@ -6120,7 +6123,6 @@ class OpCodes(metaclass=_OpCodesMeta):
 
       // Create while loop
       const condition = cleanedTest ? this.transformExpression(cleanedTest) : PythonLiteral.Bool(true);
-      const whileBody = this.transformBlockOrStatement(node.body);
 
       // Collect the per-iteration "advance" statements: any pre-statements
       // extracted from the test condition, then the for-loop's own update
@@ -6153,7 +6155,16 @@ class OpCodes(metaclass=_OpCodesMeta):
       // trips a `finally`, which would otherwise run one extra, spurious
       // advance step JS itself would have skipped, corrupting the loop
       // variable's value for any code reading it after the loop.
-      if (advanceStatements.length > 0 && this._hasOwnLevelContinueNoBreak(node.body)) {
+      const continueNoBreak = advanceStatements.length > 0 && this._hasOwnLevelContinueNoBreak(node.body);
+      // With a break beside it, each own-level `continue` runs the advance
+      // statements itself (a finally would also run them on the break)
+      if (advanceStatements.length > 0 && !continueNoBreak) {
+        if (!this._continueAdvance) this._continueAdvance = new WeakMap();
+        for (const c of PythonTransformer._ownLevelContinues(node.body)) this._continueAdvance.set(c, advanceStatements);
+      }
+      const whileBody = this.transformBlockOrStatement(node.body);
+
+      if (continueNoBreak) {
         const tryExcept = new PythonTryExcept();
         tryExcept.tryBlock = whileBody;
         if (!tryExcept.tryBlock.statements || tryExcept.tryBlock.statements.length === 0) {
@@ -6205,6 +6216,30 @@ class OpCodes(metaclass=_OpCodesMeta):
      * as opaque just means this optimization is missed for that shape, never
      * applied incorrectly).
      */
+    /**
+     * The unlabeled continue statements of a loop body that continue this
+     * loop (not a nested loop or function).
+     * @param {Object} body - IL loop body
+     * @returns {Object[]} ContinueStatement nodes
+     */
+    static _ownLevelContinues(body) {
+      const found = [];
+      const visit = (n) => {
+        if (!n || typeof n !== 'object') return;
+        switch (n.type) {
+          case 'ContinueStatement': if (!n.label) found.push(n); return;
+          case 'SwitchStatement': for (const c of n.cases || []) for (const st of c.consequent || []) visit(st); return;
+          case 'BlockStatement': n.body.forEach(visit); return;
+          case 'IfStatement': visit(n.consequent); visit(n.alternate); return;
+          case 'TryStatement': visit(n.block); if (n.handler) visit(n.handler.body); visit(n.finalizer); return;
+          case 'LabeledStatement': visit(n.body); return;
+          default: return;
+        }
+      };
+      visit(body);
+      return found;
+    }
+
     _hasOwnLevelContinueNoBreak(node) {
       let hasContinue = false;
       let hasBreak = false;
