@@ -7372,6 +7372,15 @@
         // back to generic name-based guesses at every call site (CS1503/CS0029).
         this.currentClass = mainClass;
         this.refArrayParams = this.preScanRefArrayParams(jsAst);
+        // Module bindings something reassigns or grows (a push becomes an assignment
+        // in C#) cannot be readonly fields
+        this.reassignedModuleBindings = new Set();
+        this._walkAstNodes(jsAst.body, node => {
+          if (node.type === 'AssignmentExpression' && node.left?.type === 'Identifier') this.reassignedModuleBindings.add(node.left.name);
+          else if (node.type === 'UpdateExpression' && node.argument?.type === 'Identifier') this.reassignedModuleBindings.add(node.argument.name);
+          else if (['ArrayAppend', 'ArrayUnshift', 'ArraySplice', 'ArrayShift', 'ArrayPop'].includes(node.type) && node.array?.type === 'Identifier')
+            this.reassignedModuleBindings.add(node.array.name);
+        });
         this.preScanModuleBindingReferences(jsAst.body);
         // Register module-scope BigInteger constants (e.g. asymmetric-crypto curve
         // primes/generators declared `const P = 0xFFFF...FC2Fn;`) as static fields
@@ -7525,15 +7534,38 @@
       const isRegisterCall = expr => expr?.type === 'CallExpression' && expr.arguments?.length === 1 && (
         (expr.callee?.type === 'Identifier' && expr.callee.name === 'RegisterAlgorithm') ||
         (expr.callee?.type === 'MemberExpression' && (expr.callee.property?.name || expr.callee.property?.value) === 'RegisterAlgorithm'));
+      // Module functions that register one of their parameters (`registerOnce(algo)`):
+      // name -> parameter index. Their own RegisterAlgorithm call needs a C# method.
+      const registeringFunctions = new Map();
+      for (const node of body) {
+        if (node.type !== 'FunctionDeclaration' || !node.id?.name) continue;
+        const params = (node.params || []).map(p => p?.name || p?.left?.name);
+        this._walkAstNodes(node.body, n => {
+          if (isRegisterCall(n) && n.arguments[0]?.type === 'Identifier' && params.includes(n.arguments[0].name))
+            registeringFunctions.set(node.id.name, params.indexOf(n.arguments[0].name));
+        });
+      }
       const registered = [];
       const visit = node => {
         if (!node) return;
         if (Array.isArray(node)) { node.forEach(visit); return; }
-        if (node.type === 'ExpressionStatement' && isRegisterCall(node.expression)) registered.push(node.expression.arguments[0]);
+        const expr = node.type === 'ExpressionStatement' ? node.expression : null;
+        if (isRegisterCall(expr)) registered.push(expr.arguments[0]);
+        else if (expr?.type === 'CallExpression' && expr.callee?.type === 'Identifier' && registeringFunctions.has(expr.callee.name) &&
+                 expr.arguments?.[registeringFunctions.get(expr.callee.name)])
+          registered.push(expr.arguments[registeringFunctions.get(expr.callee.name)]);
         else if (node.type === 'BlockStatement') visit(node.body);
         else if (node.type === 'IfStatement') { visit(node.consequent); visit(node.alternate); }
       };
       visit(body);
+      if (registeringFunctions.size > 0 && !mainClass.members.some(m => m.name === 'RegisterAlgorithm')) {
+        // The registry is the Algorithms array; registering at runtime does nothing more
+        const registerMethod = new CSharpMethod('RegisterAlgorithm', CSharpType.Void());
+        registerMethod.isStatic = true;
+        registerMethod.parameters.push(new CSharpParameter('algorithm', new CSharpType('Algorithm')));
+        registerMethod.body = new CSharpBlock();
+        mainClass.members.push(registerMethod);
+      }
       if (registered.length === 0) return;
 
       const algorithmType = new CSharpType('Algorithm');
@@ -8303,11 +8335,12 @@
           }
           const field = new CSharpField(fieldName, fieldType);
           field.isStatic = true;
-          field.isReadOnly = isConst;
+          const reassigned = !!this.reassignedModuleBindings?.has(name);
+          field.isReadOnly = isConst && !reassigned;
           // See _isConstFoldableLiteral's doc comment - promote eligible module-level
           // `const` scalars from `static readonly` to a genuine C# `const` so downstream
           // narrowing conversions (int literal -> uint/byte/etc. parameter) type-check.
-          if (isConst && this._isConstEligibleScalarType(fieldType) && this._isConstFoldableLiteral(decl.init)) {
+          if (isConst && !reassigned && this._isConstEligibleScalarType(fieldType) && this._isConstFoldableLiteral(decl.init)) {
             field.isConst = true;
           }
           // Keep the initializer's own element-wise casts (e.g. `(byte)(0xA6)` vs

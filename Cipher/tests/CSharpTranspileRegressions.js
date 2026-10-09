@@ -232,6 +232,18 @@ check('registry: a module-declared algorithmInstance is kept and listed', () => 
   expectNoMatch(code, /AlgorithmInstance = Algorithms\[0\]/, 'a second AlgorithmInstance');
 });
 
+check('registry: an algorithm registered through a module helper is listed', () => {
+  const code = transpile('class A extends HashFunctionAlgorithm { constructor() { super(); this.name = "A"; } }\n' +
+    '/** @param {A} algo - algorithm */\nfunction registerOnce(algo) { if (!AlgorithmFramework.Find(algo.name)) RegisterAlgorithm(algo); }\n' +
+    'registerOnce(new A());');
+  expectMatch(code, /Algorithms = new Algorithm\[\] \{ new A\(\) \}/, 'Algorithms = { new A() }');
+  expectMatch(code, /static void RegisterAlgorithm\(Algorithm algorithm\)/, 'a RegisterAlgorithm method for the helper');
+});
+check('module bindings: a const the module grows is not readonly (CS0198)', () => {
+  const code = transpile('/** @type {uint32[]} */\nconst TABLE = [];\nfunction fill() { TABLE.push(1); }');
+  expectNoMatch(code, /readonly uint\[\] TABLE/, 'a readonly TABLE');
+});
+
 // ---------------------------------------------------------------------------
 // Declarations take their IL type
 // ---------------------------------------------------------------------------
