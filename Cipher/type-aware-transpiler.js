@@ -4674,6 +4674,7 @@
             // to "8 - i" characters instead of 8).
             end: methodName === 'substr' ? null : (args[1] || null),
             length: methodName === 'substr' ? (args[1] || null) : null,
+            method: methodName,
             resultType: 'string',
             ilNodeType: 'StringSubstring'
           };
