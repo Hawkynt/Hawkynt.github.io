@@ -7189,6 +7189,11 @@
       if (actualType && !actualType.isArray && actualType.name === 'char' && expectedType.name === 'string' && !expectedType.isArray) {
         return new CSharpMethodCall(expr, 'ToString', []);
       }
+      // A BigInteger argument keeps its low bits (darkcrypt-hpc.js's M64(stir[0] -
+      // (stir[6] ^ BigInt(i))), negative before the mask): a plain cast overflows
+      if (actualType && !actualType.isArray && actualType.name === 'BigInteger' && !expectedType.isArray &&
+          ['byte', 'sbyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong'].includes(expectedType.name))
+        return this.narrowBigInteger(expr, expectedType);
       return new CSharpCast(expectedType, expr);
     }
 

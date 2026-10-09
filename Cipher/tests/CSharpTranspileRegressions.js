@@ -1070,6 +1070,11 @@ check('slice: an array slice the IL gives a string member is JsSlice (CS1503)', 
   expectMatch(code, /JsSlice\(entry\.Digest, 0, 2\)/, 'JsSlice(entry.Digest, 0, 2)');
   expectNoMatch(code, /SliceArray\(entry\.Digest/, 'SliceArray on a string');
 });
+check('bigint arguments: a BigInt argument for a uint64 parameter keeps its low bits (OverflowException)', () => {
+  const code = transpile('/**\n * @param {uint64} x - x\n * @returns {uint64} r\n */\nfunction m64(x) { return x; }\n' +
+    '/**\n * @param {uint64} a - a\n * @param {int32} i - i\n * @returns {uint64} r\n */\nfunction mix(a, i) { return m64(a - BigInt(i)); }');
+  expectMatch(code, /M64\((unchecked\()?\(ulong\)\(.*& ulong\.MaxValue\)/, 'M64((ulong)(... & ulong.MaxValue))');
+});
 const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +
