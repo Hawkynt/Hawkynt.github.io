@@ -5663,7 +5663,95 @@ class OpCodes(metaclass=_OpCodesMeta):
       if (!update.argument || update.argument.type !== 'Identifier') return false;
       if (update.argument.name !== decl.id.name) return false;
 
+      // range() fixes the sequence up front: JavaScript re-reads the bound and
+      // the counter every iteration, so a body that moves the counter
+      // (`i += skip`) or changes the bound (`push` onto the array whose length
+      // it is) needs the while form
+      const written = PythonTransformer._writtenPlaces(node.body);
+      if (written.has(decl.id.name)) return false;
+      for (const place of PythonTransformer._readPlaces(test.right))
+        if (written.has(place)) return false;
+
       return true;
+    }
+
+    /**
+     * Name of a plain variable or `this` field, the places a loop can write.
+     * @param {Object} n - IL node
+     * @returns {string|null} 'name' or 'this.name'
+     */
+    static _placeKey(n) {
+      if (!n) return null;
+      if (n.type === 'Identifier') return n.name;
+      if (n.type === 'ThisPropertyAccess' && !n.computed && typeof n.property === 'string') return 'this.' + n.property;
+      if (n.type === 'MemberExpression' && !n.computed && n.object && n.object.type === 'ThisExpression' && n.property)
+        return 'this.' + (n.property.name || n.property.value);
+      return null;
+    }
+
+    /**
+     * Variables and fields an IL subtree assigns, updates or resizes.
+     * @param {Object} root - IL subtree
+     * @returns {Set<string>} place keys
+     */
+    static _writtenPlaces(root) {
+      const out = new Set();
+      const seen = new Set();
+      const RESIZING = new Set(['ArrayAppend', 'ArrayPop', 'ArrayShift', 'ArrayUnshift', 'ArraySplice', 'ArrayClear']);
+      const visit = (n) => {
+        if (!n || typeof n !== 'object' || seen.has(n)) return;
+        seen.add(n);
+        if (n.type === 'AssignmentExpression' && n.left) {
+          const key = PythonTransformer._placeKey(n.left);
+          if (key) out.add(key);
+          // `a.length = 0`
+          if (n.left.type === 'ArrayLength' || (n.left.type === 'MemberExpression' && !n.left.computed &&
+              n.left.property && n.left.property.name === 'length')) {
+            const arrayKey = PythonTransformer._placeKey(n.left.array || n.left.object);
+            if (arrayKey) out.add(arrayKey);
+          }
+        }
+        if ((n.type === 'UpdateExpression' || (n.type === 'UnaryExpression' && (n.operator === '++' || n.operator === '--'))) && n.argument) {
+          const key = PythonTransformer._placeKey(n.argument);
+          if (key) out.add(key);
+        }
+        if (RESIZING.has(n.type)) {
+          const key = PythonTransformer._placeKey(n.array);
+          if (key) out.add(key);
+        }
+        for (const k in n) {
+          if (k === 'parent') continue;
+          const v = n[k];
+          if (Array.isArray(v)) v.forEach(visit);
+          else if (v && typeof v === 'object') visit(v);
+        }
+      };
+      visit(root);
+      return out;
+    }
+
+    /**
+     * Variables and fields an IL expression reads.
+     * @param {Object} root - IL expression
+     * @returns {Set<string>} place keys
+     */
+    static _readPlaces(root) {
+      const out = new Set();
+      const seen = new Set();
+      const visit = (n) => {
+        if (!n || typeof n !== 'object' || seen.has(n)) return;
+        seen.add(n);
+        const key = PythonTransformer._placeKey(n);
+        if (key) out.add(key);
+        for (const k in n) {
+          if (k === 'parent') continue;
+          const v = n[k];
+          if (Array.isArray(v)) v.forEach(visit);
+          else if (v && typeof v === 'object') visit(v);
+        }
+      };
+      visit(root);
+      return out;
     }
 
     transformRangeFor(node) {

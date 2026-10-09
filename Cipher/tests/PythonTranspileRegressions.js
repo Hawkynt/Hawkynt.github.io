@@ -447,6 +447,16 @@ check('division: a quotient assigned to a float64[] element keeps its fraction',
   return expectOutput(runPython(js, 'print(list(g([1, 3], 4)))'), ['[0.25, 0.75]']);
 });
 
+check('for: a body that moves the counter or grows the bound runs as JavaScript re-tests it', () => {
+  const js = '/** @param {int32[]} a */\nfunction skip(a) { const seen = []; for (let i = 0; i < a.length; ++i) { seen.push(a[i]); if (a[i] === 0) i += 2; } return seen; }\n' +
+    '/** @param {int32[]} a */\nfunction grow(a) { for (let i = 0; i < a.length; i++) { if (a[i] > 1) a.push(a[i] - 1); } return a; }\n' +
+    '/** @param {int32} n */\nfunction plain(n) { let s = 0; for (let i = 0; i < n; i++) s += i; return s; }';
+  // Given a counter advanced inside the body, a worklist grown inside the body and a plain counting loop
+  const code = transpile(js);
+  expectMatch(code, /for i in range\(0, int\(n\)\)|for i in range\(0, n\)/, 'the plain loop still as range()');
+  return expectOutput(runPython(js, 'print(list(skip([5, 0, 7, 8, 9])), list(grow([3])), plain(4))'), ['[5, 0, 9] [3, 2, 1] 6']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }
