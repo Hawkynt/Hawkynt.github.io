@@ -6278,6 +6278,8 @@
      */
     inferBinaryExpressionType(node) {
       const op = node.operator;
+      // 1.0 / IM: a division by or of a number written with a fraction is a double
+      if (op === '/' && (this.isFractionLiteral(node.left) || this.isFractionLiteral(node.right))) return CSharpType.Double();
       // a ** b: a BigInteger power of BigInts, else a double (see transformExponentiation)
       if (op === '**') return this.isBigIntOperand(node.left) || this.isBigIntOperand(node.right) ? new CSharpType('BigInteger') : CSharpType.Double();
 
@@ -8561,6 +8563,7 @@
           field.initializer = this.transformExpression(decl.init);
           // The initializer converted to the IL-declared field type
           if (ilFieldType) field.initializer = this.castIfNeeded(field.initializer, this.inferFullExpressionType(decl.init), fieldType);
+          field.initializer = this.asDoubleQuotient(decl.init, field.initializer, fieldType);
           this.currentArrayElementType = prevArrayElementType;
           targetClass.members.push(field);
 
@@ -12355,6 +12358,7 @@
           // A number into a bool local (OpCodes.GetBit) is its truthiness
           if (type?.name === 'bool' && !type.isArray)
             initializer = this.castIfNeeded(initializer, this.inferFullExpressionType(decl.init), type);
+          initializer = this.asDoubleQuotient(decl.init, initializer, type);
 
           // No evidence at all yet (still the initial `var` placeholder) for a
           // null-initialized local - see _findAnyReassignedScalarType's doc comment:
@@ -12583,7 +12587,7 @@
         case 'BinaryExpression':
         case 'LogicalExpression':
           if (node.operator === '**') return this.transformExponentiation(node);
-          return this.asBigIntShift(node, this.asJsComparison(node, this.asJsProduct(node, this.transformBinaryExpression(node))));
+          return this.asFractionDivision(node, this.asBigIntShift(node, this.asJsComparison(node, this.asJsProduct(node, this.transformBinaryExpression(node)))));
 
         case 'UnaryExpression':
           return this.transformUnaryExpression(node);
@@ -15455,6 +15459,7 @@
         const valueType = this.inferFullExpressionType(node.right);
         // Cast when types differ and target is a narrower integral type
         value = this.castIfNeeded(value, valueType, targetType);
+        value = this.asDoubleQuotient(node.right, value, targetType);
         // An inlined 32-bit OpCodes operation on a signed operand is a long in C#
         // (n >>> 1 & 4294967295u); into a 32-bit target it is cast back (OCB's ntz)
         // (the declared type of a local or parameter, which the IL context may not tell)
@@ -25705,6 +25710,39 @@
       const rightType = this.inferFullExpressionType(node.right);
       if (!wide.includes(leftType?.name) || leftType.isArray || !wide.includes(rightType?.name) || rightType.isArray) return result;
       return new CSharpMethodCall(null, 'JsMul', [result.left, result.right]);
+    }
+
+    /** Whether a JS/IL node is a number literal written with a fraction or exponent (1.0, 1e3). */
+    isFractionLiteral(node) {
+      return node?.type === 'Literal' && typeof node.value === 'number' && typeof node.raw === 'string' &&
+        !/^0[xXbBoO]/.test(node.raw) && /[.eE]/.test(node.raw);
+    }
+
+    /**
+     * 1.0 / IM - a division with a number written with a fraction (the scale of
+     * Numerical Recipes' generators) divides doubles; the literal is emitted as one
+     * (1.0, not 1, which C# would divide as integers).
+     */
+    asFractionDivision(node, result) {
+      if (node.operator !== '/' || result?.nodeType !== 'BinaryExpression' || result.operator !== '/') return result;
+      if (this.isFractionLiteral(node.left)) result.left = CSharpLiteral.Double(node.left.value);
+      else if (this.isFractionLiteral(node.right)) result.right = CSharpLiteral.Double(node.right.value);
+      return result;
+    }
+
+    /**
+     * A quotient going into a double (const AM = 1.0 / IM): JavaScript divides the
+     * numbers as doubles, C# integers as integers - the dividend is converted.
+     * @param {Object} node - the JS/IL value
+     * @param {Object} expr - its transformed C# expression
+     * @param {CSharpType} targetType - the type the value goes into
+     * @returns {Object} the C# expression to use
+     */
+    asDoubleQuotient(node, expr, targetType) {
+      if (!targetType || targetType.isArray || (targetType.name !== 'double' && targetType.name !== 'float')) return expr;
+      if (node?.type !== 'BinaryExpression' || node.operator !== '/') return expr;
+      const quotient = this.asDoubleOperand(node, expr);
+      return quotient.nodeType === 'BinaryExpression' ? quotient : expr;
     }
 
     /**

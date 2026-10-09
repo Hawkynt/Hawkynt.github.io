@@ -633,6 +633,10 @@
         result = String(node.value);
       }
 
+      // A whole double is written with its fraction (1.0), which C# would read as an int
+      if (node.literalType === 'double' && typeof node.value === 'number' && Number.isFinite(node.value) && /^-?\d+$/.test(result)) {
+        return result + '.0';
+      }
       // A number written with an exponent or fraction (1.7976931348623157e+308) is a
       // double whatever integer suffix its size suggested (1.79...e+308L does not parse)
       if (node.suffix && /^[uUlL]+$/.test(node.suffix) && /[.eE]/.test(result) && !node.isHex) {

@@ -795,6 +795,12 @@ check('numbers: a ** b is Math.Pow for numbers and BigInteger.Pow for BigInts (C
   expectMatch(code, /BigInteger\.Pow\(\(BigInteger\)\(2ul\), /, 'BigInteger.Pow((BigInteger)2, ...)');
   expectNoMatch(code, /\*\*/, 'a ** operator (CS0193)');
 });
+check('numbers: a division with a number written as 1.0 divides doubles', () => {
+  const code = transpile('const IM = 2147483647;\nconst AM = 1.0 / IM;\n/**\n * @param {int32} s - s\n * @returns {float64} r\n */\nfunction f(s) { return AM * s; }');
+  expectMatch(code, /double AM = (1\.0|\(double\)\(1\)) \/ IM;/, 'double AM = 1.0 / IM');
+  const local = transpile('/**\n * @param {int32} im - im\n * @returns {float64} r\n */\nfunction f(im) { return 3 * (1.0 / im); }');
+  expectMatch(local, /1\.0 \/ im/, '1.0 / im in an expression');
+});
 check('DataView: a local DataView is the byte[] it views, not dynamic', () => {
   const code = transpile('/**\n * @param {float64} v - v\n * @returns {uint8[]} r\n */\nfunction f(v) { /** @type {uint8[]} */ const out = [];\n' +
     '  const view = new DataView(new ArrayBuffer(8)); view.setFloat64(0, v, true);\n  for (let i = 0; i < 8; i++) out.push(view.getUint8(i));\n  return out; }');
