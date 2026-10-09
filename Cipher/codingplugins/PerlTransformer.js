@@ -6719,22 +6719,22 @@
         case 'Tan':
           // tan(x) -> sin(x)/cos(x)
           return new PerlBinaryExpression(
-            new PerlCall('sin', [this.transformExpression(node.arguments?.[0] || node.value)]),
+            new PerlCall('sin', [this.transformExpression(node.arguments?.[0] || node.argument || node.value)]),
             '/',
-            new PerlCall('cos', [this.transformExpression(node.arguments?.[0] || node.value)])
+            new PerlCall('cos', [this.transformExpression(node.arguments?.[0] || node.argument || node.value)])
           );
 
         case 'Asin':
           // asin(x) -> atan2(x, sqrt(1 - x*x))
           return new PerlCall('atan2', [
-            this.transformExpression(node.arguments?.[0] || node.value),
+            this.transformExpression(node.arguments?.[0] || node.argument || node.value),
             new PerlCall('sqrt', [new PerlBinaryExpression(
               PerlLiteral.Number(1),
               '-',
               new PerlBinaryExpression(
-                this.transformExpression(node.arguments?.[0] || node.value),
+                this.transformExpression(node.arguments?.[0] || node.argument || node.value),
                 '*',
-                this.transformExpression(node.arguments?.[0] || node.value)
+                this.transformExpression(node.arguments?.[0] || node.argument || node.value)
               )
             )])
           ]);
@@ -6746,18 +6746,18 @@
               PerlLiteral.Number(1),
               '-',
               new PerlBinaryExpression(
-                this.transformExpression(node.arguments?.[0] || node.value),
+                this.transformExpression(node.arguments?.[0] || node.argument || node.value),
                 '*',
-                this.transformExpression(node.arguments?.[0] || node.value)
+                this.transformExpression(node.arguments?.[0] || node.argument || node.value)
               )
             )]),
-            this.transformExpression(node.arguments?.[0] || node.value)
+            this.transformExpression(node.arguments?.[0] || node.argument || node.value)
           ]);
 
         case 'Atan':
           // atan(x) -> atan2(x, 1)
           return new PerlCall('atan2', [
-            this.transformExpression(node.arguments?.[0] || node.value),
+            this.transformExpression(node.arguments?.[0] || node.argument || node.value),
             PerlLiteral.Number(1)
           ]);
 
@@ -6771,22 +6771,22 @@
         case 'Sinh':
           // sinh(x) -> POSIX::sinh(x)
           this.addRequiredModule('POSIX');
-          return new PerlCall(new PerlMemberAccess(new PerlIdentifier("POSIX"), new PerlIdentifier("sinh"), "::"), [this.transformExpression(node.arguments?.[0] || node.value)]);
+          return new PerlCall(new PerlMemberAccess(new PerlIdentifier("POSIX"), new PerlIdentifier("sinh"), "::"), [this.transformExpression(node.arguments?.[0] || node.argument || node.value)]);
 
         case 'Cosh':
           // cosh(x) -> POSIX::cosh(x)
           this.addRequiredModule('POSIX');
-          return new PerlCall(new PerlMemberAccess(new PerlIdentifier("POSIX"), new PerlIdentifier("cosh"), "::"), [this.transformExpression(node.arguments?.[0] || node.value)]);
+          return new PerlCall(new PerlMemberAccess(new PerlIdentifier("POSIX"), new PerlIdentifier("cosh"), "::"), [this.transformExpression(node.arguments?.[0] || node.argument || node.value)]);
 
         case 'Tanh':
           // tanh(x) -> POSIX::tanh(x)
           this.addRequiredModule('POSIX');
-          return new PerlCall(new PerlMemberAccess(new PerlIdentifier("POSIX"), new PerlIdentifier("tanh"), "::"), [this.transformExpression(node.arguments?.[0] || node.value)]);
+          return new PerlCall(new PerlMemberAccess(new PerlIdentifier("POSIX"), new PerlIdentifier("tanh"), "::"), [this.transformExpression(node.arguments?.[0] || node.argument || node.value)]);
 
         case 'Cbrt':
           // cbrt(x) -> x ** (1/3)
           return new PerlBinaryExpression(
-            this.transformExpression(node.arguments?.[0] || node.value),
+            this.transformExpression(node.arguments?.[0] || node.argument || node.value),
             '**',
             new PerlGrouped(new PerlBinaryExpression(PerlLiteral.Number(1), '/', PerlLiteral.Number(3)))
           );
@@ -6804,14 +6804,14 @@
         case 'Sign':
           // sign(x) -> (x <=> 0)
           return new PerlGrouped(new PerlBinaryExpression(
-            this.transformExpression(node.arguments?.[0] || node.value),
+            this.transformExpression(node.arguments?.[0] || node.argument || node.value),
             '<=>',
             PerlLiteral.Number(0)
           ));
 
         case 'Fround':
           // fround(x) -> x (no native equivalent, pass through)
-          return this.transformExpression(node.arguments?.[0] || node.value);
+          return this.transformExpression(node.arguments?.[0] || node.argument || node.value);
 
         case 'MathConstant': {
           // Math constants -> Perl expressions

@@ -296,6 +296,19 @@ check('length: a record\'s length field is a field, an array counts elements, a 
   expectOutput(runPerl(LENGTH_SNIPPET, 'print main::f([1, 2], "abcd"), "\\n";'), '9,2,4');
 });
 
+// ---------------------------------------------------------------------------
+// Numbers and Math
+// ---------------------------------------------------------------------------
+const NUMBER_SNIPPET = '/** @param {number} x @returns {string} */\n' +
+  'function f(x) { return [Number.MAX_VALUE > 1e300 ? 1 : 0, 2 ** 70 === 1180591620717411303424 ? 1 : 0, Math.round(Math.tanh(x) * 1000), Math.round(Math.cosh(x) * 1000)].join(","); }';
+check('numbers: a double beyond 64 bits is a float literal; Math.tanh/sinh/cosh read their argument', () => {
+  const code = transpile(NUMBER_SNIPPET);
+  expectNoMatch(code, /\d{21,}/, 'an integer literal of more than 20 digits');
+  if (!hasPerl()) return 'skip';
+  // JavaScript: f(0.5) is "1,1,462,1128"
+  expectOutput(runPerl(NUMBER_SNIPPET, 'print main::f(0.5), "\\n";'), '1,1,462,1128');
+});
+
 /**
  * PERL: run every regression case.
  * @param {object} options - { verbose }
