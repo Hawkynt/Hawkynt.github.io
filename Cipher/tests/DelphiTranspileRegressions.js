@@ -175,6 +175,10 @@ sameAsJs('array: an empty array made in a loop is a new array each time',
   '  for (let i = 0; i < 3; i++) { /** @type {int32[]} */ const a = []; lists.push(a); }\n' +
   '  lists[0].push(5); lists[2].push(6); lists[2].push(7);\n' +
   '  return lists[0].length + "," + lists[1].length + "," + lists[2].length; }');
+sameAsJs('array: a callee writing into an Array.from copy writes into that copy, not a converted one',
+  '/** @param {uint8[]} out */ function bump(out) { out[0] = out[0] + 1; }\n' +
+  '/** @param {uint8[]} r @returns {string} */ function f(r) { let h = Array.from(r); bump(h); return h.join(",") + "|" + r.join(","); }\n' +
+  '/** @returns {string} */ function probe() { return f([1, 2]); }');
 sameAsJs('array: Array(n) without new makes n slots',
   '/** @returns {string} */ function probe() { const a = Array(3).fill(7); return a.length + ":" + a.join(","); }');
 
@@ -213,6 +217,10 @@ sameAsJs('members: a framework subclass field read through a framework base is t
   'class Alg extends BlockCipherAlgorithm { constructor() { super(); this.SupportedKeySizes = [new KeySize(16, 32, 8)]; } }\n' +
   'class Inst extends IBlockCipherInstance { constructor(a) { super(a); } /** @returns {int32} */ count() { return this.algorithm.SupportedKeySizes.length; } }\n' +
   '/** @returns {string} */ function probe() { return String(new Inst(new Alg()).count()); }', '1');
+
+sameAsJs('members: Find destructured from AlgorithmFramework looks up the registry',
+  'const { Find } = AlgorithmFramework;\n' +
+  '/** @returns {string} */ function probe() { const a = Find("no such algorithm"); return a ? "found" : "missing"; }', 'missing');
 
 // ---------------------------------------------------------------------------
 // Control flow

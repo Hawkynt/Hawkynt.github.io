@@ -1542,10 +1542,14 @@
         let type = parseType(d.declaredType) || parseType(d.id.resultType) || (d.init && parseType(d.init.resultType)) || null;
         if (!type || isNullT(type)) type = (d.init && parseType(d.init.contextType)) || T.any;
         type = this.widenForFloats(d, type);
-        if (isAnyT(type) && d.init) {
-          // untyped by the IL (test vector helpers): the variable holds what its initializer compiles to
+        const anyArray = isArr(type) && isAnyT(type.elem) && !d.declaredType;
+        if ((isAnyT(type) || anyArray) && d.init) {
+          // untyped by the IL (test vector helpers, Array.from(bytes)): the variable
+          // holds what its initializer compiles to, so a callee writing into it
+          // writes into this array, not into a converted copy
           const [res, pre] = this.capture(() => this.ex(d.init));
-          const t = res.t && !isNullT(res.t) && res.t.k !== 'void' && res.t.k !== 'function' ? res.t : T.any;
+          let t = res.t && !isNullT(res.t) && res.t.k !== 'void' && res.t.k !== 'function' ? res.t : T.any;
+          if (anyArray && !isArr(t)) t = type;
           const local = this.declareLocal(name, t);
           out.push(...pre, A.assign(A.id(local.pas), this.conv(res, t)));
           continue;
