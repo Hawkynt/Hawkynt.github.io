@@ -658,6 +658,11 @@ check('arrays: shift()/pop() of an array used as a value give the element and sh
   expectMatch(code, /byte __v = a\[a\.Length - 1\];\s*a = a\.Take\(a\.Length - 1\)\.ToArray\(\);/, 'pop: last element, then the rest');
   expectNoMatch(code, /RemoveAt/, 'List.RemoveAt on an array (CS1061)');
 });
+check('arrays: Array(n) called without new creates the array', () => {
+  const code = transpile('/** @returns {uint8[]} a */\nfunction f() { /** @type {uint8[]} */ const a = Array(4).fill(0x61); return a; }');
+  expectNoMatch(code, /[^.\w]Array\(4\)/, 'a call of Array(4) (CS1955)');
+  expectMatch(code, /new byte\[4\]|CreateArray<byte>\(4|Repeat\(unchecked\(\(byte\)\(0x61\)\), 4\)|Repeat\([^)]*0x61[^)]*\)*, 4\)/, 'an array of 4');
+});
 check('arrays: Array.from({length: n}, () => v) gives Select a lambda taking the element', () => {
   const code = transpile('/** @returns {uint8[]} a */\nfunction f() { /** @type {uint8[]} */ const a = Array.from({ length: 4 }, () => 0x64); return a; }');
   expectMatch(code, /Enumerable\.Range\(0, 4\)\.Select\(_ => /, 'Select(_ => ...)');

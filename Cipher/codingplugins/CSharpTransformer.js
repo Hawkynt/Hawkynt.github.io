@@ -7374,7 +7374,30 @@
       });
     }
 
+    /**
+     * `Array(n)` called without `new` is `new Array(n)`; the IL leaves it a plain
+     * call of a function named Array (Array(256).fill(0x61) in BriefLZ's vectors).
+     * @param {Object} jsAst - the program, changed in place
+     */
+    normalizeArrayCalls(jsAst) {
+      const asCreation = n => n?.type === 'CallExpression' && n.callee?.type === 'Identifier' && n.callee.name === 'Array' &&
+        n.arguments?.length === 1 ? { type: 'ArrayCreation', size: n.arguments[0], elementType: null, resultType: null, ilNodeType: 'ArrayCreation' } : null;
+      this._walkAstNodes(jsAst, node => {
+        for (const key in node) {
+          if (key === 'parent') continue;
+          const value = node[key];
+          if (Array.isArray(value)) {
+            for (let i = 0; i < value.length; ++i) { const c = asCreation(value[i]); if (c) value[i] = c; }
+          } else {
+            const c = asCreation(value);
+            if (c) node[key] = c;
+          }
+        }
+      });
+    }
+
     transform(jsAst) {
+      this.normalizeArrayCalls(jsAst);
       this.foldStringLiteralChains(jsAst);
       this.renameCaseCollidingFields(jsAst);
       const unit = new CSharpCompilationUnit();
