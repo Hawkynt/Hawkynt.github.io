@@ -16879,20 +16879,8 @@
         // First two args are byte[] (input, expected)
         this.currentArrayElementType = CSharpType.Byte();
         // Input and expected are byte arrays: a differently typed array converts
-        const asBytes = argNode => {
-          if (!argNode) return null;
-          const value = this.transformExpression(argNode);
-          // An invoked IIFE lambda has the type of its Func<T>
-          const invokedFunc = value?.nodeType === 'MethodCall' && value.methodName === 'Invoke' &&
-            value.target?.nodeType === 'Parenthesized' && value.target.expression?.nodeType === 'Cast'
-            ? value.target.expression.type?.genericArguments?.[0] : null;
-          const type = invokedFunc || this.inferFullExpressionType(argNode);
-          return type?.isArray && type.elementType && !type.elementType.isArray && type.elementType.name !== 'byte' &&
-            CSHARP_VALUE_TYPES.has(type.elementType.name)
-            ? this.buildParameterConversion(type, CSharpType.Array(CSharpType.Byte()), value) : value;
-        };
-        const arg0 = asBytes(node.arguments[0]);
-        const arg1 = asBytes(node.arguments[1]);
+        const arg0 = node.arguments[0] ? this.toTestVectorBytes(node.arguments[0], this.transformExpression(node.arguments[0])) : null;
+        const arg1 = node.arguments[1] ? this.toTestVectorBytes(node.arguments[1], this.transformExpression(node.arguments[1])) : null;
 
         // Remaining args are strings (description, source)
         this.currentArrayElementType = null;
@@ -17425,6 +17413,24 @@
      * indexer so the emitted code always compiles regardless of which algorithm-specific
      * duck-typed fields the JS source attaches to its test vectors.
      */
+    /**
+     * A test vector's input or expected value as byte[]: a differently typed array
+     * (an immediately invoked builder's uint[] result) converts element-wise.
+     * @param {Object} valueNode - the IL value
+     * @param {Object} value - its C# expression
+     * @returns {Object} the byte[] expression
+     */
+    toTestVectorBytes(valueNode, value) {
+      // An invoked IIFE lambda has the type of its Func<T>
+      const invokedFunc = value?.nodeType === 'MethodCall' && value.methodName === 'Invoke' &&
+        value.target?.nodeType === 'Parenthesized' && value.target.expression?.nodeType === 'Cast'
+        ? value.target.expression.type?.genericArguments?.[0] : null;
+      const type = invokedFunc || this.inferFullExpressionType(valueNode);
+      return type?.isArray && type.elementType && !type.elementType.isArray && type.elementType.name !== 'byte' &&
+        CSHARP_VALUE_TYPES.has(type.elementType.name)
+        ? this.buildParameterConversion(type, CSharpType.Array(CSharpType.Byte()), value) : value;
+    }
+
     transformObjectToTestCase(node) {
       const entries = this.extractObjectLiteralEntries(node);
       const prevArrayElementType = this.currentArrayElementType;
@@ -17447,7 +17453,8 @@
           ? CSharpType.Byte()
           : null;
 
-        const value = valueNode ? this.transformExpression(valueNode) : CSharpLiteral.Null();
+        let value = valueNode ? this.transformExpression(valueNode) : CSharpLiteral.Null();
+        if (valueNode && (pascalName === 'Input' || pascalName === 'Expected')) value = this.toTestVectorBytes(valueNode, value);
 
         if (TESTCASE_KNOWN_PROPS.has(pascalName)) {
           init.assignments.push({ name: pascalName, value });

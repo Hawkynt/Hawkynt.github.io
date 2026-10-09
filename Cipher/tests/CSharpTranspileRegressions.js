@@ -450,6 +450,11 @@ check('test vectors: a non-byte array given to new TestCase is converted to byte
     '(() => { /** @type {uint32[]} */ const out = []; for (let i = 0; i < 3; i++) out.push(i); return out; })(), "t", "u")]; }\n}');
   expectMatch(code, /\.Invoke\(\)\.Select\(_v => unchecked\(\(byte\)\(_v\)\)\)\.ToArray\(\)/, 'the uint[] IIFE result converted to byte[]');
 });
+check('test vectors: an object vector\'s non-byte input is converted to bytes', () => {
+  const code = transpile('class A extends Algorithm {\n  constructor() { super(); this.tests = [{ text: "t", uri: "u", ' +
+    'input: (() => { /** @type {uint32[]} */ const out = []; for (let i = 0; i < 3; i++) out.push(i); return out; })(), expected: [1] }]; }\n}');
+  expectMatch(code, /Input = \(\(Func<uint\[\]>\)[\s\S]*\.Invoke\(\)\.Select\(_v => unchecked\(\(byte\)\(_v\)\)\)\.ToArray\(\)/, 'Input converted to byte[]');
+});
 check('IL types: a nullable value-type field is T?, an undefined value-type field becomes default', () => {
   const code = transpile('class C {\n  constructor() { /** @type {int32|null} */ this.size = null; /** @type {int32} */ this.count = undefined; }\n' +
     '  /** @returns {int32} size */\n  get() { return this.size === null ? 0 : this.size; }\n}');
