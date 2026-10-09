@@ -39,6 +39,19 @@
     throw new Error('OpCodes dependency is required');
   }
 
+  // The HMAC comes from the collection's own HMAC and SHA family. Under
+  // CommonJS they are loaded with this file; in the browser the page loads them.
+  if (typeof require !== 'undefined') {
+    try {
+      require('../mac/hmac.js');
+      require('../hash/sha1.js');
+      require('../hash/sha256.js');
+      require('../hash/sha512.js');
+    } catch (e) {
+      // Reported as a missing dependency when a key is derived.
+    }
+  }
+
   // Extract framework components
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           KdfAlgorithm, IKdfInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
@@ -555,51 +568,28 @@
     }
 
     /**
-     * Generic HMAC computation: Node crypto under CommonJS; elsewhere there is
-     * no synchronous HMAC, so this throws
+     * Generic HMAC computation with the registered HMAC
      * @param {uint8[]} key - HMAC key
      * @param {uint8[]} message - Message
      * @param {string} hashName - SHA-1, SHA-256 or SHA-512
      * @param {int32} hashOutputSize - MAC length in bytes (informational)
      * @returns {uint8[]} MAC
-     * @throws {Error} Outside Node
+     * @throws {Error} If HMAC is not registered
      */
     _hmacCompute(key, message, hashName, hashOutputSize) {
-      // Use Node.js crypto if available
-      if (typeof module !== 'undefined' && typeof require !== 'undefined') {
-        const crypto = require('crypto');
-        const hmac = crypto.createHmac(
-          hashName.replace('-', '').toLowerCase(),
-          Buffer.from(key)
-        );
-        hmac.update(Buffer.from(message));
-        return Array.from(hmac.digest());
+      /** @type {Algorithm} */
+      const hmacAlgorithm = AlgorithmFramework.Find('HMAC');
+      if (!hmacAlgorithm) {
+        throw new Error('Cannot compute HMAC: HMAC is not registered. Load it before SP800-108-Pipeline');
       }
 
-      // Web Crypto (browser) is async and cannot serve this synchronous KDF
-      if (typeof require === 'undefined' && typeof crypto !== 'undefined' && crypto.subtle) {
-        return this._hmacWebCrypto(key, message, hashName);
-      }
-
-      throw new Error(
-        'Cannot compute HMAC: No crypto library available (requires Node.js crypto or Web Crypto API)'
-      );
-    }
-
-    /**
-     * HMAC computation using Web Crypto API: it is async and a KDF must be
-     * synchronous, so this always throws
-     * @param {uint8[]} key - HMAC key
-     * @param {uint8[]} message - Message
-     * @param {string} hashName - Hash name
-     * @returns {uint8[]} Never returns
-     * @throws {Error} Always
-     */
-    _hmacWebCrypto(key, message, hashName) {
-      throw new Error(
-        'Web Crypto API is async. For SP800-108 Pipeline KDF in browser, ' +
-        'use the async version or provide HMAC via OpCodes.'
-      );
+      /** @type {IMacInstance} */
+      const hmacInstance = hmacAlgorithm.CreateInstance(false);
+      hmacInstance.key = key;
+      hmacInstance.hashFunction = hashName;
+      /** @type {uint8[]} */
+      const mac = hmacInstance.ComputeMac(message);
+      return mac;
     }
   }
 
