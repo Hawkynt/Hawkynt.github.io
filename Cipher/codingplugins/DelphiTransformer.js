@@ -2408,7 +2408,8 @@
         case 'bigint': return A.call('JsValToBig', [e]);
         case 'class':
           if (to.name === 'TestCase') return A.call('JsValToTestCase', [e]);
-          return A.cast(this.classPas(to.name), A.call('JsValToObj', [e]));
+          // checked: a dynamic value of another class raises instead of corrupting memory
+          return A.bin('as', A.call('JsValToObj', [e]), A.id(this.classPas(to.name)));
         case 'error': return A.cast('Exception', A.call('JsValToObj', [e]));
         case 'map': return A.cast('TJsMap', A.call('JsValToObj', [e]));
         case 'array': return A.call(this.jsValueToArray(to), [e]);
@@ -3746,7 +3747,10 @@
       const resT = this.typeOf(node, null);
       const src = this.stable(o);
       const entry = this.inlineLambda(node.callback, { paramTypes: [o.t.elem, T.int32] });
-      const outT = resT && isArr(resT) && !isAnyT(resT.elem) ? resT : tArr(entry.ret);
+      // a callback returning dynamic values (an object literal) keeps them
+      // dynamic: the IL may name a class they are not instances of
+      const dynamicObjects = isAnyT(entry.ret) && resT && isArr(resT) && resT.elem.k === 'class';
+      const outT = resT && isArr(resT) && !isAnyT(resT.elem) && !dynamicObjects ? resT : tArr(entry.ret);
       const tmp = this.temp(outT, 'map');
       const i = this.temp(T.int32, 'i');
       this.emitPre(A.assign(A.id(tmp), A.call(A.mem(A.id(this.aliasOf(outT)), 'New'), [A.mem(src, 'length')])));

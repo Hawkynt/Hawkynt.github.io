@@ -209,6 +209,12 @@ sameAsJs('functions: a parameter default reads an earlier parameter',
 sameAsJs('callback: an untyped expression-bodied arrow still returns its value',
   '/** @param {uint8[]} b @returns {string} */ function show(b) { return b.join(","); }\n' +
   '/** @returns {string} */ function probe() { return show(Array.from({length: 4}, (_, i) => i)); }');
+sameAsJs('callback: map to object literals keeps them dynamic, they become test cases',
+  'const { Algorithm } = AlgorithmFramework;\n' +
+  'class Entry { /** @param {int32} n */ constructor(n) { this.n = n; } }\n' +
+  'const KAT = [new Entry(1), new Entry(2)];\n' +
+  'class Holder extends Algorithm { constructor() { super(); this.tests = KAT.map(e => ({ text: "t" + e.n, uri: "u", input: [e.n], expected: [e.n + 1] })); } }\n' +
+  '/** @returns {string} */ function probe() { const h = new Holder(); return h.tests.length + " " + h.tests[1].expected[0]; }', '2 3');
 cases.case('callback: a callback that is not a function expression is refused, not compiled empty', () => {
   // Given arr.map(String)
   // Then the statement raises "unsupported" instead of mapping every element to 0
