@@ -8844,6 +8844,22 @@
     }
 
     transformBinaryExpression(node) {
+      // A chain of string literals joined by "+" (a test vector's hex text
+      // split over hundreds of lines) is one literal - folded here, as
+      // recursing down the chain overflows the stack.
+      if (node.operator === '+') {
+        const parts = [];
+        let n = node;
+        while (n.type === 'BinaryExpression' && n.operator === '+' && n.right?.type === 'Literal' && typeof n.right.value === 'string') {
+          parts.push(n.right.value);
+          n = n.left;
+        }
+        if (parts.length > 0 && n.type === 'Literal' && typeof n.value === 'string') {
+          parts.push(n.value);
+          return PerlLiteral.String(parts.reverse().join(''), "'");
+        }
+      }
+
       // typeof X === 'string' / !== 'string' / == / != - the general
       // "case 'TypeOfExpression'" transform below (used when typeof isn't
       // directly compared to a literal) maps typeof to "ref($x) || 'SCALAR'"
