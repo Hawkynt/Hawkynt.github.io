@@ -720,6 +720,10 @@ check('BigInt locals: an undeclared local starting at a BigInt literal is a BigI
   const declared = transpile('/** @returns {uint64} h */\nfunction h() { /** @type {uint64} */ let x = 5n; return x; }');
   expectMatch(declared, /ulong x = /, 'a declared uint64 local stays ulong');
 });
+check('numbers: Number.MAX_VALUE written out is a double literal, without an integer suffix', () => {
+  const code = transpile('const UNREACHABLE = 1.7976931348623157e+308;\n/** @returns {float64} v */\nfunction f() { return UNREACHABLE; }');
+  expectNoMatch(code, /e\+308[uUlL]/, 'an integer suffix after the exponent');
+});
 check('loops: a loop variable named like a keyword is escaped in the for header too', () => {
   const code = transpile('/**\n * @param {int32} n - n\n * @returns {int32} s\n */\nfunction f(n) { let s = 0; for (let base = 0; base < n; base += 2) s += base; return s; }');
   expectMatch(code, /for \(int @base = 0; @base < n;/, 'for (int @base = 0; ...)');
