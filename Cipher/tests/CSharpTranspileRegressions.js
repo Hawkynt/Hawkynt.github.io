@@ -420,6 +420,11 @@ check('IL types: an array literal passed to a call inside a test vector takes th
     'class A extends Algorithm {\n  constructor() { super(); this.tests = [new TestCase(toOctets([0, 1, -1, 0]), [1], "t", "u")]; }\n}');
   expectMatch(code, /ToOctets\(new int\[\] \{ 0, 1, -1, 0 \}\)/, 'ToOctets(new int[] { 0, 1, -1, 0 })');
 });
+check('test vectors: a non-byte array given to new TestCase is converted to bytes', () => {
+  const code = transpile('class A extends Algorithm {\n  constructor() { super(); this.tests = [new TestCase([1, 2], ' +
+    '(() => { /** @type {uint32[]} */ const out = []; for (let i = 0; i < 3; i++) out.push(i); return out; })(), "t", "u")]; }\n}');
+  expectMatch(code, /\.Invoke\(\)\.Select\(_v => unchecked\(\(byte\)\(_v\)\)\)\.ToArray\(\)/, 'the uint[] IIFE result converted to byte[]');
+});
 check('IL types: a nullable value-type field is T?, an undefined value-type field becomes default', () => {
   const code = transpile('class C {\n  constructor() { /** @type {int32|null} */ this.size = null; /** @type {int32} */ this.count = undefined; }\n' +
     '  /** @returns {int32} size */\n  get() { return this.size === null ? 0 : this.size; }\n}');

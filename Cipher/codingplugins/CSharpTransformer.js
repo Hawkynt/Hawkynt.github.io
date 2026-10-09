@@ -15466,7 +15466,7 @@
            iifeCallee?.type === 'ArrowFunction') && (node.arguments || []).length === 0 && (iifeCallee.params || []).length === 0) {
         // The IL's type of the call, else of its position, else what the body returns
         const bodyReturn = iifeCallee.body?.type === 'BlockStatement' ? this.inferReturnType(iifeCallee.body) : null;
-        const returnType = this.mapILType(node.resultType) || this.mapILType(node.contextType) ||
+        const returnType = this.mapILType(node.contextType) || this.mapILType(node.resultType) ||
           (bodyReturn && bodyReturn.name !== 'object' ? bodyReturn : null) || CSharpType.Dynamic();
         const outerNames = [...(this.methodDeclaredVars || [])].map(name => ({ name }));
         const body = iifeCallee.body?.type === 'BlockStatement'
@@ -16767,8 +16767,21 @@
 
         // First two args are byte[] (input, expected)
         this.currentArrayElementType = CSharpType.Byte();
-        const arg0 = node.arguments[0] ? this.transformExpression(node.arguments[0]) : null;
-        const arg1 = node.arguments[1] ? this.transformExpression(node.arguments[1]) : null;
+        // Input and expected are byte arrays: a differently typed array converts
+        const asBytes = argNode => {
+          if (!argNode) return null;
+          const value = this.transformExpression(argNode);
+          // An invoked IIFE lambda has the type of its Func<T>
+          const invokedFunc = value?.nodeType === 'MethodCall' && value.methodName === 'Invoke' &&
+            value.target?.nodeType === 'Parenthesized' && value.target.expression?.nodeType === 'Cast'
+            ? value.target.expression.type?.genericArguments?.[0] : null;
+          const type = invokedFunc || this.inferFullExpressionType(argNode);
+          return type?.isArray && type.elementType && !type.elementType.isArray && type.elementType.name !== 'byte' &&
+            CSHARP_VALUE_TYPES.has(type.elementType.name)
+            ? this.buildParameterConversion(type, CSharpType.Array(CSharpType.Byte()), value) : value;
+        };
+        const arg0 = asBytes(node.arguments[0]);
+        const arg1 = asBytes(node.arguments[1]);
 
         // Remaining args are strings (description, source)
         this.currentArrayElementType = null;
