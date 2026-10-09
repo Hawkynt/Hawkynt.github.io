@@ -1,3376 +1,3930 @@
 /**
- * JavaTransformer.js - IL AST to Java AST Transformer
- * Converts IL AST (type-inferred, language-agnostic) to Java AST
+ * JavaTransformer.js - IL AST to the typed JVM IR (shared by Java and Kotlin)
  * (c)2006-2025 Hawkynt
  *
- * Full Pipeline:
- *   JS Source → Parser → JS AST → IL Transformer → IL AST → Language Transformer → Language AST → Language Emitter → Language Source
+ * Lowers the typed IL AST into the JVM IR of JavaAST.js. The rules:
  *
- * This transformer handles: IL AST → Java AST
+ * - Every value keeps its exact JavaScript value. The IL type of a site picks
+ *   the JVM container (see JavaAST.js); operators follow JavaScript: & | ^ <<
+ *   >> work on ToInt32 of their operands and yield int, >>> yields a uint32
+ *   in a long, + - * compute in the widest of their operands' containers and
+ *   the IL result's, / is always floating point.
+ * - 64-bit integer sites hold a BigInt or a Number in JavaScript; which one
+ *   is inferred from the values that flow into them (literals, BigInt(),
+ *   64-bit packs and rotations, BigInt-typed operands), never from names.
+ *   BigInt values live in java.math.BigInteger.
+ * - Arrays are reference-semantics growable arrays (U8Array, ..., JsArray<T>)
+ *   of the runtime; a typed array is the same class with a fixed length.
+ * - Plain objects are JsObject, functions as values JsFn; members a class
+ *   does not declare are reached through the runtime's reflective access.
+ * - A method overriding a framework or local base method takes the base's
+ *   JVM signature, so dispatch works as in JavaScript.
  *
- * IL AST characteristics:
- *   - Type-inferred (no untyped nodes)
- *   - Language-agnostic (no JS-specific constructs like UMD, IIFE, Math.*, Object.*, etc.)
- *   - Global options already applied
- *
- * Language options (applied here and in emitter):
- *   - packageName: Java package name
- *   - className: Main class name
- *
- * Java-specific transformations:
- *   - uint8 → byte (signed in Java, requires masking for unsigned semantics)
- *   - uint32 → int (requires Integer.toUnsignedLong() for unsigned operations)
- *   - uint64 → long (requires Long.compareUnsigned() etc.)
- *   - byte[] → byte[]
- *   - Arrays are objects in Java (use .length not .length())
- *   - camelCase for methods, UPPER_SNAKE_CASE for constants
- *   - No properties - use getters/setters
+ * The runtime the IR calls into (Js, OpCodes, the arrays, the framework) is
+ * emitted with the code; see java.js and kotlin.js.
  */
 
-(function(global) {
+(function (global) {
   'use strict';
 
-  // Load dependencies
   let JavaAST;
-  if (typeof require !== 'undefined') {
-    JavaAST = require('./JavaAST.js');
-  } else if (global.JavaAST) {
-    JavaAST = global.JavaAST;
-  }
+  if (typeof require !== 'undefined') JavaAST = require('./JavaAST.js');
+  else JavaAST = global.JavaAST;
+  const { T, E, S } = JavaAST;
 
-  const {
-    JavaType, JavaCompilationUnit, JavaPackageDeclaration, JavaImportDeclaration,
-    JavaClass, JavaInterface, JavaField, JavaMethod, JavaConstructor, JavaParameter,
-    JavaBlock, JavaVariableDeclaration, JavaExpressionStatement, JavaReturn,
-    JavaIf, JavaFor, JavaForEach, JavaWhile, JavaDoWhile, JavaSwitch, JavaSwitchCase,
-    JavaBreak, JavaContinue, JavaThrow, JavaTryCatch, JavaCatchClause, JavaSynchronized,
-    JavaLiteral, JavaIdentifier, JavaBinaryExpression, JavaUnaryExpression,
-    JavaAssignment, JavaMemberAccess, JavaArrayAccess, JavaMethodCall,
-    JavaObjectCreation, JavaArrayCreation, JavaCast, JavaConditional, JavaLambda,
-    JavaThis, JavaSuper, JavaInstanceOf, JavaParenthesized, JavaDoc
-  } = JavaAST;
+  // ===================================================================
+  // Names
+  // ===================================================================
 
-  /**
-   * Maps JavaScript/JSDoc types to Java types
-   */
-  const TYPE_MAP = {
-    // Unsigned integers (Java doesn't have unsigned primitives until Java 8 wrapper helpers)
-    'uint8': 'byte',      // Java byte is signed, use & 0xFF for unsigned
-    'byte': 'byte',
-    'uint16': 'short',    // Java short is signed, use & 0xFFFF for unsigned
-    'ushort': 'short',
-    'word': 'short',
-    'uint32': 'int',      // Java int is signed, use Integer.toUnsignedLong() etc.
-    'uint': 'int',
-    'dword': 'int',
-    'uint64': 'long',     // Java long is signed, use Long.compareUnsigned() etc.
-    'ulong': 'long',
-    'qword': 'long',
-
-    // Signed integers
-    'int8': 'byte',
-    'sbyte': 'byte',
-    'int16': 'short',
-    'short': 'short',
-    'int32': 'int',
-    'int': 'int',
-    'int64': 'long',
-    'long': 'long',
-
-    // Floating point
-    'float': 'float',
-    'float32': 'float',
-    'double': 'double',
-    'float64': 'double',
-    'number': 'int',      // In crypto context, number typically means uint32
-
-    // Other
-    'boolean': 'boolean',
-    'bool': 'boolean',
-    'string': 'String',
-    'String': 'String',
-    'BigInt': 'BigInteger',
-    'bigint': 'BigInteger',
-    'void': 'void',
-    'object': 'Object',
-    'Object': 'Object',
-    'any': 'Object'
-  };
-
-  /**
-   * Java reserved words that cannot be used as identifiers
-   */
-  const RESERVED_WORDS = new Set([
-    'abstract', 'assert', 'boolean', 'break', 'byte', 'case', 'catch', 'char',
-    'class', 'const', 'continue', 'default', 'do', 'double', 'else', 'enum',
-    'extends', 'final', 'finally', 'float', 'for', 'goto', 'if', 'implements',
-    'import', 'instanceof', 'int', 'interface', 'long', 'native', 'new', 'null',
-    'package', 'private', 'protected', 'public', 'return', 'short', 'static',
-    'strictfp', 'super', 'switch', 'synchronized', 'this', 'throw', 'throws',
-    'transient', 'try', 'void', 'volatile', 'while', 'true', 'false'
+  const RESERVED = new Set([
+    // Java
+    'abstract', 'assert', 'boolean', 'break', 'byte', 'case', 'catch', 'char', 'class', 'const', 'continue',
+    'default', 'do', 'double', 'else', 'enum', 'extends', 'final', 'finally', 'float', 'for', 'goto', 'if',
+    'implements', 'import', 'instanceof', 'int', 'interface', 'long', 'native', 'new', 'package', 'private',
+    'protected', 'public', 'return', 'short', 'static', 'strictfp', 'super', 'switch', 'synchronized', 'this',
+    'throw', 'throws', 'transient', 'try', 'void', 'volatile', 'while', 'true', 'false', 'null', 'var',
+    'record', 'yield', '_', 'sealed', 'permits',
+    // Kotlin hard keywords
+    'as', 'fun', 'in', 'is', 'object', 'typealias', 'typeof', 'val', 'when',
+    // runtime and java.lang names a local must not shadow
+    'Js', 'JsArray', 'JsObject', 'JsMap', 'JsSet', 'JsFn', 'JsError', 'JsRegExp', 'OpCodes', 'Math', 'String',
+    'Object', 'Integer', 'Long', 'Double', 'Boolean', 'System', 'BigInteger', 'AlgorithmFramework',
+    'U8Array', 'I8Array', 'U16Array', 'I16Array', 'U32Array', 'I32Array', 'I64Array', 'F64Array', 'F32Array', 'BoolArray',
+    'IntRef', 'LongRef', 'DoubleRef', 'BoolRef', 'Ref', 'Character', 'Number', 'Array', 'Exception', 'Error',
+    'Unit', 'Any', 'Int', 'Nothing', 'it'
   ]);
 
-  /**
-   * JavaScript AST to Java AST Transformer
-   */
+  /** A JavaScript identifier as a JVM identifier. */
+  function jid(name) {
+    let n = String(name).replace(/[^A-Za-z0-9_$]/g, c => '_u' + c.charCodeAt(0).toString(16) + '_');
+    if (/^[0-9]/.test(n)) n = '_' + n;
+    if (n.includes('$')) n = n.replace(/\$/g, '_S_');
+    return RESERVED.has(n) ? n + '_' : n;
+  }
+
+  /** A member name (fields and methods may reuse names a local may not). */
+  function mid(name) {
+    let n = String(name).replace(/[^A-Za-z0-9_$]/g, c => '_u' + c.charCodeAt(0).toString(16) + '_');
+    if (/^[0-9]/.test(n)) n = '_' + n;
+    if (n.includes('$')) n = n.replace(/\$/g, '_S_');
+    const keyword = new Set(['abstract', 'assert', 'boolean', 'break', 'byte', 'case', 'catch', 'char', 'class', 'const',
+      'continue', 'default', 'do', 'double', 'else', 'enum', 'extends', 'final', 'finally', 'float', 'for', 'goto', 'if',
+      'implements', 'import', 'instanceof', 'int', 'interface', 'long', 'native', 'new', 'package', 'private', 'protected',
+      'public', 'return', 'short', 'static', 'strictfp', 'super', 'switch', 'synchronized', 'this', 'throw', 'throws',
+      'transient', 'try', 'void', 'volatile', 'while', 'true', 'false', 'null', 'var', '_', 'as', 'fun', 'in', 'is',
+      'object', 'typealias', 'typeof', 'val', 'when', 'getClass', 'hashCode', 'equals', 'toString', 'clone', 'notify',
+      'notifyAll', 'wait', 'finalize']);
+    return keyword.has(n) ? n + '_' : n;
+  }
+
+  // ===================================================================
+  // IL types
+  // ===================================================================
+
+  /** The IL type of a resultType value as a string ('' when none). */
+  function ilName(t) {
+    if (t === null || t === undefined) return '';
+    if (typeof t === 'string') return t;
+    if (typeof t === 'object' && typeof t.name === 'string') return t.isArray && !t.name.endsWith('[]') ? t.name + '[]' : t.name;
+    return '';
+  }
+
+  const IL_ALIAS = {
+    byte: 'uint8', word: 'uint16', dword: 'uint32', qword: 'uint64', sbyte: 'int8', short: 'int16',
+    int: 'int32', long: 'int64', bool: 'boolean', Boolean: 'boolean', String: 'string', float: 'float32',
+    double: 'float64', BigInt: 'bigint', Number: 'number', Int: 'int32', UInt: 'uint32'
+  };
+  function ilNorm(t) {
+    const n = ilName(t).trim();
+    return IL_ALIAS[n] || n;
+  }
+  function tupleParts(type) {
+    if (typeof type !== 'string' || type.length < 3 || type[0] !== '[' || !type.endsWith(']') || type.endsWith('[]')) return null;
+    const parts = [];
+    let depth = 0, start = 1;
+    for (let i = 1; i < type.length - 1; ++i) {
+      const c = type[i];
+      if (c === '[' || c === '<' || c === '(' || c === '{') ++depth;
+      else if (c === ']' || c === '>' || c === ')' || c === '}') { if (--depth < 0) return null; }
+      else if (c === ',' && depth === 0) { parts.push(type.slice(start, i)); start = i + 1; }
+    }
+    if (depth !== 0) return null;
+    parts.push(type.slice(start, type.length - 1));
+    return parts;
+  }
+  const INT_IL = new Set(['uint8', 'int8', 'uint16', 'int16', 'int32']);
+  const IL64 = new Set(['uint64', 'int64']);
+  const FLOAT_IL = new Set(['float32', 'float64', 'number']);
+
+  // ===================================================================
+  // The framework surface (mirrors the runtime's framework classes)
+  // ===================================================================
+
+  const FRAMEWORK = {
+    LinkItem: { fields: { text: 'String', uri: 'String' }, ctors: [['String', 'String'], ['String']] },
+    TestCase: {
+      ext: 'LinkItem', dynamic: true, fields: { input: 'U8Array', expected: 'U8Array' },
+      ctors: [['U8Array', 'U8Array', 'String', 'String'], ['U8Array', 'U8Array', 'String'], ['U8Array', 'U8Array']]
+    },
+    Vulnerability: {
+      ext: 'LinkItem', fields: { description: 'String', mitigation: 'String' },
+      ctors: [['String', 'String', 'String', 'String'], ['String', 'String', 'String'], ['String', 'String'], ['String']]
+    },
+    AuthResult: { fields: { Success: 'boolean', Output: 'U8Array', FailureReason: 'String' }, ctors: [['boolean', 'U8Array', 'String'], ['boolean', 'U8Array'], ['boolean']] },
+    KeySize: { fields: { minSize: 'int', maxSize: 'int', stepSize: 'int' }, ctors: [['int', 'int', 'int'], ['int', 'int']] },
+    BlockAbsorber: {
+      fields: { _blockSize: 'int', _processBlock: 'JsFn', _held: 'U8Array', _pending: 'int', _length: 'long' },
+      accessors: { BlockSize: ['int', false], Pending: ['int', false], Length: ['long', false] },
+      methods: { Absorb: [['U8Array'], 'void'], Finish: [['JsFn'], 'Object'], Reset: [[], 'void'] },
+      ctors: [['int', 'JsFn']]
+    },
+    IAlgorithmInstance: {
+      abstract: true, fields: { algorithm: 'Algorithm', isInverse: 'boolean', inputBuffer: 'U8Array' },
+      methods: { Feed: [['U8Array'], 'void'], Result: [[], 'U8Array'], Dispose: [[], 'void'] },
+      ctors: [['Algorithm'], []]
+    },
+    Algorithm: {
+      abstract: true,
+      fields: {
+        name: 'String', description: 'String', inventor: 'String', year: 'int', category: 'CategoryType',
+        subCategory: 'String', securityStatus: 'SecurityStatus', complexity: 'ComplexityType', country: 'CountryCode',
+        documentation: 'JsArray<LinkItem>', references: 'JsArray<LinkItem>', knownVulnerabilities: 'JsArray<Vulnerability>',
+        tests: 'JsArray<TestCase>'
+      },
+      methods: { CreateInstance: [['boolean'], 'IAlgorithmInstance', 0] },
+      ctors: [[]]
+    },
+    CryptoAlgorithm: { ext: 'Algorithm', abstract: true, ctors: [[]] },
+    SymmetricCipherAlgorithm: { ext: 'CryptoAlgorithm', abstract: true, ctors: [[]] },
+    AsymmetricCipherAlgorithm: { ext: 'CryptoAlgorithm', abstract: true, ctors: [[]] },
+    BlockCipherAlgorithm: { ext: 'SymmetricCipherAlgorithm', abstract: true, fields: { SupportedKeySizes: 'JsArray<KeySize>', SupportedBlockSizes: 'JsArray<KeySize>' }, ctors: [[]] },
+    StreamCipherAlgorithm: { ext: 'SymmetricCipherAlgorithm', abstract: true, ctors: [[]] },
+    EncodingAlgorithm: { ext: 'Algorithm', abstract: true, ctors: [[]] },
+    CompressionAlgorithm: { ext: 'Algorithm', abstract: true, ctors: [[]] },
+    ErrorCorrectionAlgorithm: { ext: 'Algorithm', abstract: true, ctors: [[]] },
+    HashFunctionAlgorithm: { ext: 'Algorithm', abstract: true, fields: { SupportedOutputSizes: 'JsArray<KeySize>' }, ctors: [[]] },
+    MacAlgorithm: { ext: 'Algorithm', abstract: true, fields: { SupportedMacSizes: 'JsArray<KeySize>', NeedsKey: 'boolean' }, ctors: [[]] },
+    KdfAlgorithm: { ext: 'Algorithm', abstract: true, fields: { SupportedOutputSizes: 'JsArray<KeySize>', SaltRequired: 'boolean' }, ctors: [[]] },
+    PaddingAlgorithm: { ext: 'Algorithm', abstract: true, fields: { IsLengthIncluded: 'boolean' }, ctors: [[]] },
+    CipherModeAlgorithm: { ext: 'Algorithm', abstract: true, fields: { RequiresIV: 'boolean', SupportedIVSizes: 'JsArray<KeySize>' }, ctors: [[]] },
+    AeadAlgorithm: { ext: 'CryptoAlgorithm', abstract: true, fields: { SupportedTagSizes: 'JsArray<KeySize>', SupportsDetached: 'boolean' }, ctors: [[]] },
+    RandomGenerationAlgorithm: { ext: 'Algorithm', abstract: true, fields: { IsDeterministic: 'boolean', IsCryptographicallySecure: 'boolean', SupportedSeedSizes: 'JsArray<KeySize>' }, ctors: [[]] },
+    IBlockCipherInstance: {
+      ext: 'IAlgorithmInstance', abstract: true, fields: { BlockSize: 'int', KeySize: 'int', _key: 'U8Array' },
+      accessors: { key: ['U8Array', true] },
+      methods: { EncryptBlock: [['U8Array'], 'U8Array'], DecryptBlock: [['U8Array'], 'U8Array'], RequireBlockMultiple: [['int'], 'int', 0] },
+      ctors: [['Algorithm'], []]
+    },
+    IHashFunctionInstance: { ext: 'IAlgorithmInstance', abstract: true, fields: { OutputSize: 'int' }, ctors: [['Algorithm'], []] },
+    IMacInstance: { ext: 'IAlgorithmInstance', abstract: true, methods: { ComputeMac: [['U8Array'], 'U8Array'] }, ctors: [['Algorithm'], []] },
+    IKdfInstance: { ext: 'IAlgorithmInstance', abstract: true, fields: { OutputSize: 'int', Iterations: 'int' }, ctors: [['Algorithm'], []] },
+    IAeadInstance: { ext: 'IAlgorithmInstance', abstract: true, fields: { aad: 'U8Array', tagSize: 'int' }, ctors: [['Algorithm'], []] },
+    IErrorCorrectionInstance: { ext: 'IAlgorithmInstance', abstract: true, methods: { DetectError: [['U8Array'], 'boolean'] }, ctors: [['Algorithm'], []] },
+    IRandomGeneratorInstance: { ext: 'IAlgorithmInstance', abstract: true, methods: { NextBytes: [['int'], 'U8Array'] }, ctors: [['Algorithm'], []] },
+    CategoryType: { enumLike: true, fields: { name: 'String', color: 'String', icon: 'String', description: 'String' } },
+    SecurityStatus: { enumLike: true, fields: { name: 'String', color: 'String', icon: 'String' } },
+    ComplexityType: { enumLike: true, fields: { name: 'String', color: 'String', level: 'int' } },
+    CountryCode: { enumLike: true, fields: { name: 'String', icon: 'String' } },
+    _BitStream: {
+      fields: { buffer: 'int', bufferBits: 'int', byteArray: 'U8Array', readPosition: 'int', totalBitsWritten: 'int' },
+      methods: {
+        writeBits: [['long', 'long'], 'void'], writeBit: [['long'], 'void'], writeByte: [['long'], 'void'], writeBytes: [['U8Array'], 'void'],
+        writeUint16BE: [['long'], 'void'], writeUint16LE: [['long'], 'void'], writeUint32BE: [['long'], 'void'], writeUint32LE: [['long'], 'void'],
+        readBits: [['long'], 'long'], readBit: [[], 'long'], readByte: [[], 'int'], readBytes: [['long'], 'U8Array'], peekBits: [['long'], 'long'],
+        skipBits: [['long'], 'void'], hasMoreBits: [[], 'boolean'], getRemainingBits: [[], 'int'], resetReadPosition: [[], 'void'],
+        seekBits: [['long'], 'void'], toArray: [['boolean'], 'U8Array', 0], getBitLength: [[], 'int'], getByteLength: [[], 'int'],
+        clear: [[], 'void'], clone: [[], '_BitStream'], writeVarInt: [['long'], 'void'], readVarInt: [[], 'long'], writeUnary: [['long'], 'void'],
+        readUnary: [[], 'int'], alignToByte: [[], 'void'], isAligned: [[], 'boolean']
+      },
+      ctors: [['U8Array'], []]
+    }
+  };
+  const FRAMEWORK_STATICS = {
+    RegisterAlgorithm: [['Algorithm'], 'void'],
+    Find: [['String'], 'Algorithm'],
+    Clear: [[], 'void'],
+    SpongePadBlocks: [['U8Array', 'int', 'int', 'int'], 'JsArray<U8Array>'],
+    MerkleDamgardBlocks: [['U8Array', 'int', 'double', 'JsObject'], 'JsArray<U8Array>']
+  };
+  const ENUM_CONSTANTS = {
+    CategoryType: ['ASYMMETRIC', 'BLOCK', 'STREAM', 'HASH', 'CHECKSUM', 'COMPRESSION', 'ENCODING', 'CLASSICAL', 'MAC', 'KDF', 'ECC', 'MODE', 'PADDING', 'AEAD', 'SPECIAL', 'PQC', 'RANDOM'],
+    SecurityStatus: ['SECURE', 'DEPRECATED', 'BROKEN', 'OBSOLETE', 'EXPERIMENTAL', 'EDUCATIONAL'],
+    ComplexityType: ['BEGINNER', 'INTERMEDIATE', 'ADVANCED', 'EXPERT', 'RESEARCH'],
+    CountryCode: ['US', 'RU', 'CN', 'UA', 'DE', 'GB', 'FR', 'JP', 'KR', 'IL', 'BE', 'CA', 'AU', 'IT', 'NL', 'CH', 'SE', 'NO', 'IN', 'BR', 'INTL', 'ANCIENT', 'UNKNOWN']
+  };
+
+  /** Runtime OpCodes: [JVM parameter types, JVM return type, minimum arguments]. '*' passes the argument as it is; 'same' returns the first argument's type. */
+  const OPCODES = {
+    GetByte: [['long', 'long'], 'int'], GF256Mul: [['long', 'long'], 'int'],
+    RotL64n: [['BigInteger', 'long'], 'BigInteger'], RotR64n: [['BigInteger', 'long'], 'BigInteger'],
+    RotL128n: [['BigInteger', 'long'], 'BigInteger'], RotR128n: [['BigInteger', 'long'], 'BigInteger'],
+    ShiftLn: [['BigInteger', 'long'], 'BigInteger'], ShiftRn: [['BigInteger', 'long'], 'BigInteger'],
+    CreateArray: [['double', 'double'], 'U8Array', 1], Hex32ToDWords: [['String'], 'U32Array'], CopyArray: [['*'], 'same'],
+    SetBit: [['long', 'long', 'boolean'], 'long'], ConcatArrays: [['Object'], 'U8Array'], GetBit: [['long', 'long'], 'boolean'],
+    SecureCompare: [['Object', 'Object'], 'boolean'], ConstantTimeCompare: [['Object', 'Object', 'double'], 'boolean', 2],
+    ArraysEqual: [['Object', 'Object'], 'boolean'], CompareArrays: [['Object', 'Object'], 'boolean'],
+    BytesToChars: [['Object'], 'String'], CreateBitStream: [['U8Array'], '_BitStream', 0], ToLong: [['BigInteger'], 'BigInteger'],
+    ToQWord: [['BigInteger'], 'BigInteger'], BitMask: [['long'], 'long'], Shr32Signed: [['long', 'long'], 'int'],
+    SecureRandomBytes: [['double'], 'U8Array'], MulHi32: [['long', 'long'], 'long'],
+    ArraySlice: [['Object', 'double', 'double'], 'U8Array', 2], GFMul: [['long', 'long', 'long', 'long'], 'long'],
+    BitCountN: [['BigInteger'], 'int'], RotL64_HL: [['long', 'long', 'long'], 'JsObject'], RotR64_HL: [['long', 'long', 'long'], 'JsObject'],
+    GcdN: [['BigInteger', 'BigInteger'], 'BigInteger'], PopCount: [['long'], 'int'], PopCountFast: [['long'], 'int'],
+    AddMod: [['long', 'long', 'long'], 'int'], SubMod: [['long', 'long', 'long'], 'int'],
+    Words32ToBytesBE: [['Object'], 'U8Array'], BytesToWords32BE: [['Object'], 'U32Array'], EncodeMsgLength64LE: [['double'], 'U8Array'],
+    SquareModN: [['BigInteger', 'BigInteger'], 'BigInteger'], Split64: [['double'], 'JsObject'], ModN: [['BigInteger', 'BigInteger'], 'BigInteger'],
+    GetBitN: [['BigInteger', 'long'], 'BigInteger'], SetBitN: [['BigInteger', 'long', 'BigInteger'], 'BigInteger'],
+    MulModN: [['BigInteger', 'BigInteger', 'BigInteger'], 'BigInteger'], ModPowN: [['BigInteger', 'BigInteger', 'BigInteger'], 'BigInteger'],
+    ModInverseN: [['BigInteger', 'BigInteger'], 'BigInteger'], AndN: [['BigInteger', 'BigInteger'], 'BigInteger'],
+    OrN: [['BigInteger', 'BigInteger'], 'BigInteger'], XorN: [['BigInteger', 'BigInteger'], 'BigInteger'],
+    Add3L64: [['long', 'long', 'long'], 'long'], Add3H64: [['double', 'double', 'double', 'double'], 'int'],
+    GHashMul: [['U8Array', 'U8Array'], 'U8Array'], GCMIncrement: [['U8Array'], 'U8Array'],
+    CreateUint64ArrayFromHex: [['Object'], 'JsArray<U32Array>'], ToShort: [['long'], 'int'], ToSByte: [['long'], 'int'],
+    XorArrayWithByte: [['Object', 'long'], 'U8Array'], XorArrays: [['Object', 'Object'], 'U8Array'], ClearArray: [['Object'], 'void'],
+    Hex8ToBytes: [['String'], 'U8Array'], BytesToHex: [['Object'], 'String'],
+    RotL8: [['long', 'long'], 'int'], RotR8: [['long', 'long'], 'int'], RotL16: [['long', 'long'], 'int'], RotR16: [['long', 'long'], 'int'],
+    RotL32: [['long', 'long'], 'long'], RotR32: [['long', 'long'], 'long'],
+    Unpack16BE: [['long'], 'U8Array'], Unpack16LE: [['long'], 'U8Array'], Unpack32BE: [['long'], 'U8Array'], Unpack32LE: [['long'], 'U8Array'],
+    Unpack64BE: [['Object'], 'U8Array'], Unpack64LE: [['Object'], 'U8Array'],
+    Pack16BE: [['int', 'int'], 'int'], Pack16LE: [['int', 'int'], 'int'],
+    Pack32BE: [['int', 'int', 'int', 'int'], 'long'], Pack32LE: [['int', 'int', 'int', 'int'], 'long'],
+    Pack64BE: [['int', 'int', 'int', 'int', 'int', 'int', 'int', 'int'], 'BigInteger'], Pack64LE: [['int', 'int', 'int', 'int', 'int', 'int', 'int', 'int'], 'BigInteger']
+  };
+
+  const MAX_INT = 2147483647, MIN_INT = -2147483648;
+
+  const SKIP_KEYS = new Set(['parent', 'loc', 'range', 'typeInfo', 'jsDoc', 'leadingComments', 'trailingComments', 'resultType', 'typeAnnotation', 'declaredReturnType', 'contextType', 'targetType']);
+  /** Annotate an IL node without making the annotation a child: other transformers walk the same AST. */
+  function mark(node, key, value) {
+    Object.defineProperty(node, key, { value, writable: true, configurable: true, enumerable: false });
+    return value;
+  }
+
+  /** Call f with every child node (object) of an IL node; the lowering's own annotations (__x) are not children. */
+  function eachChild(n, f) {
+    for (const k of Object.keys(n)) {
+      if (SKIP_KEYS.has(k) || k.startsWith('__')) continue;
+      const v = n[k];
+      if (v && typeof v === 'object') f(v);
+    }
+  }
+
+  /** Thrown for IL the lowering cannot express; the plugin reports it as a transpile failure. */
+  class LoweringError extends Error {}
+
+  // ===================================================================
+  // The transformer
+  // ===================================================================
+
   class JavaTransformer {
     constructor(options = {}) {
       this.options = options;
-      this.packageName = options.packageName || 'com.generated';
-      this.className = options.className || 'GeneratedClass';
-      this.typeKnowledge = options.typeKnowledge || null;
-      this.currentClass = null;
-      this.currentMethod = null;
-      this.variableTypes = new Map();
-      this.imports = new Set();
       this.warnings = [];
+      this.uid = 0;
     }
 
     /**
-     * Transform JavaScript AST to Java AST
-     * @param {Object} jsAst - JavaScript AST from parser
-     * @returns {JavaCompilationUnit} Java AST
+     * Lower an IL program to a JVM IR unit.
+     * @param {Object} il - IL AST (Program)
+     * @returns {Object} { k: 'unit', name, classes, fields, methods, init }
      */
-    transform(jsAst) {
-      const cu = new JavaCompilationUnit();
+    transform(il) {
+      this.il = il;
+      this.unitName = mid(this.options.className || 'GeneratedClass');
+      this.classes = new Map();      // name -> class info (local and framework)
+      this.functions = new Map();    // module function name -> fn info
+      this.moduleVars = new Map();   // module variable name -> sym
+      this.unit = { k: 'unit', name: this.unitName, classes: [], fields: [], methods: [], init: [] };
+      for (const [name, def] of Object.entries(FRAMEWORK)) this.addFrameworkClass(name, def);
+      const body = il && il.type === 'Program' ? il.body : (Array.isArray(il) ? il : [il]);
+      this.body = (body || []).filter(Boolean);
+      this.resolve(this.body);
+      this.collectDeclarations(this.body);
+      this.inferKinds();
+      this.lowerProgram(this.body);
+      return this.unit;
+    }
 
-      // Package declaration
-      cu.packageDeclaration = new JavaPackageDeclaration(this.packageName);
+    warn(message) { this.warnings.push(message); }
+    fresh(base) { return `${base}$${++this.uid}`; }
 
-      // Standard imports
-      this.addImport('java.util.*');
-      this.addImport('java.math.BigInteger');
+    // =================================================================
+    // Classes and members
+    // =================================================================
 
-      // Add framework stub types first (if enabled)
-      if (this.options.includeFrameworkStubs !== false) {
-        const frameworkStubs = this.createFrameworkStubs();
-        for (const stub of frameworkStubs) {
-          cu.types.push(stub);
+    addFrameworkClass(name, def) {
+      const info = {
+        name, javaName: name, ext: def.ext || null, framework: true, abstract: !!def.abstract, dynamic: !!def.dynamic,
+        fields: new Map(), accessors: new Map(), methods: new Map(), statics: new Map(), staticMethods: new Map(),
+        ctors: (def.ctors || [[]]).map(p => ({ params: p.map((t, i) => ({ name: 'p' + i, t })) })),
+        subclasses: [], enumLike: !!def.enumLike
+      };
+      for (const [f, t] of Object.entries(def.fields || {})) info.fields.set(f, { name: f, javaName: f, t });
+      for (const [a, [t, settable]] of Object.entries(def.accessors || {}))
+        info.accessors.set(a, { name: a, t, getter: true, setter: settable });
+      for (const [m, [params, ret, min]] of Object.entries(def.methods || {}))
+        info.methods.set(m, { name: m, javaName: m, params: params.map((t, i) => ({ name: 'p' + i, t })), ret, min: min === undefined ? params.length : min, framework: true });
+      if (ENUM_CONSTANTS[name]) for (const c of ENUM_CONSTANTS[name]) info.statics.set(c, { name: c, javaName: c, t: name });
+      this.classes.set(name, info);
+    }
+
+    classInfo(name) { return name ? this.classes.get(name) || null : null; }
+
+    /** Whether class a is b or a subclass of it. */
+    isSubclass(a, b) {
+      for (let c = this.classInfo(a); c; c = this.classInfo(c.ext)) if (c.name === b) return true;
+      return false;
+    }
+
+    /** The member of a class or its ancestors: { kind: 'field'|'accessor'|'method', info, owner }. */
+    findMember(className, name) {
+      for (let c = this.classInfo(className); c; c = this.classInfo(c.ext)) {
+        if (c.accessors.has(name)) return { kind: 'accessor', info: c.accessors.get(name), owner: c };
+        if (c.fields.has(name)) return { kind: 'field', info: c.fields.get(name), owner: c };
+        if (c.methods.has(name)) return { kind: 'method', info: c.methods.get(name), owner: c };
+      }
+      return null;
+    }
+
+    findStatic(className, name) {
+      for (let c = this.classInfo(className); c; c = this.classInfo(c.ext)) {
+        if (c.statics.has(name)) return { kind: 'field', info: c.statics.get(name), owner: c };
+        if (c.staticMethods.has(name)) return { kind: 'method', info: c.staticMethods.get(name), owner: c };
+      }
+      return null;
+    }
+
+    /** A member some subclass of the class declares (for a downcast), or null. */
+    findMemberInSubclasses(className, name) {
+      const startInfo = this.classInfo(className);
+      if (!startInfo || startInfo.framework) return null;
+      const hits = [];
+      const visit = c => {
+        for (const sub of c.subclasses) {
+          const s = this.classInfo(sub);
+          if (!s) continue;
+          if (s.accessors.has(name) || s.fields.has(name) || s.methods.has(name)) hits.push(s);
+          else visit(s);
         }
-      }
-
-      // Transform the program
-      if (jsAst.type === 'Program') {
-        const mainClass = this.transformProgram(jsAst);
-        cu.types.push(mainClass);
-      }
-
-      // Add imports to compilation unit
-      for (const imp of this.imports) {
-        cu.imports.push(new JavaImportDeclaration(imp, false, imp.endsWith('*')));
-      }
-
-      return cu;
+      };
+      const start = this.classInfo(className);
+      if (start) visit(start);
+      if (hits.length === 0) return null;
+      // The nearest common class declaring it (all hits share the member only when they agree)
+      return hits.length === 1 ? { cls: hits[0].name, member: this.findMember(hits[0].name, name) } : null;
     }
+
+    // =================================================================
+    // Resolution: symbols for every declaration and reference
+    // =================================================================
 
     /**
-     * Create framework stub types for algorithm metadata
-     * These allow the code to compile without the actual AlgorithmFramework
+     * Give every declaration a symbol and every identifier reference its
+     * symbol (node.__sym). Symbols record what the lowering needs: the IL
+     * type, the function they belong to, assignments, captures by nested
+     * functions, and BigInt-ness.
      */
-    createFrameworkStubs() {
-      const stubs = [];
-
-      // CategoryType enum (package-private to avoid one-public-class-per-file)
-      const categoryType = new JavaClass('CategoryType');
-      categoryType.isEnum = true;
-      categoryType.accessModifier = '';
-      categoryType.enumConstants = ['BLOCK', 'STREAM', 'HASH', 'MAC', 'KDF', 'AEAD',
-                                     'ASYMMETRIC', 'ENCODING', 'COMPRESSION', 'CLASSICAL',
-                                     'ECC', 'CHECKSUM', 'SPECIAL', 'RANDOM', 'MODES'];
-      stubs.push(categoryType);
-
-      // SecurityStatus enum
-      const securityStatus = new JavaClass('SecurityStatus');
-      securityStatus.isEnum = true;
-      securityStatus.accessModifier = '';
-      securityStatus.enumConstants = ['SECURE', 'BROKEN', 'DEPRECATED', 'EXPERIMENTAL',
-                                       'EDUCATIONAL', 'OBSOLETE'];
-      stubs.push(securityStatus);
-
-      // ComplexityType enum
-      const complexityType = new JavaClass('ComplexityType');
-      complexityType.isEnum = true;
-      complexityType.accessModifier = '';
-      complexityType.enumConstants = ['BEGINNER', 'INTERMEDIATE', 'ADVANCED', 'EXPERT', 'RESEARCH'];
-      stubs.push(complexityType);
-
-      // CountryCode enum
-      const countryCode = new JavaClass('CountryCode');
-      countryCode.isEnum = true;
-      countryCode.accessModifier = '';
-      countryCode.enumConstants = ['US', 'GB', 'DE', 'FR', 'IL', 'RU', 'CN', 'JP', 'BE',
-                                    'CH', 'NL', 'AU', 'CA', 'KR', 'INTERNATIONAL', 'UNKNOWN'];
-      stubs.push(countryCode);
-
-      // KeySize class
-      const keySize = this.createStubClass('KeySize',
-        [['minSize', 'int'], ['maxSize', 'int'], ['step', 'int']]);
-      stubs.push(keySize);
-
-      // LinkItem class
-      const linkItem = this.createStubClass('LinkItem',
-        [['text', 'String'], ['url', 'String']]);
-      stubs.push(linkItem);
-
-      // Vulnerability class (extends LinkItem conceptually, but we'll make it standalone)
-      const vulnerability = this.createStubClass('Vulnerability',
-        [['name', 'String'], ['mitigation', 'String'], ['url', 'String']]);
-      stubs.push(vulnerability);
-
-      // TestCase class
-      const testCase = this.createStubClass('TestCase',
-        [['input', 'byte[]'], ['expected', 'byte[]'], ['description', 'String'], ['source', 'String']]);
-      stubs.push(testCase);
-
-      // IAlgorithmInstance interface
-      const iAlgInstance = new JavaClass('IAlgorithmInstance');
-      iAlgInstance.isInterface = true;
-      iAlgInstance.accessModifier = '';
-      const feedMethod = new JavaMethod('feed');
-      feedMethod.returnType = JavaType.Void();
-      feedMethod.parameters = [new JavaParameter('data', new JavaType('byte[]'))];
-      feedMethod.isAbstract = true;
-      iAlgInstance.members.push(feedMethod);
-      const resultMethod = new JavaMethod('result');
-      resultMethod.returnType = new JavaType('byte[]');
-      resultMethod.isAbstract = true;
-      iAlgInstance.members.push(resultMethod);
-      stubs.push(iAlgInstance);
-
-      // IBlockCipherInstance interface (extends IAlgorithmInstance)
-      const iBlockInstance = new JavaClass('IBlockCipherInstance');
-      iBlockInstance.isInterface = true;
-      iBlockInstance.accessModifier = '';
-      iBlockInstance.extendsInterfaces = [new JavaType('IAlgorithmInstance')];
-      // Use abstract getter/setter methods instead of fields for interfaces
-      const getKey = new JavaMethod('getKey');
-      getKey.returnType = new JavaType('byte[]');
-      getKey.isAbstract = true;
-      iBlockInstance.members.push(getKey);
-      const setKey = new JavaMethod('setKey');
-      setKey.returnType = JavaType.Void();
-      setKey.parameters = [new JavaParameter('key', new JavaType('byte[]'))];
-      setKey.isAbstract = true;
-      iBlockInstance.members.push(setKey);
-      stubs.push(iBlockInstance);
-
-      // IHashFunctionInstance interface (extends IAlgorithmInstance)
-      const iHashInstance = new JavaClass('IHashFunctionInstance');
-      iHashInstance.isInterface = true;
-      iHashInstance.accessModifier = '';
-      iHashInstance.extendsInterfaces = [new JavaType('IAlgorithmInstance')];
-      stubs.push(iHashInstance);
-
-      // IStreamCipherInstance interface (extends IAlgorithmInstance)
-      const iStreamInstance = new JavaClass('IStreamCipherInstance');
-      iStreamInstance.isInterface = true;
-      iStreamInstance.accessModifier = '';
-      iStreamInstance.extendsInterfaces = [new JavaType('IAlgorithmInstance')];
-      const getKeyStream = new JavaMethod('getKey');
-      getKeyStream.returnType = new JavaType('byte[]');
-      getKeyStream.isAbstract = true;
-      iStreamInstance.members.push(getKeyStream);
-      const setKeyStream = new JavaMethod('setKey');
-      setKeyStream.returnType = JavaType.Void();
-      setKeyStream.parameters = [new JavaParameter('key', new JavaType('byte[]'))];
-      setKeyStream.isAbstract = true;
-      iStreamInstance.members.push(setKeyStream);
-      const getIV = new JavaMethod('getIV');
-      getIV.returnType = new JavaType('byte[]');
-      getIV.isAbstract = true;
-      iStreamInstance.members.push(getIV);
-      const setIV = new JavaMethod('setIV');
-      setIV.returnType = JavaType.Void();
-      setIV.parameters = [new JavaParameter('iv', new JavaType('byte[]'))];
-      setIV.isAbstract = true;
-      iStreamInstance.members.push(setIV);
-      stubs.push(iStreamInstance);
-
-      // Algorithm base class
-      const algorithm = this.createAlgorithmBaseClass('Algorithm');
-      stubs.push(algorithm);
-
-      // CryptoAlgorithm extends Algorithm
-      const cryptoAlg = this.createDerivedAlgorithmClass('CryptoAlgorithm', 'Algorithm');
-      stubs.push(cryptoAlg);
-
-      // SymmetricCipherAlgorithm extends CryptoAlgorithm
-      const symAlg = this.createDerivedAlgorithmClass('SymmetricCipherAlgorithm', 'CryptoAlgorithm');
-      stubs.push(symAlg);
-
-      // BlockCipherAlgorithm extends SymmetricCipherAlgorithm
-      const blockAlg = this.createDerivedAlgorithmClass('BlockCipherAlgorithm', 'SymmetricCipherAlgorithm');
-      stubs.push(blockAlg);
-
-      // StreamCipherAlgorithm extends SymmetricCipherAlgorithm
-      const streamAlg = this.createDerivedAlgorithmClass('StreamCipherAlgorithm', 'SymmetricCipherAlgorithm');
-      stubs.push(streamAlg);
-
-      // HashFunctionAlgorithm extends CryptoAlgorithm
-      const hashAlg = this.createDerivedAlgorithmClass('HashFunctionAlgorithm', 'CryptoAlgorithm');
-      stubs.push(hashAlg);
-
-      // MacAlgorithm extends CryptoAlgorithm
-      const macAlg = this.createDerivedAlgorithmClass('MacAlgorithm', 'CryptoAlgorithm');
-      stubs.push(macAlg);
-
-      // EncodingAlgorithm extends Algorithm
-      const encAlg = this.createDerivedAlgorithmClass('EncodingAlgorithm', 'Algorithm');
-      stubs.push(encAlg);
-
-      // CompressionAlgorithm extends Algorithm
-      const compAlg = this.createDerivedAlgorithmClass('CompressionAlgorithm', 'Algorithm');
-      stubs.push(compAlg);
-
-      // ChecksumAlgorithm extends Algorithm
-      const checksumAlg = this.createDerivedAlgorithmClass('ChecksumAlgorithm', 'Algorithm');
-      stubs.push(checksumAlg);
-
-      return stubs;
-    }
-
-    /**
-     * Create a simple data class with constructor and fields
-     */
-    createStubClass(name, fields) {
-      const cls = new JavaClass(name);
-      cls.accessModifier = '';  // package-private
-
-      // Add fields
-      for (const [fieldName, fieldType] of fields) {
-        const field = new JavaField(fieldName, new JavaType(fieldType));
-        field.accessModifier = 'public';
-        cls.members.push(field);
-      }
-
-      // Add constructor
-      const ctor = new JavaConstructor(name);
-      ctor.accessModifier = 'public';
-      for (const [fieldName, fieldType] of fields) {
-        ctor.parameters.push(new JavaParameter(fieldName, new JavaType(fieldType)));
-      }
-      ctor.body = new JavaBlock();
-      for (const [fieldName, _] of fields) {
-        const assign = new JavaExpressionStatement(
-          new JavaAssignment(
-            new JavaMemberAccess(new JavaThis(), fieldName),
-            '=',
-            new JavaIdentifier(fieldName)
-          )
-        );
-        ctor.body.statements.push(assign);
-      }
-      cls.members.push(ctor);
-
-      return cls;
-    }
-
-    /**
-     * Create the base Algorithm class with common fields
-     */
-    createAlgorithmBaseClass(name) {
-      const cls = new JavaClass(name);
-      cls.accessModifier = '';  // package-private
-      cls.isAbstract = true;
-
-      // Common algorithm metadata fields
-      const fields = [
-        ['name', 'String'],
-        ['description', 'String'],
-        ['inventor', 'String'],
-        ['year', 'int'],
-        ['category', 'CategoryType'],
-        ['subCategory', 'String'],
-        ['securityStatus', 'SecurityStatus'],
-        ['complexity', 'ComplexityType'],
-        ['country', 'CountryCode']
-      ];
-
-      for (const [fieldName, fieldType] of fields) {
-        const field = new JavaField(fieldName, new JavaType(fieldType));
-        field.accessModifier = 'protected';
-        cls.members.push(field);
-      }
-
-      // List fields for collections
-      const listFields = [
-        ['documentation', 'LinkItem'],
-        ['references', 'LinkItem'],
-        ['knownVulnerabilities', 'Vulnerability'],
-        ['supportedKeySizes', 'KeySize'],
-        ['supportedBlockSizes', 'KeySize']
-      ];
-
-      for (const [fieldName, elementType] of listFields) {
-        const field = new JavaField(fieldName, new JavaType(`List<${elementType}>`));
-        field.accessModifier = 'protected';
-        field.initializer = new JavaObjectCreation(new JavaType('ArrayList<>'));
-        cls.members.push(field);
-      }
-
-      // Abstract createInstance method
-      const createInstance = new JavaMethod('createInstance');
-      createInstance.accessModifier = 'public';
-      createInstance.isAbstract = true;
-      createInstance.returnType = new JavaType('IAlgorithmInstance');
-      createInstance.parameters = [new JavaParameter('isInverse', JavaType.Boolean())];
-      cls.members.push(createInstance);
-
-      return cls;
-    }
-
-    /**
-     * Create a derived algorithm class that extends a parent
-     */
-    createDerivedAlgorithmClass(name, parentName) {
-      const cls = new JavaClass(name);
-      cls.accessModifier = '';  // package-private
-      cls.isAbstract = true;
-      cls.extendsClass = parentName;
-      return cls;
-    }
-
-    addImport(packageName) {
-      this.imports.add(packageName);
-    }
-
-    /**
-     * Transform Program node to Java class
-     */
-    transformProgram(node) {
-      const javaClass = new JavaClass(this.className);
-      javaClass.accessModifier = '';  // package-private to allow multiple types in one file
-      this.currentClass = javaClass;
-
-      // Process all top-level declarations
-      for (const stmt of node.body) {
-        // Check for IIFE wrapper (UMD pattern) and extract content
-        if (this.isIIFE(stmt)) {
-          const extractedDecls = this.extractIIFEContent(stmt);
-          for (const decl of extractedDecls) {
-            if (decl.nodeType === 'Class') {
-              javaClass.nestedTypes.push(decl);
-            } else if (decl.nodeType === 'Method') {
-              decl.isStatic = true;
-              javaClass.members.push(decl);
-            } else if (decl.nodeType === 'Field') {
-              javaClass.members.push(decl);
-            }
+    resolve(body) {
+      const scopes = [];
+      const fnStack = [];
+      const self = this;
+      const push = (fn) => scopes.push({ names: new Map(), fn });
+      const pop = () => scopes.pop();
+      const curFn = () => fnStack[fnStack.length - 1] || null;
+      const declare = (name, sym) => {
+        sym.name = name; sym.fn = curFn(); sym.refs = 0; sym.assigns = sym.assigns || 0; sym.captured = false; sym.capturedAssigned = false;
+        scopes[scopes.length - 1].names.set(name, sym);
+        return sym;
+      };
+      const declareFnScope = (name, sym) => {
+        // var: the nearest function scope
+        for (let i = scopes.length - 1; i >= 0; --i)
+          if (scopes[i].isFunction || i === 0) {
+            if (scopes[i].names.has(name)) return scopes[i].names.get(name);
+            sym.name = name; sym.fn = curFn(); sym.refs = 0; sym.assigns = 0; sym.captured = false;
+            scopes[i].names.set(name, sym);
+            return sym;
           }
-        } else if (stmt.type === 'ClassDeclaration') {
-          // Nested class
-          const nestedClass = this.transformClassDeclaration(stmt);
-          javaClass.nestedTypes.push(nestedClass);
-        } else if (stmt.type === 'FunctionDeclaration') {
-          // Static method
-          const method = this.transformFunctionDeclaration(stmt);
-          method.isStatic = true;
-          javaClass.members.push(method);
-        } else if (stmt.type === 'VariableDeclaration') {
-          // Static field
-          const fields = this.transformVariableDeclaration(stmt, true);
-          javaClass.members.push(...fields);
+        return declare(name, sym);
+      };
+      const lookup = name => {
+        for (let i = scopes.length - 1; i >= 0; --i) if (scopes[i].names.has(name)) return scopes[i].names.get(name);
+        return null;
+      };
+      const ref = (node, isWrite) => {
+        const sym = lookup(node.name);
+        if (!sym) return;
+        mark(node, '__sym', sym);
+        sym.refs++;
+        if (sym.fn !== curFn()) {
+          sym.captured = true;
+          if (isWrite) sym.capturedAssigned = true;
         }
-      }
+        if (isWrite) {
+          sym.assigns++;
+          if (sym.fn !== curFn()) sym.writtenInner = true;
+        }
+      };
+      const declType = (decl) => decl.resultType || (decl.id && decl.id.resultType) || null;
+      // Hoist function declarations and var declarations of a block
+      const hoist = (stmts, isFnBody) => {
+        for (const s of stmts || []) {
+          if (!s) continue;
+          if (s.type === 'FunctionDeclaration' && s.id) {
+            const sym = declare(s.id.name, { kind: 'func', node: s, il: null });
+            mark(s, '__sym', sym);
+          } else if (s.type === 'ClassDeclaration' && s.id) {
+            if (!lookup(s.id.name) || scopes.length > 1) mark(s, '__sym', declare(s.id.name, { kind: 'class', node: s }));
+          }
+        }
+        if (isFnBody) collectVars(stmts);
+      };
+      const collectVars = (node) => {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(collectVars); return; }
+        if (['FunctionDeclaration', 'FunctionExpression', 'ArrowFunction', 'ArrowFunctionExpression', 'ClassDeclaration', 'MethodDefinition'].includes(node.type)) return;
+        if (node.type === 'VariableDeclaration' && node.kind === 'var')
+          for (const d of node.declarations || [])
+            if (d.id && d.id.type === 'Identifier') { const s = declareFnScope(d.id.name, { kind: 'var', il: declType(d), node: d, nullable: !!(d.nullable || d.id.nullable) }); mark(d, '__sym', s); s.isVar = true; }
+        eachChild(node, c => collectVars(c));
+      };
 
-      return javaClass;
-    }
+      const fnNode = n => n && ['FunctionDeclaration', 'FunctionExpression', 'ArrowFunction', 'ArrowFunctionExpression'].includes(n.type);
+      const walkFunction = (fn, method) => {
+        fnStack.push(fn);
+        push(fn);
+        scopes[scopes.length - 1].isFunction = true;
+        mark(fn, '__params', []);
+        let patternIndex = 0;
+        for (const p of fn.params || []) {
+          const pn = p.type === 'AssignmentPattern' ? p.left : p.type === 'RestElement' || p.type === 'RestParameter' ? (p.argument || p) : p;
+          if (pn && (pn.type === 'ObjectPattern' || pn.type === 'ArrayPattern')) {
+            const sym = declare('param__' + patternIndex++, { kind: 'param', il: null, node: pn, pattern: pn });
+            mark(pn, '__sym', sym);
+            fn.__params.push(sym);
+            const names = pn.type === 'ObjectPattern' ? (pn.properties || []).map(q => q.value || q.key) : (pn.elements || []);
+            for (const v of names) if (v && v.type === 'Identifier') mark(v, '__sym', declare(v.name, { kind: 'let', il: v.resultType || null, node: v }));
+            continue;
+          }
+          const name = pn.name || (typeof p === 'string' ? p : null);
+          if (!name) continue;
+          const il = pn.resultType || (pn.typeAnnotation) || (fn.typeInfo && fn.typeInfo.params && fn.typeInfo.params[name]) || null;
+          const sym = declare(name, { kind: 'param', il, node: pn, nullable: !!pn.nullable, rest: p.type === 'RestElement' || p.type === 'RestParameter' });
+          mark(pn, '__sym', sym);
+          fn.__params.push(sym);
+          const def = pn.defaultValue || (p.type === 'AssignmentPattern' ? p.right : null);
+          if (def) walk(def);
+        }
+        if (fn.body && fn.body.type === 'BlockStatement') {
+          hoist(fn.body.body, true);
+          for (const s of fn.body.body || []) walk(s);
+        } else if (fn.body) walk(fn.body);
+        pop();
+        fnStack.pop();
+      };
 
-    /**
-     * Check if a node is an IIFE (Immediately Invoked Function Expression)
-     */
-    isIIFE(node) {
-      if (node.type !== 'ExpressionStatement') return false;
-      if (node.expression.type !== 'CallExpression') return false;
-      const callee = node.expression.callee;
-      return callee.type === 'FunctionExpression' || callee.type === 'ArrowFunctionExpression';
-    }
-
-    /**
-     * Extract content from IIFE wrapper
-     * Handles UMD pattern: (function(root, factory) { ... })((function(){...})(), function(deps) { ... })
-     */
-    extractIIFEContent(node) {
-      const results = [];
-      const callExpr = node.expression;
-
-      // First, try to find the factory function in UMD pattern
-      if (callExpr.arguments && callExpr.arguments.length >= 2) {
-        const factoryArg = callExpr.arguments[1];
-        if (factoryArg.type === 'FunctionExpression' || factoryArg.type === 'ArrowFunctionExpression') {
-          if (factoryArg.body && factoryArg.body.body) {
-            for (const stmt of factoryArg.body.body) {
-              const transformed = this.transformTopLevelStatement(stmt);
-              if (transformed) {
-                if (Array.isArray(transformed)) {
-                  results.push(...transformed);
-                } else {
-                  results.push(transformed);
+      const walk = (node) => {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(walk); return; }
+        switch (node.type) {
+          case 'Identifier': ref(node, false); return;
+          case 'FunctionDeclaration': walkFunction(node); return;
+          case 'FunctionExpression': case 'ArrowFunction': case 'ArrowFunctionExpression': walkFunction(node); return;
+          case 'ClassDeclaration': case 'ClassExpression': {
+            if (node.superClass) walk(node.superClass);
+            const members = (node.body && node.body.body) || [];
+            for (const m of members) {
+              if (m.type === 'MethodDefinition' && m.value) walkFunction(m.value, m);
+              else if ((m.type === 'FieldDefinition' || m.type === 'PropertyDefinition') && m.value) {
+                fnStack.push(m); walk(m.value); fnStack.pop();
+              } else if (m.type === 'StaticBlock') {
+                fnStack.push(m); push(m); const stmts = Array.isArray(m.body) ? m.body : (m.body && m.body.body) || []; hoist(stmts, true); stmts.forEach(walk); pop(); fnStack.pop();
+              }
+            }
+            return;
+          }
+          case 'BlockStatement': {
+            push(curFn());
+            hoist(node.body, false);
+            for (const s of node.body || []) walk(s);
+            pop();
+            return;
+          }
+          case 'VariableDeclaration': {
+            for (const d of node.declarations || []) {
+              if (d.init) walk(d.init);
+              if (!d.id) continue;
+              if (d.id.type === 'Identifier') {
+                if (node.kind === 'var') { const s = d.__sym || lookup(d.id.name); if (s && d.init) s.assigns++; mark(d, '__sym', s); if (s) mark(d.id, '__sym', s); }
+                else { const s = declare(d.id.name, { kind: node.kind === 'const' ? 'const' : 'let', il: declType(d), node: d, nullable: !!(d.nullable || d.id.nullable) }); mark(d, '__sym', s); mark(d.id, '__sym', s); if (!d.init) s.noInit = true; }
+              } else if (d.id.type === 'ArrayPattern') {
+                for (const el of d.id.elements || []) if (el && el.type === 'Identifier') { const s = declare(el.name, { kind: 'let', il: el.resultType || null, node: el }); mark(el, '__sym', s); }
+              } else if (d.id.type === 'ObjectPattern') {
+                for (const p of d.id.properties || []) {
+                  const v = p.value || p.key;
+                  if (v && v.type === 'Identifier') { const s = declare(v.name, { kind: 'let', il: v.resultType || null, node: v, fromObjectPattern: true }); mark(v, '__sym', s); }
                 }
               }
             }
-            return results;
+            return;
           }
-        }
-      }
-
-      // Simple IIFE pattern
-      const callee = callExpr.callee;
-      if (callee.body && callee.body.body) {
-        for (const stmt of callee.body.body) {
-          const transformed = this.transformTopLevelStatement(stmt);
-          if (transformed) {
-            if (Array.isArray(transformed)) {
-              results.push(...transformed);
-            } else {
-              results.push(transformed);
-            }
+          case 'ForStatement': {
+            push(curFn());
+            walk(node.init); walk(node.test); walk(node.update); walk(node.body);
+            pop();
+            return;
           }
-        }
-      }
-
-      return results;
+          case 'ForOfStatement': case 'ForInStatement': {
+            walk(node.right);
+            push(curFn());
+            walk(node.left);
+            if (node.left && node.left.type === 'Identifier') ref(node.left, true);
+            walk(node.body);
+            pop();
+            return;
+          }
+          case 'CatchClause': {
+            push(curFn());
+            if (node.param && node.param.type === 'Identifier') { const s = declare(node.param.name, { kind: 'catch', il: 'Error', node: node.param }); mark(node.param, '__sym', s); }
+            walk(node.body);
+            pop();
+            return;
+          }
+          case 'AssignmentExpression': {
+            if (node.left && node.left.type === 'Identifier') ref(node.left, true); else walk(node.left);
+            walk(node.right);
+            return;
+          }
+          case 'UpdateExpression': {
+            if (node.argument && node.argument.type === 'Identifier') ref(node.argument, true); else walk(node.argument);
+            return;
+          }
+          case 'MemberExpression': {
+            walk(node.object);
+            if (node.computed) walk(node.property);
+            return;
+          }
+          case 'MethodDefinition': if (node.value) walkFunction(node.value, node); return;
+          case 'ObjectProperty': case 'Property': {
+            if (node.computed && node.key && typeof node.key === 'object') walk(node.key);
+            walk(node.value);
+            return;
+          }
+          case 'LabeledStatement': walk(node.body); return;
+          case 'BreakStatement': case 'ContinueStatement': return;
+          case 'ThisPropertyAccess': if (node.computed && node.property && typeof node.property === 'object') walk(node.property); return;
+          default:
+            eachChild(node, walk);
+                  }
+      };
+      push(null);
+      scopes[0].isFunction = true;
+      hoist(body, true);
+      for (const s of body) walk(s);
+      this.moduleScope = scopes[0];
+      pop();
     }
 
+    // =================================================================
+    // Declarations: classes, module functions and variables
+    // =================================================================
+
+    collectDeclarations(body) {
+      const classNodes = [];
+      const findClasses = node => {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(findClasses); return; }
+        if (node.type === 'ClassDeclaration' && node.id) classNodes.push(node);
+        if (node.type === 'VariableDeclarator' && node.init && node.init.type === 'ClassExpression' && node.id && node.id.type === 'Identifier') {
+          const decl = Object.assign({}, node.init, { type: 'ClassDeclaration', id: node.init.id || { type: 'Identifier', name: node.id.name } });
+          decl.id = { type: 'Identifier', name: node.id.name };
+          classNodes.push(decl);
+          mark(node, '__asClass', decl);
+        }
+        eachChild(node, c => findClasses(c));
+      };
+      findClasses(body);
+      this.classNodes = classNodes;
+      for (const c of classNodes) {
+        const name = c.id.name;
+        if (this.classes.has(name) && this.classes.get(name).framework) {
+          this.warn(`class ${name} shadows a framework class`);
+        }
+        const ext = c.superClass ? (c.superClass.name || (c.superClass.property && (c.superClass.property.name || c.superClass.property.value)) || null) : null;
+        const info = {
+          name, javaName: mid(name), ext, node: c, framework: false, fields: new Map(), accessors: new Map(), methods: new Map(),
+          statics: new Map(), staticMethods: new Map(), ctors: null, subclasses: [], local: true
+        };
+        this.classes.set(name, info);
+      }
+      for (const c of classNodes) {
+        const info = this.classes.get(c.id.name);
+        if (info.ext && this.classes.get(info.ext)) this.classes.get(info.ext).subclasses.push(info.name);
+      }
+      // Methods and accessors first (field collection skips accessor names)
+      for (const c of classNodes) this.collectMethods(this.classes.get(c.id.name));
+      for (const c of classNodes) this.collectFields(this.classes.get(c.id.name));
+      // Module functions and variables
+      for (const s of body) {
+        if (s.type === 'FunctionDeclaration' && s.id) this.functions.set(s.id.name, this.fnInfo(s, s.id.name));
+        if (s.type === 'VariableDeclaration')
+          for (const d of s.declarations || []) {
+            if (!d.id || d.id.type !== 'Identifier' || !d.__sym) continue;
+            const sym = d.__sym;
+            if (d.init && (d.init.type === 'ArrowFunction' || d.init.type === 'FunctionExpression' || d.init.type === 'ArrowFunctionExpression') && sym.assigns === 0 && s.kind !== 'var') {
+              sym.kind = 'func'; sym.node = d.init; mark(d, '__asFunction', true);
+              this.functions.set(d.id.name, this.fnInfo(d.init, d.id.name));
+            } else if (d.__asClass) {
+              sym.kind = 'class';
+            } else {
+              this.moduleVars.set(d.id.name, sym);
+            }
+          }
+      }
+      // Static fields assigned as ClassName.x = ... anywhere
+      this.collectStaticAssignments(body);
+    }
+
+    /** JVM signature info of a function or method node. */
+    fnInfo(fn, name) {
+      const params = (fn.__params || []).map(sym => ({ name: sym.name, sym, il: sym.il, def: sym.node && sym.node.defaultValue ? sym.node.defaultValue : null, rest: !!sym.rest }));
+      let min = params.length;
+      while (min > 0 && (params[min - 1].def || params[min - 1].rest)) min--;
+      return { name, javaName: mid(name), node: fn, params, retIl: this.returnIl(fn), min };
+    }
+
+    /** The IL return type of a function: JSDoc, else the common type of what it returns. */
+    returnIl(fn) {
+      const declared = ilName(fn.declaredReturnType) || ilName(fn.typeInfo && fn.typeInfo.returns);
+      if (declared && declared !== 'void') return { il: declared, nullable: !!(fn.typeInfo && fn.typeInfo.returns && fn.typeInfo.returns.isNullable) };
+      if (fn.body && fn.body.type !== 'BlockStatement') return { il: ilName(fn.body.resultType) || '', node: fn.body, exprBody: true };
+      const returned = [];
+      const collect = node => {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(collect); return; }
+        if (['ArrowFunction', 'FunctionExpression', 'FunctionDeclaration', 'ArrowFunctionExpression', 'ClassDeclaration'].includes(node.type)) return;
+        if (node.type === 'ReturnStatement') { if (node.argument) returned.push(node.argument); return; }
+        eachChild(node, c => collect(c));
+      };
+      collect(fn.body && fn.body.body);
+      if (returned.length === 0) return { il: declared === 'void' ? 'void' : 'void', none: true };
+      return { il: '', returned };
+    }
+
+    collectMethods(info) {
+      const members = (info.node.body && info.node.body.body) || [];
+      for (const m of members) {
+        if (m.type !== 'MethodDefinition' || !m.value) continue;
+        const name = m.key && (m.key.name !== undefined ? m.key.name : m.key.value);
+        if (name === undefined) continue;
+        if (m.kind === 'constructor') { info.ctorNode = m; continue; }
+        if (m.kind === 'get' || m.kind === 'set') {
+          const a = info.accessors.get(name) || { name, getter: false, setter: false, local: true, cls: info.name };
+          if (m.kind === 'get') { a.getter = true; a.getNode = m; } else { a.setter = true; a.setNode = m; }
+          info.accessors.set(name, a);
+          continue;
+        }
+        const fi = this.fnInfo(m.value, name);
+        fi.member = m;
+        if (m.static) info.staticMethods.set(name, fi); else info.methods.set(name, fi);
+      }
+    }
+
+    collectFields(info) {
+      const node = info.node;
+      const members = (node.body && node.body.body) || [];
+      const add = (name, il, isStatic, valueNode) => {
+        if (name === undefined || name === null) return;
+        const map = isStatic ? info.statics : info.fields;
+        if (!isStatic && (info.accessors.has(name) || info.methods.has(name))) return;
+        if (!isStatic) {
+          // Declared by an ancestor: not redeclared (the subclass shares it)
+          for (let c = this.classInfo(info.ext); c; c = this.classInfo(c.ext))
+            if (c.fields.has(name) || c.accessors.has(name)) return;
+        }
+        const existing = map.get(name);
+        if (existing) { if (!existing.il && il) existing.il = il; existing.values.push(valueNode); return; }
+        map.set(name, { name, javaName: mid(name), il, values: valueNode ? [valueNode] : [], owner: info.name, static: isStatic });
+      };
+      for (const m of members) {
+        if (m.type === 'FieldDefinition' || m.type === 'PropertyDefinition') {
+          const name = m.key && (m.key.name !== undefined ? m.key.name : m.key.value);
+          add(name, ilName(m.resultType) || (m.value && ilName(m.value.resultType)) || null, !!m.static, m.value || null);
+        }
+      }
+      const visit = (n, isStatic) => {
+        if (!n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(x => visit(x, isStatic)); return; }
+        if (n.type === 'ClassDeclaration' && n !== node) return;
+        if (n.type === 'ThisPropertyAccess' && !n.computed) {
+          const name = typeof n.property === 'string' ? n.property : (n.property && n.property.name);
+          add(name, ilName(n.resultType) || null, isStatic, null);
+        }
+        if (n.type === 'AssignmentExpression' && n.left && n.left.type === 'ThisPropertyAccess' && !n.left.computed) {
+          const name = typeof n.left.property === 'string' ? n.left.property : (n.left.property && n.left.property.name);
+          add(name, ilName(n.left.resultType) || ilName(n.right && n.right.resultType) || null, isStatic, n.right);
+        }
+        eachChild(n, c => visit(c, isStatic));
+      };
+      for (const m of members) {
+        if (m.type === 'MethodDefinition' && m.value) visit(m.value.body, !!m.static);
+        else if (m.type === 'StaticBlock') visit(m.body, true);
+      }
+    }
+
+    collectStaticAssignments(body) {
+      const visit = n => {
+        if (!n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(visit); return; }
+        if (n.type === 'AssignmentExpression' && n.left && n.left.type === 'MemberExpression' && !n.left.computed &&
+            n.left.object && n.left.object.type === 'Identifier' && n.left.object.__sym && n.left.object.__sym.kind === 'class') {
+          const info = this.classInfo(n.left.object.name);
+          const name = n.left.property && (n.left.property.name || n.left.property.value);
+          if (info && info.local && name && !info.statics.has(name) && !info.staticMethods.has(name))
+            info.statics.set(name, { name, javaName: mid(name), il: ilName(n.left.resultType) || ilName(n.right && n.right.resultType) || null, values: [n.right], owner: info.name, static: true });
+        }
+        eachChild(n, c => visit(c));
+      };
+      visit(body);
+    }
+
+    // =================================================================
+    // BigInt-ness of 64-bit sites
+    // =================================================================
+
     /**
-     * Transform a top-level statement from IIFE content
+     * Whether the value of an IL expression is a BigInt. Decided by the node
+     * itself where it can be (literals, BigInt(), 64-bit packs and
+     * rotations, bigint-typed results), else by the symbol or field it reads.
      */
-    transformTopLevelStatement(node) {
-      if (node.type === 'ExpressionStatement') return null;
-      if (node.type === 'IfStatement') return null;
+    isBig(node) {
+      if (!node || typeof node !== 'object') return false;
+      const il = ilNorm(node.resultType);
+      if (il === 'bigint') return true;
+      switch (node.type) {
+        case 'Literal': return typeof node.value === 'bigint' || (typeof node.raw === 'string' && /n$/.test(node.raw) && !/^['"]/.test(node.raw)) || !!node.bigint;
+        case 'BigIntCast': return true;
+        case 'PackBytes': return node.bits === 64;
+        case 'RotateLeft': case 'RotateRight': case 'Rotation': return node.bits === 64;
+        case 'Cast': return ilNorm(node.targetType) === 'uint64';
+        case 'OpCodesCall': { const sig = OPCODES[node.method]; return !!sig && sig[1] === 'BigInteger'; }
+        case 'Identifier': return !!(node.__sym && node.__sym.big);
+        case 'ThisPropertyAccess': { const f = this.fieldForThis(node); return !!(f && f.big); }
+        case 'MemberExpression': {
+          if (node.computed) { const arr = this.arraySymbolOf(node.object); if (arr) return !!arr.elemBig; return this.isBig(node.object) && false; }
+          const f = this.fieldForMember(node); return !!(f && f.big);
+        }
+        case 'CallExpression': case 'ThisMethodCall': { const fi = this.calleeInfo(node); return !!(fi && fi.retBig); }
+        case 'BinaryExpression':
+          if (['==', '===', '!=', '!==', '<', '<=', '>', '>=', 'instanceof', 'in'].includes(node.operator)) return false;
+          if (node.operator === '>>>') return false;
+          return this.isBig(node.left) || this.isBig(node.right);
+        case 'LogicalExpression': return this.isBig(node.left) || this.isBig(node.right);
+        case 'ConditionalExpression': return this.isBig(node.consequent) || this.isBig(node.alternate);
+        case 'UnaryExpression': return (node.operator === '-' || node.operator === '~') && this.isBig(node.argument);
+        case 'AssignmentExpression': return this.isBig(node.right);
+        case 'SequenceExpression': return this.isBig(node.expressions[node.expressions.length - 1]);
+        case 'UpdateExpression': return this.isBig(node.argument);
+        case 'ArrayPop': case 'ArrayShift': { const arr = this.arraySymbolOf(node.array); return !!(arr && arr.elemBig); }
+        default: return false;
+      }
+    }
 
-      if (node.type === 'ClassDeclaration') {
-        return this.transformClassDeclaration(node);
-      }
-      if (node.type === 'FunctionDeclaration') {
-        return this.transformFunctionDeclaration(node);
-      }
-      if (node.type === 'VariableDeclaration') {
-        return this.transformVariableDeclaration(node, true);
-      }
+    /** The symbol (or field) of an array expression, for its element kind. */
+    arraySymbolOf(node) {
+      if (!node) return null;
+      if (node.type === 'Identifier') return node.__sym || null;
+      if (node.type === 'ThisPropertyAccess') return this.fieldForThis(node);
+      if (node.type === 'MemberExpression' && !node.computed) return this.fieldForMember(node);
+      if (node.type === 'MemberExpression' && node.computed) return this.arraySymbolOf(node.object);
+      return null;
+    }
 
+    fieldForThis(node) {
+      const cls = node.__class || this.currentClassName;
+      const name = typeof node.property === 'string' ? node.property : node.property && node.property.name;
+      if (!cls || !name) return null;
+      const m = this.findMember(cls, name);
+      if (m && (m.kind === 'field' || m.kind === 'accessor')) return m.info;
+      const s = this.classInfo(cls) && this.classInfo(cls).statics.get(name);
+      return s || null;
+    }
+
+    fieldForMember(node) {
+      const objIl = ilNorm(node.object && node.object.resultType);
+      const name = node.property && (node.property.name || node.property.value);
+      if (node.object && node.object.type === 'Identifier' && node.object.__sym && node.object.__sym.kind === 'class') {
+        const info = this.classInfo(node.object.name);
+        return info ? info.statics.get(name) || null : null;
+      }
+      if (!this.classInfo(objIl)) return null;
+      const m = this.findMember(objIl, name);
+      return m && (m.kind === 'field' || m.kind === 'accessor') ? m.info : null;
+    }
+
+    calleeInfo(node) {
+      if (node.type === 'ThisMethodCall') {
+        const cls = node.__class || this.currentClassName;
+        const m = cls && this.findMember(cls, node.method);
+        return m && m.kind === 'method' ? m.info : (cls && this.classInfo(cls) && this.classInfo(cls).staticMethods.get(node.method)) || null;
+      }
+      if (node.callee && node.callee.type === 'Identifier') return this.functions.get(node.callee.name) || null;
+      if (node.callee && node.callee.type === 'MemberExpression' && !node.callee.computed) {
+        const objIl = ilNorm(node.callee.object.resultType);
+        const name = node.callee.property && node.callee.property.name;
+        if (node.callee.object.type === 'Identifier' && node.callee.object.__sym && node.callee.object.__sym.kind === 'class') {
+          const info = this.classInfo(node.callee.object.name);
+          return info ? info.staticMethods.get(name) || null : null;
+        }
+        if (node.callee.object.type === 'ThisExpression') {
+          const m = this.currentClassName && this.findMember(this.currentClassName, name);
+          return m && m.kind === 'method' ? m.info : null;
+        }
+        const m = this.classInfo(objIl) && this.findMember(objIl, name);
+        return m && m.kind === 'method' ? m.info : null;
+      }
       return null;
     }
 
     /**
-     * Transform ClassDeclaration to JavaClass
+     * Fixpoint over every 64-bit (and untyped) site: a site holds BigInts when
+     * any value stored into it is one. Visits assignments, initialisers,
+     * returns, call arguments and array stores, with the class context set so
+     * this.x resolves.
      */
-    transformClassDeclaration(node) {
-      const javaClass = new JavaClass(node.id.name);
-      javaClass.accessModifier = 'public';
-      javaClass.isStatic = true; // Nested classes are static by default
-
-      const prevClass = this.currentClass;
-      this.currentClass = javaClass;
-
-      // Handle extends clause first
-      if (node.superClass) {
-        const superClassName = node.superClass.type === 'Identifier'
-          ? node.superClass.name
-          : this.transformExpression(node.superClass).name;
-
-        // Check if superclass is actually an interface (starts with 'I' and is a known interface)
-        const knownInterfaces = ['IAlgorithmInstance', 'IBlockCipherInstance', 'IHashFunctionInstance'];
-        if (knownInterfaces.includes(superClassName)) {
-          javaClass.implementsInterfaces.push(new JavaType(superClassName));
-        } else {
-          javaClass.extendsClass = superClassName;
-        }
+    inferKinds() {
+      const may64 = il => { const n = ilNorm(il); return IL64.has(n) || n === '' || n === 'number' || n === 'object' || n === 'any'; };
+      const mayArr64 = il => { const n = ilNorm(il); return n === 'uint64[]' || n === 'int64[]' || n === '' || n === 'object[]' || n === 'any[]' || n === 'number[]'; };
+      // bigint-typed sites are BigInt from the start
+      const allSyms = [];
+      const seen = new WeakSet();
+      const gather = n => {
+        if (!n || typeof n !== 'object' || seen.has(n)) return;
+        seen.add(n);
+        if (Array.isArray(n)) { n.forEach(gather); return; }
+        if (n.__sym && !allSyms.includes(n.__sym)) allSyms.push(n.__sym);
+        eachChild(n, c => gather(c));
+      };
+      gather(this.body);
+      for (const s of allSyms) {
+        const il = ilNorm(s.il);
+        if (il === 'bigint') s.big = true;
+        if (il === 'bigint[]' || il === 'BigInt[]') s.elemBig = true;
+        if (s.node && s.node.init && s.node.init.type === 'TypedArrayCreation' && /^Big/.test(s.node.init.arrayType || '')) s.elemBig = true;
       }
-
-      // Process class body - handle both ClassBody and unwrapped arrays
-      let members = [];
-      if (node.body) {
-        if (node.body.type === 'ClassBody' && node.body.body) {
-          members = node.body.body;
-        } else if (Array.isArray(node.body)) {
-          // Unwrapped UMD pattern - body is array directly
-          members = node.body;
-        }
+      const fieldsAll = [];
+      for (const c of this.classes.values()) if (c.local) { for (const f of c.fields.values()) fieldsAll.push(f); for (const f of c.statics.values()) fieldsAll.push(f); }
+      for (const f of fieldsAll) {
+        const il = ilNorm(f.il);
+        if (il === 'bigint') f.big = true;
+        if (il === 'bigint[]') f.elemBig = true;
       }
+      const fnInfos = [...this.functions.values()];
+      for (const c of this.classes.values()) if (c.local) { fnInfos.push(...c.methods.values(), ...c.staticMethods.values()); }
+      for (const fi of fnInfos) if (ilNorm(fi.retIl && fi.retIl.il) === 'bigint') fi.retBig = true;
 
-      for (const member of members) {
-        try {
-          if (member.type === 'MethodDefinition') {
-            if (member.kind === 'constructor') {
-              // First, extract fields from constructor body (this.X = Y assignments)
-              const extractedFields = this.extractFieldsFromConstructor(member);
-              for (const field of extractedFields) {
-                // Check if field already exists (from PropertyDefinition)
-                const existingField = javaClass.members.find(m =>
-                  m.nodeType === 'Field' && m.name === field.name);
-                if (!existingField)
-                  javaClass.members.push(field);
-              }
-
-              const constructor = this.transformConstructor(member, javaClass.name);
-              javaClass.members.push(constructor);
-            } else if (member.kind === 'method') {
-              const method = this.transformMethodDefinition(member);
-              javaClass.members.push(method);
-            } else if (member.kind === 'get') {
-              // Getter method
-              const getter = this.transformMethodDefinition(member);
-              getter.name = 'get' + this.toPascalCase(getter.name);
-              javaClass.members.push(getter);
-            } else if (member.kind === 'set') {
-              // Setter method
-              const setter = this.transformMethodDefinition(member);
-              setter.name = 'set' + this.toPascalCase(setter.name);
-              javaClass.members.push(setter);
-            }
-          } else if (member.type === 'PropertyDefinition' || member.type === 'FieldDefinition') {
-            const field = this.transformPropertyDefinition(member);
-            javaClass.members.push(field);
-          } else if (member.type === 'StaticBlock') {
-            // ES2022 static initialization block -> Java static initializer
-            const staticBlock = this.transformStaticBlock(member);
-            javaClass.members.push(staticBlock);
-          } else {
-            // Unknown member type
-            this.warnings.push(`Unknown class member type: ${member.type} in class ${javaClass.name}`);
+      let changed = true, rounds = 0;
+      const mark = (target, prop, value) => { if (target && value && !target[prop]) { target[prop] = true; changed = true; } };
+      const fnStack = [];
+      const visit = (n) => {
+        if (!n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(visit); return; }
+        if (n.type === 'ClassDeclaration') {
+          const prev = this.currentClassName;
+          this.currentClassName = n.id && n.id.name;
+          for (const m of (n.body && n.body.body) || []) { this.tagClass(m, this.currentClassName); }
+          visitChildren(n);
+          this.currentClassName = prev;
+          return;
+        }
+        if (['FunctionDeclaration', 'FunctionExpression', 'ArrowFunction', 'ArrowFunctionExpression'].includes(n.type)) {
+          fnStack.push(n); visitChildren(n); fnStack.pop(); return;
+        }
+        switch (n.type) {
+          case 'VariableDeclarator':
+            if (n.__sym && n.init && may64(n.__sym.il)) mark(n.__sym, 'big', this.isBig(n.init));
+            if (n.__sym && n.init) this.markArrayElems(n.__sym, n.init, mark);
+            break;
+          case 'AssignmentExpression': {
+            const big = this.isBig(n.right);
+            if (n.left.type === 'Identifier' && n.left.__sym && may64(n.left.__sym.il)) mark(n.left.__sym, 'big', big);
+            if (n.left.type === 'ThisPropertyAccess') { const f = this.fieldForThis(n.left); if (f && may64(f.il)) mark(f, 'big', big); if (f) this.markArrayElems(f, n.right, mark); }
+            if (n.left.type === 'MemberExpression' && !n.left.computed) { const f = this.fieldForMember(n.left); if (f && may64(f.il)) mark(f, 'big', big); }
+            if (n.left.type === 'MemberExpression' && n.left.computed) { const a = this.arraySymbolOf(n.left.object); if (a) mark(a, 'elemBig', big); }
+            if (n.left.type === 'Identifier' && n.left.__sym) this.markArrayElems(n.left.__sym, n.right, mark);
+            break;
           }
-        } catch (error) {
-          this.warnings.push(`Error transforming class member: ${error.message}`);
+          case 'ArrayAppend': {
+            const a = this.arraySymbolOf(n.array);
+            const vals = n.values && n.values.length ? n.values : [n.value];
+            if (a) for (const v of vals) if (v && v.type !== 'SpreadElement') mark(a, 'elemBig', this.isBig(v));
+            break;
+          }
+          case 'ReturnStatement': {
+            const fn = fnStack[fnStack.length - 1];
+            if (fn && n.argument && this.isBig(n.argument)) {
+              for (const fi of fnInfos) if (fi.node === fn) mark(fi, 'retBig', true);
+            }
+            break;
+          }
+          case 'CallExpression': case 'ThisMethodCall': {
+            const fi = this.calleeInfo(n);
+            if (fi) (n.arguments || []).forEach((a, i) => { const p = fi.params[i]; if (p && p.sym && may64(p.il)) mark(p.sym, 'big', this.isBig(a)); });
+            break;
+          }
         }
+        visitChildren(n);
+      };
+      const visitChildren = n => { eachChild(n, c => visit(c)); };
+      while (changed && rounds++ < 12) {
+        changed = false;
+        visit(this.body);
+        // expression-bodied arrows return their body
+        for (const fi of fnInfos) if (fi.retIl && fi.retIl.exprBody && !fi.retBig && this.isBig(fi.node.body)) { fi.retBig = true; changed = true; }
       }
-
-      this.currentClass = prevClass;
-      return javaClass;
+      this.currentClassName = null;
     }
+
+    tagClass(node, className) {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) { node.forEach(n => this.tagClass(n, className)); return; }
+      if (node.type === 'ClassDeclaration') return;
+      if (node.type === 'ThisPropertyAccess' || node.type === 'ThisMethodCall' || node.type === 'ThisExpression') mark(node, '__class', className);
+      eachChild(node, c => this.tagClass(c, className));
+    }
+
+    markArrayElems(target, init, mark) {
+      if (!init) return;
+      if (init.type === 'TypedArrayCreation' && /^Big/.test(init.arrayType || '')) mark(target, 'elemBig', true);
+      if ((init.type === 'ArrayExpression' || init.type === 'ArrayLiteral') && (init.elements || []).some(e => e && e.type !== 'SpreadElement' && this.isBig(e))) mark(target, 'elemBig', true);
+      const src = this.arraySymbolOf(init);
+      if (src && src.elemBig) mark(target, 'elemBig', true);
+      if ((init.type === 'ArraySlice' || init.type === 'ArrayConcat') && init.array) { const s = this.arraySymbolOf(init.array); if (s && s.elemBig) mark(target, 'elemBig', true); }
+      if (init.type === 'OpCodesCall' && init.method === 'CopyArray' && init.arguments && init.arguments[0]) { const s = this.arraySymbolOf(init.arguments[0]); if (s && s.elemBig) mark(target, 'elemBig', true); }
+    }
+
+    // =================================================================
+    // JVM types of IL types
+    // =================================================================
 
     /**
-     * Transform FunctionDeclaration to JavaMethod
+     * The JVM type holding an IL type.
+     * @param {*} ilType - IL type (string or object)
+     * @param {Object} [o] - { big: BigInt-valued, elemBig: BigInt elements, nullable }
      */
-    transformFunctionDeclaration(node) {
-      const returnType = this.inferReturnType(node);
-      const method = new JavaMethod(this.toCamelCase(node.id.name), returnType);
-
-      const prevMethod = this.currentMethod;
-      this.currentMethod = method;
-
-      // Parameters
-      for (const param of node.params) {
-        method.parameters.push(this.transformParameter(param));
-      }
-
-      // Body
-      if (node.body) {
-        method.body = this.transformBlockStatement(node.body);
-      }
-
-      this.currentMethod = prevMethod;
-      return method;
+    jt(ilType, o = {}) {
+      const n = ilNorm(ilType);
+      let t = this.jtOfName(n, o);
+      if (o.nullable && T.isPrim(t)) t = T.box(t);
+      return t;
     }
 
-    /**
-     * Transform MethodDefinition to JavaMethod
-     */
-    transformMethodDefinition(node) {
-      const returnType = this.inferReturnType(node.value);
-      const methodName = this.toCamelCase(node.key.name);
-      const method = new JavaMethod(methodName, returnType);
-
-      method.isStatic = node.static || false;
-
-      const prevMethod = this.currentMethod;
-      this.currentMethod = method;
-
-      // Parameters
-      if (node.value && node.value.params) {
-        for (const param of node.value.params) {
-          method.parameters.push(this.transformParameter(param));
-        }
+    jtOfName(n, o = {}) {
+      if (!n) return o.big ? 'BigInteger' : 'Object';
+      if (INT_IL.has(n)) return 'int';
+      if (n === 'uint32') return 'long';
+      if (IL64.has(n)) return o.big ? 'BigInteger' : 'long';
+      if (n === 'bigint') return 'BigInteger';
+      if (FLOAT_IL.has(n)) return o.big ? 'BigInteger' : 'double';
+      if (n === 'boolean') return 'boolean';
+      if (n === 'string') return 'String';
+      if (n === 'void' || n === 'undefined') return 'void';
+      if (n === 'null') return 'Object';
+      if (n.endsWith('[]')) {
+        const e = ilNorm(n.slice(0, -2));
+        if (IL64.has(e)) return o.elemBig ? 'JsArray<BigInteger>' : 'I64Array';
+        if (e === 'bigint') return 'JsArray<BigInteger>';
+        if (T.ARRAY_OF_IL[e]) return T.ARRAY_OF_IL[e];
+        const et = this.jtOfName(e, {});
+        return `JsArray<${T.box(et === 'void' ? 'Object' : et)}>`;
       }
-
-      // Body
-      if (node.value && node.value.body) {
-        method.body = this.transformBlockStatement(node.value.body);
-      }
-
-      this.currentMethod = prevMethod;
-      return method;
+      const tup = tupleParts(n);
+      if (tup) return 'JsArray<Object>';
+      if (T.TYPED_ARRAY_CLASS[n]) return o.elemBig && T.TYPED_ARRAY_CLASS[n] === 'I64Array' ? 'JsArray<BigInteger>' : T.TYPED_ARRAY_CLASS[n];
+      if (n === 'Array') return 'JsArray<Object>';
+      if (/^function\b/.test(n) || n === 'Function' || /=>/.test(n)) return 'JsFn';
+      if (n === 'Map') return 'JsMap';
+      if (n === 'Set') return 'JsSet';
+      if (n === 'RegExp') return 'JsRegExp';
+      if (n === 'Error' || /Error$/.test(n) && !this.classInfo(n)) return 'JsError';
+      if (n === 'ArrayBuffer') return 'U8Array';
+      if (n === 'DataView') return 'JsDataView';
+      if (this.classInfo(n)) return this.classInfo(n).javaName;
+      if (/^Map<|^Record<|^Object<|^\{/.test(n)) return n.startsWith('Map<') ? 'JsMap' : 'JsObject';
+      if (/^(Array|Iterable)<(.+)>$/.test(n)) return this.jtOfName(n.replace(/^(Array|Iterable)<(.+)>$/, '$2') + '[]', o);
+      return 'Object';
     }
 
-    /**
-     * Transform constructor
-     */
-    transformConstructor(node, className) {
-      const constructor = new JavaConstructor(className);
-
-      // Parameters
-      if (node.value && node.value.params) {
-        for (const param of node.value.params) {
-          constructor.parameters.push(this.transformParameter(param));
-        }
-      }
-
-      // Body
-      if (node.value && node.value.body) {
-        constructor.body = this.transformBlockStatement(node.value.body);
-      }
-
-      return constructor;
+    /** The JVM type of an IL expression node. */
+    nodeJt(node) {
+      if (!node) return 'Object';
+      let il = node.resultType;
+      if ((!il || ilNorm(il) === 'null') && node.contextType && node.type !== 'Literal') il = node.contextType;
+      const big = this.isBig(node);
+      const arr = this.arraySymbolOf(node);
+      return this.jt(il, { big, nullable: !!node.nullable, elemBig: !!(arr && arr.elemBig) || (node.type === 'TypedArrayCreation' && /^Big/.test(node.arrayType || '')) });
     }
 
-    /**
-     * Extract fields from constructor assignments (this.X = Y)
-     * Returns array of JavaField objects
-     */
-    extractFieldsFromConstructor(constructorNode) {
-      const fields = [];
-      const seenFields = new Set();
-
-      if (!constructorNode?.value?.body?.body) return fields;
-
-      for (const stmt of constructorNode.value.body.body) {
-        // Handle this.field = value assignments
-        // IL AST uses ThisPropertyAccess for this.X patterns
-        const isThisAssignment = stmt.type === 'ExpressionStatement' &&
-          stmt.expression?.type === 'AssignmentExpression' &&
-          stmt.expression.operator === '=' &&
-          (stmt.expression.left?.type === 'ThisPropertyAccess' ||
-           stmt.expression.left?.ilNodeType === 'ThisPropertyAccess' ||
-           (stmt.expression.left?.type === 'MemberExpression' &&
-            stmt.expression.left?.object?.type === 'ThisExpression'));
-
-        if (!isThisAssignment) continue;
-
-        let fieldName;
-        if (stmt.expression.left.type === 'ThisPropertyAccess' ||
-            stmt.expression.left.ilNodeType === 'ThisPropertyAccess') {
-          fieldName = stmt.expression.left.property;
-        } else {
-          fieldName = stmt.expression.left.property?.name ||
-                     stmt.expression.left.property?.value;
-        }
-
-        if (!fieldName || seenFields.has(fieldName)) continue;
-        seenFields.add(fieldName);
-
-        // Infer type from the assigned value
-        let fieldType = this.inferExpressionType(stmt.expression.right);
-
-        // Also apply name-based overrides for crypto patterns
-        const lowerName = fieldName.toLowerCase();
-
-        // List fields that use Arrays.asList() in assignment - must be List<T> type
-        const listFieldNames = ['documentation', 'references', 'knownvulnerabilities',
-                               'tests', 'supportedkeysizes', 'supportedblocksizes'];
-
-        if (listFieldNames.includes(lowerName)) {
-          // These fields get assigned Arrays.asList(...), so type must be List<T>
-          // Extract element type from array type if present
-          let elementType = JavaType.Object();
-          if (fieldType.name === 'Array' && fieldType.elementType) {
-            elementType = fieldType.elementType;
-          } else if (lowerName === 'documentation' || lowerName === 'references') {
-            elementType = new JavaType('LinkItem');
-          } else if (lowerName === 'knownvulnerabilities') {
-            elementType = new JavaType('Vulnerability');
-          } else if (lowerName === 'tests') {
-            elementType = new JavaType('TestCase');
-          } else if (lowerName === 'supportedkeysizes' || lowerName === 'supportedblocksizes') {
-            elementType = new JavaType('KeySize');
-          }
-          fieldType = JavaType.List(elementType);
-        } else if (lowerName.startsWith('is') || lowerName.startsWith('has') ||
-            lowerName === 'inverse' || lowerName.includes('flag')) {
-          fieldType = JavaType.Boolean();
-        } else if (lowerName.includes('key') || lowerName.includes('data') ||
-                   lowerName.includes('buffer') || lowerName.includes('block') ||
-                   lowerName.includes('input') || lowerName.includes('output')) {
-          fieldType = JavaType.Array(JavaType.Byte());
-        } else if (lowerName.includes('size') || lowerName.includes('length') ||
-                   lowerName === 'rounds' || lowerName === 'delta') {
-          fieldType = JavaType.Int();
-        }
-
-        const field = new JavaField(fieldName, fieldType);
-        field.accessModifier = 'private';
-        fields.push(field);
+    /** The JVM type of a symbol (computed once). */
+    symJt(sym) {
+      if (sym.jtCached) return sym.jtCached;
+      let t;
+      if (sym.kind === 'catch') t = 'RuntimeException';
+      else if (sym.rest) t = 'JsArray<Object>';
+      else {
+        let il = sym.il;
+        if (!ilName(il) && sym.node && sym.node.init) il = sym.node.init.resultType || sym.node.init.contextType;
+        if (!ilName(il) && sym.node && sym.node.defaultValue) il = sym.node.defaultValue.resultType;
+        t = this.jt(il, { big: !!sym.big, elemBig: !!sym.elemBig, nullable: !!sym.nullable });
+        if (t === 'void') t = 'Object';
       }
-
-      return fields;
+      sym.jtCached = t;
+      return t;
     }
 
-    /**
-     * Transform parameter
-     */
-    transformParameter(node) {
-      const name = node.name || node.id?.name || 'param';
-      const type = this.inferParameterType(name);
-      return new JavaParameter(name, type);
+    fieldJt(f) {
+      if (f.t) return f.t;
+      if (f.jtCached) return f.jtCached;
+      let il = f.il;
+      if (!ilName(il)) for (const v of f.values || []) if (v && ilName(v.resultType)) { il = v.resultType; break; }
+      let t = this.jt(il, { big: !!f.big, elemBig: !!f.elemBig });
+      if (t === 'void') t = 'Object';
+      f.jtCached = t;
+      return t;
     }
 
-    /**
-     * Transform PropertyDefinition to JavaField
-     */
-    transformPropertyDefinition(node) {
-      const name = node.key.name;
-      const type = this.inferPropertyType(node);
-      const field = new JavaField(name, type);
-
-      if (node.value) {
-        field.initializer = this.transformExpression(node.value);
-      }
-
-      return field;
+    /** The type an accessor's getter returns (an overridden base accessor or field decides it). */
+    accessorJt(a) {
+      if (a.t) return a.t;
+      if (a.jtCached) return a.jtCached;
+      const base = a.cls ? this.baseAccessor(this.classInfo(a.cls), a.name) : null;
+      let t = null;
+      if (base) t = base.a ? this.accessorJt(base.a) : this.fieldJt(base.field);
+      else if (a.getNode) { const r = this.fnRet(this.fnInfo(a.getNode.value, a.name)); if (r !== 'void') t = r; }
+      if (!t && a.setNode) t = this.setterParamJt(a);
+      a.jtCached = t || 'Object';
+      return a.jtCached;
     }
 
-    /**
-     * Transform StaticBlock to Java static initializer
-     */
-    transformStaticBlock(node) {
-      // ES2022 static { code } -> Java static { code }
-      const statements = node.body.map(stmt => this.transformStatement(stmt));
-
-      // Create a static initializer block (represented as a special method-like structure)
-      const staticInit = new JavaMethod('', 'void');
-      staticInit.isStatic = true;
-      staticInit.isStaticInitializer = true; // Mark this as a static initializer
-      staticInit.body = statements;
-
-      return staticInit;
+    /** The type an accessor's setter takes. */
+    accessorSetJt(a) {
+      if (a.t) return a.t;
+      if (a.setJtCached) return a.setJtCached;
+      const base = a.cls ? this.baseAccessor(this.classInfo(a.cls), a.name) : null;
+      let t = null;
+      if (base) t = base.a ? this.accessorSetJt(base.a) : this.fieldJt(base.field);
+      else if (a.setNode) t = this.setterParamJt(a);
+      if (!t) t = this.accessorJt(a);
+      a.setJtCached = t || 'Object';
+      return a.setJtCached;
     }
 
-    transformClassExpression(node) {
-      // ClassExpression -> Java class (anonymous classes would need new BaseClass() { })
-      const className = node.id?.name || 'AnonymousClass';
-      const classDecl = new JavaClass(className);
-
-      if (node.superClass)
-        classDecl.extendsClass = this.transformExpression(node.superClass);
-
-      if (node.body?.body) {
-        for (const member of node.body.body) {
-          if (member.type === 'MethodDefinition') {
-            const method = this.transformMethodDefinition(member);
-            if (method)
-              classDecl.members.push(method);
-          } else if (member.type === 'PropertyDefinition') {
-            const field = this.transformPropertyDefinition(member);
-            if (field)
-              classDecl.members.push(field);
-          }
-        }
-      }
-
-      return classDecl;
+    setterParamJt(a) {
+      const p = a.setNode && a.setNode.value.__params && a.setNode.value.__params[0];
+      return p ? this.symJt(p) : null;
     }
 
-    transformYieldExpression(node) {
-      // Java doesn't have yield in the same sense - return the argument
-      // For iterator pattern, this would need to be refactored
-      this.warnings.push('Java does not support yield expressions directly');
-      return node.argument ? this.transformExpression(node.argument) : new JavaIdentifier('null');
+    /** JVM return type of a function info. */
+    fnRet(fi) {
+      if (fi.ret) return fi.ret;
+      if (fi.retCached) return fi.retCached;
+      const r = fi.retIl || { il: 'void' };
+      let t;
+      if (r.none) t = 'void';
+      else if (r.il) t = this.jt(r.il, { big: !!fi.retBig, nullable: !!r.nullable });
+      else if (r.returned) {
+        const types = r.returned.map(n => this.nodeJt(n)).filter(x => x !== 'void');
+        t = this.commonJt(types);
+      } else t = 'void';
+      if (fi.retBig && T.isNumeric(t)) t = 'BigInteger';
+      fi.retCached = t;
+      return t;
     }
 
-    /**
-     * Transform VariableDeclaration to JavaField[] or JavaVariableDeclaration[]
-     */
-    transformVariableDeclaration(node, isField = false) {
-      const results = [];
-
-      for (const declarator of node.declarations) {
-        // Skip ObjectPattern destructuring (e.g., const { RegisterAlgorithm } = AlgorithmFramework)
-        if (declarator.id.type === 'ObjectPattern')
-          continue;
-
-        // Handle array destructuring: const [a, b, c] = arr;
-        if (declarator.id.type === 'ArrayPattern') {
-          const sourceExpr = declarator.init ? this.transformExpression(declarator.init) : null;
-          if (sourceExpr) {
-            for (let i = 0; i < declarator.id.elements.length; ++i) {
-              const elem = declarator.id.elements[i];
-              if (!elem) continue; // Skip holes in destructuring
-
-              const varName = this.sanitizeName(elem.name);
-              const indexExpr = new JavaArrayAccess(sourceExpr, JavaLiteral.Int(i));
-              const varType = new JavaType('var');
-
-              if (isField) {
-                const field = new JavaField(varName, varType);
-                field.initializer = indexExpr;
-                field.isStatic = true;
-                results.push(field);
-              } else {
-                const varDecl = new JavaVariableDeclaration(varName, varType);
-                varDecl.initializer = indexExpr;
-                this.variableTypes.set(varName, varType);
-                results.push(varDecl);
-              }
-            }
-          }
-          continue;
-        }
-
-        const name = this.sanitizeName(declarator.id.name);
-        const type = this.inferVariableType(declarator);
-
-        // Check if this is an IIFE (immediately invoked function expression)
-        let initExpr = null;
-        if (declarator.init) {
-          if (declarator.init.type === 'CallExpression' &&
-              (declarator.init.callee.type === 'FunctionExpression' ||
-               declarator.init.callee.type === 'ArrowFunctionExpression')) {
-            // Extract return value from IIFE
-            const returnValue = this.getIIFEReturnValue(declarator.init);
-            if (returnValue)
-              initExpr = this.transformExpression(returnValue);
-          } else {
-            initExpr = this.transformExpression(declarator.init);
-          }
-        }
-
-        if (isField) {
-          const field = new JavaField(name, type);
-          field.initializer = initExpr;
-          field.isStatic = true; // Top-level variables are static
-          results.push(field);
-        } else {
-          const varDecl = new JavaVariableDeclaration(name, type);
-          varDecl.initializer = initExpr;
-          // Track variable type
-          this.variableTypes.set(name, type);
-          results.push(varDecl);
-        }
+    /** The common JVM type of several values. */
+    commonJt(types) {
+      const ts = types.filter(t => t && t !== 'null');
+      if (ts.length === 0) return types.includes('null') ? 'Object' : 'void';
+      if (ts.every(t => t === ts[0])) return types.includes('null') && T.isPrim(ts[0]) ? T.box(ts[0]) : ts[0];
+      const unboxed = ts.map(T.unbox);
+      if (unboxed.every(T.isNumeric)) {
+        const w = unboxed.reduce(T.wider);
+        return ts.some(T.isBoxed) || types.includes('null') ? T.box(w) : w;
       }
-
-      return results;
+      if (ts.every(t => this.classInfo(t))) {
+        // nearest common ancestor
+        for (let c = this.classInfo(ts[0]); c; c = this.classInfo(c.ext))
+          if (ts.every(t => this.isSubclass(t, c.name))) return c.javaName;
+      }
+      if (ts.every(T.isArray) && ts.every(t => t === ts[0])) return ts[0];
+      return 'Object';
     }
 
-    /**
-     * Transform BlockStatement
-     */
-    transformBlockStatement(node) {
-      const block = new JavaBlock();
+    paramJt(p) { return p.t || (p.sym ? this.symJt(p.sym) : this.jt(p.il)); }
 
-      for (const stmt of node.body) {
-        const transformed = this.transformStatement(stmt);
-        if (Array.isArray(transformed)) {
-          block.statements.push(...transformed);
-        } else if (transformed) {
-          block.statements.push(transformed);
-        }
+    // =================================================================
+    // Program
+    // =================================================================
+
+    lowerProgram(body) {
+      // Classes
+      for (const c of this.classNodes) this.unit.classes.push(this.lowerClass(this.classes.get(c.id.name)));
+      // Module functions
+      for (const fi of this.functions.values()) this.unit.methods.push(...this.lowerFunction(fi, { static: true }));
+      // Module variables become static fields, initialised in order by the static initialiser
+      for (const sym of this.moduleVars.values()) {
+        sym.javaName = mid(sym.name);
+        sym.static = true;
+        this.unit.fields.push({ name: sym.javaName, t: this.symJt(sym), static: true });
       }
-
-      return block;
+      // Top-level statements: each in its own init method (a class initialiser has a size limit)
+      this.fn = { locals: [new Map()], labels: [], isStatic: true, retJt: 'void', name: '<clinit>', used: new Set() };
+      for (const s of body) {
+        if (s.type === 'FunctionDeclaration' || s.type === 'ClassDeclaration') continue;
+        if (s.type === 'ExpressionStatement' && s.expression && s.expression.type === 'Literal') continue;
+        if (s.type === 'VariableDeclaration' && s.declarations.every(d => d.__asFunction || d.__asClass || (d.id && d.id.type === 'ObjectPattern') || this.isFrameworkAlias(d))) continue;
+        const stmts = this.lowerStmt(s);
+        if (stmts.length) this.unit.init.push(S.block(stmts));
+      }
+      this.fn = null;
     }
 
-    /**
-     * Transform any statement
-     */
-    transformStatement(node) {
-      if (!node) return null;
-
-      switch (node.type) {
-        case 'BlockStatement':
-          return this.transformBlockStatement(node);
-        case 'VariableDeclaration':
-          return this.transformVariableDeclaration(node, false);
-        case 'ExpressionStatement':
-          return new JavaExpressionStatement(this.transformExpression(node.expression));
-        case 'ReturnStatement':
-          return new JavaReturn(node.argument ? this.transformExpression(node.argument) : null);
-        case 'IfStatement':
-          return this.transformIfStatement(node);
-        case 'ForStatement':
-          return this.transformForStatement(node);
-        case 'ForInStatement':
-        case 'ForOfStatement':
-          return this.transformForOfStatement(node);
-        case 'WhileStatement':
-          return this.transformWhileStatement(node);
-        case 'DoWhileStatement':
-          return this.transformDoWhileStatement(node);
-        case 'SwitchStatement':
-          return this.transformSwitchStatement(node);
-        case 'BreakStatement':
-          return new JavaBreak();
-        case 'ContinueStatement':
-          return new JavaContinue();
-        case 'ThrowStatement':
-          return new JavaThrow(this.transformExpression(node.argument));
-        case 'TryStatement':
-          return this.transformTryStatement(node);
-        case 'ClassDeclaration':
-          return this.transformClassDeclaration(node);
-        case 'FunctionDeclaration':
-          return this.transformFunctionDeclaration(node);
-        default:
-          this.warnings.push(`Unsupported statement type: ${node.type}`);
-          return null;
-      }
+    /** `const X = AlgorithmFramework.X` (an alias of a framework export, resolved directly). */
+    isFrameworkAlias(d) {
+      return d.id && d.id.type === 'Identifier' && d.init && d.init.type === 'MemberExpression' && !d.init.computed &&
+        d.init.object && d.init.object.type === 'Identifier' && (d.init.object.name === 'AlgorithmFramework' || d.init.object.name === 'OpCodes');
     }
 
-    transformIfStatement(node) {
-      const condition = this.transformExpression(node.test);
-      const thenBranch = this.transformStatement(node.consequent);
-      const elseBranch = node.alternate ? this.transformStatement(node.alternate) : null;
-      return new JavaIf(condition, thenBranch, elseBranch);
+    // =================================================================
+    // Classes
+    // =================================================================
+
+    lowerClass(info) {
+      const decl = { k: 'class', name: info.javaName, ext: info.ext ? (this.classInfo(info.ext) ? this.classInfo(info.ext).javaName : 'Object') : null, fields: [], ctors: [], methods: [], statics: [], abstract: false, staticInit: [] };
+      if (decl.ext === 'Object') decl.ext = null;
+      const prevClass = this.currentClassName;
+      this.currentClassName = info.name;
+      this.tagClass(info.node.body, info.name);
+      for (const f of info.fields.values()) decl.fields.push({ name: f.javaName, t: this.fieldJt(f), static: false });
+      for (const f of info.statics.values()) decl.fields.push({ name: f.javaName, t: this.fieldJt(f), static: true });
+      // Static field initialisers and static blocks, in member order
+      const members = (info.node.body && info.node.body.body) || [];
+      for (const m of members) {
+        if ((m.type === 'FieldDefinition' || m.type === 'PropertyDefinition') && m.value) {
+          const name = m.key && (m.key.name !== undefined ? m.key.name : m.key.value);
+          if (m.static) {
+            const f = info.statics.get(name);
+            this.fn = { locals: [new Map()], labels: [], isStatic: true, retJt: 'void', cls: info, used: new Set() };
+            decl.staticInit.push(S.expr(E.assign(E.sfield(info.javaName, f.javaName, this.fieldJt(f)), this.valueOf(m.value, this.fieldJt(f)))));
+            this.fn = null;
+          }
+        } else if (m.type === 'StaticBlock') {
+          this.fn = { locals: [new Map()], labels: [], isStatic: true, retJt: 'void', cls: info, used: new Set() };
+          const stmts = Array.isArray(m.body) ? m.body : (m.body && m.body.body) || [];
+          decl.staticInit.push(S.block(this.lowerStmts(stmts)));
+          this.fn = null;
+        }
+      }
+      // Instance field initialisers run at the start of every constructor (after super)
+      const fieldInits = members.filter(m => (m.type === 'FieldDefinition' || m.type === 'PropertyDefinition') && !m.static && m.value);
+      // Constructors
+      decl.ctors = this.lowerConstructors(info, fieldInits);
+      // Methods
+      for (const fi of info.methods.values()) decl.methods.push(...this.lowerFunction(fi, { cls: info }));
+      for (const fi of info.staticMethods.values()) decl.methods.push(...this.lowerFunction(fi, { cls: info, static: true }));
+      // Accessors
+      for (const a of info.accessors.values()) decl.methods.push(...this.lowerAccessor(info, a));
+      // Abstract framework methods with no implementation stay inherited (the runtime throws like JavaScript)
+      this.currentClassName = prevClass;
+      return decl;
     }
 
-    transformForStatement(node) {
-      const forLoop = new JavaFor();
-
-      if (node.init) {
-        if (node.init.type === 'VariableDeclaration') {
-          const decls = this.transformVariableDeclaration(node.init, false);
-          forLoop.initializer = decls[0]; // Take first declaration
-        } else {
-          forLoop.initializer = this.transformExpression(node.init);
-        }
-      }
-
-      if (node.test) {
-        forLoop.condition = this.transformExpression(node.test);
-      }
-
-      if (node.update) {
-        forLoop.incrementor = this.transformExpression(node.update);
-      }
-
-      forLoop.body = this.transformStatement(node.body);
-      if (forLoop.body.nodeType !== 'Block') {
-        const block = new JavaBlock();
-        block.statements.push(forLoop.body);
-        forLoop.body = block;
-      }
-
-      return forLoop;
+    /** The JVM signature a method must have: an overridden base method's, else its own. */
+    baseMethod(info, name) {
+      for (let c = this.classInfo(info.ext); c; c = this.classInfo(c.ext)) if (c.methods.has(name)) return { owner: c, m: c.methods.get(name) };
+      return null;
     }
 
-    transformForOfStatement(node) {
-      const rawName = node.left.declarations ? node.left.declarations[0].id.name : node.left.name;
-      const varName = this.sanitizeName(rawName);
-      const varType = this.inferVariableType(node.left);
-      const iterable = this.transformExpression(node.right);
-      const body = this.transformStatement(node.body);
-
-      const bodyBlock = body.nodeType === 'Block' ? body : (() => {
-        const block = new JavaBlock();
-        block.statements.push(body);
-        return block;
-      })();
-
-      return new JavaForEach(varName, varType, iterable, bodyBlock);
+    baseAccessor(info, name) {
+      for (let c = this.classInfo(info.ext); c; c = this.classInfo(c.ext)) {
+        if (c.accessors.has(name)) return { owner: c, a: c.accessors.get(name) };
+        if (c.fields.has(name)) return { owner: c, field: c.fields.get(name) };
+      }
+      return null;
     }
 
-    transformWhileStatement(node) {
-      const condition = this.transformExpression(node.test);
-      const body = this.transformStatement(node.body);
-
-      const bodyBlock = body.nodeType === 'Block' ? body : (() => {
-        const block = new JavaBlock();
-        block.statements.push(body);
-        return block;
-      })();
-
-      return new JavaWhile(condition, bodyBlock);
-    }
-
-    transformDoWhileStatement(node) {
-      const body = this.transformStatement(node.body);
-      const condition = this.transformExpression(node.test);
-
-      const bodyBlock = body.nodeType === 'Block' ? body : (() => {
-        const block = new JavaBlock();
-        block.statements.push(body);
-        return block;
-      })();
-
-      return new JavaDoWhile(bodyBlock, condition);
-    }
-
-    transformSwitchStatement(node) {
-      const discriminant = this.transformExpression(node.discriminant);
-      const switchStmt = new JavaSwitch(discriminant);
-
-      for (const caseNode of node.cases) {
-        const javaCase = new JavaSwitchCase(
-          caseNode.test ? this.transformExpression(caseNode.test) : null
-        );
-
-        for (const stmt of caseNode.consequent) {
-          const transformed = this.transformStatement(stmt);
-          if (Array.isArray(transformed)) {
-            javaCase.statements.push(...transformed);
-          } else if (transformed) {
-            javaCase.statements.push(transformed);
-          }
-        }
-
-        switchStmt.cases.push(javaCase);
-      }
-
-      return switchStmt;
-    }
-
-    transformTryStatement(node) {
-      const tryStmt = new JavaTryCatch();
-      tryStmt.tryBlock = this.transformBlockStatement(node.block);
-
-      if (node.handler) {
-        const exType = JavaType.Object(); // Could be more specific
-        const exName = node.handler.param ? node.handler.param.name : 'e';
-        const catchBody = this.transformBlockStatement(node.handler.body);
-        tryStmt.catchClauses.push(new JavaCatchClause(exType, exName, catchBody));
-      }
-
-      if (node.finalizer) {
-        tryStmt.finallyBlock = this.transformBlockStatement(node.finalizer);
-      }
-
-      return tryStmt;
-    }
-
-    /**
-     * Transform any expression
-     */
-    transformExpression(node) {
-      if (!node) return null;
-
-      switch (node.type) {
-        case 'Literal':
-          return this.transformLiteral(node);
-        case 'Identifier':
-          return this.transformIdentifier(node);
-        case 'BinaryExpression':
-          return this.transformBinaryExpression(node);
-        case 'LogicalExpression':
-          return this.transformBinaryExpression(node); // Same handling
-        case 'UnaryExpression':
-          return this.transformUnaryExpression(node);
-        case 'UpdateExpression':
-          return this.transformUpdateExpression(node);
-        case 'AssignmentExpression':
-          return this.transformAssignmentExpression(node);
-        case 'MemberExpression':
-          return this.transformMemberExpression(node);
-        case 'CallExpression':
-          return this.transformCallExpression(node);
-        case 'NewExpression':
-          return this.transformNewExpression(node);
-        case 'ArrayExpression':
-          return this.transformArrayExpression(node);
-        case 'ObjectExpression':
-          return this.transformObjectExpression(node);
-        case 'ConditionalExpression':
-          return this.transformConditionalExpression(node);
-        case 'ThisExpression':
-          return new JavaThis();
-        case 'Super':
-          return new JavaSuper();
-        case 'ArrowFunctionExpression':
-        case 'FunctionExpression':
-          return this.transformLambdaExpression(node);
-        case 'SequenceExpression':
-          // Return last expression (comma operator)
-          return this.transformExpression(node.expressions[node.expressions.length - 1]);
-        case 'SpreadElement':
-          // Spread in arrays/calls
-          return this.transformExpression(node.argument);
-        case 'TemplateLiteral':
-          // `Hello ${name}!` -> "Hello " + name + "!"
-          return this.transformTemplateLiteral(node);
-        case 'ObjectPattern':
-          // Object destructuring - Java doesn't support this directly
-          // Return a comment placeholder
-          return new JavaIdentifier('/* Object destructuring not supported in Java */');
-
-        case 'StaticBlock':
-          return this.transformStaticBlock(node);
-
-        case 'ChainExpression':
-          // Optional chaining a?.b - Java doesn't have this, transform inner expression
-          return this.transformExpression(node.expression);
-
-        case 'ClassExpression':
-          // Anonymous class expression
-          return this.transformClassExpression(node);
-
-        case 'YieldExpression':
-          // yield - Java doesn't have generators, return the argument
-          return this.transformYieldExpression(node);
-
-        case 'PrivateIdentifier':
-          // #field -> Java private field (just use the name, access modifier handled elsewhere)
-          return new JavaIdentifier('_' + node.name);
-
-        // IL AST node types from type-aware-transpiler
-        case 'ThisPropertyAccess':
-          // this.property -> this.property in Java
-          // node.property is already the property name string from IL AST
-          // Convert to camelCase for Java naming convention
-          return new JavaMemberAccess(new JavaThis(), this.toCamelCase(node.property));
-
-        case 'ThisMethodCall':
-          // this.method(args) -> this.method(args) in Java
-          {
-            const args = (node.arguments || []).map(a => this.transformExpression(a));
-            return new JavaMethodCall(new JavaThis(), node.method, args);
-          }
-
-        case 'ParentConstructorCall':
-          // super() with optional args
-          if (node.arguments && node.arguments.length > 0) {
-            const args = node.arguments.map(a => this.transformExpression(a));
-            return new JavaMethodCall(new JavaSuper(), null, args);
-          }
-          return new JavaMethodCall(new JavaSuper(), null, []);
-
-        case 'ArrayLength':
-          // array.length in Java
-          return new JavaMemberAccess(this.transformExpression(node.array), 'length');
-
-        case 'BigIntCast':
-          // BigInt(x) -> BigInteger.valueOf(x) for primitives
-          if (node.argument) {
-            const arg = this.transformExpression(node.argument);
-            return new JavaMethodCall(new JavaIdentifier('BigInteger'), 'valueOf', [arg]);
-          }
-          return new JavaMethodCall(new JavaIdentifier('BigInteger'), 'valueOf', [JavaLiteral.Int(0)]);
-
-        case 'ArrayCreation':
-          // new Array(size) -> new Object[size]
-          {
-            const size = node.size ? this.transformExpression(node.size) : JavaLiteral.Int(0);
-            return new JavaArrayCreation('Object', size);
-          }
-
-        case 'TypedArrayCreation':
-          // new Uint8Array(size) -> new byte[size], etc.
-          {
-            const size = node.size ? this.transformExpression(node.size) : JavaLiteral.Int(0);
-            const typeMap = {
-              'Uint8Array': 'byte', 'Int8Array': 'byte',
-              'Uint16Array': 'short', 'Int16Array': 'short',
-              'Uint32Array': 'int', 'Int32Array': 'int',
-              'Uint64Array': 'long', 'Int64Array': 'long',
-              'Float32Array': 'float', 'Float64Array': 'double'
-            };
-            const javaType = typeMap[node.arrayType] || 'int';
-            return new JavaArrayCreation(javaType, size);
-          }
-
-        case 'HexDecode':
-          // Hex.decode(str) helper - IL nodes have arguments array
-          return new JavaMethodCall(new JavaIdentifier('Hex'), 'decode', [this.transformExpression(node.arguments?.[0] || node.value)]);
-
-        case 'HexEncode':
-          // Hex.encode(bytes) helper - IL nodes have arguments array
-          return new JavaMethodCall(new JavaIdentifier('Hex'), 'encode', [this.transformExpression(node.arguments?.[0] || node.value)]);
-
-        case 'Rotation':
-          // Bitwise rotation
-          {
-            const value = this.transformExpression(node.value);
-            const amount = this.transformExpression(node.amount);
-            const bits = node.bits || 32;
-            const mask = bits === 32 ? '0xFFFFFFFF' : (bits === 64 ? '0xFFFFFFFFFFFFFFFFL' : '0xFF');
-            if (node.direction === 'left') {
-              return new JavaBinaryExpression(
-                new JavaBinaryExpression(value, '<<', amount),
-                '|',
-                new JavaBinaryExpression(value, '>>>', new JavaBinaryExpression(JavaLiteral.Int(bits), '-', amount))
-              );
-            } else {
-              return new JavaBinaryExpression(
-                new JavaBinaryExpression(value, '>>>', amount),
-                '|',
-                new JavaBinaryExpression(value, '<<', new JavaBinaryExpression(JavaLiteral.Int(bits), '-', amount))
-              );
-            }
-          }
-
-        case 'PackBytes': {
-          // Pack bytes to integer - IL nodes have arguments array
-          const args = node.arguments || node.bytes || [];
-          const bytes = args.map(arg => {
-            if (arg.type === 'SpreadElement') {
-              return this.transformExpression(arg.argument);
-            }
-            return this.transformExpression(arg);
-          });
-          const isBE = node.endian === 'big' || node.bigEndian;
-          const bits = node.bits || 32;
-          const methodName = `pack${bits}${isBE ? 'BE' : 'LE'}`;
-          return new JavaMethodCall(new JavaIdentifier('BytePacker'), methodName, bytes);
-        }
-
-        case 'UnpackBytes': {
-          // Unpack integer to bytes - IL nodes have arguments array
-          const value = this.transformExpression(node.arguments?.[0] || node.value);
-          const isBE = node.endian === 'big' || node.bigEndian;
-          const bits = node.bits || 32;
-          const methodName = `unpack${bits}${isBE ? 'BE' : 'LE'}`;
-          return new JavaMethodCall(new JavaIdentifier('BytePacker'), methodName, [value]);
-        }
-
-        case 'Floor':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'floor', [this.transformExpression(node.value)]);
-
-        case 'Ceil':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'ceil', [this.transformExpression(node.value)]);
-
-        case 'Abs':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'abs', [this.transformExpression(node.value)]);
-
-        case 'Min':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'min', (node.values || []).map(v => this.transformExpression(v)));
-
-        case 'Max':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'max', (node.values || []).map(v => this.transformExpression(v)));
-
-        case 'Pow':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'pow', [
-            this.transformExpression(node.base),
-            this.transformExpression(node.exponent)
-          ]);
-
-        case 'Sqrt':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'sqrt', [this.transformExpression(node.arguments?.[0] || node.value)]);
-
-        case 'Cbrt':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'cbrt', [this.transformExpression(node.arguments?.[0] || node.value)]);
-
-        case 'Log':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'log', [this.transformExpression(node.arguments?.[0] || node.value)]);
-
-        case 'Log2':
-          // Java doesn't have Math.log2, use Math.log(x) / Math.log(2)
-          return new JavaBinaryExpression(
-            new JavaMethodCall(new JavaIdentifier('Math'), 'log', [this.transformExpression(node.arguments?.[0] || node.value)]),
-            '/',
-            new JavaMethodCall(new JavaIdentifier('Math'), 'log', [JavaLiteral.Double(2.0)])
-          );
-
-        case 'Log10':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'log10', [this.transformExpression(node.arguments?.[0] || node.value)]);
-
-        case 'Exp':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'exp', [this.transformExpression(node.arguments?.[0] || node.value)]);
-
-        case 'Round':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'round', [this.transformExpression(node.arguments?.[0] || node.value)]);
-
-        case 'Trunc':
-          return new JavaCast(new JavaType('long'), this.transformExpression(node.arguments?.[0] || node.value));
-
-        case 'Sign':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'signum', [this.transformExpression(node.arguments?.[0] || node.value)]);
-
-        case 'Sin':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'sin', [this.transformExpression(node.arguments?.[0] || node.value)]);
-
-        case 'Cos':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'cos', [this.transformExpression(node.arguments?.[0] || node.value)]);
-
-        case 'Tan':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'tan', [this.transformExpression(node.arguments?.[0] || node.value)]);
-
-        case 'Asin':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'asin', [this.transformExpression(node.arguments?.[0] || node.value)]);
-
-        case 'Acos':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'acos', [this.transformExpression(node.arguments?.[0] || node.value)]);
-
-        case 'Atan':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'atan', [this.transformExpression(node.arguments?.[0] || node.value)]);
-
-        case 'Atan2': {
-          const y = this.transformExpression(node.arguments?.[0] || node.y);
-          const x = this.transformExpression(node.arguments?.[1] || node.x);
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'atan2', [y, x]);
-        }
-
-        case 'Sinh':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'sinh', [this.transformExpression(node.arguments?.[0] || node.value)]);
-
-        case 'Cosh':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'cosh', [this.transformExpression(node.arguments?.[0] || node.value)]);
-
-        case 'Tanh':
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'tanh', [this.transformExpression(node.arguments?.[0] || node.value)]);
-
-        case 'Hypot': {
-          const args = (node.arguments || []).map(a => this.transformExpression(a));
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'hypot', args);
-        }
-
-        case 'Fround':
-          return new JavaCast(new JavaType('float'), this.transformExpression(node.arguments?.[0] || node.value));
-
-        case 'MathCall': {
-          const method = node.method;
-          const args = (node.arguments || []).map(a => this.transformExpression(a));
-          if (method === 'imul') {
-            // Math.imul(a, b) -> (int)(a * b) in Java
-            if (args.length >= 2)
-              return new JavaCast(new JavaType('int'), new JavaBinaryExpression(args[0], '*', args[1]));
-          }
-          // Default: use Math.method(args...)
-          return new JavaMethodCall(new JavaIdentifier('Math'), method, args);
-        }
-
-        case 'MathConstant': {
-          switch (node.name) {
-            case 'PI': return new JavaMemberAccess(new JavaIdentifier('Math'), 'PI');
-            case 'E': return new JavaMemberAccess(new JavaIdentifier('Math'), 'E');
-            case 'LN2': return new JavaMethodCall(new JavaIdentifier('Math'), 'log', [JavaLiteral.Double(2.0)]);
-            case 'LN10': return new JavaMethodCall(new JavaIdentifier('Math'), 'log', [JavaLiteral.Double(10.0)]);
-            case 'LOG2E': return new JavaBinaryExpression(JavaLiteral.Double(1.0), '/', new JavaMethodCall(new JavaIdentifier('Math'), 'log', [JavaLiteral.Double(2.0)]));
-            case 'LOG10E': return new JavaMethodCall(new JavaIdentifier('Math'), 'log10', [new JavaMemberAccess(new JavaIdentifier('Math'), 'E')]);
-            case 'SQRT2': return new JavaMethodCall(new JavaIdentifier('Math'), 'sqrt', [JavaLiteral.Double(2.0)]);
-            case 'SQRT1_2': return new JavaMethodCall(new JavaIdentifier('Math'), 'sqrt', [JavaLiteral.Double(0.5)]);
-            default: return JavaLiteral.Double(node.value);
-          }
-        }
-
-        case 'NumberConstant': {
-          switch (node.name) {
-            case 'MAX_SAFE_INTEGER': return new JavaMemberAccess(new JavaIdentifier('Long'), 'MAX_VALUE');
-            case 'MIN_SAFE_INTEGER': return new JavaMemberAccess(new JavaIdentifier('Long'), 'MIN_VALUE');
-            case 'MAX_VALUE': return new JavaMemberAccess(new JavaIdentifier('Double'), 'MAX_VALUE');
-            case 'MIN_VALUE': return new JavaMemberAccess(new JavaIdentifier('Double'), 'MIN_VALUE');
-            case 'POSITIVE_INFINITY': return new JavaMemberAccess(new JavaIdentifier('Double'), 'POSITIVE_INFINITY');
-            case 'NEGATIVE_INFINITY': return new JavaMemberAccess(new JavaIdentifier('Double'), 'NEGATIVE_INFINITY');
-            case 'NaN': return new JavaMemberAccess(new JavaIdentifier('Double'), 'NaN');
-            case 'EPSILON': return new JavaMemberAccess(new JavaIdentifier('Double'), 'MIN_NORMAL');
-            default: return JavaLiteral.Double(node.value);
-          }
-        }
-
-        case 'InstanceOfCheck': {
-          const value = this.transformExpression(node.value);
-          const className = typeof node.className === 'string' ? new JavaIdentifier(node.className) : this.transformExpression(node.className);
-          return new JavaBinaryExpression(value, 'instanceof', className);
-        }
-
-        case 'ArraySlice':
-          // array.slice(start, end) -> Arrays.copyOfRange(array, start, end)
-          {
-            this.addImport('java.util.Arrays');
-            const arr = this.transformExpression(node.array);
-            const start = node.start ? this.transformExpression(node.start) : JavaLiteral.Int(0);
-            const end = node.end ? this.transformExpression(node.end) : new JavaMemberAccess(arr, 'length');
-            return new JavaMethodCall(new JavaIdentifier('Arrays'), 'copyOfRange', [arr, start, end]);
-          }
-
-        case 'ArrayAppend':
-          // array.push(value) -> need ArrayList or manual array expansion
-          // For simplicity, use a helper method call
-          {
-            const arr = this.transformExpression(node.array);
-            const value = this.transformExpression(node.value);
-            // This would need ArrayList for proper implementation
-            this.warnings.push('ArrayAppend needs ArrayList for proper Java implementation');
-            return new JavaMethodCall(arr, 'add', [value]);
-          }
-
-        case 'ArrayConcat':
-          // arr1.concat(arr2) -> ArrayUtils.addAll(arr1, arr2)
-          {
-            const arr1 = this.transformExpression(node.array);
-            const arr2 = this.transformExpression(node.other);
-            return new JavaMethodCall(new JavaIdentifier('ArrayUtils'), 'addAll', [arr1, arr2]);
-          }
-
-        case 'ArrayFill':
-          // Arrays.fill(arr, value)
-          {
-            this.addImport('java.util.Arrays');
-            const arr = this.transformExpression(node.array);
-            const value = this.transformExpression(node.value);
-            return new JavaMethodCall(new JavaIdentifier('Arrays'), 'fill', [arr, value]);
-          }
-
-        case 'ErrorCreation':
-          // new Error("message") -> new RuntimeException("message")
-          {
-            const errorType = node.errorType === 'TypeError' ? 'IllegalArgumentException' :
-                             node.errorType === 'RangeError' ? 'IndexOutOfBoundsException' :
-                             'RuntimeException';
-            const message = node.message ? this.transformExpression(node.message) : JavaLiteral.String('');
-            return new JavaObjectCreation(new JavaType(errorType), [message]);
-          }
-
-        case 'ArraySplice':
-          // array.splice(start, deleteCount, items...) -> manual array manipulation
-          {
-            this.warnings.push('ArraySplice requires manual array manipulation in Java');
-            const arr = node.array ? this.transformExpression(node.array) : new JavaIdentifier('array');
-            const spliceArgs = [];
-            if (node.start) spliceArgs.push(this.transformExpression(node.start));
-            if (node.deleteCount) spliceArgs.push(this.transformExpression(node.deleteCount));
-            if (node.items) {
-              for (const item of node.items)
-                spliceArgs.push(this.transformExpression(item));
-            }
-            return new JavaMethodCall(arr, 'splice', spliceArgs);
-          }
-
-        case 'StringCharAt':
-          // str.charAt(index) -> str.charAt(index)
-          {
-            const str = this.transformExpression(node.string);
-            const index = this.transformExpression(node.index);
-            return new JavaMethodCall(str, 'charAt', [index]);
-          }
-
-        case 'StringCharCodeAt':
-          // str.charCodeAt(index) -> (int)str.charAt(index)
-          {
-            const str = this.transformExpression(node.string);
-            const index = this.transformExpression(node.index);
-            return new JavaCast(new JavaType('int'), new JavaMethodCall(str, 'charAt', [index]));
-          }
-
-        case 'StringFromCharCode':
-          // String.fromCharCode(code) -> String.valueOf((char)code)
-          {
-            const code = this.transformExpression(node.code);
-            return new JavaMethodCall(new JavaIdentifier('String'), 'valueOf', [
-              new JavaCast(new JavaType('char'), code)
-            ]);
-          }
-
-        case 'Cast':
-          // Type cast from OpCodes like ToUint32, ToUint8, ToInt32
-          {
-            const value = node.value ? this.transformExpression(node.value) :
-                         node.argument ? this.transformExpression(node.argument) :
-                         node.arguments?.[0] ? this.transformExpression(node.arguments[0]) :
-                         JavaLiteral.Int(0);
-            const targetType = node.targetType || 'int';
-            const javaType = this.mapType(targetType);
-            // For unsigned types, we might need masking
-            if (targetType === 'uint32' || targetType === 'dword') {
-              return new JavaBinaryExpression(new JavaCast(new JavaType('int'), value), '&', new JavaIdentifier('0xFFFFFFFF'));
-            } else if (targetType === 'uint8' || targetType === 'byte') {
-              return new JavaBinaryExpression(new JavaCast(new JavaType('int'), value), '&', JavaLiteral.Int(0xFF));
-            } else if (targetType === 'uint16' || targetType === 'word') {
-              return new JavaBinaryExpression(new JavaCast(new JavaType('int'), value), '&', JavaLiteral.Int(0xFFFF));
-            }
-            return new JavaCast(new JavaType(javaType), value);
-          }
-
-        case 'StringToBytes':
-          // Convert string to bytes with specified encoding
-          {
-            const str = node.value ? this.transformExpression(node.value) :
-                       node.argument ? this.transformExpression(node.argument) :
-                       JavaLiteral.String('');
-            const encoding = node.encoding === 'utf8' ? 'UTF-8' : 'US-ASCII';
-            return new JavaMethodCall(str, 'getBytes', [JavaLiteral.String(encoding)]);
-          }
-
-        case 'BytesToString':
-          // Convert bytes to string with specified encoding
-          {
-            const bytes = node.value ? this.transformExpression(node.value) :
-                         node.argument ? this.transformExpression(node.argument) :
-                         new JavaArrayCreation('byte', JavaLiteral.Int(0));
-            const encoding = node.encoding === 'utf8' ? 'UTF-8' : 'US-ASCII';
-            return new JavaObjectCreation(new JavaType('String'), [bytes, JavaLiteral.String(encoding)]);
-          }
-
-        case 'ArrayClear':
-          // OpCodes.ClearArray(arr) -> Arrays.fill(arr, 0) or Arrays.fill(arr, (byte)0)
-          {
-            this.addImport('java.util.Arrays');
-            const arr = node.arguments?.[0] ? this.transformExpression(node.arguments[0]) : new JavaIdentifier('array');
-            return new JavaMethodCall(new JavaIdentifier('Arrays'), 'fill', [arr, JavaLiteral.Int(0)]);
-          }
-
-        case 'ArraySome':
-          // array.some(predicate) -> Arrays.stream(array).anyMatch(predicate)
-          // For simple length check predicates, we inline them
-          {
-            this.addImport('java.util.Arrays');
-            const arr = node.array ? this.transformExpression(node.array) : new JavaIdentifier('array');
-            const callback = node.callback || node.predicate;
-            // Generate a lambda expression for the predicate
-            if (callback && callback.type === 'ArrowFunctionExpression') {
-              const param = callback.params?.[0]?.name || 'e';
-              const body = this.transformExpression(callback.body);
-              const lambda = new JavaLambda([param], body);
-              return new JavaMethodCall(
-                new JavaMethodCall(new JavaIdentifier('Arrays'), 'stream', [arr]),
-                'anyMatch',
-                [lambda]
-              );
-            }
-            // Fallback: generate comment
-            return new JavaMethodCall(new JavaIdentifier('Arrays'), 'stream', [arr]);
-          }
-
-        case 'ArrayIncludes':
-          // array.includes(value) -> Arrays.asList(array).contains(value) or loop
-          {
-            this.addImport('java.util.Arrays');
-            const arr = node.array ? this.transformExpression(node.array) : new JavaIdentifier('array');
-            const value = node.value ? this.transformExpression(node.value) : JavaLiteral.Null();
-            // For primitive arrays, we need to loop; for Object arrays, use Arrays.asList
-            return new JavaMethodCall(
-              new JavaMethodCall(new JavaIdentifier('Arrays'), 'asList', [arr]),
-              'contains',
-              [value]
-            );
-          }
-
-        case 'ArrayJoin':
-          // array.join(sep) -> String.join(sep, array) or Arrays.toString
-          {
-            const arr = node.array ? this.transformExpression(node.array) : new JavaIdentifier('array');
-            const sep = node.separator ? this.transformExpression(node.separator) : JavaLiteral.String(',');
-            return new JavaMethodCall(new JavaIdentifier('String'), 'join', [sep, arr]);
-          }
-
-        case 'ArrayLiteral':
-          // [a, b, c] -> new T[] { a, b, c } with proper type inference
-          {
-            const elements = (node.elements || []).map(e => this.transformExpression(e));
-            // Determine element type from IL node, first element, or default
-            let elementType = 'int';
-
-            // Use IL's elementType if available and map it to Java
-            if (node.elementType) {
-              const ilTypeMap = {
-                'int8': 'byte', 'uint8': 'byte', 'int16': 'short', 'uint16': 'short',
-                'int32': 'int', 'uint32': 'int', 'int64': 'long', 'uint64': 'long',
-                'float32': 'float', 'float64': 'double', 'string': 'String',
-                'boolean': 'boolean', 'object': 'Object'
-              };
-              elementType = ilTypeMap[node.elementType] || node.elementType;
-            }
-
-            // Override with more specific type from first element
-            if (node.elements && node.elements.length > 0) {
-              const firstEl = node.elements[0];
-              if (firstEl) {
-                if (firstEl.type === 'Literal' && typeof firstEl.value === 'string') {
-                  elementType = 'String';
-                } else if (firstEl.type === 'ArrayLiteral' || firstEl.type === 'ArrayExpression') {
-                  elementType = 'int[]';
-                } else if (firstEl.type === 'NewExpression' || firstEl.type === 'ObjectCreation') {
-                  // Extract type from object creation: new ClassName(...) -> ClassName
-                  const callee = firstEl.callee || firstEl.type;
-                  if (callee && callee.name) {
-                    elementType = callee.name;
-                  } else if (firstEl.className) {
-                    elementType = firstEl.className;
-                  } else if (typeof callee === 'string') {
-                    elementType = callee;
-                  }
-                } else if (firstEl.type === 'ObjectExpression') {
-                  // Object literals -> HashMap
-                  elementType = 'HashMap<String, Object>';
-                  this.addImport('java.util.HashMap');
-                }
-              }
-            }
-
-            return new JavaArrayCreation(elementType, null, elements);
-          }
-
-        case 'OpCodesCall':
-          // OpCodes.MethodName(args) -> Java equivalent
-          {
-            const methodName = node.methodName || node.method;
-            const args = (node.arguments || []).map(a => this.transformExpression(a));
-            return this.transformOpCodesCall(methodName, args);
-          }
-
-        case 'ArrayIndexOf':
-          // array.indexOf(value) -> Arrays.asList(array).indexOf(value)
-          {
-            this.addImport('java.util.Arrays');
-            const arr = node.array ? this.transformExpression(node.array) : new JavaIdentifier('array');
-            const value = node.value ? this.transformExpression(node.value) : JavaLiteral.Null();
-            return new JavaMethodCall(
-              new JavaMethodCall(new JavaIdentifier('Arrays'), 'asList', [arr]),
-              'indexOf',
-              [value]
-            );
-          }
-
-        case 'ArrayMap':
-          // array.map(fn) -> Arrays.stream(array).map(fn).toArray()
-          {
-            this.addImport('java.util.Arrays');
-            const arr = node.array ? this.transformExpression(node.array) : new JavaIdentifier('array');
-            const callback = node.callback || node.fn;
-            if (callback && callback.type === 'ArrowFunctionExpression') {
-              const param = callback.params?.[0]?.name || 'e';
-              const body = this.transformExpression(callback.body);
-              const lambda = new JavaLambda([param], body);
-              return new JavaMethodCall(
-                new JavaMethodCall(
-                  new JavaMethodCall(new JavaIdentifier('Arrays'), 'stream', [arr]),
-                  'map',
-                  [lambda]
-                ),
-                'toArray',
-                []
-              );
-            }
-            return new JavaMethodCall(new JavaIdentifier('Arrays'), 'stream', [arr]);
-          }
-
-        case 'ArrayFilter':
-          // array.filter(fn) -> Arrays.stream(array).filter(fn).toArray()
-          {
-            this.addImport('java.util.Arrays');
-            const arr = node.array ? this.transformExpression(node.array) : new JavaIdentifier('array');
-            const callback = node.callback || node.predicate;
-            if (callback && callback.type === 'ArrowFunctionExpression') {
-              const param = callback.params?.[0]?.name || 'e';
-              const body = this.transformExpression(callback.body);
-              const lambda = new JavaLambda([param], body);
-              return new JavaMethodCall(
-                new JavaMethodCall(
-                  new JavaMethodCall(new JavaIdentifier('Arrays'), 'stream', [arr]),
-                  'filter',
-                  [lambda]
-                ),
-                'toArray',
-                []
-              );
-            }
-            return new JavaMethodCall(new JavaIdentifier('Arrays'), 'stream', [arr]);
-          }
-
-        case 'RotateLeft':
-          // OpCodes.RotL32(value, amount) -> Integer.rotateLeft(value, amount)
-          // OpCodes.RotL64(value, amount) -> Long.rotateLeft(value, amount)
-          {
-            const value = this.transformExpression(node.value);
-            const amount = this.transformExpression(node.amount);
-            const bits = node.bits || 32;
-            if (bits === 64) {
-              return new JavaMethodCall(new JavaIdentifier('Long'), 'rotateLeft', [value, amount]);
-            }
-            return new JavaMethodCall(new JavaIdentifier('Integer'), 'rotateLeft', [value, amount]);
-          }
-
-        case 'RotateRight':
-          // OpCodes.RotR32(value, amount) -> Integer.rotateRight(value, amount)
-          // OpCodes.RotR64(value, amount) -> Long.rotateRight(value, amount)
-          {
-            const value = this.transformExpression(node.value);
-            const amount = this.transformExpression(node.amount);
-            const bits = node.bits || 32;
-            if (bits === 64) {
-              return new JavaMethodCall(new JavaIdentifier('Long'), 'rotateRight', [value, amount]);
-            }
-            return new JavaMethodCall(new JavaIdentifier('Integer'), 'rotateRight', [value, amount]);
-          }
-
-        // IL AST StringInterpolation - `Hello ${name}` -> "Hello " + name
-        case 'StringInterpolation': {
-          const parts = [];
-          if (node.parts) {
-            for (const part of node.parts) {
-              if (part.type === 'StringPart' || part.ilNodeType === 'StringPart') {
-                if (part.value)
-                  parts.push(JavaLiteral.String(part.value));
-              } else if (part.type === 'ExpressionPart' || part.ilNodeType === 'ExpressionPart') {
-                parts.push(this.transformExpression(part.expression));
-              }
-            }
-          }
-          if (parts.length === 0) return JavaLiteral.String('');
-          if (parts.length === 1) return parts[0];
-          let result = parts[0];
-          for (let i = 1; i < parts.length; ++i)
-            result = new JavaBinaryExpression(result, '+', parts[i]);
-          return result;
-        }
-
-        // IL AST ObjectLiteral - {key: value} -> Map.of(...) or new HashMap<>()
-        case 'ObjectLiteral': {
-          if (!node.properties || node.properties.length === 0)
-            return new JavaMethodCall(new JavaIdentifier('Map'), 'of', []);
-          const args = [];
-          for (const prop of (node.properties || [])) {
-            if (prop.type === 'SpreadElement') continue;
-            const key = prop.key?.name || prop.key?.value || prop.key || 'key';
-            args.push(JavaLiteral.String(key));
-            args.push(this.transformExpression(prop.value));
-          }
-          return new JavaMethodCall(new JavaIdentifier('Map'), 'of', args);
-        }
-
-        // IL AST StringFromCharCodes - String.fromCharCode(65) -> Character.toString((char)65)
-        case 'StringFromCharCodes': {
-          const args = (node.arguments || []).map(a => this.transformExpression(a));
-          if (args.length === 0)
-            return JavaLiteral.String('');
-          if (args.length === 1) {
-            return new JavaMethodCall(new JavaIdentifier('Character'), 'toString', [
-              new JavaCast(JavaType.Char(), args[0])
-            ]);
-          }
-          // Multiple: new String(new char[]{(char)c1, (char)c2, ...})
-          const charArray = new JavaArrayInitializer(args.map(a => new JavaCast(JavaType.Char(), a)));
-          return new JavaNewExpression(JavaType.String(), [charArray]);
-        }
-
-        // IL AST IsArrayCheck - Array.isArray(x) -> x != null && x.getClass().isArray()
-        case 'IsArrayCheck': {
-          const value = this.transformExpression(node.value);
-          return new JavaBinaryExpression(
-            new JavaBinaryExpression(value, '!=', JavaLiteral.Null()),
-            '&&',
-            new JavaMethodCall(new JavaMethodCall(value, 'getClass', []), 'isArray', [])
-          );
-        }
-
-        // IL AST ArrowFunction - (x) => expr -> x -> expr
-        case 'ArrowFunction': {
-          const params = (node.params || []).map(p => {
-            const name = typeof p === 'string' ? p : (p.name || 'arg');
-            return name;
-          });
-          let body;
-          if (node.body) {
-            if (node.body.type === 'BlockStatement') {
-              body = this.transformBlockStatement(node.body);
-            } else {
-              body = this.transformExpression(node.body);
-            }
-          } else {
-            body = JavaLiteral.Null();
-          }
-          return new JavaLambda(params, body);
-        }
-
-        // IL AST TypeOfExpression - typeof x -> x.getClass().getName()
-        case 'TypeOfExpression': {
-          const value = this.transformExpression(node.value);
-          return new JavaMethodCall(new JavaMethodCall(value, 'getClass', []), 'getName', []);
-        }
-
-        // IL AST Power - x ** y -> Math.pow(x, y)
-        case 'Power': {
-          const left = this.transformExpression(node.left);
-          const right = this.transformExpression(node.right);
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'pow', [left, right]);
-        }
-
-        // IL AST ObjectFreeze - Object.freeze(x) -> just return x (no-op in Java)
-        case 'ObjectFreeze': {
-          return this.transformExpression(node.value);
-        }
-
-        // ========================[ Array Operations ]========================
-
-        // IL AST ArrayEvery - array.every(predicate) -> Arrays.stream(array).allMatch(predicate)
-        case 'ArrayEvery': {
-          this.addImport('java.util.Arrays');
-          const arr = node.array ? this.transformExpression(node.array) : new JavaIdentifier('array');
-          const callback = node.callback || node.predicate;
-          if (callback && (callback.type === 'ArrowFunctionExpression' || callback.type === 'ArrowFunction')) {
-            const param = callback.params?.[0]?.name || callback.params?.[0] || 'e';
-            const paramName = typeof param === 'string' ? param : param.name || 'e';
-            const body = this.transformExpression(callback.body);
-            const lambda = new JavaLambda([paramName], body);
-            return new JavaMethodCall(
-              new JavaMethodCall(new JavaIdentifier('Arrays'), 'stream', [arr]),
-              'allMatch',
-              [lambda]
-            );
-          }
-          if (callback) {
-            const callbackExpr = this.transformExpression(callback);
-            return new JavaMethodCall(
-              new JavaMethodCall(new JavaIdentifier('Arrays'), 'stream', [arr]),
-              'allMatch',
-              [callbackExpr]
-            );
-          }
-          return new JavaMethodCall(new JavaIdentifier('Arrays'), 'stream', [arr]);
-        }
-
-        // IL AST ArrayFind - array.find(predicate) -> Arrays.stream(array).filter(predicate).findFirst().orElse(null)
-        case 'ArrayFind': {
-          this.addImport('java.util.Arrays');
-          const arr = node.array ? this.transformExpression(node.array) : new JavaIdentifier('array');
-          const callback = node.callback || node.predicate;
-          if (callback && (callback.type === 'ArrowFunctionExpression' || callback.type === 'ArrowFunction')) {
-            const param = callback.params?.[0]?.name || callback.params?.[0] || 'e';
-            const paramName = typeof param === 'string' ? param : param.name || 'e';
-            const body = this.transformExpression(callback.body);
-            const lambda = new JavaLambda([paramName], body);
-            return new JavaMethodCall(
-              new JavaMethodCall(
-                new JavaMethodCall(
-                  new JavaMethodCall(new JavaIdentifier('Arrays'), 'stream', [arr]),
-                  'filter',
-                  [lambda]
-                ),
-                'findFirst',
-                []
-              ),
-              'orElse',
-              [JavaLiteral.Null()]
-            );
-          }
-          if (callback) {
-            const callbackExpr = this.transformExpression(callback);
-            return new JavaMethodCall(
-              new JavaMethodCall(
-                new JavaMethodCall(
-                  new JavaMethodCall(new JavaIdentifier('Arrays'), 'stream', [arr]),
-                  'filter',
-                  [callbackExpr]
-                ),
-                'findFirst',
-                []
-              ),
-              'orElse',
-              [JavaLiteral.Null()]
-            );
-          }
-          return new JavaMethodCall(new JavaIdentifier('Arrays'), 'stream', [arr]);
-        }
-
-        // IL AST ArrayFindIndex - array.findIndex(predicate) -> IntStream.range(0, array.length).filter(i -> predicate(array[i])).findFirst().orElse(-1)
-        case 'ArrayFindIndex': {
-          this.addImport('java.util.stream.IntStream');
-          const arr = node.array ? this.transformExpression(node.array) : new JavaIdentifier('array');
-          const callback = node.callback || node.predicate;
-          if (callback && (callback.type === 'ArrowFunctionExpression' || callback.type === 'ArrowFunction')) {
-            const param = callback.params?.[0]?.name || callback.params?.[0] || 'e';
-            const paramName = typeof param === 'string' ? param : param.name || 'e';
-            const body = this.transformExpression(callback.body);
-            // Build: IntStream.range(0, arr.length).filter(i -> predicate).findFirst().orElse(-1)
-            const lambda = new JavaLambda([paramName], body);
-            return new JavaMethodCall(
-              new JavaMethodCall(
-                new JavaMethodCall(
-                  new JavaMethodCall(new JavaIdentifier('IntStream'), 'range', [JavaLiteral.Int(0), new JavaMemberAccess(arr, 'length')]),
-                  'filter',
-                  [lambda]
-                ),
-                'findFirst',
-                []
-              ),
-              'orElse',
-              [JavaLiteral.Int(-1)]
-            );
-          }
-          this.warnings.push('ArrayFindIndex requires a lambda callback in Java');
-          return new JavaIdentifier('/* ArrayFindIndex requires lambda */');
-        }
-
-        // IL AST ArrayForEach - array.forEach(callback) -> for (var item : array) { callback(item); }
-        case 'ArrayForEach': {
-          this.addImport('java.util.Arrays');
-          const arr = node.array ? this.transformExpression(node.array) : new JavaIdentifier('array');
-          const callback = node.callback;
-          if (callback && (callback.type === 'ArrowFunctionExpression' || callback.type === 'ArrowFunction')) {
-            const param = callback.params?.[0]?.name || callback.params?.[0] || 'e';
-            const paramName = typeof param === 'string' ? param : param.name || 'e';
-            const body = this.transformExpression(callback.body);
-            const lambda = new JavaLambda([paramName], body);
-            return new JavaMethodCall(
-              new JavaMethodCall(new JavaIdentifier('Arrays'), 'stream', [arr]),
-              'forEach',
-              [lambda]
-            );
-          }
-          if (callback) {
-            const callbackExpr = this.transformExpression(callback);
-            return new JavaMethodCall(
-              new JavaMethodCall(new JavaIdentifier('Arrays'), 'stream', [arr]),
-              'forEach',
-              [callbackExpr]
-            );
-          }
-          return new JavaMethodCall(new JavaIdentifier('Arrays'), 'stream', [arr]);
-        }
-
-        // IL AST ArrayFrom - Array.from(iterable) -> Arrays.copyOf(source, source.length) or stream-based
-        case 'ArrayFrom': {
-          this.addImport('java.util.Arrays');
-          const source = this.transformExpression(node.iterable || node.value || node.argument || node.arguments?.[0]);
-          if (node.mapFunction) {
-            this.addImport('java.util.Arrays');
-            const mapFn = this.transformExpression(node.mapFunction);
-            return new JavaMethodCall(
-              new JavaMethodCall(
-                new JavaMethodCall(new JavaIdentifier('Arrays'), 'stream', [source]),
-                'map',
-                [mapFn]
-              ),
-              'toArray',
-              []
-            );
-          }
-          return new JavaMethodCall(source, 'clone', []);
-        }
-
-        // IL AST ArrayPop - array.pop() -> remove last element (requires ArrayList or manual)
-        case 'ArrayPop': {
-          const arr = node.array ? this.transformExpression(node.array) : new JavaIdentifier('array');
-          this.warnings.push('ArrayPop requires ArrayList for proper Java implementation');
-          return new JavaMethodCall(arr, 'remove', [
-            new JavaBinaryExpression(new JavaMethodCall(arr, 'size', []), '-', JavaLiteral.Int(1))
-          ]);
-        }
-
-        // IL AST ArrayReduce - array.reduce(callback, initial) -> Arrays.stream(array).reduce(identity, accumulator)
-        case 'ArrayReduce': {
-          this.addImport('java.util.Arrays');
-          const arr = node.array ? this.transformExpression(node.array) : new JavaIdentifier('array');
-          const callback = node.callback;
-          const args = [];
-          if (node.initialValue) args.push(this.transformExpression(node.initialValue));
-          if (callback && (callback.type === 'ArrowFunctionExpression' || callback.type === 'ArrowFunction')) {
-            const params = (callback.params || []).map(p => {
-              const name = typeof p === 'string' ? p : (p.name || 'x');
-              return name;
-            });
-            const body = this.transformExpression(callback.body);
-            const lambda = new JavaLambda(params, body);
-            args.push(lambda);
-          } else if (callback) {
-            args.push(this.transformExpression(callback));
-          }
-          return new JavaMethodCall(
-            new JavaMethodCall(new JavaIdentifier('Arrays'), 'stream', [arr]),
-            'reduce',
-            args
-          );
-        }
-
-        // IL AST ArrayReverse - array.reverse() -> Collections.reverse or manual loop
-        case 'ArrayReverse': {
-          this.addImport('java.util.Collections');
-          this.addImport('java.util.Arrays');
-          const arr = node.array ? this.transformExpression(node.array) : new JavaIdentifier('array');
-          // Collections.reverse(Arrays.asList(arr)) - works for Object arrays
-          // For primitive arrays, need manual implementation
-          return new JavaMethodCall(new JavaIdentifier('Collections'), 'reverse', [
-            new JavaMethodCall(new JavaIdentifier('Arrays'), 'asList', [arr])
-          ]);
-        }
-
-        // IL AST ArrayShift - array.shift() -> remove first element (requires ArrayList or manual)
-        case 'ArrayShift': {
-          const arr = node.array ? this.transformExpression(node.array) : new JavaIdentifier('array');
-          this.warnings.push('ArrayShift requires ArrayList for proper Java implementation');
-          return new JavaMethodCall(arr, 'remove', [JavaLiteral.Int(0)]);
-        }
-
-        // IL AST ArraySort - array.sort(compareFn) -> Arrays.sort(array)
-        case 'ArraySort': {
-          this.addImport('java.util.Arrays');
-          const arr = node.array ? this.transformExpression(node.array) : new JavaIdentifier('array');
-          if (node.compareFn) {
-            const compareFn = this.transformExpression(node.compareFn);
-            return new JavaMethodCall(new JavaIdentifier('Arrays'), 'sort', [arr, compareFn]);
-          }
-          return new JavaMethodCall(new JavaIdentifier('Arrays'), 'sort', [arr]);
-        }
-
-        // IL AST ArrayUnshift - array.unshift(value) -> insert at beginning (requires ArrayList)
-        case 'ArrayUnshift': {
-          const arr = node.array ? this.transformExpression(node.array) : new JavaIdentifier('array');
-          const value = node.value ? this.transformExpression(node.value) : JavaLiteral.Null();
-          this.warnings.push('ArrayUnshift requires ArrayList for proper Java implementation');
-          return new JavaMethodCall(arr, 'add', [JavaLiteral.Int(0), value]);
-        }
-
-        // IL AST ArrayXor - XOR two arrays element-wise
-        case 'ArrayXor': {
-          const arr1 = this.transformExpression(node.array1 || node.arguments?.[0]);
-          const arr2 = this.transformExpression(node.array2 || node.arguments?.[1]);
-          return this.createXorArraysCode(arr1, arr2);
-        }
-
-        // IL AST ClearArray - clear/zero an array -> Arrays.fill(arr, (byte)0)
-        case 'ClearArray': {
-          this.addImport('java.util.Arrays');
-          const arr = node.array ? this.transformExpression(node.array) :
-                     node.arguments?.[0] ? this.transformExpression(node.arguments[0]) :
-                     new JavaIdentifier('array');
-          return new JavaMethodCall(new JavaIdentifier('Arrays'), 'fill', [arr, JavaLiteral.Int(0)]);
-        }
-
-        // IL AST CopyArray - copy an array -> Arrays.copyOf(arr, arr.length) or arr.clone()
-        case 'CopyArray': {
-          this.addImport('java.util.Arrays');
-          const arr = node.array ? this.transformExpression(node.array) :
-                     node.arguments?.[0] ? this.transformExpression(node.arguments[0]) :
-                     new JavaIdentifier('array');
-          return new JavaMethodCall(arr, 'clone', []);
-        }
-
-        // ========================[ String Operations ]========================
-
-        // IL AST StringEndsWith - str.endsWith(suffix) -> str.endsWith(suffix)
-        case 'StringEndsWith': {
-          const str = this.transformExpression(node.string || node.value);
-          const suffix = this.transformExpression(node.suffix || node.search);
-          return new JavaMethodCall(str, 'endsWith', [suffix]);
-        }
-
-        // IL AST StringIncludes - str.includes(sub) -> str.contains(sub)
-        case 'StringIncludes': {
-          const str = this.transformExpression(node.string || node.value);
-          const search = this.transformExpression(node.search);
-          return new JavaMethodCall(str, 'contains', [search]);
-        }
-
-        // IL AST StringIndexOf - str.indexOf(sub) -> str.indexOf(sub)
-        case 'StringIndexOf': {
-          const str = this.transformExpression(node.string || node.value);
-          const search = node.search ? this.transformExpression(node.search) : JavaLiteral.String('');
-          return new JavaMethodCall(str, 'indexOf', [search]);
-        }
-
-        // IL AST StringRepeat - str.repeat(count) -> str.repeat(count) (Java 11+)
-        case 'StringRepeat': {
-          const str = this.transformExpression(node.string || node.value);
-          const count = this.transformExpression(node.count);
-          return new JavaMethodCall(str, 'repeat', [count]);
-        }
-
-        // IL AST StringReplace - str.replace(old, new) -> str.replace(old, new)
-        case 'StringReplace': {
-          const str = this.transformExpression(node.string || node.value);
-          const search = this.transformExpression(node.search);
-          const replacement = this.transformExpression(node.replacement);
-          return new JavaMethodCall(str, 'replace', [search, replacement]);
-        }
-
-        // IL AST StringSplit - str.split(delim) -> str.split(delim)
-        case 'StringSplit': {
-          const str = this.transformExpression(node.string || node.value);
-          const separator = node.separator ? this.transformExpression(node.separator) : JavaLiteral.String('');
-          return new JavaMethodCall(str, 'split', [separator]);
-        }
-
-        // IL AST StringStartsWith - str.startsWith(prefix) -> str.startsWith(prefix)
-        case 'StringStartsWith': {
-          const str = this.transformExpression(node.string || node.value);
-          const prefix = this.transformExpression(node.prefix || node.search);
-          return new JavaMethodCall(str, 'startsWith', [prefix]);
-        }
-
-        // IL AST StringSubstring - str.substring(start, end) -> str.substring(start, end)
-        case 'StringSubstring': {
-          const str = this.transformExpression(node.string || node.value);
-          const args = [];
-          if (node.start) args.push(this.transformExpression(node.start));
-          if (node.end) args.push(this.transformExpression(node.end));
-          return new JavaMethodCall(str, 'substring', args);
-        }
-
-        // IL AST StringToLowerCase - str.toLowerCase() -> str.toLowerCase()
-        case 'StringToLowerCase': {
-          const str = this.transformExpression(node.string || node.value);
-          return new JavaMethodCall(str, 'toLowerCase', []);
-        }
-
-        // IL AST StringToUpperCase - str.toUpperCase() -> str.toUpperCase()
-        case 'StringToUpperCase': {
-          const str = this.transformExpression(node.string || node.value);
-          return new JavaMethodCall(str, 'toUpperCase', []);
-        }
-
-        // IL AST StringTrim - str.trim() -> str.trim()
-        case 'StringTrim': {
-          const str = this.transformExpression(node.string || node.value);
-          return new JavaMethodCall(str, 'trim', []);
-        }
-
-        // IL AST StringTransform - generic string method call
-        case 'StringTransform': {
-          const str = this.transformExpression(node.string || node.value);
-          const method = node.method || 'toString';
-          const args = (node.arguments || []).map(a => this.transformExpression(a));
-          return new JavaMethodCall(str, method, args);
-        }
-
-        // ========================[ Buffer/DataView Operations ]========================
-
-        // IL AST DataViewCreation - new DataView(buffer) -> ByteBuffer.wrap(data) or ByteBuffer.allocate(size)
-        case 'DataViewCreation': {
-          this.addImport('java.nio.ByteBuffer');
-          if (node.buffer) {
-            const buffer = this.transformExpression(node.buffer);
-            let result = new JavaMethodCall(new JavaIdentifier('ByteBuffer'), 'wrap', [buffer]);
-            if (node.byteOffset) {
-              result = new JavaMethodCall(result, 'position', [this.transformExpression(node.byteOffset)]);
-            }
-            return result;
-          }
-          const size = node.size ? this.transformExpression(node.size) : JavaLiteral.Int(0);
-          return new JavaMethodCall(new JavaIdentifier('ByteBuffer'), 'allocate', [size]);
-        }
-
-        // IL AST DataViewRead - dataView.getXxx(offset) -> byteBuffer.getInt()/getShort() etc.
-        case 'DataViewRead': {
-          this.addImport('java.nio.ByteBuffer');
-          this.addImport('java.nio.ByteOrder');
-          const dataView = this.transformExpression(node.dataView || node.object || node.target);
-          const jsMethod = node.method || 'getUint8';
-          const args = [];
-          if (node.offset !== undefined) args.push(this.transformExpression(node.offset));
-          else if (node.arguments?.[0]) args.push(this.transformExpression(node.arguments[0]));
-          // Map JS DataView method names to Java ByteBuffer methods
-          const readMethodMap = {
-            'getInt8': 'get', 'getUint8': 'get',
-            'getInt16': 'getShort', 'getUint16': 'getShort',
-            'getInt32': 'getInt', 'getUint32': 'getInt',
-            'getFloat32': 'getFloat', 'getFloat64': 'getDouble',
-            'getBigInt64': 'getLong', 'getBigUint64': 'getLong'
-          };
-          const javaMethod = readMethodMap[jsMethod] || jsMethod;
-          let result = new JavaMethodCall(dataView, javaMethod, args);
-          // Handle endianness
-          if (node.littleEndian !== undefined) {
-            const order = node.littleEndian ? 'LITTLE_ENDIAN' : 'BIG_ENDIAN';
-            result = new JavaMethodCall(
-              new JavaMethodCall(dataView, 'order', [new JavaMemberAccess(new JavaIdentifier('ByteOrder'), order)]),
-              javaMethod,
-              args
-            );
-          }
-          return result;
-        }
-
-        // IL AST DataViewWrite - dataView.setXxx(offset, value) -> byteBuffer.putInt()/putShort() etc.
-        case 'DataViewWrite': {
-          this.addImport('java.nio.ByteBuffer');
-          this.addImport('java.nio.ByteOrder');
-          const dataView = this.transformExpression(node.dataView || node.object || node.target);
-          const jsMethod = node.method || 'setUint8';
-          const args = [];
-          if (node.offset !== undefined) args.push(this.transformExpression(node.offset));
-          else if (node.arguments?.[0]) args.push(this.transformExpression(node.arguments[0]));
-          if (node.value !== undefined) args.push(this.transformExpression(node.value));
-          else if (node.arguments?.[1]) args.push(this.transformExpression(node.arguments[1]));
-          // Map JS DataView method names to Java ByteBuffer methods
-          const writeMethodMap = {
-            'setInt8': 'put', 'setUint8': 'put',
-            'setInt16': 'putShort', 'setUint16': 'putShort',
-            'setInt32': 'putInt', 'setUint32': 'putInt',
-            'setFloat32': 'putFloat', 'setFloat64': 'putDouble',
-            'setBigInt64': 'putLong', 'setBigUint64': 'putLong'
-          };
-          const javaWriteMethod = writeMethodMap[jsMethod] || jsMethod;
-          let result = new JavaMethodCall(dataView, javaWriteMethod, args);
-          if (node.littleEndian !== undefined) {
-            const order = node.littleEndian ? 'LITTLE_ENDIAN' : 'BIG_ENDIAN';
-            result = new JavaMethodCall(
-              new JavaMethodCall(dataView, 'order', [new JavaMemberAccess(new JavaIdentifier('ByteOrder'), order)]),
-              javaWriteMethod,
-              args
-            );
-          }
-          return result;
-        }
-
-        // IL AST BufferCreation - new ArrayBuffer(size) -> new byte[size]
-        case 'BufferCreation': {
-          const size = node.size ? this.transformExpression(node.size) : JavaLiteral.Int(0);
-          return new JavaArrayCreation('byte', size);
-        }
-
-        // IL AST TypedArrayCreation is already handled above
-
-        // IL AST TypedArraySet - typedArray.set(source, offset) -> System.arraycopy(source, 0, dest, offset, source.length)
-        case 'TypedArraySet': {
-          const array = this.transformExpression(node.array);
-          const source = node.source ? this.transformExpression(node.source) : new JavaIdentifier('source');
-          const offset = node.offset ? this.transformExpression(node.offset) : JavaLiteral.Int(0);
-          return new JavaMethodCall(new JavaIdentifier('System'), 'arraycopy', [
-            source, JavaLiteral.Int(0), array, offset, new JavaMemberAccess(source, 'length')
-          ]);
-        }
-
-        // IL AST TypedArraySubarray - typedArray.subarray(begin, end) -> Arrays.copyOfRange(arr, begin, end)
-        case 'TypedArraySubarray': {
-          this.addImport('java.util.Arrays');
-          const array = this.transformExpression(node.array);
-          const begin = node.begin ? this.transformExpression(node.begin) : JavaLiteral.Int(0);
-          const end = node.end ? this.transformExpression(node.end) : new JavaMemberAccess(array, 'length');
-          return new JavaMethodCall(new JavaIdentifier('Arrays'), 'copyOfRange', [array, begin, end]);
-        }
-
-        // ========================[ Map/Set/Object Operations ]========================
-
-        // IL AST MapCreation - new Map() -> new HashMap<>()
-        case 'MapCreation': {
-          this.addImport('java.util.HashMap');
-          const args = node.entries ? [this.transformExpression(node.entries)] : [];
-          return new JavaObjectCreation(new JavaType('HashMap<>'), args);
-        }
-
-        // IL AST MapGet - map.get(key) -> map.get(key)
-        case 'MapGet': {
-          const map = this.transformExpression(node.map);
-          const key = this.transformExpression(node.key);
-          return new JavaMethodCall(map, 'get', [key]);
-        }
-
-        // IL AST MapSet - map.set(key, value) -> map.put(key, value)
-        case 'MapSet': {
-          const map = this.transformExpression(node.map);
-          const key = this.transformExpression(node.key);
-          const value = this.transformExpression(node.value);
-          return new JavaMethodCall(map, 'put', [key, value]);
-        }
-
-        // IL AST MapHas - map.has(key) -> map.containsKey(key)
-        case 'MapHas': {
-          const map = this.transformExpression(node.map);
-          const key = this.transformExpression(node.key);
-          return new JavaMethodCall(map, 'containsKey', [key]);
-        }
-
-        // IL AST MapDelete - map.delete(key) -> map.remove(key)
-        case 'MapDelete': {
-          const map = this.transformExpression(node.map);
-          const key = this.transformExpression(node.key);
-          return new JavaMethodCall(map, 'remove', [key]);
-        }
-
-        // IL AST SetCreation - new Set() -> new HashSet<>()
-        case 'SetCreation': {
-          this.addImport('java.util.HashSet');
-          const args = node.values ? [this.transformExpression(node.values)] : [];
-          return new JavaObjectCreation(new JavaType('HashSet<>'), args);
-        }
-
-        // IL AST ObjectKeys - Object.keys(obj) -> new ArrayList<>(obj.keySet())
-        case 'ObjectKeys': {
-          this.addImport('java.util.ArrayList');
-          const obj = this.transformExpression(node.argument || node.object);
-          return new JavaObjectCreation(new JavaType('ArrayList<>'), [
-            new JavaMethodCall(obj, 'keySet', [])
-          ]);
-        }
-
-        // IL AST ObjectValues - Object.values(obj) -> new ArrayList<>(obj.values())
-        case 'ObjectValues': {
-          this.addImport('java.util.ArrayList');
-          const obj = this.transformExpression(node.argument || node.object);
-          return new JavaObjectCreation(new JavaType('ArrayList<>'), [
-            new JavaMethodCall(obj, 'values', [])
-          ]);
-        }
-
-        // IL AST ObjectEntries - Object.entries(obj) -> new ArrayList<>(obj.entrySet())
-        case 'ObjectEntries': {
-          this.addImport('java.util.ArrayList');
-          const obj = this.transformExpression(node.argument || node.object);
-          return new JavaObjectCreation(new JavaType('ArrayList<>'), [
-            new JavaMethodCall(obj, 'entrySet', [])
-          ]);
-        }
-
-        // IL AST ObjectCreate - Object.create(proto) -> new HashMap<>() (no direct equivalent)
-        case 'ObjectCreate': {
-          this.addImport('java.util.HashMap');
-          return new JavaObjectCreation(new JavaType('HashMap<>'), []);
-        }
-
-        // ========================[ Utility Operations ]========================
-
-        // IL AST Random - Math.random() -> Math.random() or new Random().nextDouble()
-        case 'Random': {
-          return new JavaMethodCall(new JavaIdentifier('Math'), 'random', []);
-        }
-
-        // IL AST DebugOutput - console.log/warn/error -> System.out.println/System.err.println
-        case 'DebugOutput': {
-          const args = (node.arguments || []).map(arg => this.transformExpression(arg));
-          const level = node.level || 'log';
-          const stream = (level === 'error' || level === 'warn') ? 'err' : 'out';
-          const target = new JavaMemberAccess(new JavaIdentifier('System'), stream);
-          return new JavaMethodCall(target, 'println', args);
-        }
-
-        // IL AST ParentMethodCall - super.method(args) -> super.method(args)
-        case 'ParentMethodCall': {
-          const args = (node.arguments || []).map(a => this.transformExpression(a));
-          return new JavaMethodCall(new JavaSuper(), node.method, args);
-        }
-
-        // IL AST IsFiniteCheck - Number.isFinite(value) -> Double.isFinite(value)
-        case 'IsFiniteCheck': {
-          const value = this.transformExpression(node.value || node.argument || node.arguments?.[0]);
-          return new JavaMethodCall(new JavaIdentifier('Double'), 'isFinite', [value]);
-        }
-
-        // IL AST IsNaNCheck - Number.isNaN(value) -> Double.isNaN(value)
-        case 'IsNaNCheck': {
-          const value = this.transformExpression(node.value || node.argument || node.arguments?.[0]);
-          return new JavaMethodCall(new JavaIdentifier('Double'), 'isNaN', [value]);
-        }
-
-        // IL AST IsIntegerCheck - Number.isInteger(value) -> value == Math.floor(value)
-        case 'IsIntegerCheck': {
-          const value = this.transformExpression(node.value || node.argument || node.arguments?.[0]);
-          return new JavaBinaryExpression(
-            value,
-            '==',
-            new JavaMethodCall(new JavaIdentifier('Math'), 'floor', [value])
-          );
-        }
-
-        default:
-          this.warnings.push(`Unsupported expression type: ${node.type}`);
-          return new JavaIdentifier('/* unsupported: ' + node.type + ' */');
-      }
-    }
-
-    /**
-     * Transform template literal: `Hello ${name}!` -> "Hello " + name + "!"
-     * Java uses string concatenation
-     */
-    transformTemplateLiteral(node) {
-      const parts = [];
-
-      for (let i = 0; i < node.quasis.length; ++i) {
-        const raw = node.quasis[i].value.raw;
-        if (raw) {
-          parts.push(JavaLiteral.String(raw));
-        }
-        if (i < node.expressions.length) {
-          parts.push(this.transformExpression(node.expressions[i]));
-        }
-      }
-
-      // Build concatenation expression: "a" + b + "c"
-      if (parts.length === 0) return JavaLiteral.String('');
-      if (parts.length === 1) return parts[0];
-
-      let result = parts[0];
-      for (let i = 1; i < parts.length; ++i) {
-        result = new JavaBinaryExpression(result, '+', parts[i]);
-      }
-      return result;
-    }
-
-    transformLiteral(node) {
-      if (node.value === null) return JavaLiteral.Null();
-      // Handle undefined - treat same as null in Java
-      if (node.value === undefined) return JavaLiteral.Null();
-      if (typeof node.value === 'boolean') return JavaLiteral.Boolean(node.value);
-      if (typeof node.value === 'string') return JavaLiteral.String(node.value);
-
-      // Handle BigInt
-      if (typeof node.value === 'bigint' || node.bigint) {
-        const bigValue = typeof node.value === 'bigint' ? node.value : BigInt(node.bigint);
-        return new JavaLiteral(`new BigInteger("${bigValue}")`, 'BigInteger');
-      }
-
-      if (typeof node.value === 'number') {
-        const raw = node.raw || String(node.value);
-
-        // Check for hex literals
-        if (raw.startsWith('0x') || raw.startsWith('0X')) {
-          // For large hex values, add L suffix
-          // Use raw string to preserve precision for 64-bit values
-          if (node.value > 0x7FFFFFFF || node.value < -0x80000000) {
-            return new JavaLiteral(`${raw}L`, 'long');
-          }
-          return new JavaLiteral(raw, 'int');
-        }
-
-        if (Number.isInteger(node.value)) {
-          if (node.value >= -2147483648 && node.value <= 2147483647) {
-            return JavaLiteral.Int(node.value);
-          } else {
-            return JavaLiteral.Long(node.value);
-          }
-        }
-        return JavaLiteral.Double(node.value);
-      }
-      return JavaLiteral.Null();
-    }
-
-    transformIdentifier(node) {
-      let name = node.name;
-
-      // Map JavaScript globals to Java equivalents
-      if (name === 'undefined') return JavaLiteral.Null();
-      if (name === 'NaN') return new JavaIdentifier('Double.NaN');
-      if (name === 'Infinity') return new JavaIdentifier('Double.POSITIVE_INFINITY');
-
-      // Convert naming conventions
-      // Keep 'this' as-is, convert others to camelCase
-      if (name !== 'this' && name !== 'super') {
-        name = this.toCamelCase(name);
-      }
-
-      // Sanitize reserved words
-      name = this.sanitizeName(name);
-
-      return new JavaIdentifier(name);
-    }
-
-    transformObjectExpression(node) {
-      // Java doesn't have object literals - need to create a Map or custom class
-      // For simple cases, use HashMap with explicit type parameters for type inference
-      this.addImport('java.util.HashMap');
-      this.addImport('java.util.Map');
-
-      const creation = new JavaObjectCreation(new JavaType('HashMap<String, Object>'), []);
-
-      // If there are properties, generate put() calls
-      if (node.properties && node.properties.length > 0) {
-        this.warnings.push('Object literals converted to HashMap - may need manual review');
-      }
-
-      return creation;
-    }
-
-    transformBinaryExpression(node) {
-      let operator = node.operator;
-
-      // Map JavaScript operators to Java
-      if (operator === '===') operator = '==';
-      if (operator === '!==') operator = '!=';
-
-      // Handle >>> 0 idiom (convert to unsigned int)
-      if (operator === '>>>' && node.right.type === 'Literal' && node.right.value === 0) {
-        const left = this.transformExpression(node.left);
-        // In Java, need to mask with 0xFFFFFFFFL for unsigned behavior
-        return new JavaBinaryExpression(left, '&', new JavaLiteral('0xFFFFFFFFL', 'long'));
-      }
-
-      // Handle unsigned operations using Integer.toUnsignedLong() etc.
-      if (operator === '>>>') {
-        const left = this.transformExpression(node.left);
-        const right = this.transformExpression(node.right);
-        // Java >>> works the same as JS for unsigned right shift
-        return new JavaBinaryExpression(left, '>>>', right);
-      }
-
-      // Handle string equality (.equals() for objects)
-      if ((operator === '==' || operator === '!=') && this.needsEqualsMethod(node.left, node.right)) {
-        const left = this.transformExpression(node.left);
-        const right = this.transformExpression(node.right);
-        const equalsCall = new JavaMethodCall(left, 'equals', [right]);
-        if (operator === '!=') {
-          return new JavaUnaryExpression('!', equalsCall, true);
-        }
-        return equalsCall;
-      }
-
-      const left = this.transformExpression(node.left);
-      const right = this.transformExpression(node.right);
-
-      return new JavaBinaryExpression(left, operator, right);
-    }
-
-    /**
-     * Check if comparison needs .equals() method instead of ==
-     */
-    needsEqualsMethod(leftNode, rightNode) {
-      const leftType = this.inferExpressionType(leftNode);
-      const rightType = this.inferExpressionType(rightNode);
-
-      // Use .equals() for String, BigInteger, and other objects
-      // Don't use for primitives (int, boolean, etc.)
-      const objectTypes = ['String', 'BigInteger', 'Object'];
-      return objectTypes.includes(leftType.name) || objectTypes.includes(rightType.name);
-    }
-
-    transformUnaryExpression(node) {
-      const operand = this.transformExpression(node.argument);
-      return new JavaUnaryExpression(node.operator, operand, node.prefix);
-    }
-
-    transformUpdateExpression(node) {
-      const operand = this.transformExpression(node.argument);
-      return new JavaUnaryExpression(node.operator, operand, node.prefix);
-    }
-
-    transformAssignmentExpression(node) {
-      const target = this.transformExpression(node.left);
-      let value = this.transformExpression(node.right);
-
-      // Check if assigning to a List field - need to wrap arrays in Arrays.asList()
-      const listFieldNames = ['documentation', 'references', 'knownVulnerabilities',
-                              'supportedKeySizes', 'supportedBlockSizes', 'tests'];
-
-      // Get field name from various AST node types
-      let fieldName = null;
-      if (node.left.type === 'MemberExpression' && node.left.property) {
-        fieldName = this.toCamelCase(node.left.property.name);
-      } else if (node.left.type === 'ThisPropertyAccess') {
-        // IL AST uses ThisPropertyAccess with .property being the property name string
-        fieldName = this.toCamelCase(node.left.property);
-      }
-
-      if (fieldName) {
-        const isListField = listFieldNames.includes(fieldName);
-        const isArrayCreation = value && value.nodeType === 'ArrayCreation';
-        const isArrayValue = node.right.type === 'ArrayExpression' ||
-                            node.right.type === 'ArrayLiteral' ||
-                            node.right.type === 'ArrayLiteralExpression' ||
-                            isArrayCreation;
-
-        if (isListField && isArrayValue) {
-          // Use Arrays.asList(...) directly - returns fixed-size List<T>
-          // This is simpler and avoids type inference issues with ArrayList diamond
-          this.addImport('java.util.Arrays');
-          const elements = isArrayCreation ? value.initializer : [value];
-          value = new JavaMethodCall(new JavaIdentifier('Arrays'), 'asList', elements);
-        }
-      }
-
-      return new JavaAssignment(target, node.operator, value);
-    }
-
-    transformMemberExpression(node) {
-      // Check for known enum type access (categoryType.STREAM -> CategoryType.STREAM)
-      if (node.object.type === 'Identifier') {
-        const enumMap = {
-          'categoryType': 'CategoryType',
-          'securityStatus': 'SecurityStatus',
-          'complexityType': 'ComplexityType',
-          'countryCode': 'CountryCode',
-          'CategoryType': 'CategoryType',
-          'SecurityStatus': 'SecurityStatus',
-          'ComplexityType': 'ComplexityType',
-          'CountryCode': 'CountryCode'
-        };
-        const enumName = enumMap[node.object.name];
-        if (enumName && !node.computed) {
-          // This is an enum constant access
-          return new JavaMemberAccess(new JavaIdentifier(enumName), node.property.name);
-        }
-      }
-
-      const object = this.transformExpression(node.object);
-
-      if (node.computed) {
-        // Array access: arr[index]
-        const index = this.transformExpression(node.property);
-        return new JavaArrayAccess(object, index);
+    /** Parameter JVM types and return type of a function or method info (base signature first). */
+    signature(fi, info) {
+      if (fi.sig) return fi.sig;
+      const base = info && !fi.isStatic ? this.baseMethod(info, fi.name) : null;
+      let params, ret;
+      if (base) {
+        const bsig = base.m.framework ? { params: base.m.params.map(p => p.t), ret: base.m.ret } : this.signature(base.m, base.owner);
+        params = fi.params.map((p, i) => i < bsig.params.length ? bsig.params[i] : this.paramJt(p));
+        ret = bsig.ret;
+        const own = this.fnRet(fi);
+        // a covariant return where both are classes
+        if (own !== ret && this.classInfo(own) && this.classInfo(ret) && this.isSubclass(own, ret)) ret = own;
+        fi.overrides = base;
       } else {
-        // Member access: obj.member
-        let member = node.property.name;
-
-        // Convert field names to camelCase for 'this' member access (Java naming convention)
-        if (node.object.type === 'ThisExpression') {
-          member = this.toCamelCase(member);
-        }
-
-        return new JavaMemberAccess(object, member);
+        params = fi.params.map(p => this.paramJt(p));
+        ret = this.fnRet(fi);
       }
+      fi.sig = { params, ret };
+      return fi.sig;
     }
 
-    transformCallExpression(node) {
-      if (node.callee.type === 'MemberExpression') {
-        const object = this.transformExpression(node.callee.object);
-        const methodName = node.callee.property.name;
-        const args = node.arguments.map(arg => this.transformExpression(arg));
-
-        // Map OpCodes methods to Java equivalents
-        if (node.callee.object.type === 'Identifier' && node.callee.object.name === 'OpCodes') {
-          return this.transformOpCodesCall(methodName, args);
+    lowerConstructors(info, fieldInits) {
+      const ctorNode = info.ctorNode;
+      const baseInfo = this.classInfo(info.ext);
+      const out = [];
+      if (!ctorNode) {
+        // The implicit constructor passes its arguments on: one per base constructor
+        const baseCtors = baseInfo ? this.ctorSignatures(baseInfo) : [[]];
+        for (const sig of baseCtors) {
+          this.fn = { locals: [new Map()], labels: [], isStatic: false, retJt: 'void', cls: info, used: new Set(), ctor: true };
+          const params = sig.map((t, i) => ({ name: 'arg' + i, t }));
+          const body = [S.expr(E.call(E.sup(baseInfo ? baseInfo.javaName : 'Object'), '<init>', params.map(p => E.name(p.name, p.t)), 'void'))];
+          for (const fd of fieldInits) body.push(this.fieldInit(info, fd));
+          out.push({ params, body });
+          this.fn = null;
         }
-
-        // Handle Array methods (JavaScript built-ins)
-        if (node.callee.object.type === 'Identifier' && node.callee.object.name === 'Array') {
-          // Array.isArray(x) -> x instanceof byte[] (or use reflection for generic)
-          if (methodName === 'isArray' && args.length === 1)
-            return new JavaInstanceOf(args[0], new JavaIdentifier('byte[]'));
-        }
-
-        // Handle Object methods (JavaScript built-ins)
-        if (node.callee.object.type === 'Identifier' && node.callee.object.name === 'Object') {
-          // Object.freeze() - Java doesn't have this, just return the argument
-          if (methodName === 'freeze' && args.length > 0)
-            return args[0];
-          // Object.keys(obj) -> obj.keySet() for Map, or new ArrayList<>(obj.keySet())
-          if (methodName === 'keys' && args.length === 1) {
-            this.addImport('java.util.ArrayList');
-            return new JavaMethodCall(null, 'new ArrayList<>', [new JavaMethodCall(args[0], 'keySet', [])]);
-          }
-          // Object.values(obj) -> new ArrayList<>(obj.values())
-          if (methodName === 'values' && args.length === 1) {
-            this.addImport('java.util.ArrayList');
-            return new JavaMethodCall(null, 'new ArrayList<>', [new JavaMethodCall(args[0], 'values', [])]);
-          }
-          // Object.entries(obj) -> new ArrayList<>(obj.entrySet())
-          if (methodName === 'entries' && args.length === 1) {
-            this.addImport('java.util.ArrayList');
-            return new JavaMethodCall(null, 'new ArrayList<>', [new JavaMethodCall(args[0], 'entrySet', [])]);
-          }
-          // Object.assign(target, source) -> target.putAll(source); return target
-          if (methodName === 'assign' && args.length >= 2) {
-            // For now just return target - proper implementation needs statement
-            return args[0];
-          }
-        }
-
-        // Map array methods
-        if (methodName === 'push') {
-          // arr.push(x) -> arr = Arrays.copyOf(arr, arr.length + 1); arr[arr.length-1] = x
-          this.warnings.push('Array.push() requires manual conversion in Java');
-          return new JavaMethodCall(object, 'add', args);
-        } else if (methodName === 'slice') {
-          // arr.slice(start, end) -> Arrays.copyOfRange(arr, start, end)
-          this.addImport('java.util.Arrays');
-          return new JavaMethodCall(new JavaIdentifier('Arrays'), 'copyOfRange',
-            [object, ...args]);
-        } else if (methodName === 'fill') {
-          // arr.fill(value) -> Arrays.fill(arr, value)
-          this.addImport('java.util.Arrays');
-          return new JavaMethodCall(new JavaIdentifier('Arrays'), 'fill',
-            [object, ...args]);
-        }
-
-        return new JavaMethodCall(object, methodName, args);
+        info.ctorSigs = baseCtors;
+        return out;
+      }
+      const fn = ctorNode.value;
+      const fi = this.fnInfo(fn, '<init>');
+      info.ctorInfo = fi;
+      const paramTypes = fi.params.map(p => this.paramJt(p));
+      info.ctorSigs = [];
+      for (let n = fi.min; n <= fi.params.length; ++n) info.ctorSigs.push(paramTypes.slice(0, n));
+      // Overloads for trailing defaults delegate to the full constructor
+      for (let n = fi.min; n < fi.params.length; ++n) {
+        this.fn = { locals: [new Map()], labels: [], isStatic: false, retJt: 'void', cls: info, used: new Set(), ctor: true };
+        const params = fi.params.slice(0, n).map((p, i) => this.declareParam(p, paramTypes[i]));
+        const args = params.map(p => E.name(p.name, p.t));
+        for (let i = n; i < fi.params.length; ++i) args.push(this.defaultArg(fi.params[i], paramTypes[i]));
+        out.push({ params, body: [S.expr(E.call(E.self(info.javaName), '<this>', args, 'void'))] });
+        this.fn = null;
+      }
+      // The full constructor
+      this.fn = { locals: [new Map()], labels: [], isStatic: false, retJt: 'void', cls: info, used: new Set(), ctor: true, node: fn };
+      const params = fi.params.map((p, i) => this.declareParam(p, paramTypes[i]));
+      const prologue = this.paramPrologue(fi, params);
+      const stmts = (fn.body && fn.body.body) || [];
+      // super(...) first; statements before it that do not touch `this` move ahead of nothing (JVM needs it first)
+      let superIdx = stmts.findIndex(s => s.type === 'ExpressionStatement' && s.expression && (s.expression.type === 'ParentConstructorCall' || (s.expression.type === 'CallExpression' && s.expression.callee && s.expression.callee.type === 'Super')));
+      const body = [];
+      const pre = [];
+      if (superIdx >= 0) {
+        const sc = stmts[superIdx].expression;
+        const before = stmts.slice(0, superIdx);
+        // Statements ahead of super() (they cannot touch this) are computed into locals by the arguments
+        if (before.length) pre.push(...this.lowerStmts(before));
+        body.push(S.expr(this.superCtorCall(info, sc.arguments || [])));
       } else {
-        // Static or top-level function call
-        const methodName = node.callee.name;
-        const args = node.arguments.map(arg => this.transformExpression(arg));
-        return new JavaMethodCall(null, methodName, args);
+        body.push(S.expr(E.call(E.sup(baseInfo ? baseInfo.javaName : 'Object'), '<init>', baseInfo && !this.ctorSignatures(baseInfo).some(s => s.length === 0) ? this.ctorSignatures(baseInfo)[0].map(t => this.undefinedOf(t)) : [], 'void')));
       }
+      if (pre.length) {
+        // The JVM requires super(...) first: statements ahead of it are lowered into a static helper only when
+        // they declare nothing the rest uses; here they are kept after super (they cannot read this in JavaScript).
+        body.push(...pre);
+      }
+      body.push(...prologue);
+      for (const fd of fieldInits) body.push(this.fieldInit(info, fd));
+      body.push(...this.lowerStmts(stmts.slice(superIdx + 1)));
+      out.push({ params, body });
+      this.fn = null;
+      return out;
+    }
+
+    fieldInit(info, fd) {
+      const name = fd.key && (fd.key.name !== undefined ? fd.key.name : fd.key.value);
+      const f = info.fields.get(name);
+      if (!f) return S.block([]);
+      return S.expr(E.assign(E.field(E.self(info.javaName), f.javaName, this.fieldJt(f)), this.valueOf(fd.value, this.fieldJt(f))));
+    }
+
+    /** Signatures (parameter JVM types) of a class's constructors. */
+    ctorSignatures(info) {
+      if (info.framework) return info.ctors.map(c => c.params.map(p => p.t));
+      if (info.ctorSigs) return info.ctorSigs;
+      if (info.ctorNode) {
+        const fi = this.fnInfo(info.ctorNode.value, '<init>');
+        const prev = this.currentClassName;
+        this.currentClassName = info.name;
+        const types = fi.params.map(p => this.paramJt(p));
+        this.currentClassName = prev;
+        const sigs = [];
+        for (let n = fi.min; n <= fi.params.length; ++n) sigs.push(types.slice(0, n));
+        return sigs;
+      }
+      const base = this.classInfo(info.ext);
+      return base ? this.ctorSignatures(base) : [[]];
+    }
+
+    superCtorCall(info, args) {
+      const base = this.classInfo(info.ext);
+      const sigs = base ? this.ctorSignatures(base) : [[]];
+      const lowered = this.lowerArgsFor(args, sigs);
+      return E.call(E.sup(base ? base.javaName : 'Object'), '<init>', lowered, 'void');
+    }
+
+    /** Pick the signature matching the argument count (padding with undefined) and convert. */
+    lowerArgsFor(args, sigs) {
+      const spread = args.some(a => a && a.type === 'SpreadElement');
+      if (spread) throw new LoweringError('spread arguments to a typed call');
+      let sig = sigs.find(s => s.length === args.length) || sigs.filter(s => s.length > args.length).sort((a, b) => a.length - b.length)[0]
+        || sigs.slice().sort((a, b) => b.length - a.length)[0] || [];
+      const out = [];
+      for (let i = 0; i < sig.length; ++i) out.push(i < args.length ? this.valueOf(args[i], sig[i]) : this.undefinedOf(sig[i]));
+      return out;
+    }
+
+    /** The value a missing argument (JavaScript undefined) takes in a JVM type. */
+    undefinedOf(t) {
+      if (t === 'int' || t === 'long') return E.lit(0, t);
+      if (t === 'double') return E.lit(NaN, 'double');
+      if (t === 'boolean') return E.bool(false);
+      return E.nul(t);
+    }
+
+    declareParam(p, t) {
+      const name = this.declareLocal(p.sym || { name: p.name }, t, true);
+      return { name, t };
+    }
+
+    /** Parameters a nested function assigns are copied into boxed locals; destructuring parameters are unpacked. */
+    paramPrologue(fi, params) {
+      const out = [];
+      fi.params.forEach((p, i) => {
+        const pattern = p.sym && p.sym.pattern;
+        if (!pattern) return;
+        const src = E.name(params[i].name, params[i].t);
+        if (pattern.type === 'ObjectPattern') {
+          for (const q of pattern.properties || []) {
+            const v = q.value || q.key;
+            if (!v || !v.__sym) continue;
+            const key = q.key && (q.key.name || q.key.value);
+            const t = this.symJt(v.__sym);
+            out.push(S.local(this.declareLocal(v.__sym, t), t, this.conv(E.scall('Js', 'getProp', [this.conv(src, 'Object'), E.str(key)], 'Object'), t)));
+          }
+        } else {
+          (pattern.elements || []).forEach((v, k) => {
+            if (!v || !v.__sym) return;
+            const t = this.symJt(v.__sym);
+            out.push(S.local(this.declareLocal(v.__sym, t), t, this.conv(E.scall('Js', 'index', [this.conv(src, 'Object'), E.cast(E.int(k), 'Integer')], 'Object'), t)));
+          });
+        }
+      });
+      fi.params.forEach((p, i) => {
+        const sym = p.sym;
+        if (sym && this.needsBox(sym)) {
+          const boxed = this.fresh(params[i].name);
+          out.push(S.local(boxed, params[i].t, E.name(params[i].name, params[i].t), { boxed: true }));
+          sym.javaName = boxed;
+          sym.boxed = true;
+        }
+      });
+      return out;
+    }
+
+    needsBox(sym) {
+      if (sym.boxed && sym.predeclaredIn) return true;
+      // the declaration always initialises (undefined where JavaScript gives none): any later write breaks finality
+      return !!(sym.captured && (sym.capturedAssigned || sym.assigns > (sym.isVar && sym.node && sym.node.init ? 1 : 0)));
+    }
+
+    defaultArg(p, t) {
+      if (p.def) return this.valueOf(p.def, t);
+      return this.undefinedOf(t);
     }
 
     /**
-     * Transform OpCodes method calls to Java equivalents
+     * Lower a function or method, with overloads for trailing default and
+     * omitted parameters.
+     * @returns {Object[]} method declarations
      */
-    transformOpCodesCall(methodName, args) {
-      // Map common OpCodes methods to Java equivalents
-      const opCodesMap = {
-        // Rotation
-        'RotL32': (args) => new JavaMethodCall(new JavaIdentifier('Integer'), 'rotateLeft', args),
-        'RotR32': (args) => new JavaMethodCall(new JavaIdentifier('Integer'), 'rotateRight', args),
-        'RotL64': (args) => new JavaMethodCall(new JavaIdentifier('Long'), 'rotateLeft', args),
-        'RotR64': (args) => new JavaMethodCall(new JavaIdentifier('Long'), 'rotateRight', args),
-        'RotL16': (args) => new JavaBinaryExpression(
-          new JavaBinaryExpression(
-            new JavaBinaryExpression(args[0], '<<', args[1]),
-            '|',
-            new JavaBinaryExpression(args[0], '>>', new JavaBinaryExpression(JavaLiteral.Int(16), '-', args[1]))
-          ),
-          '&', JavaLiteral.Int(0xFFFF)
-        ),
-        'RotR16': (args) => new JavaBinaryExpression(
-          new JavaBinaryExpression(
-            new JavaBinaryExpression(args[0], '>>', args[1]),
-            '|',
-            new JavaBinaryExpression(args[0], '<<', new JavaBinaryExpression(JavaLiteral.Int(16), '-', args[1]))
-          ),
-          '&', JavaLiteral.Int(0xFFFF)
-        ),
-        'RotL8': (args) => new JavaBinaryExpression(
-          new JavaBinaryExpression(
-            new JavaBinaryExpression(args[0], '<<', args[1]),
-            '|',
-            new JavaBinaryExpression(args[0], '>>', new JavaBinaryExpression(JavaLiteral.Int(8), '-', args[1]))
-          ),
-          '&', JavaLiteral.Int(0xFF)
-        ),
-        'RotR8': (args) => new JavaBinaryExpression(
-          new JavaBinaryExpression(
-            new JavaBinaryExpression(args[0], '>>', args[1]),
-            '|',
-            new JavaBinaryExpression(args[0], '<<', new JavaBinaryExpression(JavaLiteral.Int(8), '-', args[1]))
-          ),
-          '&', JavaLiteral.Int(0xFF)
-        ),
+    lowerFunction(fi, opts) {
+      const info = opts.cls || null;
+      fi.isStatic = !!opts.static;
+      const sig = this.signature(fi, info);
+      const out = [];
+      const javaName = fi.javaName;
+      // Overloads delegating with the default values
+      const base = fi.overrides;
+      for (let n = fi.min; n < fi.params.length; ++n) {
+        this.fn = { locals: [new Map()], labels: [], isStatic: !!opts.static, retJt: sig.ret, cls: info, used: new Set() };
+        const params = fi.params.slice(0, n).map((p, i) => this.declareParam(p, sig.params[i]));
+        const args = params.map(p => E.name(p.name, p.t));
+        for (let i = n; i < fi.params.length; ++i) args.push(this.defaultArg(fi.params[i], sig.params[i]));
+        const call = opts.static ? E.scall(info ? info.javaName : null, javaName, args, sig.ret) : E.call(E.self(info.javaName), javaName, args, sig.ret);
+        out.push({ k: 'method', name: javaName, params, ret: sig.ret, static: !!opts.static, body: [sig.ret === 'void' ? S.expr(call) : S.ret(call)] });
+        this.fn = null;
+      }
+      // A base method with fewer parameters than this override is overridden too, delegating
+      if (base && !base.m.framework === false) { /* framework arities match their JavaScript ones */ }
+      this.fn = { locals: [new Map()], labels: [], isStatic: !!opts.static, retJt: sig.ret, cls: info, used: new Set(), node: fi.node };
+      const params = fi.params.map((p, i) => this.declareParam(p, sig.params[i]));
+      const body = [];
+      // Parameters typed differently from the base signature are converted on entry
+      fi.params.forEach((p, i) => {
+        if (!p.sym) return;
+        const own = this.paramJt(p);
+        if (own !== sig.params[i] && !(T.isRef(own) && own === 'Object')) {
+          const local = this.fresh(params[i].name);
+          body.push(S.local(local, own, this.conv(E.name(params[i].name, sig.params[i]), own)));
+          p.sym.javaName = local;
+          p.sym.jtCached = own;
+        }
+      });
+      body.push(...this.paramPrologue(fi, params));
+      body.push(...this.lowerFnBody(fi.node, sig.ret));
+      out.push({ k: 'method', name: javaName, params, ret: sig.ret, static: !!opts.static, body, varargs: fi.params.length && fi.params[fi.params.length - 1].rest });
+      this.fn = null;
+      return out;
+    }
 
-        // Bit masks
-        'BitMask': (args) => new JavaBinaryExpression(
-          new JavaBinaryExpression(JavaLiteral.Int(1), '<<', args[0]),
-          '-', JavaLiteral.Int(1)
-        ),
-        'AndN': (args) => new JavaBinaryExpression(args[0], '&', args[1]),
-        'OrN': (args) => new JavaBinaryExpression(args[0], '|', args[1]),
-        'XorN': (args) => new JavaBinaryExpression(args[0], '^', args[1]),
-        'NotN': (args) => new JavaUnaryExpression('~', args[0]),
+    lowerFnBody(fn, retJt) {
+      if (fn.body && fn.body.type === 'BlockStatement') {
+        const hoisted = this.hoistVars(fn);
+        const stmts = this.lowerStmts(fn.body.body || []);
+        return [...hoisted, ...stmts];
+      }
+      if (fn.body) {
+        if (retJt === 'void') return [S.expr(this.lowerExpr(fn.body))];
+        return [S.ret(this.valueOf(fn.body, retJt))];
+      }
+      return [];
+    }
 
-        // Byte packing/unpacking
-        'Pack32BE': (args) => this.createByteBufferPack(args, true, 4),
-        'Pack32LE': (args) => this.createByteBufferPack(args, false, 4),
-        'Unpack32BE': (args) => this.createByteBufferUnpack(args[0], true, 4),
-        'Unpack32LE': (args) => this.createByteBufferUnpack(args[0], false, 4),
-        'Pack16BE': (args) => this.createByteBufferPack(args, true, 2),
-        'Pack16LE': (args) => this.createByteBufferPack(args, false, 2),
-        'Unpack16BE': (args) => this.createByteBufferUnpack(args[0], true, 2),
-        'Unpack16LE': (args) => this.createByteBufferUnpack(args[0], false, 2),
-
-        // Array operations
-        'XorArrays': (args) => this.createXorArraysCode(args[0], args[1]),
-        'ClearArray': (args) => {
-          this.addImport('java.util.Arrays');
-          return new JavaMethodCall(new JavaIdentifier('Arrays'), 'fill', [args[0], JavaLiteral.Int(0)]);
-        },
-
-        // Hex conversion
-        'Hex8ToBytes': (args) => this.createHexToBytes(args[0]),
-        'BytesToHex8': (args) => this.createBytesToHex(args[0]),
-
-        // String conversions
-        'AnsiToBytes': (args) => new JavaMethodCall(args[0], 'getBytes', [JavaLiteral.String('US-ASCII')])
+    /** `var` declarations of a function, declared at its top (JavaScript hoists them). */
+    hoistVars(fn) {
+      const out = [];
+      const seen = new Set();
+      const visit = n => {
+        if (!n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(visit); return; }
+        if (['FunctionDeclaration', 'FunctionExpression', 'ArrowFunction', 'ArrowFunctionExpression', 'ClassDeclaration'].includes(n.type)) return;
+        if (n.type === 'VariableDeclaration' && n.kind === 'var')
+          for (const d of n.declarations || []) {
+            const sym = d.__sym;
+            if (!sym || seen.has(sym) || sym.static) continue;
+            seen.add(sym);
+            const t = this.symJt(sym);
+            const name = this.declareLocal(sym, t);
+            sym.boxed = this.needsBox(sym);
+            sym.declaredIn = this.fn;
+            out.push(S.local(name, t, this.undefinedOf(t), { boxed: sym.boxed }));
+          }
+        eachChild(n, c => visit(c));
       };
+      visit(fn.body && fn.body.body);
+      return out;
+    }
 
-      if (opCodesMap[methodName]) {
-        this.addImport('java.nio.ByteBuffer');
-        return opCodesMap[methodName](args);
+    lowerAccessor(info, a) {
+      const out = [];
+      const base = this.baseAccessor(info, a.name);
+      const jt = this.accessorJt(a);
+      const setJt = this.accessorSetJt(a);
+      if (base && base.field) this.warn(`accessor ${info.name}.${a.name} overrides a field of ${base.owner.name}`);
+      if (a.getNode) {
+        this.fn = { locals: [new Map()], labels: [], isStatic: false, retJt: jt, cls: info, used: new Set(), node: a.getNode.value };
+        out.push({ k: 'method', name: 'get_' + mid(a.name), params: [], ret: jt, static: !!a.getNode.static, body: this.lowerFnBody(a.getNode.value, jt) });
+        this.fn = null;
+      } else if (base && base.a && base.a.getter) {
+        // A setter alone hides the inherited getter in JavaScript: reading gives undefined
+        out.push({ k: 'method', name: 'get_' + mid(a.name), params: [], ret: jt, static: false, body: [S.ret(this.undefinedOf(jt))] });
       }
-
-      // Default: assume static method call
-      return new JavaMethodCall(new JavaIdentifier('OpCodes'), methodName, args);
-    }
-
-    /**
-     * Create ByteBuffer packing code for bytes to int/long
-     */
-    createByteBufferPack(args, isBigEndian, byteCount) {
-      // ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).put(b0).put(b1).put(b2).put(b3).getInt(0)
-      this.addImport('java.nio.ByteOrder');
-      const order = isBigEndian ? 'BIG_ENDIAN' : 'LITTLE_ENDIAN';
-
-      // Build method chain
-      let chain = new JavaMethodCall(new JavaIdentifier('ByteBuffer'), 'allocate',
-        [new JavaLiteral(byteCount, 'int')]);
-      chain = new JavaMethodCall(chain, 'order',
-        [new JavaMemberAccess(new JavaIdentifier('ByteOrder'), order)]);
-
-      // Add put() calls for each byte
-      for (const arg of args) {
-        chain = new JavaMethodCall(chain, 'put', [arg]);
-      }
-
-      // Get result
-      const getMethod = byteCount === 4 ? 'getInt' : 'getLong';
-      return new JavaMethodCall(chain, getMethod, [new JavaLiteral(0, 'int')]);
-    }
-
-    /**
-     * Create ByteBuffer unpacking code for int/long to bytes
-     */
-    createByteBufferUnpack(value, isBigEndian, byteCount) {
-      // ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(value).array()
-      this.addImport('java.nio.ByteOrder');
-      const order = isBigEndian ? 'BIG_ENDIAN' : 'LITTLE_ENDIAN';
-      const putMethod = byteCount === 4 ? 'putInt' : 'putLong';
-
-      let chain = new JavaMethodCall(new JavaIdentifier('ByteBuffer'), 'allocate',
-        [new JavaLiteral(byteCount, 'int')]);
-      chain = new JavaMethodCall(chain, 'order',
-        [new JavaMemberAccess(new JavaIdentifier('ByteOrder'), order)]);
-      chain = new JavaMethodCall(chain, putMethod, [value]);
-      return new JavaMethodCall(chain, 'array', []);
-    }
-
-    /**
-     * Create XOR arrays code
-     */
-    createXorArraysCode(arr1, arr2) {
-      // Generate inline loop or utility method call
-      this.warnings.push('XorArrays requires custom implementation in Java');
-      return new JavaMethodCall(new JavaIdentifier('OpCodes'), 'xorArrays', [arr1, arr2]);
-    }
-
-    /**
-     * Create hex to bytes conversion
-     */
-    createHexToBytes(hexString) {
-      this.warnings.push('Hex8ToBytes requires custom implementation in Java');
-      return new JavaMethodCall(new JavaIdentifier('OpCodes'), 'hexToBytes', [hexString]);
-    }
-
-    /**
-     * Create bytes to hex conversion
-     */
-    createBytesToHex(byteArray) {
-      this.warnings.push('BytesToHex8 requires custom implementation in Java');
-      return new JavaMethodCall(new JavaIdentifier('OpCodes'), 'bytesToHex', [byteArray]);
-    }
-
-    transformNewExpression(node) {
-      const typeName = node.callee.name || 'Object';
-      const args = node.arguments.map(arg => this.transformExpression(arg));
-
-      // Map TypedArrays to Java array types
-      const typedArrayMap = {
-        'Uint8Array': JavaType.Byte(),
-        'Uint16Array': JavaType.Short(),
-        'Uint32Array': JavaType.Int(),
-        'Int8Array': JavaType.Byte(),
-        'Int16Array': JavaType.Short(),
-        'Int32Array': JavaType.Int(),
-        'Float32Array': JavaType.Float(),
-        'Float64Array': JavaType.Double()
-      };
-
-      if (typedArrayMap[typeName]) {
-        const hasArrayInit = node.arguments.length > 0 &&
-          node.arguments[0].type === 'ArrayExpression';
-
-        if (hasArrayInit) {
-          // new Uint8Array([1, 2, 3]) -> new byte[] { 1, 2, 3 }
-          const elements = node.arguments[0].elements.map(e => this.transformExpression(e));
-          return new JavaArrayCreation(typedArrayMap[typeName], null, elements);
-        }
-
-        // new Uint8Array(n) -> new byte[n]
-        return new JavaArrayCreation(typedArrayMap[typeName], args[0] || JavaLiteral.Int(0), null);
-      }
-
-      // Special handling for arrays
-      if (typeName === 'Array') {
-        if (args.length === 1) {
-          // new Array(size)
-          return new JavaArrayCreation(JavaType.Int(), args[0], null);
-        }
-      }
-
-      const type = this.mapType(typeName);
-      return new JavaObjectCreation(type, args);
-    }
-
-    transformArrayExpression(node) {
-      const elements = node.elements.map(el => this.transformExpression(el));
-
-      // Infer element type from IL node or first element
-      let elementType = JavaType.Int();
-
-      // Use IL's elementType if available
-      if (node.elementType) {
-        const ilTypeMap = {
-          'int8': 'byte', 'uint8': 'byte', 'int16': 'short', 'uint16': 'short',
-          'int32': 'int', 'uint32': 'int', 'int64': 'long', 'uint64': 'long',
-          'float32': 'float', 'float64': 'double', 'string': 'String',
-          'boolean': 'boolean', 'object': 'Object'
-        };
-        const mapped = ilTypeMap[node.elementType] || node.elementType;
-        elementType = new JavaType(mapped);
-      }
-
-      // Override with more specific type from first element
-      if (node.elements && node.elements.length > 0) {
-        const firstEl = node.elements[0];
-        if (firstEl) {
-          if (firstEl.type === 'Literal' && typeof firstEl.value === 'string') {
-            elementType = JavaType.String();
-          } else if (firstEl.type === 'NewExpression' || firstEl.type === 'ObjectCreation') {
-            const callee = firstEl.callee || firstEl.type;
-            if (callee && callee.name) {
-              elementType = new JavaType(callee.name);
-            } else if (firstEl.className) {
-              elementType = new JavaType(firstEl.className);
-            }
-          } else if (firstEl.type === 'ObjectExpression') {
-            elementType = new JavaType('HashMap<String, Object>');
+      if (a.setNode) {
+        const fn = a.setNode.value;
+        this.fn = { locals: [new Map()], labels: [], isStatic: false, retJt: 'void', cls: info, used: new Set(), node: fn };
+        const fi = this.fnInfo(fn, 'set_' + a.name);
+        const params = fi.params.slice(0, 1).map(p => this.declareParam(p, setJt));
+        const body = [];
+        const p = fi.params[0];
+        if (p && p.sym) {
+          const own = this.paramJt(p);
+          if (own !== setJt && own !== 'Object') {
+            const local = this.fresh(params[0].name);
+            body.push(S.local(local, own, this.conv(E.name(params[0].name, setJt), own)));
+            p.sym.javaName = local; p.sym.jtCached = own;
           }
         }
+        body.push(...this.paramPrologue(fi, params));
+        body.push(...this.lowerFnBody(fn, 'void'));
+        out.push({ k: 'method', name: 'set_' + mid(a.name), params, ret: 'void', static: !!a.setNode.static, body });
+        this.fn = null;
+      } else if (a.getNode && base && base.a && base.a.setter) {
+        // A getter alone: assigning throws in strict mode
+        out.push({ k: 'method', name: 'set_' + mid(a.name), params: [{ name: 'v', t: setJt }], ret: 'void', static: false,
+          body: [S.thr(E.scall('Js', 'error', [E.str('TypeError'), E.str(`Cannot set property ${a.name} which has only a getter`)], 'JsError'))] });
       }
-
-      return new JavaArrayCreation(elementType, null, elements);
+      return out;
     }
 
-    transformConditionalExpression(node) {
-      const condition = this.transformExpression(node.test);
-      const trueExpr = this.transformExpression(node.consequent);
-      const falseExpr = this.transformExpression(node.alternate);
-      return new JavaConditional(condition, trueExpr, falseExpr);
-    }
+    // =================================================================
+    // Locals and scopes
+    // =================================================================
 
-    transformLambdaExpression(node) {
-      const params = node.params.map(p => p.name || p);
-      const body = node.body.type === 'BlockStatement' ?
-        this.transformBlockStatement(node.body) :
-        this.transformExpression(node.body);
-      return new JavaLambda(params, body);
-    }
-
-    // ========================[ TYPE INFERENCE ]========================
-
-    /**
-     * Map a type name to JavaType
-     */
-    mapType(typeName) {
-      if (!typeName) return JavaType.Object();
-      // Handle object types with name property (from IL AST)
-      if (typeof typeName === 'object') {
-        if (typeName.name) typeName = typeName.name;
-        else if (typeName.type) typeName = typeName.type;
-        else return JavaType.Object();
-      }
-      if (typeof typeName !== 'string') typeName = String(typeName);
-
-      // Handle union types (e.g., "uint8[]|null") - Java objects are nullable by default
-      if (typeName.includes('|')) {
-        // Remove null/undefined from union types
-        const parts = typeName.split('|').filter(p =>
-          p.trim() !== 'null' && p.trim() !== 'undefined' && p.trim() !== 'void'
-        );
-        if (parts.length === 0) return JavaType.Object();
-        typeName = parts[0].trim();
-      }
-
-      // Handle arrays
-      if (typeName.endsWith('[]')) {
-        const elementTypeName = typeName.slice(0, -2);
-        const elementType = this.mapType(elementTypeName);
-        return JavaType.Array(elementType);
-      }
-
-      // Map known types
-      const javaTypeName = TYPE_MAP[typeName] || typeName;
-
-      switch (javaTypeName) {
-        case 'byte': return JavaType.Byte();
-        case 'short': return JavaType.Short();
-        case 'int': return JavaType.Int();
-        case 'long': return JavaType.Long();
-        case 'float': return JavaType.Float();
-        case 'double': return JavaType.Double();
-        case 'boolean': return JavaType.Boolean();
-        case 'char': return JavaType.Char();
-        case 'String': return JavaType.String();
-        case 'void': return JavaType.Void();
-        case 'BigInteger': return JavaType.BigInteger();
-        default: return new JavaType(javaTypeName);
-      }
-    }
-
-    inferReturnType(node) {
-      // Use typeKnowledge if available
-      if (this.typeKnowledge && node.typeInfo?.returns) {
-        return this.mapTypeFromKnowledge(node.typeInfo.returns);
-      }
-
-      // Check for return statements
-      if (node.body && node.body.type === 'BlockStatement') {
-        for (const stmt of node.body.body) {
-          if (stmt.type === 'ReturnStatement' && stmt.argument) {
-            return this.inferExpressionType(stmt.argument);
-          }
-        }
-      }
-      return JavaType.Void();
-    }
-
-    inferParameterType(paramName) {
-      // Use name-based heuristics for crypto code
-      const lowerName = paramName.toLowerCase();
-
-      // Boolean parameters - check BEFORE other patterns
-      if (lowerName.startsWith('is') || lowerName.startsWith('has') ||
-          lowerName.startsWith('can') || lowerName.startsWith('should') ||
-          lowerName.startsWith('will') || lowerName.startsWith('enable') ||
-          lowerName === 'inverse' || lowerName === 'decrypt' ||
-          lowerName === 'encrypt' || lowerName.includes('flag')) {
-        return JavaType.Boolean();
-      }
-
-      // Array-related names
-      if (lowerName.includes('key') || lowerName.includes('data') ||
-          lowerName.includes('input') || lowerName.includes('output') ||
-          lowerName.includes('block') || lowerName.includes('bytes') ||
-          lowerName.includes('buffer')) {
-        return JavaType.Array(JavaType.Byte());
-      }
-
-      // Index/position names
-      if (lowerName.includes('index') || lowerName.includes('pos') ||
-          lowerName.includes('offset') || lowerName.includes('length') ||
-          lowerName === 'i' || lowerName === 'j') {
-        return JavaType.Int();
-      }
-
-      // Algorithm instance reference (typically parent class reference)
-      if (lowerName === 'algorithm' || lowerName === 'algo' ||
-          lowerName === 'parent' || lowerName === 'owner') {
-        // Use generic Algorithm type - will be specialized during transformation
-        return new JavaType('Algorithm');
-      }
-
-      // Default to int for crypto operations (most common)
-      return JavaType.Int();
-    }
-
-    inferPropertyType(node) {
-      if (node.value) {
-        return this.inferExpressionType(node.value);
-      }
-      return JavaType.Object();
-    }
-
-    inferVariableType(node) {
-      if (node.init) {
-        return this.inferExpressionType(node.init);
-      }
-      return JavaType.Object();
-    }
-
-    inferExpressionType(node) {
-      if (!node) return JavaType.Object();
-
-      switch (node.type) {
-        case 'Literal':
-          if (node.value === null) return JavaType.Object();
-          if (typeof node.value === 'boolean') return JavaType.Boolean();
-          if (typeof node.value === 'string') return JavaType.String();
-          if (typeof node.value === 'number') {
-            if (Number.isInteger(node.value)) return JavaType.Int();
-            return JavaType.Double();
-          }
-          if (typeof node.value === 'bigint' || node.bigint) return JavaType.BigInteger();
-          return JavaType.Object();
-
-        case 'ArrayExpression':
-          if (node.elements.length > 0) {
-            const elemType = this.inferExpressionType(node.elements[0]);
-            return JavaType.Array(elemType);
-          }
-          return JavaType.Array(JavaType.Byte()); // Default for crypto
-
-        case 'NewExpression':
-          return this.mapType(node.callee.name);
-
-        case 'BinaryExpression':
-        case 'LogicalExpression':
-          return this.inferBinaryExpressionType(node);
-
-        case 'CallExpression':
-          return this.inferCallExpressionType(node);
-
-        case 'Identifier':
-          return this.getVariableType(node.name) || JavaType.Int();
-
-        default:
-          return JavaType.Object();
-      }
-    }
-
-    inferBinaryExpressionType(node) {
-      const op = node.operator;
-
-      // Comparison operators return boolean
-      if (['==', '!=', '===', '!==', '<', '>', '<=', '>='].includes(op))
-        return JavaType.Boolean();
-
-      // For && and ||, JavaScript returns the actual operand values (not boolean)
-      // So we need to infer from operand types for null-coalescing patterns
-      if (op === '&&' || op === '||') {
-        const leftType = this.inferExpressionType(node.left);
-        // If left operand is boolean, this is a real boolean expression
-        if (leftType && leftType.name === 'boolean')
-          return JavaType.Boolean();
-        // Otherwise, treat as null-coalescing and return operand type
-        if (leftType && leftType.name !== 'Object')
-          return leftType;
-        const rightType = this.inferExpressionType(node.right);
-        if (rightType && rightType.name !== 'Object')
-          return rightType;
-        return JavaType.Object();
-      }
-
-      // >>> 0 returns int (unsigned semantics)
-      if (op === '>>>' && node.right.type === 'Literal' && node.right.value === 0) {
-        return JavaType.Int();
-      }
-
-      // Bitwise and arithmetic - infer from operands
-      const leftType = this.inferExpressionType(node.left);
-      const rightType = this.inferExpressionType(node.right);
-
-      // Return wider type
-      if (leftType.name === 'long' || rightType.name === 'long') return JavaType.Long();
-      if (leftType.name === 'int' || rightType.name === 'int') return JavaType.Int();
-      if (leftType.name === 'short' || rightType.name === 'short') return JavaType.Short();
-
-      return JavaType.Int();
-    }
-
-    inferCallExpressionType(node) {
-      // Check OpCodes methods
-      if (node.callee.type === 'MemberExpression' &&
-          node.callee.object.type === 'Identifier' &&
-          node.callee.object.name === 'OpCodes') {
-        return this.getOpCodesReturnType(node.callee.property.name);
-      }
-
-      // Array methods
-      if (node.callee.type === 'MemberExpression') {
-        const methodName = node.callee.property.name;
-        if (methodName === 'slice' || methodName === 'concat') {
-          return JavaType.Array(JavaType.Byte());
-        }
-      }
-
-      return JavaType.Object();
-    }
-
-    /**
-     * Get the type of a variable from the type map
-     */
-    getVariableType(name) {
-      return this.variableTypes.get(name) || null;
-    }
-
-    getOpCodesReturnType(methodName) {
-      // Use typeKnowledge if available
-      if (this.typeKnowledge?.opCodesTypes && this.typeKnowledge.opCodesTypes[methodName]) {
-        const opInfo = this.typeKnowledge.opCodesTypes[methodName];
-        return this.mapTypeFromKnowledge(opInfo.returns);
-      }
-
-      // Fallback to common patterns
-      const returnTypes = {
-        'RotL32': JavaType.Int(),
-        'RotR32': JavaType.Int(),
-        'RotL64': JavaType.Long(),
-        'RotR64': JavaType.Long(),
-        'Pack32BE': JavaType.Int(),
-        'Pack32LE': JavaType.Int(),
-        'Unpack32BE': JavaType.Array(JavaType.Byte()),
-        'Unpack32LE': JavaType.Array(JavaType.Byte()),
-        'XorArrays': JavaType.Array(JavaType.Byte()),
-        'Hex8ToBytes': JavaType.Array(JavaType.Byte()),
-        'BytesToHex8': JavaType.String()
-      };
-
-      return returnTypes[methodName] || JavaType.Object();
-    }
-
-    mapTypeFromKnowledge(typeName) {
-      if (!typeName) return JavaType.Object();
-      // Handle object types with name property (from IL AST)
-      if (typeof typeName === 'object') {
-        if (typeName.name) typeName = typeName.name;
-        else if (typeName.type) typeName = typeName.type;
-        else return JavaType.Object();
-      }
-      if (typeof typeName !== 'string') typeName = String(typeName);
-
-      // Handle union types (e.g., "uint8[]|null") - Java objects are nullable by default
-      if (typeName.includes('|')) {
-        const parts = typeName.split('|').filter(p =>
-          p.trim() !== 'null' && p.trim() !== 'undefined' && p.trim() !== 'void'
-        );
-        if (parts.length === 0) return JavaType.Object();
-        typeName = parts[0].trim();
-      }
-
-      // Handle arrays
-      if (typeName.endsWith('[]')) {
-        const elementTypeName = typeName.slice(0, -2);
-        const elementType = this.mapTypeFromKnowledge(elementTypeName);
-        return JavaType.Array(elementType);
-      }
-
-      return this.mapType(typeName);
-    }
-
-    // ========================[ NAMING CONVENTIONS ]========================
-
-    /**
-     * Sanitize identifier names to avoid Java reserved words
-     */
-    sanitizeName(name) {
-      if (!name) return name;
-      if (RESERVED_WORDS.has(name)) {
-        return name + '_';  // Append underscore to avoid collision
-      }
+    /** Declare a local (or parameter) in the current function, renaming any shadowing. */
+    declareLocal(sym, t, isParam) {
+      const fn = this.fn;
+      let name = jid(sym.name || 'tmp');
+      const taken = n => fn.used.has(n) || this.fieldShadows(n);
+      if (taken(name)) { let i = 1; while (taken(`${name}_${i}`)) ++i; name = `${name}_${i}`; }
+      fn.used.add(name);
+      fn.locals[fn.locals.length - 1].set(sym.name, name);
+      sym.javaName = name;
+      sym.jtCached = sym.jtCached || t;
+      if (t) sym.jtCached = t;
       return name;
     }
 
-    /**
-     * Convert to camelCase (Java method naming convention)
-     */
-    toCamelCase(name) {
-      if (!name) return name;
+    /** Locals may not reuse a name an enclosing function's local already holds (Java forbids shadowing). */
+    fieldShadows(n) {
+      for (const outer of this.fnStack || []) if (outer.used.has(n)) return true;
+      return false;
+    }
 
-      // If already camelCase, return as-is
-      if (/^[a-z][a-zA-Z0-9]*$/.test(name)) return name;
+    pushScope() { this.fn.locals.push(new Map()); }
+    popScope() { this.fn.locals.pop(); }
 
-      // Convert PascalCase to camelCase
-      if (/^[A-Z]/.test(name)) {
-        return name[0].toLowerCase() + name.slice(1);
+    // =================================================================
+    // Statements
+    // =================================================================
+
+    lowerStmts(stmts) {
+      const out = [];
+      // Nested function declarations of this block: one object of local functions,
+      // placed where the first is declared (or at the top when called before it)
+      const fnDecls = (stmts || []).filter(s => s && s.type === 'FunctionDeclaration');
+      if (fnDecls.length) {
+        // JavaScript hoists the functions: they go first. The block's own locals
+        // they use are declared ahead of them (boxed: a later initialisation is an
+        // assignment), so the functions see them wherever they are declared.
+        const blockSyms = new Set();
+        for (const st of stmts) if (st && st.type === 'VariableDeclaration' && st.kind !== 'var')
+          for (const d of st.declarations || []) if (d.__sym && !d.__asFunction) blockSyms.add(d.__sym);
+        const captured = [];
+        const visit = n => {
+          if (!n || typeof n !== 'object') return;
+          if (Array.isArray(n)) { n.forEach(visit); return; }
+          if (n.type === 'Identifier' && n.__sym && blockSyms.has(n.__sym) && !captured.includes(n.__sym)) captured.push(n.__sym);
+          eachChild(n, visit);
+        };
+        fnDecls.forEach(fd => visit(fd.body));
+        for (const sym of captured) {
+          if (sym.static || this.moduleVars.get(sym.name) === sym) continue;
+          const t = this.symJt(sym);
+          const name = this.declareLocal(sym, t);
+          sym.boxed = true;
+          sym.predeclaredIn = this.fn;
+          out.push(S.local(name, t, this.undefinedOf(t), { boxed: true }));
+        }
+        out.push(this.lowerLocalFunctions(fnDecls));
       }
+      for (const s of stmts || []) {
+        if (!s) continue;
+        if (s.type === 'FunctionDeclaration') continue;
+        out.push(...this.lowerStmt(s));
+      }
+      return out;
+    }
 
-      // Convert snake_case to camelCase
-      return name.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    /** Whether the code being lowered is inside a method of that local-function holder. */
+    insideHolder(holder) {
+      if (this.fn && this.fn.holders && this.fn.holders.has(holder)) return true;
+      return false;
+    }
+
+    mentions(node, names) {
+      let hit = false;
+      const visit = n => {
+        if (hit || !n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(visit); return; }
+        if (n.type === 'Identifier' && names.has(n.name)) { hit = true; return; }
+        eachChild(n, c => visit(c));
+      };
+      visit(node);
+      return hit;
+    }
+
+    /** A block's function declarations as methods of one local object (they may call each other). */
+    lowerLocalFunctions(fnDecls) {
+      const holder = this.fresh('fns');
+      const outerFn = this.fn;
+      const methods = [];
+      for (const f of fnDecls) {
+        const sym = f.__sym;
+        sym.kind = 'localfn';
+        sym.holder = holder;
+        const fi = this.fnInfo(f, f.id.name);
+        sym.fi = fi;
+      }
+      this.fnStack = (this.fnStack || []).concat([outerFn]);
+      for (const f of fnDecls) {
+        const fi = f.__sym.fi;
+        const ret = this.fnRet(fi);
+        const ptypes = fi.params.map(p => this.paramJt(p));
+        fi.sig = { params: ptypes, ret };
+        for (let n = fi.min; n < fi.params.length; ++n) {
+          this.fn = { locals: [new Map()], labels: [], isStatic: outerFn.isStatic, retJt: ret, cls: outerFn.cls, used: new Set(), inner: true, holders: new Set([...(outerFn.holders || []), holder]) };
+          const params = fi.params.slice(0, n).map((p, i) => this.declareParam(p, ptypes[i]));
+          const args = params.map(p => E.name(p.name, p.t));
+          for (let i = n; i < fi.params.length; ++i) args.push(this.defaultArg(fi.params[i], ptypes[i]));
+          const call = E.call(null, fi.javaName, args, ret);
+          methods.push({ k: 'method', name: fi.javaName, params, ret, body: [ret === 'void' ? S.expr(call) : S.ret(call)] });
+        }
+        this.fn = { locals: [new Map()], labels: [], isStatic: outerFn.isStatic, retJt: ret, cls: outerFn.cls, used: new Set(), inner: true, node: f, holders: new Set([...(outerFn.holders || []), holder]) };
+        const params = fi.params.map((p, i) => this.declareParam(p, ptypes[i]));
+        const body = [...this.paramPrologue(fi, params), ...this.lowerFnBody(f, ret)];
+        methods.push({ k: 'method', name: fi.javaName, params, ret, body });
+      }
+      this.fnStack.pop();
+      this.fn = outerFn;
+      outerFn.used.add(holder);
+      return S.fns(holder, { methods });
+    }
+
+    lowerStmt(node) {
+      if (!node) return [];
+      switch (node.type) {
+        case 'VariableDeclaration': return this.lowerVarDecl(node);
+        case 'ExpressionStatement': return this.lowerExprStmt(node.expression);
+        case 'ReturnStatement': {
+          const rt = this.fn.retJt;
+          if (!node.argument) return [S.ret(null)];
+          if (rt === 'void') return [...this.lowerExprStmt(node.argument), S.ret(null)];
+          return [S.ret(this.valueOf(node.argument, rt))];
+        }
+        case 'IfStatement': {
+          const c = this.truthy(this.lowerExpr(node.test));
+          const then = this.scoped(() => this.lowerStmt(node.consequent));
+          const els = node.alternate ? this.scoped(() => this.lowerStmt(node.alternate)) : null;
+          return [S.iff(c, this.asBlock(then), els ? this.asBlock(els) : null)];
+        }
+        case 'BlockStatement': return [S.block(this.scoped(() => this.lowerStmts(node.body)))];
+        case 'EmptyStatement': return [];
+        case 'ForStatement': return this.lowerFor(node);
+        case 'WhileStatement': {
+          const loop = S.whl(null, null);
+          loop.c = this.truthy(this.lowerExpr(node.test));
+          loop.body = this.asBlock(this.inLoop(loop, node, () => this.scoped(() => this.lowerStmt(node.body))));
+          return [loop];
+        }
+        case 'DoWhileStatement': {
+          const loop = S.dowhile(null, null);
+          loop.body = this.asBlock(this.inLoop(loop, node, () => this.scoped(() => this.lowerStmt(node.body))));
+          loop.c = this.truthy(this.lowerExpr(node.test));
+          return [loop];
+        }
+        case 'ForOfStatement': return this.lowerForOf(node);
+        case 'ForInStatement': return this.lowerForIn(node);
+        case 'SwitchStatement': return this.lowerSwitch(node);
+        case 'BreakStatement': return [S.brk(this.jumpTarget(node, false))];
+        case 'ContinueStatement': return [S.cont(this.jumpTarget(node, true))];
+        case 'ThrowStatement': return [S.thr(this.throwable(node.argument))];
+        case 'TryStatement': return this.lowerTry(node);
+        case 'LabeledStatement': {
+          const label = node.label && node.label.name;
+          const body = node.body;
+          if (body && ['ForStatement', 'WhileStatement', 'DoWhileStatement', 'ForOfStatement', 'ForInStatement', 'SwitchStatement'].includes(body.type)) {
+            this.fn.pendingLabel = label;
+            const inner = this.lowerStmt(body);
+            this.fn.pendingLabel = null;
+            return inner;
+          }
+          // A labeled block: break label leaves it
+          const block = S.labeled(null);
+          this.fn.labels.push({ kind: 'block', node, ir: block, label });
+          try { block.body = S.block(this.scoped(() => this.lowerStmt(body))); } finally { this.fn.labels.pop(); }
+          return [block];
+        }
+        case 'ClassDeclaration': return []; // hoisted
+        case 'FunctionDeclaration': return [];
+        default:
+          // An expression in statement position
+          if (node.type && /Expression$|Call$|Append$|Clear$|Fill$|Set$|Write$/.test(node.type)) return this.lowerExprStmt(node);
+          return this.lowerExprStmt(node);
+      }
+    }
+
+    /** A statement list as one block (a list holding one block is that block). */
+    asBlock(stmts) {
+      return stmts.length === 1 && stmts[0].k === 'block' ? stmts[0] : S.block(stmts);
+    }
+
+    scoped(fn) {
+      this.pushScope();
+      try { return fn(); } finally { this.popScope(); }
+    }
+
+    /** Lower a loop body with its break/continue targets registered. */
+    inLoop(loop, node, fn) {
+      const label = this.fn.pendingLabel || null;
+      this.fn.pendingLabel = null;
+      this.fn.labels.push({ kind: 'loop', node, ir: loop, label });
+      try { return fn(); } finally { this.fn.labels.pop(); }
+    }
+
+    jumpTarget(node, isContinue) {
+      const name = node.label && node.label.name;
+      for (let i = this.fn.labels.length - 1; i >= 0; --i) {
+        const l = this.fn.labels[i];
+        if (name) { if (l.label === name) return l.ir; continue; }
+        if (isContinue && l.kind !== 'loop') continue;
+        if (l.kind === 'block') continue;
+        return l.ir;
+      }
+      if (name) return { k: 'labeledRef', label: name };
+      throw new LoweringError(`${isContinue ? 'continue' : 'break'} outside a loop`);
+    }
+
+    lowerVarDecl(node) {
+      const out = [];
+      for (const d of node.declarations || []) {
+        if (!d.id) continue;
+        if (d.__asFunction || d.__asClass) continue;
+        if (this.isFrameworkAlias(d)) continue;
+        if (d.id.type === 'ObjectPattern') {
+          if (d.init && d.init.type === 'Identifier' && (d.init.name === 'AlgorithmFramework' || d.init.name === 'OpCodes')) continue;
+          out.push(...this.lowerObjectPattern(d));
+          continue;
+        }
+        if (d.id.type === 'ArrayPattern') { out.push(...this.lowerArrayPattern(d)); continue; }
+        const sym = d.__sym;
+        if (!sym) continue;
+        const t = this.symJt(sym);
+        if (sym.static || (this.fn.name === '<clinit>' && this.moduleVars.get(sym.name) === sym)) {
+          // a module variable: assign the static field
+          sym.javaName = sym.javaName || mid(sym.name);
+          sym.static = true;
+          if (d.init) out.push(S.expr(E.assign(E.sfield(this.unitName, sym.javaName, t), this.valueOf(d.init, t))));
+          continue;
+        }
+        if ((sym.isVar && sym.declaredIn === this.fn) || sym.predeclaredIn === this.fn) {
+          if (d.init) out.push(S.expr(E.assign(this.symRef(sym), this.valueOf(d.init, t))));
+          continue;
+        }
+        const init = d.init ? this.valueOf(d.init, t) : this.undefinedOf(t);
+        const name = this.declareLocal(sym, t);
+        const boxed = this.needsBox(sym);
+        sym.boxed = boxed;
+        if (sym.isVar) sym.declaredIn = this.fn;
+        out.push(S.local(name, t, init, { boxed }));
+      }
+      return out;
+    }
+
+    lowerArrayPattern(d) {
+      const out = [];
+      const src = this.lowerExpr(d.init);
+      const tmp = this.fresh('destructure');
+      this.fn.used.add(tmp);
+      out.push(S.local(tmp, src.t, src));
+      (d.id.elements || []).forEach((el, i) => {
+        if (!el || el.type !== 'Identifier' || !el.__sym) return;
+        const t = this.symJt(el.__sym);
+        const name = this.declareLocal(el.__sym, t);
+        out.push(S.local(name, t, this.conv(this.elementGet(E.name(tmp, src.t), E.int(i)), t), { boxed: this.needsBox(el.__sym) }));
+        el.__sym.boxed = this.needsBox(el.__sym);
+      });
+      return out;
+    }
+
+    lowerObjectPattern(d) {
+      const out = [];
+      if (!d.init) return out;
+      const src = this.lowerExpr(d.init);
+      const tmp = this.fresh('destructure');
+      this.fn.used.add(tmp);
+      out.push(S.local(tmp, src.t, src));
+      for (const p of d.id.properties || []) {
+        const key = p.key && (p.key.name || p.key.value);
+        const v = p.value || p.key;
+        if (!v || v.type !== 'Identifier' || !v.__sym) continue;
+        const t = this.symJt(v.__sym);
+        const name = this.declareLocal(v.__sym, t);
+        out.push(S.local(name, t, this.conv(this.memberGet(E.name(tmp, src.t), key, null), t), { boxed: this.needsBox(v.__sym) }));
+        v.__sym.boxed = this.needsBox(v.__sym);
+      }
+      return out;
+    }
+
+    lowerExprStmt(expr) {
+      if (!expr) return [];
+      if (expr.type === 'SequenceExpression') return expr.expressions.flatMap(e => this.lowerExprStmt(e));
+      // a && b(), a || b() as statements
+      if (expr.type === 'LogicalExpression' && (expr.operator === '&&' || expr.operator === '||')) {
+        const c = this.truthy(this.lowerExpr(expr.left));
+        return [S.iff(expr.operator === '&&' ? c : E.un('!', c, 'boolean'), S.block(this.lowerExprStmt(expr.right)), null)];
+      }
+      if (expr.type === 'ConditionalExpression') {
+        return [S.iff(this.truthy(this.lowerExpr(expr.test)), S.block(this.lowerExprStmt(expr.consequent)), S.block(this.lowerExprStmt(expr.alternate)))];
+      }
+      const e = this.lowerExpr(expr, null, true);
+      if (!e) return [];
+      return [S.expr(e)];
+    }
+
+    lowerFor(node) {
+      const out = [];
+      const loop = S.fr([], null, [], null);
+      return this.scoped(() => {
+        const init = [];
+        if (node.init) {
+          if (node.init.type === 'VariableDeclaration') init.push(...this.lowerVarDecl(node.init));
+          else init.push(...this.lowerExprStmt(node.init));
+        }
+        // a loop variable a closure captures and the loop assigns is boxed: declared ahead of the loop
+        loop.init = init;
+        loop.c = node.test ? this.truthy(this.lowerExpr(node.test)) : null;
+        loop.update = node.update ? this.lowerExprStmt(node.update) : [];
+        loop.body = this.asBlock(this.inLoop(loop, node, () => this.scoped(() => this.lowerStmt(node.body))));
+        out.push(loop);
+        return out;
+      });
+    }
+
+    lowerForOf(node) {
+      return this.scoped(() => {
+        const src = this.lowerExpr(node.right);
+        const coll = this.fresh('of');
+        const idx = this.fresh('i');
+        this.fn.used.add(coll); this.fn.used.add(idx);
+        let collT = src.t, getter, len;
+        if (src.t === 'String') {
+          getter = () => E.scall('Js', 'charAt', [E.name(coll, 'String'), E.cast(E.name(idx, 'int'), 'double')], 'String');
+          len = E.call(E.name(coll, 'String'), 'length', [], 'int');
+        } else if (src.t === 'JsMap' || src.t === 'JsSet' || src.t === 'JsObject' || !T.isArray(src.t)) {
+          const arr = src.t === 'JsMap' ? E.call(src, 'entries', [], 'JsArray<Object>') : src.t === 'JsSet' ? E.call(src, 'values', [], 'JsArray<Object>') : E.scall('Js', 'spread', [this.conv(src, 'Object')], 'JsArrayLike');
+          return this.forOfOver(node, arr, coll, idx);
+        } else {
+          getter = () => this.elementGet(E.name(coll, collT), E.name(idx, 'int'));
+          len = E.call(E.name(coll, collT), 'length', [], 'int');
+        }
+        const loop = S.fr([S.local(coll, collT, src), S.local(idx, 'int', E.int(0))], E.bin('<', E.name(idx, 'int'), len, 'boolean'), [S.expr(E.inc(E.name(idx, 'int'), '++', false))], null);
+        loop.body = this.asBlock(this.inLoop(loop, node, () => this.scoped(() => [...this.bindLoopVar(node.left, getter()), ...this.lowerStmt(node.body)])));
+        return [loop];
+      });
+    }
+
+    forOfOver(node, arr, coll, idx) {
+      const loop = S.fr([S.local(coll, arr.t, arr), S.local(idx, 'int', E.int(0))], E.bin('<', E.name(idx, 'int'), E.call(E.name(coll, arr.t), 'length', [], 'int'), 'boolean'), [S.expr(E.inc(E.name(idx, 'int'), '++', false))], null);
+      const get = E.call(E.name(coll, arr.t), 'getBoxed', [E.name(idx, 'int')], 'Object');
+      loop.body = this.asBlock(this.inLoop(loop, node, () => this.scoped(() => [...this.bindLoopVar(node.left, get), ...this.lowerStmt(node.body)])));
+      return [loop];
+    }
+
+    bindLoopVar(left, value) {
+      if (left.type === 'VariableDeclaration') {
+        const out = [];
+        const decls = left.declarations || [];
+        decls.forEach((d, i) => {
+          if (i === 0 && d.id && d.id.type === 'Identifier' && d.__sym) {
+            const t = this.symJt(d.__sym);
+            const name = this.declareLocal(d.__sym, t);
+            d.__sym.boxed = this.needsBox(d.__sym);
+            out.push(S.local(name, t, this.conv(value, t), { boxed: d.__sym.boxed }));
+          } else if (i === 0 && d.id && d.id.type === 'ArrayPattern') {
+            out.push(...this.lowerArrayPattern({ id: d.id, init: { __lowered: value } }));
+          } else if (i > 0) {
+            out.push(...this.lowerVarDecl({ type: 'VariableDeclaration', kind: 'const', declarations: [d] }));
+          }
+        });
+        return out;
+      }
+      if (left.type === 'Identifier' && left.__sym) return [S.expr(E.assign(this.symRef(left.__sym), this.conv(value, this.symJt(left.__sym))))];
+      throw new LoweringError('for-of target ' + left.type);
+    }
+
+    lowerForIn(node) {
+      return this.scoped(() => {
+        const src = this.lowerExpr(node.right);
+        const keys = T.isArray(src.t)
+          ? E.scall('Js', 'indexKeys', [src], 'JsArray<String>')
+          : E.call(this.conv(src, 'JsObject'), 'keys', [], 'JsArray<String>');
+        const coll = this.fresh('keys'), idx = this.fresh('i');
+        this.fn.used.add(coll); this.fn.used.add(idx);
+        const loop = S.fr([S.local(coll, 'JsArray<String>', keys), S.local(idx, 'int', E.int(0))], E.bin('<', E.name(idx, 'int'), E.call(E.name(coll, 'JsArray<String>'), 'length', [], 'int'), 'boolean'), [S.expr(E.inc(E.name(idx, 'int'), '++', false))], null);
+        const get = E.call(E.name(coll, 'JsArray<String>'), 'get', [E.name(idx, 'int')], 'String');
+        loop.body = this.asBlock(this.inLoop(loop, node, () => this.scoped(() => [...this.bindLoopVar(node.left, get), ...this.lowerStmt(node.body)])));
+        return [loop];
+      });
+    }
+
+    lowerSwitch(node) {
+      const disc = this.lowerExpr(node.discriminant);
+      const sw = S.sw(null, []);
+      const label = this.fn.pendingLabel || null;
+      this.fn.pendingLabel = null;
+      this.fn.labels.push({ kind: 'switch', node, ir: sw, label });
+      try {
+        // Native switch: an int or String discriminant with literal cases
+        const cases = node.cases || [];
+        const literalTests = cases.every(c => !c.test || (c.test.type === 'Literal' && (typeof c.test.value === 'string' || (typeof c.test.value === 'number' && Number.isInteger(c.test.value)))));
+        let kind = null;
+        if (literalTests) {
+          const vals = cases.filter(c => c.test).map(c => c.test.value);
+          if (vals.every(v => typeof v === 'string') && disc.t === 'String') kind = 'String';
+          else if (vals.every(v => typeof v === 'number' && v >= MIN_INT && v <= MAX_INT) && T.isNumeric(T.unbox(disc.t))) kind = 'int';
+        }
+        if (kind) {
+          sw.disc = kind === 'int' ? this.switchInt(disc) : disc;
+          sw.kind = kind;
+          sw.cases = this.scoped(() => cases.map(c => ({ tests: c.test ? [kind === 'int' ? E.int(c.test.value) : E.str(c.test.value)] : null, body: this.lowerSwitchBody(c.consequent) })));
+          // A double discriminant that is not integral matches no int case
+          if (kind === 'int' && T.unbox(disc.t) === 'double') sw.discGuard = true;
+          return this.wrapSwitchDisc(sw, disc, kind);
+        }
+        // General: the index of the first matching case, then fall-through by order
+        const tmp = this.fresh('sw'), m = this.fresh('m');
+        this.fn.used.add(tmp); this.fn.used.add(m);
+        const discT = disc.t;
+        const out = [S.local(tmp, discT, disc)];
+        let matchExpr = E.int(-1);
+        const defaultIdx = cases.findIndex(c => !c.test);
+        for (let i = cases.length - 1; i >= 0; --i) {
+          if (!cases[i].test) continue;
+          const test = this.lowerExpr(cases[i].test);
+          const eq = this.strictEquals(E.name(tmp, discT), test);
+          matchExpr = E.cond(eq, E.int(i), matchExpr, 'int');
+        }
+        out.push(S.local(m, 'int', matchExpr));
+        if (defaultIdx >= 0) out.push(S.iff(E.bin('<', E.name(m, 'int'), E.int(0), 'boolean'), S.block([S.expr(E.assign(E.name(m, 'int'), E.int(defaultIdx)))]), null));
+        sw.k = 'switchChain';
+        sw.match = m;
+        sw.cases = this.scoped(() => cases.map((c, i) => ({ index: i, body: this.lowerSwitchBody(c.consequent) })));
+        out.push(sw);
+        return [S.block(out)];
+      } finally {
+        this.fn.labels.pop();
+      }
+    }
+
+    wrapSwitchDisc(sw, disc, kind) {
+      if (kind === 'int' && T.unbox(disc.t) === 'double') {
+        // only an integral double can equal an int case label
+        const tmp = this.fresh('sw');
+        this.fn.used.add(tmp);
+        sw.disc = this.conv(E.name(tmp, 'double'), 'int');
+        sw.guard = E.bin('==', E.name(tmp, 'double'), E.scall('Math', 'floor', [E.name(tmp, 'double')], 'double'), 'boolean');
+        return [S.block([S.local(tmp, 'double', this.conv(disc, 'double')), sw])];
+      }
+      if (kind === 'int' && T.unbox(disc.t) === 'long') {
+        const tmp = this.fresh('sw');
+        this.fn.used.add(tmp);
+        sw.disc = E.cast(E.name(tmp, 'long'), 'int');
+        sw.guard = E.bin('==', E.name(tmp, 'long'), E.cast(E.cast(E.name(tmp, 'long'), 'int'), 'long'), 'boolean');
+        return [S.block([S.local(tmp, 'long', this.conv(disc, 'long')), sw])];
+      }
+      return [sw];
+    }
+
+    switchInt(disc) {
+      const u = T.unbox(disc.t);
+      if (u === 'int') return this.conv(disc, 'int');
+      return disc;
+    }
+
+    lowerSwitchBody(stmts) {
+      return this.lowerStmts(stmts || []);
+    }
+
+    lowerTry(node) {
+      const block = S.block(this.scoped(() => this.lowerStmts(node.block.body)));
+      let catchName = null, catchBody = null;
+      if (node.handler) {
+        this.scoped(() => {
+          const p = node.handler.param;
+          if (p && p.__sym) {
+            catchName = this.declareLocal(p.__sym, 'RuntimeException');
+            p.__sym.jtCached = 'RuntimeException';
+          } else {
+            catchName = this.fresh('e');
+            this.fn.used.add(catchName);
+          }
+          catchBody = S.block(this.lowerStmts(node.handler.body.body));
+        });
+      }
+      const fin = node.finalizer ? S.block(this.scoped(() => this.lowerStmts(node.finalizer.body))) : null;
+      return [S.tri(block, catchName, catchBody, fin)];
+    }
+
+    throwable(node) {
+      const e = this.lowerExpr(node);
+      if (e.t === 'JsError' || e.t === 'RuntimeException') return e;
+      return E.scall('JsError', 'thrown', [this.conv(e, 'Object')], 'JsError');
+    }
+
+    // =================================================================
+    // Expressions
+    // =================================================================
+
+    /** Lower and convert to a JVM type. */
+    valueOf(node, t) {
+      const e = this.lowerExpr(node, t);
+      return this.conv(e, t);
     }
 
     /**
-     * Convert to PascalCase (Java class naming convention)
+     * Lower an IL expression.
+     * @param {Object} node - IL node
+     * @param {string} [expect] - the JVM type the context wants (guides literals)
+     * @param {boolean} [stmt] - in statement position (the value is discarded)
+     * @returns {Object} IR expression
      */
-    toPascalCase(name) {
-      if (!name) return name;
-
-      // If already PascalCase, return as-is
-      if (/^[A-Z][a-zA-Z0-9]*$/.test(name)) return name;
-
-      // Convert camelCase to PascalCase
-      if (/^[a-z]/.test(name)) {
-        return name[0].toUpperCase() + name.slice(1);
-      }
-
-      // Convert snake_case to PascalCase
-      return name.replace(/(^|_)([a-z])/g, (_, __, letter) => letter.toUpperCase());
+    lowerExpr(node, expect, stmt) {
+      if (!node) return E.nul();
+      if (node.__lowered) return node.__lowered;
+      const h = this['x_' + node.type];
+      if (h) return h.call(this, node, expect, stmt);
+      throw new LoweringError(`no lowering for IL node type '${node.type}'`);
     }
 
-    /**
-     * Convert to UPPER_SNAKE_CASE (Java constant naming convention)
-     */
-    toConstantCase(name) {
-      if (!name) return name;
-
-      // If already UPPER_SNAKE_CASE, return as-is
-      if (/^[A-Z][A-Z0-9_]*$/.test(name)) return name;
-
-      // Convert camelCase/PascalCase to UPPER_SNAKE_CASE
-      return name
-        .replace(/([a-z])([A-Z])/g, '$1_$2')
-        .replace(/([A-Z])([A-Z][a-z])/g, '$1_$2')
-        .toUpperCase();
+    x_Literal(node, expect) {
+      const v = node.value;
+      if (node.regex) return E.nw('JsRegExp', [E.str(node.regex.pattern), E.str(node.regex.flags || '')]);
+      if (v instanceof RegExp) return E.nw('JsRegExp', [E.str(v.source), E.str(v.flags)]);
+      if (typeof v === 'bigint') return E.big(v);
+      if (typeof v === 'string' && typeof node.raw === 'string' && /^-?[0-9]+n$/.test(node.raw)) return E.big(node.raw.slice(0, -1));
+      if (v === null || v === undefined) return E.nul(expect && T.isRef(expect) ? expect : 'null');
+      if (typeof v === 'boolean') return E.bool(v);
+      if (typeof v === 'string') return E.str(v);
+      if (typeof v === 'number') {
+        const big = this.isBig(node);
+        if (big) return E.big(BigInt(v));
+        const want = T.unbox(expect || '');
+        const il = this.jt(node.resultType);
+        let t = T.isNumeric(want) ? want : (T.isNumeric(il) ? il : 'double');
+        if (want === 'BigInteger' && Number.isInteger(v)) return E.big(BigInt(v));
+        if (!Number.isInteger(v) || Object.is(v, -0)) t = 'double';
+        if (t === 'int' && (v > MAX_INT || v < MIN_INT)) t = Math.abs(v) <= 9007199254740992 ? 'long' : 'double';
+        if (t === 'long' && Math.abs(v) > 9223372036854775807) t = 'double';
+        return E.lit(v, t);
+      }
+      return E.nul();
     }
 
-    /**
-     * Get the return value from an IIFE if it has one
-     */
-    getIIFEReturnValue(callNode) {
-      const func = callNode.callee;
-      if (!func.body || func.body.type !== 'BlockStatement') {
-        // Arrow function with expression body - the body IS the return value
-        if (func.body) return func.body;
-        return null;
+    x_TemplateLiteral(node) {
+      let acc = null;
+      (node.quasis || []).forEach((q, i) => {
+        const text = q.value ? (q.value.cooked !== undefined ? q.value.cooked : q.value.raw) : '';
+        acc = acc ? E.bin('+', acc, E.str(text), 'String') : E.str(text);
+        if (i < (node.expressions || []).length) acc = E.bin('+', acc, this.toStr(this.lowerExpr(node.expressions[i])), 'String');
+      });
+      return acc || E.str('');
+    }
+
+    x_StringInterpolation(node) {
+      let acc = E.str('');
+      if (node.quasis && node.expressions) {
+        node.quasis.forEach((q, i) => {
+          acc = E.bin('+', acc, E.str(typeof q === 'string' ? q : (q && q.value && (q.value.cooked || q.value.raw)) || ''), 'String');
+          if (i < node.expressions.length) acc = E.bin('+', acc, this.toStr(this.lowerExpr(node.expressions[i])), 'String');
+        });
+        return acc;
       }
+      for (const part of node.parts || []) {
+        if (part.type === 'ExpressionPart' || part.expression !== undefined) acc = E.bin('+', acc, this.toStr(this.lowerExpr(part.expression)), 'String');
+        else acc = E.bin('+', acc, E.str(part.value !== undefined ? part.value : (part.text || '')), 'String');
+      }
+      return acc;
+    }
 
-      // Look for a return statement at the end of the function body
-      const body = func.body.body;
-      if (!body || body.length === 0) return null;
+    x_Identifier(node) {
+      const sym = node.__sym;
+      if (sym) {
+        if (sym.kind === 'func') return this.functionValue(sym);
+        if (sym.kind === 'localfn') return this.functionValue(sym);
+        if (sym.kind === 'class') return { k: 'classref', name: this.classInfo(sym.name) ? this.classInfo(sym.name).javaName : sym.name, t: 'Class', cls: sym.name };
+        return this.symRef(sym);
+      }
+      switch (node.name) {
+        case 'undefined': return E.nul();
+        case 'NaN': return E.dbl(NaN);
+        case 'Infinity': return E.dbl(Infinity);
+        case 'AlgorithmFramework': return { k: 'classref', name: 'AlgorithmFramework', t: 'Class', cls: 'AlgorithmFramework' };
+        case 'OpCodes': return { k: 'classref', name: 'OpCodes', t: 'Class', cls: 'OpCodes' };
+      }
+      if (FRAMEWORK[node.name] || node.name === 'AlgorithmFramework') return { k: 'classref', name: node.name, t: 'Class', cls: node.name };
+      if (FRAMEWORK_STATICS[node.name]) return this.functionValueStatic('AlgorithmFramework', node.name);
+      if (node.name === 'Algorithms') return E.sfield('AlgorithmFramework', 'Algorithms', 'JsArray<Algorithm>');
+      if (node.name === 'String' || node.name === 'Number' || node.name === 'Boolean' || node.name === 'BigInt') {
+        // the conversion functions as values (arr.map(String))
+        const argsName = this.fresh('a');
+        const arg = E.scall('Js', 'arg', [E.name(argsName, 'Object[]'), E.int(0)], 'Object');
+        const conv = { String: E.scall('Js', 'str', [arg], 'String'), Number: E.cast(E.scall('Js', 'toNum', [arg], 'double'), 'Double'), Boolean: E.cast(E.scall('Js', 'truthy', [arg], 'boolean'), 'Boolean'), BigInt: E.scall('Js', 'toBig', [arg], 'BigInteger') }[node.name];
+        return E.lambda([{ name: argsName }], [S.ret(conv)]);
+      }
+      return this.conv(E.scall('Js', 'global', [E.str(node.name)], 'Object'), this.dynResultJt(node));
+    }
 
-      const lastStmt = body[body.length - 1];
-      if (lastStmt.type === 'ReturnStatement' && lastStmt.argument)
-        return lastStmt.argument;
+    /** A reference to a symbol's storage (local, boxed local, or static field). */
+    symRef(sym) {
+      const t = this.symJt(sym);
+      if (sym.static || (this.moduleVars.get(sym.name) === sym)) {
+        sym.javaName = sym.javaName || mid(sym.name);
+        return E.sfield(this.unitName, sym.javaName, t);
+      }
+      return E.name(sym.javaName || jid(sym.name), t, sym.boxed ? { boxed: true } : undefined);
+    }
 
+    /** A function used as a value: a JsFn calling it. */
+    functionValue(sym) {
+      const fi = sym.kind === 'localfn' ? sym.fi : this.functions.get(sym.name);
+      if (!fi) throw new LoweringError(`function ${sym.name} has no declaration`);
+      const sig = sym.kind === 'localfn' ? fi.sig : this.signature(fi, null);
+      const argsName = this.fresh('a');
+      const args = sig.params.map((t, i) => this.conv(E.scall('Js', 'arg', [E.name(argsName, 'Object[]'), E.int(i)], 'Object'), t));
+      const call = sym.kind === 'localfn' ? E.call(E.name(sym.holder, 'Object'), fi.javaName, args, sig.ret) : E.scall(this.unitName, fi.javaName, args, sig.ret);
+      return E.lambda([{ name: argsName }], sig.ret === 'void' ? [S.expr(call), S.ret(E.nul())] : [S.ret(this.conv(call, 'Object'))]);
+    }
+
+    functionValueStatic(owner, name) {
+      const [ptypes, ret] = FRAMEWORK_STATICS[name];
+      const argsName = this.fresh('a');
+      const args = ptypes.map((t, i) => this.conv(E.scall('Js', 'arg', [E.name(argsName, 'Object[]'), E.int(i)], 'Object'), t));
+      const call = E.scall(owner, name, args, ret);
+      return E.lambda([{ name: argsName }], ret === 'void' ? [S.expr(call), S.ret(E.nul())] : [S.ret(this.conv(call, 'Object'))]);
+    }
+
+    x_ThisExpression() {
+      if (!this.fn || this.fn.isStatic || !this.fn.cls) {
+        if (this.fn && this.fn.cls && this.fn.isStatic) return { k: 'classref', name: this.fn.cls.javaName, t: 'Class', cls: this.fn.cls.name };
+        throw new LoweringError('this outside a class');
+      }
+      return E.self(this.fn.cls.javaName);
+    }
+
+    selfRef() {
+      if (!this.fn || !this.fn.cls) throw new LoweringError('this outside a class');
+      if (this.fn.isStatic) return { k: 'classref', name: this.fn.cls.javaName, t: 'Class', cls: this.fn.cls.name };
+      return E.self(this.fn.cls.javaName);
+    }
+
+    x_ThisPropertyAccess(node) {
+      const name = typeof node.property === 'string' ? node.property : (node.property && (node.property.name || node.property.value));
+      if (node.computed && node.property && typeof node.property === 'object') return this.dynamicIndex(this.selfRef(), this.lowerExpr(node.property), node);
+      return this.memberGet(this.selfRef(), name, node);
+    }
+
+    x_ThisMethodCall(node) {
+      return this.methodCall(this.selfRef(), node.method, node.arguments || [], node);
+    }
+
+    x_ParentMethodCall(node) {
+      const base = this.fn.cls && this.classInfo(this.fn.cls.ext);
+      if (!base || !this.findMember(base.name, node.method)) return this.superMissing(node.method, node);
+      return this.methodCall(E.sup(base ? base.javaName : 'Object'), node.method, node.arguments || [], node, base ? base.name : null);
+    }
+
+    x_ParentConstructorCall(node) {
+      return this.superCtorCall(this.fn.cls, node.arguments || []);
+    }
+
+    /** super.name() where no base class has the method: JavaScript throws a TypeError there. */
+    superMissing(name, node) {
+      const t = this.callResultJt(node);
+      const thrown = E.scall('Js', 'typeError', [E.str(`(intermediate value).${name} is not a function`)], 'Object');
+      return t === 'void' ? thrown : this.conv(thrown, t);
+    }
+
+    x_Super() { const base = this.fn.cls && this.classInfo(this.fn.cls.ext); return E.sup(base ? base.javaName : 'Object'); }
+
+    x_SequenceExpression(node, expect, stmt) {
+      if (stmt) throw new LoweringError('sequence in statement position');
+      // a, b: evaluate a for effect, yield b
+      const parts = node.expressions.map(e => this.lowerExpr(e));
+      const last = parts[parts.length - 1];
+      return E.scall('Js', 'seq', [...parts.slice(0, -1).map(p => this.conv(p, 'Object')), this.conv(last, T.box(last.t === 'null' ? 'Object' : last.t))], last.t === 'null' ? 'Object' : T.box(last.t));
+    }
+
+    x_ConditionalExpression(node, expect) {
+      const c = this.truthy(this.lowerExpr(node.test));
+      let a = this.lowerExpr(node.consequent, expect), b = this.lowerExpr(node.alternate, expect);
+      let t = this.nodeJt(node);
+      if (t === 'Object' || t === 'void') t = this.commonJt([a.t, b.t]);
+      if (t === 'void') t = 'Object';
+      if (T.isPrim(t) && (a.t === 'null' || b.t === 'null' || T.isBoxed(a.t) || T.isBoxed(b.t))) t = T.box(t);
+      return E.cond(c, this.conv(a, t), this.conv(b, t), t);
+    }
+
+    x_ObjectExpression(node) { return this.x_ObjectLiteral(node); }
+
+    x_ObjectLiteral(node) {
+      const args = [];
+      let spreads = [];
+      for (const p of node.properties || []) {
+        if (p.type === 'ObjectSpread' || p.type === 'SpreadElement') { spreads.push(this.lowerExpr(p.argument)); continue; }
+        let key = p.key;
+        if (key && typeof key === 'object') key = p.computed ? null : (key.name !== undefined ? key.name : key.value);
+        if (p.kind === 'get' || p.kind === 'set') throw new LoweringError('accessor property in an object literal');
+        let k;
+        if (key === null) k = this.conv(this.lowerExpr(p.key), 'Object');
+        else {
+          const m = typeof key === 'string' && key.match(/^0[bB][01]+$|^0[oO][0-7]+$|^0[xX][0-9a-fA-F]+$/);
+          k = E.str(m ? String(Number(key)) : String(key));
+        }
+        const v = p.value ? this.lowerExpr(p.value) : E.nul();
+        args.push(k, this.conv(v, 'Object'));
+      }
+      let obj = E.scall('JsObject', 'of', args, 'JsObject');
+      if (spreads.length) obj = E.scall('Js', 'assign', [E.nw('JsObject', []), ...spreads.map(s => this.conv(s, 'Object')), obj], 'JsObject');
+      return obj;
+    }
+
+    x_ArrayExpression(node, expect) { return this.arrayLiteral(node, expect); }
+    x_ArrayLiteral(node, expect) { return this.arrayLiteral(node, expect); }
+
+    /** The array class an array literal or creation should produce. */
+    arrayTypeFor(node, expect) {
+      if (expect && T.isArray(expect)) return expect;
+      let t = this.nodeJt(node);
+      if (node.arrayType && T.TYPED_ARRAY_CLASS[node.arrayType]) t = T.TYPED_ARRAY_CLASS[node.arrayType];
+      if (!T.isArray(t)) {
+        const et = node.elementType ? this.jt(node.elementType) : 'Object';
+        t = node.elementType && T.ARRAY_OF_IL[ilNorm(node.elementType)] ? T.ARRAY_OF_IL[ilNorm(node.elementType)] : T.arrayOfElem(et === 'void' ? 'Object' : et);
+      }
+      return t;
+    }
+
+    arrayLiteral(node, expect) {
+      const t = this.arrayTypeFor(node, expect);
+      const elemT = T.elemOf(t);
+      const els = node.elements || [];
+      const fixed = !!node.arrayType;
+      if (els.some(e => e && e.type === 'SpreadElement')) {
+        // [...a, x, ...b]: a growable array built in order
+        const parts = els.map(e => e && e.type === 'SpreadElement'
+          ? { spread: true, e: this.lowerExpr(e.argument) }
+          : { spread: false, e: e ? this.conv(this.lowerExpr(e, elemT), elemT) : this.undefinedOf(elemT) });
+        return E.scall('Js', 'build', [E.nw(t, []), ...parts.map(p => p.spread ? E.scall('Js', 'spreadOf', [this.conv(p.e, 'Object')], 'Object') : this.conv(p.e, 'Object'))], t);
+      }
+      // Long numeric tables are parsed from a string (keeps the class file small)
+      if (T.isPrimArray(t) && els.length > 48 && els.every(e => e && e.type === 'Literal' && typeof e.value === 'number' && !this.isBig(e))) {
+        const text = els.map(e => Object.is(e.value, -0) ? '-0' : String(e.value)).join(',');
+        return E.scall(t, fixed ? 'typedParse' : 'parse', [E.str(text)], t);
+      }
+      const items = els.map(e => e ? this.conv(this.lowerExpr(e, elemT), elemT) : this.undefinedOf(elemT));
+      if (T.isPrimArray(t)) return E.scall(t, fixed ? 'typedOf' : 'of', items, t);
+      return { k: 'jsarrayOf', items, t };
+    }
+
+    x_SpreadElement(node) { throw new LoweringError('spread outside an array literal or call'); }
+
+    x_ArrayCreation(node, expect) {
+      let t = expect && T.isArray(expect) ? expect : this.jt(node.resultType || node.contextType);
+      if (!T.isArray(t)) t = node.elementType ? T.arrayOfElem(this.jt(node.elementType)) : (expect && T.isArray(expect) ? expect : 'JsArray<Object>');
+      if (!node.size) return T.isPrimArray(t) ? E.nw(t, []) : { k: 'jsarrayOf', items: [], t };
+      const size = this.lowerExpr(node.size);
+      if (size.t === 'String' || size.t === 'Object' && !T.isNumeric(T.unbox(size.t))) return E.scall('Js', 'build', [E.nw(t, []), this.conv(size, 'Object')], t);
+      return E.nw(t, [this.conv(size, 'int')]);
+    }
+
+    x_TypedArrayCreation(node, expect) {
+      let t = T.TYPED_ARRAY_CLASS[node.arrayType] || this.jt(node.resultType);
+      if (!T.isArray(t)) t = 'U8Array';
+      if (!node.size) return E.scall(t === 'JsArray<BigInteger>' ? 'Js' : t, t === 'JsArray<BigInteger>' ? 'bigTyped' : 'typed', [E.int(0)], t);
+      const arg = this.lowerExpr(node.size);
+      if (T.isNumeric(T.unbox(arg.t))) {
+        if (t === 'JsArray<BigInteger>') return E.scall('Js', 'bigTyped', [this.conv(arg, 'int')], t);
+        return E.scall(t, 'typed', [this.conv(arg, 'int')], t);
+      }
+      // new Uint8Array(array) / (buffer) copies
+      if (t === 'JsArray<BigInteger>') return E.scall('Js', 'bigTypedFrom', [this.conv(arg, 'Object')], t);
+      return E.scall(t, 'typedFrom', [this.conv(arg, 'Object')], t);
+    }
+
+    x_BufferCreation(node) {
+      return E.scall('U8Array', 'typed', [this.valueOf(node.size, 'int')], 'U8Array');
+    }
+
+    x_ArrayFrom(node, expect) {
+      const src = this.lowerExpr(node.iterable || node.value || node.argument || (node.arguments && node.arguments[0]));
+      let t = node.arrayType ? T.TYPED_ARRAY_CLASS[node.arrayType] : this.nodeJt(node);
+      if (!T.isArray(t)) t = expect && T.isArray(expect) ? expect : (T.isArray(src.t) ? src.t : 'JsArray<Object>');
+      if (node.mapFunction) {
+        const fn = this.lowerExpr(node.mapFunction);
+        const mapped = E.call(E.scall('Js', 'spread', [this.conv(src, 'Object')], 'JsArrayLike'), 'mapToObjects', [this.conv(fn, 'JsFn')], 'JsArray<Object>');
+        return this.conv(mapped, t);
+      }
+      if (T.isNumeric(T.unbox(src.t))) {
+        // Array.from({length: n}) is lowered by the IL; a number makes an empty array
+        return T.isPrimArray(t) ? E.nw(t, [E.int(0)]) : { k: 'jsarrayOf', items: [], t };
+      }
+      if (src.t === 'JsObject') {
+        // Array.from({ length: n }): n holes
+        const len = E.scall('Js', 'toInt', [E.call(src, 'get', [E.str('length')], 'Object')], 'int');
+        return T.isPrimArray(t) ? (node.arrayType ? E.scall(t, 'typed', [len], t) : E.nw(t, [len])) : E.nw(t, [len]);
+      }
+      if (T.isPrimArray(t)) return E.scall(t, node.arrayType ? 'typedFrom' : 'from', [this.conv(src, 'Object')], t);
+      return E.scall('JsArray', 'from', [this.conv(src, 'Object')], t);
+    }
+
+    x_ArrayOf(node) {
+      return this.arrayLiteral({ elements: node.elements || [], resultType: node.resultType, elementType: node.elementType });
+    }
+
+    // ------------------------------------------------------------------ operators
+
+    x_BinaryExpression(node, expect) {
+      const op = node.operator;
+      // (a * b) & mask: 32-bit multiplication (the JavaScript target's Math.imul)
+      if (op === '&' && node.left && node.left.type === 'BinaryExpression' && node.left.operator === '*' && node.right && node.right.type === 'Literal' &&
+          (node.right.value === 0xFFFFFFFF || node.right.value === 0xFFFF || node.right.value === 0xFF) && !this.isBig(node.left)) {
+        const a = this.toInt32(this.lowerExpr(node.left.left)), b = this.toInt32(this.lowerExpr(node.left.right));
+        const mul = E.bin('*', a, b, 'int');
+        if (node.right.value === 0xFFFFFFFF && Object.prototype.hasOwnProperty.call(node.left, 'bigint')) return this.u32(mul);
+        return E.bin('&', mul, E.int(node.right.value === 0xFFFFFFFF ? -1 : node.right.value), 'int');
+      }
+      // (x) & 0xFFFFFFFF from an inlined OpCodes 32-bit helper: unsigned (>>> 0)
+      if (op === '&' && node.right && node.right.type === 'Literal' && node.right.value === 0xFFFFFFFF && node.left && node.left.type === 'BinaryExpression' &&
+          Object.prototype.hasOwnProperty.call(node.left, 'bigint') && !this.isBig(node.left)) {
+        return this.u32(this.toInt32(this.lowerExpr(node.left)));
+      }
+      if (op === 'instanceof') return this.instanceOf(this.lowerExpr(node.left), node.right);
+      if (op === 'in') {
+        const key = this.lowerExpr(node.left), obj = this.lowerExpr(node.right);
+        return E.scall('Js', 'hasMember', [this.conv(obj, 'Object'), this.toStr(key)], 'boolean');
+      }
+      if (op === '&&' || op === '||' || op === '??') return this.x_LogicalExpression(node, expect);
+      const big = this.isBig(node.left) || this.isBig(node.right);
+      const l = this.lowerExpr(node.left), r = this.lowerExpr(node.right);
+      return this.binary(op, l, r, node, big);
+    }
+
+    /** A binary operator on lowered operands, with JavaScript semantics. */
+    binary(op, l, r, node, big) {
+      const resT = node ? this.nodeJt(node) : null;
+      const isStr = t => t === 'String';
+      if (op === '+' && (isStr(l.t) || isStr(r.t) || (resT === 'String' && !T.isNumeric(T.unbox(l.t)) && !T.isNumeric(T.unbox(r.t))))) {
+        return E.bin('+', this.toStr(l), this.toStr(r), 'String');
+      }
+      if (['==', '===', '!=', '!=='].includes(op)) {
+        const strict = op === '===' || op === '!==';
+        const eq = strict ? this.strictEquals(l, r) : this.looseEquals(l, r);
+        return op.startsWith('!') ? this.not(eq) : eq;
+      }
+      if (big || l.t === 'BigInteger' || r.t === 'BigInteger') return this.bigBinary(op, l, r, resT);
+      const dyn = t => !T.isNumeric(T.unbox(t)) && t !== 'boolean' && t !== 'Boolean';
+      if (['<', '<=', '>', '>='].includes(op)) {
+        if (isStr(l.t) && isStr(r.t)) return E.bin(op, E.call(l, 'compareTo', [r], 'int'), E.int(0), 'boolean');
+        if (dyn(l.t) || dyn(r.t)) return E.scall('Js', { '<': 'lt', '<=': 'le', '>': 'gt', '>=': 'ge' }[op], [this.conv(l, 'Object'), this.conv(r, 'Object')], 'boolean');
+        const w = T.wider(this.num(l).t, this.num(r).t);
+        return E.bin(op, this.conv(l, w), this.conv(r, w), 'boolean');
+      }
+      if (['&', '|', '^'].includes(op)) return E.bin(op, this.toInt32(l), this.toInt32(r), 'int');
+      if (op === '<<' || op === '>>') return E.bin(op, this.toInt32(l), this.shiftCount(r), 'int');
+      if (op === '>>>') {
+        const v = this.toInt32(l);
+        if (r.k === 'lit' && r.v === 0) return this.u32(v);
+        return E.bin('>>>', this.u32(v), this.shiftCount(r), 'long');
+      }
+      if (op === '+' && (dyn(l.t) || dyn(r.t))) {
+        if (resT === 'String') return E.bin('+', this.toStr(l), this.toStr(r), 'String');
+        const sum = E.scall('Js', 'add', [this.conv(l, 'Object'), this.conv(r, 'Object')], 'Object');
+        return T.isNumeric(resT) ? this.conv(sum, 'double') : sum;
+      }
+      if (op === '**') return E.scall('Js', 'pow', [this.conv(l, 'double'), this.conv(r, 'double')], 'double');
+      const ln = this.num(l), rn = this.num(r);
+      if (op === '/') return E.bin('/', this.conv(ln, 'double'), this.conv(rn, 'double'), 'double');
+      let w = T.wider(ln.t, rn.t);
+      if (T.isNumeric(resT) && op !== '%') w = T.wider(w, resT);
+      if (op === '*' && w === 'int') w = 'long';
+      if (op === '%' && w !== 'double') {
+        // integer remainder by zero is NaN in JavaScript
+        return E.scall('Js', 'rem', [this.conv(ln, w), this.conv(rn, w)], w);
+      }
+      return E.bin(op, this.conv(ln, w), this.conv(rn, w), w);
+    }
+
+    /** A numeric operand (booleans, boxes and dynamic values become numbers). */
+    num(e) {
+      const u = T.unbox(e.t);
+      if (T.isNumeric(u)) return u === e.t ? e : this.conv(e, u);
+      if (u === 'boolean') return E.cond(this.conv(e, 'boolean'), E.int(1), E.int(0), 'int');
+      return this.conv(e, 'double');
+    }
+
+    shiftCount(r) {
+      const n = this.toInt32(r);
+      return n;
+    }
+
+    /** ToInt32 of a value, as an int. */
+    toInt32(e) {
+      const u = T.unbox(e.t);
+      if (e.k === 'lit' && T.isNumeric(e.t)) return E.int(Number.isFinite(e.v) ? Number(BigInt.asIntN(32, BigInt(Math.trunc(e.v)))) : 0);
+      if (u === 'int') return this.conv(e, 'int');
+      // ToInt32 of a widened int, or of ToUint32 of an int, is that int
+      if (e.k === 'cast' && e.t === 'long' && e.e.t === 'int') return e.e;
+      if (e.k === 'bin' && e.op === '&' && e.t === 'long' && e.r.k === 'lit' && e.r.v === 0xFFFFFFFF && e.l.k === 'cast' && e.l.e.t === 'int') return e.l.e;
+      if (u === 'long') return E.cast(this.conv(e, 'long'), 'int');
+      if (u === 'double') return E.scall('Js', 'toInt32', [this.conv(e, 'double')], 'int');
+      if (u === 'boolean') return E.cond(this.conv(e, 'boolean'), E.int(1), E.int(0), 'int');
+      if (e.t === 'BigInteger') return E.call(e, 'intValue', [], 'int');
+      return E.scall('Js', 'toInt32', [this.conv(e, 'Object')], 'int');
+    }
+
+    /** ToUint32 of an int: a long. */
+    u32(intExpr) {
+      if (intExpr.k === 'lit' && T.isNumeric(intExpr.t)) return E.long(Number(BigInt.asUintN(32, BigInt(Math.trunc(intExpr.v)))));
+      // ToUint32 of a narrowed long masks the long itself
+      if (intExpr.k === 'cast' && intExpr.t === 'int' && intExpr.e.t === 'long') return E.bin('&', intExpr.e, E.long(0xFFFFFFFF), 'long');
+      return E.bin('&', E.cast(intExpr, 'long'), E.long(0xFFFFFFFF), 'long');
+    }
+
+    bigBinary(op, l, r, resT) {
+      const B = 'BigInteger';
+      const big = e => this.conv(e, B);
+      if (['<', '<=', '>', '>='].includes(op)) {
+        if (l.t === B && r.t === B) return E.bin(op, E.call(l, 'compareTo', [r], 'int'), E.int(0), 'boolean');
+        return E.scall('Js', { '<': 'lt', '<=': 'le', '>': 'gt', '>=': 'ge' }[op], [this.conv(l, 'Object'), this.conv(r, 'Object')], 'boolean');
+      }
+      const methods = { '+': 'add', '-': 'subtract', '*': 'multiply', '/': 'divide', '%': 'remainder', '&': 'and', '|': 'or', '^': 'xor' };
+      let res;
+      if (methods[op]) res = E.call(big(l), methods[op], [big(r)], B);
+      else if (op === '<<') res = E.call(big(l), 'shiftLeft', [this.conv(r, 'int')], B);
+      else if (op === '>>') res = E.call(big(l), 'shiftRight', [this.conv(r, 'int')], B);
+      else if (op === '**') res = E.scall('Js', 'pow', [big(l), big(r)], B);
+      else if (op === '>>>') throw new LoweringError('>>> on a BigInt');
+      else throw new LoweringError('BigInt operator ' + op);
+      return res;
+    }
+
+    x_LogicalExpression(node, expect) {
+      const op = node.operator;
+      const l = this.lowerExpr(node.left, expect), r = this.lowerExpr(node.right, expect);
+      if ((op === '&&' || op === '||') && (this.nodeJt(node) === 'boolean' || (l.t === 'boolean' && r.t === 'boolean'))) {
+        return E.bin(op, this.truthy(l), this.truthy(r), 'boolean');
+      }
+      // a || b and a && b yield an operand; a ?? b the first that is not null
+      let t = this.nodeJt(node);
+      if (t === 'Object' || t === 'void' || t === 'boolean') t = this.commonJt([l.t, r.t]);
+      if (t === 'void' || t === 'null') t = 'Object';
+      const pure = this.isPure(node.left);
+      if (op === '??') {
+        if (T.isPrim(l.t)) return this.conv(l, t);
+        const tt = T.isPrim(t) && T.isPrim(r.t) ? t : t;
+        if (pure) return E.cond(E.bin('!=', l, E.nul(), 'boolean'), this.conv(l, tt), this.conv(r, tt), tt);
+        return E.scall('Js', 'coalesce', [this.conv(l, T.box(tt)), this.conv(r, T.box(tt))], T.box(tt));
+      }
+      if (pure) {
+        const c = this.truthy(l);
+        return op === '||' ? E.cond(c, this.conv(l, t), this.conv(r, t), t) : E.cond(c, this.conv(r, t), this.conv(l, t), t);
+      }
+      const bt = T.box(t);
+      return E.scall('Js', op === '||' ? 'or' : 'and', [this.conv(l, bt), this.conv(r, bt)], bt);
+    }
+
+    /** Whether evaluating an IL expression twice is harmless (no side effects, cheap). */
+    isPure(node) {
+      if (!node) return true;
+      switch (node.type) {
+        case 'Identifier': case 'Literal': case 'ThisExpression': return true;
+        case 'ThisPropertyAccess': return !node.computed || this.isPure(node.property);
+        case 'MemberExpression': return this.isPure(node.object) && (!node.computed || this.isPure(node.property));
+        case 'ArrayLength': return this.isPure(node.array);
+        default: return false;
+      }
+    }
+
+    x_UnaryExpression(node, expect, stmt) {
+      const op = node.operator;
+      if (op === '++' || op === '--') return this.updateTarget(this.lowerTarget(node.argument), op, node.prefix !== false, stmt);
+      if (op === 'typeof') return E.scall('Js', 'typeOf', [this.conv(this.lowerExpr(node.argument), 'Object')], 'String');
+      if (op === 'void') return E.nul();
+      if (op === 'delete') return this.x_DeleteExpression(node);
+      const a = this.lowerExpr(node.argument);
+      if (op === '!') return this.not(this.truthy(a));
+      if (op === '~') {
+        if (a.t === 'BigInteger') return E.call(a, 'not', [], 'BigInteger');
+        return E.un('~', this.toInt32(a), 'int');
+      }
+      if (op === '-') {
+        if (a.t === 'BigInteger') return E.call(a, 'negate', [], 'BigInteger');
+        if (a.k === 'lit' && T.isNumeric(a.t)) {
+          const v = -a.v;
+          if (a.t === 'int' && v > MAX_INT) return E.long(v);
+          return E.lit(v, Object.is(v, -0) ? 'double' : a.t);
+        }
+        const n = this.num(a);
+        // -int: the JavaScript value of -(-2^31) does not fit an int
+        const t = n.t === 'int' ? (this.nodeJt(node) === 'int' ? 'int' : 'long') : n.t;
+        if (n.t === 'int' && t === 'int') return E.un('-', n, 'int');
+        return E.un('-', this.conv(n, t === 'int' ? 'long' : t), t === 'int' ? 'long' : t);
+      }
+      if (op === '+') {
+        if (T.isNumeric(T.unbox(a.t))) return this.num(a);
+        return this.conv(a, 'double');
+      }
+      throw new LoweringError('unary ' + op);
+    }
+
+    not(b) {
+      if (b.k === 'un' && b.op === '!') return b.e;
+      return E.un('!', b, 'boolean');
+    }
+
+    x_TypeOfExpression(node) { return E.scall('Js', 'typeOf', [this.conv(this.lowerExpr(node.argument), 'Object')], 'String'); }
+    x_Typeof(node) { return this.x_TypeOfExpression(node); }
+
+    x_DeleteExpression(node) {
+      const arg = node.argument;
+      if (arg && arg.type === 'MemberExpression') {
+        const obj = this.lowerExpr(arg.object);
+        const key = arg.computed ? this.conv(this.lowerExpr(arg.property), 'Object') : E.str(arg.property.name || arg.property.value);
+        return E.scall('Js', 'deleteProp', [this.conv(obj, 'Object'), key], 'boolean');
+      }
+      return E.bool(true);
+    }
+
+    x_UpdateExpression(node, expect, stmt) {
+      const target = this.lowerTarget(node.argument);
+      return this.updateTarget(target, node.operator, node.prefix, stmt);
+    }
+
+    x_AssignmentExpression(node, expect, stmt) {
+      if (node.left && (node.left.type === 'ArrayExpression' || node.left.type === 'ArrayPattern' || node.left.type === 'ArrayLiteral')) {
+        if (!stmt) throw new LoweringError('destructuring assignment as a value');
+        const src = this.lowerExpr(node.right);
+        const tmp = this.fresh('destructure');
+        this.fn.used.add(tmp);
+        const body = [S.local(tmp, src.t, src)];
+        (node.left.elements || []).forEach((el, i) => {
+          if (!el) return;
+          const target = this.lowerTarget(el);
+          body.push(S.expr(this.assignTarget(target, this.elementGet(E.name(tmp, src.t), E.int(i)), true)));
+        });
+        return { k: 'stmtExpr', stmt: S.block(body), t: 'void' };
+      }
+      const target = this.lowerTarget(node.left);
+      const op = node.operator;
+      if (op === '=') return this.assignTarget(target, this.lowerExpr(node.right, target.t), stmt);
+      if (op === '&&=' || op === '||=' || op === '??=') {
+        const cur = this.readTarget(target);
+        const val = this.lowerExpr(node.right, target.t);
+        const cond = op === '??=' ? E.bin('==', cur, E.nul(), 'boolean') : (op === '&&=' ? this.truthy(cur) : this.not(this.truthy(cur)));
+        if (!stmt) throw new LoweringError('logical assignment as a value');
+        return { k: 'stmtExpr', stmt: S.iff(cond, S.block([S.expr(this.assignTarget(target, val, true))]), null), t: 'void' };
+      }
+      const binop = op.slice(0, -1);
+      const big = this.isBig(node.left) || this.isBig(node.right);
+      // Compound: read, operate, write (the target's sub-expressions are evaluated once)
+      return this.compound(target, binop, node.right, node, big, stmt);
+    }
+
+    // ------------------------------------------------------------------ assignment targets
+
+    /**
+     * An assignable place: a local, a static or instance field, an accessor, an
+     * array element or a dynamic property. Sub-expressions are hoisted into
+     * temporaries only when a compound operation evaluates them twice.
+     */
+    lowerTarget(node) {
+      if (node.type === 'Identifier') {
+        const sym = node.__sym;
+        if (!sym) throw new LoweringError(`assignment to unresolved '${node.name}'`);
+        return { kind: 'var', ref: this.symRef(sym), t: this.symJt(sym) };
+      }
+      if (node.type === 'ThisPropertyAccess') {
+        const name = typeof node.property === 'string' ? node.property : (node.property && (node.property.name || node.property.value));
+        if (node.computed && node.property && typeof node.property === 'object') return { kind: 'dyn', obj: this.selfRef(), key: this.lowerExpr(node.property), t: 'Object', node };
+        return this.memberTarget(this.selfRef(), name, node);
+      }
+      if (node.type === 'MemberExpression') {
+        const obj = this.lowerExpr(node.object);
+        if (node.computed) {
+          const key = this.lowerExpr(node.property);
+          if (T.isArray(obj.t)) return { kind: 'elem', obj, index: this.indexOf(key), t: T.elemOf(obj.t), node };
+          if (obj.t === 'JsObject' || obj.t === 'Object' || !T.isArray(obj.t)) return { kind: 'dyn', obj, key, t: this.nodeJt(node), node };
+        }
+        const name = node.property && (node.property.name !== undefined ? node.property.name : node.property.value);
+        if (name === 'length' && T.isArray(obj.t)) return { kind: 'length', obj, t: 'int' };
+        return this.memberTarget(obj, name, node);
+      }
+      if (node.type === 'ArrayLength') {
+        const arr = this.lowerExpr(node.array);
+        return { kind: 'length', obj: arr, t: 'int' };
+      }
+      throw new LoweringError('assignment target ' + node.type);
+    }
+
+    memberTarget(obj, name, node) {
+      if (obj.k === 'classref') {
+        const s = this.findStatic(obj.cls, name);
+        if (s && s.kind === 'field') return { kind: 'static', owner: s.owner.javaName, name: s.info.javaName, t: this.fieldJt(s.info) };
+        throw new LoweringError(`static ${obj.cls}.${name} unknown`);
+      }
+      const cls = this.classOfJt(obj.t);
+      if (cls) {
+        const m = this.findMember(cls.name, name);
+        if (m && m.kind === 'field') return { kind: 'field', obj, name: m.info.javaName, t: this.fieldJt(m.info) };
+        if (m && m.kind === 'accessor') return { kind: 'accessor', obj, name: mid(name), t: this.accessorSetJt(m.info), getT: this.accessorJt(m.info) };
+        const sub = this.findMemberInSubclasses(cls.name, name);
+        if (sub && sub.member && (sub.member.kind === 'field' || sub.member.kind === 'accessor')) {
+          const sc = this.classInfo(sub.cls);
+          const down = E.cast(obj, sc.javaName);
+          return sub.member.kind === 'field'
+            ? { kind: 'field', obj: down, name: sub.member.info.javaName, t: this.fieldJt(sub.member.info) }
+            : { kind: 'accessor', obj: down, name: mid(name), t: this.accessorSetJt(sub.member.info), getT: this.accessorJt(sub.member.info) };
+        }
+      }
+      if (obj.t === 'JsObject') return { kind: 'objprop', obj, key: name, t: node ? this.nodeJt(node) : 'Object' };
+      return { kind: 'dyn', obj, key: E.str(name), t: node ? this.nodeJt(node) : 'Object' };
+    }
+
+    classOfJt(t) {
+      for (const c of this.classes.values()) if (c.javaName === t) return c;
       return null;
     }
+
+    readTarget(target) {
+      switch (target.kind) {
+        case 'var': return target.ref;
+        case 'static': return E.sfield(target.owner, target.name, target.t);
+        case 'field': return E.field(target.obj, target.name, target.t);
+        case 'accessor': return E.call(target.obj, 'get_' + target.name, [], target.getT || target.t);
+        case 'elem': return this.elementGet(target.obj, target.index);
+        case 'length': return E.call(target.obj, 'length', [], 'int');
+        case 'objprop': return this.conv(E.call(target.obj, 'get', [E.str(target.key)], 'Object'), target.t);
+        case 'dyn': return this.conv(this.dynGet(target.obj, target.key), target.t);
+      }
+      throw new LoweringError('read of ' + target.kind);
+    }
+
+    dynGet(obj, key) {
+      if (key.t === 'String' && key.k === 'lit') return E.scall('Js', 'getProp', [this.conv(obj, 'Object'), key], 'Object');
+      return E.scall('Js', 'index', [this.conv(obj, 'Object'), this.conv(key, 'Object')], 'Object');
+    }
+
+    /** Store a value; the expression's value is the stored JavaScript value. */
+    assignTarget(target, value, stmt) {
+      switch (target.kind) {
+        case 'var': return E.assign(target.ref, this.conv(value, target.t));
+        case 'static': return E.assign(E.sfield(target.owner, target.name, target.t), this.conv(value, target.t));
+        case 'field': return E.assign(E.field(target.obj, target.name, target.t), this.conv(value, target.t));
+        case 'accessor': {
+          const call = E.call(target.obj, 'set_' + target.name, [this.conv(value, target.t)], 'void');
+          if (stmt) return call;
+          const getT = target.getT || target.t;
+          return E.scall('Js', 'seq', [this.conv(call, 'Object'), this.conv(this.readTarget(target), T.box(getT))], T.box(getT));
+        }
+        case 'elem': return this.elementSet(target.obj, target.index, value);
+        case 'length': {
+          const call = E.call(target.obj, 'setLength', [this.conv(value, 'int')], 'void');
+          return stmt ? call : E.scall('Js', 'seq', [this.conv(call, 'Object'), E.call(target.obj, 'length', [], 'int')], 'Integer');
+        }
+        case 'objprop': return this.conv(E.call(target.obj, 'put', [E.str(target.key), this.conv(value, 'Object')], 'Object'), target.t === 'Object' ? 'Object' : value.t);
+        case 'dyn': {
+          const set = target.key.t === 'String' && target.key.k === 'lit'
+            ? E.scall('Js', 'setProp', [this.conv(target.obj, 'Object'), target.key, this.conv(value, 'Object')], 'Object')
+            : E.scall('Js', 'setIndex', [this.conv(target.obj, 'Object'), this.conv(target.key, 'Object'), this.conv(value, 'Object')], 'Object');
+          return stmt ? set : this.conv(set, value.t === 'null' ? 'Object' : value.t);
+        }
+      }
+      throw new LoweringError('assignment to ' + target.kind);
+    }
+
+    /** Evaluate a target's object and index once (into temporaries) for read-modify-write. */
+    stabilize(target, pre) {
+      const stable = e => e.k === 'name' || e.k === 'this' || e.k === 'lit' || e.k === 'classref' || e.k === 'sfield' ||
+        (e.k === 'field' && stable(e.obj)) || (e.k === 'cast' && stable(e.e));
+      const tmp = (e, base) => {
+        if (stable(e)) return e;
+        const n = this.fresh(base);
+        this.fn.used.add(n);
+        pre.push({ name: n, e });
+        return E.name(n, e.t);
+      };
+      const t = Object.assign({}, target);
+      if (t.obj) t.obj = tmp(t.obj, 'o');
+      if (t.index) t.index = tmp(t.index, 'ix');
+      if (t.key && t.kind === 'dyn') t.key = tmp(t.key, 'k');
+      return t;
+    }
+
+    compound(target, binop, rightNode, node, big, stmt) {
+      const pre = [];
+      const st = this.stabilize(target, pre);
+      const cur = this.readTarget(st);
+      const right = this.lowerExpr(rightNode, st.t);
+      const result = this.binary(binop, cur, right, { resultType: node.resultType, type: 'BinaryExpression', operator: binop, left: node.left, right: rightNode, __lowered: null }, big);
+      const assign = this.assignTarget(st, result, stmt);
+      return this.withTemps(pre, assign);
+    }
+
+    /** Wrap an expression using temporaries: Js.let-style sequencing. */
+    withTemps(pre, e) {
+      if (pre.length === 0) return e;
+      return { k: 'letin', binds: pre, body: e, t: e.t };
+    }
+
+    updateTarget(target, op, prefix, stmt) {
+      const t = target.t;
+      if (target.kind === 'var' && T.isNumeric(t)) return E.inc(target.ref, op, prefix);
+      if ((target.kind === 'static' || target.kind === 'field') && T.isNumeric(t)) {
+        const ref = target.kind === 'static' ? E.sfield(target.owner, target.name, t) : E.field(target.obj, target.name, t);
+        return E.inc(ref, op, prefix);
+      }
+      if (target.kind === 'elem' && T.isNumeric(T.elemOf(target.obj.t))) {
+        const name = (prefix || stmt ? 'pre' : 'post') + (op === '++' ? 'Inc' : 'Dec');
+        return E.call(target.obj, name, [target.index], T.elemOf(target.obj.t));
+      }
+      // read-modify-write; the value is the old (postfix) or new (prefix) value
+      const pre = [];
+      const st = this.stabilize(target, pre);
+      const cur = this.readTarget(st);
+      const n = this.num(cur);
+      const one = E.lit(1, n.t);
+      const next = E.bin(op === '++' ? '+' : '-', n, one, n.t);
+      if (stmt || prefix) return this.withTemps(pre, this.assignTarget(st, next, stmt));
+      const old = this.fresh('old');
+      this.fn.used.add(old);
+      pre.push({ name: old, e: n });
+      const assign = this.assignTarget(st, E.bin(op === '++' ? '+' : '-', E.name(old, n.t), one, n.t), true);
+      return this.withTemps(pre, E.scall('Js', 'seq', [this.conv(assign, 'Object'), this.conv(E.name(old, n.t), T.box(n.t))], T.box(n.t)));
+    }
+
+    // ------------------------------------------------------------------ members
+
+    x_MemberExpression(node, expect) {
+      if (node.optional) {
+        const obj = this.lowerExpr(node.object);
+        const key = node.computed ? this.conv(this.lowerExpr(node.property), 'Object') : E.str(node.property.name || node.property.value);
+        return this.conv(E.scall('Js', 'optIndex', [this.conv(obj, 'Object'), key], 'Object'), this.dynResultJt(node));
+      }
+      if (node.object && node.object.type === 'Identifier' && !node.object.__sym) {
+        const special = this.globalMember(node.object.name, node.property && (node.property.name || node.property.value), node);
+        if (special) return special;
+      }
+      const obj = this.lowerExpr(node.object);
+      if (node.computed) {
+        const key = this.lowerExpr(node.property);
+        return this.dynamicIndex(obj, key, node);
+      }
+      const name = node.property && (node.property.name !== undefined ? node.property.name : node.property.value);
+      return this.memberGet(obj, name, node);
+    }
+
+    /** obj[key] */
+    dynamicIndex(obj, key, node) {
+      if (T.isArray(obj.t)) return this.elementGet(obj, this.indexOf(key));
+      if (obj.t === 'String') return E.scall('Js', 'charAt', [obj, this.conv(key, 'double')], 'String');
+      if (obj.t === 'JsObject' && key.t === 'String') return this.conv(E.call(obj, 'get', [key], 'Object'), this.dynResultJt(node));
+      return this.conv(this.dynGet(obj, key), this.dynResultJt(node));
+    }
+
+    dynResultJt(node) {
+      const t = node ? this.nodeJt(node) : 'Object';
+      return t === 'void' ? 'Object' : t;
+    }
+
+    /** An array index: an int when the IL says integer, else the double (fractions read undefined). */
+    indexOf(key) {
+      const u = T.unbox(key.t);
+      if (u === 'int') return this.conv(key, 'int');
+      if (u === 'long') return this.conv(key, 'long');
+      if (u === 'double') return this.conv(key, 'double');
+      if (key.t === 'String') return E.scall('Js', 'toNum', [key], 'double');
+      return E.scall('Js', 'toNum', [this.conv(key, 'Object')], 'double');
+    }
+
+    elementGet(arr, index) {
+      const t = T.elemOf(arr.t);
+      return E.call(arr, 'get', [index], t);
+    }
+
+    elementSet(arr, index, value) {
+      const et = T.elemOf(arr.t);
+      let v;
+      // typed-array stores convert like JavaScript (modulo, not saturation)
+      const vu = T.unbox(value.t);
+      if (et === 'int' && vu === 'double') v = E.scall('Js', 'toInt32', [this.conv(value, 'double')], 'int');
+      else if (et === 'long' && vu === 'double' && arr.t === 'U32Array') v = E.scall('Js', 'toUint32', [this.conv(value, 'double')], 'long');
+      else if (et === 'int' && vu === 'long') v = E.cast(this.conv(value, 'long'), 'int');
+      else v = this.conv(value, et);
+      return E.call(arr, 'set', [index, v], et);
+    }
+
+    /** obj.name */
+    memberGet(obj, name, node) {
+      if (obj.k === 'classref') return this.staticGet(obj, name, node);
+      if (name === 'length') {
+        if (T.isArray(obj.t) || obj.t === 'String') return E.call(obj, 'length', [], 'int');
+        if (obj.t === 'JsArrayLike') return E.call(obj, 'length', [], 'int');
+      }
+      if (obj.t === 'String' && name === 'length') return E.call(obj, 'length', [], 'int');
+      if ((obj.t === 'JsMap' || obj.t === 'JsSet') && name === 'size') return E.call(obj, 'size', [], 'int');
+      if ((obj.t === 'JsError' || obj.t === 'RuntimeException') && name === 'message') return E.scall('Js', 'message', [obj], 'String');
+      if ((obj.t === 'JsError' || obj.t === 'RuntimeException') && name === 'name') return E.scall('Js', 'errorName', [obj], 'String');
+      if (obj.t === 'JsRegExp' && ['source', 'flags', 'lastIndex'].includes(name)) return E.field(obj, name, name === 'lastIndex' ? 'int' : 'String');
+      const cls = this.classOfJt(obj.t);
+      if (cls) {
+        const m = this.findMember(cls.name, name);
+        if (m && m.kind === 'field') return E.field(obj, m.info.javaName, this.fieldJt(m.info));
+        if (m && m.kind === 'accessor') return E.call(obj, 'get_' + mid(name), [], this.accessorJt(m.info));
+        if (m && m.kind === 'method') return this.boundMethod(obj, m.info, cls);
+        const sub = this.findMemberInSubclasses(cls.name, name);
+        if (sub && sub.member) {
+          const sc = this.classInfo(sub.cls);
+          const down = E.cast(obj, sc.javaName);
+          if (sub.member.kind === 'field') return E.field(down, sub.member.info.javaName, this.fieldJt(sub.member.info));
+          if (sub.member.kind === 'accessor') return E.call(down, 'get_' + mid(name), [], this.accessorJt(sub.member.info));
+          if (sub.member.kind === 'method') return this.boundMethod(down, sub.member.info, sc);
+        }
+      }
+      const t = this.dynResultJt(node);
+      if (obj.t === 'JsObject') return this.conv(E.call(obj, 'get', [E.str(name)], 'Object'), t);
+      return this.conv(E.scall('Js', 'getProp', [this.conv(obj, 'Object'), E.str(name)], 'Object'), t);
+    }
+
+    /** A method read as a value: a JsFn calling it on obj. */
+    boundMethod(obj, fi, cls) {
+      const sig = fi.framework ? { params: fi.params.map(p => p.t), ret: fi.ret } : this.signature(fi, cls);
+      const argsName = this.fresh('a');
+      const recv = obj.k === 'this' || obj.k === 'name' ? obj : obj;
+      const args = sig.params.map((t, i) => this.conv(E.scall('Js', 'arg', [E.name(argsName, 'Object[]'), E.int(i)], 'Object'), t));
+      const call = E.call(recv, fi.javaName, args, sig.ret);
+      return E.lambda([{ name: argsName }], sig.ret === 'void' ? [S.expr(call), S.ret(E.nul())] : [S.ret(this.conv(call, 'Object'))]);
+    }
+
+    staticGet(obj, name, node) {
+      if (obj.cls === 'AlgorithmFramework') {
+        if (name === 'Algorithms') return E.sfield('AlgorithmFramework', 'Algorithms', 'JsArray<Algorithm>');
+        if (FRAMEWORK[name]) return { k: 'classref', name, t: 'Class', cls: name };
+        if (FRAMEWORK_STATICS[name]) return this.functionValueStatic('AlgorithmFramework', name);
+      }
+      if (ENUM_CONSTANTS[obj.cls] && ENUM_CONSTANTS[obj.cls].includes(name)) return E.sfield(obj.cls, name, obj.cls);
+      // A constant the frozen framework enumeration does not have reads undefined
+      if (ENUM_CONSTANTS[obj.cls]) return E.nul(obj.cls);
+      const s = this.findStatic(obj.cls, name);
+      if (s && s.kind === 'field') return E.sfield(s.owner.javaName, s.info.javaName, this.fieldJt(s.info));
+      if (s && s.kind === 'method') {
+        const fi = s.info;
+        const sig = this.signature(fi, s.owner);
+        const argsName = this.fresh('a');
+        const args = sig.params.map((t, i) => this.conv(E.scall('Js', 'arg', [E.name(argsName, 'Object[]'), E.int(i)], 'Object'), t));
+        const call = E.scall(s.owner.javaName, fi.javaName, args, sig.ret);
+        return E.lambda([{ name: argsName }], sig.ret === 'void' ? [S.expr(call), S.ret(E.nul())] : [S.ret(this.conv(call, 'Object'))]);
+      }
+      if (name === 'name' && this.classInfo(obj.cls)) return E.str(obj.cls);
+      throw new LoweringError(`static member ${obj.cls}.${name} unknown`);
+    }
+
+    /** Members of global objects (Number.MAX_SAFE_INTEGER, Math.PI, ...) the IL left as members. */
+    globalMember(objName, prop, node) {
+      if (objName === 'Number') {
+        const v = { MAX_SAFE_INTEGER: 9007199254740991, MIN_SAFE_INTEGER: -9007199254740991, EPSILON: Number.EPSILON, MAX_VALUE: Number.MAX_VALUE, MIN_VALUE: Number.MIN_VALUE, POSITIVE_INFINITY: Infinity, NEGATIVE_INFINITY: -Infinity, NaN: NaN }[prop];
+        if (v !== undefined) return E.dbl(v);
+      }
+      if (objName === 'Math') {
+        const v = { PI: Math.PI, E: Math.E, LN2: Math.LN2, LN10: Math.LN10, LOG2E: Math.LOG2E, LOG10E: Math.LOG10E, SQRT2: Math.SQRT2, SQRT1_2: Math.SQRT1_2 }[prop];
+        if (v !== undefined) return E.dbl(v);
+      }
+      return null;
+    }
+
+    // ------------------------------------------------------------------ calls
+
+    x_CallExpression(node, expect, stmt) {
+      const callee = node.callee;
+      const args = node.arguments || [];
+      if (callee.type === 'Identifier') {
+        const sym = callee.__sym;
+        if (sym && sym.kind === 'func') {
+          const fi = this.functions.get(sym.name);
+          return this.callFunction(fi, args, null);
+        }
+        if (sym && sym.kind === 'localfn') return this.callFunction(sym.fi, args, sym.holder);
+        if (sym) {
+          // a function value
+          const fn = this.symRef(sym);
+          return this.callFn(fn, args, node);
+        }
+        return this.globalCall(callee.name, args, node);
+      }
+      if (callee.type === 'MemberExpression' && !callee.computed) {
+        const name = callee.property && (callee.property.name !== undefined ? callee.property.name : callee.property.value);
+        const o = callee.object;
+        if (o.type === 'Identifier' && !o.__sym) {
+          const g = this.globalMethodCall(o.name, name, args, node);
+          if (g) return g;
+        }
+        if (o.type === 'Super') {
+          const base = this.fn.cls && this.classInfo(this.fn.cls.ext);
+          if (!base || !this.findMember(base.name, name)) return this.superMissing(name, node);
+          return this.methodCall(this.x_Super(), name, args, node, this.fn.cls && this.fn.cls.ext);
+        }
+        const obj = this.lowerExpr(o);
+        return this.methodCall(obj, name, args, node);
+      }
+      if (callee.type === 'MemberExpression' && callee.computed) {
+        const obj = this.lowerExpr(callee.object);
+        const key = this.lowerExpr(callee.property);
+        return this.conv(E.scall('Js', 'invokeIndex', [this.conv(obj, 'Object'), this.conv(key, 'Object'), ...this.boxArgs(args)], 'Object'), this.callResultJt(node));
+      }
+      // (function () { ... })() and other callee expressions
+      const fn = this.lowerExpr(callee);
+      return this.callFn(fn, args, node);
+    }
+
+    /** Arguments converted to Object for a dynamic call (spreads expanded at run time). */
+    boxArgs(args) {
+      if (args.some(a => a && a.type === 'SpreadElement')) return [E.scall('Js', 'spreadArgs', args.map(a => a.type === 'SpreadElement' ? E.scall('Js', 'spreadOf', [this.conv(this.lowerExpr(a.argument), 'Object')], 'Object') : this.conv(this.lowerExpr(a), 'Object')), 'Object[]')];
+      return args.map(a => this.conv(this.lowerExpr(a), 'Object'));
+    }
+
+    callFn(fn, args, node) {
+      const call = E.call(this.conv(fn, 'JsFn'), 'call', this.boxArgs(args), 'Object');
+      const t = this.callResultJt(node);
+      return t === 'void' ? call : this.conv(call, t);
+    }
+
+    callResultJt(node) {
+      const t = this.nodeJt(node);
+      return t;
+    }
+
+    callFunction(fi, args, holder) {
+      const sig = holder ? fi.sig : this.signature(fi, null);
+      const lowered = this.argsFor(fi, sig, args);
+      if (holder && this.insideHolder(holder)) return E.call(null, fi.javaName, lowered, sig.ret);
+      if (holder) return E.call(E.name(holder, 'Object'), fi.javaName, lowered, sig.ret);
+      return E.scall(this.unitName, fi.javaName, lowered, sig.ret);
+    }
+
+    /** Arguments for a typed function or method: converted, missing ones filled. */
+    argsFor(fi, sig, args) {
+      const out = [];
+      const n = sig.params.length;
+      const hasRest = fi.params.length && fi.params[fi.params.length - 1].rest;
+      if (args.some(a => a && a.type === 'SpreadElement')) {
+        if (hasRest && args.length === n && args[n - 1].type === 'SpreadElement') {
+          for (let i = 0; i < n - 1; ++i) out.push(this.valueOf(args[i], sig.params[i]));
+          out.push(E.scall('JsArray', 'from', [this.conv(this.lowerExpr(args[n - 1].argument), 'Object')], 'JsArray<Object>'));
+          return out;
+        }
+        throw new LoweringError('spread arguments to a typed function');
+      }
+      for (let i = 0; i < n; ++i) {
+        if (hasRest && i === n - 1) {
+          out.push({ k: 'jsarrayOf', items: args.slice(i).map(a => this.conv(this.lowerExpr(a), 'Object')), t: 'JsArray<Object>' });
+          return out;
+        }
+        if (i < args.length) out.push(this.valueOf(args[i], sig.params[i]));
+        else if (i < fi.min) out.push(this.undefinedOf(sig.params[i]));
+        else break; // an overload covers the defaults
+      }
+      return out;
+    }
+
+    /** obj.name(args) */
+    methodCall(obj, name, args, node, superClass) {
+      if (obj.k === 'classref') return this.staticCall(obj, name, args, node);
+      const t = obj.t;
+      if (T.isArray(t)) return this.arrayMethod(obj, name, args, node);
+      if (t === 'String') return this.stringMethod(obj, name, args, node);
+      if (t === 'JsFn' && (name === 'call' || name === 'apply')) {
+        const rest = name === 'call' ? args.slice(1) : null;
+        if (rest) return this.callFn(obj, rest, node);
+        return this.conv(E.call(obj, 'call', [E.scall('Js', 'argsOf', [this.conv(this.lowerExpr(args[1]), 'Object')], 'Object[]')], 'Object'), this.callResultJt(node));
+      }
+      if (t === 'BigInteger' || T.isNumeric(T.unbox(t))) return this.numberMethod(obj, name, args, node);
+      if (t === 'JsMap' || t === 'JsSet') return this.collectionMethod(obj, name, args, node);
+      if (t === 'JsRegExp') {
+        if (name === 'test') return E.call(obj, 'test', [this.valueOf(args[0], 'String')], 'boolean');
+        if (name === 'exec') return E.call(obj, 'match', [this.valueOf(args[0], 'String')], 'JsArray<String>');
+      }
+      const cls = superClass ? this.classInfo(superClass) : this.classOfJt(t);
+      if (cls) {
+        const m = this.findMember(cls.name, name);
+        if (m && m.kind === 'method') return this.invokeMethod(obj, m.info, m.owner, args);
+        if (m && (m.kind === 'field' || m.kind === 'accessor')) {
+          const fnv = this.memberGet(obj, name, null);
+          return this.callFn(fnv, args, node);
+        }
+        const sub = this.findMemberInSubclasses(cls.name, name);
+        if (sub && sub.member && sub.member.kind === 'method') {
+          const sc = this.classInfo(sub.cls);
+          return this.invokeMethod(E.cast(obj, sc.javaName), sub.member.info, sub.member.owner, args);
+        }
+        if (name === 'toString' && args.length === 0) return E.scall('Js', 'str', [this.conv(obj, 'Object')], 'String');
+      }
+      if (name === 'hasOwnProperty' && args.length === 1) return E.scall('Js', 'hasOwn', [this.conv(obj, 'Object'), this.conv(this.lowerExpr(args[0]), 'Object')], 'boolean');
+      if (name === 'toString' && args.length === 0 && !this.classOfJt(t)) return E.scall('Js', 'str', [this.conv(obj, 'Object')], 'String');
+      // dynamic dispatch
+      const call = E.scall('Js', 'invoke', [this.conv(obj, 'Object'), E.str(name), ...this.boxArgs(args)], 'Object');
+      const rt = this.callResultJt(node);
+      return rt === 'void' ? call : this.conv(call, rt);
+    }
+
+    invokeMethod(obj, fi, owner, args) {
+      if (fi.framework) {
+        const ptypes = fi.params.map(p => p.t);
+        const out = [];
+        for (let i = 0; i < ptypes.length; ++i) {
+          if (i < args.length) out.push(this.valueOf(args[i], ptypes[i]));
+          else if (i < fi.min) out.push(this.undefinedOf(ptypes[i]));
+          else break;
+        }
+        return E.call(obj, fi.javaName, out, fi.ret);
+      }
+      const sig = this.signature(fi, owner);
+      return E.call(obj, fi.javaName, this.argsFor(fi, sig, args), sig.ret);
+    }
+
+    staticCall(obj, name, args, node) {
+      if (obj.cls === 'AlgorithmFramework' && FRAMEWORK_STATICS[name]) {
+        const [ptypes, ret] = FRAMEWORK_STATICS[name];
+        return E.scall('AlgorithmFramework', name, ptypes.map((t, i) => i < args.length ? this.valueOf(args[i], t) : this.undefinedOf(t)), ret);
+      }
+      if (obj.cls === 'OpCodes') return this.opCodesCall(name, args, node);
+      const s = this.findStatic(obj.cls, name);
+      if (s && s.kind === 'method') {
+        const sig = this.signature(s.info, s.owner);
+        return E.scall(s.owner.javaName, s.info.javaName, this.argsFor(s.info, sig, args), sig.ret);
+      }
+      if (s && s.kind === 'field') return this.callFn(E.sfield(s.owner.javaName, s.info.javaName, this.fieldJt(s.info)), args, node);
+      throw new LoweringError(`static call ${obj.cls}.${name} unknown`);
+    }
+
+    // ------------------------------------------------------------------ builtins
+
+    globalCall(name, args, node) {
+      const a = i => this.lowerExpr(args[i]);
+      switch (name) {
+        case 'RegisterAlgorithm': case 'Find': case 'Clear': case 'SpongePadBlocks': case 'MerkleDamgardBlocks':
+          return this.staticCall({ k: 'classref', cls: 'AlgorithmFramework' }, name, args, node);
+        case 'Number': {
+          if (!args.length) return E.int(0);
+          const v = a(0);
+          if (v.t === 'BigInteger') return E.call(v, 'doubleValue', [], 'double');
+          if (T.isNumeric(T.unbox(v.t))) return this.num(v);
+          return this.conv(v, 'double');
+        }
+        case 'String': return args.length ? this.toStr(a(0)) : E.str('');
+        case 'Boolean': return args.length ? this.truthy(a(0)) : E.bool(false);
+        case 'BigInt': return this.toBigInt(a(0));
+        case 'parseInt': return E.scall('Js', 'parseInt', [this.conv(a(0), 'Object'), args[1] ? this.valueOf(args[1], 'double') : E.dbl(0)], 'double');
+        case 'parseFloat': return E.scall('Js', 'parseFloat', [this.conv(a(0), 'Object')], 'double');
+        case 'isNaN': return E.scall('Double', 'isNaN', [this.valueOf(args[0], 'double')], 'boolean');
+        case 'isFinite': return E.scall('Js', 'isFinite', [this.conv(a(0), 'Object')], 'boolean');
+        case 'Array': return args.length === 1 ? E.nw(this.arrayTypeFor(node, null), [this.valueOf(args[0], 'int')]) : this.arrayLiteral({ elements: args, resultType: node.resultType });
+        case 'require': throw new LoweringError('require() at run time');
+        case 'Error': case 'TypeError': case 'RangeError': return E.scall('Js', 'error', [E.str(name), args.length ? this.conv(a(0), 'Object') : E.nul()], 'JsError');
+      }
+      const call = E.scall('Js', 'callGlobal', [E.str(name), ...this.boxArgs(args)], 'Object');
+      const rt = this.callResultJt(node);
+      return rt === 'void' ? call : this.conv(call, rt);
+    }
+
+    globalMethodCall(objName, name, args, node) {
+      const a = i => this.lowerExpr(args[i]);
+      if (objName === 'Math') {
+        const d = i => this.valueOf(args[i], 'double');
+        switch (name) {
+          case 'floor': case 'ceil': case 'sqrt': case 'abs': case 'sin': case 'cos': case 'tan': case 'exp': case 'log': case 'log10': case 'atan': case 'asin': case 'acos': case 'sinh': case 'cosh': case 'tanh': case 'cbrt':
+            return E.scall('Math', name, [d(0)], 'double');
+          case 'log2': return E.scall('Js', 'log2', [d(0)], 'double');
+          case 'trunc': case 'round': case 'sign': case 'fround': return E.scall('Js', name, [d(0)], 'double');
+          case 'pow': return E.scall('Js', 'pow', [d(0), d(1)], 'double');
+          case 'atan2': return E.scall('Math', 'atan2', [d(0), d(1)], 'double');
+          case 'random': return E.scall('Js', 'random', [], 'double');
+          case 'imul': return E.scall('Js', 'imul', [d(0), d(1)], 'int');
+          case 'clz32': return E.scall('Js', 'clz32', [d(0)], 'int');
+          case 'min': case 'max': return this.minMax(name, args, node);
+          case 'hypot': return E.scall('Js', 'hypot', args.map((x, i) => d(i)), 'double');
+        }
+      }
+      if (objName === 'Number') {
+        switch (name) {
+          case 'isInteger': return E.scall('Js', 'isInteger', [this.conv(a(0), 'Object')], 'boolean');
+          case 'isSafeInteger': return E.scall('Js', 'isSafeInteger', [this.valueOf(args[0], 'double')], 'boolean');
+          case 'isFinite': return E.scall('Js', 'isFinite', [this.conv(a(0), 'Object')], 'boolean');
+          case 'isNaN': return E.scall('Js', 'isNaN', [this.conv(a(0), 'Object')], 'boolean');
+          case 'parseInt': return this.globalCall('parseInt', args, node);
+          case 'parseFloat': return this.globalCall('parseFloat', args, node);
+        }
+      }
+      if (objName === 'String') {
+        if (name === 'fromCharCode') return this.fromCharCodes(args);
+        if (name === 'fromCodePoint') return E.scall('Js', 'fromCodePoint', args.map((x, i) => this.valueOf(args[i], 'double')), 'String');
+      }
+      if (objName === 'Array') {
+        if (name === 'isArray') return E.scall('Js', 'isArray', [this.conv(a(0), 'Object')], 'boolean');
+        if (name === 'from') return this.x_ArrayFrom({ iterable: args[0], mapFunction: args[1], resultType: node.resultType });
+        if (name === 'of') return this.arrayLiteral({ elements: args, resultType: node.resultType });
+      }
+      if (objName === 'Object') {
+        switch (name) {
+          case 'freeze': case 'seal': case 'preventExtensions': return a(0);
+          case 'keys': return E.scall('Js', 'keys', [this.conv(a(0), 'Object')], 'JsArray<String>');
+          case 'values': return E.scall('Js', 'values', [this.conv(a(0), 'Object')], 'JsArray<Object>');
+          case 'entries': return E.scall('Js', 'entries', [this.conv(a(0), 'Object')], 'JsArray<Object>');
+          case 'assign': return E.scall('Js', 'assign', args.map((x, i) => this.conv(a(i), 'Object')), 'JsObject');
+        }
+      }
+      if (objName === 'BigInt') {
+        if (name === 'asUintN') return E.scall('Js', 'asUintN', [this.valueOf(args[0], 'int'), this.toBigInt(a(1))], 'BigInteger');
+        if (name === 'asIntN') return E.scall('Js', 'asIntN', [this.valueOf(args[0], 'int'), this.toBigInt(a(1))], 'BigInteger');
+      }
+      if (objName === 'console') return E.scall('Js', 'log', this.boxArgs(args), 'void');
+      if (objName === 'JSON') {
+        if (name === 'stringify') return E.scall('Js', 'stringify', [this.conv(a(0), 'Object')], 'String');
+      }
+      if (objName === 'Date' && name === 'now') return E.scall('Js', 'now', [], 'long');
+      if (objName === 'ArrayBuffer' && name === 'isView') return E.scall('Js', 'isTypedAny', [this.conv(a(0), 'Object')], 'boolean');
+      if (objName === 'AlgorithmFramework' || objName === 'OpCodes') return null;
+      return null;
+    }
+
+    minMax(name, args, node) {
+      if (args.length === 1 && args[0].type === 'SpreadElement') {
+        const arr = this.lowerExpr(args[0].argument);
+        return this.conv(E.scall('Js', name + 'Of', [this.conv(arr, 'Object')], 'double'), this.minMaxType(node, ['double']));
+      }
+      const vals = args.map(x => this.lowerExpr(x));
+      const t = this.minMaxType(node, vals.map(v => T.unbox(v.t)));
+      if (t === 'BigInteger') throw new LoweringError('Math.min/max of BigInt');
+      if (vals.length === 2 && T.isIntegral(t)) return E.scall('Math', name, vals.map(v => this.conv(v, t)), t);
+      return this.conv(E.scall('Js', name, vals.map(v => this.conv(v, 'double')), 'double'), t);
+    }
+
+    minMaxType(node, types) {
+      const nt = this.nodeJt(node);
+      if (types.every(t => T.isIntegral(t))) return types.reduce(T.wider, 'int');
+      return T.isNumeric(nt) && types.every(t => T.isNumeric(t) && T.rank(t) <= T.rank(nt)) ? nt : 'double';
+    }
+
+    fromCharCodes(args) {
+      if (args.length === 1 && args[0].type === 'SpreadElement') return E.scall('Js', 'fromCharCodes', [this.conv(this.lowerExpr(args[0].argument), 'Object')], 'String');
+      if (args.some(a => a.type === 'SpreadElement')) return E.scall('Js', 'fromCharCodes', [E.scall('Js', 'spreadArgs', args.map(a => a.type === 'SpreadElement' ? E.scall('Js', 'spreadOf', [this.conv(this.lowerExpr(a.argument), 'Object')], 'Object') : this.conv(this.lowerExpr(a), 'Object')), 'Object[]')], 'String');
+      return E.scall('Js', 'fromCharCode', args.map(a => this.valueOf(a, 'double')), 'String');
+    }
+
+    numberMethod(obj, name, args, node) {
+      if (name === 'toString') {
+        if (!args.length) return this.toStr(obj);
+        return E.scall('Js', 'toRadix', [obj.t === 'BigInteger' ? obj : this.conv(obj, T.unbox(obj.t) === 'int' ? 'int' : T.unbox(obj.t)), this.valueOf(args[0], 'int')], 'String');
+      }
+      if (name === 'toFixed') return E.scall('Js', 'toFixed', [this.conv(obj, 'double'), args.length ? this.valueOf(args[0], 'int') : E.int(0)], 'String');
+      if (name === 'valueOf') return obj;
+      throw new LoweringError(`number method ${name}`);
+    }
+
+    collectionMethod(obj, name, args, node) {
+      const a = i => this.conv(this.lowerExpr(args[i]), 'Object');
+      const rt = this.callResultJt(node);
+      switch (name) {
+        case 'get': return this.conv(E.call(obj, 'get', [a(0)], 'Object'), rt);
+        case 'set': return E.call(obj, 'set', [a(0), a(1)], obj.t);
+        case 'has': return E.call(obj, 'has', [a(0)], 'boolean');
+        case 'delete': return E.call(obj, 'delete', [a(0)], 'boolean');
+        case 'add': return E.call(obj, 'add', [a(0)], obj.t);
+        case 'clear': return E.call(obj, 'clear', [], 'void');
+        case 'keys': return E.call(obj, 'keys', [], 'JsArray<Object>');
+        case 'values': return E.call(obj, 'values', [], 'JsArray<Object>');
+        case 'entries': return E.call(obj, 'entries', [], 'JsArray<Object>');
+        case 'forEach': return E.call(obj, 'forEach', [this.valueOf(args[0], 'JsFn')], 'void');
+      }
+      throw new LoweringError(`${obj.t}.${name}`);
+    }
+
+    // ------------------------------------------------------------------ arrays (IL nodes and methods)
+
+    arrayMethod(arr, name, args, node) {
+      const et = T.elemOf(arr.t);
+      const a = (i, t) => this.valueOf(args[i], t);
+      const rt = this.callResultJt(node);
+      switch (name) {
+        case 'push': return this.push(arr, args);
+        case 'pop': return E.call(arr, 'pop', [], et);
+        case 'shift': return E.call(arr, 'shift', [], et);
+        case 'unshift': return args.length === 1 && args[0].type !== 'SpreadElement' ? E.call(arr, 'unshift', [this.elemValue(arr, this.lowerExpr(args[0]))], 'int') : E.call(arr, 'unshiftAll', [this.spreadArray(arr, args)], 'int');
+        case 'slice': return E.call(arr, 'slice', args.map((x, i) => a(i, 'double')), arr.t);
+        case 'subarray': return E.call(arr, 'subarray', args.map((x, i) => a(i, 'double')), arr.t);
+        case 'concat': return E.call(arr, 'concat', args.map(x => this.conv(this.lowerExpr(x), 'Object')), arr.t);
+        case 'splice': return this.splice(arr, args[0], args[1], args.slice(2));
+        case 'indexOf': return E.call(arr, 'indexOf', [this.elemValue(arr, this.lowerExpr(args[0])), ...(args[1] ? [a(1, 'double')] : [])], 'int');
+        case 'lastIndexOf': return E.call(arr, 'lastIndexOf', [this.elemValue(arr, this.lowerExpr(args[0]))], 'int');
+        case 'includes': return E.call(arr, 'includes', [this.elemValue(arr, this.lowerExpr(args[0]))], 'boolean');
+        case 'fill': return E.call(arr, 'fill', [this.elemValue(arr, this.lowerExpr(args[0])), ...args.slice(1).map((x, i) => a(i + 1, 'double'))], arr.t);
+        case 'reverse': return E.call(arr, 'reverse', [], arr.t);
+        case 'sort': return E.call(arr, 'sort', args.length ? [a(0, 'JsFn')] : [], arr.t);
+        case 'join': return E.call(arr, 'join', args.length ? [this.toStr(this.lowerExpr(args[0]))] : [], 'String');
+        case 'toString': return E.call(arr, 'join', [], 'String');
+        case 'set': return E.call(arr, 'set', [this.conv(this.lowerExpr(args[0]), 'Object'), ...(args[1] ? [a(1, 'double')] : [])], 'void');
+        case 'map': return this.conv(E.call(arr, 'mapToObjects', [a(0, 'JsFn')], 'JsArray<Object>'), T.isArray(rt) ? rt : arr.t);
+        case 'filter': return E.call(arr, 'filter', [a(0, 'JsFn')], arr.t);
+        case 'forEach': return E.call(arr, 'forEach', [a(0, 'JsFn')], 'void');
+        case 'some': case 'every': return E.call(arr, name, [a(0, 'JsFn')], 'boolean');
+        case 'find': return this.conv(E.call(arr, 'find', [a(0, 'JsFn')], 'Object'), rt === 'void' ? 'Object' : rt);
+        case 'findIndex': return E.call(arr, 'findIndex', [a(0, 'JsFn')], 'int');
+        case 'reduce': return this.conv(E.call(arr, 'reduce', args.length > 1 ? [a(0, 'JsFn'), this.conv(this.lowerExpr(args[1]), 'Object')] : [a(0, 'JsFn')], 'Object'), rt === 'void' ? 'Object' : rt);
+        case 'copyWithin': return E.call(arr, 'copyWithin', args.map((x, i) => a(i, 'double')), arr.t);
+        case 'at': return E.call(arr, 'get', [E.scall('Js', 'atIndex', [a(0, 'double'), E.call(arr, 'length', [], 'int')], 'int')], et);
+        case 'keys': return E.scall('Js', 'indexKeysAsNumbers', [arr], 'JsArray<Object>');
+      }
+      return this.dynamicCall(arr, name, args, node);
+    }
+
+    /** A value converted to an array's element type (typed-array store semantics). */
+    elemValue(arr, value) {
+      const et = T.elemOf(arr.t);
+      const vu = T.unbox(value.t);
+      if (et === 'int' && vu === 'double') return E.scall('Js', 'toInt32', [this.conv(value, 'double')], 'int');
+      if (et === 'int' && vu === 'long') return E.cast(this.conv(value, 'long'), 'int');
+      return this.conv(value, et);
+    }
+
+    push(arr, args) {
+      const vals = args.length ? args : [];
+      if (vals.length === 1 && vals[0].type === 'SpreadElement') return E.call(arr, 'pushAll', [this.conv(this.spreadSource(vals[0].argument), 'Object')], 'int');
+      if (vals.some(v => v.type === 'SpreadElement')) return E.call(arr, 'pushAll', [this.spreadArray(arr, vals)], 'int');
+      if (vals.length === 0) return E.call(arr, 'length', [], 'int');
+      if (vals.length <= 4 || T.isJsArray(arr.t)) return E.call(arr, 'push', vals.map(v => this.elemValue(arr, this.lowerExpr(v, T.elemOf(arr.t)))), 'int');
+      return E.call(arr, 'pushAll', [E.scall(arr.t, 'of', vals.map(v => this.elemValue(arr, this.lowerExpr(v))), arr.t)], 'int');
+    }
+
+    spreadSource(node) {
+      const e = this.lowerExpr(node);
+      if (e.t === 'String' || e.t === 'JsSet' || e.t === 'JsMap') return E.scall('Js', 'spread', [this.conv(e, 'Object')], 'JsArrayLike');
+      return e;
+    }
+
+    /** Elements and spreads as one array of the target's class. */
+    spreadArray(arr, vals) {
+      const items = vals.map(v => v.type === 'SpreadElement' ? E.scall('Js', 'spreadOf', [this.conv(this.lowerExpr(v.argument), 'Object')], 'Object') : this.conv(this.elemValue(arr, this.lowerExpr(v)), 'Object'));
+      return E.scall('Js', 'build', [E.nw(arr.t, []), ...items], arr.t);
+    }
+
+    splice(arr, start, del, items) {
+      const args = [this.valueOf(start, 'double')];
+      if (del) args.push(this.valueOf(del, 'double'));
+      else if (items.length) args.push(E.dbl(0));
+      if (items.some(it => it.type === 'SpreadElement')) {
+        // spread items: one array passed as the varargs
+        const parts = items.map(it => it.type === 'SpreadElement' ? E.scall('Js', 'spreadOf', [this.conv(this.lowerExpr(it.argument), 'Object')], 'Object') : this.conv(this.elemValue(arr, this.lowerExpr(it)), 'Object'));
+        args.push(Object.assign(E.scall('Js', 'spreadArgs', parts, 'Object[]'), { varargsArray: true }));
+      } else for (const it of items) args.push(this.conv(this.elemValue(arr, this.lowerExpr(it)), 'Object'));
+      return E.call(arr, 'splice', args, arr.t);
+    }
+
+    arrayOf(node, key = 'array') { return this.lowerExpr(node[key]); }
+
+    x_ArrayLength(node) {
+      const arr = this.lowerExpr(node.array);
+      if (T.isArray(arr.t) || arr.t === 'String' || arr.t === 'JsArrayLike') return E.call(arr, 'length', [], 'int');
+      return E.scall('Js', 'length', [this.conv(arr, 'Object')], 'int');
+    }
+    x_StringLength(node) { return E.call(this.valueOf(node.string || node.value, 'String'), 'length', [], 'int'); }
+
+    x_ArrayAppend(node) {
+      const arr = this.arrayOf(node);
+      const vals = node.values && node.values.length ? node.values : [node.value];
+      if (!T.isArray(arr.t)) return E.scall('Js', 'invoke', [this.conv(arr, 'Object'), E.str('push'), ...this.boxArgs(vals)], 'Object');
+      return this.push(arr, vals);
+    }
+    x_ArrayPop(node) { const arr = this.arrayOf(node); return this.arrayMethod(arr, 'pop', [], node); }
+    x_ArrayShift(node) { const arr = this.arrayOf(node); return this.arrayMethod(arr, 'shift', [], node); }
+    x_ArrayUnshift(node) { const arr = this.arrayOf(node); return this.arrayMethod(arr, 'unshift', node.values || (node.value ? [node.value] : []), node); }
+    x_ArraySlice(node) {
+      const arr = this.arrayOf(node);
+      const args = [];
+      if (node.start) args.push(this.valueOf(node.start, 'double'));
+      if (node.end) { if (!node.start) args.push(E.dbl(0)); args.push(this.valueOf(node.end, 'double')); }
+      if (arr.t === 'String') return E.scall('Js', 'slice', [arr, ...(args.length ? args : [E.dbl(0)])], 'String');
+      if (!T.isArray(arr.t)) return this.conv(E.scall('Js', 'invoke', [this.conv(arr, 'Object'), E.str('slice'), ...args.map(x => this.conv(x, 'Object'))], 'Object'), this.nodeJt(node));
+      return E.call(arr, 'slice', args, arr.t);
+    }
+    x_TypedArraySubarray(node) {
+      const arr = this.arrayOf(node);
+      const args = [];
+      if (node.begin) args.push(this.valueOf(node.begin, 'double'));
+      if (node.end) { if (!node.begin) args.push(E.dbl(0)); args.push(this.valueOf(node.end, 'double')); }
+      return E.call(arr, 'subarray', args, arr.t);
+    }
+    x_TypedArraySet(node) {
+      const arr = this.arrayOf(node);
+      return E.call(arr, 'set', [this.conv(this.lowerExpr(node.source), 'Object'), ...(node.offset ? [this.valueOf(node.offset, 'double')] : [])], 'void');
+    }
+    x_ArrayConcat(node) {
+      const arr = this.arrayOf(node);
+      const others = (node.arrays || []).map(a => this.conv(a.type === 'SpreadElement' ? this.lowerExpr(a.argument) : this.lowerExpr(a), 'Object'));
+      if (arr.t === 'String') return E.scall('Js', 'concat', [arr, ...others], 'String');
+      if (!T.isArray(arr.t)) return this.conv(E.scall('Js', 'invoke', [this.conv(arr, 'Object'), E.str('concat'), ...others], 'Object'), this.nodeJt(node));
+      return E.call(arr, 'concat', others, arr.t);
+    }
+    x_ArrayReverse(node) { const arr = this.arrayOf(node); return E.call(arr, 'reverse', [], arr.t); }
+    x_ArrayFill(node) {
+      const arr = this.arrayOf(node);
+      const args = [this.elemValue(arr, this.lowerExpr(node.value, T.elemOf(arr.t)))];
+      if (node.start !== undefined && node.start !== null) args.push(this.valueOf(node.start, 'double'));
+      if (node.end !== undefined && node.end !== null) args.push(this.valueOf(node.end, 'double'));
+      return E.call(arr, 'fill', args, arr.t);
+    }
+    x_ArrayClear(node) { return E.scall('OpCodes', 'ClearArray', [this.conv(this.lowerExpr(node.array || (node.arguments && node.arguments[0])), 'Object')], 'void'); }
+    x_ArrayIndexOf(node) {
+      const arr = this.arrayOf(node);
+      if (arr.t === 'String') return E.scall('Js', 'indexOf', [arr, this.toStr(this.lowerExpr(node.value)), ...(node.fromIndex ? [this.valueOf(node.fromIndex, 'double')] : [])], 'int');
+      if (!T.isArray(arr.t)) return E.scall('Js', 'indexOfDyn', [this.conv(arr, 'Object'), this.conv(this.lowerExpr(node.value), 'Object')], 'int');
+      return E.call(arr, 'indexOf', [this.elemValue(arr, this.lowerExpr(node.value)), ...(node.fromIndex ? [this.valueOf(node.fromIndex, 'double')] : [])], 'int');
+    }
+    x_ArrayLastIndexOf(node) { const arr = this.arrayOf(node); return E.call(arr, 'lastIndexOf', [this.elemValue(arr, this.lowerExpr(node.value))], 'int'); }
+    x_ArrayIncludes(node) {
+      const arr = this.arrayOf(node);
+      if (arr.t === 'String') return E.call(arr, 'contains', [this.toStr(this.lowerExpr(node.value))], 'boolean');
+      if (!T.isArray(arr.t)) return E.scall('Js', 'includesDyn', [this.conv(arr, 'Object'), this.conv(this.lowerExpr(node.value), 'Object')], 'boolean');
+      const v = this.lowerExpr(node.value);
+      if (T.isPrimArray(arr.t) && !T.isNumeric(T.unbox(v.t)) && v.t !== 'boolean') return E.bin('>=', E.call(arr, 'indexOfBoxed', [this.conv(v, 'Object')], 'int'), E.int(0), 'boolean');
+      return E.call(arr, 'includes', [this.elemValue(arr, v)], 'boolean');
+    }
+    x_ArraySplice(node) { const arr = this.arrayOf(node); return this.splice(arr, node.start, node.deleteCount, node.items || []); }
+    x_ArrayJoin(node) { const arr = this.arrayOf(node); return E.call(this.conv(arr, T.isArray(arr.t) ? arr.t : 'JsArrayLike'), 'join', node.separator ? [this.toStr(this.lowerExpr(node.separator))] : [], 'String'); }
+    x_ArraySort(node) { const arr = this.arrayOf(node); return E.call(arr, 'sort', node.compareFn ? [this.valueOf(node.compareFn, 'JsFn')] : [], arr.t); }
+    x_ArrayMap(node) { const arr = this.arrayOf(node); return this.arrayMethod(arr, 'map', [node.callback], node); }
+    x_ArrayForEach(node) { const arr = this.arrayOf(node); return this.arrayMethod(arr, 'forEach', [node.callback], node); }
+    x_ArrayFilter(node) { const arr = this.arrayOf(node); return this.arrayMethod(arr, 'filter', [node.callback], node); }
+    x_ArraySome(node) { const arr = this.arrayOf(node); return this.arrayMethod(arr, 'some', [node.callback], node); }
+    x_ArrayEvery(node) { const arr = this.arrayOf(node); return this.arrayMethod(arr, 'every', [node.callback], node); }
+    x_ArrayFind(node) { const arr = this.arrayOf(node); return this.arrayMethod(arr, 'find', [node.callback], node); }
+    x_ArrayFindIndex(node) { const arr = this.arrayOf(node); return this.arrayMethod(arr, 'findIndex', [node.callback], node); }
+    x_ArrayReduce(node) { const arr = this.arrayOf(node); return this.arrayMethod(arr, 'reduce', node.initialValue ? [node.callback, node.initialValue] : [node.callback], node); }
+    x_ArrayXor(node) {
+      return E.scall('OpCodes', 'XorArrays', [this.conv(this.lowerExpr(node.array1 || node.arguments[0]), 'Object'), this.conv(this.lowerExpr(node.array2 || node.arguments[1]), 'Object')], 'U8Array');
+    }
+    x_IsArrayCheck(node) { return E.scall('Js', 'isArray', [this.conv(this.lowerExpr(node.value || node.argument || node.arguments[0]), 'Object')], 'boolean'); }
+
+    // ------------------------------------------------------------------ strings
+
+    stringMethod(s, name, args, node) {
+      const a = (i, t) => this.valueOf(args[i], t);
+      const sv = (i) => this.toStr(this.lowerExpr(args[i]));
+      switch (name) {
+        case 'charCodeAt': return this.charCodeAt(s, args[0] ? a(0, 'double') : E.dbl(0), node);
+        case 'charAt': return E.scall('Js', 'charAt', [s, args[0] ? a(0, 'double') : E.dbl(0)], 'String');
+        case 'codePointAt': return E.scall('Js', 'codePointAt', [s, a(0, 'long')], 'int');
+        case 'indexOf': return E.scall('Js', 'indexOf', [s, sv(0), ...(args[1] ? [a(1, 'double')] : [])], 'int');
+        case 'lastIndexOf': return E.scall('Js', 'lastIndexOf', [s, sv(0)], 'int');
+        case 'includes': return E.call(s, 'contains', [sv(0)], 'boolean');
+        case 'startsWith': return E.call(s, 'startsWith', [sv(0)], 'boolean');
+        case 'endsWith': return E.call(s, 'endsWith', [sv(0)], 'boolean');
+        case 'substring': return E.scall('Js', 'substring', [s, ...args.map((x, i) => a(i, 'double'))], 'String');
+        case 'substr': return E.scall('Js', 'substr', [s, ...args.map((x, i) => a(i, 'double'))], 'String');
+        case 'slice': return E.scall('Js', 'slice', [s, ...(args.length ? args.map((x, i) => a(i, 'double')) : [E.dbl(0)])], 'String');
+        case 'split': {
+          if (!args.length) return E.scall('Js', 'split', [s], 'JsArray<String>');
+          const sep = this.lowerExpr(args[0]);
+          return E.scall('Js', 'split', [s, sep.t === 'JsRegExp' ? sep : this.toStr(sep), ...(args[1] ? [a(1, 'double')] : [])], 'JsArray<String>');
+        }
+        case 'toUpperCase': case 'toLowerCase': case 'trim': case 'trimStart': case 'trimEnd': return E.scall('Js', name, [s], 'String');
+        case 'repeat': return E.scall('Js', 'repeat', [s, a(0, 'double')], 'String');
+        case 'padStart': case 'padEnd': return E.scall('Js', name, [s, a(0, 'double'), ...(args[1] ? [sv(1)] : [])], 'String');
+        case 'replace': case 'replaceAll': {
+          const pat = this.lowerExpr(args[0]);
+          const rep = this.lowerExpr(args[1]);
+          return E.scall('Js', name, [s, pat.t === 'JsRegExp' ? pat : this.toStr(pat), rep.t === 'JsFn' ? rep : this.toStr(rep)], 'String');
+        }
+        case 'concat': return E.scall('Js', 'concat', [s, ...args.map(x => this.conv(this.lowerExpr(x), 'Object'))], 'String');
+        case 'toString': case 'valueOf': return s;
+        case 'match': return E.call(this.lowerExpr(args[0]), 'match', [s], 'JsArray<String>');
+        case 'normalize': return s;
+        case 'localeCompare': return E.call(s, 'compareTo', [sv(0)], 'int');
+        case 'at': return E.scall('Js', 'charAt', [s, E.cast(E.scall('Js', 'atIndex', [a(0, 'double'), E.call(s, 'length', [], 'int')], 'int'), 'double')], 'String');
+      }
+      return this.dynamicCall(s, name, args, node);
+    }
+
+    /**
+     * A method the receiver's JVM type does not have: called reflectively. Code
+     * the IL types one way and JavaScript narrows another (a typeof branch)
+     * still compiles; a call that runs reaches the method by name.
+     */
+    dynamicCall(obj, name, args, node) {
+      const call = E.scall('Js', 'invoke', [this.conv(obj, 'Object'), E.str(name), ...this.boxArgs(args)], 'Object');
+      const rt = this.callResultJt(node);
+      return rt === 'void' ? call : this.conv(call, rt);
+    }
+
+    charCodeAt(s, idx, node) {
+      // NaN out of range; the IL types it as an integer where the code relies on an in-range index
+      const t = this.nodeJt(node);
+      if (T.isIntegral(t)) return this.conv(E.scall('Js', 'charCodeAtInt', [s, this.conv(idx, 'long')], 'int'), t);
+      return E.scall('Js', 'charCodeAt', [s, idx], 'double');
+    }
+
+    x_StringCharCodeAt(node) {
+      const s = this.valueOf(node.string || node.value, 'String');
+      return this.charCodeAt(s, node.index ? this.valueOf(node.index, 'double') : E.dbl(0), node);
+    }
+    x_StringCharAt(node) { return E.scall('Js', 'charAt', [this.valueOf(node.string || node.value, 'String'), this.valueOf(node.index, 'double')], 'String'); }
+    x_StringTransform(node) {
+      const s = this.valueOf(node.string || node.value, 'String');
+      return this.stringMethod(s, node.method || 'toString', node.arguments || [], node);
+    }
+    x_StringToUpperCase(node) { return E.scall('Js', 'toUpperCase', [this.valueOf(node.string || node.value, 'String')], 'String'); }
+    x_StringToLowerCase(node) { return E.scall('Js', 'toLowerCase', [this.valueOf(node.string || node.value, 'String')], 'String'); }
+    x_StringTrim(node) { return E.scall('Js', 'trim', [this.valueOf(node.string || node.value, 'String')], 'String'); }
+    x_StringSubstring(node) {
+      const s = this.valueOf(node.string || node.value, 'String');
+      const start = node.start ? this.valueOf(node.start, 'double') : E.dbl(0);
+      if (node.length) return E.scall('Js', 'substr', [s, start, this.valueOf(node.length, 'double')], 'String');
+      return E.scall('Js', 'slice', node.end ? [s, start, this.valueOf(node.end, 'double')] : [s, start], 'String');
+    }
+    x_StringSlice(node) {
+      const s = this.valueOf(node.string || node.value, 'String');
+      return E.scall('Js', 'slice', [s, node.start ? this.valueOf(node.start, 'double') : E.dbl(0), ...(node.end ? [this.valueOf(node.end, 'double')] : [])], 'String');
+    }
+    x_StringIndexOf(node) {
+      const s = this.valueOf(node.string || node.value, 'String');
+      const search = this.toStr(this.lowerExpr(node.searchValue));
+      if (node.method === 'lastIndexOf') return E.scall('Js', 'lastIndexOf', [s, search], 'int');
+      return E.scall('Js', 'indexOf', [s, search, ...(node.fromIndex ? [this.valueOf(node.fromIndex, 'double')] : [])], 'int');
+    }
+    x_StringSplit(node) {
+      const s = this.valueOf(node.string || node.value, 'String');
+      if (!node.separator) return E.scall('Js', 'split', [s], 'JsArray<String>');
+      const sep = this.lowerExpr(node.separator);
+      return E.scall('Js', 'split', [s, sep.t === 'JsRegExp' ? sep : this.toStr(sep), ...(node.limit ? [this.valueOf(node.limit, 'double')] : [])], 'JsArray<String>');
+    }
+    x_StringRepeat(node) { return E.scall('Js', 'repeat', [this.valueOf(node.string || node.value, 'String'), this.valueOf(node.count, 'double')], 'String'); }
+    x_StringReplace(node) {
+      const s = this.valueOf(node.string || node.value, 'String');
+      const pat = this.lowerExpr(node.searchValue || node.search);
+      const rep = this.lowerExpr(node.replaceValue || node.replacement);
+      return E.scall('Js', node.method === 'replaceAll' ? 'replaceAll' : 'replace', [s, pat.t === 'JsRegExp' ? pat : this.toStr(pat), rep.t === 'JsFn' ? rep : this.toStr(rep)], 'String');
+    }
+    x_StringIncludes(node) {
+      const s = this.valueOf(node.string || node.value, 'String');
+      const v = this.toStr(this.lowerExpr(node.searchValue || node.search));
+      const m = node.method === 'startsWith' || node.method === 'endsWith' ? node.method : 'contains';
+      return E.call(s, m, [v], 'boolean');
+    }
+    x_StringStartsWith(node) { return E.call(this.valueOf(node.string || node.value, 'String'), 'startsWith', [this.toStr(this.lowerExpr(node.prefix || node.search))], 'boolean'); }
+    x_StringEndsWith(node) { return E.call(this.valueOf(node.string || node.value, 'String'), 'endsWith', [this.toStr(this.lowerExpr(node.suffix || node.search))], 'boolean'); }
+    x_StringPad(node) {
+      const s = this.valueOf(node.string || node.value, 'String');
+      return E.scall('Js', node.method === 'padEnd' ? 'padEnd' : 'padStart', [s, this.valueOf(node.targetLength, 'double'), ...(node.padString ? [this.toStr(this.lowerExpr(node.padString))] : [])], 'String');
+    }
+    x_StringPadStart(node) { return E.scall('Js', 'padStart', [this.valueOf(node.string || node.value, 'String'), this.valueOf(node.length, 'double'), ...(node.fill ? [this.toStr(this.lowerExpr(node.fill))] : [])], 'String'); }
+    x_StringPadEnd(node) { return E.scall('Js', 'padEnd', [this.valueOf(node.string || node.value, 'String'), this.valueOf(node.length, 'double'), ...(node.fill ? [this.toStr(this.lowerExpr(node.fill))] : [])], 'String'); }
+    x_StringConcat(node) { return E.scall('Js', 'concat', [this.valueOf(node.string || node.value, 'String'), ...(node.values || node.arguments || []).map(v => this.conv(this.lowerExpr(v), 'Object'))], 'String'); }
+    x_StringFromCharCodes(node) { return this.fromCharCodes(node.charCodes || node.arguments || []); }
+    x_StringFromCodePoints(node) { return E.scall('Js', 'fromCodePoint', (node.codePoints || node.arguments || []).map(a => this.valueOf(a, 'double')), 'String'); }
+    x_StringToBytes(node) {
+      const s = this.valueOf(node.arguments && node.arguments[0] ? node.arguments[0] : node.value, 'String');
+      return E.scall('Js', node.encoding === 'utf8' ? 'utf8ToBytes' : 'charsToBytes', [s], 'U8Array');
+    }
+    x_BytesToString(node) {
+      const b = this.conv(this.lowerExpr(node.arguments && node.arguments[0] ? node.arguments[0] : node.value), 'Object');
+      return E.scall('Js', node.encoding === 'utf8' ? 'bytesToUtf8' : 'bytesToChars', [b], 'String');
+    }
+    x_HexDecode(node) { return E.scall('OpCodes', 'Hex8ToBytes', [this.valueOf(node.arguments && node.arguments[0] ? node.arguments[0] : node.value, 'String')], 'U8Array'); }
+    x_HexEncode(node) { return E.scall('OpCodes', 'BytesToHex', [this.conv(this.lowerExpr(node.arguments && node.arguments[0] ? node.arguments[0] : node.value), 'Object')], 'String'); }
+
+    // ------------------------------------------------------------------ numbers and OpCodes
+
+    x_Cast(node) {
+      const target = ilNorm(node.targetType || node.toType || 'number');
+      const arg = node.arguments ? node.arguments[0] : (node.expression || node.value);
+      const v = this.lowerExpr(arg);
+      switch (target) {
+        case 'uint8': return E.bin('&', this.toInt32(v), E.int(0xFF), 'int');
+        case 'uint16': return E.bin('&', this.toInt32(v), E.int(0xFFFF), 'int');
+        case 'uint32': return this.u32(this.toInt32(v));
+        case 'int32': return this.toInt32(v);
+        case 'int8': return E.bin('>>', E.bin('<<', this.toInt32(v), E.int(24), 'int'), E.int(24), 'int');
+        case 'int16': return E.bin('>>', E.bin('<<', this.toInt32(v), E.int(16), 'int'), E.int(16), 'int');
+        case 'uint64': return E.call(this.toBigInt(v), 'and', [E.sfield('Js', 'MASK64', 'BigInteger')], 'BigInteger');
+        default: return v;
+      }
+    }
+
+    toBigInt(v) {
+      if (v.t === 'BigInteger') return v;
+      const u = T.unbox(v.t);
+      if (u === 'int' || u === 'long') return E.scall('BigInteger', 'valueOf', [this.conv(v, 'long')], 'BigInteger');
+      if (u === 'double') return E.scall('Js', 'big', [this.conv(v, 'double')], 'BigInteger');
+      if (v.t === 'String') return E.scall('Js', 'bigOf', [v], 'BigInteger');
+      if (u === 'boolean') return E.scall('Js', 'big', [this.conv(v, 'boolean')], 'BigInteger');
+      return E.scall('Js', 'toBig', [this.conv(v, 'Object')], 'BigInteger');
+    }
+
+    x_BigIntCast(node) { return this.toBigInt(this.lowerExpr(node.argument || node.value)); }
+
+    x_PackBytes(node) {
+      const bits = node.bits || 32;
+      const name = (bits === 16 ? 'Pack16' : bits === 64 ? 'Pack64' : 'Pack32') + (node.endian === 'big' || node.bigEndian ? 'BE' : 'LE');
+      const args = node.arguments || [];
+      const ret = OPCODES[name][1];
+      if (args.length === 1 && args[0].type === 'SpreadElement') return E.scall('OpCodes', name + 'Of', [this.conv(this.lowerExpr(args[0].argument), 'Object')], ret);
+      if (args.some(a => a.type === 'SpreadElement')) {
+        return E.scall('OpCodes', name + 'Of', [E.scall('Js', 'build', [E.nw('JsArray<Object>', []), ...args.map(a => a.type === 'SpreadElement' ? E.scall('Js', 'spreadOf', [this.conv(this.lowerExpr(a.argument), 'Object')], 'Object') : this.conv(this.lowerExpr(a), 'Object'))], 'JsArray<Object>')], ret);
+      }
+      return E.scall('OpCodes', name, args.map(a => this.toInt32(this.lowerExpr(a))), ret);
+    }
+
+    x_UnpackBytes(node) {
+      const bits = node.bits || 32;
+      const name = (bits === 16 ? 'Unpack16' : bits === 64 ? 'Unpack64' : 'Unpack32') + (node.endian === 'big' || node.bigEndian ? 'BE' : 'LE');
+      const v = this.lowerExpr(node.arguments ? node.arguments[0] : node.value);
+      if (bits === 64) return E.scall('OpCodes', name, [this.conv(v, 'Object')], 'U8Array');
+      return E.scall('OpCodes', name, [E.cast(this.toInt32(v), 'long')], 'U8Array');
+    }
+
+    rotate(node, dir) {
+      const bits = node.bits || 32;
+      const v = this.lowerExpr(node.value || node.arguments[0]);
+      const n = this.lowerExpr(node.amount || node.arguments[1]);
+      if (bits === 64) return E.scall('OpCodes', dir === 'left' ? 'RotL64n' : 'RotR64n', [this.toBigInt(v), this.conv(n, 'long')], 'BigInteger');
+      const name = `Rot${dir === 'left' ? 'L' : 'R'}${bits}`;
+      const sig = OPCODES[name];
+      if (!sig) throw new LoweringError(`${bits}-bit rotation`);
+      return E.scall('OpCodes', name, [E.cast(this.toInt32(v), 'long'), E.cast(this.toInt32(n), 'long')], sig[1]);
+    }
+    x_RotateLeft(node) { return this.rotate(node, 'left'); }
+    x_RotateRight(node) { return this.rotate(node, 'right'); }
+    x_Rotation(node) { return this.rotate(node, node.direction || 'left'); }
+
+    x_OpCodesCall(node) { return this.opCodesCall(node.method, node.arguments || [], node); }
+
+    opCodesCall(name, args, node) {
+      const sig = OPCODES[name];
+      if (!sig) throw new LoweringError(`OpCodes.${name} has no JVM runtime`);
+      const [ptypes, ret, min] = sig;
+      const out = [];
+      let retT = ret;
+      for (let i = 0; i < ptypes.length; ++i) {
+        if (i >= args.length) { if (i < (min === undefined ? ptypes.length : min)) out.push(this.undefinedOf(ptypes[i])); continue; }
+        const v = this.lowerExpr(args[i]);
+        if (ptypes[i] === '*') { out.push(v); if (ret === 'same') retT = v.t; continue; }
+        if (ptypes[i] === 'long' && T.unbox(v.t) === 'double') out.push(E.cast(this.toInt32(v), 'long'));
+        else out.push(this.conv(v, ptypes[i]));
+      }
+      if (retT === 'same') retT = 'Object';
+      return E.scall('OpCodes', name, out, retT);
+    }
+
+    x_MathCall(node) {
+      const m = node.method;
+      return this.globalMethodCall('Math', m, node.arguments || [], node) || (() => { throw new LoweringError('Math.' + m); })();
+    }
+    mathOne(node, fn, owner = 'Math') { return E.scall(owner, fn, [this.valueOf(node.argument !== undefined ? node.argument : (node.arguments ? node.arguments[0] : node.value), 'double')], 'double'); }
+    x_Floor(node) { return this.mathOne(node, 'floor'); }
+    x_Ceil(node) { return this.mathOne(node, 'ceil'); }
+    x_Round(node) { return this.mathOne(node, 'round', 'Js'); }
+    x_Truncate(node) { return this.mathOne(node, 'trunc', 'Js'); }
+    x_Trunc(node) { return this.mathOne(node, 'trunc', 'Js'); }
+    x_Sqrt(node) { return this.mathOne(node, 'sqrt'); }
+    x_Log(node) { return this.mathOne(node, 'log'); }
+    x_Log2(node) { return this.mathOne(node, 'log2', 'Js'); }
+    x_Log10(node) { return this.mathOne(node, 'log10'); }
+    x_Exp(node) { return this.mathOne(node, 'exp'); }
+    x_Sin(node) { return this.mathOne(node, 'sin'); }
+    x_Cos(node) { return this.mathOne(node, 'cos'); }
+    x_Tan(node) { return this.mathOne(node, 'tan'); }
+    x_Asin(node) { return this.mathOne(node, 'asin'); }
+    x_Acos(node) { return this.mathOne(node, 'acos'); }
+    x_Atan(node) { return this.mathOne(node, 'atan'); }
+    x_Sinh(node) { return this.mathOne(node, 'sinh'); }
+    x_Cosh(node) { return this.mathOne(node, 'cosh'); }
+    x_Tanh(node) { return this.mathOne(node, 'tanh'); }
+    x_Cbrt(node) { return this.mathOne(node, 'cbrt'); }
+    x_Sign(node) { return this.mathOne(node, 'sign', 'Js'); }
+    x_Fround(node) { return this.mathOne(node, 'fround', 'Js'); }
+    x_Atan2(node) { return E.scall('Math', 'atan2', [this.valueOf(node.y || node.arguments[0], 'double'), this.valueOf(node.x || node.arguments[1], 'double')], 'double'); }
+    x_Hypot(node) { return E.scall('Js', 'hypot', (node.arguments || []).map(a => this.valueOf(a, 'double')), 'double'); }
+    x_Abs(node) {
+      const v = this.lowerExpr(node.argument !== undefined ? node.argument : (node.arguments ? node.arguments[0] : node.value));
+      if (v.t === 'BigInteger') return E.call(v, 'abs', [], 'BigInteger');
+      const u = T.unbox(v.t);
+      if (u === 'long') return E.scall('Math', 'abs', [this.conv(v, 'long')], 'long');
+      if (u === 'int') return E.scall('Math', 'abs', [this.conv(v, 'long')], 'long');
+      return E.scall('Math', 'abs', [this.conv(v, 'double')], 'double');
+    }
+    x_Min(node) { return this.minMax('min', node.arguments || [], node); }
+    x_Max(node) { return this.minMax('max', node.arguments || [], node); }
+    x_Power(node) {
+      const b = this.lowerExpr(node.base || node.arguments[0]), e = this.lowerExpr(node.exponent || node.arguments[1]);
+      if (b.t === 'BigInteger' || e.t === 'BigInteger') return E.scall('Js', 'pow', [this.toBigInt(b), this.toBigInt(e)], 'BigInteger');
+      return E.scall('Js', 'pow', [this.conv(b, 'double'), this.conv(e, 'double')], 'double');
+    }
+    x_Random() { return E.scall('Js', 'random', [], 'double'); }
+    x_CountLeadingZeros(node) { return E.scall('Integer', 'numberOfLeadingZeros', [this.toInt32(this.lowerExpr(node.argument))], 'int'); }
+    x_MathConstant(node) {
+      const v = { PI: Math.PI, E: Math.E, LN2: Math.LN2, LN10: Math.LN10, LOG2E: Math.LOG2E, LOG10E: Math.LOG10E, SQRT2: Math.SQRT2, SQRT1_2: Math.SQRT1_2 }[node.name];
+      return E.dbl(v === undefined ? NaN : v);
+    }
+    x_NumberConstant(node) {
+      const v = { MAX_SAFE_INTEGER: 9007199254740991, MIN_SAFE_INTEGER: -9007199254740991, EPSILON: Number.EPSILON, MAX_VALUE: Number.MAX_VALUE, MIN_VALUE: Number.MIN_VALUE, POSITIVE_INFINITY: Infinity, NEGATIVE_INFINITY: -Infinity, NaN: NaN }[node.name];
+      return E.dbl(v === undefined ? NaN : v);
+    }
+    x_IsIntegerCheck(node) { return E.scall('Js', 'isInteger', [this.conv(this.lowerExpr(node.value || node.argument || node.arguments[0]), 'Object')], 'boolean'); }
+    x_IsNaNCheck(node) { return E.scall('Js', 'isNaN', [this.conv(this.lowerExpr(node.value || node.argument || node.arguments[0]), 'Object')], 'boolean'); }
+    x_IsFiniteCheck(node) { return E.scall('Js', 'isFinite', [this.conv(this.lowerExpr(node.value || node.argument || node.arguments[0]), 'Object')], 'boolean'); }
+    x_IsSafeIntegerCheck(node) { return E.scall('Js', 'isSafeInteger', [this.valueOf(node.value || node.argument, 'double')], 'boolean'); }
+    x_ParseInteger(node) {
+      const s = node.string || (node.arguments && node.arguments[0]);
+      const r = node.radix || (node.arguments && node.arguments[1]);
+      return E.scall('Js', 'parseInt', [this.conv(this.lowerExpr(s), 'Object'), r ? this.valueOf(r, 'double') : E.dbl(0)], 'double');
+    }
+    x_ParseFloat(node) { return E.scall('Js', 'parseFloat', [this.conv(this.lowerExpr(node.string || node.arguments[0]), 'Object')], 'double'); }
+    x_BitwiseOperation(node) {
+      const l = this.lowerExpr(node.left || node.arguments[0]), r = this.lowerExpr(node.right || node.arguments[1]);
+      return this.binary(node.operator || '&', l, r, node, l.t === 'BigInteger' || r.t === 'BigInteger');
+    }
+
+    // ------------------------------------------------------------------ objects, errors, misc
+
+    x_ErrorCreation(node) {
+      const msg = node.message ? this.conv(this.lowerExpr(node.message), 'Object') : E.str('');
+      return E.scall('Js', 'error', [E.str(node.errorType || 'Error'), msg], 'JsError');
+    }
+
+    x_NewExpression(node, expect) {
+      const callee = node.callee;
+      const args = node.arguments || [];
+      let name = callee && (callee.name || (callee.type === 'MemberExpression' && !callee.computed && callee.property && (callee.property.name || callee.property.value)));
+
+      const info = this.classInfo(name);
+      if (info && !info.enumLike) {
+        const sigs = this.ctorSignatures(info);
+        return E.nw(info.javaName, this.lowerArgsFor(args, sigs));
+      }
+      switch (name) {
+        case 'Array': {
+          if (args.length === 1) return this.x_ArrayCreation({ size: args[0], resultType: node.resultType, contextType: node.contextType }, expect);
+          return this.arrayLiteral({ elements: args, resultType: node.resultType }, expect);
+        }
+        case 'Map': return E.nw('JsMap', args.length ? [this.conv(this.lowerExpr(args[0]), 'Object')] : []);
+        case 'Set': return E.nw('JsSet', args.length ? [this.conv(this.lowerExpr(args[0]), 'Object')] : []);
+        case 'Object': return E.nw('JsObject', []);
+        case 'Error': case 'TypeError': case 'RangeError': case 'SyntaxError':
+          return E.scall('Js', 'error', [E.str(name), args.length ? this.conv(this.lowerExpr(args[0]), 'Object') : E.str('')], 'JsError');
+        case 'RegExp': return E.nw('JsRegExp', [this.toStr(this.lowerExpr(args[0])), args[1] ? this.toStr(this.lowerExpr(args[1])) : E.str('')]);
+        case 'ArrayBuffer': return E.scall('U8Array', 'typed', [this.valueOf(args[0], 'int')], 'U8Array');
+      }
+      if (T.TYPED_ARRAY_CLASS[name]) return this.x_TypedArrayCreation({ arrayType: name, size: args[0], resultType: node.resultType });
+      // a constructor resolved at run time (a ReferenceError there when not defined)
+      const made = callee && callee.type === 'Identifier' && !callee.__sym
+        ? E.scall('Js', 'construct', [E.str(name), ...this.boxArgs(args)], 'Object')
+        : E.scall('Js', 'constructValue', [this.conv(this.lowerExpr(callee), 'Object'), ...this.boxArgs(args)], 'Object');
+      return this.conv(made, this.dynResultJt(node));
+    }
+
+    x_MapCreation(node) { return E.nw('JsMap', node.entries ? [this.conv(this.lowerExpr(node.entries), 'Object')] : []); }
+    x_SetCreation(node) { return E.nw('JsSet', node.values ? [this.conv(this.lowerExpr(node.values), 'Object')] : []); }
+    x_MapGet(node) { return this.conv(E.call(this.valueOf(node.map, 'JsMap'), 'get', [this.conv(this.lowerExpr(node.key), 'Object')], 'Object'), this.dynResultJt(node)); }
+    x_MapSet(node) { return E.call(this.valueOf(node.map, 'JsMap'), 'set', [this.conv(this.lowerExpr(node.key), 'Object'), this.conv(this.lowerExpr(node.value), 'Object')], 'JsMap'); }
+    x_MapHas(node) { return E.call(this.valueOf(node.map, 'JsMap'), 'has', [this.conv(this.lowerExpr(node.key), 'Object')], 'boolean'); }
+    x_MapDelete(node) { return E.call(this.valueOf(node.map, 'JsMap'), 'delete', [this.conv(this.lowerExpr(node.key), 'Object')], 'boolean'); }
+    x_RegExpCreation(node) { return E.nw('JsRegExp', [this.toStr(this.lowerExpr(node.pattern)), node.flags ? this.toStr(this.lowerExpr(node.flags)) : E.str('')]); }
+
+    x_ObjectKeys(node) { return E.scall('Js', 'keys', [this.conv(this.lowerExpr(node.argument || node.object), 'Object')], 'JsArray<String>'); }
+    x_ObjectValues(node) { return this.conv(E.scall('Js', 'values', [this.conv(this.lowerExpr(node.argument || node.object), 'Object')], 'JsArray<Object>'), this.arrayTypeOrObject(node)); }
+    x_ObjectEntries(node) { return E.scall('Js', 'entries', [this.conv(this.lowerExpr(node.argument || node.object), 'Object')], 'JsArray<Object>'); }
+    x_ObjectFreeze(node) { return this.lowerExpr(node.object || node.value || node.argument || node.arguments[0]); }
+    x_ObjectSeal(node) { return this.lowerExpr(node.object); }
+    x_ObjectMerge(node) { return E.scall('Js', 'assign', [this.conv(this.lowerExpr(node.target), 'Object'), ...(node.sources || []).map(s => this.conv(this.lowerExpr(s), 'Object'))], 'JsObject'); }
+    x_ObjectHasProperty(node) { return E.scall('Js', 'hasOwn', [this.conv(this.lowerExpr(node.object), 'Object'), this.conv(this.lowerExpr(node.property !== undefined ? node.property : node.key), 'Object')], 'boolean'); }
+    x_ObjectFromEntries(node) { return E.scall('Js', 'fromEntries', [this.conv(this.lowerExpr(node.entries || node.value || node.argument || node.arguments[0]), 'Object')], 'JsObject'); }
+    x_ObjectCreate(node) { return E.nw('JsObject', []); }
+    x_ObjectPropertyNames(node) { return E.scall('Js', 'keys', [this.conv(this.lowerExpr(node.object), 'Object')], 'JsArray<String>'); }
+    arrayTypeOrObject(node) { const t = this.nodeJt(node); return T.isArray(t) ? t : 'JsArray<Object>'; }
+
+    x_InstanceOfCheck(node) { return this.instanceOf(this.lowerExpr(node.value), node.className); }
+    x_Instanceof(node) { return this.instanceOf(this.lowerExpr(node.left), node.right); }
+
+    instanceOf(v, clsNode) {
+      const name = clsNode && (clsNode.name || (clsNode.property && clsNode.property.name) || (typeof clsNode === 'string' ? clsNode : null));
+      const obj = this.conv(v, 'Object');
+      if (name === 'Array') return E.scall('Js', 'isArray', [obj], 'boolean');
+      if (T.TYPED_ARRAY_CLASS[name]) return E.scall('Js', 'isTyped', [obj, E.str(name)], 'boolean');
+      if (name === 'Error' || name === 'TypeError' || name === 'RangeError') return E.inst(obj, 'RuntimeException');
+      if (name === 'Map') return E.inst(obj, 'JsMap');
+      if (name === 'Set') return E.inst(obj, 'JsSet');
+      if (name === 'Object') return E.bin('!=', obj, E.nul(), 'boolean');
+      if (name === 'Function') return E.inst(obj, 'JsFn');
+      const info = this.classInfo(name);
+      if (info) return E.inst(obj, info.javaName);
+      throw new LoweringError('instanceof ' + name);
+    }
+
+    x_YieldExpression(node) { return E.scall('Js', 'unsupported', [E.str('yield (generators)')], 'Object'); }
+    x_AwaitExpression(node) { return this.lowerExpr(node.argument); }
+    x_ClassExpression(node) { return E.scall('Js', 'unsupported', [E.str('class expressions')], 'Object'); }
+    x_ChainExpression(node) { return this.lowerExpr(node.expression); }
+
+    x_DebugOutput(node) { return E.scall('Js', 'log', (node.arguments || []).map(a => this.conv(this.lowerExpr(a), 'Object')), 'void'); }
+
+    x_DataViewCreation(node) {
+      const buf = node.buffer ? this.lowerExpr(node.buffer) : E.scall('U8Array', 'typed', [E.int(0)], 'U8Array');
+      return E.nw('JsDataView', [this.conv(buf, 'Object'), ...(node.byteOffset ? [this.valueOf(node.byteOffset, 'int')] : [])], 'JsDataView');
+    }
+    x_DataViewRead(node) {
+      const view = this.valueOf(node.view || node.dataView, 'JsDataView');
+      const m = node.method || 'getUint8';
+      const args = [this.valueOf(node.offset !== undefined ? node.offset : node.arguments[0], 'int')];
+      if (!/8$/.test(m)) args.push(node.littleEndian ? this.truthy(this.lowerExpr(node.littleEndian)) : E.bool(false));
+      const rt = /Big/.test(m) ? 'BigInteger' : /Float/.test(m) ? 'double' : m === 'getUint32' ? 'long' : 'int';
+      return E.call(view, m, args, rt);
+    }
+    x_DataViewWrite(node) {
+      const view = this.valueOf(node.view || node.dataView, 'JsDataView');
+      const m = node.method || 'setUint8';
+      const vt = /Big/.test(m) ? 'BigInteger' : /Float/.test(m) ? 'double' : 'long';
+      const value = this.lowerExpr(node.value !== undefined ? node.value : node.arguments[1]);
+      const args = [this.valueOf(node.offset !== undefined ? node.offset : node.arguments[0], 'int'), vt === 'long' ? E.cast(this.toInt32(value), 'long') : this.conv(value, vt)];
+      if (!/8$/.test(m)) args.push(node.littleEndian ? this.truthy(this.lowerExpr(node.littleEndian)) : E.bool(false));
+      return E.call(view, m, args, 'void');
+    }
+    x_DataViewGetByteLength(node) {
+      const v = this.lowerExpr(node.view);
+      if (v.t === 'JsDataView') return E.call(v, 'byteLength', [], 'int');
+      return this.conv(this.memberGet(v, 'byteLength', node), 'int');
+    }
+    x_DataViewGetBuffer(node) { return E.field(this.valueOf(node.view, 'JsDataView'), 'buffer', 'U8Array'); }
+    x_DataViewGetByteOffset(node) { return E.field(this.valueOf(node.view, 'JsDataView'), 'offset', 'int'); }
+
+    x_JsonSerialize(node) { return E.scall('Js', 'stringify', [this.conv(this.lowerExpr(node.value !== undefined ? node.value : node.arguments[0]), 'Object')], 'String'); }
+
+    // ------------------------------------------------------------------ functions as values
+
+    x_ArrowFunction(node) { return this.lambda(node); }
+    x_ArrowFunctionExpression(node) { return this.lambda(node); }
+    x_FunctionExpression(node) { return this.lambda(node); }
+
+    /** A function expression: a JsFn whose parameters are converted on entry. */
+    lambda(fnNode) {
+      const fi = this.fnInfo(fnNode, '<lambda>');
+      const ret = this.fnRet(fi);
+      const outer = this.fn;
+      this.fnStack = (this.fnStack || []).concat([outer]);
+      const argsName = this.fresh('a');
+      this.fn = { locals: [new Map()], labels: [], isStatic: outer ? outer.isStatic : true, retJt: ret === 'void' ? 'void' : 'Object', cls: outer ? outer.cls : null, used: new Set([argsName]), inner: true, node: fnNode, lambdaRet: ret, holders: outer && outer.holders };
+      const body = [];
+      fi.params.forEach((p, i) => {
+        if (!p.sym) return;
+        const t = this.paramJt(p);
+        const name = this.declareLocal(p.sym, t);
+        const raw = p.rest ? E.scall('Js', 'restArgs', [E.name(argsName, 'Object[]'), E.int(i)], 'JsArray<Object>') : E.scall('Js', 'arg', [E.name(argsName, 'Object[]'), E.int(i)], 'Object');
+        let init = this.conv(raw, t);
+        if (p.def) init = E.cond(E.bin('==', E.scall('Js', 'arg', [E.name(argsName, 'Object[]'), E.int(i)], 'Object'), E.nul(), 'boolean'), this.valueOf(p.def, t), init, t);
+        p.sym.boxed = this.needsBox(p.sym);
+        body.push(S.local(name, t, init, { boxed: p.sym.boxed }));
+      });
+      // returns convert to Object (boxed)
+      this.fn.retJt = ret === 'void' ? 'void' : ret;
+      let stmts;
+      if (fnNode.body && fnNode.body.type === 'BlockStatement') stmts = this.lowerStmts(fnNode.body.body || []);
+      else if (fnNode.body) stmts = ret === 'void' ? [S.expr(this.lowerExpr(fnNode.body))] : [S.ret(this.valueOf(fnNode.body, ret))];
+      else stmts = [];
+      body.push(...stmts);
+      this.fn = outer;
+      this.fnStack.pop();
+      return E.lambda([{ name: argsName }], body, ret);
+    }
+
+    // ------------------------------------------------------------------ conversions
+
+    /** Truthiness of a value as a boolean. */
+    truthy(e) {
+      const t = e.t;
+      if (t === 'boolean') return e;
+      if (t === 'int' || t === 'long') return E.bin('!=', e, E.lit(0, t), 'boolean');
+      if (t === 'double' || t === 'String' || t === 'BigInteger' || t === 'Object' || T.isBoxed(t)) return E.scall('Js', 'truthy', [t === 'Boolean' || t === 'Integer' || t === 'Long' || t === 'Double' ? this.conv(e, 'Object') : e], 'boolean');
+      if (t === 'null') return E.bool(false);
+      if (t === 'void') return E.bool(false);
+      return E.bin('!=', e, E.nul(), 'boolean');
+    }
+
+    /** JavaScript ToString as a Java String. */
+    toStr(e) {
+      if (e.t === 'String') return e.k === 'lit' ? e : E.scall('Js', 'str', [e], 'String');
+      if (e.t === 'int' || e.t === 'long' || e.t === 'boolean') return E.scall('Js', 'str', [e], 'String');
+      if (e.t === 'double') return E.scall('Js', 'str', [e], 'String');
+      return E.scall('Js', 'str', [this.conv(e, 'Object')], 'String');
+    }
+
+    /** JavaScript === between two lowered values. */
+    strictEquals(l, r) {
+      const lu = T.unbox(l.t), ru = T.unbox(r.t);
+      if (l.t === 'null' && r.t === 'null') return E.bool(true);
+      if (l.t === 'null' || r.t === 'null') {
+        const other = l.t === 'null' ? r : l;
+        if (T.isPrim(other.t)) return E.bool(false);
+        return E.bin('==', other, E.nul(), 'boolean');
+      }
+      if (T.isNumeric(lu) && T.isNumeric(ru) && T.isPrim(l.t) && T.isPrim(r.t)) {
+        const w = T.wider(lu, ru);
+        return E.bin('==', this.conv(l, w), this.conv(r, w), 'boolean');
+      }
+      if (l.t === 'boolean' && r.t === 'boolean') return E.bin('==', l, r, 'boolean');
+      if (l.t === 'String' && r.t === 'String') return E.scall('java.util.Objects', 'equals', [l, r], 'boolean');
+      if (l.t === 'BigInteger' && r.t === 'BigInteger') return E.scall('java.util.Objects', 'equals', [l, r], 'boolean');
+      if ((T.isPrim(l.t) && (r.t === 'String' || T.isArray(r.t))) || (T.isPrim(r.t) && (l.t === 'String' || T.isArray(l.t)))) return E.bool(false);
+      if (T.isRef(l.t) && T.isRef(r.t) && !this.isValueRef(l.t) && !this.isValueRef(r.t)) return E.bin('==', this.conv(l, 'Object'), this.conv(r, 'Object'), 'boolean');
+      return E.scall('Js', 'strictEq', [this.conv(l, 'Object'), this.conv(r, 'Object')], 'boolean');
+    }
+
+    /** References compared by value under === (numbers, strings, BigInts, booleans in boxes or Object). */
+    isValueRef(t) { return t === 'Object' || t === 'String' || t === 'BigInteger' || T.isBoxed(t); }
+
+    looseEquals(l, r) {
+      if (l.t === 'null' || r.t === 'null') {
+        const other = l.t === 'null' ? r : l;
+        if (T.isPrim(other.t)) return E.bool(false);
+        return E.bin('==', other, E.nul(), 'boolean');
+      }
+      const lu = T.unbox(l.t), ru = T.unbox(r.t);
+      if (T.isNumeric(lu) && T.isNumeric(ru) && T.isPrim(l.t) && T.isPrim(r.t)) return this.strictEquals(l, r);
+      if (l.t === r.t && (l.t === 'String' || l.t === 'boolean' || l.t === 'BigInteger')) return this.strictEquals(l, r);
+      return E.scall('Js', 'looseEq', [this.conv(l, 'Object'), this.conv(r, 'Object')], 'boolean');
+    }
+
+    /**
+     * Convert an IR expression to a JVM type, preserving its JavaScript value.
+     */
+    conv(e, to) {
+      if (!to || to === 'void') return e;
+      const from = e.t;
+      if (from === to) return e;
+      if (e.k === 'lit' && e.v === null) {
+        if (T.isPrim(to)) return this.undefinedOf(to);
+        return E.nul(to);
+      }
+      if (e.k === 'lit' && T.isNumeric(from) && T.isNumeric(T.unbox(to))) {
+        const u = T.unbox(to);
+        let v = e.v;
+        if (u === 'int' && (!Number.isInteger(v) || v > MAX_INT || v < MIN_INT)) v = Number.isFinite(v) ? Number(BigInt.asIntN(32, BigInt(Math.trunc(v)))) : 0;
+        if (u === 'long' && !Number.isInteger(v)) v = Number.isFinite(v) ? Math.trunc(v) : 0;
+        const lit = E.lit(v, u);
+        return u === to ? lit : E.cast(lit, to);
+      }
+      if (e.k === 'lit' && T.isNumeric(from) && to === 'BigInteger' && Number.isInteger(e.v)) return E.big(BigInt(e.v));
+      if (to === 'Object') {
+        if (T.isPrim(from)) return E.cast(e, T.box(from));
+        return e;
+      }
+      const fu = T.unbox(from), tu = T.unbox(to);
+      // numbers
+      if (T.isNumeric(fu) && T.isNumeric(tu)) {
+        let x = e;
+        if (T.isBoxed(from)) x = E.scall('Js', { int: 'toInt', long: 'toLong', double: 'toNum' }[tu], [e], tu);
+        else if (fu !== tu) x = E.cast(e, tu);
+        return T.isBoxed(to) ? E.cast(x, to) : x;
+      }
+      if (fu === 'boolean' && tu === 'boolean') return E.cast(e, to);
+      if (fu === 'boolean' && T.isNumeric(tu)) return this.conv(E.cond(this.conv(e, 'boolean'), E.int(1), E.int(0), 'int'), to);
+      if (T.isNumeric(fu) && tu === 'boolean') return this.conv(this.truthy(this.conv(e, fu)), to);
+      if (from === 'BigInteger' && T.isNumeric(tu)) {
+        const m = { int: 'intValue', long: 'longValue', double: 'doubleValue' }[tu];
+        return this.conv(E.call(e, m, [], tu), to);
+      }
+      if (T.isNumeric(fu) && to === 'BigInteger') return this.toBigInt(e);
+      if (from === 'String' && T.isNumeric(tu)) return this.conv(E.scall('Js', 'toNum', [e], 'double'), to);
+      if (to === 'String') {
+        if (from === 'Object' || from === 'null') return E.cast(e, 'String');
+        return this.toStr(e);
+      }
+      // from Object (or an unrelated reference) to a specific type
+      if (T.isPrim(to) || T.isBoxed(to)) {
+        const fn = { int: 'toInt', long: 'toLong', double: 'toNum', boolean: 'truthy' }[tu];
+        const x = E.scall('Js', fn, [this.conv(e, 'Object')], tu);
+        if (T.isBoxed(to)) return E.scall('Js', { int: 'boxInt', long: 'boxLong', double: 'boxNum', boolean: 'boxBool' }[tu], [this.conv(e, 'Object')], to);
+        return x;
+      }
+      if (to === 'BigInteger') return E.scall('Js', 'toBig', [this.conv(e, 'Object')], 'BigInteger');
+      if (T.isPrimArray(to)) {
+        const fn = { U8Array: 'toU8', I8Array: 'toI8', U16Array: 'toU16', I16Array: 'toI16', U32Array: 'toU32', I32Array: 'toI32', I64Array: 'toI64', F64Array: 'toF64', F32Array: 'toF32', BoolArray: 'toBools' }[to];
+        return E.scall('Js', fn, [this.conv(e, 'Object')], to);
+      }
+      if (T.isJsArray(to)) {
+        const et = T.elemOf(to);
+        if (['TestCase', 'KeySize', 'LinkItem', 'Vulnerability'].includes(et)) return E.scall('Js', 'to' + et + 's', [this.conv(e, 'Object')], to);
+        if (T.isJsArray(from) && (from === 'JsArray<Object>' || et === 'Object')) return { k: 'uncheckedCast', e, t: to };
+        return E.scall('Js', 'toArr', [this.conv(e, 'Object')], to);
+      }
+      if (to === 'JsObject') return E.scall('Js', 'toObj', [this.conv(e, 'Object')], 'JsObject');
+      if (to === 'JsFn') return E.scall('Js', 'toFn', [this.conv(e, 'Object')], 'JsFn');
+      if (to === 'TestCase' && from === 'JsObject') return E.scall('TestCase', 'fromObject', [e], 'TestCase');
+      if (to === 'KeySize' || to === 'LinkItem' || to === 'Vulnerability') return E.scall('Js', 'to' + to, [this.conv(e, 'Object')], to);
+      if (['CategoryType', 'SecurityStatus', 'ComplexityType', 'CountryCode'].includes(to)) return E.scall('Js', 'enumOf', [this.conv(e, 'Object'), { k: 'classlit', name: to, t: 'Class' }], to);
+      if (to === 'TestCase') return E.scall('Js', 'toTest', [this.conv(e, 'Object')], 'TestCase');
+      if (from === 'JsError' && to === 'RuntimeException') return e;
+      if (to === 'JsArrayLike' && T.isArray(from)) return e;
+      if (to === 'RuntimeException' || to === 'JsError') return E.cast(this.conv(e, 'Object'), to);
+      // classes
+      const fc = this.classOfJt(from), tc = this.classOfJt(to);
+      if (fc && tc && this.isSubclass(fc.name, tc.name)) return e;
+      return E.cast(this.conv(e, 'Object'), to);
+    }
   }
 
-  // Export
-  const exports = { JavaTransformer };
-
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = exports;
-  }
-  if (typeof global !== 'undefined') {
-    global.JavaTransformer = JavaTransformer;
-  }
-
-})(typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : this);
+  const exports = { JavaTransformer, LoweringError, ilName, ilNorm, jid, mid, OPCODES, FRAMEWORK };
+  if (typeof module !== 'undefined' && module.exports) module.exports = exports;
+  if (global) global.JavaTransformer = JavaTransformer;
+})(typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : this);

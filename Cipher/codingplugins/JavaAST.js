@@ -1,730 +1,149 @@
 /**
- * JavaAST.js - Java Abstract Syntax Tree Node Types
- * Defines Java-specific AST nodes for transpilation from JavaScript
+ * JavaAST.js - The typed JVM IR shared by the Java and Kotlin targets
  * (c)2006-2025 Hawkynt
  *
- * Pipeline: JS Source -> JS AST -> Type Inference -> Java AST -> Java Emitter -> Java Source
+ * Pipeline: JS Source -> IL AST -> JavaTransformer (lowering) -> JVM IR
+ *           -> JavaEmitter (Java source) or KotlinEmitter (Kotlin source)
+ *
+ * The IR is a tree of plain objects. Every expression carries `t`, its JVM
+ * type; every conversion between types is an explicit node, so a printer for
+ * a language without implicit widening (Kotlin) needs no type inference of
+ * its own.
+ *
+ * JVM types are strings:
+ *   primitives  'int' 'long' 'double' 'boolean' 'void'
+ *   boxed       'Integer' 'Long' 'Double' 'Boolean' (nullable value types)
+ *   references  'String' 'BigInteger' 'Object' 'JsObject' 'JsMap' 'JsSet'
+ *               'JsFn' 'JsRegExp' 'JsError' and class names
+ *   arrays      'U8Array' 'I8Array' 'U16Array' 'I16Array' 'U32Array'
+ *               'I32Array' 'I64Array' 'F64Array' 'F32Array' 'BoolArray' and
+ *               'JsArray<T>' for references
+ *   'null'      the type of the null literal (assignable to any reference)
+ *
+ * The value of a JavaScript number lives in the narrowest container its IL
+ * type allows: int for 8-to-32-bit integers (uint32 excepted), long for
+ * uint32 and Number-valued 64-bit integers, double for floating point. Every
+ * conversion preserves the JavaScript value; the IL types guarantee it fits.
  */
 
-(function(global) {
+(function (global) {
   'use strict';
 
-  // ========================[ BASE NODE TYPES ]========================
-
-  /**
-   * Base class for all Java AST nodes
-   */
-  class JavaNode {
-    constructor(type) {
-      this.nodeType = type;
-      this.sourceLocation = null; // Original JS source location for error mapping
-      this.comments = [];         // Associated comments/documentation
-    }
-  }
-
-  // ========================[ TYPE SYSTEM ]========================
-
-  /**
-   * Represents a Java type reference
-   */
-  class JavaType extends JavaNode {
-    constructor(name, options = {}) {
-      super('Type');
-      this.name = name;                          // 'int', 'byte', 'String', etc.
-      this.isArray = options.isArray || false;   // true for T[]
-      this.arrayDimensions = options.arrayDimensions || 1;
-      this.isGeneric = options.isGeneric || false;
-      this.genericArguments = options.genericArguments || []; // For List<T>, Map<K,V>
-      this.isPrimitive = options.isPrimitive !== undefined ? options.isPrimitive : this._checkPrimitive(name);
-    }
-
-    _checkPrimitive(name) {
-      return ['byte', 'short', 'int', 'long', 'float', 'double', 'boolean', 'char'].includes(name);
-    }
-
-    /**
-     * Create common primitive types
-     */
-    static Byte() { return new JavaType('byte', { isPrimitive: true }); }
-    static Short() { return new JavaType('short', { isPrimitive: true }); }
-    static Int() { return new JavaType('int', { isPrimitive: true }); }
-    static Long() { return new JavaType('long', { isPrimitive: true }); }
-    static Float() { return new JavaType('float', { isPrimitive: true }); }
-    static Double() { return new JavaType('double', { isPrimitive: true }); }
-    static Boolean() { return new JavaType('boolean', { isPrimitive: true }); }
-    static Char() { return new JavaType('char', { isPrimitive: true }); }
-    static Void() { return new JavaType('void', { isPrimitive: true }); }
-
-    static String() { return new JavaType('String', { isPrimitive: false }); }
-    static Object() { return new JavaType('Object', { isPrimitive: false }); }
-    static BigInteger() { return new JavaType('BigInteger', { isPrimitive: false }); }
-
-    static Array(elementType) {
-      const options = { isArray: true, arrayDimensions: 1 };
-      const type = new JavaType(elementType.name, options);
-      type.elementType = elementType;
-      return type;
-    }
-
-    static List(elementType) {
-      return new JavaType('List', { isGeneric: true, genericArguments: [elementType], isPrimitive: false });
-    }
-
-    static ArrayList(elementType) {
-      return new JavaType('ArrayList', { isGeneric: true, genericArguments: [elementType], isPrimitive: false });
-    }
-
-    static Map(keyType, valueType) {
-      return new JavaType('Map', { isGeneric: true, genericArguments: [keyType, valueType], isPrimitive: false });
-    }
-
-    static HashMap(keyType, valueType) {
-      return new JavaType('HashMap', { isGeneric: true, genericArguments: [keyType, valueType], isPrimitive: false });
-    }
-
-    /**
-     * Convert to Java type string
-     */
-    toString() {
-      let result = this.name;
-
-      if (this.isGeneric && this.genericArguments.length > 0) {
-        result += `<${this.genericArguments.map(t => t.toString()).join(', ')}>`;
-      }
-
-      if (this.isArray) {
-        result += '[]'.repeat(this.arrayDimensions);
-      }
-
-      return result;
-    }
-  }
-
-  // ========================[ COMPILATION UNIT ]========================
-
-  /**
-   * Root node representing a complete Java file
-   */
-  class JavaCompilationUnit extends JavaNode {
-    constructor() {
-      super('CompilationUnit');
-      this.packageDeclaration = null; // JavaPackageDeclaration
-      this.imports = [];               // JavaImportDeclaration[]
-      this.types = [];                 // JavaClass[], JavaInterface[], etc.
-    }
-  }
-
-  /**
-   * Package declaration: package com.example;
-   */
-  class JavaPackageDeclaration extends JavaNode {
-    constructor(name) {
-      super('PackageDeclaration');
-      this.name = name; // 'com.example.myapp'
-    }
-  }
-
-  /**
-   * Import declaration: import java.util.*;
-   */
-  class JavaImportDeclaration extends JavaNode {
-    constructor(packageName, isStatic = false, isWildcard = false) {
-      super('ImportDeclaration');
-      this.packageName = packageName;  // 'java.util.List', 'java.util.*'
-      this.isStatic = isStatic;        // static import
-      this.isWildcard = isWildcard;    // import with *
-    }
-  }
-
-  // ========================[ TYPE DECLARATIONS ]========================
-
-  /**
-   * Class declaration
-   */
-  class JavaClass extends JavaNode {
-    constructor(name) {
-      super('Class');
-      this.name = name;
-      this.accessModifier = 'public';  // 'public', 'private', 'protected', ''
-      this.isStatic = false;
-      this.isFinal = false;
-      this.isAbstract = false;
-      this.extendsClass = null;        // JavaType
-      this.implementsInterfaces = [];  // JavaType[]
-      this.members = [];               // JavaMember[]
-      this.nestedTypes = [];           // JavaClass[], JavaInterface[], etc.
-      this.javadoc = null;             // JavaDoc
-    }
-  }
-
-  /**
-   * Interface declaration
-   */
-  class JavaInterface extends JavaNode {
-    constructor(name) {
-      super('Interface');
-      this.name = name;
-      this.accessModifier = 'public';
-      this.extendsInterfaces = [];     // JavaType[]
-      this.members = [];               // JavaMethod[], JavaField[]
-      this.javadoc = null;
-    }
-  }
-
-  // ========================[ MEMBER DECLARATIONS ]========================
-
-  /**
-   * Field declaration
-   */
-  class JavaField extends JavaNode {
-    constructor(name, type) {
-      super('Field');
-      this.name = name;
-      this.type = type;                // JavaType
-      this.accessModifier = 'private';
-      this.isStatic = false;
-      this.isFinal = false;
-      this.isVolatile = false;
-      this.isTransient = false;
-      this.initializer = null;         // JavaExpression
-      this.javadoc = null;
-    }
-  }
-
-  /**
-   * Method declaration
-   */
-  class JavaMethod extends JavaNode {
-    constructor(name, returnType) {
-      super('Method');
-      this.name = name;
-      this.returnType = returnType;    // JavaType
-      this.accessModifier = 'public';
-      this.isStatic = false;
-      this.isFinal = false;
-      this.isAbstract = false;
-      this.isSynchronized = false;
-      this.isNative = false;
-      this.parameters = [];            // JavaParameter[]
-      this.throwsExceptions = [];      // JavaType[]
-      this.body = null;                // JavaBlock
-      this.javadoc = null;
-    }
-  }
-
-  /**
-   * Constructor declaration
-   */
-  class JavaConstructor extends JavaNode {
-    constructor(className) {
-      super('Constructor');
-      this.className = className;
-      this.accessModifier = 'public';
-      this.parameters = [];            // JavaParameter[]
-      this.throwsExceptions = [];      // JavaType[]
-      this.superCall = null;           // JavaSuperConstructorCall
-      this.thisCall = null;            // JavaThisConstructorCall
-      this.body = null;                // JavaBlock
-      this.javadoc = null;
-    }
-  }
-
-  /**
-   * Method parameter
-   */
-  class JavaParameter extends JavaNode {
-    constructor(name, type) {
-      super('Parameter');
-      this.name = name;
-      this.type = type;                // JavaType
-      this.isFinal = false;
-      this.isVarArgs = false;          // for T... syntax
-    }
-  }
-
-  // ========================[ STATEMENTS ]========================
-
-  /**
-   * Block statement { ... }
-   */
-  class JavaBlock extends JavaNode {
-    constructor() {
-      super('Block');
-      this.statements = [];            // JavaStatement[]
-    }
-  }
-
-  /**
-   * Variable declaration statement
-   */
-  class JavaVariableDeclaration extends JavaNode {
-    constructor(name, type, initializer = null) {
-      super('VariableDeclaration');
-      this.name = name;
-      this.type = type;                // JavaType
-      this.isFinal = false;
-      this.initializer = initializer;  // JavaExpression
-    }
-  }
-
-  /**
-   * Expression statement (expression;)
-   */
-  class JavaExpressionStatement extends JavaNode {
-    constructor(expression) {
-      super('ExpressionStatement');
-      this.expression = expression;
-    }
-  }
-
-  /**
-   * Return statement
-   */
-  class JavaReturn extends JavaNode {
-    constructor(expression = null) {
-      super('Return');
-      this.expression = expression;    // JavaExpression or null
-    }
-  }
-
-  /**
-   * If statement
-   */
-  class JavaIf extends JavaNode {
-    constructor(condition, thenBranch, elseBranch = null) {
-      super('If');
-      this.condition = condition;      // JavaExpression
-      this.thenBranch = thenBranch;    // JavaStatement or JavaBlock
-      this.elseBranch = elseBranch;    // JavaStatement, JavaBlock, or null
-    }
-  }
-
-  /**
-   * For loop
-   */
-  class JavaFor extends JavaNode {
-    constructor() {
-      super('For');
-      this.initializer = null;         // JavaVariableDeclaration or JavaExpression
-      this.condition = null;           // JavaExpression
-      this.incrementor = null;         // JavaExpression
-      this.body = null;                // JavaBlock
-    }
-  }
-
-  /**
-   * Enhanced for loop (for-each)
-   */
-  class JavaForEach extends JavaNode {
-    constructor(variableName, variableType, iterable, body) {
-      super('ForEach');
-      this.variableName = variableName;
-      this.variableType = variableType; // JavaType
-      this.iterable = iterable;         // JavaExpression
-      this.body = body;                 // JavaBlock
-    }
-  }
-
-  /**
-   * While loop
-   */
-  class JavaWhile extends JavaNode {
-    constructor(condition, body) {
-      super('While');
-      this.condition = condition;
-      this.body = body;
-    }
-  }
-
-  /**
-   * Do-While loop
-   */
-  class JavaDoWhile extends JavaNode {
-    constructor(body, condition) {
-      super('DoWhile');
-      this.body = body;
-      this.condition = condition;
-    }
-  }
-
-  /**
-   * Switch statement
-   */
-  class JavaSwitch extends JavaNode {
-    constructor(expression) {
-      super('Switch');
-      this.expression = expression;
-      this.cases = [];                 // JavaSwitchCase[]
-    }
-  }
-
-  /**
-   * Switch case
-   */
-  class JavaSwitchCase extends JavaNode {
-    constructor(label = null) {
-      super('SwitchCase');
-      this.label = label;              // JavaExpression or null for default
-      this.isDefault = label === null;
-      this.statements = [];
-    }
-  }
-
-  /**
-   * Break statement
-   */
-  class JavaBreak extends JavaNode {
-    constructor(label = null) {
-      super('Break');
-      this.label = label;              // Optional label for labeled break
-    }
-  }
-
-  /**
-   * Continue statement
-   */
-  class JavaContinue extends JavaNode {
-    constructor(label = null) {
-      super('Continue');
-      this.label = label;              // Optional label for labeled continue
-    }
-  }
-
-  /**
-   * Throw statement
-   */
-  class JavaThrow extends JavaNode {
-    constructor(expression) {
-      super('Throw');
-      this.expression = expression;
-    }
-  }
-
-  /**
-   * Try-Catch-Finally
-   */
-  class JavaTryCatch extends JavaNode {
-    constructor() {
-      super('TryCatch');
-      this.tryBlock = null;
-      this.catchClauses = [];          // JavaCatchClause[]
-      this.finallyBlock = null;
-    }
-  }
-
-  class JavaCatchClause extends JavaNode {
-    constructor(exceptionType, variableName, body) {
-      super('CatchClause');
-      this.exceptionType = exceptionType;
-      this.variableName = variableName;
-      this.body = body;
-    }
-  }
-
-  /**
-   * Synchronized block
-   */
-  class JavaSynchronized extends JavaNode {
-    constructor(expression, block) {
-      super('Synchronized');
-      this.expression = expression;
-      this.block = block;
-    }
-  }
-
-  // ========================[ EXPRESSIONS ]========================
-
-  /**
-   * Literal expression (numbers, strings, booleans, null)
-   */
-  class JavaLiteral extends JavaNode {
-    constructor(value, literalType) {
-      super('Literal');
-      this.value = value;              // The actual value
-      this.literalType = literalType;  // 'int', 'long', 'string', 'boolean', 'null', etc.
-      this.suffix = null;              // 'L', 'f', 'd', etc.
-    }
-
-    static Int(value) { return new JavaLiteral(value, 'int'); }
-    static Long(value) { const l = new JavaLiteral(value, 'long'); l.suffix = 'L'; return l; }
-    static Float(value) { const l = new JavaLiteral(value, 'float'); l.suffix = 'f'; return l; }
-    static Double(value) { return new JavaLiteral(value, 'double'); }
-    static String(value) { return new JavaLiteral(value, 'string'); }
-    static Boolean(value) { return new JavaLiteral(value, 'boolean'); }
-    static Null() { return new JavaLiteral(null, 'null'); }
-    static Char(value) { return new JavaLiteral(value, 'char'); }
-
-    static Hex(value, suffix = null) {
-      const l = new JavaLiteral(value, 'hex');
-      l.isHex = true;
-      if (suffix) l.suffix = suffix;
-      return l;
-    }
-  }
-
-  /**
-   * Identifier expression (variable, type, member name)
-   */
-  class JavaIdentifier extends JavaNode {
-    constructor(name) {
-      super('Identifier');
-      this.name = name;
-    }
-  }
-
-  /**
-   * Binary expression (a + b, a && b, etc.)
-   */
-  class JavaBinaryExpression extends JavaNode {
-    constructor(left, operator, right) {
-      super('BinaryExpression');
-      this.left = left;
-      this.operator = operator;        // '+', '-', '*', '/', '%', '&', '|', '^', '<<', '>>', '>>>', '==', '!=', '<', '>', '<=', '>=', '&&', '||'
-      this.right = right;
-    }
-  }
-
-  /**
-   * Unary expression (!x, -x, ++x, x++, etc.)
-   */
-  class JavaUnaryExpression extends JavaNode {
-    constructor(operator, operand, isPrefix = true) {
-      super('UnaryExpression');
-      this.operator = operator;        // '!', '-', '~', '++', '--', '+'
-      this.operand = operand;
-      this.isPrefix = isPrefix;
-    }
-  }
-
-  /**
-   * Assignment expression (x = y, x += y, etc.)
-   */
-  class JavaAssignment extends JavaNode {
-    constructor(target, operator, value) {
-      super('Assignment');
-      this.target = target;
-      this.operator = operator;        // '=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>='
-      this.value = value;
-    }
-  }
-
-  /**
-   * Member access (obj.member)
-   */
-  class JavaMemberAccess extends JavaNode {
-    constructor(target, member) {
-      super('MemberAccess');
-      this.target = target;            // JavaExpression
-      this.member = member;            // string (member name)
-    }
-  }
-
-  /**
-   * Array access (arr[index])
-   */
-  class JavaArrayAccess extends JavaNode {
-    constructor(target, index) {
-      super('ArrayAccess');
-      this.target = target;
-      this.index = index;              // JavaExpression
-    }
-  }
-
-  /**
-   * Method invocation (Method(args))
-   */
-  class JavaMethodCall extends JavaNode {
-    constructor(target, methodName, args = []) {
-      super('MethodCall');
-      this.target = target;            // JavaExpression or null for simple call
-      this.methodName = methodName;
-      this.arguments = args;           // JavaExpression[]
-      this.typeArguments = [];         // For generic methods
-    }
-  }
-
-  /**
-   * Object creation (new Type(args))
-   */
-  class JavaObjectCreation extends JavaNode {
-    constructor(type, args = []) {
-      super('ObjectCreation');
-      this.type = type;                // JavaType
-      this.arguments = args;           // JavaExpression[]
-    }
-  }
-
-  /**
-   * Array creation (new Type[size] or new Type[] { ... })
-   */
-  class JavaArrayCreation extends JavaNode {
-    constructor(elementType, size = null, initializer = null) {
-      super('ArrayCreation');
-      this.elementType = elementType;  // JavaType
-      this.size = size;                // JavaExpression or null
-      this.initializer = initializer;  // JavaExpression[] or null
-    }
-  }
-
-  /**
-   * Cast expression ((Type)expr)
-   */
-  class JavaCast extends JavaNode {
-    constructor(type, expression) {
-      super('Cast');
-      this.type = type;                // JavaType
-      this.expression = expression;
-    }
-  }
-
-  /**
-   * Conditional expression (condition ? trueExpr : falseExpr)
-   */
-  class JavaConditional extends JavaNode {
-    constructor(condition, trueExpr, falseExpr) {
-      super('Conditional');
-      this.condition = condition;
-      this.trueExpression = trueExpr;
-      this.falseExpression = falseExpr;
-    }
-  }
-
-  /**
-   * Lambda expression ((args) -> body)
-   */
-  class JavaLambda extends JavaNode {
-    constructor(parameters, body) {
-      super('Lambda');
-      this.parameters = parameters;    // JavaParameter[] or string[] (for type inference)
-      this.body = body;                // JavaBlock or JavaExpression
-    }
-  }
-
-  /**
-   * This expression
-   */
-  class JavaThis extends JavaNode {
-    constructor() { super('This'); }
-  }
-
-  /**
-   * Super expression
-   */
-  class JavaSuper extends JavaNode {
-    constructor() { super('Super'); }
-  }
-
-  /**
-   * Instanceof expression (expr instanceof Type)
-   */
-  class JavaInstanceOf extends JavaNode {
-    constructor(expression, type) {
-      super('InstanceOf');
-      this.expression = expression;
-      this.type = type;
-    }
-  }
-
-  /**
-   * Parenthesized expression ((expr))
-   */
-  class JavaParenthesized extends JavaNode {
-    constructor(expression) {
-      super('Parenthesized');
-      this.expression = expression;
-    }
-  }
-
-  // ========================[ JAVADOC ]========================
-
-  /**
-   * JavaDoc documentation comment
-   */
-  class JavaDoc extends JavaNode {
-    constructor() {
-      super('JavaDoc');
-      this.description = null;
-      this.parameters = [];            // [{name, description}]
-      this.returns = null;
-      this.throws = [];                // [{type, description}]
-      this.see = [];                   // References
-      this.since = null;
-      this.deprecated = null;
-    }
-  }
-
-  // ========================[ EXPORTS ]========================
-
-  const JavaAST = {
-    // Base
-    JavaNode,
-
-    // Types
-    JavaType,
-
-    // Compilation Unit
-    JavaCompilationUnit,
-    JavaPackageDeclaration,
-    JavaImportDeclaration,
-
-    // Type Declarations
-    JavaClass,
-    JavaInterface,
-
-    // Members
-    JavaField,
-    JavaMethod,
-    JavaConstructor,
-    JavaParameter,
-
-    // Statements
-    JavaBlock,
-    JavaVariableDeclaration,
-    JavaExpressionStatement,
-    JavaReturn,
-    JavaIf,
-    JavaFor,
-    JavaForEach,
-    JavaWhile,
-    JavaDoWhile,
-    JavaSwitch,
-    JavaSwitchCase,
-    JavaBreak,
-    JavaContinue,
-    JavaThrow,
-    JavaTryCatch,
-    JavaCatchClause,
-    JavaSynchronized,
-
-    // Expressions
-    JavaLiteral,
-    JavaIdentifier,
-    JavaBinaryExpression,
-    JavaUnaryExpression,
-    JavaAssignment,
-    JavaMemberAccess,
-    JavaArrayAccess,
-    JavaMethodCall,
-    JavaObjectCreation,
-    JavaArrayCreation,
-    JavaCast,
-    JavaConditional,
-    JavaLambda,
-    JavaThis,
-    JavaSuper,
-    JavaInstanceOf,
-    JavaParenthesized,
-
-    // Documentation
-    JavaDoc
+  const PRIMITIVES = new Set(['int', 'long', 'double', 'boolean']);
+  const BOXES = { int: 'Integer', long: 'Long', double: 'Double', boolean: 'Boolean' };
+  const UNBOXES = { Integer: 'int', Long: 'long', Double: 'double', Boolean: 'boolean' };
+  const NUMERIC_RANK = { int: 1, long: 2, double: 3 };
+
+  /** Element JVM type of each primitive array class, and the IL element type it holds. */
+  const ARRAY_CLASSES = {
+    U8Array: { elem: 'int', il: 'uint8', typed: 'Uint8Array' },
+    I8Array: { elem: 'int', il: 'int8', typed: 'Int8Array' },
+    U16Array: { elem: 'int', il: 'uint16', typed: 'Uint16Array' },
+    I16Array: { elem: 'int', il: 'int16', typed: 'Int16Array' },
+    U32Array: { elem: 'long', il: 'uint32', typed: 'Uint32Array' },
+    I32Array: { elem: 'int', il: 'int32', typed: 'Int32Array' },
+    I64Array: { elem: 'long', il: 'int64', typed: null },
+    F64Array: { elem: 'double', il: 'float64', typed: 'Float64Array' },
+    F32Array: { elem: 'double', il: 'float32', typed: 'Float32Array' },
+    BoolArray: { elem: 'boolean', il: 'boolean', typed: null }
+  };
+  /** Array class holding each IL element type. */
+  const ARRAY_OF_IL = {
+    uint8: 'U8Array', byte: 'U8Array', int8: 'I8Array', sbyte: 'I8Array',
+    uint16: 'U16Array', word: 'U16Array', int16: 'I16Array', short: 'I16Array',
+    uint32: 'U32Array', dword: 'U32Array', int32: 'I32Array', int: 'I32Array',
+    float64: 'F64Array', number: 'F64Array', double: 'F64Array', float32: 'F32Array', float: 'F32Array',
+    boolean: 'BoolArray', bool: 'BoolArray'
+  };
+  /** Array class of each JavaScript typed array name. */
+  const TYPED_ARRAY_CLASS = {
+    Uint8Array: 'U8Array', Uint8ClampedArray: 'U8Array', Int8Array: 'I8Array', Uint16Array: 'U16Array',
+    Int16Array: 'I16Array', Uint32Array: 'U32Array', Int32Array: 'I32Array', Float32Array: 'F32Array',
+    Float64Array: 'F64Array', BigUint64Array: 'JsArray<BigInteger>', BigInt64Array: 'JsArray<BigInteger>'
   };
 
-  // Export for different environments
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = JavaAST;
-  }
-  if (typeof global !== 'undefined') {
-    global.JavaAST = JavaAST;
-  }
+  const T = {
+    isPrim: t => PRIMITIVES.has(t),
+    isNumeric: t => t === 'int' || t === 'long' || t === 'double',
+    isIntegral: t => t === 'int' || t === 'long',
+    isBoxed: t => !!UNBOXES[t],
+    box: t => BOXES[t] || t,
+    unbox: t => UNBOXES[t] || t,
+    rank: t => NUMERIC_RANK[t] || 0,
+    /** The wider of two numeric types. */
+    wider: (a, b) => ((NUMERIC_RANK[a] || 0) >= (NUMERIC_RANK[b] || 0) ? a : b),
+    isRef: t => !PRIMITIVES.has(t) && t !== 'void',
+    isPrimArray: t => !!ARRAY_CLASSES[t],
+    isJsArray: t => typeof t === 'string' && t.startsWith('JsArray<'),
+    isArray: t => !!ARRAY_CLASSES[t] || (typeof t === 'string' && t.startsWith('JsArray<')),
+    /** JVM type of an array's elements. */
+    elemOf: t => {
+      if (ARRAY_CLASSES[t]) return ARRAY_CLASSES[t].elem;
+      if (typeof t === 'string' && t.startsWith('JsArray<')) return t.slice(8, -1);
+      return 'Object';
+    },
+    /** The array class holding elements of JVM type e (references in JsArray). */
+    arrayOfElem: e => {
+      if (e === 'int') return 'I32Array';
+      if (e === 'long') return 'I64Array';
+      if (e === 'double') return 'F64Array';
+      if (e === 'boolean') return 'BoolArray';
+      return `JsArray<${T.box(e)}>`;
+    },
+    ARRAY_CLASSES, ARRAY_OF_IL, TYPED_ARRAY_CLASS, BOXES, UNBOXES
+  };
 
-})(typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : this);
+  // ------------------------------------------------------------------ IR nodes
+  // Expressions (all carry t)
+  const E = {
+    lit: (v, t) => ({ k: 'lit', v, t }),
+    nul: (t = 'null') => ({ k: 'lit', v: null, t }),
+    str: v => ({ k: 'lit', v: String(v), t: 'String' }),
+    bool: v => ({ k: 'lit', v: !!v, t: 'boolean' }),
+    int: v => ({ k: 'lit', v, t: 'int' }),
+    long: v => ({ k: 'lit', v, t: 'long' }),
+    dbl: v => ({ k: 'lit', v, t: 'double' }),
+    big: v => ({ k: 'big', v: String(v), t: 'BigInteger' }),
+    name: (name, t, extra) => Object.assign({ k: 'name', name, t }, extra),
+    self: t => ({ k: 'this', t }),
+    sup: t => ({ k: 'super', t }),
+    field: (obj, name, t) => ({ k: 'field', obj, name, t }),
+    sfield: (owner, name, t) => ({ k: 'sfield', owner, name, t }),
+    call: (obj, name, args, t) => ({ k: 'call', obj, name, args, t }),
+    scall: (owner, name, args, t) => ({ k: 'scall', owner, name, args, t }),
+    fcall: (fn, args, t) => ({ k: 'fcall', fn, args, t }),
+    nw: (cls, args, t) => ({ k: 'new', cls, args, t: t || cls }),
+    un: (op, e, t) => ({ k: 'un', op, e, t }),
+    bin: (op, l, r, t) => ({ k: 'bin', op, l, r, t }),
+    cond: (c, a, b, t) => ({ k: 'cond', c, a, b, t }),
+    cast: (e, t) => ({ k: 'cast', e, t }),
+    assign: (target, v, t) => ({ k: 'assign', target, v, t: t || target.t }),
+    inc: (target, op, prefix) => ({ k: 'inc', target, op, prefix, t: target.t }),
+    inst: (e, cls) => ({ k: 'instanceof', e, cls, t: 'boolean' }),
+    lambda: (params, body, ret) => ({ k: 'lambda', params, body, ret, t: 'JsFn' }),
+    anon: (decl) => ({ k: 'anon', decl, t: 'Object' })
+  };
+  // Statements
+  const S = {
+    block: body => ({ k: 'block', body }),
+    local: (name, t, init, extra) => Object.assign({ k: 'local', name, t, init }, extra),
+    expr: e => ({ k: 'expr', e }),
+    iff: (c, then, els) => ({ k: 'if', c, then, els }),
+    whl: (c, body) => ({ k: 'while', c, body }),
+    dowhile: (body, c) => ({ k: 'dowhile', body, c }),
+    fr: (init, c, update, body) => ({ k: 'for', init, c, update, body }),
+    sw: (disc, cases) => ({ k: 'switch', disc, cases }),
+    brk: target => ({ k: 'break', target }),
+    cont: target => ({ k: 'continue', target }),
+    ret: e => ({ k: 'return', e }),
+    thr: e => ({ k: 'throw', e }),
+    tri: (block, catchName, catchBody, fin) => ({ k: 'try', block, catchName, catchBody, fin }),
+    labeled: body => ({ k: 'labeled', body }),
+    fns: (name, decl) => ({ k: 'fns', name, decl })
+  };
+
+  const JavaAST = { T, E, S };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = JavaAST;
+  if (global) global.JavaAST = JavaAST;
+})(typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : this);
