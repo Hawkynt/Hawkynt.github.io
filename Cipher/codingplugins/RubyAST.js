@@ -1,116 +1,37 @@
 /**
  * RubyAST.js - Ruby Abstract Syntax Tree Node Types
- * Defines Ruby-specific AST nodes for transpilation from JavaScript
+ * The Ruby nodes RubyTransformer builds from the IL AST and RubyEmitter prints.
  * (c)2006-2025 Hawkynt
  *
- * Pipeline: JS Source -> JS AST -> Type Inference -> Ruby AST -> Ruby Emitter -> Ruby Source
+ * Pipeline: JS Source -> JS AST -> Type Inference (IL AST) -> Ruby AST -> Ruby Emitter -> Ruby Source
+ *
+ * Expressions carry no layout: the emitter adds the parentheses Ruby's
+ * operator precedence requires. Statements are structured (class, method,
+ * if, while, begin/rescue, case) so the emitter owns indentation.
  */
 
 (function(global) {
   'use strict';
 
-  // ========================[ BASE NODE TYPES ]========================
-
-  /**
-   * Base class for all Ruby AST nodes
-   */
+  /** Base of every node: its nodeType names the emitter method (emit<nodeType>). */
   class RubyNode {
     constructor(type) {
       this.nodeType = type;
-      this.sourceLocation = null; // Original JS source location for error mapping
-      this.comments = [];         // Associated comments/documentation
     }
   }
 
-  // ========================[ TYPE SYSTEM ]========================
+  // ========================[ FILE STRUCTURE ]========================
 
-  /**
-   * Represents a Ruby type annotation (for Sorbet/RBS/YARD)
-   */
-  class RubyType extends RubyNode {
-    constructor(name, options = {}) {
-      super('Type');
-      this.name = name;                          // 'Integer', 'String', 'Array', etc.
-      this.isNilable = options.isNilable || false;   // true for T.nilable(Type)
-      this.isArray = options.isArray || false;       // true for T::Array[Type]
-      this.isHash = options.isHash || false;         // true for T::Hash[K, V]
-      this.elementType = options.elementType || null;  // For Array
-      this.keyType = options.keyType || null;        // For Hash
-      this.valueType = options.valueType || null;    // For Hash
-      this.isUnion = options.isUnion || false;
-      this.unionTypes = options.unionTypes || [];    // For union types
-    }
-
-    /**
-     * Create common primitive types
-     */
-    static Integer() { return new RubyType('Integer'); }
-    static Float() { return new RubyType('Float'); }
-    static String() { return new RubyType('String'); }
-    static Symbol() { return new RubyType('Symbol'); }
-    static TrueClass() { return new RubyType('TrueClass'); }
-    static FalseClass() { return new RubyType('FalseClass'); }
-    static NilClass() { return new RubyType('NilClass'); }
-    static Array(elementType) {
-      return new RubyType('Array', { isArray: true, elementType });
-    }
-    static Hash(keyType, valueType) {
-      return new RubyType('Hash', { isHash: true, keyType, valueType });
-    }
-    static Nilable(innerType) {
-      return new RubyType(innerType.name, { isNilable: true });
-    }
-
-    /**
-     * Convert to Ruby type string (YARD format)
-     */
-    toString() {
-      if (this.isNilable) {
-        return `${this.name}, nil`;
-      }
-      if (this.isArray) {
-        return `Array<${this.elementType?.toString() || 'Object'}>`;
-      }
-      if (this.isHash) {
-        return `Hash{${this.keyType?.toString() || 'Symbol'} => ${this.valueType?.toString() || 'Object'}}`;
-      }
-      if (this.isUnion && this.unionTypes.length > 0) {
-        return this.unionTypes.map(t => t.toString()).join(', ');
-      }
-      return this.name;
-    }
-  }
-
-  // ========================[ MODULE ]========================
-
-  /**
-   * Root node representing a complete Ruby file (module)
-   */
+  /** A source file: magic comments, a doc comment, then items. */
   class RubyModule extends RubyNode {
-    constructor(name = null) {
+    constructor() {
       super('Module');
-      this.name = name;          // Module name (null for root)
-      this.requires = [];        // RubyRequire[]
-      this.items = [];           // Top-level items (classes, modules, functions, etc.)
-      this.magicComments = [];   // # frozen_string_literal: true, etc.
-      this.docComment = null;    // Module documentation
+      this.magicComments = [];
+      this.docComment = null;
+      this.items = [];
     }
   }
 
-  /**
-   * Require/load statement
-   */
-  class RubyRequire extends RubyNode {
-    constructor(path, isRelative = false) {
-      super('Require');
-      this.path = path;          // 'digest', 'openssl', etc.
-      this.isRelative = isRelative; // true for require_relative
-    }
-  }
-
-  /**
-   * Magic comment (# frozen_string_literal: true)
-   */
   class RubyMagicComment extends RubyNode {
     constructor(name, value) {
       super('MagicComment');
@@ -119,113 +40,72 @@
     }
   }
 
-  // ========================[ CLASS DECLARATION ]========================
-
-  /**
-   * Class definition
-   */
-  class RubyClass extends RubyNode {
-    constructor(name) {
-      super('Class');
-      this.name = name;
-      this.superclass = null;    // Parent class name
-      this.modules = [];         // Included/extended modules
-      this.methods = [];         // RubyMethod[]
-      this.attributes = [];      // attr_accessor, attr_reader, attr_writer
-      this.constants = [];       // Constants
-      this.classVariables = [];  // @@variables
-      this.docComment = null;    // Class documentation
+  class RubyDocComment extends RubyNode {
+    constructor(text) {
+      super('DocComment');
+      this.text = text;
     }
   }
 
-  /**
-   * Module definition
-   */
+  /** module Name ... end */
   class RubyModuleDef extends RubyNode {
-    constructor(name) {
+    constructor(name, body = []) {
       super('ModuleDef');
       this.name = name;
-      this.methods = [];
-      this.constants = [];
-      this.docComment = null;
+      this.body = body;
     }
   }
 
-  /**
-   * Attribute declaration (attr_accessor, attr_reader, attr_writer)
-   */
+  /** class Name < Superclass ... end */
+  class RubyClass extends RubyNode {
+    constructor(name, superclass = null) {
+      super('Class');
+      this.name = name;
+      this.superclass = superclass;
+      this.body = [];
+    }
+  }
+
+  /** attr_accessor :a, :b (static: on the singleton class) */
   class RubyAttribute extends RubyNode {
-    constructor(type, names) {
+    constructor(kind, names, isStatic = false) {
       super('Attribute');
-      this.type = type;          // 'accessor', 'reader', 'writer'
-      this.names = names;        // Array of attribute names (symbols)
+      this.kind = kind;
+      this.names = names;
+      this.isStatic = isStatic;
     }
   }
 
-  // ========================[ METHODS/FUNCTIONS ]========================
-
-  /**
-   * Method definition
-   */
+  /** def name(params) ... end, def self.name, def name=(v) */
   class RubyMethod extends RubyNode {
-    constructor(name, parameters = [], returnType = null) {
+    constructor(name, parameters = [], body = null, isStatic = false) {
       super('Method');
       this.name = name;
-      this.parameters = parameters; // RubyParameter[]
-      this.returnType = returnType; // RubyType or null
-      this.body = null;             // RubyBlock
-      this.visibility = 'public';   // 'public', 'private', 'protected'
-      this.isClassMethod = false;   // true for self.method
-      this.isSingletonMethod = false;
-      this.docComment = null;       // Method documentation
-      this.isEndless = false;       // true for def foo(x) = x * 2
+      this.parameters = parameters;
+      this.body = body || new RubyBlock();
+      this.isStatic = isStatic;
     }
   }
 
-  /**
-   * Function parameter
-   */
+  /** A parameter: plain, with a default, or a rest (*name) */
   class RubyParameter extends RubyNode {
-    constructor(name, type = null, defaultValue = null) {
+    constructor(name, defaultValue = null, isRest = false) {
       super('Parameter');
       this.name = name;
-      this.type = type;             // RubyType or null
-      this.defaultValue = defaultValue; // RubyExpression or null
-      this.isKeyword = false;       // true for keyword arguments
-      this.isRest = false;          // true for *args
-      this.isKeywordRest = false;   // true for **kwargs
-      this.isBlock = false;         // true for &block
+      this.defaultValue = defaultValue;
+      this.isRest = isRest;
     }
   }
 
   // ========================[ STATEMENTS ]========================
 
-  /**
-   * Block of statements
-   */
   class RubyBlock extends RubyNode {
-    constructor() {
+    constructor(statements = []) {
       super('Block');
-      this.statements = [];
+      this.statements = statements;
     }
   }
 
-  /**
-   * Assignment statement
-   */
-  class RubyAssignment extends RubyNode {
-    constructor(target, value, type = null) {
-      super('Assignment');
-      this.target = target;         // RubyExpression (usually Identifier)
-      this.value = value;           // RubyExpression
-      this.type = type;             // RubyType or null
-      this.operator = '=';          // '=', '+=', '-=', etc.
-    }
-  }
-
-  /**
-   * Expression statement
-   */
   class RubyExpressionStatement extends RubyNode {
     constructor(expression) {
       super('ExpressionStatement');
@@ -233,9 +113,13 @@
     }
   }
 
-  /**
-   * Return statement
-   */
+  class RubyComment extends RubyNode {
+    constructor(text) {
+      super('Comment');
+      this.text = text;
+    }
+  }
+
   class RubyReturn extends RubyNode {
     constructor(expression = null) {
       super('Return');
@@ -243,404 +127,94 @@
     }
   }
 
-  /**
-   * If statement/expression
-   */
+  class RubyBreak extends RubyNode {
+    constructor() {
+      super('Break');
+    }
+  }
+
+  class RubyNext extends RubyNode {
+    constructor() {
+      super('Next');
+    }
+  }
+
+  class RubyRaise extends RubyNode {
+    constructor(exception) {
+      super('Raise');
+      this.exception = exception;
+    }
+  }
+
+  /** if / elsif / else */
   class RubyIf extends RubyNode {
     constructor(condition, thenBranch, elsifBranches = [], elseBranch = null) {
       super('If');
-      this.condition = condition;       // RubyExpression
-      this.thenBranch = thenBranch;     // RubyBlock
-      this.elsifBranches = elsifBranches; // [{condition, body}]
-      this.elseBranch = elseBranch;     // RubyBlock or null
-      this.isUnless = false;            // true for unless instead of if
-      this.isModifier = false;          // true for statement if condition
+      this.condition = condition;
+      this.thenBranch = thenBranch;
+      this.elsifBranches = elsifBranches;
+      this.elseBranch = elseBranch;
     }
   }
 
-  /**
-   * Case/when statement
-   */
-  class RubyCase extends RubyNode {
-    constructor(expression) {
-      super('Case');
-      this.expression = expression;  // Value being matched
-      this.whenBranches = [];        // RubyWhen[]
-      this.elseBranch = null;        // Default case
-    }
-  }
-
-  /**
-   * When clause
-   */
-  class RubyWhen extends RubyNode {
-    constructor(patterns, body) {
-      super('When');
-      this.patterns = patterns;      // Array of patterns to match
-      this.body = body;              // RubyBlock
-    }
-  }
-
-  /**
-   * For loop
-   */
-  class RubyFor extends RubyNode {
-    constructor(variable, iterable, body) {
-      super('For');
-      this.variable = variable;      // Variable name
-      this.iterable = iterable;      // RubyExpression
-      this.body = body;              // RubyBlock
-    }
-  }
-
-  /**
-   * While loop
-   */
+  /** while cond ... end, or begin ... end while cond when isDoWhile */
   class RubyWhile extends RubyNode {
-    constructor(condition, body) {
+    constructor(condition, body, isDoWhile = false) {
       super('While');
       this.condition = condition;
       this.body = body;
-      this.isUntil = false;          // true for until instead of while
+      this.isDoWhile = isDoWhile;
     }
   }
 
-  /**
-   * Loop statement
-   */
-  class RubyLoop extends RubyNode {
-    constructor(body) {
-      super('Loop');
+  /** for variable in iterable ... end (no new scope, unlike a block) */
+  class RubyFor extends RubyNode {
+    constructor(variable, iterable, body) {
+      super('For');
+      this.variable = variable;
+      this.iterable = iterable;
       this.body = body;
     }
   }
 
-  /**
-   * Break statement
-   */
-  class RubyBreak extends RubyNode {
-    constructor(expression = null) {
-      super('Break');
-      this.expression = expression;
+  /** case subject when a, b ... else ... end */
+  class RubyCase extends RubyNode {
+    constructor(subject, whens = [], elseBody = null) {
+      super('Case');
+      this.subject = subject;
+      this.whens = whens;
+      this.elseBody = elseBody;
     }
   }
 
-  /**
-   * Next (continue) statement
-   */
-  class RubyNext extends RubyNode {
-    constructor(expression = null) {
-      super('Next');
-      this.expression = expression;
+  class RubyWhen extends RubyNode {
+    constructor(patterns, body) {
+      super('When');
+      this.patterns = patterns;
+      this.body = body;
     }
   }
 
-  /**
-   * Raise (throw) statement
-   */
-  class RubyRaise extends RubyNode {
-    constructor(exception, message = null) {
-      super('Raise');
-      this.exception = exception;    // Exception class or instance
-      this.message = message;        // Error message
-    }
-  }
-
-  /**
-   * Begin/rescue/ensure/end block
-   */
+  /** begin ... rescue ... ensure ... end */
   class RubyBegin extends RubyNode {
-    constructor() {
+    constructor(body, rescues = [], ensureBody = null) {
       super('Begin');
-      this.tryBlock = null;          // RubyBlock
-      this.rescueClauses = [];       // RubyRescue[]
-      this.elseBlock = null;         // Executes if no exception
-      this.ensureBlock = null;       // Always executes
+      this.body = body;
+      this.rescues = rescues;
+      this.ensureBody = ensureBody;
     }
   }
 
-  /**
-   * Rescue clause
-   */
   class RubyRescue extends RubyNode {
     constructor(exceptionTypes, variableName, body) {
       super('Rescue');
-      this.exceptionTypes = exceptionTypes; // Array of exception classes
-      this.variableName = variableName;     // Variable to bind exception to
-      this.body = body;                     // RubyBlock
-    }
-  }
-
-  // ========================[ EXPRESSIONS ]========================
-
-  /**
-   * Literal expression
-   */
-  class RubyLiteral extends RubyNode {
-    constructor(value, literalType) {
-      super('Literal');
-      this.value = value;
-      this.literalType = literalType; // 'integer', 'float', 'string', 'symbol', 'regexp', 'nil', 'true', 'false'
-    }
-
-    static Integer(value) { return new RubyLiteral(value, 'integer'); }
-    static Float(value) { return new RubyLiteral(value, 'float'); }
-    static String(value) { return new RubyLiteral(value, 'string'); }
-    static Symbol(value) { return new RubyLiteral(value, 'symbol'); }
-    static Nil() { return new RubyLiteral(null, 'nil'); }
-    static True() { return new RubyLiteral(true, 'true'); }
-    static False() { return new RubyLiteral(false, 'false'); }
-    static Regexp(pattern, flags = '') {
-      const lit = new RubyLiteral(pattern, 'regexp');
-      lit.flags = flags;
-      return lit;
-    }
-  }
-
-  /**
-   * Identifier expression
-   */
-  class RubyIdentifier extends RubyNode {
-    constructor(name) {
-      super('Identifier');
-      this.name = name;
-      this.isInstance = false;       // true for @variable
-      this.isClass = false;          // true for @@variable
-      this.isGlobal = false;         // true for $variable
-      this.isConstant = false;       // true for CONSTANT
-    }
-  }
-
-  /**
-   * Binary expression
-   */
-  class RubyBinaryExpression extends RubyNode {
-    constructor(left, operator, right) {
-      super('BinaryExpression');
-      this.left = left;
-      this.operator = operator;      // '+', '-', '*', '/', '%', '**', '&', '|', '^', '<<', '>>', etc.
-      this.right = right;
-    }
-  }
-
-  /**
-   * Unary expression
-   */
-  class RubyUnaryExpression extends RubyNode {
-    constructor(operator, operand) {
-      super('UnaryExpression');
-      this.operator = operator;      // '!', '-', '+', '~', etc.
-      this.operand = operand;
-    }
-  }
-
-  /**
-   * Method call
-   */
-  class RubyMethodCall extends RubyNode {
-    constructor(receiver, methodName, args = [], block = null) {
-      super('MethodCall');
-      this.receiver = receiver;      // RubyExpression or null for implicit self
-      this.methodName = methodName;
-      this.arguments = args;         // RubyExpression[]
-      this.block = block;            // RubyBlockExpression or null
-      this.isSafeNavigation = false; // true for &.
-    }
-  }
-
-  /**
-   * Array literal
-   */
-  class RubyArrayLiteral extends RubyNode {
-    constructor(elements = []) {
-      super('ArrayLiteral');
-      this.elements = elements;      // RubyExpression[]
-    }
-  }
-
-  /**
-   * Hash literal
-   */
-  class RubyHashLiteral extends RubyNode {
-    constructor(pairs = []) {
-      super('HashLiteral');
-      this.pairs = pairs;            // [{key, value}]
-    }
-  }
-
-  /**
-   * Range expression
-   */
-  class RubyRange extends RubyNode {
-    constructor(start, end, isExclusive = false) {
-      super('Range');
-      this.start = start;            // RubyExpression
-      this.end = end;                // RubyExpression
-      this.isExclusive = isExclusive; // true for ...
-    }
-  }
-
-  /**
-   * String interpolation
-   */
-  class RubyStringInterpolation extends RubyNode {
-    constructor(parts) {
-      super('StringInterpolation');
-      this.parts = parts;            // Array of strings and RubyExpressions
-    }
-  }
-
-  /**
-   * Block expression (do...end or {...})
-   */
-  class RubyBlockExpression extends RubyNode {
-    constructor(parameters, body) {
-      super('BlockExpression');
-      this.parameters = parameters;  // RubyParameter[]
-      this.body = body;              // RubyBlock
-      this.isBraces = false;         // true for {}, false for do...end
-    }
-  }
-
-  /**
-   * Lambda expression
-   */
-  class RubyLambda extends RubyNode {
-    constructor(parameters, body) {
-      super('Lambda');
-      this.parameters = parameters;
-      this.body = body;
-      this.isStabby = true;          // true for ->(x) {}, false for lambda {|x|}
-    }
-  }
-
-  /**
-   * Index access (array[index] or hash[key])
-   */
-  class RubyIndex extends RubyNode {
-    constructor(target, index) {
-      super('Index');
-      this.target = target;
-      this.index = index;
-    }
-  }
-
-  /**
-   * Conditional expression (ternary)
-   */
-  class RubyConditional extends RubyNode {
-    constructor(condition, thenExpr, elseExpr) {
-      super('Conditional');
-      this.condition = condition;
-      this.thenExpression = thenExpr;
-      this.elseExpression = elseExpr;
-    }
-  }
-
-  /**
-   * Splat expression (*array)
-   */
-  class RubySplat extends RubyNode {
-    constructor(expression) {
-      super('Splat');
-      this.expression = expression;
-      this.isDoubleSplat = false;    // true for **
-    }
-  }
-
-  /**
-   * Constant access (Module::Constant)
-   */
-  class RubyConstantAccess extends RubyNode {
-    constructor(namespace, constant) {
-      super('ConstantAccess');
-      this.namespace = namespace;    // Module/Class name or null
-      this.constant = constant;      // Constant name
-    }
-  }
-
-  /**
-   * Pattern matching (case/in)
-   */
-  class RubyPatternMatch extends RubyNode {
-    constructor(expression) {
-      super('PatternMatch');
-      this.expression = expression;
-      this.inBranches = [];          // RubyInBranch[]
-      this.elseBranch = null;
-    }
-  }
-
-  /**
-   * In branch for pattern matching
-   */
-  class RubyInBranch extends RubyNode {
-    constructor(pattern, guard, body) {
-      super('InBranch');
-      this.pattern = pattern;
-      this.guard = guard;            // Optional if condition
+      this.exceptionTypes = exceptionTypes;
+      this.variableName = variableName;
       this.body = body;
     }
   }
 
-  /**
-   * Yield statement
-   */
-  class RubyYield extends RubyNode {
-    constructor(args = []) {
-      super('Yield');
-      this.arguments = args;
-    }
-  }
-
-  /**
-   * Super call
-   */
-  class RubySuper extends RubyNode {
-    constructor(args = null) {
-      super('Super');
-      this.arguments = args;         // null = pass all args, [] = no args
-    }
-  }
-
-  /**
-   * Defined? expression
-   */
-  class RubyDefined extends RubyNode {
-    constructor(expression) {
-      super('Defined');
-      this.expression = expression;
-    }
-  }
-
-  // ========================[ DOCUMENTATION ]========================
-
-  /**
-   * Documentation comment
-   */
-  class RubyDocComment extends RubyNode {
-    constructor(text, isYard = false) {
-      super('DocComment');
-      this.text = text;
-      this.isYard = isYard;          // true for YARD-style documentation
-    }
-  }
-
-  /**
-   * Constant declaration
-   */
-  class RubyConstant extends RubyNode {
-    constructor(name, value) {
-      super('Constant');
-      this.name = name;
-      this.value = value;
-      this.docComment = null;
-    }
-  }
-
-  /**
-   * Raw Ruby code - emit as-is (for framework stubs)
-   */
+  /** Verbatim lines (the runtime prelude, the harness) */
   class RubyRawCode extends RubyNode {
     constructor(code) {
       super('RawCode');
@@ -648,77 +222,168 @@
     }
   }
 
-  // ========================[ EXPORTS ]========================
+  // ========================[ EXPRESSIONS ]========================
+
+  /** A literal: int, float, string, bool, nil, symbol; or verbatim code of a value (raw) */
+  class RubyLiteral extends RubyNode {
+    constructor(value, literalType) {
+      super('Literal');
+      this.value = value;
+      this.literalType = literalType;
+    }
+  }
+
+  /** A name as written: local, @ivar, $global, Constant, Scoped::Constant, self */
+  class RubyIdentifier extends RubyNode {
+    constructor(name) {
+      super('Identifier');
+      this.name = name;
+    }
+  }
+
+  class RubyBinaryExpression extends RubyNode {
+    constructor(left, operator, right) {
+      super('BinaryExpression');
+      this.left = left;
+      this.operator = operator;
+      this.right = right;
+    }
+  }
+
+  class RubyUnaryExpression extends RubyNode {
+    constructor(operator, operand) {
+      super('UnaryExpression');
+      this.operator = operator;
+      this.operand = operand;
+    }
+  }
+
+  /** receiver.method(args) { block }; no receiver: method(args); method 'call' with useShortCall: receiver.(args) */
+  class RubyMethodCall extends RubyNode {
+    constructor(receiver, methodName, args = [], block = null) {
+      super('MethodCall');
+      this.receiver = receiver;
+      this.methodName = methodName;
+      this.arguments = args;
+      this.block = block;
+      this.useShortCall = false;
+      this.forceParens = true;
+    }
+  }
+
+  /** target[index, ...] */
+  class RubyIndex extends RubyNode {
+    constructor(target, index) {
+      super('Index');
+      this.target = target;
+      this.indices = Array.isArray(index) ? index : [index];
+    }
+  }
+
+  /** target = value, target op= value (an expression in Ruby) */
+  class RubyAssignment extends RubyNode {
+    constructor(target, value, operator = '=') {
+      super('Assignment');
+      this.target = target;
+      this.value = value;
+      this.operator = operator;
+    }
+  }
+
+  /** a, b = x (parallel assignment) */
+  class RubyMultipleAssignment extends RubyNode {
+    constructor(targets, value) {
+      super('MultipleAssignment');
+      this.targets = targets;
+      this.value = value;
+    }
+  }
+
+  class RubyArrayLiteral extends RubyNode {
+    constructor(elements = []) {
+      super('ArrayLiteral');
+      this.elements = elements;
+    }
+  }
+
+  /** { key => value } with [key, value] pairs */
+  class RubyHashLiteral extends RubyNode {
+    constructor(pairs = []) {
+      super('HashLiteral');
+      this.pairs = pairs;
+    }
+  }
+
+  /** ->(params) { body } */
+  class RubyLambda extends RubyNode {
+    constructor(parameters, body) {
+      super('Lambda');
+      this.parameters = parameters;
+      this.body = body;
+    }
+  }
+
+  /** { |params| body } passed to a call */
+  class RubyBlockExpression extends RubyNode {
+    constructor(parameters, body) {
+      super('BlockExpression');
+      this.parameters = parameters;
+      this.body = body;
+    }
+  }
+
+  class RubyConditional extends RubyNode {
+    constructor(condition, thenExpr, elseExpr) {
+      super('Conditional');
+      this.condition = condition;
+      this.thenExpr = thenExpr;
+      this.elseExpr = elseExpr;
+    }
+  }
+
+  class RubySplat extends RubyNode {
+    constructor(expression) {
+      super('Splat');
+      this.expression = expression;
+    }
+  }
+
+  /** (a; b; c) - expressions evaluated in order, the value of the last */
+  class RubySequence extends RubyNode {
+    constructor(expressions) {
+      super('Sequence');
+      this.expressions = expressions;
+    }
+  }
+
+  /** super(args) */
+  class RubySuper extends RubyNode {
+    constructor(args = []) {
+      super('Super');
+      this.arguments = args;
+    }
+  }
+
+  /** Verbatim expression code with its precedence (default: needs parentheses everywhere) */
+  class RubyRawExpression extends RubyNode {
+    constructor(code, precedence = 0) {
+      super('RawExpression');
+      this.code = code;
+      this.precedence = precedence;
+    }
+  }
 
   const RubyAST = {
-    // Base
     RubyNode,
-
-    // Types
-    RubyType,
-
-    // Module
-    RubyModule,
-    RubyRequire,
-    RubyMagicComment,
-
-    // Classes and Modules
-    RubyClass,
-    RubyModuleDef,
-    RubyAttribute,
-
-    // Methods
-    RubyMethod,
-    RubyParameter,
-
-    // Statements
-    RubyBlock,
-    RubyAssignment,
-    RubyExpressionStatement,
-    RubyReturn,
-    RubyIf,
-    RubyCase,
-    RubyWhen,
-    RubyFor,
-    RubyWhile,
-    RubyLoop,
-    RubyBreak,
-    RubyNext,
-    RubyRaise,
-    RubyBegin,
-    RubyRescue,
-
-    // Expressions
-    RubyLiteral,
-    RubyIdentifier,
-    RubyBinaryExpression,
-    RubyUnaryExpression,
-    RubyMethodCall,
-    RubyArrayLiteral,
-    RubyHashLiteral,
-    RubyRange,
-    RubyStringInterpolation,
-    RubyBlockExpression,
-    RubyLambda,
-    RubyIndex,
-    RubyConditional,
-    RubySplat,
-    RubyConstantAccess,
-    RubyPatternMatch,
-    RubyInBranch,
-    RubyYield,
-    RubySuper,
-    RubyDefined,
-
-    // Documentation
-    RubyDocComment,
-    RubyConstant,
-
-    // Raw Code
-    RubyRawCode
+    RubyModule, RubyMagicComment, RubyDocComment, RubyModuleDef, RubyClass, RubyAttribute,
+    RubyMethod, RubyParameter,
+    RubyBlock, RubyExpressionStatement, RubyComment, RubyReturn, RubyBreak, RubyNext, RubyRaise,
+    RubyIf, RubyWhile, RubyFor, RubyCase, RubyWhen, RubyBegin, RubyRescue, RubyRawCode,
+    RubyLiteral, RubyIdentifier, RubyBinaryExpression, RubyUnaryExpression, RubyMethodCall, RubyIndex,
+    RubyAssignment, RubyMultipleAssignment, RubyArrayLiteral, RubyHashLiteral, RubyLambda,
+    RubyBlockExpression, RubyConditional, RubySplat, RubySequence, RubySuper, RubyRawExpression
   };
 
-  // Export for different environments
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = RubyAST;
   }
