@@ -176,31 +176,14 @@
   // ===== HASHING AND RFC 6979 =====
 
   // DSA signs a digest. A stand-in for the hash produces a signature that no
-  // other implementation verifies, so the approved digests are loaded on first
-  // use and every path below fails loudly if the requested one is missing.
+  // other implementation verifies, so the approved digests come from the
+  // registry and every path below fails loudly if the requested one is missing.
   //
-  // On first use rather than at load: requiring them here would register four
-  // SHA-2 variants while this file is being loaded, and every tool that
-  // attributes an algorithm to whichever file was loading when it registered
-  // would then file SHA-512 under asymmetric ciphers.
-  var hashesLoaded = false;
-  /**
-   * Load the digest modules DSA needs, once.
-   * @returns {void}
-   */
-  function loadHashes() {
-    if (hashesLoaded) return;
-    hashesLoaded = true;
-    if (typeof require === 'undefined') return;
-
-    for (var _mod of ['../hash/sha1.js', '../hash/sha256.js', '../hash/sha512.js']) {
-      try {
-        require(_mod);
-      } catch (error) {
-        // In the browser these arrive as script tags instead; Find() reports it.
-      }
-    }
-  }
+  // Registry first, CommonJS fallback on a miss rather than a require at load:
+  // requiring them here would register four SHA-2 variants while this file is
+  // being loaded, and every tool that attributes an algorithm to whichever file
+  // was loading when it registered would then file SHA-512 under asymmetric
+  // ciphers. In the browser the page has loaded them as script tags.
 
   /**
    * Digest and HMAC block size of one hash.
@@ -255,10 +238,14 @@
    * @returns {uint8[]} Digest octets
    */
   function digest(hashName, bytes) {
-    loadHashes();
-
     /** @type {Algorithm} */
     var algorithm = AlgorithmFramework.Find(hashName);
+    if (!algorithm && typeof require !== 'undefined') {
+      try { require('../hash/sha1.js'); } catch (error) { /* reported below */ }
+      try { require('../hash/sha256.js'); } catch (error) { /* reported below */ }
+      try { require('../hash/sha512.js'); } catch (error) { /* reported below */ }
+      algorithm = AlgorithmFramework.Find(hashName);
+    }
     if (!algorithm) {
       throw new Error('DSA requires the hash ' + hashName + ', which is not registered');
     }
