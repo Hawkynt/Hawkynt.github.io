@@ -2278,7 +2278,7 @@
 
     /** Convert call arguments to a signature's parameters (spreads expand dynamically) */
     callArgs(args, params) {
-      const out = [];
+      const out = [], pre = [], post = [];
       const spread = args.findIndex(a => a && a.type === 'SpreadElement');
       if (spread >= 0) {
         // f(a, ...rest): unpack the spread array into the remaining parameters
@@ -2298,13 +2298,26 @@
         if (i >= args.length) return;
         const complex = p.def && !this.simpleDefault(p.def);
         const e = this.expr(args[i], p.type);
+        if (!complex && e.t.k === 'arr' && p.type.k === 'arr' && isNumOrBool(e.t.e) && isNumOrBool(p.type.e) && !sameType(e.t.e, p.type.e)) {
+          // a number array of another element type: the callee works on a converted
+          // copy, copied back into the caller's array (a JavaScript callee mutates it)
+          const orig = this.tmp('o'), conv = this.tmp('cv');
+          pre.push(`${this.cpp(e.t)} ${orig} = ${e.c}; ${this.cpp(p.type)} ${conv} = ${this.cv({ c: orig, t: e.t }, p.type)};`);
+          post.push(`js::copyInto(${orig}, ${conv});`);
+          out.push(conv);
+          return;
+        }
         out.push(complex ? `std::optional<${this.cpp(p.type)}>(${this.cv(e, p.type)})` : this.cv(e, p.type));
       });
-      // missing middle arguments keep their defaults only at the end: fill gaps
-      return { pre: null, args: out };
+      return { pre: pre.length ? pre.join(' ') : null, args: out, post: post.length ? post.join(' ') : null };
     }
 
-    finishCall(callText, pre, ret) {
+    finishCall(callText, pre, ret, post) {
+      if (post) {
+        if (ret.k === 'void') return { c: `({ ${pre || ''} ${callText}; ${post} })`, t: ret };
+        const r = this.tmp('ret');
+        return { c: `({ ${pre || ''} auto ${r} = ${callText}; ${post} ${r}; })`, t: ret };
+      }
       if (pre) return { c: `({ ${pre} ${callText}; })`, t: ret };
       return { c: callText, t: ret };
     }
@@ -2357,7 +2370,7 @@
         const params = f.t.params.map((t, i) => ({ type: t, name: 'p' + i }));
         const sig = f.fnRef ? f.fnRef.sig : (this.lookup(f.c) && this.lookup(f.c).sig) || null;
         const a = this.callArgs(args, sig ? sig.params : params);
-        return this.finishCall(`${f.c}(${a.args.join(', ')})`, a.pre, f.t.ret);
+        return this.finishCall(`${f.c}(${a.args.join(', ')})`, a.pre, f.t.ret, a.post);
       }
       const list = args.map(a => a && a.type === 'SpreadElement' ? null : this.cv(this.expr(a), T.any));
       if (args.some(a => a && a.type === 'SpreadElement')) {
@@ -2379,13 +2392,13 @@
         const f = this.functions.get(name);
         if (!f.sig) f.sig = { params: this.paramsOf(f.node), ret: this.returnTypeOf(f.node, null) };
         const a = this.callArgs(args, f.sig.params);
-        return this.finishCall(`${this.ns}::${f.cpp}(${a.args.join(', ')})`, a.pre, f.sig.ret);
+        return this.finishCall(`${this.ns}::${f.cpp}(${a.args.join(', ')})`, a.pre, f.sig.ret, a.post);
       }
       if (FW_FUNCTIONS[name]) {
         const fw = FW_FUNCTIONS[name];
         const sig = this.fwSig(fw);
         const a = this.callArgs(args, sig.params);
-        return this.finishCall(`${fw.cpp}(${a.args.join(', ')})`, a.pre, sig.ret);
+        return this.finishCall(`${fw.cpp}(${a.args.join(', ')})`, a.pre, sig.ret, a.post);
       }
       const arg = i => args[i] ? this.expr(args[i]) : { c: 'js::Any()', t: T.undef };
       switch (name) {
@@ -2479,7 +2492,7 @@
           if (k.methods.has(prop) && k.methods.get(prop).isStatic) {
             const m = k.methods.get(prop);
             const a = this.callArgs(args, m.sig.params);
-            return this.finishCall(`${k.cppName}::${cppIdent(prop)}(${a.args.join(', ')})`, a.pre, m.sig.ret);
+            return this.finishCall(`${k.cppName}::${cppIdent(prop)}(${a.args.join(', ')})`, a.pre, m.sig.ret, a.post);
           }
           if (k.staticFields.has(prop)) {
             return this.callValue({ c: `${k.cppName}::${cppIdent(prop)}`, t: k.staticFields.get(prop).type }, args, node);
@@ -2603,7 +2616,7 @@
           const sig = m.method.fw ? m.method.sig : this.methodSignature(this.classes.get(m.owner), m.method);
           const a = this.callArgs(args, sig.params);
           const recv = m.isStatic ? `${this.classes.get(m.owner).cppName}::` : `${o.c}->`;
-          return this.finishCall(`${recv}${cppIdent(method)}(${a.args.join(', ')})`, a.pre, sig.ret);
+          return this.finishCall(`${recv}${cppIdent(method)}(${a.args.join(', ')})`, a.pre, sig.ret, a.post);
         }
         if (m && (m.kind === 'field' || m.kind === 'accessor')) {
           const f = this.memberRead(o, method, null);
@@ -2640,7 +2653,7 @@
       if (m && m.kind === 'method') {
         const sig = m.method.fw ? m.method.sig : this.methodSignature(this.classes.get(m.owner), m.method);
         const a = this.callArgs(node.arguments || [], sig.params);
-        return this.finishCall(`${base}::${cppIdent(method)}(${a.args.join(', ')})`, a.pre, sig.ret);
+        return this.finishCall(`${base}::${cppIdent(method)}(${a.args.join(', ')})`, a.pre, sig.ret, a.post);
       }
       return { c: `js::unsupported(${u16Literal('super.' + method)})`, t: T.any };
     }
@@ -2652,7 +2665,7 @@
       const params = base ? (base.ctorSig || this.ctorSignature(base)).params
         : ((FRAMEWORK[c.base] && FRAMEWORK[c.base].ctor) || []).map(([name, type]) => ({ name, type: this.type(type), cpp: cppIdent(name) }));
       const a = this.callArgs(node.arguments || [], params);
-      return this.finishCall(`${this.baseCpp(c)}::__ctor(${a.args.join(', ')})`, a.pre, T.void);
+      return this.finishCall(`${this.baseCpp(c)}::__ctor(${a.args.join(', ')})`, a.pre, T.void, a.post);
     }
 
     newExpr(node, want) {
@@ -2662,12 +2675,12 @@
       if (name && this.classes.has(name)) {
         const c = this.classes.get(name);
         const a = this.callArgs(args, c.ctorSig.params);
-        return this.finishCall(`(new ${c.cppName}())->__ctor(${a.args.join(', ')})`, a.pre, T.cls(name, false));
+        return this.finishCall(`(new ${c.cppName}())->__ctor(${a.args.join(', ')})`, a.pre, T.cls(name, false), a.post);
       }
       if (name && FRAMEWORK[name] && FRAMEWORK[name].ctor && name !== 'Error') {
         const params = FRAMEWORK[name].ctor.map(([n, type]) => ({ name: n, type: this.type(type), cpp: cppIdent(n) }));
         const a = this.callArgs(args, params);
-        return this.finishCall(`(new js::${name}())->__ctor(${a.args.join(', ')})`, a.pre, T.cls(name, true));
+        return this.finishCall(`(new js::${name}())->__ctor(${a.args.join(', ')})`, a.pre, T.cls(name, true), a.post);
       }
       switch (name) {
         case 'Error': case 'TypeError': case 'RangeError': case 'SyntaxError': case 'ReferenceError':

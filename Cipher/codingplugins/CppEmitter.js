@@ -859,6 +859,15 @@ template <class To, class From> inline Array<To> arrayAs(const Array<From>& a) {
   }
 }
 
+// Copy a converted array's elements back into the array it was converted from
+// (same object, so every alias sees the callee's changes)
+template <class To, class From> inline void copyInto(const Array<To>& dst, const Array<From>& src) {
+  if (dst.isNull() || src.isNull() || (const void*)dst.p.get() == (const void*)src.p.get()) return;
+  int32_t n = src.length();
+  if (!dst.typed() && dst.length() != n) dst.setLength(n);
+  for (int32_t i = 0; i < n && i < dst.length(); ++i) dst.at(i) = num<To>(src.get(i));
+}
+
 // ---------------------------------------------------------------- Any operations
 inline double Any::toNumber() const {
   switch (tag) {
