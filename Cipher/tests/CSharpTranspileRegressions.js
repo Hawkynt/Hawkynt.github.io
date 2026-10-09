@@ -639,6 +639,13 @@ check('conditions: grid[r][c] of a string grid as a condition checks the column 
     'function f(grid, r, c) { let s = ""; if (grid[r][c]) s += grid[r][c]; return s; }');
   expectMatch(code, /if \(c >= 0 && c < grid\[r\]\.Length && /, 'c checked against grid[r].Length');
 });
+check('arrays: shift()/pop() of an array used as a value give the element and shrink the array', () => {
+  const code = transpile('class K {\n  constructor() { /** @type {uint8[]} */ this.ks = [1, 2]; }\n  /** @returns {uint8} b */\n  next() { return this.ks.shift(); }\n' +
+    '  /**\n   * @param {uint8[]} a - a\n   * @returns {uint8} b\n   */\n  last(a) { return 5 ^ a.pop(); }\n}');
+  expectMatch(code, /byte __v = this\.Ks\[0\];\s*this\.Ks = this\.Ks\.Skip\(1\)\.ToArray\(\);/, 'shift: first element, then the rest');
+  expectMatch(code, /byte __v = a\[a\.Length - 1\];\s*a = a\.Take\(a\.Length - 1\)\.ToArray\(\);/, 'pop: last element, then the rest');
+  expectNoMatch(code, /RemoveAt/, 'List.RemoveAt on an array (CS1061)');
+});
 check('arrays: a store past the end of a pushed row grows that row in place', () => {
   const code = transpile('/**\n * @param {uint16[]} w - words\n * @returns {uint16[][]} tables\n */\nfunction build(w) {\n' +
     '  /** @type {uint16[][]} */\n  const tables = [];\n  for (let t = 0; t < 2; t++) { /** @type {uint16[]} */ const row = [0]; tables.push(row); }\n' +

@@ -25101,6 +25101,8 @@
      */
     transformArrayPop(node) {
       const array = this.transformExpression(node.array);
+      const removed = this.arrayRemovalExpression(node, array, false);
+      if (removed) return removed;
       // For List<T>: list.RemoveAt(list.Count - 1)
       return new CSharpMethodCall(array, 'RemoveAt', [
         new CSharpBinaryExpression(
@@ -25116,8 +25118,38 @@
      */
     transformArrayShift(node) {
       const array = this.transformExpression(node.array);
+      const removed = this.arrayRemovalExpression(node, array, true);
+      if (removed) return removed;
       // For List<T>: list.RemoveAt(0)
       return new CSharpMethodCall(array, 'RemoveAt', [CSharpLiteral.Int(0)]);
+    }
+
+    /**
+     * `arr.shift()`/`arr.pop()` used as a value on a C# array (a local or a field):
+     * ((Func<T>)(() => { var __v = arr[0]; arr = arr.Skip(1).ToArray(); return __v; })).Invoke()
+     * - the removed element, with the array rebound to the rest, as JavaScript
+     * shrinks it in place.
+     * @returns {Object|null} the C# expression, or null when the target is no array variable
+     */
+    arrayRemovalExpression(node, array, isShift) {
+      const target = node.array;
+      const assignable = target && (target.type === 'Identifier' || target.type === 'ThisPropertyAccess' ||
+        (target.type === 'MemberExpression' && !target.computed && target.object?.type === 'ThisExpression'));
+      const arrayType = assignable ? this.inferFullExpressionType(target) : null;
+      if (!arrayType?.isArray || !arrayType.elementType) return null;
+      const length = new CSharpMemberAccess(array, 'Length');
+      const lambda = new CSharpLambda([], new CSharpBlock());
+      lambda.body.statements.push(new CSharpVariableDeclaration('__v', arrayType.elementType,
+        new CSharpElementAccess(array, isShift ? CSharpLiteral.Int(0) : new CSharpBinaryExpression(length, '-', CSharpLiteral.Int(1)))));
+      const rest = isShift
+        ? new CSharpMethodCall(new CSharpMethodCall(array, 'Skip', [CSharpLiteral.Int(1)]), 'ToArray', [])
+        : new CSharpMethodCall(new CSharpMethodCall(array, 'Take', [new CSharpBinaryExpression(length, '-', CSharpLiteral.Int(1))]), 'ToArray', []);
+      lambda.body.statements.push(new CSharpExpressionStatement(new CSharpAssignment(array, '=', rest)));
+      lambda.body.statements.push(new CSharpReturn(new CSharpIdentifier('__v')));
+      const cast = new CSharpCast(
+        new CSharpType('Func', { isGeneric: true, genericArguments: [arrayType.elementType] }),
+        new CSharpParenthesized(lambda));
+      return new CSharpMethodCall(new CSharpParenthesized(cast), 'Invoke', []);
     }
 
     /**
