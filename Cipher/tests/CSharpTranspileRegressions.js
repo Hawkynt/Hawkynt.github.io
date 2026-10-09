@@ -620,6 +620,10 @@ check('arrays: a row stored as an empty array and filled past its end grows in p
     '  for (let r = 0; r < 2; r++) { m[r] = OpCodes.CreateArray(0, 0); for (let c = 0; c < 2; c++) m[r][c] = d[r * 2 + c]; }\n  return m;\n}');
   expectMatch(code, /OpCodes\.SetGrow<byte>\(ref m\[r\], c, /, 'SetGrow(ref m[r], c, ...)');
 });
+check('conditions: a[i] as a condition is false past the end of a, as undefined is in JavaScript', () => {
+  const code = transpile('/**\n * @param {uint8[]} r - r\n * @param {int32} i - i\n * @returns {int32} n\n */\nfunction f(r, i) { let n = 0; if (r[i] && (r[i] & 1)) n++; return n; }');
+  expectMatch(code, /if \(i >= 0 && i < r\.Length && r\[i\] != 0 && /, 'the index checked before the read');
+});
 check('arrays: a store past the end of a pushed row grows that row in place', () => {
   const code = transpile('/**\n * @param {uint16[]} w - words\n * @returns {uint16[][]} tables\n */\nfunction build(w) {\n' +
     '  /** @type {uint16[][]} */\n  const tables = [];\n  for (let t = 0; t < 2; t++) { /** @type {uint16[]} */ const row = [0]; tables.push(row); }\n' +

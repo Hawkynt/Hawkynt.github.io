@@ -19123,6 +19123,22 @@
         }
       }
 
+      // `a[i] && ...` guards a read past the end in JavaScript (undefined is
+      // falsy); the C# condition checks the index first: i >= 0 && i < a.Length && a[i] != 0
+      if (node.type === 'MemberExpression' && node.computed && ['Identifier', 'Literal'].includes(node.property?.type)) {
+        const arrayType = this.inferFullExpressionType(node.object);
+        const elementType = arrayType?.isArray ? arrayType.elementType : null;
+        if (elementType && ['byte', 'sbyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong'].includes(elementType.name) && !elementType.isArray) {
+          const array = this.transformExpression(node.object);
+          const index = this.ensureIntIndex(this.transformExpression(node.property), node.property);
+          const inRange = new CSharpBinaryExpression(
+            new CSharpBinaryExpression(index, '>=', CSharpLiteral.Int(0)), '&&',
+            new CSharpBinaryExpression(index, '<', new CSharpMemberAccess(array, 'Length')));
+          return new CSharpBinaryExpression(inRange, '&&',
+            new CSharpBinaryExpression(new CSharpElementAccess(array, index), '!=', CSharpLiteral.Int(0)));
+        }
+      }
+
       if (node.type === 'LogicalExpression') {
         // && and || - in C# these require both operands to be bool
         // Transform recursively
