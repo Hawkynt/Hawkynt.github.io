@@ -3599,6 +3599,8 @@
     x_ArrayLength(node) {
       const arr = this.lowerExpr(node.array);
       if (T.isArray(arr.t) || arr.t === 'String' || arr.t === 'JsArrayLike') return E.call(arr, 'length', [], 'int');
+      // The IL reads every .length as an array's; an object of a local class has its own length member
+      if (this.classOfJt(arr.t)) return this.memberGet(arr, 'length', node);
       return E.scall('Js', 'length', [this.conv(arr, 'Object')], 'int');
     }
     x_StringLength(node) { return E.call(this.valueOf(node.string || node.value, 'String'), 'length', [], 'int'); }
