@@ -2011,7 +2011,16 @@
           const lb = L.t.k === 'bool' ? T.i32 : L.t, rb = R.t.k === 'bool' ? T.i32 : R.t;
           let ct;
           if (lb.bits === 64 || rb.bits === 64) ct = isInt(rt) && rt.bits === 64 ? rt : ((lb.bits === 64 && !lb.signed) || (rb.bits === 64 && !rb.signed) ? T.u64 : T.i64);
-          else ct = op === '*' && !lb.signed && !rb.signed ? T.u64 : T.i64;
+          else {
+            // a Number product beyond 2^53 rounds in JavaScript: compute it as a double
+            // then (a literal factor counts with its own magnitude)
+            const width = (e, t) => {
+              const m = /^\(?(-?\d+)(?:u|LL|ULL)?\)?$/.exec(e.c);
+              return m ? Math.max(1, Math.abs(Number(m[1])).toString(2).length) : t.bits;
+            };
+            if (op === '*' && !(node && node.opCodesMethod) && width(L, lb) + width(R, rb) > 53) return { c: `(static_cast<double>(${L.c}) * static_cast<double>(${R.c}))`, t: T.f64 };
+            ct = T.i64;
+          }
           const c = this.cpp(ct);
           if (op === '%') return { c: `js::imod<${c}>(static_cast<${c}>(${L.c}), static_cast<${c}>(${R.c}))`, t: ct };
           return { c: `(static_cast<${c}>(${L.c}) ${op} static_cast<${c}>(${R.c}))`, t: ct };
