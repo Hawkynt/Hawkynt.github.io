@@ -913,6 +913,10 @@ check('module binding: a module constant named like a member of a class is quali
   const code = transpile(MODE_CLASSES);
   expectMatch(code, /this\._mode = Generated\.Mode\.ADD;/, 'Generated.Mode.ADD (the property Mode hides it)');
 });
+check('switch: a case label read off an object is matched by a guard (CS9135)', () => {
+  const code = transpile(MODE_CLASSES);
+  expectMatch(code, /case var __case when __case == Generated\.Mode\.ADD:/, 'case var __case when __case == Mode.ADD');
+});
 check('switch: a case falling through into default jumps with `goto default;`', () => {
   const code = transpile('function f(m) { let r = 0; switch (m) { case "a": r = 1; default: r += 2; } return r; }');
   expectMatch(code, /r = 1;\s*goto default;/, 'goto default; after the falling case');

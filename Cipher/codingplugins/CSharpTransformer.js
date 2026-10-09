@@ -19562,9 +19562,15 @@
     transformSwitchStatement(node) {
       const switchStmt = new CSharpSwitch(this.transformExpression(node.discriminant));
 
+      // A label read off an object (case CombinationMode.ADDITIVE, a field of a
+      // module instance) is no constant: it is matched by a guard instead,
+      // case var __case when __case == label (CS9135 otherwise)
+      const isObjectField = t => t?.type === 'MemberExpression' && !t.computed &&
+        this.localClassNames?.has(this.inferFullExpressionType(t.object)?.name);
       for (const caseNode of node.cases) {
+        const label = caseNode.test ? this.transformExpression(caseNode.test) : null;
         const csCase = new CSharpSwitchCase(
-          caseNode.test ? this.transformExpression(caseNode.test) : null
+          label && isObjectField(caseNode.test) ? new CSharpBinaryExpression(new CSharpIdentifier('var __case when __case'), '==', label) : label
         );
         for (const stmt of caseNode.consequent) {
           const csStmt = this.transformStatement(stmt);
