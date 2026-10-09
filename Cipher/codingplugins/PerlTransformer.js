@@ -8627,7 +8627,7 @@
           if (method === 'warn' || method === 'error') {
             return new PerlCall('warn', args);
           }
-          return new PerlCall('print', [...args, PerlLiteral.String("\\n", '"')]);
+          return new PerlCall('print', [...args, PerlLiteral.String("\n", '"')]);
         }
 
         // IL AST DataViewWrite - view.setUint32(offset, value, le) -> pack/substr
@@ -11574,7 +11574,7 @@
         // console.error(x) -> warn(x) (Perl sends to STDERR)
         if (objName === 'console') {
           if (methodName === 'log') {
-            return new PerlCall('print', [...args, PerlLiteral.String("\\n", '"')]);
+            return new PerlCall('print', [...args, PerlLiteral.String("\n", '"')]);
           }
           if (methodName === 'warn' || methodName === 'error') {
             return new PerlCall('warn', args);
