@@ -1447,7 +1447,7 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def Hex8ToBytes(hex_string):
-        return list(bytes.fromhex(hex_string))
+        return JSArray(bytes.fromhex(hex_string))
 
     @staticmethod
     def Hex16ToWords(hex_string):
@@ -1473,7 +1473,7 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def AnsiToBytes(s):
-        return [ord(c) & 0x7F for c in s]
+        return JSArray(ord(c) & 0x7F for c in s)
 
     @staticmethod
     def BytesToAnsi(byte_list):
@@ -1481,7 +1481,7 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def AsciiToBytes(s):
-        return [ord(c) & 0xFF for c in s]
+        return JSArray(ord(c) & 0xFF for c in s)
 
     @staticmethod
     def DoubleToBytes(value):
@@ -6832,13 +6832,17 @@ class OpCodes(metaclass=_OpCodesMeta):
           return this.transformSetCreation(node);
 
         case 'StringToBytes': {
-          // Python: string.encode('ascii') or string.encode('utf-8')
+          // The IL type is uint8[]: a mutable array, never an immutable bytes.
+          // AnsiToBytes/AsciiToBytes mask every char code (& 0x7F / & 0xFF)
+          // where str.encode('ascii') raises, so they call the runtime port.
           const encoding = node.encoding || 'ascii';
           const value = node.arguments?.[0] ? this.transformExpression(node.arguments[0]) : this.transformExpression(node.value);
+          if (node.opCodesMethod === 'AnsiToBytes' || node.opCodesMethod === 'AsciiToBytes')
+            return new PythonCall(new PythonMemberAccess(new PythonIdentifier('OpCodes'), node.opCodesMethod), [value]);
           const encodingArg = encoding === 'ascii' ? PythonLiteral.Str('ascii') :
                               encoding === 'utf-8' || encoding === 'utf8' ? PythonLiteral.Str('utf-8') :
                               PythonLiteral.Str(encoding);
-          return new PythonCall(new PythonMemberAccess(value, 'encode'), [encodingArg]);
+          return new PythonCall(new PythonIdentifier('JSArray'), [new PythonCall(new PythonMemberAccess(value, 'encode'), [encodingArg])]);
         }
 
         case 'BytesToString': {
@@ -10780,10 +10784,13 @@ class OpCodes(metaclass=_OpCodesMeta):
         if (hasArrayInit) {
           // new Uint8Array([1, 2, 3]) -> bytes([1, 2, 3]) or bytearray([1, 2, 3])
           const elements = node.arguments[0].elements.map(e => this.transformExpression(e));
-          if (typeName === 'Uint8Array')
-            return new PythonCall(new PythonIdentifier('bytes'), [new PythonList(elements)]);
-          // For other typed arrays, use bytearray or numpy
-          return new PythonCall(new PythonIdentifier('bytearray'), [new PythonList(elements)]);
+          // A typed array is mutable: never an immutable bytes, and a word
+          // array never a bytearray (which refuses values above 255).
+          if (typeName === 'Uint8Array' || typeName === 'Int8Array')
+            return new PythonCall(new PythonIdentifier('JSUint8Array'), [new PythonList(elements)]);
+          if (typeName === 'Uint32Array' || typeName === 'Int32Array')
+            return new PythonCall(new PythonIdentifier('JSUint32Array'), [new PythonList(elements)]);
+          return new PythonList(elements);
         }
 
         // Size-based: new Uint8Array(n) -> JSUint8Array(n) (masks stores to
@@ -11735,10 +11742,7 @@ class OpCodes(metaclass=_OpCodesMeta):
       // When buffer is set and is an identifier, we need to distinguish between:
       // - new Uint32Array(IV) where IV is an array -> copy operation
       // - new Uint32Array(count) where count is a number -> size-based
-      const isArrayCopy = node.buffer && (
-        node.buffer.type === 'Identifier' ||
-        node.buffer.type === 'MemberExpression'
-      ) && this._isLikelyArrayArgument(node.buffer);
+      const isArrayCopy = node.buffer && this._isLikelyArrayArgument(node.buffer);
 
       // For array copy operations, we need to copy the array, not multiply
       if (isArrayCopy) {
@@ -11862,62 +11866,20 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     /**
-     * Heuristic to determine if an identifier is likely an array (for copying)
-     * vs a numeric size (for size-based array creation)
+     * Whether a typed-array constructor argument is an array to copy (or a
+     * buffer to view) rather than an element count, from its IL type: an
+     * array type (`T[]`, a TypedArray, ArrayBuffer) or an `X.buffer` peel.
+     * @param {Object} arg - IL constructor argument
+     * @returns {boolean}
      */
     _isLikelyArrayArgument(arg) {
       if (!arg) return false;
-
-      // Get the identifier name
-      let name = '';
-      if (arg.type === 'Identifier')
-        name = arg.name || '';
-      else if (arg.type === 'MemberExpression' && arg.property?.name)
-        name = arg.property.name;
-
-      const lowerName = name.toLowerCase();
-
-      // Names that clearly indicate an array to copy
-      const arrayPatterns = /^(iv|state|key|block|data|buffer|bytes|array|input|output|hash|digest|result|chaining|round|s|k|w|h|v|m|t|p|x|y|z|sbox|table|rounds|perm|permutation|constants?|initial|values?|msg|message|plaintext|ciphertext|text|src|source|dest|target|words?|chunk|nonce|salt|seed|vector|matrix|schedule|expanded?)$/i;
-      if (arrayPatterns.test(name))
+      if (arg.type === 'MemberExpression' && !arg.computed &&
+          (arg.property?.name === 'buffer' || arg.property?.value === 'buffer'))
         return true;
-
-      // Names that clearly indicate a numeric size (check before array suffixes)
-      const sizePatterns = /^(size|len|length|count|n|num|number|index|i|j|offset|pos|position|capacity|width|height|bits|bytes_?count|byte_?count)$/i;
-      if (sizePatterns.test(name))
-        return false;
-
-      // Names with size-indicating prefixes (totalWords, numBytes, etc.) are sizes, not arrays
-      const sizePrefixPatterns = /^(total|num|n_?|count_?|max_?|min_?|size_?).*$/i;
-      if (sizePrefixPatterns.test(name))
-        return false;
-
-      // Names ending with size-like suffixes (wordCount, keyLength, etc.)
-      const sizeSuffixPatterns = /(size|len|length|count|num|index|offset|bits)$/i;
-      if (sizeSuffixPatterns.test(name))
-        return false;
-
-      // Names ending with array-like suffixes (e.g., initValues, subKeys, roundData)
-      const arraySuffixPatterns = /(values?|keys?|bytes?|data|buffer|array|block|state|words?|rounds?)$/i;
-      if (arraySuffixPatterns.test(name))
-        return true;
-
-      // Check type information if available
-      const argType = arg.resultType || arg.typeInfo?.type;
-      if (argType) {
-        const typeStr = String(argType).toLowerCase();
-        if (typeStr.includes('[]') || typeStr.includes('array') || typeStr.includes('uint'))
-          return true;
-        if (typeStr === 'int' || typeStr === 'int32' || typeStr === 'number' || typeStr === 'usize')
-          return false;
-      }
-
-      // Default: if it's all uppercase (like IV, MSG, KEY), likely an array constant
-      if (name === name.toUpperCase() && name.length <= 5 && name.length > 1)
-        return true;
-
-      // Default: assume size-based for safety (preserves original behavior)
-      return false;
+      const type = arg.resultType;
+      const typeName = typeof type === 'string' ? type : (type && (type.name || type.type)) || '';
+      return /\[\]$/.test(typeName) || /(Array|ArrayBuffer)$/.test(typeName);
     }
 
     /**
@@ -12041,10 +12003,11 @@ class OpCodes(metaclass=_OpCodesMeta):
     transformHexDecode(node) {
       // IL AST uses arguments array, fallback to value for compatibility
       const value = this.transformExpression(node.arguments?.[0] || node.value);
-      return new PythonCall(
+      // uint8[]: a mutable array (bytes.fromhex alone is immutable)
+      return new PythonCall(new PythonIdentifier('JSArray'), [new PythonCall(
         new PythonMemberAccess(new PythonIdentifier('bytes'), 'fromhex'),
         [value]
-      );
+      )]);
     }
 
     /**
@@ -12054,7 +12017,10 @@ class OpCodes(metaclass=_OpCodesMeta):
     transformHexEncode(node) {
       // IL AST uses arguments array, fallback to value for compatibility
       const value = this.transformExpression(node.arguments?.[0] || node.value);
-      return new PythonCall(new PythonMemberAccess(value, 'hex'), []);
+      // A list has no .hex(); bytes(...) of the low 8 bits of each element does
+      const masked = new PythonBinaryExpression(new PythonCall(new PythonIdentifier('int'), [new PythonIdentifier('_b')]), '&', PythonLiteral.Int(0xFF));
+      const asBytes = new PythonCall(new PythonIdentifier('bytes'), [new PythonGeneratorExpression(masked, new PythonIdentifier('_b'), value)]);
+      return new PythonCall(new PythonMemberAccess(asBytes, 'hex'), []);
     }
 
     /**

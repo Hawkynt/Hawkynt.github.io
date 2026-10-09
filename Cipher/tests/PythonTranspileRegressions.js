@@ -301,6 +301,21 @@ check('globals: ArrayBuffer.isView, Array(n) without new, and TestCase as a base
   ["[True, False, 3, 'x']", 'True [1] 1']);
 });
 
+// ---------------------------------------------------------------------------
+// Byte arrays are mutable
+// ---------------------------------------------------------------------------
+check('bytes: hex, ANSI and typed-array constructors give mutable arrays', () => {
+  const js = 'function f() { const h = OpCodes.Hex8ToBytes("0a0b"); h[0] ^= 1;\n' +
+    '  const a = OpCodes.AnsiToBytes("A\\u00e9"); a[1] = 7;\n' +
+    '  const u = new Uint8Array([1, 2]); u[0] = 44;\n' +
+    '  const w = new Uint32Array([1, 2]); w[1] = 0x12345678;\n' +
+    '  return [h, a, u, w]; }';
+  // Given hex text, a non-ASCII char (masked to 7 bits by AnsiToBytes) and typed-array literals
+  // When each result is written to
+  // Then no "'bytes' object does not support item assignment"
+  return expectOutput(runPython(js, 'print([list(x) for x in f()])'), ['[[11, 11], [65, 7], [44, 2], [1, 305419896]]']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }
