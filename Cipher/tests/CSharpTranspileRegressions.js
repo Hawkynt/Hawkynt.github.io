@@ -677,6 +677,11 @@ check('Math.floor of a uint64 keeps it a ulong, not an int', () => {
   const code = transpile('/**\n * @param {uint64} counter - c\n * @returns {uint64} r\n */\nfunction f(counter) { /** @type {uint64} */ let rest = counter; rest = Math.floor(rest / 256); return rest; }');
   expectMatch(code, /rest = unchecked\(\(ulong\)\(Math\.Floor\(/, 'rest = (ulong)Math.Floor(...)');
 });
+check('OpCodes.Shr32 of an int32 parameter assigned back to it is cast to the parameter type', () => {
+  const code = transpile('class U {\n  /**\n   * @param {int32} n - n\n   * @returns {int32} zeros\n   */\n' +
+    '  static ntz(n) { let c = 0; while (OpCodes.And32(n, 1) === 0) { c++; n = OpCodes.Shr32(n, 1); } return c; }\n}');
+  expectMatch(code, /n = unchecked\(\(int\)\(n >>> 1 & 4294967295u\)\);/, 'n = (int)(n >>> 1 & 4294967295u)');
+});
 check('Math.round rounds a half up as JavaScript does, not to even', () => {
   const code = transpile('/**\n * @param {float64} x - x\n * @returns {int32} r\n */\nfunction f(x) { return Math.round(x * 3); }');
   expectMatch(code, /Math\.Floor\(\(double\)\(x \* 3\) \+ 0\.5\)/, 'Math.Floor(x * 3 + 0.5)');

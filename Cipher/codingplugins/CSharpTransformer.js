@@ -15290,6 +15290,15 @@
         const valueType = this.inferFullExpressionType(node.right);
         // Cast when types differ and target is a narrower integral type
         value = this.castIfNeeded(value, valueType, targetType);
+        // An inlined 32-bit OpCodes operation on a signed operand is a long in C#
+        // (n >>> 1 & 4294967295u); into a 32-bit target it is cast back (OCB's ntz)
+        // (the declared type of a local or parameter, which the IL context may not tell)
+        const parameter = node.left?.type === 'Identifier' && target?.nodeType === 'Identifier'
+          ? (this.currentMethod?.parameters || []).find(p => p.name === target.name) : null;
+        const declaredType = parameter?.type || (node.left?.type === 'Identifier' ? this.getVariableType(node.left.name) || targetType : targetType);
+        if (node.right?.opCodesMethod && value?.nodeType === 'BinaryExpression' &&
+            declaredType && !declaredType.isArray && (declaredType.name === 'int' || declaredType.name === 'uint'))
+          value = new CSharpCast(new CSharpType(declaredType.name), value);
       }
       // For compound assignments (+=, -=, &=, |=, etc.), the result might need casting
       // because C# does implicit widening but the assignment back to target needs narrowing
