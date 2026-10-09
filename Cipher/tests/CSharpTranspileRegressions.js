@@ -106,6 +106,11 @@ check('module scope: (function () { ... }).call(this) declares its tables like a
   const code = transpile('(function () {\n  const SBOX = [7, 8, 9];\n  module.exports = { SBOX };\n}).call(this);');
   expectMatch(code, /static readonly \w+\[\] SBOX = /, 'the SBOX field');
 });
+check('module scope: a long concatenation of string literals becomes one literal', () => {
+  const parts = Array.from({ length: 1200 }, (_, i) => `'${(i % 256).toString(16).padStart(2, '0')}'`).join(' +\n  ');
+  const code = transpile(`const HEX =\n  ${parts};\n/** @returns {int32} n */\nfunction size() { return HEX.length; }`);
+  expectMatch(code, /HEX = "000102/, 'one literal starting 000102');
+});
 check('statements: Object.freeze(x) as a statement leaves no bare expression (CS0201)', () => {
   const code = transpile('const BOXES = [[1, 2], [3, 4]];\nfor (let i = 0; i < BOXES.length; i++) Object.freeze(BOXES[i]);\nObject.freeze(BOXES);');
   expectNoMatch(code, /^\s*BOXES\[i\];/m, 'a bare BOXES[i]; statement');

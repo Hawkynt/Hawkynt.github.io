@@ -7298,7 +7298,44 @@
       return this.moduleBindingTargets.get(node.name) || null;
     }
 
+    /**
+     * Folds every long concatenation of string literals (a data table written as
+     * 'hex...' + 'hex...' + ..., Brotli's 1200-line dictionary) into one literal,
+     * so the transformation does not recurse once per term.
+     * @param {Object} jsAst - the program, changed in place
+     */
+    foldStringLiteralChains(jsAst) {
+      const fold = node => {
+        const rights = [];
+        let left = node;
+        while (left && left.type === 'BinaryExpression' && left.operator === '+') { rights.push(left.right); left = left.left; }
+        if (rights.length < 8 || left?.type !== 'Literal' || typeof left.value !== 'string') return null;
+        let text = left.value;
+        for (let i = rights.length - 1; i >= 0; --i) {
+          if (rights[i]?.type !== 'Literal' || typeof rights[i].value !== 'string') return null;
+          text += rights[i].value;
+        }
+        return { type: 'Literal', value: text, raw: JSON.stringify(text), resultType: left.resultType };
+      };
+      this._walkAstNodes(jsAst, node => {
+        for (const key in node) {
+          if (key === 'parent') continue;
+          const value = node[key];
+          if (Array.isArray(value)) {
+            for (let i = 0; i < value.length; ++i) {
+              const folded = value[i]?.type === 'BinaryExpression' ? fold(value[i]) : null;
+              if (folded) value[i] = folded;
+            }
+          } else if (value?.type === 'BinaryExpression') {
+            const folded = fold(value);
+            if (folded) node[key] = folded;
+          }
+        }
+      });
+    }
+
     transform(jsAst) {
+      this.foldStringLiteralChains(jsAst);
       const unit = new CSharpCompilationUnit();
 
       // Standard usings for crypto code. System.Buffers.Binary is required
