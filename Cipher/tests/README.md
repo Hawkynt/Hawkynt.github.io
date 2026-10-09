@@ -113,6 +113,7 @@ category of `TranspilerSuite.js`.
 | `soundness` | the type-soundness checker: value predicates of each IL type, instrumentation, sampling, a run over a probe file | `TypeSoundnessTests.js` |
 | `jsdoc` | every OpCodes and AlgorithmFramework member is fully typed by JSDoc | `JSDocTierAudit.js` |
 | `csharp` | regressions of systematic C# transpilation faults; compiles and runs the C# runtime stubs when the .NET SDK is installed | `CSharpTranspileRegressions.js` |
+| `python` | regressions of systematic Python transpilation faults; runs the Python runtime cases when a Python 3 interpreter is installed | `PythonTranspileRegressions.js` |
 | `validation` | transpiles every algorithm to every installed language, compiles it, and runs its vectors where the language is interpreted | `TranspilerValidation.js` |
 
 `validation` takes over ten minutes unscoped and its result depends on the
