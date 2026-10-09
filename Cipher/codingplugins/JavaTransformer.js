@@ -1291,6 +1291,8 @@
       let t;
       if (r.none) t = 'void';
       else if (r.il) t = this.jt(r.il, { big: !!fi.retBig, elemBig: !!fi.retElemBig, nullable: !!r.nullable });
+      // an expression-bodied arrow returns its expression, typed or not
+      else if (r.exprBody) { t = this.nodeJt(r.node); if (t === 'void' && !(r.node && /Call|New/.test(r.node.type))) t = 'Object'; }
       else if (r.returned) {
         const types = r.returned.map(n => this.nodeJt(n)).filter(x => x !== 'void');
         t = this.commonJt(types);
