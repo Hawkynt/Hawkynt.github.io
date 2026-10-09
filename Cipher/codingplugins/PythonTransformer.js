@@ -2749,10 +2749,12 @@ class OpCodes(metaclass=_OpCodesMeta):
         // TypedArray-from-array-like constructor behavior (distinct from the
         // TypedArray-from-ArrayBuffer reinterpret case) - preserved exactly
         // as before for every source that isn't a real ArrayBuffer.
-        '_typed_array_view': 'def _typed_array_view(buffer, width, fmt=None):\n' +
+        // `alias`: the source was X.buffer, so a word array is shared; a typed
+        // array passed directly is copied, as its constructor does in JS
+        '_typed_array_view': 'def _typed_array_view(buffer, width, fmt=None, alias=False):\n' +
           '    if isinstance(buffer, JSArrayBuffer):\n' +
           '        return JSTypedBufferView(buffer, width, fmt)\n' +
-          '    if fmt is None and width == 4 and isinstance(buffer, JSUint32Array):\n' +
+          '    if alias and fmt is None and width == 4 and isinstance(buffer, JSUint32Array):\n' +
           '        return buffer\n' +
           '    if fmt:\n' +
           '        return [float(v) for v in buffer]\n' +
@@ -12521,6 +12523,8 @@ class OpCodes(metaclass=_OpCodesMeta):
           const [width, fmt] = viewParams;
           const args = [buffer, PythonLiteral.Int(width)];
           if (fmt) args.push(PythonLiteral.Str(fmt));
+          else if (isBufferPeel) args.push(PythonLiteral.None());
+          if (isBufferPeel) args.push(PythonLiteral.Bool(true));
           return new PythonCall(new PythonIdentifier('_typed_array_view'), args);
         }
         return new PythonCall(new PythonIdentifier('list'), [buffer]);

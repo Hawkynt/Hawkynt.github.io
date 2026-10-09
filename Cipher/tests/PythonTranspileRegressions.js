@@ -611,6 +611,13 @@ check('for: a continue beside a break in a counting-down loop still runs the upd
   return expectOutput(runPython(js, 'r = f([3, 2])\nprint(list(r[0]), r[1])'), ['[4, 1] 1']);
 });
 
+check('typed array: new Uint32Array(words) copies, new Uint32Array(words.buffer) shares', () => {
+  const js = 'function f() { const a = new Uint32Array(2); a[0] = 1; a[1] = 2; const copy = new Uint32Array(a); const view = new Uint32Array(a.buffer); copy[0] = 9; view[1] = 7; return [a, copy, view]; }';
+  // Given a word array copied through its constructor and viewed through its buffer
+  // Then writing the copy leaves the source alone, writing the view changes it
+  return expectOutput(runPython(js, 'print([list(x) for x in f()])'), ['[[1, 7], [9, 2], [1, 7]]']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }
