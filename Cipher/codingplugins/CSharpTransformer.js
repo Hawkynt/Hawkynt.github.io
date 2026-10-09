@@ -8145,10 +8145,62 @@
           // an export object that we've already handled
           break;
 
+        // A loop or block filling a module table (`for (...) MUL_ALPHA.push(...)`)
+        case 'ForStatement':
+        case 'ForOfStatement':
+        case 'ForInStatement':
+        case 'WhileStatement':
+        case 'DoWhileStatement':
+        case 'BlockStatement':
+        case 'IfStatement':
+          if (!this.touchesModuleLoader(node)) this.transformModuleInitStatement(node, targetClass);
+          break;
+
         default:
-          // Silently skip unhandled top-level node types (e.g. IfStatement IIFE guards)
+          // Silently skip unhandled top-level node types
           break;
       }
+    }
+
+    /**
+     * Whether a module-level statement deals with the module system or the
+     * registry (a UMD guard, `if (!Find(x)) RegisterAlgorithm(x)`), which the
+     * generated registry replaces - such a statement is not module code to run.
+     */
+    touchesModuleLoader(node) {
+      const loaderNames = new Set(['RegisterAlgorithm', 'AlgorithmFramework', 'module', 'exports', 'define', 'global', 'globalThis', 'window', 'self', 'require']);
+      let found = false;
+      this._walkAstNodes(node, n => {
+        if (!found && n.type === 'Identifier' && loaderNames.has(n.name)) found = true;
+      });
+      return found;
+    }
+
+    /**
+     * A statement of the module body that computes something at load time (a
+     * loop filling a table, a store into one). It runs where JavaScript runs it:
+     * a static method holding it, called by the initializer of a static field
+     * declared at that point, so the static fields initialize in source order
+     * around it.
+     */
+    transformModuleInitStatement(node, targetClass) {
+      this.moduleInitCount = (this.moduleInitCount || 0) + 1;
+      const name = 'ModuleInit' + this.moduleInitCount;
+      const method = this.transformFunctionToMethod(name, {
+        type: 'FunctionExpression', params: [], body: { type: 'BlockStatement', body: [node] }
+      });
+      method.isStatic = true;
+      method.accessModifier = 'private';
+      method.returnType = CSharpType.Bool();
+      if (!method.body) method.body = new CSharpBlock();
+      method.body.statements.push(new CSharpReturn(CSharpLiteral.Bool(true)));
+      targetClass.members.push(method);
+      const field = new CSharpField(name + 'Done', CSharpType.Bool());
+      field.isStatic = true;
+      field.isReadOnly = true;
+      field.accessModifier = 'private';
+      field.initializer = new CSharpMethodCall(null, method.name, []);
+      targetClass.members.push(field);
     }
 
     /**
@@ -19150,7 +19202,17 @@
           const namedClassNode = { ...right, id: { type: 'Identifier', name: left.name } };
           this.transformClassDeclaration(namedClassNode, targetClass);
         }
+        // A store into a module table (`TABLE[i] = v`) runs at load time
+        else if (left.type === 'MemberExpression' && left.computed && !this.touchesModuleLoader(node)) {
+          this.transformModuleInitStatement(node, targetClass);
+        }
+        return;
       }
+
+      // A table filled at load time (`TABLE.push(v)`)
+      if ((node.expression.type === 'ArrayAppend' || node.expression.type === 'ArrayConcat' || this.isPushCallExpression(node.expression)) &&
+          !this.touchesModuleLoader(node))
+        this.transformModuleInitStatement(node, targetClass);
     }
 
 

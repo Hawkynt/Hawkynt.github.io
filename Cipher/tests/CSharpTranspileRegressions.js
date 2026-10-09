@@ -89,6 +89,19 @@ check('module binding: a same-named parameter shadows the module binding (functi
   expectMatch(code, /table => table\[0\]/, 'the arrow keeps its own parameter');
 });
 
+check('module statements: a loop filling a module table runs where the module runs it, between the fields', () => {
+  const code = transpile('/** @type {uint32[]} */\nconst TABLE = [];\nfor (let c = 0; c < 4; c++) TABLE.push(c * 3);\n' +
+    'const SECOND = TABLE.length;\n/**\n * @param {int32} i - i\n * @returns {uint32} v\n */\nfunction get(i) { return TABLE[i]; }');
+  expectMatch(code, /private static bool ModuleInit1\(\)\s*\{\s*for \(int c = 0; c < 4; c\+\+\)[\s\S]*?TABLE = TABLE\.Append\([\s\S]*?return true;/, 'the loop in ModuleInit1');
+  const table = code.indexOf(' TABLE = Array.Empty'), init = code.indexOf('ModuleInit1Done = ModuleInit1()'), second = code.indexOf(' SECOND = ');
+  if (!(table >= 0 && init > table && second > init)) throw new Error('expected TABLE, then its initialization, then SECOND');
+});
+check('module statements: a registry guard and a store into a table run, a guard of the module system does not', () => {
+  const code = transpile('const T = [0, 0];\nT[1] = 5;\nclass A extends Algorithm { constructor() { super(); this.name = "A"; } }\n' +
+    'const a = new A();\nif (!AlgorithmFramework.Find(a.name)) { RegisterAlgorithm(a); }');
+  expectMatch(code, /ModuleInit1\(\)\s*\{\s*T\[1\] = /, 'the store T[1] = 5 in ModuleInit1');
+  expectNoMatch(code, /ModuleInit2/, 'a module init for the registry guard');
+});
 check('IIFE hoisting: two IIFEs with the same local get distinct module names; a shadowing parameter is kept', () => {
   const code = transpile('const A = (() => { const table = [1, 2]; return table; })();\nconst B = (() => { const table = [3, 4]; const f = (table) => table[0]; return f(table); })();');
   expectMatch(code, /\bTable\b[^;]*=/, 'the first hoisted Table');
