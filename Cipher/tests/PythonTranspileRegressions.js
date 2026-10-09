@@ -570,6 +570,12 @@ check('methods: push/pop on an instance of a declared class call that class, not
   return expectOutput(runPython(js, 'print(f())'), ['[11, 7, [1, 2]]']);
 });
 
+check('math: a whole Math.log2/Math.sqrt result sizes and indexes arrays like the int it equals', () => {
+  const js = '/** @param {int32} n */\nfunction f(n) { const k = Math.log2(n); const out = new Array(k); out[k - 1] = 9; const r = Math.sqrt(n); return [out.length, out[k - 1], [5, 6, 7][Math.sqrt(4)], OpCodes.CreateArray(k, 1), Math.sqrt(2) > 1.41]; }';
+  // Given log2 of a power of two, sqrt of a square and of a non-square
+  return expectOutput(runPython(js, 'r = f(8)\nprint(r[0], r[1], r[2], list(r[3]), r[4])'), ['3 9 7 [1, 1, 1] True']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

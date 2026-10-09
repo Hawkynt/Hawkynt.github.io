@@ -1632,7 +1632,7 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def CreateArray(length, value=0):
-        return JSArray([value] * length)
+        return JSArray([value] * int(length))
 
     @staticmethod
     def ArraySlice(arr, start, end=None):
@@ -3061,6 +3061,13 @@ class OpCodes(metaclass=_OpCodesMeta):
           'def _js_imod(a, b):\n' +
           '    r = abs(a) % abs(b)\n' +
           '    return -r if a < 0 else r'
+      });
+      // A whole float result (Math.log2(8), Math.sqrt(16)) is the same Number
+      // as the int in JavaScript; as an int it can size and index arrays
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_num(x):\n' +
+          '    return int(x) if isinstance(x, float) and x.is_integer() and -9007199254740992 <= x <= 9007199254740992 else x'
       });
       // Number division: x / 0 is an infinity or NaN, a whole quotient an int
       stubs.push({
@@ -7348,7 +7355,7 @@ class OpCodes(metaclass=_OpCodesMeta):
             case 'pow':
               return new PythonBinaryExpression(args[0], '**', args[1]);
             case 'sqrt':
-              return new PythonCall(new PythonMemberAccess(new PythonIdentifier('math'), 'sqrt'), args);
+              return new PythonCall(new PythonIdentifier('_js_num'), [new PythonCall(new PythonMemberAccess(new PythonIdentifier('math'), 'sqrt'), args)]);
             case 'log':
               return new PythonCall(new PythonMemberAccess(new PythonIdentifier('math'), 'log'), args);
             case 'exp':
@@ -12301,7 +12308,11 @@ class OpCodes(metaclass=_OpCodesMeta):
      */
     transformArrayCreation(node) {
       if (node.size) {
-        const size = this.transformExpression(node.size);
+        let size = this.transformExpression(node.size);
+        // a float length (`new Array(Math.log2(n))`) is a whole Number in
+        // JavaScript; Python repeats a list only an int number of times
+        if (/^(float32|float64|double|float)$/.test(String(node.size.resultType || '')))
+          size = new PythonCall(new PythonIdentifier('int'), [size]);
         // `new Array(n)` needs JS-style auto-growing __setitem__ just like
         // any other array literal (e.g. feal-nx.js's key-schedule loop
         // `subKeys[4*i] = ...` up to the preallocated length) - PythonList
@@ -14167,10 +14178,10 @@ class OpCodes(metaclass=_OpCodesMeta):
     transformSqrt(node) {
       this.imports.add('math');
       const argument = this.transformExpression(node.argument || node.arguments?.[0]);
-      return new PythonCall(
+      return new PythonCall(new PythonIdentifier('_js_num'), [new PythonCall(
         new PythonMemberAccess(new PythonIdentifier('math'), 'sqrt'),
         [argument]
-      );
+      )]);
     }
 
     /**
@@ -14189,10 +14200,10 @@ class OpCodes(metaclass=_OpCodesMeta):
     transformLog2(node) {
       this.imports.add('math');
       const argument = this.transformExpression(node.argument);
-      return new PythonCall(
+      return new PythonCall(new PythonIdentifier('_js_num'), [new PythonCall(
         new PythonMemberAccess(new PythonIdentifier('math'), 'log2'),
         [argument]
-      );
+      )]);
     }
 
     /**
