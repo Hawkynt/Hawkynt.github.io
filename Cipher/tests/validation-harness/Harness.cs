@@ -329,7 +329,7 @@ __DUMMY_CLASSES__
             }
             catch (TargetInvocationException e) when (e.InnerException != null)
             {
-                throw e.InnerException;
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerException).Throw();
             }
         }
 
@@ -345,7 +345,7 @@ __DUMMY_CLASSES__
             }
             catch (TargetInvocationException e) when (e.InnerException != null)
             {
-                throw e.InnerException;
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerException).Throw();
             }
         }
 
