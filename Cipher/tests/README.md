@@ -133,6 +133,12 @@ only compiled. A toolchain counts as installed when it is on `PATH` (Windows
 broken one (a `java` that cannot create its virtual machine) is reported and
 left out rather than failing the run.
 
+The limit of one compile or run is `--timeout` (default 120 s), raised to 100
+times the time the file's JavaScript reference took (at most 30 minutes). A run
+cut off by it is counted as `timeout`, on its own, and fails no language.
+`.data` libraries an algorithm takes through its UMD factory are bundled for
+JavaScript, Python and Perl.
+
 A language passes when every algorithm it transpiled also compiled and passed
 every vector. Transpile, compile and execute counts are kept apart, per language
 and per category, with the most frequent error classes. `--report[=path]` writes

@@ -130,6 +130,10 @@ test('summarize: given a worker that died, when judged, then the language fails'
 test('summarize: given a compile-only run, when judged, then compiled is enough', () => {
   equal(Validation.summarize([record('javascript', 'compiled')], ['javascript']).byLanguage.javascript.passed, true);
 });
+test('summarize: given a run cut off by its time limit, when judged, then it is counted as timed out and fails no language', () => {
+  const s = Validation.summarize([record('python', 'passed'), Object.assign(record('python', 'timeout', 'timeout: timeout'), { error: 'timed out after 120s' })], ['python']).byLanguage.python;
+  equal([s.considered, s.compiled, s.executed, s.timedOut, s.passed], [2, 2, 1, 1, true]);
+});
 test('summarize: given error classes, when ranked, then by count descending and name ascending', () => {
   const s = Validation.summarize([record('perl', 'execute', 'b'), record('perl', 'execute', 'a'), record('perl', 'execute', 'b'), record('perl', 'compile', 'c')], ['perl']);
   equal(s.byLanguage.perl.errorClasses, [{ class: 'b', count: 2 }, { class: 'a', count: 1 }, { class: 'c', count: 1 }]);

@@ -58,8 +58,10 @@ const args = {
 
 // Seconds a compile or a run of one file may take before it counts as failed
 const DEFAULT_TIMEOUT = 120;
+// The limit grows to this many seconds per second the JavaScript reference took
+const TIMEOUT_PER_REFERENCE_SECOND = 100;
 // A worker handles one algorithm file in every language
-const WORKER_TIMEOUT_SECONDS = 1800;
+const WORKER_TIMEOUT_SECONDS = 4 * 3600;
 
 // ============================================================================
 // TOOLS AND COMPILER/INTERPRETER DETECTION
@@ -444,6 +446,101 @@ function libraryExports(source) {
 }
 
 /**
+ * The names a .data library exports: every name of an exported object
+ * literal, or the one variable it returns.
+ * @param {string} source - library source
+ * @returns {{names: string[], single: string|null}|null} null for an unknown shape
+ */
+function libraryExportNames(source) {
+  const exported = libraryExports(source);
+  if (!exported) return null;
+  let literal = exported;
+  if (exported === 'module.exports') {
+    const m = source.match(/module\.exports\s*=\s*(\{[^}]*\}|[A-Za-z_$][\w$]*)\s*;/);
+    if (!m) return null;
+    literal = m[1];
+  }
+  if (!literal.startsWith('{')) return { names: [], single: literal };
+  const names = literal.slice(1, -1).split(',').map(s => s.trim()).filter(Boolean)
+    .map(entry => entry.split(':')[0].trim());
+  return { names, single: null };
+}
+
+/** The Python transpiler's snake_case of a name (all-capitals names are kept). */
+function pythonSnake(name) {
+  if (name === name.toUpperCase()) return name;
+  return name.replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2').replace(/([a-z\d])([A-Z])/g, '$1_$2').toLowerCase();
+}
+
+/**
+ * Bundle the .data libraries an algorithm takes through its third factory
+ * parameter, for Python and Perl: the library's transpiled code, then the
+ * parameter bound to its exports. Python reads them as attributes (raw or
+ * snake_case names), Perl as hash entries or methods.
+ * @returns {{code: string, error?: string}}
+ */
+function bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptions) {
+  const paramMatches = [...source.matchAll(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/g)];
+  const paramName = paramMatches.length ? paramMatches[paramMatches.length - 1][1] : null;
+  if (!paramName) return { code: '' };
+  let code = '';
+  for (const lm of source.matchAll(/require\(\s*['"]\.\/([^'"]+)['"]\s*\)/g)) {
+    const libPath = [lm[1], lm[1] + '.js', lm[1] + '.data.js']
+      .map(c => path.join(path.dirname(algorithmFile), c)).find(f => f.endsWith('.data.js') && fs.existsSync(f));
+    if (!libPath) continue;
+    const libSrc = fs.readFileSync(libPath, 'utf-8');
+    const exported = libraryExportNames(libSrc);
+    if (!exported) return { code, error: 'library ' + path.basename(libPath) + ': its exports are in no shape the bundling knows' };
+    let libCode;
+    try {
+      libCode = transpileOne(libSrc, plugin, path.basename(libPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_lib', undefined, parserOptions);
+    } catch (e) {
+      return { code, error: 'library ' + path.basename(libPath) + ': ' + e.message };
+    }
+    // A library assigning module.exports from its own IIFE keeps its names
+    // local: it gets a module object to assign, and the parameter is bound to that
+    if (libraryExports(libSrc) === 'module.exports') {
+      code += language === 'python'
+        ? `import types as _vh_types\nmodule = _vh_types.SimpleNamespace(exports=_vh_types.SimpleNamespace())\n${libCode}\n${pythonSnake(paramName)} = module.exports\n\n`
+        : `our $module = { exports => {} };\n${libCode}\nour $${paramName} = $module->{exports};\n\n`;
+      continue;
+    }
+    code += libCode + '\n\n';
+    if (language === 'python') {
+      const target = pythonSnake(paramName);
+      if (exported.single) {
+        if (pythonSnake(exported.single) !== target) code += `${target} = ${pythonSnake(exported.single)}\n\n`;
+      } else {
+        const pick = name => `globals()[${JSON.stringify(name)}] if ${JSON.stringify(name)} in globals() else globals()[${JSON.stringify(pythonSnake(name))}]`;
+        const entries = [];
+        for (const name of exported.names) {
+          entries.push(`${JSON.stringify(name)}: ${pick(name)}`);
+          if (pythonSnake(name) !== name) entries.push(`${JSON.stringify(pythonSnake(name))}: ${pick(name)}`);
+        }
+        code += `import types as _vh_types\n${target} = _vh_types.SimpleNamespace(**{${entries.join(', ')}})\n\n`;
+      }
+    } else if (language === 'perl') {
+      if (exported.single) {
+        if (exported.single !== paramName) code += `our $${paramName} = $${exported.single};\n\n`;
+      } else {
+        // A class is its package name, a function a method of the binding's
+        // own package, anything else the variable of that name
+        const pkg = `_VhLibrary_${paramName}`;
+        const entries = [];
+        const methods = [];
+        for (const name of exported.names) {
+          if (new RegExp(`^package ${name};`, 'm').test(libCode)) entries.push(`'${name}' => '${name}'`);
+          else if (new RegExp(`^sub ${name}\\b`, 'm').test(libCode)) methods.push(`sub ${name} { my $self = shift; return main::${name}(@_); }`);
+          else entries.push(`'${name}' => $${name}`);
+        }
+        code += `package ${pkg};\n${methods.join('\n')}\npackage main;\nour $${paramName} = bless({ ${entries.join(', ')} }, '${pkg}');\n\n`;
+      }
+    }
+  }
+  return { code };
+}
+
+/**
  * Transpile an algorithm file and, where the language bundles them, the
  * algorithm files it loaded while its reference ran.
  * @param {string} algorithmFile - absolute path
@@ -540,6 +637,12 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
       if (!variable) return { success: false, error: `loader ${paramName}: ${loader[1]} was not loaded by the reference, so it is not bundled` };
       prefix += 'const ' + paramName + ' = function () { return ' + variable + '; };\n\n';
     }
+  } else {
+    // Python and Perl: the library's code goes ahead of the algorithm, and the
+    // factory parameter is bound to an object holding what it exports
+    const bundled = bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptions);
+    if (bundled.error) return { success: false, error: bundled.error };
+    prefix += bundled.code;
   }
 
   if (prefix && language === 'javascript' && typeof plugin.GetStandalonePrelude === 'function') {
@@ -1591,6 +1694,11 @@ async function validateFile(file, languages, progress = () => {}) {
   const referenceStarted = Date.now();
   const reference = await referenceRun(file.path);
   outcome.referenceSeconds = (Date.now() - referenceStarted) / 1000;
+  // A transpiled run takes many times the JavaScript reference's time (Python
+  // and Perl easily 100x on the big-number and PQC algorithms), so the limit
+  // of a compile or run scales with it, up to half an hour
+  args.timeout = Math.max(timeoutSeconds(), Math.min(1800, Math.ceil(outcome.referenceSeconds * TIMEOUT_PER_REFERENCE_SECOND)));
+  outcome.timeoutSeconds = timeoutSeconds();
   if (reference.error) {
     outcome.reference.push({ file: rel, algorithm: null, error: reference.error });
     return outcome;
@@ -1627,15 +1735,18 @@ async function validateFile(file, languages, progress = () => {}) {
       if (!harness.success) {
         fail('transpile', `harness: ${harness.error}`);
       } else if (!compiled.success) {
-        fail('compile', firstError(compiled.errors, language) || firstLine(compiled.errors) || 'compilation failed');
+        const error = firstError(compiled.errors, language) || firstLine(compiled.errors) || 'compilation failed';
+        fail(/timed out/i.test(error) ? 'timeout' : 'compile', error);
       } else if (args.compileOnly || !VECTOR_HARNESS_LANGUAGES.has(language)) {
         fail('compiled', null);
       } else {
-        const results = parseHarnessOutput(spec, executeCode(language, outputDir), language);
+        const execution = executeCode(language, outputDir);
+        const results = parseHarnessOutput(spec, execution, language);
         records.forEach((r, i) => {
           r.vectorsPassed = results[i].passed;
           r.error = results[i].error;
-          r.stage = r.error ? 'execute' : 'passed';
+          // A run cut off by its time limit says nothing about the code it ran
+          r.stage = !r.error ? 'passed' : execution.timedOut && /^timed out after/.test(r.error) ? 'timeout' : 'execute';
         });
       }
     }
@@ -1725,11 +1836,12 @@ const STAGE_OK = new Set(['passed', 'compiled']);
  * @returns {object} { byLanguage, byCategory }
  */
 function summarize(records, languages) {
-  const counts = () => ({ considered: 0, transpiled: 0, compiled: 0, executed: 0 });
+  const counts = () => ({ considered: 0, transpiled: 0, compiled: 0, executed: 0, timedOut: 0 });
   const add = (c, r) => {
     ++c.considered;
     if (r.stage !== 'transpile' && r.stage !== 'harness') ++c.transpiled;
-    if (r.stage === 'execute' || STAGE_OK.has(r.stage)) ++c.compiled;
+    if (r.stage === 'execute' || STAGE_OK.has(r.stage) || (r.stage === 'timeout' && !/compil|build|syntax/i.test(r.error || ''))) ++c.compiled;
+    if (r.stage === 'timeout') ++c.timedOut;
     if (r.stage === 'passed') ++c.executed;
   };
   const byLanguage = {};
@@ -1741,7 +1853,8 @@ function summarize(records, languages) {
     for (const r of mine) if (r.errorClass) classes[r.errorClass] = (classes[r.errorClass] || 0) + 1;
     c.errorClasses = Object.entries(classes).map(([name, count]) => ({ class: name, count }))
       .sort((a, b) => b.count - a.count || (a.class < b.class ? -1 : a.class > b.class ? 1 : 0));
-    c.passed = mine.every(r => r.stage === 'transpile' || STAGE_OK.has(r.stage));
+    // Timeouts are counted on their own and fail no language
+    c.passed = mine.every(r => r.stage === 'transpile' || r.stage === 'timeout' || STAGE_OK.has(r.stage));
     byLanguage[language] = c;
   }
   const byCategory = {};
@@ -1760,7 +1873,7 @@ function defaultJobs() {
   return Math.max(1, Math.floor((os.cpus() || []).length / 2) || 1);
 }
 
-const STAGE_SHORT = { passed: 'ok', compiled: 'compiled', transpile: 'transpile', compile: 'compile', execute: 'execute', harness: 'harness' };
+const STAGE_SHORT = { passed: 'ok', compiled: 'compiled', transpile: 'transpile', compile: 'compile', execute: 'execute', timeout: 'timeout', harness: 'harness' };
 
 function progressLine(outcome, done, total, seconds, languages) {
   const head = `  [${String(done).padStart(String(total).length)}/${total}] ${outcome.file.padEnd(38)}`;
@@ -1795,7 +1908,7 @@ function printSummary(summary, languages, available, totals, elapsed) {
       + `transpiled ${String(s.transpiled).padStart(5)}/${s.considered}  `
       + `compiled ${String(s.compiled).padStart(5)}/${s.transpiled}  `
       + (args.compileOnly || !VECTOR_HARNESS_LANGUAGES.has(language) ? 'executed     -  ' : `executed ${String(s.executed).padStart(5)}/${s.compiled}  `)
-      + verdict);
+      + verdict + (s.timedOut ? `  (${s.timedOut} timed out)` : ''));
   }
 
   console.log('\nBy category (transpiled/compiled/executed of considered):');
