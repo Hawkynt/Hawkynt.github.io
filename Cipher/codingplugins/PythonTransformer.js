@@ -2917,7 +2917,14 @@ class OpCodes(metaclass=_OpCodesMeta):
       // container so it also works as an expression, not just a statement.
       stubs.push({
         nodeType: 'RawCode', code:
+          // an object of a class with its own set(key, value) method (a
+          // hash table class) is called, not subscripted
           'def _map_set(obj, key, value):\n' +
+          '    if not isinstance(obj, (dict, list, bytearray, JSObject)):\n' +
+          '        method = getattr(obj, "set", None)\n' +
+          '        if callable(method):\n' +
+          '            method(key, value)\n' +
+          '            return obj\n' +
           '    obj[key] = value\n' +
           '    return obj'
       });
@@ -13784,6 +13791,12 @@ class OpCodes(metaclass=_OpCodesMeta):
       const map = this.transformExpression(node.map);
       const key = this.transformExpression(node.key);
       const value = this.transformExpression(node.value);
+
+      // A receiver the IL does not know as a Map may be an object with its
+      // own set(key, value) method; _map_set decides at run time
+      const mapType = String(node.map && node.map.resultType || '');
+      if (!/^Map\b/.test(mapType))
+        return new PythonCall(new PythonIdentifier('_map_set'), [map, key, value]);
 
       // map[key] = value
       return new PythonAssignment(

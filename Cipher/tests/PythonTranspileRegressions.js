@@ -479,6 +479,13 @@ check('strings: a concatenation of thousands of string literals folds to one lit
   return expectOutput(runPython(js, 'print(f())'), ["[6000, '000102', 'a1']"]);
 });
 
+check('set: obj.set(k, v) calls a class\'s own set method, and stores into a Map or object', () => {
+  const js = 'class HeadTable { constructor() { this.keys = [-1, -1]; } get(k) { return this.keys[k]; } set(k, v) { this.keys[k] = v + 100; } }\n' +
+    'function f(t, m, o) { t.set(1, 5); m.set("a", 2); o.set(3, 4); return [t.get(1), m.get("a")]; }';
+  // Given a user hash-table class with get/set, a Map and a plain object
+  return expectOutput(runPython(js, 'o = {}\nprint(f(HeadTable(), {}, o), o)'), ['[105, 2] {3: 4}']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }
