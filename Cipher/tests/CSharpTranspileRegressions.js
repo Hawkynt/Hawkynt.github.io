@@ -136,6 +136,10 @@ check('scope: a constructor parameter named A is read as A (not a)', () => {
   const code = transpile('class S {\n  /**\n   * @param {uint8[]} first - first\n   * @param {uint8[][]} A - matrix\n   */\n  constructor(first, A) { this.first = first; this.A = A; }\n}');
   expectMatch(code, /this\.A = A;/, 'this.A = A');
 });
+check('scope: for (var i ...) read after the loop is declared ahead of the loop', () => {
+  const code = transpile('/**\n * @param {int32} n - n\n * @returns {int32} r\n */\nfunction f(n) { for (var i = 0; i < n; ++i) { if (i * i > n) break; } return i; }');
+  expectMatch(code, /int i = 0;\s*for \(; i < n; \+\+i\)/, 'int i = 0; for (; i < n; ++i)');
+});
 check('scope: loop variable `r` next to parameter `R` does not redeclare it', () => {
   const code = transpile('function f(L, R) { let s = 0; for (let r = 0; r < 8; r++) s += r + R; return s + L; }');
   expectMatch(code, /for \(int r2 = 0; r2 < 8; r2\+\+\)/, 'the loop variable renamed to r2');

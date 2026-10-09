@@ -11832,8 +11832,25 @@
         case 'IfStatement':
           return this.transformIfStatement(node);
 
-        case 'ForStatement':
+        case 'ForStatement': {
+          // for (var i = ...; ...) whose i is read after the loop: var is function
+          // scoped in JavaScript, so it is declared ahead of the loop (CS0103 otherwise)
+          if (node.init?.type === 'VariableDeclaration' && node.init.kind === 'var' && this.currentFunctionBodyNode) {
+            const names = new Set(node.init.declarations.map(d => d.id?.name).filter(Boolean));
+            const inside = new Set();
+            this._walkAstNodes(node, n => inside.add(n));
+            let usedOutside = false;
+            this._walkAstNodes(this.currentFunctionBodyNode, n => {
+              if (!usedOutside && n.type === 'Identifier' && names.has(n.name) && !inside.has(n)) usedOutside = true;
+            });
+            if (usedOutside) {
+              const declaration = this.transformLocalVariableDeclaration(node.init);
+              const loop = this.transformForStatement(Object.assign({}, node, { init: null }));
+              return [...(Array.isArray(declaration) ? declaration : [declaration]), loop];
+            }
+          }
           return this.transformForStatement(node);
+        }
 
         case 'ForOfStatement':
           return this.transformForOfStatement(node);
