@@ -1,5 +1,4 @@
 {
-  "algorithms/encoding/rot.js": 1,
   "algorithms/hash/jh.js": 1,
   "algorithms/hash/mdc2.js": 1,
   "algorithms/hash/shabal.js": 1,

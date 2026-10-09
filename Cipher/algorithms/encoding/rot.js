@@ -78,10 +78,10 @@
       ];
 
       this.knownVulnerabilities = [
-        "Provides no cryptographic security",
-        "Trivially broken by frequency analysis", 
-        "Preserves word boundaries and punctuation",
-        "Educational use only - not for actual data protection"
+        new Vulnerability("No Security", "Provides no cryptographic security"),
+        new Vulnerability("Frequency Analysis", "Trivially broken by frequency analysis"),
+        new Vulnerability("Structure Leak", "Preserves word boundaries and punctuation"),
+        new Vulnerability("Educational Only", "Educational use only - not for actual data protection")
       ];
 
       // Test vectors for ROT13 (most common variant)

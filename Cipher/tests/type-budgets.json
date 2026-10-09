@@ -569,7 +569,7 @@
   "algorithms/ecc/varshamov-tenengolts.js": 0,
   "algorithms/ecc/wozencraft-ensemble.js": 0,
   "algorithms/ecc/zigzag-code.js": 0,
-  "algorithms/encoding/atbash.js": 1,
+  "algorithms/encoding/atbash.js": 0,
   "algorithms/encoding/base16.js": 0,
   "algorithms/encoding/base32.js": 0,
   "algorithms/encoding/base58.js": 0,
