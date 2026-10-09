@@ -5016,6 +5016,14 @@
           // Length property returns int
           return CSharpType.Int();
 
+        // A byte buffer's length is an int; anything else is a call of the
+        // object's own byteLength() method (see transformByteLength)
+        case 'DataViewGetByteLength': {
+          const viewType = this.inferFullExpressionType(node.view);
+          if (viewType && viewType.isArray) return CSharpType.Int();
+          return this.inferFullExpressionType(this.byteLengthMethodCall(node));
+        }
+
         case 'ArrayFill': {
           // ArrayFill returns an array - element type from node.elementType, node.value,
           // or default to byte. A negative fill value (`new Array(n).fill(-1)`, the
@@ -13597,6 +13605,9 @@
           console.warn(`[CSharpTransformer] JsonDeserialize without a matching JsonSerialize source is unsupported: ${sourceNode && sourceNode.type}`);
           return new CSharpIdentifier('UNHANDLED_EXPRESSION_JsonDeserialize');
         }
+
+        case 'DataViewGetByteLength':
+          return this.transformByteLength(node);
 
         default:
           // Log warning for unhandled expression types to aid debugging
@@ -25825,6 +25836,28 @@
       }
 
       return creation;
+    }
+
+    /**
+     * DataViewGetByteLength. The IL builds it for `x.byteLength` and also for a
+     * call `x.byteLength()` of an object's own method (zstd's bit cursors). A
+     * DataView or ArrayBuffer is a byte[] in C#, so its length is .Length; any
+     * other object keeps the call of its own method.
+     */
+    transformByteLength(node) {
+      const viewType = this.inferFullExpressionType(node.view);
+      if (viewType && viewType.isArray)
+        return new CSharpMemberAccess(this.transformExpression(node.view), 'Length');
+      return this.transformExpression(this.byteLengthMethodCall(node));
+    }
+
+    /** The plain JS call `view.byteLength()` a DataViewGetByteLength node stands for. */
+    byteLengthMethodCall(node) {
+      return {
+        type: 'CallExpression',
+        callee: { type: 'MemberExpression', object: node.view, property: { type: 'Identifier', name: 'byteLength' }, computed: false },
+        arguments: []
+      };
     }
 
     /**

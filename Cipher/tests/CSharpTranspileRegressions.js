@@ -532,6 +532,21 @@ check('switch: a case whose block, or whose if/else, ends in a jump on every pat
 });
 
 // ---------------------------------------------------------------------------
+// byteLength: a DataView's property, or an object's own method
+// ---------------------------------------------------------------------------
+check('byteLength: a call of an object\'s own byteLength() method stays that call', () => {
+  const code = transpile('class Cursor {\n  constructor() { /** @type {int32} */ this.pos = 0; }\n' +
+    '  /** @returns {float64} bytes */\n  byteLength() { return Math.ceil(this.pos / 8); }\n}\n' +
+    'function g() { const cur = new Cursor(); const n = 3 + cur.byteLength(); return n; }');
+  expectMatch(code, /3 \+ cur\.ByteLength\(\)/, 'cur.ByteLength()');
+  expectNoMatch(code, /UNHANDLED_EXPRESSION/, 'an unhandled expression placeholder');
+});
+check('byteLength: a byte buffer\'s byteLength() is its Length', () => {
+  const code = transpile('/**\n * @param {uint8[]} buf - bytes\n * @returns {int32} length\n */\nfunction g(buf) { return buf.byteLength(); }');
+  expectMatch(code, /return buf\.Length;/, 'buf.Length');
+});
+
+// ---------------------------------------------------------------------------
 // Runtime stubs (needs the .NET SDK)
 // ---------------------------------------------------------------------------
 check('runtime stubs: BlockAbsorber, pad helpers, ToRadixString, IsTruthy, GFMul behave like the JS framework', () => {
