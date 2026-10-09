@@ -2565,12 +2565,29 @@ inline void ClearAlgorithms() { Algorithms().setLength(0); }
 #define JS_REGEX_INCLUDED
 #include <regex>
 namespace js {
+// std::regex has no Unicode property escapes: \p{L} (a letter) is tested by code
+inline bool isUnicodeLetter(uint32_t c) {
+  if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) return true;
+  if (c == 0xAA || c == 0xB5 || c == 0xBA) return true;
+  if (c >= 0xC0 && c <= 0xFF) return c != 0xD7 && c != 0xF7;
+  return c > 0xFF;
+}
 struct RegExp : Object {
   std::string source, flags;
   std::regex re;
-  RegExp(const std::string& s, const std::string& f) : source(s), flags(f), re(s, f.find('i') != std::string::npos ? std::regex::ECMAScript | std::regex::icase : std::regex::ECMAScript) {}
+  bool letterClass = false; // the pattern is \p{L}
+  bool valid = true;
+  RegExp(const std::string& s, const std::string& f) : source(s), flags(f) {
+    if (s == "\\p{L}") { letterClass = true; return; }
+    try { re = std::regex(s, f.find('i') != std::string::npos ? std::regex::ECMAScript | std::regex::icase : std::regex::ECMAScript); }
+    catch (std::regex_error&) { valid = false; }
+  }
   const char16_t* __className() const override { return u"RegExp"; }
-  bool test(const String& s) const { std::string t = toUtf8(s.s()); return std::regex_search(t, re); }
+  bool test(const String& s) const {
+    if (letterClass) { for (char16_t c : s.s()) if (isUnicodeLetter(c)) return true; return false; }
+    if (!valid) throwError(u"SyntaxError", u"Invalid regular expression: /" + fromUtf8(source) + u"/");
+    std::string t = toUtf8(s.s()); return std::regex_search(t, re);
+  }
   bool __call(const std::u16string& k, std::vector<Any>& args, Any& out) override {
     if (k == u"test") { out = Any(test(args.empty() ? String(u"undefined") : str(args[0]))); return true; }
     return Object::__call(k, args, out);
