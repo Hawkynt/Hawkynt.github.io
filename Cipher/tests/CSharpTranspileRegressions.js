@@ -1010,6 +1010,13 @@ check('concat: a registered int array concatenated to a byte array chain is take
     'function join(a, b, c) { return a.concat(b).concat(c); }');
   expectMatch(code, /\.Concat\(c\.Select\(_v => (unchecked\()?\(byte\)\(?_v\)?\)?\)\.ToArray\(\)\)/, 'c converted to bytes');
 });
+check('typed arrays: a registered int member named like bytes is a size, not an array to copy (CS0411)', () => {
+  const code = transpile('class Params {\n  constructor() {\n    /** @type {int32} */\n    this.seedBytes = 16;\n    /** @type {int32} */\n    this.pkBytes = 2 * this.seedBytes;\n  }\n' +
+    '  /** @returns {uint8[]} r */\n  blank() { return new Uint8Array(this.pkBytes); }\n}\n' +
+    '/**\n * @param {Params} p - p\n * @returns {uint8[]} Result\n */\nfunction make(p) {\n  const pk = new Uint8Array(p.pkBytes);\n  return pk;\n}');
+  expectMatch(code, /byte\[\] pk = new byte\[p\.PkBytes\];/, 'new byte[p.PkBytes]');
+  expectMatch(code, /return new byte\[this\.PkBytes\];/, 'new byte[this.PkBytes]');
+});
 const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +

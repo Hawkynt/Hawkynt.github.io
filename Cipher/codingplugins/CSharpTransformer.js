@@ -25937,6 +25937,22 @@
     isArrayCopyPattern(node) {
       if (!node) return false;
 
+      // A member of a file class whose type is registered decides by that type
+      // (cross.js's `new Uint8Array(p.pkBytes)`, an int32 size despite "bytes")
+      if (node.type === 'MemberExpression' && !node.computed) {
+        const ownerType = this.inferFullExpressionType(node.object);
+        const propName = node.property?.name || node.property?.value;
+        const fieldType = ownerType && !ownerType.isArray && this.localClassNames.has(ownerType.name) && propName
+          ? this.getOwnClassFieldType(ownerType.name, this.toPascalCase(propName)) : null;
+        if (fieldType) return !!fieldType.isArray;
+      }
+      // ...and so does an own field (faest.js's `new Uint8Array(this.bytes)`, bits / 8)
+      if (node.type === 'ThisPropertyAccess' && this.currentClass?.name && this.localClassNames.has(this.currentClass.name)) {
+        const propName = typeof node.property === 'string' ? node.property : node.property?.name;
+        const fieldType = propName ? this.getOwnClassFieldType(this.currentClass.name, this.toPascalCase(propName)) : null;
+        if (fieldType && !['object', 'dynamic'].includes(fieldType.name)) return !!fieldType.isArray;
+      }
+
       // Check by type annotation
       if (node.resultType) {
         const typeStr = typeof node.resultType === 'string' ? node.resultType :
