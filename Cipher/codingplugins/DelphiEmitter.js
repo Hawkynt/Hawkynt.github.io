@@ -1798,13 +1798,23 @@ begin
 end;
 
 function JsFMod(A, B: Double): Double;
+var X, Y, T: Double;
 begin
   if IsNan(A) or IsNan(B) or IsInfinite(A) or (B = 0) then Exit(NaN);
   if IsInfinite(B) then Exit(A);
-  Result := A - B * Int(A / B);
-  { guard against rounding of A / B }
-  if (A >= 0) and (Result < 0) then Result := Result + Abs(B)
-  else if (A < 0) and (Result > 0) then Result := Result - Abs(B);
+  { exact, like JavaScript's %: binary long division, where every
+    subtraction of Y * 2^k from X in [Y * 2^k, Y * 2^(k+1)) is exact }
+  X := Abs(A);
+  Y := Abs(B);
+  if X < Y then Exit(A);
+  T := Y;
+  while T <= X / 2 do T := T * 2;
+  while T >= Y do
+  begin
+    if X >= T then X := X - T;
+    T := T / 2;
+  end;
+  if A < 0 then Result := -X else Result := X;
 end;
 
 function JsPow(A, B: Double): Double;
