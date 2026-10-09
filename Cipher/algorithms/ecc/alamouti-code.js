@@ -42,6 +42,41 @@
           ErrorCorrectionAlgorithm, IErrorCorrectionInstance,
           TestCase, LinkItem, Vulnerability } = AlgorithmFramework;
 
+  // Real-valued symbols travel as octets: each symbol is a signed 16-bit
+  // two's-complement value, most significant octet first.
+  /**
+   * @param {int32[]} symbols - Symbols in -32768..32767
+   * @returns {uint8[]} Two octets per symbol
+   */
+  function symbolsToOctets(symbols) {
+    /** @type {uint8[]} */
+    const octets = [];
+    for (let i = 0; i < symbols.length; ++i) {
+      const pair = OpCodes.Unpack16BE(OpCodes.ToUint16(symbols[i]));
+      octets.push(pair[0]);
+      octets.push(pair[1]);
+    }
+    return octets;
+  }
+
+  /**
+   * @param {uint8[]} octets - Two octets per symbol
+   * @returns {int32[]} Symbols in -32768..32767
+   */
+  function octetsToSymbols(octets) {
+    if (octets.length % 2 !== 0) {
+      throw new Error('AlamoutiCodeInstance: Input must hold two octets per symbol');
+    }
+    /** @type {int32[]} */
+    const symbols = [];
+    for (let i = 0; i < octets.length; i += 2) {
+      // sign-extend the 16-bit word
+      const high = OpCodes.ToInt(OpCodes.Shl32(OpCodes.Pack16BE(octets[i], octets[i + 1]), 16));
+      symbols.push(OpCodes.Shr32Signed(high, 16));
+    }
+    return symbols;
+  }
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   class AlamoutiCodeAlgorithm extends ErrorCorrectionAlgorithm {
@@ -90,58 +125,60 @@
       ];
 
       // Test vectors based on mathematical properties and IEEE 802.11n specifications
+      // Each symbol travels as a signed 16-bit big-endian word, four hex digits
+      // per symbol (FFFF is -1); the descriptions give the symbols themselves.
       this.tests = [
         // Basic encoding tests with real symbols (educational simplification)
         new TestCase(
-          [1, 0],
-          [1, 0, 0, 1],
+          OpCodes.Hex8ToBytes("00010000"),
+          OpCodes.Hex8ToBytes("0001000000000001"),
           "Alamouti encoding: [1, 0] -> [1, 0; 0, 1]",
           "https://en.wikipedia.org/wiki/Alamouti_space%E2%80%93time_code"
         ),
         new TestCase(
-          [0, 1],
-          [0, 1, -1, 0],
+          OpCodes.Hex8ToBytes("00000001"),
+          OpCodes.Hex8ToBytes("00000001FFFF0000"),
           "Alamouti encoding: [0, 1] -> [0, 1; -1, 0]",
           "https://en.wikipedia.org/wiki/Alamouti_space%E2%80%93time_code"
         ),
         new TestCase(
-          [1, 1],
-          [1, 1, -1, 1],
+          OpCodes.Hex8ToBytes("00010001"),
+          OpCodes.Hex8ToBytes("00010001FFFF0001"),
           "Alamouti encoding: [1, 1] -> [1, 1; -1, 1]",
           "https://en.wikipedia.org/wiki/Alamouti_space%E2%80%93time_code"
         ),
-        {
-          text: "Alamouti encoding: [-1, 1] -> [-1, 1; -1, -1]",
-          uri: "https://ieeexplore.ieee.org/document/730453",
-          input: [-1, 1],
-          expected: [-1, 1, -1, -1]
-        },
-        {
-          text: "Alamouti encoding: [2, -2] -> [2, -2; 2, 2]",
-          uri: "https://ieeexplore.ieee.org/document/730453",
-          input: [2, -2],
-          expected: [2, -2, 2, 2]
-        },
+        new TestCase(
+          OpCodes.Hex8ToBytes("FFFF0001"),
+          OpCodes.Hex8ToBytes("FFFF0001FFFFFFFF"),
+          "Alamouti encoding: [-1, 1] -> [-1, 1; -1, -1]",
+          "https://ieeexplore.ieee.org/document/730453"
+        ),
+        new TestCase(
+          OpCodes.Hex8ToBytes("0002FFFE"),
+          OpCodes.Hex8ToBytes("0002FFFE00020002"),
+          "Alamouti encoding: [2, -2] -> [2, -2; 2, 2]",
+          "https://ieeexplore.ieee.org/document/730453"
+        ),
         // Zero input edge case
-        {
-          text: "Alamouti encoding: [0, 0] -> [0, 0; 0, 0]",
-          uri: "https://en.wikipedia.org/wiki/Alamouti_space%E2%80%93time_code",
-          input: [0, 0],
-          expected: [0, 0, 0, 0]
-        },
+        new TestCase(
+          OpCodes.Hex8ToBytes("00000000"),
+          OpCodes.Hex8ToBytes("0000000000000000"),
+          "Alamouti encoding: [0, 0] -> [0, 0; 0, 0]",
+          "https://en.wikipedia.org/wiki/Alamouti_space%E2%80%93time_code"
+        ),
         // Orthogonality verification vectors
-        {
-          text: "IEEE 802.11n pattern: [3, 4]",
-          uri: "https://standards.ieee.org/standard/802_11n-2009.html",
-          input: [3, 4],
-          expected: [3, 4, -4, 3]
-        },
-        {
-          text: "3GPP LTE pattern: [-2, 3]",
-          uri: "https://www.3gpp.org/technologies/keywords-acronyms/98-lte",
-          input: [-2, 3],
-          expected: [-2, 3, -3, -2]
-        }
+        new TestCase(
+          OpCodes.Hex8ToBytes("00030004"),
+          OpCodes.Hex8ToBytes("00030004FFFC0003"),
+          "IEEE 802.11n pattern: [3, 4]",
+          "https://standards.ieee.org/standard/802_11n-2009.html"
+        ),
+        new TestCase(
+          OpCodes.Hex8ToBytes("FFFE0003"),
+          OpCodes.Hex8ToBytes("FFFE0003FFFDFFFE"),
+          "3GPP LTE pattern: [-2, 3]",
+          "https://www.3gpp.org/technologies/keywords-acronyms/98-lte"
+        )
       ];
     }
 
@@ -243,8 +280,7 @@
 
     /**
    * Feed data to cipher for processing
-   * @param {uint8[]} data - Input data bytes
-   * @throws {Error} If key not set
+   * @param {uint8[]} data - Symbols, two octets each (signed 16-bit, big-endian)
    */
 
     Feed(data) {
@@ -272,17 +308,22 @@
         throw new Error('AlamoutiCodeInstance.Result: Call Feed() first to process data');
       }
 
+      /** @type {int32[]} */
+      const symbols = octetsToSymbols(this._feedBuffer);
+      /** @type {int32[]} */
+      let coded;
       if (this.isInverse) {
-        if (this._feedBuffer.length % 4 !== 0) {
-          throw new Error('AlamoutiCodeInstance.Result: Decode input must have length divisible by 4 (received symbol matrix)');
+        if (symbols.length % 4 !== 0) {
+          throw new Error('AlamoutiCodeInstance.Result: Decode input must hold a multiple of 4 symbols (received symbol matrix)');
         }
-        this.result = this.decode(this._feedBuffer);
+        coded = this.decode(symbols);
       } else {
-        if (this._feedBuffer.length % 2 !== 0) {
-          throw new Error('AlamoutiCodeInstance.Result: Encode input must have even length (symbol pairs)');
+        if (symbols.length % 2 !== 0) {
+          throw new Error('AlamoutiCodeInstance.Result: Encode input must hold an even number of symbols (symbol pairs)');
         }
-        this.result = this.encode(this._feedBuffer);
+        coded = this.encode(symbols);
       }
+      this.result = symbolsToOctets(coded);
       return this.result;
     }
 
@@ -298,18 +339,24 @@
      * Note: For educational purposes, using real-valued symbols.
      * Production implementation would use complex symbols with conjugation.
      *
-     * @param {float64[]} symbols - Input symbols (must have even length)
-     * @returns {float64[]} Space-time encoded matrix in row-major order
+     * @param {int32[]} symbols - Input symbols in -32767..32767 (must have even length)
+     * @returns {int32[]} Space-time encoded matrix in row-major order
      */
     encode(symbols) {
-      /** @type {float64[]} */
+      for (let i = 0; i < symbols.length; ++i) {
+        if (symbols[i] === -32768) {
+          throw new Error('AlamoutiCodeInstance.encode: Symbols must lie in -32767..32767 so that their negation fits');
+        }
+      }
+
+      /** @type {int32[]} */
       const encoded = [];
 
       // Process symbols in pairs
       for (let i = 0; i < symbols.length; i += 2) {
-        /** @type {float64} */
+        /** @type {int32} */
         const s1 = symbols[i];
-        /** @type {float64} */
+        /** @type {int32} */
         const s2 = symbols[i + 1];
 
         // Alamouti encoding matrix (row-major):
@@ -340,11 +387,11 @@
      * - Perfect channel knowledge assumed
      * - Simplified without noise modeling
      *
-     * @param {float64[]} received - Received signal matrix [r1_t1, r1_t2, r2_t1, r2_t2]
-     * @returns {float64[]} Decoded symbols
+     * @param {int32[]} received - Received signal matrix [r1_t1, r1_t2, r2_t1, r2_t2]
+     * @returns {int32[]} Decoded symbols in -32768..32767
      */
     decode(received) {
-      /** @type {float64[]} */
+      /** @type {int32[]} */
       const decoded = [];
       /** @type {float64} */
       const h1 = this._h1;
@@ -393,9 +440,17 @@
         /** @type {float64} */
         const s2_hat = (h2 * r1 - h1 * r2) / norm;
 
-        // Hard decision (round to nearest symbol)
-        decoded.push(Math.round(s1_hat));
-        decoded.push(Math.round(s2_hat));
+        // Hard decision (round to nearest symbol); the result must still fit
+        // the signed 16-bit word it travels in
+        /** @type {int32} */
+        const d1 = Math.round(s1_hat);
+        /** @type {int32} */
+        const d2 = Math.round(s2_hat);
+        if (d1 < -32768 || d1 > 32767 || d2 < -32768 || d2 > 32767) {
+          throw new Error('AlamoutiCodeInstance.decode: Decoded symbol leaves the signed 16-bit range');
+        }
+        decoded.push(d1);
+        decoded.push(d2);
       }
 
       return decoded;

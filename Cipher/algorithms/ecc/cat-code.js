@@ -148,7 +148,9 @@
    * @returns {uint8} Parity bit
    */
   function measurePhotonParity(fockState) {
+    /** @type {float64} */
     let evenProb = 0;
+    /** @type {float64} */
     let oddProb = 0;
 
     for (let n = 0; n < fockState.length; ++n) {
@@ -182,6 +184,7 @@
     }
 
     // Renormalize
+    /** @type {float64} */
     let norm = 0;
     for (let n = 0; n < lostState.length; ++n) {
       norm += lostState[n] * lostState[n];
@@ -205,6 +208,7 @@
    * @returns {float64} Squared overlap
    */
   function fidelity(state1, state2) {
+    /** @type {float64} */
     let overlap = 0;
     const len = Math.min(state1.length, state2.length);
 

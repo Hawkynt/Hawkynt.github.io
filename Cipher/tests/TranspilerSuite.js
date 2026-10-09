@@ -17,6 +17,10 @@
  * - CSHARP: regressions of systematic C# transpilation faults; compiles and
  *   runs the C# runtime stubs when the .NET SDK is installed
  *   (CSharpTranspileRegressions.js)
+ * - HARNESS: the cross-language validation itself: vector plans, reading a
+ *   harness run back, judging languages, error classes, and each vector
+ *   harness end to end against hand-written stand-ins for transpiled code
+ *   (TranspilerValidationTests.js); the C# cases need the .NET SDK
  * - VALIDATION: transpiles every algorithm to every installed language,
  *   compiles it and runs its vectors where the language is interpreted
  *   (TranspilerValidation.js). It takes over ten minutes unscoped and depends
@@ -30,11 +34,14 @@
  *   --language=<name>     CODEGEN, VALIDATION: one language (e.g. python, csharp)
  *   --quick               CODEGEN: smoke cases only; VALIDATION: 3 algorithms per category
  *   --group=<text>        INFERENCE: only the test groups whose name contains it (e.g. literal)
- *   --no-dotnet           CSHARP: do not compile and run the C# stubs
+ *   --no-dotnet           CSHARP, HARNESS: do not compile and run C#
  *   --category=<dir>      VALIDATION: one algorithm category directory
  *   --algorithm=<text>    VALIDATION: algorithm files whose name contains it
  *   --compile-only        VALIDATION: compile, do not execute
- *   --report              VALIDATION: write tests/transpiler-validation-output/validation-report.json
+ *   --jobs=<n>            VALIDATION: algorithm files validated at a time (default: half the cores)
+ *   --timeout=<seconds>   VALIDATION: limit of one compile or run (default 120)
+ *   --report[=<path>]     VALIDATION: write the per-algorithm results as JSON (default
+ *                         tests/transpiler-validation-output/validation-report.json)
  *
  * Exits non-zero when any check of a selected category fails.
  */
@@ -52,11 +59,25 @@ const CATEGORIES = [
   { key: 'soundness', label: 'SOUNDNESS', title: 'The type-soundness checker', module: './TypeSoundnessTests' },
   { key: 'jsdoc', label: 'JSDOC', title: 'OpCodes and AlgorithmFramework JSDoc completeness', module: './JSDocTierAudit' },
   { key: 'csharp', label: 'CSHARP', title: 'C# transpilation regressions', module: './CSharpTranspileRegressions' },
+  { key: 'harness', label: 'HARNESS', title: 'The cross-language validation harness', module: './TranspilerValidationTests' },
+  { key: 'python', label: 'PYTHON', title: 'Python transpilation regressions', module: './PythonTranspileRegressions' },
   { key: 'perl', label: 'PERL', title: 'Perl transpilation regressions', module: './PerlTranspileRegressions' },
   { key: 'validation', label: 'VALIDATION', title: 'Cross-language transpile, compile and run', module: './TranspilerValidation' }
 ];
 const CATEGORY_KEYS = CATEGORIES.map(c => c.key);
 const DEFAULT_KEYS = CATEGORY_KEYS.filter(k => k !== 'validation');
+
+/**
+ * A positive whole number option, or null when it was not given.
+ * @param {string|null} text - option value
+ * @param {string} name - option name, for the error message
+ * @returns {number|null}
+ */
+function positiveInteger(text, name) {
+  if (text === null) return null;
+  if (!/^[1-9]\d*$/.test(text)) throw new Error(`--${name}= needs a positive whole number, got '${text}'`);
+  return Number(text);
+}
 
 /**
  * Read the command line.
@@ -66,7 +87,7 @@ const DEFAULT_KEYS = CATEGORY_KEYS.filter(k => k !== 'validation');
 function parseOptions(args) {
   Runner.rejectUnknownOptions(args,
     ['--verbose', '-v', '--quick', '--no-dotnet', '--compile-only', '--report'],
-    ['only', 'skip', 'language', 'group', 'category', 'algorithm']);
+    ['only', 'skip', 'language', 'group', 'category', 'algorithm', 'jobs', 'timeout', 'report']);
   const positional = args.find(arg => !arg.startsWith('-'));
   if (positional) throw new Error(`unexpected argument ${positional}`);
   const { selected } = Runner.selectCategories(args, CATEGORY_KEYS, DEFAULT_KEYS);
@@ -76,7 +97,9 @@ function parseOptions(args) {
     quick: args.includes('--quick'),
     dotnet: !args.includes('--no-dotnet'),
     compileOnly: args.includes('--compile-only'),
-    report: args.includes('--report'),
+    report: args.includes('--report') ? true : Runner.optionValue(args, 'report'),
+    jobs: positiveInteger(Runner.optionValue(args, 'jobs'), 'jobs'),
+    timeout: positiveInteger(Runner.optionValue(args, 'timeout'), 'timeout'),
     language: Runner.optionValue(args, 'language'),
     group: Runner.optionValue(args, 'group'),
     category: Runner.optionValue(args, 'category'),

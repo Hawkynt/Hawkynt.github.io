@@ -113,29 +113,60 @@ category of `TranspilerSuite.js`.
 | `soundness` | the type-soundness checker: value predicates of each IL type, instrumentation, sampling, a run over a probe file | `TypeSoundnessTests.js` |
 | `jsdoc` | every OpCodes and AlgorithmFramework member is fully typed by JSDoc | `JSDocTierAudit.js` |
 | `csharp` | regressions of systematic C# transpilation faults; compiles and runs the C# runtime stubs when the .NET SDK is installed | `CSharpTranspileRegressions.js` |
-| `validation` | transpiles every algorithm to every installed language, compiles it, and runs its vectors where the language is interpreted | `TranspilerValidation.js` |
+| `harness` | the validation itself: vector plans, reading a harness run back, judging languages, error classes, and each vector harness end to end against hand-written stand-ins | `TranspilerValidationTests.js` |
+| `python` | regressions of systematic Python transpilation faults; runs the Python runtime cases when a Python 3 interpreter is installed | `PythonTranspileRegressions.js` |
+| `validation` | transpiles every algorithm to every installed language, compiles it, and runs every vector where the language has a vector harness | `TranspilerValidation.js` |
 
-`validation` takes over ten minutes unscoped and its result depends on the
-toolchains installed (gcc, g++, dotnet, java, python, php, perl, ruby, go, rustc,
-...), so it runs only when `--only` names it and CI does not run it. A language
-passes when every algorithm it transpiled also compiled. Generated sources go to
-`tests/transpiler-validation-output/`.
+`validation` runs one worker process per algorithm file, `--jobs=N` at a time
+(default: half the cores). A worker runs the original JavaScript through
+`TestEngine` first - the reference: an algorithm whose reference fails is listed
+and held against no language, and the algorithm files it loads while running
+are its dependencies, bundled into its transpiled code where the language
+supports that (JavaScript, Python, Perl). It then transpiles the file to every
+installed language, appends the language's vector harness from
+`validation-harness/`, compiles it and runs it. The harness applies every
+vector field with the semantics of `TestEngine.ConfigureInstance` - a field that
+reaches no setter or property, or whose setter throws, fails the vector - and
+checks the expected output and, where the reference made one, the round trip.
+JavaScript, Python, Perl and C# have vector harnesses; the other languages are
+only compiled. A toolchain counts as installed when it is on `PATH` (Windows
+`.cmd` shims included), exits 0 and prints its version on stdout or stderr; a
+broken one (a `java` that cannot create its virtual machine) is reported and
+left out rather than failing the run.
+
+The limit of one compile or run is `--timeout` (default 120 s), raised to 100
+times the time the file's JavaScript reference took (at most 30 minutes). A run
+cut off by it is counted as `timeout`, on its own, and fails no language.
+`.data` libraries an algorithm takes through its UMD factory are bundled for
+JavaScript, Python and Perl.
+
+A language passes when every algorithm it transpiled also compiled and passed
+every vector. Transpile, compile and execute counts are kept apart, per language
+and per category, with the most frequent error classes. `--report[=path]` writes
+one result per algorithm and language - the stage it failed at (`transpile`,
+`compile`, `execute`) or `passed`, the first error, its class, and the vectors
+passed out of total. The result depends on the toolchains installed, so the
+category runs only when `--only` names it and CI does not run it. Generated
+sources go to `tests/transpiler-validation-output/`.
 
 ```bash
 node tests/TranspilerSuite.js --only=codegen --language=python --quick
 node tests/TranspilerSuite.js --only=inference --group=literal   # groups whose name contains "literal"
 node tests/TranspilerSuite.js --only=csharp --no-dotnet          # skip compiling the C# stubs
-node tests/TranspilerSuite.js --only=validation --quick           # 3 algorithms per category
+node tests/TranspilerSuite.js --only=validation --quick           # 3 algorithm files per category
 node tests/TranspilerSuite.js --only=validation --category=block --language=csharp
 node tests/TranspilerSuite.js --only=validation --algorithm=tea   # algorithm files whose name contains "tea"
-node tests/TranspilerSuite.js --only=validation --compile-only --report
+node tests/TranspilerSuite.js --only=validation --jobs=12 --timeout=300 --report=validation.json
+node tests/TranspilerSuite.js --only=validation --compile-only
 ```
 
 To add a language to `validation`: add its compiler detection to
 `LANGUAGE_COMPILERS` in `TranspilerValidation.js`, a test harness generator
-(`generateXxxTestHarness`), a compile or syntax check (`testXxxCompilation`) and,
-for an interpreted language, an execution function. The language plugin itself is
-picked up from `codingplugins/`.
+(`generateXxxTestHarness`) and a compile or syntax check (`testXxxCompilation`).
+To run its vectors, port `validation-harness/harness.js` to it, add the language
+to `VECTOR_HARNESS_LANGUAGES` and its run to `executeCode`, and cover it in
+`TranspilerValidationTests.js`. The language plugin itself is picked up from
+`codingplugins/`.
 
 ## Shared modules
 
