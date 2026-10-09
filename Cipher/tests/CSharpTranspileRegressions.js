@@ -298,6 +298,11 @@ check('arrays: a field assigned empty and filled by index grows on each store', 
     '  /** @param {int32} n - count */\n  fill(n) { this.rk = []; for (let i = 0; i < n; ++i) this.rk[i] = i; }\n}');
   expectMatch(code, /\(this\.Rk = OpCodes\.Grown<uint>\(this\.Rk, i\)\)\[i\] = /, '(this.Rk = OpCodes.Grown<uint>(this.Rk, i))[i] = ...');
 });
+check('arrays: a field assigned an empty local array grows on each store too', () => {
+  const code = transpile('class C {\n  constructor() { /** @type {uint32[]} */ this.rk = null; }\n' +
+    '  /** @param {int32} n - count */\n  fill(n) { /** @type {uint32[]} */ const keys = []; this.rk = keys; for (let i = 0; i < n; ++i) this.rk[i] = i; }\n}');
+  expectMatch(code, /OpCodes\.Grown<uint>\(this\.Rk, i\)/, 'OpCodes.Grown<uint>(this.Rk, i)');
+});
 check('push: an array parameter the callee grows is passed by ref', () => {
   const code = transpile('/**\n * @param {uint8[]} dest - grown\n * @param {uint8} v - value\n */\nfunction emit(dest, v) { dest.push(v); }\n' +
     '/** @returns {uint8[]} bytes */\nfunction build() { /** @type {uint8[]} */ const res = []; emit(res, 1); emit(res, 2); return res; }');

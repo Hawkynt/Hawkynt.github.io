@@ -11302,9 +11302,15 @@
       const isEmptyArray = n => n && (((n.type === 'ArrayExpression' || n.type === 'ArrayLiteral') && (n.elements || []).length === 0) ||
         (n.type === 'ArrayCreation' && !n.size && !n.length));
       const fieldOf = n => n?.type === 'ThisPropertyAccess' ? (typeof n.property === 'string' ? n.property : n.property?.name) : null;
+      // Locals declared empty: a field assigned one (`this.rk = roundKeys`) starts empty too
+      const emptyLocals = new Set();
+      this._walkAstNodes(classBody, node => {
+        if (node.type === 'VariableDeclarator' && node.id?.name && isEmptyArray(node.init)) emptyLocals.add(node.id.name);
+      });
       this._walkAstNodes(classBody, node => {
         if (node.type !== 'AssignmentExpression' || node.operator !== '=') return;
-        if (fieldOf(node.left) && isEmptyArray(node.right)) emptyFields.add(fieldOf(node.left));
+        if (fieldOf(node.left) && (isEmptyArray(node.right) || (node.right?.type === 'Identifier' && emptyLocals.has(node.right.name))))
+          emptyFields.add(fieldOf(node.left));
         if (node.left?.type === 'MemberExpression' && node.left.computed && fieldOf(node.left.object)) stored.add(fieldOf(node.left.object));
       });
       return new Set([...emptyFields].filter(name => stored.has(name)));
