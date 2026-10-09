@@ -544,7 +544,7 @@
   "algorithms/ecc/quadratic-residue-code.js": 0,
   "algorithms/ecc/quantum-ldpc.js": 0,
   "algorithms/ecc/raptor-codes.js": 0,
-  "algorithms/ecc/raptor-enhanced.js": 1,
+  "algorithms/ecc/raptor-enhanced.js": 0,
   "algorithms/ecc/raptorq-codes.js": 0,
   "algorithms/ecc/reed-muller.js": 0,
   "algorithms/ecc/reed-solomon.js": 0,

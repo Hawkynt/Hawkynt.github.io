@@ -309,7 +309,6 @@
       // Matrices and graphs
       /** @type {SparseMatrix} */
       this.constraintMatrix = null;    // A matrix from RFC 5053 Section 5.4.2
-      this.ltGraph = null;             // LT encoding graph
 
       // Utilities
       /** @type {GaloisField} */
