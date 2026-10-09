@@ -815,6 +815,33 @@ sub MerkleDamgardBlocks {
         ["todword", "$value", "return $value & 0xFFFFFFFF;"],
         ["toword", "$value", "return $value & 0xFFFF;"],
         ["touint32", "$value", "return $value & 0xFFFFFFFF;"],
+        ["uinttobyte", "$value", "return $value & 0xFF;"],
+        ["toshort", "$value", "my $v = $value & 0xFFFF; return $v > 32767 ? $v - 65536 : $v;"],
+        // OpCodes.ToLong: the low 64 bits as a signed value, a Math::BigInt
+        // for a Math::BigInt argument and a native integer otherwise.
+        ["tolong", "$value",
+          "if (ref($value)) { my $v = $value->copy()->band(Math::BigInt->new('18446744073709551615')); " +
+          "$v->bsub(Math::BigInt->new('18446744073709551616')) if $v >= Math::BigInt->new('9223372036854775808'); return $v; } " +
+          "return unpack('q', pack('Q', $value & 18446744073709551615));"],
+        ["bytestochars", "$bytes", "return join('', map { chr($_) } @$bytes);"],
+        ["bytestowords32be", "$bytes",
+          "my @words; for (my $i = 0; $i < @$bytes; $i += 4) { " +
+          "push @words, ((($bytes->[$i] // 0) & 0xFF) << 24) | ((($bytes->[$i + 1] // 0) & 0xFF) << 16) | " +
+          "((($bytes->[$i + 2] // 0) & 0xFF) << 8) | (($bytes->[$i + 3] // 0) & 0xFF); } return \\@words;"],
+        ["createuint64arrayfromhex", "$hexValues",
+          "return [map { my $h = $_; $h =~ s/^0[xX]//; " +
+          "die \"CreateUint64ArrayFromHex: Invalid hex string: $_\\n\" if $h !~ /^[0-9A-Fa-f]+$/; " +
+          "$h = ('0' x (16 - length($h))) . $h if length($h) < 16; " +
+          "die \"CreateUint64ArrayFromHex: Hex string must represent 64-bit value: $_\\n\" if length($h) != 16; " +
+          "[hex(substr($h, 0, 8)), hex(substr($h, 8, 8))] } @$hexValues];"],
+        // OpCodes.SecureRandomBytes: the platform CSPRNG, never rand().
+        ["securerandombytes", "$count",
+          "die \"SecureRandomBytes: count must be a non-negative integer\\n\" if !defined($count) || $count < 0 || int($count) != $count; " +
+          "return [] if $count == 0; " +
+          "open(my $fh, '<:raw', '/dev/urandom') or die \"SecureRandomBytes: no secure random source available\\n\"; " +
+          "my $got = read($fh, my $buffer, $count); close($fh); " +
+          "die \"SecureRandomBytes: no secure random source available\\n\" if !defined($got) || $got != $count; " +
+          "return [unpack('C*', $buffer)];"],
 
         // 64-bit arithmetic on [HIGH, LOW] word-pairs, returned as a {h, l}
         // hashref matching OpCodes.js's own {h, l} object shape (OpCodes.
@@ -1017,7 +1044,8 @@ sub MerkleDamgardBlocks {
         ["writeBits", "$self, $value, $numBits",
           "die 'BitStream.writeBits: numBits must be 1-32' if $numBits <= 0 || $numBits > 32; " +
           "my $mask = $numBits == 32 ? 0xFFFFFFFF : (1 << $numBits) - 1; $value = $value & $mask; " +
-          "$self->{buffer} = ($self->{buffer} << $numBits) | $value; " +
+          // JavaScript's 32-bit "<<" shifts by numBits & 31 and wraps
+          "$self->{buffer} = (($self->{buffer} << ($numBits & 31)) | $value) & 0xFFFFFFFF; " +
           "$self->{bufferBits} += $numBits; $self->{totalBitsWritten} += $numBits; " +
           "while ($self->{bufferBits} >= 8) { " +
           "$self->{bufferBits} -= 8; " +
@@ -1028,6 +1056,12 @@ sub MerkleDamgardBlocks {
         ["writeBit", "$self, $bit", "$self->writeBits($bit & 1, 1);"],
         ["writeByte", "$self, $byte", "$self->writeBits($byte & 0xFF, 8);"],
         ["writeBytes", "$self, $bytes", "for my $b (@$bytes) { $self->writeByte($b); }"],
+        ["writeUint16BE", "$self, $value", "$self->writeBits(($value >> 8) & 0xFF, 8); $self->writeBits($value & 0xFF, 8);"],
+        ["writeUint16LE", "$self, $value", "$self->writeBits($value & 0xFF, 8); $self->writeBits(($value >> 8) & 0xFF, 8);"],
+        ["writeUint32BE", "$self, $value",
+          "$value &= 0xFFFFFFFF; $self->writeBits(($value >> $_) & 0xFF, 8) for (24, 16, 8, 0);"],
+        ["writeUint32LE", "$self, $value",
+          "$value &= 0xFFFFFFFF; $self->writeBits(($value >> $_) & 0xFF, 8) for (0, 8, 16, 24);"],
 
         ["readBits", "$self, $numBits",
           "die 'BitStream.readBits: numBits must be 1-32' if $numBits <= 0 || $numBits > 32; " +
@@ -1094,6 +1128,7 @@ sub MerkleDamgardBlocks {
         ["readUnary", "$self",
           "my $count = 0; while ($self->hasMoreBits() && $self->readBit() == 1) { $count++; } return $count;"],
         ["alignToByte", "$self", "while ($self->{bufferBits} % 8 != 0) { $self->writeBit(0); }"],
+        ["isAligned", "$self", "return ($self->{bufferBits} % 8 == 0) ? 1 : 0;"],
       ];
 
       for (const [name, params, body] of methods) {
