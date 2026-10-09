@@ -1082,6 +1082,12 @@ check('optional members: a value member starting undefined is nullable and unwra
   expectMatch(code, /public int\? Count \{ get; set; \}/, 'int? Count');
   expectMatch(code, /this\.Count = (unchecked\()?\(int\)\(?value\.Count\)?\)?;/, 'this.Count = (int)value.Count');
 });
+check('typed arrays: a copy of a dynamic value is cast to the typed array first (RuntimeBinderException)', () => {
+  const code = transpile('class Holder {\n  constructor() {\n    this._privateKey = null;\n  }\n' +
+    '  /** @param {uint8[]} keyBytes - key */\n  setKey(keyBytes) { this._privateKey = keyBytes ? new Uint8Array(keyBytes) : AlgorithmFramework.Find("x"); }\n' +
+    '  /** @returns {uint8[]} r */\n  copy() { const k = new Uint8Array(this._privateKey); return k; }\n}');
+  expectMatch(code, /\((unchecked\()?\(byte\[\]\)\(?this\._privateKey\)?\)?\)\.ToArray\(\)/, '((byte[])this._privateKey).ToArray()');
+});
 const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +

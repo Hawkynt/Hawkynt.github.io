@@ -26023,7 +26023,16 @@
       // new Uint8Array(existingArray) -> existingArray.ToArray()
       const sizeNode = node.size;
       if (sizeNode && this.isArrayCopyPattern(sizeNode)) {
-        const sourceArray = this.transformExpression(sizeNode);
+        let sourceArray = this.transformExpression(sizeNode);
+        // A dynamic source (x25519.js's `new Uint8Array(this._privateKey)`, a field
+        // typed dynamic) binds no LINQ extension at run time: it is cast to the
+        // typed array first
+        const sourceType = this.inferFullExpressionType(sizeNode);
+        if (sourceType?.name === 'dynamic' && !sourceType.isArray) {
+          const elementTypes = { Uint8Array: 'byte', Uint8ClampedArray: 'byte', Int8Array: 'sbyte', Uint16Array: 'ushort', Int16Array: 'short',
+            Uint32Array: 'uint', Int32Array: 'int', Float32Array: 'float', Float64Array: 'double', BigUint64Array: 'ulong', BigInt64Array: 'long' };
+          sourceArray = new CSharpCast(CSharpType.Array(new CSharpType(elementTypes[arrayType] || 'byte')), sourceArray);
+        }
         return new CSharpMethodCall(sourceArray, 'ToArray', []);
       }
 
