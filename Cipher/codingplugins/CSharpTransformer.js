@@ -11523,6 +11523,19 @@
             declared.has(expr.right.name) && rebound.has(expr.right.name))
           aliases.push(expr);
       }
+      // The other direction: const lfsr = this._lfsr; lfsr.shift(); lfsr.push(b)
+      const isField = n => n?.type === 'ThisPropertyAccess' || (n?.type === 'MemberExpression' && !n.computed && n.object?.type === 'ThisExpression');
+      for (const stmt of bodyNode.body) {
+        if (stmt.type !== 'VariableDeclaration') continue;
+        for (const d of stmt.declarations) {
+          if (d.id?.type !== 'Identifier' || !isField(d.init) || !rebound.has(d.id.name)) continue;
+          const local = d.id.name;
+          const sync = () => [new CSharpExpressionStatement(this.transformExpression({
+            type: 'AssignmentExpression', operator: '=', left: d.init, right: { type: 'Identifier', name: local } }))];
+          const localName = this.toCamelCase(this.variableNameMap?.get(local) || local);
+          this.insertSyncsAfter(block, sync, s => s?.nodeType === 'VariableDeclaration' && (s.name === localName || s.name === local));
+        }
+      }
       if (aliases.length === 0) return;
       const syncs = () => aliases.map(a => new CSharpExpressionStatement(this.transformExpression(a)));
       // Only the returns after the field is first assigned the local (an early

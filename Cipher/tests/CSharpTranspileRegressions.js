@@ -646,6 +646,11 @@ check('arrays: a field aliasing a local the method pushes to is assigned it agai
   expectMatch(code, /this\.Keys = keys;\s*return;/, 'the field assigned again before the early return');
   expectMatch(code, /keys = keys\.Append\([\s\S]*\}\s*this\.Keys = keys;\s*\}/, 'the field assigned again at the end');
 });
+check('arrays: a local taken from a field and pushed to is stored back into the field', () => {
+  const code = transpile('class L {\n  constructor() { /** @type {uint8[]} */ this.reg = [0, 1]; }\n  /** @param {uint8} b - b */\n' +
+    '  insert(b) { const r = this.reg; r.shift(); r.push(b); }\n}');
+  expectMatch(code, /r = r\.Append\([^;]*\)\.ToArray\(\);\s*this\.Reg = r;/, 'this.Reg = r after the push');
+});
 check('arrays: a return before the field is first assigned the local is not synced (the local is not declared yet)', () => {
   const code = transpile('class D {\n  constructor() { /** @type {uint32[]} */ this.deck = [1, 2]; }\n' +
     '  /** @param {int32} n - n */\n  cut(n) {\n    if (n <= 0) return;\n    /** @type {uint32[]} */\n    const rebuilt = [];\n' +
