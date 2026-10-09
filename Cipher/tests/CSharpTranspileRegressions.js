@@ -184,6 +184,10 @@ check('string.slice/substr: negative bounds and lengths go through JsSlice/JsSub
   expectMatch(code, /JsSlice\(s, 3\)/, 'JsSlice(s, 3)');
   expectMatch(code, /JsSubstr\(s, 1, 2\)/, 'JsSubstr(s, 1, 2) (the length was dropped)');
 });
+check('conditions: a number into a @type {boolean} local is its truthiness (OpCodes.GetBit is 0/1)', () => {
+  const code = transpile('/**\n * @param {uint8} f - f\n * @returns {boolean} b\n */\nfunction g(f) { /** @type {boolean} */ const m = OpCodes.GetBit(f, 3); return m; }');
+  expectMatch(code, /bool m = \(OpCodes\.GetBit\(f, 3\)\) != 0;/, 'bool m = (GetBit(...)) != 0');
+});
 check('regex: /re/.test(s) as a condition is the bool of Regex.IsMatch, not compared to null', () => {
   const code = transpile('/**\n * @param {string} c - c\n * @returns {int32} r\n */\nfunction f(c) { if (/[A-Z]/.test(c)) return 1; return 0; }');
   expectMatch(code, /if \(System\.Text\.RegularExpressions\.Regex\.IsMatch\(c, "\[A-Z\]"\)\)/, 'if (Regex.IsMatch(c, "[A-Z]"))');

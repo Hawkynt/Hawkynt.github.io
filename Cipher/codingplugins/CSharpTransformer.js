@@ -12209,6 +12209,9 @@
           if (inferredType && inferredType.name !== 'object' && !isMethodCallTuple) {
             type = inferredType;
           }
+          // A number into a bool local (OpCodes.GetBit) is its truthiness
+          if (type?.name === 'bool' && !type.isArray)
+            initializer = this.castIfNeeded(initializer, this.inferFullExpressionType(decl.init), type);
 
           // No evidence at all yet (still the initial `var` placeholder) for a
           // null-initialized local - see _findAnyReassignedScalarType's doc comment:
@@ -15395,6 +15398,12 @@
       // Never cast arrays to scalar types or vice versa - this is always wrong
       // e.g., don't cast int[] to uint
       if (sourceType.isArray !== targetType.isArray) return expr;
+
+      // A number into a bool (OpCodes.GetBit's 0/1 into a @type {boolean} local) is
+      // its JavaScript truthiness; C# has no conversion at all
+      if (targetType.name === 'bool' && !targetType.isArray &&
+          ['byte', 'sbyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong'].includes(sourceType.name))
+        return new CSharpBinaryExpression(new CSharpParenthesized(expr), '!=', CSharpLiteral.Int(0));
 
       // A base class value into a subclass-typed target (the IL types it as the subclass)
       if (!sourceType.isArray && (this.isClassTypeName(sourceType.name) || sourceType.name === 'object') && this.isClassTypeName(targetType.name))
