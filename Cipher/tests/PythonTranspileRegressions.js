@@ -587,6 +587,16 @@ check('modules: a data library keeps its module.exports assignment for the bundl
   return expectOutput(runPython(js, 'print("loaded")'), ['loaded']);
 });
 
+check('names: a blockSize accessor and the framework BlockSize field stay apart as in JavaScript', () => {
+  const js = 'const { IBlockCipherInstance } = AlgorithmFramework;\n' +
+    'class Speed extends IBlockCipherInstance { constructor(a) { super(a); this._w = 16; this.BlockSize = 16; }\n' +
+    '  set blockSize(w) { if (w !== 8 && w !== 16) throw new Error("bad " + w); this._w = w; this.BlockSize = w; }\n  get blockSize() { return this._w; } }\n' +
+    'class Plain extends IBlockCipherInstance { constructor(a) { super(a); this.BlockSize = 16; } }\n' +
+    '/** @param {IBlockCipherInstance} e */\nfunction setWidth(e, bits) { e.blockSize = bits; return e; }';
+  // Given an accessor whose setter rejects the framework default 0, and a camelCase write to a class without one
+  return expectOutput(runPython(js, 's = set_width(Speed(None), 8)\np = set_width(Plain(None), 128)\nprint(s.block_size, p.block_size)'), ['8 16']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

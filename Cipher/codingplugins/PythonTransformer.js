@@ -759,12 +759,15 @@
         '            del self.input_buffer[:]';
       // IBlockCipherInstance.Result: encrypt or decrypt every buffered block,
       // refusing a partial block (AlgorithmFramework.js, same messages).
+      // BlockSize/KeySize start as plain fields: a subclass accessor such as
+      // SPEED's `set blockSize` shares the snake_case name but is not the
+      // field JavaScript initialises here, so its setter must not run.
       FRAMEWORK_STUBS['IBlockCipherInstance'] =
         'class IBlockCipherInstance(IAlgorithmInstance):\n' +
         '    def __init__(self, algorithm=None, *args, **kwargs):\n' +
         `        ${INSTANCE_BASE_BODY}\n` +
-        '        self.block_size = 0\n' +
-        '        self.key_size = 0\n' +
+        '        self.__dict__["block_size"] = 0\n' +
+        '        self.__dict__["key_size"] = 0\n' +
         '        self._key = None\n' +
         '    @property\n' +
         '    def key(self): return self._key\n' +
@@ -3106,6 +3109,17 @@ class OpCodes(metaclass=_OpCodesMeta):
           '    if hasattr(obj, name):\n' +
           '        return getattr(obj, name)\n' +
           '    return getattr(obj, key, None)'
+      });
+      // a camelCase property whose snake_case name a framework PascalCase field
+      // also has: an accessor the object's class defines, else its own slot
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_set_twin(obj, name, raw, value):\n' +
+          '    if isinstance(getattr(type(obj), name, None), property):\n' +
+          '        setattr(obj, name, value)\n' +
+          '    else:\n' +
+          '        obj.__dict__[raw] = value\n' +
+          '    return value'
       });
       stubs.push({
         nodeType: 'RawCode', code:
@@ -9523,6 +9537,20 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformAssignmentExpressionCore(node) {
+      // `engine.blockSize = bits` on a framework block cipher instance: the
+      // framework only has BlockSize, which shares the snake_case name, so
+      // JavaScript creates a separate property unless the actual class
+      // defines a blockSize accessor; _js_set_twin decides at run time
+      if (node.operator === '=' && node.left && node.left.type === 'MemberExpression' && !node.left.computed &&
+          node.left.object && node.left.object.type !== 'ThisExpression' &&
+          FRAMEWORK_INSTANCE_BASES.includes(node.left.object.resultType)) {
+        const raw = node.left.property && (node.left.property.name || node.left.property.value);
+        if (raw === 'blockSize' || raw === 'keySize') {
+          return new PythonCall(new PythonIdentifier('_js_set_twin'), [
+            this.transformExpression(node.left.object), PythonLiteral.Str(toSnakeCaseProperty(raw)),
+            PythonLiteral.Str(raw), this.transformExpression(node.right)]);
+        }
+      }
       // A quotient stored into an element of a float array keeps its
       // fraction (`prob[i] = freq[i] / n` on a float64[])
       if (node.operator === '=' && node.left && node.left.type === 'MemberExpression' && node.left.computed &&
