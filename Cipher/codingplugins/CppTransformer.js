@@ -1865,6 +1865,19 @@
 
     assign(node, asStatement) {
       const op = node.operator;
+      // [a, b] = list: each target from the list, in order
+      if (op === '=' && node.left && /^(ArrayExpression|ArrayLiteral|ArrayPattern)$/.test(node.left.type)) {
+        const value = this.expr(node.right);
+        const tmpName = this.tmp('dl');
+        const parts = (node.left.elements || []).map((el, i) => {
+          if (!el) return '';
+          const target = el.type === 'AssignmentPattern' ? el.left : el;
+          const elem = value.t.k === 'arr' ? { c: `${tmpName}.get(${i})`, t: value.t.e } : { c: `${this.cv({ c: tmpName, t: value.t }, T.any)}.index(js::Any(${i}))`, t: T.any };
+          const p = this.place(target);
+          return `${p.set(this.cv(elem, p.t))};`;
+        });
+        return { c: `({ ${this.cpp(value.t)} ${tmpName} = ${value.c}; ${parts.join(' ')} ${asStatement ? '' : tmpName + ';'} })`, t: asStatement ? T.void : value.t };
+      }
       const p = this.place(node.left);
       const target = p.t;
       if (op === '=') {
