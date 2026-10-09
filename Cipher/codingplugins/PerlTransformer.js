@@ -8977,6 +8977,12 @@
     }
 
     transformBinaryExpression(node) {
+      // Floating-point arithmetic is Perl's own (an NV), whatever integer
+      // emulation the operands' file may otherwise need
+      if (/^(float64|float32|double)$/.test(node.resultType || '') && ['+', '-', '*', '/'].includes(node.operator) &&
+          !this.isStringType(node.left) && !this.isStringType(node.right))
+        return new PerlGrouped(new PerlBinaryExpression(
+          this.transformExpression(node.left), node.operator, this.transformExpression(node.right)));
       // A BigInt masked to at most 64 bits: native 64-bit arithmetic
       if (this._isBigIntType(node.resultType) && node.operator === '&') {
         const rightMask = this._constantIntegerValue(node.right);
