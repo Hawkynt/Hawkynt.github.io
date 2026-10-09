@@ -616,6 +616,12 @@ check('arrays: a field aliasing a local the method pushes to is assigned it agai
   expectMatch(code, /this\.Keys = keys;\s*return;/, 'the field assigned again before the early return');
   expectMatch(code, /keys = keys\.Append\([\s\S]*\}\s*this\.Keys = keys;\s*\}/, 'the field assigned again at the end');
 });
+check('arrays: a return before the field is first assigned the local is not synced (the local is not declared yet)', () => {
+  const code = transpile('class D {\n  constructor() { /** @type {uint32[]} */ this.deck = [1, 2]; }\n' +
+    '  /** @param {int32} n - n */\n  cut(n) {\n    if (n <= 0) return;\n    /** @type {uint32[]} */\n    const rebuilt = [];\n' +
+    '    for (let i = 0; i < n; i++) rebuilt.push(this.deck[i]);\n    this.deck = rebuilt;\n  }\n}');
+  expectNoMatch(code, /if \(n <= 0\)\s*\{\s*this\.Deck = rebuilt;/, 'a sync before rebuilt is declared (CS0841)');
+});
 check('arrays: a whole copy stored into past its end grows (key.slice() extended to a schedule)', () => {
   const code = transpile('/**\n * @param {uint8[]} key - key\n * @returns {uint8[]} schedule\n */\nfunction expand(key) {\n' +
     '  /** @type {uint8[]} */\n  const rk = key.slice();\n  for (let i = 16; i < 32; i++) rk[i] = rk[i - 16];\n  return rk;\n}');

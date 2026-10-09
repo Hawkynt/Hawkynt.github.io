@@ -11538,7 +11538,15 @@
           } else if (value && typeof value === 'object' && value.nodeType) visitNode(value);
         }
       };
-      visit(block.statements);
+      // Only the returns after the field is first assigned the local (an early
+      // return before it must not read the local, which is not declared yet)
+      const aliasValueNames = new Set(syncs().map(s => s.expression?.value?.name).filter(Boolean));
+      const first = block.statements.findIndex(s => s?.nodeType === 'ExpressionStatement' && s.expression?.nodeType === 'Assignment' &&
+        s.expression.value?.nodeType === 'Identifier' && aliasValueNames.has(s.expression.value.name));
+      if (first < 0) return;
+      const tail = block.statements.slice(first + 1);
+      visit(tail);
+      block.statements.splice(first + 1, block.statements.length - first - 1, ...tail);
       const last = block.statements[block.statements.length - 1];
       if (!last || (last.nodeType !== 'Return' && last.nodeType !== 'Throw')) block.statements.push(...syncs());
     }
