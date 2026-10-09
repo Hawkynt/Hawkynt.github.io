@@ -11423,6 +11423,9 @@
               node.expression?.type === 'ArrayUnshift' || node.expression?.type === 'ArraySplice') {
             return this.transformArrayMutationToAssignment(node.expression);
           }
+          // Object.freeze(x)/Object.seal(x) as a statement only protects x, which a
+          // C# array needs no help with; as an expression it is just x (CS0201)
+          if (node.expression?.type === 'ObjectFreeze' || node.expression?.type === 'ObjectSeal') return new CSharpBlock();
           // Skip super() calls - they are handled in constructor transformation
           const calleeNode = node.expression?.callee;
           const isSuperCall = node.expression?.type === 'CallExpression' &&

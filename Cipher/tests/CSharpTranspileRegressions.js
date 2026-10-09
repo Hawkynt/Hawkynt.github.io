@@ -102,6 +102,11 @@ check('module statements: a registry guard and a store into a table run, a guard
   expectMatch(code, /ModuleInit1\(\)\s*\{\s*T\[1\] = /, 'the store T[1] = 5 in ModuleInit1');
   expectNoMatch(code, /ModuleInit2/, 'a module init for the registry guard');
 });
+check('statements: Object.freeze(x) as a statement leaves no bare expression (CS0201)', () => {
+  const code = transpile('const BOXES = [[1, 2], [3, 4]];\nfor (let i = 0; i < BOXES.length; i++) Object.freeze(BOXES[i]);\nObject.freeze(BOXES);');
+  expectNoMatch(code, /^\s*BOXES\[i\];/m, 'a bare BOXES[i]; statement');
+});
+
 check('IIFE hoisting: two IIFEs with the same local get distinct module names; a shadowing parameter is kept', () => {
   const code = transpile('const A = (() => { const table = [1, 2]; return table; })();\nconst B = (() => { const table = [3, 4]; const f = (table) => table[0]; return f(table); })();');
   expectMatch(code, /\bTable\b[^;]*=/, 'the first hoisted Table');
