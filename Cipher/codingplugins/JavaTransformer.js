@@ -4317,6 +4317,8 @@
       // classes
       const fc = this.classOfJt(from), tc = this.classOfJt(to);
       if (fc && tc && this.isSubclass(fc.name, tc.name)) return e;
+      // a dynamic value (a plain object, another unit's object) used as a local class is taken by shape
+      if (tc && tc.local && !(fc && fc.local)) return E.scall('Js', 'as', [this.conv(e, 'Object'), { k: 'classlit', name: to, t: 'Class' }], to);
       return E.cast(this.conv(e, 'Object'), to);
     }
   }

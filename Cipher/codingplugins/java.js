@@ -1057,7 +1057,54 @@ final class Js {
         if (t == BoolArray.class) return toBools(v);
         if (t == JsArray.class) return toArr(v);
         if (t == TestCase.class && v instanceof JsObject) return TestCase.fromObject((JsObject) v);
+        if ((v instanceof JsObject || v instanceof JsDynamic) && JsDynamic.class.isAssignableFrom(t)) return structural(v, t);
         return v;
+    }
+    /**
+     * JavaScript objects are typed by shape: a plain object, or an object of a class from another
+     * unit, used where a local class is declared becomes an instance of it holding the same properties.
+     */
+    /** A value used as a local class: the object itself, else (JavaScript types by shape) a copy of its properties. */
+    @SuppressWarnings("unchecked") public static <T> T as(Object v, Class<T> t) {
+        if (v == null || t.isInstance(v)) return (T) v;
+        Object r = coerce(v, t);
+        return (T) (t.isInstance(r) ? r : v);
+    }
+    static Object structural(Object v, Class<?> t) {
+        if (t.isInterface() || java.lang.reflect.Modifier.isAbstract(t.getModifiers())) return v;
+        Object r;
+        try {
+            java.lang.reflect.Constructor<?> c = null;
+            try { c = t.getDeclaredConstructor(); } catch (NoSuchMethodException e) { c = null; }
+            if (c != null) { c.setAccessible(true); r = c.newInstance(); }
+            else {
+                // no constructor without arguments: allocate it bare (every property is copied below)
+                Class<?> u = Class.forName("sun.misc.Unsafe");
+                java.lang.reflect.Field f = u.getDeclaredField("theUnsafe");
+                f.setAccessible(true);
+                r = u.getMethod("allocateInstance", Class.class).invoke(f.get(null), t);
+            }
+        } catch (java.lang.reflect.InvocationTargetException e) { throw unwrap(e); }
+        catch (ReflectiveOperationException e) { return v; }
+        if (v instanceof JsObject) {
+            JsArray<String> keys = ((JsObject) v).keys();
+            for (int i = 0; i < keys.length(); ++i) setProp(r, keys.get(i), ((JsObject) v).get(keys.get(i)));
+            return r;
+        }
+        try {
+            for (Class<?> k = v.getClass(); k != null && k != Object.class; k = k.getSuperclass())
+                for (java.lang.reflect.Field f : k.getDeclaredFields()) {
+                    if (java.lang.reflect.Modifier.isStatic(f.getModifiers()) || f.getName().endsWith("__") || f.isSynthetic()) continue;
+                    f.setAccessible(true);
+                    java.lang.reflect.Field g = findField(t, f.getName());
+                    if (g != null) { g.setAccessible(true); g.set(r, coerce(f.get(v), g.getType())); }
+                    else if (r instanceof JsDynamic) ((JsDynamic) r).props().put(f.getName(), f.get(v));
+                }
+        } catch (IllegalAccessException e) { throw new JsError(e.toString()); }
+        JsObject extra = ((JsDynamic) v).props();
+        JsArray<String> keys = extra.keys();
+        for (int i = 0; i < keys.length(); ++i) setProp(r, keys.get(i), extra.get(keys.get(i)));
+        return r;
     }
     /** new Error(message) and friends. */
     public static JsError error(String name, Object message) { return new JsError(name, message == null ? "" : str(message)); }
