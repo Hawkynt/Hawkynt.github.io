@@ -1290,6 +1290,8 @@
         case 'ArrayLiteral': {
           // IL AST: array literal → JavaScript array literal
           const elements = (node.elements || []).map(el => el ? this.transformExpression(el) : JavaScriptLiteral.Undefined());
+          // Uint8Array.of(...) stays a typed array
+          if (node.arrayType) return new JavaScriptCall(new JavaScriptIdentifier(node.arrayType), 'of', elements);
           return new JavaScriptArrayLiteral(elements);
         }
 
@@ -1738,7 +1740,8 @@
           const args = argument ? [argument] : [];
           // Add mapFunction if present
           if (node.mapFunction) args.push(this.transformExpression(node.mapFunction));
-          return new JavaScriptCall(arrayObj, 'from', args);
+          // Uint8Array.from(x) stays a typed array: its subarray/set differ from an Array's
+          return new JavaScriptCall(node.arrayType ? new JavaScriptIdentifier(node.arrayType) : arrayObj, 'from', args);
         }
 
         case 'ObjectKeys': {
@@ -2258,6 +2261,12 @@
     }
 
     transformBinaryExpression(node) {
+      // A long `a + b + c + ...` chain (asymmetric/cross.js and faest.js
+      // spell their tables as ~1900 concatenated hex strings) is a left-deep
+      // tree as deep as it is long; recursing down it overflows the stack.
+      // Walk its spine iteratively instead.
+      if (node.operator === '+' && node.left && node.left.type === 'BinaryExpression' && node.left.operator === '+')
+        return this.transformAdditionChain(node);
       // type-aware-transpiler.js inlines OpCodes.Mul32(a, b) to a plain
       // `(a * b) & 0xFFFFFFFF` — a BinaryExpression '*' immediately wrapped
       // in a '&' mask — to emulate 32-bit overflow. That's exactly correct
@@ -2326,6 +2335,41 @@
       const left = this.transformExpression(node.left);
       const right = this.transformExpression(node.right);
       return new JavaScriptBinaryExpression(left, node.operator, right);
+    }
+
+    /**
+     * Transform a left-deep chain of '+' without recursing down it. Adjacent
+     * string literals are joined: once a string literal has been added the
+     * running value is a string, and string concatenation is associative, so
+     * `(x + "a") + "b"` is `x + "ab"` whatever x is. That also keeps the
+     * emitted tree shallow.
+     * @param {Object} node - IL BinaryExpression '+' whose left is one too
+     * @returns {Object} JavaScript AST expression
+     */
+    transformAdditionChain(node) {
+      const operands = [];
+      let spine = node;
+      while (spine.type === 'BinaryExpression' && spine.operator === '+') {
+        operands.push(spine.right);
+        spine = spine.left;
+      }
+      operands.push(spine);
+      operands.reverse();
+
+      const isString = operand => operand.type === 'Literal' && typeof operand.value === 'string';
+      const joined = [];
+      for (const operand of operands) {
+        const previous = joined[joined.length - 1];
+        if (previous && isString(previous) && isString(operand))
+          joined[joined.length - 1] = { type: 'Literal', value: previous.value + operand.value };
+        else
+          joined.push(operand);
+      }
+
+      let result = this.transformExpression(joined[0]);
+      for (let i = 1; i < joined.length; ++i)
+        result = new JavaScriptBinaryExpression(result, '+', this.transformExpression(joined[i]));
+      return result;
     }
 
     transformUnaryExpression(node) {
