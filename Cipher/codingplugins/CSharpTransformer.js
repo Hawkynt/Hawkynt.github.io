@@ -7572,10 +7572,22 @@
       if (registered.length === 0) return;
 
       const algorithmType = new CSharpType('Algorithm');
+      // Each registered algorithm is a static field of its own (a test harness finds
+      // algorithms by their static fields), listed in Algorithms in source order
+      const entries = registered.map((arg, index) => {
+        const value = this.transformExpression(arg);
+        if (arg.type === 'Identifier') return value;
+        const field = new CSharpField(`RegisteredAlgorithm${index}`, algorithmType);
+        field.isStatic = true;
+        field.isReadOnly = true;
+        field.initializer = value;
+        mainClass.members.push(field);
+        return new CSharpIdentifier(field.name);
+      });
       const registry = new CSharpField('Algorithms', CSharpType.Array(algorithmType));
       registry.isStatic = true;
       registry.isReadOnly = true;
-      registry.initializer = new CSharpArrayCreation(algorithmType, null, registered.map(arg => this.transformExpression(arg)));
+      registry.initializer = new CSharpArrayCreation(algorithmType, null, entries);
       mainClass.members.push(registry);
 
       if (mainClass.members.some(m => m.name === 'AlgorithmInstance')) return;

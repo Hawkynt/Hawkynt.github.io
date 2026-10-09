@@ -228,7 +228,8 @@ check('framework: a module function named like an inherited member is called qua
 check('registry: every registered algorithm is listed, the first is AlgorithmInstance', () => {
   const code = transpile('class A extends HashFunctionAlgorithm { constructor() { super(); this.name = "A"; } }\n' +
     'class B extends A { constructor() { super(); this.name = "B"; } }\nRegisterAlgorithm(new A());\nRegisterAlgorithm(new B());');
-  expectMatch(code, /static readonly Algorithm\[\] Algorithms = new Algorithm\[\] \{ new A\(\), new B\(\) \}/, 'Algorithms = { new A(), new B() }');
+  expectMatch(code, /static readonly Algorithm RegisteredAlgorithm0 = new A\(\);[\s\S]*RegisteredAlgorithm1 = new B\(\);/, 'a static field per registered algorithm');
+  expectMatch(code, /static readonly Algorithm\[\] Algorithms = new Algorithm\[\] \{ RegisteredAlgorithm0, RegisteredAlgorithm1 \}/, 'Algorithms listing them');
   expectMatch(code, /static readonly Algorithm AlgorithmInstance = Algorithms\[0\]/, 'AlgorithmInstance = Algorithms[0]');
 });
 check('registry: a module-declared algorithmInstance is kept and listed', () => {
@@ -242,7 +243,7 @@ check('registry: an algorithm registered through a module helper is listed', () 
   const code = transpile('class A extends HashFunctionAlgorithm { constructor() { super(); this.name = "A"; } }\n' +
     '/** @param {A} algo - algorithm */\nfunction registerOnce(algo) { if (!AlgorithmFramework.Find(algo.name)) RegisterAlgorithm(algo); }\n' +
     'registerOnce(new A());');
-  expectMatch(code, /Algorithms = new Algorithm\[\] \{ new A\(\) \}/, 'Algorithms = { new A() }');
+  expectMatch(code, /RegisteredAlgorithm0 = new A\(\);[\s\S]*Algorithms = new Algorithm\[\] \{ RegisteredAlgorithm0 \}/, 'Algorithms = { new A() }');
   expectMatch(code, /static void RegisterAlgorithm\(Algorithm algorithm\)/, 'a RegisterAlgorithm method for the helper');
 });
 check('registry: a dependency transpiled asDependency brings no usings, stubs or Main', () => {
@@ -253,7 +254,7 @@ check('registry: a dependency transpiled asDependency brings no usings, stubs or
   expectNoMatch(code, /^using /m, 'a using directive');
   expectNoMatch(code, /static void Main\(/, 'a Main method');
   expectNoMatch(code, /class IAlgorithmInstance/, 'the framework stubs');
-  expectMatch(code, /Algorithms = new Algorithm\[\] \{ new D\(\) \}/, 'its own registry');
+  expectMatch(code, /Algorithms = new Algorithm\[\] \{ RegisteredAlgorithm0 \}/, 'its own registry');
 });
 check('module bindings: a const the module grows is not readonly (CS0198)', () => {
   const code = transpile('/** @type {uint32[]} */\nconst TABLE = [];\nfunction fill() { TABLE.push(1); }');
