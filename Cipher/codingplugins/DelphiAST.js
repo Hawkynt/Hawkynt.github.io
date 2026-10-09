@@ -97,12 +97,15 @@
    * A unit.
    * @param {object} o - { name, header (comment lines), interfaceUses,
    *   implementationUses, runtimeInterface, runtimeImplementation,
-   *   runtimeInitialization, types [decl], consts [constDecl], vars [varDecl],
-   *   forwards [routine], routines [routine], initialization [stmt] }
+   *   runtimeInitialization, runtimeUnit (a shared runtime unit instead of
+   *   the embedded runtime), isLibrary (declarations in the interface),
+   *   usesUnits (library units used), types [decl], consts [constDecl],
+   *   vars [varDecl], forwards [routine], routines [routine], initialization [stmt] }
    */
   const unit = o => Object.assign({
     kind: 'unit', name: 'GeneratedUnit', header: [], interfaceUses: [], implementationUses: [],
     runtimeInterface: '', runtimeImplementation: '', runtimeInitialization: '',
+    runtimeUnit: null, isLibrary: false, usesUnits: [],
     types: [], consts: [], vars: [], forwards: [], routines: [], initialization: []
   }, o);
 

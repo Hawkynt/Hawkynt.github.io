@@ -26,7 +26,8 @@
   'use strict';
 
   const A = (typeof require !== 'undefined') ? require('./DelphiAST.js') : global.DelphiAST;
-  const EmitterModule = (typeof require !== 'undefined') ? require('./DelphiEmitter.js') : { runtimeIdentifiers: global.DelphiEmitterRuntimeIdentifiers };
+  // The emitter holds the runtime and its identifiers; in the browser it loads after this file
+  const emitterModule = () => (typeof require !== 'undefined') ? require('./DelphiEmitter.js') : (global.DelphiEmitterModule || {});
 
   // =====================================================================
   // Types
@@ -473,7 +474,8 @@
      */
     transform(program) {
       this.reset();
-      const body = (program && program.body) || [];
+      this.importLibraries(this.options.libraries || []);
+      const body = this.unwrapModule((program && program.body) || []);
       this.collectTopLevel(body);
       this.buildClasses();
       this.assignNames();
@@ -485,7 +487,8 @@
     }
 
     reset() {
-      const runtime = EmitterModule.runtimeIdentifiers ? EmitterModule.runtimeIdentifiers() : new Set();
+      const em = emitterModule();
+      const runtime = em.runtimeIdentifiers ? em.runtimeIdentifiers() : new Set();
       this.reserved = new Set([...PASCAL_KEYWORDS, ...PASCAL_BUILTINS, ...runtime, this.unitName.toLowerCase()]);
       this.globalPool = new NamePool(this.reserved);
       this.globalIdents = new Set();
@@ -511,6 +514,10 @@
       this.pre = null;
       this.fn = null;
       this.diagnostics = [];
+      this.libraries = new Map();        // factory parameter -> library unit info
+      this.libraryAliases = new Map();   // top-level alias of a library namespace
+      this.libraryImports = new Map();   // name destructured from a library -> { lib, name }
+      this.usesUnits = [];
       for (const [name, def] of Object.entries(FRAMEWORK)) this.classes.set(name, this.frameworkClass(name, def));
       for (const c of this.classes.values()) if (c.baseName) c.base = this.classes.get(c.baseName);
     }
@@ -530,9 +537,79 @@
 
     // ------------------------------------------------------------ collection
 
+    /**
+     * A library written as (function () { ... }).call(this) runs its body at
+     * the top level.
+     */
+    unwrapModule(body) {
+      if (body.length === 1 && body[0].type === 'ExpressionStatement') {
+        const e = body[0].expression;
+        const fn = e && e.type === 'CallExpression' && e.callee && e.callee.type === 'MemberExpression' && !e.callee.computed &&
+          (e.callee.property.name === 'call' || e.callee.property.name === 'apply') ? e.callee.object : null;
+        if (fn && (fn.type === 'FunctionExpression' || fn.type === 'ArrowFunction') && fn.body && fn.body.type === 'BlockStatement' && fn.params.length === 0)
+          return fn.body.body;
+      }
+      return body;
+    }
+
+    /**
+     * The .data libraries the file receives as factory parameters: each is a
+     * unit of its own, whose names this unit uses qualified by that unit.
+     * @param {object[]} libraries - [{ param, unit, ast }]
+     */
+    importLibraries(libraries) {
+      for (const lib of libraries) {
+        const sub = new DelphiTransformer({ unitName: lib.unit, library: true, runtimeUnit: this.options.runtimeUnit });
+        sub.transform(lib.ast);
+        const info = { param: lib.param, unit: sub.unitName, functions: sub.functions, globals: sub.globals, classes: new Map() };
+        for (const c of sub.userClasses) {
+          const imported = Object.assign({}, c, { pas: sub.unitName + '.' + c.pas, isFramework: true, imported: true });
+          info.classes.set(c.jsName, imported);
+          if (!this.classes.has(c.jsName)) this.classes.set(c.jsName, imported);
+        }
+        for (const c of info.classes.values()) if (c.base && info.classes.has(c.base.jsName)) c.base = info.classes.get(c.base.jsName);
+        this.libraries.set(lib.param, info);
+        this.usesUnits.push(sub.unitName);
+      }
+    }
+
+    /** The library a name stands for: a factory parameter or a top-level alias of one. */
+    libraryOf(name) {
+      if (this.lookup && this.fn && this.lookup(name)) return null;
+      return this.libraries.get(name) || this.libraryAliases.get(name) || null;
+    }
+
+    /** A member of a library namespace as an expression: its function, variable or class. */
+    libraryMember(lib, name, node) {
+      if (lib.globals.has(name)) {
+        const g = lib.globals.get(name);
+        return { e: A.mem(A.id(lib.unit), g.pas), t: g.type, lvalue: true };
+      }
+      if (lib.functions.has(name)) {
+        const f = lib.functions.get(name);
+        return { e: A.mem(A.id(lib.unit), f.pas), t: T.fn, globalFn: Object.assign({}, f, { pas: lib.unit + '.' + f.pas }) };
+      }
+      if (lib.classes.has(name)) return { e: A.id(lib.classes.get(name).pas), t: T.any, classRef: lib.classes.get(name) };
+      fail(`library ${lib.param} has no member ${name}`, node);
+    }
+
     collectTopLevel(body) {
       for (const node of body) {
         if (!node) continue;
+        // const { A, B } = Library; const Alias = Library;
+        if (node.type === 'VariableDeclaration' && node.declarations.every(d => d.init && d.init.type === 'Identifier' && this.libraries.has(d.init.name))) {
+          for (const d of node.declarations) {
+            const lib = this.libraries.get(d.init.name);
+            if (d.id.type === 'Identifier') this.libraryAliases.set(d.id.name, lib);
+            else if (d.id.type === 'ObjectPattern')
+              for (const p of d.id.properties) {
+                const key = p.key && (p.key.name || p.key.value);
+                const local = p.value && p.value.name || key;
+                this.libraryImports.set(local, { lib, name: key });
+              }
+          }
+          continue;
+        }
         switch (node.type) {
           case 'ClassDeclaration':
             this.addUserClass(node);
@@ -1908,6 +1985,9 @@
       }
       if (this.globals.has(name)) { const g = this.globals.get(name); return { e: A.id(g.pas), t: g.type, lvalue: true }; }
       if (this.functions.has(name)) { const f = this.functions.get(name); return { e: A.id(f.pas), t: T.fn, globalFn: f }; }
+      const lib = this.libraries.get(name) || this.libraryAliases.get(name);
+      if (lib) return { e: A.lit('True'), t: T.bool, libNamespace: lib, constBool: true };
+      if (this.libraryImports.has(name)) { const imp = this.libraryImports.get(name); return this.libraryMember(imp.lib, imp.name, node); }
       switch (name) {
         case 'undefined': return { e: this.nullValue(expected || T.null), t: T.null, isNull: true };
         case 'NaN': return { e: A.call('JsNaN'), t: T.f64 };
@@ -2014,6 +2094,7 @@
       if (obj && obj.type === 'MemberExpression' && !obj.computed && isIdentifier(obj.object, 'AlgorithmFramework') && ENUM_TYPES.has(obj.property.name))
         return { e: this.enumValue(obj.property.name, name), t: tEnum(obj.property.name) };
       const o = this.ex(obj);
+      if (o.libNamespace) return this.libraryMember(o.libNamespace, name, node);
       if (o.t.k === 'enum') {
         if (name === 'name') return { e: o.e, t: T.str };
         fail(`member ${name} of an enum value`, node);
@@ -2600,7 +2681,7 @@
         if (a.constBool !== undefined) return { e: A.lit(a.constBool ? 'False' : 'True'), t: T.bool, constBool: !a.constBool };
         return { e: A.un('not', this.truthy(a)), t: T.bool };
       }
-      if (op === 'typeof') return this.typeofOf(this.ex(node.argument));
+      if (op === 'typeof') return this.typeofArgument(node.argument);
       if (op === 'void') { const r = this.ex(node.argument); this.discard(r); return { e: A.lit('nil'), t: T.null, isNull: true }; }
       if (op === 'delete') fail('delete is not supported', node);
       const a = this.ex(node.argument, op === '-' ? expected : null);
@@ -2647,7 +2728,9 @@
       const v = tf.typeofOf;
       if (v.t.k === 'any') return null;
       let res;
-      if (other.constStr === 'undefined') {
+      if (v.t.k === 'void') {
+        res = tf.constStr === other.constStr;
+      } else if (other.constStr === 'undefined') {
         if (isRef(v.t) || isStr(v.t)) {
           const test = this.compare('===', v, { e: A.lit('nil'), t: T.null, isNull: true });
           return { e: eq ? test : A.un('not', test), t: T.bool };
@@ -2661,7 +2744,15 @@
     }
 
     xTypeOfExpression(node) {
-      return this.typeofOf(this.ex(node.argument || node.value));
+      return this.typeofArgument(node.argument || node.value);
+    }
+
+    /** typeof of an expression; of a name nothing declares (module, define, window, ...) it is 'undefined'. */
+    typeofArgument(arg) {
+      if (arg && arg.type === 'Identifier' && !this.lookup(arg.name) && !this.globals.has(arg.name) && !this.functions.has(arg.name) &&
+          !this.classes.has(arg.name) && !this.libraries.has(arg.name) && !this.libraryAliases.has(arg.name) && !this.libraryImports.has(arg.name))
+        return { e: A.lit("'undefined'"), t: T.str, constStr: 'undefined', typeofOf: { e: A.lit('nil'), t: T.void } };
+      return this.typeofOf(this.ex(arg));
     }
 
     discard(res) {
@@ -2687,6 +2778,8 @@
         const stmts = this.destructuringAssignment(node.left.elements, node.right);
         return wantValue ? { stmts, value: { e: null, t: T.void } } : stmts;
       }
+      if (node.left.type === 'ThisPropertyAccess' && !this.fn.cls)
+        return wantValue ? { stmts: [], value: this.ex(node.right) } : [A.comment('a property of the global object is not kept')];
       const target = this.lvalue(node.left);
       let stmts = [];
       if (op === '=') {
@@ -3049,6 +3142,13 @@
     /** Calls through a namespace or class: AlgorithmFramework.Find, Foo.staticMethod, Math.x, ... */
     staticCall(objName, name, node, expected) {
       const args = node.arguments || [];
+      const lib = this.libraries.get(objName) || this.libraryAliases.get(objName);
+      if (lib) {
+        const member = this.libraryMember(lib, name, node);
+        if (!member.globalFn) fail(`${objName}.${name} is not a function`, node);
+        const f = member.globalFn;
+        return { e: A.call(A.id(f.pas), this.args(args, f.params, node)), t: f.ret.k === 'void' ? T.void : f.ret, stmtOk: true };
+      }
       const c = this.classes.get(objName);
       if (c && !c.isFramework) {
         const m = this.findMember(c, name);
@@ -3080,10 +3180,16 @@
     }
 
     xNewExpression(node, expected) {
-      const callee = node.callee;
+      let callee = node.callee;
+      if (callee.type === 'MemberExpression' && !callee.computed) {
+        // new Library.Class(...)
+        const ref = this.ex(callee);
+        if (!ref.classRef) fail('new of a member that is not a class', node);
+        callee = { type: 'Identifier', name: ref.classRef.jsName, classInfo: ref.classRef };
+      }
       if (!isIdentifier(callee)) fail('new of ' + callee.type, node);
       const name = callee.name;
-      const c = this.classes.get(name);
+      const c = callee.classInfo || this.classes.get(name);
       if (!c) fail(`new of unknown class ${name}`, node);
       if (name === 'BlockAbsorber') {
         const args = node.arguments || [];
@@ -4181,6 +4287,9 @@
       const converters = [...this.converters.values()].filter(Boolean);
       return A.unit({
         name: this.unitName,
+        runtimeUnit: this.options.runtimeUnit || null,
+        isLibrary: !!this.options.library,
+        usesUnits: this.usesUnits,
         header: ['Generated from JavaScript by the SynthelicZ Cipher transpiler', 'Free Pascal 3.2+ (Delphi mode); the runtime is embedded'],
         types, consts: this.consts, vars,
         forwards: [...converters.map(r => Object.assign({}, r)), ...this.forwards],

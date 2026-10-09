@@ -2,7 +2,9 @@
   Vector harness compiled with a transpiled Delphi/Free Pascal algorithm unit
   by tests/TranspilerValidation.js (the VALIDATION category). (c)2006-2025 Hawkynt
 
-  The unit placeholder below is replaced by the transpiled unit's name; the
+  The unit placeholder below is replaced by the transpiled units' names (the
+  shared runtime unit, the libraries and algorithms the file depends on, then
+  the file's own unit, when the file is bundled with others); the
   harness spec of the reference run (the algorithms the file registers and,
   per vector, the fields to apply in TestEngine order and the checks the
   reference passed) is read from spec.json next to the program. Fields are
