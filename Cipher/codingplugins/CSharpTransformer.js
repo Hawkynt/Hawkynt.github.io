@@ -22953,22 +22953,41 @@
       return /^_?inputBuffer$/i.test(prop || '');
     }
 
-    transformArrayAppend(node) {
-      const array = this.transformExpression(node.array);
-
-      // Check if value is a SpreadElement (from arr.push(...other))
-      const isSpread = node.value && node.value.type === 'SpreadElement';
-      const actualValue = isSpread ? node.value.argument : node.value;
-
-      // Infer the array element type BEFORE transforming the pushed value, and use it
+    /**
+     * `arr.push(v1, ...v2, ...)` as `arr.Append(v1).Concat(v2)...` (without the
+     * final ToArray): every argument in order, a spread one flattened.
+     * @param {Object} node - IL ArrayAppend node (array, value, values)
+     * @returns {Object} the C# chain expression
+     */
+    _buildArrayAppendChain(node) {
+      // Infer the array element type BEFORE transforming the pushed values, and use it
       // as the "expected type" context (see ObjectLiteral's currentArrayElementType
       // check) - a test-vector array built via `vectors.push({ text, uri, ... })`
-      // (normalized to this same 'ArrayAppend' IL node - see the matching comment on
-      // preRegisterLocalVariableTypes' push-handling) needs its pushed object literal
-      // constructed as a real `new TestCase(...)`, not a generic anonymous object,
-      // to assign/concat into a TestCase[]-typed array (CS0029/CS1503 otherwise).
+      // needs its pushed object literal constructed as a real `new TestCase(...)`,
+      // not a generic anonymous object, to append into a TestCase[]-typed array.
       const arrayType = this.inferFullExpressionType(node.array);
       const elementType = arrayType?.elementType;
+      const values = Array.isArray(node.values) && node.values.length > 0 ? node.values : [node.value];
+      let chain = this.transformExpression(node.array);
+      for (const valueNode of values) {
+        const { methodName, value } = this._buildArrayAppendValue(node.array, valueNode, elementType);
+        chain = new CSharpMethodCall(chain, methodName, [value]);
+      }
+      return chain;
+    }
+
+    /**
+     * One `push` argument as the argument of an Append (one element) or a Concat
+     * (a spread, or the bytes of the framework input buffer).
+     * @param {Object} arrayNode - the IL array pushed to
+     * @param {Object} valueNode - the IL argument (maybe a SpreadElement)
+     * @param {CSharpType|null} elementType - the array's element type
+     * @returns {{methodName: string, value: Object}}
+     */
+    _buildArrayAppendValue(arrayNode, valueNode, elementType) {
+      const isSpread = valueNode && valueNode.type === 'SpreadElement';
+      const actualValue = isSpread ? valueNode.argument : valueNode;
+
       const prevArrayElementTypeForAppend = this.currentArrayElementType;
       if (elementType) this.currentArrayElementType = elementType;
       let value = this.transformExpression(actualValue);
@@ -22976,17 +22995,11 @@
 
       const valueType = this.inferFullExpressionType(actualValue);
 
-      // Determine if we should use Concat (for arrays) or Append (for single elements).
       // Array.prototype.push(x) always appends x as ONE element, even when x is itself
       // an array (e.g. DES's `this.SBOX.push(sbox)` where `sbox` is a locally-built 2D
       // array - SBOX must become jagged, not have sbox's rows flattened into it) - only
       // an explicit `...spread` argument means "flatten these into me instead".
-      // valueType.isArray is deliberately NOT part of this condition: the target
-      // array's own field/variable type is expected to already be (or become, via
-      // preScanJaggedInstanceFields/preScan2DArrayVars) jagged enough to hold x as a
-      // single element - forcing Concat here as a workaround for an under-inferred
-      // flat target type just produces the wrong runtime shape instead.
-      const useConcat = isSpread || this._isFlatFeedBufferAppendOfArray(node.array, valueType);
+      const useConcat = isSpread || this._isFlatFeedBufferAppendOfArray(arrayNode, valueType);
 
       if (!useConcat) {
         // Cast value to element type if needed (e.g., int to byte for byte[])
@@ -22995,12 +23008,10 @@
           const needsCast = (valueType && valueType.name !== elementType.name) ||
                             (elementType.name === 'byte' && actualValue.type === 'BinaryExpression');
           if (needsCast) {
-            // A plain `(T)(expr)` cast is only valid scalar-to-scalar - if the pushed
-            // value is itself array-typed (e.g. Kuznyechik's `constants.push(
-            // transformL(vec))`, pushing a byte[] as a single element into a
-            // uint[][]-typed `constants`), C# has no `(uint[])` reinterpret cast from
-            // byte[] (CS0030); needs the same element-wise `.Select(_v =>
-            // (T)_v).ToArray()` conversion the `useConcat` branch below already uses.
+            // A plain `(T)(expr)` cast is only valid scalar-to-scalar - an array-typed
+            // pushed value (e.g. Kuznyechik's `constants.push(transformL(vec))`, a
+            // byte[] pushed as one element into a uint[][]) needs the element-wise
+            // `.Select(_v => (T)_v).ToArray()` conversion instead (CS0030).
             value = (elementType.isArray || valueType?.isArray)
               ? this.buildParameterConversion(valueType, elementType, value)
               : new CSharpCast(elementType, value);
@@ -23009,29 +23020,20 @@
       } else if (elementType && valueType?.isArray && valueType.elementType &&
                  elementType.name !== 'object' && elementType.name !== 'dynamic' &&
                  elementType.name !== valueType.elementType.name) {
-        // `arr.push(...other)` where `other`'s element type doesn't match `arr`'s (e.g.
-        // a hand-rolled AES key schedule's `roundKey.push(...w[i])`, where `w[i]` is
-        // uint[] - built from OpCodes.XorN results - but `roundKey` name-infers as
-        // byte[]) - `byte[].Concat(uint[])` doesn't compile (CS1929: no applicable
-        // Concat overload), so convert element-by-element first via the same
-        // Select(...).ToArray() pattern used for cross-typed call arguments.
+        // `arr.push(...other)` where `other`'s element type differs from `arr`'s -
+        // `byte[].Concat(uint[])` doesn't compile (CS1929), so convert element-wise.
         value = this.buildParameterConversion(valueType, CSharpType.Array(elementType), value);
       } else if (elementType && elementType.name !== 'object' && elementType.name !== 'dynamic' &&
                  valueType?.name === 'dynamic') {
-        // `arr.push(...other)` where `other` is itself `dynamic` (e.g. tls-prf.js's
-        // `output.push(...chunk);`, `chunk` being a hash-instance's `.Result()` -
-        // always dynamic per inferCallExpressionType's dynamic-receiver-propagation
-        // rule) - same "extension methods cannot be dynamically dispatched" problem
-        // (CS1973) transformArrayConcat's identical guard already fixes for a plain
-        // `.concat(...)` call; `.push(...spread)` reaches `Concat` through this
-        // separate code path and needs the same explicit cast.
+        // A `dynamic` spread argument: extension methods cannot be dynamically
+        // dispatched (CS1973), so cast it to the array type first.
         value = new CSharpCast(CSharpType.Array(elementType), value);
       }
+      return { methodName: useConcat ? 'Concat' : 'Append', value };
+    }
 
-      // Use Concat for arrays, Append for single elements
-      const methodName = useConcat ? 'Concat' : 'Append';
-      const methodCall = new CSharpMethodCall(array, methodName, [value]);
-      return new CSharpMethodCall(methodCall, 'ToArray', []);
+    transformArrayAppend(node) {
+      return new CSharpMethodCall(this._buildArrayAppendChain(node), 'ToArray', []);
     }
 
     /**
@@ -23040,77 +23042,8 @@
      */
     transformArrayAppendToAssignment(node) {
       const target = this.transformExpression(node.array);
-
-      // Check if value is a SpreadElement (from arr.push(...other))
-      const isSpread = node.value && node.value.type === 'SpreadElement';
-      const actualValue = isSpread ? node.value.argument : node.value;
-
-      // See the matching comment in transformArrayAppend just above - same
-      // TestCase/LinkItem/KeySize/... expected-type context, needed here too since
-      // this is the statement-form (`vectors.push(x);` on its own line, not used as
-      // a sub-expression) transformArrayAppend doesn't handle.
-      const arrayType = this.inferFullExpressionType(node.array);
-      const elementType = arrayType?.elementType;
-      const prevArrayElementTypeForAppend = this.currentArrayElementType;
-      if (elementType) this.currentArrayElementType = elementType;
-      let value = this.transformExpression(actualValue);
-      this.currentArrayElementType = prevArrayElementTypeForAppend;
-
-      const valueType = this.inferFullExpressionType(actualValue);
-
-      // Determine if we should use Concat (for arrays) or Append (for single elements).
-      // Array.prototype.push(x) always appends x as ONE element, even when x is itself
-      // an array (e.g. DES's `this.SBOX.push(sbox)` where `sbox` is a locally-built 2D
-      // array - SBOX must become jagged, not have sbox's rows flattened into it) - only
-      // an explicit `...spread` argument means "flatten these into me instead".
-      // valueType.isArray is deliberately NOT part of this condition: the target
-      // array's own field/variable type is expected to already be (or become, via
-      // preScanJaggedInstanceFields/preScan2DArrayVars) jagged enough to hold x as a
-      // single element - forcing Concat here as a workaround for an under-inferred
-      // flat target type just produces the wrong runtime shape instead.
-      const useConcat = isSpread || this._isFlatFeedBufferAppendOfArray(node.array, valueType);
-
-      if (!useConcat) {
-        // Cast value to element type if needed (e.g., int to byte for byte[])
-        // In C#, byte operations (^, +, -, &, |) produce int, so always cast expressions to byte when appending to byte[]
-        if (elementType && elementType.name !== 'object' && elementType.name !== 'dynamic') {
-          const needsCast = (valueType && valueType.name !== elementType.name) ||
-                            (elementType.name === 'byte' && actualValue.type === 'BinaryExpression');
-          if (needsCast) {
-            // A plain `(T)(expr)` cast is only valid scalar-to-scalar - if the pushed
-            // value is itself array-typed (e.g. Kuznyechik's `constants.push(
-            // transformL(vec))`, pushing a byte[] as a single element into a
-            // uint[][]-typed `constants`), C# has no `(uint[])` reinterpret cast from
-            // byte[] (CS0030); needs the same element-wise `.Select(_v =>
-            // (T)_v).ToArray()` conversion the `useConcat` branch below already uses.
-            value = (elementType.isArray || valueType?.isArray)
-              ? this.buildParameterConversion(valueType, elementType, value)
-              : new CSharpCast(elementType, value);
-          }
-        }
-      } else if (elementType && valueType?.isArray && valueType.elementType &&
-                 elementType.name !== 'object' && elementType.name !== 'dynamic' &&
-                 elementType.name !== valueType.elementType.name) {
-        // See the matching branch in transformArrayAppend just above - same
-        // cross-typed-array spread fixup, for the `arr = arr.concat(...)`
-        // assignment-statement shape instead of the `arr.push(...)` expression shape.
-        value = this.buildParameterConversion(valueType, CSharpType.Array(elementType), value);
-      } else if (elementType && elementType.name !== 'object' && elementType.name !== 'dynamic' &&
-                 valueType?.name === 'dynamic') {
-        // See the matching branch in transformArrayAppend just above - a `dynamic`
-        // spread argument (e.g. tls-prf.js's `output.push(...chunk);`, a bare
-        // ExpressionStatement reaching THIS assignment-statement shape instead of
-        // transformArrayAppend's expression shape) needs the identical explicit cast
-        // (CS1973 otherwise).
-        value = new CSharpCast(CSharpType.Array(elementType), value);
-      }
-
-      // Build: arr = arr.Concat(value).ToArray() or arr = arr.Append(value).ToArray()
-      const methodName = useConcat ? 'Concat' : 'Append';
-      const methodCall = new CSharpMethodCall(target, methodName, [value]);
-      const toArrayExpr = new CSharpMethodCall(methodCall, 'ToArray', []);
-      const assignment = new CSharpAssignment(target, '=', toArrayExpr);
-      return new CSharpExpressionStatement(assignment);
+      const toArrayExpr = new CSharpMethodCall(this._buildArrayAppendChain(node), 'ToArray', []);
+      return new CSharpExpressionStatement(new CSharpAssignment(target, '=', toArrayExpr));
     }
 
     /**

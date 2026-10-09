@@ -242,6 +242,16 @@ check('IL types: a constructor parameter takes its JSDoc class type, not one gue
 });
 
 // ---------------------------------------------------------------------------
+// Expression mappings: push
+// ---------------------------------------------------------------------------
+check('push: every argument of a multi-argument push is appended, in order', () => {
+  const code = transpile('/**\n * @param {uint8[]} a - first\n * @param {uint8[]} b - second\n * @returns {uint8[]} joined\n */\n' +
+    'function join(a, b) { /** @type {uint8[]} */ const res = []; res.push(...a, ...b); res.push(1, 2); return res; }');
+  expectMatch(code, /res = res\.Concat\(a\)\.Concat\(b\)\.ToArray\(\)/, 'res.Concat(a).Concat(b)');
+  expectMatch(code, /res = res\.Append\([^;]*1[^;]*\)\.Append\([^;]*2[^;]*\)\.ToArray\(\)/, 'res.Append(1).Append(2)');
+});
+
+// ---------------------------------------------------------------------------
 // Runtime stubs (needs the .NET SDK)
 // ---------------------------------------------------------------------------
 check('runtime stubs: BlockAbsorber, pad helpers, ToRadixString, IsTruthy, GFMul behave like the JS framework', () => {
