@@ -18956,6 +18956,13 @@
       // buildParameterConversion, which callers should use instead for this case).
       if (initExprType.isArray || targetType.isArray) return false;
 
+      // CreateInstance overrides the framework's, which returns the instance base:
+      // simpira-v2.js's `const instance = this.CreateInstance(false)` into its own
+      // instance class (CS0266)
+      const calledMethod = initNode?.type === 'ThisMethodCall' ? initNode.method
+        : initNode?.type === 'CallExpression' && initNode.callee?.type === 'MemberExpression' ? initNode.callee.property?.name : null;
+      if (calledMethod === 'CreateInstance' && this.localClassNames.has(targetType.name)) return true;
+
       // If types match exactly, no cast needed
       if (initExprType.name === targetType.name) return false;
 

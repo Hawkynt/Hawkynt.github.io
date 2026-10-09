@@ -1041,6 +1041,15 @@ check('scopes: a local function parameter named like a differently cased outer l
   expectMatch(code, /uint Inner\(int fParam/, 'Inner(int fParam)');
   expectMatch(code, /One\((unchecked\(\(uint\)\()?f\)?\)?\) \+ fParam/, 'One(f) + fParam');
 });
+check('instances: CreateInstance into a local of the file instance class is cast down (CS0266)', () => {
+  const code = transpile('const { BlockCipherAlgorithm, IBlockCipherInstance } = AlgorithmFramework;\n' +
+    'class PermInstance extends IBlockCipherInstance {\n  /** @param {PermAlgorithm} algorithm - algorithm */\n  constructor(algorithm) { super(algorithm); }\n' +
+    '  /** @returns {uint8[]} r */\n  Result() { return []; }\n}\n' +
+    'class PermAlgorithm extends BlockCipherAlgorithm {\n  constructor() { super(); }\n' +
+    '  /**\n   * @param {boolean} isInverse - inverse\n   * @returns {PermInstance} r\n   */\n  CreateInstance(isInverse) { return new PermInstance(this); }\n' +
+    '  /** @returns {uint8[]} r */\n  run() {\n    /** @type {PermInstance} */\n    const instance = this.CreateInstance(false);\n    return instance.Result();\n  }\n}');
+  expectMatch(code, /PermInstance instance = \(PermInstance\)\(?this\.CreateInstance\(false\)\)?;/, '(PermInstance)this.CreateInstance(false)');
+});
 const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +
