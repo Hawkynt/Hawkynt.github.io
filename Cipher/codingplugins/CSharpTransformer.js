@@ -5448,6 +5448,12 @@
         // through to Object(), which downstream narrows to a numeric default and
         // produces bool/int mismatches (CS0019) or wrong casts. Consult that annotation
         // before giving up.
+        // Object.freeze(x) is x (see transformExpression's ObjectFreeze case)
+        case 'ObjectFreeze':
+        case 'ObjectSeal':
+          if (node.object || node.argument) return this.inferFullExpressionType(node.object || node.argument);
+          return CSharpType.Object();
+
         default: {
           if (node.resultType) {
             const mapped = this.mapType(node.resultType);
@@ -15804,9 +15810,16 @@
       // body evidence - returns byte[]): same element-wise conversion as
       // buildParameterConversion uses for call-site argument mismatches, since C# has no
       // `(T[])` reinterpret cast between differently-typed primitive arrays (CS0030).
-      if (sourceType.isArray && targetType.isArray && this.needsCast(sourceType, targetType)) {
+      // A BigInteger[] into a fixed-width array (streebog.js's BigInt rows stored into
+      // its uint64[][] table) converts each element, never the array as a number
+      const bigIntegerRows = sourceType.isArray && targetType.isArray && !sourceType.elementType?.isArray &&
+        !targetType.elementType?.isArray && sourceType.elementType?.name === 'BigInteger' &&
+        ['ulong', 'long', 'uint', 'int'].includes(targetType.elementType?.name);
+      if (sourceType.isArray && targetType.isArray && (bigIntegerRows || this.needsCast(sourceType, targetType))) {
         return this.buildParameterConversion(sourceType, targetType, expr);
       }
+      // Arrays are never narrowed as numbers (an array type's name is its element's)
+      if (sourceType.isArray || targetType.isArray) return expr;
 
       // char to string requires .ToString(), not a cast
       if (sourceType.name === 'char' && targetType.name === 'string') {

@@ -972,6 +972,19 @@ check('qword: an array literal of ToQWord results is a ulong array (CS1503)', ()
     'function tiny(KX, backup) {\n  const tmp = [\n    OpCodes.ToQWord(OpCodes.ToQWord(KX[16] + KX[128]) + BigInt(backup)),\n    OpCodes.ToQWord(KX[17] + KX[129])\n  ];\n  medium(tmp);\n}');
   expectMatch(code, /ulong\[\] tmp = new ulong\[\]/, 'ulong[] tmp = new ulong[]');
 });
+check('bigint rows: a frozen BigInt row stored into a uint64 table converts element-wise (CS0019)', () => {
+  const code = transpile('/**\n * @returns {uint64[][]} tables\n */\nfunction build() {\n  /** @type {uint64[][]} */\n  const table = new Array(8);\n' +
+    '  for (let j = 0; j < 8; j++) {\n    /** @type {BigInt[]} */\n    const row = new Array(256);\n' +
+    '    for (let b = 0; b < 256; b++) {\n      /** @type {BigInt} */\n      let acc = 0n;\n      row[b] = acc;\n    }\n' +
+    '    table[j] = Object.freeze(row);\n  }\n  return table;\n}');
+  expectMatch(code, /table\[j\] = row\.Select\(_v => (unchecked\()?\(ulong\)\(?_v\)?\)?\)\.ToArray\(\);/, 'row.Select(_v => (ulong)_v).ToArray()');
+  expectNoMatch(code, /\(row & ulong\.MaxValue\)/, 'the row masked as a number');
+});
+const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
+  'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
+  'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +
+  'for (let i = 0; i < SETS.length; ++i) {\n  const instance = new AAlgorithm(SETS[i].name);\n' +
+  '  if (!AlgorithmFramework.Find(instance.name)) {\n    RegisterAlgorithm(instance);\n  }\n}';
 check('registry: a module loop over computed data registers into the Algorithms registry when it runs', () => {
   const code = transpile(REGISTRATION_LOOP);
   expectMatch(code, /registered\.Add\(\(Algorithm\)\(?instance\)?\);/, 'registered.Add((Algorithm)instance)');
