@@ -251,6 +251,25 @@ check('arrays: reverse and sort work in place; a comparator gets its operands as
   expectNoMatch(out, /Useless use/, 'a void-context warning');
 });
 
+// ---------------------------------------------------------------------------
+// Types are per binding: the IL type of the node decides, not its name
+// ---------------------------------------------------------------------------
+const LEAK_SNIPPET = 'class N {\n  constructor() { /** @type {uint8[]} */ this.nonce = [1, 2, 3]; }\n' +
+  '  /** @returns {int32} */ f() { /** @type {string} */ const nonce = "ab"; this.nonce[0] = 7; return nonce.length + this.nonce[0] + this.nonce[1]; }\n}';
+check('types: a local string does not make a same-named byte-array field a string', () => {
+  const code = transpile(LEAK_SNIPPET);
+  expectNoMatch(code, /substr\(\$self->\{'nonce'\}/, "substr($self->{'nonce'}, ...)");
+  if (!hasPerl()) return 'skip';
+  // JavaScript: new N().f() is 11
+  expectOutput(runPerl(LEAK_SNIPPET, 'print N->new()->f(), "\\n";'), '11');
+});
+
+check('strings: a "+" chain of hundreds of string literals is one literal (no stack overflow)', () => {
+  const parts = Array.from({ length: 2000 }, (_, i) => `'${(i % 16).toString(16)}'`);
+  const code = transpile(`/** @returns {string} */ function hex() { return ${parts.join(' +\n')}; }`);
+  expectMatch(code, /return '0123456789abcdef0123/, 'the folded literal');
+});
+
 /**
  * PERL: run every regression case.
  * @param {object} options - { verbose }

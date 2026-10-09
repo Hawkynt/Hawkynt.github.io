@@ -14035,6 +14035,13 @@
       // Check IL AST resultType - this is the most reliable indicator
       if (node.resultType === 'string' || node.resultType === 'String')
         return true;
+      // Any other definite IL type decides as well: the name-based guesses
+      // below would otherwise let one binding's string type leak onto an
+      // unrelated same-named one (a local string "nonce" making the byte
+      // array this.nonce a string).
+      if (typeof node.resultType === 'string' && node.resultType !== '' &&
+          !/^(any|unknown|\*|mixed|undefined|null)$/i.test(node.resultType) && !node.resultType.includes('|'))
+        return /^char$/i.test(node.resultType);
 
       // Check for string literals
       if (node.type === 'Literal' && typeof node.value === 'string')
