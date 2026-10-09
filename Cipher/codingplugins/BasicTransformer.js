@@ -5764,8 +5764,18 @@ Dim Shared G_CategoryType As JsV, G_SecurityStatus As JsV, G_ComplexityType As J
 Dim Shared G_Algorithms As JsV
 
 ' field initialization helper: self.<sym> = value
+' this.x = v in a framework constructor: a subclass's setter receives it, as in
+' JavaScript; a getter without a setter keeps answering (JavaScript would throw)
 Sub js_init(ByRef self As JsV, ByVal sym As Long, ByRef v As JsV)
-  js_objh_set(Cast(JsObjH Ptr, self.p), sym, v)
+  Dim o As JsObjH Ptr = Cast(JsObjH Ptr, self.p)
+  If o->cls Then
+    If js_class_lookup(o->cls, sym, 2) Then
+      js_setp(self, sym, v)
+      Exit Sub
+    End If
+    If js_class_lookup(o->cls, sym, 1) Then Exit Sub
+  End If
+  js_objh_set(o, sym, v)
 End Sub
 
 Function fw_LinkItem_ctor(ByRef self As JsV, ByVal argv As JsV Ptr, ByVal argc As Long, ByVal env As Any Ptr) As JsV
@@ -6439,6 +6449,9 @@ End Function
 Function js_seqb(ByVal b As Long, ByVal seq As Long) As Long
   Return b
 End Function
+
+Sub js_discard_n(ByVal seq As Long)
+End Sub
 
 Sub js_discard_s(ByRef v As JsV)
 End Sub
@@ -8651,6 +8664,7 @@ End Function`;
         if (p.type === 'DefaultParameter') { pname = p.name || (p.left && p.left.name); def = p.defaultValue; }
         else if (p.type === 'AssignmentPattern') { pname = p.left && p.left.name; def = p.right; }
         else if (p.type === 'RestParameter' || p.type === 'RestElement') { pname = p.name || (p.argument && p.argument.name); rest = true; }
+        else if (p.type === 'Identifier' && p.defaultValue) def = p.defaultValue;
         if (!pname) { lines.push(`' unsupported parameter pattern`); return; }
         const numeric = !rest && !def && fbIsNum(p.resultType) && !p.nullable;
         const b = this.declareLocal(pname, numeric ? 'd' : 'v');
@@ -8842,7 +8856,8 @@ End Function`;
     eLiteral(node) {
       const v = node.value;
       if (node.regex) return this.vx(`js_regex_new(${fbStringExpr(node.regex.pattern)}, ${fbStringExpr(node.regex.flags || "")})`);
-      if (v === null || v === undefined) return this.vx('js_null()');
+      if (v === null) return this.vx('js_null()');
+      if (v === undefined) return this.vx('js_undefined()');
       if (typeof v === 'boolean') return this.bx(v ? '-1' : '0');
       if (typeof v === 'string') return this.vx(this.constStr(v));
       if (typeof v === 'bigint') return this.vx(this.constBig(v.toString()));
@@ -8930,9 +8945,9 @@ End Function`;
         }
         return this.dx(`(${this.D(this.expr(L))} + ${this.D(this.expr(R))})`);
       }
-      if (['-', '*', '/', '%'].includes(op) && !(op === '*' && node.opCodesMethod) && !(this.isNumNode(L) && this.isNumNode(R))) {
+      if (['-', '*', '/', '%', '&', '|', '^', '<<', '>>', '>>>'].includes(op) && !(op === '*' && node.opCodesMethod) && !(this.isNumNode(L) && this.isNumNode(R))) {
         // an operand not typed as a Number (uint64, int64, untyped) may hold a BigInt: dispatch on the value
-        const fn = { '-': 'js_sub', '*': 'js_mul', '/': 'js_div', '%': 'js_mod' }[op];
+        const fn = { '-': 'js_sub', '*': 'js_mul', '/': 'js_div', '%': 'js_mod', '&': 'js_band', '|': 'js_bor', '^': 'js_bxor', '<<': 'js_shl', '>>': 'js_sar', '>>>': 'js_shr' }[op];
         return this.vx(`${fn}(${this.V(this.expr(L))}, ${this.V(this.expr(R))})`);
       }
       if (op === '-' || op === '*' || op === '/') {
@@ -8969,11 +8984,13 @@ End Function`;
       const op = node.operator;
       const L = node.left, R = node.right;
       const neg = op === '!==' || op === '!=';
-      const isNull = n => n && ((n.type === 'Literal' && n.value === null && !n.regex) || (n.type === 'Identifier' && n.name === 'undefined'));
+      // null, and undefined (an identifier, or the IL's Literal without a value)
+      const isNull = n => n && ((n.type === 'Literal' && (n.value === null || n.value === undefined) && !n.regex) || (n.type === 'Identifier' && n.name === 'undefined'));
       if (isNull(L) || isNull(R)) {
         const other = isNull(L) ? R : L;
         if (op === '===' || op === '!==') {
-          const tagTest = (isNull(L) ? L : R).type === 'Literal' ? 'JS_T_NULL' : 'JS_T_UNDEF';
+          const nul = isNull(L) ? L : R;
+          const tagTest = nul.type === 'Literal' && nul.value === null ? 'JS_T_NULL' : 'JS_T_UNDEF';
           const e = this.expr(other);
           if (e.k !== 'v') return this.bx(neg ? '-1' : '0');
           return this.bx(`(${e.c}.tag ${neg ? '<>' : '='} ${tagTest})`);
@@ -9021,11 +9038,12 @@ End Function`;
       switch (op) {
         case '!': return this.bx(`(${this.B(this.expr(a))} = 0)`);
         case '-':
-          if (this.isBigNode(a)) return this.vx(`js_neg(${this.V(this.expr(a))})`);
+          // an operand not typed as a Number may hold a BigInt
+          if (this.isBigNode(a) || !this.isNumNode(a)) return this.vx(`js_neg(${this.V(this.expr(a))})`);
           return this.dx(`(-${this.D(this.expr(a))})`);
         case '+': return this.dx(this.D(this.expr(a)));
         case '~':
-          if (this.isBigNode(a)) return this.vx(`js_bnot(${this.V(this.expr(a))})`);
+          if (this.isBigNode(a) || !this.isNumNode(a)) return this.vx(`js_bnot(${this.V(this.expr(a))})`);
           return this.dx(`CDbl(Not js_toi32(${this.D(this.expr(a))}))`);
         case 'typeof': return this.typeofExpr(a);
         case 'void': return this.vx(`js_void(${this.V(this.expr(a))})`);
@@ -9083,8 +9101,19 @@ End Function`;
     /** target = value; as a statement (string) or as an expression ({c,k}) */
     assignment(node, statement) {
       const op = node.operator;
-      const target = node.left;
+      let target = node.left;
       let valueNode = node.right;
+      // a[i++] op= v reads and writes one element: its object and key are evaluated once
+      if (op !== '=' && target.type === 'MemberExpression' && target.computed && (this.isImpure(target.object) || this.isImpure(target.property))) {
+        const to = this.temp('v'), tk = this.temp('v');
+        const pre = [`js_keepn(${to}, ${this.V(this.expr(target.object))})`, `js_keepn(${tk}, ${this.V(this.expr(target.property))})`];
+        target = { ...target, object: { type: 'FbRaw', code: to, k: 'v', resultType: target.object.resultType }, property: { type: 'FbRaw', code: tk, k: 'v' } };
+        const r = this.assignment({ ...node, left: target }, statement);
+        if (statement) return `js_discard_n(${pre.join(' + ')})\n${r}`;
+        if (r.k === 'd') return this.dx(`js_seqd(${r.c}, ${pre.join(' + ')})`);
+        if (r.k === 'b') return this.bx(`js_seqb(${r.c}, ${pre.join(' + ')})`);
+        return this.vx(`js_seqv(${this.V(r)}, ${pre.join(' + ')})`);
+      }
       if (op !== '=') {
         const base = op.slice(0, -1);
         if (base === '&&' || base === '||' || base === '??') {

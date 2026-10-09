@@ -347,6 +347,33 @@ const FB_CASES = {
     js: 'function globals() { return [typeof notDeclaredAnywhere, typeof Math, typeof performance.now]; }',
     expect: 'undefined,object,function'
   },
+  defparam: {
+    // a numeric parameter with a default takes it when the argument is missing
+    js: 'function dp(a, b = 5) { return a + b; }\nfunction defparam() { return [dp(1), dp(1, 2)].join(","); }',
+    expect: '6,3'
+  },
+  undef: {
+    // undefined is not null: x === undefined holds for a missing argument
+    js: 'function resolve(m, tr) { if (m === null || m === undefined) return tr.slice(); return m.slice(); }\n' +
+      'function undef() { return [resolve(undefined, [1]).join(""), resolve(null, [2]).join(""), resolve([5], [3]).join(""), String(undefined === null)].join(","); }',
+    expect: '1,2,5,false'
+  },
+  initsetter: {
+    // a framework constructor's this.aad = [] reaches the subclass's setter
+    js: 'class P extends IAeadInstance { constructor(a) { super(a); } set aad(v) { this._a = [...v, 9]; } get aad() { return this._a; } }\n' +
+      'function initsetter() { const p = new P(null); const first = p.aad.join(","); p.aad = [1]; return first + "/" + p.aad.join(","); }',
+    expect: '9/1,9'
+  },
+  compound: {
+    // a[i++] op= v evaluates its key once
+    js: 'function compound() { const a = [1, 2, 3, 4]; let i = 0; a[i++] ^= 8; a[i++] += 10; const v = (a[i++] *= 3); return [a.join(","), i, v].join(" "); }',
+    expect: '9,12,9,4 3 9'
+  },
+  bigneg: {
+    // unary minus and ~ keep a BigInt held in a variable not typed as one
+    js: 'function bigneg() { const a = -7n, b = 3n; return [String(-a / b), String(~a), String(a % b)].join(" "); }',
+    expect: '2 6 -1'
+  },
   argorder: {
     // call arguments, array elements and operands are evaluated left to right
     // (FreeBASIC evaluates a call's arguments right to left)
