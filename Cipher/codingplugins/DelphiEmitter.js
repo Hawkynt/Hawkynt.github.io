@@ -548,6 +548,7 @@ function JsUIntDiv(A, B: UInt64): UInt64;
 function JsUIntMod(A, B: UInt64): UInt64;
 function JsNumToStr(D: Double): string;
 function JsNumToStrRadix(D: Double; Radix: Int32): string;
+function JsToFixed(D: Double; Digits: Int32): string;
 function JsIntToStrRadix(V: Int64; Radix: Int32): string;
 function JsUIntToStrRadix(V: UInt64; Radix: Int32): string;
 function JsBoolToStr(B: Boolean): string;
@@ -1940,6 +1941,17 @@ function JsIntToStrRadix(V: Int64; Radix: Int32): string;
 begin
   if V < 0 then Result := '-' + JsUIntToStrRadix(UInt64(-(V + 1)) + 1, Radix)
   else Result := JsUIntToStrRadix(UInt64(V), Radix);
+end;
+
+function JsToFixed(D: Double; Digits: Int32): string;
+begin
+  if (Digits < 0) or (Digits > 100) then raise EJsRangeError.Create('toFixed() digits argument must be between 0 and 100');
+  if IsNan(D) then Exit('NaN');
+  if Abs(D) >= 1E21 then Exit(JsNumToStr(D));
+  Result := FloatToStrF(D, ffFixed, 18, Digits, JsInvariant);
+  { (-0).toFixed(n) has no sign; (-0.01).toFixed(1) keeps it }
+  if (D = 0) and (System.Copy(Result, 1, 1) = '-') then System.Delete(Result, 1, 1);
+  if (D < 0) and (System.Copy(Result, 1, 1) <> '-') then Result := '-' + Result;
 end;
 
 function JsNumToStrRadix(D: Double; Radix: Int32): string;

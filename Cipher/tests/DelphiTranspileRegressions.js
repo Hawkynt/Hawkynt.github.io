@@ -182,6 +182,10 @@ sameAsJs('array: a callee writing into an Array.from copy writes into that copy,
 sameAsJs('array: Array(n) without new makes n slots',
   '/** @returns {string} */ function probe() { const a = Array(3).fill(7); return a.length + ":" + a.join(","); }');
 
+sameAsJs('number: toFixed rounds to the given digits',
+  '/** @param {float64} x @param {int32} n @returns {string} */ function f(x, n) { return x.toFixed(n); }\n' +
+  '/** @returns {string} */ function probe() { return [f(12.345, 1), f(-0.04, 1), f(2.5, 0), f(1, 3), f(-0, 2), f(0.125, 2)].join(" "); }');
+
 // ---------------------------------------------------------------------------
 // Map
 // ---------------------------------------------------------------------------

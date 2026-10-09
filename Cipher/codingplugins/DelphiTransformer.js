@@ -3270,7 +3270,10 @@
         }
       }
       if (isFloat(t) || isInt(t)) {
-        if (name === 'toFixed') fail('toFixed is not supported', node);
+        if (name === 'toFixed') {
+          const digits = args[0] ? this.conv(this.ex(args[0]), T.int32) : A.lit(0);
+          return { e: A.call('JsToFixed', [this.conv(obj, T.f64), digits]), t: T.str };
+        }
       }
       fail(`method ${name} of ${t.key}`, node);
     }
