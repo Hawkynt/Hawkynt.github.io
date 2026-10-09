@@ -216,6 +216,11 @@ check('names: a local that folds onto a function name does not shadow the functi
   // Then the call still reaches the function: no "cannot access local variable"
   return expectOutput(runPython(js, 'print(use(4))'), ['5']);
 });
+check('names: two functions folding to one snake_case name stay two functions', () => {
+  const js = 'function fFunc(x) { return x + 1; }\nfunction FFunc(x, k) { return x * k; }\nfunction use() { return [fFunc(2), FFunc(2, 5)]; }';
+  // Given fFunc and FFunc (both fold to f_func)
+  return expectOutput(runPython(js, 'print(list(use()))'), ['[3, 10]']);
+});
 check('names: an enum member the runtime does not list reads as undefined', () => {
   const js = 'function c() { return [CountryCode.BG, CountryCode.US]; }';
   // Given a country code missing from the runtime's CountryCode (BG)

@@ -3260,6 +3260,23 @@ class OpCodes(metaclass=_OpCodesMeta):
         }
       }
 
+      // Top-level functions whose names differ but fold to one snake_case
+      // name (darkcrypt-e2.js's fFunc and FFunc): every one after the first
+      // gets a numbered name, or the later def replaces the earlier.
+      {
+        const firstByFolded = new Map();
+        const counts = new Map();
+        for (const stmt of node.body) {
+          if (stmt.type !== 'FunctionDeclaration' || !stmt.id || !stmt.id.name) continue;
+          const raw = stmt.id.name;
+          if (this.moduleConstRenames.has(raw)) continue;
+          const folded = toSnakeCase(raw);
+          const first = firstByFolded.get(folded);
+          if (first === undefined) firstByFolded.set(folded, raw);
+          else if (first !== raw) { const n = (counts.get(folded) || 1) + 1; counts.set(folded, n); this.moduleConstRenames.set(raw, `${folded}_${n}`); }
+        }
+      }
+
       // Pre-pass: record top-level let/const/var names (see moduleLevelVarNames)
       // before transforming anything, so function declarations anywhere in the
       // file can detect closures over them. Modern parsers/type-aware-transpiler
@@ -4378,7 +4395,7 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformFunctionDeclaration(node) {
-      const funcName = toSnakeCase(node.id.name);
+      const funcName = this.moduleConstRenames.get(node.id.name) || toSnakeCase(node.id.name);
       const pyFunc = new PythonFunction(funcName, [], null);
 
       // Push scope
