@@ -68,6 +68,7 @@ def vh_property?(obj, name) = obj.respond_to?(:js_has?) ? obj.js_has?(name) : ob
 def vh_set_field(field)
   yield
 rescue StandardError, SystemStackError => e
+  $stderr.puts(e.full_message(highlight: false).lines.first(12).join) if ENV['VH_TRACE']
   raise JSError.new("Setting vector field '#{field}' failed: #{vh_describe(e)}")
 end
 
@@ -218,6 +219,8 @@ def vh_main
       failure = begin
         v < tests.length ? vh_check(algorithm, spec, plan, tests[v]) : 'vector missing'
       rescue StandardError, SystemStackError => e
+        # VH_TRACE=1 shows where a failure came from
+        $stderr.puts(e.full_message(highlight: false).lines.first(12).join) if ENV['VH_TRACE']
         vh_describe(e)
       end
       puts "@@VEC #{a} #{v} #{failure.nil? ? 'PASS' : "FAIL #{vh_line(failure)}"}"

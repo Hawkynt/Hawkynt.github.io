@@ -112,7 +112,7 @@
     Array: 'JsArray', Object: 'JsObjectG', JSON: 'JsJSON', console: 'JsConsole',
     Map: 'JSMap', Set: 'JSSet', WeakMap: 'JSMap', WeakSet: 'JSSet', ArrayBuffer: 'JSArrayBuffer', DataView: 'JSDataView',
     Error: 'JSError', TypeError: 'JSError', RangeError: 'JSError', SyntaxError: 'JSError', ReferenceError: 'JSError',
-    OpCodes: 'OpCodes', AlgorithmFramework: 'AlgorithmFramework'
+    OpCodes: 'OpCodes', AlgorithmFramework: 'AlgorithmFramework', performance: 'JsPerformance'
   };
   const TYPED_ARRAY_KINDS = {
     Uint8Array: 'u8', Uint8ClampedArray: 'u8c', Int8Array: 'i8', Uint16Array: 'u16', Int16Array: 'i16',
@@ -353,6 +353,11 @@ def js_exact(p)
 end
 
 def js_mul(a, b)
+  if a.is_a?(Integer) && b.is_a?(Integer)
+    p = a * b
+    return p if p <= 9007199254740992 && p >= -9007199254740992
+    return js_exact(p)
+  end
   a = js_num(a) unless a.is_a?(Numeric)
   b = js_num(b) unless b.is_a?(Numeric)
   p = a * b
@@ -432,6 +437,17 @@ def js_sub(a, b)
   b = js_num(b) unless b.is_a?(Numeric)
   r = a - b
   r.is_a?(Integer) ? r : js_normf(r)
+end
+
+# Number + and - on values that may be doubles: an integer result past 2^53 rounds like one
+def js_fadd(a, b)
+  r = a + b
+  r.is_a?(Integer) ? js_exact(r) : js_normf(r)
+end
+
+def js_fsub(a, b)
+  r = a - b
+  r.is_a?(Integer) ? js_exact(r) : js_normf(r)
 end
 
 def js_inc(a) = a.is_a?(Integer) ? a + 1 : js_add(js_num(a), 1)
@@ -835,6 +851,10 @@ def js_set(obj, key, value)
 end
 
 def js_set_length(arr, n)
+  unless arr.is_a?(Array)
+    arr['length'] = n
+    return n
+  end
   n = js_int(n)
   if n < arr.length then arr.slice!(n..)
   else arr.fill(arr.is_a?(JSTypedArray) ? 0 : nil, arr.length...n)
@@ -1032,10 +1052,10 @@ end
 class JSTypedArray < Array
   attr_reader :js_kind
   def self.create(kind, n = 0)
-    a = new
+    a = (TYPED_CLASSES[kind] || JSGenTypedArray).new
     a.instance_variable_set(:@js_kind, kind)
     if n.is_a?(Integer) || n.is_a?(Float)
-      a.concat(Array.new(js_int(n), kind == :f64 || kind == :f32 ? 0 : 0))
+      a.concat(Array.new(js_int(n), 0))
     elsif n.is_a?(JSArrayBuffer)
       return JSTypedView.over_buffer(kind, n)
     elsif !n.nil?
@@ -1046,11 +1066,6 @@ class JSTypedArray < Array
 
   def self.from_buffer(kind, buffer, offset = nil, length = nil)
     JSTypedView.over_buffer(kind, buffer, offset, length)
-  end
-
-  def []=(i, v)
-    return v if i.is_a?(Integer) && (i < 0 || i >= length)
-    super(i, js_typed_coerce(@js_kind, v))
   end
 
   def byteLength = length * TYPED_KINDS[@js_kind][0]
@@ -1065,6 +1080,44 @@ class JSTypedArray < Array
 
   def js_new_like(n) = JSTypedArray.create(@js_kind, n)
 end
+
+# Stores wrap to the element type; the common kinds without a dispatch on the kind
+class JSGenTypedArray < JSTypedArray
+  def []=(i, v)
+    return v if i.is_a?(Integer) && (i < 0 || i >= length)
+    super(i, js_typed_coerce(@js_kind, v))
+  end
+end
+
+class JSU8Array < JSTypedArray
+  def []=(i, v)
+    return v unless i.is_a?(Integer) && i >= 0 && i < length
+    super(i, v.is_a?(Integer) ? v & 0xFF : js_int(v) & 0xFF)
+  end
+end
+
+class JSU32Array < JSTypedArray
+  def []=(i, v)
+    return v unless i.is_a?(Integer) && i >= 0 && i < length
+    super(i, v.is_a?(Integer) ? v & 0xFFFFFFFF : js_int(v) & 0xFFFFFFFF)
+  end
+end
+
+class JSI32Array < JSTypedArray
+  def []=(i, v)
+    return v unless i.is_a?(Integer) && i >= 0 && i < length
+    super(i, js_i32(v))
+  end
+end
+
+class JSU16Array < JSTypedArray
+  def []=(i, v)
+    return v unless i.is_a?(Integer) && i >= 0 && i < length
+    super(i, v.is_a?(Integer) ? v & 0xFFFF : js_int(v) & 0xFFFF)
+  end
+end
+
+TYPED_CLASSES = { u8: JSU8Array, u32: JSU32Array, i32: JSI32Array, u16: JSU16Array }.freeze
 
 def js_typed_to_bytes(kind, values)
   w, = TYPED_KINDS[kind]
@@ -1328,9 +1381,17 @@ def js_fill(arr, v, a = nil, b = nil)
   n = arr.length
   a = js_rel(a, n, 0)
   b = js_rel(b, n, n)
-  (a...b).each { |i| arr[i] = v }
+  return arr if a >= b
+  if arr.is_a?(JSTypedArray)
+    ARRAY_FILL.bind_call(arr, js_typed_coerce(arr.js_kind, v), a, b - a)
+  elsif arr.is_a?(Array)
+    arr.fill(v, a, b - a)
+  else
+    (a...b).each { |i| arr[i] = v }
+  end
   arr
 end
+ARRAY_FILL = Array.instance_method(:fill)
 
 def js_index_of(arr, v, from = nil)
   if arr.is_a?(String)
@@ -2654,10 +2715,20 @@ module OpCodes
   def self.respond_to_missing?(*) = true
 end
 
-# OpCodes._BitStream
+module OpCodes
+  def self.UInt64 = OpCodes::UInt64
+  def self.UintToByte(v) = js_int(v) & 0xFF
+end
+
+class JsPerformanceGlobal
+  def now = js_normf(Process.clock_gettime(Process::CLOCK_MONOTONIC) * 1000.0)
+end
+JsPerformance = JsPerformanceGlobal.new
+
+# OpCodes._BitStream: bits written MSB first into bytes, read back MSB first
 class JSBitStream < JSBase
   attr_accessor :buffer, :bufferBits, :byteArray, :readPosition, :totalBitsWritten
-  def initialize(initial = nil)
+  def initialize(initial = nil, *_)
     @buffer = 0
     @bufferBits = 0
     @byteArray = []
@@ -2673,19 +2744,19 @@ class JSBitStream < JSBase
     raise JSError.new('BitStream.writeBits: numBits must be 1-32') if num_bits <= 0 || num_bits > 32
     mask = num_bits == 32 ? 0xFFFFFFFF : (1 << num_bits) - 1
     value = js_u32(value) & mask
-    @buffer = (@buffer << num_bits) | value
+    @buffer = js_i32(@buffer << num_bits) | value
     @bufferBits += num_bits
     @totalBitsWritten += num_bits
     while @bufferBits >= 8
       @bufferBits -= 8
-      @byteArray.push((@buffer >> @bufferBits) & 0xFF)
+      @byteArray.push((js_u32(@buffer) >> @bufferBits) & 0xFF)
       @buffer = @bufferBits > 0 ? @buffer & ((1 << @bufferBits) - 1) : 0
     end
     nil
   end
 
-  def writeBit(bit) = writeBits(bit & 1, 1)
-  def writeByte(b) = writeBits(b & 0xFF, 8)
+  def writeBit(bit) = writeBits(js_int(bit) & 1, 1)
+  def writeByte(b) = writeBits(js_int(b) & 0xFF, 8)
   def writeBytes(bytes)
     bytes.each { |b| writeByte(b) }
     nil
@@ -2704,11 +2775,13 @@ class JSBitStream < JSBase
   def writeUint32BE(v)
     v = js_u32(v)
     [24, 16, 8, 0].each { |s| writeBits((v >> s) & 0xFF, 8) }
+    nil
   end
 
   def writeUint32LE(v)
     v = js_u32(v)
     [0, 8, 16, 24].each { |s| writeBits((v >> s) & 0xFF, 8) }
+    nil
   end
 
   def readBits(num_bits)
@@ -2734,28 +2807,105 @@ class JSBitStream < JSBase
   end
 
   def readBit = readBits(1)
-  def readByte = readBits(8)
-  def flush
-    if @bufferBits > 0
-      @byteArray.push((@buffer << (8 - @bufferBits)) & 0xFF)
-      @buffer = 0
-      @bufferBits = 0
-    end
+  def readByte = readBits(8) & 0xFF
+  def readBytes(count) = Array.new(js_int(count)) { readByte }
+  def peekBits(num_bits)
+    saved = @readPosition
+    r = readBits(num_bits)
+    @readPosition = saved
+    r
+  end
+
+  def skipBits(num_bits)
+    @readPosition = [@readPosition + num_bits, @byteArray.length * 8].min
     nil
   end
 
-  def toArray
-    flush
-    @byteArray.dup
-  end
-
-  def getBytes = toArray
   def hasMoreBits = @readPosition < @byteArray.length * 8
-  def getBitsAvailable = @byteArray.length * 8 - @readPosition
-  def reset
+  def getRemainingBits = [0, @byteArray.length * 8 - @readPosition].max
+  def resetReadPosition
     @readPosition = 0
     nil
   end
+
+  def seekBits(bit_offset)
+    max_bits = @byteArray.length * 8
+    offset = js_int(bit_offset) & 0x7FFFFFFF
+    clamped = offset > max_bits ? max_bits : offset
+    @readPosition = clamped > 0 ? clamped : 0
+    nil
+  end
+
+  def toArray(pad_last_byte = nil)
+    if @bufferBits > 0 && pad_last_byte != false
+      @buffer = @buffer << (8 - @bufferBits)
+      @byteArray.push(@buffer & 0xFF)
+      @buffer = 0
+      @bufferBits = 0
+    end
+    @byteArray.dup
+  end
+
+  def getBitLength = @totalBitsWritten
+  def getByteLength = @byteArray.length + @bufferBits / 8 + (@bufferBits % 8 > 0 ? 1 : 0)
+  def clear
+    @buffer = 0
+    @bufferBits = 0
+    @byteArray = []
+    @readPosition = 0
+    @totalBitsWritten = 0
+    nil
+  end
+
+  def clone_
+    c = JSBitStream.new
+    c.buffer = @buffer
+    c.bufferBits = @bufferBits
+    c.byteArray = @byteArray.dup
+    c.readPosition = @readPosition
+    c.totalBitsWritten = @totalBitsWritten
+    c
+  end
+
+  def writeVarInt(value)
+    value = js_u32(value)
+    while value >= 0x80
+      writeByte((value & 0x7F) | 0x80)
+      value >>= 7
+    end
+    writeByte(value & 0x7F)
+  end
+
+  def readVarInt
+    result = 0
+    shift = 0
+    loop do
+      raise JSError.new('BitStream.readVarInt: Integer overflow') if shift >= 32
+      byte = readByte
+      result |= js_i32((byte & 0x7F) << shift)
+      shift += 7
+      break if byte & 0x80 == 0
+    end
+    js_u32(result)
+  end
+
+  def writeUnary(value)
+    js_int(value).times { writeBit(1) }
+    writeBit(0)
+  end
+
+  def readUnary
+    count = 0
+    count += 1 while hasMoreBits && readBit == 1
+    count
+  end
+
+  def alignToByte
+    writeBit(0) while @bufferBits % 8 != 0
+    nil
+  end
+
+  def isAligned = @bufferBits % 8 == 0
 end`;
   // END RUBY RUNTIME
 
@@ -2779,6 +2929,7 @@ end`;
       this.loops = [];                   // enclosing loops: { update, kind }
       this.tempCounter = 0;
       this.hoistedClasses = [];
+      this.bigModule = new Set();        // module-level names holding BigInts
     }
 
     // ------------------------------------------------------------------
@@ -2815,7 +2966,7 @@ end`;
         this.topLevel(node, items);
       }
       const prelude = this.options.embedRuntime !== false && this.options.generateTestHarness !== false && RUBY_RUNTIME
-        ? [new RubyRawCode(`unless defined?($__js_runtime_loaded)\n$__js_runtime_loaded = true\n${RUBY_RUNTIME}\nend`)] : [];
+        ? [new RubyRawCode(RubyTransformer.runtimePrelude())] : [];
       module.items = [...prelude, new RubyModuleDef(moduleName, [...this.hoistedClasses, ...items])];
       return module;
     }
@@ -3059,7 +3210,13 @@ end`;
 
     markAssigned(name) {
       for (let s = this.scope; s; s = s.closed ? null : s.parent) {
-        if (s.rubyNames.has(name)) { s.assigned.add(name); return; }
+        if (s.rubyNames.has(name)) {
+          // A closure assigning an outer local Ruby has not seen assigned yet
+          // would make a lambda-local of it: the outer scope must predeclare it
+          if (s === this.scope) s.assigned.add(name);
+          else if (!s.assigned.has(name)) s.predeclare.add(name);
+          return;
+        }
       }
       this.scope.assigned.add(name);
     }
@@ -3077,7 +3234,34 @@ end`;
     }
 
     isInt(node) { return isIntType(this.typeOf(node)) || (node && node.type === 'Literal' && typeof node.value === 'number' && Number.isInteger(node.value)); }
-    isBig(node) { return isBigIntType(this.typeOf(node)) || (node && node.type === 'Literal' && typeof node.value === 'bigint'); }
+    isBig(node) {
+      if (!node) return false;
+      if (isBigIntType(this.typeOf(node)) || (node.type === 'Literal' && typeof node.value === 'bigint')) return true;
+      // a variable initialized with a BigInt holds one, whatever 64-bit type the IL gives it
+      if (node.type === 'Identifier') {
+        const b = this.scope && this.scope.lookup(node.name);
+        if (b) return !!(b.scope.bigLocals && b.scope.bigLocals.has(b.name));
+        return this.bigModule.has(node.name);
+      }
+      return false;
+    }
+
+    /** Whether an initializer yields a BigInt (a BigInt literal, BigInt(), a BigInt operation) */
+    holdsBigInt(node) {
+      if (!node) return false;
+      switch (node.type) {
+        case 'Literal': return typeof node.value === 'bigint';
+        case 'BigIntCast': return true;
+        case 'BinaryExpression':
+          return node.bigint === true || (['+', '-', '*', '&', '|', '^', '<<', '>>'].includes(node.operator)
+            && (this.holdsBigInt(node.left) || this.holdsBigInt(node.right)));
+        case 'UnaryExpression': return node.operator === '-' || node.operator === '~' ? this.holdsBigInt(node.argument) : false;
+        case 'Cast': return isBigIntType(node.targetType) || node.opCodesMethod === 'ToQWord';
+        case 'Identifier': return this.isBig(node);
+        case 'CallExpression': return !!(node.callee && node.callee.type === 'Identifier' && node.callee.name === 'BigInt');
+        default: return isBigIntType(this.typeOf(node));
+      }
+    }
     isFloat(node) { return isFloatType(this.typeOf(node)) && !(node && node.type === 'Literal' && Number.isInteger(node.value)); }
     isStr(node) { return isStringType(this.typeOf(node)) || (node && node.type === 'Literal' && typeof node.value === 'string'); }
     isBool(node) { return isBoolType(this.typeOf(node)) || (node && node.type === 'Literal' && typeof node.value === 'boolean'); }
@@ -3091,12 +3275,60 @@ end`;
     /** Non-negative integer bounds of a node, or null: [max bits] for masks and narrow types */
     unsignedBits(node) {
       if (!node) return null;
-      if (node.type === 'Literal' && typeof node.value === 'number' && Number.isInteger(node.value) && node.value >= 0)
-        return Math.max(1, Math.ceil(Math.log2(node.value + 1)));
-      const t = this.typeOf(node);
-      if (isUnsignedType(t)) return intWidth(t);
-      if (node.type === 'ArrayLength') return 31;
-      return null;
+      if (node.type === 'Literal') {
+        const v = node.value;
+        if (typeof v === 'number' && Number.isInteger(v) && v >= 0) return Math.max(1, Math.ceil(Math.log2(v + 1)));
+        if (typeof v === 'bigint' && v >= 0n) return Math.max(1, v.toString(2).length);
+        return null;
+      }
+      const both = () => {
+        const l = this.unsignedBits(node.left), r = this.unsignedBits(node.right);
+        return l === null || r === null ? null : [l, r];
+      };
+      switch (node.type) {
+        case 'ArrayLength': return 31;
+        case 'StringCharCodeAt': return 16;
+        case 'PackBytes': return node.bits || 32;
+        case 'RotateLeft': case 'RotateRight': return node.bits || 32;
+        // An operator's result is bounded by its operands, not by its IL type:
+        // Ruby keeps an unmasked sum or product exact, however it is typed
+        case 'BinaryExpression': {
+          const op = node.operator;
+          // a result normalized to a signed type of no more bits may be negative
+          const signedCap = b => {
+            if (b === null) return null;
+            const t = typeName(node.resultType);
+            if (isIntType(t) && INT_WIDTH[t][1] && b >= INT_WIDTH[t][0] && !this.isBig(node.left)) return null;
+            return b;
+          };
+          if (op === '&') {
+            const l = this.unsignedBits(node.left), r = this.unsignedBits(node.right);
+            return signedCap(l === null ? r : r === null ? l : Math.min(l, r));
+          }
+          if (op === '|' || op === '^') { const b = both(); return signedCap(b && Math.max(b[0], b[1])); }
+          if (op === '+') { const b = both(); return b && Math.max(b[0], b[1]) + 1; }
+          if (op === '*') { const b = both(); return b && b[0] + b[1]; }
+          if (op === '>>>' && !this.isBig(node.left)) { const l = this.unsignedBits(node.left); return l !== null && l <= 32 ? l : 32; }
+          if (op === '>>') {
+            const l = this.unsignedBits(node.left);
+            return this.isBig(node.left) ? l : (l !== null && l <= 31 ? l : null);
+          }
+          if (op === '%') { const b = both(); return b && Math.min(b[0], b[1]); }
+          return null;
+        }
+        case 'Cast': {
+          const t = typeName(node.targetType || node.resultType);
+          return isUnsignedType(t) ? intWidth(t) : null;
+        }
+        case 'UnaryExpression': case 'UpdateExpression': case 'AssignmentExpression': case 'LogicalExpression':
+        case 'ConditionalExpression': case 'SequenceExpression':
+          return null;
+        default: {
+          // A stored value (variable, element, field, call result) holds its type
+          const t = this.typeOf(node);
+          return isUnsignedType(t) ? intWidth(t) : null;
+        }
+      }
     }
 
     /** Whether evaluating the node twice is harmless (no side effects, cheap) */
@@ -3154,6 +3386,7 @@ end`;
       const out = [];
       const target = declarator.id;
       if (target && target.type === 'Identifier') {
+        if (this.holdsBigInt(declarator.init)) this.bigModule.add(target.name);
         const value = declarator.init ? this.expr(declarator.init) : nil();
         out.push(exprStmt(assign(id(this.moduleNames.get(target.name) || this.globalName(target.name)), value)));
         return out;
@@ -3577,6 +3810,7 @@ end`;
         }
         const value = d.init ? this.expr(d.init) : (kind === 'var' && this.scope.lookup(target.name) ? null : nil());
         const name = this.declareLocal(target.name, kind === 'var');
+        if (d.init && this.holdsBigInt(d.init)) (this.scope.bigLocals || (this.scope.bigLocals = new Set())).add(name);
         if (value === null) return;
         out.push(exprStmt(assign(id(name), value)));
         this.markAssigned(name);
@@ -4063,22 +4297,38 @@ end`;
       }
       // & | ^
       const lb = this.unsignedBits(L), rb = this.unsignedBits(R);
-      const l = this.intOperand(L, { lowBits: true });
-      const r = this.intOperand(R, { lowBits: true });
-      const e = bin(l, op, r);
-      if (ctx.lowBits) return e;
       const t = typeName(type);
       const width = isIntType(t) ? INT_WIDTH[t][0] : 32;
       const signed = isIntType(t) ? INT_WIDTH[t][1] : true;
-      // In range without masking: a non-negative mask operand bounds &, narrow unsigned operands bound everything
-      if (op === '&') {
-        const bound = Math.min(lb === null ? 99 : lb, rb === null ? 99 : rb);
-        if (bound <= (signed ? width - 1 : width)) return e;
-      } else if (lb !== null && rb !== null && Math.max(lb, rb) <= (signed ? width - 1 : width)) {
-        return e;
-      } else if (signed && width === 32 && this.isSigned32(L) && this.isSigned32(R)) {
-        return e;
+      const allOnes = n => n && n.type === 'Literal' && typeof n.value === 'number' && Number.isInteger(n.value) && n.value > 0
+        && (n.value & (n.value + 1)) === 0 && n.value <= 0xFFFFFFFF ? Math.round(Math.log2(n.value + 1)) : null;
+      // A mask covering every bit its operand can have is no operation
+      if (op === '&' && !ctx.lowBits) {
+        const lm = allOnes(L), rm = allOnes(R);
+        if (rm !== null && lb !== null && lb <= rm && lb <= (signed ? width - 1 : width)) return this.intOperand(L);
+        if (lm !== null && rb !== null && rb <= lm && rb <= (signed ? width - 1 : width)) return this.intOperand(R);
       }
+      // x & literal: the literal bounds the result, so x needs only its low bits
+      const nonNegLiteral = n => n.type === 'Literal' && typeof n.value === 'number' && Number.isInteger(n.value) && n.value >= 0 && n.value <= 0xFFFFFFFF;
+      if (op === '&' && (nonNegLiteral(L) || nonNegLiteral(R))) {
+        const litOnRight = nonNegLiteral(R);
+        const kb = this.unsignedBits(litOnRight ? R : L);
+        const masked = litOnRight
+          ? bin(this.intOperand(L, { lowBits: true }), '&', this.expr(R))
+          : bin(this.expr(L), '&', this.intOperand(R, { lowBits: true }));
+        if (ctx.lowBits || kb <= (signed ? width - 1 : width)) return masked;
+        return this.normalize(masked, type);
+      }
+      // In range without masking: a non-negative mask operand bounds &, narrow unsigned operands bound everything
+      let inRange = false;
+      if (op === '&') inRange = Math.min(lb === null ? 99 : lb, rb === null ? 99 : rb) <= (signed ? width - 1 : width);
+      else if (lb !== null && rb !== null && Math.max(lb, rb) <= (signed ? width - 1 : width)) inRange = true;
+      else if (signed && width === 32 && this.isSigned32(L) && this.isSigned32(R)) inRange = true;
+      // Operands may stay unmasked only where this node (or its parent) masks the result:
+      // the bounds above hold for operands emitted in full
+      const childLowBits = !!ctx.lowBits || !inRange;
+      const e = bin(this.intOperand(L, { lowBits: childLowBits }), op, this.intOperand(R, { lowBits: childLowBits }));
+      if (ctx.lowBits || inRange) return e;
       return this.normalize(e, type);
     }
 
@@ -4103,6 +4353,9 @@ end`;
         return bin(part(L, ls), '+', part(R, rs));
       }
       if (big) return bin(this.expr(L), '+', this.expr(R));
+      // A double sum: past 2^53 it rounds, as JavaScript's does
+      if (this.isNum(L) && this.isNum(R) && (isFloatType(type) || this.isFloat(L) || this.isFloat(R)))
+        return fcall('js_fadd', [this.expr(L), this.expr(R)]);
       if (this.isNum(L) && this.isNum(R)) {
         const lowBits = ctx.lowBits && this.isInt(L) && this.isInt(R);
         return bin(this.expr(L, { lowBits }), '+', this.expr(R, { lowBits }));
@@ -4124,6 +4377,8 @@ end`;
       const nums = this.isNum(L) && this.isNum(R);
       switch (op) {
         case '-':
+          if (nums && (isFloatType(this.typeOf(node)) || this.isFloat(L) || this.isFloat(R)))
+            return fcall('js_fsub', [this.expr(L), this.expr(R)]);
           if (nums) {
             const lowBits = ctx.lowBits && ints;
             return bin(this.expr(L, { lowBits }), '-', this.expr(R, { lowBits }));
@@ -4135,6 +4390,9 @@ end`;
             const lowBits = !!ctx.lowBits;
             return bin(this.intOperand(L, { lowBits }), '*', this.intOperand(R, { lowBits }));
           }
+          // 64-bit typed operands: integer arithmetic (a Number would lose the product past 2^53 anyway)
+          if (ints && (intWidth(this.typeOf(L)) === 64 || intWidth(this.typeOf(R)) === 64))
+            return bin(this.expr(L), '*', this.expr(R));
           if (ints) {
             const lb = this.magnitudeBits(L), rb = this.magnitudeBits(R);
             if (lb + rb <= 53) return bin(this.expr(L, { lowBits: false }), '*', this.expr(R));
@@ -4146,6 +4404,8 @@ end`;
         case '%':
           if (ints && this.unsignedBits(L) !== null && this.unsignedBits(R) !== null && !(R.type === 'Literal' && R.value === 0))
             return bin(this.expr(L), '%', this.expr(R));
+          // integers: the remainder takes the dividend's sign, as JavaScript's %
+          if (ints && !(R.type === 'Literal' && R.value === 0)) return call(this.expr(L), 'remainder', [this.expr(R)]);
           return fcall('js_mod', [this.expr(L), this.expr(R)]);
         case '**':
           return fcall('js_pow', [this.expr(L), this.expr(R)]);
@@ -4573,6 +4833,8 @@ end`;
       if (binding) return lambdaCall(this.useLocal(binding), this.exprs(args));
       if (this.moduleNames.has(name)) return lambdaCall(id(this.moduleNames.get(name)), this.exprs(args));
       if (FRAMEWORK_FUNCTIONS.has(name)) return fcall(name, this.exprs(args));
+      // Registry functions destructured from AlgorithmFramework
+      if (name === 'Find' || name === 'Clear') return call(id('AlgorithmFramework'), name, this.exprs(args));
       const a = this.exprs(args);
       switch (name) {
         case 'parseInt': return fcall('js_parse_int', a);
@@ -4586,7 +4848,8 @@ end`;
         case 'Array': return fcall('js_array_new', a);
         case 'Object': return a.length ? a[0] : raw('JSObject.new');
         case 'Symbol': return call(raw('Object'), 'new');
-        case 'require': return nil();
+        // the runtime is a browser-like host without CommonJS
+        case 'require': return fcall('js_throw', [call(id('JSError'), 'new', [str('require is not defined'), str('ReferenceError')])]);
         default: break;
       }
       if (ERROR_TYPES.has(name)) return call(id('JSError'), 'new', [a[0] || nil(), str(name)]);
@@ -5275,6 +5538,9 @@ end`;
   }
 
   RubyTransformer.RUBY_RUNTIME = RUBY_RUNTIME;
+
+  /** The runtime prelude, loaded once however many transpiled files are bundled */
+  RubyTransformer.runtimePrelude = () => `unless defined?($__js_runtime_loaded)\n$__js_runtime_loaded = true\n${RUBY_RUNTIME}\nend`;
 
   /** The token a file's className option gives its module and globals */
   function fileToken(className) {
