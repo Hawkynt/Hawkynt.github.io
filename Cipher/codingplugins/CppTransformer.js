@@ -2705,8 +2705,19 @@
         case 'join': return { c: `${o.c}.join(${args[0] ? a(0, T.str) : ''})`, t: T.str };
         case 'set': return { c: `${o.c}.set(${this.expr(args[0], o.t).c}${args[1] ? ', ' + a(1, T.f64) : ''})`, t: T.void };
         case 'splice': {
-          const items = args.slice(2).map(x => this.cv(this.expr(x, et), et));
-          return { c: `${o.c}.splice(${args[0] ? a(0, T.f64) : '0'}${args.length > 1 ? ', ' + a(1, T.f64) : ''}${items.length ? `, std::vector<${this.cpp(et)}>{ ${items.join(', ')} }` : ''})`, t: o.t };
+          const rest = args.slice(2);
+          let items;
+          if (rest.some(x => x.type === 'SpreadElement')) {
+            // splice(at, n, ...list): the spread arrays' elements, in order
+            const v = this.tmp('items');
+            const parts = rest.map(x => x.type === 'SpreadElement'
+              ? `{ ${this.cpp(o.t)} __s = ${this.cv(this.expr(x.argument, o.t), o.t)}; for (int32_t __k = 0; __k < __s.length(); ++__k) ${v}.push_back(__s.get(__k)); }`
+              : `${v}.push_back(${this.cv(this.expr(x, et), et)});`);
+            items = `({ std::vector<${this.cpp(et)}> ${v}; ${parts.join(' ')} ${v}; })`;
+          } else if (rest.length) {
+            items = `std::vector<${this.cpp(et)}>{ ${rest.map(x => this.cv(this.expr(x, et), et)).join(', ')} }`;
+          }
+          return { c: `${o.c}.splice(${args[0] ? a(0, T.f64) : '0'}${args.length > 1 ? ', ' + a(1, T.f64) : ''}${items ? ', ' + items : ''})`, t: o.t };
         }
         case 'sort': {
           if (!args[0]) return { c: `${o.c}.sort()`, t: o.t };
