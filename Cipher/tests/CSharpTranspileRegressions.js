@@ -102,6 +102,10 @@ check('module statements: a registry guard and a store into a table run, a guard
   expectMatch(code, /ModuleInit1\(\)\s*\{\s*T\[1\] = /, 'the store T[1] = 5 in ModuleInit1');
   expectNoMatch(code, /ModuleInit2/, 'a module init for the registry guard');
 });
+check('module scope: (function () { ... }).call(this) declares its tables like any module scope', () => {
+  const code = transpile('(function () {\n  const SBOX = [7, 8, 9];\n  module.exports = { SBOX };\n}).call(this);');
+  expectMatch(code, /static readonly \w+\[\] SBOX = /, 'the SBOX field');
+});
 check('statements: Object.freeze(x) as a statement leaves no bare expression (CS0201)', () => {
   const code = transpile('const BOXES = [[1, 2], [3, 4]];\nfor (let i = 0; i < BOXES.length; i++) Object.freeze(BOXES[i]);\nObject.freeze(BOXES);');
   expectNoMatch(code, /^\s*BOXES\[i\];/m, 'a bare BOXES[i]; statement');

@@ -19159,6 +19159,12 @@
           this.transformIIFE(node.expression, targetClass);
           return;
         }
+        // (function () { ... }).call(this) - a library's own module scope
+        if (callee.type === 'MemberExpression' && !callee.computed && ['call', 'apply'].includes(callee.property?.name) &&
+            (callee.object?.type === 'FunctionExpression' || callee.object?.type === 'ArrowFunctionExpression')) {
+          this.transformIIFE({ type: 'CallExpression', callee: callee.object, arguments: [] }, targetClass);
+          return;
+        }
       }
 
       // Handle module exports, global assignments, etc.
