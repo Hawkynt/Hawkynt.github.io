@@ -320,6 +320,22 @@ check('framework: a member the framework type lacks is read through dynamic', ()
 });
 
 // ---------------------------------------------------------------------------
+// Array literals and nullable members take the IL's types
+// ---------------------------------------------------------------------------
+check('IL types: an array literal passed to a call inside a test vector takes the parameter type', () => {
+  const code = transpile('/**\n * @param {int32[]} symbols - symbols\n * @returns {uint8[]} octets\n */\n' +
+    'function toOctets(symbols) { return symbols.map(s => s & 255); }\n' +
+    'class A extends Algorithm {\n  constructor() { super(); this.tests = [new TestCase(toOctets([0, 1, -1, 0]), [1], "t", "u")]; }\n}');
+  expectMatch(code, /ToOctets\(new int\[\] \{ 0, 1, -1, 0 \}\)/, 'ToOctets(new int[] { 0, 1, -1, 0 })');
+});
+check('IL types: a nullable value-type field is T?, an undefined value-type field becomes default', () => {
+  const code = transpile('class C {\n  constructor() { /** @type {int32|null} */ this.size = null; /** @type {int32} */ this.count = undefined; }\n' +
+    '  /** @returns {int32} size */\n  get() { return this.size === null ? 0 : this.size; }\n}');
+  expectMatch(code, /int\? Size\b/, 'int? Size');
+  expectMatch(code, /this\.Count = default/, 'this.Count = default');
+});
+
+// ---------------------------------------------------------------------------
 // OpCodes helpers
 // ---------------------------------------------------------------------------
 check('OpCodes.CreateArray: the array has the element type its target is declared with', () => {

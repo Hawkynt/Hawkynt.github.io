@@ -1969,6 +1969,14 @@
         return element ? CSharpType.Array(element) : null;
       }
       if (ilType.startsWith('(') || ilType.startsWith('{')) return this.mapType(ilType);
+      // A positional tuple ([string,int32,string]) is a JavaScript array: of its one
+      // element type, or of dynamic elements
+      if (ilType.startsWith('[') && ilType.endsWith(']')) {
+        const elements = this.splitGenericTypeArgs(ilType.slice(1, -1)).map(t => this.mapILType(t.trim()));
+        const first = elements[0];
+        const uniform = first && elements.every(e => e && e.toString() === first.toString());
+        return CSharpType.Array(uniform ? first : CSharpType.Dynamic());
+      }
       const keyed = ilType.match(/^(?:Map|Object)<(.+)>$/);
       if (keyed) {
         const [key, value] = this.splitGenericTypeArgs(keyed[1]).map(t => this.mapILType(t.trim()));
@@ -14689,7 +14697,7 @@
       // type"). `default` is a valid assignment target for ANY type (value or
       // reference) and preserves the exact same "reset/not-yet-set" intent as the
       // original JS `null`.
-      if (node.operator === '=' && node.right?.type === 'Literal' && node.right.value === null &&
+      if (node.operator === '=' && node.right?.type === 'Literal' && (node.right.value === null || node.right.value === undefined) &&
           targetType && !targetType.isArray && (CSHARP_VALUE_TYPES.has(targetType.name) || targetType.isTuple) &&
           !targetType.isNullable) {
         return new CSharpAssignment(target, '=', new CSharpIdentifier('default'));
@@ -14842,6 +14850,11 @@
       // A base class value into a subclass-typed target (the IL types it as the subclass)
       if (!sourceType.isArray && (this.isClassTypeName(sourceType.name) || sourceType.name === 'object') && this.isClassTypeName(targetType.name))
         return new CSharpCast(targetType, expr);
+
+      // A nullable value unwrapped into a non-nullable target
+      if (sourceType.isNullable && !sourceType.isArray && CSHARP_VALUE_TYPES.has(sourceType.name) &&
+          !targetType.isNullable && !targetType.isArray && CSHARP_VALUE_TYPES.has(targetType.name))
+        return new CSharpCast(new CSharpType(targetType.name), expr);
 
       // Both arrays but differing primitive element type (e.g. `c = this._leftShift(c, n)`
       // reassigning a uint[]-declared local from a method that - correctly, per its own
@@ -16756,8 +16769,13 @@
         }
       }
 
-      // Use context if available and appropriate
-      if (this.currentArrayElementType) {
+      // The type the IL expects at this position (the parameter it is passed to,
+      // the declaration it initializes) names the element type, whatever context
+      // an enclosing expression left behind
+      const ilContextType = this.mapILType(node.contextType);
+      if (ilContextType?.isArray && ilContextType.elementType && ilContextType.elementType.name !== 'dynamic') {
+        elementType = ilContextType.elementType;
+      } else if (this.currentArrayElementType) {
         // If context is an array type (e.g., uint[]) but elements are NOT arrays,
         // then the context is for a NESTED array and doesn't apply to this literal.
         // E.g., for uint[][] return, context is uint[], but [a, b] where a/b are uint
@@ -19174,20 +19192,45 @@
      */
     collectILMemberTypes(classBody) {
       const types = new Map();
-      const record = (name, ilType) => {
-        if (name && typeof ilType === 'string' && ilType && !types.has(name) && this.mapILType(ilType)) types.set(name, ilType);
+      const nullable = new Set();
+      const record = (name, ilType, isNullable) => {
+        if (!name || typeof ilType !== 'string' || !ilType || types.has(name) || !this.mapILType(ilType)) return;
+        types.set(name, ilType);
+        if (isNullable) nullable.add(name);
       };
       for (const item of classBody) {
         if (item?.type !== 'MethodDefinition' || item.static) continue;
-        if (item.kind === 'set') record(item.key?.name, item.value?.params?.[0]?.resultType);
-        else if (item.kind === 'get') record(item.key?.name, this.jsDocILType(item.value?.typeInfo?.returns));
+        const param = item.value?.params?.[0];
+        if (item.kind === 'set') record(item.key?.name, param?.resultType, param?.nullable);
+        else if (item.kind === 'get') record(item.key?.name, this.jsDocILType(item.value?.typeInfo?.returns), false);
       }
       this._walkAstNodes(classBody, node => {
         if (node.type !== 'AssignmentExpression' || node.left?.type !== 'ThisPropertyAccess') return;
         const name = typeof node.left.property === 'string' ? node.left.property : node.left.property?.name;
-        record(name, node.declaredType || node.left.resultType);
+        record(name, node.declaredType || node.left.resultType, node.nullable || node.left.nullable);
       });
+      types.nullable = nullable;
       return types;
+    }
+
+    /**
+     * The C# type of a member of the class being transformed, from its IL type:
+     * a value type the IL marks nullable becomes T?.
+     * @param {string} name - JS member name
+     * @returns {CSharpType|null}
+     */
+    ilMemberType(name) {
+      const type = this.mapILType(this.classILMemberTypes?.get(name));
+      return type && this.classILMemberTypes?.nullable?.has(name) ? this.nullableOf(type) : type;
+    }
+
+    /**
+     * T? for a value type T, the type itself otherwise.
+     * @param {CSharpType} type - a C# type
+     * @returns {CSharpType}
+     */
+    nullableOf(type) {
+      return !type.isArray && CSHARP_VALUE_TYPES.has(type.name) ? new CSharpType(type.name, { isNullable: true }) : type;
     }
 
     /**
@@ -19196,7 +19239,7 @@
      */
     inferPropertyType(initialValue, constructorNode, propName) {
       // The IL type of the member, where the IL has one
-      const ilType = this.mapILType(this.classILMemberTypes?.get(propName));
+      const ilType = this.ilMemberType(propName);
       if (ilType) return ilType;
 
       // Real usage evidence (see preScanDynamicInstanceFields) that this field holds an
@@ -20039,7 +20082,7 @@
         // it first (CS1061 wherever the field is later read via its real instance-
         // object shape, e.g. `this.blockCipher.algorithm`).
         // The field's IL type, where the IL has one
-        const ilFieldType = this.mapILType(this.classILMemberTypes?.get(fieldName));
+        const ilFieldType = this.ilMemberType(fieldName);
         if (ilFieldType) {
           this.setClassFieldType(csClass.name, csFieldName, ilFieldType);
           continue;
@@ -20220,8 +20263,8 @@
                          CSharpType.Dynamic();
             }
             // The IL types of the accessor and of its backing field, where the IL has them
-            propType = this.mapILType(this.classILMemberTypes?.get(propName.substring(1))) || propType;
-            fieldTypeOverride = this.mapILType(this.classILMemberTypes?.get(propName)) || fieldTypeOverride;
+            propType = this.ilMemberType(propName.substring(1)) || propType;
+            fieldTypeOverride = this.ilMemberType(propName) || fieldTypeOverride;
 
             // Make nullable if it can be null (for reference types only - see comment
             // on CSHARP_VALUE_TYPES above for why value types are excluded)
@@ -20293,7 +20336,7 @@
         // default instead (CS1061 wherever the field is later read via its real
         // `.Algorithm`/etc. instance-object shape).
         const dynamicFieldType = propName && this.dynamicInstanceFields?.has(propName) ? CSharpType.Dynamic() : null;
-        const ilMemberType = this.mapILType(this.classILMemberTypes?.get(propName));
+        const ilMemberType = this.ilMemberType(propName);
         let propType = ilMemberType || alreadyRegisteredType || dynamicFieldType || (propInfo.initialValue ?
           this.inferExpressionType(propInfo.initialValue) || CSharpType.Dynamic() :
           CSharpType.Dynamic());
