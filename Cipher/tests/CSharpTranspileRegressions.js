@@ -233,6 +233,15 @@ check('registry: a module-declared algorithmInstance is kept and listed', () => 
 });
 
 // ---------------------------------------------------------------------------
+// Declarations take their IL type
+// ---------------------------------------------------------------------------
+check('IL types: a constructor parameter takes its JSDoc class type, not one guessed from its name', () => {
+  const code = transpile('class Fancy extends BlockCipherAlgorithm { constructor() { super(); this.rounds = 8; } CreateInstance(inv) { return new I(this); } }\n' +
+    'class I extends IBlockCipherInstance {\n  /** @param {Fancy} algorithm - parent */\n  constructor(algorithm) { super(algorithm); this.r = algorithm.rounds; }\n}');
+  expectMatch(code, /public I\(Fancy algorithm\)/, 'I(Fancy algorithm)');
+});
+
+// ---------------------------------------------------------------------------
 // Runtime stubs (needs the .NET SDK)
 // ---------------------------------------------------------------------------
 check('runtime stubs: BlockAbsorber, pad helpers, ToRadixString, IsTruthy, GFMul behave like the JS framework', () => {

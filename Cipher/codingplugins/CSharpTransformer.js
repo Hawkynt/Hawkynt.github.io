@@ -752,7 +752,11 @@
           // Priority: 1) JSDoc, 2) object member-access usage, 3) array usage detection,
           // 3.5) array-index usage, 4) BigInteger usage, 5) scalar usage, 6) name inference
           const jsDocParamType = this.getParamType(funcTypeInfo, rawParamName);
-          if (jsDocParamType) {
+          // The parameter's IL type, as transformFunctionToMethod takes it
+          const ilParamType = this.mapILType(param.resultType ?? param.left?.resultType);
+          if (ilParamType) {
+            paramType = ilParamType;
+          } else if (jsDocParamType) {
             paramType = this.mapType(jsDocParamType);
             // type-aware-transpiler.js's _bakeTypeInfoOntoFunctionNodes bakes
             // 'interprocedural-usage' facts onto funcNode.typeInfo indistinguishably
@@ -879,8 +883,9 @@
         }
       }
 
-      // Infer return type
-      let returnType = this.mapType(funcTypeInfo?.returns);
+      // Infer return type: the IL's declared one, else the JSDoc's
+      let returnType = this.mapILType(funcNode.declaredReturnType || this.jsDocILType(funcTypeInfo?.returns)) ||
+        this.mapType(funcTypeInfo?.returns);
       if (!returnType && funcNode.body) {
         // Try to infer from body - check if there are return statements with values
         const hasValueReturn = this.hasReturnWithValue(funcNode.body);
@@ -7713,6 +7718,9 @@
         const thisParamIndices = this.constructorThisParams?.get(node.id.name);
         const negativeArgIndices = this.constructorNegativeArgParams?.get(node.id.name);
         const paramTypes = params.map((param, idx) => {
+          // The parameter's IL type, as transformConstructor takes it
+          const ilParamType = this.mapILType(param.resultType ?? param.left?.resultType);
+          if (ilParamType) return ilParamType;
           const rawName = param.type === 'AssignmentPattern'
             ? (param.left?.name || 'param')
             : (param.name || param.left?.name || 'param');
@@ -8212,7 +8220,9 @@
         // Math call itself. A denylist of the cases already handled above (object/IIFE/
         // function literals) is the general, maintenance-free form of this check.
         else {
-          let fieldType = this.inferFullExpressionType(decl.init) || new CSharpType('object');
+          // The IL type of the binding; the derivations below only where it has none
+          const ilFieldType = this.mapILType(decl.declaredType || decl.resultType);
+          let fieldType = ilFieldType || this.inferFullExpressionType(decl.init) || new CSharpType('object');
           // See _preferNameBasedByteArrayType's doc comment - a module-level constant
           // byte-array literal (e.g. aeswrappad.js's `const DEFAULT_AIV_HIGH = [0xA6,
           // 0x59, 0x59, 0xA6];`) otherwise becomes uint[] purely from bare-integer-
@@ -8220,7 +8230,7 @@
           // `[...DEFAULT_AIV_HIGH]` spread that copies it into a genuinely byte[]
           // instance field (CS0019/CS1929 wherever that field is later `??`/
           // `.Concat(...)`-ed against real byte[] evidence).
-          if (decl.init.type === 'ArrayExpression' || decl.init.type === 'ArrayLiteral') {
+          if (!ilFieldType && (decl.init.type === 'ArrayExpression' || decl.init.type === 'ArrayLiteral')) {
             fieldType = this._preferNameBasedByteArrayType(fieldType, decl.init, name);
             // See preScanConstsWrappedInTypedArray's doc comment - stronger, more
             // direct evidence than the name-based check just above: this exact const
@@ -10338,8 +10348,9 @@
         // For override methods, MUST use inherited return type to maintain compatibility
         returnType = this.mapTypeFromKnowledge(inheritedSig.returns);
       } else {
-        // No inherited signature - use JSDoc
-        returnType = this.mapType(typeInfo?.returns);
+        // No inherited signature - the IL's declared return type, else the JSDoc's
+        returnType = this.mapILType(funcNode.declaredReturnType || this.jsDocILType(typeInfo?.returns)) ||
+          this.mapType(typeInfo?.returns);
       }
 
       // Push a new scope for the method body FIRST
@@ -10406,7 +10417,12 @@
           // 4) array usage, 5) array index usage, 6) string key usage, 7) scalar 32-bit
           // usage, 8) name inference
           const jsDocParamType = this.getParamType(typeInfo, rawParamName);
-          if (classHint) {
+          // The parameter's IL type (the framework signature's, else its JSDoc's);
+          // the derivations below only where the IL has none
+          const ilParamType = this.mapILType(param.resultType ?? param.left?.resultType);
+          if (ilParamType) {
+            paramType = ilParamType;
+          } else if (classHint) {
             paramType = classHint;
           } else if (jsDocParamType) {
             paramType = this.mapType(jsDocParamType);
@@ -11697,6 +11713,10 @@
           if ((isGenericArrayCreation || isEmptyArray) && this.objectElementArrayVars?.has(originalName)) {
             inferredType = CSharpType.Array(CSharpType.Dynamic());
           }
+
+          // The declaration's IL type, where the IL has one, beats every derivation above
+          const ilDeclType = this.mapILType(decl.declaredType || decl.resultType);
+          if (ilDeclType) inferredType = ilDeclType;
 
           // Set context for array element type before transforming
           // Save previous value to restore afterward
@@ -14760,6 +14780,10 @@
       // e.g., don't cast int[] to uint
       if (sourceType.isArray !== targetType.isArray) return expr;
 
+      // A base class value into a subclass-typed target (the IL types it as the subclass)
+      if (!sourceType.isArray && this.isClassTypeName(sourceType.name) && this.isClassTypeName(targetType.name))
+        return new CSharpCast(targetType, expr);
+
       // Both arrays but differing primitive element type (e.g. `c = this._leftShift(c, n)`
       // reassigning a uint[]-declared local from a method that - correctly, per its own
       // body evidence - returns byte[]): same element-wise conversion as
@@ -17676,6 +17700,9 @@
       // If types match exactly, no cast needed
       if (initExprType.name === targetType.name) return false;
 
+      // A base class value into a subclass-typed declaration (the IL types it as the subclass)
+      if ((this.isClassTypeName(initExprType.name) || initExprType.name === 'object') && this.isClassTypeName(targetType.name)) return true;
+
       // All signed/unsigned conversions between numeric types need explicit casts in C#
       const numericTypes = ['byte', 'sbyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong'];
       if (numericTypes.includes(initExprType.name) && numericTypes.includes(targetType.name)) {
@@ -19034,10 +19061,39 @@
     }
 
     /**
+     * The IL type of each field and accessor a class body assigns or declares, by
+     * JS name: a `this.x = ...` assignment's declared (JSDoc @type) or IL type, a
+     * setter's parameter type, a getter's declared return type.
+     * @param {Array} classBody - the class's IL body
+     * @returns {Map<string, string>} JS member name -> IL type
+     */
+    collectILMemberTypes(classBody) {
+      const types = new Map();
+      const record = (name, ilType) => {
+        if (name && typeof ilType === 'string' && ilType && !types.has(name) && this.mapILType(ilType)) types.set(name, ilType);
+      };
+      for (const item of classBody) {
+        if (item?.type !== 'MethodDefinition' || item.static) continue;
+        if (item.kind === 'set') record(item.key?.name, item.value?.params?.[0]?.resultType);
+        else if (item.kind === 'get') record(item.key?.name, this.jsDocILType(item.value?.typeInfo?.returns));
+      }
+      this._walkAstNodes(classBody, node => {
+        if (node.type !== 'AssignmentExpression' || node.left?.type !== 'ThisPropertyAccess') return;
+        const name = typeof node.left.property === 'string' ? node.left.property : node.left.property?.name;
+        record(name, node.declaredType || node.left.resultType);
+      });
+      return types;
+    }
+
+    /**
      * Infer the C# type for a property based on its initial value
      * Handles constructor parameters, Array.Empty calls, etc.
      */
     inferPropertyType(initialValue, constructorNode, propName) {
+      // The IL type of the member, where the IL has one
+      const ilType = this.mapILType(this.classILMemberTypes?.get(propName));
+      if (ilType) return ilType;
+
       // Real usage evidence (see preScanDynamicInstanceFields) that this field holds an
       // AlgorithmFramework instance object - checked BEFORE anything else (including the
       // no-initializer/name-based fallback just below, and Case 1's constructor-parameter
@@ -19392,6 +19448,10 @@
       // constructor but `this.S[i][j]` is only used later in another method.
       const prevJaggedInstanceFields = this.jaggedInstanceFields;
       this.jaggedInstanceFields = this.preScanJaggedInstanceFields(classBody);
+
+      // The IL type of every field and accessor of this class
+      const prevClassILMemberTypes = this.classILMemberTypes;
+      this.classILMemberTypes = this.collectILMemberTypes(classBody);
 
       // Pre-scan every method (not just the constructor) for `this.field.push(<scalar>)`
       // evidence - see preScanFieldPushScalarElementTypes's own doc comment (vin-checksum's
@@ -20447,9 +20507,9 @@
 
           const paramName = this.escapeReservedKeyword(rawName);
 
-          // Look up property type from base class
-          let paramType = null;
-          if (baseClassName) {
+          // The parameter's IL type; the derivations below only where it has none
+          let paramType = this.mapILType(param.resultType ?? param.left?.resultType);
+          if (!paramType && baseClassName) {
             const propType = this.getInheritedPropertyType(baseClassName, this.toPascalCase(rawName));
             if (propType) {
               paramType = this.mapTypeFromKnowledge(propType);
@@ -20711,13 +20771,19 @@
       let prop = csClass.members.find(m => m instanceof CSharpProperty && m.name === propName);
       let isNewProperty = false;
       if (!prop) {
-        // Try to get type from base class first
+        // The framework property it overrides fixes the type; else the accessor's
+        // IL type: the setter parameter's, or the getter's declared return type.
         let propType = null;
         if (baseClassName) {
           const inheritedType = this.getInheritedPropertyType(baseClassName, propName);
           if (inheritedType) {
             propType = this.mapTypeFromKnowledge(inheritedType);
           }
+        }
+        if (!propType) {
+          const fn = methodNode.value;
+          propType = isGetter ? this.mapILType(this.jsDocILType(fn?.typeInfo?.returns))
+            : this.mapILType(fn?.params?.[0]?.resultType);
         }
 
         // A backing-field-per-accessor property (e.g. `get salt() { return
@@ -21960,7 +22026,11 @@
                     const leftType = this.inferFullExpressionType(decl.init.left);
                     return !leftType || leftType.name === 'dynamic' || leftType.name === 'object';
                   })();
-                if (isEmptyArray || isNoEvidenceOrEmptyArrayFallback) {
+                // The declaration's IL type, where the IL has one, beats the derivations here
+                const ilDeclType = this.mapILType(decl.declaredType || decl.resultType);
+                if (ilDeclType) {
+                  initType = ilDeclType;
+                } else if (isEmptyArray || isNoEvidenceOrEmptyArrayFallback) {
                   const pushElemType = localPushScalarElementTypes.get(varName);
                   if (pushElemType) {
                     initType = CSharpType.Array(pushElemType);
@@ -23290,15 +23360,18 @@
               // inference - the registered C# variable type looked up here is the
               // authoritative, already-resolved answer for identifiers and should not
               // need a second, less reliable path to agree before casting.
-              varType.name === 'long' || varType.name === 'Int64') {
+              varType.name === 'long' || varType.name === 'Int64' ||
+              varType.name === 'double' || varType.name === 'float' || varType.name === 'BigInteger') {
             return new CSharpCast(CSharpType.Int(), csExpr);
           }
         }
       }
 
       // Infer type from original JS node to see if it might be uint
-      const exprType = jsNode ? this.inferFullExpressionType(jsNode) : null;
+      const exprType = jsNode ? (this.mapILType(jsNode.resultType) || this.inferFullExpressionType(jsNode)) : null;
       const needsCast = exprType?.name === 'uint' ||
+                        // A JavaScript number from a division (IL float64), or a BigInt
+                        exprType?.name === 'double' || exprType?.name === 'float' || exprType?.name === 'BigInteger' ||
                         exprType?.name === 'ulong' ||
                         // A mixed int/uint arithmetic expression (e.g. `2 * n` where `n`
                         // is uint - a very common "byte-offset = constant * round-count"
