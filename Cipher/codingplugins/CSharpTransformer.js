@@ -15407,6 +15407,10 @@
       }
 
       let target = this.transformExpression(node.left);
+      // A store into the TestCase bag is a plain indexer store (no dynamic cast on the left)
+      if (target?.nodeType === 'Cast' && target.type?.name === 'dynamic' && target.expression?.nodeType === 'ElementAccess' &&
+          target.expression.index?.nodeType === 'Literal')
+        target = target.expression;
       // A framework property set on a framework-typed instance (cshake.outputSize =
       // n on an IHashFunctionInstance) goes to the concrete class, which may declare
       // its own property of that name hiding the stub's: as in JavaScript, where it
@@ -16044,10 +16048,15 @@
         return new CSharpMemberAccess(target, 'Url');
       }
 
+      // A test vector field the TestCase stub does not declare (test.batchSize) is
+      // in its catch-all bag, read as dynamic
+      const memberName = this.toPascalCase(member);
+      if (targetType?.name === 'TestCase' && !targetType.isArray && !this.stubChainDeclares('TestCase', memberName))
+        return new CSharpCast(CSharpType.Dynamic(), new CSharpElementAccess(target, CSharpLiteral.String(member)));
+
       // A framework-typed value (an instance a registered algorithm created) holds a
       // concrete subclass; a member the framework type does not declare is that
       // subclass's own, reached at runtime
-      const memberName = this.toPascalCase(member);
       if (targetType && !targetType.isArray && this.isFrameworkInstanceType(targetType.name) &&
           !this.stubChainDeclares(targetType.name, memberName)) {
         return new CSharpMemberAccess(new CSharpParenthesized(new CSharpCast(CSharpType.Dynamic(), target)), memberName);

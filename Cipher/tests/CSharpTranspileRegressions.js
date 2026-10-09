@@ -615,6 +615,11 @@ check('test vectors: records mapped into the vectors stay plain objects; only th
   expectNoMatch(code, /new TestCase \{ \["n"\]/, 'the records built as TestCase');
   expectMatch(code, /\.Select\(s => new TestCase \{/, 'the map building TestCases');
 });
+check('test vectors: a vector field the TestCase stub lacks is read and written through its bag', () => {
+  const code = transpile('class A extends Algorithm {\n  constructor() { super();\n    this.tests = [{ text: "t", uri: "u", input: [1], expected: [2] }];\n' +
+    '    for (let i = 0; i < this.tests.length; i++) this.tests[i].batchSize = 2;\n  }\n}');
+  expectMatch(code, /this\.Tests\[i\]\["batchSize"\] = 2;/, 'this.Tests[i]["batchSize"] = 2');
+});
 check('IL types: a nullable value-type field is T?, an undefined value-type field becomes default', () => {
   const code = transpile('class C {\n  constructor() { /** @type {int32|null} */ this.size = null; /** @type {int32} */ this.count = undefined; }\n' +
     '  /** @returns {int32} size */\n  get() { return this.size === null ? 0 : this.size; }\n}');
