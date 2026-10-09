@@ -810,7 +810,7 @@
       // functions
       for (const f of this.functions.values()) S.push(this.functionDefinition(f));
       // module initialisation: the top-level statements in order
-      const init = [];
+      const init = [new CppExpressionStatement("js::beginModule()")];
       this.fn = { kind: 'init', ret: T.void, cls: null };
       this.pushScope();
       for (const node of body) {
@@ -1652,6 +1652,8 @@
       }
       // a class as a value: its constructor, callable dynamically (new C(...) of a library's export)
       if (this.classes.has(name)) return { c: this.constructorValue(this.classes.get(name)), t: T.any, classRef: name };
+      if (name === 'module') return { c: 'js::moduleObject()', t: T.any };
+      if (name === 'exports') return { c: 'js::lastModuleExports()', t: T.any };
       if (FW_FUNCTIONS[name]) return { c: 'js::Any()', t: T.any, fwFunction: name };
       if (FRAMEWORK[name] || FW_ENUMS.has(name) || GLOBAL_OBJECTS.has(name)) return { c: 'js::Any()', t: T.any, globalRef: name };
       // any other free name: a library bound under that name (a UMD factory parameter), else undefined

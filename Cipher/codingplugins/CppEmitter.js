@@ -1585,6 +1585,15 @@ struct Finally {
 // bound to the name the algorithm file takes it under (a UMD factory parameter)
 inline Any& lastModuleExports() { static Any v; return v; }
 inline void setModuleExports(const Any& v) { lastModuleExports() = v; }
+// A module starts with module.exports = {} (as in Node.js)
+inline void beginModule() { setModuleExports(Any(newObject())); }
+// The free name "module": its exports property is the current module's exports
+struct ModuleObject : Object {
+  bool __get(const std::u16string& k, Any& out) override { if (k == u"exports") { out = lastModuleExports(); return true; } return Object::__get(k, out); }
+  bool __set(const std::u16string& k, const Any& v) override { if (k == u"exports") { setModuleExports(v); return true; } return Object::__set(k, v); }
+  bool __has(const std::u16string& k) override { return k == u"exports" || Object::__has(k); }
+};
+inline Any moduleObject() { static ModuleObject* m = new ModuleObject(); return Any(m); }
 inline std::vector<std::pair<std::u16string, Any>>& modules() { static std::vector<std::pair<std::u16string, Any>> m; return m; }
 inline void bindModule(const char16_t* name, const Any& v) { modules().emplace_back(name, v); }
 inline Any moduleValue(const char16_t* name) {
