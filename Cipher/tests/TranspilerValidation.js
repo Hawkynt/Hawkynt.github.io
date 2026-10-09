@@ -79,6 +79,8 @@ const resolvedTools = new Map();
  * @returns {{command: string, shell: boolean}|null} null when it is not on PATH
  */
 function resolveTool(name) {
+  // A compiled program is started by its own path
+  if (path.isAbsolute(name)) return fs.existsSync(name) ? { command: name, shell: false } : null;
   if (resolvedTools.has(name)) return resolvedTools.get(name);
   let found = null;
   for (const candidate of TOOL_ALTERNATIVES[name] || [name]) {
@@ -414,7 +416,10 @@ function loadLanguagePlugin(language) {
 
 // Bundling is implemented for languages whose prelude accumulates a
 // name->algorithm registry the harness can look up.
-const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript']);
+const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript', 'go', 'rust']);
+// Languages whose dependencies are transpiled as a library: only their own
+// declarations, top-level names prefixed apart, no runtime (the main file has it)
+const LIBRARY_BUNDLE_LANGUAGES = new Set(['go', 'rust']);
 
 function transpileOne(source, plugin, algoName, extraOptions, parserOptions) {
   const Parser = loadTranspiler();
@@ -584,7 +589,8 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
     const depName = path.basename(depPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_dep';
     try {
       const depSource = fs.readFileSync(depPath, 'utf-8');
-      const depCode = transpileOne(depSource, plugin, depName, noPreludeOptions, parserOptions);
+      const depOptions = LIBRARY_BUNDLE_LANGUAGES.has(language) ? { library: true, symbolPrefix: depName + '_' } : noPreludeOptions;
+      const depCode = transpileOne(depSource, plugin, depName, depOptions, parserOptions);
       if (language === 'javascript') {
         const variable = '__validation_' + depName;
         depExports.set(path.resolve(depPath).toLowerCase(), variable);
@@ -637,7 +643,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
       if (!variable) return { success: false, error: `loader ${paramName}: ${loader[1]} was not loaded by the reference, so it is not bundled` };
       prefix += 'const ' + paramName + ' = function () { return ' + variable + '; };\n\n';
     }
-  } else {
+  } else if (!LIBRARY_BUNDLE_LANGUAGES.has(language)) {
     // Python and Perl: the library's code goes ahead of the algorithm, and the
     // factory parameter is bound to an object holding what it exports
     const bundled = bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptions);
@@ -662,7 +668,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
 
 // Languages whose harness runs every vector; the others only prove the
 // generated code compiles and a run of theirs checks nothing.
-const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp']);
+const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp', 'go', 'rust']);
 
 /**
  * The harness spec handed to a vector harness: per algorithm the name, the
@@ -718,11 +724,11 @@ function generateTestHarness(language, algorithmCode, spec, algorithmName, sampl
     case 'java':
       return generateJavaTestHarness(algorithmCode, vector, algorithmName);
     case 'go':
-      return generateGoTestHarness(algorithmCode, vector, algorithmName);
+      return generateGoTestHarness(algorithmCode, spec, algorithmName);
     case 'ruby':
       return generateRubyTestHarness(algorithmCode, vector, algorithmName);
     case 'rust':
-      return generateRustTestHarness(algorithmCode, vector, algorithmName);
+      return generateRustTestHarness(algorithmCode, spec, algorithmName);
     case 'javascript':
       return generateJavaScriptTestHarness(algorithmCode, spec, algorithmName);
     case 'typescript':
@@ -987,45 +993,24 @@ class TestHarness {
   };
 }
 
-// Go Test Harness
-function generateGoTestHarness(algorithmCode, vector, algorithmName) {
-  const input = bytesToArrayLiteral(vector.input, 'go');
-  const expected = bytesToArrayLiteral(vector.expected, 'go');
-  const cleanedCode = stripMainFunction(algorithmCode, 'go');
-  // Also strip package/import declarations since we add them in the harness
-  const codeWithoutPkg = cleanedCode
-    .replace(/^package\s+\w+\s*\n?/gm, '')  // Remove all package declarations
-    .replace(/^import\s+"[^"]+"\s*\n?/gm, '')  // Remove single-line imports
-    .replace(/^import\s+\([^)]*\)\s*\n?/gms, '');  // Remove multi-line import blocks (use 's' flag for dotAll)
-
-  // The code's own imports, and fmt for the harness. Guessing imports from
-  // the code would hide an import the emitter forgot.
-  const imports = new Set(['"fmt"']);
-  for (const m of cleanedCode.matchAll(/^import\s+("[^"]+")/gm)) imports.add(m[1]);
-  for (const m of cleanedCode.matchAll(/^import\s+\(([^)]*)\)/gm))
-    for (const spec of m[1].split('\n').map(l => l.trim()).filter(Boolean)) imports.add(spec);
-  imports.delete('');
-
+// Go vector harness (tests/validation-harness/harness.go), appended to the
+// program. Bundled dependencies come first, so their init() registers first;
+// the package clause and imports (the transpiled ones, and encoding/json for
+// the spec) move to the top of the file.
+function generateGoTestHarness(algorithmCode, spec, algorithmName) {
+  const code = stripMainFunction(algorithmCode, 'go');
+  const imports = new Set(['fmt', 'encoding/json', 'math', 'reflect', 'regexp', 'strings']);
+  for (const m of code.matchAll(/^import\s+"([^"]+)"/gm)) imports.add(m[1]);
+  for (const m of code.matchAll(/^import\s+\(([^)]*)\)/gm))
+    for (const line of m[1].split('\n').map(l => l.trim()).filter(Boolean)) imports.add(line.replace(/^"|"$/g, ''));
+  const body = code
+    .replace(/^package\s+\w+\s*$/gm, '')
+    .replace(/^import\s+"[^"]+"\s*$/gm, '')
+    .replace(/^import\s+\([^)]*\)/gm, '');
+  const harness = readHarness('harness.go').replace('__SPEC_JSON__', () => asciiJson(spec).replace(/`/g, '\\u0060'));
   return {
     success: true,
-    code: `package main
-
-import (
-\t${[...imports].join('\n\t')}
-)
-
-${codeWithoutPkg}
-
-func main() {
-    fmt.Println("Testing ${algorithmName}...")
-
-    input := ${input}
-    expected := ${expected}
-
-    fmt.Printf("Input length: %d\\n", len(input))
-    fmt.Printf("Expected length: %d\\n", len(expected))
-    fmt.Println("COMPILE_OK")
-}`
+    code: `// Validation of ${algorithmName}\npackage main\n\nimport (\n${[...imports].sort().map(i => `\t"${i}"`).join('\n')}\n)\n\n${body}\n${harness}`
   };
 }
 
@@ -1054,27 +1039,23 @@ end`
   };
 }
 
-// Rust Test Harness
-function generateRustTestHarness(algorithmCode, vector, algorithmName) {
-  const input = bytesToArrayLiteral(vector.input, 'rust');
-  const expected = bytesToArrayLiteral(vector.expected, 'rust');
-  const cleanedCode = stripMainFunction(algorithmCode, 'rust');
-
-  return {
-    success: true,
-    code: `${cleanedCode}
-
-fn main() {
-    println!("Testing ${algorithmName}...");
-
-    let input: Vec<u8> = ${input};
-    let expected: Vec<u8> = ${expected};
-
-    println!("Input length: {}", input.len());
-    println!("Expected length: {}", expected.len());
-    println!("COMPILE_OK");
-}`
-  };
+// Rust vector harness (tests/validation-harness/harness.rs): the spec becomes
+// Rust values, and main() runs the module initializers in the order the files
+// were bundled (dependencies first, so they register first). The crate's inner
+// attributes move to the top of the file.
+function generateRustTestHarness(algorithmCode, spec, algorithmName) {
+  const code = stripMainFunction(algorithmCode, 'rust');
+  const attributes = [];
+  const body = code.replace(/^#!\[[^\]]*\]\s*$/gms, m => { attributes.push(m.trim()); return ''; });
+  const inits = [...code.matchAll(/^\s*pub fn (\w*js_module_init)\(\)/gm)].map(m => `${m[1]}();`);
+  const str = s => JSON.stringify(String(s)).replace(/[^\x00-\x7e]/g, c => `\\u{${c.charCodeAt(0).toString(16)}}`);
+  const plan = p => `VhPlan { fields: vec![${p.fields.map(str).join(', ')}], steps: vec![${p.steps.map(s =>
+    `VhStep { field: ${str(s.field)}, setter: ${str(s.setter || '')}, kind: ${str(s.kind || '')} }`).join(', ')}], mode: ${p.mode
+    ? `Some(VhMode { cipher: ${p.mode.cipher === null ? 'None' : `Some(${str(p.mode.cipher)})`}, key_truthy: ${p.mode.keyTruthy}, iv_truthy: ${p.mode.ivTruthy} })`
+    : 'None'}, inverse: ${p.inverse}, expect: ${p.expect}, rt: ${str(p.rt || '')} }`;
+  const specCode = `vec![${spec.algorithms.map(a => `VhAlgorithm { name: ${str(a.name)}, is_mode: ${!!a.isMode}, multi_key: ${!!a.multiKey}, vectors: vec![${a.vectors.map(plan).join(', ')}] }`).join(', ')}]`;
+  const harness = readHarness('harness.rs').replace('__SPEC__', () => specCode).replace('__MODULE_INITS__', () => inits.join(' '));
+  return { success: true, code: `// Validation of ${algorithmName}\n${attributes.join('\n')}\n${body}\n${harness}` };
 }
 
 // TypeScript Test Harness
@@ -1369,11 +1350,9 @@ function testGoCompilation(code, outputDir) {
   const modFile = path.join(outputDir, 'go.mod');
   fs.writeFileSync(modFile, 'module test\n\ngo 1.21\n');
 
-  // Use NUL on Windows, /dev/null on Unix
-  const nullDevice = process.platform === 'win32' ? 'NUL' : '/dev/null';
-
-  // Build from the output directory (required for go.mod to be found)
-  const result = spawnTool('go', ['build', '-o', nullDevice, '.'], {
+  // Build the executable the vector harness runs (from the output directory, for go.mod)
+  const exeFile = 'test' + (process.platform === 'win32' ? '.exe' : '');
+  const result = spawnTool('go', ['build', '-o', exeFile, '.'], {
     cwd: outputDir,
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000
@@ -1392,8 +1371,8 @@ function testRustCompilation(code, outputDir) {
   const exeFile = path.join(outputDir, 'test' + (process.platform === 'win32' ? '.exe' : ''));
   fs.writeFileSync(srcFile, code);
 
-  // Compile to actual executable (works on all platforms)
-  const result = spawnTool('rustc', [srcFile, '-o', exeFile], {
+  // The executable the vector harness runs (optimized: an unoptimized build runs the ciphers' loops many times slower)
+  const result = spawnTool('rustc', ['-A', 'warnings', '-C', 'opt-level=1', '-C', 'overflow-checks=on', srcFile, '-o', exeFile], {
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000
   });
@@ -1535,6 +1514,7 @@ function executeCode(language, outputDir) {
     case 'python': return runProcess('python', ['-X', 'utf8', path.join(outputDir, 'test.py')], { cwd: outputDir });
     case 'perl': return runProcess('perl', [path.join(outputDir, 'test.pl')], { cwd: outputDir });
     case 'csharp': return runProcess('dotnet', [path.join(outputDir, 'bin', 'Release', 'net10.0', 'Test.dll')], { cwd: outputDir });
+    case 'go': case 'rust': return runProcess(path.join(outputDir, 'test' + (process.platform === 'win32' ? '.exe' : '')), [], { cwd: outputDir });
     default: throw new Error(`${language} has no vector harness to run`);
   }
 }
