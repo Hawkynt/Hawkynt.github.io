@@ -645,6 +645,12 @@
           }
           continue;
         }
+        // const { TestCase, ... } = AlgorithmFramework (the IL reads it into a
+        // temporary, then each name from it): the runtime declares those names
+        if (node.type === 'VariableDeclaration' && node.declarations.length && isIdentifier(node.declarations[0].init, 'AlgorithmFramework')) {
+          const temp = node.declarations[0].id && node.declarations[0].id.name;
+          if (node.declarations.slice(1).every(d => d.init && d.init.type === 'MemberExpression' && isIdentifier(d.init.object, temp))) continue;
+        }
         switch (node.type) {
           case 'ClassDeclaration':
             this.addUserClass(node);
