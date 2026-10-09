@@ -216,6 +216,15 @@ check('C++ functions as values: a missing argument takes the parameter default',
   return expectOutput(runCpp(js, 'print(viaValue());'), ['3']);
 });
 
+check('C++ classes: a number field set to undefined can be undefined', () => {
+  const js = 'class Cfg {\n  constructor() {\n    /** @type {int32} */\n    this.count = undefined;\n  }\n}\n' +
+    'function given(c) { return c.count !== undefined; }';
+  // Given a field typed int32 that the constructor leaves undefined
+  // When it is compared with undefined before and after it is set
+  // Then it is undefined until set
+  return expectOutput(runCpp(js, 'Cfg* c = (new Cfg())->__ctor(); print(given(c)); c->count = js::Any(0); print(given(c));'), ['false', 'true']);
+});
+
 /**
  * C: run every regression case.
  * @param {object} options - { verbose }

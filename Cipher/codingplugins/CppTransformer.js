@@ -527,7 +527,7 @@
       }
       // fields: every this.x assignment in the class, typed by the IL
       for (const c of this.classes.values()) {
-        const found = new Map();
+        const found = new Map(), undefinedFields = new Set();
         const add = (name, il, declared) => {
           if (!name) return;
           const e = found.get(name) || { declared: [], seen: [] };
@@ -543,6 +543,10 @@
             if (target && target.type === 'ThisPropertyAccess' && !target.computed && typeof target.property === 'string' && !inStatic)
               add(target.property, target.resultType || n.resultType, false);
             if (n.declaredType && target && target.type === 'ThisPropertyAccess' && !target.computed && !inStatic) add(target.property, n.declaredType, true);
+            // a field set to undefined: a number or boolean field then holds undefined as well
+            if (n.type === 'AssignmentExpression' && n.operator === '=' && target && target.type === 'ThisPropertyAccess' && !target.computed && !inStatic &&
+                n.right && n.right.resultType === 'void' && (n.right.type === 'Literal' || (n.right.type === 'Identifier' && n.right.name === 'undefined')))
+              undefinedFields.add(target.property);
           }
           if (n.type === 'ClassDeclaration' || n.type === 'ClassExpression') return;
           for (const k in n) if (k !== 'loc' && k !== 'jsDoc' && k !== 'typeInfo' && k !== 'range') visit(n[k], inStatic);
@@ -553,7 +557,8 @@
         for (const [name, e] of found) {
           if (c.accessors.has(name) || c.methods.has(name)) continue;
           const above = this.findMemberAbove(c.base, name);
-          const own = this.unifyTypes(e.declared.length ? e.declared : e.seen);
+          let own = this.unifyTypes(e.declared.length ? e.declared : e.seen);
+          if (undefinedFields.has(name) && isNumOrBool(own)) own = T.any;
           // a framework instance field the class types otherwise (int32[] for the uint8[]
           // inputBuffer): the class keeps its own, and the framework reads it converted
           if (above && above.kind === 'field' && above.fw && FW_VFIELD_CLASSES.has(above.owner) && own.k !== 'any' && !sameType(own, above.type)) {
