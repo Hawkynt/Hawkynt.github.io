@@ -11334,6 +11334,7 @@
         const expr = this.transformExpression(bodyNode);
         block.statements.push(new CSharpReturn(expr));
       }
+      if (bodyNode.type === 'BlockStatement') this.syncFieldAliases(bodyNode, block);
 
       // Restore context
       this.currentMethod = prevMethod;
@@ -11351,6 +11352,72 @@
       this.currentFunctionBodyNode = prevFunctionBodyNode;
 
       return block;
+    }
+
+    /**
+     * `const keys = []; this.keys = keys; ... keys.push(k)` - the field and the
+     * local are one array in JavaScript, which the pushes (or stores past its end)
+     * grow. A C# array cannot grow, so each such change binds the local to a new
+     * array and the field keeps the old one. The field is assigned the local
+     * again before every return and at the end of the body.
+     * @param {Object} bodyNode - IL function body
+     * @param {CSharpBlock} block - its transformed body, changed in place
+     */
+    syncFieldAliases(bodyNode, block) {
+      const declared = new Set();
+      const rebound = new Set();
+      const aliases = [];
+      const arrayName = n => n?.type === 'Identifier' ? n.name : null;
+      const rebindingTypes = new Set(['ArrayAppend', 'ArrayConcat', 'ArrayUnshift', 'ArraySplice', 'ArrayShift', 'ArrayPop']);
+      this._walkAstNodes(bodyNode, node => {
+        if (node.type === 'VariableDeclarator' && node.id?.type === 'Identifier') declared.add(node.id.name);
+        if (rebindingTypes.has(node.type) && arrayName(node.array)) rebound.add(arrayName(node.array));
+        if (node.type === 'CallExpression' && node.callee?.type === 'MemberExpression' && !node.callee.computed &&
+            ['push', 'unshift', 'splice', 'shift', 'pop'].includes(node.callee.property?.name) && arrayName(node.callee.object))
+          rebound.add(arrayName(node.callee.object));
+        if (node.type === 'AssignmentExpression' && node.operator === '=' && node.left?.type === 'MemberExpression' &&
+            node.left.computed && arrayName(node.left.object) && this.growableArrayLocals?.has(arrayName(node.left.object)))
+          rebound.add(arrayName(node.left.object));
+      });
+      for (const stmt of bodyNode.body) {
+        const expr = stmt.type === 'ExpressionStatement' ? stmt.expression : null;
+        if (expr?.type === 'AssignmentExpression' && expr.operator === '=' && expr.right?.type === 'Identifier' &&
+            (expr.left?.type === 'ThisPropertyAccess' || (expr.left?.type === 'MemberExpression' && expr.left.object?.type === 'ThisExpression')) &&
+            declared.has(expr.right.name) && rebound.has(expr.right.name))
+          aliases.push(expr);
+      }
+      if (aliases.length === 0) return;
+      const syncs = () => aliases.map(a => new CSharpExpressionStatement(this.transformExpression(a)));
+      const visit = statements => {
+        for (let i = 0; i < statements.length; ++i) {
+          const stmt = statements[i];
+          if (!stmt || typeof stmt !== 'object') continue;
+          if (stmt.nodeType === 'Return') {
+            const added = syncs();
+            statements.splice(i, 0, ...added);
+            i += added.length;
+            continue;
+          }
+          visitNode(stmt);
+        }
+      };
+      const visitNode = node => {
+        if (!node || typeof node !== 'object' || node.nodeType === 'Lambda') return;
+        for (const key of Object.keys(node)) {
+          const value = node[key];
+          if (key === 'statements' && Array.isArray(value)) visit(value);
+          else if (Array.isArray(value)) value.forEach(visitNode);
+          else if (value?.nodeType === 'Return') {
+            // A lone `if (x) return;` body
+            const wrapped = new CSharpBlock();
+            wrapped.statements.push(...syncs(), value);
+            node[key] = wrapped;
+          } else if (value && typeof value === 'object' && value.nodeType) visitNode(value);
+        }
+      };
+      visit(block.statements);
+      const last = block.statements[block.statements.length - 1];
+      if (!last || (last.nodeType !== 'Return' && last.nodeType !== 'Throw')) block.statements.push(...syncs());
     }
 
     /**

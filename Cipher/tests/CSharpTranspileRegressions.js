@@ -564,6 +564,17 @@ check('harness: a dependency that fails to transpile names the dependency', () =
 });
 
 // ---------------------------------------------------------------------------
+// Arrays: JavaScript grows them, C# rebinds
+// ---------------------------------------------------------------------------
+check('arrays: a field aliasing a local the method pushes to is assigned it again before each return and at the end', () => {
+  const code = transpile('class K {\n  constructor() { /** @type {uint32[]} */ this.keys = null; }\n' +
+    '  /** @param {int32} n - n */\n  schedule(n) {\n    /** @type {uint32[]} */\n    const keys = [];\n    this.keys = keys;\n' +
+    '    if (n === 0) return;\n    for (let i = 0; i < n; i++) keys.push(i);\n  }\n}');
+  expectMatch(code, /this\.Keys = keys;\s*return;/, 'the field assigned again before the early return');
+  expectMatch(code, /keys = keys\.Append\([\s\S]*\}\s*this\.Keys = keys;\s*\}/, 'the field assigned again at the end');
+});
+
+// ---------------------------------------------------------------------------
 // Numbers: JavaScript divides integers to a fraction
 // ---------------------------------------------------------------------------
 check('Math.ceil/round of an integer quotient divide as doubles, not as integers', () => {
