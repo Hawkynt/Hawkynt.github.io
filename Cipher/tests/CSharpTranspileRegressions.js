@@ -94,7 +94,7 @@ check('IIFE hoisting: two IIFEs with the same local get distinct module names; a
   expectMatch(code, /\bTable\b[^;]*=/, 'the first hoisted Table');
   expectMatch(code, /\bTable_2\b[^;]*=/, 'the second, renamed Table_2');
   expectMatch(code, /table => table\[0\]/, 'the arrow parameter untouched');
-  expectMatch(code, /F\(Table_2\)/, 'the second IIFE reading its own renamed local');
+  expectMatch(code, /F\(Table_2\b/, 'the second IIFE reading its own renamed local');
 });
 
 // ---------------------------------------------------------------------------
@@ -188,6 +188,299 @@ check('jsdoc: a width-less @param {Array} does not override body-usage inference
 });
 
 // ---------------------------------------------------------------------------
+// Framework base classes: members are inherited, methods overridden
+// ---------------------------------------------------------------------------
+check('framework: a subclass inherits inputBuffer and isInverse instead of redeclaring them', () => {
+  const code = transpile('class I extends IAlgorithmInstance {\n  constructor(a) { super(a); this.isInverse = false; this.inputBuffer = []; }\n' +
+    '  Result() { return this.inputBuffer; }\n}');
+  expectNoMatch(code, /\bInputBuffer\s*\{\s*get/, 'a redeclared InputBuffer property');
+  expectNoMatch(code, /\bbool\s+IsInverse\b/, 'a redeclared IsInverse property');
+  expectMatch(code, /public override byte\[\] Result\(\)/, 'Result overriding the framework method');
+});
+check('framework: framework methods are overridden, a name the framework lacks is the subclass\'s own', () => {
+  const code = transpile('class I extends IBlockCipherInstance {\n  constructor(a) { super(a); this.BlockSize = 2; this.seed = 5; }\n' +
+    '  EncryptBlock(block) { return block; }\n  DecryptBlock(block) { return block; }\n}');
+  expectMatch(code, /public override byte\[\] EncryptBlock\(byte\[\] block\b/, 'an EncryptBlock override');
+  expectMatch(code, /public override byte\[\] DecryptBlock\(byte\[\] block\b/, 'a DecryptBlock override');
+  expectNoMatch(code, /\bint\s+BlockSize\s*\{/, 'a redeclared BlockSize');
+  expectMatch(code, /\bint\s+Seed\b/, 'the subclass\'s own int Seed');
+});
+check('framework: extra super() arguments and a super call the framework lacks are dropped', () => {
+  const code = transpile('class I extends IAlgorithmInstance {\n  /**\n   * @param {Algorithm} a - algorithm\n   * @param {boolean} inv - inverse\n   */\n' +
+    '  constructor(a, inv) { super(a, inv); }\n  ClearData() { super.ClearData(); }\n}');
+  expectMatch(code, /: base\(a\)/, ': base(a)');
+  expectNoMatch(code, /base\.ClearData\(/, 'base.ClearData()');
+});
+check('framework: CreateInstance() without a parameter still overrides with the framework signature', () => {
+  const code = transpile('class A extends BlockCipherAlgorithm {\n  constructor() { super(); this.name = "A"; }\n  CreateInstance() { return new I(this); }\n}\n' +
+    'class I extends IBlockCipherInstance { constructor(a) { super(a); } }');
+  expectMatch(code, /public override IBlockCipherInstance CreateInstance\(bool unused0 = default\)/, 'the framework CreateInstance signature');
+});
+check('framework: a module function named like an inherited member is called qualified', () => {
+  const code = transpile('function EncryptBlock(b) { return b; }\nclass I extends IBlockCipherInstance {\n' +
+    '  constructor(a) { super(a); }\n  Result() { return EncryptBlock(this.inputBuffer); }\n}');
+  expectMatch(code, /Generated\.EncryptBlock\(this\.InputBuffer\)/, 'Generated.EncryptBlock(this.InputBuffer)');
+});
+
+// ---------------------------------------------------------------------------
+// The algorithm registry
+// ---------------------------------------------------------------------------
+check('registry: every registered algorithm is listed, the first is AlgorithmInstance', () => {
+  const code = transpile('class A extends HashFunctionAlgorithm { constructor() { super(); this.name = "A"; } }\n' +
+    'class B extends A { constructor() { super(); this.name = "B"; } }\nRegisterAlgorithm(new A());\nRegisterAlgorithm(new B());');
+  expectMatch(code, /static readonly Algorithm RegisteredAlgorithm0 = new A\(\);[\s\S]*RegisteredAlgorithm1 = new B\(\);/, 'a static field per registered algorithm');
+  expectMatch(code, /static readonly Algorithm\[\] Algorithms = new Algorithm\[\] \{ RegisteredAlgorithm0, RegisteredAlgorithm1 \}/, 'Algorithms listing them');
+  expectMatch(code, /static readonly Algorithm AlgorithmInstance = Algorithms\[0\]/, 'AlgorithmInstance = Algorithms[0]');
+});
+check('registry: a module-declared algorithmInstance is kept and listed', () => {
+  const code = transpile('class A extends HashFunctionAlgorithm { constructor() { super(); this.name = "A"; } }\n' +
+    'const algorithmInstance = new A();\nif (!AlgorithmFramework.Find(algorithmInstance.name)) { RegisterAlgorithm(algorithmInstance); }');
+  expectMatch(code, /Algorithms = new Algorithm\[\] \{ AlgorithmInstance \}/, 'Algorithms = { AlgorithmInstance }');
+  expectNoMatch(code, /AlgorithmInstance = Algorithms\[0\]/, 'a second AlgorithmInstance');
+});
+
+check('registry: a loop registering one variant per name lists each variant', () => {
+  const code = transpile('class A extends HashFunctionAlgorithm { /** @param {string} v - variant */ constructor(v) { super(); this.name = "A-" + v; } }\n' +
+    '/** @type {string[]} */\nconst VARIANTS = ["256", "512"];\n' +
+    'for (let i = 0; i < VARIANTS.length; ++i) { const algo = new A(VARIANTS[i]); if (!AlgorithmFramework.Find(algo.name)) RegisterAlgorithm(algo); }');
+  expectMatch(code, /RegisteredAlgorithm0 = new A\("256"\);[\s\S]*RegisteredAlgorithm1 = new A\("512"\);/, 'one field per variant');
+});
+check('registry: an algorithm registered through a module helper is listed', () => {
+  const code = transpile('class A extends HashFunctionAlgorithm { constructor() { super(); this.name = "A"; } }\n' +
+    '/** @param {A} algo - algorithm */\nfunction registerOnce(algo) { if (!AlgorithmFramework.Find(algo.name)) RegisterAlgorithm(algo); }\n' +
+    'registerOnce(new A());');
+  expectMatch(code, /RegisteredAlgorithm0 = new A\(\);[\s\S]*Algorithms = new Algorithm\[\] \{ RegisteredAlgorithm0 \}/, 'Algorithms = { new A() }');
+  expectMatch(code, /static void RegisterAlgorithm\(Algorithm algorithm\)/, 'a RegisterAlgorithm method for the helper');
+});
+check('registry: a dependency transpiled asDependency brings no usings, stubs or Main', () => {
+  const code = quiet(() => {
+    const ast = new TypeAwareJSASTParser('class D extends HashFunctionAlgorithm { constructor() { super(); this.name = "D"; } }\nRegisterAlgorithm(new D());').parse();
+    return plugin.GenerateFromAST(ast, { namespace: 'RegressionTest', className: 'DepGenerated', asDependency: true }).code;
+  });
+  expectNoMatch(code, /^using /m, 'a using directive');
+  expectNoMatch(code, /static void Main\(/, 'a Main method');
+  expectNoMatch(code, /class IAlgorithmInstance/, 'the framework stubs');
+  expectMatch(code, /Algorithms = new Algorithm\[\] \{ RegisteredAlgorithm0 \}/, 'its own registry');
+});
+check('module bindings: a const the module grows is not readonly (CS0198)', () => {
+  const code = transpile('/** @type {uint32[]} */\nconst TABLE = [];\nfunction fill() { TABLE.push(1); }');
+  expectNoMatch(code, /readonly uint\[\] TABLE/, 'a readonly TABLE');
+});
+
+// ---------------------------------------------------------------------------
+// Declarations take their IL type
+// ---------------------------------------------------------------------------
+check('IL types: a constructor parameter takes its JSDoc class type, not one guessed from its name', () => {
+  const code = transpile('class Fancy extends BlockCipherAlgorithm { constructor() { super(); this.rounds = 8; } CreateInstance(inv) { return new I(this); } }\n' +
+    'class I extends IBlockCipherInstance {\n  /** @param {Fancy} algorithm - parent */\n  constructor(algorithm) { super(algorithm); this.r = algorithm.rounds; }\n}');
+  expectMatch(code, /public I\(Fancy algorithm\)/, 'I(Fancy algorithm)');
+});
+
+// ---------------------------------------------------------------------------
+// Expression mappings: push
+// ---------------------------------------------------------------------------
+check('push: every argument of a multi-argument push is appended, in order', () => {
+  const code = transpile('/**\n * @param {uint8[]} a - first\n * @param {uint8[]} b - second\n * @returns {uint8[]} joined\n */\n' +
+    'function join(a, b) { /** @type {uint8[]} */ const res = []; res.push(...a, ...b); res.push(1, 2); return res; }');
+  expectMatch(code, /res = res\.Concat\(a\)\.Concat\(b\)\.ToArray\(\)/, 'res.Concat(a).Concat(b)');
+  expectMatch(code, /res = res\.Append\([^;]*1[^;]*\)\.Append\([^;]*2[^;]*\)\.ToArray\(\)/, 'res.Append(1).Append(2)');
+});
+
+// ---------------------------------------------------------------------------
+// Arrays grown through a parameter
+// ---------------------------------------------------------------------------
+check('arrays: a local declared empty and filled by index grows on each store', () => {
+  const code = transpile('/** @returns {uint32[]} keys */\nfunction keys() { /** @type {uint32[]} */ const rk = []; for (let i = 0; i < 4; ++i) rk[i] = i * 3; return rk; }');
+  expectMatch(code, /OpCodes\.SetGrow<uint>\(ref rk, i, /, 'OpCodes.SetGrow<uint>(ref rk, i, ...)');
+});
+check('arrays: a field assigned empty and filled by index grows on each store', () => {
+  const code = transpile('class C {\n  constructor() { /** @type {uint32[]} */ this.rk = []; }\n' +
+    '  /** @param {int32} n - count */\n  fill(n) { this.rk = []; for (let i = 0; i < n; ++i) this.rk[i] = i; }\n}');
+  expectMatch(code, /\(this\.Rk = OpCodes\.Grown<uint>\(this\.Rk, i\)\)\[i\] = /, '(this.Rk = OpCodes.Grown<uint>(this.Rk, i))[i] = ...');
+});
+check('arrays: a field assigned an empty local array grows on each store too', () => {
+  const code = transpile('class C {\n  constructor() { /** @type {uint32[]} */ this.rk = null; }\n' +
+    '  /** @param {int32} n - count */\n  fill(n) { /** @type {uint32[]} */ const keys = []; this.rk = keys; for (let i = 0; i < n; ++i) this.rk[i] = i; }\n}');
+  expectMatch(code, /OpCodes\.Grown<uint>\(this\.Rk, i\)/, 'OpCodes.Grown<uint>(this.Rk, i)');
+});
+check('push: null pushed onto a value-type array is its default (CS0037)', () => {
+  const code = transpile('/** @returns {uint8[]} bytes */\nfunction f() { /** @type {uint8[]} */ const d = []; d.push(null); return d; }');
+  expectMatch(code, /\.Append\(default\(byte\)\)/, '.Append(default(byte))');
+});
+check('push: an array parameter the callee grows is passed by ref', () => {
+  const code = transpile('/**\n * @param {uint8[]} dest - grown\n * @param {uint8} v - value\n */\nfunction emit(dest, v) { dest.push(v); }\n' +
+    '/** @returns {uint8[]} bytes */\nfunction build() { /** @type {uint8[]} */ const res = []; emit(res, 1); emit(res, 2); return res; }');
+  expectMatch(code, /Emit\(ref byte\[\] dest/, 'Emit(ref byte[] dest, ...)');
+  expectMatch(code, /Emit\(ref res,/, 'Emit(ref res, ...)');
+});
+
+// ---------------------------------------------------------------------------
+// Parameter names
+// ---------------------------------------------------------------------------
+check('scope: parameters P and p get distinct C# names (CS0100)', () => {
+  const code = transpile('/**\n * @param {int32} P - modulus\n * @param {int32} p - value\n * @returns {int32} r\n */\n' +
+    'function red(P, p) { return p % P; }');
+  expectMatch(code, /Red\(int p, int p2\)/, 'Red(int p, int p2)');
+  expectMatch(code, /return p2 % p;/, 'the body reading p2 % p');
+});
+
+// ---------------------------------------------------------------------------
+// Immediately invoked functions as values
+// ---------------------------------------------------------------------------
+check('IIFE: a function invoked where a value is expected becomes an invoked typed lambda', () => {
+  const code = transpile('/** @returns {int32} sum */\nfunction total() { const i = 2; ' +
+    'return i + (function () { /** @type {int32} */ let i = 3; return i; })(); }');
+  expectMatch(code, /\(\(Func<int>\)\(\(\) =>/, '((Func<int>)(() => ...');
+  expectMatch(code, /\.Invoke\(\)/, '.Invoke()');
+  expectNoMatch(code, /Unknown\(/, 'an Unknown() call');
+});
+
+// ---------------------------------------------------------------------------
+// Operator grouping
+// ---------------------------------------------------------------------------
+check('grouping: a parenthesized || inside && keeps its parentheses', () => {
+  const code = transpile('/**\n * @param {int32} a - a\n * @param {int32} b - b\n * @returns {boolean} r\n */\n' +
+    'function f(a, b) { return a > 0 && (b > 0 || b < -5); }');
+  expectMatch(code, /a > 0 && \(b > 0 \|\| b < -5\)/, 'a > 0 && (b > 0 || b < -5)');
+});
+
+// ---------------------------------------------------------------------------
+// BigInteger narrowing
+// ---------------------------------------------------------------------------
+check('BigInteger: ToQWord keeps the low 64 bits before converting', () => {
+  const code = transpile('/**\n * @param {BigInt} x - value\n * @returns {BigInt} low 64 bits\n */\n' +
+    'function wrap64(x) { return OpCodes.ToQWord(x * 3n); }');
+  expectMatch(code, /& ulong\.MaxValue/, 'a mask with ulong.MaxValue');
+});
+check('BigInteger: a 64-bit shift of a BigInteger is not cast down to ulong', () => {
+  const code = transpile('/**\n * @param {BigInt} x - value\n * @returns {BigInt} shifted\n */\n' +
+    'function hi(x) { return OpCodes.XorN(x, OpCodes.ShiftRn(x, 40)); }');
+  expectNoMatch(code, /\(ulong\)\(x\)/, 'x cast to ulong');
+});
+
+// ---------------------------------------------------------------------------
+// Truthiness and mixed-sign arithmetic
+// ---------------------------------------------------------------------------
+check('truthiness: !bigint compares with zero', () => {
+  const code = transpile('/**\n * @param {BigInt} x - value\n * @returns {boolean} zero\n */\nfunction z(x) { return !x; }');
+  expectMatch(code, /x == 0/, 'x == 0');
+});
+check('arithmetic: ulong += int takes the int as ulong (CS0034)', () => {
+  const code = transpile('class C {\n  constructor() { /** @type {uint64} */ this.total = 0n; }\n' +
+    '  /** @param {int32} n - count */\n  add(n) { this.total += n; }\n}');
+  expectMatch(code, /Total \+= unchecked\(\(ulong\)\(n\)\)|Total \+= \(ulong\)\(?n\)?/, 'Total += (ulong)n');
+});
+
+// ---------------------------------------------------------------------------
+// Fields take their IL type in every declaring pass
+// ---------------------------------------------------------------------------
+check('IL types: a key backing field keeps its JSDoc class type, not byte[] from its name', () => {
+  const code = transpile('class Key { constructor(n) { /** @type {BigInt} */ this.n = n; } }\n' +
+    'class R {\n  constructor() { /** @type {Key|null} */ this._publicKey = null; }\n' +
+    '  /** @param {Key|null} k - key */\n  set publicKey(k) { this._publicKey = k ? k : null; }\n' +
+    '  /** @returns {Key|null} key */\n  get publicKey() { return this._publicKey; }\n}');
+  expectMatch(code, /Key\?? _publicKey\b/, 'a Key-typed _publicKey');
+  expectMatch(code, /public Key PublicKey\b/, 'a Key-typed PublicKey');
+});
+check('IL types: a jagged field filled outside the constructor keeps its JSDoc type', () => {
+  const code = transpile('class D {\n  init() {\n    /** @type {uint8[][][]} */\n    this.SBOX = [];\n    /** @type {uint8[][]} */\n' +
+    '    const box = [[1, 2], [3, 4]];\n    this.SBOX.push(box);\n    return this.SBOX[0][1][0];\n  }\n}');
+  expectMatch(code, /byte\[\]\[\]\[\] SBOX\b/, 'byte[][][] SBOX');
+  expectMatch(code, /this\.SBOX\.Append\(box\)/, 'this.SBOX.Append(box) without conversion');
+});
+check('IL types: a counter field keeps its JSDoc type, not a guess from its name or literal', () => {
+  const code = transpile('class C {\n  constructor() { /** @type {int32} */ this.chunk_counter = 0; }\n' +
+    '  reset() { /** @type {uint32[]} */ this.state_words = []; this.chunk_counter = 0; }\n}');
+  expectMatch(code, /\bint Chunk_counter\b/, 'int Chunk_counter');
+  expectMatch(code, /\buint\[\] State_words\b/, 'uint[] State_words');
+});
+
+// ---------------------------------------------------------------------------
+// Numeric operands
+// ---------------------------------------------------------------------------
+check('numeric: a float operand of a bitwise operator is truncated as JavaScript does', () => {
+  const code = transpile('/**\n * @param {float64} x - value\n * @returns {int32} low byte\n */\nfunction lowByte(x) { return x & 255; }');
+  expectMatch(code, /\(long\)\(x\)\) & 255|\(long\)x & 255/, '(long)x & 255');
+});
+check('numeric: conditional branches of int and uint both take the conditional\'s IL type', () => {
+  const code = transpile('/**\n * @param {boolean} c - choice\n * @param {int32} a - signed\n * @param {uint32} b - unsigned\n * @returns {int32} r\n */\n' +
+    'function pick(c, a, b) { return c ? a : OpCodes.ToUint32(b % 7); }');
+  expectMatch(code, /c \? unchecked\(\((long|int)\)\(a\)\) : unchecked\(\((long|int)\)/, 'both branches cast to the IL type');
+});
+check('IL types: an array of any values is dynamic, so it holds any array', () => {
+  const code = transpile('/** @param {uint8[]} s - state\n * @returns {Array<*>} copy */\nfunction copy(s) { /** @type {any[]} */ const r = s.slice(); return r; }');
+  expectMatch(code, /dynamic r = /, 'dynamic r');
+});
+check('strings: a character read by index into a string local is a string', () => {
+  const code = transpile('/**\n * @param {string} s - text\n * @param {int32} i - index\n * @returns {string} char\n */\n' +
+    'function at(s, i) { /** @type {string} */ const c = s[i]; return c; }');
+  expectMatch(code, /string c = s\[i\]\.ToString\(\);/, 'string c = s[i].ToString();');
+});
+check('numeric: toFixed formats with a fixed digit count, ArrayBuffer.isView tests for an array', () => {
+  const code = transpile('/**\n * @param {float64} x - value\n * @param {uint8[]} d - data\n * @returns {string} text\n */\n' +
+    'function show(x, d) { return ArrayBuffer.isView(d) ? x.toFixed(2) : ""; }');
+  expectMatch(code, /ToString\("F" \+ 2, System\.Globalization\.CultureInfo\.InvariantCulture\)/, 'ToString("F" + 2, InvariantCulture)');
+  expectMatch(code, /d is System\.Array/, 'd is System.Array');
+});
+check('strings: BigInt(text), padStart and !lookup() map to the runtime and a null test', () => {
+  const code = transpile('class P { constructor() { /** @type {int32} */ this.n = 1; } }\n' +
+    '/** @param {string} k - key\n * @returns {P|null} params */\nfunction find(k) { return k === "a" ? new P() : null; }\n' +
+    '/**\n * @param {string} hex - digits\n * @returns {string} padded\n */\n' +
+    'function show(hex) { if (!find(hex)) return ""; const v = BigInt("0x" + hex); return hex.padStart(8, "0") + v; }');
+  expectMatch(code, /ParseBigInt\("0x" \+ hex\)/, 'ParseBigInt("0x" + hex)');
+  expectMatch(code, /PadString\(hex, 8, "0", true\)/, 'PadString(hex, 8, "0", true)');
+  expectMatch(code, /if \(Find\(hex\) == null\)/, 'Find(hex) == null');
+});
+check('numeric: the global isNaN tests a double', () => {
+  const code = transpile('/**\n * @param {float64} x - value\n * @returns {boolean} not a number\n */\nfunction nan(x) { return isNaN(x); }');
+  expectMatch(code, /double\.IsNaN\(/, 'double.IsNaN(...)');
+});
+
+// ---------------------------------------------------------------------------
+// Framework-typed values
+// ---------------------------------------------------------------------------
+check('framework: a member the framework type lacks is read through dynamic', () => {
+  const code = transpile('class K extends IAlgorithmInstance {\n  /** @param {Algorithm} hash - hash algorithm */\n' +
+    '  use(hash) { /** @type {IMacInstance} */ const mac = hash.CreateInstance(false); mac.key = [1, 2]; return mac; }\n}');
+  expectMatch(code, /\(dynamic\)\(?mac\)?\)?\)?\.Key/, '((dynamic)mac).Key');
+  expectMatch(code, /\(IMacInstance\)/, 'the created instance cast to IMacInstance');
+});
+
+// ---------------------------------------------------------------------------
+// Array literals and nullable members take the IL's types
+// ---------------------------------------------------------------------------
+check('IL types: an array literal passed to a call inside a test vector takes the parameter type', () => {
+  const code = transpile('/**\n * @param {int32[]} symbols - symbols\n * @returns {uint8[]} octets\n */\n' +
+    'function toOctets(symbols) { return symbols.map(s => s & 255); }\n' +
+    'class A extends Algorithm {\n  constructor() { super(); this.tests = [new TestCase(toOctets([0, 1, -1, 0]), [1], "t", "u")]; }\n}');
+  expectMatch(code, /ToOctets\(new int\[\] \{ 0, 1, -1, 0 \}\)/, 'ToOctets(new int[] { 0, 1, -1, 0 })');
+});
+check('test vectors: a non-byte array given to new TestCase is converted to bytes', () => {
+  const code = transpile('class A extends Algorithm {\n  constructor() { super(); this.tests = [new TestCase([1, 2], ' +
+    '(() => { /** @type {uint32[]} */ const out = []; for (let i = 0; i < 3; i++) out.push(i); return out; })(), "t", "u")]; }\n}');
+  expectMatch(code, /\.Invoke\(\)\.Select\(_v => unchecked\(\(byte\)\(_v\)\)\)\.ToArray\(\)/, 'the uint[] IIFE result converted to byte[]');
+});
+check('test vectors: an object vector\'s non-byte input is converted to bytes', () => {
+  const code = transpile('class A extends Algorithm {\n  constructor() { super(); this.tests = [{ text: "t", uri: "u", ' +
+    'input: (() => { /** @type {uint32[]} */ const out = []; for (let i = 0; i < 3; i++) out.push(i); return out; })(), expected: [1] }]; }\n}');
+  expectMatch(code, /Input = \(\(Func<uint\[\]>\)[\s\S]*\.Invoke\(\)\.Select\(_v => unchecked\(\(byte\)\(_v\)\)\)\.ToArray\(\)/, 'Input converted to byte[]');
+});
+check('IL types: a nullable value-type field is T?, an undefined value-type field becomes default', () => {
+  const code = transpile('class C {\n  constructor() { /** @type {int32|null} */ this.size = null; /** @type {int32} */ this.count = undefined; }\n' +
+    '  /** @returns {int32} size */\n  get() { return this.size === null ? 0 : this.size; }\n}');
+  expectMatch(code, /int\? Size\b/, 'int? Size');
+  expectMatch(code, /this\.Count = default/, 'this.Count = default');
+});
+
+// ---------------------------------------------------------------------------
+// OpCodes helpers
+// ---------------------------------------------------------------------------
+check('OpCodes.CreateArray: the array has the element type its target is declared with', () => {
+  const code = transpile('class C { constructor() { /** @type {BigInt[]} */ this.s = OpCodes.CreateArray(4, 0n); } }');
+  expectMatch(code, /CreateArray<BigInteger>\(/, 'CreateArray<BigInteger>(...)');
+});
+
+// ---------------------------------------------------------------------------
 // Runtime stubs (needs the .NET SDK)
 // ---------------------------------------------------------------------------
 check('runtime stubs: BlockAbsorber, pad helpers, ToRadixString, IsTruthy, GFMul behave like the JS framework', () => {
@@ -195,7 +488,13 @@ check('runtime stubs: BlockAbsorber, pad helpers, ToRadixString, IsTruthy, GFMul
   const probe = spawnSync('dotnet', ['--version'], { encoding: 'utf-8' });
   if (probe.status !== 0) return 'skip';
 
-  const stubs = transpile('function unused() { return 0; }', true)
+  // A block cipher that relies on the framework's Feed and block loop
+  const stubs = transpile('class XorInstance extends IBlockCipherInstance {\n' +
+    '  constructor(algorithm) { super(algorithm); this.BlockSize = 2; }\n' +
+    '  EncryptBlock(block) { return [block[0] ^ this.key[0], block[1] ^ this.key[1]]; }\n' +
+    '  DecryptBlock(block) { return this.EncryptBlock(block); }\n}\n' +
+    '/**\n * @param {BigInt} x - value\n * @returns {BigInt} low 64 bits\n */\nfunction wrap64(x) { return OpCodes.ToQWord(x); }\n' +
+    'class XorAlgorithm extends BlockCipherAlgorithm { constructor() { super(); this.name = "XorProbe"; } }\nRegisterAlgorithm(new XorAlgorithm());', true)
     .replace(/public static void Main\s*\([^)]*\)\s*\{[^}]*\}/, '');
   const program = `${stubs}
 namespace RegressionTest {
@@ -246,6 +545,65 @@ namespace RegressionTest {
       var threw = false;
       try { OpCodes.ModInverseN(new BigInteger(4), new BigInteger(8)); } catch (ArgumentException) { threw = true; }
       Eq("modinv-none", threw, true);
+      // Framework instance: Feed accumulates, Result runs EncryptBlock over every block
+      var xor = new Generated.XorInstance(null);
+      xor.Key = new byte[] { 1, 2 };
+      xor.Feed(new byte[] { 0, 0 });
+      xor.Feed(new byte[0]);
+      xor.Feed(new byte[] { 3, 3 });
+      Eq("feed-result", Convert.ToHexString(xor.Result()), "01020201");
+      Eq("result-drains", xor.InputBuffer.Length, 0);
+      xor.Feed(new byte[] { 1 });
+      var partial = false;
+      try { xor.Result(); } catch (Exception) { partial = true; }
+      Eq("partial-block", partial, true);
+      var keyless = new Generated.XorInstance(null);
+      keyless.Feed(new byte[] { 1, 2 });
+      var noKey = false;
+      try { keyless.Result(); } catch (Exception) { noKey = true; }
+      Eq("no-key", noKey, true);
+      // ToQWord keeps the low 64 bits of a wider BigInteger (no OverflowException)
+      Eq("qword-wrap", Generated.Wrap64(BigInteger.Pow(2, 70) + 5), 5);
+      Eq("qword-max", Generated.Wrap64(BigInteger.Pow(2, 64) - 1), ulong.MaxValue);
+      // SetBit on a uint keeps it a uint; CreateArray fills any element type
+      Eq("setbit-uint", OpCodes.SetBit(0x80000000u, 0, true), 0x80000001u);
+      Eq("setbit-clear", OpCodes.SetBit(0x80000001u, 31, false), 1u);
+      Eq("createarray", string.Join(",", OpCodes.CreateArray(3, new BigInteger(7))), "7,7,7");
+      Eq("createarray-empty", OpCodes.CreateArray(0, 1u).Length, 0);
+      // The registry finds a registered algorithm by name, and nothing for an unknown one
+      Eq("find", AlgorithmFramework.Find("XorProbe")?.Name, "XorProbe");
+      Eq("find-none", AlgorithmFramework.Find("NoSuchAlgorithm") == null, true);
+      Eq("getall", AlgorithmFramework.GetAll().Length >= 1, true);
+      // ParseBigInt reads JavaScript BigInt text; PadString repeats its pad
+      Eq("parsebigint-hex", FrameworkFunctions.ParseBigInt("0xff"), 255);
+      Eq("parsebigint-dec", FrameworkFunctions.ParseBigInt("-12"), -12);
+      Eq("parsebigint-bin", FrameworkFunctions.ParseBigInt("0b101"), 5);
+      Eq("padstart", FrameworkFunctions.PadString("7", 4, "ab", true), "aba7");
+      Eq("padend", FrameworkFunctions.PadString("7", 3, "0", false), "700");
+      Eq("pad-long", FrameworkFunctions.PadString("12345", 3, "0", true), "12345");
+      // BitStream writers take a signed or dynamic number as its low 32 bits
+      var bits = new BitStream();
+      dynamic signedLength = 0x01020304;
+      bits.WriteUint32LE(signedLength);
+      bits.WriteByte(-1);
+      Eq("bitstream-signed", Convert.ToHexString(bits.ToArray()), "04030201FF");
+      // SetGrow stores by index, growing the array as a JavaScript store does
+      var grown = new uint[0];
+      OpCodes.SetGrow(ref grown, 2, 7u);
+      Eq("setgrow", string.Join(",", grown), "0,0,7");
+      OpCodes.SetGrow(ref grown, 0, 1u);
+      Eq("setgrow-inside", string.Join(",", grown), "1,0,7");
+      Eq("grown", OpCodes.Grown(new byte[1], 3).Length, 4);
+      // Foundation classes take a computed (double) size as JavaScript does
+      Eq("graph-double", new BipartiteGraph(3.0, 2.0) != null, true);
+      Eq("matrix-double", new SparseMatrix(2.0, 2.0) != null, true);
+      var kept = new byte[5];
+      Eq("grown-same", ReferenceEquals(OpCodes.Grown(kept, 2), kept), true);
+      // BytesToChars maps each byte to one char; RotL64_HL rotates the high:low pair
+      Eq("bytestochars", OpCodes.BytesToChars(new byte[] { 65, 0xE9 }), "Aé");
+      Eq("rotl64-hl", OpCodes.RotL64_HL(0x80000000u, 1u, 1), (0u, 3u));
+      Eq("rotl64-hl-32", OpCodes.RotL64_HL(1u, 2u, 32), (2u, 1u));
+      Eq("rotl64-hl-0", OpCodes.RotL64_HL(1u, 2u, 64), (1u, 2u));
       Console.WriteLine(failures == 0 ? "STUBS_OK" : "STUBS_FAILED");
       return failures == 0 ? 0 : 1;
     }
