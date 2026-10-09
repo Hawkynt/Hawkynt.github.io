@@ -74,26 +74,12 @@
   // taken from the collection's own verified implementations rather than
   // restated here.
   //
-  // The load is deferred to first use rather than done at module scope: the
+  // They are looked up in the registry, with a CommonJS fallback on a miss
+  // (see FindAlgorithm) rather than a require at module scope: the
   // documentation and README generators attribute a registration to whichever
   // file was being loaded when it happened, so requiring the hash modules here
-  // would file SHA-512, SHAKE128 and SHAKE256 under this directory.
-  let hashDependenciesLoaded = false;
-  /**
-   * @returns {void} Result
-   */
-  function LoadHashDependencies() {
-    if (hashDependenciesLoaded) return;
-    hashDependenciesLoaded = true;
-    if (typeof require === 'undefined') return;   // browser: script tags did it
-    for (const module of ['sha256', 'sha512', 'shake']) {
-      try {
-        require('../hash/' + module + '.js');
-      } catch (e) {
-        // already loaded, or a bundler without CommonJS
-      }
-    }
-  }
+  // would file SHA-512, SHAKE128 and SHAKE256 under this directory. In the
+  // browser the page has loaded them as script tags.
 
   //#region ===== PARAMETER SETS =====
 
@@ -514,8 +500,10 @@
   function FindAlgorithm(name) {
     /** @type {Algorithm} */
     let found = AlgorithmFramework.Find(name);
-    if (!found) {
-      LoadHashDependencies();
+    if (!found && typeof require !== 'undefined') {
+      try { require('../hash/sha256.js'); } catch (e) { /* reported below */ }
+      try { require('../hash/sha512.js'); } catch (e) { /* reported below */ }
+      try { require('../hash/shake.js'); } catch (e) { /* reported below */ }
       found = AlgorithmFramework.Find(name);
     }
     if (!found)

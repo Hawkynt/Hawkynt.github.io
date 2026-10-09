@@ -453,6 +453,96 @@ test('Random padding: given no original length, when unpadding, then it is refus
   expectThrow(() => unpad.Result(), 'original data length');
 });
 
+// ---------------------------------------------------------------- dependencies from the registry
+// These build on another registered algorithm (HMAC, a hash, DES, ZUC) and
+// must reach it through the registry alone: on a page there is no require,
+// and the page may load the dependency after the file that uses it.
+const RFC4226_KEY = Array.from(Buffer.from('12345678901234567890'));
+const RFC6238_KEY_SHA256 = Array.from(Buffer.from('12345678901234567890123456789012'));
+
+function hotp(framework, counter) {
+  const instance = framework.Find('HOTP').CreateInstance();
+  instance.key = RFC4226_KEY;
+  instance.counter = counter;
+  instance.digits = 6;
+  return instance.Result();
+}
+function totp(framework, key, timestamp, hashName) {
+  const instance = framework.Find('TOTP').CreateInstance();
+  instance.key = key;
+  instance.timestamp = timestamp;
+  instance.timestep = 30;
+  instance.digits = 8;
+  instance.hashAlgorithm = hashName;
+  return instance.Result();
+}
+
+test('HOTP: given a page with SHA-1 and HMAC, when counter 1 is computed, then it is the RFC 4226 value 287082', () => {
+  const framework = pageWith('algorithms/hash/sha1.js', 'algorithms/mac/hmac.js', 'algorithms/special/hotp.js');
+  equalHex(hotp(framework, 1), hex(Buffer.from('287082')));
+});
+test('HOTP: given a page without HMAC, when an OTP is computed, then it is refused naming HMAC', () => {
+  const framework = pageWith('algorithms/hash/sha1.js', 'algorithms/special/hotp.js');
+  expectThrow(() => hotp(framework, 0), 'HMAC');
+});
+test('TOTP: given a page with SHA-256 and HMAC loaded after TOTP, when T=59 is computed with SHA-256, then it is the RFC 6238 value 46119246', () => {
+  const framework = pageWith('algorithms/special/totp.js', 'algorithms/hash/sha256.js', 'algorithms/mac/hmac.js');
+  equalHex(totp(framework, RFC6238_KEY_SHA256, 59, 'SHA-256'), hex(Buffer.from('46119246')));
+});
+test('TOTP: given the undashed hash name SHA1, when T=59 is computed, then it is the RFC 6238 SHA-1 value 94287082', () => {
+  const framework = pageWith('algorithms/hash/sha1.js', 'algorithms/mac/hmac.js', 'algorithms/special/totp.js');
+  equalHex(totp(framework, RFC4226_KEY, 59, 'SHA1'), hex(Buffer.from('94287082')));
+});
+test('TOTP: given a hash other than SHA-1, SHA-256 or SHA-512, when an OTP is computed, then it is refused', () => {
+  const framework = pageWith('algorithms/hash/sha1.js', 'algorithms/mac/hmac.js', 'algorithms/special/totp.js');
+  expectThrow(() => totp(framework, RFC4226_KEY, 59, 'MD5'), 'Unsupported hash algorithm');
+});
+test('TOTP: given a page without HMAC, when an OTP is computed, then it is refused naming HMAC', () => {
+  const framework = pageWith('algorithms/hash/sha1.js', 'algorithms/special/totp.js');
+  expectThrow(() => totp(framework, RFC4226_KEY, 59, 'SHA-1'), 'HMAC');
+});
+
+test('Bcrypt-PBKDF: given a page without SHA-512, when a key is derived, then it is refused naming SHA-512', () => {
+  const framework = pageWith('algorithms/kdf/bcrypt-pbkdf.js');
+  const instance = framework.Find('Bcrypt-PBKDF').CreateInstance();
+  instance.salt = Array.from(Buffer.from('salt'));
+  instance.iterations = 1;
+  instance.outputSize = 32;
+  instance.Feed(Array.from(Buffer.from('password')));
+  expectThrow(() => instance.Result(), 'SHA-512');
+});
+
+function dealEncrypt(framework) {
+  const instance = framework.Find('DEAL-256 (DarkCrypt)').CreateInstance();
+  instance.key = new Array(32).fill(0);
+  instance.Feed(new Array(16).fill(0));
+  return instance.Result();
+}
+test('DEAL-256 (DarkCrypt): given a page that loads DES after it, when the zero block is encrypted, then it is the committed zero-key vector', () => {
+  const framework = pageWith('algorithms/block/darkcrypt-deal.js', 'algorithms/block/des.js');
+  equalHex(dealEncrypt(framework), 'f0137a90d2268b14614f67c16aa5ec51');
+});
+test('DEAL-256 (DarkCrypt): given a page without DES, when an instance is made, then it is refused naming DES', () => {
+  const framework = pageWith('algorithms/block/darkcrypt-deal.js');
+  expectThrow(() => dealEncrypt(framework), 'DES');
+});
+
+function zucMac(framework) {
+  const instance = framework.Find('ZUC-128-MAC').CreateInstance();
+  instance.key = new Array(16).fill(0);
+  instance.iv = new Array(16).fill(0);
+  instance.Feed(new Array(50).fill(0));
+  return instance.Result();
+}
+test('ZUC-128-MAC: given a page that loads ZUC after it, when 400 zero bits are authenticated, then it is the 3GPP tag 508dd5ff', () => {
+  const framework = pageWith('algorithms/mac/zuc128mac.js', 'algorithms/stream/zuc.js');
+  equalHex(zucMac(framework), '508dd5ff');
+});
+test('ZUC-128-MAC: given a page without ZUC, when a tag is computed, then it is refused naming ZUC', () => {
+  const framework = pageWith('algorithms/mac/zuc128mac.js');
+  expectThrow(() => zucMac(framework), 'ZUC');
+});
+
 /**
  * Run every algorithm regression case.
  * @param {object} options - { verbose }
