@@ -3123,6 +3123,12 @@ class OpCodes(metaclass=_OpCodesMeta):
           '        obj.__dict__[raw] = value\n' +
           '    return value'
       });
+      // TypedArray.prototype.set(source, offset), the source evaluated once
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_set_into(target, source, offset=0):\n' +
+          '    target[offset:offset + len(source)] = source'
+      });
       stubs.push({
         nodeType: 'RawCode', code:
           'def _js_reverse(a):\n' +
@@ -14191,6 +14197,14 @@ class OpCodes(metaclass=_OpCodesMeta):
       const target = this.transformExpression(node.target || node.array);
       const source = this.transformExpression(node.source || node.values);
       const offset = node.offset ? this.transformExpression(node.offset) : PythonLiteral.Int(0);
+
+      // The slice form names the source twice; a source that is a call
+      // (`sig.set(VoleHash(...), off)`) is evaluated once by _js_set_into
+      const sourceNode = node.source || node.values;
+      const plainSource = sourceNode && (sourceNode.type === 'Identifier' || sourceNode.type === 'ThisPropertyAccess' ||
+        (sourceNode.type === 'MemberExpression' && !sourceNode.computed));
+      if (!plainSource)
+        return new PythonCall(new PythonIdentifier('_js_set_into'), [target, source, offset]);
 
       // target[offset:offset+len(source)] = source
       const sourceLen = new PythonCall(new PythonIdentifier('len'), [source]);

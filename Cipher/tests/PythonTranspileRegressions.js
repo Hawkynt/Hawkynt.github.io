@@ -624,6 +624,12 @@ check('update: a prefix ++/-- statement on a module variable declares it global'
   return expectOutput(runPython(js, 'print(src(), src(), calls, g([0, 0, 0]))'), ['1 2 2 [2, [0, 0, 5]]']);
 });
 
+check('set: TypedArray.set evaluates a call source once', () => {
+  const js = 'let calls = 0;\nfunction src() { ++calls; return [7, 8]; }\nfunction f() { const out = new Uint8Array(4); out.set(src(), 1); const a = [5]; out.set(a, 3); return [out, calls]; }';
+  // Given a source that is a call with a side effect and one that is a plain variable
+  return expectOutput(runPython(js, 'r = f()\nprint(list(r[0]), r[1])'), ['[0, 7, 8, 5] 1']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }
