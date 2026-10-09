@@ -158,6 +158,12 @@ sameAsJs('string: /\\p{L}/u matches a letter beyond ASCII, not a digit',
 // ---------------------------------------------------------------------------
 // Arrays
 // ---------------------------------------------------------------------------
+sameAsJs('array: an empty array made in a loop is a new array each time',
+  '/** @returns {string} */ function probe() {\n' +
+  '  /** @type {int32[][]} */ const lists = [];\n' +
+  '  for (let i = 0; i < 3; i++) { /** @type {int32[]} */ const a = []; lists.push(a); }\n' +
+  '  lists[0].push(5); lists[2].push(6); lists[2].push(7);\n' +
+  '  return lists[0].length + "," + lists[1].length + "," + lists[2].length; }');
 sameAsJs('array: Array(n) without new makes n slots',
   '/** @returns {string} */ function probe() { const a = Array(3).fill(7); return a.length + ":" + a.join(","); }');
 

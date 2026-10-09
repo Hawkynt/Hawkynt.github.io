@@ -1439,6 +1439,9 @@ begin
   if N < 0 then raise EJsRangeError.Create('Invalid array length');
   Result.O := 0;
   Result.L := -1;
+  { Result may be the caller's variable, still sharing the store it held
+    (a = []; list.push(a) in a loop): a fresh store, never a resized one }
+  Result.S := nil;
   System.SetLength(Result.S, 1);
   System.SetLength(Result.S[0].Items, N);
   for J := 0 to N - 1 do Result.S[0].Items[J] := Default(T);
