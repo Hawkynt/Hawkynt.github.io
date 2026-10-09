@@ -4021,7 +4021,6 @@ end;`;
     '+': 2, '-': 2, 'or': 2, 'xor': 2,
     '*': 3, '/': 3, 'div': 3, 'mod': 3, 'and': 3, 'shl': 3, 'shr': 3, 'as': 3
   };
-  const ASSOCIATIVE = new Set(['+', '*', 'and', 'or', 'xor']);
 
   class DelphiEmitter {
     constructor(options = {}) {
@@ -4356,7 +4355,9 @@ end;`;
         case 'bin': {
           const p = PREC[e.op] || 1;
           const leftMin = p === 1 ? 2 : p;
-          const rightMin = ASSOCIATIVE.has(e.op) && e.r.kind === 'bin' && e.r.op === e.op ? p : p + 1;
+          // a right operand of the same level is always parenthesized: and, shr, div, mod and *
+          // share one level, so a and (b shr 1 and c) printed flat would regroup
+          const rightMin = p + 1;
           return `${this.wrap(e.l, leftMin)} ${e.op} ${this.wrap(e.r, p === 1 ? 2 : rightMin)}`;
         }
         case 'un':
