@@ -732,6 +732,15 @@
         const above = this.findMemberAbove(c.base, m.name);
         if (above && above.kind === 'method' && !above.isStatic) {
           const rootSig = above.method.fw ? above.method.sig : this.methodSignature(this.classes.get(above.owner), above.method);
+          if (above.method.fw && own.params.length > rootSig.params.length) {
+            // more parameters than the framework method: a method of its own (the extra
+            // parameters without defaults, so a call by the framework's arity picks the
+            // override), and an override forwarding to it
+            const params = own.params.map((p, i) => i < rootSig.params.length ? Object.assign({}, p, { type: rootSig.params[i].type, ownType: p.type, noDefault: true }) : Object.assign({}, p, { noDefault: true }));
+            m.sig = { params, ret: rootSig.ret, ownRet: own.ret };
+            m.forwarder = rootSig;
+            return m.sig;
+          }
           m.overrides = true;
           // the root's types; extra parameters of this override keep their own
           const params = own.params.map((p, i) => i < rootSig.params.length ? Object.assign({}, p, { type: rootSig.params[i].type, ownType: p.type }) : p);
@@ -842,7 +851,7 @@
         const complex = p.def && !this.simpleDefault(p.def);
         const t = complex ? `std::optional<${this.cpp(p.type)}>` : this.cpp(p.type);
         const name = complex ? p.cpp + '__opt' : p.cpp;
-        if (!withDefaults) return `${t} ${name}`;
+        if (!withDefaults || p.noDefault) return `${t} ${name}`;
         let def;
         if (complex) def = 'std::nullopt';
         else if (p.def) def = this.defaultExpr(p.def, p.type);
@@ -983,6 +992,12 @@
         const sig = m.sig;
         const pre = m.isStatic ? 'static ' : 'virtual ';
         M.push(new CppRaw(`${pre}${this.cpp(sig.ret)} ${cppIdent(m.name)}(${this.paramList(sig.params, true)})${m.overrides && !m.isStatic ? ' override' : ''};`));
+        if (m.forwarder) {
+          const rootParams = m.forwarder.params;
+          const extra = sig.params.slice(rootParams.length).map(p => p.def && this.simpleDefault(p.def) ? this.defaultExpr(p.def, p.type) : this.defaultOf(p.type));
+          const call = `this->${cppIdent(m.name)}(${rootParams.map(p => p.cpp).concat(extra).join(', ')})`;
+          M.push(new CppRaw(`${this.cpp(sig.ret)} ${cppIdent(m.name)}(${this.paramList(rootParams, true)}) override { ${sig.ret.k === 'void' ? call + ';' : 'return ' + call + ';'} }`));
+        }
       }
       M.push(...this.reflection(c));
       return k;
