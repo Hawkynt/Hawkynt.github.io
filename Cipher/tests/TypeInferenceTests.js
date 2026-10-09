@@ -1334,7 +1334,7 @@ class TypeInferenceTestSuite {
       if (types?.Floor) {
         this.assertEqual(
           types.Floor(),
-          'int32', 'Floor() → int32', 'Floor result type'
+          'float64', 'Floor() → float64 (a double of unknown range)', 'Floor result type'
         );
       }
 
@@ -1594,7 +1594,7 @@ class TypeInferenceTestSuite {
 
       // Arithmetic is typed to hold its result
       check(mixed + 'const x = b + b; return x; }', 'x', 'int32', 'given uint8 + uint8, then int32 (holds 510)');
-      check(mixed + 'const x = u + u; return x; }', 'x', 'int64', 'given uint32 + uint32, then int64');
+      check(mixed + 'const x = u + u; return x; }', 'x', 'uint64', 'given uint32 + uint32, then uint64 (never negative)');
       check(mixed + 'const x = u - 1; return x; }', 'x', 'int64', 'given uint32 - 1, then int64 (may be -1)');
       check('/** @param {uint16} a */\nfunction f(a) { const x = a * a; return x; }', 'x', 'uint32', 'given uint16 * uint16, then uint32 (boundary: 65535^2 < 2^32)');
       check(mixed + 'const x = s + b; return x; }', 'x', 'int32', 'given int32 + uint8, then int32 (a counted int32 stays int32)');
@@ -1775,6 +1775,156 @@ class TypeInferenceTestSuite {
   }
 
   /**
+   * Each case is a place where inference used to state a type less precise
+   * than the truth (or narrower than the values), which algorithm files had
+   * to work around: the expected type is the most precise type that still
+   * holds every value.
+   */
+  testPrecisionGaps() {
+    this.runCategory('Type Precision Gaps', () => {
+      const check = (code, name, expected, title) => this.assertEqual(this.declType(code, name), expected, title, code.replace(/\s+/g, ' '));
+      const nums = '/** @param {uint32} u\n * @param {int32} s\n * @param {uint8} b\n * @param {uint64} w\n * @param {int64} q */\nfunction f(u, s, b, w, q) {\n';
+
+      // arr.map(cb) is an array of what cb returns
+      const bytes = '/** @returns {Uint32Array} */\nfunction Combine(v) { return new Uint32Array(4); }\n/** @param {uint8[]} b */\nfunction f(b) {\n';
+      check(bytes + 'const x = b.map(v => Combine(v)); return x; }', 'x', 'uint32[][]', 'given uint8[].map(v => Uint32Array), then uint32[][] (FAEST; was uint8[])');
+      check(bytes + 'const x = b.map(Combine); return x; }', 'x', 'uint32[][]', 'given uint8[].map(namedFunction), then its @returns types the elements');
+      check(bytes + 'const x = b.map(v => v * 1000); return x; }', 'x', 'int32[]', 'given uint8[].map(v => v * 1000), then int32[] (exceeds uint8)');
+      check(bytes + 'const x = b.map(v => { if (v) return "a"; return "b"; }); return x; }', 'x', 'string[]', 'given a block callback returning strings, then string[]');
+      check(bytes + 'const x = b.map(v => v); return x; }', 'x', 'uint8[]', 'given an identity callback, then the source type (boundary)');
+      check(bytes + 'const x = b.map(v => { const g = () => "s"; return v; }); return x; }', 'x', 'uint8[]', 'given a nested function, then its returns do not count');
+      check(bytes + 'const x = b.map(v => { if (v) return; return v; }); return x; }', 'x', 'uint8[]', 'given a bare return, then the result is not inferred and the source type is kept (exceptional)');
+      check(bytes + 'const x = b.map(v => String(v)); return x; }', 'x', 'uint8[]', 'given an untyped callback result, then the source type is kept (exceptional)');
+
+      // Sums and products of fixed-width numbers: unsigned when no result is negative
+      check(nums + 'const x = u * u; return x; }', 'x', 'uint64', 'given uint32 * uint32, then uint64 (was int64)');
+      check(nums + 'const x = u + 1; return x; }', 'x', 'uint64', 'given uint32 + 1, then uint64 (boundary: 2^32 needs 33 bits)');
+      check(nums + 'const x = u - u; return x; }', 'x', 'int64', 'given uint32 - uint32, then int64 (may be negative)');
+      check(nums + 'const x = u * -1; return x; }', 'x', 'int64', 'given uint32 * -1, then int64 (negative literal)');
+      check(nums + 'const x = s + u; return x; }', 'x', 'int64', 'given int32 + uint32, then int64');
+      check(nums + 'const x = b * b; return x; }', 'x', 'int32', 'given uint8 * uint8, then int32 (fits; the narrowest holding type)');
+      check(nums + 'const x = w + w; return x; }', 'x', 'uint64', 'given uint64 + uint64, then uint64 (was int64)');
+      check(nums + 'const x = w * b; return x; }', 'x', 'uint64', 'given uint64 * uint8, then uint64');
+      check(nums + 'const x = w - b; return x; }', 'x', 'int64', 'given uint64 - uint8, then int64 (may be negative)');
+      check(nums + 'const x = w * s; return x; }', 'x', 'int64', 'given uint64 * int32, then int64 (signed operand)');
+      check(nums + 'const x = q + w; return x; }', 'x', 'int64', 'given int64 + uint64, then int64');
+      check(nums + 'const x = w % 7; return x; }', 'x', 'uint64', 'given uint64 % 7, then uint64 (unsigned dividend)');
+      check(nums + 'const x = q % 7; return x; }', 'x', 'int32', 'given int64 % 7, then int32 (|remainder| < 7, keeps the dividend sign)');
+      check(nums + 'const x = q % s; return x; }', 'x', 'int32', 'given int64 % int32, then int32 (an index again)');
+      check(nums + 'const x = q % w; return x; }', 'x', 'int64', 'given int64 % uint64, then int64 (boundary: a 64-bit divisor)');
+      this.assertEqual(this.inferType(nums + 'let x = u; return x *= u; }', this.findReturnArg), 'uint64',
+        'given uint32 *= uint32, then the compound result is uint64', 'x *= u');
+      this.assertEqual(this.inferType(nums + 'let x = w; return x += w; }', this.findReturnArg), 'uint64',
+        'given uint64 += uint64, then the compound result is uint64', 'x += w');
+
+      // A conditional holds both branches, whichever comes first
+      const big = '/** @param {BigInt} a\n * @param {BigInt} P\n * @param {uint64} w\n * @param {int64} q\n * @param {boolean} c */\nfunction f(a, P, w, q, c) {\n';
+      check(big + 'const x = a === 0n ? 0n : P - a; return x; }', 'x', 'bigint', 'given c ? 0n : BigInt - BigInt, then bigint (was uint64 from the first branch)');
+      check(big + 'const x = c ? P - a : 0n; return x; }', 'x', 'bigint', 'given c ? BigInt : 0n, then bigint (branch order does not matter)');
+      check(big + 'const x = c ? 0n : q; return x; }', 'x', 'int64', 'given c ? 0n : int64, then int64 (the BigInt literal fits)');
+      check(big + 'const x = c ? w : a; return x; }', 'x', 'bigint', 'given c ? uint64 : BigInt, then bigint');
+
+      // Rounding a float takes the range of its operand; an unknown range stays a double
+      const fl = '/** @param {int64} scale\n * @param {float64} t\n * @param {uint32} a\n * @param {int32} s */\nfunction f(scale, t, a, s) {\n';
+      check(fl + 'const x = Math.round(scale * Math.cos(t)); return x; }', 'x', 'int64', 'given Math.round(int64 * Math.cos(t)), then int64 (HAWK; was int32)');
+      check(fl + 'const x = Math.floor(t / 0x100000000); return x; }', 'x', 'float64', 'given Math.floor(float64 / 2^32), then float64 (unknown range: an integral double; was int32)');
+      check(fl + 'const x = Math.round(t); return x; }', 'x', 'float64', 'given Math.round(float64), then float64 (unknown range)');
+      check(fl + 'const x = Math.floor(a * a / 0x100000000); return x; }', 'x', 'uint32', 'given Math.floor(uint32 * uint32 / 2^32), then uint32 (boundary: below 2^32)');
+      check(fl + 'const x = Math.floor(a * a / 0x80000000); return x; }', 'x', 'uint64', 'given Math.floor(uint32 * uint32 / 2^31), then uint64 (just above 2^32)');
+      check(fl + 'const x = Math.round(Math.random() * 255); return x; }', 'x', 'int32', 'given Math.round(random * 255), then int32');
+      check(fl + 'const x = Math.ceil(s * 0.5); return x; }', 'x', 'int32', 'given Math.ceil(int32 * 0.5), then int32 (range halves)');
+      check(fl + 'const x = Math.ceil(a * 1.5); return x; }', 'x', 'uint64', 'given Math.ceil(uint32 * 1.5), then uint64 (beyond uint32, never negative)');
+      check(fl + 'const x = Math.floor(s * -1.5); return x; }', 'x', 'int64', 'given Math.floor(int32 * -1.5), then int64 (beyond int32, signed)');
+      check(fl + 'const x = Math.round(1e30 * Math.random()); return x; }', 'x', 'float64', 'given Math.round of a range beyond 64 bits, then float64');
+      check(fl + 'const x = Math.trunc(Math.sin(t) * 1000); return x; }', 'x', 'int32', 'given Math.trunc(sin * 1000), then int32');
+      check(fl + 'const x = Math.floor(Math.log2(a)); return x; }', 'x', 'int32', 'given Math.floor(Math.log2(uint32)), then int32 (a logarithm is small)');
+      check(fl + 'const x = Math.floor(t / a); return x; }', 'x', 'float64', 'given Math.floor(float / uint32), then float64 (divisor range holds 0)');
+
+      // Arithmetic stored into a float64 is double arithmetic
+      const initOf = (code, name) => this.inferType(code, ast => {
+        const find = n => {
+          if (!n || typeof n !== 'object') return null;
+          if (n.type === 'VariableDeclarator' && n.id && n.id.name === name) return n.init;
+          for (const k in n) { if (k === 'loc' || k === 'range') continue; const r = find(n[k]); if (r) return r; }
+          return null;
+        };
+        return find(ast);
+      });
+      const lcg = '/** @param {int32} seed\n * @param {uint32} u */\nfunction f(seed, u) {\n';
+      const grandCru = lcg + '/** @type {float64} */\nconst product = 1103515245 * seed + 12345;\nreturn product; }';
+      this.assertEqual(initOf(grandCru, 'product'), 'float64', 'given @type {float64} on 1103515245 * seed + 12345, then the sum is float64 (Grand Cru)', 'product');
+      this.assertEqual(this.inferType(grandCru, ast => this.findVarInit(ast).left), 'float64',
+        'given the same, then the product inside is float64 too (was int64)', '1103515245 * seed');
+      this.assertEqual(this.inferType(grandCru, ast => this.findVarInit(ast).left.left), 'float64',
+        'given the same, then the literal multiplier is float64 (no float64 constant needed)', '1103515245');
+      this.assertEqual(this.inferType(grandCru, ast => this.findVarInit(ast).left.right), 'int32',
+        'given the same, then the variable operand keeps its own type', 'seed');
+      this.assertEqual(this.inferType(lcg + '/** @type {float64} */\nlet g = 0;\ng = u * u;\nreturn g; }', ast => {
+        const a = this.findNodeOfType(ast, 'AssignmentExpression'); return a && a.right; }), 'float64',
+        'given an assignment of uint32 * uint32 to a declared float64, then the product is float64', 'g = u * u');
+      this.assertEqual(initOf(lcg + '/** @type {uint64} */\nconst p = u * u;\nreturn p; }', 'p'), 'uint64',
+        'given a uint64 target, then the product stays integer (only float64 retypes)', 'p');
+      this.assertEqual(initOf(lcg + 'const p = u * u;\nreturn p; }', 'p'), 'uint64',
+        'given no declared target, then the product stays integer', 'p');
+
+      // Nullable value types keep their type and are marked nullable
+      const nullableOf = (code, name) => this.inferType(code, ast => {
+        const find = n => {
+          if (!n || typeof n !== 'object') return null;
+          if (n.type === 'VariableDeclarator' && n.id && n.id.name === name) return n;
+          for (const k in n) { if (k === 'loc' || k === 'range') continue; const r = find(n[k]); if (r) return r; }
+          return null;
+        };
+        const d = find(ast);
+        return d ? { resultType: `${d.resultType}${d.nullable ? '?' : ''}` } : null;
+      });
+      const nl = (code, name, expected, title) => this.assertEqual(nullableOf(code, name), expected, title, code.replace(/\s+/g, ' '));
+      nl('/** @param {int32|null} a */\nfunction f(a) { const x = a; return x; }', 'x', 'int32?', 'given @param {int32|null}, then int32 marked nullable (was int32, null lost)');
+      nl('/** @param {?uint32} a */\nfunction f(a) { const x = a; return x; }', 'x', 'uint32?', 'given @param {?uint32}, then uint32 nullable');
+      nl('/** @param {BigInt|null} a */\nfunction f(a) { const x = a; return x; }', 'x', 'BigInt?', 'given @param {BigInt|null}, then BigInt nullable');
+      nl('/** @param {uint8=} a */\nfunction f(a) { const x = a; return x; }', 'x', 'uint8?', 'given an optional {uint8=}, then nullable (may be undefined)');
+      nl('/** @param {uint32|undefined} a */\nfunction f(a) { const x = a; return x; }', 'x', 'uint32?', 'given {uint32|undefined}, then nullable');
+      nl('/** @param {uint8[]|null} a */\nfunction f(a) { const x = a; return x; }', 'x', 'uint8[]', 'given a nullable array, then not marked (a reference always admits null)');
+      nl('/** @param {int32} a */\nfunction f(a) { const x = a; return x; }', 'x', 'int32', 'given a plain int32, then not nullable (boundary)');
+      nl('function f() {\n/** @type {int32|null} */\nlet x = null;\nx = 4;\nreturn x; }', 'x', 'int32?', 'given @type {int32|null} let x = null, then the variable is int32 nullable (no -1 sentinel)');
+      nl('/** @returns {uint32|null} */\nfunction g() { return null; }\nfunction f() { const x = g(); return x; }', 'x', 'uint32?', 'given @returns {uint32|null}, then the call is uint32 nullable');
+      nl('class A { /** @returns {?int32} */ m() { return null; } n() { const x = this.m(); return x; } }', 'x', 'int32?', 'given a method @returns {?int32}, then this.m() is nullable');
+      nl('class A { constructor() { /** @type {uint32|null} */ this.c = null; } n() { const x = this.c; return x; } }', 'x', 'uint32?', 'given a field @type {uint32|null}, then reads are nullable');
+      nl('/** @param {boolean} c */\nfunction f(c) { const x = c ? null : 5; return x; }', 'x', 'int32?', 'given c ? null : 5, then int32 nullable (was null)');
+      nl('/** @param {boolean} c\n * @param {int32|null} a */\nfunction f(c, a) { const x = c ? a : 7; return x; }', 'x', 'int32?', 'given a nullable branch, then the conditional is nullable');
+      nl('/** @param {boolean} c\n * @param {uint8[]} b */\nfunction f(c, b) { const x = c ? null : b; return x; }', 'x', 'uint8[]', 'given c ? null : bytes, then a reference, not marked');
+
+      // Array helpers hold what they are filled with or copy
+      const filled = '/**\n * @template T\n * @param {int32} size\n * @param {T} value\n * @returns {T[]}\n */\nfunction filledArray(size, value) { const a = new Array(size); a.fill(value); return a; }\n';
+      check(filled + '/** @param {uint32} u */\nfunction f(u) { const x = filledArray(4, u); return x; }', 'x', 'uint32[]', 'given @template T filledArray(n, uint32), then uint32[] (was int32[] whatever the fill)');
+      check(filled + '/** @param {BigInt} b */\nfunction f(b) { const x = filledArray(4, b); return x; }', 'x', 'BigInt[]', 'given filledArray(n, BigInt), then BigInt[]');
+      check(filled + 'function f() { const x = filledArray(4, 0); return x; }', 'x', 'int32[]', 'given filledArray(n, 0), then int32[] (the literal type)');
+      check(filled + 'function f(v) { const x = filledArray(4, v); return x; }', 'x', null, 'given an untyped fill value, then T is unbound and nothing is assumed (exceptional)');
+      check('/**\n * @template T\n * @param {T[]} a\n * @returns {T}\n */\nfunction first(a) { return a[0]; }\n/** @param {uint16[]} w */\nfunction f(w) { const x = first(w); return x; }', 'x', 'uint16', 'given @template T with {T[]} a, then T binds to the element type');
+      check('/**\n * @param {int32} size\n * @param {int32} value\n * @returns {int32[]}\n */\nfunction filledArray(size, value) { return []; }\n/** @param {uint32} u */\nfunction f(u) { const x = filledArray(4, u); return x; }', 'x', 'int32[]', 'given a non-generic @returns {int32[]}, then the declared type stays (tier 3)');
+      check('/** @param {uint32} u */\nfunction f(u) { const x = new Array(4).fill(u); return x; }', 'x', 'uint32[]', 'given new Array(n).fill(uint32), then uint32[] (was uint8[])');
+      check('/** @param {uint32[]} w */\nfunction f(w) { const x = OpCodes.ArraySlice(w, 1, 3); return x; }', 'x', 'uint32[]', 'given OpCodes.ArraySlice(uint32[]), then uint32[] (was uint8[])');
+      check('/** @param {uint32[]} a\n * @param {uint32[]} b */\nfunction f(a, b) { const x = OpCodes.ConcatArrays([a, b]); return x; }', 'x', 'uint32[]', 'given OpCodes.ConcatArrays([uint32[], uint32[]]), then uint32[] (was uint8[])');
+      check('/** @param {uint8[]} a */\nfunction f(a) { const x = OpCodes.ConcatArrays([a, a]); return x; }', 'x', 'uint8[]', 'given ConcatArrays of bytes, then uint8[]');
+
+      // A row of values of different kinds is a tuple
+      check('function f() { const r = ["", 0, " "]; return r; }', 'r', '[string,int32,string]', 'given ["", 0, " "], then the tuple [string,int32,string] (was string[])');
+      check('function f() { const t = [["", 0, ""], [" ", 3, " "]]; return t; }', 't', '[string,int32,string][]', 'given rows of tuples, then an array of the tuple');
+      check('function f() { const t = [["", 0, ""], [" ", 3, " "]]; const v = t[1][1]; return v; }', 'v', 'int32', 'given row[1] of a tuple, then the type at that position');
+      check('function f() { const t = [["", 0, ""], [" ", 3, " "]]; const v = t[0][2]; return v; }', 'v', 'string', 'given row[2], then string');
+      check('/** @param {int32} i */\nfunction f(i) { const r = ["", 0]; const v = r[i]; return v; }', 'v', null, 'given a non-literal index into a tuple, then no single type (exceptional)');
+      check('function f() { const r = ["", 0]; const v = r[5]; return v; }', 'v', null, 'given an index past the tuple, then no type (boundary)');
+      check('function f() { const t = [["", 0, ""]]; const [p, k, s] = t[0]; return k; }', 'k', 'int32', 'given const [p, k, s] = tuple, then each name takes its position type');
+      check('function f() { const t = [["", 0, ""]]; const c = t.map(x => x[1]); return c; }', 'c', 'int32[]', 'given rows.map(r => r[1]), then the column type (brotli TRANSFORMS)');
+      check('function f() { const r = [1, 2.5]; return r; }', 'r', 'float64[]', 'given numbers of different widths, then a common type, no tuple');
+      check('/** @param {uint8[]} b */\nfunction f(b) { const r = [b, 1]; return r; }', 'r', '[uint8[],int32]', 'given an array and a number, then a tuple');
+      this.assertEqual(String(this.declType('/** @param {uint8[]} b */\nfunction f(b) { const r = [...b, "x"]; return r; }', 'r')).startsWith('['), false,
+        'given a spread, then no tuple (no fixed length; exceptional)', '[...b, "x"]');
+      check('/** @type {[string, int32]} */\nconst P = ["a", 1];\nfunction f() { const v = P; return v; }', 'v', '[string,int32]', 'given JSDoc @type {[string, int32]}, then the tuple');
+    });
+  }
+
+  /**
    * First node of an IL node type.
    * @param {Object} ast - IL AST
    * @param {string} type - node type
@@ -1815,6 +1965,7 @@ class TypeInferenceTestSuite {
     this.testOperationResultTypes();
     this.testEdgeCases();
     this.testSoundnessRegressions();
+    this.testPrecisionGaps();
 
     const elapsed = Date.now() - startTime;
 
