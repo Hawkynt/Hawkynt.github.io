@@ -562,6 +562,14 @@ check('props: obj[name] with a computed name reads a class instance field and an
   return expectOutput(runPython(js, 'print(by_length(20, "privateKeySize"), by_length(30, "privateKeySize"), table("beta"))'), ['b None [5, 1]']);
 });
 
+check('methods: push/pop on an instance of a declared class call that class, not the list methods', () => {
+  const js = 'class Ring { constructor(n) { /** @type {int32[]} */ this.v = new Array(n).fill(0); this.next = 0; this.n = n; }\n' +
+    '  push(hi, lo) { this.v[this.next] = hi + lo; this.next = (this.next + 1) % this.n; }\n  pop() { return this.v[0]; } }\n' +
+    'function f() { /** @type {Ring} */ const r = new Ring(2); r.push(1, 2); r.push(3, 4); r.push(5, 6); const a = [1]; a.push(2); return [r.pop(), r.v[1], a]; }';
+  // Given a ring buffer class with its own two-argument push and a pop, next to a real array push
+  return expectOutput(runPython(js, 'print(f())'), ['[11, 7, [1, 2]]']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

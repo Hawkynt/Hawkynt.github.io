@@ -666,11 +666,15 @@
       // Every declared function name, by its snake_case spelling
       // (see _collectLocalNameCollisions)
       this._declaredRawNamesByFolded = new Map();
+      this._userClassNames = new Set();
       const collectDeclared = n => {
         if (!n || typeof n !== 'object') return;
         if (Array.isArray(n)) { n.forEach(collectDeclared); return; }
         if (n.type === 'FunctionDeclaration' && n.id && n.id.name)
           this._declaredRawNamesByFolded.set(toSnakeCase(n.id.name), n.id.name);
+        // classes the program declares (see transformArrayAppend)
+        if ((n.type === 'ClassDeclaration' || n.type === 'ClassExpression') && n.id && n.id.name)
+          this._userClassNames.add(n.id.name);
         for (const key of Object.keys(n)) if (key !== 'loc' && key !== 'range' && key !== 'parent' && key !== 'resultType') collectDeclared(n[key]);
       };
       collectDeclared(ast);
@@ -10759,6 +10763,14 @@ class OpCodes(metaclass=_OpCodesMeta):
           return new PythonCall(target, args.slice(1));
         }
 
+        // A method of a class the program declares (a ring buffer's own
+        // push/pop/shift) is called as written, not mapped as an array method
+        const receiverType = node.callee && node.callee.object && node.callee.object.resultType;
+        if (typeof receiverType === 'string' && this._userClassNames && this._userClassNames.has(receiverType) &&
+            !node.arguments.some(arg => arg.type === 'SpreadElement') &&
+            ['push', 'pop', 'shift', 'unshift', 'splice', 'slice', 'indexOf', 'includes', 'fill', 'reverse', 'join', 'concat', 'sort'].includes(methodName))
+          return new PythonCall(new PythonMemberAccess(target, toSnakeCaseProperty(methodName)), args);
+
         // Handle array methods
         if (methodName === 'push') {
           // Check if any argument is a spread element (arr.push(...data) -> arr.extend(data))
@@ -12009,6 +12021,14 @@ class OpCodes(metaclass=_OpCodesMeta):
      */
     transformArrayAppend(node) {
       const array = this.transformExpression(node.array);
+
+      // `.push(...)` on an instance of a class the program declares is that
+      // class's own push method, not Array.prototype.push
+      const receiverType = node.array && node.array.resultType;
+      if (typeof receiverType === 'string' && this._userClassNames && this._userClassNames.has(receiverType)) {
+        const args = (node.values || (node.value ? [node.value] : [])).map(v => this.transformExpression(v));
+        return new PythonCall(new PythonMemberAccess(array, 'push'), args);
+      }
 
       // Handle multiple values (push with multiple arguments)
       const values = node.values || (node.value ? [node.value] : []);
