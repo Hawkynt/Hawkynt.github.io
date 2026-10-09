@@ -15478,6 +15478,15 @@
         // Cast when types differ and target is a narrower integral type
         value = this.castIfNeeded(value, valueType, targetType);
         value = this.asDoubleQuotient(node.right, value, targetType);
+        // A store into a typed array narrows the value to its element type, as
+        // JavaScript does (table[length] = code on a Uint16Array)
+        if (node.left?.type === 'MemberExpression' && node.left.computed) {
+          const arrayType = this.inferFullExpressionType(node.left.object);
+          const element = arrayType?.isArray ? arrayType.elementType : null;
+          if (element && !element.isArray && ['byte', 'sbyte', 'short', 'ushort'].includes(element.name) &&
+              valueType && !valueType.isArray && valueType.name !== element.name && value?.nodeType !== 'Cast')
+            value = this.castIfNeeded(value, valueType, element);
+        }
         // An inlined 32-bit OpCodes operation on a signed operand is a long in C#
         // (n >>> 1 & 4294967295u); into a 32-bit target it is cast back (OCB's ntz)
         // (the declared type of a local or parameter, which the IL context may not tell)

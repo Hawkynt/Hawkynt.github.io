@@ -755,6 +755,10 @@ check('destructuring: [a, b] = [b, a] keeps each value in its target type (no by
   expectMatch(code, /uint swap0 = r1;\s*uint swap1 = r0;\s*r0 = swap0;\s*r1 = swap1;/, 'typed temporaries, then the targets');
   expectNoMatch(code, /new byte\[\] \{ unchecked\(\(byte\)\(r1\)\)/, 'the words cut to bytes');
 });
+check('arrays: a store into a Uint16Array narrows the value to ushort', () => {
+  const code = transpile('/** @returns {uint16[]} t */\nfunction f() { const table = new Uint16Array(4);\n  for (let i = 0; i < 4; ++i) { /** @type {int32} */ let code = 285 + i; table[i] = code; }\n  return table; }');
+  expectMatch(code, /table\[i\] = unchecked\(\(ushort\)\(code\)\);/, 'table[i] = (ushort)code');
+});
 check('arrays: a store past the end of a pushed row grows that row in place', () => {
   const code = transpile('/**\n * @param {uint16[]} w - words\n * @returns {uint16[][]} tables\n */\nfunction build(w) {\n' +
     '  /** @type {uint16[][]} */\n  const tables = [];\n  for (let t = 0; t < 2; t++) { /** @type {uint16[]} */ const row = [0]; tables.push(row); }\n' +
