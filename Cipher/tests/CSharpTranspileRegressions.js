@@ -610,6 +610,11 @@ check('IL types: x != null ? x : y on a nullable int is x ?? y, an int', () => {
     '  add(data, source = 0, pool = null) { /** @type {int32} */ const target = pool !== null ? pool : this.poolIdx; return target + source; }\n}');
   expectMatch(code, /int target = pool \?\? this\.PoolIdx;/, 'int target = pool ?? this.PoolIdx');
 });
+check('test vectors: records mapped into the vectors stay plain objects; only the map result is a TestCase', () => {
+  const code = transpile('class A extends Algorithm {\n  constructor() { super();\n    this.tests = [{ n: "one", p: "12" }, { n: "two", p: "34" }].map(s => ({ text: "t " + s.n, uri: "u", input: OpCodes.AnsiToBytes(s.p), expected: [1] }));\n  }\n}');
+  expectNoMatch(code, /new TestCase \{ \["n"\]/, 'the records built as TestCase');
+  expectMatch(code, /\.Select\(s => new TestCase \{/, 'the map building TestCases');
+});
 check('IL types: a nullable value-type field is T?, an undefined value-type field becomes default', () => {
   const code = transpile('class C {\n  constructor() { /** @type {int32|null} */ this.size = null; /** @type {int32} */ this.count = undefined; }\n' +
     '  /** @returns {int32} size */\n  get() { return this.size === null ? 0 : this.size; }\n}');

@@ -25140,7 +25140,23 @@
      * C#: array.Select(x => f(x)).ToArray()
      */
     transformArrayMap(node) {
-      const array = this.castDynamicReceiverForLinq(this.transformExpression(node.array), node.array);
+      // [{ n, k, ... }].map(s => ({ text: ..., key: ... })) as the vectors: the
+      // records mapped are plain objects, only what map returns is a TestCase
+      const records = (node.array?.type === 'ArrayExpression' || node.array?.type === 'ArrayLiteral') &&
+        (node.array.elements || []).length > 0 &&
+        node.array.elements.every(e => e?.type === 'ObjectExpression' || e?.type === 'ObjectLiteral');
+      const prevElementType = this.currentArrayElementType;
+      if (records && prevElementType?.name === 'TestCase') this.currentArrayElementType = null;
+      let array;
+      try {
+        array = this.castDynamicReceiverForLinq(this.transformExpression(node.array), node.array);
+      } finally {
+        this.currentArrayElementType = prevElementType;
+      }
+      if (records && prevElementType?.name === 'TestCase') {
+        const callback = this.transformCallback(node.callback, [null, CSharpType.Int()]);
+        return new CSharpMethodCall(new CSharpMethodCall(array, 'Select', [callback]), 'ToArray', []);
+      }
       const elementType = this.arrayElementTypeOf(node.array);
       const callback = this.transformCallback(node.callback, [elementType, CSharpType.Int()]);
       const selectCall = new CSharpMethodCall(array, 'Select', [callback]);
