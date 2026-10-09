@@ -370,6 +370,10 @@ func vhCheck(algorithm JsObject, spec vhAlgorithm, plan vhPlan, vector JsObject)
 	defer func() {
 		if r := recover(); r != nil {
 			failure = vhDescribe(r)
+			// VH_TRACE=1 shows where a vector failed (for working on the transpiler)
+			if os.Getenv("VH_TRACE") != "" {
+				fmt.Fprintln(os.Stderr, failure, string(debug.Stack()))
+			}
 		}
 	}()
 	input := vector.JsGet("input")

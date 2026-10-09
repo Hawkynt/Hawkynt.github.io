@@ -116,7 +116,7 @@
      * @returns {Object} GoAST File
      */
     transform(ast) {
-      this.model = Model.buildModel(ast, { framework: this.options.framework !== false });
+      this.model = Model.buildModel(ast, { framework: this.options.framework !== false, libraries: this.options.libraries });
       this.prefix = this.options.symbolPrefix || '';
       this.library = !!this.options.library;
       this.decls = [];
@@ -216,7 +216,8 @@
     /** Whether an IL class type is a concrete Go pointer (emitted, nothing derives from it). */
     isLeafClass(t) {
       const info = this.model.classOf(t);
-      return !!info && this.emittedClasses.has(t) && !info.hasSubclasses;
+      // The framework's data classes (TestCase, KeySize, ...) share arrays with object literals: they stay dynamic
+      return !!info && this.emittedClasses.has(t) && !info.hasSubclasses && info.origin !== 'framework';
     }
 
     /** The Go spelling of an IL type. */
@@ -615,6 +616,7 @@
     functionBody(fn) {
       let stmts;
       if (fn.body && fn.body.type === 'BlockStatement') {
+        this.fn.useTypes = Model.localUseTypes(fn.body);
         this.hoistVars(fn.body);
         stmts = this.stmts(fn.body.body);
       } else if (fn.body) {
@@ -682,14 +684,28 @@
     /** The IL type of a variable declarator (a || b of two numbers is that number type). */
     declaratorType(d) {
       if (d.declaredType) return canonicalType(d.declaredType);
-      let t = canonicalType(d.resultType || d.id.resultType || (d.init && d.init.resultType));
-      const init = d.init;
-      if (t === 'boolean' && init && init.type === 'LogicalExpression' && init.operator !== '??') {
-        const a = canonicalType(init.left.resultType);
-        const b = canonicalType(init.right.resultType);
-        if (a && a === b && a !== 'boolean' && a !== 'any') t = a;
-      }
+      const t = canonicalType(d.resultType || d.id.resultType || (d.init && d.init.resultType));
+      // An untyped declarator (let a; assigned later - an IL gap): the type the IL gives its uses
+      if (!t && this.fn && this.fn.useTypes && d.id && this.fn.useTypes.has(d.id.name)) return this.fn.useTypes.get(d.id.name);
+      if (t === 'boolean' && d.init && d.init.type === 'LogicalExpression') return this.logicalType(d.init);
       return t;
+    }
+
+    /**
+     * The type of a || b / a && b: one of its operands, so the operands' type
+     * (their common one) where the IL says boolean of operands that are not.
+     */
+    logicalType(node) {
+      const rt = canonicalType(node.resultType) || 'any';
+      if (rt !== 'boolean' || node.operator === '??') return rt;
+      const a = canonicalType(node.left.resultType);
+      const b = canonicalType(node.right.resultType);
+      if (!a || !b || (a === 'boolean' && b === 'boolean')) return rt;
+      if (a === b) return a;
+      if (isNumericType(a) && isNumericType(b)) return this.widen(a, b);
+      const objectLike = t => t !== 'boolean' && t !== 'string' && !isNumericType(t) && !isBigType(t) && !isArrayType(t) && t !== 'any';
+      if (objectLike(a) && objectLike(b)) return 'object';
+      return 'any';
     }
 
     // ======================================================================
@@ -1251,6 +1267,7 @@
      */
     assignment(node, asValue) {
       const op = node.operator;
+      if (op === '=' && (node.left.type === 'ArrayExpression' || node.left.type === 'ArrayPattern')) return this.destructuringAssignment(node, asValue);
       const left = node.left;
       const binOp = op === '=' ? null : op.slice(0, -1);
       // Logical assignment: a ||= b, a &&= b, a ??= b
@@ -1278,8 +1295,24 @@
       // As a value: keep it in a temporary
       const t = target.type;
       const tmp = this.tmp('a');
-      const stmts = [...pre, G.Assign(G.Ident(tmp), ':=', this.coerce(value, t)), ...target.set(new Val(G.Ident(tmp), t))];
+      const stmts = [...pre, G.VarDecl(tmp, this.goType(t), this.coerce(value, t)), ...target.set(new Val(G.Ident(tmp), t))];
       return { stmts, value: new Val(G.Ident(tmp), t) };
+    }
+
+    /** [a, b] = [b, a]: the right side into a temporary, then each target from it. */
+    destructuringAssignment(node, asValue) {
+      const src = this.expr(node.right);
+      const pre = this.flushPre();
+      const tmp = this.tmp('d');
+      const stmts = [...pre, G.VarDecl(tmp, this.goType(src.t), src.e)];
+      const srcVal = new Val(G.Ident(tmp), src.t);
+      node.left.elements.forEach((el, i) => {
+        if (!el) return;
+        const target = this.lvalue(el.type === 'AssignmentPattern' ? el.left : el);
+        const item = this.indexValue(srcVal, new Val(null, 'int32', i), target.type);
+        stmts.push(...target.pre, ...this.flushPre(), ...target.set(item));
+      });
+      return asValue ? { stmts, value: srcVal } : stmts;
     }
 
     /**
@@ -1392,6 +1425,14 @@
           }
         };
       }
+      // A value of no one type (an array, a string or an object): by the runtime
+      if (this.goType(ot) === 'any') {
+        return {
+          type: nodeType, pre,
+          get: () => new Val(G.Call(G.Ident('jsGetProp'), [obj.e, G.Lit(this.goString(key))]), 'any'),
+          set: v => [G.ExprStmt(G.Call(G.Ident('jsSetProp'), [obj.e, G.Lit(this.goString(key)), this.anyOf(v)]))]
+        };
+      }
       // Dynamic object
       const o = this.coerce(obj, 'object');
       return {
@@ -1430,9 +1471,16 @@
         };
       }
       if (ot === 'string') throw new Error('assignment to a string index');
+      const nodeType = this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable);
+      if (this.goType(ot) === 'any') {
+        return {
+          type: nodeType, pre,
+          get: () => new Val(G.Call(G.Ident('jsGetElem'), [obj.e, this.coerce(idx, 'any')]), 'any'),
+          set: v => [G.ExprStmt(G.Call(G.Ident('jsSetElem'), [obj.e, this.coerce(idx, 'any'), this.anyOf(v)]))]
+        };
+      }
       const o = this.coerce(obj, 'object');
       const key = G.Call(G.Ident('jsKey'), [this.coerce(idx, 'any')]);
-      const nodeType = this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable);
       return {
         type: nodeType, pre,
         get: () => new Val(G.Call(G.Selector(o, 'JsGet'), [key]), 'any'),
@@ -1500,7 +1548,7 @@
       const handler = this['x' + node.type];
       if (handler) return handler.call(this, node);
       this.warnings.push(`unsupported expression ${node.type}`);
-      return new Val(G.Call(G.Ident('jsUnsupported'), [G.Lit(this.goString(node.type))]), canonicalType(node.resultType) || 'any');
+      return this.unsupportedVal(node.type, canonicalType(node.resultType) || 'any');
     }
 
     xLiteral(node) {
@@ -1551,7 +1599,7 @@
         return v;
       }
       this.warnings.push(`unknown identifier ${name}`);
-      return new Val(G.Call(G.Ident('jsUnsupported'), [G.Lit(this.goString('identifier ' + name))]), canonicalType(node.resultType) || 'any');
+      return this.unsupportedVal('identifier ' + name, canonicalType(node.resultType) || 'any');
     }
 
     xThisExpression() { return this.thisValue(); }
@@ -1627,6 +1675,7 @@
       }
       if (ot === 'string') return new Val(G.Call(G.Ident('jsCharAt'), [obj.e, this.coerce(idx, 'goint')]), 'string');
       if (ot === 'Map') return new Val(G.Call(G.Selector(obj.e, 'MapGet'), [this.coerce(idx, 'any')]), 'any');
+      if (this.goType(ot) === 'any') return new Val(G.Call(G.Ident('jsGetElem'), [obj.e, this.coerce(idx, 'any')]), 'any');
       const o = this.coerce(obj, 'object');
       return new Val(G.Call(G.Selector(o, 'JsGet'), [G.Call(G.Ident('jsKey'), [this.coerce(idx, 'any')])]), 'any');
     }
@@ -1885,12 +1934,8 @@
     }
 
     xLogicalExpression(node) {
-      let rt = canonicalType(node.resultType) || 'any';
+      const rt = this.logicalType(node);
       const op = node.operator;
-      // a || b yields one of its operands: when both have one non-boolean type, that is its type
-      const lt0 = canonicalType(node.left.resultType);
-      const rt0 = canonicalType(node.right.resultType);
-      if (rt === 'boolean' && op !== '??' && lt0 && lt0 === rt0 && lt0 !== 'boolean' && lt0 !== 'any') rt = lt0;
       if (rt === 'boolean' && op !== '??') {
         const a = this.condition(node.left);
         const preA = this.flushPre();
@@ -1984,7 +2029,14 @@
       throw new Error(`unary ${op}`);
     }
 
+    /** Whether a name is declared anywhere the program sees (a local, a module variable, function or class). */
+    isDeclared(name) {
+      return !!(this.lookup(name) || this.model.variables.has(name) || this.model.functions.has(name) || this.model.classes.has(name));
+    }
+
     typeOf(arg) {
+      // typeof of an undeclared global (require, module, window) is "undefined" in JavaScript
+      if (arg.type === 'Identifier' && !this.isDeclared(arg.name) && !['NaN', 'Infinity', 'undefined'].includes(arg.name)) return new Val(null, 'string', 'undefined');
       const v = this.expr(arg);
       const t = canonicalType(v.t) || 'any';
       const known = isNumericType(t) ? 'number' : isBigType(t) ? 'bigint' : t === 'string' ? 'string' : t === 'boolean' ? 'boolean'
@@ -2155,6 +2207,11 @@
       const args = node.arguments || [];
       const a = i => this.expr(args[i]);
       switch (name) {
+        case 'require':
+          // A module loader: the bundle already holds every file it would load
+          return new Val(G.Call(G.Ident('jsRequire'), args.map((x, i) => this.coerce(a(i), 'any'))), 'any');
+        case 'Find':
+          return new Val(G.Call(G.Ident('jsFindAlgorithm'), [this.coerce(a(0), 'string')]), 'Algorithm');
         case 'RegisterAlgorithm':
           return new Val(G.Call(G.Ident('jsRegisterAlgorithm'), [this.coerce(a(0), 'object')]), 'void');
         case 'Number': {
@@ -2344,7 +2401,7 @@
           }
           case 'splice': {
             if (!this.isAssignable(obj.e)) throw new Error('splice on a temporary array');
-            return new Val(G.Call(this.generic('jsSplice', this.goType(el)), [G.Unary('&', obj.e), has(0) ? this.coerce(a(0), 'goint') : G.Lit('0'), has(1) ? this.coerce(a(1), 'goint') : G.Ident('jsNoEnd'), ...argNodes.slice(2).map((x, i) => this.coerce(a(i + 2), el))]), ot);
+            return new Val(this.spliceCall(obj.e, el, has(0) ? this.coerce(a(0), 'goint') : G.Lit('0'), has(1) ? this.coerce(a(1), 'goint') : G.Ident('jsNoEnd'), argNodes.slice(2)), ot);
           }
           case 'set': return new Val(G.Call(G.Ident('jsTypedSet'), [obj.e, this.coerce(a(0), ot), has(1) ? this.coerce(a(1), 'goint') : G.Lit('0')]), 'void');
           case 'subarray': return new Val(G.Call(G.Ident('jsSubarray'), [obj.e, has(0) ? this.coerce(a(0), 'goint') : G.Lit('0'), has(1) ? this.coerce(a(1), 'goint') : G.Ident('jsNoEnd')]), ot);
@@ -2374,6 +2431,7 @@
           case 'add': return new Val(G.Call(G.Selector(obj.e, 'MapSet'), [this.coerce(a(0), 'any'), this.coerce(a(0), 'any')]), 'Map');
         }
       }
+      if (ot === 'regex' && key === 'test') return new Val(G.Call(G.Selector(obj.e, 'MatchString'), [this.coerce(a(0), 'string')]), 'boolean');
       if (key === 'toString' && argNodes.length === 0) return new Val(G.Call(G.Ident('jsStr'), [this.coerce(obj, 'any')]), 'string');
       if (key === 'hasOwnProperty') return new Val(G.Call(G.Ident('jsIn'), [this.coerce(a(0), 'any'), this.coerce(obj, 'any')]), 'boolean');
       return null;
@@ -2387,7 +2445,8 @@
       const fnE = cb.e;
       switch (key) {
         case 'map': {
-          const outEl = isArrayType(rt) ? elementType(rt) : cb.ret;
+          // What the callback returns is what the array holds (the IL types a map like its source array)
+          const outEl = cb.ret && cb.ret !== 'any' && cb.ret !== 'void' ? cb.ret : (isArrayType(rt) ? elementType(rt) : 'any');
           return new Val(G.Call(G.Ident('jsMap'), [obj.e, this.adaptCallback(cb, [el, 'int32'], outEl)]), (outEl || 'any') + '[]');
         }
         case 'filter': return new Val(G.Call(G.Ident('jsFilter'), [obj.e, this.adaptCallback(cb, [el, 'int32'], 'boolean')]), ot);
@@ -2485,7 +2544,7 @@
       }
       if (name && this.model.classes.has(name)) throw new Error(`new ${name}: the class is abstract here`);
       this.warnings.push(`new ${name}`);
-      return new Val(G.Call(G.Ident('jsUnsupported'), [G.Lit(this.goString('new ' + name))]), rt);
+      return this.unsupportedVal('new ' + name, rt);
     }
 
     newObject(info, args) {
@@ -2885,7 +2944,14 @@
       const el = elementType(at) || 'any';
       const start = node.start ? this.coerce(this.expr(node.start), 'goint') : G.Lit('0');
       const del = node.deleteCount ? this.coerce(this.expr(node.deleteCount), 'goint') : G.Ident('jsNoEnd');
-      return new Val(G.Call(this.generic('jsSplice', this.goType(el)), [G.Unary('&', a.e), start, del, ...(node.items || []).map(i => this.coerce(this.expr(i), el))]), at);
+      return new Val(this.spliceCall(a.e, el, start, del, node.items || []), at);
+    }
+
+    /** jsSplice(&arr, start, count, items...): spread items (...xs) as one variadic list. */
+    spliceCall(arr, el, start, del, items) {
+      if (items.some(i => i && i.type === 'SpreadElement'))
+        return G.Call(this.generic('jsSplice', this.goType(el)), [G.Unary('&', arr), start, del, this.spreadList(items, el)], true);
+      return G.Call(this.generic('jsSplice', this.goType(el)), [G.Unary('&', arr), start, del, ...items.map(i => this.coerce(this.expr(i), el))]);
     }
 
     xArrayMap(node) { const a = this.expr(node.array); return this.arrayCallback(a, canonicalType(a.t), 'map', [node.callback], canonicalType(node.resultType)); }
@@ -3044,7 +3110,7 @@
       const sig = OPCODES_SIGNATURES[method];
       if (!sig) {
         this.warnings.push(`OpCodes.${method}`);
-        return new Val(G.Call(G.Ident('jsUnsupported'), [G.Lit(this.goString('OpCodes.' + method))]), rt || 'any');
+        return this.unsupportedVal('OpCodes.' + method, rt || 'any');
       }
       if (sig.special) return sig.special.call(this, argNodes, rt, node);
       const args = sig.params.map((t, i) => i < argNodes.length ? this.coerce(this.expr(argNodes[i]), t) : (sig.defaults && sig.defaults[i] !== undefined ? G.Lit(sig.defaults[i]) : this.zero(t)));
@@ -3054,7 +3120,13 @@
 
     unsupported(node) {
       this.warnings.push(`unsupported ${node.type}`);
-      return new Val(G.Call(G.Ident('jsUnsupported'), [G.Lit(this.goString(node.type))]), canonicalType(node.resultType) || 'any');
+      return this.unsupportedVal(node.type, canonicalType(node.resultType) || 'any');
+    }
+
+    /** A runtime failure where nothing is transpiled, of the Go type the use needs (it compiles, and throws when it runs). */
+    unsupportedVal(what, type) {
+      const t = canonicalType(type) || 'any';
+      return new Val(G.Call(this.generic('jsFail', this.goType(t === 'void' ? 'any' : t)), [G.Lit(this.goString(what))]), t);
     }
   }
 
@@ -3152,7 +3224,7 @@
     },
     CreateBitStream: {
       special(argNodes) {
-        return new Val(G.Call(G.Ident('jsUnsupported'), [G.Lit('"OpCodes.CreateBitStream"')]), 'object');
+        return this.unsupportedVal('OpCodes.CreateBitStream', 'object');
       }
     }
   };
@@ -3240,6 +3312,15 @@ func jsCaught(r any) any {
 }
 
 func jsUnsupported(what string) any {
+	panic(jsNewError("Error", "not transpiled: "+what))
+}
+
+// jsRequire stands for require(): a transpiled program is bundled with every
+// file the reference loaded, so loading one is a no-op with no exports.
+func jsRequire(args ...any) any { return nil }
+
+// jsFail is jsUnsupported of the type its use needs.
+func jsFail[T any](what string) T {
 	panic(jsNewError("Error", "not transpiled: "+what))
 }
 
@@ -3373,6 +3454,59 @@ func jsGetProp(o any, name string) any {
 	return nil
 }
 
+// jsGetElem is o[key] of a value of no one type: an array element, a character, an object member.
+func jsGetElem(o any, key any) any {
+	switch x := o.(type) {
+	case JsObject:
+		return x.JsGet(jsKey(key))
+	case string:
+		return jsCharAt(x, int(jsI64(key)))
+	case nil:
+		panic(jsNewError("TypeError", "Cannot read properties of null (reading '"+jsKey(key)+"')"))
+	}
+	rv := reflect.ValueOf(o)
+	if rv.Kind() == reflect.Slice {
+		if s, ok := key.(string); ok {
+			return jsGetProp(o, s)
+		}
+		i := int(jsI64(key))
+		if i >= 0 && i < rv.Len() {
+			return rv.Index(i).Interface()
+		}
+	}
+	return nil
+}
+
+// jsSetElem is o[key] = v of a value of no one type.
+func jsSetElem(o any, key any, v any) {
+	switch x := o.(type) {
+	case JsObject:
+		x.JsSet(jsKey(key), v)
+		return
+	case nil:
+		panic(jsNewError("TypeError", "Cannot set properties of null (setting '"+jsKey(key)+"')"))
+	}
+	rv := reflect.ValueOf(o)
+	if rv.Kind() == reflect.Slice {
+		i := int(jsI64(key))
+		if i >= 0 && i < rv.Len() {
+			rv.Index(i).Set(jsConvertValue(v, rv.Type().Elem()))
+			return
+		}
+		panic(jsNewError("RangeError", "an array behind a value of no one type cannot grow"))
+	}
+	panic(jsNewError("TypeError", fmt.Sprintf("%T is not an object", o)))
+}
+
+// jsSetProp is o.name = v of a value of no one type.
+func jsSetProp(o any, name string, v any) {
+	if x, ok := o.(JsObject); ok {
+		x.JsSet(name, v)
+		return
+	}
+	jsSetElem(o, name, v)
+}
+
 func jsToObject(v any) JsObject {
 	if v == nil {
 		return nil
@@ -3383,8 +3517,28 @@ func jsToObject(v any) JsObject {
 		}
 		return o
 	}
-	panic(jsNewError("TypeError", fmt.Sprintf("%T is not an object", v)))
+	// A primitive where an object is declared (a string as a metadata field) stays itself
+	return &JsBoxed{Value: v}
 }
+
+// JsBoxed holds a primitive in a place typed as an object: it has no members.
+type JsBoxed struct{ Value any }
+
+func (b *JsBoxed) JsGet(name string) any {
+	if name == "length" {
+		return jsLength(b.Value)
+	}
+	return nil
+}
+func (b *JsBoxed) JsSet(name string, value any) {}
+func (b *JsBoxed) JsCall(name string, args ...any) any {
+	if name == "toString" {
+		return jsStr(b.Value)
+	}
+	panic(jsNewError("TypeError", fmt.Sprintf("%T.%s is not a function", b.Value, name)))
+}
+func (b *JsBoxed) JsHas(name string) bool       { return false }
+func (b *JsBoxed) JsHasMethod(name string) bool { return false }
 
 func jsKeys(o any) []string {
 	switch x := o.(type) {
@@ -3778,6 +3932,8 @@ func jsTo[T any](v any) T {
 	return rv.Interface().(T)
 }
 
+var jsObjectType = reflect.TypeOf((*JsObject)(nil)).Elem()
+
 func jsConvertValue(v any, rt reflect.Type) reflect.Value {
 	if v == nil {
 		return reflect.Zero(rt)
@@ -3788,6 +3944,13 @@ func jsConvertValue(v any, rt reflect.Type) reflect.Value {
 	}
 	switch rt.Kind() {
 	case reflect.Interface:
+		if rt == jsObjectType {
+			r := reflect.New(rt).Elem()
+			if o := jsToObject(v); o != nil {
+				r.Set(reflect.ValueOf(o))
+			}
+			return r
+		}
 		if vv.Type().Implements(rt) {
 			r := reflect.New(rt).Elem()
 			r.Set(vv)
@@ -3861,6 +4024,8 @@ func jsStr(v any) string {
 		return x.String()
 	case *JsError:
 		return x.Error()
+	case *JsBoxed:
+		return jsStr(x.Value)
 	case JsObject:
 		if jsIsNull(x) {
 			return "null"
