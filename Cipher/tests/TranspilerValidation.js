@@ -33,7 +33,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execSync, spawnSync, spawn } = require('child_process');
+const { spawnSync, spawn } = require('child_process');
 
 // Paths
 const CIPHER_DIR = path.join(__dirname, '..');
@@ -62,193 +62,145 @@ const DEFAULT_TIMEOUT = 120;
 const WORKER_TIMEOUT_SECONDS = 1800;
 
 // ============================================================================
-// COMPILER/INTERPRETER DETECTION
+// TOOLS AND COMPILER/INTERPRETER DETECTION
 // ============================================================================
 
-const LANGUAGE_COMPILERS = {
-  c: {
-    name: 'C',
-    detect: () => {
-      try {
-        const version = execSync('gcc --version 2>&1', { encoding: 'utf-8' }).split('\n')[0];
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'c',
-    pluginFile: 'c.js',
-  },
-  cpp: {
-    name: 'C++',
-    detect: () => {
-      try {
-        const version = execSync('g++ --version 2>&1', { encoding: 'utf-8' }).split('\n')[0];
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'cpp',
-    pluginFile: 'cpp.js',
-  },
-  csharp: {
-    name: 'C#',
-    detect: () => {
-      try {
-        execSync('dotnet --version 2>&1', { stdio: 'pipe' });
-        return { available: true, version: execSync('dotnet --version', { encoding: 'utf-8' }).trim() };
-      } catch { return { available: false }; }
-    },
-    extension: 'cs',
-    pluginFile: 'csharp.js',
-  },
-  java: {
-    name: 'Java',
-    detect: () => {
-      try {
-        const version = execSync('java --version 2>&1', { encoding: 'utf-8' }).split('\n')[0];
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'java',
-    pluginFile: 'java.js',
-  },
-  python: {
-    name: 'Python',
-    detect: () => {
-      try {
-        const version = execSync('python --version 2>&1', { encoding: 'utf-8' }).trim();
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'py',
-    pluginFile: 'python.js',
-  },
-  php: {
-    name: 'PHP',
-    detect: () => {
-      try {
-        const version = execSync('php --version 2>&1', { encoding: 'utf-8' }).split('\n')[0];
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'php',
-    pluginFile: 'php.js',
-  },
-  perl: {
-    name: 'Perl',
-    detect: () => {
-      try {
-        const out = execSync('perl --version 2>&1', { encoding: 'utf-8' });
-        const match = out.match(/v(\d+\.\d+\.\d+)/);
-        return { available: true, version: match ? match[1] : 'unknown' };
-      } catch { return { available: false }; }
-    },
-    extension: 'pl',
-    pluginFile: 'perl.js',
-  },
-  ruby: {
-    name: 'Ruby',
-    detect: () => {
-      try {
-        const version = execSync('ruby --version 2>&1', { encoding: 'utf-8' }).split('\n')[0];
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'rb',
-    pluginFile: 'ruby.js',
-  },
-  go: {
-    name: 'Go',
-    detect: () => {
-      try {
-        const version = execSync('go version 2>&1', { encoding: 'utf-8' }).trim();
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'go',
-    pluginFile: 'go.js',
-  },
-  rust: {
-    name: 'Rust',
-    detect: () => {
-      try {
-        const version = execSync('rustc --version 2>&1', { encoding: 'utf-8' }).trim();
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'rs',
-    pluginFile: 'rust.js',
-  },
-  javascript: {
-    name: 'JavaScript',
-    detect: () => {
-      try {
-        const version = execSync('node --version 2>&1', { encoding: 'utf-8' }).trim();
-        return { available: true, version: `Node.js ${version}` };
-      } catch { return { available: false }; }
-    },
-    extension: 'js',
-    pluginFile: 'javascript.js',
-  },
-  typescript: {
-    name: 'TypeScript',
-    detect: () => {
-      try {
-        const version = execSync('tsc --version 2>&1', { encoding: 'utf-8' }).trim();
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'ts',
-    pluginFile: 'typescript.js',
-  },
-  basic: {
-    name: 'Basic',
-    detect: () => {
-      try {
-        const version = execSync('fbc64 -version 2>&1', { encoding: 'utf-8' }).split('\n')[0];
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'bas',
-    pluginFile: 'basic.js',
-  },
-  delphi: {
-    name: 'Delphi/Pascal',
-    detect: () => {
-      try {
-        const out = execSync('fpc -h 2>&1', { encoding: 'utf-8' });
-        const match = out.match(/Free Pascal Compiler version ([\d.]+)/);
-        return { available: true, version: match ? `FPC ${match[1]}` : 'FreePascal' };
-      } catch { return { available: false }; }
-    },
-    extension: 'pas',
-    pluginFile: 'delphi.js',
-  },
-  kotlin: {
-    name: 'Kotlin',
-    detect: () => {
-      try {
-        const version = execSync('kotlinc -version 2>&1', { encoding: 'utf-8' }).trim();
-        return { available: true, version };
-      } catch { return { available: false }; }
-    },
-    extension: 'kt',
-    pluginFile: 'kotlin.js',
-  },
+// Tools that go by another name in some installations (FreeBASIC ships fbc
+// or fbc64), tried in order.
+const TOOL_ALTERNATIVES = { fbc64: ['fbc64', 'fbc'], fbc: ['fbc', 'fbc64'] };
+const resolvedTools = new Map();
+
+/**
+ * Where a tool lives and how to start it. On Windows a tool may be a .cmd or
+ * .bat shim (npm's tsc, kotlinc), which Node only starts through the shell.
+ * @param {string} name - command name
+ * @returns {{command: string, shell: boolean}|null} null when it is not on PATH
+ */
+function resolveTool(name) {
+  if (resolvedTools.has(name)) return resolvedTools.get(name);
+  let found = null;
+  for (const candidate of TOOL_ALTERNATIVES[name] || [name]) {
+    if (process.platform !== 'win32') {
+      const which = spawnSync('which', [candidate], { encoding: 'utf-8', timeout: 10000 });
+      if (which.status === 0 && which.stdout.trim()) found = { command: candidate, shell: false };
+    } else {
+      const where = spawnSync('where', [candidate], { encoding: 'utf-8', timeout: 10000, windowsHide: true });
+      const paths = where.status === 0 ? where.stdout.split(/\r?\n/).map(l => l.trim()).filter(Boolean) : [];
+      // Prefer a real executable over a shim of the same name
+      const exe = paths.find(p => /\.(exe|com)$/i.test(p));
+      const shim = paths.find(p => /\.(cmd|bat)$/i.test(p));
+      if (exe) found = { command: exe, shell: false };
+      else if (shim) found = { command: shim, shell: true };
+    }
+    if (found) break;
+  }
+  resolvedTools.set(name, found);
+  return found;
+}
+
+/** An argument quoted for cmd.exe, for tools started through the shell. */
+function shellQuote(arg) {
+  const text = String(arg);
+  return /^[\w.:\\/=+-]+$/.test(text) ? text : `"${text.replace(/"/g, '""')}"`;
+}
+
+/**
+ * spawnSync for a named tool: resolves it on PATH (shims included). A tool
+ * that is not installed yields status null and an error, never a throw.
+ * @returns {object} spawnSync's result
+ */
+function spawnTool(name, argv, options = {}) {
+  const tool = resolveTool(name);
+  if (!tool) return { status: null, stdout: '', stderr: '', error: new Error(`${name} is not on PATH`) };
+  const opts = Object.assign({ encoding: 'utf-8', windowsHide: true }, options);
+  if (!tool.shell) return spawnSync(tool.command, argv, opts);
+  const line = [tool.command, ...argv].map(shellQuote).join(' ');
+  return spawnSync(line, [], Object.assign(opts, { shell: true, windowsVerbatimArguments: true }));
+}
+
+// Output that means a tool is present but cannot run
+const BROKEN_TOOL = /Could not create the Java Virtual Machine|Error occurred during initialization of VM|is not recognized as an internal or external command|No Java runtime present|command not found/i;
+
+/**
+ * Probe a tool: it must start, exit 0, say nothing that marks it broken, and
+ * print a version (to stdout or stderr) that matches the pattern.
+ * @param {string} name - command name
+ * @param {string[]} argv - version arguments
+ * @param {RegExp} pattern - the version line; its first group, when it has one, is the version
+ * @returns {{available: boolean, version?: string, reason?: string}}
+ */
+function probeTool(name, argv, pattern) {
+  let result;
+  try {
+    result = spawnTool(name, argv, { timeout: 60000 });
+  } catch (error) {
+    return { available: false, reason: error.message };
+  }
+  if (result.error) return { available: false, reason: result.error.message };
+  const output = `${result.stdout || ''}\n${result.stderr || ''}`;
+  if (BROKEN_TOOL.test(output)) return { available: false, reason: firstLine(output.match(BROKEN_TOOL)[0]) };
+  if (result.status !== 0) return { available: false, reason: `${name} exited with ${result.status}` };
+  const line = output.split(/\r?\n/).map(l => l.trim()).find(l => pattern.test(l));
+  if (!line) return { available: false, reason: `${name} printed no version` };
+  const m = pattern.exec(line);
+  return { available: true, version: m[1] || line };
+}
+
+/** A detector needing every probe to pass; the first probe's version is reported. */
+const requireTools = (...probes) => () => {
+  let first = null;
+  for (const [name, argv, pattern] of probes) {
+    const r = probeTool(name, argv, pattern);
+    if (!r.available) return r;
+    if (!first) first = r;
+  }
+  return first;
 };
 
+const LANGUAGE_COMPILERS = {
+  c: { name: 'C', detect: requireTools(['gcc', ['--version'], /^gcc.*?(\d+\.\d+\.\d+)/i]), extension: 'c', pluginFile: 'c.js' },
+  cpp: { name: 'C++', detect: requireTools(['g++', ['--version'], /^g\+\+.*?(\d+\.\d+\.\d+)/i]), extension: 'cpp', pluginFile: 'cpp.js' },
+  csharp: { name: 'C#', detect: requireTools(['dotnet', ['--version'], /^(\d+\.\d+\.\d+\S*)$/]), extension: 'cs', pluginFile: 'csharp.js' },
+  java: {
+    name: 'Java',
+    detect: requireTools(['java', ['-version'], /version "?([\d._]+)/i], ['javac', ['-version'], /javac\s+([\d._]+)/i]),
+    extension: 'java', pluginFile: 'java.js'
+  },
+  python: { name: 'Python', detect: requireTools(['python', ['--version'], /^Python (\d+\.\d+\.\d+)/]), extension: 'py', pluginFile: 'python.js' },
+  php: { name: 'PHP', detect: requireTools(['php', ['--version'], /^PHP (\d+\.\d+\.\d+)/]), extension: 'php', pluginFile: 'php.js' },
+  perl: { name: 'Perl', detect: requireTools(['perl', ['--version'], /This is perl.*?v(\d+\.\d+\.\d+)/]), extension: 'pl', pluginFile: 'perl.js' },
+  ruby: { name: 'Ruby', detect: requireTools(['ruby', ['--version'], /^ruby (\d+\.\d+\.\d+)/]), extension: 'rb', pluginFile: 'ruby.js' },
+  go: { name: 'Go', detect: requireTools(['go', ['version'], /^go version go(\d+\.\d+(?:\.\d+)?)/]), extension: 'go', pluginFile: 'go.js' },
+  rust: { name: 'Rust', detect: requireTools(['rustc', ['--version'], /^rustc (\d+\.\d+\.\d+)/]), extension: 'rs', pluginFile: 'rust.js' },
+  javascript: { name: 'JavaScript', detect: requireTools(['node', ['--version'], /^v(\d+\.\d+\.\d+)/]), extension: 'js', pluginFile: 'javascript.js' },
+  typescript: { name: 'TypeScript', detect: requireTools(['tsc', ['--version'], /^Version (\d+\.\d+\.\d+)/]), extension: 'ts', pluginFile: 'typescript.js' },
+  basic: { name: 'Basic', detect: requireTools(['fbc64', ['-version'], /FreeBASIC Compiler - Version (\d+\.\d+\.\d+)/i]), extension: 'bas', pluginFile: 'basic.js' },
+  delphi: { name: 'Delphi/Pascal', detect: requireTools(['fpc', ['-iV'], /^(\d+\.\d+\.\d+)$/]), extension: 'pas', pluginFile: 'delphi.js' },
+  kotlin: { name: 'Kotlin', detect: requireTools(['kotlinc', ['-version'], /kotlinc-jvm (\d+\.\d+\.\d+)/]), extension: 'kt', pluginFile: 'kotlin.js' },
+};
+
+/**
+ * Every language whose toolchain is installed and works. A tool that is
+ * missing or broken is reported and left out; it never fails the run.
+ * @returns {Object<string, object>} language key -> config with version
+ */
 function detectCompilers() {
   console.log(`${C.cyan}Detecting compilers/interpreters...${C.reset}\n`);
   const available = {};
-
   for (const [key, config] of Object.entries(LANGUAGE_COMPILERS)) {
-    const result = config.detect();
+    let result;
+    try {
+      result = config.detect();
+    } catch (error) {
+      result = { available: false, reason: error.message };
+    }
     if (result.available) {
       available[key] = { ...config, ...result };
       console.log(`  ${C.green}✓${C.reset} ${config.name}: ${result.version}`);
     } else {
-      console.log(`  ${C.dim}- ${config.name}: not found${C.reset}`);
+      console.log(`  ${C.dim}- ${config.name}: ${result.reason || 'not found'}${C.reset}`);
     }
   }
-
   console.log('');
   return available;
 }
@@ -1145,7 +1097,7 @@ function testCCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'test.c');
   fs.writeFileSync(srcFile, code);
 
-  const result = spawnSync('gcc', ['-c', srcFile, '-std=c99', '-Wall', '-fsyntax-only', '-o', '/dev/null'], {
+  const result = spawnTool('gcc', ['-c', srcFile, '-std=c99', '-Wall', '-fsyntax-only'], {
     encoding: 'utf-8',
     timeout: 30000
   });
@@ -1162,7 +1114,7 @@ function testCppCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'test.cpp');
   fs.writeFileSync(srcFile, code);
 
-  const result = spawnSync('g++', ['-c', srcFile, '-std=c++20', '-Wall', '-fsyntax-only', '-o', '/dev/null'], {
+  const result = spawnTool('g++', ['-c', srcFile, '-std=c++20', '-Wall', '-fsyntax-only'], {
     encoding: 'utf-8',
     timeout: 30000
   });
@@ -1193,9 +1145,9 @@ function testCSharpCompilation(code, outputDir) {
   </PropertyGroup>
 </Project>`);
 
-  // Each job builds in its own directory; -nodeReuse:false keeps concurrent
-  // builds from handing work to one another's MSBuild nodes.
-  const result = runProcess('dotnet', ['build', outputDir, '-c', 'Release', '-v', 'q', '-nologo', '-nodeReuse:false', '-clp:ErrorsOnly'],
+  // Each job builds in its own directory, so concurrent builds share no output;
+  // reused MSBuild nodes and the compiler server keep a build at seconds.
+  const result = runProcess('dotnet', ['build', outputDir, '-c', 'Release', '-v', 'q', '-nologo', '-clp:ErrorsOnly'],
     { timeoutSeconds: timeoutSeconds() * 2 });
   const errors = result.stdout + result.stderr;
   return {
@@ -1210,7 +1162,7 @@ function testJavaCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'TestHarness.java');
   fs.writeFileSync(srcFile, code);
 
-  const result = spawnSync('javac', [srcFile], {
+  const result = spawnTool('javac', [srcFile], {
     encoding: 'utf-8',
     timeout: 30000,
     cwd: outputDir
@@ -1245,7 +1197,7 @@ function testPHPSyntax(code, outputDir) {
   const srcFile = path.join(outputDir, 'test.php');
   fs.writeFileSync(srcFile, code);
 
-  const result = spawnSync('php', ['-l', srcFile], {
+  const result = spawnTool('php', ['-l', srcFile], {
     encoding: 'utf-8',
     timeout: 30000
   });
@@ -1266,7 +1218,7 @@ function testRubySyntax(code, outputDir) {
   const srcFile = path.join(outputDir, 'test.rb');
   fs.writeFileSync(srcFile, code);
 
-  const result = spawnSync('ruby', ['-c', srcFile], {
+  const result = spawnTool('ruby', ['-c', srcFile], {
     encoding: 'utf-8',
     timeout: 30000
   });
@@ -1291,7 +1243,7 @@ function testGoCompilation(code, outputDir) {
   const nullDevice = process.platform === 'win32' ? 'NUL' : '/dev/null';
 
   // Build from the output directory (required for go.mod to be found)
-  const result = spawnSync('go', ['build', '-o', nullDevice, '.'], {
+  const result = spawnTool('go', ['build', '-o', nullDevice, '.'], {
     cwd: outputDir,
     encoding: 'utf-8',
     timeout: 30000
@@ -1311,7 +1263,7 @@ function testRustCompilation(code, outputDir) {
   fs.writeFileSync(srcFile, code);
 
   // Compile to actual executable (works on all platforms)
-  const result = spawnSync('rustc', [srcFile, '-o', exeFile], {
+  const result = spawnTool('rustc', [srcFile, '-o', exeFile], {
     encoding: 'utf-8',
     timeout: 60000
   });
@@ -1333,7 +1285,7 @@ function testTypeScriptSyntax(code, outputDir) {
   fs.writeFileSync(srcFile, code);
 
   // TypeScript: --noEmit for type checking without output
-  const result = spawnSync('tsc', ['--noEmit', '--skipLibCheck', srcFile], {
+  const result = spawnTool('tsc', ['--noEmit', '--skipLibCheck', srcFile], {
     encoding: 'utf-8',
     timeout: 30000
   });
@@ -1351,7 +1303,7 @@ function testBasicCompilation(code, outputDir) {
   fs.writeFileSync(srcFile, code);
 
   // FreeBASIC: -c for compile only (no linking)
-  const result = spawnSync('fbc64', ['-c', srcFile], {
+  const result = spawnTool('fbc64', ['-c', srcFile], {
     encoding: 'utf-8',
     timeout: 30000,
     cwd: outputDir
@@ -1376,7 +1328,7 @@ function testDelphiCompilation(code, outputDir) {
 
   // FreePascal: -Cn = syntax check only (no code generation)
   // -Mdelphi = Delphi compatibility mode
-  const result = spawnSync('fpc', ['-Cn', '-Mdelphi', srcFile], {
+  const result = spawnTool('fpc', ['-Cn', '-Mdelphi', srcFile], {
     encoding: 'utf-8',
     timeout: 30000,
     cwd: outputDir
@@ -1396,7 +1348,7 @@ function testKotlinCompilation(code, outputDir) {
 
   // Kotlin: compile to jar for syntax validation
   const jarFile = path.join(outputDir, 'test.jar');
-  const result = spawnSync('kotlinc', [srcFile, '-include-runtime', '-d', jarFile], {
+  const result = spawnTool('kotlinc', [srcFile, '-include-runtime', '-d', jarFile], {
     encoding: 'utf-8',
     timeout: 120000, // Kotlin compilation is slow
     cwd: outputDir
@@ -1423,7 +1375,7 @@ function timeoutSeconds() {
  * @returns {{stdout: string, stderr: string, exitCode: number|null, timedOut: boolean, error: string|null}}
  */
 function runProcess(command, argv, options = {}) {
-  const result = spawnSync(command, argv, {
+  const result = spawnTool(command, argv, {
     encoding: 'utf-8',
     cwd: options.cwd,
     timeout: (options.timeoutSeconds || timeoutSeconds()) * 1000,
@@ -1955,5 +1907,5 @@ if (require.main === module) {
 module.exports = {
   run, validateFile, vectorPlan, harnessSpec, generateTestHarness, parseHarnessOutput,
   errorClass, summarize, firstError, transpileAlgorithm, frameworkSurface, testCompilation, executeCode,
-  detectCompilers, LANGUAGE_COMPILERS
+  detectCompilers, probeTool, LANGUAGE_COMPILERS
 };

@@ -128,7 +128,10 @@ vector field with the semantics of `TestEngine.ConfigureInstance` - a field that
 reaches no setter or property, or whose setter throws, fails the vector - and
 checks the expected output and, where the reference made one, the round trip.
 JavaScript, Python, Perl and C# have vector harnesses; the other languages are
-only compiled.
+only compiled. A toolchain counts as installed when it is on `PATH` (Windows
+`.cmd` shims included), exits 0 and prints its version on stdout or stderr; a
+broken one (a `java` that cannot create its virtual machine) is reported and
+left out rather than failing the run.
 
 A language passes when every algorithm it transpiled also compiled and passed
 every vector. Transpile, compile and execute counts are kept apart, per language

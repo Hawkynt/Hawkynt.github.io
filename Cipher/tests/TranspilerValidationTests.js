@@ -162,6 +162,69 @@ test('errorClass: given a pass or no error, when classified, then no class', () 
   equal([Validation.errorClass('passed', null), Validation.errorClass('compiled', null)], [null, null]);
 });
 
+// ---------------------------------------------------------------- toolchain detection
+
+/**
+ * Run a case with fake tools first on PATH: each is a .cmd shim on Windows
+ * (the shape npm and kotlinc install) or a shell script elsewhere.
+ * @param {Object<string, {stdout?: string, stderr?: string, code?: number}>} tools - name -> behaviour
+ * @param {function(): void} body - the case
+ */
+function withFakeTools(tools, body) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-tools-'));
+  const savedPath = process.env.PATH;
+  try {
+    for (const [name, t] of Object.entries(tools)) {
+      if (process.platform === 'win32') {
+        const lines = ['@echo off'];
+        if (t.stdout) lines.push(`echo ${t.stdout}`);
+        if (t.stderr) lines.push(`echo ${t.stderr} 1>&2`);
+        lines.push(`exit /b ${t.code || 0}`);
+        fs.writeFileSync(path.join(dir, `${name}.cmd`), lines.join('\r\n') + '\r\n');
+      } else {
+        const lines = ['#!/bin/sh'];
+        if (t.stdout) lines.push(`echo '${t.stdout}'`);
+        if (t.stderr) lines.push(`echo '${t.stderr}' 1>&2`);
+        lines.push(`exit ${t.code || 0}`);
+        fs.writeFileSync(path.join(dir, name), lines.join('\n') + '\n', { mode: 0o755 });
+      }
+    }
+    process.env.PATH = dir + path.delimiter + savedPath;
+    body();
+  } finally {
+    process.env.PATH = savedPath;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('probeTool: given a shim that prints its version to stderr, when probed, then it is available with that version', () => {
+  withFakeTools({ fakejavac1: { stderr: 'javac 21.0.4' } }, () => {
+    equal(Validation.probeTool('fakejavac1', ['-version'], /javac\s+([\d._]+)/), { available: true, version: '21.0.4' });
+  });
+});
+test('probeTool: given a java that cannot create its virtual machine but exits 0, when probed, then it is unavailable', () => {
+  withFakeTools({ fakejava2: { stderr: 'Error: Could not create the Java Virtual Machine.' } }, () => {
+    const r = Validation.probeTool('fakejava2', ['-version'], /version "?([\d._]+)/);
+    equal(r.available, false);
+    contains(r.reason, 'Could not create the Java Virtual Machine');
+  });
+});
+test('probeTool: given a tool that exits non-zero after printing a version, when probed, then it is unavailable', () => {
+  withFakeTools({ fakegcc3: { stdout: 'gcc 14.2.0', code: 1 } }, () => {
+    equal(Validation.probeTool('fakegcc3', ['--version'], /gcc (\d+\.\d+\.\d+)/).available, false);
+  });
+});
+test('probeTool: given a tool whose output has no version, when probed, then it is unavailable', () => {
+  withFakeTools({ fakeruby4: { stdout: 'hello' } }, () => {
+    contains(Validation.probeTool('fakeruby4', ['--version'], /ruby (\d+\.\d+\.\d+)/).reason, 'printed no version');
+  });
+});
+test('probeTool: given a tool not on PATH, when probed, then it is unavailable and nothing throws', () => {
+  const r = Validation.probeTool('no-such-tool-anywhere-5', ['--version'], /(\d+)/);
+  equal(r.available, false);
+  contains(r.reason, 'not on PATH');
+});
+
 // ---------------------------------------------------------------- harnesses end to end
 
 // Four probe algorithms, each with two vectors keyed by key and iv: one
@@ -390,26 +453,36 @@ namespace CipherValidation
 }
 `;
 
-test('C# harness: given the IV the JavaScript names iv, a wrong vector, a throwing setter and an unapplied field, when run, then Iv is set and each failure reported', () => {
-  if (!hasTool('csharp') || (cases.options && cases.options.dotnet === false)) return 'skip';
-  checkProbe(runProbe('csharp', CS_PROBE));
-});
-
-test('C# harness: given a vector field only a framework stub declares, when run, then it is not applied and the stub is named', () => {
-  if (!hasTool('csharp') || (cases.options && cases.options.dotnet === false)) return 'skip';
-  const stubSpec = { algorithms: [{ name: 'StubOnly', className: 'ProbeAlgorithm', isMode: false, multiKey: false,
-    vectors: PROBE_VECTORS.map(v => plan(Object.assign({ nonce: [1] }, v), null)) }] };
+// One build covers the C# cases: the four probes, and a fifth whose vectors
+// carry a nonce that only the framework stub declares.
+const CS_SPEC = { algorithms: PROBE_SPEC.algorithms.concat([{ name: 'StubOnly', className: 'ProbeAlgorithm', isMode: false, multiKey: false,
+  vectors: PROBE_VECTORS.map(v => plan(Object.assign({ nonce: [1] }, v), null)) }]) };
+let csResults = null;
+function csharpProbe() {
+  if (csResults) return csResults;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-csharp-'));
   try {
-    const harness = Validation.generateTestHarness('csharp', CS_PROBE, stubSpec, 'probe');
+    const harness = Validation.generateTestHarness('csharp', CS_PROBE, CS_SPEC, 'probe');
     const compiled = Validation.testCompilation('csharp', harness.code, dir);
-    if (!compiled.success) throw new Error(Validation.firstError(compiled.errors, 'csharp'));
-    const r = Validation.parseHarnessOutput(stubSpec, Validation.executeCode('csharp', dir), 'csharp')[0];
-    contains(r.error, "Vector field 'nonce' is not applied");
-    contains(r.error, 'only the framework stub IAlgorithmInstance.Nonce declares one');
+    if (!compiled.success) throw new Error(`does not compile: ${Validation.firstError(compiled.errors, 'csharp')}`);
+    csResults = Validation.parseHarnessOutput(CS_SPEC, Validation.executeCode('csharp', dir), 'csharp');
+    return csResults;
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+}
+const noDotnet = () => !hasTool('csharp') || (cases.options && cases.options.dotnet === false);
+
+test('C# harness: given the IV the JavaScript names iv, a wrong vector, a throwing setter and an unapplied field, when run, then Iv is set and each failure reported', () => {
+  if (noDotnet()) return 'skip';
+  checkProbe(csharpProbe().slice(0, PROBES.length));
+});
+
+test('C# harness: given a vector field only a framework stub declares, when run, then it is not applied and the stub is named', () => {
+  if (noDotnet()) return 'skip';
+  const r = csharpProbe()[PROBES.length];
+  contains(r.error, "Vector field 'nonce' is not applied");
+  contains(r.error, 'only the framework stub IAlgorithmInstance.Nonce declares one');
 });
 
 /**
