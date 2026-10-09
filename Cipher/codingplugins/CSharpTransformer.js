@@ -1991,6 +1991,11 @@
           return null;
         case 'any': case 'object': case 'Object':
           return CSharpType.Dynamic();
+        // A DataView is the byte[] it views in C# (see transformDataViewCreation); an
+        // ArrayBuffer stays loosely typed, as typed-array views of other element
+        // types may share it
+        case 'DataView':
+          return CSharpType.Array(CSharpType.Byte());
       }
       const primitive = TYPE_MAP[ilType];
       if (primitive && primitive.endsWith('[]') && /Array$/.test(ilType) && ilType !== 'Array')

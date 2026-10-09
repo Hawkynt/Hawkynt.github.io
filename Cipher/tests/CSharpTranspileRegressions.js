@@ -795,6 +795,11 @@ check('numbers: a ** b is Math.Pow for numbers and BigInteger.Pow for BigInts (C
   expectMatch(code, /BigInteger\.Pow\(\(BigInteger\)\(2ul\), /, 'BigInteger.Pow((BigInteger)2, ...)');
   expectNoMatch(code, /\*\*/, 'a ** operator (CS0193)');
 });
+check('DataView: a local DataView is the byte[] it views, not dynamic', () => {
+  const code = transpile('/**\n * @param {float64} v - v\n * @returns {uint8[]} r\n */\nfunction f(v) { /** @type {uint8[]} */ const out = [];\n' +
+    '  const view = new DataView(new ArrayBuffer(8)); view.setFloat64(0, v, true);\n  for (let i = 0; i < 8; i++) out.push(view.getUint8(i));\n  return out; }');
+  expectMatch(code, /byte\[\] view = /, 'byte[] view');
+});
 check('Math.round rounds a half up as JavaScript does, not to even', () => {
   const code = transpile('/**\n * @param {float64} x - x\n * @returns {int32} r\n */\nfunction f(x) { return Math.round(x * 3); }');
   expectMatch(code, /Math\.Floor\(\(double\)\(x \* 3\) \+ 0\.5\)/, 'Math.Floor(x * 3 + 0.5)');
