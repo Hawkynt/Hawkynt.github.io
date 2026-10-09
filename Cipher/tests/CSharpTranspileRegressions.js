@@ -240,6 +240,12 @@ check('conditions: a number as a for test is its truthiness', () => {
   const code = transpile('/**\n * @param {int32} k - k\n * @returns {int32} r\n */\nfunction g(k) { let n = 0; for (; k; k--) n++; return n; }');
   expectMatch(code, /for \(; k != 0; k--\)/, 'for (; k != 0; k--)');
 });
+check('conditions: Array.isArray of an array-typed value keeps only the array branch', () => {
+  const code = transpile('class N {\n  constructor() { /** @type {uint8[]} */ this.buffer = []; }\n' +
+    '  /** @param {uint8[]} data - data */\n  feed(data) { if (Array.isArray(data)) { this.buffer = this.buffer.concat(data); } else { this.buffer.push(data); } }\n}');
+  expectMatch(code, /this\.Buffer = this\.Buffer\.Concat\(data\)/, 'the concat branch');
+  expectNoMatch(code, /Append\(data\)/, 'the dead push(data) branch (CS1929)');
+});
 check('conditions: a feature test of an array method is true for a C# array', () => {
   const code = transpile('/**\n * @param {uint8[]} src - s\n * @returns {uint8[]} r\n */\nfunction g(src) { const buf = src.subarray ? src.subarray(0, 2) : src.slice(0, 2); return buf; }');
   expectNoMatch(code, /\.Subarray/, 'src.Subarray (CS1061)');

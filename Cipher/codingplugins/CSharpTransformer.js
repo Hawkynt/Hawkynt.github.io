@@ -13559,6 +13559,9 @@
               (CSHARP_VALUE_TYPES.has(valueType.name) || valueType.name === 'string')) {
             return CSharpLiteral.Bool(false);
           }
+          // A value statically an array is one: the other branch (push(data) of
+          // a non-array) is dead and is dropped like the false case above
+          if (valueType?.isArray) return CSharpLiteral.Bool(true);
           const value = this.transformExpression(node.value);
           // In C#, we can check if something is an array with "is Array" or just != null for typed arrays
           return new CSharpBinaryExpression(value, '!=', CSharpLiteral.Null());
