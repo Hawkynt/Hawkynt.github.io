@@ -578,6 +578,11 @@ check('arrays: a field aliasing a local the method pushes to is assigned it agai
   expectMatch(code, /this\.Keys = keys;\s*return;/, 'the field assigned again before the early return');
   expectMatch(code, /keys = keys\.Append\([\s\S]*\}\s*this\.Keys = keys;\s*\}/, 'the field assigned again at the end');
 });
+check('arrays: a whole copy stored into past its end grows (key.slice() extended to a schedule)', () => {
+  const code = transpile('/**\n * @param {uint8[]} key - key\n * @returns {uint8[]} schedule\n */\nfunction expand(key) {\n' +
+    '  /** @type {uint8[]} */\n  const rk = key.slice();\n  for (let i = 16; i < 32; i++) rk[i] = rk[i - 16];\n  return rk;\n}');
+  expectMatch(code, /OpCodes\.SetGrow<byte>\(ref rk, i, /, 'SetGrow(ref rk, i, ...)');
+});
 check('arrays: a store past the end of a pushed row grows that row in place', () => {
   const code = transpile('/**\n * @param {uint16[]} w - words\n * @returns {uint16[][]} tables\n */\nfunction build(w) {\n' +
     '  /** @type {uint16[][]} */\n  const tables = [];\n  for (let t = 0; t < 2; t++) { /** @type {uint16[]} */ const row = [0]; tables.push(row); }\n' +

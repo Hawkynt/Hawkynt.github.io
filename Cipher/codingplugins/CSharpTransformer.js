@@ -11453,7 +11453,9 @@
       this._walkAstNodes(bodyNode, node => {
         if (node.type === 'VariableDeclarator' && node.id?.type === 'Identifier' && node.init &&
             (((node.init.type === 'ArrayExpression' || node.init.type === 'ArrayLiteral') && (node.init.elements || []).length === 0) ||
-             (node.init.type === 'ArrayCreation' && !node.init.size && !node.init.length)))
+             (node.init.type === 'ArrayCreation' && !node.init.size && !node.init.length) ||
+             // A whole copy extended past its end (`const rk = key.slice(); rk[i + j] = ...`)
+             (node.init.type === 'ArraySlice' && !node.init.start && !node.init.end) || node.init.type === 'CopyArray'))
           emptyLocals.add(node.id.name);
         if (node.type === 'AssignmentExpression' && node.operator === '=' && node.left?.type === 'MemberExpression' &&
             node.left.computed && node.left.object?.type === 'Identifier')
