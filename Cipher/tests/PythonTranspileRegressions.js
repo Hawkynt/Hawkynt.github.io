@@ -457,6 +457,12 @@ check('for: a body that moves the counter or grows the bound runs as JavaScript 
   return expectOutput(runPython(js, 'print(list(skip([5, 0, 7, 8, 9])), list(grow([3])), plain(4))'), ['[5, 0, 9] [3, 2, 1] 6']);
 });
 
+check('switch: a default written before other cases still lets them match', () => {
+  const js = '/** @param {int32} v @returns {string} */\nfunction f(v) { let r = ""; switch (v) { default: case 0: r = "zero/other"; break; case 1: r = "one"; break; case 2: r = "two"; break; } return r; }';
+  // Given `default: case 0:` heading the switch, then the cases 1 and 2
+  return expectOutput(runPython(js, 'print(f(0), f(1), f(2), f(7))'), ['zero/other one two zero/other']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

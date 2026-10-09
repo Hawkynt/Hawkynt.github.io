@@ -6297,6 +6297,7 @@ class OpCodes(metaclass=_OpCodesMeta):
 
       let currentIf = null;
       let lastIf = null;
+      let defaultBody = null;
 
       for (const group of groups) {
         const caseBody = this.transformSwitchCaseBody(group.consequent);
@@ -6305,13 +6306,10 @@ class OpCodes(metaclass=_OpCodesMeta):
         // A default folded together with real tests (e.g. `default: case
         // 'x':` sharing one body) or a lone default acts as the final
         // unconditional else - it matches "everything else" so no
-        // condition can express it.
+        // condition can express it. Wherever it stands among the cases, the
+        // cases after it are still tested first (no group falls through).
         if (group.hasDefault) {
-          if (currentIf) {
-            lastIf.elseBranch = caseBody;
-          } else {
-            return caseBody;
-          }
+          defaultBody = caseBody;
           continue;
         }
 
@@ -6332,6 +6330,10 @@ class OpCodes(metaclass=_OpCodesMeta):
         }
       }
 
+      if (defaultBody) {
+        if (!currentIf) return defaultBody;
+        lastIf.elseBranch = defaultBody;
+      }
       return currentIf;
     }
 
