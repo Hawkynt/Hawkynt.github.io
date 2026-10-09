@@ -11319,6 +11319,7 @@
       // the array on such a store, a C# array has to be grown first
       const prevGrowableArrayLocals = this.growableArrayLocals;
       this.growableArrayLocals = this.preScanGrowableArrayLocals(bodyNode);
+      if (bodyNode.type === 'BlockStatement') this.deferAliasedPushes(bodyNode);
 
       if (bodyNode.type === 'BlockStatement') {
         for (const stmt of bodyNode.body) {
@@ -11354,6 +11355,54 @@
       this.currentFunctionBodyNode = prevFunctionBodyNode;
 
       return block;
+    }
+
+    /**
+     * `const rows = []; cube.push(rows); ... rows.push(r)` - the container holds
+     * the array the later pushes fill in JavaScript; in C# each push binds the
+     * local to a new array and the container keeps the empty one. Where nothing
+     * after it in the block jumps or reads the container, the push into the
+     * container moves to the end of the block, after the local is complete.
+     * @param {Object} node - IL block or statement, changed in place
+     */
+    deferAliasedPushes(node) {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) { node.forEach(n => this.deferAliasedPushes(n)); return; }
+      if (node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression' || node.type === 'FunctionDeclaration') return;
+      for (const key of Object.keys(node)) {
+        if (key !== 'parent' && node[key] && typeof node[key] === 'object') this.deferAliasedPushes(node[key]);
+      }
+      if (node.type !== 'BlockStatement' || !Array.isArray(node.body)) return;
+      const pushOf = stmt => {
+        const e = stmt?.type === 'ExpressionStatement' ? stmt.expression : null;
+        if (e?.type === 'ArrayAppend' && e.array?.type === 'Identifier' && e.value?.type === 'Identifier' && !(e.values?.length > 1))
+          return { container: e.array.name, local: e.value.name };
+        if (e?.type === 'CallExpression' && e.callee?.type === 'MemberExpression' && e.callee.property?.name === 'push' &&
+            e.callee.object?.type === 'Identifier' && e.arguments?.length === 1 && e.arguments[0].type === 'Identifier')
+          return { container: e.callee.object.name, local: e.arguments[0].name };
+        return null;
+      };
+      const body = node.body;
+      for (let i = 0; i < body.length - 1; ++i) {
+        const push = pushOf(body[i]);
+        if (!push) continue;
+        const declaredHere = body.slice(0, i).some(s => s.type === 'VariableDeclaration' &&
+          s.declarations.some(d => d.id?.name === push.local));
+        if (!declaredHere) continue;
+        const rest = body.slice(i + 1);
+        let rebound = false, blocked = false;
+        this._walkAstNodes(rest, n => {
+          if (['ReturnStatement', 'BreakStatement', 'ContinueStatement', 'ThrowStatement'].includes(n.type)) blocked = true;
+          if (n.type === 'Identifier' && n.name === push.container) blocked = true;
+          if ((n.type === 'ArrayAppend' || n.type === 'ArrayConcat' || n.type === 'ArrayUnshift') && n.array?.type === 'Identifier' && n.array.name === push.local) rebound = true;
+          if (n.type === 'CallExpression' && n.callee?.type === 'MemberExpression' && ['push', 'unshift'].includes(n.callee.property?.name) &&
+              n.callee.object?.type === 'Identifier' && n.callee.object.name === push.local) rebound = true;
+        });
+        if (!rebound || blocked) continue;
+        const [moved] = body.splice(i, 1);
+        body.push(moved);
+        --i;
+      }
     }
 
     /**

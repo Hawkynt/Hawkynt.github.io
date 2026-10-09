@@ -594,6 +594,11 @@ check('arrays: a whole copy stored into past its end grows (key.slice() extended
     '  /** @type {uint8[]} */\n  const rk = key.slice();\n  for (let i = 16; i < 32; i++) rk[i] = rk[i - 16];\n  return rk;\n}');
   expectMatch(code, /OpCodes\.SetGrow<byte>\(ref rk, i, /, 'SetGrow(ref rk, i, ...)');
 });
+check('arrays: a local pushed into a container before it is filled is pushed after it is filled', () => {
+  const code = transpile('/**\n * @param {string} a - alphabet\n * @returns {string[][]} rows\n */\nfunction f(a) {\n  /** @type {string[][]} */\n  const rows = [];\n' +
+    '  for (let r = 0; r < 3; r++) {\n    /** @type {string[]} */\n    const cells = [];\n    rows.push(cells);\n    for (let c = 0; c < 3; c++) cells.push(a[r * 3 + c]);\n  }\n  return rows;\n}');
+  expectMatch(code, /cells = cells\.Append\([\s\S]*?\}\s*rows = rows\.Append\(cells\)/, 'rows.Append(cells) after the loop filling cells');
+});
 check('arrays: a store past the end of a pushed row grows that row in place', () => {
   const code = transpile('/**\n * @param {uint16[]} w - words\n * @returns {uint16[][]} tables\n */\nfunction build(w) {\n' +
     '  /** @type {uint16[][]} */\n  const tables = [];\n  for (let t = 0; t < 2; t++) { /** @type {uint16[]} */ const row = [0]; tables.push(row); }\n' +
