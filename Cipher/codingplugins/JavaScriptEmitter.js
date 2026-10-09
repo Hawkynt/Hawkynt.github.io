@@ -276,7 +276,13 @@
     // ========================[ STATEMENTS ]========================
 
     emitBlock(node) {
-      return node.statements.map(s => this.emit(s)).join('');
+      if (!node.scoped) return node.statements.map(s => this.emit(s)).join('');
+      // A block standing among statements keeps its braces: it is a scope
+      let code = this.line('{');
+      this.indentLevel++;
+      code += node.statements.map(s => this.emit(s)).join('');
+      this.indentLevel--;
+      return code + this.line('}');
     }
 
     emitVariableDeclaration(node) {
@@ -689,7 +695,8 @@
     }
 
     emitNew(node) {
-      let code = `new ${node.className}`;
+      // className is a name, or an expression node for a computed constructor
+      let code = typeof node.className === 'string' ? `new ${node.className}` : `new (${this.emit(node.className)})`;
       const args = node.arguments.map(a => this.emit(a));
       code += `(${args.join(', ')})`;
       return code;
