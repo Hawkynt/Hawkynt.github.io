@@ -164,6 +164,39 @@ check('ruby: truthiness follows JavaScript (0, "", NaN false; [] true)', () => {
     ['[0, 0, 0, 1, 1]', '[9, 5]']);
 });
 
+check('ruby: a uint64 sum masked by ToQWord is masked even though its operands are 64-bit', () => {
+  const js = 'function f(a, b) { /** @type {uint64} */ const x = 0xFFFFFFFFFFFFFFFFn; return OpCodes.ToQWord(x + BigInt(a)) === BigInt(a) - 1n; }';
+  // Given 2^64 - 1 + a (boundary: the sum overflows 64 bits by exactly a - 1)
+  // When masked to 64 bits
+  // Then the result wraps instead of keeping the 65th bit
+  return expectOutput(runRuby(js, 'p $main_f.(5, 0)'), ['true']);
+});
+
+check('ruby: a BigInt held in a uint64-typed constant multiplies exactly', () => {
+  const js = 'const E = 0x25B946EBC0B36173n; const K = 256n; function f() { return OpCodes.ToQWord(E * K).toString(16); }';
+  const want = ((0x25B946EBC0B36173n * 256n) & 0xFFFFFFFFFFFFFFFFn).toString(16);
+  return expectOutput(runRuby(js, 'p $main_f.()'), [`"${want}"`]);
+});
+
+check('ruby: a float64 sum past 2^53 rounds like a double', () => {
+  const js = 'function f(s) { /** @type {float64} */ let x = s; x = x * 1103515245 + 12345; return OpCodes.And32(x, 0x7FFFFFFF); }';
+  // Given a product above 2^53 (rounded) plus a small odd constant (rounded again)
+  const want = (() => { let x = 4294967295; x = x * 1103515245 + 12345; return (x & 0x7FFFFFFF) >>> 0; })();
+  return expectOutput(runRuby(js, 'p $main_f.(4294967295)'), [String(want)]);
+});
+
+check('ruby: a closure assigning an outer local updates it', () => {
+  const js = 'function f() { function bump() { counter = 16; } function take() { return counter--; } let counter = 0; bump(); take(); return counter; }';
+  // Given hoisted functions writing a local declared after them
+  return expectOutput(runRuby(js, 'p $main_f.()'), ['15']);
+});
+
+check('ruby: this[k] reads the property named by the variable k', () => {
+  const js = 'class P { constructor() { this.alpha = 3; } get(k) { return this[k]; } put(k, v) { this[k] = v; return this.alpha; } }\n' +
+    'function f() { const p = new P(); return [p.get("alpha"), p.put("alpha", 9)]; }';
+  return expectOutput(runRuby(js, 'p $main_f.()'), ['[3, 9]']);
+});
+
 // ---------------------------------------------------------------- control flow
 
 check('ruby: continue in a for loop still runs the update', () => {
