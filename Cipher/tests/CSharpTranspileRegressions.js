@@ -932,7 +932,16 @@ check('return: a null module sentinel returned from an array-typed function is c
     'function f(n) { if (n < 0) return FAIL; return [[1, 2]]; }');
   expectMatch(code, /return \(uint\[\]\[\]\)\(?FAIL\)?;/, 'return (uint[][])FAIL;');
 });
-const OVERRIDING_CLASSES = 'class Base {\n  /** @param {uint8[]} s - state */\n  run(s) { this.step(s); }\n' +
+check('for: a loop variable walking linked nodes keeps the node class type (CS0029)', () => {
+  const code = transpile('class Node {\n  constructor() {\n    /** @type {Node} */\n    this.parent = null;\n  }\n}\n' +
+    '/**\n * @param {Node} node - node\n * @returns {int32} r\n */\nfunction depth(node) { let d = 0; for (let n = node.parent; n !== null; n = n.parent) ++d; return d; }');
+  expectMatch(code, /for \(Node n = node\.Parent; n != null; n = n\.Parent\)/, 'for (Node n = node.Parent; ...)');
+});
+check('for: a counting loop variable stays int', () => {
+  const code = transpile('/**\n * @param {uint8[]} a - a\n * @returns {int32} r\n */\nfunction f(a) { let s = 0; for (let i = a.length - 1; i >= 0; --i) s += a[i]; return s; }');
+  expectMatch(code, /for \(int i = /, 'for (int i = ...)');
+});
+const OVERRIDING_CLASSES ='class Base {\n  /** @param {uint8[]} s - state */\n  run(s) { this.step(s); }\n' +
   '  /** @param {uint8[]} s - state */\n  step(s) { throw new Error("abstract"); }\n}\n' +
   'class Derived extends Base {\n  /** @param {uint8[]} s - state */\n  step(s) { s[0] = 1; }\n}\n' +
   'class Other extends Base {\n  /**\n   * @param {uint8[]} s - state\n   * @param {int32} n - count\n   */\n  step(s, n) { s[0] = n; }\n}';

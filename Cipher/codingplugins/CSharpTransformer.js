@@ -19004,16 +19004,22 @@
           // (ushort/byte, previously listed, both widen to int implicitly in C# and
           // needsNarrowingCast correctly says so - dropping their now-redundant cast.)
           const initType = this.inferFullExpressionType(decl.init);
-          if (initType && initType.name !== 'int' && this.needsNarrowingCast(initType, CSharpType.Int())) {
+          // A loop walking a linked structure - adaptive-huffman.js's `for (let n =
+          // node.parent; n !== null; n = n.parent)` - keeps the node's class type
+          // (CS0029 as int).
+          const walksObjects = node.init.declarations.length === 1 && !!initType &&
+            (initType.isArray || initType.name === 'string' || this.isClassTypeName(initType.name));
+          const loopVarType = walksObjects ? initType : CSharpType.Int();
+          if (!walksObjects && initType && initType.name !== 'int' && this.needsNarrowingCast(initType, CSharpType.Int())) {
             initExpr = new CSharpCast(CSharpType.Int(), initExpr);
           }
 
           // Register the loop variable type so it can be looked up when used in the loop body
-          this.registerVariableType(originalVarName, CSharpType.Int());
+          this.registerVariableType(originalVarName, loopVarType);
 
           forStmt.initializer = new CSharpVariableDeclaration(
             varName,
-            CSharpType.Int(),
+            loopVarType,
             initExpr
           );
 
