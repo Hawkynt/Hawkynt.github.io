@@ -670,7 +670,7 @@
   "algorithms/kdf/sp800-56c.js": 0,
   "algorithms/kdf/tls-prf.js": 0,
   "algorithms/kdf/x963kdf.js": 0,
-  "algorithms/mac/blake2bmac.js": 1,
+  "algorithms/mac/blake2bmac.js": 0,
   "algorithms/mac/blake3mac.js": 0,
   "algorithms/mac/cbcmac.js": 0,
   "algorithms/mac/cfbmac.js": 0,
