@@ -252,6 +252,15 @@ check('push: every argument of a multi-argument push is appended, in order', () 
 });
 
 // ---------------------------------------------------------------------------
+// Operator grouping
+// ---------------------------------------------------------------------------
+check('grouping: a parenthesized || inside && keeps its parentheses', () => {
+  const code = transpile('/**\n * @param {int32} a - a\n * @param {int32} b - b\n * @returns {boolean} r\n */\n' +
+    'function f(a, b) { return a > 0 && (b > 0 || b < -5); }');
+  expectMatch(code, /a > 0 && \(b > 0 \|\| b < -5\)/, 'a > 0 && (b > 0 || b < -5)');
+});
+
+// ---------------------------------------------------------------------------
 // Runtime stubs (needs the .NET SDK)
 // ---------------------------------------------------------------------------
 check('runtime stubs: BlockAbsorber, pad helpers, ToRadixString, IsTruthy, GFMul behave like the JS framework', () => {
@@ -263,7 +272,8 @@ check('runtime stubs: BlockAbsorber, pad helpers, ToRadixString, IsTruthy, GFMul
   const stubs = transpile('class XorInstance extends IBlockCipherInstance {\n' +
     '  constructor(algorithm) { super(algorithm); this.BlockSize = 2; }\n' +
     '  EncryptBlock(block) { return [block[0] ^ this.key[0], block[1] ^ this.key[1]]; }\n' +
-    '  DecryptBlock(block) { return this.EncryptBlock(block); }\n}', true)
+    '  DecryptBlock(block) { return this.EncryptBlock(block); }\n}\n' +
+    '/**\n * @param {BigInt} x - value\n * @returns {BigInt} low 64 bits\n */\nfunction wrap64(x) { return OpCodes.ToQWord(x); }', true)
     .replace(/public static void Main\s*\([^)]*\)\s*\{[^}]*\}/, '');
   const program = `${stubs}
 namespace RegressionTest {
@@ -331,6 +341,9 @@ namespace RegressionTest {
       var noKey = false;
       try { keyless.Result(); } catch (Exception) { noKey = true; }
       Eq("no-key", noKey, true);
+      // ToQWord keeps the low 64 bits of a wider BigInteger (no OverflowException)
+      Eq("qword-wrap", Generated.Wrap64(BigInteger.Pow(2, 70) + 5), 5);
+      Eq("qword-max", Generated.Wrap64(BigInteger.Pow(2, 64) - 1), ulong.MaxValue);
       Console.WriteLine(failures == 0 ? "STUBS_OK" : "STUBS_FAILED");
       return failures == 0 ? 0 : 1;
     }
