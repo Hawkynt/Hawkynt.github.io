@@ -5327,6 +5327,7 @@
         case 'Floor':
         case 'Ceil':
         case 'Round':
+          return this.roundedType(node.argument);
         case 'Trunc':
           return CSharpType.Int();
 
@@ -25414,7 +25415,7 @@
       );
       // Use int as default (matches transformCeil behavior)
       // If uint is needed, the assignment context will handle proper casting
-      return new CSharpCast(CSharpType.Int(), floorResult);
+      return new CSharpCast(this.roundedType(node.argument), floorResult);
     }
 
     /**
@@ -25494,7 +25495,7 @@
         'Ceiling',
         [this.asDoubleOperand(node.argument, arg)]
       );
-      return new CSharpCast(CSharpType.Int(), ceilResult);
+      return new CSharpCast(this.roundedType(node.argument), ceilResult);
     }
 
     /**
@@ -25585,7 +25586,19 @@
      */
     transformRound(node) {
       const arg = this.transformExpression(node.argument);
-      return new CSharpCast(CSharpType.Int(), this.jsRound(this.asDoubleOperand(node.argument, arg)));
+      return new CSharpCast(this.roundedType(node.argument), this.jsRound(this.asDoubleOperand(node.argument, arg)));
+    }
+
+    /**
+     * The type Math.floor/ceil/round give back: int, but a 64-bit operand (or
+     * dividend) keeps its type, as (int) would cut a uint64 counter.
+     * @param {Object} argNode - the JS/IL operand
+     * @returns {CSharpType}
+     */
+    roundedType(argNode) {
+      const operand = argNode?.type === 'BinaryExpression' && argNode.operator === '/' ? argNode.left : argNode;
+      const type = operand ? this.inferFullExpressionType(operand) : null;
+      return type && !type.isArray && (type.name === 'long' || type.name === 'ulong') ? new CSharpType(type.name) : CSharpType.Int();
     }
 
     /** Math.round(x) of a double x: Math.Floor(x + 0.5). */
