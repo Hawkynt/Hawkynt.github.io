@@ -2907,6 +2907,8 @@
         case 'ArrayLength': {
           const a = this.expr(node.array);
           if (a.t.k === 'arr' || a.t.k === 'str') return { c: `${a.c}.length()`, t: T.i32 };
+          // the IL reads any x.length as an array's; a class's own length member stays one
+          if (a.t.k === 'cls') return this.memberRead(a, 'length', node);
           return { c: `${this.cv(a, T.any)}.length()`, t: T.i32 };
         }
         case 'ArrayAppend': {
