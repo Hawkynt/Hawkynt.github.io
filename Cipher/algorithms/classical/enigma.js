@@ -254,15 +254,15 @@
     }
 
     /**
-   * Get the current setting
-   * @returns {string} Rotor positions as letters followed by the rotor numbers
-   */
+     * Get the current setting in the key format "PPPSSS"
+     * @returns {uint8[]} Rotor positions as letters followed by the rotor numbers
+     */
 
     get key() {
       /** @type {string} */
       let text = '';
       for (let i = 0; i < this.rotorPositions.length; i++) text += String.fromCharCode(this.rotorPositions[i] + 65);
-      return text + this.rotorSelection.join('');
+      return OpCodes.AnsiToBytes(text + this.rotorSelection.join(''));
     }
 
     /**

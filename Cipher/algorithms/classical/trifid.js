@@ -216,6 +216,8 @@
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._keyBytes = null;
       /** @type {TrifidCipher} */
       this.trifid = algorithm;
       /** @type {boolean} */
@@ -237,6 +239,7 @@
      * @param {uint8[]} keyData - Key bytes or string
      */
     set key(keyData) {
+      this._keyBytes = keyData ? keyData.slice() : null;
       /** @type {string} */
       const keyString = keyData ? String.fromCharCode(...keyData) : '';
 
@@ -276,12 +279,12 @@
     }
 
     /**
-   * Get the key text
-   * @returns {string|null} Key text or null
-   */
+     * Get a copy of the key bytes last set
+     * @returns {uint8[]|null} Copy of the key bytes, or null when none were set
+     */
 
     get key() {
-      return this._key;
+      return this._keyBytes ? this._keyBytes.slice() : null;
     }
 
     /**

@@ -163,6 +163,8 @@
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._keyBytes = null;
       /** @type {boolean} */
       this.isInverse = isInverse;
       /** @type {string} */
@@ -183,6 +185,7 @@
      * @param {uint8[]|null} keyData - Key bytes, or null/empty for "12345"
      */
     set key(keyData) {
+      this._keyBytes = keyData ? keyData.slice() : null;
       if (!keyData || keyData.length === 0) {
         this._processedKey = "12345"; // Default key
       } else {
@@ -197,12 +200,12 @@
     }
 
     /**
-   * Get the digit key
-   * @returns {string} Key digits
-   */
+     * Get a copy of the key bytes last set
+     * @returns {uint8[]|null} Copy of the key bytes, or null when none were set
+     */
 
     get key() {
-      return this._processedKey ? this._processedKey : "12345";
+      return this._keyBytes ? this._keyBytes.slice() : null;
     }
 
     // Feed data to the cipher

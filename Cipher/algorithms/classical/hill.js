@@ -174,6 +174,8 @@
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._keyBytes = null;
       /** @type {boolean} */
       this.isInverse = isInverse;
       /** @type {uint8[]} */
@@ -207,6 +209,7 @@
 
       /** @type {string} */
       const keyStr = String.fromCharCode.apply(null, keyData);
+      this._keyBytes = keyData.slice();
       /** @type {HillKeyMatrix} */
       const parsed = this.parseKey(keyStr);
       this.matrix = parsed.matrix;
@@ -227,12 +230,12 @@
     }
 
     /**
-   * Get the key matrix
-   * @returns {int32[][]} Key matrix
-   */
+     * Get a copy of the key bytes last set
+     * @returns {uint8[]|null} Copy of the key bytes, or null when none were set
+     */
 
     get key() {
-      return this.matrix;
+      return this._keyBytes ? this._keyBytes.slice() : null;
     }
 
     /**

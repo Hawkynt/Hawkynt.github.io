@@ -263,10 +263,11 @@
       }
 
       /**
-       * @returns {string} Language name
+       * Get a copy of the key bytes last set; the language is read through language
+       * @returns {uint8[]|null} Copy of the key bytes, or null when none were set
        */
       get key() {
-        return this.language ? this.language : "english";
+        return this._keyData ? this._keyData.slice() : null;
       }
 
       /**

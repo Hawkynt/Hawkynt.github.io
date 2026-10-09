@@ -183,6 +183,8 @@
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._keyBytes = null;
       /** @type {boolean} */
       this.isInverse = isInverse;
       /** @type {uint8[]} */
@@ -203,6 +205,7 @@
      * @param {uint8[]|null} keyData - Key bytes, or null/empty for "A"
      */
     set key(keyData) {
+      this._keyBytes = keyData ? keyData.slice() : null;
       if (!keyData || keyData.length === 0) {
         this._processedKey = "A"; // Default key
       } else {
@@ -219,12 +222,12 @@
     }
 
     /**
-   * Get the keyword
-   * @returns {string} Upper-case keyword letters
-   */
+     * Get a copy of the key bytes last set
+     * @returns {uint8[]|null} Copy of the key bytes, or null when none were set
+     */
 
     get key() {
-      return this._processedKey ? this._processedKey : "A";
+      return this._keyBytes ? this._keyBytes.slice() : null;
     }
 
     // Feed data to the cipher

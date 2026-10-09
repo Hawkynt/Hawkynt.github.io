@@ -166,6 +166,8 @@
 
     constructor(algorithm, isInverse = false) {
       super(algorithm);
+      /** @type {uint8[]|null} */
+      this._keyBytes = null;
       /** @type {boolean} */
       this.isInverse = isInverse;
       /** @type {string[][]} */
@@ -186,6 +188,7 @@
      * @param {uint8[]|null} keyData - Key bytes, or null/empty for "KEYWORD"
      */
     set key(keyData) {
+      this._keyBytes = keyData ? keyData.slice() : null;
       if (!keyData || keyData.length === 0) {
         this._keyMatrix = this.createMatrix("KEYWORD"); // Default key
       } else {
@@ -201,12 +204,12 @@
     }
 
     /**
-   * Get the key matrix
-   * @returns {string[][]} 5x5 matrix of letters
-   */
+     * Get a copy of the key bytes last set
+     * @returns {uint8[]|null} Copy of the key bytes, or null when none were set
+     */
 
     get key() {
-      return this._keyMatrix;
+      return this._keyBytes ? this._keyBytes.slice() : null;
     }
 
     /**

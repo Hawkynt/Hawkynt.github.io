@@ -224,6 +224,8 @@
        */
       constructor(algorithm, isInverse) {
         super(algorithm);
+        /** @type {uint8[]|null} */
+        this._keyBytes = null;
         /** @type {boolean} */
         this.isInverse = isInverse || false;
         /** @type {string} */
@@ -240,6 +242,7 @@
        */
       set key(keyData) {
         if (!keyData) return;
+        this._keyBytes = keyData.slice();
         /** @type {string} */
         const keyString = String.fromCharCode(...keyData);
         this._key = keyString;
@@ -247,10 +250,11 @@
       }
 
       /**
-       * @returns {string} Keyword as given
+       * Get a copy of the key bytes last set
+       * @returns {uint8[]|null} Copy of the key bytes, or null when none were set
        */
       get key() {
-        return this._key;
+        return this._keyBytes ? this._keyBytes.slice() : null;
       }
 
       /**
