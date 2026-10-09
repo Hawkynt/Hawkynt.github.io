@@ -2486,7 +2486,7 @@
           else if (TypeAwareJSASTParser._isBigIntValue(left) || TypeAwareJSASTParser._isBigIntValue(right))
             resultType = TypeAwareJSASTParser._bigIntResultType(op.slice(0, -1), left, right);
           else if (leftType.includes('64') || rightType.includes('64'))
-            resultType = leftType.includes('int') || rightType.includes('int') ? 'int64' : 'uint64';
+            resultType = TypeAwareJSASTParser._wideArithmeticType(op.slice(0, -1), leftType, rightType, left, right);
           else if (op !== '%=' && TypeAwareJSASTParser._widenedArithmeticType(op.slice(0, -1), leftType, rightType, left, right))
             resultType = TypeAwareJSASTParser._widenedArithmeticType(op.slice(0, -1), leftType, rightType, left, right);
           else if (leftType && leftType !== 'any' && leftType !== 'number')
@@ -3291,6 +3291,35 @@
       }
       if (lo >= ranges.int32[0] && hi <= ranges.int32[1]) return 'int32';
       if (lo >= 0 && hi <= ranges.uint32[1]) return 'uint32';
+      // Operands of up to 32 bits stay within 64: a result that cannot go
+      // negative is uint64 (uint32 * uint32, uint32 + uint32), any other int64.
+      return lo >= 0 ? 'uint64' : 'int64';
+    }
+
+    /**
+     * Result type of `+`, `-`, `*` or `%` on numbers where one side is a
+     * 64-bit integer (a Number typed uint64/int64, not a BigInt): uint64 when
+     * no result can be negative - both sides unsigned for `+` and `*`, an
+     * unsigned dividend for `%` - and int64 otherwise.
+     * @param {string} op - '+', '-', '*' or '%'
+     * @param {string} lt - left operand type
+     * @param {string} rt - right operand type
+     * @param {Object} left - left IL operand
+     * @param {Object} right - right IL operand
+     * @returns {string} 'uint64' or 'int64'
+     */
+    static _wideArithmeticType(op, lt, rt, left, right) {
+      const unsigned = (n, t) => n && n.type === 'Literal' && typeof n.value === 'number'
+        ? Number.isInteger(n.value) && n.value >= 0
+        : /^uint(8|16|32|64)$/.test(t);
+      if (op === '%') {
+        if (unsigned(left, lt)) return 'uint64';
+        // A signed count modulo an int32: |a % b| < |b|, so int32 holds it
+        // (`(i + Math.round(x)) % n` is an index again).
+        const divisor = right && right.type === 'Literal' ? Number.isInteger(right.value) && Math.abs(right.value) <= 0x80000000 : rt === 'int32';
+        return lt === 'int64' && divisor ? 'int32' : 'int64';
+      }
+      if (op === '+' || op === '*') return unsigned(left, lt) && unsigned(right, rt) ? 'uint64' : 'int64';
       return 'int64';
     }
 
@@ -5132,7 +5161,7 @@
         }
         // If either is 64-bit, result is 64-bit
         else if (leftType.includes('64') || rightType.includes('64')) {
-          resultType = leftType.includes('int') || rightType.includes('int') ? 'int64' : 'uint64';
+          resultType = TypeAwareJSASTParser._wideArithmeticType(op, leftType, rightType, left, right);
         }
         // Fixed-width integers up to 32 bits: a type that holds the result
         // (JavaScript does not wrap: two uint8 add up to 510, uint32 - uint32

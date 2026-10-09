@@ -1594,7 +1594,7 @@ class TypeInferenceTestSuite {
 
       // Arithmetic is typed to hold its result
       check(mixed + 'const x = b + b; return x; }', 'x', 'int32', 'given uint8 + uint8, then int32 (holds 510)');
-      check(mixed + 'const x = u + u; return x; }', 'x', 'int64', 'given uint32 + uint32, then int64');
+      check(mixed + 'const x = u + u; return x; }', 'x', 'uint64', 'given uint32 + uint32, then uint64 (never negative)');
       check(mixed + 'const x = u - 1; return x; }', 'x', 'int64', 'given uint32 - 1, then int64 (may be -1)');
       check('/** @param {uint16} a */\nfunction f(a) { const x = a * a; return x; }', 'x', 'uint32', 'given uint16 * uint16, then uint32 (boundary: 65535^2 < 2^32)');
       check(mixed + 'const x = s + b; return x; }', 'x', 'int32', 'given int32 + uint8, then int32 (a counted int32 stays int32)');
@@ -1795,6 +1795,27 @@ class TypeInferenceTestSuite {
       check(bytes + 'const x = b.map(v => { const g = () => "s"; return v; }); return x; }', 'x', 'uint8[]', 'given a nested function, then its returns do not count');
       check(bytes + 'const x = b.map(v => { if (v) return; return v; }); return x; }', 'x', 'uint8[]', 'given a bare return, then the result is not inferred and the source type is kept (exceptional)');
       check(bytes + 'const x = b.map(v => String(v)); return x; }', 'x', 'uint8[]', 'given an untyped callback result, then the source type is kept (exceptional)');
+
+      // Sums and products of fixed-width numbers: unsigned when no result is negative
+      check(nums + 'const x = u * u; return x; }', 'x', 'uint64', 'given uint32 * uint32, then uint64 (was int64)');
+      check(nums + 'const x = u + 1; return x; }', 'x', 'uint64', 'given uint32 + 1, then uint64 (boundary: 2^32 needs 33 bits)');
+      check(nums + 'const x = u - u; return x; }', 'x', 'int64', 'given uint32 - uint32, then int64 (may be negative)');
+      check(nums + 'const x = u * -1; return x; }', 'x', 'int64', 'given uint32 * -1, then int64 (negative literal)');
+      check(nums + 'const x = s + u; return x; }', 'x', 'int64', 'given int32 + uint32, then int64');
+      check(nums + 'const x = b * b; return x; }', 'x', 'int32', 'given uint8 * uint8, then int32 (fits; the narrowest holding type)');
+      check(nums + 'const x = w + w; return x; }', 'x', 'uint64', 'given uint64 + uint64, then uint64 (was int64)');
+      check(nums + 'const x = w * b; return x; }', 'x', 'uint64', 'given uint64 * uint8, then uint64');
+      check(nums + 'const x = w - b; return x; }', 'x', 'int64', 'given uint64 - uint8, then int64 (may be negative)');
+      check(nums + 'const x = w * s; return x; }', 'x', 'int64', 'given uint64 * int32, then int64 (signed operand)');
+      check(nums + 'const x = q + w; return x; }', 'x', 'int64', 'given int64 + uint64, then int64');
+      check(nums + 'const x = w % 7; return x; }', 'x', 'uint64', 'given uint64 % 7, then uint64 (unsigned dividend)');
+      check(nums + 'const x = q % 7; return x; }', 'x', 'int32', 'given int64 % 7, then int32 (|remainder| < 7, keeps the dividend sign)');
+      check(nums + 'const x = q % s; return x; }', 'x', 'int32', 'given int64 % int32, then int32 (an index again)');
+      check(nums + 'const x = q % w; return x; }', 'x', 'int64', 'given int64 % uint64, then int64 (boundary: a 64-bit divisor)');
+      this.assertEqual(this.inferType(nums + 'let x = u; return x *= u; }', this.findReturnArg), 'uint64',
+        'given uint32 *= uint32, then the compound result is uint64', 'x *= u');
+      this.assertEqual(this.inferType(nums + 'let x = w; return x += w; }', this.findReturnArg), 'uint64',
+        'given uint64 += uint64, then the compound result is uint64', 'x += w');
 
     });
   }
