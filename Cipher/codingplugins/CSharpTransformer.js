@@ -15341,6 +15341,23 @@
         return null;
       }
 
+      // An immediately invoked function used as a value: a typed lambda, invoked.
+      // Its locals must not reuse a name the enclosing method already declares.
+      const iifeCallee = node.callee;
+      if ((iifeCallee?.type === 'FunctionExpression' || iifeCallee?.type === 'ArrowFunctionExpression' ||
+           iifeCallee?.type === 'ArrowFunction') && (node.arguments || []).length === 0 && (iifeCallee.params || []).length === 0) {
+        // The IL's type of the call, else of its position, else what the body returns
+        const bodyReturn = iifeCallee.body?.type === 'BlockStatement' ? this.inferReturnType(iifeCallee.body) : null;
+        const returnType = this.mapILType(node.resultType) || this.mapILType(node.contextType) ||
+          (bodyReturn && bodyReturn.name !== 'object' ? bodyReturn : null) || CSharpType.Dynamic();
+        const outerNames = [...(this.methodDeclaredVars || [])].map(name => ({ name }));
+        const body = iifeCallee.body?.type === 'BlockStatement'
+          ? this.transformFunctionBody(iifeCallee.body, { returnType, parameters: outerNames })
+          : this.transformExpression(iifeCallee.body);
+        const funcType = new CSharpType('Func', { isGeneric: true, genericArguments: [returnType] });
+        return new CSharpMethodCall(new CSharpParenthesized(new CSharpCast(funcType, new CSharpLambda([], body))), 'Invoke', []);
+      }
+
       // `arr.push(...)`/`arr.unshift(...)`: transform the pushed argument(s) with
       // `arr`'s own already-known (see preRegisterLocalVariableTypes's push-handling)
       // element type as the "expected type" context - the SAME context the ObjectLiteral

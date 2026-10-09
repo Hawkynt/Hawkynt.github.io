@@ -262,6 +262,17 @@ check('push: an array parameter the callee grows is passed by ref', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Immediately invoked functions as values
+// ---------------------------------------------------------------------------
+check('IIFE: a function invoked where a value is expected becomes an invoked typed lambda', () => {
+  const code = transpile('/** @returns {int32} sum */\nfunction total() { const i = 2; ' +
+    'return i + (function () { /** @type {int32} */ let i = 3; return i; })(); }');
+  expectMatch(code, /\(\(Func<int>\)\(\(\) =>/, '((Func<int>)(() => ...');
+  expectMatch(code, /\.Invoke\(\)/, '.Invoke()');
+  expectNoMatch(code, /Unknown\(/, 'an Unknown() call');
+});
+
+// ---------------------------------------------------------------------------
 // Operator grouping
 // ---------------------------------------------------------------------------
 check('grouping: a parenthesized || inside && keeps its parentheses', () => {
