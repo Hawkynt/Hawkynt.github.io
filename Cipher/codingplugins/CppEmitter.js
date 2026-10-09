@@ -21,6 +21,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
+#include <ctime>
 #include <string>
 #include <vector>
 #include <memory>
@@ -992,7 +993,7 @@ template <class E> inline E fromAny(const Any& v) {
       T* t = dynamic_cast<T*>(v.o);
       if (!t) {
         if constexpr (std::is_constructible_v<T, Object*>) return new T(v.o); // a record built from a dynamic object
-        else throwTypeError(std::u16string(u"value is not a ") + T::__staticClassName() + u": " + describe(v));
+        else throwTypeError(u"value is not an instance of the class the IL types it as: " + describe(v));
       }
       return t;
     }
@@ -1262,6 +1263,8 @@ template <class T, class E> inline T maxArr(const Array<E>& a) { if (a.length() 
 }
 
 inline bool isInteger(double v) { return std::isfinite(v) && std::trunc(v) == v; }
+// Date.now(): milliseconds since 1970
+inline double dateNow() { return (double)std::time(nullptr) * 1000.0; }
 inline double parseFloat(const String& s) { std::string t = toUtf8(s.trim().s()); char* end; double r = std::strtod(t.c_str(), &end); return end == t.c_str() ? NAN : r; }
 inline double parseInt(const String& s, int radix = 10) {
   std::u16string t = s.trim().s(); size_t i = 0; bool neg = false;
@@ -1738,6 +1741,129 @@ inline uint64_t doubleToBits(double d) { uint64_t u; std::memcpy(&u, &d, 8); ret
 inline float bitsToFloat(uint32_t u) { float f; std::memcpy(&f, &u, 4); return f; }
 inline double bitsToDouble(uint64_t u) { double d; std::memcpy(&d, &u, 8); return d; }
 
+
+// ---------------------------------------------------------------- OpCodes.CreateBitStream
+// OpCodes._BitStream: a bit writer/reader over a byte array (JavaScript int32
+// semantics for its buffer, as in OpCodes.js). Algorithms reach it through the
+// dynamic member protocol.
+struct BitStream : Object {
+  int32_t buffer = 0, bufferBits = 0, readPosition = 0, totalBitsWritten = 0;
+  Array<uint8_t> byteArray;
+  const char16_t* __className() const override { return u"_BitStream"; }
+  explicit BitStream(const Array<uint8_t>& initial = Array<uint8_t>()) {
+    byteArray = Array<uint8_t>::create(0);
+    if (!initial.isNull() && initial.length() > 0) { byteArray = initial.slice(0); byteArray.p->typed = false; totalBitsWritten = initial.length() * 8; }
+  }
+  void writeBits(uint32_t value, int32_t numBits) {
+    if (numBits <= 0 || numBits > 32) throwError(u"Error", u"BitStream.writeBits: numBits must be 1-32");
+    uint32_t mask = numBits == 32 ? 0xFFFFFFFFu : (uint32_t)(shl32(1, numBits) - 1);
+    value = value & mask;
+    buffer = shl32(buffer, (uint32_t)numBits) | (int32_t)value;
+    bufferBits += numBits; totalBitsWritten += numBits;
+    while (bufferBits >= 8) {
+      bufferBits -= 8;
+      uint32_t byte = shr32((uint32_t)buffer, (uint32_t)bufferBits) & 0xFF;
+      byteArray.push((uint8_t)byte);
+      if (bufferBits > 0) buffer &= shl32(1, bufferBits) - 1; else buffer = 0;
+    }
+  }
+  void writeBit(uint32_t bit) { writeBits(bit & 1, 1); }
+  void writeByte(uint32_t b) { writeBits(b & 0xFF, 8); }
+  uint32_t readBits(int32_t numBits) {
+    if (numBits <= 0 || numBits > 32) throwError(u"Error", u"BitStream.readBits: numBits must be 1-32");
+    int32_t result = 0, bitsRead = 0;
+    while (bitsRead < numBits) {
+      int32_t byteIndex = readPosition / 8, bitOffset = readPosition % 8;
+      if (byteIndex >= byteArray.length()) {
+        if (bitsRead == 0) throwError(u"Error", u"BitStream.readBits: No more data available");
+        break;
+      }
+      uint32_t currentByte = byteArray.get(byteIndex);
+      int32_t availableBits = 8 - bitOffset;
+      int32_t bitsToRead = std::min(numBits - bitsRead, availableBits);
+      int32_t mask = shl32(1, bitsToRead) - 1;
+      int32_t extracted = (int32_t)(shr32(currentByte, (uint32_t)(availableBits - bitsToRead))) & mask;
+      result = shl32(result, (uint32_t)bitsToRead) | extracted;
+      bitsRead += bitsToRead; readPosition += bitsToRead;
+    }
+    return (uint32_t)result;
+  }
+  bool hasMoreBits() const { return readPosition < byteArray.length() * 8; }
+  Array<uint8_t> toArray(bool pad = true) {
+    if (bufferBits > 0 && pad) {
+      int32_t paddingBits = 8 - bufferBits;
+      buffer = shl32(buffer, (uint32_t)paddingBits);
+      byteArray.push((uint8_t)(buffer & 0xFF));
+      buffer = 0; bufferBits = 0;
+    }
+    Array<uint8_t> r = byteArray.slice(0); r.p->typed = false; return r;
+  }
+  bool __get(const std::u16string& k, Any& out) override {
+    if (k == u"buffer") { out = Any(buffer); return true; }
+    if (k == u"bufferBits") { out = Any(bufferBits); return true; }
+    if (k == u"byteArray") { out = Any(byteArray); return true; }
+    if (k == u"readPosition") { out = Any(readPosition); return true; }
+    if (k == u"totalBitsWritten") { out = Any(totalBitsWritten); return true; }
+    return Object::__get(k, out);
+  }
+  bool __set(const std::u16string& k, const Any& v) override {
+    if (k == u"buffer") { buffer = fromAny<int32_t>(v); return true; }
+    if (k == u"bufferBits") { bufferBits = fromAny<int32_t>(v); return true; }
+    if (k == u"byteArray") { byteArray = fromAny<Array<uint8_t>>(v); return true; }
+    if (k == u"readPosition") { readPosition = fromAny<int32_t>(v); return true; }
+    if (k == u"totalBitsWritten") { totalBitsWritten = fromAny<int32_t>(v); return true; }
+    return Object::__set(k, v);
+  }
+  bool __hasMethod(const std::u16string& k) override {
+    static const char16_t* names[] = {u"writeBits", u"writeBit", u"writeByte", u"writeBytes", u"writeUint16BE", u"writeUint16LE", u"writeUint32BE", u"writeUint32LE",
+      u"readBits", u"readBit", u"readByte", u"readBytes", u"peekBits", u"skipBits", u"hasMoreBits", u"getRemainingBits", u"resetReadPosition", u"seekBits",
+      u"toArray", u"getBitLength", u"getByteLength", u"clear", u"clone", u"writeVarInt", u"readVarInt", u"writeUnary", u"readUnary", u"alignToByte"};
+    for (auto n : names) if (k == n) return true;
+    return Object::__hasMethod(k);
+  }
+  bool __has(const std::u16string& k) override {
+    return k == u"buffer" || k == u"bufferBits" || k == u"byteArray" || k == u"readPosition" || k == u"totalBitsWritten" || __hasMethod(k) || Object::__has(k);
+  }
+  bool __call(const std::u16string& k, std::vector<Any>& a, Any& out) override {
+    auto arg = [&](size_t i) -> Any { return i < a.size() ? a[i] : Any(); };
+    auto u = [&](size_t i) -> uint32_t { return (uint32_t)toInt32(arg(i).toNumber()); };
+    out = Any();
+    if (k == u"writeBits") { writeBits(u(0), fromAny<int32_t>(arg(1))); return true; }
+    if (k == u"writeBit") { writeBit(u(0)); return true; }
+    if (k == u"writeByte") { writeByte(u(0)); return true; }
+    if (k == u"writeBytes") { Array<uint8_t> b = fromAny<Array<uint8_t>>(arg(0)); for (int32_t i = 0; i < b.length(); ++i) writeByte(b.get(i)); return true; }
+    if (k == u"writeUint16BE") { uint32_t v = u(0); writeBits((v >> 8) & 0xFF, 8); writeBits(v & 0xFF, 8); return true; }
+    if (k == u"writeUint16LE") { uint32_t v = u(0); writeBits(v & 0xFF, 8); writeBits((v >> 8) & 0xFF, 8); return true; }
+    if (k == u"writeUint32BE") { uint32_t v = u(0); writeBits((v >> 24) & 0xFF, 8); writeBits((v >> 16) & 0xFF, 8); writeBits((v >> 8) & 0xFF, 8); writeBits(v & 0xFF, 8); return true; }
+    if (k == u"writeUint32LE") { uint32_t v = u(0); writeBits(v & 0xFF, 8); writeBits((v >> 8) & 0xFF, 8); writeBits((v >> 16) & 0xFF, 8); writeBits((v >> 24) & 0xFF, 8); return true; }
+    if (k == u"readBits") { out = Any((int32_t)readBits(fromAny<int32_t>(arg(0)))); return true; }
+    if (k == u"readBit") { out = Any((int32_t)readBits(1)); return true; }
+    if (k == u"readByte") { out = Any((int32_t)(readBits(8) & 0xFF)); return true; }
+    if (k == u"readBytes") { int32_t n = fromAny<int32_t>(arg(0)); Array<uint8_t> r = Array<uint8_t>::create(0); for (int32_t i = 0; i < n; ++i) r.push((uint8_t)(readBits(8) & 0xFF)); out = Any(r); return true; }
+    if (k == u"peekBits") { int32_t saved = readPosition; uint32_t r = readBits(fromAny<int32_t>(arg(0))); readPosition = saved; out = Any((int32_t)r); return true; }
+    if (k == u"skipBits") { readPosition += fromAny<int32_t>(arg(0)); int32_t mx = byteArray.length() * 8; if (readPosition > mx) readPosition = mx; return true; }
+    if (k == u"hasMoreBits") { out = Any(hasMoreBits()); return true; }
+    if (k == u"getRemainingBits") { out = Any(std::max(0, byteArray.length() * 8 - readPosition)); return true; }
+    if (k == u"resetReadPosition") { readPosition = 0; return true; }
+    if (k == u"seekBits") { int32_t mx = byteArray.length() * 8; int32_t off = (int32_t)(u(0) & 0x7FFFFFFF); int32_t c = off > mx ? mx : off; readPosition = c > 0 ? c : 0; return true; }
+    if (k == u"toArray") { Any p = arg(0); out = Any(toArray(!(p.tag == Tag::Bool && !p.b))); return true; }
+    if (k == u"getBitLength") { out = Any(totalBitsWritten); return true; }
+    if (k == u"getByteLength") { out = Any(byteArray.length() + bufferBits / 8 + ((bufferBits % 8) > 0 ? 1 : 0)); return true; }
+    if (k == u"clear") { buffer = 0; bufferBits = 0; byteArray = Array<uint8_t>::create(0); readPosition = 0; totalBitsWritten = 0; return true; }
+    if (k == u"clone") { BitStream* c = new BitStream(); c->buffer = buffer; c->bufferBits = bufferBits; c->byteArray = byteArray.slice(0); c->byteArray.p->typed = false; c->readPosition = readPosition; c->totalBitsWritten = totalBitsWritten; out = Any(c); return true; }
+    if (k == u"writeVarInt") { uint32_t v = u(0); while (v >= 0x80) { writeByte((v & 0x7F) | 0x80); v >>= 7; } writeByte(v & 0x7F); return true; }
+    if (k == u"readVarInt") {
+      int32_t result = 0, shift = 0; uint32_t byte;
+      do { if (shift >= 32) throwError(u"Error", u"BitStream.readVarInt: Integer overflow"); byte = readBits(8) & 0xFF; result |= shl32((int32_t)(byte & 0x7F), (uint32_t)shift); shift += 7; } while (byte & 0x80);
+      out = Any((uint32_t)result); return true;
+    }
+    if (k == u"writeUnary") { int32_t n = fromAny<int32_t>(arg(0)); for (int32_t i = 0; i < n; ++i) writeBit(1); writeBit(0); return true; }
+    if (k == u"readUnary") { int32_t c = 0; while (hasMoreBits() && readBits(1) == 1) ++c; out = Any(c); return true; }
+    if (k == u"alignToByte") { while (bufferBits % 8 != 0) writeBit(0); return true; }
+    return Object::__call(k, a, out);
+  }
+};
+namespace OpCodes { inline Any CreateBitStream(const Array<uint8_t>& initial = Array<uint8_t>()) { return Any(new BitStream(initial)); } }
 
 // ---------------------------------------------------------------- differential tracing
 // js::trace(site, value) prints the value a site of the JavaScript source held

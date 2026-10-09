@@ -180,6 +180,7 @@
   };
   const FW_FUNCTIONS = {
     RegisterAlgorithm: { params: [['algorithm', 'Algorithm']], ret: 'void', cpp: 'js::RegisterAlgorithm' },
+    Find: { params: [['name', 'string']], ret: 'Algorithm', cpp: 'js::Find' },
     SpongePadBlocks: { params: [['held', 'uint8[]'], ['pending', 'int32'], ['rate', 'int32'], ['separator', 'int32']], ret: 'uint8[][]', cpp: 'js::SpongePadBlocks' },
     MerkleDamgardBlocks: { params: [['held', 'uint8[]'], ['pending', 'int32'], ['totalLength', 'float64'], ['options', 'object']], ret: 'uint8[][]', cpp: 'js::MerkleDamgardBlocks' }
   };
@@ -2352,6 +2353,12 @@
           return null;
         case 'console':
           return { c: `js::debugOutput({ ${args.map(a => this.cv(this.expr(a), T.any)).join(', ')} })`, t: T.void };
+        case 'Date':
+          if (prop === 'now') return { c: 'js::dateNow()', t: T.f64 };
+          return null;
+        case 'performance':
+          if (prop === 'now') return { c: 'js::dateNow()', t: T.f64 };
+          return null;
         case 'OpCodes':
           return this.opcodesCall(prop, args, node);
       }
@@ -2468,6 +2475,7 @@
           return { c: `js::OpCodes::${method}(${n(0, T.big)}, ${n(1, T.i32)})`, t: T.big };
         }
         case 'ArraySlice': { const t = a[0].t.k === 'arr' ? a[0].t : T.arr(T.u8); return { c: `js::OpCodes::ArraySlice(${this.cv(a[0], t)}, ${a.slice(1).map(x => this.cv(x, T.f64)).join(', ')})`, t }; }
+        case 'CreateBitStream': return { c: `js::OpCodes::CreateBitStream(${a[0] ? arr(0) : ''})`, t: T.any };
         case 'ClearArray': return { c: `js::clearArray(${a[0].c})`, t: T.void };
         case 'XorArrays': return { c: `js::xorArrays(${arr(0)}, ${arr(1)})`, t: T.arr(T.u8) };
         case 'Hex8ToBytes': return { c: `js::hexToBytes(${n(0, T.str)})`, t: T.arr(T.u8) };
