@@ -530,6 +530,11 @@ check('Math.ceil/round of an integer quotient divide as doubles, not as integers
   const round = transpile(header + 'function f(n, h) { return Math.round(n / h); }');
   expectNoMatch(round, /\(double\)\(n \/ h\)/, 'the integer quotient converted afterwards');
 });
+check('Math.round rounds a half up as JavaScript does, not to even', () => {
+  const code = transpile('/**\n * @param {float64} x - x\n * @returns {int32} r\n */\nfunction f(x) { return Math.round(x * 3); }');
+  expectMatch(code, /Math\.Floor\(\(double\)\(x \* 3\) \+ 0\.5\)/, 'Math.Floor(x * 3 + 0.5)');
+  expectNoMatch(code, /Math\.Round\(/, 'Math.Round (banker\'s rounding)');
+});
 
 // ---------------------------------------------------------------------------
 // Array.prototype.slice

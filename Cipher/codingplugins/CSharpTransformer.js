@@ -12795,7 +12795,7 @@
             case 'ceil':
               return new CSharpMethodCall(new CSharpIdentifier('Math'), 'Ceiling', args);
             case 'round':
-              return new CSharpMethodCall(new CSharpIdentifier('Math'), 'Round', args);
+              return this.jsRound(this.asDoubleOperand(node.arguments?.[0], args[0]));
             case 'min':
               return new CSharpMethodCall(new CSharpIdentifier('Math'), 'Min', args);
             case 'max':
@@ -25154,16 +25154,18 @@
     }
 
     /**
-     * Transform Round to Math.Round
+     * Transform Round. Math.round rounds a half up (2.5 -> 3, -2.5 -> -2), where
+     * C#'s Math.Round rounds it to even (2.5 -> 2), so it is Math.Floor(x + 0.5).
      */
     transformRound(node) {
       const arg = this.transformExpression(node.argument);
-      const roundResult = new CSharpMethodCall(
-        new CSharpIdentifier('Math'),
-        'Round',
-        [this.asDoubleOperand(node.argument, arg)]
-      );
-      return new CSharpCast(CSharpType.Int(), roundResult);
+      return new CSharpCast(CSharpType.Int(), this.jsRound(this.asDoubleOperand(node.argument, arg)));
+    }
+
+    /** Math.round(x) of a double x: Math.Floor(x + 0.5). */
+    jsRound(operand) {
+      return new CSharpMethodCall(new CSharpIdentifier('Math'), 'Floor',
+        [new CSharpBinaryExpression(operand, '+', CSharpLiteral.Double(0.5))]);
     }
 
     /**
