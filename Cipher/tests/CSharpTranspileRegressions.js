@@ -937,6 +937,15 @@ check('stub classes: a stub method result into a narrower JSDoc local is cast (C
     '  /** @returns {int32} r */\n  f() {\n    /** @type {uint8} */\n    const cell = this.m.get(1, 2);\n    return cell;\n  }\n}');
   expectMatch(code, /byte cell = (unchecked\()?\(byte\)\(?this\.M\.Get\(1, 2\)/, 'byte cell = (byte)this.M.Get(1, 2)');
 });
+const REGISTRATION_LOOP = 'const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
+  'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
+  'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +
+  'for (let i = 0; i < SETS.length; ++i) {\n  const instance = new AAlgorithm(SETS[i].name);\n' +
+  '  if (!AlgorithmFramework.Find(instance.name)) {\n    RegisterAlgorithm(instance);\n  }\n}';
+check('conditions: a negated dynamic call result is its truthiness', () => {
+  const code = transpile(REGISTRATION_LOOP);
+  expectMatch(code, /if \(!IsTruthy\(AlgorithmFramework\.Find\(instance\.Name\)\)\)/, '!IsTruthy(AlgorithmFramework.Find(...))');
+});
 check('maps: a module Map takes its value type from the .set calls of the file (CS0029)', () => {
   const code = transpile('class Pair {\n  /** @param {int32} a - a */\n  constructor(a) {\n    /** @type {int32} */\n    this.a = a;\n  }\n}\n' +
     'const CACHE = new Map();\n/**\n * @param {string} key - key\n * @returns {Pair} r\n */\n' +

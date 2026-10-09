@@ -19559,8 +19559,15 @@
           return this.transformExpression(node);
         }
 
-        // Special case: !someMethodCall() - assume methods used in boolean context return bool
+        // Special case: !someMethodCall() - assume methods used in boolean context return
+        // bool, unless the call is known to return a dynamic value (`!AlgorithmFramework.
+        // Find(name)`, null when absent: its truthiness) or a reference (null test)
         if (node.argument.type === 'CallExpression') {
+          const callType = this.inferFullExpressionType(node.argument);
+          if (callType?.name === 'dynamic' && !callType.isArray)
+            return new CSharpUnaryExpression('!', new CSharpMethodCall(null, 'IsTruthy', [this.transformExpression(node.argument)]), true);
+          if (callType && (callType.isArray || callType.name === 'string' || this._isClassReferenceType(callType)))
+            return new CSharpBinaryExpression(this.transformExpression(node.argument), '==', CSharpLiteral.Null());
           return this.transformExpression(node);
         }
 
