@@ -2341,6 +2341,12 @@
         const mulLeft = this.transformExpression(node.left.left);
         const mulRight = this.transformExpression(node.left.right);
         const mul = new JavaScriptCall(new JavaScriptIdentifier('Math'), 'imul', [mulLeft, mulRight]);
+        // OpCodes.Mul32 is unsigned (`Math.imul(a, b) >>> 0`), but `& 0xFFFFFFFF`
+        // leaves Math.imul's result signed: a product past 2^31 came out
+        // negative (darkcrypt-pes.js's mulMod then reduced it wrongly). The
+        // inliner's provenance flag says the mask came from OpCodes.
+        if (node.right.value === 0xFFFFFFFF && Object.prototype.hasOwnProperty.call(node.left, 'bigint'))
+          return new JavaScriptBinaryExpression(mul, '>>>', JavaScriptLiteral.Number(0));
         const mask = this.transformExpression(node.right);
         return new JavaScriptBinaryExpression(mul, '&', mask);
       }
