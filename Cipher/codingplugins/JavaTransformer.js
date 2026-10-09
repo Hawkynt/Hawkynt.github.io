@@ -259,6 +259,57 @@
     return value;
   }
 
+  /**
+   * The declarations of a .data library: an IIFE wrapper the IL kept is opened,
+   * its module-export branches (module.exports, define, this.X =) and returns dropped.
+   */
+  function libraryStatements(ast) {
+    let body = (ast && ast.body) || [];
+    if (body.length === 1 && body[0].type === 'ExpressionStatement' && body[0].expression && body[0].expression.type === 'CallExpression') {
+      let callee = body[0].expression.callee;
+      if (callee && callee.type === 'MemberExpression' && callee.object && (callee.object.type === 'FunctionExpression' || callee.object.type === 'ArrowFunction')) callee = callee.object;
+      // UMD: the factory is the last function argument; a plain IIFE runs its own body
+      const args = body[0].expression.arguments || [];
+      const factory = [...args].reverse().find(x => x && (x.type === 'FunctionExpression' || x.type === 'ArrowFunction'));
+      if (factory && factory.body && factory.body.body) body = factory.body.body;
+      else if (callee && (callee.type === 'FunctionExpression' || callee.type === 'ArrowFunction') && callee.body && callee.body.body) body = callee.body.body;
+    }
+    const mentionsModule = n => JSON.stringify(n, (k, v) => (k === 'parent' || k.startsWith('__') ? undefined : v)).match(/"name":"(module|define|exports)"/);
+    return body.filter(st => st && st.type !== 'ReturnStatement' && !(st.type === 'IfStatement' && mentionsModule(st.test)) &&
+      !(st.type === 'ExpressionStatement' && st.expression && st.expression.type === 'Literal'));
+  }
+
+  /**
+   * Fold left-deep chains of '+' whose operands are all string literals (tables
+   * spelled as thousands of concatenated hex strings) into one literal, without
+   * recursing down the chain.
+   */
+  function foldStringChains(root) {
+    const stack = [root];
+    const seen = new Set();
+    while (stack.length) {
+      const n = stack.pop();
+      if (!n || typeof n !== 'object' || seen.has(n)) continue;
+      seen.add(n);
+      if (Array.isArray(n)) { for (const c of n) stack.push(c); continue; }
+      for (const k of Object.keys(n)) {
+        if (SKIP_KEYS.has(k) || k.startsWith('__')) continue;
+        let v = n[k];
+        if (v && typeof v === 'object' && v.type === 'BinaryExpression' && v.operator === '+') {
+          const parts = [];
+          let spine = v;
+          while (spine && spine.type === 'BinaryExpression' && spine.operator === '+') { parts.push(spine.right); spine = spine.left; }
+          parts.push(spine);
+          if (parts.length > 2 && parts.every(p => p && p.type === 'Literal' && typeof p.value === 'string')) {
+            n[k] = { type: 'Literal', value: parts.reverse().map(p => p.value).join(''), resultType: 'string', ilNodeType: 'Literal' };
+            continue;
+          }
+        }
+        if (v && typeof v === 'object') stack.push(v);
+      }
+    }
+  }
+
   /** Call f with every child node (object) of an IL node; the lowering's own annotations (__x) are not children. */
   function eachChild(n, f) {
     for (const k of Object.keys(n)) {
@@ -287,16 +338,21 @@
      * @param {Object} il - IL AST (Program)
      * @returns {Object} { k: 'unit', name, classes, fields, methods, init }
      */
-    transform(il) {
+    transform(il, extra = {}) {
       this.il = il;
+      this.libraries = extra.libraries || [];
       this.unitName = mid(this.options.className || 'GeneratedClass');
       this.classes = new Map();      // name -> class info (local and framework)
-      this.functions = new Map();    // module function name -> fn info
-      this.moduleVars = new Map();   // module variable name -> sym
+      this.functions = new Map();    // module function symbol -> fn info
+      this.moduleVars = new Map();   // module variable symbol -> symbol
+      this.moduleNames = new Set();  // JVM names of module members (a library may reuse a JavaScript name)
       this.unit = { k: 'unit', name: this.unitName, classes: [], fields: [], methods: [], init: [] };
       for (const [name, def] of Object.entries(FRAMEWORK)) this.addFrameworkClass(name, def);
       const body = il && il.type === 'Program' ? il.body : (Array.isArray(il) ? il : [il]);
-      this.body = (body || []).filter(Boolean);
+      // .data libraries the module takes as a factory parameter: their declarations join the module
+      const libBodies = this.libraries.flatMap(lib => (lib.ast = Object.assign({}, lib.ast, { body: libraryStatements(lib.ast) })).body);
+      this.body = [...libBodies, ...(body || [])].filter(Boolean);
+      foldStringChains(this.body);
       this.resolve(this.body);
       this.collectDeclarations(this.body);
       this.inferKinds();
@@ -415,6 +471,7 @@
         if (!sym) return;
         mark(node, '__sym', sym);
         sym.refs++;
+        (sym.sites || (sym.sites = [])).push(node);
         if (sym.fn !== curFn()) {
           sym.captured = true;
           if (isWrite) sym.capturedAssigned = true;
@@ -434,9 +491,31 @@
             mark(s, '__sym', sym);
           } else if (s.type === 'ClassDeclaration' && s.id) {
             if (!lookup(s.id.name) || scopes.length > 1) mark(s, '__sym', declare(s.id.name, { kind: 'class', node: s }));
+          } else if (s.type === 'VariableDeclaration' && s.kind !== 'var') {
+            // let/const: the binding exists from the block's start (a function declared
+            // earlier in the block refers to it); the declaration initialises it
+            for (const d of s.declarations || []) {
+              if (!d.id || d.id.type !== 'Identifier') continue;
+              const alias = namespaceAliasOf(d);
+              if (alias) { scopes[scopes.length - 1].names.set(d.id.name, alias); mark(d, '__namespaceAlias', true); continue; }
+              const sym = declare(d.id.name, { kind: s.kind === 'const' ? 'const' : 'let', il: declType(d), node: d, nullable: !!(d.nullable || d.id.nullable) });
+              mark(d, '__sym', sym); mark(d.id, '__sym', sym);
+              mark(d, '__hoisted', true);
+              if (!d.init) sym.noInit = true;
+            }
           }
         }
         if (isFnBody) collectVars(stmts);
+      };
+      // const { A } = Lib is expanded by the IL into _destructure = Lib; A = _destructure.A: aliases of the library's members
+      const namespaceAliasOf = d => {
+        if (!d.init) return null;
+        const nsOf = n => n && n.type === 'Identifier' && lookup(n.name) && lookup(n.name).kind === 'namespace' ? lookup(n.name) : null;
+        const whole = nsOf(d.init);
+        if (whole) return whole;
+        if (d.init.type === 'MemberExpression' && !d.init.computed && nsOf(d.init.object))
+          return nsOf(d.init.object).members.get(d.init.property && (d.init.property.name || d.init.property.value)) || null;
+        return null;
       };
       const collectVars = (node) => {
         if (!node || typeof node !== 'object') return;
@@ -513,11 +592,26 @@
             for (const d of node.declarations || []) {
               if (d.init) walk(d.init);
               if (!d.id) continue;
+              if (d.__namespaceAlias) continue;
+              if (d.id.type === 'Identifier' && d.init && node.kind === 'var') {
+                const alias = namespaceAliasOf(d);
+                if (alias) { scopes[scopes.length - 1].names.set(d.id.name, alias); mark(d, '__namespaceAlias', true); continue; }
+              }
+              if (d.id.type === 'Identifier' && d.__hoisted && d.__sym) continue;
               if (d.id.type === 'Identifier') {
                 if (node.kind === 'var') { const s = d.__sym || lookup(d.id.name); if (s && d.init) s.assigns++; mark(d, '__sym', s); if (s) mark(d.id, '__sym', s); }
                 else { const s = declare(d.id.name, { kind: node.kind === 'const' ? 'const' : 'let', il: declType(d), node: d, nullable: !!(d.nullable || d.id.nullable) }); mark(d, '__sym', s); mark(d.id, '__sym', s); if (!d.init) s.noInit = true; }
               } else if (d.id.type === 'ArrayPattern') {
                 for (const el of d.id.elements || []) if (el && el.type === 'Identifier') { const s = declare(el.name, { kind: 'let', il: el.resultType || null, node: el }); mark(el, '__sym', s); }
+              } else if (d.id.type === 'ObjectPattern' && d.init && d.init.type === 'Identifier' && lookup(d.init.name) && lookup(d.init.name).kind === 'namespace') {
+                const ns = lookup(d.init.name);
+                for (const p of d.id.properties || []) {
+                  const key = p.key && (p.key.name || p.key.value);
+                  const v = p.value || p.key;
+                  const target = ns.members.get(key);
+                  if (v && v.type === 'Identifier' && target) scopes[scopes.length - 1].names.set(v.name, target);
+                }
+                mark(d, '__namespaceAlias', true);
               } else if (d.id.type === 'ObjectPattern') {
                 for (const p of d.id.properties || []) {
                   const v = p.value || p.key;
@@ -578,8 +672,34 @@
       };
       push(null);
       scopes[0].isFunction = true;
-      hoist(body, true);
-      for (const s of body) walk(s);
+      const libStatements = new Set(this.libraries.flatMap(lib => (lib.ast && lib.ast.body) || []));
+      hoist(body.filter(s => libStatements.has(s)), true);
+      let bound = false;
+      const bindLibraries = () => {
+        if (bound) return;
+        bound = true;
+        for (const lib of this.libraries) {
+          if (!lib.param || scopes[0].names.has(lib.param) && !lib.exports) continue;
+          const ex = lib.exports || {};
+          if (ex.single) {
+            const target = scopes[0].names.get(ex.single);
+            if (target && ex.single !== lib.param) scopes[0].names.set(lib.param, target);
+          } else if (ex.names) {
+            const members = new Map();
+            for (const n of ex.names) if (scopes[0].names.has(n)) members.set(n, scopes[0].names.get(n));
+            scopes[0].names.set(lib.param, { kind: 'namespace', name: lib.param, members, refs: 0, assigns: 0, fn: null });
+          }
+        }
+      };
+      let mainHoisted = false;
+      for (const s of body) {
+        if (!libStatements.has(s)) {
+          bindLibraries();
+          if (!mainHoisted) { mainHoisted = true; hoist(body.filter(x => !libStatements.has(x)), true); }
+        }
+        walk(s);
+      }
+      bindLibraries();
       this.moduleScope = scopes[0];
       pop();
     }
@@ -625,23 +745,40 @@
       for (const c of classNodes) this.collectFields(this.classes.get(c.id.name));
       // Module functions and variables
       for (const s of body) {
-        if (s.type === 'FunctionDeclaration' && s.id) this.functions.set(s.id.name, this.fnInfo(s, s.id.name));
+        if (s.type === 'FunctionDeclaration' && s.id && s.__sym) this.addModuleFunction(s.__sym, this.fnInfo(s, s.id.name));
         if (s.type === 'VariableDeclaration')
           for (const d of s.declarations || []) {
             if (!d.id || d.id.type !== 'Identifier' || !d.__sym) continue;
             const sym = d.__sym;
             if (d.init && (d.init.type === 'ArrowFunction' || d.init.type === 'FunctionExpression' || d.init.type === 'ArrowFunctionExpression') && sym.assigns === 0 && s.kind !== 'var') {
               sym.kind = 'func'; sym.node = d.init; mark(d, '__asFunction', true);
-              this.functions.set(d.id.name, this.fnInfo(d.init, d.id.name));
+              this.addModuleFunction(sym, this.fnInfo(d.init, d.id.name));
+            } else if (d.__namespaceAlias) {
+              // an alias of a library member: nothing to store
             } else if (d.__asClass) {
               sym.kind = 'class';
             } else {
-              this.moduleVars.set(d.id.name, sym);
+              sym.javaName = this.moduleName(d.id.name);
+              this.moduleVars.set(sym, sym);
             }
           }
       }
       // Static fields assigned as ClassName.x = ... anywhere
       this.collectStaticAssignments(body);
+    }
+
+    /** A unique JVM name for a module member. */
+    moduleName(name) {
+      let n = mid(name);
+      if (this.moduleNames.has(n)) { let i = 2; while (this.moduleNames.has(`${n}_${i}`)) ++i; n = `${n}_${i}`; }
+      this.moduleNames.add(n);
+      return n;
+    }
+
+    addModuleFunction(sym, fi) {
+      fi.javaName = this.moduleName(fi.name);
+      sym.fi = fi;
+      this.functions.set(sym, fi);
     }
 
     /** JVM signature info of a function or method node. */
@@ -702,8 +839,8 @@
             if (c.fields.has(name) || c.accessors.has(name)) return;
         }
         const existing = map.get(name);
-        if (existing) { if (!existing.il && il) existing.il = il; existing.values.push(valueNode); return; }
-        map.set(name, { name, javaName: mid(name), il, values: valueNode ? [valueNode] : [], owner: info.name, static: isStatic });
+        if (existing) { if (!existing.il && il) existing.il = il; if (il) existing.ils.push(il); existing.values.push(valueNode); return; }
+        map.set(name, { name, javaName: mid(name), il, ils: il ? [il] : [], values: valueNode ? [valueNode] : [], owner: info.name, static: isStatic });
       };
       for (const m of members) {
         if (m.type === 'FieldDefinition' || m.type === 'PropertyDefinition') {
@@ -760,6 +897,8 @@
       if (!node || typeof node !== 'object') return false;
       const il = ilNorm(node.resultType);
       if (il === 'bigint') return true;
+      // a position an OpCodes BigInt parameter takes (AndN, XorN, ShiftLn, ...) holds a BigInt
+      if (ilNorm(node.contextType) === 'bigint') return true;
       switch (node.type) {
         case 'Literal': return typeof node.value === 'bigint' || (typeof node.raw === 'string' && /n$/.test(node.raw) && !/^['"]/.test(node.raw)) || !!node.bigint;
         case 'BigIntCast': return true;
@@ -776,6 +915,8 @@
         case 'CallExpression': case 'ThisMethodCall': { const fi = this.calleeInfo(node); return !!(fi && fi.retBig); }
         case 'BinaryExpression':
           if (['==', '===', '!=', '!==', '<', '<=', '>', '>=', 'instanceof', 'in'].includes(node.operator)) return false;
+          // the inliner marks the N-suffix OpCodes (AndN, XorN, ShiftLn, ...) as BigInt operations
+          if (node.bigint === true || /^(And|Or|Xor|ShiftL|ShiftR)N$/.test(node.opCodesMethod || '')) return true;
           if (node.operator === '>>>') return false;
           return this.isBig(node.left) || this.isBig(node.right);
         case 'LogicalExpression': return this.isBig(node.left) || this.isBig(node.right);
@@ -792,6 +933,7 @@
     /** The symbol (or field) of an array expression, for its element kind. */
     arraySymbolOf(node) {
       if (!node) return null;
+      if (node.type === 'CallExpression' || node.type === 'ThisMethodCall') { const fi = this.calleeInfo(node); return fi ? { elemBig: !!fi.retElemBig } : null; }
       if (node.type === 'Identifier') return node.__sym || null;
       if (node.type === 'ThisPropertyAccess') return this.fieldForThis(node);
       if (node.type === 'MemberExpression' && !node.computed) return this.fieldForMember(node);
@@ -827,7 +969,7 @@
         const m = cls && this.findMember(cls, node.method);
         return m && m.kind === 'method' ? m.info : (cls && this.classInfo(cls) && this.classInfo(cls).staticMethods.get(node.method)) || null;
       }
-      if (node.callee && node.callee.type === 'Identifier') return this.functions.get(node.callee.name) || null;
+      if (node.callee && node.callee.type === 'Identifier') return (node.callee.__sym && node.callee.__sym.kind === 'func' && node.callee.__sym.fi) || null;
       if (node.callee && node.callee.type === 'MemberExpression' && !node.callee.computed) {
         const objIl = ilNorm(node.callee.object.resultType);
         const name = node.callee.property && node.callee.property.name;
@@ -916,7 +1058,7 @@
           case 'ArrayAppend': {
             const a = this.arraySymbolOf(n.array);
             const vals = n.values && n.values.length ? n.values : [n.value];
-            if (a) for (const v of vals) if (v && v.type !== 'SpreadElement') mark(a, 'elemBig', this.isBig(v));
+            if (a) for (const v of vals) if (v && v.type !== 'SpreadElement') { mark(a, 'elemBig', this.isBig(v)); this.markArrayElems(a, v, mark); }
             break;
           }
           case 'ReturnStatement': {
@@ -924,11 +1066,20 @@
             if (fn && n.argument && this.isBig(n.argument)) {
               for (const fi of fnInfos) if (fi.node === fn) mark(fi, 'retBig', true);
             }
+            if (fn && n.argument) {
+              const probe = {};
+              this.markArrayElems(probe, n.argument, (t, p, v) => { if (v) probe.elemBig = true; });
+              if (probe.elemBig) for (const fi of fnInfos) if (fi.node === fn) mark(fi, 'retElemBig', true);
+            }
             break;
           }
           case 'CallExpression': case 'ThisMethodCall': {
             const fi = this.calleeInfo(n);
-            if (fi) (n.arguments || []).forEach((a, i) => { const p = fi.params[i]; if (p && p.sym && may64(p.il)) mark(p.sym, 'big', this.isBig(a)); });
+            if (fi) (n.arguments || []).forEach((a, i) => {
+              const p = fi.params[i];
+              if (p && p.sym && may64(p.il)) mark(p.sym, 'big', this.isBig(a));
+              if (p && p.sym) this.markArrayElems(p.sym, a, mark);
+            });
             break;
           }
         }
@@ -994,7 +1145,8 @@
         if (IL64.has(e)) return o.elemBig ? 'JsArray<BigInteger>' : 'I64Array';
         if (e === 'bigint') return 'JsArray<BigInteger>';
         if (T.ARRAY_OF_IL[e]) return T.ARRAY_OF_IL[e];
-        const et = this.jtOfName(e, {});
+        // nested arrays: the leaf elements carry the BigInt-ness
+        const et = this.jtOfName(e, e.endsWith('[]') ? o : {});
         return `JsArray<${T.box(et === 'void' ? 'Object' : et)}>`;
       }
       const tup = tupleParts(n);
@@ -1034,7 +1186,11 @@
         let il = sym.il;
         if (!ilName(il) && sym.node && sym.node.init) il = sym.node.init.resultType || sym.node.init.contextType;
         if (!ilName(il) && sym.node && sym.node.defaultValue) il = sym.node.defaultValue.resultType;
-        t = this.jt(il, { big: !!sym.big, elemBig: !!sym.elemBig, nullable: !!sym.nullable });
+        const o = { big: !!sym.big, elemBig: !!sym.elemBig, nullable: !!sym.nullable };
+        t = this.jt(il, o);
+        // The IL types each site of a variable on its own; the variable holds them all
+        if (sym.kind !== 'param' && !(sym.node && sym.node.init && this.holdsTypedArray([sym.node.init])))
+          t = this.joinSites(t, (sym.sites || []).map(n => n.resultType ? this.jt(n.resultType, o) : null).filter(Boolean));
         if (t === 'void') t = 'Object';
       }
       sym.jtCached = t;
@@ -1046,10 +1202,54 @@
       if (f.jtCached) return f.jtCached;
       let il = f.il;
       if (!ilName(il)) for (const v of f.values || []) if (v && ilName(v.resultType)) { il = v.resultType; break; }
-      let t = this.jt(il, { big: !!f.big, elemBig: !!f.elemBig });
+      const o = { big: !!f.big, elemBig: !!f.elemBig };
+      let t = this.jt(il, o);
+      // The IL types each site of a field on its own; the field holds them all
+      if (!this.holdsTypedArray(f.values)) t = this.joinSites(t, (f.ils || []).map(x => this.jt(x, o)));
       if (t === 'void') t = 'Object';
       f.jtCached = t;
       return t;
+    }
+
+    /** Whether a typed array is stored (its class decides the container: no widening). */
+    holdsTypedArray(values) {
+      return (values || []).some(v => v && (v.type === 'TypedArrayCreation' || ((v.type === 'ArrayFrom' || v.type === 'ArrayLiteral') && v.arrayType)));
+    }
+
+    /**
+     * Join a storage type with the IL types of its sites: numbers widen
+     * (int < long < double), arrays of numbers widen to an array class
+     * holding both value ranges. Other disagreements keep the declared type.
+     */
+    joinSites(t, siteTypes) {
+      let r = t;
+      for (const s of siteTypes) {
+        const j = this.joinJt(r, s);
+        if (j) r = j;
+      }
+      return r;
+    }
+
+    joinJt(a, b) {
+      if (!a || !b || a === b) return a || b;
+      if (a === 'Object' || b === 'Object' || a === 'void' || b === 'void') return null;
+      const ua = T.unbox(a), ub = T.unbox(b);
+      if (T.isNumeric(ua) && T.isNumeric(ub)) {
+        const w = T.wider(ua, ub);
+        return T.isBoxed(a) || T.isBoxed(b) ? T.box(w) : w;
+      }
+      if (T.isPrimArray(a) && T.isPrimArray(b)) {
+        const RANGE = { U8Array: [0, 255], I8Array: [-128, 127], U16Array: [0, 65535], I16Array: [-32768, 32767],
+          I32Array: [-2147483648, 2147483647], U32Array: [0, 4294967295], I64Array: [-(2 ** 63), 2 ** 63], F32Array: [-Infinity, Infinity], F64Array: [-Infinity, Infinity, true] };
+        if (!RANGE[a] || !RANGE[b]) return null;
+        const float = a === 'F64Array' || b === 'F64Array' || a === 'F32Array' || b === 'F32Array';
+        if (float) return 'F64Array';
+        const lo = Math.min(RANGE[a][0], RANGE[b][0]), hi = Math.max(RANGE[a][1], RANGE[b][1]);
+        for (const c of ['U8Array', 'I8Array', 'U16Array', 'I16Array', 'I32Array', 'U32Array', 'I64Array'])
+          if (RANGE[c][0] <= lo && RANGE[c][1] >= hi) return c;
+        return 'F64Array';
+      }
+      return null;
     }
 
     /** The type an accessor's getter returns (an overridden base accessor or field decides it). */
@@ -1090,7 +1290,7 @@
       const r = fi.retIl || { il: 'void' };
       let t;
       if (r.none) t = 'void';
-      else if (r.il) t = this.jt(r.il, { big: !!fi.retBig, nullable: !!r.nullable });
+      else if (r.il) t = this.jt(r.il, { big: !!fi.retBig, elemBig: !!fi.retElemBig, nullable: !!r.nullable });
       else if (r.returned) {
         const types = r.returned.map(n => this.nodeJt(n)).filter(x => x !== 'void');
         t = this.commonJt(types);
@@ -1132,7 +1332,6 @@
       for (const fi of this.functions.values()) this.unit.methods.push(...this.lowerFunction(fi, { static: true }));
       // Module variables become static fields, initialised in order by the static initialiser
       for (const sym of this.moduleVars.values()) {
-        sym.javaName = mid(sym.name);
         sym.static = true;
         this.unit.fields.push({ name: sym.javaName, t: this.symJt(sym), static: true });
       }
@@ -1141,7 +1340,7 @@
       for (const s of body) {
         if (s.type === 'FunctionDeclaration' || s.type === 'ClassDeclaration') continue;
         if (s.type === 'ExpressionStatement' && s.expression && s.expression.type === 'Literal') continue;
-        if (s.type === 'VariableDeclaration' && s.declarations.every(d => d.__asFunction || d.__asClass || (d.id && d.id.type === 'ObjectPattern') || this.isFrameworkAlias(d))) continue;
+        if (s.type === 'VariableDeclaration' && s.declarations.every(d => d.__asFunction || d.__asClass || d.__namespaceAlias || (d.id && d.id.type === 'ObjectPattern') || this.isFrameworkAlias(d))) continue;
         const stmts = this.lowerStmt(s);
         if (stmts.length) this.unit.init.push(S.block(stmts));
       }
@@ -1160,6 +1359,8 @@
 
     lowerClass(info) {
       const decl = { k: 'class', name: info.javaName, ext: info.ext ? (this.classInfo(info.ext) ? this.classInfo(info.ext).javaName : 'Object') : null, fields: [], ctors: [], methods: [], statics: [], abstract: false, staticInit: [] };
+      const base = this.classInfo(info.ext);
+      decl.dynamic = !base || !base.local;
       if (decl.ext === 'Object') decl.ext = null;
       const prevClass = this.currentClassName;
       this.currentClassName = info.name;
@@ -1575,7 +1776,7 @@
         };
         fnDecls.forEach(fd => visit(fd.body));
         for (const sym of captured) {
-          if (sym.static || this.moduleVars.get(sym.name) === sym) continue;
+          if (sym.static || this.moduleVars.has(sym)) continue;
           const t = this.symJt(sym);
           const name = this.declareLocal(sym, t);
           sym.boxed = true;
@@ -1745,7 +1946,7 @@
       const out = [];
       for (const d of node.declarations || []) {
         if (!d.id) continue;
-        if (d.__asFunction || d.__asClass) continue;
+        if (d.__asFunction || d.__asClass || d.__namespaceAlias) continue;
         if (this.isFrameworkAlias(d)) continue;
         if (d.id.type === 'ObjectPattern') {
           if (d.init && d.init.type === 'Identifier' && (d.init.name === 'AlgorithmFramework' || d.init.name === 'OpCodes')) continue;
@@ -1756,9 +1957,8 @@
         const sym = d.__sym;
         if (!sym) continue;
         const t = this.symJt(sym);
-        if (sym.static || (this.fn.name === '<clinit>' && this.moduleVars.get(sym.name) === sym)) {
+        if (sym.static || (this.fn.name === '<clinit>' && this.moduleVars.has(sym))) {
           // a module variable: assign the static field
-          sym.javaName = sym.javaName || mid(sym.name);
           sym.static = true;
           if (d.init) out.push(S.expr(E.assign(E.sfield(this.unitName, sym.javaName, t), this.valueOf(d.init, t))));
           continue;
@@ -2124,8 +2324,7 @@
     /** A reference to a symbol's storage (local, boxed local, or static field). */
     symRef(sym) {
       const t = this.symJt(sym);
-      if (sym.static || (this.moduleVars.get(sym.name) === sym)) {
-        sym.javaName = sym.javaName || mid(sym.name);
+      if (sym.static || this.moduleVars.has(sym)) {
         return E.sfield(this.unitName, sym.javaName, t);
       }
       return E.name(sym.javaName || jid(sym.name), t, sym.boxed ? { boxed: true } : undefined);
@@ -2133,7 +2332,7 @@
 
     /** A function used as a value: a JsFn calling it. */
     functionValue(sym) {
-      const fi = sym.kind === 'localfn' ? sym.fi : this.functions.get(sym.name);
+      const fi = sym.fi;
       if (!fi) throw new LoweringError(`function ${sym.name} has no declaration`);
       const sig = sym.kind === 'localfn' ? fi.sig : this.signature(fi, null);
       const argsName = this.fresh('a');
@@ -2153,13 +2352,14 @@
     x_ThisExpression() {
       if (!this.fn || this.fn.isStatic || !this.fn.cls) {
         if (this.fn && this.fn.cls && this.fn.isStatic) return { k: 'classref', name: this.fn.cls.javaName, t: 'Class', cls: this.fn.cls.name };
-        throw new LoweringError('this outside a class');
+        // module code: the global object
+        return E.sfield('Js', 'GLOBAL', 'JsObject');
       }
       return E.self(this.fn.cls.javaName);
     }
 
     selfRef() {
-      if (!this.fn || !this.fn.cls) throw new LoweringError('this outside a class');
+      if (!this.fn || !this.fn.cls) return E.sfield('Js', 'GLOBAL', 'JsObject');
       if (this.fn.isStatic) return { k: 'classref', name: this.fn.cls.javaName, t: 'Class', cls: this.fn.cls.name };
       return E.self(this.fn.cls.javaName);
     }
@@ -2750,7 +2950,18 @@
 
     // ------------------------------------------------------------------ members
 
+    /** The symbol a namespace (a library's exports) gives for a member, or null. */
+    namespaceMember(objNode, name) {
+      const sym = objNode && objNode.type === 'Identifier' && objNode.__sym;
+      if (!sym || sym.kind !== 'namespace') return null;
+      return sym.members.get(name) || null;
+    }
+
     x_MemberExpression(node, expect) {
+      if (!node.computed) {
+        const target = this.namespaceMember(node.object, node.property && (node.property.name || node.property.value));
+        if (target) return this.x_Identifier(Object.assign({ type: 'Identifier', name: target.name }, { __sym: target }));
+      }
       if (node.optional) {
         const obj = this.lowerExpr(node.object);
         const key = node.computed ? this.conv(this.lowerExpr(node.property), 'Object') : E.str(node.property.name || node.property.value);
@@ -2895,8 +3106,7 @@
       if (callee.type === 'Identifier') {
         const sym = callee.__sym;
         if (sym && sym.kind === 'func') {
-          const fi = this.functions.get(sym.name);
-          return this.callFunction(fi, args, null);
+          return this.callFunction(sym.fi, args, null);
         }
         if (sym && sym.kind === 'localfn') return this.callFunction(sym.fi, args, sym.holder);
         if (sym) {
@@ -2906,12 +3116,26 @@
         }
         return this.globalCall(callee.name, args, node);
       }
+      if (callee.type === 'MemberExpression' && !callee.computed && callee.property && (callee.property.name === 'apply' || callee.property.name === 'call') &&
+          callee.object && callee.object.type === 'MemberExpression' && !callee.object.computed && callee.object.object &&
+          callee.object.object.type === 'Identifier' && !callee.object.object.__sym && ['String', 'Math', 'Array', 'Number', 'Object'].includes(callee.object.object.name)) {
+        const rest = callee.property.name === 'apply'
+          ? (args[1] ? [{ type: 'SpreadElement', argument: args[1] }] : [])
+          : args.slice(1);
+        return this.x_CallExpression(Object.assign({}, node, { callee: callee.object, arguments: rest }), expect, stmt);
+      }
       if (callee.type === 'MemberExpression' && !callee.computed) {
         const name = callee.property && (callee.property.name !== undefined ? callee.property.name : callee.property.value);
         const o = callee.object;
         if (o.type === 'Identifier' && !o.__sym) {
           const g = this.globalMethodCall(o.name, name, args, node);
           if (g) return g;
+        }
+        const nsTarget = this.namespaceMember(o, name);
+        if (nsTarget) {
+          const id = { type: 'Identifier', name: nsTarget.name };
+          mark(id, '__sym', nsTarget);
+          return this.x_CallExpression(Object.assign({}, node, { callee: id }), expect, stmt);
         }
         if (o.type === 'Super') {
           const base = this.fn.cls && this.classInfo(this.fn.cls.ext);
@@ -3136,6 +3360,7 @@
         if (name === 'stringify') return E.scall('Js', 'stringify', [this.conv(a(0), 'Object')], 'String');
       }
       if (objName === 'Date' && name === 'now') return E.scall('Js', 'now', [], 'long');
+      if (objName === 'performance' && name === 'now') return E.scall('Js', 'nowMs', [], 'double');
       if (objName === 'ArrayBuffer' && name === 'isView') return E.scall('Js', 'isTypedAny', [this.conv(a(0), 'Object')], 'boolean');
       if (objName === 'AlgorithmFramework' || objName === 'OpCodes') return null;
       return null;
@@ -3648,6 +3873,11 @@
       const callee = node.callee;
       const args = node.arguments || [];
       let name = callee && (callee.name || (callee.type === 'MemberExpression' && !callee.computed && callee.property && (callee.property.name || callee.property.value)));
+      if (callee && callee.__sym && callee.__sym.kind === 'class') name = callee.__sym.name;
+      if (callee && callee.type === 'MemberExpression' && !callee.computed) {
+        const target = this.namespaceMember(callee.object, name);
+        if (target && target.kind === 'class') name = target.name;
+      }
 
       const info = this.classInfo(name);
       if (info && !info.enumLike) {
@@ -3905,6 +4135,7 @@
       if (T.isJsArray(to)) {
         const et = T.elemOf(to);
         if (['TestCase', 'KeySize', 'LinkItem', 'Vulnerability'].includes(et)) return E.scall('Js', 'to' + et + 's', [this.conv(e, 'Object')], to);
+        if (et === 'BigInteger') return E.scall('Js', 'toBigs', [this.conv(e, 'Object')], to);
         if (T.isJsArray(from) && (from === 'JsArray<Object>' || et === 'Object')) return { k: 'uncheckedCast', e, t: to };
         return E.scall('Js', 'toArr', [this.conv(e, 'Object')], to);
       }

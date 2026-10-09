@@ -383,6 +383,8 @@ final class JsSet {
 final class Js {
     private Js() {}
     static final java.math.BigInteger MASK64 = java.math.BigInteger.ONE.shiftLeft(64).subtract(java.math.BigInteger.ONE);
+    /** The global object module-level code sees as this. */
+    public static final JsObject GLOBAL = new JsObject();
     static final java.math.BigInteger TWO64 = java.math.BigInteger.ONE.shiftLeft(64);
 
     // ---------------------------------------------------------------- numbers
@@ -823,7 +825,16 @@ final class Js {
         return toInt(getProp(o, "length"));
     }
     /** Spread of a string or array into an array of its elements. */
-    public static JsArrayLike spread(Object o) { return o instanceof String ? JsArray.from(o) : o instanceof JsSet ? JsArray.from(o) : o instanceof JsMap ? ((JsMap) o).entries() : (JsArrayLike) o; }
+    public static JsArrayLike spread(Object o) {
+        if (o instanceof JsObject && ((JsObject) o).has("length")) return new JsArray<Object>(toInt(((JsObject) o).get("length"))); // Array.from({ length: n })
+        return o instanceof String ? JsArray.from(o) : o instanceof JsSet ? JsArray.from(o) : o instanceof JsMap ? ((JsMap) o).entries() : (JsArrayLike) o;
+    }
+    public static JsArray<java.math.BigInteger> toBigs(Object o) {
+        if (o == null) return null;
+        JsArrayLike s = (JsArrayLike) o; JsArray<java.math.BigInteger> r = new JsArray<>(s.length());
+        for (int i = 0; i < s.length(); ++i) { Object v = s.getBoxed(i); r.set(i, v == null ? null : toBig(v)); }
+        return r;
+    }
     public static Object index(Object o, Object key) {
         if (o instanceof JsArrayLike && key instanceof Number) { double d = ((Number) key).doubleValue(); return d == Math.floor(d) ? ((JsArrayLike) o).getBoxed((int) d) : null; }
         if (o instanceof String && key instanceof Number) return charAt((String) o, ((Number) key).doubleValue());
@@ -959,6 +970,7 @@ final class Js {
     public static String message(Throwable e) { return e instanceof JsError ? e.getMessage() : String.valueOf(e.getMessage()); }
     public static void log(Object... args) { StringBuilder sb = new StringBuilder(); for (Object a : args) { if (sb.length() > 0) sb.append(' '); sb.append(str(a)); } System.err.println(sb); }
     public static long now() { return System.currentTimeMillis(); }
+    public static double nowMs() { return System.nanoTime() / 1e6; }
 
     // ---------------------------------------------------------------- expression helpers
     public static <T> T seq(Object a, T b) { return b; }
@@ -1864,7 +1876,7 @@ final class _BitStream {
         const merged = { ...this.options, ...options };
         if (!ast || typeof ast !== 'object') return this.CreateErrorResult('Invalid AST: must be an object');
         const transformer = new JavaTransformer({ className: merged.className || 'GeneratedClass' });
-        const unit = transformer.transform(ast);
+        const unit = transformer.transform(ast, { libraries: merged.libraries || [] });
         const emitter = new JavaEmitter({ indent: merged.indent, newline: merged.lineEnding });
         const code = emitter.emit(unit, {
           packageName: merged.packageName || null,

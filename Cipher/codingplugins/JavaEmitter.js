@@ -105,7 +105,9 @@
     cls(c, depth) {
       const i = this.ind(depth);
       const out = [''];
-      out.push(`${i}static class ${c.name}${c.ext ? ' extends ' + c.ext : ''} {`);
+      out.push(`${i}static class ${c.name}${c.ext ? ' extends ' + c.ext : ''}${c.dynamic ? ' implements JsDynamic' : ''} {`);
+      // the properties JavaScript code adds to an instance beyond its fields
+      if (c.dynamic) out.push(`${i}${this.indentUnit}private JsObject props__;`, `${i}${this.indentUnit}public JsObject props() { if (props__ == null) props__ = new JsObject(); return props__; }`);
       for (const f of c.fields) out.push(`${i}${this.indentUnit}public ${f.static ? 'static ' : ''}${this.type(f.t)} ${f.name};`);
       if (c.staticInit && c.staticInit.length) {
         const ctx = { cls: c, ret: 'void', static: true };
