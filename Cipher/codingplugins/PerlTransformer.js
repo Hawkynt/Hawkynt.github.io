@@ -712,8 +712,12 @@
       // === 512 ? shadow512 : shadow384;", picking between two
       // interchangeable top-level permutation functions per variant.
       this._topLevelFunctionNames = topLevelFunctionNames;
-      // The framework runtime's free functions live in package main.
+      // The framework runtime's free functions live in package main, and so
+      // does every module-scope function of this file - known up front, so a
+      // call that precedes the declaration (a class constructor calling a
+      // helper declared below the class) is qualified as well.
       for (const name of PerlAST.FRAMEWORK_RUNTIME_FUNCTIONS) this.functionNames.add(name);
+      for (const name of this._collectModuleFunctionNames(jsAst)) this.functionNames.add(name);
 
       // Flat whole-file scan for every real "static FIELD = ...;" class
       // field name (ES2022 static class fields, e.g. block/aria.js's
@@ -1854,6 +1858,41 @@
         stubs.push(stubClass);
       }
       return stubs;
+    }
+
+    /**
+     * Names of the functions this file declares at module scope - the ones
+     * transformTopLevel/transformIIFEContent emit as subs of package main:
+     * function declarations and function-valued const/let/var declarators,
+     * directly in the program, in a module IIFE or UMD factory, or in a
+     * registration if/try block those unwrap.
+     * @param {object} program - the IL Program node
+     * @returns {Set<string>}
+     */
+    _collectModuleFunctionNames(program) {
+      const names = new Set();
+      const isFunction = n => n && (n.type === 'FunctionExpression' || n.type === 'ArrowFunctionExpression' || n.type === 'ArrowFunction');
+      const visit = statements => {
+        for (const stmt of statements || []) {
+          if (!stmt) continue;
+          if (stmt.type === 'FunctionDeclaration' && stmt.id?.name) names.add(stmt.id.name);
+          else if (stmt.type === 'VariableDeclaration') {
+            for (const decl of stmt.declarations || [])
+              if (decl.id?.type === 'Identifier' && isFunction(decl.init)) names.add(decl.id.name);
+          } else if (stmt.type === 'ExpressionStatement' && stmt.expression?.type === 'CallExpression') {
+            const call = stmt.expression;
+            const factory = (call.arguments || []).find((a, i) => i === 1 && isFunction(a));
+            if (factory) visit(factory.body?.body);
+            else if (isFunction(call.callee)) visit(call.callee.body?.body);
+          } else if (stmt.type === 'IfStatement') {
+            visit(stmt.consequent?.type === 'BlockStatement' ? stmt.consequent.body : [stmt.consequent]);
+          } else if (stmt.type === 'TryStatement') {
+            visit(stmt.block?.body);
+          }
+        }
+      };
+      if (program && program.type === 'Program') visit(program.body);
+      return names;
     }
 
     /**
