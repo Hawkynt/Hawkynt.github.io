@@ -213,6 +213,8 @@ runCase('arrays: an array converted for a parameter the callee changes gets the 
   '  put(packed, 1, 200); appendAll(key, packed); return key.join(","); }');
 runCase('arrays: a new plain array holds the larger numbers stored into it',
   '/** @returns {string} */ function probe() { const offsets = new Array(4).fill(0); for (let i = 0; i < 3; ++i) offsets[i + 1] = offsets[i] + 1000 * (i + 1); return offsets.join(","); }');
+runCase('arrays: elements spread into splice are inserted one by one (Kotlin spreads the array it passes as varargs)',
+  '/** @returns {string} */ function probe() { const t = OpCodes.CreateArray(4, 0); const k = [7, 8, 9]; t.splice(0, 2, ...k.slice(0, 2)); return [t.length, t.join("/")].join(","); }');
 runCase('arrays: OpCodes.CreateArray and ArraySlice keep the values they are given',
   '/** @returns {string} */ function probe() { const w = OpCodes.CreateArray(3, 0xFFFFFFFF); const s = OpCodes.ArraySlice([300, 70000, 5], 1, 3); return [w.join("/"), s.join("/")].join(","); }');
 runCase('arrays: .length of a local class instance reads its own length field',

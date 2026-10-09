@@ -353,11 +353,13 @@
             if (ps.length !== argTypes.length) continue;
             let cost = 0, fine = true;
             for (let i = 0; i < ps.length; ++i) {
-              const c = this.applicable(argTypes[i], ps[i].t, phase);
+              // before the varargs phase a varargs parameter is its array (Java passes an array as it)
+              const pt = va && i === ps.length - 1 ? ps[i].t + '[]' : ps[i].t;
+              const c = this.applicable(argTypes[i], pt, phase);
               if (c === null) { fine = false; break; }
               cost += c;
             }
-            if (fine) ok.push({ sig, cost });
+            if (fine) ok.push({ sig, cost, arrayPass: !!va });
           } else {
             if (argTypes.length < ps.length - 1) continue;
             let cost = 0, fine = true;
@@ -911,6 +913,8 @@
       const argTypes = args.map(a => (a.k === 'lit' && a.v === null && (!a.t || a.t === 'null' || a.t === 'Object')) ? 'null' : a.t);
       const pick = sigs ? this.resolve(sigs, argTypes) : null;
       return args.map((a, i) => {
+        // an array passed as a varargs parameter's array is spread in Kotlin
+        if (pick && pick.arrayPass && i === args.length - 1) return `*${this.recv(a, ctx)}`;
         let pt = null;
         if (pick) {
           const ps = pick.sig.params;
