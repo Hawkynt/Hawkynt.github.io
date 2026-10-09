@@ -1017,6 +1017,15 @@ check('typed arrays: a registered int member named like bytes is a size, not an 
   expectMatch(code, /byte\[\] pk = new byte\[p\.PkBytes\];/, 'new byte[p.PkBytes]');
   expectMatch(code, /return new byte\[this\.PkBytes\];/, 'new byte[this.PkBytes]');
 });
+check('ref: an array converted for a grown int parameter goes through a temporary converted back', () => {
+  const code = transpile('/**\n * @param {int32[]} target - grown in place\n * @param {int32[]} source - read\n * @returns {int32[]} target\n */\n' +
+    'function appendAll(target, source) {\n  for (let i = 0; i < source.length; i++) target.push(source[i]);\n  return target;\n}\n' +
+    'class Holder {\n  constructor() {\n    /** @type {uint8[]} */\n    this.buffer = [];\n  }\n' +
+    '  /** @param {uint8[]} data - data */\n  feed(data) {\n    appendAll(this.buffer, data);\n    /** @type {uint8[]} */\n    const out = [1];\n    appendAll(out, data);\n  }\n}');
+  expectMatch(code, /var __ref\d+ = this\.Buffer\.Select\(/, 'the converted member in a temporary');
+  expectMatch(code, /this\.Buffer = ArrayAs\(__ref\d+, this\.Buffer\);/, 'the member converted back');
+  expectMatch(code, /@?out = ArrayAs\(__ref\d+, @?out\);/, 'the local converted back');
+});
 check('registry: a module constant named algorithms leaves the registry RegisteredAlgorithms (CS0102)', () => {
   const code = transpile('const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
     'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +
@@ -1266,6 +1275,9 @@ namespace RegressionTest {
       var bag = new TestCase { Text = "t" };
       Eq("member-camel", (string)FrameworkFunctions.JsMember(bag, "text"), "t");
       Eq("member-missing", (object)FrameworkFunctions.JsMember(bag, "nothing") == null, true);
+      // ArrayAs converts a copy back to the element type of the array it came from
+      Eq("array-as", Convert.ToHexString(FrameworkFunctions.ArrayAs(new int[] { 1, 255, 256 }, new byte[0])), "01FF00");
+      Eq("array-as-int", string.Join(",", FrameworkFunctions.ArrayAs(new byte[] { 7 }, new int[0])), "7");
       // OpCodes.UInt64 works on [high32, low32] pairs
       Eq("u64-shr", string.Join(",", OpCodes.UInt64.Shr(OpCodes.UInt64.Create(0x12345678, 0x9ABCDEF0), 8)), "1193046,2023406814");
       Eq("u64-shl-wide", string.Join(",", OpCodes.UInt64.Shl(OpCodes.UInt64.Create(0, 1), 40)), "256,0");

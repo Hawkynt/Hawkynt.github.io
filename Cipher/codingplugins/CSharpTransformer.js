@@ -24235,10 +24235,17 @@
         if (call?.nodeType !== 'MethodCall' || !Array.isArray(call.arguments)) return statement;
         const before = [], after = [];
         call.arguments = call.arguments.map((arg, index) => {
-          if (!this.refArrayParams.has(`${call.methodName}#${index}`) || arg?.nodeType !== 'MemberAccess') return arg;
+          if (!this.refArrayParams.has(`${call.methodName}#${index}`) || !arg || arg.nodeType === 'Identifier') return arg;
           const name = `__ref${++temporaries}`;
           before.push(new CSharpVariableDeclaration(name, new CSharpType('var'), arg));
-          after.push(new CSharpExpressionStatement(new CSharpAssignment(arg, '=', new CSharpIdentifier(name))));
+          // A member is stored back; a converted copy (ntru.js's byte buffer given
+          // for an int32[] parameter) is converted back to its source's element type
+          const convertedFrom = this.arrayConversionSource(arg);
+          if (arg.nodeType === 'MemberAccess')
+            after.push(new CSharpExpressionStatement(new CSharpAssignment(arg, '=', new CSharpIdentifier(name))));
+          else if (convertedFrom)
+            after.push(new CSharpExpressionStatement(new CSharpAssignment(convertedFrom, '=',
+              new CSharpMethodCall(null, 'ArrayAs', [new CSharpIdentifier(name), convertedFrom]))));
           return new CSharpIdentifier('ref ' + name);
         });
         if (before.length === 0) return statement;
@@ -24279,8 +24286,25 @@
       return args.map((arg, index) => {
         if (!this.refArrayParams.has(`${methodName}#${index}`)) return arg;
         const plain = plainArgs[index];
+        // A local converted to the parameter's element type stays the conversion,
+        // passed through a temporary and converted back (applyRefArgumentsEverywhere)
+        if (plain?.nodeType === 'Identifier' && arg !== plain && this.arrayConversionSource(arg)) return arg;
         return plain?.nodeType === 'Identifier' ? new CSharpIdentifier('ref ' + plain.name) : arg;
       });
+    }
+
+    /**
+     * The array an element-wise conversion `x.Select(_v => (T)_v).ToArray()` reads,
+     * when it is a local or a member (something a converted copy can be stored back to).
+     * @param {Object} expr - C# expression
+     * @returns {Object|null} the converted array's expression
+     */
+    arrayConversionSource(expr) {
+      if (expr?.nodeType !== 'MethodCall' || expr.methodName !== 'ToArray' || expr.arguments?.length) return null;
+      const select = expr.target;
+      if (select?.nodeType !== 'MethodCall' || select.methodName !== 'Select') return null;
+      const source = select.target;
+      return source?.nodeType === 'Identifier' || source?.nodeType === 'MemberAccess' ? source : null;
     }
 
     /**

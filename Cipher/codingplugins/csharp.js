@@ -1008,6 +1008,10 @@ namespace ${namespace}
         }
 
         // JavaScript's string.slice: a negative bound counts from the end, both clamp
+        // A converted copy of an array, converted back to the element type of the array
+        // it was made from (like), as a JavaScript array holding the same numbers
+        public static T[] ArrayAs<T, S>(S[] source, T[] like) =>
+            source?.Select(v => (T)System.Convert.ChangeType(System.Convert.ToInt64(v) & (typeof(T) == typeof(byte) ? 0xFF : typeof(T) == typeof(ushort) ? 0xFFFF : typeof(T) == typeof(uint) ? 0xFFFFFFFFL : -1L), typeof(T))).ToArray();
         // obj[name] on an object: its property or field of that name (as declared,
         // or PascalCased as C# declares it); undefined (null) when it has none
         public static dynamic JsMember(object obj, string name)
