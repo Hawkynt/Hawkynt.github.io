@@ -143,6 +143,14 @@ sameAsJs('number: integer arithmetic past 32 bits is not narrowed, past 2^53 rou
 sameAsJs('number: a local initialized with 0 and accumulating fractions stays fractional',
   '/** @param {int32} k @param {float64} r @returns {float64} */ function f(k, r) { let tau = 0; for (let i = 1; i <= k; i++) tau += r / (i * k); return tau; }\n' +
   '/** @returns {string} */ function probe() { return String(f(3, 1.5)); }');
+sameAsJs('number: every float64 operation rounds to a double, as on a JavaScript engine',
+  '/** @returns {string} */ function probe() {\n' +
+  '  /** @type {int32} */ let seed = -123456789;\n  /** @type {float64} */ const M = 1103515245;\n  /** @type {float64} */ let acc = 0;\n' +
+  '  for (let i = 0; i < 2000; i++) { /** @type {float64} */ const p = M * seed + 12345; seed = p % 2147483648; acc = (acc * 31 + seed) % 1000000007; }\n' +
+  '  return String(acc); }');
+sameAsJs('number: float64 % is exact for negative, fractional, tiny and huge operands',
+  '/** @param {float64} a @param {float64} b @returns {float64} */ function m(a, b) { return a % b; }\n' +
+  '/** @returns {string} */ function probe() { return [m(-7, 2), m(5.5, 2), m(1e300, 3), m(0.3, 0.1), m(2, 5), m(-1e-310, 1e-320), m(18446744065119617025, 1000)].join(" "); }');
 sameAsJs('bigint: arbitrary precision past 64 bits, masked 64-bit shifts',
   '/** @param {BigInt} x @returns {BigInt} */ function shl(x) { return (x << 3n) & 0xFFFFFFFFFFFFFFFFn; }\n' +
   '/** @returns {string} */ function probe() { return ((1n << 70n) % 1000003n).toString() + " " + shl(0xF000000000000001n).toString(16); }');

@@ -4548,7 +4548,9 @@ begin
   Result := nil;
 end;`;
 
-  const RUNTIME_INITIALIZATION = String.raw`  JsInvariant := DefaultFormatSettings;
+  const RUNTIME_INITIALIZATION = String.raw`  { JavaScript rounds every operation to a double; the x87 would keep 64-bit mantissas }
+  SetPrecisionMode(pmDouble);
+  JsInvariant := DefaultFormatSettings;
   JsInvariant.DecimalSeparator := '.';
   JsInvariant.ThousandSeparator := ',';
   JsAlgorithms := TA_Algorithm.Empty;`;
