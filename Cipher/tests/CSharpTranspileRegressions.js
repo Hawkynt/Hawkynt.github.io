@@ -343,6 +343,14 @@ check('arithmetic: ulong += int takes the int as ulong (CS0034)', () => {
 // ---------------------------------------------------------------------------
 // Fields take their IL type in every declaring pass
 // ---------------------------------------------------------------------------
+check('IL types: a key backing field keeps its JSDoc class type, not byte[] from its name', () => {
+  const code = transpile('class Key { constructor(n) { /** @type {BigInt} */ this.n = n; } }\n' +
+    'class R {\n  constructor() { /** @type {Key|null} */ this._publicKey = null; }\n' +
+    '  /** @param {Key|null} k - key */\n  set publicKey(k) { this._publicKey = k ? k : null; }\n' +
+    '  /** @returns {Key|null} key */\n  get publicKey() { return this._publicKey; }\n}');
+  expectMatch(code, /Key\?? _publicKey\b/, 'a Key-typed _publicKey');
+  expectMatch(code, /public Key PublicKey\b/, 'a Key-typed PublicKey');
+});
 check('IL types: a counter field keeps its JSDoc type, not a guess from its name or literal', () => {
   const code = transpile('class C {\n  constructor() { /** @type {int32} */ this.chunk_counter = 0; }\n' +
     '  reset() { /** @type {uint32[]} */ this.state_words = []; this.chunk_counter = 0; }\n}');
