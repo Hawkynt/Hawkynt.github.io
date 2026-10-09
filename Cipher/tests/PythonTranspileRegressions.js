@@ -507,6 +507,12 @@ check('division: a whole float quotient stays usable as a size, x / 0 is an infi
   return expectOutput(runPython(js, 'print(f(8), g(1.0), g(-1.0))'), ['[16, 16, True] inf -inf']);
 });
 
+check('round: Math.round rounds a half up, not to even', () => {
+  const js = '/** @param {float64} x @returns {int32} */\nfunction r(x) { return Math.round(x); }';
+  // Given both half-way signs, the largest double below 0.5 and an odd half
+  return expectOutput(runPython(js, 'print([r(v) for v in (2.5, -2.5, 0.49999999999999994, 1.5, -0.4, 7)])'), ['[3, -2, 0, 2, 0, 7]']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

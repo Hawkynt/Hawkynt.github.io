@@ -2976,6 +2976,17 @@ class OpCodes(metaclass=_OpCodesMeta):
           '    q = a / b\n' +
           '    return int(q) if q.is_integer() and -9007199254740992 <= q <= 9007199254740992 else q'
       });
+      // Math.round rounds a half up (2.5 -> 3, -2.5 -> -2); Python's round()
+      // rounds a half to even
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_round(x):\n' +
+          '    if isinstance(x, int) or x != x or x in (float("inf"), float("-inf")):\n' +
+          '        return x\n' +
+          '    import math\n' +
+          '    r = math.floor(x)\n' +
+          '    return r + 1 if x - r >= 0.5 else r'
+      });
       stubs.push({
         nodeType: 'RawCode', code:
           'def _js_reverse(a):\n' +
@@ -7124,7 +7135,7 @@ class OpCodes(metaclass=_OpCodesMeta):
             case 'ceil':
               return new PythonCall(new PythonMemberAccess(new PythonIdentifier('math'), 'ceil'), args);
             case 'round':
-              return new PythonCall(new PythonIdentifier('round'), args);
+              return new PythonCall(new PythonIdentifier('_js_round'), args);
             case 'min':
               return new PythonCall(new PythonIdentifier('min'), args);
             case 'max':
@@ -12396,7 +12407,7 @@ class OpCodes(metaclass=_OpCodesMeta):
       this.preserveFloatDivision = true;
       const argument = this.transformExpression(node.argument);
       this.preserveFloatDivision = prevPreserveFloatDivision;
-      return new PythonCall(new PythonIdentifier('round'), [argument]);
+      return new PythonCall(new PythonIdentifier('_js_round'), [argument]);
     }
 
     /**
