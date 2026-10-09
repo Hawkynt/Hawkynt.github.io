@@ -309,6 +309,16 @@ check('numbers: a double beyond 64 bits is a float literal; Math.tanh/sinh/cosh 
   expectOutput(runPerl(NUMBER_SNIPPET, 'print main::f(0.5), "\\n";'), '1,1,462,1128');
 });
 
+const FLOAT_SNIPPET = '/** @type {BigInt} */ const BIG = 1n;\n' +
+  '/** @param {int32} radix @returns {int32} */ function maxLength(radix) { return 2 * Math.floor(96 * Math.LN2 / Math.log(radix)); }\n' +
+  'class Reg { constructor() { /** @type {int32} */ this.length = 0; } }\n' +
+  '/** @param {int32} n @returns {int32} */ function regLength(n) { const r = new Reg(); r.length = n; return r.length; }';
+check('numbers: float arithmetic stays floating point in a BigInt file; obj.length = n on a class sets the field', () => {
+  if (!hasPerl()) return 'skip';
+  // JavaScript: maxLength(10) is 56, regLength(5) is 5
+  expectOutput(runPerl(FLOAT_SNIPPET, 'print main::maxLength(10), ",", main::regLength(5), "\\n";'), '56,5');
+});
+
 /**
  * PERL: run every regression case.
  * @param {object} options - { verbose }

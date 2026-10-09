@@ -3139,6 +3139,17 @@
      * @param {string} propName - the property
      * @returns {('accessor'|'runtime'|null)}
      */
+    /**
+     * Is this IL type an object - a class, a record, a plain object - as
+     * opposed to a primitive, string, array or container?
+     * @param {string} typeName
+     * @returns {boolean}
+     */
+    _isObjectType(typeName) {
+      return typeName === 'object' ||
+        (typeof typeName === 'string' && /^[A-Z][A-Za-z0-9_]*$/.test(typeName) && !NON_CLASS_TYPE_NAMES.has(typeName));
+    }
+
     _classPropertyAccess(typeName, propName) {
       if (typeof typeName !== 'string' || !/^[A-Z][A-Za-z0-9_]*$/.test(typeName)) return null;
       if (NON_CLASS_TYPE_NAMES.has(typeName) || propName === 'length') return null;
@@ -10154,6 +10165,17 @@
       // JavaScript: arr.length = 0 clears the array
       // JavaScript: arr.length = N truncates or extends with undefined
       // Perl: @arr = () to clear, or splice(@arr, N) to truncate
+      // "obj.length = n" on a class or record (by its IL type) sets a field
+      {
+        const lengthTarget = (node.left.type === 'ArrayLength' || node.left.ilNodeType === 'ArrayLength') ? node.left.array
+          : (node.left.type === 'MemberExpression' && !node.left.computed &&
+             (node.left.property?.name || node.left.property?.value) === 'length') ? node.left.object : null;
+        if (lengthTarget && node.operator === '=' && this._isObjectType(lengthTarget.resultType))
+          return new PerlAssignment(
+            new PerlSubscript(this.transformExpression(lengthTarget), PerlLiteral.String('length', "'"), 'hash', true),
+            '=', this.transformExpression(node.right));
+      }
+
       if (node.left.type === 'ArrayLength' || node.left.ilNodeType === 'ArrayLength') {
         const arrExpr = this.transformExpression(node.left.array);
         const lengthVal = this.transformExpression(node.right);
