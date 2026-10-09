@@ -812,7 +812,8 @@ namespace ${namespace}
 
         public int BlockSize => _blockSize;
         public int Pending => _pending;
-        public long Length => _length;
+        // uint64, as AlgorithmFramework.js documents it
+        public ulong Length => (ulong)_length;
 
         public void Absorb(byte[] data)
         {
