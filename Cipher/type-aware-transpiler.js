@@ -4621,8 +4621,9 @@
         };
       }
 
-      // Other DataView methods
-      if (methodName === 'buffer' && !args.length) {
+      // Other DataView members (buffer, byteOffset, byteLength are properties of a
+      // DataView: called on anything else they are that object's own methods)
+      if (isDataView && methodName === 'buffer' && !args.length) {
         return {
           type: 'DataViewGetBuffer',
           view: transformedView,
@@ -4631,7 +4632,7 @@
         };
       }
 
-      if (methodName === 'byteOffset' && !args.length) {
+      if (isDataView && methodName === 'byteOffset' && !args.length) {
         return {
           type: 'DataViewGetByteOffset',
           view: transformedView,
@@ -4640,7 +4641,7 @@
         };
       }
 
-      if (methodName === 'byteLength' && !args.length) {
+      if (isDataView && methodName === 'byteLength' && !args.length) {
         return {
           type: 'DataViewGetByteLength',
           view: transformedView,

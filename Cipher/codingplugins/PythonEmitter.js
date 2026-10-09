@@ -222,10 +222,22 @@
         code += this.line(`"""${node.docstring}"""`);
       }
 
+      // Parameter defaults that are evaluated per call (see the transformer's
+      // transformParameter)
+      let lateDefaults = 0;
+      for (const param of node.parameters || []) {
+        if (!param.lateDefault) continue;
+        code += this.line(`if ${param.name} is None:`);
+        this.indentLevel++;
+        code += this.line(`${param.name} = ${this.emit(param.lateDefault)}`);
+        this.indentLevel--;
+        ++lateDefaults;
+      }
+
       // Function body
       if (node.body && node.body.statements.length > 0) {
         code += this.emit(node.body);
-      } else {
+      } else if (!lateDefaults) {
         code += this.line('pass');
       }
 
@@ -265,7 +277,10 @@
     }
 
     emitAssignment(node, asExpression = false) {
-      const target = this.emit(node.target);
+      const savedTarget = this._assignTarget;
+      this._assignTarget = node.target;
+      let target;
+      try { target = this.emit(node.target); } finally { this._assignTarget = savedTarget; }
       const value = this.emit(node.value);
 
       let code = target;
@@ -312,7 +327,9 @@
 
     emitDelete(node) {
       // `del target` (maps from JavaScript's `delete obj.prop` / `delete obj[key]`)
-      return `del ${this.emit(node.target)}`;
+      const savedTarget = this._assignTarget;
+      this._assignTarget = node.target;
+      try { return `del ${this.emit(node.target)}`; } finally { this._assignTarget = savedTarget; }
     }
 
     emitReturn(node) {
@@ -542,6 +559,12 @@
       if (node.literalType === 'hex') {
         return `0x${node.value.toString(16).toUpperCase()}`;
       }
+      // An integer-valued Number past 2^53 prints in JS as a rounded decimal
+      // (2^64 as 18446744073709552000), which Python reads as a different
+      // exact int; spell out the double's exact value instead.
+      if (node.literalType === 'int' && typeof node.value === 'number' &&
+          Number.isInteger(node.value) && !Number.isSafeInteger(node.value))
+        return BigInt(node.value).toString();
       return String(node.value);
     }
 
@@ -663,6 +686,13 @@
       // `a.index(x) if x in a else -1 == -1` parses as
       // `a.index(x) if x in a else (-1 == -1)`, not `(...) == -1`.
       const ALWAYS_PARENTHESIZE = new Set(['Conditional', 'ConditionalExpression', 'Lambda']);
+      // `not x` as the operand of a comparison or arithmetic would swallow
+      // the whole operation: !a === b is (not a) == b, not `not (a == b)`
+      const isNot = (n) => n && n.nodeType === 'UnaryExpression' && (n.operator === '!' || n.operator === 'not');
+      if (parentPrecedence > this.getOperatorPrecedence('not')) {
+        if (isNot(node.left)) left = `(${left})`;
+        if (isNot(node.right)) right = `(${right})`;
+      }
 
       // Add parentheses to left operand if needed
       if (node.left && ALWAYS_PARENTHESIZE.has(node.left.nodeType)) {
@@ -788,7 +818,12 @@
       // Note: * for unpacking does NOT need a space: [*arr] not [* arr]
       const wordOperators = ['not', 'await'];
       if (wordOperators.includes(op)) {
-        return `${op} ${operand}`;
+        // `not` binds tighter than and/or: !(a && b) is not (a and b)
+        const operandType = node.operand && node.operand.nodeType;
+        const looser = (operandType === 'BinaryExpression' &&
+            this.getOperatorPrecedence(node.operand.operator) < this.getOperatorPrecedence('not')) ||
+          operandType === 'Conditional' || operandType === 'ConditionalExpression' || operandType === 'Lambda';
+        return looser ? `${op} (${operand})` : `${op} ${operand}`;
       }
 
       // Arithmetic unary +/- bind TIGHTER in Python than every binary operator
@@ -836,6 +871,9 @@
     }
 
     emitSubscript(node) {
+      // a computed-name property read (see the transformer)
+      if (node.isJsPropRead && node !== this._assignTarget && !(node.index && node.index.nodeType === 'Slice'))
+        return `_js_getprop(${this.emit(node.object)}, ${this.emit(node.index)})`;
       let obj = this.emit(node.object);
 
       // Same grouping rule as emitMemberAccess (see its comment) but for

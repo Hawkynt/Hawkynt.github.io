@@ -48,60 +48,6 @@
           CryptoAlgorithm, LinkItem, IAlgorithmInstance } = AlgorithmFramework;
 
   /**
-   * Secure random number generator for padding
-   * Uses crypto.getRandomValues in browser or crypto.randomBytes in Node.js
-   * @param {int32} length - Number of bytes (at most a block)
-   * @returns {uint8[]} Random bytes
-   */
-  function getSecureRandomBytes(length) {
-    /** @type {uint8[]} */
-    const bytes = new Array(length);
-
-    // Browser/Worker environment (and Node.js, which has the same global);
-    // a missing global crypto or getRandomValues throws and falls through
-    try {
-      /** @type {uint8[]} */
-      const buffer = new Uint8Array(length);
-      crypto.getRandomValues(buffer);
-      for (let i = 0; i < length; ++i) {
-        bytes[i] = buffer[i];
-      }
-      return bytes;
-    } catch (e) {
-      // No Web Crypto API: try the Node.js module
-    }
-
-    // Node.js environment
-    if (typeof require !== 'undefined') {
-      try {
-        const cryptoModule = require('crypto');
-        const buffer = cryptoModule.randomBytes(length);
-        for (let i = 0; i < length; ++i) {
-          bytes[i] = buffer[i];
-        }
-        return bytes;
-      } catch (e) {
-        // Fall through to deterministic fallback
-      }
-    }
-
-    // Deterministic fallback for testing (NOT cryptographically secure)
-    // Uses a simple PRNG seeded with timestamp
-    /** @type {float64} */
-    const now = Date.now();
-    /** @type {int32} */
-    let seed = OpCodes.ToInt(now);
-    for (let i = 0; i < length; ++i) {
-      /** @type {float64} */
-      const next = seed * 1103515245 + 12345;
-      seed = OpCodes.ToInt(OpCodes.And32(next, 0x7FFFFFFF));
-      // Extract high byte without bit shift operator (avoid optimization check)
-      bytes[i] = OpCodes.And32(Math.floor(seed / 65536), 0xFF);
-    }
-    return bytes;
-  }
-
-  /**
    * Make sure a cipher is registered: registry first, plain require fallback
    * @param {string} cipherName - Registered name
    * @returns {void}
@@ -442,7 +388,7 @@
       const padLength = cekBlockSize - (plaintext.length + 4);
       if (padLength > 0) {
         /** @type {uint8[]} */
-        const padBytes = this._random ? this._random : getSecureRandomBytes(padLength);
+        const padBytes = this._random ? this._random : OpCodes.SecureRandomBytes(padLength);
         for (let i = 0; i < padLength; ++i) {
           cekBlock[plaintext.length + 4 + i] = padBytes[i];
         }
