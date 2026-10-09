@@ -381,6 +381,63 @@ sub _JsSubarray {
     tie @view, '_JSSubarrayView', $array, $begin, $end - $begin;
     return \@view;
 }
+# String.prototype.slice (negative bounds count from the end, an end before
+# the start is empty) and substring (bounds clamped to 0..length, swapped
+# when inverted)
+sub _JsSubstring {
+    my ($string, $start, $end, $isSlice) = @_;
+    $string = '' if !defined($string);
+    my $length = length($string);
+    $start = int($start // 0); $end = defined($end) ? int($end) : $length;
+    if ($isSlice) {
+        $start += $length if $start < 0; $end += $length if $end < 0;
+    } elsif ($start > $end) {
+        ($start, $end) = ($end, $start);
+    }
+    $start = 0 if $start < 0; $start = $length if $start > $length;
+    $end = 0 if $end < 0; $end = $length if $end > $length;
+    return $end > $start ? substr($string, $start, $end - $start) : '';
+}
+# crypto.getRandomValues: the array filled from the platform CSPRNG
+sub _JsGetRandomValues {
+    my ($array) = @_;
+    my $bytes = OpCodes::securerandombytes(scalar(@$array));
+    $array->[$_] = $bytes->[$_] for 0 .. $#$array;
+    return $array;
+}
+# Array.prototype.indexOf: strict equality, numbers by value, strings by text
+sub _JsIndexOf {
+    my ($array, $value, $from) = @_;
+    my $count = scalar(@$array);
+    $from = int($from // 0); $from += $count if $from < 0; $from = 0 if $from < 0;
+    my $numeric = defined($value) && !ref($value) && Scalar::Util::looks_like_number($value);
+    for (my $index = $from; $index < $count; ++$index) {
+        my $element = $array->[$index];
+        if (!defined($value)) { return $index if !defined($element); next; }
+        next if !defined($element);
+        if (ref($value) || ref($element)) { return $index if ref($value) && ref($element) && $value == $element; next; }
+        if ($numeric) { return $index if Scalar::Util::looks_like_number($element) && $element == $value; }
+        else { return $index if $element eq $value; }
+    }
+    return -1;
+}
+# obj.name(args) on an object whose class is not known statically: a
+# blessed object's method, else the function stored under that name
+sub _JsInvoke {
+    my ($object, $name, @args) = @_;
+    return $object->$name(@args) if Scalar::Util::blessed($object);
+    return $object->{$name}->(@args) if ref($object) eq 'HASH' && ref($object->{$name}) eq 'CODE';
+    die "TypeError: $name is not a function\n";
+}
+# error.message: an error object's message, or a die string without the
+# location Perl appends to it
+sub _JsErrorMessage {
+    my ($error) = @_;
+    return $error->{message} if ref($error) eq 'HASH' || Scalar::Util::blessed($error);
+    my $text = defined($error) ? "$error" : '';
+    $text =~ s/ at \S+ line \d+\.?\n?\z//;
+    return $text;
+}
 sub _JsByteLength { my ($view) = @_; return ref($view) eq 'ARRAY' ? scalar(@$view) : length($view // ''); }
 sub _JsFromEntries { my ($entries) = @_; return { map { ($_->[0] => $_->[1]) } @{$entries || []} }; }
 sub SpongePadBlocks {

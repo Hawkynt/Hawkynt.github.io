@@ -7055,40 +7055,13 @@
             node.compareFn ? [this.transformExpression(node.array), this.transformExpression(node.compareFn)]
               : [this.transformExpression(node.array)]);
 
-        case 'ArrayIndexOf': {
-          // array.indexOf(val) -> simplified: first index or -1
-          this.addRequiredModule('List::Util', 'first');
-          const idxArr = this.transformExpression(node.array);
-          const idxVal = this.transformExpression(node.value);
-          // Use inline loop to find index
-          const forLoop = new PerlFor();
-          forLoop.isCStyle = true;
-          forLoop.init = new PerlVarDeclaration('my', 'i', '$', PerlLiteral.Number(0));
-          forLoop.condition = new PerlBinaryExpression(
-            new PerlIdentifier('i', '$'),
-            '<',
-            new PerlCall('scalar', [this.wrapArrayDeref(idxArr)])
-          );
-          forLoop.increment = new PerlUnaryExpression('++', new PerlIdentifier('i', '$'), false);
-          forLoop.body = new PerlBlock([
-            new PerlIf(
-              new PerlBinaryExpression(
-                new PerlSubscript(idxArr, new PerlIdentifier('i', '$'), 'array'),
-                'eq',
-                idxVal
-              ),
-              new PerlBlock([
-                new PerlExpressionStatement(new PerlAssignment(new PerlIdentifier('idx', '$'), '=', new PerlIdentifier('i', '$'))),
-                new PerlLast()
-              ])
-            )
-          ]);
-          return new PerlCall('do', [new PerlBlock([
-            new PerlVarDeclaration('my', 'idx', '$', PerlLiteral.Number(-1)),
-            forLoop,
-            new PerlExpressionStatement(new PerlIdentifier('idx', '$'))
-          ])]);
-        }
+        case 'ArrayIndexOf':
+          // array.indexOf(val[, from]): the array and value are evaluated once,
+          // outside any loop of the helper, so an index variable of the
+          // caller's cannot be shadowed (see _JsIndexOf)
+          return new PerlCall(new PerlIdentifier('main::_JsIndexOf', ''), [
+            this.transformExpression(node.array), this.transformExpression(node.value),
+            node.fromIndex ? this.transformExpression(node.fromIndex) : PerlLiteral.Number(0)]);
 
         case 'ArrayIncludes': {
           // Check if this is actually a string.includes() call
@@ -7779,6 +7752,11 @@
           // type-aware-transpiler.js's StringSubstring IL node).
           const str = this.transformExpression(node.string || node.object);
           const start = node.start ? this.transformExpression(node.start) : PerlLiteral.Number(0);
+          // slice() and substring() read their bounds differently (negative
+          // from the end, or clamped and swapped): see _JsSubstring
+          if (node.method === 'slice' || node.method === 'substring')
+            return new PerlCall(new PerlIdentifier('main::_JsSubstring', ''), [str, start,
+              node.end ? this.transformExpression(node.end) : PerlLiteral.Undef(), PerlLiteral.Number(node.method === 'slice' ? 1 : 0)]);
           const args = [str, start];
           if (node.length) {
             args.push(this.transformExpression(node.length));
@@ -11371,6 +11349,13 @@
         const objName = node.callee.object.name;
         const methodName = node.callee.property.name || node.callee.property.value;
         const args = node.arguments.map(arg => this.transformExpression(arg));
+
+        // crypto.getRandomValues(typedArray): fills it from the platform
+        // CSPRNG, as OpCodes.SecureRandomBytes does
+        if (objName === 'crypto' && methodName === 'getRandomValues') {
+          this.usesOpCodesRuntimeFallback = true;
+          return new PerlCall(new PerlIdentifier('main::_JsGetRandomValues', ''), [args[0]]);
+        }
 
         // Array.isArray(x) -> ref(x) eq 'ARRAY'
         // ArrayBuffer.isView(x): a typed array is an array reference in Perl
