@@ -2126,7 +2126,7 @@
           return { e: A.call('JsObjGet', [obj.e, A.lit(pasString(name))]), t: T.any, dynamicMember: { obj: obj.e, name, set: 'JsObjSet' } };
         }
         if (m.kind === 'method') fail(`method ${name} used as a value`, node);
-        if (m.castTo && c.isFramework) {
+        if (m.castTo && c.isFramework && !m.owner.isFramework) {
           // a framework-typed value may come from another unit (a registry
           // lookup): only a run-time lookup by name is sure to reach the member
           const t = m.type || T.any;
@@ -3202,7 +3202,7 @@
         }
         const params = m.params || [];
         const args = this.args(argNodes, params, node);
-        if (m.castTo && c.isFramework && !m.static) {
+        if (m.castTo && c.isFramework && !m.owner.isFramework && !m.static) {
           // as for members: the object may be another unit's subclass
           const dynArgs = args.map((a, i) => this.toJsValue({ e: a, t: params[i] ? params[i].type : T.any }));
           const call = A.call('JsObjCall', [obj.e, A.lit(pasString(name)), A.arr(dynArgs)]);
