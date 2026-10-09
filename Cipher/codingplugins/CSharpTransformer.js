@@ -142,28 +142,6 @@
   ]);
 
   /**
-   * Every property name declared (in any I*Instance interface stub, or their common
-   * IAlgorithmInstance base) in csharp.js's embedded runtime - i.e. every name a
-   * generated *Instance class inherits automatically regardless of which algorithm
-   * kind it is. A module-level JS `const`/IIFE-local (e.g. blake3.js's `const IV =
-   * new Uint32Array([...])`, hoisted as a static field of the main wrapper class -
-   * see transformVariableDeclaration/mainClassShadowedConstNames) that happens to
-   * share one of these names is NOT the same value as the inherited instance
-   * property of the same name, but C#'s own simple-name lookup rules resolve a bare
-   * reference inside an *Instance method to the inherited member FIRST (base-class
-   * members win over an enclosing type's static fields) - silently reading `this.IV`
-   * (byte[], usually null/unrelated) instead of the real module-level constants
-   * table (uint[]). Used by transformIdentifier to force explicit
-   * `MainClass.Name` qualification for exactly these collisions, rather than
-   * relying on implicit resolution that's actively wrong for this shape.
-   */
-  const RESERVED_INSTANCE_MEMBER_NAMES = new Set([
-    'Algorithm', 'Config', 'A', 'B', 'Key', 'IV', 'Iv', 'Nonce', 'Seed',
-    'OutputSize', 'OutputLength', 'Salt', 'Iterations', 'PublicKey', 'PrivateKey',
-    'UnderlyingCipher', 'AssociatedData'
-  ]);
-
-  /**
    * A handful of OpCodes methods whose embedded C# runtime (see csharp.js's inlined
    * OpCodes stub) intentionally diverges from the generic JS JSDoc that
    * getOpCodesReturnType/getOpCodesParamTypes otherwise trust: GetBit/SetBit are
@@ -332,6 +310,20 @@
           ...(options.typeKnowledge?.frameworkTypes || {})
         }
       };
+      // Members each framework stub class declares (csharp.js _getStubMembers):
+      // class name -> { base, members }. A subclass member of one of these names
+      // is inherited, never redeclared.
+      this.stubMembers = options.stubMembers || new Map();
+      // Local class name -> its JS superclass name, and every local class name,
+      // filled by transform()
+      this.localClassBases = new Map();
+      this.localClassNames = new Set();
+      // Local class name -> its declared C# fields and properties, once transformed
+      this.localClassMembers = new Map();
+      // PascalCase names of the module's top-level functions, filled by transform()
+      this.moduleFunctionNames = new Set();
+      // "Class.Method#index" of every method parameter declared with its IL type
+      this.ilTypedParams = new Set();
       this.parser = options.parser || null;
       this.jsDocParser = options.jsDocParser || null;
       this.currentClass = null;
@@ -762,7 +754,13 @@
           // Priority: 1) JSDoc, 2) object member-access usage, 3) array usage detection,
           // 3.5) array-index usage, 4) BigInteger usage, 5) scalar usage, 6) name inference
           const jsDocParamType = this.getParamType(funcTypeInfo, rawParamName);
-          if (jsDocParamType) {
+          // The parameter's IL type, as transformFunctionToMethod takes it; the
+          // refinement passes leave it alone
+          const ilParamType = this.mapILType(param.resultType ?? param.left?.resultType);
+          if (ilParamType) {
+            paramType = ilParamType;
+            this.ilTypedParams.add(`${this.currentClass.name}.${pascalName}#${i}`);
+          } else if (jsDocParamType) {
             paramType = this.mapType(jsDocParamType);
             // type-aware-transpiler.js's _bakeTypeInfoOntoFunctionNodes bakes
             // 'interprocedural-usage' facts onto funcNode.typeInfo indistinguishably
@@ -889,8 +887,9 @@
         }
       }
 
-      // Infer return type
-      let returnType = this.mapType(funcTypeInfo?.returns);
+      // Infer return type: the IL's declared one, else the JSDoc's
+      let returnType = this.mapILType(funcNode.declaredReturnType || this.jsDocILType(funcTypeInfo?.returns)) ||
+        this.mapType(funcTypeInfo?.returns);
       if (!returnType && funcNode.body) {
         // Try to infer from body - check if there are return statements with values
         const hasValueReturn = this.hasReturnWithValue(funcNode.body);
@@ -1618,6 +1617,7 @@
 
             const currentType = sig.params[i];
             if (!currentType) continue;
+            if (this.ilTypedParams.has(`${this.currentClass.name}.${pascalName}#${i}`)) continue;
             if (this.getParamType(funcTypeInfo, rawParamName)) continue;
             if (arrayUsageParams.has(rawParamName) || objectUsageParams.has(rawParamName)) continue;
             if (param.right && param.right.type === 'Literal') continue;
@@ -1753,6 +1753,7 @@
                 for (let i = 0; i < resolved.args.length && i < sig.params.length; i++) {
                   const paramType = sig.params[i];
                   if (paramType && !paramType.isArray && paramType.name !== 'BigInteger' &&
+                      !this.ilTypedParams.has(`${this.currentClass.name}.${resolved.pascalMethod}#${i}`) &&
                       upgradableScalar.has(paramType.name) && resolveArgIsBigInteger(resolved.args[i])) {
                     sig.params[i] = new CSharpType('BigInteger');
                     changed = true;
@@ -1831,11 +1832,12 @@
     getInheritedPropertyType(baseClassName, propertyName) {
       if (!this.typeKnowledge?.frameworkTypes) return null;
 
-      // Check the base class directly
+      // Check the base class directly. The knowledge names properties as the JS
+      // source does (inputBuffer), the C# members are PascalCase (InputBuffer).
       let classInfo = this.typeKnowledge.frameworkTypes[baseClassName];
       while (classInfo) {
-        if (classInfo.properties && classInfo.properties[propertyName]) {
-          return classInfo.properties[propertyName];
+        for (const [name, type] of Object.entries(classInfo.properties || {})) {
+          if (name === propertyName || this.toPascalCase(name) === propertyName) return type;
         }
         // Walk up the inheritance chain
         if (classInfo.extends) {
@@ -1844,6 +1846,160 @@
           break;
         }
       }
+      return null;
+    }
+
+    /**
+     * Whether the C# base class of a class declares a field or property: the
+     * framework stub classes as csharp.js emits them, reached through any local
+     * base classes. A subclass inherits such a member and must not declare its own.
+     * @param {string|null} baseClassName - the JS superclass name
+     * @param {string} csName - the C# member name (PascalCase, or _name)
+     * @returns {boolean}
+     */
+    baseDeclaresMember(baseClassName, csName) {
+      let name = this.baseClassAliases?.get(baseClassName) || baseClassName;
+      for (let hops = 0; name && hops < 32; ++hops) {
+        const stub = this.stubMembers.get(name);
+        if (stub) {
+          if (stub.members.has(csName) && !stub.methods?.has(csName)) return true;
+          name = stub.base;
+        } else {
+          if (this.localClassMembers.get(name)?.has(csName)) return true;
+          name = this.localClassBases.get(name) || null;
+        }
+      }
+      return false;
+    }
+
+    /**
+     * Whether a C# type name names a class: a framework stub class or a local one.
+     * @param {string} name - type name
+     * @returns {boolean}
+     */
+    isClassTypeName(name) {
+      const stub = this.stubMembers.get(name);
+      return this.localClassNames.has(name) || (!!stub && (stub.members.size > 0 || !!stub.base));
+    }
+
+    /**
+     * Whether the framework stub base of a class declares a virtual member of this
+     * name, which a subclass member of the name overrides.
+     * @param {string|null} baseClassName - the JS superclass name
+     * @param {string} csName - the C# member name
+     * @returns {boolean}
+     */
+    baseDeclaresVirtual(baseClassName, csName) {
+      let name = this.baseClassAliases?.get(baseClassName) || baseClassName;
+      for (let hops = 0; name && hops < 32; ++hops) {
+        const stub = this.stubMembers.get(name);
+        if (stub) {
+          if (stub.virtuals?.has(csName)) return true;
+          name = stub.base;
+        } else {
+          name = this.localClassBases.get(name) || null;
+        }
+      }
+      return false;
+    }
+
+    /**
+     * The IL type of a JSDoc type (a JSDoc parser type object or string): the
+     * non-null member of a nullable union, an array of its element type.
+     * @param {Object|string|null} t - JSDoc type
+     * @returns {string|null} IL type name
+     */
+    jsDocILType(t) {
+      if (!t) return null;
+      if (typeof t === 'string') {
+        const members = t.split('|').map(m => m.trim()).filter(m => m && m !== 'null' && m !== 'undefined');
+        return members.length === 1 ? members[0] : null;
+      }
+      if (t.isUnion) {
+        const members = (t.unionTypes || []).filter(u => u && u.name !== 'null' && u.name !== 'undefined');
+        return members.length === 1 ? this.jsDocILType(members[0]) : null;
+      }
+      if (t.isArray) {
+        const element = this.jsDocILType(t.elementType);
+        return element ? element + '[]' : null;
+      }
+      if (t.isGeneric || t.isTuple) return null;
+      return this.jsDocILType(t.name || null);
+    }
+
+    /**
+     * Whether a framework base class an algorithm or instance class derives from
+     * (Algorithm, IAlgorithmInstance and their stub subclasses) declares a member of
+     * this name. Inside such a subclass, C# resolves a bare name to the inherited
+     * member before an enclosing class's static field or method, so a module-level
+     * binding of the same name (blake3.js's `const IV`, a top-level `function
+     * DecryptBlock`) must be referenced qualified with the main class.
+     * @param {string} csName - C# member name
+     * @returns {boolean}
+     */
+    isInheritableMemberName(csName) {
+      if (!this._inheritableMemberNames) {
+        this._inheritableMemberNames = new Set();
+        const isFrameworkBase = name => {
+          for (let hops = 0; name && hops < 32; ++hops) {
+            if (name === 'Algorithm' || name === 'IAlgorithmInstance') return true;
+            name = this.stubMembers.get(name)?.base;
+          }
+          return false;
+        };
+        for (const [className, info] of this.stubMembers)
+          if (isFrameworkBase(className))
+            for (const member of info.members) this._inheritableMemberNames.add(member);
+      }
+      return this._inheritableMemberNames.has(csName);
+    }
+
+    /**
+     * The C# type of an IL type name - the type the IL gives a declaration or
+     * expression (its resultType). Null where the IL name has no single C# type
+     * here (absent, 'null', an unwidthed 'number', a function or a bare Map), so
+     * the caller keeps its own derivation.
+     * @param {string|null} ilType - IL type name: 'uint8', 'uint32[]', 'BigInt', a class name, ...
+     * @returns {CSharpType|null}
+     */
+    mapILType(ilType) {
+      if (typeof ilType !== 'string' || !ilType) return null;
+      if (ilType.endsWith('[]')) {
+        const element = this.mapILType(ilType.slice(0, -2));
+        // An array of anything holds any array too: C# arrays of value types are not
+        // covariant with dynamic[], so it is dynamic as a whole
+        if (element?.name === 'dynamic' && !element.isArray) return CSharpType.Dynamic();
+        return element ? CSharpType.Array(element) : null;
+      }
+      if (ilType.startsWith('(') || ilType.startsWith('{')) return this.mapType(ilType);
+      // A positional tuple ([string,int32,string]) is a JavaScript array: of its one
+      // element type, or of dynamic elements
+      if (ilType.startsWith('[') && ilType.endsWith(']')) {
+        const elements = this.splitGenericTypeArgs(ilType.slice(1, -1)).map(t => this.mapILType(t.trim()));
+        const first = elements[0];
+        const uniform = first && elements.every(e => e && e.toString() === first.toString());
+        return CSharpType.Array(uniform ? first : CSharpType.Dynamic());
+      }
+      const keyed = ilType.match(/^(?:Map|Object)<(.+)>$/);
+      if (keyed) {
+        const [key, value] = this.splitGenericTypeArgs(keyed[1]).map(t => this.mapILType(t.trim()));
+        return key && value ? new CSharpType('Dictionary', { isGeneric: true, genericArguments: [key, value] }) : null;
+      }
+      switch (ilType) {
+        case 'null': case 'undefined': case 'number': case 'function': case 'Function': case 'Map': case 'void':
+        case 'Array': case 'array':
+          return null;
+        case 'any': case 'object': case 'Object':
+          return CSharpType.Dynamic();
+      }
+      const primitive = TYPE_MAP[ilType];
+      if (primitive && primitive.endsWith('[]') && /Array$/.test(ilType) && ilType !== 'Array')
+        return CSharpType.Array(new CSharpType(primitive.slice(0, -2)));
+      if (primitive && !primitive.endsWith('[]') && primitive !== 'Action') return new CSharpType(primitive);
+      // A class: a framework stub class or one this file declares. Any other
+      // name is a JSDoc typedef of a plain object.
+      if (/^[A-Za-z_$][\w$]*$/.test(ilType))
+        return this.stubMembers.has(ilType) || this.localClassNames.has(ilType) ? new CSharpType(ilType) : CSharpType.Dynamic();
       return null;
     }
 
@@ -1968,7 +2124,10 @@
         'bigint': new CSharpType('BigInteger')
       };
 
-      return typeMap[typeName] || CSharpType.Object();
+      if (typeMap[typeName]) return typeMap[typeName];
+      // A class: a framework stub class or one this file declares
+      if (this.stubMembers.has(typeName) || this.localClassNames.has(typeName)) return new CSharpType(typeName);
+      return CSharpType.Object();
     }
 
     /**
@@ -2078,8 +2237,12 @@
         // multiple classes declare a same-named static method with different
         // parameter shapes (e.g. two ciphers each with their own FO(a, b, c)).
         className = calleeObject.name;
+      } else if (calleeObject.type !== 'Unresolved') {
+        // A method of the receiver's own class
+        const receiverType = this.inferFullExpressionType(calleeObject);
+        if (receiverType && !receiverType.isArray && this.methodSignatures.has(receiverType.name + '.' + methodName))
+          className = receiverType.name;
       }
-      // Could also handle OpCodes.MethodName, etc. in the future
 
       if (!className) {
         // FALLBACK: Try to find method in any registered class
@@ -4672,8 +4835,21 @@
             if (nullFieldType) {
               return nullFieldType;
             }
-            // Fall back to name-based inference
-            return this.inferTypeFromName(propName);
+            // A member inherited from a framework base has the base's declared type
+            const baseName = this.localClassBases.get(this.currentClass?.name);
+            if (baseName && this.baseDeclaresMember(baseName, pascalName)) {
+              let name = baseName;
+              for (let hops = 0; name && hops < 32; ++hops) {
+                if (this.stubMembers.has(name)) {
+                  const inherited = this.getInheritedPropertyType(name, pascalName);
+                  if (inherited) return this.mapTypeFromKnowledge(inherited);
+                  break;
+                }
+                name = this.localClassBases.get(name);
+              }
+            }
+            // The access's IL type, else a guess from the name
+            return this.mapILType(node.resultType) || this.inferTypeFromName(propName);
           }
           return CSharpType.Object();
 
@@ -5952,6 +6128,9 @@
       if (objType && !objType.isArray && !objType.isTuple && objType.name &&
           !PRIMITIVE_OR_SPECIAL_TYPE_NAMES.has(objType.name)) {
         const pascalName = this.toPascalCase(propName);
+        // A member a framework stub class declares has its framework type
+        const frameworkType = this.stubMembers.has(objType.name) ? this.getInheritedPropertyType(objType.name, pascalName) : null;
+        if (frameworkType) return this.mapTypeFromKnowledge(frameworkType);
         const fieldType = this.getClassFieldType(objType.name, pascalName);
         if (fieldType) return fieldType;
       }
@@ -7195,6 +7374,16 @@
         // castArgumentsToParameterTypes had no signature to look up and silently fell
         // back to generic name-based guesses at every call site (CS1503/CS0029).
         this.currentClass = mainClass;
+        this.refArrayParams = this.preScanRefArrayParams(jsAst);
+        // Module bindings something reassigns or grows (a push becomes an assignment
+        // in C#) cannot be readonly fields
+        this.reassignedModuleBindings = new Set();
+        this._walkAstNodes(jsAst.body, node => {
+          if (node.type === 'AssignmentExpression' && node.left?.type === 'Identifier') this.reassignedModuleBindings.add(node.left.name);
+          else if (node.type === 'UpdateExpression' && node.argument?.type === 'Identifier') this.reassignedModuleBindings.add(node.argument.name);
+          else if (['ArrayAppend', 'ArrayUnshift', 'ArraySplice', 'ArrayShift', 'ArrayPop'].includes(node.type) && node.array?.type === 'Identifier')
+            this.reassignedModuleBindings.add(node.array.name);
+        });
         this.preScanModuleBindingReferences(jsAst.body);
         // Register module-scope BigInteger constants (e.g. asymmetric-crypto curve
         // primes/generators declared `const P = 0xFFFF...FC2Fn;`) as static fields
@@ -7211,12 +7400,33 @@
         // CONST, not a real framework type name, so naively emitting the const's own
         // name as the C# base class doesn't compile at all).
         this.baseClassAliases = this.preScanBaseClassAliases(jsAst.body);
+        this._walkAstNodes(jsAst.body, node => {
+          if ((node.type === 'ClassDeclaration' || node.type === 'ClassExpression') && node.id?.name) {
+            this.localClassNames.add(node.id.name);
+            const superName = !node.superClass ? null : node.superClass.type === 'Identifier' ? node.superClass.name
+              : node.superClass.property?.name || null;
+            if (superName) this.localClassBases.set(node.id.name, superName);
+          }
+        });
         // See preScanConstsWrappedInTypedArray's doc comment - a module-level const
         // later re-wrapped as `new Uint8Array(existingConst)`/etc ANYWHERE in this
         // file is strong, deliberate evidence of that const's real element width,
         // consulted by transformVariableDeclaration's module-level-const field-type
         // resolution below.
         this.constsWrappedInTypedArray = this.preScanConstsWrappedInTypedArray(jsAst.body);
+        // A module function named like a class once PascalCased (schwaemmConfig and
+        // class SchwaemmConfig) would be a second member of that name (CS0102): it
+        // and its calls are renamed
+        for (const node of jsAst.body) {
+          if (node.type !== 'FunctionDeclaration' || !node.id?.name) continue;
+          const name = node.id.name;
+          if (![...this.localClassNames].some(c => c !== name && this.toPascalCase(c) === this.toPascalCase(name))) continue;
+          const renamed = name + 'Function';
+          this._walkAstNodes(jsAst.body, n => {
+            if (n.type === 'CallExpression' && n.callee?.type === 'Identifier' && n.callee.name === name) n.callee.name = renamed;
+          });
+          node.id.name = renamed;
+        }
         const topLevelMethodNodes = [];
         for (const node of jsAst.body) {
           if (node.type === 'FunctionDeclaration' && node.id?.name) {
@@ -7229,6 +7439,7 @@
         // functions (e.g. asymmetric-crypto's modPow/modAdd/modMul helpers) never
         // got this treatment before, so a helper calling another helper declared
         // later in the same file saw no return/parameter evidence at all.
+        for (const { name } of topLevelMethodNodes) this.moduleFunctionNames.add(this.toPascalCase(name));
         this.refineMethodReturnTypes(topLevelMethodNodes);
         this.refineMethodParameterTypes(topLevelMethodNodes);
         this.propagateBigIntegerParams(topLevelMethodNodes);
@@ -7273,6 +7484,8 @@
         for (const node of jsAst.body) {
           this.transformTopLevel(node, mainClass);
         }
+        this.currentClass = mainClass;
+        this.emitAlgorithmRegistry(jsAst.body, mainClass);
       }
 
       // Add nested classes generated during transformation
@@ -7285,43 +7498,127 @@
         mainClass.nestedTypes.push(ic);
       }
 
-      // Emit a minimal AlgorithmFramework.Find(name) stub if the source referenced it (see
-      // transformCallExpression) - a single-file compile target has no real cross-algorithm
-      // registry to back a genuine lookup, but the call site still needs a declared method
-      // to bind to (CS0103 otherwise). Always returns null/no-op, matching what an isolated
-      // lookup that can never find anything registered would observe.
-      if (this.needsAlgorithmFrameworkStub) {
-        const stubClass = new CSharpClass('AlgorithmFramework');
-        stubClass.isStatic = true;
-        const findMethod = new CSharpMethod('Find', CSharpType.Dynamic());
-        findMethod.isStatic = true;
-        findMethod.parameters.push(new CSharpParameter('name', CSharpType.String()));
-        findMethod.body = new CSharpBlock();
-        findMethod.body.statements.push(new CSharpReturn(CSharpLiteral.Null()));
-        stubClass.members.push(findMethod);
-        const registerMethod = new CSharpMethod('RegisterAlgorithm', CSharpType.Void());
-        registerMethod.isStatic = true;
-        registerMethod.parameters.push(new CSharpParameter('algorithm', CSharpType.Dynamic()));
-        registerMethod.body = new CSharpBlock();
-        stubClass.members.push(registerMethod);
-        // `AlgorithmFramework.GetAll()` (e.g. gost28147wrap.js's `const algorithms =
-        // AlgorithmFramework.GetAll ? AlgorithmFramework.GetAll() : [];`, then
-        // `.find(...)`-ing the real algorithm by name out of the whole registry) - same
-        // "no real cross-algorithm registry in a single-file compile target" situation
-        // as Find/RegisterAlgorithm above; an empty dynamic[] is the correct "nothing is
-        // registered" answer and keeps the immediately-following `.find(...)`/`.Find(...)`
-        // call resolvable against a real array instead of CS0103.
-        const getAllMethod = new CSharpMethod('GetAll', CSharpType.Array(CSharpType.Dynamic()));
-        getAllMethod.isStatic = true;
-        getAllMethod.body = new CSharpBlock();
-        const emptyGetAllCall = new CSharpMethodCall(new CSharpIdentifier('Array'), 'Empty', []);
-        emptyGetAllCall.typeArguments = [CSharpType.Dynamic()];
-        getAllMethod.body.statements.push(new CSharpReturn(emptyGetAllCall));
-        stubClass.members.push(getAllMethod);
-        unit.namespace.types.push(stubClass);
-      }
+      // AlgorithmFramework.Find/RegisterAlgorithm/GetAll resolve to the runtime's
+      // registry class (csharp.js), which looks up every bundled algorithm.
 
       return unit;
+    }
+
+    /**
+     * The algorithms the module registers, as the main class's static registry:
+     * `Algorithms` holds every top-level `RegisterAlgorithm(x)` argument in source
+     * order, and `AlgorithmInstance` names the first unless the module declares
+     * an `algorithmInstance` itself. A module may register several variants; each
+     * is reachable through `Algorithms`.
+     * @param {Array} body - Program body (top-level statements)
+     * @param {CSharpClass} mainClass - the generated main class
+     */
+    emitAlgorithmRegistry(body, mainClass) {
+      const isRegisterCall = expr => expr?.type === 'CallExpression' && expr.arguments?.length === 1 && (
+        (expr.callee?.type === 'Identifier' && expr.callee.name === 'RegisterAlgorithm') ||
+        (expr.callee?.type === 'MemberExpression' && (expr.callee.property?.name || expr.callee.property?.value) === 'RegisterAlgorithm'));
+      // Module functions that register one of their parameters (`registerOnce(algo)`):
+      // name -> parameter index. Their own RegisterAlgorithm call needs a C# method.
+      const registeringFunctions = new Map();
+      for (const node of body) {
+        if (node.type !== 'FunctionDeclaration' || !node.id?.name) continue;
+        const params = (node.params || []).map(p => p?.name || p?.left?.name);
+        this._walkAstNodes(node.body, n => {
+          if (isRegisterCall(n) && n.arguments[0]?.type === 'Identifier' && params.includes(n.arguments[0].name))
+            registeringFunctions.set(node.id.name, params.indexOf(n.arguments[0].name));
+        });
+      }
+      // Module constants that are arrays of literals, for registration loops over them
+      const literalArrays = new Map();
+      for (const node of body) {
+        if (node.type !== 'VariableDeclaration') continue;
+        for (const decl of node.declarations || []) {
+          const init = decl.init;
+          if (decl.id?.name && (init?.type === 'ArrayExpression' || init?.type === 'ArrayLiteral') &&
+              (init.elements || []).every(e => e?.type === 'Literal'))
+            literalArrays.set(decl.id.name, init.elements);
+        }
+      }
+      const cloneNode = n => Array.isArray(n) ? n.map(cloneNode)
+        : n && typeof n === 'object' ? Object.fromEntries(Object.entries(n).map(([k, v]) => [k, k === 'loc' || k === 'range' ? v : cloneNode(v)]))
+        : n;
+      // The loop body for one element: `arr[i]` is that element, `i` its index
+      const unrolled = (n, arrayName, indexName, element, index) => {
+        if (Array.isArray(n)) return n.map(c => unrolled(c, arrayName, indexName, element, index));
+        if (!n || typeof n !== 'object') return n;
+        if (n.type === 'MemberExpression' && n.computed && n.object?.type === 'Identifier' && n.object.name === arrayName &&
+            n.property?.type === 'Identifier' && n.property.name === indexName) return cloneNode(element);
+        if (n.type === 'Identifier' && n.name === indexName) return { type: 'Literal', value: index, resultType: 'int32' };
+        return Object.fromEntries(Object.entries(n).map(([k, v]) => [k, k === 'loc' || k === 'range' ? v : unrolled(v, arrayName, indexName, element, index)]));
+      };
+      const registered = [];
+      const visit = (node, locals) => {
+        if (!node) return;
+        if (Array.isArray(node)) { node.forEach(n => visit(n, locals)); return; }
+        const expr = node.type === 'ExpressionStatement' ? node.expression : null;
+        if (isRegisterCall(expr)) {
+          const arg = expr.arguments[0];
+          registered.push(arg.type === 'Identifier' && locals.has(arg.name) ? locals.get(arg.name) : arg);
+        } else if (expr?.type === 'CallExpression' && expr.callee?.type === 'Identifier' && registeringFunctions.has(expr.callee.name) &&
+                 expr.arguments?.[registeringFunctions.get(expr.callee.name)])
+          registered.push(expr.arguments[registeringFunctions.get(expr.callee.name)]);
+        else if (node.type === 'BlockStatement') visit(node.body, locals);
+        else if (node.type === 'IfStatement') { visit(node.consequent, locals); visit(node.alternate, locals); }
+        else if (node.type === 'VariableDeclaration' && locals.isLoop) {
+          for (const decl of node.declarations || []) if (decl.id?.name && decl.init) locals.set(decl.id.name, decl.init);
+        } else if (node.type === 'ForStatement') {
+          // for (let i = 0; i < ARRAY.length; ++i) { ...register(new X(ARRAY[i])) }
+          const declarator = node.init?.declarations?.[0];
+          const indexName = declarator?.id?.name;
+          const bound = node.test?.type === 'BinaryExpression' && node.test.operator === '<' &&
+            node.test.left?.type === 'Identifier' && node.test.left.name === indexName ? node.test.right : null;
+          const arrayName = bound?.type === 'ArrayLength' ? bound.array?.name
+            : bound?.type === 'MemberExpression' && (bound.property?.name === 'length') ? bound.object?.name : null;
+          if (indexName && declarator.init?.type === 'Literal' && declarator.init.value === 0 && literalArrays.has(arrayName)) {
+            literalArrays.get(arrayName).forEach((element, index) => {
+              const loopLocals = new Map(locals);
+              loopLocals.isLoop = true;
+              visit(unrolled(cloneNode(node.body), arrayName, indexName, element, index), loopLocals);
+            });
+          }
+        }
+      };
+      visit(body, new Map());
+      if (registeringFunctions.size > 0 && !mainClass.members.some(m => m.name === 'RegisterAlgorithm')) {
+        // The registry is the Algorithms array; registering at runtime does nothing more
+        const registerMethod = new CSharpMethod('RegisterAlgorithm', CSharpType.Void());
+        registerMethod.isStatic = true;
+        registerMethod.parameters.push(new CSharpParameter('algorithm', new CSharpType('Algorithm')));
+        registerMethod.body = new CSharpBlock();
+        mainClass.members.push(registerMethod);
+      }
+      if (registered.length === 0) return;
+
+      const algorithmType = new CSharpType('Algorithm');
+      // Each registered algorithm is a static field of its own (a test harness finds
+      // algorithms by their static fields), listed in Algorithms in source order
+      const entries = registered.map((arg, index) => {
+        const value = this.transformExpression(arg);
+        if (arg.type === 'Identifier') return value;
+        const field = new CSharpField(`RegisteredAlgorithm${index}`, algorithmType);
+        field.isStatic = true;
+        field.isReadOnly = true;
+        field.initializer = value;
+        mainClass.members.push(field);
+        return new CSharpIdentifier(field.name);
+      });
+      const registry = new CSharpField('Algorithms', CSharpType.Array(algorithmType));
+      registry.isStatic = true;
+      registry.isReadOnly = true;
+      registry.initializer = new CSharpArrayCreation(algorithmType, null, entries);
+      mainClass.members.push(registry);
+
+      if (mainClass.members.some(m => m.name === 'AlgorithmInstance')) return;
+      const first = new CSharpField('AlgorithmInstance', algorithmType);
+      first.isStatic = true;
+      first.isReadOnly = true;
+      first.initializer = new CSharpElementAccess(new CSharpIdentifier('Algorithms'), CSharpLiteral.Int(0));
+      mainClass.members.push(first);
     }
 
     /**
@@ -7510,6 +7807,9 @@
         const thisParamIndices = this.constructorThisParams?.get(node.id.name);
         const negativeArgIndices = this.constructorNegativeArgParams?.get(node.id.name);
         const paramTypes = params.map((param, idx) => {
+          // The parameter's IL type, as transformConstructor takes it
+          const ilParamType = this.mapILType(param.resultType ?? param.left?.resultType);
+          if (ilParamType) return ilParamType;
           const rawName = param.type === 'AssignmentPattern'
             ? (param.left?.name || 'param')
             : (param.name || param.left?.name || 'param');
@@ -7977,7 +8277,7 @@
             const fieldType = this.inferFullExpressionType(returnValue) || new CSharpType('object');
             const iifeFieldName = this.toPascalCase(name);
             // See RESERVED_INSTANCE_MEMBER_NAMES's doc comment at the plain-const case below.
-            if (RESERVED_INSTANCE_MEMBER_NAMES.has(iifeFieldName)) {
+            if (this.isInheritableMemberName(iifeFieldName)) {
               this.mainClassShadowedConstNames.add(iifeFieldName);
             }
             const field = new CSharpField(iifeFieldName, fieldType);
@@ -8009,7 +8309,9 @@
         // Math call itself. A denylist of the cases already handled above (object/IIFE/
         // function literals) is the general, maintenance-free form of this check.
         else {
-          let fieldType = this.inferFullExpressionType(decl.init) || new CSharpType('object');
+          // The IL type of the binding; the derivations below only where it has none
+          const ilFieldType = this.mapILType(decl.declaredType || decl.resultType);
+          let fieldType = ilFieldType || this.inferFullExpressionType(decl.init) || new CSharpType('object');
           // See _preferNameBasedByteArrayType's doc comment - a module-level constant
           // byte-array literal (e.g. aeswrappad.js's `const DEFAULT_AIV_HIGH = [0xA6,
           // 0x59, 0x59, 0xA6];`) otherwise becomes uint[] purely from bare-integer-
@@ -8017,7 +8319,7 @@
           // `[...DEFAULT_AIV_HIGH]` spread that copies it into a genuinely byte[]
           // instance field (CS0019/CS1929 wherever that field is later `??`/
           // `.Concat(...)`-ed against real byte[] evidence).
-          if (decl.init.type === 'ArrayExpression' || decl.init.type === 'ArrayLiteral') {
+          if (!ilFieldType && (decl.init.type === 'ArrayExpression' || decl.init.type === 'ArrayLiteral')) {
             fieldType = this._preferNameBasedByteArrayType(fieldType, decl.init, name);
             // See preScanConstsWrappedInTypedArray's doc comment - stronger, more
             // direct evidence than the name-based check just above: this exact const
@@ -8066,16 +8368,17 @@
           // instead (C# base-class members outrank an enclosing type's static
           // fields in simple-name lookup) - flag it so transformIdentifier can force
           // explicit qualification.
-          if (RESERVED_INSTANCE_MEMBER_NAMES.has(fieldName)) {
+          if (this.isInheritableMemberName(fieldName)) {
             this.mainClassShadowedConstNames.add(fieldName);
           }
           const field = new CSharpField(fieldName, fieldType);
           field.isStatic = true;
-          field.isReadOnly = isConst;
+          const reassigned = !!this.reassignedModuleBindings?.has(name);
+          field.isReadOnly = isConst && !reassigned;
           // See _isConstFoldableLiteral's doc comment - promote eligible module-level
           // `const` scalars from `static readonly` to a genuine C# `const` so downstream
           // narrowing conversions (int literal -> uint/byte/etc. parameter) type-check.
-          if (isConst && this._isConstEligibleScalarType(fieldType) && this._isConstFoldableLiteral(decl.init)) {
+          if (isConst && !reassigned && this._isConstEligibleScalarType(fieldType) && this._isConstFoldableLiteral(decl.init)) {
             field.isConst = true;
           }
           // Keep the initializer's own element-wise casts (e.g. `(byte)(0xA6)` vs
@@ -8087,6 +8390,8 @@
           const prevArrayElementType = this.currentArrayElementType;
           if (fieldType?.isArray) this.currentArrayElementType = fieldType.elementType;
           field.initializer = this.transformExpression(decl.init);
+          // The initializer converted to the IL-declared field type
+          if (ilFieldType) field.initializer = this.castIfNeeded(field.initializer, this.inferFullExpressionType(decl.init), fieldType);
           this.currentArrayElementType = prevArrayElementType;
           targetClass.members.push(field);
 
@@ -8152,7 +8457,7 @@
             }
             const iifeLocalFieldName = this.toPascalCase(name);
             // See RESERVED_INSTANCE_MEMBER_NAMES's doc comment.
-            if (RESERVED_INSTANCE_MEMBER_NAMES.has(iifeLocalFieldName)) {
+            if (this.isInheritableMemberName(iifeLocalFieldName)) {
               this.mainClassShadowedConstNames.add(iifeLocalFieldName);
             }
             const field = new CSharpField(iifeLocalFieldName, fieldType);
@@ -10135,8 +10440,9 @@
         // For override methods, MUST use inherited return type to maintain compatibility
         returnType = this.mapTypeFromKnowledge(inheritedSig.returns);
       } else {
-        // No inherited signature - use JSDoc
-        returnType = this.mapType(typeInfo?.returns);
+        // No inherited signature - the IL's declared return type, else the JSDoc's
+        returnType = this.mapILType(funcNode.declaredReturnType || this.jsDocILType(typeInfo?.returns)) ||
+          this.mapType(typeInfo?.returns);
       }
 
       // Push a new scope for the method body FIRST
@@ -10180,12 +10486,20 @@
 
       // FIRST: Register parameter types so they're available for local variable type inference
       const paramInfos = [];
+      // Two JS parameters camelCasing to one C# name (`P` and `p`) are kept apart
+      const usedParamNames = new Set();
       if (funcNode.params) {
         for (let i = 0; i < funcNode.params.length; i++) {
           const param = funcNode.params[i];
           // Handle AssignmentPattern (default value params like: data = null)
           const rawParamName = param.name || param.left?.name || 'param';
-          const paramName = this.toCamelCase(rawParamName);
+          let paramName = this.toCamelCase(rawParamName);
+          if (usedParamNames.has(paramName)) {
+            let suffix = 2;
+            while (usedParamNames.has(`${paramName}${suffix}`)) ++suffix;
+            paramName = `${paramName}${suffix}`;
+          }
+          usedParamNames.add(paramName);
           const originalParamName = rawParamName;
           let paramType;
 
@@ -10203,7 +10517,12 @@
           // 4) array usage, 5) array index usage, 6) string key usage, 7) scalar 32-bit
           // usage, 8) name inference
           const jsDocParamType = this.getParamType(typeInfo, rawParamName);
-          if (classHint) {
+          // The parameter's IL type (the framework signature's, else its JSDoc's);
+          // the derivations below only where the IL has none
+          const ilParamType = this.mapILType(param.resultType ?? param.left?.resultType);
+          if (ilParamType) {
+            paramType = ilParamType;
+          } else if (classHint) {
             paramType = classHint;
           } else if (jsDocParamType) {
             paramType = this.mapType(jsDocParamType);
@@ -10472,7 +10791,11 @@
           const literalDefaultNode = param?.right || param?.defaultValue || null;
           const hasLiteralDefault = !!(literalDefaultNode && literalDefaultNode.type === 'Literal');
 
-          paramInfos.push({ paramName, paramType, originalParamName, isNullable: paramType.isArray || paramType.name === 'object' || paramType.name === 'string', inheritedDefaultValue, hasLiteralDefault, literalDefaultNode });
+          // An array parameter the method grows is passed by ref (no default)
+          const isRef = !inheritedSig && paramType.isArray && !!this.refArrayParams?.has(`${pascalName}#${i}`);
+          paramInfos.push({ paramName, paramType, originalParamName, isRef,
+            isNullable: !isRef && (paramType.isArray || paramType.name === 'object' || paramType.name === 'string'),
+            inheritedDefaultValue, hasLiteralDefault: !isRef && hasLiteralDefault, literalDefaultNode });
         }
       }
 
@@ -10588,16 +10911,12 @@
       }
 
       const method = new CSharpMethod(pascalName, returnType);
-      // If we have an inherited signature, this is an override method (instance, not static).
-      // Restricted to the small set of members the actual compiled base-class hierarchy
-      // declares `virtual` (IAlgorithmInstance.Feed/Result, Algorithm.CreateInstance) -
-      // AlgorithmFramework.js's JSDoc documents a much larger real interface surface
-      // (EncryptBlock, DecryptBlock, Dispose, ...) that informs parameter/return TYPES
-      // just fine, but those members aren't virtual in the compiled instance hierarchy,
-      // so blindly marking every JSDoc-documented same-named method `override` produced
-      // CS0115 ("no suitable method found to override").
-      const KNOWN_VIRTUAL_MEMBERS = new Set(['feed', 'result', 'createinstance']);
-      if (inheritedSig && KNOWN_VIRTUAL_MEMBERS.has(pascalName.toLowerCase())) {
+      // An inherited signature names a framework method the C# stubs declare virtual
+      // (the knowledge is limited to stub members, see csharp.js
+      // _stubCompatibleKnowledge), so a method of the same arity overrides it - as a
+      // JavaScript method of that name does.
+      const inheritedArity = inheritedSig?.params ? inheritedSig.params.length : -1;
+      if (inheritedSig && (funcNode.params || []).length <= inheritedArity) {
         method.isOverride = true;
         method.isStatic = false;
       } else if (inheritedSig) {
@@ -10628,8 +10947,9 @@
 
       // Add parameters to method, using inherited default values or nullable defaults
       for (let i = 0; i < paramInfos.length; i++) {
-        const { paramName, paramType, isNullable, inheritedDefaultValue, hasLiteralDefault, literalDefaultNode } = paramInfos[i];
+        const { paramName, paramType, isNullable, inheritedDefaultValue, hasLiteralDefault, literalDefaultNode, isRef } = paramInfos[i];
         const csParam = new CSharpParameter(paramName, paramType);
+        csParam.isRef = !!isRef;
 
         // Use inherited default value from base class if available
         if (inheritedDefaultValue !== null && inheritedDefaultValue !== undefined) {
@@ -10720,6 +11040,19 @@
         }
 
         method.parameters.push(csParam);
+      }
+
+      // A JavaScript override may declare fewer parameters than the framework method
+      // (`CreateInstance()` for `CreateInstance(isInverse)`); the C# override takes
+      // them all, the extra ones unused.
+      if (method.isOverride && method.parameters.length < inheritedArity) {
+        for (let i = method.parameters.length; i < inheritedArity; ++i) {
+          const inheritedParam = inheritedSig.params[i];
+          const extra = new CSharpParameter(`unused${i}`,
+            this.mapTypeFromKnowledge(typeof inheritedParam === 'string' ? inheritedParam : inheritedParam.type));
+          extra.defaultValue = new CSharpIdentifier('default');
+          method.parameters.push(extra);
+        }
       }
 
       // If function uses 'arguments' object, add a params array parameter
@@ -10883,6 +11216,11 @@
       const prevLocalPushScalarElementTypes = this.localPushScalarElementTypes;
       this.localPushScalarElementTypes = this.preScanLocalPushScalarElementTypes(bodyNode);
 
+      // Locals declared as an empty array and then filled by index: JavaScript grows
+      // the array on such a store, a C# array has to be grown first
+      const prevGrowableArrayLocals = this.growableArrayLocals;
+      this.growableArrayLocals = this.preScanGrowableArrayLocals(bodyNode);
+
       if (bodyNode.type === 'BlockStatement') {
         for (const stmt of bodyNode.body) {
           const csStmt = this.transformStatement(stmt);
@@ -10912,9 +11250,52 @@
       this.localMapUsageTypes = prevLocalMapUsageTypes;
       this.localSetUsageTypes = prevLocalSetUsageTypes;
       this.localPushScalarElementTypes = prevLocalPushScalarElementTypes;
+      this.growableArrayLocals = prevGrowableArrayLocals;
       this.currentFunctionBodyNode = prevFunctionBodyNode;
 
       return block;
+    }
+
+    /**
+     * Names of the locals in a function body declared as an empty array (`[]`,
+     * `new Array()`) and stored into by index (`a[i] = v`), which grows a JavaScript
+     * array.
+     * @param {Object} bodyNode - IL function body
+     * @returns {Set<string>} JS local names
+     */
+    preScanGrowableArrayFields(classBody) {
+      const emptyFields = new Set();
+      const stored = new Set();
+      const isEmptyArray = n => n && (((n.type === 'ArrayExpression' || n.type === 'ArrayLiteral') && (n.elements || []).length === 0) ||
+        (n.type === 'ArrayCreation' && !n.size && !n.length));
+      const fieldOf = n => n?.type === 'ThisPropertyAccess' ? (typeof n.property === 'string' ? n.property : n.property?.name) : null;
+      // Locals declared empty: a field assigned one (`this.rk = roundKeys`) starts empty too
+      const emptyLocals = new Set();
+      this._walkAstNodes(classBody, node => {
+        if (node.type === 'VariableDeclarator' && node.id?.name && isEmptyArray(node.init)) emptyLocals.add(node.id.name);
+      });
+      this._walkAstNodes(classBody, node => {
+        if (node.type !== 'AssignmentExpression' || node.operator !== '=') return;
+        if (fieldOf(node.left) && (isEmptyArray(node.right) || (node.right?.type === 'Identifier' && emptyLocals.has(node.right.name))))
+          emptyFields.add(fieldOf(node.left));
+        if (node.left?.type === 'MemberExpression' && node.left.computed && fieldOf(node.left.object)) stored.add(fieldOf(node.left.object));
+      });
+      return new Set([...emptyFields].filter(name => stored.has(name)));
+    }
+
+    preScanGrowableArrayLocals(bodyNode) {
+      const emptyLocals = new Set();
+      const stored = new Set();
+      this._walkAstNodes(bodyNode, node => {
+        if (node.type === 'VariableDeclarator' && node.id?.type === 'Identifier' && node.init &&
+            (((node.init.type === 'ArrayExpression' || node.init.type === 'ArrayLiteral') && (node.init.elements || []).length === 0) ||
+             (node.init.type === 'ArrayCreation' && !node.init.size && !node.init.length)))
+          emptyLocals.add(node.id.name);
+        if (node.type === 'AssignmentExpression' && node.operator === '=' && node.left?.type === 'MemberExpression' &&
+            node.left.computed && node.left.object?.type === 'Identifier')
+          stored.add(node.left.object.name);
+      });
+      return new Set([...emptyLocals].filter(name => stored.has(name)));
     }
 
     /**
@@ -11486,6 +11867,10 @@
             inferredType = CSharpType.Array(CSharpType.Dynamic());
           }
 
+          // The declaration's IL type, where the IL has one, beats every derivation above
+          const ilDeclType = this.mapILType(decl.declaredType || decl.resultType);
+          if (ilDeclType) inferredType = ilDeclType;
+
           // Set context for array element type before transforming
           // Save previous value to restore afterward
           const prevArrayElementType = this.currentArrayElementType;
@@ -11600,7 +11985,12 @@
           // e.g., ternary ? 1 : 0 returns int but target is uint
           if (type && !type.isArray && initializer) {
             const initExprType = this.inferFullExpressionType(decl.init);
-            if (this.needsInitializerCast(initExprType, type, decl.init)) {
+            // A C# string index is a char; JavaScript's is a one-character string
+            const indexesString = (decl.init.type === 'MemberExpression' && decl.init.computed &&
+              this.inferFullExpressionType(decl.init.object)?.name === 'string' && !this.inferFullExpressionType(decl.init.object)?.isArray);
+            if (type.name === 'string' && (initExprType?.name === 'char' || indexesString)) {
+              initializer = new CSharpMethodCall(initializer, 'ToString', []);
+            } else if (this.needsInitializerCast(initExprType, type, decl.init)) {
               initializer = new CSharpCast(type, initializer);
             }
           }
@@ -11824,6 +12214,16 @@
 
         case 'ThisMethodCall':
           return this.transformThisMethodCall(node);
+
+        case 'StringPad': {
+          // string.padStart/padEnd(length, pad): the runtime's PadString repeats a
+          // multi-character pad string as JavaScript does
+          const args = [this.transformExpression(node.string || node.value),
+            node.targetLength ? this.ensureIntIndex(this.transformExpression(node.targetLength), node.targetLength) : CSharpLiteral.Int(0),
+            node.padString ? this.transformExpression(node.padString) : CSharpLiteral.String(' '),
+            CSharpLiteral.Bool(node.method !== 'padEnd')];
+          return new CSharpMethodCall(null, 'PadString', args);
+        }
 
         case 'ThisPropertyAccess':
           return this.transformThisPropertyAccess(node);
@@ -12283,8 +12683,34 @@
             return this.transformExpression(a);
           });
           this.currentArrayElementType = prevArrayElementTypeForArgs;
+          // An int parameter (an index, a length, a count) takes its argument as int
+          node.arguments.forEach((a, i) => {
+            const expected = argParamTypes?.[i];
+            if (expected && !expected.isArray && expected.name === 'int')
+              args[i] = this.castIfNeeded(args[i], this.inferFullExpressionType(a), expected);
+          });
           // Handle specific OpCodes methods that need special C# translation
           switch (node.method) {
+            case 'Fill': {
+              // The fill value takes the array's element type
+              const arrayType = this.inferFullExpressionType(node.arguments[0]);
+              if (arrayType?.isArray && args[1] && !arrayType.elementType?.isArray)
+                args[1] = this.castIfNeeded(args[1], this.inferFullExpressionType(node.arguments[1]), arrayType.elementType);
+              break;
+            }
+            case 'CreateArray': {
+              // An array of the element type its context expects (the IL's), filled
+              const arrayType = this.mapILType(node.contextType) || this.mapILType(node.resultType);
+              if (arrayType?.isArray && !arrayType.elementType?.isArray) {
+                const elementType = arrayType.elementType;
+                const fill = args[1] ? new CSharpCast(elementType, args[1]) : new CSharpIdentifier('default');
+                const call = new CSharpMethodCall(new CSharpIdentifier('OpCodes'), 'CreateArray',
+                  [new CSharpCast(CSharpType.Int(), args[0]), fill]);
+                call.typeArguments = [elementType];
+                return call;
+              }
+              break;
+            }
             case 'CopyArray':
               // array.ToArray() creates a shallow copy in C#
               return new CSharpMethodCall(args[0], 'ToArray', []);
@@ -13371,6 +13797,7 @@
         return new CSharpMethodCall(mapExpr, 'ContainsKey', [keyExpr]);
       }
 
+
       // Handle typeof comparisons: typeof x === "string" -> x is string
       // The IL AST builder (type-aware-transpiler.js) normalizes a bare `typeof x`
       // to its own 'TypeOfExpression' node (not always an ESTree
@@ -13667,9 +14094,10 @@
         const needsUlongCast = !isOversizedShift && (isBigIntShift || (shiftAmount !== null && shiftAmount >= 32));
 
         if (needsUlongCast) {
-          // Cast left operand to ulong for 64-bit shift operations
-          // This ensures proper 64-bit arithmetic in C#
-          left = new CSharpCast(CSharpType.ULong(), left);
+          // Cast left operand to ulong for 64-bit shift operations - unless it is a
+          // BigInteger, which shifts at full precision like the JS BigInt it is
+          if (this.inferFullExpressionType(node.left)?.name !== 'BigInteger')
+            left = new CSharpCast(CSharpType.ULong(), left);
         } else if (isOversizedShift) {
           // The oversized-shift branch above deliberately does NOT ulong-cast
           // `left` (that would truncate/wrap the shift, producing a garbage
@@ -13726,6 +14154,17 @@
         }
       }
 
+      // A JavaScript bitwise or shift operator takes a float operand as an integer
+      // (ToInt32); C# has no such operator on double, so the operand is truncated
+      if (['|', '&', '^', '<<', '>>', '>>>'].includes(op)) {
+        const isFloat = n => ['double', 'float'].includes(this.inferFullExpressionType(n)?.name);
+        const toInteger = expr => op === '<<'
+          ? new CSharpCast(CSharpType.Int(), new CSharpCast(new CSharpType('long'), expr))
+          : new CSharpCast(new CSharpType('long'), expr);
+        if (isFloat(node.left)) left = toInteger(left);
+        if (!['<<', '>>', '>>>'].includes(op) && isFloat(node.right)) right = toInteger(right);
+      }
+
       // For bitwise OR/AND/XOR operations, ensure type compatibility
       const isBitwiseOp = op === '|' || op === '&' || op === '^';
       if (isBitwiseOp) {
@@ -13756,12 +14195,14 @@
         const leftHasUlong = this.expressionHasUlongType(left);
         const rightHasUlong = this.expressionHasUlongType(right);
 
+        // A BigInteger operand is never cast down: the ulong side promotes to it
+        const isBigIntegerNode = n => this.inferFullExpressionType(n)?.name === 'BigInteger';
         if (leftHasUlong && !rightHasUlong) {
           // Cast right to ulong to match left
-          right = new CSharpCast(CSharpType.ULong(), right);
+          if (!isBigIntegerNode(node.right)) right = new CSharpCast(CSharpType.ULong(), right);
         } else if (rightHasUlong && !leftHasUlong) {
           // Cast left to ulong to match right
-          left = new CSharpCast(CSharpType.ULong(), left);
+          if (!isBigIntegerNode(node.left)) left = new CSharpCast(CSharpType.ULong(), left);
         }
 
         // `&` specifically: mirror inferBinaryExpressionType's identical BigInteger-
@@ -13784,9 +14225,9 @@
           const opLeftType = this.inferFullExpressionType(node.left);
           const opRightType = this.inferFullExpressionType(node.right);
           if (opLeftType?.name === 'BigInteger' && boundedUnsignedTypes.has(opRightType?.name)) {
-            left = new CSharpCast(opRightType, left);
+            left = this.narrowBigInteger(left, opRightType);
           } else if (opRightType?.name === 'BigInteger' && boundedUnsignedTypes.has(opLeftType?.name)) {
-            right = new CSharpCast(opLeftType, right);
+            right = this.narrowBigInteger(right, opLeftType);
           }
         }
       }
@@ -14207,13 +14648,15 @@
 
         // For call expressions that return bool, keep normal !
         if (node.argument.type === 'CallExpression') {
-          // Most method calls should return bool if used in boolean context
-          // So just use normal ! operator
+          // A call returning an object (a lookup that may find nothing) tests for null;
+          // others are used as a boolean
+          if (this._isClassReferenceType(operandType) || operandType?.isArray || operandType?.name === 'string')
+            return new CSharpBinaryExpression(operand, '==', CSharpLiteral.Null());
           return new CSharpUnaryExpression('!', operand, true);
         }
 
         // For numeric types, !x -> x == 0
-        const numericTypes = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong'];
+        const numericTypes = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong', 'float', 'double', 'BigInteger'];
         if (operandType && numericTypes.includes(operandType.name)) {
           return new CSharpBinaryExpression(operand, '==', CSharpLiteral.Int(0));
         }
@@ -14390,6 +14833,51 @@
         }
       }
 
+      // A store by index into a growable local (see preScanGrowableArrayLocals)
+      // grows it as JavaScript does: OpCodes.SetGrow(ref a, i, v)
+      if (node.operator === '=' && node.left?.type === 'MemberExpression' && node.left.computed &&
+          node.left.object?.type === 'Identifier' && this.growableArrayLocals?.has(node.left.object.name)) {
+        const arrayType = this.inferFullExpressionType(node.left.object);
+        if (arrayType?.isArray && arrayType.elementType) {
+          const arrayExpr = this.transformExpression(node.left.object);
+          const prevElement = this.currentArrayElementType;
+          if (arrayType.elementType.isArray) this.currentArrayElementType = arrayType.elementType.elementType;
+          let value = this.transformExpression(node.right);
+          this.currentArrayElementType = prevElement;
+          value = this.castIfNeeded(value, this.inferFullExpressionType(node.right), arrayType.elementType);
+          const index = this.ensureIntIndex(this.transformExpression(node.left.property), node.left.property);
+          if (arrayExpr.nodeType === 'Identifier') {
+            const call = new CSharpMethodCall(new CSharpIdentifier('OpCodes'), 'SetGrow',
+              [new CSharpIdentifier('ref ' + arrayExpr.name), index, value]);
+            call.typeArguments = [arrayType.elementType];
+            return call;
+          }
+        }
+      }
+      // The same for a field (a property, so no ref): (this.F = OpCodes.Grown(this.F, i))[i] = v,
+      // where the index has no side effect to repeat
+      const sideEffectFree = n => !!n && (n.type === 'Identifier' || n.type === 'Literal' ||
+        (n.type === 'BinaryExpression' && sideEffectFree(n.left) && sideEffectFree(n.right)) ||
+        (n.type === 'ThisPropertyAccess'));
+      if (node.operator === '=' && node.left?.type === 'MemberExpression' && node.left.computed &&
+          node.left.object?.type === 'ThisPropertyAccess' && sideEffectFree(node.left.property) &&
+          this.growableArrayFields?.has(typeof node.left.object.property === 'string' ? node.left.object.property : node.left.object.property?.name)) {
+        const arrayType = this.inferFullExpressionType(node.left.object);
+        if (arrayType?.isArray && arrayType.elementType) {
+          const fieldExpr = this.transformExpression(node.left.object);
+          const index = this.ensureIntIndex(this.transformExpression(node.left.property), node.left.property);
+          const prevElement = this.currentArrayElementType;
+          if (arrayType.elementType.isArray) this.currentArrayElementType = arrayType.elementType.elementType;
+          let value = this.transformExpression(node.right);
+          this.currentArrayElementType = prevElement;
+          value = this.castIfNeeded(value, this.inferFullExpressionType(node.right), arrayType.elementType);
+          const grown = new CSharpMethodCall(new CSharpIdentifier('OpCodes'), 'Grown', [fieldExpr, index]);
+          grown.typeArguments = [arrayType.elementType];
+          const target = new CSharpElementAccess(new CSharpAssignment(fieldExpr, '=', grown), index);
+          return new CSharpAssignment(target, '=', value);
+        }
+      }
+
       const target = this.transformExpression(node.left);
 
       // Infer target type first for array element context propagation
@@ -14404,7 +14892,7 @@
       // type"). `default` is a valid assignment target for ANY type (value or
       // reference) and preserves the exact same "reset/not-yet-set" intent as the
       // original JS `null`.
-      if (node.operator === '=' && node.right?.type === 'Literal' && node.right.value === null &&
+      if (node.operator === '=' && node.right?.type === 'Literal' && (node.right.value === null || node.right.value === undefined) &&
           targetType && !targetType.isArray && (CSHARP_VALUE_TYPES.has(targetType.name) || targetType.isTuple) &&
           !targetType.isNullable) {
         return new CSharpAssignment(target, '=', new CSharpIdentifier('default'));
@@ -14469,6 +14957,13 @@
         // Decompose: x op= y into x = x op y
         // Get the binary operation result type
         const binaryOp = node.operator.slice(0, -1); // Remove the '=' to get the operator
+        // C# defines no ulong operator with a signed operand (CS0034): `x += n` with a
+        // ulong x takes n as ulong
+        const operandType = this.inferFullExpressionType(node.right);
+        if (targetType?.name === 'ulong' && !targetType.isArray && !operandType?.isArray &&
+            ['int', 'long', 'short', 'sbyte'].includes(operandType?.name) && !['<<', '>>', '>>>'].includes(binaryOp)) {
+          value = new CSharpCast(new CSharpType('ulong'), value);
+        }
         // Create a fake binary expression node to infer the result type
         const fakeBinaryNode = { type: 'BinaryExpression', operator: binaryOp, left: node.left, right: node.right };
         const resultType = this.inferBinaryExpressionType(fakeBinaryNode);
@@ -14547,6 +15042,15 @@
       // e.g., don't cast int[] to uint
       if (sourceType.isArray !== targetType.isArray) return expr;
 
+      // A base class value into a subclass-typed target (the IL types it as the subclass)
+      if (!sourceType.isArray && (this.isClassTypeName(sourceType.name) || sourceType.name === 'object') && this.isClassTypeName(targetType.name))
+        return new CSharpCast(targetType, expr);
+
+      // A nullable value unwrapped into a non-nullable target
+      if (sourceType.isNullable && !sourceType.isArray && CSHARP_VALUE_TYPES.has(sourceType.name) &&
+          !targetType.isNullable && !targetType.isArray && CSHARP_VALUE_TYPES.has(targetType.name))
+        return new CSharpCast(new CSharpType(targetType.name), expr);
+
       // Both arrays but differing primitive element type (e.g. `c = this._leftShift(c, n)`
       // reassigning a uint[]-declared local from a method that - correctly, per its own
       // body evidence - returns byte[]): same element-wise conversion as
@@ -14583,10 +15087,27 @@
 
       const needsCast = narrowingConversions[sourceType.name]?.includes(targetType.name);
       if (needsCast) {
-        return new CSharpCast(targetType, expr);
+        return sourceType.name === 'BigInteger' ? this.narrowBigInteger(expr, targetType) : new CSharpCast(targetType, expr);
       }
 
       return expr;
+    }
+
+    /**
+     * A BigInteger value narrowed to a fixed-width integral type the way JavaScript's
+     * BigInt.asUintN does: its low bits. A plain C# cast throws when the value does
+     * not fit, unchecked or not.
+     * @param {Object} expr - the BigInteger C# expression
+     * @param {CSharpType} targetType - the integral target type
+     * @returns {Object} the narrowed expression
+     */
+    narrowBigInteger(expr, targetType) {
+      const widths = { byte: 'byte', sbyte: 'byte', ushort: 'ushort', short: 'ushort', uint: 'uint', int: 'uint', ulong: 'ulong', long: 'ulong', char: 'ushort' };
+      const unsigned = widths[targetType.name];
+      if (!unsigned) return new CSharpCast(targetType, expr);
+      const masked = new CSharpCast(new CSharpType(unsigned),
+        new CSharpBinaryExpression(expr, '&', new CSharpIdentifier(unsigned + '.MaxValue')));
+      return unsigned === targetType.name ? masked : new CSharpCast(targetType, masked);
     }
 
     /**
@@ -14959,7 +15480,45 @@
         return new CSharpMemberAccess(target, 'Url');
       }
 
-      return new CSharpMemberAccess(target, this.toPascalCase(member));
+      // A framework-typed value (an instance a registered algorithm created) holds a
+      // concrete subclass; a member the framework type does not declare is that
+      // subclass's own, reached at runtime
+      const memberName = this.toPascalCase(member);
+      if (targetType && !targetType.isArray && this.isFrameworkInstanceType(targetType.name) &&
+          !this.stubChainDeclares(targetType.name, memberName)) {
+        return new CSharpMemberAccess(new CSharpParenthesized(new CSharpCast(CSharpType.Dynamic(), target)), memberName);
+      }
+
+      return new CSharpMemberAccess(target, memberName);
+    }
+
+    /**
+     * Whether a type name is a framework algorithm or instance stub class.
+     * @param {string} name - C# type name
+     * @returns {boolean}
+     */
+    isFrameworkInstanceType(name) {
+      for (let hops = 0; name && hops < 32; ++hops) {
+        if (name === 'Algorithm' || name === 'IAlgorithmInstance') return true;
+        name = this.stubMembers.get(name)?.base;
+      }
+      return false;
+    }
+
+    /**
+     * Whether a stub class or one of its stub bases declares a member (any kind).
+     * @param {string} name - stub class name
+     * @param {string} csName - C# member name
+     * @returns {boolean}
+     */
+    stubChainDeclares(name, csName) {
+      for (let hops = 0; name && hops < 32; ++hops) {
+        const stub = this.stubMembers.get(name);
+        if (!stub) return false;
+        if (stub.members.has(csName)) return true;
+        name = stub.base;
+      }
+      return false;
     }
 
     transformCallExpression(node) {
@@ -14969,6 +15528,30 @@
       if (node.callee?.type === 'Super' || (node.callee?.type === 'Identifier' && node.callee?.name === 'super')) {
         // super() calls are handled in transformConstructor via base() chain
         return null;
+      }
+
+      // ArrayBuffer.isView(x): whether x is a typed array - in C#, an array
+      if (node.callee?.type === 'MemberExpression' && node.callee.object?.type === 'Identifier' &&
+          node.callee.object.name === 'ArrayBuffer' && (node.callee.property?.name || node.callee.property?.value) === 'isView' &&
+          (node.arguments || []).length === 1) {
+        return new CSharpParenthesized(new CSharpIsExpression(this.transformExpression(node.arguments[0]), new CSharpType('System.Array')));
+      }
+
+      // An immediately invoked function used as a value: a typed lambda, invoked.
+      // Its locals must not reuse a name the enclosing method already declares.
+      const iifeCallee = node.callee;
+      if ((iifeCallee?.type === 'FunctionExpression' || iifeCallee?.type === 'ArrowFunctionExpression' ||
+           iifeCallee?.type === 'ArrowFunction') && (node.arguments || []).length === 0 && (iifeCallee.params || []).length === 0) {
+        // The IL's type of the call, else of its position, else what the body returns
+        const bodyReturn = iifeCallee.body?.type === 'BlockStatement' ? this.inferReturnType(iifeCallee.body) : null;
+        const returnType = this.mapILType(node.contextType) || this.mapILType(node.resultType) ||
+          (bodyReturn && bodyReturn.name !== 'object' ? bodyReturn : null) || CSharpType.Dynamic();
+        const outerNames = [...(this.methodDeclaredVars || [])].map(name => ({ name }));
+        const body = iifeCallee.body?.type === 'BlockStatement'
+          ? this.transformFunctionBody(iifeCallee.body, { returnType, parameters: outerNames })
+          : this.transformExpression(iifeCallee.body);
+        const funcType = new CSharpType('Func', { isGeneric: true, genericArguments: [returnType] });
+        return new CSharpMethodCall(new CSharpParenthesized(new CSharpCast(funcType, new CSharpLambda([], body))), 'Invoke', []);
       }
 
       // `arr.push(...)`/`arr.unshift(...)`: transform the pushed argument(s) with
@@ -15663,6 +16246,13 @@
           // Array.ForEach(array, fn) - note: only works with Action<T>
           return new CSharpMethodCall(new CSharpIdentifier('Array'), 'ForEach', [target, ...args]);
         }
+        if (methodName === 'toFixed') {
+          // number.toFixed(digits): fixed-point text with a '.' separator
+          const digits = args.length > 0 ? args[0] : CSharpLiteral.Int(0);
+          return new CSharpMethodCall(new CSharpCast(CSharpType.Double(), target), 'ToString', [
+            new CSharpBinaryExpression(CSharpLiteral.String('F'), '+', digits),
+            new CSharpIdentifier('System.Globalization.CultureInfo.InvariantCulture')]);
+        }
         if (methodName === 'toString' && args.length === 1) {
           // bigint.toString(radix): BigInteger has neither a radix ToString nor a
           // Convert.ToString overload (CS1503), and ToString("X") pads a sign digit -
@@ -16033,9 +16623,16 @@
       // hard compile error (CS1503) with no cast anywhere to fix it. Reuses the same
       // lookup castArgumentsToParameterTypes already falls back to for unqualified
       // names (scanning all registered signatures for one ending in `.MethodName`).
+      // The global isNaN/isFinite test a number
+      if ((funcName === 'isNaN' || funcName === 'isFinite') && args.length === 1)
+        return new CSharpMethodCall(new CSharpIdentifier('double'), funcName === 'isNaN' ? 'IsNaN' : 'IsFinite',
+          [new CSharpCast(CSharpType.Double(), args[0])]);
       const pascalFuncName = this.toPascalCase(funcName);
       const castedArgs = this.castArgumentsToParameterTypes({ type: 'Unresolved' }, pascalFuncName, args, node.arguments);
-      return new CSharpMethodCall(null, pascalFuncName, castedArgs);
+      // Qualified where a member every framework subclass inherits has the same name:
+      // C# finds an inherited member before an enclosing class's static method.
+      const owner = this.moduleFunctionNames.has(pascalFuncName) && this.isInheritableMemberName(pascalFuncName) ? new CSharpIdentifier(this.mainClassName || 'GeneratedClass') : null;
+      return new CSharpMethodCall(owner, pascalFuncName, this.applyRefArguments(pascalFuncName, castedArgs, args));
     }
 
     transformNewExpression(node) {
@@ -16248,8 +16845,9 @@
 
         // First two args are byte[] (input, expected)
         this.currentArrayElementType = CSharpType.Byte();
-        const arg0 = node.arguments[0] ? this.transformExpression(node.arguments[0]) : null;
-        const arg1 = node.arguments[1] ? this.transformExpression(node.arguments[1]) : null;
+        // Input and expected are byte arrays: a differently typed array converts
+        const arg0 = node.arguments[0] ? this.toTestVectorBytes(node.arguments[0], this.transformExpression(node.arguments[0])) : null;
+        const arg1 = node.arguments[1] ? this.toTestVectorBytes(node.arguments[1], this.transformExpression(node.arguments[1])) : null;
 
         // Remaining args are strings (description, source)
         this.currentArrayElementType = null;
@@ -16398,8 +16996,13 @@
         }
       }
 
-      // Use context if available and appropriate
-      if (this.currentArrayElementType) {
+      // The type the IL expects at this position (the parameter it is passed to,
+      // the declaration it initializes) names the element type, whatever context
+      // an enclosing expression left behind
+      const ilContextType = this.mapILType(node.contextType);
+      if (ilContextType?.isArray && ilContextType.elementType && ilContextType.elementType.name !== 'dynamic') {
+        elementType = ilContextType.elementType;
+      } else if (this.currentArrayElementType) {
         // If context is an array type (e.g., uint[]) but elements are NOT arrays,
         // then the context is for a NESTED array and doesn't apply to this literal.
         // E.g., for uint[][] return, context is uint[], but [a, b] where a/b are uint
@@ -16777,6 +17380,24 @@
      * indexer so the emitted code always compiles regardless of which algorithm-specific
      * duck-typed fields the JS source attaches to its test vectors.
      */
+    /**
+     * A test vector's input or expected value as byte[]: a differently typed array
+     * (an immediately invoked builder's uint[] result) converts element-wise.
+     * @param {Object} valueNode - the IL value
+     * @param {Object} value - its C# expression
+     * @returns {Object} the byte[] expression
+     */
+    toTestVectorBytes(valueNode, value) {
+      // An invoked IIFE lambda has the type of its Func<T>
+      const invokedFunc = value?.nodeType === 'MethodCall' && value.methodName === 'Invoke' &&
+        value.target?.nodeType === 'Parenthesized' && value.target.expression?.nodeType === 'Cast'
+        ? value.target.expression.type?.genericArguments?.[0] : null;
+      const type = invokedFunc || this.inferFullExpressionType(valueNode);
+      return type?.isArray && type.elementType && !type.elementType.isArray && type.elementType.name !== 'byte' &&
+        CSHARP_VALUE_TYPES.has(type.elementType.name)
+        ? this.buildParameterConversion(type, CSharpType.Array(CSharpType.Byte()), value) : value;
+    }
+
     transformObjectToTestCase(node) {
       const entries = this.extractObjectLiteralEntries(node);
       const prevArrayElementType = this.currentArrayElementType;
@@ -16799,7 +17420,8 @@
           ? CSharpType.Byte()
           : null;
 
-        const value = valueNode ? this.transformExpression(valueNode) : CSharpLiteral.Null();
+        let value = valueNode ? this.transformExpression(valueNode) : CSharpLiteral.Null();
+        if (valueNode && (pascalName === 'Input' || pascalName === 'Expected')) value = this.toTestVectorBytes(valueNode, value);
 
         if (TESTCASE_KNOWN_PROPS.has(pascalName)) {
           init.assignments.push({ name: pascalName, value });
@@ -17190,11 +17812,17 @@
         return new CSharpConditional(condition, consequentExpr, alternateExpr);
       }
 
-      return new CSharpConditional(
-        condition,
-        this.transformExpression(node.consequent),
-        this.transformExpression(node.alternate)
-      );
+      // Scalar numeric branches of different C# types (int and uint have no common
+      // type) both take the conditional's IL type
+      let consequentExpr = this.transformExpression(node.consequent);
+      let alternateExpr = this.transformExpression(node.alternate);
+      const ilResult = this.mapILType(node.resultType);
+      const numericScalar = t => t && !t.isArray && numericArrayElemNames.has(t.name);
+      if (numericScalar(ilResult) && numericScalar(consType2) && numericScalar(altType2) && consType2.name !== altType2.name) {
+        if (consType2.name !== ilResult.name) consequentExpr = new CSharpCast(ilResult, consequentExpr);
+        if (altType2.name !== ilResult.name) alternateExpr = new CSharpCast(ilResult, alternateExpr);
+      }
+      return new CSharpConditional(condition, consequentExpr, alternateExpr);
     }
 
     transformFunctionExpression(node) {
@@ -17459,6 +18087,9 @@
 
       // If types match exactly, no cast needed
       if (initExprType.name === targetType.name) return false;
+
+      // A base class value into a subclass-typed declaration (the IL types it as the subclass)
+      if ((this.isClassTypeName(initExprType.name) || initExprType.name === 'object') && this.isClassTypeName(targetType.name)) return true;
 
       // All signed/unsigned conversions between numeric types need explicit casts in C#
       const numericTypes = ['byte', 'sbyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong'];
@@ -18210,21 +18841,8 @@
           // For numeric types, use !value -> value == 0
           // BUT: single-letter parameter names might be arrays (e.g., !x || x.length)
           // so only convert to == 0 if we're confident it's numeric
-          const numericTypes = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong'];
+          const numericTypes = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong', 'float', 'double', 'BigInteger'];
           if (numericTypes.includes(inferredArgType.name)) {
-            // Check if this is a single-letter identifier - could be an array parameter
-            const isSingleLetterIdent = node.argument.type === 'Identifier' &&
-                                        node.argument.name.length === 1;
-
-            if (isSingleLetterIdent) {
-              // Single-letter params in crypto code are often arrays - use null check
-              return new CSharpBinaryExpression(
-                this.transformExpression(node.argument),
-                '==',
-                CSharpLiteral.Null()
-              );
-            }
-
             return new CSharpBinaryExpression(
               this.transformExpression(node.argument),
               '==',
@@ -18304,7 +18922,7 @@
       }
 
       // For numeric types, add != 0
-      const numericTypes = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong', 'float', 'double'];
+      const numericTypes = ['int', 'uint', 'byte', 'sbyte', 'short', 'ushort', 'long', 'ulong', 'float', 'double', 'BigInteger'];
       if (type && numericTypes.includes(type.name)) {
         return new CSharpBinaryExpression(expr, '!=', CSharpLiteral.Int(0));
       }
@@ -18515,41 +19133,6 @@
       }
     }
 
-    /**
-     * A hardcoded "well-known base property" name (see the `knownBaseProps` lists in
-     * collectConstructorPropertyAssignments/_collectThisAssignments) is only actually
-     * inherited-and-usable as-is when the assigned value's type is compatible with the
-     * base class's OWN declared type for that name (see IAlgorithmInstance in
-     * csharp.js: Key/IV/Nonce/Salt/Seed/PublicKey/PrivateKey are `byte[]`;
-     * Iterations/OutputLength/OutputSize are `int`). Most algorithms genuinely mean the
-     * base member (a real key/IV byte array), but a name collision with a completely
-     * unrelated scalar use does happen - e.g. Khufu's PRNG `this.seed = 5` (a plain
-     * S-box-generation seed integer, nothing to do with the base
-     * IAlgorithmInstance.Seed byte[] used by random-generator algorithms). Assigning a
-     * uint straight into the inherited byte[]-typed member is a hard compile error
-     * (CS0029) with no cast that can fix it - the two types are unrelated, so the real
-     * fix is to recognize the mismatch and let this name get its OWN backing field
-     * instead of silently deferring to the inherited one (see the `methodNamesSet`
-     * backing-field branch in transformClassBody's constructor-property loop, which
-     * this reuses).
-     * @param {string} csPropName - PascalCase property name being assigned
-     * @param {Object|null} valueNode - the assigned value's AST node
-     * @returns {boolean}
-     */
-    hasReservedBasePropertyTypeConflict(csPropName, valueNode) {
-      if (!valueNode) return false;
-      const BYTE_ARRAY_PROPS = new Set(['Key', 'IV', 'Iv', 'Nonce', 'Salt', 'Seed', 'PublicKey', 'PrivateKey']);
-      const INT_PROPS = new Set(['Iterations', 'OutputLength', 'OutputSize']);
-      if (!BYTE_ARRAY_PROPS.has(csPropName) && !INT_PROPS.has(csPropName)) return false;
-      const inferred = this.inferFullExpressionType(valueNode);
-      if (!inferred) return false;
-      const isAlwaysCompatible = inferred.name === 'dynamic' || inferred.name === 'object' || inferred.name === 'var';
-      if (isAlwaysCompatible) return false;
-      if (BYTE_ARRAY_PROPS.has(csPropName)) return !inferred.isArray;
-      // INT_PROPS
-      const intLikeNames = new Set(['int', 'uint', 'short', 'ushort', 'byte', 'sbyte', 'long', 'ulong']);
-      return !intLikeNames.has(inferred.name);
-    }
 
     /**
      * Collect instance property assignments from constructor body (this.X = value patterns)
@@ -18606,41 +19189,12 @@
           if (inheritedType) continue;
         }
 
-        // Also skip known framework base class properties
-        const lowerPropName = propName.toLowerCase();
-        const knownBaseProps = [
-          // Algorithm base class properties
-          'name', 'description', 'inventor', 'year', 'category', 'subcategory',
-          'securitystatus', 'complexity', 'country', 'checksumsize', 'documentation',
-          'notes', 'tests', 'references', 'knownvulnerabilities', 'config',
-          'supportedkeysizes', 'supportedblocksizes',
-          // IAlgorithmInstance base class properties
-          'algorithm', 'config', 'a', 'b',
-          // IBlockCipherInstance, IStreamCipherInstance properties
-          'key', 'iv', 'nonce',
-          // Other common inherited properties
-          'salt', 'iterations', 'outputlength', 'outputsize', 'seed'
-        ];
-        // Only actually "known" (inherited, safe to skip) when this class extends
-        // something in the first place - a standalone helper class with no `extends`
-        // at all (e.g. Panama's `class PanamaCore { constructor() { this.a = ...; this.b
-        // = ...; } }`, never an Algorithm/Instance subclass) can perfectly legitimately
-        // have its own unrelated fields named "a"/"b" (IAlgorithmInstance's own
-        // dynamic A/B convenience properties - see csharp.js - are a C#-only stub
-        // invention with no real JS AlgorithmFramework counterpart, so
-        // getInheritedPropertyType's JSDoc-based lookup just above can never confirm
-        // OR deny them itself). Without this, PanamaCore's `this.a`/`this.b` silently
-        // never got their own fields declared, leaving every real reference
-        // unresolved (CS1061).
-        // Don't treat this as "just the inherited base property, nothing to declare"
-        // when a get/set accessor pair ALSO maps to this same PascalCase name under a
-        // DIFFERENT raw JS identifier (e.g. this ctor's `this.Iterations = 1000;`
-        // alongside a separate `get iterations()`/`set iterations(value)` pair) - that
-        // shape needs its own backing field (see the caller's hasAccessorCaseCollision
-        // check), not a silent skip that leaves the accessor with nothing real to
-        // reference. (hasAccessorCaseCollision is computed above.)
-        if (baseClassName && knownBaseProps.includes(lowerPropName) &&
-            !this.hasReservedBasePropertyTypeConflict(this.toPascalCase(propName), expr.right) &&
+        // Also skip a member the C# base class declares (the framework stubs, see
+        // baseDeclaresMember) - unless a get/set pair under another raw JS name maps
+        // onto the same PascalCase name (this ctor's `this.Iterations = 1000;` beside
+        // `get iterations()`/`set iterations(v)`): that pair needs its own backing
+        // field, see the caller's hasAccessorCaseCollision check.
+        if (baseClassName && this.baseDeclaresMember(baseClassName, this.toPascalCase(propName)) &&
             !hasAccessorCaseCollision) continue;
 
         // Store the property with its initial value for type inference
@@ -18882,10 +19436,64 @@
     }
 
     /**
+     * The IL type of each field and accessor a class body assigns or declares, by
+     * JS name: a `this.x = ...` assignment's declared (JSDoc @type) or IL type, a
+     * setter's parameter type, a getter's declared return type.
+     * @param {Array} classBody - the class's IL body
+     * @returns {Map<string, string>} JS member name -> IL type
+     */
+    collectILMemberTypes(classBody) {
+      const types = new Map();
+      const nullable = new Set();
+      const record = (name, ilType, isNullable) => {
+        if (!name || typeof ilType !== 'string' || !ilType || types.has(name) || !this.mapILType(ilType)) return;
+        types.set(name, ilType);
+        if (isNullable) nullable.add(name);
+      };
+      for (const item of classBody) {
+        if (item?.type !== 'MethodDefinition' || item.static) continue;
+        const param = item.value?.params?.[0];
+        if (item.kind === 'set') record(item.key?.name, param?.resultType, param?.nullable);
+        else if (item.kind === 'get') record(item.key?.name, this.jsDocILType(item.value?.typeInfo?.returns), false);
+      }
+      this._walkAstNodes(classBody, node => {
+        if (node.type !== 'AssignmentExpression' || node.left?.type !== 'ThisPropertyAccess') return;
+        const name = typeof node.left.property === 'string' ? node.left.property : node.left.property?.name;
+        record(name, node.declaredType || node.left.resultType, node.nullable || node.left.nullable);
+      });
+      types.nullable = nullable;
+      return types;
+    }
+
+    /**
+     * The C# type of a member of the class being transformed, from its IL type:
+     * a value type the IL marks nullable becomes T?.
+     * @param {string} name - JS member name
+     * @returns {CSharpType|null}
+     */
+    ilMemberType(name) {
+      const type = this.mapILType(this.classILMemberTypes?.get(name));
+      return type && this.classILMemberTypes?.nullable?.has(name) ? this.nullableOf(type) : type;
+    }
+
+    /**
+     * T? for a value type T, the type itself otherwise.
+     * @param {CSharpType} type - a C# type
+     * @returns {CSharpType}
+     */
+    nullableOf(type) {
+      return !type.isArray && CSHARP_VALUE_TYPES.has(type.name) ? new CSharpType(type.name, { isNullable: true }) : type;
+    }
+
+    /**
      * Infer the C# type for a property based on its initial value
      * Handles constructor parameters, Array.Empty calls, etc.
      */
     inferPropertyType(initialValue, constructorNode, propName) {
+      // The IL type of the member, where the IL has one
+      const ilType = this.ilMemberType(propName);
+      if (ilType) return ilType;
+
       // Real usage evidence (see preScanDynamicInstanceFields) that this field holds an
       // AlgorithmFramework instance object - checked BEFORE anything else (including the
       // no-initializer/name-based fallback just below, and Case 1's constructor-parameter
@@ -19241,6 +19849,13 @@
       const prevJaggedInstanceFields = this.jaggedInstanceFields;
       this.jaggedInstanceFields = this.preScanJaggedInstanceFields(classBody);
 
+      // The IL type of every field and accessor of this class
+      const prevClassILMemberTypes = this.classILMemberTypes;
+      this.classILMemberTypes = this.collectILMemberTypes(classBody);
+      // Fields assigned an empty array and stored into by index (they grow in JavaScript)
+      const prevGrowableArrayFields = this.growableArrayFields;
+      this.growableArrayFields = this.preScanGrowableArrayFields(classBody);
+
       // Pre-scan every method (not just the constructor) for `this.field.push(<scalar>)`
       // evidence - see preScanFieldPushScalarElementTypes's own doc comment (vin-checksum's
       // `this.chars` string-element field is the motivating case).
@@ -19440,15 +20055,10 @@
             [...collidingAccessorRawNames].some(rawName => rawName !== propName);
 
           // Check if method with same name exists (e.g., Result() method vs this.Result property),
-          // OR this name collides with a reserved base-class property of an incompatible type
-          // (see hasReservedBasePropertyTypeConflict - e.g. Khufu's PRNG `this.seed = 5`, a plain
-          // int completely unrelated to the inherited `byte[] Seed`), OR a get/set accessor pair
-          // collides with this ctor field's name only after PascalCasing (see
-          // hasAccessorCaseCollision above). In all three cases, create a private
+          // OR a get/set accessor pair collides with this ctor field's name only after
+          // PascalCasing (see hasAccessorCaseCollision above). In both cases, create a private
           // backing field with underscore prefix instead of skipping/deferring to the base member.
-          if (methodNamesSet.has(csPropName) ||
-              this.hasReservedBasePropertyTypeConflict(csPropName, propInfo.initialValue) ||
-              hasAccessorCaseCollision) {
+          if (methodNamesSet.has(csPropName) || hasAccessorCaseCollision) {
             // Generate a private backing field for the property to avoid conflict with method
             const backingFieldName = '_' + propName.charAt(0).toLowerCase() + propName.slice(1);
             let propType = this.inferPropertyType(propInfo.initialValue, constructorNode, propName);
@@ -19571,6 +20181,9 @@
                 propType = (propInfo.initialValue ? this.inferPropertyType(propInfo.initialValue, constructorNode, propName) : null) ||
                            this.inferTypeFromName(propName.substring(1));
               }
+              // The IL types of the accessor and of its backing field, where the IL has them
+              propType = this.ilMemberType(propName.substring(1)) || propType;
+              fieldTypeOverride = this.ilMemberType(propName) || fieldTypeOverride;
 
               // Make nullable if it can be null (for reference types only - C# value
               // types like int/uint/bool already have a usable default (0/false) that
@@ -19622,7 +20235,7 @@
           // evidence next to a concrete numeric type from another assignment
           // elsewhere in the class (see findStrongerNumericFieldType's own doc
           // comment) - defer to that stronger evidence when present.
-          if (propType?.name === 'int' && propInfo.initialValue?.type === 'Literal' &&
+          if (propType?.name === 'int' && !this.classILMemberTypes?.has(propName) && propInfo.initialValue?.type === 'Literal' &&
               (typeof propInfo.initialValue.value === 'number' || typeof propInfo.initialValue.value === 'bigint')) {
             const stronger = this.findStrongerNumericFieldType(classBody, propName);
             if (stronger) propType = stronger;
@@ -19660,6 +20273,12 @@
       // wherever it's later indexed 2-3 levels deep or Append()ed into).
       for (const [fieldName, elemType] of this.jaggedInstanceFields) {
         const csFieldName = this.toPascalCase(fieldName);
+        // The field's IL type, where the IL has one, instead of the jagged derivation
+        const ilJaggedType = this.ilMemberType(fieldName);
+        if (ilJaggedType && !this.classFieldTypeOwnHas(csClass.name, csFieldName)) {
+          this.setClassFieldType(csClass.name, csFieldName, ilJaggedType);
+          continue;
+        }
         if (!this.classFieldTypeOwnHas(csClass.name, csFieldName)) {
           // preScanJaggedInstanceFields's Pattern 2 (the only evidence source that
           // ever leaves `elemType` null here) fires at EVERY nesting level of a
@@ -19726,6 +20345,12 @@
         // since the Third pass below only fills in a field's type when nothing claimed
         // it first (CS1061 wherever the field is later read via its real instance-
         // object shape, e.g. `this.blockCipher.algorithm`).
+        // The field's IL type, where the IL has one
+        const ilFieldType = this.ilMemberType(fieldName);
+        if (ilFieldType) {
+          this.setClassFieldType(csClass.name, csFieldName, ilFieldType);
+          continue;
+        }
         if (fieldName && this.dynamicInstanceFields?.has(fieldName)) {
           this.setClassFieldType(csClass.name, csFieldName, CSharpType.Dynamic());
           continue;
@@ -19758,7 +20383,7 @@
       // that body's own type inference sees it as dynamic rather than falling through
       // to a numeric name-based guess. The matching auto-property declarations happen
       // later, once the class is otherwise complete - see the end of this function.
-      this._pendingDynamicMemberNames = this.computeMissingReferencedMemberNames(classBody);
+      this._pendingDynamicMemberNames = this.computeMissingReferencedMemberNames(classBody, baseClassName);
       for (const name of this._pendingDynamicMemberNames) {
         if (!this.classFieldTypeOwnHas(csClass.name, name)) {
           this.setClassFieldType(csClass.name, name, CSharpType.Dynamic());
@@ -19831,11 +20456,9 @@
       for (const [propName, propInfo] of allPropertyAssignments) {
         const csPropName = this.toPascalCase(propName);
 
-        // Already redirected to a private backing field (method-name conflict, or a
-        // reserved-base-property type conflict - see hasReservedBasePropertyTypeConflict)
-        // by the constructor-property pass above; declaring a second, plain `Seed`-named
-        // member here on top of that would be redundant (and would shadow the still-
-        // inherited base property with no purpose - nothing references it by that name).
+        // Already redirected to a private backing field (method-name or accessor case
+        // conflict) by the constructor-property pass above; declaring a second member
+        // of the same name here would be redundant.
         if (this.methodConflictingProperties.has(csPropName)) continue;
 
         // Check if property, field, or method already declared with same name
@@ -19903,6 +20526,9 @@
                          this.inferTypeFromName(propName.substring(1)) ||
                          CSharpType.Dynamic();
             }
+            // The IL types of the accessor and of its backing field, where the IL has them
+            propType = this.ilMemberType(propName.substring(1)) || propType;
+            fieldTypeOverride = this.ilMemberType(propName) || fieldTypeOverride;
 
             // Make nullable if it can be null (for reference types only - see comment
             // on CSHARP_VALUE_TYPES above for why value types are excluded)
@@ -19974,7 +20600,8 @@
         // default instead (CS1061 wherever the field is later read via its real
         // `.Algorithm`/etc. instance-object shape).
         const dynamicFieldType = propName && this.dynamicInstanceFields?.has(propName) ? CSharpType.Dynamic() : null;
-        let propType = alreadyRegisteredType || dynamicFieldType || (propInfo.initialValue ?
+        const ilMemberType = this.ilMemberType(propName);
+        let propType = ilMemberType || alreadyRegisteredType || dynamicFieldType || (propInfo.initialValue ?
           this.inferExpressionType(propInfo.initialValue) || CSharpType.Dynamic() :
           CSharpType.Dynamic());
 
@@ -19985,7 +20612,7 @@
         // this loop (collectAllMethodPropertyAssignments) is what actually declares
         // that kind of field, so it needs the same upgrade inferPropertyType applies
         // for constructor-declared ones.
-        if (propName && this.jaggedInstanceFields?.has(propName) &&
+        if (!ilMemberType && propName && this.jaggedInstanceFields?.has(propName) &&
             propType?.isArray && !propType.elementType?.isArray) {
           const knownElemType = this.jaggedInstanceFields.get(propName);
           propType = CSharpType.Array(knownElemType || propType);
@@ -20025,10 +20652,14 @@
       }
 
       targetClass.nestedTypes.push(csClass);
+      this.localClassMembers.set(csClass.name, new Set(csClass.members
+        .filter(m => (m instanceof CSharpField || m instanceof CSharpProperty) && m.accessModifier !== 'private').map(m => m.name)));
 
       // Restore the enclosing class's jagged-instance-field set (this one was pre-scanned
       // and consumed for this class only; nested/sibling classes shouldn't see it).
       this.jaggedInstanceFields = prevJaggedInstanceFields;
+      this.classILMemberTypes = prevClassILMemberTypes;
+      this.growableArrayFields = prevGrowableArrayFields;
       this.fieldPushScalarElementTypes = prevFieldPushScalarElementTypes;
       this.dynamicInstanceFields = prevDynamicInstanceFields;
       this.callSiteArgumentHints = prevCallSiteArgumentHints;
@@ -20052,9 +20683,10 @@
      * actually transformed; `transformClassDeclaration` later declares the matching
      * `dynamic` auto-properties from the same returned set once the class is done.
      * @param {Array} classBody - the class's own (JS/IL) AST body
+     * @param {string|null} baseClassName - the JS superclass, whose members are inherited
      * @returns {Set<string>} PascalCase names read but never assigned/called
      */
-    computeMissingReferencedMemberNames(classBody) {
+    computeMissingReferencedMemberNames(classBody, baseClassName = null) {
       const missing = new Set();
       if (!classBody) return missing;
 
@@ -20107,7 +20739,7 @@
       scanNode(classBody);
 
       for (const name of readNames) {
-        if (!calledNames.has(name) && !assignedNames.has(name)) missing.add(name);
+        if (!calledNames.has(name) && !assignedNames.has(name) && !this.baseDeclaresMember(baseClassName, name)) missing.add(name);
       }
       return missing;
     }
@@ -20119,15 +20751,6 @@
     collectAllMethodPropertyAssignments(classBody, baseClassName = null) {
       const properties = new Map();
 
-      const knownBaseProps = [
-        'name', 'description', 'inventor', 'year', 'category', 'subcategory',
-        'securitystatus', 'complexity', 'country', 'checksumsize', 'documentation',
-        'notes', 'tests', 'references', 'knownvulnerabilities', 'config',
-        'supportedkeysizes', 'supportedblocksizes',
-        'algorithm', 'a', 'b', 'key', 'iv', 'nonce',
-        'salt', 'iterations', 'outputlength', 'outputsize', 'seed'
-      ];
-
       for (const item of classBody) {
         if (item.type !== 'MethodDefinition') continue;
 
@@ -20135,7 +20758,7 @@
         const body = item.value?.body?.body || item.body?.statements || [];
 
         // Recursively collect this.X = ... assignments
-        this._collectThisAssignments(body, properties, knownBaseProps, baseClassName);
+        this._collectThisAssignments(body, properties, baseClassName);
       }
 
       return properties;
@@ -20144,7 +20767,7 @@
     /**
      * Recursively collect this.X = ... assignments from statements
      */
-    _collectThisAssignments(statements, properties, knownBaseProps, baseClassName) {
+    _collectThisAssignments(statements, properties, baseClassName) {
       if (!Array.isArray(statements)) return;
 
       for (const stmt of statements) {
@@ -20161,12 +20784,8 @@
             // field can't be represented in C#, and shadows the real static class for
             // every unqualified reference elsewhere in the class (CS1061/CS0120).
             if (propName && this.isKnownFrameworkPresenceRoot(expr.right)) continue;
-            // See the matching comment in collectConstructorPropertyAssignments: the
-            // knownBaseProps skip only makes sense when this class actually extends a
-            // real framework base class - never for a standalone helper class like
-            // Panama's `PanamaCore` (no `extends` at all).
-            if (propName && (!baseClassName || !knownBaseProps.includes(propName.toLowerCase()) ||
-                this.hasReservedBasePropertyTypeConflict(this.toPascalCase(propName), expr.right))) {
+            // A member the C# base class declares is inherited (see baseDeclaresMember).
+            if (propName && (!baseClassName || !this.baseDeclaresMember(baseClassName, this.toPascalCase(propName)))) {
               // Skip inherited properties
               if (baseClassName) {
                 const inheritedType = this.getInheritedPropertyType(baseClassName, this.toPascalCase(propName));
@@ -20182,27 +20801,27 @@
         // Handle IfStatement directly
         if (stmt.type === 'IfStatement') {
           if (stmt.consequent?.body) {
-            this._collectThisAssignments(stmt.consequent.body, properties, knownBaseProps, baseClassName);
+            this._collectThisAssignments(stmt.consequent.body, properties, baseClassName);
           } else if (stmt.consequent) {
-            this._collectThisAssignments([stmt.consequent], properties, knownBaseProps, baseClassName);
+            this._collectThisAssignments([stmt.consequent], properties, baseClassName);
           }
           if (stmt.alternate) {
             if (stmt.alternate.type === 'IfStatement') {
-              this._collectThisAssignments([stmt.alternate], properties, knownBaseProps, baseClassName);
+              this._collectThisAssignments([stmt.alternate], properties, baseClassName);
             } else if (stmt.alternate.body) {
-              this._collectThisAssignments(stmt.alternate.body, properties, knownBaseProps, baseClassName);
+              this._collectThisAssignments(stmt.alternate.body, properties, baseClassName);
             } else {
-              this._collectThisAssignments([stmt.alternate], properties, knownBaseProps, baseClassName);
+              this._collectThisAssignments([stmt.alternate], properties, baseClassName);
             }
           }
           continue; // Already handled, skip other checks
         }
 
         // Recurse into other blocks (for, while, etc.)
-        if (stmt.consequent?.body) this._collectThisAssignments(stmt.consequent.body, properties, knownBaseProps, baseClassName);
-        if (stmt.body?.body) this._collectThisAssignments(stmt.body.body, properties, knownBaseProps, baseClassName);
-        if (stmt.body && Array.isArray(stmt.body)) this._collectThisAssignments(stmt.body, properties, knownBaseProps, baseClassName);
-        if (stmt.block?.body) this._collectThisAssignments(stmt.block.body, properties, knownBaseProps, baseClassName);
+        if (stmt.consequent?.body) this._collectThisAssignments(stmt.consequent.body, properties, baseClassName);
+        if (stmt.body?.body) this._collectThisAssignments(stmt.body.body, properties, baseClassName);
+        if (stmt.body && Array.isArray(stmt.body)) this._collectThisAssignments(stmt.body, properties, baseClassName);
+        if (stmt.block?.body) this._collectThisAssignments(stmt.block.body, properties, baseClassName);
       }
     }
 
@@ -20311,9 +20930,9 @@
 
           const paramName = this.escapeReservedKeyword(rawName);
 
-          // Look up property type from base class
-          let paramType = null;
-          if (baseClassName) {
+          // The parameter's IL type; the derivations below only where it has none
+          let paramType = this.mapILType(param.resultType ?? param.left?.resultType);
+          if (!paramType && baseClassName) {
             const propType = this.getInheritedPropertyType(baseClassName, this.toPascalCase(rawName));
             if (propType) {
               paramType = this.mapTypeFromKnowledge(propType);
@@ -20529,16 +21148,23 @@
               this.isKnownFrameworkPresenceRoot(stmt.expression.right);
           if (isFrameworkGlobalFieldAssign) continue;
 
-          if (isSuperCall) {
-            // Wrap arguments in object expected by emitter
-            const superArgs = (stmt.expression.arguments || []).map(a => this.transformExpression(a));
-            ctor.baseCall = { arguments: superArgs };
-            continue;
-          }
-
-          if (isParentCtorCall) {
-            // Handle IL-transformed parent constructor call
-            const superArgs = (stmt.expression.arguments || []).map(a => this.transformExpression(a));
+          if (isSuperCall || isParentCtorCall) {
+            // A constructor initializer cannot bind dynamically (CS1975): a dynamic
+            // algorithm argument to a framework instance base is cast to Algorithm.
+            const castsToAlgorithm = this.baseDeclaresMember(baseClassName, 'InputBuffer');
+            // A framework base constructor takes the algorithm (an instance) or nothing
+            // (an algorithm); JavaScript ignores any further arguments
+            let superArgNodes = stmt.expression.arguments || [];
+            const directBase = this.baseClassAliases?.get(baseClassName) || baseClassName;
+            if (this.stubMembers.has(directBase)) {
+              if (castsToAlgorithm) superArgNodes = superArgNodes.slice(0, 1);
+              else if (this.baseDeclaresMember(directBase, 'Name') && this.baseDeclaresMember(directBase, 'Tests')) superArgNodes = [];
+            }
+            const superArgs = superArgNodes.map(a => {
+              const arg = this.transformExpression(a);
+              return castsToAlgorithm && this.inferFullExpressionType(a)?.name === 'dynamic'
+                ? new CSharpCast(new CSharpType('Algorithm'), arg) : arg;
+            });
             ctor.baseCall = { arguments: superArgs };
             continue;
           }
@@ -20576,13 +21202,19 @@
       let prop = csClass.members.find(m => m instanceof CSharpProperty && m.name === propName);
       let isNewProperty = false;
       if (!prop) {
-        // Try to get type from base class first
+        // The framework property it overrides fixes the type; else the accessor's
+        // IL type: the setter parameter's, or the getter's declared return type.
         let propType = null;
         if (baseClassName) {
           const inheritedType = this.getInheritedPropertyType(baseClassName, propName);
           if (inheritedType) {
             propType = this.mapTypeFromKnowledge(inheritedType);
           }
+        }
+        if (!propType) {
+          const fn = methodNode.value;
+          propType = isGetter ? this.mapILType(this.jsDocILType(fn?.typeInfo?.returns))
+            : this.mapILType(fn?.params?.[0]?.resultType);
         }
 
         // A backing-field-per-accessor property (e.g. `get salt() { return
@@ -20641,6 +21273,7 @@
         }
         prop = new CSharpProperty(propName, propType);
         prop.isStatic = methodNode.static;
+        prop.isOverride = !methodNode.static && this.baseDeclaresVirtual(baseClassName, propName);
         isNewProperty = true;
       }
 
@@ -21824,7 +22457,11 @@
                     const leftType = this.inferFullExpressionType(decl.init.left);
                     return !leftType || leftType.name === 'dynamic' || leftType.name === 'object';
                   })();
-                if (isEmptyArray || isNoEvidenceOrEmptyArrayFallback) {
+                // The declaration's IL type, where the IL has one, beats the derivations here
+                const ilDeclType = this.mapILType(decl.declaredType || decl.resultType);
+                if (ilDeclType) {
+                  initType = ilDeclType;
+                } else if (isEmptyArray || isNoEvidenceOrEmptyArrayFallback) {
                   const pushElemType = localPushScalarElementTypes.get(varName);
                   if (pushElemType) {
                     initType = CSharpType.Array(pushElemType);
@@ -22528,6 +23165,9 @@
      */
     transformParentMethodCall(node) {
       const methodName = this.toPascalCase(node.method || 'Method');
+      // A framework base without that method (`super.ClearData()`): nothing to call
+      const baseName = this.localClassBases.get(this.currentClass?.name);
+      if (baseName && this.stubMembers.has(baseName) && !this.stubChainDeclares(baseName, methodName)) return null;
       const args = (node.arguments || []).map(arg => this.transformExpression(arg)).filter(a => a);
       return new CSharpMethodCall(new CSharpBase(), methodName, args);
     }
@@ -22548,7 +23188,78 @@
         node.arguments || []
       );
 
-      return new CSharpMethodCall(new CSharpThis(), methodName, castedArgs);
+      return new CSharpMethodCall(new CSharpThis(), methodName, this.applyRefArguments(methodName, castedArgs, transformedArgs));
+    }
+
+    /**
+     * Find the array parameters a method grows in place (`output.push(...)` on a
+     * parameter): the caller sees the growth in JavaScript, so in C# - where a
+     * grown array is a new array - the parameter is passed by ref. Only where
+     * every call passes a local variable, which C# can pass by ref.
+     * @param {Object} jsAst - IL Program
+     * @returns {Set<string>} "PascalMethod#index" of every ref parameter
+     */
+    preScanRefArrayParams(jsAst) {
+      const refParams = new Set();
+      if (!jsAst || !Array.isArray(jsAst.body)) return refParams;
+      const GROWING = new Set(['ArrayAppend', 'ArrayUnshift', 'ArraySplice', 'ArrayShift', 'ArrayPop']);
+      const moduleNames = new Set();
+      for (const node of jsAst.body) {
+        if (node.type === 'VariableDeclaration') for (const d of node.declarations || []) if (d.id?.name) moduleNames.add(d.id.name);
+        if ((node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration') && node.id?.name) moduleNames.add(node.id.name);
+      }
+      // Candidates: "PascalMethod#index" -> parameter name
+      const candidates = new Map();
+      const consider = (name, fn) => {
+        const params = fn?.params || [];
+        params.forEach((param, index) => {
+          const paramName = param?.name || param?.left?.name;
+          if (!paramName || !fn.body) return;
+          let grows = false;
+          this._walkAstNodes(fn.body, n => {
+            if (GROWING.has(n.type) && n.array?.type === 'Identifier' && n.array.name === paramName) grows = true;
+          });
+          if (grows) candidates.set(`${this.toPascalCase(name)}#${index}`, paramName);
+        });
+      };
+      this._walkAstNodes(jsAst.body, node => {
+        if (node.type === 'FunctionDeclaration' && node.id?.name) consider(node.id.name, node);
+        else if (node.type === 'MethodDefinition' && node.kind === 'method' && node.key?.name) consider(node.key.name, node.value);
+      });
+      if (candidates.size === 0) return refParams;
+      // Every call must pass a local variable at that position
+      const valid = new Set(candidates.keys());
+      this._walkAstNodes(jsAst.body, node => {
+        let name = null;
+        if (node.type === 'ThisMethodCall') name = node.method;
+        else if (node.type === 'CallExpression' && node.callee?.type === 'Identifier') name = node.callee.name;
+        if (!name) return;
+        const pascal = this.toPascalCase(name);
+        (node.arguments || []).forEach((arg, index) => {
+          const key = `${pascal}#${index}`;
+          if (!valid.has(key)) return;
+          if (arg?.type !== 'Identifier' || moduleNames.has(arg.name)) valid.delete(key);
+        });
+      });
+      for (const key of valid) refParams.add(key);
+      return refParams;
+    }
+
+    /**
+     * Pass a local variable by ref where the callee grows that array parameter
+     * (see preScanRefArrayParams).
+     * @param {string} methodName - PascalCase callee name
+     * @param {Array} args - C# arguments (after casts)
+     * @param {Array} plainArgs - C# arguments before casts
+     * @returns {Array} the arguments
+     */
+    applyRefArguments(methodName, args, plainArgs) {
+      if (!this.refArrayParams?.size) return args;
+      return args.map((arg, index) => {
+        if (!this.refArrayParams.has(`${methodName}#${index}`)) return arg;
+        const plain = plainArgs[index];
+        return plain?.nodeType === 'Identifier' ? new CSharpIdentifier('ref ' + plain.name) : arg;
+      });
     }
 
     /**
@@ -22747,22 +23458,41 @@
       return /^_?inputBuffer$/i.test(prop || '');
     }
 
-    transformArrayAppend(node) {
-      const array = this.transformExpression(node.array);
-
-      // Check if value is a SpreadElement (from arr.push(...other))
-      const isSpread = node.value && node.value.type === 'SpreadElement';
-      const actualValue = isSpread ? node.value.argument : node.value;
-
-      // Infer the array element type BEFORE transforming the pushed value, and use it
+    /**
+     * `arr.push(v1, ...v2, ...)` as `arr.Append(v1).Concat(v2)...` (without the
+     * final ToArray): every argument in order, a spread one flattened.
+     * @param {Object} node - IL ArrayAppend node (array, value, values)
+     * @returns {Object} the C# chain expression
+     */
+    _buildArrayAppendChain(node) {
+      // Infer the array element type BEFORE transforming the pushed values, and use it
       // as the "expected type" context (see ObjectLiteral's currentArrayElementType
       // check) - a test-vector array built via `vectors.push({ text, uri, ... })`
-      // (normalized to this same 'ArrayAppend' IL node - see the matching comment on
-      // preRegisterLocalVariableTypes' push-handling) needs its pushed object literal
-      // constructed as a real `new TestCase(...)`, not a generic anonymous object,
-      // to assign/concat into a TestCase[]-typed array (CS0029/CS1503 otherwise).
+      // needs its pushed object literal constructed as a real `new TestCase(...)`,
+      // not a generic anonymous object, to append into a TestCase[]-typed array.
       const arrayType = this.inferFullExpressionType(node.array);
       const elementType = arrayType?.elementType;
+      const values = Array.isArray(node.values) && node.values.length > 0 ? node.values : [node.value];
+      let chain = this.transformExpression(node.array);
+      for (const valueNode of values) {
+        const { methodName, value } = this._buildArrayAppendValue(node.array, valueNode, elementType);
+        chain = new CSharpMethodCall(chain, methodName, [value]);
+      }
+      return chain;
+    }
+
+    /**
+     * One `push` argument as the argument of an Append (one element) or a Concat
+     * (a spread, or the bytes of the framework input buffer).
+     * @param {Object} arrayNode - the IL array pushed to
+     * @param {Object} valueNode - the IL argument (maybe a SpreadElement)
+     * @param {CSharpType|null} elementType - the array's element type
+     * @returns {{methodName: string, value: Object}}
+     */
+    _buildArrayAppendValue(arrayNode, valueNode, elementType) {
+      const isSpread = valueNode && valueNode.type === 'SpreadElement';
+      const actualValue = isSpread ? valueNode.argument : valueNode;
+
       const prevArrayElementTypeForAppend = this.currentArrayElementType;
       if (elementType) this.currentArrayElementType = elementType;
       let value = this.transformExpression(actualValue);
@@ -22770,17 +23500,16 @@
 
       const valueType = this.inferFullExpressionType(actualValue);
 
-      // Determine if we should use Concat (for arrays) or Append (for single elements).
       // Array.prototype.push(x) always appends x as ONE element, even when x is itself
       // an array (e.g. DES's `this.SBOX.push(sbox)` where `sbox` is a locally-built 2D
       // array - SBOX must become jagged, not have sbox's rows flattened into it) - only
       // an explicit `...spread` argument means "flatten these into me instead".
-      // valueType.isArray is deliberately NOT part of this condition: the target
-      // array's own field/variable type is expected to already be (or become, via
-      // preScanJaggedInstanceFields/preScan2DArrayVars) jagged enough to hold x as a
-      // single element - forcing Concat here as a workaround for an under-inferred
-      // flat target type just produces the wrong runtime shape instead.
-      const useConcat = isSpread || this._isFlatFeedBufferAppendOfArray(node.array, valueType);
+      const useConcat = isSpread || this._isFlatFeedBufferAppendOfArray(arrayNode, valueType);
+
+      // null pushed onto an array of a value type holds the type's default (CS0037)
+      if (!useConcat && actualValue?.type === 'Literal' && (actualValue.value === null || actualValue.value === undefined) &&
+          elementType && !elementType.isArray && CSHARP_VALUE_TYPES.has(elementType.name))
+        return { methodName: 'Append', value: new CSharpIdentifier(`default(${elementType.name})`) };
 
       if (!useConcat) {
         // Cast value to element type if needed (e.g., int to byte for byte[])
@@ -22789,12 +23518,10 @@
           const needsCast = (valueType && valueType.name !== elementType.name) ||
                             (elementType.name === 'byte' && actualValue.type === 'BinaryExpression');
           if (needsCast) {
-            // A plain `(T)(expr)` cast is only valid scalar-to-scalar - if the pushed
-            // value is itself array-typed (e.g. Kuznyechik's `constants.push(
-            // transformL(vec))`, pushing a byte[] as a single element into a
-            // uint[][]-typed `constants`), C# has no `(uint[])` reinterpret cast from
-            // byte[] (CS0030); needs the same element-wise `.Select(_v =>
-            // (T)_v).ToArray()` conversion the `useConcat` branch below already uses.
+            // A plain `(T)(expr)` cast is only valid scalar-to-scalar - an array-typed
+            // pushed value (e.g. Kuznyechik's `constants.push(transformL(vec))`, a
+            // byte[] pushed as one element into a uint[][]) needs the element-wise
+            // `.Select(_v => (T)_v).ToArray()` conversion instead (CS0030).
             value = (elementType.isArray || valueType?.isArray)
               ? this.buildParameterConversion(valueType, elementType, value)
               : new CSharpCast(elementType, value);
@@ -22803,29 +23530,20 @@
       } else if (elementType && valueType?.isArray && valueType.elementType &&
                  elementType.name !== 'object' && elementType.name !== 'dynamic' &&
                  elementType.name !== valueType.elementType.name) {
-        // `arr.push(...other)` where `other`'s element type doesn't match `arr`'s (e.g.
-        // a hand-rolled AES key schedule's `roundKey.push(...w[i])`, where `w[i]` is
-        // uint[] - built from OpCodes.XorN results - but `roundKey` name-infers as
-        // byte[]) - `byte[].Concat(uint[])` doesn't compile (CS1929: no applicable
-        // Concat overload), so convert element-by-element first via the same
-        // Select(...).ToArray() pattern used for cross-typed call arguments.
+        // `arr.push(...other)` where `other`'s element type differs from `arr`'s -
+        // `byte[].Concat(uint[])` doesn't compile (CS1929), so convert element-wise.
         value = this.buildParameterConversion(valueType, CSharpType.Array(elementType), value);
       } else if (elementType && elementType.name !== 'object' && elementType.name !== 'dynamic' &&
                  valueType?.name === 'dynamic') {
-        // `arr.push(...other)` where `other` is itself `dynamic` (e.g. tls-prf.js's
-        // `output.push(...chunk);`, `chunk` being a hash-instance's `.Result()` -
-        // always dynamic per inferCallExpressionType's dynamic-receiver-propagation
-        // rule) - same "extension methods cannot be dynamically dispatched" problem
-        // (CS1973) transformArrayConcat's identical guard already fixes for a plain
-        // `.concat(...)` call; `.push(...spread)` reaches `Concat` through this
-        // separate code path and needs the same explicit cast.
+        // A `dynamic` spread argument: extension methods cannot be dynamically
+        // dispatched (CS1973), so cast it to the array type first.
         value = new CSharpCast(CSharpType.Array(elementType), value);
       }
+      return { methodName: useConcat ? 'Concat' : 'Append', value };
+    }
 
-      // Use Concat for arrays, Append for single elements
-      const methodName = useConcat ? 'Concat' : 'Append';
-      const methodCall = new CSharpMethodCall(array, methodName, [value]);
-      return new CSharpMethodCall(methodCall, 'ToArray', []);
+    transformArrayAppend(node) {
+      return new CSharpMethodCall(this._buildArrayAppendChain(node), 'ToArray', []);
     }
 
     /**
@@ -22834,77 +23552,8 @@
      */
     transformArrayAppendToAssignment(node) {
       const target = this.transformExpression(node.array);
-
-      // Check if value is a SpreadElement (from arr.push(...other))
-      const isSpread = node.value && node.value.type === 'SpreadElement';
-      const actualValue = isSpread ? node.value.argument : node.value;
-
-      // See the matching comment in transformArrayAppend just above - same
-      // TestCase/LinkItem/KeySize/... expected-type context, needed here too since
-      // this is the statement-form (`vectors.push(x);` on its own line, not used as
-      // a sub-expression) transformArrayAppend doesn't handle.
-      const arrayType = this.inferFullExpressionType(node.array);
-      const elementType = arrayType?.elementType;
-      const prevArrayElementTypeForAppend = this.currentArrayElementType;
-      if (elementType) this.currentArrayElementType = elementType;
-      let value = this.transformExpression(actualValue);
-      this.currentArrayElementType = prevArrayElementTypeForAppend;
-
-      const valueType = this.inferFullExpressionType(actualValue);
-
-      // Determine if we should use Concat (for arrays) or Append (for single elements).
-      // Array.prototype.push(x) always appends x as ONE element, even when x is itself
-      // an array (e.g. DES's `this.SBOX.push(sbox)` where `sbox` is a locally-built 2D
-      // array - SBOX must become jagged, not have sbox's rows flattened into it) - only
-      // an explicit `...spread` argument means "flatten these into me instead".
-      // valueType.isArray is deliberately NOT part of this condition: the target
-      // array's own field/variable type is expected to already be (or become, via
-      // preScanJaggedInstanceFields/preScan2DArrayVars) jagged enough to hold x as a
-      // single element - forcing Concat here as a workaround for an under-inferred
-      // flat target type just produces the wrong runtime shape instead.
-      const useConcat = isSpread || this._isFlatFeedBufferAppendOfArray(node.array, valueType);
-
-      if (!useConcat) {
-        // Cast value to element type if needed (e.g., int to byte for byte[])
-        // In C#, byte operations (^, +, -, &, |) produce int, so always cast expressions to byte when appending to byte[]
-        if (elementType && elementType.name !== 'object' && elementType.name !== 'dynamic') {
-          const needsCast = (valueType && valueType.name !== elementType.name) ||
-                            (elementType.name === 'byte' && actualValue.type === 'BinaryExpression');
-          if (needsCast) {
-            // A plain `(T)(expr)` cast is only valid scalar-to-scalar - if the pushed
-            // value is itself array-typed (e.g. Kuznyechik's `constants.push(
-            // transformL(vec))`, pushing a byte[] as a single element into a
-            // uint[][]-typed `constants`), C# has no `(uint[])` reinterpret cast from
-            // byte[] (CS0030); needs the same element-wise `.Select(_v =>
-            // (T)_v).ToArray()` conversion the `useConcat` branch below already uses.
-            value = (elementType.isArray || valueType?.isArray)
-              ? this.buildParameterConversion(valueType, elementType, value)
-              : new CSharpCast(elementType, value);
-          }
-        }
-      } else if (elementType && valueType?.isArray && valueType.elementType &&
-                 elementType.name !== 'object' && elementType.name !== 'dynamic' &&
-                 elementType.name !== valueType.elementType.name) {
-        // See the matching branch in transformArrayAppend just above - same
-        // cross-typed-array spread fixup, for the `arr = arr.concat(...)`
-        // assignment-statement shape instead of the `arr.push(...)` expression shape.
-        value = this.buildParameterConversion(valueType, CSharpType.Array(elementType), value);
-      } else if (elementType && elementType.name !== 'object' && elementType.name !== 'dynamic' &&
-                 valueType?.name === 'dynamic') {
-        // See the matching branch in transformArrayAppend just above - a `dynamic`
-        // spread argument (e.g. tls-prf.js's `output.push(...chunk);`, a bare
-        // ExpressionStatement reaching THIS assignment-statement shape instead of
-        // transformArrayAppend's expression shape) needs the identical explicit cast
-        // (CS1973 otherwise).
-        value = new CSharpCast(CSharpType.Array(elementType), value);
-      }
-
-      // Build: arr = arr.Concat(value).ToArray() or arr = arr.Append(value).ToArray()
-      const methodName = useConcat ? 'Concat' : 'Append';
-      const methodCall = new CSharpMethodCall(target, methodName, [value]);
-      const toArrayExpr = new CSharpMethodCall(methodCall, 'ToArray', []);
-      const assignment = new CSharpAssignment(target, '=', toArrayExpr);
-      return new CSharpExpressionStatement(assignment);
+      const toArrayExpr = new CSharpMethodCall(this._buildArrayAppendChain(node), 'ToArray', []);
+      return new CSharpExpressionStatement(new CSharpAssignment(target, '=', toArrayExpr));
     }
 
     /**
@@ -23154,15 +23803,18 @@
               // inference - the registered C# variable type looked up here is the
               // authoritative, already-resolved answer for identifiers and should not
               // need a second, less reliable path to agree before casting.
-              varType.name === 'long' || varType.name === 'Int64') {
+              varType.name === 'long' || varType.name === 'Int64' ||
+              varType.name === 'double' || varType.name === 'float' || varType.name === 'BigInteger') {
             return new CSharpCast(CSharpType.Int(), csExpr);
           }
         }
       }
 
       // Infer type from original JS node to see if it might be uint
-      const exprType = jsNode ? this.inferFullExpressionType(jsNode) : null;
+      const exprType = jsNode ? (this.mapILType(jsNode.resultType) || this.inferFullExpressionType(jsNode)) : null;
       const needsCast = exprType?.name === 'uint' ||
+                        // A JavaScript number from a division (IL float64), or a BigInt
+                        exprType?.name === 'double' || exprType?.name === 'float' || exprType?.name === 'BigInteger' ||
                         exprType?.name === 'ulong' ||
                         // A mixed int/uint arithmetic expression (e.g. `2 * n` where `n`
                         // is uint - a very common "byte-offset = constant * round-count"
@@ -23242,7 +23894,11 @@
 
           // Determine element type and cast fill value if needed
           let elemType = null;
-          if (arrayNode.elementType) {
+          // The IL type of the filled array names its element type
+          const ilArrayType = this.mapILType(node.resultType);
+          if (ilArrayType?.isArray) {
+            elemType = ilArrayType.elementType;
+          } else if (arrayNode.elementType) {
             elemType = this.mapTypeFromKnowledge(arrayNode.elementType);
           } else if (node.elementType) {
             elemType = this.mapTypeFromKnowledge(node.elementType);
@@ -23319,7 +23975,11 @@
       // the return value isn't used in variable declaration
       // Using OpCodes.Fill for .NET Framework compatibility (Array.Fill is .NET Core 2.0+)
       const array = this.transformExpression(node.array);
-      const value = this.transformExpression(node.value);
+      let value = this.transformExpression(node.value);
+      // The fill value takes the array's element type
+      const filledType = this.inferFullExpressionType(node.array);
+      if (filledType?.isArray && filledType.elementType && !filledType.elementType.isArray)
+        value = this.castIfNeeded(value, this.inferFullExpressionType(node.value), filledType.elementType);
       // OpCodes.Fill(array, value)
       return new CSharpMethodCall(
         new CSharpIdentifier('OpCodes'),
@@ -24558,6 +25218,12 @@
       };
 
       const csharpType = typeMap[targetType] || CSharpType.UInt();
+      // A BigInteger converts to a fixed width only when it fits (OverflowException
+      // otherwise, unchecked or not): keep the low bits first, as ToQWord/ToDWord
+      // do on a BigInt
+      const argNode = node.arguments?.[0] || node.expression;
+      const argType = this.inferFullExpressionType(argNode);
+      if (argType?.name === 'BigInteger' && !argType.isArray) return this.narrowBigInteger(expr, csharpType);
       return new CSharpCast(csharpType, expr);
     }
 
@@ -24586,6 +25252,10 @@
      */
     transformBigIntCast(node) {
       const expr = this.transformExpression(node.argument);
+      // BigInt("0x...") parses the text as JavaScript does
+      const argumentType = this.inferFullExpressionType(node.argument);
+      if (argumentType?.name === 'string' && !argumentType.isArray)
+        return new CSharpMethodCall(null, 'ParseBigInt', [expr]);
       if (this.isReliableBigIntCastSkipSource(node.argument)) {
         const innerType = this.inferFullExpressionType(node.argument);
         if (innerType && (innerType.name === 'ulong' || innerType.name === 'long')) {
@@ -24700,8 +25370,8 @@
           return this.transformArrayUnshift(node);
 
         case 'ArraySplice': {
-          const start = this.transformExpression(node.start);
-          const deleteCount = node.deleteCount ? this.transformExpression(node.deleteCount) : CSharpLiteral.Int(0);
+          const start = this.ensureIntIndex(this.transformExpression(node.start), node.start);
+          const deleteCount = node.deleteCount ? this.ensureIntIndex(this.transformExpression(node.deleteCount), node.deleteCount) : CSharpLiteral.Int(0);
           const arrayType = this.inferFullExpressionType(node.array);
           const elementType = (arrayType?.isArray && arrayType.elementType) || CSharpType.Object();
 

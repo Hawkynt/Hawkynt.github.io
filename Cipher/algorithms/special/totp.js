@@ -42,6 +42,19 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           Algorithm, IAlgorithmInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
+  // The HMAC comes from the collection's own HMAC and SHA family. Under
+  // CommonJS they are loaded with this file; in the browser the page loads them.
+  if (typeof require !== 'undefined') {
+    try {
+      require('../mac/hmac.js');
+      require('../hash/sha1.js');
+      require('../hash/sha256.js');
+      require('../hash/sha512.js');
+    } catch (e) {
+      // Reported as a missing dependency when an OTP is computed.
+    }
+  }
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   /**
@@ -490,14 +503,13 @@
     /**
      * Computes HMAC using the configured hash algorithm
      *
-     * Attempts to use Node.js crypto module first, falls back to OpCodes.HMAC if available.
-     * Supports SHA-1, SHA-256, and SHA-512 hash algorithms.
+     * Uses the registered HMAC over the registered SHA-1, SHA-256 or SHA-512.
      *
      * @private
      * @param {uint8[]} key - Secret key for HMAC computation
      * @param {uint8[]} message - Message to authenticate (8-byte counter value)
      * @returns {uint8[]} HMAC result as byte array (20 bytes for SHA-1, 32 for SHA-256, 64 for SHA-512)
-     * @throws {Error} If hash algorithm is unsupported or no crypto library is available
+     * @throws {Error} If hash algorithm is unsupported or HMAC is not registered
      * @example
      * const hmac = _hmac([0x31,0x32,...], [0,0,0,0,0,0,0,1]); // HMAC-SHA1 of counter=1
      */
@@ -505,33 +517,31 @@
       /** @type {string} */
       const hashAlgo = this._hashAlgorithm.toUpperCase();
 
-      // Try using Node.js crypto if available
-      if (typeof require !== 'undefined') {
-        try {
-          const crypto = require('crypto');
-          let hashName;
-
-          if (hashAlgo === 'SHA-1' || hashAlgo === 'SHA1') {
-            hashName = 'sha1';
-          } else if (hashAlgo === 'SHA-256' || hashAlgo === 'SHA256') {
-            hashName = 'sha256';
-          } else if (hashAlgo === 'SHA-512' || hashAlgo === 'SHA512') {
-            hashName = 'sha512';
-          } else {
-            throw new Error("Unsupported hash algorithm: " + hashAlgo);
-          }
-
-          const hmac = crypto.createHmac(hashName, Buffer.from(key));
-          hmac.update(Buffer.from(message));
-          return Array.from(hmac.digest());
-        } catch (e) {
-          // Fall through to alternate implementation
-        }
+      /** @type {string} */
+      let hashName;
+      if (hashAlgo === 'SHA-1' || hashAlgo === 'SHA1') {
+        hashName = 'SHA-1';
+      } else if (hashAlgo === 'SHA-256' || hashAlgo === 'SHA256') {
+        hashName = 'SHA-256';
+      } else if (hashAlgo === 'SHA-512' || hashAlgo === 'SHA512') {
+        hashName = 'SHA-512';
+      } else {
+        throw new Error("Unsupported hash algorithm: " + hashAlgo);
       }
 
-      throw new Error(
-        "Cannot compute HMAC: No crypto library available (requires Node.js crypto or Web Crypto API)"
-      );
+      /** @type {Algorithm} */
+      const hmacAlgorithm = AlgorithmFramework.Find('HMAC');
+      if (!hmacAlgorithm) {
+        throw new Error("Cannot compute HMAC: HMAC is not registered. Load it before TOTP");
+      }
+
+      /** @type {IMacInstance} */
+      const hmacInstance = hmacAlgorithm.CreateInstance(false);
+      hmacInstance.key = key;
+      hmacInstance.hashFunction = hashName;
+      /** @type {uint8[]} */
+      const mac = hmacInstance.ComputeMac(message);
+      return mac;
     }
   }
 

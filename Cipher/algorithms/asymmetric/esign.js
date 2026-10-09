@@ -80,30 +80,14 @@
   // ===== HASHING =====
 
   // EMSA-ESIGN-D-ENCODE is defined over SHA-1 and MGF1-SHA1. A stand-in for the
-  // hash produces signatures no other implementation accepts, so the digest is
-  // loaded from the collection and every path below fails loudly without it.
+  // hash produces signatures no other implementation accepts, so the digest
+  // comes from the registry and every path below fails loudly without it.
   //
-  // On first use rather than at load: requiring the module here would register a
-  // hash algorithm while this file is being loaded, and every tool that
-  // attributes an algorithm to whichever file was loading when it registered
-  // would then file SHA-1 under asymmetric ciphers.
-  let hashesLoaded = false;
-
-  /**
-   * Load the digest module ESIGN needs, once.
-   * @returns {void}
-   */
-  function loadHashes() {
-    if (hashesLoaded) return;
-    hashesLoaded = true;
-    if (typeof require === 'undefined') return;
-
-    try {
-      require('../hash/sha1.js');
-    } catch (error) {
-      // In the browser this arrives as a script tag instead; Find() reports it.
-    }
-  }
+  // Registry first, CommonJS fallback on a miss rather than a require at load:
+  // requiring the module here would register a hash algorithm while this file
+  // is being loaded, and every tool that attributes an algorithm to whichever
+  // file was loading when it registered would then file SHA-1 under asymmetric
+  // ciphers. In the browser the page has loaded it as a script tag.
 
   const HASH_NAME = 'SHA-1';
   const HASH_LENGTH = 20;
@@ -119,10 +103,12 @@
    * @returns {uint8[]} Digest octets
    */
   function digest(bytes) {
-    loadHashes();
-
     /** @type {Algorithm} */
-    const algorithm = AlgorithmFramework.Find(HASH_NAME);
+    let algorithm = AlgorithmFramework.Find(HASH_NAME);
+    if (!algorithm && typeof require !== 'undefined') {
+      try { require('../hash/sha1.js'); } catch (error) { /* reported below */ }
+      algorithm = AlgorithmFramework.Find(HASH_NAME);
+    }
     if (!algorithm) {
       throw new Error('ESIGN requires the hash ' + HASH_NAME + ', which is not registered');
     }
