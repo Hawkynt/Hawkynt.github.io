@@ -3088,7 +3088,7 @@
         if (i < nodes.length && nodes[i]) {
           out.push(this.conv(this.ex(nodes[i], p.type), p.type));
         } else if (p.defaultNode) {
-          out.push(this.conv(this.ex(p.defaultNode, p.type), p.type));
+          out.push(this.conv(this.defaultArgument(p.defaultNode, p.type, params.slice(0, i), out), p.type));
         } else if (p.defText) {
           out.push(p.defText === 'null' ? this.nullValue(p.type) : A.lit(p.defText));
         } else {
@@ -3101,6 +3101,36 @@
         this.discard(r);
       }
       return out;
+    }
+
+    /**
+     * A parameter default evaluated at the call site. It may read the earlier
+     * parameters (`n = data.length`): those arguments are held in temporaries
+     * and the default sees them under the parameter names.
+     */
+    defaultArgument(defaultNode, type, earlier, out) {
+      const used = new Set();
+      const visit = n => {
+        if (!n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(visit); return; }
+        if (n.type === 'Identifier') used.add(n.name);
+        for (const k in n) { if (k === 'typeInfo' || k === 'range' || k === 'loc') continue; const v = n[k]; if (v && typeof v === 'object') visit(v); }
+      };
+      visit(defaultNode);
+      const bound = earlier.map((p, j) => [p, j]).filter(([p]) => !p.rest && used.has(p.jsName));
+      if (!bound.length) return this.ex(defaultNode, type);
+      this.pushScope();
+      try {
+        for (const [p, j] of bound) {
+          const tmp = this.temp(p.type, p.jsName);
+          this.emitPre(A.assign(A.id(tmp), out[j]));
+          out[j] = A.id(tmp);
+          this.fn.scopes[this.fn.scopes.length - 1].set(p.jsName, { pas: tmp, type: p.type, kind: 'local' });
+        }
+        return this.ex(defaultNode, type);
+      } finally {
+        this.popScope();
+      }
     }
 
     xThisMethodCall(node) {

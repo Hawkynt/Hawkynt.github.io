@@ -185,6 +185,10 @@ sameAsJs('functions: a hoisted inner function reads a local of its block declare
   '  /** @param {int32} x */ function step(x) { buf[n] = x * 2; n++; }\n' +
   '  /** @type {int32[]} */ const buf = [0, 0, 0];\n  let n = 0;\n' +
   '  for (let i = 0; i < 3; i++) { const n = i + 1; step(n); }\n  return buf.join(","); }');
+sameAsJs('functions: a parameter default reads an earlier parameter',
+  '/** @param {int32[]} w @param {int32} [n] @returns {int32} */ function sum(w, n = w.length) { let s = 0; for (let i = 0; i < n; i++) s += w[i]; return s; }\n' +
+  '/** @returns {string} */ function probe() { return sum([1, 2, 3]) + " " + sum([1, 2, 3], 2); }');
+
 // ---------------------------------------------------------------------------
 // Callbacks
 // ---------------------------------------------------------------------------
