@@ -151,6 +151,10 @@ sameAsJs('string: slice counts negative indices from the end, substring clamps t
   '/** @param {string} s @returns {string} */ function f(s) { return s.slice(-3) + "|" + s.slice(1, -1) + "|" + s.substring(-2, 2) + "|" + s.substring(3, 1); }\n' +
   '/** @returns {string} */ function probe() { return f("abcdef"); }');
 
+sameAsJs('string: /\\p{L}/u matches a letter beyond ASCII, not a digit',
+  '/** @param {int32} c @returns {boolean} */ function isLetter(c) { return /\\p{L}/u.test(String.fromCharCode(c)); }\n' +
+  '/** @returns {string} */ function probe() { return isLetter(0x61) + " " + isLetter(0xE9) + " " + isLetter(0x31) + " " + isLetter(0x416); }');
+
 // ---------------------------------------------------------------------------
 // Map
 // ---------------------------------------------------------------------------
