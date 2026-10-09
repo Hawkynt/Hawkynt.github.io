@@ -771,6 +771,11 @@ check('destructuring: [a, b] = [b, a] keeps each value in its target type (no by
   expectMatch(code, /uint swap0 = r1;\s*uint swap1 = r0;\s*r0 = swap0;\s*r1 = swap1;/, 'typed temporaries, then the targets');
   expectNoMatch(code, /new byte\[\] \{ unchecked\(\(byte\)\(r1\)\)/, 'the words cut to bytes');
 });
+check('arrays: numbers concatenated to the input buffer become bytes', () => {
+  const code = transpile('class M extends IMacInstance {\n  /** @returns {uint8[]} r */\n  Result() { /** @type {int32} */ const n = 3; const padding = OpCodes.CreateArray(n, n);\n' +
+    '    /** @type {uint8[]} */ const padded = this.inputBuffer.concat(padding); return padded; }\n}');
+  expectMatch(code, /this\.InputBuffer\.Concat\(padding\.Select\(/, 'padding converted to bytes before the Concat');
+});
 check('arrays: a store into a Uint16Array narrows the value to ushort', () => {
   const code = transpile('/** @returns {uint16[]} t */\nfunction f() { const table = new Uint16Array(4);\n  for (let i = 0; i < 4; ++i) { /** @type {int32} */ let code = 285 + i; table[i] = code; }\n  return table; }');
   expectMatch(code, /table\[i\] = unchecked\(\(ushort\)\(code\)\);/, 'table[i] = (ushort)code');

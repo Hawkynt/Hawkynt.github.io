@@ -24907,6 +24907,13 @@
           argRank && elemRank && elemRank > argRank) {
         return this.buildParameterConversion(argType, CSharpType.Array(elementType), transformedArg);
       }
+      // The framework's byte buffer (this.inputBuffer.concat(padding)) holds bytes:
+      // numbers concatenated to it are bytes (DMAC's padding built by CreateArray)
+      const receiverField = receiverNode?.type === 'ThisPropertyAccess'
+        ? (typeof receiverNode.property === 'string' ? receiverNode.property : receiverNode.property?.name) : null;
+      if (receiverField && /^_?inputBuffer$/i.test(receiverField) && elementType.name === 'byte' && !elementType.isArray &&
+          argType.isArray && argType.elementType && !argType.elementType.isArray && argRank && argRank > 1)
+        return this.buildParameterConversion(argType, CSharpType.Array(elementType), transformedArg);
       return transformedArg;
     }
 
