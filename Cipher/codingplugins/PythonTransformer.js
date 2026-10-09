@@ -6464,7 +6464,11 @@ class OpCodes(metaclass=_OpCodesMeta):
     transformDoWhileStatement(node) {
       // Python doesn't have do-while, convert to while True with break
       const body = this.transformBlockOrStatement(node.body);
-      const condition = this.transformExpression(node.test);
+      // `while (--count > 0)`: the update runs before every test
+      const preStatements = [];
+      const testNode = this.extractUpdateExpressionsFromCondition(node.test, preStatements);
+      const condition = this.transformExpression(testNode);
+      body.statements.push(...preStatements);
 
       // Add condition check at end with break
       const notCondition = new PythonUnaryExpression('not', condition);

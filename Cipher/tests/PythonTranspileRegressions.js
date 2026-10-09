@@ -597,6 +597,12 @@ check('names: a blockSize accessor and the framework BlockSize field stay apart 
   return expectOutput(runPython(js, 's = set_width(Speed(None), 8)\np = set_width(Plain(None), 128)\nprint(s.block_size, p.block_size)'), ['8 16']);
 });
 
+check('do-while: an increment or decrement in the condition runs before every test', () => {
+  const js = 'function f(n) { const out = []; let c = n; do { out.push(c); } while (--c > 0); let k = 0; do { out.push(100 + k); } while (k++ < 2); return [out, c, k]; }';
+  // Given a prefix decrement and a postfix increment in do-while conditions (the LZMA range coder's flush loop)
+  return expectOutput(runPython(js, 'r = f(3)\nprint(list(r[0]), r[1], r[2])'), ['[3, 2, 1, 100, 101, 102] 0 3']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }
