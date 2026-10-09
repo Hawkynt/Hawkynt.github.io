@@ -609,8 +609,10 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
   const parserOptions = language === 'javascript' ? { keepModuleLoaderFunctions: true } : undefined;
   const source = fs.readFileSync(algorithmFile, 'utf-8');
   const algoName = path.basename(algorithmFile, '.js').replace(/[^a-zA-Z0-9]/g, '_');
+  // A Delphi bundle links the files a loader would require(), so a loader
+  // guarded by `typeof require` stays: the target folds it to a no-op.
   if (language === 'delphi' && (dependencies.length || delphiLibraries(source, algorithmFile).length))
-    return transpileDelphiBundle(source, algorithmFile, plugin, dependencies, parserOptions);
+    return transpileDelphiBundle(source, algorithmFile, plugin, dependencies, { keepModuleLoaderFunctions: true });
   let code;
   try {
     code = transpileOne(source, plugin, algoName, undefined, parserOptions);
