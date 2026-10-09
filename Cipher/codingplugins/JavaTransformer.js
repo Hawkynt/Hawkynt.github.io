@@ -1051,14 +1051,18 @@
             if (n.left.type === 'Identifier' && n.left.__sym && may64(n.left.__sym.il)) mark(n.left.__sym, 'big', big);
             if (n.left.type === 'ThisPropertyAccess') { const f = this.fieldForThis(n.left); if (f && may64(f.il)) mark(f, 'big', big); if (f) this.markArrayElems(f, n.right, mark); }
             if (n.left.type === 'MemberExpression' && !n.left.computed) { const f = this.fieldForMember(n.left); if (f && may64(f.il)) mark(f, 'big', big); }
-            if (n.left.type === 'MemberExpression' && n.left.computed) { const a = this.arraySymbolOf(n.left.object); if (a) mark(a, 'elemBig', big); }
+            if (n.left.type === 'MemberExpression' && n.left.computed) { const a = this.arraySymbolOf(n.left.object); if (a) { mark(a, 'elemBig', big); if (n.operator === '=') this.noteElement(a, n.right); } }
             if (n.left.type === 'Identifier' && n.left.__sym) this.markArrayElems(n.left.__sym, n.right, mark);
             break;
           }
           case 'ArrayAppend': {
             const a = this.arraySymbolOf(n.array);
             const vals = n.values && n.values.length ? n.values : [n.value];
-            if (a) for (const v of vals) if (v && v.type !== 'SpreadElement') { mark(a, 'elemBig', this.isBig(v)); this.markArrayElems(a, v, mark); }
+            if (a) for (const v of vals) if (v && v.type !== 'SpreadElement') {
+              mark(a, 'elemBig', this.isBig(v));
+              this.markArrayElems(a, v, mark);
+              this.noteElement(a, v);
+            }
             break;
           }
           case 'ReturnStatement': {
@@ -1093,6 +1097,17 @@
         for (const fi of fnInfos) if (fi.retIl && fi.retIl.exprBody && !fi.retBig && this.isBig(fi.node.body)) { fi.retBig = true; changed = true; }
       }
       this.currentClassName = null;
+    }
+
+    /** A value stored into an array: a non-number in a number array (an empty literal the IL typed int32[]) makes it hold objects. */
+    noteElement(arraySym, value) {
+      if (!arraySym || arraySym.holdsObjects || !value) return;
+      const vt = ilNorm(value.resultType);
+      if (value.type === 'ObjectLiteral' || value.type === 'ObjectExpression' || vt === 'object' || vt === 'string' || vt.endsWith('[]') ||
+          (this.classInfo(vt) && !this.classInfo(vt).enumLike)) {
+        arraySym.holdsObjects = true;
+        arraySym.jtCached = null;
+      }
     }
 
     tagClass(node, className) {
@@ -1176,6 +1191,16 @@
       return this.jt(il, { big, nullable: !!node.nullable, elemBig: !!(arr && arr.elemBig) || (node.type === 'TypedArrayCreation' && /^Big/.test(node.arrayType || '')) });
     }
 
+    /** The JVM type of an expression read from storage: a variable's or field's own type (joined over its sites), else the node's. */
+    storageJt(node) {
+      if (node && node.type === 'Identifier' && node.__sym && !['func', 'localfn', 'class', 'namespace'].includes(node.__sym.kind)) return this.symJt(node.__sym);
+      if (node && node.type === 'ThisPropertyAccess' && !node.computed) {
+        const f = this.fieldForThis(node);
+        if (f && f.values) return this.fieldJt(f);
+      }
+      return this.nodeJt(node);
+    }
+
     /** The JVM type of a symbol (computed once). */
     symJt(sym) {
       if (sym.jtCached) return sym.jtCached;
@@ -1191,6 +1216,7 @@
         // The IL types each site of a variable on its own; the variable holds them all
         if (sym.kind !== 'param' && !(sym.node && sym.node.init && this.holdsTypedArray([sym.node.init])))
           t = this.joinSites(t, (sym.sites || []).map(n => n.resultType ? this.jt(n.resultType, o) : null).filter(Boolean));
+        if (sym.holdsObjects && T.isPrimArray(t)) t = 'JsArray<Object>';
         if (t === 'void') t = 'Object';
       }
       sym.jtCached = t;
@@ -1206,6 +1232,7 @@
       let t = this.jt(il, o);
       // The IL types each site of a field on its own; the field holds them all
       if (!this.holdsTypedArray(f.values)) t = this.joinSites(t, (f.ils || []).map(x => this.jt(x, o)));
+      if (f.holdsObjects && T.isPrimArray(t)) t = 'JsArray<Object>';
       if (t === 'void') t = 'Object';
       f.jtCached = t;
       return t;
@@ -1294,7 +1321,7 @@
       // an expression-bodied arrow returns its expression, typed or not
       else if (r.exprBody) { t = this.nodeJt(r.node); if (t === 'void' && !(r.node && /Call|New/.test(r.node.type))) t = 'Object'; }
       else if (r.returned) {
-        const types = r.returned.map(n => this.nodeJt(n)).filter(x => x !== 'void');
+        const types = r.returned.map(n => this.storageJt(n)).filter(x => x !== 'void');
         t = this.commonJt(types);
       } else t = 'void';
       if (fi.retBig && T.isNumeric(t)) t = 'BigInteger';
@@ -3552,7 +3579,10 @@
     }
     x_ArrayConcat(node) {
       const arr = this.arrayOf(node);
-      const others = (node.arrays || []).map(a => this.conv(a.type === 'SpreadElement' ? this.lowerExpr(a.argument) : this.lowerExpr(a), 'Object'));
+      const others = (node.arrays || []).map(a => {
+        const v = a.type === 'SpreadElement' ? this.lowerExpr(a.argument) : this.lowerExpr(a);
+        return this.conv(T.isArray(arr.t) && T.isArray(v.t) && v.t !== arr.t ? this.conv(v, arr.t) : v, 'Object');
+      });
       if (arr.t === 'String') return E.scall('Js', 'concat', [arr, ...others], 'String');
       if (!T.isArray(arr.t)) return this.conv(E.scall('Js', 'invoke', [this.conv(arr, 'Object'), E.str('concat'), ...others], 'Object'), this.nodeJt(node));
       return E.call(arr, 'concat', others, arr.t);
