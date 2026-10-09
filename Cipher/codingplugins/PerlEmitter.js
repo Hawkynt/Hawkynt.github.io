@@ -346,6 +346,17 @@ sub _JsToString {
     my $digits = lc($big->copy()->babs()->to_base($radix));
     return ($big->is_neg() ? '-' : '') . $digits;
 }
+# typeof: 'undefined', 'function', 'bigint', 'object' (any other reference),
+# 'number' or 'string'
+sub _JsTypeof {
+    my ($value) = @_;
+    return 'undefined' if !defined($value);
+    my $kind = ref($value);
+    return 'function' if $kind eq 'CODE';
+    return 'bigint' if $kind && Scalar::Util::blessed($value) && $value->isa('Math::BigInt');
+    return 'object' if $kind;
+    return Scalar::Util::looks_like_number($value) ? 'number' : 'string';
+}
 sub _JsByteLength { my ($view) = @_; return ref($view) eq 'ARRAY' ? scalar(@$view) : length($view // ''); }
 sub _JsFromEntries { my ($entries) = @_; return { map { ($_->[0] => $_->[1]) } @{$entries || []} }; }
 sub SpongePadBlocks {

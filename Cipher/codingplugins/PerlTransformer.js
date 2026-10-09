@@ -8177,12 +8177,12 @@
           // "typeof" shape this IL node normally supersedes).
           if (arg && arg.type === 'Identifier' && arg.name === 'require')
             return PerlLiteral.String('undefined', "'");
-          const value = this.transformExpression(arg);
-          return new PerlBinaryExpression(
-            new PerlCall('ref', [value]),
-            '||',
-            PerlLiteral.String('SCALAR', "'")
-          );
+          // A 64-bit or BigInt IL type is a JavaScript BigInt, whose native
+          // Perl value looks like a number
+          if (/^(BigInt|bigint|u?int64)$/.test(arg?.resultType || ''))
+            return PerlLiteral.String('bigint', "'");
+          // JavaScript's typeof names, decided by the value (see _JsTypeof)
+          return new PerlCall(new PerlIdentifier('main::_JsTypeof', ''), [this.transformExpression(arg)]);
         }
 
         // IL AST ObjectFreeze - Object.freeze(x) -> just return x (no-op in Perl)

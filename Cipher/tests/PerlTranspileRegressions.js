@@ -325,6 +325,20 @@ check('arrays: arr.length = n truncates and extends', () => {
   expectOutput(runPerl(js, 'print main::f([1, 2, 3]), "\\n";'), '52');
 });
 
+// ---------------------------------------------------------------------------
+// typeof, and a field sharing its name with another class's method
+// ---------------------------------------------------------------------------
+const TYPEOF_SNIPPET = 'class Score { constructor(x) { /** @type {float64} */ this.chi = x; } }\n' +
+  'class Stats { /** @param {int32} a @returns {int32} */ chi(a) { return a * 2; } }\n' +
+  '/** @param {uint8[]} data @param {string} s @returns {string} */\n' +
+  'function f(data, s) { const sc = new Score(1.5); return [typeof data, typeof s, typeof 5, typeof undefined, typeof 5n, sc.chi, new Stats().chi(4)].join(","); }';
+check('typeof gives JavaScript\'s names; a field named like another class\'s method stays a field', () => {
+  const code = transpile(TYPEOF_SNIPPET);
+  expectNoMatch(code, /->can\('chi'\) =/, "an assignment to $self->can('chi')");
+  if (!hasPerl()) return 'skip';
+  expectOutput(runPerl(TYPEOF_SNIPPET, 'print main::f([1], "x"), "\\n";'), 'object,string,number,undefined,bigint,1.5,8');
+});
+
 /**
  * PERL: run every regression case.
  * @param {object} options - { verbose }
