@@ -1364,6 +1364,10 @@ namespace ${namespace}
         public static int SetBit(int value, int bitIndex, int bitValue) => SetBit(value, bitIndex, bitValue != 0);
         public static int SetBit(int value, int bitIndex, uint bitValue) => SetBit(value, bitIndex, bitValue != 0);
         public static int SetBit(int value, int bitIndex, byte bitValue) => SetBit(value, bitIndex, bitValue != 0);
+        public static uint SetBit(uint value, int bitIndex, bool bitValue) => bitValue ? (value | (1u << bitIndex)) : (value & ~(1u << bitIndex));
+        public static uint SetBit(uint value, int bitIndex, int bitValue) => SetBit(value, bitIndex, bitValue != 0);
+        public static uint SetBit(uint value, int bitIndex, uint bitValue) => SetBit(value, bitIndex, bitValue != 0);
+        public static uint SetBit(uint value, int bitIndex, byte bitValue) => SetBit(value, bitIndex, bitValue != 0);
         // ReverseBits
         public static byte ReverseBits(byte b) {
             b = (byte)(((b & 0xF0) >> 4) | ((b & 0x0F) << 4));
@@ -1606,6 +1610,11 @@ namespace ${namespace}
         public static byte[] CreateArray(uint length, byte value = 0) {
             var arr = new byte[length];
             if (value != 0) for (int i = 0; i < arr.Length; ++i) arr[i] = value;
+            return arr;
+        }
+        public static T[] CreateArray<T>(int length, T value) {
+            var arr = new T[length];
+            Array.Fill(arr, value);
             return arr;
         }
         // Split64 - mirrors OpCodes.js's Split64(value): splits a 64-bit unsigned value

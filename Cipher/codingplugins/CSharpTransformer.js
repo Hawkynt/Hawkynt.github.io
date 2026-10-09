@@ -12517,6 +12517,19 @@
           this.currentArrayElementType = prevArrayElementTypeForArgs;
           // Handle specific OpCodes methods that need special C# translation
           switch (node.method) {
+            case 'CreateArray': {
+              // An array of the element type its context expects (the IL's), filled
+              const arrayType = this.mapILType(node.contextType) || this.mapILType(node.resultType);
+              if (arrayType?.isArray && !arrayType.elementType?.isArray) {
+                const elementType = arrayType.elementType;
+                const fill = args[1] ? new CSharpCast(elementType, args[1]) : new CSharpIdentifier('default');
+                const call = new CSharpMethodCall(new CSharpIdentifier('OpCodes'), 'CreateArray',
+                  [new CSharpCast(CSharpType.Int(), args[0]), fill]);
+                call.typeArguments = [elementType];
+                return call;
+              }
+              break;
+            }
             case 'CopyArray':
               // array.ToArray() creates a shallow copy in C#
               return new CSharpMethodCall(args[0], 'ToArray', []);

@@ -288,6 +288,14 @@ check('arithmetic: ulong += int takes the int as ulong (CS0034)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// OpCodes helpers
+// ---------------------------------------------------------------------------
+check('OpCodes.CreateArray: the array has the element type its target is declared with', () => {
+  const code = transpile('class C { constructor() { /** @type {BigInt[]} */ this.s = OpCodes.CreateArray(4, 0n); } }');
+  expectMatch(code, /CreateArray<BigInteger>\(/, 'CreateArray<BigInteger>(...)');
+});
+
+// ---------------------------------------------------------------------------
 // Runtime stubs (needs the .NET SDK)
 // ---------------------------------------------------------------------------
 check('runtime stubs: BlockAbsorber, pad helpers, ToRadixString, IsTruthy, GFMul behave like the JS framework', () => {
@@ -371,6 +379,11 @@ namespace RegressionTest {
       // ToQWord keeps the low 64 bits of a wider BigInteger (no OverflowException)
       Eq("qword-wrap", Generated.Wrap64(BigInteger.Pow(2, 70) + 5), 5);
       Eq("qword-max", Generated.Wrap64(BigInteger.Pow(2, 64) - 1), ulong.MaxValue);
+      // SetBit on a uint keeps it a uint; CreateArray fills any element type
+      Eq("setbit-uint", OpCodes.SetBit(0x80000000u, 0, true), 0x80000001u);
+      Eq("setbit-clear", OpCodes.SetBit(0x80000001u, 31, false), 1u);
+      Eq("createarray", string.Join(",", OpCodes.CreateArray(3, new BigInteger(7))), "7,7,7");
+      Eq("createarray-empty", OpCodes.CreateArray(0, 1u).Length, 0);
       Console.WriteLine(failures == 0 ? "STUBS_OK" : "STUBS_FAILED");
       return failures == 0 ? 0 : 1;
     }
