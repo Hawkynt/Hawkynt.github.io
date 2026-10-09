@@ -8731,6 +8731,28 @@
         return new PerlIdentifier(emittedName, sigil);
       }
 
+      // Checked before the class-name guesses below: a function named like
+      // a class (ApplyTransform) is still a function.
+      // If this identifier refers to a declared sub and is used as a value (not as a callee),
+      // emit a code reference: \&functionName. Package-qualified with
+      // "main::" - top-level JS helper functions are emitted as top-level
+      // Perl subs, which always land in "package main" (see
+      // PerlEmitter.js emitModule), same as the direct-call qualification
+      // just above (this.functionNames.has(funcName) branch). An
+      // unqualified "\&functionName" written from inside a class's
+      // "package Foo;" block (e.g. "this.permute = spongent160Permute;" -
+      // see codeRefFieldNames' doc comment) resolves against the CURRENT
+      // package at compile time, not main:: - silently binding to
+      // "\&Foo::functionName" (which doesn't exist) instead of the real
+      // sub, so calling the stored coderef later died "Undefined
+      // subroutine &Foo::functionName called".
+      if (this.functionNames.has(name) && !this.variableTypes.has(name)) {
+        // See _collectNestedFunctionRenames' doc comment - a nested
+        // function's Perl sub may have been given a unique per-method name.
+        const qualified = this.nestedFunctionNames.has(name) ? this._resolveNestedFunctionName(name) : ('main::' + name);
+        return new PerlUnaryExpression('\\&', new PerlIdentifier(qualified, ''), true);
+      }
+
       // Class names (PascalCase, TypedArrays, etc.) should have no sigil
       // They are used as barewords for method calls like Uint8Array->from()
       const isClassName = /^[A-Z]/.test(name) &&
@@ -8759,26 +8781,6 @@
         // Return as quoted string - Perl resolves 'ClassName'->method() correctly
         // and this avoids bareword errors under 'use strict' in boolean/value context
         return PerlLiteral.String(name, "'");
-      }
-
-      // If this identifier refers to a declared sub and is used as a value (not as a callee),
-      // emit a code reference: \&functionName. Package-qualified with
-      // "main::" - top-level JS helper functions are emitted as top-level
-      // Perl subs, which always land in "package main" (see
-      // PerlEmitter.js emitModule), same as the direct-call qualification
-      // just above (this.functionNames.has(funcName) branch). An
-      // unqualified "\&functionName" written from inside a class's
-      // "package Foo;" block (e.g. "this.permute = spongent160Permute;" -
-      // see codeRefFieldNames' doc comment) resolves against the CURRENT
-      // package at compile time, not main:: - silently binding to
-      // "\&Foo::functionName" (which doesn't exist) instead of the real
-      // sub, so calling the stored coderef later died "Undefined
-      // subroutine &Foo::functionName called".
-      if (this.functionNames.has(name) && !this.variableTypes.has(name)) {
-        // See _collectNestedFunctionRenames' doc comment - a nested
-        // function's Perl sub may have been given a unique per-method name.
-        const qualified = this.nestedFunctionNames.has(name) ? this._resolveNestedFunctionName(name) : ('main::' + name);
-        return new PerlUnaryExpression('\\&', new PerlIdentifier(qualified, ''), true);
       }
 
       // Get sigil from registered type or infer
