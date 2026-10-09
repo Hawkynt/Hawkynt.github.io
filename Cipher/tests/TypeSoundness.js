@@ -34,6 +34,8 @@
  *   T[]                          an Array or a typed array; a typed array of
  *                                the matching kind, a plain array whose
  *                                sampled elements are T
+ *   [A,B,...]                    a tuple: a plain array whose element at each
+ *                                position is of that position's type
  *
  * Class, interface and enum types are not checked; null and undefined are
  * accepted for arrays and strings (references) and rejected for numbers and
@@ -181,6 +183,20 @@ function buildChecker(raw) {
     case 'number': case 'float32': case 'float64': return v => typeof v === 'number' ? null : wrongPrimitive(v);
     case 'boolean': return v => typeof v === 'boolean' ? null : wrongPrimitive(v);
     case 'string': return v => typeof v === 'string' || v === null || v === undefined ? null : wrongPrimitive(v);
+  }
+  // '[string,int32,string]': a plain array holding each position's type
+  const positions = parserClass()._tupleElements(type);
+  if (positions) {
+    const checks = positions.map(checkerFor);
+    return v => {
+      if (v === null || v === undefined) return null;
+      if (!Array.isArray(v)) return ArrayBuffer.isView(v) ? 'typed-array-kind' : wrongPrimitive(v);
+      for (let i = 0; i < checks.length; ++i) {
+        const bad = checks[i] && i in v ? checks[i](v[i]) : null;
+        if (bad) return 'element-' + bad.replace(/^element-/, '');
+      }
+      return null;
+    };
   }
   if (TYPED_ARRAY_TYPES.has(type)) {
     const element = TYPED_ARRAY_ELEMENTS[type];

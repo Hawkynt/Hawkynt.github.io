@@ -1894,6 +1894,20 @@ class TypeInferenceTestSuite {
       nl('/** @param {boolean} c\n * @param {int32|null} a */\nfunction f(c, a) { const x = c ? a : 7; return x; }', 'x', 'int32?', 'given a nullable branch, then the conditional is nullable');
       nl('/** @param {boolean} c\n * @param {uint8[]} b */\nfunction f(c, b) { const x = c ? null : b; return x; }', 'x', 'uint8[]', 'given c ? null : bytes, then a reference, not marked');
 
+      // A row of values of different kinds is a tuple
+      check('function f() { const r = ["", 0, " "]; return r; }', 'r', '[string,int32,string]', 'given ["", 0, " "], then the tuple [string,int32,string] (was string[])');
+      check('function f() { const t = [["", 0, ""], [" ", 3, " "]]; return t; }', 't', '[string,int32,string][]', 'given rows of tuples, then an array of the tuple');
+      check('function f() { const t = [["", 0, ""], [" ", 3, " "]]; const v = t[1][1]; return v; }', 'v', 'int32', 'given row[1] of a tuple, then the type at that position');
+      check('function f() { const t = [["", 0, ""], [" ", 3, " "]]; const v = t[0][2]; return v; }', 'v', 'string', 'given row[2], then string');
+      check('/** @param {int32} i */\nfunction f(i) { const r = ["", 0]; const v = r[i]; return v; }', 'v', null, 'given a non-literal index into a tuple, then no single type (exceptional)');
+      check('function f() { const r = ["", 0]; const v = r[5]; return v; }', 'v', null, 'given an index past the tuple, then no type (boundary)');
+      check('function f() { const t = [["", 0, ""]]; const [p, k, s] = t[0]; return k; }', 'k', 'int32', 'given const [p, k, s] = tuple, then each name takes its position type');
+      check('function f() { const t = [["", 0, ""]]; const c = t.map(x => x[1]); return c; }', 'c', 'int32[]', 'given rows.map(r => r[1]), then the column type (brotli TRANSFORMS)');
+      check('function f() { const r = [1, 2.5]; return r; }', 'r', 'float64[]', 'given numbers of different widths, then a common type, no tuple');
+      check('/** @param {uint8[]} b */\nfunction f(b) { const r = [b, 1]; return r; }', 'r', '[uint8[],int32]', 'given an array and a number, then a tuple');
+      this.assertEqual(String(this.declType('/** @param {uint8[]} b */\nfunction f(b) { const r = [...b, "x"]; return r; }', 'r')).startsWith('['), false,
+        'given a spread, then no tuple (no fixed length; exceptional)', '[...b, "x"]');
+      check('/** @type {[string, int32]} */\nconst P = ["a", 1];\nfunction f() { const v = P; return v; }', 'v', '[string,int32]', 'given JSDoc @type {[string, int32]}, then the tuple');
     });
   }
 

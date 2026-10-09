@@ -341,6 +341,17 @@ test('nullable: given @returns {?int32}, when sites are collected, then the retu
   const checks = TypeSoundness.collectSites(parsed.parser, parsed.ast).flatMap(s => s.checks);
   ok(checks.some(c => c.role === 'return' && c.type === 'int32?'), JSON.stringify(checks));
 });
+test('tuple: given a mixed row, when counted, then it is typed (no site)', () => {
+  equal(sites('function f() { const r = ["", 0, " "]; const v = r[1]; return v; }').length, 0);
+});
+test('tuple: given a tuple type, when checked, then each position is checked', () => {
+  const check = TypeSoundness.checkerFor('[string,int32,string]');
+  equal(check(['', 0, ' ']), null);
+  equal(check(['', 'x', ' ']), 'element-string');
+  equal(check('abc'), 'string');
+  equal(TypeSoundness.checkerFor('[string,int32][]')([['a', 1], ['b', 2.5]]), 'element-fraction');
+});
+
 test('walk: given sites, when tallied, then every site lands in exactly one tier', () => {
   const s = sites('function f(a) { return OpCodes.XorN(a, 1) + a; }');
   const t = TypeCoverage.byTier(s);

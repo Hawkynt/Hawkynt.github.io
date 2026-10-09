@@ -303,6 +303,11 @@
       const element = ilTypeFromJSDoc(arrayOf[1]);
       return element ? element + '[]' : null;
     }
+    // A tuple `[string, int32, string]`: each position typed
+    if (t.startsWith('[') && t.endsWith(']')) {
+      const members = splitTypeArguments(t.slice(1, -1)).map(ilTypeFromJSDoc);
+      return members.length > 1 && members.every(Boolean) ? `[${members.join(',')}]` : null;
+    }
     if (!/^[A-Za-z_$][\w$.]*$/.test(t)) return null;
     // A typed array is an array of its element type, as `new Uint8Array(n)` is.
     if (Object.prototype.hasOwnProperty.call(JSDOC_TYPED_ARRAYS, t)) return JSDOC_TYPED_ARRAYS[t] + '[]';
@@ -365,8 +370,8 @@
     let depth = 0, start = 0;
     for (let i = 0; i < text.length; ++i) {
       const c = text[i];
-      if (c === '<' || c === '(' || c === '{') ++depth;
-      else if (c === '>' || c === ')' || c === '}') --depth;
+      if (c === '<' || c === '(' || c === '{' || c === '[') ++depth;
+      else if (c === '>' || c === ')' || c === '}' || c === ']') --depth;
       else if (c === ',' && depth === 0) { parts.push(text.slice(start, i).trim()); start = i + 1; }
     }
     parts.push(text.slice(start).trim());
@@ -4791,7 +4796,13 @@
 
         // Extract element type from array type (e.g., "uint8[]" → "uint8")
         let elementType = null;
-        if (objectType && typeof objectType === 'string') {
+        const tupleTypes = TypeAwareJSASTParser._tupleElements(objectType);
+        if (tupleTypes) {
+          // row[1] of a tuple is the type at that position; another index
+          // names no single position, so no single type
+          const index = transformedProperty && transformedProperty.type === 'Literal' ? transformedProperty.value : null;
+          elementType = Number.isInteger(index) && index >= 0 && index < tupleTypes.length ? tupleTypes[index] : null;
+        } else if (objectType && typeof objectType === 'string') {
           const keyed = TypeAwareJSASTParser._keyValueTypes(objectType);
           if (keyed && keyed.value)
             elementType = keyed.value;                    // table[key] of an Object<K,V>
@@ -5112,8 +5123,11 @@
             if (sourceTypeStr && typeof sourceTypeStr === 'string' && sourceTypeStr.endsWith('[]'))
               elementType = sourceTypeStr.slice(0, -2);
 
+            // `const [a, b, c] = row` of a tuple takes each position's type
+            const tupleTypes = TypeAwareJSASTParser._tupleElements(sourceTypeStr);
             let index = 0;
             for (const element of (decl.id.elements || [])) {
+              if (tupleTypes) elementType = index < tupleTypes.length ? tupleTypes[index] : null;
               if (element) {
                 const varName = element.name;
                 transformedDeclarations.push({
@@ -5274,6 +5288,55 @@
     }
 
     /**
+     * The tuple type of an array literal whose elements are of different
+     * kinds - numbers, BigInts, strings, booleans, arrays, tuples - such as
+     * `["", 0, " "]`: '[string,int32,string]', each position typed by its
+     * element. Null when the elements share a kind (an ordinary array), when
+     * one is untyped, null, a class instance, or a spread (no fixed length).
+     * @param {Object[]} elements - IL elements
+     * @returns {string|null} tuple type
+     */
+    static _tupleTypeOf(elements) {
+      if (!elements || elements.length < 2) return null;
+      const kind = t => typeof t !== 'string' ? null :
+        /^(u?int(8|16|32|64)|float(32|64)|number)$/.test(t) ? 'number' :
+        t === 'bigint' || t === 'BigInt' ? 'bigint' : t === 'string' ? 'string' : t === 'boolean' ? 'boolean' :
+        t.endsWith('[]') ? 'array' : TypeAwareJSASTParser._tupleElements(t) ? 'tuple' : null;
+      const types = [];
+      const kinds = new Set();
+      for (const el of elements) {
+        if (!el || el.type === 'SpreadElement') return null;
+        // a BigInt literal is typed by its magnitude (uint64), but is a BigInt
+        const t = el.type === 'Literal' && typeof el.value === 'bigint' ? 'bigint' : el.resultType;
+        const k = kind(t);
+        if (!k) return null;
+        kinds.add(k);
+        types.push(t);
+      }
+      return kinds.size > 1 ? `[${types.join(',')}]` : null;
+    }
+
+    /**
+     * The element types of a tuple type: '[string,int32,string]' -> ['string', 'int32', 'string'].
+     * @param {*} type - IL type
+     * @returns {string[]|null} element types, or null when type is no tuple
+     */
+    static _tupleElements(type) {
+      if (typeof type !== 'string' || type.length < 3 || type[0] !== '[' || !type.endsWith(']') || type.endsWith('[]')) return null;
+      const parts = [];
+      let depth = 0, start = 1;
+      for (let i = 1; i < type.length - 1; ++i) {
+        const c = type[i];
+        if (c === '[' || c === '<' || c === '(' || c === '{') ++depth;
+        else if (c === ']' || c === '>' || c === ')' || c === '}') { if (--depth < 0) return null; }
+        else if (c === ',' && depth === 0) { parts.push(type.slice(start, i)); start = i + 1; }
+      }
+      if (depth !== 0) return null;
+      parts.push(type.slice(start, type.length - 1));
+      return parts.every(p => p.length > 0) ? parts : null;
+    }
+
+    /**
      * Transform ArrayExpression nodes to add resultType and elementType
      * @private
      */
@@ -5302,6 +5365,13 @@
           allNonNegativeIntLiterals = false;
           break;
         }
+      }
+
+      // A row of values of different kinds (`["", 0, " "]`) has no common
+      // element type: it is a tuple, typed position by position.
+      const tuple = allNonNegativeIntLiterals ? null : TypeAwareJSASTParser._tupleTypeOf(elements);
+      if (tuple) {
+        return { ...node, elements, elementType: null, tupleTypes: TypeAwareJSASTParser._tupleElements(tuple), resultType: tuple, ilNodeType: 'ArrayLiteral' };
       }
 
       if (allNonNegativeIntLiterals) {
