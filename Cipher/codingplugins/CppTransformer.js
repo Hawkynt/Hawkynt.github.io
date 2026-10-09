@@ -2361,7 +2361,7 @@
         if (i >= args.length) return;
         const complex = p.def && !this.simpleDefault(p.def);
         const e = this.expr(args[i], p.type);
-        if (!complex && e.t.k === 'arr' && p.type.k === 'arr' && (isNumOrBool(e.t.e) || e.t.e.k === 'big') && (isNumOrBool(p.type.e) || p.type.e.k === 'big') && !sameType(e.t.e, p.type.e)) {
+        if (!complex && e.t.k === 'arr' && p.type.k === 'arr' && !sameType(e.t.e, p.type.e)) {
           // a number array of another element type: the callee works on a converted
           // copy, copied back into the caller's array (a JavaScript callee mutates it)
           const orig = this.tmp('o'), conv = this.tmp('cv');
