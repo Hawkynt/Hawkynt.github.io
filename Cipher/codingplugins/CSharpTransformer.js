@@ -21668,6 +21668,10 @@
           // registration): body `Identifier` nodes always carry the original raw name.
           this.registerVariableType(rawName, paramType);
           if (rawName !== paramName) this.registerVariableType(paramName, paramType);
+          // The body reads the parameter by the name it is declared with here, not
+          // a camelCased one an earlier pass mapped it to (A became a, CS0103)
+          if (rawName !== paramName) this.variableNameMap.set(rawName, paramName);
+          else this.variableNameMap.delete(rawName);
         }
 
         // Store constructor defaults for later use in static member initialization

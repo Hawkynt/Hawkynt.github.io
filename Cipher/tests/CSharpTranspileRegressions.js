@@ -132,6 +132,10 @@ check('scope: `const A = a` next to parameter `a` gets a distinct C# name', () =
   expectMatch(code, /\ba2\s*=.*\ba\b/, 'a renamed local a2 initialised from a');
   expectMatch(code, /return (a2 \*|JsMul\(a2,)/, 'the renamed local used afterwards');
 });
+check('scope: a constructor parameter named A is read as A (not a)', () => {
+  const code = transpile('class S {\n  /**\n   * @param {uint8[]} first - first\n   * @param {uint8[][]} A - matrix\n   */\n  constructor(first, A) { this.first = first; this.A = A; }\n}');
+  expectMatch(code, /this\.A = A;/, 'this.A = A');
+});
 check('scope: loop variable `r` next to parameter `R` does not redeclare it', () => {
   const code = transpile('function f(L, R) { let s = 0; for (let r = 0; r < 8; r++) s += r + R; return s + L; }');
   expectMatch(code, /for \(int r2 = 0; r2 < 8; r2\+\+\)/, 'the loop variable renamed to r2');
