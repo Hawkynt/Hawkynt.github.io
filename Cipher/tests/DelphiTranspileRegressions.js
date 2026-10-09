@@ -200,6 +200,11 @@ cases.case('members: a member one subclass of a framework class declares is not 
   if (/TMine\(h\)/.test(code)) throw new Error('the member is reached through TMine(h)');
 });
 sameAsJs('members: a member written on an object whose class does not declare it is kept by name', SUBCLASS_MEMBER_JS, '7 7');
+sameAsJs('members: a framework subclass field read through a framework base is the field',
+  'const { BlockCipherAlgorithm, IBlockCipherInstance, KeySize } = AlgorithmFramework;\n' +
+  'class Alg extends BlockCipherAlgorithm { constructor() { super(); this.SupportedKeySizes = [new KeySize(16, 32, 8)]; } }\n' +
+  'class Inst extends IBlockCipherInstance { constructor(a) { super(a); } /** @returns {int32} */ count() { return this.algorithm.SupportedKeySizes.length; } }\n' +
+  '/** @returns {string} */ function probe() { return String(new Inst(new Alg()).count()); }', '1');
 
 // ---------------------------------------------------------------------------
 // Control flow
