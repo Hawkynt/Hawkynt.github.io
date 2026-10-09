@@ -7720,6 +7720,42 @@
      * @param {Array} body - Program body (top-level statements)
      * @param {CSharpClass} mainClass - the generated main class
      */
+    /**
+     * A module loop that registers algorithms as a static method running it and
+     * returning what it registered, in order: its RegisterAlgorithm(x) calls
+     * collect into a list.
+     * @param {Object} loop - the IL loop statement
+     * @param {number} number - the loop's number among the module's registration loops
+     * @param {CSharpClass} mainClass - the generated main class
+     * @returns {CSharpMethodCall} the call of the method
+     */
+    registrationLoopCall(loop, number, mainClass) {
+      const name = 'RegistrationLoop' + number;
+      const method = this.transformFunctionToMethod(name, {
+        type: 'FunctionExpression', params: [], body: { type: 'BlockStatement', body: [loop] }
+      });
+      method.isStatic = true;
+      method.accessModifier = 'private';
+      method.returnType = CSharpType.Array(new CSharpType('Algorithm'));
+      if (!method.body) method.body = new CSharpBlock();
+      const redirect = n => {
+        if (!n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(redirect); return; }
+        if (n.nodeType === 'MethodCall' && n.methodName === 'RegisterAlgorithm' && n.arguments?.length === 1 &&
+            (!n.target || n.target.nodeType === 'Identifier' && n.target.name === 'AlgorithmFramework')) {
+          n.target = new CSharpIdentifier('registered');
+          n.methodName = 'Add';
+          n.arguments = [new CSharpCast(new CSharpType('Algorithm'), n.arguments[0])];
+        }
+        for (const key of Object.keys(n)) if (key !== 'sourceLocation' && key !== 'comments') redirect(n[key]);
+      };
+      redirect(method.body);
+      method.body.statements.unshift(new CSharpRawCode('var registered = new List<Algorithm>();'));
+      method.body.statements.push(new CSharpReturn(new CSharpMethodCall(new CSharpIdentifier('registered'), 'ToArray', [])));
+      mainClass.members.push(method);
+      return new CSharpMethodCall(null, name, []);
+    }
+
     emitAlgorithmRegistry(body, mainClass) {
       const isRegisterCall = expr => expr?.type === 'CallExpression' && expr.arguments?.length === 1 && (
         (expr.callee?.type === 'Identifier' && expr.callee.name === 'RegisterAlgorithm') ||
@@ -7787,6 +7823,12 @@
               loopLocals.isLoop = true;
               visit(unrolled(cloneNode(node.body), arrayName, indexName, element, index), loopLocals);
             });
+          } else {
+            // A loop over computed data (mayo.js's `for (...) RegisterAlgorithm(new
+            // MAYOAlgorithm(PARAMETER_SETS[i].name))`) registers when it runs
+            let registers = false;
+            this._walkAstNodes(node.body, n => { if (isRegisterCall(n)) registers = true; });
+            if (registers) registered.push({ registrationLoop: node });
           }
         }
       };
@@ -7804,7 +7846,9 @@
       const algorithmType = new CSharpType('Algorithm');
       // Each registered algorithm is a static field of its own (a test harness finds
       // algorithms by their static fields), listed in Algorithms in source order
+      let loopCount = 0;
       const entries = registered.map((arg, index) => {
+        if (arg.registrationLoop) return this.registrationLoopCall(arg.registrationLoop, ++loopCount, mainClass);
         const value = this.transformExpression(arg);
         if (arg.type === 'Identifier') return value;
         const field = new CSharpField(`RegisteredAlgorithm${index}`, algorithmType);
@@ -7817,7 +7861,14 @@
       const registry = new CSharpField('Algorithms', CSharpType.Array(algorithmType));
       registry.isStatic = true;
       registry.isReadOnly = true;
-      registry.initializer = new CSharpArrayCreation(algorithmType, null, entries);
+      if (loopCount === 0) registry.initializer = new CSharpArrayCreation(algorithmType, null, entries);
+      else {
+        // Single registrations and the arrays the loops register, concatenated in order
+        let all = new CSharpArrayCreation(algorithmType, null, []);
+        for (let i = 0; i < entries.length; ++i)
+          all = new CSharpMethodCall(all, 'Concat', [registered[i].registrationLoop ? entries[i] : new CSharpArrayCreation(algorithmType, null, [entries[i]])]);
+        registry.initializer = new CSharpMethodCall(all, 'ToArray', []);
+      }
       mainClass.members.push(registry);
 
       if (mainClass.members.some(m => m.name === 'AlgorithmInstance')) return;

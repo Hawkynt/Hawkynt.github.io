@@ -453,11 +453,18 @@ __DUMMY_CLASSES__
                     if (type.ContainsGenericParameters || type == typeof(ValidationHarness)) continue;
                     foreach (FieldInfo field in type.GetFields(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
                     {
-                        if (field.IsLiteral || (!IsAlgorithmType(field.FieldType) && field.FieldType != typeof(object))) continue;
+                        // The registry array holds what a registration loop registered
+                        bool registry = field.FieldType.IsArray && IsAlgorithmType(field.FieldType.GetElementType());
+                        if (field.IsLiteral || (!registry && !IsAlgorithmType(field.FieldType) && field.FieldType != typeof(object))) continue;
                         try
                         {
                             object value = field.GetValue(null);
-                            if (value != null && IsAlgorithmType(value.GetType()) && !knownAlgorithms.Contains(value)) knownAlgorithms.Add(value);
+                            if (registry && value is Array registered)
+                            {
+                                foreach (object entry in registered)
+                                    if (entry != null && !knownAlgorithms.Contains(entry)) knownAlgorithms.Add(entry);
+                            }
+                            else if (value != null && IsAlgorithmType(value.GetType()) && !knownAlgorithms.Contains(value)) knownAlgorithms.Add(value);
                         }
                         catch (Exception e)
                         {

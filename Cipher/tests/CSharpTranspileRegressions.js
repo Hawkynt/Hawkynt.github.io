@@ -942,6 +942,11 @@ const REGISTRATION_LOOP = 'const { RegisterAlgorithm, BlockCipherAlgorithm } = A
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +
   'for (let i = 0; i < SETS.length; ++i) {\n  const instance = new AAlgorithm(SETS[i].name);\n' +
   '  if (!AlgorithmFramework.Find(instance.name)) {\n    RegisterAlgorithm(instance);\n  }\n}';
+check('registry: a module loop over computed data registers into the Algorithms registry when it runs', () => {
+  const code = transpile(REGISTRATION_LOOP);
+  expectMatch(code, /registered\.Add\(\(Algorithm\)\(?instance\)?\);/, 'registered.Add((Algorithm)instance)');
+  expectMatch(code, /Algorithms = new Algorithm\[\] \{\s*\}\.Concat\(RegistrationLoop1\(\)\)\.ToArray\(\);/, 'Algorithms concatenating RegistrationLoop1()');
+});
 check('conditions: a negated dynamic call result is its truthiness', () => {
   const code = transpile(REGISTRATION_LOOP);
   expectMatch(code, /if \(!IsTruthy\(AlgorithmFramework\.Find\(instance\.Name\)\)\)/, '!IsTruthy(AlgorithmFramework.Find(...))');

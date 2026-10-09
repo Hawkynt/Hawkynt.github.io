@@ -862,9 +862,12 @@ namespace ${namespace}
         private static List<Algorithm> registry;
         private static bool scanning;
 
-        private static List<Algorithm> Scan()
+        // A registry still being initialized (its Algorithms field reads null while
+        // the module registering them runs) makes a scan incomplete
+        private static List<Algorithm> Scan(out bool complete)
         {
             var found = new List<Algorithm>();
+            complete = true;
             foreach (var type in typeof(AlgorithmFramework).Assembly.GetTypes())
             {
                 var field = type.GetField("Algorithms", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
@@ -872,9 +875,12 @@ namespace ${namespace}
                 try
                 {
                     if (field.GetValue(null) is Algorithm[] algorithms)
+                    {
                         foreach (var algorithm in algorithms) if (algorithm != null) found.Add(algorithm);
+                    }
+                    else complete = false;
                 }
-                catch (Exception) { }
+                catch (Exception) { complete = false; }
             }
             return found;
         }
@@ -884,9 +890,15 @@ namespace ${namespace}
             if (registry != null) return registry;
             // A lookup while the registry is being built (a module constant looking up
             // another algorithm during its own initialization) sees what exists so far
-            if (scanning) return Scan();
+            if (scanning) return Scan(out _);
             scanning = true;
-            try { registry = Scan(); } finally { scanning = false; }
+            try
+            {
+                var found = Scan(out var complete);
+                if (!complete) return found;
+                registry = found;
+            }
+            finally { scanning = false; }
             return registry;
         }
 
