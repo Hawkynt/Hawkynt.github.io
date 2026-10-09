@@ -1369,6 +1369,16 @@ namespace ${namespace}
         public static uint SetBit(uint value, int bitIndex, int bitValue) => SetBit(value, bitIndex, bitValue != 0);
         public static uint SetBit(uint value, int bitIndex, uint bitValue) => SetBit(value, bitIndex, bitValue != 0);
         public static uint SetBit(uint value, int bitIndex, byte bitValue) => SetBit(value, bitIndex, bitValue != 0);
+        // BytesToChars - a string whose char codes are the byte values
+        public static string BytesToChars(byte[] bytes) => new string(bytes.Select(b => (char)b).ToArray());
+        // RotL64_HL/RotR64_HL - rotate a 64-bit value held as high and low words
+        public static (uint H, uint L) RotL64_HL(uint high, uint low, int n) {
+            var v = (((ulong)high << 32) | low);
+            n &= 63;
+            v = n == 0 ? v : (v << n) | (v >> (64 - n));
+            return ((uint)(v >> 32), (uint)v);
+        }
+        public static (uint H, uint L) RotR64_HL(uint high, uint low, int n) => RotL64_HL(high, low, (64 - (n & 63)) & 63);
         // ReverseBits
         public static byte ReverseBits(byte b) {
             b = (byte)(((b & 0xF0) >> 4) | ((b & 0x0F) << 4));

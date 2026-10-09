@@ -453,6 +453,11 @@ namespace RegressionTest {
       Eq("setbit-clear", OpCodes.SetBit(0x80000001u, 31, false), 1u);
       Eq("createarray", string.Join(",", OpCodes.CreateArray(3, new BigInteger(7))), "7,7,7");
       Eq("createarray-empty", OpCodes.CreateArray(0, 1u).Length, 0);
+      // BytesToChars maps each byte to one char; RotL64_HL rotates the high:low pair
+      Eq("bytestochars", OpCodes.BytesToChars(new byte[] { 65, 0xE9 }), "Aé");
+      Eq("rotl64-hl", OpCodes.RotL64_HL(0x80000000u, 1u, 1), (0u, 3u));
+      Eq("rotl64-hl-32", OpCodes.RotL64_HL(1u, 2u, 32), (2u, 1u));
+      Eq("rotl64-hl-0", OpCodes.RotL64_HL(1u, 2u, 64), (1u, 2u));
       Console.WriteLine(failures == 0 ? "STUBS_OK" : "STUBS_FAILED");
       return failures == 0 ? 0 : 1;
     }
