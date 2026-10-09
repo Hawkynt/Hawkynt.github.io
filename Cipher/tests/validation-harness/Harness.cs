@@ -375,6 +375,15 @@ __DUMMY_CLASSES__
                 return list;
             }
             if (under.IsEnum) return Enum.ToObject(under, Convert.ToInt64(value, CultureInfo.InvariantCulture));
+            // A JavaScript BigInt member takes any integral vector value, and the reverse
+            if (under == typeof(System.Numerics.BigInteger))
+            {
+                if (value is string text) return System.Numerics.BigInteger.Parse(text, CultureInfo.InvariantCulture);
+                if (value is ulong unsignedValue) return new System.Numerics.BigInteger(unsignedValue);
+                if (value is IConvertible) return new System.Numerics.BigInteger(Convert.ToDecimal(value, CultureInfo.InvariantCulture));
+            }
+            if (value is System.Numerics.BigInteger big && typeof(IConvertible).IsAssignableFrom(under))
+                return Convert.ChangeType((decimal)big, under, CultureInfo.InvariantCulture);
             if (value is IConvertible && typeof(IConvertible).IsAssignableFrom(under))
                 return Convert.ChangeType(value, under, CultureInfo.InvariantCulture);
             throw new InvalidCastException(value.GetType().Name + " cannot be converted to " + target.Name);
