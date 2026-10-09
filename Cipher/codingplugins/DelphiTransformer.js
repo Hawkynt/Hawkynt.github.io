@@ -157,7 +157,9 @@
     if (TYPED_ARRAYS[s]) return tArr(T[TYPED_ARRAYS[s]] || parseType(TYPED_ARRAYS[s]));
     if (ENUM_TYPES.has(s)) return tEnum(s);
     if (s === 'Map') return tMap(T.any, T.any);
-    if (s === 'Set' || s === 'DataView') return T.any;
+    // a DataView is its bytes: a view of the buffer it was made over
+    if (s === 'DataView') return tArr(T.uint8);
+    if (s === 'Set') return T.any;
     if (/^[A-Za-z_$][\w$]*$/.test(s)) return tClass(s);
     return T.any;
   }
@@ -4406,7 +4408,47 @@
       }
       fail('Map.' + name + ' is not supported', node);
     }
-    xDataViewCreation(node) { fail('DataView is not supported', node); }
+    xDataViewCreation(node) {
+      const bytes = tArr(T.uint8);
+      const buf = this.ex(node.buffer, bytes);
+      if (!isArr(buf.t)) fail('DataView over ' + buf.t.key, node);
+      let e = this.conv(buf, bytes);
+      if (node.byteOffset || node.byteLength) {
+        const off = node.byteOffset ? this.conv(this.ex(node.byteOffset), T.int32) : A.lit(0);
+        e = node.byteLength
+          ? A.call(A.mem(e, 'Subarray'), [off, A.bin('+', off, this.conv(this.ex(node.byteLength), T.int32))])
+          : A.call(A.mem(e, 'Subarray'), [off]);
+      }
+      return { e, t: bytes };
+    }
+
+    /** view.getUint16(offset, littleEndian) and the other DataView getters. */
+    xDataViewRead(node) {
+      const view = this.conv(this.ex(node.view), tArr(T.uint8));
+      const off = this.conv(this.ex(node.offset), T.int32);
+      const le = node.littleEndian ? this.truthy(this.ex(node.littleEndian)) : A.lit('False');
+      if (/^getFloat/.test(node.method)) return { e: A.call(node.bits === 32 ? 'JsDVGetF32' : 'JsDVGetF64', [view, off, le]), t: T.f64 };
+      const bytes = node.bits / 8;
+      const raw = A.call('JsDVGet', [view, off, A.lit(bytes), le]);
+      const own = node.bits === 64 ? (node.signed ? T.int64 : T.uint64) : parseType((node.signed ? 'int' : 'uint') + node.bits);
+      return { e: A.cast(own.pas, raw), t: own };
+    }
+
+    /** view.setUint16(offset, value, littleEndian) and the other DataView setters. */
+    xDataViewWrite(node) {
+      const view = this.conv(this.ex(node.view), tArr(T.uint8));
+      const off = this.conv(this.ex(node.offset), T.int32);
+      const le = node.littleEndian ? this.truthy(this.ex(node.littleEndian)) : A.lit('False');
+      if (/^setFloat/.test(node.method)) {
+        const v = this.conv(this.ex(node.value), T.f64);
+        return { e: A.call(node.bits === 32 ? 'JsDVSetF32' : 'JsDVSetF64', [view, off, v, le]), t: T.void, stmtOk: true };
+      }
+      const bytes = node.bits / 8;
+      const own = node.bits === 64 ? (node.signed ? T.int64 : T.uint64) : parseType((node.signed ? 'int' : 'uint') + node.bits);
+      // the value wraps to the width, as ToIntN / ToUintN do
+      const v = A.cast('UInt64', this.conv(this.ex(node.value), own));
+      return { e: A.call('JsDVSet', [view, off, A.lit(bytes), v, le]), t: T.void, stmtOk: true };
+    }
     xDeleteExpression(node) { fail('delete is not supported', node); }
 
     // =====================================================================

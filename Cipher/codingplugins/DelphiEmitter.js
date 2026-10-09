@@ -549,6 +549,12 @@ function JsUIntMod(A, B: UInt64): UInt64;
 function JsNumToStr(D: Double): string;
 function JsNumToStrRadix(D: Double; Radix: Int32): string;
 function JsToFixed(D: Double; Digits: Int32): string;
+function JsDVGet(const B: TA_U8; Off, Bytes: Int32; LE: Boolean): UInt64;
+procedure JsDVSet(const B: TA_U8; Off, Bytes: Int32; V: UInt64; LE: Boolean);
+function JsDVGetF32(const B: TA_U8; Off: Int32; LE: Boolean): Double;
+function JsDVGetF64(const B: TA_U8; Off: Int32; LE: Boolean): Double;
+procedure JsDVSetF32(const B: TA_U8; Off: Int32; V: Double; LE: Boolean);
+procedure JsDVSetF64(const B: TA_U8; Off: Int32; V: Double; LE: Boolean);
 function JsIntToStrRadix(V: Int64; Radix: Int32): string;
 function JsUIntToStrRadix(V: UInt64; Radix: Int32): string;
 function JsBoolToStr(B: Boolean): string;
@@ -1941,6 +1947,64 @@ function JsIntToStrRadix(V: Int64; Radix: Int32): string;
 begin
   if V < 0 then Result := '-' + JsUIntToStrRadix(UInt64(-(V + 1)) + 1, Radix)
   else Result := JsUIntToStrRadix(UInt64(V), Radix);
+end;
+
+{ ---- DataView: a byte view, Bytes octets at Off in either byte order ---- }
+
+procedure JsDVCheck(const B: TA_U8; Off, Bytes: Int32);
+begin
+  if (Off < 0) or (Int64(Off) + Bytes > B.length) then
+    raise EJsRangeError.Create('Offset is outside the bounds of the DataView');
+end;
+
+function JsDVGet(const B: TA_U8; Off, Bytes: Int32; LE: Boolean): UInt64;
+var I: Int32;
+begin
+  JsDVCheck(B, Off, Bytes);
+  Result := 0;
+  if LE then
+    for I := Bytes - 1 downto 0 do Result := (Result shl 8) or B[Off + I]
+  else
+    for I := 0 to Bytes - 1 do Result := (Result shl 8) or B[Off + I];
+end;
+
+procedure JsDVSet(const B: TA_U8; Off, Bytes: Int32; V: UInt64; LE: Boolean);
+var I: Int32;
+begin
+  JsDVCheck(B, Off, Bytes);
+  for I := 0 to Bytes - 1 do
+  begin
+    if LE then B[Off + I] := Byte(V) else B[Off + Bytes - 1 - I] := Byte(V);
+    V := V shr 8;
+  end;
+end;
+
+function JsDVGetF32(const B: TA_U8; Off: Int32; LE: Boolean): Double;
+var W: UInt32; F: Single absolute W;
+begin
+  W := UInt32(JsDVGet(B, Off, 4, LE));
+  Result := F;
+end;
+
+function JsDVGetF64(const B: TA_U8; Off: Int32; LE: Boolean): Double;
+var W: UInt64; F: Double absolute W;
+begin
+  W := JsDVGet(B, Off, 8, LE);
+  Result := F;
+end;
+
+procedure JsDVSetF32(const B: TA_U8; Off: Int32; V: Double; LE: Boolean);
+var F: Single; W: UInt32 absolute F;
+begin
+  F := V;
+  JsDVSet(B, Off, 4, W, LE);
+end;
+
+procedure JsDVSetF64(const B: TA_U8; Off: Int32; V: Double; LE: Boolean);
+var F: Double; W: UInt64 absolute F;
+begin
+  F := V;
+  JsDVSet(B, Off, 8, W, LE);
 end;
 
 function JsToFixed(D: Double; Digits: Int32): string;

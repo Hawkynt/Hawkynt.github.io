@@ -179,6 +179,13 @@ sameAsJs('array: a callee writing into an Array.from copy writes into that copy,
   '/** @param {uint8[]} out */ function bump(out) { out[0] = out[0] + 1; }\n' +
   '/** @param {uint8[]} r @returns {string} */ function f(r) { let h = Array.from(r); bump(h); return h.join(",") + "|" + r.join(","); }\n' +
   '/** @returns {string} */ function probe() { return f([1, 2]); }');
+sameAsJs('array: a DataView reads and writes floats and integers in both byte orders',
+  '/** @param {float64} v @returns {string} */ function f(v) {\n' +
+  '  const buf = new ArrayBuffer(12); const view = new DataView(buf);\n' +
+  '  view.setFloat64(0, v, true); view.setUint16(8, 0xBEEF); view.setInt16(10, -2, true);\n' +
+  '  const bytes = []; for (let i = 0; i < 12; i++) bytes.push(view.getUint8(i));\n' +
+  '  return bytes.join(",") + "|" + view.getFloat64(0, true) + "|" + view.getUint16(8, true) + "|" + view.getInt16(10, true) + "|" + view.getFloat32(8); }\n' +
+  '/** @returns {string} */ function probe() { let r = f(-1.5); try { r += new DataView(new ArrayBuffer(2)).getUint32(0); } catch (e) { r += "|range"; } return r; }');
 sameAsJs('array: Array(n) without new makes n slots',
   '/** @returns {string} */ function probe() { const a = Array(3).fill(7); return a.length + ":" + a.join(","); }');
 
