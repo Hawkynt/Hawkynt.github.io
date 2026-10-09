@@ -11045,7 +11045,9 @@
         const args = node.arguments.map(arg => this.transformExpression(arg));
 
         // Array.isArray(x) -> ref(x) eq 'ARRAY'
-        if (objName === 'Array' && methodName === 'isArray') {
+        // ArrayBuffer.isView(x): a typed array is an array reference in Perl
+        // as well, so both are the same test.
+        if ((objName === 'Array' && methodName === 'isArray') || (objName === 'ArrayBuffer' && methodName === 'isView')) {
           return new PerlBinaryExpression(
             new PerlCall('ref', [args[0]]),
             'eq',

@@ -171,6 +171,37 @@ check('modules: a module used only through qualified calls imports nothing', () 
   expectMatch(code, /use POSIX \(\);/, 'use POSIX ();');
 });
 
+// ---------------------------------------------------------------------------
+// Packages: module-scope functions live in package main
+// ---------------------------------------------------------------------------
+check('packages: a class calling a helper declared below it reaches main::helper', () => {
+  const js = 'class Cell { constructor() { /** @type {int32} */ this.v = triple(2); } }\n' +
+    '/** @param {int32} x @returns {int32} */ function triple(x) { return x * 3; }';
+  expectMatch(transpile(js), /main::triple\(2\)/, 'main::triple(2)');
+  if (!hasPerl()) return 'skip';
+  expectOutput(runPerl(js, 'print Cell->new()->{v}, "\\n";'), '6');
+});
+
+// ---------------------------------------------------------------------------
+// OpCodes runtime: every OpCodes function an algorithm calls exists
+// ---------------------------------------------------------------------------
+check('OpCodes runtime: conversions, hex tables, secure random bytes and BitStream word writers', () => {
+  if (!hasPerl()) return 'skip';
+  const js = '/** @returns {string} */ function probe() {\n' +
+    '  const s = OpCodes.CreateBitStream(); s.writeUint32LE(0x01020304); s.writeUint16BE(0x0506);\n' +
+    '  const pairs = OpCodes.CreateUint64ArrayFromHex(["0x0123456789ABCDEF", "FF"]);\n' +
+    '  return [OpCodes.ToShort(0x18000), OpCodes.UintToByte(0x1FF), OpCodes.BytesToChars([72, 105]),\n' +
+    '    OpCodes.BytesToWords32BE([1, 2, 3, 4, 5]).join("/"), pairs[0][0], pairs[0][1], pairs[1][1],\n' +
+    '    OpCodes.SecureRandomBytes(5).length, s.toArray().join("/"), Number(OpCodes.ToLong(-5n))].join(","); }';
+  // JavaScript: probe() is "-32768,255,Hi,16909060/83886080,19088743,2309737967,255,5,4/3/2/1/5/6,-5"
+  expectOutput(runPerl(js, 'print main::probe(), "\\n";'), '-32768,255,Hi,16909060/83886080,19088743,2309737967,255,5,4/3/2/1/5/6,-5');
+});
+
+check('builtins: ArrayBuffer.isView accepts an array as Array.isArray does', () => {
+  const js = '/** @param {uint8[]} k @returns {boolean} */ function ok(k) { return ArrayBuffer.isView(k) || Array.isArray(k); }';
+  expectMatch(transpile(js), /ref\(\$k\) eq 'ARRAY'.*ref\(\$k\) eq 'ARRAY'/, "two ref($k) eq 'ARRAY' tests");
+});
+
 /**
  * PERL: run every regression case.
  * @param {object} options - { verbose }
