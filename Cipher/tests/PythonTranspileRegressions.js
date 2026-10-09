@@ -435,6 +435,12 @@ check('division: a quotient assigned to a float64 keeps its fraction, an int32 o
   return expectOutput(runPython(js, 'print(f(7, 2))'), ['[3.5, 3]']);
 });
 
+check('division: a quotient pushed onto a float64[] keeps its fraction, onto an int32[] truncates', () => {
+  const js = '/** @param {int32} f */\nfunction g(f) {\n  /** @type {float64[]} */\n  const keys = [];\n  /** @type {int32[]} */\n  const slots = [];\n  for (let k = 0; k < f; k++) { keys.push((2 * k + 1) / (2 * f)); slots.push((2 * k + 1) / 2); }\n  return [keys, slots]; }';
+  // Given tANS-style claim keys (2k+1)/(2f) and an integer slot list
+  return expectOutput(runPython(js, 'r = g(2)\nprint(list(r[0]), list(r[1]))'), ['[0.25, 0.75] [0, 1]']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

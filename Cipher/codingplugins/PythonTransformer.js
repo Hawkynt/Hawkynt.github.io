@@ -11571,6 +11571,14 @@ class OpCodes(metaclass=_OpCodesMeta):
       // Handle multiple values (push with multiple arguments)
       const values = node.values || (node.value ? [node.value] : []);
 
+      // A value pushed onto a float array is stored as a float, as a value
+      // assigned to a float variable is (the IL records only the latter)
+      const floatElement = /^(float32|float64)\[\]$/.exec(node.array && node.array.resultType || '');
+      if (floatElement) {
+        for (const v of values)
+          if (v && v.type === 'BinaryExpression' && v.operator === '/' && !v.contextType) v.contextType = floatElement[1];
+      }
+
       // Check if any values are SpreadElements
       const hasSpread = values.some(v => v?.type === 'SpreadElement');
 
