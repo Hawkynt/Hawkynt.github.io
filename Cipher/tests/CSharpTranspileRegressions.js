@@ -287,6 +287,11 @@ check('arrays: a local declared empty and filled by index grows on each store', 
   const code = transpile('/** @returns {uint32[]} keys */\nfunction keys() { /** @type {uint32[]} */ const rk = []; for (let i = 0; i < 4; ++i) rk[i] = i * 3; return rk; }');
   expectMatch(code, /OpCodes\.SetGrow<uint>\(ref rk, i, /, 'OpCodes.SetGrow<uint>(ref rk, i, ...)');
 });
+check('arrays: a field assigned empty and filled by index grows on each store', () => {
+  const code = transpile('class C {\n  constructor() { /** @type {uint32[]} */ this.rk = []; }\n' +
+    '  /** @param {int32} n - count */\n  fill(n) { this.rk = []; for (let i = 0; i < n; ++i) this.rk[i] = i; }\n}');
+  expectMatch(code, /\(this\.Rk = OpCodes\.Grown<uint>\(this\.Rk, i\)\)\[i\] = /, '(this.Rk = OpCodes.Grown<uint>(this.Rk, i))[i] = ...');
+});
 check('push: an array parameter the callee grows is passed by ref', () => {
   const code = transpile('/**\n * @param {uint8[]} dest - grown\n * @param {uint8} v - value\n */\nfunction emit(dest, v) { dest.push(v); }\n' +
     '/** @returns {uint8[]} bytes */\nfunction build() { /** @type {uint8[]} */ const res = []; emit(res, 1); emit(res, 2); return res; }');
@@ -541,6 +546,9 @@ namespace RegressionTest {
       Eq("setgrow", string.Join(",", grown), "0,0,7");
       OpCodes.SetGrow(ref grown, 0, 1u);
       Eq("setgrow-inside", string.Join(",", grown), "1,0,7");
+      Eq("grown", OpCodes.Grown(new byte[1], 3).Length, 4);
+      var kept = new byte[5];
+      Eq("grown-same", ReferenceEquals(OpCodes.Grown(kept, 2), kept), true);
       // BytesToChars maps each byte to one char; RotL64_HL rotates the high:low pair
       Eq("bytestochars", OpCodes.BytesToChars(new byte[] { 65, 0xE9 }), "Aé");
       Eq("rotl64-hl", OpCodes.RotL64_HL(0x80000000u, 1u, 1), (0u, 3u));

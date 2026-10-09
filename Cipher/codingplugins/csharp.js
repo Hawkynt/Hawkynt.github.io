@@ -1645,6 +1645,12 @@ namespace ${namespace}
             arr[index] = value;
             return value;
         }
+        // Grown - the array grown to hold the index (itself when it already does)
+        public static T[] Grown<T>(T[] arr, int index) {
+            if (arr == null) return new T[index + 1];
+            if (index >= arr.Length) Array.Resize(ref arr, index + 1);
+            return arr;
+        }
         public static T[] CreateArray<T>(int length, T value) {
             var arr = new T[length];
             Array.Fill(arr, value);

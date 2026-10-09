@@ -11240,6 +11240,20 @@
      * @param {Object} bodyNode - IL function body
      * @returns {Set<string>} JS local names
      */
+    preScanGrowableArrayFields(classBody) {
+      const emptyFields = new Set();
+      const stored = new Set();
+      const isEmptyArray = n => n && (((n.type === 'ArrayExpression' || n.type === 'ArrayLiteral') && (n.elements || []).length === 0) ||
+        (n.type === 'ArrayCreation' && !n.size && !n.length));
+      const fieldOf = n => n?.type === 'ThisPropertyAccess' ? (typeof n.property === 'string' ? n.property : n.property?.name) : null;
+      this._walkAstNodes(classBody, node => {
+        if (node.type !== 'AssignmentExpression' || node.operator !== '=') return;
+        if (fieldOf(node.left) && isEmptyArray(node.right)) emptyFields.add(fieldOf(node.left));
+        if (node.left?.type === 'MemberExpression' && node.left.computed && fieldOf(node.left.object)) stored.add(fieldOf(node.left.object));
+      });
+      return new Set([...emptyFields].filter(name => stored.has(name)));
+    }
+
     preScanGrowableArrayLocals(bodyNode) {
       const emptyLocals = new Set();
       const stored = new Set();
@@ -14797,6 +14811,29 @@
             call.typeArguments = [arrayType.elementType];
             return call;
           }
+        }
+      }
+      // The same for a field (a property, so no ref): (this.F = OpCodes.Grown(this.F, i))[i] = v,
+      // where the index has no side effect to repeat
+      const sideEffectFree = n => !!n && (n.type === 'Identifier' || n.type === 'Literal' ||
+        (n.type === 'BinaryExpression' && sideEffectFree(n.left) && sideEffectFree(n.right)) ||
+        (n.type === 'ThisPropertyAccess'));
+      if (node.operator === '=' && node.left?.type === 'MemberExpression' && node.left.computed &&
+          node.left.object?.type === 'ThisPropertyAccess' && sideEffectFree(node.left.property) &&
+          this.growableArrayFields?.has(typeof node.left.object.property === 'string' ? node.left.object.property : node.left.object.property?.name)) {
+        const arrayType = this.inferFullExpressionType(node.left.object);
+        if (arrayType?.isArray && arrayType.elementType) {
+          const fieldExpr = this.transformExpression(node.left.object);
+          const index = this.ensureIntIndex(this.transformExpression(node.left.property), node.left.property);
+          const prevElement = this.currentArrayElementType;
+          if (arrayType.elementType.isArray) this.currentArrayElementType = arrayType.elementType.elementType;
+          let value = this.transformExpression(node.right);
+          this.currentArrayElementType = prevElement;
+          value = this.castIfNeeded(value, this.inferFullExpressionType(node.right), arrayType.elementType);
+          const grown = new CSharpMethodCall(new CSharpIdentifier('OpCodes'), 'Grown', [fieldExpr, index]);
+          grown.typeArguments = [arrayType.elementType];
+          const target = new CSharpElementAccess(new CSharpAssignment(fieldExpr, '=', grown), index);
+          return new CSharpAssignment(target, '=', value);
         }
       }
 
@@ -19767,6 +19804,9 @@
       // The IL type of every field and accessor of this class
       const prevClassILMemberTypes = this.classILMemberTypes;
       this.classILMemberTypes = this.collectILMemberTypes(classBody);
+      // Fields assigned an empty array and stored into by index (they grow in JavaScript)
+      const prevGrowableArrayFields = this.growableArrayFields;
+      this.growableArrayFields = this.preScanGrowableArrayFields(classBody);
 
       // Pre-scan every method (not just the constructor) for `this.field.push(<scalar>)`
       // evidence - see preScanFieldPushScalarElementTypes's own doc comment (vin-checksum's
@@ -20565,6 +20605,7 @@
       // and consumed for this class only; nested/sibling classes shouldn't see it).
       this.jaggedInstanceFields = prevJaggedInstanceFields;
       this.classILMemberTypes = prevClassILMemberTypes;
+      this.growableArrayFields = prevGrowableArrayFields;
       this.fieldPushScalarElementTypes = prevFieldPushScalarElementTypes;
       this.dynamicInstanceFields = prevDynamicInstanceFields;
       this.callSiteArgumentHints = prevCallSiteArgumentHints;
