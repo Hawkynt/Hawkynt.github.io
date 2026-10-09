@@ -943,6 +943,13 @@ check('members: a file class member named by a string is read by name (CS0021)',
     'function sizeOf(set, field) {\n  /** @type {int32} */\n  const size = set[field];\n  return size;\n}');
   expectMatch(code, /JsMember\(set, field\)/, 'JsMember(set, field)');
 });
+check('accessors: a setter taking a string for a getter returning a class makes the property dynamic (CS0029)', () => {
+  const code = transpile('class Group {\n  constructor() {\n    /** @type {int32} */\n    this.bits = 0;\n  }\n}\n' +
+    'class Holder {\n  constructor() {\n    /** @type {Group} */\n    this._group = new Group();\n  }\n' +
+    '  /** @param {string} name - group name */\n  set group(name) { this._group = new Group(); }\n' +
+    '  /** @returns {Group} the group */\n  get group() { return this._group; }\n}');
+  expectMatch(code, /public dynamic Group\b/, 'public dynamic Group');
+});
 const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +

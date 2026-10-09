@@ -21241,6 +21241,8 @@
       }
 
       // Transform all class members (signatures already pre-registered above)
+      const prevClassBody = this.currentClassBody;
+      this.currentClassBody = classBody;
       for (const item of classBody) {
         if (item.type === 'MethodDefinition') {
           if (item.kind === 'constructor') {
@@ -21297,6 +21299,7 @@
           if (staticCtor) csClass.members.push(staticCtor);
         }
       }
+      this.currentClassBody = prevClassBody;
 
       // Restore previous class context
       this.currentClass = prevClass;
@@ -22077,6 +22080,18 @@
           const fn = methodNode.value;
           propType = isGetter ? this.mapILType(this.jsDocILType(fn?.typeInfo?.returns))
             : this.mapILType(fn?.params?.[0]?.resultType);
+          // A setter taking another kind of value than its getter returns
+          // (diffie-hellman.js: `set group(selector)` a string, `get group()` a
+          // DHGroup) has no single C# type: the property is dynamic (CS0029)
+          const sibling = (this.currentClassBody || []).find(m => m !== methodNode && m.type === 'MethodDefinition' &&
+            m.kind === (isGetter ? 'set' : 'get') && m.key?.name === methodNode.key?.name && !!m.static === !!methodNode.static);
+          const siblingType = !sibling ? null : isGetter ? this.mapILType(sibling.value?.params?.[0]?.resultType)
+            : this.mapILType(this.jsDocILType(sibling.value?.typeInfo?.returns));
+          const kind = t => t.isArray ? 'array' : this.localClassNames.has(t.name) ? 'class:' + t.name : t.name === 'string' ? 'string' : null;
+          if (propType && siblingType && kind(propType) !== kind(siblingType) && (kind(propType) || kind(siblingType)) &&
+              !(kind(propType) === 'array' && kind(siblingType) === 'array')) {
+            propType = CSharpType.Dynamic();
+          }
         }
 
         // A backing-field-per-accessor property (e.g. `get salt() { return
