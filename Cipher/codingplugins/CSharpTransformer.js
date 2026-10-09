@@ -11524,7 +11524,9 @@
           aliases.push(expr);
       }
       // The other direction: const lfsr = this._lfsr; lfsr.shift(); lfsr.push(b)
-      const isField = n => n?.type === 'ThisPropertyAccess' || (n?.type === 'MemberExpression' && !n.computed && n.object?.type === 'ThisExpression');
+      // (also a row of one: const x = this.registers[r]; x.shift(); x.push(f))
+      const isField = n => n?.type === 'ThisPropertyAccess' || (n?.type === 'MemberExpression' && !n.computed && n.object?.type === 'ThisExpression') ||
+        (n?.type === 'MemberExpression' && n.computed && isField(n.object) && ['Identifier', 'Literal'].includes(n.property?.type));
       for (const stmt of bodyNode.body) {
         if (stmt.type !== 'VariableDeclaration') continue;
         for (const d of stmt.declarations) {

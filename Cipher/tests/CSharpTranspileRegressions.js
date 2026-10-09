@@ -651,6 +651,11 @@ check('arrays: a local taken from a field and pushed to is stored back into the 
     '  insert(b) { const r = this.reg; r.shift(); r.push(b); }\n}');
   expectMatch(code, /r = r\.Append\([^;]*\)\.ToArray\(\);\s*this\.Reg = r;/, 'this.Reg = r after the push');
 });
+check('arrays: a local taken from a row of a field table and pushed to is stored back into that row', () => {
+  const code = transpile('class L {\n  constructor() { /** @type {uint8[][]} */ this.regs = [[0, 1], [1, 0]]; }\n  /**\n   * @param {int32} r - r\n   * @param {uint8} b - b\n   */\n' +
+    '  clock(r, b) { const x = this.regs[r]; x.shift(); x.push(b); }\n}');
+  expectMatch(code, /x = x\.Append\([^;]*\)\.ToArray\(\);\s*this\.Regs\[r\] = x;/, 'this.Regs[r] = x after the push');
+});
 check('arrays: a return before the field is first assigned the local is not synced (the local is not declared yet)', () => {
   const code = transpile('class D {\n  constructor() { /** @type {uint32[]} */ this.deck = [1, 2]; }\n' +
     '  /** @param {int32} n - n */\n  cut(n) {\n    if (n <= 0) return;\n    /** @type {uint32[]} */\n    const rebuilt = [];\n' +
