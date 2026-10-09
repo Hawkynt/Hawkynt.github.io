@@ -670,7 +670,12 @@
             return;
           }
           case 'AssignmentExpression': {
-            if (node.left && node.left.type === 'Identifier') ref(node.left, true); else walk(node.left);
+            if (node.left && node.left.type === 'Identifier') {
+              ref(node.left, true);
+              // The value stored: its IL type is the assignment's
+              const sym = node.left.__sym;
+              if (sym) (sym.stores || (sym.stores = [])).push(node);
+            } else walk(node.left);
             walk(node.right);
             return;
           }
@@ -1241,7 +1246,7 @@
         t = this.jt(il, o);
         // The IL types each site of a variable on its own; the variable holds them all
         if (sym.kind !== 'param' && !(sym.node && sym.node.init && this.holdsTypedArray([sym.node.init])))
-          t = this.joinSites(t, (sym.sites || []).map(n => n.resultType ? this.jt(n.resultType, o) : null).filter(Boolean));
+          t = this.joinSites(t, [...(sym.sites || []), ...(sym.stores || [])].map(n => n.resultType ? this.jt(n.resultType, o) : null).filter(Boolean));
         if (sym.holdsObjects && T.isPrimArray(t)) t = 'JsArray<Object>';
         if (t === 'void') t = 'Object';
       }
