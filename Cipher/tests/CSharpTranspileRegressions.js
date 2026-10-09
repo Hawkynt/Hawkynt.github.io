@@ -252,6 +252,16 @@ check('push: every argument of a multi-argument push is appended, in order', () 
 });
 
 // ---------------------------------------------------------------------------
+// Arrays grown through a parameter
+// ---------------------------------------------------------------------------
+check('push: an array parameter the callee grows is passed by ref', () => {
+  const code = transpile('/**\n * @param {uint8[]} dest - grown\n * @param {uint8} v - value\n */\nfunction emit(dest, v) { dest.push(v); }\n' +
+    '/** @returns {uint8[]} bytes */\nfunction build() { /** @type {uint8[]} */ const res = []; emit(res, 1); emit(res, 2); return res; }');
+  expectMatch(code, /Emit\(ref byte\[\] dest/, 'Emit(ref byte[] dest, ...)');
+  expectMatch(code, /Emit\(ref res,/, 'Emit(ref res, ...)');
+});
+
+// ---------------------------------------------------------------------------
 // Operator grouping
 // ---------------------------------------------------------------------------
 check('grouping: a parenthesized || inside && keeps its parentheses', () => {

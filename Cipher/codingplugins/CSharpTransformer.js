@@ -7371,6 +7371,7 @@
         // castArgumentsToParameterTypes had no signature to look up and silently fell
         // back to generic name-based guesses at every call site (CS1503/CS0029).
         this.currentClass = mainClass;
+        this.refArrayParams = this.preScanRefArrayParams(jsAst);
         this.preScanModuleBindingReferences(jsAst.body);
         // Register module-scope BigInteger constants (e.g. asymmetric-crypto curve
         // primes/generators declared `const P = 0xFFFF...FC2Fn;`) as static fields
@@ -10711,7 +10712,11 @@
           const literalDefaultNode = param?.right || param?.defaultValue || null;
           const hasLiteralDefault = !!(literalDefaultNode && literalDefaultNode.type === 'Literal');
 
-          paramInfos.push({ paramName, paramType, originalParamName, isNullable: paramType.isArray || paramType.name === 'object' || paramType.name === 'string', inheritedDefaultValue, hasLiteralDefault, literalDefaultNode });
+          // An array parameter the method grows is passed by ref (no default)
+          const isRef = !inheritedSig && paramType.isArray && !!this.refArrayParams?.has(`${pascalName}#${i}`);
+          paramInfos.push({ paramName, paramType, originalParamName, isRef,
+            isNullable: !isRef && (paramType.isArray || paramType.name === 'object' || paramType.name === 'string'),
+            inheritedDefaultValue, hasLiteralDefault: !isRef && hasLiteralDefault, literalDefaultNode });
         }
       }
 
@@ -10863,8 +10868,9 @@
 
       // Add parameters to method, using inherited default values or nullable defaults
       for (let i = 0; i < paramInfos.length; i++) {
-        const { paramName, paramType, isNullable, inheritedDefaultValue, hasLiteralDefault, literalDefaultNode } = paramInfos[i];
+        const { paramName, paramType, isNullable, inheritedDefaultValue, hasLiteralDefault, literalDefaultNode, isRef } = paramInfos[i];
         const csParam = new CSharpParameter(paramName, paramType);
+        csParam.isRef = !!isRef;
 
         // Use inherited default value from base class if available
         if (inheritedDefaultValue !== null && inheritedDefaultValue !== undefined) {
@@ -16406,7 +16412,7 @@
       // Qualified where a member every framework subclass inherits has the same name:
       // C# finds an inherited member before an enclosing class's static method.
       const owner = this.moduleFunctionNames.has(pascalFuncName) && this.isInheritableMemberName(pascalFuncName) ? new CSharpIdentifier(this.mainClassName || 'GeneratedClass') : null;
-      return new CSharpMethodCall(owner, pascalFuncName, castedArgs);
+      return new CSharpMethodCall(owner, pascalFuncName, this.applyRefArguments(pascalFuncName, castedArgs, args));
     }
 
     transformNewExpression(node) {
@@ -22912,7 +22918,78 @@
         node.arguments || []
       );
 
-      return new CSharpMethodCall(new CSharpThis(), methodName, castedArgs);
+      return new CSharpMethodCall(new CSharpThis(), methodName, this.applyRefArguments(methodName, castedArgs, transformedArgs));
+    }
+
+    /**
+     * Find the array parameters a method grows in place (`output.push(...)` on a
+     * parameter): the caller sees the growth in JavaScript, so in C# - where a
+     * grown array is a new array - the parameter is passed by ref. Only where
+     * every call passes a local variable, which C# can pass by ref.
+     * @param {Object} jsAst - IL Program
+     * @returns {Set<string>} "PascalMethod#index" of every ref parameter
+     */
+    preScanRefArrayParams(jsAst) {
+      const refParams = new Set();
+      if (!jsAst || !Array.isArray(jsAst.body)) return refParams;
+      const GROWING = new Set(['ArrayAppend', 'ArrayUnshift', 'ArraySplice', 'ArrayShift', 'ArrayPop']);
+      const moduleNames = new Set();
+      for (const node of jsAst.body) {
+        if (node.type === 'VariableDeclaration') for (const d of node.declarations || []) if (d.id?.name) moduleNames.add(d.id.name);
+        if ((node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration') && node.id?.name) moduleNames.add(node.id.name);
+      }
+      // Candidates: "PascalMethod#index" -> parameter name
+      const candidates = new Map();
+      const consider = (name, fn) => {
+        const params = fn?.params || [];
+        params.forEach((param, index) => {
+          const paramName = param?.name || param?.left?.name;
+          if (!paramName || !fn.body) return;
+          let grows = false;
+          this._walkAstNodes(fn.body, n => {
+            if (GROWING.has(n.type) && n.array?.type === 'Identifier' && n.array.name === paramName) grows = true;
+          });
+          if (grows) candidates.set(`${this.toPascalCase(name)}#${index}`, paramName);
+        });
+      };
+      this._walkAstNodes(jsAst.body, node => {
+        if (node.type === 'FunctionDeclaration' && node.id?.name) consider(node.id.name, node);
+        else if (node.type === 'MethodDefinition' && node.kind === 'method' && node.key?.name) consider(node.key.name, node.value);
+      });
+      if (candidates.size === 0) return refParams;
+      // Every call must pass a local variable at that position
+      const valid = new Set(candidates.keys());
+      this._walkAstNodes(jsAst.body, node => {
+        let name = null;
+        if (node.type === 'ThisMethodCall') name = node.method;
+        else if (node.type === 'CallExpression' && node.callee?.type === 'Identifier') name = node.callee.name;
+        if (!name) return;
+        const pascal = this.toPascalCase(name);
+        (node.arguments || []).forEach((arg, index) => {
+          const key = `${pascal}#${index}`;
+          if (!valid.has(key)) return;
+          if (arg?.type !== 'Identifier' || moduleNames.has(arg.name)) valid.delete(key);
+        });
+      });
+      for (const key of valid) refParams.add(key);
+      return refParams;
+    }
+
+    /**
+     * Pass a local variable by ref where the callee grows that array parameter
+     * (see preScanRefArrayParams).
+     * @param {string} methodName - PascalCase callee name
+     * @param {Array} args - C# arguments (after casts)
+     * @param {Array} plainArgs - C# arguments before casts
+     * @returns {Array} the arguments
+     */
+    applyRefArguments(methodName, args, plainArgs) {
+      if (!this.refArrayParams?.size) return args;
+      return args.map((arg, index) => {
+        if (!this.refArrayParams.has(`${methodName}#${index}`)) return arg;
+        const plain = plainArgs[index];
+        return plain?.nodeType === 'Identifier' ? new CSharpIdentifier('ref ' + plain.name) : arg;
+      });
     }
 
     /**
