@@ -1002,7 +1002,13 @@ function phpRunArguments() {
   const ext = tool ? path.join(path.dirname(tool.command), 'ext') : null;
   // E_ALL without E_WARNING, E_NOTICE and E_DEPRECATED
   const argv = ['-d', 'memory_limit=-1', '-d', 'display_errors=stderr', '-d', 'error_reporting=24565'];
-  if (ext && fs.existsSync(ext)) argv.push('-d', `extension_dir=${ext}`, '-d', 'extension=gmp');
+  if (ext && fs.existsSync(ext)) {
+    argv.push('-d', `extension_dir=${ext}`, '-d', 'extension=gmp');
+    // The JIT of the opcache PHP ships with: the big-number and PQC algorithms
+    // run many times faster with it
+    if (fs.existsSync(path.join(ext, process.platform === 'win32' ? 'php_opcache.dll' : 'opcache.so')))
+      argv.push('-d', 'zend_extension=opcache', '-d', 'opcache.enable_cli=1', '-d', 'opcache.jit=tracing', '-d', 'opcache.jit_buffer_size=128M');
+  }
   return argv;
 }
 
