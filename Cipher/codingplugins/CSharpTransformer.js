@@ -5535,6 +5535,8 @@
       if (node.callee.type === 'MemberExpression') {
         const obj = node.callee.object;
         const method = node.callee.property.name || node.callee.property.value;
+        // /re/.test(s) is Regex.IsMatch: a bool (not an object compared to null)
+        if (method === 'test' && obj?.type === 'Literal' && obj.regex) return CSharpType.Bool();
 
         // AlgorithmFramework.Find(name)/etc - resolves at emission time to the
         // `dynamic`-returning stub method (see transformCallExpression's identical

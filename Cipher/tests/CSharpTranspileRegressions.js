@@ -173,6 +173,11 @@ check('string.slice/substr: negative bounds and lengths go through JsSlice/JsSub
   expectMatch(code, /JsSlice\(s, 3\)/, 'JsSlice(s, 3)');
   expectMatch(code, /JsSubstr\(s, 1, 2\)/, 'JsSubstr(s, 1, 2) (the length was dropped)');
 });
+check('regex: /re/.test(s) as a condition is the bool of Regex.IsMatch, not compared to null', () => {
+  const code = transpile('/**\n * @param {string} c - c\n * @returns {int32} r\n */\nfunction f(c) { if (/[A-Z]/.test(c)) return 1; return 0; }');
+  expectMatch(code, /if \(System\.Text\.RegularExpressions\.Regex\.IsMatch\(c, "\[A-Z\]"\)\)/, 'if (Regex.IsMatch(c, "[A-Z]"))');
+  expectNoMatch(code, /IsMatch\([^)]*\) != null/, 'IsMatch(...) != null (always true)');
+});
 check('number.toString(2) still uses Convert.ToString', () => {
   const code = transpile('function f(q) { const n = q | 0; return n.toString(2); }');
   expectMatch(code, /Convert\.ToString\(/, 'Convert.ToString(...)');
