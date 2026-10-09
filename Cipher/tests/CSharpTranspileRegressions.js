@@ -1039,6 +1039,10 @@ namespace RegressionTest {
       Eq("jsmul-rounded", FrameworkFunctions.JsMul(1099087573u, 2865916745u), unchecked((uint)(ulong)(1099087573.0 * 2865916745.0)));
       Eq("jsmul-neg", FrameworkFunctions.JsMul(-3, 5), -15);
       Eq("jsmul-long", FrameworkFunctions.JsMul(4294967295L, 4294967295L), unchecked((long)(ulong)(4294967295.0 * 4294967295.0)));
+      // ConstantTimeCompare takes the length to compare, as OpCodes.js does
+      Eq("ctc-equal", OpCodes.ConstantTimeCompare(new byte[] { 1, 2 }, new byte[] { 1, 2 }, 2), true);
+      Eq("ctc-differ", OpCodes.ConstantTimeCompare(new byte[] { 1, 2 }, new byte[] { 1, 3 }), false);
+      Eq("ctc-lengths", OpCodes.ConstantTimeCompare(new byte[] { 1, 2 }, new byte[] { 1, 2, 3 }, 2), false);
       // JsSlice/JsSubstr are string.prototype.slice/substr
       Eq("sslice-neg", FrameworkFunctions.JsSlice("abcdef", 0, -2), "abcd");
       Eq("sslice-past", FrameworkFunctions.JsSlice("abc", 1, 9), "bc");

@@ -1373,8 +1373,15 @@ namespace ${namespace}
             for (int i = 0; i < a.Length; ++i) diff |= a[i] ^ b[i];
             return diff == 0;
         }
-        // Alias for SecureCompare
-        public static bool ConstantTimeCompare(byte[] a, byte[] b) => SecureCompare(a, b);
+        // OpCodes.ConstantTimeCompare: the first length elements (0: the shorter
+        // array's length), missing ones as 0, and the lengths must match too
+        public static bool ConstantTimeCompare(byte[] a, byte[] b, int length = 0) {
+            if (length == 0) length = Math.Min(a.Length, b.Length);
+            int diff = 0;
+            for (int i = 0; i < length; ++i) diff |= (i < a.Length ? a[i] : 0) ^ (i < b.Length ? b[i] : 0);
+            diff |= a.Length ^ b.Length;
+            return diff == 0;
+        }
         // Fill array with value
         public static void Fill(byte[] arr, byte value) { for (int i = 0; i < arr.Length; ++i) arr[i] = value; }
         public static void Fill(uint[] arr, uint value) { for (int i = 0; i < arr.Length; ++i) arr[i] = value; }
