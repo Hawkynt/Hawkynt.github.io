@@ -1844,8 +1844,13 @@
           default: return { c: `(${a} ${op} ${b})`, t: T.big };
         }
       }
-      // fixed 64-bit BigInt arithmetic (IL types the BigInt operands uint64/int64)
-      if (node && node.bigint === true && ((isInt(L.t) && L.t.bits === 64) || (isInt(R.t) && R.t.bits === 64) || (isInt(rt) && rt.bits === 64))) {
+      // fixed 64-bit BigInt arithmetic (IL types the BigInt operands uint64/int64): a
+      // node marked BigInt, or a bitwise operator the IL types 64-bit (on Numbers it
+      // would be a 32-bit result) - OpCodes.XorN and friends inline unmarked
+      const intLike = t => isInt(t) || t.k === 'bool';
+      const wide64 = isInt(rt) && rt.bits === 64 && intLike(L.t) && intLike(R.t) &&
+        (['&', '|', '^', '<<', '>>', '>>>'].includes(op) || (['/', '%'].includes(op) && (L.t.bits === 64 || R.t.bits === 64)));
+      if (wide64 || (node && node.bigint === true && ((isInt(L.t) && L.t.bits === 64) || (isInt(R.t) && R.t.bits === 64) || (isInt(rt) && rt.bits === 64)))) {
         const ct = isInt(rt) && rt.bits === 64 ? rt : ((L.t.bits === 64 && !L.t.signed) || (R.t.bits === 64 && !R.t.signed) ? T.u64 : T.i64);
         const c = this.cpp(ct);
         const a = this.cv(L, ct), b = this.cv(R, ct);
@@ -1854,6 +1859,7 @@
           case '%': return { c: `js::imod<${c}>(${a}, ${b})`, t: ct };
           case '<<': return { c: `js::shl64<${c}>(${a}, (int64_t)(${b}))`, t: ct };
           case '>>': return { c: `js::shr64<${c}>(${a}, (int64_t)(${b}))`, t: ct };
+          case '>>>': return { c: `static_cast<${c}>(js::shr64<uint64_t>(static_cast<uint64_t>(${a}), (int64_t)(${b})))`, t: ct };
           case '**': return { c: `static_cast<${c}>(js::BigInt(${a}).pow(js::BigInt(${b})).lowU64())`, t: ct };
           default: return { c: `static_cast<${c}>(${a} ${op} ${b})`, t: ct };
         }
@@ -1979,7 +1985,7 @@
           return { c: `${this.cv(a, T.any)}.toNumber()`, t: T.f64 };
         case '~':
           if (a.t.k === 'big') return { c: `(~${a.c})`, t: T.big };
-          if (node.bigint && isInt(a.t) && a.t.bits === 64) return { c: `static_cast<${this.cpp(a.t)}>(~${a.c})`, t: a.t };
+          if (isInt(a.t) && a.t.bits === 64 && (node.bigint || (isInt(this.type(node.resultType)) && this.type(node.resultType).bits === 64))) return { c: `static_cast<${this.cpp(a.t)}>(~${a.c})`, t: a.t };
           if (isInt(a.t) && a.t.bits <= 32 && !a.t.signed && isInt(this.type(node.resultType)) && !this.type(node.resultType).signed) return { c: `(~static_cast<uint32_t>(${a.c}))`, t: T.u32 };
           return { c: `(~js::i32(${a.c}))`, t: T.i32 };
       }
