@@ -492,6 +492,26 @@ check('harness: the dummy cipher of a mode overrides CreateInstance with the blo
   expectMatch(harness.code, /public override IBlockCipherInstance CreateInstance\(bool isInverse = false\)/, 'CreateInstance returning IBlockCipherInstance');
   expectNoMatch(harness.code, /class ValidationDummyCipherInstance[\s\S]*public int BlockSize \{/, 'a redeclared BlockSize hiding the framework one');
 });
+check('harness: a dependency is appended after the main code without stubs, its using directives at the top', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-bundle-'));
+  try {
+    const dependency = path.join(dir, 'dep-cipher.js');
+    fs.writeFileSync(dependency, 'class DepCipher extends BlockCipherAlgorithm { constructor() { super(); this.name = "Dep"; } }\nRegisterAlgorithm(new DepCipher());\n');
+    const main = transpile('class MainMode extends Algorithm { constructor() { super(); this.name = "Main"; } }\nRegisterAlgorithm(new MainMode());', true);
+    const bundled = quiet(() => Validation.bundleCSharpDependencies(main, [dependency], plugin, undefined));
+    if (!bundled.success) throw new Error(bundled.error);
+    expectMatch(bundled.code, /class dep_cipher_depGenerated[\s\S]*class DepCipher\b/, 'the dependency\'s own wrapper class holding DepCipher');
+    if (bundled.code.indexOf('dep_cipher_depGenerated') < bundled.code.indexOf('class MainMode')) throw new Error('the dependency precedes the main code');
+    if ((bundled.code.match(/public class Algorithm\b/g) || []).length !== 1) throw new Error('expected the framework stubs exactly once');
+    expectNoMatch(bundled.code, /\}\s*\n\s*using /, 'a using directive after code');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+check('harness: a dependency that fails to transpile names the dependency', () => {
+  const bundled = quiet(() => Validation.bundleCSharpDependencies('', [path.join(os.tmpdir(), 'no-such-dependency.js')], plugin, undefined));
+  if (bundled.success || !/dependency .*no-such-dependency\.js/.test(bundled.error)) throw new Error('expected a failure naming the dependency, got ' + JSON.stringify(bundled));
+});
 
 // ---------------------------------------------------------------------------
 // Runtime stubs (needs the .NET SDK)

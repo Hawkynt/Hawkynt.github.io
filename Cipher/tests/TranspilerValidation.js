@@ -541,6 +541,30 @@ function bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptio
 }
 
 /**
+ * C#: every algorithm file the reference loaded is transpiled as a dependency
+ * (no framework stubs, no Main) and appended after the main code, whose stubs
+ * and registry serve them all; each file's classes nest in a class of their
+ * own, so their names cannot collide. Any using directive goes to the top.
+ * @returns {{success: boolean, code?: string, error?: string}}
+ */
+function bundleCSharpDependencies(code, dependencies, plugin, parserOptions) {
+  const usings = new Set();
+  const hoist = text => text.replace(/^using\s+[^;=]+;[ \t]*\r?\n/gm, line => { usings.add(line.trim()); return ''; });
+  let suffix = '';
+  for (const depPath of dependencies) {
+    const depName = path.basename(depPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_dep';
+    try {
+      const depCode = transpileOne(fs.readFileSync(depPath, 'utf-8'), plugin, depName, { asDependency: true }, parserOptions);
+      suffix += '\n' + hoist(depCode) + '\n';
+    } catch (e) {
+      return { success: false, error: `dependency ${path.relative(ALGORITHMS_DIR, depPath).replace(/\\/g, '/')}: ${e.message}` };
+    }
+  }
+  const missing = [...usings].filter(line => !code.includes(line));
+  return { success: true, code: (missing.length ? missing.join('\n') + '\n' : '') + code + suffix };
+}
+
+/**
  * Transpile an algorithm file and, where the language bundles them, the
  * algorithm files it loaded while its reference ran.
  * @param {string} algorithmFile - absolute path
@@ -568,6 +592,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
   } catch (e) {
     return { success: false, error: e.message };
   }
+  if (language === 'csharp') return bundleCSharpDependencies(code, dependencies, plugin, parserOptions);
   if (!BUNDLE_LANGUAGES.has(language)) return { success: true, code };
 
   // JavaScript embeds the real AlgorithmFramework.js/OpCodes.js as a single
@@ -2063,5 +2088,5 @@ if (require.main === module) {
 module.exports = {
   run, validateFile, vectorPlan, harnessSpec, generateTestHarness, parseHarnessOutput,
   errorClass, summarize, firstError, transpileAlgorithm, frameworkSurface, testCompilation, executeCode,
-  detectCompilers, probeTool, LANGUAGE_COMPILERS
+  detectCompilers, probeTool, LANGUAGE_COMPILERS, bundleCSharpDependencies
 };
