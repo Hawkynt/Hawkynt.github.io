@@ -1017,6 +1017,14 @@ check('typed arrays: a registered int member named like bytes is a size, not an 
   expectMatch(code, /byte\[\] pk = new byte\[p\.PkBytes\];/, 'new byte[p.PkBytes]');
   expectMatch(code, /return new byte\[this\.PkBytes\];/, 'new byte[this.PkBytes]');
 });
+check('registry: a module constant named algorithms leaves the registry RegisteredAlgorithms (CS0102)', () => {
+  const code = transpile('const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
+    'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +
+    '/** @type {BlockCipherAlgorithm[]} */\nconst algorithms = [new AAlgorithm("A-1"), new AAlgorithm("A-2")];\n' +
+    'for (let i = 0; i < algorithms.length; ++i) {\n  if (!AlgorithmFramework.Find(algorithms[i].name)) RegisterAlgorithm(algorithms[i]);\n}');
+  expectMatch(code, /Algorithm\[\] RegisteredAlgorithms = /, 'RegisteredAlgorithms');
+  expectMatch(code, /AlgorithmInstance = RegisteredAlgorithms\.FirstOrDefault\(\);/, 'AlgorithmInstance from RegisteredAlgorithms');
+});
 const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +

@@ -7879,7 +7879,10 @@
         mainClass.members.push(field);
         return new CSharpIdentifier(field.name);
       });
-      const registry = new CSharpField('Algorithms', CSharpType.Array(algorithmType));
+      // A module constant `algorithms` (ripemd.js's list its loop registers) already
+      // holds the name; the registry is then RegisteredAlgorithms
+      const registryName = mainClass.members.some(m => m.name === 'Algorithms') ? 'RegisteredAlgorithms' : 'Algorithms';
+      const registry = new CSharpField(registryName, CSharpType.Array(algorithmType));
       registry.isStatic = true;
       registry.isReadOnly = true;
       if (loopCount === 0) registry.initializer = new CSharpArrayCreation(algorithmType, null, entries);
@@ -7896,7 +7899,10 @@
       const first = new CSharpField('AlgorithmInstance', algorithmType);
       first.isStatic = true;
       first.isReadOnly = true;
-      first.initializer = new CSharpElementAccess(new CSharpIdentifier('Algorithms'), CSharpLiteral.Int(0));
+      // (a loop may register nothing when run, so it takes the first if any)
+      first.initializer = loopCount === 0
+        ? new CSharpElementAccess(new CSharpIdentifier(registryName), CSharpLiteral.Int(0))
+        : new CSharpMethodCall(new CSharpIdentifier(registryName), 'FirstOrDefault', []);
       mainClass.members.push(first);
     }
 

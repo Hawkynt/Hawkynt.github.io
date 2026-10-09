@@ -870,7 +870,10 @@ namespace ${namespace}
             complete = true;
             foreach (var type in typeof(AlgorithmFramework).Assembly.GetTypes())
             {
-                var field = type.GetField("Algorithms", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                // The registry is Algorithms, or RegisteredAlgorithms where a module
+                // constant of the module holds that name
+                var field = type.GetField("RegisteredAlgorithms", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+                    ?? type.GetField("Algorithms", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
                 if (field == null || field.FieldType != typeof(Algorithm[])) continue;
                 try
                 {
