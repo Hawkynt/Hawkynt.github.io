@@ -904,7 +904,11 @@
         return forEffect ? T.void : T.any;
       }
       visit(fnNode.body);
-      if (returns.length === 0) return T.void;
+      if (returns.length === 0) {
+        // a body that only throws (an abstract method) still has the declared result its overrides return
+        const doc = declared || (fnNode.typeInfo && parseType(jsDocTypeName(fnNode.typeInfo.returns)));
+        return doc && !isNullT(doc) && !isAnyT(doc) ? doc : T.void;
+      }
       for (const r of returns) {
         const t = parseType(r.contextType);
         if (t && !isNullT(t) && !isAnyT(t)) return t;
