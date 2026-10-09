@@ -141,6 +141,11 @@ check('scope: loop variable `r` next to parameter `R` does not redeclare it', ()
 // ---------------------------------------------------------------------------
 // Field typing
 // ---------------------------------------------------------------------------
+check('locals: a local declared without a value takes its JSDoc @type', () => {
+  const code = transpile('/**\n * @param {uint32[]} S - s\n * @param {int32} k - k\n * @returns {uint32} r\n */\n' +
+    'function f(S, k) { /** @type {int32[]} */\n  let idx;\n  if (k === 2) idx = [1, 2]; else idx = [3, 4];\n  return S[idx[0]]; }');
+  expectMatch(code, /int\[\] idx = Array\.Empty<int>\(\);/, 'int[] idx');
+});
 check('fields: two fields differing only in case keep their own values', () => {
   const code = transpile('class P {\n  constructor() { /** @type {int32} */ this.N = 8; /** @type {int32} */ this.n = 2 * this.N; }\n' +
     '  /** @returns {int32} sum */\n  sum() { return this.n + this.N; }\n}');

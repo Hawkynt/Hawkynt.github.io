@@ -12346,8 +12346,12 @@
           this.registerVariableType(originalName, isMethodCallTuple ? inferredType : type);
         } else {
           // No initializer - C# var requires an initializer, so we need an explicit type
-          // JSDoc @type has highest priority
-          if (jsdocType && jsdocType.name !== 'object') {
+          // The IL's declared type (its JSDoc @type) has highest priority
+          const ilDeclared = decl.declaredType ? this.mapILType(decl.declaredType) : null;
+          if (ilDeclared && ilDeclared.name !== 'object') {
+            type = ilDeclared;
+            initializer = this.getDefaultValueForType(type);
+          } else if (jsdocType && jsdocType.name !== 'object') {
             type = jsdocType;
             // Provide a default initializer for the type
             initializer = this.getDefaultValueForType(type);
