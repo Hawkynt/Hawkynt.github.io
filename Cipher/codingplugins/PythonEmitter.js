@@ -542,6 +542,12 @@
       if (node.literalType === 'hex') {
         return `0x${node.value.toString(16).toUpperCase()}`;
       }
+      // An integer-valued Number past 2^53 prints in JS as a rounded decimal
+      // (2^64 as 18446744073709552000), which Python reads as a different
+      // exact int; spell out the double's exact value instead.
+      if (node.literalType === 'int' && typeof node.value === 'number' &&
+          Number.isInteger(node.value) && !Number.isSafeInteger(node.value))
+        return BigInt(node.value).toString();
       return String(node.value);
     }
 

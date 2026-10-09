@@ -375,6 +375,18 @@ check('bytes: hex, ANSI and typed-array constructors give mutable arrays', () =>
   return expectOutput(runPython(js, 'print([list(x) for x in f()])'), ['[[11, 11], [65, 7], [44, 2], [1, 305419896]]']);
 });
 
+// ---------------------------------------------------------------------------
+// Number semantics
+// ---------------------------------------------------------------------------
+check('literal: an integer past 2^53 and the 64-bit Unpack mask keep their exact value', () => {
+  const js = '/** @param {uint64} n */\nfunction f(n) { /** @type {float64} */ const big = 18446744073709551616; return [OpCodes.Unpack64BE(n * 8), big]; }';
+  // Given 2^64 as a Number literal (JS prints it 18446744073709552000) and a 64-bit unpack
+  const code = transpile(js);
+  expectNoMatch(code, /18446744073709552000/, 'a rounded decimal spelling of 2^64');
+  // Then the unpacked bytes are not masked by a wrong constant, and the literal is 2^64
+  return expectOutput(runPython(js, 'r = f(4)\nprint(list(r[0]), r[1] == 2 ** 64)'), ['[0, 0, 0, 0, 0, 0, 0, 32] True']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

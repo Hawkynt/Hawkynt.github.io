@@ -11449,12 +11449,12 @@ class OpCodes(metaclass=_OpCodesMeta):
 
       // Calculate mask based on byte count to ensure value fits
       // For 4 bytes: 0xFFFFFFFF, for 8 bytes: 0xFFFFFFFFFFFFFFFF, etc.
+      // A BigInt: as a Number, 2^64 - 1 would round up to 2^64.
       const mask = (1n << BigInt(bits)) - 1n;
-      const maskValue = Number(mask);
 
       // Mask the value to ensure it's unsigned and fits in the byte count
       // (value & mask).to_bytes(byteCount, byteOrder)
-      const maskedValue = new PythonBinaryExpression(value, '&', PythonLiteral.Int(maskValue));
+      const maskedValue = new PythonBinaryExpression(value, '&', PythonLiteral.Int(mask));
 
       // Wrap in list() to get a list of bytes that can be concatenated
       return new PythonCall(
