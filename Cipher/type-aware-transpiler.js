@@ -4992,7 +4992,8 @@
      * @private
      */
     _commonTypeOf(nodes) {
-      const isIntLiteral = n => n && n.type === 'Literal' && typeof n.value === 'number' && Number.isInteger(n.value);
+      const isIntLiteral = n => n && n.type === 'Literal' &&
+        ((typeof n.value === 'number' && Number.isInteger(n.value)) || typeof n.value === 'bigint');
       const ordered = [...nodes.filter(n => n && !isIntLiteral(n)), ...nodes.filter(isIntLiteral)];
       let common = null;
       let only = null;                   // the node common came from, while it is just one
@@ -5021,8 +5022,16 @@
 
       // An integer literal is typed int32 only by default: it takes the other
       // side's type when its value fits there (`c ? 0 : u32` is uint32).
+      // A BigInt literal (`0n`, typed uint64 by its magnitude) likewise fits a
+      // 64-bit or BigInt side.
       const fits = (node, type) => {
-        if (!node || node.type !== 'Literal' || typeof node.value !== 'number' || !Number.isInteger(node.value)) return false;
+        if (!node || node.type !== 'Literal') return false;
+        if (typeof node.value === 'bigint') {
+          if (type === 'bigint' || type === 'BigInt') return true;
+          const wide = { uint64: [0n, 0xFFFFFFFFFFFFFFFFn], int64: [-0x8000000000000000n, 0x7FFFFFFFFFFFFFFFn] }[type];
+          return !!wide && node.value >= wide[0] && node.value <= wide[1];
+        }
+        if (typeof node.value !== 'number' || !Number.isInteger(node.value)) return false;
         const range = TypeAwareJSASTParser.INTEGER_RANGES[type];
         return range ? node.value >= range[0] && node.value <= range[1] : /^float(32|64)$/.test(type);
       };
@@ -5031,6 +5040,9 @@
 
       // Numeric type widening: the common type must hold every value of both.
       const integer = t => /^u?int(8|16|32|64)$/.test(t);
+      // An integer and a BigInt that may exceed 64 bits: only bigint holds both.
+      const big = t => t === 'bigint' || t === 'BigInt';
+      if ((big(type1) && (integer(type2) || big(type2))) || (big(type2) && integer(type1))) return 'bigint';
       const float = t => t === 'float32' || t === 'float64';
       const bits = t => parseInt(t.match(/\d+/)[0], 10);
       if (integer(type1) && integer(type2)) {

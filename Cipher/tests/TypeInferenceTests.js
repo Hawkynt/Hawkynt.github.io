@@ -1817,6 +1817,13 @@ class TypeInferenceTestSuite {
       this.assertEqual(this.inferType(nums + 'let x = w; return x += w; }', this.findReturnArg), 'uint64',
         'given uint64 += uint64, then the compound result is uint64', 'x += w');
 
+      // A conditional holds both branches, whichever comes first
+      const big = '/** @param {BigInt} a\n * @param {BigInt} P\n * @param {uint64} w\n * @param {int64} q\n * @param {boolean} c */\nfunction f(a, P, w, q, c) {\n';
+      check(big + 'const x = a === 0n ? 0n : P - a; return x; }', 'x', 'bigint', 'given c ? 0n : BigInt - BigInt, then bigint (was uint64 from the first branch)');
+      check(big + 'const x = c ? P - a : 0n; return x; }', 'x', 'bigint', 'given c ? BigInt : 0n, then bigint (branch order does not matter)');
+      check(big + 'const x = c ? 0n : q; return x; }', 'x', 'int64', 'given c ? 0n : int64, then int64 (the BigInt literal fits)');
+      check(big + 'const x = c ? w : a; return x; }', 'x', 'bigint', 'given c ? uint64 : BigInt, then bigint');
+
     });
   }
 
