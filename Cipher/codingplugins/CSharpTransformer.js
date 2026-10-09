@@ -7620,6 +7620,7 @@
       // AlgorithmFramework.Find/RegisterAlgorithm/GetAll resolve to the runtime's
       // registry class (csharp.js), which looks up every bundled algorithm.
 
+      this.applyRefArgumentsEverywhere(unit);
       return unit;
     }
 
@@ -23857,6 +23858,8 @@
         let name = null;
         if (node.type === 'ThisMethodCall') name = node.method;
         else if (node.type === 'CallExpression' && node.callee?.type === 'Identifier') name = node.callee.name;
+        // obj.method(x) and Class.method(x) too (see applyRefArgumentsEverywhere)
+        else if (node.type === 'CallExpression' && node.callee?.type === 'MemberExpression' && !node.callee.computed) name = node.callee.property?.name;
         if (!name) return;
         const pascal = this.toPascalCase(name);
         (node.arguments || []).forEach((arg, index) => {
@@ -23867,6 +23870,32 @@
       });
       for (const key of valid) refParams.add(key);
       return refParams;
+    }
+
+    /**
+     * Passes by ref every local given for a ref array parameter at a call through
+     * an object or class (chain.findMatchRuns(..., maxLengths), Grammar._number(rule,
+     * live)) - the direct and this.method() calls are handled where they are built.
+     * @param {Object} root - the C# compilation unit, changed in place
+     */
+    applyRefArgumentsEverywhere(root) {
+      if (!this.refArrayParams?.size) return;
+      const seen = new Set();
+      const visit = node => {
+        if (!node || typeof node !== 'object' || seen.has(node)) return;
+        seen.add(node);
+        if (node.nodeType === 'MethodCall' && Array.isArray(node.arguments)) {
+          node.arguments = node.arguments.map((arg, index) =>
+            this.refArrayParams.has(`${node.methodName}#${index}`) && arg?.nodeType === 'Identifier' && !String(arg.name).startsWith('ref ')
+              ? new CSharpIdentifier('ref ' + arg.name) : arg);
+        }
+        for (const key of Object.keys(node)) {
+          const value = node[key];
+          if (Array.isArray(value)) value.forEach(visit);
+          else if (value && typeof value === 'object') visit(value);
+        }
+      };
+      visit(root);
     }
 
     /**

@@ -164,6 +164,12 @@ check('methods: a parameter a caller may leave out defaults (JavaScript passes u
     '  absorb(data, offset, length) { this.n = (offset || 0) + (length || data.length); }\n  /** @param {uint8[]} d - d */\n  run(d) { this.absorb(d); }\n}');
   expectMatch(code, /Absorb\(byte\[\] data = (null|default), int offset = (0|default), int length = (0|default)\)/, 'Absorb with defaults for every parameter');
 });
+check('methods: a static method growing an array parameter gets it by ref through Class.method(local)', () => {
+  const code = transpile('class Lz {\n  /**\n   * @param {uint8[]} out - out\n   * @param {uint8} b - b\n   */\n  static put(out, b) { out.push(b); }\n}\n' +
+    '/** @returns {uint8[]} r */\nfunction f() { /** @type {uint8[]} */ const out = []; Lz.put(out, 1); return out; }');
+  expectMatch(code, /Put\(ref byte\[\] @?out/, 'Put(ref byte[] out, ...)');
+  expectMatch(code, /Lz\.Put\(ref @?out, /, 'Lz.Put(ref out, ...)');
+});
 check('methods: no default before a ref parameter (CS1737)', () => {
   const code = transpile('/**\n * @param {int32[]} values - v\n * @param {int32[]} overflow - o\n * @returns {int32[]} r\n */\n' +
     'function enc(values, overflow) { for (let i = 0; i < values.length; i++) overflow[i + 4] = values[i]; return values; }\n' +
