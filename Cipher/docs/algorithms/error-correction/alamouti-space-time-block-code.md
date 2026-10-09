@@ -49,57 +49,57 @@
 
 | Field | Value |
 | --- | --- |
-| `input` | `0100` |
-| `expected` | `01000001` |
+| `input` | `00010000` |
+| `expected` | `0001000000000001` |
 
 **Vector 2** — [Alamouti encoding: [0, 1] -> [0, 1; -1, 0]](https://en.wikipedia.org/wiki/Alamouti_space%E2%80%93time_code)
 
 | Field | Value |
 | --- | --- |
-| `input` | `0001` |
-| `expected` | `[0,1,-1,0]` |
+| `input` | `00000001` |
+| `expected` | `00000001ffff0000` |
 
 **Vector 3** — [Alamouti encoding: [1, 1] -> [1, 1; -1, 1]](https://en.wikipedia.org/wiki/Alamouti_space%E2%80%93time_code)
 
 | Field | Value |
 | --- | --- |
-| `input` | `0101` |
-| `expected` | `[1,1,-1,1]` |
+| `input` | `00010001` |
+| `expected` | `00010001ffff0001` |
 
 **Vector 4** — [Alamouti encoding: [-1, 1] -> [-1, 1; -1, -1]](https://ieeexplore.ieee.org/document/730453)
 
 | Field | Value |
 | --- | --- |
-| `input` | `[-1,1]` |
-| `expected` | `[-1,1,-1,-1]` |
+| `input` | `ffff0001` |
+| `expected` | `ffff0001ffffffff` |
 
 **Vector 5** — [Alamouti encoding: [2, -2] -> [2, -2; 2, 2]](https://ieeexplore.ieee.org/document/730453)
 
 | Field | Value |
 | --- | --- |
-| `input` | `[2,-2]` |
-| `expected` | `[2,-2,2,2]` |
+| `input` | `0002fffe` |
+| `expected` | `0002fffe00020002` |
 
 **Vector 6** — [Alamouti encoding: [0, 0] -> [0, 0; 0, 0]](https://en.wikipedia.org/wiki/Alamouti_space%E2%80%93time_code)
 
 | Field | Value |
 | --- | --- |
-| `input` | `0000` |
-| `expected` | `00000000` |
+| `input` | `00000000` |
+| `expected` | `0000000000000000` |
 
 **Vector 7** — [IEEE 802.11n pattern: [3, 4]](https://standards.ieee.org/standard/802_11n-2009.html)
 
 | Field | Value |
 | --- | --- |
-| `input` | `0304` |
-| `expected` | `[3,4,-4,3]` |
+| `input` | `00030004` |
+| `expected` | `00030004fffc0003` |
 
 **Vector 8** — [3GPP LTE pattern: [-2, 3]](https://www.3gpp.org/technologies/keywords-acronyms/98-lte)
 
 | Field | Value |
 | --- | --- |
-| `input` | `[-2,3]` |
-| `expected` | `[-2,3,-3,-2]` |
+| `input` | `fffe0003` |
+| `expected` | `fffe0003fffdfffe` |
 
 ---
 
