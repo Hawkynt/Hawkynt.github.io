@@ -168,6 +168,20 @@ sameAsJs('members: a member no class of the static type declares is written and 
   '/** @param {Box} b @returns {int32} */ function g(b) { b.extra = 5; return b.extra + b.v; }\n' +
   '/** @returns {string} */ function probe() { return String(g(new Box())); }');
 
+const SUBCLASS_MEMBER_JS = 'const { IHashFunctionInstance } = AlgorithmFramework;\n' +
+  'class Mine extends IHashFunctionInstance { constructor() { super(null); this.extra = 1; } }\n' +
+  'class Other extends IHashFunctionInstance { constructor() { super(null); } }\n' +
+  '/** @param {IHashFunctionInstance} h @returns {int32} */ function g(h) { h.extra = 7; return h.extra; }\n' +
+  '/** @returns {string} */ function probe() { return g(new Other()) + " " + g(new Mine()); }';
+cases.case('members: a member one subclass of a framework class declares is not reached by an unchecked cast', () => {
+  // Given a framework-typed parameter whose object may be any subclass (another unit's, from a registry)
+  // When a member only one subclass here declares is written and read
+  // Then no hard cast to that subclass is emitted, and both objects behave like JavaScript objects
+  const code = transpile(SUBCLASS_MEMBER_JS, 'ProbeCast');
+  if (/TMine\(h\)/.test(code)) throw new Error('the member is reached through TMine(h)');
+});
+sameAsJs('members: a member written on an object whose class does not declare it is kept by name', SUBCLASS_MEMBER_JS, '7 7');
+
 // ---------------------------------------------------------------------------
 // Control flow
 // ---------------------------------------------------------------------------

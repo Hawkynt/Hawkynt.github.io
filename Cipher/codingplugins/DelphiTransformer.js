@@ -2098,6 +2098,13 @@
           return { e: A.call('JsObjGet', [obj.e, A.lit(pasString(name))]), t: T.any, dynamicMember: { obj: obj.e, name, set: 'JsObjSet' } };
         }
         if (m.kind === 'method') fail(`method ${name} used as a value`, node);
+        if (m.castTo && c.isFramework) {
+          // a framework-typed value may come from another unit (a registry
+          // lookup): only a run-time lookup by name is sure to reach the member
+          const t = m.type || T.any;
+          const read = A.call('JsObjGet', [obj.e, A.lit(pasString(name))]);
+          return { e: isAnyT(t) ? read : this.fromJsValue(read, t), t, dynamicMember: { obj: obj.e, name, set: 'JsObjSet' } };
+        }
         const owner = m.owner;
         const base = m.static ? A.id(owner.pas) : (m.castTo ? A.cast(m.castTo, obj.e) : obj.e);
         return { e: A.mem(base, m.pas), t: m.type || T.any, lvalue: true, member: m, objE: base };
@@ -3166,6 +3173,14 @@
         }
         const params = m.params || [];
         const args = this.args(argNodes, params, node);
+        if (m.castTo && c.isFramework && !m.static) {
+          // as for members: the object may be another unit's subclass
+          const dynArgs = args.map((a, i) => this.toJsValue({ e: a, t: params[i] ? params[i].type : T.any }));
+          const call = A.call('JsObjCall', [obj.e, A.lit(pasString(name)), A.arr(dynArgs)]);
+          const ret = m.ret || T.void;
+          if (ret.k === 'void') return { e: call, t: T.any, stmtOk: true };
+          return { e: isAnyT(ret) ? call : this.fromJsValue(call, ret), t: ret, stmtOk: true };
+        }
         const base = m.static ? A.id(m.owner.pas) : (m.castTo ? A.cast(m.castTo, obj.e) : obj.e);
         const e = A.call(A.mem(base, m.pas), args);
         const ret = m.ret || T.void;
