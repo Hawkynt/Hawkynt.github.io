@@ -949,9 +949,39 @@
         return this.fn.ret.k === 'void' ? [new CppExpressionStatement(e.c)] : [new CppReturn(this.cv(e, this.fn.ret))];
       }
       const stmts = [];
+      if (this.fn) this.fn.pushTypes = this.collectPushTypes(body);
       this.hoistVars(body, stmts);
       for (const s of body.body || []) stmts.push(...this.stmt(s));
       return stmts;
+    }
+
+    /** The IL types of the values pushed onto each local array, by name */
+    collectPushTypes(body) {
+      const map = new Map();
+      const visit = n => {
+        if (!n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(visit); return; }
+        if (n.type === 'ArrayAppend' && n.array && n.array.type === 'Identifier') {
+          const list = map.get(n.array.name) || [];
+          for (const v of (n.values && n.values.length ? n.values : [n.value])) if (v && v.type !== 'SpreadElement') list.push(v.resultType || null);
+          map.set(n.array.name, list);
+        }
+        for (const k in n) if (k !== 'loc' && k !== 'jsDoc' && k !== 'typeInfo') visit(n[k]);
+      };
+      visit(body.body || body);
+      return map;
+    }
+
+    /**
+     * A local array's type, widened to js::Any elements where the IL types it
+     * numeric but values of another kind are pushed onto it (an empty literal
+     * the IL typed from too little)
+     */
+    localArrayType(name, t) {
+      if (!t || t.k !== 'arr' || !isNumOrBool(t.e) || !this.fn || !this.fn.pushTypes) return t;
+      const pushed = this.fn.pushTypes.get(name) || [];
+      const foreign = pushed.some(p => { const pt = this.type(p); return pt.k === 'any' || pt.k === 'arr' || pt.k === 'str' || pt.k === 'cls'; });
+      return foreign ? T.arr(T.any) : t;
     }
 
     /** var declarations live in the function scope: declared at its top */
@@ -966,7 +996,7 @@
             if (!d.id || d.id.type !== 'Identifier' || seen.has(d.id.name)) continue;
             seen.add(d.id.name);
             if (this.lookup(d.id.name) && this.scopes[this.scopes.length - 1].has(d.id.name)) continue; // a parameter
-            const t = this.declType(d);
+            const t = this.localArrayType(d.id.name, this.declType(d));
             const v = this.declare(d.id.name, t, { hoisted: true });
             out.push(new CppVariableDeclaration(this.cpp(t), v.cpp, null));
           }
@@ -1457,7 +1487,7 @@
             continue;
           }
         }
-        const t = this.declType(d);
+        const t = this.localArrayType(d.id.name, this.declType(d));
         const init = d.init ? this.cv(this.expr(d.init, t), t) : null;
         const v = this.declare(d.id.name, t);
         out.push(new CppVariableDeclaration(this.cpp(t), v.cpp, init));
