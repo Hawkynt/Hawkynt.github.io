@@ -7482,6 +7482,18 @@
       });
       this.renameCaseCollidingFields(jsAst);
       this.programBody = jsAst.body || null;
+      // Members the file tests against undefined (`cfg.count !== undefined`): such a
+      // value member starting undefined is nullable (see inferPropertyType)
+      this.undefinedTestedMembers = new Set();
+      const isUndefined = n => (n?.type === 'Identifier' && n.name === 'undefined') ||
+        (n?.type === 'Literal' && n.value === undefined && n.resultType === 'void');
+      const memberName = n => n?.type === 'ThisPropertyAccess' ? (typeof n.property === 'string' ? n.property : n.property?.name)
+        : n?.type === 'MemberExpression' && !n.computed ? (n.property?.name || n.property?.value) : null;
+      this._walkAstNodes(jsAst.body, n => {
+        if (n.type !== 'BinaryExpression' || !['===', '!==', '==', '!='].includes(n.operator)) return;
+        const name = isUndefined(n.right) ? memberName(n.left) : isUndefined(n.left) ? memberName(n.right) : null;
+        if (name) this.undefinedTestedMembers.add(name);
+      });
       const unit = new CSharpCompilationUnit();
 
       // Standard usings for crypto code. System.Buffers.Binary is required
@@ -8107,7 +8119,12 @@
           if (!fieldName) continue;
           const pascalName = this.toPascalCase(fieldName);
           if (this.classFieldTypeOwnHas(node.id.name, pascalName)) continue;
-          const type = this.mapILType(assignment.declaredType);
+          let type = this.mapILType(assignment.declaredType);
+          // (nullable where it starts undefined - see inferPropertyType)
+          const right = assignment.right;
+          if (type && !type.isArray && CSHARP_VALUE_TYPES.has(type.name) && this.undefinedTestedMembers?.has(fieldName) &&
+              (right?.type === 'Literal' && right.value === undefined && right.resultType === 'void' || right?.type === 'Identifier' && right.name === 'undefined'))
+            type = new CSharpType(type.name, { isNullable: true });
           if (type && type.name !== 'object') this.setClassFieldType(node.id.name, pascalName, type);
         }
       });
@@ -15823,7 +15840,9 @@
      */
     castIfNeeded(expr, sourceType, targetType) {
       if (!targetType || !sourceType) return expr;
-      if (targetType.name === sourceType.name) return expr;
+      // (a nullable value into its non-nullable type unwraps - see below)
+      const unwraps = sourceType.isNullable && !targetType.isNullable && !sourceType.isArray && !targetType.isArray;
+      if (targetType.name === sourceType.name && !unwraps) return expr;
       if (targetType.name === 'object') return expr;
 
       // A `bool`-typed RHS assigned into an ARRAY-typed target is a recognized JS
@@ -20453,6 +20472,12 @@
     inferPropertyType(initialValue, constructorNode, propName) {
       // The IL type of the member, where the IL has one
       const ilType = this.ilMemberType(propName);
+      // ...as nullable where it starts undefined (space-time-block-code.js's optional
+      // STBCConfig members, tested `!== undefined`): 0 would read as a given value
+      const startsUndefined = (initialValue?.type === 'Identifier' && initialValue.name === 'undefined') ||
+        (initialValue?.type === 'Literal' && initialValue.value === undefined && initialValue.resultType === 'void');
+      if (ilType && startsUndefined && this.undefinedTestedMembers?.has(propName) && !ilType.isArray && CSHARP_VALUE_TYPES.has(ilType.name) && !ilType.isNullable)
+        return new CSharpType(ilType.name, { isNullable: true });
       if (ilType) return ilType;
 
       // Real usage evidence (see preScanDynamicInstanceFields) that this field holds an

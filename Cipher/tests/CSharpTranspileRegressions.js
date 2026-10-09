@@ -1075,6 +1075,13 @@ check('bigint arguments: a BigInt argument for a uint64 parameter keeps its low 
     '/**\n * @param {uint64} a - a\n * @param {int32} i - i\n * @returns {uint64} r\n */\nfunction mix(a, i) { return m64(a - BigInt(i)); }');
   expectMatch(code, /M64\((unchecked\()?\(ulong\)\(.*& ulong\.MaxValue\)/, 'M64((ulong)(... & ulong.MaxValue))');
 });
+check('optional members: a value member starting undefined is nullable and unwraps into a plain one', () => {
+  const code = transpile('class Config {\n  constructor() {\n    /** @type {int32} */\n    this.count = undefined;\n  }\n}\n' +
+    'class Holder {\n  constructor() {\n    /** @type {int32} */\n    this.count = 1;\n  }\n' +
+    '  /** @param {Config} cfg - settings */\n  set config(cfg) {\n    if (cfg.count !== undefined) this.count = cfg.count;\n  }\n}');
+  expectMatch(code, /public int\? Count \{ get; set; \}/, 'int? Count');
+  expectMatch(code, /this\.Count = (unchecked\()?\(int\)\(?value\.Count\)?\)?;/, 'this.Count = (int)value.Count');
+});
 const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +
