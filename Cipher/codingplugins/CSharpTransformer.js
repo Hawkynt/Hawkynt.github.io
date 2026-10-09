@@ -1966,6 +1966,9 @@
       if (typeof ilType !== 'string' || !ilType) return null;
       if (ilType.endsWith('[]')) {
         const element = this.mapILType(ilType.slice(0, -2));
+        // An array of anything holds any array too: C# arrays of value types are not
+        // covariant with dynamic[], so it is dynamic as a whole
+        if (element?.name === 'dynamic' && !element.isArray) return CSharpType.Dynamic();
         return element ? CSharpType.Array(element) : null;
       }
       if (ilType.startsWith('(') || ilType.startsWith('{')) return this.mapType(ilType);
@@ -17649,11 +17652,17 @@
         return new CSharpConditional(condition, consequentExpr, alternateExpr);
       }
 
-      return new CSharpConditional(
-        condition,
-        this.transformExpression(node.consequent),
-        this.transformExpression(node.alternate)
-      );
+      // Scalar numeric branches of different C# types (int and uint have no common
+      // type) both take the conditional's IL type
+      let consequentExpr = this.transformExpression(node.consequent);
+      let alternateExpr = this.transformExpression(node.alternate);
+      const ilResult = this.mapILType(node.resultType);
+      const numericScalar = t => t && !t.isArray && numericArrayElemNames.has(t.name);
+      if (numericScalar(ilResult) && numericScalar(consType2) && numericScalar(altType2) && consType2.name !== altType2.name) {
+        if (consType2.name !== ilResult.name) consequentExpr = new CSharpCast(ilResult, consequentExpr);
+        if (altType2.name !== ilResult.name) alternateExpr = new CSharpCast(ilResult, alternateExpr);
+      }
+      return new CSharpConditional(condition, consequentExpr, alternateExpr);
     }
 
     transformFunctionExpression(node) {
@@ -20976,8 +20985,11 @@
             // A framework base constructor takes the algorithm (an instance) or nothing
             // (an algorithm); JavaScript ignores any further arguments
             let superArgNodes = stmt.expression.arguments || [];
-            if (castsToAlgorithm) superArgNodes = superArgNodes.slice(0, 1);
-            else if (this.baseDeclaresMember(baseClassName, 'Name') && this.baseDeclaresMember(baseClassName, 'Tests')) superArgNodes = [];
+            const directBase = this.baseClassAliases?.get(baseClassName) || baseClassName;
+            if (this.stubMembers.has(directBase)) {
+              if (castsToAlgorithm) superArgNodes = superArgNodes.slice(0, 1);
+              else if (this.baseDeclaresMember(directBase, 'Name') && this.baseDeclaresMember(directBase, 'Tests')) superArgNodes = [];
+            }
             const superArgs = superArgNodes.map(a => {
               const arg = this.transformExpression(a);
               return castsToAlgorithm && this.inferFullExpressionType(a)?.name === 'dynamic'

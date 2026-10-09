@@ -371,6 +371,15 @@ check('numeric: a float operand of a bitwise operator is truncated as JavaScript
   const code = transpile('/**\n * @param {float64} x - value\n * @returns {int32} low byte\n */\nfunction lowByte(x) { return x & 255; }');
   expectMatch(code, /\(long\)\(x\)\) & 255|\(long\)x & 255/, '(long)x & 255');
 });
+check('numeric: conditional branches of int and uint both take the conditional\'s IL type', () => {
+  const code = transpile('/**\n * @param {boolean} c - choice\n * @param {int32} a - signed\n * @param {uint32} b - unsigned\n * @returns {int32} r\n */\n' +
+    'function pick(c, a, b) { return c ? a : OpCodes.ToUint32(b % 7); }');
+  expectMatch(code, /c \? unchecked\(\((long|int)\)\(a\)\) : unchecked\(\((long|int)\)/, 'both branches cast to the IL type');
+});
+check('IL types: an array of any values is dynamic, so it holds any array', () => {
+  const code = transpile('/** @param {uint8[]} s - state\n * @returns {Array<*>} copy */\nfunction copy(s) { /** @type {any[]} */ const r = s.slice(); return r; }');
+  expectMatch(code, /dynamic r = /, 'dynamic r');
+});
 check('strings: a character read by index into a string local is a string', () => {
   const code = transpile('/**\n * @param {string} s - text\n * @param {int32} i - index\n * @returns {string} char\n */\n' +
     'function at(s, i) { /** @type {string} */ const c = s[i]; return c; }');
