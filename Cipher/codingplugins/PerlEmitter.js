@@ -2755,8 +2755,11 @@ sub MerkleDamgardBlocks {
       // requires ("fn(@{$data})", which flattens exactly like JS spread).
       const args = node.args.map(a => {
         const emitted = this.emit(a);
-        if ((a.spread || a.isSpread) && (emitted.startsWith('$') || emitted.includes('->')))
+        if ((a.spread || a.isSpread) && !emitted.startsWith('@')) {
+          // As in emitArray: "@{do{...}}" would read as a hash slice
+          if (/^(map|grep|sort|reverse|do)\b/.test(emitted)) return `@{(${emitted})}`;
           return `@{${emitted}}`;
+        }
         return emitted;
       });
 

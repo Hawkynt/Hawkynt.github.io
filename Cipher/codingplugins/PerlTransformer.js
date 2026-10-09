@@ -13010,6 +13010,9 @@
       // In Perl, array flattening is automatic: @array
       // Mark the result as spread so the emitter knows to dereference it
       const result = this.transformExpression(node.argument);
+      // Spreading a string yields its characters
+      if (result && node.argument?.resultType === 'string')
+        return new PerlCall('split', [PerlLiteral.String('', "//"), result]);
       if (result) result.spread = true;
       return result;
     }
