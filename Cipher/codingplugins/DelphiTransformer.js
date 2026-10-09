@@ -2109,7 +2109,8 @@
         const m = top[0].members.get(name);
         return Object.assign({}, m, { castTo: top[0].pas });
       }
-      if (optional && !top.length) return null;
+      // none or several subclasses declare it: the caller looks it up by name
+      if (optional) return null;
       fail(`${c.jsName} has no member ${name}`, node);
     }
 
