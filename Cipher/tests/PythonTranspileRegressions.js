@@ -334,6 +334,15 @@ check('not: ~ on a BigInt array element keeps 64 bits, on a Number masks to 32',
   return expectOutput(runPython(js, 'r = f([5], 5)\nprint(hex(r[0]), r[1])'), ['0xfffffffffffffffa 250']);
 });
 
+check('double: float64 arithmetic past 2^53 rounds like a JS Number, below it stays an exact int', () => {
+  const js = 'function lcg(state) {\n  /** @type {float64} */\n  const M = 1103515245;\n  /** @type {float64} */\n  const p = M * state + 12345;\n  return [OpCodes.ToUint32(p), p % 7]; }\n' +
+    'function small(a) {\n  /** @type {float64} */\n  const s = a * 3 + 1;\n  return [1, 2, 3, 4, 5][s]; }';
+  // Given a product above 2^53 (state = 0xFFFFFFFF) and one below it used as an index
+  // Then the results equal the JavaScript ones
+  const want = (() => { const M = 1103515245; const p = M * 0xFFFFFFFF + 12345; return `[${p >>> 0}, ${p % 7}] 5`; })();
+  return expectOutput(runPython(js, 'print(list(lcg(0xFFFFFFFF)), small(1))'), [want]);
+});
+
 // ---------------------------------------------------------------------------
 // Byte arrays are mutable
 // ---------------------------------------------------------------------------

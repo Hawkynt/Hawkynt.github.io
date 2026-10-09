@@ -3005,6 +3005,15 @@ class OpCodes(metaclass=_OpCodesMeta):
           '    value = int(s[start:i], base)\n' +
           '    return -value if neg else value'
       });
+      // Number arithmetic: an integer beyond 2^53 becomes the nearest double
+      // (an int stays an int while exact, so it still indexes and shifts)
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_f64(x):\n' +
+          '    if isinstance(x, int) and not isinstance(x, bool) and not -9007199254740992 <= x <= 9007199254740992:\n' +
+          '        return int(float(x))\n' +
+          '    return x'
+      });
       // ArrayBuffer.isView: the runtime's typed-array and view types (a plain
       // list is a JS Array, a JSArrayBuffer the buffer itself, neither a view)
       stubs.push({
@@ -6450,8 +6459,16 @@ class OpCodes(metaclass=_OpCodesMeta):
         case 'Identifier':
           return this.transformIdentifier(node);
         case 'BinaryExpression':
-        case 'LogicalExpression':
-          return this.transformBinaryExpression(node);
+        case 'LogicalExpression': {
+          const binary = this.transformBinaryExpression(node);
+          // A float64-typed +, - or * is a JS double: past 2^53 its exact
+          // Python int result is rounded to the nearest double, as JS does
+          // (Khufu's S-box LCG `1103515245 * state + 12345` depends on it).
+          if (node.type === 'BinaryExpression' && (node.operator === '*' || node.operator === '+' || node.operator === '-') &&
+              /^(float64|double)$/.test(String(node.resultType || '')) && binary)
+            return new PythonCall(new PythonIdentifier('_js_f64'), [binary]);
+          return binary;
+        }
         case 'UnaryExpression':
           return this.transformUnaryExpression(node);
         case 'UpdateExpression':
