@@ -180,6 +180,11 @@ sameAsJs('control: typeof of a typed value folds and drops the branch the type r
   '/** @param {uint8[]} d @returns {int32} */ function f(d) { if (typeof d === "string") return d.charCodeAt(0); return d.length; }\n' +
   '/** @returns {string} */ function probe() { return String(f([1, 2, 3])); }');
 
+sameAsJs('functions: a hoisted inner function reads a local of its block declared after it',
+  '/** @returns {string} */ function probe() {\n' +
+  '  /** @param {int32} x */ function step(x) { buf[n] = x * 2; n++; }\n' +
+  '  /** @type {int32[]} */ const buf = [0, 0, 0];\n  let n = 0;\n' +
+  '  for (let i = 0; i < 3; i++) { const n = i + 1; step(n); }\n  return buf.join(","); }');
 // ---------------------------------------------------------------------------
 // Callbacks
 // ---------------------------------------------------------------------------

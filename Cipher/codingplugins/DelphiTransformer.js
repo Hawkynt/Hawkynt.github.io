@@ -1158,6 +1158,7 @@
       for (let f = this.fn; f; f = f.parent) {
         for (let i = f.scopes.length - 1; i >= 0; --i) {
           const e = f.scopes[i].get(jsName);
+          if (e && e.kind === 'nestedFn' && e.lazy) this.compileHoisted(e);
           if (e) return Object.assign({ outer: f !== this.fn }, e);
         }
       }
@@ -1365,8 +1366,12 @@
       this.pushScope();
       try {
         // function declarations are hoisted
-        for (const s of stmts) if (s && s.type === 'FunctionDeclaration') this.declareNestedFunction(s.id.name, s);
+        // function declarations are hoisted; each body compiles at its first
+        // use, when the locals of this block it reads are declared
+        const hoisted = [];
+        for (const s of stmts) if (s && s.type === 'FunctionDeclaration') hoisted.push(this.declareNestedFunction(s.id.name, s, true));
         for (const s of stmts) this.stmt(s, out);
+        for (const h of hoisted) if (h.lazy) this.compileHoisted(h);
       } finally {
         this.popScope();
       }
@@ -1842,16 +1847,33 @@
     // =====================================================================
 
     /** A function declared inside a routine: a Pascal nested routine. */
-    declareNestedFunction(jsName, node) {
+    declareNestedFunction(jsName, node, lazy = false) {
       const existing = this.fn.scopes[this.fn.scopes.length - 1].get(jsName);
       if (existing && existing.kind === 'nestedFn') return existing;
       const params = this.paramsOf(node);
       const ret = this.returnTypeOf(node);
       const pas = this.fn.pool.take(jsName);
-      const entry = { pas, type: T.fn, kind: 'nestedFn', params, ret, node, compiled: false };
+      const entry = { pas, type: T.fn, kind: 'nestedFn', params, ret, node, compiled: false,
+        lazy, owner: this.fn, scopeDepth: this.fn.scopes.length };
       this.fn.scopes[this.fn.scopes.length - 1].set(jsName, entry);
-      this.compileNested(entry);
+      if (!lazy) this.compileNested(entry);
       return entry;
+    }
+
+    /**
+     * Compile a hoisted function declaration, seeing the scopes of its block
+     * as they are now (not the inner blocks of the use that triggered it).
+     */
+    compileHoisted(entry) {
+      entry.lazy = false;
+      const owner = entry.owner;
+      const saved = owner.scopes;
+      owner.scopes = saved.slice(0, entry.scopeDepth);
+      try {
+        this.compileNested(entry, owner);
+      } finally {
+        owner.scopes = saved;
+      }
     }
 
     compileNested(entry, owner = this.fn) {
