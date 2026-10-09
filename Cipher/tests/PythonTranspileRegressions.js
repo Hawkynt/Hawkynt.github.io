@@ -394,6 +394,13 @@ check('truthiness: an array-typed value is true even when empty, false only when
   return expectOutput(runPython(js, 'print(f([]), f([1]), f(None))'), ['1011 1011 100']);
 });
 
+check('cast: OpCodes.ToInt wraps to a signed 32-bit value, from an int or a float', () => {
+  const js = '/** @param {uint32} x @param {float64} y */\nfunction f(x, y) { return [OpCodes.ToInt(x), OpCodes.ToInt(y), OpCodes.ToInt(x) < 0]; }';
+  // Given 0xFFFFFFFF (boundary of the uint32 range) and the double 2.5e9
+  // Then the results are the JavaScript `| 0` values
+  return expectOutput(runPython(js, 'print(f(0xFFFFFFFF, 2.5e9), f(5, 7.9))'), ['[-1, -1794967296, True] [5, 7, False]']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

@@ -1179,6 +1179,8 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def ToInt(value):
+        if isinstance(value, float):
+            value = int(value) if value == value and value not in (float("inf"), float("-inf")) else 0
         value &= 0xFFFFFFFF
         return value - 0x100000000 if value >= 0x80000000 else value
 
@@ -12294,7 +12296,8 @@ class OpCodes(metaclass=_OpCodesMeta):
           return new PythonCall(new PythonIdentifier('OpCodes.ToLong'), [expression]);
         case 'int':
         case 'integer':
-          return new PythonCall(new PythonIdentifier('int'), [expression]);
+          // OpCodes.ToInt is `value | 0`: a signed 32-bit wrap, not a truncation
+          return new PythonCall(new PythonMemberAccess(new PythonIdentifier('OpCodes'), 'ToInt'), [expression]);
         case 'float':
         case 'double':
           return new PythonCall(new PythonIdentifier('float'), [expression]);
