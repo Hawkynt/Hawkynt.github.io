@@ -375,6 +375,261 @@ check('bytes: hex, ANSI and typed-array constructors give mutable arrays', () =>
   return expectOutput(runPython(js, 'print([list(x) for x in f()])'), ['[[11, 11], [65, 7], [44, 2], [1, 305419896]]']);
 });
 
+// ---------------------------------------------------------------------------
+// Number semantics
+// ---------------------------------------------------------------------------
+check('literal: an integer past 2^53 and the 64-bit Unpack mask keep their exact value', () => {
+  const js = '/** @param {uint64} n */\nfunction f(n) { /** @type {float64} */ const big = 18446744073709551616; return [OpCodes.Unpack64BE(n * 8), big]; }';
+  // Given 2^64 as a Number literal (JS prints it 18446744073709552000) and a 64-bit unpack
+  const code = transpile(js);
+  expectNoMatch(code, /18446744073709552000/, 'a rounded decimal spelling of 2^64');
+  // Then the unpacked bytes are not masked by a wrong constant, and the literal is 2^64
+  return expectOutput(runPython(js, 'r = f(4)\nprint(list(r[0]), r[1] == 2 ** 64)'), ['[0, 0, 0, 0, 0, 0, 0, 32] True']);
+});
+
+check('truthiness: an array-typed value is true even when empty, false only when null', () => {
+  const js = '/** @param {uint8[]|null} a */\nfunction f(a) { let r = a ? 1 : 0; if (a) r += 10; if (!a) r += 100; while (a) { r += 1000; break; } return r; }';
+  // Given an empty array, a filled one and None
+  // Then the empty array tests true like in JavaScript
+  return expectOutput(runPython(js, 'print(f([]), f([1]), f(None))'), ['1011 1011 100']);
+});
+
+check('cast: OpCodes.ToInt wraps to a signed 32-bit value, from an int or a float', () => {
+  const js = '/** @param {uint32} x @param {float64} y */\nfunction f(x, y) { return [OpCodes.ToInt(x), OpCodes.ToInt(y), OpCodes.ToInt(x) < 0]; }';
+  // Given 0xFFFFFFFF (boundary of the uint32 range) and the double 2.5e9
+  // Then the results are the JavaScript `| 0` values
+  return expectOutput(runPython(js, 'print(f(0xFFFFFFFF, 2.5e9), f(5, 7.9))'), ['[-1, -1794967296, True] [5, 7, False]']);
+});
+
+check('bigint: / truncates toward zero and % keeps the dividend sign, exactly past 2^53', () => {
+  const js = '/** @param {BigInt} a @param {BigInt} b @returns {BigInt[]} */\nfunction f(a, b) { return [a / b, a % b]; }\n' +
+    '/** @returns {BigInt} */\nfunction g() { return (10n ** 30n + 1n) / 3n; }';
+  // Given every sign combination and a quotient far above 2^53
+  return expectOutput(runPython(js, 'print(f(-7, 2), f(7, -2), f(-7, -2), f(7, 2), g())'),
+    ['[-3, -1] [-3, 1] [3, -1] [3, 1] 333333333333333333333333333333']);
+});
+
+check('recursion: a call depth beyond Python\'s default limit of 1000 runs as in JavaScript', () => {
+  const js = '/** @param {int32} n @returns {int32} */\nfunction depth(n) { return n === 0 ? 0 : 1 + depth(n - 1); }';
+  // Given a recursion 3000 calls deep (a 2048-bit recursive gcd needs over 1000)
+  return expectOutput(runPython(js, 'print(depth(3000))'), ['3000']);
+});
+
+check('reverse: Array.reverse reverses in place, also as a statement, and returns the same array', () => {
+  const js = '/** @param {uint8[]} a */\nfunction f(a) { a.reverse(); const b = a.slice().reverse(); return [a, b, b.reverse() === b]; }';
+  // Given reverse() as a statement, on a copy, and as a value
+  return expectOutput(runPython(js, 'print([list(x) if not isinstance(x, bool) else x for x in f([1, 2, 3])])'), ['[[3, 2, 1], [3, 2, 1], True]']);
+});
+
+check('not: !(a && b) and !a === b keep the JavaScript grouping', () => {
+  const js = '/** @param {int32} a @param {int32} b */\nfunction f(a, b) { return [!(a > 5 && b < 3), !(a > 5 || b < 3), !a === false, !(a ? b : 0)]; }';
+  // Given a negated && and ||, a negation compared with a boolean and a negated ternary
+  // Then each truth table row matches JavaScript
+  return expectOutput(runPython(js, 'print(f(9, 1), f(9, 9), f(0, 1))'),
+    ['[False, False, True, False] [True, False, True, False] [True, False, False, True]']);
+});
+
+check('division: a quotient assigned to a float64 keeps its fraction, an int32 one truncates', () => {
+  const js = '/** @param {int32} a @param {int32} b */\nfunction f(a, b) {\n  /** @type {float64} */\n  const mean = a / b;\n  /** @type {int32} */\n  const q = a / b;\n  return [mean, q]; }';
+  // Given 7 / 2 into a float64 and into an int32
+  return expectOutput(runPython(js, 'print(f(7, 2))'), ['[3.5, 3]']);
+});
+
+check('division: a quotient pushed onto a float64[] keeps its fraction, onto an int32[] truncates', () => {
+  const js = '/** @param {int32} f */\nfunction g(f) {\n  /** @type {float64[]} */\n  const keys = [];\n  /** @type {int32[]} */\n  const slots = [];\n  for (let k = 0; k < f; k++) { keys.push((2 * k + 1) / (2 * f)); slots.push((2 * k + 1) / 2); }\n  return [keys, slots]; }';
+  // Given tANS-style claim keys (2k+1)/(2f) and an integer slot list
+  return expectOutput(runPython(js, 'r = g(2)\nprint(list(r[0]), list(r[1]))'), ['[0.25, 0.75] [0, 1]']);
+});
+
+check('division: a quotient assigned to a float64[] element keeps its fraction', () => {
+  const js = '/** @param {int32[]} freq @param {int32} n */\nfunction g(freq, n) {\n  /** @type {float64[]} */\n  const prob = new Array(2);\n  for (let i = 0; i < 2; i++) prob[i] = freq[i] / n;\n  return prob; }';
+  // Given Tunstall-style probabilities freq[i] / n
+  return expectOutput(runPython(js, 'print(list(g([1, 3], 4)))'), ['[0.25, 0.75]']);
+});
+
+check('for: a body that moves the counter or grows the bound runs as JavaScript re-tests it', () => {
+  const js = '/** @param {int32[]} a */\nfunction skip(a) { const seen = []; for (let i = 0; i < a.length; ++i) { seen.push(a[i]); if (a[i] === 0) i += 2; } return seen; }\n' +
+    '/** @param {int32[]} a */\nfunction grow(a) { for (let i = 0; i < a.length; i++) { if (a[i] > 1) a.push(a[i] - 1); } return a; }\n' +
+    '/** @param {int32} n */\nfunction plain(n) { let s = 0; for (let i = 0; i < n; i++) s += i; return s; }';
+  // Given a counter advanced inside the body, a worklist grown inside the body and a plain counting loop
+  const code = transpile(js);
+  expectMatch(code, /for i in range\(0, int\(n\)\)|for i in range\(0, n\)/, 'the plain loop still as range()');
+  return expectOutput(runPython(js, 'print(list(skip([5, 0, 7, 8, 9])), list(grow([3])), plain(4))'), ['[5, 0, 9] [3, 2, 1] 6']);
+});
+
+check('switch: a default written before other cases still lets them match', () => {
+  const js = '/** @param {int32} v @returns {string} */\nfunction f(v) { let r = ""; switch (v) { default: case 0: r = "zero/other"; break; case 1: r = "one"; break; case 2: r = "two"; break; } return r; }';
+  // Given `default: case 0:` heading the switch, then the cases 1 and 2
+  return expectOutput(runPython(js, 'print(f(0), f(1), f(2), f(7))'), ['zero/other one two zero/other']);
+});
+
+check('new: an x++ or ++x constructor argument passes the right value and increments once', () => {
+  const js = 'class Rule { constructor(id) { this.id = id; } }\n' +
+    'class Grammar { constructor() { this.next = 5; } post() { const r = new Rule(this.next++); return r.id; } pre() { return new Rule(++this.next).id; } }';
+  // Given a postfix and a prefix increment as the argument of new
+  // Then the code compiles and the ids are 5 then 7, the counter ends at 7
+  return expectOutput(runPython(js, 'g = Grammar()\nprint(g.post(), g.pre(), g.next)'), ['5 7 7']);
+});
+
+check('strings: a concatenation of thousands of string literals folds to one literal', () => {
+  const pieces = Array.from({ length: 3000 }, (_, i) => `'${(i % 256).toString(16).padStart(2, '0')}'`);
+  const js = 'const HEX =\n  ' + pieces.join(' +\n  ') + ';\nfunction f() { return [HEX.length, HEX.slice(0, 6), "a" + 1]; }';
+  // Given a data table spelled as 3000 concatenated pieces (deeper than the call stack) and a mixed + beside it
+  // Then it transpiles, and the folded string and the string + number both keep their JavaScript value
+  return expectOutput(runPython(js, 'print(f())'), ["[6000, '000102', 'a1']"]);
+});
+
+check('set: obj.set(k, v) calls a class\'s own set method, and stores into a Map or object', () => {
+  const js = 'class HeadTable { constructor() { this.keys = [-1, -1]; } get(k) { return this.keys[k]; } set(k, v) { this.keys[k] = v + 100; } }\n' +
+    'function f(t, m, o) { t.set(1, 5); m.set("a", 2); o.set(3, 4); return [t.get(1), m.get("a")]; }';
+  // Given a user hash-table class with get/set, a Map and a plain object
+  return expectOutput(runPython(js, 'o = {}\nprint(f(HeadTable(), {}, o), o)'), ['[105, 2] {3: 4}']);
+});
+
+check('typed array: new Uint32Array(call returning an array) copies, new Uint32Array(n) allocates', () => {
+  const js = '/** @returns {uint32[]} */\nfunction words() { return [7, 8]; }\n' +
+    'function f(n) { const a = new Uint32Array(OpCodes.Hex32ToDWords("0000000100000002")); const b = new Uint32Array(words()); const c = new Uint32Array(n); return [a, b, c]; }';
+  // Given an OpCodes call and a function typed uint32[] as the argument, and a plain count
+  return expectOutput(runPython(js, 'print([list(x) for x in f(3)])'), ['[[1, 2], [7, 8], [0, 0, 0]]']);
+});
+
+check('typeof: "object" holds for arrays, objects and null, not for primitives or functions', () => {
+  const js = 'function f(x) { return typeof x === "object"; }\nfunction g(x) { return typeof x !== "object"; }';
+  // Given an array, an object, null, a string, a number, a boolean and a function
+  return expectOutput(runPython(js, 'print([f(v) for v in ([1], {}, None, "s", 3, True, len)], g([1]), g(2.5))'),
+    ['[True, True, True, False, False, False, False] False True']);
+});
+
+check('division: a whole float quotient stays usable as a size, x / 0 is an infinity', () => {
+  const js = '/** @param {int32} logn */\nfunction f(logn) { const n = Math.pow(2, logn);\n  /** @type {int32} */\n  const len = 8 + n / 32;\n  return [new Uint8Array(len).length, len, n / 3 > 85]; }\n' +
+    '/** @param {float64} a @returns {float64} */\nfunction g(a) { return a / 0; }';
+  // Given a quotient of a Math.pow result (a float in the IL) used as an array size, and both signs over 0
+  return expectOutput(runPython(js, 'print(f(8), g(1.0), g(-1.0))'), ['[16, 16, True] inf -inf']);
+});
+
+check('round: Math.round rounds a half up, not to even', () => {
+  const js = '/** @param {float64} x @returns {int32} */\nfunction r(x) { return Math.round(x); }';
+  // Given both half-way signs, the largest double below 0.5 and an odd half
+  return expectOutput(runPython(js, 'print([r(v) for v in (2.5, -2.5, 0.49999999999999994, 1.5, -0.4, 7)])'), ['[3, -2, 0, 2, 0, 7]']);
+});
+
+check('runtime: Shr32Signed returns a signed value and the Mod helpers keep JavaScript % signs', () => {
+  const js = 'function f() { return [OpCodes.Shr32Signed(-78583, 11), OpCodes.Shr32Signed(0xFFFFFFFF, 1), OpCodes.AddMod(-3, 1, 5), OpCodes.SubMod(-3, 4, 5),\n' +
+    '  OpCodes.MulMod(0xFFFFFFF1, 0xFFFFFFF7, 0xFFFFFFFB), OpCodes.ModSafe(-7, 5)]; }';
+  // Given a negative shift operand, an unsigned one with the sign bit, negative Mod operands and a product past 2^53
+  return expectOutput(runPython(js, 'print(f())'), ['[-39, -1, -2, -2, 4294967196, 3]']);
+});
+
+check('regex: a Unicode property escape \\p{L} matches what JavaScript matches', () => {
+  const js = 'function f(c) { return [/\\p{L}/u.test(c), /^[\\p{Lu}0-9]+$/u.test(c), /\\P{L}/u.test(c)]; }';
+  // Given an ASCII letter, a Latin-1 letter, a superscript digit (not a letter), a Greek capital and a digit
+  return expectOutput(runPython(js, 'print([f(c) for c in ("a", "\\u00e9", "\\u00b2", "\\u03a9", "7")])'),
+    ['[[True, False, False], [True, False, False], [False, False, True], [True, True, False], [False, True, True]]']);
+});
+
+check('defaults: a default reading an earlier parameter or building an array is evaluated per call', () => {
+  const js = 'function f(w, n = w.length, acc = []) { acc.push(n); return acc; }\nconst g = (a, b = a * 2) => a + b;\n' +
+    'class C { m(x, y = x + 1) { return y; } }\nfunction h(x = 3, s = "q", z = -1) { return [x, s, z]; }';
+  // Given defaults from an earlier parameter (function, arrow, method), a fresh [] per call and constant defaults
+  return expectOutput(runPython(js, 'print(f([1, 2, 3]), f([1]), f([1], 5), g(2), g(2, 1), C().m(4), h())'),
+    ["[3] [1] [5] 6 3 5 [3, 'q', -1]"]);
+});
+
+check('hints: nullable value types are Optional, tuples a list of their kinds, @template a TypeVar', () => {
+  const js = 'const ROWS = [["a", 1, "b"], ["c", 2, "d"]];\n/** @type {int32|null} */\nlet maybe = null;\n' +
+    '/** @template T @param {int32} n @param {T} v @returns {T[]} */\nfunction filled(n, v) { /** @type {T[]} */ const out = []; for (let i = 0; i < n; i++) out.push(v); return out; }\n' +
+    '/** @param {int32|null} x @returns {int32|null} */\nfunction f(x) { /** @type {int32|null} */ let y = x; const [p, q, r] = ROWS[0]; return y === null ? -1 : y + q; }\n' +
+    'class K { /** @param {uint32|null} a @returns {boolean} */ m(a) { return a === null; } }';
+  // Given a nullable module variable, parameter, local and return, a table of mixed rows and a generic helper
+  const code = transpile(js);
+  expectMatch(code, /^T = TypeVar\("T"\)$/m, 'a TypeVar for the template');
+  expectMatch(code, /def filled\(n: int = None, v: T = None, \*_js_extra_args\) -> List\[T\]:/, 'the generic signature');
+  expectMatch(code, /def f\(x: Optional\[int\] = None, \*_js_extra_args\) -> Optional\[int\]:/, 'Optional parameter and return');
+  expectMatch(code, /^\s+y: Optional\[int\] = x$/m, 'an Optional local');
+  expectMatch(code, /^maybe: Optional\[int\] = None$/m, 'an Optional module variable');
+  expectMatch(code, /: List\[List\[Union\[str, int\]\]\] = /, 'the tuple rows');
+  expectMatch(code, /return -1 if y is None else/, 'an identity test against None');
+  // Then the module still runs with the hints evaluated at definition time
+  return expectOutput(runPython(js, 'print(filled(2, 7), f(None), f(3), maybe, K().m(None), K().m(0))'), ['[7, 7] -1 4 None True False']);
+});
+
+check('props: obj[name] with a computed name reads a class instance field and an object key', () => {
+  const js = 'class Params { constructor(n, size) { this.name = n; this.privateKeySize = size; } }\n' +
+    'const SETS = [new Params("a", 10), new Params("b", 20)];\n' +
+    '/** @param {int32} length @param {string} field */\nfunction byLength(length, field) { for (let i = 0; i < SETS.length; i++) { const set = SETS[i]; if (set[field] === length) return set.name; } return null; }\n' +
+    '/** @param {string} k */\nfunction table(k) { const o = { alpha: 1 }; o[k] = 5; return [o[k], o["alpha"]]; }';
+  // Given a field name held in a string, read off class instances, and an object written and read by a computed key
+  return expectOutput(runPython(js, 'print(by_length(20, "privateKeySize"), by_length(30, "privateKeySize"), table("beta"))'), ['b None [5, 1]']);
+});
+
+check('methods: push/pop on an instance of a declared class call that class, not the list methods', () => {
+  const js = 'class Ring { constructor(n) { /** @type {int32[]} */ this.v = new Array(n).fill(0); this.next = 0; this.n = n; }\n' +
+    '  push(hi, lo) { this.v[this.next] = hi + lo; this.next = (this.next + 1) % this.n; }\n  pop() { return this.v[0]; } }\n' +
+    'function f() { /** @type {Ring} */ const r = new Ring(2); r.push(1, 2); r.push(3, 4); r.push(5, 6); const a = [1]; a.push(2); return [r.pop(), r.v[1], a]; }';
+  // Given a ring buffer class with its own two-argument push and a pop, next to a real array push
+  return expectOutput(runPython(js, 'print(f())'), ['[11, 7, [1, 2]]']);
+});
+
+check('math: a whole Math.log2/Math.sqrt result sizes and indexes arrays like the int it equals', () => {
+  const js = '/** @param {int32} n */\nfunction f(n) { const k = Math.log2(n); const out = new Array(k); out[k - 1] = 9; const r = Math.sqrt(n); return [out.length, out[k - 1], [5, 6, 7][Math.sqrt(4)], OpCodes.CreateArray(k, 1), Math.sqrt(2) > 1.41]; }';
+  // Given log2 of a power of two, sqrt of a square and of a non-square
+  return expectOutput(runPython(js, 'r = f(8)\nprint(r[0], r[1], r[2], list(r[3]), r[4])'), ['3 9 7 [1, 1, 1] True']);
+});
+
+check('modules: a data library keeps its module.exports assignment for the bundling host', () => {
+  const js = '(function () {\n  const TABLE = [1, 2, 3];\n  if (typeof module !== "undefined" && module.exports) {\n    module.exports = { TABLE };\n  } else {\n    this.Table = { TABLE };\n  }\n}).call(this);\n' +
+    'if (typeof require !== "undefined") { require("./other"); }';
+  // Given an IIFE library exporting through a module guard, and a plain require guard
+  const code = transpile(js);
+  expectMatch(code, /if globals\(\)\.get\("module"\) is not None:\s+module\.exports = JSObject\(\{"TABLE": TABLE\}\)/, 'the export kept behind a module check');
+  expectNoMatch(code, /\.\/other/, 'the require guard');
+  // Then without a host-provided module the library still loads
+  return expectOutput(runPython(js, 'print("loaded")'), ['loaded']);
+});
+
+check('names: a blockSize accessor and the framework BlockSize field stay apart as in JavaScript', () => {
+  const js = 'const { IBlockCipherInstance } = AlgorithmFramework;\n' +
+    'class Speed extends IBlockCipherInstance { constructor(a) { super(a); this._w = 16; this.BlockSize = 16; }\n' +
+    '  set blockSize(w) { if (w !== 8 && w !== 16) throw new Error("bad " + w); this._w = w; this.BlockSize = w; }\n  get blockSize() { return this._w; } }\n' +
+    'class Plain extends IBlockCipherInstance { constructor(a) { super(a); this.BlockSize = 16; } }\n' +
+    '/** @param {IBlockCipherInstance} e */\nfunction setWidth(e, bits) { e.blockSize = bits; return e; }';
+  // Given an accessor whose setter rejects the framework default 0, and a camelCase write to a class without one
+  return expectOutput(runPython(js, 's = set_width(Speed(None), 8)\np = set_width(Plain(None), 128)\nprint(s.block_size, p.block_size)'), ['8 16']);
+});
+
+check('do-while: an increment or decrement in the condition runs before every test', () => {
+  const js = 'function f(n) { const out = []; let c = n; do { out.push(c); } while (--c > 0); let k = 0; do { out.push(100 + k); } while (k++ < 2); return [out, c, k]; }';
+  // Given a prefix decrement and a postfix increment in do-while conditions (the LZMA range coder's flush loop)
+  return expectOutput(runPython(js, 'r = f(3)\nprint(list(r[0]), r[1], r[2])'), ['[3, 2, 1, 100, 101, 102] 0 3']);
+});
+
+check('for: a continue beside a break in a counting-down loop still runs the update', () => {
+  const js = '/** @param {int32[]} skip */\nfunction f(skip) { const seen = []; let found = -1;\n' +
+    '  for (let order = 4; order >= 0; --order) { if (skip.includes(order)) continue; seen.push(order); if (order === 1) { found = order; break; } }\n' +
+    '  return [seen, found]; }';
+  // Given PPM's escape loop shape: --order, a continue and a break at the same level
+  return expectOutput(runPython(js, 'r = f([3, 2])\nprint(list(r[0]), r[1])'), ['[4, 1] 1']);
+});
+
+check('typed array: new Uint32Array(words) copies, new Uint32Array(words.buffer) shares', () => {
+  const js = 'function f() { const a = new Uint32Array(2); a[0] = 1; a[1] = 2; const copy = new Uint32Array(a); const view = new Uint32Array(a.buffer); copy[0] = 9; view[1] = 7; return [a, copy, view]; }';
+  // Given a word array copied through its constructor and viewed through its buffer
+  // Then writing the copy leaves the source alone, writing the view changes it
+  return expectOutput(runPython(js, 'print([list(x) for x in f()])'), ['[[1, 7], [9, 2], [1, 7]]']);
+});
+
+check('update: a prefix ++/-- statement on a module variable declares it global', () => {
+  const js = 'let calls = 0;\nfunction src() { ++calls; --calls; ++calls; return calls; }\nfunction g(a) { let i = 0; ++i; a[++i] = 5; return [i, a]; }';
+  // Given prefix increments and a decrement of a module-level let, and prefix updates of a local
+  return expectOutput(runPython(js, 'print(src(), src(), calls, g([0, 0, 0]))'), ['1 2 2 [2, [0, 0, 5]]']);
+});
+
+check('set: TypedArray.set evaluates a call source once', () => {
+  const js = 'let calls = 0;\nfunction src() { ++calls; return [7, 8]; }\nfunction f() { const out = new Uint8Array(4); out.set(src(), 1); const a = [5]; out.set(a, 3); return [out, calls]; }';
+  // Given a source that is a call with a side effect and one that is a plain variable
+  return expectOutput(runPython(js, 'r = f()\nprint(list(r[0]), r[1])'), ['[0, 7, 8, 5] 1']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }
