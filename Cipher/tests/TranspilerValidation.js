@@ -541,6 +541,28 @@ function bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptio
 }
 
 /**
+ * The .data libraries an algorithm takes through its third factory parameter,
+ * for the JVM languages: the plugin merges each library's declarations into
+ * the generated class and binds the parameter to what the library exports.
+ * @returns {{param: string, ast: object, exports: object}[]}
+ */
+function jvmLibraries(source, algorithmFile) {
+  const paramMatches = [...source.matchAll(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/g)];
+  const param = paramMatches.length ? paramMatches[paramMatches.length - 1][1] : null;
+  if (!param) return [];
+  const libraries = [];
+  for (const lm of source.matchAll(/require\(\s*['"]\.\/([^'"]+)['"]\s*\)/g)) {
+    const libPath = [lm[1], lm[1] + '.js', lm[1] + '.data.js']
+      .map(c => path.join(path.dirname(algorithmFile), c)).find(f => f.endsWith('.data.js') && fs.existsSync(f));
+    if (!libPath) continue;
+    const libSrc = fs.readFileSync(libPath, 'utf-8');
+    const Parser = loadTranspiler();
+    libraries.push({ param, ast: new Parser(libSrc).parse(), exports: libraryExportNames(libSrc) });
+  }
+  return libraries;
+}
+
+/**
  * Transpile an algorithm file and, where the language bundles them, the
  * algorithm files it loaded while its reference ran.
  * @param {string} algorithmFile - absolute path
@@ -564,7 +586,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
   const algoName = path.basename(algorithmFile, '.js').replace(/[^a-zA-Z0-9]/g, '_');
   let code;
   try {
-    code = transpileOne(source, plugin, algoName, undefined, parserOptions);
+    code = transpileOne(source, plugin, algoName, language === 'java' ? { libraries: jvmLibraries(source, algorithmFile) } : undefined, parserOptions);
   } catch (e) {
     return { success: false, error: e.message };
   }
