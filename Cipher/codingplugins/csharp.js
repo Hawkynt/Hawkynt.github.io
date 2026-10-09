@@ -2066,6 +2066,7 @@ namespace ${namespace}
             return data.TryGetValue(key, out var v) ? v : 0;
         }
 
+        public void Set(double row, double col, double value) => Set((long)row, (long)col, (long)value);
         public void Set(long row, long col, long value)
         {
             var key = row + "," + col;
@@ -2086,6 +2087,7 @@ namespace ${namespace}
 
         public int GetRowDegree(long row) => rowNonZeros[(int)row].Count;
         public int GetColDegree(long col) => colNonZeros[(int)col].Count;
+        public int NonZeroCount() => data.Count;
         public int[] GetRowNonZeros(long row) => rowNonZeros[(int)row].ToArray();
         public int[] GetColNonZeros(long col) => colNonZeros[(int)col].ToArray();
 

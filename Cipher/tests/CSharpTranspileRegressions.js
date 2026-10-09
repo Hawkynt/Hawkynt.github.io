@@ -1128,6 +1128,13 @@ namespace RegressionTest {
       Eq("ctc-equal", OpCodes.ConstantTimeCompare(new byte[] { 1, 2 }, new byte[] { 1, 2 }, 2), true);
       Eq("ctc-differ", OpCodes.ConstantTimeCompare(new byte[] { 1, 2 }, new byte[] { 1, 3 }), false);
       Eq("ctc-lengths", OpCodes.ConstantTimeCompare(new byte[] { 1, 2 }, new byte[] { 1, 2, 3 }, 2), false);
+      // SparseMatrix counts its entries and takes JavaScript-number (double) indexes
+      var sm = new SparseMatrix(3, 3);
+      sm.Set(0.0, 2.0, 1.0);
+      sm.Set(1, 1, 1);
+      sm.Set(1, 1, 0);
+      Eq("sparse-count", sm.NonZeroCount(), 1);
+      Eq("sparse-double-set", sm.Get(0, 2), 1);
       // ToShort/ToLong sign-wrap to 16/64 bits; CreateUint64ArrayFromHex yields [high, low] pairs
       Eq("toshort-wrap", OpCodes.ToShort(0x18000), (short)-32768);
       Eq("toshort-max", OpCodes.ToShort(32767), (short)32767);
