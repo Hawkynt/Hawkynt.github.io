@@ -15353,7 +15353,18 @@
         }
       }
 
-      const target = this.transformExpression(node.left);
+      let target = this.transformExpression(node.left);
+      // A framework property set on a framework-typed instance (cshake.outputSize =
+      // n on an IHashFunctionInstance) goes to the concrete class, which may declare
+      // its own property of that name hiding the stub's: as in JavaScript, where it
+      // is one property, the runtime type decides
+      if (node.left?.type === 'MemberExpression' && !node.left.computed && node.left.object?.type !== 'ThisExpression' &&
+          target?.nodeType === 'MemberAccess' && target.target?.nodeType !== 'Parenthesized') {
+        const receiverType = this.inferFullExpressionType(node.left.object);
+        if (receiverType && !receiverType.isArray && receiverType.name !== 'IAlgorithmInstance' && /^I\w+Instance$/.test(receiverType.name) &&
+            this.isFrameworkInstanceType(receiverType.name) && this.stubChainDeclares(receiverType.name, target.member))
+          target = new CSharpMemberAccess(new CSharpParenthesized(new CSharpCast(CSharpType.Dynamic(), target.target)), target.member);
+      }
 
       // Infer target type first for array element context propagation
       const targetType = this.inferFullExpressionType(node.left);

@@ -530,6 +530,11 @@ check('numeric: the global isNaN tests a double', () => {
 // ---------------------------------------------------------------------------
 // Framework-typed values
 // ---------------------------------------------------------------------------
+check('framework: a framework property set on a framework-typed instance reaches the concrete class (dynamic)', () => {
+  const code = transpile('class K extends IAlgorithmInstance {\n  /** @param {Algorithm} hash - hash algorithm */\n' +
+    '  use(hash) { /** @type {IHashFunctionInstance} */ const h = hash.CreateInstance(false); h.outputSize = 37; return h; }\n}');
+  expectMatch(code, /\(\(dynamic\)\(?h\)?\)\.OutputSize = /, '((dynamic)h).OutputSize = ...');
+});
 check('framework: a member the framework type lacks is read through dynamic', () => {
   const code = transpile('class K extends IAlgorithmInstance {\n  /** @param {Algorithm} hash - hash algorithm */\n' +
     '  use(hash) { /** @type {IMacInstance} */ const mac = hash.CreateInstance(false); mac.key = [1, 2]; return mac; }\n}');
