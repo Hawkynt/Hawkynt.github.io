@@ -587,7 +587,7 @@ check('harness: a .data library taken through a factory parameter is bundled, an
     fs.writeFileSync(main, "(function (root, factory) { module.exports = factory(require('../../AlgorithmFramework'), require('../../OpCodes'), require('./tables.data')); })" +
       '(this, function (AlgorithmFramework, OpCodes, Tables) { return {}; });\n');
     fs.writeFileSync(path.join(dir, 'tables.data.js'), '(function () {\n  const SBOX = [1, 2, 3];\n  module.exports = { SBOX };\n}).call(this);\n');
-    const code = 'namespace CipherValidation { public class mainGenerated { public static dynamic Tables = null; } }';
+    const code = 'namespace CipherValidation { public class mainGenerated { public static dynamic Tables = null; public static dynamic Sbox = Tables.SBOX; } }';
     const bundled = quiet(() => Validation.bundleCSharpDependencies(code, [], plugin, undefined, main));
     if (!bundled.success) throw new Error(bundled.error);
     expectMatch(bundled.code, /public static dynamic Tables = ValidationLibraries\.Exports\(typeof\(tables_data_libGenerated\)\);/, 'Tables bound to the library\'s exports');
