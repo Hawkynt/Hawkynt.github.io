@@ -1088,6 +1088,12 @@ check('typed arrays: a copy of a dynamic value is cast to the typed array first 
     '  /** @returns {uint8[]} r */\n  copy() { const k = new Uint8Array(this._privateKey); return k; }\n}');
   expectMatch(code, /\((unchecked\()?\(byte\[\]\)\(?this\._privateKey\)?\)?\)\.ToArray\(\)/, '((byte[])this._privateKey).ToArray()');
 });
+check('concat: dynamic arrays concatenated are cast to byte arrays first (RuntimeBinderException)', () => {
+  const code = transpile('class Holder {\n  constructor() {\n    this._a = null;\n    this._b = null;\n  }\n' +
+    '  /** @param {uint8[]} k - key */\n  set(k) { this._a = k ? k : AlgorithmFramework.Find("x"); this._b = k ? k : AlgorithmFramework.Find("y"); }\n' +
+    '  /** @returns {uint8[]} r */\n  both() { return this._a.concat(this._b); }\n}');
+  expectMatch(code, /\((unchecked\()?\(byte\[\]\)\(?this\._a\)?\)?\)\.Concat\((unchecked\()?\(byte\[\]\)\(?this\._b\)?\)?\)/, '((byte[])this._a).Concat((byte[])this._b)');
+});
 const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +

@@ -25401,8 +25401,19 @@
      * Transform ArrayConcat to array.Concat(...).ToArray()
      */
     transformArrayConcat(node) {
-      const array = this.transformExpression(node.array);
-      const elementType = this.arrayElementTypeOf(node.array);
+      let array = this.transformExpression(node.array);
+      // A dynamic receiver (comb4p.js's `dynamic h1`) binds no LINQ Concat at run
+      // time: cast it to the array type of what it is concatenated with (byte[])
+      const receiverType = this.inferFullExpressionType(node.array);
+      let dynamicReceiverElement = null;
+      if (receiverType?.name === 'dynamic' && !receiverType.isArray) {
+        const argType = (node.arrays || []).map(a => this.inferFullExpressionType(a)).find(t => t?.isArray && t.elementType && !['dynamic', 'object'].includes(t.elementType.name));
+        const castType = argType || CSharpType.Array(CSharpType.Byte());
+        array = new CSharpCast(castType, array);
+        dynamicReceiverElement = castType.elementType;
+      }
+      // (dynamic arguments are then cast to that same array type - castConcatArgument)
+      const elementType = dynamicReceiverElement || this.arrayElementTypeOf(node.array);
       // Reverse-direction fix: castConcatArgument only ever widens the ARGUMENT to
       // match a wider RECEIVER (see its own doc comment), never the reverse, since
       // narrowing an argument risks real data loss in general. When there's exactly
