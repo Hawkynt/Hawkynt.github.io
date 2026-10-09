@@ -409,6 +409,12 @@ check('bigint: / truncates toward zero and % keeps the dividend sign, exactly pa
     ['[-3, -1] [-3, 1] [3, -1] [3, 1] 333333333333333333333333333333']);
 });
 
+check('recursion: a call depth beyond Python\'s default limit of 1000 runs as in JavaScript', () => {
+  const js = '/** @param {int32} n @returns {int32} */\nfunction depth(n) { return n === 0 ? 0 : 1 + depth(n - 1); }';
+  // Given a recursion 3000 calls deep (a 2048-bit recursive gcd needs over 1000)
+  return expectOutput(runPython(js, 'print(depth(3000))'), ['3000']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

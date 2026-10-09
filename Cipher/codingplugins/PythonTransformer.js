@@ -2935,6 +2935,14 @@ class OpCodes(metaclass=_OpCodesMeta):
           '        return obj.pop(key, None) is not None\n' +
           '    return obj.delete(key)'
       });
+      // A JS engine allows about ten thousand nested calls; Python's default
+      // of 1000 stops a recursive BigInt gcd on a 2048-bit modulus
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'import sys as _js_sys\n' +
+          'if _js_sys.getrecursionlimit() < 10000:\n' +
+          '    _js_sys.setrecursionlimit(10000)'
+      });
       // BigInt `/` truncates toward zero and `%` keeps the dividend's sign;
       // Python's // and % floor instead, which differs for a negative operand
       stubs.push({
