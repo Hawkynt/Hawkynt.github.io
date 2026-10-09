@@ -618,6 +618,12 @@ check('typed array: new Uint32Array(words) copies, new Uint32Array(words.buffer)
   return expectOutput(runPython(js, 'print([list(x) for x in f()])'), ['[[1, 7], [9, 2], [1, 7]]']);
 });
 
+check('update: a prefix ++/-- statement on a module variable declares it global', () => {
+  const js = 'let calls = 0;\nfunction src() { ++calls; --calls; ++calls; return calls; }\nfunction g(a) { let i = 0; ++i; a[++i] = 5; return [i, a]; }';
+  // Given prefix increments and a decrement of a module-level let, and prefix updates of a local
+  return expectOutput(runPython(js, 'print(src(), src(), calls, g([0, 0, 0]))'), ['1 2 2 [2, [0, 0, 5]]']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

@@ -9076,6 +9076,12 @@ class OpCodes(metaclass=_OpCodesMeta):
     transformUnaryExpression(node) {
       let operator = node.operator;
 
+      // The parser gives prefix ++x/--x as a unary expression; as a statement
+      // it is the same augmented assignment as x++, so a module variable it
+      // updates is declared `global` like any other assignment target
+      if (operator === '++' || operator === '--')
+        return this.transformUpdateExpression(node);
+
       if (operator === 'typeof' && node.argument.type === 'Identifier' &&
           PythonTransformer.UNDECLARABLE_JS_GLOBALS.has(node.argument.name)) {
         return PythonLiteral.Str('undefined');
