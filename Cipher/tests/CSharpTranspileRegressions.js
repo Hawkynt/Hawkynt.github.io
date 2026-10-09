@@ -94,7 +94,7 @@ check('IIFE hoisting: two IIFEs with the same local get distinct module names; a
   expectMatch(code, /\bTable\b[^;]*=/, 'the first hoisted Table');
   expectMatch(code, /\bTable_2\b[^;]*=/, 'the second, renamed Table_2');
   expectMatch(code, /table => table\[0\]/, 'the arrow parameter untouched');
-  expectMatch(code, /F\(Table_2\)/, 'the second IIFE reading its own renamed local');
+  expectMatch(code, /F\(Table_2\b/, 'the second IIFE reading its own renamed local');
 });
 
 // ---------------------------------------------------------------------------
@@ -188,6 +188,35 @@ check('jsdoc: a width-less @param {Array} does not override body-usage inference
 });
 
 // ---------------------------------------------------------------------------
+// Framework base classes: members are inherited, methods overridden
+// ---------------------------------------------------------------------------
+check('framework: a subclass inherits inputBuffer and isInverse instead of redeclaring them', () => {
+  const code = transpile('class I extends IAlgorithmInstance {\n  constructor(a) { super(a); this.isInverse = false; this.inputBuffer = []; }\n' +
+    '  Result() { return this.inputBuffer; }\n}');
+  expectNoMatch(code, /\bInputBuffer\s*\{\s*get/, 'a redeclared InputBuffer property');
+  expectNoMatch(code, /\bbool\s+IsInverse\b/, 'a redeclared IsInverse property');
+  expectMatch(code, /public override byte\[\] Result\(\)/, 'Result overriding the framework method');
+});
+check('framework: framework methods are overridden, a name the framework lacks is the subclass\'s own', () => {
+  const code = transpile('class I extends IBlockCipherInstance {\n  constructor(a) { super(a); this.BlockSize = 2; this.seed = 5; }\n' +
+    '  EncryptBlock(block) { return block; }\n  DecryptBlock(block) { return block; }\n}');
+  expectMatch(code, /public override byte\[\] EncryptBlock\(byte\[\] block\b/, 'an EncryptBlock override');
+  expectMatch(code, /public override byte\[\] DecryptBlock\(byte\[\] block\b/, 'a DecryptBlock override');
+  expectNoMatch(code, /\bint\s+BlockSize\s*\{/, 'a redeclared BlockSize');
+  expectMatch(code, /\bint\s+Seed\b/, 'the subclass\'s own int Seed');
+});
+check('framework: CreateInstance() without a parameter still overrides with the framework signature', () => {
+  const code = transpile('class A extends BlockCipherAlgorithm {\n  constructor() { super(); this.name = "A"; }\n  CreateInstance() { return new I(this); }\n}\n' +
+    'class I extends IBlockCipherInstance { constructor(a) { super(a); } }');
+  expectMatch(code, /public override IBlockCipherInstance CreateInstance\(bool unused0 = default\)/, 'the framework CreateInstance signature');
+});
+check('framework: a module function named like an inherited member is called qualified', () => {
+  const code = transpile('function EncryptBlock(b) { return b; }\nclass I extends IBlockCipherInstance {\n' +
+    '  constructor(a) { super(a); }\n  Result() { return EncryptBlock(this.inputBuffer); }\n}');
+  expectMatch(code, /Generated\.EncryptBlock\(this\.InputBuffer\)/, 'Generated.EncryptBlock(this.InputBuffer)');
+});
+
+// ---------------------------------------------------------------------------
 // Runtime stubs (needs the .NET SDK)
 // ---------------------------------------------------------------------------
 check('runtime stubs: BlockAbsorber, pad helpers, ToRadixString, IsTruthy, GFMul behave like the JS framework', () => {
@@ -195,7 +224,11 @@ check('runtime stubs: BlockAbsorber, pad helpers, ToRadixString, IsTruthy, GFMul
   const probe = spawnSync('dotnet', ['--version'], { encoding: 'utf-8' });
   if (probe.status !== 0) return 'skip';
 
-  const stubs = transpile('function unused() { return 0; }', true)
+  // A block cipher that relies on the framework's Feed and block loop
+  const stubs = transpile('class XorInstance extends IBlockCipherInstance {\n' +
+    '  constructor(algorithm) { super(algorithm); this.BlockSize = 2; }\n' +
+    '  EncryptBlock(block) { return [block[0] ^ this.key[0], block[1] ^ this.key[1]]; }\n' +
+    '  DecryptBlock(block) { return this.EncryptBlock(block); }\n}', true)
     .replace(/public static void Main\s*\([^)]*\)\s*\{[^}]*\}/, '');
   const program = `${stubs}
 namespace RegressionTest {
@@ -246,6 +279,23 @@ namespace RegressionTest {
       var threw = false;
       try { OpCodes.ModInverseN(new BigInteger(4), new BigInteger(8)); } catch (ArgumentException) { threw = true; }
       Eq("modinv-none", threw, true);
+      // Framework instance: Feed accumulates, Result runs EncryptBlock over every block
+      var xor = new Generated.XorInstance(null);
+      xor.Key = new byte[] { 1, 2 };
+      xor.Feed(new byte[] { 0, 0 });
+      xor.Feed(new byte[0]);
+      xor.Feed(new byte[] { 3, 3 });
+      Eq("feed-result", Convert.ToHexString(xor.Result()), "01020201");
+      Eq("result-drains", xor.InputBuffer.Length, 0);
+      xor.Feed(new byte[] { 1 });
+      var partial = false;
+      try { xor.Result(); } catch (Exception) { partial = true; }
+      Eq("partial-block", partial, true);
+      var keyless = new Generated.XorInstance(null);
+      keyless.Feed(new byte[] { 1, 2 });
+      var noKey = false;
+      try { keyless.Result(); } catch (Exception) { noKey = true; }
+      Eq("no-key", noKey, true);
       Console.WriteLine(failures == 0 ? "STUBS_OK" : "STUBS_FAILED");
       return failures == 0 ? 0 : 1;
     }

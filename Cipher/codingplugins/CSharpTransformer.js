@@ -142,28 +142,6 @@
   ]);
 
   /**
-   * Every property name declared (in any I*Instance interface stub, or their common
-   * IAlgorithmInstance base) in csharp.js's embedded runtime - i.e. every name a
-   * generated *Instance class inherits automatically regardless of which algorithm
-   * kind it is. A module-level JS `const`/IIFE-local (e.g. blake3.js's `const IV =
-   * new Uint32Array([...])`, hoisted as a static field of the main wrapper class -
-   * see transformVariableDeclaration/mainClassShadowedConstNames) that happens to
-   * share one of these names is NOT the same value as the inherited instance
-   * property of the same name, but C#'s own simple-name lookup rules resolve a bare
-   * reference inside an *Instance method to the inherited member FIRST (base-class
-   * members win over an enclosing type's static fields) - silently reading `this.IV`
-   * (byte[], usually null/unrelated) instead of the real module-level constants
-   * table (uint[]). Used by transformIdentifier to force explicit
-   * `MainClass.Name` qualification for exactly these collisions, rather than
-   * relying on implicit resolution that's actively wrong for this shape.
-   */
-  const RESERVED_INSTANCE_MEMBER_NAMES = new Set([
-    'Algorithm', 'Config', 'A', 'B', 'Key', 'IV', 'Iv', 'Nonce', 'Seed',
-    'OutputSize', 'OutputLength', 'Salt', 'Iterations', 'PublicKey', 'PrivateKey',
-    'UnderlyingCipher', 'AssociatedData'
-  ]);
-
-  /**
    * A handful of OpCodes methods whose embedded C# runtime (see csharp.js's inlined
    * OpCodes stub) intentionally diverges from the generic JS JSDoc that
    * getOpCodesReturnType/getOpCodesParamTypes otherwise trust: GetBit/SetBit are
@@ -332,6 +310,18 @@
           ...(options.typeKnowledge?.frameworkTypes || {})
         }
       };
+      // Members each framework stub class declares (csharp.js _getStubMembers):
+      // class name -> { base, members }. A subclass member of one of these names
+      // is inherited, never redeclared.
+      this.stubMembers = options.stubMembers || new Map();
+      // Local class name -> its JS superclass name, and every local class name,
+      // filled by transform()
+      this.localClassBases = new Map();
+      this.localClassNames = new Set();
+      // Local class name -> its declared C# fields and properties, once transformed
+      this.localClassMembers = new Map();
+      // PascalCase names of the module's top-level functions, filled by transform()
+      this.moduleFunctionNames = new Set();
       this.parser = options.parser || null;
       this.jsDocParser = options.jsDocParser || null;
       this.currentClass = null;
@@ -1831,11 +1821,12 @@
     getInheritedPropertyType(baseClassName, propertyName) {
       if (!this.typeKnowledge?.frameworkTypes) return null;
 
-      // Check the base class directly
+      // Check the base class directly. The knowledge names properties as the JS
+      // source does (inputBuffer), the C# members are PascalCase (InputBuffer).
       let classInfo = this.typeKnowledge.frameworkTypes[baseClassName];
       while (classInfo) {
-        if (classInfo.properties && classInfo.properties[propertyName]) {
-          return classInfo.properties[propertyName];
+        for (const [name, type] of Object.entries(classInfo.properties || {})) {
+          if (name === propertyName || this.toPascalCase(name) === propertyName) return type;
         }
         // Walk up the inheritance chain
         if (classInfo.extends) {
@@ -1844,6 +1835,149 @@
           break;
         }
       }
+      return null;
+    }
+
+    /**
+     * Whether the C# base class of a class declares a field or property: the
+     * framework stub classes as csharp.js emits them, reached through any local
+     * base classes. A subclass inherits such a member and must not declare its own.
+     * @param {string|null} baseClassName - the JS superclass name
+     * @param {string} csName - the C# member name (PascalCase, or _name)
+     * @returns {boolean}
+     */
+    baseDeclaresMember(baseClassName, csName) {
+      let name = this.baseClassAliases?.get(baseClassName) || baseClassName;
+      for (let hops = 0; name && hops < 32; ++hops) {
+        const stub = this.stubMembers.get(name);
+        if (stub) {
+          if (stub.members.has(csName) && !stub.methods?.has(csName)) return true;
+          name = stub.base;
+        } else {
+          if (this.localClassMembers.get(name)?.has(csName)) return true;
+          name = this.localClassBases.get(name) || null;
+        }
+      }
+      return false;
+    }
+
+    /**
+     * Whether a C# type name names a class: a framework stub class or a local one.
+     * @param {string} name - type name
+     * @returns {boolean}
+     */
+    isClassTypeName(name) {
+      const stub = this.stubMembers.get(name);
+      return this.localClassNames.has(name) || (!!stub && (stub.members.size > 0 || !!stub.base));
+    }
+
+    /**
+     * Whether the framework stub base of a class declares a virtual member of this
+     * name, which a subclass member of the name overrides.
+     * @param {string|null} baseClassName - the JS superclass name
+     * @param {string} csName - the C# member name
+     * @returns {boolean}
+     */
+    baseDeclaresVirtual(baseClassName, csName) {
+      let name = this.baseClassAliases?.get(baseClassName) || baseClassName;
+      for (let hops = 0; name && hops < 32; ++hops) {
+        const stub = this.stubMembers.get(name);
+        if (stub) {
+          if (stub.virtuals?.has(csName)) return true;
+          name = stub.base;
+        } else {
+          name = this.localClassBases.get(name) || null;
+        }
+      }
+      return false;
+    }
+
+    /**
+     * The IL type of a JSDoc type (a JSDoc parser type object or string): the
+     * non-null member of a nullable union, an array of its element type.
+     * @param {Object|string|null} t - JSDoc type
+     * @returns {string|null} IL type name
+     */
+    jsDocILType(t) {
+      if (!t) return null;
+      if (typeof t === 'string') {
+        const members = t.split('|').map(m => m.trim()).filter(m => m && m !== 'null' && m !== 'undefined');
+        return members.length === 1 ? members[0] : null;
+      }
+      if (t.isUnion) {
+        const members = (t.unionTypes || []).filter(u => u && u.name !== 'null' && u.name !== 'undefined');
+        return members.length === 1 ? this.jsDocILType(members[0]) : null;
+      }
+      if (t.isArray) {
+        const element = this.jsDocILType(t.elementType);
+        return element ? element + '[]' : null;
+      }
+      if (t.isGeneric || t.isTuple) return null;
+      return this.jsDocILType(t.name || null);
+    }
+
+    /**
+     * Whether a framework base class an algorithm or instance class derives from
+     * (Algorithm, IAlgorithmInstance and their stub subclasses) declares a member of
+     * this name. Inside such a subclass, C# resolves a bare name to the inherited
+     * member before an enclosing class's static field or method, so a module-level
+     * binding of the same name (blake3.js's `const IV`, a top-level `function
+     * DecryptBlock`) must be referenced qualified with the main class.
+     * @param {string} csName - C# member name
+     * @returns {boolean}
+     */
+    isInheritableMemberName(csName) {
+      if (!this._inheritableMemberNames) {
+        this._inheritableMemberNames = new Set();
+        const isFrameworkBase = name => {
+          for (let hops = 0; name && hops < 32; ++hops) {
+            if (name === 'Algorithm' || name === 'IAlgorithmInstance') return true;
+            name = this.stubMembers.get(name)?.base;
+          }
+          return false;
+        };
+        for (const [className, info] of this.stubMembers)
+          if (isFrameworkBase(className))
+            for (const member of info.members) this._inheritableMemberNames.add(member);
+      }
+      return this._inheritableMemberNames.has(csName);
+    }
+
+    /**
+     * The C# type of an IL type name - the type the IL gives a declaration or
+     * expression (its resultType). Null where the IL name has no single C# type
+     * here (absent, 'null', an unwidthed 'number', a function or a bare Map), so
+     * the caller keeps its own derivation.
+     * @param {string|null} ilType - IL type name: 'uint8', 'uint32[]', 'BigInt', a class name, ...
+     * @returns {CSharpType|null}
+     */
+    mapILType(ilType) {
+      if (typeof ilType !== 'string' || !ilType) return null;
+      if (ilType.endsWith('[]')) {
+        const element = this.mapILType(ilType.slice(0, -2));
+        return element ? CSharpType.Array(element) : null;
+      }
+      if (ilType.startsWith('(') || ilType.startsWith('{')) return this.mapType(ilType);
+      const keyed = ilType.match(/^(?:Map|Object)<(.+)>$/);
+      if (keyed) {
+        const [key, value] = this.splitGenericTypeArgs(keyed[1]).map(t => this.mapILType(t.trim()));
+        return key && value ? new CSharpType('Dictionary', { isGeneric: true, genericArguments: [key, value] }) : null;
+      }
+      switch (ilType) {
+        case 'null': case 'undefined': case 'number': case 'function': case 'Function': case 'Map': case 'void':
+        case 'Array': case 'array':
+          return null;
+        case 'any': case 'object': case 'Object':
+          return CSharpType.Dynamic();
+      }
+      const primitive = TYPE_MAP[ilType];
+      if (primitive && primitive.endsWith('[]') && /Array$/.test(ilType) && ilType !== 'Array')
+        return CSharpType.Array(new CSharpType(primitive.slice(0, -2)));
+      if (primitive && !primitive.endsWith('[]') && primitive !== 'Action') return new CSharpType(primitive);
+      // A class: a framework stub class or one this file declares. Any other
+      // name is a JSDoc typedef of a plain object.
+      if (/^[A-Za-z_$][\w$]*$/.test(ilType))
+        return this.stubMembers.has(ilType) || this.localClassNames.has(ilType) ? new CSharpType(ilType) : CSharpType.Dynamic();
       return null;
     }
 
@@ -1968,7 +2102,10 @@
         'bigint': new CSharpType('BigInteger')
       };
 
-      return typeMap[typeName] || CSharpType.Object();
+      if (typeMap[typeName]) return typeMap[typeName];
+      // A class: a framework stub class or one this file declares
+      if (this.stubMembers.has(typeName) || this.localClassNames.has(typeName)) return new CSharpType(typeName);
+      return CSharpType.Object();
     }
 
     /**
@@ -4672,8 +4809,21 @@
             if (nullFieldType) {
               return nullFieldType;
             }
-            // Fall back to name-based inference
-            return this.inferTypeFromName(propName);
+            // A member inherited from a framework base has the base's declared type
+            const baseName = this.localClassBases.get(this.currentClass?.name);
+            if (baseName && this.baseDeclaresMember(baseName, pascalName)) {
+              let name = baseName;
+              for (let hops = 0; name && hops < 32; ++hops) {
+                if (this.stubMembers.has(name)) {
+                  const inherited = this.getInheritedPropertyType(name, pascalName);
+                  if (inherited) return this.mapTypeFromKnowledge(inherited);
+                  break;
+                }
+                name = this.localClassBases.get(name);
+              }
+            }
+            // The access's IL type, else a guess from the name
+            return this.mapILType(node.resultType) || this.inferTypeFromName(propName);
           }
           return CSharpType.Object();
 
@@ -5952,6 +6102,9 @@
       if (objType && !objType.isArray && !objType.isTuple && objType.name &&
           !PRIMITIVE_OR_SPECIAL_TYPE_NAMES.has(objType.name)) {
         const pascalName = this.toPascalCase(propName);
+        // A member a framework stub class declares has its framework type
+        const frameworkType = this.stubMembers.has(objType.name) ? this.getInheritedPropertyType(objType.name, pascalName) : null;
+        if (frameworkType) return this.mapTypeFromKnowledge(frameworkType);
         const fieldType = this.getClassFieldType(objType.name, pascalName);
         if (fieldType) return fieldType;
       }
@@ -7211,6 +7364,14 @@
         // CONST, not a real framework type name, so naively emitting the const's own
         // name as the C# base class doesn't compile at all).
         this.baseClassAliases = this.preScanBaseClassAliases(jsAst.body);
+        this._walkAstNodes(jsAst.body, node => {
+          if ((node.type === 'ClassDeclaration' || node.type === 'ClassExpression') && node.id?.name) {
+            this.localClassNames.add(node.id.name);
+            const superName = !node.superClass ? null : node.superClass.type === 'Identifier' ? node.superClass.name
+              : node.superClass.property?.name || null;
+            if (superName) this.localClassBases.set(node.id.name, superName);
+          }
+        });
         // See preScanConstsWrappedInTypedArray's doc comment - a module-level const
         // later re-wrapped as `new Uint8Array(existingConst)`/etc ANYWHERE in this
         // file is strong, deliberate evidence of that const's real element width,
@@ -7229,6 +7390,7 @@
         // functions (e.g. asymmetric-crypto's modPow/modAdd/modMul helpers) never
         // got this treatment before, so a helper calling another helper declared
         // later in the same file saw no return/parameter evidence at all.
+        for (const { name } of topLevelMethodNodes) this.moduleFunctionNames.add(this.toPascalCase(name));
         this.refineMethodReturnTypes(topLevelMethodNodes);
         this.refineMethodParameterTypes(topLevelMethodNodes);
         this.propagateBigIntegerParams(topLevelMethodNodes);
@@ -7977,7 +8139,7 @@
             const fieldType = this.inferFullExpressionType(returnValue) || new CSharpType('object');
             const iifeFieldName = this.toPascalCase(name);
             // See RESERVED_INSTANCE_MEMBER_NAMES's doc comment at the plain-const case below.
-            if (RESERVED_INSTANCE_MEMBER_NAMES.has(iifeFieldName)) {
+            if (this.isInheritableMemberName(iifeFieldName)) {
               this.mainClassShadowedConstNames.add(iifeFieldName);
             }
             const field = new CSharpField(iifeFieldName, fieldType);
@@ -8066,7 +8228,7 @@
           // instead (C# base-class members outrank an enclosing type's static
           // fields in simple-name lookup) - flag it so transformIdentifier can force
           // explicit qualification.
-          if (RESERVED_INSTANCE_MEMBER_NAMES.has(fieldName)) {
+          if (this.isInheritableMemberName(fieldName)) {
             this.mainClassShadowedConstNames.add(fieldName);
           }
           const field = new CSharpField(fieldName, fieldType);
@@ -8152,7 +8314,7 @@
             }
             const iifeLocalFieldName = this.toPascalCase(name);
             // See RESERVED_INSTANCE_MEMBER_NAMES's doc comment.
-            if (RESERVED_INSTANCE_MEMBER_NAMES.has(iifeLocalFieldName)) {
+            if (this.isInheritableMemberName(iifeLocalFieldName)) {
               this.mainClassShadowedConstNames.add(iifeLocalFieldName);
             }
             const field = new CSharpField(iifeLocalFieldName, fieldType);
@@ -10588,16 +10750,12 @@
       }
 
       const method = new CSharpMethod(pascalName, returnType);
-      // If we have an inherited signature, this is an override method (instance, not static).
-      // Restricted to the small set of members the actual compiled base-class hierarchy
-      // declares `virtual` (IAlgorithmInstance.Feed/Result, Algorithm.CreateInstance) -
-      // AlgorithmFramework.js's JSDoc documents a much larger real interface surface
-      // (EncryptBlock, DecryptBlock, Dispose, ...) that informs parameter/return TYPES
-      // just fine, but those members aren't virtual in the compiled instance hierarchy,
-      // so blindly marking every JSDoc-documented same-named method `override` produced
-      // CS0115 ("no suitable method found to override").
-      const KNOWN_VIRTUAL_MEMBERS = new Set(['feed', 'result', 'createinstance']);
-      if (inheritedSig && KNOWN_VIRTUAL_MEMBERS.has(pascalName.toLowerCase())) {
+      // An inherited signature names a framework method the C# stubs declare virtual
+      // (the knowledge is limited to stub members, see csharp.js
+      // _stubCompatibleKnowledge), so a method of the same arity overrides it - as a
+      // JavaScript method of that name does.
+      const inheritedArity = inheritedSig?.params ? inheritedSig.params.length : -1;
+      if (inheritedSig && (funcNode.params || []).length <= inheritedArity) {
         method.isOverride = true;
         method.isStatic = false;
       } else if (inheritedSig) {
@@ -10720,6 +10878,19 @@
         }
 
         method.parameters.push(csParam);
+      }
+
+      // A JavaScript override may declare fewer parameters than the framework method
+      // (`CreateInstance()` for `CreateInstance(isInverse)`); the C# override takes
+      // them all, the extra ones unused.
+      if (method.isOverride && method.parameters.length < inheritedArity) {
+        for (let i = method.parameters.length; i < inheritedArity; ++i) {
+          const inheritedParam = inheritedSig.params[i];
+          const extra = new CSharpParameter(`unused${i}`,
+            this.mapTypeFromKnowledge(typeof inheritedParam === 'string' ? inheritedParam : inheritedParam.type));
+          extra.defaultValue = new CSharpIdentifier('default');
+          method.parameters.push(extra);
+        }
       }
 
       // If function uses 'arguments' object, add a params array parameter
@@ -13370,6 +13541,7 @@
         const keyExpr = this.transformExpression(node.left);
         return new CSharpMethodCall(mapExpr, 'ContainsKey', [keyExpr]);
       }
+
 
       // Handle typeof comparisons: typeof x === "string" -> x is string
       // The IL AST builder (type-aware-transpiler.js) normalizes a bare `typeof x`
@@ -16035,7 +16207,10 @@
       // names (scanning all registered signatures for one ending in `.MethodName`).
       const pascalFuncName = this.toPascalCase(funcName);
       const castedArgs = this.castArgumentsToParameterTypes({ type: 'Unresolved' }, pascalFuncName, args, node.arguments);
-      return new CSharpMethodCall(null, pascalFuncName, castedArgs);
+      // Qualified where a member every framework subclass inherits has the same name:
+      // C# finds an inherited member before an enclosing class's static method.
+      const owner = this.moduleFunctionNames.has(pascalFuncName) && this.isInheritableMemberName(pascalFuncName) ? new CSharpIdentifier(this.mainClassName || 'GeneratedClass') : null;
+      return new CSharpMethodCall(owner, pascalFuncName, castedArgs);
     }
 
     transformNewExpression(node) {
@@ -18515,41 +18690,6 @@
       }
     }
 
-    /**
-     * A hardcoded "well-known base property" name (see the `knownBaseProps` lists in
-     * collectConstructorPropertyAssignments/_collectThisAssignments) is only actually
-     * inherited-and-usable as-is when the assigned value's type is compatible with the
-     * base class's OWN declared type for that name (see IAlgorithmInstance in
-     * csharp.js: Key/IV/Nonce/Salt/Seed/PublicKey/PrivateKey are `byte[]`;
-     * Iterations/OutputLength/OutputSize are `int`). Most algorithms genuinely mean the
-     * base member (a real key/IV byte array), but a name collision with a completely
-     * unrelated scalar use does happen - e.g. Khufu's PRNG `this.seed = 5` (a plain
-     * S-box-generation seed integer, nothing to do with the base
-     * IAlgorithmInstance.Seed byte[] used by random-generator algorithms). Assigning a
-     * uint straight into the inherited byte[]-typed member is a hard compile error
-     * (CS0029) with no cast that can fix it - the two types are unrelated, so the real
-     * fix is to recognize the mismatch and let this name get its OWN backing field
-     * instead of silently deferring to the inherited one (see the `methodNamesSet`
-     * backing-field branch in transformClassBody's constructor-property loop, which
-     * this reuses).
-     * @param {string} csPropName - PascalCase property name being assigned
-     * @param {Object|null} valueNode - the assigned value's AST node
-     * @returns {boolean}
-     */
-    hasReservedBasePropertyTypeConflict(csPropName, valueNode) {
-      if (!valueNode) return false;
-      const BYTE_ARRAY_PROPS = new Set(['Key', 'IV', 'Iv', 'Nonce', 'Salt', 'Seed', 'PublicKey', 'PrivateKey']);
-      const INT_PROPS = new Set(['Iterations', 'OutputLength', 'OutputSize']);
-      if (!BYTE_ARRAY_PROPS.has(csPropName) && !INT_PROPS.has(csPropName)) return false;
-      const inferred = this.inferFullExpressionType(valueNode);
-      if (!inferred) return false;
-      const isAlwaysCompatible = inferred.name === 'dynamic' || inferred.name === 'object' || inferred.name === 'var';
-      if (isAlwaysCompatible) return false;
-      if (BYTE_ARRAY_PROPS.has(csPropName)) return !inferred.isArray;
-      // INT_PROPS
-      const intLikeNames = new Set(['int', 'uint', 'short', 'ushort', 'byte', 'sbyte', 'long', 'ulong']);
-      return !intLikeNames.has(inferred.name);
-    }
 
     /**
      * Collect instance property assignments from constructor body (this.X = value patterns)
@@ -18606,41 +18746,12 @@
           if (inheritedType) continue;
         }
 
-        // Also skip known framework base class properties
-        const lowerPropName = propName.toLowerCase();
-        const knownBaseProps = [
-          // Algorithm base class properties
-          'name', 'description', 'inventor', 'year', 'category', 'subcategory',
-          'securitystatus', 'complexity', 'country', 'checksumsize', 'documentation',
-          'notes', 'tests', 'references', 'knownvulnerabilities', 'config',
-          'supportedkeysizes', 'supportedblocksizes',
-          // IAlgorithmInstance base class properties
-          'algorithm', 'config', 'a', 'b',
-          // IBlockCipherInstance, IStreamCipherInstance properties
-          'key', 'iv', 'nonce',
-          // Other common inherited properties
-          'salt', 'iterations', 'outputlength', 'outputsize', 'seed'
-        ];
-        // Only actually "known" (inherited, safe to skip) when this class extends
-        // something in the first place - a standalone helper class with no `extends`
-        // at all (e.g. Panama's `class PanamaCore { constructor() { this.a = ...; this.b
-        // = ...; } }`, never an Algorithm/Instance subclass) can perfectly legitimately
-        // have its own unrelated fields named "a"/"b" (IAlgorithmInstance's own
-        // dynamic A/B convenience properties - see csharp.js - are a C#-only stub
-        // invention with no real JS AlgorithmFramework counterpart, so
-        // getInheritedPropertyType's JSDoc-based lookup just above can never confirm
-        // OR deny them itself). Without this, PanamaCore's `this.a`/`this.b` silently
-        // never got their own fields declared, leaving every real reference
-        // unresolved (CS1061).
-        // Don't treat this as "just the inherited base property, nothing to declare"
-        // when a get/set accessor pair ALSO maps to this same PascalCase name under a
-        // DIFFERENT raw JS identifier (e.g. this ctor's `this.Iterations = 1000;`
-        // alongside a separate `get iterations()`/`set iterations(value)` pair) - that
-        // shape needs its own backing field (see the caller's hasAccessorCaseCollision
-        // check), not a silent skip that leaves the accessor with nothing real to
-        // reference. (hasAccessorCaseCollision is computed above.)
-        if (baseClassName && knownBaseProps.includes(lowerPropName) &&
-            !this.hasReservedBasePropertyTypeConflict(this.toPascalCase(propName), expr.right) &&
+        // Also skip a member the C# base class declares (the framework stubs, see
+        // baseDeclaresMember) - unless a get/set pair under another raw JS name maps
+        // onto the same PascalCase name (this ctor's `this.Iterations = 1000;` beside
+        // `get iterations()`/`set iterations(v)`): that pair needs its own backing
+        // field, see the caller's hasAccessorCaseCollision check.
+        if (baseClassName && this.baseDeclaresMember(baseClassName, this.toPascalCase(propName)) &&
             !hasAccessorCaseCollision) continue;
 
         // Store the property with its initial value for type inference
@@ -19440,15 +19551,10 @@
             [...collidingAccessorRawNames].some(rawName => rawName !== propName);
 
           // Check if method with same name exists (e.g., Result() method vs this.Result property),
-          // OR this name collides with a reserved base-class property of an incompatible type
-          // (see hasReservedBasePropertyTypeConflict - e.g. Khufu's PRNG `this.seed = 5`, a plain
-          // int completely unrelated to the inherited `byte[] Seed`), OR a get/set accessor pair
-          // collides with this ctor field's name only after PascalCasing (see
-          // hasAccessorCaseCollision above). In all three cases, create a private
+          // OR a get/set accessor pair collides with this ctor field's name only after
+          // PascalCasing (see hasAccessorCaseCollision above). In both cases, create a private
           // backing field with underscore prefix instead of skipping/deferring to the base member.
-          if (methodNamesSet.has(csPropName) ||
-              this.hasReservedBasePropertyTypeConflict(csPropName, propInfo.initialValue) ||
-              hasAccessorCaseCollision) {
+          if (methodNamesSet.has(csPropName) || hasAccessorCaseCollision) {
             // Generate a private backing field for the property to avoid conflict with method
             const backingFieldName = '_' + propName.charAt(0).toLowerCase() + propName.slice(1);
             let propType = this.inferPropertyType(propInfo.initialValue, constructorNode, propName);
@@ -19758,7 +19864,7 @@
       // that body's own type inference sees it as dynamic rather than falling through
       // to a numeric name-based guess. The matching auto-property declarations happen
       // later, once the class is otherwise complete - see the end of this function.
-      this._pendingDynamicMemberNames = this.computeMissingReferencedMemberNames(classBody);
+      this._pendingDynamicMemberNames = this.computeMissingReferencedMemberNames(classBody, baseClassName);
       for (const name of this._pendingDynamicMemberNames) {
         if (!this.classFieldTypeOwnHas(csClass.name, name)) {
           this.setClassFieldType(csClass.name, name, CSharpType.Dynamic());
@@ -19831,11 +19937,9 @@
       for (const [propName, propInfo] of allPropertyAssignments) {
         const csPropName = this.toPascalCase(propName);
 
-        // Already redirected to a private backing field (method-name conflict, or a
-        // reserved-base-property type conflict - see hasReservedBasePropertyTypeConflict)
-        // by the constructor-property pass above; declaring a second, plain `Seed`-named
-        // member here on top of that would be redundant (and would shadow the still-
-        // inherited base property with no purpose - nothing references it by that name).
+        // Already redirected to a private backing field (method-name or accessor case
+        // conflict) by the constructor-property pass above; declaring a second member
+        // of the same name here would be redundant.
         if (this.methodConflictingProperties.has(csPropName)) continue;
 
         // Check if property, field, or method already declared with same name
@@ -20025,10 +20129,13 @@
       }
 
       targetClass.nestedTypes.push(csClass);
+      this.localClassMembers.set(csClass.name, new Set(csClass.members
+        .filter(m => (m instanceof CSharpField || m instanceof CSharpProperty) && m.accessModifier !== 'private').map(m => m.name)));
 
       // Restore the enclosing class's jagged-instance-field set (this one was pre-scanned
       // and consumed for this class only; nested/sibling classes shouldn't see it).
       this.jaggedInstanceFields = prevJaggedInstanceFields;
+      this.classILMemberTypes = prevClassILMemberTypes;
       this.fieldPushScalarElementTypes = prevFieldPushScalarElementTypes;
       this.dynamicInstanceFields = prevDynamicInstanceFields;
       this.callSiteArgumentHints = prevCallSiteArgumentHints;
@@ -20052,9 +20159,10 @@
      * actually transformed; `transformClassDeclaration` later declares the matching
      * `dynamic` auto-properties from the same returned set once the class is done.
      * @param {Array} classBody - the class's own (JS/IL) AST body
+     * @param {string|null} baseClassName - the JS superclass, whose members are inherited
      * @returns {Set<string>} PascalCase names read but never assigned/called
      */
-    computeMissingReferencedMemberNames(classBody) {
+    computeMissingReferencedMemberNames(classBody, baseClassName = null) {
       const missing = new Set();
       if (!classBody) return missing;
 
@@ -20107,7 +20215,7 @@
       scanNode(classBody);
 
       for (const name of readNames) {
-        if (!calledNames.has(name) && !assignedNames.has(name)) missing.add(name);
+        if (!calledNames.has(name) && !assignedNames.has(name) && !this.baseDeclaresMember(baseClassName, name)) missing.add(name);
       }
       return missing;
     }
@@ -20119,15 +20227,6 @@
     collectAllMethodPropertyAssignments(classBody, baseClassName = null) {
       const properties = new Map();
 
-      const knownBaseProps = [
-        'name', 'description', 'inventor', 'year', 'category', 'subcategory',
-        'securitystatus', 'complexity', 'country', 'checksumsize', 'documentation',
-        'notes', 'tests', 'references', 'knownvulnerabilities', 'config',
-        'supportedkeysizes', 'supportedblocksizes',
-        'algorithm', 'a', 'b', 'key', 'iv', 'nonce',
-        'salt', 'iterations', 'outputlength', 'outputsize', 'seed'
-      ];
-
       for (const item of classBody) {
         if (item.type !== 'MethodDefinition') continue;
 
@@ -20135,7 +20234,7 @@
         const body = item.value?.body?.body || item.body?.statements || [];
 
         // Recursively collect this.X = ... assignments
-        this._collectThisAssignments(body, properties, knownBaseProps, baseClassName);
+        this._collectThisAssignments(body, properties, baseClassName);
       }
 
       return properties;
@@ -20144,7 +20243,7 @@
     /**
      * Recursively collect this.X = ... assignments from statements
      */
-    _collectThisAssignments(statements, properties, knownBaseProps, baseClassName) {
+    _collectThisAssignments(statements, properties, baseClassName) {
       if (!Array.isArray(statements)) return;
 
       for (const stmt of statements) {
@@ -20161,12 +20260,8 @@
             // field can't be represented in C#, and shadows the real static class for
             // every unqualified reference elsewhere in the class (CS1061/CS0120).
             if (propName && this.isKnownFrameworkPresenceRoot(expr.right)) continue;
-            // See the matching comment in collectConstructorPropertyAssignments: the
-            // knownBaseProps skip only makes sense when this class actually extends a
-            // real framework base class - never for a standalone helper class like
-            // Panama's `PanamaCore` (no `extends` at all).
-            if (propName && (!baseClassName || !knownBaseProps.includes(propName.toLowerCase()) ||
-                this.hasReservedBasePropertyTypeConflict(this.toPascalCase(propName), expr.right))) {
+            // A member the C# base class declares is inherited (see baseDeclaresMember).
+            if (propName && (!baseClassName || !this.baseDeclaresMember(baseClassName, this.toPascalCase(propName)))) {
               // Skip inherited properties
               if (baseClassName) {
                 const inheritedType = this.getInheritedPropertyType(baseClassName, this.toPascalCase(propName));
@@ -20182,27 +20277,27 @@
         // Handle IfStatement directly
         if (stmt.type === 'IfStatement') {
           if (stmt.consequent?.body) {
-            this._collectThisAssignments(stmt.consequent.body, properties, knownBaseProps, baseClassName);
+            this._collectThisAssignments(stmt.consequent.body, properties, baseClassName);
           } else if (stmt.consequent) {
-            this._collectThisAssignments([stmt.consequent], properties, knownBaseProps, baseClassName);
+            this._collectThisAssignments([stmt.consequent], properties, baseClassName);
           }
           if (stmt.alternate) {
             if (stmt.alternate.type === 'IfStatement') {
-              this._collectThisAssignments([stmt.alternate], properties, knownBaseProps, baseClassName);
+              this._collectThisAssignments([stmt.alternate], properties, baseClassName);
             } else if (stmt.alternate.body) {
-              this._collectThisAssignments(stmt.alternate.body, properties, knownBaseProps, baseClassName);
+              this._collectThisAssignments(stmt.alternate.body, properties, baseClassName);
             } else {
-              this._collectThisAssignments([stmt.alternate], properties, knownBaseProps, baseClassName);
+              this._collectThisAssignments([stmt.alternate], properties, baseClassName);
             }
           }
           continue; // Already handled, skip other checks
         }
 
         // Recurse into other blocks (for, while, etc.)
-        if (stmt.consequent?.body) this._collectThisAssignments(stmt.consequent.body, properties, knownBaseProps, baseClassName);
-        if (stmt.body?.body) this._collectThisAssignments(stmt.body.body, properties, knownBaseProps, baseClassName);
-        if (stmt.body && Array.isArray(stmt.body)) this._collectThisAssignments(stmt.body, properties, knownBaseProps, baseClassName);
-        if (stmt.block?.body) this._collectThisAssignments(stmt.block.body, properties, knownBaseProps, baseClassName);
+        if (stmt.consequent?.body) this._collectThisAssignments(stmt.consequent.body, properties, baseClassName);
+        if (stmt.body?.body) this._collectThisAssignments(stmt.body.body, properties, baseClassName);
+        if (stmt.body && Array.isArray(stmt.body)) this._collectThisAssignments(stmt.body, properties, baseClassName);
+        if (stmt.block?.body) this._collectThisAssignments(stmt.block.body, properties, baseClassName);
       }
     }
 
@@ -20529,16 +20624,15 @@
               this.isKnownFrameworkPresenceRoot(stmt.expression.right);
           if (isFrameworkGlobalFieldAssign) continue;
 
-          if (isSuperCall) {
-            // Wrap arguments in object expected by emitter
-            const superArgs = (stmt.expression.arguments || []).map(a => this.transformExpression(a));
-            ctor.baseCall = { arguments: superArgs };
-            continue;
-          }
-
-          if (isParentCtorCall) {
-            // Handle IL-transformed parent constructor call
-            const superArgs = (stmt.expression.arguments || []).map(a => this.transformExpression(a));
+          if (isSuperCall || isParentCtorCall) {
+            // A constructor initializer cannot bind dynamically (CS1975): a dynamic
+            // algorithm argument to a framework instance base is cast to Algorithm.
+            const castsToAlgorithm = this.baseDeclaresMember(baseClassName, 'InputBuffer');
+            const superArgs = (stmt.expression.arguments || []).map(a => {
+              const arg = this.transformExpression(a);
+              return castsToAlgorithm && this.inferFullExpressionType(a)?.name === 'dynamic'
+                ? new CSharpCast(new CSharpType('Algorithm'), arg) : arg;
+            });
             ctor.baseCall = { arguments: superArgs };
             continue;
           }
@@ -20641,6 +20735,7 @@
         }
         prop = new CSharpProperty(propName, propType);
         prop.isStatic = methodNode.static;
+        prop.isOverride = !methodNode.static && this.baseDeclaresVirtual(baseClassName, propName);
         isNewProperty = true;
       }
 

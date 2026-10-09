@@ -113,7 +113,8 @@ class CSharpPlugin extends LanguagePlugin {
         namespace: mergedOptions.namespace || 'CipherValidation',
         className: mergedOptions.className || 'GeneratedClass',
         typeKnowledge: this._stubCompatibleKnowledge(mergedOptions.parser?.typeKnowledge || mergedOptions.typeKnowledge ||
-          SharedTypeAwareParser?.sharedTypeKnowledge || null)
+          SharedTypeAwareParser?.sharedTypeKnowledge || null),
+        stubMembers: this._getStubMembers()
       });
 
       // Transform JS AST to C# AST
@@ -385,6 +386,45 @@ class CSharpPlugin extends LanguagePlugin {
   }
 
   /**
+   * The members each framework stub class declares, parsed from the stub source
+   * (see _addFrameworkStubs).
+   * @private
+   * @returns {Map<string, {base: string|null, members: Set<string>, methods: Set<string>, virtuals: Set<string>}>}
+   *   class name -> base class, member names, which of them are methods and which virtual
+   */
+  _getStubMembers() {
+    if (this._stubMembers) return this._stubMembers;
+    this._stubMembers = new Map();
+    const stubs = this._addFrameworkStubs('', 'Stub');
+    const classPattern = /class\s+(\w+)(?:\s*:\s*(\w+))?\s*\{/g;
+    let match;
+    while ((match = classPattern.exec(stubs)) !== null) {
+      let depth = 1, pos = match.index + match[0].length;
+      while (pos < stubs.length && depth > 0) {
+        if (stubs[pos] === '{') ++depth;
+        else if (stubs[pos] === '}') --depth;
+        ++pos;
+      }
+      const body = stubs.slice(match.index + match[0].length, pos - 1);
+      const members = new Set();
+      const methods = new Set();
+      const virtuals = new Set();
+      const memberPattern = /public\s+((?:virtual\s+|override\s+|static\s+)*)[\w<>\[\],?. ]+?\s+(\w+)\s*(\{|=>|=|;|\()/g;
+      let member;
+      while ((member = memberPattern.exec(body)) !== null) {
+        members.add(member[2]);
+        if (member[3] === '(') methods.add(member[2]);
+        if (/virtual|override/.test(member[1])) virtuals.add(member[2]);
+      }
+      this._stubMembers.set(match[1], { base: match[2] || null, members, methods, virtuals });
+    }
+    // Enums are types too, without members to inherit
+    for (const enumMatch of stubs.matchAll(/public\s+enum\s+(\w+)/g))
+      this._stubMembers.set(enumMatch[1], { base: null, members: new Set(), methods: new Set(), virtuals: new Set() });
+    return this._stubMembers;
+  }
+
+  /**
    * The framework type knowledge as the C# stubs can honour it. The transformer
    * treats a framework-declared property as inherited and declares no field for
    * it, which is only right when the C# base-class stub (see _addFrameworkStubs)
@@ -397,30 +437,10 @@ class CSharpPlugin extends LanguagePlugin {
    */
   _stubCompatibleKnowledge(knowledge) {
     if (!knowledge || !knowledge.frameworkTypes) return knowledge;
-    if (!this._stubMembers) {
-      // class name -> { base, members:Set } parsed from the stub source
-      this._stubMembers = new Map();
-      const stubs = this._addFrameworkStubs('', 'Stub');
-      const classPattern = /class\s+(\w+)(?:\s*:\s*(\w+))?\s*\{/g;
-      let match;
-      while ((match = classPattern.exec(stubs)) !== null) {
-        let depth = 1, pos = match.index + match[0].length;
-        while (pos < stubs.length && depth > 0) {
-          if (stubs[pos] === '{') ++depth;
-          else if (stubs[pos] === '}') --depth;
-          ++pos;
-        }
-        const body = stubs.slice(match.index + match[0].length, pos - 1);
-        const members = new Set();
-        const memberPattern = /public\s+(?:virtual\s+|override\s+|static\s+)*[\w<>\[\],?. ]+?\s+(\w+)\s*(?:\{|=>|=|;|\()/g;
-        let member;
-        while ((member = memberPattern.exec(body)) !== null) members.add(member[1]);
-        this._stubMembers.set(match[1], { base: match[2] || null, members });
-      }
-    }
+    const stubMembers = this._getStubMembers();
     const declares = (className, member) => {
-      for (let name = className, hops = 0; name && this._stubMembers.has(name) && hops < 32; ++hops) {
-        const info = this._stubMembers.get(name);
+      for (let name = className, hops = 0; name && stubMembers.has(name) && hops < 32; ++hops) {
+        const info = stubMembers.get(name);
         if (info.members.has(member)) return true;
         name = info.base;
       }
@@ -432,7 +452,10 @@ class CSharpPlugin extends LanguagePlugin {
       const properties = {};
       for (const [prop, type] of Object.entries(info.properties || {}))
         if (declares(className, pascal(prop))) properties[prop] = type;
-      frameworkTypes[className] = { ...info, properties };
+      const methods = {};
+      for (const [method, signature] of Object.entries(info.methods || {}))
+        if (method === 'constructor' || declares(className, method)) methods[method] = signature;
+      frameworkTypes[className] = { ...info, properties, methods };
     }
     return Object.assign(Object.create(Object.getPrototypeOf(knowledge)), knowledge, { frameworkTypes });
   }
@@ -510,7 +533,7 @@ namespace ${namespace}
         public int OutputSize { get; set; }
         public int BlockSize { get; set; }
         public dynamic INITIAL_HASH { get; set; }
-        public virtual object CreateInstance(bool isInverse = false) { return null; }
+        public virtual IAlgorithmInstance CreateInstance(bool isInverse = false) { return null; }
     }
 
     // Error correction algorithm base class
@@ -525,7 +548,7 @@ namespace ${namespace}
     public abstract class CryptoAlgorithm : Algorithm { }
     public abstract class SymmetricCipherAlgorithm : CryptoAlgorithm { }
     public abstract class AsymmetricCipherAlgorithm : CryptoAlgorithm { }
-    public abstract class BlockCipherAlgorithm : SymmetricCipherAlgorithm { }
+    public abstract class BlockCipherAlgorithm : SymmetricCipherAlgorithm { public override IBlockCipherInstance CreateInstance(bool isInverse = false) { return null; } }
     public abstract class StreamCipherAlgorithm : SymmetricCipherAlgorithm { }
     // Property types below marked dynamic mirror AlgorithmFramework.js fields whose
     // JS constructors initialize them to [] (JSDoc says KeySize[], but real algorithm
@@ -533,7 +556,7 @@ namespace ${namespace}
     // plain int[], object-literal arrays {minSize,maxSize,stepSize}, or null) - a fixed
     // element type here would make one shape compile and the rest CS0029/CS1503. dynamic
     // accepts any of them without a cast, matching JS's own untyped-property semantics.
-    public abstract class HashFunctionAlgorithm : Algorithm { public int DigestSize { get; set; } public int OutputSize { get; set; } public int BlockSize { get; set; } public dynamic SupportedOutputSizes { get; set; } }
+    public abstract class HashFunctionAlgorithm : Algorithm { public int DigestSize { get; set; } public int OutputSize { get; set; } public int BlockSize { get; set; } public dynamic SupportedOutputSizes { get; set; } public override IHashFunctionInstance CreateInstance(bool isInverse = false) { return null; } }
     public abstract class AeadAlgorithm : CryptoAlgorithm { public dynamic SupportedTagSizes { get; set; } public bool SupportsDetached { get; set; } }
     public abstract class MacAlgorithm : Algorithm { public dynamic SupportedMacSizes { get; set; } public bool NeedsKey { get; set; } }
     public abstract class KdfAlgorithm : Algorithm { public bool SaltRequired { get; set; } public dynamic SupportedOutputSizes { get; set; } }
@@ -551,162 +574,106 @@ namespace ${namespace}
     public abstract class CryptoWrapAlgorithm : Algorithm { }
     public abstract class SpecialAlgorithm : Algorithm { }
 
+    // Instance interfaces: the members and behaviour of AlgorithmFramework.js's
+    // IAlgorithmInstance family, one for one. Every framework method is virtual
+    // so a subclass method of the same name overrides it, as in JavaScript.
     public abstract class IAlgorithmInstance
     {
-        protected Algorithm algorithm;
-        public Algorithm Algorithm { get => algorithm; protected set => algorithm = value; }
-        public dynamic Config { get; set; }
-        public dynamic A { get; set; }
-        public dynamic B { get; set; }
-        // Common properties - all algorithm instances may use these
-        public byte[] Key { get; set; }
-        public byte[] IV { get; set; }
-        public byte[] Iv { get => IV; set => IV = value; }
-        public byte[] Nonce { get; set; }
-        public byte[] Seed { get; set; }
-        public int OutputSize { get; set; }
-        public int OutputLength { get; set; }
-        public byte[] Salt { get; set; }
-        public int Iterations { get; set; }
-        public byte[] PublicKey { get; set; }
-        public byte[] PrivateKey { get; set; }
-        public dynamic UnderlyingCipher { get; set; }
-        protected IAlgorithmInstance(Algorithm algo) { algorithm = algo; }
-        // Some algorithm sources call the JS super() with NO arguments and instead
-        // assign this.algorithm = algorithm as a separate statement in the subclass
-        // constructor body (semantically identical to passing it straight through -
-        // e.g. block/doubleking.js's DoubleKingInstance). A parameterless overload
-        // here (and on every I*Instance subclass below) lets base() / : base()
-        // compile for that pattern too (CS7036 otherwise), while the immediately-
-        // following this.Algorithm = algorithm in the derived constructor still ends
-        // up setting the same field either way.
+        public Algorithm Algorithm { get; set; }
+        public bool IsInverse { get; set; }
+        public byte[] InputBuffer { get; set; } = new byte[0];
+        protected IAlgorithmInstance(Algorithm algorithm) { Algorithm = algorithm; }
+        // A JS subclass may call super() without the algorithm and assign it itself.
         protected IAlgorithmInstance() { }
-        public virtual void Feed(byte[] data) { }
-        public virtual byte[] Result() { return Array.Empty<byte>(); }
-        // Several stream-cipher instances (e.g. stream/shrinking-generator.js's
-        // ShrinkingGeneratorInstance) override ClearData() to zero out sensitive
-        // internal state and call 'super.ClearData()' first - JS is fine with that
-        // even though the base Algorithm/AlgorithmInstance classes never actually
-        // define the method (a missing property read is just undefined, never an
-        // error), but C#'s 'base.ClearData()' needs a real member to bind to
-        // (CS0117 otherwise). A no-op virtual here gives every subclass override
-        // something real to call up to, matching Feed/Result's own pattern above.
-        public virtual void ClearData() { }
+        // Accumulates: Feed(a); Feed(b) leaves what Feed(a || b) leaves.
+        public virtual void Feed(byte[] data)
+        {
+            if (data == null || data.Length == 0) return;
+            InputBuffer = InputBuffer == null ? data.ToArray() : InputBuffer.Concat(data).ToArray();
+        }
+        public virtual byte[] Result() { throw new Exception("Result() not implemented"); }
+        public virtual void Dispose() { InputBuffer = new byte[0]; }
     }
 
-    // Algorithm-specific instance base classes
     public abstract class IBlockCipherInstance : IAlgorithmInstance
     {
-        protected IBlockCipherInstance(Algorithm algo) : base(algo) { }
+        protected IBlockCipherInstance(Algorithm algorithm) : base(algorithm) { }
         protected IBlockCipherInstance() : base() { }
-        public byte[] Key { get; set; }
-        public byte[] IV { get; set; }
-    }
-
-    public abstract class IStreamCipherInstance : IAlgorithmInstance
-    {
-        protected IStreamCipherInstance(Algorithm algo) : base(algo) { }
-        protected IStreamCipherInstance() : base() { }
-        public byte[] Key { get; set; }
-        public byte[] IV { get; set; }
-        public byte[] Nonce { get; set; }
+        public int BlockSize { get; set; }
+        public int KeySize { get; set; }
+        public byte[] _key { get; set; }
+        public virtual byte[] Key { get => _key; set => _key = value; }
+        public virtual byte[] EncryptBlock(byte[] block) { throw new Exception("EncryptBlock() not implemented"); }
+        public virtual byte[] DecryptBlock(byte[] block) { throw new Exception("DecryptBlock() not implemented"); }
+        // Refuses a buffered input that is not a whole number of blocks.
+        public virtual int RequireBlockMultiple(int blockSize = 0)
+        {
+            var size = blockSize != 0 ? blockSize : BlockSize;
+            if (!(size > 0)) throw new Exception("BlockSize not set");
+            var length = InputBuffer != null ? InputBuffer.Length : 0;
+            if (length % size != 0) throw new Exception("Input length must be multiple of " + size + " bytes");
+            return length / size;
+        }
+        // Encrypts or decrypts every buffered block.
+        public override byte[] Result()
+        {
+            if (Key == null) throw new Exception("Key not set");
+            if (InputBuffer == null || InputBuffer.Length == 0) throw new Exception("No data fed");
+            var blockSize = BlockSize;
+            RequireBlockMultiple(blockSize);
+            var output = new List<byte>();
+            for (var offset = 0; offset < InputBuffer.Length; offset += blockSize)
+            {
+                var block = InputBuffer.Skip(offset).Take(blockSize).ToArray();
+                output.AddRange(IsInverse ? DecryptBlock(block) : EncryptBlock(block));
+            }
+            InputBuffer = new byte[0];
+            return output.ToArray();
+        }
     }
 
     public abstract class IHashFunctionInstance : IAlgorithmInstance
     {
-        protected IHashFunctionInstance(Algorithm algo) : base(algo) { }
+        protected IHashFunctionInstance(Algorithm algorithm) : base(algorithm) { }
         protected IHashFunctionInstance() : base() { }
         public int OutputSize { get; set; }
     }
 
     public abstract class IMacInstance : IAlgorithmInstance
     {
-        protected IMacInstance(Algorithm algo) : base(algo) { }
+        protected IMacInstance(Algorithm algorithm) : base(algorithm) { }
         protected IMacInstance() : base() { }
-        public byte[] Key { get; set; }
-    }
-
-    public abstract class IAeadInstance : IAlgorithmInstance
-    {
-        protected IAeadInstance(Algorithm algo) : base(algo) { }
-        protected IAeadInstance() : base() { }
-        public byte[] Key { get; set; }
-        public byte[] Nonce { get; set; }
-        public byte[] AssociatedData { get; set; }
+        public virtual byte[] ComputeMac(byte[] data) { throw new Exception("ComputeMac() not implemented"); }
     }
 
     public abstract class IKdfInstance : IAlgorithmInstance
     {
-        protected IKdfInstance(Algorithm algo) : base(algo) { }
+        protected IKdfInstance(Algorithm algorithm) : base(algorithm) { }
         protected IKdfInstance() : base() { }
-        public byte[] Salt { get; set; }
+        public int OutputSize { get; set; }
         public int Iterations { get; set; }
-        public int OutputLength { get; set; }
     }
 
-    public abstract class ICompressionInstance : IAlgorithmInstance
+    public abstract class IAeadInstance : IAlgorithmInstance
     {
-        protected ICompressionInstance(Algorithm algo) : base(algo) { }
-        protected ICompressionInstance() : base() { }
-    }
-
-    public abstract class IRandomInstance : IAlgorithmInstance
-    {
-        protected IRandomInstance(Algorithm algo) : base(algo) { }
-        protected IRandomInstance() : base() { }
-        public byte[] Seed { get; set; }
-    }
-
-    public abstract class IChecksumInstance : IAlgorithmInstance
-    {
-        protected IChecksumInstance(Algorithm algo) : base(algo) { }
-        protected IChecksumInstance() : base() { }
+        protected IAeadInstance(Algorithm algorithm) : base(algorithm) { }
+        protected IAeadInstance() : base() { }
+        public byte[] Aad { get; set; } = new byte[0];
+        public int TagSize { get; set; }
     }
 
     public abstract class IErrorCorrectionInstance : IAlgorithmInstance
     {
-        protected IErrorCorrectionInstance(Algorithm algo) : base(algo) { }
+        protected IErrorCorrectionInstance(Algorithm algorithm) : base(algorithm) { }
         protected IErrorCorrectionInstance() : base() { }
-        // Note: Algorithms use this._result field for intermediate storage
-        // and override Result() method to return it
-    }
-
-    public abstract class IClassicalCipherInstance : IAlgorithmInstance
-    {
-        protected IClassicalCipherInstance(Algorithm algo) : base(algo) { }
-        protected IClassicalCipherInstance() : base() { }
-        public string Key { get; set; }
-    }
-
-    public abstract class IEncodingInstance : IAlgorithmInstance
-    {
-        protected IEncodingInstance(Algorithm algo) : base(algo) { }
-        protected IEncodingInstance() : base() { }
+        public virtual bool DetectError(byte[] data) { throw new Exception("DetectError() not implemented"); }
     }
 
     public abstract class IRandomGeneratorInstance : IAlgorithmInstance
     {
-        protected IRandomGeneratorInstance(Algorithm algo) : base(algo) { }
+        protected IRandomGeneratorInstance(Algorithm algorithm) : base(algorithm) { }
         protected IRandomGeneratorInstance() : base() { }
-        public byte[] Seed { get; set; }
-        public int OutputLength { get; set; }
-    }
-
-    public abstract class ICipherModeInstance : IAlgorithmInstance
-    {
-        protected ICipherModeInstance(Algorithm algo) : base(algo) { }
-        protected ICipherModeInstance() : base() { }
-        public byte[] Key { get; set; }
-        public byte[] IV { get; set; }
-        public dynamic UnderlyingCipher { get; set; }
-    }
-
-    public abstract class IAsymmetricCipherInstance : IAlgorithmInstance
-    {
-        protected IAsymmetricCipherInstance(Algorithm algo) : base(algo) { }
-        protected IAsymmetricCipherInstance() : base() { }
-        public byte[] PublicKey { get; set; }
-        public byte[] PrivateKey { get; set; }
+        public virtual byte[] NextBytes(int count) { throw new Exception("NextBytes() not implemented"); }
     }
 
     // Support types

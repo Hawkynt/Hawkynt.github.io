@@ -252,6 +252,7 @@
 
       let decl = node.accessModifier;
       if (node.isStatic) decl += ' static';
+      if (node.isOverride) decl += ' override';
       decl += ` ${node.type.toString()} ${node.name}`;
 
       // Auto-property
