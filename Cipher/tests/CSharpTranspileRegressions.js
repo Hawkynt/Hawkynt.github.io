@@ -167,6 +167,12 @@ check('string.split: split("") gives the characters through JsSplit, not string.
   expectMatch(code, /JsSplit\(line, ""\)/, 'JsSplit(line, "")');
   expectNoMatch(code, /line\.Split\(/, 'line.Split (Split("") returns the whole string)');
 });
+check('string.slice/substr: negative bounds and lengths go through JsSlice/JsSubstr, not Substring', () => {
+  const code = transpile('/**\n * @param {string} s - s\n * @returns {string} r\n */\nfunction f(s) { return s.slice(0, -2) + s.slice(3) + s.substr(1, 2); }');
+  expectMatch(code, /JsSlice\(s, 0, -2\)/, 'JsSlice(s, 0, -2)');
+  expectMatch(code, /JsSlice\(s, 3\)/, 'JsSlice(s, 3)');
+  expectMatch(code, /JsSubstr\(s, 1, 2\)/, 'JsSubstr(s, 1, 2) (the length was dropped)');
+});
 check('number.toString(2) still uses Convert.ToString', () => {
   const code = transpile('function f(q) { const n = q | 0; return n.toString(2); }');
   expectMatch(code, /Convert\.ToString\(/, 'Convert.ToString(...)');
@@ -817,6 +823,13 @@ namespace RegressionTest {
       Eq("jsmul-rounded", FrameworkFunctions.JsMul(1099087573u, 2865916745u), unchecked((uint)(ulong)(1099087573.0 * 2865916745.0)));
       Eq("jsmul-neg", FrameworkFunctions.JsMul(-3, 5), -15);
       Eq("jsmul-long", FrameworkFunctions.JsMul(4294967295L, 4294967295L), unchecked((long)(ulong)(4294967295.0 * 4294967295.0)));
+      // JsSlice/JsSubstr are string.prototype.slice/substr
+      Eq("sslice-neg", FrameworkFunctions.JsSlice("abcdef", 0, -2), "abcd");
+      Eq("sslice-past", FrameworkFunctions.JsSlice("abc", 1, 9), "bc");
+      Eq("sslice-crossed", FrameworkFunctions.JsSlice("abc", 2, 1), "");
+      Eq("sslice-from-end", FrameworkFunctions.JsSlice("abc", -2), "bc");
+      Eq("substr", FrameworkFunctions.JsSubstr("abcdef", 1, 2), "bc");
+      Eq("substr-past", FrameworkFunctions.JsSubstr("abc", 2, 5), "c");
       // JsSplit is string.prototype.split
       Eq("split-chars", string.Join("|", FrameworkFunctions.JsSplit("abc", "")), "a|b|c");
       Eq("split-sep", string.Join("|", FrameworkFunctions.JsSplit("a,,b", ",")), "a||b");

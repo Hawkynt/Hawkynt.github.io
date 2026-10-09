@@ -25877,21 +25877,20 @@
      * IL AST: { type: 'StringSubstring', string: expr, start: expr, end?: expr }
      */
     transformStringSubstring(node) {
+      // The IL builds this node for slice, substring and substr alike; the helpers
+      // take slice's reading of a negative bound (from the end, the common
+      // `s.slice(0, -2)`) and clamp the bounds, where string.Substring throws
       const str = this.transformExpression(node.string);
-      const start = this.transformExpression(node.start);
-
-      if (node.end) {
-        const end = this.transformExpression(node.end);
-        // string.Substring(start, end - start)
-        return new CSharpMethodCall(
-          str,
-          'Substring',
-          [start, new CSharpBinaryExpression(end, '-', start)]
-        );
+      const start = node.start ? this.ensureIntIndex(this.transformExpression(node.start), node.start) : CSharpLiteral.Int(0);
+      if (node.length) {
+        const length = this.ensureIntIndex(this.transformExpression(node.length), node.length);
+        return new CSharpMethodCall(null, 'JsSubstr', [str, start, length]);
       }
-
-      // string.Substring(start) - to end of string
-      return new CSharpMethodCall(str, 'Substring', [start]);
+      if (node.end) {
+        const end = this.ensureIntIndex(this.transformExpression(node.end), node.end);
+        return new CSharpMethodCall(null, 'JsSlice', [str, start, end]);
+      }
+      return new CSharpMethodCall(null, 'JsSlice', [str, start]);
     }
 
     /**

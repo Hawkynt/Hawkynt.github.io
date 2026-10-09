@@ -985,6 +985,22 @@ namespace ${namespace}
             return (long)rest;
         }
 
+        // JavaScript's string.slice: a negative bound counts from the end, both clamp
+        public static string JsSlice(string s, int start) => JsSlice(s, start, s.Length);
+        public static string JsSlice(string s, int start, int end)
+        {
+            int from = start < 0 ? Math.Max(s.Length + start, 0) : Math.Min(start, s.Length);
+            int to = end < 0 ? Math.Max(s.Length + end, 0) : Math.Min(end, s.Length);
+            return to > from ? s.Substring(from, to - from) : "";
+        }
+
+        // JavaScript's string.substr(start, length)
+        public static string JsSubstr(string s, int start, int length)
+        {
+            int from = start < 0 ? Math.Max(s.Length + start, 0) : Math.Min(start, s.Length);
+            return s.Substring(from, Math.Max(Math.Min(length, s.Length - from), 0));
+        }
+
         // JavaScript's string.split: an empty separator gives the characters
         public static string[] JsSplit(string s, object separator)
         {
