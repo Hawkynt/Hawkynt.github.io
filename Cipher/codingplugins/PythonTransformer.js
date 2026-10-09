@@ -585,6 +585,18 @@
       // 64-bit within such files - see isWideIntResultType() callers.
       this._fileHasBigIntLiterals = this._scanForBigIntLiterals(ast);
 
+      // Every declared function name, by its snake_case spelling
+      // (see _collectLocalNameCollisions)
+      this._declaredRawNamesByFolded = new Map();
+      const collectDeclared = n => {
+        if (!n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(collectDeclared); return; }
+        if (n.type === 'FunctionDeclaration' && n.id && n.id.name)
+          this._declaredRawNamesByFolded.set(toSnakeCase(n.id.name), n.id.name);
+        for (const key of Object.keys(n)) if (key !== 'loc' && key !== 'range' && key !== 'resultType') collectDeclared(n[key]);
+      };
+      collectDeclared(ast);
+
       // Process the AST
       if (ast.type === 'Program') {
         this.transformProgram(ast, module);
@@ -6428,6 +6440,13 @@ class OpCodes(metaclass=_OpCodesMeta):
           const rawName = decl.id.name;
           if (this.moduleConstRenames.has(rawName)) continue;
           const folded = toSnakeCase(rawName);
+          // A local that folds onto a declared function of another
+          // spelling (`const drbg = Drbg(seed)`) would shadow it.
+          const declared = this._declaredRawNamesByFolded && this._declaredRawNamesByFolded.get(folded);
+          if (declared && declared !== rawName && !overrides.has(rawName)) {
+            overrides.set(rawName, folded + '_local');
+            continue;
+          }
           const firstRaw = firstRawByFolded.get(folded);
           if (firstRaw === undefined) {
             firstRawByFolded.set(folded, rawName);

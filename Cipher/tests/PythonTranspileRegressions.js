@@ -203,6 +203,12 @@ check('names: fields and methods named like Python builtins keep one spelling ev
   expectNoMatch(code, /\.(round|file|hash)_\b/, 'a builtin-escaped attribute name');
   return expectOutput(runPython(js, 's = St()\nu = Use()\nprint(u.run(s), u.bump(s), s.round)'), ['29 3 3']);
 });
+check('names: a local that folds onto a function name does not shadow the function', () => {
+  const js = 'function Drbg(e) { return { v: e }; }\nfunction use(seed) { const drbg = Drbg(seed); return drbg.v + 1; }';
+  // Given `const drbg = Drbg(seed)` (both fold to `drbg`)
+  // Then the call still reaches the function: no "cannot access local variable"
+  return expectOutput(runPython(js, 'print(use(4))'), ['5']);
+});
 check('names: a Python keyword used as a member name is escaped the same way everywhere', () => {
   const js = 'class K { constructor() { this.lambda = 1; } get from() { return this.lambda + 1; } }\n' +
     'function f(k) { k.lambda = 5; return k.from + k.lambda; }';
