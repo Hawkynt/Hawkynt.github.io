@@ -620,6 +620,14 @@ check('Math.round rounds a half up as JavaScript does, not to even', () => {
   expectNoMatch(code, /Math\.Round\(/, 'Math.Round (banker\'s rounding)');
 });
 
+check('BigInt locals: an undeclared local starting at a BigInt literal is a BigInteger, not ulong', () => {
+  const code = transpile('function inv(value, modulus) {\n  let t = 0n, newT = 1n;\n  let r = modulus, newR = value % modulus;\n' +
+    '  while (newR !== 0n) { const q = r / newR; [t, newT] = [newT, t - q * newT]; [r, newR] = [newR, r - q * newR]; }\n  return t < 0n ? t + modulus : t;\n}');
+  expectMatch(code, /BigInteger t = 0;/, 'BigInteger t');
+  expectNoMatch(code, /ulong t\b/, 'ulong t (Euclid\'s coefficients go negative)');
+  const declared = transpile('/** @returns {uint64} h */\nfunction h() { /** @type {uint64} */ let x = 5n; return x; }');
+  expectMatch(declared, /ulong x = /, 'a declared uint64 local stays ulong');
+});
 check('BigInt literal: a hex literal with a leading digit 8-F stays positive', () => {
   const code = transpile('/**\n * @param {bigint} k - key state\n * @returns {bigint} masked\n */\nfunction f(k) { return OpCodes.AndN(k, ~OpCodes.ShiftLn(0xFn, 120n)); }');
   expectMatch(code, /BigInteger\.Parse\("0F", System\.Globalization\.NumberStyles\.HexNumber\)/, 'Parse("0F") (Parse("F") is -1)');

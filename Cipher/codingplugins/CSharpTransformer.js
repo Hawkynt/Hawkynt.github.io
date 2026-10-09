@@ -12068,6 +12068,12 @@
           // The declaration's IL type, where the IL has one, beats every derivation above
           const ilDeclType = this.mapILType(decl.declaredType || decl.resultType);
           if (ilDeclType) inferredType = ilDeclType;
+          // An undeclared local starting at a BigInt literal (`let t = 0n`) is a
+          // BigInt: it may go negative or past 64 bits (an extended Euclid's
+          // coefficients), which the IL's uint64 guess for the literal cannot hold
+          if (!decl.declaredType && decl.init?.type === 'Literal' && decl.init.bigint !== undefined &&
+              (inferredType?.name === 'ulong' || inferredType?.name === 'long') && !inferredType.isArray)
+            inferredType = CSharpType.BigInteger ? CSharpType.BigInteger() : new CSharpType('BigInteger');
 
           // Set context for array element type before transforming
           // Save previous value to restore afterward
