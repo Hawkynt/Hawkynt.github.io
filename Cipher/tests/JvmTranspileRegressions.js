@@ -1,13 +1,13 @@
 /**
- * JvmTranspileRegressions.js - regression tests for systematic Java (JVM)
- * transpilation faults (each case names the fault it pins down).
+ * JvmTranspileRegressions.js - regression tests for systematic Java and Kotlin
+ * (JVM) transpilation faults (each case names the fault it pins down).
  *
  * Every case is Given (a JavaScript snippet defining probe(), which returns a
- * string) / When (transpiled to Java, compiled with javac and run) / Then (the
- * Java probe returns what JavaScript's probe() returns, or the generated code
- * has a specific shape). All snippets are compiled and run together, once, so
- * the suite pays for one javac and one JVM start; the run-time cases are
- * skipped when no JDK is on PATH.
+ * string) / When (transpiled to Java and to Kotlin, compiled and run) / Then
+ * (each probe returns what JavaScript's probe() returns, or the generated code
+ * has a specific shape). Per language all snippets are compiled and run
+ * together, once, so the suite pays for one compiler and one JVM start each;
+ * a language's run-time cases are skipped when its compiler is not on PATH.
  *
  * The JVM category: node tests/TranspilerSuite.js --only=jvm [--verbose]
  */
@@ -34,6 +34,10 @@ const JAVA_PLUGIN = require.resolve(path.join(CIPHER_DIR, 'codingplugins', 'java
 delete require.cache[JAVA_PLUGIN];
 quiet(() => require(JAVA_PLUGIN));
 const javaPlugin = LanguagePlugins.GetAll().find(p => p.name === 'Java');
+const KOTLIN_PLUGIN = require.resolve(path.join(CIPHER_DIR, 'codingplugins', 'kotlin.js'));
+delete require.cache[KOTLIN_PLUGIN];
+quiet(() => require(KOTLIN_PLUGIN));
+const kotlinPlugin = LanguagePlugins.GetAll().find(p => p.name === 'Kotlin');
 const OpCodes = quiet(() => require(path.join(CIPHER_DIR, 'OpCodes.js')));
 const AlgorithmFramework = quiet(() => require(path.join(CIPHER_DIR, 'AlgorithmFramework.js')));
 
@@ -41,12 +45,13 @@ const AlgorithmFramework = quiet(() => require(path.join(CIPHER_DIR, 'AlgorithmF
  * @param {string} js - JavaScript source
  * @param {string} className - the generated class
  * @param {boolean} [runtime] - include the runtime
- * @returns {string} the Java translation
+ * @param {object} [plugin] - the target (Java by default)
+ * @returns {string} the translation
  */
-function transpile(js, className, runtime = false) {
+function transpile(js, className, runtime = false, plugin = javaPlugin) {
   return quiet(() => {
     const ast = new TypeAwareJSASTParser(js).parse();
-    const result = javaPlugin.GenerateFromAST(ast, { className, includeRuntime: runtime });
+    const result = plugin.GenerateFromAST(ast, { className, includeRuntime: runtime });
     if (!result.success) throw new Error(result.error || 'transpile failed');
     return result.code;
   });
@@ -63,51 +68,88 @@ function javascriptProbe(js) {
 }
 
 // ---------------------------------------------------------------------------
-// The batch: every run-time case is compiled and run together
+// The batch: per language every run-time case is compiled and run together
 // ---------------------------------------------------------------------------
 const runCases = [];
-let batch = null;
+const batches = new Map();
 
 function hasTool(tool, args) {
   const probe = spawnSync(tool, args, { encoding: 'utf-8', shell: process.platform === 'win32' });
   return probe.status === 0;
 }
 
+/** The compile errors in a compiler's output, with the lines after each. */
+function compileErrors(result, file) {
+  const lines = ((result.stdout || '') + (result.stderr || '')).split(/\r?\n/);
+  return lines.flatMap((l, i) => /error:/.test(l) ? [l.slice(l.indexOf(file) >= 0 ? l.indexOf(file) + file.length : 0), ...lines.slice(i + 1, i + 4)] : []).slice(0, 24).join('\n');
+}
+
+/** Printed probe results: @@<case>:<value>. */
+function probeOutputs(stdout, errors) {
+  const outputs = new Map(errors);
+  for (const line of (stdout || '').split(/\r?\n/)) {
+    const m = line.match(/^@@(\d+):(.*)$/);
+    if (m) outputs.set(Number(m[1]), m[2]);
+  }
+  return outputs;
+}
+
+const LANGUAGES = {
+  java: {
+    tools: [['javac', ['-version']], ['java', ['-version']]],
+    plugin: () => javaPlugin,
+    call: (c, unit) => c.javaProbe ? c.javaProbe.replace(/\$UNIT/g, unit) : `${unit}.probe()`,
+    main: calls => `final class RegressionMain {\n    public static void main(String[] args) {\n${calls.map(([i, call]) =>
+      `        try { System.out.println("@@${i}:" + (${call})); }\n        catch (Throwable e) { System.out.println("@@${i}:THROW " + e); }\n`).join('')}    }\n}\n`,
+    build(dir, source) {
+      const src = path.join(dir, 'Main.java');
+      fs.writeFileSync(src, source);
+      const classes = path.join(dir, 'classes');
+      const c = spawnSync('javac', ['-J-Duser.language=en', '-encoding', 'UTF-8', '-nowarn', '-d', classes, src], { encoding: 'utf-8', shell: process.platform === 'win32' });
+      if (c.status !== 0) return { error: 'javac failed:\n' + compileErrors(c, 'Main.java') };
+      return { run: ['-Xss64m', '-cp', classes, 'RegressionMain'] };
+    }
+  },
+  kotlin: {
+    tools: [['kotlinc', ['-version']], ['java', ['-version']]],
+    plugin: () => kotlinPlugin,
+    call: (c, unit) => c.kotlinProbe ? c.kotlinProbe.replace(/\$UNIT/g, unit) : `${unit}.probe()`,
+    main: calls => `object RegressionMain {\n    @JvmStatic fun main(args: Array<String>) {\n${calls.map(([i, call]) =>
+      `        try { println("@@${i}:" + (${call})) }\n        catch (e: Throwable) { println("@@${i}:THROW " + e) }\n`).join('')}    }\n}\n`,
+    build(dir, source) {
+      const src = path.join(dir, 'Main.kt');
+      fs.writeFileSync(src, '@file:Suppress("UNCHECKED_CAST", "NAME_SHADOWING")\n' + source);
+      const jar = path.join(dir, 'main.jar');
+      const c = spawnSync('kotlinc', [src, '-nowarn', '-include-runtime', '-d', jar], { encoding: 'utf-8', shell: process.platform === 'win32', maxBuffer: 64 * 1024 * 1024 });
+      if (c.status !== 0) return { error: 'kotlinc failed:\n' + compileErrors(c, 'Main.kt') };
+      return { run: ['-Xss64m', '-cp', jar, 'RegressionMain'] };
+    }
+  }
+};
+
 /**
- * Compile all run-time cases into one program and run it.
+ * Compile all run-time cases of a language into one program and run it.
+ * @param {string} lang - java or kotlin
  * @returns {{skipped: boolean, outputs: Map<number, string>, error: string|null}}
  */
-function runBatch() {
-  if (batch) return batch;
-  if (!hasTool('javac', ['-version']) || !hasTool('java', ['-version'])) return (batch = { skipped: true, outputs: new Map(), error: null });
+function runBatch(lang) {
+  if (batches.has(lang)) return batches.get(lang);
+  const L = LANGUAGES[lang];
+  const done = r => { batches.set(lang, r); return r; };
+  if (!L.tools.every(([tool, args]) => hasTool(tool, args))) return done({ skipped: true, outputs: new Map(), error: null });
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jvm-regression-'));
   try {
     const units = [];
     const errors = new Map();
     runCases.forEach((c, i) => {
-      try { units.push(transpile(c.js, `Case${i}`)); }
+      try { units.push(transpile(c.js, `Case${i}`, false, L.plugin())); }
       catch (e) { errors.set(i, 'TRANSPILE ' + e.message); }
     });
-    const calls = runCases.map((c, i) => errors.has(i) ? '' :
-      `        try { System.out.println("@@${i}:" + (${c.javaProbe ? c.javaProbe.replace(/\$UNIT/g, `Case${i}`) : `Case${i}.probe()`})); }\n` +
-      `        catch (Throwable e) { System.out.println("@@${i}:THROW " + e); }\n`).join('');
-    const main = `final class RegressionMain {\n    public static void main(String[] args) {\n${calls}    }\n}\n`;
-    const src = path.join(dir, 'Main.java');
-    fs.writeFileSync(src, [javaPlugin.GetRuntime(), ...units, main].join('\n'));
-    const classes = path.join(dir, 'classes');
-    const c = spawnSync('javac', ['-J-Duser.language=en', '-encoding', 'UTF-8', '-nowarn', '-d', classes, src], { encoding: 'utf-8', shell: process.platform === 'win32' });
-    if (c.status !== 0) {
-      const lines = ((c.stdout || '') + (c.stderr || '')).split(/\r?\n/);
-      const errs = lines.flatMap((l, i) => /error:/.test(l) ? [l.replace(/^.*Main\.java:/, 'line '), ...lines.slice(i + 1, i + 4)] : []).slice(0, 24).join('\n');
-      return (batch = { skipped: false, outputs: new Map(), error: 'javac failed:\n' + errs });
-    }
-    const r = spawnSync('java', ['-Xss64m', '-cp', classes, 'RegressionMain'], { encoding: 'utf-8', timeout: 120000, shell: process.platform === 'win32' });
-    const outputs = new Map(errors);
-    for (const line of (r.stdout || '').split(/\r?\n/)) {
-      const m = line.match(/^@@(\d+):(.*)$/);
-      if (m) outputs.set(Number(m[1]), m[2]);
-    }
-    return (batch = { skipped: false, outputs, error: null });
+    const calls = runCases.map((c, i) => [i, L.call(c, `Case${i}`)]).filter(([i]) => !errors.has(i));
+    const built = L.build(dir, [L.plugin().GetRuntime(), ...units, L.main(calls)].join('\n'));
+    if (built.error) return done({ skipped: false, outputs: new Map(), error: built.error });
+    const r = spawnSync('java', built.run, { encoding: 'utf-8', timeout: 120000, shell: process.platform === 'win32' });
+    return done({ skipped: false, outputs: probeOutputs(r.stdout, errors), error: null });
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { /* temp dir cleanup is best effort */ }
   }
@@ -116,22 +158,25 @@ function runBatch() {
 const cases = require('./UnitCases.js').createCases();
 
 /**
- * A run-time case: the Java probe returns what JavaScript's probe() returns.
+ * A run-time case: the Java and the Kotlin probe return what JavaScript's probe() returns.
  * @param {string} name - the fault
  * @param {string} js - JavaScript defining probe()
- * @param {object} [options] - { javaProbe: Java expression ($UNIT is the class), expected: the value when not JavaScript's }
+ * @param {object} [options] - { javaProbe, kotlinProbe: an expression in that language ($UNIT is the generated unit),
+ *   expected: the value when not JavaScript's }
  */
 function runCase(name, js, options = {}) {
   const index = runCases.length;
-  runCases.push({ js, javaProbe: options.javaProbe || null });
-  cases.case(name, () => {
-    const b = runBatch();
-    if (b.skipped) return 'skip';
-    if (b.error) throw new Error(b.error);
-    const want = options.expected !== undefined ? options.expected : javascriptProbe(js);
-    const got = b.outputs.get(index);
-    if (got !== want) throw new Error(`expected ${want}\ngot      ${got}${verbose ? '\n' + transpile(js, 'Probe') : ''}`);
-  });
+  runCases.push({ js, javaProbe: options.javaProbe || null, kotlinProbe: options.kotlinProbe || null });
+  for (const lang of Object.keys(LANGUAGES)) {
+    cases.case(`[${lang}] ${name}`, () => {
+      const b = runBatch(lang);
+      if (b.skipped) return 'skip';
+      if (b.error) throw new Error(b.error);
+      const want = options.expected !== undefined ? options.expected : javascriptProbe(js);
+      const got = b.outputs.get(index);
+      if (got !== want) throw new Error(`expected ${want}\ngot      ${got}${verbose ? '\n' + transpile(js, 'Probe', false, LANGUAGES[lang].plugin()) : ''}`);
+    });
+  }
 }
 
 function expectMatch(code, re, what) {
@@ -198,7 +243,8 @@ runCase('runtime: a TestCase subclass\'s own fields are vector fields',
   '  /** @param {uint8[]} key */ SetKey(key) { this.key = key; } }\n' +
   '/** @returns {KeyedTestCase} */ function make() { const t = new KeyedTestCase([1], [2]); t.SetKey([5, 6]); return t; }\n' +
   '/** @returns {string} */ function probe() { return "true,5"; }',
-  { javaProbe: '$UNIT.make().hasField("key") + "," + ((JsArrayLike) $UNIT.make().field("key")).getBoxed(0)' });
+  { javaProbe: '$UNIT.make().hasField("key") + "," + ((JsArrayLike) $UNIT.make().field("key")).getBoxed(0)',
+    kotlinProbe: '$UNIT.make()!!.hasField("key").toString() + "," + ($UNIT.make()!!.field("key") as JsArrayLike).getBoxed(0)' });
 
 // ---------------------------------------------------------------------------
 // OpCodes runtime
@@ -219,8 +265,14 @@ cases.case('IL: a loader guarded by typeof require === "undefined" returns inste
   expectMatch(code, /static void loadHashes\(\)/, 'the loader');
 });
 cases.case('BigInt: 64-bit BigInt arithmetic is java.math.BigInteger, never a guessed long', () => {
-  const code = transpile('/** @param {bigint} a @param {bigint} b @returns {bigint} */ function mul(a, b) { return (a * b) & 0xFFFFFFFFFFFFFFFFn; }', 'Big');
-  expectMatch(code, /java\.math\.BigInteger mul\(java\.math\.BigInteger a, java\.math\.BigInteger b\)/, 'a BigInteger signature');
+  const js = '/** @param {bigint} a @param {bigint} b @returns {bigint} */ function mul(a, b) { return (a * b) & 0xFFFFFFFFFFFFFFFFn; }';
+  expectMatch(transpile(js, 'Big'), /java\.math\.BigInteger mul\(java\.math\.BigInteger a, java\.math\.BigInteger b\)/, 'a BigInteger signature');
+  expectMatch(transpile(js, 'Big', false, kotlinPlugin), /fun mul\(a: java\.math\.BigInteger\?, b: java\.math\.BigInteger\?\): java\.math\.BigInteger\?/, 'a Kotlin BigInteger signature');
+});
+cases.case('Kotlin: numbers convert explicitly where Java widens implicitly', () => {
+  const code = transpile('/** @param {int32} a @param {uint32} b @returns {uint32} */ function f(a, b) { const t = new Uint32Array(2); t[0] = a; return (a ^ b) >>> 0; }', 'Widen', false, kotlinPlugin);
+  expectMatch(code, /t!!\.set\(0, a\.toLong\(\)\)/, 'the int converted for a uint32 element');
+  expectNoMatch(code, /new |;\s*$/m, 'Java syntax');
 });
 
 /**
