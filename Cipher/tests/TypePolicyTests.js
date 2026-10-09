@@ -549,6 +549,52 @@ test('template: given an OpCodes helper declared {T[]} (ClearArray), when a uint
   equal(arg.contextType, undefined);
 });
 
+// ------------------------------------------------------------ soundness: classes, enums, arguments
+test('soundness: given a framework enum, when checked, then only its members pass', () => {
+  global.AlgorithmFramework = global.AlgorithmFramework || quiet(() => require(path.join(__dirname, '..', 'AlgorithmFramework.js')));
+  const AF = global.AlgorithmFramework;
+  const check = TypeSoundness.checkerFor('CountryCode');
+  equal(check(AF.CountryCode.US), null);
+  equal(check(null), null);
+  equal(check('Multi-national'), 'string');
+  equal(check({ name: 'United States' }), 'not-enum-member');
+});
+test('soundness: given a framework class, when checked, then instances pass and strings, plain objects and other classes fail', () => {
+  const AF = global.AlgorithmFramework;
+  const check = TypeSoundness.checkerFor('Vulnerability[]');
+  equal(check([new AF.Vulnerability('a', 'b')]), null);
+  equal(check(['weak']), 'element-string');
+  equal(check([{ type: 'a' }]), 'element-plain-object');
+  equal(check([new AF.KeySize(1, 1, 1)]), 'element-other-class');
+  equal(TypeSoundness.checkerFor('KeySize[]')([28]), 'element-number');
+});
+test('soundness: given TestCase, when a plain object is checked, then it passes (vectors are object literals by convention)', () => {
+  equal(TypeSoundness.checkerFor('TestCase[]')([{ input: [1], expected: [2] }]), null);
+});
+test('soundness: given a typedef name, when checked, then objects pass and primitives fail', () => {
+  const check = TypeSoundness.checkerFor('SomeRecordShape');
+  equal(check({ a: 1 }), null);
+  equal(check(5), 'number');
+});
+test('soundness: given an argument (kind only), when checked, then any whole number fits a 32-bit parameter but a BigInt does not', () => {
+  const check = TypeSoundness.kindCheckerFor('int32');
+  equal(check(0xFFFFFFFF), null);
+  equal(check(-1), null);
+  equal(check(8n), 'bigint');
+  equal(check(0.5), 'fraction');
+  equal(TypeSoundness.kindCheckerFor('uint64')(8n), null);
+  equal(TypeSoundness.kindCheckerFor('boolean')(1), 'number');
+});
+test('soundness: given an argument declared uint8[] (kind only), when a Uint32Array is passed, then the typed-array kind fails', () => {
+  equal(TypeSoundness.kindCheckerFor('uint8[]')(new Uint32Array(2)), 'typed-array-kind');
+  equal(TypeSoundness.kindCheckerFor('uint8[]')([300]), null);
+});
+test('soundness: given a call argument with a declared parameter type, when sites are collected, then it is checked as an argument', () => {
+  const parsed = TypeSoundness.parseSource('/**\n * @param {uint32} a\n * @returns {uint32}\n */\nfunction g(a) { return a; }\n/** @param {uint32} x */\nfunction f(x) { return g(x); }');
+  const checks = TypeSoundness.collectSites(parsed.parser, parsed.ast).flatMap(s => s.checks);
+  ok(checks.some(c => c.role === 'argument' && c.type === 'uint32' && c.kindOnly), JSON.stringify(checks));
+});
+
 test('walk: given sites, when tallied, then every site lands in exactly one tier', () => {
   const s = sites('function f(a) { return OpCodes.XorN(a, 1) + a; }');
   const t = TypeCoverage.byTier(s);

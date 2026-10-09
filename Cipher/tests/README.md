@@ -90,8 +90,12 @@ that is a `Uint32Array` passes it and still emits wrong code in a typed language
 itself (initialisers, assignments to variables, fields and array elements, `++`/`--`,
 returns, `push` arguments; line numbers are kept), loads that copy under the file's
 name, runs its algorithms' vectors and checks every value against the IL type of its
-site: integer range and integrality, Number or BigInt, boolean, string, and an array's
-typed-array kind and sampled elements. For an assignment the type checked is the
+site: integer range and integrality, Number or BigInt, boolean, string, an array's
+typed-array kind and sampled elements, an instance of a declared class (by its
+prototype chain; object literals stand for `TestCase`), a member of a declared
+framework enum, and no primitive where another reference type is declared. A value
+passed where a parameter type is declared (OpCodes, framework or local JSDoc) is
+checked for its kind: any whole number fits a 32-bit parameter, a BigInt does not. For an assignment the type checked is the
 storage's (the variable's declaration, the field's final type), as an emitter declares
 it. A site checks its first 256 values and 16 more per later vector, so a hot loop
 costs a compare once its budget is spent; `Math.random` is seeded, so counts repeat.
