@@ -205,6 +205,12 @@ check('framework: framework methods are overridden, a name the framework lacks i
   expectNoMatch(code, /\bint\s+BlockSize\s*\{/, 'a redeclared BlockSize');
   expectMatch(code, /\bint\s+Seed\b/, 'the subclass\'s own int Seed');
 });
+check('framework: extra super() arguments and a super call the framework lacks are dropped', () => {
+  const code = transpile('class I extends IAlgorithmInstance {\n  /**\n   * @param {Algorithm} a - algorithm\n   * @param {boolean} inv - inverse\n   */\n' +
+    '  constructor(a, inv) { super(a, inv); }\n  ClearData() { super.ClearData(); }\n}');
+  expectMatch(code, /: base\(a\)/, ': base(a)');
+  expectNoMatch(code, /base\.ClearData\(/, 'base.ClearData()');
+});
 check('framework: CreateInstance() without a parameter still overrides with the framework signature', () => {
   const code = transpile('class A extends BlockCipherAlgorithm {\n  constructor() { super(); this.name = "A"; }\n  CreateInstance() { return new I(this); }\n}\n' +
     'class I extends IBlockCipherInstance { constructor(a) { super(a); } }');

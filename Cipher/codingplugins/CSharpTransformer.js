@@ -20973,7 +20973,12 @@
             // A constructor initializer cannot bind dynamically (CS1975): a dynamic
             // algorithm argument to a framework instance base is cast to Algorithm.
             const castsToAlgorithm = this.baseDeclaresMember(baseClassName, 'InputBuffer');
-            const superArgs = (stmt.expression.arguments || []).map(a => {
+            // A framework base constructor takes the algorithm (an instance) or nothing
+            // (an algorithm); JavaScript ignores any further arguments
+            let superArgNodes = stmt.expression.arguments || [];
+            if (castsToAlgorithm) superArgNodes = superArgNodes.slice(0, 1);
+            else if (this.baseDeclaresMember(baseClassName, 'Name') && this.baseDeclaresMember(baseClassName, 'Tests')) superArgNodes = [];
+            const superArgs = superArgNodes.map(a => {
               const arg = this.transformExpression(a);
               return castsToAlgorithm && this.inferFullExpressionType(a)?.name === 'dynamic'
                 ? new CSharpCast(new CSharpType('Algorithm'), arg) : arg;
@@ -22978,6 +22983,9 @@
      */
     transformParentMethodCall(node) {
       const methodName = this.toPascalCase(node.method || 'Method');
+      // A framework base without that method (`super.ClearData()`): nothing to call
+      const baseName = this.localClassBases.get(this.currentClass?.name);
+      if (baseName && this.stubMembers.has(baseName) && !this.stubChainDeclares(baseName, methodName)) return null;
       const args = (node.arguments || []).map(arg => this.transformExpression(arg)).filter(a => a);
       return new CSharpMethodCall(new CSharpBase(), methodName, args);
     }
