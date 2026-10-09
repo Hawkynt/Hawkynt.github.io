@@ -319,6 +319,12 @@ check('numbers: float arithmetic stays floating point in a BigInt file; obj.leng
   expectOutput(runPerl(FLOAT_SNIPPET, 'print main::maxLength(10), ",", main::regLength(5), "\\n";'), '56,5');
 });
 
+check('arrays: arr.length = n truncates and extends', () => {
+  if (!hasPerl()) return 'skip';
+  const js = '/** @param {int32[]} a @returns {int32} */ function f(a) { a.length = 5; const n = a.length; a.length = 2; return n * 10 + a.length; }';
+  expectOutput(runPerl(js, 'print main::f([1, 2, 3]), "\\n";'), '52');
+});
+
 /**
  * PERL: run every regression case.
  * @param {object} options - { verbose }

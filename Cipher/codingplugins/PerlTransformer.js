@@ -10190,11 +10190,9 @@
           );
         }
 
-        // Otherwise use splice to truncate: splice(@{$arr}, $length)
-        return new PerlCall('splice', [
-          this.wrapArrayDeref(arrExpr),
-          lengthVal
-        ]);
+        // Otherwise truncate or extend: $#{$arr} = $length - 1
+        return new PerlAssignment(new PerlUnaryExpression('$#', arrExpr, true), '=',
+          new PerlBinaryExpression(new PerlGrouped(lengthVal), '-', PerlLiteral.Number(1)));
       }
 
       // Handle array.length = N assignment specially (original MemberExpression version)
@@ -10214,11 +10212,9 @@
           );
         }
 
-        // Otherwise use splice to truncate: splice(@{$arr}, $length)
-        return new PerlCall('splice', [
-          this.wrapArrayDeref(arrExpr),
-          lengthVal
-        ]);
+        // Otherwise truncate or extend: $#{$arr} = $length - 1
+        return new PerlAssignment(new PerlUnaryExpression('$#', arrExpr, true), '=',
+          new PerlBinaryExpression(new PerlGrouped(lengthVal), '-', PerlLiteral.Number(1)));
       }
 
       // Handle object destructuring assignment: { a: target1, b: target2 } = func()
