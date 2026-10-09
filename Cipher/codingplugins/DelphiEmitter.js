@@ -1854,7 +1854,7 @@ begin
 end;
 
 function JsNumToStr(D: Double): string;
-var P, E, N, K, I, Q: Int32; S, Digits, Mant: string; Neg: Boolean;
+var P, E, N, K, I, Q: Int32; S, Digits, Mant: string; Neg: Boolean; Back: Double;
 begin
   if IsNan(D) then Exit('NaN');
   if IsInfinite(D) then
@@ -1864,15 +1864,24 @@ begin
   Neg := D < 0;
   if Neg then D := -D;
   S := '';
+  { the shortest digit count that reads back as D }
   for P := 1 to 17 do
   begin
     S := FloatToStrF(D, ffExponent, P, 0, JsInvariant);
-    if StrToFloat(S, JsInvariant) = D then Break;
+    if TryStrToFloat(S, Back, JsInvariant) and (Back = D) then Break;
   end;
-  { S = d.ddddE+xxx }
+  { S = d.ddddE+xxx; Free Pascal leaves the exponent out when it is 0 }
   I := Pos('E', S);
-  Mant := System.Copy(S, 1, I - 1);
-  E := StrToInt(System.Copy(S, I + 1, 10));
+  if I = 0 then
+  begin
+    Mant := S;
+    E := 0;
+  end
+  else
+  begin
+    Mant := System.Copy(S, 1, I - 1);
+    E := StrToInt(System.Copy(S, I + 1, 10));
+  end;
   Digits := StringReplace(Mant, '.', '', [rfReplaceAll]);
   while (System.Length(Digits) > 1) and (Digits[System.Length(Digits)] = '0') do
     System.Delete(Digits, System.Length(Digits), 1);
