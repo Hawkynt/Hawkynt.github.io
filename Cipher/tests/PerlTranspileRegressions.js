@@ -366,6 +366,39 @@ check('arrays: .find(fn).prop reads the found element; subarray takes negative a
   expectOutput(runPerl(FIND_SNIPPET, 'print main::f(), "\\n";'), '2,2,3,9,0');
 });
 
+// ---------------------------------------------------------------------------
+// Strings, indexOf, crypto.getRandomValues
+// ---------------------------------------------------------------------------
+const STRING_SNIPPET = '/** @param {string} s @returns {string} */ function f(s) {\n' +
+  '  const syll = ["ba", "be", "bi"]; let i = 2; const at = syll.indexOf(s.substring(i, i + 2));\n' +
+  '  const r = new Uint8Array(4); crypto.getRandomValues(r);\n' +
+  '  return [s.slice(1, -1), s.substring(4, 1), s.slice(-2), at, [1, 2, 3].indexOf(3), r.length].join(","); }';
+check('strings: slice/substring bounds, indexOf without shadowing the caller\'s index, crypto.getRandomValues', () => {
+  if (!hasPerl()) return 'skip';
+  // JavaScript: f("xxbixy") is "xbix,xbi,xy,2,2,4"
+  expectOutput(runPerl(STRING_SNIPPET, 'print main::f("xxbixy"), "\\n";'), 'xbix,xbi,xy,2,2,4');
+});
+
+// ---------------------------------------------------------------------------
+// Libraries: an IIFE spelled .call(this), its CommonJS export, a function
+// table called through its entries, error.message
+// ---------------------------------------------------------------------------
+const LIBRARY_SNIPPET = '(function () {\n' +
+  '  /** @param {int32} x @returns {int32} */ function ApplyTransform(x) { return x + 1; }\n' +
+  '  const Lib = { ApplyTransform: ApplyTransform };\n' +
+  '  if (typeof module !== "undefined" && module.exports) { module.exports = Lib; }\n' +
+  '  else if (typeof define === "function" && define.amd) { define([], function () { return Lib; }); }\n' +
+  '}).call(this);\n' +
+  '/** @returns {string} */ function f() { let m = ""; try { throw new Error("boom"); } catch (e) { m = e.message; } return m; }';
+check('libraries: a .call(this) IIFE runs, exports to a provided module, skips the AMD branch; error.message', () => {
+  if (!hasPerl()) return 'skip';
+  const code = transpile(LIBRARY_SNIPPET);
+  expectNoMatch(code, /\$define\b/, 'a reference to $define');
+  const out = runPerl('', `our $module = { exports => {} };\n${code}\npackage main;\n` +
+    'print main::_JsInvoke($module->{exports}, "ApplyTransform", 4), ",", main::f(), "\\n";');
+  expectOutput(out, '5,boom');
+});
+
 /**
  * PERL: run every regression case.
  * @param {object} options - { verbose }

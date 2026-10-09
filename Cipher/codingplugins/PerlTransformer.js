@@ -118,6 +118,10 @@
   // negative, not a wrapped unsigned 64-bit pattern)
   const SIGNED_INTEGER_TYPES = new Set(['int8', 'int16', 'int32', 'int64', 'int', 'number', 'float64', 'double']);
 
+  // JavaScript host globals that never exist in Perl output (CommonJS's
+  // module/exports may: a bundle can provide them)
+  const PERL_ABSENT_HOST_GLOBALS = new Set(['require', 'define', 'window', 'self', 'process']);
+
   // Operators whose BigInt result needs Math::BigInt arithmetic, and the
   // framework runtime helper computing each
   const BIGINT_OPERATION_HELPERS = {
@@ -1979,6 +1983,13 @@
               this.transformIIFEContent(callee, node.expression, targetModule);
               break;
             }
+            // The same IIFE spelled "(function () {...}).call(this)"
+            if (callee.type === 'MemberExpression' && !callee.computed &&
+                (callee.property?.name || callee.property?.value) === 'call' &&
+                callee.object && (callee.object.type === 'FunctionExpression' || callee.object.type === 'ArrowFunctionExpression')) {
+              this.transformIIFEContent(callee.object, { arguments: [] }, targetModule);
+              break;
+            }
           }
           // Handle regular expression statements (including ArrayForEach)
           {
@@ -2115,6 +2126,14 @@
         // RegisterAlgorithm() calls - unwrap that one so registration
         // actually happens in standalone output (see transformTopLevel).
         if (stmt.type === 'IfStatement') {
+          // A library's CommonJS export, "if (typeof module !== 'undefined' &&
+          // module.exports) { module.exports = {...}; }": the value goes to
+          // $main::module->{exports} when a bundle provides that module
+          const exported = this._commonJsExport(stmt);
+          if (exported) {
+            targetModule.statements.push(exported);
+            continue;
+          }
           // Also unwrap the plain-existence-check guard variant many legacy
           // "const X = {...}" files use instead of AlgorithmFramework.Find():
           //   if (global.AlgorithmFramework && typeof global.AlgorithmFramework.RegisterAlgorithm === 'function') {
@@ -5627,7 +5646,60 @@
     /**
      * Transform an if statement
      */
+    /**
+     * The value of a test that only asks whether a host global absent from
+     * Perl exists ("typeof define === 'function' && define.amd"), as far as
+     * it is decided by that: false, true, or null when it is not decided.
+     * @param {object} test - IL expression
+     * @returns {boolean|null}
+     */
+    /**
+     * The Perl statement for a library's CommonJS export guard
+     * "if (typeof module ... && module.exports) { module.exports = X; }",
+     * or null when the if statement is something else.
+     * @param {object} stmt - IL IfStatement
+     * @returns {PerlNode|null}
+     */
+    _commonJsExport(stmt) {
+      const mentionsModule = (n) => !!n && (
+        (n.type === 'Identifier' && n.name === 'module') ||
+        ['left', 'right', 'argument', 'object', 'value'].some(k => n[k] && typeof n[k] === 'object' && mentionsModule(n[k])));
+      if (!mentionsModule(stmt.test)) return null;
+      const body = stmt.consequent?.type === 'BlockStatement' ? stmt.consequent.body : [stmt.consequent];
+      const assignment = body.length === 1 && body[0]?.type === 'ExpressionStatement' ? body[0].expression : null;
+      if (!assignment || assignment.type !== 'AssignmentExpression' || assignment.left?.type !== 'MemberExpression' ||
+          assignment.left.object?.name !== 'module' || (assignment.left.property?.name || assignment.left.property?.value) !== 'exports')
+        return null;
+      return new PerlIf(new PerlRawCode("ref($main::module) eq 'HASH'"), new PerlBlock([
+        new PerlExpressionStatement(new PerlAssignment(new PerlRawCode("$main::module->{'exports'}"), '=',
+          this.transformExpression(assignment.right)))]));
+    }
+
+    _staticHostGlobalTest(test) {
+      if (!test) return null;
+      if (test.type === 'LogicalExpression' && test.operator === '&&') {
+        const left = this._staticHostGlobalTest(test.left);
+        return left === false ? false : null;
+      }
+      if (test.type === 'BinaryExpression' && ['===', '!==', '==', '!='].includes(test.operator)) {
+        const typeofSide = [test.left, test.right].find(n => n && (n.type === 'TypeOfExpression' ||
+          (n.type === 'UnaryExpression' && n.operator === 'typeof')));
+        const literal = [test.left, test.right].find(n => n && n.type === 'Literal' && typeof n.value === 'string');
+        const arg = typeofSide && (typeofSide.argument || typeofSide.value);
+        if (arg && arg.type === 'Identifier' && PERL_ABSENT_HOST_GLOBALS.has(arg.name) && literal) {
+          const equal = literal.value === 'undefined';
+          return test.operator.startsWith('=') ? equal : !equal;
+        }
+      }
+      return null;
+    }
+
     transformIfStatement(node) {
+      // A branch only reachable where an absent host global exists is dead
+      // code, and would not even compile under strict
+      const hostTest = this._staticHostGlobalTest(node.test);
+      if (hostTest === false)
+        return node.alternate ? this.transformStatement(node.alternate) : null;
       // "if (typeof X !== 'bigint') X = BigInt(X);" - see
       // _matchNormalizeToBigIntGuard's doc comment for why this needs to
       // be special-cased ahead of the generic typeof/BigInt(...) handling.
@@ -8166,10 +8238,10 @@
           // identical jsGlobals handling for the sibling raw-UnaryExpression
           // "typeof" shape this IL node normally supersedes).
           // The same for the other JavaScript host globals a module loader
-          // tests (AMD's define, CommonJS's module/exports, the browser's
-          // window/self): none exists in Perl.
+          // tests (AMD's define, the browser's window/self): none exists in
+          // Perl.
           if (arg && arg.type === 'Identifier' &&
-              ['require', 'define', 'module', 'exports', 'window', 'self', 'process'].includes(arg.name))
+              PERL_ABSENT_HOST_GLOBALS.has(arg.name))
             return PerlLiteral.String('undefined', "'");
           // A 64-bit or BigInt IL type is a JavaScript BigInt, whose native
           // Perl value looks like a number
@@ -10877,6 +10949,12 @@
         // must go through its get/set accessor - see _isCipherInstanceRef()
         // and CROSS_INSTANCE_ACCESSOR_PROPS' doc comments for why
         // classAccessors can't see this.
+        // error.message: a caught Perl error is the die string (see
+        // _JsErrorMessage)
+        if (member === 'message' && !node._perlAssignTarget &&
+            (!node.object?.resultType || /^(Error|object|any)$/.test(node.object.resultType)))
+          return new PerlCall(new PerlIdentifier('main::_JsErrorMessage', ''), [object]);
+
         // A property of a class instance, by the object's IL type: an
         // accessor of a class of this file is called, and one of a class
         // this file cannot see (another file's, a framework base) is
@@ -11656,6 +11734,15 @@
           methodCall.isMethodCall = true;
           return new PerlMemberAccess(this.transformExpression(node.callee.object), methodCall, '->');
         }
+        // A plain object of functions (a library's export, typed 'object' or
+        // not at all) is called through its entry; an object of a class
+        // through its method (see _JsInvoke)
+        if (!node.callee.computed && node.callee.object?.type === 'Identifier' &&
+            (!receiverType || receiverType === 'object') && !this._exprIsOpCodesReference(node.callee.object) &&
+            !this.variableTypes.has(node.callee.object.name) && !this._isClassObjName(node.callee.object.name) &&
+            !['Math', 'JSON', 'Object', 'Array', 'Number', 'String', 'console', 'AlgorithmFramework', 'BigInt', 'Date'].includes(node.callee.object.name))
+          return new PerlCall(new PerlIdentifier('main::_JsInvoke', ''), [this.transformExpression(node.callee.object),
+            PerlLiteral.String(method, "'"), ...node.arguments.map(a => this.transformExpression(a))]);
 
         // Handle array reduce specially
         if (method === 'reduce') {
