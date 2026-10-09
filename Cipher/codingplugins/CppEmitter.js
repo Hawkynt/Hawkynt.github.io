@@ -1287,6 +1287,16 @@ inline Any dynAdd(const Any& a, const Any& b) {
 }
 inline Any dynBinary(const char* op, const Any& a, const Any& b) {
   std::string o(op);
+  if (o == "+" && (a.tag == Tag::Str || b.tag == Tag::Str || a.tag == Tag::Arr || b.tag == Tag::Arr || a.tag == Tag::Obj || b.tag == Tag::Obj)) return dynAdd(a, b);
+  // a 64-bit integer (a BigInt the IL typed uint64) with another integer: BigInt arithmetic
+  auto integral = [](const Any& x) { return x.tag == Tag::Big || x.tag == Tag::U64 || x.tag == Tag::I64; };
+  if ((a.tag == Tag::Big || b.tag == Tag::Big || a.tag == Tag::U64 || b.tag == Tag::U64) && integral(a) && integral(b) && o != ">>>") {
+    BigInt x = fromAny<BigInt>(a), y = fromAny<BigInt>(b);
+    if (o == "+") return Any(x + y); if (o == "-") return Any(x - y); if (o == "*") return Any(x * y);
+    if (o == "/") return Any(x / y); if (o == "%") return Any(x % y);
+    if (o == "&") return Any(x & y); if (o == "|") return Any(x | y); if (o == "^") return Any(x ^ y);
+    if (o == "<<") return Any(x << y); if (o == ">>") return Any(x >> y); if (o == "**") return Any(x.pow(y));
+  }
   if (o == "+") return dynAdd(a, b);
   if (a.tag == Tag::Big && b.tag == Tag::Big) {
     const BigInt &x = a.asBig(), &y = b.asBig();
