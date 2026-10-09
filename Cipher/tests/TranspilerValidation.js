@@ -80,6 +80,8 @@ const resolvedTools = new Map();
  */
 function resolveTool(name) {
   if (resolvedTools.has(name)) return resolvedTools.get(name);
+  // A program the validation built itself (a compiled harness) is started as it is
+  if (path.isAbsolute(name)) return fs.existsSync(name) ? { command: name, shell: false } : null;
   let found = null;
   for (const candidate of TOOL_ALTERNATIVES[name] || [name]) {
     if (process.platform !== 'win32') {
@@ -414,7 +416,7 @@ function loadLanguagePlugin(language) {
 
 // Bundling is implemented for languages whose prelude accumulates a
 // name->algorithm registry the harness can look up.
-const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript']);
+const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript', 'cpp']);
 
 function transpileOne(source, plugin, algoName, extraOptions, parserOptions) {
   const Parser = loadTranspiler();
@@ -662,7 +664,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
 
 // Languages whose harness runs every vector; the others only prove the
 // generated code compiles and a run of theirs checks nothing.
-const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp']);
+const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp', 'cpp']);
 
 /**
  * The harness spec handed to a vector harness: per algorithm the name, the
@@ -708,7 +710,7 @@ function generateTestHarness(language, algorithmCode, spec, algorithmName, sampl
     case 'c':
       return generateCTestHarness(algorithmCode, vector, algorithmName);
     case 'cpp':
-      return generateCppTestHarness(algorithmCode, vector, algorithmName);
+      return generateCppTestHarness(algorithmCode, spec, algorithmName);
     case 'python':
       return generatePythonTestHarness(algorithmCode, spec, algorithmName);
     case 'php':
@@ -870,34 +872,11 @@ int main(void) {
   };
 }
 
-// C++ Test Harness
-function generateCppTestHarness(algorithmCode, vector, algorithmName) {
-  const inputLen = vector.input?.length || 0;
-  const expectedLen = vector.expected?.length || 0;
-  const inputBytes = vector.input?.map(b => b.toString()).join(', ') || '';
-  const expectedBytes = vector.expected?.map(b => b.toString()).join(', ') || '';
-
-  return {
-    success: true,
-    code: `#include <iostream>
-#include <cstdint>
-#include <cstring>
-#include <vector>
-
-${algorithmCode}
-
-int main() {
-    std::cout << "Testing ${algorithmName}..." << std::endl;
-
-    std::vector<uint8_t> input = { ${inputBytes || '0'} };
-    std::vector<uint8_t> expected = { ${expectedBytes || '0'} };
-
-    std::cout << "Input length: " << input.size() << std::endl;
-    std::cout << "Expected length: " << expected.size() << std::endl;
-    std::cout << "COMPILE_OK" << std::endl;
-    return 0;
-}`
-  };
+// C++ vector harness (tests/validation-harness/harness.cpp): the transpiled code
+// carries the runtime and its registry; the spec is a C string literal of JSON.
+function generateCppTestHarness(algorithmCode, spec, algorithmName) {
+  const harness = readHarness('harness.cpp').replace('__SPEC_JSON__', () => JSON.stringify(asciiJson(spec)));
+  return { success: true, code: `// Validation of ${algorithmName}\n${algorithmCode}\n${harness}` };
 }
 
 // Python vector harness (tests/validation-harness/harness.py); the spec is
@@ -1244,7 +1223,8 @@ function testCppCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'test.cpp');
   fs.writeFileSync(srcFile, code);
 
-  const result = spawnTool('g++', ['-c', srcFile, '-std=c++20', '-Wall', '-fsyntax-only'], {
+  // An executable for the vector harness; -fwrapv is JavaScript's integer wrap-around
+  const result = spawnTool('g++', [srcFile, '-std=gnu++20', '-O1', '-fwrapv', '-w', '-o', path.join(outputDir, 'test.exe')], {
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000
   });
@@ -1535,6 +1515,7 @@ function executeCode(language, outputDir) {
     case 'python': return runProcess('python', ['-X', 'utf8', path.join(outputDir, 'test.py')], { cwd: outputDir });
     case 'perl': return runProcess('perl', [path.join(outputDir, 'test.pl')], { cwd: outputDir });
     case 'csharp': return runProcess('dotnet', [path.join(outputDir, 'bin', 'Release', 'net10.0', 'Test.dll')], { cwd: outputDir });
+    case 'cpp': return runProcess(path.join(outputDir, 'test.exe'), [], { cwd: outputDir });
     default: throw new Error(`${language} has no vector harness to run`);
   }
 }
