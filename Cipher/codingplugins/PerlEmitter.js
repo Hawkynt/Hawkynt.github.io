@@ -2374,6 +2374,10 @@ sub MerkleDamgardBlocks {
         // when Number.isInteger is true), so stringifying through BigInt
         // instead reproduces precisely what the JS source intended.
         if (typeof node.value === 'bigint') return node.value.toString();
+        // Beyond 64 bits a double is no Perl integer literal ("Number too
+        // long"); its shortest round-trip form is a valid float literal.
+        if (typeof node.value === 'number' && Math.abs(node.value) >= 18446744073709551616)
+          return String(node.value);
         if (typeof node.value === 'number' && Number.isFinite(node.value) && Number.isInteger(node.value)) {
           return BigInt(node.value).toString();
         }
