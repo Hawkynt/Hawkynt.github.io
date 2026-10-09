@@ -19135,17 +19135,22 @@
 
       // `a[i] && ...` guards a read past the end in JavaScript (undefined is
       // falsy); the C# condition checks the index first: i >= 0 && i < a.Length && a[i] != 0
-      if (node.type === 'MemberExpression' && node.computed && ['Identifier', 'Literal'].includes(node.property?.type)) {
+      const plainTarget = n => n?.type === 'Identifier' || n?.type === 'ThisPropertyAccess' ||
+        (n?.type === 'MemberExpression' && n.computed && plainTarget(n.object) && ['Identifier', 'Literal'].includes(n.property?.type));
+      if (!this.indexGuarded && node.type === 'MemberExpression' && node.computed && ['Identifier', 'Literal'].includes(node.property?.type) &&
+          plainTarget(node.object)) {
         const arrayType = this.inferFullExpressionType(node.object);
-        const elementType = arrayType?.isArray ? arrayType.elementType : null;
-        if (elementType && ['byte', 'sbyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong'].includes(elementType.name) && !elementType.isArray) {
+        if (arrayType?.isArray && arrayType.elementType) {
           const array = this.transformExpression(node.object);
           const index = this.ensureIntIndex(this.transformExpression(node.property), node.property);
           const inRange = new CSharpBinaryExpression(
             new CSharpBinaryExpression(index, '>=', CSharpLiteral.Int(0)), '&&',
             new CSharpBinaryExpression(index, '<', new CSharpMemberAccess(array, 'Length')));
-          return new CSharpBinaryExpression(inRange, '&&',
-            new CSharpBinaryExpression(new CSharpElementAccess(array, index), '!=', CSharpLiteral.Int(0)));
+          // The element's own truthiness, as without the guard
+          this.indexGuarded = true;
+          let truthy;
+          try { truthy = this.ensureBooleanCondition(node); } finally { this.indexGuarded = false; }
+          return new CSharpBinaryExpression(inRange, '&&', truthy);
         }
       }
 

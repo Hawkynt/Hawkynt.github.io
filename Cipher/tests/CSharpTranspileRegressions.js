@@ -629,6 +629,11 @@ check('conditions: a[i] as a condition is false past the end of a, as undefined 
   const code = transpile('/**\n * @param {uint8[]} r - r\n * @param {int32} i - i\n * @returns {int32} n\n */\nfunction f(r, i) { let n = 0; if (r[i] && (r[i] & 1)) n++; return n; }');
   expectMatch(code, /if \(i >= 0 && i < r\.Length && r\[i\] != 0 && /, 'the index checked before the read');
 });
+check('conditions: grid[r][c] of a string grid as a condition checks the column before the read', () => {
+  const code = transpile('/**\n * @param {string[][]} grid - g\n * @param {int32} r - r\n * @param {int32} c - c\n * @returns {string} s\n */\n' +
+    'function f(grid, r, c) { let s = ""; if (grid[r][c]) s += grid[r][c]; return s; }');
+  expectMatch(code, /if \(c >= 0 && c < grid\[r\]\.Length && /, 'c checked against grid[r].Length');
+});
 check('arrays: a store past the end of a pushed row grows that row in place', () => {
   const code = transpile('/**\n * @param {uint16[]} w - words\n * @returns {uint16[][]} tables\n */\nfunction build(w) {\n' +
     '  /** @type {uint16[][]} */\n  const tables = [];\n  for (let t = 0; t < 2; t++) { /** @type {uint16[]} */ const row = [0]; tables.push(row); }\n' +
