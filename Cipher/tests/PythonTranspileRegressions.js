@@ -493,6 +493,13 @@ check('typed array: new Uint32Array(call returning an array) copies, new Uint32A
   return expectOutput(runPython(js, 'print([list(x) for x in f(3)])'), ['[[1, 2], [7, 8], [0, 0, 0]]']);
 });
 
+check('typeof: "object" holds for arrays, objects and null, not for primitives or functions', () => {
+  const js = 'function f(x) { return typeof x === "object"; }\nfunction g(x) { return typeof x !== "object"; }';
+  // Given an array, an object, null, a string, a number, a boolean and a function
+  return expectOutput(runPython(js, 'print([f(v) for v in ([1], {}, None, "s", 3, True, len)], g([1]), g(2.5))'),
+    ['[True, True, True, False, False, False, False] False True']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

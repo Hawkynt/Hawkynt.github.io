@@ -8195,6 +8195,12 @@ class OpCodes(metaclass=_OpCodesMeta):
             case 'number': check = isType(new PythonTuple([new PythonIdentifier('int'), new PythonIdentifier('float')])); break;
             case 'bigint': check = isType(new PythonIdentifier('int')); break;
             case 'function': check = new PythonCall(new PythonIdentifier('callable'), [argExpr]); break;
+            // arrays, objects and null: anything not a primitive or a function
+            case 'object':
+              check = new PythonUnaryExpression('not', new PythonBinaryExpression(
+                isType(new PythonTuple([new PythonIdentifier('str'), new PythonIdentifier('bool'), new PythonIdentifier('int'), new PythonIdentifier('float')])),
+                'or', new PythonCall(new PythonIdentifier('callable'), [argExpr])));
+              break;
             case 'undefined':
               return new PythonBinaryExpression(argExpr, isNeg ? 'is not' : 'is', PythonLiteral.None());
           }
