@@ -414,7 +414,9 @@ function loadLanguagePlugin(language) {
 
 // Bundling is implemented for languages whose prelude accumulates a
 // name->algorithm registry the harness can look up.
-const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript']);
+const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript', 'typescript']);
+// TypeScript is JavaScript with types: it bundles the way JavaScript does
+const JS_BUNDLING = new Set(['javascript', 'typescript']);
 
 function transpileOne(source, plugin, algoName, extraOptions, parserOptions) {
   const Parser = loadTranspiler();
@@ -559,7 +561,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
   // The IL AST is shared by every target language, so by default it stubs out
   // require()-using methods (no equivalent in C#/Python/etc). When the target
   // *is* JavaScript, require() is valid runnable code - keep it.
-  const parserOptions = language === 'javascript' ? { keepModuleLoaderFunctions: true } : undefined;
+  const parserOptions = JS_BUNDLING.has(language) ? { keepModuleLoaderFunctions: true } : undefined;
   const source = fs.readFileSync(algorithmFile, 'utf-8');
   const algoName = path.basename(algorithmFile, '.js').replace(/[^a-zA-Z0-9]/g, '_');
   let code;
@@ -575,7 +577,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
   // (a second copy would replace the registry) and wrapped in its own function
   // scope so its top-level declarations cannot collide with the main file's.
   // Python and Perl preludes keep their registry across repeated copies.
-  const noPreludeOptions = language === 'javascript' ? { generateTestHarness: false } : undefined;
+  const noPreludeOptions = JS_BUNDLING.has(language) ? { generateTestHarness: false } : undefined;
   // A JavaScript dependency also keeps what its factory returned, for a file
   // that loads it through a loader parameter (see below).
   const depExports = new Map();
@@ -585,7 +587,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
     try {
       const depSource = fs.readFileSync(depPath, 'utf-8');
       const depCode = transpileOne(depSource, plugin, depName, noPreludeOptions, parserOptions);
-      if (language === 'javascript') {
+      if (JS_BUNDLING.has(language)) {
         const variable = '__validation_' + depName;
         depExports.set(path.resolve(depPath).toLowerCase(), variable);
         prefix += `const ${variable} = (function () {\nconst module = { exports: {} };\n${depCode}\nreturn ${libraryExports(depSource) || 'undefined'};\n})();\n\n`;
@@ -602,7 +604,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
   // require('./x.data'). The UMD unwrap discards that branch, leaving the
   // parameter unbound, so the library is bundled as
   // const <Name> = (function () { ...; return <its exports>; })();
-  if (language === 'javascript') {
+  if (JS_BUNDLING.has(language)) {
     const localRequireRe = /require\(\s*['"]\.\/([^'"]+)['"]\s*\)/g;
     const localNames = new Set();
     let lm;
@@ -645,7 +647,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
     prefix += bundled.code;
   }
 
-  if (prefix && language === 'javascript' && typeof plugin.GetStandalonePrelude === 'function') {
+  if (prefix && JS_BUNDLING.has(language) && typeof plugin.GetStandalonePrelude === 'function') {
     // Dependency code goes right after the prelude (it references the
     // prelude's RegisterAlgorithm/etc) and before the main class code.
     const preludeText = plugin.GetStandalonePrelude();
@@ -662,7 +664,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
 
 // Languages whose harness runs every vector; the others only prove the
 // generated code compiles and a run of theirs checks nothing.
-const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp']);
+const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp', 'typescript']);
 
 /**
  * The harness spec handed to a vector harness: per algorithm the name, the
@@ -726,7 +728,7 @@ function generateTestHarness(language, algorithmCode, spec, algorithmName, sampl
     case 'javascript':
       return generateJavaScriptTestHarness(algorithmCode, spec, algorithmName);
     case 'typescript':
-      return generateTypeScriptTestHarness(algorithmCode, vector, algorithmName);
+      return generateTypeScriptTestHarness(algorithmCode, spec, algorithmName);
     case 'basic':
       return generateBasicTestHarness(algorithmCode, vector, algorithmName);
     case 'delphi':
@@ -1077,32 +1079,11 @@ fn main() {
   };
 }
 
-// TypeScript Test Harness
-function generateTypeScriptTestHarness(algorithmCode, vector, algorithmName) {
-  const input = bytesToArrayLiteral(vector.input, 'typescript');
-  const expected = bytesToArrayLiteral(vector.expected, 'typescript');
-
-  return {
-    success: true,
-    code: `${algorithmCode}
-
-// Test Harness
-(function main(): void {
-    console.log("Testing ${algorithmName}...");
-    try {
-        const input: Uint8Array = ${input};
-        const expected: Uint8Array = ${expected};
-
-        console.log("Input length: " + input.length);
-        console.log("Expected length: " + expected.length);
-        console.log("COMPILE_OK");
-    } catch (error) {
-        console.log("ERROR: " + (error as Error).message);
-        process.exit(1);
-    }
-})();
-`
-  };
+// TypeScript vector harness (tests/validation-harness/harness.ts), compiled
+// with the transpiled code by tsc and run by node like the JavaScript one.
+function generateTypeScriptTestHarness(algorithmCode, spec, algorithmName) {
+  const harness = readHarness('harness.ts').replace('__SPEC_JSON__', () => asciiJson(spec));
+  return { success: true, code: `${algorithmCode}\n// Validation of ${algorithmName}\n${harness}` };
 }
 
 // Basic (FreeBASIC) Test Harness
@@ -1409,19 +1390,27 @@ function testJavaScriptSyntax(code, outputDir) {
   return syntaxCheck(code, outputDir, 'test.js', 'node', ['--check']);
 }
 
+// The options the TypeScript target is written for: JavaScript's own checks
+// (strict off: JavaScript leaves out arguments and mixes null in freely),
+// ES2022 (BigInt, class fields) and no DOM; the file declares the Node globals
+// it uses
+const TSC_OPTIONS = ['--target', 'es2022', '--lib', 'es2022', '--strict', 'false', '--skipLibCheck', '--pretty', 'false'];
+
 function testTypeScriptSyntax(code, outputDir) {
   fs.mkdirSync(outputDir, { recursive: true });
   const srcFile = path.join(outputDir, 'test.ts');
+  const jsFile = path.join(outputDir, 'test.js');
   fs.writeFileSync(srcFile, code);
+  if (fs.existsSync(jsFile)) fs.unlinkSync(jsFile);
 
-  // TypeScript: --noEmit for type checking without output
-  const result = spawnTool('tsc', ['--noEmit', '--skipLibCheck', srcFile], {
+  // Type-checks and emits test.js beside it, which the harness run executes
+  const result = spawnTool('tsc', TSC_OPTIONS.concat([srcFile]), {
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000
   });
 
   return {
-    success: result.status === 0,
+    success: result.status === 0 && fs.existsSync(jsFile),
     errors: compilerOutput(result),
     output: result.stdout || ''
   };
@@ -1535,6 +1524,7 @@ function executeCode(language, outputDir) {
     case 'python': return runProcess('python', ['-X', 'utf8', path.join(outputDir, 'test.py')], { cwd: outputDir });
     case 'perl': return runProcess('perl', [path.join(outputDir, 'test.pl')], { cwd: outputDir });
     case 'csharp': return runProcess('dotnet', [path.join(outputDir, 'bin', 'Release', 'net10.0', 'Test.dll')], { cwd: outputDir });
+    case 'typescript': return runProcess('node', [path.join(outputDir, 'test.js')], { cwd: outputDir });
     default: throw new Error(`${language} has no vector harness to run`);
   }
 }
@@ -1555,7 +1545,7 @@ function firstError(text, language) {
   let line;
   if (language === 'csharp') line = pick(/error CS\d+/) || pick(/Unhandled exception|Exception:/);
   else if (language === 'python') line = [...lines].reverse().find(l => /^\w+(Error|Exception|Exit)\b/.test(l));
-  else if (language === 'javascript') line = pick(/^\w*Error\b/) || pick(/Error:/);
+  else if (language === 'javascript' || language === 'typescript') line = pick(/^\w*Error\b/) || pick(/Error:/);
   else if (language === 'ruby') {
     // Prism reports "syntax errors found", then each error under a caret
     const caret = pick(/^\|\s*\^~*\s+\S/);
