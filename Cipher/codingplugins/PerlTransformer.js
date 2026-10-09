@@ -6315,7 +6315,10 @@
           // method ... on an undefined value". "$self->can('property')"
           // returns the actual method as a coderef, callable exactly like
           // the JS pattern once an explicit invocant is supplied.
-          if (this.allPlainClassMethodNames && this.allPlainClassMethodNames.has(node.property)) {
+          // The name is collected file-wide, so the IL type decides: a field
+          // of one class may share its name with another class's method.
+          if (this.allPlainClassMethodNames && this.allPlainClassMethodNames.has(node.property) &&
+              (!node.resultType || /^function/.test(node.resultType))) {
             return new PerlMemberAccess(
               new PerlIdentifier('self', '$'),
               new PerlCall(new PerlIdentifier('can'), [PerlLiteral.String(node.property, "'")]),
