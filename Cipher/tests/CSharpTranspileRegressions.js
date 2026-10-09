@@ -965,6 +965,12 @@ check('accessors: the setter of a dynamic property reads its value as the declar
     '  /** @returns {string} the key text */\n  get key() { return this._key; }\n}');
   expectMatch(code, /byte\[\] keyData = value;/, 'byte[] keyData = value;');
 });
+check('accessors: a dynamic property setter telling kinds of values apart keeps its value dynamic', () => {
+  const code = transpile('class Holder {\n  constructor() {\n    /** @type {BigInt} */\n    this._state = 0n;\n  }\n' +
+    '  /** @param {uint8[]} seedValue - seed */\n  set seed(seedValue) {\n    if (typeof seedValue === "bigint") this._state = seedValue;\n' +
+    '    else this._state = BigInt(seedValue.length);\n  }\n  /** @returns {BigInt} the state */\n  get seed() { return this._state; }\n}');
+  expectNoMatch(code, /byte\[\] seedValue = value;/, 'a byte[] seedValue local');
+});
 check('length: storing the length member of an object assigns its Length, not a new array (CS0029)', () => {
   const code = transpile('class Register {\n  constructor() {\n    /** @type {int32} */\n    this.length = 0;\n  }\n}\n' +
     '/**\n * @param {int32} n - length\n * @returns {Register} r\n */\nfunction make(n) {\n  const reg = new Register();\n  reg.length = n;\n  return reg;\n}\n' +

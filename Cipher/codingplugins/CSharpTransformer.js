@@ -22299,7 +22299,16 @@
           // body the parameter as declared: `byte[] keyData = value;` - a dynamic
           // `value` would make every lambda over it a compile error (CS1977)
           const declaredParamType = this.mapILType(methodNode.value.params[0].resultType);
-          if (prop.type?.name === 'dynamic' && !prop.type.isArray && declaredParamType &&
+          // ...unless the setter tells kinds of values apart itself (self-shrinking-
+          // generator.js: `typeof seedValue === 'bigint'`, `Array.isArray(seedValue)`)
+          let testsKind = false;
+          this._walkAstNodes(methodNode.value.body, n => {
+            const operand = n.type === 'UnaryExpression' && n.operator === 'typeof' ? n.argument
+              : n.type === 'IsArrayCheck' ? n.value
+              : n.type === 'TypeOfExpression' ? (n.argument || n.value) : null;
+            if (operand?.type === 'Identifier' && operand.name === setterParamRawName) testsKind = true;
+          });
+          if (!testsKind && prop.type?.name === 'dynamic' && !prop.type.isArray && declaredParamType &&
               !['dynamic', 'object'].includes(declaredParamType.name) && setterParamRawName !== 'value') {
             this.currentSetterParam = null;
             this.registerVariableType(setterParamRawName, declaredParamType);
