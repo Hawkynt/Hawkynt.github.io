@@ -357,6 +357,11 @@ check('numeric: a float operand of a bitwise operator is truncated as JavaScript
   const code = transpile('/**\n * @param {float64} x - value\n * @returns {int32} low byte\n */\nfunction lowByte(x) { return x & 255; }');
   expectMatch(code, /\(long\)\(x\)\) & 255|\(long\)x & 255/, '(long)x & 255');
 });
+check('strings: a character read by index into a string local is a string', () => {
+  const code = transpile('/**\n * @param {string} s - text\n * @param {int32} i - index\n * @returns {string} char\n */\n' +
+    'function at(s, i) { /** @type {string} */ const c = s[i]; return c; }');
+  expectMatch(code, /string c = s\[i\]\.ToString\(\);/, 'string c = s[i].ToString();');
+});
 check('numeric: toFixed formats with a fixed digit count, ArrayBuffer.isView tests for an array', () => {
   const code = transpile('/**\n * @param {float64} x - value\n * @param {uint8[]} d - data\n * @returns {string} text\n */\n' +
     'function show(x, d) { return ArrayBuffer.isView(d) ? x.toFixed(2) : ""; }');

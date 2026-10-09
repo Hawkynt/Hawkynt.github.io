@@ -11899,7 +11899,12 @@
           // e.g., ternary ? 1 : 0 returns int but target is uint
           if (type && !type.isArray && initializer) {
             const initExprType = this.inferFullExpressionType(decl.init);
-            if (this.needsInitializerCast(initExprType, type, decl.init)) {
+            // A C# string index is a char; JavaScript's is a one-character string
+            const indexesString = (decl.init.type === 'MemberExpression' && decl.init.computed &&
+              this.inferFullExpressionType(decl.init.object)?.name === 'string' && !this.inferFullExpressionType(decl.init.object)?.isArray);
+            if (type.name === 'string' && (initExprType?.name === 'char' || indexesString)) {
+              initializer = new CSharpMethodCall(initializer, 'ToString', []);
+            } else if (this.needsInitializerCast(initExprType, type, decl.init)) {
               initializer = new CSharpCast(type, initializer);
             }
           }
