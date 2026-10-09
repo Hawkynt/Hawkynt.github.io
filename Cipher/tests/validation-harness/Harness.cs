@@ -565,7 +565,9 @@ __DUMMY_CLASSES__
         {
             while ((e is TargetInvocationException || e is TypeInitializationException || e is AggregateException) && e.InnerException != null)
                 e = e.InnerException;
-            return e.GetType().Name + ": " + e.Message;
+            // VALIDATION_TRACE=1 in the environment adds where it was thrown, for a manual rerun
+            string trace = Environment.GetEnvironmentVariable("VALIDATION_TRACE") == "1" ? " @ " + e.StackTrace : "";
+            return e.GetType().Name + ": " + e.Message + trace;
         }
 
         private static object CreateDummyCipher()
