@@ -818,8 +818,14 @@
    */
   const FRAMEWORK_RUNTIME_FUNCTIONS = new Set(['SpongePadBlocks', 'MerkleDamgardBlocks']);
 
+  /**
+   * Accessor properties of the framework runtime's classes, by class.
+   */
+  const FRAMEWORK_RUNTIME_ACCESSORS = Object.freeze({ IBlockCipherInstance: ['key'] });
+
   const PerlAST = {
     FRAMEWORK_RUNTIME_CLASSES,
+    FRAMEWORK_RUNTIME_ACCESSORS,
     FRAMEWORK_RUNTIME_FUNCTIONS,
 
     // Base

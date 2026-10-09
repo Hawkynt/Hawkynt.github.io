@@ -104,6 +104,16 @@
     'functionName'
   ]);
 
+  // Capitalised IL type names that are not classes: builtins and the
+  // container types the Perl translation holds as plain references.
+  const NON_CLASS_TYPE_NAMES = new Set([
+    'Object', 'Array', 'Map', 'Set', 'WeakMap', 'WeakSet', 'Function', 'Promise', 'Date', 'RegExp',
+    'Error', 'String', 'Number', 'Boolean', 'BigInt', 'Symbol', 'Math', 'JSON', 'ArrayBuffer', 'DataView',
+    'Uint8Array', 'Int8Array', 'Uint16Array', 'Int16Array', 'Uint32Array', 'Int32Array',
+    'Float32Array', 'Float64Array', 'BigUint64Array', 'BigInt64Array', 'Uint8ClampedArray',
+    'LinkItem', 'TestCase', 'Vulnerability', 'KeySize', 'AuthResult'
+  ]);
+
   // Framework utility classes that should be skipped entirely (provided by runtime)
   const SKIP_CLASSES = new Set([
     'LinkItem', 'KeySize', 'Vulnerability', 'TestCase', 'AuthResult',
@@ -718,6 +728,15 @@
       // helper declared below the class) is qualified as well.
       for (const name of PerlAST.FRAMEWORK_RUNTIME_FUNCTIONS) this.functionNames.add(name);
       for (const name of this._collectModuleFunctionNames(jsAst)) this.functionNames.add(name);
+      // Every class this file declares, wherever (see _classPropertyAccess)
+      this.fileClassNames = new Set();
+      (function collectClasses(n, out, seen) {
+        if (!n || typeof n !== 'object' || seen.has(n)) return;
+        seen.add(n);
+        if (Array.isArray(n)) { for (const x of n) collectClasses(x, out, seen); return; }
+        if ((n.type === 'ClassDeclaration' || n.type === 'ClassExpression') && n.id?.name) out.add(n.id.name);
+        for (const k of Object.keys(n)) if (k !== 'parent') collectClasses(n[k], out, seen);
+      })(jsAst, this.fileClassNames, new WeakSet());
 
       // Flat whole-file scan for every real "static FIELD = ...;" class
       // field name (ES2022 static class fields, e.g. block/aria.js's
@@ -3068,9 +3087,32 @@
         seen.add(className);
         const names = this.classAccessors.get(className);
         if (names && names.has(propName)) return true;
+        // A framework base class's accessor (IBlockCipherInstance.key)
+        const runtimeAccessors = PerlAST.FRAMEWORK_RUNTIME_ACCESSORS[className];
+        if (runtimeAccessors && runtimeAccessors.includes(propName)) return true;
         className = this.classBaseClassName.get(className);
       }
       return false;
+    }
+
+    /**
+     * How a property of an object whose IL type is `typeName` is read and
+     * written: 'accessor' when the type is a class of this file with a get/
+     * set accessor of that name, 'runtime' when the type is a class this
+     * file does not define (another file's, or a framework base class) and
+     * only the running program can tell an accessor from a field, and null
+     * for everything else (a field of a class of this file, a primitive, an
+     * array, a plain object or Map).
+     * @param {string} typeName - the object's IL resultType
+     * @param {string} propName - the property
+     * @returns {('accessor'|'runtime'|null)}
+     */
+    _classPropertyAccess(typeName, propName) {
+      if (typeof typeName !== 'string' || !/^[A-Z][A-Za-z0-9_]*$/.test(typeName)) return null;
+      if (NON_CLASS_TYPE_NAMES.has(typeName) || propName === 'length') return null;
+      if (this.fileClassNames && this.fileClassNames.has(typeName))
+        return this._isAccessorProperty(propName, typeName) ? 'accessor' : null;
+      return 'runtime';
     }
 
     /**
@@ -9849,6 +9891,8 @@
      * Transform an assignment expression
      */
     transformAssignmentExpression(node) {
+      // Its target is written, not read (see transformMemberExpression)
+      if (node.left && node.left.type === 'MemberExpression') node.left._perlAssignTarget = true;
       // Track if a plain "x = <string-expr>;" reassignment (as opposed to
       // transformLetStatement's declare-with-initializer case) makes a
       // local variable structurally a string, so later Identifier
@@ -10076,6 +10120,18 @@
             '->'
           );
         }
+        // A setter of a class instance, by the object's IL type (see
+        // _classPropertyAccess): a setter is code, not a hash store.
+        if (node.left.object?.type !== 'ThisExpression') {
+          const access = this._classPropertyAccess(node.left.object?.resultType, propName);
+          if (access === 'accessor' || access === 'runtime') {
+            const objExpr = this.transformExpression(node.left.object);
+            const rightExpr = this.transformExpression(node.right);
+            if (access === 'accessor')
+              return new PerlMemberAccess(objExpr, new PerlCall(new PerlIdentifier(propName), [rightExpr]), '->');
+            return new PerlCall(new PerlIdentifier('main::_JsSetProp', ''), [objExpr, PerlLiteral.String(propName, "'"), rightExpr]);
+          }
+        }
       }
 
       // Assignment to a class's own static field - "ClassName.field = value"
@@ -10286,6 +10342,7 @@
      * Transform an update expression (++, --)
      */
     transformUpdateExpression(node) {
+      if (node.argument && node.argument.type === 'MemberExpression') node.argument._perlAssignTarget = true;
       const operand = this.transformExpression(node.argument);
 
       // Perl has ++ and --, same as JavaScript
@@ -10583,6 +10640,18 @@
         // classAccessors can't see this.
         if (CROSS_INSTANCE_ACCESSOR_PROPS.has(member) && this._isCipherInstanceRef(node.object)) {
           return new PerlMemberAccess(object, new PerlCall(new PerlIdentifier(member), []), '->');
+        }
+
+        // A property of a class instance, by the object's IL type: an
+        // accessor of a class of this file is called, and one of a class
+        // this file cannot see (another file's, a framework base) is
+        // resolved at run time. An assignment target stays a hash element.
+        if (!node._perlAssignTarget && node.object?.type !== 'ThisExpression') {
+          const access = this._classPropertyAccess(node.object.resultType, member);
+          if (access === 'accessor')
+            return new PerlMemberAccess(object, new PerlCall(new PerlIdentifier(member), []), '->');
+          if (access === 'runtime')
+            return new PerlCall(new PerlIdentifier('main::_JsGetProp', ''), [object, PerlLiteral.String(member, "'")]);
         }
 
         // Bare (non-computed, non-call) property read/write target - obj.prop

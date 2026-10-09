@@ -236,6 +236,31 @@ sub _JsPad {
     my $fill = substr($padString x (int($missing / length($padString)) + 1), 0, $missing);
     return $atStart ? $fill . $string : $string . $fill;
 }
+use Scalar::Util ();
+# A property of a class instance whose class is not known statically: a
+# blessed object's accessor method, else the hash element.
+sub _JsSetProp {
+    my ($object, $name, $value) = @_;
+    if (Scalar::Util::blessed($object) && $object->can($name)) { $object->$name($value); }
+    else { $object->{$name} = $value; }
+    return $value;
+}
+sub _JsGetProp {
+    my ($object, $name) = @_;
+    return $object->{$name} if !Scalar::Util::blessed($object) || exists($object->{$name});
+    my $method = $object->can($name);
+    return $method ? $object->$method() : undef;
+}
+# Array.prototype.reverse/sort: in place, returning the same array. The
+# comparator gets its operands as arguments; without one the order is by
+# string, as in JavaScript.
+sub _JsReverse { my ($array) = @_; @$array = reverse(@$array); return $array; }
+sub _JsSort {
+    my ($array, $compare) = @_;
+    if ($compare) { @$array = sort { $compare->($a, $b) } @$array; }
+    else { @$array = sort { (defined($a) ? "$a" : '') cmp (defined($b) ? "$b" : '') } @$array; }
+    return $array;
+}
 sub _JsByteLength { my ($view) = @_; return ref($view) eq 'ARRAY' ? scalar(@$view) : length($view // ''); }
 sub _JsFromEntries { my ($entries) = @_; return { map { ($_->[0] => $_->[1]) } @{$entries || []} }; }
 sub SpongePadBlocks {
