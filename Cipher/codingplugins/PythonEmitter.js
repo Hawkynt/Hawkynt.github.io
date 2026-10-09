@@ -669,6 +669,13 @@
       // `a.index(x) if x in a else -1 == -1` parses as
       // `a.index(x) if x in a else (-1 == -1)`, not `(...) == -1`.
       const ALWAYS_PARENTHESIZE = new Set(['Conditional', 'ConditionalExpression', 'Lambda']);
+      // `not x` as the operand of a comparison or arithmetic would swallow
+      // the whole operation: !a === b is (not a) == b, not `not (a == b)`
+      const isNot = (n) => n && n.nodeType === 'UnaryExpression' && (n.operator === '!' || n.operator === 'not');
+      if (parentPrecedence > this.getOperatorPrecedence('not')) {
+        if (isNot(node.left)) left = `(${left})`;
+        if (isNot(node.right)) right = `(${right})`;
+      }
 
       // Add parentheses to left operand if needed
       if (node.left && ALWAYS_PARENTHESIZE.has(node.left.nodeType)) {
@@ -794,7 +801,12 @@
       // Note: * for unpacking does NOT need a space: [*arr] not [* arr]
       const wordOperators = ['not', 'await'];
       if (wordOperators.includes(op)) {
-        return `${op} ${operand}`;
+        // `not` binds tighter than and/or: !(a && b) is not (a and b)
+        const operandType = node.operand && node.operand.nodeType;
+        const looser = (operandType === 'BinaryExpression' &&
+            this.getOperatorPrecedence(node.operand.operator) < this.getOperatorPrecedence('not')) ||
+          operandType === 'Conditional' || operandType === 'ConditionalExpression' || operandType === 'Lambda';
+        return looser ? `${op} (${operand})` : `${op} ${operand}`;
       }
 
       // Arithmetic unary +/- bind TIGHTER in Python than every binary operator

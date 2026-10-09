@@ -421,6 +421,14 @@ check('reverse: Array.reverse reverses in place, also as a statement, and return
   return expectOutput(runPython(js, 'print([list(x) if not isinstance(x, bool) else x for x in f([1, 2, 3])])'), ['[[3, 2, 1], [3, 2, 1], True]']);
 });
 
+check('not: !(a && b) and !a === b keep the JavaScript grouping', () => {
+  const js = '/** @param {int32} a @param {int32} b */\nfunction f(a, b) { return [!(a > 5 && b < 3), !(a > 5 || b < 3), !a === false, !(a ? b : 0)]; }';
+  // Given a negated && and ||, a negation compared with a boolean and a negated ternary
+  // Then each truth table row matches JavaScript
+  return expectOutput(runPython(js, 'print(f(9, 1), f(9, 9), f(0, 1))'),
+    ['[False, False, True, False] [True, False, True, False] [True, False, False, True]']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }
