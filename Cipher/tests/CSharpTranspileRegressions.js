@@ -669,6 +669,10 @@ check('Math.floor of a product over an integer divides in doubles, so the produc
   const code = transpile('/**\n * @param {int32} y - y\n * @param {int32} m - m\n * @returns {int32} j\n */\nfunction f(y, m) { return Math.floor((y * 256) / m); }');
   expectMatch(code, /Math\.Floor\(\(double\)\(y\) \* 256 \/ m\)/, 'Math.Floor((double)y * 256 / m)');
 });
+check('numbers: an int compared with a uint64 compares as numbers, not with an ambiguous operator (CS0034)', () => {
+  const code = transpile('/**\n * @param {int32} n - n\n * @param {uint64} max - max\n * @returns {boolean} r\n */\nfunction f(n, max) { return n > max; }');
+  expectMatch(code, /return \(double\)\(n\) > \(double\)\(max\);/, '(double)n > (double)max');
+});
 check('Math.round rounds a half up as JavaScript does, not to even', () => {
   const code = transpile('/**\n * @param {float64} x - x\n * @returns {int32} r\n */\nfunction f(x) { return Math.round(x * 3); }');
   expectMatch(code, /Math\.Floor\(\(double\)\(x \* 3\) \+ 0\.5\)/, 'Math.Floor(x * 3 + 0.5)');

@@ -12431,7 +12431,7 @@
 
         case 'BinaryExpression':
         case 'LogicalExpression':
-          return this.asJsProduct(node, this.transformBinaryExpression(node));
+          return this.asJsComparison(node, this.asJsProduct(node, this.transformBinaryExpression(node)));
 
         case 'UnaryExpression':
           return this.transformUnaryExpression(node);
@@ -25438,6 +25438,24 @@
       const rightType = this.inferFullExpressionType(node.right);
       if (!wide.includes(leftType?.name) || leftType.isArray || !wide.includes(rightType?.name) || rightType.isArray) return result;
       return new CSharpMethodCall(null, 'JsMul', [result.left, result.right]);
+    }
+
+    /**
+     * A comparison of a signed integer with a ulong has no C# operator (CS0034);
+     * JavaScript compares the two numbers, which a comparison of doubles does.
+     * @param {Object} node - the JS/IL binary expression
+     * @param {Object} result - its transformed C# expression
+     * @returns {Object} the C# expression to use
+     */
+    asJsComparison(node, result) {
+      const comparisons = ['<', '>', '<=', '>=', '==', '!=', '===', '!=='];
+      if (!comparisons.includes(node.operator) || result?.nodeType !== 'BinaryExpression' || !comparisons.includes(result.operator)) return result;
+      const signed = ['sbyte', 'short', 'int', 'long'];
+      const leftType = this.inferFullExpressionType(node.left), rightType = this.inferFullExpressionType(node.right);
+      const mixed = (a, b) => a?.name === 'ulong' && !a.isArray && signed.includes(b?.name) && !b.isArray;
+      if (!mixed(leftType, rightType) && !mixed(rightType, leftType)) return result;
+      return new CSharpBinaryExpression(new CSharpCast(CSharpType.Double(), result.left), result.operator,
+        new CSharpCast(CSharpType.Double(), result.right));
     }
 
     /**
