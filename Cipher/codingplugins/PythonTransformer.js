@@ -4225,6 +4225,12 @@ class OpCodes(metaclass=_OpCodesMeta):
      */
     _collectAssignedNames(node, out) {
       if (!node) return;
+      // An assignment expression (`i := i + 1`, see the ++/-- subscript
+      // lowering) binds its name in this scope wherever it sits.
+      if (!out._walrusScanned) {
+        out._walrusScanned = true;
+        this._collectWalrusNames(node, out);
+      }
       if (Array.isArray(node)) {
         for (const n of node) this._collectAssignedNames(n, out);
         return;
@@ -4277,6 +4283,22 @@ class OpCodes(metaclass=_OpCodesMeta):
           // Function/Class definitions and everything else: not a shared scope, stop.
           return;
       }
+    }
+
+    /**
+     * Names bound by `name := value` anywhere below `node`, not crossing a
+     * nested function, class or lambda (each its own scope).
+     * @param {Object} node - Python AST node
+     * @param {Set<string>} out - receives the names
+     */
+    _collectWalrusNames(node, out) {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) { for (const n of node) this._collectWalrusNames(n, out); return; }
+      if (node.nodeType === 'Function' || node.nodeType === 'Class' || node.nodeType === 'Lambda') return;
+      if (node.nodeType === 'BinaryExpression' && node.operator === ':=' && node.left && node.left.nodeType === 'Identifier')
+        out.add(node.left.name);
+      for (const key of Object.keys(node))
+        if (key !== 'nodeType') this._collectWalrusNames(node[key], out);
     }
 
     /**
@@ -9402,9 +9424,21 @@ class OpCodes(metaclass=_OpCodesMeta):
                         (prop.type === 'UnaryExpression' && (prop.operator === '++' || prop.operator === '--'));
 
         if (isUpdate) {
-          if (!prop.prefix) {
+          const walrusTarget = this._transformAsTarget(prop.argument);
+          if (walrusTarget instanceof PythonIdentifier) {
+            // A plain name updates in place, in JavaScript's evaluation order,
+            // through an assignment expression: `k[o++]` -> `k[(o := o + 1) - 1]`.
+            // A deferred post-statement left every later plain read of the
+            // same name in the statement one step behind (IDEA's
+            // `[k[o++], k[o++], k[o++], k[o]]` read k[o] for the last word).
+            const step = prop.operator === '++' ? '+' : '-';
+            const back = prop.operator === '++' ? '-' : '+';
+            const walrus = new PythonBinaryExpression(walrusTarget, ':=',
+              new PythonBinaryExpression(this.transformExpression(prop.argument), step, PythonLiteral.Int(1)));
+            property = prop.prefix ? walrus : new PythonBinaryExpression(walrus, back, PythonLiteral.Int(1));
+          } else if (!prop.prefix) {
             // Postfix i++ or i--: use current value, then add increment/decrement as post-statement
-            const target = this._transformAsTarget(prop.argument);
+            const target = walrusTarget;
             const one = PythonLiteral.Int(1);
             const op = prop.operator === '++' ? '+=' : '-=';
             if (!this.pendingPostStatements) this.pendingPostStatements = [];

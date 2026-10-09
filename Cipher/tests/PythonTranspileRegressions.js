@@ -255,6 +255,17 @@ check('side effects: postfix update in an initializer, a subscript and a return'
   ['[7, 8]', '[20, 2]', '5 5', '3']);
 });
 
+check('side effects: ++/-- in subscripts follow JavaScript evaluation order', () => {
+  const js = 'function f(k) { let o = 0; const r = [k[o++], k[o++], k[o++], k[o]]; const s = k[++o] + k[o];\n' +
+    '  let p = 4; const q = k[p--] * 10 + k[p]; return [r, s, q, o, p]; }\n' +
+    'function g() { let si = 0; const out = []; function put(v) { out[si++] = v; } put(5); put(6); return [out, si]; }';
+  // Given several postfix reads then a plain read of the same index, prefix and postfix decrement,
+  // and an increment of a variable of the enclosing function
+  // Then every read sees the value JavaScript sees and the closure updates the outer variable
+  return expectOutput(runPython(js, 'print(f([1, 2, 3, 4, 5, 6]))\nprint(g())'),
+    ['[[1, 2, 3, 4], 10, 54, 4, 3]', '[[5, 6], 2]']);
+});
+
 // ---------------------------------------------------------------------------
 // switch lowering
 // ---------------------------------------------------------------------------
