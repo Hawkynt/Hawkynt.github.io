@@ -113,7 +113,7 @@
      * @returns {Object} RustAST File
      */
     transform(ast) {
-      this.model = Model.buildModel(ast, { framework: this.options.framework !== false });
+      this.model = Model.buildModel(ast, { framework: this.options.framework !== false, libraries: this.options.libraries });
       this.prefix = this.options.symbolPrefix || '';
       this.library = !!this.options.library;
       this.items = [];
@@ -204,7 +204,8 @@
 
     isLeafClass(t) {
       const info = this.model.classOf(t);
-      return !!info && this.emittedClasses.has(t) && !info.hasSubclasses;
+      // The framework's data classes (TestCase, KeySize, ...) share arrays with object literals: they stay dynamic
+      return !!info && this.emittedClasses.has(t) && !info.hasSubclasses && info.origin !== 'framework';
     }
 
     /** The Rust spelling of an IL type. */
@@ -314,7 +315,7 @@
         const n = R.Call(R.Ident('js_to_number'), [R.Ref(v.e)]);
         return nt === 'float' ? n : R.Cast(R.Call(R.Ident('js_f2i'), [n]), rt);
       }
-      if (rf.startsWith('JsArr<') && rt.startsWith('JsArr<')) return R.Call(R.Ident('js_arr_conv'), [R.Ref(v.e)]);
+      if (rf.startsWith('JsArr<') && rt.startsWith('JsArr<')) return R.Call(R.Ident(`js_arr_conv::<_, ${rt.slice(6, -1)}>`), [R.Ref(v.e)]);
       // Everything else through the dynamic value
       if (rf === 'JsAny') return R.Call(R.Ident(`<${rt}>::from_js`), [R.Ref(v.e)]);
       return R.Call(R.Ident(`<${rt}>::from_js`), [R.Ref(R.MethodCall(v.e, 'to_js', []))]);
@@ -646,6 +647,7 @@
 
     functionBody(fn) {
       if (fn.body && fn.body.type === 'BlockStatement') {
+        this.fn.useTypes = Model.localUseTypes(fn.body);
         this.hoistVars(fn.body);
         return this.stmts(fn.body.body);
       }
@@ -687,14 +689,28 @@
 
     declaratorType(d) {
       if (d.declaredType) return canonicalType(d.declaredType);
-      let t = canonicalType(d.resultType || d.id.resultType || (d.init && d.init.resultType));
-      const init = d.init;
-      if (t === 'boolean' && init && init.type === 'LogicalExpression' && init.operator !== '??') {
-        const a = canonicalType(init.left.resultType);
-        const b = canonicalType(init.right.resultType);
-        if (a && a === b && a !== 'boolean' && a !== 'any') t = a;
-      }
+      const t = canonicalType(d.resultType || d.id.resultType || (d.init && d.init.resultType));
+      // An untyped declarator (let a; assigned later - an IL gap): the type the IL gives its uses
+      if (!t && this.fn && this.fn.useTypes && d.id && this.fn.useTypes.has(d.id.name)) return this.fn.useTypes.get(d.id.name);
+      if (t === 'boolean' && d.init && d.init.type === 'LogicalExpression') return this.logicalType(d.init);
       return t;
+    }
+
+    /**
+     * The type of a || b / a && b: one of its operands, so the operands' type
+     * (their common one) where the IL says boolean of operands that are not.
+     */
+    logicalType(node) {
+      const rt = canonicalType(node.resultType) || 'any';
+      if (rt !== 'boolean' || node.operator === '??') return rt;
+      const a = canonicalType(node.left.resultType);
+      const b = canonicalType(node.right.resultType);
+      if (!a || !b || (a === 'boolean' && b === 'boolean')) return rt;
+      if (a === b) return a;
+      if (isNumericType(a) && isNumericType(b)) return this.widen(a, b);
+      const objectLike = t => t !== 'boolean' && t !== 'string' && !isNumericType(t) && !isBigType(t) && !isArrayType(t) && t !== 'any';
+      if (objectLike(a) && objectLike(b)) return 'object';
+      return 'any';
     }
 
     // ======================================================================
@@ -1306,8 +1322,25 @@
     // ASSIGNMENT
     // ======================================================================
 
+    /** [a, b] = [b, a]: the right side into a temporary, then each target from it. */
+    destructuringAssignment(node, asValue) {
+      const src = this.expr(node.right);
+      const pre = this.flushPre();
+      const tmp = this.tmp('d');
+      const stmts = [...pre, R.Let(tmp, this.rustType(src.t), src.e, false)];
+      const srcVal = new Val(this.cloneOf(R.Ident(tmp), src.t), src.t);
+      node.left.elements.forEach((el, i) => {
+        if (!el) return;
+        const target = this.lvalue(el.type === 'AssignmentPattern' ? el.left : el);
+        const item = this.indexValue(srcVal, new Val(null, 'int32', i), target.type);
+        stmts.push(...target.pre, ...this.flushPre(), ...target.set(item));
+      });
+      return asValue ? { stmts, value: srcVal } : stmts;
+    }
+
     assignment(node, asValue) {
       const op = node.operator;
+      if (op === '=' && (node.left.type === 'ArrayExpression' || node.left.type === 'ArrayPattern')) return this.destructuringAssignment(node, asValue);
       const binOp = op === '=' ? null : op.slice(0, -1);
       if (binOp === '||' || binOp === '&&' || binOp === '??') {
         const target = this.lvalue(node.left);
@@ -1427,6 +1460,13 @@
           set: v => [R.ExprStmt(R.MethodCall(obj.e, 'set_len', [this.coerce(v, 'idx')]))]
         };
       }
+      if (this.rustType(ot) === 'JsAny') {
+        return {
+          type: nodeType, pre,
+          get: () => new Val(R.Call(R.Ident('js_get_prop'), [R.Ref(obj.e), R.Lit(rustStringLiteral(key))]), 'any'),
+          set: v => [R.ExprStmt(R.Call(R.Ident('js_set_prop'), [R.Ref(obj.e), R.Lit(rustStringLiteral(key)), this.coerce(v, 'any')]))]
+        };
+      }
       const o = this.coerce(obj, 'object');
       return {
         type: nodeType, pre,
@@ -1449,8 +1489,16 @@
         };
       }
       if (ot === 'string') throw new Error('assignment to a string index');
-      const o = this.coerce(obj, 'object');
       const nodeType = this.typeOfNullable(canonicalType(node.resultType) || 'any', node.nullable);
+      if (this.rustType(ot) === 'JsAny') {
+        const ik = this.coerce(idx, 'any');
+        return {
+          type: nodeType, pre,
+          get: () => new Val(R.Call(R.Ident('js_get_elem'), [R.Ref(obj.e), R.Ref(ik)]), 'any'),
+          set: v => [R.ExprStmt(R.Call(R.Ident('js_set_elem'), [R.Ref(obj.e), R.Ref(ik), this.coerce(v, 'any')]))]
+        };
+      }
+      const o = this.coerce(obj, 'object');
       const key = R.Ref(R.MethodCall(this.coerce(idx, 'any'), 'text', []));
       return {
         type: nodeType, pre,
@@ -1626,6 +1674,7 @@
       }
       if (ot === 'string') return new Val(R.Call(R.Ident('js_char_at'), [R.Ref(obj.e), this.coerce(idx, 'int64')]), 'string');
       if (ot === 'Map') return new Val(R.MethodCall(obj.e, 'map_get', [R.Ref(this.coerce(idx, 'any'))]), 'any');
+      if (this.rustType(ot) === 'JsAny') return new Val(R.Call(R.Ident('js_get_elem'), [R.Ref(obj.e), R.Ref(this.coerce(idx, 'any'))]), 'any');
       const o = this.coerce(obj, 'object');
       return new Val(R.MethodCall(o, 'get', [R.Ref(R.MethodCall(this.coerce(idx, 'any'), 'text', []))]), 'any');
     }
@@ -1844,11 +1893,8 @@
     }
 
     xLogicalExpression(node) {
-      let rt = canonicalType(node.resultType) || 'any';
+      const rt = this.logicalType(node);
       const op = node.operator;
-      const lt0 = canonicalType(node.left.resultType);
-      const rt0 = canonicalType(node.right.resultType);
-      if (rt === 'boolean' && op !== '??' && lt0 && lt0 === rt0 && lt0 !== 'boolean' && lt0 !== 'any') rt = lt0;
       if (rt === 'boolean' && op !== '??') {
         const a = this.condition(node.left);
         const preA = this.flushPre();
@@ -1919,7 +1965,14 @@
       throw new Error(`unary ${op}`);
     }
 
+    /** Whether a name is declared anywhere the program sees (a local, a module variable, function or class). */
+    isDeclared(name) {
+      return !!(this.lookup(name) || this.model.variables.has(name) || this.model.functions.has(name) || this.model.classes.has(name));
+    }
+
     typeOf(arg) {
+      // typeof of an undeclared global (require, module, window) is "undefined" in JavaScript
+      if (arg.type === 'Identifier' && !this.isDeclared(arg.name) && !['NaN', 'Infinity', 'undefined'].includes(arg.name)) return new Val(null, 'string', 'undefined');
       const v = this.expr(arg);
       const t = canonicalType(v.t) || 'any';
       const known = isNumericType(t) ? 'number' : isBigType(t) ? 'bigint' : t === 'string' ? 'string' : t === 'boolean' ? 'boolean'
@@ -2045,6 +2098,8 @@
       const args = node.arguments || [];
       const a = i => this.expr(args[i]);
       switch (name) {
+        case 'require': return new Val(R.Call(R.Ident('js_require'), [R.Macro('vec', args.map((x, i) => this.coerce(a(i), 'any')))]), 'any');
+        case 'Find': return new Val(R.Call(R.Ident('js_find_algorithm'), [R.Ref(this.coerce(a(0), 'string'))]), 'Algorithm');
         case 'RegisterAlgorithm': return new Val(R.Call(R.Ident('js_register_algorithm'), [this.coerce(a(0), 'object')]), 'void');
         case 'Number': {
           if (!args.length) return new Val(null, 'float64', 0);
@@ -2207,7 +2262,7 @@
           case 'pop': return new Val(R.MethodCall(obj.e, 'pop', []), el);
           case 'shift': return new Val(R.MethodCall(obj.e, 'shift', []), el);
           case 'unshift': return new Val(R.Cast(R.MethodCall(obj.e, 'unshift', [R.Macro('vec', argNodes.map((x, i) => this.coerce(a(i), el)))]), 'i32'), 'int32');
-          case 'splice': return new Val(R.MethodCall(obj.e, 'splice', [has(0) ? this.coerce(a(0), 'int64') : R.Lit('0i64'), has(1) ? this.coerce(a(1), 'int64') : R.Ident('JS_NO_END'), R.Macro('vec', argNodes.slice(2).map((x, i) => this.coerce(a(i + 2), el)))]), ot);
+          case 'splice': return new Val(R.MethodCall(obj.e, 'splice', [has(0) ? this.coerce(a(0), 'int64') : R.Lit('0i64'), has(1) ? this.coerce(a(1), 'int64') : R.Ident('JS_NO_END'), this.itemVec(argNodes.slice(2), el)]), ot);
           case 'set': return new Val(R.MethodCall(obj.e, 'set_from', [R.Ref(this.coerce(a(0), ot)), has(1) ? this.coerce(a(1), 'idx') : R.Lit('0usize')]), 'void');
           case 'subarray': return new Val(R.MethodCall(obj.e, 'subarray', [has(0) ? this.coerce(a(0), 'int64') : R.Lit('0i64'), has(1) ? this.coerce(a(1), 'int64') : R.Ident('JS_NO_END')]), ot);
           case 'toString': return new Val(R.MethodCall(obj.e, 'join', [R.Lit('","')]), 'string');
@@ -2244,7 +2299,8 @@
       if (!cb) throw new Error(`array ${key} with a callback that is not a function literal`);
       switch (key) {
         case 'map': {
-          const outEl = isArrayType(rt) ? elementType(rt) : (cb.sig.ret.type === 'void' ? 'any' : cb.sig.ret.type);
+          // What the callback returns is what the array holds (the IL types a map like its source array)
+          const outEl = cb.sig.ret.type !== 'any' && cb.sig.ret.type !== 'void' ? cb.sig.ret.type : (isArrayType(rt) ? elementType(rt) : 'any');
           return new Val(R.MethodCall(obj.e, 'map', [this.adaptCallback(cb, [el, 'int32'], outEl)]), outEl + '[]');
         }
         case 'filter': return new Val(R.MethodCall(obj.e, 'filter', [this.adaptCallback(cb, [el, 'int32'], 'boolean')]), ot);
@@ -2664,7 +2720,13 @@
       const a = this.expr(node.array);
       const at = canonicalType(a.t);
       const el = elementType(at) || 'any';
-      return new Val(R.MethodCall(a.e, 'splice', [node.start ? this.coerce(this.expr(node.start), 'int64') : R.Lit('0i64'), node.deleteCount ? this.coerce(this.expr(node.deleteCount), 'int64') : R.Ident('JS_NO_END'), R.Macro('vec', (node.items || []).map(i => this.coerce(this.expr(i), el)))]), at);
+      return new Val(R.MethodCall(a.e, 'splice', [node.start ? this.coerce(this.expr(node.start), 'int64') : R.Lit('0i64'), node.deleteCount ? this.coerce(this.expr(node.deleteCount), 'int64') : R.Ident('JS_NO_END'), this.itemVec(node.items || [], el)]), at);
+    }
+
+    /** A Vec of items, spread items (...xs) expanded. */
+    itemVec(items, el) {
+      if (items.some(i => i && i.type === 'SpreadElement')) return R.MethodCall(this.spreadList(items, el), 'to_vec', []);
+      return R.Macro('vec', items.map(i => this.coerce(this.expr(i), el)));
     }
 
     xArrayMap(node) { const a = this.expr(node.array); return this.arrayCallback(a, canonicalType(a.t), 'map', [node.callback], canonicalType(node.resultType)); }
@@ -2972,6 +3034,10 @@ pub fn js_try<R>(body: impl FnOnce() -> R, handler: impl FnOnce(JsAny) -> R) -> 
     }
 }
 
+/// require(): a transpiled program is bundled with every file the reference
+/// loaded, so loading one is a no-op with no exports
+pub fn js_require(_args: Vec<JsAny>) -> JsAny { JsAny::undefined() }
+
 pub fn js_unsupported<T>(what: &str) -> T {
     js_throw_error("Error", &format!("not transpiled: {}", what))
 }
@@ -3031,6 +3097,9 @@ pub trait JsDyn: 'static {
     fn ident(&self) -> usize { self as *const Self as *const u8 as usize }
     fn call(&self, _args: Vec<JsAny>) -> JsAny { js_throw_error("TypeError", "value is not a function") }
     fn is_func(&self) -> bool { false }
+    /// v[i] = x on the value behind a JsAny (an array); false where it is no array
+    fn set_index(&self, _i: usize, _v: JsAny) -> bool { false }
+    fn get_index(&self, _i: usize) -> Option<JsAny> { None }
 }
 
 /// A JavaScript value of any type; undefined and null are None.
@@ -3420,14 +3489,16 @@ impl<T: Clone + Default + ToJs + 'static> JsArr<T> {
     }
 }
 
-impl<T: Clone + Default + ToJs + 'static> JsDyn for JsArr<T> {
+impl<T: Clone + Default + ToJs + FromJs + 'static> JsDyn for JsArr<T> {
     fn as_any(&self) -> &dyn Any { self }
+    fn set_index(&self, i: usize, v: JsAny) -> bool { if self.is_null() { return false; } self.set(i, T::from_js(&v)); true }
+    fn get_index(&self, i: usize) -> Option<JsAny> { if self.is_null() { None } else { Some(self.get(i).to_js()) } }
     fn list(&self) -> Option<Vec<JsAny>> { if self.is_null() { None } else { Some(self.to_vec().iter().map(|x| x.to_js()).collect()) } }
     fn text(&self) -> String { self.join(",") }
     fn truthy(&self) -> bool { !self.is_null() }
     fn ident(&self) -> usize { self.0.as_ref().map(|r| Rc::as_ptr(r) as *const u8 as usize).unwrap_or(0) }
 }
-impl<T: Clone + Default + ToJs + 'static> ToJs for JsArr<T> {
+impl<T: Clone + Default + ToJs + FromJs + 'static> ToJs for JsArr<T> {
     fn to_js(&self) -> JsAny { if self.is_null() { JsAny::undefined() } else { JsAny::new(self.clone()) } }
 }
 impl<T: Clone + Default + ToJs + FromJs + 'static> FromJs for JsArr<T> {
@@ -3575,6 +3646,13 @@ impl JsMap {
         JsArr::from_vec(d.keys.iter().map(|(k, _)| d.vals.get(k).cloned().unwrap_or_default()).collect())
     }
     pub fn size(&self) -> i32 { self.0.borrow().keys.len() as i32 }
+}
+
+impl FromJs for JsMap {
+    fn from_js(v: &JsAny) -> JsMap { v.downcast::<JsMap>().or_else(|| v.obj().downcast::<JsMap>()).unwrap_or_default() }
+}
+impl ToJs for JsMap {
+    fn to_js(&self) -> JsAny { JsAny::new(JsObj::new(self.clone())) }
 }
 
 impl JsObject for JsMap {
@@ -3760,6 +3838,33 @@ pub fn js_keys(v: &JsAny) -> JsArr<String> {
     if let Some(items) = v.list() { return JsArr::from_vec((0..items.len()).map(|i| i.to_string()).collect()); }
     JsArr::from_vec(v.obj().keys())
 }
+
+/// o[key] of a value of no one type: an array element, a character, an object member
+pub fn js_get_elem(o: &JsAny, key: &JsAny) -> JsAny {
+    match &o.0 {
+        None => js_throw_error("TypeError", &format!("Cannot read properties of null (reading '{}')", key.text())),
+        Some(d) => {
+            if key.type_of() == "number" {
+                if let Some(v) = d.get_index(key.num() as usize) { return v; }
+                if d.type_of() == "string" { return js_char_at(&d.text(), key.num() as i64).to_js(); }
+            }
+            js_get_prop(o, &key.text())
+        }
+    }
+}
+
+/// o[key] = v of a value of no one type
+pub fn js_set_elem(o: &JsAny, key: &JsAny, v: JsAny) {
+    match &o.0 {
+        None => js_throw_error("TypeError", &format!("Cannot set properties of null (setting '{}')", key.text())),
+        Some(d) => {
+            if key.type_of() == "number" && d.set_index(key.num() as usize, v.clone()) { return; }
+            o.obj().set(&key.text(), v);
+        }
+    }
+}
+
+pub fn js_set_prop(o: &JsAny, name: &str, v: JsAny) { js_set_elem(o, &name.to_string().to_js(), v) }
 
 pub fn js_get_prop(v: &JsAny, name: &str) -> JsAny {
     if let Some(items) = v.list() {
