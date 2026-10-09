@@ -865,7 +865,7 @@ template <class To, class From> inline void copyInto(const Array<To>& dst, const
   if (dst.isNull() || src.isNull() || (const void*)dst.p.get() == (const void*)src.p.get()) return;
   int32_t n = src.length();
   if (!dst.typed() && dst.length() != n) dst.setLength(n);
-  for (int32_t i = 0; i < n && i < dst.length(); ++i) dst.at(i) = num<To>(src.get(i));
+  for (int32_t i = 0; i < n && i < dst.length(); ++i) { if constexpr (std::is_arithmetic_v<To> && std::is_arithmetic_v<From>) dst.at(i) = num<To>(src.get(i)); else dst.at(i) = fromAny<To>(Any(src.get(i))); }
 }
 
 // ---------------------------------------------------------------- Any operations
