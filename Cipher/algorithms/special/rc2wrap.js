@@ -89,18 +89,15 @@
    * @returns {IBlockCipherInstance} Keyed RC2 instance
    */
   function getRC2Cipher(kek, effectiveBits, decrypt) {
-    // Load RC2 algorithm (required dependency)
-    if (typeof require !== 'undefined') {
-      try {
-        require('../block/rc2.js');
-      } catch (e) {
-        // Already loaded or not in Node.js environment
-      }
+    // RC2 (registered by rc.js) from the registry, loaded under CommonJS on a miss
+    /** @type {Algorithm} */
+    let rc2Algo = AlgorithmFramework.Find('RC2');
+    if (!rc2Algo && typeof require !== 'undefined') {
+      try { require('../block/rc.js'); } catch (e) { /* reported below */ }
+      rc2Algo = AlgorithmFramework.Find('RC2');
     }
-
-    const rc2Algo = AlgorithmFramework.Find('RC2');
     if (!rc2Algo) {
-      throw new Error('RC2 algorithm not found - ensure rc2.js is loaded');
+      throw new Error('RC2 algorithm not found - ensure rc.js is loaded');
     }
 
     /** @type {IBlockCipherInstance} */
@@ -136,7 +133,7 @@
   if (typeof require !== 'undefined') {
     try {
       require('../hash/sha1.js');  // SHA-1 needed for CMS Key Checksum
-      require('../block/rc2.js');   // RC2 cipher for wrapping
+      require('../block/rc.js');    // RC2 cipher for wrapping
     } catch (e) {
       // Already loaded or not in Node.js environment
     }

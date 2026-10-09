@@ -235,6 +235,7 @@
       this.type = type;
       this.accessModifier = 'public';
       this.isStatic = false;
+      this.isOverride = false;
       this.hasGetter = true;
       this.hasSetter = true;
       this.getterBody = null;           // CSharpBlock or null for auto-property

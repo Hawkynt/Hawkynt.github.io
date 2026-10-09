@@ -42,6 +42,17 @@
   const { RegisterAlgorithm, CategoryType, SecurityStatus, ComplexityType, CountryCode,
           Algorithm, IAlgorithmInstance, TestCase, LinkItem, KeySize } = AlgorithmFramework;
 
+  // HMAC-SHA1 comes from the collection's own HMAC and SHA-1. Under CommonJS
+  // they are loaded with this file; in the browser the page loads them.
+  if (typeof require !== 'undefined') {
+    try {
+      require('../mac/hmac.js');
+      require('../hash/sha1.js');
+    } catch (e) {
+      // Reported as a missing dependency when an OTP is computed.
+    }
+  }
+
   // ===== ALGORITHM IMPLEMENTATION =====
 
   /**
@@ -408,14 +419,13 @@
     /**
      * Computes HMAC-SHA1 of message using key
      *
-     * Attempts to use Node.js crypto module first, then falls back to
-     * OpCodes.HMAC if available. HMAC-SHA1 is required by RFC 4226.
+     * Uses the registered HMAC over the registered SHA-1, as RFC 4226 requires.
      *
      * @private
      * @param {uint8[]} key - Secret key as byte array (uint8 values)
      * @param {uint8[]} message - Message to authenticate (uint8 values)
      * @returns {uint8[]} 20-byte HMAC-SHA1 hash (uint8 values)
-     * @throws {Error} If no crypto library is available
+     * @throws {Error} If HMAC is not registered
      *
      * @example
      * const key = [0x31, 0x32, 0x33, ...];
@@ -423,21 +433,19 @@
      * const hmac = _hmacSHA1(key, msg); // Returns 20-byte hash
      */
     _hmacSHA1(key, message) {
-      // Try using Node.js crypto if available
-      if (typeof require !== 'undefined') {
-        try {
-          const crypto = require('crypto');
-          const hmac = crypto.createHmac('sha1', Buffer.from(key));
-          hmac.update(Buffer.from(message));
-          return Array.from(hmac.digest());
-        } catch (e) {
-          // Fall through to alternate implementation
-        }
+      /** @type {Algorithm} */
+      const hmacAlgorithm = AlgorithmFramework.Find('HMAC');
+      if (!hmacAlgorithm) {
+        throw new Error("Cannot compute HMAC-SHA1: HMAC is not registered. Load it before HOTP");
       }
 
-      throw new Error(
-        "Cannot compute HMAC-SHA1: No crypto library available (requires Node.js crypto or Web Crypto API)"
-      );
+      /** @type {IMacInstance} */
+      const hmacInstance = hmacAlgorithm.CreateInstance(false);
+      hmacInstance.key = key;
+      hmacInstance.hashFunction = 'SHA-1';
+      /** @type {uint8[]} */
+      const mac = hmacInstance.ComputeMac(message);
+      return mac;
     }
   }
 

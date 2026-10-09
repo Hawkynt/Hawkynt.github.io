@@ -505,38 +505,29 @@
   }
 
   // ===== SHA-512 HELPER =====
-  // Uses the existing SHA-512 implementation from the framework
-
-  /**
-   * Find the registered SHA-512 algorithm ('SHA-512', else 'SHA512')
-   * @returns {Algorithm} The algorithm, or null
-   */
-  function findSHA512() {
-    /** @type {Algorithm} */
-    let algo = AlgorithmFramework.Find('SHA-512');
-    if (!algo) algo = AlgorithmFramework.Find('SHA512');
-    return algo;
+  // Uses the existing SHA-512 implementation from the framework. Under
+  // CommonJS it is loaded with this file; in the browser the page loads it.
+  if (typeof require !== 'undefined') {
+    try {
+      require('../hash/sha512.js');
+    } catch (e) {
+      // Reported as a missing dependency when a key is derived.
+    }
   }
 
   /**
-   * SHA-512 of a byte array, loading sha512.js when it is not registered yet
+   * SHA-512 of a byte array, with the registered SHA-512 ('SHA-512', else 'SHA512')
    * @param {uint8[]} data - Message bytes
    * @returns {uint8[]} 64-byte digest
    * @throws {Error} When SHA-512 is not available
    */
   function getSHA512Hash(data) {
     // Find SHA-512 algorithm from registry
-    let sha512Algo = findSHA512();
+    /** @type {Algorithm} */
+    let sha512Algo = AlgorithmFramework.Find('SHA-512');
+    if (!sha512Algo) sha512Algo = AlgorithmFramework.Find('SHA512');
     if (!sha512Algo) {
-      // Load SHA-512 if not already loaded
-      if (typeof require === 'undefined') {
-        throw new Error('SHA-512 algorithm not available');
-      }
-      require('../hash/sha512.js');
-      sha512Algo = findSHA512();
-      if (!sha512Algo) {
-        throw new Error('Failed to load SHA-512: SHA-512 algorithm not found after loading');
-      }
+      throw new Error('SHA-512 algorithm not available');
     }
 
     /** @type {IAlgorithmInstance} */

@@ -74,7 +74,8 @@
 
   /**
    * The registered SLH-DSA algorithm, which carries the hypertree engine this
-   * file shares. Under Node a missing registration loads slh-dsa.js.
+   * file shares. Under Node a missing registration loads slh-dsa.js and the
+   * hashes that engine runs on; in the browser the page has loaded them.
    * @returns {SlhDsaAlgorithm} the algorithm
    */
   function SlhDsa() {
@@ -82,6 +83,9 @@
     slhDsaAlgorithm = AlgorithmFramework.Find('SLH-DSA');
     if (!slhDsaAlgorithm && typeof require !== 'undefined') {
       try {
+        require('../hash/sha256.js');
+        require('../hash/sha512.js');
+        require('../hash/shake.js');
         require('./slh-dsa.js');
       } catch (e) {
         // Reported as a missing dependency below.
