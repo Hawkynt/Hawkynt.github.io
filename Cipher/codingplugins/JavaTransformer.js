@@ -451,8 +451,9 @@
 
     /** The member of a class or its ancestors: { kind: 'field'|'accessor'|'method', info, owner }. */
     /**
-     * Fields given undefined or null and compared with it: a number or boolean field must be able to
-     * hold the absent value (it is boxed), or the comparison could never succeed.
+     * Fields given undefined or null and compared with it, and parameters compared with it (an argument
+     * the caller may leave out): a number or boolean must be able to hold the absent value (it is boxed),
+     * or the comparison could never succeed.
      */
     markNullTestedFields(body) {
       const absent = n => n && ((n.type === 'Literal' && (n.value === null || n.value === undefined) && !n.regex) || (n.type === 'Identifier' && n.name === 'undefined'));
@@ -463,7 +464,12 @@
         if (Array.isArray(n)) { n.forEach(c => walk(c, cls)); return; }
         if (n.type === 'ClassDeclaration' && n.id) cls = n.id.name;
         if (n.type === 'BinaryExpression' && ['==', '!=', '===', '!=='].includes(n.operator)) {
-          const side = absent(n.right) ? n.left : absent(n.left) ? n.right : null;
+          let side = absent(n.right) ? n.left : absent(n.left) ? n.right : null;
+          // typeof x === 'undefined'
+          const undefinedText = e => e && e.type === 'Literal' && e.value === 'undefined';
+          if (!side && undefinedText(n.right) && n.left && n.left.type === 'TypeOfExpression') side = n.left.argument;
+          if (!side && undefinedText(n.left) && n.right && n.right.type === 'TypeOfExpression') side = n.right.argument;
+          if (side && side.type === 'Identifier' && side.__sym && side.__sym.kind === 'param') side.__sym.nullTested = true;
           let owner = null, prop = null;
           if (side && side.type === 'ThisPropertyAccess' && !side.computed) { owner = cls; prop = side.property; }
           else if (side && side.type === 'MemberExpression' && !side.computed && side.property) { owner = ilName(side.object && side.object.resultType); prop = side.property.name; }
@@ -1312,6 +1318,7 @@
           t = this.joinSites(t, [...(sym.sites || []), ...(sym.stores || [])].map(n => n.resultType ? this.jt(n.resultType, o) : null).filter(Boolean));
         if (sym.holdsObjects && T.isPrimArray(t)) t = 'JsArray<Object>';
         if (t === 'void') t = 'Object';
+        if (sym.kind === 'param' && sym.nullTested && T.isPrim(t)) t = T.box(t);
       }
       sym.jtCached = t;
       return t;
