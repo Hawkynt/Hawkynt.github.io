@@ -1103,14 +1103,26 @@ function caught(\Throwable $e) {
 // STRINGS
 // ============================================================================
 
+/**
+ * Whether a string is ASCII (one byte a character). The last string asked
+ * about is remembered: a loop over a string's characters asks about the same
+ * string each time, and comparing it with itself costs nothing.
+ */
+function isAscii(string $s): bool {
+  static $last = null, $ascii = true;
+  if ($s === $last) return $ascii;
+  $last = $s;
+  return $ascii = !\preg_match('/[\x80-\xff]/', $s);
+}
+
 /** A string's length in characters */
 function strLength(string $s): int {
-  return \preg_match('/[\x80-\xff]/', $s) ? \preg_match_all('/./su', $s) : \strlen($s);
+  return isAscii($s) ? \strlen($s) : \preg_match_all('/./su', $s);
 }
 
 /** The characters of a string */
 function chars(string $s): array {
-  if (!\preg_match('/[\x80-\xff]/', $s)) return \str_split($s) ?: [];
+  if (isAscii($s)) return \str_split($s) ?: [];
   return \preg_split('//u', $s, -1, \PREG_SPLIT_NO_EMPTY) ?: [];
 }
 
@@ -1135,30 +1147,46 @@ function charCode(string $ch): int {
 final class Str {
   public static function charCodeAt($s, $i = 0) {
     $i = (int)toNumber($i ?? 0);
-    if (!\preg_match('/[\x80-\xff]/', $s)) return $i >= 0 && $i < \strlen($s) ? \ord($s[$i]) : \NAN;
+    if (isAscii($s)) return $i >= 0 && $i < \strlen($s) ? \ord($s[$i]) : \NAN;
     $c = chars($s);
     return $i >= 0 && $i < \count($c) ? charCode($c[$i]) : \NAN;
   }
   public static function codePointAt($s, $i = 0) { $r = self::charCodeAt($s, $i); return \is_float($r) ? null : $r; }
   public static function charAt($s, $i = 0) {
     $i = (int)toNumber($i ?? 0);
-    if (!\preg_match('/[\x80-\xff]/', $s)) return $i >= 0 && $i < \strlen($s) ? $s[$i] : '';
+    if (isAscii($s)) return $i >= 0 && $i < \strlen($s) ? $s[$i] : '';
     $c = chars($s);
     return $c[$i] ?? '';
   }
   public static function at($s, $i) { $c = chars($s); $i = (int)toNumber($i); if ($i < 0) $i += \count($c); return $c[$i] ?? null; }
   public static function substring($s, $start = 0, $end = null) {
+    if (isAscii($s)) {
+      $n = \strlen($s);
+      $a = toNumber($start ?? 0); $a = \is_nan($a) ? 0 : \max(0, \min($n, (int)$a));
+      $b = $end === null ? $n : toNumber($end); $b = \is_nan($b) ? 0 : \max(0, \min($n, (int)$b));
+      if ($a > $b) [$a, $b] = [$b, $a];
+      return (string)\substr($s, $a, $b - $a);
+    }
     $c = chars($s); $n = \count($c);
     $a = \max(0, \min($n, (int)toNumber($start ?? 0))); $b = $end === null ? $n : \max(0, \min($n, (int)toNumber($end)));
     if ($a > $b) [$a, $b] = [$b, $a];
     return \implode('', \array_slice($c, $a, $b - $a));
   }
   public static function substr($s, $start = 0, $length = null) {
+    if (isAscii($s)) {
+      $n = \strlen($s);
+      $a = relIndex($start ?? 0, $n); $l = $length === null ? $n - $a : \max(0, (int)toNumber($length));
+      return (string)\substr($s, $a, $l);
+    }
     $c = chars($s); $n = \count($c);
     $a = relIndex($start ?? 0, $n); $l = $length === null ? $n - $a : \max(0, (int)toNumber($length));
     return \implode('', \array_slice($c, $a, $l));
   }
   public static function slice($s, $start = null, $end = null) {
+    if (isAscii($s)) {
+      [$a, $b] = range2(\strlen($s), $start, $end);
+      return $b > $a ? (string)\substr($s, $a, $b - $a) : '';
+    }
     $c = chars($s);
     [$a, $b] = range2(\count($c), $start, $end);
     return $b > $a ? \implode('', \array_slice($c, $a, $b - $a)) : '';
