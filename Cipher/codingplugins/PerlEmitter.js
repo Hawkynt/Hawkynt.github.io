@@ -283,23 +283,60 @@ sub _ToUint64 {
     return ($value & Math::BigInt->new('18446744073709551615'))->numify() if ref($value) && $value->isa('Math::BigInt');
     return int($value // 0) & 18446744073709551615;
 }
+# BigInt operations: native while both operands are small non-negative
+# integers and the result is exact, Math::BigInt otherwise; a Math::BigInt
+# result small enough is returned native again (_BigNorm). A native operand
+# is read as unsigned 64-bit (_BigUnsigned); a possibly negative signed one
+# comes through _BigSigned.
+sub _BigSigned {
+    my ($value) = @_;
+    return $value if ref($value) || (defined($value) && $value =~ /^\d+$/ && $value < 4611686018427387904);
+    return _Big($value);
+}
+sub _BigNorm {
+    my ($value) = @_;
+    return $value if !ref($value) || $value->is_neg() || $value->bacmp(4611686018427387904) >= 0;
+    return $value->numify();
+}
+sub _BigSmall { return !ref($_[0]) && defined($_[0]) && $_[0] >= 0 && $_[0] < 4611686018427387904; }
+sub _BigAdd { my ($l, $r) = @_; return $l + $r if _BigSmall($l) && _BigSmall($r); return _BigNorm(_BigUnsigned($l) + _BigUnsigned($r)); }
+sub _BigSub { my ($l, $r) = @_; return $l - $r if _BigSmall($l) && _BigSmall($r) && $l >= $r; return _BigNorm(_BigUnsigned($l) - _BigUnsigned($r)); }
+sub _BigMul { my ($l, $r) = @_; return $l * $r if _BigSmall($l) && _BigSmall($r) && $l < 2147483648 && $r < 2147483648; return _BigNorm(_BigUnsigned($l) * _BigUnsigned($r)); }
+sub _BigPow { my ($l, $r) = @_; return _BigNorm(_BigUnsigned($l)->copy()->bpow(_BigUnsigned($r))); }
+sub _BigShl { my ($l, $r) = @_; return $l << $r if _BigSmall($l) && $l < 2147483648 && !ref($r) && $r >= 0 && $r < 31; return _BigNorm(_BigUnsigned($l) << _BigUnsigned($r)); }
+sub _BigShr {
+    my ($l, $r) = @_;
+    return ($r >= 64 ? 0 : $l >> $r) if !ref($l) && !ref($r) && defined($l) && $r >= 0;
+    return _BigNorm(_BigUnsigned($l) >> _BigUnsigned($r));
+}
+sub _BigAnd { my ($l, $r) = @_; return $l & $r if !ref($l) && !ref($r); return _BigNorm(_BigUnsigned($l) & _BigUnsigned($r)); }
+sub _BigOr { my ($l, $r) = @_; return $l | $r if !ref($l) && !ref($r); return _BigNorm(_BigUnsigned($l) | _BigUnsigned($r)); }
+sub _BigXor { my ($l, $r) = @_; return $l ^ $r if !ref($l) && !ref($r); return _BigNorm(_BigUnsigned($l) ^ _BigUnsigned($r)); }
+sub _BigCmp {
+    my ($l, $r) = @_;
+    return $l <=> $r if !ref($l) && !ref($r) && defined($l) && defined($r) && $l >= 0 && $r >= 0;
+    return _BigUnsigned($l) <=> _BigUnsigned($r);
+}
 sub _BigDiv {
     my ($left, $right) = @_;
-    my $divisor = _Big($right);
+    return int($left / $right) if _BigSmall($left) && _BigSmall($right) && $right > 0 && $left < 9007199254740992;
+    my $divisor = _BigUnsigned($right);
     die "RangeError: Division by zero\n" if $divisor->is_zero();
-    my $quotient = _Big($left)->copy();
+    my $quotient = _BigUnsigned($left)->copy();
     $quotient->btdiv($divisor);
-    return $quotient;
+    return _BigNorm($quotient);
 }
 sub _BigMod {
     my ($left, $right) = @_;
-    my $divisor = _Big($right);
+    return $left % $right if _BigSmall($left) && _BigSmall($right) && $right > 0;
+    my $divisor = _BigUnsigned($right);
     die "RangeError: Division by zero\n" if $divisor->is_zero();
-    my $remainder = _Big($left)->copy();
+    my $remainder = _BigUnsigned($left)->copy();
     $remainder->btmod($divisor);
-    return $remainder;
+    return _BigNorm($remainder);
 }
 sub _Num { my ($value) = @_; return ref($value) && $value->isa('Math::BigInt') ? $value->numify() : 0 + ($value // 0); }
+sub _NumUnsigned { my ($value) = @_; return ref($value) ? _Num($value) : (defined($value) && $value < 0 ? ($value & 18446744073709551615) : 0 + ($value // 0)); }
 # Number/BigInt.prototype.toString(radix) of an integer
 sub _JsToString {
     my ($value, $radix) = @_;
@@ -895,7 +932,8 @@ sub MerkleDamgardBlocks {
         ["tolong", "$value",
           "if (ref($value)) { my $v = $value->copy()->band(Math::BigInt->new('18446744073709551615')); " +
           "$v->bsub(Math::BigInt->new('18446744073709551616')) if $v >= Math::BigInt->new('9223372036854775808'); return $v; } " +
-          "return unpack('q', pack('Q', $value & 18446744073709551615));"],
+          // a negative value is a Math::BigInt (a native one reads as a uint64)
+          "my $v = unpack('q', pack('Q', $value & 18446744073709551615)); return $v < 0 ? Math::BigInt->new($v) : $v;"],
         ["bytestochars", "$bytes", "return join('', map { chr($_) } @$bytes);"],
         ["bytestowords32be", "$bytes",
           "my @words; for (my $i = 0; $i < @$bytes; $i += 4) { " +

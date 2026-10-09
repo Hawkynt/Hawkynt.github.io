@@ -118,8 +118,15 @@
   // negative, not a wrapped unsigned 64-bit pattern)
   const SIGNED_INTEGER_TYPES = new Set(['int8', 'int16', 'int32', 'int64', 'int', 'number', 'float64', 'double']);
 
-  // Operators whose BigInt result needs Math::BigInt arithmetic
-  const BIGINT_OPERATORS = new Set(['+', '-', '*', '/', '%', '**', '<<', '>>', '&', '|', '^']);
+  // Operators whose BigInt result needs Math::BigInt arithmetic, and the
+  // framework runtime helper computing each
+  const BIGINT_OPERATION_HELPERS = {
+    '+': '_BigAdd', '-': '_BigSub', '*': '_BigMul', '/': '_BigDiv', '%': '_BigMod', '**': '_BigPow',
+    '<<': '_BigShl', '>>': '_BigShr', '&': '_BigAnd', '|': '_BigOr', '^': '_BigXor'
+  };
+  const BIGINT_OPERATORS = new Set(Object.keys(BIGINT_OPERATION_HELPERS));
+  // Comparisons of BigInt operands, through _BigCmp
+  const BIGINT_COMPARISONS = new Set(['<', '<=', '>', '>=', '==', '===', '!=', '!==']);
 
   // Framework utility classes that should be skipped entirely (provided by runtime)
   const SKIP_CLASSES = new Set([
@@ -735,6 +742,24 @@
       // helper declared below the class) is qualified as well.
       for (const name of PerlAST.FRAMEWORK_RUNTIME_FUNCTIONS) this.functionNames.add(name);
       for (const name of this._collectModuleFunctionNames(jsAst)) this.functionNames.add(name);
+      // Module constants bound to an integer literal (see _constantIntegerValue)
+      this._moduleIntegerConstants = new Map();
+      (function collectConstants(statements, transformer) {
+        for (const stmt of statements || []) {
+          if (stmt?.type === 'VariableDeclaration' && stmt.kind === 'const') {
+            for (const decl of stmt.declarations || []) {
+              if (decl.id?.type !== 'Identifier') continue;
+              const value = transformer._constantIntegerValue(decl.init);
+              if (value !== null) transformer._moduleIntegerConstants.set(decl.id.name, value);
+            }
+          } else if (stmt?.type === 'ExpressionStatement' && stmt.expression?.type === 'CallExpression') {
+            const call = stmt.expression;
+            const factory = (call.arguments || [])[1];
+            const body = factory && /Function|Arrow/.test(factory.type) ? factory.body?.body : (/Function|Arrow/.test(call.callee?.type || '') ? call.callee.body?.body : null);
+            if (body) collectConstants(body, transformer);
+          }
+        }
+      })(jsAst && jsAst.body, this);
       // Every class this file declares, wherever (see _classPropertyAccess)
       this.fileClassNames = new Set();
       (function collectClasses(n, out, seen) {
@@ -7856,9 +7881,11 @@
           // BigInt(value): a Math::BigInt with the value's exact integer
           const val = this.transformExpression(node.value || node.argument || (node.arguments && node.arguments[0]));
           const source = node.value || node.argument || (node.arguments && node.arguments[0]);
-          const big = new PerlCall(new PerlIdentifier(SIGNED_INTEGER_TYPES.has(source?.resultType) ? 'main::_Big' : 'main::_BigUnsigned', ''), [val]);
-          big.isBigInt = true;
-          return big;
+          // A signed source may be negative (see _bigIntOperation); a string
+          // or fraction is parsed; an unsigned integer stays as it is.
+          if (SIGNED_INTEGER_TYPES.has(source?.resultType) || !/^(uint(8|16|32|64)|BigInt|bigint)$/.test(source?.resultType || ''))
+            return new PerlCall(new PerlIdentifier('main::_BigSigned', ''), [val]);
+          return val;
         }
 
         case 'TypedArraySet': {
@@ -8879,13 +8906,15 @@
     }
 
     /**
-     * An arbitrary-precision BigInt operation on two translated operands.
-     * The left operand is made a Math::BigInt (unless it already is one),
-     * so the overloaded operator keeps every bit; division and remainder
-     * truncate toward zero as JavaScript's do.
-     * A native operand is read as unsigned 64-bit unless its IL type is a
-     * signed fixed-width integer: the native 64-bit arithmetic holds a
-     * uint64 (and a BigInt that went through it) in a signed integer.
+     * An arbitrary-precision BigInt operation on two translated operands,
+     * through the framework runtime's _BigOp helpers: they compute natively
+     * while the operands are small enough for the result to be exact, and in
+     * Math::BigInt otherwise, so the result is always JavaScript's. Division
+     * and remainder truncate toward zero as JavaScript's do.
+     * A native operand is a non-negative integer or, held by the native
+     * 64-bit arithmetic, the bit pattern of a uint64; an operand whose IL
+     * type is a signed integer may be genuinely negative, and is made a
+     * Math::BigInt first when it is (_BigSigned).
      * @param {string} operator - the JavaScript operator, without "="
      * @param {PerlNode} left
      * @param {PerlNode} right
@@ -8894,19 +8923,81 @@
      * @returns {PerlNode}
      */
     _bigIntOperation(operator, left, right, leftType, rightType) {
-      const toBig = (operand, type) => operand && operand.isBigInt ? operand
-        : new PerlCall(new PerlIdentifier(SIGNED_INTEGER_TYPES.has(type) ? 'main::_Big' : 'main::_BigUnsigned', ''), [operand]);
-      const bigLeft = toBig(left, leftType);
-      if (!SIGNED_INTEGER_TYPES.has(rightType) && !(right && right.nodeType === 'Literal')) right = toBig(right, rightType);
-      let result;
-      if (operator === '/') result = new PerlCall(new PerlIdentifier('main::_BigDiv', ''), [bigLeft, right]);
-      else if (operator === '%') result = new PerlCall(new PerlIdentifier('main::_BigMod', ''), [bigLeft, right]);
-      else result = new PerlGrouped(new PerlBinaryExpression(bigLeft, operator, new PerlGrouped(right)));
-      result.isBigInt = true;
-      return result;
+      const operand = (value, type) => SIGNED_INTEGER_TYPES.has(type)
+        ? new PerlCall(new PerlIdentifier('main::_BigSigned', ''), [value]) : value;
+      return new PerlCall(new PerlIdentifier('main::' + BIGINT_OPERATION_HELPERS[operator], ''),
+        [operand(left, leftType), operand(right, rightType)]);
+    }
+
+    /**
+     * The value of a constant integer operand: a number or BigInt literal,
+     * BigInt(<literal>), or a module constant bound to one.
+     * @param {object} node - IL node
+     * @returns {bigint|null}
+     */
+    _constantIntegerValue(node) {
+      if (!node) return null;
+      try {
+        if (node.type === 'Literal' && (typeof node.value === 'bigint' || Number.isInteger(node.value))) return BigInt(node.value);
+        if (node.type === 'BigIntCast') {
+          const arg = node.value || node.argument || (node.arguments && node.arguments[0]);
+          if (arg && arg.type === 'Literal' && (typeof arg.value === 'string' || Number.isInteger(arg.value) || typeof arg.value === 'bigint'))
+            return BigInt(arg.value);
+        }
+        if (node.type === 'Identifier' && this._moduleIntegerConstants && this._moduleIntegerConstants.has(node.name))
+          return this._moduleIntegerConstants.get(node.name);
+      } catch (e) { /* not an integer literal */ }
+      return null;
+    }
+
+    /**
+     * A BigInt expression whose result only matters modulo 2^64 (it is
+     * masked to at most 64 bits) in native 64-bit arithmetic: the low 64
+     * bits of a sum, difference, product, shift-left or bitwise operation
+     * depend only on the low 64 bits of its operands, so wrapping native
+     * arithmetic is exact there and avoids Math::BigInt.
+     * @param {object} node - IL node
+     * @returns {PerlNode}
+     */
+    _lowBits64(node) {
+      if (node && node.type === 'BinaryExpression') {
+        const helper = { '+': 'u64add', '-': 'u64sub', '*': 'u64mul' }[node.operator];
+        if (helper) {
+          this.usesOpCodesRuntimeFallback = true;
+          return new PerlCall(new PerlMemberAccess(new PerlIdentifier('OpCodes'), new PerlIdentifier(helper), '::'),
+            [this._lowBits64(node.left), this._lowBits64(node.right)]);
+        }
+        if (node.operator === '^' || node.operator === '|' || node.operator === '&')
+          return new PerlGrouped(new PerlBinaryExpression(this._lowBits64(node.left), node.operator, this._lowBits64(node.right)));
+      }
+      const value = this.transformExpression(node);
+      if (this._isBigIntType(node?.resultType))
+        return new PerlCall(new PerlIdentifier('main::_ToUint64', ''), [value]);
+      return value;
     }
 
     transformBinaryExpression(node) {
+      // A BigInt masked to at most 64 bits: native 64-bit arithmetic
+      if (this._isBigIntType(node.resultType) && node.operator === '&') {
+        const rightMask = this._constantIntegerValue(node.right);
+        const mask = rightMask !== null ? rightMask : this._constantIntegerValue(node.left);
+        if (mask !== null && mask >= 0n && mask <= 0xFFFFFFFFFFFFFFFFn) {
+          const operand = rightMask !== null ? node.left : node.right;
+          return new PerlGrouped(new PerlBinaryExpression(this._lowBits64(operand), '&', PerlLiteral.Number(mask)));
+        }
+      }
+      // A comparison of BigInt operands reads a native operand as unsigned
+      // 64-bit, as the arithmetic does (see _bigIntOperation)
+      if (BIGINT_COMPARISONS.has(node.operator) &&
+          (this._isBigIntType(node.left?.resultType) || this._isBigIntType(node.right?.resultType)) &&
+          !(node.left?.type === 'Literal' && node.left.value === null) && !(node.right?.type === 'Literal' && node.right.value === null) &&
+          !(node.left?.type === 'Literal' && node.left.value === undefined) && !(node.right?.type === 'Literal' && node.right.value === undefined)) {
+        const operand = (n) => SIGNED_INTEGER_TYPES.has(n?.resultType)
+          ? new PerlCall(new PerlIdentifier('main::_BigSigned', ''), [this.transformExpression(n)]) : this.transformExpression(n);
+        const perlOperator = { '===': '==', '!==': '!=' }[node.operator] || node.operator;
+        return new PerlGrouped(new PerlBinaryExpression(
+          new PerlCall(new PerlIdentifier('main::_BigCmp', ''), [operand(node.left), operand(node.right)]), perlOperator, PerlLiteral.Number(0)));
+      }
       // Arbitrary-precision BigInt arithmetic, by the IL type
       if (this._isBigIntType(node.resultType) && BIGINT_OPERATORS.has(node.operator))
         return this._bigIntOperation(node.operator, this.transformExpression(node.left), this.transformExpression(node.right),
@@ -9800,6 +9891,15 @@
      */
     transformUnaryExpression(node) {
       let operator = node.operator;
+
+      // BigInt negation and complement (see _bigIntOperation): a negative
+      // result is a Math::BigInt, never a native that reads as unsigned
+      if ((operator === '-' || operator === '~') && this._isBigIntType(node.resultType)) {
+        const operand = this.transformExpression(node.argument);
+        if (operator === '-') return new PerlCall(new PerlIdentifier('main::_BigSub', ''), [PerlLiteral.Number(0), operand]);
+        return new PerlCall(new PerlIdentifier('main::_BigSub', ''),
+          [new PerlCall(new PerlIdentifier('main::_BigSub', ''), [PerlLiteral.Number(0), operand]), PerlLiteral.Number(1)]);
+      }
 
       // Handle typeof specially before transforming operand
       if (operator === 'typeof') {
@@ -12191,8 +12291,10 @@
         // the same way JS's Number() does, rather than emitting a bareword
         // call to a nonexistent &Number sub (Perl has no such builtin).
         if (funcName === 'Number' && args.length === 1) {
-          // A Math::BigInt argument is numified, not added to (see _Num)
-          return new PerlCall(new PerlIdentifier('main::_Num', ''), [args[0]]);
+          // A Math::BigInt argument is numified, not added to; a native
+          // BigInt is read as unsigned 64-bit (see _bigIntOperation)
+          const unsigned = /^(BigInt|bigint|uint64)$/.test(node.arguments[0]?.resultType || '');
+          return new PerlCall(new PerlIdentifier(unsigned ? 'main::_NumUnsigned' : 'main::_Num', ''), [args[0]]);
         }
 
         // String(x) -> stringification (JS ToString), mirroring Perl's
