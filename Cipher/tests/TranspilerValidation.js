@@ -414,7 +414,7 @@ function loadLanguagePlugin(language) {
 
 // Bundling is implemented for languages whose prelude accumulates a
 // name->algorithm registry the harness can look up.
-const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript']);
+const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript', 'java']);
 
 function transpileOne(source, plugin, algoName, extraOptions, parserOptions) {
   const Parser = loadTranspiler();
@@ -575,7 +575,8 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
   // (a second copy would replace the registry) and wrapped in its own function
   // scope so its top-level declarations cannot collide with the main file's.
   // Python and Perl preludes keep their registry across repeated copies.
-  const noPreludeOptions = language === 'javascript' ? { generateTestHarness: false } : undefined;
+  const noPreludeOptions = language === 'javascript' ? { generateTestHarness: false }
+    : language === 'java' ? { includeRuntime: false } : undefined;
   // A JavaScript dependency also keeps what its factory returned, for a file
   // that loads it through a loader parameter (see below).
   const depExports = new Map();
@@ -637,7 +638,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
       if (!variable) return { success: false, error: `loader ${paramName}: ${loader[1]} was not loaded by the reference, so it is not bundled` };
       prefix += 'const ' + paramName + ' = function () { return ' + variable + '; };\n\n';
     }
-  } else {
+  } else if (language !== 'java') {
     // Python and Perl: the library's code goes ahead of the algorithm, and the
     // factory parameter is bound to an object holding what it exports
     const bundled = bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptions);
@@ -662,7 +663,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
 
 // Languages whose harness runs every vector; the others only prove the
 // generated code compiles and a run of theirs checks nothing.
-const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp']);
+const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp', 'java']);
 
 /**
  * The harness spec handed to a vector harness: per algorithm the name, the
@@ -716,7 +717,7 @@ function generateTestHarness(language, algorithmCode, spec, algorithmName, sampl
     case 'perl':
       return generatePerlTestHarness(algorithmCode, spec, algorithmName);
     case 'java':
-      return generateJavaTestHarness(algorithmCode, vector, algorithmName);
+      return generateJavaTestHarness(algorithmCode, spec, algorithmName);
     case 'go':
       return generateGoTestHarness(algorithmCode, vector, algorithmName);
     case 'ruby':
@@ -959,32 +960,18 @@ try {
   };
 }
 
-// Java Test Harness
-function generateJavaTestHarness(algorithmCode, vector, algorithmName) {
-  const input = bytesToArrayLiteral(vector.input, 'java');
-  const expected = bytesToArrayLiteral(vector.expected, 'java');
-
-  return {
-    success: true,
-    code: `${algorithmCode}
-
-class TestHarness {
-    public static void main(String[] args) {
-        System.out.println("Testing ${algorithmName}...");
-        try {
-            byte[] input = ${input};
-            byte[] expected = ${expected};
-
-            System.out.println("Input length: " + input.length);
-            System.out.println("Expected length: " + expected.length);
-            System.out.println("COMPILE_OK");
-        } catch (Exception e) {
-            System.out.println("ERROR: " + e.getMessage());
-            System.exit(1);
-        }
-    }
-}`
-  };
+// Java vector harness (tests/validation-harness/Harness.java). The generated
+// code marks the classes whose initialisers register its algorithms
+// (// @generated-unit Name, see JavaEmitter.js); the harness loads them, then
+// looks the algorithms up in the runtime's registry by name.
+function generateJavaTestHarness(algorithmCode, spec, algorithmName) {
+  const units = [...algorithmCode.matchAll(/^\/\/ @generated-unit (\w+)$/gm)].map(m => m[1]);
+  const pkg = algorithmCode.match(/^package ([\w.]+);/m);
+  const qualified = units.map(u => JSON.stringify(pkg ? pkg[1] + '.' + u : u)).join(', ');
+  const harness = readHarness('Harness.java')
+    .replace('__SPEC_JSON__', () => JSON.stringify(asciiJson(spec)))
+    .replace('__GENERATED_UNITS__', () => qualified);
+  return { success: true, code: `${algorithmCode}\n// Validation of ${algorithmName}\n${harness}` };
 }
 
 // Go Test Harness
@@ -1292,7 +1279,10 @@ function testJavaCompilation(code, outputDir) {
   const srcFile = path.join(outputDir, 'TestHarness.java');
   fs.writeFileSync(srcFile, code);
 
-  const result = spawnTool('javac', ['-J-Duser.language=en', srcFile], {
+  // Classes go to a directory of their own, where the vector run finds them
+  const classes = path.join(outputDir, 'classes');
+  if (fs.existsSync(classes)) fs.rmSync(classes, { recursive: true, force: true });
+  const result = spawnTool('javac', ['-J-Duser.language=en', '-encoding', 'UTF-8', '-nowarn', '-d', classes, srcFile], {
     encoding: 'utf-8',
     timeout: timeoutSeconds() * 1000,
     cwd: outputDir
@@ -1535,8 +1525,16 @@ function executeCode(language, outputDir) {
     case 'python': return runProcess('python', ['-X', 'utf8', path.join(outputDir, 'test.py')], { cwd: outputDir });
     case 'perl': return runProcess('perl', [path.join(outputDir, 'test.pl')], { cwd: outputDir });
     case 'csharp': return runProcess('dotnet', [path.join(outputDir, 'bin', 'Release', 'net10.0', 'Test.dll')], { cwd: outputDir });
+    case 'java': return runProcess('java', ['-Xss64m', '-cp', path.join(outputDir, 'classes'), javaMainClass(outputDir)], { cwd: outputDir });
     default: throw new Error(`${language} has no vector harness to run`);
   }
+}
+
+/** The harness class to run: TestHarness, in the package the generated code declares. */
+function javaMainClass(outputDir) {
+  const source = fs.readFileSync(path.join(outputDir, 'TestHarness.java'), 'utf-8');
+  const pkg = source.match(/^package ([\w.]+);/m);
+  return pkg ? pkg[1] + '.TestHarness' : 'TestHarness';
 }
 
 // Lines of tool output that are warnings or noise, never the error
