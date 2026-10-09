@@ -1621,6 +1621,33 @@ const RUNTIME_OPCODES = String.raw`
 // ===================================================================
 final class OpCodes {
     private OpCodes() {}
+
+    /** OpCodes.UInt64: 64-bit values as [high32, low32] word pairs. */
+    static final class UInt64 {
+        private UInt64() {}
+        static long bits(Object a) { JsArrayLike s = (JsArrayLike) a; return (Js.toUint32(s.getBoxed(0)) << 32) | Js.toUint32(s.getBoxed(1)); }
+        static U32Array pair(long v) { return U32Array.of(v >>> 32, v & 0xFFFFFFFFL); }
+        public static U32Array create(double high, double low) { return U32Array.of(Js.toUint32(high), Js.toUint32(low)); }
+        public static U32Array fromBytes(Object bytes) {
+            JsArrayLike s = (JsArrayLike) bytes; int n = s.length(); long v = 0;
+            for (int i = 0; i < 8; ++i) { int k = i - (8 - Math.min(n, 8)); v = (v << 8) | (k < 0 ? 0 : Js.toInt32(s.getBoxed(n < 8 ? k : i)) & 0xFF); }
+            return pair(v);
+        }
+        public static U8Array toBytes(Object a) { return Unpack64BE(java.math.BigInteger.valueOf(bits(a)).and(MASK64)); }
+        public static U32Array add(Object a, Object b) { return pair(bits(a) + bits(b)); }
+        public static U32Array sub(Object a, Object b) { return pair(bits(a) - bits(b)); }
+        public static Object shr(Object a, double n) { int c = (int) n; return c == 0 ? a : pair(bits(a) >>> (c & 63)); }
+        public static Object shl(Object a, double n) { int c = (int) n; return c == 0 ? a : pair(bits(a) << (c & 63)); }
+        public static Object rotr(Object a, double n) { int c = (int) n; return c == 0 ? a : pair(Long.rotateRight(bits(a), c % 64)); }
+        public static Object rotl(Object a, double n) { int c = (int) n; return c == 0 ? a : pair(Long.rotateLeft(bits(a), c % 64)); }
+        public static U32Array xor(Object a, Object b) { return pair(bits(a) ^ bits(b)); }
+        public static U32Array and(Object a, Object b) { return pair(bits(a) & bits(b)); }
+        public static U32Array or(Object a, Object b) { return pair(bits(a) | bits(b)); }
+        public static U32Array not(Object a) { return pair(~bits(a)); }
+        public static double toNumber(Object a) { JsArrayLike s = (JsArrayLike) a; return Js.toUint32(s.getBoxed(0)) * 4294967296.0 + Js.toUint32(s.getBoxed(1)); }
+        public static boolean equals(Object a, Object b) { return bits(a) == bits(b); }
+        public static U32Array clone(Object a) { return pair(bits(a)); }
+    }
     static final java.math.BigInteger MASK64 = Js.MASK64;
     static final java.math.BigInteger MASK128 = java.math.BigInteger.ONE.shiftLeft(128).subtract(java.math.BigInteger.ONE);
 

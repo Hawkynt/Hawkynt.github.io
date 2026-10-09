@@ -199,6 +199,16 @@
       ctors: [['U8Array'], []]
     }
   };
+  /** OpCodes.UInt64 ([high32, low32] word pairs): name -> [parameter types, result type]. */
+  const UINT64 = {
+    create: [['double', 'double'], 'U32Array'], fromBytes: [['Object'], 'U32Array'], toBytes: [['Object'], 'U8Array'],
+    add: [['Object', 'Object'], 'U32Array'], sub: [['Object', 'Object'], 'U32Array'],
+    shr: [['Object', 'double'], 'Object'], shl: [['Object', 'double'], 'Object'],
+    rotr: [['Object', 'double'], 'Object'], rotl: [['Object', 'double'], 'Object'],
+    xor: [['Object', 'Object'], 'U32Array'], and: [['Object', 'Object'], 'U32Array'], or: [['Object', 'Object'], 'U32Array'],
+    not: [['Object'], 'U32Array'], toNumber: [['Object'], 'double'], equals: [['Object', 'Object'], 'boolean'], clone: [['Object'], 'U32Array']
+  };
+
   const FRAMEWORK_STATICS = {
     RegisterAlgorithm: [['Algorithm'], 'void'],
     Find: [['String'], 'Algorithm'],
@@ -3112,6 +3122,7 @@
         if (FRAMEWORK[name]) return { k: 'classref', name, t: 'Class', cls: name };
         if (FRAMEWORK_STATICS[name]) return this.functionValueStatic('AlgorithmFramework', name);
       }
+      if (obj.cls === 'OpCodes' && name === 'UInt64') return { k: 'classref', name: 'OpCodes.UInt64', t: 'Class', cls: 'OpCodes.UInt64' };
       if (ENUM_CONSTANTS[obj.cls] && ENUM_CONSTANTS[obj.cls].includes(name)) return E.sfield(obj.cls, name, obj.cls);
       // A constant the frozen framework enumeration does not have reads undefined
       if (ENUM_CONSTANTS[obj.cls]) return E.nul(obj.cls);
@@ -3310,6 +3321,11 @@
         return E.scall('AlgorithmFramework', name, ptypes.map((t, i) => i < args.length ? this.valueOf(args[i], t) : this.undefinedOf(t)), ret);
       }
       if (obj.cls === 'OpCodes') return this.opCodesCall(name, args, node);
+      if (obj.cls === 'OpCodes.UInt64') {
+        const sig = UINT64[name];
+        if (!sig) throw new LoweringError(`OpCodes.UInt64.${name} has no JVM runtime`);
+        return E.scall('OpCodes.UInt64', name, sig[0].map((t, i) => i < args.length ? this.valueOf(args[i], t) : this.undefinedOf(t)), sig[1]);
+      }
       const s = this.findStatic(obj.cls, name);
       if (s && s.kind === 'method') {
         const sig = this.signature(s.info, s.owner);
