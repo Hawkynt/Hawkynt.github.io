@@ -156,6 +156,12 @@ check('methods: a parameter a caller may leave out defaults (JavaScript passes u
     '  absorb(data, offset, length) { this.n = (offset || 0) + (length || data.length); }\n  /** @param {uint8[]} d - d */\n  run(d) { this.absorb(d); }\n}');
   expectMatch(code, /Absorb\(byte\[\] data = (null|default), int offset = (0|default), int length = (0|default)\)/, 'Absorb with defaults for every parameter');
 });
+check('methods: no default before a ref parameter (CS1737)', () => {
+  const code = transpile('/**\n * @param {int32[]} values - v\n * @param {int32[]} overflow - o\n * @returns {int32[]} r\n */\n' +
+    'function enc(values, overflow) { for (let i = 0; i < values.length; i++) overflow[i + 4] = values[i]; return values; }\n' +
+    '/** @returns {int32[]} r */\nfunction use() { /** @type {int32[]} */ const o = []; return enc([1, 2], o); }');
+  expectNoMatch(code, /= default, ref /, 'a default before a ref parameter');
+});
 check('fields: two fields differing only in case keep their own values', () => {
   const code = transpile('class P {\n  constructor() { /** @type {int32} */ this.N = 8; /** @type {int32} */ this.n = 2 * this.N; }\n' +
     '  /** @returns {int32} sum */\n  sum() { return this.n + this.N; }\n}');

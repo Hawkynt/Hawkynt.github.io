@@ -11208,8 +11208,11 @@
       // A JavaScript caller may pass fewer arguments than the method names (the
       // rest are undefined): every parameter without a default gets `default`
       // (CROSS's absorb(data) for absorb(data, offset, length), CS7036 otherwise)
-      for (const p of method.parameters) {
-        if (!p.defaultValue && !p.isParams && !p.isRef && !p.isOut) p.defaultValue = new CSharpIdentifier('default');
+      // (from the end: a ref parameter takes none, nor may any parameter before it)
+      for (let i = method.parameters.length - 1; i >= 0; --i) {
+        const p = method.parameters[i];
+        if (p.isParams || p.isRef || p.isOut) break;
+        if (!p.defaultValue) p.defaultValue = new CSharpIdentifier('default');
       }
 
       // A JavaScript override may declare fewer parameters than the framework method
@@ -21551,8 +21554,10 @@
         // A JavaScript caller may pass fewer arguments than the constructor names
         // (the rest are undefined): every parameter without a default gets `default`,
         // so `new SlhDsaEngine(params)` binds (CS7036 otherwise)
-        for (const p of ctor.parameters) {
-          if (!p.defaultValue && !p.isParams && !p.isRef && !p.isOut) p.defaultValue = new CSharpIdentifier('default');
+        for (let i = ctor.parameters.length - 1; i >= 0; --i) {
+          const p = ctor.parameters[i];
+          if (p.isParams || p.isRef || p.isOut) break;
+          if (!p.defaultValue) p.defaultValue = new CSharpIdentifier('default');
         }
 
         // Overwrite preRegisterConstructorSignatures' approximate guess with the
