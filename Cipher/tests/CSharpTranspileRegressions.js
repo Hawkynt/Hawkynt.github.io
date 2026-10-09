@@ -162,6 +162,11 @@ check('methods: no default before a ref parameter (CS1737)', () => {
     '/** @returns {int32[]} r */\nfunction use() { /** @type {int32[]} */ const o = []; return enc([1, 2], o); }');
   expectNoMatch(code, /= default, ref /, 'a default before a ref parameter');
 });
+check('arrays: an array handed to a constructor that keeps and fills it is read back from the object', () => {
+  const code = transpile('class W {\n  /** @param {uint8[]} out - out */\n  constructor(out) { /** @type {uint8[]} */ this.out = out; }\n  /** @param {uint8} b - b */\n  put(b) { this.out.push(b); }\n}\n' +
+    '/** @returns {uint8[]} r */\nfunction f() { /** @type {uint8[]} */ const result = [9]; const w = new W(result); w.put(1); return result; }');
+  expectMatch(code, /w\.Put\([^;]*\);\s*result = w\.Out;\s*return result;/, 'result = w.Out before the return');
+});
 check('fields: two fields differing only in case keep their own values', () => {
   const code = transpile('class P {\n  constructor() { /** @type {int32} */ this.N = 8; /** @type {int32} */ this.n = 2 * this.N; }\n' +
     '  /** @returns {int32} sum */\n  sum() { return this.n + this.N; }\n}');

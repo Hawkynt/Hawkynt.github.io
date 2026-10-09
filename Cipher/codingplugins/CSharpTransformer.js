@@ -7401,6 +7401,7 @@
     transform(jsAst) {
       this.normalizeArrayCalls(jsAst);
       this.foldStringLiteralChains(jsAst);
+      this.arrayHoldingConstructors = this.preScanArrayHoldingConstructors(jsAst);
       this.renameCaseCollidingFields(jsAst);
       const unit = new CSharpCompilationUnit();
 
@@ -11412,6 +11413,7 @@
         block.statements.push(new CSharpReturn(expr));
       }
       if (bodyNode.type === 'BlockStatement') this.syncFieldAliases(bodyNode, block);
+      if (bodyNode.type === 'BlockStatement') this.syncHeldArrays(bodyNode, block);
 
       // Restore context
       this.currentMethod = prevMethod;
@@ -11523,6 +11525,88 @@
       }
       if (aliases.length === 0) return;
       const syncs = () => aliases.map(a => new CSharpExpressionStatement(this.transformExpression(a)));
+      // Only the returns after the field is first assigned the local (an early
+      // return before it must not read the local, which is not declared yet)
+      const aliasValueNames = new Set(syncs().map(s => s.expression?.value?.name).filter(Boolean));
+      this.insertSyncsAfter(block, syncs, s => s?.nodeType === 'ExpressionStatement' && s.expression?.nodeType === 'Assignment' &&
+        s.expression.value?.nodeType === 'Identifier' && aliasValueNames.has(s.expression.value.name));
+    }
+
+    /**
+     * Classes whose constructor keeps an array argument in a field that its methods
+     * push to (`new BitWriter(output)` writing into `output`), as className ->
+     * [{ index, field }]: in JavaScript the caller's array fills too.
+     * @param {Object} jsAst - the program
+     * @returns {Map<string, Array<{index: number, field: string}>>}
+     */
+    preScanArrayHoldingConstructors(jsAst) {
+      const result = new Map();
+      const fieldOf = n => n?.type === 'ThisPropertyAccess' ? (typeof n.property === 'string' ? n.property : n.property?.name)
+        : (n?.type === 'MemberExpression' && !n.computed && n.object?.type === 'ThisExpression' ? n.property?.name : null);
+      this._walkAstNodes(jsAst, cls => {
+        if (cls.type !== 'ClassDeclaration' || !cls.id?.name) return;
+        const pushed = new Set();
+        this._walkAstNodes(cls.body, n => {
+          if (n.type === 'ArrayAppend' && fieldOf(n.array)) pushed.add(fieldOf(n.array));
+          if (n.type === 'CallExpression' && n.callee?.type === 'MemberExpression' && n.callee.property?.name === 'push' && fieldOf(n.callee.object))
+            pushed.add(fieldOf(n.callee.object));
+        });
+        const ctor = (cls.body?.body || []).find(m => m.type === 'MethodDefinition' && m.kind === 'constructor');
+        const params = (ctor?.value?.params || []).map(p => p.type === 'Identifier' ? p.name : null);
+        const held = [];
+        this._walkAstNodes(ctor?.value?.body, n => {
+          if (n.type === 'AssignmentExpression' && n.operator === '=' && n.right?.type === 'Identifier' && fieldOf(n.left) &&
+              pushed.has(fieldOf(n.left)) && params.includes(n.right.name))
+            held.push({ index: params.indexOf(n.right.name), field: fieldOf(n.left) });
+        });
+        if (held.length) result.set(cls.id.name, held);
+      });
+      return result;
+    }
+
+    /**
+     * `const out = []; const w = new BitWriter(out); w.writeBit(1); return out;` -
+     * the writer's pushes fill `out` in JavaScript; in C# they rebind the writer's
+     * own field. The local is assigned the writer's field before every return after
+     * the writer is created, and at the end of the body.
+     * @param {Object} bodyNode - IL function body
+     * @param {CSharpBlock} block - its transformed body, changed in place
+     */
+    syncHeldArrays(bodyNode, block) {
+      if (!this.arrayHoldingConstructors?.size) return;
+      const declared = new Set();
+      this._walkAstNodes(bodyNode, n => { if (n.type === 'VariableDeclarator' && n.id?.type === 'Identifier') declared.add(n.id.name); });
+      const held = [];
+      for (const stmt of bodyNode.body) {
+        if (stmt.type !== 'VariableDeclaration') continue;
+        for (const d of stmt.declarations) {
+          const init = d.init;
+          const className = (init?.type === 'NewExpression' && init.callee?.type === 'Identifier') ? init.callee.name : null;
+          for (const { index, field } of (className && this.arrayHoldingConstructors.get(className)) || []) {
+            const arg = init.arguments?.[index];
+            if (arg?.type === 'Identifier' && declared.has(arg.name) && d.id?.type === 'Identifier')
+              held.push({ writer: d.id.name, local: arg.name, field });
+          }
+        }
+      }
+      for (const { writer, local, field } of held) {
+        const sync = () => [new CSharpExpressionStatement(this.transformExpression({
+          type: 'AssignmentExpression', operator: '=', left: { type: 'Identifier', name: local },
+          right: { type: 'MemberExpression', computed: false, object: { type: 'Identifier', name: writer }, property: { type: 'Identifier', name: field } }
+        }))];
+        const writerName = this.toCamelCase(this.variableNameMap?.get(writer) || writer);
+        this.insertSyncsAfter(block, sync, s => s?.nodeType === 'VariableDeclaration' && (s.name === writerName || s.name === writer));
+      }
+    }
+
+    /**
+     * Inserts the statements `syncs()` builds before every return after the first
+     * top-level statement `isAnchor` accepts, and at the end of the block.
+     * @param {CSharpBlock} block - the body, changed in place
+     * @param {Function} syncs - () => CSharpStatement[], fresh nodes per call
+     * @param {Function} isAnchor - (C# statement) => boolean
+     */
+    insertSyncsAfter(block, syncs, isAnchor) {
       const visit = statements => {
         for (let i = 0; i < statements.length; ++i) {
           const stmt = statements[i];
@@ -11550,11 +11634,7 @@
           } else if (value && typeof value === 'object' && value.nodeType) visitNode(value);
         }
       };
-      // Only the returns after the field is first assigned the local (an early
-      // return before it must not read the local, which is not declared yet)
-      const aliasValueNames = new Set(syncs().map(s => s.expression?.value?.name).filter(Boolean));
-      const first = block.statements.findIndex(s => s?.nodeType === 'ExpressionStatement' && s.expression?.nodeType === 'Assignment' &&
-        s.expression.value?.nodeType === 'Identifier' && aliasValueNames.has(s.expression.value.name));
+      const first = block.statements.findIndex(isAnchor);
       if (first < 0) return;
       const tail = block.statements.slice(first + 1);
       visit(tail);
