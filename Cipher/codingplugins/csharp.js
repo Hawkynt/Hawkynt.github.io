@@ -895,6 +895,40 @@ namespace ${namespace}
             return buffer;
         }
 
+        // JavaScript's BigInt(text): decimal, or 0x/0o/0b prefixed, optionally signed
+        public static BigInteger ParseBigInt(string text)
+        {
+            var s = (text ?? "").Trim();
+            bool negative = s.StartsWith("-");
+            if (negative || s.StartsWith("+")) s = s.Substring(1);
+            int radix = 10;
+            if (s.Length > 1 && s[0] == '0' && "xXoObB".IndexOf(s[1]) >= 0)
+            {
+                radix = char.ToLowerInvariant(s[1]) == 'x' ? 16 : char.ToLowerInvariant(s[1]) == 'o' ? 8 : 2;
+                s = s.Substring(2);
+            }
+            if (s.Length == 0) return BigInteger.Zero;
+            BigInteger value = BigInteger.Zero;
+            foreach (char c in s)
+            {
+                int digit = c <= '9' ? c - '0' : char.ToLowerInvariant(c) - 'a' + 10;
+                if (digit < 0 || digit >= radix) throw new FormatException("Cannot convert " + text + " to a BigInt");
+                value = value * radix + digit;
+            }
+            return negative ? -value : value;
+        }
+
+        // JavaScript's string.padStart/padEnd: the pad string repeated (and cut) to the length
+        public static string PadString(object value, int length, object pad, bool atStart)
+        {
+            string s = value?.ToString() ?? "", p = pad?.ToString() ?? " ";
+            if (s.Length >= length || p.Length == 0) return s;
+            var fill = new System.Text.StringBuilder();
+            while (fill.Length < length - s.Length) fill.Append(p);
+            var padding = fill.ToString(0, length - s.Length);
+            return atStart ? padding + s : s + padding;
+        }
+
         // JavaScript's bigint.toString(radix): lowercase digits, leading '-' for negatives.
         public static string ToRadixString(BigInteger value, long radix)
         {

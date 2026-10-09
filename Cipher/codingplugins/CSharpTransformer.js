@@ -12199,6 +12199,16 @@
         case 'ThisMethodCall':
           return this.transformThisMethodCall(node);
 
+        case 'StringPad': {
+          // string.padStart/padEnd(length, pad): the runtime's PadString repeats a
+          // multi-character pad string as JavaScript does
+          const args = [this.transformExpression(node.string || node.value),
+            node.targetLength ? this.ensureIntIndex(this.transformExpression(node.targetLength), node.targetLength) : CSharpLiteral.Int(0),
+            node.padString ? this.transformExpression(node.padString) : CSharpLiteral.String(' '),
+            CSharpLiteral.Bool(node.method !== 'padEnd')];
+          return new CSharpMethodCall(null, 'PadString', args);
+        }
+
         case 'ThisPropertyAccess':
           return this.transformThisPropertyAccess(node);
 
@@ -14622,8 +14632,10 @@
 
         // For call expressions that return bool, keep normal !
         if (node.argument.type === 'CallExpression') {
-          // Most method calls should return bool if used in boolean context
-          // So just use normal ! operator
+          // A call returning an object (a lookup that may find nothing) tests for null;
+          // others are used as a boolean
+          if (this._isClassReferenceType(operandType) || operandType?.isArray || operandType?.name === 'string')
+            return new CSharpBinaryExpression(operand, '==', CSharpLiteral.Null());
           return new CSharpUnaryExpression('!', operand, true);
         }
 
@@ -25206,6 +25218,10 @@
      */
     transformBigIntCast(node) {
       const expr = this.transformExpression(node.argument);
+      // BigInt("0x...") parses the text as JavaScript does
+      const argumentType = this.inferFullExpressionType(node.argument);
+      if (argumentType?.name === 'string' && !argumentType.isArray)
+        return new CSharpMethodCall(null, 'ParseBigInt', [expr]);
       if (this.isReliableBigIntCastSkipSource(node.argument)) {
         const innerType = this.inferFullExpressionType(node.argument);
         if (innerType && (innerType.name === 'ulong' || innerType.name === 'long')) {

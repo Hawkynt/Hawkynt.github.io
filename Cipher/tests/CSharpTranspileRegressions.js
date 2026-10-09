@@ -401,6 +401,15 @@ check('numeric: toFixed formats with a fixed digit count, ArrayBuffer.isView tes
   expectMatch(code, /ToString\("F" \+ 2, System\.Globalization\.CultureInfo\.InvariantCulture\)/, 'ToString("F" + 2, InvariantCulture)');
   expectMatch(code, /d is System\.Array/, 'd is System.Array');
 });
+check('strings: BigInt(text), padStart and !lookup() map to the runtime and a null test', () => {
+  const code = transpile('class P { constructor() { /** @type {int32} */ this.n = 1; } }\n' +
+    '/** @param {string} k - key\n * @returns {P|null} params */\nfunction find(k) { return k === "a" ? new P() : null; }\n' +
+    '/**\n * @param {string} hex - digits\n * @returns {string} padded\n */\n' +
+    'function show(hex) { if (!find(hex)) return ""; const v = BigInt("0x" + hex); return hex.padStart(8, "0") + v; }');
+  expectMatch(code, /ParseBigInt\("0x" \+ hex\)/, 'ParseBigInt("0x" + hex)');
+  expectMatch(code, /PadString\(hex, 8, "0", true\)/, 'PadString(hex, 8, "0", true)');
+  expectMatch(code, /if \(Find\(hex\) == null\)/, 'Find(hex) == null');
+});
 check('numeric: the global isNaN tests a double', () => {
   const code = transpile('/**\n * @param {float64} x - value\n * @returns {boolean} not a number\n */\nfunction nan(x) { return isNaN(x); }');
   expectMatch(code, /double\.IsNaN\(/, 'double.IsNaN(...)');
@@ -534,6 +543,13 @@ namespace RegressionTest {
       Eq("setbit-clear", OpCodes.SetBit(0x80000001u, 31, false), 1u);
       Eq("createarray", string.Join(",", OpCodes.CreateArray(3, new BigInteger(7))), "7,7,7");
       Eq("createarray-empty", OpCodes.CreateArray(0, 1u).Length, 0);
+      // ParseBigInt reads JavaScript BigInt text; PadString repeats its pad
+      Eq("parsebigint-hex", FrameworkFunctions.ParseBigInt("0xff"), 255);
+      Eq("parsebigint-dec", FrameworkFunctions.ParseBigInt("-12"), -12);
+      Eq("parsebigint-bin", FrameworkFunctions.ParseBigInt("0b101"), 5);
+      Eq("padstart", FrameworkFunctions.PadString("7", 4, "ab", true), "aba7");
+      Eq("padend", FrameworkFunctions.PadString("7", 3, "0", false), "700");
+      Eq("pad-long", FrameworkFunctions.PadString("12345", 3, "0", true), "12345");
       // BitStream writers take a signed or dynamic number as its low 32 bits
       var bits = new BitStream();
       dynamic signedLength = 0x01020304;
