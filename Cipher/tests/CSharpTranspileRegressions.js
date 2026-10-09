@@ -777,6 +777,10 @@ check('classes: push(a, b) on an object of a class with its own push method call
   expectMatch(code, /r\.Push\(/, 'r.Push(...)');
   expectNoMatch(code, /r = r\.Append/, 'an array append on the object (CS1929)');
 });
+check('OpCodes: Not32 of a uint pushed into a uint[] is a uint, not the long C# makes of it', () => {
+  const code = transpile('/**\n * @param {uint32[]} k - k\n * @returns {uint32[]} r\n */\nfunction f(k) { /** @type {uint32[]} */ const n = []; for (let i = 0; i < k.length; i++) n.push(OpCodes.Not32(k[i])); return n; }');
+  expectMatch(code, /n\.Append\(unchecked\(\(uint\)\(unchecked\(\(int\)\(~k\[i\]\)\) & 4294967295u\)\)\)/, 'the masked result cast to uint');
+});
 check('arrays: numbers concatenated to the input buffer become bytes', () => {
   const code = transpile('class M extends IMacInstance {\n  /** @returns {uint8[]} r */\n  Result() { /** @type {int32} */ const n = 3; const padding = OpCodes.CreateArray(n, n);\n' +
     '    /** @type {uint8[]} */ const padded = this.inputBuffer.concat(padding); return padded; }\n}');

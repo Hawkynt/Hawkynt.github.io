@@ -12606,7 +12606,7 @@
         case 'BinaryExpression':
         case 'LogicalExpression':
           if (node.operator === '**') return this.transformExponentiation(node);
-          return this.asFractionDivision(node, this.asBigIntShift(node, this.asJsComparison(node, this.asJsProduct(node, this.transformBinaryExpression(node)))));
+          return this.asUint32Result(node, this.asFractionDivision(node, this.asBigIntShift(node, this.asJsComparison(node, this.asJsProduct(node, this.transformBinaryExpression(node))))));
 
         case 'UnaryExpression':
           return this.transformUnaryExpression(node);
@@ -25807,6 +25807,21 @@
       const rightType = this.inferFullExpressionType(node.right);
       if (!wide.includes(leftType?.name) || leftType.isArray || !wide.includes(rightType?.name) || rightType.isArray) return result;
       return new CSharpMethodCall(null, 'JsMul', [result.left, result.right]);
+    }
+
+    /**
+     * An inlined 32-bit OpCodes operation (Not32, Shr32, ...) the IL types uint32
+     * masks its result with & 4294967295u; on a signed operand C# makes that a long.
+     * It is cast to the uint it stands for (notKxorIV.push(OpCodes.Not32(x)) pushed a
+     * long into a uint[], CS1929).
+     */
+    asUint32Result(node, result) {
+      if (!node.opCodesMethod || node.resultType !== 'uint32' || node.operator !== '&' || result?.nodeType !== 'BinaryExpression' || result.operator !== '&') return result;
+      const signed = ['int', 'long', 'sbyte', 'short'];
+      const leftType = this.inferFullExpressionType(node.left);
+      const castToSigned = result.left?.nodeType === 'Cast' && signed.includes(result.left.type?.name) && !result.left.type?.isArray;
+      if (!castToSigned && (!leftType || leftType.isArray || !signed.includes(leftType.name))) return result;
+      return new CSharpCast(CSharpType.UInt(), result);
     }
 
     /** Whether a JS/IL node is a number literal written with a fraction or exponent (1.0, 1e3). */
