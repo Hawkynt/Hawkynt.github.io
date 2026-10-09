@@ -11,7 +11,7 @@
   'use strict';
 
   // Use local variables to avoid global conflicts
-  let LanguagePlugin, LanguagePlugins, BasicAST, BasicTransformer, BasicEmitter;
+  let LanguagePlugin, LanguagePlugins, BasicAST, BasicTransformer, BasicEmitter, FreeBasicTransformer;
 
   if (typeof require !== 'undefined') {
     // Node.js environment
@@ -24,6 +24,7 @@
     const transformerModule = require('./BasicTransformer.js');
     const emitterModule = require('./BasicEmitter.js');
     BasicTransformer = transformerModule.BasicTransformer;
+    FreeBasicTransformer = transformerModule.FreeBasicTransformer;
     BasicEmitter = emitterModule.BasicEmitter;
   } else {
     // Browser environment - use globals
@@ -31,6 +32,7 @@
     LanguagePlugins = window.LanguagePlugins;
     BasicAST = window.BasicAST;
     BasicTransformer = window.BasicTransformer?.BasicTransformer || window.BasicTransformer;
+    FreeBasicTransformer = window.FreeBasicTransformer;
     BasicEmitter = window.BasicEmitter?.BasicEmitter || window.BasicEmitter;
   }
 
@@ -126,6 +128,12 @@
         // Check if transformer and emitter are available
         if (!BasicTransformer || !BasicEmitter) {
           return this.CreateErrorResult('Basic transformer/emitter not loaded');
+        }
+
+        // FreeBASIC: generated from the typed IL onto a runtime with JavaScript semantics
+        if (FreeBasicTransformer && String(mergedOptions.variant || 'FREEBASIC').toUpperCase() === 'FREEBASIC' && mergedOptions.useClasses !== false) {
+          const code = new FreeBasicTransformer(mergedOptions).generate(ast);
+          return this.CreateSuccessResult(code, ['FreeBASIC Runtime Library'], []);
         }
 
         // Stage 1: Transform JS AST to Basic AST
