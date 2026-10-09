@@ -232,9 +232,11 @@ Function vh_set(ByRef inst As JsV, ByRef fld As String, ByRef setter As String, 
 End Function
 
 ' ---- the identity cipher of tests/DummyBlockCipher.js, for mode vectors naming no cipher ----
-Dim Shared CLS_VhDummy As JsV
+Dim Shared CLS_VhDummy As JsV, CLS_VhDummyAlgorithm As JsV
 
 Function vh_dummy_ctor(ByRef self As JsV, ByVal argv As JsV Ptr, ByVal argc As Long, ByVal envp As Any Ptr) As JsV
+  js_setp(self, SYM_algorithm, js_arg(argv, argc, 0))
+  js_setp(self, SYM_isInverse, js_bool(0))
   js_setp(self, SYM_BlockSize, js_num(16))
   js_setp(self, SYM_inputBuffer, js_arr_new(0))
   js_setp(self, SYM__key, js_null())
@@ -278,6 +280,17 @@ Function vh_dummy_result(ByRef self As JsV, ByVal argv As JsV Ptr, ByVal argc As
   Return r
 End Function
 
+' its algorithm, whose CreateInstance a mode may call for a cipher of its own
+Function vh_dummy_alg_ctor(ByRef self As JsV, ByVal argv As JsV Ptr, ByVal argc As Long, ByVal envp As Any Ptr) As JsV
+  js_setp(self, SYM_name, js_str("DummyBlockCipher"))
+  js_setp(self, SYM_BlockSize, js_num(16))
+  Return self
+End Function
+
+Function vh_dummy_alg_create(ByRef self As JsV, ByVal argv As JsV Ptr, ByVal argc As Long, ByVal envp As Any Ptr) As JsV
+  Return js_new1(CLS_VhDummy, self)
+End Function
+
 ' ---- one vector ----
 Function vh_cipher_names(ByRef c As String) As String
   Select Case c
@@ -303,7 +316,7 @@ Sub vh_configure(ByRef spec As JsV, ByRef plan As JsV, ByRef inst As JsV, ByRef 
       If found.tag = JS_T_OBJ Then cipher = js_mcall1(found, SYM_CreateInstance, js_bool(0))
       If cipher.tag <> JS_T_OBJ Then js_throw_error("Vector field 'cipher' is not applied: no block cipher named '" & JSS(cipherName) & "' is registered")
     Else
-      cipher = js_new0(CLS_VhDummy)
+      cipher = js_new1(CLS_VhDummy, js_new0(CLS_VhDummyAlgorithm))
     End If
     If js_truthy(vh_get(spec, "multiKey")) = 0 Then
       If js_truthy(vh_get(mode, "keyTruthy")) Then
@@ -386,6 +399,8 @@ Sub vh_main()
   js_class_add(CLS_VhDummy, SYM_key, @vh_dummy_setkey, 2)
   js_class_add(CLS_VhDummy, SYM_Feed, @vh_dummy_feed, 0)
   js_class_add(CLS_VhDummy, SYM_Result, @vh_dummy_result, 0)
+  CLS_VhDummyAlgorithm = js_class_new("VhDummyAlgorithm", 0, @vh_dummy_alg_ctor)
+  js_class_add(CLS_VhDummyAlgorithm, SYM_CreateInstance, @vh_dummy_alg_create, 0)
   vh_json_pos = 0
   Dim spec As JsV = vh_json_value(vh_spec_text)
   Dim algs As JsV = vh_get(spec, "algorithms")
