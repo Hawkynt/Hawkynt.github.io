@@ -162,11 +162,15 @@ begin
   Result := False;
 end;
 
+{ spec.json is UTF-8 without \u escapes (Free Pascal 3.2's scanner loses non-ASCII escapes) }
 function StrOf(Obj: TJSONObject; const Key: string): string;
-var D: TJSONData;
+var D: TJSONData; R: RawByteString;
 begin
   D := Obj.Find(Key);
-  if (D = nil) or (D.JSONType <> jtString) then Result := '' else Result := UTF8Decode(D.AsString);
+  if (D = nil) or (D.JSONType <> jtString) then Exit('');
+  R := D.AsString;
+  SetCodePage(R, CP_UTF8, False);
+  Result := UnicodeString(R);
 end;
 
 function BoolOf(Obj: TJSONObject; const Key: string): Boolean;
@@ -299,7 +303,8 @@ end;
 
 procedure Main;
 var
-  SpecText: TStringList;
+  SpecFile: TFileStream;
+  SpecBytes: UTF8String;
   Root: TJSONData;
   Algorithms, Vectors: TJSONArray;
   Spec, Plan: TJSONObject;
@@ -308,13 +313,15 @@ var
   A, V: Int32;
   Failure: string;
 begin
-  SpecText := TStringList.Create;
+  SetTextCodePage(Output, CP_UTF8);
+  SpecFile := TFileStream.Create(ExtractFilePath(ParamStr(0)) + 'spec.json', fmOpenRead or fmShareDenyNone);
   try
-    SpecText.LoadFromFile(ExtractFilePath(ParamStr(0)) + 'spec.json');
-    Root := GetJSON(SpecText.Text);
+    SetLength(SpecBytes, SpecFile.Size);
+    if Length(SpecBytes) > 0 then SpecFile.ReadBuffer(SpecBytes[1], Length(SpecBytes));
   finally
-    SpecText.Free;
+    SpecFile.Free;
   end;
+  Root := GetJSON(SpecBytes);
   Algorithms := TJSONObject(Root).Arrays['algorithms'];
   for A := 0 to Algorithms.Count - 1 do
   begin

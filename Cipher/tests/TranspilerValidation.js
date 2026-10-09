@@ -1142,7 +1142,7 @@ function generateDelphiTestHarness(algorithmCode, spec, algorithmName) {
   if (!unit) return { success: false, error: 'the Delphi plugin emitted no unit' };
   return {
     success: true,
-    extraFiles: { [unit[1] + '.pas']: algorithmCode, 'spec.json': asciiJson(spec) },
+    extraFiles: { [unit[1] + '.pas']: algorithmCode, 'spec.json': JSON.stringify(spec) },
     code: `{ Validation of ${algorithmName} }\n` + readHarness('harness.pas').replace('__UNIT__', () => unit[1])
   };
 }
