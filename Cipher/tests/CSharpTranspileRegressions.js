@@ -937,6 +937,12 @@ check('stub classes: a stub method result into a narrower JSDoc local is cast (C
     '  /** @returns {int32} r */\n  f() {\n    /** @type {uint8} */\n    const cell = this.m.get(1, 2);\n    return cell;\n  }\n}');
   expectMatch(code, /byte cell = (unchecked\()?\(byte\)\(?this\.M\.Get\(1, 2\)/, 'byte cell = (byte)this.M.Get(1, 2)');
 });
+check('fields: a JSDoc field type is known to a function declared ahead of the class (CS0266)', () => {
+  const code = transpile('/**\n * @param {State} state - state\n * @param {int32} pos - pos\n * @returns {int32} r\n */\n' +
+    'function local(state, pos) {\n  /** @type {int32} */\n  const at = pos - state.resetPos;\n  return at;\n}\n' +
+    'class State {\n  constructor() {\n    /** @type {float64} */\n    this.resetPos = 0;\n  }\n}');
+  expectMatch(code, /int at = (unchecked\()?\(int\)\(pos - state\.ResetPos\)/, 'int at = (int)(pos - state.ResetPos)');
+});
 check('for: a loop variable walking linked nodes keeps the node class type (CS0029)', () => {
   const code = transpile('class Node {\n  constructor() {\n    /** @type {Node} */\n    this.parent = null;\n  }\n}\n' +
     '/**\n * @param {Node} node - node\n * @returns {int32} r\n */\nfunction depth(node) { let d = 0; for (let n = node.parent; n !== null; n = n.parent) ++d; return d; }');

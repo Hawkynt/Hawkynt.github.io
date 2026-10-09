@@ -7617,6 +7617,7 @@
         // declared earlier in the file needs its constructor's parameter types on
         // file before that earlier class's own `new X(...)` call sites transform).
         this.preRegisterConstructorSignatures(jsAst);
+        this.preRegisterDeclaredFieldTypes(jsAst);
         // Approximate REGULAR (non-constructor) method signatures for every
         // top-level class too - see preRegisterAllMethodSignaturesAcrossClasses's
         // own doc comment (PPM's PPMContext.AddSymbol motivating case). Runs after
@@ -7995,6 +7996,33 @@
      * registerMethodSignature already work for ordinary methods), so this pre-scan only
      * needs to be a reasonable approximation for call sites processed earlier in the file.
      */
+    /**
+     * Pre-register the JSDoc-declared type of every `/** @type {T} *\/ this.f = ...;`
+     * a class constructor holds, before any body is transformed: a function declared
+     * ahead of the class (xz-lzma2.js's encodeLiteral reading state.dictResetPos, a
+     * float64) otherwise sees no field type and misses the cast into its int32 local
+     * (CS0266). The class's own transform registers the authoritative type later.
+     * @param {Object} jsAst - the IL program
+     */
+    preRegisterDeclaredFieldTypes(jsAst) {
+      this._walkAstNodes(jsAst.body, node => {
+        if ((node.type !== 'ClassDeclaration' && node.type !== 'ClassExpression') || !node.id?.name) return;
+        const body = node.body?.body || node.body || [];
+        const ctorNode = Array.isArray(body) ? body.find(m => m.type === 'MethodDefinition' && m.kind === 'constructor') : null;
+        for (const stmt of ctorNode?.value?.body?.body || []) {
+          const assignment = stmt.type === 'ExpressionStatement' ? stmt.expression : null;
+          if (assignment?.type !== 'AssignmentExpression' || assignment.operator !== '=' || typeof assignment.declaredType !== 'string') continue;
+          const left = assignment.left;
+          const fieldName = left?.type === 'ThisPropertyAccess' ? (typeof left.property === 'string' ? left.property : left.property?.name) : null;
+          if (!fieldName) continue;
+          const pascalName = this.toPascalCase(fieldName);
+          if (this.classFieldTypeOwnHas(node.id.name, pascalName)) continue;
+          const type = this.mapILType(assignment.declaredType);
+          if (type && type.name !== 'object') this.setClassFieldType(node.id.name, pascalName, type);
+        }
+      });
+    }
+
     preRegisterConstructorSignatures(jsAst) {
       if (!jsAst || !Array.isArray(jsAst.body)) return;
       for (const node of jsAst.body) {
