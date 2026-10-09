@@ -382,6 +382,54 @@ test('Perl harness: given a wrong vector, a throwing setter and an unapplied fie
   checkProbe(runProbe('perl', PERL_PROBE));
 });
 
+// The Ruby stand-in runs on the real runtime prelude (RubyTransformer.js),
+// whose JSBase gives the probe instance JavaScript's `name in instance`.
+const rbList = list => `[${list.join(', ')}]`;
+const rbVector = (v, extra = '') => `JSObject.new({ "text" => "${v.text}", "input" => ${rbList(v.input)}, "key" => ${rbList(v.key)}, "iv" => ${rbList(v.iv)}, "expected" => ${rbList(v.expected)}${extra} })`;
+const RB_PROBE = () => `${require(path.join(__dirname, '..', 'codingplugins', 'RubyTransformer.js')).RUBY_RUNTIME}
+class ProbeInstance < JSBase
+  def initialize(algorithm, inverse = false)
+    @algorithm = algorithm
+    @data = []
+    @_key = nil
+    @_iv = nil
+  end
+  def key = @_key
+  def key=(v)
+    @_key = v.to_a
+  end
+  def iv = @_iv
+  def iv=(v)
+    raise JSError.new('iv rejected') if @algorithm.name == 'Throwing'
+    @_iv = v.to_a
+  end
+  def Feed(d) = @data.concat(d.to_a)
+  def Result
+    out = @data.each_with_index.map { |b, i| b ^ @_key[i % @_key.length] ^ @_iv[0] }
+    out[0] ^= 1 if @algorithm.name == 'Wrong' && out.length == 2
+    out
+  end
+end
+class ProbeAlgorithm < JSBase
+  attr_accessor :name, :tests
+  def initialize(name, tests)
+    @name = name
+    @tests = tests
+  end
+  def CreateInstance(inverse = false, *_) = ProbeInstance.new(self, inverse)
+end
+${JSON.stringify(PROBES)}.each do |name|
+  extra = name == 'Lacking'
+  tests = extra ? [${PROBE_VECTORS.map(v => rbVector(v, ', "counter" => 7')).join(', ')}] : [${PROBE_VECTORS.map(v => rbVector(v)).join(', ')}]
+  $__js_algorithms.push(ProbeAlgorithm.new(name, tests))
+end
+`;
+
+test('Ruby harness: given a wrong vector, a throwing setter and an unapplied field, when run, then each is reported, none swallowed', () => {
+  if (!hasTool('ruby')) return 'skip';
+  checkProbe(runProbe('ruby', RB_PROBE()));
+});
+
 // The C# stand-in mimics the generated code's shape: framework stub classes
 // named as in AlgorithmFramework.js (the stub instance declares IV and Nonce,
 // as csharp.js's does) and algorithm classes nested in a *Generated class,

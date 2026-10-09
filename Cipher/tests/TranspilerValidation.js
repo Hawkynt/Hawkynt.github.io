@@ -414,7 +414,7 @@ function loadLanguagePlugin(language) {
 
 // Bundling is implemented for languages whose prelude accumulates a
 // name->algorithm registry the harness can look up.
-const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript']);
+const BUNDLE_LANGUAGES = new Set(['python', 'perl', 'javascript', 'ruby']);
 
 function transpileOne(source, plugin, algoName, extraOptions, parserOptions) {
   const Parser = loadTranspiler();
@@ -497,6 +497,10 @@ function bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptio
     } catch (e) {
       return { code, error: 'library ' + path.basename(libPath) + ': ' + e.message };
     }
+    if (language === 'ruby') {
+      code += rubyLibraryBinding(libSrc, libCode, exported, paramName, algorithmFile, libPath);
+      continue;
+    }
     // A library assigning module.exports from its own IIFE keeps its names
     // local: it gets a module object to assign, and the parameter is bound to that
     if (libraryExports(libSrc) === 'module.exports') {
@@ -538,6 +542,27 @@ function bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptio
     }
   }
   return { code };
+}
+
+/**
+ * A .data library bundled for Ruby: its code (module-level names are globals
+ * and class constants, see RubyTransformer.js), then the factory parameter's
+ * global bound to its exports. A library assigning module.exports gets a
+ * module object to assign first.
+ * @returns {string} Ruby code
+ */
+function rubyLibraryBinding(libSrc, libCode, exported, paramName, algorithmFile, libPath) {
+  const { RubyTransformer } = require(path.join(CODINGPLUGINS_DIR, 'RubyTransformer.js'));
+  const libClass = path.basename(libPath, '.js').replace(/[^a-zA-Z0-9]/g, '_') + '_libGenerated';
+  const target = RubyTransformer.globalNameFor(path.basename(algorithmFile, '.js').replace(/[^a-zA-Z0-9]/g, '_') + 'Generated', paramName);
+  if (libraryExports(libSrc) === 'module.exports') {
+    const module = RubyTransformer.globalNameFor(libClass, 'module');
+    return `${module} = JSObject.new({ "exports" => JSObject.new })\n${libCode}\n${target} = ${module}["exports"]\n\n`;
+  }
+  const value = exported.single
+    ? RubyTransformer.libraryBinding(libClass, exported.single, libCode)
+    : `JSObject.new({ ${exported.names.map(n => `${JSON.stringify(n)} => ${RubyTransformer.libraryBinding(libClass, n, libCode)}`).join(', ')} })`;
+  return `${libCode}\n${target} = ${value}\n\n`;
 }
 
 /**
@@ -662,7 +687,7 @@ function transpileAlgorithm(algorithmFile, language, dependencies = []) {
 
 // Languages whose harness runs every vector; the others only prove the
 // generated code compiles and a run of theirs checks nothing.
-const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp']);
+const VECTOR_HARNESS_LANGUAGES = new Set(['javascript', 'python', 'perl', 'csharp', 'ruby']);
 
 /**
  * The harness spec handed to a vector harness: per algorithm the name, the
@@ -720,7 +745,7 @@ function generateTestHarness(language, algorithmCode, spec, algorithmName, sampl
     case 'go':
       return generateGoTestHarness(algorithmCode, vector, algorithmName);
     case 'ruby':
-      return generateRubyTestHarness(algorithmCode, vector, algorithmName);
+      return generateRubyTestHarness(algorithmCode, spec, algorithmName);
     case 'rust':
       return generateRustTestHarness(algorithmCode, vector, algorithmName);
     case 'javascript':
@@ -1029,29 +1054,12 @@ func main() {
   };
 }
 
-// Ruby Test Harness
-function generateRubyTestHarness(algorithmCode, vector, algorithmName) {
-  const input = bytesToArrayLiteral(vector.input, 'ruby');
-  const expected = bytesToArrayLiteral(vector.expected, 'ruby');
-
-  return {
-    success: true,
-    code: `#!/usr/bin/env ruby
-${algorithmCode}
-
-puts "Testing ${algorithmName}..."
-begin
-  input = ${input}
-  expected = ${expected}
-
-  puts "Input length: #{input.length}"
-  puts "Expected length: #{expected.length}"
-  puts "COMPILE_OK"
-rescue => e
-  puts "ERROR: #{e.message}"
-  exit 1
-end`
-  };
+// Ruby vector harness (tests/validation-harness/harness.rb). The transpiled
+// code keeps its registry in $__js_algorithms (see RubyTransformer.js), which
+// the harness searches by name; the spec goes into a literal heredoc.
+function generateRubyTestHarness(algorithmCode, spec, algorithmName) {
+  const harness = readHarness('harness.rb').replace('__SPEC_JSON__', () => asciiJson(spec));
+  return { success: true, code: `# Validation of ${algorithmName}\n${algorithmCode}\n${harness}` };
 }
 
 // Rust Test Harness
@@ -1534,6 +1542,7 @@ function executeCode(language, outputDir) {
     case 'javascript': return runProcess('node', [path.join(outputDir, 'test.js')], { cwd: outputDir });
     case 'python': return runProcess('python', ['-X', 'utf8', path.join(outputDir, 'test.py')], { cwd: outputDir });
     case 'perl': return runProcess('perl', [path.join(outputDir, 'test.pl')], { cwd: outputDir });
+    case 'ruby': return runProcess('ruby', [path.join(outputDir, 'test.rb')], { cwd: outputDir });
     case 'csharp': return runProcess('dotnet', [path.join(outputDir, 'bin', 'Release', 'net10.0', 'Test.dll')], { cwd: outputDir });
     default: throw new Error(`${language} has no vector harness to run`);
   }
