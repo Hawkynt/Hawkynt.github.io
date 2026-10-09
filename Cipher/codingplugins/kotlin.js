@@ -1645,13 +1645,33 @@ abstract class StreamCipherAlgorithm : SymmetricCipherAlgorithm()
 abstract class EncodingAlgorithm : Algorithm()
 abstract class CompressionAlgorithm : Algorithm()
 abstract class ErrorCorrectionAlgorithm : Algorithm()
-abstract class HashFunctionAlgorithm : Algorithm() { @JvmField var SupportedOutputSizes: JsArray<KeySize?>? = JsArray() }
-abstract class MacAlgorithm : Algorithm() { @JvmField var SupportedMacSizes: JsArray<KeySize?>? = JsArray(); @JvmField var NeedsKey: Boolean = true }
-abstract class KdfAlgorithm : Algorithm() { @JvmField var SupportedOutputSizes: JsArray<KeySize?>? = JsArray(); @JvmField var SaltRequired: Boolean = true }
-abstract class PaddingAlgorithm : Algorithm() { @JvmField var IsLengthIncluded: Boolean = false }
-abstract class CipherModeAlgorithm : Algorithm() { @JvmField var RequiresIV: Boolean = true; @JvmField var SupportedIVSizes: JsArray<KeySize?>? = JsArray() }
-abstract class AeadAlgorithm : CryptoAlgorithm() { @JvmField var SupportedTagSizes: JsArray<KeySize?>? = JsArray(); @JvmField var SupportsDetached: Boolean = false }
-abstract class RandomGenerationAlgorithm : Algorithm() { @JvmField var IsDeterministic: Boolean = false; @JvmField var IsCryptographicallySecure: Boolean = true; @JvmField var SupportedSeedSizes: JsArray<KeySize?>? = JsArray() }
+abstract class HashFunctionAlgorithm : Algorithm() {
+    @JvmField var SupportedOutputSizes: JsArray<KeySize?>? = JsArray()
+}
+abstract class MacAlgorithm : Algorithm() {
+    @JvmField var SupportedMacSizes: JsArray<KeySize?>? = JsArray()
+    @JvmField var NeedsKey: Boolean = true
+}
+abstract class KdfAlgorithm : Algorithm() {
+    @JvmField var SupportedOutputSizes: JsArray<KeySize?>? = JsArray()
+    @JvmField var SaltRequired: Boolean = true
+}
+abstract class PaddingAlgorithm : Algorithm() {
+    @JvmField var IsLengthIncluded: Boolean = false
+}
+abstract class CipherModeAlgorithm : Algorithm() {
+    @JvmField var RequiresIV: Boolean = true
+    @JvmField var SupportedIVSizes: JsArray<KeySize?>? = JsArray()
+}
+abstract class AeadAlgorithm : CryptoAlgorithm() {
+    @JvmField var SupportedTagSizes: JsArray<KeySize?>? = JsArray()
+    @JvmField var SupportsDetached: Boolean = false
+}
+abstract class RandomGenerationAlgorithm : Algorithm() {
+    @JvmField var IsDeterministic: Boolean = false
+    @JvmField var IsCryptographicallySecure: Boolean = true
+    @JvmField var SupportedSeedSizes: JsArray<KeySize?>? = JsArray()
+}
 
 abstract class IBlockCipherInstance : IAlgorithmInstance {
     @JvmField var BlockSize: Int = 0
@@ -1688,12 +1708,38 @@ abstract class IBlockCipherInstance : IAlgorithmInstance {
         return output
     }
 }
-abstract class IHashFunctionInstance : IAlgorithmInstance { @JvmField var OutputSize: Int = 0; constructor(a: Algorithm?) : super(a) { OutputSize = 0 }; constructor() : this(null) }
-abstract class IMacInstance : IAlgorithmInstance { constructor(a: Algorithm?) : super(a); constructor() : this(null); open fun ComputeMac(data: U8Array?): U8Array? { throw JsError.thrown("ComputeMac() not implemented") } }
-abstract class IKdfInstance : IAlgorithmInstance { @JvmField var OutputSize: Int = 0; @JvmField var Iterations: Int = 0; constructor(a: Algorithm?) : super(a) { OutputSize = 0; Iterations = 0 }; constructor() : this(null) }
-abstract class IAeadInstance : IAlgorithmInstance { @JvmField var aad: U8Array? = null; @JvmField var tagSize: Int = 0; constructor(a: Algorithm?) : super(a) { aad = U8Array(); tagSize = 0 }; constructor() : this(null) }
-abstract class IErrorCorrectionInstance : IAlgorithmInstance { constructor(a: Algorithm?) : super(a); constructor() : this(null); open fun DetectError(data: U8Array?): Boolean { throw JsError.thrown("DetectError() not implemented") } }
-abstract class IRandomGeneratorInstance : IAlgorithmInstance { constructor(a: Algorithm?) : super(a); constructor() : this(null); open fun NextBytes(count: Int): U8Array? { throw JsError.thrown("NextBytes() not implemented") } }
+abstract class IHashFunctionInstance : IAlgorithmInstance {
+    @JvmField var OutputSize: Int = 0
+    constructor(a: Algorithm?) : super(a) { OutputSize = 0 }
+    constructor() : this(null)
+}
+abstract class IMacInstance : IAlgorithmInstance {
+    constructor(a: Algorithm?) : super(a)
+    constructor() : this(null)
+    open fun ComputeMac(data: U8Array?): U8Array? { throw JsError.thrown("ComputeMac() not implemented") }
+}
+abstract class IKdfInstance : IAlgorithmInstance {
+    @JvmField var OutputSize: Int = 0
+    @JvmField var Iterations: Int = 0
+    constructor(a: Algorithm?) : super(a) { OutputSize = 0; Iterations = 0 }
+    constructor() : this(null)
+}
+abstract class IAeadInstance : IAlgorithmInstance {
+    @JvmField var aad: U8Array? = null
+    @JvmField var tagSize: Int = 0
+    constructor(a: Algorithm?) : super(a) { aad = U8Array(); tagSize = 0 }
+    constructor() : this(null)
+}
+abstract class IErrorCorrectionInstance : IAlgorithmInstance {
+    constructor(a: Algorithm?) : super(a)
+    constructor() : this(null)
+    open fun DetectError(data: U8Array?): Boolean { throw JsError.thrown("DetectError() not implemented") }
+}
+abstract class IRandomGeneratorInstance : IAlgorithmInstance {
+    constructor(a: Algorithm?) : super(a)
+    constructor() : this(null)
+    open fun NextBytes(count: Int): U8Array? { throw JsError.thrown("NextBytes() not implemented") }
+}
 
 /** The registry and the shared construction primitives. */
 object AlgorithmFramework {
