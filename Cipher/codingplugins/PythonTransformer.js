@@ -1085,10 +1085,8 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def Shr32Signed(value, positions):
-        value &= 0xFFFFFFFF
-        if value >= 0x80000000:
-            value -= 0x100000000
-        return (value >> positions) & 0xFFFFFFFF
+        # (value | 0) >> positions: signed in, signed out
+        return OpCodes.ToInt(value) >> (OpCodes.ToInt(positions) & 31)
 
     # ==================[ BITWISE LOGICAL (8/16-bit) ]==================
     @staticmethod
@@ -1596,21 +1594,23 @@ class OpCodes(metaclass=_OpCodesMeta):
         return JSArray([(b ^ value) & 0xFF for b in array])
 
     # ==================[ MATH / GF ARITHMETIC ]==================
+    # JavaScript % keeps the sign of the dividend, and a Number product
+    # rounds past 2^53
     @staticmethod
     def AddMod(a, b, m):
-        return ((a % m) + (b % m)) % m
+        return _js_imod(_js_imod(a, m) + _js_imod(b, m), m)
 
     @staticmethod
     def SubMod(a, b, m):
-        return ((a % m) - (b % m) + m) % m
+        return _js_imod(_js_imod(a, m) - _js_imod(b, m) + m, m)
 
     @staticmethod
     def MulMod(a, b, m):
-        return ((a % m) * (b % m)) % m
+        return _js_imod(_js_f64(_js_imod(a, m) * _js_imod(b, m)), m)
 
     @staticmethod
     def ModSafe(value, modulus):
-        result = value % modulus
+        result = _js_imod(value, modulus)
         return result + modulus if result < 0 else result
 
     @staticmethod

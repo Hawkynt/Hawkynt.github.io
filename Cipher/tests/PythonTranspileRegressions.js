@@ -513,6 +513,13 @@ check('round: Math.round rounds a half up, not to even', () => {
   return expectOutput(runPython(js, 'print([r(v) for v in (2.5, -2.5, 0.49999999999999994, 1.5, -0.4, 7)])'), ['[3, -2, 0, 2, 0, 7]']);
 });
 
+check('runtime: Shr32Signed returns a signed value and the Mod helpers keep JavaScript % signs', () => {
+  const js = 'function f() { return [OpCodes.Shr32Signed(-78583, 11), OpCodes.Shr32Signed(0xFFFFFFFF, 1), OpCodes.AddMod(-3, 1, 5), OpCodes.SubMod(-3, 4, 5),\n' +
+    '  OpCodes.MulMod(0xFFFFFFF1, 0xFFFFFFF7, 0xFFFFFFFB), OpCodes.ModSafe(-7, 5)]; }';
+  // Given a negative shift operand, an unsigned one with the sign bit, negative Mod operands and a product past 2^53
+  return expectOutput(runPython(js, 'print(f())'), ['[-39, -1, -2, -2, 4294967196, 3]']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }
