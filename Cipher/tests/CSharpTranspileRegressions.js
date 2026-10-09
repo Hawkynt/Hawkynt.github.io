@@ -1050,6 +1050,13 @@ check('instances: CreateInstance into a local of the file instance class is cast
     '  /** @returns {uint8[]} r */\n  run() {\n    /** @type {PermInstance} */\n    const instance = this.CreateInstance(false);\n    return instance.Result();\n  }\n}');
   expectMatch(code, /PermInstance instance = \(PermInstance\)\(?this\.CreateInstance\(false\)\)?;/, '(PermInstance)this.CreateInstance(false)');
 });
+check('slice: an array slice the IL gives a string member is JsSlice (CS1503)', () => {
+  const code = transpile('class Entry {\n  /** @param {string} digest - digest */\n  constructor(digest) {\n    /** @type {string} */\n    this.digest = digest;\n  }\n}\n' +
+    'const LIST = [new Entry("abc")];\n/**\n * @returns {string[]} r\n */\n' +
+    'function heads() { return LIST.filter(entry => entry.digest.length > 0).map(entry => entry.digest.slice(0, 2) + "."); }');
+  expectMatch(code, /JsSlice\(entry\.Digest, 0, 2\)/, 'JsSlice(entry.Digest, 0, 2)');
+  expectNoMatch(code, /SliceArray\(entry\.Digest/, 'SliceArray on a string');
+});
 const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +

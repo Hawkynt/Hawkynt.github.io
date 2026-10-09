@@ -24808,6 +24808,14 @@
     transformArraySlice(node) {
       const array = this.transformExpression(node.array);
 
+      // A string's slice (rainbow.js's `entry.digest.slice(0, 16)`) is JsSlice
+      const sliced = this.inferFullExpressionType(node.array);
+      if (sliced?.name === 'string' && !sliced.isArray) {
+        const args = [array, this.ensureIntIndex(node.start ? this.transformExpression(node.start) : CSharpLiteral.Int(0), node.start)];
+        if (node.end) args.push(this.ensureIntIndex(this.transformExpression(node.end), node.end));
+        return new CSharpMethodCall(null, 'JsSlice', args);
+      }
+
       // Check if a node represents a negative expression
       const isNegativeExpression = (n) => {
         if (!n) return false;
