@@ -194,6 +194,7 @@
      */
     absorbWord(word) {
       let x = OpCodes.ToUint32(word);
+      /** @type {uint32} */
       let y;
 
       // Permutation P1
@@ -218,6 +219,7 @@
      * @returns {uint32}
      */
     extract() {
+      /** @type {uint32} */
       let x, y;
 
       // Extract and permute bits from state (from C reference)
