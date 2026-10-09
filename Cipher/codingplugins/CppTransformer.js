@@ -1058,17 +1058,23 @@
           : `if (__k == ${key}) { __out = js::toAny(${invoke}); return true; }`);
       }
       const names = list => list.length ? `static const char16_t* names[] = { ${list.join(', ')} };\n  for (auto n : names) if (__k == n) return true;\n  ` : '';
-      L.push(new CppRaw(`bool __get(const std::u16string& __k, js::Any& __out) override {${get.length ? '\n  ' + get.join('\n  ') : ''}\n  return ${base}::__get(__k, __out);\n}`));
-      L.push(new CppRaw(`bool __set(const std::u16string& __k, const js::Any& __v) override {${set.length ? '\n  ' + set.join('\n  ') : ''}\n  return ${base}::__set(__k, __v);\n}`));
-      L.push(new CppRaw(`bool __has(const std::u16string& __k) override {\n  ${names(has)}return ${base}::__has(__k);\n}`));
-      L.push(new CppRaw(`bool __hasMethod(const std::u16string& __k) override {\n  ${names(hasMethod)}return ${base}::__hasMethod(__k);\n}`));
-      L.push(new CppRaw(`bool __call(const std::u16string& __k, std::vector<js::Any>& __a, js::Any& __out) override {${call.length ? '\n  ' + call.join('\n  ') : ''}\n  return ${base}::__call(__k, __a, __out);\n}`));
-      L.push(new CppRaw(`void __keys(std::vector<js::String>& __out) override {\n  ${base}::__keys(__out);${keys.length ? '\n  ' + keys.join('\n  ') : ''}\n}`));
+      // declared in the class, defined after every class (the field types must be complete)
+      const defs = c.reflectionDefs = [];
+      const both = (decl, body) => {
+        L.push(new CppRaw(`${decl.replace('#', '')} override;`));
+        defs.push(new CppRaw(`${decl.replace('#', `${c.cppName}::`)} {${body}\n}`));
+      };
+      both('bool #__get(const std::u16string& __k, js::Any& __out)', `${get.length ? '\n  ' + get.join('\n  ') : ''}\n  return ${base}::__get(__k, __out);`);
+      both('bool #__set(const std::u16string& __k, const js::Any& __v)', `${set.length ? '\n  ' + set.join('\n  ') : ''}\n  return ${base}::__set(__k, __v);`);
+      both('bool #__has(const std::u16string& __k)', `\n  ${names(has)}return ${base}::__has(__k);`);
+      both('bool #__hasMethod(const std::u16string& __k)', `\n  ${names(hasMethod)}return ${base}::__hasMethod(__k);`);
+      both('bool #__call(const std::u16string& __k, std::vector<js::Any>& __a, js::Any& __out)', `${call.length ? '\n  ' + call.join('\n  ') : ''}\n  return ${base}::__call(__k, __a, __out);`);
+      both('void #__keys(std::vector<js::String>& __out)', `\n  ${base}::__keys(__out);${keys.length ? '\n  ' + keys.join('\n  ') : ''}`);
       return L;
     }
 
     classBodies(c) {
-      const out = [];
+      const out = [...(c.reflectionDefs || [])];
       const self = c.cppName;
       const thisType = T.cls(c.name, false);
       // constructor
