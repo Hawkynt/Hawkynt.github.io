@@ -463,6 +463,14 @@ check('switch: a default written before other cases still lets them match', () =
   return expectOutput(runPython(js, 'print(f(0), f(1), f(2), f(7))'), ['zero/other one two zero/other']);
 });
 
+check('new: an x++ or ++x constructor argument passes the right value and increments once', () => {
+  const js = 'class Rule { constructor(id) { this.id = id; } }\n' +
+    'class Grammar { constructor() { this.next = 5; } post() { const r = new Rule(this.next++); return r.id; } pre() { return new Rule(++this.next).id; } }';
+  // Given a postfix and a prefix increment as the argument of new
+  // Then the code compiles and the ids are 5 then 7, the counter ends at 7
+  return expectOutput(runPython(js, 'g = Grammar()\nprint(g.post(), g.pre(), g.next)'), ['5 7 7']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

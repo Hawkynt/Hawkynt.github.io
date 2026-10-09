@@ -11050,9 +11050,10 @@ class OpCodes(metaclass=_OpCodesMeta):
       if (typeName && HELPER_CLASSES.has(typeName))
         this.helperClasses.add(typeName);
 
-      // new ClassName(args) -> ClassName(args)
+      // new ClassName(args) -> ClassName(args); `new Rule(this.next++)` passes
+      // the value and increments in a statement of its own
       const className = typeName ? toPascalCase(typeName) : this.transformExpression(node.callee);
-      const args = node.arguments.map(arg => this.transformExpression(arg));
+      const args = node.arguments.map(arg => this.transformSideEffectFreeValue(arg));
 
       const callee = typeof className === 'string'
         ? new PythonIdentifier(className)
