@@ -455,7 +455,11 @@
       let init = '';
       if (node.initializer) {
         if (node.initializer.nodeType === 'VariableDeclaration') {
-          init = `${node.initializer.type.toString()} ${node.initializer.name}`;
+          // A keyword as the loop variable's name (for (let base = 0; ...)) is
+          // escaped like everywhere else it is used
+          const keywords = /^(base|object|string|params|event|operator|checked|decimal|delegate|explicit|implicit|internal|lock|namespace|out|override|readonly|ref|sbyte|sealed|sizeof|stackalloc|struct|typeof|uint|ulong|unchecked|unsafe|ushort|using|virtual|volatile|fixed|foreach|goto|is|as|in)$/;
+          const loopName = keywords.test(node.initializer.name) ? '@' + node.initializer.name : node.initializer.name;
+          init = `${node.initializer.type.toString()} ${loopName}`;
           if (node.initializer.initializer) {
             init += ` = ${this.emit(node.initializer.initializer)}`;
           }

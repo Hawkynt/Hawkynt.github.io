@@ -720,6 +720,10 @@ check('BigInt locals: an undeclared local starting at a BigInt literal is a BigI
   const declared = transpile('/** @returns {uint64} h */\nfunction h() { /** @type {uint64} */ let x = 5n; return x; }');
   expectMatch(declared, /ulong x = /, 'a declared uint64 local stays ulong');
 });
+check('loops: a loop variable named like a keyword is escaped in the for header too', () => {
+  const code = transpile('/**\n * @param {int32} n - n\n * @returns {int32} s\n */\nfunction f(n) { let s = 0; for (let base = 0; base < n; base += 2) s += base; return s; }');
+  expectMatch(code, /for \(int @base = 0; @base < n;/, 'for (int @base = 0; ...)');
+});
 check('BigInt literal: a hex literal with a leading digit 8-F stays positive', () => {
   const code = transpile('/**\n * @param {bigint} k - key state\n * @returns {bigint} masked\n */\nfunction f(k) { return OpCodes.AndN(k, ~OpCodes.ShiftLn(0xFn, 120n)); }');
   expectMatch(code, /BigInteger\.Parse\("0F", System\.Globalization\.NumberStyles\.HexNumber\)/, 'Parse("0F") (Parse("F") is -1)');
