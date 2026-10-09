@@ -535,6 +535,20 @@ check('numeric: the global isNaN tests a double', () => {
 // ---------------------------------------------------------------------------
 // Framework-typed values
 // ---------------------------------------------------------------------------
+check('framework: every country code the algorithms name exists in the CountryCode stub', () => {
+  const algorithmsDir = path.join(CIPHER_DIR, 'algorithms');
+  const used = new Set();
+  for (const dir of fs.readdirSync(algorithmsDir)) {
+    const full = path.join(algorithmsDir, dir);
+    if (!fs.statSync(full).isDirectory()) continue;
+    for (const file of fs.readdirSync(full).filter(f => f.endsWith('.js')))
+      for (const m of fs.readFileSync(path.join(full, file), 'utf-8').matchAll(/CountryCode\.([A-Z_]+)/g)) used.add(m[1]);
+  }
+  const stubs = transpile('class A extends Algorithm { constructor() { super(); this.name = "A"; } }', true);
+  const members = new Set((stubs.match(/enum CountryCode \{([^}]*)\}/) || ['', ''])[1].split(',').map(s => s.trim()));
+  const missing = [...used].filter(c => !members.has(c));
+  if (missing.length) throw new Error('missing country codes: ' + missing.join(', '));
+});
 check('framework: a framework property set on a framework-typed instance reaches the concrete class (dynamic)', () => {
   const code = transpile('class K extends IAlgorithmInstance {\n  /** @param {Algorithm} hash - hash algorithm */\n' +
     '  use(hash) { /** @type {IHashFunctionInstance} */ const h = hash.CreateInstance(false); h.outputSize = 37; return h; }\n}');
