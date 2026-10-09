@@ -217,6 +217,85 @@ check('typescript: an object method named byteLength stays a call', () => {
   return expectOutput(runIn(js, 'typescript', 'console.log((globalThis as any).size);'), ['13']);
 });
 
+// ---------------------------------------------------------------------------
+// PHP: the JavaScript reference output on the JavaScript-semantics runtime
+// ---------------------------------------------------------------------------
+
+/** A PHP driver printing the module variables of the snippet (namespace CipherValidation) */
+const phpPrint = (...names) => `namespace {\necho ${names.map(n => `\\JS\\toStr(\\CipherValidation\\M::$${n})`).join(" . ' ' . ")}, "\\n";\n}`;
+
+/** What JavaScript prints for the same variables */
+function jsPrint(js, ...names) {
+  // eslint-disable-next-line no-new-func
+  return new Function('OpCodes', `${js}\nreturn [${names.join(', ')}].map(String).join(' ');`)(require(path.join(CIPHER_DIR, 'OpCodes.js')));
+}
+
+check('php: an array passed to a function is the same array (PHP arrays are values)', () => {
+  const js = 'function fill(a) { a[0] = 7; }\nconst arr = [0, 1];\nfill(arr);\nconst r = arr[0];';
+  // Given a function writing into the array it is passed
+  // When run
+  // Then the caller's array changed, as in JavaScript
+  return expectOutput(runIn(js, 'php', phpPrint('r')), [jsPrint(js, 'r')]);
+});
+
+check('php: ++ and -- of an array element change it (PHP loses them on ArrayAccess)', () => {
+  const js = 'const c = [0, 5];\nc[1]++;\n++c[1];\nc[0]--;\nconst a = c[0], b = c[1];';
+  // Given increments and a decrement of elements
+  // When run
+  // Then each took effect
+  return expectOutput(runIn(js, 'php', phpPrint('a', 'b')), [jsPrint(js, 'a', 'b')]);
+});
+
+check('php: 32-bit bitwise results are JavaScript\'s signed and unsigned words', () => {
+  const js = 'const x = 0x80000000;\nconst a = x | 0, b = 0xFFFFFFFF ^ 0, c = 1 << 31, d = -1 >>> 0, e = (x >> 4), f = OpCodes.Not32(0), g = OpCodes.Xor32(0xFFFFFFFF, 1);';
+  // Given bit 31 reached by |, ^, <<, >>, >>> and the unsigned OpCodes helpers
+  // When run
+  // Then each value is JavaScript's (an inlined OpCodes.Not32 is unsigned as OpCodes returns it)
+  return expectOutput(runIn(js, 'php', phpPrint('a', 'b', 'c', 'd', 'e', 'f', 'g')), [jsPrint(js, 'a', 'b', 'c', 'd', 'e', 'f', 'g')]);
+});
+
+check('php: a product past 2^53 is the double JavaScript rounds it to', () => {
+  const js = 'const s0 = 0xAAD26B49;\nconst t0 = OpCodes.ToUint32(1099087573 * s0);';
+  // Given two 32-bit factors whose exact product PHP would keep
+  // When run
+  // Then the low word is the one of JavaScript's rounded product
+  return expectOutput(runIn(js, 'php', phpPrint('t0')), [jsPrint(js, 't0')]);
+});
+
+check('php: accessors and methods differing only in case are kept apart', () => {
+  const js = 'class C { constructor() { this._k = 1; this._K = 2; }\n  get key() { return this._k; } get Key() { return this._K; }\n  v() { return 3; } V() { return 4; } }\n'
+    + 'const o = new C();\nconst a = o.key, b = o.Key, c = o.v(), d = o.V();';
+  // Given accessors key/Key and methods v/V (PHP method names ignore case)
+  // When run
+  // Then each is its own
+  return expectOutput(runIn(js, 'php', phpPrint('a', 'b', 'c', 'd')), ['1 2 3 4']);
+});
+
+check('php: a property holding null is not undefined', () => {
+  const js = 'const o = { input: null };\nconst a = o.input !== undefined, b = o.missing !== undefined;';
+  // Given a property set to null and one never set (PHP has one null for both)
+  // When compared with undefined
+  // Then only the missing one is undefined
+  return expectOutput(runIn(js, 'php', phpPrint('a', 'b')), ['true false']);
+});
+
+check('php: BigInt division and remainder truncate toward zero', () => {
+  const js = 'const a = -7n % 3n, b = -7n / 2n, c = -5n >> 1n, d = -5n & 255n;';
+  // Given negative BigInts (GMP's % is never negative)
+  // When run
+  // Then the results are JavaScript's
+  return expectOutput(runIn(js, 'php', phpPrint('a', 'b', 'c', 'd')), [jsPrint(js, 'a', 'b', 'c', 'd')]);
+});
+
+check('php: Node.js crypto HMACs are PHP\'s hash HMACs', () => {
+  const js = "const crypto = require('crypto');\nconst h = crypto.createHmac('sha1', Buffer.from([1, 2, 3]));\nh.update(Buffer.from([4, 5]));\nconst r = h.digest('hex');";
+  // Given an algorithm computing HMAC-SHA1 with Node's crypto module
+  // When run
+  // Then the digest is the same
+  const expected = require('crypto').createHmac('sha1', Buffer.from([1, 2, 3])).update(Buffer.from([4, 5])).digest('hex');
+  return expectOutput(runIn(js, 'php', phpPrint('r')), [expected]);
+});
+
 /**
  * TSPHP: run every regression case.
  * @param {object} options - { verbose }
