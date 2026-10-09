@@ -2517,6 +2517,17 @@ Destructor JsBigH()
   If limbs Then Deallocate(limbs)
 End Destructor
 
+' Int and Fix of a Double saturate past 2^63; every double from 2^52 up is already whole
+Function js_dfloor(ByVal d As Double) As Double
+  If d <> d OrElse Abs(d) >= 4503599627370496.0 Then Return d
+  Return Int(d)
+End Function
+
+Function js_dfix(ByVal d As Double) As Double
+  If d <> d OrElse Abs(d) >= 4503599627370496.0 Then Return d
+  Return Fix(d)
+End Function
+
 ' ---------------------------------------------------------------------------
 ' Symbols, primitive values, conversions, exceptions
 ' ---------------------------------------------------------------------------
@@ -2637,13 +2648,13 @@ Function js_numstr(ByVal d As Double, ByVal radix As Long = 10) As String
   If radix <> 10 Then
     Dim neg As Long = d < 0
     Dim v As Double = Abs(d)
-    Dim ip As Double = Int(v)
+    Dim ip As Double = js_dfloor(v)
     Dim fp As Double = v - ip
     Dim digits As String = "0123456789abcdefghijklmnopqrstuvwxyz"
     Dim s As String
     If ip = 0 Then s = "0"
     Do While ip > 0
-      Dim q As Double = Int(ip / radix)
+      Dim q As Double = js_dfloor(ip / radix)
       Dim rr As Long = CLng(ip - q * radix)
       s = Chr(digits[rr]) & s
       ip = q
@@ -2652,7 +2663,7 @@ Function js_numstr(ByVal d As Double, ByVal radix As Long = 10) As String
       s &= "."
       For k As Long = 1 To 20
         fp *= radix
-        Dim dg As Long = Int(fp)
+        Dim dg As Long = js_dfloor(fp)
         s &= Chr(digits[dg])
         fp -= dg
         If fp = 0 Then Exit For
@@ -2660,7 +2671,7 @@ Function js_numstr(ByVal d As Double, ByVal radix As Long = 10) As String
     End If
     Return IIf(neg, "-" & s, s)
   End If
-  If d = Int(d) AndAlso Abs(d) < 1e21 Then
+  If d = js_dfloor(d) AndAlso Abs(d) < 1e21 Then
     ' an integral value: its digits
     Dim buf As ZString * 64
     sprintf(@buf, "%.0f", d)
@@ -2756,19 +2767,19 @@ End Function
 
 ' ToInt32 / ToUint32 of a double
 Function js_toi32(ByVal d As Double) As Long
-  If d >= -2147483648.0 AndAlso d <= 2147483647.0 Then Return CLng(Fix(d))
+  If d >= -2147483648.0 AndAlso d <= 2147483647.0 Then Return CLng(js_dfix(d))
   If d <> d OrElse d = js_inf OrElse d = -js_inf Then Return 0
-  Dim t As Double = Fix(d)
-  Dim m As Double = t - Int(t / 4294967296.0) * 4294967296.0
+  Dim t As Double = js_dfix(d)
+  Dim m As Double = t - js_dfloor(t / 4294967296.0) * 4294967296.0
   If m >= 2147483648.0 Then m -= 4294967296.0
   Return CLng(m)
 End Function
 
 Function js_tou32(ByVal d As Double) As ULong
-  If d >= 0 AndAlso d <= 4294967295.0 Then Return CULng(Fix(d))
+  If d >= 0 AndAlso d <= 4294967295.0 Then Return CULng(js_dfix(d))
   If d <> d OrElse d = js_inf OrElse d = -js_inf Then Return 0
-  Dim t As Double = Fix(d)
-  Dim m As Double = t - Int(t / 4294967296.0) * 4294967296.0
+  Dim t As Double = js_dfix(d)
+  Dim m As Double = t - js_dfloor(t / 4294967296.0) * 4294967296.0
   Return CULng(m)
 End Function
 
@@ -2939,6 +2950,18 @@ End Function
 
 Function js_is_arr(ByRef v As JsV) As Long
   Return v.tag = JS_T_OBJ AndAlso v.p->kind = JS_K_ARR
+End Function
+
+' ArrayBuffer.isView: a typed array or a DataView
+Function js_is_view(ByRef v As JsV) As Long
+  Return v.tag = JS_T_OBJ AndAlso (v.p->kind = JS_K_TYPED OrElse v.p->kind = JS_K_DV)
+End Function
+
+Declare Function js_crt_time Cdecl Alias "time" (ByVal t As Any Ptr) As Long
+
+' Date.now(): milliseconds since the epoch (to the second)
+Function js_date_now() As Double
+  Return CDbl(js_crt_time(0)) * 1000.0
 End Function
 
 ' ---- objects ----
@@ -3329,7 +3352,7 @@ Function js_get(ByRef obj As JsV, ByRef key As JsV) As JsV
   If key.tag = JS_T_NUM AndAlso obj.tag = JS_T_OBJ Then
     Dim k As Long = obj.p->kind
     If k = JS_K_ARR OrElse k = JS_K_TYPED Then
-      If key.n >= 0 AndAlso key.n = Int(key.n) Then Return js_index_get(obj, CLng(key.n))
+      If key.n >= 0 AndAlso key.n = js_dfloor(key.n) Then Return js_index_get(obj, CLng(key.n))
       Dim u As JsV
       Return u
     End If
@@ -3444,7 +3467,7 @@ Sub js_typed_setn(ByVal t As JsTypedH Ptr, ByVal i As Long, ByVal d As Double)
         *p = 255
       Else
         ' round half to even
-        Dim f As Double = Int(d)
+        Dim f As Double = js_dfloor(d)
         Dim r As Double = d - f
         If r > 0.5 OrElse (r = 0.5 AndAlso (CLng(f) And 1)) Then f += 1
         *p = CUByte(f)
@@ -3583,13 +3606,13 @@ Sub js_setidxn(ByRef obj As JsV, ByVal d As Double, ByVal v As Double)
 End Sub
 
 Function js_idx(ByRef obj As JsV, ByVal d As Double) As JsV
-  If d = Int(d) AndAlso d >= 0 AndAlso d < 2147483647 Then Return js_index_get(obj, CLng(d))
+  If d = js_dfloor(d) AndAlso d >= 0 AndAlso d < 2147483647 Then Return js_index_get(obj, CLng(d))
   Dim key As JsV = js_num(d)
   Return js_get(obj, key)
 End Function
 
 Sub js_setidx(ByRef obj As JsV, ByVal d As Double, ByRef v As JsV)
-  If d = Int(d) AndAlso d >= 0 AndAlso d < 2147483647 Then
+  If d = js_dfloor(d) AndAlso d >= 0 AndAlso d < 2147483647 Then
     js_index_set(obj, CLng(d), v)
     Exit Sub
   End If
@@ -3761,7 +3784,7 @@ Function js_big_fromu64(ByVal u As ULongInt, ByVal neg As Long) As JsV
 End Function
 
 Function js_big_from_double(ByVal d As Double) As JsV
-  If d <> d OrElse d = js_inf OrElse d = -js_inf OrElse d <> Int(d) Then
+  If d <> d OrElse d = js_inf OrElse d = -js_inf OrElse (Abs(d) < 4503599627370496.0 AndAlso d <> js_dfloor(d)) Then
     js_throw_error("The number " & js_numstr(d) & " cannot be converted to a BigInt because it is not an integer", "RangeError")
   End If
   Dim neg As Long = d < 0
@@ -3770,7 +3793,7 @@ Function js_big_from_double(ByVal d As Double) As JsV
   Dim limbs(0 To 33) As ULong
   Dim n As Long = 0
   Do While v > 0
-    Dim q As Double = Int(v / 4294967296.0)
+    Dim q As Double = js_dfloor(v / 4294967296.0)
     limbs(n) = CULng(v - q * 4294967296.0)
     n += 1
     v = q
@@ -4420,22 +4443,22 @@ End Function
 ' ---- Math ----
 Function js_round(ByVal x As Double) As Double
   If x <> x OrElse x = js_inf OrElse x = -js_inf Then Return x
-  Return Int(x + 0.5)
+  Return js_dfloor(x + 0.5)
 End Function
 
 Function js_trunc(ByVal x As Double) As Double
   If x <> x OrElse x = js_inf OrElse x = -js_inf Then Return x
-  Return Fix(x)
+  Return js_dfix(x)
 End Function
 
 Function js_floor(ByVal x As Double) As Double
   If x <> x OrElse x = js_inf OrElse x = -js_inf Then Return x
-  Return Int(x)
+  Return js_dfloor(x)
 End Function
 
 Function js_ceil(ByVal x As Double) As Double
   If x <> x OrElse x = js_inf OrElse x = -js_inf Then Return x
-  Return -Int(-x)
+  Return -js_dfloor(-x)
 End Function
 
 Function js_sign(ByVal x As Double) As Double
@@ -4482,7 +4505,7 @@ End Function
 
 Function js_charcode(ByRef s As JsV, ByVal i As Double) As Double
   Dim t As String = js_tostring(s)
-  If i < 0 OrElse i >= Len(t) OrElse i <> Int(i) Then Return js_nan
+  If i < 0 OrElse i >= Len(t) OrElse i <> js_dfloor(i) Then Return js_nan
   Return t[CLng(i)]
 End Function
 
@@ -4526,14 +4549,14 @@ End Destructor
 
 Dim Shared SYM_re_source As Long, SYM_re_flags As Long, SYM_re_global As Long, SYM_re_mark As Long
 Dim Shared SYM_test As Long, SYM_match As Long, SYM_search As Long, SYM_exec As Long, SYM_replaceAll As Long
-Dim Shared SYM_lastIndex As Long
+Dim Shared SYM_lastIndex As Long, SYM_localeCompare As Long
 Declare Function js_str_replace(ByRef s As String, ByRef search As String, ByRef repl As String, ByVal all As Long) As String
 
 Sub js_re_init_syms()
   SYM_re_source = js_sym("source") : SYM_re_flags = js_sym("flags") : SYM_re_global = js_sym("global")
   SYM_re_mark = js_sym("__regexp__") : SYM_test = js_sym("test") : SYM_match = js_sym("match")
   SYM_search = js_sym("search") : SYM_exec = js_sym("exec") : SYM_replaceAll = js_sym("replaceAll")
-  SYM_lastIndex = js_sym("lastIndex")
+  SYM_lastIndex = js_sym("lastIndex") : SYM_localeCompare = js_sym("localeCompare")
 End Sub
 
 Function js_regex_new(ByRef src As String, ByRef flags As String) As JsV
@@ -4944,7 +4967,7 @@ Function js_relidx(ByRef v As JsV, ByVal n As Long, ByVal dflt As Long) As Long
   ElseIf d > 2147483647 Then
     i = 2147483647
   Else
-    i = CLng(Fix(d))
+    i = CLng(js_dfix(d))
   End If
   If i < 0 Then
     i += n
@@ -5434,6 +5457,10 @@ Function js_builtin_call(ByRef obj As JsV, ByVal sym As Long, ByVal argv As JsV 
       Case SYM_split
         If js_is_regex(js_a(argv, argc, 0)) Then Return js_re_split(s, argv[0])
         Return js_str_split(s, js_a(argv, argc, 0))
+      Case SYM_localeCompare
+        ' code unit order (the algorithms compare ASCII)
+        Dim t As String = js_tostring(js_a(argv, argc, 0))
+        Return js_num(IIf(s < t, -1, IIf(s > t, 1, 0)))
       Case SYM_match
         If js_is_regex(js_a(argv, argc, 0)) Then Return js_re_match(s, argv[0])
         Return js_re_match(s, js_regex_new(js_tostring(js_a(argv, argc, 0)), ""))
@@ -5975,7 +6002,7 @@ End Function
 
 ' ---- BlockAbsorber, SpongePadBlocks, MerkleDamgardBlocks ----
 Function fw_byte(ByVal v As Double) As Double
-  Dim r As Double = fmod(Fix(v), 256)
+  Dim r As Double = fmod(js_dfix(v), 256)
   If r < 0 Then r += 256
   Return r
 End Function
@@ -6115,11 +6142,11 @@ Function fw_MerkleDamgardBlocks(ByRef self As JsV, ByVal argv As JsV Ptr, ByVal 
   End If
   If lengthBytes > 0 Then
     Dim remaining As Double = IIf(inBits, total * 8, total)
-    remaining = IIf(remaining > 0, Fix(remaining), 0)
+    remaining = IIf(remaining > 0, js_dfix(remaining), 0)
     For i As Long = 0 To lengthBytes - 1
       Dim at As Long = IIf(little, i, lengthBytes - 1 - i)
       js_setidxn(blk, bs - lengthBytes + at, fmod(remaining, 256))
-      remaining = Int(remaining / 256)
+      remaining = js_dfloor(remaining / 256)
     Next
   End If
   js_push1(blocks, blk)
@@ -6211,10 +6238,14 @@ Function js_error_ctor(ByRef self As JsV, ByVal argv As JsV Ptr, ByVal argc As L
   Return self
 End Function
 
+' x87 arithmetic rounded to double precision, as JavaScript rounds every operation
+Declare Function js_crt_controlfp Cdecl Alias "_controlfp" (ByVal newval As ULong, ByVal mask As ULong) As ULong
+
 Sub js_rt_init()
   Static done As Long
   If done Then Exit Sub
   done = 1
+  js_crt_controlfp(&h10000, &h30000)
   Dim zero As Double = 0
   js_nan = zero / zero
   js_inf = 1 / zero
@@ -6396,6 +6427,19 @@ Function js_withf(ByVal seq As Long, ByVal f As JsFnPtr) As JsFnPtr
   Return f
 End Function
 
+' the value of an expression whose left operand ran first, in seq (the last argument is evaluated first)
+Function js_seqv(ByRef v As JsV, ByVal seq As Long) As JsV
+  Return v
+End Function
+
+Function js_seqd(ByVal d As Double, ByVal seq As Long) As Double
+  Return d
+End Function
+
+Function js_seqb(ByVal b As Long, ByVal seq As Long) As Long
+  Return b
+End Function
+
 Sub js_discard_s(ByRef v As JsV)
 End Sub
 
@@ -6451,14 +6495,21 @@ Function js_postincd(ByRef x As Double, ByVal d As Double) As Double
   Return old
 End Function
 
+' x + d, x - d of ++ and --: a BigInt steps as a BigInt
+Function js_inc(ByRef x As JsV, ByVal d As Double) As JsV
+  If x.tag = JS_T_BIG Then Return js_add(x, js_big_from_double(d))
+  Return js_num(js_tonum(x) + d)
+End Function
+
 Function js_preincv(ByRef x As JsV, ByVal d As Double) As JsV
-  x = js_num(js_tonum(x) + d)
+  x = js_inc(x, d)
   Return x
 End Function
 
 Function js_postincv(ByRef x As JsV, ByVal d As Double) As JsV
-  Dim old As JsV = js_num(js_tonum(x))
-  x = js_num(old.n + d)
+  Dim old As JsV = x
+  If old.tag <> JS_T_BIG Then old = js_num(js_tonum(x))
+  x = js_inc(old, d)
   Return old
 End Function
 
@@ -6559,7 +6610,7 @@ End Function
 
 Function js_isinteger(ByRef v As JsV) As Long
   If v.tag <> JS_T_NUM Then Return 0
-  Return v.n = Int(v.n) AndAlso v.n <> js_inf AndAlso v.n <> -js_inf
+  Return v.n = js_dfloor(v.n) AndAlso v.n <> js_inf AndAlso v.n <> -js_inf
 End Function
 
 Function js_isnan(ByRef v As JsV) As Long
@@ -7481,7 +7532,7 @@ Function oc_SecureRandomBytes(OC_ARGS) As JsV
   Dim n As Long = CLng(js_argnum(argv, argc, 0))
   Dim a As JsV = js_arr_new(n)
   For i As Long = 0 To n - 1
-    js_setidxn(a, i, Int(Rnd * 256))
+    js_setidxn(a, i, js_dfloor(Rnd * 256))
   Next
   Return a
 End Function
@@ -7644,7 +7695,7 @@ End Function
 Function oc_Split64(OC_ARGS) As JsV
   Dim v As Double = js_argnum(argv, argc, 0)
   Dim o As JsV = js_obj_new()
-  js_setp(o, js_sym("high32"), js_num(Int(v / 4294967296.0)))
+  js_setp(o, js_sym("high32"), js_num(js_dfloor(v / 4294967296.0)))
   js_setp(o, js_sym("low32"), js_num(js_toi32(v)))
   Return o
 End Function
@@ -7652,7 +7703,7 @@ End Function
 Function oc_EncodeMsgLength64LE(OC_ARGS) As JsV
   Dim v As Double = js_argnum(argv, argc, 0)
   Dim lo As JsV = js_unpack(js_toi32(v), 32, 0)
-  Dim hi As JsV = js_unpack(Int(v / 4294967296.0), 32, 0)
+  Dim hi As JsV = js_unpack(js_dfloor(v / 4294967296.0), 32, 0)
   Return js_spread_into(lo, hi)
 End Function
 
@@ -7816,8 +7867,343 @@ Function oc_Unpack32LE(OC_ARGS) As JsV
   Return js_unpack(js_argnum(argv, argc, 0), 32, 0)
 End Function
 
+
+' OpCodes.CreateBitStream: OpCodes._BitStream, its state in the properties
+' buffer, bufferBits, byteArray, readPosition and totalBitsWritten, with
+' JavaScript's int32 arithmetic on the buffer
+Dim Shared CLS_BitStream As JsV
+Dim Shared SYM_bs_buffer As Long, SYM_bs_bufferBits As Long, SYM_bs_byteArray As Long
+Dim Shared SYM_bs_readPosition As Long, SYM_bs_totalBitsWritten As Long
+
+Function bs_n(ByRef o As JsV, ByVal sym As Long) As Double
+  Return js_tonum(js_getp(o, sym))
+End Function
+
+Sub bs_set(ByRef o As JsV, ByVal sym As Long, ByVal d As Double)
+  js_setp(o, sym, js_num(d))
+End Sub
+
+' JavaScript a << n, a >>> n on int32
+Function bs_shl(ByVal a As Double, ByVal n As Long) As Double
+  Return CDbl(CLng(js_tou32(a) Shl (n And 31)))
+End Function
+
+Function bs_shr(ByVal a As Double, ByVal n As Long) As Double
+  Return CDbl(js_tou32(a) Shr (n And 31))
+End Function
+
+Function bs_ctor(OC_ARGS) As JsV
+  Dim init As JsV = js_arg(argv, argc, 0)
+  bs_set(self, SYM_bs_buffer, 0)
+  bs_set(self, SYM_bs_bufferBits, 0)
+  js_setp(self, SYM_bs_byteArray, js_arr_new(0))
+  bs_set(self, SYM_bs_readPosition, 0)
+  bs_set(self, SYM_bs_totalBitsWritten, 0)
+  If js_truthy(init) AndAlso js_length(init) > 0 Then
+    js_setp(self, SYM_bs_byteArray, js_callm(init, SYM_slice, 0, 0))
+    bs_set(self, SYM_bs_totalBitsWritten, js_length(init) * 8)
+  End If
+  Return self
+End Function
+
+Sub bs_write(ByRef self As JsV, ByVal value As Double, ByVal nb As Long)
+  If nb <= 0 OrElse nb > 32 Then js_throw_error("BitStream.writeBits: numBits must be 1-32")
+  Dim mask As Long = IIf(nb = 32, -1, js_toi32(CDbl(CLng(1 Shl (nb And 31))) - 1))
+  Dim v As Long = CLng(js_tou32(value)) And mask
+  Dim buf As Double = CDbl(CLng(js_tou32(bs_shl(bs_n(self, SYM_bs_buffer), nb)) Or v))
+  Dim bits As Long = CLng(bs_n(self, SYM_bs_bufferBits)) + nb
+  bs_set(self, SYM_bs_totalBitsWritten, bs_n(self, SYM_bs_totalBitsWritten) + nb)
+  Dim arr As JsV = js_getp(self, SYM_bs_byteArray)
+  Do While bits >= 8
+    bits -= 8
+    Dim b As JsV = js_num(CLng(bs_shr(buf, bits)) And 255)
+    js_callm(arr, SYM_push, @b, 1)
+    If bits > 0 Then
+      buf = CDbl(js_toi32(buf) And js_toi32(CDbl(CLng(1 Shl (bits And 31))) - 1))
+    Else
+      buf = 0
+    End If
+  Loop
+  bs_set(self, SYM_bs_buffer, buf)
+  bs_set(self, SYM_bs_bufferBits, bits)
+End Sub
+
+Function bs_read(ByRef self As JsV, ByVal nb As Long) As Double
+  If nb <= 0 OrElse nb > 32 Then js_throw_error("BitStream.readBits: numBits must be 1-32")
+  Dim arr As JsV = js_getp(self, SYM_bs_byteArray)
+  Dim n As Long = js_length(arr)
+  Dim pos_ As Double = bs_n(self, SYM_bs_readPosition)
+  Dim result As Double = 0
+  Dim got As Long = 0
+  Do While got < nb
+    Dim bi As Long = js_dfloor(pos_ / 8)
+    Dim bo As Long = pos_ - bi * 8
+    If bi >= n Then
+      If got = 0 Then
+        bs_set(self, SYM_bs_readPosition, pos_)
+        js_throw_error("BitStream.readBits: No more data available")
+      End If
+      Exit Do
+    End If
+    Dim cur As Double = js_tonum(js_index_get(arr, bi))
+    Dim avail As Long = 8 - bo
+    Dim take As Long = IIf(nb - got < avail, nb - got, avail)
+    Dim mask As Long = js_toi32(CDbl(CLng(1 Shl take)) - 1)
+    Dim ex As Long = CLng(bs_shr(cur, avail - take)) And mask
+    result = CDbl(js_toi32(bs_shl(result, take)) Or ex)
+    got += take
+    pos_ += take
+  Loop
+  bs_set(self, SYM_bs_readPosition, pos_)
+  Return result
+End Function
+
+Function bs_writeBits(OC_ARGS) As JsV
+  bs_write(self, js_argnum(argv, argc, 0), CLng(js_argnum(argv, argc, 1)))
+  Return js_undefined()
+End Function
+
+Function bs_writeBit(OC_ARGS) As JsV
+  bs_write(self, js_toi32(js_argnum(argv, argc, 0)) And 1, 1)
+  Return js_undefined()
+End Function
+
+Function bs_writeByte(OC_ARGS) As JsV
+  bs_write(self, js_toi32(js_argnum(argv, argc, 0)) And 255, 8)
+  Return js_undefined()
+End Function
+
+Function bs_writeBytes(OC_ARGS) As JsV
+  Dim bytes As JsV = js_arg(argv, argc, 0)
+  Dim n As Long = js_length(bytes)
+  For i As Long = 0 To n - 1
+    bs_write(self, js_toi32(js_tonum(js_index_get(bytes, i))) And 255, 8)
+  Next
+  Return js_undefined()
+End Function
+
+Sub bs_write_bytes_of(ByRef self As JsV, ByVal v As Double, ByVal count As Long, ByVal big As Long)
+  Dim x As ULong = js_tou32(v)
+  For i As Long = 0 To count - 1
+    Dim sh As Long = IIf(big, 8 * (count - 1 - i), 8 * i)
+    bs_write(self, (x Shr sh) And 255, 8)
+  Next
+End Sub
+
+Function bs_writeUint16BE(OC_ARGS) As JsV
+  bs_write_bytes_of(self, js_argnum(argv, argc, 0), 2, -1)
+  Return js_undefined()
+End Function
+
+Function bs_writeUint16LE(OC_ARGS) As JsV
+  bs_write_bytes_of(self, js_argnum(argv, argc, 0), 2, 0)
+  Return js_undefined()
+End Function
+
+Function bs_writeUint32BE(OC_ARGS) As JsV
+  bs_write_bytes_of(self, js_argnum(argv, argc, 0), 4, -1)
+  Return js_undefined()
+End Function
+
+Function bs_writeUint32LE(OC_ARGS) As JsV
+  bs_write_bytes_of(self, js_argnum(argv, argc, 0), 4, 0)
+  Return js_undefined()
+End Function
+
+Function bs_readBits(OC_ARGS) As JsV
+  Return js_num(bs_read(self, CLng(js_argnum(argv, argc, 0))))
+End Function
+
+Function bs_readBit(OC_ARGS) As JsV
+  Return js_num(bs_read(self, 1))
+End Function
+
+Function bs_readByte(OC_ARGS) As JsV
+  Return js_num(js_toi32(bs_read(self, 8)) And 255)
+End Function
+
+Function bs_readBytes(OC_ARGS) As JsV
+  Dim r As JsV = js_arr_new(0)
+  Dim n As Long = CLng(js_argnum(argv, argc, 0))
+  For i As Long = 0 To n - 1
+    Dim b As JsV = js_num(js_toi32(bs_read(self, 8)) And 255)
+    js_callm(r, SYM_push, @b, 1)
+  Next
+  Return r
+End Function
+
+Function bs_peekBits(OC_ARGS) As JsV
+  Dim saved As Double = bs_n(self, SYM_bs_readPosition)
+  Dim r As Double = bs_read(self, CLng(js_argnum(argv, argc, 0)))
+  bs_set(self, SYM_bs_readPosition, saved)
+  Return js_num(r)
+End Function
+
+Function bs_skipBits(OC_ARGS) As JsV
+  Dim p As Double = bs_n(self, SYM_bs_readPosition) + js_argnum(argv, argc, 0)
+  Dim mx As Double = js_length(js_getp(self, SYM_bs_byteArray)) * 8
+  If p > mx Then p = mx
+  bs_set(self, SYM_bs_readPosition, p)
+  Return js_undefined()
+End Function
+
+Function bs_hasMoreBits(OC_ARGS) As JsV
+  Return js_bool(bs_n(self, SYM_bs_readPosition) < js_length(js_getp(self, SYM_bs_byteArray)) * 8)
+End Function
+
+Function bs_getRemainingBits(OC_ARGS) As JsV
+  Dim r As Double = js_length(js_getp(self, SYM_bs_byteArray)) * 8 - bs_n(self, SYM_bs_readPosition)
+  Return js_num(IIf(r > 0, r, 0))
+End Function
+
+Function bs_resetReadPosition(OC_ARGS) As JsV
+  bs_set(self, SYM_bs_readPosition, 0)
+  Return js_undefined()
+End Function
+
+Function bs_seekBits(OC_ARGS) As JsV
+  Dim mx As Double = js_length(js_getp(self, SYM_bs_byteArray)) * 8
+  Dim off As Double = js_toi32(js_argnum(argv, argc, 0)) And &h7FFFFFFF
+  If off > mx Then off = mx
+  bs_set(self, SYM_bs_readPosition, IIf(off > 0, off, 0))
+  Return js_undefined()
+End Function
+
+Function bs_toArray(OC_ARGS) As JsV
+  Dim padv As JsV = js_arg(argv, argc, 0)
+  Dim pad As Long = Not (padv.tag = JS_T_BOOL AndAlso padv.n = 0)
+  Dim bits As Long = CLng(bs_n(self, SYM_bs_bufferBits))
+  Dim arr As JsV = js_getp(self, SYM_bs_byteArray)
+  If bits > 0 AndAlso pad Then
+    Dim buf As Double = bs_shl(bs_n(self, SYM_bs_buffer), 8 - bits)
+    Dim b As JsV = js_num(js_toi32(buf) And 255)
+    js_callm(arr, SYM_push, @b, 1)
+    bs_set(self, SYM_bs_buffer, 0)
+    bs_set(self, SYM_bs_bufferBits, 0)
+  End If
+  Return js_callm(arr, SYM_slice, 0, 0)
+End Function
+
+Function bs_getBitLength(OC_ARGS) As JsV
+  Return js_num(bs_n(self, SYM_bs_totalBitsWritten))
+End Function
+
+Function bs_getByteLength(OC_ARGS) As JsV
+  Dim bits As Long = CLng(bs_n(self, SYM_bs_bufferBits))
+  Return js_num(js_length(js_getp(self, SYM_bs_byteArray)) + (bits \ 8) + IIf((bits Mod 8) > 0, 1, 0))
+End Function
+
+Function bs_clear(OC_ARGS) As JsV
+  bs_set(self, SYM_bs_buffer, 0)
+  bs_set(self, SYM_bs_bufferBits, 0)
+  js_setp(self, SYM_bs_byteArray, js_arr_new(0))
+  bs_set(self, SYM_bs_readPosition, 0)
+  bs_set(self, SYM_bs_totalBitsWritten, 0)
+  Return js_undefined()
+End Function
+
+Function bs_clone(OC_ARGS) As JsV
+  Dim c As JsV = js_new1(CLS_BitStream, js_undefined())
+  js_setp(c, SYM_bs_buffer, js_getp(self, SYM_bs_buffer))
+  js_setp(c, SYM_bs_bufferBits, js_getp(self, SYM_bs_bufferBits))
+  js_setp(c, SYM_bs_byteArray, js_callm(js_getp(self, SYM_bs_byteArray), SYM_slice, 0, 0))
+  js_setp(c, SYM_bs_readPosition, js_getp(self, SYM_bs_readPosition))
+  js_setp(c, SYM_bs_totalBitsWritten, js_getp(self, SYM_bs_totalBitsWritten))
+  Return c
+End Function
+
+Function bs_writeVarInt(OC_ARGS) As JsV
+  Dim v As ULong = js_tou32(js_argnum(argv, argc, 0))
+  Do While v >= &h80
+    bs_write(self, (v And &h7F) Or &h80, 8)
+    v Shr= 7
+  Loop
+  bs_write(self, v And &h7F, 8)
+  Return js_undefined()
+End Function
+
+Function bs_readVarInt(OC_ARGS) As JsV
+  Dim result As Long = 0
+  Dim sh As Long = 0
+  Dim b As Long
+  Do
+    If sh >= 32 Then js_throw_error("BitStream.readVarInt: Integer overflow")
+    b = js_toi32(bs_read(self, 8)) And 255
+    result = result Or CLng(CULng(b And &h7F) Shl (sh And 31))
+    sh += 7
+  Loop While b And &h80
+  Return js_num(CDbl(CULng(result)))
+End Function
+
+Function bs_writeUnary(OC_ARGS) As JsV
+  Dim n As Double = js_argnum(argv, argc, 0)
+  Dim i As Double = 0
+  Do While i < n
+    bs_write(self, 1, 1)
+    i += 1
+  Loop
+  bs_write(self, 0, 1)
+  Return js_undefined()
+End Function
+
+Function bs_readUnary(OC_ARGS) As JsV
+  Dim count As Long = 0
+  Do While bs_n(self, SYM_bs_readPosition) < js_length(js_getp(self, SYM_bs_byteArray)) * 8
+    If bs_read(self, 1) <> 1 Then Exit Do
+    count += 1
+  Loop
+  Return js_num(count)
+End Function
+
+Function bs_alignToByte(OC_ARGS) As JsV
+  Do While (CLng(bs_n(self, SYM_bs_bufferBits)) Mod 8) <> 0
+    bs_write(self, 0, 1)
+  Loop
+  Return js_undefined()
+End Function
+
+Function bs_isAligned(OC_ARGS) As JsV
+  Return js_bool((CLng(bs_n(self, SYM_bs_bufferBits)) Mod 8) = 0)
+End Function
+
+Sub bs_init()
+  SYM_bs_buffer = js_sym("buffer") : SYM_bs_bufferBits = js_sym("bufferBits") : SYM_bs_byteArray = js_sym("byteArray")
+  SYM_bs_readPosition = js_sym("readPosition") : SYM_bs_totalBitsWritten = js_sym("totalBitsWritten")
+  CLS_BitStream = js_class_new("_BitStream", 0, @bs_ctor)
+  js_class_add(CLS_BitStream, js_sym("writeBits"), @bs_writeBits, 0)
+  js_class_add(CLS_BitStream, js_sym("writeBit"), @bs_writeBit, 0)
+  js_class_add(CLS_BitStream, js_sym("writeByte"), @bs_writeByte, 0)
+  js_class_add(CLS_BitStream, js_sym("writeBytes"), @bs_writeBytes, 0)
+  js_class_add(CLS_BitStream, js_sym("writeUint16BE"), @bs_writeUint16BE, 0)
+  js_class_add(CLS_BitStream, js_sym("writeUint16LE"), @bs_writeUint16LE, 0)
+  js_class_add(CLS_BitStream, js_sym("writeUint32BE"), @bs_writeUint32BE, 0)
+  js_class_add(CLS_BitStream, js_sym("writeUint32LE"), @bs_writeUint32LE, 0)
+  js_class_add(CLS_BitStream, js_sym("readBits"), @bs_readBits, 0)
+  js_class_add(CLS_BitStream, js_sym("readBit"), @bs_readBit, 0)
+  js_class_add(CLS_BitStream, js_sym("readByte"), @bs_readByte, 0)
+  js_class_add(CLS_BitStream, js_sym("readBytes"), @bs_readBytes, 0)
+  js_class_add(CLS_BitStream, js_sym("peekBits"), @bs_peekBits, 0)
+  js_class_add(CLS_BitStream, js_sym("skipBits"), @bs_skipBits, 0)
+  js_class_add(CLS_BitStream, js_sym("hasMoreBits"), @bs_hasMoreBits, 0)
+  js_class_add(CLS_BitStream, js_sym("getRemainingBits"), @bs_getRemainingBits, 0)
+  js_class_add(CLS_BitStream, js_sym("resetReadPosition"), @bs_resetReadPosition, 0)
+  js_class_add(CLS_BitStream, js_sym("seekBits"), @bs_seekBits, 0)
+  js_class_add(CLS_BitStream, js_sym("toArray"), @bs_toArray, 0)
+  js_class_add(CLS_BitStream, js_sym("getBitLength"), @bs_getBitLength, 0)
+  js_class_add(CLS_BitStream, js_sym("getByteLength"), @bs_getByteLength, 0)
+  js_class_add(CLS_BitStream, js_sym("clear"), @bs_clear, 0)
+  js_class_add(CLS_BitStream, js_sym("clone"), @bs_clone, 0)
+  js_class_add(CLS_BitStream, js_sym("writeVarInt"), @bs_writeVarInt, 0)
+  js_class_add(CLS_BitStream, js_sym("readVarInt"), @bs_readVarInt, 0)
+  js_class_add(CLS_BitStream, js_sym("writeUnary"), @bs_writeUnary, 0)
+  js_class_add(CLS_BitStream, js_sym("readUnary"), @bs_readUnary, 0)
+  js_class_add(CLS_BitStream, js_sym("alignToByte"), @bs_alignToByte, 0)
+  js_class_add(CLS_BitStream, js_sym("isAligned"), @bs_isAligned, 0)
+End Sub
+
 Function oc_CreateBitStream(OC_ARGS) As JsV
-  Return js_unsupported("OpCodes.CreateBitStream")
+  If CLS_BitStream.tag <> JS_T_OBJ Then bs_init()
+  Return js_new1(CLS_BitStream, js_arg(argv, argc, 0))
 End Function`;
 
   // ========================[ FREEBASIC: JAVASCRIPT SEMANTICS ]========================
@@ -7924,6 +8310,10 @@ End Function`;
     }
     return v < 0 ? `(${s})` : s;
   }
+
+  // OpCodes helpers on BigInt values (OpCodes.js)
+  const FB_BIGINT_OPCODES = new Set(['RotL64n', 'RotR64n', 'ShiftLn', 'ShiftRn', 'RotL128n', 'RotR128n', 'AndN', 'OrN', 'XorN',
+    'GetBitN', 'SetBitN', 'MulModN', 'SquareModN', 'ModPowN', 'GcdN', 'ModN', 'ModInverseN', 'BitCountN']);
 
   class FreeBasicTransformer {
     constructor(options = {}) {
@@ -8277,6 +8667,17 @@ End Function`;
       // body
       const body = fnNode.body;
       if (body && body.type === 'BlockStatement') {
+        // the hoisted functions may capture the body's own variables: their environment slots come first
+        // (the body's own let/const, and var anywhere in it)
+        const early = (n, top) => {
+          if (!n || typeof n !== 'object') return;
+          if (Array.isArray(n)) { n.forEach(x => early(x, top)); return; }
+          if (['FunctionExpression', 'ArrowFunctionExpression', 'ArrowFunction', 'FunctionDeclaration', 'ClassDeclaration', 'ClassExpression'].includes(n.type)) return;
+          if (n.type === 'VariableDeclaration' && (top || n.kind === 'var'))
+            for (const d of n.declarations || []) for (const x of this.patternNames(d.id)) if (f.captured.has(x)) this.declareLocal(x, 'v');
+          for (const k of Object.keys(n)) if (k !== 'parent' && n[k] && typeof n[k] === 'object') early(n[k], false);
+        };
+        for (const s of body.body || []) early(s, true);
         this.hoistFunctions(body.body || [], lines);
         for (const s of body.body || []) if (!s || s.type !== 'FunctionDeclaration') this.statement(s, lines);
       } else if (body) {
@@ -8492,6 +8893,16 @@ End Function`;
     eBinaryExpression(node) {
       const op = node.operator;
       const L = node.left, R = node.right;
+      // both sides with effects: the left one runs first, into a temporary (a runtime
+      // helper's arguments are evaluated right to left)
+      if (this.isImpure(L) && this.isImpure(R) && L.type !== 'FbRaw') {
+        const tmp = this.temp('v');
+        const keep = `js_keepn(${tmp}, ${this.V(this.expr(L))})`;
+        const r = this.eBinaryExpression({ ...node, left: { type: 'FbRaw', code: tmp, k: 'v', resultType: L.resultType } });
+        if (r.k === 'd') return this.dx(`js_seqd(${r.c}, ${keep})`);
+        if (r.k === 'b') return this.bx(`js_seqb(${r.c}, ${keep})`);
+        return this.vx(`js_seqv(${r.c}, ${keep})`);
+      }
       const big = node.bigint === true || this.isBigNode(L) || this.isBigNode(R);
       const t = this.type(node);
       if (op === '===' || op === '!==' || op === '==' || op === '!=') return this.equality(node);
@@ -8502,10 +8913,14 @@ End Function`;
       }
       if (op === 'instanceof') return this.instanceOf(L, R);
       if (op === 'in') return this.bx(`js_in(${this.V(this.expr(L))}, ${this.V(this.expr(R))})`);
-      if (big && !(this.isNumNode(L) && this.isNumNode(R) && !node.bigint)) {
+      // an inlined OpCodes BigInt helper (AndN, XorN, ...) may get BigInts whatever its operands are typed: dispatch on the values
+      const bigHelper = FB_BIGINT_OPCODES.has(node.opCodesMethod);
+      if (bigHelper || (big && !(this.isNumNode(L) && this.isNumNode(R) && !node.bigint))) {
         const fn = { '+': 'js_add', '-': 'js_sub', '*': 'js_mul', '/': 'js_div', '%': 'js_mod', '**': 'js_pow',
           '&': 'js_band', '|': 'js_bor', '^': 'js_bxor', '<<': 'js_shl', '>>': 'js_sar', '>>>': 'js_shr' }[op];
-        const l = this.V(this.bigOperand(L)), r = this.V(this.bigOperand(R));
+        // a helper's operands keep their values: OpCodes.XorN(0x47, 0x50) is a Number xor
+        const operand = n => bigHelper && !big ? this.expr(n) : this.bigOperand(n);
+        const l = this.V(operand(L)), r = this.V(operand(R));
         return this.vx(`${fn}(${l}, ${r})`);
       }
       if (op === '+') {
@@ -8514,6 +8929,11 @@ End Function`;
           return this.vx(`js_add(${this.V(this.expr(L))}, ${this.V(this.expr(R))})`);
         }
         return this.dx(`(${this.D(this.expr(L))} + ${this.D(this.expr(R))})`);
+      }
+      if (['-', '*', '/', '%'].includes(op) && !(op === '*' && node.opCodesMethod) && !(this.isNumNode(L) && this.isNumNode(R))) {
+        // an operand not typed as a Number (uint64, int64, untyped) may hold a BigInt: dispatch on the value
+        const fn = { '-': 'js_sub', '*': 'js_mul', '/': 'js_div', '%': 'js_mod' }[op];
+        return this.vx(`${fn}(${this.V(this.expr(L))}, ${this.V(this.expr(R))})`);
       }
       if (op === '-' || op === '*' || op === '/') {
         if (op === '*' && node.opCodesMethod) return this.dx(`js_mul32(${this.D(this.expr(L))}, ${this.D(this.expr(R))})`);
@@ -8746,6 +9166,8 @@ End Function`;
       const delta = node.operator === '++' ? 1 : -1;
       const target = node.argument;
       if (statement) {
+        // a value not typed as a Number may be a BigInt, which steps by 1n
+        if (!this.isNumNode(target)) return this.store(target, { type: 'FbRaw', code: `js_inc(${this.V(this.expr(target))}, ${delta})`, k: 'v' }, true);
         const one = { type: 'Literal', value: 1, resultType: 'int32' };
         return this.store(target, { type: 'BinaryExpression', operator: delta > 0 ? '+' : '-', left: target, right: one, resultType: target.resultType }, true);
       }
@@ -8756,7 +9178,8 @@ End Function`;
         const kind = b ? (b.env !== undefined ? 'v' : b.kind) : (g ? g.kind : 'v');
         if (ref) {
           const fn = kind === 'd' ? (node.prefix ? 'js_preincd' : 'js_postincd') : (node.prefix ? 'js_preincv' : 'js_postincv');
-          return kind === 'd' ? this.dx(`${fn}(${ref}, ${delta})`) : this.dx(`js_tonum(${fn}(${ref}, ${delta}))`);
+          if (kind === 'd') return this.dx(`${fn}(${ref}, ${delta})`);
+          return this.isNumNode(target) ? this.dx(`js_tonum(${fn}(${ref}, ${delta}))`) : this.vx(`${fn}(${ref}, ${delta})`);
         }
       }
       if (target.type === 'MemberExpression' && target.computed) {
@@ -8938,6 +9361,12 @@ End Function`;
             return this.vx(`js_str(${argNodes.map((_, i) => `js_fromcharcode(${d(i)})`).join(' & ') || '""'})`);
           }
           return null;
+        case 'ArrayBuffer':
+          if (name === 'isView') return this.bx(`js_is_view(${l[0] || 'js_undefined()'})`);
+          return null;
+        case 'Date':
+          if (name === 'now') return this.dx('js_date_now()');
+          return null;
         case 'Array':
           if (name === 'isArray') return this.bx(`js_is_arr(${l[0]})`);
           if (name === 'from') return this.vx(`js_array_from(${l[0]}, ${l[1] || 'js_undefined()'})`);
@@ -9043,7 +9472,10 @@ End Function`;
         // numbers in one go
         if (els.every(e => e && e.type === 'Literal' && typeof e.value === 'number') && els.length > 4)
           return this.vx(`js_arr_nums(${fbStringExpr(els.map(e => String(e.value)).join(','))})`);
-        return this.vx(els.reduce((acc, e) => `js_arr_push_r(${acc}, ${e ? this.V(this.expr(e)) : 'js_undefined()'})`, 'js_arr_new(0)'));
+        // elements with effects run in order first (FreeBASIC evaluates arguments right to left)
+        const a = this.args(els.map(e => e || { type: 'Identifier', name: 'undefined' }));
+        const base = a.seq && a.seq.length ? `js_withv(${a.seq.join(' + ')}, js_arr_new(0))` : 'js_arr_new(0)';
+        return this.vx(a.list.reduce((acc, x) => `js_arr_push_r(${acc}, ${x})`, base));
       }
       let acc = 'js_arr_new(0)';
       for (const e of els) {
@@ -9385,6 +9817,9 @@ End Function`;
 
     eDebugOutput() { return this.vx('js_undefined()'); }
 
+    /** FreeBASIC code the generator built itself (a synthetic node) */
+    eFbRaw(node) { return { c: node.code, k: node.k }; }
+
     // ------------------------------------------------------------------
     // statements
     // ------------------------------------------------------------------
@@ -9589,7 +10024,7 @@ End Function`;
       return n;
     }
 
-    declarator(d, kind, out) {
+    declarator(d, declKind, out) {
       const id = d.id;
       if (id.type === 'Identifier') {
         if (this.fn.kind === 'module' && this.fn.scopes.length === 1 && this.globals.has(id.name)) {
@@ -9600,11 +10035,24 @@ End Function`;
         }
         const numeric = !d.nullable && !d.declaredNullable && fbIsNum(d.declaredType || id.resultType || d.resultType) && !(d.init && d.init.type === 'Literal' && d.init.value === null);
         const value = d.init ? this.expr(d.init) : null;
-        const b = this.declareLocal(id.name, numeric ? 'd' : 'v');
+        let b;
+        let redeclared = false;
+        if (declKind === 'var') {
+          // var is function-scoped: one binding in the function's outermost scope
+          const top = this.fn.scopes[0];
+          b = top.get(id.name);
+          redeclared = !!b;
+          if (!b) {
+            const saved = this.fn.scopes;
+            this.fn.scopes = [top];
+            b = this.declareLocal(id.name, numeric ? 'd' : 'v');
+            this.fn.scopes = saved;
+          }
+        } else b = this.declareLocal(id.name, numeric ? 'd' : 'v');
         const ref = this.bindingRef(b);
         const kind = b.env !== undefined ? 'v' : b.kind;
         if (!value) {
-          if (kind !== 'd' && kind !== undefined) out.push(`${ref} = js_undefined()`);
+          if (kind !== 'd' && kind !== undefined && !redeclared) out.push(`${ref} = js_undefined()`);
           return;
         }
         out.push(`${ref} = ${kind === 'd' ? this.D(value) : this.V(value)}`);
@@ -9612,7 +10060,7 @@ End Function`;
       }
       const t = this.temp('v');
       out.push(`${t} = ${d.init ? this.V(this.expr(d.init)) : 'js_undefined()'}`);
-      out.push(...this.destructure(id, t, kind));
+      out.push(...this.destructure(id, t, declKind));
     }
 
     destructure(pattern, src, kind) {
@@ -9737,20 +10185,27 @@ End Function`;
       out.push(header);
       this.fn.loops.push({ isSwitch: true });
       let pending = [];
-      cases.forEach((c, i) => {
-        pending.push(c.test);
-        if (bodies[i] === null) return;
-        const isDefault = pending.includes(null);
-        const values = pending.filter(t => t);
-        if (isDefault) out.push('  Case Else');
-        else out.push(`  Case ${values.map(caseExpr).join(', ')}`);
+      // bodies carry their fall-through, so the default group (which Case Else must close) moves last
+      let defaultBody = null;
+      const emitBody = (i, label) => {
+        out.push(label);
         const inner = [];
         this.fn.scopes.push(new Map());
         for (const s of bodies[i]) this.statement(s, inner);
         this.fn.scopes.pop();
         out.push(...inner.map(l => '    ' + l));
+      };
+      cases.forEach((c, i) => {
+        pending.push(c.test);
+        if (bodies[i] === null) return;
+        const isDefault = pending.includes(null);
+        const values = pending.filter(t => t);
+        if (isDefault) defaultBody = i;
+        if (values.length) emitBody(i, `  Case ${values.map(caseExpr).join(', ')}`);
         pending = [];
       });
+      if (defaultBody === null && pending.includes(null)) defaultBody = -1;
+      if (defaultBody !== null && defaultBody >= 0) emitBody(defaultBody, '  Case Else');
       this.fn.loops.pop();
       out.push('End Select');
     }
