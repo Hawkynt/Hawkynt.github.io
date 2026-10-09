@@ -57,6 +57,7 @@
         type: null,
         throws: [],
         examples: [],
+        templates: [],        // @template T, U - type parameters of a generic function
         csharpOverride: null  // Native C# code to use instead of transpiling
       };
 
@@ -163,6 +164,13 @@
       if (typeMatch) {
         result.type = this.parseType(typeMatch[1]);
       }
+
+      // Parse @template tags: `@template T` or `@template K, V` name type
+      // parameters, bound per call from the argument types (see _instantiateTemplates)
+      const templateRegex = /@template\s+(?:\{[^}]*\}\s+)?([A-Za-z_$][\w$]*(?:\s*,\s*[A-Za-z_$][\w$]*)*)/g;
+      let templateMatch;
+      while ((templateMatch = templateRegex.exec(cleaned)) !== null)
+        for (const name of templateMatch[1].split(',')) result.templates.push(name.trim());
 
       // Parse @throws tags
       const throwsRegex = /@throws?\s+\{([^}]+)\}(?:\s+-?\s+(.*))?/g;
@@ -303,10 +311,47 @@
       const element = ilTypeFromJSDoc(arrayOf[1]);
       return element ? element + '[]' : null;
     }
+    // A tuple `[string, int32, string]`: each position typed
+    if (t.startsWith('[') && t.endsWith(']')) {
+      const members = splitTypeArguments(t.slice(1, -1)).map(ilTypeFromJSDoc);
+      return members.length > 1 && members.every(Boolean) ? `[${members.join(',')}]` : null;
+    }
     if (!/^[A-Za-z_$][\w$.]*$/.test(t)) return null;
     // A typed array is an array of its element type, as `new Uint8Array(n)` is.
     if (Object.prototype.hasOwnProperty.call(JSDOC_TYPED_ARRAYS, t)) return JSDOC_TYPED_ARRAYS[t] + '[]';
     return JSDOC_TYPE_ALIASES[t] || t;
+  }
+
+  /** IL value types: a number, BigInt or boolean has no null of its own. */
+  const NULLABLE_VALUE_TYPES = /^(u?int(8|16|32|64)|float(32|64)|bigint|BigInt|boolean|number)$/;
+
+  /**
+   * Does a JSDoc type admit null for a value type? `{int32|null}`,
+   * `{uint32|undefined}`, `{?BigInt}`, `{boolean?}` and `{int32=}` do. The IL
+   * keeps the non-null type as resultType (see ilTypeFromJSDoc) and marks the
+   * value `nullable: true`. Reference types (arrays, strings, objects) always
+   * admit null in the IL, so they are never marked.
+   * @param {Object|string} t - JSDoc type
+   * @returns {boolean} true for a nullable value type
+   */
+  function nullableJSDoc(t) {
+    if (!t) return false;
+    let text;
+    let flagged = false;
+    if (typeof t === 'object') {
+      if (t.isTuple || t.isArray || t.isGeneric) return false;
+      flagged = !!t.isNullable;
+      text = t.isUnion ? t.unionTypes.map(u => u && u.name).filter(Boolean).join('|') : t.name;
+    } else {
+      text = t;
+    }
+    if (typeof text !== 'string') return false;
+    text = text.trim();
+    const marked = flagged || /^\?|[?=]$/.test(text) ||
+      text.split('|').some(s => s.trim() === 'null' || s.trim() === 'undefined');
+    if (!marked) return false;
+    const base = ilTypeFromJSDoc(text);
+    return typeof base === 'string' && NULLABLE_VALUE_TYPES.test(base);
   }
 
   /** JSDoc keyed collections and the IL name of each: a Map stays a Map, the rest are objects. */
@@ -333,8 +378,8 @@
     let depth = 0, start = 0;
     for (let i = 0; i < text.length; ++i) {
       const c = text[i];
-      if (c === '<' || c === '(' || c === '{') ++depth;
-      else if (c === '>' || c === ')' || c === '}') --depth;
+      if (c === '<' || c === '(' || c === '{' || c === '[') ++depth;
+      else if (c === '>' || c === ')' || c === '}' || c === ']') --depth;
       else if (c === ',' && depth === 0) { parts.push(text.slice(start, i).trim()); start = i + 1; }
     }
     parts.push(text.slice(start).trim());
@@ -904,6 +949,7 @@
       // _collectDeclaredTypes): "ClassName.field" -> JSDoc @type, local class
       // name -> base class name, and the set of classes this file declares.
       this.declaredFieldTypes = new Map();
+      this.declaredFieldNullable = new Set();
       this.localSuperClasses = new Map();
       this.localClassNames = new Set();
       this.declaredFunctions = new Map(); // local function name -> { params: [IL type], returns: IL type }
@@ -940,12 +986,28 @@
      * @param {string} name - Variable name
      * @param {string} type - Type string (e.g., 'uint32', 'uint8[]', 'string')
      */
-    registerVariableType(name, type, declared = false) {
+    registerVariableType(name, type, declared = false, nullable = false) {
       if (!name || !type) return;
       const currentScope = this.scopeStack[this.scopeStack.length - 1];
       currentScope.set(name, type);
       if (declared) (currentScope.declared || (currentScope.declared = new Set())).add(name);
       else if (currentScope.declared) currentScope.declared.delete(name);
+      if (nullable) (currentScope.nullable || (currentScope.nullable = new Set())).add(name);
+      else if (currentScope.nullable) currentScope.nullable.delete(name);
+    }
+
+    /**
+     * Whether the binding a name resolves to is declared nullable
+     * (`@param {int32|null} x`, `@type {?uint32}`): its value may be null.
+     * @param {string} name - Variable name
+     * @returns {boolean} true when nullable
+     */
+    isNullableVariable(name) {
+      for (let i = this.scopeStack.length - 1; i >= 0; --i) {
+        const scope = this.scopeStack[i];
+        if (scope.has(name)) return !!(scope.nullable && scope.nullable.has(name));
+      }
+      return false;
     }
 
     /**
@@ -1052,6 +1114,41 @@
     }
 
     /**
+     * Whether a class field is declared nullable (`@type {int32|null}`), by the
+     * same declaration lookupDeclaredFieldType finds.
+     * @param {string} className - Class name
+     * @param {string} fieldName - Field name
+     * @returns {boolean} true when nullable
+     */
+    lookupDeclaredFieldNullable(className, fieldName) {
+      const framework = this._frameworkMember(className, fieldName, 'property');
+      if (framework) return nullableJSDoc(framework);
+      for (let name = className, hops = 0; name && hops < 32; name = this.localSuperClasses.get(name), ++hops) {
+        const key = `${name}.${fieldName}`;
+        if (this.declaredFieldTypes.get(key)) return !!(this.declaredFieldNullable && this.declaredFieldNullable.has(key));
+      }
+      return false;
+    }
+
+    /**
+     * Whether a method's declared return admits null (`@returns {int32|null}`):
+     * the framework interface's declaration, else the method's own JSDoc.
+     * @param {string} className - Class name
+     * @param {string} methodName - Method name
+     * @returns {boolean} true when nullable
+     */
+    lookupClassMethodReturnNullable(className, methodName) {
+      const framework = this._frameworkMemberType(className, methodName, 'method');
+      const frameworkReturn = framework ? ilTypeFromJSDoc(framework.returns) : null;
+      if (frameworkReturn && frameworkReturn !== 'void') return nullableJSDoc(framework.returns);
+      for (let name = className, hops = 0; name && hops < 32; name = this.localSuperClasses.get(name), ++hops) {
+        const key = `${name}.${methodName}`;
+        if (this.classMethodReturnTypes.get(key)) return !!(this.classMethodReturnNullable && this.classMethodReturnNullable.has(key));
+      }
+      return false;
+    }
+
+    /**
      * The AlgorithmFramework class a (local) class derives from, if any.
      * @param {string} className - Class name
      * @returns {string|null} Framework class name
@@ -1104,9 +1201,11 @@
      * @param {string} methodName - Method name
      * @param {string} returnType - Return type string
      */
-    registerClassMethodReturnType(className, methodName, returnType) {
+    registerClassMethodReturnType(className, methodName, returnType, nullable = false) {
       if (!className || !methodName || !returnType) return;
       this.classMethodReturnTypes.set(`${className}.${methodName}`, returnType);
+      if (!this.classMethodReturnNullable) this.classMethodReturnNullable = new Set();
+      if (nullable) this.classMethodReturnNullable.add(`${className}.${methodName}`);
     }
 
     /**
@@ -1839,10 +1938,10 @@
       // Bytes to string returns string
       'BytesToString': () => 'string',
       // Math operations
-      'Floor': () => 'int32',
-      'Ceil': () => 'int32',
-      'Round': () => 'int32',
-      'Truncate': () => 'int32',
+      'Floor': () => 'float64',
+      'Ceil': () => 'float64',
+      'Round': () => 'float64',
+      'Truncate': () => 'float64',
       'Abs': (_bits, operandType) => operandType || 'float64',
       'Min': (_bits, operandType) => operandType || 'float64',
       'Max': (_bits, operandType) => operandType || 'float64',
@@ -1916,13 +2015,31 @@
      * @returns {string|null} Declared IL type or null
      */
     _statementJSDocType(stmt) {
+      const raw = this._statementJSDocRawType(stmt);
+      return raw ? ilTypeFromJSDoc(raw) : null;
+    }
+
+    /**
+     * Whether a statement's own JSDoc `@type` is a nullable value type (see nullableJSDoc).
+     * @param {Object} stmt - Statement node
+     * @returns {boolean} true when nullable
+     */
+    _statementJSDocNullable(stmt) {
+      return nullableJSDoc(this._statementJSDocRawType(stmt));
+    }
+
+    /**
+     * The JSDoc type object of a statement's own `@type` (see _statementJSDocType).
+     * @param {Object} stmt - Statement node
+     * @returns {Object|null} JSDoc type or null
+     */
+    _statementJSDocRawType(stmt) {
       const comments = stmt && stmt.leadingComments;
       if (!comments || comments.length === 0) return null;
       const last = comments[comments.length - 1];
       if (!last || last.type !== 'Block' || typeof last.value !== 'string' || !last.value.startsWith('/**')) return null;
       if (!/@type\s*\{/.test(last.value)) return null;
-      const parsed = this.jsDocParser.parseJSDoc(last.value);
-      return parsed.type ? ilTypeFromJSDoc(parsed.type) : null;
+      return this.jsDocParser.parseJSDoc(last.value).type || null;
     }
 
     /**
@@ -1994,6 +2111,11 @@
         merge(this.classMethodReturnTypes, sibling.classMethodReturnTypes);
         merge(this.declaredMethodParams, sibling.declaredMethodParams);
         merge(this.declaredFieldTypes, sibling.declaredFieldTypes);
+        for (const key of sibling.declaredFieldNullable || []) this.declaredFieldNullable.add(key);
+        for (const key of sibling.classMethodReturnNullable || []) {
+          if (!this.classMethodReturnNullable) this.classMethodReturnNullable = new Set();
+          this.classMethodReturnNullable.add(key);
+        }
         merge(this.localSuperClasses, sibling.localSuperClasses);
         for (const name of sibling.declaredFunctions.keys()) if (!this.siblingExports.has(name)) this.siblingExports.set(name, 'function');
         for (const name of sibling.localFunctionNames || []) if (!this.siblingExports.has(name)) this.siblingExports.set(name, 'function');
@@ -2003,6 +2125,7 @@
 
     _collectDeclaredTypes(ast) {
       this.declaredFieldTypes = new Map();
+      this.declaredFieldNullable = new Set();
       this.localSuperClasses = new Map();
       this.localClassNames = new Set();
       this.declaredFunctions = new Map();
@@ -2020,7 +2143,10 @@
           const field = node.expression.left.property && (node.expression.left.property.name || node.expression.left.property.value);
           const declared = this._statementJSDocType(node);
           const key = `${className}.${field}`;
-          if (field && declared && !this.declaredFieldTypes.has(key)) this.declaredFieldTypes.set(key, declared);
+          if (field && declared && !this.declaredFieldTypes.has(key)) {
+            this.declaredFieldTypes.set(key, declared);
+            if (this._statementJSDocNullable(node)) this.declaredFieldNullable.add(key);
+          }
         }
         for (const key in node) {
           if (key === 'loc' || key === 'range' || key === 'leadingComments') continue;
@@ -2041,11 +2167,12 @@
             if (member.type === 'FieldDefinition' && member.key && member.key.name && member.jsDoc && member.jsDoc.type) {
               const declared = ilTypeFromJSDoc(member.jsDoc.type);
               if (declared) this.declaredFieldTypes.set(`${className}.${member.key.name}`, declared);
+              if (declared && nullableJSDoc(member.jsDoc.type)) this.declaredFieldNullable.add(`${className}.${member.key.name}`);
             } else if (member.type === 'MethodDefinition' && member.value) {
               const typeInfo = member.value.typeInfo;
               const returns = ilTypeFromJSDoc(typeInfo && typeInfo.returns);
               if (returns && member.key && member.key.name)
-                this.registerClassMethodReturnType(className, member.key.name, returns);
+                this.registerClassMethodReturnType(className, member.key.name, returns, nullableJSDoc(typeInfo.returns));
               if (typeInfo && typeInfo.params && member.key && member.key.name)
                 this.declaredMethodParams.set(`${className}.${member.key.name}`, (member.value.params || []).map(p => {
                   const param = p && p.type === 'AssignmentPattern' ? p.left : p;
@@ -2067,7 +2194,9 @@
               const param = p && p.type === 'AssignmentPattern' ? p.left : p;
               return param && param.name && fn.typeInfo.params ? ilTypeFromJSDoc(fn.typeInfo.params.get(param.name)) : null;
             }),
-            returns: ilTypeFromJSDoc(fn.typeInfo.returns)
+            returns: ilTypeFromJSDoc(fn.typeInfo.returns),
+            returnsNullable: nullableJSDoc(fn.typeInfo.returns),
+            templates: fn.typeInfo.templates || []
           });
         }
         for (const key in node) {
@@ -2154,9 +2283,10 @@
           newContext = { ...newContext, frameworkSignature: { fn: node.value, params: framework.params || [] },
             frameworkReturns: ilTypeFromJSDoc(framework.returns) !== 'void' ? ilTypeFromJSDoc(framework.returns) : null };
 
-        const returnType = ilTypeFromJSDoc(node.value?.typeInfo?.returns || node.value?.jsDoc?.returns?.type);
+        const declaredReturns = node.value?.typeInfo?.returns || node.value?.jsDoc?.returns?.type;
+        const returnType = ilTypeFromJSDoc(declaredReturns);
         if (returnType)
-          this.registerClassMethodReturnType(context.className, node.key.name, returnType);
+          this.registerClassMethodReturnType(context.className, node.key.name, returnType, nullableJSDoc(declaredReturns));
 
         // Also register parameters for methods
         if (node.value)
@@ -2168,8 +2298,9 @@
       if (node.type === 'VariableDeclaration' || node.type === 'ExpressionStatement') {
         const declaredType = this._statementJSDocType(node);
         if (declaredType) {
+          const nullable = this._statementJSDocNullable(node);
           if (node.type === 'VariableDeclaration')
-            for (const decl of node.declarations || []) decl.declaredType = declaredType;
+            for (const decl of node.declarations || []) { decl.declaredType = declaredType; if (nullable) decl.declaredNullable = true; }
           else if (node.expression && node.expression.type === 'AssignmentExpression')
             node.expression.declaredType = declaredType;
         }
@@ -2219,24 +2350,25 @@
       (node.params || []).forEach((rawParam, index) => {
         const param = rawParam && rawParam.type === 'AssignmentPattern' ? rawParam.left : rawParam;
         if (param && param.type === 'Identifier' && param.name) {
-          let paramType = frameworkParams ? ilTypeFromJSDoc(frameworkParams[index]) : null;
+          let declared = frameworkParams ? frameworkParams[index] : null;
+          let paramType = declared ? ilTypeFromJSDoc(declared) : null;
 
           // Then the function's own JSDoc (tier 3) - no name-based fallback
           if (!paramType && node.typeInfo?.params?.has(param.name))
-            paramType = ilTypeFromJSDoc(node.typeInfo.params.get(param.name));
+            paramType = ilTypeFromJSDoc(declared = node.typeInfo.params.get(param.name));
 
           // Also check the value's typeInfo (for MethodDefinition where typeInfo is on node.value)
           if (!paramType && node.value?.typeInfo?.params?.has(param.name))
-            paramType = ilTypeFromJSDoc(node.value.typeInfo.params.get(param.name));
+            paramType = ilTypeFromJSDoc(declared = node.value.typeInfo.params.get(param.name));
 
           // Check typeAnnotations map as fallback
           if (!paramType && this.typeAnnotations.has(param)) {
             const annotation = this.typeAnnotations.get(param);
-            paramType = ilTypeFromJSDoc(annotation?.type);
+            paramType = ilTypeFromJSDoc(declared = annotation?.type);
           }
 
           if (paramType)
-            this.registerVariableType(param.name, paramType, true);
+            this.registerVariableType(param.name, paramType, true, nullableJSDoc(declared));
           // An inline callback of an array method takes the element type of
           // the array it iterates (see _callbackParamHints).
           else if (node.paramHints && node.paramHints[index])
@@ -2445,11 +2577,13 @@
           resultType = 'function';
       }
 
-      return {
+      const result = {
         ...node,
         resultType,
         ilNodeType: 'Identifier'
       };
+      if (resultType && this.isNullableVariable(name)) result.nullable = true;
+      return result;
     }
 
     /**
@@ -2486,7 +2620,7 @@
           else if (TypeAwareJSASTParser._isBigIntValue(left) || TypeAwareJSASTParser._isBigIntValue(right))
             resultType = TypeAwareJSASTParser._bigIntResultType(op.slice(0, -1), left, right);
           else if (leftType.includes('64') || rightType.includes('64'))
-            resultType = leftType.includes('int') || rightType.includes('int') ? 'int64' : 'uint64';
+            resultType = TypeAwareJSASTParser._wideArithmeticType(op.slice(0, -1), leftType, rightType, left, right);
           else if (op !== '%=' && TypeAwareJSASTParser._widenedArithmeticType(op.slice(0, -1), leftType, rightType, left, right))
             resultType = TypeAwareJSASTParser._widenedArithmeticType(op.slice(0, -1), leftType, rightType, left, right);
           else if (leftType && leftType !== 'any' && leftType !== 'number')
@@ -2535,7 +2669,7 @@
         if (targetName && resultType && !this.isDeclaredVariable(targetName)) {
           this._checkLiteralTypedVariable(targetName, resultType);
           this._widenDeclaredVariable(targetName, resultType, right);
-          this.registerVariableType(targetName, resultType);
+          this.registerVariableType(targetName, resultType, false, !!(right && right.nullable));
         }
 
         // Register class field type if assigning to this.field.
@@ -2574,8 +2708,10 @@
         this._applyContextualType(ilNode.consequent, type);
         this._applyContextualType(ilNode.alternate, type);
         ilNode.resultType = this._commonTypeOf([ilNode.consequent, ilNode.alternate]) || ilNode.resultType;
+        TypeAwareJSASTParser._typeNullableBranches(ilNode);
         return;
       }
+      if (type === 'float64' && this._retypeAsDouble(ilNode)) return;
       if (ilNode.type === 'Literal' && typeof ilNode.value === 'number' && isNumericType(type)) {
         ilNode.resultType = type;
         delete ilNode.typeGuess;
@@ -2604,6 +2740,42 @@
         }
         this._applyContextualType(ilNode.value, elementType);
       }
+    }
+
+    /**
+     * Arithmetic stored into a float64 is double arithmetic: JavaScript forms
+     * `a * b + c` on Numbers in double precision (a product beyond 2^53 is
+     * rounded), so a target that declares float64 types the arithmetic that
+     * forms its value - every + - * / % node on Numbers down to its leaves -
+     * float64, and its number literals with it. Variables and calls among the
+     * leaves keep their own types (they are converted on use).
+     * @param {Object} ilNode - value stored into a float64 target
+     * @returns {boolean} true when ilNode is such arithmetic (now float64)
+     * @private
+     */
+    _retypeAsDouble(ilNode) {
+      const ARITHMETIC = new Set(['+', '-', '*', '/', '%']);
+      const isArithmetic = n => n && n.type === 'BinaryExpression' && ARITHMETIC.has(n.operator) &&
+        !n.bigint && !TypeAwareJSASTParser._isBigIntValue(n.left) && !TypeAwareJSASTParser._isBigIntValue(n.right) &&
+        n.resultType !== 'string' && n.left && n.left.resultType !== 'string' && n.right && n.right.resultType !== 'string';
+      if (!isArithmetic(ilNode)) return false;
+      const visit = n => {
+        if (isArithmetic(n)) {
+          n.resultType = 'float64';
+          if (n.typeGuessKind === 'raw-arithmetic') { delete n.typeGuess; delete n.typeGuessKind; }
+          visit(n.left);
+          visit(n.right);
+        } else if (n && n.type === 'UnaryExpression' && (n.operator === '-' || n.operator === '+') && n.argument &&
+                   (isArithmetic(n.argument) || (n.argument.type === 'Literal' && typeof n.argument.value === 'number'))) {
+          n.resultType = 'float64';
+          visit(n.argument);
+        } else if (n && n.type === 'Literal' && typeof n.value === 'number') {
+          n.resultType = 'float64';
+          delete n.typeGuess;
+        }
+      };
+      visit(ilNode);
+      return true;
     }
 
     /**
@@ -2644,6 +2816,11 @@
           const widened = this._getCommonType(decl.resultType, assignedType, null, value);
           decl.resultType = widened;
           if (decl.id) decl.id = { ...decl.id, resultType: widened };
+        }
+        // A nullable value stored into it makes the variable nullable.
+        if (decl && value && value.nullable && numeric(decl.resultType) && !decl.nullable) {
+          decl.nullable = true;
+          if (decl.id) decl.id = { ...decl.id, nullable: true };
         }
         return;
       }
@@ -2706,7 +2883,7 @@
         resultType = this._commonTypeOf([consequent, alternate]);
       }
 
-      return {
+      const result = {
         ...node,
         test,
         consequent,
@@ -2714,6 +2891,27 @@
         resultType,
         ilNodeType: 'ConditionalExpression'
       };
+      TypeAwareJSASTParser._typeNullableBranches(result);
+      return result;
+    }
+
+    /**
+     * `c ? null : n` with a number n: the conditional is n's type, nullable
+     * (a value type has no null of its own; see nullableJSDoc). A branch that
+     * is itself nullable makes the conditional nullable too.
+     * @param {Object} node - ConditionalExpression IL node (updated in place)
+     */
+    static _typeNullableBranches(node) {
+      const nothing = n => n && ((n.type === 'Literal' && n.value === null) || n.resultType === 'null' || n.resultType === 'void' ||
+        (n.type === 'Identifier' && n.name === 'undefined'));
+      const value = n => n && !nothing(n) && typeof n.resultType === 'string' && NULLABLE_VALUE_TYPES.test(n.resultType);
+      const [a, b] = [node.consequent, node.alternate];
+      if ((nothing(a) && value(b)) || (nothing(b) && value(a))) {
+        node.resultType = value(a) ? a.resultType : b.resultType;
+        node.nullable = true;
+      } else if (value(a) && value(b) && (a.nullable || b.nullable) && NULLABLE_VALUE_TYPES.test(node.resultType || '')) {
+        node.nullable = true;
+      }
     }
 
     /**
@@ -2818,6 +3016,7 @@
           method: methodName,
           arguments: node.arguments || [],
           resultType,
+          ...(resultType && this.lookupClassMethodReturnNullable(context.className, methodName) ? { nullable: true } : {}),
           ilNodeType: 'ThisMethodCall'
         };
       }
@@ -2834,6 +3033,7 @@
           method: methodName,
           arguments: node.arguments || [],
           resultType,
+          ...(resultType && this.lookupClassMethodReturnNullable(context.className, methodName) ? { nullable: true } : {}),
           ilNodeType: 'ThisMethodCall'
         };
       }
@@ -3002,12 +3202,18 @@
 
       // A local function with JSDoc types its arguments and its result (tier 3).
       if (callee && callee.type === 'Identifier' && this.declaredFunctions.has(callee.name)) {
-        const signature = this.declaredFunctions.get(callee.name);
+        const declared = this.declaredFunctions.get(callee.name);
+        // A generic function (`@template T`) is typed per call by its arguments.
+        const signature = declared.templates && declared.templates.length ?
+          TypeAwareJSASTParser._instantiateTemplates(declared, node.arguments || []) : declared;
         (node.arguments || []).forEach((arg, i) => {
           this._applyContextualType(arg, signature.params[i]);
         });
+        // A type parameter names no IL type: the call is typed only by its binding.
+        if (signature !== declared)
+          return { ...node, resultType: signature.returns && signature.returns !== 'void' ? signature.returns : null };
         if (signature.returns && signature.returns !== 'void' && !node.resultType)
-          return { ...node, resultType: signature.returns };
+          return { ...node, resultType: signature.returns, ...(signature.returnsNullable ? { nullable: true } : {}) };
       }
 
       // OpCodes.UInt64.xor(...) and friends: members of OpCodes' nested objects
@@ -3044,11 +3250,44 @@
           const params = this._localMethodParams(className, methodName);
           if (params) (node.arguments || []).forEach((arg, i) => this._applyContextualType(arg, params[i]));
           const returns = this.lookupClassMethodReturnType(className, methodName);
-          if (returns && returns !== 'void') return { ...node, resultType: returns };
+          if (returns && returns !== 'void')
+            return { ...node, resultType: returns, ...(this.lookupClassMethodReturnNullable(className, methodName) ? { nullable: true } : {}) };
         }
       }
 
       return node;
+    }
+
+    /**
+     * A generic local function (`@template T`) at one call: each type
+     * parameter is bound to the type of the argument its parameter declares
+     * (`{T}` binds T to the argument's type, `{T[]}` to its element type) and
+     * substituted into the parameter and return types. `filledArray(n, v)`
+     * declared `@template T @param {T} value @returns {T[]}` returns an array
+     * of v's type. A parameter left unbound types nothing (null).
+     * @param {Object} signature - { params: [IL type], returns, templates: [name] }
+     * @param {Object[]} args - IL arguments
+     * @returns {Object} signature with the bound types
+     */
+    static _instantiateTemplates(signature, args) {
+      const names = new Set(signature.templates);
+      const bound = new Map();
+      const arrayDepth = t => { let d = 0; while (typeof t === 'string' && t.endsWith('[]')) { t = t.slice(0, -2); ++d; } return [t, d]; };
+      (signature.params || []).forEach((param, i) => {
+        const [name, depth] = arrayDepth(param);
+        const arg = args[i];
+        if (!names.has(name) || bound.has(name) || !arg || typeof arg.resultType !== 'string') return;
+        let t = arg.resultType;
+        for (let d = 0; d < depth && t; ++d) t = t.endsWith('[]') ? t.slice(0, -2) : null;
+        if (t) bound.set(name, t);
+      });
+      const substitute = t => {
+        if (typeof t !== 'string') return t;
+        const [name, depth] = arrayDepth(t);
+        if (!names.has(name)) return t;
+        return bound.has(name) ? bound.get(name) + '[]'.repeat(depth) : null;
+      };
+      return { ...signature, params: (signature.params || []).map(substitute), returns: substitute(signature.returns) };
     }
 
     /**
@@ -3101,12 +3340,18 @@
       if (!result || typeof result !== 'object') return result;
       result.opCodesMethod = methodName;
 
-      // CopyArray copies any array: the copy has the source's type, whatever
-      // its JSDoc (written for the common byte case) says.
+      // CopyArray and ArraySlice copy any array: the copy has the source's
+      // type, whatever their JSDoc (written for the common byte case) says.
       const source = rawArgs && rawArgs[0];
       if (TypeAwareJSASTParser.TYPE_PRESERVING_OPCODES.has(methodName) && source &&
           typeof source.resultType === 'string' && source.resultType.endsWith('[]')) {
         result.resultType = source.resultType;
+        source.contextType = source.resultType;
+      }
+      // ConcatArrays([a, b, ...]) joins arrays of any one element type.
+      if (methodName === 'ConcatArrays' && source && typeof source.resultType === 'string' &&
+          source.resultType.endsWith('[][]')) {
+        result.resultType = source.resultType.slice(0, -2);
         source.contextType = source.resultType;
       }
       // CreateArray(n, v) is filled with v: a BigInt or out-of-byte-range v
@@ -3172,7 +3417,7 @@
     /**
      * OpCodes helpers whose result is a copy of their first (array) argument.
      */
-    static TYPE_PRESERVING_OPCODES = new Set(['CopyArray']);
+    static TYPE_PRESERVING_OPCODES = new Set(['CopyArray', 'ArraySlice']);
 
     /**
      * Key and value type of a keyed collection type: 'Map<K,V>' or 'Object<K,V>'
@@ -3294,33 +3539,221 @@
       }
       if (lo >= ranges.int32[0] && hi <= ranges.int32[1]) return 'int32';
       if (lo >= 0 && hi <= ranges.uint32[1]) return 'uint32';
+      // Operands of up to 32 bits stay within 64: a result that cannot go
+      // negative is uint64 (uint32 * uint32, uint32 + uint32), any other int64.
+      return lo >= 0 ? 'uint64' : 'int64';
+    }
+
+    /**
+     * Signed arithmetic of counts that int64 holds exactly: `+ - *` on int32
+     * and int64 Numbers (an int64 that a rounding of a double produced, `i +
+     * Math.round(x)`), where no result leaves the int64 range. A Number is
+     * an exact integer only up to 2^53 in magnitude, so an int64 operand
+     * counts as such; int32 operands count by their type, literals by value.
+     * Such arithmetic states no fixed width and is no guess; unsigned words
+     * (uint8..uint64) are not counts and stay reported.
+     * @param {string} op - '+', '-' or '*'
+     * @param {Object} left - left IL operand
+     * @param {Object} right - right IL operand
+     * @returns {boolean} true when int64 holds every result
+     */
+    static _isExactSignedArithmetic(op, left, right) {
+      const SAFE = 2 ** 53;
+      const range = n => {
+        if (!n || TypeAwareJSASTParser._isBigIntValue(n)) return null;
+        if (n.type === 'Literal') return typeof n.value === 'number' && Number.isInteger(n.value) ? [n.value, n.value] : null;
+        if (n.resultType === 'int32') return TypeAwareJSASTParser.INTEGER_RANGES.int32;
+        if (n.resultType === 'int64') return [-SAFE, SAFE];
+        return null;
+      };
+      const a = range(left), b = range(right);
+      if (!a || !b) return false;
+      let lo, hi;
+      if (op === '+') { lo = a[0] + b[0]; hi = a[1] + b[1]; }
+      else if (op === '-') { lo = a[0] - b[1]; hi = a[1] - b[0]; }
+      else {
+        const c = [a[0] * b[0], a[0] * b[1], a[1] * b[0], a[1] * b[1]];
+        lo = Math.min(...c); hi = Math.max(...c);
+      }
+      const int64 = TypeAwareJSASTParser.INTEGER_RANGES.int64;
+      return lo >= int64[0] && hi <= int64[1];
+    }
+
+    /**
+     * Result type of `+`, `-`, `*` or `%` on numbers where one side is a
+     * 64-bit integer (a Number typed uint64/int64, not a BigInt): uint64 when
+     * no result can be negative - both sides unsigned for `+` and `*`, an
+     * unsigned dividend for `%` - and int64 otherwise.
+     * @param {string} op - '+', '-', '*' or '%'
+     * @param {string} lt - left operand type
+     * @param {string} rt - right operand type
+     * @param {Object} left - left IL operand
+     * @param {Object} right - right IL operand
+     * @returns {string} 'uint64' or 'int64'
+     */
+    static _wideArithmeticType(op, lt, rt, left, right) {
+      const unsigned = (n, t) => n && n.type === 'Literal' && typeof n.value === 'number'
+        ? Number.isInteger(n.value) && n.value >= 0
+        : /^uint(8|16|32|64)$/.test(t);
+      if (op === '%') {
+        if (unsigned(left, lt)) return 'uint64';
+        // A signed count modulo an int32: |a % b| < |b|, so int32 holds it
+        // (`(i + Math.round(x)) % n` is an index again).
+        const divisor = right && right.type === 'Literal' ? Number.isInteger(right.value) && Math.abs(right.value) <= 0x80000000 : rt === 'int32';
+        return lt === 'int64' && divisor ? 'int32' : 'int64';
+      }
+      if (op === '+' || op === '*') return unsigned(left, lt) && unsigned(right, rt) ? 'uint64' : 'int64';
       return 'int64';
     }
 
     /**
      * Result type of Math.floor/ceil/round/trunc: the argument's own integer
-     * type, or for `a / b` with an integer dividend and a divisor of at least 1
-     * the dividend's type (the quotient is no larger). Null when the argument
-     * says nothing (the caller then keeps its default).
+     * type; otherwise the narrowest integer type that holds the rounded range
+     * of the argument (see _valueRange: `Math.round(scale * Math.cos(t))`
+     * with an int64 scale is int64, `Math.floor(u / 8)` of a uint32 int32);
+     * for `a / b` with an unsigned divisor the dividend's type. An argument
+     * whose range is unknown (a float64 of any magnitude) rounds to an
+     * integral double, float64 - never to int32 or int64, which it may
+     * exceed - as does one whose range exceeds 64 bits.
      * @param {Object} arg - IL argument
-     * @returns {string|null} integer type or null
+     * @param {Function} [round] - the rounding (Math.floor, ...) applied to the range's ends
+     * @returns {string} integer type, or float64
      */
-    static _roundedType(arg) {
+    static _roundedType(arg, round = Math.round) {
       const integer = t => typeof t === 'string' && /^u?int(8|16|32|64)$/.test(t);
-      if (!arg) return null;
+      if (!arg) return 'float64';
       if (integer(arg.resultType) && !(arg.type === 'Literal' && typeof arg.value !== 'number')) return arg.resultType;
-      if (arg.type === 'BinaryExpression' && arg.operator === '/' && arg.left && arg.right && integer(arg.left.resultType)) {
-        const r = arg.right;
-        const dividend = arg.left.resultType;
-        const range = TypeAwareJSASTParser.INTEGER_RANGES[dividend];
-        // A literal divisor narrows the quotient: uint32 / 8 fits int32.
-        if (r.type === 'Literal' && typeof r.value === 'number' && r.value >= 1) {
-          const lo = Math.floor(range[0] / r.value), hi = Math.ceil(range[1] / r.value);
-          return lo >= -0x80000000 && hi <= 0x7FFFFFFF ? 'int32' : dividend;
+      // Rounding is monotonic: the rounded ends bound the result (uint32 / 8 fits int32).
+      const range = TypeAwareJSASTParser._valueRange(arg);
+      if (range) return TypeAwareJSASTParser._integerTypeOfRange(round(range[0]), round(range[1]));
+      // An unsigned divisor of at least 1 (0 gives Infinity) keeps the quotient within the dividend.
+      if (arg.type === 'BinaryExpression' && arg.operator === '/' && arg.left && arg.right && integer(arg.left.resultType) &&
+          integer(arg.right.resultType) && arg.right.resultType.startsWith('u') && arg.right.type !== 'Literal')
+        return arg.left.resultType;
+      return 'float64';
+    }
+
+    /**
+     * The narrowest integer type of a range: int32, uint32, then uint64 for a
+     * range that is never negative and int64 for any other; float64 when no
+     * 64-bit integer holds it.
+     * @param {number} lo - smallest value
+     * @param {number} hi - largest value
+     * @returns {string} IL type
+     */
+    static _integerTypeOfRange(lo, hi) {
+      const ranges = TypeAwareJSASTParser.INTEGER_RANGES;
+      if (lo >= ranges.int32[0] && hi <= ranges.int32[1]) return 'int32';
+      if (lo >= 0 && hi <= ranges.uint32[1]) return 'uint32';
+      if (lo >= 0 && hi <= ranges.uint64[1]) return 'uint64';
+      if (lo >= ranges.int64[0] && hi <= ranges.int64[1]) return 'int64';
+      return 'float64';
+    }
+
+    /**
+     * The range of values a numeric IL expression can take, from its integer
+     * type, its literal value or the operation that forms it (interval
+     * arithmetic over + - * / %, Math.random, sin/cos, abs, min/max, ...).
+     * Null when nothing bounds it: a float64 or `number` value, a BigInt, a
+     * division by a range that holds 0.
+     * @param {Object} node - IL expression
+     * @param {number} [depth] - recursion limit
+     * @returns {number[]|null} [lo, hi]
+     */
+    static _valueRange(node, depth = 12) {
+      if (!node || typeof node !== 'object' || depth < 0) return null;
+      const sub = n => TypeAwareJSASTParser._valueRange(n, depth - 1);
+      const corners = (a, b, f) => {
+        const v = [f(a[0], b[0]), f(a[0], b[1]), f(a[1], b[0]), f(a[1], b[1])];
+        return v.some(Number.isNaN) ? null : [Math.min(...v), Math.max(...v)];
+      };
+      const t = node.resultType;
+      if (node.type === 'Literal') return typeof node.value === 'number' && Number.isFinite(node.value) ? [node.value, node.value] : null;
+      if (node.type === 'MathConstant' && typeof node.value === 'number') return [node.value, node.value];
+      if (TypeAwareJSASTParser._isBigIntValue(node)) return null;
+      // The operation bounds the value more tightly than its type may
+      // (uint32 * uint32 is a uint64 below 2^64 - 2^33 + 2); both hold.
+      const typed = typeof t === 'string' && TypeAwareJSASTParser.INTEGER_RANGES[t] ? TypeAwareJSASTParser.INTEGER_RANGES[t] : null;
+      const shaped = TypeAwareJSASTParser._operationRange(node, sub, corners);
+      if (shaped && typed && shaped[0] <= typed[1] && shaped[1] >= typed[0])
+        return [Math.max(shaped[0], typed[0]), Math.min(shaped[1], typed[1])];
+      return shaped || typed;
+    }
+
+    /**
+     * The range an operation forms from the ranges of its operands (see _valueRange).
+     * @param {Object} node - IL expression
+     * @param {Function} sub - range of an operand
+     * @param {Function} corners - range of f over two ranges, from their corners
+     * @returns {number[]|null} [lo, hi]
+     */
+    static _operationRange(node, sub, corners) {
+      switch (node.type) {
+        case 'UnaryExpression': {
+          const a = sub(node.argument);
+          if (!a) return null;
+          return node.operator === '-' ? [-a[1], -a[0]] : node.operator === '+' ? a : null;
         }
-        if (integer(r.resultType) && r.resultType.startsWith('u') && r.type !== 'Literal') return dividend;
+        case 'BinaryExpression': {
+          const a = sub(node.left), b = sub(node.right);
+          if (!a || !b) return null;
+          switch (node.operator) {
+            case '+': return [a[0] + b[0], a[1] + b[1]];
+            case '-': return [a[0] - b[1], a[1] - b[0]];
+            case '*': return corners(a, b, (x, y) => x * y);
+            case '/': {
+              if (b[0] > 0 || b[1] < 0) return corners(a, b, (x, y) => x / y);
+              // An integer divisor other than 0 (which gives no finite value)
+              // is at least 1 in magnitude: the quotient is no larger than the
+              // dividend, and a counted int32 stays int32 (see _widenedArithmeticType).
+              const integer = n => n && n.type !== 'Literal' && typeof n.resultType === 'string' && /^u?int(8|16|32|64)$/.test(n.resultType);
+              if (!integer(node.right)) return null;
+              const m = Math.max(Math.abs(a[0]), Math.abs(a[1]));
+              const q = a[0] >= 0 && b[0] >= 0 ? [0, a[1]] : [-m, m];
+              if (integer(node.left) && node.left.resultType === 'int32')
+                return [Math.max(q[0], -0x80000000), Math.min(q[1], 0x7FFFFFFF)];
+              return q;
+            }
+            case '%': {
+              // |a % b| < |b| and |a % b| <= |a|, with the sign of a
+              const m = Math.min(Math.max(Math.abs(b[0]), Math.abs(b[1])), Math.max(Math.abs(a[0]), Math.abs(a[1])));
+              return [a[0] < 0 ? -m : 0, a[1] > 0 ? m : 0];
+            }
+            default: return null;
+          }
+        }
+        case 'ConditionalExpression': {
+          const a = sub(node.consequent), b = sub(node.alternate);
+          return a && b ? [Math.min(a[0], b[0]), Math.max(a[1], b[1])] : null;
+        }
+        case 'Random': return [0, 1];
+        case 'Sin': case 'Cos': case 'Tanh': return [-1, 1];
+        case 'Atan': return [-Math.PI / 2, Math.PI / 2];
+        case 'Atan2': case 'Acos': case 'Asin': return [-Math.PI, Math.PI];
+        // log of any finite positive double lies within these bounds
+        case 'Log2': return [-1075, 1024];
+        case 'Log': return [-745.2, 709.8];
+        case 'Log10': return [-323.4, 308.3];
+        case 'Floor': case 'Ceil': case 'Round': case 'Truncate': {
+          const a = sub(node.argument);
+          return a ? [Math.floor(a[0]), Math.ceil(a[1])] : null;
+        }
+        case 'Abs': {
+          const a = sub(node.argument);
+          return a ? [a[0] <= 0 && a[1] >= 0 ? 0 : Math.min(Math.abs(a[0]), Math.abs(a[1])), Math.max(Math.abs(a[0]), Math.abs(a[1]))] : null;
+        }
+        case 'Sqrt': {
+          const a = sub(node.argument);
+          return a ? [0, Math.sqrt(Math.max(0, a[1]))] : null;
+        }
+        case 'Min': case 'Max': {
+          const all = (node.arguments || []).map(sub);
+          if (all.length === 0 || all.some(r => !r)) return null;
+          const pick = node.type === 'Min' ? Math.min : Math.max;
+          return [pick(...all.map(r => r[0])), pick(...all.map(r => r[1]))];
+        }
+        default: return null;
       }
-      return null;
     }
 
     /**
@@ -3523,11 +3956,11 @@
 
       switch (methodName) {
         case 'floor':
-          return { type: 'Floor', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0]) || getResultType('Floor'), ilNodeType: 'Floor' };
+          return { type: 'Floor', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0], Math.floor), ilNodeType: 'Floor' };
         case 'ceil':
-          return { type: 'Ceil', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0]) || getResultType('Ceil'), ilNodeType: 'Ceil' };
+          return { type: 'Ceil', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0], Math.ceil), ilNodeType: 'Ceil' };
         case 'round':
-          return { type: 'Round', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0]) || getResultType('Round'), ilNodeType: 'Round' };
+          return { type: 'Round', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0], Math.round), ilNodeType: 'Round' };
         case 'abs':
           return { type: 'Abs', argument: args[0], resultType: getResultType('Abs', args[0]?.resultType), ilNodeType: 'Abs' };
         case 'min':
@@ -3541,7 +3974,7 @@
         case 'random':
           return { type: 'Random', resultType: getResultType('Random'), ilNodeType: 'Random' };
         case 'trunc':
-          return { type: 'Truncate', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0]) || getResultType('Truncate'), ilNodeType: 'Truncate' };
+          return { type: 'Truncate', argument: args[0], resultType: TypeAwareJSASTParser._roundedType(args[0], Math.trunc), ilNodeType: 'Truncate' };
         case 'log':
           return { type: 'Log', argument: args[0], resultType: getResultType('Log'), ilNodeType: 'Log' };
         case 'log2':
@@ -3928,6 +4361,44 @@
     }
 
     /**
+     * The type a callback returns: its declared @returns, the declared return
+     * type of a local function passed by name, or the common type of the
+     * values its body returns (an arrow's expression, or every `return E;` of
+     * a block outside nested functions).
+     * @param {Object} fn - IL callback (arrow, function expression or identifier)
+     * @returns {string|null} IL type, or null when any returned value is untyped
+     * @private
+     */
+    _callbackReturnType(fn) {
+      if (!fn || typeof fn !== 'object') return null;
+      const known = t => typeof t === 'string' && t !== '' && t !== 'void' && t !== 'any' && t !== 'number' && t !== 'object' ? t : null;
+      if (fn.type === 'Identifier') {
+        const signature = this.declaredFunctions && this.declaredFunctions.get(fn.name);
+        return signature ? known(signature.returns) : null;
+      }
+      if (fn.type !== 'ArrowFunction' && fn.type !== 'FunctionExpression') return null;
+      const declared = known(fn.declaredReturnType) || known(ilTypeFromJSDoc(fn.typeInfo && fn.typeInfo.returns));
+      if (declared) return declared;
+      const body = fn.body;
+      if (!body) return null;
+      if (body.type !== 'BlockStatement') return known(body.resultType);
+      const returned = [];
+      const collect = node => {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(collect); return; }
+        if (['ArrowFunction', 'FunctionExpression', 'FunctionDeclaration', 'ArrowFunctionExpression', 'ClassDeclaration'].includes(node.type)) return;
+        if (node.type === 'ReturnStatement') { returned.push(node.argument || null); return; }
+        for (const key in node) {
+          if (key === 'loc' || key === 'range' || key === 'typeInfo' || key === 'jsDoc') continue;
+          if (node[key] && typeof node[key] === 'object') collect(node[key]);
+        }
+      };
+      collect(body.body);
+      if (returned.length === 0 || returned.some(r => !r || !known(r.resultType))) return null;
+      return known(this._commonTypeOf(returned));
+    }
+
+    /**
      * Transform array method calls
      * @private
      */
@@ -4000,6 +4471,11 @@
           if (!arrayNode.elementType && args[0] && args[0].type === 'Literal' && typeof args[0].value === 'bigint') {
             fillElementType = args[0].value >= 0n ? 'uint64' : 'int64';
             fillResultType = `${fillElementType}[]`;
+          } else if (arrayNode && arrayNode.type === 'ArrayCreation' && !arrayNode.elementType && args[0] && args[0].type !== 'Literal' &&
+                     typeof args[0].resultType === 'string' && !['', 'any', 'number', 'object', 'null', 'void'].includes(args[0].resultType)) {
+            // A fresh `new Array(n).fill(v)` holds v: an array of v's type
+            fillElementType = args[0].resultType;
+            fillResultType = `${fillElementType}[]`;
           }
           const filled = {
             type: 'ArrayFill',
@@ -4054,9 +4530,13 @@
           return { type: 'ArrayReverse', array: arrayNode, elementType: arrayElementType, resultType: arrayResultType, ilNodeType: 'ArrayReverse' };
         case 'sort':
           return { type: 'ArraySort', array: arrayNode, compareFn: args[0] || null, elementType: arrayElementType, resultType: arrayResultType, ilNodeType: 'ArraySort' };
-        case 'map':
-          // Map result depends on callback, default to same element type
-          return { type: 'ArrayMap', array: arrayNode, callback: args[0], elementType: arrayElementType, resultType: arrayResultType, ilNodeType: 'ArrayMap' };
+        case 'map': {
+          // An array of what the callback returns; the source's own type only
+          // where nothing types the callback's result.
+          const mapped = this._callbackReturnType(args[0]);
+          const mappedElement = mapped || arrayElementType;
+          return { type: 'ArrayMap', array: arrayNode, callback: args[0], elementType: mappedElement, resultType: mapped ? `${mapped}[]` : arrayResultType, ilNodeType: 'ArrayMap' };
+        }
         case 'filter':
           return { type: 'ArrayFilter', array: arrayNode, callback: args[0], elementType: arrayElementType, resultType: arrayResultType, ilNodeType: 'ArrayFilter' };
         case 'forEach':
@@ -4308,13 +4788,16 @@
         if (className && propertyName)
           resultType = this.lookupClassFieldType(className, propertyName);
 
-        return {
+        const access = {
           type: 'ThisPropertyAccess',
           property: propertyName,
           computed: node.computed || false,
           resultType,
           ilNodeType: 'ThisPropertyAccess'
         };
+        if (resultType && className && propertyName && !node.computed && this.lookupDeclaredFieldNullable(className, propertyName))
+          access.nullable = true;
+        return access;
       }
 
       // arr.length → ArrayLength
@@ -4373,7 +4856,13 @@
 
         // Extract element type from array type (e.g., "uint8[]" → "uint8")
         let elementType = null;
-        if (objectType && typeof objectType === 'string') {
+        const tupleTypes = TypeAwareJSASTParser._tupleElements(objectType);
+        if (tupleTypes) {
+          // row[1] of a tuple is the type at that position; another index
+          // names no single position, so no single type
+          const index = transformedProperty && transformedProperty.type === 'Literal' ? transformedProperty.value : null;
+          elementType = Number.isInteger(index) && index >= 0 && index < tupleTypes.length ? tupleTypes[index] : null;
+        } else if (objectType && typeof objectType === 'string') {
           const keyed = TypeAwareJSASTParser._keyValueTypes(objectType);
           if (keyed && keyed.value)
             elementType = keyed.value;                    // table[key] of an Object<K,V>
@@ -4694,8 +5183,11 @@
             if (sourceTypeStr && typeof sourceTypeStr === 'string' && sourceTypeStr.endsWith('[]'))
               elementType = sourceTypeStr.slice(0, -2);
 
+            // `const [a, b, c] = row` of a tuple takes each position's type
+            const tupleTypes = TypeAwareJSASTParser._tupleElements(sourceTypeStr);
             let index = 0;
             for (const element of (decl.id.elements || [])) {
+              if (tupleTypes) elementType = index < tupleTypes.length ? tupleTypes[index] : null;
               if (element) {
                 const varName = element.name;
                 transformedDeclarations.push({
@@ -4737,12 +5229,16 @@
             this._literalTypedVariables().set(varName, transformedInit);
           }
 
+          // A declared nullable value type (`@type {int32|null}`) may hold null, and so
+          // may a variable that a nullable value initialises.
+          const nullable = declaredType ? !!decl.declaredNullable : !!(transformedInit && transformedInit.nullable && varType === transformedInit.resultType);
+
           // Register the variable type
           if (varName && varType) {
             if (isModuleLevel && isConst)
               this.registerConstantType(varName, varType);
             else
-              this.registerVariableType(varName, varType, !!declaredType);
+              this.registerVariableType(varName, varType, !!declaredType, nullable);
           }
 
           // Create transformed declarator with type info
@@ -4751,8 +5247,10 @@
             init: transformedInit,
             resultType: varType
           };
+          if (nullable) transformedDecl.nullable = true;
           if (decl.id) {
             transformedDecl.id = { ...decl.id, resultType: varType };
+            if (nullable) transformedDecl.id.nullable = true;
           }
           transformedDeclarations.push(transformedDecl);
           // A variable typed by a non-literal initializer is declared with a
@@ -4850,6 +5348,55 @@
     }
 
     /**
+     * The tuple type of an array literal whose elements are of different
+     * kinds - numbers, BigInts, strings, booleans, arrays, tuples - such as
+     * `["", 0, " "]`: '[string,int32,string]', each position typed by its
+     * element. Null when the elements share a kind (an ordinary array), when
+     * one is untyped, null, a class instance, or a spread (no fixed length).
+     * @param {Object[]} elements - IL elements
+     * @returns {string|null} tuple type
+     */
+    static _tupleTypeOf(elements) {
+      if (!elements || elements.length < 2) return null;
+      const kind = t => typeof t !== 'string' ? null :
+        /^(u?int(8|16|32|64)|float(32|64)|number)$/.test(t) ? 'number' :
+        t === 'bigint' || t === 'BigInt' ? 'bigint' : t === 'string' ? 'string' : t === 'boolean' ? 'boolean' :
+        t.endsWith('[]') ? 'array' : TypeAwareJSASTParser._tupleElements(t) ? 'tuple' : null;
+      const types = [];
+      const kinds = new Set();
+      for (const el of elements) {
+        if (!el || el.type === 'SpreadElement') return null;
+        // a BigInt literal is typed by its magnitude (uint64), but is a BigInt
+        const t = el.type === 'Literal' && typeof el.value === 'bigint' ? 'bigint' : el.resultType;
+        const k = kind(t);
+        if (!k) return null;
+        kinds.add(k);
+        types.push(t);
+      }
+      return kinds.size > 1 ? `[${types.join(',')}]` : null;
+    }
+
+    /**
+     * The element types of a tuple type: '[string,int32,string]' -> ['string', 'int32', 'string'].
+     * @param {*} type - IL type
+     * @returns {string[]|null} element types, or null when type is no tuple
+     */
+    static _tupleElements(type) {
+      if (typeof type !== 'string' || type.length < 3 || type[0] !== '[' || !type.endsWith(']') || type.endsWith('[]')) return null;
+      const parts = [];
+      let depth = 0, start = 1;
+      for (let i = 1; i < type.length - 1; ++i) {
+        const c = type[i];
+        if (c === '[' || c === '<' || c === '(' || c === '{') ++depth;
+        else if (c === ']' || c === '>' || c === ')' || c === '}') { if (--depth < 0) return null; }
+        else if (c === ',' && depth === 0) { parts.push(type.slice(start, i)); start = i + 1; }
+      }
+      if (depth !== 0) return null;
+      parts.push(type.slice(start, type.length - 1));
+      return parts.every(p => p.length > 0) ? parts : null;
+    }
+
+    /**
      * Transform ArrayExpression nodes to add resultType and elementType
      * @private
      */
@@ -4878,6 +5425,13 @@
           allNonNegativeIntLiterals = false;
           break;
         }
+      }
+
+      // A row of values of different kinds (`["", 0, " "]`) has no common
+      // element type: it is a tuple, typed position by position.
+      const tuple = allNonNegativeIntLiterals ? null : TypeAwareJSASTParser._tupleTypeOf(elements);
+      if (tuple) {
+        return { ...node, elements, elementType: null, tupleTypes: TypeAwareJSASTParser._tupleElements(tuple), resultType: tuple, ilNodeType: 'ArrayLiteral' };
       }
 
       if (allNonNegativeIntLiterals) {
@@ -4924,7 +5478,8 @@
      * @private
      */
     _commonTypeOf(nodes) {
-      const isIntLiteral = n => n && n.type === 'Literal' && typeof n.value === 'number' && Number.isInteger(n.value);
+      const isIntLiteral = n => n && n.type === 'Literal' &&
+        ((typeof n.value === 'number' && Number.isInteger(n.value)) || typeof n.value === 'bigint');
       const ordered = [...nodes.filter(n => n && !isIntLiteral(n)), ...nodes.filter(isIntLiteral)];
       let common = null;
       let only = null;                   // the node common came from, while it is just one
@@ -4953,8 +5508,16 @@
 
       // An integer literal is typed int32 only by default: it takes the other
       // side's type when its value fits there (`c ? 0 : u32` is uint32).
+      // A BigInt literal (`0n`, typed uint64 by its magnitude) likewise fits a
+      // 64-bit or BigInt side.
       const fits = (node, type) => {
-        if (!node || node.type !== 'Literal' || typeof node.value !== 'number' || !Number.isInteger(node.value)) return false;
+        if (!node || node.type !== 'Literal') return false;
+        if (typeof node.value === 'bigint') {
+          if (type === 'bigint' || type === 'BigInt') return true;
+          const wide = { uint64: [0n, 0xFFFFFFFFFFFFFFFFn], int64: [-0x8000000000000000n, 0x7FFFFFFFFFFFFFFFn] }[type];
+          return !!wide && node.value >= wide[0] && node.value <= wide[1];
+        }
+        if (typeof node.value !== 'number' || !Number.isInteger(node.value)) return false;
         const range = TypeAwareJSASTParser.INTEGER_RANGES[type];
         return range ? node.value >= range[0] && node.value <= range[1] : /^float(32|64)$/.test(type);
       };
@@ -4963,6 +5526,9 @@
 
       // Numeric type widening: the common type must hold every value of both.
       const integer = t => /^u?int(8|16|32|64)$/.test(t);
+      // An integer and a BigInt that may exceed 64 bits: only bigint holds both.
+      const big = t => t === 'bigint' || t === 'BigInt';
+      if ((big(type1) && (integer(type2) || big(type2))) || (big(type2) && integer(type1))) return 'bigint';
       const float = t => t === 'float32' || t === 'float64';
       const bits = t => parseInt(t.match(/\d+/)[0], 10);
       if (integer(type1) && integer(type2)) {
@@ -5093,7 +5659,7 @@
         }
         // If either is 64-bit, result is 64-bit
         else if (leftType.includes('64') || rightType.includes('64')) {
-          resultType = leftType.includes('int') || rightType.includes('int') ? 'int64' : 'uint64';
+          resultType = TypeAwareJSASTParser._wideArithmeticType(op, leftType, rightType, left, right);
         }
         // Fixed-width integers up to 32 bits: a type that holds the result
         // (JavaScript does not wrap: two uint8 add up to 510, uint32 - uint32
@@ -5145,7 +5711,8 @@
       } else if (bigintType) {
         // BigInt operands: the type above holds every result (see _bigIntResultType)
       } else if (isInteger(lt) && isInteger(rt)) {
-        if (['+', '-', '*'].includes(op) && !(lt === 'int32' && rt === 'int32')) {
+        if (['+', '-', '*'].includes(op) && !(lt === 'int32' && rt === 'int32') &&
+            !TypeAwareJSASTParser._isExactSignedArithmetic(op, left, right)) {
           result.typeGuess = `'${lt} ${op} ${rt}' has no fixed width in JavaScript but is typed ${resultType}; ` +
             `use OpCodes.${op === '+' ? 'Add32' : op === '-' ? 'Sub32' : 'Mul32'} (or the matching helper) for fixed-width arithmetic`;
           result.typeGuessKind = 'raw-arithmetic';
@@ -7230,6 +7797,10 @@
       if (entry.node.typeInfo && entry.node.typeInfo.returns) {
         // JSDoc @returns is a parsed type object; a baked return is a string.
         const declared = this._cleanTypeName(ilTypeFromJSDoc(entry.node.typeInfo.returns));
+        // A generic return (`@template T @returns {T[]}`) is typed per call
+        // (see _instantiateTemplates), never as the type parameter itself.
+        const templates = entry.node.typeInfo.templates || [];
+        if (declared && templates.includes(declared.replace(/(\[\])+$/, ''))) return null;
         if (declared) return declared;
       }
       const returnType = this._analyzeReturnType(entry.node);
@@ -8252,7 +8823,8 @@
         method.value.typeInfo = {
           params: new Map(jsDoc.params.map(p => [p.name, p.type])),
           returns: jsDoc.returns ? jsDoc.returns.type : null,
-          csharpOverride: jsDoc.csharpOverride || null
+          csharpOverride: jsDoc.csharpOverride || null,
+          templates: jsDoc.templates || []
         };
 
         // Attach type info to method parameters
@@ -8536,7 +9108,8 @@
             init.typeInfo = {
               params: new Map(jsDoc.params.map(p => [p.name, p.type])),
               returns: jsDoc.returns ? jsDoc.returns.type : null,
-              csharpOverride: jsDoc.csharpOverride || null
+              csharpOverride: jsDoc.csharpOverride || null,
+              templates: jsDoc.templates || []
             };
             (init.params || []).forEach((param, index) => {
               if (jsDoc.params[index] && param && param.type === 'Identifier')
@@ -8582,7 +9155,8 @@
         node.typeInfo = {
           params: new Map(jsDoc.params.map(p => [p.name, p.type])),
           returns: jsDoc.returns ? jsDoc.returns.type : null,
-          csharpOverride: jsDoc.csharpOverride || null
+          csharpOverride: jsDoc.csharpOverride || null,
+          templates: jsDoc.templates || []
         };
 
         // Attach type info to function parameters
@@ -8639,7 +9213,8 @@
         node.typeInfo = {
           params: new Map(jsDoc.params.map(p => [p.name, p.type])),
           returns: jsDoc.returns ? jsDoc.returns.type : null,
-          csharpOverride: jsDoc.csharpOverride || null
+          csharpOverride: jsDoc.csharpOverride || null,
+          templates: jsDoc.templates || []
         };
 
         // Attach type info to function parameters
@@ -9827,7 +10402,8 @@
             property.value.typeInfo = {
               params: new Map(jsDoc.params.map(p => [p.name, p.type])),
               returns: jsDoc.returns ? jsDoc.returns.type : null,
-              csharpOverride: jsDoc.csharpOverride || null  // Native C# code override
+              csharpOverride: jsDoc.csharpOverride || null,  // Native C# code override
+              templates: jsDoc.templates || []
             };
 
             // Attach type info to function parameters
