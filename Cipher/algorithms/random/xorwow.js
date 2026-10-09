@@ -292,6 +292,7 @@
      * v = v XOR t
      * weyl = weyl + WEYL_CONSTANT
      * return v + weyl
+     * @returns {uint32} Next 32-bit output
      */
     _next32() {
       if (!this._ready) {

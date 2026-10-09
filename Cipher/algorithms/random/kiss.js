@@ -362,6 +362,7 @@
      *
      * Formula: ((MWC XOR CONG)+SHR3)
      * This combines all four generators using XOR and addition
+     * @returns {uint32} Next 32-bit output
      */
     _next32() {
       if (!this._ready) {

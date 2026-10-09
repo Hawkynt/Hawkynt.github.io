@@ -159,6 +159,8 @@
      * Helper function to encode single seed value into byte array
      * Expands to [seed, 0, 0] for both components (Rosetta Code convention)
      * @private
+     * @param {uint32} seed - Seed value
+     * @returns {uint8[]} Its little-endian bytes
      */
     _encodeSingleSeed(seed) {
       return OpCodes.Unpack32LE(seed);
@@ -167,6 +169,13 @@
     /**
      * Helper function to encode 6 seed values into byte array
      * @private
+     * @param {uint32} s10 - First component, word 0
+     * @param {uint32} s11 - First component, word 1
+     * @param {uint32} s12 - First component, word 2
+     * @param {uint32} s20 - Second component, word 0
+     * @param {uint32} s21 - Second component, word 1
+     * @param {uint32} s22 - Second component, word 2
+     * @returns {uint8[]} The six words, little-endian
      */
     _encodeSeed(s10, s11, s12, s20, s21, s22) {
       return OpCodes.ConcatArrays([

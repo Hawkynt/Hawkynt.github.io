@@ -296,6 +296,7 @@
      * - i = current position
      * - j = (i + lag) % 128
      * - a = 10, b = 5, c = 26 (optimized parameters)
+     * @returns {uint32} Next 32-bit output
      */
     _next32() {
       if (!this._ready) {

@@ -313,6 +313,7 @@
      * x = y; y = z; z = w
      * w = XOR(XOR(w, right_shift(w, 19)), XOR(t, right_shift(t, 8)))
      * return w
+     * @returns {uint32} Next 32-bit output
      */
     _next32() {
       if (!this._ready) {

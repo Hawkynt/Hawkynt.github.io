@@ -343,7 +343,7 @@
       }
 
       // Initialize state array using SplitMix64
-      this._state = OpCodes.CreateArray(this._stateSize, 0n);
+      this._state = new Array(this._stateSize).fill(0n);
       for (let i = 0; i < this._stateSize; ++i) {
         this._state[i] = this._splitmix64Next(seedValue);
         seedValue = this._state[i]; // Use output as next seed

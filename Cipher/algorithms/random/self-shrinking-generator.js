@@ -205,6 +205,7 @@
      * @param {uint8[]} seedValue - Initial state (1-64 bits); a number or BigInt is accepted too
      */
     set seed(seedValue) {
+      this._seedBytes = Array.isArray(seedValue) ? seedValue.slice() : null;
       if (typeof seedValue === 'number') {
         this._state = BigInt(seedValue);
       } else if (typeof seedValue === 'bigint') {
@@ -234,10 +235,10 @@
     }
 
     /**
-     * @returns {BigInt} The current LFSR state
+     * @returns {uint8[]|null} The seed bytes as set (null for a number or BigInt seed)
      */
     get seed() {
-      return this._state;
+      return this._seedBytes || null;
     }
 
     /**
