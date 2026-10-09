@@ -847,15 +847,26 @@ final class Js {
     }
 
     // ---------------------------------------------------------------- dynamic members (reflection)
+    /** Classes whose members JavaScript code can reach: the generated ones and the runtime's, never java.*. */
+    static boolean reflectable(Class<?> k) { return k != null && k != Object.class && !k.getName().startsWith("java."); }
+    /** A member by its JavaScript name, or the mangled name the code generator gave it (a Java keyword, finalize, ...). */
     static java.lang.reflect.Field findField(Class<?> c, String name) {
-        for (Class<?> k = c; k != null; k = k.getSuperclass())
+        java.lang.reflect.Field f = findFieldExact(c, name);
+        return f != null ? f : findFieldExact(c, name + "_");
+    }
+    static java.lang.reflect.Field findFieldExact(Class<?> c, String name) {
+        for (Class<?> k = c; reflectable(k); k = k.getSuperclass())
             for (java.lang.reflect.Field f : k.getDeclaredFields())
                 if (f.getName().equals(name) && !java.lang.reflect.Modifier.isStatic(f.getModifiers())) { f.setAccessible(true); return f; }
         return null;
     }
     static java.lang.reflect.Method findMethod(Class<?> c, String name, int arity) {
+        java.lang.reflect.Method m = findMethodExact(c, name, arity);
+        return m != null ? m : findMethodExact(c, name + "_", arity);
+    }
+    static java.lang.reflect.Method findMethodExact(Class<?> c, String name, int arity) {
         java.lang.reflect.Method best = null;
-        for (Class<?> k = c; k != null; k = k.getSuperclass())
+        for (Class<?> k = c; reflectable(k); k = k.getSuperclass())
             for (java.lang.reflect.Method m : k.getDeclaredMethods())
                 if (m.getName().equals(name) && !m.isBridge() && !java.lang.reflect.Modifier.isStatic(m.getModifiers())) {
                     if (m.getParameterCount() == arity) { m.setAccessible(true); return m; }
@@ -909,6 +920,7 @@ final class Js {
         if (o == null) throw new JsError("TypeError", "Cannot read properties of undefined (reading '" + name + "')");
         if (o instanceof JsObject) { Object f = ((JsObject) o).get(name); if (f instanceof JsFn) return ((JsFn) f).call(args); throw new JsError("TypeError", name + " is not a function"); }
         if (o instanceof JsDynamic && ((JsDynamic) o).props().get(name) instanceof JsFn) return ((JsFn) ((JsDynamic) o).props().get(name)).call(args);
+        if (o instanceof String || o instanceof Number || o instanceof Boolean || o instanceof JsArrayLike) return builtin(o, name, args);
         java.lang.reflect.Method m = findMethod(o.getClass(), name, args.length);
         if (m == null) {
             Object f = getProp(o, name);
@@ -930,6 +942,88 @@ final class Js {
         catch (java.lang.reflect.InvocationTargetException e) { throw unwrap(e); }
         catch (IllegalAccessException e) { throw new JsError(e.toString()); }
     }
+    static Object a(Object[] args, int i) { return i < args.length ? args[i] : null; }
+    static double d(Object[] args, int i, double dflt) { return i < args.length && args[i] != null ? toNum(args[i]) : dflt; }
+    /** A built-in method of a string, number or array called on a value whose type was not known statically. */
+    static Object builtin(Object o, String name, Object[] args) {
+        if (o instanceof String) {
+            String s = (String) o;
+            switch (name) {
+                case "split": return args.length == 0 || args[0] == null ? split(s) : args[0] instanceof JsRegExp ? split(s, (JsRegExp) args[0]) : args.length > 1 ? split(s, str(args[0]), toNum(args[1])) : split(s, str(args[0]));
+                case "replace": return args[0] instanceof JsRegExp ? (args[1] instanceof JsFn ? replace(s, (JsRegExp) args[0], (JsFn) args[1]) : replace(s, (JsRegExp) args[0], str(args[1]))) : (args[1] instanceof JsFn ? replace(s, str(args[0]), (JsFn) args[1]) : replace(s, str(args[0]), str(args[1])));
+                case "replaceAll": return args[0] instanceof JsRegExp ? replace(s, (JsRegExp) args[0], str(args[1])) : replaceAll(s, str(args[0]), str(args[1]));
+                case "charCodeAt": return charCodeAt(s, d(args, 0, 0));
+                case "codePointAt": return s.codePointAt((int) d(args, 0, 0));
+                case "charAt": return charAt(s, d(args, 0, 0));
+                case "substring": return args.length > 1 ? substring(s, d(args, 0, 0), d(args, 1, s.length())) : substring(s, d(args, 0, 0));
+                case "substr": return args.length > 1 ? substr(s, d(args, 0, 0), d(args, 1, s.length())) : substr(s, d(args, 0, 0));
+                case "slice": return args.length > 1 ? slice(s, d(args, 0, 0), d(args, 1, s.length())) : slice(s, d(args, 0, 0));
+                case "indexOf": return args.length > 1 ? indexOf(s, str(args[0]), d(args, 1, 0)) : indexOf(s, str(args[0]));
+                case "lastIndexOf": return lastIndexOf(s, str(args[0]));
+                case "includes": return s.contains(str(args[0]));
+                case "startsWith": return s.startsWith(str(args[0]));
+                case "endsWith": return s.endsWith(str(args[0]));
+                case "toUpperCase": return toUpperCase(s);
+                case "toLowerCase": return toLowerCase(s);
+                case "trim": return trim(s);
+                case "trimStart": return trimStart(s);
+                case "trimEnd": return trimEnd(s);
+                case "padStart": return args.length > 1 ? padStart(s, d(args, 0, 0), str(args[1])) : padStart(s, d(args, 0, 0));
+                case "padEnd": return args.length > 1 ? padEnd(s, d(args, 0, 0), str(args[1])) : padEnd(s, d(args, 0, 0));
+                case "repeat": return repeat(s, d(args, 0, 0));
+                case "concat": return concat(s, args);
+                case "match": return ((JsRegExp) args[0]).match(s);
+                case "toString": case "valueOf": return s;
+                case "localeCompare": return s.compareTo(str(args[0]));
+            }
+        } else if (o instanceof Number) {
+            switch (name) {
+                case "toString": return args.length == 0 || args[0] == null ? str(o) : toRadix(o, toInt(args[0]));
+                case "toFixed": return toFixed(toNum(o), args.length == 0 ? 0 : toInt(args[0]));
+                case "valueOf": return o;
+            }
+        } else if (o instanceof Boolean) {
+            if (name.equals("toString")) return str(o);
+            if (name.equals("valueOf")) return o;
+        } else {
+            JsArrayLike arr = (JsArrayLike) o;
+            switch (name) {
+                case "push": { int n = arr.length(); for (Object v : args) n = arr.pushBoxed(v); return n; }
+                case "join": return args.length == 0 || args[0] == null ? arr.join() : arr.join(str(args[0]));
+                case "toString": return arr.join();
+                case "indexOf": return arr.indexOfBoxed(a(args, 0));
+                case "includes": return includesDyn(arr, a(args, 0));
+                case "forEach": arr.forEach(toFn(a(args, 0))); return null;
+                case "some": return arr.some(toFn(a(args, 0)));
+                case "every": return arr.every(toFn(a(args, 0)));
+                case "find": return arr.find(toFn(a(args, 0)));
+                case "findIndex": return arr.findIndex(toFn(a(args, 0)));
+                case "reduce": return args.length > 1 ? arr.reduce(toFn(a(args, 0)), args[1]) : arr.reduce(toFn(a(args, 0)));
+                case "map": return arr.mapToObjects(toFn(a(args, 0)));
+            }
+        }
+        // slice, concat, filter, reverse, fill, sort, pop, shift, ... : the array class's own method
+        java.lang.reflect.Method m = null;
+        for (java.lang.reflect.Method c : o.getClass().getMethods())
+            if (c.getName().equals(name) && !java.lang.reflect.Modifier.isStatic(c.getModifiers()) && (c.getParameterCount() == args.length || (c.isVarArgs() && args.length >= c.getParameterCount() - 1)))
+                if (m == null || c.getParameterTypes().length > 0 && c.getParameterTypes()[0] == double.class) m = c;
+        if (m == null || o instanceof String || o instanceof Number || o instanceof Boolean)
+            throw new JsError("TypeError", typeOf(o) + "." + name + " is not a function");
+        Class<?>[] types = m.getParameterTypes();
+        Object[] actual = new Object[types.length];
+        for (int i = 0; i < types.length; ++i) {
+            if (m.isVarArgs() && i == types.length - 1) {
+                Class<?> ct = types[i].getComponentType(); int n = Math.max(0, args.length - i);
+                Object rest = java.lang.reflect.Array.newInstance(ct, n);
+                for (int j = 0; j < n; ++j) java.lang.reflect.Array.set(rest, j, coerce(args[i + j], ct));
+                actual[i] = rest;
+            } else actual[i] = coerce(i < args.length ? args[i] : null, types[i]);
+        }
+        try { return m.invoke(o, actual); }
+        catch (java.lang.reflect.InvocationTargetException e) { throw unwrap(e); }
+        catch (IllegalAccessException e) { throw new JsError(e.toString()); }
+    }
+
     public static RuntimeException unwrap(java.lang.reflect.InvocationTargetException e) {
         Throwable t = e.getCause();
         if (t instanceof RuntimeException) return (RuntimeException) t;
