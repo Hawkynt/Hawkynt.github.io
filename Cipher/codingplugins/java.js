@@ -1705,14 +1705,17 @@ final class OpCodes {
         for (int i = 0; i < all.length(); ++i) r.pushAll(all.getBoxed(i));
         return r;
     }
-    public static U8Array CreateArray(double length, double value) { U8Array r = new U8Array((int) length); r.fill(Js.toInt32(value)); return r; }
-    public static U8Array CreateArray(double length) { return new U8Array((int) length); }
-    public static U8Array ArraySlice(Object arr, double start, double end) {
-        JsArrayLike a = (JsArrayLike) arr; U8Array r = new U8Array();
-        for (int i = (int) start; i < end && i < a.length(); ++i) r.push(Js.toInt(a.getBoxed(i)));
+    /** A plain array of length copies of value (any number: callers fill word tables with it too). */
+    public static F64Array CreateArray(double length, double value) { F64Array r = new F64Array((int) length); r.fill(value); return r; }
+    public static F64Array CreateArray(double length) { F64Array r = new F64Array((int) length); r.fill(0); return r; }
+    /** The elements from start to end as a plain array of the source's class. */
+    @SuppressWarnings("unchecked") public static <A extends JsArrayLike> A ArraySlice(A arr, double start, double end) {
+        A r;
+        try { r = (A) arr.getClass().getConstructor().newInstance(); } catch (ReflectiveOperationException e) { throw new JsError(e.toString()); }
+        for (int i = (int) start; i < end && i < arr.length(); ++i) r.pushBoxed(arr.getBoxed(i));
         return r;
     }
-    public static U8Array ArraySlice(Object arr, double start) { return ArraySlice(arr, start, ((JsArrayLike) arr).length()); }
+    public static <A extends JsArrayLike> A ArraySlice(A arr, double start) { return ArraySlice(arr, start, arr.length()); }
     public static boolean SecureCompare(Object x, Object y) {
         JsArrayLike a = (JsArrayLike) x, b = (JsArrayLike) y;
         if (a.length() != b.length()) return false;
