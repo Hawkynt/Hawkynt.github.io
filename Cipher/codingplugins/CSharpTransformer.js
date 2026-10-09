@@ -11418,6 +11418,10 @@
         if (e?.type === 'CallExpression' && e.callee?.type === 'MemberExpression' && e.callee.property?.name === 'push' &&
             e.callee.object?.type === 'Identifier' && e.arguments?.length === 1 && e.arguments[0].type === 'Identifier')
           return { container: e.callee.object.name, local: e.arguments[0].name };
+        // The same for a store by index: A[i] = row
+        if (e?.type === 'AssignmentExpression' && e.operator === '=' && e.left?.type === 'MemberExpression' && e.left.computed &&
+            e.left.object?.type === 'Identifier' && e.right?.type === 'Identifier' && ['Identifier', 'Literal'].includes(e.left.property?.type))
+          return { container: e.left.object.name, local: e.right.name, index: e.left.property.type === 'Identifier' ? e.left.property.name : null };
         return null;
       };
       const body = node.body;
@@ -11432,9 +11436,15 @@
         this._walkAstNodes(rest, n => {
           if (['ReturnStatement', 'BreakStatement', 'ContinueStatement', 'ThrowStatement'].includes(n.type)) blocked = true;
           if (n.type === 'Identifier' && n.name === push.container) blocked = true;
+          // The index must still name the same slot at the end of the block
+          if (push.index && ((n.type === 'AssignmentExpression' && n.left?.type === 'Identifier' && n.left.name === push.index) ||
+              (n.type === 'UpdateExpression' && n.argument?.type === 'Identifier' && n.argument.name === push.index))) blocked = true;
           if ((n.type === 'ArrayAppend' || n.type === 'ArrayConcat' || n.type === 'ArrayUnshift') && n.array?.type === 'Identifier' && n.array.name === push.local) rebound = true;
           if (n.type === 'CallExpression' && n.callee?.type === 'MemberExpression' && ['push', 'unshift'].includes(n.callee.property?.name) &&
               n.callee.object?.type === 'Identifier' && n.callee.object.name === push.local) rebound = true;
+          // A store growing it (SetGrow binds a new array)
+          if (n.type === 'AssignmentExpression' && n.left?.type === 'MemberExpression' && n.left.computed &&
+              n.left.object?.type === 'Identifier' && n.left.object.name === push.local && this.growableArrayLocals?.has(push.local)) rebound = true;
         });
         if (!rebound || blocked) continue;
         const [moved] = body.splice(i, 1);

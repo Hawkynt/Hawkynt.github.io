@@ -620,6 +620,11 @@ check('arrays: a row stored as an empty array and filled past its end grows in p
     '  for (let r = 0; r < 2; r++) { m[r] = OpCodes.CreateArray(0, 0); for (let c = 0; c < 2; c++) m[r][c] = d[r * 2 + c]; }\n  return m;\n}');
   expectMatch(code, /OpCodes\.SetGrow<byte>\(ref m\[r\], c, /, 'SetGrow(ref m[r], c, ...)');
 });
+check('arrays: a local stored into a container before it is filled is stored after it is filled', () => {
+  const code = transpile('/**\n * @param {int32} k - k\n * @returns {int32[][][]} m\n */\nfunction f(k) {\n  /** @type {int32[][][]} */\n  const a = [];\n' +
+    '  for (let i = 0; i < k; i++) {\n    /** @type {int32[][]} */\n    const row = [];\n    a[i] = row;\n    for (let j = 0; j < k; j++) row[j] = [i, j];\n  }\n  return a;\n}');
+  expectMatch(code, /SetGrow<int\[\]>\(ref row, j, [\s\S]*?\}\s*OpCodes\.SetGrow<int\[\]\[\]>\(ref a, i, row\)/, 'a[i] = row after the loop filling row');
+});
 check('conditions: a[i] as a condition is false past the end of a, as undefined is in JavaScript', () => {
   const code = transpile('/**\n * @param {uint8[]} r - r\n * @param {int32} i - i\n * @returns {int32} n\n */\nfunction f(r, i) { let n = 0; if (r[i] && (r[i] & 1)) n++; return n; }');
   expectMatch(code, /if \(i >= 0 && i < r\.Length && r\[i\] != 0 && /, 'the index checked before the read');
