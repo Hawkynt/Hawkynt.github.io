@@ -415,6 +415,13 @@ check('recursion: a call depth beyond Python\'s default limit of 1000 runs as in
   return expectOutput(runPython(js, 'print(depth(3000))'), ['3000']);
 });
 
+check('reverse: Array.reverse reverses in place, also as a statement, and returns the same array', () => {
+  const js = '/** @param {uint8[]} a */
+function f(a) { a.reverse(); const b = a.slice().reverse(); return [a, b, b.reverse() === b]; }';
+  // Given reverse() as a statement, on a copy, and as a value
+  return expectOutput(runPython(js, 'print([list(x) if not isinstance(x, bool) else x for x in f([1, 2, 3])])'), ['[[3, 2, 1], [3, 2, 1], True]']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }

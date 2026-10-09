@@ -2959,6 +2959,15 @@ class OpCodes(metaclass=_OpCodesMeta):
       });
       stubs.push({
         nodeType: 'RawCode', code:
+          'def _js_reverse(a):\n' +
+          '    if hasattr(a, "reverse"):\n' +
+          '        a.reverse()\n' +
+          '    else:\n' +
+          '        a[:] = a[::-1]\n' +
+          '    return a'
+      });
+      stubs.push({
+        nodeType: 'RawCode', code:
           'def _js_len(x):\n' +
           '    try:\n' +
           '        return len(x)\n' +
@@ -11782,12 +11791,9 @@ class OpCodes(metaclass=_OpCodesMeta):
      */
     transformArrayReverse(node) {
       const array = this.transformExpression(node.array);
-      // Use list(reversed(array)) to get a new reversed list
-      // For in-place reversal, caller should use array.reverse()
-      return new PythonCall(
-        new PythonIdentifier('list'),
-        [new PythonCall(new PythonIdentifier('reversed'), [array])]
-      );
+      // Array.prototype.reverse reverses in place and returns the same array,
+      // so `a.reverse();` as a statement must still reverse `a`
+      return new PythonCall(new PythonIdentifier('_js_reverse'), [array]);
     }
 
     /**
