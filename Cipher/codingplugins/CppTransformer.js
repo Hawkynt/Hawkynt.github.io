@@ -834,6 +834,15 @@
         }
         init.push(...this.stmt(node));
       }
+      // a module that states no exports (the IL drops a UMD factory's return)
+      // exports every top-level name, for a file that takes it as a library
+      if (!this.sawExports) {
+        const entries = [];
+        for (const f of this.functions.values()) entries.push(`{ ${u16Literal(f.name)}, ${this.cv(this.identifier({ name: f.name }), T.any)} }`);
+        for (const c of this.classes.values()) entries.push(`{ ${u16Literal(c.name)}, ${this.constructorValue(c)} }`);
+        for (const g of this.globals.values()) entries.push(`{ ${u16Literal(g.name)}, js::Any(${this.ns}::${g.cpp}) }`);
+        init.push(new CppExpressionStatement(`js::setModuleExports(js::Any(js::newObject({ ${entries.join(', ')} })))`));
+      }
       this.popScope();
       this.fn = null;
       S.push(new CppFunction('static void __module_init()', new CppBlock(init)));
@@ -1166,6 +1175,8 @@
           return [new CppBlock(out)];
         }
         case 'ReturnStatement': {
+          // a module's top-level return is what it exports
+          if (this.fn && this.fn.kind === 'init' && node.argument && (this.sawExports = true)) return [new CppExpressionStatement(`js::setModuleExports(${this.cv(this.expr(node.argument), T.any)})`), new CppReturn(null)];
           const ret = this.fn ? this.fn.ret : T.void;
           if (!node.argument) return [new CppReturn(ret.k === 'void' || !this.fn || this.fn.kind === 'ctor' ? null : this.defaultOf(ret))];
           if (this.fn && this.fn.kind === 'ctor') return [new CppExpressionStatement(`(void)(${this.expr(node.argument).c})`), new CppReturn('this')];
@@ -1609,6 +1620,18 @@
       return { c: `${v}${suffix}`, t };
     }
 
+    /** A user class's constructor as a dynamic function value: new C(...args) */
+    constructorValue(c) {
+      const sig = c.ctorSig || this.ctorSignature(c);
+      const args = sig.params.filter(p => !p.rest).map((p, i) => {
+        const complex = p.def && !this.simpleDefault(p.def);
+        const t = complex ? `std::optional<${this.cpp(p.type)}>` : this.cpp(p.type);
+        const fallback = complex ? 'std::nullopt' : (p.def ? this.defaultExpr(p.def, p.type) : this.defaultOf(p.type));
+        return `(__a.size() > ${i} && !__a[${i}].isUndef() ? static_cast<${t}>(js::fromAny<${this.cpp(p.type)}>(__a[${i}])) : static_cast<${t}>(${fallback}))`;
+      });
+      return `js::Any(js::Fun([](std::vector<js::Any>& __a) -> js::Any { (void)__a; return js::Any((new ${this.ns}::${c.cppName}())->__ctor(${args.join(', ')})); }))`;
+    }
+
     identifier(node) {
       const name = node.name;
       const v = this.lookup(name);
@@ -1627,10 +1650,12 @@
         if (!f.sig) f.sig = { params: this.paramsOf(f.node), ret: this.returnTypeOf(f.node, null) };
         return { c: `${this.ns}::${f.cpp}`, t: T.sfn(f.sig.params.map(p => p.type), f.sig.ret), fnRef: f };
       }
-      if (this.classes.has(name)) return { c: `js::Any()`, t: T.any, classRef: name };
+      // a class as a value: its constructor, callable dynamically (new C(...) of a library's export)
+      if (this.classes.has(name)) return { c: this.constructorValue(this.classes.get(name)), t: T.any, classRef: name };
       if (FW_FUNCTIONS[name]) return { c: 'js::Any()', t: T.any, fwFunction: name };
       if (FRAMEWORK[name] || FW_ENUMS.has(name) || GLOBAL_OBJECTS.has(name)) return { c: 'js::Any()', t: T.any, globalRef: name };
-      return { c: 'js::Any()', t: T.undef, unknown: name };
+      // any other free name: a library bound under that name (a UMD factory parameter), else undefined
+      return { c: `js::moduleValue(${u16Literal(name)})`, t: T.any, unknown: name };
     }
 
     // ---------------- member access
@@ -1720,6 +1745,13 @@
 
     /** An assignable place: { get, set(valueText) -> text, t } */
     place(node) {
+      // module.exports = value: what the module exports
+      if (node.type === 'MemberExpression' && !node.computed && node.object && node.object.type === 'Identifier' && node.object.name === 'module' &&
+          !this.lookup('module') && node.property && node.property.name === 'exports')
+      {
+        this.sawExports = true;
+        return { get: { c: 'js::lastModuleExports()', t: T.any }, set: v => `js::setModuleExports(${v})`, t: T.any, simple: false };
+      }
       // array.length = n
       if (node.type === 'ArrayLength' || (node.type === 'MemberExpression' && !node.computed && node.property && node.property.name === 'length')) {
         const a = this.expr(node.type === 'ArrayLength' ? node.array : node.object);
@@ -2027,7 +2059,8 @@
       const a = this.expr(node.argument);
       const fixed = { int: 'number', f64: 'number', f32: 'number', bool: 'boolean', str: 'string', big: 'bigint', arr: 'object', cls: 'object', fun: 'function', sfn: 'function', map: 'object', set: 'object', undef: 'undefined', null: 'object', dataview: 'object' };
       if (a.t.k === 'any') return { c: `${a.c}.typeOf()`, t: T.str };
-      if (a.unknown || a.globalRef) return { c: lit(a.globalRef && GLOBAL_OBJECTS.has(a.globalRef) && !['window', 'self', 'module', 'exports', 'require', 'define', 'global', 'process', 'Buffer', 'crypto', 'performance', 'TextEncoder', 'TextDecoder'].includes(a.globalRef) ? (a.globalRef === 'OpCodes' || a.globalRef === 'AlgorithmFramework' || a.globalRef === 'Math' || a.globalRef === 'JSON' || a.globalRef === 'console' || a.globalRef === 'globalThis' || a.globalRef === 'Reflect' ? 'object' : 'function') : 'undefined'), t: T.str };
+      if (a.unknown) return { c: `${a.c}.typeOf()`, t: T.str };
+      if (a.globalRef) return { c: lit(a.globalRef && GLOBAL_OBJECTS.has(a.globalRef) && !['window', 'self', 'module', 'exports', 'require', 'define', 'global', 'process', 'Buffer', 'crypto', 'performance', 'TextEncoder', 'TextDecoder'].includes(a.globalRef) ? (a.globalRef === 'OpCodes' || a.globalRef === 'AlgorithmFramework' || a.globalRef === 'Math' || a.globalRef === 'JSON' || a.globalRef === 'console' || a.globalRef === 'globalThis' || a.globalRef === 'Reflect' ? 'object' : 'function') : 'undefined'), t: T.str };
       if (a.classRef || a.fnRef) return { c: lit('function'), t: T.str };
       if (isRef(a.t) && a.t.k !== 'any') return { c: `(js::truthyRef(${a.c}) ? ${lit(fixed[a.t.k] || 'object')} : ${lit('object')})`, t: T.str };
       return { c: `((void)(${a.c}), ${lit(fixed[a.t.k] || 'object')})`, t: T.str };
@@ -2571,6 +2604,12 @@
         case 'Object': return { c: 'js::Any(js::newObject())', t: T.any };
       }
       if (name && TYPED_ARRAYS[name]) return this.typedArrayCreation({ arrayType: name, elementType: TYPED_ARRAYS[name], size: args[0] || null }, want);
+      // a constructor held in a value (a library's class, Lib.Class or a destructured name)
+      if (callee && (callee.type === 'MemberExpression' || (callee.type === 'Identifier' && (this.lookup(callee.name) || !GLOBAL_OBJECTS.has(callee.name))))) {
+        const f = this.expr(callee);
+        const list = args.map(a => this.cv(this.expr(a.type === 'SpreadElement' ? a.argument : a), T.any));
+        return { c: `js::construct(${this.cv(f, T.any)}, { ${list.join(', ')} })`, t: T.any };
+      }
       return { c: `js::unsupported(${u16Literal('new ' + name)})`, t: T.any };
     }
 

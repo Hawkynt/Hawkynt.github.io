@@ -1581,6 +1581,23 @@ struct Finally {
   ~Finally() noexcept(false) { if (f) f(); }
 };
 
+// Modules: what a library file exports (its top-level return, or module.exports),
+// bound to the name the algorithm file takes it under (a UMD factory parameter)
+inline Any& lastModuleExports() { static Any v; return v; }
+inline void setModuleExports(const Any& v) { lastModuleExports() = v; }
+inline std::vector<std::pair<std::u16string, Any>>& modules() { static std::vector<std::pair<std::u16string, Any>> m; return m; }
+inline void bindModule(const char16_t* name, const Any& v) { modules().emplace_back(name, v); }
+inline Any moduleValue(const char16_t* name) {
+  auto& m = modules();
+  for (size_t i = m.size(); i-- > 0;) if (m[i].first == name) return m[i].second;
+  return Any();
+}
+// new F(...args) of a constructor value (a library's class)
+inline Any construct(const Any& ctor, std::vector<Any> args) {
+  if (ctor.tag != Tag::Fn) throwTypeError(describe(ctor) + u" is not a constructor");
+  return (*ctor.asFun())(args);
+}
+
 // A class pointer to a derived class (null when the object is not one)
 template <class T, class F> inline T* downcast(F* p) { return p ? dynamic_cast<T*>(p) : nullptr; }
 

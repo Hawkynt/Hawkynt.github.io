@@ -499,6 +499,13 @@ function bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptio
     } catch (e) {
       return { code, error: 'library ' + path.basename(libPath) + ': ' + e.message };
     }
+    // C++: the library records what it exports when it initialises; the
+    // parameter's name is bound to that, for the algorithm to look up
+    if (language === 'cpp') {
+      const bound = exported.single ? `js::lastModuleExports().get(js::String(u"${exported.single}"))` : 'js::lastModuleExports()';
+      code += `${libCode}\nstatic js::ModuleInit __bind_${paramName}([] { js::bindModule(u"${paramName}", ${bound}); });\n\n`;
+      continue;
+    }
     // A library assigning module.exports from its own IIFE keeps its names
     // local: it gets a module object to assign, and the parameter is bound to that
     if (libraryExports(libSrc) === 'module.exports') {
