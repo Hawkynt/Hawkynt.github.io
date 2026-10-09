@@ -927,6 +927,11 @@ check('switch: a case label read off an object is matched by a guard (CS9135)', 
   const code = transpile(MODE_CLASSES);
   expectMatch(code, /case var __case when __case == Generated\.Mode\.ADD:/, 'case var __case when __case == Mode.ADD');
 });
+check('return: a null module sentinel returned from an array-typed function is cast to the array (CS0266)', () => {
+  const code = transpile('const FAIL = null;\n/**\n * @param {int32} n - n\n * @returns {uint32[][]} r\n */\n' +
+    'function f(n) { if (n < 0) return FAIL; return [[1, 2]]; }');
+  expectMatch(code, /return \(uint\[\]\[\]\)\(?FAIL\)?;/, 'return (uint[][])FAIL;');
+});
 check('switch: a case falling through into default jumps with `goto default;`', () => {
   const code = transpile('function f(m) { let r = 0; switch (m) { case "a": r = 1; default: r += 2; } return r; }');
   expectMatch(code, /r = 1;\s*goto default;/, 'goto default; after the falling case');

@@ -18535,6 +18535,12 @@
           // (buildParameterConversion) rather than leaving the return statement itself
           // as the one place with no cast at all.
           expr = this.buildParameterConversion(exprType, returnType, expr);
+        } else if (exprType && !exprType.isArray && exprType.name === 'object') {
+          // An object-typed value returned as an array - e.g. hawk.js's module
+          // sentinel `const SOLVE_FAIL = null;` (a static object field) from a
+          // method returning BigInteger[][] (CS0266). The value is null or the
+          // array itself, so a plain cast holds.
+          expr = new CSharpCast(returnType, expr);
         } else if (returnType.isArray && exprType && !exprType.isArray && exprType.name === 'bool') {
           // A getter declared array-typed (often forced by a fixed interface override
           // signature - e.g. IAlgorithmInstance.Key) whose body actually returns a
