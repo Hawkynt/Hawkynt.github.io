@@ -6364,6 +6364,35 @@
     }
 
     /**
+     * Step 2.55 helper: the value of a condition in a transpiled target, where
+     * require is undefined: true or false when the condition depends only on
+     * `typeof require` comparisons (combined with !, && and ||), else null.
+     * @private
+     */
+    _requireTestValue(test) {
+      if (!test) return null;
+      if (test.type === 'BinaryExpression' && ['===', '!==', '==', '!='].includes(test.operator)) {
+        const isTypeofRequire = n => n && n.type === 'UnaryExpression' && n.operator === 'typeof' &&
+          n.argument && n.argument.type === 'Identifier' && n.argument.name === 'require';
+        const other = isTypeofRequire(test.left) ? test.right : isTypeofRequire(test.right) ? test.left : null;
+        if (!other || other.type !== 'Literal' || typeof other.value !== 'string') return null;
+        const equal = other.value === 'undefined';
+        return test.operator.startsWith('!') ? !equal : equal;
+      }
+      if (test.type === 'UnaryExpression' && test.operator === '!') {
+        const v = this._requireTestValue(test.argument);
+        return v === null ? null : !v;
+      }
+      if (test.type === 'LogicalExpression' && (test.operator === '&&' || test.operator === '||')) {
+        const l = this._requireTestValue(test.left), r = this._requireTestValue(test.right);
+        const absorbing = test.operator === '||';
+        if (l === absorbing || r === absorbing) return absorbing;
+        return l !== null && r !== null ? !absorbing : null;
+      }
+      return null;
+    }
+
+    /**
      * Step 2.55 helper: if a statement is an `if (... typeof require ...) { ... }`
      * guard, resolve it to whatever runs when that condition is false (since
      * require() is never available in a transpiled target) - i.e. its
@@ -6374,6 +6403,10 @@
      */
     _resolveRequireGuardedStatement(stmt) {
       if (!stmt || stmt.type !== 'IfStatement') return stmt;
+      // A guard that holds when require is missing (typeof require === 'undefined')
+      // runs its consequent in a transpiled target
+      if (this._requireTestValue(stmt.test) === true)
+        return stmt.consequent && stmt.consequent.type === 'BlockStatement' ? (stmt.consequent.body || []) : stmt.consequent;
       if (this._containsTypeofRequire(stmt.test)) {
         if (!stmt.alternate) return null;
         if (stmt.alternate.type === 'IfStatement') return this._resolveRequireGuardedStatement(stmt.alternate);
@@ -6418,6 +6451,12 @@
             if (r === null) continue;
             if (Array.isArray(r)) resolved.push(...r);
             else resolved.push(r);
+            // `if (typeof require === 'undefined') return/throw ...;` always leaves in a
+            // transpiled target: the statements after it (the require() loading) never run
+            if (r !== stmt && stmt.type === 'IfStatement' && this._requireTestValue(stmt.test) === true) {
+              const last = Array.isArray(r) ? r[r.length - 1] : r;
+              if (last && (last.type === 'ReturnStatement' || last.type === 'ThrowStatement')) break;
+            }
           }
           node[key] = resolved;
           for (const stmt of resolved) this._stripRequireGuardedBlocks(stmt);
