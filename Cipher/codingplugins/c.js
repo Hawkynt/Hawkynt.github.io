@@ -185,33 +185,8 @@
      * @private
      */
     _collectDependencies(cAst, options) {
-      const dependencies = [];
-
-      // Standard C library headers
-      dependencies.push('stdint.h (standard integer types)');
-      dependencies.push('stdbool.h (boolean type)');
-      dependencies.push('stddef.h (standard definitions)');
-      dependencies.push('string.h (string operations)');
-
-      // Optional dependencies based on features used
-      if (options.useCryptoLibs) {
-        if (options.useOpenSSL) {
-          dependencies.push('OpenSSL library (libssl, libcrypto)');
-        }
-        if (options.useSodium) {
-          dependencies.push('libsodium (modern cryptography library)');
-        }
-      }
-
-      if (options.useAtomics && (options.standard === 'c11' || options.standard === 'c17' || options.standard === 'c23')) {
-        dependencies.push('stdatomic.h (C11 atomics)');
-      }
-
-      if (options.useThreadLocal && (options.standard === 'c11' || options.standard === 'c17' || options.standard === 'c23')) {
-        dependencies.push('threads.h (C11 threading)');
-      }
-
-      return dependencies;
+      // the runtime is embedded; it needs the C standard library (and libm)
+      return ['C standard library (stdio, stdlib, string, math, setjmp)', 'GNU C (gcc or clang): statement expressions, __builtin_setjmp'];
     }
 
     /**
@@ -219,31 +194,7 @@
      * @private
      */
     _generateWarnings(cAst, options) {
-      const warnings = [];
-
-      // C-specific warnings
-      warnings.push('Review manual memory management (malloc/free) for memory leaks');
-      warnings.push('Consider using const qualifiers for read-only data');
-      warnings.push('Validate all pointer dereferences to avoid segmentation faults');
-      warnings.push('Use static analysis tools (cppcheck, clang-tidy) to check for issues');
-
-      if (options.memoryManagement === 'manual') {
-        warnings.push('Manual memory management enabled - ensure proper malloc/free pairing');
-      }
-
-      if (!options.useConstCorrectness) {
-        warnings.push('Const correctness disabled - may miss optimization opportunities');
-      }
-
-      if (!options.addSafetyChecks) {
-        warnings.push('Safety checks disabled - validate inputs and bounds manually');
-      }
-
-      if (options.standard === 'c89') {
-        warnings.push('C89 standard selected - many modern C features unavailable');
-      }
-
-      return warnings;
+      return [];
     }
 
     /**

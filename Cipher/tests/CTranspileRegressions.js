@@ -91,6 +91,33 @@ function runCpp(js, driver) {
   }
 }
 
+/**
+ * Compile JavaScript (the snippet and a driver, both JavaScript) to C and run it.
+ * @param {string} js - JavaScript source
+ * @param {string} driver - JavaScript statements printing with console.log
+ * @returns {string|'skip'} trimmed stdout, or 'skip' without gcc
+ */
+function runC(js, driver) {
+  if (!hasCompiler('gcc')) return 'skip';
+  const code = transpile(pluginFor('c.js', 'c'), `${js}\n${driver}`) +
+    '\nint main(void) {\n  js_try t; JS_TRY_PUSH(t);\n  if (!JS_SETJMP(t.jb)) { js_run_modules(JS_MODULE_LIST); JS_TRY_POP(t); }\n' +
+    '  else { JS_TRY_POP(t); js_val e = t.exc; printf("threw: %s\\n", js_str_utf8z(js_to_str(e))); }\n  return 0;\n}\n';
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'c-regression-'));
+  try {
+    const file = path.join(dir, 'probe.c');
+    const exe = path.join(dir, 'probe.exe');
+    fs.writeFileSync(file, code);
+    const build = spawnSync('gcc', [file, '-std=gnu17', '-O1', '-w', '-o', exe, '-lm'], { encoding: 'utf-8', timeout: 180000 });
+    if (build.status !== 0)
+      throw new Error(`gcc failed: ${(build.stderr || '').split('\n').filter(l => /error/.test(l)).slice(0, 3).join(' | ')}${verbose ? '\n' + code : ''}`);
+    const run = spawnSync(exe, [], { encoding: 'utf-8', timeout: 60000 });
+    if (run.status !== 0) throw new Error(`the program exited ${run.status}: ${(run.stderr || '').trim().slice(0, 300)}`);
+    return run.stdout.trim();
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { /* temp dir cleanup is best effort */ }
+  }
+}
+
 const cases = require('./UnitCases.js').createCases();
 function check(name, fn) { cases.case(name, fn); }
 function expectOutput(out, lines) {
@@ -232,6 +259,85 @@ check('C++ functions: an optional number parameter left out is undefined', () =>
   // When it is passed and when it is left out
   // Then the passed value is used, else the undefined branch is taken
   return expectOutput(runCpp(js, 'print(end(2, 3)); print(end(2, js::Any()));'), ['5', '10']);
+});
+
+// ---------------------------------------------------------------------------
+// C: JavaScript values on the C runtime
+// ---------------------------------------------------------------------------
+check('C numbers: unsigned shifts, sign bits, signed shifts and sums past 32 bits keep JavaScript values', () => {
+  const js = 'function add(a, b) { return (a + b) >>> 0; }\nfunction mix(a, b) { return a ^ b; }\nfunction sar(a) { return a >> 4; }';
+  // Given operands whose sum leaves 32 bits and whose XOR sets the sign bit
+  // When the functions run
+  // Then the results equal the JavaScript ones
+  return expectOutput(runC(js, 'console.log(add(0xFFFFFFFF, 2)); console.log(mix(0x80000000, 1)); console.log(sar(-256)); console.log(0xFFFFFFFF + 1); console.log(7 / 2, -7 % 3, 0.1 + 0.2);'),
+    ['1', '-2147483647', '-16', '4294967296', '3.5 -1 0.30000000000000004']);
+});
+
+check('C BigInt: division truncates, right shifts floor, mixing with numbers throws', () => {
+  const js = 'function mixed() { try { return 1n + 1; } catch (e) { return e.name; } }';
+  // Given negative BigInts and a sum mixing a BigInt with a number
+  // Then / truncates, >> floors, and the mix is a TypeError
+  return expectOutput(runC(js, 'console.log(String(-7n / 2n), String(-9n >> 3n), String((1n << 64n) - 1n)); console.log(mixed());'),
+    ['-3 -2 18446744073709551615', 'TypeError']);
+});
+
+check('C evaluation order: operands with side effects run left to right', () => {
+  const js = 'const a = [10, 20, 30]; let i = 0;\nfunction next() { return a[i++]; }\nfunction pair() { return next() * 100 + next(); }';
+  // Given two calls advancing a shared index in one expression
+  // When the expression is evaluated
+  // Then the left call runs first
+  return expectOutput(runC(js, 'console.log(pair()); console.log(i);'), ['1020', '2']);
+});
+
+check('C closures: captured variables are shared, loop variables are per iteration', () => {
+  const js = 'function counter() { let n = 0; return { inc: () => ++n, get: () => n }; }\n' +
+    'function perIteration() { const fs = []; for (const x of [1, 2, 3]) fs.push(() => x); return fs.map(f => f()).join(","); }';
+  // Given two closures over one variable, and closures made in a loop
+  // Then an increment through one is seen by the other, and each loop closure keeps its own value
+  return expectOutput(runC(js, 'const c = counter(); c.inc(); c.inc(); console.log(c.get()); console.log(perIteration());'), ['2', '1,2,3']);
+});
+
+check('C classes: inheritance, super calls, accessors and static members', () => {
+  const js = 'class A { constructor(x) { this.x = x; } get double() { return this.x * 2; } name() { return "A" + this.x; } static make() { return new this(5); } }\n' +
+    'class B extends A { constructor(x) { super(x + 1); } name() { return "B/" + super.name(); } set value(v) { this.x = v; } }';
+  // Given a subclass overriding a method and adding a setter
+  // When its instance is used through the base class's members
+  // Then super reaches the base method, accessors run, static members construct
+  return expectOutput(runC(js, 'const b = new B(1); console.log(b.name(), b.double); b.value = 10; console.log(b.double, b instanceof A, A.make().x);'),
+    ['B/A2 4', '20 true 5']);
+});
+
+check('C exceptions: finally runs on return and break, catch sees the error', () => {
+  const js = 'const log = [];\nfunction f() { try { return "r"; } finally { log.push("f1"); } }\n' +
+    'function g() { for (let i = 0; i < 3; ++i) { try { if (i === 1) break; } finally { log.push("f2:" + i); } } return log.join(","); }\n' +
+    'function h() { try { null.x; } catch (e) { return e instanceof TypeError; } }';
+  // Given a return and a break leaving try blocks with finally, and a property read of null
+  // Then every finally runs once and the catch receives a TypeError
+  return expectOutput(runC(js, 'console.log(f()); console.log(g()); console.log(h());'), ['r', 'f1,f2:0,f2:1', 'true']);
+});
+
+check('C switch: strict case matching, fall through and default', () => {
+  const js = 'function s(v) { let r = ""; switch (v) { case 1: r += "one"; case 2: r += "two"; break; case "1": r = "string"; break; default: r = "other"; } return r; }';
+  // Given a number, a string spelling the same digit and an unmatched value
+  // Then case 1 falls into case 2, "1" matches only its own case, and others reach default
+  return expectOutput(runC(js, 'console.log(s(1), s("1"), s(3));'), ['onetwo string other']);
+});
+
+check('C strings and typed arrays: templates, char codes, hex, typed wrap-around and shared views', () => {
+  const js = 'function hex(b) { return b.map(x => x.toString(16).padStart(2, "0")).join(""); }\n' +
+    'function typed() { const u = new Uint8Array(4); u[0] = 300; u[1] = -1; const v = u.subarray(1, 3); v[1] = 7; return Array.from(u).join(","); }';
+  // Given byte values past 8 bits and a subarray view
+  // Then stores wrap, the view writes through, and strings format as in JavaScript
+  return expectOutput(runC(js, 'console.log(`${hex([1, 171, 255])}-${String.fromCharCode(72, 105)}-${"Az".charCodeAt(1)}`); console.log(typed());'),
+    ['01abff-Hi-122', '44,255,7,0']);
+});
+
+check('C collections: Map and Set keep insertion order, regular expressions replace', () => {
+  const js = 'function f() { const m = new Map(); m.set("b", 1); m.set("a", 2); m.set("b", 3); const s = new Set([3, 1, 3]);\n' +
+    '  return [...m.keys()].join("") + [...m.values()].join("") + [...s].join("") + "Hello World".replace(/[^A-Z]/g, ""); }';
+  // Given a re-set key, a duplicate set member and a global character class
+  // Then keys stay in first-insertion order, duplicates collapse, and every match is replaced
+  return expectOutput(runC(js, 'console.log(f());'), ['ba3231HW']);
 });
 
 /**

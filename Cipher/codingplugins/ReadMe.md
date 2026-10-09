@@ -725,11 +725,11 @@ codingplugins/
     │   ├── BasicTransformer.js    # IL AST → Basic AST
     │   └── BasicEmitter.js        # Basic AST → Basic source code
     │
-    ├── [C]
-    │   ├── c.js
-    │   ├── CAST.js
-    │   ├── CTransformer.js
-    │   └── CEmitter.js
+    ├── [C]                        # JavaScript semantics on a C runtime (tagged values,
+    │   ├── c.js                   #   BigInt in 32-bit limbs, objects, closures, setjmp
+    │   ├── CAST.js                #   exceptions); CTransformer compiles the JavaScript
+    │   ├── CTransformer.js        #   JavaScriptTransformer makes of the IL, plus
+    │   └── CEmitter.js            #   AlgorithmFramework and the OpCodes members used
     │
     ├── [C++]
     │   ├── cpp.js
