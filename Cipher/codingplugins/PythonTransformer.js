@@ -60,6 +60,18 @@
     'KdfAlgorithm', 'PaddingAlgorithm', 'CipherModeAlgorithm', 'AeadAlgorithm',
     'RandomGenerationAlgorithm',
   ];
+  /** AlgorithmFramework.js helper classes the runtime defines under their own names. */
+  const FRAMEWORK_HELPER_CLASSES = ['LinkItem', 'TestCase', 'Vulnerability', 'KeySize', 'AuthResult', 'BlockAbsorber'];
+  /** The parent of each algorithm family in AlgorithmFramework.js. */
+  const FRAMEWORK_BASE_PARENTS = {
+    CryptoAlgorithm: 'Algorithm', SymmetricCipherAlgorithm: 'CryptoAlgorithm',
+    AsymmetricCipherAlgorithm: 'CryptoAlgorithm', AsymmetricAlgorithm: 'CryptoAlgorithm',
+    BlockCipherAlgorithm: 'SymmetricCipherAlgorithm', StreamCipherAlgorithm: 'SymmetricCipherAlgorithm',
+    EncodingAlgorithm: 'Algorithm', CompressionAlgorithm: 'Algorithm', ErrorCorrectionAlgorithm: 'Algorithm',
+    HashFunctionAlgorithm: 'Algorithm', MacAlgorithm: 'Algorithm', KdfAlgorithm: 'Algorithm',
+    PaddingAlgorithm: 'Algorithm', CipherModeAlgorithm: 'Algorithm', AeadAlgorithm: 'CryptoAlgorithm',
+    RandomGenerationAlgorithm: 'Algorithm',
+  };
   const FRAMEWORK_INSTANCE_BASES = [
     'IAlgorithmInstance', 'IBlockCipherInstance', 'IStreamCipherInstance', 'IHashFunctionInstance',
     'IMacInstance', 'IKdfInstance', 'IAeadInstance', 'IErrorCorrectionInstance',
@@ -560,18 +572,17 @@
     transform(ast) {
       const module = new PythonModule();
 
-      // Whole-file heuristic used by transformUnaryExpression() for `~`:
-      // uninitialized-then-reassigned locals (e.g. SHA-512/Skein's
-      // `let a, b, c, d, e, f, g, h;` compression-loop registers) get no
-      // useful resultType from the shared type-aware parser and fall back to
-      // a default ('uint8') that is nonsense for these - they hold full
-      // 64-bit round state. That default is indistinguishable, node-locally,
-      // from a genuine byte value. A file that uses any BigInt literal
-      // anywhere is, in this codebase, always a 64-bit/BigInt-state hash or
-      // PRNG (never a mix of real byte-level `~` and BigInt state sharing
-      // the same untyped-fallback bucket), so treat the ambiguous default as
-      // 64-bit within such files - see isWideIntResultType() callers.
-      this._fileHasBigIntLiterals = this._scanForBigIntLiterals(ast);
+      // Every declared function name, by its snake_case spelling
+      // (see _collectLocalNameCollisions)
+      this._declaredRawNamesByFolded = new Map();
+      const collectDeclared = n => {
+        if (!n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(collectDeclared); return; }
+        if (n.type === 'FunctionDeclaration' && n.id && n.id.name)
+          this._declaredRawNamesByFolded.set(toSnakeCase(n.id.name), n.id.name);
+        for (const key of Object.keys(n)) if (key !== 'loc' && key !== 'range' && key !== 'parent' && key !== 'resultType') collectDeclared(n[key]);
+      };
+      collectDeclared(ast);
 
       // Process the AST
       if (ast.type === 'Program') {
@@ -593,31 +604,6 @@
     }
 
     /**
-     * Shallow, allocation-light scan for any BigInt literal (`5n`,
-     * resultType 'bigint', etc.) anywhere in the AST. See the comment in
-     * transform() for why this drives the `~` operator's mask heuristic.
-     */
-    _scanForBigIntLiterals(node, depth) {
-      if (!node || typeof node !== 'object') return false;
-      if (depth === undefined) depth = 0;
-      if (depth > 200) return false; // guard against pathological/cyclic trees
-      if (Array.isArray(node)) {
-        for (const n of node) {
-          if (this._scanForBigIntLiterals(n, depth + 1)) return true;
-        }
-        return false;
-      }
-      if (node.type === 'Literal' && typeof node.value === 'bigint') return true;
-      if (node.resultType === 'bigint') return true;
-      for (const k in node) {
-        if (k === 'parent' || k === 'loc' || k === 'range') continue;
-        const v = node[k];
-        if (v && typeof v === 'object' && this._scanForBigIntLiterals(v, depth + 1)) return true;
-      }
-      return false;
-    }
-
-    /**
      * Generate stub classes for AlgorithmFramework classes used in inheritance
      */
     generateFrameworkStubs() {
@@ -629,8 +615,12 @@
       const ALGORITHM_BASES = FRAMEWORK_ALGORITHM_BASES;
       const INSTANCE_BASES = FRAMEWORK_INSTANCE_BASES;
       const FRAMEWORK_STUBS = {};
-      for (const name of ALGORITHM_BASES)
-        FRAMEWORK_STUBS[name] = `class ${name}:\n    pass`;
+      // The algorithm families keep AlgorithmFramework.js's inheritance, so an
+      // isinstance() test or an inherited member resolves as it does in JS.
+      for (const name of ALGORITHM_BASES) {
+        const parent = FRAMEWORK_BASE_PARENTS[name];
+        FRAMEWORK_STUBS[name] = parent ? `class ${name}(${parent}):\n    pass` : `class ${name}:\n    pass`;
+      }
       // *args/**kwargs (on every __init__ below) swallow extra positional
       // args - JS is forgiving of base-constructor call-site arity
       // mismatches (e.g. `super(algorithm, isInverse)` against a JS base
@@ -646,11 +636,68 @@
       // JS's forgiving `undefined`); Python raises AttributeError on a
       // truly-never-assigned instance attribute, so omitting the field here
       // turned that into a hard crash instead of the JS no-op.
-      const INSTANCE_BASE_BODY = 'self.algorithm = algorithm\n        self.is_inverse = False\n        self.input_buffer = []';
+      //
+      // Every instance base derives from IAlgorithmInstance, which carries
+      // the framework's Feed/Result/Dispose: an algorithm that inherits Feed
+      // (accumulate into inputBuffer) instead of defining its own must find
+      // it here, exactly as the JS subclass finds it on its prototype chain.
+      const INSTANCE_BASE_BODY = 'IAlgorithmInstance.__init__(self, algorithm)';
       FRAMEWORK_STUBS['IAlgorithmInstance'] =
-        `class IAlgorithmInstance:\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}`;
+        'class IAlgorithmInstance:\n' +
+        '    def __init__(self, algorithm=None, *args, **kwargs):\n' +
+        '        self.algorithm = algorithm\n' +
+        '        self.is_inverse = False\n' +
+        '        self.input_buffer = JSArray()\n' +
+        '    def feed(self, data=None, *args):\n' +
+        '        if not data or len(data) == 0:\n' +
+        '            return\n' +
+        '        if self.input_buffer is None:\n' +
+        '            self.input_buffer = JSArray()\n' +
+        '        self.input_buffer.extend(data)\n' +
+        '    def result(self, *args):\n' +
+        '        raise Exception("Result() not implemented")\n' +
+        '    def dispose(self, *args):\n' +
+        '        if self.input_buffer:\n' +
+        '            del self.input_buffer[:]';
+      // IBlockCipherInstance.Result: encrypt or decrypt every buffered block,
+      // refusing a partial block (AlgorithmFramework.js, same messages).
       FRAMEWORK_STUBS['IBlockCipherInstance'] =
-        `class IBlockCipherInstance:\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}\n        self.block_size = 0\n        self.key_size = 0\n        self._key = None\n    @property\n    def key(self): return self._key\n    @key.setter\n    def key(self, value): self._key = value`;
+        'class IBlockCipherInstance(IAlgorithmInstance):\n' +
+        '    def __init__(self, algorithm=None, *args, **kwargs):\n' +
+        `        ${INSTANCE_BASE_BODY}\n` +
+        '        self.block_size = 0\n' +
+        '        self.key_size = 0\n' +
+        '        self._key = None\n' +
+        '    @property\n' +
+        '    def key(self): return self._key\n' +
+        '    @key.setter\n' +
+        '    def key(self, value): self._key = value\n' +
+        '    def encrypt_block(self, block, *args):\n' +
+        '        raise Exception("EncryptBlock() not implemented")\n' +
+        '    def decrypt_block(self, block, *args):\n' +
+        '        raise Exception("DecryptBlock() not implemented")\n' +
+        '    def require_block_multiple(self, block_size=None, *args):\n' +
+        '        size = block_size or self.block_size\n' +
+        '        if not (size and size > 0):\n' +
+        '            raise Exception("BlockSize not set")\n' +
+        '        length = len(self.input_buffer) if self.input_buffer else 0\n' +
+        '        if length % size != 0:\n' +
+        '            raise Exception("Input length must be multiple of " + str(size) + " bytes")\n' +
+        '        return length // size\n' +
+        '    def result(self, *args):\n' +
+        '        if self.key is None:\n' +
+        '            raise Exception("Key not set")\n' +
+        '        if not self.input_buffer or len(self.input_buffer) == 0:\n' +
+        '            raise Exception("No data fed")\n' +
+        '        block_size = self.block_size\n' +
+        '        self.require_block_multiple(block_size)\n' +
+        '        output = JSArray()\n' +
+        '        for offset in range(0, len(self.input_buffer), block_size):\n' +
+        '            block = JSArray(self.input_buffer[offset:offset + block_size])\n' +
+        '            processed = self.decrypt_block(block) if self.is_inverse else self.encrypt_block(block)\n' +
+        '            output.extend(processed)\n' +
+        '        self.input_buffer = JSArray()\n' +
+        '        return output';
       // The base default writes below (output_size/iterations) are wrapped in
       // try/except: JS keeps these distinct from a same-named-but-differently-
       // cased subclass accessor (e.g. IHashFunctionInstance's `this.OutputSize`
@@ -666,14 +713,14 @@
       // case where the subclass has no such property, where the plain
       // attribute assignment always succeeds.
       FRAMEWORK_STUBS['IHashFunctionInstance'] =
-        `class IHashFunctionInstance:\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}\n        try:\n            self.output_size = 0\n        except Exception:\n            pass`;
+        `class IHashFunctionInstance(IAlgorithmInstance):\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}\n        try:\n            self.output_size = 0\n        except Exception:\n            pass`;
       FRAMEWORK_STUBS['IKdfInstance'] =
-        `class IKdfInstance:\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}\n        try:\n            self.output_size = 0\n        except Exception:\n            pass\n        try:\n            self.iterations = 0\n        except Exception:\n            pass`;
+        `class IKdfInstance(IAlgorithmInstance):\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}\n        try:\n            self.output_size = 0\n        except Exception:\n            pass\n        try:\n            self.iterations = 0\n        except Exception:\n            pass`;
       FRAMEWORK_STUBS['IAeadInstance'] =
-        `class IAeadInstance:\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}\n        self.aad = []\n        self.tag_size = 0`;
+        `class IAeadInstance(IAlgorithmInstance):\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}\n        self.aad = []\n        self.tag_size = 0`;
       for (const name of INSTANCE_BASES) {
         if (FRAMEWORK_STUBS[name]) continue; // already given a tailored stub above
-        FRAMEWORK_STUBS[name] = `class ${name}:\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}`;
+        FRAMEWORK_STUBS[name] = `class ${name}(IAlgorithmInstance):\n    def __init__(self, algorithm=None, *args, **kwargs):\n        ${INSTANCE_BASE_BODY}`;
       }
 
       // Helper classes and enums.
@@ -1215,10 +1262,10 @@ class OpCodes(metaclass=_OpCodesMeta):
     @staticmethod
     def RotL128(byte_list, positions):
         if positions == 0 or len(byte_list) != 16:
-            return list(byte_list)
+            return JSArray(list(byte_list))
         positions = positions % 128
         if positions == 0:
-            return list(byte_list)
+            return JSArray(list(byte_list))
         result = [0] * 16
         byte_shift = positions // 8
         bit_shift = positions % 8
@@ -1234,7 +1281,7 @@ class OpCodes(metaclass=_OpCodesMeta):
     @staticmethod
     def RotR128(byte_list, positions):
         if positions == 0 or len(byte_list) != 16:
-            return list(byte_list)
+            return JSArray(list(byte_list))
         positions = positions % 128
         return OpCodes.RotL128(byte_list, 128 - positions)
 
@@ -1324,7 +1371,40 @@ class OpCodes(metaclass=_OpCodesMeta):
     def GetByte(word, byte_index):
         return (word >> (byte_index * 8)) & 0xFF
 
+    @staticmethod
+    def SetByte(word, byte_index, value):
+        shift = byte_index * 8
+        return ((word & ~(0xFF << shift)) | ((value & 0xFF) << shift)) & 0xFFFFFFFF
+
     # ==================[ HEX UTILITIES ]==================
+    @staticmethod
+    def _hex_digits(hex_value, helper):
+        s = hex_value[2:] if hex_value[:2] in ("0x", "0X") else hex_value
+        if not s or any(c not in "0123456789abcdefABCDEF" for c in s):
+            raise Exception(helper + ": Invalid hex string: " + str(hex_value))
+        return s
+
+    @staticmethod
+    def CreateUint32ArrayFromHex(hex_values):
+        return JSUint32Array([int(OpCodes._hex_digits(h, "CreateUint32ArrayFromHex"), 16) & 0xFFFFFFFF for h in hex_values])
+
+    @staticmethod
+    def CreateByteArrayFromHex(hex_values):
+        result = JSArray()
+        for h in hex_values:
+            result.extend(OpCodes.Hex8ToBytes(OpCodes._hex_digits(h, "CreateByteArrayFromHex")))
+        return result
+
+    @staticmethod
+    def CreateUint64ArrayFromHex(hex_values):
+        result = JSArray()
+        for h in hex_values:
+            s = OpCodes._hex_digits(h, "CreateUint64ArrayFromHex").rjust(16, "0")
+            if len(s) != 16:
+                raise Exception("CreateUint64ArrayFromHex: Hex string must represent 64-bit value: " + str(h))
+            result.append(JSArray([int(s[0:8], 16), int(s[8:16], 16)]))
+        return result
+
     @staticmethod
     def HexCharCodeToValue(code):
         if 48 <= code <= 57:
@@ -1337,24 +1417,37 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def Hex4ToBytes(hex_string):
-        return [OpCodes.HexCharCodeToValue(ord(c)) for c in hex_string]
+        return JSArray([OpCodes.HexCharCodeToValue(ord(c)) for c in hex_string])
 
     @staticmethod
     def Hex8ToBytes(hex_string):
-        return list(bytes.fromhex(hex_string))
+        return JSArray(bytes.fromhex(hex_string))
 
     @staticmethod
     def Hex16ToWords(hex_string):
-        return [int(hex_string[i:i + 4], 16) for i in range(0, len(hex_string), 4)]
+        return JSArray([int(hex_string[i:i + 4], 16) for i in range(0, len(hex_string), 4)])
 
     @staticmethod
     def Hex32ToDWords(hex_string):
-        return [int(hex_string[i:i + 8], 16) & 0xFFFFFFFF for i in range(0, len(hex_string), 8)]
+        return JSArray([int(hex_string[i:i + 8], 16) & 0xFFFFFFFF for i in range(0, len(hex_string), 8)])
 
     # ==================[ STRING/BYTE CONVERSIONS ]==================
     @staticmethod
+    def BytesToChars(byte_list):
+        return "".join(chr(int(b)) for b in byte_list)
+
+    @staticmethod
+    def SecureRandomBytes(count):
+        if isinstance(count, float) and count.is_integer():
+            count = int(count)
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise Exception("SecureRandomBytes: count must be a non-negative integer")
+        import os as _os
+        return JSArray(_os.urandom(count))
+
+    @staticmethod
     def AnsiToBytes(s):
-        return [ord(c) & 0x7F for c in s]
+        return JSArray(ord(c) & 0x7F for c in s)
 
     @staticmethod
     def BytesToAnsi(byte_list):
@@ -1362,7 +1455,7 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def AsciiToBytes(s):
-        return [ord(c) & 0xFF for c in s]
+        return JSArray(ord(c) & 0xFF for c in s)
 
     @staticmethod
     def DoubleToBytes(value):
@@ -1389,11 +1482,11 @@ class OpCodes(metaclass=_OpCodesMeta):
     @staticmethod
     def XorArrays(arr1, arr2):
         n = min(len(arr1), len(arr2))
-        return [(arr1[i] ^ arr2[i]) & 0xFF for i in range(n)]
+        return JSArray([(arr1[i] ^ arr2[i]) & 0xFF for i in range(n)])
 
     @staticmethod
     def CopyArray(arr):
-        return list(arr)
+        return JSArray(list(arr))
 
     @staticmethod
     def ClearArray(arr):
@@ -1441,13 +1534,13 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def CreateArray(length, value=0):
-        return [value] * length
+        return JSArray([value] * length)
 
     @staticmethod
     def ArraySlice(arr, start, end=None):
         if end is None:
             end = len(arr)
-        return [arr[i] for i in range(start, min(end, len(arr)))]
+        return JSArray([arr[i] for i in range(start, min(end, len(arr)))])
 
     @staticmethod
     def ConcatArrays(*arrays):
@@ -1498,7 +1591,7 @@ class OpCodes(metaclass=_OpCodesMeta):
     @staticmethod
     def XorArrayWithByte(array, value):
         value &= 0xFF
-        return [(b ^ value) & 0xFF for b in array]
+        return JSArray([(b ^ value) & 0xFF for b in array])
 
     # ==================[ MATH / GF ARITHMETIC ]==================
     @staticmethod
@@ -1639,12 +1732,12 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def GenerateRoundConstants(count, generator):
-        return [generator(i) for i in range(count)]
+        return JSArray([generator(i) for i in range(count)])
 
     # ==================[ PERFORMANCE VARIANTS (same semantics) ]==================
     @staticmethod
     def FastXorArrays(arr1, arr2):
-        return [(arr1[i] ^ arr2[i]) & 0xFF for i in range(len(arr1))]
+        return JSArray([(arr1[i] ^ arr2[i]) & 0xFF for i in range(len(arr1))])
 
     @staticmethod
     def FastXorInPlace(target, source, length=None):
@@ -1655,11 +1748,11 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def FastSubBytes(sbox, input_bytes):
-        return [sbox[b] for b in input_bytes]
+        return JSArray([sbox[b] for b in input_bytes])
 
     @staticmethod
     def FastXorWords32(words1, words2):
-        return [(words1[i] ^ words2[i]) & 0xFFFFFFFF for i in range(len(words1))]
+        return JSArray([(words1[i] ^ words2[i]) & 0xFFFFFFFF for i in range(len(words1))])
 
     @staticmethod
     def BatchRotL32(values, positions):
@@ -1672,7 +1765,7 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def GetPooledArray(size):
-        return [0] * size
+        return JSArray([0] * size)
 
     @staticmethod
     def ReturnToPool(array):
@@ -2105,7 +2198,7 @@ class OpCodes(metaclass=_OpCodesMeta):
             algo = 'shake_' + algo[5:]
         key_bytes = bytes(bytearray(key)) if not isinstance(key, (bytes, bytearray)) else bytes(key)
         msg_bytes = bytes(bytearray(message)) if not isinstance(message, (bytes, bytearray)) else bytes(message)
-        return list(hmac.new(key_bytes, msg_bytes, algo).digest())
+        return JSArray(list(hmac.new(key_bytes, msg_bytes, algo).digest()))
 
     # "OpCodes && OpCodes.HMAC" existence-check operands go through the
     # generic member-access-in-a-logical-expression rewrite (see
@@ -2623,12 +2716,118 @@ class OpCodes(metaclass=_OpCodesMeta):
         // JS produces even though every individual (key, value) pair is
         // itself correct.
         '_js_object_keys': 'def _js_object_keys(d):\n    keys = list(d.keys()) if hasattr(d, "keys") else list(d)\n    int_keys = []\n    other_keys = []\n    for k in keys:\n        ks = str(k)\n        if ks == "0" or (ks and ks[0] != "0" and ks.isdigit()):\n            int_keys.append(k)\n        else:\n            other_keys.append(k)\n    int_keys.sort(key=lambda x: int(x))\n    return int_keys + other_keys',
+        // AlgorithmFramework.js's shared construction primitives
+        // (BlockAbsorber, SpongePadBlocks, MerkleDamgardBlocks), ported
+        // line for line. Finish passes (held, pending, totalLength) through
+        // _js_arr_cb, since a JS finalizer may declare fewer parameters.
+        'FrameworkPrimitives': 'def _af_byte(value):\n' +
+          '    return int(value) % 256\n' +
+          'def _af_merge_bits(a, b):\n' +
+          '    return _af_byte(a) | _af_byte(b)\n' +
+          'class BlockAbsorber:\n' +
+          '    def __init__(self, block_size, process_block):\n' +
+          '        if not (block_size > 0):\n' +
+          '            raise Exception("BlockAbsorber: blockSize must be positive")\n' +
+          '        if not callable(process_block):\n' +
+          '            raise Exception("BlockAbsorber: processBlock must be a function")\n' +
+          '        self._block_size = int(block_size)\n' +
+          '        self._process_block = process_block\n' +
+          '        self._held = JSArray([0] * self._block_size)\n' +
+          '        self._pending = 0\n' +
+          '        self._length = 0\n' +
+          '    @property\n' +
+          '    def block_size(self): return self._block_size\n' +
+          '    @property\n' +
+          '    def pending(self): return self._pending\n' +
+          '    @property\n' +
+          '    def length(self): return self._length\n' +
+          '    def absorb(self, data):\n' +
+          '        if not data or len(data) == 0:\n' +
+          '            return\n' +
+          '        block_size = self._block_size\n' +
+          '        total = len(data)\n' +
+          '        offset = 0\n' +
+          '        while offset < total:\n' +
+          '            if self._pending == block_size:\n' +
+          '                self._process_block(self._held)\n' +
+          '                self._pending = 0\n' +
+          '            take = min(block_size - self._pending, total - offset)\n' +
+          '            for i in range(take):\n' +
+          '                self._held[self._pending + i] = _af_byte(data[offset + i])\n' +
+          '            self._pending += take\n' +
+          '            offset += take\n' +
+          '            self._length += take\n' +
+          '    def finish(self, finalize):\n' +
+          '        if not callable(finalize):\n' +
+          '            raise Exception("BlockAbsorber: finalize must be a function")\n' +
+          '        return _js_arr_cb(finalize, JSArray(self._held[0:self._pending]), self._pending, self._length)\n' +
+          '    def reset(self):\n' +
+          '        for i in range(self._block_size):\n' +
+          '            self._held[i] = 0\n' +
+          '        self._pending = 0\n' +
+          '        self._length = 0\n' +
+          'def sponge_pad_blocks(held, pending, rate, separator):\n' +
+          '    if not (rate > 0):\n' +
+          '        raise Exception("SpongePadBlocks: rate must be positive")\n' +
+          '    if pending < 0 or pending > rate:\n' +
+          '        raise Exception("SpongePadBlocks: pending " + str(pending) + " outside 0.." + str(rate))\n' +
+          '    blocks = JSArray()\n' +
+          '    block = JSArray([0] * rate)\n' +
+          '    for i in range(pending):\n' +
+          '        block[i] = _af_byte(held[i])\n' +
+          '    used = pending\n' +
+          '    if used == rate:\n' +
+          '        blocks.append(block)\n' +
+          '        block = JSArray([0] * rate)\n' +
+          '        used = 0\n' +
+          '    block[used] = _af_byte(separator)\n' +
+          '    block[rate - 1] = _af_merge_bits(block[rate - 1], 0x80)\n' +
+          '    blocks.append(block)\n' +
+          '    return blocks\n' +
+          'def _af_option(options, name, default):\n' +
+          '    if options is None:\n' +
+          '        return default\n' +
+          '    value = options.get(name) if isinstance(options, dict) else getattr(options, name, None)\n' +
+          '    return default if value is None else value\n' +
+          'def merkle_damgard_blocks(held, pending, total_length, options=None):\n' +
+          '    block_size = _af_option(options, "block_size", 0)\n' +
+          '    if not (block_size > 0):\n' +
+          '        raise Exception("MerkleDamgardBlocks: blockSize must be positive")\n' +
+          '    if pending < 0 or pending > block_size:\n' +
+          '        raise Exception("MerkleDamgardBlocks: pending " + str(pending) + " outside 0.." + str(block_size))\n' +
+          '    pad_byte = _af_option(options, "pad_byte", 0x80)\n' +
+          '    length_bytes = _af_option(options, "length_bytes", 8)\n' +
+          '    little_endian = _af_option(options, "length_little_endian", False) is True\n' +
+          '    in_bits = _af_option(options, "length_in_bits", True) is not False\n' +
+          '    if length_bytes < 0 or length_bytes >= block_size:\n' +
+          '        raise Exception("MerkleDamgardBlocks: lengthBytes " + str(length_bytes) + " does not fit a " + str(block_size) + "-byte block")\n' +
+          '    blocks = JSArray()\n' +
+          '    block = JSArray([0] * block_size)\n' +
+          '    for i in range(pending):\n' +
+          '        block[i] = _af_byte(held[i])\n' +
+          '    used = pending\n' +
+          '    if used == block_size:\n' +
+          '        blocks.append(block)\n' +
+          '        block = JSArray([0] * block_size)\n' +
+          '        used = 0\n' +
+          '    block[used] = _af_byte(pad_byte)\n' +
+          '    used += 1\n' +
+          '    if used > block_size - length_bytes:\n' +
+          '        blocks.append(block)\n' +
+          '        block = JSArray([0] * block_size)\n' +
+          '    if length_bytes > 0:\n' +
+          '        remaining = max(0, int(total_length * 8 if in_bits else total_length))\n' +
+          '        for i in range(length_bytes):\n' +
+          '            block[block_size - 1 - i if not little_endian else block_size - length_bytes + i] = remaining % 256\n' +
+          '            remaining //= 256\n' +
+          '    blocks.append(block)\n' +
+          '    return blocks',
         '_js_object_values': 'def _js_object_values(d):\n    return [d[k] for k in _js_object_keys(d)]',
         '_js_object_entries': 'def _js_object_entries(d):\n    return [(k, d[k]) for k in _js_object_keys(d)]',
       };
       // Fixed emission order so base classes (LinkItem) are always defined before
       // subclasses (TestCase, Vulnerability) regardless of Set insertion order.
-      const HELPER_ORDER = ['JSObject', '_js_arr_cb', 'JSArray', 'JSUint8Array', 'JSArrayBuffer', 'JSUint8ArraySubarray', 'JSUint32Array', 'JSTypedBufferView', 'JSBytesOfWordsView', 'BitStream', 'OpCodes', 'SpliceArray', '_bigint', '_json_preserve', '_json_default', '_typed_array_bytes', '_typed_array_view', '_int_to_base', '_js_sort', '_js_fill', '_js_object_keys', '_js_object_values', '_js_object_entries', 'LinkItem', 'TestCase', 'Vulnerability', 'KeySize', 'AuthResult'];
+      const HELPER_ORDER = ['JSObject', '_js_arr_cb', 'JSArray', 'FrameworkPrimitives', 'JSUint8Array', 'JSArrayBuffer', 'JSUint8ArraySubarray', 'JSUint32Array', 'JSTypedBufferView', 'JSBytesOfWordsView', 'BitStream', 'OpCodes', 'SpliceArray', '_bigint', '_json_preserve', '_json_default', '_typed_array_bytes', '_typed_array_view', '_int_to_base', '_js_sort', '_js_fill', '_js_object_keys', '_js_object_values', '_js_object_entries', 'LinkItem', 'TestCase', 'Vulnerability', 'KeySize', 'AuthResult'];
       // TestCase/Vulnerability both extend LinkItem in the real framework.
       if (this.helperClasses.has('TestCase') || this.helperClasses.has('Vulnerability'))
         this.helperClasses.add('LinkItem');
@@ -2638,10 +2837,10 @@ class OpCodes(metaclass=_OpCodesMeta):
       // files using nonstandard/typo'd members (e.g. CountryCode.ZA, ComplexityType.BASIC)
       // behave like JavaScript's silent `undefined` instead of raising AttributeError.
       const ENUM_STUBS = {
-        'category_type': 'class CategoryType(metaclass=_EnumMeta):\n    ASYMMETRIC = "asymmetric"\n    BLOCK = "block"\n    STREAM = "stream"\n    HASH = "hash"\n    CHECKSUM = "checksum"\n    COMPRESSION = "compression"\n    ENCODING = "encoding"\n    CLASSICAL = "classical"\n    MAC = "mac"\n    KDF = "kdf"\n    ECC = "ecc"\n    MODE = "mode"\n    PADDING = "padding"\n    AEAD = "aead"\n    SPECIAL = "special"\n    PQC = "pqc"\n    RANDOM = "random"\n    ASYMMETRIC_CIPHER = "asymmetric"\ncategory_type = CategoryType()',
-        'security_status': 'class SecurityStatus(metaclass=_EnumMeta):\n    SECURE = "secure"\n    DEPRECATED = "deprecated"\n    BROKEN = "broken"\n    INSECURE = "broken"\n    OBSOLETE = "obsolete"\n    EXPERIMENTAL = "experimental"\n    EDUCATIONAL = "educational"\n    ACTIVE = "secure"\nsecurity_status = SecurityStatus()',
-        'complexity_type': 'class ComplexityType(metaclass=_EnumMeta):\n    BEGINNER = "beginner"\n    INTERMEDIATE = "intermediate"\n    ADVANCED = "advanced"\n    EXPERT = "expert"\n    RESEARCH = "research"\n    BASIC = "beginner"\n    ELEMENTARY = "beginner"\n    SIMPLE = "beginner"\n    TRIVIAL = "beginner"\n    LOW = "beginner"\n    MEDIUM = "intermediate"\n    HIGH = "advanced"\ncomplexity_type = ComplexityType()',
-        'country_code': 'class CountryCode(metaclass=_EnumMeta):\n    US = "US"\n    GB = "GB"\n    UK = "GB"\n    DE = "DE"\n    FR = "FR"\n    FRANCE = "FR"\n    JP = "JP"\n    CN = "CN"\n    RU = "RU"\n    UA = "UA"\n    IL = "IL"\n    BE = "BE"\n    KR = "KR"\n    AU = "AU"\n    CA = "CA"\n    CH = "CH"\n    NL = "NL"\n    NETHERLANDS = "NL"\n    SE = "SE"\n    NO = "NO"\n    FI = "FI"\n    AT = "AT"\n    AUSTRIA = "AT"\n    ES = "ES"\n    IT = "IT"\n    PL = "PL"\n    PT = "PT"\n    BR = "BR"\n    IN = "IN"\n    SG = "SG"\n    SINGAPORE = "SG"\n    DK = "DK"\n    GR = "GR"\n    CR = "CR"\n    TR = "TR"\n    ID = "ID"\n    EU = "EU"\n    ZA = "ZA"\n    INTL = "INTL"\n    INTERNATIONAL = "INTL"\n    INT = "INTL"\n    MULTI = "INTL"\n    ANCIENT = "ANCIENT"\n    UNKNOWN = "UNKNOWN"\ncountry_code = CountryCode()',
+        'category_type': 'class CategoryType(metaclass=_EnumMeta):\n    ASYMMETRIC = "asymmetric"\n    BLOCK = "block"\n    STREAM = "stream"\n    HASH = "hash"\n    CHECKSUM = "checksum"\n    COMPRESSION = "compression"\n    ENCODING = "encoding"\n    CLASSICAL = "classical"\n    MAC = "mac"\n    KDF = "kdf"\n    ECC = "ecc"\n    MODE = "mode"\n    PADDING = "padding"\n    AEAD = "aead"\n    SPECIAL = "special"\n    PQC = "pqc"\n    RANDOM = "random"\n    ASYMMETRIC_CIPHER = "asymmetric"\ncategory_type = CategoryType',
+        'security_status': 'class SecurityStatus(metaclass=_EnumMeta):\n    SECURE = "secure"\n    DEPRECATED = "deprecated"\n    BROKEN = "broken"\n    INSECURE = "broken"\n    OBSOLETE = "obsolete"\n    EXPERIMENTAL = "experimental"\n    EDUCATIONAL = "educational"\n    ACTIVE = "secure"\nsecurity_status = SecurityStatus',
+        'complexity_type': 'class ComplexityType(metaclass=_EnumMeta):\n    BEGINNER = "beginner"\n    INTERMEDIATE = "intermediate"\n    ADVANCED = "advanced"\n    EXPERT = "expert"\n    RESEARCH = "research"\n    BASIC = "beginner"\n    ELEMENTARY = "beginner"\n    SIMPLE = "beginner"\n    TRIVIAL = "beginner"\n    LOW = "beginner"\n    MEDIUM = "intermediate"\n    HIGH = "advanced"\ncomplexity_type = ComplexityType',
+        'country_code': 'class CountryCode(metaclass=_EnumMeta):\n    US = "US"\n    GB = "GB"\n    UK = "GB"\n    DE = "DE"\n    FR = "FR"\n    FRANCE = "FR"\n    JP = "JP"\n    CN = "CN"\n    RU = "RU"\n    UA = "UA"\n    IL = "IL"\n    BE = "BE"\n    KR = "KR"\n    AU = "AU"\n    CA = "CA"\n    CH = "CH"\n    NL = "NL"\n    NETHERLANDS = "NL"\n    SE = "SE"\n    NO = "NO"\n    FI = "FI"\n    AT = "AT"\n    AUSTRIA = "AT"\n    ES = "ES"\n    IT = "IT"\n    PL = "PL"\n    PT = "PT"\n    BR = "BR"\n    IN = "IN"\n    SG = "SG"\n    SINGAPORE = "SG"\n    DK = "DK"\n    GR = "GR"\n    CR = "CR"\n    TR = "TR"\n    ID = "ID"\n    EU = "EU"\n    ZA = "ZA"\n    INTL = "INTL"\n    INTERNATIONAL = "INTL"\n    INT = "INTL"\n    MULTI = "INTL"\n    ANCIENT = "ANCIENT"\n    UNKNOWN = "UNKNOWN"\ncountry_code = CountryCode',
       };
 
       // Emit every base-class stub unconditionally — they are trivial and this
@@ -2806,6 +3005,37 @@ class OpCodes(metaclass=_OpCodesMeta):
           '    value = int(s[start:i], base)\n' +
           '    return -value if neg else value'
       });
+      // Number arithmetic: an integer beyond 2^53 becomes the nearest double
+      // (an int stays an int while exact, so it still indexes and shifts)
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_f64(x):\n' +
+          '    if isinstance(x, int) and not isinstance(x, bool) and not -9007199254740992 <= x <= 9007199254740992:\n' +
+          '        return int(float(x))\n' +
+          '    return x'
+      });
+      // ArrayBuffer.isView: the runtime's typed-array and view types (a plain
+      // list is a JS Array, a JSArrayBuffer the buffer itself, neither a view)
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_is_view(x):\n' +
+          '    if isinstance(x, JSArrayBuffer):\n' +
+          '        return False\n' +
+          '    return isinstance(x, (bytes, bytearray, memoryview, JSUint32Array, JSTypedBufferView, JSBytesOfWordsView, JSUint8ArraySubarray))'
+      });
+      // String.prototype.padStart/padEnd: the pad string is repeated and cut
+      // to the missing length; an empty pad string pads nothing.
+      stubs.push({
+        nodeType: 'RawCode', code:
+          'def _js_pad(s, target_length, pad=" ", at_start=True):\n' +
+          '    s = str(s)\n' +
+          '    pad = " " if pad is None else str(pad)\n' +
+          '    missing = int(target_length) - len(s)\n' +
+          '    if missing <= 0 or pad == "":\n' +
+          '        return s\n' +
+          '    fill = (pad * (missing // len(pad) + 1))[:missing]\n' +
+          '    return fill + s if at_start else s + fill'
+      });
       stubs.push({
         nodeType: 'RawCode', code:
           'def safe_replace(s, search, replacement, is_global=True):\n' +
@@ -2847,6 +3077,9 @@ class OpCodes(metaclass=_OpCodesMeta):
           '    test_case = TestCase\n' +
           '    vulnerability = Vulnerability\n' +
           '    auth_result = AuthResult\n' +
+          '    block_absorber = BlockAbsorber\n' +
+          '    sponge_pad_blocks = staticmethod(sponge_pad_blocks)\n' +
+          '    merkle_damgard_blocks = staticmethod(merkle_damgard_blocks)\n' +
           '    category_type = category_type\n' +
           '    security_status = security_status\n' +
           '    complexity_type = complexity_type\n' +
@@ -2959,7 +3192,7 @@ class OpCodes(metaclass=_OpCodesMeta):
       if (callee.property.type !== 'Identifier') return false;
 
       // Check if the called method name maps to the same snake_case name
-      const calledMethodName = toSnakeCase(callee.property.name);
+      const calledMethodName = toSnakeCaseProperty(callee.property.name);
       return calledMethodName === targetSnakeName;
     }
 
@@ -3024,6 +3257,23 @@ class OpCodes(metaclass=_OpCodesMeta):
               this.moduleConstRenames.set(d.id.name, `${d.id.name}__${toSnakeCase(moduleConstTag)}`);
             }
           }
+        }
+      }
+
+      // Top-level functions whose names differ but fold to one snake_case
+      // name (darkcrypt-e2.js's fFunc and FFunc): every one after the first
+      // gets a numbered name, or the later def replaces the earlier.
+      {
+        const firstByFolded = new Map();
+        const counts = new Map();
+        for (const stmt of node.body) {
+          if (stmt.type !== 'FunctionDeclaration' || !stmt.id || !stmt.id.name) continue;
+          const raw = stmt.id.name;
+          if (this.moduleConstRenames.has(raw)) continue;
+          const folded = toSnakeCase(raw);
+          const first = firstByFolded.get(folded);
+          if (first === undefined) firstByFolded.set(folded, raw);
+          else if (first !== raw) { const n = (counts.get(folded) || 1) + 1; counts.set(folded, n); this.moduleConstRenames.set(raw, `${folded}_${n}`); }
         }
       }
 
@@ -3405,8 +3655,12 @@ class OpCodes(metaclass=_OpCodesMeta):
           return this.transformSwitchStatement(node);
         case 'BreakStatement':
           return new PythonBreak();
-        case 'ContinueStatement':
+        case 'ContinueStatement': {
+          // Inside a switch lowered to a one-pass loop (transformSwitchStatement)
+          const flag = this._switchContinueTargets && this._switchContinueTargets.get(node);
+          if (flag) return [new PythonAssignment(new PythonIdentifier(flag), PythonLiteral.Bool(true)), new PythonBreak()];
           return new PythonContinue();
+        }
         case 'ThrowStatement':
           return this.transformThrowStatement(node);
         case 'TryStatement':
@@ -3458,7 +3712,8 @@ class OpCodes(metaclass=_OpCodesMeta):
           const isKnownClass = FRAMEWORK_CLASSES.has(baseName) ||
             FRAMEWORK_ALGORITHM_BASES.includes(baseName) ||
             FRAMEWORK_INSTANCE_BASES.includes(baseName) ||
-            this.definedClassNames.has(baseName);
+            this.definedClassNames.has(baseName) ||
+            FRAMEWORK_HELPER_CLASSES.includes(baseName);
           if (!isKnownClass)
             baseName = toSnakeCase(baseName);
 
@@ -3529,7 +3784,7 @@ class OpCodes(metaclass=_OpCodesMeta):
             member.kind !== 'get' &&
             member.kind !== 'set') {
           const rawName = member.key.name;
-          const methodName = toSnakeCase(rawName);
+          const methodName = toSnakeCaseProperty(rawName);
           let rawNames = this.currentClassMethodNames.get(methodName);
           if (!rawNames) { rawNames = new Set(); this.currentClassMethodNames.set(methodName, rawNames); }
           rawNames.add(rawName);
@@ -3579,7 +3834,7 @@ class OpCodes(metaclass=_OpCodesMeta):
       // Create synthetic getter stubs for setter-only properties
       const syntheticGetters = settersWithoutGetters.map(setter => {
         const propName = setter.key?.name;
-        const snakeName = toSnakeCase(propName);
+        const snakeName = toSnakeCaseProperty(propName);
         return {
           type: 'MethodDefinition',
           kind: 'get',
@@ -3640,7 +3895,7 @@ class OpCodes(metaclass=_OpCodesMeta):
       if (sortedMembers && sortedMembers.length > 0) {
         for (const member of sortedMembers) {
           if (member.type === 'MethodDefinition') {
-            let snakeName = toSnakeCase(member.key.name);
+            let snakeName = toSnakeCaseProperty(member.key.name);
             // Use the disambiguated name (see currentMethodNameOverrides in
             // transformClassDeclaration) when this raw method name is one of
             // a genuine multi-method collision (e.g. shacal-2.js's `_sigma0`/
@@ -3796,7 +4051,7 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformMethodDefinition(node) {
-      let methodName = toSnakeCase(node.key.name);
+      let methodName = toSnakeCaseProperty(node.key.name);
       // Disambiguate methods that only collide after case-folding (see the
       // currentMethodNameOverrides comment in transformClassDeclaration).
       if (this.currentMethodNameOverrides && this.currentMethodNameOverrides.has(node.key.name)) {
@@ -3970,6 +4225,12 @@ class OpCodes(metaclass=_OpCodesMeta):
      */
     _collectAssignedNames(node, out) {
       if (!node) return;
+      // An assignment expression (`i := i + 1`, see the ++/-- subscript
+      // lowering) binds its name in this scope wherever it sits.
+      if (!out._walrusScanned) {
+        out._walrusScanned = true;
+        this._collectWalrusNames(node, out);
+      }
       if (Array.isArray(node)) {
         for (const n of node) this._collectAssignedNames(n, out);
         return;
@@ -4022,6 +4283,22 @@ class OpCodes(metaclass=_OpCodesMeta):
           // Function/Class definitions and everything else: not a shared scope, stop.
           return;
       }
+    }
+
+    /**
+     * Names bound by `name := value` anywhere below `node`, not crossing a
+     * nested function, class or lambda (each its own scope).
+     * @param {Object} node - Python AST node
+     * @param {Set<string>} out - receives the names
+     */
+    _collectWalrusNames(node, out) {
+      if (!node || typeof node !== 'object') return;
+      if (Array.isArray(node)) { for (const n of node) this._collectWalrusNames(n, out); return; }
+      if (node.nodeType === 'Function' || node.nodeType === 'Class' || node.nodeType === 'Lambda') return;
+      if (node.nodeType === 'BinaryExpression' && node.operator === ':=' && node.left && node.left.nodeType === 'Identifier')
+        out.add(node.left.name);
+      for (const key of Object.keys(node))
+        if (key !== 'nodeType') this._collectWalrusNames(node[key], out);
     }
 
     /**
@@ -4118,7 +4395,7 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformFunctionDeclaration(node) {
-      const funcName = toSnakeCase(node.id.name);
+      const funcName = this.moduleConstRenames.get(node.id.name) || toSnakeCase(node.id.name);
       const pyFunc = new PythonFunction(funcName, [], null);
 
       // Push scope
@@ -4297,7 +4574,7 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformPropertyDefinition(node) {
-      const propName = toSnakeCase(node.key.name);
+      const propName = toSnakeCaseProperty(node.key.name);
       const value = node.value ? this.transformExpression(node.value) : PythonLiteral.None();
 
       const assignment = new PythonAssignment(
@@ -4346,7 +4623,7 @@ class OpCodes(metaclass=_OpCodesMeta):
         // Create synthetic getter stubs for setter-only properties
         const syntheticGetters = settersWithoutGetters.map(setter => {
           const propName = setter.key?.name;
-          const snakeName = toSnakeCase(propName);
+          const snakeName = toSnakeCaseProperty(propName);
           return {
             type: 'MethodDefinition',
             kind: 'get',
@@ -4948,7 +5225,8 @@ class OpCodes(metaclass=_OpCodesMeta):
         return [...preStatements, tempAssign, returnStmt];
       }
 
-      const expr = node.argument ? this.transformExpression(node.argument) : null;
+      // `return x = v` / `return i++`: the side effect becomes a statement.
+      const expr = node.argument ? this.transformSideEffectFreeValue(node.argument) : null;
 
       const preStatements = [...(this.pendingPreStatements || [])];
       const postStatements = [...this.pendingPostStatements];
@@ -5501,6 +5779,7 @@ class OpCodes(metaclass=_OpCodesMeta):
     _hasOwnLevelContinueNoBreak(node) {
       let hasContinue = false;
       let hasBreak = false;
+      let inSwitch = 0;
       const visit = (n) => {
         if (!n || typeof n !== 'object' || hasBreak) return;
         switch (n.type) {
@@ -5508,7 +5787,14 @@ class OpCodes(metaclass=_OpCodesMeta):
             if (!n.label) hasContinue = true;
             return;
           case 'BreakStatement':
-            if (!n.label) hasBreak = true;
+            if (!n.label && inSwitch === 0) hasBreak = true;
+            return;
+          // A continue inside a switch still advances this loop; a break
+          // there only leaves the switch.
+          case 'SwitchStatement':
+            ++inSwitch;
+            for (const c of n.cases || []) for (const s of c.consequent || []) visit(s);
+            --inSwitch;
             return;
           case 'BlockStatement':
             for (const s of n.body) { visit(s); if (hasBreak) return; }
@@ -5770,6 +6056,55 @@ class OpCodes(metaclass=_OpCodesMeta):
         return null;
       }
 
+      // A braced case body (`case 'x': { ...; break; }`) is the same
+      // statement list as an unbraced one; unwrap it so its trailing break
+      // is seen as the case's terminator.
+      const flattenCase = consequent => {
+        let real = consequent.filter(s => s.type !== 'EmptyStatement');
+        while (real.length > 0 && real[real.length - 1].type === 'BlockStatement')
+          real = [...real.slice(0, -1), ...real[real.length - 1].body.filter(s => s.type !== 'EmptyStatement')];
+        return real;
+      };
+      node = Object.assign({}, node, { cases: node.cases.map(c => Object.assign({}, c, { consequent: flattenCase(c.consequent) })) });
+
+      // A break nested below a case's top level (`if (x) break;`) leaves the
+      // switch; an if/elif chain has nothing for it to leave, so the chain is
+      // wrapped in a one-pass `while True:` loop. A continue aimed at an
+      // enclosing loop would then hit the wrapper instead, so not then.
+      const nestedBreak = node.cases.some(c => c.consequent.some((s, i) =>
+        !(s.type === 'BreakStatement' && i === c.consequent.length - 1) && this._findJumpOutside(s, 'BreakStatement')));
+      const loopContinue = node.cases.some(c => c.consequent.some(s => this._findJumpOutside(s, 'ContinueStatement')));
+      if (nestedBreak && !node._wrapped) {
+        // A continue aimed at the enclosing loop would hit the wrapper
+        // instead: it sets a flag and leaves the wrapper, and the flag
+        // continues the real loop after it.
+        let flag = null;
+        if (loopContinue) {
+          this._switchContinueCounter = (this._switchContinueCounter || 0) + 1;
+          flag = `_switch_continue_${this._switchContinueCounter}`;
+          if (!this._switchContinueTargets) this._switchContinueTargets = new WeakMap();
+          const mark = n => {
+            if (!n || typeof n !== 'object') return;
+            if (Array.isArray(n)) { n.forEach(mark); return; }
+            if (n.type === 'ContinueStatement') { if (!n.label) this._switchContinueTargets.set(n, flag); return; }
+            if (['ForStatement', 'WhileStatement', 'DoWhileStatement', 'ForOfStatement', 'ForInStatement',
+              'FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression', 'ArrowFunction',
+              'ClassDeclaration', 'ClassExpression'].includes(n.type)) return;
+            for (const key of Object.keys(n)) if (key !== 'loc' && key !== 'range' && key !== 'parent') mark(n[key]);
+          };
+          node.cases.forEach(c => mark(c.consequent));
+        }
+        const inner = this.transformSwitchStatement(Object.assign({}, node, { _wrapped: true }));
+        const body = new PythonBlock();
+        body.statements.push(...(Array.isArray(inner) ? inner : (inner ? [inner] : [])), new PythonBreak());
+        const wrapper = new PythonWhile(PythonLiteral.Bool(true), body);
+        if (!flag) return wrapper;
+        const resume = new PythonBlock();
+        resume.statements.push(new PythonContinue());
+        return [new PythonAssignment(new PythonIdentifier(flag), PythonLiteral.Bool(false)), wrapper,
+          new PythonIf(new PythonIdentifier(flag), resume, [], null)];
+      }
+
       const discriminant = this.transformExpression(node.discriminant);
 
       // Fold the common "shared body via stacked labels" JS idiom -
@@ -5856,6 +6191,29 @@ class OpCodes(metaclass=_OpCodesMeta):
       }
 
       return currentIf;
+    }
+
+    /**
+     * Whether a statement holds an unlabeled break/continue that leaves it,
+     * i.e. one not owned by a loop (or, for break, a switch) inside it.
+     * @param {Object} node - IL statement
+     * @param {string} type - 'BreakStatement' or 'ContinueStatement'
+     * @returns {boolean}
+     */
+    _findJumpOutside(node, type) {
+      if (!node || typeof node !== 'object') return false;
+      if (Array.isArray(node)) return node.some(n => this._findJumpOutside(n, type));
+      if (node.type === type) return !node.label;
+      const LOOPS = ['ForStatement', 'WhileStatement', 'DoWhileStatement', 'ForOfStatement', 'ForInStatement'];
+      const FUNCTIONS = ['FunctionDeclaration', 'FunctionExpression', 'ArrowFunctionExpression', 'ArrowFunction', 'ClassDeclaration', 'ClassExpression'];
+      if (LOOPS.includes(node.type) || FUNCTIONS.includes(node.type)) return false;
+      if (node.type === 'SwitchStatement' && type === 'BreakStatement') return false;
+      for (const key of Object.keys(node)) {
+        if (key === 'loc' || key === 'range' || key === 'parent' || key === 'resultType') continue;
+        const v = node[key];
+        if (v && typeof v === 'object' && this._findJumpOutside(v, type)) return true;
+      }
+      return false;
     }
 
     // Lowers a switch with genuine (non-empty-body) fall-through into a
@@ -6070,6 +6428,13 @@ class OpCodes(metaclass=_OpCodesMeta):
           const rawName = decl.id.name;
           if (this.moduleConstRenames.has(rawName)) continue;
           const folded = toSnakeCase(rawName);
+          // A local that folds onto a declared function of another
+          // spelling (`const drbg = Drbg(seed)`) would shadow it.
+          const declared = this._declaredRawNamesByFolded && this._declaredRawNamesByFolded.get(folded);
+          if (declared && declared !== rawName && !overrides.has(rawName)) {
+            overrides.set(rawName, folded + '_local');
+            continue;
+          }
           const firstRaw = firstRawByFolded.get(folded);
           if (firstRaw === undefined) {
             firstRawByFolded.set(folded, rawName);
@@ -6111,8 +6476,16 @@ class OpCodes(metaclass=_OpCodesMeta):
         case 'Identifier':
           return this.transformIdentifier(node);
         case 'BinaryExpression':
-        case 'LogicalExpression':
-          return this.transformBinaryExpression(node);
+        case 'LogicalExpression': {
+          const binary = this.transformBinaryExpression(node);
+          // A float64-typed +, - or * is a JS double: past 2^53 its exact
+          // Python int result is rounded to the nearest double, as JS does
+          // (Khufu's S-box LCG `1103515245 * state + 12345` depends on it).
+          if (node.type === 'BinaryExpression' && (node.operator === '*' || node.operator === '+' || node.operator === '-') &&
+              /^(float64|double)$/.test(String(node.resultType || '')) && binary)
+            return new PythonCall(new PythonIdentifier('_js_f64'), [binary]);
+          return binary;
+        }
         case 'UnaryExpression':
           return this.transformUnaryExpression(node);
         case 'UpdateExpression':
@@ -6326,7 +6699,26 @@ class OpCodes(metaclass=_OpCodesMeta):
           return this.transformImul(node);
 
         case 'Clz32':
+        case 'CountLeadingZeros': // Math.clz32
           return this.transformClz32(node);
+
+        case 'Truncate': // Math.trunc
+          return this.transformTrunc(node);
+
+        case 'DataViewGetByteLength':
+          return new PythonCall(new PythonIdentifier('_js_len'), [this.transformExpression(node.view)]);
+
+        case 'StringPad': {
+          // padStart/padEnd repeat a multi-character pad string and cut it
+          // to fit, which str.rjust/ljust (one fill character) cannot.
+          this.frameworkFunctions.add('_js_pad');
+          return new PythonCall(new PythonIdentifier('_js_pad'), [
+            this.transformExpression(node.string),
+            node.targetLength ? this.transformExpression(node.targetLength) : PythonLiteral.Int(0),
+            node.padString ? this.transformExpression(node.padString) : PythonLiteral.Str(' '),
+            PythonLiteral.Bool(node.method === 'padStart')
+          ]);
+        }
 
         case 'Cast':
           return this.transformCast(node);
@@ -6477,13 +6869,17 @@ class OpCodes(metaclass=_OpCodesMeta):
           return this.transformSetCreation(node);
 
         case 'StringToBytes': {
-          // Python: string.encode('ascii') or string.encode('utf-8')
+          // The IL type is uint8[]: a mutable array, never an immutable bytes.
+          // AnsiToBytes/AsciiToBytes mask every char code (& 0x7F / & 0xFF)
+          // where str.encode('ascii') raises, so they call the runtime port.
           const encoding = node.encoding || 'ascii';
           const value = node.arguments?.[0] ? this.transformExpression(node.arguments[0]) : this.transformExpression(node.value);
+          if (node.opCodesMethod === 'AnsiToBytes' || node.opCodesMethod === 'AsciiToBytes')
+            return new PythonCall(new PythonMemberAccess(new PythonIdentifier('OpCodes'), node.opCodesMethod), [value]);
           const encodingArg = encoding === 'ascii' ? PythonLiteral.Str('ascii') :
                               encoding === 'utf-8' || encoding === 'utf8' ? PythonLiteral.Str('utf-8') :
                               PythonLiteral.Str(encoding);
-          return new PythonCall(new PythonMemberAccess(value, 'encode'), [encodingArg]);
+          return new PythonCall(new PythonIdentifier('JSArray'), [new PythonCall(new PythonMemberAccess(value, 'encode'), [encodingArg])]);
         }
 
         case 'BytesToString': {
@@ -6895,6 +7291,10 @@ class OpCodes(metaclass=_OpCodesMeta):
 
         // IL AST ArrowFunction - (x) => expr -> lambda x: expr
         case 'ArrowFunction': {
+          if (this._lambdaNeedsDef(node.body)) {
+            const params = (node.params || []).map(p => typeof p === 'string' ? { type: 'Identifier', name: p } : p);
+            return this.transformLambdaExpression(Object.assign({}, node, { params }));
+          }
           const params = (node.params || []).map((p, idx) => {
             // toSnakeCase() (not a bare pass-through) everywhere below - it
             // also escapePythonReserved()s the result, matching how the
@@ -7206,7 +7606,7 @@ class OpCodes(metaclass=_OpCodesMeta):
 
         // IL AST DeleteExpression - delete obj.prop / delete obj[key] -> del obj.prop / del obj[key]
         case 'DeleteExpression': {
-          const target = this.transformExpression(node.argument);
+          const target = this._transformAsTarget(node.argument);
           return new PythonDelete(target);
         }
 
@@ -8148,25 +8548,18 @@ class OpCodes(metaclass=_OpCodesMeta):
       // wide operands here so it can skip that mask instead of silently
       // truncating 64-bit state to 32 bits.
       if (operator === '~') {
-        const argResultType = node.argument && node.argument.resultType;
-        // Confidently-wide type, OR an untyped/ambiguous fallback (no
-        // resultType at all - e.g. a computed array-element read like
-        // mac/blake2bmac.js's `v[14] = ~v[14]` on its 64-bit BLAKE2b working
-        // vector, which the shared parser never tracks per-element - or the
-        // 'uint8' fallback default) inside a file that uses BigInt anywhere
-        // else - see _scanForBigIntLiterals()'s doc comment for why treating
-        // either ambiguous case as wide is safe there.
-        if (PythonTransformer.isWideIntResultType(argResultType) ||
-            (this._fileHasBigIntLiterals && (argResultType === 'uint8' || !argResultType))) {
+        // The IL type of the `~` decides: a BigInt result is unbounded
+        // (BLAKE2b-MAC's `v[14] = ~v[14]` on a BigInt[] vector); a Number
+        // result is the 32-bit one the emitter masks.
+        if (PythonTransformer.isWideIntResultType(String(node.resultType || '').toLowerCase()))
           result.isBigInt = true;
-        }
       }
       return result;
     }
 
     transformUpdateExpression(node) {
       // Convert i++ to i += 1
-      const target = this.transformExpression(node.argument);
+      const target = this._transformAsTarget(node.argument);
       const one = PythonLiteral.Int(1);
       const operator = node.operator === '++' ? '+=' : '-=';
 
@@ -8204,7 +8597,7 @@ class OpCodes(metaclass=_OpCodesMeta):
       }
 
       if (isUpdateExpr(node)) {
-        const target = this.transformExpression(node.argument);
+        const target = this._transformAsTarget(node.argument);
         const one = PythonLiteral.Int(1);
         const op = node.operator === '++' ? '+=' : '-=';
         const updateStmt = new PythonAssignment(target, one);
@@ -8478,7 +8871,7 @@ class OpCodes(metaclass=_OpCodesMeta):
                         (prop.type === 'UnaryExpression' && (prop.operator === '++' || prop.operator === '--'));
 
         if (isUpdate) {
-          const target = this.transformExpression(prop.argument);
+          const target = this._transformAsTarget(prop.argument);
           const one = PythonLiteral.Int(1);
           const op = prop.operator === '++' ? '+=' : '-=';
 
@@ -8540,9 +8933,27 @@ class OpCodes(metaclass=_OpCodesMeta):
     _transformExpressionAsRead(node) {
       this._memberReadWrapEnabled = (this._memberReadWrapEnabled || 0) + 1;
       try {
-        return this.transformExpression(node);
+        // `const c = next[len]++`: the update is a statement, the value a read.
+        return this.transformSideEffectFreeValue(node);
       } finally {
         this._memberReadWrapEnabled--;
+      }
+    }
+
+    /**
+     * Transform the target of an assignment or ++/--: a place, never wrapped
+     * in the getattr() read leniency (`getattr(o, "p", None) += 1` is not
+     * assignable).
+     * @param {Object} node - IL target expression
+     * @returns {Object} Python target
+     */
+    _transformAsTarget(node) {
+      const saved = this._memberReadWrapEnabled;
+      this._memberReadWrapEnabled = 0;
+      try {
+        return this.transformExpression(node);
+      } finally {
+        this._memberReadWrapEnabled = saved;
       }
     }
 
@@ -8568,7 +8979,7 @@ class OpCodes(metaclass=_OpCodesMeta):
         const propName = node.property.name || node.property.value;
         return new PythonIdentifier(toSnakeCase(propName));
       }
-      return this.transformExpression(node);
+      return this._transformAsTarget(node);
     }
 
     transformAssignmentExpressionCore(node) {
@@ -8635,6 +9046,15 @@ class OpCodes(metaclass=_OpCodesMeta):
 
       // Handle array length assignment: arr.length = 0 -> arr.clear()
       // In JavaScript, setting length to 0 clears the array
+      // `obj.length = n` on an object whose IL type is not an array or
+      // string (a class with a `length` field, darkcrypt-pike.js's
+      // PikeRegister) writes the field; only an array is truncated.
+      if (node.left && node.left.type === 'ArrayLength' && node.operator === '=') {
+        const objType = String((node.left.array && node.left.array.resultType) || '');
+        if (objType && !/\[\]$|Array$|^array$|^string$/.test(objType))
+          return new PythonAssignment(new PythonMemberAccess(this._transformAsTarget(node.left.array), 'length'),
+            this._transformExpressionAsRead(node.right));
+      }
       if (node.left && node.left.type === 'ArrayLength' && node.operator === '=') {
         const rightVal = node.right;
         const isZero = (rightVal.type === 'Literal' && rightVal.value === 0) ||
@@ -9021,9 +9441,21 @@ class OpCodes(metaclass=_OpCodesMeta):
                         (prop.type === 'UnaryExpression' && (prop.operator === '++' || prop.operator === '--'));
 
         if (isUpdate) {
-          if (!prop.prefix) {
+          const walrusTarget = this._transformAsTarget(prop.argument);
+          if (walrusTarget instanceof PythonIdentifier) {
+            // A plain name updates in place, in JavaScript's evaluation order,
+            // through an assignment expression: `k[o++]` -> `k[(o := o + 1) - 1]`.
+            // A deferred post-statement left every later plain read of the
+            // same name in the statement one step behind (IDEA's
+            // `[k[o++], k[o++], k[o++], k[o]]` read k[o] for the last word).
+            const step = prop.operator === '++' ? '+' : '-';
+            const back = prop.operator === '++' ? '-' : '+';
+            const walrus = new PythonBinaryExpression(walrusTarget, ':=',
+              new PythonBinaryExpression(this.transformExpression(prop.argument), step, PythonLiteral.Int(1)));
+            property = prop.prefix ? walrus : new PythonBinaryExpression(walrus, back, PythonLiteral.Int(1));
+          } else if (!prop.prefix) {
             // Postfix i++ or i--: use current value, then add increment/decrement as post-statement
-            const target = this.transformExpression(prop.argument);
+            const target = walrusTarget;
             const one = PythonLiteral.Int(1);
             const op = prop.operator === '++' ? '+=' : '-=';
             if (!this.pendingPostStatements) this.pendingPostStatements = [];
@@ -9062,7 +9494,7 @@ class OpCodes(metaclass=_OpCodesMeta):
               : currentValue;
           } else {
             // Prefix ++i or --i: increment first (add as pre-statement), then use new value
-            const target = this.transformExpression(prop.argument);
+            const target = this._transformAsTarget(prop.argument);
             const one = PythonLiteral.Int(1);
             const op = prop.operator === '++' ? '+=' : '-=';
             const preIncrement = new PythonAssignment(target, one);
@@ -9211,6 +9643,12 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformCallExpression(node) {
+      // ArrayBuffer.isView(x): is x a typed-array or DataView view
+      if (node.callee.type === 'MemberExpression' && !node.callee.computed &&
+          node.callee.object.type === 'Identifier' && node.callee.object.name === 'ArrayBuffer' &&
+          (node.callee.property.name || node.callee.property.value) === 'isView')
+        return new PythonCall(new PythonIdentifier('_js_is_view'), (node.arguments || []).slice(0, 1).map(a => this.transformExpression(a)));
+
       // Bare `Find(...)` call - the destructuring that would normally bind
       // this name (`const { ..., Find } = AlgorithmFramework;`, then called
       // as a bare identifier rather than `AlgorithmFramework.Find(...)` -
@@ -10141,13 +10579,10 @@ class OpCodes(metaclass=_OpCodesMeta):
           // str.repeat(n) -> str * n
           return new PythonBinaryExpression(target, '*', args[0]);
         }
-        if (methodName === 'padStart') {
-          // str.padStart(len, fillChar) -> str.rjust(len, fillChar)
-          return new PythonCall(new PythonMemberAccess(target, 'rjust'), args);
-        }
-        if (methodName === 'padEnd') {
-          // str.padEnd(len, fillChar) -> str.ljust(len, fillChar)
-          return new PythonCall(new PythonMemberAccess(target, 'ljust'), args);
+        if (methodName === 'padStart' || methodName === 'padEnd') {
+          // see the 'StringPad' IL case: a multi-character pad string is legal
+          return new PythonCall(new PythonIdentifier('_js_pad'), [target,
+            args[0] || PythonLiteral.Int(0), args[1] || PythonLiteral.Str(' '), PythonLiteral.Bool(methodName === 'padStart')]);
         }
         if (methodName === 'replace' || methodName === 'replaceAll') {
           // Use safe_replace to handle None values like JavaScript
@@ -10208,7 +10643,7 @@ class OpCodes(metaclass=_OpCodesMeta):
         // nested OpCodes.UInt64/UInt128 Python port classes don't define.
         let pyMethodName = this._isOpCodesRootedExpression(node.callee.object)
           ? escapePythonKeyword(methodName)
-          : toSnakeCase(methodName);
+          : toSnakeCaseProperty(methodName);
         // this.method(...) calls go through this generic fallback rather than
         // transformMemberExpression's dot-access branch, so the same method-
         // name-collision disambiguation (see the currentMethodNameOverrides
@@ -10260,6 +10695,13 @@ class OpCodes(metaclass=_OpCodesMeta):
         if (funcName === 'parseInt') {
           this.frameworkFunctions.add('_js_parse_int');
           return new PythonCall(new PythonIdentifier('_js_parse_int'), args.slice(0, 2));
+        }
+        // Array(n) without `new` is `new Array(n)`; Array(a, b) lists them
+        if (funcName === 'Array') {
+          const sizeType = node.arguments.length === 1 ? String(node.arguments[0].resultType || '') : '';
+          if (/^(u?int\d*|number|float\d*|double)$/.test(sizeType))
+            return this.transformArrayCreation({ size: node.arguments[0] });
+          return new PythonList(args);
         }
         // parseFloat(x) -> float(x)
         if (funcName === 'parseFloat')
@@ -10393,10 +10835,13 @@ class OpCodes(metaclass=_OpCodesMeta):
         if (hasArrayInit) {
           // new Uint8Array([1, 2, 3]) -> bytes([1, 2, 3]) or bytearray([1, 2, 3])
           const elements = node.arguments[0].elements.map(e => this.transformExpression(e));
-          if (typeName === 'Uint8Array')
-            return new PythonCall(new PythonIdentifier('bytes'), [new PythonList(elements)]);
-          // For other typed arrays, use bytearray or numpy
-          return new PythonCall(new PythonIdentifier('bytearray'), [new PythonList(elements)]);
+          // A typed array is mutable: never an immutable bytes, and a word
+          // array never a bytearray (which refuses values above 255).
+          if (typeName === 'Uint8Array' || typeName === 'Int8Array')
+            return new PythonCall(new PythonIdentifier('JSUint8Array'), [new PythonList(elements)]);
+          if (typeName === 'Uint32Array' || typeName === 'Int32Array')
+            return new PythonCall(new PythonIdentifier('JSUint32Array'), [new PythonList(elements)]);
+          return new PythonList(elements);
         }
 
         // Size-based: new Uint8Array(n) -> JSUint8Array(n) (masks stores to
@@ -10658,9 +11103,26 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     transformLambdaExpression(node) {
-      const params = node.params.map(p => this.transformParameter(p));
       const bodyNode = node.body;
 
+      // A Python lambda holds one expression. A body with statements, or
+      // with an assignment or update whose side effect is the point, is
+      // hoisted into a local def ahead of the current statement; reducing it
+      // to its first expression silently dropped the rest of the body.
+      if (this._lambdaNeedsDef(bodyNode)) {
+        this._lambdaHelperCounter = (this._lambdaHelperCounter || 0) + 1;
+        const fnName = `_fn_${this._lambdaHelperCounter}`;
+        // An assignment body runs as a statement and returns the assigned target.
+        const block = bodyNode.type === 'BlockStatement' ? bodyNode
+          : { type: 'BlockStatement', body: [{ type: 'ExpressionStatement', expression: bodyNode },
+            ...(bodyNode.type === 'AssignmentExpression' ? [{ type: 'ReturnStatement', argument: bodyNode.left }] : [])] };
+        const func = this.transformArrowToFunction(fnName, Object.assign({}, node, { body: block }));
+        if (!this.pendingPreStatements) this.pendingPreStatements = [];
+        this.pendingPreStatements.push(func);
+        return new PythonIdentifier(fnName);
+      }
+
+      const params = node.params.map(p => this.transformParameter(p));
       let body;
       if (bodyNode.type === 'BlockStatement') {
         // BlockStatement body - extract the first statement's return value or expression
@@ -10678,6 +11140,25 @@ class OpCodes(metaclass=_OpCodesMeta):
       }
 
       return new PythonLambda(params, body);
+    }
+
+    /**
+     * Whether an arrow/function body cannot be a single Python lambda
+     * expression without losing behavior.
+     * @param {Object} bodyNode - IL body (BlockStatement or expression)
+     * @returns {boolean}
+     */
+    _lambdaNeedsDef(bodyNode) {
+      if (!bodyNode) return false;
+      const sideEffect = n => !!n && (n.type === 'AssignmentExpression' || n.type === 'UpdateExpression');
+      if (bodyNode.type !== 'BlockStatement') return sideEffect(bodyNode);
+      const stmts = bodyNode.body || [];
+      if (stmts.length === 0) return false;
+      if (stmts.length > 1) return true;
+      const only = stmts[0];
+      // A statement body (even a single call) runs as statements: several IL
+      // nodes (array append, ...) have no faithful expression form.
+      return !(only.type === 'ReturnStatement' && !sideEffect(only.argument));
     }
 
     /**
@@ -10765,7 +11246,7 @@ class OpCodes(metaclass=_OpCodesMeta):
      */
     transformParentMethodCall(node) {
       const args = (node.arguments || []).map(arg => this.transformExpression(arg));
-      const methodName = toSnakeCase(node.method);
+      const methodName = toSnakeCaseProperty(node.method);
       return new PythonCall(
         new PythonMemberAccess(new PythonCall(new PythonIdentifier('super'), []), methodName),
         args
@@ -10813,7 +11294,7 @@ class OpCodes(metaclass=_OpCodesMeta):
         }
         return this.transformExpression(arg);
       });
-      let methodName = toSnakeCase(node.method);
+      let methodName = toSnakeCaseProperty(node.method);
       // Disambiguate methods that only collide after case-folding (see the
       // currentMethodNameOverrides comment in transformClassDeclaration -
       // e.g. shacal-2.js's `_Sigma0`/`_sigma0`). This IL node type is the
@@ -10835,7 +11316,7 @@ class OpCodes(metaclass=_OpCodesMeta):
      * Transform ThisPropertyAccess to self.property_name
      */
     transformThisPropertyAccess(node) {
-      let propName = toSnakeCase(node.property);
+      let propName = toSnakeCaseProperty(node.property);
 
       // Check for backing field access inside a getter/setter (see the
       // matching comment in transformMemberExpression / the
@@ -11312,10 +11793,7 @@ class OpCodes(metaclass=_OpCodesMeta):
       // When buffer is set and is an identifier, we need to distinguish between:
       // - new Uint32Array(IV) where IV is an array -> copy operation
       // - new Uint32Array(count) where count is a number -> size-based
-      const isArrayCopy = node.buffer && (
-        node.buffer.type === 'Identifier' ||
-        node.buffer.type === 'MemberExpression'
-      ) && this._isLikelyArrayArgument(node.buffer);
+      const isArrayCopy = node.buffer && this._isLikelyArrayArgument(node.buffer);
 
       // For array copy operations, we need to copy the array, not multiply
       if (isArrayCopy) {
@@ -11439,62 +11917,20 @@ class OpCodes(metaclass=_OpCodesMeta):
     }
 
     /**
-     * Heuristic to determine if an identifier is likely an array (for copying)
-     * vs a numeric size (for size-based array creation)
+     * Whether a typed-array constructor argument is an array to copy (or a
+     * buffer to view) rather than an element count, from its IL type: an
+     * array type (`T[]`, a TypedArray, ArrayBuffer) or an `X.buffer` peel.
+     * @param {Object} arg - IL constructor argument
+     * @returns {boolean}
      */
     _isLikelyArrayArgument(arg) {
       if (!arg) return false;
-
-      // Get the identifier name
-      let name = '';
-      if (arg.type === 'Identifier')
-        name = arg.name || '';
-      else if (arg.type === 'MemberExpression' && arg.property?.name)
-        name = arg.property.name;
-
-      const lowerName = name.toLowerCase();
-
-      // Names that clearly indicate an array to copy
-      const arrayPatterns = /^(iv|state|key|block|data|buffer|bytes|array|input|output|hash|digest|result|chaining|round|s|k|w|h|v|m|t|p|x|y|z|sbox|table|rounds|perm|permutation|constants?|initial|values?|msg|message|plaintext|ciphertext|text|src|source|dest|target|words?|chunk|nonce|salt|seed|vector|matrix|schedule|expanded?)$/i;
-      if (arrayPatterns.test(name))
+      if (arg.type === 'MemberExpression' && !arg.computed &&
+          (arg.property?.name === 'buffer' || arg.property?.value === 'buffer'))
         return true;
-
-      // Names that clearly indicate a numeric size (check before array suffixes)
-      const sizePatterns = /^(size|len|length|count|n|num|number|index|i|j|offset|pos|position|capacity|width|height|bits|bytes_?count|byte_?count)$/i;
-      if (sizePatterns.test(name))
-        return false;
-
-      // Names with size-indicating prefixes (totalWords, numBytes, etc.) are sizes, not arrays
-      const sizePrefixPatterns = /^(total|num|n_?|count_?|max_?|min_?|size_?).*$/i;
-      if (sizePrefixPatterns.test(name))
-        return false;
-
-      // Names ending with size-like suffixes (wordCount, keyLength, etc.)
-      const sizeSuffixPatterns = /(size|len|length|count|num|index|offset|bits)$/i;
-      if (sizeSuffixPatterns.test(name))
-        return false;
-
-      // Names ending with array-like suffixes (e.g., initValues, subKeys, roundData)
-      const arraySuffixPatterns = /(values?|keys?|bytes?|data|buffer|array|block|state|words?|rounds?)$/i;
-      if (arraySuffixPatterns.test(name))
-        return true;
-
-      // Check type information if available
-      const argType = arg.resultType || arg.typeInfo?.type;
-      if (argType) {
-        const typeStr = String(argType).toLowerCase();
-        if (typeStr.includes('[]') || typeStr.includes('array') || typeStr.includes('uint'))
-          return true;
-        if (typeStr === 'int' || typeStr === 'int32' || typeStr === 'number' || typeStr === 'usize')
-          return false;
-      }
-
-      // Default: if it's all uppercase (like IV, MSG, KEY), likely an array constant
-      if (name === name.toUpperCase() && name.length <= 5 && name.length > 1)
-        return true;
-
-      // Default: assume size-based for safety (preserves original behavior)
-      return false;
+      const type = arg.resultType;
+      const typeName = typeof type === 'string' ? type : (type && (type.name || type.type)) || '';
+      return /\[\]$/.test(typeName) || /(Array|ArrayBuffer)$/.test(typeName);
     }
 
     /**
@@ -11618,10 +12054,11 @@ class OpCodes(metaclass=_OpCodesMeta):
     transformHexDecode(node) {
       // IL AST uses arguments array, fallback to value for compatibility
       const value = this.transformExpression(node.arguments?.[0] || node.value);
-      return new PythonCall(
+      // uint8[]: a mutable array (bytes.fromhex alone is immutable)
+      return new PythonCall(new PythonIdentifier('JSArray'), [new PythonCall(
         new PythonMemberAccess(new PythonIdentifier('bytes'), 'fromhex'),
         [value]
-      );
+      )]);
     }
 
     /**
@@ -11631,7 +12068,10 @@ class OpCodes(metaclass=_OpCodesMeta):
     transformHexEncode(node) {
       // IL AST uses arguments array, fallback to value for compatibility
       const value = this.transformExpression(node.arguments?.[0] || node.value);
-      return new PythonCall(new PythonMemberAccess(value, 'hex'), []);
+      // A list has no .hex(); bytes(...) of the low 8 bits of each element does
+      const masked = new PythonBinaryExpression(new PythonCall(new PythonIdentifier('int'), [new PythonIdentifier('_b')]), '&', PythonLiteral.Int(0xFF));
+      const asBytes = new PythonCall(new PythonIdentifier('bytes'), [new PythonGeneratorExpression(masked, new PythonIdentifier('_b'), value)]);
+      return new PythonCall(new PythonMemberAccess(asBytes, 'hex'), []);
     }
 
     /**
@@ -11775,11 +12215,10 @@ class OpCodes(metaclass=_OpCodesMeta):
      */
     transformClz32(node) {
       const argument = this.transformExpression(node.argument);
-      // (32 - (x & 0xFFFFFFFF).bit_length()) if x else 32
-      const masked = new PythonBinaryExpression(argument, '&', PythonLiteral.Int(0xFFFFFFFF));
+      // 32 - (ToUint32(x)).bit_length(); 0 has bit length 0, giving 32
+      const masked = new PythonBinaryExpression(new PythonCall(new PythonIdentifier('int'), [argument]), '&', PythonLiteral.Int(0xFFFFFFFF));
       const bitLength = new PythonCall(new PythonMemberAccess(masked, 'bit_length'), []);
-      const result = new PythonBinaryExpression(PythonLiteral.Int(32), '-', bitLength);
-      return new PythonConditional(result, argument, PythonLiteral.Int(32));
+      return new PythonBinaryExpression(PythonLiteral.Int(32), '-', bitLength);
     }
 
     /**

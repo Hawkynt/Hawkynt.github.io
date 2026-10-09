@@ -3119,11 +3119,14 @@
             if (staticArrayResult) {
               staticArrayResult.elementType = elementType;
               staticArrayResult.resultType = `${elementType}[]`;
+              // The constructor itself, as TypedArrayCreation carries it: a
+              // target that has typed arrays (JavaScript) must rebuild one
+              staticArrayResult.arrayType = objectName;
               return staticArrayResult;
             }
           }
           if (methodName === 'of') {
-            return { type: 'ArrayLiteral', elements: args, elementType, resultType: `${elementType}[]`, ilNodeType: 'ArrayLiteral' };
+            return { type: 'ArrayLiteral', elements: args, elementType, arrayType: objectName, resultType: `${elementType}[]`, ilNodeType: 'ArrayLiteral' };
           }
         }
 
