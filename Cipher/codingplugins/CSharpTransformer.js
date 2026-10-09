@@ -12489,9 +12489,16 @@
           // uint[], into a scalar-declared local).
           const computedIndexFreshArrayType = decl.init.type === 'MemberExpression' && decl.init.computed &&
             inferredType?.isArray && preAnalyzedType && !preAnalyzedType.isArray;
+          // An array literal of 64-bit masked values (hpc.js's `const tmp =
+          // [OpCodes.ToQWord(...), ...]`, each emitted as a ulong) is that array, not the
+          // BigInteger[] the BigInt operands suggest to the prescan (CS1503 passing it on)
+          const qwordArrayLiteral = (decl.init.type === 'ArrayExpression' || decl.init.type === 'ArrayLiteral') &&
+            inferredType?.isArray && ['ulong', 'long'].includes(inferredType.elementType?.name) &&
+            preAnalyzedType?.isArray && preAnalyzedType.elementType?.name === 'BigInteger';
           if (!jsdocType && preAnalyzedType && preAnalyzedType.name !== 'var' && preAnalyzedType.name !== 'object' &&
               inferredType?.name !== 'BigInteger' && !passthroughType?.isArray && !nameBasedOverrideApplied &&
-              !(hasSpreadInit && inferredType?.isArray) && !identifierAliasHasLiveType && !computedIndexFreshArrayType) {
+              !(hasSpreadInit && inferredType?.isArray) && !identifierAliasHasLiveType && !computedIndexFreshArrayType &&
+              !qwordArrayLiteral) {
             inferredType = preAnalyzedType;
           }
 
@@ -12511,7 +12518,10 @@
           }
 
           // The declaration's IL type, where the IL has one, beats every derivation above
-          const ilDeclType = this.mapILType(decl.declaredType || decl.resultType);
+          // ...and its IL BigInt[] result type does not undo the 64-bit evidence either
+          const qwordArray = (decl.init.type === 'ArrayExpression' || decl.init.type === 'ArrayLiteral') &&
+            inferredType?.isArray && ['ulong', 'long'].includes(inferredType.elementType?.name) && decl.resultType === 'BigInt[]';
+          const ilDeclType = this.mapILType(decl.declaredType || (qwordArray ? null : decl.resultType));
           if (ilDeclType) inferredType = ilDeclType;
           // An undeclared local starting at a BigInt literal (`let t = 0n`) is a
           // BigInt: it may go negative or past 64 bits (an extended Euclid's

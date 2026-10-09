@@ -966,11 +966,12 @@ check('length: storing the length member of an object assigns its Length, not a 
   expectMatch(code, /reg\.Length = n;/, 'reg.Length = n');
   expectMatch(code, /a = new byte\[0\];/, 'an array length store still makes a new array');
 });
-const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
-  'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
-  'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +
-  'for (let i = 0; i < SETS.length; ++i) {\n  const instance = new AAlgorithm(SETS[i].name);\n' +
-  '  if (!AlgorithmFramework.Find(instance.name)) {\n    RegisterAlgorithm(instance);\n  }\n}';
+check('qword: an array literal of ToQWord results is a ulong array (CS1503)', () => {
+  const code = transpile('/**\n * @param {uint64[]} state - state\n * @returns {void}\n */\nfunction medium(state) { state[0] = OpCodes.ToQWord(state[0] + 1n); }\n' +
+    '/**\n * @param {uint64[]} KX - table\n * @param {int32} backup - backup\n * @returns {void}\n */\n' +
+    'function tiny(KX, backup) {\n  const tmp = [\n    OpCodes.ToQWord(OpCodes.ToQWord(KX[16] + KX[128]) + BigInt(backup)),\n    OpCodes.ToQWord(KX[17] + KX[129])\n  ];\n  medium(tmp);\n}');
+  expectMatch(code, /ulong\[\] tmp = new ulong\[\]/, 'ulong[] tmp = new ulong[]');
+});
 check('registry: a module loop over computed data registers into the Algorithms registry when it runs', () => {
   const code = transpile(REGISTRATION_LOOP);
   expectMatch(code, /registered\.Add\(\(Algorithm\)\(?instance\)?\);/, 'registered.Add((Algorithm)instance)');
