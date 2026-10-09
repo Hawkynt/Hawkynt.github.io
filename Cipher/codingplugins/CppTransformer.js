@@ -3070,7 +3070,13 @@
           const fakeArgs = args.map(a => (a === undefined || a === null) ? { type: 'Literal', value: false, resultType: 'boolean' } : (typeof a === 'boolean' ? { type: 'Literal', value: a, resultType: 'boolean' } : a));
           return this.dataViewMethod(v.t.k === 'dataview' ? v : { c: `js::fromAny<js::DataView*>(${this.cv(v, T.any)})`, t: T.dataview }, (node.type === 'DataViewRead' ? 'get' : 'set') + kind, fakeArgs) || { c: 'js::unsupported(u"DataView")', t: T.any };
         }
-        case 'DataViewGetByteLength': return { c: `${this.expr(node.view).c}->length`, t: T.i32 };
+        case 'DataViewGetByteLength': {
+          // the IL reads any x.byteLength() as a DataView's; a class's own method stays a call
+          const v = this.expr(node.view);
+          if (v.t.k === 'dataview') return { c: `${v.c}->length`, t: T.i32 };
+          if (v.t.k === 'arr') return { c: `${v.c}.length()`, t: T.i32 };
+          return this.methodCall(v, 'byteLength', [], node);
+        }
         case 'TypeOfExpression': return this.typeOf(node);
         case 'InstanceOfCheck': return this.instanceOf({ left: node.value || node.left, right: node.className ? { name: node.className } : node.right });
         case 'MapGet': return this.collectionMethod(this.mapOf(node.map), 'get', [node.key]);
