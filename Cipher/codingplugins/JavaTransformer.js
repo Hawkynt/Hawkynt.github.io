@@ -349,6 +349,37 @@
   const MUTATING_IL = new Set(['ArrayAppend', 'ArrayPop', 'ArrayShift', 'ArrayUnshift', 'ArraySplice', 'ArrayFill',
     'ArrayReverse', 'ArraySort', 'ArrayClear', 'TypedArraySet']);
   const MUTATING_METHODS = new Set(['push', 'pop', 'shift', 'unshift', 'splice', 'fill', 'reverse', 'sort', 'copyWithin', 'set']);
+  /**
+   * Mark the variables whose value leaves them: anything but an element read or write, its length,
+   * a declaration, an object literal's property value (stored as an Object) or a for-of source.
+   */
+  /** Whether an expression makes a new plain array (not one that aliases another). */
+  function freshArray(n) {
+    if (!n) return false;
+    if (['ArrayCreation', 'ArrayLiteral', 'ArrayExpression', 'ArrayOf'].includes(n.type)) return true;
+    if (n.type === 'ArrayFill') return freshArray(n.array);
+    if (n.type === 'NewExpression') return !!(n.callee && n.callee.type === 'Identifier' && n.callee.name === 'Array');
+    return false;
+  }
+
+  function markEscapingVariables(body) {
+    const seen = new Set();
+    const walk = (n, parent) => {
+      if (!n || typeof n !== 'object' || seen.has(n)) return;
+      seen.add(n);
+      if (Array.isArray(n)) { n.forEach(c => walk(c, parent)); return; }
+      if (n.type === 'Identifier' && n.__sym && parent) {
+        const p = parent;
+        const safe = (p.type === 'MemberExpression' && p.object === n && (p.computed || (p.property && p.property.name === 'length'))) ||
+          (p.type === 'ArrayLength' && p.array === n) || ((p.type === 'ObjectProperty' || p.type === 'Property') && p.value === n) ||
+          (p.type === 'VariableDeclarator' && p.id === n) || (p.type === 'ForOfStatement' && p.right === n);
+        if (!safe) n.__sym.escapes = true;
+      }
+      eachChild(n, c => walk(c, n));
+    };
+    walk(body, null);
+  }
+
   function markMutatedParams(body) {
     const base = n => {
       while (n && n.type !== 'Identifier') n = n.object || n.array || n.target || null;
@@ -411,6 +442,7 @@
       foldStringChains(this.body);
       this.resolve(this.body);
       markMutatedParams(this.body);
+      markEscapingVariables(this.body);
       this.collectDeclarations(this.body);
       this.markNullTestedFields(this.body);
       this.inferKinds();
@@ -744,7 +776,13 @@
               // The value stored: its IL type is the assignment's
               const sym = node.left.__sym;
               if (sym) (sym.stores || (sym.stores = [])).push(node);
-            } else walk(node.left);
+            } else {
+              walk(node.left);
+              // an element stored into an array variable: its IL type joins the array's elements
+              const l = node.left;
+              if (l.type === 'MemberExpression' && l.computed && l.object && l.object.type === 'Identifier' && l.object.__sym)
+                (l.object.__sym.elemStores || (l.object.__sym.elemStores = [])).push(node);
+            }
             walk(node.right);
             return;
           }
@@ -1317,6 +1355,10 @@
         if (sym.kind !== 'param' && !(sym.node && sym.node.init && this.holdsTypedArray([sym.node.init])))
           t = this.joinSites(t, [...(sym.sites || []), ...(sym.stores || [])].map(n => n.resultType ? this.jt(n.resultType, o) : null).filter(Boolean));
         if (sym.holdsObjects && T.isPrimArray(t)) t = 'JsArray<Object>';
+        // A plain array (not a typed one) holds any number: its class covers the IL types of the elements stored,
+        // when the array never leaves the variable (a converted copy elsewhere would not share its elements)
+        if (T.isPrimArray(t) && t !== 'F64Array' && sym.kind !== 'param' && !sym.escapes && sym.node && freshArray(sym.node.init) && !this.holdsTypedArray([sym.node.init]))
+          for (const n of sym.elemStores || []) { const c = T.ARRAY_OF_IL[ilNorm(n.resultType)]; const j = c && this.joinJt(t, c); if (j) t = j; }
         if (t === 'void') t = 'Object';
         if (sym.kind === 'param' && sym.nullTested && T.isPrim(t)) t = T.box(t);
       }
