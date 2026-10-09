@@ -189,6 +189,13 @@ check('opcodes: hex table constructors, SetByte, BytesToChars and SecureRandomBy
     "refused ['0xZZ']", "refused ['']", 'SecureRandomBytes: count must be a non-negative integer']);
 });
 
+check('opcodes: array results grow on a write past their end, like a JS array', () => {
+  const js = 'function f() { const a = OpCodes.CreateArray(0, 0); a[2] = 5; const b = OpCodes.CopyArray([1]); b[1] = 2; return [a, b]; }';
+  // Given an empty CreateArray and a CopyArray
+  // When written one and three past their end
+  return expectOutput(runPython(js, 'print([list(x) for x in f()])'), ['[[0, 0, 5], [1, 2]]']);
+});
+
 // ---------------------------------------------------------------------------
 // Member names: one escaping at declaration, read and write
 // ---------------------------------------------------------------------------

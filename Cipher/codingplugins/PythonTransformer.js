@@ -1300,10 +1300,10 @@ class OpCodes(metaclass=_OpCodesMeta):
     @staticmethod
     def RotL128(byte_list, positions):
         if positions == 0 or len(byte_list) != 16:
-            return list(byte_list)
+            return JSArray(list(byte_list))
         positions = positions % 128
         if positions == 0:
-            return list(byte_list)
+            return JSArray(list(byte_list))
         result = [0] * 16
         byte_shift = positions // 8
         bit_shift = positions % 8
@@ -1319,7 +1319,7 @@ class OpCodes(metaclass=_OpCodesMeta):
     @staticmethod
     def RotR128(byte_list, positions):
         if positions == 0 or len(byte_list) != 16:
-            return list(byte_list)
+            return JSArray(list(byte_list))
         positions = positions % 128
         return OpCodes.RotL128(byte_list, 128 - positions)
 
@@ -1455,7 +1455,7 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def Hex4ToBytes(hex_string):
-        return [OpCodes.HexCharCodeToValue(ord(c)) for c in hex_string]
+        return JSArray([OpCodes.HexCharCodeToValue(ord(c)) for c in hex_string])
 
     @staticmethod
     def Hex8ToBytes(hex_string):
@@ -1463,11 +1463,11 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def Hex16ToWords(hex_string):
-        return [int(hex_string[i:i + 4], 16) for i in range(0, len(hex_string), 4)]
+        return JSArray([int(hex_string[i:i + 4], 16) for i in range(0, len(hex_string), 4)])
 
     @staticmethod
     def Hex32ToDWords(hex_string):
-        return [int(hex_string[i:i + 8], 16) & 0xFFFFFFFF for i in range(0, len(hex_string), 8)]
+        return JSArray([int(hex_string[i:i + 8], 16) & 0xFFFFFFFF for i in range(0, len(hex_string), 8)])
 
     # ==================[ STRING/BYTE CONVERSIONS ]==================
     @staticmethod
@@ -1520,11 +1520,11 @@ class OpCodes(metaclass=_OpCodesMeta):
     @staticmethod
     def XorArrays(arr1, arr2):
         n = min(len(arr1), len(arr2))
-        return [(arr1[i] ^ arr2[i]) & 0xFF for i in range(n)]
+        return JSArray([(arr1[i] ^ arr2[i]) & 0xFF for i in range(n)])
 
     @staticmethod
     def CopyArray(arr):
-        return list(arr)
+        return JSArray(list(arr))
 
     @staticmethod
     def ClearArray(arr):
@@ -1572,13 +1572,13 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def CreateArray(length, value=0):
-        return [value] * length
+        return JSArray([value] * length)
 
     @staticmethod
     def ArraySlice(arr, start, end=None):
         if end is None:
             end = len(arr)
-        return [arr[i] for i in range(start, min(end, len(arr)))]
+        return JSArray([arr[i] for i in range(start, min(end, len(arr)))])
 
     @staticmethod
     def ConcatArrays(*arrays):
@@ -1629,7 +1629,7 @@ class OpCodes(metaclass=_OpCodesMeta):
     @staticmethod
     def XorArrayWithByte(array, value):
         value &= 0xFF
-        return [(b ^ value) & 0xFF for b in array]
+        return JSArray([(b ^ value) & 0xFF for b in array])
 
     # ==================[ MATH / GF ARITHMETIC ]==================
     @staticmethod
@@ -1770,12 +1770,12 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def GenerateRoundConstants(count, generator):
-        return [generator(i) for i in range(count)]
+        return JSArray([generator(i) for i in range(count)])
 
     # ==================[ PERFORMANCE VARIANTS (same semantics) ]==================
     @staticmethod
     def FastXorArrays(arr1, arr2):
-        return [(arr1[i] ^ arr2[i]) & 0xFF for i in range(len(arr1))]
+        return JSArray([(arr1[i] ^ arr2[i]) & 0xFF for i in range(len(arr1))])
 
     @staticmethod
     def FastXorInPlace(target, source, length=None):
@@ -1786,11 +1786,11 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def FastSubBytes(sbox, input_bytes):
-        return [sbox[b] for b in input_bytes]
+        return JSArray([sbox[b] for b in input_bytes])
 
     @staticmethod
     def FastXorWords32(words1, words2):
-        return [(words1[i] ^ words2[i]) & 0xFFFFFFFF for i in range(len(words1))]
+        return JSArray([(words1[i] ^ words2[i]) & 0xFFFFFFFF for i in range(len(words1))])
 
     @staticmethod
     def BatchRotL32(values, positions):
@@ -1803,7 +1803,7 @@ class OpCodes(metaclass=_OpCodesMeta):
 
     @staticmethod
     def GetPooledArray(size):
-        return [0] * size
+        return JSArray([0] * size)
 
     @staticmethod
     def ReturnToPool(array):
@@ -2236,7 +2236,7 @@ class OpCodes(metaclass=_OpCodesMeta):
             algo = 'shake_' + algo[5:]
         key_bytes = bytes(bytearray(key)) if not isinstance(key, (bytes, bytearray)) else bytes(key)
         msg_bytes = bytes(bytearray(message)) if not isinstance(message, (bytes, bytearray)) else bytes(message)
-        return list(hmac.new(key_bytes, msg_bytes, algo).digest())
+        return JSArray(list(hmac.new(key_bytes, msg_bytes, algo).digest()))
 
     # "OpCodes && OpCodes.HMAC" existence-check operands go through the
     # generic member-access-in-a-logical-expression rewrite (see
