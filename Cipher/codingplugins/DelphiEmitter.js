@@ -499,6 +499,7 @@ function JsRandom: Double;
 function JsBigToStr(const B: TBigInt): string;
 function JsTypeOf(const V: TJsValue): string;
 function JsNumTruthy(D: Double): Boolean;
+function JsDbl(D: Double): Double; inline;
 function JsShl64(V: UInt64; N: Int32): UInt64;
 function JsShr64(V: UInt64; N: Int32): UInt64;
 function JsSar64(V: Int64; N: Int32): Int64;
@@ -930,7 +931,7 @@ begin
   V := Int(V);
   Neg_ := V < 0;
   if Neg_ then V := -V;
-  if V < 1.8446744073709552E19 then
+  if V < 9.2233720368547758E18 then
     Result := FromUInt64(Trunc(V))
   else
   begin
@@ -1989,6 +1990,11 @@ begin
   else
     Result := 'object';
   end;
+end;
+
+function JsDbl(D: Double): Double; inline;
+begin
+  Result := D;
 end;
 
 function JsNumTruthy(D: Double): Boolean;

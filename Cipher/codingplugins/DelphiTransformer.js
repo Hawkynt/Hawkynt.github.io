@@ -2452,25 +2452,67 @@
       if (['&', '|', '^'].includes(op)) return this.bitwise(op, l, r, resT);
       if (['<<', '>>', '>>>'].includes(op)) return this.shift(op, l, r, resT);
       if (op === '/' || isFloat(resT) || isFloat(l.t) || isFloat(r.t) || l.t.k === 'any' || r.t.k === 'any') {
-        if (op === '/' && isInt(resT) && isInt(l.t) && isInt(r.t)) {
-          // the IL says the quotient is integral
-          const dom = this.intDomain(l.t, r.t, resT);
-          return { e: this.castTo(resT, A.call(dom.signed ? 'JsIntDiv' : 'JsUIntDiv', [this.conv(l, dom), this.conv(r, dom)]), dom), t: resT };
-        }
-        const L = this.conv(l, T.f64), R = this.conv(r, T.f64);
+        // JavaScript division is a double; where the IL calls the quotient an
+        // integer, the place that stores it truncates (JavaScript keeps the fraction)
+        const L = this.dbl(l), R = this.dbl(r);
         let e;
         if (op === '%') e = A.call('JsFMod', [L, R]);
         else e = A.bin(op === '/' ? '/' : op, L, R);
-        const res = { e, t: T.f64 };
-        return isFloat(resT) ? res : { e: this.conv(res, resT), t: resT };
+        return { e, t: T.f64 };
       }
-      // integer arithmetic
-      const dom = this.intDomain(l.t, r.t, resT);
-      const L = this.convInt(l, dom), R = this.convInt(r, dom);
-      let e;
-      if (op === '%') e = A.bin('mod', L, R);
-      else e = A.bin(op, L, R);
-      return { e: this.castTo(resT, e, dom), t: resT };
+      // An inlined OpCodes operation (Add32, Sub32, Mul32, ...) is exact
+      // modular arithmetic: computed in 64 bits and cast to its result type.
+      if (node && node.opCodesMethod) {
+        const dom = this.intDomain(l.t, r.t, resT);
+        const L = this.convInt(l, dom), R = this.convInt(r, dom);
+        const e = op === '%' ? A.bin('mod', L, R) : A.bin(op, L, R);
+        return { e: this.castTo(resT, e, dom), t: resT };
+      }
+      // Two operands the IL types 64-bit (a BigInt may hold either): exact
+      // 64-bit arithmetic, as BigInt's low bits are
+      if (!this.isNumberOperand(l) && !this.isNumberOperand(r)) {
+        const dom = this.intDomain(l.t, r.t, resT);
+        const L = this.convInt(l, dom), R = this.convInt(r, dom);
+        const e = op === '%' ? A.bin('mod', L, R) : A.bin(op, L, R);
+        return { e, t: dom };
+      }
+      // JavaScript Number arithmetic. Its result is exact until 2^53 and only
+      // the place it is stored, or an explicit |0 / >>>0 / mask, narrows it:
+      // the IL's type of an intermediate result (`y * TABLE_SIZE` typed int32)
+      // is not a wrap. Sums and differences are exact in Int64; a product
+      // that can pass 2^53 is computed as JavaScript does, in Double, rounding
+      // included (an LCG's 1103515245 * state + 12345 depends on it).
+      const lw = this.bitWidth(l), rw = this.bitWidth(r);
+      if (op === '*' && lw + rw > 53) {
+        return { e: A.bin('*', this.dbl(l), this.dbl(r)), t: T.f64 };
+      }
+      const L = this.convInt(l, T.int64), R = this.convInt(r, T.int64);
+      const e = op === '%' ? A.bin('mod', L, R) : A.bin(op, L, R);
+      const bits = op === '*' ? lw + rw : op === '%' ? Math.min(lw, rw) : Math.max(lw, rw) + 1;
+      return { e, t: T.int64, num: true, numBits: Math.min(bits, 63) };
+    }
+
+    /** Bits a Number operand can occupy (magnitude), for exactness of a product. */
+    bitWidth(res) {
+      if (res.constNum !== undefined) return Math.max(1, Math.ceil(Math.log2(Math.abs(res.constNum) + 1)));
+      if (res.numBits !== undefined) return res.numBits;
+      if (isInt(res.t)) return res.t.bits === 64 ? 53 : res.t.bits;
+      return 53;
+    }
+
+    /** A value as a Double-typed Pascal expression (an integer operand alone would keep integer arithmetic). */
+    dbl(res) {
+      if (isFloat(res.t)) return res.e;
+      if (res.constNum !== undefined && Number.isFinite(res.constNum)) return this.numLiteral(res.constNum, T.f64);
+      if (isInt(res.t)) return A.call('JsDbl', [res.e]);
+      return this.conv(res, T.f64);
+    }
+
+    /** Is the operand certainly a JavaScript Number (never a BigInt)? */
+    isNumberOperand(res) {
+      if (res.constNum !== undefined || res.num) return true;
+      if (isFloat(res.t)) return true;
+      return isInt(res.t) && res.t.bits <= 32;
     }
 
     /** The integer type an operation computes in. */
