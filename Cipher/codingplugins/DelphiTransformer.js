@@ -156,7 +156,8 @@
     if (WEAK_TYPES.has(s)) return T.any;
     if (TYPED_ARRAYS[s]) return tArr(T[TYPED_ARRAYS[s]] || parseType(TYPED_ARRAYS[s]));
     if (ENUM_TYPES.has(s)) return tEnum(s);
-    if (s === 'Map' || s === 'Set' || s === 'DataView') return T.any;
+    if (s === 'Map') return tMap(T.any, T.any);
+    if (s === 'Set' || s === 'DataView') return T.any;
     if (/^[A-Za-z_$][\w$]*$/.test(s)) return tClass(s);
     return T.any;
   }
@@ -1047,7 +1048,7 @@
         case 'null': return 'TObject';
         case 'void': return 'TJsValue';
         case 'function': return 'TJsValue';
-        case 'map': return 'TJsValue';
+        case 'map': return 'TJsMap';
         default: return 'TJsValue';
       }
     }
@@ -2075,6 +2076,7 @@
         return { e: A.mem(obj.e, sanitize(f.name)), t: f.type, lvalue: true };
       }
       if (t.k === 'array' && name === 'length') return { e: A.mem(obj.e, 'length'), t: T.int32, lvalue: true };
+      if (t.k === 'map' && name === 'size') return { e: A.call(A.mem(obj.e, 'Size')), t: T.int32 };
       if (t.k === 'string' && name === 'length') return { e: A.call(A.id('System.Length'), [obj.e]), t: T.int32 };
       if (t.k === 'any') {
         // a value the IL leaves untyped: its members are dynamic too
@@ -2270,6 +2272,10 @@
           return e;
         case 'void':
           return e;
+        case 'map':
+          if (from.k === 'map') return e;
+          if (from.k === 'any') return this.fromJsValue(e, to);
+          break;
       }
       fail(`cannot convert ${from.key} to ${to.key}`, null);
     }
@@ -2294,7 +2300,7 @@
         case 'string': case 'enum': return A.bin('<>', e, A.lit("''"));
         case 'bigint': return A.un('not', A.call(A.mem(e, 'IsZero')));
         case 'array': return A.un('not', A.call(A.mem(e, 'IsNull')));
-        case 'class': case 'error': return A.bin('<>', e, A.lit('nil'));
+        case 'class': case 'error': case 'map': return A.bin('<>', e, A.lit('nil'));
         case 'null': case 'void': return A.lit('False');
         case 'any': return A.call(A.mem(e, 'Truthy'));
         case 'function': return A.lit('True');
@@ -2337,7 +2343,7 @@
         case 'bool': return A.call('JsVBool', [e]);
         case 'string': case 'enum': return A.call('JsVStr', [e]);
         case 'bigint': return A.call('JsVBig', [e]);
-        case 'class': case 'error': return A.call('JsVObj', [e]);
+        case 'class': case 'error': case 'map': return A.call('JsVObj', [e]);
         case 'array': return A.call(this.arrayToJsValue(t), [e]);
         case 'function': return A.call('JsVUndef');
       }
@@ -2357,6 +2363,7 @@
           if (to.name === 'TestCase') return A.call('JsValToTestCase', [e]);
           return A.cast(this.classPas(to.name), A.call('JsValToObj', [e]));
         case 'error': return A.cast('Exception', A.call('JsValToObj', [e]));
+        case 'map': return A.cast('TJsMap', A.call('JsValToObj', [e]));
         case 'array': return A.call(this.jsValueToArray(to), [e]);
         case 'null': case 'void': return e;
       }
@@ -3089,6 +3096,7 @@
         const ret = m.ret || T.void;
         return { e, t: ret.k === 'void' ? T.void : ret, stmtOk: true };
       }
+      if (t.k === 'map') return this.mapCall(obj, name, argNodes || [], node);
       return this.builtinMethodCall(obj, name, argNodes, node);
     }
 
@@ -3248,6 +3256,7 @@
           return { e: A.call(A.mem(A.id('TBigInt'), name === 'asUintN' ? 'AsUintN' : 'AsIntN'), [this.conv(this.ex(args[0]), T.int32), this.conv(this.ex(args[1]), T.big)]), t: T.big };
       }
       if (objName === 'console') return { e: null, t: T.void };
+      if ((objName === 'performance' || objName === 'Date') && name === 'now') return { e: A.call('JsNowMs'), t: T.f64 };
       if (objName === 'ArrayBuffer' && name === 'isView') return this.xIsArrayCheck({ value: args[0] });
       if (objName === 'String' && name === 'fromCharCode') return this.xStringFromCharCodes({ charCodes: args });
       if (objName === 'Array' && name === 'isArray') return this.xIsArrayCheck({ value: args[0] });
@@ -4225,7 +4234,25 @@
     xClassExpression(node) { fail('class expressions are only supported as declarations', node); }
     xStaticBlock(node) { fail('static blocks are only supported inside classes', node); }
     xPrivateIdentifier(node) { fail('private names are not supported', node); }
-    xMapCreation(node) { fail('Map is not supported', node); }
+    xMapCreation(node) {
+      if (node.entries) fail('a Map built from entries is not supported', node);
+      const t = this.typeOf(node, null);
+      return { e: A.call(A.mem(A.id('TJsMap'), 'Create')), t: t && t.k === 'map' ? t : tMap(T.any, T.any) };
+    }
+
+    /** get/set/has/delete/clear of a Map; keys and values are dynamic values. */
+    mapCall(obj, name, args, node) {
+      const t = obj.t;
+      const key = () => this.toJsValue(this.ex(args[0], t.keyT));
+      switch (name) {
+        case 'get': return { e: A.call(A.mem(obj.e, 'Get'), [key()]), t: T.any };
+        case 'set': return { e: A.call(A.mem(obj.e, 'Put'), [key(), this.toJsValue(this.ex(args[1], t.valueT))]), t, stmtOk: true };
+        case 'has': return { e: A.call(A.mem(obj.e, 'Has'), [key()]), t: T.bool };
+        case 'delete': return { e: A.call(A.mem(obj.e, 'Delete'), [key()]), t: T.bool, stmtOk: true };
+        case 'clear': return { e: A.call(A.mem(obj.e, 'Clear')), t: T.void, stmtOk: true };
+      }
+      fail('Map.' + name + ' is not supported', node);
+    }
     xDataViewCreation(node) { fail('DataView is not supported', node); }
     xDeleteExpression(node) { fail('delete is not supported', node); }
 

@@ -308,6 +308,21 @@
     function isAligned: Boolean;
   end;
 
+  { A JavaScript Map: insertion-ordered, keys compared by SameValueZero }
+  TJsMap = class(TJsObject)
+  public
+    Keys: array of TJsValue;
+    Vals: array of TJsValue;
+    Count: Int32;
+    function IndexOfKey(const K: TJsValue): Int32;
+    function Get(const K: TJsValue): TJsValue;
+    function Put(const K, V: TJsValue): TJsMap;
+    function Has(const K: TJsValue): Boolean;
+    function Delete(const K: TJsValue): Boolean;
+    procedure Clear;
+    function Size: Int32;
+  end;
+
   TMerkleDamgardOptions = class(TJsObject)
   public
     blockSize: Int32;
@@ -632,6 +647,8 @@ function JsValTo_TA_Str(const V: TJsValue): TA_Str;
 function JsValTo_TA_Big(const V: TJsValue): TA_Big;
 function JsValTo_TA_Bool(const V: TJsValue): TA_Bool;
 function JsF(const AName: string; const AValue: TJsValue): TJsField;
+function JsSameValue(const A, B: TJsValue): Boolean;
+function JsNowMs: Double;
 function JsTestCase(const AFields: array of TJsField): TTestCase;
 function JsDynObject(const AFields: array of TJsField): TJsValue;
 function JsValGet(const V: TJsValue; const AName: string): TJsValue;
@@ -3117,6 +3134,99 @@ end;
 function TJsBitStream.isAligned: Boolean;
 begin
   Result := bufferBits mod 8 = 0;
+end;
+
+function JsSameValue(const A, B: TJsValue): Boolean;
+begin
+  if (A.Kind in [jvInt, jvUInt, jvNum]) and (B.Kind in [jvInt, jvUInt, jvNum]) then
+  begin
+    if (A.Kind = jvInt) and (B.Kind = jvInt) then Exit(A.I = B.I);
+    if (A.Kind = jvUInt) and (B.Kind = jvUInt) then Exit(A.U = B.U);
+    Exit(JsValToDouble(A) = JsValToDouble(B));
+  end;
+  if A.Kind <> B.Kind then Exit(False);
+  case A.Kind of
+    jvUndefined, jvNull: Result := True;
+    jvBool: Result := A.B = B.B;
+    jvStr: Result := A.S = B.S;
+    jvBig: Result := A.Big = B.Big;
+    jvObj: Result := A.Ref = B.Ref;
+  else
+    Result := (A.Ref <> nil) and (A.Ref = B.Ref);
+  end;
+end;
+
+function JsNowMs: Double;
+begin
+  Result := GetTickCount64;
+end;
+
+function TJsMap.IndexOfKey(const K: TJsValue): Int32;
+var I: Int32;
+begin
+  for I := 0 to Count - 1 do
+    if JsSameValue(Keys[I], K) then Exit(I);
+  Result := -1;
+end;
+
+function TJsMap.Get(const K: TJsValue): TJsValue;
+var I: Int32;
+begin
+  I := IndexOfKey(K);
+  if I < 0 then Result := JsVUndef else Result := Vals[I];
+end;
+
+function TJsMap.Put(const K, V: TJsValue): TJsMap;
+var I: Int32;
+begin
+  I := IndexOfKey(K);
+  if I < 0 then
+  begin
+    if Count >= System.Length(Keys) then
+    begin
+      System.SetLength(Keys, Count * 2 + 4);
+      System.SetLength(Vals, Count * 2 + 4);
+    end;
+    Keys[Count] := K;
+    Vals[Count] := V;
+    Inc(Count);
+  end
+  else
+    Vals[I] := V;
+  Result := Self;
+end;
+
+function TJsMap.Has(const K: TJsValue): Boolean;
+begin
+  Result := IndexOfKey(K) >= 0;
+end;
+
+function TJsMap.Delete(const K: TJsValue): Boolean;
+var I, J: Int32;
+begin
+  I := IndexOfKey(K);
+  if I < 0 then Exit(False);
+  for J := I to Count - 2 do
+  begin
+    Keys[J] := Keys[J + 1];
+    Vals[J] := Vals[J + 1];
+  end;
+  Dec(Count);
+  Keys[Count] := JsVUndef;
+  Vals[Count] := JsVUndef;
+  Result := True;
+end;
+
+procedure TJsMap.Clear;
+begin
+  Count := 0;
+  Keys := nil;
+  Vals := nil;
+end;
+
+function TJsMap.Size: Int32;
+begin
+  Result := Count;
 end;
 
 function TJsDynObject.HasField(const AName: string): Boolean;
