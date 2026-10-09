@@ -183,6 +183,7 @@
      * @param {uint8[]|null} keyData - Key bytes, or null/empty for "12345"
      */
     set key(keyData) {
+      this._keyBytes = keyData ? Array.from(keyData) : null;
       if (!keyData || keyData.length === 0) {
         this._processedKey = "12345"; // Default key
       } else {
@@ -197,12 +198,11 @@
     }
 
     /**
-   * Get the digit key
-   * @returns {string} Key digits
+   * @returns {uint8[]|null} The key bytes as set
    */
 
     get key() {
-      return this._processedKey ? this._processedKey : "12345";
+      return this._keyBytes || null;
     }
 
     // Feed data to the cipher

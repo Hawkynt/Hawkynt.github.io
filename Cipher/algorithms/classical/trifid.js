@@ -237,6 +237,7 @@
      * @param {uint8[]} keyData - Key bytes or string
      */
     set key(keyData) {
+      this._keyBytes = keyData ? Array.from(keyData) : null;
       /** @type {string} */
       const keyString = keyData ? String.fromCharCode(...keyData) : '';
 
@@ -276,12 +277,11 @@
     }
 
     /**
-   * Get the key text
-   * @returns {string|null} Key text or null
+   * @returns {uint8[]|null} The key bytes as set
    */
 
     get key() {
-      return this._key;
+      return this._keyBytes || null;
     }
 
     /**

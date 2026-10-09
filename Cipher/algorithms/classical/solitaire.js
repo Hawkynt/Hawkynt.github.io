@@ -196,6 +196,7 @@
      * @param {uint8[]} keyData - Passphrase; empty keeps the unkeyed deck
      */
     set key(keyData) {
+      this._keyBytes = keyData ? Array.from(keyData) : null;
       /** @type {string} */
       const keyString = keyData ? String.fromCharCode(...keyData) : '';
 
@@ -206,12 +207,11 @@
     }
 
     /**
-   * Get the passphrase
-   * @returns {string|null} Passphrase or null
+   * @returns {uint8[]|null} The key bytes as set
    */
 
     get key() {
-      return this._key;
+      return this._keyBytes || null;
     }
 
 

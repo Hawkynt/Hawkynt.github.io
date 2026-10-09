@@ -1,12 +1,4 @@
 {
-  "algorithms/classical/al-kindi-frequency.js": 1,
-  "algorithms/classical/autokey.js": 2,
-  "algorithms/classical/bazeries.js": 2,
-  "algorithms/classical/cadaenus.js": 2,
-  "algorithms/classical/gronsfeld.js": 2,
-  "algorithms/classical/jefferson-wheel.js": 1,
-  "algorithms/classical/pigpen.js": 2,
-  "algorithms/classical/vigenere.js": 2,
   "algorithms/encoding/rot.js": 1,
   "algorithms/hash/jh.js": 1,
   "algorithms/hash/mdc2.js": 1,
