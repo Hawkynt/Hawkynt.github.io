@@ -216,6 +216,12 @@ check('names: a local that folds onto a function name does not shadow the functi
   // Then the call still reaches the function: no "cannot access local variable"
   return expectOutput(runPython(js, 'print(use(4))'), ['5']);
 });
+check('names: an enum member the runtime does not list reads as undefined', () => {
+  const js = 'function c() { return [CountryCode.BG, CountryCode.US]; }';
+  // Given a country code missing from the runtime's CountryCode (BG)
+  // Then it is None like JavaScript's undefined, not an AttributeError
+  return expectOutput(runPython(js, 'print(list(c()))'), ["[None, 'US']"]);
+});
 check('names: a Python keyword used as a member name is escaped the same way everywhere', () => {
   const js = 'class K { constructor() { this.lambda = 1; } get from() { return this.lambda + 1; } }\n' +
     'function f(k) { k.lambda = 5; return k.from + k.lambda; }';
