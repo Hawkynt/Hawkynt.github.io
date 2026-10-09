@@ -2626,7 +2626,9 @@
       if (op === '/') return E.bin('/', this.conv(ln, 'double'), this.conv(rn, 'double'), 'double');
       let w = T.wider(ln.t, rn.t);
       if (T.isNumeric(resT) && op !== '%') w = T.wider(w, resT);
-      if (op === '*' && w === 'int') w = 'long';
+      // JavaScript multiplies doubles: a product past 2^53 is rounded. Two ints multiply exactly in a long
+      // (below 2^62); a wider operand multiplies as a double, rounding like JavaScript.
+      if (op === '*') w = ln.t === 'int' && rn.t === 'int' ? 'long' : 'double';
       if (op === '%' && w !== 'double') {
         // integer remainder by zero is NaN in JavaScript
         return E.scall('Js', 'rem', [this.conv(ln, w), this.conv(rn, w)], w);
