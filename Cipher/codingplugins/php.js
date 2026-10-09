@@ -100,7 +100,7 @@
           return this.CreateErrorResult('PHP transformer/emitter not loaded');
         }
 
-        // Stage 1: Transform JS AST to PHP AST
+        // Stage 1: Transform the IL AST to the annotated JavaScript AST
         const transformer = new PhpTransformer(mergedOptions);
         const phpAst = transformer.transform(ast);
 
@@ -108,13 +108,28 @@
           return this.CreateErrorResult('Failed to transform JavaScript AST to PHP AST');
         }
 
-        // Stage 2: Emit PHP code from PHP AST
-        const emitter = new PhpEmitter(mergedOptions);
-        const code = emitter.emit(phpAst);
+        // Stage 2: Emit PHP in a namespace of the file's own, so bundled
+        // files cannot collide
+        const base = String(mergedOptions.namespace || 'CipherValidation').replace(/\./g, '\\');
+        // (a namespace segment cannot start with a digit: 3des is _3des)
+        const unit = mergedOptions.className ? String(mergedOptions.className).replace(/[^A-Za-z0-9_]/g, '_').replace(/^(\d)/, '_$1') : null;
+        const emitter = new PhpEmitter({
+          indent: mergedOptions.indent,
+          newline: mergedOptions.lineEnding,
+          namespace: unit ? `${base}\\${unit}` : base,
+          framework: this._frameworkSurface()
+        });
+        let code = emitter.emit(phpAst);
 
         if (!code) {
           return this.CreateErrorResult('Failed to emit PHP code from PHP AST');
         }
+
+        // A standalone file carries the runtime (Node only: it is read from
+        // disk); a fragment for bundling (generateTestHarness: false) carries
+        // neither the runtime nor the opening tag
+        if (mergedOptions.generateTestHarness) code = this._buildStandalonePrelude() + code;
+        else if (mergedOptions.generateTestHarness !== false) code = '<?php' + (mergedOptions.lineEnding || '\n') + code;
 
         // Collect dependencies
         const dependencies = this._collectDependencies(phpAst, mergedOptions);
@@ -127,6 +142,229 @@
       } catch (error) {
         return this.CreateErrorResult('Code generation failed: ' + error.message + '\n' + error.stack);
       }
+    }
+
+    /**
+     * The framework's names as the emitted code reaches them: classes,
+     * functions and values (the enums, the registry). Read from the live
+     * AlgorithmFramework, so it cannot drift from it.
+     * @private
+     */
+    _frameworkSurface() {
+      if (this._surface) return this._surface;
+      let AF = null;
+      try {
+        AF = typeof require !== 'undefined' ? require('../AlgorithmFramework.js') : (typeof window !== 'undefined' ? window.AlgorithmFramework : null);
+      } catch (e) {
+        AF = null;
+      }
+      const surface = { classes: [], functions: [], values: [], methods: [], namespace: 'AlgorithmFramework' };
+      if (AF) {
+        const methods = new Set();
+        for (const name of Object.keys(AF)) {
+          if (name === 'default') continue;
+          const value = AF[name];
+          if (typeof value === 'function') {
+            if (/^class\b/.test(Function.prototype.toString.call(value))) {
+              surface.classes.push(name);
+              for (const m of Object.getOwnPropertyNames(value.prototype)) {
+                const d = Object.getOwnPropertyDescriptor(value.prototype, m);
+                if (m !== 'constructor' && d && typeof d.value === 'function') methods.add(m);
+              }
+            } else surface.functions.push(name);
+          } else {
+            surface.values.push(name);
+          }
+        }
+        surface.methods = [...methods];
+      }
+      this._surface = surface;
+      return surface;
+    }
+
+    /**
+     * The runtime a standalone PHP file carries ahead of the algorithm:
+     * php-runtime.php (JavaScript semantics), then OpCodes.js and
+     * AlgorithmFramework.js themselves, transpiled by this same pipeline, so
+     * the PHP OpCodes and framework cannot drift from the JavaScript ones.
+     * OpCodes' object literal becomes a class of static methods (its one
+     * constructor function, _BitStream, the class OpCodes__BitStream).
+     * Node only (it reads the sources from disk).
+     * @private
+     * @returns {string} PHP source, starting with the opening tag
+     */
+    _buildStandalonePrelude() {
+      if (this._standalonePrelude) return this._standalonePrelude;
+      const fs = require('fs');
+      const path = require('path');
+      const rootDir = path.join(__dirname, '..');
+      const nl = '\n';
+      const quiet = fn => { const log = console.log; console.log = () => {}; try { return fn(); } finally { console.log = log; } };
+      const { TypeAwareJSASTParser } = quiet(() => require('../type-aware-transpiler.js'));
+
+      // The runtime, its namespace braced so that the other namespaces can follow it
+      let runtime = fs.readFileSync(path.join(__dirname, 'php-runtime.php'), 'utf8');
+      runtime = runtime.replace(/^<\?php\s*/, '').replace(/^namespace JS;\s*$/m, 'namespace JS {') + nl + '}' + nl;
+
+      const unit = (source, namespace) => quiet(() => {
+        const il = new TypeAwareJSASTParser(source, { keepModuleLoaderFunctions: true }).parse();
+        const ast = new PhpTransformer({}).transform(il);
+        return new PhpEmitter({ namespace, framework: this._frameworkSurface() }).emit(ast);
+      });
+
+      const opcodes = unit(this._opCodesAsClass(fs.readFileSync(path.join(rootDir, 'OpCodes.js'), 'utf8')), '');
+      const framework = unit(this._insertSemicolons(fs.readFileSync(path.join(rootDir, 'AlgorithmFramework.js'), 'utf8')), 'AlgorithmFramework');
+
+      this._standalonePrelude = '<?php' + nl
+        + '// ==== JavaScript semantics (codingplugins/php-runtime.php) ====' + nl + runtime
+        + '// ==== OpCodes.js, transpiled ====' + nl + opcodes
+        + '// ==== AlgorithmFramework.js, transpiled ====' + nl + framework;
+      return this._standalonePrelude;
+    }
+
+    /**
+     * JavaScript written without semicolons (AlgorithmFramework.js), with the
+     * semicolons automatic semicolon insertion puts where a line ends a
+     * statement, for the transpiler's parser, which needs them.
+     * @private
+     */
+    _insertSemicolons(src) {
+      const tokens = [];
+      const n = src.length;
+      let i = 0, newline = false;
+      const PUNCT = ['>>>=', '...', '===', '!==', '**=', '<<=', '>>=', '>>>', '&&=', '||=', '??=', '=>', '==', '!=', '<=', '>=', '&&', '||', '??', '?.', '++', '--',
+        '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<', '>>', '**', '{', '}', '(', ')', '[', ']', ';', ',', '<', '>', '+', '-', '*', '/', '%',
+        '&', '|', '^', '!', '~', '?', ':', '=', '.', '@', '#'];
+      const regexAfter = new Set(['(', ',', '=', ':', '[', '!', '&', '|', '?', '{', '}', ';', '&&', '||', '??', 'return', 'typeof', '=>', '==', '===', '!=', '!==', '+', '-', '*', '%']);
+      while (i < n) {
+        const c = src[i];
+        if (c === '\n') { newline = true; ++i; continue; }
+        if (/\s/.test(c)) { ++i; continue; }
+        if (c === '/' && src[i + 1] === '/') { while (i < n && src[i] !== '\n') ++i; continue; }
+        if (c === '/' && src[i + 1] === '*') { const e = src.indexOf('*/', i + 2); if (src.slice(i, e).includes('\n')) newline = true; i = e + 2; continue; }
+        const start = i;
+        let type;
+        if (c === '"' || c === "'") {
+          ++i; while (i < n && src[i] !== c) { if (src[i] === '\\') ++i; ++i; } ++i; type = 'str';
+        } else if (c === '`') {
+          ++i; let depth = 0;
+          while (i < n) {
+            if (src[i] === '\\') { i += 2; continue; }
+            if (depth === 0 && src[i] === '`') break;
+            if (src[i] === '$' && src[i + 1] === '{') { ++depth; i += 2; continue; }
+            if (depth > 0 && src[i] === '}') { --depth; ++i; continue; }
+            ++i;
+          }
+          ++i; type = 'str';
+        } else if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(src[i + 1]))) {
+          while (i < n && /[0-9a-zA-Z_.]/.test(src[i])) ++i; type = 'num';
+        } else if (/[A-Za-z_$]/.test(c)) {
+          while (i < n && /[\w$]/.test(src[i])) ++i; type = 'id';
+        } else if (c === '/' && (!tokens.length || regexAfter.has(tokens[tokens.length - 1].value))) {
+          ++i; let inClass = false;
+          while (i < n && (src[i] !== '/' || inClass)) { if (src[i] === '\\') ++i; else if (src[i] === '[') inClass = true; else if (src[i] === ']') inClass = false; ++i; }
+          ++i; while (i < n && /[a-z]/.test(src[i])) ++i; type = 'regex';
+        } else {
+          const p = PUNCT.find(op => src.startsWith(op, i));
+          i += p ? p.length : 1; type = 'punct';
+        }
+        tokens.push({ type, value: src.slice(start, i), start, end: i, newlineBefore: newline });
+        newline = false;
+      }
+      // Which ')' close the condition of a statement (no semicolon after them)
+      const opener = [];
+      const conditionClose = new Set();
+      tokens.forEach((t, k) => {
+        if (t.value === '(') opener.push(k);
+        else if (t.value === ')') { const o = opener.pop(); if (o > 0 && ['if', 'for', 'while', 'switch', 'catch', 'with'].includes(tokens[o - 1].value)) conditionClose.add(k); }
+      });
+      const NO_END = new Set(['if', 'else', 'for', 'while', 'do', 'switch', 'try', 'catch', 'finally', 'function', 'class', 'extends', 'new',
+        'typeof', 'instanceof', 'in', 'of', 'const', 'let', 'var', 'case', 'default', 'throw', 'delete', 'void', 'yield', 'await', 'async', 'static']);
+      const CONTINUES = new Set(['.', '?.', ',', '?', ':', ')', ']', '}', '=>', '=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>=', '>>>=', '**=',
+        '&&', '||', '??', '==', '!=', '===', '!==', '<', '>', '<=', '>=', '<<', '>>', '>>>', '+', '-', '*', '/', '%', '**', '&', '|', '^',
+        'else', 'catch', 'finally', 'instanceof', 'in', 'of', '(', '[', ';']);
+      // Which '}' close a block (a statement may end before them) rather than an object literal
+      const braces = [];
+      const blockClose = new Set();
+      tokens.forEach((t, k) => {
+        if (t.value === '{') {
+          const before = k > 0 ? tokens[k - 1] : null;
+          braces.push(!before || [')', 'else', 'try', 'finally', 'do', '=>', ';', '}', '{', 'static'].includes(before.value)
+            || (before.type === 'id' && !['return', 'typeof', 'case', 'in', 'of', 'new', 'void', 'yield', 'await', 'throw', 'delete', 'instanceof'].includes(before.value)));
+        } else if (t.value === '}') {
+          if (braces.pop()) blockClose.add(k);
+        }
+      });
+      const endsStatement = k => {
+        const t = tokens[k];
+        return (t.type !== 'punct' && !NO_END.has(t.value)) || [']', '++', '--'].includes(t.value) || (t.value === ')' && !conditionClose.has(k));
+      };
+      let out = '';
+      let at = 0;
+      for (let k = 1; k < tokens.length; ++k) {
+        const prev = tokens[k - 1], next = tokens[k];
+        const beforeBlockEnd = blockClose.has(k) && endsStatement(k - 1);
+        if (!beforeBlockEnd) {
+          if (!next.newlineBefore || !endsStatement(k - 1)) continue;
+          if (CONTINUES.has(next.value) || (next.type === 'str' && next.value[0] === '`')) continue;
+        }
+        out += src.slice(at, prev.end) + ';';
+        at = prev.end;
+      }
+      return out + src.slice(at);
+    }
+
+    /**
+     * The standalone runtime prelude (see _buildStandalonePrelude), for the
+     * validation's bundling of dependencies between it and the class code.
+     * @returns {string}
+     */
+    GetStandalonePrelude() {
+      return this._buildStandalonePrelude();
+    }
+
+    /**
+     * OpCodes.js with its object literal written as a class of static
+     * members: `Name: function (...) {...}` becomes `static Name(...) {...}`,
+     * `Name: value` a static property, and a constructor function (one
+     * assigning `this.x`) a class of its own named OpCodes_<Name>.
+     * @private
+     */
+    _opCodesAsClass(source) {
+      const start = source.indexOf('const OpCodes = {');
+      const end = source.indexOf('// Export to global scope');
+      const body = source.slice(start + 'const OpCodes = {'.length, source.lastIndexOf('};', end));
+      const lines = body.split('\n');
+      // Members start at exactly four spaces: "    Name: ..."
+      const starts = [];
+      lines.forEach((l, i) => { if (/^    [A-Za-z_$][\w$]*\s*:/.test(l)) starts.push(i); });
+      const members = [];
+      const extraClasses = [];
+      for (let k = 0; k < starts.length; ++k) {
+        // The member's own lines, and the doc comment above it
+        let first = starts[k];
+        while (first > 0 && /^\s*(\/\*\*|\*|\*\/)/.test(lines[first - 1])) --first;
+        // ...up to the next member's doc comment (or the end)
+        let last = (k + 1 < starts.length ? starts[k + 1] : lines.length) - 1;
+        while (last > starts[k] && /^\s*(\/\*\*|\*|\*\/|\/\/|$)/.test(lines[last])) --last;
+        let chunk = lines.slice(starts[k], last + 1).join('\n');
+        const doc = lines.slice(first, starts[k]).join('\n');
+        // Drop the separating comma
+        chunk = chunk.trimEnd().replace(/,$/, '');
+        const fn = /^    ([A-Za-z_$][\w$]*)\s*:\s*function\s*\(([^)]*)\)\s*\{/.exec(chunk);
+        if (fn) {
+          const rest = chunk.slice(fn[0].length);
+          if (/^\s*this\.\w+\s*=/m.test(rest)) {
+            extraClasses.push(`${doc}\nclass OpCodes_${fn[1]} {\n  constructor(${fn[2]}) {${rest}\n}`);
+          } else {
+            members.push(`${doc}\n    static ${fn[1]}(${fn[2]}) {${rest}`);
+          }
+          continue;
+        }
+        const value = /^    ([A-Za-z_$][\w$]*)\s*:\s*([\s\S]*)$/.exec(chunk);
+        if (value) members.push(`${doc}\n    static ${value[1]} = ${value[2]};`);
+      }
+      return `class OpCodes {\n${members.join('\n\n')}\n}\n\n${extraClasses.join('\n\n')}\n`;
     }
 
     /**
