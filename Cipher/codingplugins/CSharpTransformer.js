@@ -6273,6 +6273,8 @@
      */
     inferBinaryExpressionType(node) {
       const op = node.operator;
+      // a ** b: a BigInteger power of BigInts, else a double (see transformExponentiation)
+      if (op === '**') return this.isBigIntOperand(node.left) || this.isBigIntOperand(node.right) ? new CSharpType('BigInteger') : CSharpType.Double();
 
       // Comparison operators return bool
       if (['==', '===', '!=', '!==', '<', '>', '<=', '>='].includes(op)) {
@@ -12470,6 +12472,7 @@
 
         case 'BinaryExpression':
         case 'LogicalExpression':
+          if (node.operator === '**') return this.transformExponentiation(node);
           return this.asJsComparison(node, this.asJsProduct(node, this.transformBinaryExpression(node)));
 
         case 'UnaryExpression':
@@ -25664,6 +25667,28 @@
     /**
      * Transform Pow to Math.Pow
      */
+    /** Whether a JS/IL operand is a BigInt (a BigInt literal, or BigInteger-typed). */
+    isBigIntOperand(node) {
+      if (!node) return false;
+      if (node.type === 'Literal' && (node.bigint !== undefined || typeof node.value === 'bigint')) return true;
+      const type = this.inferFullExpressionType(node);
+      return type?.name === 'BigInteger' && !type.isArray;
+    }
+
+    /**
+     * a ** b, which C# has no operator for (CS0193): BigInteger.Pow(a, (int)b) for
+     * BigInts (2n ** BigInt(h)), Math.Pow((double)a, (double)b) for numbers.
+     */
+    transformExponentiation(node) {
+      const base = this.transformExpression(node.left);
+      const exponent = this.transformExpression(node.right);
+      if (this.isBigIntOperand(node.left) || this.isBigIntOperand(node.right))
+        return new CSharpMethodCall(new CSharpIdentifier('BigInteger'), 'Pow',
+          [new CSharpCast(new CSharpType('BigInteger'), base), new CSharpCast(CSharpType.Int(), exponent)]);
+      return new CSharpMethodCall(new CSharpIdentifier('Math'), 'Pow',
+        [new CSharpCast(CSharpType.Double(), base), new CSharpCast(CSharpType.Double(), exponent)]);
+    }
+
     transformPow(node) {
       const base = this.transformExpression(node.base);
       const exponent = this.transformExpression(node.exponent);

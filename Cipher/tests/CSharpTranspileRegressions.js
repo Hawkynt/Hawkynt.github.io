@@ -725,6 +725,12 @@ check('OpCodes.Shr32 of an int32 parameter assigned back to it is cast to the pa
     '  static ntz(n) { let c = 0; while (OpCodes.And32(n, 1) === 0) { c++; n = OpCodes.Shr32(n, 1); } return c; }\n}');
   expectMatch(code, /n = unchecked\(\(int\)\(n >>> 1 & 4294967295u\)\);/, 'n = (int)(n >>> 1 & 4294967295u)');
 });
+check('numbers: a ** b is Math.Pow for numbers and BigInteger.Pow for BigInts (C# has no ** operator)', () => {
+  const code = transpile('/**\n * @param {bigint} t - t\n * @param {int32} h - h\n * @returns {bigint} r\n */\nfunction g(t, h) { const m = 2 ** h; return t % (2n ** BigInt(h)) + BigInt(m); }');
+  expectMatch(code, /Math\.Pow\(\(double\)\(2\), \(double\)\(h\)\)/, 'Math.Pow((double)2, (double)h)');
+  expectMatch(code, /BigInteger\.Pow\(\(BigInteger\)\(2ul\), /, 'BigInteger.Pow((BigInteger)2, ...)');
+  expectNoMatch(code, /\*\*/, 'a ** operator (CS0193)');
+});
 check('Math.round rounds a half up as JavaScript does, not to even', () => {
   const code = transpile('/**\n * @param {float64} x - x\n * @returns {int32} r\n */\nfunction f(x) { return Math.round(x * 3); }');
   expectMatch(code, /Math\.Floor\(\(double\)\(x \* 3\) \+ 0\.5\)/, 'Math.Floor(x * 3 + 0.5)');
