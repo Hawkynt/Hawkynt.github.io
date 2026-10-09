@@ -19,17 +19,14 @@
 
 (function (root, factory) {
   if (typeof define === 'function' && define.amd) {
-    define(['../../AlgorithmFramework', '../../OpCodes', '../stream/zuc'], function (AlgorithmFramework, OpCodes, ZUC) {
-      return factory(AlgorithmFramework, OpCodes, function () { return ZUC; });
-    });
+    define(['../../AlgorithmFramework', '../../OpCodes'], factory);
   } else if (typeof module === 'object' && module.exports) {
     module.exports = factory(
       require('../../AlgorithmFramework'),
-      require('../../OpCodes'),
-      function () { return require('../stream/zuc'); }
+      require('../../OpCodes')
     );
   } else {
-    factory(root.AlgorithmFramework, root.OpCodes, function () { return root.ZUC; });
+    factory(root.AlgorithmFramework, root.OpCodes);
   }
 }((function() {
   if (typeof globalThis !== 'undefined') return globalThis;
@@ -37,7 +34,7 @@
   if (typeof global !== 'undefined') return global;
   if (typeof self !== 'undefined') return self;
   throw new Error('Unable to locate global object');
-})(), function (AlgorithmFramework, OpCodes, loadZUC) {
+})(), function (AlgorithmFramework, OpCodes) {
   'use strict';
 
   if (!AlgorithmFramework) {
@@ -51,19 +48,20 @@
   // ZUC is resolved at first use rather than at load: the page loads the mac
   // directory before stream/zuc.js, and requiring another directory's module
   // at load would also make that module count towards this directory.
-  /** @type {boolean} */
-  let zucLoaded = false;
   /**
-   * Load the ZUC stream cipher module (which registers ZUC) on first use
-   * @returns {void}
-   * @throws {Error} If the module cannot be loaded
+   * The registered ZUC stream cipher (registry first, CommonJS fallback)
+   * @returns {Algorithm} The ZUC algorithm
+   * @throws {Error} If ZUC is not registered
    */
-  function loadZUCOnce() {
-    if (!zucLoaded) {
-      loadZUC();
-      if (!AlgorithmFramework.Find('ZUC')) throw new Error('ZUC stream cipher dependency is required');
-      zucLoaded = true;
+  function findZUC() {
+    /** @type {Algorithm} */
+    let zuc = AlgorithmFramework.Find('ZUC');
+    if (!zuc && typeof require !== 'undefined') {
+      try { require('../stream/zuc.js'); } catch (e) { /* reported below */ }
+      zuc = AlgorithmFramework.Find('ZUC');
     }
+    if (!zuc) throw new Error('ZUC stream cipher dependency is required');
+    return zuc;
   }
 
   // Extract framework components
@@ -279,9 +277,8 @@
       }
 
       // Initialize ZUC engine
-      loadZUCOnce();
       /** @type {Algorithm} */
-      const zucAlgo = AlgorithmFramework.Find('ZUC');
+      const zucAlgo = findZUC();
       this.zucEngine = zucAlgo.CreateInstance();
       this.zucEngine.key = this._key;
       this.zucEngine.iv = this._iv;
