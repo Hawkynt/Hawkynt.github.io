@@ -202,6 +202,55 @@ check('builtins: ArrayBuffer.isView accepts an array as Array.isArray does', () 
   expectMatch(transpile(js), /ref\(\$k\) eq 'ARRAY'.*ref\(\$k\) eq 'ARRAY'/, "two ref($k) eq 'ARRAY' tests");
 });
 
+// ---------------------------------------------------------------------------
+// Property setters run their code, chosen by the object's IL type
+// ---------------------------------------------------------------------------
+const SETTER_SNIPPET =
+  'class Local { constructor() { this._k = null; } set k(v) { this._k = v * 2; } get k() { return this._k + 1; } }\n' +
+  '/** @param {Local} local @param {Foreign} foreign @returns {string} */\n' +
+  'function use(local, foreign) { local.k = 5; foreign.key = 7; foreign.plain = 3; return [local.k, foreign.key, foreign.plain].join(","); }';
+check('setters: a same-file class setter is called; another file\'s class is resolved at run time', () => {
+  const code = transpile(SETTER_SNIPPET);
+  expectMatch(code, /\$local->k\(5\)/, '$local->k(5)');
+  expectMatch(code, /main::_JsSetProp\(\$foreign, 'key', 7\)/, "main::_JsSetProp($foreign, 'key', 7)");
+  if (!hasPerl()) return 'skip';
+  // JavaScript (Foreign with a key accessor doubling the value): "11,14,3"
+  const out = runPerl(SETTER_SNIPPET,
+    'package Foreign; sub new { bless {}, shift } sub key { my $s = shift; if (@_) { $s->{_key} = 2 * shift; return; } return $s->{_key}; }\n' +
+    'package main; print main::use(Local->new(), Foreign->new()), "\\n";');
+  expectOutput(out, '11,14,3');
+});
+check('setters: a subclass assigning the framework key property goes through IBlockCipherInstance.key', () => {
+  const code = transpile(FRAMEWORK_PRELUDE +
+    'class C extends IBlockCipherInstance { constructor(a) { super(a); } reset(k) { this.key = k; } }');
+  expectMatch(code, /\$self->key\(\$k\)/, '$self->key($k)');
+});
+
+// ---------------------------------------------------------------------------
+// Spread
+// ---------------------------------------------------------------------------
+const SPREAD_SNIPPET = '/** @param {uint8[]} key @param {string} s @returns {string} */\n' +
+  'function f(key, s) { const t = [0, 0, 0, 0, 9]; t.splice(0, 2, ...key.slice(0, 2)); return t.join("") + "|" + [...s].length; }';
+check('spread: a spread call argument of any shape is flattened; a spread string yields characters', () => {
+  if (!hasPerl()) return 'skip';
+  // JavaScript: f([1, 2, 3], "abc") is "12009|3"
+  expectOutput(runPerl(SPREAD_SNIPPET, 'print main::f([1, 2, 3], "abc"), "\\n";'), '12009|3');
+});
+
+// ---------------------------------------------------------------------------
+// Arrays mutated in place: reverse, sort with a comparator, splice
+// ---------------------------------------------------------------------------
+const ARRAY_SNIPPET = '/** @param {int32[]} a @returns {string} */\n' +
+  'function f(a) { a.reverse(); const b = a.slice(); b.sort((x, y) => x - y); a.splice(0, 1);\n' +
+  '  const c = [10, 9, 1]; const d = c.sort(); return [a.join("/"), b.join("/"), d.join("/"), c === d ? 1 : 0].join(","); }';
+check('arrays: reverse and sort work in place; a comparator gets its operands as arguments', () => {
+  if (!hasPerl()) return 'skip';
+  // JavaScript: f([3, 1, 2]) is "1/3,1/2/3,1/10/9,1"
+  const out = runPerl(ARRAY_SNIPPET, 'print main::f([3, 1, 2]), "\\n";');
+  expectOutput(out, '1/3,1/2/3,1/10/9,1');
+  expectNoMatch(out, /Useless use/, 'a void-context warning');
+});
+
 /**
  * PERL: run every regression case.
  * @param {object} options - { verbose }

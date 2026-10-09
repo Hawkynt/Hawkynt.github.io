@@ -5506,39 +5506,9 @@
         );
       }
 
-      // ArraySort as statement: array.sort(fn) mutates in place
-      // Generate: @{$arr} = sort { ... } @{$arr};
-      if (exprType === 'ArraySort') {
-        const sortArr = this.transformExpression(node.expression.array);
-        const deref = this.wrapArrayDeref(sortArr);
-        const compareFn = node.expression.compareFn;
-        if (compareFn && compareFn.params && compareFn.params.length >= 2) {
-          const aName = compareFn.params[0].name || 'a';
-          const bName = compareFn.params[1].name || 'b';
-          this.registerVariableType(aName, '$');
-          this.registerVariableType(bName, '$');
-          const bodyStmts = compareFn.body.type === 'BlockStatement'
-            ? compareFn.body.body.map(s => this.transformStatement(s)).filter(s => s !== null)
-            : [new PerlExpressionStatement(this.transformExpression(compareFn.body))];
-          return new PerlExpressionStatement(
-            new PerlAssignment(
-              new PerlUnaryExpression('@', sortArr, true),
-              '=',
-              new PerlCall('sort', [new PerlAnonSub(
-                [new PerlParameter(aName, '$'), new PerlParameter(bName, '$')],
-                new PerlBlock(bodyStmts)), deref])
-            )
-          );
-        }
-        // No compareFn - simple sort
-        return new PerlExpressionStatement(
-          new PerlAssignment(
-            new PerlUnaryExpression('@', sortArr, true),
-            '=',
-            new PerlCall('sort', [deref])
-          )
-        );
-      }
+      // ArraySort as statement: array.sort(fn) sorts in place (see 'ArraySort')
+      if (exprType === 'ArraySort')
+        return new PerlExpressionStatement(this.transformExpression(node.expression));
 
       // Handle ClassName = class extends X { ... } assignment
       // Convert to a proper ClassDeclaration so the class body is processed
@@ -5563,6 +5533,12 @@
 
       const expr = this.transformExpression(node.expression);
       if (!expr) return null;
+
+      // A splice whose removed elements nobody reads needs no array
+      // around it (see 'ArraySplice'), which in void context only warns.
+      if (expr.nodeType === 'Array' && expr.elements.length === 1 &&
+          expr.elements[0]?.nodeType === 'Call' && expr.elements[0].callee === 'splice')
+        return new PerlExpressionStatement(expr.elements[0]);
 
       return new PerlExpressionStatement(expr);
     }
@@ -6996,29 +6972,16 @@
           return new PerlCall('join', [joinSep, this.wrapArrayDeref(joinArr)]);
         }
 
-        case 'ArrayReverse': {
-          // array.reverse() -> [reverse @arr]
-          const revArr = this.transformExpression(node.array);
-          return new PerlArray([
-            new PerlCall('reverse', [this.wrapArrayDeref(revArr)])
-          ]);
-        }
+        case 'ArrayReverse':
+          // array.reverse() reverses in place and returns the same array
+          return new PerlCall(new PerlIdentifier('main::_JsReverse', ''), [this.transformExpression(node.array)]);
 
-        case 'ArraySort': {
-          // array.sort(fn?) -> [sort @arr]
-          const sortArr = this.transformExpression(node.array);
-          if (node.compareFn) {
-            return new PerlArray([
-              new PerlCall('sort', [
-                this.transformExpression(node.compareFn),
-                this.wrapArrayDeref(sortArr)
-              ])
-            ]);
-          }
-          return new PerlArray([
-            new PerlCall('sort', [this.wrapArrayDeref(sortArr)])
-          ]);
-        }
+        case 'ArraySort':
+          // array.sort(fn?) sorts in place and returns the same array; the
+          // comparator is called with its two arguments (see _JsSort)
+          return new PerlCall(new PerlIdentifier('main::_JsSort', ''),
+            node.compareFn ? [this.transformExpression(node.array), this.transformExpression(node.compareFn)]
+              : [this.transformExpression(node.array)]);
 
         case 'ArrayIndexOf': {
           // array.indexOf(val) -> simplified: first index or -1
@@ -11624,18 +11587,12 @@
         }
 
         // reverse() -> [reverse @{$array}]
-        if (method === 'reverse') {
-          return new PerlArray([new PerlCall('reverse', [new PerlUnaryExpression('@', object, true)])]);
-        }
+        if (method === 'reverse')
+          return new PerlCall(new PerlIdentifier('main::_JsReverse', ''), [object]);
 
-        // sort() -> [sort @{$array}]
-        if (method === 'sort') {
-          if (args.length === 0) {
-            return new PerlArray([new PerlCall('sort', [new PerlUnaryExpression('@', object, true)])]);
-          }
-          // With comparator - need special handling
-          return new PerlArray([new PerlCall('sort', [args[0], new PerlUnaryExpression('@', object, true)])]);
-        }
+        // sort(fn?) - see 'ArraySort'
+        if (method === 'sort')
+          return new PerlCall(new PerlIdentifier('main::_JsSort', ''), [object, ...args.slice(0, 1)]);
 
         // splice(start, deleteCount, ...items)
         if (method === 'splice') {
