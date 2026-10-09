@@ -959,6 +959,13 @@ check('accessors: a setter taking a string for a getter returning a class makes 
     '  /** @returns {Group} the group */\n  get group() { return this._group; }\n}');
   expectMatch(code, /public dynamic Group\b/, 'public dynamic Group');
 });
+check('length: storing the length member of an object assigns its Length, not a new array (CS0029)', () => {
+  const code = transpile('class Register {\n  constructor() {\n    /** @type {int32} */\n    this.length = 0;\n  }\n}\n' +
+    '/**\n * @param {int32} n - length\n * @returns {Register} r\n */\nfunction make(n) {\n  const reg = new Register();\n  reg.length = n;\n  return reg;\n}\n' +
+    '/**\n * @param {uint8[]} a - buffer\n * @returns {uint8[]} r\n */\nfunction clear(a) { a.length = 0; return a; }');
+  expectMatch(code, /reg\.Length = n;/, 'reg.Length = n');
+  expectMatch(code, /a = new byte\[0\];/, 'an array length store still makes a new array');
+});
 const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +

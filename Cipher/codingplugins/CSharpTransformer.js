@@ -15417,6 +15417,10 @@
         const target = this.transformExpression(node.left.array);
         const length = this.transformExpression(node.right);
         const arrayType = this.inferFullExpressionType(node.left.array);
+        // An object's own length member (darkcrypt-pike.js's `reg.length = length` on
+        // a PikeRegister) is a plain member store, read back as reg.Length
+        if (arrayType && !arrayType.isArray && this.isClassTypeName(arrayType.name))
+          return new CSharpAssignment(new CSharpMemberAccess(target, 'Length'), '=', length);
         const elementType = (arrayType && arrayType.isArray && arrayType.elementType) ? arrayType.elementType : CSharpType.Byte();
         return new CSharpAssignment(target, '=', new CSharpArrayCreation(elementType, length));
       }
