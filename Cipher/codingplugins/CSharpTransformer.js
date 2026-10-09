@@ -18975,21 +18975,30 @@
       // ...; case 2: ...;` intentionally cascades). Detect it from the ORIGINAL JS case
       // bodies (empty consequents are C#-legal "shared label" groupings and need no
       // help) and make it explicit with `goto case <next>;` (or `goto default;`/`break;`).
+      // A case ending in a block, or an if/else whose every path jumps, is terminated too.
       const jumpTypes = new Set(['BreakStatement', 'ReturnStatement', 'ThrowStatement', 'ContinueStatement']);
+      const endsInJump = stmt => {
+        if (!stmt) return false;
+        if (jumpTypes.has(stmt.type)) return true;
+        if (stmt.type === 'BlockStatement') return stmt.body.length > 0 && endsInJump(stmt.body[stmt.body.length - 1]);
+        if (stmt.type === 'IfStatement') return !!stmt.alternate && endsInJump(stmt.consequent) && endsInJump(stmt.alternate);
+        return false;
+      };
       for (let i = 0; i < node.cases.length; ++i) {
         const consequent = node.cases[i].consequent;
         if (!consequent || consequent.length === 0) continue; // shared label - no help needed
-        const lastStmt = consequent[consequent.length - 1];
-        if (jumpTypes.has(lastStmt.type)) continue; // already terminated
+        if (endsInJump(consequent[consequent.length - 1])) continue; // already terminated
 
+        // The next section: `goto default;` for the default label, `goto case <label>;`
+        // for a constant one, else a plain break
         const nextCase = node.cases[i + 1];
-        let gotoTarget = null;
-        if (nextCase) {
-          gotoTarget = nextCase.test ? this.stringifyCaseLabel(nextCase.test) : 'default';
+        let jump = 'break;';
+        if (nextCase && !nextCase.test) jump = 'goto default;';
+        else if (nextCase) {
+          const label = this.stringifyCaseLabel(nextCase.test);
+          if (label) jump = `goto case ${label};`;
         }
-        switchStmt.cases[i].statements.push(
-          new CSharpRawCode(gotoTarget ? `goto case ${gotoTarget};` : 'break;')
-        );
+        switchStmt.cases[i].statements.push(new CSharpRawCode(jump));
       }
 
       return switchStmt;

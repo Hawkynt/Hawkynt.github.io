@@ -514,6 +514,24 @@ check('harness: a dependency that fails to transpile names the dependency', () =
 });
 
 // ---------------------------------------------------------------------------
+// Switch statements: JavaScript fall-through as an explicit jump
+// ---------------------------------------------------------------------------
+check('switch: a case falling through into default jumps with `goto default;`', () => {
+  const code = transpile('function f(m) { let r = 0; switch (m) { case "a": r = 1; default: r += 2; } return r; }');
+  expectMatch(code, /r = 1;\s*goto default;/, 'goto default; after the falling case');
+  expectNoMatch(code, /goto case default/, 'the invalid `goto case default`');
+});
+check('switch: a case falling through into a labelled case jumps with `goto case <label>;`', () => {
+  const code = transpile('function f(m) { let r = 0; switch (m) { case 1: r = 1; case 2: r += 2; break; } return r; }');
+  expectMatch(code, /r = 1;\s*goto case 2;/, 'goto case 2;');
+});
+check('switch: a case whose block, or whose if/else, ends in a jump on every path gets no extra jump', () => {
+  const code = transpile('function f(m, x) { switch (m) { case "a": { const y = x + 1; return y; } ' +
+    'case "b": if (x) { return 1; } else { throw new Error("no"); } default: return 0; } }');
+  expectNoMatch(code, /goto /, 'a goto after a terminated case');
+});
+
+// ---------------------------------------------------------------------------
 // Runtime stubs (needs the .NET SDK)
 // ---------------------------------------------------------------------------
 check('runtime stubs: BlockAbsorber, pad helpers, ToRadixString, IsTruthy, GFMul behave like the JS framework', () => {
