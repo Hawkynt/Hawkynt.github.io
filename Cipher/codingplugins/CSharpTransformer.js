@@ -11165,6 +11165,7 @@
               ulong: () => CSharpLiteral.ULong(v), float: () => CSharpLiteral.Float(v),
               double: () => CSharpLiteral.Double(v), byte: () => CSharpLiteral.Int(v),
               short: () => CSharpLiteral.Int(v), ushort: () => CSharpLiteral.Int(v),
+              int: () => CSharpLiteral.Int(v), sbyte: () => CSharpLiteral.Int(v),
             } : {
               float: () => CSharpLiteral.Float(v),
             };

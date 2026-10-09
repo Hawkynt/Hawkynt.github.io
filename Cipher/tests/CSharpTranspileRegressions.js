@@ -170,6 +170,10 @@ check('methods: a static method growing an array parameter gets it by ref throug
   expectMatch(code, /Put\(ref byte\[\] @?out/, 'Put(ref byte[] out, ...)');
   expectMatch(code, /Lz\.Put\(ref @?out, /, 'Lz.Put(ref out, ...)');
 });
+check('methods: a whole-number default of an int parameter is an int literal (0, not 0.0)', () => {
+  const code = transpile('/**\n * @param {uint8[]} data - data\n * @param {int32} source - source\n */\nfunction add(data, source = 0) { return data.length + source; }');
+  expectMatch(code, /int source = 0\b(?!\.)/, 'int source = 0');
+});
 check('methods: no default before a ref parameter (CS1737)', () => {
   const code = transpile('/**\n * @param {int32[]} values - v\n * @param {int32[]} overflow - o\n * @returns {int32[]} r\n */\n' +
     'function enc(values, overflow) { for (let i = 0; i < values.length; i++) overflow[i + 4] = values[i]; return values; }\n' +
