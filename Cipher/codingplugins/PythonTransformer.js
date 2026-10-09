@@ -12003,6 +12003,10 @@ class OpCodes(metaclass=_OpCodesMeta):
      */
     transformTypedArrayCreation(node) {
       const arrayType = node.arrayType || 'Uint8Array';
+      // The IL files a call argument under `size` even when its type is an
+      // array (`new Uint32Array(OpCodes.Hex32ToDWords(...))`): that is a copy
+      if (!node.buffer && node.size && this._isLikelyArrayArgument(node.size))
+        node = Object.assign({}, node, { buffer: node.size, size: null });
 
       // Check if this is a copy from an existing array vs size-based creation
       // When buffer is set and is an identifier, we need to distinguish between:

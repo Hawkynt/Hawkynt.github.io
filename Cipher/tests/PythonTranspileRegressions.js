@@ -486,6 +486,13 @@ check('set: obj.set(k, v) calls a class\'s own set method, and stores into a Map
   return expectOutput(runPython(js, 'o = {}\nprint(f(HeadTable(), {}, o), o)'), ['[105, 2] {3: 4}']);
 });
 
+check('typed array: new Uint32Array(call returning an array) copies, new Uint32Array(n) allocates', () => {
+  const js = '/** @returns {uint32[]} */\nfunction words() { return [7, 8]; }\n' +
+    'function f(n) { const a = new Uint32Array(OpCodes.Hex32ToDWords("0000000100000002")); const b = new Uint32Array(words()); const c = new Uint32Array(n); return [a, b, c]; }';
+  // Given an OpCodes call and a function typed uint32[] as the argument, and a plain count
+  return expectOutput(runPython(js, 'print([list(x) for x in f(3)])'), ['[[1, 2], [7, 8], [0, 0, 0]]']);
+});
+
 /**
  * PYTHON: run every regression case.
  * @param {object} options - { verbose }
