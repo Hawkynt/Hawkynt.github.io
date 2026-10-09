@@ -53,6 +53,7 @@
 
   // Helper function to get Camellia algorithm (registry-first, plain require fallback)
   /**
+   * @returns {Algorithm} The registered algorithm
    */
   function getCamelliaAlgorithm() {
     let camellia = AlgorithmFramework.Find('Camellia');
