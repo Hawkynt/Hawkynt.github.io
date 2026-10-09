@@ -1735,6 +1735,8 @@ OpCodes.BytesToHex = function (bytes) {
         for (const k in n) if (!SKIP_KEYS.has(k) && !k.startsWith('__') && k !== 'target') visit(n[k]);
         return;
       }
+      // new OpCodes._BitStream(...) names its constructor by a dotted path
+      if (n.nodeType === 'New' && typeof n.className === 'string' && n.className.startsWith('OpCodes.')) out.add(n.className.split('.')[1]);
       if (n.nodeType === 'Identifier' && n.name === 'OpCodes') out.add('*');
       for (const k in n) if (!SKIP_KEYS.has(k) && !k.startsWith('__')) visit(n[k]);
     };

@@ -340,6 +340,14 @@ check('C collections: Map and Set keep insertion order, regular expressions repl
   return expectOutput(runC(js, 'console.log(f());'), ['ba3231HW']);
 });
 
+check('C OpCodes: a member constructed through new OpCodes.X is compiled with its users', () => {
+  const js = 'function bits() { const bs = OpCodes.CreateBitStream(); bs.writeBits(5, 3); bs.writeBits(1, 5); return bs.toArray().join(","); }';
+  // Given OpCodes.CreateBitStream, which constructs OpCodes._BitStream
+  // When bits are written
+  // Then the stream exists and packs them
+  return expectOutput(runC(js, 'console.log(bits());'), ['161']);
+});
+
 /**
  * C: run every regression case.
  * @param {object} options - { verbose }
