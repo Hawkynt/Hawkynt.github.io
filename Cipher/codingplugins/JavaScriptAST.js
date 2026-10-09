@@ -456,7 +456,7 @@
   class JavaScriptNew extends JavaScriptNode {
     constructor(className, args = []) {
       super('New');
-      this.className = className;   // string
+      this.className = className;   // string, or a JavaScriptExpression yielding the constructor
       this.arguments = args;        // JavaScriptExpression[]
     }
   }

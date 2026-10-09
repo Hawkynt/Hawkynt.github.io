@@ -277,8 +277,9 @@
         return this.transformExpression(node);
       }
 
-      console.warn(`No transformer for node type: ${node.type}`);
-      return null;
+      // Any other IL node is an expression; transformExpression refuses one it
+      // cannot transform rather than dropping it
+      return this.transformExpression(node);
     }
 
     // ========================[ FUNCTION TRANSFORMATION ]========================
@@ -620,7 +621,9 @@
           return this.transformTryStatement(node);
 
         case 'BlockStatement':
-          return this.transformBlockStatement(node);
+          // A block among other statements is a scope of its own: emitting
+          // only its contents merges its declarations into the enclosing scope
+          return this.scopedBlock(this.transformBlockStatement(node));
 
         case 'EmptyStatement':
           return null;
@@ -632,9 +635,19 @@
           return this.transformFunctionDeclaration(node);
 
         default:
-          console.warn(`Unhandled statement type: ${node.type}`);
-          return null;
+          // Dropping a statement would change what the code does
+          throw new Error(`JavaScriptTransformer: no transformation for IL statement type '${node.type}'`);
       }
+    }
+
+    /**
+     * Mark a block that stands among statements, so it is emitted with its braces.
+     * @param {Object} block - JavaScriptBlock
+     * @returns {Object} the block
+     */
+    scopedBlock(block) {
+      if (block) block.scoped = true;
+      return block;
     }
 
     transformBlockStatement(node) {
@@ -795,7 +808,9 @@
       const label = node.test ? this.transformNode(node.test) : null;
       const caseStmt = new JavaScriptSwitchCase(label);
       for (const stmt of node.consequent) {
-        const transformed = this.transformNode(stmt);
+        const transformed = stmt && stmt.type === 'BlockStatement'
+          ? this.scopedBlock(this.transformBlockStatement(stmt))
+          : this.transformNode(stmt);
         if (transformed) {
           caseStmt.statements.push(transformed);
         }
@@ -1844,6 +1859,40 @@
           return new JavaScriptCall(numberObj, 'isNaN', argument ? [argument] : []);
         }
 
+        case 'IsSafeIntegerCheck':
+          // IL AST: Number.isSafeInteger(x)
+          return new JavaScriptCall(new JavaScriptIdentifier('Number'), 'isSafeInteger', [this.transformExpression(node.value || node.argument)]);
+
+        case 'CountLeadingZeros':
+          // IL AST: Math.clz32(x) (the IL marks it bits: 32)
+          return new JavaScriptCall(new JavaScriptIdentifier('Math'), 'clz32', [this.transformExpression(node.argument)]);
+
+        case 'ArrayOf':
+          // IL AST: Array.of(...elements)
+          return new JavaScriptCall(new JavaScriptIdentifier('Array'), 'of', (node.elements || []).map(e => this.transformExpression(e)));
+
+        case 'ObjectSeal':
+          // IL AST: Object.seal(x)
+          return new JavaScriptCall(new JavaScriptIdentifier('Object'), 'seal', [this.transformExpression(node.object)]);
+
+        case 'ObjectPropertyNames':
+          // IL AST: Object.getOwnPropertyNames(x)
+          return new JavaScriptCall(new JavaScriptIdentifier('Object'), 'getOwnPropertyNames', [this.transformExpression(node.object)]);
+
+        case 'StringRaw':
+          // IL AST: String.raw(template, ...substitutions)
+          return new JavaScriptCall(new JavaScriptIdentifier('String'), 'raw',
+            [node.template, ...(node.substitutions || [])].filter(Boolean).map(e => this.transformExpression(e)));
+
+        case 'DataViewGetBuffer':
+          return new JavaScriptMemberAccess(this.transformExpression(node.view), 'buffer');
+
+        case 'DataViewGetByteOffset':
+          return new JavaScriptMemberAccess(this.transformExpression(node.view), 'byteOffset');
+
+        case 'DataViewGetByteLength':
+          return new JavaScriptMemberAccess(this.transformExpression(node.view), 'byteLength');
+
         case 'IsFiniteCheck': {
           // IL AST: Number.isFinite(x) → JavaScript: Number.isFinite(x)
           const argument = this.transformExpression(node.value || node.argument || node.arguments?.[0]);
@@ -2228,8 +2277,9 @@
         }
 
         default:
-          console.warn(`Unhandled expression type: ${node.type}`);
-          return new JavaScriptIdentifier(`/* ${node.type} */`);
+          // A placeholder comment where a value belongs only defers the error to
+          // a syntax error in the output; refuse it here, naming the node
+          throw new Error(`JavaScriptTransformer: no transformation for IL node type '${node.type}'`);
       }
     }
 
@@ -2442,9 +2492,22 @@
     }
 
     transformNewExpression(node) {
-      const className = this.resolveConstructorName(node.callee);
       const args = node.arguments ? node.arguments.map(arg => this.transformExpression(arg)) : [];
-      return new JavaScriptNew(className, args);
+      // `new (getDES().DESAlgorithm)()` constructs whatever an expression
+      // yields; naming it by its last property would construct something else
+      if (node.callee && !this.isNamePath(node.callee))
+        return new JavaScriptNew(this.transformExpression(node.callee), args);
+      return new JavaScriptNew(this.resolveConstructorName(node.callee), args);
+    }
+
+    /**
+     * Whether a constructor reference is a plain name or a dotted path of names.
+     * @param {Object} callee - IL expression
+     * @returns {boolean}
+     */
+    isNamePath(callee) {
+      if (callee.type === 'Identifier' || (callee.name && !callee.object)) return true;
+      return callee.type === 'MemberExpression' && !callee.computed && !!callee.object && this.isNamePath(callee.object);
     }
 
     /**
