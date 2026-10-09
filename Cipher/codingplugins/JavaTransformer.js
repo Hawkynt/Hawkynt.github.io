@@ -2613,7 +2613,8 @@
       if (op === '>>>') {
         const v = this.toInt32(l);
         if (r.k === 'lit' && r.v === 0) return this.u32(v);
-        return E.bin('>>>', this.u32(v), this.shiftCount(r), 'long');
+        // the count is taken modulo 32 as in JavaScript (a long shift would take it modulo 64)
+        return E.bin('>>>', this.u32(v), this.shiftCount32(r), 'long');
       }
       if (op === '+' && (dyn(l.t) || dyn(r.t))) {
         if (resT === 'String') return E.bin('+', this.toStr(l), this.toStr(r), 'String');
@@ -2644,6 +2645,13 @@
     shiftCount(r) {
       const n = this.toInt32(r);
       return n;
+    }
+
+    /** A shift count reduced modulo 32 (for shifts the JVM performs on a long). */
+    shiftCount32(r) {
+      const n = this.toInt32(r);
+      if (n.k === 'lit') return E.int(n.v & 31);
+      return E.bin('&', n, E.int(31), 'int');
     }
 
     /** ToInt32 of a value, as an int. */
