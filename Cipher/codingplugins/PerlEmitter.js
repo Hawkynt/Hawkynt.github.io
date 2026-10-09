@@ -554,7 +554,7 @@ sub MerkleDamgardBlocks {
 
         code += this.line(`package ${className};`);
         code += this.line('use strict;');
-        code += this.line('use warnings;');
+        code += this.line('use warnings;'); code += this.line("no warnings 'portable';");
         code += this.newline;
         code += this.line('sub new {');
         this.indentLevel++;
@@ -596,7 +596,7 @@ sub MerkleDamgardBlocks {
       let code = '';
       code += this.line('package OpCodes;');
       code += this.line('use strict;');
-      code += this.line('use warnings;');
+      code += this.line('use warnings;'); code += this.line("no warnings 'portable';");
       // POSIX::fmod backs u32mask (see the "u32mask" sub below) - needed
       // unconditionally here since u32mask is emitted whenever this whole
       // stub package is (module.usesOpCodesRuntimeFallback), which is a
@@ -1177,7 +1177,7 @@ sub MerkleDamgardBlocks {
       let code = '';
       code += this.line('package _OpCodesBitStream;');
       code += this.line('use strict;');
-      code += this.line('use warnings;');
+      code += this.line('use warnings;'); code += this.line("no warnings 'portable';");
       code += this.newline;
 
       const methods = [
@@ -1314,7 +1314,7 @@ sub MerkleDamgardBlocks {
       let code = '';
       code += this.line('package _JSSubarrayView;');
       code += this.line('use strict;');
-      code += this.line('use warnings;');
+      code += this.line('use warnings;'); code += this.line("no warnings 'portable';");
       code += this.newline;
 
       const methods = [
@@ -1712,7 +1712,7 @@ sub MerkleDamgardBlocks {
 
         code += this.line(`package ${node.name};`);
         code += this.line('use strict;');
-        code += this.line('use warnings;');
+        code += this.line('use warnings;'); code += this.line("no warnings 'portable';");
 
         if (node.baseClass) {
           // Always use @ISA for inheritance - all classes are defined in same file

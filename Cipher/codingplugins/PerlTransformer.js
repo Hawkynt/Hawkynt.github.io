@@ -523,7 +523,13 @@
       }
       if (this.options.useWarnings !== false) {
         module.pragmas.push('use warnings');
+        // This perl's integers are 64-bit: a hexadecimal literal beyond 32
+        // bits is exact, not "non-portable"
+        module.pragmas.push("no warnings 'portable'");
       }
+
+      // String literals are JavaScript's (Unicode) text: 'Vigenère'
+      module.pragmas.push('use utf8');
 
       // Add feature pragmas for modern Perl
       if (this.options.addSignatures) {
