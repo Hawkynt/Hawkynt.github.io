@@ -13468,6 +13468,9 @@
           if (node.mapFunction) {
             // Array.from(arr, fn) -> arr.Select(fn).ToArray()
             const mapFn = this.transformExpression(node.mapFunction);
+            // A map function taking no element (() => 0x64) still receives one in Select
+            if (mapFn?.nodeType === 'Lambda' && (mapFn.parameters || []).length === 0)
+              mapFn.parameters = [new CSharpParameter('_', null)];
             let selectExpr = new CSharpMethodCall(iterable, 'Select', [mapFn]);
             if (targetElementType) {
               const narrowParam = new CSharpParameter('_v', null);

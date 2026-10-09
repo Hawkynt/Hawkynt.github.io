@@ -658,6 +658,10 @@ check('arrays: shift()/pop() of an array used as a value give the element and sh
   expectMatch(code, /byte __v = a\[a\.Length - 1\];\s*a = a\.Take\(a\.Length - 1\)\.ToArray\(\);/, 'pop: last element, then the rest');
   expectNoMatch(code, /RemoveAt/, 'List.RemoveAt on an array (CS1061)');
 });
+check('arrays: Array.from({length: n}, () => v) gives Select a lambda taking the element', () => {
+  const code = transpile('/** @returns {uint8[]} a */\nfunction f() { /** @type {uint8[]} */ const a = Array.from({ length: 4 }, () => 0x64); return a; }');
+  expectMatch(code, /Enumerable\.Range\(0, 4\)\.Select\(_ => /, 'Select(_ => ...)');
+});
 check('arrays: a store past the end of a pushed row grows that row in place', () => {
   const code = transpile('/**\n * @param {uint16[]} w - words\n * @returns {uint16[][]} tables\n */\nfunction build(w) {\n' +
     '  /** @type {uint16[][]} */\n  const tables = [];\n  for (let t = 0; t < 2; t++) { /** @type {uint16[]} */ const row = [0]; tables.push(row); }\n' +
