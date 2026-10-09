@@ -207,6 +207,15 @@ check('C++ reflection: vector fields reach setters and fields by name, as `in` w
     ['true', 'true', 'false', 'false']);
 });
 
+check('C++ functions as values: a missing argument takes the parameter default', () => {
+  const js = 'function count(w, n = w.length) { return n; }\n' +
+    'function viaValue() { const fns = [count]; return fns[0]([1, 2, 3]); }';
+  // Given a function whose default refers to another parameter, called through a value
+  // When the second argument is left out
+  // Then the default is evaluated, not zero passed
+  return expectOutput(runCpp(js, 'print(viaValue());'), ['3']);
+});
+
 /**
  * C: run every regression case.
  * @param {object} options - { verbose }

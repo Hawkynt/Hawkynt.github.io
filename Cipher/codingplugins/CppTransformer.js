@@ -413,7 +413,11 @@
     /** A typed local function as a js::Fun (the dynamic calling convention) */
     wrapSfn(e) {
       const t = e.t;
-      const args = t.params.map((p, i) => `js::fromAny<${this.cpp(p)}>(__a.size() > ${i} ? __a[${i}] : js::Any())`).join(', ');
+      // a known function: a missing (or undefined) argument takes the parameter's default
+      const sig = e.fnRef && e.fnRef.sig;
+      const args = sig && !sig.params.some(p => p.rest)
+        ? sig.params.map((p, i) => this.argFromAny(p, i)).join(', ')
+        : t.params.map((p, i) => `js::fromAny<${this.cpp(p)}>(__a.size() > ${i} ? __a[${i}] : js::Any())`).join(', ');
       const call = `${e.c}(${args})`;
       return t.ret.k === 'void'
         ? `js::Fun([=](std::vector<js::Any>& __a) -> js::Any { ${call}; return js::Any(); })`
@@ -1711,15 +1715,18 @@
       return { c: `${v}${suffix}`, t };
     }
 
+    /** Argument i of a dynamic call (__a) for parameter p: its default when missing or undefined */
+    argFromAny(p, i) {
+      const complex = p.def && !this.simpleDefault(p.def);
+      const t = complex ? `std::optional<${this.cpp(p.type)}>` : this.cpp(p.type);
+      const fallback = complex ? 'std::nullopt' : (p.def ? this.defaultExpr(p.def, p.type) : this.defaultOf(p.type));
+      return `(__a.size() > ${i} && !__a[${i}].isUndef() ? static_cast<${t}>(js::fromAny<${this.cpp(p.type)}>(__a[${i}])) : static_cast<${t}>(${fallback}))`;
+    }
+
     /** A user class's constructor as a dynamic function value: new C(...args) */
     constructorValue(c) {
       const sig = c.ctorSig || this.ctorSignature(c);
-      const args = sig.params.filter(p => !p.rest).map((p, i) => {
-        const complex = p.def && !this.simpleDefault(p.def);
-        const t = complex ? `std::optional<${this.cpp(p.type)}>` : this.cpp(p.type);
-        const fallback = complex ? 'std::nullopt' : (p.def ? this.defaultExpr(p.def, p.type) : this.defaultOf(p.type));
-        return `(__a.size() > ${i} && !__a[${i}].isUndef() ? static_cast<${t}>(js::fromAny<${this.cpp(p.type)}>(__a[${i}])) : static_cast<${t}>(${fallback}))`;
-      });
+      const args = sig.params.filter(p => !p.rest).map((p, i) => this.argFromAny(p, i));
       return `js::Any(js::Fun([](std::vector<js::Any>& __a) -> js::Any { (void)__a; return js::Any((new ${this.ns}::${c.cppName}())->__ctor(${args.join(', ')})); }))`;
     }
 
