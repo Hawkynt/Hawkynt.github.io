@@ -363,17 +363,12 @@
         return this._cachedGOSTAlgorithm;
       }
 
-      // Strategy 1: Try to require GOST directly (Node.js/TestSuite)
-      if (typeof require !== 'undefined') {
-        try {
-          require('../block/gost28147.js');
-        } catch (e) {
-          // Silently fail and try registry
-        }
+      // The registry first; under CommonJS a miss loads gost.js, which registers it
+      let foundAlgorithm = AlgorithmFramework.Find("GOST 28147-89");
+      if (!foundAlgorithm && typeof require !== 'undefined') {
+        try { require('../block/gost.js'); } catch (e) { /* reported below */ }
+        foundAlgorithm = AlgorithmFramework.Find("GOST 28147-89");
       }
-
-      // Strategy 2: Find in the AlgorithmFramework registry
-      const foundAlgorithm = AlgorithmFramework.Find("GOST 28147-89");
       if (foundAlgorithm) {
         this._cachedGOSTAlgorithm = foundAlgorithm;
         return foundAlgorithm;
@@ -381,7 +376,7 @@
 
       throw new Error(
         "GOST 28147-89 algorithm not found. GOST28147Wrap requires GOST 28147-89 to be available. " +
-        "Ensure gost28147.js is loaded before using this wrap algorithm."
+        "Ensure gost.js is loaded before using this wrap algorithm."
       );
     }
 
@@ -394,17 +389,12 @@
         return this._cachedGOSTMACAlgorithm;
       }
 
-      // Strategy 1: Try to require GOST MAC directly (Node.js/TestSuite)
-      if (typeof require !== 'undefined') {
-        try {
-          require('../mac/gost28147mac.js');
-        } catch (e) {
-          // Silently fail and try registry
-        }
+      // The registry first; under CommonJS a miss loads gost28147mac.js
+      let foundAlgorithm = AlgorithmFramework.Find("GOST 28147-89 MAC");
+      if (!foundAlgorithm && typeof require !== 'undefined') {
+        try { require('../mac/gost28147mac.js'); } catch (e) { /* reported below */ }
+        foundAlgorithm = AlgorithmFramework.Find("GOST 28147-89 MAC");
       }
-
-      // Strategy 2: Find in the AlgorithmFramework registry
-      const foundAlgorithm = AlgorithmFramework.Find("GOST 28147-89 MAC");
       if (foundAlgorithm) {
         this._cachedGOSTMACAlgorithm = foundAlgorithm;
         return foundAlgorithm;

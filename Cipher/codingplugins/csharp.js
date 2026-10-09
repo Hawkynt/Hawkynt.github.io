@@ -113,7 +113,8 @@ class CSharpPlugin extends LanguagePlugin {
         namespace: mergedOptions.namespace || 'CipherValidation',
         className: mergedOptions.className || 'GeneratedClass',
         typeKnowledge: this._stubCompatibleKnowledge(mergedOptions.parser?.typeKnowledge || mergedOptions.typeKnowledge ||
-          SharedTypeAwareParser?.sharedTypeKnowledge || null)
+          SharedTypeAwareParser?.sharedTypeKnowledge || null),
+        stubMembers: this._getStubMembers()
       });
 
       // Transform JS AST to C# AST
@@ -128,8 +129,13 @@ class CSharpPlugin extends LanguagePlugin {
       // Emit C# source code
       let code = emitter.emit(csAst);
 
-      // Add framework type stubs if needed
-      if (mergedOptions.generateFrameworkStubs !== false) {
+      // A dependency bundled ahead of another algorithm's code (asDependency): no
+      // stubs, no using directives and no Main - the main code brings those once.
+      if (mergedOptions.asDependency) {
+        code = code.replace(/^using\s+[^;]+;\s*$/gm, '')
+          .replace(/(\s*\/\/\/[^\n]*\n)*\s*public\s+static\s+void\s+Main\s*\([^)]*\)\s*\{[^}]*\}/, '')
+          .replace(/^\s*\n/, '');
+      } else if (mergedOptions.generateFrameworkStubs !== false) {
         code = this._addFrameworkStubs(code, mergedOptions.namespace || 'CipherValidation');
       }
 
@@ -385,6 +391,45 @@ class CSharpPlugin extends LanguagePlugin {
   }
 
   /**
+   * The members each framework stub class declares, parsed from the stub source
+   * (see _addFrameworkStubs).
+   * @private
+   * @returns {Map<string, {base: string|null, members: Set<string>, methods: Set<string>, virtuals: Set<string>}>}
+   *   class name -> base class, member names, which of them are methods and which virtual
+   */
+  _getStubMembers() {
+    if (this._stubMembers) return this._stubMembers;
+    this._stubMembers = new Map();
+    const stubs = this._addFrameworkStubs('', 'Stub');
+    const classPattern = /class\s+(\w+)(?:\s*:\s*(\w+))?\s*\{/g;
+    let match;
+    while ((match = classPattern.exec(stubs)) !== null) {
+      let depth = 1, pos = match.index + match[0].length;
+      while (pos < stubs.length && depth > 0) {
+        if (stubs[pos] === '{') ++depth;
+        else if (stubs[pos] === '}') --depth;
+        ++pos;
+      }
+      const body = stubs.slice(match.index + match[0].length, pos - 1);
+      const members = new Set();
+      const methods = new Set();
+      const virtuals = new Set();
+      const memberPattern = /public\s+((?:virtual\s+|override\s+|static\s+)*)[\w<>\[\],?. ]+?\s+(\w+)\s*(\{|=>|=|;|\()/g;
+      let member;
+      while ((member = memberPattern.exec(body)) !== null) {
+        members.add(member[2]);
+        if (member[3] === '(') methods.add(member[2]);
+        if (/virtual|override/.test(member[1])) virtuals.add(member[2]);
+      }
+      this._stubMembers.set(match[1], { base: match[2] || null, members, methods, virtuals });
+    }
+    // Enums are types too, without members to inherit
+    for (const enumMatch of stubs.matchAll(/public\s+enum\s+(\w+)/g))
+      this._stubMembers.set(enumMatch[1], { base: null, members: new Set(), methods: new Set(), virtuals: new Set() });
+    return this._stubMembers;
+  }
+
+  /**
    * The framework type knowledge as the C# stubs can honour it. The transformer
    * treats a framework-declared property as inherited and declares no field for
    * it, which is only right when the C# base-class stub (see _addFrameworkStubs)
@@ -397,30 +442,10 @@ class CSharpPlugin extends LanguagePlugin {
    */
   _stubCompatibleKnowledge(knowledge) {
     if (!knowledge || !knowledge.frameworkTypes) return knowledge;
-    if (!this._stubMembers) {
-      // class name -> { base, members:Set } parsed from the stub source
-      this._stubMembers = new Map();
-      const stubs = this._addFrameworkStubs('', 'Stub');
-      const classPattern = /class\s+(\w+)(?:\s*:\s*(\w+))?\s*\{/g;
-      let match;
-      while ((match = classPattern.exec(stubs)) !== null) {
-        let depth = 1, pos = match.index + match[0].length;
-        while (pos < stubs.length && depth > 0) {
-          if (stubs[pos] === '{') ++depth;
-          else if (stubs[pos] === '}') --depth;
-          ++pos;
-        }
-        const body = stubs.slice(match.index + match[0].length, pos - 1);
-        const members = new Set();
-        const memberPattern = /public\s+(?:virtual\s+|override\s+|static\s+)*[\w<>\[\],?. ]+?\s+(\w+)\s*(?:\{|=>|=|;|\()/g;
-        let member;
-        while ((member = memberPattern.exec(body)) !== null) members.add(member[1]);
-        this._stubMembers.set(match[1], { base: match[2] || null, members });
-      }
-    }
+    const stubMembers = this._getStubMembers();
     const declares = (className, member) => {
-      for (let name = className, hops = 0; name && this._stubMembers.has(name) && hops < 32; ++hops) {
-        const info = this._stubMembers.get(name);
+      for (let name = className, hops = 0; name && stubMembers.has(name) && hops < 32; ++hops) {
+        const info = stubMembers.get(name);
         if (info.members.has(member)) return true;
         name = info.base;
       }
@@ -432,7 +457,10 @@ class CSharpPlugin extends LanguagePlugin {
       const properties = {};
       for (const [prop, type] of Object.entries(info.properties || {}))
         if (declares(className, pascal(prop))) properties[prop] = type;
-      frameworkTypes[className] = { ...info, properties };
+      const methods = {};
+      for (const [method, signature] of Object.entries(info.methods || {}))
+        if (method === 'constructor' || declares(className, method)) methods[method] = signature;
+      frameworkTypes[className] = { ...info, properties, methods };
     }
     return Object.assign(Object.create(Object.getPrototypeOf(knowledge)), knowledge, { frameworkTypes });
   }
@@ -510,7 +538,7 @@ namespace ${namespace}
         public int OutputSize { get; set; }
         public int BlockSize { get; set; }
         public dynamic INITIAL_HASH { get; set; }
-        public virtual object CreateInstance(bool isInverse = false) { return null; }
+        public virtual IAlgorithmInstance CreateInstance(bool isInverse = false) { return null; }
     }
 
     // Error correction algorithm base class
@@ -525,7 +553,7 @@ namespace ${namespace}
     public abstract class CryptoAlgorithm : Algorithm { }
     public abstract class SymmetricCipherAlgorithm : CryptoAlgorithm { }
     public abstract class AsymmetricCipherAlgorithm : CryptoAlgorithm { }
-    public abstract class BlockCipherAlgorithm : SymmetricCipherAlgorithm { }
+    public abstract class BlockCipherAlgorithm : SymmetricCipherAlgorithm { public override IBlockCipherInstance CreateInstance(bool isInverse = false) { return null; } }
     public abstract class StreamCipherAlgorithm : SymmetricCipherAlgorithm { }
     // Property types below marked dynamic mirror AlgorithmFramework.js fields whose
     // JS constructors initialize them to [] (JSDoc says KeySize[], but real algorithm
@@ -533,7 +561,7 @@ namespace ${namespace}
     // plain int[], object-literal arrays {minSize,maxSize,stepSize}, or null) - a fixed
     // element type here would make one shape compile and the rest CS0029/CS1503. dynamic
     // accepts any of them without a cast, matching JS's own untyped-property semantics.
-    public abstract class HashFunctionAlgorithm : Algorithm { public int DigestSize { get; set; } public int OutputSize { get; set; } public int BlockSize { get; set; } public dynamic SupportedOutputSizes { get; set; } }
+    public abstract class HashFunctionAlgorithm : Algorithm { public int DigestSize { get; set; } public int OutputSize { get; set; } public int BlockSize { get; set; } public dynamic SupportedOutputSizes { get; set; } public override IHashFunctionInstance CreateInstance(bool isInverse = false) { return null; } }
     public abstract class AeadAlgorithm : CryptoAlgorithm { public dynamic SupportedTagSizes { get; set; } public bool SupportsDetached { get; set; } }
     public abstract class MacAlgorithm : Algorithm { public dynamic SupportedMacSizes { get; set; } public bool NeedsKey { get; set; } }
     public abstract class KdfAlgorithm : Algorithm { public bool SaltRequired { get; set; } public dynamic SupportedOutputSizes { get; set; } }
@@ -551,162 +579,106 @@ namespace ${namespace}
     public abstract class CryptoWrapAlgorithm : Algorithm { }
     public abstract class SpecialAlgorithm : Algorithm { }
 
+    // Instance interfaces: the members and behaviour of AlgorithmFramework.js's
+    // IAlgorithmInstance family, one for one. Every framework method is virtual
+    // so a subclass method of the same name overrides it, as in JavaScript.
     public abstract class IAlgorithmInstance
     {
-        protected Algorithm algorithm;
-        public Algorithm Algorithm { get => algorithm; protected set => algorithm = value; }
-        public dynamic Config { get; set; }
-        public dynamic A { get; set; }
-        public dynamic B { get; set; }
-        // Common properties - all algorithm instances may use these
-        public byte[] Key { get; set; }
-        public byte[] IV { get; set; }
-        public byte[] Iv { get => IV; set => IV = value; }
-        public byte[] Nonce { get; set; }
-        public byte[] Seed { get; set; }
-        public int OutputSize { get; set; }
-        public int OutputLength { get; set; }
-        public byte[] Salt { get; set; }
-        public int Iterations { get; set; }
-        public byte[] PublicKey { get; set; }
-        public byte[] PrivateKey { get; set; }
-        public dynamic UnderlyingCipher { get; set; }
-        protected IAlgorithmInstance(Algorithm algo) { algorithm = algo; }
-        // Some algorithm sources call the JS super() with NO arguments and instead
-        // assign this.algorithm = algorithm as a separate statement in the subclass
-        // constructor body (semantically identical to passing it straight through -
-        // e.g. block/doubleking.js's DoubleKingInstance). A parameterless overload
-        // here (and on every I*Instance subclass below) lets base() / : base()
-        // compile for that pattern too (CS7036 otherwise), while the immediately-
-        // following this.Algorithm = algorithm in the derived constructor still ends
-        // up setting the same field either way.
+        public Algorithm Algorithm { get; set; }
+        public bool IsInverse { get; set; }
+        public byte[] InputBuffer { get; set; } = new byte[0];
+        protected IAlgorithmInstance(Algorithm algorithm) { Algorithm = algorithm; }
+        // A JS subclass may call super() without the algorithm and assign it itself.
         protected IAlgorithmInstance() { }
-        public virtual void Feed(byte[] data) { }
-        public virtual byte[] Result() { return Array.Empty<byte>(); }
-        // Several stream-cipher instances (e.g. stream/shrinking-generator.js's
-        // ShrinkingGeneratorInstance) override ClearData() to zero out sensitive
-        // internal state and call 'super.ClearData()' first - JS is fine with that
-        // even though the base Algorithm/AlgorithmInstance classes never actually
-        // define the method (a missing property read is just undefined, never an
-        // error), but C#'s 'base.ClearData()' needs a real member to bind to
-        // (CS0117 otherwise). A no-op virtual here gives every subclass override
-        // something real to call up to, matching Feed/Result's own pattern above.
-        public virtual void ClearData() { }
+        // Accumulates: Feed(a); Feed(b) leaves what Feed(a || b) leaves.
+        public virtual void Feed(byte[] data)
+        {
+            if (data == null || data.Length == 0) return;
+            InputBuffer = InputBuffer == null ? data.ToArray() : InputBuffer.Concat(data).ToArray();
+        }
+        public virtual byte[] Result() { throw new Exception("Result() not implemented"); }
+        public virtual void Dispose() { InputBuffer = new byte[0]; }
     }
 
-    // Algorithm-specific instance base classes
     public abstract class IBlockCipherInstance : IAlgorithmInstance
     {
-        protected IBlockCipherInstance(Algorithm algo) : base(algo) { }
+        protected IBlockCipherInstance(Algorithm algorithm) : base(algorithm) { }
         protected IBlockCipherInstance() : base() { }
-        public byte[] Key { get; set; }
-        public byte[] IV { get; set; }
-    }
-
-    public abstract class IStreamCipherInstance : IAlgorithmInstance
-    {
-        protected IStreamCipherInstance(Algorithm algo) : base(algo) { }
-        protected IStreamCipherInstance() : base() { }
-        public byte[] Key { get; set; }
-        public byte[] IV { get; set; }
-        public byte[] Nonce { get; set; }
+        public int BlockSize { get; set; }
+        public int KeySize { get; set; }
+        public byte[] _key { get; set; }
+        public virtual byte[] Key { get => _key; set => _key = value; }
+        public virtual byte[] EncryptBlock(byte[] block) { throw new Exception("EncryptBlock() not implemented"); }
+        public virtual byte[] DecryptBlock(byte[] block) { throw new Exception("DecryptBlock() not implemented"); }
+        // Refuses a buffered input that is not a whole number of blocks.
+        public virtual int RequireBlockMultiple(int blockSize = 0)
+        {
+            var size = blockSize != 0 ? blockSize : BlockSize;
+            if (!(size > 0)) throw new Exception("BlockSize not set");
+            var length = InputBuffer != null ? InputBuffer.Length : 0;
+            if (length % size != 0) throw new Exception("Input length must be multiple of " + size + " bytes");
+            return length / size;
+        }
+        // Encrypts or decrypts every buffered block.
+        public override byte[] Result()
+        {
+            if (Key == null) throw new Exception("Key not set");
+            if (InputBuffer == null || InputBuffer.Length == 0) throw new Exception("No data fed");
+            var blockSize = BlockSize;
+            RequireBlockMultiple(blockSize);
+            var output = new List<byte>();
+            for (var offset = 0; offset < InputBuffer.Length; offset += blockSize)
+            {
+                var block = InputBuffer.Skip(offset).Take(blockSize).ToArray();
+                output.AddRange(IsInverse ? DecryptBlock(block) : EncryptBlock(block));
+            }
+            InputBuffer = new byte[0];
+            return output.ToArray();
+        }
     }
 
     public abstract class IHashFunctionInstance : IAlgorithmInstance
     {
-        protected IHashFunctionInstance(Algorithm algo) : base(algo) { }
+        protected IHashFunctionInstance(Algorithm algorithm) : base(algorithm) { }
         protected IHashFunctionInstance() : base() { }
         public int OutputSize { get; set; }
     }
 
     public abstract class IMacInstance : IAlgorithmInstance
     {
-        protected IMacInstance(Algorithm algo) : base(algo) { }
+        protected IMacInstance(Algorithm algorithm) : base(algorithm) { }
         protected IMacInstance() : base() { }
-        public byte[] Key { get; set; }
-    }
-
-    public abstract class IAeadInstance : IAlgorithmInstance
-    {
-        protected IAeadInstance(Algorithm algo) : base(algo) { }
-        protected IAeadInstance() : base() { }
-        public byte[] Key { get; set; }
-        public byte[] Nonce { get; set; }
-        public byte[] AssociatedData { get; set; }
+        public virtual byte[] ComputeMac(byte[] data) { throw new Exception("ComputeMac() not implemented"); }
     }
 
     public abstract class IKdfInstance : IAlgorithmInstance
     {
-        protected IKdfInstance(Algorithm algo) : base(algo) { }
+        protected IKdfInstance(Algorithm algorithm) : base(algorithm) { }
         protected IKdfInstance() : base() { }
-        public byte[] Salt { get; set; }
+        public int OutputSize { get; set; }
         public int Iterations { get; set; }
-        public int OutputLength { get; set; }
     }
 
-    public abstract class ICompressionInstance : IAlgorithmInstance
+    public abstract class IAeadInstance : IAlgorithmInstance
     {
-        protected ICompressionInstance(Algorithm algo) : base(algo) { }
-        protected ICompressionInstance() : base() { }
-    }
-
-    public abstract class IRandomInstance : IAlgorithmInstance
-    {
-        protected IRandomInstance(Algorithm algo) : base(algo) { }
-        protected IRandomInstance() : base() { }
-        public byte[] Seed { get; set; }
-    }
-
-    public abstract class IChecksumInstance : IAlgorithmInstance
-    {
-        protected IChecksumInstance(Algorithm algo) : base(algo) { }
-        protected IChecksumInstance() : base() { }
+        protected IAeadInstance(Algorithm algorithm) : base(algorithm) { }
+        protected IAeadInstance() : base() { }
+        public byte[] Aad { get; set; } = new byte[0];
+        public int TagSize { get; set; }
     }
 
     public abstract class IErrorCorrectionInstance : IAlgorithmInstance
     {
-        protected IErrorCorrectionInstance(Algorithm algo) : base(algo) { }
+        protected IErrorCorrectionInstance(Algorithm algorithm) : base(algorithm) { }
         protected IErrorCorrectionInstance() : base() { }
-        // Note: Algorithms use this._result field for intermediate storage
-        // and override Result() method to return it
-    }
-
-    public abstract class IClassicalCipherInstance : IAlgorithmInstance
-    {
-        protected IClassicalCipherInstance(Algorithm algo) : base(algo) { }
-        protected IClassicalCipherInstance() : base() { }
-        public string Key { get; set; }
-    }
-
-    public abstract class IEncodingInstance : IAlgorithmInstance
-    {
-        protected IEncodingInstance(Algorithm algo) : base(algo) { }
-        protected IEncodingInstance() : base() { }
+        public virtual bool DetectError(byte[] data) { throw new Exception("DetectError() not implemented"); }
     }
 
     public abstract class IRandomGeneratorInstance : IAlgorithmInstance
     {
-        protected IRandomGeneratorInstance(Algorithm algo) : base(algo) { }
+        protected IRandomGeneratorInstance(Algorithm algorithm) : base(algorithm) { }
         protected IRandomGeneratorInstance() : base() { }
-        public byte[] Seed { get; set; }
-        public int OutputLength { get; set; }
-    }
-
-    public abstract class ICipherModeInstance : IAlgorithmInstance
-    {
-        protected ICipherModeInstance(Algorithm algo) : base(algo) { }
-        protected ICipherModeInstance() : base() { }
-        public byte[] Key { get; set; }
-        public byte[] IV { get; set; }
-        public dynamic UnderlyingCipher { get; set; }
-    }
-
-    public abstract class IAsymmetricCipherInstance : IAlgorithmInstance
-    {
-        protected IAsymmetricCipherInstance(Algorithm algo) : base(algo) { }
-        protected IAsymmetricCipherInstance() : base() { }
-        public byte[] PublicKey { get; set; }
-        public byte[] PrivateKey { get; set; }
+        public virtual byte[] NextBytes(int count) { throw new Exception("NextBytes() not implemented"); }
     }
 
     // Support types
@@ -875,6 +847,47 @@ namespace ${namespace}
         }
     }
 
+    // AlgorithmFramework.js's registry: every algorithm of every generated class in the
+    // program (each lists its registrations in a static Algorithms array), so an
+    // algorithm finds another bundled one by name, as AlgorithmFramework.Find does.
+    public static class AlgorithmFramework
+    {
+        private static List<Algorithm> registry;
+        private static bool scanning;
+
+        private static List<Algorithm> Scan()
+        {
+            var found = new List<Algorithm>();
+            foreach (var type in typeof(AlgorithmFramework).Assembly.GetTypes())
+            {
+                var field = type.GetField("Algorithms", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                if (field == null || field.FieldType != typeof(Algorithm[])) continue;
+                try
+                {
+                    if (field.GetValue(null) is Algorithm[] algorithms)
+                        foreach (var algorithm in algorithms) if (algorithm != null) found.Add(algorithm);
+                }
+                catch (Exception) { }
+            }
+            return found;
+        }
+
+        public static List<Algorithm> All()
+        {
+            if (registry != null) return registry;
+            // A lookup while the registry is being built (a module constant looking up
+            // another algorithm during its own initialization) sees what exists so far
+            if (scanning) return Scan();
+            scanning = true;
+            try { registry = Scan(); } finally { scanning = false; }
+            return registry;
+        }
+
+        public static dynamic Find(string name) => All().LastOrDefault(a => a.Name == name);
+        public static void RegisterAlgorithm(object algorithm) { }
+        public static dynamic[] GetAll() => All().Cast<dynamic>().ToArray();
+    }
+
     // Mirrors AlgorithmFramework.js's free padding functions; imported with
     // "using static" so the bare JS calls resolve unchanged.
     public static class FrameworkFunctions
@@ -921,6 +934,40 @@ namespace ${namespace}
         {
             System.Security.Cryptography.RandomNumberGenerator.Fill(System.Runtime.InteropServices.MemoryMarshal.AsBytes(buffer.AsSpan()));
             return buffer;
+        }
+
+        // JavaScript's BigInt(text): decimal, or 0x/0o/0b prefixed, optionally signed
+        public static BigInteger ParseBigInt(string text)
+        {
+            var s = (text ?? "").Trim();
+            bool negative = s.StartsWith("-");
+            if (negative || s.StartsWith("+")) s = s.Substring(1);
+            int radix = 10;
+            if (s.Length > 1 && s[0] == '0' && "xXoObB".IndexOf(s[1]) >= 0)
+            {
+                radix = char.ToLowerInvariant(s[1]) == 'x' ? 16 : char.ToLowerInvariant(s[1]) == 'o' ? 8 : 2;
+                s = s.Substring(2);
+            }
+            if (s.Length == 0) return BigInteger.Zero;
+            BigInteger value = BigInteger.Zero;
+            foreach (char c in s)
+            {
+                int digit = c <= '9' ? c - '0' : char.ToLowerInvariant(c) - 'a' + 10;
+                if (digit < 0 || digit >= radix) throw new FormatException("Cannot convert " + text + " to a BigInt");
+                value = value * radix + digit;
+            }
+            return negative ? -value : value;
+        }
+
+        // JavaScript's string.padStart/padEnd: the pad string repeated (and cut) to the length
+        public static string PadString(object value, int length, object pad, bool atStart)
+        {
+            string s = value?.ToString() ?? "", p = pad?.ToString() ?? " ";
+            if (s.Length >= length || p.Length == 0) return s;
+            var fill = new System.Text.StringBuilder();
+            while (fill.Length < length - s.Length) fill.Append(p);
+            var padding = fill.ToString(0, length - s.Length);
+            return atStart ? padding + s : s + padding;
         }
 
         // JavaScript's bigint.toString(radix): lowercase digits, leading '-' for negatives.
@@ -1032,6 +1079,16 @@ namespace ${namespace}
         public void WriteUint32BE(uint value) { WriteBits((value >> 24) & 0xFF, 8); WriteBits((value >> 16) & 0xFF, 8); WriteBits((value >> 8) & 0xFF, 8); WriteBits(value & 0xFF, 8); }
         public void WriteUint32LE(uint value) { WriteBits(value & 0xFF, 8); WriteBits((value >> 8) & 0xFF, 8); WriteBits((value >> 16) & 0xFF, 8); WriteBits((value >> 24) & 0xFF, 8); }
         public void WriteVarInt(uint value) { while (value >= 0x80) { WriteByte((value & 0x7F) | 0x80); value >>= 7; } WriteByte(value & 0x7F); }
+        // A JavaScript number argument may arrive signed (an int, a dynamic int): the
+        // writers take its low 32 bits, as the JavaScript ones do
+        public void WriteBits(long value, int numBits) => WriteBits(unchecked((uint)value), numBits);
+        public void WriteBit(long bit) => WriteBit(unchecked((uint)bit));
+        public void WriteByte(long value) => WriteByte(unchecked((uint)value));
+        public void WriteUint16BE(long value) => WriteUint16BE(unchecked((uint)value));
+        public void WriteUint16LE(long value) => WriteUint16LE(unchecked((uint)value));
+        public void WriteUint32BE(long value) => WriteUint32BE(unchecked((uint)value));
+        public void WriteUint32LE(long value) => WriteUint32LE(unchecked((uint)value));
+        public void WriteVarInt(long value) => WriteVarInt(unchecked((uint)value));
         public void WriteUnary(int value) { for (int i = 0; i < value; ++i) WriteBit(1); WriteBit(0); }
         public void AlignToByte() { while (bufferBits % 8 != 0) WriteBit(0); }
 
@@ -1276,6 +1333,7 @@ namespace ${namespace}
         public static void Fill(byte[] arr, byte value) { for (int i = 0; i < arr.Length; ++i) arr[i] = value; }
         public static void Fill(uint[] arr, uint value) { for (int i = 0; i < arr.Length; ++i) arr[i] = value; }
         public static void Fill(int[] arr, int value) { for (int i = 0; i < arr.Length; ++i) arr[i] = value; }
+        public static void Fill<T>(T[] arr, T value) => Array.Fill(arr, value);
         // JS's array.sort([compareFn]) both mutates IN PLACE and yields the SAME array
         // reference as its value - unlike System.Array.Sort, which is void and cannot be
         // used as an expression (e.g. const sorted = arr.sort(cmp)). These sort in
@@ -1397,6 +1455,20 @@ namespace ${namespace}
         public static int SetBit(int value, int bitIndex, int bitValue) => SetBit(value, bitIndex, bitValue != 0);
         public static int SetBit(int value, int bitIndex, uint bitValue) => SetBit(value, bitIndex, bitValue != 0);
         public static int SetBit(int value, int bitIndex, byte bitValue) => SetBit(value, bitIndex, bitValue != 0);
+        public static uint SetBit(uint value, int bitIndex, bool bitValue) => bitValue ? (value | (1u << bitIndex)) : (value & ~(1u << bitIndex));
+        public static uint SetBit(uint value, int bitIndex, int bitValue) => SetBit(value, bitIndex, bitValue != 0);
+        public static uint SetBit(uint value, int bitIndex, uint bitValue) => SetBit(value, bitIndex, bitValue != 0);
+        public static uint SetBit(uint value, int bitIndex, byte bitValue) => SetBit(value, bitIndex, bitValue != 0);
+        // BytesToChars - a string whose char codes are the byte values
+        public static string BytesToChars(byte[] bytes) => new string(bytes.Select(b => (char)b).ToArray());
+        // RotL64_HL/RotR64_HL - rotate a 64-bit value held as high and low words
+        public static (uint H, uint L) RotL64_HL(uint high, uint low, int n) {
+            var v = (((ulong)high << 32) | low);
+            n &= 63;
+            v = n == 0 ? v : (v << n) | (v >> (64 - n));
+            return ((uint)(v >> 32), (uint)v);
+        }
+        public static (uint H, uint L) RotR64_HL(uint high, uint low, int n) => RotL64_HL(high, low, (64 - (n & 63)) & 63);
         // ReverseBits
         public static byte ReverseBits(byte b) {
             b = (byte)(((b & 0xF0) >> 4) | ((b & 0x0F) << 4));
@@ -1639,6 +1711,24 @@ namespace ${namespace}
         public static byte[] CreateArray(uint length, byte value = 0) {
             var arr = new byte[length];
             if (value != 0) for (int i = 0; i < arr.Length; ++i) arr[i] = value;
+            return arr;
+        }
+        // SetGrow - a JavaScript store by index: grows the array to hold the index
+        public static T SetGrow<T>(ref T[] arr, int index, T value) {
+            if (arr == null) arr = new T[index + 1];
+            else if (index >= arr.Length) Array.Resize(ref arr, index + 1);
+            arr[index] = value;
+            return value;
+        }
+        // Grown - the array grown to hold the index (itself when it already does)
+        public static T[] Grown<T>(T[] arr, int index) {
+            if (arr == null) return new T[index + 1];
+            if (index >= arr.Length) Array.Resize(ref arr, index + 1);
+            return arr;
+        }
+        public static T[] CreateArray<T>(int length, T value) {
+            var arr = new T[length];
+            Array.Fill(arr, value);
             return arr;
         }
         // Split64 - mirrors OpCodes.js's Split64(value): splits a 64-bit unsigned value
@@ -1885,6 +1975,8 @@ namespace ${namespace}
         private readonly HashSet<int>[] rowNonZeros;
         private readonly HashSet<int>[] colNonZeros;
 
+        // A JavaScript number argument may be a double (a computed size): truncated
+        public SparseMatrix(double rows, double cols) : this((long)rows, (long)cols) { }
         public SparseMatrix(long rows, long cols)
         {
             Rows = (int)rows; Cols = (int)cols;
@@ -1952,6 +2044,7 @@ namespace ${namespace}
         public Dictionary<int, HashSet<int>> Edges { get; set; } = new Dictionary<int, HashSet<int>>();
         public Dictionary<int, HashSet<int>> ReverseEdges { get; set; } = new Dictionary<int, HashSet<int>>();
 
+        public BipartiteGraph(double leftNodes, double rightNodes) : this((long)leftNodes, (long)rightNodes) { }
         public BipartiteGraph(long leftNodes, long rightNodes)
         {
             LeftNodes = (int)leftNodes; RightNodes = (int)rightNodes;
@@ -2000,6 +2093,7 @@ namespace ${namespace}
     public class DegreeDistribution
     {
         public int K { get; set; }
+        public DegreeDistribution(double k) : this((long)k) { }
         public DegreeDistribution(long k) { K = (int)k; }
 
         public double IdealSoliton(long degree)

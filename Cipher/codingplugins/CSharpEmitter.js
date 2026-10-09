@@ -252,6 +252,7 @@
 
       let decl = node.accessModifier;
       if (node.isStatic) decl += ' static';
+      if (node.isOverride) decl += ' override';
       decl += ` ${node.type.toString()} ${node.name}`;
 
       // Auto-property
@@ -639,15 +640,66 @@
       let left = this.emit(node.left);
       let right = this.emit(node.right);
 
-      // Add parentheses if needed for correct precedence
-      if (node.leftNeedsParens) {
+      // Parenthesize an operand that binds more loosely than this operator (or as
+      // loosely, on the side its associativity does not group), so the C# parse
+      // keeps the tree's grouping whatever produced the operand.
+      if (node.leftNeedsParens || this._operandNeedsParens(node.left, node.operator, 'left')) {
         left = `(${left})`;
       }
-      if (node.rightNeedsParens) {
+      if (node.rightNeedsParens || this._operandNeedsParens(node.right, node.operator, 'right')) {
         right = `(${right})`;
       }
 
       return `${left} ${node.operator} ${right}`;
+    }
+
+    /**
+     * C# precedence of a binary operator (higher binds tighter).
+     * @param {string} operator - the operator
+     * @returns {number} its precedence, 0 if unknown
+     */
+    _binaryPrecedence(operator) {
+      switch (operator) {
+        case '*': case '/': case '%': return 13;
+        case '+': case '-': return 12;
+        case '<<': case '>>': case '>>>': return 11;
+        case '<': case '>': case '<=': case '>=': return 10;
+        case '==': case '!=': return 9;
+        case '&': return 8;
+        case '^': return 7;
+        case '|': return 6;
+        case '&&': return 5;
+        case '||': return 4;
+        case '??': return 3;
+        default: return 0;
+      }
+    }
+
+    /**
+     * Whether an operand of a binary operator must be parenthesized to keep its grouping.
+     * @param {Object} operand - the operand node
+     * @param {string} operator - the enclosing binary operator
+     * @param {string} side - 'left' or 'right'
+     * @returns {boolean}
+     */
+    _operandNeedsParens(operand, operator, side) {
+      if (!operand) return false;
+      switch (operand.nodeType) {
+        case 'Conditional': case 'Assignment': case 'Lambda':
+          return true;
+        case 'IsExpression': case 'AsExpression':
+          return this._binaryPrecedence(operator) >= 10;
+        case 'BinaryExpression': {
+          const outer = this._binaryPrecedence(operator);
+          const inner = this._binaryPrecedence(operand.operator);
+          if (!outer || !inner) return false;
+          if (inner !== outer) return inner < outer;
+          // Equal precedence: left-associative except the null-coalescing operator
+          return operator === '??' ? side === 'left' : side === 'right';
+        }
+        default:
+          return false;
+      }
     }
 
     emitUnaryExpression(node) {
