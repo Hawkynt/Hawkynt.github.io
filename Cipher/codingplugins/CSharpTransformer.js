@@ -20759,9 +20759,16 @@
                 propType = (propInfo.initialValue ? this.inferPropertyType(propInfo.initialValue, constructorNode, propName) : null) ||
                            this.inferTypeFromName(propName.substring(1));
               }
+              // A backing field starting as BigInt words (this._key = [0n, 0n]) holds
+              // BigInts whatever bytes its accessor takes (Threefry's key words)
               // The IL types of the accessor and of its backing field, where the IL has them
               propType = this.ilMemberType(propName.substring(1)) || propType;
               fieldTypeOverride = this.ilMemberType(propName) || fieldTypeOverride;
+              const init = propInfo.initialValue;
+              if ((init?.type === 'ArrayExpression' || init?.type === 'ArrayLiteral') && init.elements?.length &&
+                  init.elements.every(e => e?.type === 'Literal' && (e.bigint !== undefined || typeof e.value === 'bigint')) &&
+                  !(fieldTypeOverride?.isArray && fieldTypeOverride.elementType && ['BigInteger', 'ulong', 'long'].includes(fieldTypeOverride.elementType.name)))
+                fieldTypeOverride = CSharpType.Array(new CSharpType('BigInteger'));
 
               // Make nullable if it can be null (for reference types only - C# value
               // types like int/uint/bool already have a usable default (0/false) that

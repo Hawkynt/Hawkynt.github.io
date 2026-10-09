@@ -167,6 +167,11 @@ check('arrays: an array handed to a constructor that keeps and fills it is read 
     '/** @returns {uint8[]} r */\nfunction f() { /** @type {uint8[]} */ const result = [9]; const w = new W(result); w.put(1); return result; }');
   expectMatch(code, /w\.Put\([^;]*\);\s*result = w\.Out;\s*return result;/, 'result = w.Out before the return');
 });
+check('fields: a backing field starting as BigInt words holds BigIntegers, whatever its accessor takes', () => {
+  const code = transpile('class T extends IRandomGeneratorInstance {\n  constructor(a) { super(a); this._key = [0n, 0n]; }\n' +
+    '  /** @param {uint8[]} k - key */\n  set key(k) { this._key[0] = BigInt(k[0]); this._key[1] = BigInt(k[1]); }\n  /** @returns {uint8[]} k */\n  get key() { return null; }\n}');
+  expectMatch(code, /BigInteger\[\] _key;/, 'BigInteger[] _key');
+});
 check('fields: two fields differing only in case keep their own values', () => {
   const code = transpile('class P {\n  constructor() { /** @type {int32} */ this.N = 8; /** @type {int32} */ this.n = 2 * this.N; }\n' +
     '  /** @returns {int32} sum */\n  sum() { return this.n + this.N; }\n}');
