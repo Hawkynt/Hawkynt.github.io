@@ -1887,6 +1887,8 @@
      * @returns {object} entry { pas, params, ret }
      */
     inlineLambda(node, opts = {}) {
+      if (!node || !['FunctionExpression', 'ArrowFunction', 'ArrowFunctionExpression'].includes(node.type))
+        fail(`a callback that is not a function expression (${node && (node.name || node.type)}) is not supported`, node);
       const params = this.paramsOf(node);
       if (opts.paramTypes) opts.paramTypes.forEach((t, i) => { if (params[i] && (isAnyT(params[i].type) || opts.forceParamTypes)) params[i].type = t; });
       if (opts.paramCount !== undefined) while (params.length < opts.paramCount) params.push({ jsName: '_unused' + params.length, type: opts.paramTypes ? opts.paramTypes[params.length] : T.any });
