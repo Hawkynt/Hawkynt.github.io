@@ -1034,6 +1034,13 @@ check('registry: a module constant named algorithms leaves the registry Register
   expectMatch(code, /Algorithm\[\] RegisteredAlgorithms = /, 'RegisteredAlgorithms');
   expectMatch(code, /AlgorithmInstance = RegisteredAlgorithms\.FirstOrDefault\(\);/, 'AlgorithmInstance from RegisteredAlgorithms');
 });
+check('scopes: a local function parameter named like a differently cased outer local is renamed', () => {
+  const code = transpile('/**\n * @param {uint32} x - x\n * @returns {uint32} r\n */\nfunction one(x) { return x; }\n' +
+    '/**\n * @param {uint32} G - g\n * @returns {uint32} r\n */\nfunction outer(G) {\n  const F = G + 1;\n' +
+    '  /**\n   * @param {int32} f - count\n   * @returns {uint32} r\n   */\n  function inner(f) { return one(F) + f; }\n  return inner(2);\n}');
+  expectMatch(code, /uint Inner\(int fParam/, 'Inner(int fParam)');
+  expectMatch(code, /One\((unchecked\(\(uint\)\()?f\)?\)?\) \+ fParam/, 'One(f) + fParam');
+});
 const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +

@@ -12116,6 +12116,7 @@
         // same outer locals JS closures do here).
         case 'FunctionDeclaration': {
           if (!node.id?.name) return null;
+          this.renameCaseCollidingParams(node, this.currentFunctionBodyNode);
           const localFunction = this.transformFunctionToMethod(node.id.name, node);
           localFunction.accessModifier = '';
           localFunction.isStatic = false;
@@ -12125,6 +12126,42 @@
         default:
           // Skip unhandled statement types
           return null;
+      }
+    }
+
+    /**
+     * A local function parameter whose C# name equals that of a differently cased
+     * enclosing local (sqisign.js: `const F = prm.F;` around `function basisE0(E, f)`,
+     * both `f` in C#) would hide it, and the body's reads of the outer `F` would read
+     * the parameter: the parameter is renamed (`fParam`) in the function's IL.
+     * @param {Object} fn - the IL FunctionDeclaration
+     * @param {Object} enclosingBody - the enclosing function's body
+     */
+    renameCaseCollidingParams(fn, enclosingBody) {
+      if (!enclosingBody || !Array.isArray(fn.params)) return;
+      const outer = new Set();
+      this._walkAstNodes(enclosingBody, n => {
+        if (n.type === 'VariableDeclarator' && n.id?.type === 'Identifier') outer.add(n.id.name);
+      });
+      for (const param of fn.params) {
+        const name = param?.type === 'Identifier' ? param.name : param?.left?.type === 'Identifier' ? param.left.name : null;
+        if (!name) continue;
+        const csName = this.toCamelCase(name);
+        if (![...outer].some(o => o !== name && this.toCamelCase(o) === csName)) continue;
+        const renamed = name + 'Param';
+        const rename = n => {
+          if (!n || typeof n !== 'object') return;
+          if (Array.isArray(n)) { n.forEach(rename); return; }
+          if (n.type === 'Identifier' && n.name === name) n.name = renamed;
+          for (const key of Object.keys(n)) {
+            if (key === 'loc' || key === 'range' || key === 'parent') continue;
+            // a computed-less member name is no reference
+            if ((n.type === 'MemberExpression' && key === 'property' && !n.computed) || (key === 'key' && n.type === 'Property' && !n.computed)) continue;
+            rename(n[key]);
+          }
+        };
+        rename(fn.params);
+        rename(fn.body);
       }
     }
 
