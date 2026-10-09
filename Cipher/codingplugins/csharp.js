@@ -1628,6 +1628,13 @@ namespace ${namespace}
             if (value != 0) for (int i = 0; i < arr.Length; ++i) arr[i] = value;
             return arr;
         }
+        // SetGrow - a JavaScript store by index: grows the array to hold the index
+        public static T SetGrow<T>(ref T[] arr, int index, T value) {
+            if (arr == null) arr = new T[index + 1];
+            else if (index >= arr.Length) Array.Resize(ref arr, index + 1);
+            arr[index] = value;
+            return value;
+        }
         public static T[] CreateArray<T>(int length, T value) {
             var arr = new T[length];
             Array.Fill(arr, value);

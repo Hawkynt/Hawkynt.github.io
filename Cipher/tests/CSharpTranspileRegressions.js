@@ -283,6 +283,10 @@ check('push: every argument of a multi-argument push is appended, in order', () 
 // ---------------------------------------------------------------------------
 // Arrays grown through a parameter
 // ---------------------------------------------------------------------------
+check('arrays: a local declared empty and filled by index grows on each store', () => {
+  const code = transpile('/** @returns {uint32[]} keys */\nfunction keys() { /** @type {uint32[]} */ const rk = []; for (let i = 0; i < 4; ++i) rk[i] = i * 3; return rk; }');
+  expectMatch(code, /OpCodes\.SetGrow<uint>\(ref rk, i, /, 'OpCodes.SetGrow<uint>(ref rk, i, ...)');
+});
 check('push: an array parameter the callee grows is passed by ref', () => {
   const code = transpile('/**\n * @param {uint8[]} dest - grown\n * @param {uint8} v - value\n */\nfunction emit(dest, v) { dest.push(v); }\n' +
     '/** @returns {uint8[]} bytes */\nfunction build() { /** @type {uint8[]} */ const res = []; emit(res, 1); emit(res, 2); return res; }');
@@ -520,6 +524,12 @@ namespace RegressionTest {
       Eq("setbit-clear", OpCodes.SetBit(0x80000001u, 31, false), 1u);
       Eq("createarray", string.Join(",", OpCodes.CreateArray(3, new BigInteger(7))), "7,7,7");
       Eq("createarray-empty", OpCodes.CreateArray(0, 1u).Length, 0);
+      // SetGrow stores by index, growing the array as a JavaScript store does
+      var grown = new uint[0];
+      OpCodes.SetGrow(ref grown, 2, 7u);
+      Eq("setgrow", string.Join(",", grown), "0,0,7");
+      OpCodes.SetGrow(ref grown, 0, 1u);
+      Eq("setgrow-inside", string.Join(",", grown), "1,0,7");
       // BytesToChars maps each byte to one char; RotL64_HL rotates the high:low pair
       Eq("bytestochars", OpCodes.BytesToChars(new byte[] { 65, 0xE9 }), "Aé");
       Eq("rotl64-hl", OpCodes.RotL64_HL(0x80000000u, 1u, 1), (0u, 3u));

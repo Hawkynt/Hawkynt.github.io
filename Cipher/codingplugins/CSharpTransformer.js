@@ -11193,6 +11193,11 @@
       const prevLocalPushScalarElementTypes = this.localPushScalarElementTypes;
       this.localPushScalarElementTypes = this.preScanLocalPushScalarElementTypes(bodyNode);
 
+      // Locals declared as an empty array and then filled by index: JavaScript grows
+      // the array on such a store, a C# array has to be grown first
+      const prevGrowableArrayLocals = this.growableArrayLocals;
+      this.growableArrayLocals = this.preScanGrowableArrayLocals(bodyNode);
+
       if (bodyNode.type === 'BlockStatement') {
         for (const stmt of bodyNode.body) {
           const csStmt = this.transformStatement(stmt);
@@ -11222,9 +11227,32 @@
       this.localMapUsageTypes = prevLocalMapUsageTypes;
       this.localSetUsageTypes = prevLocalSetUsageTypes;
       this.localPushScalarElementTypes = prevLocalPushScalarElementTypes;
+      this.growableArrayLocals = prevGrowableArrayLocals;
       this.currentFunctionBodyNode = prevFunctionBodyNode;
 
       return block;
+    }
+
+    /**
+     * Names of the locals in a function body declared as an empty array (`[]`,
+     * `new Array()`) and stored into by index (`a[i] = v`), which grows a JavaScript
+     * array.
+     * @param {Object} bodyNode - IL function body
+     * @returns {Set<string>} JS local names
+     */
+    preScanGrowableArrayLocals(bodyNode) {
+      const emptyLocals = new Set();
+      const stored = new Set();
+      this._walkAstNodes(bodyNode, node => {
+        if (node.type === 'VariableDeclarator' && node.id?.type === 'Identifier' && node.init &&
+            (((node.init.type === 'ArrayExpression' || node.init.type === 'ArrayLiteral') && (node.init.elements || []).length === 0) ||
+             (node.init.type === 'ArrayCreation' && !node.init.size && !node.init.length)))
+          emptyLocals.add(node.id.name);
+        if (node.type === 'AssignmentExpression' && node.operator === '=' && node.left?.type === 'MemberExpression' &&
+            node.left.computed && node.left.object?.type === 'Identifier')
+          stored.add(node.left.object.name);
+      });
+      return new Set([...emptyLocals].filter(name => stored.has(name)));
     }
 
     /**
@@ -14746,6 +14774,28 @@
               const enumAccess = new CSharpMemberAccess(new CSharpIdentifier(`${enumNamespace}.CountryCode`), memberName);
               return new CSharpAssignment(target, '=', enumAccess);
             }
+          }
+        }
+      }
+
+      // A store by index into a growable local (see preScanGrowableArrayLocals)
+      // grows it as JavaScript does: OpCodes.SetGrow(ref a, i, v)
+      if (node.operator === '=' && node.left?.type === 'MemberExpression' && node.left.computed &&
+          node.left.object?.type === 'Identifier' && this.growableArrayLocals?.has(node.left.object.name)) {
+        const arrayType = this.inferFullExpressionType(node.left.object);
+        if (arrayType?.isArray && arrayType.elementType) {
+          const arrayExpr = this.transformExpression(node.left.object);
+          const prevElement = this.currentArrayElementType;
+          if (arrayType.elementType.isArray) this.currentArrayElementType = arrayType.elementType.elementType;
+          let value = this.transformExpression(node.right);
+          this.currentArrayElementType = prevElement;
+          value = this.castIfNeeded(value, this.inferFullExpressionType(node.right), arrayType.elementType);
+          const index = this.ensureIntIndex(this.transformExpression(node.left.property), node.left.property);
+          if (arrayExpr.nodeType === 'Identifier') {
+            const call = new CSharpMethodCall(new CSharpIdentifier('OpCodes'), 'SetGrow',
+              [new CSharpIdentifier('ref ' + arrayExpr.name), index, value]);
+            call.typeArguments = [arrayType.elementType];
+            return call;
           }
         }
       }
