@@ -543,6 +543,151 @@ test('ZUC-128-MAC: given a page without ZUC, when a tag is computed, then it is 
   expectThrow(() => zucMac(framework), 'ZUC');
 });
 
+// ---------------------------------------------------------------- declared types hold
+// A typed target declares each field and property once, from its JSDoc, so the
+// value an algorithm stores or hands back has to be the type its JSDoc names.
+function registered(file, name) {
+  require(path.join(CIPHER_ROOT, 'algorithms', file));
+  const algorithm = global.AlgorithmFramework.Find(name);
+  if (!algorithm) throw new Error(`${name} is not registered by ${file}`);
+  return algorithm;
+}
+function ascii(text) {
+  return Array.from(Buffer.from(text, 'latin1'));
+}
+function sameBytes(actual, expected) {
+  if (!Array.isArray(actual)) throw new Error(`expected a byte array, got ${JSON.stringify(actual)}`);
+  equalHex(actual, hex(expected));
+}
+function keySizes(list, expected) {
+  const { KeySize } = global.AlgorithmFramework;
+  if (!Array.isArray(list) || !list.every(k => k instanceof KeySize)) throw new Error(`expected KeySize objects, got ${JSON.stringify(list)}`);
+  const got = list.map(k => `${k.minSize}-${k.maxSize}`).join(',');
+  if (got !== expected) throw new Error(`expected sizes ${expected}, got ${got}`);
+}
+
+test('MWC64X: given x and carry above 2^31, when three words are drawn, then each is x XOR c of the 64-bit multiply-with-carry state', () => {
+  const instance = registered('random/mwc64x.js', 'MWC64X').CreateInstance();
+  // Given: x = 0xFFFFFFFF and c = 0x7FFFFFFF, both little-endian
+  instance.seed = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F];
+  // Then: the reference generator, output x ^ c, then (c:x) = A * x + c with A = 4294883355
+  let x = 0xFFFFFFFFn, c = 0x7FFFFFFFn;
+  const expected = [];
+  for (let i = 0; i < 3; ++i) {
+    expected.push(...leBytes(x ^ c, 4));
+    const t = 4294883355n * x + c;
+    x = t & 0xFFFFFFFFn;
+    c = t >> 32n;
+  }
+  equalHex(instance.NextBytes(12), hex(expected));
+});
+
+test('Kalyna Key Wrap: given the algorithm, when its block sizes are read, then they are KeySize entries of 16, 32 and 64 bytes', () => {
+  require(path.join(CIPHER_ROOT, 'algorithms', 'block', 'kalyna.js'));
+  keySizes(registered('crypto/kalynawrap.js', 'Kalyna Key Wrap').SupportedBlockSizes, '16-16,32-32,64-64');
+});
+test('JH, Shabal, Tiger and BLAKE2xs: given the algorithms, when their output sizes are read, then they are KeySize entries in bytes', () => {
+  keySizes(registered('hash/jh.js', 'JH-256').SupportedOutputSizes, '32-32');
+  keySizes(registered('hash/tiger.js', 'Tiger').SupportedOutputSizes, '24-24');
+  require(path.join(CIPHER_ROOT, 'algorithms', 'hash', 'shabal.js'));
+  keySizes(global.AlgorithmFramework.Find('Shabal-512').SupportedOutputSizes, '64-64');
+  keySizes(registered('hash/blake2.js', 'BLAKE2xs').SupportedOutputSizes, '1-65534');
+});
+
+test('Shrinking Generator: given a { key } wrapper instead of key bytes, when it is set, then no key is taken', () => {
+  const instance = registered('stream/shrinking-generator.js', 'Shrinking Generator').CreateInstance();
+  instance.key = { key: new Array(16).fill(1) };
+  if (instance.key !== null) throw new Error(`expected no key, got ${JSON.stringify(instance.key)}`);
+});
+test('Shrinking Generator: given 16 key bytes, when the key is read back, then it is a copy of them', () => {
+  const instance = registered('stream/shrinking-generator.js', 'Shrinking Generator').CreateInstance();
+  const key = Array.from({ length: 16 }, (_, i) => i);
+  instance.key = key;
+  const read = instance.key;
+  read[0] = 0xFF;
+  sameBytes(instance.key, key);
+});
+
+// Every key getter below used to hand back something else than the bytes its setter takes.
+const CLASSICAL_KEYS = [
+  ['al-kindi-frequency.js', 'Al-Kindi Frequency Analysis', 'english'],
+  ['autokey.js', 'Autokey Cipher', 'LEMON'],
+  ['bazeries.js', 'Bazeries Cylinder Cipher', 'CIPHER'],
+  ['beaufort.js', 'Beaufort Cipher', 'LEMON'],
+  ['bifid.js', 'Bifid Cipher', 'BGWKZQPNDSIOAXEFCLUMTHYVR,10'],
+  ['cadaenus.js', 'CADAENUS Cipher', 'SECRET'],
+  ['columnar.js', 'Columnar Transposition', 'KEY'],
+  ['foursquare.js', 'Four-Square Cipher', 'EXAMPLE,KEYWORD'],
+  ['gronsfeld.js', 'Gronsfeld Cipher', '31415'],
+  ['hill.js', 'Hill Cipher', '3,3,2,5'],
+  ['jefferson-wheel.js', 'Jefferson Wheel', '25|1'],
+  ['nihilist.js', 'Nihilist Cipher', 'ZEBRAS,RUSSIAN'],
+  ['phillips.js', 'Phillips Cipher', 'DIAGONAL'],
+  ['pigpen.js', 'Pigpen', 'rosicrucian'],
+  ['playfair.js', 'Playfair Cipher', 'PLAYFAIREXAMPLE'],
+  ['railfence.js', 'Rail Fence Cipher', '4'],
+  ['scytale.js', 'Scytale Cipher', '3'],
+  ['solitaire.js', 'Solitaire Cipher', 'FOO'],
+  ['trifid.js', 'Trifid Cipher', 'FELIXMARIEDELASTELLE,5'],
+  ['twosquare.js', 'Two-Square Cipher', 'SECRET,CIPHER'],
+  ['vigenere.js', 'Vigenère Cipher', 'LEMON']
+];
+for (const [file, name, key] of CLASSICAL_KEYS) {
+  test(`${name}: given the key "${key}", when it is read back and the copy changed, then the key reads as the bytes set`, () => {
+    const instance = registered('classical/' + file, name).CreateInstance(false);
+    instance.key = ascii(key);
+    const read = instance.key;
+    read[0] = 0;
+    sameBytes(instance.key, ascii(key));
+  });
+}
+test('Rail Fence Cipher: given the key "4", when the rails are read, then there are four', () => {
+  const instance = registered('classical/railfence.js', 'Rail Fence Cipher').CreateInstance(false);
+  instance.key = ascii('4');
+  if (instance.rails !== 4) throw new Error(`expected 4 rails, got ${instance.rails}`);
+});
+test('Enigma Machine: given the key "ABC123", when it is read back, then it is the setting in the same "PPPSSS" form', () => {
+  const instance = registered('classical/enigma.js', 'Enigma Machine').CreateInstance(false);
+  instance.key = ascii('ABC123');
+  sameBytes(instance.key, ascii('ABC123'));
+});
+
+test('Diffie-Hellman: given the default group and then a modulus size, when the group is read, then it is the group key', () => {
+  const instance = registered('asymmetric/diffie-hellman.js', 'Diffie-Hellman').CreateInstance();
+  if (instance.group !== 'modp2048') throw new Error(`expected modp2048, got ${instance.group}`);
+  instance.group = '3072';
+  if (instance.group !== 'modp3072') throw new Error(`expected modp3072, got ${instance.group}`);
+});
+test('Diffie-Hellman: given a private exponent and a peer value, when both are read back, then they are the bytes set, and null once cleared', () => {
+  const instance = registered('asymmetric/diffie-hellman.js', 'Diffie-Hellman').CreateInstance();
+  instance.privateKey = [0x01, 0x23, 0x45];
+  instance.otherPublicKey = [0x67, 0x89];
+  sameBytes(instance.privateKey, [0x01, 0x23, 0x45]);
+  sameBytes(instance.otherPublicKey, [0x67, 0x89]);
+  instance.ClearData();
+  if (instance.privateKey !== null || instance.otherPublicKey !== null) throw new Error('expected null after ClearData');
+});
+test('Diffie-Hellman: given the generated private exponent 2, when it is read back, then it is 2 padded to the 256-byte modulus width', () => {
+  const instance = registered('asymmetric/diffie-hellman.js', 'Diffie-Hellman').CreateInstance();
+  instance.GenerateKeyPair([0x02]);
+  const expected = new Array(256).fill(0);
+  expected[255] = 2;
+  sameBytes(instance.privateKey, expected);
+});
+test('DSA: given a signature r || s, when it is read back, then it is the bytes set', () => {
+  const instance = registered('asymmetric/dsa.js', 'DSA').CreateInstance();
+  const signature = Array.from({ length: 40 }, (_, i) => i + 1);
+  instance.signature = signature;
+  sameBytes(instance.signature, signature);
+});
+test('xxHash3: given a hex seed, when it is read back, then it is the 64-bit seed as 16 hex digits', () => {
+  const instance = registered('hash/xxhash3.js', 'xxHash3').CreateInstance();
+  instance.seed = '9e3779b185ebca8d';
+  if (instance.seed !== '9E3779B185EBCA8D') throw new Error(`got ${instance.seed}`);
+  instance.seed = '1';
+  if (instance.seed !== '0000000000000001') throw new Error(`got ${instance.seed}`);
+});
+
 /**
  * Run every algorithm regression case.
  * @param {object} options - { verbose }
