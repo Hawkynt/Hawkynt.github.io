@@ -1969,12 +1969,16 @@
           if (d.init) out.push(S.expr(E.assign(this.symRef(sym), this.valueOf(d.init, t))));
           continue;
         }
-        const init = d.init ? this.valueOf(d.init, t) : this.undefinedOf(t);
-        const name = this.declareLocal(sym, t);
+        let t2 = t;
+        const initRaw = d.init ? this.lowerExpr(d.init, t) : null;
+        // no IL type: the local takes the reference type its initialiser has (new Array(n), a class instance)
+        if (t === 'Object' && initRaw && T.isRef(initRaw.t) && !['Object', 'null', 'Class', 'void'].includes(initRaw.t) && !ilName(sym.il)) { t2 = initRaw.t; sym.jtCached = t2; }
+        const init = initRaw ? this.conv(initRaw, t2) : this.undefinedOf(t2);
+        const name = this.declareLocal(sym, t2);
         const boxed = this.needsBox(sym);
         sym.boxed = boxed;
         if (sym.isVar) sym.declaredIn = this.fn;
-        out.push(S.local(name, t, init, { boxed }));
+        out.push(S.local(name, t2, init, { boxed }));
       }
       return out;
     }
@@ -2809,6 +2813,7 @@
       }
       if (node.type === 'ArrayLength') {
         const arr = this.lowerExpr(node.array);
+        if (!T.isArray(arr.t)) return this.memberTarget(arr, 'length', node);
         return { kind: 'length', obj: arr, t: 'int' };
       }
       throw new LoweringError('assignment target ' + node.type);
@@ -3502,6 +3507,11 @@
 
     arrayOf(node, key = 'array') { return this.lowerExpr(node[key]); }
 
+    /** An IL array node whose receiver is not an array here (an untyped value): the method by name at run time. */
+    nonArray(arr, method, args, node) {
+      return this.dynamicCall(arr, method, args.filter(a => a !== undefined && a !== null), node);
+    }
+
     x_ArrayLength(node) {
       const arr = this.lowerExpr(node.array);
       if (T.isArray(arr.t) || arr.t === 'String' || arr.t === 'JsArrayLike') return E.call(arr, 'length', [], 'int');
@@ -3515,8 +3525,8 @@
       if (!T.isArray(arr.t)) return E.scall('Js', 'invoke', [this.conv(arr, 'Object'), E.str('push'), ...this.boxArgs(vals)], 'Object');
       return this.push(arr, vals);
     }
-    x_ArrayPop(node) { const arr = this.arrayOf(node); return this.arrayMethod(arr, 'pop', [], node); }
-    x_ArrayShift(node) { const arr = this.arrayOf(node); return this.arrayMethod(arr, 'shift', [], node); }
+    x_ArrayPop(node) { const arr = this.arrayOf(node); if (!T.isArray(arr.t)) return this.nonArray(arr, 'pop', [], node); return this.arrayMethod(arr, 'pop', [], node); }
+    x_ArrayShift(node) { const arr = this.arrayOf(node); if (!T.isArray(arr.t)) return this.nonArray(arr, 'shift', [], node); return this.arrayMethod(arr, 'shift', [], node); }
     x_ArrayUnshift(node) { const arr = this.arrayOf(node); return this.arrayMethod(arr, 'unshift', node.values || (node.value ? [node.value] : []), node); }
     x_ArraySlice(node) {
       const arr = this.arrayOf(node);
@@ -3529,6 +3539,7 @@
     }
     x_TypedArraySubarray(node) {
       const arr = this.arrayOf(node);
+      if (!T.isArray(arr.t)) return this.nonArray(arr, 'subarray', [node.begin, node.end], node);
       const args = [];
       if (node.begin) args.push(this.valueOf(node.begin, 'double'));
       if (node.end) { if (!node.begin) args.push(E.dbl(0)); args.push(this.valueOf(node.end, 'double')); }
@@ -3536,6 +3547,7 @@
     }
     x_TypedArraySet(node) {
       const arr = this.arrayOf(node);
+      if (!T.isArray(arr.t)) return this.nonArray(arr, 'set', [node.source, node.offset], node);
       return E.call(arr, 'set', [this.conv(this.lowerExpr(node.source), 'Object'), ...(node.offset ? [this.valueOf(node.offset, 'double')] : [])], 'void');
     }
     x_ArrayConcat(node) {
@@ -3545,9 +3557,10 @@
       if (!T.isArray(arr.t)) return this.conv(E.scall('Js', 'invoke', [this.conv(arr, 'Object'), E.str('concat'), ...others], 'Object'), this.nodeJt(node));
       return E.call(arr, 'concat', others, arr.t);
     }
-    x_ArrayReverse(node) { const arr = this.arrayOf(node); return E.call(arr, 'reverse', [], arr.t); }
+    x_ArrayReverse(node) { const arr = this.arrayOf(node); if (!T.isArray(arr.t)) return this.nonArray(arr, 'reverse', [], node); return E.call(arr, 'reverse', [], arr.t); }
     x_ArrayFill(node) {
       const arr = this.arrayOf(node);
+      if (!T.isArray(arr.t)) return this.nonArray(arr, 'fill', [node.value, node.start, node.end], node);
       const args = [this.elemValue(arr, this.lowerExpr(node.value, T.elemOf(arr.t)))];
       if (node.start !== undefined && node.start !== null) args.push(this.valueOf(node.start, 'double'));
       if (node.end !== undefined && node.end !== null) args.push(this.valueOf(node.end, 'double'));
@@ -3569,9 +3582,9 @@
       if (T.isPrimArray(arr.t) && !T.isNumeric(T.unbox(v.t)) && v.t !== 'boolean') return E.bin('>=', E.call(arr, 'indexOfBoxed', [this.conv(v, 'Object')], 'int'), E.int(0), 'boolean');
       return E.call(arr, 'includes', [this.elemValue(arr, v)], 'boolean');
     }
-    x_ArraySplice(node) { const arr = this.arrayOf(node); return this.splice(arr, node.start, node.deleteCount, node.items || []); }
+    x_ArraySplice(node) { const arr = this.arrayOf(node); if (!T.isArray(arr.t)) return this.nonArray(arr, 'splice', [node.start, node.deleteCount, ...(node.items || [])], node); return this.splice(arr, node.start, node.deleteCount, node.items || []); }
     x_ArrayJoin(node) { const arr = this.arrayOf(node); return E.call(this.conv(arr, T.isArray(arr.t) ? arr.t : 'JsArrayLike'), 'join', node.separator ? [this.toStr(this.lowerExpr(node.separator))] : [], 'String'); }
-    x_ArraySort(node) { const arr = this.arrayOf(node); return E.call(arr, 'sort', node.compareFn ? [this.valueOf(node.compareFn, 'JsFn')] : [], arr.t); }
+    x_ArraySort(node) { const arr = this.arrayOf(node); if (!T.isArray(arr.t)) return this.nonArray(arr, 'sort', [node.compareFn], node); return E.call(arr, 'sort', node.compareFn ? [this.valueOf(node.compareFn, 'JsFn')] : [], arr.t); }
     x_ArrayMap(node) { const arr = this.arrayOf(node); return this.arrayMethod(arr, 'map', [node.callback], node); }
     x_ArrayForEach(node) { const arr = this.arrayOf(node); return this.arrayMethod(arr, 'forEach', [node.callback], node); }
     x_ArrayFilter(node) { const arr = this.arrayOf(node); return this.arrayMethod(arr, 'filter', [node.callback], node); }
