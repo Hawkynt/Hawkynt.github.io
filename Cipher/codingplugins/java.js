@@ -771,7 +771,38 @@ final class Js {
     }
     public static Object callGlobal(String name, Object... args) { Object f = global(name); return toFn(f).call(args); }
     public static Object construct(String name, Object... args) { throw new JsError("ReferenceError", name + " is not defined"); }
-    public static Object constructValue(Object ctor, Object... args) { throw new JsError("TypeError", str(ctor) + " is not a constructor"); }
+    public static Object constructValue(Object ctor, Object... args) {
+        if (ctor instanceof Class) {
+            for (java.lang.reflect.Constructor<?> c : ((Class<?>) ctor).getDeclaredConstructors()) {
+                if (c.getParameterCount() != args.length) continue;
+                Class<?>[] ts = c.getParameterTypes(); Object[] a = new Object[args.length];
+                for (int i = 0; i < args.length; ++i) a[i] = coerce(args[i], ts[i]);
+                c.setAccessible(true);
+                try { return c.newInstance(a); }
+                catch (java.lang.reflect.InvocationTargetException e) { throw unwrap(e); }
+                catch (ReflectiveOperationException e) { throw new JsError(e.toString()); }
+            }
+        }
+        throw new JsError("TypeError", str(ctor) + " is not a constructor");
+    }
+    /**
+     * The exports of another algorithm module (a bundled unit): its classes, as constructors, and its
+     * module-level values. Loading the unit registers its algorithms, as require() does.
+     */
+    public static Object module(String name) {
+        for (String cn : new String[] { name + "_depGenerated", name + "Generated" }) {
+            Class<?> u;
+            try { u = Class.forName(cn); } catch (ClassNotFoundException e) { continue; }
+            JsObject o = new JsObject();
+            for (Class<?> c : u.getDeclaredClasses()) o.put(c.getSimpleName(), c);
+            try {
+                for (java.lang.reflect.Field f : u.getDeclaredFields())
+                    if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) { f.setAccessible(true); o.put(f.getName(), f.get(null)); }
+            } catch (IllegalAccessException e) { throw new JsError(e.toString()); }
+            return o;
+        }
+        return null;
+    }
     public static Object unsupported(String what) { throw new JsError("SyntaxError", what + " cannot run on the JVM"); }
     public static Object typeError(String message) { throw new JsError("TypeError", message); }
     public static Object optIndex(Object o, Object key) { return o == null ? null : index(o, key); }

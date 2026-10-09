@@ -544,12 +544,16 @@ function bundleLibrariesFor(language, source, algorithmFile, plugin, parserOptio
  * The .data libraries an algorithm takes through its third factory parameter,
  * for the JVM languages: the plugin merges each library's declarations into
  * the generated class and binds the parameter to what the library exports.
- * @returns {{param: string, ast: object, exports: object}[]}
+ * A parameter that loads another algorithm module instead
+ * (function () { return require('./des'); }) names that module.
+ * @returns {{param: string, ast?: object, exports?: object, loader?: string}[]}
  */
 function jvmLibraries(source, algorithmFile) {
   const paramMatches = [...source.matchAll(/function\s*\(\s*AlgorithmFramework\s*,\s*OpCodes\s*,\s*(\w+)\s*\)/g)];
   const param = paramMatches.length ? paramMatches[paramMatches.length - 1][1] : null;
   if (!param) return [];
+  const loader = source.match(/function\s*\(\s*\)\s*\{\s*return\s+require\(\s*['"]([^'"]+)['"]\s*\)\s*;?\s*\}/);
+  if (loader) return [{ param, loader: path.basename(loader[1], '.js') }];
   const libraries = [];
   for (const lm of source.matchAll(/require\(\s*['"]\.\/([^'"]+)['"]\s*\)/g)) {
     const libPath = [lm[1], lm[1] + '.js', lm[1] + '.data.js']

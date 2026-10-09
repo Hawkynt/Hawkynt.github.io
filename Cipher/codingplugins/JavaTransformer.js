@@ -437,7 +437,7 @@
       for (const [name, def] of Object.entries(FRAMEWORK)) this.addFrameworkClass(name, def);
       const body = il && il.type === 'Program' ? il.body : (Array.isArray(il) ? il : [il]);
       // .data libraries the module takes as a factory parameter: their declarations join the module
-      const libBodies = this.libraries.flatMap(lib => (lib.ast = Object.assign({}, lib.ast, { body: libraryStatements(lib.ast) })).body);
+      const libBodies = this.libraries.filter(lib => lib.ast).flatMap(lib => (lib.ast = Object.assign({}, lib.ast, { body: libraryStatements(lib.ast) })).body);
       this.body = [...libBodies, ...(body || [])].filter(Boolean);
       foldStringChains(this.body);
       this.resolve(this.body);
@@ -817,6 +817,8 @@
         if (bound) return;
         bound = true;
         for (const lib of this.libraries) {
+          // a parameter loading another algorithm module: calling it gives that module's exports
+          if (lib.param && lib.loader) { scopes[0].names.set(lib.param, { kind: 'moduleLoader', name: lib.param, module: lib.loader, refs: 0, assigns: 0, fn: null }); continue; }
           if (!lib.param || scopes[0].names.has(lib.param) && !lib.exports) continue;
           const ex = lib.exports || {};
           if (ex.single) {
@@ -3324,6 +3326,7 @@
           return this.callFunction(sym.fi, args, null);
         }
         if (sym && sym.kind === 'localfn') return this.callFunction(sym.fi, args, sym.holder);
+        if (sym && sym.kind === 'moduleLoader') return E.scall('Js', 'module', [E.str(sym.module.replace(/[^a-zA-Z0-9]/g, '_'))], 'Object');
         if (sym) {
           // a function value
           const fn = this.symRef(sym);
