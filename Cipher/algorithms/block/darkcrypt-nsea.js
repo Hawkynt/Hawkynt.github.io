@@ -144,6 +144,7 @@
     let rLeft = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
     let lRight = OpCodes.Pack32LE(block[8], block[9], block[10], block[11]);
     let rRight = OpCodes.Pack32LE(block[12], block[13], block[14], block[15]);
+    /** @type {uint32} */
     let rotTemp;
     const rotateRightPair = () => {
       rotTemp = OpCodes.Shr32(lRight, 24);
@@ -179,6 +180,7 @@
     let rLeft = OpCodes.Pack32LE(block[4], block[5], block[6], block[7]);
     let lRight = OpCodes.Pack32LE(block[8], block[9], block[10], block[11]);
     let rRight = OpCodes.Pack32LE(block[12], block[13], block[14], block[15]);
+    /** @type {uint32} */
     let rotTemp;
     const unrotateLeftPair = () => {
       rotTemp = OpCodes.Shl32(rLeft, 24);

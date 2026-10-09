@@ -311,7 +311,7 @@
       let e = OpCodes.ToUint32(preAdd[4] + OpCodes.Pack32LE(block[16], block[17], block[18], block[19]));
 
       for (let t = 0; t < ROUNDS; t++) {
-        const roundConst = OpCodes.ToUint32(RK[t] + SHA_K[OpCodes.ToInt(t / 20)]);
+        const roundConst = OpCodes.ToUint32(RK[t] + SHA_K[Math.floor(t / 20)]);
         const T = OpCodes.ToUint32(OpCodes.ToUint32(OpCodes.ToUint32(OpCodes.RotL32(a, 5) + f_bool(t, b, c, d)) + e) + roundConst);
         e = d; d = c; c = OpCodes.RotL32(b, 30); b = a; a = T;
       }
@@ -345,7 +345,7 @@
         const bOld = OpCodes.RotR32(c, 30);
         const cOld = d;
         const dOld = e;
-        const roundConst = OpCodes.ToUint32(RK[t] + SHA_K[OpCodes.ToInt(t / 20)]);
+        const roundConst = OpCodes.ToUint32(RK[t] + SHA_K[Math.floor(t / 20)]);
         const eOld = OpCodes.ToUint32(OpCodes.ToUint32(OpCodes.ToUint32(newA - OpCodes.RotL32(aOld, 5)) - f_bool(t, bOld, cOld, dOld)) - roundConst);
         a = aOld; b = bOld; c = cOld; d = dOld; e = eOld;
       }

@@ -1,8 +1,4 @@
 {
-  "algorithms/block/darkcrypt-shebamik.js": 2,
-  "algorithms/block/deal.js": 1,
-  "algorithms/block/des-x.js": 7,
-  "algorithms/block/kuznyechik.js": 1,
   "algorithms/classical/al-kindi-frequency.js": 1,
   "algorithms/classical/autokey.js": 2,
   "algorithms/classical/bazeries.js": 2,
