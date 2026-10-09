@@ -905,7 +905,8 @@ sub MerkleDamgardBlocks {
         ["shl32", "$value, $positions", "return ($value << ($positions & 31)) & 0xFFFFFFFF;"],
         ["shr32", "$value, $positions", "return (($value & 0xFFFFFFFF) >> ($positions & 31)) & 0xFFFFFFFF;"],
         ["shr32signed", "$value, $positions",
-          "my $v = $value & 0xFFFFFFFF; $v -= 0x100000000 if $v & 0x80000000; return ($v >> ($positions & 31)) & 0xFFFFFFFF;"],
+          // signed, as JavaScript's ">>" is (an arithmetic shift of the int32)
+          "my $v = $value & 0xFFFFFFFF; $v -= 0x100000000 if $v & 0x80000000; use integer; return $v >> ($positions & 31);"],
 
         // 8/16-bit rotations (OpCodes.RotL8/RotR8/RotL16/RotR16 - RotL32/
         // RotR32 are handled inline via the RotateLeft/RotateRight IL node
