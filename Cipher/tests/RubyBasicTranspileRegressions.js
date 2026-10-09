@@ -359,6 +359,24 @@ const FB_CASES = {
       'function lengthfield() { const m = new Matches([4, 5, 6]); return [joined(m.length), m.length.length].join(","); }',
     expect: '4-5-6,3'
   },
+  manyargs: {
+    // more than eight arguments with effects (passed as one array), and String as a value
+    js: 'class Many { constructor(a, b, c, d, e, f, g, h, i, j) { this.v = [a, b, c, d, e, f, g, h, i, j]; } }\n' +
+      'function twice(x) { return x * 2; }\n' +
+      'function manyargs() { const m = new Many(1, 2, 3, 4, 5, 6, 7, 8, twice(3), twice(5)); return m.v.map(String).join(","); }',
+    expect: '1,2,3,4,5,6,7,8,6,10'
+  },
+  negbig: {
+    // BigInt() of a negative Number is a negative BigInt in every operation
+    js: 'function negbig() { const m1 = BigInt(-1), p = 1000000007n; return [String(p - m1), String(p + m1), String(p - BigInt(-3)), String(m1 * m1)].join(" "); }',
+    expect: '1000000008 1000000006 1000000010 1'
+  },
+  uint64obj: {
+    // OpCodes.UInt64's [high32, low32] helpers, reached through OpCodes as a value
+    js: 'function uint64obj() { const P = OpCodes.UInt64.create(0xC96C5795, 0xD7870F42); let c = OpCodes.UInt64.create(0, 0x12345678);\n' +
+      '  c = OpCodes.UInt64.xor(OpCodes.UInt64.shr(c, 3), P); return [c.join(","), OpCodes.UInt64.toBytes(c).join(",")].join(" "); }',
+    expect: '3379320725,3586229645 201,108,87,149,213,193,133,141'
+  },
   undef: {
     // undefined is not null: x === undefined holds for a missing argument
     js: 'function resolve(m, tr) { if (m === null || m === undefined) return tr.slice(); return m.slice(); }\n' +

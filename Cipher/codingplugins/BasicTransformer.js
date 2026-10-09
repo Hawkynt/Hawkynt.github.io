@@ -3802,7 +3802,7 @@ Function js_big_from_double(ByVal d As Double) As JsV
   For i As Long = 0 To n - 1
     b->limbs[i] = limbs(i)
   Next
-  b->neg = neg
+  b->neg = IIf(neg, 1, 0)
   Return js_bigv(b)
 End Function
 
@@ -6377,13 +6377,41 @@ Sub js_global_set(ByRef nm As String, ByRef v As JsV)
   js_setp(G_Globals, js_sym(nm), v)
 End Sub
 
+Declare Function oc_global_object() As JsV
+
 ' performance.now(): milliseconds
 Function js_perf_now(ByRef self As JsV, ByVal argv As JsV Ptr, ByVal argc As Long, ByVal envp As Any Ptr) As JsV
   Return js_num(Timer * 1000.0)
 End Function
 
+' String, Number, Boolean and BigInt as values (xs.map(String))
+Function js_fnv_String(ByRef self As JsV, ByVal argv As JsV Ptr, ByVal argc As Long, ByVal envp As Any Ptr) As JsV
+  If argc = 0 Then Return js_str("")
+  Return js_tostrv(argv[0])
+End Function
+
+Function js_fnv_Number(ByRef self As JsV, ByVal argv As JsV Ptr, ByVal argc As Long, ByVal envp As Any Ptr) As JsV
+  If argc = 0 Then Return js_num(0)
+  Return js_num(js_tonum(argv[0]))
+End Function
+
+Function js_fnv_Boolean(ByRef self As JsV, ByVal argv As JsV Ptr, ByVal argc As Long, ByVal envp As Any Ptr) As JsV
+  Return js_bool(argc > 0 AndAlso js_truthy(argv[0]))
+End Function
+
+Function js_fnv_BigInt(ByRef self As JsV, ByVal argv As JsV Ptr, ByVal argc As Long, ByVal envp As Any Ptr) As JsV
+  Return js_tobig(js_arg(argv, argc, 0))
+End Function
+
 Function js_global_get(ByRef nm As String) As JsV
   If G_Globals.tag = JS_T_OBJ AndAlso js_hasp(G_Globals, js_sym(nm)) Then Return js_getp(G_Globals, js_sym(nm))
+  Select Case nm
+    Case "String" : Return js_fn_new(@js_fnv_String, 0)
+    Case "Number" : Return js_fn_new(@js_fnv_Number, 0)
+    Case "Boolean" : Return js_fn_new(@js_fnv_Boolean, 0)
+    Case "BigInt" : Return js_fn_new(@js_fnv_BigInt, 0)
+  End Select
+  If nm = "OpCodes" Then Return oc_global_object()
   If nm = "performance" Then
     Dim perf As JsV = js_obj_new()
     js_setp(perf, js_sym("now"), js_fn_new(@js_perf_now, 0))
@@ -8217,6 +8245,86 @@ End Sub
 Function oc_CreateBitStream(OC_ARGS) As JsV
   If CLS_BitStream.tag <> JS_T_OBJ Then bs_init()
   Return js_new1(CLS_BitStream, js_arg(argv, argc, 0))
+End Function
+
+' OpCodes as a value (OpCodes.UInt64.create(...)): the [high32, low32] helpers
+' of OpCodes.UInt64 the algorithms reach through it
+Function u64_pair(ByVal hi As ULong, ByVal lo As ULong) As JsV
+  Dim r As JsV = js_arr_new(0)
+  js_pushn(r, hi)
+  js_pushn(r, lo)
+  Return r
+End Function
+
+Function u64_create(OC_ARGS) As JsV
+  Return u64_pair(js_tou32(js_argnum(argv, argc, 0)), js_tou32(js_argnum(argv, argc, 1)))
+End Function
+
+Function u64_shr(OC_ARGS) As JsV
+  Dim a As JsV = js_arg(argv, argc, 0)
+  Dim n As Long = js_toi32(js_argnum(argv, argc, 1))
+  If n = 0 Then Return a
+  Dim hi As ULong = js_tou32(js_idxn(a, 0))
+  Dim lo As ULong = js_tou32(js_idxn(a, 1))
+  If n < 32 Then Return u64_pair(hi Shr n, (lo Shr n) Or (hi Shl ((32 - n) And 31)))
+  Return u64_pair(0, hi Shr ((n - 32) And 31))
+End Function
+
+Function u64_shl(OC_ARGS) As JsV
+  Dim a As JsV = js_arg(argv, argc, 0)
+  Dim n As Long = js_toi32(js_argnum(argv, argc, 1))
+  If n = 0 Then Return a
+  Dim hi As ULong = js_tou32(js_idxn(a, 0))
+  Dim lo As ULong = js_tou32(js_idxn(a, 1))
+  If n < 32 Then Return u64_pair((hi Shl n) Or (lo Shr ((32 - n) And 31)), lo Shl n)
+  Return u64_pair(lo Shl ((n - 32) And 31), 0)
+End Function
+
+Function u64_bitop(OC_ARGS, ByVal op As Long) As JsV
+  Dim a As JsV = js_arg(argv, argc, 0)
+  Dim b As JsV = js_arg(argv, argc, 1)
+  Dim ah As ULong = js_tou32(js_idxn(a, 0)), al As ULong = js_tou32(js_idxn(a, 1))
+  Dim bh As ULong = js_tou32(js_idxn(b, 0)), bl As ULong = js_tou32(js_idxn(b, 1))
+  Select Case op
+    Case 0 : Return u64_pair(ah And bh, al And bl)
+    Case 1 : Return u64_pair(ah Or bh, al Or bl)
+  End Select
+  Return u64_pair(ah Xor bh, al Xor bl)
+End Function
+
+Function u64_and(OC_ARGS) As JsV
+  Return u64_bitop(self, argv, argc, envp, 0)
+End Function
+
+Function u64_or(OC_ARGS) As JsV
+  Return u64_bitop(self, argv, argc, envp, 1)
+End Function
+
+Function u64_xor(OC_ARGS) As JsV
+  Return u64_bitop(self, argv, argc, envp, 2)
+End Function
+
+Function u64_toBytes(OC_ARGS) As JsV
+  Dim a As JsV = js_arg(argv, argc, 0)
+  Dim r As JsV = js_unpack(js_idxn(a, 0), 32, -1)
+  Dim lo As JsV = js_unpack(js_idxn(a, 1), 32, -1)
+  Return js_spread_into(r, lo)
+End Function
+
+Function oc_global_object() As JsV
+  Static o As JsV
+  If o.tag = JS_T_OBJ Then Return o
+  Dim u As JsV = js_obj_new()
+  js_setp(u, js_sym("create"), js_fn_new(@u64_create, 0))
+  js_setp(u, js_sym("shr"), js_fn_new(@u64_shr, 0))
+  js_setp(u, js_sym("shl"), js_fn_new(@u64_shl, 0))
+  js_setp(u, js_sym("and"), js_fn_new(@u64_and, 0))
+  js_setp(u, js_sym("or"), js_fn_new(@u64_or, 0))
+  js_setp(u, js_sym("xor"), js_fn_new(@u64_xor, 0))
+  js_setp(u, js_sym("toBytes"), js_fn_new(@u64_toBytes, 0))
+  o = js_obj_new()
+  js_setp(o, js_sym("UInt64"), u)
+  Return o
 End Function`;
 
   // ========================[ FREEBASIC: JAVASCRIPT SEMANTICS ]========================
@@ -8842,13 +8950,15 @@ End Function`;
 
     callHelper(family, prefixArgs, a) {
       let prefix = prefixArgs;
+      if (a.spread || a.list.length > 8) {
+        // the argument array, read before the prefix (arguments run right to left), runs the sequence itself
+        const base = a.seq && a.seq.length ? `js_withv(${a.seq.join(' + ')}, js_arr_new(0))` : 'js_arr_new(0)';
+        const arr = a.spread || a.list.reduce((acc, x) => `js_arr_push_r(${acc}, ${x})`, base);
+        return `${family}a(${[...prefix, arr].join(', ')})`;
+      }
       if (a.seq && a.seq.length) {
         const wrap = family === 'js_fcall' ? 'js_withf' : 'js_withv';
         prefix = [`${wrap}(${a.seq.join(' + ')}, ${prefixArgs[0]})`, ...prefixArgs.slice(1)];
-      }
-      if (a.spread || a.list.length > 8) {
-        const arr = a.spread || a.list.reduce((acc, x) => `js_arr_push_r(${acc}, ${x})`, 'js_arr_new(0)');
-        return `${family}a(${[...prefix, arr].join(', ')})`;
       }
       return `${family}${a.list.length}(${[...prefix, ...a.list].join(', ')})`;
     }
