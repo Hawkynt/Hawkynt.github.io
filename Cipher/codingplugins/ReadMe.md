@@ -722,7 +722,8 @@ codingplugins/
     ├── [Basic]
     │   ├── basic.js               # Plugin entry point
     │   ├── BasicAST.js            # Basic AST node definitions
-    │   ├── BasicTransformer.js    # IL AST → Basic AST
+    │   ├── BasicTransformer.js    # IL AST → Basic AST; FreeBasicTransformer emits FreeBASIC
+    │   │                          #   directly onto an embedded runtime with JavaScript semantics
     │   └── BasicEmitter.js        # Basic AST → Basic source code
     │
     ├── [C]
@@ -794,7 +795,7 @@ codingplugins/
     ├── [Ruby]
     │   ├── ruby.js
     │   ├── RubyAST.js
-    │   ├── RubyTransformer.js
+    │   ├── RubyTransformer.js     # IL AST → Ruby AST, with the embedded JavaScript-semantics runtime
     │   └── RubyEmitter.js
     │
     ├── [Rust]
