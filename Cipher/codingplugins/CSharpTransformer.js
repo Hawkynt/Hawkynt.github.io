@@ -18797,7 +18797,8 @@
       }
 
       if (node.test) {
-        forStmt.condition = this.transformExpression(node.test);
+        // A bare number as the test (for (; k; k--)) is its truthiness, as in if/while
+        forStmt.condition = this.ensureBooleanCondition(node.test);
       }
 
       if (node.update) {
