@@ -270,6 +270,19 @@ check('strings: a "+" chain of hundreds of string literals is one literal (no st
   expectMatch(code, /return '0123456789abcdef0123/, 'the folded literal');
 });
 
+// ---------------------------------------------------------------------------
+// BigInt: arbitrary precision by the IL type
+// ---------------------------------------------------------------------------
+const BIGINT_SNIPPET = '/** @param {BigInt} a @param {int32} n @returns {string} */\n' +
+  'function f(a, n) { let r = BigInt(n); r += a * 3n; const q = (-r) / 7n; const m = (-r) % 7n;\n' +
+  '  const w = OpCodes.ToQWord(a * a); return [r.toString(16), q, m, Number(r & 0xFFn), w, (r << 70n) >> 69n].join(","); }';
+check('BigInt: products, truncating division and remainder, toString(16) and ToQWord keep JavaScript semantics', () => {
+  if (!hasPerl()) return 'skip';
+  // JavaScript: f(2n ** 64n + 5n, -2) is "3000000000000000d,-7905747460161236408,-5,13,25,110680464442257309722"
+  const out = runPerl(BIGINT_SNIPPET, 'print main::f(Math::BigInt->new(2)->bpow(64)->badd(5), -2), "\\n";');
+  expectOutput(out, '3000000000000000d,-7905747460161236408,-5,13,25,110680464442257309722');
+});
+
 /**
  * PERL: run every regression case.
  * @param {object} options - { verbose }

@@ -261,6 +261,54 @@ sub _JsSort {
     else { @$array = sort { (defined($a) ? "$a" : '') cmp (defined($b) ? "$b" : '') } @$array; }
     return $array;
 }
+# JavaScript BigInt as Math::BigInt: _Big makes one from any integer value
+# (an IV/UV exactly, an NV by its exact integer digits, a decimal or 0x
+# string); _BigDiv/_BigMod truncate toward zero as JavaScript does.
+use Math::BigInt try => 'GMP,FastCalc';
+sub _Big {
+    my ($value) = @_;
+    return $value if ref($value) && $value->isa('Math::BigInt');
+    return Math::BigInt->new(0) if !defined($value) || $value eq '';
+    return Math::BigInt->new($value) if $value =~ /^\s*[-+]?(?:0[xX][0-9a-fA-F]+|0[bB][01]+|\d+)\s*$/;
+    return Math::BigInt->new(sprintf('%.0f', $value));
+}
+sub _BigUnsigned {
+    my ($value) = @_;
+    return $value if ref($value) && $value->isa('Math::BigInt');
+    return Math::BigInt->new(sprintf('%u', $value)) if defined($value) && $value =~ /^-\d+$/ && $value >= -9223372036854775808;
+    return _Big($value);
+}
+sub _ToUint64 {
+    my ($value) = @_;
+    return ($value & Math::BigInt->new('18446744073709551615'))->numify() if ref($value) && $value->isa('Math::BigInt');
+    return int($value // 0) & 18446744073709551615;
+}
+sub _BigDiv {
+    my ($left, $right) = @_;
+    my $divisor = _Big($right);
+    die "RangeError: Division by zero\n" if $divisor->is_zero();
+    my $quotient = _Big($left)->copy();
+    $quotient->btdiv($divisor);
+    return $quotient;
+}
+sub _BigMod {
+    my ($left, $right) = @_;
+    my $divisor = _Big($right);
+    die "RangeError: Division by zero\n" if $divisor->is_zero();
+    my $remainder = _Big($left)->copy();
+    $remainder->btmod($divisor);
+    return $remainder;
+}
+sub _Num { my ($value) = @_; return ref($value) && $value->isa('Math::BigInt') ? $value->numify() : 0 + ($value // 0); }
+# Number/BigInt.prototype.toString(radix) of an integer
+sub _JsToString {
+    my ($value, $radix) = @_;
+    $radix = 10 if !defined($radix);
+    return "$value" if $radix == 10;
+    my $big = _Big($value);
+    my $digits = lc($big->copy()->babs()->to_base($radix));
+    return ($big->is_neg() ? '-' : '') . $digits;
+}
 sub _JsByteLength { my ($view) = @_; return ref($view) eq 'ARRAY' ? scalar(@$view) : length($view // ''); }
 sub _JsFromEntries { my ($entries) = @_; return { map { ($_->[0] => $_->[1]) } @{$entries || []} }; }
 sub SpongePadBlocks {

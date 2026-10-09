@@ -114,6 +114,13 @@
     'LinkItem', 'TestCase', 'Vulnerability', 'KeySize', 'AuthResult'
   ]);
 
+  // Signed fixed-width IL integer types (a native negative value of one is
+  // negative, not a wrapped unsigned 64-bit pattern)
+  const SIGNED_INTEGER_TYPES = new Set(['int8', 'int16', 'int32', 'int64', 'int', 'number', 'float64', 'double']);
+
+  // Operators whose BigInt result needs Math::BigInt arithmetic
+  const BIGINT_OPERATORS = new Set(['+', '-', '*', '/', '%', '**', '<<', '>>', '&', '|', '^']);
+
   // Framework utility classes that should be skipped entirely (provided by runtime)
   const SKIP_CLASSES = new Set([
     'LinkItem', 'KeySize', 'Vulnerability', 'TestCase', 'AuthResult',
@@ -6409,6 +6416,10 @@
           const castArg = node.value || node.argument || (node.arguments && node.arguments[0]);
           const castVal = this.transformExpression(castArg);
           switch (node.targetType) {
+            case 'uint64':
+              // OpCodes.ToQWord: the low 64 bits, unsigned, as a native
+              // integer - of a Math::BigInt as well (see _ToUint64)
+              return new PerlCall(new PerlIdentifier('main::_ToUint64', ''), [castVal]);
             case 'uint32':
               // castVal sometimes derives from a raw (non-Math.imul/
               // OpCodes.Mul32) multiplication - see transformBinaryExpression's
@@ -7830,10 +7841,12 @@
         // ========================[ Additional IL Node Types ]========================
 
         case 'BigIntCast': {
-          // BigInt(value) -> Perl handles arbitrary precision integers natively
-          // Just return the value
+          // BigInt(value): a Math::BigInt with the value's exact integer
           const val = this.transformExpression(node.value || node.argument || (node.arguments && node.arguments[0]));
-          return val;
+          const source = node.value || node.argument || (node.arguments && node.arguments[0]);
+          const big = new PerlCall(new PerlIdentifier(SIGNED_INTEGER_TYPES.has(source?.resultType) ? 'main::_Big' : 'main::_BigUnsigned', ''), [val]);
+          big.isBigInt = true;
+          return big;
         }
 
         case 'TypedArraySet': {
@@ -8843,7 +8856,49 @@
       return false;
     }
 
+    /**
+     * Is this IL type JavaScript's arbitrary-precision BigInt (as opposed
+     * to the fixed-width int64/uint64)?
+     * @param {string} type - an IL resultType
+     * @returns {boolean}
+     */
+    _isBigIntType(type) {
+      return type === 'BigInt' || type === 'bigint';
+    }
+
+    /**
+     * An arbitrary-precision BigInt operation on two translated operands.
+     * The left operand is made a Math::BigInt (unless it already is one),
+     * so the overloaded operator keeps every bit; division and remainder
+     * truncate toward zero as JavaScript's do.
+     * A native operand is read as unsigned 64-bit unless its IL type is a
+     * signed fixed-width integer: the native 64-bit arithmetic holds a
+     * uint64 (and a BigInt that went through it) in a signed integer.
+     * @param {string} operator - the JavaScript operator, without "="
+     * @param {PerlNode} left
+     * @param {PerlNode} right
+     * @param {string} [leftType] - the left operand's IL type
+     * @param {string} [rightType] - the right operand's IL type
+     * @returns {PerlNode}
+     */
+    _bigIntOperation(operator, left, right, leftType, rightType) {
+      const toBig = (operand, type) => operand && operand.isBigInt ? operand
+        : new PerlCall(new PerlIdentifier(SIGNED_INTEGER_TYPES.has(type) ? 'main::_Big' : 'main::_BigUnsigned', ''), [operand]);
+      const bigLeft = toBig(left, leftType);
+      if (!SIGNED_INTEGER_TYPES.has(rightType) && !(right && right.nodeType === 'Literal')) right = toBig(right, rightType);
+      let result;
+      if (operator === '/') result = new PerlCall(new PerlIdentifier('main::_BigDiv', ''), [bigLeft, right]);
+      else if (operator === '%') result = new PerlCall(new PerlIdentifier('main::_BigMod', ''), [bigLeft, right]);
+      else result = new PerlGrouped(new PerlBinaryExpression(bigLeft, operator, new PerlGrouped(right)));
+      result.isBigInt = true;
+      return result;
+    }
+
     transformBinaryExpression(node) {
+      // Arbitrary-precision BigInt arithmetic, by the IL type
+      if (this._isBigIntType(node.resultType) && BIGINT_OPERATORS.has(node.operator))
+        return this._bigIntOperation(node.operator, this.transformExpression(node.left), this.transformExpression(node.right),
+          node.left?.resultType, node.right?.resultType);
       // A chain of string literals joined by "+" (a test vector's hex text
       // split over hundreds of lines) is one literal - folded here, as
       // recursing down the chain overflows the stack.
@@ -9872,6 +9927,17 @@
     transformAssignmentExpression(node) {
       // Its target is written, not read (see transformMemberExpression)
       if (node.left && node.left.type === 'MemberExpression') node.left._perlAssignTarget = true;
+      // "x op= y" on a BigInt: x = x op y in Math::BigInt arithmetic
+      if (node.operator !== '=' && this._isBigIntType(node.resultType || node.left?.resultType) &&
+          BIGINT_OPERATORS.has(node.operator.slice(0, -1))) {
+        const target = this.transformExpression(node.left);
+        const current = node.left.type === 'MemberExpression'
+          ? this.transformExpression(Object.assign({}, node.left, { _perlAssignTarget: false }))
+          : target;
+        return new PerlAssignment(target, '=',
+          this._bigIntOperation(node.operator.slice(0, -1), current, this.transformExpression(node.right),
+            node.left?.resultType, node.right?.resultType));
+      }
       // Track if a plain "x = <string-expr>;" reassignment (as opposed to
       // transformLetStatement's declare-with-initializer case) makes a
       // local variable structurally a string, so later Identifier
@@ -12015,6 +12081,9 @@
         // with "Can't locate object method toString" at runtime unless obj
         // happens to be blessed. Convert to the equivalent stringification.
         if (method === 'toString') {
+          // An integer (a Math::BigInt included) in any radix (see _JsToString)
+          if (node.arguments[0] && /^(u?int(8|16|32|64)|BigInt|bigint)$/.test(node.callee.object?.resultType || ''))
+            return new PerlCall(new PerlIdentifier('main::_JsToString', ''), [object, this.transformExpression(node.arguments[0])]);
           if (node.arguments[0] && node.arguments[0].type === 'Literal' && typeof node.arguments[0].value === 'number') {
             const radix = node.arguments[0].value;
             if (radix === 16) return new PerlCall('sprintf', [PerlLiteral.String('%x', "'"), object]);
@@ -12110,7 +12179,8 @@
         // the same way JS's Number() does, rather than emitting a bareword
         // call to a nonexistent &Number sub (Perl has no such builtin).
         if (funcName === 'Number' && args.length === 1) {
-          return new PerlGrouped(new PerlBinaryExpression(PerlLiteral.Number(0), '+', args[0]));
+          // A Math::BigInt argument is numified, not added to (see _Num)
+          return new PerlCall(new PerlIdentifier('main::_Num', ''), [args[0]]);
         }
 
         // String(x) -> stringification (JS ToString), mirroring Perl's
