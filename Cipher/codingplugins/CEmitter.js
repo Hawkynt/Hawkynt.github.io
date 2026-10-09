@@ -52,6 +52,8 @@ typedef struct js_val { int32_t t; union { double n; int32_t b; js_str* s; js_ob
 #define JS_IS_NULLISH(v) ((v).t <= JS_T_NULL)
 
 typedef js_val (*js_code)(js_func* f, js_val self, int argc, js_val* argv, js_val nt);
+// the operators' fast paths, inlined at every use (GCC inlines only on request at -O1)
+#define JS_INLINE static inline __attribute__((always_inline))
 #define JS_FN(name) js_val name(js_func* __f, js_val __this, int __jsargc, js_val* __jsargv, js_val __nt)
 #define JS_ARG(i) (__jsargc > (i) ? __jsargv[(i)] : JS_U)
 
@@ -281,6 +283,7 @@ static js_obj* js_typed_protos[11];
 static js_obj* js_RegExp_proto;
 static js_obj* js_Iterator_proto;
 static js_obj* js_global;
+static uint32_t js_global_version = 1; // bumped on every change of a global (lookup caches)
 
 static void js_obj_init(js_obj* o, int kind, js_obj* proto) { o->kind = (uint8_t)kind; o->proto = proto; }
 static js_obj* js_obj_new(js_obj* proto) {
@@ -317,6 +320,7 @@ static js_prop* js_own(js_obj* o, js_str* k) {
   return NULL;
 }
 static js_prop* js_own_add(js_obj* o, js_str* k) {
+  if (o == js_global) ++js_global_version;
   if (o->np == o->cp) {
     int32_t cap = o->cp ? o->cp * 2 : 4;
     js_prop* p = (js_prop*)js_alloc(sizeof(js_prop) * (size_t)cap);
@@ -338,6 +342,7 @@ static js_prop* js_own_add(js_obj* o, js_str* k) {
 }
 /** Define (or overwrite) an own data property */
 static void js_define(js_obj* o, js_str* k, js_val v, uint32_t flags) {
+  if (o == js_global) ++js_global_version;
   js_prop* p = js_own(o, k);
   if (!p) p = js_own_add(o, k);
   p->v = v; p->flags = flags; p->get = p->set = NULL;
@@ -351,6 +356,7 @@ static void js_define_accessor(js_obj* o, js_str* k, js_obj* get, js_obj* set, u
   if (set) p->set = set;
 }
 static int js_delete_own(js_obj* o, js_str* k) {
+  if (o == js_global) ++js_global_version;
   js_prop* p = js_own(o, k);
   if (!p) return 1;
   if (o->frozen || o->sealed) return 0;
@@ -761,15 +767,19 @@ static js_big* js_big_lit(const char* text) {
 #define JS_BIG(text) ({ static js_big* __b_; if (!__b_) __b_ = js_big_lit(text); JS_GV(__b_); })
 
 // ---------------------------------------------------------------- numbers
-static inline int32_t js_d2i32(double d) {
-  if (d >= -2147483648.0 && d <= 2147483647.0) return (int32_t)d;
+static int32_t js_d2i32_slow(double d) {
   if (!isfinite(d)) return 0;
   double t = trunc(d);
   double m = fmod(t, 4294967296.0);
   if (m < 0) m += 4294967296.0;
   return (int32_t)(uint32_t)m;
 }
-static inline uint32_t js_d2u32(double d) { return (uint32_t)js_d2i32(d); }
+/** ToInt32: in int64 range a truncating conversion keeps the low 32 bits */
+JS_INLINE int32_t js_d2i32(double d) {
+  if (d > -9.2e18 && d < 9.2e18) return (int32_t)(uint32_t)(uint64_t)(int64_t)d;
+  return js_d2i32_slow(d);
+}
+JS_INLINE uint32_t js_d2u32(double d) { return (uint32_t)js_d2i32(d); }
 
 /** Number::toString(10): the shortest digits that round-trip, in JavaScript's layout */
 static js_str* js_num_to_str(double x) {
@@ -983,11 +993,11 @@ JS_THROWER(js_throw_syntax, js_SyntaxError_proto)
 static const char* js_cstr(js_str* s) { return js_str_utf8z(s); }
 
 // ---------------------------------------------------------------- type tests
-static inline int js_is_obj(js_val v) { return v.t == JS_T_OBJ; }
-static inline int js_is_kind(js_val v, int kind) { return v.t == JS_T_OBJ && v.u.o->kind == kind; }
-static inline js_arr* js_as_arr(js_val v) { return (js_arr*)v.u.o; }
-static inline js_typed* js_as_typed(js_val v) { return (js_typed*)v.u.o; }
-static inline js_func* js_as_func(js_val v) { return (js_func*)v.u.o; }
+JS_INLINE int js_is_obj(js_val v) { return v.t == JS_T_OBJ; }
+JS_INLINE int js_is_kind(js_val v, int kind) { return v.t == JS_T_OBJ && v.u.o->kind == kind; }
+JS_INLINE js_arr* js_as_arr(js_val v) { return (js_arr*)v.u.o; }
+JS_INLINE js_typed* js_as_typed(js_val v) { return (js_typed*)v.u.o; }
+JS_INLINE js_func* js_as_func(js_val v) { return (js_func*)v.u.o; }
 static js_str* js_typeof_str(js_val v) {
   switch (v.t) {
     case JS_T_UNDEF: case JS_T_HOLE: return A_undefined;
@@ -1000,7 +1010,7 @@ static js_str* js_typeof_str(js_val v) {
   }
 }
 static js_val js_typeof(js_val v) { return JS_SV(js_typeof_str(v)); }
-static inline int js_truthy(js_val v) {
+JS_INLINE int js_truthy(js_val v) {
   switch (v.t) {
     case JS_T_BOOL: return v.u.b;
     case JS_T_NUM: return v.u.n != 0 && !isnan(v.u.n);
@@ -1015,7 +1025,7 @@ static inline int js_truthy(js_val v) {
 static const int js_ta_size[11] = { 1, 1, 1, 2, 2, 4, 4, 4, 8, 8, 8 };
 static const char* js_ta_names[11] = { "Int8Array", "Uint8Array", "Uint8ClampedArray", "Int16Array", "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array", "BigInt64Array", "BigUint64Array" };
 static js_big* js_to_bigint(js_val v);
-static inline js_val js_typed_get(js_typed* t, int64_t i) {
+JS_INLINE js_val js_typed_get(js_typed* t, int64_t i) {
   uint8_t* p = t->buf->data + t->off + i * js_ta_size[t->tk];
   switch (t->tk) {
     case TA_U8: case TA_U8C: return JS_D(*p);
@@ -1030,7 +1040,7 @@ static inline js_val js_typed_get(js_typed* t, int64_t i) {
     default: { uint64_t v; memcpy(&v, p, 8); return JS_GV(js_big_from_u64(v, 0)); }
   }
 }
-static inline void js_typed_set_num(js_typed* t, int64_t i, double d) {
+JS_INLINE void js_typed_set_num(js_typed* t, int64_t i, double d) {
   uint8_t* p = t->buf->data + t->off + i * js_ta_size[t->tk];
   switch (t->tk) {
     case TA_U8: case TA_I8: *p = (uint8_t)js_d2i32(d); break;
@@ -1042,7 +1052,7 @@ static inline void js_typed_set_num(js_typed* t, int64_t i, double d) {
     default: js_throw_type("Cannot convert %.17g to a BigInt", d);
   }
 }
-static inline void js_typed_set(js_typed* t, int64_t i, js_val v) {
+JS_INLINE void js_typed_set(js_typed* t, int64_t i, js_val v) {
   if (t->tk >= TA_BI64) {
     uint64_t x = js_big_low64(js_to_bigint(v));
     memcpy(t->buf->data + t->off + i * 8, &x, 8);
@@ -1268,6 +1278,7 @@ static js_val js_set(js_val v, js_str* k, js_val x) {
       return x;
     }
     if (o->frozen || (own->flags & P_RO)) js_throw_type("Cannot assign to read only property '%s' of object", js_cstr(k));
+    if (o == js_global) ++js_global_version;
     own->v = x;
     return x;
   }
@@ -1286,7 +1297,7 @@ static js_val js_set(js_val v, js_str* k, js_val x) {
   np->v = x;
   return x;
 }
-static inline js_val js_getv(js_val v, js_val key) {
+static js_val js_getv_slow(js_val v, js_val key) {
   if (key.t == JS_T_NUM && v.t == JS_T_OBJ) {
     double d = key.u.n;
     int64_t i = (int64_t)d;
@@ -1302,7 +1313,22 @@ static inline js_val js_getv(js_val v, js_val key) {
   if (v.t <= JS_T_NULL) js_throw_type("Cannot read properties of %s (reading '%s')", v.t == JS_T_NULL ? "null" : "undefined", js_cstr(js_to_str(key)));
   return js_get(v, js_to_key(key));
 }
-static inline js_val js_setv(js_val v, js_val key, js_val x) {
+/** obj[key]: an in-range integer index of an array or typed array inline, the rest out of line */
+JS_INLINE js_val js_getv(js_val v, js_val key) {
+  if (key.t == JS_T_NUM && v.t == JS_T_OBJ) {
+    double d = key.u.n;
+    js_obj* o = v.u.o;
+    if (o->kind == K_ARR) {
+      js_arr* a = (js_arr*)o;
+      if (d >= 0 && d < (double)a->len) { int64_t i = (int64_t)d; if ((double)i == d && a->a[i].t != JS_T_HOLE) return a->a[i]; }
+    } else if (o->kind == K_TYPED) {
+      js_typed* t = (js_typed*)o;
+      if (d >= 0 && d < (double)t->len) { int64_t i = (int64_t)d; if ((double)i == d) return js_typed_get(t, i); }
+    }
+  }
+  return js_getv_slow(v, key);
+}
+static js_val js_setv_slow(js_val v, js_val key, js_val x) {
   if (key.t == JS_T_NUM && v.t == JS_T_OBJ) {
     double d = key.u.n;
     int64_t i = (int64_t)d;
@@ -1314,6 +1340,21 @@ static inline js_val js_setv(js_val v, js_val key, js_val x) {
   }
   if (v.t <= JS_T_NULL) js_throw_type("Cannot set properties of %s (setting '%s')", v.t == JS_T_NULL ? "null" : "undefined", js_cstr(js_to_str(key)));
   return js_set(v, js_to_key(key), x);
+}
+/** obj[key] = x: an in-range store of an array, or a number into a typed array, inline */
+JS_INLINE js_val js_setv(js_val v, js_val key, js_val x) {
+  if (key.t == JS_T_NUM && v.t == JS_T_OBJ) {
+    double d = key.u.n;
+    js_obj* o = v.u.o;
+    if (o->kind == K_ARR) {
+      js_arr* a = (js_arr*)o;
+      if (d >= 0 && d < (double)a->len && !o->frozen) { int64_t i = (int64_t)d; if ((double)i == d) { a->a[i] = x; return x; } }
+    } else if (o->kind == K_TYPED && x.t == JS_T_NUM) {
+      js_typed* t = (js_typed*)o;
+      if (d >= 0 && d < (double)t->len && t->tk < TA_BI64) { int64_t i = (int64_t)d; if ((double)i == d) { js_typed_set_num(t, i, x.u.n); return x; } }
+    }
+  }
+  return js_setv_slow(v, key, x);
 }
 static int js_has_own(js_val v, js_str* k) {
   if (v.t != JS_T_OBJ) {
@@ -1478,6 +1519,9 @@ static js_val js_global_typeof(js_str* k) {
 }
 static js_val js_global_set(js_str* k, js_val v) { js_define(js_global, k, v, 0); return v; }
 #define JS_GLOBAL(lit) js_global_get(JS_ATOM(lit))
+/** A global read cached at its site until a global changes */
+#define JS_GLOBAL_CACHED(lit) ({ static js_val gc_v_; static uint32_t gc_ver_; \
+  if (gc_ver_ != js_global_version) { gc_v_ = js_global_get(JS_ATOM(lit)); gc_ver_ = js_global_version; } gc_v_; })
 
 // ---------------------------------------------------------------- operators
 static void js_mix_error(void) __attribute__((noreturn));
@@ -1497,7 +1541,7 @@ static js_val js_add_slow(js_val a, js_val b) {
   }
   return JS_D(js_to_number(a) + js_to_number(b));
 }
-static inline js_val js_add(js_val a, js_val b) {
+JS_INLINE js_val js_add(js_val a, js_val b) {
   if (a.t == JS_T_NUM && b.t == JS_T_NUM) return JS_D(a.u.n + b.u.n);
   if (a.t == JS_T_STR && b.t == JS_T_STR) return JS_SV(js_str_concat(a.u.s, b.u.s));
   return js_add_slow(a, b);
@@ -1508,7 +1552,14 @@ static double js_pow_num(double a, double b) {
   if ((a == 1 || a == -1) && isinf(b)) return NAN;
   return pow(a, b);
 }
-static double js_mod_num(double a, double b) { return fmod(a, b); }
+/** a % b: integer operands (the common case) without fmod; the sign of the dividend, -0 included */
+JS_INLINE double js_mod_num(double a, double b) {
+  if (a >= 0 && a < 9007199254740992.0 && b >= 1 && b < 9007199254740992.0) {
+    int64_t x = (int64_t)a, y = (int64_t)b;
+    if ((double)x == a && (double)y == b) return (double)(x % y);
+  }
+  return fmod(a, b);
+}
 static js_val js_numop_slow(int op, js_val a, js_val b) {
   a = js_to_numeric(a); b = js_to_numeric(b);
   if (a.t == JS_T_BIG || b.t == JS_T_BIG) {
@@ -1550,7 +1601,7 @@ static js_val js_numop_slow(int op, js_val a, js_val b) {
   }
 }
 #define JS_NUMOP(name, op, expr) \
-  static inline js_val name(js_val a, js_val b) { if (a.t == JS_T_NUM && b.t == JS_T_NUM) { double x = a.u.n, y = b.u.n; return JS_D(expr); } return js_numop_slow(op, a, b); }
+  JS_INLINE js_val name(js_val a, js_val b) { if (a.t == JS_T_NUM && b.t == JS_T_NUM) { double x = a.u.n, y = b.u.n; return JS_D(expr); } return js_numop_slow(op, a, b); }
 JS_NUMOP(js_sub, OP_SUB, x - y)
 JS_NUMOP(js_mul, OP_MUL, x * y)
 JS_NUMOP(js_div, OP_DIV, x / y)
@@ -1562,30 +1613,30 @@ JS_NUMOP(js_bxor, OP_XOR, js_d2i32(x) ^ js_d2i32(y))
 JS_NUMOP(js_shl, OP_SHL, (int32_t)((uint32_t)js_d2i32(x) << (js_d2u32(y) & 31)))
 JS_NUMOP(js_sar, OP_SAR, js_d2i32(x) >> (js_d2u32(y) & 31))
 JS_NUMOP(js_shr, OP_SHR, (double)(js_d2u32(x) >> (js_d2u32(y) & 31)))
-static inline js_val js_neg(js_val a) {
+JS_INLINE js_val js_neg(js_val a) {
   if (a.t == JS_T_NUM) return JS_D(-a.u.n);
   a = js_to_numeric(a);
   return a.t == JS_T_BIG ? JS_GV(js_big_neg(a.u.g)) : JS_D(-a.u.n);
 }
-static inline js_val js_pos(js_val a) { return a.t == JS_T_NUM ? a : JS_D(js_to_number(a)); }
-static inline js_val js_bnot(js_val a) {
+JS_INLINE js_val js_pos(js_val a) { return a.t == JS_T_NUM ? a : JS_D(js_to_number(a)); }
+JS_INLINE js_val js_bnot(js_val a) {
   if (a.t == JS_T_NUM) return JS_D(~js_d2i32(a.u.n));
   a = js_to_numeric(a);
   return a.t == JS_T_BIG ? JS_GV(js_big_not(a.u.g)) : JS_D(~js_d2i32(a.u.n));
 }
-static inline js_val js_not(js_val a) { return JS_B(!js_truthy(a)); }
+JS_INLINE js_val js_not(js_val a) { return JS_B(!js_truthy(a)); }
 /** ++/-- on a value: the numeric value plus one (BigInt stays BigInt) */
-static inline js_val js_inc(js_val a) {
+JS_INLINE js_val js_inc(js_val a) {
   if (a.t == JS_T_NUM) return JS_D(a.u.n + 1);
   a = js_to_numeric(a);
   return a.t == JS_T_BIG ? JS_GV(js_big_add(a.u.g, js_big_from_u64(1, 0))) : JS_D(a.u.n + 1);
 }
-static inline js_val js_dec(js_val a) {
+JS_INLINE js_val js_dec(js_val a) {
   if (a.t == JS_T_NUM) return JS_D(a.u.n - 1);
   a = js_to_numeric(a);
   return a.t == JS_T_BIG ? JS_GV(js_big_sub(a.u.g, js_big_from_u64(1, 0))) : JS_D(a.u.n - 1);
 }
-static inline js_val js_tonum_update(js_val a) { return a.t == JS_T_NUM ? a : js_to_numeric(a); }
+JS_INLINE js_val js_tonum_update(js_val a) { return a.t == JS_T_NUM ? a : js_to_numeric(a); }
 
 // ---------------------------------------------------------------- equality and order
 static int js_strict_eq(js_val a, js_val b) {
@@ -1601,11 +1652,11 @@ static int js_strict_eq(js_val a, js_val b) {
     default: return a.u.o == b.u.o;
   }
 }
-static inline js_val js_seq(js_val a, js_val b) {
+JS_INLINE js_val js_seq(js_val a, js_val b) {
   if (a.t == JS_T_NUM && b.t == JS_T_NUM) return JS_B(a.u.n == b.u.n);
   return JS_B(js_strict_eq(a, b));
 }
-static inline js_val js_sne(js_val a, js_val b) {
+JS_INLINE js_val js_sne(js_val a, js_val b) {
   if (a.t == JS_T_NUM && b.t == JS_T_NUM) return JS_B(a.u.n != b.u.n);
   return JS_B(!js_strict_eq(a, b));
 }
@@ -1654,10 +1705,10 @@ static int js_less(js_val a, js_val b, int left_first) {
   if (isnan(x.u.n) || isnan(y.u.n)) return -1;
   return x.u.n < y.u.n;
 }
-static inline js_val js_lt(js_val a, js_val b) { if (a.t == JS_T_NUM && b.t == JS_T_NUM) return JS_B(a.u.n < b.u.n); return JS_B(js_less(a, b, 1) == 1); }
-static inline js_val js_gt(js_val a, js_val b) { if (a.t == JS_T_NUM && b.t == JS_T_NUM) return JS_B(a.u.n > b.u.n); return JS_B(js_less(b, a, 0) == 1); }
-static inline js_val js_le(js_val a, js_val b) { if (a.t == JS_T_NUM && b.t == JS_T_NUM) return JS_B(a.u.n <= b.u.n); return JS_B(js_less(b, a, 0) == 0); }
-static inline js_val js_ge(js_val a, js_val b) { if (a.t == JS_T_NUM && b.t == JS_T_NUM) return JS_B(a.u.n >= b.u.n); return JS_B(js_less(a, b, 1) == 0); }
+JS_INLINE js_val js_lt(js_val a, js_val b) { if (a.t == JS_T_NUM && b.t == JS_T_NUM) return JS_B(a.u.n < b.u.n); return JS_B(js_less(a, b, 1) == 1); }
+JS_INLINE js_val js_gt(js_val a, js_val b) { if (a.t == JS_T_NUM && b.t == JS_T_NUM) return JS_B(a.u.n > b.u.n); return JS_B(js_less(b, a, 0) == 1); }
+JS_INLINE js_val js_le(js_val a, js_val b) { if (a.t == JS_T_NUM && b.t == JS_T_NUM) return JS_B(a.u.n <= b.u.n); return JS_B(js_less(b, a, 0) == 0); }
+JS_INLINE js_val js_ge(js_val a, js_val b) { if (a.t == JS_T_NUM && b.t == JS_T_NUM) return JS_B(a.u.n >= b.u.n); return JS_B(js_less(a, b, 1) == 0); }
 /** SameValueZero (Map keys, includes) */
 static int js_same_value_zero(js_val a, js_val b) {
   if (a.t == JS_T_NUM && b.t == JS_T_NUM) return a.u.n == b.u.n || (isnan(a.u.n) && isnan(b.u.n));
@@ -1688,7 +1739,12 @@ static js_val js_ctor(const char* name, js_code code, int length, js_obj* proto)
 }
 /** The prototype a native constructor gives its object: new.target's, else its own */
 static js_obj* js_proto_from(js_val nt, js_obj* fallback) {
-  if (nt.t == JS_T_OBJ) { js_val p = js_get(nt, A_prototype); if (p.t == JS_T_OBJ) return p.u.o; }
+  if (nt.t == JS_T_OBJ) {
+    js_prop* own = nt.u.o->kind == K_FUNC ? js_own(nt.u.o, A_prototype) : NULL;
+    if (own && !(own->flags & P_ACC)) return own->v.t == JS_T_OBJ ? own->v.u.o : fallback;
+    js_val p = js_get(nt, A_prototype);
+    if (p.t == JS_T_OBJ) return p.u.o;
+  }
   return fallback;
 }
 static int64_t js_len_of(js_val v) {
@@ -1699,8 +1755,8 @@ static int64_t js_len_of(js_val v) {
   double d = js_to_integer(js_get(v, A_length));
   return d < 0 ? 0 : d > 9007199254740991.0 ? 9007199254740991LL : (int64_t)d;
 }
-static inline js_val js_idx_get(js_val v, int64_t i) { return js_getv(v, JS_D((double)i)); }
-static inline void js_idx_set(js_val v, int64_t i, js_val x) { js_setv(v, JS_D((double)i), x); }
+JS_INLINE js_val js_idx_get(js_val v, int64_t i) { return js_getv(v, JS_D((double)i)); }
+JS_INLINE void js_idx_set(js_val v, int64_t i, js_val x) { js_setv(v, JS_D((double)i), x); }
 static int64_t js_rel_index(js_val v, int64_t len, int64_t dflt) {
   if (v.t == JS_T_UNDEF) return dflt;
   double d = js_to_integer(v);
@@ -2346,7 +2402,7 @@ static js_abuf* js_abuf_new(int64_t len) {
   js_abuf* b = (js_abuf*)js_alloc(sizeof(js_abuf));
   js_obj_init(&b->o, K_ABUF, js_ArrayBuffer_proto);
   b->data = (uint8_t*)js_alloc_raw((size_t)len);
-  memset(b->data, 0, (size_t)len);
+  // js_alloc memory is zeroed already
   b->len = len;
   return b;
 }

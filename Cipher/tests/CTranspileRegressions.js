@@ -107,7 +107,8 @@ function runC(js, driver) {
     const file = path.join(dir, 'probe.c');
     const exe = path.join(dir, 'probe.exe');
     fs.writeFileSync(file, code);
-    const build = spawnSync('gcc', [file, '-std=gnu17', '-O1', '-w', '-o', exe, '-lm'], { encoding: 'utf-8', timeout: 180000 });
+    // -O0: these cases test semantics; the runtime builds fastest unoptimised
+    const build = spawnSync('gcc', [file, '-std=gnu17', '-O0', '-w', '-o', exe, '-lm'], { encoding: 'utf-8', timeout: 180000 });
     if (build.status !== 0)
       throw new Error(`gcc failed: ${(build.stderr || '').split('\n').filter(l => /error/.test(l)).slice(0, 3).join(' | ')}${verbose ? '\n' + code : ''}`);
     const run = spawnSync(exe, [], { encoding: 'utf-8', timeout: 60000 });
@@ -346,6 +347,15 @@ check('C OpCodes: a member constructed through new OpCodes.X is compiled with it
   // When bits are written
   // Then the stream exists and packs them
   return expectOutput(runC(js, 'console.log(bits());'), ['161']);
+});
+
+check('C fast paths: ToInt32 past 32 bits, integer remainders and global reads that change', () => {
+  const js = 'function i32(x) { return x | 0; }\nfunction rem(a, b) { return a % b; }\nfunction readX() { return globalThis.counterX; }\n' +
+    'function x() { return counterX; }';
+  // Given values beyond 32 bits, remainders of integers and fractions, and a global that is reassigned
+  // Then ToInt32 keeps the low 32 bits, % follows the dividend, and a cached global read sees the new value
+  return expectOutput(runC(js, 'console.log(i32(2 ** 40 + 5), i32(-1.5), i32(4294967295), i32(1e300), rem(7, 3), rem(-7, 3), rem(7.5, 2)); globalThis.counterX = 1; const a = x(); globalThis.counterX = 2; console.log(a, x(), readX());'),
+    ['5 -1 -1 0 1 -1 1.5', '1 2 2']);
 });
 
 /**

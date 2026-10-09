@@ -650,12 +650,19 @@
         case 'OpCodes': return { c: 'js_opcodes', pure: true };
       }
       if (!/^[A-Za-z_$][\w$]*$/.test(name)) throw new Error(`C: unsupported expression '${name}'`);
-      return { c: `js_global_get(${atom(name)})`, pure: true };
+      return { c: `JS_GLOBAL_CACHED(${u16Literal(name)})`, pure: true };
     }
     identifier(e) {
       const v = this.resolved.get(e);
       if (v) return { c: this.access(v), pure: true };
       return this.globalRef(e.name);
+    }
+    /** An expression whose value is unused: x++ needs no copy of the old value */
+    discarded(e) {
+      if (e && e.nodeType === 'UnaryExpression' && (e.operator === '++' || e.operator === '--') && !e.isPrefix)
+        return this.update(Object.assign({}, e, { isPrefix: true })).c;
+      if (e && e.nodeType === 'SequenceExpression') return e.expressions.map(x => `(void)(${this.discarded(x)})`).join(', ');
+      return this.expr(e).c;
     }
     /** A C condition (an int) for a JavaScript expression */
     cond(e) {
@@ -1070,7 +1077,7 @@
         case 'ExpressionStatement': {
           const x = s.expression;
           if (x && x.nodeType === 'Class') { this.classStatement(x); return; }
-          this.line(`(void)(${this.expr(x).c});`);
+          this.line(`(void)(${this.discarded(x)});`);
           return;
         }
         case 'Return': {
@@ -1162,7 +1169,7 @@
         }
       }
       const cond = s.condition ? this.cond(s.condition) : '1';
-      const upd = s.incrementor ? `(void)(${this.expr(s.incrementor).c})` : '';
+      const upd = s.incrementor ? `(void)(${this.discarded(s.incrementor)})` : '';
       this.line(`for (; ${cond}; ${upd})`);
       this.jumps.push({ kind: 'loop' });
       this.block(s.body);
