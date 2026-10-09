@@ -1005,6 +1005,22 @@ namespace ${namespace}
         }
 
         // JavaScript's string.slice: a negative bound counts from the end, both clamp
+        // obj[name] on an object: its property or field of that name (as declared,
+        // or PascalCased as C# declares it); undefined (null) when it has none
+        public static dynamic JsMember(object obj, string name)
+        {
+            if (obj == null || string.IsNullOrEmpty(name)) return null;
+            var type = obj.GetType();
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            foreach (var candidate in new[] { name, char.ToUpperInvariant(name[0]) + name.Substring(1) })
+            {
+                var property = type.GetProperty(candidate, flags);
+                if (property != null && property.GetIndexParameters().Length == 0) return property.GetValue(obj);
+                var field = type.GetField(candidate, flags);
+                if (field != null) return field.GetValue(obj);
+            }
+            return null;
+        }
         public static string JsSlice(string s, int start) => JsSlice(s, start, s.Length);
         public static string JsSlice(string s, int start, int end)
         {

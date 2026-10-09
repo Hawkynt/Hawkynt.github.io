@@ -16164,6 +16164,13 @@
           return new CSharpMemberAccess(groupsAccess, 'Value');
         }
 
+        // A member of a file class named by a string (dilithium.js's `set[field]`,
+        // field 'publicKeySize'), read by name at run time (CS0021 otherwise)
+        if (targetType && !targetType.isArray && this.localClassNames.has(targetType.name) &&
+            this.inferFullExpressionType(node.property)?.name === 'string') {
+          return new CSharpMethodCall(null, 'JsMember', [target, index]);
+        }
+
         // A string-keyed Dictionary (a JS object used as a table, e.g. elgamal.js's
         // `ELGAMAL_KEYS[this.keySize]` over `{ 512: ..., 1024: ... }`) looked up with a
         // number: JS converts the key to its decimal string, so do the same rather

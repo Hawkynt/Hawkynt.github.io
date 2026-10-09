@@ -937,7 +937,13 @@ check('stub classes: a stub method result into a narrower JSDoc local is cast (C
     '  /** @returns {int32} r */\n  f() {\n    /** @type {uint8} */\n    const cell = this.m.get(1, 2);\n    return cell;\n  }\n}');
   expectMatch(code, /byte cell = (unchecked\()?\(byte\)\(?this\.M\.Get\(1, 2\)/, 'byte cell = (byte)this.M.Get(1, 2)');
 });
-const REGISTRATION_LOOP = 'const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
+check('members: a file class member named by a string is read by name (CS0021)', () => {
+  const code = transpile('class Params {\n  constructor() {\n    /** @type {int32} */\n    this.publicKeySize = 32;\n  }\n}\n' +
+    '/**\n * @param {Params} set - set\n * @param {string} field - member name\n * @returns {int32} r\n */\n' +
+    'function sizeOf(set, field) {\n  /** @type {int32} */\n  const size = set[field];\n  return size;\n}');
+  expectMatch(code, /JsMember\(set, field\)/, 'JsMember(set, field)');
+});
+const REGISTRATION_LOOP ='const { RegisterAlgorithm, BlockCipherAlgorithm } = AlgorithmFramework;\n' +
   'const SETS = [{ name: "A-1", n: 1 }, { name: "A-2", n: 2 }];\n' +
   'class AAlgorithm extends BlockCipherAlgorithm {\n  /** @param {string} name - name */\n  constructor(name) {\n    super();\n    this.name = name;\n  }\n}\n' +
   'for (let i = 0; i < SETS.length; ++i) {\n  const instance = new AAlgorithm(SETS[i].name);\n' +
@@ -1174,6 +1180,10 @@ namespace RegressionTest {
       sm.Set(1, 1, 0);
       Eq("sparse-count", sm.NonZeroCount(), 1);
       Eq("sparse-double-set", sm.Get(0, 2), 1);
+      // JsMember reads a property by its JavaScript or C# name, undefined as null
+      var bag = new TestCase { Text = "t" };
+      Eq("member-camel", (string)FrameworkFunctions.JsMember(bag, "text"), "t");
+      Eq("member-missing", (object)FrameworkFunctions.JsMember(bag, "nothing") == null, true);
       // OpCodes.UInt64 works on [high32, low32] pairs
       Eq("u64-shr", string.Join(",", OpCodes.UInt64.Shr(OpCodes.UInt64.Create(0x12345678, 0x9ABCDEF0), 8)), "1193046,2023406814");
       Eq("u64-shl-wide", string.Join(",", OpCodes.UInt64.Shl(OpCodes.UInt64.Create(0, 1), 40)), "256,0");
