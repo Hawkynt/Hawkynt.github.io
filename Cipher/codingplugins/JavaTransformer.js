@@ -362,6 +362,11 @@
     return false;
   }
 
+  /** Array operations that neither keep nor return the array itself (their result is a value or a copy). */
+  const SHARING_FREE_IL = new Set(['ArrayLength', 'ArrayJoin', 'ArrayAppend', 'ArrayPop', 'ArrayShift', 'ArrayUnshift', 'ArrayIndexOf',
+    'ArrayLastIndexOf', 'ArrayIncludes', 'ArraySlice', 'ArrayConcat', 'ArrayMap', 'ArrayFilter', 'ArrayReduce', 'ArrayForEach',
+    'ArraySome', 'ArrayEvery', 'ArrayFind', 'ArrayFindIndex', 'ArraySplice', 'ArrayClear']);
+
   function markEscapingVariables(body) {
     const seen = new Set();
     const walk = (n, parent) => {
@@ -371,7 +376,7 @@
       if (n.type === 'Identifier' && n.__sym && parent) {
         const p = parent;
         const safe = (p.type === 'MemberExpression' && p.object === n && (p.computed || (p.property && p.property.name === 'length'))) ||
-          (p.type === 'ArrayLength' && p.array === n) || ((p.type === 'ObjectProperty' || p.type === 'Property') && p.value === n) ||
+          (SHARING_FREE_IL.has(p.type) && p.array === n) || ((p.type === 'ObjectProperty' || p.type === 'Property') && p.value === n) ||
           (p.type === 'VariableDeclarator' && p.id === n) || (p.type === 'ForOfStatement' && p.right === n);
         if (!safe) n.__sym.escapes = true;
       }
